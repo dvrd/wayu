@@ -1,6 +1,6 @@
 import gleeunit
 import gleeunit/should
-import vars/internal
+import wayu/internal
 
 pub fn main() {
   gleeunit.main()
