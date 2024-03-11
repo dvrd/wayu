@@ -1,20 +1,13 @@
-# vars
+# Wayu
 
-[![Package Version](https://img.shields.io/hexpm/v/vars)](https://hex.pm/packages/vars)
-[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/vars/)
+## Build project
 
 ```sh
-gleam add vars
+git clone https://github.com/dvrd/wayu.git
+cd wayu
+gleam run -m gleescript
+./wayu
 ```
-```gleam
-import vars
-
-pub fn main() {
-  // TODO: An example of the project in use
-}
-```
-
-Further documentation can be found at <https://hexdocs.pm/vars>.
 
 ## Development
 
