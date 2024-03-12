@@ -3,6 +3,7 @@ import envoy
 import gleam/io
 import gleam/string
 import gleam/result
+import wayu/internal.{format_pair}
 
 pub fn main() {
   case argv.load().arguments {
@@ -16,8 +17,4 @@ fn get(name: String) -> Nil {
     envoy.get(name)
     |> result.unwrap("")
   io.println(format_pair(name, value))
-}
-
-fn format_pair(name: String, value: String) -> String {
-  name <> "=" <> value
 }
