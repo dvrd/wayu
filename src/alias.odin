@@ -1,0 +1,229 @@
+package wayu
+
+import "core:fmt"
+import "core:os"
+import "core:strings"
+
+ALIAS_FILE :: "aliases.zsh"
+
+handle_alias_command :: proc(action: Action, args: []string) {
+	switch action {
+	case .ADD:
+		if len(args) < 2 {
+			fmt.eprintln("ERROR: alias add requires two arguments: <alias> <command>")
+			fmt.println("Usage: wayu alias add <alias> <command>")
+			os.exit(1)
+		}
+		// Join remaining args as the command
+		command := strings.join(args[1:], " ")
+		defer delete(command)
+		add_alias(args[0], command)
+	case .REMOVE:
+		if len(args) == 0 {
+			remove_alias_interactive()
+		} else {
+			remove_alias(args[0])
+		}
+	case .LIST:
+		list_aliases()
+	case .HELP:
+		print_alias_help()
+	case .UNKNOWN:
+		fmt.eprintln("Unknown alias action")
+		print_alias_help()
+		os.exit(1)
+	}
+}
+
+add_alias :: proc(alias_name: string, command: string) {
+	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE)
+	defer delete(config_file)
+
+	// Read current file
+	content, read_ok := os.read_entire_file_from_filename(config_file)
+	if !read_ok {
+		fmt.eprintfln("ERROR: Could not read config file '%s'", config_file)
+		os.exit(1)
+	}
+	defer delete(content)
+
+	content_str := string(content)
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+
+	// Check if alias already exists
+	alias_prefix := fmt.aprintf("alias %s=", alias_name)
+	defer delete(alias_prefix)
+
+	alias_exists := false
+	for line, i in lines {
+		if strings.has_prefix(strings.trim_space(line), alias_prefix) {
+			// Replace existing alias
+			new_alias_line := fmt.aprintf("alias %s=\"%s\"", alias_name, command)
+			defer delete(new_alias_line)
+			lines[i] = strings.clone(new_alias_line)
+			alias_exists = true
+			break
+		}
+	}
+
+	if !alias_exists {
+		// Add new alias at the end
+		new_alias := fmt.aprintf("alias %s=\"%s\"", alias_name, command)
+		defer delete(new_alias)
+
+		new_lines := make([]string, len(lines) + 1)
+		defer delete(new_lines)
+
+		copy(new_lines[:len(lines)], lines)
+		new_lines[len(lines)] = strings.clone(new_alias)
+
+		lines = new_lines
+	}
+
+	// Write back to file
+	new_content := strings.join(lines, "\n")
+	defer delete(new_content)
+
+	write_ok := os.write_entire_file(config_file, transmute([]byte)new_content)
+	if !write_ok {
+		fmt.eprintfln("ERROR: Could not write to config file")
+		os.exit(1)
+	}
+
+	if alias_exists {
+		fmt.println("Alias updated successfully:", alias_name)
+	} else {
+		fmt.println("Alias added successfully:", alias_name)
+	}
+}
+
+remove_alias :: proc(alias_name: string) {
+	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE)
+	defer delete(config_file)
+
+	content, read_ok := os.read_entire_file_from_filename(config_file)
+	if !read_ok {
+		fmt.eprintfln("ERROR: Could not read config file")
+		os.exit(1)
+	}
+	defer delete(content)
+
+	content_str := string(content)
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+
+	// Filter out the alias
+	filtered_lines := make([dynamic]string)
+	defer delete(filtered_lines)
+
+	alias_prefix := fmt.aprintf("alias %s=", alias_name)
+	defer delete(alias_prefix)
+
+	removed := false
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		if strings.has_prefix(trimmed, alias_prefix) {
+			removed = true
+			continue
+		}
+		append(&filtered_lines, line)
+	}
+
+	if !removed {
+		fmt.println("Alias not found:", alias_name)
+		return
+	}
+
+	// Write back to file
+	new_content := strings.join(filtered_lines[:], "\n")
+	defer delete(new_content)
+
+	write_ok := os.write_entire_file(config_file, transmute([]byte)new_content)
+	if !write_ok {
+		fmt.eprintfln("ERROR: Could not write to config file")
+		os.exit(1)
+	}
+
+	fmt.println("Alias removed successfully:", alias_name)
+}
+
+remove_alias_interactive :: proc() {
+	items := extract_alias_items()
+	defer {
+		// Clean up the items array properly
+		for item in items {
+			delete(item)
+		}
+		delete(items)
+	}
+
+	if len(items) == 0 {
+		print_warning("No aliases found to remove")
+		return
+	}
+
+	selected, ok := interactive_fuzzy_select(items, "Select alias to remove:")
+	if !ok {
+		print_info("Operation cancelled")
+		return
+	}
+
+	// Clone the selected item before items get cleaned up
+	selected_copy := strings.clone(selected)
+	defer delete(selected_copy)
+
+	remove_alias(selected_copy)
+}
+
+list_aliases :: proc() {
+	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE)
+	defer delete(config_file)
+
+	content, read_ok := os.read_entire_file_from_filename(config_file)
+	if !read_ok {
+		fmt.eprintfln("ERROR: Could not read config file")
+		os.exit(1)
+	}
+	defer delete(content)
+
+	content_str := string(content)
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+
+	fmt.println("Current aliases:")
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		if strings.has_prefix(trimmed, "alias ") && strings.contains(trimmed, "=") {
+			// Extract alias name and command
+			eq_pos := strings.index(trimmed, "=")
+			if eq_pos != -1 {
+				name_part := trimmed[6:eq_pos] // Skip "alias "
+				value_part := trimmed[eq_pos + 1:]
+
+				// Clean up quotes
+				if strings.has_prefix(value_part, "\"") && strings.has_suffix(value_part, "\"") {
+					value_part = value_part[1:len(value_part) - 1]
+				}
+
+				fmt.printf("  %-20s -> %s\n", name_part, value_part)
+			}
+		}
+	}
+}
+
+print_alias_help :: proc() {
+	fmt.println("wayu alias - Manage shell aliases")
+	fmt.println("")
+	fmt.println("USAGE:")
+	fmt.println("  wayu alias add <alias> <command>    Add or update alias")
+	fmt.println("  wayu alias rm [alias]               Remove alias (interactive if no alias)")
+	fmt.println("  wayu alias list                     List all aliases")
+	fmt.println("  wayu alias help                     Show this help")
+	fmt.println("")
+	fmt.println("EXAMPLES:")
+	fmt.println("  wayu alias add ll 'ls -la'")
+	fmt.println("  wayu alias add gc 'git commit'")
+	fmt.println("  wayu alias rm ll")
+	fmt.println("  wayu alias rm                       # Interactive removal")
+}
