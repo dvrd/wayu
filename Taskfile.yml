@@ -1,0 +1,140 @@
+version: '3'
+
+vars:
+  BIN_DIR: ./bin
+  SRC_DIR: ./src
+  TEST_DIR: ./tests
+  BINARY_NAME: wayu
+  CONFIG_DIR: "{{.HOME}}/.config/wayu"
+
+tasks:
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BIN_DIR}}
+      - mkdir -p {{.BIN_DIR}}
+
+  build:
+    desc: Build the wayu CLI
+    deps: [clean]
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - odin build {{.SRC_DIR}} -out:{{.BIN_DIR}}/{{.BINARY_NAME}} -o:speed
+    sources:
+      - "{{.SRC_DIR}}/**/*.odin"
+    generates:
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}}"
+
+  build-dev:
+    desc: Build for development (debug mode)
+    deps: [clean]
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - odin build {{.SRC_DIR}} -out:{{.BIN_DIR}}/{{.BINARY_NAME}} -debug -define:DEBUG=true
+    sources:
+      - "{{.SRC_DIR}}/**/*.odin"
+    generates:
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}}"
+
+  build-debug:
+    desc: Build with full debug information and logging
+    deps: [clean]
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - odin build {{.SRC_DIR}} -out:{{.BIN_DIR}}/{{.BINARY_NAME}} -debug -define:DEBUG=true -define:VERBOSE=true
+    sources:
+      - "{{.SRC_DIR}}/**/*.odin"
+    generates:
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}}"
+
+  build-asan:
+    desc: Build with AddressSanitizer for memory debugging
+    deps: [clean]
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - odin build {{.SRC_DIR}} -out:{{.BIN_DIR}}/{{.BINARY_NAME}}-asan -debug -define:DEBUG=true -sanitize:address
+    sources:
+      - "{{.SRC_DIR}}/**/*.odin"
+    generates:
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}}-asan"
+
+  test:
+    desc: Run all tests
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - odin test {{.TEST_DIR}} -file -out:{{.BIN_DIR}}/test_wayu
+      - rm -f {{.BIN_DIR}}/test_wayu
+    sources:
+      - "{{.TEST_DIR}}/**/*.odin"
+      - "{{.SRC_DIR}}/**/*.odin"
+
+  run:
+    desc: Build and run wayu
+    deps: [build-dev]
+    cmds:
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}} {{.CLI_ARGS}}"
+
+  install:
+    desc: Install wayu CLI to system
+    deps: [build]
+    cmds:
+      - cp {{.BIN_DIR}}/{{.BINARY_NAME}} /usr/local/bin/{{.BINARY_NAME}}
+      - chmod +x /usr/local/bin/{{.BINARY_NAME}}
+
+  setup:
+    desc: Setup wayu configuration directory
+    cmds:
+      - mkdir -p {{.CONFIG_DIR}}
+      - mkdir -p {{.CONFIG_DIR}}/functions
+      - mkdir -p {{.CONFIG_DIR}}/completions
+      - mkdir -p {{.CONFIG_DIR}}/plugins
+      - |
+        if [ ! -f {{.CONFIG_DIR}}/path.zsh ]; then
+          echo "#!/usr/bin/env zsh" > {{.CONFIG_DIR}}/path.zsh
+          echo "" >> {{.CONFIG_DIR}}/path.zsh
+          echo 'add_to_path() {' >> {{.CONFIG_DIR}}/path.zsh
+          echo '    local dir="$1"' >> {{.CONFIG_DIR}}/path.zsh
+          echo '    local position="${2:-prepend}"' >> {{.CONFIG_DIR}}/path.zsh
+          echo '    if [ ! -d "$dir" ]; then return 1; fi' >> {{.CONFIG_DIR}}/path.zsh
+          echo '    if [[ ":$PATH:" == *":$dir:"* ]]; then return 0; fi' >> {{.CONFIG_DIR}}/path.zsh
+          echo '    if [ "$position" = "append" ]; then' >> {{.CONFIG_DIR}}/path.zsh
+          echo '        export PATH="$PATH:$dir"' >> {{.CONFIG_DIR}}/path.zsh
+          echo '    else' >> {{.CONFIG_DIR}}/path.zsh
+          echo '        export PATH="$dir:$PATH"' >> {{.CONFIG_DIR}}/path.zsh
+          echo '    fi' >> {{.CONFIG_DIR}}/path.zsh
+          echo '}' >> {{.CONFIG_DIR}}/path.zsh
+          echo "" >> {{.CONFIG_DIR}}/path.zsh
+          echo 'export PATH=$(echo "$PATH" | awk -v RS='"'"':'"'"' -v ORS='"'"':'"'"' '"'"'!seen[$0]++'"'"' | sed '"'"'s/:$//'"'"')' >> {{.CONFIG_DIR}}/path.zsh
+        fi
+      - |
+        if [ ! -f {{.CONFIG_DIR}}/aliases.zsh ]; then
+          echo "#!/usr/bin/env zsh" > {{.CONFIG_DIR}}/aliases.zsh
+          echo "" >> {{.CONFIG_DIR}}/aliases.zsh
+          echo "# Shell Aliases Configuration" >> {{.CONFIG_DIR}}/aliases.zsh
+        fi
+      - |
+        if [ ! -f {{.CONFIG_DIR}}/constants.zsh ]; then
+          echo "#!/usr/bin/env zsh" > {{.CONFIG_DIR}}/constants.zsh
+          echo "" >> {{.CONFIG_DIR}}/constants.zsh
+          echo "# Environment Constants and Configuration Variables" >> {{.CONFIG_DIR}}/constants.zsh
+        fi
+
+  dev:
+    desc: Development workflow (build-dev + run with args)
+    deps: [build-dev]
+    cmds:
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}} {{.CLI_ARGS}}"
+
+  check:
+    desc: Check Odin code
+    cmds:
+      - odin check {{.SRC_DIR}}
+
+  all:
+    desc: Clean, build, test, and install
+    deps: [clean, build, test, install]
+
+  help:
+    desc: Show available tasks
+    cmds:
+      - task --list
