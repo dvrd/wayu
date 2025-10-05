@@ -70,7 +70,7 @@ init_config_file :: proc(file_path: string, template: string) -> bool {
 
 	write_ok := os.write_entire_file(file_path, transmute([]byte)template)
 	if !write_ok {
-		debug_error("Failed to create config file: %s", file_path)
+		debug("Failed to create config file: %s", file_path)
 		return false
 	}
 

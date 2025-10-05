@@ -207,7 +207,7 @@ list_paths :: proc() {
 				end := strings.last_index(trimmed, "\"")
 				if end != -1 && end > start {
 					path := trimmed[start + 1:end]
-					fmt.printf("  %s\n", path) // White text, no color codes
+					fmt.printf("  %s\n", path)
 				}
 			}
 		}

@@ -3,7 +3,6 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:log"
 
 CONSTANTS_FILE :: "constants.zsh"
 
@@ -65,30 +64,25 @@ add_constant :: proc(name: string, value: string) {
 		if strings.has_prefix(strings.trim_space(line), export_prefix) {
 			// Replace existing constant
 			new_const_line := fmt.aprintf("export %s=\"%s\"", name, value)
-			defer delete(new_const_line)
-			lines[i] = strings.clone(new_const_line)
+			lines[i] = new_const_line
 			constant_exists = true
 			break
 		}
 	}
 
+	final_content: string
 	if !constant_exists {
 		// Add new constant at the end - simpler approach
 		new_constant := fmt.aprintf("export %s=\"%s\"", name, value)
 		defer delete(new_constant)
 
 		// Simply append to the content string directly
-		content_str = fmt.aprintf("%s\n%s", content_str, new_constant)
-		defer delete(content_str)
-	}
-
-	// Write back to file
-	final_content := content_str
-	if constant_exists {
+		final_content = fmt.aprintf("%s\n%s", content_str, new_constant)
+	} else {
 		// If we updated an existing constant, rejoin the lines
 		final_content = strings.join(lines, "\n")
-		defer delete(final_content)
 	}
+	defer delete(final_content)
 
 	write_ok := os.write_entire_file(config_file, transmute([]byte)final_content)
 	if !write_ok {
@@ -221,7 +215,7 @@ list_constants :: proc() {
 					value_part = value_part[1:len(value_part) - 1]
 				}
 
-				fmt.printf("  %-20s %s->%s %s\n", name_part, BRIGHT_YELLOW, RESET, value_part)
+				fmt.printf("  %-20s -> %s\n", name_part, value_part)
 			}
 		}
 	}

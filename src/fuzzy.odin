@@ -141,7 +141,7 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 
 		// Show prompt
 		print_prompt(prompt)
-		fmt.printf(" %s%s%s\r\n", PRIMARY, string(filter), RESET)
+		fmt.printf(" %s\r\n", string(filter))
 		fmt.print("\r\n")
 
 		// Show filtered items with selection highlight
@@ -158,11 +158,10 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 		}
 
 		if len(filtered) == 0 {
-			fmt.printf("  %s%sNo matches found%s\r\n", MUTED, ITALIC, RESET)
+			fmt.printf("  No matches found\r\n")
 		}
 
-		fmt.printf("\r\n%sType to filter, Ctrl+N/P to navigate, Ctrl+Y to select, Ctrl+C to quit%s\r\n",
-			MUTED, RESET)
+		fmt.printf("\r\nType to filter, Ctrl+N/P to navigate, Ctrl+Y to select, Ctrl+C to quit\r\n")
 	}
 
 	// Initialize
@@ -175,9 +174,9 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 
 	// Make sure terminal is always restored
 	defer {
+		fmt.print(CLEAR_SCREEN)
 		fmt.print(SHOW_CURSOR)
 		disable_raw_mode()
-		fmt.print("\r\n") // Ensure we're on a new line with proper carriage return
 	}
 
 	// Initial render
