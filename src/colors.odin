@@ -51,66 +51,58 @@ ACCENT     :: MAGENTA
 // Emojis
 EMOJI_SUCCESS   :: "✅"
 EMOJI_ERROR     :: "❌"
-EMOJI_WARNING   :: "⚠️"
-EMOJI_INFO      :: "ℹ️"
+EMOJI_WARNING   :: "󰀦 "
+EMOJI_INFO      :: "󰋽 "
 EMOJI_QUESTION  :: "❓"
 EMOJI_ROCKET    :: "🚀"
-EMOJI_GEAR      :: "⚙️"
-EMOJI_FILE      :: "📁"
-EMOJI_PATH      :: "🗂️"
-EMOJI_ALIAS     :: "🔗"
-EMOJI_CONSTANT  :: "📦"
-EMOJI_REMOVE    :: "🗑️"
+EMOJI_PALM_TREE :: "󱁕 "
+EMOJI_USER      :: "󰼭 "
+EMOJI_COMMAND   :: " "
+EMOJI_ACTION    :: " "
+EMOJI_CYCLIST   :: " "
+EMOJI_FILE      :: " "
+EMOJI_PATH      :: " "
+EMOJI_ALIAS     :: " "
+EMOJI_CONSTANT  :: " "
+EMOJI_REMOVE    :: " "
 EMOJI_ADD       :: "➕"
-EMOJI_LIST      :: "📋"
+EMOJI_LIST      :: " "
 
 // Styled print functions
 print_success :: proc(msg: string, args: ..any) {
-	fmt.printf("%s%s %s", SUCCESS, EMOJI_SUCCESS, RESET)
 	fmt.printf(msg, ..args)
 	fmt.println()
 }
 
 print_error :: proc(msg: string, args: ..any) {
-	fmt.printf("%s%s %s", ERROR, EMOJI_ERROR, RESET)
+	fmt.printf("ERROR: ")
 	fmt.printf(msg, ..args)
 	fmt.println()
 }
 
 print_warning :: proc(msg: string, args: ..any) {
-	fmt.printf("%s%s %s", WARNING, EMOJI_WARNING, RESET)
 	fmt.printf(msg, ..args)
 	fmt.println()
 }
 
 print_info :: proc(msg: string, args: ..any) {
-	fmt.printf("%s%s %s", PRIMARY, EMOJI_INFO, RESET)
 	fmt.printf(msg, ..args)
 	fmt.println()
 }
 
 print_header :: proc(msg: string, emoji: string = EMOJI_ROCKET) {
-	fmt.printf("%s%s%s  %s%s%s\n", BOLD, PRIMARY, emoji, msg, RESET, RESET)
+	fmt.printf("%s%s%s %s%s%s\n", BOLD, PRIMARY, emoji, msg, RESET, RESET)
 }
 
-print_section :: proc(msg: string) {
-	fmt.printf("\n%s%s%s %s%s\n", BOLD, ACCENT, EMOJI_GEAR, msg, RESET)
+print_section :: proc(msg: string, emoji: string) {
+	fmt.printf("%s%s%s %s%s%s\n", BOLD, PRIMARY, emoji, msg, RESET, RESET)
 }
 
 print_item :: proc(prefix: string, name: string, value: string = "", emoji: string = "") {
-	if emoji != "" {
-		fmt.printf("  %s%s%s ", MUTED, emoji, RESET)
-	} else {
-		fmt.printf("  %s%s%s ", MUTED, prefix, RESET)
-	}
-
 	if value != "" {
-		fmt.printf("%s%s%s%s %s->%s %s%s%s\n",
-			BOLD, PRIMARY, name, RESET,
-			BRIGHT_YELLOW, RESET,
-			SECONDARY, value, RESET)
+		fmt.printf("  %-20s %s\n", name, value)
 	} else {
-		fmt.printf("%s%s%s%s\n", BOLD, PRIMARY, name, RESET)
+		fmt.printf("  %s\n", name)
 	}
 }
 

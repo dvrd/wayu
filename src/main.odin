@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:slice"
+import "core:log"
 
 HOME := os.get_env("HOME")
 WAYU_CONFIG := fmt.aprintf("%s/.config/wayu", HOME)
@@ -31,6 +32,12 @@ ParsedArgs :: struct {
 }
 
 main :: proc() {
+	// Initialize logger for debug output
+	when DEBUG {
+		context.logger = log.create_console_logger(.Debug)
+		defer log.destroy_console_logger(context.logger)
+	}
+
 	init_config_files()
 
 	if len(os.args) < 2 {
@@ -109,31 +116,33 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 }
 
 print_help :: proc() {
-	print_header("wayu - Shell configuration management tool", EMOJI_ROCKET)
+	print_header("wayu - Shell configuration management tool\n", EMOJI_PALM_TREE)
 
-	print_section("USAGE")
-	fmt.printf("  %swayu%s %s<command>%s %s<action>%s %s[arguments]%s\n\n",
-		BOLD, RESET, PRIMARY, RESET, SECONDARY, RESET, MUTED, RESET)
+	print_section("USAGE:", EMOJI_USER)
+	fmt.printf("  wayu <command> <action> [arguments]\n")
+	fmt.println()
 
-	print_section("COMMANDS")
+	print_section("COMMANDS:", EMOJI_COMMAND)
 	print_item("", "path", "Manage PATH entries", EMOJI_PATH)
 	print_item("", "alias", "Manage shell aliases", EMOJI_ALIAS)
 	print_item("", "constants", "Manage environment constants", EMOJI_CONSTANT)
 	print_item("", "help", "Show this help message", EMOJI_INFO)
+	fmt.println()
 
-	print_section("ACTIONS")
+	print_section("ACTIONS:", EMOJI_ACTION)
 	print_item("", "add", "Add a new entry", EMOJI_ADD)
 	print_item("", "remove, rm", "Remove an entry (interactive if no args)", EMOJI_REMOVE)
 	print_item("", "list, ls", "List all entries", EMOJI_LIST)
 	print_item("", "help", "Show command-specific help", EMOJI_INFO)
+	fmt.println()
 
-	print_section("EXAMPLES")
-	fmt.printf("  %swayu path add /usr/local/bin%s\n", MUTED, RESET)
-	fmt.printf("  %swayu path add%s                    %s# Uses current directory%s\n", MUTED, RESET, DIM, RESET)
-	fmt.printf("  %swayu path rm%s                     %s# Interactive removal%s\n", MUTED, RESET, DIM, RESET)
-	fmt.printf("  %swayu alias add ll 'ls -la'%s\n", MUTED, RESET)
-	fmt.printf("  %swayu alias rm%s                    %s# Interactive removal%s\n", MUTED, RESET, DIM, RESET)
-	fmt.printf("  %swayu constants add MY_VAR value%s\n", MUTED, RESET)
-	fmt.printf("  %swayu constants rm%s                %s# Interactive removal%s\n", MUTED, RESET, DIM, RESET)
+	print_section("EXAMPLES:", EMOJI_CYCLIST)
+	fmt.printf("  wayu path add /usr/local/bin\n")
+	fmt.printf("  wayu path add                    # Uses current directory\n")
+	fmt.printf("  wayu path rm                     # Interactive removal\n")
+	fmt.printf("  wayu alias add ll 'ls -la'\n")
+	fmt.printf("  wayu alias rm                    # Interactive removal\n")
+	fmt.printf("  wayu constants add MY_VAR value\n")
+	fmt.printf("  wayu constants rm                # Interactive removal\n")
 	fmt.println()
 }

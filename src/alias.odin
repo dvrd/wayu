@@ -60,29 +60,28 @@ add_alias :: proc(alias_name: string, command: string) {
 		if strings.has_prefix(strings.trim_space(line), alias_prefix) {
 			// Replace existing alias
 			new_alias_line := fmt.aprintf("alias %s=\"%s\"", alias_name, command)
-			defer delete(new_alias_line)
-			lines[i] = strings.clone(new_alias_line)
+			lines[i] = new_alias_line
 			alias_exists = true
 			break
 		}
 	}
 
+	new_content: string
 	if !alias_exists {
 		// Add new alias at the end
 		new_alias := fmt.aprintf("alias %s=\"%s\"", alias_name, command)
-		defer delete(new_alias)
 
 		new_lines := make([]string, len(lines) + 1)
-		defer delete(new_lines)
-
 		copy(new_lines[:len(lines)], lines)
-		new_lines[len(lines)] = strings.clone(new_alias)
+		new_lines[len(lines)] = new_alias
 
-		lines = new_lines
+		new_content = strings.join(new_lines, "\n")
+
+		defer delete(new_alias)
+		defer delete(new_lines)
+	} else {
+		new_content = strings.join(lines, "\n")
 	}
-
-	// Write back to file
-	new_content := strings.join(lines, "\n")
 	defer delete(new_content)
 
 	write_ok := os.write_entire_file(config_file, transmute([]byte)new_content)
@@ -191,7 +190,7 @@ list_aliases :: proc() {
 	lines := strings.split(content_str, "\n")
 	defer delete(lines)
 
-	fmt.println("Current aliases:")
+	print_header("Current aliases:")
 	for line in lines {
 		trimmed := strings.trim_space(line)
 		if strings.has_prefix(trimmed, "alias ") && strings.contains(trimmed, "=") {
@@ -213,15 +212,14 @@ list_aliases :: proc() {
 }
 
 print_alias_help :: proc() {
-	fmt.println("wayu alias - Manage shell aliases")
-	fmt.println("")
-	fmt.println("USAGE:")
+	print_header("wayu alias - Manage shell aliases\n", EMOJI_PALM_TREE)
+	print_section("USAGE:", EMOJI_USER)
 	fmt.println("  wayu alias add <alias> <command>    Add or update alias")
 	fmt.println("  wayu alias rm [alias]               Remove alias (interactive if no alias)")
 	fmt.println("  wayu alias list                     List all aliases")
 	fmt.println("  wayu alias help                     Show this help")
 	fmt.println("")
-	fmt.println("EXAMPLES:")
+	print_section("EXAMPLES:", EMOJI_CYCLIST)
 	fmt.println("  wayu alias add ll 'ls -la'")
 	fmt.println("  wayu alias add gc 'git commit'")
 	fmt.println("  wayu alias rm ll")
