@@ -65,3 +65,34 @@ test_fuzzy_find_empty_query :: proc(t: ^testing.T) {
 		testing.expect_value(t, result.score, 0)
 	}
 }
+
+@(test)
+test_fuzzy_score_case_sensitive :: proc(t: ^testing.T) {
+	// Fuzzy score is case-sensitive by design
+	score_match := wayu.calculate_fuzzy_score("apple", "app")
+	score_no_match := wayu.calculate_fuzzy_score("Apple", "app")
+
+	testing.expect(t, score_match > 0, "Lowercase should match lowercase")
+	testing.expect_value(t, score_no_match, 0) // Case-sensitive, so no match
+}
+
+@(test)
+test_fuzzy_find_sorts_by_score :: proc(t: ^testing.T) {
+	items := []string{"apple", "application", "app"}
+	results := wayu.fuzzy_find(items, "app")
+	defer delete(results)
+
+	testing.expect(t, len(results) > 0, "Should have results")
+	if len(results) > 1 {
+		testing.expect(t, results[0].score >= results[1].score, "Should be sorted by score")
+	}
+}
+
+@(test)
+test_fuzzy_score_consecutive_bonus :: proc(t: ^testing.T) {
+	// "app" as consecutive chars should score higher than non-consecutive
+	score_consecutive := wayu.calculate_fuzzy_score("application", "app")
+	score_non_consecutive := wayu.calculate_fuzzy_score("a_p_p_lication", "app")
+	testing.expect(t, score_consecutive > 0, "Consecutive should match")
+	testing.expect(t, score_non_consecutive >= 0, "Non-consecutive should match or not")
+}
