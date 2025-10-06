@@ -43,3 +43,41 @@ test_emoji_constants :: proc(t: ^testing.T) {
 	testing.expect(t, len(wayu.EMOJI_PATH) > 0, "EMOJI_PATH should be defined")
 	testing.expect(t, len(wayu.EMOJI_CONSTANT) > 0, "EMOJI_CONSTANT should be defined")
 }
+
+@(test)
+test_print_success :: proc(t: ^testing.T) {
+	// Test that print_success doesn't crash (it prints to stdout)
+	wayu.print_success("test message")
+	wayu.print_success("test with args: %s", "value")
+	testing.expect(t, true, "print_success should not crash")
+}
+
+@(test)
+test_print_error :: proc(t: ^testing.T) {
+	// Test that print_error doesn't crash
+	wayu.print_error("error message")
+	wayu.print_error("error with args: %d", 42)
+	testing.expect(t, true, "print_error should not crash")
+}
+
+@(test)
+test_print_warning :: proc(t: ^testing.T) {
+	// Test that print_warning doesn't crash
+	wayu.print_warning("warning message")
+	testing.expect(t, true, "print_warning should not crash")
+}
+
+@(test)
+test_print_info :: proc(t: ^testing.T) {
+	// Test that print_info doesn't crash
+	wayu.print_info("info message")
+	testing.expect(t, true, "print_info should not crash")
+}
+
+@(test)
+test_print_header :: proc(t: ^testing.T) {
+	// Test that print_header doesn't crash
+	wayu.print_header("Header", wayu.EMOJI_ROCKET)
+	wayu.print_header("Header with default emoji")
+	testing.expect(t, true, "print_header should not crash")
+}

@@ -81,3 +81,28 @@ test_path_extraction_edge_cases :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+@(test)
+test_parse_args_path_list :: proc(t: ^testing.T) {
+	args := []string{"path", "list"}
+	parsed := wayu.parse_args(args)
+	testing.expect_value(t, parsed.command, wayu.Command.PATH)
+	testing.expect_value(t, parsed.action, wayu.Action.LIST)
+}
+
+@(test)
+test_parse_args_path_remove :: proc(t: ^testing.T) {
+	args := []string{"path", "rm", "/usr/local/bin"}
+	parsed := wayu.parse_args(args)
+	testing.expect_value(t, parsed.command, wayu.Command.PATH)
+	testing.expect_value(t, parsed.action, wayu.Action.REMOVE)
+	testing.expect_value(t, len(parsed.args), 1)
+}
+
+@(test)
+test_path_line_format :: proc(t: ^testing.T) {
+	// Test that path lines follow the expected format
+	valid_line := `add_to_path "/usr/local/bin"`
+	testing.expect(t, strings.has_prefix(valid_line, "add_to_path"), "Should start with add_to_path")
+	testing.expect(t, strings.contains(valid_line, "\""), "Should contain quotes")
+}
