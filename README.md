@@ -1,6 +1,6 @@
 # wayu
 
-A shell configuration management CLI written in Odin that helps you manage PATH entries, aliases, and environment constants across your shell environment.
+A shell configuration management CLI written in Odin that helps you manage PATH entries, aliases, and environment constants across your zsh environment.
 
 ## Features
 
@@ -20,11 +20,11 @@ A shell configuration management CLI written in Odin that helps you manage PATH 
 ### Build & Install
 
 ```bash
-# Setup configuration directory
-task setup
-
 # Build and install
 task install
+
+# Setup configuration directory
+wayu init
 ```
 
 Or manually:
@@ -36,6 +36,7 @@ odin build src -out:bin/wayu -o:speed
 # Install
 cp bin/wayu /usr/local/bin/wayu
 chmod +x /usr/local/bin/wayu
+wayu init
 ```
 
 ## Usage
@@ -88,23 +89,14 @@ wayu stores configuration files in `~/.config/wayu/`:
 - `aliases.zsh` - Shell aliases
 - `constants.zsh` - Environment constants
 
-Source these files in your shell profile:
-
-```bash
-# Add to ~/.zshrc
-source ~/.config/wayu/path.zsh
-source ~/.config/wayu/aliases.zsh
-source ~/.config/wayu/constants.zsh
-```
-
 ## Development
 
 ```bash
-# Build for development
-task build-dev
+# Build for production
+task build
 
 # Build with debug info
-task build-debug
+task debug
 
 # Run tests
 task test
@@ -113,7 +105,7 @@ task test
 task check
 
 # Development workflow
-task dev CLI_ARGS="path list"
+task dev -- path list
 ```
 
 ## License
