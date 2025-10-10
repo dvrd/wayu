@@ -36,6 +36,19 @@ handle_alias_command :: proc(action: Action, args: []string) {
 }
 
 add_alias :: proc(alias_name: string, command: string) {
+	// Validate alias name and command
+	validation_result := validate_alias(alias_name, command)
+	if !validation_result.valid {
+		fmt.eprintf("%s%sERROR:%s ", BOLD, ERROR, RESET)
+		fmt.eprintfln("%s", validation_result.error_message)
+		delete(validation_result.error_message)
+		os.exit(1)
+	}
+
+	// Sanitize command value for shell safety
+	sanitized_command := sanitize_shell_value(command)
+	defer delete(sanitized_command)
+
 	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE)
 	defer delete(config_file)
 
@@ -59,7 +72,7 @@ add_alias :: proc(alias_name: string, command: string) {
 	for line, i in lines {
 		if strings.has_prefix(strings.trim_space(line), alias_prefix) {
 			// Replace existing alias
-			new_alias_line := fmt.aprintf("alias %s=\"%s\"", alias_name, command)
+			new_alias_line := fmt.aprintf("alias %s=\"%s\"", alias_name, sanitized_command)
 			lines[i] = new_alias_line
 			alias_exists = true
 			break
@@ -69,7 +82,7 @@ add_alias :: proc(alias_name: string, command: string) {
 	new_content: string
 	if !alias_exists {
 		// Add new alias at the end
-		new_alias := fmt.aprintf("alias %s=\"%s\"", alias_name, command)
+		new_alias := fmt.aprintf("alias %s=\"%s\"", alias_name, sanitized_command)
 
 		new_lines := make([]string, len(lines) + 1)
 		copy(new_lines[:len(lines)], lines)
