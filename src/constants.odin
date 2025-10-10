@@ -37,6 +37,20 @@ handle_constants_command :: proc(action: Action, args: []string) {
 
 add_constant :: proc(name: string, value: string) {
 	debug("Adding constant %s = %s", name, value)
+
+	// Validate constant name and value
+	validation_result := validate_constant(name, value)
+	if !validation_result.valid {
+		fmt.eprintf("%s%sERROR:%s ", BOLD, ERROR, RESET)
+		fmt.eprintfln("%s", validation_result.error_message)
+		delete(validation_result.error_message)
+		os.exit(1)
+	}
+
+	// Sanitize value for shell safety
+	sanitized_value := sanitize_shell_value(value)
+	defer delete(sanitized_value)
+
 	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, CONSTANTS_FILE)
 	defer delete(config_file)
 	debug("Config file: %s", config_file)
@@ -63,7 +77,7 @@ add_constant :: proc(name: string, value: string) {
 	for line, i in lines {
 		if strings.has_prefix(strings.trim_space(line), export_prefix) {
 			// Replace existing constant
-			new_const_line := fmt.aprintf("export %s=\"%s\"", name, value)
+			new_const_line := fmt.aprintf("export %s=\"%s\"", name, sanitized_value)
 			lines[i] = new_const_line
 			constant_exists = true
 			break
@@ -73,7 +87,7 @@ add_constant :: proc(name: string, value: string) {
 	final_content: string
 	if !constant_exists {
 		// Add new constant at the end - simpler approach
-		new_constant := fmt.aprintf("export %s=\"%s\"", name, value)
+		new_constant := fmt.aprintf("export %s=\"%s\"", name, sanitized_value)
 		defer delete(new_constant)
 
 		// Simply append to the content string directly
