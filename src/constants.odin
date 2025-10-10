@@ -57,9 +57,8 @@ add_constant :: proc(name: string, value: string) {
 
 	// Read current file
 	debug("Reading config file...")
-	content, read_ok := os.read_entire_file_from_filename(config_file)
+	content, read_ok := safe_read_file(config_file)
 	if !read_ok {
-		print_error("Could not read config file '%s'", config_file)
 		os.exit(1)
 	}
 	defer delete(content)
@@ -98,9 +97,8 @@ add_constant :: proc(name: string, value: string) {
 	}
 	defer delete(final_content)
 
-	write_ok := os.write_entire_file(config_file, transmute([]byte)final_content)
+	write_ok := safe_write_file(config_file, transmute([]byte)final_content)
 	if !write_ok {
-		print_error("Could not write to config file")
 		os.exit(1)
 	}
 
@@ -116,9 +114,8 @@ remove_constant :: proc(name: string) {
 	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, CONSTANTS_FILE)
 	defer delete(config_file)
 
-	content, read_ok := os.read_entire_file_from_filename(config_file)
+	content, read_ok := safe_read_file(config_file)
 	if !read_ok {
-		print_error("Could not read config file")
 		os.exit(1)
 	}
 	defer delete(content)
@@ -164,9 +161,8 @@ remove_constant :: proc(name: string) {
 	defer delete(new_content)
 	debug("Created new content with %d characters", len(new_content))
 
-	write_ok := os.write_entire_file(config_file, transmute([]byte)new_content)
+	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
 	if !write_ok {
-		print_error("Could not write to config file")
 		os.exit(1)
 	}
 	debug("File written successfully")
@@ -203,9 +199,8 @@ list_constants :: proc() {
 	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, CONSTANTS_FILE)
 	defer delete(config_file)
 
-	content, read_ok := os.read_entire_file_from_filename(config_file)
+	content, read_ok := safe_read_file(config_file)
 	if !read_ok {
-		fmt.eprintfln("ERROR: Could not read config file")
 		os.exit(1)
 	}
 	defer delete(content)
