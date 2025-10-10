@@ -53,9 +53,8 @@ add_alias :: proc(alias_name: string, command: string) {
 	defer delete(config_file)
 
 	// Read current file
-	content, read_ok := os.read_entire_file_from_filename(config_file)
+	content, read_ok := safe_read_file(config_file)
 	if !read_ok {
-		fmt.eprintfln("ERROR: Could not read config file '%s'", config_file)
 		os.exit(1)
 	}
 	defer delete(content)
@@ -97,9 +96,8 @@ add_alias :: proc(alias_name: string, command: string) {
 	}
 	defer delete(new_content)
 
-	write_ok := os.write_entire_file(config_file, transmute([]byte)new_content)
+	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
 	if !write_ok {
-		fmt.eprintfln("ERROR: Could not write to config file")
 		os.exit(1)
 	}
 
@@ -114,9 +112,8 @@ remove_alias :: proc(alias_name: string) {
 	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE)
 	defer delete(config_file)
 
-	content, read_ok := os.read_entire_file_from_filename(config_file)
+	content, read_ok := safe_read_file(config_file)
 	if !read_ok {
-		fmt.eprintfln("ERROR: Could not read config file")
 		os.exit(1)
 	}
 	defer delete(content)
@@ -151,9 +148,8 @@ remove_alias :: proc(alias_name: string) {
 	new_content := strings.join(filtered_lines[:], "\n")
 	defer delete(new_content)
 
-	write_ok := os.write_entire_file(config_file, transmute([]byte)new_content)
+	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
 	if !write_ok {
-		fmt.eprintfln("ERROR: Could not write to config file")
 		os.exit(1)
 	}
 
@@ -192,9 +188,8 @@ list_aliases :: proc() {
 	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE)
 	defer delete(config_file)
 
-	content, read_ok := os.read_entire_file_from_filename(config_file)
+	content, read_ok := safe_read_file(config_file)
 	if !read_ok {
-		fmt.eprintfln("ERROR: Could not read config file")
 		os.exit(1)
 	}
 	defer delete(content)
