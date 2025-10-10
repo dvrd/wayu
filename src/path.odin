@@ -35,15 +35,23 @@ handle_path_command :: proc(action: Action, args: []string) {
 }
 
 add_path :: proc(path: string) {
+	// Validate path
+	validation_result := validate_path(path)
+	if !validation_result.valid {
+		print_error_simple("%s", validation_result.error_message)
+		delete(validation_result.error_message)
+		os.exit(1)
+	}
+
 	target_path, path_ok := filepath.abs(path)
 	if !path_ok {
-		fmt.eprintfln("ERROR: Could not get absolute path for '%s'", path)
+		print_error_with_context(.INVALID_INPUT, path, "Could not resolve absolute path")
 		os.exit(1)
 	}
 
 	// Check if directory exists
 	if !os.is_dir(target_path) {
-		fmt.eprintfln("ERROR: Directory does not exist: %s", target_path)
+		print_error_with_context(.DIRECTORY_NOT_FOUND, target_path)
 		os.exit(1)
 	}
 
@@ -51,9 +59,8 @@ add_path :: proc(path: string) {
 	defer delete(config_file)
 
 	// Read current file
-	content, read_ok := os.read_entire_file_from_filename(config_file)
+	content, read_ok := safe_read_file(config_file)
 	if !read_ok {
-		fmt.eprintfln("ERROR: Could not read config file '%s'", config_file)
 		os.exit(1)
 	}
 	defer delete(content)
@@ -99,9 +106,8 @@ add_path :: proc(path: string) {
 	new_content := strings.join(new_lines, "\n")
 	defer delete(new_content)
 
-	write_ok := os.write_entire_file(config_file, transmute([]byte)new_content)
+	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
 	if !write_ok {
-		fmt.eprintfln("ERROR: Could not write to config file")
 		os.exit(1)
 	}
 
@@ -112,9 +118,8 @@ remove_path :: proc(path: string) {
 	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE)
 	defer delete(config_file)
 
-	content, read_ok := os.read_entire_file_from_filename(config_file)
+	content, read_ok := safe_read_file(config_file)
 	if !read_ok {
-		fmt.eprintfln("ERROR: Could not read config file")
 		os.exit(1)
 	}
 	defer delete(content)
@@ -145,9 +150,8 @@ remove_path :: proc(path: string) {
 	new_content := strings.join(filtered_lines[:], "\n")
 	defer delete(new_content)
 
-	write_ok := os.write_entire_file(config_file, transmute([]byte)new_content)
+	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
 	if !write_ok {
-		print_error("Could not write to config file")
 		os.exit(1)
 	}
 
@@ -183,12 +187,16 @@ remove_path_interactive :: proc() {
 }
 
 list_paths :: proc() {
+	// Check if wayu is initialized first
+	if !check_wayu_initialized() {
+		os.exit(1)
+	}
+
 	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE)
 	defer delete(config_file)
 
-	content, read_ok := os.read_entire_file_from_filename(config_file)
+	content, read_ok := safe_read_file(config_file)
 	if !read_ok {
-		print_error("Could not read config file")
 		os.exit(1)
 	}
 	defer delete(content)
