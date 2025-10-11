@@ -13,6 +13,7 @@ Command :: enum {
 	PATH,
 	ALIAS,
 	CONSTANTS,
+	COMPLETIONS,
 	INIT,
 	HELP,
 	UNKNOWN,
@@ -52,6 +53,8 @@ main :: proc() {
 		handle_alias_command(parsed.action, parsed.args)
 	case .CONSTANTS:
 		handle_constants_command(parsed.action, parsed.args)
+	case .COMPLETIONS:
+		handle_completions_command(parsed.action, parsed.args)
 	case .INIT:
 		handle_init_command()
 	case .HELP:
@@ -79,6 +82,8 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		parsed.command = .ALIAS
 	case "constants":
 		parsed.command = .CONSTANTS
+	case "completions":
+		parsed.command = .COMPLETIONS
 	case "init":
 		parsed.command = .INIT
 		return parsed
@@ -309,6 +314,7 @@ print_help :: proc() {
 	print_item("", "path", "Manage PATH entries", EMOJI_PATH)
 	print_item("", "alias", "Manage shell aliases", EMOJI_ALIAS)
 	print_item("", "constants", "Manage environment constants", EMOJI_CONSTANT)
+	print_item("", "completions", "Manage Zsh completion scripts", EMOJI_COMMAND)
 	print_item("", "init", "Initialize wayu configuration directory", EMOJI_INFO)
 	print_item("", "help", "Show this help message", EMOJI_INFO)
 	fmt.println()
@@ -328,5 +334,7 @@ print_help :: proc() {
 	fmt.printf("  wayu alias rm                    # Interactive removal\n")
 	fmt.printf("  wayu constants add MY_VAR value\n")
 	fmt.printf("  wayu constants rm                # Interactive removal\n")
+	fmt.printf("  wayu completions add jj /path/to/_jj\n")
+	fmt.printf("  wayu completions rm              # Interactive removal\n")
 	fmt.println()
 }
