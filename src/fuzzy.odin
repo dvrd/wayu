@@ -396,3 +396,45 @@ extract_constant_items :: proc() -> []string {
 	debug("Created result array with %d items", len(result))
 	return result
 }
+
+// Extract completion items from completions directory
+extract_completion_items :: proc() -> []string {
+	completions_dir := fmt.aprintf("%s/completions", WAYU_CONFIG)
+	defer delete(completions_dir)
+
+	// Check directory exists
+	if !os.exists(completions_dir) {
+		return {}
+	}
+
+	// Read directory
+	dir_handle, err := os.open(completions_dir)
+	if err != 0 {
+		return {}
+	}
+	defer os.close(dir_handle)
+
+	file_infos, read_err := os.read_dir(dir_handle, -1)
+	if read_err != 0 {
+		return {}
+	}
+	defer os.file_info_slice_delete(file_infos)
+
+	items := make([dynamic]string)
+	defer delete(items)
+
+	// Filter completion files (start with _)
+	for info in file_infos {
+		if strings.has_prefix(info.name, "_") && !info.is_dir {
+			// Remove underscore for display
+			name := info.name[1:]
+			append(&items, strings.clone(name))
+		}
+	}
+
+	result := make([]string, len(items))
+	for item, i in items {
+		result[i] = strings.clone(item)
+	}
+	return result
+}
