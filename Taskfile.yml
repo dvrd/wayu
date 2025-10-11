@@ -37,9 +37,39 @@ tasks:
       - "{{.BIN_DIR}}/{{.BINARY_NAME}}_debug"
 
   test:
-    desc: Run all tests with coverage report
+    desc: Run all unit tests with coverage report
     cmds:
       - ruby scripts/test-coverage.rb
+
+  test:integration:
+    desc: Run all integration tests
+    deps: [build]
+    cmds:
+      - ruby {{.TEST_DIR}}/integration/run_all.rb
+
+  test:validation:
+    desc: Run validation integration tests
+    deps: [build]
+    cmds:
+      - ruby {{.TEST_DIR}}/integration/test_validation.rb
+
+  test:errors:
+    desc: Run error handling integration tests
+    deps: [build]
+    cmds:
+      - ruby {{.TEST_DIR}}/integration/test_errors.rb
+
+  test:completions:
+    desc: Run completions integration tests
+    deps: [build]
+    cmds:
+      - ruby {{.TEST_DIR}}/integration/test_completions.rb
+
+  test:all:
+    desc: Run all tests (unit and integration)
+    cmds:
+      - task test
+      - task test:integration
 
   run:
     desc: Build and run wayu
