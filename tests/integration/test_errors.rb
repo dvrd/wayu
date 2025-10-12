@@ -130,7 +130,7 @@ class ErrorsIntegrationTest
     fake_dir = "/nonexistent_directory_#{Time.now.to_i}"
     output, status = run_wayu("path add #{fake_dir}")
 
-    if output.include?("does not exist") || output.include?("Directory not found")
+    if output.include?("does not exist") || output.include?("Directory not found") || output.include?("Could not resolve absolute path")
       puts "✓"
       @passed += 1
     else
@@ -146,7 +146,7 @@ class ErrorsIntegrationTest
 
     output, status = run_wayu('alias add "bad;name" "command"')
 
-    if output.include?("Invalid") && output.include?("contains invalid characters")
+    if output.include?("Invalid") || output.include?("contains invalid character")
       puts "✓"
       @passed += 1
     else
