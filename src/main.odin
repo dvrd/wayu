@@ -15,14 +15,14 @@ WAYU_CONFIG := fmt.aprintf("%s/.config/wayu", HOME)
 // Global flags
 DRY_RUN := false
 DETECTED_SHELL := detect_shell()
-SHELL_EXT := get_shell_extension(DETECTED_SHELL)
+SHELL_EXT : string
 
 // Dynamic config file names based on detected shell
-PATH_FILE := fmt.aprintf("path.%s", SHELL_EXT)
-ALIAS_FILE := fmt.aprintf("aliases.%s", SHELL_EXT)
-CONSTANTS_FILE := fmt.aprintf("constants.%s", SHELL_EXT)
-INIT_FILE := fmt.aprintf("init.%s", SHELL_EXT)
-TOOLS_FILE := fmt.aprintf("tools.%s", SHELL_EXT)
+PATH_FILE : string
+ALIAS_FILE : string
+CONSTANTS_FILE : string
+INIT_FILE : string
+TOOLS_FILE : string
 
 Command :: enum {
 	PATH,
@@ -42,6 +42,8 @@ Action :: enum {
 	REMOVE,
 	LIST,
 	RESTORE,
+	CLEAN,
+	DEDUP,
 	HELP,
 	UNKNOWN,
 }
@@ -53,10 +55,20 @@ ParsedArgs :: struct {
 	shell:   ShellType,
 }
 
+init_shell_globals :: proc() {
+	SHELL_EXT = get_shell_extension(DETECTED_SHELL)
+	PATH_FILE = fmt.aprintf("path.%s", SHELL_EXT)
+	ALIAS_FILE = fmt.aprintf("aliases.%s", SHELL_EXT)
+	CONSTANTS_FILE = fmt.aprintf("constants.%s", SHELL_EXT)
+	INIT_FILE = fmt.aprintf("init.%s", SHELL_EXT)
+	TOOLS_FILE = fmt.aprintf("tools.%s", SHELL_EXT)
+}
+
 main :: proc() {
   context.logger = log.create_console_logger(.Debug, { .Level, .Terminal_Color })
   defer log.destroy_console_logger(context.logger)
 
+	init_shell_globals()
 	init_config_files()
 
 	if len(os.args) < 2 {
@@ -112,6 +124,12 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			parsed.shell = parse_shell_type(shell_name)
 			// Update global shell extension for dry-run messages and file operations
 			SHELL_EXT = get_shell_extension(parsed.shell)
+			// Also update the file name globals
+			PATH_FILE = fmt.aprintf("path.%s", SHELL_EXT)
+			ALIAS_FILE = fmt.aprintf("aliases.%s", SHELL_EXT)
+			CONSTANTS_FILE = fmt.aprintf("constants.%s", SHELL_EXT)
+			INIT_FILE = fmt.aprintf("init.%s", SHELL_EXT)
+			TOOLS_FILE = fmt.aprintf("tools.%s", SHELL_EXT)
 			i += 1 // Skip the shell value
 		} else {
 			append(&filtered_args, arg)
@@ -169,6 +187,10 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		parsed.action = .LIST
 	case "restore":
 		parsed.action = .RESTORE
+	case "clean":
+		parsed.action = .CLEAN
+	case "dedup":
+		parsed.action = .DEDUP
 	case "help", "-h", "--help":
 		parsed.action = .HELP
 	case:
@@ -180,7 +202,9 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	if len(filtered_args) > 2 {
 		// Convert dynamic array slice to static array
 		remaining_args := make([]string, len(filtered_args) - 2)
-		copy(remaining_args, filtered_args[2:])
+		for i in 0..<len(remaining_args) {
+			remaining_args[i] = filtered_args[2 + i]
+		}
 		parsed.args = remaining_args
 	}
 
@@ -189,57 +213,86 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 
 
 handle_init_command :: proc() {
+	print_header("Initializing Wayu Configuration", "🚀")
+	fmt.println()
+
 	// Detect and confirm shell
 	detected_shell := detect_shell()
-	fmt.printfln("Detected shell: %s", get_shell_name(detected_shell))
+	print_info("Detected shell: %s", get_shell_name(detected_shell))
 
 	// Validate shell compatibility
 	shell_valid, shell_msg := validate_shell_compatibility(detected_shell)
 	if !shell_valid {
-		fmt.eprintfln("ERROR: %s", shell_msg)
+		print_error_simple("ERROR: %s", shell_msg)
 		os.exit(1)
 	}
 
 	shell := detected_shell
 	ext := get_shell_extension(shell)
 
-	fmt.printfln("Using shell: %s (config files will use .%s extension)", get_shell_name(shell), ext)
+	print_info("Using shell: %s (config files will use .%s extension)", get_shell_name(shell), ext)
+	fmt.println()
 
 	config_dir := fmt.aprintf("%s", WAYU_CONFIG)
 	defer delete(config_dir)
 
-	// Create main config directory
+	// Create main config directory with spinner
 	if !os.exists(config_dir) {
+		spinner := new_spinner(.Dots)
+		spinner_text(&spinner, "Creating config directory")
+		spinner_start(&spinner)
+
 		err := os.make_directory(config_dir)
+
+		spinner_stop(&spinner)
+
 		if err != nil {
-			fmt.eprintfln("Error creating config directory: %v", err)
+			print_error_simple("Error creating config directory: %v", err)
 			os.exit(1)
 		}
-		fmt.printfln("Created directory: %s", config_dir)
+		print_success("Created directory: %s", config_dir)
 	} else {
-		fmt.printfln("Directory already exists: %s", config_dir)
+		print_info("Directory already exists: %s", config_dir)
 	}
 
-	// Create subdirectories
+	// Create subdirectories with spinner
 	subdirs := []string{"functions", "completions", "plugins"}
+	created_subdirs := 0
+
 	for subdir in subdirs {
 		subdir_path := fmt.aprintf("%s/%s", WAYU_CONFIG, subdir)
 		defer delete(subdir_path)
 
 		if !os.exists(subdir_path) {
+			spinner := new_spinner(.Arc)
+			spinner_text_str := fmt.aprintf("Creating %s directory", subdir)
+			defer delete(spinner_text_str)
+			spinner_text(&spinner, spinner_text_str)
+			spinner_start(&spinner)
+
 			err := os.make_directory(subdir_path)
+
+			spinner_stop(&spinner)
+
 			if err != nil {
-				fmt.eprintfln("Error creating directory %s: %v", subdir, err)
+				print_error_simple("Error creating directory %s: %v", subdir, err)
 				os.exit(1)
 			}
-			fmt.printfln("Created directory: %s", subdir_path)
-		} else {
-			fmt.printfln("Directory already exists: %s", subdir_path)
+			print_success("Created directory: %s", subdir_path)
+			created_subdirs += 1
 		}
 	}
 
+	if created_subdirs == 0 {
+		print_info("All subdirectories already exist")
+	}
+
+	fmt.println()
+
 	// Initialize shell-specific config files
 	init_shell_configs(shell, ext)
+
+	fmt.println()
 
 	// Update shell RC file
 	update_shell_rc(shell, ext)
@@ -248,73 +301,47 @@ handle_init_command :: proc() {
 init_shell_configs :: proc(shell: ShellType, ext: string) {
 	created_files := 0
 
-	// Create path config file
-	path_file := fmt.aprintf("%s/path.%s", WAYU_CONFIG, ext)
-	defer delete(path_file)
-
-	if !os.exists(path_file) {
-		if init_config_file(path_file, get_path_template(shell)) {
-			fmt.printfln("Created config file: %s", path_file)
-			created_files += 1
-		}
-	} else {
-		fmt.printfln("Config file already exists: %s", path_file)
+	config_files := []struct {
+		name:     string,
+		template: proc(ShellType) -> string,
+	}{
+		{"path", get_path_template},
+		{"aliases", get_aliases_template},
+		{"constants", get_constants_template},
+		{"init", get_init_template},
+		{"tools", get_tools_template},
 	}
 
-	// Create aliases config file
-	alias_file := fmt.aprintf("%s/aliases.%s", WAYU_CONFIG, ext)
-	defer delete(alias_file)
+	for config in config_files {
+		config_file := fmt.aprintf("%s/%s.%s", WAYU_CONFIG, config.name, ext)
+		defer delete(config_file)
 
-	if !os.exists(alias_file) {
-		if init_config_file(alias_file, get_aliases_template(shell)) {
-			fmt.printfln("Created config file: %s", alias_file)
-			created_files += 1
+		if !os.exists(config_file) {
+			spinner := new_spinner(.Line)
+			spinner_text_str := fmt.aprintf("Creating %s.%s", config.name, ext)
+			defer delete(spinner_text_str)
+			spinner_text(&spinner, spinner_text_str)
+			spinner_start(&spinner)
+
+			success := init_config_file(config_file, config.template(shell))
+
+			spinner_stop(&spinner)
+
+			if success {
+				print_success("Created config file: %s", config_file)
+				created_files += 1
+			} else {
+				print_error_simple("Failed to create config file: %s", config_file)
+			}
+		} else {
+			print_info("Config file already exists: %s", config_file)
 		}
-	} else {
-		fmt.printfln("Config file already exists: %s", alias_file)
-	}
-
-	// Create constants config file
-	constants_file := fmt.aprintf("%s/constants.%s", WAYU_CONFIG, ext)
-	defer delete(constants_file)
-
-	if !os.exists(constants_file) {
-		if init_config_file(constants_file, get_constants_template(shell)) {
-			fmt.printfln("Created config file: %s", constants_file)
-			created_files += 1
-		}
-	} else {
-		fmt.printfln("Config file already exists: %s", constants_file)
-	}
-
-	// Create init file
-	init_file := fmt.aprintf("%s/init.%s", WAYU_CONFIG, ext)
-	defer delete(init_file)
-
-	if !os.exists(init_file) {
-		if init_config_file(init_file, get_init_template(shell)) {
-			fmt.printfln("Created config file: %s", init_file)
-			created_files += 1
-		}
-	} else {
-		fmt.printfln("Config file already exists: %s", init_file)
-	}
-
-	// Create tools file
-	tools_file := fmt.aprintf("%s/tools.%s", WAYU_CONFIG, ext)
-	defer delete(tools_file)
-
-	if !os.exists(tools_file) {
-		if init_config_file(tools_file, get_tools_template(shell)) {
-			fmt.printfln("Created config file: %s", tools_file)
-			created_files += 1
-		}
-	} else {
-		fmt.printfln("Config file already exists: %s", tools_file)
 	}
 
 	if created_files > 0 {
-		fmt.printfln("Created %d config file(s)", created_files)
+		print_success("Created %d config file(s)", created_files)
+	} else {
+		print_info("All config files already exist")
 	}
 }
 
