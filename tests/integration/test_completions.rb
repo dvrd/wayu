@@ -135,21 +135,17 @@ class CompletionsIntegrationTest
     print "Test 4: List shows multiple completions... "
     output, status = run_wayu("completions list")
 
-    # Count completion entries (lines starting with number and underscore)
-    # Handle potential encoding issues
-    begin
-      count = output.scan(/^\s*\d+\.\s*_/).length
-    rescue ArgumentError => e
-      # If encoding issue, try to count a different way
-      count = output.lines.select { |line| line =~ /^\s*\d+\.\s*_/ rescue false }.length
-    end
+    # Check that our test completions are present
+    has_testcomp = output.include?("_testcomp")
+    has_mycomp = output.include?("_mycomp")
 
-    if count >= 2
+    if has_testcomp && has_mycomp
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Expected at least 2 completions, found #{count}"
+      puts "  Expected both _testcomp and _mycomp to be present"
+      puts "  Has _testcomp: #{has_testcomp}, Has _mycomp: #{has_mycomp}"
       puts "  Output: #{output}"
       @failed += 1
     end
@@ -242,12 +238,17 @@ class CompletionsIntegrationTest
 
     output, status = run_wayu("completions list")
 
-    if output.include?("No completions installed")
+    # Check that our test completions are removed (system completions may remain)
+    has_testcomp = output.include?("_testcomp")
+    has_mycomp = output.include?("_mycomp")
+
+    if !has_testcomp && !has_mycomp
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Should show 'No completions installed'"
+      puts "  Test completions should be removed"
+      puts "  Has _testcomp: #{has_testcomp}, Has _mycomp: #{has_mycomp}"
       puts "  Output: #{output}"
       @failed += 1
     end
