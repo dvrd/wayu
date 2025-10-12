@@ -31,6 +31,14 @@ handle_constants_command :: proc(action: Action, args: []string) {
 		fmt.eprintln("ERROR: restore action not supported for constants command")
 		fmt.println("Use: wayu backup restore constants")
 		os.exit(1)
+	case .CLEAN:
+		fmt.eprintln("ERROR: clean action not supported for constants command")
+		fmt.println("The clean action only applies to path entries")
+		os.exit(1)
+	case .DEDUP:
+		fmt.eprintln("ERROR: dedup action not supported for constants command")
+		fmt.println("The dedup action only applies to path entries")
+		os.exit(1)
 	case .HELP:
 		print_constants_help()
 	case .UNKNOWN:
@@ -249,6 +257,11 @@ remove_constant_interactive :: proc() {
 }
 
 list_constants :: proc() {
+	// Check if wayu is initialized first
+	if !check_wayu_initialized() {
+		os.exit(1)
+	}
+
 	// Use shell-aware config file with fallback for backward compatibility
 	config_file := get_config_file_with_fallback("constants", DETECTED_SHELL)
 	defer delete(config_file)
@@ -263,7 +276,16 @@ list_constants :: proc() {
 	lines := strings.split(content_str, "\n")
 	defer delete(lines)
 
-	fmt.printf("%s%s📋  Current constants:%s\n", PRIMARY, BOLD, RESET)
+	// Extract constants for table display
+	constants := make([dynamic][2]string)
+	defer {
+		for const_pair in constants {
+			delete(const_pair[0])
+			delete(const_pair[1])
+		}
+		delete(constants)
+	}
+
 	for line in lines {
 		trimmed := strings.trim_space(line)
 		if strings.has_prefix(trimmed, "export ") && strings.contains(trimmed, "=") {
@@ -278,10 +300,39 @@ list_constants :: proc() {
 					value_part = value_part[1:len(value_part) - 1]
 				}
 
-				fmt.printf("  %-20s -> %s\n", name_part, value_part)
+				const_pair := [2]string{strings.clone(name_part), strings.clone(value_part)}
+				append(&constants, const_pair)
 			}
 		}
 	}
+
+	if len(constants) == 0 {
+		print_info("No constants found")
+		return
+	}
+
+	// Create and configure table
+	headers := []string{"Constant", "Value"}
+	table := new_table(headers)
+	defer table_destroy(&table)
+
+	// Style the table
+	table_style(&table, style_foreground(new_style(), "white"))
+	table_header_style(&table, style_bold(style_foreground(new_style(), "cyan"), true))
+	table_border(&table, .Normal)
+
+	// Add rows to table
+	for const_pair in constants {
+		row := []string{const_pair[0], const_pair[1]}
+		table_add_row(&table, row)
+	}
+
+	// Print header and render table
+	print_header("Environment Constants", "📋")
+	fmt.println()
+	table_output := table_render(table)
+	defer delete(table_output)
+	fmt.print(table_output)
 }
 
 print_constants_help :: proc() {

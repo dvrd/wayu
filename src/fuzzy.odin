@@ -56,7 +56,9 @@ fuzzy_find :: proc(items: []string, query: string) -> []FuzzyResult {
 	})
 
 	final_results := make([]FuzzyResult, len(results))
-	copy(final_results, results[:])
+	for i in 0..<len(results) {
+		final_results[i] = results[i]
+	}
 	delete(results) // Clean up the dynamic array
 	return final_results
 }
@@ -281,7 +283,8 @@ interactive_fuzzy_select :: proc(items: []string, prompt: string) -> (selected: 
 
 // Extract items from configuration files for interactive removal
 extract_path_items :: proc() -> []string {
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE)
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("path", DETECTED_SHELL)
 	defer delete(config_file)
 
 	content, read_ok := os.read_entire_file_from_filename(config_file)
@@ -313,7 +316,9 @@ extract_path_items :: proc() -> []string {
 	}
 
 	result := make([]string, len(items))
-	copy(result, items[:])
+	for i in 0..<len(items) {
+		result[i] = items[i]
+	}
 	return result
 }
 
@@ -346,7 +351,9 @@ extract_alias_items :: proc() -> []string {
 	}
 
 	result := make([]string, len(items))
-	copy(result, items[:])
+	for i in 0..<len(items) {
+		result[i] = items[i]
+	}
 	return result
 }
 
@@ -423,9 +430,13 @@ extract_completion_items :: proc() -> []string {
 	items := make([dynamic]string)
 	defer delete(items)
 
-	// Filter completion files (start with _)
+	// Filter completion files (start with _) but exclude backup files
 	for info in file_infos {
 		if strings.has_prefix(info.name, "_") && !info.is_dir {
+			// Skip backup files
+			if strings.contains(info.name, ".backup.") {
+				continue
+			}
 			// Remove underscore for display
 			name := info.name[1:]
 			append(&items, strings.clone(name))

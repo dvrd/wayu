@@ -31,6 +31,14 @@ handle_completions_command :: proc(action: Action, args: []string) {
 		fmt.eprintln("ERROR: restore action not supported for completions command")
 		fmt.println("Use: wayu backup restore completions")
 		os.exit(1)
+	case .CLEAN:
+		fmt.eprintln("ERROR: clean action not supported for completions command")
+		fmt.println("The clean action only applies to path entries")
+		os.exit(1)
+	case .DEDUP:
+		fmt.eprintln("ERROR: dedup action not supported for completions command")
+		fmt.println("The dedup action only applies to path entries")
+		os.exit(1)
 	case .HELP:
 		print_completions_help()
 	case .UNKNOWN:
@@ -260,6 +268,10 @@ list_completions :: proc() {
 
 	for info in file_infos {
 		if strings.has_prefix(info.name, "_") && !info.is_dir {
+			// Skip backup files
+			if strings.contains(info.name, ".backup.") {
+				continue
+			}
 			append(&completion_files, info)
 		}
 	}

@@ -20,6 +20,12 @@ BackupInfo :: struct {
 create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 	debug("Creating backup for: %s", file_path)
 
+	// Don't create backup of backup files
+	if strings.contains(file_path, ".backup.") {
+		debug("File is already a backup, skipping: %s", file_path)
+		return "", true
+	}
+
 	if !os.exists(file_path) {
 		// If file doesn't exist yet, no backup needed
 		debug("File doesn't exist, no backup needed")
@@ -176,11 +182,13 @@ list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 
 	// Sort by timestamp (most recent first)
 	slice.sort_by(backups[:], proc(a, b: BackupInfo) -> bool {
-		return time.diff(a.timestamp, b.timestamp) > 0
+		return time.diff(a.timestamp, b.timestamp) < 0
 	})
 
 	result := make([]BackupInfo, len(backups))
-	copy(result, backups[:])
+	for i in 0..<len(backups) {
+		result[i] = backups[i]
+	}
 	debug("Found %d backups", len(result))
 	return result
 }
@@ -345,6 +353,14 @@ handle_backup_command :: proc(action: Action, args: []string) {
 	case .ADD:
 		print_error_simple("Backups are created automatically when modifying files")
 		fmt.println("Use 'wayu backup list' to see existing backups")
+		os.exit(1)
+	case .CLEAN:
+		fmt.eprintln("ERROR: clean action not supported for backup command")
+		fmt.println("The clean action only applies to path entries")
+		os.exit(1)
+	case .DEDUP:
+		fmt.eprintln("ERROR: dedup action not supported for backup command")
+		fmt.println("The dedup action only applies to path entries")
 		os.exit(1)
 	}
 }
