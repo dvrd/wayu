@@ -96,8 +96,12 @@ class BackupIntegrationTest
     backup_files = Dir.glob("#{@config_dir}/*.backup.*")
     backup_files.each { |f| File.delete(f) }
 
+    # Create test directory
+    test_dir = "/tmp/test1"
+    Dir.mkdir(test_dir) unless Dir.exist?(test_dir)
+
     # Add a path which should create a backup
-    output, status = run_wayu("path add /tmp/test1")
+    output, status = run_wayu("path add #{test_dir}")
 
     if status.success?
       # Check if backup was created
@@ -140,7 +144,10 @@ class BackupIntegrationTest
   def test_backup_list_with_backups
     print "Test 3: List backups when backups exist... "
 
-    # Create some backups by adding paths
+    # Create test directories and backups by adding paths
+    ["/tmp/test2", "/tmp/test3"].each do |dir|
+      Dir.mkdir(dir) unless Dir.exist?(dir)
+    end
     run_wayu("path add /tmp/test2")
     run_wayu("path add /tmp/test3")
 
@@ -175,6 +182,11 @@ class BackupIntegrationTest
 
   def test_backup_restore_functionality
     print "Test 5: Backup restore functionality... "
+
+    # Create test directories
+    ["/tmp/original", "/tmp/modified"].each do |dir|
+      Dir.mkdir(dir) unless Dir.exist?(dir)
+    end
 
     # Add initial path
     run_wayu("path add /tmp/original")
@@ -213,7 +225,9 @@ class BackupIntegrationTest
 
     # Create multiple backups by making multiple changes
     5.times do |i|
-      run_wayu("path add /tmp/cleanup_test_#{i}")
+      test_dir = "/tmp/cleanup_test_#{i}"
+      Dir.mkdir(test_dir) unless Dir.exist?(test_dir)
+      run_wayu("path add #{test_dir}")
       sleep(0.1) # Ensure different timestamps
     end
 
@@ -283,6 +297,16 @@ class BackupIntegrationTest
     stderr = stderr.force_encoding('UTF-8') if stderr
     # Return combined output for easier checking
     [stdout + stderr, status]
+  end
+
+  def cleanup
+    # Clean up test directories
+    test_dirs = ["/tmp/test1", "/tmp/test2", "/tmp/test3", "/tmp/original", "/tmp/modified"] +
+                (0..4).map { |i| "/tmp/cleanup_test_#{i}" }
+
+    test_dirs.each do |dir|
+      FileUtils.rm_rf(dir) if Dir.exist?(dir)
+    end
   end
 
   def print_summary
