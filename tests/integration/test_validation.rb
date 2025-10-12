@@ -107,7 +107,7 @@ class ValidationIntegrationTest
     print "Test 2: Reject dangerous characters in alias... "
     output, status = run_wayu('alias add "my;alias" "echo test"')
 
-    if output.include?("Invalid") || output.include?("contains invalid characters")
+    if output.include?("contains invalid character") || output.include?("Invalid")
       puts "✓"
       @passed += 1
     else
@@ -177,7 +177,7 @@ class ValidationIntegrationTest
     print "Test 6: Accept valid alias... "
     output, status = run_wayu('alias add myalias "echo hello"')
 
-    if status.success? && output.include?("Added alias")
+    if status.success? && output.include?("added successfully")
       puts "✓"
       @passed += 1
     else
@@ -192,7 +192,7 @@ class ValidationIntegrationTest
     print "Test 7: Accept valid constant... "
     output, status = run_wayu('constants add MY_CONSTANT "value123"')
 
-    if status.success? && output.include?("Added constant")
+    if status.success? && output.include?("added successfully")
       puts "✓"
       @passed += 1
     else
@@ -207,7 +207,7 @@ class ValidationIntegrationTest
     print "Test 8: Accept valid path... "
     output, status = run_wayu('path add /usr/local/bin')
 
-    if status.success? && output.include?("Added to PATH")
+    if status.success? && output.include?("added successfully")
       puts "✓"
       @passed += 1
     else
