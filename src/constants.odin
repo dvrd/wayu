@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
-CONSTANTS_FILE :: "constants.zsh"
+// CONSTANTS_FILE is now defined in main.odin based on detected shell
 
 handle_constants_command :: proc(action: Action, args: []string) {
 	switch action {
@@ -26,6 +26,11 @@ handle_constants_command :: proc(action: Action, args: []string) {
 		}
 	case .LIST:
 		list_constants()
+	case .RESTORE:
+		// RESTORE action is handled by backup command, not constants command
+		fmt.eprintln("ERROR: restore action not supported for constants command")
+		fmt.println("Use: wayu backup restore constants")
+		os.exit(1)
 	case .HELP:
 		print_constants_help()
 	case .UNKNOWN:
@@ -51,7 +56,19 @@ add_constant :: proc(name: string, value: string) {
 	sanitized_value := sanitize_shell_value(value)
 	defer delete(sanitized_value)
 
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, CONSTANTS_FILE)
+	// Dry-run mode check
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould add to constants.%s:%s", BRIGHT_CYAN, SHELL_EXT, RESET)
+		fmt.printfln("  export %s=\"%s\"", name, sanitized_value)
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return
+	}
+
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("constants", DETECTED_SHELL)
 	defer delete(config_file)
 	debug("Config file: %s", config_file)
 
@@ -97,10 +114,19 @@ add_constant :: proc(name: string, value: string) {
 	}
 	defer delete(final_content)
 
+	// Create backup before modifying
+	if !create_backup_with_prompt(config_file) {
+		print_info("Operation cancelled")
+		os.exit(1)
+	}
+
 	write_ok := safe_write_file(config_file, transmute([]byte)final_content)
 	if !write_ok {
 		os.exit(1)
 	}
+
+	// Cleanup old backups (keep last 5)
+	cleanup_old_backups(config_file, 5)
 
 	if constant_exists {
 		print_success("Constant updated successfully: %s", name)
@@ -111,7 +137,20 @@ add_constant :: proc(name: string, value: string) {
 
 remove_constant :: proc(name: string) {
 	debug("Removing constant: %s", name)
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, CONSTANTS_FILE)
+
+	// Dry-run mode check
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould remove from constants.%s:%s", BRIGHT_CYAN, SHELL_EXT, RESET)
+		fmt.printfln("  export %s", name)
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return
+	}
+
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("constants", DETECTED_SHELL)
 	defer delete(config_file)
 
 	content, read_ok := safe_read_file(config_file)
@@ -156,6 +195,12 @@ remove_constant :: proc(name: string) {
 		return
 	}
 
+	// Create backup before modifying
+	if !create_backup_with_prompt(config_file) {
+		print_info("Operation cancelled")
+		os.exit(1)
+	}
+
 	// Write back to file - use simple string join
 	new_content := strings.join(new_lines[:], "\n")
 	defer delete(new_content)
@@ -166,6 +211,9 @@ remove_constant :: proc(name: string) {
 		os.exit(1)
 	}
 	debug("File written successfully")
+
+	// Cleanup old backups (keep last 5)
+	cleanup_old_backups(config_file, 5)
 
 	print_success("Constant removed successfully: %s", name)
 }
@@ -181,8 +229,13 @@ remove_constant_interactive :: proc() {
 		return
 	}
 
+	prompt := "Select constant to remove:"
+	if DRY_RUN {
+		prompt = "Select constant to remove (DRY RUN - no changes will be made):"
+	}
+
 	debug("Calling interactive_fuzzy_select")
-	selected, ok := interactive_fuzzy_select(items, "Select constant to remove:")
+	selected, ok := interactive_fuzzy_select(items, prompt)
 	defer delete(selected) // Clean up the cloned string from interactive_select
 	debug("Interactive selection result: ok=%t, selected='%s'", ok, selected)
 	if !ok {
@@ -196,7 +249,8 @@ remove_constant_interactive :: proc() {
 }
 
 list_constants :: proc() {
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, CONSTANTS_FILE)
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("constants", DETECTED_SHELL)
 	defer delete(config_file)
 
 	content, read_ok := safe_read_file(config_file)

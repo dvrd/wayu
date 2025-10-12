@@ -26,6 +26,11 @@ handle_completions_command :: proc(action: Action, args: []string) {
 		}
 	case .LIST:
 		list_completions()
+	case .RESTORE:
+		// RESTORE action is handled by backup command, not completions command
+		fmt.eprintln("ERROR: restore action not supported for completions command")
+		fmt.println("Use: wayu backup restore completions")
+		os.exit(1)
 	case .HELP:
 		print_completions_help()
 	case .UNKNOWN:
@@ -77,11 +82,35 @@ add_completion :: proc(name: string, source_path: string) {
 			WARNING, RESET, completion_name)
 	}
 
+	// Dry-run mode check
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould copy to completions directory:%s", BRIGHT_CYAN, RESET)
+		fmt.printfln("  %s -> %s", source_path, dest_path)
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		// Clean up allocated name if needed
+		if allocated_name {
+			delete(completion_name)
+		}
+		return
+	}
+
+	// Create backup before modifying
+	if !create_backup_with_prompt(dest_path) {
+		print_info("Operation cancelled")
+		os.exit(1)
+	}
+
 	// Write to destination
 	write_ok := safe_write_file(dest_path, content)
 	if !write_ok {
 		os.exit(1)
 	}
+
+	// Cleanup old backups (keep last 5)
+	cleanup_old_backups(dest_path, 5)
 
 	print_success("Added completion: %s", completion_name)
 	fmt.printfln("\n%sNext steps:%s", BRIGHT_CYAN, RESET)
@@ -119,12 +148,36 @@ remove_completion :: proc(name: string) {
 		os.exit(1)
 	}
 
+	// Dry-run mode check
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould remove completion file:%s", BRIGHT_CYAN, RESET)
+		fmt.printfln("  %s", file_path)
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		// Clean up allocated name if needed
+		if allocated_name {
+			delete(completion_name)
+		}
+		return
+	}
+
+	// Create backup before removing
+	if !create_backup_with_prompt(file_path) {
+		print_info("Operation cancelled")
+		os.exit(1)
+	}
+
 	// Remove file
 	err := os.remove(file_path)
 	if err != 0 {
 		print_error_simple("Failed to remove completion: %s", completion_name)
 		os.exit(1)
 	}
+
+	// Cleanup old backups (keep last 5)
+	cleanup_old_backups(file_path, 5)
 
 	print_success("Removed completion: %s", completion_name)
 
@@ -149,7 +202,12 @@ remove_completion_interactive :: proc() {
 		return
 	}
 
-	prompt := fmt.aprintf("Select completion to remove (Ctrl+C to cancel):")
+	prompt_text := "Select completion to remove (Ctrl+C to cancel):"
+	if DRY_RUN {
+		prompt_text = "Select completion to remove (DRY RUN - no changes will be made):"
+	}
+
+	prompt := fmt.aprintf(prompt_text)
 	defer delete(prompt)
 
 	selected, ok := interactive_fuzzy_select(items, prompt)
