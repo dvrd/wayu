@@ -31,6 +31,14 @@ handle_alias_command :: proc(action: Action, args: []string) {
 		fmt.eprintln("ERROR: restore action not supported for alias command")
 		fmt.println("Use: wayu backup restore alias")
 		os.exit(1)
+	case .CLEAN:
+		fmt.eprintln("ERROR: clean action not supported for alias command")
+		fmt.println("The clean action only applies to path entries")
+		os.exit(1)
+	case .DEDUP:
+		fmt.eprintln("ERROR: dedup action not supported for alias command")
+		fmt.println("The dedup action only applies to path entries")
+		os.exit(1)
 	case .HELP:
 		print_alias_help()
 	case .UNKNOWN:
@@ -237,6 +245,11 @@ remove_alias_interactive :: proc() {
 }
 
 list_aliases :: proc() {
+	// Check if wayu is initialized first
+	if !check_wayu_initialized() {
+		os.exit(1)
+	}
+
 	// Use shell-aware config file with fallback for backward compatibility
 	config_file := get_config_file_with_fallback("aliases", DETECTED_SHELL)
 	defer delete(config_file)
@@ -251,7 +264,16 @@ list_aliases :: proc() {
 	lines := strings.split(content_str, "\n")
 	defer delete(lines)
 
-	print_header("Current aliases:")
+	// Extract aliases for table display
+	aliases := make([dynamic][2]string)
+	defer {
+		for alias_pair in aliases {
+			delete(alias_pair[0])
+			delete(alias_pair[1])
+		}
+		delete(aliases)
+	}
+
 	for line in lines {
 		trimmed := strings.trim_space(line)
 		if strings.has_prefix(trimmed, "alias ") && strings.contains(trimmed, "=") {
@@ -266,10 +288,39 @@ list_aliases :: proc() {
 					value_part = value_part[1:len(value_part) - 1]
 				}
 
-				fmt.printf("  %-20s -> %s\n", name_part, value_part)
+				alias_pair := [2]string{strings.clone(name_part), strings.clone(value_part)}
+				append(&aliases, alias_pair)
 			}
 		}
 	}
+
+	if len(aliases) == 0 {
+		print_info("No aliases found")
+		return
+	}
+
+	// Create and configure table
+	headers := []string{"Alias", "Command"}
+	table := new_table(headers)
+	defer table_destroy(&table)
+
+	// Style the table
+	table_style(&table, style_foreground(new_style(), "white"))
+	table_header_style(&table, style_bold(style_foreground(new_style(), "cyan"), true))
+	table_border(&table, .Normal)
+
+	// Add rows to table
+	for alias_pair in aliases {
+		row := []string{alias_pair[0], alias_pair[1]}
+		table_add_row(&table, row)
+	}
+
+	// Print header and render table
+	print_header("Shell Aliases", "🔗")
+	fmt.println()
+	table_output := table_render(table)
+	defer delete(table_output)
+	fmt.print(table_output)
 }
 
 print_alias_help :: proc() {
