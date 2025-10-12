@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
-ALIAS_FILE :: "aliases.zsh"
+// ALIAS_FILE is now defined in main.odin based on detected shell
 
 handle_alias_command :: proc(action: Action, args: []string) {
 	switch action {
@@ -26,6 +26,11 @@ handle_alias_command :: proc(action: Action, args: []string) {
 		}
 	case .LIST:
 		list_aliases()
+	case .RESTORE:
+		// RESTORE action is handled by backup command, not alias command
+		fmt.eprintln("ERROR: restore action not supported for alias command")
+		fmt.println("Use: wayu backup restore alias")
+		os.exit(1)
 	case .HELP:
 		print_alias_help()
 	case .UNKNOWN:
@@ -49,7 +54,19 @@ add_alias :: proc(alias_name: string, command: string) {
 	sanitized_command := sanitize_shell_value(command)
 	defer delete(sanitized_command)
 
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE)
+	// Dry-run mode check
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould add to aliases.%s:%s", BRIGHT_CYAN, SHELL_EXT, RESET)
+		fmt.printfln("  alias %s=\"%s\"", alias_name, sanitized_command)
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return
+	}
+
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("aliases", DETECTED_SHELL)
 	defer delete(config_file)
 
 	// Read current file
@@ -96,10 +113,19 @@ add_alias :: proc(alias_name: string, command: string) {
 	}
 	defer delete(new_content)
 
+	// Create backup before modifying
+	if !create_backup_with_prompt(config_file) {
+		print_info("Operation cancelled")
+		os.exit(1)
+	}
+
 	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
 	if !write_ok {
 		os.exit(1)
 	}
+
+	// Cleanup old backups (keep last 5)
+	cleanup_old_backups(config_file, 5)
 
 	if alias_exists {
 		fmt.println("Alias updated successfully:", alias_name)
@@ -109,7 +135,19 @@ add_alias :: proc(alias_name: string, command: string) {
 }
 
 remove_alias :: proc(alias_name: string) {
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE)
+	// Dry-run mode check
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould remove from aliases.%s:%s", BRIGHT_CYAN, SHELL_EXT, RESET)
+		fmt.printfln("  alias %s", alias_name)
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return
+	}
+
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("aliases", DETECTED_SHELL)
 	defer delete(config_file)
 
 	content, read_ok := safe_read_file(config_file)
@@ -144,6 +182,12 @@ remove_alias :: proc(alias_name: string) {
 		return
 	}
 
+	// Create backup before modifying
+	if !create_backup_with_prompt(config_file) {
+		print_info("Operation cancelled")
+		os.exit(1)
+	}
+
 	// Write back to file
 	new_content := strings.join(filtered_lines[:], "\n")
 	defer delete(new_content)
@@ -152,6 +196,9 @@ remove_alias :: proc(alias_name: string) {
 	if !write_ok {
 		os.exit(1)
 	}
+
+	// Cleanup old backups (keep last 5)
+	cleanup_old_backups(config_file, 5)
 
 	fmt.println("Alias removed successfully:", alias_name)
 }
@@ -171,7 +218,12 @@ remove_alias_interactive :: proc() {
 		return
 	}
 
-	selected, ok := interactive_fuzzy_select(items, "Select alias to remove:")
+	prompt := "Select alias to remove:"
+	if DRY_RUN {
+		prompt = "Select alias to remove (DRY RUN - no changes will be made):"
+	}
+
+	selected, ok := interactive_fuzzy_select(items, prompt)
 	if !ok {
 		print_info("Operation cancelled")
 		return
@@ -185,7 +237,8 @@ remove_alias_interactive :: proc() {
 }
 
 list_aliases :: proc() {
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE)
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("aliases", DETECTED_SHELL)
 	defer delete(config_file)
 
 	content, read_ok := safe_read_file(config_file)

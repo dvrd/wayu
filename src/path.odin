@@ -5,7 +5,7 @@ import "core:os"
 import "core:strings"
 import "core:path/filepath"
 
-PATH_FILE :: "path.zsh"
+// PATH_FILE is now defined in main.odin based on detected shell
 
 handle_path_command :: proc(action: Action, args: []string) {
 	switch action {
@@ -25,6 +25,11 @@ handle_path_command :: proc(action: Action, args: []string) {
 		}
 	case .LIST:
 		list_paths()
+	case .RESTORE:
+		// RESTORE action is handled by backup command, not path command
+		fmt.eprintln("ERROR: restore action not supported for path command")
+		fmt.println("Use: wayu backup restore path")
+		os.exit(1)
 	case .HELP:
 		print_path_help()
 	case .UNKNOWN:
@@ -55,7 +60,19 @@ add_path :: proc(path: string) {
 		os.exit(1)
 	}
 
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE)
+	// Dry-run mode check
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould add to path.%s:%s", BRIGHT_CYAN, SHELL_EXT, RESET)
+		fmt.printfln("  add_to_path \"%s\"", target_path)
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return
+	}
+
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("path", DETECTED_SHELL)
 	defer delete(config_file)
 
 	// Read current file
@@ -102,6 +119,12 @@ add_path :: proc(path: string) {
 	new_lines[export_line_idx] = new_entry
 	copy(new_lines[export_line_idx + 1:], lines[export_line_idx:])
 
+	// Create backup before modifying
+	if !create_backup_with_prompt(config_file) {
+		print_info("Operation cancelled")
+		os.exit(1)
+	}
+
 	// Write back to file
 	new_content := strings.join(new_lines, "\n")
 	defer delete(new_content)
@@ -111,11 +134,26 @@ add_path :: proc(path: string) {
 		os.exit(1)
 	}
 
+	// Cleanup old backups (keep last 5)
+	cleanup_old_backups(config_file, 5)
+
 	print_success("Path added successfully: %s", target_path)
 }
 
 remove_path :: proc(path: string) {
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE)
+	// Dry-run mode check
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould remove from path.%s:%s", BRIGHT_CYAN, SHELL_EXT, RESET)
+		fmt.printfln("  Path entry containing: %s", path)
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return
+	}
+
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("path", DETECTED_SHELL)
 	defer delete(config_file)
 
 	content, read_ok := safe_read_file(config_file)
@@ -146,6 +184,12 @@ remove_path :: proc(path: string) {
 		return
 	}
 
+	// Create backup before modifying
+	if !create_backup_with_prompt(config_file) {
+		print_info("Operation cancelled")
+		os.exit(1)
+	}
+
 	// Write back to file
 	new_content := strings.join(filtered_lines[:], "\n")
 	defer delete(new_content)
@@ -154,6 +198,9 @@ remove_path :: proc(path: string) {
 	if !write_ok {
 		os.exit(1)
 	}
+
+	// Cleanup old backups (keep last 5)
+	cleanup_old_backups(config_file, 5)
 
 	print_success("Path removed successfully: %s", path)
 }
@@ -173,7 +220,12 @@ remove_path_interactive :: proc() {
 		return
 	}
 
-	selected, ok := interactive_fuzzy_select(items, "Select PATH entry to remove")
+	prompt := "Select PATH entry to remove"
+	if DRY_RUN {
+		prompt = "Select PATH entry to remove (DRY RUN - no changes will be made)"
+	}
+
+	selected, ok := interactive_fuzzy_select(items, prompt)
 	if !ok {
 		print_info("Operation cancelled")
 		return
@@ -192,7 +244,8 @@ list_paths :: proc() {
 		os.exit(1)
 	}
 
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE)
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("path", DETECTED_SHELL)
 	defer delete(config_file)
 
 	content, read_ok := safe_read_file(config_file)
