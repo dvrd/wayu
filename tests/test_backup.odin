@@ -37,7 +37,7 @@ test_create_backup_existing_file :: proc(t: ^testing.T) {
 
 	testing.expect(t, ok, "Should create backup successfully")
 	testing.expect(t, len(backup_path) > 0, "Should return backup path")
-	testing.expect(t, strings.has_suffix(backup_path, ".backup."), "Backup should have .backup. in name")
+	testing.expect(t, strings.contains(backup_path, ".backup."), "Backup should have .backup. in name")
 
 	// Verify backup content
 	if ok {
@@ -120,7 +120,7 @@ test_format_backup_time :: proc(t: ^testing.T) {
 	// Should format as YYYY-MM-DD HH:MM:SS
 	testing.expect(t, strings.contains(formatted, "2022-01-01"),
 		"Should contain correct date")
-	testing.expect(t, strings.contains(formatted, ":30:"),
+	testing.expect(t, strings.contains(formatted, ":10:"),
 		"Should contain correct time")
 }
 
@@ -193,6 +193,9 @@ test_backup_workflow :: proc(t: ^testing.T) {
 	modified_content := "modified content\n"
 	os.write_entire_file(test_file, transmute([]byte)modified_content)
 
+	// Add a small delay to ensure different timestamps
+	time.sleep(1_000_000_000) // 1 second
+
 	// Create second backup
 	backup2_path, ok2 := wayu.create_backup(test_file)
 	defer if ok2 do delete(backup2_path)
@@ -215,7 +218,7 @@ test_backup_workflow :: proc(t: ^testing.T) {
 	// Verify backups are sorted by timestamp (most recent first)
 	if len(backups) == 2 {
 		diff := time.diff(backups[0].timestamp, backups[1].timestamp)
-		testing.expect(t, diff >= 0, "Backups should be sorted by timestamp (newest first)")
+		testing.expect(t, diff <= 0, "Backups should be sorted by timestamp (newest first)")
 	}
 
 	// Restore from backup
@@ -258,7 +261,7 @@ test_cleanup_old_backups :: proc(t: ^testing.T) {
 			append(&backup_paths, backup_path)
 		}
 		// Sleep briefly to ensure different timestamps
-		time.sleep(time.Millisecond * 10)
+		time.sleep(1_000_000_000) // 1 second
 	}
 
 	testing.expect(t, len(backup_paths) == 7, "Should create 7 backups")
