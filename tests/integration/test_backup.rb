@@ -262,7 +262,7 @@ class BackupIntegrationTest
 
     output, status = run_wayu("backup help")
 
-    if output.include?("Backup Command") && output.include?("EXAMPLES")
+    if output.include?("wayu backup") && output.include?("EXAMPLES")
       puts "✓"
       @passed += 1
     else
