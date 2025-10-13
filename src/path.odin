@@ -484,17 +484,19 @@ list_paths_interactive :: proc() {
 		expanded := item.metadata["expanded"]
 		exists := item.metadata["exists"] == "true"
 
-		fmt.sbprintf(&builder, "%sPath:%s %s\n", BOLD, RESET, path)
-		fmt.sbprintf(&builder, "%sExpanded:%s %s\n\n", BOLD, RESET, expanded)
+		// Use simple text without ANSI codes for better alignment
+		fmt.sbprintf(&builder, "Path: %s\n", path)
+		fmt.sbprintf(&builder, "Expanded: %s\n", expanded)
+		fmt.sbprintf(&builder, "\n")
 
 		if exists {
-			fmt.sbprintf(&builder, "%s✓ Directory exists%s\n", get_success(), RESET)
+			fmt.sbprintf(&builder, "Status: Directory exists\n")
 
 			// Try to get more info
 			info, err := os.stat(expanded)
 			if err == 0 {
 				mode := info.mode
-				fmt.sbprintf(&builder, "%sPermissions:%s %o\n", BOLD, RESET, mode & 0o777)
+				fmt.sbprintf(&builder, "Permissions: %o\n", mode & 0o777)
 			}
 
 			// Count files (simplified - just check if readable)
@@ -504,14 +506,15 @@ list_paths_interactive :: proc() {
 				file_infos, read_err := os.read_dir(dir_handle, -1)
 				if read_err == 0 {
 					defer os.file_info_slice_delete(file_infos)
-					fmt.sbprintf(&builder, "%sFiles:%s %d items\n", BOLD, RESET, len(file_infos))
+					fmt.sbprintf(&builder, "Files: %d items\n", len(file_infos))
 				}
 			}
 		} else {
-			fmt.sbprintf(&builder, "%s✗ Directory does not exist%s\n", get_error(), RESET)
+			fmt.sbprintf(&builder, "Status: Directory missing\n")
 		}
 
-		fmt.sbprintf(&builder, "\n%sActions:%s\n", BOLD, RESET)
+		fmt.sbprintf(&builder, "\n")
+		fmt.sbprintf(&builder, "Actions:\n")
 		fmt.sbprintf(&builder, "  Del - Remove from PATH\n")
 		fmt.sbprintf(&builder, "  Enter - Exit and select\n")
 
