@@ -69,6 +69,42 @@ tasks:
     cmds:
       - ruby {{.TEST_DIR}}/integration/test_backup.rb
 
+  test:path:
+    desc: Run PATH integration tests
+    deps: [build]
+    cmds:
+      - ruby {{.TEST_DIR}}/integration/test_path.rb
+
+  test:alias:
+    desc: Run alias integration tests
+    deps: [build]
+    cmds:
+      - ruby {{.TEST_DIR}}/integration/test_alias.rb
+
+  test:constants:
+    desc: Run constants integration tests
+    deps: [build]
+    cmds:
+      - ruby {{.TEST_DIR}}/integration/test_constants.rb
+
+  test:plugin:
+    desc: Run plugin integration tests
+    deps: [build]
+    cmds:
+      - ruby {{.TEST_DIR}}/integration/test_plugin.rb
+
+  test:init:
+    desc: Run init and multi-shell integration tests
+    deps: [build]
+    cmds:
+      - ruby {{.TEST_DIR}}/integration/test_init.rb
+
+  test:dry-run:
+    desc: Run dry-run mode integration tests
+    deps: [build]
+    cmds:
+      - ruby {{.TEST_DIR}}/integration/test_dry_run.rb
+
   test:all:
     desc: Run all tests (unit and integration)
     cmds:
