@@ -60,38 +60,42 @@ ACCENT     :: MAGENTA
 
 // ============================================================================
 // VIBRANT COLOR PALETTE (Phase 1 - PRP-09)
-// TrueColor (24-bit RGB) - Charm-inspired vivid colors
+// TrueColor (24-bit RGB) - Zellij "dvrd" theme inspired
 // ============================================================================
 
-// Primary Colors (Rich purples and magentas)
-VIBRANT_PRIMARY   :: "\x1b[38;2;175;82;222m"   // Rich purple #AF52DE
-VIBRANT_SECONDARY :: "\x1b[38;2;0;217;255m"    // Bright cyan #00D9FF
-VIBRANT_ACCENT    :: "\x1b[38;2;255;0;110m"    // Hot pink #FF006E
+// Primary Colors (From Zellij dvrd theme)
+VIBRANT_PRIMARY   :: "\x1b[38;2;228;0;80m"     // Hot pink #E40050 (emphasis_2)
+VIBRANT_SECONDARY :: "\x1b[38;2;14;116;144m"   // Teal-cyan #0E7490 (emphasis_1)
+VIBRANT_ACCENT    :: "\x1b[38;2;194;65;12m"    // Orange-red #C2410C (emphasis_0)
 
-// Semantic Colors (High saturation)
-VIBRANT_SUCCESS   :: "\x1b[38;2;0;255;159m"    // Vibrant green #00FF9F
-VIBRANT_ERROR     :: "\x1b[38;2;255;71;87m"    // Bright coral #FF4757
-VIBRANT_WARNING   :: "\x1b[38;2;255;214;10m"   // Golden yellow #FFD60A
-VIBRANT_INFO      :: "\x1b[38;2;0;191;255m"    // Sky blue #00BFFF
+// Semantic Colors (Zellij-inspired)
+VIBRANT_SUCCESS   :: "\x1b[38;2;14;116;144m"   // Teal (reusing emphasis_1)
+VIBRANT_ERROR     :: "\x1b[38;2;153;27;27m"    // Dark red #991B1B
+VIBRANT_WARNING   :: "\x1b[38;2;217;119;6m"    // Orange #D97706
+VIBRANT_INFO      :: "\x1b[38;2;14;116;144m"   // Teal-cyan #0E7490
 
 // UI Elements
-VIBRANT_HIGHLIGHT   :: "\x1b[38;2;255;0;255m"    // Magenta #FF00FF
-VIBRANT_SELECTED_BG :: "\x1b[48;2;75;0;130m"     // Indigo background
-VIBRANT_MUTED       :: "\x1b[38;2;155;155;155m"  // Subtle gray
+VIBRANT_HIGHLIGHT   :: "\x1b[38;2;228;0;80m"     // Hot pink (primary)
+VIBRANT_SELECTED_BG :: "\x1b[48;2;9;9;11m"       // Almost black background
+VIBRANT_MUTED       :: "\x1b[38;2;208;208;208m"  // Light gray (base text)
 VIBRANT_DIM         :: "\x1b[38;2;100;100;100m"  // Dimmer gray
 
-// Gradient colors (for title bars and transitions)
-GRADIENT_START :: "\x1b[38;2;138;43;226m"  // Blue-violet
-GRADIENT_END   :: "\x1b[38;2;255;0;255m"   // Magenta
+// Background colors (Zellij backgrounds)
+BG_DARK   :: "\x1b[48;2;24;24;37m"   // Dark purple-blue
+BG_DARKER :: "\x1b[48;2;9;9;11m"     // Almost black
 
-// ANSI 256 fallback colors (for terminals without TrueColor)
-ANSI256_PRIMARY   :: "\x1b[38;5;135m"  // Purple
-ANSI256_SECONDARY :: "\x1b[38;5;51m"   // Cyan
-ANSI256_ACCENT    :: "\x1b[38;5;198m"  // Pink
-ANSI256_SUCCESS   :: "\x1b[38;5;48m"   // Green
-ANSI256_ERROR     :: "\x1b[38;5;203m"  // Red
-ANSI256_WARNING   :: "\x1b[38;5;220m"  // Yellow
-ANSI256_INFO      :: "\x1b[38;5;39m"   // Blue
+// Gradient colors (using Zellij theme colors)
+GRADIENT_START :: "\x1b[38;2;194;65;12m"   // Orange-red
+GRADIENT_END   :: "\x1b[38;2;228;0;80m"    // Hot pink
+
+// ANSI 256 fallback colors (closest matches to Zellij theme)
+ANSI256_PRIMARY   :: "\x1b[38;5;197m"  // Hot pink
+ANSI256_SECONDARY :: "\x1b[38;5;31m"   // Teal
+ANSI256_ACCENT    :: "\x1b[38;5;166m"  // Orange
+ANSI256_SUCCESS   :: "\x1b[38;5;31m"   // Teal
+ANSI256_ERROR     :: "\x1b[38;5;124m"  // Dark red
+ANSI256_WARNING   :: "\x1b[38;5;172m"  // Orange
+ANSI256_INFO      :: "\x1b[38;5;31m"   // Teal
 
 // ============================================================================
 // TERMINAL CAPABILITY DETECTION
