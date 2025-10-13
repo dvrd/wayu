@@ -88,7 +88,7 @@ form_run :: proc(form: ^Form) -> bool {
 		ch := input_buf[0]
 
 		// Handle form-level navigation and actions
-		if ch == 3 { // Ctrl+C - Cancel
+		if ch == 3 || ch == 'q' || ch == 'Q' { // Ctrl+C or 'q' - Cancel
 			form.cancelled = true
 			return false
 
@@ -324,10 +324,11 @@ render_title_box :: proc(title: string) -> string {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 
-	width := 68 // Standard width
+	width := 68 // Standard width (interior content width, not including │ borders)
 	title_visual_width := count_visual_width(title)
-	padding_left := (width - title_visual_width - 2) / 2
-	padding_right := width - title_visual_width - 2 - padding_left
+	// Subtract 2 for the padding spaces around title
+	padding_left := (width - title_visual_width) / 2
+	padding_right := width - title_visual_width - padding_left
 
 	// Top border
 	fmt.sbprintf(&builder, "%s╭", get_primary())
