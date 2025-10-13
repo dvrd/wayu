@@ -543,23 +543,62 @@ list_paths :: proc() {
 }
 
 print_path_help :: proc() {
-	fmt.println("wayu path - Manage PATH entries")
-	fmt.println("")
-	fmt.println("USAGE:")
+	// Title with styled box
+	title_style := style_border(new_style(), .Rounded)
+	title_style = style_padding(title_style, 1)
+	title_style = style_bold(title_style)
+	title_style = style_foreground(title_style, get_primary())
+	title_style = style_align_horizontal(title_style, .Center)
+	title_style = style_width(title_style, 60)
+
+	title_output := render(title_style, "wayu path - Manage PATH entries")
+	defer delete(title_output)
+	fmt.println(title_output)
+
+	// Usage section
+	usage_header_style := style_bold(new_style())
+	usage_header_style = style_foreground(usage_header_style, get_secondary())
+	usage_header_style = style_margin_top(usage_header_style, 1)
+
+	usage_header_output := render(usage_header_style, "USAGE:")
+	defer delete(usage_header_output)
+	fmt.print(usage_header_output)
+
+	// Commands
 	fmt.println("  wayu path add [path]    Add path to PATH (uses PWD if no path)")
 	fmt.println("  wayu path rm [path]     Remove path from PATH (interactive if no path)")
 	fmt.println("  wayu path list          List all PATH entries with status")
 	fmt.println("  wayu path clean         Remove missing directories from PATH")
 	fmt.println("  wayu path dedup         Remove duplicate PATH entries")
 	fmt.println("  wayu path help          Show this help")
-	fmt.println("")
-	fmt.println("EXAMPLES:")
-	fmt.println("  wayu path add /usr/local/bin")
-	fmt.println("  wayu path add              # Adds current directory")
-	fmt.println("  wayu path rm /usr/local/bin")
-	fmt.println("  wayu path rm               # Interactive removal")
-	fmt.println("  wayu path clean --dry-run  # Preview which paths would be removed")
-	fmt.println("  wayu path dedup            # Remove duplicate entries")
+
+	// Examples section
+	examples_header_style := style_bold(new_style())
+	examples_header_style = style_foreground(examples_header_style, get_secondary())
+	examples_header_style = style_margin_top(examples_header_style, 1)
+
+	examples_header_output := render(examples_header_style, "EXAMPLES:")
+	defer delete(examples_header_output)
+	fmt.print(examples_header_output)
+
+	// Example commands with syntax highlighting
+	example_style := style_foreground(new_style(), get_muted())
+	example_style = style_padding_left(example_style, 2)
+
+	examples := []string{
+		"wayu path add /usr/local/bin",
+		"wayu path add              # Adds current directory",
+		"wayu path rm /usr/local/bin",
+		"wayu path rm               # Interactive removal",
+		"wayu path clean --dry-run  # Preview which paths would be removed",
+		"wayu path dedup            # Remove duplicate entries",
+	}
+
+	for example in examples {
+		example_output := render(example_style, example)
+		defer delete(example_output)
+		fmt.println(example_output)
+	}
 }
 
 // Helper function to expand environment variables in path strings
