@@ -509,43 +509,101 @@ get_config_file_path :: proc(config_type: string) -> string {
 
 // Help for backup command
 print_backup_help :: proc() {
-	print_header("Backup Command")
-	fmt.println()
+	// Title with styled box
+	title_style := style_border(new_style(), .Rounded)
+	title_style = style_padding(title_style, 1)
+	title_style = style_bold(title_style)
+	title_style = style_foreground(title_style, get_primary())
+	title_style = style_align_horizontal(title_style, .Center)
+	title_style = style_width(title_style, 60)
 
-	fmt.printfln("%sUSAGE:%s", BRIGHT_CYAN, RESET)
-	fmt.printfln("  wayu backup %s<action>%s [config-type]", MUTED, RESET)
-	fmt.println()
+	title_output := render(title_style, "wayu backup - Manage configuration backups")
+	defer delete(title_output)
+	fmt.println(title_output)
 
-	fmt.printfln("%sACTIONS:%s", BRIGHT_CYAN, RESET)
-	fmt.printfln("  %slist%s     List all backups (or for specific config)", BOLD, RESET)
-	fmt.printfln("  %srestore%s  Restore from most recent backup", BOLD, RESET)
-	fmt.printfln("  %sremove%s   Clean up old backups (alias: rm)", BOLD, RESET)
-	fmt.printfln("  %shelp%s     Show this help message", BOLD, RESET)
-	fmt.println()
+	// Usage section
+	usage_header_style := style_bold(new_style())
+	usage_header_style = style_foreground(usage_header_style, get_secondary())
+	usage_header_style = style_margin_top(usage_header_style, 1)
 
-	fmt.printfln("%sCONFIG TYPES:%s", BRIGHT_CYAN, RESET)
-	fmt.printfln("  %spath%s      PATH configuration", BOLD, RESET)
-	fmt.printfln("  %salias%s     Alias configuration", BOLD, RESET)
-	fmt.printfln("  %sconstants%s Environment constants", BOLD, RESET)
-	fmt.println()
+	usage_header_output := render(usage_header_style, "USAGE:")
+	defer delete(usage_header_output)
+	fmt.print(usage_header_output)
 
-	fmt.printfln("%sEXAMPLES:%s", BRIGHT_CYAN, RESET)
-	fmt.printfln("  # List all backups")
-	fmt.printfln("  wayu backup list")
-	fmt.println()
-	fmt.printfln("  # List path backups only")
-	fmt.printfln("  wayu backup list path")
-	fmt.println()
-	fmt.printfln("  # Restore path configuration from backup")
-	fmt.printfln("  wayu backup restore path")
-	fmt.println()
-	fmt.printfln("  # Clean up old backups")
-	fmt.printfln("  wayu backup rm")
-	fmt.println()
+	// Commands
+	fmt.println("  wayu backup list [config-type]     List all backups (or for specific config)")
+	fmt.println("  wayu backup restore <config-type>  Restore from most recent backup")
+	fmt.println("  wayu backup remove [config-type]   Clean up old backups (alias: rm)")
+	fmt.println("  wayu backup help                   Show this help")
 
-	fmt.printfln("%sNOTES:%s", BRIGHT_CYAN, RESET)
-	fmt.printfln("  • Backups are created automatically before modifications")
-	fmt.printfln("  • Only the last 5 backups are kept per file")
-	fmt.printfln("  • Backup files are stored in the same directory as config files")
-	fmt.printfln("  • Restore always uses the most recent backup")
+	// Config types section
+	config_header_style := style_bold(new_style())
+	config_header_style = style_foreground(config_header_style, get_secondary())
+	config_header_style = style_margin_top(config_header_style, 1)
+
+	config_header_output := render(config_header_style, "CONFIG TYPES:")
+	defer delete(config_header_output)
+	fmt.print(config_header_output)
+
+	fmt.println("  path       PATH configuration")
+	fmt.println("  alias      Alias configuration")
+	fmt.println("  constants  Environment constants")
+
+	// Examples section
+	examples_header_style := style_bold(new_style())
+	examples_header_style = style_foreground(examples_header_style, get_secondary())
+	examples_header_style = style_margin_top(examples_header_style, 1)
+
+	examples_header_output := render(examples_header_style, "EXAMPLES:")
+	defer delete(examples_header_output)
+	fmt.print(examples_header_output)
+
+	// Example commands with syntax highlighting
+	example_style := style_foreground(new_style(), get_muted())
+	example_style = style_padding_left(example_style, 2)
+
+	examples := []string{
+		"# List all backups",
+		"wayu backup list",
+		"",
+		"# List path backups only",
+		"wayu backup list path",
+		"",
+		"# Restore path configuration from backup",
+		"wayu backup restore path",
+		"",
+		"# Clean up old backups",
+		"wayu backup rm",
+	}
+
+	for example in examples {
+		example_output := render(example_style, example)
+		defer delete(example_output)
+		fmt.println(example_output)
+	}
+
+	// Notes section
+	notes_header_style := style_bold(new_style())
+	notes_header_style = style_foreground(notes_header_style, get_secondary())
+	notes_header_style = style_margin_top(notes_header_style, 1)
+
+	notes_header_output := render(notes_header_style, "NOTES:")
+	defer delete(notes_header_output)
+	fmt.print(notes_header_output)
+
+	notes := []string{
+		"• Backups are created automatically before modifications",
+		"• Only the last 5 backups are kept per file",
+		"• Backup files are stored in the same directory as config files",
+		"• Restore always uses the most recent backup",
+	}
+
+	notes_style := style_foreground(new_style(), get_muted())
+	notes_style = style_padding_left(notes_style, 2)
+
+	for note in notes {
+		note_output := render(notes_style, note)
+		defer delete(note_output)
+		fmt.println(note_output)
+	}
 }
