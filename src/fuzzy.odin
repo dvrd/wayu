@@ -222,7 +222,7 @@ fuzzy_render_title :: proc(title: string) -> string {
 	width :: 60
 
 	// Top border
-	fmt.sbprintf(&builder, "%s╭%s╮%s\n",
+	fmt.sbprintf(&builder, "%s╭%s╮%s\r\n",
 		get_primary(),
 		strings.repeat("─", width),
 		RESET)
@@ -232,7 +232,7 @@ fuzzy_render_title :: proc(title: string) -> string {
 	padding := (width - title_len) / 2
 	remaining := width - title_len - padding
 
-	fmt.sbprintf(&builder, "%s│%s%s%s%s%s%s│%s\n",
+	fmt.sbprintf(&builder, "%s│%s%s%s%s%s%s│%s\r\n",
 		get_primary(),
 		strings.repeat(" ", padding),
 		BOLD,
@@ -258,7 +258,7 @@ fuzzy_render_filter :: proc(filter: []u8) -> string {
 	defer strings.builder_destroy(&builder)
 
 	// Filter prompt
-	fmt.sbprintf(&builder, "\n%s🔎 Filter:%s ", get_secondary(), RESET)
+	fmt.sbprintf(&builder, "\r\n%s🔎 Filter:%s ", get_secondary(), RESET)
 	fmt.sbprintf(&builder, "%s", string(filter))
 	fmt.sbprintf(&builder, "%s█%s", get_primary(), RESET)  // Cursor
 
@@ -279,7 +279,7 @@ fuzzy_render_shortcuts :: proc(actions: []FuzzyAction) -> string {
 		fmt.sbprintf(&builder, "  •  %s %s", action.key_name, action.description)
 	}
 
-	fmt.sbprintf(&builder, "%s\n", RESET)
+	fmt.sbprintf(&builder, "%s\r\n", RESET)
 
 	return strings.clone(strings.to_string(builder))
 }
@@ -295,14 +295,14 @@ fuzzy_render_items :: proc(view: ^FuzzyView) -> string {
 	visible_end := min(len(view.filtered_items), visible_start + view.visible_items)
 
 	// Border top
-	fmt.sbprintf(&builder, "\n%s┌%s┐%s\n",
+	fmt.sbprintf(&builder, "\r\n%s┌%s┐%s\r\n",
 		get_muted(),
 		strings.repeat("─", 60),
 		RESET)
 
 	// Items
 	if len(view.filtered_items) == 0 {
-		fmt.sbprintf(&builder, "%s│ No matches found%s│%s\n",
+		fmt.sbprintf(&builder, "%s│ No matches found%s│%s\r\n",
 			get_muted(),
 			strings.repeat(" ", 45),
 			RESET)
@@ -326,7 +326,7 @@ fuzzy_render_items :: proc(view: ^FuzzyView) -> string {
 				display_len := len(item.display) + len(icon_part) + 4
 				padding := max(0, 56 - display_len)
 				fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
-				fmt.sbprintf(&builder, "%s│%s\n", get_primary(), RESET)
+				fmt.sbprintf(&builder, "%s│%s\r\n", get_primary(), RESET)
 			} else {
 				// Regular item
 				color := item.color != "" ? item.color : RESET
@@ -344,13 +344,13 @@ fuzzy_render_items :: proc(view: ^FuzzyView) -> string {
 				display_len := len(item.display) + len(icon_part) + 4
 				padding := max(0, 56 - display_len)
 				fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
-				fmt.sbprintf(&builder, "%s│%s\n", get_muted(), RESET)
+				fmt.sbprintf(&builder, "%s│%s\r\n", get_muted(), RESET)
 			}
 		}
 	}
 
 	// Border bottom
-	fmt.sbprintf(&builder, "%s└%s┘%s\n",
+	fmt.sbprintf(&builder, "%s└%s┘%s\r\n",
 		get_muted(),
 		strings.repeat("─", 60),
 		RESET)
@@ -379,7 +379,7 @@ fuzzy_render_details :: proc(view: ^FuzzyView) -> string {
 	width :: 60
 
 	// Top border with title
-	fmt.sbprintf(&builder, "%s╭─ Details %s╮%s\n",
+	fmt.sbprintf(&builder, "%s╭─ Details %s╮%s\r\n",
 		get_secondary(),
 		strings.repeat("─", width - 10),
 		RESET)
@@ -404,7 +404,7 @@ fuzzy_render_details :: proc(view: ^FuzzyView) -> string {
 		fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
 
 		// Right border
-		fmt.sbprintf(&builder, "%s│%s\n", get_secondary(), RESET)
+		fmt.sbprintf(&builder, "%s│%s\r\n", get_secondary(), RESET)
 	}
 
 	// Bottom border
@@ -425,12 +425,12 @@ fuzzy_render :: proc(view: ^FuzzyView) -> string {
 	// Title
 	title := fuzzy_render_title(view.title)
 	defer delete(title)
-	fmt.sbprintf(&builder, "%s\n", title)
+	fmt.sbprintf(&builder, "%s\r\n", title)
 
 	// Filter input
 	filter := fuzzy_render_filter(view.filter_query[:])
 	defer delete(filter)
-	fmt.sbprintf(&builder, "%s\n", filter)
+	fmt.sbprintf(&builder, "%s\r\n", filter)
 
 	// Keyboard shortcuts
 	shortcuts := fuzzy_render_shortcuts(view.actions)
@@ -447,7 +447,7 @@ fuzzy_render :: proc(view: ^FuzzyView) -> string {
 		details := fuzzy_render_details(view)
 		if len(details) > 0 {
 			defer delete(details)
-			fmt.sbprintf(&builder, "\n%s", details)
+			fmt.sbprintf(&builder, "\r\n%s", details)
 		}
 	}
 
