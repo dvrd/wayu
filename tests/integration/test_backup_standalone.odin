@@ -210,7 +210,7 @@ main :: proc() {
 		output := run_wayu("backup help")
 		defer delete(output)
 
-		passed := strings.contains(output, "Backup Command") &&
+		passed := strings.contains(output, "wayu backup") &&
 		          strings.contains(output, "EXAMPLES")
 		print_test(7, "Help command", passed, &results)
 	}

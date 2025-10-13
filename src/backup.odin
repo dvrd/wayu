@@ -509,101 +509,41 @@ get_config_file_path :: proc(config_type: string) -> string {
 
 // Help for backup command
 print_backup_help :: proc() {
-	// Title with styled box
-	title_style := style_border(new_style(), .Rounded)
-	title_style = style_padding(title_style, 1)
-	title_style = style_bold(title_style)
-	title_style = style_foreground(title_style, get_primary())
-	title_style = style_align_horizontal(title_style, .Center)
-	title_style = style_width(title_style, 60)
-
-	title_output := render(title_style, "wayu backup - Manage configuration backups")
-	defer delete(title_output)
-	fmt.println(title_output)
+	// Title
+	fmt.printf("\n%s%swayu backup - Manage configuration backups%s\n\n", BOLD, get_primary(), RESET)
 
 	// Usage section
-	usage_header_style := style_bold(new_style())
-	usage_header_style = style_foreground(usage_header_style, get_secondary())
-	usage_header_style = style_margin_top(usage_header_style, 1)
-
-	usage_header_output := render(usage_header_style, "USAGE:")
-	defer delete(usage_header_output)
-	fmt.print(usage_header_output)
-
-	// Commands
+	fmt.printf("%s%sUSAGE:%s\n", BOLD, get_secondary(), RESET)
 	fmt.println("  wayu backup list [config-type]     List all backups (or for specific config)")
 	fmt.println("  wayu backup restore <config-type>  Restore from most recent backup")
 	fmt.println("  wayu backup remove [config-type]   Clean up old backups (alias: rm)")
 	fmt.println("  wayu backup help                   Show this help")
 
 	// Config types section
-	config_header_style := style_bold(new_style())
-	config_header_style = style_foreground(config_header_style, get_secondary())
-	config_header_style = style_margin_top(config_header_style, 1)
-
-	config_header_output := render(config_header_style, "CONFIG TYPES:")
-	defer delete(config_header_output)
-	fmt.print(config_header_output)
-
+	fmt.printf("\n%s%sCONFIG TYPES:%s\n", BOLD, get_secondary(), RESET)
 	fmt.println("  path       PATH configuration")
 	fmt.println("  alias      Alias configuration")
 	fmt.println("  constants  Environment constants")
 
 	// Examples section
-	examples_header_style := style_bold(new_style())
-	examples_header_style = style_foreground(examples_header_style, get_secondary())
-	examples_header_style = style_margin_top(examples_header_style, 1)
-
-	examples_header_output := render(examples_header_style, "EXAMPLES:")
-	defer delete(examples_header_output)
-	fmt.print(examples_header_output)
-
-	// Example commands with syntax highlighting
-	example_style := style_foreground(new_style(), get_muted())
-	example_style = style_padding_left(example_style, 2)
-
-	examples := []string{
-		"# List all backups",
-		"wayu backup list",
-		"",
-		"# List path backups only",
-		"wayu backup list path",
-		"",
-		"# Restore path configuration from backup",
-		"wayu backup restore path",
-		"",
-		"# Clean up old backups",
-		"wayu backup rm",
-	}
-
-	for example in examples {
-		example_output := render(example_style, example)
-		defer delete(example_output)
-		fmt.println(example_output)
-	}
+	fmt.printf("\n%s%sEXAMPLES:%s\n", BOLD, get_secondary(), RESET)
+	fmt.printf("  %s# List all backups%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu backup list%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# List path backups only%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu backup list path%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Restore path configuration from backup%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu backup restore path%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Clean up old backups%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu backup rm%s\n", get_muted(), RESET)
 
 	// Notes section
-	notes_header_style := style_bold(new_style())
-	notes_header_style = style_foreground(notes_header_style, get_secondary())
-	notes_header_style = style_margin_top(notes_header_style, 1)
-
-	notes_header_output := render(notes_header_style, "NOTES:")
-	defer delete(notes_header_output)
-	fmt.print(notes_header_output)
-
-	notes := []string{
-		"• Backups are created automatically before modifications",
-		"• Only the last 5 backups are kept per file",
-		"• Backup files are stored in the same directory as config files",
-		"• Restore always uses the most recent backup",
-	}
-
-	notes_style := style_foreground(new_style(), get_muted())
-	notes_style = style_padding_left(notes_style, 2)
-
-	for note in notes {
-		note_output := render(notes_style, note)
-		defer delete(note_output)
-		fmt.println(note_output)
-	}
+	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
+	fmt.printf("  %s• Backups are created automatically before modifications%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Only the last 5 backups are kept per file%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Backup files are stored in the same directory as config files%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Restore always uses the most recent backup%s\n", get_muted(), RESET)
+	fmt.println()
 }

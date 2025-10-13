@@ -883,38 +883,15 @@ handle_plugin_command :: proc(action: Action, args: []string) {
 // Help text
 
 print_plugin_help :: proc() {
-	// Title with styled box
-	title_style := style_border(new_style(), .Rounded)
-	title_style = style_padding(title_style, 1)
-	title_style = style_bold(title_style)
-	title_style = style_foreground(title_style, get_primary())
-	title_style = style_align_horizontal(title_style, .Center)
-	title_style = style_width(title_style, 60)
-
-	title_output := render(title_style, "wayu plugin - Plugin management")
-	defer delete(title_output)
-	fmt.println(title_output)
+	// Title
+	fmt.printf("\n%s%swayu plugin - Plugin management%s\n\n", BOLD, get_primary(), RESET)
 
 	// Usage section
-	usage_header_style := style_bold(new_style())
-	usage_header_style = style_foreground(usage_header_style, get_secondary())
-	usage_header_style = style_margin_top(usage_header_style, 1)
-
-	usage_header_output := render(usage_header_style, "USAGE:")
-	defer delete(usage_header_output)
-	fmt.print(usage_header_output)
-
+	fmt.printf("%s%sUSAGE:%s\n", BOLD, get_secondary(), RESET)
 	fmt.println("  wayu plugin <action> [arguments]")
 
 	// Actions section
-	actions_header_style := style_bold(new_style())
-	actions_header_style = style_foreground(actions_header_style, get_secondary())
-	actions_header_style = style_margin_top(actions_header_style, 1)
-
-	actions_header_output := render(actions_header_style, "ACTIONS:")
-	defer delete(actions_header_output)
-	fmt.print(actions_header_output)
-
+	fmt.printf("\n%s%sACTIONS:%s\n", BOLD, get_secondary(), RESET)
 	fmt.println("  add <name-or-url>       Install plugin")
 	fmt.println("  remove [name]           Remove plugin (interactive if no name)")
 	fmt.println("  list                    List installed plugins")
@@ -922,117 +899,46 @@ print_plugin_help :: proc() {
 	fmt.println("  help                    Show this help message")
 
 	// Examples section
-	examples_header_style := style_bold(new_style())
-	examples_header_style = style_foreground(examples_header_style, get_secondary())
-	examples_header_style = style_margin_top(examples_header_style, 1)
-
-	examples_header_output := render(examples_header_style, "EXAMPLES:")
-	defer delete(examples_header_output)
-	fmt.print(examples_header_output)
-
-	// Example commands with syntax highlighting
-	example_style := style_foreground(new_style(), get_muted())
-	example_style = style_padding_left(example_style, 2)
-
-	examples := []string{
-		"# Install popular plugin",
-		"wayu plugin add syntax-highlighting",
-		"",
-		"# Install from URL",
-		"wayu plugin add https://github.com/user/plugin.git",
-		"",
-		"# Show all plugins",
-		"wayu plugin list",
-		"",
-		"# Get plugin info + copy URL",
-		"wayu plugin get syntax-highlighting",
-		"",
-		"# Interactive removal",
-		"wayu plugin remove",
-		"",
-		"# Remove specific plugin",
-		"wayu plugin remove syntax-highlighting",
-	}
-
-	for example in examples {
-		example_output := render(example_style, example)
-		defer delete(example_output)
-		fmt.println(example_output)
-	}
+	fmt.printf("\n%s%sEXAMPLES:%s\n", BOLD, get_secondary(), RESET)
+	fmt.printf("  %s# Install popular plugin%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin add syntax-highlighting%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Install from URL%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin add https://github.com/user/plugin.git%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Show all plugins%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin list%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Get plugin info + copy URL%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin get syntax-highlighting%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Interactive removal%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin remove%s\n", get_muted(), RESET)
 
 	// Popular plugins section
-	popular_header_style := style_bold(new_style())
-	popular_header_style = style_foreground(popular_header_style, get_secondary())
-	popular_header_style = style_margin_top(popular_header_style, 1)
-
-	popular_header_output := render(popular_header_style, "POPULAR PLUGINS:")
-	defer delete(popular_header_output)
-	fmt.print(popular_header_output)
-
-	// Show first 5 popular plugins with styled output
-	plugins_style := style_foreground(new_style(), get_muted())
-	plugins_style = style_padding_left(plugins_style, 2)
-
+	fmt.printf("\n%s%sPOPULAR PLUGINS:%s\n", BOLD, get_secondary(), RESET)
 	count := 0
 	for name, info in POPULAR_PLUGINS {
 		if count >= 5 {
 			break
 		}
-		plugin_line := fmt.aprintf("• %s - %s", name, info.description)
-		defer delete(plugin_line)
-
-		plugin_output := render(plugins_style, plugin_line)
-		defer delete(plugin_output)
-		fmt.println(plugin_output)
+		fmt.printf("  %s• %s - %s%s\n", get_muted(), name, info.description, RESET)
 		count += 1
 	}
+	fmt.println()
 }
 
 print_plugin_add_help :: proc() {
-	// Title with styled box
-	title_style := style_border(new_style(), .Rounded)
-	title_style = style_padding(title_style, 1)
-	title_style = style_bold(title_style)
-	title_style = style_foreground(title_style, get_primary())
-	title_style = style_align_horizontal(title_style, .Center)
-	title_style = style_width(title_style, 60)
-
-	title_output := render(title_style, "wayu plugin add - Install plugin")
-	defer delete(title_output)
-	fmt.println(title_output)
+	// Title
+	fmt.printf("\n%s%swayu plugin add - Install plugin%s\n\n", BOLD, get_primary(), RESET)
 
 	// Usage section
-	usage_header_style := style_bold(new_style())
-	usage_header_style = style_foreground(usage_header_style, get_secondary())
-	usage_header_style = style_margin_top(usage_header_style, 1)
-
-	usage_header_output := render(usage_header_style, "USAGE:")
-	defer delete(usage_header_output)
-	fmt.print(usage_header_output)
-
+	fmt.printf("%s%sUSAGE:%s\n", BOLD, get_secondary(), RESET)
 	fmt.println("  wayu plugin add <name-or-url>")
 
 	// Examples section
-	examples_header_style := style_bold(new_style())
-	examples_header_style = style_foreground(examples_header_style, get_secondary())
-	examples_header_style = style_margin_top(examples_header_style, 1)
-
-	examples_header_output := render(examples_header_style, "EXAMPLES:")
-	defer delete(examples_header_output)
-	fmt.print(examples_header_output)
-
-	// Example commands with syntax highlighting
-	example_style := style_foreground(new_style(), get_muted())
-	example_style = style_padding_left(example_style, 2)
-
-	examples := []string{
-		"wayu plugin add syntax-highlighting",
-		"wayu plugin add https://github.com/user/plugin.git",
-	}
-
-	for example in examples {
-		example_output := render(example_style, example)
-		defer delete(example_output)
-		fmt.println(example_output)
-	}
+	fmt.printf("\n%s%sEXAMPLES:%s\n", BOLD, get_secondary(), RESET)
+	fmt.printf("  %swayu plugin add syntax-highlighting%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin add https://github.com/user/plugin.git%s\n", get_muted(), RESET)
+	fmt.println()
 }
