@@ -132,6 +132,9 @@ add_path_interactive :: proc() {
 		preview_fn,
 		submit_fn,
 	)
+	// Clean up form resources
+	// Note: initial_validation strings are now owned by form.fields[0].validation
+	// and will be cleaned up by form_destroy
 	defer form_destroy(&form)
 
 	success := form_run(&form)
