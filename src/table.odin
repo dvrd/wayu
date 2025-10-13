@@ -134,7 +134,8 @@ table_render :: proc(table: Table) -> string {
 	// Render headers
 	strings.write_string(&result, "\x1b[38;2;228;0;80m│\x1b[0m ")  // Colored border
 	for header, i in table.headers {
-		styled_header := render(table.header_style, header)
+		// Apply only text styles (bold, colors) without borders/padding
+		styled_header := apply_text_only_style(table.header_style, header)
 		padded_header := pad_string(styled_header, mutable_table.column_widths[i])
 		strings.write_string(&result, padded_header)
 
@@ -158,7 +159,8 @@ table_render :: proc(table: Table) -> string {
 	for row in table.rows {
 		strings.write_string(&result, "\x1b[38;2;228;0;80m│\x1b[0m ")  // Colored border
 		for cell, i in row {
-			styled_cell := render(table.style, cell)
+			// Apply only text styles (bold, colors) without borders/padding
+			styled_cell := apply_text_only_style(table.style, cell)
 			padded_cell := pad_string(styled_cell, mutable_table.column_widths[i])
 			strings.write_string(&result, padded_cell)
 
