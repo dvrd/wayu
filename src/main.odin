@@ -30,6 +30,7 @@ Command :: enum {
 	CONSTANTS,
 	COMPLETIONS,
 	BACKUP,
+	PLUGIN,
 	INIT,
 	MIGRATE,
 	VERSION,
@@ -68,6 +69,9 @@ main :: proc() {
   context.logger = log.create_console_logger(.Debug, { .Level, .Terminal_Color })
   defer log.destroy_console_logger(context.logger)
 
+	// Initialize color system (PRP-09 Phase 1)
+	init_colors()
+
 	init_shell_globals()
 	init_config_files()
 
@@ -89,6 +93,8 @@ main :: proc() {
 		handle_completions_command(parsed.action, parsed.args)
 	case .BACKUP:
 		handle_backup_command(parsed.action, parsed.args)
+	case .PLUGIN:
+		handle_plugin_command(parsed.action, parsed.args)
 	case .INIT:
 		handle_init_command()
 	case .MIGRATE:
@@ -155,6 +161,8 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		parsed.command = .COMPLETIONS
 	case "backup":
 		parsed.command = .BACKUP
+	case "plugin":
+		parsed.command = .PLUGIN
 	case "init":
 		parsed.command = .INIT
 		return parsed
@@ -430,6 +438,7 @@ print_help :: proc() {
 	print_item("", "constants", "Manage environment constants", EMOJI_CONSTANT)
 	print_item("", "completions", "Manage Zsh completion scripts", EMOJI_COMMAND)
 	print_item("", "backup", "Manage configuration backups", EMOJI_INFO)
+	print_item("", "plugin", "Manage shell plugins", EMOJI_COMMAND)
 	print_item("", "init", "Initialize wayu configuration directory", EMOJI_INFO)
 	print_item("", "migrate", "Migrate configuration between shells", EMOJI_INFO)
 	print_item("", "version", "Show version information", EMOJI_INFO)
@@ -459,6 +468,8 @@ print_help :: proc() {
 	fmt.printf("  wayu completions rm              # Interactive removal\n")
 	fmt.printf("  wayu backup list                 # Show all backups\n")
 	fmt.printf("  wayu backup restore path         # Restore path config\n")
+	fmt.printf("  wayu plugin add syntax-highlighting  # Install plugin\n")
+	fmt.printf("  wayu plugin list                 # Show installed plugins\n")
 	fmt.printf("  wayu migrate --from zsh --to bash # Migrate between shells\n")
 	fmt.println()
 	fmt.printf("  # Preview changes with dry-run:\n")
