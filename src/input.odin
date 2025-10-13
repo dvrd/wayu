@@ -84,6 +84,18 @@ input_handle_key :: proc(input: ^Input, ch: byte) -> bool {
 
 	// Validate if modified
 	if modified && input.validator != nil {
+		// Free old validation strings
+		if len(input.validation.error_message) > 0 {
+			delete(input.validation.error_message)
+		}
+		if len(input.validation.warning) > 0 {
+			delete(input.validation.warning)
+		}
+		if len(input.validation.info) > 0 {
+			delete(input.validation.info)
+		}
+
+		// Get new validation
 		input.validation = input.validator(input.value)
 	}
 
@@ -335,6 +347,17 @@ input_set_value :: proc(input: ^Input, value: string) {
 
 	// Validate
 	if input.validator != nil {
+		// Free old validation strings
+		if len(input.validation.error_message) > 0 {
+			delete(input.validation.error_message)
+		}
+		if len(input.validation.warning) > 0 {
+			delete(input.validation.warning)
+		}
+		if len(input.validation.info) > 0 {
+			delete(input.validation.info)
+		}
+
 		input.validation = input.validator(input.value)
 	}
 }
