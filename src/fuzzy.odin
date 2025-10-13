@@ -213,26 +213,42 @@ fuzzy_update_scroll :: proc(view: ^FuzzyView) {
 	}
 }
 
-// Render title box
+// Render title box with fixed width
 fuzzy_render_title :: proc(title: string) -> string {
-	border_style := Style{
-		border_style = .Rounded,
-		border_top = true,
-		border_bottom = true,
-		border_left = true,
-		border_right = true,
-		border_fg = get_primary(),
-		padding_left = 2,
-		padding_right = 2,
-	}
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
 
-	title_style := Style{
-		foreground = get_primary(),
-		bold = true,
-	}
+	width :: 60
 
-	styled_title := apply_text_only_style(title_style, title)
-	return render(border_style, styled_title)
+	// Top border
+	fmt.sbprintf(&builder, "%s╭%s╮%s\n",
+		get_primary(),
+		strings.repeat("─", width),
+		RESET)
+
+	// Title line with padding
+	title_len := len(title)
+	padding := (width - title_len) / 2
+	remaining := width - title_len - padding
+
+	fmt.sbprintf(&builder, "%s│%s%s%s%s%s%s│%s\n",
+		get_primary(),
+		strings.repeat(" ", padding),
+		BOLD,
+		title,
+		RESET,
+		strings.repeat(" ", remaining),
+		get_primary(),
+		RESET)
+
+	// Bottom border
+	fmt.sbprintf(&builder, "%s╰%s╯%s",
+		get_primary(),
+		strings.repeat("─", width),
+		RESET)
+
+	return strings.clone(strings.to_string(builder))
 }
 
 // Render filter input with cursor
@@ -342,7 +358,7 @@ fuzzy_render_items :: proc(view: ^FuzzyView) -> string {
 	return strings.clone(strings.to_string(builder))
 }
 
-// Render details panel
+// Render details panel with fixed width
 fuzzy_render_details :: proc(view: ^FuzzyView) -> string {
 	if !view.show_details || view.details_fn == nil {
 		return ""
@@ -354,31 +370,50 @@ fuzzy_render_details :: proc(view: ^FuzzyView) -> string {
 
 	item := &view.filtered_items[view.selected_index]
 	details_content := view.details_fn(item)
+	defer delete(details_content)
 
-	// Create styled details panel
-	border_style := Style{
-		border_style = .Rounded,
-		border_top = true,
-		border_bottom = true,
-		border_left = true,
-		border_right = true,
-		border_fg = get_secondary(),
-		padding_top = 1,
-		padding_bottom = 1,
-		padding_left = 1,
-		padding_right = 1,
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+
+	width :: 60
+
+	// Top border with title
+	fmt.sbprintf(&builder, "%s╭─ Details %s╮%s\n",
+		get_secondary(),
+		strings.repeat("─", width - 10),
+		RESET)
+
+	// Split content into lines and render each
+	lines := strings.split(details_content, "\n")
+	defer delete(lines)
+
+	for line in lines {
+		// Strip ANSI codes for width calculation
+		clean_line := line
+		line_width := visible_width(clean_line)
+
+		// Left border
+		fmt.sbprintf(&builder, "%s│%s ", get_secondary(), RESET)
+
+		// Content
+		fmt.sbprintf(&builder, "%s", line)
+
+		// Padding
+		padding := max(0, width - line_width - 2)
+		fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
+
+		// Right border
+		fmt.sbprintf(&builder, "%s│%s\n", get_secondary(), RESET)
 	}
 
-	title_style := Style{
-		foreground = get_secondary(),
-		bold = true,
-	}
+	// Bottom border
+	fmt.sbprintf(&builder, "%s╰%s╯%s",
+		get_secondary(),
+		strings.repeat("─", width),
+		RESET)
 
-	title := apply_text_only_style(title_style, "Details")
-	full_content := fmt.aprintf("%s\n\n%s", title, details_content)
-	defer delete(full_content)
-
-	return render(border_style, full_content)
+	return strings.clone(strings.to_string(builder))
 }
 
 // Main render function
