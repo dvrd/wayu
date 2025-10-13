@@ -25,6 +25,10 @@ handle_path_command :: proc(action: Action, args: []string) {
 		}
 	case .LIST:
 		list_paths()
+	case .GET:
+		fmt.eprintln("ERROR: get action not supported for path command")
+		fmt.println("The get action only applies to plugins")
+		os.exit(1)
 	case .CLEAN:
 		clean_missing_paths()
 	case .DEDUP:
@@ -520,7 +524,7 @@ list_paths :: proc() {
 			print_warning("⚠️  Found %d duplicate entries", duplicates_count)
 		}
 	}
-	fmt.println()
+
 	table_output := table_render(table)
 	defer delete(table_output)
 	fmt.print(table_output)

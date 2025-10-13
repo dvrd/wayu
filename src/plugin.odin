@@ -751,6 +751,115 @@ handle_plugin_remove :: proc(args: []string) {
 	print_success("Plugin '%s' removed successfully", plugin_name)
 }
 
+// Handle plugin get command - display plugin info and copy URL to clipboard
+handle_plugin_get :: proc(args: []string) {
+	if len(args) == 0 {
+		print_error_simple("Error: Plugin name required")
+		fmt.println("\nUsage: wayu plugin get <name>")
+		os.exit(1)
+	}
+
+	plugin_name := args[0]
+
+	// Read current config
+	config := read_plugin_config()
+	defer {
+		for plugin in config.plugins {
+			delete(plugin.name)
+			delete(plugin.url)
+			delete(plugin.installed_path)
+			delete(plugin.entry_file)
+		}
+		delete(config.plugins)
+	}
+
+	// Find plugin
+	plugin_ptr, found := find_plugin(&config, plugin_name)
+	if !found {
+		print_error_simple("Error: Plugin '%s' not found", plugin_name)
+		fmt.println("\nRun 'wayu plugin list' to see installed plugins")
+		os.exit(1)
+	}
+
+	// Display plugin information
+	print_header("Plugin Information", EMOJI_COMMAND)
+	fmt.println()
+
+	// Create table with plugin details
+	table := new_table([]string{"Property", "Value"})
+	defer delete(table.rows)
+
+	table_add_row(&table, []string{"Name", plugin_ptr.name})
+	table_add_row(&table, []string{"URL", plugin_ptr.url})
+	table_add_row(&table, []string{"Status", plugin_ptr.enabled ? "✓ Enabled" : "○ Disabled"})
+	table_add_row(&table, []string{"Shell", shell_compat_to_string(plugin_ptr.shell)})
+	table_add_row(&table, []string{"Path", plugin_ptr.installed_path})
+
+	output := table_render(table)
+	defer delete(output)
+	fmt.print(output)
+
+	fmt.println()
+
+	// Copy URL to clipboard
+	if !DRY_RUN {
+		// Detect platform and use appropriate clipboard command
+		when ODIN_OS == .Darwin {
+			// macOS - use pbcopy
+			cmd := fmt.aprintf("printf '%%s' \"%s\" | pbcopy", plugin_ptr.url)
+			defer delete(cmd)
+
+			cmd_cstr := strings.clone_to_cstring(cmd)
+			defer delete(cmd_cstr)
+
+			result := libc.system(cmd_cstr)
+			if result == 0 {
+				print_success("URL copied to clipboard: %s", plugin_ptr.url)
+			} else {
+				print_warning("Failed to copy URL to clipboard")
+				print_info("URL: %s", plugin_ptr.url)
+			}
+		} else when ODIN_OS == .Linux {
+			// Linux - try xclip first, then xsel
+			cmd := fmt.aprintf("printf '%%s' \"%s\" | xclip -selection clipboard 2>/dev/null || printf '%%s' \"%s\" | xsel --clipboard",
+				plugin_ptr.url, plugin_ptr.url)
+			defer delete(cmd)
+
+			cmd_cstr := strings.clone_to_cstring(cmd)
+			defer delete(cmd_cstr)
+
+			result := libc.system(cmd_cstr)
+			if result == 0 {
+				print_success("URL copied to clipboard: %s", plugin_ptr.url)
+			} else {
+				print_warning("Failed to copy URL to clipboard (install xclip or xsel)")
+				print_info("URL: %s", plugin_ptr.url)
+			}
+		} else when ODIN_OS == .Windows {
+			// Windows - use clip.exe
+			cmd := fmt.aprintf("echo %s | clip", plugin_ptr.url)
+			defer delete(cmd)
+
+			cmd_cstr := strings.clone_to_cstring(cmd)
+			defer delete(cmd_cstr)
+
+			result := libc.system(cmd_cstr)
+			if result == 0 {
+				print_success("URL copied to clipboard: %s", plugin_ptr.url)
+			} else {
+				print_warning("Failed to copy URL to clipboard")
+				print_info("URL: %s", plugin_ptr.url)
+			}
+		} else {
+			// Unsupported OS
+			print_warning("Clipboard copy not supported on this platform")
+			print_info("URL: %s", plugin_ptr.url)
+		}
+	} else {
+		print_info("[DRY RUN] Would copy URL to clipboard: %s", plugin_ptr.url)
+	}
+}
+
 // Handle plugin command routing
 handle_plugin_command :: proc(action: Action, args: []string) {
 	#partial switch action {
@@ -760,6 +869,8 @@ handle_plugin_command :: proc(action: Action, args: []string) {
 		handle_plugin_remove(args)
 	case .LIST:
 		handle_plugin_list(args)
+	case .GET:
+		handle_plugin_get(args)
 	case .HELP:
 		print_plugin_help()
 	case:
@@ -782,15 +893,17 @@ print_plugin_help :: proc() {
 	print_item("", "add <name-or-url>", "Install plugin", EMOJI_ADD)
 	print_item("", "remove [name]", "Remove plugin (interactive if no name)", EMOJI_REMOVE)
 	print_item("", "list", "List installed plugins", EMOJI_LIST)
+	print_item("", "get <name>", "Show plugin info and copy URL to clipboard", EMOJI_INFO)
 	print_item("", "help", "Show this help message", EMOJI_INFO)
 	fmt.println()
 
 	print_section("EXAMPLES:", EMOJI_CYCLIST)
-	fmt.printf("  wayu plugin add syntax-highlighting    # Install popular plugin\n")
-	fmt.printf("  wayu plugin add https://github.com/user/plugin.git  # Install from URL\n")
-	fmt.printf("  wayu plugin list                        # Show all plugins\n")
-	fmt.printf("  wayu plugin remove                      # Interactive removal\n")
-	fmt.printf("  wayu plugin remove syntax-highlighting  # Remove specific plugin\n")
+	fmt.printf("  wayu plugin add syntax-highlighting                      # Install popular plugin\n")
+	fmt.printf("  wayu plugin add https://github.com/user/plugin.git       # Install from URL\n")
+	fmt.printf("  wayu plugin list                                         # Show all plugins\n")
+	fmt.printf("  wayu plugin get syntax-highlighting                      # Get plugin info + copy URL\n")
+	fmt.printf("  wayu plugin remove                                       # Interactive removal\n")
+	fmt.printf("  wayu plugin remove syntax-highlighting                   # Remove specific plugin\n")
 	fmt.println()
 
 	print_section("POPULAR PLUGINS:", EMOJI_INFO)

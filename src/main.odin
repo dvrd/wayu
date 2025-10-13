@@ -45,6 +45,7 @@ Action :: enum {
 	ADD,
 	REMOVE,
 	LIST,
+	GET,
 	RESTORE,
 	CLEAN,
 	DEDUP,
@@ -211,6 +212,8 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		parsed.action = .REMOVE
 	case "list", "ls":
 		parsed.action = .LIST
+	case "get":
+		parsed.action = .GET
 	case "restore":
 		parsed.action = .RESTORE
 	case "clean":

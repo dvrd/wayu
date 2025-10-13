@@ -344,6 +344,10 @@ handle_backup_command :: proc(action: Action, args: []string) {
 		} else {
 			cleanup_config_backups(args[0])
 		}
+	case .GET:
+		fmt.eprintln("ERROR: get action not supported for backup command")
+		fmt.println("The get action only applies to plugins")
+		os.exit(1)
 	case .HELP:
 		print_backup_help()
 	case .UNKNOWN:
