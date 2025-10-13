@@ -210,12 +210,18 @@ EMOJI_COMMAND   :: " "
 EMOJI_ACTION    :: " "
 EMOJI_CYCLIST   :: " "
 EMOJI_FILE      :: " "
-EMOJI_PATH      :: " "
+EMOJI_PATH      :: " "
 EMOJI_ALIAS     :: " "
 EMOJI_CONSTANT  :: " "
 EMOJI_REMOVE    :: " "
 EMOJI_ADD       :: "➕"
 EMOJI_LIST      :: " "
+
+// Colored Status Symbols (using Zellij theme colors)
+SYMBOL_CHECK_SUCCESS :: "\x1b[38;2;14;116;144m✓\x1b[0m"   // Teal checkmark
+SYMBOL_CHECK_ERROR   :: "\x1b[38;2;153;27;27m✗\x1b[0m"    // Red X
+SYMBOL_CHECK_MISSING :: "\x1b[38;2;217;119;6m○\x1b[0m"    // Orange circle
+SYMBOL_CHECK_WARN    :: "\x1b[38;2;217;119;6m⚠\x1b[0m"    // Orange warning
 
 // ============================================================================
 // ENHANCED PRINT FUNCTIONS (PRP-09 Phase 1)

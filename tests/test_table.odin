@@ -101,8 +101,8 @@ test_table_render :: proc(t: ^testing.T) {
     testing.expect_value(t, strings.contains(output, "Status"), true)
     testing.expect_value(t, strings.contains(output, "Test"), true)
     testing.expect_value(t, strings.contains(output, "OK"), true)
-    testing.expect_value(t, strings.contains(output, "┌"), true) // Top border
-    testing.expect_value(t, strings.contains(output, "└"), true) // Bottom border
+    testing.expect_value(t, strings.contains(output, "╭"), true) // Curved top border
+    testing.expect_value(t, strings.contains(output, "╰"), true) // Curved bottom border
     testing.expect_value(t, strings.contains(output, "│"), true) // Side borders
 }
 
