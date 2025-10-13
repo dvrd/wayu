@@ -2,6 +2,9 @@ package wayu
 
 import "core:log"
 
+// Debug logging that only activates when built with -define:DEBUG=true
 debug :: proc(msg: string, args: ..any) {
-	log.debugf(msg, ..args)
+	when ODIN_DEBUG {
+		log.debugf(msg, ..args)
+	}
 }
