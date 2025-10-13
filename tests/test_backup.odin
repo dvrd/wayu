@@ -81,9 +81,10 @@ test_get_directory_path :: proc(t: ^testing.T) {
 
 	for test_case in test_cases {
 		result := wayu.get_directory_path(test_case.input)
-		testing.expect(t, result == test_case.expected,
-			fmt.aprintf("get_directory_path('%s') should return '%s', got '%s'",
-				test_case.input, test_case.expected, result))
+		msg := fmt.aprintf("get_directory_path('%s') should return '%s', got '%s'",
+			test_case.input, test_case.expected, result)
+		testing.expect(t, result == test_case.expected, msg)
+		delete(msg)
 	}
 }
 
@@ -102,9 +103,10 @@ test_get_base_name :: proc(t: ^testing.T) {
 
 	for test_case in test_cases {
 		result := wayu.get_base_name(test_case.input)
-		testing.expect(t, result == test_case.expected,
-			fmt.aprintf("get_base_name('%s') should return '%s', got '%s'",
-				test_case.input, test_case.expected, result))
+		msg := fmt.aprintf("get_base_name('%s') should return '%s', got '%s'",
+			test_case.input, test_case.expected, result)
+		testing.expect(t, result == test_case.expected, msg)
+		delete(msg)
 	}
 }
 
@@ -163,13 +165,15 @@ test_get_config_file_path :: proc(t: ^testing.T) {
 		defer if len(result) > 0 do delete(result)
 
 		if test_case.should_work {
-			testing.expect(t, len(result) > 0,
-				fmt.aprintf("Should return path for '%s'", test_case.config_type))
+			msg := fmt.aprintf("Should return path for '%s'", test_case.config_type)
+			testing.expect(t, len(result) > 0, msg)
+			delete(msg)
 			testing.expect(t, strings.contains(result, ".config/wayu"),
 				"Should contain wayu config directory")
 		} else {
-			testing.expect(t, result == "",
-				fmt.aprintf("Should return empty for invalid type '%s'", test_case.config_type))
+			msg := fmt.aprintf("Should return empty for invalid type '%s'", test_case.config_type)
+			testing.expect(t, result == "", msg)
+			delete(msg)
 		}
 	}
 }
