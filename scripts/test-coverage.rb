@@ -7,7 +7,7 @@
 require 'fileutils'
 
 BIN_DIR = './bin'
-TEST_DIR = './tests'
+TEST_DIR = './tests/unit'
 SRC_DIR = './src'
 COVERAGE_DIR = './coverage'
 
