@@ -333,87 +333,34 @@ list_completions :: proc() {
 
 // Help for completions command
 print_completions_help :: proc() {
-	// Title with styled box
-	title_style := style_border(new_style(), .Rounded)
-	title_style = style_padding(title_style, 1)
-	title_style = style_bold(title_style)
-	title_style = style_foreground(title_style, get_primary())
-	title_style = style_align_horizontal(title_style, .Center)
-	title_style = style_width(title_style, 60)
-
-	title_output := render(title_style, "wayu completions - Manage shell completions")
-	defer delete(title_output)
-	fmt.println(title_output)
+	// Title
+	fmt.printf("\n%s%swayu completions - Manage shell completions%s\n\n", BOLD, get_primary(), RESET)
 
 	// Usage section
-	usage_header_style := style_bold(new_style())
-	usage_header_style = style_foreground(usage_header_style, get_secondary())
-	usage_header_style = style_margin_top(usage_header_style, 1)
-
-	usage_header_output := render(usage_header_style, "USAGE:")
-	defer delete(usage_header_output)
-	fmt.print(usage_header_output)
-
-	// Commands
+	fmt.printf("%s%sUSAGE:%s\n", BOLD, get_secondary(), RESET)
 	fmt.println("  wayu completions add <name> <source-file>    Add completion")
 	fmt.println("  wayu completions remove [name]               Remove completion (alias: rm)")
 	fmt.println("  wayu completions list                        List all completions (alias: ls)")
 	fmt.println("  wayu completions help                        Show this help")
 
 	// Examples section
-	examples_header_style := style_bold(new_style())
-	examples_header_style = style_foreground(examples_header_style, get_secondary())
-	examples_header_style = style_margin_top(examples_header_style, 1)
-
-	examples_header_output := render(examples_header_style, "EXAMPLES:")
-	defer delete(examples_header_output)
-	fmt.print(examples_header_output)
-
-	// Example commands with syntax highlighting
-	example_style := style_foreground(new_style(), get_muted())
-	example_style = style_padding_left(example_style, 2)
-
-	examples := []string{
-		"# Add jujutsu completion",
-		"wayu completions add jj /path/to/_jj",
-		"",
-		"# List all completions",
-		"wayu completions list",
-		"",
-		"# Remove completion interactively",
-		"wayu completions rm",
-		"",
-		"# Remove specific completion",
-		"wayu completions rm jj",
-	}
-
-	for example in examples {
-		example_output := render(example_style, example)
-		defer delete(example_output)
-		fmt.println(example_output)
-	}
+	fmt.printf("\n%s%sEXAMPLES:%s\n", BOLD, get_secondary(), RESET)
+	fmt.printf("  %s# Add jujutsu completion%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu completions add jj /path/to/_jj%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# List all completions%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu completions list%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Remove completion interactively%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu completions rm%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Remove specific completion%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu completions rm jj%s\n", get_muted(), RESET)
 
 	// Notes section
-	notes_header_style := style_bold(new_style())
-	notes_header_style = style_foreground(notes_header_style, get_secondary())
-	notes_header_style = style_margin_top(notes_header_style, 1)
-
-	notes_header_output := render(notes_header_style, "NOTES:")
-	defer delete(notes_header_output)
-	fmt.print(notes_header_output)
-
-	notes := []string{
-		"• Completion files are stored in ~/.config/wayu/completions/",
-		"• Files are automatically prefixed with '_' if not already",
-		"• Restart your shell or run 'source ~/.config/wayu/init.zsh' after adding",
-	}
-
-	notes_style := style_foreground(new_style(), get_muted())
-	notes_style = style_padding_left(notes_style, 2)
-
-	for note in notes {
-		note_output := render(notes_style, note)
-		defer delete(note_output)
-		fmt.println(note_output)
-	}
+	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
+	fmt.printf("  %s• Completion files are stored in ~/.config/wayu/completions/%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Files are automatically prefixed with '_' if not already%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Restart your shell or run 'source ~/.config/wayu/init.zsh' after adding%s\n", get_muted(), RESET)
+	fmt.println()
 }
