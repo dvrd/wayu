@@ -296,7 +296,7 @@ list_paths :: proc() {
 	defer cleanup_path_analysis(&path_analysis)
 
 	// Create and configure table with enhanced headers
-	headers := []string{"PATH Entry", "Status", "Issues"}
+	headers := []string{"Entry", "Status", "Issues"}
 	table := new_table(headers)
 	defer table_destroy(&table)
 
@@ -351,7 +351,6 @@ list_paths :: proc() {
 	duplicates_count := count_duplicates(path_analysis.duplicate_indices)
 	missing_count := count_missing_paths(paths[:])
 
-	print_header("your PATH entries", EMOJI_PATH)
 	if duplicates_count > 0 || missing_count > 0 {
 		fmt.println()
 		if missing_count > 0 {

@@ -8,6 +8,7 @@ import wayu "../src"
 test_parse_args_path_add :: proc(t: ^testing.T) {
 	args := []string{"path", "add", "/usr/local/bin"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.PATH)
 	testing.expect_value(t, parsed.action, wayu.Action.ADD)
@@ -19,6 +20,7 @@ test_parse_args_path_add :: proc(t: ^testing.T) {
 test_parse_args_alias_add :: proc(t: ^testing.T) {
 	args := []string{"alias", "add", "ll", "ls -la"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.ALIAS)
 	testing.expect_value(t, parsed.action, wayu.Action.ADD)
@@ -31,6 +33,7 @@ test_parse_args_alias_add :: proc(t: ^testing.T) {
 test_parse_args_constants_remove :: proc(t: ^testing.T) {
 	args := []string{"constants", "rm"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.CONSTANTS)
 	testing.expect_value(t, parsed.action, wayu.Action.REMOVE)
@@ -41,6 +44,7 @@ test_parse_args_constants_remove :: proc(t: ^testing.T) {
 test_parse_args_help :: proc(t: ^testing.T) {
 	args := []string{"help"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.HELP)
 }
@@ -49,6 +53,7 @@ test_parse_args_help :: proc(t: ^testing.T) {
 test_parse_args_empty :: proc(t: ^testing.T) {
 	args := []string{}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.HELP)
 }
@@ -57,6 +62,7 @@ test_parse_args_empty :: proc(t: ^testing.T) {
 test_parse_args_unknown_command :: proc(t: ^testing.T) {
 	args := []string{"unknown"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.UNKNOWN)
 }
@@ -65,6 +71,7 @@ test_parse_args_unknown_command :: proc(t: ^testing.T) {
 test_parse_args_backup_restore :: proc(t: ^testing.T) {
 	args := []string{"backup", "restore"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.BACKUP)
 	testing.expect_value(t, parsed.action, wayu.Action.RESTORE)
@@ -74,6 +81,7 @@ test_parse_args_backup_restore :: proc(t: ^testing.T) {
 test_parse_args_backup_clean :: proc(t: ^testing.T) {
 	args := []string{"backup", "clean"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.BACKUP)
 	testing.expect_value(t, parsed.action, wayu.Action.CLEAN)
@@ -83,6 +91,7 @@ test_parse_args_backup_clean :: proc(t: ^testing.T) {
 test_parse_args_plugin_list :: proc(t: ^testing.T) {
 	args := []string{"plugin", "list"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.PLUGIN)
 	testing.expect_value(t, parsed.action, wayu.Action.LIST)
@@ -92,6 +101,7 @@ test_parse_args_plugin_list :: proc(t: ^testing.T) {
 test_parse_args_completions_add :: proc(t: ^testing.T) {
 	args := []string{"completions", "add", "_test"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.COMPLETIONS)
 	testing.expect_value(t, parsed.action, wayu.Action.ADD)
@@ -102,6 +112,7 @@ test_parse_args_completions_add :: proc(t: ^testing.T) {
 test_parse_args_init_command :: proc(t: ^testing.T) {
 	args := []string{"init"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.INIT)
 }
@@ -110,6 +121,7 @@ test_parse_args_init_command :: proc(t: ^testing.T) {
 test_parse_args_version :: proc(t: ^testing.T) {
 	args := []string{"version"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.VERSION)
 }

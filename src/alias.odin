@@ -315,16 +315,13 @@ list_aliases :: proc() {
 		table_add_row(&table, row)
 	}
 
-	// Print header and render table
-	print_header("Shell Aliases", "🔗")
-	fmt.println()
 	table_output := table_render(table)
 	defer delete(table_output)
 	fmt.print(table_output)
 }
 
 print_alias_help :: proc() {
-	print_header("wayu alias - Manage shell aliases\n", EMOJI_PALM_TREE)
+	print_header("wayu alias - Manage shell aliases\n", EMOJI_MOUNTAIN)
 	print_section("USAGE:", EMOJI_USER)
 	fmt.println("  wayu alias add <alias> <command>    Add or update alias")
 	fmt.println("  wayu alias rm [alias]               Remove alias (interactive if no alias)")

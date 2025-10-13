@@ -94,6 +94,7 @@ test_parse_args_path_list :: proc(t: ^testing.T) {
 test_parse_args_path_remove :: proc(t: ^testing.T) {
 	args := []string{"path", "rm", "/usr/local/bin"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 	testing.expect_value(t, parsed.command, wayu.Command.PATH)
 	testing.expect_value(t, parsed.action, wayu.Action.REMOVE)
 	testing.expect_value(t, len(parsed.args), 1)
