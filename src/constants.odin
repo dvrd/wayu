@@ -9,15 +9,20 @@ import "core:strings"
 handle_constants_command :: proc(action: Action, args: []string) {
 	switch action {
 	case .ADD:
-		if len(args) < 2 {
+		if len(args) == 0 {
+			// Interactive TUI mode when no arguments provided
+			add_constant_interactive()
+		} else if len(args) < 2 {
 			fmt.eprintln("ERROR: constants add requires two arguments: <name> <value>")
 			fmt.println("Usage: wayu constants add <name> <value>")
+			fmt.println("Or run without arguments for interactive mode: wayu constants add")
 			os.exit(1)
+		} else {
+			// CLI mode with provided arguments (backward compatible)
+			value := strings.join(args[1:], " ")
+			defer delete(value)
+			add_constant(args[0], value)
 		}
-		// Join remaining args as the value
-		value := strings.join(args[1:], " ")
-		defer delete(value)
-		add_constant(args[0], value)
 	case .REMOVE:
 		if len(args) == 0 {
 			remove_constant_interactive()
@@ -26,6 +31,10 @@ handle_constants_command :: proc(action: Action, args: []string) {
 		}
 	case .LIST:
 		list_constants()
+	case .GET:
+		fmt.eprintln("ERROR: get action not supported for constants command")
+		fmt.println("The get action only applies to plugins")
+		os.exit(1)
 	case .RESTORE:
 		// RESTORE action is handled by backup command, not constants command
 		fmt.eprintln("ERROR: restore action not supported for constants command")
@@ -45,6 +54,161 @@ handle_constants_command :: proc(action: Action, args: []string) {
 		fmt.eprintln("Unknown constants action")
 		print_constants_help()
 		os.exit(1)
+	}
+}
+
+// Interactive TUI mode for adding constants
+add_constant_interactive :: proc() {
+	// Check TTY - if not interactive terminal, show error
+	if !os.exists("/dev/tty") {
+		fmt.eprintln("ERROR: Interactive mode requires a TTY")
+		fmt.println("Use: wayu constants add <name> <value>")
+		os.exit(1)
+	}
+
+	// Create form fields with validators
+	name_input := new_input_with_validator("e.g., MY_VAR, API_URL", 64, validate_constant_name_for_form)
+	value_input := new_input_with_validator("e.g., /path/to/something, https://api.example.com", 64, validate_constant_value_for_form)
+
+	// Run initial validation with empty values
+	name_validation := validate_constant_name_for_form("")
+	value_validation := validate_constant_value_for_form("")
+
+	fields := []FormField{
+		{
+			label = "📝 Enter constant name:",
+			input = name_input,
+			validation = name_validation,
+			required = true,
+		},
+		{
+			label = "💾 Enter value:",
+			input = value_input,
+			validation = value_validation,
+			required = true,
+		},
+	}
+
+	// Create preview function
+	preview_fn := proc(form: ^Form) -> string {
+		const_name := form.fields[0].input.value
+		const_value := form.fields[1].input.value
+
+		if len(const_name) == 0 || len(const_value) == 0 {
+			return ""
+		}
+
+		// Generate preview
+		builder := strings.builder_make()
+		defer strings.builder_destroy(&builder)
+
+		fmt.sbprintf(&builder, "Will add constant:\n")
+		fmt.sbprintf(&builder, "  %sexport %s=\"%s\"%s\n\n",
+			get_secondary(), const_name, const_value, RESET)
+
+		// Check if constant already exists
+		items := extract_constant_items()
+		defer {
+			for item in items {
+				delete(item)
+			}
+			delete(items)
+		}
+
+		for item in items {
+			// Check if constant already exists by checking prefix
+			const_check := fmt.aprintf("export %s=", const_name)
+			defer delete(const_check)
+			if strings.has_prefix(item, const_check) {
+				fmt.sbprintf(&builder, "%s⚠ Constant already exists (will be updated)%s\n",
+					get_warning(), RESET)
+				break
+			}
+		}
+
+		return strings.clone(strings.to_string(builder))
+	}
+
+	// Create submit function
+	submit_fn := proc(form: ^Form) -> bool {
+		const_name := form.fields[0].input.value
+		const_value := form.fields[1].input.value
+
+		if len(const_name) == 0 || len(const_value) == 0 {
+			return false
+		}
+
+		// Add the constant using existing logic
+		add_constant(const_name, const_value)
+		return true
+	}
+
+	// Create and run form
+	form := new_form(
+		"✨ Add Environment Constant",
+		fields,
+		preview_fn,
+		submit_fn,
+	)
+	// Clean up form resources
+	defer form_destroy(&form)
+
+	success := form_run(&form)
+
+	if success {
+		// Success message already printed by add_constant
+	} else {
+		print_info("Operation cancelled")
+	}
+}
+
+// Validator for constant name in forms
+validate_constant_name_for_form :: proc(name: string) -> InputValidation {
+	if len(strings.trim_space(name)) == 0 {
+		return InputValidation{
+			valid = false,
+			error_message = strings.clone("Constant name cannot be empty"),
+			warning = "",
+			info = "",
+		}
+	}
+
+	// Use existing validation
+	base_validation := validate_identifier(name, "Constant")
+
+	if !base_validation.valid {
+		return InputValidation{
+			valid = false,
+			error_message = strings.clone(base_validation.error_message),
+			warning = "",
+			info = "",
+		}
+	}
+
+	return InputValidation{
+		valid = true,
+		error_message = "",
+		warning = "",
+		info = strings.clone("Press Tab to move to next field"),
+	}
+}
+
+// Validator for constant value in forms
+validate_constant_value_for_form :: proc(value: string) -> InputValidation {
+	if len(strings.trim_space(value)) == 0 {
+		return InputValidation{
+			valid = false,
+			error_message = strings.clone("Value cannot be empty"),
+			warning = "",
+			info = "",
+		}
+	}
+
+	return InputValidation{
+		valid = true,
+		error_message = "",
+		warning = "",
+		info = strings.clone("Press Enter to add this constant"),
 	}
 }
 

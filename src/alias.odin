@@ -9,15 +9,20 @@ import "core:strings"
 handle_alias_command :: proc(action: Action, args: []string) {
 	switch action {
 	case .ADD:
-		if len(args) < 2 {
+		if len(args) == 0 {
+			// Interactive TUI mode when no arguments provided
+			add_alias_interactive()
+		} else if len(args) < 2 {
 			fmt.eprintln("ERROR: alias add requires two arguments: <alias> <command>")
 			fmt.println("Usage: wayu alias add <alias> <command>")
+			fmt.println("Or run without arguments for interactive mode: wayu alias add")
 			os.exit(1)
+		} else {
+			// CLI mode with provided arguments (backward compatible)
+			command := strings.join(args[1:], " ")
+			defer delete(command)
+			add_alias(args[0], command)
 		}
-		// Join remaining args as the command
-		command := strings.join(args[1:], " ")
-		defer delete(command)
-		add_alias(args[0], command)
 	case .REMOVE:
 		if len(args) == 0 {
 			remove_alias_interactive()
@@ -26,6 +31,10 @@ handle_alias_command :: proc(action: Action, args: []string) {
 		}
 	case .LIST:
 		list_aliases()
+	case .GET:
+		fmt.eprintln("ERROR: get action not supported for alias command")
+		fmt.println("The get action only applies to plugins")
+		os.exit(1)
 	case .RESTORE:
 		// RESTORE action is handled by backup command, not alias command
 		fmt.eprintln("ERROR: restore action not supported for alias command")
@@ -45,6 +54,160 @@ handle_alias_command :: proc(action: Action, args: []string) {
 		fmt.eprintln("Unknown alias action")
 		print_alias_help()
 		os.exit(1)
+	}
+}
+
+// Interactive TUI mode for adding aliases
+add_alias_interactive :: proc() {
+	// Check TTY - if not interactive terminal, show error
+	if !os.exists("/dev/tty") {
+		fmt.eprintln("ERROR: Interactive mode requires a TTY")
+		fmt.println("Use: wayu alias add <alias> <command>")
+		os.exit(1)
+	}
+
+	// Create form fields with validators
+	alias_input := new_input_with_validator("e.g., ll, gc, gst", 64, validate_alias_name_for_form)
+	command_input := new_input_with_validator("e.g., ls -la, git commit", 64, validate_alias_command_for_form)
+
+	// Run initial validation with empty values
+	alias_validation := validate_alias_name_for_form("")
+	command_validation := validate_alias_command_for_form("")
+
+	fields := []FormField{
+		{
+			label = "✏️  Enter alias name:",
+			input = alias_input,
+			validation = alias_validation,
+			required = true,
+		},
+		{
+			label = "⌨️  Enter command:",
+			input = command_input,
+			validation = command_validation,
+			required = true,
+		},
+	}
+
+	// Create preview function
+	preview_fn := proc(form: ^Form) -> string {
+		alias_name := form.fields[0].input.value
+		command_value := form.fields[1].input.value
+
+		if len(alias_name) == 0 || len(command_value) == 0 {
+			return ""
+		}
+
+		// Generate preview
+		builder := strings.builder_make()
+		defer strings.builder_destroy(&builder)
+
+		fmt.sbprintf(&builder, "Will add alias:\n")
+		fmt.sbprintf(&builder, "  %salias %s=\"%s\"%s\n\n",
+			get_secondary(), alias_name, command_value, RESET)
+
+		// Check if alias already exists
+		items := extract_alias_items()
+		defer {
+			for item in items {
+				delete(item)
+			}
+			delete(items)
+		}
+
+		for item in items {
+			search_str := fmt.aprintf("%s=", alias_name)
+			defer delete(search_str)
+			if strings.contains(item, search_str) {
+				fmt.sbprintf(&builder, "%s⚠ Alias already exists (will be updated)%s\n",
+					get_warning(), RESET)
+				break
+			}
+		}
+
+		return strings.clone(strings.to_string(builder))
+	}
+
+	// Create submit function
+	submit_fn := proc(form: ^Form) -> bool {
+		alias_name := form.fields[0].input.value
+		command_value := form.fields[1].input.value
+
+		if len(alias_name) == 0 || len(command_value) == 0 {
+			return false
+		}
+
+		// Add the alias using existing logic
+		add_alias(alias_name, command_value)
+		return true
+	}
+
+	// Create and run form
+	form := new_form(
+		"✨ Add Shell Alias",
+		fields,
+		preview_fn,
+		submit_fn,
+	)
+	// Clean up form resources
+	defer form_destroy(&form)
+
+	success := form_run(&form)
+
+	if success {
+		// Success message already printed by add_alias
+	} else {
+		print_info("Operation cancelled")
+	}
+}
+
+// Validator for alias name in forms
+validate_alias_name_for_form :: proc(name: string) -> InputValidation {
+	if len(strings.trim_space(name)) == 0 {
+		return InputValidation{
+			valid = false,
+			error_message = strings.clone("Alias name cannot be empty"),
+			warning = "",
+			info = "",
+		}
+	}
+
+	// Use existing validation
+	base_validation := validate_identifier(name, "Alias")
+
+	if !base_validation.valid {
+		return InputValidation{
+			valid = false,
+			error_message = strings.clone(base_validation.error_message),
+			warning = "",
+			info = "",
+		}
+	}
+
+	return InputValidation{
+		valid = true,
+		error_message = "",
+		warning = "",
+		info = strings.clone("Press Tab to move to next field"),
+	}
+}
+
+// Validator for alias command in forms
+validate_alias_command_for_form :: proc(command: string) -> InputValidation {
+	if len(strings.trim_space(command)) == 0 {
+		return InputValidation{
+			valid = false,
+			error_message = strings.clone("Command cannot be empty"),
+			warning = "",
+			info = "",
+		}
+	}
+
+	return InputValidation{
+		valid = true,
+		error_message = "",
+		warning = "",
+		info = strings.clone("Press Enter to add this alias"),
 	}
 }
 
@@ -321,7 +484,7 @@ list_aliases :: proc() {
 }
 
 print_alias_help :: proc() {
-	print_header("wayu alias - Manage shell aliases\n", EMOJI_MOUNTAIN)
+	print_header(" wayu alias - Manage shell aliases\n", EMOJI_MOUNTAIN)
 	print_section("USAGE:", EMOJI_USER)
 	fmt.println("  wayu alias add <alias> <command>    Add or update alias")
 	fmt.println("  wayu alias rm [alias]               Remove alias (interactive if no alias)")

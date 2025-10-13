@@ -26,6 +26,10 @@ handle_completions_command :: proc(action: Action, args: []string) {
 		}
 	case .LIST:
 		list_completions()
+	case .GET:
+		fmt.eprintln("ERROR: get action not supported for completions command")
+		fmt.println("The get action only applies to plugins")
+		os.exit(1)
 	case .RESTORE:
 		// RESTORE action is handled by backup command, not completions command
 		fmt.eprintln("ERROR: restore action not supported for completions command")
