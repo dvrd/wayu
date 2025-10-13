@@ -327,9 +327,6 @@ list_constants :: proc() {
 		table_add_row(&table, row)
 	}
 
-	// Print header and render table
-	print_header("Environment Constants", "📋")
-	fmt.println()
 	table_output := table_render(table)
 	defer delete(table_output)
 	fmt.print(table_output)

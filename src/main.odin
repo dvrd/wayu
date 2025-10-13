@@ -81,6 +81,7 @@ main :: proc() {
 	}
 
 	parsed := parse_args(os.args[1:])
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	switch parsed.command {
 	case .PATH:
@@ -208,11 +209,10 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 
 	// Parse remaining arguments
 	if len(filtered_args) > 2 {
-		// Convert dynamic array slice to static array
+		// Allocate array for remaining args - caller must free if needed
+		// Note: These are shallow copies (string references from args)
 		remaining_args := make([]string, len(filtered_args) - 2)
-		for i in 0..<len(remaining_args) {
-			remaining_args[i] = filtered_args[2 + i]
-		}
+		copy(remaining_args, filtered_args[2:])
 		parsed.args = remaining_args
 	}
 
@@ -426,7 +426,7 @@ print_version :: proc() {
 print_help :: proc() {
 	header_text := fmt.aprintf("wayu v%s - Shell configuration management tool\n", VERSION)
 	defer delete(header_text)
-	print_header(header_text, EMOJI_PALM_TREE)
+	print_header(header_text, EMOJI_MOUNTAIN)
 
 	print_section("USAGE:", EMOJI_USER)
 	fmt.printf("  wayu <command> <action> [arguments]\n")
@@ -654,7 +654,7 @@ convert_shell_content :: proc(content: string, from_shell: ShellType, to_shell: 
 }
 
 print_migrate_help :: proc() {
-	print_header("wayu migrate - Shell configuration migration tool\n", EMOJI_PALM_TREE)
+	print_header("wayu migrate - Shell configuration migration tool\n", EMOJI_MOUNTAIN)
 
 	print_section("USAGE:", EMOJI_USER)
 	fmt.printf("  wayu migrate --from <shell> --to <shell>\n")

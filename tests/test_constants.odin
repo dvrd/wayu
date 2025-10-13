@@ -57,6 +57,7 @@ test_constant_parsing :: proc(t: ^testing.T) {
 test_parse_args_constants_add :: proc(t: ^testing.T) {
 	args := []string{"constants", "add", "MY_VAR", "my_value"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 	testing.expect_value(t, parsed.command, wayu.Command.CONSTANTS)
 	testing.expect_value(t, parsed.action, wayu.Action.ADD)
 	testing.expect_value(t, len(parsed.args), 2)
