@@ -127,7 +127,7 @@ add_path_interactive :: proc() {
 
 	// Create and run form
 	form := new_form(
-		"✨ Add New PATH Entry",
+		"✨ Add new PATH entry",
 		fields,
 		preview_fn,
 		submit_fn,
