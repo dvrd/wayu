@@ -17,6 +17,9 @@ DRY_RUN := false
 DETECTED_SHELL := detect_shell()
 SHELL_EXT : string
 
+// Track if globals have been initialized
+_GLOBALS_INITIALIZED := false
+
 // Dynamic config file names based on detected shell
 PATH_FILE : string
 ALIAS_FILE : string
@@ -57,7 +60,15 @@ ParsedArgs :: struct {
 }
 
 init_shell_globals :: proc() {
+	// Only initialize once - prevents issues with parallel test execution
+	// where multiple threads try to initialize/free shared global strings
+	if _GLOBALS_INITIALIZED {
+		return
+	}
+
 	// Initialize HOME and WAYU_CONFIG
+	// NOTE: HOME is intentionally not freed - it's a global that lives for the
+	// program's lifetime and is accessed throughout the codebase. This is by design.
 	HOME = os.get_env("HOME")
 	WAYU_CONFIG = fmt.aprintf("%s/.config/wayu", HOME)
 
@@ -67,6 +78,8 @@ init_shell_globals :: proc() {
 	CONSTANTS_FILE = fmt.aprintf("constants.%s", SHELL_EXT)
 	INIT_FILE = fmt.aprintf("init.%s", SHELL_EXT)
 	TOOLS_FILE = fmt.aprintf("tools.%s", SHELL_EXT)
+
+	_GLOBALS_INITIALIZED = true
 }
 
 main :: proc() {

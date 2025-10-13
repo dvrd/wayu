@@ -13,6 +13,7 @@ handle_path_command :: proc(action: Action, args: []string) {
 		if len(args) == 0 {
 			// Use current working directory
 			cwd := os.get_current_directory()
+			defer delete(cwd)
 			add_path(cwd)
 		} else {
 			add_path(args[0])
@@ -403,11 +404,20 @@ expand_env_vars :: proc(path: string) -> string {
 	result := strings.clone(path)
 
 	// Common environment variables to expand
+	home := os.get_env("HOME")
+	defer delete(home)
+	oss := os.get_env("OSS")
+	defer delete(oss)
+	user := os.get_env("USER")
+	defer delete(user)
+	pwd := os.get_current_directory()
+	defer delete(pwd)
+
 	env_vars := map[string]string{
-		"$HOME" = os.get_env("HOME"),
-		"$OSS" = os.get_env("OSS"),
-		"$USER" = os.get_env("USER"),
-		"$PWD" = os.get_current_directory(),
+		"$HOME" = home,
+		"$OSS" = oss,
+		"$USER" = user,
+		"$PWD" = pwd,
 	}
 	defer delete(env_vars)
 
