@@ -7,8 +7,8 @@ import "core:sys/unix"
 import "core:c/libc"
 import "core:slice"
 
-// Simple fuzzy finder implementation
-// This provides basic fuzzy matching and interactive selection
+// Enhanced fuzzy finder implementation with rich metadata, details panels, and actions
+// This provides interactive fuzzy matching with real-time filtering, details, and keyboard actions
 
 // Terminal control for raw mode using system commands
 enable_raw_mode :: proc() {
@@ -20,8 +20,52 @@ disable_raw_mode :: proc() {
 	// Restore normal terminal settings
 	libc.system("stty cooked echo")
 }
-// For production use, you might want to integrate with external tools like fzf
 
+// ============================================================================
+// Enhanced Fuzzy Finder Structures
+// ============================================================================
+
+// FuzzyItem represents a single item in the fuzzy finder with rich metadata
+FuzzyItem :: struct {
+	display:  string,                  // What the user sees
+	value:    string,                  // Underlying value
+	metadata: map[string]string,       // Additional data
+	icon:     string,                  // Emoji or symbol
+	color:    string,                  // Color override
+}
+
+// FuzzyAction represents a keyboard action that can be performed on an item
+FuzzyAction :: struct {
+	name:        string,
+	key_name:    string,               // Display name (e.g., "Del", "Ctrl+U")
+	key_code:    u8,                   // Key code to match
+	handler:     proc(^FuzzyItem) -> bool,  // Returns true to refresh list
+	description: string,               // Help text
+}
+
+// FuzzyView is the main structure for the enhanced fuzzy finder
+FuzzyView :: struct {
+	// Data
+	items:          []FuzzyItem,
+	filtered_items: [dynamic]FuzzyItem,
+
+	// State
+	filter_query:   [dynamic]u8,
+	selected_index: int,
+	scroll_offset:  int,
+
+	// UI config
+	title:          string,
+	show_details:   bool,
+	details_fn:     proc(^FuzzyItem) -> string,
+	actions:        []FuzzyAction,
+
+	// Layout
+	visible_items:  int,               // How many items shown at once
+	details_height: int,               // Height of details panel
+}
+
+// Legacy structure for backward compatibility
 FuzzyResult :: struct {
 	text:  string,
 	score: int,
@@ -96,6 +140,418 @@ calculate_fuzzy_score :: proc(text: string, query: string) -> int {
 
 	return score
 }
+
+// ============================================================================
+// Enhanced Fuzzy Finder Implementation
+// ============================================================================
+
+// Create a new enhanced fuzzy view
+new_fuzzy_view :: proc(
+	title: string,
+	items: []FuzzyItem,
+	details_fn: proc(^FuzzyItem) -> string = nil,
+	actions: []FuzzyAction = {},
+) -> FuzzyView {
+	view := FuzzyView{
+		items = items,
+		filtered_items = make([dynamic]FuzzyItem),
+		filter_query = make([dynamic]u8),
+		selected_index = 0,
+		scroll_offset = 0,
+		title = title,
+		show_details = details_fn != nil,
+		details_fn = details_fn,
+		actions = actions,
+		visible_items = 10,
+		details_height = 12,
+	}
+
+	// Initialize with all items
+	for item in items {
+		append(&view.filtered_items, item)
+	}
+
+	return view
+}
+
+// Update filter and rebuild filtered items list
+fuzzy_update_filter :: proc(view: ^FuzzyView) {
+	clear(&view.filtered_items)
+
+	filter_str := string(view.filter_query[:])
+	filter_lower := strings.to_lower(filter_str)
+	defer delete(filter_lower)
+
+	for item in view.items {
+		if len(filter_str) == 0 {
+			// No filter - show all
+			append(&view.filtered_items, item)
+		} else {
+			// Check if display text matches filter
+			display_lower := strings.to_lower(item.display)
+			defer delete(display_lower)
+
+			if strings.contains(display_lower, filter_lower) {
+				append(&view.filtered_items, item)
+			}
+		}
+	}
+
+	// Ensure selected index is valid
+	if view.selected_index >= len(view.filtered_items) {
+		view.selected_index = max(0, len(view.filtered_items) - 1)
+	}
+}
+
+// Update scroll offset to keep selected item visible
+fuzzy_update_scroll :: proc(view: ^FuzzyView) {
+	// Ensure selected item is in view
+	if view.selected_index < view.scroll_offset {
+		view.scroll_offset = view.selected_index
+	} else if view.selected_index >= view.scroll_offset + view.visible_items {
+		view.scroll_offset = view.selected_index - view.visible_items + 1
+	}
+}
+
+// Render title box
+fuzzy_render_title :: proc(title: string) -> string {
+	border_style := Style{
+		border_style = .Rounded,
+		border_top = true,
+		border_bottom = true,
+		border_left = true,
+		border_right = true,
+		border_fg = get_primary(),
+		padding_left = 2,
+		padding_right = 2,
+	}
+
+	title_style := Style{
+		foreground = get_primary(),
+		bold = true,
+	}
+
+	styled_title := apply_text_only_style(title_style, title)
+	return render(border_style, styled_title)
+}
+
+// Render filter input with cursor
+fuzzy_render_filter :: proc(filter: []u8) -> string {
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+
+	// Filter prompt
+	fmt.sbprintf(&builder, "\n%s🔎 Filter:%s ", get_secondary(), RESET)
+	fmt.sbprintf(&builder, "%s", string(filter))
+	fmt.sbprintf(&builder, "%s█%s", get_primary(), RESET)  // Cursor
+
+	return strings.clone(strings.to_string(builder))
+}
+
+// Render keyboard shortcuts hint
+fuzzy_render_shortcuts :: proc(actions: []FuzzyAction) -> string {
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+
+	fmt.sbprintf(&builder, "%s  ⌨️  ", get_muted())
+	fmt.sbprintf(&builder, "↑↓ Navigate  •  Enter Select  •  Esc Quit")
+
+	// Add action shortcuts
+	for action in actions {
+		fmt.sbprintf(&builder, "  •  %s %s", action.key_name, action.description)
+	}
+
+	fmt.sbprintf(&builder, "%s\n", RESET)
+
+	return strings.clone(strings.to_string(builder))
+}
+
+// Render items list
+fuzzy_render_items :: proc(view: ^FuzzyView) -> string {
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+
+	// Calculate visible range
+	visible_start := view.scroll_offset
+	visible_end := min(len(view.filtered_items), visible_start + view.visible_items)
+
+	// Border top
+	fmt.sbprintf(&builder, "\n%s┌%s┐%s\n",
+		get_muted(),
+		strings.repeat("─", 60),
+		RESET)
+
+	// Items
+	if len(view.filtered_items) == 0 {
+		fmt.sbprintf(&builder, "%s│ No matches found%s│%s\n",
+			get_muted(),
+			strings.repeat(" ", 45),
+			RESET)
+	} else {
+		for i in visible_start..<visible_end {
+			item := view.filtered_items[i]
+
+			if i == view.selected_index {
+				// Highlighted selection
+				icon_part := ""
+				if item.icon != "" {
+					icon_part = fmt.tprintf("%s ", item.icon)
+				}
+				fmt.sbprintf(&builder, "%s%s│ ▸ %s%s%s ",
+					get_primary(), BOLD,
+					icon_part,
+					item.display,
+					RESET)
+
+				// Padding to align border
+				display_len := len(item.display) + len(icon_part) + 4
+				padding := max(0, 56 - display_len)
+				fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
+				fmt.sbprintf(&builder, "%s│%s\n", get_primary(), RESET)
+			} else {
+				// Regular item
+				color := item.color != "" ? item.color : RESET
+				icon_part := ""
+				if item.icon != "" {
+					icon_part = fmt.tprintf("%s ", item.icon)
+				}
+				fmt.sbprintf(&builder, "%s│   %s%s%s ",
+					get_muted(),
+					icon_part,
+					item.display,
+					RESET)
+
+				// Padding
+				display_len := len(item.display) + len(icon_part) + 4
+				padding := max(0, 56 - display_len)
+				fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
+				fmt.sbprintf(&builder, "%s│%s\n", get_muted(), RESET)
+			}
+		}
+	}
+
+	// Border bottom
+	fmt.sbprintf(&builder, "%s└%s┘%s\n",
+		get_muted(),
+		strings.repeat("─", 60),
+		RESET)
+
+	return strings.clone(strings.to_string(builder))
+}
+
+// Render details panel
+fuzzy_render_details :: proc(view: ^FuzzyView) -> string {
+	if !view.show_details || view.details_fn == nil {
+		return ""
+	}
+
+	if len(view.filtered_items) == 0 || view.selected_index >= len(view.filtered_items) {
+		return ""
+	}
+
+	item := &view.filtered_items[view.selected_index]
+	details_content := view.details_fn(item)
+
+	// Create styled details panel
+	border_style := Style{
+		border_style = .Rounded,
+		border_top = true,
+		border_bottom = true,
+		border_left = true,
+		border_right = true,
+		border_fg = get_secondary(),
+		padding_top = 1,
+		padding_bottom = 1,
+		padding_left = 1,
+		padding_right = 1,
+	}
+
+	title_style := Style{
+		foreground = get_secondary(),
+		bold = true,
+	}
+
+	title := apply_text_only_style(title_style, "Details")
+	full_content := fmt.aprintf("%s\n\n%s", title, details_content)
+	defer delete(full_content)
+
+	return render(border_style, full_content)
+}
+
+// Main render function
+fuzzy_render :: proc(view: ^FuzzyView) -> string {
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+
+	// Title
+	title := fuzzy_render_title(view.title)
+	defer delete(title)
+	fmt.sbprintf(&builder, "%s\n", title)
+
+	// Filter input
+	filter := fuzzy_render_filter(view.filter_query[:])
+	defer delete(filter)
+	fmt.sbprintf(&builder, "%s\n", filter)
+
+	// Keyboard shortcuts
+	shortcuts := fuzzy_render_shortcuts(view.actions)
+	defer delete(shortcuts)
+	fmt.sbprintf(&builder, "%s", shortcuts)
+
+	// Items list
+	items := fuzzy_render_items(view)
+	defer delete(items)
+	fmt.sbprintf(&builder, "%s", items)
+
+	// Details panel
+	if view.show_details {
+		details := fuzzy_render_details(view)
+		if len(details) > 0 {
+			defer delete(details)
+			fmt.sbprintf(&builder, "\n%s", details)
+		}
+	}
+
+	return strings.clone(strings.to_string(builder))
+}
+
+// Handle keyboard input
+fuzzy_handle_key :: proc(view: ^FuzzyView, ch: u8, n: int, input_buf: []byte) -> (continue_loop: bool, has_result: bool) {
+	// Control sequences
+	if ch == 3 { // Ctrl+C
+		return false, false
+	} else if ch == 27 { // Esc
+		return false, false
+	} else if ch == 13 || ch == 10 { // Enter
+		if len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
+			return false, true
+		}
+	} else if ch == 14 { // Ctrl+N - Move down
+		if len(view.filtered_items) > 0 {
+			view.selected_index = (view.selected_index + 1) % len(view.filtered_items)
+			fuzzy_update_scroll(view)
+		}
+	} else if ch == 16 { // Ctrl+P - Move up
+		if len(view.filtered_items) > 0 {
+			view.selected_index = (view.selected_index - 1 + len(view.filtered_items)) % len(view.filtered_items)
+			fuzzy_update_scroll(view)
+		}
+	} else if ch == 127 || ch == 8 { // Backspace/Delete
+		if len(view.filter_query) > 0 {
+			ordered_remove(&view.filter_query, len(view.filter_query) - 1)
+			fuzzy_update_filter(view)
+			view.selected_index = 0
+			view.scroll_offset = 0
+		}
+	} else if ch >= 32 && ch <= 126 { // Printable characters
+		append(&view.filter_query, ch)
+		fuzzy_update_filter(view)
+		view.selected_index = 0
+		view.scroll_offset = 0
+	} else if ch == 27 && n >= 3 { // ESC sequence (arrow keys)
+		if input_buf[1] == '[' {
+			switch input_buf[2] {
+			case 'A': // Up arrow
+				if len(view.filtered_items) > 0 {
+					view.selected_index = (view.selected_index - 1 + len(view.filtered_items)) % len(view.filtered_items)
+					fuzzy_update_scroll(view)
+				}
+			case 'B': // Down arrow
+				if len(view.filtered_items) > 0 {
+					view.selected_index = (view.selected_index + 1) % len(view.filtered_items)
+					fuzzy_update_scroll(view)
+				}
+			}
+		}
+	} else {
+		// Check for custom actions
+		for action in view.actions {
+			if ch == action.key_code {
+				if len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
+					item := &view.filtered_items[view.selected_index]
+					refresh := action.handler(item)
+					if refresh {
+						// Rebuild filter after action
+						fuzzy_update_filter(view)
+					}
+				}
+			}
+		}
+	}
+
+	return true, false
+}
+
+// Main loop for enhanced fuzzy finder
+fuzzy_run :: proc(view: ^FuzzyView) -> (selected: FuzzyItem, ok: bool) {
+	// Terminal control sequences
+	CLEAR_SCREEN :: "\033[2J\033[H"
+	HIDE_CURSOR :: "\033[?25l"
+	SHOW_CURSOR :: "\033[?25h"
+
+	debug("Starting enhanced fuzzy finder with %d items", len(view.items))
+
+	// Enter raw mode
+	enable_raw_mode()
+	fmt.print(HIDE_CURSOR)
+
+	// Make sure terminal is always restored
+	defer {
+		fmt.print(CLEAR_SCREEN)
+		fmt.print(SHOW_CURSOR)
+		disable_raw_mode()
+	}
+
+	// Main input loop
+	for {
+		// Render UI
+		fmt.print(CLEAR_SCREEN)
+		rendered := fuzzy_render(view)
+		defer delete(rendered)
+		fmt.print(rendered)
+
+		// Read input
+		input_buf: [8]byte
+		n, err := os.read(os.stdin, input_buf[:])
+		if err != 0 {
+			debug("Error reading input: %d", err)
+			break
+		}
+
+		if n == 0 { continue }
+
+		ch := input_buf[0]
+
+		// Handle key
+		continue_loop, has_result := fuzzy_handle_key(view, ch, n, input_buf[:])
+
+		if !continue_loop {
+			if has_result && len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
+				result := view.filtered_items[view.selected_index]
+				debug("Selected: %s", result.value)
+				return result, true
+			}
+			return FuzzyItem{}, false
+		}
+	}
+
+	return FuzzyItem{}, false
+}
+
+// Cleanup function for FuzzyView
+fuzzy_view_destroy :: proc(view: ^FuzzyView) {
+	delete(view.filtered_items)
+	delete(view.filter_query)
+	// Note: items, actions are owned by caller
+}
+
+// ============================================================================
+// Backward Compatible Legacy Functions
+// ============================================================================
 
 // Interactive fuzzy select with real-time filtering and keyboard navigation
 interactive_select :: proc(items: []string, prompt: string) -> (selected: string, ok: bool) {
