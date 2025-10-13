@@ -108,6 +108,7 @@ test_alias_format_validation :: proc(t: ^testing.T) {
 test_parse_args_alias_remove :: proc(t: ^testing.T) {
 	args := []string{"alias", "rm", "ll"}
 	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
 	testing.expect_value(t, parsed.command, wayu.Command.ALIAS)
 	testing.expect_value(t, parsed.action, wayu.Action.REMOVE)
 	testing.expect_value(t, len(parsed.args), 1)

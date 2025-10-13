@@ -309,15 +309,17 @@ extract_path_items :: proc() -> []string {
 				end := strings.last_index(trimmed, "\"")
 				if end != -1 && end > start {
 					path := trimmed[start + 1:end]
-					append(&items, strings.clone(path))
+					// Store reference, clone later
+					append(&items, path)
 				}
 			}
 		}
 	}
 
+	// Clone once when creating result
 	result := make([]string, len(items))
 	for i in 0..<len(items) {
-		result[i] = items[i]
+		result[i] = strings.clone(items[i])
 	}
 	return result
 }
@@ -345,14 +347,16 @@ extract_alias_items :: proc() -> []string {
 			eq_pos := strings.index(trimmed, "=")
 			if eq_pos != -1 {
 				name := trimmed[6:eq_pos] // Skip "alias "
-				append(&items, strings.clone(name))
+				// Store reference, clone later
+				append(&items, name)
 			}
 		}
 	}
 
+	// Clone once when creating result
 	result := make([]string, len(items))
 	for i in 0..<len(items) {
-		result[i] = items[i]
+		result[i] = strings.clone(items[i])
 	}
 	return result
 }
@@ -376,12 +380,7 @@ extract_constant_items :: proc() -> []string {
 	debug("Split into %d lines", len(lines))
 
 	items := make([dynamic]string)
-	defer {
-		for item in items {
-			delete(item)
-		}
-		delete(items)
-	}
+	defer delete(items)
 
 	for line in lines {
 		trimmed := strings.trim_space(line)
@@ -389,13 +388,15 @@ extract_constant_items :: proc() -> []string {
 			eq_pos := strings.index(trimmed, "=")
 			if eq_pos != -1 {
 				name := trimmed[7:eq_pos] // Skip "export "
-				append(&items, strings.clone(name))
+				// Store reference, clone later
+				append(&items, name)
 				debug("Found constant: %s", name)
 			}
 		}
 	}
 	debug("Found %d constants total", len(items))
 
+	// Clone once when creating result
 	result := make([]string, len(items))
 	for item, i in items {
 		result[i] = strings.clone(item)
@@ -437,12 +438,13 @@ extract_completion_items :: proc() -> []string {
 			if strings.contains(info.name, ".backup.") {
 				continue
 			}
-			// Remove underscore for display
+			// Remove underscore for display - no need to clone yet
 			name := info.name[1:]
-			append(&items, strings.clone(name))
+			append(&items, name)
 		}
 	}
 
+	// Clone once when creating result
 	result := make([]string, len(items))
 	for item, i in items {
 		result[i] = strings.clone(item)
