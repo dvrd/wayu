@@ -105,6 +105,14 @@ tasks:
     cmds:
       - ruby {{.TEST_DIR}}/integration/test_dry_run.rb
 
+  test:ui:
+    desc: Run visual UI tests for manual inspection
+    cmds:
+      - mkdir -p {{.BIN_DIR}}
+      - odin run {{.TEST_DIR}}/ui/test_visual_alignment.odin -file -out:{{.BIN_DIR}}/test_visual
+      - echo ""
+      - odin run {{.TEST_DIR}}/ui/test_render_box.odin -file -out:{{.BIN_DIR}}/test_render
+
   test:all:
     desc: Run all tests (unit and integration)
     cmds:
