@@ -9,8 +9,8 @@ import "core:log"
 // Semantic versioning - update with each release
 VERSION :: "2.0.0"
 
-HOME := os.get_env("HOME")
-WAYU_CONFIG := fmt.aprintf("%s/.config/wayu", HOME)
+HOME : string
+WAYU_CONFIG : string
 
 // Global flags
 DRY_RUN := false
@@ -57,6 +57,10 @@ ParsedArgs :: struct {
 }
 
 init_shell_globals :: proc() {
+	// Initialize HOME and WAYU_CONFIG
+	HOME = os.get_env("HOME")
+	WAYU_CONFIG = fmt.aprintf("%s/.config/wayu", HOME)
+
 	SHELL_EXT = get_shell_extension(DETECTED_SHELL)
 	PATH_FILE = fmt.aprintf("path.%s", SHELL_EXT)
 	ALIAS_FILE = fmt.aprintf("aliases.%s", SHELL_EXT)

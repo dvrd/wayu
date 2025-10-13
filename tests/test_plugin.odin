@@ -83,6 +83,9 @@ test_get_plugins_dir :: proc(t: ^testing.T) {
 
 @(test)
 test_read_plugin_config_empty :: proc(t: ^testing.T) {
+	// Initialize shell globals before testing
+	wayu.init_shell_globals()
+
 	// Test reading non-existent config file
 	// First ensure no config exists
 	config_file := wayu.get_plugins_config_file()
@@ -117,6 +120,9 @@ test_read_plugin_config_empty :: proc(t: ^testing.T) {
 
 @(test)
 test_write_and_read_plugin_config :: proc(t: ^testing.T) {
+	// Initialize shell globals before testing
+	wayu.init_shell_globals()
+
 	// Test writing and reading plugin config
 	config_file := wayu.get_plugins_config_file()
 	defer delete(config_file)
@@ -382,6 +388,9 @@ test_popular_plugins_registry :: proc(t: ^testing.T) {
 
 @(test)
 test_generate_plugins_file_empty :: proc(t: ^testing.T) {
+	// Initialize shell globals before testing
+	wayu.init_shell_globals()
+
 	// Test generating plugins file with no plugins
 	config_file := wayu.get_plugins_config_file()
 	defer delete(config_file)
