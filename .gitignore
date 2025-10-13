@@ -3,3 +3,7 @@ bin/
 .task/
 coverage/
 docs/
+
+# Test binaries (only in root)
+/test_*
+/*.bin
