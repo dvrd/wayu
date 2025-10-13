@@ -121,55 +121,61 @@ table_render :: proc(table: Table) -> string {
 	}
 	total_width -= 1 // Remove last separator
 
-	// Render top border
+	// Render top border with color (Hot pink - Zellij primary)
 	if table.border_style != .None {
-		border_line := render_border_line(mutable_table, '─', '┌', '┐', '┬')
+		border_line := render_border_line(mutable_table, '─', '╭', '╮', '┬')
 		defer delete(border_line)
+		strings.write_string(&result, "\x1b[38;2;228;0;80m") // Hot pink
 		strings.write_string(&result, border_line)
+		strings.write_string(&result, "\x1b[0m") // Reset
 		strings.write_string(&result, "\n")
 	}
 
 	// Render headers
-	strings.write_string(&result, "│ ")
+	strings.write_string(&result, "\x1b[38;2;228;0;80m│\x1b[0m ")  // Colored border
 	for header, i in table.headers {
 		styled_header := render(table.header_style, header)
 		padded_header := pad_string(styled_header, mutable_table.column_widths[i])
 		strings.write_string(&result, padded_header)
 
 		if i < len(table.headers) - 1 {
-			strings.write_string(&result, " │ ")
+			strings.write_string(&result, " \x1b[38;2;228;0;80m│\x1b[0m ")  // Colored separator
 		}
 	}
-	strings.write_string(&result, " │\n")
+	strings.write_string(&result, " \x1b[38;2;228;0;80m│\x1b[0m\n")  // Colored right border
 
-	// Render header separator
+	// Render header separator with color
 	if table.border_style != .None {
 		separator_line := render_border_line(mutable_table, '─', '├', '┤', '┼')
 		defer delete(separator_line)
+		strings.write_string(&result, "\x1b[38;2;228;0;80m") // Hot pink
 		strings.write_string(&result, separator_line)
+		strings.write_string(&result, "\x1b[0m") // Reset
 		strings.write_string(&result, "\n")
 	}
 
 	// Render rows
 	for row in table.rows {
-		strings.write_string(&result, "│ ")
+		strings.write_string(&result, "\x1b[38;2;228;0;80m│\x1b[0m ")  // Colored border
 		for cell, i in row {
 			styled_cell := render(table.style, cell)
 			padded_cell := pad_string(styled_cell, mutable_table.column_widths[i])
 			strings.write_string(&result, padded_cell)
 
 			if i < len(row) - 1 {
-				strings.write_string(&result, " │ ")
+				strings.write_string(&result, " \x1b[38;2;228;0;80m│\x1b[0m ")  // Colored separator
 			}
 		}
-		strings.write_string(&result, " │\n")
+		strings.write_string(&result, " \x1b[38;2;228;0;80m│\x1b[0m\n")  // Colored right border
 	}
 
-	// Render bottom border
+	// Render bottom border with color and curved corners
 	if table.border_style != .None {
-		bottom_line := render_border_line(mutable_table, '─', '└', '┘', '┴')
+		bottom_line := render_border_line(mutable_table, '─', '╰', '╯', '┴')
 		defer delete(bottom_line)
+		strings.write_string(&result, "\x1b[38;2;228;0;80m") // Hot pink
 		strings.write_string(&result, bottom_line)
+		strings.write_string(&result, "\x1b[0m") // Reset
 		strings.write_string(&result, "\n")
 	}
 

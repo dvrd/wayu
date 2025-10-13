@@ -316,9 +316,9 @@ list_paths :: proc() {
 		issues := ""
 
 		if !os.exists(expanded_path) {
-			status = "✗ Missing"
+			status = fmt.aprintf("%s Missing", SYMBOL_CHECK_ERROR)
 		} else {
-			status = "✓ Exists"
+			status = fmt.aprintf("%s Exists", SYMBOL_CHECK_SUCCESS)
 		}
 
 		// Check for duplicates
@@ -351,7 +351,7 @@ list_paths :: proc() {
 	duplicates_count := count_duplicates(path_analysis.duplicate_indices)
 	missing_count := count_missing_paths(paths[:])
 
-	print_header("PATH Entries", "🗂️")
+	print_header("your PATH entries", EMOJI_PATH)
 	if duplicates_count > 0 || missing_count > 0 {
 		fmt.println()
 		if missing_count > 0 {
