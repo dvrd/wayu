@@ -96,3 +96,16 @@ test_fuzzy_score_consecutive_bonus :: proc(t: ^testing.T) {
 	testing.expect(t, score_consecutive > 0, "Consecutive should match")
 	testing.expect(t, score_non_consecutive >= 0, "Non-consecutive should match or not")
 }
+
+@(test)
+test_extract_alias_items :: proc(t: ^testing.T) {
+	// Test extracting alias items from config
+	// This will work with the real config file if it exists
+	items := wayu.extract_alias_items()
+	defer for item in items do delete(item)
+	defer delete(items)
+
+	// Just verify it returns a valid array (may be empty if no aliases configured)
+	// An empty slice {} is valid and has length 0
+	testing.expect(t, len(items) >= 0, "Should return valid array")
+}

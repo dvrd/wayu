@@ -77,8 +77,8 @@ autoload -U add-zsh-hook compinit
 compinit
 
 # === 5. Plugins Loading ===
-# Load Wayu plugins
-[ -f "$HOME/.config/wayu/plugins/autocomplete/init.zsh" ] && source "$HOME/.config/wayu/plugins/autocomplete/init.zsh"
+# Load Wayu-managed plugins
+[ -f "$HOME/.config/wayu/plugins.zsh" ] && source "$HOME/.config/wayu/plugins.zsh"
 
 # === 6. Aliases ===
 # Load command aliases and shortcuts
@@ -219,8 +219,8 @@ if [ -d "$HOME/.config/wayu/completions" ]; then
 fi
 
 # === 5. Plugins Loading ===
-# Load Wayu plugins (if they exist)
-[ -f "$HOME/.config/wayu/plugins/autocomplete/init.bash" ] && source "$HOME/.config/wayu/plugins/autocomplete/init.bash"
+# Load Wayu-managed plugins
+[ -f "$HOME/.config/wayu/plugins.bash" ] && source "$HOME/.config/wayu/plugins.bash"
 
 # === 6. Aliases ===
 # Load command aliases and shortcuts

@@ -130,9 +130,9 @@ test_pad_string :: proc(t: ^testing.T) {
     testing.expect_value(t, strings.has_suffix(result, "      "), true) // 6 spaces
 }
 
-// Test environment variable expansion
+// Test environment variable expansion for table display
 @(test)
-test_expand_env_vars :: proc(t: ^testing.T) {
+test_table_expand_env_vars :: proc(t: ^testing.T) {
     // Test basic expansion (if HOME is set)
     home_path := "$HOME/test"
     expanded := wayu.expand_env_vars(home_path)
