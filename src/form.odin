@@ -300,11 +300,17 @@ form_render_full :: proc(form: ^Form) {
 	}
 }
 
-// Count visual width of string (emojis count as 2)
+// Count visual width of string (wide characters count as 2)
 count_visual_width :: proc(s: string) -> int {
 	width := 0
 	for r in s {
-		if r > 0x1F600 { // Emoji range (simplified)
+		// Wide characters (emojis and some symbols) occupy 2 terminal cells
+		// Based on Unicode East Asian Width property
+		if (r >= 0x1F300 && r <= 0x1F9FF) || // Emoji blocks
+		   (r >= 0x2600 && r <= 0x26FF) ||   // Miscellaneous Symbols (some wide)
+		   (r >= 0x2700 && r <= 0x27BF) ||   // Dingbats (✨ is here: U+2728)
+		   (r >= 0x3000 && r <= 0x303F) ||   // CJK Symbols and Punctuation
+		   (r >= 0xFF00 && r <= 0xFFEF) {    // Fullwidth Forms
 			width += 2
 		} else {
 			width += 1
