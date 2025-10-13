@@ -3,7 +3,7 @@ package test_wayu
 import "core:testing"
 import "core:os"
 import "core:strings"
-import wayu "../src"
+import wayu "../../src"
 
 @(test)
 test_init_config_file_creates_file :: proc(t: ^testing.T) {

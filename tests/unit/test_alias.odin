@@ -2,7 +2,7 @@ package test_wayu
 
 import "core:testing"
 import "core:strings"
-import wayu "../src"
+import wayu "../../src"
 
 @(test)
 test_alias_parsing :: proc(t: ^testing.T) {

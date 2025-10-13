@@ -3,7 +3,7 @@
 package test_wayu
 
 import "core:testing"
-import wayu "../src"
+import wayu "../../src"
 
 @(test)
 test_validate_identifier_valid :: proc(t: ^testing.T) {
