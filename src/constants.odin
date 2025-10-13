@@ -30,7 +30,13 @@ handle_constants_command :: proc(action: Action, args: []string) {
 			remove_constant(args[0])
 		}
 	case .LIST:
-		list_constants()
+		if len(args) > 0 && args[0] == "--static" {
+			// Static table mode (for scripts/automation)
+			list_constants_static()
+		} else {
+			// Interactive fuzzy finder mode (default)
+			list_constants_interactive()
+		}
 	case .GET:
 		fmt.eprintln("ERROR: get action not supported for constants command")
 		fmt.println("The get action only applies to plugins")
@@ -420,7 +426,7 @@ remove_constant_interactive :: proc() {
 	debug("remove_constant completed successfully")
 }
 
-list_constants :: proc() {
+list_constants_static :: proc() {
 	// Check if wayu is initialized first
 	if !check_wayu_initialized() {
 		os.exit(1)
@@ -494,6 +500,148 @@ list_constants :: proc() {
 	table_output := table_render(table)
 	defer delete(table_output)
 	fmt.print(table_output)
+}
+
+list_constants_interactive :: proc() {
+	// Check if wayu is initialized first
+	if !check_wayu_initialized() {
+		os.exit(1)
+	}
+
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("constants", DETECTED_SHELL)
+	defer delete(config_file)
+
+	content, read_ok := safe_read_file(config_file)
+	if !read_ok {
+		os.exit(1)
+	}
+	defer delete(content)
+
+	content_str := string(content)
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+
+	// Parse constants and create FuzzyItem structures
+	items := make([dynamic]FuzzyItem)
+	defer {
+		for item in items {
+			delete(item.display)
+			delete(item.value)
+			delete(item.metadata)
+		}
+		delete(items)
+	}
+
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		if strings.has_prefix(trimmed, "export ") && strings.contains(trimmed, "=") {
+			// Extract constant name and value
+			eq_pos := strings.index(trimmed, "=")
+			if eq_pos != -1 {
+				name := trimmed[7:eq_pos] // Skip "export "
+				value_part := trimmed[eq_pos + 1:]
+
+				// Clean up quotes
+				if strings.has_prefix(value_part, "\"") && strings.has_suffix(value_part, "\"") {
+					value_part = value_part[1:len(value_part) - 1]
+				}
+
+				// Create metadata
+				metadata := make(map[string]string)
+				metadata["name"] = strings.clone(name)
+				metadata["value"] = strings.clone(value_part)
+				metadata["length"] = fmt.aprintf("%d chars", len(value_part))
+				metadata["type"] = determine_constant_type(value_part)
+
+				// Determine icon based on value type
+				icon := "💾"
+				if strings.has_prefix(value_part, "/") || strings.has_prefix(value_part, "~") {
+					icon = "📂" // Path
+				} else if strings.has_prefix(value_part, "http://") || strings.has_prefix(value_part, "https://") {
+					icon = "🌐" // URL
+				} else if is_numeric(value_part) {
+					icon = "🔢" // Number
+				}
+
+				item := FuzzyItem{
+					display = strings.clone(name),
+					value = strings.clone(trimmed),
+					metadata = metadata,
+					icon = icon,
+					color = "",
+				}
+				append(&items, item)
+			}
+		}
+	}
+
+	if len(items) == 0 {
+		print_info("No constants found")
+		return
+	}
+
+	// Create details function
+	details_fn := proc(item: ^FuzzyItem) -> string {
+		builder := strings.builder_make()
+		defer strings.builder_destroy(&builder)
+
+		name := item.metadata["name"]
+		value := item.metadata["value"]
+		length := item.metadata["length"]
+		type := item.metadata["type"]
+
+		fmt.sbprintf(&builder, "Constant: %s\n", name)
+		fmt.sbprintf(&builder, "Value: %s\n", value)
+		fmt.sbprintf(&builder, "\n")
+		fmt.sbprintf(&builder, "Type: %s\n", type)
+		fmt.sbprintf(&builder, "Length: %s\n", length)
+		fmt.sbprintf(&builder, "\n")
+		fmt.sbprintf(&builder, "Actions:\n")
+		fmt.sbprintf(&builder, "  Enter - Select to view\n")
+
+		return strings.clone(strings.to_string(builder))
+	}
+
+	// Create actions (disabled for now)
+	actions := []FuzzyAction{}
+
+	// Create and run fuzzy view
+	view := new_fuzzy_view("💾 Environment Constants", items[:], details_fn, actions)
+	defer fuzzy_view_destroy(&view)
+
+	selected, ok := fuzzy_run(&view)
+	if ok {
+		// User selected a constant - just show info
+		print_info(fmt.tprintf("Selected: %s = %s", selected.metadata["name"], selected.metadata["value"]))
+	}
+}
+
+// Helper function to determine constant type
+determine_constant_type :: proc(value: string) -> string {
+	if strings.has_prefix(value, "/") || strings.has_prefix(value, "~") {
+		return "Path"
+	} else if strings.has_prefix(value, "http://") || strings.has_prefix(value, "https://") {
+		return "URL"
+	} else if is_numeric(value) {
+		return "Number"
+	} else if value == "true" || value == "false" {
+		return "Boolean"
+	}
+	return "String"
+}
+
+// Helper function to check if a string is numeric
+is_numeric :: proc(s: string) -> bool {
+	if len(s) == 0 {
+		return false
+	}
+	for c in s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 print_constants_help :: proc() {
