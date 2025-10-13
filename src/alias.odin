@@ -30,7 +30,13 @@ handle_alias_command :: proc(action: Action, args: []string) {
 			remove_alias(args[0])
 		}
 	case .LIST:
-		list_aliases()
+		if len(args) > 0 && args[0] == "--static" {
+			// Static table mode (for scripts/automation)
+			list_aliases_static()
+		} else {
+			// Interactive fuzzy finder mode (default)
+			list_aliases_interactive()
+		}
 	case .GET:
 		fmt.eprintln("ERROR: get action not supported for alias command")
 		fmt.println("The get action only applies to plugins")
@@ -407,7 +413,7 @@ remove_alias_interactive :: proc() {
 	remove_alias(selected_copy)
 }
 
-list_aliases :: proc() {
+list_aliases_static :: proc() {
 	// Check if wayu is initialized first
 	if !check_wayu_initialized() {
 		os.exit(1)
@@ -481,6 +487,132 @@ list_aliases :: proc() {
 	table_output := table_render(table)
 	defer delete(table_output)
 	fmt.print(table_output)
+}
+
+list_aliases_interactive :: proc() {
+	// Check if wayu is initialized first
+	if !check_wayu_initialized() {
+		os.exit(1)
+	}
+
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("aliases", DETECTED_SHELL)
+	defer delete(config_file)
+
+	content, read_ok := safe_read_file(config_file)
+	if !read_ok {
+		os.exit(1)
+	}
+	defer delete(content)
+
+	content_str := string(content)
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+
+	// Parse aliases and create FuzzyItem structures
+	items := make([dynamic]FuzzyItem)
+	defer {
+		for item in items {
+			delete(item.display)
+			delete(item.value)
+			delete(item.metadata)
+		}
+		delete(items)
+	}
+
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		if strings.has_prefix(trimmed, "alias ") && strings.contains(trimmed, "=") {
+			// Extract alias name and command
+			eq_pos := strings.index(trimmed, "=")
+			if eq_pos != -1 {
+				name := trimmed[6:eq_pos] // Skip "alias "
+				value_part := trimmed[eq_pos + 1:]
+
+				// Clean up quotes
+				if strings.has_prefix(value_part, "\"") && strings.has_suffix(value_part, "\"") {
+					value_part = value_part[1:len(value_part) - 1]
+				}
+
+				// Create metadata
+				metadata := make(map[string]string)
+				metadata["name"] = strings.clone(name)
+				metadata["command"] = strings.clone(value_part)
+				metadata["length"] = fmt.aprintf("%d chars", len(value_part))
+				metadata["has_pipe"] = strings.contains(value_part, "|") ? "yes" : "no"
+				metadata["has_redirect"] = strings.contains(value_part, ">") || strings.contains(value_part, "<") ? "yes" : "no"
+
+				// Determine icon based on command type
+				icon := "🔑"
+				if strings.has_prefix(value_part, "git ") {
+					icon = "🌿"
+				} else if strings.has_prefix(value_part, "docker ") {
+					icon = "🐳"
+				} else if strings.has_prefix(value_part, "ls ") {
+					icon = "📁"
+				}
+
+				item := FuzzyItem{
+					display = strings.clone(name),
+					value = strings.clone(trimmed),
+					metadata = metadata,
+					icon = icon,
+					color = "",
+				}
+				append(&items, item)
+			}
+		}
+	}
+
+	if len(items) == 0 {
+		print_info("No aliases found")
+		return
+	}
+
+	// Create details function
+	details_fn := proc(item: ^FuzzyItem) -> string {
+		builder := strings.builder_make()
+		defer strings.builder_destroy(&builder)
+
+		name := item.metadata["name"]
+		command := item.metadata["command"]
+		length := item.metadata["length"]
+		has_pipe := item.metadata["has_pipe"]
+		has_redirect := item.metadata["has_redirect"]
+
+		fmt.sbprintf(&builder, "Alias: %s\n", name)
+		fmt.sbprintf(&builder, "Command: %s\n", command)
+		fmt.sbprintf(&builder, "\n")
+		fmt.sbprintf(&builder, "Length: %s\n", length)
+
+		if has_pipe == "yes" {
+			fmt.sbprintf(&builder, "Uses pipes: yes\n")
+		}
+		if has_redirect == "yes" {
+			fmt.sbprintf(&builder, "Uses redirects: yes\n")
+		}
+
+		fmt.sbprintf(&builder, "\n")
+		fmt.sbprintf(&builder, "Actions:\n")
+		fmt.sbprintf(&builder, "  Del - Remove this alias\n")
+		fmt.sbprintf(&builder, "  Enter - Select to view\n")
+
+		return strings.clone(strings.to_string(builder))
+	}
+
+	// Create actions
+	// Note: Actions are disabled for now until we implement proper modal dialogs
+	actions := []FuzzyAction{}
+
+	// Create and run fuzzy view
+	view := new_fuzzy_view("🔑 Shell Aliases", items[:], details_fn, actions)
+	defer fuzzy_view_destroy(&view)
+
+	selected, ok := fuzzy_run(&view)
+	if ok {
+		// User selected an alias - just show info (they can delete with Del key)
+		print_info(fmt.tprintf("Selected: %s = %s", selected.metadata["name"], selected.metadata["command"]))
+	}
 }
 
 print_alias_help :: proc() {
