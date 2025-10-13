@@ -76,9 +76,9 @@ test_extract_completion_items_multiple :: proc(t: ^testing.T) {
 	files := []string{"_git", "_docker", "_kubectl"}
 	for file in files {
 		file_path := fmt.aprintf("%s/%s", completions_dir, file)
-		defer delete(file_path)
 		completion_content := "#compdef\ntest completion"
 		os.write_entire_file(file_path, transmute([]byte)completion_content)
+		delete(file_path)
 	}
 
 	// Test extraction
@@ -106,7 +106,9 @@ test_extract_completion_items_multiple :: proc(t: ^testing.T) {
 				break
 			}
 		}
-		testing.expect(t, found, fmt.aprintf("Should find completion: %s", exp))
+		msg := fmt.aprintf("Should find completion: %s", exp)
+		testing.expect(t, found, msg)
+		delete(msg)
 	}
 }
 
@@ -125,9 +127,9 @@ test_extract_completion_items_filters :: proc(t: ^testing.T) {
 	files := []string{"_valid", "invalid", "_another", "README.md", "_third"}
 	for file in files {
 		file_path := fmt.aprintf("%s/%s", completions_dir, file)
-		defer delete(file_path)
 		test_data := "test"
 		os.write_entire_file(file_path, transmute([]byte)test_data)
+		delete(file_path)
 	}
 
 	// Create a subdirectory (should be ignored)
@@ -160,7 +162,9 @@ test_extract_completion_items_filters :: proc(t: ^testing.T) {
 				break
 			}
 		}
-		testing.expect(t, found, fmt.aprintf("Should find valid completion: %s", valid))
+		msg := fmt.aprintf("Should find valid completion: %s", valid)
+		testing.expect(t, found, msg)
+		delete(msg)
 	}
 
 	// Check that invalid items are not present
@@ -183,14 +187,17 @@ test_completion_name_normalization :: proc(t: ^testing.T) {
 
 	for name, i in names {
 		normalized := name
+		needs_delete := false
 		if !strings.has_prefix(name, "_") {
 			normalized = fmt.aprintf("_%s", name)
-			defer delete(normalized)
+			needs_delete = true
 		}
 
-		testing.expect(t, normalized == expected[i],
-			fmt.aprintf("Name '%s' should normalize to '%s', got '%s'",
-				name, expected[i], normalized))
+		msg := fmt.aprintf("Name '%s' should normalize to '%s', got '%s'",
+			name, expected[i], normalized)
+		testing.expect(t, normalized == expected[i], msg)
+		delete(msg)
+		if needs_delete do delete(normalized)
 	}
 }
 
@@ -202,14 +209,18 @@ test_completion_validation_basic :: proc(t: ^testing.T) {
 	for name in valid_names {
 		// Basic validation - no spaces, valid characters
 		is_valid := !strings.contains(name, " ") && len(name) > 0
-		testing.expect(t, is_valid, fmt.aprintf("Name '%s' should be valid", name))
+		msg := fmt.aprintf("Name '%s' should be valid", name)
+		testing.expect(t, is_valid, msg)
+		delete(msg)
 	}
 
 	invalid_names := []string{"", "name with spaces", "name-with-dashes"}
 	for name in invalid_names {
 		// These would fail in real validation
 		has_issues := len(name) == 0 || strings.contains(name, " ") || strings.contains(name, "-")
-		testing.expect(t, has_issues, fmt.aprintf("Name '%s' should be invalid", name))
+		msg := fmt.aprintf("Name '%s' should be invalid", name)
+		testing.expect(t, has_issues, msg)
+		delete(msg)
 	}
 }
 
