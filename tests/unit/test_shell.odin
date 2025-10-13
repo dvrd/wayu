@@ -2,7 +2,7 @@ package test_wayu
 
 import "core:testing"
 import "core:strings"
-import wayu "../src"
+import wayu "../../src"
 
 @(test)
 test_shell_extension_bash :: proc(t: ^testing.T) {

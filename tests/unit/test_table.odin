@@ -3,7 +3,7 @@ package test_wayu
 import "core:testing"
 import "core:strings"
 import "core:os"
-import wayu "../src"
+import wayu "../../src"
 
 // Test table creation
 @(test)

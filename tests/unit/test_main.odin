@@ -2,7 +2,7 @@ package test_wayu
 
 import "core:testing"
 import "core:fmt"
-import wayu "../src"
+import wayu "../../src"
 
 @(test)
 test_parse_args_path_add :: proc(t: ^testing.T) {

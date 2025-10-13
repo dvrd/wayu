@@ -7,7 +7,7 @@ import "core:os"
 import "core:fmt"
 import "core:strings"
 import "core:time"
-import wayu "../src"
+import wayu "../../src"
 
 @(test)
 test_create_backup_nonexistent_file :: proc(t: ^testing.T) {

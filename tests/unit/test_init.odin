@@ -3,7 +3,7 @@ package test_wayu
 import "core:testing"
 import "core:strings"
 import "core:os"
-import wayu "../src"
+import wayu "../../src"
 
 @(test)
 test_parse_args_init :: proc(t: ^testing.T) {

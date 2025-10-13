@@ -3,7 +3,7 @@ package test_wayu
 import "core:testing"
 import "core:fmt"
 import "core:strings"
-import wayu "../src"
+import wayu "../../src"
 
 @(test)
 test_stylize_function :: proc(t: ^testing.T) {

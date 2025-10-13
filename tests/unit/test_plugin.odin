@@ -6,7 +6,7 @@ import "core:testing"
 import "core:os"
 import "core:fmt"
 import "core:strings"
-import wayu "../src"
+import wayu "../../src"
 
 @(test)
 test_parse_shell_compat :: proc(t: ^testing.T) {

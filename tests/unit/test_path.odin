@@ -4,7 +4,7 @@ import "core:testing"
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import wayu "../src"
+import wayu "../../src"
 
 @(test)
 test_path_parsing :: proc(t: ^testing.T) {
