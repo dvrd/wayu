@@ -27,9 +27,10 @@ test_parse_shell_compat :: proc(t: ^testing.T) {
 
 	for test_case in test_cases {
 		result := wayu.parse_shell_compat(test_case.input)
-		testing.expect(t, result == test_case.expected,
-			fmt.aprintf("parse_shell_compat('%s') should return %v, got %v",
-				test_case.input, test_case.expected, result))
+		msg := fmt.aprintf("parse_shell_compat('%s') should return %v, got %v",
+			test_case.input, test_case.expected, result)
+		testing.expect(t, result == test_case.expected, msg)
+		delete(msg)
 	}
 }
 
@@ -47,9 +48,10 @@ test_shell_compat_to_string :: proc(t: ^testing.T) {
 
 	for test_case in test_cases {
 		result := wayu.shell_compat_to_string(test_case.input)
-		testing.expect(t, result == test_case.expected,
-			fmt.aprintf("shell_compat_to_string(%v) should return '%s', got '%s'",
-				test_case.input, test_case.expected, result))
+		msg := fmt.aprintf("shell_compat_to_string(%v) should return '%s', got '%s'",
+			test_case.input, test_case.expected, result)
+		testing.expect(t, result == test_case.expected, msg)
+		delete(msg)
 	}
 }
 
@@ -235,9 +237,10 @@ test_is_valid_git_url :: proc(t: ^testing.T) {
 
 	for test_case in test_cases {
 		result := wayu.is_valid_git_url(test_case.url)
-		testing.expect(t, result == test_case.expected,
-			fmt.aprintf("is_valid_git_url('%s') should return %v, got %v",
-				test_case.url, test_case.expected, result))
+		msg := fmt.aprintf("is_valid_git_url('%s') should return %v, got %v",
+			test_case.url, test_case.expected, result)
+		testing.expect(t, result == test_case.expected, msg)
+		delete(msg)
 	}
 }
 
@@ -256,11 +259,11 @@ test_extract_plugin_name_from_url :: proc(t: ^testing.T) {
 
 	for test_case in test_cases {
 		result := wayu.extract_plugin_name_from_url(test_case.url)
-		defer delete(result)
-
-		testing.expect(t, result == test_case.expected,
-			fmt.aprintf("extract_plugin_name_from_url('%s') should return '%s', got '%s'",
-				test_case.url, test_case.expected, result))
+		msg := fmt.aprintf("extract_plugin_name_from_url('%s') should return '%s', got '%s'",
+			test_case.url, test_case.expected, result)
+		testing.expect(t, result == test_case.expected, msg)
+		delete(msg)
+		delete(result)
 	}
 }
 
@@ -381,8 +384,9 @@ test_popular_plugins_registry :: proc(t: ^testing.T) {
 
 	for plugin_name in known_plugins {
 		_, exists := wayu.POPULAR_PLUGINS[plugin_name]
-		testing.expect(t, exists,
-			fmt.aprintf("Popular plugin '%s' should exist in registry", plugin_name))
+		msg := fmt.aprintf("Popular plugin '%s' should exist in registry", plugin_name)
+		testing.expect(t, exists, msg)
+		delete(msg)
 	}
 }
 

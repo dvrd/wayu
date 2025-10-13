@@ -11,11 +11,10 @@ handle_path_command :: proc(action: Action, args: []string) {
 	switch action {
 	case .ADD:
 		if len(args) == 0 {
-			// Use current working directory
-			cwd := os.get_current_directory()
-			defer delete(cwd)
-			add_path(cwd)
+			// Interactive TUI mode when no arguments provided
+			add_path_interactive()
 		} else {
+			// CLI mode with provided argument (backward compatible)
 			add_path(args[0])
 		}
 	case .REMOVE:
@@ -42,6 +41,160 @@ handle_path_command :: proc(action: Action, args: []string) {
 		print_path_help()
 		os.exit(1)
 	}
+}
+
+// Interactive TUI mode for adding paths
+add_path_interactive :: proc() {
+	// Check TTY - if not interactive terminal, fall back to PWD
+	if !os.exists("/dev/tty") {
+		cwd := os.get_current_directory()
+		defer delete(cwd)
+		add_path(cwd)
+		return
+	}
+
+	// Create form field with path validator
+	fields := []FormField{
+		{
+			label = "📂 Enter the directory path to add:",
+			input = new_input_with_validator("e.g., /usr/local/bin or $HOME/bin", 64, validate_path_for_form),
+			validation = InputValidation{valid = true, error_message = "", warning = "", info = ""},
+			required = true,
+		},
+	}
+
+	// Create preview function
+	preview_fn := proc(form: ^Form) -> string {
+		path_value := form.fields[0].input.value
+		if len(path_value) == 0 {
+			return ""
+		}
+
+		// Generate preview
+		builder := strings.builder_make()
+		defer strings.builder_destroy(&builder)
+
+		// Show what will be added
+		expanded := expand_env_vars(path_value)
+		defer delete(expanded)
+
+		fmt.sbprintf(&builder, "Will add to PATH:\n")
+		fmt.sbprintf(&builder, "  %s\n\n", path_value)
+
+		// Check if directory exists
+		if os.exists(expanded) {
+			fmt.sbprintf(&builder, "%s✓ Directory exists%s\n", get_success(), RESET)
+		} else {
+			fmt.sbprintf(&builder, "%s⚠ Directory does not exist yet%s\n", get_warning(), RESET)
+			fmt.sbprintf(&builder, "  (You can still add it)\n")
+		}
+
+		// Check if already in PATH
+		items := extract_path_items()
+		defer {
+			for item in items {
+				delete(item)
+			}
+			delete(items)
+		}
+
+		for item in items {
+			if item == path_value {
+				fmt.sbprintf(&builder, "%s✗ Path already in configuration%s\n", get_error(), RESET)
+				break
+			}
+		}
+
+		return strings.clone(strings.to_string(builder))
+	}
+
+	// Create submit function
+	submit_fn := proc(form: ^Form) -> bool {
+		path_value := form.fields[0].input.value
+		if len(path_value) == 0 {
+			return false
+		}
+
+		// Add the path using existing logic
+		add_path(path_value)
+		return true
+	}
+
+	// Create and run form
+	form := new_form(
+		"✨ Add New PATH Entry",
+		fields,
+		preview_fn,
+		submit_fn,
+	)
+	defer form_destroy(&form)
+
+	success := form_run(&form)
+
+	if success {
+		// Success message already printed by add_path
+	} else {
+		print_info("Operation cancelled")
+	}
+}
+
+// Validator for path input in forms
+validate_path_for_form :: proc(path: string) -> InputValidation {
+	base_validation := validate_path(path)
+
+	// If base validation failed, return it as InputValidation
+	if !base_validation.valid {
+		result := InputValidation{
+			valid = false,
+			error_message = base_validation.error_message,
+			warning = "",
+			info = "",
+		}
+		return result
+	}
+
+	// Additional TUI-specific validation
+	result := InputValidation{
+		valid = true,
+		error_message = "",
+		warning = "",
+		info = "",
+	}
+
+	// Check if path exists
+	expanded := expand_env_vars(path)
+	defer delete(expanded)
+
+	if !os.exists(expanded) {
+		result.warning = "Directory does not exist (can still be added)"
+	} else if !os.is_dir(expanded) {
+		result.valid = false
+		result.error_message = "Path exists but is not a directory"
+		delete(base_validation.error_message)
+		return result
+	}
+
+	// Check if already added
+	items := extract_path_items()
+	defer {
+		for item in items {
+			delete(item)
+		}
+		delete(items)
+	}
+
+	for item in items {
+		if item == path {
+			result.valid = false
+			result.error_message = "Path already exists in configuration"
+			delete(base_validation.error_message)
+			return result
+		}
+	}
+
+	delete(base_validation.error_message)
+	result.info = "Press Enter to add this path"
+	return result
 }
 
 add_path :: proc(path: string) {
