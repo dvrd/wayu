@@ -276,6 +276,49 @@ apply_text_styles :: proc(s: Style, text: string, width: int) -> string {
 	return strings.to_string(builder)
 }
 
+// Apply only text styles (colors, bold, italic) without layout (borders, padding, margins)
+// This is used by table rendering to style individual cells without adding structure
+apply_text_only_style :: proc(s: Style, text: string) -> string {
+	if text == "" {
+		return ""
+	}
+
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+
+	// Apply text formatting
+	if s.bold {
+		strings.write_string(&builder, BOLD)
+	}
+	if s.italic {
+		strings.write_string(&builder, ITALIC)
+	}
+	if s.underline {
+		strings.write_string(&builder, UNDERLINE)
+	}
+	if s.dim {
+		strings.write_string(&builder, DIM)
+	}
+	// Note: strikethrough not currently supported (no constant defined)
+
+	// Apply colors
+	if s.foreground != "" {
+		apply_color(&builder, s.foreground, true)
+	}
+	if s.background != "" {
+		apply_color(&builder, s.background, false)
+	}
+
+	// Write text as-is (no alignment or padding)
+	strings.write_string(&builder, text)
+
+	// Reset formatting
+	strings.write_string(&builder, RESET)
+
+	return strings.clone(strings.to_string(builder))
+}
+
 // Apply color (foreground or background)
 apply_color :: proc(builder: ^strings.Builder, color: string, is_foreground: bool) {
 	// Check if it's already a full ANSI code

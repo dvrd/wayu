@@ -484,28 +484,11 @@ list_aliases :: proc() {
 }
 
 print_alias_help :: proc() {
-	// Title with styled box
-	title_style := style_border(new_style(), .Rounded)
-	title_style = style_padding(title_style, 1)
-	title_style = style_bold(title_style)
-	title_style = style_foreground(title_style, get_primary())
-	title_style = style_align_horizontal(title_style, .Center)
-	title_style = style_width(title_style, 60)
-
-	title_output := render(title_style, "wayu alias - Manage shell aliases")
-	defer delete(title_output)
-	fmt.println(title_output)
+	// Title
+	fmt.printf("\n%s%swayu alias - Manage shell aliases%s\n\n", BOLD, get_primary(), RESET)
 
 	// Usage section
-	usage_header_style := style_bold(new_style())
-	usage_header_style = style_foreground(usage_header_style, get_secondary())
-	usage_header_style = style_margin_top(usage_header_style, 1)
-
-	usage_header_output := render(usage_header_style, "USAGE:")
-	defer delete(usage_header_output)
-	fmt.print(usage_header_output)
-
-	// Commands
+	fmt.printf("%s%sUSAGE:%s\n", BOLD, get_secondary(), RESET)
 	fmt.println("  wayu alias add <alias> <command>    Add or update alias")
 	fmt.println("  wayu alias add                      Interactive mode (no args)")
 	fmt.println("  wayu alias rm [alias]               Remove alias (interactive if no alias)")
@@ -513,29 +496,11 @@ print_alias_help :: proc() {
 	fmt.println("  wayu alias help                     Show this help")
 
 	// Examples section
-	examples_header_style := style_bold(new_style())
-	examples_header_style = style_foreground(examples_header_style, get_secondary())
-	examples_header_style = style_margin_top(examples_header_style, 1)
-
-	examples_header_output := render(examples_header_style, "EXAMPLES:")
-	defer delete(examples_header_output)
-	fmt.print(examples_header_output)
-
-	// Example commands with syntax highlighting
-	example_style := style_foreground(new_style(), get_muted())
-	example_style = style_padding_left(example_style, 2)
-
-	examples := []string{
-		"wayu alias add ll 'ls -la'",
-		"wayu alias add gc 'git commit'",
-		"wayu alias add                      # Interactive TUI mode",
-		"wayu alias rm ll",
-		"wayu alias rm                       # Interactive removal",
-	}
-
-	for example in examples {
-		example_output := render(example_style, example)
-		defer delete(example_output)
-		fmt.println(example_output)
-	}
+	fmt.printf("\n%s%sEXAMPLES:%s\n", BOLD, get_secondary(), RESET)
+	fmt.printf("  %swayu alias add ll 'ls -la'%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu alias add gc 'git commit'%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu alias add                      # Interactive TUI mode%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu alias rm ll%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu alias rm                       # Interactive removal%s\n", get_muted(), RESET)
+	fmt.println()
 }
