@@ -674,27 +674,91 @@ convert_shell_content :: proc(content: string, from_shell: ShellType, to_shell: 
 }
 
 print_migrate_help :: proc() {
-	print_header("wayu migrate - Shell configuration migration tool\n", EMOJI_MOUNTAIN)
+	// Title with styled box
+	title_style := style_border(new_style(), .Rounded)
+	title_style = style_padding(title_style, 1)
+	title_style = style_bold(title_style)
+	title_style = style_foreground(title_style, get_primary())
+	title_style = style_align_horizontal(title_style, .Center)
+	title_style = style_width(title_style, 60)
 
-	print_section("USAGE:", EMOJI_USER)
-	fmt.printf("  wayu migrate --from <shell> --to <shell>\n")
-	fmt.println()
+	title_output := render(title_style, "wayu migrate - Shell configuration migration")
+	defer delete(title_output)
+	fmt.println(title_output)
 
-	print_section("OPTIONS:", EMOJI_ACTION)
-	print_item("", "--from <shell>", "Source shell (bash or zsh)", EMOJI_INFO)
-	print_item("", "--to <shell>", "Target shell (bash or zsh)", EMOJI_INFO)
-	print_item("", "help, -h, --help", "Show this help message", EMOJI_INFO)
-	fmt.println()
+	// Usage section
+	usage_header_style := style_bold(new_style())
+	usage_header_style = style_foreground(usage_header_style, get_secondary())
+	usage_header_style = style_margin_top(usage_header_style, 1)
 
-	print_section("EXAMPLES:", EMOJI_CYCLIST)
-	fmt.printf("  wayu migrate --from zsh --to bash   # Migrate ZSH config to Bash\n")
-	fmt.printf("  wayu migrate --from bash --to zsh   # Migrate Bash config to ZSH\n")
-	fmt.println()
+	usage_header_output := render(usage_header_style, "USAGE:")
+	defer delete(usage_header_output)
+	fmt.print(usage_header_output)
 
-	print_section("NOTES:", EMOJI_INFO)
-	fmt.printf("  • Migration creates new shell-specific config files\n")
-	fmt.printf("  • Existing target files are not overwritten\n")
-	fmt.printf("  • Shell-specific optimizations are applied automatically\n")
-	fmt.printf("  • You'll need to update your shell RC file after migration\n")
-	fmt.println()
+	fmt.println("  wayu migrate --from <shell> --to <shell>")
+
+	// Options section
+	options_header_style := style_bold(new_style())
+	options_header_style = style_foreground(options_header_style, get_secondary())
+	options_header_style = style_margin_top(options_header_style, 1)
+
+	options_header_output := render(options_header_style, "OPTIONS:")
+	defer delete(options_header_output)
+	fmt.print(options_header_output)
+
+	fmt.println("  --from <shell>       Source shell (bash or zsh)")
+	fmt.println("  --to <shell>         Target shell (bash or zsh)")
+	fmt.println("  help, -h, --help     Show this help message")
+
+	// Examples section
+	examples_header_style := style_bold(new_style())
+	examples_header_style = style_foreground(examples_header_style, get_secondary())
+	examples_header_style = style_margin_top(examples_header_style, 1)
+
+	examples_header_output := render(examples_header_style, "EXAMPLES:")
+	defer delete(examples_header_output)
+	fmt.print(examples_header_output)
+
+	// Example commands with syntax highlighting
+	example_style := style_foreground(new_style(), get_muted())
+	example_style = style_padding_left(example_style, 2)
+
+	examples := []string{
+		"# Migrate ZSH config to Bash",
+		"wayu migrate --from zsh --to bash",
+		"",
+		"# Migrate Bash config to ZSH",
+		"wayu migrate --from bash --to zsh",
+	}
+
+	for example in examples {
+		example_output := render(example_style, example)
+		defer delete(example_output)
+		fmt.println(example_output)
+	}
+
+	// Notes section
+	notes_header_style := style_bold(new_style())
+	notes_header_style = style_foreground(notes_header_style, get_secondary())
+	notes_header_style = style_margin_top(notes_header_style, 1)
+
+	notes_header_output := render(notes_header_style, "NOTES:")
+	defer delete(notes_header_output)
+	fmt.print(notes_header_output)
+
+	notes := []string{
+		"• Migration creates new shell-specific config files",
+		"• Existing target files are not overwritten",
+		"• Shell-specific optimizations are applied automatically",
+		"• You'll need to update your shell RC file after migration",
+	}
+
+	notes_style := style_foreground(new_style(), get_muted())
+	notes_style = style_padding_left(notes_style, 2)
+
+	for note in notes {
+		note_output := render(notes_style, note)
+		defer delete(note_output)
+		fmt.println(note_output)
+	}
 }

@@ -883,49 +883,156 @@ handle_plugin_command :: proc(action: Action, args: []string) {
 // Help text
 
 print_plugin_help :: proc() {
-	print_header("wayu plugin - Plugin management\n", EMOJI_COMMAND)
+	// Title with styled box
+	title_style := style_border(new_style(), .Rounded)
+	title_style = style_padding(title_style, 1)
+	title_style = style_bold(title_style)
+	title_style = style_foreground(title_style, get_primary())
+	title_style = style_align_horizontal(title_style, .Center)
+	title_style = style_width(title_style, 60)
 
-	print_section("USAGE:", EMOJI_USER)
-	fmt.printf("  wayu plugin <action> [arguments]\n")
-	fmt.println()
+	title_output := render(title_style, "wayu plugin - Plugin management")
+	defer delete(title_output)
+	fmt.println(title_output)
 
-	print_section("ACTIONS:", EMOJI_ACTION)
-	print_item("", "add <name-or-url>", "Install plugin", EMOJI_ADD)
-	print_item("", "remove [name]", "Remove plugin (interactive if no name)", EMOJI_REMOVE)
-	print_item("", "list", "List installed plugins", EMOJI_LIST)
-	print_item("", "get <name>", "Show plugin info and copy URL to clipboard", EMOJI_INFO)
-	print_item("", "help", "Show this help message", EMOJI_INFO)
-	fmt.println()
+	// Usage section
+	usage_header_style := style_bold(new_style())
+	usage_header_style = style_foreground(usage_header_style, get_secondary())
+	usage_header_style = style_margin_top(usage_header_style, 1)
 
-	print_section("EXAMPLES:", EMOJI_CYCLIST)
-	fmt.printf("  wayu plugin add syntax-highlighting                      # Install popular plugin\n")
-	fmt.printf("  wayu plugin add https://github.com/user/plugin.git       # Install from URL\n")
-	fmt.printf("  wayu plugin list                                         # Show all plugins\n")
-	fmt.printf("  wayu plugin get syntax-highlighting                      # Get plugin info + copy URL\n")
-	fmt.printf("  wayu plugin remove                                       # Interactive removal\n")
-	fmt.printf("  wayu plugin remove syntax-highlighting                   # Remove specific plugin\n")
-	fmt.println()
+	usage_header_output := render(usage_header_style, "USAGE:")
+	defer delete(usage_header_output)
+	fmt.print(usage_header_output)
 
-	print_section("POPULAR PLUGINS:", EMOJI_INFO)
+	fmt.println("  wayu plugin <action> [arguments]")
 
-	// Show first 5 popular plugins
+	// Actions section
+	actions_header_style := style_bold(new_style())
+	actions_header_style = style_foreground(actions_header_style, get_secondary())
+	actions_header_style = style_margin_top(actions_header_style, 1)
+
+	actions_header_output := render(actions_header_style, "ACTIONS:")
+	defer delete(actions_header_output)
+	fmt.print(actions_header_output)
+
+	fmt.println("  add <name-or-url>       Install plugin")
+	fmt.println("  remove [name]           Remove plugin (interactive if no name)")
+	fmt.println("  list                    List installed plugins")
+	fmt.println("  get <name>              Show plugin info and copy URL to clipboard")
+	fmt.println("  help                    Show this help message")
+
+	// Examples section
+	examples_header_style := style_bold(new_style())
+	examples_header_style = style_foreground(examples_header_style, get_secondary())
+	examples_header_style = style_margin_top(examples_header_style, 1)
+
+	examples_header_output := render(examples_header_style, "EXAMPLES:")
+	defer delete(examples_header_output)
+	fmt.print(examples_header_output)
+
+	// Example commands with syntax highlighting
+	example_style := style_foreground(new_style(), get_muted())
+	example_style = style_padding_left(example_style, 2)
+
+	examples := []string{
+		"# Install popular plugin",
+		"wayu plugin add syntax-highlighting",
+		"",
+		"# Install from URL",
+		"wayu plugin add https://github.com/user/plugin.git",
+		"",
+		"# Show all plugins",
+		"wayu plugin list",
+		"",
+		"# Get plugin info + copy URL",
+		"wayu plugin get syntax-highlighting",
+		"",
+		"# Interactive removal",
+		"wayu plugin remove",
+		"",
+		"# Remove specific plugin",
+		"wayu plugin remove syntax-highlighting",
+	}
+
+	for example in examples {
+		example_output := render(example_style, example)
+		defer delete(example_output)
+		fmt.println(example_output)
+	}
+
+	// Popular plugins section
+	popular_header_style := style_bold(new_style())
+	popular_header_style = style_foreground(popular_header_style, get_secondary())
+	popular_header_style = style_margin_top(popular_header_style, 1)
+
+	popular_header_output := render(popular_header_style, "POPULAR PLUGINS:")
+	defer delete(popular_header_output)
+	fmt.print(popular_header_output)
+
+	// Show first 5 popular plugins with styled output
+	plugins_style := style_foreground(new_style(), get_muted())
+	plugins_style = style_padding_left(plugins_style, 2)
+
 	count := 0
 	for name, info in POPULAR_PLUGINS {
 		if count >= 5 {
 			break
 		}
-		fmt.printf("  • %s - %s\n", name, info.description)
+		plugin_line := fmt.aprintf("• %s - %s", name, info.description)
+		defer delete(plugin_line)
+
+		plugin_output := render(plugins_style, plugin_line)
+		defer delete(plugin_output)
+		fmt.println(plugin_output)
 		count += 1
 	}
-	fmt.println()
 }
 
 print_plugin_add_help :: proc() {
-	print_section("USAGE:", EMOJI_USER)
-	fmt.printf("  wayu plugin add <name-or-url>\n")
-	fmt.println()
-	fmt.printf("EXAMPLES:\n")
-	fmt.printf("  wayu plugin add syntax-highlighting\n")
-	fmt.printf("  wayu plugin add https://github.com/user/plugin.git\n")
-	fmt.println()
+	// Title with styled box
+	title_style := style_border(new_style(), .Rounded)
+	title_style = style_padding(title_style, 1)
+	title_style = style_bold(title_style)
+	title_style = style_foreground(title_style, get_primary())
+	title_style = style_align_horizontal(title_style, .Center)
+	title_style = style_width(title_style, 60)
+
+	title_output := render(title_style, "wayu plugin add - Install plugin")
+	defer delete(title_output)
+	fmt.println(title_output)
+
+	// Usage section
+	usage_header_style := style_bold(new_style())
+	usage_header_style = style_foreground(usage_header_style, get_secondary())
+	usage_header_style = style_margin_top(usage_header_style, 1)
+
+	usage_header_output := render(usage_header_style, "USAGE:")
+	defer delete(usage_header_output)
+	fmt.print(usage_header_output)
+
+	fmt.println("  wayu plugin add <name-or-url>")
+
+	// Examples section
+	examples_header_style := style_bold(new_style())
+	examples_header_style = style_foreground(examples_header_style, get_secondary())
+	examples_header_style = style_margin_top(examples_header_style, 1)
+
+	examples_header_output := render(examples_header_style, "EXAMPLES:")
+	defer delete(examples_header_output)
+	fmt.print(examples_header_output)
+
+	// Example commands with syntax highlighting
+	example_style := style_foreground(new_style(), get_muted())
+	example_style = style_padding_left(example_style, 2)
+
+	examples := []string{
+		"wayu plugin add syntax-highlighting",
+		"wayu plugin add https://github.com/user/plugin.git",
+	}
+
+	for example in examples {
+		example_output := render(example_style, example)
+		defer delete(example_output)
+		fmt.println(example_output)
+	}
 }
