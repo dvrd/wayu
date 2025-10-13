@@ -24,7 +24,13 @@ handle_path_command :: proc(action: Action, args: []string) {
 			remove_path(args[0])
 		}
 	case .LIST:
-		list_paths()
+		if len(args) > 0 && args[0] == "--static" {
+			// Static table mode (for scripts/automation)
+			list_paths_static()
+		} else {
+			// Interactive fuzzy finder mode (default)
+			list_paths_interactive()
+		}
 	case .GET:
 		fmt.eprintln("ERROR: get action not supported for path command")
 		fmt.println("The get action only applies to plugins")
@@ -406,7 +412,141 @@ remove_path_interactive :: proc() {
 	remove_path(selected_copy)
 }
 
-list_paths :: proc() {
+// Interactive fuzzy finder for PATH entries with details and actions
+list_paths_interactive :: proc() {
+	// Check if wayu is initialized first
+	if !check_wayu_initialized() {
+		os.exit(1)
+	}
+
+	items := extract_path_items()
+	defer {
+		for item in items {
+			delete(item)
+		}
+		delete(items)
+	}
+
+	if len(items) == 0 {
+		print_info("No PATH entries found")
+		return
+	}
+
+	// Convert to FuzzyItems with metadata
+	fuzzy_items := make([]FuzzyItem, len(items))
+	defer delete(fuzzy_items)
+
+	for item, i in items {
+		expanded := expand_env_vars(item)
+		defer delete(expanded)
+
+		exists := os.exists(expanded)
+		is_dir := os.is_dir(expanded)
+
+		// Create metadata
+		metadata := make(map[string]string)
+		metadata["path"] = strings.clone(item)
+		metadata["expanded"] = strings.clone(expanded)
+		metadata["exists"] = exists ? "true" : "false"
+		metadata["is_dir"] = is_dir ? "true" : "false"
+
+		fuzzy_items[i] = FuzzyItem{
+			display = item,
+			value = item,
+			metadata = metadata,
+			icon = exists ? "✓" : "✗",
+			color = exists ? get_success() : get_error(),
+		}
+	}
+
+	// Define actions
+	actions := []FuzzyAction{
+		{
+			name = "remove",
+			key_name = "Del",
+			key_code = 127,  // Delete key
+			handler = proc(item: ^FuzzyItem) -> bool {
+				// Remove the path
+				path := item.value
+				remove_path(path)
+				return true  // Refresh list
+			},
+			description = "Remove",
+		},
+	}
+
+	// Create details function
+	details_fn := proc(item: ^FuzzyItem) -> string {
+		builder := strings.builder_make()
+		defer strings.builder_destroy(&builder)
+
+		path := item.metadata["path"]
+		expanded := item.metadata["expanded"]
+		exists := item.metadata["exists"] == "true"
+
+		fmt.sbprintf(&builder, "%sPath:%s %s\n", BOLD, RESET, path)
+		fmt.sbprintf(&builder, "%sExpanded:%s %s\n\n", BOLD, RESET, expanded)
+
+		if exists {
+			fmt.sbprintf(&builder, "%s✓ Directory exists%s\n", get_success(), RESET)
+
+			// Try to get more info
+			info, err := os.stat(expanded)
+			if err == 0 {
+				mode := info.mode
+				fmt.sbprintf(&builder, "%sPermissions:%s %o\n", BOLD, RESET, mode & 0o777)
+			}
+
+			// Count files (simplified - just check if readable)
+			dir_handle, open_err := os.open(expanded)
+			if open_err == 0 {
+				defer os.close(dir_handle)
+				file_infos, read_err := os.read_dir(dir_handle, -1)
+				if read_err == 0 {
+					defer os.file_info_slice_delete(file_infos)
+					fmt.sbprintf(&builder, "%sFiles:%s %d items\n", BOLD, RESET, len(file_infos))
+				}
+			}
+		} else {
+			fmt.sbprintf(&builder, "%s✗ Directory does not exist%s\n", get_error(), RESET)
+		}
+
+		fmt.sbprintf(&builder, "\n%sActions:%s\n", BOLD, RESET)
+		fmt.sbprintf(&builder, "  Del - Remove from PATH\n")
+		fmt.sbprintf(&builder, "  Enter - Exit and select\n")
+
+		return strings.clone(strings.to_string(builder))
+	}
+
+	// Create fuzzy view
+	view := new_fuzzy_view(
+		"🚀 PATH Entries",
+		fuzzy_items,
+		details_fn,
+		actions,
+	)
+
+	// Cleanup metadata
+	defer {
+		for item in fuzzy_items {
+			for key, val in item.metadata {
+				delete(val)
+			}
+			delete(item.metadata)
+		}
+	}
+
+	// Run interactive fuzzy finder
+	selected, ok := fuzzy_run(&view)
+	fuzzy_view_destroy(&view)
+
+	if ok {
+		fmt.printf("\n%sSelected:%s %s\n", get_primary(), RESET, selected.value)
+	}
+}
+
+// Static table view for PATH entries (for scripts/automation)
+list_paths_static :: proc() {
 	// Check if wayu is initialized first
 	if !check_wayu_initialized() {
 		os.exit(1)
