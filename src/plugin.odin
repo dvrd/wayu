@@ -619,7 +619,9 @@ handle_plugin_list :: proc(args: []string) {
 		}
 	}
 
-	table_render(table)
+	output := table_render(table)
+	defer delete(output)
+	fmt.print(output)
 
 	fmt.println()
 	enabled_count := 0
