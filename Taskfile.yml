@@ -35,15 +35,18 @@ tasks:
       - "{{.BIN_DIR}}/{{.BINARY_NAME}}_debug"
 
   test:
-    desc: Run all unit tests with coverage report
+    desc: Run all tests (unit, integration, and UI) with unified coverage report
     cmds:
       - ruby scripts/test-coverage.rb
 
   test:integration:
-    desc: Run all integration tests
+    desc: Run all standalone integration tests (Odin)
     deps: [build]
     cmds:
-      - ruby {{.TEST_DIR}}/integration/run_all.rb
+      - task test:path
+      - task test:alias
+      - task test:constants
+      - task test:backup
 
   test:validation:
     desc: Run validation integration tests
@@ -64,28 +67,32 @@ tasks:
       - ruby {{.TEST_DIR}}/integration/test_completions.rb
 
   test:backup:
-    desc: Run backup integration tests
+    desc: Run backup integration tests (Odin)
     deps: [build]
     cmds:
-      - ruby {{.TEST_DIR}}/integration/test_backup.rb
+      - odin build {{.TEST_DIR}}/integration/test_backup_standalone.odin -file -out:{{.BIN_DIR}}/test_backup
+      - "{{.BIN_DIR}}/test_backup"
 
   test:path:
-    desc: Run PATH integration tests
+    desc: Run PATH integration tests (Odin)
     deps: [build]
     cmds:
-      - ruby {{.TEST_DIR}}/integration/test_path.rb
+      - odin build {{.TEST_DIR}}/integration/test_path_standalone.odin -file -out:{{.BIN_DIR}}/test_path
+      - "{{.BIN_DIR}}/test_path"
 
   test:alias:
-    desc: Run alias integration tests
+    desc: Run alias integration tests (Odin)
     deps: [build]
     cmds:
-      - ruby {{.TEST_DIR}}/integration/test_alias.rb
+      - odin build {{.TEST_DIR}}/integration/test_alias_standalone.odin -file -out:{{.BIN_DIR}}/test_alias
+      - "{{.BIN_DIR}}/test_alias"
 
   test:constants:
-    desc: Run constants integration tests
+    desc: Run constants integration tests (Odin)
     deps: [build]
     cmds:
-      - ruby {{.TEST_DIR}}/integration/test_constants.rb
+      - odin build {{.TEST_DIR}}/integration/test_constants_standalone.odin -file -out:{{.BIN_DIR}}/test_constants
+      - "{{.BIN_DIR}}/test_constants"
 
   test:plugin:
     desc: Run plugin integration tests
@@ -114,10 +121,9 @@ tasks:
       - odin run {{.TEST_DIR}}/ui/test_render_box.odin -file -out:{{.BIN_DIR}}/test_render
 
   test:all:
-    desc: Run all tests (unit and integration)
+    desc: Run all tests (unit, integration, and UI) with unified report
     cmds:
       - task test
-      - task test:integration
 
   run:
     desc: Build and run wayu
