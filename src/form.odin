@@ -155,6 +155,17 @@ form_run :: proc(form: ^Form) -> bool {
 				if modified {
 					// Re-validate field
 					if field.input.validator != nil {
+						// Free old validation strings
+						if len(field.validation.error_message) > 0 {
+							delete(field.validation.error_message)
+						}
+						if len(field.validation.warning) > 0 {
+							delete(field.validation.warning)
+						}
+						if len(field.validation.info) > 0 {
+							delete(field.validation.info)
+						}
+
 						field.validation = field.input.validator(field.input.value)
 					}
 					form_render_full(form)
@@ -199,6 +210,17 @@ form_validate :: proc(form: ^Form) -> bool {
 	all_valid := true
 
 	for field, i in form.fields {
+		// Free old validation strings
+		if len(form.fields[i].validation.error_message) > 0 {
+			delete(form.fields[i].validation.error_message)
+		}
+		if len(form.fields[i].validation.warning) > 0 {
+			delete(form.fields[i].validation.warning)
+		}
+		if len(form.fields[i].validation.info) > 0 {
+			delete(form.fields[i].validation.info)
+		}
+
 		// Check required fields
 		if field.required && len(field.input.value) == 0 {
 			form.fields[i].validation = InputValidation{
@@ -278,15 +300,28 @@ form_render_full :: proc(form: ^Form) {
 	}
 }
 
+// Count visual width of string (emojis count as 2)
+count_visual_width :: proc(s: string) -> int {
+	width := 0
+	for r in s {
+		if r > 0x1F600 { // Emoji range (simplified)
+			width += 2
+		} else {
+			width += 1
+		}
+	}
+	return width
+}
+
 // Render title box
 render_title_box :: proc(title: string) -> string {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 
 	width := 68 // Standard width
-	title_len := len(title)
-	padding_left := (width - title_len - 2) / 2
-	padding_right := width - title_len - 2 - padding_left
+	title_visual_width := count_visual_width(title)
+	padding_left := (width - title_visual_width - 2) / 2
+	padding_right := width - title_visual_width - 2 - padding_left
 
 	// Top border
 	fmt.sbprintf(&builder, "%s╭", get_primary())
@@ -337,14 +372,43 @@ render_box :: proc(title: string, content: string) -> string {
 
 	for line in lines {
 		trimmed := strings.trim_right_space(line)
-		fmt.sbprintf(&builder, "%s│%s %s", get_secondary(), RESET, trimmed)
 
-		// Padding to width
-		line_len := len(trimmed)
-		padding := width - line_len - 1
-		for i in 0 ..< padding {
-			strings.write_byte(&builder, ' ')
+		// Strip ANSI codes for width calculation
+		stripped := trimmed
+		// Simple ANSI stripping (remove escape sequences)
+		if strings.contains(trimmed, "\x1b[") {
+			// Count actual visible width
+			visual_width := 0
+			in_escape := false
+			for r in trimmed {
+				if r == '\x1b' {
+					in_escape = true
+				} else if in_escape && r == 'm' {
+					in_escape = false
+				} else if !in_escape {
+					if r > 0x1F600 {
+						visual_width += 2
+					} else {
+						visual_width += 1
+					}
+				}
+			}
+
+			fmt.sbprintf(&builder, "%s│%s %s", get_secondary(), RESET, trimmed)
+			padding := width - visual_width - 1
+			for i in 0 ..< padding {
+				strings.write_byte(&builder, ' ')
+			}
+		} else {
+			// No ANSI codes
+			line_visual_width := count_visual_width(trimmed)
+			fmt.sbprintf(&builder, "%s│%s %s", get_secondary(), RESET, trimmed)
+			padding := width - line_visual_width - 1
+			for i in 0 ..< padding {
+				strings.write_byte(&builder, ' ')
+			}
 		}
+
 		fmt.sbprintf(&builder, "%s│%s\r\n", get_secondary(), RESET)
 	}
 

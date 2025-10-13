@@ -54,11 +54,16 @@ add_path_interactive :: proc() {
 	}
 
 	// Create form field with path validator
+	input_field := new_input_with_validator("e.g., /usr/local/bin or $HOME/bin", 64, validate_path_for_form)
+
+	// Run initial validation with empty value
+	initial_validation := validate_path_for_form("")
+
 	fields := []FormField{
 		{
 			label = "📂 Enter the directory path to add:",
-			input = new_input_with_validator("e.g., /usr/local/bin or $HOME/bin", 64, validate_path_for_form),
-			validation = InputValidation{valid = true, error_message = "", warning = "", info = ""},
+			input = input_field,
+			validation = initial_validation,
 			required = true,
 		},
 	}
