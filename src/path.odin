@@ -151,10 +151,11 @@ validate_path_for_form :: proc(path: string) -> InputValidation {
 	base_validation := validate_path(path)
 
 	// If base validation failed, return it as InputValidation
+	// Note: base_validation.error_message is a string literal, don't delete it
 	if !base_validation.valid {
 		result := InputValidation{
 			valid = false,
-			error_message = base_validation.error_message,
+			error_message = strings.clone(base_validation.error_message),
 			warning = "",
 			info = "",
 		}
@@ -174,11 +175,10 @@ validate_path_for_form :: proc(path: string) -> InputValidation {
 	defer delete(expanded)
 
 	if !os.exists(expanded) {
-		result.warning = "Directory does not exist (can still be added)"
+		result.warning = strings.clone("Directory does not exist (can still be added)")
 	} else if !os.is_dir(expanded) {
 		result.valid = false
-		result.error_message = "Path exists but is not a directory"
-		delete(base_validation.error_message)
+		result.error_message = strings.clone("Path exists but is not a directory")
 		return result
 	}
 
@@ -194,14 +194,12 @@ validate_path_for_form :: proc(path: string) -> InputValidation {
 	for item in items {
 		if item == path {
 			result.valid = false
-			result.error_message = "Path already exists in configuration"
-			delete(base_validation.error_message)
+			result.error_message = strings.clone("Path already exists in configuration")
 			return result
 		}
 	}
 
-	delete(base_validation.error_message)
-	result.info = "Press Enter to add this path"
+	result.info = strings.clone("Press Enter to add this path")
 	return result
 }
 
