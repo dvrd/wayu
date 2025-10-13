@@ -15,9 +15,12 @@ ShellType :: enum {
 detect_shell :: proc() -> ShellType {
     // Check SHELL environment variable first
     shell_env := os.get_env("SHELL")
+    defer delete(shell_env)
+
     if len(shell_env) == 0 {
         // Fallback to checking 0 command (current shell process)
         shell_env = os.get_env("0")
+        // defer already handles cleanup for reassignment
         if len(shell_env) == 0 {
             return .UNKNOWN
         }
@@ -52,6 +55,8 @@ get_shell_extension :: proc(shell: ShellType) -> string {
 // Get shell-specific RC file path for initialization
 get_rc_file_path :: proc(shell: ShellType) -> string {
     home := os.get_env("HOME")
+    defer delete(home)
+
     switch shell {
     case .BASH:
         // Check for .bash_profile first (macOS), then .bashrc (Linux)

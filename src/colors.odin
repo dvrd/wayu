@@ -107,29 +107,36 @@ CURRENT_COLOR_PROFILE: ColorProfile
 // Detect terminal color capabilities
 detect_color_profile :: proc() -> ColorProfile {
 	// Check NO_COLOR environment variable (standard)
-	if len(os.get_env("NO_COLOR")) > 0 {
+	no_color := os.get_env("NO_COLOR")
+	defer delete(no_color)
+	if len(no_color) > 0 {
 		return .ASCII
 	}
 
 	// Check WAYU_PLAIN for explicit plain output
-	if len(os.get_env("WAYU_PLAIN")) > 0 {
+	wayu_plain := os.get_env("WAYU_PLAIN")
+	defer delete(wayu_plain)
+	if len(wayu_plain) > 0 {
 		return .ASCII
 	}
 
 	// Check COLORTERM for TrueColor support
 	colorterm := os.get_env("COLORTERM")
+	defer delete(colorterm)
 	if colorterm == "truecolor" || colorterm == "24bit" {
 		return .TRUECOLOR
 	}
 
 	// Check TERM for 256 color support
 	term := os.get_env("TERM")
+	defer delete(term)
 	if strings.contains(term, "256color") {
 		return .ANSI256
 	}
 
 	// Check if running in a known TrueColor terminal
 	term_program := os.get_env("TERM_PROGRAM")
+	defer delete(term_program)
 	if term_program == "iTerm.app" ||
 	   term_program == "Apple_Terminal" ||
 	   term_program == "vscode" ||
