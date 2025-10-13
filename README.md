@@ -9,6 +9,8 @@ A shell configuration management CLI written in Odin that helps you manage PATH 
 - **Alias Management** - Manage shell aliases with interactive removal
 - **Constants Management** - Handle environment variables and constants
 - **Interactive Mode** - Fuzzy search for removing entries
+- **Modern UI Components** - Tables, progress bars, spinners, and styled output
+- **Theme System** - Light and dark themes with automatic terminal detection
 - **Backward Compatible** - Existing ZSH configurations work unchanged
 - **Shell-Specific Templates** - Optimized configuration templates for each shell
 - **Zero Dependencies** - Written in Odin for fast compilation and execution
@@ -179,6 +181,45 @@ task check
 
 # Development workflow
 task dev -- path list
+```
+
+## UI & Styling
+
+wayu v2.1.0 includes a modern style system inspired by Charm's CLI ecosystem:
+
+### Visual Components
+
+- **Tables** - Formatted tables with borders for listing PATH entries, aliases, and constants
+- **Progress Bars** - Visual feedback for long-running operations
+- **Spinners** - Loading indicators with multiple animation styles
+- **Styled Output** - Color-coded messages (success, error, warning, info)
+
+### Theme System
+
+wayu automatically detects your terminal's color scheme and applies appropriate themes:
+
+- **Dark Mode** (default) - Optimized for dark terminal backgrounds
+- **Light Mode** - Optimized for light terminal backgrounds
+- **Auto Detection** - Automatically selects theme based on terminal settings
+
+The theme system uses a comprehensive color palette with variants for primary, secondary, accent, success, error, warning, and info colors.
+
+### Configuration
+
+Control the visual output with environment variables:
+
+```bash
+# Disable all colors (accessibility mode)
+NO_COLOR=1 wayu path list
+
+# Force plain output (no fancy UI components)
+WAYU_PLAIN=1 wayu alias list
+
+# The style system automatically:
+# - Detects terminal capabilities (ANSI, 256-color, TrueColor)
+# - Falls back gracefully on limited terminals
+# - Respects NO_COLOR environment variable
+# - Works with screen readers and accessibility tools
 ```
 
 ## License
