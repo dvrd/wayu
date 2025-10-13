@@ -2,7 +2,7 @@ package test_wayu
 
 import "core:testing"
 import "core:fmt"
-import wayu "../src"
+import wayu "../../src"
 
 @(test)
 test_fuzzy_score_exact_match :: proc(t: ^testing.T) {
