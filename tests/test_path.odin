@@ -106,3 +106,73 @@ test_path_line_format :: proc(t: ^testing.T) {
 	testing.expect(t, strings.has_prefix(valid_line, "add_to_path"), "Should start with add_to_path")
 	testing.expect(t, strings.contains(valid_line, "\""), "Should contain quotes")
 }
+
+@(test)
+test_expand_env_vars :: proc(t: ^testing.T) {
+	// Test environment variable expansion
+	result := wayu.expand_env_vars("$HOME/.local/bin")
+	defer delete(result)
+	testing.expect(t, len(result) > 0, "Should expand environment variables")
+	testing.expect(t, !strings.contains(result, "$HOME"), "Should replace $HOME")
+}
+
+@(test)
+test_expand_env_vars_no_vars :: proc(t: ^testing.T) {
+	// Test path without environment variables
+	path := "/usr/local/bin"
+	result := wayu.expand_env_vars(path)
+	defer delete(result)
+	testing.expect_value(t, result, path)
+}
+
+@(test)
+test_count_duplicates :: proc(t: ^testing.T) {
+	// Test counting duplicate paths
+	duplicate_indices := []bool{false, true, false, true, true}
+	count := wayu.count_duplicates(duplicate_indices)
+	testing.expect_value(t, count, 3)
+}
+
+@(test)
+test_count_duplicates_empty :: proc(t: ^testing.T) {
+	// Test counting with no duplicates
+	duplicate_indices := []bool{false, false, false}
+	count := wayu.count_duplicates(duplicate_indices)
+	testing.expect_value(t, count, 0)
+}
+
+@(test)
+test_count_missing_paths :: proc(t: ^testing.T) {
+	// Test counting missing paths
+	paths := []string{"/nonexistent/path1", "/nonexistent/path2", "/tmp"}
+	count := wayu.count_missing_paths(paths)
+	testing.expect(t, count >= 2, "Should count at least 2 missing paths")
+}
+
+@(test)
+test_analyze_paths :: proc(t: ^testing.T) {
+	// Test path analysis
+	paths := []string{"/tmp", "/tmp", "/nonexistent"}
+	analysis := wayu.analyze_paths(paths)
+	defer wayu.cleanup_path_analysis(&analysis)
+
+	testing.expect(t, len(analysis.duplicate_indices) == 3, "Should have duplicate indices for all paths")
+	testing.expect(t, len(analysis.expanded_paths) == 3, "Should have expanded paths")
+}
+
+@(test)
+test_cleanup_path_analysis :: proc(t: ^testing.T) {
+	// Test cleanup of path analysis
+	paths := []string{"/tmp", "/tmp"}
+	analysis := wayu.analyze_paths(paths)
+	wayu.cleanup_path_analysis(&analysis)
+	// Just verify it doesn't crash
+	testing.expect(t, true, "Cleanup should not crash")
+}
+
+@(test)
+test_print_path_help :: proc(t: ^testing.T) {
+	// Test that help printing doesn't crash
+	wayu.print_path_help()
+	testing.expect(t, true, "Help printing should not crash")
+}

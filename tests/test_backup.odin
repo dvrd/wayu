@@ -143,6 +143,9 @@ test_list_backups_for_nonexistent_file :: proc(t: ^testing.T) {
 
 @(test)
 test_get_config_file_path :: proc(t: ^testing.T) {
+	// Initialize shell globals before testing
+	wayu.init_shell_globals()
+
 	// Test config file path resolution
 	test_cases := []struct {
 		config_type: string,
