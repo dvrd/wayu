@@ -598,13 +598,27 @@ list_constants_interactive :: proc() {
 		fmt.sbprintf(&builder, "Length: %s\n", length)
 		fmt.sbprintf(&builder, "\n")
 		fmt.sbprintf(&builder, "Actions:\n")
-		fmt.sbprintf(&builder, "  Enter - Select to view\n")
+		fmt.sbprintf(&builder, "  Ctrl+D - Delete this constant\n")
+		fmt.sbprintf(&builder, "  Enter - Select and exit\n")
 
 		return strings.clone(strings.to_string(builder))
 	}
 
-	// Create actions (disabled for now)
-	actions := []FuzzyAction{}
+	// Create actions
+	actions := []FuzzyAction{
+		{
+			name = "remove",
+			key_name = "Ctrl+D",
+			key_code = 4,  // Ctrl+D
+			handler = proc(item: ^FuzzyItem) -> bool {
+				// Remove the constant
+				const_name := item.metadata["name"]
+				remove_constant(const_name)
+				return true  // Refresh list
+			},
+			description = "Delete",
+		},
+	}
 
 	// Create and run fuzzy view
 	view := new_fuzzy_view("💾 Environment Constants", items[:], details_fn, actions)

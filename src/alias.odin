@@ -594,15 +594,27 @@ list_aliases_interactive :: proc() {
 
 		fmt.sbprintf(&builder, "\n")
 		fmt.sbprintf(&builder, "Actions:\n")
-		fmt.sbprintf(&builder, "  Del - Remove this alias\n")
-		fmt.sbprintf(&builder, "  Enter - Select to view\n")
+		fmt.sbprintf(&builder, "  Ctrl+D - Delete this alias\n")
+		fmt.sbprintf(&builder, "  Enter - Select and exit\n")
 
 		return strings.clone(strings.to_string(builder))
 	}
 
 	// Create actions
-	// Note: Actions are disabled for now until we implement proper modal dialogs
-	actions := []FuzzyAction{}
+	actions := []FuzzyAction{
+		{
+			name = "remove",
+			key_name = "Ctrl+D",
+			key_code = 4,  // Ctrl+D
+			handler = proc(item: ^FuzzyItem) -> bool {
+				// Remove the alias
+				alias_name := item.metadata["name"]
+				remove_alias(alias_name)
+				return true  // Refresh list
+			},
+			description = "Delete",
+		},
+	}
 
 	// Create and run fuzzy view
 	view := new_fuzzy_view("🔑 Shell Aliases", items[:], details_fn, actions)
