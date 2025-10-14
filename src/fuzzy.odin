@@ -227,8 +227,8 @@ fuzzy_render_title :: proc(title: string) -> string {
 		strings.repeat("─", width),
 		RESET)
 
-	// Title line with padding
-	title_len := len(title)
+	// Title line with padding - use visible_width for emojis
+	title_len := visible_width(title)
 	padding := (width - title_len) / 2
 	remaining := width - title_len - padding
 
@@ -508,7 +508,24 @@ fuzzy_handle_key :: proc(view: ^FuzzyView, ch: u8, n: int, input_buf: []byte) ->
 			if ch == action.key_code {
 				if len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
 					item := &view.filtered_items[view.selected_index]
+
+					// Exit raw mode and show cursor for action handler
+					// This allows the handler to prompt the user
+					CLEAR_SCREEN :: "\033[2J\033[H"
+					SHOW_CURSOR :: "\033[?25h"
+					HIDE_CURSOR :: "\033[?25l"
+
+					fmt.print(CLEAR_SCREEN)
+					fmt.print(SHOW_CURSOR)
+					disable_raw_mode()
+
+					// Execute handler
 					refresh := action.handler(item)
+
+					// Re-enter raw mode and hide cursor
+					enable_raw_mode()
+					fmt.print(HIDE_CURSOR)
+
 					if refresh {
 						// Rebuild filter after action
 						fuzzy_update_filter(view)
