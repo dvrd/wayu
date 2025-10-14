@@ -6,19 +6,70 @@ import "core:strings"
 import "core:sys/unix"
 import "core:c/libc"
 import "core:slice"
+import "core:c"
 
 // Enhanced fuzzy finder implementation with rich metadata, details panels, and actions
 // This provides interactive fuzzy matching with real-time filtering, details, and keyboard actions
 
-// Terminal control for raw mode using system commands
-enable_raw_mode :: proc() {
-	// Use stty to set terminal to raw mode and disable echo
-	libc.system("stty raw -echo")
+// ============================================================================
+// Terminal State Management with termios
+// ============================================================================
+
+foreign import libc_term "system:c"
+
+STDIN_FILENO :: 0
+TCSANOW :: 0
+
+// ICANON and ECHO flags for terminal modes
+ICANON :: 0x00000100  // Canonical input (line buffering)
+ECHO   :: 0x00000008  // Echo input characters
+
+termios :: struct {
+	c_iflag:  c.uint,
+	c_oflag:  c.uint,
+	c_cflag:  c.uint,
+	c_lflag:  c.uint,
+	c_line:   c.uchar,
+	c_cc:     [32]c.uchar,
+	c_ispeed: c.uint,
+	c_ospeed: c.uint,
 }
 
+foreign libc_term {
+	tcgetattr :: proc(fd: c.int, termios_p: ^termios) -> c.int ---
+	tcsetattr :: proc(fd: c.int, optional_actions: c.int, termios_p: ^termios) -> c.int ---
+}
+
+// Global variable to save terminal state
+saved_termios: termios
+
+// Enable raw mode with proper terminal state saving
+// Returns false if terminal control failed
+enable_raw_mode :: proc() -> bool {
+	// Save current terminal state
+	if tcgetattr(STDIN_FILENO, &saved_termios) != 0 {
+		debug("Failed to get terminal attributes")
+		return false
+	}
+
+	// Create raw mode settings
+	raw := saved_termios
+	raw.c_lflag &= ~(c.uint(ECHO) | c.uint(ICANON))
+
+	// Apply raw mode
+	if tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0 {
+		debug("Failed to set terminal to raw mode")
+		return false
+	}
+
+	debug("Terminal set to raw mode")
+	return true
+}
+
+// Restore terminal to saved state
 disable_raw_mode :: proc() {
-	// Restore normal terminal settings
-	libc.system("stty cooked echo")
+	tcsetattr(STDIN_FILENO, TCSANOW, &saved_termios)
+	debug("Terminal restored to original state")
 }
 
 // ============================================================================
@@ -528,7 +579,10 @@ fuzzy_handle_key :: proc(view: ^FuzzyView, ch: u8, n: int, input_buf: []byte) ->
 					refresh := action.handler(item)
 
 					// Re-enter raw mode and hide cursor
-					enable_raw_mode()
+					if !enable_raw_mode() {
+						// If we can't re-enter raw mode, exit gracefully
+						return false, false
+					}
 					fmt.print(HIDE_CURSOR)
 
 					if refresh {
@@ -553,7 +607,10 @@ fuzzy_run :: proc(view: ^FuzzyView) -> (selected: FuzzyItem, ok: bool) {
 	debug("Starting enhanced fuzzy finder with %d items", len(view.items))
 
 	// Enter raw mode
-	enable_raw_mode()
+	if !enable_raw_mode() {
+		fmt.eprintln("Error: Failed to enable raw mode")
+		return FuzzyItem{}, false
+	}
 	fmt.print(HIDE_CURSOR)
 
 	// Make sure terminal is always restored
@@ -683,7 +740,10 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 	update_filter(items, filter_text[:], &filtered_items)
 
 	// Enter raw mode (disable line buffering and echo)
-	enable_raw_mode()
+	if !enable_raw_mode() {
+		fmt.eprintln("Error: Failed to enable raw mode")
+		return strings.clone(""), false
+	}
 
 	fmt.print(HIDE_CURSOR)
 
