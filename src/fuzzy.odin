@@ -25,14 +25,13 @@ ICANON :: 0x00000100  // Canonical input (line buffering)
 ECHO   :: 0x00000008  // Echo input characters
 
 termios :: struct {
-	c_iflag:  c.uint,
-	c_oflag:  c.uint,
-	c_cflag:  c.uint,
-	c_lflag:  c.uint,
-	c_line:   c.uchar,
-	c_cc:     [32]c.uchar,
-	c_ispeed: c.uint,
-	c_ospeed: c.uint,
+	c_iflag:  c.ulong,  // tcflag_t is unsigned long on macOS
+	c_oflag:  c.ulong,
+	c_cflag:  c.ulong,
+	c_lflag:  c.ulong,
+	c_cc:     [20]c.uchar,  // NCCS=20 on macOS
+	c_ispeed: c.ulong,  // speed_t is unsigned long on macOS
+	c_ospeed: c.ulong,
 }
 
 foreign libc_term {
@@ -54,7 +53,7 @@ enable_raw_mode :: proc() -> bool {
 
 	// Create raw mode settings
 	raw := saved_termios
-	raw.c_lflag &= ~(c.uint(ECHO) | c.uint(ICANON))
+	raw.c_lflag &= ~(c.ulong(ECHO) | c.ulong(ICANON))
 
 	// Apply raw mode
 	if tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0 {
