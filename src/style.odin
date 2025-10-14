@@ -104,19 +104,52 @@ calculate_content_width :: proc(s: Style, lines: []string) -> int {
 
 // Get visible width of text (excluding ANSI codes)
 visible_width :: proc(text: string) -> int {
-	// Simple implementation - just count non-ANSI characters
-	// TODO: Handle ANSI codes properly and emoji width
+	// Handle ANSI codes and approximate emoji width
 	count := 0
 	in_escape := false
-	for r in text {
-		if r == '\x1b' {
+	i := 0
+	for i < len(text) {
+		b := text[i]
+
+		// ANSI escape sequence
+		if b == '\x1b' {
 			in_escape = true
-		} else if in_escape {
-			if r == 'm' {
+			i += 1
+			continue
+		}
+
+		if in_escape {
+			if b == 'm' {
 				in_escape = false
 			}
-		} else {
+			i += 1
+			continue
+		}
+
+		// Count character width
+		// Most emojis are in range U+1F300 to U+1F9FF (4-byte UTF-8)
+		// They display as 2 characters wide
+		if b >= 0xF0 && b <= 0xF4 { // 4-byte UTF-8 start byte
+			// Emoji or other wide character - count as 2
+			count += 2
+			// Skip remaining bytes of UTF-8 sequence
+			i += 4
+		} else if b >= 0xE0 && b <= 0xEF { // 3-byte UTF-8
+			// Check for special symbols that might be wide
+			if b == 0xE2 && i + 2 < len(text) {
+				// Common symbols like ✓, ✗, ▸, etc are in this range
+				// Most are 1 char wide except emoji variants
+				count += 1
+			} else {
+				count += 1
+			}
+			i += 3
+		} else if b >= 0xC0 && b <= 0xDF { // 2-byte UTF-8
 			count += 1
+			i += 2
+		} else { // ASCII
+			count += 1
+			i += 1
 		}
 	}
 	return count
