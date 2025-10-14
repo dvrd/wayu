@@ -323,8 +323,11 @@ fuzzy_render_items :: proc(view: ^FuzzyView) -> string {
 					RESET)
 
 				// Padding to align border - use visible_width
-				content_len := visible_width(content) + 1 // +1 for space after content
-				padding := max(0, 57 - content_len)  // 60 total - 1 left border - 1 space - 1 right border = 57
+				// Total line: │ + space + content + space + padding + │ = 62 chars
+				// Internal: space(1) + content + space(1) + padding = 60 chars
+				// Therefore: content + padding = 58
+				content_len := visible_width(content) + 1 // content + 1 space after
+				padding := max(0, 59 - content_len)  // 59 - (content+1) = 58 - content
 				fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
 				fmt.sbprintf(&builder, "%s│%s\r\n", get_primary(), RESET)
 			} else {
@@ -341,8 +344,8 @@ fuzzy_render_items :: proc(view: ^FuzzyView) -> string {
 					RESET)
 
 				// Padding - use visible_width
-				content_len := visible_width(content) + 1 // +1 for space after content
-				padding := max(0, 57 - content_len)  // 60 total - 1 left border - 1 space - 1 right border = 57
+				content_len := visible_width(content) + 1 // content + 1 space after
+				padding := max(0, 59 - content_len)  // Same calculation as selected items
 				fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
 				fmt.sbprintf(&builder, "%s│%s\r\n", get_muted(), RESET)
 			}
@@ -399,8 +402,10 @@ fuzzy_render_details :: proc(view: ^FuzzyView) -> string {
 		// Content
 		fmt.sbprintf(&builder, "%s", line)
 
-		// Padding (60 total - 1 left border - 1 space - 1 right border = 57)
-		padding := max(0, width - line_width - 3)
+		// Padding: │ + space(1) + line + padding + │ = 62 chars total
+		// Internal: space(1) + line + padding = 60 chars
+		// Therefore: line + padding = 59
+		padding := max(0, 59 - line_width)
 		fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
 
 		// Right border
