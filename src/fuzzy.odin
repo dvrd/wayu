@@ -324,7 +324,7 @@ fuzzy_render_items :: proc(view: ^FuzzyView) -> string {
 
 				// Padding to align border - use visible_width
 				content_len := visible_width(content) + 1 // +1 for space after content
-				padding := max(0, 58 - content_len)
+				padding := max(0, 57 - content_len)  // 60 total - 1 left border - 1 space - 1 right border = 57
 				fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
 				fmt.sbprintf(&builder, "%s│%s\r\n", get_primary(), RESET)
 			} else {
@@ -342,7 +342,7 @@ fuzzy_render_items :: proc(view: ^FuzzyView) -> string {
 
 				// Padding - use visible_width
 				content_len := visible_width(content) + 1 // +1 for space after content
-				padding := max(0, 58 - content_len)
+				padding := max(0, 57 - content_len)  // 60 total - 1 left border - 1 space - 1 right border = 57
 				fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
 				fmt.sbprintf(&builder, "%s│%s\r\n", get_muted(), RESET)
 			}
@@ -399,8 +399,8 @@ fuzzy_render_details :: proc(view: ^FuzzyView) -> string {
 		// Content
 		fmt.sbprintf(&builder, "%s", line)
 
-		// Padding
-		padding := max(0, width - line_width - 2)
+		// Padding (60 total - 1 left border - 1 space - 1 right border = 57)
+		padding := max(0, width - line_width - 3)
 		fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
 
 		// Right border
