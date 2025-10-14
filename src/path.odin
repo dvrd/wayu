@@ -463,15 +463,26 @@ list_paths_interactive :: proc() {
 	actions := []FuzzyAction{
 		{
 			name = "remove",
-			key_name = "Del",
-			key_code = 127,  // Delete key
+			key_name = "Ctrl+D",
+			key_code = 4,  // Ctrl+D
 			handler = proc(item: ^FuzzyItem) -> bool {
 				// Remove the path
 				path := item.value
 				remove_path(path)
 				return true  // Refresh list
 			},
-			description = "Remove",
+			description = "Delete",
+		},
+		{
+			name = "clean",
+			key_name = "Ctrl+L",
+			key_code = 12,  // Ctrl+L
+			handler = proc(item: ^FuzzyItem) -> bool {
+				// Clean all missing paths
+				clean_missing_paths()
+				return true  // Refresh list
+			},
+			description = "Clean missing",
 		},
 	}
 
@@ -515,8 +526,9 @@ list_paths_interactive :: proc() {
 
 		fmt.sbprintf(&builder, "\n")
 		fmt.sbprintf(&builder, "Actions:\n")
-		fmt.sbprintf(&builder, "  Del - Remove from PATH\n")
-		fmt.sbprintf(&builder, "  Enter - Exit and select\n")
+		fmt.sbprintf(&builder, "  Ctrl+D - Delete from PATH\n")
+		fmt.sbprintf(&builder, "  Ctrl+L - Clean all missing paths\n")
+		fmt.sbprintf(&builder, "  Enter - Select and exit\n")
 
 		return strings.clone(strings.to_string(builder))
 	}

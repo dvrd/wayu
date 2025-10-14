@@ -258,7 +258,7 @@ fuzzy_render_filter :: proc(filter: []u8) -> string {
 	defer strings.builder_destroy(&builder)
 
 	// Filter prompt
-	fmt.sbprintf(&builder, "\r\n%s🔎 Filter:%s ", get_secondary(), RESET)
+	fmt.sbprintf(&builder, "\r\n%sFilter:%s ", get_secondary(), RESET)
 	fmt.sbprintf(&builder, "%s", string(filter))
 	fmt.sbprintf(&builder, "%s█%s", get_primary(), RESET)  // Cursor
 
@@ -271,12 +271,12 @@ fuzzy_render_shortcuts :: proc(actions: []FuzzyAction) -> string {
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
 
-	fmt.sbprintf(&builder, "%s  ⌨️  ", get_muted())
-	fmt.sbprintf(&builder, "↑↓ Navigate  •  Enter Select  •  Esc Quit")
+	fmt.sbprintf(&builder, "%s  ", get_muted())
+	fmt.sbprintf(&builder, "Arrows: Navigate  •  Enter: Select  •  Esc: Quit")
 
 	// Add action shortcuts
 	for action in actions {
-		fmt.sbprintf(&builder, "  •  %s %s", action.key_name, action.description)
+		fmt.sbprintf(&builder, "  •  %s: %s", action.key_name, action.description)
 	}
 
 	fmt.sbprintf(&builder, "%s\r\n", RESET)
@@ -316,15 +316,15 @@ fuzzy_render_items :: proc(view: ^FuzzyView) -> string {
 				if item.icon != "" {
 					icon_part = fmt.tprintf("%s ", item.icon)
 				}
-				fmt.sbprintf(&builder, "%s%s│ ▸ %s%s%s ",
+				content := fmt.tprintf("▸ %s%s", icon_part, item.display)
+				fmt.sbprintf(&builder, "%s%s│ %s%s ",
 					get_primary(), BOLD,
-					icon_part,
-					item.display,
+					content,
 					RESET)
 
-				// Padding to align border
-				display_len := len(item.display) + len(icon_part) + 4
-				padding := max(0, 56 - display_len)
+				// Padding to align border - use visible_width
+				content_len := visible_width(content) + 1 // +1 for space after content
+				padding := max(0, 58 - content_len)
 				fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
 				fmt.sbprintf(&builder, "%s│%s\r\n", get_primary(), RESET)
 			} else {
@@ -334,15 +334,15 @@ fuzzy_render_items :: proc(view: ^FuzzyView) -> string {
 				if item.icon != "" {
 					icon_part = fmt.tprintf("%s ", item.icon)
 				}
-				fmt.sbprintf(&builder, "%s│   %s%s%s ",
+				content := fmt.tprintf("  %s%s", icon_part, item.display)
+				fmt.sbprintf(&builder, "%s│ %s%s ",
 					get_muted(),
-					icon_part,
-					item.display,
+					content,
 					RESET)
 
-				// Padding
-				display_len := len(item.display) + len(icon_part) + 4
-				padding := max(0, 56 - display_len)
+				// Padding - use visible_width
+				content_len := visible_width(content) + 1 // +1 for space after content
+				padding := max(0, 58 - content_len)
 				fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
 				fmt.sbprintf(&builder, "%s│%s\r\n", get_muted(), RESET)
 			}
