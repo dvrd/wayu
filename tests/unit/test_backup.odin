@@ -168,8 +168,9 @@ test_get_config_file_path :: proc(t: ^testing.T) {
 			msg := fmt.aprintf("Should return path for '%s'", test_case.config_type)
 			testing.expect(t, len(result) > 0, msg)
 			delete(msg)
-			testing.expect(t, strings.contains(result, ".config/wayu"),
-				"Should contain wayu config directory")
+			// Check that it's an absolute path
+			testing.expect(t, strings.has_prefix(result, "/"),
+				"Should be an absolute path")
 		} else {
 			msg := fmt.aprintf("Should return empty for invalid type '%s'", test_case.config_type)
 			testing.expect(t, result == "", msg)

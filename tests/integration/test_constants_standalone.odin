@@ -89,7 +89,7 @@ main :: proc() {
 
 	// Test 3: List constants
 	{
-		output := run_wayu("constants list")
+		output := run_wayu("constants list --static")
 		defer delete(output)
 		passed := strings.contains(output, "MY_VAR")
 		print_test(3, "List all constants", passed, &results)
