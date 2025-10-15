@@ -20,9 +20,14 @@ foreign import libc_term "system:c"
 STDIN_FILENO :: 0
 TCSANOW :: 0
 
-// ICANON and ECHO flags for terminal modes
+// Terminal mode flags
+// c_lflag (local flags)
 ICANON :: 0x00000100  // Canonical input (line buffering)
 ECHO   :: 0x00000008  // Echo input characters
+
+// c_iflag (input flags)
+IXON   :: 0x00000400  // Enable XON/XOFF flow control on output
+IXOFF  :: 0x00001000  // Enable XON/XOFF flow control on input
 
 termios :: struct {
 	c_iflag:  c.ulong,  // tcflag_t is unsigned long on macOS
@@ -54,6 +59,8 @@ enable_raw_mode :: proc() -> bool {
 	// Create raw mode settings
 	raw := saved_termios
 	raw.c_lflag &= ~(c.ulong(ECHO) | c.ulong(ICANON))
+	// Disable XON/XOFF flow control so Ctrl+Q and Ctrl+S work
+	raw.c_iflag &= ~(c.ulong(IXON) | c.ulong(IXOFF))
 
 	// Apply raw mode
 	if tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0 {
@@ -74,6 +81,12 @@ disable_raw_mode :: proc() {
 // ============================================================================
 // Enhanced Fuzzy Finder Structures
 // ============================================================================
+
+// FuzzyMode represents the current input mode (Vim-like)
+FuzzyMode :: enum {
+	Normal,   // Command mode (q/j/k/space/d/c/i)
+	Insert,   // Search/filter mode (typing for fuzzy search)
+}
 
 // FuzzyItem represents a single item in the fuzzy finder with rich metadata
 FuzzyItem :: struct {
@@ -97,9 +110,11 @@ FuzzyAction :: struct {
 FuzzyView :: struct {
 	// Data
 	items:          []FuzzyItem,
+	initial_items:  []FuzzyItem,       // Original items (not freed by fuzzy finder)
 	filtered_items: [dynamic]FuzzyItem,
 
 	// State
+	mode:           FuzzyMode,         // Current input mode (Normal/Insert)
 	filter_query:   [dynamic]u8,
 	selected_index: int,
 	scroll_offset:  int,
@@ -109,6 +124,7 @@ FuzzyView :: struct {
 	show_details:   bool,
 	details_fn:     proc(^FuzzyItem) -> string,
 	actions:        []FuzzyAction,
+	rebuild_items:  proc() -> []FuzzyItem,  // Callback to rebuild items after modification
 
 	// Layout
 	visible_items:  int,               // How many items shown at once
@@ -204,8 +220,10 @@ new_fuzzy_view :: proc(
 ) -> FuzzyView {
 	view := FuzzyView{
 		items = items,
+		initial_items = items,  // Keep reference to initial items
 		filtered_items = make([dynamic]FuzzyItem),
 		filter_query = make([dynamic]u8),
+		mode = .Normal,  // Start in Normal mode
 		selected_index = 0,
 		scroll_offset = 0,
 		title = title,
@@ -301,32 +319,47 @@ fuzzy_render_title :: proc(title: string) -> string {
 	return strings.clone(strings.to_string(builder))
 }
 
-// Render filter input with cursor
-fuzzy_render_filter :: proc(filter: []u8) -> string {
+// Render filter input with cursor and mode indicator
+fuzzy_render_filter :: proc(filter: []u8, mode: FuzzyMode) -> string {
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
 
-	// Filter prompt
-	fmt.sbprintf(&builder, "\r\n%sFilter:%s ", get_secondary(), RESET)
-	fmt.sbprintf(&builder, "%s", string(filter))
-	fmt.sbprintf(&builder, "%s█%s", get_primary(), RESET)  // Cursor
+	// Mode indicator
+	mode_str := mode == .Normal ? "NORMAL" : "INSERT"
+	mode_color := mode == .Normal ? get_success() : get_warning()
+	fmt.sbprintf(&builder, "\r\n%s%s%s %s-- %s --%s",
+		mode_color, BOLD, mode_str, RESET, mode_str, RESET)
+
+	// Filter prompt (only shows text in Insert mode)
+	if mode == .Insert {
+		fmt.sbprintf(&builder, "\r\n%sFilter:%s ", get_secondary(), RESET)
+		fmt.sbprintf(&builder, "%s", string(filter))
+		fmt.sbprintf(&builder, "%s█%s", get_primary(), RESET)  // Cursor
+	} else {
+		// In Normal mode, show current filter but no cursor
+		if len(filter) > 0 {
+			fmt.sbprintf(&builder, "\r\n%sFilter:%s %s", get_muted(), RESET, string(filter))
+		}
+	}
 
 	return strings.clone(strings.to_string(builder))
 }
 
-// Render keyboard shortcuts hint
-fuzzy_render_shortcuts :: proc(actions: []FuzzyAction) -> string {
+// Render keyboard shortcuts hint based on mode
+fuzzy_render_shortcuts :: proc(mode: FuzzyMode) -> string {
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
 
 	fmt.sbprintf(&builder, "%s  ", get_muted())
-	fmt.sbprintf(&builder, "Arrows: Navigate  •  Enter: Select  •  Esc: Quit")
 
-	// Add action shortcuts
-	for action in actions {
-		fmt.sbprintf(&builder, "  •  %s: %s", action.key_name, action.description)
+	if mode == .Normal {
+		// Normal mode shortcuts
+		fmt.sbprintf(&builder, "q: Quit  •  j/k: Navigate  •  Space: Select  •  d: Delete  •  c: Clean Missing  •  i: Search")
+	} else {
+		// Insert mode shortcuts
+		fmt.sbprintf(&builder, "Type to search  •  Esc: Normal mode  •  Enter: Select")
 	}
 
 	fmt.sbprintf(&builder, "%s\r\n", RESET)
@@ -482,13 +515,20 @@ fuzzy_render :: proc(view: ^FuzzyView) -> string {
 	defer delete(title)
 	fmt.sbprintf(&builder, "%s\r\n", title)
 
-	// Filter input
-	filter := fuzzy_render_filter(view.filter_query[:])
+	// Legend (show icons meaning)
+	fmt.sbprintf(&builder, "%s  %s✓%s Exists  •  %s✗%s Missing%s\r\n",
+		get_muted(),
+		get_success(), RESET,
+		get_error(), RESET,
+		RESET)
+
+	// Filter input (with mode indicator)
+	filter := fuzzy_render_filter(view.filter_query[:], view.mode)
 	defer delete(filter)
 	fmt.sbprintf(&builder, "%s\r\n", filter)
 
-	// Keyboard shortcuts
-	shortcuts := fuzzy_render_shortcuts(view.actions)
+	// Keyboard shortcuts (based on mode)
+	shortcuts := fuzzy_render_shortcuts(view.mode)
 	defer delete(shortcuts)
 	fmt.sbprintf(&builder, "%s", shortcuts)
 
@@ -509,84 +549,154 @@ fuzzy_render :: proc(view: ^FuzzyView) -> string {
 	return strings.clone(strings.to_string(builder))
 }
 
-// Handle keyboard input
+// Handle keyboard input with Vim-like modes
 fuzzy_handle_key :: proc(view: ^FuzzyView, ch: u8, n: int, input_buf: []byte) -> (continue_loop: bool, has_result: bool) {
-	// Control sequences
-	if ch == 3 { // Ctrl+C
+	// Ctrl+C always exits regardless of mode
+	if ch == 3 {
 		return false, false
-	} else if ch == 27 { // Esc
-		return false, false
-	} else if ch == 13 || ch == 10 { // Enter
-		if len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
-			return false, true
+	}
+
+	// Mode-specific key handling
+	if view.mode == .Normal {
+		// ============================================================================
+		// NORMAL MODE - Vim-like command mode
+		// ============================================================================
+
+		if ch == 'q' { // Quit
+			return false, false
+
+		} else if ch == 'j' { // Navigate down
+			if len(view.filtered_items) > 0 {
+				view.selected_index = (view.selected_index + 1) % len(view.filtered_items)
+				fuzzy_update_scroll(view)
+			}
+
+		} else if ch == 'k' { // Navigate up
+			if len(view.filtered_items) > 0 {
+				view.selected_index = (view.selected_index - 1 + len(view.filtered_items)) % len(view.filtered_items)
+				fuzzy_update_scroll(view)
+			}
+
+		} else if ch == ' ' { // Space - Select
+			if len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
+				return false, true
+			}
+
+		} else if ch == 'd' { // Delete
+			if len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
+				item := &view.filtered_items[view.selected_index]
+
+				// Ask for confirmation before deleting
+				confirm_msg := fmt.tprintf("Delete '%s'?", item.display)
+				if fuzzy_confirm(confirm_msg) {
+					// User confirmed - proceed with deletion
+					// Find and execute delete action
+					for action in view.actions {
+						if action.key_code == 4 { // Ctrl+D action
+							refresh := action.handler(item)
+							if refresh {
+								libc.fflush(nil)
+								if view.rebuild_items != nil {
+									if len(view.items) > 0 && raw_data(view.items) != raw_data(view.initial_items) {
+										for item_to_free in view.items {
+											delete(item_to_free.display)
+											delete(item_to_free.value)
+											for key, val in item_to_free.metadata {
+												delete(val)
+											}
+											delete(item_to_free.metadata)
+										}
+										delete(view.items)
+									}
+									new_items := view.rebuild_items()
+									view.items = new_items
+								}
+								fuzzy_update_filter(view)
+							}
+							break
+						}
+					}
+				}
+				// If user cancelled (!fuzzy_confirm), we just do nothing and return to the loop
+			}
+
+		} else if ch == 'c' { // Clean missing
+			// Clean action doesn't need a specific item - it cleans ALL missing paths
+			// Call clean handler directly
+			if len(view.filtered_items) > 0 {
+				// Find clean action handler (key_code 12 = Ctrl+L)
+				for action in view.actions {
+					if action.key_code == 12 {
+						item := &view.filtered_items[0]  // Dummy item
+						refresh := action.handler(item)
+						if refresh {
+							libc.fflush(nil)
+							if view.rebuild_items != nil {
+								if len(view.items) > 0 && raw_data(view.items) != raw_data(view.initial_items) {
+									for item_to_free in view.items {
+										delete(item_to_free.display)
+										delete(item_to_free.value)
+										for key, val in item_to_free.metadata {
+											delete(val)
+										}
+										delete(item_to_free.metadata)
+									}
+									delete(view.items)
+								}
+								new_items := view.rebuild_items()
+								view.items = new_items
+							}
+							fuzzy_update_filter(view)
+						}
+						break
+					}
+				}
+			}
+
+		} else if ch == 'i' { // Enter Insert mode
+			view.mode = .Insert
+
 		}
-	} else if ch == 14 { // Ctrl+N - Move down
-		if len(view.filtered_items) > 0 {
-			view.selected_index = (view.selected_index + 1) % len(view.filtered_items)
-			fuzzy_update_scroll(view)
-		}
-	} else if ch == 16 { // Ctrl+P - Move up
-		if len(view.filtered_items) > 0 {
-			view.selected_index = (view.selected_index - 1 + len(view.filtered_items)) % len(view.filtered_items)
-			fuzzy_update_scroll(view)
-		}
-	} else if ch == 127 || ch == 8 { // Backspace/Delete
-		if len(view.filter_query) > 0 {
-			ordered_remove(&view.filter_query, len(view.filter_query) - 1)
+
+	} else if view.mode == .Insert {
+		// ============================================================================
+		// INSERT MODE - Search/filter mode
+		// ============================================================================
+
+		if ch == 27 { // Esc - Return to Normal mode
+			view.mode = .Normal
+
+		} else if ch == 13 || ch == 10 { // Enter - Select
+			if len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
+				return false, true
+			}
+
+		} else if ch == 127 || ch == 8 { // Backspace
+			if len(view.filter_query) > 0 {
+				ordered_remove(&view.filter_query, len(view.filter_query) - 1)
+				fuzzy_update_filter(view)
+				view.selected_index = 0
+				view.scroll_offset = 0
+			}
+
+		} else if ch >= 32 && ch <= 126 { // Printable characters
+			append(&view.filter_query, ch)
 			fuzzy_update_filter(view)
 			view.selected_index = 0
 			view.scroll_offset = 0
-		}
-	} else if ch >= 32 && ch <= 126 { // Printable characters
-		append(&view.filter_query, ch)
-		fuzzy_update_filter(view)
-		view.selected_index = 0
-		view.scroll_offset = 0
-	} else if ch == 27 && n >= 3 { // ESC sequence (arrow keys)
-		if input_buf[1] == '[' {
-			switch input_buf[2] {
-			case 'A': // Up arrow
-				if len(view.filtered_items) > 0 {
-					view.selected_index = (view.selected_index - 1 + len(view.filtered_items)) % len(view.filtered_items)
-					fuzzy_update_scroll(view)
-				}
-			case 'B': // Down arrow
-				if len(view.filtered_items) > 0 {
-					view.selected_index = (view.selected_index + 1) % len(view.filtered_items)
-					fuzzy_update_scroll(view)
-				}
-			}
-		}
-	} else {
-		// Check for custom actions
-		for action in view.actions {
-			if ch == action.key_code {
-				if len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
-					item := &view.filtered_items[view.selected_index]
 
-					// Exit raw mode and show cursor for action handler
-					// This allows the handler to prompt the user
-					CLEAR_SCREEN :: "\033[2J\033[H"
-					SHOW_CURSOR :: "\033[?25h"
-					HIDE_CURSOR :: "\033[?25l"
-
-					fmt.print(CLEAR_SCREEN)
-					fmt.print(SHOW_CURSOR)
-					disable_raw_mode()
-
-					// Execute handler
-					refresh := action.handler(item)
-
-					// Re-enter raw mode and hide cursor
-					if !enable_raw_mode() {
-						// If we can't re-enter raw mode, exit gracefully
-						return false, false
+		} else if ch == 27 && n >= 3 { // Arrow keys (ESC sequence)
+			if input_buf[1] == '[' {
+				switch input_buf[2] {
+				case 'A': // Up arrow
+					if len(view.filtered_items) > 0 {
+						view.selected_index = (view.selected_index - 1 + len(view.filtered_items)) % len(view.filtered_items)
+						fuzzy_update_scroll(view)
 					}
-					fmt.print(HIDE_CURSOR)
-
-					if refresh {
-						// Rebuild filter after action
-						fuzzy_update_filter(view)
+				case 'B': // Down arrow
+					if len(view.filtered_items) > 0 {
+						view.selected_index = (view.selected_index + 1) % len(view.filtered_items)
+						fuzzy_update_scroll(view)
 					}
 				}
 			}
@@ -596,14 +706,55 @@ fuzzy_handle_key :: proc(view: ^FuzzyView, ch: u8, n: int, input_buf: []byte) ->
 	return true, false
 }
 
+// Show a confirmation prompt and wait for y/n response
+fuzzy_confirm :: proc(message: string) -> bool {
+	// Clear screen and show prompt
+	CLEAR_SCREEN :: "\033[2J\033[H"
+	fmt.print(CLEAR_SCREEN)
+
+	// Show message with color
+	fmt.printf("\r\n%s%s⚠ %s%s\r\n", get_warning(), BOLD, message, RESET)
+	fmt.printf("\r\n%sPress %sy%s to confirm, %sn%s to cancel%s\r\n",
+		get_muted(),
+		get_success(), get_muted(),
+		get_error(), get_muted(),
+		RESET)
+
+	// Wait for y or n
+	for {
+		input_buf: [8]byte
+		n, err := os.read(os.stdin, input_buf[:])
+		if err != 0 || n == 0 {
+			return false
+		}
+
+		ch := input_buf[0]
+
+		// Ctrl+C cancels
+		if ch == 3 {
+			return false
+		}
+
+		// y or Y confirms
+		if ch == 'y' || ch == 'Y' {
+			return true
+		}
+
+		// n or N or any other key cancels
+		if ch == 'n' || ch == 'N' || ch == 27 { // 27 = Esc
+			return false
+		}
+	}
+
+	return false
+}
+
 // Main loop for enhanced fuzzy finder
 fuzzy_run :: proc(view: ^FuzzyView) -> (selected: FuzzyItem, ok: bool) {
 	// Terminal control sequences
 	CLEAR_SCREEN :: "\033[2J\033[H"
 	HIDE_CURSOR :: "\033[?25l"
 	SHOW_CURSOR :: "\033[?25h"
-
-	debug("Starting enhanced fuzzy finder with %d items", len(view.items))
 
 	// Enter raw mode
 	if !enable_raw_mode() {
@@ -631,7 +782,6 @@ fuzzy_run :: proc(view: ^FuzzyView) -> (selected: FuzzyItem, ok: bool) {
 		input_buf: [8]byte
 		n, err := os.read(os.stdin, input_buf[:])
 		if err != 0 {
-			debug("Error reading input: %d", err)
 			break
 		}
 
@@ -644,8 +794,23 @@ fuzzy_run :: proc(view: ^FuzzyView) -> (selected: FuzzyItem, ok: bool) {
 
 		if !continue_loop {
 			if has_result && len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
-				result := view.filtered_items[view.selected_index]
-				debug("Selected: %s", result.value)
+				// Clone the selected item to avoid use-after-free
+				original := view.filtered_items[view.selected_index]
+
+				// Clone all strings in the item
+				cloned_metadata := make(map[string]string)
+				for key, val in original.metadata {
+					cloned_metadata[strings.clone(key)] = strings.clone(val)
+				}
+
+				result := FuzzyItem{
+					display = strings.clone(original.display),
+					value = strings.clone(original.value),
+					metadata = cloned_metadata,
+					icon = original.icon,  // Icon is a literal, no need to clone
+					color = original.color,  // Color is a literal, no need to clone
+				}
+
 				return result, true
 			}
 			return FuzzyItem{}, false
