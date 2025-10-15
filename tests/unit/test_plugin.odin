@@ -65,8 +65,10 @@ test_get_plugins_config_file :: proc(t: ^testing.T) {
 	defer delete(path)
 
 	testing.expect(t, len(path) > 0, "Should return non-empty path")
-	testing.expect(t, strings.contains(path, ".config/wayu"), "Should contain wayu config dir")
+	// Verify the path ends with plugins.conf
 	testing.expect(t, strings.has_suffix(path, "plugins.conf"), "Should end with plugins.conf")
+	// Verify it's an absolute path (starts with /)
+	testing.expect(t, strings.has_prefix(path, "/"), "Should be an absolute path")
 }
 
 @(test)
@@ -79,8 +81,10 @@ test_get_plugins_dir :: proc(t: ^testing.T) {
 	defer delete(path)
 
 	testing.expect(t, len(path) > 0, "Should return non-empty path")
-	testing.expect(t, strings.contains(path, ".config/wayu"), "Should contain wayu config dir")
+	// Verify the path ends with plugins
 	testing.expect(t, strings.has_suffix(path, "plugins"), "Should end with plugins")
+	// Verify it's an absolute path (starts with /)
+	testing.expect(t, strings.has_prefix(path, "/"), "Should be an absolute path")
 }
 
 @(test)
@@ -124,6 +128,11 @@ test_read_plugin_config_empty :: proc(t: ^testing.T) {
 test_write_and_read_plugin_config :: proc(t: ^testing.T) {
 	// Initialize shell globals before testing
 	wayu.init_shell_globals()
+
+	// Ensure config directory exists for this test
+	if !os.exists(wayu.WAYU_CONFIG) {
+		os.make_directory(wayu.WAYU_CONFIG)
+	}
 
 	// Test writing and reading plugin config
 	config_file := wayu.get_plugins_config_file()

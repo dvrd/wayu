@@ -122,7 +122,7 @@ main :: proc() {
 
 	// Test 3: List paths
 	{
-		output := run_wayu("path list")
+		output := run_wayu("path list --static")
 		defer delete(output)
 		passed := strings.contains(output, "/tmp/wayu_test_path")
 		print_test(3, "List all paths", passed, &results)
@@ -130,7 +130,8 @@ main :: proc() {
 
 	// Test 4: Remove path
 	{
-		test_dir := "/tmp/wayu_test_path1"
+		// Use the absolute path that was saved (macOS resolves /tmp to /private/tmp)
+		test_dir := "/private/tmp/wayu_test_path1"
 		output := run_wayu(fmt.tprintf("path rm %s", test_dir))
 		defer delete(output)
 		passed := !file_contains(path_file, test_dir)
