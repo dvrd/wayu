@@ -260,14 +260,25 @@ add_path :: proc(path: string) {
 	lines := strings.split(content_str, "\n")
 	defer delete(lines)
 
-	// Check if path already exists
+	// Check if path already exists - exact match only
 	new_entry := fmt.aprintf("add_to_path \"%s\"", target_path)
 	defer delete(new_entry)
 
 	for line in lines {
-		if strings.contains(line, target_path) && strings.contains(line, "add_to_path") {
-			fmt.println("Path already exists:", target_path)
-			return
+		trimmed := strings.trim_space(line)
+		if strings.has_prefix(trimmed, "add_to_path") {
+			// Extract path from line for exact comparison
+			start := strings.index(trimmed, "\"")
+			if start != -1 {
+				end := strings.last_index(trimmed, "\"")
+				if end != -1 && end > start {
+					existing_path := trimmed[start + 1:end]
+					if existing_path == target_path {
+						fmt.println("Path already exists:", target_path)
+						return
+					}
+				}
+			}
 		}
 	}
 
@@ -314,6 +325,76 @@ add_path :: proc(path: string) {
 	print_success("Path added successfully: %s", target_path)
 }
 
+// Remove path without confirmation (for interactive mode handlers)
+remove_path_silent :: proc(path: string) -> bool {
+	// Use shell-aware config file with fallback for backward compatibility
+	config_file := get_config_file_with_fallback("path", DETECTED_SHELL)
+	defer delete(config_file)
+
+	content, read_ok := safe_read_file(config_file)
+	if !read_ok {
+		return false
+	}
+	defer delete(content)
+
+	content_str := string(content)
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+
+	// Filter out lines with exact path match
+	filtered_lines := make([dynamic]string)
+	defer delete(filtered_lines)
+
+	removed := false
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		should_keep := true
+
+		if strings.has_prefix(trimmed, "add_to_path") {
+			// Extract path from line for exact comparison
+			start := strings.index(trimmed, "\"")
+			if start != -1 {
+				end := strings.last_index(trimmed, "\"")
+				if end != -1 && end > start {
+					existing_path := trimmed[start + 1:end]
+					if existing_path == path {
+						removed = true
+						should_keep = false
+					}
+				}
+			}
+		}
+
+		if should_keep {
+			append(&filtered_lines, line)
+		}
+	}
+
+	if !removed {
+		return false
+	}
+
+	// Create backup silently
+	_, backup_ok := create_backup(config_file)
+	if !backup_ok {
+		return false
+	}
+
+	// Write back to file
+	new_content := strings.join(filtered_lines[:], "\n")
+	defer delete(new_content)
+
+	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
+	if !write_ok {
+		return false
+	}
+
+	// Cleanup old backups (keep last 5)
+	cleanup_old_backups(config_file, 5)
+
+	return true
+}
+
 remove_path :: proc(path: string) {
 	// Dry-run mode check
 	if DRY_RUN {
@@ -340,17 +421,33 @@ remove_path :: proc(path: string) {
 	lines := strings.split(content_str, "\n")
 	defer delete(lines)
 
-	// Filter out lines containing the path
+	// Filter out lines with exact path match
 	filtered_lines := make([dynamic]string)
 	defer delete(filtered_lines)
 
 	removed := false
 	for line in lines {
-		if strings.contains(line, path) && strings.contains(line, "add_to_path") {
-			removed = true
-			continue
+		trimmed := strings.trim_space(line)
+		should_keep := true
+
+		if strings.has_prefix(trimmed, "add_to_path") {
+			// Extract path from line for exact comparison
+			start := strings.index(trimmed, "\"")
+			if start != -1 {
+				end := strings.last_index(trimmed, "\"")
+				if end != -1 && end > start {
+					existing_path := trimmed[start + 1:end]
+					if existing_path == path {
+						removed = true
+						should_keep = false
+					}
+				}
+			}
 		}
-		append(&filtered_lines, line)
+
+		if should_keep {
+			append(&filtered_lines, line)
+		}
 	}
 
 	if !removed {
@@ -434,7 +531,17 @@ list_paths_interactive :: proc() {
 
 	// Convert to FuzzyItems with metadata
 	fuzzy_items := make([]FuzzyItem, len(items))
-	defer delete(fuzzy_items)
+	defer {
+		for item in fuzzy_items {
+			delete(item.display)
+			delete(item.value)
+			for key, val in item.metadata {
+				delete(val)
+			}
+			delete(item.metadata)
+		}
+		delete(fuzzy_items)
+	}
 
 	for item, i in items {
 		expanded := expand_env_vars(item)
@@ -447,12 +554,12 @@ list_paths_interactive :: proc() {
 		metadata := make(map[string]string)
 		metadata["path"] = strings.clone(item)
 		metadata["expanded"] = strings.clone(expanded)
-		metadata["exists"] = exists ? "true" : "false"
-		metadata["is_dir"] = is_dir ? "true" : "false"
+		metadata["exists"] = strings.clone(exists ? "true" : "false")
+		metadata["is_dir"] = strings.clone(is_dir ? "true" : "false")
 
 		fuzzy_items[i] = FuzzyItem{
-			display = item,
-			value = item,
+			display = strings.clone(item),  // Clone to give ownership to FuzzyItem
+			value = strings.clone(item),    // Clone to give ownership to FuzzyItem
 			metadata = metadata,
 			icon = exists ? "✓" : "✗",
 			color = exists ? get_success() : get_error(),
@@ -466,9 +573,9 @@ list_paths_interactive :: proc() {
 			key_name = "Ctrl+D",
 			key_code = 4,  // Ctrl+D
 			handler = proc(item: ^FuzzyItem) -> bool {
-				// Remove the path
+				// Remove the path silently (no confirmation prompts)
 				path := item.value
-				remove_path(path)
+				remove_path_silent(path)
 				return true  // Refresh list
 			},
 			description = "Delete",
@@ -478,8 +585,8 @@ list_paths_interactive :: proc() {
 			key_name = "Ctrl+L",
 			key_code = 12,  // Ctrl+L
 			handler = proc(item: ^FuzzyItem) -> bool {
-				// Clean all missing paths
-				clean_missing_paths()
+				// Clean all missing paths silently (no confirmation prompts)
+				clean_missing_paths_silent()
 				return true  // Refresh list
 			},
 			description = "Clean missing",
@@ -525,12 +632,53 @@ list_paths_interactive :: proc() {
 		}
 
 		fmt.sbprintf(&builder, "\n")
-		fmt.sbprintf(&builder, "Actions:\n")
-		fmt.sbprintf(&builder, "  Ctrl+D - Delete from PATH\n")
-		fmt.sbprintf(&builder, "  Ctrl+L - Clean all missing paths\n")
-		fmt.sbprintf(&builder, "  Enter - Select and exit\n")
+		fmt.sbprintf(&builder, "Normal Mode Commands:\n")
+		fmt.sbprintf(&builder, "  q - Quit\n")
+		fmt.sbprintf(&builder, "  j/k - Navigate down/up\n")
+		fmt.sbprintf(&builder, "  Space - Select item\n")
+		fmt.sbprintf(&builder, "  d - Delete this path\n")
+		fmt.sbprintf(&builder, "  c - Clean all missing paths\n")
+		fmt.sbprintf(&builder, "  i - Enter Insert mode (search)\n")
 
 		return strings.clone(strings.to_string(builder))
+	}
+
+	// Create rebuild function to refresh items after actions
+	rebuild_fn := proc() -> []FuzzyItem {
+		new_items := extract_path_items()
+		defer {
+			for item in new_items {
+				delete(item)
+			}
+			delete(new_items)
+		}
+
+		fuzzy_new_items := make([]FuzzyItem, len(new_items))
+
+		for item, i in new_items {
+			expanded := expand_env_vars(item)
+			defer delete(expanded)
+
+			exists := os.exists(expanded)
+			is_dir := os.is_dir(expanded)
+
+			// Create metadata
+			metadata := make(map[string]string)
+			metadata["path"] = strings.clone(item)
+			metadata["expanded"] = strings.clone(expanded)
+			metadata["exists"] = strings.clone(exists ? "true" : "false")
+			metadata["is_dir"] = strings.clone(is_dir ? "true" : "false")
+
+			fuzzy_new_items[i] = FuzzyItem{
+				display = strings.clone(item),  // Clone the string before new_items is freed
+				value = strings.clone(item),    // Clone the string before new_items is freed
+				metadata = metadata,
+				icon = exists ? "✓" : "✗",
+				color = exists ? get_success() : get_error(),
+			}
+		}
+
+		return fuzzy_new_items
 	}
 
 	// Create fuzzy view
@@ -541,19 +689,26 @@ list_paths_interactive :: proc() {
 		actions,
 	)
 
-	// Cleanup metadata
-	defer {
-		for item in fuzzy_items {
+	// Set rebuild callback
+	view.rebuild_items = rebuild_fn
+
+	// Run interactive fuzzy finder
+	selected, ok := fuzzy_run(&view)
+	fuzzy_view_destroy(&view)
+
+	// Cleanup rebuilt items if they're different from initial
+	// (Initial items are already cleaned up by the defer above)
+	if raw_data(view.items) != raw_data(fuzzy_items) {
+		for item in view.items {
+			delete(item.display)
+			delete(item.value)
 			for key, val in item.metadata {
 				delete(val)
 			}
 			delete(item.metadata)
 		}
+		delete(view.items)
 	}
-
-	// Run interactive fuzzy finder
-	selected, ok := fuzzy_run(&view)
-	fuzzy_view_destroy(&view)
 
 	if ok {
 		fmt.printf("\n%sSelected:%s %s\n", get_primary(), RESET, selected.value)
@@ -813,6 +968,97 @@ count_missing_paths :: proc(paths: []string) -> int {
 		}
 	}
 	return count
+}
+
+// Clean missing paths without confirmation (for interactive mode handlers)
+clean_missing_paths_silent :: proc() -> int {
+	config_file := get_config_file_with_fallback("path", DETECTED_SHELL)
+	defer delete(config_file)
+
+	content, read_ok := safe_read_file(config_file)
+	if !read_ok {
+		return 0
+	}
+	defer delete(content)
+
+	content_str := string(content)
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+
+	// Extract paths and check which ones are missing
+	missing_paths := make([dynamic]string)
+	defer {
+		for path in missing_paths {
+			delete(path)
+		}
+		delete(missing_paths)
+	}
+
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		if strings.has_prefix(trimmed, "add_to_path") {
+			start := strings.index(trimmed, "\"")
+			if start != -1 {
+				end := strings.last_index(trimmed, "\"")
+				if end != -1 && end > start {
+					path := trimmed[start + 1:end]
+					expanded_path := expand_env_vars(path)
+					defer delete(expanded_path)
+					if !os.exists(expanded_path) {
+						append(&missing_paths, strings.clone(path))
+					}
+				}
+			}
+		}
+	}
+
+	if len(missing_paths) == 0 {
+		return 0
+	}
+
+	// Filter out missing paths
+	filtered_lines := make([dynamic]string)
+	defer delete(filtered_lines)
+
+	removed_count := 0
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		should_keep := true
+
+		if strings.has_prefix(trimmed, "add_to_path") {
+			for missing_path in missing_paths {
+				if strings.contains(line, missing_path) {
+					should_keep = false
+					removed_count += 1
+					break
+				}
+			}
+		}
+
+		if should_keep {
+			append(&filtered_lines, line)
+		}
+	}
+
+	// Create backup silently
+	_, backup_ok := create_backup(config_file)
+	if !backup_ok {
+		return 0
+	}
+
+	// Write cleaned content back to file
+	new_content := strings.join(filtered_lines[:], "\n")
+	defer delete(new_content)
+
+	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
+	if !write_ok {
+		return 0
+	}
+
+	// Cleanup old backups (keep last 5)
+	cleanup_old_backups(config_file, 5)
+
+	return removed_count
 }
 
 // Clean missing paths functionality inspired by pathos
