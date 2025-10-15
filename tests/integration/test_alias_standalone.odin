@@ -89,7 +89,7 @@ main :: proc() {
 
 	// Test 3: List aliases
 	{
-		output := run_wayu("alias list")
+		output := run_wayu("alias list --static")
 		defer delete(output)
 		passed := strings.contains(output, "ll")
 		print_test(3, "List all aliases", passed, &results)

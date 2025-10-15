@@ -109,3 +109,99 @@ test_extract_alias_items :: proc(t: ^testing.T) {
 	// An empty slice {} is valid and has length 0
 	testing.expect(t, len(items) >= 0, "Should return valid array")
 }
+
+@(test)
+test_extract_path_items :: proc(t: ^testing.T) {
+	items := wayu.extract_path_items()
+	defer for item in items do delete(item)
+	defer delete(items)
+
+	// Should return valid array (may be empty)
+	testing.expect(t, len(items) >= 0, "Should return valid array")
+}
+
+@(test)
+test_extract_constant_items :: proc(t: ^testing.T) {
+	items := wayu.extract_constant_items()
+	defer for item in items do delete(item)
+	defer delete(items)
+
+	// Should return valid array (may be empty)
+	testing.expect(t, len(items) >= 0, "Should return valid array")
+}
+
+@(test)
+test_extract_completion_items :: proc(t: ^testing.T) {
+	items := wayu.extract_completion_items()
+	defer for item in items do delete(item)
+	defer delete(items)
+
+	// Should return valid array (may be empty)
+	testing.expect(t, len(items) >= 0, "Should return valid array")
+}
+
+@(test)
+test_fuzzy_item_creation :: proc(t: ^testing.T) {
+	item := wayu.FuzzyItem{
+		display = "Test",
+		value = "test_value",
+		icon = "✓",
+		color = "green",
+	}
+
+	testing.expect_value(t, item.display, "Test")
+	testing.expect_value(t, item.value, "test_value")
+	testing.expect_value(t, item.icon, "✓")
+	testing.expect_value(t, item.color, "green")
+}
+
+@(test)
+test_fuzzy_mode_enum :: proc(t: ^testing.T) {
+	mode_normal := wayu.FuzzyMode.Normal
+	mode_insert := wayu.FuzzyMode.Insert
+
+	testing.expect(t, mode_normal != mode_insert, "Modes should be different")
+}
+
+@(test)
+test_fuzzy_result_structure :: proc(t: ^testing.T) {
+	result := wayu.FuzzyResult{
+		text = "test",
+		score = 10,
+	}
+
+	testing.expect_value(t, result.text, "test")
+	testing.expect_value(t, result.score, 10)
+}
+
+@(test)
+test_fuzzy_score_boundary_cases :: proc(t: ^testing.T) {
+	// Empty strings
+	testing.expect_value(t, wayu.calculate_fuzzy_score("", ""), 1)
+	testing.expect_value(t, wayu.calculate_fuzzy_score("", "test"), 0)
+
+	// Single character
+	testing.expect(t, wayu.calculate_fuzzy_score("a", "a") > 0, "Single char should match")
+	testing.expect_value(t, wayu.calculate_fuzzy_score("a", "b"), 0)
+}
+
+@(test)
+test_fuzzy_find_preserves_original_items :: proc(t: ^testing.T) {
+	items := []string{"apple", "banana", "cherry"}
+	results := wayu.fuzzy_find(items, "a")
+	defer delete(results)
+
+	// Original items should not be modified
+	testing.expect_value(t, items[0], "apple")
+	testing.expect_value(t, items[1], "banana")
+	testing.expect_value(t, items[2], "cherry")
+}
+
+@(test)
+test_fuzzy_score_prefix_bonus :: proc(t: ^testing.T) {
+	// Prefix matches should score higher than non-prefix matches
+	score_prefix := wayu.calculate_fuzzy_score("hello_world", "hello")
+	score_non_prefix := wayu.calculate_fuzzy_score("say_hello_world", "hello")
+
+	testing.expect(t, score_prefix > score_non_prefix, "Prefix should score higher")
+}

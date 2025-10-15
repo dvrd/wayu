@@ -103,8 +103,8 @@ main :: proc() {
 		test_dir := "/tmp/wayu_backup_test1"
 		create_temp_dir(test_dir)
 
-		// Remove the path first in case it exists from previous runs
-		run_wayu(fmt.tprintf("path rm %s", test_dir))
+		// Remove the path first using absolute path (macOS resolves /tmp to /private/tmp)
+		run_wayu(fmt.tprintf("path rm /private%s", test_dir))
 
 		// Now add it - this should create a backup
 		output := run_wayu(fmt.tprintf("path add %s", test_dir))
@@ -133,8 +133,8 @@ main :: proc() {
 		test_dirs := []string{"/tmp/wayu_backup_test2", "/tmp/wayu_backup_test3"}
 		for dir in test_dirs {
 			create_temp_dir(dir)
-			// Remove first in case it exists from previous runs
-			run_wayu(fmt.tprintf("path rm %s", dir))
+			// Remove first using absolute path (macOS resolves /tmp to /private/tmp)
+			run_wayu(fmt.tprintf("path rm /private%s", dir))
 			// Now add it
 			output := run_wayu(fmt.tprintf("path add %s", dir))
 			delete(output)
