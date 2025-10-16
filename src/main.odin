@@ -60,6 +60,12 @@ ParsedArgs :: struct {
 	args:    []string,
 	shell:   ShellType,
 	tui:     bool,  // TUI mode flag
+
+	// Component testing (PRP-13)
+	component_test: bool,
+	component_name: string,
+	component_snapshot: bool,
+	component_verify: bool,
 }
 
 init_shell_globals :: proc() {
@@ -122,6 +128,13 @@ main :: proc() {
 		return
 	}
 
+	// Component test mode (PRP-13)
+	if parsed.component_test {
+		run_component_test(parsed.component_name, parsed.args,
+			parsed.component_snapshot, parsed.component_verify)
+		return
+	}
+
 	switch parsed.command {
 	case .PATH:
 		handle_path_command(parsed.action, parsed.args)
@@ -160,6 +173,10 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	defer delete(filtered_args)
 
 	tui_flag := false
+	component_test_flag := false
+	component_name_str := ""
+	snapshot_flag := false
+	verify_flag := false
 
 	i := 0
 	for i < len(args) {
@@ -168,6 +185,13 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			DRY_RUN = true
 		} else if arg == "--tui" {
 			tui_flag = true
+		} else if strings.has_prefix(arg, "-c=") {
+			component_test_flag = true
+			component_name_str = strings.trim_prefix(arg, "-c=")
+		} else if arg == "--snapshot" {
+			snapshot_flag = true
+		} else if arg == "--test" {
+			verify_flag = true
 		} else if arg == "--shell" && i + 1 < len(args) {
 			// Parse shell override
 			shell_name := args[i + 1]
@@ -191,6 +215,10 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	if len(filtered_args) == 0 {
 		parsed.command = .HELP
 		parsed.tui = tui_flag
+		parsed.component_test = component_test_flag
+		parsed.component_name = component_name_str
+		parsed.component_snapshot = snapshot_flag
+		parsed.component_verify = verify_flag
 		return parsed
 	}
 
@@ -211,22 +239,42 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	case "init":
 		parsed.command = .INIT
 		parsed.tui = tui_flag
+		parsed.component_test = component_test_flag
+		parsed.component_name = component_name_str
+		parsed.component_snapshot = snapshot_flag
+		parsed.component_verify = verify_flag
 		return parsed
 	case "migrate":
 		parsed.command = .MIGRATE
 		parsed.tui = tui_flag
+		parsed.component_test = component_test_flag
+		parsed.component_name = component_name_str
+		parsed.component_snapshot = snapshot_flag
+		parsed.component_verify = verify_flag
 		return parsed
 	case "version", "-v", "--version":
 		parsed.command = .VERSION
 		parsed.tui = tui_flag
+		parsed.component_test = component_test_flag
+		parsed.component_name = component_name_str
+		parsed.component_snapshot = snapshot_flag
+		parsed.component_verify = verify_flag
 		return parsed
 	case "help", "-h", "--help":
 		parsed.command = .HELP
 		parsed.tui = tui_flag
+		parsed.component_test = component_test_flag
+		parsed.component_name = component_name_str
+		parsed.component_snapshot = snapshot_flag
+		parsed.component_verify = verify_flag
 		return parsed
 	case:
 		parsed.command = .UNKNOWN
 		parsed.tui = tui_flag
+		parsed.component_test = component_test_flag
+		parsed.component_name = component_name_str
+		parsed.component_snapshot = snapshot_flag
+		parsed.component_verify = verify_flag
 		return parsed
 	}
 
@@ -234,6 +282,10 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	if len(filtered_args) < 2 {
 		parsed.action = .LIST
 		parsed.tui = tui_flag
+		parsed.component_test = component_test_flag
+		parsed.component_name = component_name_str
+		parsed.component_snapshot = snapshot_flag
+		parsed.component_verify = verify_flag
 		return parsed
 	}
 
@@ -257,6 +309,10 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	case:
 		parsed.action = .UNKNOWN
 		parsed.tui = tui_flag
+		parsed.component_test = component_test_flag
+		parsed.component_name = component_name_str
+		parsed.component_snapshot = snapshot_flag
+		parsed.component_verify = verify_flag
 		return parsed
 	}
 
@@ -270,6 +326,10 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	}
 
 	parsed.tui = tui_flag
+	parsed.component_test = component_test_flag
+	parsed.component_name = component_name_str
+	parsed.component_snapshot = snapshot_flag
+	parsed.component_verify = verify_flag
 	return parsed
 }
 
