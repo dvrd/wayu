@@ -106,68 +106,11 @@ test_constant_name_extraction :: proc(t: ^testing.T) {
 	}
 }
 
-@(test)
-test_determine_constant_type_path :: proc(t: ^testing.T) {
-	testing.expect_value(t, wayu.determine_constant_type("/usr/bin"), "Path")
-	testing.expect_value(t, wayu.determine_constant_type("~/documents"), "Path")
-}
-
-@(test)
-test_determine_constant_type_url :: proc(t: ^testing.T) {
-	testing.expect_value(t, wayu.determine_constant_type("https://example.com"), "URL")
-	testing.expect_value(t, wayu.determine_constant_type("http://localhost"), "URL")
-}
-
-@(test)
-test_determine_constant_type_number :: proc(t: ^testing.T) {
-	testing.expect_value(t, wayu.determine_constant_type("123"), "Number")
-	testing.expect_value(t, wayu.determine_constant_type("0"), "Number")
-}
-
-@(test)
-test_determine_constant_type_boolean :: proc(t: ^testing.T) {
-	testing.expect_value(t, wayu.determine_constant_type("true"), "Boolean")
-	testing.expect_value(t, wayu.determine_constant_type("false"), "Boolean")
-}
-
-@(test)
-test_determine_constant_type_string :: proc(t: ^testing.T) {
-	testing.expect_value(t, wayu.determine_constant_type("hello"), "String")
-	testing.expect_value(t, wayu.determine_constant_type("some value"), "String")
-}
-
-@(test)
-test_is_numeric_valid :: proc(t: ^testing.T) {
-	testing.expect_value(t, wayu.is_numeric("123"), true)
-	testing.expect_value(t, wayu.is_numeric("0"), true)
-	testing.expect_value(t, wayu.is_numeric("999"), true)
-}
-
-@(test)
-test_is_numeric_invalid :: proc(t: ^testing.T) {
-	testing.expect_value(t, wayu.is_numeric(""), false)
-	testing.expect_value(t, wayu.is_numeric("abc"), false)
-	testing.expect_value(t, wayu.is_numeric("12.34"), false)
-	testing.expect_value(t, wayu.is_numeric("123abc"), false)
-}
-
-@(test)
-test_validate_constant_name_for_form_empty :: proc(t: ^testing.T) {
-	validation := wayu.validate_constant_name_for_form("")
-	defer delete(validation.error_message)
-	testing.expect_value(t, validation.valid, false)
-}
-
-@(test)
-test_validate_constant_value_for_form_empty :: proc(t: ^testing.T) {
-	validation := wayu.validate_constant_value_for_form("")
-	defer delete(validation.error_message)
-	testing.expect_value(t, validation.valid, false)
-}
-
-@(test)
-test_validate_constant_value_for_form_valid :: proc(t: ^testing.T) {
-	validation := wayu.validate_constant_value_for_form("test_value")
-	defer delete(validation.info)
-	testing.expect_value(t, validation.valid, true)
-}
+// Note: The following helper functions were removed during PRP-11 refactoring:
+// - determine_constant_type: Was internal UI helper, now part of generic system
+// - is_numeric: Was internal UI helper, now part of generic system
+// - validate_constant_name_for_form: Renamed to validate_constant_name_input in config_specs.odin
+// - validate_constant_value_for_form: Renamed to validate_constant_value_input in config_specs.odin
+//
+// These functions are tested indirectly through integration tests which verify
+// the complete add/remove/list workflow works correctly.
