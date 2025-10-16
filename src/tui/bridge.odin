@@ -14,6 +14,7 @@ import "core:strings"
 g_load_path_data: proc(^TUIState)
 g_load_alias_data: proc(^TUIState)
 g_load_constants_data: proc(^TUIState)
+g_load_completions_data: proc(^TUIState)
 g_load_backups_data: proc(^TUIState)
 g_delete_path: proc(string) -> bool
 g_delete_alias: proc(string) -> bool
@@ -25,6 +26,7 @@ tui_set_bridge_functions :: proc(
 	load_path: proc(^TUIState),
 	load_alias: proc(^TUIState),
 	load_constants: proc(^TUIState),
+	load_completions: proc(^TUIState),
 	load_backups: proc(^TUIState),
 	delete_path: proc(string) -> bool,
 	delete_alias: proc(string) -> bool,
@@ -34,6 +36,7 @@ tui_set_bridge_functions :: proc(
 	g_load_path_data = load_path
 	g_load_alias_data = load_alias
 	g_load_constants_data = load_constants
+	g_load_completions_data = load_completions
 	g_load_backups_data = load_backups
 	g_delete_path = delete_path
 	g_delete_alias = delete_alias
@@ -64,6 +67,13 @@ tui_load_alias_data :: proc(state: ^TUIState) {
 tui_load_constants_data :: proc(state: ^TUIState) {
 	if g_load_constants_data != nil {
 		g_load_constants_data(state)
+	}
+}
+
+// Load Completions into cache
+tui_load_completions_data :: proc(state: ^TUIState) {
+	if g_load_completions_data != nil {
+		g_load_completions_data(state)
 	}
 }
 
@@ -121,9 +131,11 @@ tui_ensure_data_loaded :: proc(state: ^TUIState, view: TUIView) {
 		tui_load_alias_data(state)
 	case .CONSTANTS_VIEW:
 		tui_load_constants_data(state)
+	case .COMPLETIONS_VIEW:
+		tui_load_completions_data(state)
 	case .BACKUPS_VIEW:
 		tui_load_backups_data(state)
-	case .MAIN_MENU, .COMPLETIONS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
+	case .MAIN_MENU, .PLUGINS_VIEW, .SETTINGS_VIEW:
 		// No data to load for these views
 	}
 }
