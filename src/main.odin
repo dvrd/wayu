@@ -15,6 +15,7 @@ WAYU_CONFIG : string
 
 // Global flags
 DRY_RUN := false
+YES_FLAG := false  // Skip confirmation prompts
 DETECTED_SHELL := detect_shell()
 SHELL_EXT : string
 
@@ -103,7 +104,7 @@ main :: proc() {
 
 	if len(os.args) < 2 {
 		print_help()
-		os.exit(1)
+		os.exit(EXIT_SUCCESS)  // Help is success, not error
 	}
 
 	parsed := parse_args(os.args[1:])
@@ -159,7 +160,7 @@ main :: proc() {
 	case .UNKNOWN:
 		fmt.eprintfln("Unknown command: %s", os.args[1])
 		print_help()
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	}
 }
 
@@ -183,6 +184,8 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		arg := args[i]
 		if arg == "--dry-run" || arg == "-n" {
 			DRY_RUN = true
+		} else if arg == "--yes" || arg == "-y" {
+			YES_FLAG = true
 		} else if arg == "--tui" {
 			tui_flag = true
 		} else if strings.has_prefix(arg, "-c=") {
@@ -209,6 +212,21 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			append(&filtered_args, arg)
 		}
 		i += 1
+	}
+
+	// Handle component test mode early - all filtered args become component args
+	if component_test_flag {
+		parsed.component_test = true
+		parsed.component_name = component_name_str
+		parsed.component_snapshot = snapshot_flag
+		parsed.component_verify = verify_flag
+		// All remaining args are component arguments
+		if len(filtered_args) > 0 {
+			remaining_args := make([]string, len(filtered_args))
+			copy(remaining_args, filtered_args[:])
+			parsed.args = remaining_args
+		}
+		return parsed
 	}
 
 	// Use filtered args for parsing
@@ -346,7 +364,7 @@ handle_init_command :: proc() {
 	shell_valid, shell_msg := validate_shell_compatibility(detected_shell)
 	if !shell_valid {
 		print_error_simple("ERROR: %s", shell_msg)
-		os.exit(1)
+		os.exit(EXIT_CONFIG)
 	}
 
 	shell := detected_shell
@@ -370,7 +388,7 @@ handle_init_command :: proc() {
 
 		if err != nil {
 			print_error_simple("Error creating config directory: %v", err)
-			os.exit(1)
+			os.exit(EXIT_CANTCREAT)
 		}
 		print_success("Created directory: %s", config_dir)
 	} else {
@@ -569,6 +587,9 @@ print_help :: proc() {
 	print_section("FLAGS:", EMOJI_ACTION)
 	print_item("", "--dry-run, -n", "Preview changes without modifying files", EMOJI_INFO)
 	print_item("", "--tui", "Launch interactive Terminal UI mode", EMOJI_INFO)
+	print_item("", "-c=<component>", "Test TUI component rendering (dev mode)", EMOJI_INFO)
+	print_item("", "--snapshot", "Save component output as golden file", EMOJI_INFO)
+	print_item("", "--test", "Test component against golden file", EMOJI_INFO)
 	fmt.println()
 
 	print_section("EXAMPLES:", EMOJI_CYCLIST)
@@ -618,7 +639,7 @@ handle_migrate_command :: proc(args: []string) {
 		} else {
 			fmt.eprintfln("Unknown migrate option: %s", arg)
 			print_migrate_help()
-			os.exit(1)
+			os.exit(EXIT_USAGE)
 		}
 		i += 1
 	}
@@ -627,18 +648,18 @@ handle_migrate_command :: proc(args: []string) {
 	if from_shell == .UNKNOWN {
 		fmt.eprintfln("Error: --from shell must be specified (bash or zsh)")
 		print_migrate_help()
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	}
 
 	if to_shell == .UNKNOWN {
 		fmt.eprintfln("Error: --to shell must be specified (bash or zsh)")
 		print_migrate_help()
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	}
 
 	if from_shell == to_shell {
 		fmt.eprintfln("Error: source and target shells cannot be the same")
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	}
 
 	// Perform migration
