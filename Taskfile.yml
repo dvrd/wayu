@@ -120,6 +120,25 @@ tasks:
       - echo ""
       - odin run {{.TEST_DIR}}/ui/test_render_box.odin -file -out:{{.BIN_DIR}}/test_render
 
+  test:components:
+    desc: Run component rendering tests (unit tests only)
+    cmds:
+      - odin test {{.TEST_DIR}}/unit/test_components.odin -file
+
+  test:components:snapshot:
+    desc: Generate golden files for all components
+    deps: [build]
+    cmds:
+      - mkdir -p tests/golden
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}} -c=box width=10 height=3 --snapshot"
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}} -c=box width=80 height=24 --snapshot"
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}} -c=list-item width=40 height=1 text='Sample item' --snapshot"
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}} -c=header width=60 height=3 title='Test Header' --snapshot"
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}} -c=footer width=80 height=3 shortcuts='q=quit' --snapshot"
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}} -c=scroll-indicator width=50 height=1 start=1 end=10 total=50 --snapshot"
+      - "{{.BIN_DIR}}/{{.BINARY_NAME}} -c=empty-state width=60 height=10 message='No items found' --snapshot"
+      - echo "✓ All golden files generated"
+
   test:all:
     desc: Run all tests (unit, integration, and UI) with unified report
     cmds:
