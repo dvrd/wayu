@@ -8,7 +8,7 @@ import "core:log"
 import tui "tui"
 
 // Semantic versioning - update with each release
-VERSION :: "2.0.0"
+VERSION :: "2.2.0"
 
 HOME : string
 WAYU_CONFIG : string
@@ -416,7 +416,7 @@ handle_init_command :: proc() {
 
 			if err != nil {
 				print_error_simple("Error creating directory %s: %v", subdir, err)
-				os.exit(1)
+				os.exit(EXIT_CANTCREAT)
 			}
 			print_success("Created directory: %s", subdir_path)
 			created_subdirs += 1
@@ -586,6 +586,7 @@ print_help :: proc() {
 
 	print_section("FLAGS:", EMOJI_ACTION)
 	print_item("", "--dry-run, -n", "Preview changes without modifying files", EMOJI_INFO)
+	print_item("", "--yes, -y", "Skip confirmation prompts (for clean/dedup)", EMOJI_INFO)
 	print_item("", "--tui", "Launch interactive Terminal UI mode", EMOJI_INFO)
 	print_item("", "-c=<component>", "Test TUI component rendering (dev mode)", EMOJI_INFO)
 	print_item("", "--snapshot", "Save component output as golden file", EMOJI_INFO)
@@ -594,23 +595,36 @@ print_help :: proc() {
 
 	print_section("EXAMPLES:", EMOJI_CYCLIST)
 	fmt.printf("  wayu path add /usr/local/bin\n")
-	fmt.printf("  wayu path add                    # Uses current directory\n")
-	fmt.printf("  wayu path rm                     # Interactive removal\n")
 	fmt.printf("  wayu alias add ll 'ls -la'\n")
-	fmt.printf("  wayu alias rm                    # Interactive removal\n")
 	fmt.printf("  wayu constants add MY_VAR value\n")
-	fmt.printf("  wayu constants rm                # Interactive removal\n")
 	fmt.printf("  wayu completions add jj /path/to/_jj\n")
-	fmt.printf("  wayu completions rm              # Interactive removal\n")
 	fmt.printf("  wayu backup list                 # Show all backups\n")
 	fmt.printf("  wayu backup restore path         # Restore path config\n")
 	fmt.printf("  wayu plugin add syntax-highlighting  # Install plugin\n")
-	fmt.printf("  wayu plugin list                 # Show installed plugins\n")
 	fmt.printf("  wayu migrate --from zsh --to bash # Migrate between shells\n")
 	fmt.println()
 	fmt.printf("  # Preview changes with dry-run:\n")
 	fmt.printf("  wayu --dry-run path add /new/path\n")
 	fmt.printf("  wayu -n alias add gc 'git commit'\n")
+	fmt.println()
+	fmt.printf("  # Destructive operations require --yes flag:\n")
+	fmt.printf("  wayu path clean --yes            # Remove missing directories\n")
+	fmt.printf("  wayu path dedup --yes            # Remove duplicates\n")
+	fmt.println()
+
+	print_section("EXIT CODES:", EMOJI_INFO)
+	fmt.printf("  0   Success\n")
+	fmt.printf("  1   General error\n")
+	fmt.printf("  64  Usage error (invalid arguments)\n")
+	fmt.printf("  65  Data format error (invalid input)\n")
+	fmt.printf("  66  Input file not found\n")
+	fmt.printf("  73  Cannot create output file\n")
+	fmt.printf("  74  I/O error (read/write failure)\n")
+	fmt.printf("  77  Permission denied\n")
+	fmt.printf("  78  Configuration error\n")
+	fmt.println()
+	fmt.printf("  %sNote:%s CLI mode is fully non-interactive for scripting/automation\n", BRIGHT_CYAN, RESET)
+	fmt.printf("  %sHint:%s Use %s--tui%s flag for interactive Terminal UI mode\n", BRIGHT_CYAN, RESET, BOLD, RESET)
 	fmt.println()
 }
 

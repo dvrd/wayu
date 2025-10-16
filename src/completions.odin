@@ -15,40 +15,48 @@ handle_completions_command :: proc(action: Action, args: []string) {
 		if len(args) < 2 {
 			print_error_simple("Usage: wayu completions add <name> <source-file>")
 			fmt.println("Example: wayu completions add jj /path/to/_jj")
-			os.exit(1)
+			os.exit(EXIT_USAGE)
 		}
 		add_completion(args[0], args[1])
 	case .REMOVE:
 		if len(args) == 0 {
-			remove_completion_interactive()
-		} else {
-			remove_completion(args[0])
+			print_error("Missing required argument: completion name")
+			fmt.println()
+			fmt.println("Usage: wayu completions rm <name>")
+			fmt.println()
+			fmt.println("Example:")
+			fmt.println("  wayu completions rm jj")
+			fmt.println()
+			fmt.printfln("%sHint:%s For interactive selection, use: %swayu --tui%s",
+				get_muted(), RESET, get_primary(), RESET)
+			os.exit(EXIT_USAGE)
 		}
+		remove_completion(args[0])
 	case .LIST:
 		list_completions()
 	case .GET:
 		fmt.eprintln("ERROR: get action not supported for completions command")
 		fmt.println("The get action only applies to plugins")
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	case .RESTORE:
 		// RESTORE action is handled by backup command, not completions command
 		fmt.eprintln("ERROR: restore action not supported for completions command")
 		fmt.println("Use: wayu backup restore completions")
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	case .CLEAN:
 		fmt.eprintln("ERROR: clean action not supported for completions command")
 		fmt.println("The clean action only applies to path entries")
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	case .DEDUP:
 		fmt.eprintln("ERROR: dedup action not supported for completions command")
 		fmt.println("The dedup action only applies to path entries")
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	case .HELP:
 		print_completions_help()
 	case .UNKNOWN:
 		fmt.eprintln("Unknown completions action")
 		print_completions_help()
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	}
 }
 
@@ -57,7 +65,7 @@ add_completion :: proc(name: string, source_path: string) {
 	// Validate source file exists
 	if !os.exists(source_path) {
 		print_error_with_context(.FILE_NOT_FOUND, source_path)
-		os.exit(1)
+		os.exit(EXIT_NOINPUT)
 	}
 
 	// Normalize name (add underscore if missing)
@@ -71,7 +79,7 @@ add_completion :: proc(name: string, source_path: string) {
 	// Read source file
 	content, read_ok := safe_read_file(source_path)
 	if !read_ok {
-		os.exit(1)
+		os.exit(EXIT_IOERR)
 	}
 	defer delete(content)
 
@@ -82,7 +90,7 @@ add_completion :: proc(name: string, source_path: string) {
 	// Ensure completions directory exists
 	if !os.exists(completions_dir) {
 		print_error_with_context(.CONFIG_NOT_INITIALIZED, WAYU_CONFIG)
-		os.exit(1)
+		os.exit(EXIT_CONFIG)
 	}
 
 	dest_path := fmt.aprintf("%s/%s", completions_dir, completion_name)
@@ -110,15 +118,14 @@ add_completion :: proc(name: string, source_path: string) {
 	}
 
 	// Create backup before modifying
-	if !create_backup_with_prompt(dest_path) {
-		print_info("Operation cancelled")
-		os.exit(1)
+	if !create_backup_cli(dest_path) {
+		os.exit(EXIT_IOERR)
 	}
 
 	// Write to destination
 	write_ok := safe_write_file(dest_path, content)
 	if !write_ok {
-		os.exit(1)
+		os.exit(EXIT_IOERR)
 	}
 
 	// Cleanup old backups (keep last 5)
@@ -157,7 +164,7 @@ remove_completion :: proc(name: string) {
 		print_error_simple("Completion not found: %s", completion_name)
 		fmt.printfln("\nRun %swayu completions list%s to see available completions",
 			MUTED, RESET)
-		os.exit(1)
+		os.exit(EXIT_NOINPUT)
 	}
 
 	// Dry-run mode check
@@ -176,16 +183,15 @@ remove_completion :: proc(name: string) {
 	}
 
 	// Create backup before removing
-	if !create_backup_with_prompt(file_path) {
-		print_info("Operation cancelled")
-		os.exit(1)
+	if !create_backup_cli(file_path) {
+		os.exit(EXIT_IOERR)
 	}
 
 	// Remove file
 	err := os.remove(file_path)
 	if err != 0 {
 		print_error_simple("Failed to remove completion: %s", completion_name)
-		os.exit(1)
+		os.exit(EXIT_IOERR)
 	}
 
 	// Cleanup old backups (keep last 5)
@@ -199,7 +205,8 @@ remove_completion :: proc(name: string) {
 	}
 }
 
-// Interactive removal using fuzzy finder
+// TUI-only: Interactive removal using fuzzy finder
+// This function is ONLY called from TUI bridge, never from CLI
 remove_completion_interactive :: proc() {
 	items := extract_completion_items()
 	defer {
@@ -239,7 +246,7 @@ remove_completion_interactive :: proc() {
 list_completions :: proc() {
 	// Check if wayu is initialized first
 	if !check_wayu_initialized() {
-		os.exit(1)
+		os.exit(EXIT_CONFIG)
 	}
 
 	completions_dir := fmt.aprintf("%s/completions", WAYU_CONFIG)
@@ -248,21 +255,21 @@ list_completions :: proc() {
 	// Check directory exists
 	if !os.exists(completions_dir) {
 		print_error_with_context(.CONFIG_NOT_INITIALIZED, WAYU_CONFIG)
-		os.exit(1)
+		os.exit(EXIT_CONFIG)
 	}
 
 	// Read directory
 	dir_handle, err := os.open(completions_dir)
 	if err != 0 {
 		print_error_simple("Failed to open completions directory")
-		os.exit(1)
+		os.exit(EXIT_IOERR)
 	}
 	defer os.close(dir_handle)
 
 	file_infos, read_err := os.read_dir(dir_handle, -1)
 	if read_err != 0 {
 		print_error_simple("Failed to read completions directory")
-		os.exit(1)
+		os.exit(EXIT_IOERR)
 	}
 	defer os.file_info_slice_delete(file_infos)
 

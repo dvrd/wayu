@@ -652,29 +652,21 @@ handle_plugin_remove :: proc(args: []string) {
 		return
 	}
 
-	plugin_name := ""
-
-	// Interactive selection if no args
+	// Require explicit plugin name (no interactive selection in CLI)
 	if len(args) == 0 {
-		// Build list of plugin names for fuzzy search
-		plugin_names := make([dynamic]string)
-		defer delete(plugin_names)
-
-		for plugin in config.plugins {
-			append(&plugin_names, plugin.name)
-		}
-
-		prompt := "Select plugin to remove (Ctrl+C to cancel):"
-		selected, selected_ok := interactive_fuzzy_select(plugin_names[:], prompt)
-		if !selected_ok {
-			print_info("No plugin selected")
-			return
-		}
-
-		plugin_name = selected
-	} else {
-		plugin_name = args[0]
+		print_error("Missing required argument: plugin name")
+		fmt.println()
+		fmt.println("Usage: wayu plugin rm <name>")
+		fmt.println()
+		fmt.println("Example:")
+		fmt.println("  wayu plugin rm syntax-highlighting")
+		fmt.println()
+		fmt.printfln("%sHint:%s For interactive selection, use: %swayu --tui%s",
+			get_muted(), RESET, get_primary(), RESET)
+		os.exit(EXIT_USAGE)
 	}
+
+	plugin_name := args[0]
 
 	// Find plugin
 	plugin_ptr, found := find_plugin(&config, plugin_name)

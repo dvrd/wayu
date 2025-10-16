@@ -59,8 +59,24 @@ create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 	return backup_file, true
 }
 
-// Create backup with user confirmation prompt on failure
-create_backup_with_prompt :: proc(file_path: string, auto_backup := true) -> bool {
+// CLI version - fails immediately without prompt
+// Used by all CLI commands to ensure non-interactive behavior
+create_backup_cli :: proc(file_path: string) -> bool {
+	backup_path, ok := create_backup(file_path)
+	defer if ok do delete(backup_path)
+
+	if !ok {
+		print_error("Failed to create backup for %s", file_path)
+		fmt.println("Aborting operation to prevent data loss.")
+		return false
+	}
+
+	return true
+}
+
+// TUI version - prompts user on backup failure
+// This function is ONLY called from TUI bridge, never from CLI
+create_backup_tui :: proc(file_path: string, auto_backup := true) -> bool {
 	if auto_backup {
 		backup_path, ok := create_backup(file_path)
 		defer if ok do delete(backup_path)
@@ -335,7 +351,7 @@ handle_backup_command :: proc(action: Action, args: []string) {
 		if len(args) == 0 {
 			print_error_simple("Usage: wayu backup restore <config-type>")
 			fmt.println("Example: wayu backup restore path")
-			os.exit(1)
+			os.exit(EXIT_USAGE)
 		}
 		restore_config_backup(args[0])
 	case .REMOVE:
@@ -347,25 +363,25 @@ handle_backup_command :: proc(action: Action, args: []string) {
 	case .GET:
 		fmt.eprintln("ERROR: get action not supported for backup command")
 		fmt.println("The get action only applies to plugins")
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	case .HELP:
 		print_backup_help()
 	case .UNKNOWN:
 		fmt.eprintln("Unknown backup action")
 		print_backup_help()
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	case .ADD:
 		print_error_simple("Backups are created automatically when modifying files")
 		fmt.println("Use 'wayu backup list' to see existing backups")
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	case .CLEAN:
 		fmt.eprintln("ERROR: clean action not supported for backup command")
 		fmt.println("The clean action only applies to path entries")
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	case .DEDUP:
 		fmt.eprintln("ERROR: dedup action not supported for backup command")
 		fmt.println("The dedup action only applies to path entries")
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	}
 }
 
@@ -427,7 +443,7 @@ list_backups_for_config :: proc(config_type: string) {
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
 		fmt.println("Valid types: path, alias, constants")
-		os.exit(1)
+		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
 
@@ -440,12 +456,12 @@ restore_config_backup :: proc(config_type: string) {
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
 		fmt.println("Valid types: path, alias, constants")
-		os.exit(1)
+		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
 
 	if !restore_from_backup(config_file) {
-		os.exit(1)
+		os.exit(EXIT_IOERR)
 	}
 }
 
@@ -481,7 +497,7 @@ cleanup_config_backups :: proc(config_type: string) {
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
 		fmt.println("Valid types: path, alias, constants")
-		os.exit(1)
+		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
 

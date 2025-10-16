@@ -95,11 +95,12 @@ screen_set_cell :: proc(screen: ^Screen, x, y: int, cell: Cell) {
 	}
 }
 
-// Clear screen (fill with spaces)
+// Clear screen (fill with spaces, reset all formatting)
 screen_clear :: proc(screen: ^Screen) {
 	for y in 0..<screen.height {
 		for x in 0..<screen.width {
-			screen.buffer[y][x] = Cell{char = ' '}
+			// Clear cell completely - char AND all formatting fields
+			screen.buffer[y][x] = Cell{char = ' ', fg = "", bg = "", bold = false, dim = false}
 		}
 	}
 }
