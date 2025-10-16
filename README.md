@@ -74,6 +74,10 @@ wayu <command> <action> [arguments]
 
 - `--shell <bash|zsh>` - Override shell detection
 - `--dry-run`, `-n` - Preview changes without modifying files
+- `--tui` - Launch interactive Terminal UI mode
+- `-c=<component>` - Test individual TUI component (developer mode)
+- `--snapshot` - Create golden file for component testing
+- `--test` - Verify component output against golden file
 - `--from <shell>` - Source shell for migration (migrate command only)
 - `--to <shell>` - Target shell for migration (migrate command only)
 - `-v`, `--version` - Show version information
@@ -162,7 +166,7 @@ If you use both shells, wayu maintains separate config files for each shell, all
 
 **New Bash users**: Simply run `wayu init` and it will detect your shell automatically.
 
-**Switching shells**: See the comprehensive [Migration Guide](docs/MIGRATION.md) for detailed instructions on switching between shells or using both.
+**Switching shells**: Use `wayu migrate --from <shell> --to <shell>` to migrate configurations between shells. The migration preserves your PATH entries, aliases, and constants while adapting them to the target shell's syntax.
 
 ## Development
 
@@ -328,6 +332,50 @@ The TUI follows The Elm Architecture (TEA) pattern:
 - **Alt Screen** - Uses alternate screen buffer (preserves terminal history)
 - **Signal Handling** - Graceful cleanup on Ctrl+C and terminal resize
 - **Memory Safe** - Proper cleanup of all allocated resources
+
+## Component Testing (Developer Feature)
+
+wayu includes a component testing infrastructure for isolated testing of TUI components. This is primarily useful for developers working on the TUI system.
+
+### Testing Individual Components
+
+```bash
+# Render a component to stdout
+wayu -c=box width=10 height=3
+wayu -c=list-item width=40 height=1 text="Sample item" selected=true
+wayu -c=header width=60 height=3 title="Test Header" emoji="🚀" count=15
+
+# Create golden files for visual regression testing
+wayu -c=box width=10 height=3 --snapshot
+
+# Test against golden files
+wayu -c=box width=10 height=3 --test
+```
+
+### Available Components
+
+- `box` - Unicode border box rendering
+- `list-item` - List item with selection indicator
+- `header` - Header with optional emoji and count
+- `footer` - Footer with keyboard shortcuts
+- `scroll-indicator` - Pagination info display
+- `empty-state` - Centered empty state message
+
+### Running Component Tests
+
+```bash
+# Run component unit tests
+task test:components
+
+# Generate all golden files
+task test:components:snapshot
+```
+
+### Golden File Testing
+
+Golden files provide baseline comparisons for visual regression testing. Each component can be rendered with different dimensions and states, and the output is compared byte-for-byte against stored golden files.
+
+Golden files are stored in `tests/golden/` and follow the naming convention: `<component>_<width>x<height>.txt`
 
 ## License
 
