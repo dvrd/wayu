@@ -5,6 +5,7 @@ import "core:os"
 import "core:strings"
 import "core:slice"
 import "core:log"
+import tui "tui"
 
 // Semantic versioning - update with each release
 VERSION :: "2.0.0"
@@ -58,6 +59,7 @@ ParsedArgs :: struct {
 	action:  Action,
 	args:    []string,
 	shell:   ShellType,
+	tui:     bool,  // TUI mode flag
 }
 
 init_shell_globals :: proc() {
@@ -101,6 +103,25 @@ main :: proc() {
 	parsed := parse_args(os.args[1:])
 	defer if len(parsed.args) > 0 do delete(parsed.args)
 
+	// Launch TUI if flag present
+	if parsed.tui {
+		// Set up bridge functions for TUI
+		tui.tui_set_bridge_functions(
+			tui_bridge_load_path,
+			tui_bridge_load_alias,
+			tui_bridge_load_constants,
+			tui_bridge_load_backups,
+			tui_bridge_delete_path,
+			tui_bridge_delete_alias,
+			tui_bridge_delete_constant,
+			tui_bridge_cleanup_backups,
+		)
+
+		// Launch TUI
+		tui.tui_run()
+		return
+	}
+
 	switch parsed.command {
 	case .PATH:
 		handle_path_command(parsed.action, parsed.args)
@@ -138,11 +159,15 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	filtered_args := make([dynamic]string)
 	defer delete(filtered_args)
 
+	tui_flag := false
+
 	i := 0
 	for i < len(args) {
 		arg := args[i]
 		if arg == "--dry-run" || arg == "-n" {
 			DRY_RUN = true
+		} else if arg == "--tui" {
+			tui_flag = true
 		} else if arg == "--shell" && i + 1 < len(args) {
 			// Parse shell override
 			shell_name := args[i + 1]
@@ -165,6 +190,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	// Use filtered args for parsing
 	if len(filtered_args) == 0 {
 		parsed.command = .HELP
+		parsed.tui = tui_flag
 		return parsed
 	}
 
@@ -184,24 +210,30 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		parsed.command = .PLUGIN
 	case "init":
 		parsed.command = .INIT
+		parsed.tui = tui_flag
 		return parsed
 	case "migrate":
 		parsed.command = .MIGRATE
+		parsed.tui = tui_flag
 		return parsed
 	case "version", "-v", "--version":
 		parsed.command = .VERSION
+		parsed.tui = tui_flag
 		return parsed
 	case "help", "-h", "--help":
 		parsed.command = .HELP
+		parsed.tui = tui_flag
 		return parsed
 	case:
 		parsed.command = .UNKNOWN
+		parsed.tui = tui_flag
 		return parsed
 	}
 
 	// Parse action
 	if len(filtered_args) < 2 {
 		parsed.action = .LIST
+		parsed.tui = tui_flag
 		return parsed
 	}
 
@@ -224,6 +256,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		parsed.action = .HELP
 	case:
 		parsed.action = .UNKNOWN
+		parsed.tui = tui_flag
 		return parsed
 	}
 
@@ -236,6 +269,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		parsed.args = remaining_args
 	}
 
+	parsed.tui = tui_flag
 	return parsed
 }
 
@@ -474,6 +508,7 @@ print_help :: proc() {
 
 	print_section("FLAGS:", EMOJI_ACTION)
 	print_item("", "--dry-run, -n", "Preview changes without modifying files", EMOJI_INFO)
+	print_item("", "--tui", "Launch interactive Terminal UI mode", EMOJI_INFO)
 	fmt.println()
 
 	print_section("EXAMPLES:", EMOJI_CYCLIST)

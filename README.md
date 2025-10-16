@@ -222,6 +222,113 @@ WAYU_PLAIN=1 wayu alias list
 # - Works with screen readers and accessibility tools
 ```
 
+## TUI Mode (Interactive Terminal UI)
+
+wayu includes a full-featured Terminal User Interface (TUI) for interactive configuration management. The TUI provides a modern, visual way to browse and manage your shell configuration.
+
+### Launching TUI Mode
+
+```bash
+wayu --tui
+```
+
+### TUI Features
+
+- **Interactive Navigation** - Browse all configuration options visually with cursor keys
+- **Keyboard Shortcuts** - Vim-style navigation (j/k or ↑/↓)
+- **Live Data Loading** - Automatically loads PATH, Alias, Constants, and Backups from config files
+- **Safe Operations** - Automatic backups before all modifications
+- **Real-time Updates** - Changes to config files are reflected immediately
+- **Discoverable** - Help text displayed in each view
+
+### Keyboard Shortcuts
+
+**Global:**
+- `↑/↓` or `j/k` - Navigate list
+- `Enter` - Select item / Navigate to view
+- `Esc` - Go back / Exit from main menu
+- `Ctrl+C` - Quit immediately
+- `q` - Quit from main menu
+
+**View-Specific:**
+- `d` or `x` - Delete selected item (PATH, Alias, Constants views)
+- `c` - Cleanup old backups (Backups view)
+
+### TUI Views
+
+The TUI provides 8 different views:
+
+1. **Main Menu** - Navigation hub to all features
+2. **PATH View** - List and delete PATH entries
+3. **Alias View** - List and delete shell aliases
+4. **Constants View** - List and delete environment variables
+5. **Completions View** - Manage completion scripts (placeholder)
+6. **Backups View** - List backups and cleanup old ones
+7. **Plugins View** - Plugin management (future feature)
+8. **Settings View** - Configuration display
+
+### TUI Architecture
+
+```
+┌─────────────────────────────────────────┐
+│         Main Menu (8 options)           │
+├─────────────────────────────────────────┤
+│ 1. PATH Configuration                   │
+│ 2. Aliases                              │
+│ 3. Environment Constants                │
+│ 4. Completions                          │
+│ 5. Backups                              │
+│ 6. Plugins                              │
+│ 7. Settings                             │
+│ 8. Exit                                 │
+└─────────────────────────────────────────┘
+```
+
+**Data Flow:**
+- TUI loads data lazily when entering each view
+- Delete operations call the same wayu functions as the CLI
+- Backups are created automatically before modifications
+- Cache is cleared after modifications to force reload
+
+### Troubleshooting
+
+**TUI doesn't start:**
+- Ensure terminal supports ANSI escape codes
+- Try resizing terminal to at least 80x24
+- Check that you're running in a TTY (not piped/redirected)
+
+**Terminal left in raw mode:**
+- Run `stty sane` or `reset` to restore terminal
+- This should never happen - please report as bug if it does
+
+**Changes not showing:**
+- The TUI reloads data automatically when cache is cleared
+- Try navigating away and back to the view to refresh
+- Exit and re-enter TUI if data seems stale
+
+**Performance issues:**
+- Check terminal size (very large terminals may be slower)
+- The TUI is optimized for < 50ms per frame
+- Report performance issues with terminal details
+
+### Design Principles
+
+The TUI follows The Elm Architecture (TEA) pattern:
+
+- **State Machine** - Centralized state management
+- **Event Loop** - Non-blocking input polling
+- **Differential Rendering** - Only updates changed screen areas
+- **Immutable Updates** - State changes through pure functions
+- **Lazy Loading** - Data loaded only when needed
+
+### Implementation Notes
+
+- **Zero Dependencies** - Pure Odin implementation with no external TUI libraries
+- **Raw Mode** - Direct terminal control via termios
+- **Alt Screen** - Uses alternate screen buffer (preserves terminal history)
+- **Signal Handling** - Graceful cleanup on Ctrl+C and terminal resize
+- **Memory Safe** - Proper cleanup of all allocated resources
+
 ## License
 
 MIT

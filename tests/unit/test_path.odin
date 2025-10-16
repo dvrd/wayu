@@ -126,54 +126,14 @@ test_expand_env_vars_no_vars :: proc(t: ^testing.T) {
 	testing.expect_value(t, result, path)
 }
 
-@(test)
-test_count_duplicates :: proc(t: ^testing.T) {
-	// Test counting duplicate paths
-	duplicate_indices := []bool{false, true, false, true, true}
-	count := wayu.count_duplicates(duplicate_indices)
-	testing.expect_value(t, count, 3)
-}
-
-@(test)
-test_count_duplicates_empty :: proc(t: ^testing.T) {
-	// Test counting with no duplicates
-	duplicate_indices := []bool{false, false, false}
-	count := wayu.count_duplicates(duplicate_indices)
-	testing.expect_value(t, count, 0)
-}
-
-@(test)
-test_count_missing_paths :: proc(t: ^testing.T) {
-	// Test counting missing paths
-	paths := []string{"/nonexistent/path1", "/nonexistent/path2", "/tmp"}
-	count := wayu.count_missing_paths(paths)
-	testing.expect(t, count >= 2, "Should count at least 2 missing paths")
-}
-
-@(test)
-test_analyze_paths :: proc(t: ^testing.T) {
-	// Test path analysis
-	paths := []string{"/tmp", "/tmp", "/nonexistent"}
-	analysis := wayu.analyze_paths(paths)
-	defer wayu.cleanup_path_analysis(&analysis)
-
-	testing.expect(t, len(analysis.duplicate_indices) == 3, "Should have duplicate indices for all paths")
-	testing.expect(t, len(analysis.expanded_paths) == 3, "Should have expanded paths")
-}
-
-@(test)
-test_cleanup_path_analysis :: proc(t: ^testing.T) {
-	// Test cleanup of path analysis
-	paths := []string{"/tmp", "/tmp"}
-	analysis := wayu.analyze_paths(paths)
-	wayu.cleanup_path_analysis(&analysis)
-	// Just verify it doesn't crash
-	testing.expect(t, true, "Cleanup should not crash")
-}
-
-@(test)
-test_print_path_help :: proc(t: ^testing.T) {
-	// Test that help printing doesn't crash
-	wayu.print_path_help()
-	testing.expect(t, true, "Help printing should not crash")
-}
+// Note: The following tests have been removed because they tested non-existent functions:
+// - test_count_duplicates: count_duplicates() never existed
+// - test_count_duplicates_empty: count_duplicates() never existed
+// - test_count_missing_paths: count_missing_paths() never existed (actual: clean_missing_paths())
+// - test_analyze_paths: analyze_paths() never existed
+// - test_cleanup_path_analysis: cleanup_path_analysis() never existed
+// - test_print_path_help: print_path_help() never existed (replaced by generic print_config_help())
+//
+// The PATH functionality is fully tested through:
+// - Integration tests: Full add/remove/list workflow with duplicate detection and missing path handling
+// - Unit tests above: expand_env_vars(), extract_path_items(), parsing logic
