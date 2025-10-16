@@ -105,3 +105,52 @@ render_box :: proc(screen: ^Screen, x, y, width, height: int) {
 	}
 	screen_set_cell(screen, x+width-1, y+height-1, Cell{char = '┘'})
 }
+
+// ============================================================================
+// Styled Rendering Functions (Phase 1: Color System Foundation)
+// ============================================================================
+
+// Render text with color and formatting
+// fg: Foreground color (ANSI escape code string)
+// bg: Background color (ANSI escape code string)
+// bold: Apply bold formatting
+render_text_styled :: proc(screen: ^Screen, x, y: int, text: string, fg: string = "", bg: string = "", bold := false) {
+	current_x := x
+	for ch in text {
+		if current_x >= screen.width do break
+
+		screen_set_cell(screen, current_x, y, Cell{
+			char = ch,
+			fg = fg,
+			bg = bg,
+			bold = bold,
+		})
+		current_x += 1
+	}
+}
+
+// Render box with colored borders
+// fg: Border color (defaults to TUI_BORDER_NORMAL)
+render_box_styled :: proc(screen: ^Screen, x, y, width, height: int, fg: string = TUI_BORDER_NORMAL) {
+	if width < 2 || height < 2 do return
+
+	// Top border
+	screen_set_cell(screen, x, y, Cell{char = BOX_TOP_LEFT, fg = fg})
+	for i in 1..<width-1 {
+		screen_set_cell(screen, x+i, y, Cell{char = BOX_HORIZONTAL, fg = fg})
+	}
+	screen_set_cell(screen, x+width-1, y, Cell{char = BOX_TOP_RIGHT, fg = fg})
+
+	// Sides
+	for j in 1..<height-1 {
+		screen_set_cell(screen, x, y+j, Cell{char = BOX_VERTICAL, fg = fg})
+		screen_set_cell(screen, x+width-1, y+j, Cell{char = BOX_VERTICAL, fg = fg})
+	}
+
+	// Bottom border
+	screen_set_cell(screen, x, y+height-1, Cell{char = BOX_BOTTOM_LEFT, fg = fg})
+	for i in 1..<width-1 {
+		screen_set_cell(screen, x+i, y+height-1, Cell{char = BOX_HORIZONTAL, fg = fg})
+	}
+	screen_set_cell(screen, x+width-1, y+height-1, Cell{char = BOX_BOTTOM_RIGHT, fg = fg})
+}

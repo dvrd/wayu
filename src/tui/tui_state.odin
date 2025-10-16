@@ -95,7 +95,7 @@ tui_state_move_selection :: proc(state: ^TUIState, delta: int, item_count: int) 
 	}
 
 	// Update scroll offset to keep selection visible
-	visible_height := state.terminal_height - 6  // Header + footer
+	visible_height := calculate_visible_height(state.terminal_height)
 
 	if state.selected_index < state.scroll_offset {
 		// Scrolled above visible area

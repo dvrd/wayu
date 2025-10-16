@@ -30,7 +30,7 @@ handle_path_command :: proc(action: Action, args: []string) {
 clean_missing_paths :: proc() {
 	// Check if wayu is initialized first
 	if !check_wayu_initialized() {
-		os.exit(1)
+		os.exit(EXIT_CONFIG)
 	}
 
 	// Read all PATH entries
@@ -80,7 +80,21 @@ clean_missing_paths :: proc() {
 		return
 	}
 
-	// Show what will be removed and ask for confirmation
+	// Check for --yes flag (required for confirmation)
+	if !YES_FLAG {
+		print_error("This operation requires confirmation.")
+		fmt.println()
+		fmt.printfln("Found %d missing directories to remove:", len(missing_entries))
+		for entry in missing_entries {
+			fmt.printfln("  - %s", entry.name)
+		}
+		fmt.println()
+		fmt.printfln("Add --yes flag to proceed:")
+		fmt.printfln("  wayu path clean --yes")
+		os.exit(EXIT_GENERAL)
+	}
+
+	// Show what will be removed
 	print_header("Clean Missing PATH Entries", "🧹")
 	fmt.println()
 	print_warning("Found %d missing directories to remove:", len(missing_entries))
@@ -89,28 +103,13 @@ clean_missing_paths :: proc() {
 	}
 	fmt.println()
 
-	// Ask for confirmation
-	fmt.print("Continue with cleanup? [y/N]: ")
-	input_buf: [10]byte
-	n, err := os.read(os.stdin, input_buf[:])
-	if err != 0 || n == 0 {
-		print_info("Operation cancelled")
-		return
-	}
-
-	response := strings.trim_space(string(input_buf[:n]))
-	if response != "y" && response != "Y" {
-		print_info("Operation cancelled")
-		return
-	}
-
 	// Get config file
 	config_file := get_config_file_with_fallback(PATH_SPEC.file_name, DETECTED_SHELL)
 	defer delete(config_file)
 
 	// Read current content
 	content, read_ok := safe_read_file(config_file)
-	if !read_ok { os.exit(1) }
+	if !read_ok { os.exit(EXIT_IOERR) }
 	defer delete(content)
 
 	content_str := string(content)
@@ -150,9 +149,8 @@ clean_missing_paths :: proc() {
 	}
 
 	// Create backup before modifying
-	if !create_backup_with_prompt(config_file) {
-		print_info("Operation cancelled")
-		os.exit(1)
+	if !create_backup_cli(config_file) {
+		os.exit(EXIT_IOERR)
 	}
 
 	// Write back
@@ -160,7 +158,7 @@ clean_missing_paths :: proc() {
 	defer delete(new_content)
 
 	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
-	if !write_ok { os.exit(1) }
+	if !write_ok { os.exit(EXIT_IOERR) }
 
 	// Cleanup old backups
 	cleanup_old_backups(config_file, 5)
@@ -172,7 +170,7 @@ clean_missing_paths :: proc() {
 remove_duplicate_paths :: proc() {
 	// Check if wayu is initialized first
 	if !check_wayu_initialized() {
-		os.exit(1)
+		os.exit(EXIT_CONFIG)
 	}
 
 	// Read all PATH entries
@@ -222,7 +220,21 @@ remove_duplicate_paths :: proc() {
 		return
 	}
 
-	// Show what will be removed and ask for confirmation
+	// Check for --yes flag (required for confirmation)
+	if !YES_FLAG {
+		print_error("This operation requires confirmation.")
+		fmt.println()
+		fmt.printfln("Found %d duplicate entries to remove:", len(duplicate_indices))
+		for idx in duplicate_indices {
+			fmt.printfln("  - %s", entries[idx].name)
+		}
+		fmt.println()
+		fmt.printfln("Add --yes flag to proceed:")
+		fmt.printfln("  wayu path dedup --yes")
+		os.exit(EXIT_GENERAL)
+	}
+
+	// Show what will be removed
 	print_header("Remove Duplicate PATH Entries", "🔗")
 	fmt.println()
 	print_warning("Found %d duplicate entries to remove:", len(duplicate_indices))
@@ -231,28 +243,13 @@ remove_duplicate_paths :: proc() {
 	}
 	fmt.println()
 
-	// Ask for confirmation
-	fmt.print("Continue with deduplication? [y/N]: ")
-	input_buf: [10]byte
-	n, err := os.read(os.stdin, input_buf[:])
-	if err != 0 || n == 0 {
-		print_info("Operation cancelled")
-		return
-	}
-
-	response := strings.trim_space(string(input_buf[:n]))
-	if response != "y" && response != "Y" {
-		print_info("Operation cancelled")
-		return
-	}
-
 	// Get config file
 	config_file := get_config_file_with_fallback(PATH_SPEC.file_name, DETECTED_SHELL)
 	defer delete(config_file)
 
 	// Read current content
 	content, read_ok := safe_read_file(config_file)
-	if !read_ok { os.exit(1) }
+	if !read_ok { os.exit(EXIT_IOERR) }
 	defer delete(content)
 
 	content_str := string(content)
@@ -317,9 +314,8 @@ remove_duplicate_paths :: proc() {
 	}
 
 	// Create backup before modifying
-	if !create_backup_with_prompt(config_file) {
-		print_info("Operation cancelled")
-		os.exit(1)
+	if !create_backup_cli(config_file) {
+		os.exit(EXIT_IOERR)
 	}
 
 	// Write back
@@ -327,7 +323,7 @@ remove_duplicate_paths :: proc() {
 	defer delete(new_content)
 
 	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
-	if !write_ok { os.exit(1) }
+	if !write_ok { os.exit(EXIT_IOERR) }
 
 	// Cleanup old backups
 	cleanup_old_backups(config_file, 5)

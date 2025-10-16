@@ -6,9 +6,10 @@ A shell configuration management CLI written in Odin that helps you manage PATH 
 
 - **Multi-Shell Support** - Works seamlessly with Bash and ZSH with automatic shell detection
 - **PATH Management** - Add, remove, and list PATH entries with shell-optimized duplicate detection
-- **Alias Management** - Manage shell aliases with interactive removal
+- **Alias Management** - Manage shell aliases with validation
 - **Constants Management** - Handle environment variables and constants
-- **Interactive Mode** - Fuzzy search for removing entries
+- **Dual Modes** - Non-interactive CLI for automation + Interactive TUI for humans
+- **Scriptable** - Fully non-interactive CLI with proper exit codes for CI/CD
 - **Modern UI Components** - Tables, progress bars, spinners, and styled output
 - **Theme System** - Light and dark themes with automatic terminal detection
 - **Backward Compatible** - Existing ZSH configurations work unchanged
@@ -64,16 +65,19 @@ wayu <command> <action> [arguments]
 
 ### Actions
 
-- `add` - Add a new entry
-- `remove`, `rm` - Remove an entry (interactive if no args provided)
-- `list`, `ls` - List all entries
+- `add` - Add a new entry (requires explicit arguments)
+- `remove`, `rm` - Remove an entry (requires explicit name)
+- `list`, `ls` - List all entries (static table output)
 - `restore` - Restore from backup (backup command only)
+- `clean` - Remove missing directories from PATH (requires --yes)
+- `dedup` - Remove duplicate PATH entries (requires --yes)
 - `help` - Show command-specific help
 
 ### Flags
 
 - `--shell <bash|zsh>` - Override shell detection
 - `--dry-run`, `-n` - Preview changes without modifying files
+- `--yes`, `-y` - Skip confirmation prompts (for clean/dedup operations)
 - `--tui` - Launch interactive Terminal UI mode
 - `-c=<component>` - Test individual TUI component (developer mode)
 - `--snapshot` - Create golden file for component testing
@@ -90,28 +94,33 @@ wayu init                        # Creates shell-appropriate config files
 wayu path add /usr/local/bin     # Adds to path.zsh or path.bash automatically
 wayu path list                   # Shows current PATH entries
 
-# PATH management
+# PATH management (CLI - requires explicit arguments)
 wayu path add /usr/local/bin     # Add specific path
-wayu path add                    # Uses current directory
-wayu path rm                     # Interactive removal
-wayu path list                   # List all entries
+wayu path add /bin               # Add another path
+wayu path rm /usr/local/bin      # Remove specific path (explicit name required)
+wayu path list                   # List all entries (static table)
+wayu path clean --yes            # Remove missing directories
+wayu path dedup --yes            # Remove duplicates
 
-# Alias management
+# Alias management (CLI - requires explicit arguments)
 wayu alias add ll 'ls -la'       # Add alias
 wayu alias add gs 'git status'   # Git shortcut
-wayu alias rm                    # Interactive removal
-wayu alias list                  # List all aliases
+wayu alias rm ll                 # Remove specific alias (explicit name required)
+wayu alias list                  # List all aliases (static table)
 
-# Constants management
+# Constants management (CLI - requires explicit arguments)
 wayu constants add MY_VAR value  # Add environment variable
 wayu constants add API_KEY token # Add secret
-wayu constants rm                # Interactive removal
-wayu constants list              # List all constants
+wayu constants rm MY_VAR         # Remove specific constant (explicit name required)
+wayu constants list              # List all constants (static table)
 
-# Completions management
+# Completions management (CLI - requires explicit arguments)
 wayu completions add jj /path/to/_jj  # Add completion script
-wayu completions rm               # Interactive removal
+wayu completions rm jj            # Remove specific completion (explicit name required)
 wayu completions list             # List all completions
+
+# Interactive mode - use --tui flag for fuzzy finding and visual selection
+wayu --tui                        # Launch full TUI for interactive management
 
 # Backup management
 wayu backup list                  # Show all backups
@@ -134,6 +143,88 @@ wayu --dry-run path add /test    # Preview changes without applying
 # Cross-shell compatibility
 SHELL=/bin/bash wayu path add /usr/local/bin  # Use with specific shell
 SHELL=/bin/zsh wayu alias add gc 'git commit' # ZSH-specific alias
+
+# Scripting & automation (CLI is fully non-interactive)
+wayu path add /new/path || echo "Failed with exit code $?"
+wayu path clean --yes --dry-run  # Preview what would be removed
+wayu path clean --yes            # Actually remove missing directories
+
+# CI/CD integration
+if ! wayu path add /app/bin; then
+  echo "Failed to add path" >&2
+  exit 1
+fi
+```
+
+## Exit Codes
+
+wayu uses BSD sysexits.h standard exit codes for scripting and automation:
+
+| Code | Meaning | Description |
+|------|---------|-------------|
+| 0 | Success | Command completed successfully |
+| 1 | General error | Unspecified error occurred |
+| 64 | Usage error | Invalid command line arguments |
+| 65 | Data format error | Invalid input data format |
+| 66 | Input not found | Required input file not found |
+| 73 | Cannot create | Cannot create output file |
+| 74 | I/O error | File read/write operation failed |
+| 77 | Permission denied | Insufficient permissions |
+| 78 | Configuration error | Configuration not initialized or invalid |
+
+**Example:**
+```bash
+#!/bin/bash
+wayu path add /usr/local/bin
+EXIT_CODE=$?
+
+case $EXIT_CODE in
+  0)   echo "Success!" ;;
+  64)  echo "Usage error - check arguments" ;;
+  74)  echo "I/O error - check file permissions" ;;
+  78)  echo "Config error - run 'wayu init' first" ;;
+  *)   echo "Unknown error: $EXIT_CODE" ;;
+esac
+```
+
+## CLI vs TUI Modes
+
+wayu offers two distinct modes of operation:
+
+### CLI Mode (Default) - For Scripts & Automation
+
+**Non-interactive by design:**
+- All operations require explicit arguments
+- No interactive prompts or fuzzy finders
+- Proper exit codes for error handling
+- Safe for use in pipes, CI/CD, and cron jobs
+- Destructive operations require `--yes` flag
+
+**Example:**
+```bash
+# CLI requires explicit arguments
+wayu path add /usr/local/bin     # ✓ Works
+wayu path add                    # ✗ Error: requires argument
+wayu path rm                     # ✗ Error: requires explicit name
+wayu path rm /usr/local/bin      # ✓ Works
+```
+
+### TUI Mode - For Interactive Use
+
+**Human-friendly interface:**
+- Launch with `wayu --tui`
+- Fuzzy search and visual selection
+- Vim-style keyboard navigation
+- Live data loading and updates
+- Confirmation prompts for destructive actions
+- Automatic backups before modifications
+
+**Example:**
+```bash
+wayu --tui    # Launch interactive TUI
+# Navigate with arrow keys or j/k
+# Press 'd' to delete selected item
+# Press 'Esc' to go back
 ```
 
 ## Configuration
@@ -238,12 +329,29 @@ wayu --tui
 
 ### TUI Features
 
+- **Modern Visual Design** - TrueColor (24-bit RGB) interface with Zellij-inspired theme
+- **Bordered Panels** - Unicode box-drawing characters for clean panel separation
 - **Interactive Navigation** - Browse all configuration options visually with cursor keys
 - **Keyboard Shortcuts** - Vim-style navigation (j/k or ↑/↓)
 - **Live Data Loading** - Automatically loads PATH, Alias, Constants, and Backups from config files
 - **Safe Operations** - Automatic backups before all modifications
 - **Real-time Updates** - Changes to config files are reflected immediately
 - **Discoverable** - Help text displayed in each view
+
+### TUI Color Scheme
+
+The TUI uses a carefully designed color palette inspired by Zellij's "dvrd" theme:
+
+- **Hot Pink** (#E40050) - Primary color for selected items, headers, and focus indicators
+- **Teal-Cyan** (#0E7490) - Secondary color for success messages and info
+- **Dark Backgrounds** - Purple-blue (#181825) for panels, almost-black (#09090B) for selections
+- **Muted Grays** - Light gray (#D0D0D0) for normal text, dim gray (#646464) for secondary info
+
+**Visual Elements:**
+- Unicode box borders around all panels (┌─┐│└┘)
+- High-contrast selection highlighting with background colors
+- Color-coded headers and footers
+- Adaptive borders (focused panels use hot pink, others use gray)
 
 ### Keyboard Shortcuts
 
