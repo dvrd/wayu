@@ -52,40 +52,77 @@ ConfigEntrySpec :: struct {
 	field_validators: []proc(string) -> InputValidation,
 }
 
+// Print usage error with hint to TUI mode (CLI-specific error handling)
+print_cli_usage_error :: proc(spec: ^ConfigEntrySpec, action: string) {
+	print_error("Missing required arguments for '%s %s'", spec.file_name, action)
+	fmt.println()
+
+	// Show usage based on action
+	switch action {
+	case "add":
+		if spec.fields_count == 1 {
+			fmt.printfln("Usage: wayu %s add <%s>", spec.file_name, spec.field_labels[0])
+			fmt.println()
+			fmt.printfln("Example:")
+			fmt.printfln("  wayu %s add %s", spec.file_name, spec.field_placeholders[0])
+		} else {
+			fmt.printfln("Usage: wayu %s add <%s> <%s>",
+				spec.file_name, spec.field_labels[0], spec.field_labels[1])
+			fmt.println()
+			fmt.printfln("Example:")
+			fmt.printfln("  wayu %s add %s %s",
+				spec.file_name, spec.field_placeholders[0], spec.field_placeholders[1])
+		}
+	case "remove":
+		fmt.printfln("Usage: wayu %s rm <%s>", spec.file_name, spec.field_labels[0])
+		fmt.println()
+		fmt.printfln("Example:")
+		fmt.printfln("  wayu %s rm %s", spec.file_name, spec.field_placeholders[0])
+	}
+
+	fmt.println()
+	fmt.printfln("%sHint:%s For interactive mode, use: %swayu --tui%s",
+		get_muted(), RESET, get_primary(), RESET)
+}
+
 // Generic handler - Main dispatcher for all config commands
 handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []string) {
 	#partial switch action {
 	case .ADD:
 		if len(args) == 0 {
-			add_config_interactive(spec)
-		} else {
-			entry := parse_args_to_entry(spec, args)
-			defer cleanup_entry(&entry)
-			add_config_entry(spec, entry)
+			print_cli_usage_error(spec, "add")
+			os.exit(EXIT_USAGE)
 		}
+
+		entry := parse_args_to_entry(spec, args)
+		defer cleanup_entry(&entry)
+
+		if !is_entry_complete(entry) {
+			print_cli_usage_error(spec, "add")
+			os.exit(EXIT_USAGE)
+		}
+
+		add_config_entry(spec, entry)
 	case .REMOVE:
 		if len(args) == 0 {
-			remove_config_interactive(spec)
-		} else {
-			remove_config_entry(spec, args[0])
+			print_cli_usage_error(spec, "remove")
+			os.exit(EXIT_USAGE)
 		}
+		remove_config_entry(spec, args[0])
 	case .LIST:
-		if len(args) > 0 && args[0] == "--static" {
-			list_config_static(spec)
-		} else {
-			list_config_interactive(spec)
-		}
+		// CLI defaults to static (non-interactive)
+		list_config_static(spec)
 	case .CLEAN:
 		if !spec.has_clean {
 			print_error("%s command does not support clean action", spec.display_name)
-			os.exit(1)
+			os.exit(EXIT_GENERAL)
 		}
 		// Command-specific clean implementation
 		// This will be called from command files (e.g., clean_missing_paths)
 	case .DEDUP:
 		if !spec.has_dedup {
 			print_error("%s command does not support dedup action", spec.display_name)
-			os.exit(1)
+			os.exit(EXIT_GENERAL)
 		}
 		// Command-specific dedup implementation
 		// This will be called from command files (e.g., remove_duplicate_paths)
@@ -94,16 +131,17 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 	case .UNKNOWN:
 		fmt.eprintfln("Unknown %s action", spec.display_name)
 		print_config_help(spec)
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	}
 }
 
-// Generic add with interactive TUI mode
+// TUI-only: Interactive form for adding config entries
+// This function is ONLY called from TUI bridge, never from CLI
 add_config_interactive :: proc(spec: ^ConfigEntrySpec) {
 	// TTY check
 	if !os.exists("/dev/tty") {
 		print_error("Interactive mode requires a TTY")
-		os.exit(1)
+		os.exit(EXIT_CONFIG)
 	}
 
 	// Create form fields based on spec
@@ -199,7 +237,7 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 	if !validation_result.valid {
 		print_error("%s", validation_result.error_message)
 		delete(validation_result.error_message)
-		os.exit(1)
+		os.exit(EXIT_DATAERR)
 	}
 
 	// Dry-run check
@@ -223,7 +261,7 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 
 	// Read current content
 	content, read_ok := safe_read_file(config_file)
-	if !read_ok { os.exit(1) }
+	if !read_ok { os.exit(EXIT_IOERR) }
 	defer delete(content)
 
 	content_str := string(content)
@@ -258,14 +296,13 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 	defer delete(final_content)
 
 	// Create backup
-	if !create_backup_with_prompt(config_file) {
-		print_info("Operation cancelled")
-		os.exit(1)
+	if !create_backup_cli(config_file) {
+		os.exit(EXIT_IOERR)
 	}
 
 	// Write file
 	write_ok := safe_write_file(config_file, transmute([]byte)final_content)
-	if !write_ok { os.exit(1) }
+	if !write_ok { os.exit(EXIT_IOERR) }
 
 	// Cleanup old backups
 	cleanup_old_backups(config_file, 5)
@@ -299,7 +336,7 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 
 	// Read current content
 	content, read_ok := safe_read_file(config_file)
-	if !read_ok { os.exit(1) }
+	if !read_ok { os.exit(EXIT_IOERR) }
 	defer delete(content)
 
 	content_str := string(content)
@@ -334,9 +371,8 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 	}
 
 	// Create backup
-	if !create_backup_with_prompt(config_file) {
-		print_info("Operation cancelled")
-		os.exit(1)
+	if !create_backup_cli(config_file) {
+		os.exit(EXIT_IOERR)
 	}
 
 	// Write back
@@ -344,7 +380,7 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 	defer delete(new_content)
 
 	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
-	if !write_ok { os.exit(1) }
+	if !write_ok { os.exit(EXIT_IOERR) }
 
 	// Cleanup old backups
 	cleanup_old_backups(config_file, 5)
@@ -352,7 +388,8 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 	print_success("%s removed successfully: %s", spec.display_name, name)
 }
 
-// Generic interactive removal
+// TUI-only: Interactive fuzzy finder for removing config entries
+// This function is ONLY called from TUI bridge, never from CLI
 remove_config_interactive :: proc(spec: ^ConfigEntrySpec) {
 	entries := read_config_entries(spec)
 	defer cleanup_entries(&entries)
@@ -399,7 +436,7 @@ remove_config_interactive :: proc(spec: ^ConfigEntrySpec) {
 list_config_static :: proc(spec: ^ConfigEntrySpec) {
 	// Check if wayu is initialized
 	if !check_wayu_initialized() {
-		os.exit(1)
+		os.exit(EXIT_CONFIG)
 	}
 
 	entries := read_config_entries(spec)
@@ -455,11 +492,12 @@ list_config_static :: proc(spec: ^ConfigEntrySpec) {
 	fmt.print(table_output)
 }
 
-// Generic interactive list (fuzzy finder view)
+// TUI-only: Interactive fuzzy finder view for listing config entries
+// This function is ONLY called from TUI bridge, never from CLI
 list_config_interactive :: proc(spec: ^ConfigEntrySpec) {
 	// Check if wayu is initialized
 	if !check_wayu_initialized() {
-		os.exit(1)
+		os.exit(EXIT_CONFIG)
 	}
 
 	entries := read_config_entries(spec)

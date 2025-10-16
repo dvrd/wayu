@@ -217,11 +217,16 @@ tui_render :: proc(state: ^TUIState, screen: ^Screen) {
 	}
 }
 
-// Render main menu
+// Render main menu (using layout constants)
 render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
-	// Header
-	render_text(screen, 2, 1, "wayu - Shell Configuration Manager")
-	render_text(screen, 2, 2, "Press Esc or q to quit, Ctrl+C to exit")
+	// Draw outer border using calculated dimensions
+	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
+	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
+
+	// Header (hot pink + bold)
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "wayu - Shell Configuration Manager", TUI_PRIMARY, "", true)
+	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, "Press Esc or q to quit, Ctrl+C to exit", TUI_DIM)
 
 	// Menu items
 	menu_items := []string{
@@ -235,22 +240,23 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 	}
 
 	for item, i in menu_items {
-		y := 4 + i
+		y := calculate_list_item_y(i)
 		if i == state.selected_index {
-			// Highlight selected item
+			// Selected: hot pink text + bold (NO background to respect terminal colors)
 			text := fmt.tprintf("> %s", item)
 			// Note: tprintf() uses temp buffer, do NOT delete
-			render_text(screen, 2, y, text)
+			render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
 		} else {
+			// Normal: muted gray text (indented by selection prefix width)
 			text := fmt.tprintf("  %s", item)
 			// Note: tprintf() uses temp buffer, do NOT delete
-			render_text(screen, 2, y, text)
+			render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
 		}
 	}
 
-	// Footer
-	footer_y := state.terminal_height - 2
-	render_text(screen, 2, footer_y, "Use ↑/↓ or j/k to navigate, Enter to select")
+	// Footer (muted gray)
+	footer_y := calculate_footer_y(state.terminal_height)
+	render_text_styled(screen, header_x, footer_y, "Use ↑/↓ or j/k to navigate, Enter to select", TUI_MUTED)
 }
 
 // Note: View rendering functions are now in tui_views.odin
