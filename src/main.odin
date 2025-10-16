@@ -130,7 +130,7 @@ main :: proc() {
 
 	// Component test mode (PRP-13)
 	if parsed.component_test {
-		run_component_test(parsed.component_name, parsed.args,
+		run_component_testing(parsed.component_name, parsed.args,
 			parsed.component_snapshot, parsed.component_verify)
 		return
 	}
