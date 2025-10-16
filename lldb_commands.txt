@@ -1,5 +1,0 @@
-run --tui
-bt
-frame info
-register read
-quit
