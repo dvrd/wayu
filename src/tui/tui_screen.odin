@@ -1,6 +1,7 @@
 package wayu_tui
 
 import "core:fmt"
+import "core:strings"
 
 Cell :: struct {
 	char:  rune,
@@ -101,4 +102,26 @@ screen_clear :: proc(screen: ^Screen) {
 			screen.buffer[y][x] = Cell{char = ' '}
 		}
 	}
+}
+
+// Convert screen buffer to plain text string (no ANSI codes)
+// Used for component testing and golden file generation
+screen_to_string :: proc(screen: ^Screen) -> string {
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+
+	for y in 0..<screen.height {
+		for x in 0..<screen.width {
+			cell := screen.buffer[y][x]
+			fmt.sbprintf(&builder, "%c", cell.char)
+		}
+		// Add newline after each row except the last
+		if y < screen.height - 1 {
+			fmt.sbprintf(&builder, "\n")
+		}
+	}
+
+	// Clone the string before builder is destroyed
+	return strings.clone(strings.to_string(builder))
 }
