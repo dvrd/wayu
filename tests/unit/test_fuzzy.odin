@@ -99,15 +99,18 @@ test_fuzzy_score_consecutive_bonus :: proc(t: ^testing.T) {
 
 @(test)
 test_extract_alias_items :: proc(t: ^testing.T) {
-	// Test extracting alias items from config
-	// This will work with the real config file if it exists
-	items := wayu.extract_alias_items()
-	defer for item in items do delete(item)
-	defer delete(items)
+	// Test extracting alias entries from config using generic system
+	entries := wayu.read_config_entries(&wayu.ALIAS_SPEC)
+	defer for &entry in entries do wayu.cleanup_entry(&entry)
+	defer delete(entries)
 
 	// Just verify it returns a valid array (may be empty if no aliases configured)
-	// An empty slice {} is valid and has length 0
-	testing.expect(t, len(items) >= 0, "Should return valid array")
+	testing.expect(t, len(entries) >= 0, "Should return valid array")
+
+	// Verify entries have correct type
+	for entry in entries {
+		testing.expect_value(t, entry.type, wayu.ConfigEntryType.ALIAS)
+	}
 }
 
 @(test)
@@ -122,12 +125,18 @@ test_extract_path_items :: proc(t: ^testing.T) {
 
 @(test)
 test_extract_constant_items :: proc(t: ^testing.T) {
-	items := wayu.extract_constant_items()
-	defer for item in items do delete(item)
-	defer delete(items)
+	// Test extracting constant entries from config using generic system
+	entries := wayu.read_config_entries(&wayu.CONSTANTS_SPEC)
+	defer for &entry in entries do wayu.cleanup_entry(&entry)
+	defer delete(entries)
 
 	// Should return valid array (may be empty)
-	testing.expect(t, len(items) >= 0, "Should return valid array")
+	testing.expect(t, len(entries) >= 0, "Should return valid array")
+
+	// Verify entries have correct type
+	for entry in entries {
+		testing.expect_value(t, entry.type, wayu.ConfigEntryType.CONSTANT)
+	}
 }
 
 @(test)
