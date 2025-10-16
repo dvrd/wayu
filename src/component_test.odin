@@ -18,7 +18,7 @@ import wayu_tui "tui"
 GOLDEN_DIR :: "tests/golden"
 
 // Run component test mode
-run_component_test :: proc(component_name: string, args: []string, snapshot: bool, verify: bool) {
+run_component_testing :: proc(component_name: string, args: []string, snapshot: bool, verify: bool) {
 	// Parse component type
 	component_type, ok := wayu_tui.parse_component_type(component_name)
 	if !ok {
