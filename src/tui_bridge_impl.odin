@@ -83,6 +83,68 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 	state.data_cache[.CONSTANTS_VIEW] = items_ptr
 }
 
+// Load Completions into TUI cache
+tui_bridge_load_completions :: proc(state: ^tui.TUIState) {
+	// Clear existing cache
+	if state.data_cache[.COMPLETIONS_VIEW] != nil {
+		tui.clear_view_cache(state, .COMPLETIONS_VIEW)
+	}
+
+	// Build completions directory path
+	completions_dir := fmt.aprintf("%s/completions", WAYU_CONFIG)
+	defer delete(completions_dir)
+
+	// Create items array
+	items := make([dynamic]string)
+
+	// Check if directory exists
+	if !os.exists(completions_dir) {
+		// No completions directory - return empty list
+		items_ptr := new([dynamic]string)
+		items_ptr^ = items
+		state.data_cache[.COMPLETIONS_VIEW] = items_ptr
+		return
+	}
+
+	// Read directory contents
+	dir_handle, err := os.open(completions_dir)
+	if err != 0 {
+		// Can't open directory - return empty list
+		items_ptr := new([dynamic]string)
+		items_ptr^ = items
+		state.data_cache[.COMPLETIONS_VIEW] = items_ptr
+		return
+	}
+	defer os.close(dir_handle)
+
+	file_infos, read_err := os.read_dir(dir_handle, -1)
+	if read_err != 0 {
+		// Can't read directory - return empty list
+		items_ptr := new([dynamic]string)
+		items_ptr^ = items
+		state.data_cache[.COMPLETIONS_VIEW] = items_ptr
+		return
+	}
+	defer os.file_info_slice_delete(file_infos)
+
+	// Filter completion files (start with '_', not backup files)
+	for info in file_infos {
+		if strings.has_prefix(info.name, "_") && !info.is_dir {
+			// Skip backup files
+			if strings.contains(info.name, ".backup.") {
+				continue
+			}
+			item := strings.clone(info.name)
+			append(&items, item)
+		}
+	}
+
+	// Store in cache
+	items_ptr := new([dynamic]string)
+	items_ptr^ = items
+	state.data_cache[.COMPLETIONS_VIEW] = items_ptr
+}
+
 // Load Backups into TUI cache
 tui_bridge_load_backups :: proc(state: ^tui.TUIState) {
 	// Clear existing cache

@@ -117,6 +117,7 @@ main :: proc() {
 			tui_bridge_load_path,
 			tui_bridge_load_alias,
 			tui_bridge_load_constants,
+			tui_bridge_load_completions,
 			tui_bridge_load_backups,
 			tui_bridge_delete_path,
 			tui_bridge_delete_alias,
