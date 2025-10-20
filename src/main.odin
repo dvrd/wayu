@@ -48,6 +48,10 @@ Action :: enum {
 	REMOVE,
 	LIST,
 	GET,
+	CHECK,
+	UPDATE,
+	ENABLE,   // NEW - Phase 3
+	DISABLE,  // NEW - Phase 3
 	RESTORE,
 	CLEAN,
 	DEDUP,
@@ -317,6 +321,14 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		parsed.action = .LIST
 	case "get":
 		parsed.action = .GET
+	case "check":
+		parsed.action = .CHECK
+	case "update":
+		parsed.action = .UPDATE
+	case "enable":
+		parsed.action = .ENABLE
+	case "disable":
+		parsed.action = .DISABLE
 	case "restore":
 		parsed.action = .RESTORE
 	case "clean":
@@ -582,6 +594,8 @@ print_help :: proc() {
 	print_item("", "add", "Add a new entry", EMOJI_ADD)
 	print_item("", "remove, rm", "Remove an entry (interactive if no args)", EMOJI_REMOVE)
 	print_item("", "list, ls", "List all entries", EMOJI_LIST)
+	print_item("", "check", "Check for updates (plugins only)", EMOJI_INFO)
+	print_item("", "update", "Update entry (plugins only)", EMOJI_INFO)
 	print_item("", "help", "Show command-specific help", EMOJI_INFO)
 	fmt.println()
 
@@ -602,6 +616,9 @@ print_help :: proc() {
 	fmt.printf("  wayu backup list                 # Show all backups\n")
 	fmt.printf("  wayu backup restore path         # Restore path config\n")
 	fmt.printf("  wayu plugin add syntax-highlighting  # Install plugin\n")
+	fmt.printf("  wayu plugin check                # Check plugins for updates\n")
+	fmt.printf("  wayu plugin update plugin-name   # Update specific plugin\n")
+	fmt.printf("  wayu plugin update --all         # Update all plugins\n")
 	fmt.printf("  wayu migrate --from zsh --to bash # Migrate between shells\n")
 	fmt.println()
 	fmt.printf("  # Preview changes with dry-run:\n")
