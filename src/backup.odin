@@ -340,7 +340,7 @@ format_backup_time :: proc(timestamp: time.Time) -> string {
 
 // Handle backup command
 handle_backup_command :: proc(action: Action, args: []string) {
-	switch action {
+	#partial switch action {
 	case .LIST:
 		if len(args) == 0 {
 			list_all_backups()

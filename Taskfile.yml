@@ -95,7 +95,13 @@ tasks:
       - "{{.BIN_DIR}}/test_constants"
 
   test:plugin:
-    desc: Run plugin integration tests
+    desc: Run plugin integration tests (includes check/update Phase 2)
+    deps: [build]
+    cmds:
+      - ruby {{.TEST_DIR}}/integration/test_plugin.rb
+
+  test:plugin-update:
+    desc: Run plugin check/update integration tests (Phase 2 - alias for test:plugin)
     deps: [build]
     cmds:
       - ruby {{.TEST_DIR}}/integration/test_plugin.rb

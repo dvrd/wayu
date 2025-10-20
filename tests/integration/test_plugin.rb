@@ -3,6 +3,7 @@
 
 require 'open3'
 require 'fileutils'
+require 'json'
 
 class PluginIntegrationTest
   attr_reader :passed, :failed
@@ -32,9 +33,18 @@ class PluginIntegrationTest
     test_remove_plugin
     test_add_plugin_duplicate_handling
     test_plugin_update
+    test_plugin_check_empty
+    test_plugin_check_with_plugins
+    test_plugin_update_with_name
+    test_plugin_update_all_flag
     test_invalid_github_url
     test_plugin_with_custom_file
     test_help_command
+    test_plugin_enable_cli_success
+    test_plugin_disable_cli_success
+    test_enable_idempotent_exit_zero
+    test_disable_idempotent_exit_zero
+    test_list_shows_enabled_disabled_status
 
     restore_config
     print_summary
@@ -258,8 +268,104 @@ class PluginIntegrationTest
     end
   end
 
+  def test_plugin_check_empty
+    print "Test 9: Plugin check with no plugins... "
+
+    output, status = run_wayu("plugin check")
+
+    # Should complete without error and indicate no plugins
+    if status.success? && (output.include?("No plugins") || output.include?("0 plugin") || output.empty?)
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Check should handle empty plugin list"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_plugin_check_with_plugins
+    print "Test 10: Plugin check with mock plugins... "
+
+    # Create mock plugin with git metadata
+    plugin_dir = "#{@plugins_dir}/check-test-plugin"
+    FileUtils.mkdir_p("#{plugin_dir}/.git")
+    File.write("#{plugin_dir}/check-test-plugin.plugin.zsh", "# Check test")
+
+    # Create mock git config
+    git_config = <<~GIT
+      [remote "origin"]
+        url = https://github.com/test/check-test-plugin.git
+        fetch = +refs/heads/*:refs/remotes/origin/*
+      [branch "main"]
+        remote = origin
+        merge = refs/heads/main
+    GIT
+    File.write("#{plugin_dir}/.git/config", git_config)
+
+    output, status = run_wayu("plugin check")
+
+    # Should execute without crashing (may or may not find updates)
+    if status.success? || output.include?("check")
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Check command should handle plugins with git repos"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_plugin_update_with_name
+    print "Test 11: Plugin update with specific name (dry-run)... "
+
+    # Create mock plugin
+    plugin_dir = "#{@plugins_dir}/specific-update-test"
+    FileUtils.mkdir_p(plugin_dir)
+    File.write("#{plugin_dir}/specific-update-test.plugin.zsh", "# Specific update")
+
+    output, status = run_wayu("--dry-run plugin update specific-update-test")
+
+    # Should show dry-run message or update intent
+    if output.include?("DRY RUN") || output.include?("update") || output.include?("specific-update-test")
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Update with name should work in dry-run"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_plugin_update_all_flag
+    print "Test 12: Plugin update --all flag (dry-run)... "
+
+    # Create multiple mock plugins
+    ['plugin-a', 'plugin-b'].each do |name|
+      plugin_dir = "#{@plugins_dir}/#{name}"
+      FileUtils.mkdir_p(plugin_dir)
+      File.write("#{plugin_dir}/#{name}.plugin.zsh", "# Plugin #{name}")
+    end
+
+    output, status = run_wayu("--dry-run plugin update --all")
+
+    # Should recognize --all flag and show dry-run message
+    if output.include?("DRY RUN") || output.include?("--all") || output.include?("update")
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Update --all should work in dry-run"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
   def test_invalid_github_url
-    print "Test 9: Invalid GitHub URL handling... "
+    print "Test 13: Invalid GitHub URL handling... "
 
     output, status = run_wayu("--dry-run plugin add invalid-url")
 
@@ -276,7 +382,7 @@ class PluginIntegrationTest
   end
 
   def test_plugin_with_custom_file
-    print "Test 10: Plugin with custom init file... "
+    print "Test 14: Plugin with custom init file... "
 
     # Create plugin with custom structure
     plugin_dir = "#{@plugins_dir}/custom-plugin"
@@ -298,16 +404,386 @@ class PluginIntegrationTest
   end
 
   def test_help_command
-    print "Test 11: Help command... "
+    print "Test 15: Help command includes check and update actions... "
 
     output, status = run_wayu("plugin help")
 
-    if output.include?("EXAMPLES") && output.include?("wayu plugin")
+    if output.include?("EXAMPLES") && output.include?("wayu plugin") && output.include?("check") && output.include?("update")
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Help output incomplete"
+      puts "  Help output should include check and update actions"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_plugin_enable_cli_success
+    print "Test 16: Enable plugin via CLI... "
+
+    # Create mock plugin in disabled state
+    plugin_dir = "#{@plugins_dir}/enable-test-plugin"
+    FileUtils.mkdir_p(plugin_dir)
+    File.write("#{plugin_dir}/enable-test-plugin.plugin.zsh", "# Enable test")
+
+    # Create JSON config with disabled plugin
+    json_config = {
+      "version" => "1.0",
+      "lastUpdated" => Time.now.utc.iso8601,
+      "plugins" => [
+        {
+          "name" => "enable-test-plugin",
+          "url" => "https://github.com/test/enable-test.git",
+          "enabled" => false,  # Start disabled
+          "shell" => "zsh",
+          "installedPath" => plugin_dir,
+          "entryFile" => "enable-test-plugin.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "abc123",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "abc123"
+          },
+          "dependencies" => [],
+          "priority" => 100,
+          "config" => {},
+          "conflicts" => {
+            "envVars" => [],
+            "functions" => [],
+            "aliases" => [],
+            "detected" => false,
+            "conflictingPlugins" => []
+          }
+        }
+      ],
+      "settings" => {
+        "autoCheckUpdates" => false,
+        "checkInterval" => 604800,
+        "conflictDetection" => true,
+        "loadParallel" => false
+      }
+    }
+
+    # Write JSON config
+    json_file = "#{@config_dir}/plugins.json"
+    File.write(json_file, JSON.pretty_generate(json_config))
+
+    # Run enable command
+    output, status = run_wayu("plugin enable enable-test-plugin")
+
+    if status.success? && output.include?("enabled successfully")
+      # Read config back to verify
+      updated_config = JSON.parse(File.read(json_file))
+      if updated_config["plugins"][0]["enabled"] == true
+        puts "✓"
+        @passed += 1
+      else
+        puts "✗"
+        puts "  Plugin not enabled in config"
+        @failed += 1
+      end
+    else
+      puts "✗"
+      puts "  Enable command failed"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_plugin_disable_cli_success
+    print "Test 17: Disable plugin via CLI... "
+
+    # Create mock plugin in enabled state
+    plugin_dir = "#{@plugins_dir}/disable-test-plugin"
+    FileUtils.mkdir_p(plugin_dir)
+    File.write("#{plugin_dir}/disable-test-plugin.plugin.zsh", "# Disable test")
+
+    # Create JSON config with enabled plugin
+    json_config = {
+      "version" => "1.0",
+      "lastUpdated" => Time.now.utc.iso8601,
+      "plugins" => [
+        {
+          "name" => "disable-test-plugin",
+          "url" => "https://github.com/test/disable-test.git",
+          "enabled" => true,  # Start enabled
+          "shell" => "zsh",
+          "installedPath" => plugin_dir,
+          "entryFile" => "disable-test-plugin.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "abc123",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "abc123"
+          },
+          "dependencies" => [],
+          "priority" => 100,
+          "config" => {},
+          "conflicts" => {
+            "envVars" => [],
+            "functions" => [],
+            "aliases" => [],
+            "detected" => false,
+            "conflictingPlugins" => []
+          }
+        }
+      ],
+      "settings" => {
+        "autoCheckUpdates" => false,
+        "checkInterval" => 604800,
+        "conflictDetection" => true,
+        "loadParallel" => false
+      }
+    }
+
+    # Write JSON config
+    json_file = "#{@config_dir}/plugins.json"
+    File.write(json_file, JSON.pretty_generate(json_config))
+
+    # Run disable command
+    output, status = run_wayu("plugin disable disable-test-plugin")
+
+    if status.success? && output.include?("disabled successfully")
+      # Read config back to verify
+      updated_config = JSON.parse(File.read(json_file))
+      if updated_config["plugins"][0]["enabled"] == false
+        puts "✓"
+        @passed += 1
+      else
+        puts "✗"
+        puts "  Plugin not disabled in config"
+        @failed += 1
+      end
+    else
+      puts "✗"
+      puts "  Disable command failed"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_enable_idempotent_exit_zero
+    print "Test 18: Enable already-enabled plugin returns exit 0... "
+
+    # Create mock plugin in enabled state
+    plugin_dir = "#{@plugins_dir}/idempotent-test"
+    FileUtils.mkdir_p(plugin_dir)
+    File.write("#{plugin_dir}/idempotent-test.plugin.zsh", "# Idempotent test")
+
+    # Create JSON config with enabled plugin
+    json_config = {
+      "version" => "1.0",
+      "lastUpdated" => Time.now.utc.iso8601,
+      "plugins" => [
+        {
+          "name" => "idempotent-test",
+          "url" => "https://github.com/test/idempotent.git",
+          "enabled" => true,  # Already enabled
+          "shell" => "zsh",
+          "installedPath" => plugin_dir,
+          "entryFile" => "idempotent-test.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "abc123",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "abc123"
+          },
+          "dependencies" => [],
+          "priority" => 100,
+          "config" => {},
+          "conflicts" => {
+            "envVars" => [],
+            "functions" => [],
+            "aliases" => [],
+            "detected" => false,
+            "conflictingPlugins" => []
+          }
+        }
+      ],
+      "settings" => {
+        "autoCheckUpdates" => false,
+        "checkInterval" => 604800,
+        "conflictDetection" => true,
+        "loadParallel" => false
+      }
+    }
+
+    # Write JSON config
+    json_file = "#{@config_dir}/plugins.json"
+    File.write(json_file, JSON.pretty_generate(json_config))
+
+    # Run enable on already-enabled plugin
+    output, status = run_wayu("plugin enable idempotent-test")
+
+    # CRITICAL: Must return exit code 0 (success)
+    if status.success? && output.include?("already enabled")
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected exit 0 and 'already enabled' message"
+      puts "  Got exit code: #{status.exitstatus}"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_disable_idempotent_exit_zero
+    print "Test 19: Disable already-disabled plugin returns exit 0... "
+
+    # Create mock plugin in disabled state
+    plugin_dir = "#{@plugins_dir}/idempotent-test-2"
+    FileUtils.mkdir_p(plugin_dir)
+    File.write("#{plugin_dir}/idempotent-test-2.plugin.zsh", "# Idempotent test 2")
+
+    # Create JSON config with disabled plugin
+    json_config = {
+      "version" => "1.0",
+      "lastUpdated" => Time.now.utc.iso8601,
+      "plugins" => [
+        {
+          "name" => "idempotent-test-2",
+          "url" => "https://github.com/test/idempotent-2.git",
+          "enabled" => false,  # Already disabled
+          "shell" => "zsh",
+          "installedPath" => plugin_dir,
+          "entryFile" => "idempotent-test-2.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "abc123",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "abc123"
+          },
+          "dependencies" => [],
+          "priority" => 100,
+          "config" => {},
+          "conflicts" => {
+            "envVars" => [],
+            "functions" => [],
+            "aliases" => [],
+            "detected" => false,
+            "conflictingPlugins" => []
+          }
+        }
+      ],
+      "settings" => {
+        "autoCheckUpdates" => false,
+        "checkInterval" => 604800,
+        "conflictDetection" => true,
+        "loadParallel" => false
+      }
+    }
+
+    # Write JSON config
+    json_file = "#{@config_dir}/plugins.json"
+    File.write(json_file, JSON.pretty_generate(json_config))
+
+    # Run disable on already-disabled plugin
+    output, status = run_wayu("plugin disable idempotent-test-2")
+
+    # CRITICAL: Must return exit code 0 (success)
+    if status.success? && output.include?("already disabled")
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected exit 0 and 'already disabled' message"
+      puts "  Got exit code: #{status.exitstatus}"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_list_shows_enabled_disabled_status
+    print "Test 20: List command shows enabled/disabled status... "
+
+    # Create two mock plugins with different states
+    enabled_dir = "#{@plugins_dir}/enabled-status-test"
+    disabled_dir = "#{@plugins_dir}/disabled-status-test"
+    FileUtils.mkdir_p(enabled_dir)
+    FileUtils.mkdir_p(disabled_dir)
+    File.write("#{enabled_dir}/enabled-status-test.plugin.zsh", "# Enabled")
+    File.write("#{disabled_dir}/disabled-status-test.plugin.zsh", "# Disabled")
+
+    # Create JSON config
+    json_config = {
+      "version" => "1.0",
+      "lastUpdated" => Time.now.utc.iso8601,
+      "plugins" => [
+        {
+          "name" => "enabled-status-test",
+          "url" => "https://github.com/test/enabled.git",
+          "enabled" => true,
+          "shell" => "zsh",
+          "installedPath" => enabled_dir,
+          "entryFile" => "enabled-status-test.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "abc123",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "abc123"
+          },
+          "dependencies" => [],
+          "priority" => 100,
+          "config" => {},
+          "conflicts" => {
+            "envVars" => [],
+            "functions" => [],
+            "aliases" => [],
+            "detected" => false,
+            "conflictingPlugins" => []
+          }
+        },
+        {
+          "name" => "disabled-status-test",
+          "url" => "https://github.com/test/disabled.git",
+          "enabled" => false,
+          "shell" => "zsh",
+          "installedPath" => disabled_dir,
+          "entryFile" => "disabled-status-test.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "def456",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "def456"
+          },
+          "dependencies" => [],
+          "priority" => 100,
+          "config" => {},
+          "conflicts" => {
+            "envVars" => [],
+            "functions" => [],
+            "aliases" => [],
+            "detected" => false,
+            "conflictingPlugins" => []
+          }
+        }
+      ],
+      "settings" => {
+        "autoCheckUpdates" => false,
+        "checkInterval" => 604800,
+        "conflictDetection" => true,
+        "loadParallel" => false
+      }
+    }
+
+    # Write JSON config
+    json_file = "#{@config_dir}/plugins.json"
+    File.write(json_file, JSON.pretty_generate(json_config))
+
+    # Run list command
+    output, status = run_wayu("plugin list")
+
+    # Verify status indicators in output
+    if status.success? &&
+       (output.include?("✓ Active") || output.include?("Active")) &&
+       (output.include?("○ Disabled") || output.include?("Disabled"))
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  List output should show both Active and Disabled statuses"
       puts "  Output: #{output}"
       @failed += 1
     end

@@ -739,6 +739,517 @@ resolve_plugin :: proc(name_or_url: string) -> (PluginInfo, bool) {
 	return PluginInfo{}, false
 }
 
+// Get remote commit SHA for a git repository
+// Returns short SHA (7 chars) or empty string on failure
+// CRITICAL: Returned string is ALLOCATED - caller must delete()
+get_remote_commit :: proc(url: string, branch: string) -> string {
+	// Use HEAD if no branch specified
+	branch_ref := branch != "" ? branch : "HEAD"
+
+	// Build command: git ls-remote <url> <branch> 2>/dev/null | cut -f1
+	// The '2>/dev/null' suppresses error output
+	// The 'cut -f1' extracts just the commit SHA (first field)
+	cmd := fmt.aprintf("git ls-remote %s %s 2>/dev/null | cut -f1", url, branch_ref)
+	defer delete(cmd)
+
+	// Execute and get full SHA (40 chars) or empty string
+	full_sha := exec_command_output(cmd)  // ALLOCATED - must delete
+	if full_sha == "" {
+		return ""
+	}
+
+	// Extract short SHA (first 7 chars)
+	// NOTE: Create new allocated string before deleting full_sha
+	short_sha := strings.clone(full_sha[0:min(7, len(full_sha))])
+	delete(full_sha)  // Clean up full SHA
+
+	return short_sha  // Caller's responsibility to delete
+}
+
+// Handle plugin check command - check for available updates
+// CLI-only command (no interactive mode)
+// Checks all enabled plugins for updates using git ls-remote
+handle_plugin_check :: proc(args: []string) {
+	// Read plugin configuration
+	config, ok := read_plugin_config_json()
+	if !ok {
+		os.exit(EXIT_CONFIG)
+	}
+	defer cleanup_plugin_config_json(&config)
+
+	// Handle empty plugin list (non-error case)
+	if len(config.plugins) == 0 {
+		print_info("No plugins installed")
+		fmt.println()
+		fmt.println("Run 'wayu plugin add <name>' to install a plugin")
+		return
+	}
+
+	// Display header
+	print_header("Checking Plugin Updates", EMOJI_COMMAND)
+	fmt.println()
+
+	updates_available := false
+	check_count := 0
+
+	// Check each enabled plugin
+	for &plugin in config.plugins {
+		// Skip disabled plugins
+		if !plugin.enabled {
+			continue
+		}
+
+		check_count += 1
+		fmt.printfln("Checking %s...", plugin.name)
+
+		// Fetch remote commit SHA
+		remote_commit := get_remote_commit(plugin.url, plugin.git.branch)
+		if remote_commit == "" {
+			print_warning("  ⚠ Failed to check remote (network error or invalid URL)")
+			continue
+		}
+		defer delete(remote_commit)  // CRITICAL: get_remote_commit returns allocated string
+
+		// Update metadata with remote commit and timestamp
+		delete(plugin.git.remote_commit)  // Clean up old value
+		plugin.git.remote_commit = strings.clone(remote_commit)
+
+		delete(plugin.git.last_checked)  // Clean up old timestamp
+		plugin.git.last_checked = get_iso8601_timestamp()  // ALLOCATED
+
+		// Compare local vs remote commits
+		if plugin.git.commit != remote_commit {
+			// Truncate to 7 chars for display
+			local_short := plugin.git.commit[0:min(7, len(plugin.git.commit))]
+			remote_short := remote_commit[0:min(7, len(remote_commit))]
+
+			print_success("  ↑ Update available: %s → %s", local_short, remote_short)
+			updates_available = true
+		} else {
+			print_info("  ✓ Up to date")
+		}
+	}
+
+	fmt.println()
+
+	// No enabled plugins to check
+	if check_count == 0 {
+		print_info("No enabled plugins to check")
+		fmt.println()
+		print_info("Enable plugins with: wayu --tui")
+		return
+	}
+
+	// Save updated metadata (last_checked timestamps)
+	if !DRY_RUN {
+		if !write_plugin_config_json(&config) {
+			print_error_simple("Error: Failed to save plugin metadata")
+			os.exit(EXIT_CONFIG)
+		}
+	} else {
+		print_info("[DRY RUN] Would save updated metadata")
+	}
+
+	// Display summary
+	if updates_available {
+		fmt.println()
+		print_info("Updates available! Run one of:")
+		fmt.println("  wayu plugin update <name>      # Update specific plugin")
+		fmt.println("  wayu plugin update --all       # Update all plugins")
+	} else {
+		print_success("All plugins are up to date!")
+	}
+}
+
+// Handle plugin update command - update plugins
+// Supports both single plugin and --all flag
+// CLI-only command (no interactive mode)
+handle_plugin_update :: proc(args: []string) {
+	// Require explicit argument (plugin name or --all)
+	if len(args) == 0 {
+		print_error("Missing required argument: plugin name or --all")
+		fmt.println()
+		fmt.println("Usage:")
+		fmt.println("  wayu plugin update <name>      # Update specific plugin")
+		fmt.println("  wayu plugin update --all       # Update all plugins")
+		fmt.println()
+		fmt.printfln("%sExample:%s", get_muted(), RESET)
+		fmt.printfln("  %swayu plugin update zsh-autosuggestions%s", get_muted(), RESET)
+		os.exit(EXIT_USAGE)
+	}
+
+	update_all := args[0] == "--all" || args[0] == "-a"
+
+	// Read plugin configuration
+	config, ok := read_plugin_config_json()
+	if !ok {
+		os.exit(EXIT_CONFIG)
+	}
+	defer cleanup_plugin_config_json(&config)
+
+	// Handle empty plugin list
+	if len(config.plugins) == 0 {
+		print_info("No plugins installed")
+		fmt.println()
+		fmt.println("Run 'wayu plugin add <name>' to install a plugin")
+		return
+	}
+
+	// Display header
+	if update_all {
+		print_header("Updating All Plugins", EMOJI_COMMAND)
+	} else {
+		print_header("Updating Plugin", EMOJI_COMMAND)
+	}
+	fmt.println()
+
+	updated_count := 0
+
+	// Update specific plugin
+	if !update_all {
+		plugin_name := args[0]
+
+		// Find plugin
+		plugin_ptr: ^PluginMetadata = nil
+		for &plugin in config.plugins {
+			if plugin.name == plugin_name {
+				plugin_ptr = &plugin
+				break
+			}
+		}
+
+		if plugin_ptr == nil {
+			print_error_simple("Error: Plugin '%s' not found", plugin_name)
+			fmt.println()
+			fmt.println("Run 'wayu plugin list' to see installed plugins")
+			os.exit(EXIT_DATAERR)
+		}
+
+		// Perform update
+		print_info("Updating %s...", plugin_ptr.name)
+
+		// Show spinner for long operation
+		spinner := new_spinner(.Dots)
+		spinner_text(&spinner, fmt.aprintf("Updating %s", plugin_ptr.name))
+		spinner_start(&spinner)
+
+		success := git_update(plugin_ptr.installed_path)
+
+		spinner_stop(&spinner)
+
+		if !success {
+			print_error_simple("Error: Failed to update plugin")
+			os.exit(EXIT_IOERR)
+		}
+
+		// Refresh git metadata after update
+		new_git_info := get_git_info(plugin_ptr.installed_path)
+
+		// Clean up old git metadata
+		delete(plugin_ptr.git.branch)
+		delete(plugin_ptr.git.commit)
+		delete(plugin_ptr.git.last_checked)
+		delete(plugin_ptr.git.remote_commit)
+
+		// Assign new metadata
+		plugin_ptr.git = new_git_info
+
+		print_success("Plugin '%s' updated successfully", plugin_ptr.name)
+		updated_count = 1
+	} else {
+		// Update all plugins
+		for &plugin in config.plugins {
+			// Skip disabled plugins
+			if !plugin.enabled {
+				continue
+			}
+
+			print_info("Updating %s...", plugin.name)
+
+			// Perform update
+			success := git_update(plugin.installed_path)
+
+			if !success {
+				print_warning("  ⚠ Failed to update plugin")
+				continue
+			}
+
+			// Refresh git metadata
+			new_git_info := get_git_info(plugin.installed_path)
+
+			// Clean up old git metadata
+			delete(plugin.git.branch)
+			delete(plugin.git.commit)
+			delete(plugin.git.last_checked)
+			delete(plugin.git.remote_commit)
+
+			// Assign new metadata
+			plugin.git = new_git_info
+
+			print_success("  ✓ Updated")
+			updated_count += 1
+		}
+	}
+
+	fmt.println()
+
+	// Save updated metadata
+	if !DRY_RUN {
+		// Create backup before writing
+		config_file := get_plugins_json_config_file()
+		defer delete(config_file)
+
+		if os.exists(config_file) {
+			backup_path, backup_ok := create_backup(config_file)
+			if backup_ok {
+				defer delete(backup_path)
+			} else {
+				print_warning("Warning: Failed to create backup")
+			}
+		}
+
+		// Write updated config
+		if !write_plugin_config_json(&config) {
+			print_error_simple("Error: Failed to save plugin metadata")
+			os.exit(EXIT_CONFIG)
+		}
+	} else {
+		print_info("[DRY RUN] Would save updated metadata")
+	}
+
+	// Summary
+	if updated_count == 0 {
+		print_info("No plugins updated")
+	} else if updated_count == 1 {
+		print_success("1 plugin updated")
+	} else {
+		print_success("%d plugins updated", updated_count)
+	}
+
+	// Regenerate plugins loader file for current shell
+	if !DRY_RUN {
+		if !generate_plugins_file(DETECTED_SHELL) {
+			print_warning("Warning: Failed to regenerate plugins loader")
+		}
+	}
+
+	fmt.println()
+	print_info("Restart your shell or run 'source ~/.%src' to reload plugins", SHELL_EXT)
+}
+
+// Handle plugin enable command - enable a disabled plugin
+// Sets enabled: true in plugins.json and regenerates shell loader
+// CLI-only command (no interactive mode)
+// Idempotent: Enabling an already-enabled plugin returns EXIT_SUCCESS
+handle_plugin_enable :: proc(args: []string) {
+	// 1. Validate arguments
+	if len(args) == 0 {
+		print_error("Missing required argument: plugin name")
+		fmt.println()
+		fmt.println("Usage: wayu plugin enable <name>")
+		fmt.println()
+		fmt.println("Example:")
+		fmt.println("  wayu plugin enable zsh-autosuggestions")
+		fmt.println()
+		fmt.printfln("%sHint:%s For interactive selection, use: %swayu --tui%s",
+			get_muted(), RESET, get_primary(), RESET)
+		os.exit(EXIT_USAGE)
+	}
+
+	plugin_name := args[0]
+
+	// 2. Read plugin configuration
+	config, ok := read_plugin_config_json()
+	if !ok {
+		os.exit(EXIT_CONFIG)
+	}
+
+	// 3. Find plugin by name
+	plugin_ptr: ^PluginMetadata = nil
+	for &plugin in config.plugins {
+		if plugin.name == plugin_name {
+			plugin_ptr = &plugin
+			break
+		}
+	}
+
+	if plugin_ptr == nil {
+		cleanup_plugin_config_json(&config)
+		print_error_simple("Error: Plugin '%s' not found", plugin_name)
+		fmt.println()
+		fmt.println("Run 'wayu plugin list' to see installed plugins")
+		os.exit(EXIT_DATAERR)
+	}
+
+	// 4. Check if already enabled (idempotent operation)
+	if plugin_ptr.enabled {
+		cleanup_plugin_config_json(&config)
+		print_info("Plugin '%s' is already enabled", plugin_name)
+		os.exit(EXIT_SUCCESS)  // NOT an error - idempotent
+	}
+
+	// Display header
+	print_header("Enabling Plugin", EMOJI_COMMAND)
+	fmt.println()
+
+	// 5. Create backup before modifying
+	config_file := get_plugins_json_config_file()
+
+	if os.exists(config_file) {
+		backup_path, backup_ok := create_backup(config_file)
+		if backup_ok {
+			delete(backup_path)
+		} else {
+			print_warning("Warning: Failed to create backup")
+		}
+	}
+
+	// 6. Enable plugin
+	plugin_ptr.enabled = true
+
+	// 7. Write updated configuration
+	if !DRY_RUN {
+		if !write_plugin_config_json(&config) {
+			delete(config_file)
+			cleanup_plugin_config_json(&config)
+			print_error_simple("Error: Failed to save plugin configuration")
+			os.exit(EXIT_CONFIG)
+		}
+	} else {
+		print_info("[DRY RUN] Would save updated configuration")
+	}
+
+	// 8. Regenerate shell loader
+	if !DRY_RUN {
+		if !generate_plugins_file(DETECTED_SHELL) {
+			delete(config_file)
+			cleanup_plugin_config_json(&config)
+			print_error_simple("Error: Failed to regenerate plugins loader")
+			os.exit(EXIT_IOERR)
+		}
+	} else {
+		print_info("[DRY RUN] Would regenerate shell loader")
+	}
+
+	// 9. Success
+	delete(config_file)
+	cleanup_plugin_config_json(&config)
+	print_success("Plugin '%s' enabled successfully", plugin_name)
+	fmt.println()
+	fmt.printfln("%sThe plugin will be loaded in new shell sessions.%s", BRIGHT_CYAN, RESET)
+	fmt.printfln("Restart your shell or run 'source ~/.%src' to apply changes.", SHELL_EXT)
+
+	os.exit(EXIT_SUCCESS)
+}
+
+// Handle plugin disable command - disable an enabled plugin
+// Sets enabled: false in plugins.json and regenerates shell loader
+// CLI-only command (no interactive mode)
+// Plugin remains installed, only prevents loading on shell startup
+// Idempotent: Disabling an already-disabled plugin returns EXIT_SUCCESS
+handle_plugin_disable :: proc(args: []string) {
+	// 1. Validate arguments
+	if len(args) == 0 {
+		print_error("Missing required argument: plugin name")
+		fmt.println()
+		fmt.println("Usage: wayu plugin disable <name>")
+		fmt.println()
+		fmt.println("Example:")
+		fmt.println("  wayu plugin disable zsh-autosuggestions")
+		fmt.println()
+		fmt.printfln("%sHint:%s For interactive selection, use: %swayu --tui%s",
+			get_muted(), RESET, get_primary(), RESET)
+		os.exit(EXIT_USAGE)
+	}
+
+	plugin_name := args[0]
+
+	// 2. Read plugin configuration
+	config, ok := read_plugin_config_json()
+	if !ok {
+		os.exit(EXIT_CONFIG)
+	}
+
+	// 3. Find plugin by name
+	plugin_ptr: ^PluginMetadata = nil
+	for &plugin in config.plugins {
+		if plugin.name == plugin_name {
+			plugin_ptr = &plugin
+			break
+		}
+	}
+
+	if plugin_ptr == nil {
+		cleanup_plugin_config_json(&config)
+		print_error_simple("Error: Plugin '%s' not found", plugin_name)
+		fmt.println()
+		fmt.println("Run 'wayu plugin list' to see installed plugins")
+		os.exit(EXIT_DATAERR)
+	}
+
+	// 4. Check if already disabled (idempotent operation)
+	if !plugin_ptr.enabled {
+		cleanup_plugin_config_json(&config)
+		print_info("Plugin '%s' is already disabled", plugin_name)
+		os.exit(EXIT_SUCCESS)  // NOT an error - idempotent
+	}
+
+	// Display header
+	print_header("Disabling Plugin", EMOJI_COMMAND)
+	fmt.println()
+
+	// 5. Create backup before modifying
+	config_file := get_plugins_json_config_file()
+
+	if os.exists(config_file) {
+		backup_path, backup_ok := create_backup(config_file)
+		if backup_ok {
+			delete(backup_path)
+		} else {
+			print_warning("Warning: Failed to create backup")
+		}
+	}
+
+	// 6. Disable plugin
+	plugin_ptr.enabled = false
+
+	// 7. Write updated configuration
+	if !DRY_RUN {
+		if !write_plugin_config_json(&config) {
+			delete(config_file)
+			cleanup_plugin_config_json(&config)
+			print_error_simple("Error: Failed to save plugin configuration")
+			os.exit(EXIT_CONFIG)
+		}
+	} else {
+		print_info("[DRY RUN] Would save updated configuration")
+	}
+
+	// 8. Regenerate shell loader
+	if !DRY_RUN {
+		if !generate_plugins_file(DETECTED_SHELL) {
+			delete(config_file)
+			cleanup_plugin_config_json(&config)
+			print_error_simple("Error: Failed to regenerate plugins loader")
+			os.exit(EXIT_IOERR)
+		}
+	} else {
+		print_info("[DRY RUN] Would regenerate shell loader")
+	}
+
+	// 9. Success
+	delete(config_file)
+	cleanup_plugin_config_json(&config)
+	print_success("Plugin '%s' disabled successfully", plugin_name)
+	fmt.println()
+	fmt.printfln("%sThe plugin will not be loaded in new shell sessions.%s", BRIGHT_CYAN, RESET)
+	fmt.printfln("Restart your shell or run 'source ~/.%src' to apply changes.", SHELL_EXT)
+	fmt.println()
+	fmt.printfln("%sTo re-enable:%s wayu plugin enable %s", get_muted(), RESET, plugin_name)
+
+	os.exit(EXIT_SUCCESS)
+}
+
 // Command handlers
 
 // Handle plugin add command
@@ -1212,6 +1723,14 @@ handle_plugin_command :: proc(action: Action, args: []string) {
 		handle_plugin_list(args)
 	case .GET:
 		handle_plugin_get(args)
+	case .CHECK:
+		handle_plugin_check(args)
+	case .UPDATE:
+		handle_plugin_update(args)
+	case .ENABLE:
+		handle_plugin_enable(args)
+	case .DISABLE:
+		handle_plugin_disable(args)
 	case .HELP:
 		print_plugin_help()
 	case:
@@ -1236,7 +1755,11 @@ print_plugin_help :: proc() {
 	fmt.println("  add <name-or-url>       Install plugin")
 	fmt.println("  remove [name]           Remove plugin (interactive if no name)")
 	fmt.println("  list                    List installed plugins")
+	fmt.println("  enable <name>           Enable disabled plugin")
+	fmt.println("  disable <name>          Disable plugin without removing")
 	fmt.println("  get <name>              Show plugin info and copy URL to clipboard")
+	fmt.println("  check                   Check all plugins for updates")
+	fmt.println("  update <name|--all>     Update specific plugin or all plugins")
 	fmt.println("  help                    Show this help message")
 
 	// Examples section
@@ -1255,6 +1778,21 @@ print_plugin_help :: proc() {
 	fmt.println()
 	fmt.printf("  %s# Interactive removal%s\n", get_muted(), RESET)
 	fmt.printf("  %swayu plugin remove%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Check for plugin updates%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin check%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Update specific plugin%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin update zsh-autosuggestions%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Update all plugins%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin update --all%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Temporarily disable a plugin%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin disable zsh-autosuggestions%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Re-enable a disabled plugin%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin enable zsh-autosuggestions%s\n", get_muted(), RESET)
 
 	// Popular plugins section
 	fmt.printf("\n%s%sPOPULAR PLUGINS:%s\n", BOLD, get_secondary(), RESET)
