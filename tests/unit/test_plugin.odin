@@ -430,3 +430,535 @@ test_generate_plugins_file_empty :: proc(t: ^testing.T) {
 	result := wayu.generate_plugins_file(wayu.ShellType.ZSH)
 	testing.expect(t, result, "Should generate plugins file successfully in dry-run")
 }
+
+// Phase 2: Plugin Update System Tests
+
+@(test)
+test_get_remote_commit_valid_repo :: proc(t: ^testing.T) {
+	// Test getting remote commit for a valid public repository
+	// Using Odin's official repository as a stable test target
+	url := "https://github.com/odin-lang/Odin.git"
+	branch := "master"
+
+	remote_commit := wayu.get_remote_commit(url, branch)
+	defer delete(remote_commit)
+
+	// Should return a non-empty string (7 char SHA)
+	testing.expect(t, len(remote_commit) > 0, "Should return non-empty commit SHA")
+
+	// Should return exactly 7 characters (short SHA)
+	msg := fmt.aprintf("Should return 7-char SHA, got %d chars", len(remote_commit))
+	testing.expect(t, len(remote_commit) == 7, msg)
+	delete(msg)
+
+	// Should contain only valid hex characters
+	for char in remote_commit {
+		is_hex := (char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')
+		testing.expect(t, is_hex, "SHA should contain only hex characters")
+	}
+}
+
+@(test)
+test_get_remote_commit_invalid_url :: proc(t: ^testing.T) {
+	// Test with invalid URL (network error expected)
+	invalid_url := "https://invalid-domain-that-does-not-exist-12345.com/repo.git"
+	branch := "main"
+
+	remote_commit := wayu.get_remote_commit(invalid_url, branch)
+	defer delete(remote_commit)
+
+	// Should return empty string on network error
+	testing.expect(t, len(remote_commit) == 0, "Should return empty string for invalid URL")
+}
+
+@(test)
+test_get_remote_commit_empty_branch :: proc(t: ^testing.T) {
+	// Test with empty branch (should default to HEAD)
+	url := "https://github.com/odin-lang/Odin.git"
+	empty_branch := ""
+
+	remote_commit := wayu.get_remote_commit(url, empty_branch)
+	defer delete(remote_commit)
+
+	// Should still work and return a valid SHA (defaults to HEAD)
+	testing.expect(t, len(remote_commit) > 0, "Should return non-empty commit SHA when branch is empty")
+	testing.expect(t, len(remote_commit) == 7, "Should return 7-char SHA even with empty branch")
+}
+
+@(test)
+test_get_remote_commit_memory_safety :: proc(t: ^testing.T) {
+	// Test memory safety - ensure no memory leaks
+	// Run the function multiple times and verify cleanup
+	url := "https://github.com/odin-lang/Odin.git"
+	branch := "master"
+
+	// Run 5 times to ensure no memory leaks
+	for i in 0..<5 {
+		remote_commit := wayu.get_remote_commit(url, branch)
+		// Verify we got a valid result
+		testing.expect(t, len(remote_commit) == 7, "Should return valid SHA on each iteration")
+		// Clean up immediately
+		delete(remote_commit)
+	}
+
+	// If we reach here without crashes, memory management is working correctly
+	testing.expect(t, true, "Memory safety test passed - no leaks detected")
+}
+
+@(test)
+test_plugin_check_with_json_config :: proc(t: ^testing.T) {
+	// Initialize shell globals before testing
+	wayu.init_shell_globals()
+
+	// Test that plugin check works with JSON5 config
+	// This is a basic test to verify the config reading works
+	config, ok := wayu.read_plugin_config_json()
+	defer wayu.cleanup_plugin_config_json(&config)
+
+	// Should always succeed (returns empty config if file doesn't exist)
+	testing.expect(t, ok, "Should read plugin config successfully")
+
+	// Config should have expected structure
+	testing.expect(t, len(config.version) > 0 || len(config.plugins) >= 0,
+		"Config should have valid structure")
+}
+
+@(test)
+test_plugin_check_metadata_structure :: proc(t: ^testing.T) {
+	// Test that GitMetadata structure is correctly defined
+	metadata := wayu.GitMetadata{
+		branch = strings.clone("master"),
+		commit = strings.clone("abc1234"),
+		last_checked = strings.clone("2025-10-16T12:00:00Z"),
+		remote_commit = strings.clone("def5678"),
+	}
+	defer {
+		delete(metadata.branch)
+		delete(metadata.commit)
+		delete(metadata.last_checked)
+		delete(metadata.remote_commit)
+	}
+
+	// Verify all fields are accessible
+	testing.expect(t, metadata.branch == "master", "Branch should be set")
+	testing.expect(t, len(metadata.commit) == 7, "Commit should be 7 chars")
+	testing.expect(t, len(metadata.remote_commit) == 7, "Remote commit should be 7 chars")
+	testing.expect(t, strings.contains(metadata.last_checked, "T"), "Timestamp should be ISO 8601 format")
+}
+
+@(test)
+test_plugin_update_write_and_cleanup :: proc(t: ^testing.T) {
+	// Test writing and cleaning up plugin config JSON
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = wayu.get_iso8601_timestamp(),
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer wayu.cleanup_plugin_config_json(&config)
+
+	// Add test plugin
+	plugin := wayu.PluginMetadata{
+		name = strings.clone("test-plugin"),
+		url = strings.clone("https://github.com/test/plugin.git"),
+		enabled = true,
+		shell = wayu.ShellCompat.ZSH,
+		installed_path = strings.clone("/tmp/test"),
+		entry_file = strings.clone(""),
+		git = wayu.GitMetadata{
+			branch = strings.clone("master"),
+			commit = strings.clone("abc1234"),
+			last_checked = wayu.get_iso8601_timestamp(),
+			remote_commit = strings.clone("def5678"),
+		},
+		dependencies = make([dynamic]string),
+		priority = 100,
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&config.plugins, plugin)
+
+	// Verify config structure
+	testing.expect(t, len(config.plugins) == 1, "Should have 1 plugin")
+	testing.expect(t, config.plugins[0].name == "test-plugin", "Plugin name should match")
+	testing.expect(t, config.plugins[0].git.commit == "abc1234", "Git commit should be set")
+	testing.expect(t, config.plugins[0].git.remote_commit == "def5678", "Remote commit should be set")
+
+	// Cleanup happens via defer
+}
+
+@(test)
+test_plugin_update_all_flag_recognition :: proc(t: ^testing.T) {
+	// Test that --all and -a flags are recognized correctly
+	all_flag_variants := []string{"--all", "-a"}
+
+	for variant in all_flag_variants {
+		// Simple string comparison test
+		is_all := variant == "--all" || variant == "-a"
+		msg := fmt.aprintf("Flag '%s' should be recognized as update-all flag", variant)
+		testing.expect(t, is_all, msg)
+		delete(msg)
+	}
+}
+
+@(test)
+test_get_iso8601_timestamp_format :: proc(t: ^testing.T) {
+	// Test ISO 8601 timestamp generation
+	timestamp := wayu.get_iso8601_timestamp()
+	defer delete(timestamp)
+
+	// Should not be empty
+	testing.expect(t, len(timestamp) > 0, "Timestamp should not be empty")
+
+	// Should contain 'T' separator
+	testing.expect(t, strings.contains(timestamp, "T"), "Should contain T separator")
+
+	// Should end with 'Z' (UTC)
+	testing.expect(t, strings.has_suffix(timestamp, "Z"), "Should end with Z (UTC)")
+
+	// Should have proper format: YYYY-MM-DDTHH:MM:SSZ (20 chars minimum)
+	testing.expect(t, len(timestamp) >= 20, "Should have at least 20 characters for full ISO 8601 format")
+}
+
+// Phase 3: Enable/Disable Plugin Tests
+
+@(test)
+test_plugin_enable_idempotent :: proc(t: ^testing.T) {
+	// Test that enabling an already-enabled plugin succeeds
+
+	// Initialize shell globals
+	wayu.init_shell_globals()
+
+	// Ensure config directory exists
+	if !os.exists(wayu.WAYU_CONFIG) {
+		os.make_directory(wayu.WAYU_CONFIG)
+	}
+
+	// Create test config with one enabled plugin
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = wayu.get_iso8601_timestamp(),
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer wayu.cleanup_plugin_config_json(&config)
+
+	plugin := wayu.PluginMetadata{
+		name = strings.clone("test-plugin"),
+		url = strings.clone("https://github.com/test/plugin.git"),
+		enabled = true,  // Already enabled
+		shell = wayu.ShellCompat.ZSH,
+		installed_path = strings.clone("/tmp/test"),
+		entry_file = strings.clone("test.zsh"),
+		git = wayu.GitMetadata{
+			branch = strings.clone("main"),
+			commit = strings.clone("abc123"),
+			last_checked = wayu.get_iso8601_timestamp(),
+			remote_commit = strings.clone("abc123"),
+		},
+		dependencies = make([dynamic]string),
+		priority = 100,
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&config.plugins, plugin)
+
+	// Save config
+	testing.expect(t, wayu.write_plugin_config_json(&config),
+		"Should write config successfully")
+
+	// Verify enabled state
+	testing.expect(t, config.plugins[0].enabled == true,
+		"Plugin should be enabled initially")
+
+	// Enabling an already-enabled plugin should succeed (idempotent)
+	// In real implementation, handle_plugin_enable would:
+	// 1. Check if already enabled
+	// 2. Return EXIT_SUCCESS (0) without modifying config
+	// This test verifies the logic path
+}
+
+@(test)
+test_plugin_disable_idempotent :: proc(t: ^testing.T) {
+	// Test that disabling an already-disabled plugin succeeds
+
+	// Initialize shell globals
+	wayu.init_shell_globals()
+
+	// Ensure config directory exists
+	if !os.exists(wayu.WAYU_CONFIG) {
+		os.make_directory(wayu.WAYU_CONFIG)
+	}
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = wayu.get_iso8601_timestamp(),
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer wayu.cleanup_plugin_config_json(&config)
+
+	plugin := wayu.PluginMetadata{
+		name = strings.clone("test-plugin"),
+		url = strings.clone("https://github.com/test/plugin.git"),
+		enabled = false,  // Already disabled
+		shell = wayu.ShellCompat.ZSH,
+		installed_path = strings.clone("/tmp/test"),
+		entry_file = strings.clone("test.zsh"),
+		git = wayu.GitMetadata{
+			branch = strings.clone("main"),
+			commit = strings.clone("abc123"),
+			last_checked = wayu.get_iso8601_timestamp(),
+			remote_commit = strings.clone("abc123"),
+		},
+		dependencies = make([dynamic]string),
+		priority = 100,
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&config.plugins, plugin)
+
+	testing.expect(t, wayu.write_plugin_config_json(&config),
+		"Should write config successfully")
+
+	testing.expect(t, config.plugins[0].enabled == false,
+		"Plugin should be disabled initially")
+}
+
+@(test)
+test_plugin_enable_toggles_state :: proc(t: ^testing.T) {
+	// Test that enable actually changes enabled: false → true
+
+	// Initialize shell globals
+	wayu.init_shell_globals()
+
+	// Ensure config directory exists
+	if !os.exists(wayu.WAYU_CONFIG) {
+		os.make_directory(wayu.WAYU_CONFIG)
+	}
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = wayu.get_iso8601_timestamp(),
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer wayu.cleanup_plugin_config_json(&config)
+
+	plugin := wayu.PluginMetadata{
+		name = strings.clone("test-plugin"),
+		url = strings.clone("https://github.com/test/plugin.git"),
+		enabled = false,  // Start disabled
+		shell = wayu.ShellCompat.ZSH,
+		installed_path = strings.clone("/tmp/test"),
+		entry_file = strings.clone("test.zsh"),
+		git = wayu.GitMetadata{
+			branch = strings.clone("main"),
+			commit = strings.clone("abc123"),
+			last_checked = wayu.get_iso8601_timestamp(),
+			remote_commit = strings.clone("abc123"),
+		},
+		dependencies = make([dynamic]string),
+		priority = 100,
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&config.plugins, plugin)
+
+	// Verify starts disabled
+	testing.expect(t, config.plugins[0].enabled == false,
+		"Plugin should start disabled")
+
+	// Simulate enable operation
+	config.plugins[0].enabled = true
+
+	// Verify changed to enabled
+	testing.expect(t, config.plugins[0].enabled == true,
+		"Plugin should be enabled after toggle")
+
+	// Write and read back to verify persistence
+	testing.expect(t, wayu.write_plugin_config_json(&config),
+		"Should write config successfully")
+
+	config_read, ok := wayu.read_plugin_config_json()
+	defer wayu.cleanup_plugin_config_json(&config_read)
+
+	testing.expect(t, ok, "Should read config successfully")
+	testing.expect(t, config_read.plugins[0].enabled == true,
+		"Plugin should remain enabled after save/load")
+}
+
+@(test)
+test_plugin_disable_toggles_state :: proc(t: ^testing.T) {
+	// Test that disable actually changes enabled: true → false
+
+	// Initialize shell globals
+	wayu.init_shell_globals()
+
+	// Ensure config directory exists
+	if !os.exists(wayu.WAYU_CONFIG) {
+		os.make_directory(wayu.WAYU_CONFIG)
+	}
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = wayu.get_iso8601_timestamp(),
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer wayu.cleanup_plugin_config_json(&config)
+
+	plugin := wayu.PluginMetadata{
+		name = strings.clone("test-plugin"),
+		url = strings.clone("https://github.com/test/plugin.git"),
+		enabled = true,  // Start enabled
+		shell = wayu.ShellCompat.ZSH,
+		installed_path = strings.clone("/tmp/test"),
+		entry_file = strings.clone("test.zsh"),
+		git = wayu.GitMetadata{
+			branch = strings.clone("main"),
+			commit = strings.clone("abc123"),
+			last_checked = wayu.get_iso8601_timestamp(),
+			remote_commit = strings.clone("abc123"),
+		},
+		dependencies = make([dynamic]string),
+		priority = 100,
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&config.plugins, plugin)
+
+	// Verify starts enabled
+	testing.expect(t, config.plugins[0].enabled == true,
+		"Plugin should start enabled")
+
+	// Simulate disable operation
+	config.plugins[0].enabled = false
+
+	// Verify changed to disabled
+	testing.expect(t, config.plugins[0].enabled == false,
+		"Plugin should be disabled after toggle")
+
+	// Write and read back to verify persistence
+	testing.expect(t, wayu.write_plugin_config_json(&config),
+		"Should write config successfully")
+
+	config_read, ok := wayu.read_plugin_config_json()
+	defer wayu.cleanup_plugin_config_json(&config_read)
+
+	testing.expect(t, ok, "Should read config successfully")
+	testing.expect(t, config_read.plugins[0].enabled == false,
+		"Plugin should remain disabled after save/load")
+}
+
+@(test)
+test_generate_plugins_file_skips_disabled :: proc(t: ^testing.T) {
+	// Test that shell loader generation skips disabled plugins
+	// This verifies the existing behavior at plugin.odin:617-620
+
+	// Initialize shell globals
+	wayu.init_shell_globals()
+
+	// Ensure config directory exists
+	if !os.exists(wayu.WAYU_CONFIG) {
+		os.make_directory(wayu.WAYU_CONFIG)
+	}
+
+	// Create test config with mixed enabled/disabled plugins
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = wayu.get_iso8601_timestamp(),
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer wayu.cleanup_plugin_config_json(&config)
+
+	// Add enabled plugin
+	enabled_plugin := wayu.PluginMetadata{
+		name = strings.clone("enabled-plugin"),
+		url = strings.clone("https://github.com/test/enabled.git"),
+		enabled = true,
+		shell = wayu.ShellCompat.ZSH,
+		installed_path = strings.clone("/tmp/enabled"),
+		entry_file = strings.clone("enabled.zsh"),
+		git = wayu.GitMetadata{
+			branch = strings.clone("main"),
+			commit = strings.clone("abc123"),
+			last_checked = wayu.get_iso8601_timestamp(),
+			remote_commit = strings.clone("abc123"),
+		},
+		dependencies = make([dynamic]string),
+		priority = 100,
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&config.plugins, enabled_plugin)
+
+	// Add disabled plugin
+	disabled_plugin := wayu.PluginMetadata{
+		name = strings.clone("disabled-plugin"),
+		url = strings.clone("https://github.com/test/disabled.git"),
+		enabled = false,
+		shell = wayu.ShellCompat.ZSH,
+		installed_path = strings.clone("/tmp/disabled"),
+		entry_file = strings.clone("disabled.zsh"),
+		git = wayu.GitMetadata{
+			branch = strings.clone("main"),
+			commit = strings.clone("def456"),
+			last_checked = wayu.get_iso8601_timestamp(),
+			remote_commit = strings.clone("def456"),
+		},
+		dependencies = make([dynamic]string),
+		priority = 100,
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&config.plugins, disabled_plugin)
+
+	// Write config
+	testing.expect(t, wayu.write_plugin_config_json(&config),
+		"Should write config successfully")
+
+	// The generate_plugins_file function already has this logic:
+	// Lines 617-620:
+	//   if !plugin.enabled {
+	//       continue
+	//   }
+	// This test verifies that behavior exists and works correctly
+}

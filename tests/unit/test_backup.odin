@@ -292,23 +292,28 @@ test_cleanup_old_backups :: proc(t: ^testing.T) {
 	testing.expect(t, len(remaining_backups) == 3, "Should have 3 backups remaining")
 }
 
-@(test)
-test_backup_with_prompt_success :: proc(t: ^testing.T) {
-	// Test backup with prompt when backup succeeds
-	test_content := "content for prompt test\n"
-	test_file := "/tmp/wayu-test-prompt"
-
-	os.write_entire_file(test_file, transmute([]byte)test_content)
-	defer os.remove(test_file)
-
-	// Test with auto_backup = true
-	result := wayu.create_backup_with_prompt(test_file, true)
-	testing.expect(t, result, "Should succeed when backup works")
-
-	// Test with auto_backup = false
-	result_no_backup := wayu.create_backup_with_prompt(test_file, false)
-	testing.expect(t, result_no_backup, "Should succeed when auto_backup is false")
-}
+// NOTE: This test is commented out as create_backup_with_prompt no longer exists
+// after PRP-13 CLI/TUI isolation. The function was split into:
+// - create_backup_cli (for CLI mode - fails immediately)
+// - create_backup_tui (for TUI mode - prompts user)
+//
+// @(test)
+// test_backup_with_prompt_success :: proc(t: ^testing.T) {
+// 	// Test backup with prompt when backup succeeds
+// 	test_content := "content for prompt test\n"
+// 	test_file := "/tmp/wayu-test-prompt"
+//
+// 	os.write_entire_file(test_file, transmute([]byte)test_content)
+// 	defer os.remove(test_file)
+//
+// 	// Test with auto_backup = true
+// 	result := wayu.create_backup_with_prompt(test_file, true)
+// 	testing.expect(t, result, "Should succeed when backup works")
+//
+// 	// Test with auto_backup = false
+// 	result_no_backup := wayu.create_backup_with_prompt(test_file, false)
+// 	testing.expect(t, result_no_backup, "Should succeed when auto_backup is false")
+// }
 
 @(test)
 test_restore_nonexistent_backup :: proc(t: ^testing.T) {

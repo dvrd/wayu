@@ -10,7 +10,7 @@ COMPLETIONS_FILE :: "completions"
 
 // Handle completions command
 handle_completions_command :: proc(action: Action, args: []string) {
-	switch action {
+	#partial switch action {
 	case .ADD:
 		if len(args) < 2 {
 			print_error_simple("Usage: wayu completions add <name> <source-file>")
