@@ -388,6 +388,9 @@ read_plugin_config_json :: proc() -> (config: PluginConfigJSON, ok: bool) {
 		return config, false
 	}
 
+	// Phase 4: Validate no circular dependencies on load
+	validate_no_circular_dependencies(&config)
+
 	return config, true
 }
 
@@ -581,17 +584,15 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 	plugins_file := fmt.aprintf("%s/plugins.%s", WAYU_CONFIG, ext)
 	defer delete(plugins_file)
 
-	// Read current configuration
-	config := read_plugin_config()
-	defer {
-		for plugin in config.plugins {
-			delete(plugin.name)
-			delete(plugin.url)
-			delete(plugin.installed_path)
-			delete(plugin.entry_file)
-		}
-		delete(config.plugins)
+	// Read current configuration (JSON format with dependencies support)
+	config, ok := read_plugin_config_json()
+	if !ok {
+		// Fall back to empty config if read fails
+		config.version = "1.0"
+		config.last_updated = get_iso8601_timestamp()
+		config.plugins = make([dynamic]PluginMetadata)
 	}
+	defer cleanup_plugin_config_json(&config)
 
 	// Build plugin loader script
 	sb := strings.builder_make()
@@ -629,6 +630,61 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 
 		// Detect plugin entry file
 		entry_file, found := detect_plugin_file(plugin.installed_path, plugin.name, shell)
+
+		// Phase 4: Check for missing or disabled dependencies
+		if len(plugin.dependencies) > 0 {
+			missing := make([dynamic]string)
+			disabled := make([dynamic]string)
+			defer delete(missing)
+			defer delete(disabled)
+
+			for dep_name in plugin.dependencies {
+				dep_plugin, dep_found := find_plugin_json(&config, dep_name)
+				if !dep_found {
+					append(&missing, dep_name)
+				} else if !dep_plugin.enabled {
+					append(&disabled, dep_name)
+				}
+			}
+
+			// Add warning comments for missing dependencies
+			if len(missing) > 0 {
+				warning_line := fmt.aprintf("# ⚠️  WARNING: Plugin '%s' has missing dependencies:\n", plugin.name)
+				strings.write_string(&sb, warning_line)
+				delete(warning_line)
+
+				for dep in missing {
+					dep_line := fmt.aprintf("#   - %s (not installed)\n", dep)
+					strings.write_string(&sb, dep_line)
+					delete(dep_line)
+				}
+
+				missing_str := strings.join(missing[:], " ")
+				install_line := fmt.aprintf("# Install with: wayu plugin add %s\n\n", missing_str)
+				strings.write_string(&sb, install_line)
+				delete(install_line)
+				delete(missing_str)
+			}
+
+			// Add warning comments for disabled dependencies
+			if len(disabled) > 0 {
+				warning_line := fmt.aprintf("# ⚠️  WARNING: Plugin '%s' has disabled dependencies:\n", plugin.name)
+				strings.write_string(&sb, warning_line)
+				delete(warning_line)
+
+				for dep in disabled {
+					dep_line := fmt.aprintf("#   - %s (disabled)\n", dep)
+					strings.write_string(&sb, dep_line)
+					delete(dep_line)
+				}
+
+				disabled_str := strings.join(disabled[:], " ")
+				enable_line := fmt.aprintf("# Enable with: wayu plugin enable %s\n\n", disabled_str)
+				strings.write_string(&sb, enable_line)
+				delete(enable_line)
+				delete(disabled_str)
+			}
+		}
 
 		if found {
 			// Single file to source
@@ -714,6 +770,226 @@ find_plugin :: proc(config: ^PluginConfig, name: string) -> (^InstalledPlugin, b
 is_plugin_installed :: proc(config: ^PluginConfig, name: string) -> bool {
 	_, found := find_plugin(config, name)
 	return found
+}
+
+// Find plugin in JSON config by name
+// Returns pointer to plugin in config array, or nil if not found
+find_plugin_json :: proc(config: ^PluginConfigJSON, name: string) -> (^PluginMetadata, bool) {
+	for &plugin in config.plugins {
+		if plugin.name == name {
+			return &plugin, true
+		}
+	}
+	return nil, false
+}
+
+// Validate that all of a plugin's dependencies are installed
+// Returns array of missing dependency names
+validate_plugin_dependencies :: proc(
+	plugin: ^PluginMetadata,
+	config: ^PluginConfigJSON,
+) -> [dynamic]string {
+	missing := make([dynamic]string)
+
+	for dep_name in plugin.dependencies {
+		_, found := find_plugin_json(config, dep_name)
+		if !found {
+			append(&missing, strings.clone(dep_name))
+		}
+	}
+
+	return missing
+}
+
+// Check if any other plugins depend on the given plugin
+// Returns array of plugin names that depend on this plugin
+check_plugin_dependents :: proc(
+	plugin_name: string,
+	config: ^PluginConfigJSON,
+) -> [dynamic]string {
+	dependents := make([dynamic]string)
+
+	for plugin in config.plugins {
+		// Skip the plugin itself
+		if plugin.name == plugin_name {
+			continue
+		}
+
+		// Check if this plugin lists plugin_name as a dependency
+		for dep_name in plugin.dependencies {
+			if dep_name == plugin_name {
+				append(&dependents, strings.clone(plugin.name))
+				break  // Each plugin only added once
+			}
+		}
+	}
+
+	return dependents
+}
+
+// Phase 4: Circular Dependency Detection (Three-Color DFS)
+
+// DFS color states for cycle detection
+DFSColor :: enum {
+	WHITE = 0,  // Not visited yet
+	GRAY  = 1,  // Currently being processed (in recursion stack)
+	BLACK = 2,  // Fully processed
+}
+
+// Result of circular dependency detection
+CycleDetectionResult :: struct {
+	has_cycle:  bool,
+	cycle_path: [dynamic]string,  // Empty if no cycle
+}
+
+// Build directed dependency graph from plugin config
+// Returns map: plugin_name -> [dependencies]
+build_dependency_graph :: proc(config: ^PluginConfigJSON) -> map[string][dynamic]string {
+	graph := make(map[string][dynamic]string)
+
+	for plugin in config.plugins {
+		// Initialize entry for this plugin
+		if plugin.name not_in graph {
+			graph[plugin.name] = make([dynamic]string)
+		}
+
+		// Add edges for each dependency
+		for dep_name in plugin.dependencies {
+			append(&graph[plugin.name], strings.clone(dep_name))
+		}
+	}
+
+	return graph
+}
+
+// Reconstruct cycle path from parent pointers
+reconstruct_cycle :: proc(
+	cycle_start: string,
+	cycle_end: string,
+	parent: map[string]string,
+) -> [dynamic]string {
+	path := make([dynamic]string)
+
+	// Build path from cycle_end back to cycle_start
+	append(&path, strings.clone(cycle_start))
+	current := cycle_end
+	for current != cycle_start {
+		append(&path, strings.clone(current))
+		current = parent[current]
+	}
+	append(&path, strings.clone(cycle_start))  // Close the cycle
+
+	// Reverse to get correct order: A → B → C → A
+	for i := 0; i < len(path) / 2; i += 1 {
+		j := len(path) - 1 - i
+		path[i], path[j] = path[j], path[i]
+	}
+
+	return path
+}
+
+// DFS visit for cycle detection
+// Returns true if cycle found
+dfs_visit :: proc(
+	node: string,
+	graph: map[string][dynamic]string,
+	color: ^map[string]DFSColor,
+	parent: ^map[string]string,
+	cycle_start: ^string,
+	cycle_end: ^string,
+) -> bool {
+	color[node] = .GRAY  // Mark as being processed
+
+	// Visit all dependencies
+	if node in graph {
+		for neighbor in graph[node] {
+			if color[neighbor] == .WHITE {
+				parent[neighbor] = node
+				if dfs_visit(neighbor, graph, color, parent, cycle_start, cycle_end) {
+					return true
+				}
+			} else if color[neighbor] == .GRAY {
+				// Back edge detected - cycle found!
+				cycle_start^ = neighbor
+				cycle_end^ = node
+				return true
+			}
+			// BLACK nodes are fully processed, skip
+		}
+	}
+
+	color[node] = .BLACK  // Mark as fully processed
+	return false
+}
+
+// Detect circular dependencies in plugin dependency graph
+// Uses three-color DFS with parent tracking for cycle reconstruction
+detect_circular_dependencies :: proc(
+	graph: map[string][dynamic]string,
+) -> CycleDetectionResult {
+	color := make(map[string]DFSColor)
+	parent := make(map[string]string)
+	defer delete(color)
+	defer delete(parent)
+
+	// Initialize all nodes as WHITE (unvisited)
+	for plugin_name in graph {
+		color[plugin_name] = .WHITE
+	}
+
+	cycle_start: string = ""
+	cycle_end: string = ""
+
+	// Run DFS from each unvisited node
+	for plugin_name in graph {
+		if color[plugin_name] == .WHITE {
+			if dfs_visit(plugin_name, graph, &color, &parent, &cycle_start, &cycle_end) {
+				// Cycle found! Reconstruct path
+				cycle_path := reconstruct_cycle(cycle_start, cycle_end, parent)
+				return CycleDetectionResult{
+					has_cycle = true,
+					cycle_path = cycle_path,
+				}
+			}
+		}
+	}
+
+	// No cycle found
+	return CycleDetectionResult{ has_cycle = false }
+}
+
+// Validate that plugin configuration has no circular dependencies
+// Exits with error if circular dependency detected
+validate_no_circular_dependencies :: proc(config: ^PluginConfigJSON) {
+	// Build dependency graph
+	graph := build_dependency_graph(config)
+	defer {
+		for _, deps in graph {
+			delete(deps)
+		}
+		delete(graph)
+	}
+
+	// Detect cycles
+	result := detect_circular_dependencies(graph)
+	defer if result.has_cycle do delete(result.cycle_path)
+
+	// If cycle found, print error and exit
+	if result.has_cycle {
+		cycle_str := strings.join(result.cycle_path[:], " → ")
+
+		print_error("Circular dependency detected: %s", cycle_str)
+		fmt.println()
+		fmt.println("Circular dependencies prevent determining a valid plugin load order.")
+		fmt.println()
+		fmt.println("Suggestions:")
+		fmt.println("  • Review the dependencies for these plugins")
+		fmt.println("  • Remove the dependency that creates the cycle")
+		fmt.println("  • Consider if all these dependencies are necessary")
+
+		delete(cycle_str)  // Clean up before exit
+		os.exit(EXIT_DATAERR)
+	}
 }
 
 // Resolve plugin name or URL to PluginInfo
@@ -1274,21 +1550,18 @@ handle_plugin_add :: proc(args: []string) {
 	defer delete(info.description)
 
 	// Read current config
-	config := read_plugin_config()
-	defer {
-		for plugin in config.plugins {
-			delete(plugin.name)
-			delete(plugin.url)
-			delete(plugin.installed_path)
-			delete(plugin.entry_file)
-		}
-		delete(config.plugins)
+	config, ok := read_plugin_config_json()
+	if !ok {
+		print_error_simple("Error: Failed to read plugin configuration")
+		os.exit(EXIT_CONFIG)
 	}
+	defer cleanup_plugin_config_json(&config)
 
 	// Check if already installed
-	if is_plugin_installed(&config, info.name) {
+	_, found := find_plugin_json(&config, info.name)
+	if found {
 		print_warning("Plugin '%s' is already installed", info.name)
-		os.exit(0)
+		os.exit(EXIT_SUCCESS)
 	}
 
 	print_header("Installing Plugin", EMOJI_COMMAND)
@@ -1329,19 +1602,30 @@ handle_plugin_add :: proc(args: []string) {
 	print_success("Cloned plugin repository")
 
 	// Add to config
-	new_plugin := InstalledPlugin{
+	git_info := get_git_info(plugin_path)
+
+	new_plugin := PluginMetadata{
 		name = strings.clone(info.name),
 		url = strings.clone(info.url),
 		enabled = true,
 		shell = info.shell,
 		installed_path = strings.clone(plugin_path),
+		entry_file = "",  // Will be detected by generate_plugins_file
+		git = git_info,
+		dependencies = make([dynamic]string),  // Phase 4: Initialize empty
+		priority = 100,  // Phase 5: Default priority
+		config = make(map[string]string),  // Phase 6: Empty config
+		conflicts = ConflictInfo{},  // Phase 6: No conflicts yet
 	}
 
 	append(&config.plugins, new_plugin)
 
+	// Phase 4: Validate no circular dependencies before writing config
+	validate_no_circular_dependencies(&config)
+
 	// Create backup before writing
 	if !DRY_RUN {
-		config_file := get_plugins_config_file()
+		config_file := get_plugins_json_config_file()
 		defer delete(config_file)
 
 		if os.exists(config_file) {
@@ -1353,9 +1637,9 @@ handle_plugin_add :: proc(args: []string) {
 	}
 
 	// Write config
-	if !write_plugin_config(&config) {
+	if !write_plugin_config_json(&config) {
 		print_error_simple("Error: Failed to write plugin configuration")
-		os.exit(1)
+		os.exit(EXIT_IOERR)
 	}
 
 	// Generate plugins file for current shell
@@ -1496,16 +1780,13 @@ handle_plugin_list :: proc(args: []string) {
 
 // Handle plugin remove command
 handle_plugin_remove :: proc(args: []string) {
-	config := read_plugin_config()
-	defer {
-		for plugin in config.plugins {
-			delete(plugin.name)
-			delete(plugin.url)
-			delete(plugin.installed_path)
-			delete(plugin.entry_file)
-		}
-		delete(config.plugins)
+	// Read plugin configuration
+	config, ok := read_plugin_config_json()
+	if !ok {
+		print_error_simple("Error: Failed to read plugin configuration")
+		os.exit(EXIT_CONFIG)
 	}
+	defer cleanup_plugin_config_json(&config)
 
 	if len(config.plugins) == 0 {
 		print_info("No plugins installed")
@@ -1529,10 +1810,47 @@ handle_plugin_remove :: proc(args: []string) {
 	plugin_name := args[0]
 
 	// Find plugin
-	plugin_ptr, found := find_plugin(&config, plugin_name)
+	plugin_ptr, found := find_plugin_json(&config, plugin_name)
 	if !found {
 		print_error_simple("Error: Plugin '%s' not found", plugin_name)
-		os.exit(1)
+		os.exit(EXIT_DATAERR)
+	}
+
+	// Phase 4: Check if other plugins depend on this one
+	dependents := check_plugin_dependents(plugin_name, &config)
+	defer delete(dependents)
+
+	if len(dependents) > 0 {
+		print_warning("Warning: The following plugins depend on '%s':", plugin_name)
+		for dep in dependents {
+			fmt.printfln("  - %s", dep)
+		}
+		fmt.println()
+		print_warning("Removing this plugin may break these plugins.")
+		fmt.println()
+
+		// In CLI mode: respect --yes flag
+		if !YES_FLAG {
+			fmt.print("Continue anyway? [y/N] ")
+
+			// Read user input
+			input_buf: [256]byte
+			n, err := os.read(os.stdin, input_buf[:])
+			if err != nil || n == 0 {
+				fmt.println("Cancelled.")
+				os.exit(EXIT_SUCCESS)
+			}
+
+			response := string(input_buf[:n])
+			response = strings.trim_space(response)
+			response = strings.to_lower(response)
+			defer delete(response)
+
+			if response != "y" && response != "yes" {
+				fmt.println("Cancelled.")
+				os.exit(EXIT_SUCCESS)
+			}
+		}
 	}
 
 	print_header("Removing Plugin", EMOJI_COMMAND)
@@ -1551,25 +1869,22 @@ handle_plugin_remove :: proc(args: []string) {
 		result := libc.system(cmd_cstr)
 		if result != 0 {
 			print_error_simple("Error: Failed to remove plugin directory")
-			os.exit(1)
+			os.exit(EXIT_IOERR)
 		}
 	}
 
 	print_success("Removed plugin directory")
 
 	// Remove from config
-	new_plugins := make([dynamic]InstalledPlugin)
+	new_plugins := make([dynamic]PluginMetadata)
 	defer delete(new_plugins)
 
-	for plugin in config.plugins {
+	for &plugin in config.plugins {
 		if plugin.name != plugin_name {
 			append(&new_plugins, plugin)
 		} else {
 			// Clean up memory for removed plugin
-			delete(plugin.name)
-			delete(plugin.url)
-			delete(plugin.installed_path)
-			delete(plugin.entry_file)
+			cleanup_plugin_metadata(&plugin)
 		}
 	}
 
@@ -1577,7 +1892,7 @@ handle_plugin_remove :: proc(args: []string) {
 
 	// Create backup before writing
 	if !DRY_RUN {
-		config_file := get_plugins_config_file()
+		config_file := get_plugins_json_config_file()
 		defer delete(config_file)
 
 		if os.exists(config_file) {
@@ -1589,15 +1904,15 @@ handle_plugin_remove :: proc(args: []string) {
 	}
 
 	// Write config
-	if !write_plugin_config(&config) {
+	if !write_plugin_config_json(&config) {
 		print_error_simple("Error: Failed to write plugin configuration")
-		os.exit(1)
+		os.exit(EXIT_IOERR)
 	}
 
 	// Generate plugins file
 	if !generate_plugins_file(DETECTED_SHELL) {
 		print_error_simple("Error: Failed to generate plugins loader")
-		os.exit(1)
+		os.exit(EXIT_IOERR)
 	}
 
 	print_success("Plugin '%s' removed successfully", plugin_name)
