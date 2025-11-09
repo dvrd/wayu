@@ -287,8 +287,39 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 
 	final_content: string
 	if !exists {
-		// Append new entry
-		final_content = fmt.aprintf("%s\n%s", content_str, line_to_add)
+		// PATH entries: insert into WAYU_PATHS array before closing paren
+		// Other entries: append to end of file
+		if spec.type == .PATH {
+			// Find closing paren of WAYU_PATHS array by searching line by line
+			array_close_line_idx := -1
+			found_array_start := false
+
+			for line, i in lines {
+				trimmed := strings.trim_space(line)
+				// Look for array declaration
+				if strings.contains(line, "WAYU_PATHS=(") {
+					found_array_start = true
+					continue
+				}
+				// After finding array start, look for closing paren on its own line
+				if found_array_start && trimmed == ")" {
+					array_close_line_idx = i
+					break
+				}
+			}
+
+			if array_close_line_idx == -1 {
+				// Fallback to append if array not found (shouldn't happen with proper template)
+				final_content = fmt.aprintf("%s\n%s", content_str, line_to_add)
+			} else {
+				// Insert new line before closing paren line
+				lines[array_close_line_idx] = fmt.aprintf("%s\n)", line_to_add)
+				final_content = strings.join(lines, "\n")
+			}
+		} else {
+			// Append new entry for non-PATH types
+			final_content = fmt.aprintf("%s\n%s", content_str, line_to_add)
+		}
 	} else {
 		// Rejoin modified lines
 		final_content = strings.join(lines, "\n")

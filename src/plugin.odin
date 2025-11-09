@@ -1,8 +1,10 @@
+#+feature dynamic-literals
 package wayu
 
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:strconv"
 import "core:slice"
 import "core:time"
 import "core:c/libc"
@@ -613,12 +615,58 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 
 	strings.write_string(&sb, "# Load enabled plugins\n\n")
 
-	// Generate source statements for enabled plugins
+	// Phase 5: Resolve load order with priority
+	load_order, order_ok := resolve_dependencies_with_priority(&config)
+	if !order_ok {
+		fmt.eprintln("Error: Failed to resolve plugin load order (circular dependency)")
+		return false
+	}
+	defer {
+		for name in load_order {
+			delete(name)
+		}
+		delete(load_order)
+	}
+
+	// Phase 6: Detect conflicts between enabled plugins
+	detect_conflicts(&config)
+
+	// Check if any conflicts were detected
+	conflicts_detected := false
 	for plugin in config.plugins {
-		// Skip if disabled
-		if !plugin.enabled {
+		if plugin.enabled && plugin.conflicts.detected {
+			conflicts_detected = true
+			break
+		}
+	}
+
+	// Add global conflict warning header if conflicts exist
+	if conflicts_detected {
+		strings.write_string(&sb, "# ⚠️  CONFLICT WARNINGS\n")
+		strings.write_string(&sb, "# The following plugins have potential conflicts:\n")
+
+		// List all conflicting plugins
+		for plugin in config.plugins {
+			if plugin.enabled && plugin.conflicts.detected {
+				conflicts_str := strings.join(plugin.conflicts.conflicting_plugins[:], ", ")
+				warning := fmt.aprintf("#   - %s conflicts with: %s\n", plugin.name, conflicts_str)
+				strings.write_string(&sb, warning)
+				delete(warning)
+				delete(conflicts_str)
+			}
+		}
+
+		strings.write_string(&sb, "# This may cause unexpected behavior. Review your plugin configuration.\n\n")
+	}
+
+	// Generate source statements for enabled plugins in priority/dependency order
+	for plugin_name in load_order {
+		// Find plugin metadata
+		plugin_ptr, found_plugin := find_plugin_json(&config, plugin_name)
+		if !found_plugin || !plugin_ptr.enabled {
 			continue
 		}
+		plugin := plugin_ptr^
 
 		// Skip if shell incompatible
 		if plugin.shell == .ZSH && shell == .BASH {
@@ -686,9 +734,16 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 			}
 		}
 
+		// Phase 6: Add per-plugin conflict warning if detected
+		if plugin.conflicts.detected {
+			conflict_warning := fmt.aprintf("# ⚠️  WARNING: %s has conflicts\n", plugin.name)
+			strings.write_string(&sb, conflict_warning)
+			delete(conflict_warning)
+		}
+
 		if found {
 			// Single file to source
-			comment := fmt.aprintf("# %s\n", plugin.name)
+			comment := fmt.aprintf("# %s (priority: %d)\n", plugin.name, plugin.priority)
 			strings.write_string(&sb, comment)
 			delete(comment)
 
@@ -698,7 +753,7 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 			delete(source_line)
 		} else {
 			// Source all .{zsh,bash} files in directory
-			comment := fmt.aprintf("# %s (all .%s files)\n", plugin.name, ext)
+			comment := fmt.aprintf("# %s (priority: %d, all .%s files)\n", plugin.name, plugin.priority, ext)
 			strings.write_string(&sb, comment)
 			delete(comment)
 
@@ -989,6 +1044,329 @@ validate_no_circular_dependencies :: proc(config: ^PluginConfigJSON) {
 
 		delete(cycle_str)  // Clean up before exit
 		os.exit(EXIT_DATAERR)
+	}
+}
+
+// Phase 5: Resolve dependencies with priority-based ordering
+// Dependencies are resolved first (dependency order), then sorted by priority
+// Returns plugins in load order: dependencies first, then by priority
+resolve_dependencies_with_priority :: proc(config: ^PluginConfigJSON) -> (order: [dynamic]string, ok: bool) {
+	// Build dependency graph
+	graph := build_dependency_graph(config)
+	defer {
+		for _, edges in graph {
+			delete(edges)
+		}
+		delete(graph)
+	}
+
+	// Topological sort with DFS (respects dependencies)
+	visited := make(map[string]bool)
+	defer delete(visited)
+
+	temp_mark := make(map[string]bool)
+	defer delete(temp_mark)
+
+	order = make([dynamic]string)
+
+	// Visit all enabled plugins
+	for plugin in config.plugins {
+		if !plugin.enabled {
+			continue
+		}
+
+		if !dfs_visit_with_priority(plugin.name, &graph, &visited, &temp_mark, &order, config) {
+			// Circular dependency detected
+			delete(order)
+			return order, false
+		}
+	}
+
+	// Now sort by priority (stable sort preserves dependency order)
+	// Create array of (name, priority) pairs for sorting
+	PriorityPair :: struct {
+		name: string,
+		priority: int,
+	}
+
+	pairs := make([dynamic]PriorityPair)
+	defer delete(pairs)
+
+	// Build priority map first
+	priority_map := make(map[string]int)
+	defer delete(priority_map)
+
+	for plugin in config.plugins {
+		priority_map[plugin.name] = plugin.priority
+	}
+
+	// Create pairs array from order
+	for name in order {
+		pair := PriorityPair{
+			name = name,
+			priority = priority_map[name],
+		}
+		append(&pairs, pair)
+	}
+
+	// Stable sort pairs by priority
+	slice.stable_sort_by(pairs[:], proc(a, b: PriorityPair) -> bool {
+		return a.priority < b.priority
+	})
+
+	// Clean up old order strings before replacing
+	for name in order {
+		delete(name)
+	}
+	clear(&order)
+
+	// Extract sorted names back into order array
+	for pair in pairs {
+		append(&order, strings.clone(pair.name))
+	}
+
+	return order, true
+}
+
+// Phase 5: DFS visit for topological sort with priority awareness
+dfs_visit_with_priority :: proc(
+	node: string,
+	graph: ^map[string][dynamic]string,
+	visited: ^map[string]bool,
+	temp_mark: ^map[string]bool,
+	order: ^[dynamic]string,
+	config: ^PluginConfigJSON,
+) -> bool {
+	// Already processed
+	if visited[node] {
+		return true
+	}
+
+	// Cycle detection
+	if temp_mark[node] {
+		return false
+	}
+
+	temp_mark[node] = true
+
+	// Visit dependencies first
+	if deps, has_deps := graph[node]; has_deps {
+		for dep in deps {
+			if !dfs_visit_with_priority(dep, graph, visited, temp_mark, order, config) {
+				return false
+			}
+		}
+	}
+
+	delete_key(temp_mark, node)
+	visited[node] = true
+	append(order, strings.clone(node))
+
+	return true
+}
+
+// Phase 6: Conflict Detection
+
+// Scan plugin for potential conflicts (exports, functions, aliases)
+// Parses the plugin's entry file and populates ConflictInfo
+scan_plugin_conflicts :: proc(plugin: ^PluginMetadata) -> bool {
+	// Detect the entry file first
+	entry_file, found := detect_plugin_file(plugin.installed_path, plugin.name, DETECTED_SHELL)
+
+	// If no specific entry file found, return true (no conflicts to scan)
+	if !found {
+		return true
+	}
+	defer delete(entry_file)
+
+	if !os.exists(entry_file) {
+		return true
+	}
+
+	content, read_ok := os.read_entire_file_from_filename(entry_file)
+	if !read_ok {
+		return false
+	}
+	defer delete(content)
+
+	script := string(content)
+	lines := strings.split_lines(script)
+	defer delete(lines)
+
+	// Clear existing conflict data
+	delete(plugin.conflicts.env_vars)
+	delete(plugin.conflicts.functions)
+	delete(plugin.conflicts.aliases_)
+	plugin.conflicts.env_vars = make([dynamic]string)
+	plugin.conflicts.functions = make([dynamic]string)
+	plugin.conflicts.aliases_ = make([dynamic]string)
+
+	// Scan for exports, functions, and aliases
+	for line in lines {
+		trimmed := strings.trim_space(line)
+
+		// Skip comments and empty lines
+		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
+			continue
+		}
+
+		// Check for exports: export VAR=value
+		if strings.has_prefix(trimmed, "export ") {
+			after_export := trimmed[7:]  // Skip "export "
+			parts := strings.split(after_export, "=")
+			if len(parts) >= 1 {
+				var_name := strings.trim_space(parts[0])
+				if len(var_name) > 0 {
+					append(&plugin.conflicts.env_vars, strings.clone(var_name))
+				}
+			}
+			delete(parts)
+		}
+
+		// Check for functions (bash/zsh syntax)
+		// Pattern 1: function name() {
+		// Pattern 2: name() {
+		if strings.contains(trimmed, "()") {
+			func_name := ""
+
+			if strings.has_prefix(trimmed, "function ") {
+				// Pattern: function name() {
+				after_function := trimmed[9:]  // Skip "function "
+				paren_idx := strings.index(after_function, "(")
+				if paren_idx > 0 {
+					func_name = strings.trim_space(after_function[:paren_idx])
+				}
+			} else {
+				// Pattern: name() {
+				paren_idx := strings.index(trimmed, "()")
+				if paren_idx > 0 {
+					func_name = strings.trim_space(trimmed[:paren_idx])
+				}
+			}
+
+			if len(func_name) > 0 {
+				append(&plugin.conflicts.functions, strings.clone(func_name))
+			}
+		}
+
+		// Check for aliases: alias name=value
+		if strings.has_prefix(trimmed, "alias ") {
+			after_alias := trimmed[6:]  // Skip "alias "
+			parts := strings.split(after_alias, "=")
+			if len(parts) >= 1 {
+				alias_name := strings.trim_space(parts[0])
+				if len(alias_name) > 0 {
+					append(&plugin.conflicts.aliases_, strings.clone(alias_name))
+				}
+			}
+			delete(parts)
+		}
+	}
+
+	return true
+}
+
+// Detect conflicts between all enabled plugins
+// Compares env vars, functions, and aliases to find duplicates
+detect_conflicts :: proc(config: ^PluginConfigJSON) {
+	// First, scan all enabled plugins for their declarations
+	for &plugin in config.plugins {
+		if !plugin.enabled {
+			continue
+		}
+
+		scan_plugin_conflicts(&plugin)
+	}
+
+	// Now compare plugins pairwise to detect conflicts
+	for i := 0; i < len(config.plugins); i += 1 {
+		plugin_a := &config.plugins[i]
+
+		if !plugin_a.enabled {
+			continue
+		}
+
+		// Clear previous conflict tracking
+		delete(plugin_a.conflicts.conflicting_plugins)
+		plugin_a.conflicts.conflicting_plugins = make([dynamic]string)
+		plugin_a.conflicts.detected = false
+
+		for j := i + 1; j < len(config.plugins); j += 1 {
+			plugin_b := &config.plugins[j]
+
+			if !plugin_b.enabled {
+				continue
+			}
+
+			has_conflict := false
+
+			// Check environment variable conflicts
+			for var_a in plugin_a.conflicts.env_vars {
+				for var_b in plugin_b.conflicts.env_vars {
+					if var_a == var_b {
+						has_conflict = true
+						break
+					}
+				}
+				if has_conflict do break
+			}
+
+			// Check function conflicts
+			if !has_conflict {
+				for func_a in plugin_a.conflicts.functions {
+					for func_b in plugin_b.conflicts.functions {
+						if func_a == func_b {
+							has_conflict = true
+							break
+						}
+					}
+					if has_conflict do break
+				}
+			}
+
+			// Check alias conflicts
+			if !has_conflict {
+				for alias_a in plugin_a.conflicts.aliases_ {
+					for alias_b in plugin_b.conflicts.aliases_ {
+						if alias_a == alias_b {
+							has_conflict = true
+							break
+						}
+					}
+					if has_conflict do break
+				}
+			}
+
+			// If conflict found, mark both plugins
+			if has_conflict {
+				plugin_a.conflicts.detected = true
+				plugin_b.conflicts.detected = true
+
+				// Add to conflicting plugins list (avoid duplicates)
+				already_tracked := false
+				for existing in plugin_a.conflicts.conflicting_plugins {
+					if existing == plugin_b.name {
+						already_tracked = true
+						break
+					}
+				}
+				if !already_tracked {
+					append(&plugin_a.conflicts.conflicting_plugins, strings.clone(plugin_b.name))
+				}
+
+				// Also track in plugin_b
+				already_tracked_b := false
+				for existing in plugin_b.conflicts.conflicting_plugins {
+					if existing == plugin_a.name {
+						already_tracked_b = true
+						break
+					}
+				}
+				if !already_tracked_b {
+					append(&plugin_b.conflicts.conflicting_plugins, strings.clone(plugin_a.name))
+				}
+			}
+		}
 	}
 }
 
@@ -1526,6 +1904,95 @@ handle_plugin_disable :: proc(args: []string) {
 	os.exit(EXIT_SUCCESS)
 }
 
+// Handle plugin priority command - set plugin load priority
+// Lower priority numbers load first (default: 100)
+// CLI-only command (no interactive mode)
+handle_plugin_priority :: proc(args: []string) {
+	// 1. Validate arguments
+	if len(args) < 2 {
+		print_error("Missing required arguments: plugin name and priority")
+		fmt.println()
+		fmt.println("Usage: wayu plugin priority <name> <number>")
+		fmt.println()
+		fmt.println("  Lower numbers load first (default: 100)")
+		fmt.println()
+		fmt.println("Example:")
+		fmt.println("  wayu plugin priority zsh-autosuggestions 50")
+		os.exit(EXIT_USAGE)
+	}
+
+	plugin_name := args[0]
+	priority_str := args[1]
+
+	// 2. Parse priority number
+	priority, ok := strconv.parse_int(priority_str)
+	if !ok {
+		print_error_simple("Error: Invalid priority number '%s'", priority_str)
+		fmt.println()
+		fmt.println("Priority must be a valid integer")
+		os.exit(EXIT_USAGE)
+	}
+
+	// 3. Read config
+	config, read_ok := read_plugin_config_json()
+	if !read_ok {
+		os.exit(EXIT_CONFIG)
+	}
+	defer cleanup_plugin_config_json(&config)
+
+	// 4. Find plugin
+	plugin, found := find_plugin_json(&config, plugin_name)
+	if !found {
+		print_error_simple("Error: Plugin '%s' not found", plugin_name)
+		fmt.println()
+		fmt.println("Use 'wayu plugin list' to see installed plugins")
+		os.exit(EXIT_DATAERR)
+	}
+
+	if DRY_RUN {
+		print_info("[DRY RUN] Would set priority of '%s' to %d (current: %d)",
+			plugin_name, priority, plugin.priority)
+		return
+	}
+
+	// Display header
+	print_header("Setting Plugin Priority", EMOJI_COMMAND)
+	fmt.println()
+
+	old_priority := plugin.priority
+	plugin.priority = priority
+
+	// 5. Create backup before modifying
+	config_file := get_plugins_json_config_file()
+	defer delete(config_file)
+
+	if os.exists(config_file) {
+		backup_path, backup_ok := create_backup(config_file)
+		if backup_ok {
+			defer delete(backup_path)
+		} else {
+			print_warning("Warning: Failed to create backup")
+		}
+	}
+
+	// 6. Save config
+	if !write_plugin_config_json(&config) {
+		print_error_simple("Error: Failed to save configuration")
+		os.exit(EXIT_CANTCREAT)
+	}
+
+	// 7. Regenerate loader (load order changed)
+	if !generate_plugins_file(DETECTED_SHELL) {
+		print_warning("Warning: Failed to regenerate plugin loader")
+		// Don't exit - config was saved successfully
+	}
+
+	// 8. Success
+	print_success("Updated priority for '%s': %d → %d", plugin_name, old_priority, priority)
+	fmt.println()
+	fmt.println("Restart your shell for changes to take effect")
+}
+
 // Command handlers
 
 // Handle plugin add command
@@ -1684,11 +2151,12 @@ handle_plugin_list :: proc(args: []string) {
 		fmt.println()
 
 		// Create table
-		table := new_table([]string{"Name", "Status", "Shell", "URL"})
+		table := new_table([]string{"Name", "Status", "Priority", "Shell", "URL"})
 		defer delete(table.rows)
 
 		for plugin in config.plugins {
 			status := plugin.enabled ? "✓ Active" : "○ Disabled"
+			priority_str := fmt.aprintf("%d", plugin.priority)
 			shell_str := shell_compat_to_string(plugin.shell)
 
 			// Truncate URL for display
@@ -1697,8 +2165,9 @@ handle_plugin_list :: proc(args: []string) {
 				url_display = fmt.aprintf("%s...", plugin.url[:37])
 			}
 
-			row := []string{plugin.name, status, shell_str, url_display}
+			row := []string{plugin.name, status, priority_str, shell_str, url_display}
 			table_add_row(&table, row)
+			delete(priority_str)
 
 			if len(url_display) > 40 {
 				delete(url_display)
@@ -1740,12 +2209,13 @@ handle_plugin_list :: proc(args: []string) {
 		print_header("Installed Plugins", EMOJI_COMMAND)
 		fmt.println()
 
-		// Create table
-		table := new_table([]string{"Name", "Status", "Shell", "URL"})
+		// Create table (old format fallback - priority defaults to 100)
+		table := new_table([]string{"Name", "Status", "Priority", "Shell", "URL"})
 		defer delete(table.rows)
 
 		for plugin in config.plugins {
 			status := plugin.enabled ? "✓ Active" : "○ Disabled"
+			priority_str := fmt.aprintf("%d", 100)  // Old format doesn't have priority field
 			shell_str := shell_compat_to_string(plugin.shell)
 
 			// Truncate URL for display
@@ -1754,8 +2224,9 @@ handle_plugin_list :: proc(args: []string) {
 				url_display = fmt.aprintf("%s...", plugin.url[:37])
 			}
 
-			row := []string{plugin.name, status, shell_str, url_display}
+			row := []string{plugin.name, status, priority_str, shell_str, url_display}
 			table_add_row(&table, row)
+			delete(priority_str)
 
 			if len(url_display) > 40 {
 				delete(url_display)
@@ -2046,6 +2517,8 @@ handle_plugin_command :: proc(action: Action, args: []string) {
 		handle_plugin_enable(args)
 	case .DISABLE:
 		handle_plugin_disable(args)
+	case .PRIORITY:
+		handle_plugin_priority(args)
 	case .HELP:
 		print_plugin_help()
 	case:
@@ -2072,6 +2545,7 @@ print_plugin_help :: proc() {
 	fmt.println("  list                    List installed plugins")
 	fmt.println("  enable <name>           Enable disabled plugin")
 	fmt.println("  disable <name>          Disable plugin without removing")
+	fmt.println("  priority <name> <num>   Set plugin load priority (lower = earlier)")
 	fmt.println("  get <name>              Show plugin info and copy URL to clipboard")
 	fmt.println("  check                   Check all plugins for updates")
 	fmt.println("  update <name|--all>     Update specific plugin or all plugins")
@@ -2108,6 +2582,9 @@ print_plugin_help :: proc() {
 	fmt.println()
 	fmt.printf("  %s# Re-enable a disabled plugin%s\n", get_muted(), RESET)
 	fmt.printf("  %swayu plugin enable zsh-autosuggestions%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Set load priority (lower loads first)%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin priority zsh-autosuggestions 50%s\n", get_muted(), RESET)
 
 	// Popular plugins section
 	fmt.printf("\n%s%sPOPULAR PLUGINS:%s\n", BOLD, get_secondary(), RESET)
