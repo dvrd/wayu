@@ -1283,3 +1283,636 @@ test_build_dependency_graph :: proc(t: ^testing.T) {
 	testing.expect(t, len(graph["A"]) == 2, "A should have 2 dependencies")
 	testing.expect(t, len(graph["B"]) == 1, "B should have 1 dependency")
 }
+
+// === PHASE 5: LOAD PRIORITIZATION TESTS ===
+
+@(test)
+test_set_plugin_priority :: proc(t: ^testing.T) {
+	// Test setting plugin priority via metadata
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = "2025-10-27T00:00:00Z",
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer delete(config.plugins)
+
+	plugin := wayu.PluginMetadata{
+		name = "test-plugin",
+		enabled = true,
+		priority = 100,  // Default
+		dependencies = make([dynamic]string),
+	}
+	append(&config.plugins, plugin)
+
+	// Verify default priority
+	testing.expect(t, config.plugins[0].priority == 100, "Default priority should be 100")
+
+	// Change priority
+	config.plugins[0].priority = 50
+
+	// Verify changed priority
+	testing.expect(t, config.plugins[0].priority == 50, "Priority should be updated to 50")
+}
+
+@(test)
+test_priority_ordering_no_deps :: proc(t: ^testing.T) {
+	// Test that plugins are ordered by priority when no dependencies exist
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = "2025-10-27T00:00:00Z",
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer delete(config.plugins)
+
+	// Add plugins in reverse priority order
+	plugin_c := wayu.PluginMetadata{
+		name = "plugin-c",
+		enabled = true,
+		priority = 150,
+		dependencies = make([dynamic]string),
+	}
+	append(&config.plugins, plugin_c)
+
+	plugin_a := wayu.PluginMetadata{
+		name = "plugin-a",
+		enabled = true,
+		priority = 50,
+		dependencies = make([dynamic]string),
+	}
+	append(&config.plugins, plugin_a)
+
+	plugin_b := wayu.PluginMetadata{
+		name = "plugin-b",
+		enabled = true,
+		priority = 100,
+		dependencies = make([dynamic]string),
+	}
+	append(&config.plugins, plugin_b)
+
+	// Resolve load order
+	order, ok := wayu.resolve_dependencies_with_priority(&config)
+	defer {
+		for name in order {
+			delete(name)
+		}
+		delete(order)
+	}
+
+	testing.expect(t, ok, "Should resolve load order successfully")
+	testing.expect(t, len(order) == 3, "Should have 3 plugins in order")
+
+	// Verify order: plugin-a (50) → plugin-b (100) → plugin-c (150)
+	testing.expect(t, order[0] == "plugin-a", "First should be plugin-a (priority 50)")
+	testing.expect(t, order[1] == "plugin-b", "Second should be plugin-b (priority 100)")
+	testing.expect(t, order[2] == "plugin-c", "Third should be plugin-c (priority 150)")
+}
+
+@(test)
+test_dependencies_override_priority :: proc(t: ^testing.T) {
+	// Test that dependencies always override priority
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = "2025-10-27T00:00:00Z",
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer delete(config.plugins)
+
+	// Plugin A has high priority (10) but depends on Plugin B
+	plugin_a := wayu.PluginMetadata{
+		name = "plugin-a",
+		enabled = true,
+		priority = 10,  // High priority
+		dependencies = make([dynamic]string),
+	}
+	append(&plugin_a.dependencies, "plugin-b")
+	append(&config.plugins, plugin_a)
+
+	// Plugin B has low priority (200) but no dependencies
+	plugin_b := wayu.PluginMetadata{
+		name = "plugin-b",
+		enabled = true,
+		priority = 200,  // Low priority
+		dependencies = make([dynamic]string),
+	}
+	append(&config.plugins, plugin_b)
+
+	// Resolve load order
+	order, ok := wayu.resolve_dependencies_with_priority(&config)
+	defer {
+		for name in order {
+			delete(name)
+		}
+		delete(order)
+	}
+
+	testing.expect(t, ok, "Should resolve load order successfully")
+	testing.expect(t, len(order) == 2, "Should have 2 plugins in order")
+
+	// Verify order: plugin-b MUST load before plugin-a despite lower priority
+	testing.expect(t, order[0] == "plugin-b", "plugin-b must load first (dependency)")
+	testing.expect(t, order[1] == "plugin-a", "plugin-a loads second (depends on b)")
+}
+
+@(test)
+test_priority_with_mixed_dependencies :: proc(t: ^testing.T) {
+	// Test priority ordering with partial dependency chains
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = "2025-10-27T00:00:00Z",
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer delete(config.plugins)
+
+	// Plugin A: priority 50, depends on B
+	plugin_a := wayu.PluginMetadata{
+		name = "plugin-a",
+		enabled = true,
+		priority = 50,
+		dependencies = make([dynamic]string),
+	}
+	append(&plugin_a.dependencies, "plugin-b")
+	append(&config.plugins, plugin_a)
+
+	// Plugin B: priority 150, no dependencies
+	plugin_b := wayu.PluginMetadata{
+		name = "plugin-b",
+		enabled = true,
+		priority = 150,
+		dependencies = make([dynamic]string),
+	}
+	append(&config.plugins, plugin_b)
+
+	// Plugin C: priority 75, no dependencies (between A and B)
+	plugin_c := wayu.PluginMetadata{
+		name = "plugin-c",
+		enabled = true,
+		priority = 75,
+		dependencies = make([dynamic]string),
+	}
+	append(&config.plugins, plugin_c)
+
+	// Resolve load order
+	order, ok := wayu.resolve_dependencies_with_priority(&config)
+	defer {
+		for name in order {
+			delete(name)
+		}
+		delete(order)
+	}
+
+	testing.expect(t, ok, "Should resolve load order successfully")
+	testing.expect(t, len(order) == 3, "Should have 3 plugins in order")
+
+	// Expected order:
+	// 1. plugin-c (priority 75, no deps)
+	// 2. plugin-b (priority 150, no deps but A depends on it)
+	// 3. plugin-a (priority 50 but depends on B)
+
+	// plugin-c should be first (lowest priority among independent plugins)
+	testing.expect(t, order[0] == "plugin-c", "plugin-c should load first (priority 75, no deps)")
+
+	// plugin-b MUST come before plugin-a (dependency)
+	b_idx := -1
+	a_idx := -1
+	for i in 0..<len(order) {
+		if order[i] == "plugin-b" do b_idx = i
+		if order[i] == "plugin-a" do a_idx = i
+	}
+	testing.expect(t, b_idx < a_idx, "plugin-b must load before plugin-a")
+}
+
+@(test)
+test_disabled_plugins_excluded_from_order :: proc(t: ^testing.T) {
+	// Test that disabled plugins are excluded from load order
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = "2025-10-27T00:00:00Z",
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer delete(config.plugins)
+
+	// Enabled plugin
+	plugin_a := wayu.PluginMetadata{
+		name = "plugin-a",
+		enabled = true,
+		priority = 50,
+		dependencies = make([dynamic]string),
+	}
+	append(&config.plugins, plugin_a)
+
+	// Disabled plugin
+	plugin_b := wayu.PluginMetadata{
+		name = "plugin-b",
+		enabled = false,  // Disabled
+		priority = 10,  // High priority but disabled
+		dependencies = make([dynamic]string),
+	}
+	append(&config.plugins, plugin_b)
+
+	// Enabled plugin
+	plugin_c := wayu.PluginMetadata{
+		name = "plugin-c",
+		enabled = true,
+		priority = 100,
+		dependencies = make([dynamic]string),
+	}
+	append(&config.plugins, plugin_c)
+
+	// Resolve load order
+	order, ok := wayu.resolve_dependencies_with_priority(&config)
+	defer {
+		for name in order {
+			delete(name)
+		}
+		delete(order)
+	}
+
+	testing.expect(t, ok, "Should resolve load order successfully")
+	testing.expect(t, len(order) == 2, "Should have only 2 enabled plugins")
+
+	// Verify disabled plugin is excluded
+	contains_b := false
+	for name in order {
+		if name == "plugin-b" {
+			contains_b = true
+			break
+		}
+	}
+	testing.expect(t, !contains_b, "Disabled plugin-b should not be in load order")
+
+	// Verify order of enabled plugins: plugin-a (50) → plugin-c (100)
+	testing.expect(t, order[0] == "plugin-a", "First should be plugin-a")
+	testing.expect(t, order[1] == "plugin-c", "Second should be plugin-c")
+}
+
+@(test)
+test_same_priority_preserves_dependency_order :: proc(t: ^testing.T) {
+	// Test that plugins with same priority maintain dependency order (stable sort)
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = "2025-10-27T00:00:00Z",
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer delete(config.plugins)
+
+	// All plugins have same priority (100)
+	// Plugin A depends on B, B depends on C
+	plugin_a := wayu.PluginMetadata{
+		name = "plugin-a",
+		enabled = true,
+		priority = 100,
+		dependencies = make([dynamic]string),
+	}
+	append(&plugin_a.dependencies, "plugin-b")
+	append(&config.plugins, plugin_a)
+
+	plugin_b := wayu.PluginMetadata{
+		name = "plugin-b",
+		enabled = true,
+		priority = 100,
+		dependencies = make([dynamic]string),
+	}
+	append(&plugin_b.dependencies, "plugin-c")
+	append(&config.plugins, plugin_b)
+
+	plugin_c := wayu.PluginMetadata{
+		name = "plugin-c",
+		enabled = true,
+		priority = 100,
+		dependencies = make([dynamic]string),
+	}
+	append(&config.plugins, plugin_c)
+
+	// Resolve load order
+	order, ok := wayu.resolve_dependencies_with_priority(&config)
+	defer {
+		for name in order {
+			delete(name)
+		}
+		delete(order)
+	}
+
+	testing.expect(t, ok, "Should resolve load order successfully")
+	testing.expect(t, len(order) == 3, "Should have 3 plugins in order")
+
+	// Verify dependency order preserved: C → B → A
+	testing.expect(t, order[0] == "plugin-c", "plugin-c should load first (no deps)")
+	testing.expect(t, order[1] == "plugin-b", "plugin-b should load second (depends on c)")
+	testing.expect(t, order[2] == "plugin-a", "plugin-a should load third (depends on b)")
+}
+
+// === PHASE 6: CONFLICT DETECTION TESTS ===
+
+@(test)
+test_conflict_detection_env_vars :: proc(t: ^testing.T) {
+	// Test detecting environment variable conflicts between two enabled plugins
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = "2025-10-27T00:00:00Z",
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer wayu.cleanup_plugin_config_json(&config)
+
+	// Plugin A defines MY_VAR
+	plugin_a := wayu.PluginMetadata{
+		name = "plugin-a",
+		enabled = true,
+		installed_path = "/tmp/nonexistent/plugin-a",  // Non-existent path
+		priority = 100,
+		dependencies = make([dynamic]string),
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&plugin_a.conflicts.env_vars, strings.clone("MY_VAR"))
+	append(&plugin_a.conflicts.env_vars, strings.clone("ANOTHER_VAR"))
+	append(&config.plugins, plugin_a)
+
+	// Plugin B also defines MY_VAR (conflict!)
+	plugin_b := wayu.PluginMetadata{
+		name = "plugin-b",
+		enabled = true,
+		installed_path = "/tmp/nonexistent/plugin-b",  // Non-existent path
+		priority = 100,
+		dependencies = make([dynamic]string),
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&plugin_b.conflicts.env_vars, strings.clone("MY_VAR"))
+	append(&plugin_b.conflicts.env_vars, strings.clone("DIFFERENT_VAR"))
+	append(&config.plugins, plugin_b)
+
+	// Run conflict detection
+	wayu.detect_conflicts(&config)
+
+	// Both plugins should be marked as having conflicts
+	testing.expect(t, config.plugins[0].conflicts.detected == true,
+		"plugin-a should be marked as having conflicts")
+	testing.expect(t, config.plugins[1].conflicts.detected == true,
+		"plugin-b should be marked as having conflicts")
+
+	// Each should list the other as conflicting
+	testing.expect(t, len(config.plugins[0].conflicts.conflicting_plugins) == 1,
+		"plugin-a should have 1 conflicting plugin")
+	testing.expect(t, config.plugins[0].conflicts.conflicting_plugins[0] == "plugin-b",
+		"plugin-a should conflict with plugin-b")
+
+	testing.expect(t, len(config.plugins[1].conflicts.conflicting_plugins) == 1,
+		"plugin-b should have 1 conflicting plugin")
+	testing.expect(t, config.plugins[1].conflicts.conflicting_plugins[0] == "plugin-a",
+		"plugin-b should conflict with plugin-a")
+}
+
+@(test)
+test_conflict_detection_functions :: proc(t: ^testing.T) {
+	// Test detecting function name conflicts between two enabled plugins
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = "2025-10-27T00:00:00Z",
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer wayu.cleanup_plugin_config_json(&config)
+
+	// Plugin A defines my_function
+	plugin_a := wayu.PluginMetadata{
+		name = "plugin-a",
+		enabled = true,
+		installed_path = "/tmp/nonexistent/plugin-a",  // Non-existent path
+		priority = 100,
+		dependencies = make([dynamic]string),
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&plugin_a.conflicts.functions, strings.clone("my_function"))
+	append(&plugin_a.conflicts.functions, strings.clone("helper"))
+	append(&config.plugins, plugin_a)
+
+	// Plugin B also defines my_function (conflict!)
+	plugin_b := wayu.PluginMetadata{
+		name = "plugin-b",
+		enabled = true,
+		installed_path = "/tmp/nonexistent/plugin-b",  // Non-existent path
+		priority = 100,
+		dependencies = make([dynamic]string),
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&plugin_b.conflicts.functions, strings.clone("my_function"))
+	append(&plugin_b.conflicts.functions, strings.clone("other_helper"))
+	append(&config.plugins, plugin_b)
+
+	// Run conflict detection
+	wayu.detect_conflicts(&config)
+
+	// Both plugins should be marked as having conflicts
+	testing.expect(t, config.plugins[0].conflicts.detected == true,
+		"plugin-a should be marked as having conflicts")
+	testing.expect(t, config.plugins[1].conflicts.detected == true,
+		"plugin-b should be marked as having conflicts")
+
+	// Each should list the other as conflicting
+	testing.expect(t, len(config.plugins[0].conflicts.conflicting_plugins) == 1,
+		"plugin-a should have 1 conflicting plugin")
+	testing.expect(t, config.plugins[0].conflicts.conflicting_plugins[0] == "plugin-b",
+		"plugin-a should conflict with plugin-b")
+
+	testing.expect(t, len(config.plugins[1].conflicts.conflicting_plugins) == 1,
+		"plugin-b should have 1 conflicting plugin")
+	testing.expect(t, config.plugins[1].conflicts.conflicting_plugins[0] == "plugin-a",
+		"plugin-b should conflict with plugin-a")
+}
+
+@(test)
+test_conflict_detection_aliases :: proc(t: ^testing.T) {
+	// Test detecting alias conflicts between two enabled plugins
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = "2025-10-27T00:00:00Z",
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer wayu.cleanup_plugin_config_json(&config)
+
+	// Plugin A defines ll alias
+	plugin_a := wayu.PluginMetadata{
+		name = "plugin-a",
+		enabled = true,
+		installed_path = "/tmp/nonexistent/plugin-a",  // Non-existent path
+		priority = 100,
+		dependencies = make([dynamic]string),
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&plugin_a.conflicts.aliases_, strings.clone("ll"))
+	append(&plugin_a.conflicts.aliases_, strings.clone("la"))
+	append(&config.plugins, plugin_a)
+
+	// Plugin B also defines ll alias (conflict!)
+	plugin_b := wayu.PluginMetadata{
+		name = "plugin-b",
+		enabled = true,
+		installed_path = "/tmp/nonexistent/plugin-b",  // Non-existent path
+		priority = 100,
+		dependencies = make([dynamic]string),
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&plugin_b.conflicts.aliases_, strings.clone("ll"))
+	append(&plugin_b.conflicts.aliases_, strings.clone("gs"))
+	append(&config.plugins, plugin_b)
+
+	// Run conflict detection
+	wayu.detect_conflicts(&config)
+
+	// Both plugins should be marked as having conflicts
+	testing.expect(t, config.plugins[0].conflicts.detected == true,
+		"plugin-a should be marked as having conflicts")
+	testing.expect(t, config.plugins[1].conflicts.detected == true,
+		"plugin-b should be marked as having conflicts")
+
+	// Each should list the other as conflicting
+	testing.expect(t, len(config.plugins[0].conflicts.conflicting_plugins) == 1,
+		"plugin-a should have 1 conflicting plugin")
+	testing.expect(t, config.plugins[0].conflicts.conflicting_plugins[0] == "plugin-b",
+		"plugin-a should conflict with plugin-b")
+
+	testing.expect(t, len(config.plugins[1].conflicts.conflicting_plugins) == 1,
+		"plugin-b should have 1 conflicting plugin")
+	testing.expect(t, config.plugins[1].conflicts.conflicting_plugins[0] == "plugin-a",
+		"plugin-b should conflict with plugin-a")
+}
+
+@(test)
+test_no_conflicts_when_no_overlap :: proc(t: ^testing.T) {
+	// Test that plugins with different declarations don't trigger conflicts
+
+	config := wayu.PluginConfigJSON{
+		version = "1.0",
+		last_updated = "2025-10-27T00:00:00Z",
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
+	defer wayu.cleanup_plugin_config_json(&config)
+
+	// Plugin A defines its own unique identifiers
+	plugin_a := wayu.PluginMetadata{
+		name = "plugin-a",
+		enabled = true,
+		installed_path = "/tmp/nonexistent/plugin-a",  // Non-existent path
+		priority = 100,
+		dependencies = make([dynamic]string),
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&plugin_a.conflicts.env_vars, strings.clone("VAR_A"))
+	append(&plugin_a.conflicts.functions, strings.clone("function_a"))
+	append(&plugin_a.conflicts.aliases_, strings.clone("alias_a"))
+	append(&config.plugins, plugin_a)
+
+	// Plugin B defines completely different identifiers (no conflicts!)
+	plugin_b := wayu.PluginMetadata{
+		name = "plugin-b",
+		enabled = true,
+		installed_path = "/tmp/nonexistent/plugin-b",  // Non-existent path
+		priority = 100,
+		dependencies = make([dynamic]string),
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&plugin_b.conflicts.env_vars, strings.clone("VAR_B"))
+	append(&plugin_b.conflicts.functions, strings.clone("function_b"))
+	append(&plugin_b.conflicts.aliases_, strings.clone("alias_b"))
+	append(&config.plugins, plugin_b)
+
+	// Plugin C is disabled (should be ignored)
+	plugin_c := wayu.PluginMetadata{
+		name = "plugin-c",
+		enabled = false,  // Disabled
+		installed_path = "/tmp/nonexistent/plugin-c",  // Non-existent path
+		priority = 100,
+		dependencies = make([dynamic]string),
+		config = make(map[string]string),
+		conflicts = wayu.ConflictInfo{
+			env_vars = make([dynamic]string),
+			functions = make([dynamic]string),
+			aliases_ = make([dynamic]string),
+			detected = false,
+			conflicting_plugins = make([dynamic]string),
+		},
+	}
+	append(&plugin_c.conflicts.env_vars, strings.clone("VAR_A"))  // Same as plugin-a but disabled
+	append(&config.plugins, plugin_c)
+
+	// Run conflict detection
+	wayu.detect_conflicts(&config)
+
+	// No conflicts should be detected
+	testing.expect(t, config.plugins[0].conflicts.detected == false,
+		"plugin-a should NOT have conflicts")
+	testing.expect(t, config.plugins[1].conflicts.detected == false,
+		"plugin-b should NOT have conflicts")
+	testing.expect(t, config.plugins[2].conflicts.detected == false,
+		"plugin-c should NOT have conflicts (disabled)")
+
+	// No conflicting plugins should be listed
+	testing.expect(t, len(config.plugins[0].conflicts.conflicting_plugins) == 0,
+		"plugin-a should have no conflicting plugins")
+	testing.expect(t, len(config.plugins[1].conflicts.conflicting_plugins) == 0,
+		"plugin-b should have no conflicting plugins")
+	testing.expect(t, len(config.plugins[2].conflicts.conflicting_plugins) == 0,
+		"plugin-c should have no conflicting plugins")
+}

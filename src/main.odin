@@ -16,7 +16,7 @@ WAYU_CONFIG : string
 // Global flags
 DRY_RUN := false
 YES_FLAG := false  // Skip confirmation prompts
-DETECTED_SHELL := detect_shell()
+DETECTED_SHELL : ShellType
 SHELL_EXT : string
 
 // Track if globals have been initialized
@@ -52,6 +52,7 @@ Action :: enum {
 	UPDATE,
 	ENABLE,   // NEW - Phase 3
 	DISABLE,  // NEW - Phase 3
+	PRIORITY, // NEW - Phase 5
 	RESTORE,
 	CLEAN,
 	DEDUP,
@@ -85,6 +86,9 @@ init_shell_globals :: proc() {
 	// program's lifetime and is accessed throughout the codebase. This is by design.
 	HOME = os.get_env("HOME")
 	WAYU_CONFIG = fmt.aprintf("%s/.config/wayu", HOME)
+
+	// Detect shell
+	DETECTED_SHELL = detect_shell()
 
 	SHELL_EXT = get_shell_extension(DETECTED_SHELL)
 	PATH_FILE = fmt.aprintf("path.%s", SHELL_EXT)
@@ -329,6 +333,8 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		parsed.action = .ENABLE
 	case "disable":
 		parsed.action = .DISABLE
+	case "priority":
+		parsed.action = .PRIORITY
 	case "restore":
 		parsed.action = .RESTORE
 	case "clean":

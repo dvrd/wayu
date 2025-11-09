@@ -45,6 +45,11 @@ class PluginIntegrationTest
     test_enable_idempotent_exit_zero
     test_disable_idempotent_exit_zero
     test_list_shows_enabled_disabled_status
+    test_plugin_priority_command
+    test_list_shows_priority
+    test_loader_respects_priority
+    test_conflict_warning_in_loader
+    test_no_conflict_warning_when_unique
 
     restore_config
     print_summary
@@ -785,6 +790,541 @@ class PluginIntegrationTest
       puts "✗"
       puts "  List output should show both Active and Disabled statuses"
       puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_plugin_priority_command
+    print "Test 21: Set plugin priority via CLI... "
+
+    # Create mock plugin
+    plugin_dir = "#{@plugins_dir}/priority-test-plugin"
+    FileUtils.mkdir_p(plugin_dir)
+    File.write("#{plugin_dir}/priority-test-plugin.plugin.zsh", "# Priority test")
+
+    # Create JSON config with default priority
+    json_config = {
+      "version" => "1.0",
+      "lastUpdated" => Time.now.utc.iso8601,
+      "plugins" => [
+        {
+          "name" => "priority-test-plugin",
+          "url" => "https://github.com/test/priority-test.git",
+          "enabled" => true,
+          "shell" => "zsh",
+          "installedPath" => plugin_dir,
+          "entryFile" => "priority-test-plugin.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "abc123",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "abc123"
+          },
+          "dependencies" => [],
+          "priority" => 100,  # Default priority
+          "config" => {},
+          "conflicts" => {
+            "envVars" => [],
+            "functions" => [],
+            "aliases" => [],
+            "detected" => false,
+            "conflictingPlugins" => []
+          }
+        }
+      ]
+    }
+
+    # Write JSON config
+    json_file = "#{@config_dir}/plugins.json"
+    File.write(json_file, JSON.pretty_generate(json_config))
+
+    # Run priority command to change priority to 50
+    output, status = run_wayu("plugin priority priority-test-plugin 50")
+
+    if status.success? && output.include?("Updated priority")
+      # Read config back to verify
+      updated_config = JSON.parse(File.read(json_file))
+      if updated_config["plugins"][0]["priority"] == 50
+        puts "✓"
+        @passed += 1
+      else
+        puts "✗"
+        puts "  Priority not updated in config"
+        puts "  Expected: 50, Got: #{updated_config['plugins'][0]['priority']}"
+        @failed += 1
+      end
+    else
+      puts "✗"
+      puts "  Priority command failed"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_list_shows_priority
+    print "Test 22: List command shows priority column... "
+
+    # Create mock plugins with different priorities
+    high_priority_dir = "#{@plugins_dir}/high-priority-plugin"
+    low_priority_dir = "#{@plugins_dir}/low-priority-plugin"
+    FileUtils.mkdir_p(high_priority_dir)
+    FileUtils.mkdir_p(low_priority_dir)
+    File.write("#{high_priority_dir}/high-priority-plugin.plugin.zsh", "# High priority")
+    File.write("#{low_priority_dir}/low-priority-plugin.plugin.zsh", "# Low priority")
+
+    # Create JSON config with different priorities
+    json_config = {
+      "version" => "1.0",
+      "lastUpdated" => Time.now.utc.iso8601,
+      "plugins" => [
+        {
+          "name" => "high-priority-plugin",
+          "url" => "https://github.com/test/high-priority.git",
+          "enabled" => true,
+          "shell" => "zsh",
+          "installedPath" => high_priority_dir,
+          "entryFile" => "high-priority-plugin.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "abc123",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "abc123"
+          },
+          "dependencies" => [],
+          "priority" => 10,  # High priority (lower number)
+          "config" => {},
+          "conflicts" => {
+            "envVars" => [],
+            "functions" => [],
+            "aliases" => [],
+            "detected" => false,
+            "conflictingPlugins" => []
+          }
+        },
+        {
+          "name" => "low-priority-plugin",
+          "url" => "https://github.com/test/low-priority.git",
+          "enabled" => true,
+          "shell" => "zsh",
+          "installedPath" => low_priority_dir,
+          "entryFile" => "low-priority-plugin.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "def456",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "def456"
+          },
+          "dependencies" => [],
+          "priority" => 200,  # Low priority (higher number)
+          "config" => {},
+          "conflicts" => {
+            "envVars" => [],
+            "functions" => [],
+            "aliases" => [],
+            "detected" => false,
+            "conflictingPlugins" => []
+          }
+        }
+      ]
+    }
+
+    # Write JSON config
+    json_file = "#{@config_dir}/plugins.json"
+    File.write(json_file, JSON.pretty_generate(json_config))
+
+    # Run list command
+    output, status = run_wayu("plugin list")
+
+    # Verify priority column exists and shows both values
+    if status.success? &&
+       output.include?("Priority") &&
+       output.include?("10") &&
+       output.include?("200")
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  List output should show Priority column with values"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_loader_respects_priority
+    print "Test 23: Shell loader respects priority ordering... "
+
+    # Create three mock plugins with priorities: 50, 100, 150
+    ['plugin-high', 'plugin-mid', 'plugin-low'].each_with_index do |name, idx|
+      plugin_dir = "#{@plugins_dir}/#{name}"
+      FileUtils.mkdir_p(plugin_dir)
+      File.write("#{plugin_dir}/#{name}.plugin.zsh", "# #{name}")
+    end
+
+    # Create JSON config with priority-based ordering
+    json_config = {
+      "version" => "1.0",
+      "lastUpdated" => Time.now.utc.iso8601,
+      "plugins" => [
+        {
+          "name" => "plugin-high",
+          "url" => "https://github.com/test/plugin-high.git",
+          "enabled" => true,
+          "shell" => "zsh",
+          "installedPath" => "#{@plugins_dir}/plugin-high",
+          "entryFile" => "plugin-high.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "abc123",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "abc123"
+          },
+          "dependencies" => [],
+          "priority" => 50,  # Loads first
+          "config" => {},
+          "conflicts" => {
+            "envVars" => [],
+            "functions" => [],
+            "aliases" => [],
+            "detected" => false,
+            "conflictingPlugins" => []
+          }
+        },
+        {
+          "name" => "plugin-mid",
+          "url" => "https://github.com/test/plugin-mid.git",
+          "enabled" => true,
+          "shell" => "zsh",
+          "installedPath" => "#{@plugins_dir}/plugin-mid",
+          "entryFile" => "plugin-mid.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "def456",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "def456"
+          },
+          "dependencies" => [],
+          "priority" => 100,  # Loads second
+          "config" => {},
+          "conflicts" => {
+            "envVars" => [],
+            "functions" => [],
+            "aliases" => [],
+            "detected" => false,
+            "conflictingPlugins" => []
+          }
+        },
+        {
+          "name" => "plugin-low",
+          "url" => "https://github.com/test/plugin-low.git",
+          "enabled" => true,
+          "shell" => "zsh",
+          "installedPath" => "#{@plugins_dir}/plugin-low",
+          "entryFile" => "plugin-low.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "ghi789",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "ghi789"
+          },
+          "dependencies" => [],
+          "priority" => 150,  # Loads third
+          "config" => {},
+          "conflicts" => {
+            "envVars" => [],
+            "functions" => [],
+            "aliases" => [],
+            "detected" => false,
+            "conflictingPlugins" => []
+          }
+        }
+      ]
+    }
+
+    # Write JSON config
+    json_file = "#{@config_dir}/plugins.json"
+    File.write(json_file, JSON.pretty_generate(json_config))
+
+    # Trigger shell loader generation by running list command
+    output, status = run_wayu("plugin list")
+
+    # Read generated plugins.zsh file
+    plugins_file = "#{@config_dir}/plugins.zsh"
+    if File.exist?(plugins_file)
+      loader_content = File.read(plugins_file)
+
+      # Find positions of each plugin in the loader
+      high_pos = loader_content.index("plugin-high")
+      mid_pos = loader_content.index("plugin-mid")
+      low_pos = loader_content.index("plugin-low")
+
+      # Verify priority order: high < mid < low
+      if high_pos && mid_pos && low_pos && high_pos < mid_pos && mid_pos < low_pos
+        # Also verify priority comments are present
+        if loader_content.include?("priority: 50") &&
+           loader_content.include?("priority: 100") &&
+           loader_content.include?("priority: 150")
+          puts "✓"
+          @passed += 1
+        else
+          puts "✗"
+          puts "  Priority comments missing from loader file"
+          @failed += 1
+        end
+      else
+        puts "✗"
+        puts "  Plugins not in priority order in loader file"
+        puts "  Expected: plugin-high < plugin-mid < plugin-low"
+        puts "  Got positions: high=#{high_pos}, mid=#{mid_pos}, low=#{low_pos}"
+        @failed += 1
+      end
+    else
+      puts "✗"
+      puts "  Loader file not generated: #{plugins_file}"
+      @failed += 1
+    end
+  end
+
+  def test_conflict_warning_in_loader
+    print "Test 24: Conflict warnings appear in shell loader... "
+
+    # Create two mock plugins with conflicting declarations
+    plugin_a_dir = "#{@plugins_dir}/conflict-plugin-a"
+    plugin_b_dir = "#{@plugins_dir}/conflict-plugin-b"
+    FileUtils.mkdir_p(plugin_a_dir)
+    FileUtils.mkdir_p(plugin_b_dir)
+
+    # Both plugins export MY_VAR
+    File.write("#{plugin_a_dir}/conflict-plugin-a.plugin.zsh", <<~SHELL)
+      # Plugin A
+      export MY_VAR="value_from_a"
+
+      my_function() {
+        echo "from plugin a"
+      }
+
+      alias ll="ls -la"
+    SHELL
+
+    File.write("#{plugin_b_dir}/conflict-plugin-b.plugin.zsh", <<~SHELL)
+      # Plugin B
+      export MY_VAR="value_from_b"
+
+      function my_function() {
+        echo "from plugin b"
+      }
+
+      alias ll="ls -lh"
+    SHELL
+
+    # Create JSON config with conflict information
+    json_config = {
+      "version" => "1.0",
+      "lastUpdated" => Time.now.utc.iso8601,
+      "plugins" => [
+        {
+          "name" => "conflict-plugin-a",
+          "url" => "https://github.com/test/conflict-a.git",
+          "enabled" => true,
+          "shell" => "zsh",
+          "installedPath" => plugin_a_dir,
+          "entryFile" => "conflict-plugin-a.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "abc123",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "abc123"
+          },
+          "dependencies" => [],
+          "priority" => 100,
+          "config" => {},
+          "conflicts" => {
+            "envVars" => ["MY_VAR"],
+            "functions" => ["my_function"],
+            "aliases" => ["ll"],
+            "detected" => true,
+            "conflictingPlugins" => ["conflict-plugin-b"]
+          }
+        },
+        {
+          "name" => "conflict-plugin-b",
+          "url" => "https://github.com/test/conflict-b.git",
+          "enabled" => true,
+          "shell" => "zsh",
+          "installedPath" => plugin_b_dir,
+          "entryFile" => "conflict-plugin-b.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "def456",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "def456"
+          },
+          "dependencies" => [],
+          "priority" => 100,
+          "config" => {},
+          "conflicts" => {
+            "envVars" => ["MY_VAR"],
+            "functions" => ["my_function"],
+            "aliases" => ["ll"],
+            "detected" => true,
+            "conflictingPlugins" => ["conflict-plugin-a"]
+          }
+        }
+      ]
+    }
+
+    # Write JSON config
+    json_file = "#{@config_dir}/plugins.json"
+    File.write(json_file, JSON.pretty_generate(json_config))
+
+    # Trigger loader generation by running list command
+    output, status = run_wayu("plugin list")
+
+    # Read generated plugins.zsh file
+    plugins_file = "#{@config_dir}/plugins.zsh"
+    if File.exist?(plugins_file)
+      loader_content = File.read(plugins_file)
+
+      # Verify global conflict warning header exists
+      has_global_warning = loader_content.include?("⚠️  CONFLICT WARNINGS") &&
+                           loader_content.include?("conflict-plugin-a conflicts with:")
+
+      # Verify per-plugin conflict warnings exist
+      has_plugin_a_warning = loader_content.include?("⚠️  WARNING: conflict-plugin-a has conflicts")
+      has_plugin_b_warning = loader_content.include?("⚠️  WARNING: conflict-plugin-b has conflicts")
+
+      if has_global_warning && has_plugin_a_warning && has_plugin_b_warning
+        puts "✓"
+        @passed += 1
+      else
+        puts "✗"
+        puts "  Expected conflict warnings in loader file"
+        puts "  Global warning: #{has_global_warning}"
+        puts "  Plugin A warning: #{has_plugin_a_warning}"
+        puts "  Plugin B warning: #{has_plugin_b_warning}"
+        @failed += 1
+      end
+    else
+      puts "✗"
+      puts "  Loader file not generated: #{plugins_file}"
+      @failed += 1
+    end
+  end
+
+  def test_no_conflict_warning_when_unique
+    print "Test 25: No conflict warnings when plugins are unique... "
+
+    # Create two mock plugins with NO conflicts
+    plugin_x_dir = "#{@plugins_dir}/unique-plugin-x"
+    plugin_y_dir = "#{@plugins_dir}/unique-plugin-y"
+    FileUtils.mkdir_p(plugin_x_dir)
+    FileUtils.mkdir_p(plugin_y_dir)
+
+    File.write("#{plugin_x_dir}/unique-plugin-x.plugin.zsh", <<~SHELL)
+      # Plugin X - unique declarations
+      export VAR_X="value_x"
+
+      function_x() {
+        echo "from plugin x"
+      }
+
+      alias lx="ls -x"
+    SHELL
+
+    File.write("#{plugin_y_dir}/unique-plugin-y.plugin.zsh", <<~SHELL)
+      # Plugin Y - different declarations
+      export VAR_Y="value_y"
+
+      function_y() {
+        echo "from plugin y"
+      }
+
+      alias ly="ls -y"
+    SHELL
+
+    # Create JSON config WITHOUT conflicts
+    json_config = {
+      "version" => "1.0",
+      "lastUpdated" => Time.now.utc.iso8601,
+      "plugins" => [
+        {
+          "name" => "unique-plugin-x",
+          "url" => "https://github.com/test/unique-x.git",
+          "enabled" => true,
+          "shell" => "zsh",
+          "installedPath" => plugin_x_dir,
+          "entryFile" => "unique-plugin-x.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "abc123",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "abc123"
+          },
+          "dependencies" => [],
+          "priority" => 100,
+          "config" => {},
+          "conflicts" => {
+            "envVars" => ["VAR_X"],
+            "functions" => ["function_x"],
+            "aliases" => ["lx"],
+            "detected" => false,  # No conflicts
+            "conflictingPlugins" => []
+          }
+        },
+        {
+          "name" => "unique-plugin-y",
+          "url" => "https://github.com/test/unique-y.git",
+          "enabled" => true,
+          "shell" => "zsh",
+          "installedPath" => plugin_y_dir,
+          "entryFile" => "unique-plugin-y.plugin.zsh",
+          "git" => {
+            "branch" => "main",
+            "commit" => "def456",
+            "lastChecked" => Time.now.utc.iso8601,
+            "remoteCommit" => "def456"
+          },
+          "dependencies" => [],
+          "priority" => 100,
+          "config" => {},
+          "conflicts" => {
+            "envVars" => ["VAR_Y"],
+            "functions" => ["function_y"],
+            "aliases" => ["ly"],
+            "detected" => false,  # No conflicts
+            "conflictingPlugins" => []
+          }
+        }
+      ]
+    }
+
+    # Write JSON config
+    json_file = "#{@config_dir}/plugins.json"
+    File.write(json_file, JSON.pretty_generate(json_config))
+
+    # Trigger loader generation by running list command
+    output, status = run_wayu("plugin list")
+
+    # Read generated plugins.zsh file
+    plugins_file = "#{@config_dir}/plugins.zsh"
+    if File.exist?(plugins_file)
+      loader_content = File.read(plugins_file)
+
+      # Verify NO conflict warnings appear
+      has_no_conflict_warning = !loader_content.include?("⚠️  CONFLICT WARNINGS") &&
+                                !loader_content.include?("⚠️  WARNING:")
+
+      if has_no_conflict_warning
+        puts "✓"
+        @passed += 1
+      else
+        puts "✗"
+        puts "  Should NOT have conflict warnings when plugins are unique"
+        puts "  Loader content includes conflict markers"
+        @failed += 1
+      end
+    else
+      puts "✗"
+      puts "  Loader file not generated: #{plugins_file}"
       @failed += 1
     end
   end

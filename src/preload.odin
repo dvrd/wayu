@@ -8,28 +8,28 @@ import "core:fmt"
 
 PATH_TEMPLATE :: `#!/usr/bin/env zsh
 
-add_to_path() {
-    local dir="$1"
-    local position="${2:-prepend}"  # prepend or append, default is prepend
+# Centralized PATH registry
+# Managed by wayu - Add entries below
+WAYU_PATHS=(
+)
 
+# Build PATH from registry with deduplication
+for dir in "${WAYU_PATHS[@]}"; do
     # Check if directory exists
     if [ ! -d "$dir" ]; then
-        return 1
+        continue
     fi
 
     # Check if directory is already in PATH
     if [[ ":$PATH:" == *":$dir:"* ]]; then
-        return 0
+        continue
     fi
 
-    # Add to PATH
-    if [ "$position" = "append" ]; then
-        export PATH="$PATH:$dir"
-    else
-        export PATH="$dir:$PATH"
-    fi
-}
+    # Add to PATH (prepend)
+    export PATH="$dir:$PATH"
+done
 
+# Final deduplication pass
 export PATH=$(echo "$PATH" | awk -v RS=':' -v ORS=':' '!seen[$0]++' | sed 's/:$//')
 `
 
@@ -122,29 +122,28 @@ TOOLS_TEMPLATE :: `#!/usr/bin/env zsh
 // Bash-compatible templates
 PATH_TEMPLATE_BASH :: `#!/usr/bin/env bash
 
-add_to_path() {
-    local dir="$1"
-    local position="${2:-prepend}"  # prepend or append, default is prepend
+# Centralized PATH registry
+# Managed by wayu - Add entries below
+WAYU_PATHS=(
+)
 
+# Build PATH from registry with deduplication
+for dir in "${WAYU_PATHS[@]}"; do
     # Check if directory exists
     if [ ! -d "$dir" ]; then
-        return 1
+        continue
     fi
 
     # Check if directory is already in PATH
     if [[ ":$PATH:" == *":$dir:"* ]]; then
-        return 0
+        continue
     fi
 
-    # Add to PATH
-    if [ "$position" = "append" ]; then
-        export PATH="$PATH:$dir"
-    else
-        export PATH="$dir:$PATH"
-    fi
-}
+    # Add to PATH (prepend)
+    export PATH="$dir:$PATH"
+done
 
-# Remove duplicates from PATH (Bash-compatible method)
+# Final deduplication pass (Bash-compatible method)
 remove_path_duplicates() {
     local new_path=""
     local dir
