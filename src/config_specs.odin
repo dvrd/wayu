@@ -14,7 +14,7 @@ import "core:strings"
 PATH_SPEC := ConfigEntrySpec{
 	type = .PATH,
 	file_name = "path",
-	line_prefix = "add_to_path",
+	line_prefix = `  "`,  // Array elements start with indent + quote
 	display_name = "PATH",
 	icon = "📂",
 
@@ -105,27 +105,26 @@ validate_path_entry :: proc(entry: ConfigEntry) -> ValidationResult {
 	return ValidationResult{valid = true, error_message = ""}
 }
 
-// Format PATH line: add_to_path "/path/to/dir"
+// Format PATH line: array element with indent
 format_path_line :: proc(entry: ConfigEntry) -> string {
-	return fmt.aprintf(`add_to_path "%s"`, entry.name)
+	return fmt.aprintf(`  "%s"`, entry.name)
 }
 
-// Parse PATH line: extract path from add_to_path "..."
+// Parse PATH line: extract path from array element "..."
 parse_path_line :: proc(line: string) -> (ConfigEntry, bool) {
 	trimmed := strings.trim_space(line)
 
-	if !strings.has_prefix(trimmed, "add_to_path") {
+	// Check if line is a quoted string (array element)
+	if !strings.has_prefix(trimmed, `"`) || !strings.has_suffix(trimmed, `"`) {
 		return {}, false
 	}
 
-	// Find quoted path
-	start := strings.index(trimmed, `"`)
-	if start == -1 { return {}, false }
+	// Extract path (between quotes)
+	if len(trimmed) < 2 {
+		return {}, false
+	}
 
-	end := strings.last_index(trimmed, `"`)
-	if end == -1 || end <= start { return {}, false }
-
-	path := trimmed[start+1:end]
+	path := trimmed[1:len(trimmed)-1]
 
 	entry := ConfigEntry{
 		type = .PATH,

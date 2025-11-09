@@ -12,9 +12,72 @@ A shell configuration management CLI written in Odin that helps you manage PATH 
 - **Scriptable** - Fully non-interactive CLI with proper exit codes for CI/CD
 - **Modern UI Components** - Tables, progress bars, spinners, and styled output
 - **Theme System** - Light and dark themes with automatic terminal detection
-- **Backward Compatible** - Existing ZSH configurations work unchanged
+- **Array-Based PATH** (v3.0.0) - Centralized PATH management solves insertion order issues
 - **Shell-Specific Templates** - Optimized configuration templates for each shell
 - **Zero Dependencies** - Written in Odin for fast compilation and execution
+
+## ⚠️ Breaking Changes in v3.0.0
+
+**v3.0.0** introduces a major architectural change to PATH management:
+
+### What Changed
+- **Old Format** (v2.x): Individual `add_to_path "/path"` function calls
+- **New Format** (v3.0.0): Centralized array `WAYU_PATHS=("path1" "path2" "path3")`
+
+### Why This Change
+The old format had a critical bug: when you ran `wayu path add /new/path`, it would append the entry to the end of the config file, **after** all the `export PATH=` statements had already executed. This made newly added paths ineffective until you manually moved them.
+
+The new array-based system solves this by:
+1. All paths are declared in a single `WAYU_PATHS` array
+2. A single for-loop processes all entries and exports PATH once
+3. New paths are inserted **inside** the array (before the closing paren)
+4. All paths are guaranteed to be processed and exported correctly
+
+### Migration Required
+If you're upgrading from v2.x, you have two options:
+
+**Option 1: Automatic Migration (Recommended)**
+```bash
+# Backup your current config
+cp ~/.config/wayu/path.zsh ~/.config/wayu/path.zsh.v2backup
+
+# Reinitialize with the new format
+wayu init
+
+# Manually re-add your important paths
+wayu path add /your/important/path
+```
+
+**Option 2: Manual Migration**
+Edit your `~/.config/wayu/path.{zsh,bash}` file and convert:
+
+**Before (v2.x):**
+```bash
+add_to_path "/usr/local/bin"
+add_to_path "/opt/homebrew/bin"
+add_to_path "$HOME/.cargo/bin"
+```
+
+**After (v3.0.0):**
+```bash
+# Centralized PATH registry
+WAYU_PATHS=(
+  "/usr/local/bin"
+  "/opt/homebrew/bin"
+  "$HOME/.cargo/bin"
+)
+
+# Build PATH from registry with deduplication
+for dir in "${WAYU_PATHS[@]}"; do
+    if [ ! -d "$dir" ]; then continue; fi
+    if [[ ":$PATH:" == *":$dir:"* ]]; then continue; fi
+    export PATH="$dir:$PATH"
+done
+
+export PATH=$(echo "$PATH" | awk -v RS=':' -v ORS=':' '!seen[$0]++' | sed 's/:$//')
+```
+
+**Important:** After migration, `wayu path add` and `wayu path rm` will work with the new array format automatically.
 
 ## Installation
 
@@ -251,7 +314,25 @@ wayu detects your shell automatically and uses the appropriate file extensions. 
 ### Mixed Usage
 If you use both shells, wayu maintains separate config files for each shell, allowing you to have shell-specific configurations while sharing common patterns.
 
-## Migration from v1.x
+## Migration Guide
+
+### From v2.x to v3.0.0 (Breaking Changes)
+
+**⚠️ Important**: v3.0.0 changes the PATH management format. See the "Breaking Changes in v3.0.0" section above for detailed migration instructions.
+
+**Quick migration:**
+```bash
+# Backup your config
+cp ~/.config/wayu/path.{zsh,bash} ~/.config/wayu/path.backup
+
+# Reinitialize with new format
+wayu init
+
+# Re-add your paths
+wayu path add /your/custom/path
+```
+
+### From v1.x to v2.x+
 
 **Existing ZSH users**: No action required! Your `.zsh` files continue to work unchanged.
 

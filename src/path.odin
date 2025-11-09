@@ -3,6 +3,7 @@
 // This module manages PATH entries using the generic config_entry system.
 // It provides PATH-specific functionality like clean and dedup operations.
 
+#+feature dynamic-literals
 package wayu
 
 import "core:fmt"
