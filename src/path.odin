@@ -8,6 +8,7 @@ package wayu
 
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:strings"
 
 // Main handler for PATH commands - delegates to generic handler
@@ -378,6 +379,15 @@ expand_env_vars :: proc(path: string) -> string {
 			result = new_result
 		}
 	}
+
+	// Expand relative paths (., .., ./, ../, etc.) to absolute paths
+	// This handles cases like "./bin", "../tools", "." etc.
+	abs_path, ok := filepath.abs(result)
+	if ok {
+		delete(result)
+		result = abs_path
+	}
+	// If abs() fails, keep the result as-is (already has env vars expanded)
 
 	return result
 }
