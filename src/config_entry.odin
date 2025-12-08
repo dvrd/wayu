@@ -232,7 +232,18 @@ add_submit_callback :: proc(form: ^Form) -> bool {
 
 // Generic add implementation
 add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
-	// Validate
+	// For PATH entries, expand environment variables before saving
+	entry_to_save := entry
+	if spec.type == .PATH {
+		expanded_path := expand_env_vars(entry.name)
+		entry_to_save.name = expanded_path
+		// Note: expanded_path will be cleaned up at the end of this function
+	}
+	defer if spec.type == .PATH {
+		delete(entry_to_save.name)
+	}
+
+	// Validate (using original entry for validation to allow checking $HOME etc.)
 	validation_result := spec.validator(entry)
 	if !validation_result.valid {
 		print_error("%s", validation_result.error_message)
@@ -244,7 +255,7 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 	if DRY_RUN {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
-		line := spec.format_line(entry)
+		line := spec.format_line(entry_to_save)
 		defer delete(line)
 
 		shell_ext := DETECTED_SHELL == .ZSH ? "zsh" : "bash"
@@ -269,7 +280,7 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 	defer delete(lines)
 
 	// Check if entry exists and update or append
-	line_to_add := spec.format_line(entry)
+	line_to_add := spec.format_line(entry_to_save)
 	defer delete(line_to_add)
 
 	exists := false
@@ -277,7 +288,7 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 		parsed_entry, ok := spec.parse_line(line)
 		if ok {
 			defer cleanup_entry(&parsed_entry)
-			if parsed_entry.name == entry.name {
+			if parsed_entry.name == entry_to_save.name {
 				lines[i] = line_to_add
 				exists = true
 				break
@@ -340,14 +351,24 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 
 	// Success message
 	if exists {
-		print_success("%s updated successfully: %s", spec.display_name, entry.name)
+		print_success("%s updated successfully: %s", spec.display_name, entry_to_save.name)
 	} else {
-		print_success("%s added successfully: %s", spec.display_name, entry.name)
+		print_success("%s added successfully: %s", spec.display_name, entry_to_save.name)
 	}
 }
 
 // Generic remove implementation
 remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
+	// For PATH entries, expand environment variables to support removing with $HOME, $OSS, etc.
+	name_to_remove := name
+	if spec.type == .PATH {
+		expanded_name := expand_env_vars(name)
+		name_to_remove = expanded_name
+	}
+	defer if spec.type == .PATH {
+		delete(name_to_remove)
+	}
+
 	// Dry-run check
 	if DRY_RUN {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
@@ -355,7 +376,7 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 
 		shell_ext := DETECTED_SHELL == .ZSH ? "zsh" : "bash"
 		fmt.printfln("%sWould remove from %s.%s:%s", BRIGHT_CYAN, spec.file_name, shell_ext, RESET)
-		fmt.printfln("  %s: %s", spec.display_name, name)
+		fmt.printfln("  %s: %s", spec.display_name, name_to_remove)
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
 		return
@@ -388,7 +409,7 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 		entry, ok := spec.parse_line(line)
 		if ok {
 			defer cleanup_entry(&entry)
-			if entry.name == name {
+			if entry.name == name_to_remove {
 				removed = true
 				continue
 			}
@@ -397,7 +418,7 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 	}
 
 	if !removed {
-		print_warning("%s not found: %s", spec.display_name, name)
+		print_warning("%s not found: %s", spec.display_name, name_to_remove)
 		return
 	}
 
@@ -416,7 +437,7 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 	// Cleanup old backups
 	cleanup_old_backups(config_file, 5)
 
-	print_success("%s removed successfully: %s", spec.display_name, name)
+	print_success("%s removed successfully: %s", spec.display_name, name_to_remove)
 }
 
 // TUI-only: Interactive fuzzy finder for removing config entries
