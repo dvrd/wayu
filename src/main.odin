@@ -5,6 +5,7 @@ import "core:os"
 import "core:strings"
 import "core:slice"
 import "core:log"
+import "core:mem"
 import tui "tui"
 
 // Semantic versioning - update with each release
@@ -18,6 +19,9 @@ DRY_RUN := false
 YES_FLAG := false  // Skip confirmation prompts
 DETECTED_SHELL : ShellType
 SHELL_EXT : string
+
+// Global temp arena for cleaning up after commands
+TEMP_ARENA: ^mem.Arena
 
 // Track if globals have been initialized
 _GLOBALS_INITIALIZED := false
@@ -101,8 +105,27 @@ init_shell_globals :: proc() {
 }
 
 main :: proc() {
+  // Set up temp arena for transient allocations (string building, intermediate operations, etc.)
+  // This arena is automatically cleared, reducing memory fragmentation
+  // Keep context.allocator as heap for now to maintain compatibility with existing delete() calls
+  temp_arena_backing := make([]byte, 2 * 1024 * 1024)  // 2MB for temp arena
+  defer delete(temp_arena_backing)
+
+  temp_arena: mem.Arena
+  mem.arena_init(&temp_arena, temp_arena_backing)
+  // No need to explicitly destroy arena - just free the backing buffer
+
+  // Make temp arena globally accessible for cleanup after commands
+  TEMP_ARENA = &temp_arena
+
+  context.temp_allocator = mem.arena_allocator(&temp_arena)
+
   context.logger = log.create_console_logger(.Debug, { .Level, .Terminal_Color })
   defer log.destroy_console_logger(context.logger)
+
+	// Clean up temp arena at the very end (before arena backing is freed)
+	// This defer executes after all other defers in this scope
+	defer if TEMP_ARENA != nil do free_all(context.temp_allocator)
 
 	// Initialize color system (PRP-09 Phase 1)
 	init_colors()

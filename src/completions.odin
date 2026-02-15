@@ -308,8 +308,9 @@ list_completions :: proc() {
 		content, read_ok := os.read_entire_file_from_filename(file_path)
 		if read_ok {
 			defer delete(content)
-			lines := strings.split(string(content), "\n")
-			defer delete(lines)
+			// Use temp allocator for lines array since it's only needed during this iteration
+			lines := strings.split(string(content), "\n", context.temp_allocator)
+			// No need to defer delete - temp allocator manages this
 			if len(lines) > 0 {
 				first_line = strings.trim_space(lines[0])
 				if len(first_line) > 60 {

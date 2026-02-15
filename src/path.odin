@@ -115,8 +115,9 @@ clean_missing_paths :: proc() {
 	defer delete(content)
 
 	content_str := string(content)
-	lines := strings.split(content_str, "\n")
-	defer delete(lines)
+	// Use temp allocator for the lines array since it's only needed during this function
+	lines := strings.split(content_str, "\n", context.temp_allocator)
+	// No need to defer delete - temp allocator manages this
 
 	// Filter out missing paths
 	new_lines := make([dynamic]string)
@@ -255,8 +256,9 @@ remove_duplicate_paths :: proc() {
 	defer delete(content)
 
 	content_str := string(content)
-	lines := strings.split(content_str, "\n")
-	defer delete(lines)
+	// Use temp allocator for the lines array since it's only needed during this function
+	lines := strings.split(content_str, "\n", context.temp_allocator)
+	// No need to defer delete - temp allocator manages this
 
 	// Build list of names to remove
 	names_to_remove := make([dynamic]string)

@@ -16,7 +16,7 @@ BackupInfo :: struct {
 	size:          i64,
 }
 
-// Create backup of file with timestamp
+// Create backup of file with timestamp in backup/ directory
 create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 	debug("Creating backup for: %s", file_path)
 
@@ -40,10 +40,30 @@ create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 	}
 	defer delete(content)
 
-	// Generate backup filename with timestamp
+	// Create backup directory if it doesn't exist
+	backup_dir := fmt.aprintf("%s/backup", WAYU_CONFIG)
+	defer delete(backup_dir)
+
+	if !os.exists(backup_dir) {
+		err := os.make_directory(backup_dir)
+		if err != 0 {
+			debug("Failed to create backup directory: %s", backup_dir)
+			return "", false
+		}
+		debug("Created backup directory: %s", backup_dir)
+	}
+
+	// Extract base filename from path
+	base_name := get_base_name(file_path)
+
+	// Generate backup filename with human-readable date format
 	now := time.now()
-	timestamp := now._nsec / 1_000_000_000  // Convert nanoseconds to seconds
-	backup_file := fmt.aprintf("%s.backup.%d", file_path, timestamp)
+	year, month, day := time.date(now)
+	hour, min, sec := time.clock(now)
+
+	// Format: basename.backup.YYYY-MM-DD_HH-MM-SS
+	backup_file := fmt.aprintf("%s/%s.backup.%04d-%02d-%02d_%02d-%02d-%02d",
+		backup_dir, base_name, year, month, day, hour, min, sec)
 
 	debug("Creating backup file: %s", backup_file)
 
@@ -151,11 +171,14 @@ restore_from_backup :: proc(file_path: string) -> bool {
 	return true
 }
 
-// List all backups for a file
+// List all backups for a file from backup/ directory
 list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 	debug("Listing backups for: %s", file_path)
 
-	dir := get_directory_path(file_path)
+	// Search in backup/ directory instead of alongside original file
+	dir := fmt.aprintf("%s/backup", WAYU_CONFIG)
+	defer delete(dir)
+
 	base := get_base_name(file_path)
 
 	pattern := fmt.aprintf("%s.backup.", base)
@@ -209,11 +232,26 @@ list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 	return result
 }
 
-// Parse timestamp from backup filename
+// Parse timestamp from backup filename (format: YYYY-MM-DD_HH-MM-SS)
 parse_timestamp :: proc(timestamp_str: string) -> time.Time {
-	// Parse Unix timestamp
+	// Parse date format: YYYY-MM-DD_HH-MM-SS
+	// Example: 2026-01-09_19-45-30
+
+	// Try to parse new format first
+	if len(timestamp_str) >= 19 && timestamp_str[4] == '-' && timestamp_str[7] == '-' && timestamp_str[10] == '_' {
+		year := parse_int(timestamp_str[0:4])
+		month := parse_int(timestamp_str[5:7])
+		day := parse_int(timestamp_str[8:10])
+		hour := parse_int(timestamp_str[11:13])
+		min := parse_int(timestamp_str[14:16])
+		sec := parse_int(timestamp_str[17:19])
+
+		// Create time from components
+		return time.datetime_to_time(year, month, day, hour, min, sec, 0)
+	}
+
+	// Fallback: parse old Unix timestamp format for backwards compatibility
 	timestamp_int: i64 = 0
-	// Simple manual parsing since fmt.sscanf might not be available
 	for char in timestamp_str {
 		if char >= '0' && char <= '9' {
 			timestamp_int = timestamp_int * 10 + i64(char - '0')
@@ -222,6 +260,17 @@ parse_timestamp :: proc(timestamp_str: string) -> time.Time {
 		}
 	}
 	return time.unix(timestamp_int, 0)
+}
+
+// Helper to parse integer from string
+parse_int :: proc(s: string) -> int {
+	result: int = 0
+	for char in s {
+		if char >= '0' && char <= '9' {
+			result = result * 10 + int(char - '0')
+		}
+	}
+	return result
 }
 
 // Clean up old backups (keep last N)
