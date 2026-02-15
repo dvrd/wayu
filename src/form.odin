@@ -260,8 +260,9 @@ form_render_full :: proc(form: ^Form) {
 
 	// Title box (with indentation to match other elements)
 	title_box := render_title_box(form.title)
-	title_lines := strings.split(title_box, "\r\n")
-	defer delete(title_lines)
+	// Use temp allocator for lines array since it's only needed during rendering
+	title_lines := strings.split(title_box, "\r\n", context.temp_allocator)
+	// No need to defer delete - temp allocator manages this
 	for title_line in title_lines {
 		fmt.sbprintf(&content_builder, "  %s\r\n", title_line)
 	}
@@ -282,8 +283,9 @@ form_render_full :: proc(form: ^Form) {
 		// Input field (need to get mutable reference)
 		field_input := form.fields[i].input
 		input_render_str := input_render(&field_input)
-		input_lines := strings.split(input_render_str, "\r\n")
-		defer delete(input_lines)
+		// Use temp allocator for lines array since it's only needed during rendering
+		input_lines := strings.split(input_render_str, "\r\n", context.temp_allocator)
+		// No need to defer delete - temp allocator manages this
 		for input_line in input_lines {
 			fmt.sbprintf(&content_builder, "  %s\r\n", input_line)
 		}
@@ -294,8 +296,9 @@ form_render_full :: proc(form: ^Form) {
 			validation_str := input_render_validation(field.validation)
 			if len(validation_str) > 0 {
 				// Indent validation messages
-				lines := strings.split(validation_str, "\r\n")
-				defer delete(lines)
+				// Use temp allocator for lines array since it's only needed during rendering
+				lines := strings.split(validation_str, "\r\n", context.temp_allocator)
+				// No need to defer delete - temp allocator manages this
 				for line in lines {
 					if len(line) > 0 {
 						fmt.sbprintf(&content_builder, "  %s\r\n", line)
@@ -316,8 +319,9 @@ form_render_full :: proc(form: ^Form) {
 		preview_content := form.preview_fn(form)
 		if len(preview_content) > 0 {
 			preview_box := render_box("Preview", preview_content)
-			preview_lines := strings.split(preview_box, "\r\n")
-			defer delete(preview_lines)
+			// Use temp allocator for lines array since it's only needed during rendering
+			preview_lines := strings.split(preview_box, "\r\n", context.temp_allocator)
+			// No need to defer delete - temp allocator manages this
 			for preview_line in preview_lines {
 				fmt.sbprintf(&content_builder, "  %s\r\n", preview_line)
 			}
@@ -393,8 +397,9 @@ render_box :: proc(title: string, content: string) -> string {
 	fmt.sbprintf(&builder, "╮%s\r\n", RESET)
 
 	// Content (split by lines)
-	lines := strings.split(content, "\n")
-	defer delete(lines)
+	// Use temp allocator for lines array since it's only needed during rendering
+	lines := strings.split(content, "\n", context.temp_allocator)
+	// No need to defer delete - temp allocator manages this
 
 	for line in lines {
 		trimmed := strings.trim_right_space(line)
@@ -467,8 +472,9 @@ render_form_container :: proc(content: string) -> string {
 	fmt.sbprintf(&builder, "┐%s\r\n", RESET)
 
 	// Content lines
-	lines := strings.split(content, "\r\n")
-	defer delete(lines)
+	// Use temp allocator for lines array since it's only needed during rendering
+	lines := strings.split(content, "\r\n", context.temp_allocator)
+	// No need to defer delete - temp allocator manages this
 
 	for line in lines {
 		// Strip ANSI codes for width calculation

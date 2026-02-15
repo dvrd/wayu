@@ -276,8 +276,9 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 	defer delete(content)
 
 	content_str := string(content)
-	lines := strings.split(content_str, "\n")
-	defer delete(lines)
+	// Use temp allocator for the lines array since it's only needed during this function
+	lines := strings.split(content_str, "\n", context.temp_allocator)
+	// No need to defer delete - temp allocator manages this
 
 	// Check if entry exists and update or append
 	line_to_add := spec.format_line(entry_to_save)
@@ -324,8 +325,11 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 				final_content = fmt.aprintf("%s\n%s", content_str, line_to_add)
 			} else {
 				// Insert new line before closing paren line
-				lines[array_close_line_idx] = fmt.aprintf("%s\n)", line_to_add)
+				// Allocate with heap since it will be used in strings.join()
+				new_line := fmt.aprintf("%s\n)", line_to_add)
+				lines[array_close_line_idx] = new_line
 				final_content = strings.join(lines, "\n")
+				delete(new_line)  // Free after strings.join() copies it
 			}
 		} else {
 			// Append new entry for non-PATH types
@@ -392,8 +396,9 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 	defer delete(content)
 
 	content_str := string(content)
-	lines := strings.split(content_str, "\n")
-	defer delete(lines)
+	// Use temp allocator for the lines array since it's only needed during this function
+	lines := strings.split(content_str, "\n", context.temp_allocator)
+	// No need to defer delete - temp allocator manages this
 
 	// Filter out the entry
 	new_lines := make([dynamic]string)
@@ -658,8 +663,9 @@ read_config_entries :: proc(spec: ^ConfigEntrySpec) -> []ConfigEntry {
 	defer delete(content)
 
 	content_str := string(content)
-	lines := strings.split(content_str, "\n")
-	defer delete(lines)
+	// Use temp allocator for the lines array since it's only needed during this function
+	lines := strings.split(content_str, "\n", context.temp_allocator)
+	// No need to defer delete - temp allocator manages this
 
 	entries := make([dynamic]ConfigEntry)
 
