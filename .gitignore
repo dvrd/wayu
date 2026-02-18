@@ -10,3 +10,6 @@ PRPs/
 # Test binaries (only in root)
 /test_*
 /*.bin
+
+.logs/
+thoughts/
