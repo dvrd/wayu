@@ -46,10 +46,58 @@ render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
 	// Note: tprintf() uses temp buffer, do NOT delete
 	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, count_text, TUI_DIM)
 
-	if len(items) == 0 {
+	// Filter bar (shown when filter is active or has text)
+	filter_bar_y := HEADER_COUNT_LINE + CONTENT_PADDING_TOP + 1
+	has_filter := state.filter_active || len(state.filter_text) > 0
+	list_start_offset := 0
+	if has_filter {
+		filter_str := string(state.filter_text[:])
+		if state.filter_active {
+			// Show active filter with cursor
+			filter_display := fmt.tprintf("/ %s█  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
+			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_SECONDARY, "", true)
+		} else {
+			// Show applied filter (no cursor)
+			filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
+			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_DIM)
+		}
+		list_start_offset = 1  // Push list down by 1 line for filter bar
+	}
+
+	if has_filter && len(state.filtered_indices) > 0 {
+		// Render filtered items
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
+		start := state.scroll_offset
+		end := min(start + visible_height, len(state.filtered_indices))
+
+		for idx in start..<end {
+			y := calculate_list_item_y(idx - start) + list_start_offset
+			original_idx := state.filtered_indices[idx]
+			entry := items[original_idx]
+
+			if idx == state.selected_index {
+				text := fmt.tprintf("> %s", entry)
+				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
+			} else {
+				text := fmt.tprintf("  %s", entry)
+				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
+			}
+		}
+
+		// Scroll indicator for filtered results
+		if len(state.filtered_indices) > visible_height {
+			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
+			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
+			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+		}
+	} else if has_filter && len(state.filtered_indices) == 0 {
+		// No matches
+		no_match_y := LIST_ITEM_START_LINE + list_start_offset + 1
+		render_text_styled(screen, header_x, no_match_y, "No matches found", TUI_DIM)
+	} else if len(items) == 0 {
 		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 1, "No PATH entries found", TUI_DIM)
 	} else {
-		// List items with scrolling
+		// List items with scrolling (unfiltered)
 		visible_height := calculate_visible_height(state.terminal_height)
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
@@ -82,7 +130,13 @@ render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 	// Footer with shortcuts (muted gray)
 	footer_y := calculate_footer_y(state.terminal_height)
-	render_text_styled(screen, header_x, footer_y, "d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	if state.filter_active {
+		render_text_styled(screen, header_x, footer_y, "Type to filter  Esc=Cancel  Enter=Accept  ↑/↓=Navigate", TUI_MUTED)
+	} else if has_filter {
+		render_text_styled(screen, header_x, footer_y, "/=Filter  d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	} else {
+		render_text_styled(screen, header_x, footer_y, "/=Filter  d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	}
 }
 
 // ============================================================================
@@ -112,10 +166,54 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 	count_text := fmt.tprintf("%d aliases", len(items))
 	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, count_text, TUI_DIM)
 
-	if len(items) == 0 {
+	// Filter bar (shown when filter is active or has text)
+	filter_bar_y := HEADER_COUNT_LINE + CONTENT_PADDING_TOP + 1
+	has_filter := state.filter_active || len(state.filter_text) > 0
+	list_start_offset := 0
+	if has_filter {
+		filter_str := string(state.filter_text[:])
+		if state.filter_active {
+			filter_display := fmt.tprintf("/ %s█  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
+			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_SECONDARY, "", true)
+		} else {
+			filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
+			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_DIM)
+		}
+		list_start_offset = 1
+	}
+
+	if has_filter && len(state.filtered_indices) > 0 {
+		// Render filtered items
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
+		start := state.scroll_offset
+		end := min(start + visible_height, len(state.filtered_indices))
+
+		for idx in start..<end {
+			y := calculate_list_item_y(idx - start) + list_start_offset
+			original_idx := state.filtered_indices[idx]
+			item := items[original_idx]
+
+			if idx == state.selected_index {
+				text := fmt.tprintf("> %s", item)
+				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
+			} else {
+				text := fmt.tprintf("  %s", item)
+				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
+			}
+		}
+
+		if len(state.filtered_indices) > visible_height {
+			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
+			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
+			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+		}
+	} else if has_filter && len(state.filtered_indices) == 0 {
+		no_match_y := LIST_ITEM_START_LINE + list_start_offset + 1
+		render_text_styled(screen, header_x, no_match_y, "No matches found", TUI_DIM)
+	} else if len(items) == 0 {
 		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 1, "No aliases found", TUI_DIM)
 	} else {
-		// List items with scrolling
+		// List items with scrolling (unfiltered)
 		visible_height := calculate_visible_height(state.terminal_height)
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
@@ -145,7 +243,13 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 	// Footer with shortcuts (muted gray)
 	footer_y := calculate_footer_y(state.terminal_height)
-	render_text_styled(screen, header_x, footer_y, "d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	if state.filter_active {
+		render_text_styled(screen, header_x, footer_y, "Type to filter  Esc=Cancel  Enter=Accept  ↑/↓=Navigate", TUI_MUTED)
+	} else if has_filter {
+		render_text_styled(screen, header_x, footer_y, "/=Filter  d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	} else {
+		render_text_styled(screen, header_x, footer_y, "/=Filter  d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	}
 }
 
 // ============================================================================
@@ -175,10 +279,54 @@ render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 	count_text := fmt.tprintf("%d constants", len(items))
 	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, count_text, TUI_DIM)
 
-	if len(items) == 0 {
+	// Filter bar (shown when filter is active or has text)
+	filter_bar_y := HEADER_COUNT_LINE + CONTENT_PADDING_TOP + 1
+	has_filter := state.filter_active || len(state.filter_text) > 0
+	list_start_offset := 0
+	if has_filter {
+		filter_str := string(state.filter_text[:])
+		if state.filter_active {
+			filter_display := fmt.tprintf("/ %s█  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
+			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_SECONDARY, "", true)
+		} else {
+			filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
+			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_DIM)
+		}
+		list_start_offset = 1
+	}
+
+	if has_filter && len(state.filtered_indices) > 0 {
+		// Render filtered items
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
+		start := state.scroll_offset
+		end := min(start + visible_height, len(state.filtered_indices))
+
+		for idx in start..<end {
+			y := calculate_list_item_y(idx - start) + list_start_offset
+			original_idx := state.filtered_indices[idx]
+			item := items[original_idx]
+
+			if idx == state.selected_index {
+				text := fmt.tprintf("> %s", item)
+				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
+			} else {
+				text := fmt.tprintf("  %s", item)
+				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
+			}
+		}
+
+		if len(state.filtered_indices) > visible_height {
+			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
+			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
+			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+		}
+	} else if has_filter && len(state.filtered_indices) == 0 {
+		no_match_y := LIST_ITEM_START_LINE + list_start_offset + 1
+		render_text_styled(screen, header_x, no_match_y, "No matches found", TUI_DIM)
+	} else if len(items) == 0 {
 		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 1, "No constants found", TUI_DIM)
 	} else {
-		// List items with scrolling
+		// List items with scrolling (unfiltered)
 		visible_height := calculate_visible_height(state.terminal_height)
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
@@ -208,7 +356,13 @@ render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 	// Footer with shortcuts (muted gray)
 	footer_y := calculate_footer_y(state.terminal_height)
-	render_text_styled(screen, header_x, footer_y, "d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	if state.filter_active {
+		render_text_styled(screen, header_x, footer_y, "Type to filter  Esc=Cancel  Enter=Accept  ↑/↓=Navigate", TUI_MUTED)
+	} else if has_filter {
+		render_text_styled(screen, header_x, footer_y, "/=Filter  d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	} else {
+		render_text_styled(screen, header_x, footer_y, "/=Filter  d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	}
 }
 
 // ============================================================================
@@ -238,11 +392,55 @@ render_completions_view :: proc(state: ^TUIState, screen: ^Screen) {
 	count_text := fmt.tprintf("%d completion scripts", len(items))
 	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, count_text, TUI_DIM)
 
-	if len(items) == 0 {
+	// Filter bar (shown when filter is active or has text)
+	filter_bar_y := HEADER_COUNT_LINE + CONTENT_PADDING_TOP + 1
+	has_filter := state.filter_active || len(state.filter_text) > 0
+	list_start_offset := 0
+	if has_filter {
+		filter_str := string(state.filter_text[:])
+		if state.filter_active {
+			filter_display := fmt.tprintf("/ %s█  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
+			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_SECONDARY, "", true)
+		} else {
+			filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
+			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_DIM)
+		}
+		list_start_offset = 1
+	}
+
+	if has_filter && len(state.filtered_indices) > 0 {
+		// Render filtered items
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
+		start := state.scroll_offset
+		end := min(start + visible_height, len(state.filtered_indices))
+
+		for idx in start..<end {
+			y := calculate_list_item_y(idx - start) + list_start_offset
+			original_idx := state.filtered_indices[idx]
+			completion := items[original_idx]
+
+			if idx == state.selected_index {
+				text := fmt.tprintf("> %s", completion)
+				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
+			} else {
+				text := fmt.tprintf("  %s", completion)
+				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
+			}
+		}
+
+		if len(state.filtered_indices) > visible_height {
+			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
+			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
+			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+		}
+	} else if has_filter && len(state.filtered_indices) == 0 {
+		no_match_y := LIST_ITEM_START_LINE + list_start_offset + 1
+		render_text_styled(screen, header_x, no_match_y, "No matches found", TUI_DIM)
+	} else if len(items) == 0 {
 		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 1, "No completion scripts found", TUI_DIM)
 		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 3, "Add completions with: wayu completions add <name> <file>", TUI_MUTED)
 	} else {
-		// List completions with scrolling
+		// List completions with scrolling (unfiltered)
 		visible_height := calculate_visible_height(state.terminal_height)
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
@@ -272,7 +470,13 @@ render_completions_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 	// Footer with shortcuts (muted gray)
 	footer_y := calculate_footer_y(state.terminal_height)
-	render_text_styled(screen, header_x, footer_y, "Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	if state.filter_active {
+		render_text_styled(screen, header_x, footer_y, "Type to filter  Esc=Cancel  Enter=Accept  ↑/↓=Navigate", TUI_MUTED)
+	} else if has_filter {
+		render_text_styled(screen, header_x, footer_y, "/=Filter  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	} else {
+		render_text_styled(screen, header_x, footer_y, "/=Filter  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	}
 }
 
 // ============================================================================
@@ -302,10 +506,54 @@ render_backups_view :: proc(state: ^TUIState, screen: ^Screen) {
 	count_text := fmt.tprintf("%d backups available", len(items))
 	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, count_text, TUI_DIM)
 
-	if len(items) == 0 {
+	// Filter bar (shown when filter is active or has text)
+	filter_bar_y := HEADER_COUNT_LINE + CONTENT_PADDING_TOP + 1
+	has_filter := state.filter_active || len(state.filter_text) > 0
+	list_start_offset := 0
+	if has_filter {
+		filter_str := string(state.filter_text[:])
+		if state.filter_active {
+			filter_display := fmt.tprintf("/ %s█  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
+			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_SECONDARY, "", true)
+		} else {
+			filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
+			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_DIM)
+		}
+		list_start_offset = 1
+	}
+
+	if has_filter && len(state.filtered_indices) > 0 {
+		// Render filtered items
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
+		start := state.scroll_offset
+		end := min(start + visible_height, len(state.filtered_indices))
+
+		for idx in start..<end {
+			y := calculate_list_item_y(idx - start) + list_start_offset
+			original_idx := state.filtered_indices[idx]
+			backup := items[original_idx]
+
+			if idx == state.selected_index {
+				text := fmt.tprintf("> %s", backup)
+				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
+			} else {
+				text := fmt.tprintf("  %s", backup)
+				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
+			}
+		}
+
+		if len(state.filtered_indices) > visible_height {
+			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
+			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
+			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+		}
+	} else if has_filter && len(state.filtered_indices) == 0 {
+		no_match_y := LIST_ITEM_START_LINE + list_start_offset + 1
+		render_text_styled(screen, header_x, no_match_y, "No matches found", TUI_DIM)
+	} else if len(items) == 0 {
 		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 1, "No backups found", TUI_DIM)
 	} else {
-		// List backups with scrolling
+		// List backups with scrolling (unfiltered)
 		visible_height := calculate_visible_height(state.terminal_height)
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
@@ -335,7 +583,13 @@ render_backups_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 	// Footer with shortcuts (muted gray)
 	footer_y := calculate_footer_y(state.terminal_height)
-	render_text_styled(screen, header_x, footer_y, "c=Cleanup  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	if state.filter_active {
+		render_text_styled(screen, header_x, footer_y, "Type to filter  Esc=Cancel  Enter=Accept  ↑/↓=Navigate", TUI_MUTED)
+	} else if has_filter {
+		render_text_styled(screen, header_x, footer_y, "/=Filter  c=Cleanup  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	} else {
+		render_text_styled(screen, header_x, footer_y, "/=Filter  c=Cleanup  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
+	}
 }
 
 // ============================================================================
@@ -411,6 +665,11 @@ clear_view_cache :: proc(state: ^TUIState, view: TUIView) {
 
 // Get item count for current view (updated version with actual data)
 get_view_item_count :: proc(state: ^TUIState) -> int {
+	// When filter has results, use filtered count
+	if len(state.filtered_indices) > 0 {
+		return len(state.filtered_indices)
+	}
+
 	switch state.current_view {
 	case .MAIN_MENU:
 		return 7  // 7 menu items
@@ -454,4 +713,52 @@ get_view_item_count :: proc(state: ^TUIState) -> int {
 		return 0  // No navigation in these views yet
 	}
 	return 0
+}
+
+// ============================================================================
+// Detail Overlay
+// ============================================================================
+
+// Render a detail overlay centered on screen
+render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
+	if !state.show_detail do return
+
+	// Calculate overlay dimensions
+	overlay_width := min(state.terminal_width - 6, 60)
+	overlay_height := min(len(state.detail_lines) + 5, state.terminal_height - 4)  // +5 for border, title, gap, footer, border
+	overlay_x := (state.terminal_width - overlay_width) / 2
+	overlay_y := (state.terminal_height - overlay_height) / 2
+
+	// Fill interior with spaces to cover underlying content
+	for dy in 1..<overlay_height-1 {
+		for dx in 1..<overlay_width-1 {
+			screen_set_cell(screen, overlay_x + dx, overlay_y + dy, Cell{char = ' '})
+		}
+	}
+
+	// Draw border (hot pink for focused)
+	render_box_styled(screen, overlay_x, overlay_y, overlay_width, overlay_height, TUI_BORDER_FOCUSED)
+
+	// Title line (inside border, padded)
+	content_x := overlay_x + 2
+	title_y := overlay_y + 1
+	render_text_styled(screen, content_x, title_y, state.detail_title, TUI_PRIMARY, "", true)
+
+	// Detail lines
+	max_lines := overlay_height - 5  // border top + title + gap + footer + border bottom
+	for line, i in state.detail_lines {
+		if i >= max_lines do break
+		line_y := title_y + 2 + i  // +2 for gap after title
+		// Truncate line if too wide
+		max_line_width := overlay_width - 4  // 2 padding each side
+		display_line := line
+		if len(line) > max_line_width {
+			display_line = line[:max_line_width]
+		}
+		render_text_styled(screen, content_x, line_y, display_line, TUI_MUTED)
+	}
+
+	// Footer hint
+	footer_y := overlay_y + overlay_height - 2
+	render_text_styled(screen, content_x, footer_y, "Press Esc or Enter to close", TUI_DIM)
 }

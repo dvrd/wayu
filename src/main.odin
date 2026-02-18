@@ -154,6 +154,7 @@ main :: proc() {
 			tui_bridge_delete_alias,
 			tui_bridge_delete_constant,
 			tui_bridge_cleanup_backups,
+			tui_bridge_get_path_detail,
 		)
 
 		// Launch TUI
