@@ -277,19 +277,30 @@ handle_plugin_update :: proc(args: []string) {
 	print_info("Restart your shell or run 'source ~/.%src' to reload plugins", SHELL_EXT)
 }
 
-// Handle plugin enable command - enable a disabled plugin
-// Sets enabled: true in plugins.json and regenerates shell loader
-// CLI-only command (no interactive mode)
-// Idempotent: Enabling an already-enabled plugin returns EXIT_SUCCESS
-handle_plugin_enable :: proc(args: []string) {
+// Shared implementation for enable/disable plugin commands
+// Sets enabled state in plugins.json and regenerates shell loader
+// Idempotent: Setting a plugin to its current state returns EXIT_SUCCESS
+handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
+	// Determine action-specific strings
+	action_word: string = "disable"
+	if enable { action_word = "enable" }
+	action_word_cap: string = "Disable"
+	if enable { action_word_cap = "Enable" }
+	action_ing: string = "Disabling"
+	if enable { action_ing = "Enabling" }
+	action_past: string = "disabled"
+	if enable { action_past = "enabled" }
+	header_text: string = "Disabling Plugin"
+	if enable { header_text = "Enabling Plugin" }
+
 	// 1. Validate arguments
 	if len(args) == 0 {
 		print_error("Missing required argument: plugin name")
 		fmt.println()
-		fmt.println("Usage: wayu plugin enable <name>")
+		fmt.printfln("Usage: wayu plugin %s <name>", action_word)
 		fmt.println()
 		fmt.println("Example:")
-		fmt.println("  wayu plugin enable zsh-autosuggestions")
+		fmt.printfln("  wayu plugin %s zsh-autosuggestions", action_word)
 		fmt.println()
 		fmt.printfln("%sHint:%s For interactive selection, use: %swayu --tui%s",
 			get_muted(), RESET, get_primary(), RESET)
@@ -321,15 +332,15 @@ handle_plugin_enable :: proc(args: []string) {
 		os.exit(EXIT_DATAERR)
 	}
 
-	// 4. Check if already enabled (idempotent operation)
-	if plugin_ptr.enabled {
+	// 4. Check if already in target state (idempotent operation)
+	if plugin_ptr.enabled == enable {
 		cleanup_plugin_config_json(&config)
-		print_info("Plugin '%s' is already enabled", plugin_name)
+		print_info("Plugin '%s' is already %s", plugin_name, action_past)
 		os.exit(EXIT_SUCCESS)  // NOT an error - idempotent
 	}
 
 	// Display header
-	print_header("Enabling Plugin", EMOJI_COMMAND)
+	print_header(header_text, EMOJI_COMMAND)
 	fmt.println()
 
 	// 5. Create backup before modifying
@@ -344,8 +355,8 @@ handle_plugin_enable :: proc(args: []string) {
 		}
 	}
 
-	// 6. Enable plugin
-	plugin_ptr.enabled = true
+	// 6. Set plugin enabled state
+	plugin_ptr.enabled = enable
 
 	// 7. Write updated configuration
 	if !DRY_RUN {
@@ -374,12 +385,30 @@ handle_plugin_enable :: proc(args: []string) {
 	// 9. Success
 	delete(config_file)
 	cleanup_plugin_config_json(&config)
-	print_success("Plugin '%s' enabled successfully", plugin_name)
+	print_success("Plugin '%s' %s successfully", plugin_name, action_past)
 	fmt.println()
-	fmt.printfln("%sThe plugin will be loaded in new shell sessions.%s", BRIGHT_CYAN, RESET)
+
+	if enable {
+		fmt.printfln("%sThe plugin will be loaded in new shell sessions.%s", BRIGHT_CYAN, RESET)
+	} else {
+		fmt.printfln("%sThe plugin will not be loaded in new shell sessions.%s", BRIGHT_CYAN, RESET)
+	}
 	fmt.printfln("Restart your shell or run 'source ~/.%src' to apply changes.", SHELL_EXT)
 
+	if !enable {
+		fmt.println()
+		fmt.printfln("%sTo re-enable:%s wayu plugin enable %s", get_muted(), RESET, plugin_name)
+	}
+
 	os.exit(EXIT_SUCCESS)
+}
+
+// Handle plugin enable command - enable a disabled plugin
+// Sets enabled: true in plugins.json and regenerates shell loader
+// CLI-only command (no interactive mode)
+// Idempotent: Enabling an already-enabled plugin returns EXIT_SUCCESS
+handle_plugin_enable :: proc(args: []string) {
+	handle_plugin_set_enabled(args, true)
 }
 
 // Handle plugin disable command - disable an enabled plugin
@@ -388,106 +417,7 @@ handle_plugin_enable :: proc(args: []string) {
 // Plugin remains installed, only prevents loading on shell startup
 // Idempotent: Disabling an already-disabled plugin returns EXIT_SUCCESS
 handle_plugin_disable :: proc(args: []string) {
-	// 1. Validate arguments
-	if len(args) == 0 {
-		print_error("Missing required argument: plugin name")
-		fmt.println()
-		fmt.println("Usage: wayu plugin disable <name>")
-		fmt.println()
-		fmt.println("Example:")
-		fmt.println("  wayu plugin disable zsh-autosuggestions")
-		fmt.println()
-		fmt.printfln("%sHint:%s For interactive selection, use: %swayu --tui%s",
-			get_muted(), RESET, get_primary(), RESET)
-		os.exit(EXIT_USAGE)
-	}
-
-	plugin_name := args[0]
-
-	// 2. Read plugin configuration
-	config, ok := read_plugin_config_json()
-	if !ok {
-		os.exit(EXIT_CONFIG)
-	}
-
-	// 3. Find plugin by name
-	plugin_ptr: ^PluginMetadata = nil
-	for &plugin in config.plugins {
-		if plugin.name == plugin_name {
-			plugin_ptr = &plugin
-			break
-		}
-	}
-
-	if plugin_ptr == nil {
-		cleanup_plugin_config_json(&config)
-		print_error_simple("Error: Plugin '%s' not found", plugin_name)
-		fmt.println()
-		fmt.println("Run 'wayu plugin list' to see installed plugins")
-		os.exit(EXIT_DATAERR)
-	}
-
-	// 4. Check if already disabled (idempotent operation)
-	if !plugin_ptr.enabled {
-		cleanup_plugin_config_json(&config)
-		print_info("Plugin '%s' is already disabled", plugin_name)
-		os.exit(EXIT_SUCCESS)  // NOT an error - idempotent
-	}
-
-	// Display header
-	print_header("Disabling Plugin", EMOJI_COMMAND)
-	fmt.println()
-
-	// 5. Create backup before modifying
-	config_file := get_plugins_json_config_file()
-
-	if os.exists(config_file) {
-		backup_path, backup_ok := create_backup(config_file)
-		if backup_ok {
-			delete(backup_path)
-		} else {
-			print_warning("Warning: Failed to create backup")
-		}
-	}
-
-	// 6. Disable plugin
-	plugin_ptr.enabled = false
-
-	// 7. Write updated configuration
-	if !DRY_RUN {
-		if !write_plugin_config_json(&config) {
-			delete(config_file)
-			cleanup_plugin_config_json(&config)
-			print_error_simple("Error: Failed to save plugin configuration")
-			os.exit(EXIT_CONFIG)
-		}
-	} else {
-		print_info("[DRY RUN] Would save updated configuration")
-	}
-
-	// 8. Regenerate shell loader
-	if !DRY_RUN {
-		if !generate_plugins_file(DETECTED_SHELL) {
-			delete(config_file)
-			cleanup_plugin_config_json(&config)
-			print_error_simple("Error: Failed to regenerate plugins loader")
-			os.exit(EXIT_IOERR)
-		}
-	} else {
-		print_info("[DRY RUN] Would regenerate shell loader")
-	}
-
-	// 9. Success
-	delete(config_file)
-	cleanup_plugin_config_json(&config)
-	print_success("Plugin '%s' disabled successfully", plugin_name)
-	fmt.println()
-	fmt.printfln("%sThe plugin will not be loaded in new shell sessions.%s", BRIGHT_CYAN, RESET)
-	fmt.printfln("Restart your shell or run 'source ~/.%src' to apply changes.", SHELL_EXT)
-	fmt.println()
-	fmt.printfln("%sTo re-enable:%s wayu plugin enable %s", get_muted(), RESET, plugin_name)
-
-	os.exit(EXIT_SUCCESS)
+	handle_plugin_set_enabled(args, false)
 }
 
 // Handle plugin priority command - set plugin load priority
