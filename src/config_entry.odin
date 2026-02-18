@@ -423,8 +423,8 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 	}
 
 	if !removed {
-		print_warning("%s not found: %s", spec.display_name, name_to_remove)
-		return
+		print_error_simple(fmt.aprintf("Error: %s not found: %s", spec.display_name, name_to_remove))
+		os.exit(EXIT_DATAERR)
 	}
 
 	// Create backup

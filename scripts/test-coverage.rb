@@ -266,8 +266,8 @@ test_files = Dir.glob("#{UNIT_TEST_DIR}/*.odin")
 src_files = Dir.glob("#{SRC_DIR}/*.odin")
 
 testable_components = %w[
-  alias backup colors completions constants debug fuzzy init main
-  path plugin preload shell style table validation
+  alias backup colors completions config_entry config_specs constants debug exit_codes fuzzy init
+  layout main path plugin plugin_config plugin_help plugin_operations plugin_registry preload shell style table validation
 ]
 
 # Count functions/procs in source files
