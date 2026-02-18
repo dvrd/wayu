@@ -2,6 +2,7 @@ package wayu_tui
 
 import "core:fmt"
 import "core:os"
+import "core:strings"
 
 // Main TUI entry point
 tui_run :: proc() {
@@ -96,9 +97,23 @@ tui_handle_event :: proc(state: ^TUIState, event: Event) {
 
 // Handle keyboard events
 handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
-	// Global keys (work in all views)
+	// Global keys (work in all views, even in filter mode)
 	if .Ctrl in key.modifiers && key.char == 'c' {
 		state.running = false
+		return
+	}
+
+	// Handle detail overlay dismissal
+	if state.show_detail {
+		if key.key == .Escape || key.key == .Enter || (key.key == .Char && key.char == 'q') {
+			clear_detail(state)
+		}
+		return
+	}
+
+	// When filter is active, route ALL input to filter handler
+	if state.filter_active {
+		handle_filter_input(state, key)
 		return
 	}
 
@@ -162,25 +177,103 @@ handle_selection :: proc(state: ^TUIState) {
 		}
 
 	case .PATH_VIEW:
-		// TODO: Implement PATH-specific selection (Phase 6)
+		if state.data_cache[.PATH_VIEW] != nil {
+			items := cast(^[dynamic]string)state.data_cache[.PATH_VIEW]
+			if state.selected_index >= 0 && state.selected_index < len(items) {
+				selected := items[state.selected_index]
+				detail_lines := tui_get_path_detail(selected)
+				// Convert dynamic array to slice for show_detail_overlay
+				show_detail_overlay(state, selected, detail_lines[:])
+				// Free the returned dynamic array (show_detail_overlay clones)
+				for line in detail_lines {
+					delete(line)
+				}
+				delete(detail_lines)
+			}
+		}
 
 	case .ALIAS_VIEW:
-		// TODO: Implement Alias-specific selection (Phase 6)
+		if state.data_cache[.ALIAS_VIEW] != nil {
+			items := cast(^[dynamic]string)state.data_cache[.ALIAS_VIEW]
+			if state.selected_index >= 0 && state.selected_index < len(items) {
+				selected := items[state.selected_index]
+				// Parse "name=command" format
+				parts := strings.split(selected, "=")
+				defer delete(parts)
+				if len(parts) >= 2 {
+					lines := []string{
+						fmt.tprintf("Name: %s", parts[0]),
+						fmt.tprintf("Command: %s", strings.join(parts[1:], "=")),
+					}
+					show_detail_overlay(state, parts[0], lines)
+				} else {
+					lines := []string{selected}
+					show_detail_overlay(state, "Alias", lines)
+				}
+			}
+		}
 
 	case .CONSTANTS_VIEW:
-		// TODO: Implement Constants-specific selection (Phase 6)
+		if state.data_cache[.CONSTANTS_VIEW] != nil {
+			items := cast(^[dynamic]string)state.data_cache[.CONSTANTS_VIEW]
+			if state.selected_index >= 0 && state.selected_index < len(items) {
+				selected := items[state.selected_index]
+				// Parse "NAME=value" format
+				parts := strings.split(selected, "=")
+				defer delete(parts)
+				if len(parts) >= 2 {
+					value := strings.join(parts[1:], "=")
+					defer delete(value)
+					lines := []string{
+						fmt.tprintf("Name: %s", parts[0]),
+						fmt.tprintf("Value: %s", value),
+					}
+					show_detail_overlay(state, parts[0], lines)
+				} else {
+					lines := []string{selected}
+					show_detail_overlay(state, "Constant", lines)
+				}
+			}
+		}
 
 	case .COMPLETIONS_VIEW:
-		// TODO: Implement Completions-specific selection (Phase 6)
+		if state.data_cache[.COMPLETIONS_VIEW] != nil {
+			items := cast(^[dynamic]string)state.data_cache[.COMPLETIONS_VIEW]
+			if state.selected_index >= 0 && state.selected_index < len(items) {
+				selected := items[state.selected_index]
+				lines := []string{
+					fmt.tprintf("Script: %s", selected),
+				}
+				show_detail_overlay(state, selected, lines)
+			}
+		}
 
 	case .BACKUPS_VIEW:
-		// TODO: Implement Backups-specific selection (Phase 6)
+		if state.data_cache[.BACKUPS_VIEW] != nil {
+			items := cast(^[dynamic]string)state.data_cache[.BACKUPS_VIEW]
+			if state.selected_index >= 0 && state.selected_index < len(items) {
+				selected := items[state.selected_index]
+				// Parse backup filename: e.g. "path.zsh.backup.2024-03-15_14-30-00"
+				parts := strings.split(selected, ".backup.")
+				defer delete(parts)
+				if len(parts) >= 2 {
+					lines := []string{
+						fmt.tprintf("Config: %s", parts[0]),
+						fmt.tprintf("Timestamp: %s", parts[1]),
+					}
+					show_detail_overlay(state, "Backup Detail", lines)
+				} else {
+					lines := []string{selected}
+					show_detail_overlay(state, "Backup", lines)
+				}
+			}
+		}
 
 	case .PLUGINS_VIEW:
-		// TODO: Implement Plugins-specific selection (Phase 6)
+		// No detail for plugins yet
 
 	case .SETTINGS_VIEW:
-		// TODO: Implement Settings-specific selection (Phase 6)
+		// No detail for settings
 	}
 }
 
@@ -215,6 +308,9 @@ tui_render :: proc(state: ^TUIState, screen: ^Screen) {
 	case .SETTINGS_VIEW:
 		render_settings_view(state, screen)
 	}
+
+	// Render detail overlay on top if active
+	render_detail_overlay(state, screen)
 }
 
 // Render main menu (using layout constants)
@@ -257,6 +353,75 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 	// Footer (muted gray)
 	footer_y := calculate_footer_y(state.terminal_height)
 	render_text_styled(screen, header_x, footer_y, "Use ↑/↓ or j/k to navigate, Enter to select", TUI_MUTED)
+}
+
+// Handle keyboard input when filter mode is active
+handle_filter_input :: proc(state: ^TUIState, key: KeyEvent) {
+	#partial switch key.key {
+	case .Escape:
+		// Cancel filter, return to normal mode
+		deactivate_filter(state)
+		state.needs_refresh = true
+
+	case .Enter:
+		// Accept filter result and exit filter mode
+		// Keep the current selection position
+		state.filter_active = false
+		// Don't clear filter_text or filtered_indices — keep the filtered view
+		state.needs_refresh = true
+
+	case .Backspace:
+		// Remove last character from filter
+		if len(state.filter_text) > 0 {
+			pop(&state.filter_text)
+			cache := get_current_cache(state)
+			if cache != nil {
+				apply_filter(state, cache)
+			}
+			state.needs_refresh = true
+		}
+
+	case .Up:
+		// Navigate within filtered results
+		item_count := len(state.filtered_indices)
+		if item_count == 0 {
+			item_count = get_view_item_count(state)
+		}
+		tui_state_move_selection(state, -1, item_count)
+
+	case .Down:
+		// Navigate within filtered results
+		item_count := len(state.filtered_indices)
+		if item_count == 0 {
+			item_count = get_view_item_count(state)
+		}
+		tui_state_move_selection(state, 1, item_count)
+
+	case .Char:
+		if key.char == 'k' && .Ctrl in key.modifiers {
+			// Ctrl+K: navigate up in filter mode
+			item_count := len(state.filtered_indices)
+			if item_count == 0 {
+				item_count = get_view_item_count(state)
+			}
+			tui_state_move_selection(state, -1, item_count)
+		} else if key.char == 'j' && .Ctrl in key.modifiers {
+			// Ctrl+J: navigate down in filter mode
+			item_count := len(state.filtered_indices)
+			if item_count == 0 {
+				item_count = get_view_item_count(state)
+			}
+			tui_state_move_selection(state, 1, item_count)
+		} else if .Ctrl not_in key.modifiers {
+			// Printable character: add to filter
+			append(&state.filter_text, u8(key.char))
+			cache := get_current_cache(state)
+			if cache != nil {
+				apply_filter(state, cache)
+			}
+			state.needs_refresh = true
+		}
+	}
 }
 
 // Note: View rendering functions are now in tui_views.odin

@@ -1,5 +1,7 @@
 package wayu_tui
 
+import "core:strings"
+
 TUIView :: enum {
 	MAIN_MENU,
 	PATH_VIEW,
@@ -21,6 +23,14 @@ TUIState :: struct {
 	needs_refresh:   bool,
 	running:         bool,
 	data_cache:      map[TUIView]rawptr,
+	// Detail overlay state
+	show_detail:     bool,
+	detail_title:    string,
+	detail_lines:    [dynamic]string,
+	// Inline filter state
+	filter_active:     bool,
+	filter_text:       [dynamic]u8,
+	filtered_indices:  [dynamic]int,  // indices into the original cache that match
 }
 
 // Initialize TUI state
@@ -40,6 +50,14 @@ tui_state_init :: proc() -> TUIState {
 
 // Destroy state and free resources
 tui_state_destroy :: proc(state: ^TUIState) {
+	// Free detail overlay resources
+	clear_detail(state)
+	delete(state.detail_lines)
+
+	// Free inline filter resources
+	delete(state.filter_text)
+	delete(state.filtered_indices)
+
 	// Free cached data properly - must free strings, dynamic arrays, then pointers
 	for key, value in state.data_cache {
 		if value != nil {
@@ -60,8 +78,34 @@ tui_state_destroy :: proc(state: ^TUIState) {
 	delete(state.data_cache)
 }
 
+// Clear detail overlay and free its resources
+clear_detail :: proc(state: ^TUIState) {
+	state.show_detail = false
+	if len(state.detail_title) > 0 {
+		delete(state.detail_title)
+	}
+	state.detail_title = ""
+	for line in state.detail_lines {
+		delete(line)
+	}
+	clear(&state.detail_lines)
+	state.needs_refresh = true
+}
+
+// Show detail overlay with title and content lines
+show_detail_overlay :: proc(state: ^TUIState, title: string, lines: []string) {
+	clear_detail(state)
+	state.show_detail = true
+	state.detail_title = strings.clone(title)
+	for line in lines {
+		append(&state.detail_lines, strings.clone(line))
+	}
+	state.needs_refresh = true
+}
+
 // Go to new view
 tui_state_goto_view :: proc(state: ^TUIState, view: TUIView) {
+	deactivate_filter(state)
 	state.previous_view = state.current_view
 	state.current_view = view
 	state.selected_index = 0
@@ -71,6 +115,7 @@ tui_state_goto_view :: proc(state: ^TUIState, view: TUIView) {
 
 // Go back to previous view
 tui_state_go_back :: proc(state: ^TUIState) {
+	deactivate_filter(state)
 	temp := state.current_view
 	state.current_view = state.previous_view
 	state.previous_view = temp
@@ -106,6 +151,64 @@ tui_state_move_selection :: proc(state: ^TUIState, delta: int, item_count: int) 
 	}
 
 	state.needs_refresh = true
+}
+
+// Activate inline filter mode
+activate_filter :: proc(state: ^TUIState) {
+	state.filter_active = true
+	clear(&state.filter_text)
+	clear(&state.filtered_indices)
+	state.selected_index = 0
+	state.scroll_offset = 0
+}
+
+// Deactivate inline filter mode
+deactivate_filter :: proc(state: ^TUIState) {
+	state.filter_active = false
+	clear(&state.filter_text)
+	clear(&state.filtered_indices)
+	state.selected_index = 0
+	state.scroll_offset = 0
+}
+
+// Case-insensitive substring match
+matches_filter :: proc(item: string, filter: []u8) -> bool {
+	if len(filter) == 0 { return true }
+	filter_str := string(filter[:])
+
+	// Simple case-insensitive contains
+	lower_item := strings.to_lower(item)
+	lower_filter := strings.to_lower(filter_str)
+	defer delete(lower_item)
+	defer delete(lower_filter)
+	return strings.contains(lower_item, lower_filter)
+}
+
+// Rebuild filtered_indices based on current filter_text and cache
+apply_filter :: proc(state: ^TUIState, items: []string) {
+	clear(&state.filtered_indices)
+	for item, i in items {
+		if matches_filter(item, state.filter_text[:]) {
+			append(&state.filtered_indices, i)
+		}
+	}
+	if state.selected_index >= len(state.filtered_indices) {
+		state.selected_index = max(0, len(state.filtered_indices) - 1)
+	}
+	state.scroll_offset = 0
+}
+
+// Get the current view's cache items as a string slice
+get_current_cache :: proc(state: ^TUIState) -> []string {
+	view := state.current_view
+	if state.data_cache[view] == nil {
+		return nil
+	}
+	items := cast(^[dynamic]string)state.data_cache[view]
+	if items == nil {
+		return nil
+	}
+	return items[:]
 }
 
 // Note: get_view_item_count() is now implemented in tui_views.odin

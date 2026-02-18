@@ -77,6 +77,14 @@ handle_path_event :: proc(state: ^TUIState, key: KeyEvent) {
 					state.needs_refresh = true
 				}
 			}
+		case '/':
+			// Activate inline filter
+			activate_filter(state)
+			cache := get_current_cache(state)
+			if cache != nil {
+				apply_filter(state, cache)
+			}
+			state.needs_refresh = true
 		}
 	}
 }
@@ -120,6 +128,14 @@ handle_alias_event :: proc(state: ^TUIState, key: KeyEvent) {
 					}
 				}
 			}
+		case '/':
+			// Activate inline filter
+			activate_filter(state)
+			cache := get_current_cache(state)
+			if cache != nil {
+				apply_filter(state, cache)
+			}
+			state.needs_refresh = true
 		}
 	}
 }
@@ -163,6 +179,14 @@ handle_constants_event :: proc(state: ^TUIState, key: KeyEvent) {
 					}
 				}
 			}
+		case '/':
+			// Activate inline filter
+			activate_filter(state)
+			cache := get_current_cache(state)
+			if cache != nil {
+				apply_filter(state, cache)
+			}
+			state.needs_refresh = true
 		}
 	}
 }
@@ -172,8 +196,19 @@ handle_constants_event :: proc(state: ^TUIState, key: KeyEvent) {
 // ============================================================================
 
 handle_completions_event :: proc(state: ^TUIState, key: KeyEvent) {
-	// Placeholder - no actions yet
-	// Will be implemented in Phase 7
+	#partial switch key.key {
+	case .Char:
+		switch key.char {
+		case '/':
+			// Activate inline filter
+			activate_filter(state)
+			cache := get_current_cache(state)
+			if cache != nil {
+				apply_filter(state, cache)
+			}
+			state.needs_refresh = true
+		}
+	}
 }
 
 // ============================================================================
@@ -191,6 +226,14 @@ handle_backups_event :: proc(state: ^TUIState, key: KeyEvent) {
 			// Clear cache to reload
 			clear_view_cache(state, .BACKUPS_VIEW)
 
+			state.needs_refresh = true
+		case '/':
+			// Activate inline filter
+			activate_filter(state)
+			cache := get_current_cache(state)
+			if cache != nil {
+				apply_filter(state, cache)
+			}
 			state.needs_refresh = true
 		}
 	}
