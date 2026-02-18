@@ -231,8 +231,16 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			// Parse shell override
 			shell_name := args[i + 1]
 			parsed.shell = parse_shell_type(shell_name)
+			// Update global detected shell
+			DETECTED_SHELL = parsed.shell
 			// Update global shell extension for dry-run messages and file operations
 			SHELL_EXT = get_shell_extension(parsed.shell)
+			// Free old file name globals before reassigning (they were allocated by init_shell_globals)
+			delete(PATH_FILE)
+			delete(ALIAS_FILE)
+			delete(CONSTANTS_FILE)
+			delete(INIT_FILE)
+			delete(TOOLS_FILE)
 			// Also update the file name globals
 			PATH_FILE = fmt.aprintf("path.%s", SHELL_EXT)
 			ALIAS_FILE = fmt.aprintf("aliases.%s", SHELL_EXT)

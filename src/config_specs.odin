@@ -178,8 +178,8 @@ validate_alias_entry :: proc(entry: ConfigEntry) -> ValidationResult {
 
 // Format ALIAS line: alias name="command"
 format_alias_line :: proc(entry: ConfigEntry) -> string {
-	// Escape quotes in command (strings.replace_all returns 2 values: result and allocation count)
-	escaped_cmd, _ := strings.replace_all(entry.value, `"`, `\"`)
+	// Sanitize value for safe shell embedding
+	escaped_cmd := sanitize_shell_value(entry.value)
 	defer delete(escaped_cmd)
 
 	return fmt.aprintf(`alias %s="%s"`, entry.name, escaped_cmd)
@@ -294,8 +294,8 @@ validate_constant_entry :: proc(entry: ConfigEntry) -> ValidationResult {
 
 // Format CONSTANT line: export NAME="value"
 format_constant_line :: proc(entry: ConfigEntry) -> string {
-	// Escape quotes in value (strings.replace_all returns 2 values)
-	escaped_value, _ := strings.replace_all(entry.value, `"`, `\"`)
+	// Sanitize value for safe shell embedding
+	escaped_value := sanitize_shell_value(entry.value)
 	defer delete(escaped_value)
 
 	return fmt.aprintf(`export %s="%s"`, entry.name, escaped_value)
