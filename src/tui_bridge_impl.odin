@@ -261,3 +261,29 @@ tui_bridge_cleanup_backups :: proc() -> bool {
 
 	return true
 }
+
+// Get PATH entry detail information
+tui_bridge_get_path_detail :: proc(path_str: string) -> [dynamic]string {
+	lines := make([dynamic]string)
+
+	append(&lines, strings.clone(fmt.tprintf("Path: %s", path_str)))
+
+	if os.exists(path_str) {
+		append(&lines, strings.clone("Status: ✓ Directory exists"))
+
+		// Try to list contents
+		dir_handle, err := os.open(path_str)
+		if err == nil {
+			defer os.close(dir_handle)
+			infos, read_err := os.read_dir(dir_handle, -1)
+			if read_err == nil {
+				defer os.file_info_slice_delete(infos)
+				append(&lines, strings.clone(fmt.tprintf("Contents: %d items", len(infos))))
+			}
+		}
+	} else {
+		append(&lines, strings.clone("Status: ✗ Directory not found"))
+	}
+
+	return lines
+}

@@ -20,6 +20,7 @@ g_delete_path: proc(string) -> bool
 g_delete_alias: proc(string) -> bool
 g_delete_constant: proc(string) -> bool
 g_cleanup_backups: proc() -> bool
+g_get_path_detail: proc(string) -> [dynamic]string
 
 // Set bridge functions (called from main.odin before tui_run)
 tui_set_bridge_functions :: proc(
@@ -32,6 +33,7 @@ tui_set_bridge_functions :: proc(
 	delete_alias: proc(string) -> bool,
 	delete_constant: proc(string) -> bool,
 	cleanup_backups: proc() -> bool,
+	get_path_detail: proc(string) -> [dynamic]string,
 ) {
 	g_load_path_data = load_path
 	g_load_alias_data = load_alias
@@ -42,6 +44,7 @@ tui_set_bridge_functions :: proc(
 	g_delete_alias = delete_alias
 	g_delete_constant = delete_constant
 	g_cleanup_backups = cleanup_backups
+	g_get_path_detail = get_path_detail
 }
 
 // Bridge functions to load data into TUI state cache
@@ -114,6 +117,16 @@ tui_cleanup_backups :: proc() -> bool {
 		return g_cleanup_backups()
 	}
 	return false
+}
+
+// Get PATH entry detail information
+tui_get_path_detail :: proc(path: string) -> [dynamic]string {
+	if g_get_path_detail != nil {
+		return g_get_path_detail(path)
+	}
+	// Fallback: return empty
+	result := make([dynamic]string)
+	return result
 }
 
 // Auto-load data when entering a view
