@@ -435,14 +435,104 @@ get_border_char :: proc(style: BorderStyle, pos: BorderPosition) -> string {
 	return " "
 }
 
+// Truncate text to fit within a given visual width, adding ellipsis if needed
+// Handles ANSI escape sequences properly (doesn't count them as visible width)
+truncate_to_width :: proc(text: string, max_width: int) -> string {
+	if max_width <= 0 {
+		return ""
+	}
+
+	text_width := visual_width(text)
+
+	// No truncation needed
+	if text_width <= max_width {
+		return text
+	}
+
+	// Need at least 4 chars for truncation to make sense (1 char + "...")
+	if max_width < 4 {
+		// Just return dots up to max_width
+		dots := strings.repeat(".", max_width)
+		return dots
+	}
+
+	// Build truncated string character by character
+	result := strings.Builder{}
+	strings.builder_init(&result)
+	defer strings.builder_destroy(&result)
+
+	target_width := max_width - 3 // Reserve space for "..."
+	current_width := 0
+	in_escape := false
+	i := 0
+
+	for i < len(text) {
+		b := text[i]
+
+		// Handle ANSI escape sequences - copy them without counting width
+		if b == '\x1b' {
+			in_escape = true
+			strings.write_byte(&result, b)
+			i += 1
+			continue
+		}
+
+		if in_escape {
+			strings.write_byte(&result, b)
+			if b == 'm' {
+				in_escape = false
+			}
+			i += 1
+			continue
+		}
+
+		// Determine character width
+		char_width := 1
+		char_len := 1
+
+		if b >= 0xF0 && b <= 0xF4 { // 4-byte UTF-8 (emoji)
+			char_width = 2
+			char_len = 4
+		} else if b >= 0xE0 && b <= 0xEF { // 3-byte UTF-8
+			char_width = 1
+			char_len = 3
+		} else if b >= 0xC0 && b <= 0xDF { // 2-byte UTF-8
+			char_width = 1
+			char_len = 2
+		}
+
+		// Check if adding this character would exceed target width
+		if current_width + char_width > target_width {
+			break
+		}
+
+		// Copy the character bytes
+		for j in 0..<char_len {
+			if i + j < len(text) {
+				strings.write_byte(&result, text[i + j])
+			}
+		}
+
+		current_width += char_width
+		i += char_len
+	}
+
+	// Add ellipsis
+	strings.write_string(&result, "...")
+
+	// Close any open ANSI sequences
+	strings.write_string(&result, RESET)
+
+	return strings.clone(strings.to_string(result))
+}
+
 // Align text within a given width
 align_text :: proc(text: string, width: int, alignment: Alignment) -> string {
 	text_width := visible_width(text)
 
-	// If text is already wider than target, truncate or return as-is
+	// If text is already wider than target, truncate to fit
 	if text_width >= width {
-		// TODO: Implement proper text truncation with ellipsis
-		return text
+		return truncate_to_width(text, width)
 	}
 
 	padding_needed := width - text_width

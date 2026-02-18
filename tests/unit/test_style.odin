@@ -356,8 +356,10 @@ test_align_text_center :: proc(t: ^testing.T) {
 test_align_text_overflow :: proc(t: ^testing.T) {
 	long_text := "This is a very long text"
 	result := wayu.align_text(long_text, 5, .Left)
-	// Should return text as-is when it's wider than target width
-	testing.expect(t, len(result) >= len(long_text), "Text should not be truncated")
+	defer delete(result)
+	// Should truncate text when it's wider than target width
+	result_width := wayu.visual_width(result)
+	testing.expect(t, result_width <= 5, "Truncated text should fit within target width")
 }
 
 // Test get_border_char for Normal style
@@ -496,4 +498,29 @@ test_render_with_margins :: proc(t: ^testing.T) {
 	result := wayu.render(style, "Test")
 	testing.expect(t, len(result) > 4, "Text with margins should have newlines")
 	defer delete(result)
+}
+
+// Test truncate_to_width with text that needs truncation
+@(test)
+test_truncate_to_width_basic :: proc(t: ^testing.T) {
+	result := wayu.truncate_to_width("Hello, World!", 8)
+	defer delete(result)
+	result_width := wayu.visual_width(result)
+	testing.expect(t, result_width <= 8, "Truncated text should have visual width <= 8")
+	// Should end with "..."
+	testing.expect(t, len(result) >= 3, "Result should have at least 3 characters for ellipsis")
+}
+
+// Test truncate_to_width with text shorter than max width
+@(test)
+test_truncate_to_width_no_truncation :: proc(t: ^testing.T) {
+	result := wayu.truncate_to_width("Hi", 10)
+	testing.expect_value(t, result, "Hi")
+}
+
+// Test truncate_to_width with text exactly at max width
+@(test)
+test_truncate_to_width_exact_fit :: proc(t: ^testing.T) {
+	result := wayu.truncate_to_width("Hello", 5)
+	testing.expect_value(t, result, "Hello")
 }
