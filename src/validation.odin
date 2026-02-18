@@ -192,6 +192,18 @@ validate_constant :: proc(name: string, value: string) -> ValidationResult {
 	return ValidationResult{valid = true, error_message = ""}
 }
 
+// Validate that a string is safe to use as a shell command argument
+// Rejects strings containing shell metacharacters that could enable injection
+is_safe_shell_arg :: proc(arg: string) -> bool {
+	for r in arg {
+		switch r {
+		case '"', '`', '$', ';', '|', '&', '(', ')', '>', '<', '\'', '\n', '\r':
+			return false
+		}
+	}
+	return true
+}
+
 // Validate path
 validate_path :: proc(path: string) -> ValidationResult {
 	if len(strings.trim_space(path)) == 0 {

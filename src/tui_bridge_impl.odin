@@ -156,7 +156,7 @@ tui_bridge_load_backups :: proc(state: ^tui.TUIState) {
 	items := make([dynamic]string)
 
 	// List all backups from the backups directory
-	backups_dir := fmt.aprintf("%s/.backups", WAYU_CONFIG)
+	backups_dir := fmt.aprintf("%s/backup", WAYU_CONFIG)
 	defer delete(backups_dir)
 
 	if !os.exists(backups_dir) {

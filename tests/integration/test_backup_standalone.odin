@@ -60,7 +60,7 @@ count_backup_files :: proc(pattern: string) -> int {
 }
 
 cleanup_backups :: proc(config_dir: string) {
-	cmd := strings.concatenate({"rm -f ", config_dir, "/*.backup.* 2>/dev/null"}, context.temp_allocator)
+	cmd := strings.concatenate({"rm -f ", config_dir, "/backup/*.backup.* 2>/dev/null"}, context.temp_allocator)
 	libc.system(strings.clone_to_cstring(cmd, context.temp_allocator))
 }
 
@@ -110,7 +110,7 @@ main :: proc() {
 		output := run_wayu(fmt.tprintf("path add %s", test_dir))
 		defer delete(output)
 
-		pattern := strings.concatenate({config_dir, "/path.zsh.backup.*"}, context.temp_allocator)
+		pattern := strings.concatenate({config_dir, "/backup/path.zsh.backup.*"}, context.temp_allocator)
 		backup_count := count_backup_files(pattern)
 
 		passed := backup_count > 0
@@ -191,7 +191,7 @@ main :: proc() {
 			delete(output)
 		}
 
-		pattern := strings.concatenate({config_dir, "/path.zsh.backup.*"}, context.temp_allocator)
+		pattern := strings.concatenate({config_dir, "/backup/path.zsh.backup.*"}, context.temp_allocator)
 		before_count := count_backup_files(pattern)
 
 		// Run cleanup
