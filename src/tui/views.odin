@@ -790,19 +790,26 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		delete_start  := right_edge - delete_btn_w
 		cancel_start  := delete_start - button_gap - cancel_btn_w
 
-		// Render CANCEL button — dim border, dim text
-		screen_set_cell(screen, cancel_start, footer_y, Cell{char = '[', fg = TUI_DIM})
-		screen_set_cell(screen, cancel_start + 1, footer_y, Cell{char = ' ', fg = TUI_DIM})
-		render_text_styled(screen, cancel_start + 2, footer_y, cancel_label, TUI_DIM)
-		screen_set_cell(screen, cancel_start + cancel_btn_w - 2, footer_y, Cell{char = ' ', fg = TUI_DIM})
-		screen_set_cell(screen, cancel_start + cancel_btn_w - 1, footer_y, Cell{char = ']', fg = TUI_DIM})
+		// Button colors driven by focus state
+		// Focused button: TUI_ERROR (red), bold. Unfocused: TUI_DIM.
+		cancel_fg := TUI_ERROR if !state.confirm_delete_focused_delete else TUI_DIM
+		delete_fg := TUI_ERROR if  state.confirm_delete_focused_delete else TUI_DIM
+		cancel_bold := !state.confirm_delete_focused_delete
+		delete_bold :=  state.confirm_delete_focused_delete
 
-		// Render DELETE button — primary (hot pink) border, bold label
-		screen_set_cell(screen, delete_start, footer_y, Cell{char = '[', fg = TUI_ERROR})
-		screen_set_cell(screen, delete_start + 1, footer_y, Cell{char = ' ', fg = TUI_ERROR})
-		render_text_styled(screen, delete_start + 2, footer_y, delete_label, TUI_ERROR, "", true)
-		screen_set_cell(screen, delete_start + delete_btn_w - 2, footer_y, Cell{char = ' ', fg = TUI_ERROR})
-		screen_set_cell(screen, delete_start + delete_btn_w - 1, footer_y, Cell{char = ']', fg = TUI_ERROR})
+		// Render CANCEL button
+		screen_set_cell(screen, cancel_start, footer_y, Cell{char = '[', fg = cancel_fg, bold = cancel_bold})
+		screen_set_cell(screen, cancel_start + 1, footer_y, Cell{char = ' ', fg = cancel_fg})
+		render_text_styled(screen, cancel_start + 2, footer_y, cancel_label, cancel_fg, "", cancel_bold)
+		screen_set_cell(screen, cancel_start + cancel_btn_w - 2, footer_y, Cell{char = ' ', fg = cancel_fg})
+		screen_set_cell(screen, cancel_start + cancel_btn_w - 1, footer_y, Cell{char = ']', fg = cancel_fg, bold = cancel_bold})
+
+		// Render DELETE button
+		screen_set_cell(screen, delete_start, footer_y, Cell{char = '[', fg = delete_fg, bold = delete_bold})
+		screen_set_cell(screen, delete_start + 1, footer_y, Cell{char = ' ', fg = delete_fg})
+		render_text_styled(screen, delete_start + 2, footer_y, delete_label, delete_fg, "", delete_bold)
+		screen_set_cell(screen, delete_start + delete_btn_w - 2, footer_y, Cell{char = ' ', fg = delete_fg})
+		screen_set_cell(screen, delete_start + delete_btn_w - 1, footer_y, Cell{char = ']', fg = delete_fg, bold = delete_bold})
 	} else {
 		render_text_styled(screen, content_x, footer_y, "Esc or Enter to close", TUI_DIM)
 	}

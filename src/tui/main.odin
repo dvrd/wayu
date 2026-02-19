@@ -111,11 +111,18 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 	// Handle detail overlay dismissal (and delete confirmation)
 	if state.show_detail {
 		if state.confirm_delete_pending {
-			// Delete confirmation mode: y confirms, anything else cancels
-			if key.key == .Char && key.char == 'y' {
-				execute_pending_delete(state)
-			} else {
+			// Delete confirmation mode: h/l move focus, Enter confirms focused button, Esc always cancels
+			if key.key == .Escape {
 				clear_detail(state)
+			} else if key.key == .Char && (key.char == 'h' || key.char == 'l') {
+				state.confirm_delete_focused_delete = !state.confirm_delete_focused_delete
+				state.needs_refresh = true
+			} else if key.key == .Enter {
+				if state.confirm_delete_focused_delete {
+					execute_pending_delete(state)
+				} else {
+					clear_detail(state)
+				}
 			}
 		} else {
 			// Normal detail overlay: Esc/Enter/q dismiss
