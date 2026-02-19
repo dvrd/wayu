@@ -738,8 +738,9 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	if !state.show_detail do return
 
 	// Calculate overlay dimensions
+	// +6 = 1 top border + 1 title + 1 divider gap + content + 1 blank before buttons + 1 button row + 1 bottom border
 	overlay_width := min(state.terminal_width - 6, 60)
-	overlay_height := min(len(state.detail_lines) + 5, state.terminal_height - 4)
+	overlay_height := min(len(state.detail_lines) + 6, state.terminal_height - 4)
 	overlay_x := (state.terminal_width - overlay_width) / 2
 	overlay_y := (state.terminal_height - overlay_height) / 2
 
@@ -772,40 +773,36 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		render_text_styled(screen, content_x + 2, line_y, display_line, TUI_MUTED)
 	}
 
-	// Footer hint — changes based on whether this is a delete confirmation
-	footer_y := overlay_y + overlay_height - 2
+	// Footer hint — one row above the bottom border, leaving a blank margin row below content
+	footer_y := overlay_y + overlay_height - 3
 	if state.confirm_delete_pending {
-		// Visual button widgets, right-aligned within the overlay
+		// Bordered box buttons, right-aligned within the overlay
 		// Layout: ... [ Esc CANCEL ]  [ y DELETE ] |
-		//                                         ^ overlay right edge - 3
-		cancel_label :: " Esc CANCEL "  // 12 chars
-		delete_label :: " y DELETE "    // 10 chars
-		button_gap   :: 2               // spaces between buttons
+		cancel_label :: "Esc CANCEL"   // 10 chars
+		delete_label :: "y DELETE"     //  8 chars
+		button_gap   :: 2              // spaces between buttons
 
 		// Right-align: position DELETE button first, then CANCEL to its left
-		right_edge := overlay_x + overlay_width - 3
-		delete_start := right_edge - len(delete_label)
-		cancel_start := delete_start - button_gap - len(cancel_label)
+		// Each button is: [ + space + label + space + ] = len(label) + 4
+		right_edge    := overlay_x + overlay_width - 3
+		delete_btn_w  := len(delete_label) + 4
+		cancel_btn_w  := len(cancel_label) + 4
+		delete_start  := right_edge - delete_btn_w
+		cancel_start  := delete_start - button_gap - cancel_btn_w
 
-		// Render CANCEL button — subtle dark gray background
-		for ch, i in cancel_label {
-			screen_set_cell(screen, cancel_start + i, footer_y, Cell{
-				char = ch,
-				fg   = TUI_FG_BUTTON,
-				bg   = TUI_BG_BUTTON_CANCEL,
-				bold = false,
-			})
-		}
+		// Render CANCEL button — dim border, dim text
+		screen_set_cell(screen, cancel_start, footer_y, Cell{char = '[', fg = TUI_DIM})
+		screen_set_cell(screen, cancel_start + 1, footer_y, Cell{char = ' ', fg = TUI_DIM})
+		render_text_styled(screen, cancel_start + 2, footer_y, cancel_label, TUI_DIM)
+		screen_set_cell(screen, cancel_start + cancel_btn_w - 2, footer_y, Cell{char = ' ', fg = TUI_DIM})
+		screen_set_cell(screen, cancel_start + cancel_btn_w - 1, footer_y, Cell{char = ']', fg = TUI_DIM})
 
-		// Render DELETE button — danger red background
-		for ch, i in delete_label {
-			screen_set_cell(screen, delete_start + i, footer_y, Cell{
-				char = ch,
-				fg   = TUI_FG_BUTTON,
-				bg   = TUI_BG_BUTTON_DANGER,
-				bold = true,
-			})
-		}
+		// Render DELETE button — primary (hot pink) border, bold label
+		screen_set_cell(screen, delete_start, footer_y, Cell{char = '[', fg = TUI_ERROR})
+		screen_set_cell(screen, delete_start + 1, footer_y, Cell{char = ' ', fg = TUI_ERROR})
+		render_text_styled(screen, delete_start + 2, footer_y, delete_label, TUI_ERROR, "", true)
+		screen_set_cell(screen, delete_start + delete_btn_w - 2, footer_y, Cell{char = ' ', fg = TUI_ERROR})
+		screen_set_cell(screen, delete_start + delete_btn_w - 1, footer_y, Cell{char = ']', fg = TUI_ERROR})
 	} else {
 		render_text_styled(screen, content_x, footer_y, "Esc or Enter to close", TUI_DIM)
 	}
