@@ -160,6 +160,9 @@ main :: proc() {
 			tui_bridge_delete_constant,
 			tui_bridge_cleanup_backups,
 			tui_bridge_get_path_detail,
+			tui_bridge_add_path,
+			tui_bridge_add_alias,
+			tui_bridge_add_constant,
 		)
 		tui.g_get_last_error = tui_bridge_get_last_error
 

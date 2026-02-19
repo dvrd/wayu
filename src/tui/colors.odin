@@ -33,8 +33,11 @@ TUI_SUCCESS :: "\x1b[38;2;14;116;144m"  // #0E7490
 // Error color - Dark red
 TUI_ERROR :: "\x1b[38;2;153;27;27m"  // #991B1B
 
-// Warning color - Orange
+// Warning color - Amber
 TUI_WARNING :: "\x1b[38;2;217;119;6m"  // #D97706
+
+// Bright orange - Focused button highlight, active form field cursor
+TUI_ORANGE :: "\x1b[38;2;255;140;0m"  // #FF8C00
 
 // Info color - Teal-cyan (same as secondary)
 TUI_INFO :: "\x1b[38;2;14;116;144m"  // #0E7490

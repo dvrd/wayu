@@ -25,6 +25,19 @@ ViewCursor :: struct {
 	scroll_offset:  int,
 }
 
+// Add form state — rendered as a modal overlay over the current view
+AddForm :: struct {
+	active:        bool,
+	view:          TUIView,
+	field_index:   int,       // 0 = first field, 1 = second field
+	field_count:   int,       // 1 for PATH, 2 for ALIAS/CONSTANTS
+	label_0:       string,    // e.g. "PATH", "NAME"
+	label_1:       string,    // e.g. "", "COMMAND", "VALUE"
+	input_0:       [dynamic]u8,
+	input_1:       [dynamic]u8,
+	error_message: string,    // points into temp allocator — do NOT delete
+}
+
 TUIState :: struct {
 	current_view:    TUIView,
 	previous_view:   TUIView,
@@ -41,6 +54,8 @@ TUIState :: struct {
 	show_detail:     bool,
 	detail_title:    string,
 	detail_lines:    [dynamic]string,
+	// Add form state — modal overlay for adding new entries
+	add_form: AddForm,
 	// Delete confirmation state — when set, the detail overlay acts as a confirm dialog
 	confirm_delete_pending:        bool,
 	confirm_delete_view:           TUIView,
@@ -143,6 +158,42 @@ show_delete_confirmation :: proc(state: ^TUIState, view: TUIView, display_name: 
 	state.confirm_delete_view = view
 	state.confirm_delete_name = strings.clone(delete_key)
 	state.confirm_delete_focused_delete = false  // start focused on CANCEL (safe default)
+	state.needs_refresh = true
+}
+
+// Clear add form and free its input buffers
+clear_add_form :: proc(state: ^TUIState) {
+	state.add_form.active        = false
+	state.add_form.error_message = ""
+	clear(&state.add_form.input_0)
+	clear(&state.add_form.input_1)
+	state.needs_refresh = true
+}
+
+// Open add form modal for the given view
+show_add_form :: proc(state: ^TUIState, view: TUIView) {
+	clear_add_form(state)
+	state.add_form.active      = true
+	state.add_form.view        = view
+	state.add_form.field_index = 0
+	#partial switch view {
+	case .PATH_VIEW:
+		state.add_form.field_count = 1
+		state.add_form.label_0     = "PATH"
+		state.add_form.label_1     = ""
+	case .ALIAS_VIEW:
+		state.add_form.field_count = 2
+		state.add_form.label_0     = "NAME"
+		state.add_form.label_1     = "COMMAND"
+	case .CONSTANTS_VIEW:
+		state.add_form.field_count = 2
+		state.add_form.label_0     = "NAME"
+		state.add_form.label_1     = "VALUE"
+	case:
+		// unsupported view — close immediately
+		state.add_form.active = false
+		return
+	}
 	state.needs_refresh = true
 }
 
