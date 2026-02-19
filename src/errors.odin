@@ -114,7 +114,7 @@ check_file_access :: proc(file_path: string) -> (ok: bool, error_type: ErrorType
 
 	// Try to open for reading
 	handle, err := os.open(file_path, os.O_RDONLY)
-	if err != 0 {
+	if err != nil {
 		return false, .PERMISSION_DENIED
 	}
 	os.close(handle)
