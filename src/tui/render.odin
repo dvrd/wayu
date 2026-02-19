@@ -10,6 +10,13 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
 
+	// Track what ANSI state the terminal is currently in so we can
+	// emit only the minimal escape sequences needed.
+	active_fg:   string
+	active_bg:   string
+	active_bold: bool
+	active_dim:  bool
+
 	for y in 0..<screen.height {
 		for x in 0..<screen.width {
 			curr := screen.buffer[y][x]
@@ -24,30 +31,51 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 				fmt.sbprintf(&builder, "\x1b[%d;%dH", y+1, x+1)
 				screen.cursor_x = x
 				screen.cursor_y = y
+				// After a cursor jump we don't know what terminal state is,
+				// so reset our tracking to force re-emission of attributes.
+				active_fg   = ""
+				active_bg   = ""
+				active_bold = false
+				active_dim  = false
 			}
 
-			// Apply foreground color if changed
-			if curr.fg != prev.fg && curr.fg != "" {
-				fmt.sbprintf(&builder, "%s", curr.fg)
+			// Reset all attributes if the cell has none but terminal has some
+			needs_reset := false
+			if (active_bold && !curr.bold) || (active_dim && !curr.dim) ||
+			   (active_fg != "" && curr.fg == "") || (active_bg != "" && curr.bg == "") {
+				needs_reset = true
 			}
 
-			// Apply background color if changed
-			if curr.bg != prev.bg && curr.bg != "" {
-				fmt.sbprintf(&builder, "%s", curr.bg)
+			if needs_reset {
+				fmt.sbprintf(&builder, "\x1b[0m")
+				active_fg   = ""
+				active_bg   = ""
+				active_bold = false
+				active_dim  = false
 			}
 
-			// Apply bold if changed
-			if curr.bold && !prev.bold {
+			// Apply bold if needed
+			if curr.bold && !active_bold {
 				fmt.sbprintf(&builder, "\x1b[1m")
-			} else if !curr.bold && prev.bold {
-				fmt.sbprintf(&builder, "\x1b[22m")
+				active_bold = true
 			}
 
-			// Apply dim if changed
-			if curr.dim && !prev.dim {
+			// Apply dim if needed
+			if curr.dim && !active_dim {
 				fmt.sbprintf(&builder, "\x1b[2m")
-			} else if !curr.dim && prev.dim {
-				fmt.sbprintf(&builder, "\x1b[22m")
+				active_dim = true
+			}
+
+			// Apply foreground color if needed
+			if curr.fg != "" && curr.fg != active_fg {
+				fmt.sbprintf(&builder, "%s", curr.fg)
+				active_fg = curr.fg
+			}
+
+			// Apply background color if needed
+			if curr.bg != "" && curr.bg != active_bg {
+				fmt.sbprintf(&builder, "%s", curr.bg)
+				active_bg = curr.bg
 			}
 
 			// Write character
@@ -56,12 +84,16 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 		}
 	}
 
+	// Reset attributes at end of frame
+	if active_fg != "" || active_bg != "" || active_bold || active_dim {
+		fmt.sbprintf(&builder, "\x1b[0m")
+	}
+
 	// Single write to terminal (batch for performance)
 	output := strings.to_string(builder)
 	if len(output) > 0 {
-		fmt.print(output)
-		// Force flush to ensure output is visible immediately
-		os.flush(os.stdout)
+		// Write raw bytes directly to stdout for reliability
+		os.write(os.stdout, transmute([]u8)output)
 	}
 
 	// Copy current to previous for next frame
