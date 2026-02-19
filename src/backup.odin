@@ -191,18 +191,18 @@ list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 	}
 	defer os.close(dir_handle)
 
-	file_infos, read_err := os.read_dir(dir_handle, -1)
-	if read_err != 0 {
+	file_infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
+	if read_err != nil {
 		debug("Failed to read directory")
 		return {}
 	}
-	defer os.file_info_slice_delete(file_infos)
+	defer os.file_info_slice_delete(file_infos, context.allocator)
 
 	backups := make([dynamic]BackupInfo)
 	defer delete(backups)
 
 	for info in file_infos {
-		if strings.has_prefix(info.name, pattern) && !info.is_dir {
+		if strings.has_prefix(info.name, pattern) && info.type != .Directory {
 			full_path := fmt.aprintf("%s/%s", dir, info.name)
 
 			// Extract timestamp from filename

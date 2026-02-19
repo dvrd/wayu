@@ -20,16 +20,16 @@ run_wayu :: proc(args: string) -> string {
 	cmd := strings.concatenate({"./bin/wayu ", args, " > ", temp_file, " 2>&1"}, context.temp_allocator)
 	libc.system(strings.clone_to_cstring(cmd, context.temp_allocator))
 
-	data, ok := os.read_entire_file_from_filename(temp_file)
-	if !ok do return ""
+	data, err := os.read_entire_file(temp_file, context.allocator)
+	if err != nil do return ""
 	defer delete(data)
 	return strings.clone(string(data))
 }
 
 // Check if file contains string
 file_contains :: proc(filepath, search: string) -> bool {
-	data, ok := os.read_entire_file_from_filename(filepath)
-	if !ok do return false
+	data, err := os.read_entire_file(filepath, context.allocator)
+	if err != nil do return false
 	defer delete(data)
 	return strings.contains(string(data), search)
 }
@@ -45,8 +45,8 @@ create_temp_dir :: proc(path: string) -> bool {
 
 // Count occurrences
 count_occurrences :: proc(filepath, search: string) -> int {
-	data, ok := os.read_entire_file_from_filename(filepath)
-	if !ok do return 0
+	data, err := os.read_entire_file(filepath, context.allocator)
+	if err != nil do return 0
 	defer delete(data)
 
 	content := string(data)
@@ -76,8 +76,8 @@ main :: proc() {
 
 	// Setup
 	home := os.get_env("HOME", context.temp_allocator)
-	config_dir := filepath.join({home, ".config", "wayu"}, context.temp_allocator)
-	path_file := filepath.join({config_dir, "path.zsh"}, context.temp_allocator)
+	config_dir, _ := filepath.join({home, ".config", "wayu"}, context.temp_allocator)
+	path_file, _ := filepath.join({config_dir, "path.zsh"}, context.temp_allocator)
 
 	results := Test_Results{test_name = "PATH"}
 

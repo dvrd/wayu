@@ -21,9 +21,9 @@ test_init_config_file_creates_file :: proc(t: ^testing.T) {
 	testing.expect(t, os.exists(test_file), "File should be created")
 
 	// Verify content
-	content, ok := os.read_entire_file_from_filename(test_file)
+	content, err := os.read_entire_file(test_file, context.allocator)
 	defer delete(content)
-	testing.expect(t, ok, "Should be able to read created file")
+	testing.expect(t, err == nil, "Should be able to read created file")
 	testing.expect_value(t, string(content), test_template)
 }
 
@@ -34,7 +34,7 @@ test_init_config_file_skips_existing :: proc(t: ^testing.T) {
 	original_content := "original content"
 
 	// Create file with original content
-	os.write_entire_file(test_file, transmute([]byte)original_content)
+	_ = os.write_entire_file(test_file, transmute([]byte)original_content)
 	defer os.remove(test_file)
 
 	// Try to init with new template
@@ -42,9 +42,9 @@ test_init_config_file_skips_existing :: proc(t: ^testing.T) {
 	testing.expect(t, result, "init_config_file should return true for existing file")
 
 	// Verify original content is preserved
-	content, ok := os.read_entire_file_from_filename(test_file)
+	content, err := os.read_entire_file(test_file, context.allocator)
 	defer delete(content)
-	testing.expect(t, ok, "Should be able to read file")
+	testing.expect(t, err == nil, "Should be able to read file")
 	testing.expect_value(t, string(content), original_content)
 }
 

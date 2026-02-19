@@ -34,8 +34,8 @@ read_plugin_config :: proc() -> PluginConfig {
 		return config
 	}
 
-	data, ok := os.read_entire_file_from_filename(config_file)
-	if !ok {
+	data, read_err := os.read_entire_file(config_file, context.allocator)
+	if read_err != nil {
 		return config
 	}
 	defer delete(data)
@@ -102,7 +102,7 @@ write_plugin_config :: proc(config: ^PluginConfig) -> bool {
 	}
 
 	content := strings.to_string(sb)
-	return os.write_entire_file(config_file, transmute([]byte)content)
+	return os.write_entire_file(config_file, transmute([]byte)content) == nil
 }
 
 // Read JSON5 configuration file
@@ -118,8 +118,8 @@ read_plugin_config_json :: proc() -> (config: PluginConfigJSON, ok: bool) {
 		return config, true
 	}
 
-	data, read_ok := os.read_entire_file_from_filename(config_file)
-	if !read_ok {
+	data, read_err := os.read_entire_file(config_file, context.allocator)
+	if read_err != nil {
 		fmt.eprintln("Error: Failed to read plugins.json")
 		return config, false
 	}
@@ -160,8 +160,8 @@ write_plugin_config_json :: proc(config: ^PluginConfigJSON) -> bool {
 	config_file := get_plugins_json_config_file()
 	defer delete(config_file)
 
-	write_ok := os.write_entire_file(config_file, data)
-	if !write_ok {
+	write_err := os.write_entire_file(config_file, data)
+	if write_err != nil {
 		fmt.eprintln("Error: Failed to write plugins.json")
 		return false
 	}
@@ -733,8 +733,8 @@ scan_plugin_conflicts :: proc(plugin: ^PluginMetadata) -> bool {
 		return true
 	}
 
-	content, read_ok := os.read_entire_file_from_filename(entry_file)
-	if !read_ok {
+	content, read_err := os.read_entire_file(entry_file, context.allocator)
+	if read_err != nil {
 		return false
 	}
 	defer delete(content)

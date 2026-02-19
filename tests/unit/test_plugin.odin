@@ -101,12 +101,12 @@ test_read_plugin_config_empty :: proc(t: ^testing.T) {
 	existing_config: []byte
 	has_existing := false
 	if os.exists(config_file) {
-		existing_config, _ = os.read_entire_file_from_filename(config_file)
+		existing_config, _ = os.read_entire_file(config_file, context.allocator)
 		has_existing = true
 		os.remove(config_file)
 	}
 	defer if has_existing {
-		os.write_entire_file(config_file, existing_config)
+		_ = os.write_entire_file(config_file, existing_config)
 		delete(existing_config)
 	}
 
@@ -142,11 +142,11 @@ test_write_and_read_plugin_config :: proc(t: ^testing.T) {
 	existing_config: []byte
 	has_existing := false
 	if os.exists(config_file) {
-		existing_config, _ = os.read_entire_file_from_filename(config_file)
+		existing_config, _ = os.read_entire_file(config_file, context.allocator)
 		has_existing = true
 	}
 	defer if has_existing {
-		os.write_entire_file(config_file, existing_config)
+		_ = os.write_entire_file(config_file, existing_config)
 		delete(existing_config)
 	}
 
@@ -412,12 +412,12 @@ test_generate_plugins_file_empty :: proc(t: ^testing.T) {
 	existing_config: []byte
 	has_existing := false
 	if os.exists(config_file) {
-		existing_config, _ = os.read_entire_file_from_filename(config_file)
+		existing_config, _ = os.read_entire_file(config_file, context.allocator)
 		has_existing = true
 		os.remove(config_file)
 	}
 	defer if has_existing {
-		os.write_entire_file(config_file, existing_config)
+		_ = os.write_entire_file(config_file, existing_config)
 		delete(existing_config)
 	}
 

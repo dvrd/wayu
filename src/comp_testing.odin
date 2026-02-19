@@ -76,8 +76,8 @@ save_golden :: proc(component: string, args: tui.ComponentArgs, output: string) 
 	defer delete(filename)
 
 	// Write golden file
-	ok := os.write_entire_file(filename, transmute([]byte)output)
-	if !ok {
+	write_err := os.write_entire_file(filename, transmute([]byte)output)
+	if write_err != nil {
 		fmt.eprintfln("ERROR: Failed to write golden file: %s", filename)
 		return false
 	}
@@ -102,8 +102,8 @@ compare_golden :: proc(component: string, args: tui.ComponentArgs, output: strin
 	}
 
 	// Read golden file
-	golden_data, ok := os.read_entire_file_from_filename(filename)
-	if !ok {
+	golden_data, read_err := os.read_entire_file(filename, context.allocator)
+	if read_err != nil {
 		fmt.eprintfln("ERROR: Failed to read golden file: %s", filename)
 		return false
 	}

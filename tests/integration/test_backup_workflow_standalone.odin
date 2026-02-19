@@ -17,8 +17,8 @@ run_wayu :: proc(args: string) -> string {
 	temp_file := "/tmp/wayu_test_output.txt"
 	cmd := strings.concatenate({"./bin/wayu ", args, " > ", temp_file, " 2>&1"}, context.temp_allocator)
 	libc.system(strings.clone_to_cstring(cmd, context.temp_allocator))
-	data, ok := os.read_entire_file_from_filename(temp_file)
-	if !ok do return ""
+	data, err := os.read_entire_file(temp_file, context.allocator)
+	if err != nil do return ""
 	defer delete(data)
 	return strings.clone(string(data))
 }
@@ -42,8 +42,8 @@ count_backup_files :: proc(pattern: string) -> int {
 	cmd := strings.concatenate({"sh -c 'ls ", pattern, " 2>/dev/null | wc -l' > ", temp_file}, context.temp_allocator)
 	libc.system(strings.clone_to_cstring(cmd, context.temp_allocator))
 
-	data, ok := os.read_entire_file_from_filename(temp_file)
-	if !ok do return 0
+	data, err := os.read_entire_file(temp_file, context.allocator)
+	if err != nil do return 0
 	defer delete(data)
 
 	count_str := strings.trim_space(string(data))
@@ -80,7 +80,7 @@ main :: proc() {
 		fmt.println("ERROR: HOME environment variable not set")
 		os.exit(1)
 	}
-	config_dir := filepath.join({home, ".config", "wayu"}, context.temp_allocator)
+	config_dir, _ := filepath.join({home, ".config", "wayu"}, context.temp_allocator)
 
 	results := Test_Results{test_name = "backup-workflow"}
 

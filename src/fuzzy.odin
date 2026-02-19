@@ -1038,18 +1038,18 @@ extract_completion_items :: proc() -> []string {
 	}
 	defer os.close(dir_handle)
 
-	file_infos, read_err := os.read_dir(dir_handle, -1)
+	file_infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
 	if read_err != 0 {
 		return {}
 	}
-	defer os.file_info_slice_delete(file_infos)
+	defer os.file_info_slice_delete(file_infos, context.allocator)
 
 	items := make([dynamic]string)
 	defer delete(items)
 
 	// Filter completion files (start with _) but exclude backup files
 	for info in file_infos {
-		if strings.has_prefix(info.name, "_") && !info.is_dir {
+		if strings.has_prefix(info.name, "_") && info.type != .Directory {
 			// Skip backup files
 			if strings.contains(info.name, ".backup.") {
 				continue

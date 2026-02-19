@@ -132,8 +132,8 @@ safe_read_file :: proc(file_path: string) -> (content: []byte, ok: bool) {
 	}
 
 	// Attempt read
-	data, read_ok := os.read_entire_file_from_filename(file_path)
-	if !read_ok {
+	data, read_err := os.read_entire_file(file_path, context.allocator)
+	if read_err != nil {
 		print_error_with_context(.FILE_READ_ERROR, file_path)
 		return nil, false
 	}
@@ -143,8 +143,8 @@ safe_read_file :: proc(file_path: string) -> (content: []byte, ok: bool) {
 
 // Safe file write with detailed error reporting
 safe_write_file :: proc(file_path: string, content: []byte) -> bool {
-	write_ok := os.write_entire_file(file_path, content)
-	if !write_ok {
+	write_err := os.write_entire_file(file_path, content)
+	if write_err != nil {
 		// Check specific failure reason
 		dir_path := get_directory(file_path)
 		defer delete(dir_path)

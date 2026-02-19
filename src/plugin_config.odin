@@ -206,6 +206,6 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 		return true
 	}
 
-	return os.write_entire_file(plugins_file, transmute([]byte)content)
+	return os.write_entire_file(plugins_file, transmute([]byte)content) == nil
 }
 
