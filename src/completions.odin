@@ -189,7 +189,7 @@ remove_completion :: proc(name: string) {
 
 	// Remove file
 	err := os.remove(file_path)
-	if err != 0 {
+	if err != nil {
 		print_error_simple("Failed to remove completion: %s", completion_name)
 		os.exit(EXIT_IOERR)
 	}
@@ -260,7 +260,7 @@ list_completions :: proc() {
 
 	// Read directory
 	dir_handle, err := os.open(completions_dir)
-	if err != 0 {
+	if err != nil {
 		print_error_simple("Failed to open completions directory")
 		os.exit(EXIT_IOERR)
 	}

@@ -724,7 +724,7 @@ fuzzy_confirm :: proc(message: string) -> bool {
 	for {
 		input_buf: [8]byte
 		n, err := os.read(os.stdin, input_buf[:])
-		if err != 0 || n == 0 {
+		if err != nil || n == 0 {
 			return false
 		}
 
@@ -781,7 +781,7 @@ fuzzy_run :: proc(view: ^FuzzyView) -> (selected: FuzzyItem, ok: bool) {
 		// Read input
 		input_buf: [8]byte
 		n, err := os.read(os.stdin, input_buf[:])
-		if err != 0 {
+		if err != nil {
 			break
 		}
 
@@ -925,8 +925,8 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 	for {
 		input_buf: [8]byte // Buffer for reading key sequences
 		n, err := os.read(os.stdin, input_buf[:])
-		if err != 0 {
-			debug("Error reading input: %d", err)
+		if err != nil {
+			debug("Error reading input: %v", err)
 			break
 		}
 
@@ -1033,13 +1033,13 @@ extract_completion_items :: proc() -> []string {
 
 	// Read directory
 	dir_handle, err := os.open(completions_dir)
-	if err != 0 {
+	if err != nil {
 		return {}
 	}
 	defer os.close(dir_handle)
 
 	file_infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
-	if read_err != 0 {
+	if read_err != nil {
 		return {}
 	}
 	defer os.file_info_slice_delete(file_infos, context.allocator)

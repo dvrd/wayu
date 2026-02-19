@@ -7,7 +7,6 @@ PRPs/
 
 *.backup
 
-# Test binaries (only in root)
 /test_*
 /*.bin
 

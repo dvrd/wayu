@@ -7,7 +7,7 @@ poll_event :: proc() -> Event {
     input_buf: [8]byte
     n, err := os.read(os.stdin, input_buf[:])
 
-    if err != 0 || n == 0 {
+    if err != nil || n == 0 {
         return nil
     }
 

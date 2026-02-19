@@ -46,7 +46,7 @@ create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 
 	if !os.exists(backup_dir) {
 		err := os.make_directory(backup_dir)
-		if err != 0 {
+		if err != nil {
 			debug("Failed to create backup directory: %s", backup_dir)
 			return "", false
 		}
@@ -107,7 +107,7 @@ create_backup_tui :: proc(file_path: string, auto_backup := true) -> bool {
 
 			input_buf: [10]byte
 			n, err := os.read(os.stdin, input_buf[:])
-			if err != 0 || n == 0 {
+			if err != nil || n == 0 {
 				return false
 			}
 
@@ -185,7 +185,7 @@ list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 	defer delete(pattern)
 
 	dir_handle, err := os.open(dir)
-	if err != 0 {
+	if err != nil {
 		debug("Failed to open directory: %s", dir)
 		return {}
 	}
@@ -313,7 +313,7 @@ cleanup_old_backups :: proc(file_path: string, keep_count: int = 5) -> int {
 	for i in keep_count..<len(backups) {
 		debug("Removing old backup: %s", backups[i].backup_file)
 		err := os.remove(backups[i].backup_file)
-		if err == 0 {
+		if err == nil {
 			removed_count += 1
 		}
 	}
