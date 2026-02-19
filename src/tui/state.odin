@@ -42,9 +42,10 @@ TUIState :: struct {
 	detail_title:    string,
 	detail_lines:    [dynamic]string,
 	// Delete confirmation state — when set, the detail overlay acts as a confirm dialog
-	confirm_delete_pending: bool,
-	confirm_delete_view:    TUIView,
-	confirm_delete_name:    string,  // heap-cloned name to delete (freed on clear)
+	confirm_delete_pending:        bool,
+	confirm_delete_view:           TUIView,
+	confirm_delete_name:           string,  // heap-cloned name to delete (freed on clear)
+	confirm_delete_focused_delete: bool,    // true = DELETE button focused, false = CANCEL focused
 	// Inline filter state
 	filter_active:     bool,
 	filter_text:       [dynamic]u8,
@@ -141,6 +142,7 @@ show_delete_confirmation :: proc(state: ^TUIState, view: TUIView, display_name: 
 	state.confirm_delete_pending = true
 	state.confirm_delete_view = view
 	state.confirm_delete_name = strings.clone(delete_key)
+	state.confirm_delete_focused_delete = false  // start focused on CANCEL (safe default)
 	state.needs_refresh = true
 }
 
