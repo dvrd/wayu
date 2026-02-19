@@ -29,7 +29,7 @@ ViewCursor :: struct {
 AddForm :: struct {
 	active:        bool,
 	view:          TUIView,
-	field_index:   int,       // 0 = first field, 1 = second field
+	field_index:   int,       // 0..field_count-1 = fields; field_count = CANCEL btn; field_count+1 = ADD btn
 	field_count:   int,       // 1 for PATH, 2 for ALIAS/CONSTANTS
 	label_0:       string,    // e.g. "PATH", "NAME"
 	label_1:       string,    // e.g. "", "COMMAND", "VALUE"
