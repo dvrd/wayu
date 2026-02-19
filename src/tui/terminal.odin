@@ -2,6 +2,7 @@ package wayu_tui
 
 import "core:fmt"
 import "core:c"
+import "base:intrinsics"
 
 // Platform-specific constants
 when ODIN_OS == .Darwin {
@@ -51,8 +52,9 @@ get_terminal_size :: proc() -> (width, height: int, ok: bool) {
 }
 
 // SIGWINCH handler (MUST be "c" convention)
+// Uses volatile_store to ensure the write is visible to the main loop
 sigwinch_handler :: proc "c" (sig: i32) {
-    terminal_resized = true
+    intrinsics.volatile_store(&terminal_resized, true)
 }
 
 // Setup resize signal handler
