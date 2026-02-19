@@ -805,6 +805,10 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	screen_set_cell(screen, content_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
 	render_text_styled(screen, content_x + MENU_ACCENT_BAR_WIDTH + 1, title_y, title_text, TUI_PRIMARY, "", true)
 
+	// Focus indices: 0..field_count-1 = fields, field_count = CANCEL, field_count+1 = ADD
+	cancel_idx := form.field_count
+	add_idx    := form.field_count + 1
+
 	// Fields
 	field_start_y := title_y + 2  // blank line after title
 	for fi in 0..<form.field_count {
@@ -820,41 +824,40 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		} else {
 			input_buf = &form.input_1
 		}
-		is_active := fi == form.field_index
+		is_focused := fi == form.field_index
 
 		label_y := field_start_y + fi * 2
 		input_y := label_y + 1
 
-		// Label
+		// Label — orange only when this field is focused
 		label_fg: string
-		if is_active {
+		if is_focused {
 			label_fg = TUI_ORANGE
 		} else {
 			label_fg = TUI_DIM
 		}
-		render_text_styled(screen, content_x + 2, label_y, label, label_fg, "", is_active)
+		render_text_styled(screen, content_x + 2, label_y, label, label_fg, "", is_focused)
 
-		// Input line: "> text█" (active) or "> text" (inactive)
+		// Input line: "> text█" (focused) or "> text" (unfocused)
 		input_str := string(input_buf[:])
-		// Truncate display to fit
 		display_max := max_input_width - 2  // ">" + space
 		if display_max < 1 {
 			display_max = 1
 		}
 		truncated := truncate_text(input_str, display_max)
 		input_display: string
-		if is_active {
+		if is_focused {
 			input_display = fmt.tprintf("> %s\u2588", truncated)  // U+2588 FULL BLOCK as cursor
 		} else {
 			input_display = fmt.tprintf("> %s", truncated)
 		}
 		input_fg: string
-		if is_active {
+		if is_focused {
 			input_fg = TUI_ORANGE
 		} else {
 			input_fg = TUI_DIM
 		}
-		render_text_styled(screen, content_x + 2, input_y, input_display, input_fg, "", is_active)
+		render_text_styled(screen, content_x + 2, input_y, input_display, input_fg, "", is_focused)
 	}
 
 	// Error line (always 1 row reserved; shown only when non-empty)
@@ -864,8 +867,8 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		render_text_styled(screen, content_x + 2, error_y, err_display, TUI_ERROR)
 	}
 
-	// Button row
-	button_y := error_y + 2
+	// Button row — each button is orange+bold only when focused, dim otherwise
+	button_y     := error_y + 2
 	cancel_label :: "Esc CANCEL"
 	add_label    :: "Enter ADD"
 	button_gap   :: 2
@@ -875,19 +878,37 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	add_start    := right_edge - add_btn_w
 	cancel_start := add_start - button_gap - cancel_btn_w
 
-	// CANCEL button — dim
-	screen_set_cell(screen, cancel_start, button_y, Cell{char = '[', fg = TUI_DIM})
-	screen_set_cell(screen, cancel_start + 1, button_y, Cell{char = ' ', fg = TUI_DIM})
-	render_text_styled(screen, cancel_start + 2, button_y, cancel_label, TUI_DIM)
-	screen_set_cell(screen, cancel_start + cancel_btn_w - 2, button_y, Cell{char = ' ', fg = TUI_DIM})
-	screen_set_cell(screen, cancel_start + cancel_btn_w - 1, button_y, Cell{char = ']', fg = TUI_DIM})
+	cancel_focused := form.field_index == cancel_idx
+	add_focused    := form.field_index == add_idx
 
-	// ADD button — orange + bold
-	screen_set_cell(screen, add_start, button_y, Cell{char = '[', fg = TUI_ORANGE, bold = true})
-	screen_set_cell(screen, add_start + 1, button_y, Cell{char = ' ', fg = TUI_ORANGE})
-	render_text_styled(screen, add_start + 2, button_y, add_label, TUI_ORANGE, "", true)
-	screen_set_cell(screen, add_start + add_btn_w - 2, button_y, Cell{char = ' ', fg = TUI_ORANGE})
-	screen_set_cell(screen, add_start + add_btn_w - 1, button_y, Cell{char = ']', fg = TUI_ORANGE, bold = true})
+	cancel_fg: string
+	if cancel_focused {
+		cancel_fg = TUI_ORANGE
+	} else {
+		cancel_fg = TUI_DIM
+	}
+	add_fg: string
+	if add_focused {
+		add_fg = TUI_ORANGE
+	} else {
+		add_fg = TUI_DIM
+	}
+
+	// CANCEL button
+	screen_set_cell(screen, cancel_start, button_y, Cell{char = '[', fg = cancel_fg, bold = cancel_focused})
+	screen_set_cell(screen, cancel_start + 1, button_y, Cell{char = ' ', fg = cancel_fg})
+	render_text_styled(screen, cancel_start + 2, button_y, cancel_label, cancel_fg, "", cancel_focused)
+	screen_set_cell(screen, cancel_start + cancel_btn_w - 2, button_y, Cell{char = ' ', fg = cancel_fg})
+	screen_set_cell(screen, cancel_start + cancel_btn_w - 1, button_y, Cell{char = ']', fg = cancel_fg, bold = cancel_focused})
+
+	// ADD button
+	screen_set_cell(screen, add_start, button_y, Cell{char = '[', fg = add_fg, bold = add_focused})
+	screen_set_cell(screen, add_start + 1, button_y, Cell{char = ' ', fg = add_fg})
+	render_text_styled(screen, add_start + 2, button_y, add_label, add_fg, "", add_focused)
+	screen_set_cell(screen, add_start + add_btn_w - 2, button_y, Cell{char = ' ', fg = add_fg})
+	screen_set_cell(screen, add_start + add_btn_w - 1, button_y, Cell{char = ']', fg = add_fg, bold = add_focused})
+
+	_ = add_idx  // suppress unused warning
 }
 
 // ============================================================================
