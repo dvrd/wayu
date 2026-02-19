@@ -52,6 +52,9 @@ TUI_MUTED :: "\x1b[38;2;208;208;208m"  // #D0D0D0
 // Dim text - Dimmer gray for disabled/subtle text
 TUI_DIM :: "\x1b[38;2;100;100;100m"  // #646464
 
+// Divider line - Very dim gray for horizontal separators between menu items
+TUI_DIVIDER :: "\x1b[38;2;51;51;51m"  // #333333
+
 // ============================================================================
 // Background Colors
 // ============================================================================

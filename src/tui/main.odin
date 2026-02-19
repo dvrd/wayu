@@ -344,47 +344,69 @@ tui_render :: proc(state: ^TUIState, screen: ^Screen) {
 	render_detail_overlay(state, screen)
 }
 
-// Render main menu (using layout constants)
+// Render main menu — dashboard-style with accent bars and dividers
 render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
-	// Header (hot pink + bold)
+	// Content area x position
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "wayu - Shell Configuration Manager", TUI_PRIMARY, "", true)
-	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, "Press Esc or q to quit, Ctrl+C to exit", TUI_DIM)
 
-	// Menu items
-	menu_items := []string{
-		"1. PATH Configuration",
-		"2. Aliases",
-		"3. Environment Constants",
-		"4. Completions",
-		"5. Backups",
-		"6. Plugins",
-		"7. Settings",
+	// Header with accent bar (Dribbble dashboard style)
+	title_y := HEADER_TITLE_LINE + CONTENT_PADDING_TOP
+	// Accent bar ┃ before title
+	screen_set_cell(screen, header_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+	screen_set_cell(screen, header_x, title_y + 1, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+	render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + 1, title_y, "WAYU", TUI_PRIMARY, "", true)
+	render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + 1, title_y + 1, "Shell Configuration Manager", TUI_DIM)
+
+	// Header divider line
+	divider_y := LIST_ITEM_START_LINE
+	divider_width := border_width - CONTENT_PADDING_LEFT - 2  // Inset from both sides
+	for dx in 0..<divider_width {
+		screen_set_cell(screen, header_x + dx, divider_y, Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
 	}
 
+	// Menu items with dividers between them
+	menu_items := []string{
+		"PATH Configuration",
+		"Aliases",
+		"Environment Constants",
+		"Completions",
+		"Backups",
+		"Plugins",
+		"Settings",
+	}
+
+	// First item starts after header divider + 1 blank line
+	menu_start_y := divider_y + 2
+	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+
 	for item, i in menu_items {
-		y := calculate_list_item_y(i)
+		y := menu_start_y + (i * MENU_ITEM_SPACING)
+
 		if i == state.selected_index {
-			// Selected: hot pink text + bold (NO background to respect terminal colors)
-			text := fmt.tprintf("> %s", item)
-			// Note: tprintf() uses temp buffer, do NOT delete
-			render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
+			// Selected: accent bar ┃ + bold primary text
+			screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+			render_text_styled(screen, text_x, y, item, TUI_PRIMARY, "", true)
 		} else {
-			// Normal: muted gray text (indented by selection prefix width)
-			text := fmt.tprintf("  %s", item)
-			// Note: tprintf() uses temp buffer, do NOT delete
-			render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
+			// Normal: no accent bar, muted text at same x
+			render_text_styled(screen, text_x, y, item, TUI_MUTED)
+		}
+
+		// Divider line after each item (except the last)
+		if i < len(menu_items) - 1 {
+			sep_y := y + 1
+			for dx in 0..<divider_width {
+				screen_set_cell(screen, header_x + dx, sep_y, Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
+			}
 		}
 	}
 
-	// Footer (muted gray)
+	// Footer — compact keyboard shortcuts
 	footer_y := calculate_footer_y(state.terminal_height)
-	footer_text := "Use ↑/↓ or j/k to navigate, Enter to select"
-	render_text_styled(screen, header_x, footer_y, footer_text, TUI_MUTED)
+	render_text_styled(screen, header_x, footer_y, "↑/↓ Navigate   Enter Select   q Quit", TUI_DIM)
 }
 
 // Handle keyboard input when filter mode is active
