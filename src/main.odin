@@ -20,6 +20,11 @@ YES_FLAG := false  // Skip confirmation prompts
 DETECTED_SHELL : ShellType
 SHELL_EXT : string
 
+// TUI mode globals - used to prevent os.exit() in TUI context
+TUI_MODE := false
+TUI_LAST_ERROR: string
+TUI_LAST_SUCCESS := false
+
 // Global temp arena for cleaning up after commands
 TEMP_ARENA: ^mem.Arena
 
@@ -156,6 +161,7 @@ main :: proc() {
 			tui_bridge_cleanup_backups,
 			tui_bridge_get_path_detail,
 		)
+		tui.g_get_last_error = tui_bridge_get_last_error
 
 		// Launch TUI
 		tui.tui_run()

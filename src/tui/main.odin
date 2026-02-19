@@ -66,6 +66,9 @@ tui_run :: proc() {
 
 		// Update state based on event
 		tui_handle_event(&state, event)
+
+		// Tick notification countdown
+		tick_notification(&state)
 	}
 
 }
@@ -308,6 +311,9 @@ tui_render :: proc(state: ^TUIState, screen: ^Screen) {
 	case .SETTINGS_VIEW:
 		render_settings_view(state, screen)
 	}
+
+	// Render notification bar (below content box)
+	render_notification(state, screen)
 
 	// Render detail overlay on top if active
 	render_detail_overlay(state, screen)

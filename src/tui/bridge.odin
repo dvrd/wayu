@@ -21,6 +21,7 @@ g_delete_alias: proc(string) -> bool
 g_delete_constant: proc(string) -> bool
 g_cleanup_backups: proc() -> bool
 g_get_path_detail: proc(string) -> [dynamic]string
+g_get_last_error: proc() -> string
 
 // Set bridge functions (called from main.odin before tui_run)
 tui_set_bridge_functions :: proc(

@@ -63,16 +63,35 @@ handle_path_event :: proc(state: ^TUIState, key: KeyEvent) {
 					item_count := len(items)  // Save count BEFORE clearing cache
 
 					// Call bridge function to delete (creates backup automatically)
-					tui_delete_path(selected_entry)
+					success := tui_delete_path(selected_entry)
 
-					// Clear cache to force reload
-					clear_view_cache(state, .PATH_VIEW)
+					if success {
+						msg := fmt.tprintf("Removed PATH entry: %s", selected_entry)
+						set_notification(state, .SUCCESS, msg)
 
-					// Reset selection if needed (use saved count, not freed items)
-					if state.selected_index >= item_count - 1 {
-						state.selected_index = max(0, item_count - 2)
+						// Clear cache to force reload
+						clear_view_cache(state, .PATH_VIEW)
+
+						// Preserve cursor position: only adjust if was on last item
+						if state.selected_index >= item_count - 1 {
+							state.selected_index = max(0, item_count - 2)
+						}
+						// Adjust scroll_offset if selected_index is now above visible window
+						if state.selected_index < state.scroll_offset {
+							state.scroll_offset = state.selected_index
+						}
+					} else {
+						err_msg := ""
+						if g_get_last_error != nil {
+							err_msg = g_get_last_error()
+						}
+						if len(err_msg) > 0 {
+							set_notification(state, .ERROR, err_msg)
+						} else {
+							msg := fmt.tprintf("Failed to remove PATH entry: %s", selected_entry)
+							set_notification(state, .ERROR, msg)
+						}
 					}
-					state.scroll_offset = 0
 
 					state.needs_refresh = true
 				}
@@ -113,16 +132,35 @@ handle_alias_event :: proc(state: ^TUIState, key: KeyEvent) {
 						alias_name := parts[0]
 
 						// Call bridge function to delete (creates backup automatically)
-						tui_delete_alias(alias_name)
+						success := tui_delete_alias(alias_name)
 
-						// Clear cache to force reload
-						clear_view_cache(state, .ALIAS_VIEW)
+						if success {
+							msg := fmt.tprintf("Removed alias: %s", alias_name)
+							set_notification(state, .SUCCESS, msg)
 
-						// Reset selection if needed (use saved count, not freed items)
-						if state.selected_index >= item_count - 1 {
-							state.selected_index = max(0, item_count - 2)
+							// Clear cache to force reload
+							clear_view_cache(state, .ALIAS_VIEW)
+
+							// Preserve cursor position: only adjust if was on last item
+							if state.selected_index >= item_count - 1 {
+								state.selected_index = max(0, item_count - 2)
+							}
+							// Adjust scroll_offset if selected_index is now above visible window
+							if state.selected_index < state.scroll_offset {
+								state.scroll_offset = state.selected_index
+							}
+						} else {
+							err_msg := ""
+							if g_get_last_error != nil {
+								err_msg = g_get_last_error()
+							}
+							if len(err_msg) > 0 {
+								set_notification(state, .ERROR, err_msg)
+							} else {
+								msg := fmt.tprintf("Failed to remove alias: %s", alias_name)
+								set_notification(state, .ERROR, msg)
+							}
 						}
-						state.scroll_offset = 0
 
 						state.needs_refresh = true
 					}
@@ -164,16 +202,35 @@ handle_constants_event :: proc(state: ^TUIState, key: KeyEvent) {
 						constant_name := parts[0]
 
 						// Call bridge function to delete (creates backup automatically)
-						tui_delete_constant(constant_name)
+						success := tui_delete_constant(constant_name)
 
-						// Clear cache to force reload
-						clear_view_cache(state, .CONSTANTS_VIEW)
+						if success {
+							msg := fmt.tprintf("Removed constant: %s", constant_name)
+							set_notification(state, .SUCCESS, msg)
 
-						// Reset selection if needed (use saved count, not freed items)
-						if state.selected_index >= item_count - 1 {
-							state.selected_index = max(0, item_count - 2)
+							// Clear cache to force reload
+							clear_view_cache(state, .CONSTANTS_VIEW)
+
+							// Preserve cursor position: only adjust if was on last item
+							if state.selected_index >= item_count - 1 {
+								state.selected_index = max(0, item_count - 2)
+							}
+							// Adjust scroll_offset if selected_index is now above visible window
+							if state.selected_index < state.scroll_offset {
+								state.scroll_offset = state.selected_index
+							}
+						} else {
+							err_msg := ""
+							if g_get_last_error != nil {
+								err_msg = g_get_last_error()
+							}
+							if len(err_msg) > 0 {
+								set_notification(state, .ERROR, err_msg)
+							} else {
+								msg := fmt.tprintf("Failed to remove constant: %s", constant_name)
+								set_notification(state, .ERROR, msg)
+							}
 						}
-						state.scroll_offset = 0
 
 						state.needs_refresh = true
 					}
@@ -221,10 +278,15 @@ handle_backups_event :: proc(state: ^TUIState, key: KeyEvent) {
 		switch key.char {
 		case 'c':
 			// Cleanup old backups
-			tui_cleanup_backups()
+			success := tui_cleanup_backups()
 
-			// Clear cache to reload
-			clear_view_cache(state, .BACKUPS_VIEW)
+			if success {
+				set_notification(state, .SUCCESS, "Cleaned up old backups")
+				// Clear cache to reload
+				clear_view_cache(state, .BACKUPS_VIEW)
+			} else {
+				set_notification(state, .ERROR, "Failed to cleanup backups")
+			}
 
 			state.needs_refresh = true
 		case '/':
