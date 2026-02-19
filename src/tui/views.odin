@@ -738,9 +738,9 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	if !state.show_detail do return
 
 	// Calculate overlay dimensions
-	// +6 = 1 top border + 1 title + 1 divider gap + content + 1 blank before buttons + 1 button row + 1 bottom border
+	// +7 = 1 top border + 1 title + 1 divider gap + content + 2 blank rows before buttons + 1 button row + 1 bottom border
 	overlay_width := min(state.terminal_width - 6, 60)
-	overlay_height := min(len(state.detail_lines) + 6, state.terminal_height - 4)
+	overlay_height := min(len(state.detail_lines) + 7, state.terminal_height - 4)
 	overlay_x := (state.terminal_width - overlay_width) / 2
 	overlay_y := (state.terminal_height - overlay_height) / 2
 
@@ -761,7 +761,7 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	render_text_styled(screen, content_x + MENU_ACCENT_BAR_WIDTH + 1, title_y, state.detail_title, TUI_PRIMARY, "", true)
 
 	// Detail lines
-	max_lines := overlay_height - 5
+	max_lines := overlay_height - 6
 	for line, i in state.detail_lines {
 		if i >= max_lines do break
 		line_y := title_y + 2 + i
@@ -773,8 +773,8 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		render_text_styled(screen, content_x + 2, line_y, display_line, TUI_MUTED)
 	}
 
-	// Footer hint — one row above the bottom border, leaving a blank margin row below content
-	footer_y := overlay_y + overlay_height - 3
+	// Footer hint — two blank rows above the bottom border for breathing room between content and buttons
+	footer_y := overlay_y + overlay_height - 4
 	if state.confirm_delete_pending {
 		// Bordered box buttons, right-aligned within the overlay
 		// Layout: ... [ Esc CANCEL ]  [ y DELETE ] |
