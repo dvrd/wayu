@@ -176,8 +176,8 @@ restore_cursor :: proc(state: ^TUIState, view: TUIView) {
 
 // Go to new view (saves cursor of current view, restores target view cursor)
 tui_state_goto_view :: proc(state: ^TUIState, view: TUIView) {
+	save_cursor(state)          // Save BEFORE deactivate_filter clobbers selected_index
 	deactivate_filter(state)
-	save_cursor(state)
 	state.previous_view = state.current_view
 	state.current_view = view
 	restore_cursor(state, view)
@@ -186,8 +186,8 @@ tui_state_goto_view :: proc(state: ^TUIState, view: TUIView) {
 
 // Go back to previous view (saves cursor of current view, restores previous view cursor)
 tui_state_go_back :: proc(state: ^TUIState) {
+	save_cursor(state)          // Save BEFORE deactivate_filter clobbers selected_index
 	deactivate_filter(state)
-	save_cursor(state)
 	temp := state.current_view
 	state.current_view = state.previous_view
 	state.previous_view = temp

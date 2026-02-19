@@ -775,7 +775,37 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	// Footer hint — changes based on whether this is a delete confirmation
 	footer_y := overlay_y + overlay_height - 2
 	if state.confirm_delete_pending {
-		render_text_styled(screen, content_x, footer_y, "y Confirm   Esc Cancel", TUI_DIM)
+		// Visual button widgets, right-aligned within the overlay
+		// Layout: ... [ Esc CANCEL ]  [ y DELETE ] |
+		//                                         ^ overlay right edge - 3
+		cancel_label :: " Esc CANCEL "  // 12 chars
+		delete_label :: " y DELETE "    // 10 chars
+		button_gap   :: 2               // spaces between buttons
+
+		// Right-align: position DELETE button first, then CANCEL to its left
+		right_edge := overlay_x + overlay_width - 3
+		delete_start := right_edge - len(delete_label)
+		cancel_start := delete_start - button_gap - len(cancel_label)
+
+		// Render CANCEL button — subtle dark gray background
+		for ch, i in cancel_label {
+			screen_set_cell(screen, cancel_start + i, footer_y, Cell{
+				char = ch,
+				fg   = TUI_FG_BUTTON,
+				bg   = TUI_BG_BUTTON_CANCEL,
+				bold = false,
+			})
+		}
+
+		// Render DELETE button — danger red background
+		for ch, i in delete_label {
+			screen_set_cell(screen, delete_start + i, footer_y, Cell{
+				char = ch,
+				fg   = TUI_FG_BUTTON,
+				bg   = TUI_BG_BUTTON_DANGER,
+				bold = true,
+			})
+		}
 	} else {
 		render_text_styled(screen, content_x, footer_y, "Esc or Enter to close", TUI_DIM)
 	}
