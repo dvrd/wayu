@@ -108,10 +108,20 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 		return
 	}
 
-	// Handle detail overlay dismissal
+	// Handle detail overlay dismissal (and delete confirmation)
 	if state.show_detail {
-		if key.key == .Escape || key.key == .Enter || (key.key == .Char && key.char == 'q') {
-			clear_detail(state)
+		if state.confirm_delete_pending {
+			// Delete confirmation mode: y confirms, anything else cancels
+			if key.key == .Char && key.char == 'y' {
+				execute_pending_delete(state)
+			} else {
+				clear_detail(state)
+			}
+		} else {
+			// Normal detail overlay: Esc/Enter/q dismiss
+			if key.key == .Escape || key.key == .Enter || (key.key == .Char && key.char == 'q') {
+				clear_detail(state)
+			}
 		}
 		return
 	}
@@ -148,6 +158,14 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 		} else if key.char == 'j' {
 			item_count := get_view_item_count(state)
 			tui_state_move_selection(state, 1, item_count)
+		} else if key.char == 'l' {
+			// Vim-style enter/select
+			handle_selection(state)
+		} else if key.char == 'h' {
+			// Vim-style go back
+			if state.current_view != .MAIN_MENU {
+				tui_state_go_back(state)
+			}
 		} else {
 			// Pass other character keys to view-specific handler
 			handle_view_event(state, key)
@@ -202,17 +220,15 @@ handle_selection :: proc(state: ^TUIState) {
 			items := cast(^[dynamic]string)state.data_cache[.ALIAS_VIEW]
 			if state.selected_index >= 0 && state.selected_index < len(items) {
 				selected := items[state.selected_index]
-				// Parse "name=command" format
-				parts := strings.split(selected, "=")
-				defer delete(parts)
-				if len(parts) >= 2 {
-					// Scratch arena for detail strings — show_detail_overlay clones,
-					// so everything here can be freed in bulk when scope ends.
-					scratch_buf: [1024]byte
-					scratch: mem.Arena
-					mem.arena_init(&scratch, scratch_buf[:])
-					scratch_alloc := mem.arena_allocator(&scratch)
+				// Scratch arena for split + detail strings — show_detail_overlay clones,
+				// so everything here can be freed in bulk when scope ends.
+				scratch_buf: [1024]byte
+				scratch: mem.Arena
+				mem.arena_init(&scratch, scratch_buf[:])
+				scratch_alloc := mem.arena_allocator(&scratch)
 
+				parts := strings.split(selected, "=", scratch_alloc)
+				if len(parts) >= 2 {
 					joined_cmd := strings.join(parts[1:], "=", scratch_alloc)
 					line1 := fmt.aprintf("Name: %s", parts[0], allocator = scratch_alloc)
 					line2 := fmt.aprintf("Command: %s", joined_cmd, allocator = scratch_alloc)
@@ -230,17 +246,15 @@ handle_selection :: proc(state: ^TUIState) {
 			items := cast(^[dynamic]string)state.data_cache[.CONSTANTS_VIEW]
 			if state.selected_index >= 0 && state.selected_index < len(items) {
 				selected := items[state.selected_index]
-				// Parse "NAME=value" format
-				parts := strings.split(selected, "=")
-				defer delete(parts)
-				if len(parts) >= 2 {
-					// Scratch arena for detail strings — show_detail_overlay clones,
-					// so everything here can be freed in bulk when scope ends.
-					scratch_buf: [1024]byte
-					scratch: mem.Arena
-					mem.arena_init(&scratch, scratch_buf[:])
-					scratch_alloc := mem.arena_allocator(&scratch)
+				// Scratch arena for split + detail strings — show_detail_overlay clones,
+				// so everything here can be freed in bulk when scope ends.
+				scratch_buf: [1024]byte
+				scratch: mem.Arena
+				mem.arena_init(&scratch, scratch_buf[:])
+				scratch_alloc := mem.arena_allocator(&scratch)
 
+				parts := strings.split(selected, "=", scratch_alloc)
+				if len(parts) >= 2 {
 					value := strings.join(parts[1:], "=", scratch_alloc)
 					line1 := fmt.aprintf("Name: %s", parts[0], allocator = scratch_alloc)
 					line2 := fmt.aprintf("Value: %s", value, allocator = scratch_alloc)
@@ -275,17 +289,16 @@ handle_selection :: proc(state: ^TUIState) {
 			items := cast(^[dynamic]string)state.data_cache[.BACKUPS_VIEW]
 			if state.selected_index >= 0 && state.selected_index < len(items) {
 				selected := items[state.selected_index]
-				// Parse backup filename: e.g. "path.zsh.backup.2024-03-15_14-30-00"
-				parts := strings.split(selected, ".backup.")
-				defer delete(parts)
-				if len(parts) >= 2 {
-					// Scratch arena for detail strings — show_detail_overlay clones,
-					// so everything here can be freed in bulk when scope ends.
-					scratch_buf: [512]byte
-					scratch: mem.Arena
-					mem.arena_init(&scratch, scratch_buf[:])
-					scratch_alloc := mem.arena_allocator(&scratch)
+				// Scratch arena for split + detail strings — show_detail_overlay clones,
+				// so everything here can be freed in bulk when scope ends.
+				scratch_buf: [512]byte
+				scratch: mem.Arena
+				mem.arena_init(&scratch, scratch_buf[:])
+				scratch_alloc := mem.arena_allocator(&scratch)
 
+				// Parse backup filename: e.g. "path.zsh.backup.2024-03-15_14-30-00"
+				parts := strings.split(selected, ".backup.", scratch_alloc)
+				if len(parts) >= 2 {
 					line1 := fmt.aprintf("Config: %s", parts[0], allocator = scratch_alloc)
 					line2 := fmt.aprintf("Timestamp: %s", parts[1], allocator = scratch_alloc)
 					lines := []string{line1, line2}
@@ -303,6 +316,66 @@ handle_selection :: proc(state: ^TUIState) {
 	case .SETTINGS_VIEW:
 		// No detail for settings
 	}
+}
+
+// Execute a confirmed delete operation. Called when user presses 'y' on the confirm overlay.
+execute_pending_delete :: proc(state: ^TUIState) {
+	if !state.confirm_delete_pending { return }
+
+	view := state.confirm_delete_view
+	name := state.confirm_delete_name
+	item_count := get_view_item_count(state)
+
+	success := false
+	switch view {
+	case .PATH_VIEW:
+		success = tui_delete_path(name)
+	case .ALIAS_VIEW:
+		success = tui_delete_alias(name)
+	case .CONSTANTS_VIEW:
+		success = tui_delete_constant(name)
+	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
+		// No delete for these views
+	}
+
+	// Dismiss the overlay (this also frees confirm_delete_name)
+	clear_detail(state)
+
+	if success {
+		label: string
+		switch view {
+		case .PATH_VIEW:     label = "PATH entry"
+		case .ALIAS_VIEW:    label = "alias"
+		case .CONSTANTS_VIEW: label = "constant"
+		case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
+			label = "entry"
+		}
+		msg := fmt.tprintf("Removed %s: %s", label, name)
+		set_notification(state, .SUCCESS, msg)
+
+		// Clear cache to force reload
+		clear_view_cache(state, view)
+
+		// Preserve cursor position: only adjust if was on last item
+		if state.selected_index >= item_count - 1 {
+			state.selected_index = max(0, item_count - 2)
+		}
+		if state.selected_index < state.scroll_offset {
+			state.scroll_offset = state.selected_index
+		}
+	} else {
+		err_msg := ""
+		if g_get_last_error != nil {
+			err_msg = g_get_last_error()
+		}
+		if len(err_msg) > 0 {
+			set_notification(state, .ERROR, err_msg)
+		} else {
+			set_notification(state, .ERROR, fmt.tprintf("Failed to delete: %s", name))
+		}
+	}
+
+	state.needs_refresh = true
 }
 
 // Render current state to screen
@@ -358,8 +431,8 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 	// Accent bar ┃ before title
 	screen_set_cell(screen, header_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
 	screen_set_cell(screen, header_x, title_y + 1, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
-	render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + 1, title_y, "WAYU", TUI_PRIMARY, "", true)
-	render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + 1, title_y + 1, "Shell Configuration Manager", TUI_DIM)
+	render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, title_y, "WAYU", TUI_PRIMARY, "", true)
+	render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, title_y + 1, "Shell Configuration Manager", TUI_DIM)
 
 	// Header divider line
 	divider_y := LIST_ITEM_START_LINE
@@ -406,7 +479,7 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 
 	// Footer — compact keyboard shortcuts
 	footer_y := calculate_footer_y(state.terminal_height)
-	render_text_styled(screen, header_x, footer_y, "↑/↓ Navigate   Enter Select   q Quit", TUI_DIM)
+	render_text_styled(screen, header_x, footer_y, "j/k Navigate   l Select   q Quit", TUI_DIM)
 }
 
 // Handle keyboard input when filter mode is active

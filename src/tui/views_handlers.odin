@@ -55,47 +55,12 @@ handle_path_event :: proc(state: ^TUIState, key: KeyEvent) {
 	case .Char:
 		switch key.char {
 		case 'd', 'x':
-			// Delete selected PATH entry
+			// Stage delete confirmation for selected PATH entry
 			if state.data_cache[.PATH_VIEW] != nil {
 				items := cast(^[dynamic]string)state.data_cache[.PATH_VIEW]
 				if state.selected_index >= 0 && state.selected_index < len(items) {
-					// Clone before bridge call — clear_view_cache frees the original
-					selected_entry := strings.clone(items[state.selected_index])
-					defer delete(selected_entry)
-					item_count := len(items)  // Save count BEFORE clearing cache
-
-					// Call bridge function to delete (creates backup automatically)
-					success := tui_delete_path(selected_entry)
-
-					if success {
-						msg := fmt.tprintf("Removed PATH entry: %s", selected_entry)
-						set_notification(state, .SUCCESS, msg)
-
-						// Clear cache to force reload
-						clear_view_cache(state, .PATH_VIEW)
-
-						// Preserve cursor position: only adjust if was on last item
-						if state.selected_index >= item_count - 1 {
-							state.selected_index = max(0, item_count - 2)
-						}
-						// Adjust scroll_offset if selected_index is now above visible window
-						if state.selected_index < state.scroll_offset {
-							state.scroll_offset = state.selected_index
-						}
-					} else {
-						err_msg := ""
-						if g_get_last_error != nil {
-							err_msg = g_get_last_error()
-						}
-						if len(err_msg) > 0 {
-							set_notification(state, .ERROR, err_msg)
-						} else {
-							msg := fmt.tprintf("Failed to remove PATH entry: %s", selected_entry)
-							set_notification(state, .ERROR, msg)
-						}
-					}
-
-					state.needs_refresh = true
+					entry := items[state.selected_index]
+					show_delete_confirmation(state, .PATH_VIEW, entry, entry)
 				}
 			}
 		case '/':
@@ -119,55 +84,16 @@ handle_alias_event :: proc(state: ^TUIState, key: KeyEvent) {
 	case .Char:
 		switch key.char {
 		case 'd', 'x':
-			// Delete selected alias
+			// Stage delete confirmation for selected alias
 			if state.data_cache[.ALIAS_VIEW] != nil {
 				items := cast(^[dynamic]string)state.data_cache[.ALIAS_VIEW]
 				if state.selected_index >= 0 && state.selected_index < len(items) {
-					// Clone before bridge call — clear_view_cache frees the original
-					selected_item := strings.clone(items[state.selected_index])
-					defer delete(selected_item)
-					item_count := len(items)  // Save count BEFORE clearing cache
-
-					// Parse name from "name=value" format
-					parts := strings.split(selected_item, "=")
-					defer delete(parts)
-
-					if len(parts) >= 1 {
-						alias_name := parts[0]
-
-						// Call bridge function to delete (creates backup automatically)
-						success := tui_delete_alias(alias_name)
-
-						if success {
-							msg := fmt.tprintf("Removed alias: %s", alias_name)
-							set_notification(state, .SUCCESS, msg)
-
-							// Clear cache to force reload
-							clear_view_cache(state, .ALIAS_VIEW)
-
-							// Preserve cursor position: only adjust if was on last item
-							if state.selected_index >= item_count - 1 {
-								state.selected_index = max(0, item_count - 2)
-							}
-							// Adjust scroll_offset if selected_index is now above visible window
-							if state.selected_index < state.scroll_offset {
-								state.scroll_offset = state.selected_index
-							}
-						} else {
-							err_msg := ""
-							if g_get_last_error != nil {
-								err_msg = g_get_last_error()
-							}
-							if len(err_msg) > 0 {
-								set_notification(state, .ERROR, err_msg)
-							} else {
-								msg := fmt.tprintf("Failed to remove alias: %s", alias_name)
-								set_notification(state, .ERROR, msg)
-							}
-						}
-
-						state.needs_refresh = true
-					}
+					item := items[state.selected_index]
+					// Extract name before '=' — zero allocation, slice of cache string
+					eq_idx := strings.index_byte(item, '=')
+					alias_name := item[:eq_idx] if eq_idx >= 0 else item
+					display := fmt.tprintf("Alias: %s", alias_name)
+					show_delete_confirmation(state, .ALIAS_VIEW, display, alias_name)
 				}
 			}
 		case '/':
@@ -191,55 +117,16 @@ handle_constants_event :: proc(state: ^TUIState, key: KeyEvent) {
 	case .Char:
 		switch key.char {
 		case 'd', 'x':
-			// Delete selected constant
+			// Stage delete confirmation for selected constant
 			if state.data_cache[.CONSTANTS_VIEW] != nil {
 				items := cast(^[dynamic]string)state.data_cache[.CONSTANTS_VIEW]
 				if state.selected_index >= 0 && state.selected_index < len(items) {
-					// Clone before bridge call — clear_view_cache frees the original
-					selected_item := strings.clone(items[state.selected_index])
-					defer delete(selected_item)
-					item_count := len(items)  // Save count BEFORE clearing cache
-
-					// Parse name from "NAME=value" format
-					parts := strings.split(selected_item, "=")
-					defer delete(parts)
-
-					if len(parts) >= 1 {
-						constant_name := parts[0]
-
-						// Call bridge function to delete (creates backup automatically)
-						success := tui_delete_constant(constant_name)
-
-						if success {
-							msg := fmt.tprintf("Removed constant: %s", constant_name)
-							set_notification(state, .SUCCESS, msg)
-
-							// Clear cache to force reload
-							clear_view_cache(state, .CONSTANTS_VIEW)
-
-							// Preserve cursor position: only adjust if was on last item
-							if state.selected_index >= item_count - 1 {
-								state.selected_index = max(0, item_count - 2)
-							}
-							// Adjust scroll_offset if selected_index is now above visible window
-							if state.selected_index < state.scroll_offset {
-								state.scroll_offset = state.selected_index
-							}
-						} else {
-							err_msg := ""
-							if g_get_last_error != nil {
-								err_msg = g_get_last_error()
-							}
-							if len(err_msg) > 0 {
-								set_notification(state, .ERROR, err_msg)
-							} else {
-								msg := fmt.tprintf("Failed to remove constant: %s", constant_name)
-								set_notification(state, .ERROR, msg)
-							}
-						}
-
-						state.needs_refresh = true
-					}
+					item := items[state.selected_index]
+					// Extract name before '=' — zero allocation, slice of cache string
+					eq_idx := strings.index_byte(item, '=')
+					constant_name := item[:eq_idx] if eq_idx >= 0 else item
+					display := fmt.tprintf("Constant: %s", constant_name)
+					show_delete_confirmation(state, .CONSTANTS_VIEW, display, constant_name)
 				}
 			}
 		case '/':
