@@ -57,6 +57,11 @@ LIST_ITEM_INDENT     :: CONTENT_PADDING_LEFT  // Indent items 2 cells from borde
 // Selection indicator
 SELECTION_PREFIX_WIDTH :: 2  // "> " takes 2 characters
 
+// Main menu item layout (dashboard-style with dividers)
+MENU_ITEM_SPACING :: 2  // Each menu item occupies 2 rows (text + divider)
+MENU_ACCENT_BAR_WIDTH :: 1  // ┃ accent bar is 1 cell
+MENU_ACCENT_GAP :: 2  // Gap after accent bar before text
+
 // ============================================================================
 // Visible Height Calculation Constants
 // ============================================================================
