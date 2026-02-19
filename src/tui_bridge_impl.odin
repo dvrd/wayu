@@ -260,6 +260,39 @@ tui_bridge_delete_constant :: proc(name: string) -> bool {
 	return TUI_LAST_SUCCESS
 }
 
+// Add PATH entry
+tui_bridge_add_path :: proc(path: string) -> bool {
+	DRY_RUN = false
+	TUI_MODE = true
+	TUI_LAST_ERROR = ""
+	TUI_LAST_SUCCESS = false
+	defer { TUI_MODE = false }
+	add_config_entry(&PATH_SPEC, ConfigEntry{name = path})
+	return TUI_LAST_SUCCESS
+}
+
+// Add Alias entry
+tui_bridge_add_alias :: proc(name: string, command: string) -> bool {
+	DRY_RUN = false
+	TUI_MODE = true
+	TUI_LAST_ERROR = ""
+	TUI_LAST_SUCCESS = false
+	defer { TUI_MODE = false }
+	add_config_entry(&ALIAS_SPEC, ConfigEntry{name = name, value = command})
+	return TUI_LAST_SUCCESS
+}
+
+// Add Constants entry
+tui_bridge_add_constant :: proc(name: string, value: string) -> bool {
+	DRY_RUN = false
+	TUI_MODE = true
+	TUI_LAST_ERROR = ""
+	TUI_LAST_SUCCESS = false
+	defer { TUI_MODE = false }
+	add_config_entry(&CONSTANTS_SPEC, ConfigEntry{name = name, value = value})
+	return TUI_LAST_SUCCESS
+}
+
 // Get last error message from TUI mode operations
 tui_bridge_get_last_error :: proc() -> string {
 	return TUI_LAST_ERROR
