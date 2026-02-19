@@ -22,7 +22,6 @@ tui_run :: proc() {
 	if !ok {
 		width, height = 80, 24  // Fallback
 	}
-
 	// Create screen buffer
 	screen := screen_create(width, height)
 	defer screen_destroy(&screen)
@@ -68,6 +67,7 @@ tui_run :: proc() {
 		// Update state based on event
 		tui_handle_event(&state, event)
 	}
+
 }
 
 // Initialize TUI subsystems
