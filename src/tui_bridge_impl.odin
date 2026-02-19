@@ -108,7 +108,7 @@ tui_bridge_load_completions :: proc(state: ^tui.TUIState) {
 
 	// Read directory contents
 	dir_handle, err := os.open(completions_dir)
-	if err != 0 {
+	if err != nil {
 		// Can't open directory - return empty list
 		items_ptr := new([dynamic]string)
 		items_ptr^ = items
