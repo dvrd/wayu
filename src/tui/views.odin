@@ -773,8 +773,8 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		render_text_styled(screen, content_x + 2, line_y, display_line, TUI_MUTED)
 	}
 
-	// Footer hint — two blank rows above the bottom border for breathing room between content and buttons
-	footer_y := overlay_y + overlay_height - 4
+	// Footer hint — one row above the bottom border; extra blank rows sit between content and buttons
+	footer_y := overlay_y + overlay_height - 3
 	if state.confirm_delete_pending {
 		// Bordered box buttons, right-aligned within the overlay
 		// Layout: ... [ Esc CANCEL ]  [ y DELETE ] |
