@@ -79,19 +79,6 @@ TUI_BORDER_NORMAL :: "\x1b[38;2;100;100;100m"  // #646464
 TUI_BORDER_FOCUSED :: "\x1b[38;2;228;0;80m"  // #E40050
 
 // ============================================================================
-// Button Background Colors (for modal button widgets)
-// ============================================================================
-
-// Cancel button background - Subtle dark gray
-TUI_BG_BUTTON_CANCEL :: "\x1b[48;2;51;51;51m"    // #333333
-
-// Delete/danger button background - Dark red
-TUI_BG_BUTTON_DANGER :: "\x1b[48;2;153;27;27m"    // #991B1B
-
-// Button text foreground - Bright white for contrast on colored backgrounds
-TUI_FG_BUTTON :: "\x1b[38;2;240;240;240m"         // #F0F0F0
-
-// ============================================================================
 // Control Codes
 // ============================================================================
 
