@@ -204,10 +204,14 @@ handle_selection :: proc(state: ^TUIState) {
 				parts := strings.split(selected, "=")
 				defer delete(parts)
 				if len(parts) >= 2 {
-					lines := []string{
-						fmt.tprintf("Name: %s", parts[0]),
-						fmt.tprintf("Command: %s", strings.join(parts[1:], "=")),
-					}
+					// Build detail lines using aprintf to avoid tprintf buffer reuse
+					joined_cmd := strings.join(parts[1:], "=")
+					defer delete(joined_cmd)
+					line1 := fmt.aprintf("Name: %s", parts[0])
+					defer delete(line1)
+					line2 := fmt.aprintf("Command: %s", joined_cmd)
+					defer delete(line2)
+					lines := []string{line1, line2}
 					show_detail_overlay(state, parts[0], lines)
 				} else {
 					lines := []string{selected}
@@ -227,10 +231,12 @@ handle_selection :: proc(state: ^TUIState) {
 				if len(parts) >= 2 {
 					value := strings.join(parts[1:], "=")
 					defer delete(value)
-					lines := []string{
-						fmt.tprintf("Name: %s", parts[0]),
-						fmt.tprintf("Value: %s", value),
-					}
+					// Use aprintf to avoid tprintf buffer reuse across array elements
+					line1 := fmt.aprintf("Name: %s", parts[0])
+					defer delete(line1)
+					line2 := fmt.aprintf("Value: %s", value)
+					defer delete(line2)
+					lines := []string{line1, line2}
 					show_detail_overlay(state, parts[0], lines)
 				} else {
 					lines := []string{selected}
@@ -244,9 +250,10 @@ handle_selection :: proc(state: ^TUIState) {
 			items := cast(^[dynamic]string)state.data_cache[.COMPLETIONS_VIEW]
 			if state.selected_index >= 0 && state.selected_index < len(items) {
 				selected := items[state.selected_index]
-				lines := []string{
-					fmt.tprintf("Script: %s", selected),
-				}
+				// Use aprintf for consistency (avoids tprintf buffer reuse)
+				line1 := fmt.aprintf("Script: %s", selected)
+				defer delete(line1)
+				lines := []string{line1}
 				show_detail_overlay(state, selected, lines)
 			}
 		}
@@ -260,10 +267,12 @@ handle_selection :: proc(state: ^TUIState) {
 				parts := strings.split(selected, ".backup.")
 				defer delete(parts)
 				if len(parts) >= 2 {
-					lines := []string{
-						fmt.tprintf("Config: %s", parts[0]),
-						fmt.tprintf("Timestamp: %s", parts[1]),
-					}
+					// Use aprintf to avoid tprintf buffer reuse across array elements
+					line1 := fmt.aprintf("Config: %s", parts[0])
+					defer delete(line1)
+					line2 := fmt.aprintf("Timestamp: %s", parts[1])
+					defer delete(line2)
+					lines := []string{line1, line2}
 					show_detail_overlay(state, "Backup Detail", lines)
 				} else {
 					lines := []string{selected}
