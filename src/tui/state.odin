@@ -19,6 +19,12 @@ NotificationKind :: enum {
 	ERROR,
 }
 
+// Saved cursor position for a view (selected_index + scroll_offset)
+ViewCursor :: struct {
+	selected_index: int,
+	scroll_offset:  int,
+}
+
 TUIState :: struct {
 	current_view:    TUIView,
 	previous_view:   TUIView,
@@ -29,10 +35,16 @@ TUIState :: struct {
 	needs_refresh:   bool,
 	running:         bool,
 	data_cache:      map[TUIView]rawptr,
+	// Per-view cursor memory — remembers selection when navigating away
+	saved_cursors:   map[TUIView]ViewCursor,
 	// Detail overlay state
 	show_detail:     bool,
 	detail_title:    string,
 	detail_lines:    [dynamic]string,
+	// Delete confirmation state — when set, the detail overlay acts as a confirm dialog
+	confirm_delete_pending: bool,
+	confirm_delete_view:    TUIView,
+	confirm_delete_name:    string,  // heap-cloned name to delete (freed on clear)
 	// Inline filter state
 	filter_active:     bool,
 	filter_text:       [dynamic]u8,
@@ -55,6 +67,7 @@ tui_state_init :: proc() -> TUIState {
 		needs_refresh = true,
 		running = true,
 		data_cache = make(map[TUIView]rawptr),
+		saved_cursors = make(map[TUIView]ViewCursor),
 	}
 }
 
@@ -70,6 +83,9 @@ tui_state_destroy :: proc(state: ^TUIState) {
 	// Free inline filter resources
 	delete(state.filter_text)
 	delete(state.filtered_indices)
+
+	// Free saved cursors map
+	delete(state.saved_cursors)
 
 	// Free cached data properly - must free strings, dynamic arrays, then pointers
 	for key, value in state.data_cache {
@@ -91,7 +107,7 @@ tui_state_destroy :: proc(state: ^TUIState) {
 	delete(state.data_cache)
 }
 
-// Clear detail overlay and free its resources
+// Clear detail overlay and free its resources (also clears any pending delete)
 clear_detail :: proc(state: ^TUIState) {
 	state.show_detail = false
 	if len(state.detail_title) > 0 {
@@ -102,6 +118,29 @@ clear_detail :: proc(state: ^TUIState) {
 		delete(line)
 	}
 	clear(&state.detail_lines)
+	// Clear pending delete confirmation
+	if state.confirm_delete_pending {
+		if len(state.confirm_delete_name) > 0 {
+			delete(state.confirm_delete_name)
+		}
+		state.confirm_delete_name = ""
+		state.confirm_delete_pending = false
+	}
+	state.needs_refresh = true
+}
+
+// Show a delete confirmation overlay for the given item
+show_delete_confirmation :: proc(state: ^TUIState, view: TUIView, display_name: string, delete_key: string) {
+	clear_detail(state)
+	state.show_detail = true
+	state.detail_title = strings.clone("DELETE CONFIRMATION")
+	append(&state.detail_lines, strings.clone(display_name))
+	append(&state.detail_lines, strings.clone(""))
+	append(&state.detail_lines, strings.clone("This action cannot be undone."))
+	append(&state.detail_lines, strings.clone("A backup will be created automatically."))
+	state.confirm_delete_pending = true
+	state.confirm_delete_view = view
+	state.confirm_delete_name = strings.clone(delete_key)
 	state.needs_refresh = true
 }
 
@@ -116,24 +155,43 @@ show_detail_overlay :: proc(state: ^TUIState, title: string, lines: []string) {
 	state.needs_refresh = true
 }
 
-// Go to new view
+// Save current cursor position for the active view
+save_cursor :: proc(state: ^TUIState) {
+	state.saved_cursors[state.current_view] = ViewCursor{
+		selected_index = state.selected_index,
+		scroll_offset  = state.scroll_offset,
+	}
+}
+
+// Restore cursor position for a view (defaults to 0,0 if never visited)
+restore_cursor :: proc(state: ^TUIState, view: TUIView) {
+	if cursor, ok := state.saved_cursors[view]; ok {
+		state.selected_index = cursor.selected_index
+		state.scroll_offset  = cursor.scroll_offset
+	} else {
+		state.selected_index = 0
+		state.scroll_offset  = 0
+	}
+}
+
+// Go to new view (saves cursor of current view, restores target view cursor)
 tui_state_goto_view :: proc(state: ^TUIState, view: TUIView) {
 	deactivate_filter(state)
+	save_cursor(state)
 	state.previous_view = state.current_view
 	state.current_view = view
-	state.selected_index = 0
-	state.scroll_offset = 0
+	restore_cursor(state, view)
 	state.needs_refresh = true
 }
 
-// Go back to previous view
+// Go back to previous view (saves cursor of current view, restores previous view cursor)
 tui_state_go_back :: proc(state: ^TUIState) {
 	deactivate_filter(state)
+	save_cursor(state)
 	temp := state.current_view
 	state.current_view = state.previous_view
 	state.previous_view = temp
-	state.selected_index = 0
-	state.scroll_offset = 0
+	restore_cursor(state, state.current_view)
 	state.needs_refresh = true
 }
 
@@ -184,17 +242,33 @@ deactivate_filter :: proc(state: ^TUIState) {
 	state.scroll_offset = 0
 }
 
-// Case-insensitive substring match
+// ASCII lowercase of a single byte. Non-ASCII bytes pass through unchanged.
+@(private="file")
+ascii_lower :: proc(c: u8) -> u8 {
+	if c >= 'A' && c <= 'Z' {
+		return c + 32
+	}
+	return c
+}
+
+// Case-insensitive substring match — zero allocations.
+// Compares byte-by-byte with inline ASCII lowering. Safe for shell
+// paths, aliases, and constants which are ASCII-only.
 matches_filter :: proc(item: string, filter: []u8) -> bool {
 	if len(filter) == 0 { return true }
-	filter_str := string(filter[:])
+	item_bytes := transmute([]u8)item
+	if len(filter) > len(item_bytes) { return false }
 
-	// Simple case-insensitive contains
-	lower_item := strings.to_lower(item)
-	lower_filter := strings.to_lower(filter_str)
-	defer delete(lower_item)
-	defer delete(lower_filter)
-	return strings.contains(lower_item, lower_filter)
+	// Sliding window: check each starting position in item.
+	outer: for i in 0..=len(item_bytes) - len(filter) {
+		for j in 0..<len(filter) {
+			if ascii_lower(item_bytes[i + j]) != ascii_lower(filter[j]) {
+				continue outer
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // Rebuild filtered_indices based on current filter_text and cache
