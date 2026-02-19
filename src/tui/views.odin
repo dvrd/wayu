@@ -1,5 +1,8 @@
 // tui_views.odin - TUI view rendering for all wayu configuration types
 //
+// Dashboard-style design with accent bars, dividers, no emoji.
+// Inspired by terminal dashboard aesthetic (Dribbble #26767482).
+//
 // This module implements the 8 TUI views:
 // - Main Menu (navigation hub)
 // - PATH View (list PATH entries)
@@ -45,6 +48,121 @@ truncate_text :: proc(text: string, max_runes: int) -> string {
 }
 
 // ============================================================================
+// Shared View Header — Dashboard-style accent bar + title + count + divider
+// ============================================================================
+
+// Render a consistent view header across all data views.
+// Layout:
+//   ┃ TITLE           (accent bar + bold primary, ALL CAPS)
+//   ┃ count_text      (accent bar + dim)
+//   ────────────────  (divider line)
+//
+// Returns the border_width so callers can use it for dividers.
+render_view_header :: proc(
+	screen: ^Screen,
+	state: ^TUIState,
+	title: string,
+	count_text: string,
+	border_width: int,
+) {
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+	title_y := HEADER_TITLE_LINE + CONTENT_PADDING_TOP
+	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+
+	// Accent bar ┃ spanning title + count lines
+	screen_set_cell(screen, header_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+	screen_set_cell(screen, header_x, title_y + 1, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+
+	// Title (bold primary)
+	render_text_styled(screen, text_x, title_y, title, TUI_PRIMARY, "", true)
+
+	// Count line (dim)
+	render_text_styled(screen, text_x, title_y + 1, count_text, TUI_DIM)
+
+	// Horizontal divider below header
+	divider_y := LIST_ITEM_START_LINE
+	divider_width := border_width - CONTENT_PADDING_LEFT - 2
+	for dx in 0..<divider_width {
+		screen_set_cell(screen, header_x + dx, divider_y, Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
+	}
+}
+
+// Render a loading state for views whose data hasn't arrived yet.
+render_view_loading :: proc(screen: ^Screen, state: ^TUIState, title: string, border_width: int) {
+	render_view_header(screen, state, title, "Loading...", border_width)
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+	render_text_styled(screen, text_x, LIST_ITEM_START_LINE + 2, "Loading...", TUI_DIM)
+	state.needs_refresh = true
+}
+
+// ============================================================================
+// Shared Filter Bar
+// ============================================================================
+
+// Render the inline filter bar. Returns the list_start_offset (0 if no filter, 1 if filter shown).
+render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) -> int {
+	has_filter := state.filter_active || len(state.filter_text) > 0
+	if !has_filter do return 0
+
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+	// Filter bar goes right after the divider line
+	filter_bar_y := LIST_ITEM_START_LINE + 1
+	filter_str := string(state.filter_text[:])
+
+	if state.filter_active {
+		filter_display := fmt.tprintf("/ %s█  (%d/%d matches)", filter_str, len(state.filtered_indices), item_count)
+		render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_SECONDARY, "", true)
+	} else {
+		filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), item_count)
+		render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_DIM)
+	}
+	return 1
+}
+
+// ============================================================================
+// Shared List Item — Single-column with accent bar selection
+// ============================================================================
+
+// Render a single list item with ┃ accent bar for selected state.
+// text_x is calculated from header_x + accent bar + gap.
+render_list_item :: proc(screen: ^Screen, header_x, y: int, text: string, max_width: int, is_selected: bool) {
+	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+	display := truncate_text(text, max_width)
+
+	if is_selected {
+		// Selected: accent bar ┃ + bold primary text
+		screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+		render_text_styled(screen, text_x, y, display, TUI_PRIMARY, "", true)
+	} else {
+		// Normal: no accent bar, muted text at same x offset
+		render_text_styled(screen, text_x, y, display, TUI_MUTED)
+	}
+}
+
+// ============================================================================
+// Shared Footer — Compact keyboard shortcuts
+// ============================================================================
+
+// Standard footer for filterable data views
+FOOTER_FILTER_ACTIVE :: "Type to filter   Esc Cancel   Enter Accept   j/k Navigate"
+FOOTER_DATA_VIEW     :: "/ Filter   d Delete   h Back   l Enter   j/k Navigate"
+FOOTER_READONLY_VIEW :: "/ Filter   h Back   l Enter   j/k Navigate"
+FOOTER_BACKUP_VIEW   :: "/ Filter   c Cleanup   h Back   j/k Navigate"
+FOOTER_STATIC_VIEW   :: "h Back"
+
+render_data_footer :: proc(screen: ^Screen, state: ^TUIState, footer_text: string) {
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+	footer_y := calculate_footer_y(state.terminal_height)
+
+	if state.filter_active {
+		render_text_styled(screen, header_x, footer_y, FOOTER_FILTER_ACTIVE, TUI_DIM)
+	} else {
+		render_text_styled(screen, header_x, footer_y, footer_text, TUI_DIM)
+	}
+}
+
+// ============================================================================
 // Table Layout Constants & Helpers
 // ============================================================================
 
@@ -79,8 +197,7 @@ calculate_key_column_width :: proc(items: ^[dynamic]string, max_text_width: int)
 }
 
 // Render a single table row with key and value in separate columns.
-// Splits item on first '=', truncates each column independently,
-// pads key to fixed width, and renders with appropriate colors.
+// Uses ┃ accent bar for selected items instead of "> " prefix.
 render_table_row :: proc(
 	screen: ^Screen,
 	x, y: int,
@@ -103,190 +220,129 @@ render_table_row :: proc(
 	truncated_key := truncate_text(key, key_col_width)
 	truncated_value := truncate_text(value, value_col_width)
 
-	// Calculate padding to align value column
-	key_rune_count := utf8.rune_count_in_string(truncated_key)
-	padding := key_col_width - key_rune_count
-	if padding < 0 {
-		padding = 0
-	}
+	// Text starts after accent bar + gap
+	text_x := x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+	value_x := text_x + key_col_width + COLUMN_GAP
 
-	// Build padded key with prefix
 	if is_selected {
-		// Selected: "> " + key, all hot pink bold
-		prefix_and_key := fmt.tprintf("> %s", truncated_key)
-		render_text_styled(screen, x, y, prefix_and_key, TUI_PRIMARY, "", true)
-		// Render value at fixed column position
+		// Selected: accent bar ┃ + bold primary key + bold primary value
+		screen_set_cell(screen, x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+		render_text_styled(screen, text_x, y, truncated_key, TUI_PRIMARY, "", true)
 		if len(truncated_value) > 0 {
-			value_x := x + SELECTION_PREFIX_WIDTH + key_col_width + COLUMN_GAP
 			render_text_styled(screen, value_x, y, truncated_value, TUI_PRIMARY, "", true)
 		}
 	} else {
-		// Normal: "  " + key in muted, value in dim
-		prefix_and_key := fmt.tprintf("  %s", truncated_key)
-		render_text_styled(screen, x, y, prefix_and_key, TUI_MUTED)
+		// Normal: no accent bar, muted key + dim value
+		render_text_styled(screen, text_x, y, truncated_key, TUI_MUTED)
 		if len(truncated_value) > 0 {
-			value_x := x + SELECTION_PREFIX_WIDTH + key_col_width + COLUMN_GAP
 			render_text_styled(screen, value_x, y, truncated_value, TUI_DIM)
 		}
 	}
 }
 
-// Render column header row for table views (e.g., "ALIAS   COMMAND" or "NAME   VALUE")
-render_column_header :: proc(screen: ^Screen, x, y: int, key_label, value_label: string, key_col_width: int) {
-	render_text_styled(screen, x + SELECTION_PREFIX_WIDTH, y, key_label, TUI_DIM)
-	value_x := x + SELECTION_PREFIX_WIDTH + key_col_width + COLUMN_GAP
+// Render column header row with labels and divider line below.
+// Layout:
+//   KEY_LABEL   VALUE_LABEL
+//   ─────────────────────── (divider)
+render_column_header :: proc(screen: ^Screen, x, y: int, key_label, value_label: string, key_col_width, border_width: int) {
+	text_x := x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+	value_x := text_x + key_col_width + COLUMN_GAP
+
+	render_text_styled(screen, text_x, y, key_label, TUI_DIM)
 	render_text_styled(screen, value_x, y, value_label, TUI_DIM)
+
+	// Divider line below column headers
+	divider_y := y + 1
+	divider_width := border_width - CONTENT_PADDING_LEFT - 2
+	for dx in 0..<divider_width {
+		screen_set_cell(screen, x + dx, divider_y, Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
+	}
 }
 
 // ============================================================================
 // PATH View
 // ============================================================================
 
-// Render PATH configuration view with scrollable list (using layout constants)
 render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
-	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
 	max_text_width := calculate_content_width(border_width)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
-	// Data should be loaded by bridge layer
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+
 	if state.data_cache[.PATH_VIEW] == nil {
-		header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-		render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "📂 PATH Configuration", TUI_PRIMARY, "", true)
-		render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP + 2, "Loading...", TUI_DIM)
-		state.needs_refresh = true
+		render_view_loading(screen, state, "PATH CONFIGURATION", border_width)
 		return
 	}
 
 	items := cast(^[dynamic]string)state.data_cache[.PATH_VIEW]
-
-	// Header (hot pink + bold)
-	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "📂 PATH Configuration", TUI_PRIMARY, "", true)
 	count_text := fmt.tprintf("%d entries", len(items))
-	// Note: tprintf() uses temp buffer, do NOT delete
-	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, count_text, TUI_DIM)
+	render_view_header(screen, state, "PATH CONFIGURATION", count_text, border_width)
 
-	// Filter bar (shown when filter is active or has text)
-	filter_bar_y := HEADER_COUNT_LINE + CONTENT_PADDING_TOP + 1
+	// Filter bar (after divider)
 	has_filter := state.filter_active || len(state.filter_text) > 0
-	list_start_offset := 0
-	if has_filter {
-		filter_str := string(state.filter_text[:])
-		if state.filter_active {
-			// Show active filter with cursor
-			filter_display := fmt.tprintf("/ %s█  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
-			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_SECONDARY, "", true)
-		} else {
-			// Show applied filter (no cursor)
-			filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
-			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_DIM)
-		}
-		list_start_offset = 1  // Push list down by 1 line for filter bar
-	}
+	list_start_offset := render_filter_bar(screen, state, len(items))
+
+	// Content area starts after divider + filter
+	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset  // +1 for divider
 
 	if has_filter && len(state.filtered_indices) > 0 {
-		// Render filtered items
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset - 1
 		start := state.scroll_offset
 		end := min(start + visible_height, len(state.filtered_indices))
 
 		for idx in start..<end {
-			y := calculate_list_item_y(idx - start) + list_start_offset
+			y := content_start + (idx - start)
 			original_idx := state.filtered_indices[idx]
-			entry := items[original_idx]
-
-			if idx == state.selected_index {
-				text := fmt.tprintf("> %s", truncate_text(entry, max_text_width))
-				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
-			} else {
-				text := fmt.tprintf("  %s", truncate_text(entry, max_text_width))
-				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
-			}
+			render_list_item(screen, header_x, y, items[original_idx], max_text_width, idx == state.selected_index)
 		}
 
-		// Scroll indicator for filtered results
 		if len(state.filtered_indices) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
-			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
-			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
 		}
 	} else if has_filter && len(state.filtered_indices) == 0 {
-		// No matches
-		no_match_y := LIST_ITEM_START_LINE + list_start_offset + 1
-		render_text_styled(screen, header_x, no_match_y, "No matches found", TUI_DIM)
+		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No matches found", TUI_DIM)
 	} else if len(items) == 0 {
-		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 1, "No PATH entries found", TUI_DIM)
+		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No PATH entries found", TUI_DIM)
 	} else {
-		// List items with scrolling (unfiltered)
-		visible_height := calculate_visible_height(state.terminal_height)
+		visible_height := calculate_visible_height(state.terminal_height) - 1
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
 
 		for i in start..<end {
-			y := calculate_list_item_y(i - start)
-			entry := items[i]
-
-			if i == state.selected_index {
-				// Selected item: hot pink text + bold (NO background)
-				text := fmt.tprintf("> %s", truncate_text(entry, max_text_width))
-				// Note: tprintf() uses temp buffer, do NOT delete
-				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
-			} else {
-				// Normal item: muted gray text (indented by selection prefix width)
-				text := fmt.tprintf("  %s", truncate_text(entry, max_text_width))
-				// Note: tprintf() uses temp buffer, do NOT delete
-				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
-			}
+			y := content_start + (i - start)
+			render_list_item(screen, header_x, y, items[i], max_text_width, i == state.selected_index)
 		}
 
-		// Show scroll indicator if needed (dim gray)
 		if len(items) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-			// Note: tprintf() uses temp buffer, do NOT delete
-			scroll_y := LIST_ITEM_START_LINE + visible_height
-			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
 		}
 	}
 
-	// Footer with shortcuts (muted gray)
-	footer_y := calculate_footer_y(state.terminal_height)
-	if state.filter_active {
-		render_text_styled(screen, header_x, footer_y, "Type to filter  Esc=Cancel  Enter=Accept  ↑/↓=Navigate", TUI_MUTED)
-	} else if has_filter {
-		render_text_styled(screen, header_x, footer_y, "/=Filter  d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
-	} else {
-		render_text_styled(screen, header_x, footer_y, "/=Filter  d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
-	}
+	render_data_footer(screen, state, FOOTER_DATA_VIEW)
 }
 
 // ============================================================================
 // Alias View
 // ============================================================================
 
-// Render alias view with two-column table layout (ALIAS | COMMAND)
 render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
-	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
 	max_text_width := calculate_content_width(border_width)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
-	// Data should be loaded by bridge layer
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+
 	if state.data_cache[.ALIAS_VIEW] == nil {
-		header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-		render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "🔑 Aliases", TUI_PRIMARY, "", true)
-		render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP + 2, "Loading...", TUI_DIM)
-		state.needs_refresh = true
+		render_view_loading(screen, state, "ALIASES", border_width)
 		return
 	}
 
 	items := cast(^[dynamic]string)state.data_cache[.ALIAS_VIEW]
-
-	// Header (hot pink + bold)
-	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "🔑 Aliases", TUI_PRIMARY, "", true)
 	count_text := fmt.tprintf("%d aliases", len(items))
-	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, count_text, TUI_DIM)
+	render_view_header(screen, state, "ALIASES", count_text, border_width)
 
 	// Calculate table column widths
 	key_col_width := calculate_key_column_width(items, max_text_width)
@@ -295,462 +351,297 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 		value_col_width = 1
 	}
 
-	// Filter bar (shown when filter is active or has text)
-	filter_bar_y := HEADER_COUNT_LINE + CONTENT_PADDING_TOP + 1
 	has_filter := state.filter_active || len(state.filter_text) > 0
-	list_start_offset := 0
-	if has_filter {
-		filter_str := string(state.filter_text[:])
-		if state.filter_active {
-			filter_display := fmt.tprintf("/ %s█  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
-			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_SECONDARY, "", true)
-		} else {
-			filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
-			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_DIM)
-		}
-		list_start_offset = 1
+	list_start_offset := render_filter_bar(screen, state, len(items))
+
+	// Content area starts after divider + filter
+	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset
+
+	// Column header row (when there are items to show)
+	show_items := (has_filter && len(state.filtered_indices) > 0) || (!has_filter && len(items) > 0)
+	col_header_offset := 0
+	if show_items {
+		render_column_header(screen, header_x, content_start, "ALIAS", "COMMAND", key_col_width, border_width)
+		col_header_offset = 2  // header line + divider line
 	}
 
-	// Column header row (always shown when there are items)
-	show_items := (has_filter && len(state.filtered_indices) > 0) || (!has_filter && len(items) > 0)
-	if show_items {
-		col_header_y := LIST_ITEM_START_LINE + list_start_offset
-		render_column_header(screen, header_x, col_header_y, "ALIAS", "COMMAND", key_col_width)
-		list_start_offset += 1  // push list items down past column header
-	}
+	data_start := content_start + col_header_offset
 
 	if has_filter && len(state.filtered_indices) > 0 {
-		// Render filtered items
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset - 1 - col_header_offset
 		start := state.scroll_offset
 		end := min(start + visible_height, len(state.filtered_indices))
 
 		for idx in start..<end {
-			y := calculate_list_item_y(idx - start) + list_start_offset
+			y := data_start + (idx - start)
 			original_idx := state.filtered_indices[idx]
-			item := items[original_idx]
-			render_table_row(screen, header_x, y, item, key_col_width, value_col_width, idx == state.selected_index)
+			render_table_row(screen, header_x, y, items[original_idx], key_col_width, value_col_width, idx == state.selected_index)
 		}
 
 		if len(state.filtered_indices) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
-			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
-			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
 		}
 	} else if has_filter && len(state.filtered_indices) == 0 {
-		no_match_y := LIST_ITEM_START_LINE + list_start_offset + 1
-		render_text_styled(screen, header_x, no_match_y, "No matches found", TUI_DIM)
+		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, data_start + 1, "No matches found", TUI_DIM)
 	} else if len(items) == 0 {
-		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 1, "No aliases found", TUI_DIM)
+		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No aliases found", TUI_DIM)
 	} else {
-		// List items with scrolling (unfiltered)
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
+		visible_height := calculate_visible_height(state.terminal_height) - 1 - col_header_offset
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
 
 		for i in start..<end {
-			y := calculate_list_item_y(i - start) + list_start_offset
-			item := items[i]
-			render_table_row(screen, header_x, y, item, key_col_width, value_col_width, i == state.selected_index)
+			y := data_start + (i - start)
+			render_table_row(screen, header_x, y, items[i], key_col_width, value_col_width, i == state.selected_index)
 		}
 
-		// Show scroll indicator if needed (dim gray)
 		if len(items) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
-			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
 		}
 	}
 
-	// Footer with shortcuts (muted gray)
-	footer_y := calculate_footer_y(state.terminal_height)
-	if state.filter_active {
-		render_text_styled(screen, header_x, footer_y, "Type to filter  Esc=Cancel  Enter=Accept  ↑/↓=Navigate", TUI_MUTED)
-	} else if has_filter {
-		render_text_styled(screen, header_x, footer_y, "/=Filter  d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
-	} else {
-		render_text_styled(screen, header_x, footer_y, "/=Filter  d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
-	}
+	render_data_footer(screen, state, FOOTER_DATA_VIEW)
 }
 
 // ============================================================================
 // Constants View
 // ============================================================================
 
-// Render constants view with two-column table layout (NAME | VALUE)
 render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
-	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
 	max_text_width := calculate_content_width(border_width)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
-	// Data should be loaded by bridge layer
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+
 	if state.data_cache[.CONSTANTS_VIEW] == nil {
-		header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-		render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "💾 Environment Constants", TUI_PRIMARY, "", true)
-		render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP + 2, "Loading...", TUI_DIM)
-		state.needs_refresh = true
+		render_view_loading(screen, state, "ENVIRONMENT CONSTANTS", border_width)
 		return
 	}
 
 	items := cast(^[dynamic]string)state.data_cache[.CONSTANTS_VIEW]
-
-	// Header (hot pink + bold)
-	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "💾 Environment Constants", TUI_PRIMARY, "", true)
 	count_text := fmt.tprintf("%d constants", len(items))
-	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, count_text, TUI_DIM)
+	render_view_header(screen, state, "ENVIRONMENT CONSTANTS", count_text, border_width)
 
-	// Calculate table column widths
 	key_col_width := calculate_key_column_width(items, max_text_width)
 	value_col_width := max_text_width - key_col_width - COLUMN_GAP
 	if value_col_width < 1 {
 		value_col_width = 1
 	}
 
-	// Filter bar (shown when filter is active or has text)
-	filter_bar_y := HEADER_COUNT_LINE + CONTENT_PADDING_TOP + 1
 	has_filter := state.filter_active || len(state.filter_text) > 0
-	list_start_offset := 0
-	if has_filter {
-		filter_str := string(state.filter_text[:])
-		if state.filter_active {
-			filter_display := fmt.tprintf("/ %s█  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
-			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_SECONDARY, "", true)
-		} else {
-			filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
-			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_DIM)
-		}
-		list_start_offset = 1
+	list_start_offset := render_filter_bar(screen, state, len(items))
+
+	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset
+
+	show_items := (has_filter && len(state.filtered_indices) > 0) || (!has_filter && len(items) > 0)
+	col_header_offset := 0
+	if show_items {
+		render_column_header(screen, header_x, content_start, "NAME", "VALUE", key_col_width, border_width)
+		col_header_offset = 2
 	}
 
-	// Column header row (always shown when there are items)
-	show_items := (has_filter && len(state.filtered_indices) > 0) || (!has_filter && len(items) > 0)
-	if show_items {
-		col_header_y := LIST_ITEM_START_LINE + list_start_offset
-		render_column_header(screen, header_x, col_header_y, "NAME", "VALUE", key_col_width)
-		list_start_offset += 1  // push list items down past column header
-	}
+	data_start := content_start + col_header_offset
 
 	if has_filter && len(state.filtered_indices) > 0 {
-		// Render filtered items
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset - 1 - col_header_offset
 		start := state.scroll_offset
 		end := min(start + visible_height, len(state.filtered_indices))
 
 		for idx in start..<end {
-			y := calculate_list_item_y(idx - start) + list_start_offset
+			y := data_start + (idx - start)
 			original_idx := state.filtered_indices[idx]
-			item := items[original_idx]
-			render_table_row(screen, header_x, y, item, key_col_width, value_col_width, idx == state.selected_index)
+			render_table_row(screen, header_x, y, items[original_idx], key_col_width, value_col_width, idx == state.selected_index)
 		}
 
 		if len(state.filtered_indices) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
-			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
-			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
 		}
 	} else if has_filter && len(state.filtered_indices) == 0 {
-		no_match_y := LIST_ITEM_START_LINE + list_start_offset + 1
-		render_text_styled(screen, header_x, no_match_y, "No matches found", TUI_DIM)
+		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, data_start + 1, "No matches found", TUI_DIM)
 	} else if len(items) == 0 {
-		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 1, "No constants found", TUI_DIM)
+		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No constants found", TUI_DIM)
 	} else {
-		// List items with scrolling (unfiltered)
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
+		visible_height := calculate_visible_height(state.terminal_height) - 1 - col_header_offset
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
 
 		for i in start..<end {
-			y := calculate_list_item_y(i - start) + list_start_offset
-			item := items[i]
-			render_table_row(screen, header_x, y, item, key_col_width, value_col_width, i == state.selected_index)
+			y := data_start + (i - start)
+			render_table_row(screen, header_x, y, items[i], key_col_width, value_col_width, i == state.selected_index)
 		}
 
-		// Show scroll indicator if needed (dim gray)
 		if len(items) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
-			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
 		}
 	}
 
-	// Footer with shortcuts (muted gray)
-	footer_y := calculate_footer_y(state.terminal_height)
-	if state.filter_active {
-		render_text_styled(screen, header_x, footer_y, "Type to filter  Esc=Cancel  Enter=Accept  ↑/↓=Navigate", TUI_MUTED)
-	} else if has_filter {
-		render_text_styled(screen, header_x, footer_y, "/=Filter  d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
-	} else {
-		render_text_styled(screen, header_x, footer_y, "/=Filter  d=Delete  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
-	}
+	render_data_footer(screen, state, FOOTER_DATA_VIEW)
 }
 
 // ============================================================================
 // Completions View
 // ============================================================================
 
-// Render completions view (using layout constants)
 render_completions_view :: proc(state: ^TUIState, screen: ^Screen) {
-	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
 	max_text_width := calculate_content_width(border_width)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
-	// Data should be loaded by bridge layer
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+
 	if state.data_cache[.COMPLETIONS_VIEW] == nil {
-		header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-		render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "🎯 Completions", TUI_PRIMARY, "", true)
-		render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP + 2, "Loading...", TUI_DIM)
-		state.needs_refresh = true
+		render_view_loading(screen, state, "COMPLETIONS", border_width)
 		return
 	}
 
 	items := cast(^[dynamic]string)state.data_cache[.COMPLETIONS_VIEW]
-
-	// Header (hot pink + bold)
-	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "🎯 Completions", TUI_PRIMARY, "", true)
 	count_text := fmt.tprintf("%d completion scripts", len(items))
-	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, count_text, TUI_DIM)
+	render_view_header(screen, state, "COMPLETIONS", count_text, border_width)
 
-	// Filter bar (shown when filter is active or has text)
-	filter_bar_y := HEADER_COUNT_LINE + CONTENT_PADDING_TOP + 1
 	has_filter := state.filter_active || len(state.filter_text) > 0
-	list_start_offset := 0
-	if has_filter {
-		filter_str := string(state.filter_text[:])
-		if state.filter_active {
-			filter_display := fmt.tprintf("/ %s█  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
-			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_SECONDARY, "", true)
-		} else {
-			filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
-			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_DIM)
-		}
-		list_start_offset = 1
-	}
+	list_start_offset := render_filter_bar(screen, state, len(items))
+
+	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset
 
 	if has_filter && len(state.filtered_indices) > 0 {
-		// Render filtered items
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset - 1
 		start := state.scroll_offset
 		end := min(start + visible_height, len(state.filtered_indices))
 
 		for idx in start..<end {
-			y := calculate_list_item_y(idx - start) + list_start_offset
+			y := content_start + (idx - start)
 			original_idx := state.filtered_indices[idx]
-			completion := items[original_idx]
-
-			if idx == state.selected_index {
-				text := fmt.tprintf("> %s", truncate_text(completion, max_text_width))
-				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
-			} else {
-				text := fmt.tprintf("  %s", truncate_text(completion, max_text_width))
-				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
-			}
+			render_list_item(screen, header_x, y, items[original_idx], max_text_width, idx == state.selected_index)
 		}
 
 		if len(state.filtered_indices) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
-			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
-			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
 		}
 	} else if has_filter && len(state.filtered_indices) == 0 {
-		no_match_y := LIST_ITEM_START_LINE + list_start_offset + 1
-		render_text_styled(screen, header_x, no_match_y, "No matches found", TUI_DIM)
+		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No matches found", TUI_DIM)
 	} else if len(items) == 0 {
-		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 1, "No completion scripts found", TUI_DIM)
-		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 3, "Add completions with: wayu completions add <name> <file>", TUI_MUTED)
+		text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+		render_text_styled(screen, text_x, content_start + 1, "No completion scripts found", TUI_DIM)
+		render_text_styled(screen, text_x, content_start + 3, "Add completions with: wayu completions add <name> <file>", TUI_MUTED)
 	} else {
-		// List completions with scrolling (unfiltered)
-		visible_height := calculate_visible_height(state.terminal_height)
+		visible_height := calculate_visible_height(state.terminal_height) - 1
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
 
 		for i in start..<end {
-			y := calculate_list_item_y(i - start)
-			completion := items[i]
-
-			if i == state.selected_index {
-				// Selected item: hot pink text + bold (NO background)
-				text := fmt.tprintf("> %s", truncate_text(completion, max_text_width))
-				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
-			} else {
-				// Normal item: muted gray text (indented by selection prefix width)
-				text := fmt.tprintf("  %s", truncate_text(completion, max_text_width))
-				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
-			}
+			y := content_start + (i - start)
+			render_list_item(screen, header_x, y, items[i], max_text_width, i == state.selected_index)
 		}
 
-		// Show scroll indicator if needed (dim gray)
 		if len(items) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-			scroll_y := LIST_ITEM_START_LINE + visible_height
-			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
 		}
 	}
 
-	// Footer with shortcuts (muted gray)
-	footer_y := calculate_footer_y(state.terminal_height)
-	if state.filter_active {
-		render_text_styled(screen, header_x, footer_y, "Type to filter  Esc=Cancel  Enter=Accept  ↑/↓=Navigate", TUI_MUTED)
-	} else if has_filter {
-		render_text_styled(screen, header_x, footer_y, "/=Filter  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
-	} else {
-		render_text_styled(screen, header_x, footer_y, "/=Filter  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
-	}
+	render_data_footer(screen, state, FOOTER_READONLY_VIEW)
 }
 
 // ============================================================================
 // Backups View
 // ============================================================================
 
-// Render backups view with timestamps and config types (using layout constants)
 render_backups_view :: proc(state: ^TUIState, screen: ^Screen) {
-	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
 	max_text_width := calculate_content_width(border_width)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
-	// Data should be loaded by bridge layer
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+
 	if state.data_cache[.BACKUPS_VIEW] == nil {
-		header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-		render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "💾 Backups", TUI_PRIMARY, "", true)
-		render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP + 2, "Loading...", TUI_DIM)
-		state.needs_refresh = true
+		render_view_loading(screen, state, "BACKUPS", border_width)
 		return
 	}
 
 	items := cast(^[dynamic]string)state.data_cache[.BACKUPS_VIEW]
-
-	// Header (hot pink + bold)
-	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "💾 Backups", TUI_PRIMARY, "", true)
 	count_text := fmt.tprintf("%d backups available", len(items))
-	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, count_text, TUI_DIM)
+	render_view_header(screen, state, "BACKUPS", count_text, border_width)
 
-	// Filter bar (shown when filter is active or has text)
-	filter_bar_y := HEADER_COUNT_LINE + CONTENT_PADDING_TOP + 1
 	has_filter := state.filter_active || len(state.filter_text) > 0
-	list_start_offset := 0
-	if has_filter {
-		filter_str := string(state.filter_text[:])
-		if state.filter_active {
-			filter_display := fmt.tprintf("/ %s█  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
-			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_SECONDARY, "", true)
-		} else {
-			filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), len(items))
-			render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_DIM)
-		}
-		list_start_offset = 1
-	}
+	list_start_offset := render_filter_bar(screen, state, len(items))
+
+	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset
 
 	if has_filter && len(state.filtered_indices) > 0 {
-		// Render filtered items
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset - 1
 		start := state.scroll_offset
 		end := min(start + visible_height, len(state.filtered_indices))
 
 		for idx in start..<end {
-			y := calculate_list_item_y(idx - start) + list_start_offset
+			y := content_start + (idx - start)
 			original_idx := state.filtered_indices[idx]
-			backup := items[original_idx]
-
-			if idx == state.selected_index {
-				text := fmt.tprintf("> %s", truncate_text(backup, max_text_width))
-				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
-			} else {
-				text := fmt.tprintf("  %s", truncate_text(backup, max_text_width))
-				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
-			}
+			render_list_item(screen, header_x, y, items[original_idx], max_text_width, idx == state.selected_index)
 		}
 
 		if len(state.filtered_indices) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
-			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
-			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
 		}
 	} else if has_filter && len(state.filtered_indices) == 0 {
-		no_match_y := LIST_ITEM_START_LINE + list_start_offset + 1
-		render_text_styled(screen, header_x, no_match_y, "No matches found", TUI_DIM)
+		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No matches found", TUI_DIM)
 	} else if len(items) == 0 {
-		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 1, "No backups found", TUI_DIM)
+		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No backups found", TUI_DIM)
 	} else {
-		// List backups with scrolling (unfiltered)
-		visible_height := calculate_visible_height(state.terminal_height)
+		visible_height := calculate_visible_height(state.terminal_height) - 1
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
 
 		for i in start..<end {
-			y := calculate_list_item_y(i - start)
-			backup := items[i]
-
-			if i == state.selected_index {
-				// Selected item: hot pink text + bold (NO background)
-				text := fmt.tprintf("> %s", truncate_text(backup, max_text_width))
-				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
-			} else {
-				// Normal item: muted gray text (indented by selection prefix width)
-				text := fmt.tprintf("  %s", truncate_text(backup, max_text_width))
-				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
-			}
+			y := content_start + (i - start)
+			render_list_item(screen, header_x, y, items[i], max_text_width, i == state.selected_index)
 		}
 
-		// Show scroll indicator if needed (dim gray)
 		if len(items) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-			scroll_y := LIST_ITEM_START_LINE + visible_height
-			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
+			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
 		}
 	}
 
-	// Footer with shortcuts (muted gray)
-	footer_y := calculate_footer_y(state.terminal_height)
-	if state.filter_active {
-		render_text_styled(screen, header_x, footer_y, "Type to filter  Esc=Cancel  Enter=Accept  ↑/↓=Navigate", TUI_MUTED)
-	} else if has_filter {
-		render_text_styled(screen, header_x, footer_y, "/=Filter  c=Cleanup  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
-	} else {
-		render_text_styled(screen, header_x, footer_y, "/=Filter  c=Cleanup  Esc=Back  ↑/↓ or j/k=Navigate", TUI_MUTED)
-	}
+	render_data_footer(screen, state, FOOTER_BACKUP_VIEW)
 }
 
 // ============================================================================
 // Plugins View
 // ============================================================================
 
-// Render plugins view (placeholder) (PHASE 1: COLORED + BORDERED)
 render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
-	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_NORMAL)
 
-	// Header (hot pink + bold)
-	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "🔌 Plugins", TUI_PRIMARY, "", true)
-	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP + 2, "Plugin management system", TUI_MUTED)
-	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP + 4, "(Future feature)", TUI_DIM)
+	render_view_header(screen, state, "PLUGINS", "Plugin management system", border_width)
 
-	footer_y := calculate_footer_y(state.terminal_height)
-	render_text_styled(screen, header_x, footer_y, "Esc=Back", TUI_MUTED)
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+	content_start := LIST_ITEM_START_LINE + 2
+	render_text_styled(screen, text_x, content_start, "(Future feature)", TUI_DIM)
+
+	render_data_footer(screen, state, FOOTER_STATIC_VIEW)
 }
 
 // ============================================================================
 // Settings View
 // ============================================================================
 
-// Render settings view with current configuration (PHASE 1: COLORED + BORDERED)
 render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
-	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_NORMAL)
 
-	// Header (hot pink + bold)
-	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "⚙️  Settings", TUI_PRIMARY, "", true)
-	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, "wayu Configuration", TUI_MUTED)
+	render_view_header(screen, state, "SETTINGS", "wayu Configuration", border_width)
 
-	// Display placeholder settings (actual values set by bridge)
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+
 	settings := []string{
 		"Shell: (from bridge)",
 		"Config Directory: (from bridge)",
@@ -758,12 +649,12 @@ render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
 		"Dry-run Mode: (from bridge)",
 	}
 
+	content_start := LIST_ITEM_START_LINE + 2
 	for setting, i in settings {
-		render_text_styled(screen, header_x + 2, LIST_ITEM_START_LINE + i, setting, TUI_MUTED)
+		render_text_styled(screen, text_x, content_start + i, setting, TUI_MUTED)
 	}
 
-	footer_y := calculate_footer_y(state.terminal_height)
-	render_text_styled(screen, header_x, footer_y, "Esc=Back", TUI_MUTED)
+	render_data_footer(screen, state, FOOTER_STATIC_VIEW)
 }
 
 // ============================================================================
@@ -842,13 +733,13 @@ get_view_item_count :: proc(state: ^TUIState) -> int {
 // Detail Overlay
 // ============================================================================
 
-// Render a detail overlay centered on screen
+// Render a detail overlay centered on screen with accent bar on title
 render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	if !state.show_detail do return
 
 	// Calculate overlay dimensions
 	overlay_width := min(state.terminal_width - 6, 60)
-	overlay_height := min(len(state.detail_lines) + 5, state.terminal_height - 4)  // +5 for border, title, gap, footer, border
+	overlay_height := min(len(state.detail_lines) + 5, state.terminal_height - 4)
 	overlay_x := (state.terminal_width - overlay_width) / 2
 	overlay_y := (state.terminal_height - overlay_height) / 2
 
@@ -862,26 +753,30 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	// Draw border (hot pink for focused)
 	render_box_styled(screen, overlay_x, overlay_y, overlay_width, overlay_height, TUI_BORDER_FOCUSED)
 
-	// Title line (inside border, padded)
+	// Title line with accent bar
 	content_x := overlay_x + 2
 	title_y := overlay_y + 1
-	render_text_styled(screen, content_x, title_y, state.detail_title, TUI_PRIMARY, "", true)
+	screen_set_cell(screen, content_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+	render_text_styled(screen, content_x + MENU_ACCENT_BAR_WIDTH + 1, title_y, state.detail_title, TUI_PRIMARY, "", true)
 
 	// Detail lines
-	max_lines := overlay_height - 5  // border top + title + gap + footer + border bottom
+	max_lines := overlay_height - 5
 	for line, i in state.detail_lines {
 		if i >= max_lines do break
-		line_y := title_y + 2 + i  // +2 for gap after title
-		// Truncate line if too wide
-		max_line_width := overlay_width - 4  // 2 padding each side
+		line_y := title_y + 2 + i
+		max_line_width := overlay_width - 4
 		display_line := line
 		if len(line) > max_line_width {
 			display_line = line[:max_line_width]
 		}
-		render_text_styled(screen, content_x, line_y, display_line, TUI_MUTED)
+		render_text_styled(screen, content_x + 2, line_y, display_line, TUI_MUTED)
 	}
 
-	// Footer hint
+	// Footer hint — changes based on whether this is a delete confirmation
 	footer_y := overlay_y + overlay_height - 2
-	render_text_styled(screen, content_x, footer_y, "Press Esc or Enter to close", TUI_DIM)
+	if state.confirm_delete_pending {
+		render_text_styled(screen, content_x, footer_y, "y Confirm   Esc Cancel", TUI_DIM)
+	} else {
+		render_text_styled(screen, content_x, footer_y, "Esc or Enter to close", TUI_DIM)
+	}
 }
