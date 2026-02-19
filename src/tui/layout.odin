@@ -39,6 +39,9 @@ HEADER_CONTENT_GAP :: 1
 FOOTER_HEIGHT :: 1  // Footer takes 1 line
 FOOTER_OFFSET_FROM_BOTTOM :: 2  // Footer is 2 lines from bottom (border + footer)
 
+// Notification bar height (rendered between footer and bottom border)
+NOTIFICATION_HEIGHT :: 1
+
 // ============================================================================
 // Content Area Layout Constants
 // ============================================================================
@@ -69,8 +72,8 @@ SELECTION_PREFIX_WIDTH :: 2  // "> " takes 2 characters
 // - FOOTER_HEIGHT (1): Footer line
 // - FOOTER_OFFSET_FROM_BOTTOM (2): Footer + bottom border
 //
-// Total overhead: 1 + 1 + 2 + 1 + 1 + 2 = 8 lines
-VISIBLE_HEIGHT_OVERHEAD :: 8
+// Total overhead: 1 + 1 + 2 + 1 + 1 + 2 + 1(notification) = 9 lines
+VISIBLE_HEIGHT_OVERHEAD :: 9
 
 // ============================================================================
 // Helper Functions
@@ -91,9 +94,21 @@ calculate_list_item_y :: proc(index_in_visible_area: int) -> int {
 	return LIST_ITEM_START_LINE + index_in_visible_area
 }
 
-// Calculate border dimensions (max 80 chars wide)
+// Calculate border dimensions (responsive - fills terminal width)
 calculate_border_dimensions :: proc(terminal_width, terminal_height: int) -> (width: int, height: int) {
-	width = min(terminal_width - BORDER_HORIZONTAL_TOTAL, 80)
-	height = terminal_height - BORDER_VERTICAL_TOTAL
+	width = terminal_width - BORDER_HORIZONTAL_TOTAL
+	height = terminal_height - BORDER_VERTICAL_TOTAL - NOTIFICATION_HEIGHT
 	return
+}
+
+// Calculate max content width inside the border box (for text truncation)
+calculate_content_width :: proc(border_width: int) -> int {
+	// border_width includes left+right border chars
+	// Inside: CONTENT_PADDING_LEFT + SELECTION_PREFIX_WIDTH + text + right margin
+	return border_width - CONTENT_PADDING_LEFT - SELECTION_PREFIX_WIDTH - BORDER_RIGHT_WIDTH - 1
+}
+
+// Calculate notification bar Y position (below the border box)
+calculate_notification_y :: proc(terminal_height: int) -> int {
+	return terminal_height - NOTIFICATION_HEIGHT
 }

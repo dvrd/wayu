@@ -13,6 +13,12 @@ TUIView :: enum {
 	SETTINGS_VIEW,
 }
 
+NotificationKind :: enum {
+	NONE,
+	SUCCESS,
+	ERROR,
+}
+
 TUIState :: struct {
 	current_view:    TUIView,
 	previous_view:   TUIView,
@@ -31,6 +37,10 @@ TUIState :: struct {
 	filter_active:     bool,
 	filter_text:       [dynamic]u8,
 	filtered_indices:  [dynamic]int,  // indices into the original cache that match
+	// Notification state
+	notification_kind:    NotificationKind,
+	notification_message: string,
+	notification_frames:  int,  // frames remaining before auto-dismiss
 }
 
 // Initialize TUI state
@@ -53,6 +63,9 @@ tui_state_destroy :: proc(state: ^TUIState) {
 	// Free detail overlay resources
 	clear_detail(state)
 	delete(state.detail_lines)
+
+	// Free notification resources
+	clear_notification(state)
 
 	// Free inline filter resources
 	delete(state.filter_text)
@@ -209,6 +222,46 @@ get_current_cache :: proc(state: ^TUIState) -> []string {
 		return nil
 	}
 	return items[:]
+}
+
+// ============================================================================
+// Notification helpers
+// ============================================================================
+
+NOTIFICATION_FRAMES_SUCCESS :: 150  // ~3 seconds at 50fps
+NOTIFICATION_FRAMES_ERROR   :: 200  // ~4 seconds at 50fps
+
+// Set a notification message with auto-dismiss countdown
+set_notification :: proc(state: ^TUIState, kind: NotificationKind, message: string) {
+	clear_notification(state)
+	state.notification_kind = kind
+	state.notification_message = strings.clone(message)
+	if kind == .SUCCESS {
+		state.notification_frames = NOTIFICATION_FRAMES_SUCCESS
+	} else {
+		state.notification_frames = NOTIFICATION_FRAMES_ERROR
+	}
+	state.needs_refresh = true
+}
+
+// Clear the current notification and free its message
+clear_notification :: proc(state: ^TUIState) {
+	if len(state.notification_message) > 0 {
+		delete(state.notification_message)
+	}
+	state.notification_message = ""
+	state.notification_kind = .NONE
+	state.notification_frames = 0
+}
+
+// Tick the notification countdown; clears when expired
+tick_notification :: proc(state: ^TUIState) {
+	if state.notification_kind == .NONE { return }
+	state.notification_frames -= 1
+	if state.notification_frames <= 0 {
+		clear_notification(state)
+		state.needs_refresh = true
+	}
 }
 
 // Note: get_view_item_count() is now implemented in tui_views.odin

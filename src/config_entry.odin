@@ -392,7 +392,13 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 
 	// Read current content
 	content, read_ok := safe_read_file(config_file)
-	if !read_ok { os.exit(EXIT_IOERR) }
+	if !read_ok {
+		if TUI_MODE {
+			TUI_LAST_ERROR = "I/O error: could not read config file"
+			return
+		}
+		os.exit(EXIT_IOERR)
+	}
 	defer delete(content)
 
 	content_str := string(content)
@@ -423,12 +429,20 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 	}
 
 	if !removed {
+		if TUI_MODE {
+			TUI_LAST_ERROR = fmt.aprintf("Error: %s not found: %s", spec.display_name, name_to_remove)
+			return
+		}
 		print_error_simple(fmt.aprintf("Error: %s not found: %s", spec.display_name, name_to_remove))
 		os.exit(EXIT_DATAERR)
 	}
 
 	// Create backup
 	if !create_backup_cli(config_file) {
+		if TUI_MODE {
+			TUI_LAST_ERROR = "I/O error: could not create backup"
+			return
+		}
 		os.exit(EXIT_IOERR)
 	}
 
@@ -437,12 +451,21 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 	defer delete(new_content)
 
 	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
-	if !write_ok { os.exit(EXIT_IOERR) }
+	if !write_ok {
+		if TUI_MODE {
+			TUI_LAST_ERROR = "I/O error: could not write config file"
+			return
+		}
+		os.exit(EXIT_IOERR)
+	}
 
 	// Cleanup old backups
 	cleanup_old_backups(config_file, 5)
 
-	print_success("%s removed successfully: %s", spec.display_name, name_to_remove)
+	if !TUI_MODE {
+		print_success("%s removed successfully: %s", spec.display_name, name_to_remove)
+	}
+	TUI_LAST_SUCCESS = true
 }
 
 // TUI-only: Interactive fuzzy finder for removing config entries

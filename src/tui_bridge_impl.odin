@@ -208,38 +208,61 @@ tui_bridge_load_backups :: proc(state: ^tui.TUIState) {
 
 // Delete PATH entry
 tui_bridge_delete_path :: proc(name: string) -> bool {
-	// Disable dry-run for TUI operations
+	// Disable dry-run and enable TUI mode
 	old_dry_run := DRY_RUN
 	DRY_RUN = false
-	defer { DRY_RUN = old_dry_run }
+	TUI_MODE = true
+	TUI_LAST_ERROR = ""
+	TUI_LAST_SUCCESS = false
+	defer {
+		DRY_RUN = old_dry_run
+		TUI_MODE = false
+	}
 
 	// Call wayu's remove function (it creates backup automatically)
 	remove_config_entry(&PATH_SPEC, name)
-	return true
+	return TUI_LAST_SUCCESS
 }
 
 // Delete Alias entry
 tui_bridge_delete_alias :: proc(name: string) -> bool {
-	// Disable dry-run for TUI operations
+	// Disable dry-run and enable TUI mode
 	old_dry_run := DRY_RUN
 	DRY_RUN = false
-	defer { DRY_RUN = old_dry_run }
+	TUI_MODE = true
+	TUI_LAST_ERROR = ""
+	TUI_LAST_SUCCESS = false
+	defer {
+		DRY_RUN = old_dry_run
+		TUI_MODE = false
+	}
 
 	// Call wayu's remove function (it creates backup automatically)
 	remove_config_entry(&ALIAS_SPEC, name)
-	return true
+	return TUI_LAST_SUCCESS
 }
 
 // Delete Constants entry
 tui_bridge_delete_constant :: proc(name: string) -> bool {
-	// Disable dry-run for TUI operations
+	// Disable dry-run and enable TUI mode
 	old_dry_run := DRY_RUN
 	DRY_RUN = false
-	defer { DRY_RUN = old_dry_run }
+	TUI_MODE = true
+	TUI_LAST_ERROR = ""
+	TUI_LAST_SUCCESS = false
+	defer {
+		DRY_RUN = old_dry_run
+		TUI_MODE = false
+	}
 
 	// Call wayu's remove function (it creates backup automatically)
 	remove_config_entry(&CONSTANTS_SPEC, name)
-	return true
+	return TUI_LAST_SUCCESS
+}
+
+// Get last error message from TUI mode operations
+tui_bridge_get_last_error :: proc() -> string {
+	return TUI_LAST_ERROR
 }
 
 // Cleanup old backups
