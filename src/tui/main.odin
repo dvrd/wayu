@@ -1,6 +1,8 @@
 package wayu_tui
 
 import "core:fmt"
+import "base:intrinsics"
+import "core:mem"
 import "core:os"
 import "core:strings"
 
@@ -37,14 +39,14 @@ tui_run :: proc() {
 
 	// Main event loop (The Elm Architecture)
 	for state.running {
-		// Handle terminal resize
-		if terminal_resized {
+		// Handle terminal resize (volatile load/store for signal handler safety)
+		if intrinsics.volatile_load(&terminal_resized) {
 			new_width, new_height, _ := get_terminal_size()
 			screen_resize(&screen, new_width, new_height)
 			state.terminal_width = new_width
 			state.terminal_height = new_height
 			state.needs_refresh = true
-			terminal_resized = false
+			intrinsics.volatile_store(&terminal_resized, false)
 		}
 
 		// Ensure data is loaded for current view (lazy loading)
@@ -204,13 +206,16 @@ handle_selection :: proc(state: ^TUIState) {
 				parts := strings.split(selected, "=")
 				defer delete(parts)
 				if len(parts) >= 2 {
-					// Build detail lines using aprintf to avoid tprintf buffer reuse
-					joined_cmd := strings.join(parts[1:], "=")
-					defer delete(joined_cmd)
-					line1 := fmt.aprintf("Name: %s", parts[0])
-					defer delete(line1)
-					line2 := fmt.aprintf("Command: %s", joined_cmd)
-					defer delete(line2)
+					// Scratch arena for detail strings — show_detail_overlay clones,
+					// so everything here can be freed in bulk when scope ends.
+					scratch_buf: [1024]byte
+					scratch: mem.Arena
+					mem.arena_init(&scratch, scratch_buf[:])
+					scratch_alloc := mem.arena_allocator(&scratch)
+
+					joined_cmd := strings.join(parts[1:], "=", scratch_alloc)
+					line1 := fmt.aprintf("Name: %s", parts[0], allocator = scratch_alloc)
+					line2 := fmt.aprintf("Command: %s", joined_cmd, allocator = scratch_alloc)
 					lines := []string{line1, line2}
 					show_detail_overlay(state, parts[0], lines)
 				} else {
@@ -229,13 +234,16 @@ handle_selection :: proc(state: ^TUIState) {
 				parts := strings.split(selected, "=")
 				defer delete(parts)
 				if len(parts) >= 2 {
-					value := strings.join(parts[1:], "=")
-					defer delete(value)
-					// Use aprintf to avoid tprintf buffer reuse across array elements
-					line1 := fmt.aprintf("Name: %s", parts[0])
-					defer delete(line1)
-					line2 := fmt.aprintf("Value: %s", value)
-					defer delete(line2)
+					// Scratch arena for detail strings — show_detail_overlay clones,
+					// so everything here can be freed in bulk when scope ends.
+					scratch_buf: [1024]byte
+					scratch: mem.Arena
+					mem.arena_init(&scratch, scratch_buf[:])
+					scratch_alloc := mem.arena_allocator(&scratch)
+
+					value := strings.join(parts[1:], "=", scratch_alloc)
+					line1 := fmt.aprintf("Name: %s", parts[0], allocator = scratch_alloc)
+					line2 := fmt.aprintf("Value: %s", value, allocator = scratch_alloc)
 					lines := []string{line1, line2}
 					show_detail_overlay(state, parts[0], lines)
 				} else {
@@ -250,9 +258,13 @@ handle_selection :: proc(state: ^TUIState) {
 			items := cast(^[dynamic]string)state.data_cache[.COMPLETIONS_VIEW]
 			if state.selected_index >= 0 && state.selected_index < len(items) {
 				selected := items[state.selected_index]
-				// Use aprintf for consistency (avoids tprintf buffer reuse)
-				line1 := fmt.aprintf("Script: %s", selected)
-				defer delete(line1)
+				// Scratch arena — only one string here but arena protects against future additions.
+				scratch_buf: [512]byte
+				scratch: mem.Arena
+				mem.arena_init(&scratch, scratch_buf[:])
+				scratch_alloc := mem.arena_allocator(&scratch)
+
+				line1 := fmt.aprintf("Script: %s", selected, allocator = scratch_alloc)
 				lines := []string{line1}
 				show_detail_overlay(state, selected, lines)
 			}
@@ -267,11 +279,15 @@ handle_selection :: proc(state: ^TUIState) {
 				parts := strings.split(selected, ".backup.")
 				defer delete(parts)
 				if len(parts) >= 2 {
-					// Use aprintf to avoid tprintf buffer reuse across array elements
-					line1 := fmt.aprintf("Config: %s", parts[0])
-					defer delete(line1)
-					line2 := fmt.aprintf("Timestamp: %s", parts[1])
-					defer delete(line2)
+					// Scratch arena for detail strings — show_detail_overlay clones,
+					// so everything here can be freed in bulk when scope ends.
+					scratch_buf: [512]byte
+					scratch: mem.Arena
+					mem.arena_init(&scratch, scratch_buf[:])
+					scratch_alloc := mem.arena_allocator(&scratch)
+
+					line1 := fmt.aprintf("Config: %s", parts[0], allocator = scratch_alloc)
+					line2 := fmt.aprintf("Timestamp: %s", parts[1], allocator = scratch_alloc)
 					lines := []string{line1, line2}
 					show_detail_overlay(state, "Backup Detail", lines)
 				} else {

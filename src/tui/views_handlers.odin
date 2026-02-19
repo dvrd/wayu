@@ -59,7 +59,9 @@ handle_path_event :: proc(state: ^TUIState, key: KeyEvent) {
 			if state.data_cache[.PATH_VIEW] != nil {
 				items := cast(^[dynamic]string)state.data_cache[.PATH_VIEW]
 				if state.selected_index >= 0 && state.selected_index < len(items) {
-					selected_entry := items[state.selected_index]
+					// Clone before bridge call — clear_view_cache frees the original
+					selected_entry := strings.clone(items[state.selected_index])
+					defer delete(selected_entry)
 					item_count := len(items)  // Save count BEFORE clearing cache
 
 					// Call bridge function to delete (creates backup automatically)
@@ -121,7 +123,9 @@ handle_alias_event :: proc(state: ^TUIState, key: KeyEvent) {
 			if state.data_cache[.ALIAS_VIEW] != nil {
 				items := cast(^[dynamic]string)state.data_cache[.ALIAS_VIEW]
 				if state.selected_index >= 0 && state.selected_index < len(items) {
-					selected_item := items[state.selected_index]
+					// Clone before bridge call — clear_view_cache frees the original
+					selected_item := strings.clone(items[state.selected_index])
+					defer delete(selected_item)
 					item_count := len(items)  // Save count BEFORE clearing cache
 
 					// Parse name from "name=value" format
@@ -191,7 +195,9 @@ handle_constants_event :: proc(state: ^TUIState, key: KeyEvent) {
 			if state.data_cache[.CONSTANTS_VIEW] != nil {
 				items := cast(^[dynamic]string)state.data_cache[.CONSTANTS_VIEW]
 				if state.selected_index >= 0 && state.selected_index < len(items) {
-					selected_item := items[state.selected_index]
+					// Clone before bridge call — clear_view_cache frees the original
+					selected_item := strings.clone(items[state.selected_index])
+					defer delete(selected_item)
 					item_count := len(items)  // Save count BEFORE clearing cache
 
 					// Parse name from "NAME=value" format

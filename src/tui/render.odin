@@ -3,6 +3,7 @@ package wayu_tui
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:unicode/utf8"
 
 // Flush screen with differential rendering
 screen_flush :: proc(screen: ^Screen, force_full_render := false) {
@@ -216,11 +217,18 @@ render_notification :: proc(state: ^TUIState, screen: ^Screen) {
 	// Build display text
 	text := fmt.tprintf("%s%s", prefix, state.notification_message)
 
-	// Truncate to screen width
+	// Truncate to screen width (rune-aware to avoid splitting multi-byte chars)
 	max_width := screen.width - BORDER_LEFT_WIDTH - CONTENT_PADDING_LEFT
 	display := text
-	if len(display) > max_width {
-		display = display[:max_width]
+	rune_count := 0
+	byte_end := 0
+	for ch in display {
+		if rune_count >= max_width do break
+		rune_count += 1
+		byte_end += utf8.rune_size(ch)
+	}
+	if rune_count >= max_width {
+		display = display[:byte_end]
 	}
 
 	x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
