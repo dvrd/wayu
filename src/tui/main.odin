@@ -383,7 +383,8 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 
 	// Footer (muted gray)
 	footer_y := calculate_footer_y(state.terminal_height)
-	render_text_styled(screen, header_x, footer_y, "Use ↑/↓ or j/k to navigate, Enter to select", TUI_MUTED)
+	footer_text := "Use ↑/↓ or j/k to navigate, Enter to select"
+	render_text_styled(screen, header_x, footer_y, footer_text, TUI_MUTED)
 }
 
 // Handle keyboard input when filter mode is active
