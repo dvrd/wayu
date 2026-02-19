@@ -766,10 +766,10 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	form := &state.add_form
 
 	// Determine overlay height:
-	//   1 top border + 1 title + 1 blank + (2 per field: label + input) * field_count
+	//   1 top border + 1 title + 1 blank + (4 per field: label + box-top + box-content + box-bottom) * field_count
 	//   + 1 blank + 1 error row (always reserved) + 1 blank + 1 button row + 1 bottom border
-	field_rows := form.field_count * 2   // label + input per field
-	overlay_height := 1 + 1 + 1 + field_rows + 1 + 1 + 1 + 1 + 1  // = 9 for 1-field, 11 for 2-field
+	field_rows := form.field_count * 4   // label + box(3 rows) per field
+	overlay_height := 1 + 1 + 1 + field_rows + 1 + 1 + 1 + 1 + 1  // = 11 for 1-field, 15 for 2-field
 
 	overlay_width := min(state.terminal_width - 8, 56)
 	if overlay_width < 30 {
@@ -789,7 +789,6 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	render_box_styled(screen, overlay_x, overlay_y, overlay_width, overlay_height, TUI_BORDER_FOCUSED)
 
 	content_x := overlay_x + 2
-	max_input_width := overlay_width - 6  // 2 border + 2 content + 2 padding
 
 	// Title: ┃ ADD {VIEW}
 	title_y := overlay_y + 1
@@ -809,8 +808,27 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	cancel_idx := form.field_count
 	add_idx    := form.field_count + 1
 
-	// Fields
+	// Fields — each block: label row + bordered input box (3 rows: top, content, bottom)
+	// Layout per field (4 rows total):
+	//   LABEL
+	//   ┌──────────────────────────┐
+	//   │ text█                    │   ← focused: orange border + cursor; unfocused: dim border
+	//   └──────────────────────────┘
 	field_start_y := title_y + 2  // blank line after title
+	// Box width: overlay_width - 2 (outer border) - 2 (content_x offset) - 2 (inner padding) = overlay_width - 6
+	// But content_x is already overlay_x + 2, and we want the box to start at content_x + 2 (same indent as label).
+	// Box occupies columns [content_x+2 .. content_x+2+box_width-1].
+	// box_width = overlay_width - 2(outer left) - 2(content indent) - 2(outer right) = overlay_width - 6
+	box_width := overlay_width - 6
+	if box_width < 4 {
+		box_width = 4
+	}
+	// Text fits inside the box: box_width - 2 (left │ and right │)
+	text_max := box_width - 2
+	if text_max < 1 {
+		text_max = 1
+	}
+
 	for fi in 0..<form.field_count {
 		label: string
 		if fi == 0 {
@@ -826,8 +844,10 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		}
 		is_focused := fi == form.field_index
 
-		label_y := field_start_y + fi * 2
-		input_y := label_y + 1
+		label_y   := field_start_y + fi * 4
+		box_y     := label_y + 1   // top border of box
+		content_y := label_y + 2   // text row inside box
+		// box bottom is at label_y + 3 (drawn by render_box_styled)
 
 		// Label — orange only when this field is focused
 		label_fg: string
@@ -838,30 +858,41 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		}
 		render_text_styled(screen, content_x + 2, label_y, label, label_fg, "", is_focused)
 
-		// Input line: "> text█" (focused) or "> text" (unfocused)
+		// Bordered input box
+		box_x := content_x + 2
+		box_fg: string
+		if is_focused {
+			box_fg = TUI_ORANGE
+		} else {
+			box_fg = TUI_DIM
+		}
+		render_box_styled(screen, box_x, box_y, box_width, 3, box_fg)
+
+		// Clear interior (1 row, box_width-2 chars)
+		for dx in 1..<box_width-1 {
+			screen_set_cell(screen, box_x + dx, content_y, Cell{char = ' '})
+		}
+
+		// Text inside box: "text█" when focused, "text" when not
 		input_str := string(input_buf[:])
-		display_max := max_input_width - 2  // ">" + space
-		if display_max < 1 {
-			display_max = 1
-		}
-		truncated := truncate_text(input_str, display_max)
-		input_display: string
+		truncated := truncate_text(input_str, text_max - 1)  // -1 leaves room for cursor
+		text_display: string
 		if is_focused {
-			input_display = fmt.tprintf("> %s\u2588", truncated)  // U+2588 FULL BLOCK as cursor
+			text_display = fmt.tprintf("%s\u2588", truncated)  // U+2588 FULL BLOCK cursor
 		} else {
-			input_display = fmt.tprintf("> %s", truncated)
+			text_display = truncated
 		}
-		input_fg: string
+		text_fg: string
 		if is_focused {
-			input_fg = TUI_ORANGE
+			text_fg = TUI_ORANGE
 		} else {
-			input_fg = TUI_DIM
+			text_fg = TUI_DIM
 		}
-		render_text_styled(screen, content_x + 2, input_y, input_display, input_fg, "", is_focused)
+		render_text_styled(screen, box_x + 1, content_y, text_display, text_fg, "", is_focused)
 	}
 
 	// Error line (always 1 row reserved; shown only when non-empty)
-	error_y := field_start_y + form.field_count * 2 + 1
+	error_y := field_start_y + form.field_count * 4 + 1
 	if len(form.error_message) > 0 {
 		err_display := truncate_text(form.error_message, overlay_width - 6)
 		render_text_styled(screen, content_x + 2, error_y, err_display, TUI_ERROR)
