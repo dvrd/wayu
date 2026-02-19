@@ -27,7 +27,7 @@ test_create_backup_existing_file :: proc(t: ^testing.T) {
 	test_content := "test backup content\nline 2\n"
 	test_file := "/tmp/wayu-test-backup-source"
 
-	os.write_entire_file(test_file, transmute([]byte)test_content)
+	_ = os.write_entire_file(test_file, transmute([]byte)test_content)
 	defer os.remove(test_file)
 
 	// Create backup
@@ -41,8 +41,8 @@ test_create_backup_existing_file :: proc(t: ^testing.T) {
 
 	// Verify backup content
 	if ok {
-		backup_content, read_ok := os.read_entire_file_from_filename(backup_path)
-		if read_ok {
+		backup_content, read_err := os.read_entire_file(backup_path, context.allocator)
+		if read_err == nil {
 			defer delete(backup_content)
 			testing.expect(t, string(backup_content) == test_content, "Backup content should match original")
 		}
@@ -187,7 +187,7 @@ test_backup_workflow :: proc(t: ^testing.T) {
 	test_content := "original content for backup test\n"
 	test_file := "/tmp/wayu-test-backup-workflow"
 
-	os.write_entire_file(test_file, transmute([]byte)test_content)
+	_ = os.write_entire_file(test_file, transmute([]byte)test_content)
 	defer os.remove(test_file)
 
 	// Create first backup
@@ -199,7 +199,7 @@ test_backup_workflow :: proc(t: ^testing.T) {
 
 	// Modify file
 	modified_content := "modified content\n"
-	os.write_entire_file(test_file, transmute([]byte)modified_content)
+	_ = os.write_entire_file(test_file, transmute([]byte)modified_content)
 
 	// Add a small delay to ensure different timestamps
 	time.sleep(1_000_000_000) // 1 second
@@ -234,8 +234,8 @@ test_backup_workflow :: proc(t: ^testing.T) {
 	testing.expect(t, restore_ok, "Should restore from backup")
 
 	// Verify restored content
-	restored_content, read_ok := os.read_entire_file_from_filename(test_file)
-	if read_ok {
+	restored_content, read_err := os.read_entire_file(test_file, context.allocator)
+	if read_err == nil {
 		defer delete(restored_content)
 		testing.expect(t, string(restored_content) == modified_content,
 			"Restored content should match most recent backup")
@@ -250,7 +250,7 @@ test_cleanup_old_backups :: proc(t: ^testing.T) {
 	test_content := "content for cleanup test\n"
 	test_file := "/tmp/wayu-test-cleanup"
 
-	os.write_entire_file(test_file, transmute([]byte)test_content)
+	_ = os.write_entire_file(test_file, transmute([]byte)test_content)
 	defer os.remove(test_file)
 
 	// Create multiple backups

@@ -93,7 +93,7 @@ init_shell_globals :: proc() {
 	// Initialize HOME and WAYU_CONFIG
 	// NOTE: HOME is intentionally not freed - it's a global that lives for the
 	// program's lifetime and is accessed throughout the codebase. This is by design.
-	HOME = os.get_env("HOME")
+	HOME = os.get_env("HOME", context.allocator)
 	WAYU_CONFIG = fmt.aprintf("%s/.config/wayu", HOME)
 
 	// Detect shell
@@ -558,8 +558,8 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 	}
 
 	// Read RC file
-	data, read_ok := os.read_entire_file_from_filename(rc_file_path)
-	if !read_ok {
+	data, read_err := os.read_entire_file(rc_file_path, context.allocator)
+	if read_err != nil {
 		fmt.eprintfln("Error: Failed to read %s", rc_file_path)
 		return
 	}
@@ -593,8 +593,8 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 		new_content := fmt.aprintf("%s\n# Wayu shell configuration\nsource \"%s\"\n", content, init_file)
 		defer delete(new_content)
 
-		write_ok := os.write_entire_file(rc_file_path, transmute([]byte)new_content)
-		if !write_ok {
+		write_err := os.write_entire_file(rc_file_path, transmute([]byte)new_content)
+		if write_err != nil {
 			fmt.eprintfln("Error: Failed to write to %s", rc_file_path)
 			return
 		}
@@ -770,8 +770,8 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 		}
 
 		// Read source file
-		data, read_ok := os.read_entire_file_from_filename(from_file)
-		if !read_ok {
+		data, read_err := os.read_entire_file(from_file, context.allocator)
+		if read_err != nil {
 			fmt.eprintfln("  Error: Failed to read %s", from_file)
 			continue
 		}
@@ -784,8 +784,8 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 		defer delete(migrated_content)
 
 		// Write to target file
-		write_ok := os.write_entire_file(to_file, transmute([]byte)migrated_content)
-		if !write_ok {
+		write_err := os.write_entire_file(to_file, transmute([]byte)migrated_content)
+		if write_err != nil {
 			fmt.eprintfln("  Error: Failed to write %s", to_file)
 			continue
 		}

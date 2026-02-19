@@ -357,14 +357,14 @@ expand_env_vars :: proc(path: string) -> string {
 	result := strings.clone(path)
 
 	// Common environment variables to expand
-	home := os.get_env("HOME")
+	home := os.get_env("HOME", context.allocator)
 	defer delete(home)
-	oss := os.get_env("OSS")
+	oss := os.get_env("OSS", context.allocator)
 	defer delete(oss)
-	user := os.get_env("USER")
+	user := os.get_env("USER", context.allocator)
 	defer delete(user)
-	pwd := os.get_current_directory()
-	defer delete(pwd)
+	pwd, pwd_err := os.getwd(context.allocator)
+	defer if pwd_err == nil do delete(pwd)
 
 	env_vars := map[string]string{
 		"$HOME" = home,
@@ -384,8 +384,8 @@ expand_env_vars :: proc(path: string) -> string {
 
 	// Expand relative paths (., .., ./, ../, etc.) to absolute paths
 	// This handles cases like "./bin", "../tools", "." etc.
-	abs_path, ok := filepath.abs(result)
-	if ok {
+	abs_path, abs_err := filepath.abs(result, context.allocator)
+	if abs_err == nil {
 		delete(result)
 		result = abs_path
 	}

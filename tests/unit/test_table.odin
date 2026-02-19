@@ -139,8 +139,7 @@ test_table_expand_env_vars :: proc(t: ^testing.T) {
     defer delete(expanded)
 
     // Should not contain $ if HOME is set
-    home := os.get_env("HOME")
-    defer delete(home)
+    home := os.get_env("HOME", context.temp_allocator)
     if len(home) > 0 {
         testing.expect_value(t, strings.contains(expanded, "$"), false)
         testing.expect_value(t, strings.contains(expanded, "/test"), true)

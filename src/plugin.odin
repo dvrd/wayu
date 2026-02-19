@@ -193,8 +193,8 @@ exec_command_output :: proc(cmd: string) -> string {
 		return ""
 	}
 
-	data, ok := os.read_entire_file_from_filename(temp_file)
-	if !ok {
+	data, read_err := os.read_entire_file(temp_file, context.allocator)
+	if read_err != nil {
 		os.remove(temp_file)
 		return ""
 	}
