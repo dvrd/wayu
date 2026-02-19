@@ -19,7 +19,7 @@ export QUOTED_CONST="value with spaces"
 
 	// Write to a temporary file
 	temp_file := "/tmp/test_constants.zsh"
-	os.write_entire_file(temp_file, transmute([]byte)test_config)
+	_ = os.write_entire_file(temp_file, transmute([]byte)test_config)
 	defer os.remove(temp_file)
 
 	// Mock the WAYU_CONFIG and CONSTANTS_FILE for testing

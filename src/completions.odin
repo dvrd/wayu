@@ -266,19 +266,19 @@ list_completions :: proc() {
 	}
 	defer os.close(dir_handle)
 
-	file_infos, read_err := os.read_dir(dir_handle, -1)
-	if read_err != 0 {
+	file_infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
+	if read_err != nil {
 		print_error_simple("Failed to read completions directory")
 		os.exit(EXIT_IOERR)
 	}
-	defer os.file_info_slice_delete(file_infos)
+	defer os.file_info_slice_delete(file_infos, context.allocator)
 
 	// Filter completion files
 	completion_files := make([dynamic]os.File_Info)
 	defer delete(completion_files)
 
 	for info in file_infos {
-		if strings.has_prefix(info.name, "_") && !info.is_dir {
+		if strings.has_prefix(info.name, "_") && info.type != .Directory {
 			// Skip backup files
 			if strings.contains(info.name, ".backup.") {
 				continue
@@ -305,8 +305,8 @@ list_completions :: proc() {
 		defer delete(file_path)
 
 		first_line := ""
-		content, read_ok := os.read_entire_file_from_filename(file_path)
-		if read_ok {
+		content, read_err := os.read_entire_file(file_path, context.allocator)
+		if read_err == nil {
 			defer delete(content)
 			// Use temp allocator for lines array since it's only needed during this iteration
 			lines := strings.split(string(content), "\n", context.temp_allocator)

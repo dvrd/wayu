@@ -283,8 +283,8 @@ init_config_file :: proc(file_path: string, template: string) -> bool {
 
 	debug("Creating config file: %s", file_path)
 
-	write_ok := os.write_entire_file(file_path, transmute([]byte)template)
-	if !write_ok {
+	write_err := os.write_entire_file(file_path, transmute([]byte)template)
+	if write_err != nil {
 		debug("Failed to create config file: %s", file_path)
 		return false
 	}

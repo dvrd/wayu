@@ -117,19 +117,19 @@ tui_bridge_load_completions :: proc(state: ^tui.TUIState) {
 	}
 	defer os.close(dir_handle)
 
-	file_infos, read_err := os.read_dir(dir_handle, -1)
-	if read_err != 0 {
+	file_infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
+	if read_err != nil {
 		// Can't read directory - return empty list
 		items_ptr := new([dynamic]string)
 		items_ptr^ = items
 		state.data_cache[.COMPLETIONS_VIEW] = items_ptr
 		return
 	}
-	defer os.file_info_slice_delete(file_infos)
+	defer os.file_info_slice_delete(file_infos, context.allocator)
 
 	// Filter completion files (start with '_', not backup files)
 	for info in file_infos {
-		if strings.has_prefix(info.name, "_") && !info.is_dir {
+		if strings.has_prefix(info.name, "_") && info.type != .Directory {
 			// Skip backup files
 			if strings.contains(info.name, ".backup.") {
 				continue
@@ -178,7 +178,7 @@ tui_bridge_load_backups :: proc(state: ^tui.TUIState) {
 	}
 	defer os.close(dir_handle)
 
-	infos, read_err := os.read_dir(dir_handle, -1)
+	infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
 	if read_err != nil {
 		// Can't read directory - empty list
 		items_ptr := new([dynamic]string)
@@ -186,11 +186,11 @@ tui_bridge_load_backups :: proc(state: ^tui.TUIState) {
 		state.data_cache[.BACKUPS_VIEW] = items_ptr
 		return
 	}
-	defer delete(infos)
+	defer os.file_info_slice_delete(infos, context.allocator)
 
 	// Filter and format backup files
 	for info in infos {
-		if info.is_dir { continue }
+		if info.type == .Directory { continue }
 
 		// Format: path.zsh.backup.2024-03-15_14-30-00
 		name := info.name
@@ -298,9 +298,9 @@ tui_bridge_get_path_detail :: proc(path_str: string) -> [dynamic]string {
 		dir_handle, err := os.open(path_str)
 		if err == nil {
 			defer os.close(dir_handle)
-			infos, read_err := os.read_dir(dir_handle, -1)
+			infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
 			if read_err == nil {
-				defer os.file_info_slice_delete(infos)
+				defer os.file_info_slice_delete(infos, context.allocator)
 				append(&lines, strings.clone(fmt.tprintf("Contents: %d items", len(infos))))
 			}
 		}

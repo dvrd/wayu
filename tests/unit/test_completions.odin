@@ -42,7 +42,7 @@ test_extract_completion_items_single :: proc(t: ^testing.T) {
 	test_file := fmt.aprintf("%s/_test", completions_dir)
 	defer delete(test_file)
 	test_content := "#compdef test\n_test() {\n  echo test\n}"
-	os.write_entire_file(test_file, transmute([]byte)test_content)
+	_ = os.write_entire_file(test_file, transmute([]byte)test_content)
 
 	// Test extraction
 	original_config := wayu.WAYU_CONFIG
@@ -77,7 +77,7 @@ test_extract_completion_items_multiple :: proc(t: ^testing.T) {
 	for file in files {
 		file_path := fmt.aprintf("%s/%s", completions_dir, file)
 		completion_content := "#compdef\ntest completion"
-		os.write_entire_file(file_path, transmute([]byte)completion_content)
+		_ = os.write_entire_file(file_path, transmute([]byte)completion_content)
 		delete(file_path)
 	}
 
@@ -128,7 +128,7 @@ test_extract_completion_items_filters :: proc(t: ^testing.T) {
 	for file in files {
 		file_path := fmt.aprintf("%s/%s", completions_dir, file)
 		test_data := "test"
-		os.write_entire_file(file_path, transmute([]byte)test_data)
+		_ = os.write_entire_file(file_path, transmute([]byte)test_data)
 		delete(file_path)
 	}
 

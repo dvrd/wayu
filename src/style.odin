@@ -647,8 +647,7 @@ parse_hex_byte :: proc(hex: string) -> (result: int, ok: bool) #optional_ok {
 is_dark_terminal :: proc() -> bool {
 	// Check COLORFGBG environment variable (common in terminals)
 	// Format: "foreground;background" where higher numbers = lighter
-	colorfgbg := os.get_env("COLORFGBG")
-	defer delete(colorfgbg)
+	colorfgbg := os.get_env("COLORFGBG", context.temp_allocator)
 
 	if len(colorfgbg) > 0 {
 		parts := strings.split(colorfgbg, ";")

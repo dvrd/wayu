@@ -418,8 +418,7 @@ new_themed_progress_bar :: proc(total: f64) -> ProgressBar {
 // Detect terminal theme preference
 detect_terminal_theme :: proc() -> ThemeMode {
 	// Check environment variables for theme hints
-	term_program := os.get_env("TERM_PROGRAM")
-	defer delete(term_program)
+	term_program := os.get_env("TERM_PROGRAM", context.temp_allocator)
 	if len(term_program) > 0 {
 		// Some terminals set specific environment variables
 		if strings.contains(term_program, "dark") {
@@ -431,8 +430,7 @@ detect_terminal_theme :: proc() -> ThemeMode {
 	}
 
 	// Check COLORFGBG environment variable (some terminals set this)
-	colorfgbg := os.get_env("COLORFGBG")
-	defer delete(colorfgbg)
+	colorfgbg := os.get_env("COLORFGBG", context.temp_allocator)
 	if len(colorfgbg) > 0 {
 		// Format is usually "foreground;background"
 		// Light terminals often have dark text (0) on light background (15)

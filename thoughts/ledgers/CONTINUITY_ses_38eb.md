@@ -1,6 +1,6 @@
 ---
 session: ses_38eb
-updated: 2026-02-18T16:53:09.563Z
+updated: 2026-02-19T07:15:46.914Z
 ---
 
 
@@ -8,133 +8,87 @@ updated: 2026-02-18T16:53:09.563Z
 # Session Summary
 
 ## Goal
-Improve the wayu Odin CLI project across multiple dimensions: documentation accuracy, test coverage, code quality, security hardening, and bug fixes — executing three pre-existing plans (mid-effort refactoring, QA testing, large-effort improvements) plus newly-discovered critical fixes.
+Improve wayu TUI interface: (1) make the box fill 100% of terminal space like neovim, (2) convert key-value views (Aliases, Constants) from plain lists to navigable table format with consistent spacing, and (3) maintain all 494/494 tests passing.
 
 ## Constraints & Preferences
-- Documentation must be factually accurate against actual source code (line numbers, file names, patterns)
-- Verify-before-trust approach: generated docs were ~85% accurate but had real factual errors
-- Known exceptions/violations to stated rules should be documented honestly rather than hidden
-- Build command: `task build`; Test command: `task test` (runs `ruby scripts/test-coverage.rb`)
-- Direct test run: `odin test tests/unit/test_FILENAME.odin -file`
-- Package name for src: `wayu`; for tests: `test_wayu`; for TUI: `wayu_tui`
-- Tests import source as: `import wayu "../../src"`
-- `scripts/test-coverage.rb` has a hardcoded allowlist `testable_components` at line 268-271 — new test files need registration
+- Build: `task build` or `odin build src -out:bin/wayu -o:speed`; Test: `task test` (ruby scripts/test-coverage.rb)
+- Package: `wayu` (src), `wayu_tui` (src/tui)
+- Odin has NO ternary `a ? b : c` — use `if/else`
+- `strings.clone()` allocates — must `delete()`
+- Cannot run TUI interactively (no TTY) — user tests visually
+- **494/494 tests passing** (434 unit + 50 integration + 10 UI) — must maintain
+- App should fill 100% of available terminal space (like neovim, zellij, etc.)
+- Tables for key-value views should have consistent spacing (no separators/borders), navigable with same j/k/↑/↓ keys as lists
 
 ## Progress
 ### Done
-- [x] Generated and verified ARCHITECTURE.md, CODE_STYLE.md, CLAUDE.md — fixed ~15 factual errors across all three
-- [x] Ran tech debt audit, duplicate pattern analysis, TODO/FIXME scan — synthesized into 9 ranked improvements
-- [x] Created 3 execution plans in `thoughts/shared/plans/` (QA, mid-effort, large-effort)
-- [x] **Mid-effort refactoring COMPLETE**: Created `src/cli_helpers.odin` (dry-run/confirm/unsupported helpers), created `tests/unit/test_config_entry.odin` (28 tests), refactored `src/path.odin`, `src/config_entry.odin`, `src/completions.odin`, `src/backup.odin` to use helpers
-- [x] **QA test plan Phase 1+2 COMPLETE**: Created `tests/unit/test_config_specs.odin` (15 tests), `tests/unit/test_exit_codes.odin` (8 tests), `tests/unit/test_layout.odin` (5 tests); registered `config_entry`, `config_specs`, `exit_codes`, `layout` in test-coverage.rb allowlist
-- [x] **Plugin decomposition COMPLETE**: `src/plugin.odin` (2,621 lines) → 5 files: `plugin.odin` (294), `plugin_registry.odin` (960), `plugin_operations.odin` (1,086), `plugin_config.odin` (211), `plugin_help.odin` (89) — all build and 435/435 tests pass
-- [x] **Improvement analysis COMPLETE**: Found 22 new issues (1 CRITICAL, 5 HIGH, 8 MEDIUM, 8 LOW) beyond existing plans
-- [x] Fix 1 partial: Updated `is_safe_shell_arg` in `src/validation.odin` (replaced existing implementation at lines 195-207 with stricter version rejecting `"`, `` ` ``, `$`, `;`, `|`, `&`, `(`, `)`, `>`, `<`, `'`, `\n`, `\r`)
+- [x] **Previous session: TUI notification system** — Full implementation across 8 files committed as `414ff5c`
+- [x] **Previous session: Cursor preservation** — Smart scroll_offset adjustment on delete
+- [x] **Previous session: Rounded corners** — `╭╮╰╯` via `BOX_ROUND_*` constants
+- [x] **Previous session: Responsive border width** — Removed `min(..., 80)` cap in `calculate_border_dimensions`
+- [x] **Previous session: Text truncation** — Unicode-aware `truncate_text` with ellipsis in all 5 scrollable views
+- [x] **Previous session: Notification system** — `TUI_MODE` global, `NotificationKind` enum, `set_notification`/`clear_notification`/`tick_notification`, `render_notification`, bridge changes, handler changes
+- [x] **TUI visual assessment** — Launched wayu TUI via `tui-test` MCP tool and captured screenshots at 120x40
 
 ### In Progress
-- [ ] **Fix 1 (CRITICAL shell injection)**: `is_safe_shell_arg` function updated but 7 call-site hardenings NOT yet applied (Fixes 1a-1g)
-- [ ] **Fix 2**: TUI backup path mismatch NOT applied
-- [ ] **Fix 3**: remove_config_entry silent failure NOT applied
-- [ ] **Fix 4**: sanitize_shell_value wiring NOT applied
-- [ ] **Fix 5**: --shell memory leak + DETECTED_SHELL NOT applied
+- [ ] **Diagnosing layout issues** — Box does NOT fill 100% of terminal. Captured screenshots show:
+  - Right side: box border ends ~col 78, leaving ~42 cols of empty space in 120-col terminal
+  - Bottom: box ends around row 22, leaving ~18 rows empty in 40-row terminal
+  - Footer text gets cut off at bottom border
+- [ ] **Diagnosing tui-test Enter key issue** — `\r` and `\n` sent via tui-test MCP do NOT navigate from main menu. The TUI expects bytes 10 or 13 (confirmed in `events.odin:104`), but the MCP tool may not be transmitting them correctly through the PTY. Switched to `pty_spawn` tool as last action.
 
 ### Blocked
-- Executor agents keep timing out on the file edit read-before-write guard — edits need to be applied directly or with fresh executor that reads files first
+- **tui-test Enter key**: Could not navigate past main menu to see PATH/Alias/Constants views. Both `\r` and `\n` were tried. The `pty_spawn` tool was just launched (PID 91915, pty_704ff951) but no interaction has been done with it yet.
 
 ## Key Decisions
-- **Reject rather than escape shell metacharacters**: `is_safe_shell_arg` returns false on any dangerous char — safer than attempting shell escaping which is notoriously error-prone
-- **Validate at call sites, not in `exec_command_output`**: The generic function is used broadly; validation belongs where user input enters the system
-- **NO_COLOR/WAYU_PLAIN already implemented**: Verified `colors.odin:110-121` checks both env vars — initial analysis report was wrong. But legacy compile-time color constants (`PRIMARY`, `SECONDARY` at lines 53-59) bypass the adaptive system
-- **Plugin decomposition completed by QA executor**: Despite being assigned to the large-effort executor (which timed out), the files were successfully extracted — all 5 files build and pass 435/435 tests
-- **Coverage script needs plugin sub-modules registered**: `plugin_config`, `plugin_help`, `plugin_operations`, `plugin_registry` show as `✗` (0% coverage) in test output
+- **TUI_MODE global flag approach**: `remove_config_entry` returns void, uses globals (`TUI_MODE`, `TUI_LAST_ERROR`, `TUI_LAST_SUCCESS`) to communicate back to bridge
+- **Notification auto-dismiss**: Frame-based (150 frames success, 200 frames error)
+- **VISIBLE_HEIGHT_OVERHEAD 8→9**: Accounts for notification row
+- **Responsive width (no 80 cap)**: `calculate_border_dimensions` uses `terminal_width - BORDER_HORIZONTAL_TOTAL`
+- **Tables for key-value views**: User wants Aliases (`name=value`) and Constants (`NAME=value`) rendered as tables with KEY and VALUE columns, consistent spacing, no separators — still navigable with same keys
 
 ## Next Steps
-1. **Apply Fix 1a-1g** (shell injection call-site hardenings):
-   - Fix 1a: `src/plugin_registry.odin:332` — change `return true` → `return is_safe_shell_arg(url)` in `is_valid_git_url`
-   - Fix 1b: `src/plugin_registry.odin:937` — add `if !is_safe_shell_arg(url) || !is_safe_shell_arg(branch) { return "" }` at top of `get_remote_commit`
-   - Fix 1c: `src/plugin_registry.odin:253` — add validation guard at top of `git_clone`
-   - Fix 1d: `src/plugin_registry.odin:270` — add validation guard at top of `git_update`
-   - Fix 1e: `src/plugin.odin:213` — add validation guard in `get_git_info` after `os.exists` check
-   - Fix 1f: `src/plugin_operations.odin:918` — add validation guard before `rm -rf`
-   - Fix 1g: `src/plugin_operations.odin:1029` — add validation guard before clipboard commands
-2. **Apply Fix 2**: `src/tui_bridge_impl.odin:159` — change `"%s/.backups"` → `"%s/backup"`
-3. **Apply Fix 3**: `src/config_entry.odin:425-427` — change `print_warning` + `return` → `print_error_simple` + `os.exit(EXIT_DATAERR)`
-4. **Apply Fix 4a**: `src/config_specs.odin:180-186` — replace `strings.replace_all(entry.value, `"`, `\"`)` with `sanitize_shell_value(entry.value)` in `format_alias_line`
-5. **Apply Fix 4b**: `src/config_specs.odin:296-302` — same replacement in `format_constant_line`
-6. **Apply Fix 5**: `src/main.odin:230-242` — add `DETECTED_SHELL = parsed.shell` + `delete()` old file name globals before reassigning
-7. **Run `task build` and `task test`** to verify all fixes
-8. **Register plugin sub-modules** in `scripts/test-coverage.rb` allowlist
-9. **Remaining QA plan items**: integration exit code tests (11), Phase 2 P1 tests (18)
-10. **Remaining large-effort items**: TUI Phase 6 Enter key handlers, fuzzy filter extraction
+1. **Fix 100% fill issue** — Analyze why box doesn't fill terminal. Key areas:
+   - `src/tui/layout.odin:calculate_border_dimensions` — currently `width = terminal_width - BORDER_HORIZONTAL_TOTAL` (should give 118 for 120-col terminal, but screenshots show ~76 chars)
+   - `src/tui/render.odin:render_box_styled` — check if box is rendered with calculated dimensions or hardcoded
+   - `src/tui/main.odin:tui_run` — check how `terminal_width`/`terminal_height` are detected and stored in state
+   - `src/tui/terminal.odin` — check terminal size detection (ioctl/TIOCGWINSZ)
+   - Check if the box position starts at `(1,1)` with a 1-cell margin, making effective width `terminal_width - 2`
+2. **Fix box height** — Box should extend to `terminal_height - NOTIFICATION_HEIGHT` (last row reserved for notification)
+3. **Implement table rendering** for Alias and Constants views:
+   - Parse `name=value` format into two columns
+   - Calculate column widths (find max key length, allocate remaining to value)
+   - Render with consistent spacing (e.g., `KEY          VALUE`)
+   - Keep same selection/scrolling/navigation behavior
+   - Apply truncation to value column if it overflows
+4. **Test with pty_spawn** — Use the spawned PTY (pty_704ff951) to navigate and verify changes
+5. **Build and test** — Maintain 494/494
 
 ## Critical Context
-- **Current test count**: 435/435 passing (398 unit + 27 integration + 10 UI)
-- **Test count trajectory**: 407 (baseline) → 430 (after QA Phase 1) → 435 (after QA Phase 2 + plugin decomp)
-- **Shell injection attack surface** (7 `libc.system()` call sites):
-  - `get_remote_commit` at `plugin_registry.odin:944` — **WORST**: url and branch are NOT quoted in format string
-  - `git_clone` at `plugin_registry.odin:254` — url/dest double-quoted but breakable
-  - `git_update` at `plugin_registry.odin:271` — plugin_dir double-quoted
-  - `get_git_info` at `plugin.odin:221,226` — plugin_dir double-quoted (2 commands via `exec_command_output`)
-  - `handle_plugin_remove` at `plugin_operations.odin:920` — `rm -rf` with installed_path
-  - `handle_plugin_get` clipboard at `plugin_operations.odin:1033,1048,1064` — url in printf commands
-- **TUI backup bug**: `tui_bridge_impl.odin:159` uses `"%s/.backups"` but `backup.odin:44` creates in `"%s/backup"` — completely different paths
-- **remove_config_entry silent failure**: Function at `config_entry.odin:425-427` prints warning but returns with exit code 0 when entry not found — breaks `set -e` scripts
-- **format_alias_line/format_constant_line**: Currently use `strings.replace_all(value, `"`, `\"`)` but `sanitize_shell_value` in `validation.odin:121-149` handles `"`, `` ` ``, `$`, `\`, `\n` — more comprehensive
-- **--shell override bug**: `main.odin:230-241` reassigns PATH_FILE, ALIAS_FILE, CONSTANTS_FILE, INIT_FILE, TOOLS_FILE without `delete()` on old values (5 leaked strings). Also `DETECTED_SHELL` global is never updated, causing inconsistency with downstream code in `config_entry.odin` that reads `DETECTED_SHELL` directly
-- **Plugin files in `src/`**: `plugin.odin` (294 lines, types+helpers+dispatcher), `plugin_registry.odin` (960 lines, git ops+validation+find/lookup), `plugin_operations.odin` (1,086 lines, all handle_plugin_* commands), `plugin_config.odin` (211 lines, generate_plugins_file), `plugin_help.odin` (89 lines, help text)
-- **Plans on disk**: `thoughts/shared/plans/2026-02-18-qa-test-plan.md`, `thoughts/shared/plans/2026-02-18-medium-effort-refactoring.md`, `thoughts/shared/plans/2026-02-18-large-effort-improvements.md`
-- **Exact fix code for all 5 fixes** was specified in the last executor prompt — refer to that for copy-paste ready old→new code blocks
+- **Screenshot at 120x40 shows box is ~78 chars wide, ~22 rows tall** — This means `terminal_width` detection or box rendering is wrong. The `calculate_border_dimensions` formula should give `width=118, height=37` (120-2 width, 40-2-1 height) but clearly doesn't.
+- **`render_box_styled` call site** — Need to find WHERE in the view rendering code the box is drawn with what dimensions. Each view (main menu, PATH, etc.) calls `render_box_styled` with `calculate_border_dimensions` results.
+- **Terminal size detection** — `src/tui/terminal.odin` likely uses `ioctl(TIOCGWINSZ)`. The tui-test PTY was set to 120x40 but the TUI may be reading a different size.
+- **Footer rendering** — The footer text `Use ↑/↓ or j/k to navigate, Enter to select` appears at the bottom border but gets partially cut (`╰─` visible, rest missing). This suggests the box height calculation is nearly correct but footer positioning is off.
+- **Key-value data format**: Aliases are `name=value`, Constants are `NAME=value`. PATH entries are single values (no table needed). Completions might also be `name=path` format.
+- **`pty_spawn` session active**: ID `pty_704ff951`, PID 91915, command `./bin/wayu --tui`, workdir `/Users/kakurega/dev/projects/wayu`
+- **Existing views.odin rendering pattern**: Each view calls `calculate_border_dimensions`, renders box with `render_box_styled`, renders header, iterates items with `render_text_styled`, renders footer and scroll indicator.
 
 ## File Operations
-### Read
-- `/Users/kakurega/dev/projects/wayu/ARCHITECTURE.md`
-- `/Users/kakurega/dev/projects/wayu/CLAUDE.md` (multiple sections)
-- `/Users/kakurega/dev/projects/wayu/CODE_STYLE.md`
-- `/Users/kakurega/dev/projects/wayu/Taskfile.yml` (lines 1-170)
-- `/Users/kakurega/dev/projects/wayu/scripts/test-coverage.rb` (lines 260-300)
-- `/Users/kakurega/dev/projects/wayu/src/backup.odin` (lines 1-270, 390-421)
-- `/Users/kakurega/dev/projects/wayu/src/cli_helpers.odin`
-- `/Users/kakurega/dev/projects/wayu/src/colors.odin` (lines 108-167 — confirmed NO_COLOR/WAYU_PLAIN support exists)
-- `/Users/kakurega/dev/projects/wayu/src/completions.odin` (lines 30-188)
-- `/Users/kakurega/dev/projects/wayu/src/config_entry.odin` (full file, 808 lines; specifically lines 260-279, 375-399, 418-437)
-- `/Users/kakurega/dev/projects/wayu/src/config_specs.odin` (full file, 409 lines; specifically lines 180-210, 290-314)
-- `/Users/kakurega/dev/projects/wayu/src/exit_codes.odin` (full file, 59 lines)
-- `/Users/kakurega/dev/projects/wayu/src/main.odin` (full file, 883 lines; specifically lines 48-67, 81-105, 225-249)
-- `/Users/kakurega/dev/projects/wayu/src/path.odin` (lines 75-228)
-- `/Users/kakurega/dev/projects/wayu/src/plugin.odin` (full file, 294 lines; specifically lines 176-235)
-- `/Users/kakurega/dev/projects/wayu/src/plugin_config.odin` (211 lines)
-- `/Users/kakurega/dev/projects/wayu/src/plugin_help.odin` (89 lines)
-- `/Users/kakurega/dev/projects/wayu/src/plugin_operations.odin` (full file, 1,086 lines; specifically lines 910-940, 1025-1079)
-- `/Users/kakurega/dev/projects/wayu/src/plugin_registry.odin` (full file, 961 lines; specifically lines 245-294, 320-344, 930-961)
-- `/Users/kakurega/dev/projects/wayu/src/preload.odin` (lines 1-50)
-- `/Users/kakurega/dev/projects/wayu/src/tui_bridge_impl.odin` (full file, ~264 lines; specifically line 159)
-- `/Users/kakurega/dev/projects/wayu/src/validation.odin` (full file, 222 lines; specifically lines 121-149, 195-208)
-- `/Users/kakurega/dev/projects/wayu/src/tui/bridge.odin`, `src/tui/main.odin`, `src/tui/state.odin`, `src/tui/views.odin`, `src/tui/views_handlers.odin`
-- `/Users/kakurega/dev/projects/wayu/thoughts/shared/plans/2026-02-18-medium-effort-refactoring.md`
-- `/Users/kakurega/dev/projects/wayu/thoughts/shared/plans/2026-02-18-qa-test-plan.md`
-- `/Users/kakurega/dev/projects/wayu/thoughts/shared/plans/2026-02-18-large-effort-improvements.md`
-- All test files: `tests/unit/test_*.odin` (29+ files), `tests/integration/test_*_standalone.odin`
+### Read (by subagents during this session)
+- `/Users/kakurega/dev/projects/wayu/src/tui/events.odin` — Enter key handling (bytes 10, 13 → `.Enter`)
+- `/Users/kakurega/dev/projects/wayu/src/tui/input.odin` — `poll_event` reads from stdin
+- `/Users/kakurega/dev/projects/wayu/src/tui/main.odin` — `handle_key_event` dispatches Enter to `handle_selection`
+- `/Users/kakurega/dev/projects/wayu/src/tui/views_handlers.odin` — Main menu Enter not handled here (handled in main.odin)
+- All files from previous session (state.odin, layout.odin, render.odin, views.odin, bridge.odin, tui_bridge_impl.odin, config_entry.odin, main.odin, colors.odin)
 
-### Modified
-- `/Users/kakurega/dev/projects/wayu/ARCHITECTURE.md` — 5 factual corrections (PRPs/, docs/, build tasks, bridge line ref, config format)
-- `/Users/kakurega/dev/projects/wayu/CLAUDE.md` — 3 fixes (TUI filenames in prose+tree, inline reference)
-- `/Users/kakurega/dev/projects/wayu/CODE_STYLE.md` — 5 fixes (enum suffix, exit codes, Tier 1 stdout, TUI colors, Don'ts exceptions)
-- `/Users/kakurega/dev/projects/wayu/scripts/test-coverage.rb` — added `config_entry`, `config_specs`, `exit_codes`, `layout` to `testable_components` allowlist
-- `/Users/kakurega/dev/projects/wayu/src/backup.odin` — refactored to use `cli_helpers` (dry-run + unsupported actions)
-- `/Users/kakurega/dev/projects/wayu/src/cli_helpers.odin` — **CREATED** (2,982 bytes: `print_dry_run_preview`, `print_dry_run_config_preview`, `check_yes_flag_or_exit`, `print_unsupported_action`)
-- `/Users/kakurega/dev/projects/wayu/src/completions.odin` — refactored to use `cli_helpers`
-- `/Users/kakurega/dev/projects/wayu/src/config_entry.odin` — refactored to use `cli_helpers`
-- `/Users/kakurega/dev/projects/wayu/src/path.odin` — refactored to use `cli_helpers`
-- `/Users/kakurega/dev/projects/wayu/src/plugin.odin` — decomposed from 2,621 → 294 lines (types, helpers, dispatcher)
-- `/Users/kakurega/dev/projects/wayu/src/plugin_config.odin` — **CREATED** (211 lines: `generate_plugins_file`)
-- `/Users/kakurega/dev/projects/wayu/src/plugin_help.odin` — **CREATED** (89 lines: `print_plugin_help`, `print_plugin_add_help`)
-- `/Users/kakurega/dev/projects/wayu/src/plugin_operations.odin` — **CREATED** (1,086 lines: all `handle_plugin_*` commands)
-- `/Users/kakurega/dev/projects/wayu/src/plugin_registry.odin` — **CREATED** (960 lines: git ops, validation, find/lookup, dependencies)
-- `/Users/kakurega/dev/projects/wayu/src/validation.odin` — updated `is_safe_shell_arg` at lines 195-207 (stricter char rejection)
-- `/Users/kakurega/dev/projects/wayu/tests/unit/test_config_entry.odin` — **CREATED** (12,139 bytes, 28 tests)
-- `/Users/kakurega/dev/projects/wayu/tests/unit/test_config_specs.odin` — **CREATED** (15 tests)
-- `/Users/kakurega/dev/projects/wayu/tests/unit/test_exit_codes.odin` — **CREATED** (8 tests)
-- `/Users/kakurega/dev/projects/wayu/tests/unit/test_layout.odin` — **CREATED** (5 tests)
-- `/Users/kakurega/dev/projects/wayu/thoughts/shared/plans/2026-02-18-qa-test-plan.md` — **CREATED**
-- `/Users/kakurega/dev/projects/wayu/thoughts/shared/plans/2026-02-18-medium-effort-refactoring.md` — **CREATED**
-- `/Users/kakurega/dev/projects/wayu/thoughts/shared/plans/2026-02-18-large-effort-improvements.md` — **CREATED**
+### Modified (this session — all committed as 414ff5c)
+- `/Users/kakurega/dev/projects/wayu/src/main.odin` — Added `TUI_MODE`, `TUI_LAST_ERROR`, `TUI_LAST_SUCCESS` globals; wired `g_get_last_error`
+- `/Users/kakurega/dev/projects/wayu/src/config_entry.odin` — Guarded 5 `os.exit()` + 1 `print_success` with TUI_MODE
+- `/Users/kakurega/dev/projects/wayu/src/tui/state.odin` — Added `NotificationKind`, notification fields, helper procs
+- `/Users/kakurega/dev/projects/wayu/src/tui/layout.odin` — Added `NOTIFICATION_HEIGHT`, `VISIBLE_HEIGHT_OVERHEAD` 8→9, updated `calculate_border_dimensions`, added `calculate_notification_y`
+- `/Users/kakurega/dev/projects/wayu/src/tui/render.odin` — Rounded corners, `render_notification` proc
+- `/Users/kakurega/dev/projects/wayu/src/tui/main.odin` — Wired `render_notification` + `tick_notification`
+- `/Users/kakurega/dev/projects/wayu/src/tui/bridge.odin` — Added `g_get_last_error: proc() -> string`
+- `/Users/kakurega/dev/projects/wayu/src/tui_bridge_impl.odin` — Updated 3 delete functions with TUI_MODE, added `tui_bridge_get_last_error`
+- `/Users/kakurega/dev/projects/wayu/src/tui/views_handlers.odin` — All 4 handlers capture bridge returns, call `set_notification`
+- `/Users/kakurega/dev/projects/wayu/src/tui/views.odin` — (previous session) `truncate_text`, truncation in all 5 views, plugins/settings refactored
