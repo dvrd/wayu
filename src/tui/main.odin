@@ -117,10 +117,10 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 	// Handle detail overlay dismissal (and delete confirmation)
 	if state.show_detail {
 		if state.confirm_delete_pending {
-			// Delete confirmation mode: h/l move focus, Enter confirms focused button, Esc always cancels
+			// Delete confirmation mode: h/l/Tab toggle focus, Enter confirms focused button, Esc always cancels
 			if key.key == .Escape {
 				clear_detail(state)
-			} else if key.key == .Char && (key.char == 'h' || key.char == 'l') {
+			} else if key.key == .Tab || (key.key == .Char && (key.char == 'h' || key.char == 'l')) {
 				state.confirm_delete_focused_delete = !state.confirm_delete_focused_delete
 				state.needs_refresh = true
 			} else if key.key == .Enter {
@@ -569,46 +569,70 @@ handle_filter_input :: proc(state: ^TUIState, key: KeyEvent) {
 
 // Handle keyboard input when add form modal is active
 handle_add_form_input :: proc(state: ^TUIState, key: KeyEvent) {
+	form := &state.add_form
+	// Indices: 0..field_count-1 = input fields, field_count = CANCEL btn, field_count+1 = ADD btn
+	cancel_idx := form.field_count
+	add_idx    := form.field_count + 1
+	total_stops := form.field_count + 2  // fields + 2 buttons
+
+	on_field  := form.field_index < form.field_count
+	on_cancel := form.field_index == cancel_idx
+	on_add    := form.field_index == add_idx
+
 	#partial switch key.key {
 	case .Escape:
 		clear_add_form(state)
 
 	case .Tab:
-		// Cycle fields only when there are two fields
-		if state.add_form.field_count == 2 {
-			if state.add_form.field_index == 0 {
-				state.add_form.field_index = 1
-			} else {
-				state.add_form.field_index = 0
-			}
-			state.needs_refresh = true
-		}
+		// Cycle forward through all stops: field0 → field1 → CANCEL → ADD → field0 → ...
+		form.field_index = (form.field_index + 1) % total_stops
+		state.needs_refresh = true
 
 	case .Backspace:
-		if state.add_form.field_index == 0 {
-			if len(state.add_form.input_0) > 0 {
-				pop(&state.add_form.input_0)
-				state.needs_refresh = true
-			}
-		} else {
-			if len(state.add_form.input_1) > 0 {
-				pop(&state.add_form.input_1)
-				state.needs_refresh = true
+		// Only applies when a field is focused
+		if on_field {
+			if form.field_index == 0 {
+				if len(form.input_0) > 0 {
+					pop(&form.input_0)
+					state.needs_refresh = true
+				}
+			} else {
+				if len(form.input_1) > 0 {
+					pop(&form.input_1)
+					state.needs_refresh = true
+				}
 			}
 		}
 
 	case .Enter:
-		execute_add_form(state)
+		if on_cancel {
+			clear_add_form(state)
+		} else {
+			// ADD button or any field: submit
+			execute_add_form(state)
+		}
 
 	case .Char:
-		// Only accept printable characters (no Ctrl combos)
 		if .Ctrl not_in key.modifiers {
-			if state.add_form.field_index == 0 {
-				append(&state.add_form.input_0, u8(key.char))
-			} else {
-				append(&state.add_form.input_1, u8(key.char))
+			if key.char == 'h' {
+				// h = cycle backward
+				form.field_index = (form.field_index - 1 + total_stops) % total_stops
+				state.needs_refresh = true
+			} else if key.char == 'l' {
+				// l = cycle forward
+				form.field_index = (form.field_index + 1) % total_stops
+				state.needs_refresh = true
+			} else if on_field {
+				// Only type into fields when a field is focused
+				if form.field_index == 0 {
+					append(&form.input_0, u8(key.char))
+				} else {
+					append(&form.input_1, u8(key.char))
+				}
+				state.needs_refresh = true
 			}
-			state.needs_refresh = true
+			_ = on_add  // suppress unused warning
+			_ = on_cancel
 		}
 	}
 }
