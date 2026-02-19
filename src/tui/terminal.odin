@@ -2,6 +2,9 @@ package wayu_tui
 
 import "core:fmt"
 import "core:c"
+import "core:os"
+import "core:strconv"
+import "core:strings"
 import "base:intrinsics"
 
 // Platform-specific constants
@@ -39,16 +42,65 @@ SIGWINCH :: 28  // Signal number for window resize (macOS/Linux)
 // Global resize flag
 terminal_resized: bool
 
-// Get terminal dimensions
+// Get terminal dimensions.
+// Tries three methods in order:
+//   1. ioctl TIOCGWINSZ (most reliable when available)
+//   2. $COLUMNS / $LINES environment variables (set by most shells)
+//   3. ANSI cursor-position probe (works in any VT100-compatible terminal)
+//   4. Fallback to 80x24
 get_terminal_size :: proc() -> (width, height: int, ok: bool) {
+    // Method 1: ioctl (fast, no I/O).
     ws: winsize
-    result := ioctl(1, TIOCGWINSZ, &ws)  // 1 = STDOUT_FILENO
-
-    if result == 0 {
+    if ioctl(1, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0 {
         return int(ws.ws_col), int(ws.ws_row), true
     }
 
-    return 80, 24, false  // Fallback
+    // Method 2: environment variables (shells like zsh/bash export these).
+    // Use stack buffers to avoid heap allocation.
+    {
+        cols_buf: [16]byte
+        rows_buf: [16]byte
+        cols_str, cols_err := os.lookup_env_buf(cols_buf[:], "COLUMNS")
+        rows_str, rows_err := os.lookup_env_buf(rows_buf[:], "LINES")
+        if cols_err == nil && rows_err == nil {
+            cols, cols_ok := strconv.parse_int(cols_str)
+            rows, rows_ok := strconv.parse_int(rows_str)
+            if cols_ok && rows_ok && cols > 0 && rows > 0 {
+                return cols, rows, true
+            }
+        }
+    }
+
+    // Method 3: ANSI cursor-position probe.
+    // Move cursor to bottom-right corner, then query position.
+    // Response: ESC [ rows ; cols R
+    {
+        // Save cursor, move to 999;999, query position.
+        os.write(os.stdout, transmute([]u8)string("\x1b[s\x1b[999;999H\x1b[6n\x1b[u"))
+
+        // Read response (up to 32 bytes, format: ESC [ rows ; cols R).
+        buf: [32]byte
+        n, err := os.read(os.stdin, buf[:])
+        if err == nil && n > 0 {
+            response := string(buf[:n])
+            // Parse ESC [ rows ; cols R
+            if esc_idx := strings.index_byte(response, '['); esc_idx >= 0 {
+                inner := response[esc_idx + 1:]
+                if r_idx := strings.index_byte(inner, 'R'); r_idx >= 0 {
+                    inner = inner[:r_idx]
+                    if semi := strings.index_byte(inner, ';'); semi >= 0 {
+                        rows, rows_ok := strconv.parse_int(inner[:semi])
+                        cols, cols_ok := strconv.parse_int(inner[semi + 1:])
+                        if rows_ok && cols_ok && cols > 0 && rows > 0 {
+                            return cols, rows, true
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return 80, 24, false  // Last resort fallback.
 }
 
 // SIGWINCH handler (MUST be "c" convention)
