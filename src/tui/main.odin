@@ -614,24 +614,25 @@ handle_add_form_input :: proc(state: ^TUIState, key: KeyEvent) {
 
 	case .Char:
 		if .Ctrl not_in key.modifiers {
-			if key.char == 'h' {
-				// h = cycle backward
-				form.field_index = (form.field_index - 1 + total_stops) % total_stops
-				state.needs_refresh = true
-			} else if key.char == 'l' {
-				// l = cycle forward
-				form.field_index = (form.field_index + 1) % total_stops
-				state.needs_refresh = true
-			} else if on_field {
-				// Only type into fields when a field is focused
+			if on_field {
+				// Field is focused: all characters go into the buffer, including h and l
 				if form.field_index == 0 {
 					append(&form.input_0, u8(key.char))
 				} else {
 					append(&form.input_1, u8(key.char))
 				}
 				state.needs_refresh = true
+			} else {
+				// Button is focused: h/l cycle stops
+				if key.char == 'h' {
+					form.field_index = (form.field_index - 1 + total_stops) % total_stops
+					state.needs_refresh = true
+				} else if key.char == 'l' {
+					form.field_index = (form.field_index + 1) % total_stops
+					state.needs_refresh = true
+				}
 			}
-			_ = on_add  // suppress unused warning
+			_ = on_add
 			_ = on_cancel
 		}
 	}
