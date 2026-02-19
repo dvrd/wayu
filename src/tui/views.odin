@@ -45,6 +45,100 @@ truncate_text :: proc(text: string, max_runes: int) -> string {
 }
 
 // ============================================================================
+// Table Layout Constants & Helpers
+// ============================================================================
+
+// Column layout constants for two-column table views (Alias, Constants)
+COLUMN_GAP          :: 3   // spaces between key and value columns
+MIN_KEY_COL_WIDTH   :: 8   // minimum key column width
+KEY_COL_MAX_PERCENT :: 30  // max % of content width for key column
+
+// Calculate optimal key column width by scanning all items for max key length.
+// Items are "key=value" strings; key length is measured in runes.
+// Returns width clamped between MIN_KEY_COL_WIDTH and 30% of max_text_width.
+calculate_key_column_width :: proc(items: ^[dynamic]string, max_text_width: int) -> int {
+	max_key_len := 0
+	for item in items {
+		eq_idx := strings.index_byte(item, '=')
+		key_len: int
+		if eq_idx >= 0 {
+			key_len = utf8.rune_count_in_string(item[:eq_idx])
+		} else {
+			key_len = utf8.rune_count_in_string(item)
+		}
+		if key_len > max_key_len {
+			max_key_len = key_len
+		}
+	}
+	desired := max_key_len + 2  // breathing room
+	max_allowed := max_text_width * KEY_COL_MAX_PERCENT / 100
+	if max_allowed < MIN_KEY_COL_WIDTH {
+		max_allowed = MIN_KEY_COL_WIDTH
+	}
+	return clamp(desired, MIN_KEY_COL_WIDTH, max_allowed)
+}
+
+// Render a single table row with key and value in separate columns.
+// Splits item on first '=', truncates each column independently,
+// pads key to fixed width, and renders with appropriate colors.
+render_table_row :: proc(
+	screen: ^Screen,
+	x, y: int,
+	item: string,
+	key_col_width, value_col_width: int,
+	is_selected: bool,
+) {
+	// Split on first '='
+	eq_idx := strings.index_byte(item, '=')
+	key, value: string
+	if eq_idx >= 0 {
+		key = item[:eq_idx]
+		value = item[eq_idx + 1:]
+	} else {
+		key = item
+		value = ""
+	}
+
+	// Truncate key and value independently
+	truncated_key := truncate_text(key, key_col_width)
+	truncated_value := truncate_text(value, value_col_width)
+
+	// Calculate padding to align value column
+	key_rune_count := utf8.rune_count_in_string(truncated_key)
+	padding := key_col_width - key_rune_count
+	if padding < 0 {
+		padding = 0
+	}
+
+	// Build padded key with prefix
+	if is_selected {
+		// Selected: "> " + key, all hot pink bold
+		prefix_and_key := fmt.tprintf("> %s", truncated_key)
+		render_text_styled(screen, x, y, prefix_and_key, TUI_PRIMARY, "", true)
+		// Render value at fixed column position
+		if len(truncated_value) > 0 {
+			value_x := x + SELECTION_PREFIX_WIDTH + key_col_width + COLUMN_GAP
+			render_text_styled(screen, value_x, y, truncated_value, TUI_PRIMARY, "", true)
+		}
+	} else {
+		// Normal: "  " + key in muted, value in dim
+		prefix_and_key := fmt.tprintf("  %s", truncated_key)
+		render_text_styled(screen, x, y, prefix_and_key, TUI_MUTED)
+		if len(truncated_value) > 0 {
+			value_x := x + SELECTION_PREFIX_WIDTH + key_col_width + COLUMN_GAP
+			render_text_styled(screen, value_x, y, truncated_value, TUI_DIM)
+		}
+	}
+}
+
+// Render column header row for table views (e.g., "ALIAS   COMMAND" or "NAME   VALUE")
+render_column_header :: proc(screen: ^Screen, x, y: int, key_label, value_label: string, key_col_width: int) {
+	render_text_styled(screen, x + SELECTION_PREFIX_WIDTH, y, key_label, TUI_DIM)
+	value_x := x + SELECTION_PREFIX_WIDTH + key_col_width + COLUMN_GAP
+	render_text_styled(screen, value_x, y, value_label, TUI_DIM)
+}
+
+// ============================================================================
 // PATH View
 // ============================================================================
 
@@ -170,7 +264,7 @@ render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
 // Alias View
 // ============================================================================
 
-// Render alias view with name=command format (using layout constants)
+// Render alias view with two-column table layout (ALIAS | COMMAND)
 render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
@@ -194,6 +288,13 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 	count_text := fmt.tprintf("%d aliases", len(items))
 	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, count_text, TUI_DIM)
 
+	// Calculate table column widths
+	key_col_width := calculate_key_column_width(items, max_text_width)
+	value_col_width := max_text_width - key_col_width - COLUMN_GAP
+	if value_col_width < 1 {
+		value_col_width = 1
+	}
+
 	// Filter bar (shown when filter is active or has text)
 	filter_bar_y := HEADER_COUNT_LINE + CONTENT_PADDING_TOP + 1
 	has_filter := state.filter_active || len(state.filter_text) > 0
@@ -210,6 +311,14 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 		list_start_offset = 1
 	}
 
+	// Column header row (always shown when there are items)
+	show_items := (has_filter && len(state.filtered_indices) > 0) || (!has_filter && len(items) > 0)
+	if show_items {
+		col_header_y := LIST_ITEM_START_LINE + list_start_offset
+		render_column_header(screen, header_x, col_header_y, "ALIAS", "COMMAND", key_col_width)
+		list_start_offset += 1  // push list items down past column header
+	}
+
 	if has_filter && len(state.filtered_indices) > 0 {
 		// Render filtered items
 		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
@@ -220,14 +329,7 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 			y := calculate_list_item_y(idx - start) + list_start_offset
 			original_idx := state.filtered_indices[idx]
 			item := items[original_idx]
-
-			if idx == state.selected_index {
-				text := fmt.tprintf("> %s", truncate_text(item, max_text_width))
-				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
-			} else {
-				text := fmt.tprintf("  %s", truncate_text(item, max_text_width))
-				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
-			}
+			render_table_row(screen, header_x, y, item, key_col_width, value_col_width, idx == state.selected_index)
 		}
 
 		if len(state.filtered_indices) > visible_height {
@@ -242,29 +344,20 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 1, "No aliases found", TUI_DIM)
 	} else {
 		// List items with scrolling (unfiltered)
-		visible_height := calculate_visible_height(state.terminal_height)
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
 
 		for i in start..<end {
-			y := calculate_list_item_y(i - start)
+			y := calculate_list_item_y(i - start) + list_start_offset
 			item := items[i]
-
-			if i == state.selected_index {
-				// Selected item: hot pink text + bold (NO background)
-				text := fmt.tprintf("> %s", truncate_text(item, max_text_width))
-				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
-			} else {
-				// Normal item: muted gray text (indented by selection prefix width)
-				text := fmt.tprintf("  %s", truncate_text(item, max_text_width))
-				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
-			}
+			render_table_row(screen, header_x, y, item, key_col_width, value_col_width, i == state.selected_index)
 		}
 
 		// Show scroll indicator if needed (dim gray)
 		if len(items) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-			scroll_y := LIST_ITEM_START_LINE + visible_height
+			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
 			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
 		}
 	}
@@ -284,7 +377,7 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 // Constants View
 // ============================================================================
 
-// Render constants view with NAME="value" format (using layout constants)
+// Render constants view with two-column table layout (NAME | VALUE)
 render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
@@ -308,6 +401,13 @@ render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 	count_text := fmt.tprintf("%d constants", len(items))
 	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, count_text, TUI_DIM)
 
+	// Calculate table column widths
+	key_col_width := calculate_key_column_width(items, max_text_width)
+	value_col_width := max_text_width - key_col_width - COLUMN_GAP
+	if value_col_width < 1 {
+		value_col_width = 1
+	}
+
 	// Filter bar (shown when filter is active or has text)
 	filter_bar_y := HEADER_COUNT_LINE + CONTENT_PADDING_TOP + 1
 	has_filter := state.filter_active || len(state.filter_text) > 0
@@ -324,6 +424,14 @@ render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 		list_start_offset = 1
 	}
 
+	// Column header row (always shown when there are items)
+	show_items := (has_filter && len(state.filtered_indices) > 0) || (!has_filter && len(items) > 0)
+	if show_items {
+		col_header_y := LIST_ITEM_START_LINE + list_start_offset
+		render_column_header(screen, header_x, col_header_y, "NAME", "VALUE", key_col_width)
+		list_start_offset += 1  // push list items down past column header
+	}
+
 	if has_filter && len(state.filtered_indices) > 0 {
 		// Render filtered items
 		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
@@ -334,14 +442,7 @@ render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 			y := calculate_list_item_y(idx - start) + list_start_offset
 			original_idx := state.filtered_indices[idx]
 			item := items[original_idx]
-
-			if idx == state.selected_index {
-				text := fmt.tprintf("> %s", truncate_text(item, max_text_width))
-				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
-			} else {
-				text := fmt.tprintf("  %s", truncate_text(item, max_text_width))
-				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
-			}
+			render_table_row(screen, header_x, y, item, key_col_width, value_col_width, idx == state.selected_index)
 		}
 
 		if len(state.filtered_indices) > visible_height {
@@ -356,29 +457,20 @@ render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 		render_text_styled(screen, header_x, LIST_ITEM_START_LINE + 1, "No constants found", TUI_DIM)
 	} else {
 		// List items with scrolling (unfiltered)
-		visible_height := calculate_visible_height(state.terminal_height)
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
 
 		for i in start..<end {
-			y := calculate_list_item_y(i - start)
+			y := calculate_list_item_y(i - start) + list_start_offset
 			item := items[i]
-
-			if i == state.selected_index {
-				// Selected item: hot pink text + bold (NO background)
-				text := fmt.tprintf("> %s", truncate_text(item, max_text_width))
-				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
-			} else {
-				// Normal item: muted gray text (indented by selection prefix width)
-				text := fmt.tprintf("  %s", truncate_text(item, max_text_width))
-				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
-			}
+			render_table_row(screen, header_x, y, item, key_col_width, value_col_width, i == state.selected_index)
 		}
 
 		// Show scroll indicator if needed (dim gray)
 		if len(items) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-			scroll_y := LIST_ITEM_START_LINE + visible_height
+			scroll_y := LIST_ITEM_START_LINE + visible_height + list_start_offset
 			render_text_styled(screen, header_x, scroll_y, scroll_info, TUI_DIM)
 		}
 	}
