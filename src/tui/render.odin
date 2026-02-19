@@ -166,12 +166,12 @@ render_text_styled :: proc(screen: ^Screen, x, y: int, text: string, fg: string 
 render_box_styled :: proc(screen: ^Screen, x, y, width, height: int, fg: string = TUI_BORDER_NORMAL) {
 	if width < 2 || height < 2 do return
 
-	// Top border
-	screen_set_cell(screen, x, y, Cell{char = BOX_TOP_LEFT, fg = fg})
+	// Top border (rounded corners)
+	screen_set_cell(screen, x, y, Cell{char = BOX_ROUND_TOP_LEFT, fg = fg})
 	for i in 1..<width-1 {
 		screen_set_cell(screen, x+i, y, Cell{char = BOX_HORIZONTAL, fg = fg})
 	}
-	screen_set_cell(screen, x+width-1, y, Cell{char = BOX_TOP_RIGHT, fg = fg})
+	screen_set_cell(screen, x+width-1, y, Cell{char = BOX_ROUND_TOP_RIGHT, fg = fg})
 
 	// Sides
 	for j in 1..<height-1 {
@@ -179,10 +179,50 @@ render_box_styled :: proc(screen: ^Screen, x, y, width, height: int, fg: string 
 		screen_set_cell(screen, x+width-1, y+j, Cell{char = BOX_VERTICAL, fg = fg})
 	}
 
-	// Bottom border
-	screen_set_cell(screen, x, y+height-1, Cell{char = BOX_BOTTOM_LEFT, fg = fg})
+	// Bottom border (rounded corners)
+	screen_set_cell(screen, x, y+height-1, Cell{char = BOX_ROUND_BOTTOM_LEFT, fg = fg})
 	for i in 1..<width-1 {
 		screen_set_cell(screen, x+i, y+height-1, Cell{char = BOX_HORIZONTAL, fg = fg})
 	}
-	screen_set_cell(screen, x+width-1, y+height-1, Cell{char = BOX_BOTTOM_RIGHT, fg = fg})
+	screen_set_cell(screen, x+width-1, y+height-1, Cell{char = BOX_ROUND_BOTTOM_RIGHT, fg = fg})
+}
+
+// ============================================================================
+// Notification Rendering
+// ============================================================================
+
+// Render notification bar below the main content box
+render_notification :: proc(state: ^TUIState, screen: ^Screen) {
+	if state.notification_kind == .NONE {
+		return
+	}
+
+	y := calculate_notification_y(state.terminal_height)
+	if y < 0 || y >= screen.height {
+		return
+	}
+
+	// Choose color and prefix based on notification kind
+	color: string
+	prefix: string
+	if state.notification_kind == .SUCCESS {
+		color = TUI_SUCCESS
+		prefix = " ✓ "
+	} else {
+		color = TUI_ERROR
+		prefix = " ✗ "
+	}
+
+	// Build display text
+	text := fmt.tprintf("%s%s", prefix, state.notification_message)
+
+	// Truncate to screen width
+	max_width := screen.width - BORDER_LEFT_WIDTH - CONTENT_PADDING_LEFT
+	display := text
+	if len(display) > max_width {
+		display = display[:max_width]
+	}
+
+	x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+	render_text_styled(screen, x, y, display, color, "", true)
 }

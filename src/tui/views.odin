@@ -17,6 +17,32 @@ package wayu_tui
 
 import "core:fmt"
 import "core:strings"
+import "core:unicode/utf8"
+
+// ============================================================================
+// Text Truncation Helper
+// ============================================================================
+
+// Truncate text to fit within max_runes, appending "…" if truncated.
+// Works on rune count (not byte count) for correct Unicode handling.
+// Returns a tprintf'd string (temp allocation, do NOT delete).
+truncate_text :: proc(text: string, max_runes: int) -> string {
+	if max_runes <= 0 do return ""
+	count := utf8.rune_count_in_string(text)
+	if count <= max_runes do return text
+	// Truncate: take (max_runes - 1) runes + "…"
+	truncated_bytes := 0
+	runes_seen := 0
+	remaining := text
+	for len(remaining) > 0 {
+		if runes_seen >= max_runes - 1 do break
+		_, size := utf8.decode_rune_in_string(remaining)
+		truncated_bytes += size
+		remaining = remaining[size:]
+		runes_seen += 1
+	}
+	return fmt.tprintf("%s…", text[:truncated_bytes])
+}
 
 // ============================================================================
 // PATH View
@@ -26,6 +52,7 @@ import "core:strings"
 render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
 	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
+	max_text_width := calculate_content_width(border_width)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
 	// Data should be loaded by bridge layer
@@ -76,10 +103,10 @@ render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
 			entry := items[original_idx]
 
 			if idx == state.selected_index {
-				text := fmt.tprintf("> %s", entry)
+				text := fmt.tprintf("> %s", truncate_text(entry, max_text_width))
 				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
 			} else {
-				text := fmt.tprintf("  %s", entry)
+				text := fmt.tprintf("  %s", truncate_text(entry, max_text_width))
 				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
 			}
 		}
@@ -108,12 +135,12 @@ render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 			if i == state.selected_index {
 				// Selected item: hot pink text + bold (NO background)
-				text := fmt.tprintf("> %s", entry)
+				text := fmt.tprintf("> %s", truncate_text(entry, max_text_width))
 				// Note: tprintf() uses temp buffer, do NOT delete
 				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
 			} else {
 				// Normal item: muted gray text (indented by selection prefix width)
-				text := fmt.tprintf("  %s", entry)
+				text := fmt.tprintf("  %s", truncate_text(entry, max_text_width))
 				// Note: tprintf() uses temp buffer, do NOT delete
 				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
 			}
@@ -147,6 +174,7 @@ render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
 render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
+	max_text_width := calculate_content_width(border_width)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
 	// Data should be loaded by bridge layer
@@ -194,10 +222,10 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 			item := items[original_idx]
 
 			if idx == state.selected_index {
-				text := fmt.tprintf("> %s", item)
+				text := fmt.tprintf("> %s", truncate_text(item, max_text_width))
 				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
 			} else {
-				text := fmt.tprintf("  %s", item)
+				text := fmt.tprintf("  %s", truncate_text(item, max_text_width))
 				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
 			}
 		}
@@ -224,11 +252,11 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 			if i == state.selected_index {
 				// Selected item: hot pink text + bold (NO background)
-				text := fmt.tprintf("> %s", item)
+				text := fmt.tprintf("> %s", truncate_text(item, max_text_width))
 				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
 			} else {
 				// Normal item: muted gray text (indented by selection prefix width)
-				text := fmt.tprintf("  %s", item)
+				text := fmt.tprintf("  %s", truncate_text(item, max_text_width))
 				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
 			}
 		}
@@ -260,6 +288,7 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
+	max_text_width := calculate_content_width(border_width)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
 	// Data should be loaded by bridge layer
@@ -307,10 +336,10 @@ render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 			item := items[original_idx]
 
 			if idx == state.selected_index {
-				text := fmt.tprintf("> %s", item)
+				text := fmt.tprintf("> %s", truncate_text(item, max_text_width))
 				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
 			} else {
-				text := fmt.tprintf("  %s", item)
+				text := fmt.tprintf("  %s", truncate_text(item, max_text_width))
 				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
 			}
 		}
@@ -337,11 +366,11 @@ render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 			if i == state.selected_index {
 				// Selected item: hot pink text + bold (NO background)
-				text := fmt.tprintf("> %s", item)
+				text := fmt.tprintf("> %s", truncate_text(item, max_text_width))
 				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
 			} else {
 				// Normal item: muted gray text (indented by selection prefix width)
-				text := fmt.tprintf("  %s", item)
+				text := fmt.tprintf("  %s", truncate_text(item, max_text_width))
 				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
 			}
 		}
@@ -373,6 +402,7 @@ render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 render_completions_view :: proc(state: ^TUIState, screen: ^Screen) {
 	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
+	max_text_width := calculate_content_width(border_width)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
 	// Data should be loaded by bridge layer
@@ -420,10 +450,10 @@ render_completions_view :: proc(state: ^TUIState, screen: ^Screen) {
 			completion := items[original_idx]
 
 			if idx == state.selected_index {
-				text := fmt.tprintf("> %s", completion)
+				text := fmt.tprintf("> %s", truncate_text(completion, max_text_width))
 				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
 			} else {
-				text := fmt.tprintf("  %s", completion)
+				text := fmt.tprintf("  %s", truncate_text(completion, max_text_width))
 				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
 			}
 		}
@@ -451,11 +481,11 @@ render_completions_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 			if i == state.selected_index {
 				// Selected item: hot pink text + bold (NO background)
-				text := fmt.tprintf("> %s", completion)
+				text := fmt.tprintf("> %s", truncate_text(completion, max_text_width))
 				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
 			} else {
 				// Normal item: muted gray text (indented by selection prefix width)
-				text := fmt.tprintf("  %s", completion)
+				text := fmt.tprintf("  %s", truncate_text(completion, max_text_width))
 				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
 			}
 		}
@@ -487,6 +517,7 @@ render_completions_view :: proc(state: ^TUIState, screen: ^Screen) {
 render_backups_view :: proc(state: ^TUIState, screen: ^Screen) {
 	// Draw outer border using calculated dimensions
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
+	max_text_width := calculate_content_width(border_width)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
 	// Data should be loaded by bridge layer
@@ -534,10 +565,10 @@ render_backups_view :: proc(state: ^TUIState, screen: ^Screen) {
 			backup := items[original_idx]
 
 			if idx == state.selected_index {
-				text := fmt.tprintf("> %s", backup)
+				text := fmt.tprintf("> %s", truncate_text(backup, max_text_width))
 				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
 			} else {
-				text := fmt.tprintf("  %s", backup)
+				text := fmt.tprintf("  %s", truncate_text(backup, max_text_width))
 				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
 			}
 		}
@@ -564,11 +595,11 @@ render_backups_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 			if i == state.selected_index {
 				// Selected item: hot pink text + bold (NO background)
-				text := fmt.tprintf("> %s", backup)
+				text := fmt.tprintf("> %s", truncate_text(backup, max_text_width))
 				render_text_styled(screen, header_x, y, text, TUI_PRIMARY, "", true)
 			} else {
 				// Normal item: muted gray text (indented by selection prefix width)
-				text := fmt.tprintf("  %s", backup)
+				text := fmt.tprintf("  %s", truncate_text(backup, max_text_width))
 				render_text_styled(screen, header_x + SELECTION_PREFIX_WIDTH, y, text, TUI_MUTED)
 			}
 		}
@@ -598,18 +629,18 @@ render_backups_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 // Render plugins view (placeholder) (PHASE 1: COLORED + BORDERED)
 render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
-	// Draw outer border
-	border_width := min(state.terminal_width - 2, 80)
-	border_height := state.terminal_height - 2
-	render_box_styled(screen, 1, 1, border_width, border_height, TUI_BORDER_NORMAL)
+	// Draw outer border using calculated dimensions
+	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
+	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_NORMAL)
 
 	// Header (hot pink + bold)
-	render_text_styled(screen, 3, 2, "🔌 Plugins", TUI_PRIMARY, "", true)
-	render_text_styled(screen, 3, 4, "Plugin management system", TUI_MUTED)
-	render_text_styled(screen, 3, 6, "(Future feature)", TUI_DIM)
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "🔌 Plugins", TUI_PRIMARY, "", true)
+	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP + 2, "Plugin management system", TUI_MUTED)
+	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP + 4, "(Future feature)", TUI_DIM)
 
-	footer_y := state.terminal_height - 3
-	render_text_styled(screen, 3, footer_y, "Esc=Back", TUI_MUTED)
+	footer_y := calculate_footer_y(state.terminal_height)
+	render_text_styled(screen, header_x, footer_y, "Esc=Back", TUI_MUTED)
 }
 
 // ============================================================================
@@ -618,14 +649,14 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 // Render settings view with current configuration (PHASE 1: COLORED + BORDERED)
 render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
-	// Draw outer border
-	border_width := min(state.terminal_width - 2, 80)
-	border_height := state.terminal_height - 2
-	render_box_styled(screen, 1, 1, border_width, border_height, TUI_BORDER_NORMAL)
+	// Draw outer border using calculated dimensions
+	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
+	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_NORMAL)
 
 	// Header (hot pink + bold)
-	render_text_styled(screen, 3, 2, "⚙️  Settings", TUI_PRIMARY, "", true)
-	render_text_styled(screen, 3, 3, "wayu Configuration", TUI_MUTED)
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+	render_text_styled(screen, header_x, HEADER_TITLE_LINE + CONTENT_PADDING_TOP, "⚙️  Settings", TUI_PRIMARY, "", true)
+	render_text_styled(screen, header_x, HEADER_COUNT_LINE + CONTENT_PADDING_TOP, "wayu Configuration", TUI_MUTED)
 
 	// Display placeholder settings (actual values set by bridge)
 	settings := []string{
@@ -636,11 +667,11 @@ render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
 	}
 
 	for setting, i in settings {
-		render_text_styled(screen, 5, 5 + i, setting, TUI_MUTED)
+		render_text_styled(screen, header_x + 2, LIST_ITEM_START_LINE + i, setting, TUI_MUTED)
 	}
 
-	footer_y := state.terminal_height - 3
-	render_text_styled(screen, 3, footer_y, "Esc=Back", TUI_MUTED)
+	footer_y := calculate_footer_y(state.terminal_height)
+	render_text_styled(screen, header_x, footer_y, "Esc=Back", TUI_MUTED)
 }
 
 // ============================================================================
