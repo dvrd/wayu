@@ -19,6 +19,7 @@
 package wayu_tui
 
 import "core:fmt"
+import "core:mem"
 import "core:strings"
 import "core:unicode/utf8"
 
@@ -146,7 +147,7 @@ render_list_item :: proc(screen: ^Screen, header_x, y: int, text: string, max_wi
 
 // Standard footer for filterable data views
 FOOTER_FILTER_ACTIVE :: "Type to filter   Esc Cancel   Enter Accept   j/k Navigate"
-FOOTER_DATA_VIEW     :: "/ Filter   d Delete   h Back   l Enter   j/k Navigate"
+FOOTER_DATA_VIEW     :: "/ Filter   a Add   d Delete   h Back   l Enter   j/k Navigate"
 FOOTER_READONLY_VIEW :: "/ Filter   h Back   l Enter   j/k Navigate"
 FOOTER_BACKUP_VIEW   :: "/ Filter   c Cleanup   h Back   j/k Navigate"
 FOOTER_STATIC_VIEW   :: "h Back"
@@ -730,6 +731,166 @@ get_view_item_count :: proc(state: ^TUIState) -> int {
 }
 
 // ============================================================================
+// Add Form Overlay
+// ============================================================================
+
+// Render the add-record modal overlay when state.add_form.active is true.
+// Layout (example for ALIAS):
+//
+//   ╭──────────────────────────────────╮
+//   ┃ ADD ALIAS
+//
+//     NAME
+//     > ll█                          ← active field: orange + fake cursor
+//
+//     COMMAND
+//     > ls -la                       ← inactive field: dim
+//
+//     Error: message here            ← TUI_ERROR, only when error_message != ""
+//
+//     [ Esc CANCEL ]   [ Enter ADD ] ← dim / orange+bold
+//   ╰──────────────────────────────────╯
+//
+// Field heights: 1-field form = title + 1 field block + error + buttons + borders
+//               2-field form = title + 2 field blocks + error + buttons + borders
+render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
+	if !state.add_form.active do return
+
+	// Arena for all fmt.tprintf scratch strings in this proc — freed on return.
+	// Stack-allocated: no explicit destroy needed; memory reclaimed when proc exits.
+	scratch_buf: [2048]byte
+	scratch: mem.Arena
+	mem.arena_init(&scratch, scratch_buf[:])
+	context.allocator = mem.arena_allocator(&scratch)
+
+	form := &state.add_form
+
+	// Determine overlay height:
+	//   1 top border + 1 title + 1 blank + (2 per field: label + input) * field_count
+	//   + 1 blank + 1 error row (always reserved) + 1 blank + 1 button row + 1 bottom border
+	field_rows := form.field_count * 2   // label + input per field
+	overlay_height := 1 + 1 + 1 + field_rows + 1 + 1 + 1 + 1 + 1  // = 9 for 1-field, 11 for 2-field
+
+	overlay_width := min(state.terminal_width - 8, 56)
+	if overlay_width < 30 {
+		overlay_width = 30
+	}
+	overlay_x := (state.terminal_width - overlay_width) / 2
+	overlay_y := (state.terminal_height - overlay_height) / 2
+
+	// Fill interior with spaces to erase underlying content
+	for dy in 1..<overlay_height-1 {
+		for dx in 1..<overlay_width-1 {
+			screen_set_cell(screen, overlay_x + dx, overlay_y + dy, Cell{char = ' '})
+		}
+	}
+
+	// Border
+	render_box_styled(screen, overlay_x, overlay_y, overlay_width, overlay_height, TUI_BORDER_FOCUSED)
+
+	content_x := overlay_x + 2
+	max_input_width := overlay_width - 6  // 2 border + 2 content + 2 padding
+
+	// Title: ┃ ADD {VIEW}
+	title_y := overlay_y + 1
+	view_name: string
+	switch form.view {
+	case .PATH_VIEW:      view_name = "PATH"
+	case .ALIAS_VIEW:     view_name = "ALIAS"
+	case .CONSTANTS_VIEW: view_name = "CONSTANT"
+	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
+		view_name = "ENTRY"
+	}
+	title_text := fmt.tprintf("ADD %s", view_name)
+	screen_set_cell(screen, content_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+	render_text_styled(screen, content_x + MENU_ACCENT_BAR_WIDTH + 1, title_y, title_text, TUI_PRIMARY, "", true)
+
+	// Fields
+	field_start_y := title_y + 2  // blank line after title
+	for fi in 0..<form.field_count {
+		label: string
+		if fi == 0 {
+			label = form.label_0
+		} else {
+			label = form.label_1
+		}
+		input_buf: ^[dynamic]u8
+		if fi == 0 {
+			input_buf = &form.input_0
+		} else {
+			input_buf = &form.input_1
+		}
+		is_active := fi == form.field_index
+
+		label_y := field_start_y + fi * 2
+		input_y := label_y + 1
+
+		// Label
+		label_fg: string
+		if is_active {
+			label_fg = TUI_ORANGE
+		} else {
+			label_fg = TUI_DIM
+		}
+		render_text_styled(screen, content_x + 2, label_y, label, label_fg, "", is_active)
+
+		// Input line: "> text█" (active) or "> text" (inactive)
+		input_str := string(input_buf[:])
+		// Truncate display to fit
+		display_max := max_input_width - 2  // ">" + space
+		if display_max < 1 {
+			display_max = 1
+		}
+		truncated := truncate_text(input_str, display_max)
+		input_display: string
+		if is_active {
+			input_display = fmt.tprintf("> %s\u2588", truncated)  // U+2588 FULL BLOCK as cursor
+		} else {
+			input_display = fmt.tprintf("> %s", truncated)
+		}
+		input_fg: string
+		if is_active {
+			input_fg = TUI_ORANGE
+		} else {
+			input_fg = TUI_DIM
+		}
+		render_text_styled(screen, content_x + 2, input_y, input_display, input_fg, "", is_active)
+	}
+
+	// Error line (always 1 row reserved; shown only when non-empty)
+	error_y := field_start_y + form.field_count * 2 + 1
+	if len(form.error_message) > 0 {
+		err_display := truncate_text(form.error_message, overlay_width - 6)
+		render_text_styled(screen, content_x + 2, error_y, err_display, TUI_ERROR)
+	}
+
+	// Button row
+	button_y := error_y + 2
+	cancel_label :: "Esc CANCEL"
+	add_label    :: "Enter ADD"
+	button_gap   :: 2
+	right_edge   := overlay_x + overlay_width - 3
+	add_btn_w    := len(add_label) + 4    // "[ " + label + " ]"
+	cancel_btn_w := len(cancel_label) + 4
+	add_start    := right_edge - add_btn_w
+	cancel_start := add_start - button_gap - cancel_btn_w
+
+	// CANCEL button — dim
+	screen_set_cell(screen, cancel_start, button_y, Cell{char = '[', fg = TUI_DIM})
+	screen_set_cell(screen, cancel_start + 1, button_y, Cell{char = ' ', fg = TUI_DIM})
+	render_text_styled(screen, cancel_start + 2, button_y, cancel_label, TUI_DIM)
+	screen_set_cell(screen, cancel_start + cancel_btn_w - 2, button_y, Cell{char = ' ', fg = TUI_DIM})
+	screen_set_cell(screen, cancel_start + cancel_btn_w - 1, button_y, Cell{char = ']', fg = TUI_DIM})
+
+	// ADD button — orange + bold
+	screen_set_cell(screen, add_start, button_y, Cell{char = '[', fg = TUI_ORANGE, bold = true})
+	screen_set_cell(screen, add_start + 1, button_y, Cell{char = ' ', fg = TUI_ORANGE})
+	render_text_styled(screen, add_start + 2, button_y, add_label, TUI_ORANGE, "", true)
+	screen_set_cell(screen, add_start + add_btn_w - 2, button_y, Cell{char = ' ', fg = TUI_ORANGE})
+	screen_set_cell(screen, add_start + add_btn_w - 1, button_y, Cell{char = ']', fg = TUI_ORANGE, bold = true})
+}
+
+// ============================================================================
 // Detail Overlay
 // ============================================================================
 
@@ -791,9 +952,9 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		cancel_start  := delete_start - button_gap - cancel_btn_w
 
 		// Button colors driven by focus state
-		// Focused button: TUI_ERROR (red), bold. Unfocused: TUI_DIM.
-		cancel_fg := TUI_ERROR if !state.confirm_delete_focused_delete else TUI_DIM
-		delete_fg := TUI_ERROR if  state.confirm_delete_focused_delete else TUI_DIM
+		// Focused button: TUI_ORANGE (bright orange), bold. Unfocused: TUI_DIM.
+		cancel_fg := TUI_ORANGE if !state.confirm_delete_focused_delete else TUI_DIM
+		delete_fg := TUI_ORANGE if  state.confirm_delete_focused_delete else TUI_DIM
 		cancel_bold := !state.confirm_delete_focused_delete
 		delete_bold :=  state.confirm_delete_focused_delete
 

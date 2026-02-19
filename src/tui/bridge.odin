@@ -22,6 +22,9 @@ g_delete_constant: proc(string) -> bool
 g_cleanup_backups: proc() -> bool
 g_get_path_detail: proc(string) -> [dynamic]string
 g_get_last_error: proc() -> string
+g_add_path:       proc(string) -> bool
+g_add_alias:      proc(string, string) -> bool
+g_add_constant:   proc(string, string) -> bool
 
 // Set bridge functions (called from main.odin before tui_run)
 tui_set_bridge_functions :: proc(
@@ -35,6 +38,9 @@ tui_set_bridge_functions :: proc(
 	delete_constant: proc(string) -> bool,
 	cleanup_backups: proc() -> bool,
 	get_path_detail: proc(string) -> [dynamic]string,
+	add_path: proc(string) -> bool,
+	add_alias: proc(string, string) -> bool,
+	add_constant: proc(string, string) -> bool,
 ) {
 	g_load_path_data = load_path
 	g_load_alias_data = load_alias
@@ -46,6 +52,9 @@ tui_set_bridge_functions :: proc(
 	g_delete_constant = delete_constant
 	g_cleanup_backups = cleanup_backups
 	g_get_path_detail = get_path_detail
+	g_add_path = add_path
+	g_add_alias = add_alias
+	g_add_constant = add_constant
 }
 
 // Bridge functions to load data into TUI state cache
@@ -116,6 +125,30 @@ tui_delete_constant :: proc(name: string) -> bool {
 tui_cleanup_backups :: proc() -> bool {
 	if g_cleanup_backups != nil {
 		return g_cleanup_backups()
+	}
+	return false
+}
+
+// Add PATH entry
+tui_add_path :: proc(path: string) -> bool {
+	if g_add_path != nil {
+		return g_add_path(path)
+	}
+	return false
+}
+
+// Add Alias entry
+tui_add_alias :: proc(name: string, command: string) -> bool {
+	if g_add_alias != nil {
+		return g_add_alias(name, command)
+	}
+	return false
+}
+
+// Add Constants entry
+tui_add_constant :: proc(name: string, value: string) -> bool {
+	if g_add_constant != nil {
+		return g_add_constant(name, value)
 	}
 	return false
 }

@@ -54,6 +54,8 @@ handle_path_event :: proc(state: ^TUIState, key: KeyEvent) {
 	#partial switch key.key {
 	case .Char:
 		switch key.char {
+		case 'a':
+			show_add_form(state, .PATH_VIEW)
 		case 'd', 'x':
 			// Stage delete confirmation for selected PATH entry
 			if state.data_cache[.PATH_VIEW] != nil {
@@ -83,6 +85,8 @@ handle_alias_event :: proc(state: ^TUIState, key: KeyEvent) {
 	#partial switch key.key {
 	case .Char:
 		switch key.char {
+		case 'a':
+			show_add_form(state, .ALIAS_VIEW)
 		case 'd', 'x':
 			// Stage delete confirmation for selected alias
 			if state.data_cache[.ALIAS_VIEW] != nil {
@@ -116,6 +120,8 @@ handle_constants_event :: proc(state: ^TUIState, key: KeyEvent) {
 	#partial switch key.key {
 	case .Char:
 		switch key.char {
+		case 'a':
+			show_add_form(state, .CONSTANTS_VIEW)
 		case 'd', 'x':
 			// Stage delete confirmation for selected constant
 			if state.data_cache[.CONSTANTS_VIEW] != nil {

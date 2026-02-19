@@ -108,6 +108,12 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 		return
 	}
 
+	// When add form is active, route ALL input to add form handler
+	if state.add_form.active {
+		handle_add_form_input(state, key)
+		return
+	}
+
 	// Handle detail overlay dismissal (and delete confirmation)
 	if state.show_detail {
 		if state.confirm_delete_pending {
@@ -422,6 +428,9 @@ tui_render :: proc(state: ^TUIState, screen: ^Screen) {
 
 	// Render detail overlay on top if active
 	render_detail_overlay(state, screen)
+
+	// Render add form overlay on top of everything if active
+	render_add_form_overlay(state, screen)
 }
 
 // Render main menu — dashboard-style with accent bars and dividers
@@ -555,6 +564,110 @@ handle_filter_input :: proc(state: ^TUIState, key: KeyEvent) {
 			}
 			state.needs_refresh = true
 		}
+	}
+}
+
+// Handle keyboard input when add form modal is active
+handle_add_form_input :: proc(state: ^TUIState, key: KeyEvent) {
+	#partial switch key.key {
+	case .Escape:
+		clear_add_form(state)
+
+	case .Tab:
+		// Cycle fields only when there are two fields
+		if state.add_form.field_count == 2 {
+			if state.add_form.field_index == 0 {
+				state.add_form.field_index = 1
+			} else {
+				state.add_form.field_index = 0
+			}
+			state.needs_refresh = true
+		}
+
+	case .Backspace:
+		if state.add_form.field_index == 0 {
+			if len(state.add_form.input_0) > 0 {
+				pop(&state.add_form.input_0)
+				state.needs_refresh = true
+			}
+		} else {
+			if len(state.add_form.input_1) > 0 {
+				pop(&state.add_form.input_1)
+				state.needs_refresh = true
+			}
+		}
+
+	case .Enter:
+		execute_add_form(state)
+
+	case .Char:
+		// Only accept printable characters (no Ctrl combos)
+		if .Ctrl not_in key.modifiers {
+			if state.add_form.field_index == 0 {
+				append(&state.add_form.input_0, u8(key.char))
+			} else {
+				append(&state.add_form.input_1, u8(key.char))
+			}
+			state.needs_refresh = true
+		}
+	}
+}
+
+// Execute the add form: validate, call bridge, update state
+execute_add_form :: proc(state: ^TUIState) {
+	val_0 := string(state.add_form.input_0[:])
+	val_1 := string(state.add_form.input_1[:])
+
+	// Validate: first field must be non-empty
+	if len(val_0) == 0 {
+		state.add_form.error_message = fmt.tprintf("Error: %s cannot be empty", state.add_form.label_0)
+		state.needs_refresh = true
+		return
+	}
+	// For two-field forms, second field must also be non-empty
+	if state.add_form.field_count == 2 && len(val_1) == 0 {
+		state.add_form.error_message = fmt.tprintf("Error: %s cannot be empty", state.add_form.label_1)
+		state.needs_refresh = true
+		return
+	}
+
+	view := state.add_form.view
+	success := false
+	switch view {
+	case .PATH_VIEW:
+		success = tui_add_path(val_0)
+	case .ALIAS_VIEW:
+		success = tui_add_alias(val_0, val_1)
+	case .CONSTANTS_VIEW:
+		success = tui_add_constant(val_0, val_1)
+	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
+		// unsupported
+	}
+
+	if success {
+		label: string
+		switch view {
+		case .PATH_VIEW:      label = "PATH entry"
+		case .ALIAS_VIEW:     label = "alias"
+		case .CONSTANTS_VIEW: label = "constant"
+		case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
+			label = "entry"
+		}
+		msg := fmt.tprintf("Added %s: %s", label, val_0)
+		clear_add_form(state)
+		clear_view_cache(state, view)
+		set_notification(state, .SUCCESS, msg)
+	} else {
+		err_msg := ""
+		if g_get_last_error != nil {
+			err_msg = g_get_last_error()
+		}
+		if len(err_msg) > 0 {
+			state.add_form.error_message = fmt.tprintf("Error: %s", err_msg)
+		} else {
+			state.add_form.error_message = fmt.tprintf("Error: failed to add %s", val_0)
+		}
+		state.needs_refresh = true
 	}
 }
 
