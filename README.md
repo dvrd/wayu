@@ -17,10 +17,14 @@ A shell configuration management CLI written in [Odin](https://odin-lang.org/) w
 
 ## Installation
 
-Requires the [Odin compiler](https://odin-lang.org/docs/install/) and optionally [Task](https://taskfile.dev/).
+Requires the [Odin compiler](https://odin-lang.org/docs/install/).
 
 ```bash
-task install    # or: odin build src -out:bin/wayu -o:speed && cp bin/wayu /usr/local/bin/
+# Bootstrap the build system, then build + install
+odin build build -out:build_it && ./build_it install
+
+# Or manually:
+odin build src -out:bin/wayu -o:speed && cp bin/wayu /usr/local/bin/
 wayu init       # creates ~/.config/wayu/ with shell-appropriate config files
 ```
 
@@ -153,14 +157,21 @@ Shell is detected automatically from `$SHELL`. Override with `--shell bash` or `
 
 ## Development
 
+Uses [bld](https://github.com/kakurega/bld), an Odin build system library. No external tools required.
+
 ```bash
-task build-dev           # build with debug symbols
-task build               # optimized build
-task test                # unit tests (434 tests)
-task test:all            # unit + integration tests
-task test:integration    # integration tests only
-task check               # check without building
-task dev CLI_ARGS="path list"  # build + run
+# Bootstrap (once)
+odin build build -out:build_it
+
+# Build & test
+./build_it build          # optimized release build
+./build_it debug          # debug build with symbols
+./build_it test           # unit tests (434 tests)
+./build_it check          # type-check only
+./build_it dev path list  # debug build + run
+./build_it clean          # remove build artifacts
+./build_it install        # build + install to /usr/local/bin
+./build_it help           # show all targets
 ```
 
 ## Architecture
