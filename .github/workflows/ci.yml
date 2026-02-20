@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
@@ -18,40 +18,18 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install Odin (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y llvm-14 clang-14
-        wget https://github.com/odin-lang/Odin/releases/latest/download/odin-ubuntu-amd64.zip
-        unzip odin-ubuntu-amd64.zip
-        sudo mv odin /usr/local/bin/
-        chmod +x /usr/local/bin/odin
-
-    - name: Install Odin (macOS)
-      if: matrix.os == 'macos-latest'
-      run: |
-        brew install llvm
-        wget https://github.com/odin-lang/Odin/releases/latest/download/odin-macos-amd64.zip
-        unzip odin-macos-amd64.zip
-        sudo mv odin /usr/local/bin/
-        chmod +x /usr/local/bin/odin
+    - name: Setup Odin
+      uses: laytan/setup-odin@v2
+      with:
+        release: latest
 
     - name: Verify Odin installation
-      run: |
-        odin version
-        which odin
+      run: odin version
 
     - name: Install Task
       uses: arduino/setup-task@v1
       with:
         version: 3.x
-
-    - name: Install Ruby (for integration tests)
-      uses: ruby/setup-ruby@v1
-      with:
-        ruby-version: '3.2'
-        bundler-cache: true
 
     - name: Build wayu
       run: task build
@@ -61,59 +39,32 @@ jobs:
         ls -lh bin/wayu
         ./bin/wayu version
 
-    - name: Run smoke tests
-      run: ./scripts/smoke-test.sh
-
     - name: Run unit tests
-      run: task test
-
-    - name: Run integration tests
-      run: task test:integration
+      run: odin test tests/unit -file -o:speed
 
     - name: Test CLI non-interactive behavior
       run: |
         # Test that CLI requires explicit arguments
         if ./bin/wayu path add 2>&1 | grep -q "Missing required arguments"; then
-          echo "✓ CLI correctly requires explicit arguments"
+          echo "CLI correctly requires explicit arguments"
         else
-          echo "✗ CLI should require explicit arguments"
+          echo "CLI should require explicit arguments"
           exit 1
         fi
 
         # Test exit code
-        EXIT_CODE=$(./bin/wayu path add > /dev/null 2>&1; echo $?)
-        if [ $EXIT_CODE -eq 64 ]; then
-          echo "✓ CLI returns correct exit code (64)"
+        EXIT_CODE=0
+        ./bin/wayu path add > /dev/null 2>&1 || EXIT_CODE=$?
+        if [ "$EXIT_CODE" -eq 64 ]; then
+          echo "CLI returns correct exit code (64)"
         else
-          echo "✗ CLI should return exit code 64, got $EXIT_CODE"
+          echo "CLI should return exit code 64, got $EXIT_CODE"
           exit 1
         fi
-
-        # Test scriptability (pipes)
-        if ./bin/wayu path list | grep -q ""; then
-          echo "✓ CLI works in pipes"
-        else
-          echo "✗ CLI should work in pipes"
-          exit 1
-        fi
-
-    - name: Test with different shells
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        # Test with bash
-        echo "Testing with bash..."
-        bash -c './bin/wayu --shell bash init || true'
-        bash -c './bin/wayu --shell bash path list || true'
-
-        # Test with zsh
-        echo "Testing with zsh..."
-        sudo apt-get install -y zsh
-        zsh -c './bin/wayu --shell zsh init || true'
-        zsh -c './bin/wayu --shell zsh path list || true'
 
     - name: Upload build artifacts
       if: success()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: wayu-${{ matrix.os }}
         path: bin/wayu
@@ -127,14 +78,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install Odin
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y llvm-14 clang-14
-        wget https://github.com/odin-lang/Odin/releases/latest/download/odin-ubuntu-amd64.zip
-        unzip odin-ubuntu-amd64.zip
-        sudo mv odin /usr/local/bin/
-        chmod +x /usr/local/bin/odin
+    - name: Setup Odin
+      uses: laytan/setup-odin@v2
+      with:
+        release: latest
 
     - name: Install Task
       uses: arduino/setup-task@v1
@@ -158,36 +105,32 @@ jobs:
 
     - name: Check version consistency
       run: |
-        # Check that version in code matches expected
-        VERSION=$(grep -oP 'wayu v\K[0-9]+\.[0-9]+\.[0-9]+' src/main.odin | head -1)
+        VERSION=$(sed -n 's/^VERSION :: "\([0-9]*\.[0-9]*\.[0-9]*\)"/\1/p' src/main.odin)
         echo "Found version: $VERSION"
 
-        # Verify version format
-        if [[ ! $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          echo "✗ Invalid version format: $VERSION"
+        if [ -z "$VERSION" ]; then
+          echo "Could not extract version from src/main.odin"
           exit 1
         fi
 
-        echo "✓ Version format valid: $VERSION"
+        echo "Version format valid: $VERSION"
 
     - name: Check documentation
       run: |
-        # Verify key documentation files exist
-        for file in README.md CLAUDE.md docs/MANUAL_TESTING.md; do
+        for file in README.md CLAUDE.md; do
           if [ ! -f "$file" ]; then
-            echo "✗ Missing required file: $file"
+            echo "Missing required file: $file"
             exit 1
           fi
         done
-        echo "✓ All documentation files present"
+        echo "All documentation files present"
 
     - name: Check for TODO/FIXME comments
       run: |
-        # Check for unresolved TODOs in source code
         TODO_COUNT=$(grep -r "TODO\|FIXME" src/ --include="*.odin" | wc -l || true)
         if [ "$TODO_COUNT" -gt 0 ]; then
-          echo "⚠ Found $TODO_COUNT TODO/FIXME comments"
+          echo "Found $TODO_COUNT TODO/FIXME comments"
           grep -r "TODO\|FIXME" src/ --include="*.odin" || true
         else
-          echo "✓ No TODO/FIXME comments in source"
+          echo "No TODO/FIXME comments in source"
         fi

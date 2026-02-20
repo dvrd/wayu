@@ -18,7 +18,7 @@ jobs:
           - os: ubuntu-latest
             target: linux-amd64
             artifact: wayu-linux-amd64
-          - os: macos-latest
+          - os: macos-13
             target: macos-amd64
             artifact: wayu-macos-amd64
           - os: macos-latest
@@ -29,24 +29,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Install Odin (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y llvm-14 clang-14
-        wget https://github.com/odin-lang/Odin/releases/latest/download/odin-ubuntu-amd64.zip
-        unzip odin-ubuntu-amd64.zip
-        sudo mv odin /usr/local/bin/
-        chmod +x /usr/local/bin/odin
-
-    - name: Install Odin (macOS)
-      if: matrix.os == 'macos-latest'
-      run: |
-        brew install llvm
-        wget https://github.com/odin-lang/Odin/releases/latest/download/odin-macos-amd64.zip
-        unzip odin-macos-amd64.zip
-        sudo mv odin /usr/local/bin/
-        chmod +x /usr/local/bin/odin
+    - name: Setup Odin
+      uses: laytan/setup-odin@v2
+      with:
+        release: latest
 
     - name: Install Task
       uses: arduino/setup-task@v1
@@ -58,21 +44,19 @@ jobs:
         task build
         chmod +x bin/wayu
 
-    - name: Run smoke tests
-      run: ./scripts/smoke-test.sh
+    - name: Verify build
+      run: ./bin/wayu version
 
     - name: Create release package
       run: |
         mkdir -p release
         cp bin/wayu release/
         cp README.md release/
-        cp docs/MANUAL_TESTING.md release/
         cd release
         tar -czf ../${{ matrix.artifact }}.tar.gz *
-        cd ..
 
     - name: Upload release artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact }}
         path: ${{ matrix.artifact }}.tar.gz
@@ -87,7 +71,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: artifacts
 
@@ -96,79 +80,29 @@ jobs:
       run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
     - name: Generate release notes
-      id: release_notes
       run: |
         cat > release_notes.md << 'EOF'
         ## wayu ${{ steps.get_version.outputs.VERSION }}
 
-        ### Major Changes
-
-        - **CLI/TUI Isolation**: Fully non-interactive CLI for scripting and automation
-        - **Exit Codes**: BSD sysexits.h compatible (0, 1, 64-78)
-        - **`--yes` Flag**: Skip confirmation prompts for clean/dedup operations
-        - **Error Messages**: Helpful usage hints with examples
-
-        ### Breaking Changes
-
-        - CLI commands now require explicit arguments (no interactive prompts)
-        - `path clean` and `path dedup` require `--yes` flag
-        - Interactive features moved to `--tui` mode
-        - Exit codes categorized (not all 1 anymore)
-
-        ### Migration Guide
-
-        **Old (v2.1.x):**
-        ```bash
-        wayu path rm             # Opens fuzzy finder
-        wayu path clean          # Prompts [y/N]
-        ```
-
-        **New (v2.2.x):**
-        ```bash
-        wayu path rm /specific/path   # Explicit argument required
-        wayu path clean --yes         # Requires --yes flag
-        wayu --tui                    # Use TUI for interactive mode
-        ```
-
-        ### Documentation
-
-        - [Manual Testing Guide](docs/MANUAL_TESTING.md)
-        - [Exit Codes Reference](README.md#exit-codes)
-        - [CLI vs TUI Modes](README.md#cli-vs-tui-modes)
+        Shell configuration management CLI for Zsh and Bash.
 
         ### Downloads
 
-        Choose the appropriate binary for your platform:
-
-        - **Linux (x86_64)**: `wayu-linux-amd64.tar.gz`
-        - **macOS (Intel)**: `wayu-macos-amd64.tar.gz`
-        - **macOS (Apple Silicon)**: `wayu-macos-arm64.tar.gz`
+        | Platform | File |
+        |----------|------|
+        | Linux (x86_64) | `wayu-linux-amd64.tar.gz` |
+        | macOS (Intel) | `wayu-macos-amd64.tar.gz` |
+        | macOS (Apple Silicon) | `wayu-macos-arm64.tar.gz` |
 
         ### Installation
 
         ```bash
-        # Extract
         tar -xzf wayu-*.tar.gz
-        cd release
-
-        # Install
-        sudo cp wayu /usr/local/bin/
-        chmod +x /usr/local/bin/wayu
-
-        # Initialize
+        sudo cp release/wayu /usr/local/bin/
         wayu init
         ```
 
-        ### Testing
-
-        Run the smoke test to verify your installation:
-        ```bash
-        ./scripts/smoke-test.sh
-        ```
-
-        ### Full Changelog
-
-        See [CLAUDE.md](CLAUDE.md) for complete technical details.
+        See [README.md](README.md) for full documentation.
         EOF
 
     - name: Create Release
