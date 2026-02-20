@@ -268,7 +268,7 @@ validate_alias_command_input :: proc(value: string) -> InputValidation {
 	if len(trimmed) == 0 {
 		return InputValidation{
 			valid = false,
-			error_message = strings.clone("Command cannot be empty"),
+			error_message = "",
 			warning = "",
 			info = "",
 		}

@@ -158,7 +158,7 @@ validate_alias :: proc(name: string, command: string) -> ValidationResult {
 
 	// Check command is not empty
 	if len(strings.trim_space(command)) == 0 {
-		return ValidationResult{valid = false, error_message = "Alias command cannot be empty"}
+		return ValidationResult{valid = false, error_message = fmt.aprintf("Alias command cannot be empty")}
 	}
 
 	return ValidationResult{valid = true, error_message = ""}
@@ -207,12 +207,12 @@ is_safe_shell_arg :: proc(arg: string) -> bool {
 // Validate path
 validate_path :: proc(path: string) -> ValidationResult {
 	if len(strings.trim_space(path)) == 0 {
-		return ValidationResult{valid = false, error_message = "Path cannot be empty"}
+		return ValidationResult{valid = false, error_message = fmt.aprintf("Path cannot be empty")}
 	}
 
 	// Check for null bytes (security)
 	if strings.contains(path, "\x00") {
-		return ValidationResult{valid = false, error_message = "Path contains null bytes"}
+		return ValidationResult{valid = false, error_message = fmt.aprintf("Path contains null bytes")}
 	}
 
 	return ValidationResult{valid = true, error_message = ""}

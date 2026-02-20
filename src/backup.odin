@@ -18,6 +18,8 @@ BackupInfo :: struct {
 
 // Create backup of file with timestamp in backup/ directory
 create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
+	// Ensure global config paths are initialized (idempotent — safe to call multiple times)
+	init_shell_globals()
 	debug("Creating backup for: %s", file_path)
 
 	// Don't create backup of backup files

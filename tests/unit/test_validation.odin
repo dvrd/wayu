@@ -20,6 +20,7 @@ test_validate_identifier_valid :: proc(t: ^testing.T) {
 @(test)
 test_validate_identifier_empty :: proc(t: ^testing.T) {
 	result := wayu.validate_identifier("", "Alias")
+	defer delete(result.error_message)
 	testing.expect(t, !result.valid, "Empty name should fail")
 	testing.expect(t, len(result.error_message) > 0, "Should have error message")
 }
@@ -27,30 +28,37 @@ test_validate_identifier_empty :: proc(t: ^testing.T) {
 @(test)
 test_validate_identifier_invalid_start :: proc(t: ^testing.T) {
 	result := wayu.validate_identifier("123abc", "Alias")
+	defer delete(result.error_message)
 	testing.expect(t, !result.valid, "Name starting with digit should fail")
 
 	result2 := wayu.validate_identifier("-alias", "Alias")
+	defer delete(result2.error_message)
 	testing.expect(t, !result2.valid, "Name starting with dash should fail")
 }
 
 @(test)
 test_validate_identifier_invalid_chars :: proc(t: ^testing.T) {
 	result := wayu.validate_identifier("my-alias", "Alias")
+	defer delete(result.error_message)
 	testing.expect(t, !result.valid, "Name with dash should fail")
 
 	result2 := wayu.validate_identifier("my.alias", "Alias")
+	defer delete(result2.error_message)
 	testing.expect(t, !result2.valid, "Name with dot should fail")
 
 	result3 := wayu.validate_identifier("my alias", "Alias")
+	defer delete(result3.error_message)
 	testing.expect(t, !result3.valid, "Name with space should fail")
 }
 
 @(test)
 test_validate_identifier_reserved :: proc(t: ^testing.T) {
 	result := wayu.validate_identifier("if", "Alias")
+	defer delete(result.error_message)
 	testing.expect(t, !result.valid, "Reserved word 'if' should fail")
 
 	result2 := wayu.validate_identifier("export", "Constant")
+	defer delete(result2.error_message)
 	testing.expect(t, !result2.valid, "Reserved word 'export' should fail")
 }
 
@@ -81,9 +89,11 @@ test_validate_alias :: proc(t: ^testing.T) {
 	testing.expect(t, result.valid, "Valid alias should pass")
 
 	result2 := wayu.validate_alias("ll", "")
+	defer delete(result2.error_message)
 	testing.expect(t, !result2.valid, "Empty command should fail")
 
 	result3 := wayu.validate_alias("", "ls -la")
+	defer delete(result3.error_message)
 	testing.expect(t, !result3.valid, "Empty name should fail")
 }
 
@@ -103,9 +113,11 @@ test_validate_path :: proc(t: ^testing.T) {
 	testing.expect(t, result.valid, "Valid path should pass")
 
 	result2 := wayu.validate_path("")
+	defer delete(result2.error_message)
 	testing.expect(t, !result2.valid, "Empty path should fail")
 
 	result3 := wayu.validate_path("   ")
+	defer delete(result3.error_message)
 	testing.expect(t, !result3.valid, "Whitespace-only path should fail")
 }
 
@@ -127,5 +139,6 @@ test_validate_identifier_long_name :: proc(t: ^testing.T) {
 		too_long[i] = 'a'
 	}
 	result2 := wayu.validate_identifier(string(too_long), "Alias")
+	defer delete(result2.error_message)
 	testing.expect(t, !result2.valid, "256 character name should fail")
 }

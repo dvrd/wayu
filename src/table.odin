@@ -136,7 +136,9 @@ table_render :: proc(table: Table) -> string {
 	for header, i in table.headers {
 		// Apply only text styles (bold, colors) without borders/padding
 		styled_header := apply_text_only_style(table.header_style, header)
+		defer delete(styled_header)
 		padded_header := pad_string(styled_header, mutable_table.column_widths[i])
+		defer delete(padded_header)
 		strings.write_string(&result, padded_header)
 
 		if i < len(table.headers) - 1 {
@@ -161,7 +163,9 @@ table_render :: proc(table: Table) -> string {
 		for cell, i in row {
 			// Apply only text styles (bold, colors) without borders/padding
 			styled_cell := apply_text_only_style(table.style, cell)
+			defer delete(styled_cell)
 			padded_cell := pad_string(styled_cell, mutable_table.column_widths[i])
+			defer delete(padded_cell)
 			strings.write_string(&result, padded_cell)
 
 			if i < len(row) - 1 {
@@ -185,10 +189,11 @@ table_render :: proc(table: Table) -> string {
 }
 
 // Helper function to pad string to specific width
+// NOTE: Always returns an ALLOCATED string — caller must delete()
 pad_string :: proc(str: string, width: int) -> string {
 	current_width := visual_width(str)
 	if current_width >= width {
-		return str
+		return strings.clone(str)
 	}
 
 	padding := width - current_width

@@ -125,22 +125,24 @@ parse_shell_type :: proc(shell_str: string) -> ShellType {
 
 // Get config file path with fallback for backward compatibility
 get_config_file_with_fallback :: proc(base_name: string, shell: ShellType) -> string {
-    ext := get_shell_extension(shell)
+	ext := get_shell_extension(shell)
 
-    // Try shell-specific extension first
-    preferred_file := fmt.aprintf("%s/%s.%s", WAYU_CONFIG, base_name, ext)
-    if os.exists(preferred_file) {
-        return preferred_file
-    }
+	// Try shell-specific extension first
+	preferred_file := fmt.aprintf("%s/%s.%s", WAYU_CONFIG, base_name, ext)
+	if os.exists(preferred_file) {
+		return preferred_file
+	}
 
-    // Fall back to .zsh for backward compatibility
-    zsh_file := fmt.aprintf("%s/%s.zsh", WAYU_CONFIG, base_name)
-    if os.exists(zsh_file) {
-        return zsh_file
-    }
+	// Fall back to .zsh for backward compatibility
+	zsh_file := fmt.aprintf("%s/%s.zsh", WAYU_CONFIG, base_name)
+	if os.exists(zsh_file) {
+		delete(preferred_file)
+		return zsh_file
+	}
 
-    // Return preferred even if it doesn't exist (for creation)
-    return preferred_file
+	// Return preferred even if it doesn't exist (for creation)
+	delete(zsh_file)
+	return preferred_file
 }
 
 // Validate shell compatibility
