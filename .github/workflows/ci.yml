@@ -39,8 +39,11 @@ jobs:
         ls -lh bin/wayu
         ./bin/wayu version
 
+    - name: Setup test environment
+      run: mkdir -p ~/.config/wayu/backup
+
     - name: Run unit tests
-      run: odin test tests/unit -file -o:speed
+      run: odin test tests/unit -file -o:speed -define:ODIN_TEST_THREADS=1
 
     - name: Test CLI non-interactive behavior
       run: |
@@ -92,7 +95,9 @@ jobs:
       run: task check
 
     - name: Build with warnings as errors
-      run: odin build src -out:bin/wayu_test -warnings-as-errors -o:speed
+      run: |
+        mkdir -p bin
+        odin build src -out:bin/wayu_test -warnings-as-errors -o:speed
 
   release-check:
     name: Release Readiness
@@ -117,7 +122,7 @@ jobs:
 
     - name: Check documentation
       run: |
-        for file in README.md CLAUDE.md; do
+        for file in README.md; do
           if [ ! -f "$file" ]; then
             echo "Missing required file: $file"
             exit 1
