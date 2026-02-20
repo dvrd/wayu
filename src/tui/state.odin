@@ -47,7 +47,7 @@ TUIState :: struct {
 	terminal_height: int,
 	needs_refresh:   bool,
 	running:         bool,
-	data_cache:      map[TUIView]rawptr,
+	data_cache:      ^map[TUIView]rawptr,
 	// Per-view cursor memory — remembers selection when navigating away
 	saved_cursors:   map[TUIView]ViewCursor,
 	// Detail overlay state
@@ -82,7 +82,7 @@ tui_state_init :: proc() -> TUIState {
 		terminal_height = 24,
 		needs_refresh = true,
 		running = true,
-		data_cache = make(map[TUIView]rawptr),
+		data_cache = new(map[TUIView]rawptr),
 		saved_cursors = make(map[TUIView]ViewCursor),
 	}
 }
@@ -120,7 +120,8 @@ tui_state_destroy :: proc(state: ^TUIState) {
 			}
 		}
 	}
-	delete(state.data_cache)
+	delete(state.data_cache^)
+	free(state.data_cache)
 }
 
 // Clear detail overlay and free its resources (also clears any pending delete)

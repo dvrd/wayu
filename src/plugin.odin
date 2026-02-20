@@ -252,9 +252,21 @@ cleanup_plugin_metadata :: proc(plugin: ^PluginMetadata) {
 	delete(plugin.git.remote_commit)
 	delete(plugin.dependencies)
 	delete(plugin.config)
+	for ev in plugin.conflicts.env_vars {
+		delete(ev)
+	}
 	delete(plugin.conflicts.env_vars)
+	for fn in plugin.conflicts.functions {
+		delete(fn)
+	}
 	delete(plugin.conflicts.functions)
+	for al in plugin.conflicts.aliases_ {
+		delete(al)
+	}
 	delete(plugin.conflicts.aliases_)
+	for cp in plugin.conflicts.conflicting_plugins {
+		delete(cp)
+	}
 	delete(plugin.conflicts.conflicting_plugins)
 }
 
