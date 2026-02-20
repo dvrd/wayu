@@ -34,14 +34,10 @@ jobs:
       with:
         release: latest
 
-    - name: Install Task
-      uses: arduino/setup-task@v1
-      with:
-        version: 3.x
-
     - name: Build optimized release
       run: |
-        task build
+        mkdir -p bin
+        odin build src -out:bin/wayu -o:speed
         chmod +x bin/wayu
 
     - name: Verify build
