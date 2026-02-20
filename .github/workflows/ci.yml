@@ -26,13 +26,10 @@ jobs:
     - name: Verify Odin installation
       run: odin version
 
-    - name: Install Task
-      uses: arduino/setup-task@v1
-      with:
-        version: 3.x
-
     - name: Build wayu
-      run: task build
+      run: |
+        mkdir -p bin
+        odin build src -out:bin/wayu -o:speed
 
     - name: Verify build output
       run: |
@@ -43,7 +40,7 @@ jobs:
       run: mkdir -p ~/.config/wayu/backup
 
     - name: Run unit tests
-      run: odin test tests/unit -file -o:speed -define:ODIN_TEST_THREADS=1
+      run: odin test tests/unit -file -o:speed -define:ODIN_TEST_THREADS=1 -ignore-unused-defineables
 
     - name: Test CLI non-interactive behavior
       run: |
@@ -86,13 +83,8 @@ jobs:
       with:
         release: latest
 
-    - name: Install Task
-      uses: arduino/setup-task@v1
-      with:
-        version: 3.x
-
     - name: Check code
-      run: task check
+      run: odin check src
 
     - name: Build with warnings as errors
       run: |

@@ -9,6 +9,7 @@ PRPs/
 
 /test_*
 /*.bin
+/build_it
 
 .logs/
 thoughts/
