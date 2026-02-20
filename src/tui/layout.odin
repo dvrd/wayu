@@ -77,8 +77,10 @@ MENU_ACCENT_GAP :: 2  // Gap after accent bar before text
 // - FOOTER_HEIGHT (1): Footer line
 // - FOOTER_OFFSET_FROM_BOTTOM (2): Footer + bottom border
 //
-// Total overhead: 1 + 1 + 2 + 1 + 1 + 2 + 1(notification) = 9 lines
-VISIBLE_HEIGHT_OVERHEAD :: 9
+// Total overhead: 1 + 1 + 2 + 1 + 1 = 6 lines
+// (border_top + padding_top + header_height + header_gap + footer+border_bottom)
+// Notification is rendered outside the box — not counted in visible list height
+VISIBLE_HEIGHT_OVERHEAD :: 6
 
 // ============================================================================
 // Helper Functions

@@ -550,7 +550,7 @@ test_plugin_check_metadata_structure :: proc(t: ^testing.T) {
 test_plugin_update_write_and_cleanup :: proc(t: ^testing.T) {
 	// Test writing and cleaning up plugin config JSON
 	config := wayu.PluginConfigJSON{
-		version = "1.0",
+		version = strings.clone("1.0"),
 		last_updated = wayu.get_iso8601_timestamp(),
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
@@ -641,7 +641,7 @@ test_plugin_enable_idempotent :: proc(t: ^testing.T) {
 
 	// Create test config with one enabled plugin
 	config := wayu.PluginConfigJSON{
-		version = "1.0",
+		version = strings.clone("1.0"),
 		last_updated = wayu.get_iso8601_timestamp(),
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
@@ -701,7 +701,7 @@ test_plugin_disable_idempotent :: proc(t: ^testing.T) {
 	}
 
 	config := wayu.PluginConfigJSON{
-		version = "1.0",
+		version = strings.clone("1.0"),
 		last_updated = wayu.get_iso8601_timestamp(),
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
@@ -753,7 +753,7 @@ test_plugin_enable_toggles_state :: proc(t: ^testing.T) {
 	}
 
 	config := wayu.PluginConfigJSON{
-		version = "1.0",
+		version = strings.clone("1.0"),
 		last_updated = wayu.get_iso8601_timestamp(),
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
@@ -821,7 +821,7 @@ test_plugin_disable_toggles_state :: proc(t: ^testing.T) {
 	}
 
 	config := wayu.PluginConfigJSON{
-		version = "1.0",
+		version = strings.clone("1.0"),
 		last_updated = wayu.get_iso8601_timestamp(),
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
@@ -891,7 +891,7 @@ test_generate_plugins_file_skips_disabled :: proc(t: ^testing.T) {
 
 	// Create test config with mixed enabled/disabled plugins
 	config := wayu.PluginConfigJSON{
-		version = "1.0",
+		version = strings.clone("1.0"),
 		last_updated = wayu.get_iso8601_timestamp(),
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
@@ -972,7 +972,12 @@ test_find_plugin_json_found :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	plugin := wayu.PluginMetadata{
 		name = "test-plugin",
@@ -994,7 +999,12 @@ test_find_plugin_json_not_found :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	_, ok := wayu.find_plugin_json(&config, "nonexistent")
 	testing.expect(t, !ok, "Plugin should not be found")
@@ -1007,7 +1017,12 @@ test_validate_dependencies_all_satisfied :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	// Add dependency plugins
 	dep1 := wayu.PluginMetadata{ name = "dep1", dependencies = make([dynamic]string) }
@@ -1025,7 +1040,12 @@ test_validate_dependencies_all_satisfied :: proc(t: ^testing.T) {
 	append(&config.plugins, plugin)
 
 	missing := wayu.validate_plugin_dependencies(&config.plugins[2], &config)
-	defer delete(missing)
+	defer {
+		for m in missing {
+			delete(m)
+		}
+		delete(missing)
+	}
 
 	testing.expect(t, len(missing) == 0, "All dependencies should be satisfied")
 }
@@ -1037,7 +1057,12 @@ test_validate_dependencies_some_missing :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	// Add only one dependency
 	dep1 := wayu.PluginMetadata{ name = "dep1", dependencies = make([dynamic]string) }
@@ -1053,7 +1078,12 @@ test_validate_dependencies_some_missing :: proc(t: ^testing.T) {
 	append(&config.plugins, plugin)
 
 	missing := wayu.validate_plugin_dependencies(&config.plugins[1], &config)
-	defer delete(missing)
+	defer {
+		for m in missing {
+			delete(m)
+		}
+		delete(missing)
+	}
 
 	testing.expect(t, len(missing) == 1, "One dependency should be missing")
 	testing.expect(t, missing[0] == "dep2", "dep2 should be missing")
@@ -1066,7 +1096,12 @@ test_validate_dependencies_empty :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	plugin := wayu.PluginMetadata{
 		name = "plugin",
@@ -1087,7 +1122,12 @@ test_check_plugin_dependents_none :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	plugin := wayu.PluginMetadata{
 		name = "plugin",
@@ -1096,7 +1136,12 @@ test_check_plugin_dependents_none :: proc(t: ^testing.T) {
 	append(&config.plugins, plugin)
 
 	dependents := wayu.check_plugin_dependents("plugin", &config)
-	defer delete(dependents)
+	defer {
+		for dep in dependents {
+			delete(dep)
+		}
+		delete(dependents)
+	}
 
 	testing.expect(t, len(dependents) == 0, "No plugins depend on this one")
 }
@@ -1108,7 +1153,12 @@ test_check_plugin_dependents_multiple :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	// Add base plugin
 	base := wayu.PluginMetadata{ name = "base", dependencies = make([dynamic]string) }
@@ -1130,7 +1180,12 @@ test_check_plugin_dependents_multiple :: proc(t: ^testing.T) {
 	append(&config.plugins, plugin2)
 
 	dependents := wayu.check_plugin_dependents("base", &config)
-	defer delete(dependents)
+	defer {
+		for dep in dependents {
+			delete(dep)
+		}
+		delete(dependents)
+	}
 
 	testing.expect(t, len(dependents) == 2, "Two plugins depend on base")
 }
@@ -1153,7 +1208,12 @@ test_detect_circular_dependencies_no_cycle :: proc(t: ^testing.T) {
 	graph["C"] = make([dynamic]string)
 
 	result := wayu.detect_circular_dependencies(graph)
-	defer if result.has_cycle do delete(result.cycle_path)
+	defer if result.has_cycle {
+		for c in result.cycle_path {
+			delete(c)
+		}
+		delete(result.cycle_path)
+	}
 
 	testing.expect(t, !result.has_cycle, "No cycle should be detected")
 }
@@ -1175,7 +1235,12 @@ test_detect_circular_dependencies_simple_cycle :: proc(t: ^testing.T) {
 	append(&graph["B"], "A")
 
 	result := wayu.detect_circular_dependencies(graph)
-	defer if result.has_cycle do delete(result.cycle_path)
+	defer if result.has_cycle {
+		for c in result.cycle_path {
+			delete(c)
+		}
+		delete(result.cycle_path)
+	}
 
 	testing.expect(t, result.has_cycle, "Cycle should be detected")
 	testing.expect(t, len(result.cycle_path) == 3, "Cycle path should be A → B → A")
@@ -1202,7 +1267,12 @@ test_detect_circular_dependencies_complex_cycle :: proc(t: ^testing.T) {
 	append(&graph["D"], "B")
 
 	result := wayu.detect_circular_dependencies(graph)
-	defer if result.has_cycle do delete(result.cycle_path)
+	defer if result.has_cycle {
+		for c in result.cycle_path {
+			delete(c)
+		}
+		delete(result.cycle_path)
+	}
 
 	testing.expect(t, result.has_cycle, "Cycle should be detected")
 	testing.expect(t, len(result.cycle_path) >= 3, "Cycle path should contain at least 3 nodes")
@@ -1223,7 +1293,12 @@ test_detect_circular_dependencies_self_loop :: proc(t: ^testing.T) {
 	append(&graph["A"], "A")
 
 	result := wayu.detect_circular_dependencies(graph)
-	defer if result.has_cycle do delete(result.cycle_path)
+	defer if result.has_cycle {
+		for c in result.cycle_path {
+			delete(c)
+		}
+		delete(result.cycle_path)
+	}
 
 	testing.expect(t, result.has_cycle, "Self-loop should be detected as cycle")
 	testing.expect(t, len(result.cycle_path) == 2, "Cycle path should be A → A")
@@ -1240,7 +1315,12 @@ test_reconstruct_cycle_path :: proc(t: ^testing.T) {
 	parent["A"] = "C"  // Cycle closes here
 
 	cycle := wayu.reconstruct_cycle("A", "C", parent)
-	defer delete(cycle)
+	defer {
+		for c in cycle {
+			delete(c)
+		}
+		delete(cycle)
+	}
 
 	testing.expect(t, len(cycle) >= 3, "Cycle should have at least 3 nodes")
 	testing.expect(t, cycle[0] == "A", "Cycle should start with A")
@@ -1254,7 +1334,12 @@ test_build_dependency_graph :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	plugin1 := wayu.PluginMetadata{
 		name = "A",
@@ -1274,6 +1359,9 @@ test_build_dependency_graph :: proc(t: ^testing.T) {
 	graph := wayu.build_dependency_graph(&config)
 	defer {
 		for _, deps in graph {
+			for dep in deps {
+				delete(dep)
+			}
 			delete(deps)
 		}
 		delete(graph)
@@ -1295,7 +1383,12 @@ test_set_plugin_priority :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	plugin := wayu.PluginMetadata{
 		name = "test-plugin",
@@ -1324,7 +1417,12 @@ test_priority_ordering_no_deps :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	// Add plugins in reverse priority order
 	plugin_c := wayu.PluginMetadata{
@@ -1378,7 +1476,12 @@ test_dependencies_override_priority :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	// Plugin A has high priority (10) but depends on Plugin B
 	plugin_a := wayu.PluginMetadata{
@@ -1425,7 +1528,12 @@ test_priority_with_mixed_dependencies :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	// Plugin A: priority 50, depends on B
 	plugin_a := wayu.PluginMetadata{
@@ -1494,7 +1602,12 @@ test_disabled_plugins_excluded_from_order :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	// Enabled plugin
 	plugin_a := wayu.PluginMetadata{
@@ -1559,7 +1672,12 @@ test_same_priority_preserves_dependency_order :: proc(t: ^testing.T) {
 		last_updated = "2025-10-27T00:00:00Z",
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
-	defer delete(config.plugins)
+	defer {
+		for &p in config.plugins {
+			delete(p.dependencies)
+		}
+		delete(config.plugins)
+	}
 
 	// All plugins have same priority (100)
 	// Plugin A depends on B, B depends on C
@@ -1614,17 +1732,17 @@ test_conflict_detection_env_vars :: proc(t: ^testing.T) {
 	// Test detecting environment variable conflicts between two enabled plugins
 
 	config := wayu.PluginConfigJSON{
-		version = "1.0",
-		last_updated = "2025-10-27T00:00:00Z",
+		version = strings.clone("1.0"),
+		last_updated = strings.clone("2025-10-27T00:00:00Z"),
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
 	defer wayu.cleanup_plugin_config_json(&config)
 
 	// Plugin A defines MY_VAR
 	plugin_a := wayu.PluginMetadata{
-		name = "plugin-a",
+		name = strings.clone("plugin-a"),
 		enabled = true,
-		installed_path = "/tmp/nonexistent/plugin-a",  // Non-existent path
+		installed_path = strings.clone("/tmp/nonexistent/plugin-a"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
 		config = make(map[string]string),
@@ -1642,9 +1760,9 @@ test_conflict_detection_env_vars :: proc(t: ^testing.T) {
 
 	// Plugin B also defines MY_VAR (conflict!)
 	plugin_b := wayu.PluginMetadata{
-		name = "plugin-b",
+		name = strings.clone("plugin-b"),
 		enabled = true,
-		installed_path = "/tmp/nonexistent/plugin-b",  // Non-existent path
+		installed_path = strings.clone("/tmp/nonexistent/plugin-b"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
 		config = make(map[string]string),
@@ -1686,17 +1804,17 @@ test_conflict_detection_functions :: proc(t: ^testing.T) {
 	// Test detecting function name conflicts between two enabled plugins
 
 	config := wayu.PluginConfigJSON{
-		version = "1.0",
-		last_updated = "2025-10-27T00:00:00Z",
+		version = strings.clone("1.0"),
+		last_updated = strings.clone("2025-10-27T00:00:00Z"),
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
 	defer wayu.cleanup_plugin_config_json(&config)
 
 	// Plugin A defines my_function
 	plugin_a := wayu.PluginMetadata{
-		name = "plugin-a",
+		name = strings.clone("plugin-a"),
 		enabled = true,
-		installed_path = "/tmp/nonexistent/plugin-a",  // Non-existent path
+		installed_path = strings.clone("/tmp/nonexistent/plugin-a"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
 		config = make(map[string]string),
@@ -1714,9 +1832,9 @@ test_conflict_detection_functions :: proc(t: ^testing.T) {
 
 	// Plugin B also defines my_function (conflict!)
 	plugin_b := wayu.PluginMetadata{
-		name = "plugin-b",
+		name = strings.clone("plugin-b"),
 		enabled = true,
-		installed_path = "/tmp/nonexistent/plugin-b",  // Non-existent path
+		installed_path = strings.clone("/tmp/nonexistent/plugin-b"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
 		config = make(map[string]string),
@@ -1758,17 +1876,17 @@ test_conflict_detection_aliases :: proc(t: ^testing.T) {
 	// Test detecting alias conflicts between two enabled plugins
 
 	config := wayu.PluginConfigJSON{
-		version = "1.0",
-		last_updated = "2025-10-27T00:00:00Z",
+		version = strings.clone("1.0"),
+		last_updated = strings.clone("2025-10-27T00:00:00Z"),
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
 	defer wayu.cleanup_plugin_config_json(&config)
 
 	// Plugin A defines ll alias
 	plugin_a := wayu.PluginMetadata{
-		name = "plugin-a",
+		name = strings.clone("plugin-a"),
 		enabled = true,
-		installed_path = "/tmp/nonexistent/plugin-a",  // Non-existent path
+		installed_path = strings.clone("/tmp/nonexistent/plugin-a"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
 		config = make(map[string]string),
@@ -1786,9 +1904,9 @@ test_conflict_detection_aliases :: proc(t: ^testing.T) {
 
 	// Plugin B also defines ll alias (conflict!)
 	plugin_b := wayu.PluginMetadata{
-		name = "plugin-b",
+		name = strings.clone("plugin-b"),
 		enabled = true,
-		installed_path = "/tmp/nonexistent/plugin-b",  // Non-existent path
+		installed_path = strings.clone("/tmp/nonexistent/plugin-b"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
 		config = make(map[string]string),
@@ -1830,17 +1948,17 @@ test_no_conflicts_when_no_overlap :: proc(t: ^testing.T) {
 	// Test that plugins with different declarations don't trigger conflicts
 
 	config := wayu.PluginConfigJSON{
-		version = "1.0",
-		last_updated = "2025-10-27T00:00:00Z",
+		version = strings.clone("1.0"),
+		last_updated = strings.clone("2025-10-27T00:00:00Z"),
 		plugins = make([dynamic]wayu.PluginMetadata),
 	}
 	defer wayu.cleanup_plugin_config_json(&config)
 
 	// Plugin A defines its own unique identifiers
 	plugin_a := wayu.PluginMetadata{
-		name = "plugin-a",
+		name = strings.clone("plugin-a"),
 		enabled = true,
-		installed_path = "/tmp/nonexistent/plugin-a",  // Non-existent path
+		installed_path = strings.clone("/tmp/nonexistent/plugin-a"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
 		config = make(map[string]string),
@@ -1859,9 +1977,9 @@ test_no_conflicts_when_no_overlap :: proc(t: ^testing.T) {
 
 	// Plugin B defines completely different identifiers (no conflicts!)
 	plugin_b := wayu.PluginMetadata{
-		name = "plugin-b",
+		name = strings.clone("plugin-b"),
 		enabled = true,
-		installed_path = "/tmp/nonexistent/plugin-b",  // Non-existent path
+		installed_path = strings.clone("/tmp/nonexistent/plugin-b"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
 		config = make(map[string]string),
@@ -1880,9 +1998,9 @@ test_no_conflicts_when_no_overlap :: proc(t: ^testing.T) {
 
 	// Plugin C is disabled (should be ignored)
 	plugin_c := wayu.PluginMetadata{
-		name = "plugin-c",
+		name = strings.clone("plugin-c"),
 		enabled = false,  // Disabled
-		installed_path = "/tmp/nonexistent/plugin-c",  // Non-existent path
+		installed_path = strings.clone("/tmp/nonexistent/plugin-c"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
 		config = make(map[string]string),

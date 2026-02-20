@@ -1,5 +1,6 @@
 package wayu
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:strings"
@@ -9,7 +10,7 @@ import "core:mem"
 import tui "tui"
 
 // Semantic versioning - update with each release
-VERSION :: "2.2.0"
+VERSION :: "3.0.0"
 
 HOME : string
 WAYU_CONFIG : string
@@ -90,21 +91,28 @@ init_shell_globals :: proc() {
 		return
 	}
 
+	// Use the heap allocator for globals so they survive the test runner's
+	// per-test tracking allocator cleanup. Without this, the first test to
+	// call init_shell_globals allocates via the tracking allocator; when that
+	// test finishes, the tracker frees the memory, leaving WAYU_CONFIG etc.
+	// as dangling pointers for all subsequent tests.
+	heap := runtime.heap_allocator()
+
 	// Initialize HOME and WAYU_CONFIG
-	// NOTE: HOME is intentionally not freed - it's a global that lives for the
-	// program's lifetime and is accessed throughout the codebase. This is by design.
-	HOME = os.get_env("HOME", context.allocator)
-	WAYU_CONFIG = fmt.aprintf("%s/.config/wayu", HOME)
+	// NOTE: These are intentionally not freed - they're globals that live for
+	// the program's lifetime and are accessed throughout the codebase.
+	HOME = os.get_env("HOME", heap)
+	WAYU_CONFIG = fmt.aprintf("%s/.config/wayu", HOME, allocator = heap)
 
 	// Detect shell
 	DETECTED_SHELL = detect_shell()
 
 	SHELL_EXT = get_shell_extension(DETECTED_SHELL)
-	PATH_FILE = fmt.aprintf("path.%s", SHELL_EXT)
-	ALIAS_FILE = fmt.aprintf("aliases.%s", SHELL_EXT)
-	CONSTANTS_FILE = fmt.aprintf("constants.%s", SHELL_EXT)
-	INIT_FILE = fmt.aprintf("init.%s", SHELL_EXT)
-	TOOLS_FILE = fmt.aprintf("tools.%s", SHELL_EXT)
+	PATH_FILE = fmt.aprintf("path.%s", SHELL_EXT, allocator = heap)
+	ALIAS_FILE = fmt.aprintf("aliases.%s", SHELL_EXT, allocator = heap)
+	CONSTANTS_FILE = fmt.aprintf("constants.%s", SHELL_EXT, allocator = heap)
+	INIT_FILE = fmt.aprintf("init.%s", SHELL_EXT, allocator = heap)
+	TOOLS_FILE = fmt.aprintf("tools.%s", SHELL_EXT, allocator = heap)
 
 	_GLOBALS_INITIALIZED = true
 }

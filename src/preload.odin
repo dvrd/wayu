@@ -10,6 +10,7 @@ PATH_TEMPLATE :: `#!/usr/bin/env zsh
 
 # Centralized PATH registry
 # Managed by wayu - Add entries below
+# Note: add_to_path() calls from v2.x are replaced by WAYU_PATHS array entries
 WAYU_PATHS=(
 )
 

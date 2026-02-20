@@ -301,6 +301,7 @@ apply_text_styles :: proc(s: Style, text: string, width: int) -> string {
 
 	// Align and write the text
 	aligned_text := align_text(text, width, s.align_horizontal)
+	defer delete(aligned_text)
 	strings.write_string(&builder, aligned_text)
 
 	// Reset all styles
@@ -527,12 +528,19 @@ truncate_to_width :: proc(text: string, max_width: int) -> string {
 }
 
 // Align text within a given width
+// NOTE: Always returns an ALLOCATED string — caller must delete()
 align_text :: proc(text: string, width: int, alignment: Alignment) -> string {
 	text_width := visible_width(text)
 
 	// If text is already wider than target, truncate to fit
 	if text_width >= width {
-		return truncate_to_width(text, width)
+		truncated := truncate_to_width(text, width)
+		// truncate_to_width returns the original string (no alloc) when it fits,
+		// or a cloned string when it truncates. We need consistent ownership.
+		if raw_data(truncated) == raw_data(text) {
+			return strings.clone(text)
+		}
+		return truncated
 	}
 
 	padding_needed := width - text_width
@@ -540,24 +548,34 @@ align_text :: proc(text: string, width: int, alignment: Alignment) -> string {
 	#partial switch alignment {
 	case .Left:
 		// Add padding on the right
-		return fmt.aprintf("%s%s", text, strings.repeat(" ", padding_needed))
+		pad := strings.repeat(" ", padding_needed)
+		defer delete(pad)
+		return fmt.aprintf("%s%s", text, pad)
 
 	case .Center:
 		// Add padding on both sides
 		left_pad := padding_needed / 2
 		right_pad := padding_needed - left_pad
+		left_pad_str := strings.repeat(" ", left_pad)
+		defer delete(left_pad_str)
+		right_pad_str := strings.repeat(" ", right_pad)
+		defer delete(right_pad_str)
 		return fmt.aprintf("%s%s%s",
-			strings.repeat(" ", left_pad),
+			left_pad_str,
 			text,
-			strings.repeat(" ", right_pad))
+			right_pad_str)
 
 	case .Right:
 		// Add padding on the left
-		return fmt.aprintf("%s%s", strings.repeat(" ", padding_needed), text)
+		pad := strings.repeat(" ", padding_needed)
+		defer delete(pad)
+		return fmt.aprintf("%s%s", pad, text)
 
 	case:
 		// Default to left alignment
-		return fmt.aprintf("%s%s", text, strings.repeat(" ", padding_needed))
+		pad := strings.repeat(" ", padding_needed)
+		defer delete(pad)
+		return fmt.aprintf("%s%s", text, pad)
 	}
 }
 

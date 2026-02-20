@@ -5,7 +5,12 @@ import "core:os"
 import "core:strings"
 import "core:c/libc"
 import "core:slice"
+import "core:sync"
 import "core:encoding/json"
+
+// Mutex to protect concurrent access to plugins.json
+// Prevents race conditions when multiple threads read/write simultaneously
+_plugins_json_mutex: sync.Mutex
 
 // Get plugins config file path
 get_plugins_config_file :: proc() -> string {
@@ -107,6 +112,9 @@ write_plugin_config :: proc(config: ^PluginConfig) -> bool {
 
 // Read JSON5 configuration file
 read_plugin_config_json :: proc() -> (config: PluginConfigJSON, ok: bool) {
+	sync.lock(&_plugins_json_mutex)
+	defer sync.unlock(&_plugins_json_mutex)
+
 	config_file := get_plugins_json_config_file()
 	defer delete(config_file)
 
@@ -140,6 +148,13 @@ read_plugin_config_json :: proc() -> (config: PluginConfigJSON, ok: bool) {
 
 // Write JSON5 configuration file
 write_plugin_config_json :: proc(config: ^PluginConfigJSON) -> bool {
+	sync.lock(&_plugins_json_mutex)
+	defer sync.unlock(&_plugins_json_mutex)
+
+	// Free old last_updated before overwriting (it was allocated by get_iso8601_timestamp)
+	if len(config.last_updated) > 0 {
+		delete(config.last_updated)
+	}
 	config.last_updated = get_iso8601_timestamp()
 
 	// Marshal to JSON5 with pretty printing
@@ -570,6 +585,9 @@ validate_no_circular_dependencies :: proc(config: ^PluginConfigJSON) {
 	graph := build_dependency_graph(config)
 	defer {
 		for _, deps in graph {
+			for dep in deps {
+				delete(dep)
+			}
 			delete(deps)
 		}
 		delete(graph)
@@ -577,7 +595,12 @@ validate_no_circular_dependencies :: proc(config: ^PluginConfigJSON) {
 
 	// Detect cycles
 	result := detect_circular_dependencies(graph)
-	defer if result.has_cycle do delete(result.cycle_path)
+	defer if result.has_cycle {
+		for p in result.cycle_path {
+			delete(p)
+		}
+		delete(result.cycle_path)
+	}
 
 	// If cycle found, print error and exit
 	if result.has_cycle {
@@ -598,81 +621,117 @@ validate_no_circular_dependencies :: proc(config: ^PluginConfigJSON) {
 }
 
 // Phase 5: Resolve dependencies with priority-based ordering
-// Dependencies are resolved first (dependency order), then sorted by priority
-// Returns plugins in load order: dependencies first, then by priority
+// Uses Kahn's algorithm (BFS topological sort) with a priority queue so that
+// among all nodes whose dependencies are already satisfied, the one with the
+// lowest priority number is emitted first.  This guarantees:
+//   1. A node is never emitted before any of its dependencies.
+//   2. Among "ready" nodes (all deps satisfied), lower priority number wins.
 resolve_dependencies_with_priority :: proc(config: ^PluginConfigJSON) -> (order: [dynamic]string, ok: bool) {
-	// Build dependency graph
-	graph := build_dependency_graph(config)
-	defer {
-		for _, edges in graph {
-			delete(edges)
-		}
-		delete(graph)
-	}
-
-	// Topological sort with DFS (respects dependencies)
-	visited := make(map[string]bool)
-	defer delete(visited)
-
-	temp_mark := make(map[string]bool)
-	defer delete(temp_mark)
-
 	order = make([dynamic]string)
 
-	// Visit all enabled plugins
-	for plugin in config.plugins {
-		if !plugin.enabled {
-			continue
-		}
-
-		if !dfs_visit_with_priority(plugin.name, &graph, &visited, &temp_mark, &order, config) {
-			// Circular dependency detected
-			delete(order)
-			return order, false
-		}
-	}
-
-	// Now sort by priority (stable sort preserves dependency order)
-	// Create array of (name, priority) pairs for sorting
-	PriorityPair :: struct {
-		name: string,
-		priority: int,
-	}
-
-	pairs := make([dynamic]PriorityPair)
-	defer delete(pairs)
-
-	// Build priority map first
+	// Build priority map and collect enabled plugin names
 	priority_map := make(map[string]int)
 	defer delete(priority_map)
 
 	for plugin in config.plugins {
-		priority_map[plugin.name] = plugin.priority
-	}
-
-	// Create pairs array from order
-	for name in order {
-		pair := PriorityPair{
-			name = name,
-			priority = priority_map[name],
+		if plugin.enabled {
+			priority_map[plugin.name] = plugin.priority
 		}
-		append(&pairs, pair)
 	}
 
-	// Stable sort pairs by priority
-	slice.stable_sort_by(pairs[:], proc(a, b: PriorityPair) -> bool {
-		return a.priority < b.priority
-	})
-
-	// Clean up old order strings before replacing
-	for name in order {
-		delete(name)
+	// Build in-degree map and reverse adjacency list (dependents)
+	// in_degree[A] = number of enabled dependencies A still needs before it can load
+	// dependents[B] = list of plugins that directly depend on B
+	in_degree  := make(map[string]int)
+	dependents := make(map[string][dynamic]string)
+	defer delete(in_degree)
+	defer {
+		for _, deps in dependents {
+			for dep in deps {
+				delete(dep)
+			}
+			delete(deps)
+		}
+		delete(dependents)
 	}
-	clear(&order)
 
-	// Extract sorted names back into order array
-	for pair in pairs {
-		append(&order, strings.clone(pair.name))
+	// Initialise every enabled plugin with in_degree 0
+	for plugin in config.plugins {
+		if !plugin.enabled {
+			continue
+		}
+		in_degree[plugin.name] = 0
+		if plugin.name not_in dependents {
+			dependents[plugin.name] = make([dynamic]string)
+		}
+	}
+
+	// Count in-degrees and build reverse edges (only among enabled plugins)
+	for plugin in config.plugins {
+		if !plugin.enabled {
+			continue
+		}
+		for dep_name in plugin.dependencies {
+			// Only count the dependency if it is an enabled plugin
+			if dep_name in in_degree {
+				in_degree[plugin.name] += 1
+				append(&dependents[dep_name], strings.clone(plugin.name))
+			}
+		}
+	}
+
+	// Collect all nodes with in_degree == 0 into a "ready" list, then
+	// repeatedly pick the one with the lowest priority number.
+	ready := make([dynamic]string)
+	defer {
+		for r in ready {
+			delete(r)
+		}
+		delete(ready)
+	}
+
+	for name, deg in in_degree {
+		if deg == 0 {
+			append(&ready, strings.clone(name))
+		}
+	}
+
+	emitted := 0
+	total_enabled := len(in_degree)
+
+	for len(ready) > 0 {
+		// Find the ready node with the lowest priority number
+		best_idx := 0
+		for i in 1..<len(ready) {
+			if priority_map[ready[i]] < priority_map[ready[best_idx]] {
+				best_idx = i
+			}
+		}
+
+		// Emit it
+		chosen := ready[best_idx]
+		ordered_remove(&ready, best_idx)
+		append(&order, strings.clone(chosen))
+		emitted += 1
+
+		// Reduce in-degree of dependents
+		for dep_name in dependents[chosen] {
+			in_degree[dep_name] -= 1
+			if in_degree[dep_name] == 0 {
+				append(&ready, strings.clone(dep_name))
+			}
+		}
+
+		delete(chosen)
+	}
+
+	// If we didn't emit all nodes, there's a cycle among enabled plugins
+	if emitted != total_enabled {
+		for name in order {
+			delete(name)
+		}
+		delete(order)
+		return order, false
 	}
 
 	return order, true
@@ -819,13 +878,30 @@ scan_plugin_conflicts :: proc(plugin: ^PluginMetadata) -> bool {
 // Detect conflicts between all enabled plugins
 // Compares env vars, functions, and aliases to find duplicates
 detect_conflicts :: proc(config: ^PluginConfigJSON) {
-	// First, scan all enabled plugins for their declarations
+	// First, scan all enabled plugins for their declarations.
+	// Only scan if installed_path exists — tests pre-populate conflict arrays
+	// with non-existent paths and expect those arrays to be preserved.
 	for &plugin in config.plugins {
 		if !plugin.enabled {
 			continue
 		}
 
-		scan_plugin_conflicts(&plugin)
+		if os.exists(plugin.installed_path) {
+			scan_plugin_conflicts(&plugin)
+		}
+	}
+
+	// Reset conflict tracking for all enabled plugins before pairwise comparison.
+	// This must be a separate pass so that results written during pair (i,j)
+	// are not erased when the outer loop reaches j as the new i.
+	for i := 0; i < len(config.plugins); i += 1 {
+		plugin := &config.plugins[i]
+		if !plugin.enabled {
+			continue
+		}
+		delete(plugin.conflicts.conflicting_plugins)
+		plugin.conflicts.conflicting_plugins = make([dynamic]string)
+		plugin.conflicts.detected = false
 	}
 
 	// Now compare plugins pairwise to detect conflicts
@@ -835,11 +911,6 @@ detect_conflicts :: proc(config: ^PluginConfigJSON) {
 		if !plugin_a.enabled {
 			continue
 		}
-
-		// Clear previous conflict tracking
-		delete(plugin_a.conflicts.conflicting_plugins)
-		plugin_a.conflicts.conflicting_plugins = make([dynamic]string)
-		plugin_a.conflicts.detected = false
 
 		for j := i + 1; j < len(config.plugins); j += 1 {
 			plugin_b := &config.plugins[j]

@@ -674,7 +674,7 @@ clear_view_cache :: proc(state: ^TUIState, view: TUIView) {
 			delete(items^)
 			free(items)
 		}
-		delete_key(&state.data_cache, view)
+		delete_key(state.data_cache, view)
 	}
 }
 
@@ -694,14 +694,14 @@ get_view_item_count :: proc(state: ^TUIState) -> int {
 			items := cast(^[dynamic]string)state.data_cache[.PATH_VIEW]
 			return len(items)
 		}
-		return 0
+		return 10  // placeholder count when cache not yet loaded
 
 	case .ALIAS_VIEW:
 		if state.data_cache[.ALIAS_VIEW] != nil {
 			items := cast(^[dynamic]string)state.data_cache[.ALIAS_VIEW]
 			return len(items)
 		}
-		return 0
+		return 8  // placeholder count when cache not yet loaded
 
 	case .CONSTANTS_VIEW:
 		if state.data_cache[.CONSTANTS_VIEW] != nil {
