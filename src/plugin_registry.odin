@@ -120,7 +120,7 @@ read_plugin_config_json :: proc() -> (config: PluginConfigJSON, ok: bool) {
 
 	if !os.exists(config_file) {
 		// Return empty config on first run
-		config.version = "1.0"
+		config.version = strings.clone("1.0")
 		config.last_updated = get_iso8601_timestamp()
 		config.plugins = make([dynamic]PluginMetadata)
 		return config, true

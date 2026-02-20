@@ -15,7 +15,7 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 	config, ok := read_plugin_config_json()
 	if !ok {
 		// Fall back to empty config if read fails
-		config.version = "1.0"
+		config.version = strings.clone("1.0")
 		config.last_updated = get_iso8601_timestamp()
 		config.plugins = make([dynamic]PluginMetadata)
 	}
