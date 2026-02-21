@@ -24,6 +24,15 @@ BIN_DIR     :: "bin"
 BINARY_NAME :: "wayu"
 TEST_DIR    :: "tests/unit"
 
+// Computed paths — avoids repeating fmt.tprintf("%s/%s", ...) everywhere.
+bin_path :: proc() -> string {
+	return fmt.tprintf("%s/%s", BIN_DIR, BINARY_NAME)
+}
+
+debug_path :: proc() -> string {
+	return fmt.tprintf("%s/%s_debug", BIN_DIR, BINARY_NAME)
+}
+
 main :: proc() {
 	bld.go_rebuild_urself("build")
 
@@ -61,14 +70,14 @@ do_build :: proc() {
 	bld.mkdir_if_not_exists(BIN_DIR)
 	ok := bld.build({
 		package_path = SRC_DIR,
-		out          = fmt.tprintf("%s/%s", BIN_DIR, BINARY_NAME),
+		out          = bin_path(),
 		opt          = .Speed,
 	})
 	if !ok {
 		bld.log_error("Build failed")
 		os.exit(1)
 	}
-	bld.log_info("Built %s/%s", BIN_DIR, BINARY_NAME)
+	bld.log_info("Built %s", bin_path())
 }
 
 do_debug :: proc() {
@@ -76,14 +85,14 @@ do_debug :: proc() {
 	bld.mkdir_if_not_exists(BIN_DIR)
 	ok := bld.build({
 		package_path = SRC_DIR,
-		out          = fmt.tprintf("%s/%s_debug", BIN_DIR, BINARY_NAME),
+		out          = debug_path(),
 		debug        = true,
 	})
 	if !ok {
 		bld.log_error("Debug build failed")
 		os.exit(1)
 	}
-	bld.log_info("Built %s/%s_debug", BIN_DIR, BINARY_NAME)
+	bld.log_info("Built %s", debug_path())
 }
 
 do_test :: proc() {
@@ -125,26 +134,25 @@ do_clean :: proc() {
 do_install :: proc() {
 	do_build()
 
-	bld.log_info("Installing to /usr/local/bin/%s...", BINARY_NAME)
-	src_path := fmt.tprintf("%s/%s", BIN_DIR, BINARY_NAME)
-	ok := bld.copy_file(src_path, fmt.tprintf("/usr/local/bin/%s", BINARY_NAME))
+	install_path := fmt.tprintf("/usr/local/bin/%s", BINARY_NAME)
+	bld.log_info("Installing to %s...", install_path)
+
+	ok := bld.copy_file(bin_path(), install_path)
 	if !ok {
 		bld.log_error("Failed to copy binary to /usr/local/bin/")
 		os.exit(1)
 	}
 
-	// Make executable
-	cmd := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&cmd, "chmod", "+x", fmt.tprintf("/usr/local/bin/%s", BINARY_NAME))
-	bld.cmd_run(&cmd)
+	// copy_file doesn't preserve permissions — make executable.
+	chmod := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&chmod, "chmod", "+x", install_path)
+	bld.cmd_run(&chmod)
 
-	// Run init
+	// Run the already-built binary instead of recompiling from source.
 	bld.log_info("Running %s init...", BINARY_NAME)
-	init_ok := bld.run(
-		{package_path = SRC_DIR, out = fmt.tprintf("%s/%s", BIN_DIR, BINARY_NAME), opt = .Speed},
-		"init",
-	)
-	if !init_ok {
+	init_cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&init_cmd, bin_path(), "init")
+	if !bld.cmd_run(&init_cmd) {
 		bld.log_error("Init failed")
 		os.exit(1)
 	}
@@ -155,17 +163,16 @@ do_install :: proc() {
 do_dev :: proc() {
 	do_debug()
 
-	bld.log_info("Running %s_debug...", BINARY_NAME)
-	args: [dynamic]string
-	defer delete(args)
+	bld.log_info("Running %s...", debug_path())
+
+	// Run the already-built debug binary instead of recompiling.
+	// Pass remaining args (os.args[2:]) directly — no dynamic array needed.
+	cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&cmd, debug_path())
 	for i := 2; i < len(os.args); i += 1 {
-		append(&args, os.args[i])
+		bld.cmd_append(&cmd, os.args[i])
 	}
-	ok := bld.run(
-		{package_path = SRC_DIR, out = fmt.tprintf("%s/%s_debug", BIN_DIR, BINARY_NAME), debug = true},
-		..args[:],
-	)
-	if !ok {
+	if !bld.cmd_run(&cmd) {
 		os.exit(1)
 	}
 }
