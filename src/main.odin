@@ -272,13 +272,15 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		i += 1
 	}
 
-	// Handle component test mode early - all filtered args become component args
+	// Assign global flags once here — every return path below inherits them.
+	parsed.tui              = tui_flag
+	parsed.component_test   = component_test_flag
+	parsed.component_name   = component_name_str
+	parsed.component_snapshot = snapshot_flag
+	parsed.component_verify = verify_flag
+
+	// Handle component test mode early - all filtered args become component args.
 	if component_test_flag {
-		parsed.component_test = true
-		parsed.component_name = component_name_str
-		parsed.component_snapshot = snapshot_flag
-		parsed.component_verify = verify_flag
-		// All remaining args are component arguments
 		if len(filtered_args) > 0 {
 			remaining_args := make([]string, len(filtered_args))
 			copy(remaining_args, filtered_args[:])
@@ -287,135 +289,56 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		return parsed
 	}
 
-	// Use filtered args for parsing
 	if len(filtered_args) == 0 {
 		parsed.command = .HELP
-		parsed.tui = tui_flag
-		parsed.component_test = component_test_flag
-		parsed.component_name = component_name_str
-		parsed.component_snapshot = snapshot_flag
-		parsed.component_verify = verify_flag
 		return parsed
 	}
 
-	// Parse command
+	// Parse command.
 	switch filtered_args[0] {
-	case "path":
-		parsed.command = .PATH
-	case "alias":
-		parsed.command = .ALIAS
-	case "constants":
-		parsed.command = .CONSTANTS
-	case "completions":
-		parsed.command = .COMPLETIONS
-	case "backup":
-		parsed.command = .BACKUP
-	case "plugin":
-		parsed.command = .PLUGIN
-	case "init":
-		parsed.command = .INIT
-		parsed.tui = tui_flag
-		parsed.component_test = component_test_flag
-		parsed.component_name = component_name_str
-		parsed.component_snapshot = snapshot_flag
-		parsed.component_verify = verify_flag
-		return parsed
-	case "migrate":
-		parsed.command = .MIGRATE
-		parsed.tui = tui_flag
-		parsed.component_test = component_test_flag
-		parsed.component_name = component_name_str
-		parsed.component_snapshot = snapshot_flag
-		parsed.component_verify = verify_flag
-		return parsed
-	case "version", "-v", "--version":
-		parsed.command = .VERSION
-		parsed.tui = tui_flag
-		parsed.component_test = component_test_flag
-		parsed.component_name = component_name_str
-		parsed.component_snapshot = snapshot_flag
-		parsed.component_verify = verify_flag
-		return parsed
-	case "help", "-h", "--help":
-		parsed.command = .HELP
-		parsed.tui = tui_flag
-		parsed.component_test = component_test_flag
-		parsed.component_name = component_name_str
-		parsed.component_snapshot = snapshot_flag
-		parsed.component_verify = verify_flag
-		return parsed
-	case:
-		parsed.command = .UNKNOWN
-		parsed.tui = tui_flag
-		parsed.component_test = component_test_flag
-		parsed.component_name = component_name_str
-		parsed.component_snapshot = snapshot_flag
-		parsed.component_verify = verify_flag
-		return parsed
+	case "path":       parsed.command = .PATH
+	case "alias":      parsed.command = .ALIAS
+	case "constants":  parsed.command = .CONSTANTS
+	case "completions": parsed.command = .COMPLETIONS
+	case "backup":     parsed.command = .BACKUP
+	case "plugin":     parsed.command = .PLUGIN
+	case "init":       parsed.command = .INIT;    return parsed
+	case "migrate":    parsed.command = .MIGRATE; return parsed
+	case "version", "-v", "--version": parsed.command = .VERSION; return parsed
+	case "help", "-h", "--help":       parsed.command = .HELP;    return parsed
+	case:              parsed.command = .UNKNOWN; return parsed
 	}
 
-	// Parse action
+	// Parse action (commands that have sub-actions reach here).
 	if len(filtered_args) < 2 {
 		parsed.action = .LIST
-		parsed.tui = tui_flag
-		parsed.component_test = component_test_flag
-		parsed.component_name = component_name_str
-		parsed.component_snapshot = snapshot_flag
-		parsed.component_verify = verify_flag
 		return parsed
 	}
 
 	switch filtered_args[1] {
-	case "add":
-		parsed.action = .ADD
-	case "remove", "rm":
-		parsed.action = .REMOVE
-	case "list", "ls":
-		parsed.action = .LIST
-	case "get":
-		parsed.action = .GET
-	case "check":
-		parsed.action = .CHECK
-	case "update":
-		parsed.action = .UPDATE
-	case "enable":
-		parsed.action = .ENABLE
-	case "disable":
-		parsed.action = .DISABLE
-	case "priority":
-		parsed.action = .PRIORITY
-	case "restore":
-		parsed.action = .RESTORE
-	case "clean":
-		parsed.action = .CLEAN
-	case "dedup":
-		parsed.action = .DEDUP
-	case "help", "-h", "--help":
-		parsed.action = .HELP
-	case:
-		parsed.action = .UNKNOWN
-		parsed.tui = tui_flag
-		parsed.component_test = component_test_flag
-		parsed.component_name = component_name_str
-		parsed.component_snapshot = snapshot_flag
-		parsed.component_verify = verify_flag
-		return parsed
+	case "add":              parsed.action = .ADD
+	case "remove", "rm":    parsed.action = .REMOVE
+	case "list", "ls":      parsed.action = .LIST
+	case "get":             parsed.action = .GET
+	case "check":           parsed.action = .CHECK
+	case "update":          parsed.action = .UPDATE
+	case "enable":          parsed.action = .ENABLE
+	case "disable":         parsed.action = .DISABLE
+	case "priority":        parsed.action = .PRIORITY
+	case "restore":         parsed.action = .RESTORE
+	case "clean":           parsed.action = .CLEAN
+	case "dedup":           parsed.action = .DEDUP
+	case "help", "-h", "--help": parsed.action = .HELP
+	case:                   parsed.action = .UNKNOWN; return parsed
 	}
 
-	// Parse remaining arguments
+	// Remaining positional args (e.g. the path/name/value after the action).
 	if len(filtered_args) > 2 {
-		// Allocate array for remaining args - caller must free if needed
-		// Note: These are shallow copies (string references from args)
 		remaining_args := make([]string, len(filtered_args) - 2)
 		copy(remaining_args, filtered_args[2:])
 		parsed.args = remaining_args
 	}
 
-	parsed.tui = tui_flag
-	parsed.component_test = component_test_flag
-	parsed.component_name = component_name_str
-	parsed.component_snapshot = snapshot_flag
-	parsed.component_verify = verify_flag
 	return parsed
 }
 

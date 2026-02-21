@@ -114,6 +114,13 @@ table_render :: proc(table: Table) -> string {
 	result := strings.Builder{}
 	defer strings.builder_destroy(&result)
 
+	// Derive border color from theme primary palette — computed once, reused throughout.
+	// fmt.tprintf uses the temp allocator so no heap allocation is needed here.
+	theme          := get_theme()
+	border_code    := get_theme_color(theme, .Primary)
+	border_on      := fmt.tprintf("\x1b[%sm", border_code)
+	border_off     :: "\x1b[0m"
+
 	// Calculate total width
 	total_width := 0
 	for width in mutable_table.column_widths {
@@ -121,18 +128,21 @@ table_render :: proc(table: Table) -> string {
 	}
 	total_width -= 1 // Remove last separator
 
-	// Render top border with color (Hot pink - Zellij primary)
+	// Render top border
 	if table.border_style != .None {
 		border_line := render_border_line(mutable_table, '─', '╭', '╮', '┬')
 		defer delete(border_line)
-		strings.write_string(&result, "\x1b[38;2;228;0;80m") // Hot pink
+		strings.write_string(&result, border_on)
 		strings.write_string(&result, border_line)
-		strings.write_string(&result, "\x1b[0m") // Reset
+		strings.write_string(&result, border_off)
 		strings.write_string(&result, "\n")
 	}
 
 	// Render headers
-	strings.write_string(&result, "\x1b[38;2;228;0;80m│\x1b[0m ")  // Colored border
+	strings.write_string(&result, border_on)
+	strings.write_string(&result, "│")
+	strings.write_string(&result, border_off)
+	strings.write_string(&result, " ")
 	for header, i in table.headers {
 		// Apply only text styles (bold, colors) without borders/padding
 		styled_header := apply_text_only_style(table.header_style, header)
@@ -142,24 +152,35 @@ table_render :: proc(table: Table) -> string {
 		strings.write_string(&result, padded_header)
 
 		if i < len(table.headers) - 1 {
-			strings.write_string(&result, " \x1b[38;2;228;0;80m│\x1b[0m ")  // Colored separator
+			strings.write_string(&result, " ")
+			strings.write_string(&result, border_on)
+			strings.write_string(&result, "│")
+			strings.write_string(&result, border_off)
+			strings.write_string(&result, " ")
 		}
 	}
-	strings.write_string(&result, " \x1b[38;2;228;0;80m│\x1b[0m\n")  // Colored right border
+	strings.write_string(&result, " ")
+	strings.write_string(&result, border_on)
+	strings.write_string(&result, "│")
+	strings.write_string(&result, border_off)
+	strings.write_string(&result, "\n")
 
-	// Render header separator with color
+	// Render header separator
 	if table.border_style != .None {
 		separator_line := render_border_line(mutable_table, '─', '├', '┤', '┼')
 		defer delete(separator_line)
-		strings.write_string(&result, "\x1b[38;2;228;0;80m") // Hot pink
+		strings.write_string(&result, border_on)
 		strings.write_string(&result, separator_line)
-		strings.write_string(&result, "\x1b[0m") // Reset
+		strings.write_string(&result, border_off)
 		strings.write_string(&result, "\n")
 	}
 
 	// Render rows
 	for row in table.rows {
-		strings.write_string(&result, "\x1b[38;2;228;0;80m│\x1b[0m ")  // Colored border
+		strings.write_string(&result, border_on)
+		strings.write_string(&result, "│")
+		strings.write_string(&result, border_off)
+		strings.write_string(&result, " ")
 		for cell, i in row {
 			// Apply only text styles (bold, colors) without borders/padding
 			styled_cell := apply_text_only_style(table.style, cell)
@@ -169,19 +190,27 @@ table_render :: proc(table: Table) -> string {
 			strings.write_string(&result, padded_cell)
 
 			if i < len(row) - 1 {
-				strings.write_string(&result, " \x1b[38;2;228;0;80m│\x1b[0m ")  // Colored separator
+				strings.write_string(&result, " ")
+				strings.write_string(&result, border_on)
+				strings.write_string(&result, "│")
+				strings.write_string(&result, border_off)
+				strings.write_string(&result, " ")
 			}
 		}
-		strings.write_string(&result, " \x1b[38;2;228;0;80m│\x1b[0m\n")  // Colored right border
+		strings.write_string(&result, " ")
+		strings.write_string(&result, border_on)
+		strings.write_string(&result, "│")
+		strings.write_string(&result, border_off)
+		strings.write_string(&result, "\n")
 	}
 
-	// Render bottom border with color and curved corners
+	// Render bottom border with curved corners
 	if table.border_style != .None {
 		bottom_line := render_border_line(mutable_table, '─', '╰', '╯', '┴')
 		defer delete(bottom_line)
-		strings.write_string(&result, "\x1b[38;2;228;0;80m") // Hot pink
+		strings.write_string(&result, border_on)
 		strings.write_string(&result, bottom_line)
-		strings.write_string(&result, "\x1b[0m") // Reset
+		strings.write_string(&result, border_off)
 		strings.write_string(&result, "\n")
 	}
 

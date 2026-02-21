@@ -2,6 +2,7 @@
 
 package wayu
 
+import "core:mem"
 import "core:os"
 import "core:fmt"
 import "core:strings"
@@ -190,17 +191,19 @@ check_wayu_initialized :: proc() -> bool {
 		return false
 	}
 
-	// Check for essential files
+	// Check for essential files using the detected shell extension.
+	// Arena-backed: all four paths are freed in bulk when the proc returns.
+	scratch_buf: [512]byte
+	scratch: mem.Arena
+	mem.arena_init(&scratch, scratch_buf[:])
+	scratch_alloc := mem.arena_allocator(&scratch)
+
+	ext := SHELL_EXT // e.g. "zsh" or "bash" — set at startup by detect_shell()
 	essential_files := []string{
-		fmt.aprintf("%s/path.zsh", WAYU_CONFIG),
-		fmt.aprintf("%s/aliases.zsh", WAYU_CONFIG),
-		fmt.aprintf("%s/constants.zsh", WAYU_CONFIG),
-		fmt.aprintf("%s/init.zsh", WAYU_CONFIG),
-	}
-	defer {
-		for file in essential_files {
-			delete(file)
-		}
+		fmt.aprintf("%s/path.%s",      WAYU_CONFIG, ext, allocator = scratch_alloc),
+		fmt.aprintf("%s/aliases.%s",   WAYU_CONFIG, ext, allocator = scratch_alloc),
+		fmt.aprintf("%s/constants.%s", WAYU_CONFIG, ext, allocator = scratch_alloc),
+		fmt.aprintf("%s/init.%s",      WAYU_CONFIG, ext, allocator = scratch_alloc),
 	}
 
 	for file in essential_files {

@@ -392,7 +392,7 @@ test_popular_plugins_registry :: proc(t: ^testing.T) {
 	}
 
 	for plugin_name in known_plugins {
-		_, exists := wayu.POPULAR_PLUGINS[plugin_name]
+		_, exists := wayu.popular_plugin_find(plugin_name)
 		msg := fmt.aprintf("Popular plugin '%s' should exist in registry", plugin_name)
 		testing.expect(t, exists, msg)
 		delete(msg)

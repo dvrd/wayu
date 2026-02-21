@@ -430,10 +430,13 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 
 	if !removed {
 		if TUI_MODE {
-			TUI_LAST_ERROR = fmt.aprintf("Error: %s not found: %s", spec.display_name, name_to_remove)
+			// Clone into heap so TUI can hold the string past this stack frame.
+			// fmt.tprintf itself uses the temp allocator — no separate leak.
+			TUI_LAST_ERROR = strings.clone(fmt.tprintf("Error: %s not found: %s", spec.display_name, name_to_remove))
 			return
 		}
-		print_error_simple(fmt.aprintf("Error: %s not found: %s", spec.display_name, name_to_remove))
+		// fmt.tprintf uses the temp allocator — printed immediately, no heap allocation needed.
+		print_error_simple(fmt.tprintf("Error: %s not found: %s", spec.display_name, name_to_remove))
 		os.exit(EXIT_DATAERR)
 	}
 

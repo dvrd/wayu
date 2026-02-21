@@ -150,9 +150,11 @@ validate_path_input :: proc(value: string) -> InputValidation {
 	result := validate_path(value)
 
 	if !result.valid {
+		// result.error_message is already heap-allocated by validate_path (via fmt.aprintf).
+		// Move ownership directly — no clone needed, avoids a redundant allocation.
 		return InputValidation{
 			valid = false,
-			error_message = strings.clone(result.error_message),
+			error_message = result.error_message,
 			warning = "",
 			info = "",
 		}
@@ -236,9 +238,11 @@ validate_alias_name_input :: proc(value: string) -> InputValidation {
 	result := validate_identifier(value, "Alias")
 
 	if !result.valid {
+		// result.error_message is already heap-allocated by validate_identifier (via fmt.aprintf).
+		// Move ownership directly — no clone needed.
 		return InputValidation{
 			valid = false,
-			error_message = strings.clone(result.error_message),
+			error_message = result.error_message,
 			warning = "",
 			info = "",
 		}
@@ -352,9 +356,11 @@ validate_constant_name_input :: proc(value: string) -> InputValidation {
 	result := validate_identifier(value, "Constant")
 
 	if !result.valid {
+		// result.error_message is already heap-allocated by validate_identifier (via fmt.aprintf).
+		// Move ownership directly — no clone needed.
 		return InputValidation{
 			valid = false,
-			error_message = strings.clone(result.error_message),
+			error_message = result.error_message,
 			warning = "",
 			info = "",
 		}

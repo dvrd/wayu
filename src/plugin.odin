@@ -1,4 +1,3 @@
-#+feature dynamic-literals
 package wayu
 
 import "core:fmt"
@@ -76,62 +75,83 @@ PluginConfigJSON :: struct {
 	plugins:      [dynamic]PluginMetadata,
 }
 
-// Popular plugins registry - hardcoded for simplicity and speed
-POPULAR_PLUGINS := map[string]PluginInfo{
-	"syntax-highlighting" = {
-		name = "zsh-syntax-highlighting",
-		url = "https://github.com/zsh-users/zsh-syntax-highlighting.git",
-		shell = .ZSH,
+// PluginEntry pairs a short lookup key with its PluginInfo.
+// Using a fixed-size array of structs instead of a map avoids the
+// #+feature dynamic-literals requirement and the permanent heap allocation
+// that a global map[string]PluginInfo would incur.
+PluginEntry :: struct {
+	key:  string,
+	info: PluginInfo,
+}
+
+// Popular plugins registry — compile-time constant, zero heap allocation.
+POPULAR_PLUGINS := [9]PluginEntry{
+	{"syntax-highlighting", {
+		name        = "zsh-syntax-highlighting",
+		url         = "https://github.com/zsh-users/zsh-syntax-highlighting.git",
+		shell       = .ZSH,
 		description = "Fish-like syntax highlighting for ZSH",
-	},
-	"autosuggestions" = {
-		name = "zsh-autosuggestions",
-		url = "https://github.com/zsh-users/zsh-autosuggestions.git",
-		shell = .ZSH,
+	}},
+	{"autosuggestions", {
+		name        = "zsh-autosuggestions",
+		url         = "https://github.com/zsh-users/zsh-autosuggestions.git",
+		shell       = .ZSH,
 		description = "Fish-like autosuggestions for ZSH",
-	},
-	"fast-syntax-highlighting" = {
-		name = "fast-syntax-highlighting",
-		url = "https://github.com/zdharma-continuum/fast-syntax-highlighting.git",
-		shell = .ZSH,
+	}},
+	{"fast-syntax-highlighting", {
+		name        = "fast-syntax-highlighting",
+		url         = "https://github.com/zdharma-continuum/fast-syntax-highlighting.git",
+		shell       = .ZSH,
 		description = "Feature-rich syntax highlighting for ZSH",
-	},
-	"completions" = {
-		name = "zsh-completions",
-		url = "https://github.com/zsh-users/zsh-completions.git",
-		shell = .ZSH,
+	}},
+	{"completions", {
+		name        = "zsh-completions",
+		url         = "https://github.com/zsh-users/zsh-completions.git",
+		shell       = .ZSH,
 		description = "Additional completion definitions for ZSH",
-	},
-	"history-substring-search" = {
-		name = "zsh-history-substring-search",
-		url = "https://github.com/zsh-users/zsh-history-substring-search.git",
-		shell = .ZSH,
+	}},
+	{"history-substring-search", {
+		name        = "zsh-history-substring-search",
+		url         = "https://github.com/zsh-users/zsh-history-substring-search.git",
+		shell       = .ZSH,
 		description = "Fish-like history search",
-	},
-	"git-open" = {
-		name = "git-open",
-		url = "https://github.com/paulirish/git-open.git",
-		shell = .BOTH,
+	}},
+	{"git-open", {
+		name        = "git-open",
+		url         = "https://github.com/paulirish/git-open.git",
+		shell       = .BOTH,
 		description = "Open repo in browser from command line",
-	},
-	"z" = {
-		name = "z",
-		url = "https://github.com/rupa/z.git",
-		shell = .BOTH,
+	}},
+	{"z", {
+		name        = "z",
+		url         = "https://github.com/rupa/z.git",
+		shell       = .BOTH,
 		description = "Jump to frecent directories",
-	},
-	"you-should-use" = {
-		name = "zsh-you-should-use",
-		url = "https://github.com/MichaelAquilina/zsh-you-should-use.git",
-		shell = .ZSH,
+	}},
+	{"you-should-use", {
+		name        = "zsh-you-should-use",
+		url         = "https://github.com/MichaelAquilina/zsh-you-should-use.git",
+		shell       = .ZSH,
 		description = "Reminds you to use aliases",
-	},
-	"colored-man-pages" = {
-		name = "zsh-colored-man-pages",
-		url = "https://github.com/ael-code/zsh-colored-man-pages.git",
-		shell = .ZSH,
+	}},
+	{"colored-man-pages", {
+		name        = "zsh-colored-man-pages",
+		url         = "https://github.com/ael-code/zsh-colored-man-pages.git",
+		shell       = .ZSH,
 		description = "Colorize man pages",
-	},
+	}},
+}
+
+// popular_plugin_find does a linear scan of POPULAR_PLUGINS by key.
+// Returns (info, true) on match, (zero, false) otherwise.
+// O(n) over 9 entries — no hash overhead, no heap allocation.
+popular_plugin_find :: proc(key: string) -> (PluginInfo, bool) {
+	for entry in POPULAR_PLUGINS {
+		if entry.key == key {
+			return entry.info, true
+		}
+	}
+	return PluginInfo{}, false
 }
 
 // Parse shell compatibility from string
