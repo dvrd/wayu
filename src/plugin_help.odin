@@ -63,11 +63,11 @@ print_plugin_help :: proc() {
 	// Popular plugins section
 	fmt.printf("\n%s%sPOPULAR PLUGINS:%s\n", BOLD, get_secondary(), RESET)
 	count := 0
-	for name, info in POPULAR_PLUGINS {
+	for entry in POPULAR_PLUGINS {
 		if count >= 5 {
 			break
 		}
-		fmt.printf("  %s• %s - %s%s\n", get_muted(), name, info.description, RESET)
+		fmt.printf("  %s• %s - %s%s\n", get_muted(), entry.key, entry.info.description, RESET)
 		count += 1
 	}
 	fmt.println()

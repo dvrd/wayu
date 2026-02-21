@@ -1006,8 +1006,8 @@ resolve_plugin :: proc(name_or_url: string) -> (PluginInfo, bool) {
 		}, true
 	}
 
-	// Check popular plugins registry
-	if info, found := POPULAR_PLUGINS[name_or_url]; found {
+	// Check popular plugins registry (linear scan — 9 entries, no heap)
+	if info, found := popular_plugin_find(name_or_url); found {
 		return info, true
 	}
 

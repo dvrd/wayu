@@ -7,6 +7,7 @@
 package wayu
 
 import "core:fmt"
+import "core:mem"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -356,23 +357,28 @@ extract_path_items :: proc() -> []string {
 expand_env_vars :: proc(path: string) -> string {
 	result := strings.clone(path)
 
-	// Common environment variables to expand
-	home := os.get_env("HOME", context.allocator)
-	defer delete(home)
-	oss := os.get_env("OSS", context.allocator)
-	defer delete(oss)
-	user := os.get_env("USER", context.allocator)
-	defer delete(user)
-	pwd, pwd_err := os.getwd(context.allocator)
-	defer if pwd_err == nil do delete(pwd)
+	// Arena for the map header/buckets and the env var strings.
+	// Stack-allocated: freed automatically when the proc returns.
+	scratch_buf: [1024]byte
+	scratch: mem.Arena
+	mem.arena_init(&scratch, scratch_buf[:])
+	scratch_alloc := mem.arena_allocator(&scratch)
+
+	// Common environment variables to expand.
+	// Fetched into the arena — no individual defer deletes needed.
+	home  := os.get_env("HOME", scratch_alloc)
+	oss   := os.get_env("OSS",  scratch_alloc)
+	user  := os.get_env("USER", scratch_alloc)
+	pwd, pwd_err := os.getwd(scratch_alloc)
+	_ = pwd_err // getwd failure leaves pwd as "" which is harmless
 
 	env_vars := map[string]string{
 		"$HOME" = home,
-		"$OSS" = oss,
+		"$OSS"  = oss,
 		"$USER" = user,
-		"$PWD" = pwd,
+		"$PWD"  = pwd,
 	}
-	defer delete(env_vars)
+	// Map allocated into scratch arena — no explicit delete needed.
 
 	for var, value in env_vars {
 		if len(value) > 0 && strings.contains(result, var) {
