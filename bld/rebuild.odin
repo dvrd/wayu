@@ -67,11 +67,14 @@ go_rebuild_urself :: proc(source_path: string, extra_sources: ..string) {
         return
     }
 
-    // Collect all source paths to check.
+    // Collect all source paths to check, expanding directories into
+    // individual .odin files. Directory mtime only changes when entries
+    // are added/removed, NOT when file contents change — so we must
+    // stat the individual files.
     all_sources := make([dynamic]string, context.temp_allocator)
-    append(&all_sources, source_path)
+    _expand_source_path(&all_sources, source_path)
     for extra in extra_sources {
-        append(&all_sources, extra)
+        _expand_source_path(&all_sources, extra)
     }
 
     // Check if rebuild is needed.
@@ -133,6 +136,47 @@ go_rebuild_urself :: proc(source_path: string, extra_sources: ..string) {
     }
 
     runtime.exit(int(state.exit_code))
+}
+
+// Helper: expand a source path for rebuild checking.
+// If the path is a directory, walk it and collect all .odin files.
+// If it's a regular file, add it directly.
+@(private = "file")
+_expand_source_path :: proc(out: ^[dynamic]string, path: string) {
+    ft, ok := get_file_type(path)
+    if !ok {
+        // Can't stat — add as-is and let needs_rebuild report the error.
+        append(out, path)
+        return
+    }
+
+    if ft != .Directory {
+        append(out, path)
+        return
+    }
+
+    // Read directory entries and collect all .odin files.
+    // We avoid walk_dir here because its TEMP_GUARD frees child paths
+    // before we can use them. A flat directory read is sufficient since
+    // build script packages are not nested.
+    f, open_err := os.open(path)
+    if open_err != nil {
+        log_error("Could not open directory '%s': %v", path, open_err)
+        return
+    }
+    defer os.close(f)
+
+    infos, read_err := os.read_all_directory(f, context.temp_allocator)
+    if read_err != nil {
+        log_error("Could not read directory '%s': %v", path, read_err)
+        return
+    }
+
+    for info in infos {
+        if info.name == "." || info.name == ".." do continue
+        if file_ext(info.name) != ".odin" do continue
+        append(out, fmt.tprintf("%s/%s", path, info.name))
+    }
 }
 
 // Helper: get the path to the currently running executable.
