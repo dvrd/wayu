@@ -138,7 +138,15 @@ get_view_visible_height :: proc(state: ^TUIState) -> int {
 
 	#partial switch state.current_view {
 	case .MAIN_MENU:
-		return base
+		// Menu items start at LIST_ITEM_START_LINE + 2 (divider + blank).
+		// Each item takes MENU_ITEM_SPACING rows. Footer must stay clear.
+		// footer_y = terminal_height - FOOTER_OFFSET_FROM_BOTTOM - 1
+		menu_start_y  := LIST_ITEM_START_LINE + 2
+		footer_y      := state.terminal_height - FOOTER_OFFSET_FROM_BOTTOM - 1
+		available     := footer_y - 1 - menu_start_y + 1  // -1: leave one row above footer
+		visible_count := available / MENU_ITEM_SPACING
+		if visible_count < 1 { visible_count = 1 }
+		return visible_count
 
 	case .ALIAS_VIEW, .CONSTANTS_VIEW:
 		// filter bar row (when filter is active or has text)

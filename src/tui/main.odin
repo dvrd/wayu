@@ -472,8 +472,19 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 	menu_start_y := divider_y + 2
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
-	for item, i in menu_items {
-		y := menu_start_y + (i * MENU_ITEM_SPACING)
+	// How many items fit — must match get_view_visible_height(.MAIN_MENU)
+	footer_y       := calculate_footer_y(state.terminal_height)
+	available_rows := footer_y - 1 - menu_start_y + 1
+	visible_count  := available_rows / MENU_ITEM_SPACING
+	if visible_count < 1 { visible_count = 1 }
+
+	// scroll_offset is managed by tui_state_move_selection via get_view_visible_height
+	start := state.scroll_offset
+	end   := min(start + visible_count, len(menu_items))
+
+	for i in start..<end {
+		item := menu_items[i]
+		y := menu_start_y + ((i - start) * MENU_ITEM_SPACING)
 
 		if i == state.selected_index {
 			// Selected: accent bar ┃ + bold primary text
@@ -484,8 +495,8 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 			render_text_styled(screen, text_x, y, item, TUI_MUTED)
 		}
 
-		// Divider line after each item (except the last)
-		if i < len(menu_items) - 1 {
+		// Divider line after each item (except the last visible one)
+		if i < end - 1 {
 			sep_y := y + 1
 			for dx in 0..<divider_width {
 				screen_set_cell(screen, header_x + dx, sep_y, Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
@@ -494,7 +505,6 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 	}
 
 	// Footer — compact keyboard shortcuts
-	footer_y := calculate_footer_y(state.terminal_height)
 	render_text_styled(screen, header_x, footer_y, "j/k Navigate   l Select   q Quit", TUI_DIM)
 }
 
