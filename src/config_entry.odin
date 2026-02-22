@@ -250,6 +250,11 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 		delete(validation_result.error_message)
 		os.exit(EXIT_DATAERR)
 	}
+	// Print and free any convention warning (e.g. lowercase constant name)
+	if len(validation_result.warning) > 0 {
+		print_warning("%s", validation_result.warning)
+		delete(validation_result.warning)
+	}
 
 	// Dry-run check
 	if DRY_RUN {

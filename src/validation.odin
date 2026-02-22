@@ -6,10 +6,11 @@ import "core:strings"
 import "core:unicode"
 import "core:fmt"
 
-// Validation result with detailed error message
+// Validation result with detailed error message and optional warning
 ValidationResult :: struct {
 	valid:         bool,
 	error_message: string,
+	warning:       string, // Non-empty when valid but a convention is violated; caller is responsible for printing and freeing
 }
 
 // Shell reserved words that cannot be used as identifiers
@@ -172,7 +173,8 @@ validate_constant :: proc(name: string, value: string) -> ValidationResult {
 		return result
 	}
 
-	// Convention: constants should be uppercase (warning, not error)
+	// Convention: constants should be uppercase (warning, not error).
+	// The caller is responsible for printing result.warning and freeing it.
 	has_lowercase := false
 	for r in name {
 		if unicode.is_lower(r) {
@@ -182,14 +184,17 @@ validate_constant :: proc(name: string, value: string) -> ValidationResult {
 	}
 
 	if has_lowercase {
-		// This is just a warning, we still allow it
-		fmt.printfln(
-			"Warning: Constant name '%s' contains lowercase letters. Convention is UPPER_CASE.",
-			name,
-		)
+		return ValidationResult{
+			valid         = true,
+			error_message = "",
+			warning       = fmt.aprintf(
+				"Constant name '%s' contains lowercase letters. Convention is UPPER_CASE.",
+				name,
+			),
+		}
 	}
 
-	return ValidationResult{valid = true, error_message = ""}
+	return ValidationResult{valid = true, error_message = "", warning = ""}
 }
 
 // Validate that a string is safe to use as a shell command argument

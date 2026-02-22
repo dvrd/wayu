@@ -29,9 +29,10 @@ create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 	}
 
 	if !os.exists(file_path) {
-		// If file doesn't exist yet, no backup needed
+		// File doesn't exist yet — no backup needed, not an error.
+		// Return false so callers can distinguish "no backup made" from "backup succeeded".
 		debug("File doesn't exist, no backup needed")
-		return "", true
+		return "", false
 	}
 
 	// Read original file
@@ -82,12 +83,17 @@ create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 }
 
 // CLI version - fails immediately without prompt
-// Used by all CLI commands to ensure non-interactive behavior
+// Used by all CLI commands to ensure non-interactive behavior.
+// Returns true when the backup was created or the file didn't exist yet (no-op).
+// Returns false only when the file existed but the backup failed.
 create_backup_cli :: proc(file_path: string) -> bool {
+	file_existed := os.exists(file_path)
+
 	backup_path, ok := create_backup(file_path)
 	defer if ok do delete(backup_path)
 
-	if !ok {
+	if !ok && file_existed {
+		// File was present but backup failed — abort to prevent data loss.
 		print_error("Failed to create backup for %s", file_path)
 		fmt.println("Aborting operation to prevent data loss.")
 		return false
@@ -97,13 +103,17 @@ create_backup_cli :: proc(file_path: string) -> bool {
 }
 
 // TUI version - prompts user on backup failure
-// This function is ONLY called from TUI bridge, never from CLI
+// This function is ONLY called from TUI bridge, never from CLI.
+// Only prompts when the file existed but the backup actually failed.
 create_backup_tui :: proc(file_path: string, auto_backup := true) -> bool {
 	if auto_backup {
+		file_existed := os.exists(file_path)
+
 		backup_path, ok := create_backup(file_path)
 		defer if ok do delete(backup_path)
 
-		if !ok {
+		if !ok && file_existed {
+			// File was present but backup failed — prompt user.
 			print_warning("Failed to create backup for %s", file_path)
 			fmt.print("Continue anyway? [y/N]: ")
 
