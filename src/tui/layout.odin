@@ -120,21 +120,22 @@ calculate_notification_y :: proc(terminal_height: int) -> int {
 	return terminal_height - NOTIFICATION_HEIGHT
 }
 
-// Calculate the actual number of list rows rendered in the current view.
+// Calculate the actual number of item rows the renderer draws in the current view.
 //
-// Each view subtracts extra rows from calculate_visible_height():
+// Each view subtracts rows from calculate_visible_height():
 //   - All list views: -1 for the divider row below the header
+//   - All list views: -1 for the scroll-indicator / bottom-margin row
+//     (the renderer always reserves this row at content_start + visible_height,
+//      so the last visible item is at content_start + visible_height - 1)
 //   - Filter active:  -1 for the filter bar row
 //   - Alias/Constants: -2 for column header + its divider (col_header_offset)
 //
 // This must stay in sync with the visible_height calculation inside each
 // render_*_view proc in views.odin so that tui_state_move_selection tracks
-// the same window that the renderer actually draws.
+// exactly the same drawable rows that the renderer uses.
 get_view_visible_height :: proc(state: ^TUIState) -> int {
 	base := calculate_visible_height(state.terminal_height)
 
-	// All data views subtract 1 for the divider row between header and list.
-	// (MAIN_MENU has no scrollable list, so we return base for it.)
 	#partial switch state.current_view {
 	case .MAIN_MENU:
 		return base
@@ -160,7 +161,8 @@ get_view_visible_height :: proc(state: ^TUIState) -> int {
 		if has_items {
 			col_header_offset = 2
 		}
-		return base - 1 - filter_offset - col_header_offset
+		// -1 divider, -1 scroll-indicator row, -filter_offset, -col_header_offset
+		return base - 2 - filter_offset - col_header_offset
 
 	case:
 		// PATH_VIEW, COMPLETIONS_VIEW, BACKUPS_VIEW
@@ -168,6 +170,7 @@ get_view_visible_height :: proc(state: ^TUIState) -> int {
 		if state.filter_active || len(state.filter_text) > 0 {
 			filter_offset = 1
 		}
-		return base - 1 - filter_offset
+		// -1 divider, -1 scroll-indicator row, -filter_offset
+		return base - 2 - filter_offset
 	}
 }
