@@ -119,3 +119,55 @@ calculate_content_width :: proc(border_width: int) -> int {
 calculate_notification_y :: proc(terminal_height: int) -> int {
 	return terminal_height - NOTIFICATION_HEIGHT
 }
+
+// Calculate the actual number of list rows rendered in the current view.
+//
+// Each view subtracts extra rows from calculate_visible_height():
+//   - All list views: -1 for the divider row below the header
+//   - Filter active:  -1 for the filter bar row
+//   - Alias/Constants: -2 for column header + its divider (col_header_offset)
+//
+// This must stay in sync with the visible_height calculation inside each
+// render_*_view proc in views.odin so that tui_state_move_selection tracks
+// the same window that the renderer actually draws.
+get_view_visible_height :: proc(state: ^TUIState) -> int {
+	base := calculate_visible_height(state.terminal_height)
+
+	// All data views subtract 1 for the divider row between header and list.
+	// (MAIN_MENU has no scrollable list, so we return base for it.)
+	#partial switch state.current_view {
+	case .MAIN_MENU:
+		return base
+
+	case .ALIAS_VIEW, .CONSTANTS_VIEW:
+		// filter bar row (when filter is active or has text)
+		filter_offset := 0
+		if state.filter_active || len(state.filter_text) > 0 {
+			filter_offset = 1
+		}
+		// column header row + its divider (only when items exist)
+		col_header_offset := 0
+		has_items := false
+		if state.filter_active || len(state.filter_text) > 0 {
+			has_items = len(state.filtered_indices) > 0
+		} else {
+			view := state.current_view
+			if state.data_cache[view] != nil {
+				items := cast(^[dynamic]string)state.data_cache[view]
+				has_items = len(items) > 0
+			}
+		}
+		if has_items {
+			col_header_offset = 2
+		}
+		return base - 1 - filter_offset - col_header_offset
+
+	case:
+		// PATH_VIEW, COMPLETIONS_VIEW, BACKUPS_VIEW
+		filter_offset := 0
+		if state.filter_active || len(state.filter_text) > 0 {
+			filter_offset = 1
+		}
+		return base - 1 - filter_offset
+	}
+}
