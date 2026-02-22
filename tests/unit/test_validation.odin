@@ -101,10 +101,13 @@ test_validate_alias :: proc(t: ^testing.T) {
 test_validate_constant :: proc(t: ^testing.T) {
 	result := wayu.validate_constant("MY_VAR", "value")
 	testing.expect(t, result.valid, "Valid constant should pass")
+	testing.expect_value(t, result.warning, "")
 
-	// Lowercase warning but still valid
+	// Lowercase produces a warning but is still valid — caller prints, not the validator
 	result2 := wayu.validate_constant("my_var", "value")
 	testing.expect(t, result2.valid, "Lowercase constant should still be valid")
+	testing.expect(t, len(result2.warning) > 0, "Lowercase constant should produce a warning")
+	defer delete(result2.warning)
 }
 
 @(test)

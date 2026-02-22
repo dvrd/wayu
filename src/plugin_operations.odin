@@ -604,7 +604,9 @@ handle_plugin_add :: proc(args: []string) {
 	append(&config.plugins, new_plugin)
 
 	// Phase 4: Validate no circular dependencies before writing config
-	validate_no_circular_dependencies(&config)
+	if !validate_no_circular_dependencies(&config) {
+		os.exit(EXIT_DATAERR)
+	}
 
 	// Create backup before writing
 	if !DRY_RUN {

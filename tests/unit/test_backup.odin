@@ -11,13 +11,14 @@ import wayu "../../src"
 
 @(test)
 test_create_backup_nonexistent_file :: proc(t: ^testing.T) {
-	// Test backup of non-existent file should succeed (no backup needed)
+	// When the source file doesn't exist, create_backup returns ("", false).
+	// ok=false signals "no backup was made" — callers must treat this as a no-op, not an error.
 	fake_file := "/tmp/wayu-test-nonexistent-file"
 
 	backup_path, ok := wayu.create_backup(fake_file)
 	defer if len(backup_path) > 0 do delete(backup_path)
 
-	testing.expect(t, ok, "Should succeed for non-existent file")
+	testing.expect(t, !ok, "Should return false for non-existent file (no backup made)")
 	testing.expect(t, backup_path == "", "Should return empty path for non-existent file")
 }
 
