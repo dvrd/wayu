@@ -163,7 +163,7 @@ test_scroll_update_down :: proc(t: ^testing.T) {
 	defer tui.tui_state_destroy(&state)
 
 	state.terminal_height = 24
-	visible_height := state.terminal_height - 6  // 18 items visible
+	// MAIN_MENU visible_count: menu_start_y=6, footer_y=21, available=15, visible_count=15/2=7
 	item_count := 30
 
 	// Move to item 20 (beyond visible area)
@@ -173,9 +173,9 @@ test_scroll_update_down :: proc(t: ^testing.T) {
 
 	testing.expect(t, state.selected_index == 20, "Should be at index 20")
 	// Scroll offset should adjust to keep selection visible
-	// scroll_offset = selected_index - visible_height + 1
-	// scroll_offset = 20 - 18 + 1 = 3
-	testing.expect(t, state.scroll_offset == 3, "Scroll offset should be 3")
+	// scroll_offset = selected_index - visible_count + 1
+	// scroll_offset = 20 - 7 + 1 = 14
+	testing.expect(t, state.scroll_offset == 14, "Scroll offset should be 14")
 }
 
 @(test)
