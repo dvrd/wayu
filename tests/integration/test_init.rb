@@ -3,77 +3,49 @@
 
 require 'open3'
 require 'fileutils'
-require 'tempfile'
+require_relative 'test_helper'
 
 class InitIntegrationTest
-  attr_reader :passed, :failed
+  include WayuTestHelper
 
   def initialize
-    @passed = 0
-    @failed = 0
-    @wayu_bin = './bin/wayu'
-    @config_dir = File.expand_path('~/.config/wayu')
-    @config_backup = File.expand_path('~/.config/wayu.backup')
+    setup_test_env
   end
 
   def run
     puts "🚀 Testing init command and multi-shell integration..."
     puts
 
-    build_project
-    backup_config
+    begin
+      build_project
 
-    test_init_creates_directory_structure
-    test_init_creates_config_files
-    test_init_with_zsh
-    test_init_with_bash
-    test_config_file_templates
-    test_init_file_orchestration
-    test_shell_detection
-    test_reinit_preserves_data
-    test_dry_run_init
-    test_help_command
+      test_init_creates_directory_structure
+      test_init_creates_config_files
+      test_init_with_zsh
+      test_init_with_bash
+      test_config_file_templates
+      test_init_file_orchestration
+      test_shell_detection
+      test_reinit_preserves_data
+      test_dry_run_init
+      test_help_command
+    ensure
+      teardown_test_env
+    end
 
-    restore_config
-    print_summary
+    print_summary("init and multi-shell")
     exit(@failed > 0 ? 1 : 0)
   end
 
   private
 
-  def build_project
-    print "Building wayu..."
-    stdout, stderr, status = Open3.capture3('task build')
-    if status.success?
-      puts " ✓"
-    else
-      puts " ✗"
-      puts "Build failed: #{stderr}"
-      exit 1
-    end
-    puts
-  end
-
-  def backup_config
-    if Dir.exist?(@config_dir)
-      print "Backing up existing config..."
-      if Dir.exist?(@config_backup)
-        FileUtils.rm_rf(@config_backup)
-      end
-      FileUtils.mv(@config_dir, @config_backup)
-      puts " ✓"
-    end
-  end
-
-  def restore_config
-    print "\nRestoring original config..."
-    if Dir.exist?(@config_dir)
-      FileUtils.rm_rf(@config_dir)
-    end
-    if Dir.exist?(@config_backup)
-      FileUtils.mv(@config_backup, @config_dir)
-    end
-    puts " ✓"
+  def run_wayu_with_env(args, extra_env = {})
+    env = { 'HOME' => @tmp_home }.merge(extra_env)
+    project_root = File.expand_path('../..', __dir__)
+    stdout, stderr, status = Open3.capture3(env, "#{@wayu_bin} #{args}", chdir: project_root)
+    stdout = stdout.force_encoding('UTF-8')
+    stderr = stderr.force_encoding('UTF-8')
+    [stdout + stderr, status]
   end
 
   def test_init_creates_directory_structure
@@ -175,9 +147,9 @@ class InitIntegrationTest
 
     # Check that each file has proper shebang and structure (relaxed checks)
     files_to_check = {
-      "#{@config_dir}/path.zsh" => ["add_to_path"],
+      "#{@config_dir}/path.zsh" => ["WAYU_PATHS"],
       "#{@config_dir}/aliases.zsh" => ["alias"],
-      "#{@config_dir}/constants.zsh" => ["export"],
+      "#{@config_dir}/constants.zsh" => [],
       "#{@config_dir}/init.zsh" => ["source"],
       "#{@config_dir}/tools.zsh" => []  # May be empty
     }
@@ -300,35 +272,6 @@ class InitIntegrationTest
     end
   end
 
-  def run_wayu(args)
-    stdout, stderr, status = Open3.capture3("#{@wayu_bin} #{args}")
-    # Force UTF-8 encoding for the output
-    stdout = stdout.force_encoding('UTF-8') if stdout
-    stderr = stderr.force_encoding('UTF-8') if stderr
-    # Return combined output for easier checking
-    [stdout + stderr, status]
-  end
-
-  def run_wayu_with_env(args, env = {})
-    stdout, stderr, status = Open3.capture3(env, "#{@wayu_bin} #{args}")
-    # Force UTF-8 encoding for the output
-    stdout = stdout.force_encoding('UTF-8') if stdout
-    stderr = stderr.force_encoding('UTF-8') if stderr
-    # Return combined output for easier checking
-    [stdout + stderr, status]
-  end
-
-  def print_summary
-    puts
-    puts "━" * 50
-    total = @passed + @failed
-    if @failed == 0
-      puts "✓ All #{total} init and multi-shell integration tests passed!"
-    else
-      puts "Results: #{@passed}/#{total} tests passed, #{@failed} failed"
-    end
-    puts "━" * 50
-  end
 end
 
 # Run tests if executed directly

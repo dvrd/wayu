@@ -88,7 +88,7 @@ main :: proc() {
 	results := Test_Results{test_name = "backup"}
 
 	fmt.print("Building wayu...")
-	if libc.system("task build > /dev/null 2>&1") == 0 {
+	if libc.system("./build_it build > /dev/null 2>&1") == 0 {
 		fmt.println(" ✓")
 	} else {
 		fmt.println(" ✗")
