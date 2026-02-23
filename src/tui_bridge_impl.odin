@@ -318,6 +318,67 @@ tui_bridge_cleanup_backups :: proc() -> bool {
 	return true
 }
 
+// Load plugin entries into TUI cache
+// Format: "name | ✓ Active | priority:100" or "name | ○ Disabled | priority:100"
+tui_bridge_load_plugins :: proc(state: ^tui.TUIState) {
+	if state.data_cache[.PLUGINS_VIEW] != nil {
+		tui.clear_view_cache(state, .PLUGINS_VIEW)
+	}
+
+	config, ok := read_plugin_config_json()
+	if !ok {
+		// No plugins installed yet — store empty list
+		items_ptr := new([dynamic]string)
+		items_ptr^ = make([dynamic]string)
+		state.data_cache[.PLUGINS_VIEW] = items_ptr
+		return
+	}
+	defer cleanup_plugin_config_json(&config)
+
+	items := make([dynamic]string)
+	for plugin in config.plugins {
+		status := "○ Disabled"
+		if plugin.enabled { status = "✓ Active" }
+		item := strings.clone(fmt.tprintf("%s | %s | priority:%d", plugin.name, status, plugin.priority))
+		append(&items, item)
+	}
+
+	items_ptr := new([dynamic]string)
+	items_ptr^ = items
+	state.data_cache[.PLUGINS_VIEW] = items_ptr
+}
+
+// Shared implementation for TUI enable/disable plugin operations.
+// Reads JSON config, flips the enabled flag, writes back, and regenerates the
+// shell loader. Returns false if the plugin is not found, the write fails, or
+// the loader regeneration fails — so callers can show an accurate error state.
+// Uses DETECTED_SHELL (set at startup) consistent with the CLI path.
+@(private="file")
+_tui_bridge_set_plugin_enabled :: proc(name: string, enabled: bool) -> bool {
+	config, ok := read_plugin_config_json()
+	if !ok { return false }
+	defer cleanup_plugin_config_json(&config)
+
+	for &plugin in config.plugins {
+		if plugin.name == name {
+			plugin.enabled = enabled
+			if !write_plugin_config_json(&config) { return false }
+			return generate_plugins_file(DETECTED_SHELL)  // propagate loader errors
+		}
+	}
+	return false // plugin not found
+}
+
+// Enable plugin by name — reads JSON, flips flag, writes back, regenerates loader
+tui_bridge_enable_plugin :: proc(name: string) -> bool {
+	return _tui_bridge_set_plugin_enabled(name, true)
+}
+
+// Disable plugin by name — reads JSON, flips flag, writes back, regenerates loader
+tui_bridge_disable_plugin :: proc(name: string) -> bool {
+	return _tui_bridge_set_plugin_enabled(name, false)
+}
+
 // Get PATH entry detail information
 tui_bridge_get_path_detail :: proc(path_str: string) -> [dynamic]string {
 	lines := make([dynamic]string)
