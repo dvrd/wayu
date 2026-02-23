@@ -23,6 +23,7 @@ print_plugin_help :: proc() {
 	fmt.println("  get <name>              Show plugin info and copy URL to clipboard")
 	fmt.println("  check                   Check all plugins for updates")
 	fmt.println("  update <name|--all>     Update specific plugin or all plugins")
+	fmt.println("  search [query]          Browse popular plugins (filter by optional query)")
 	fmt.println("  help                    Show this help message")
 
 	// Examples section
@@ -59,6 +60,12 @@ print_plugin_help :: proc() {
 	fmt.println()
 	fmt.printf("  %s# Set load priority (lower loads first)%s\n", get_muted(), RESET)
 	fmt.printf("  %swayu plugin priority zsh-autosuggestions 50%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Browse all popular plugins%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin search%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Search popular plugins by keyword%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin search syntax%s\n", get_muted(), RESET)
 
 	// Popular plugins section
 	fmt.printf("\n%s%sPOPULAR PLUGINS:%s\n", BOLD, get_secondary(), RESET)

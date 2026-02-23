@@ -9,6 +9,7 @@ A shell configuration management CLI written in [Odin](https://odin-lang.org/) w
 - **PATH management** -- Centralized array-based system with deduplication and validation
 - **Alias & constants** -- Add, remove, list with input validation and reserved word checking
 - **Completions** -- Manage Zsh completion scripts
+- **Plugin management** -- Install, enable/disable, and prioritize shell plugins with dependency resolution
 - **Backup & restore** -- Automatic timestamped backups before every modification
 - **Shell migration** -- Migrate configs between Bash and Zsh
 - **Dry-run mode** -- Preview any change before applying it
@@ -58,6 +59,18 @@ wayu completions list
 wayu backup list
 wayu backup restore path
 
+# Plugins
+wayu plugin search                          # browse popular plugins
+wayu plugin search syntax                   # filter by keyword
+wayu plugin add zsh-autosuggestions         # install popular plugin
+wayu plugin add https://github.com/user/plugin.git  # install from URL
+wayu plugin list                            # list installed plugins
+wayu plugin enable zsh-autosuggestions
+wayu plugin disable zsh-autosuggestions
+wayu plugin priority zsh-autosuggestions 50 # lower = loads earlier
+wayu plugin update --all
+wayu plugin remove zsh-autosuggestions --yes
+
 # Shell migration
 wayu migrate --from zsh --to bash
 
@@ -79,6 +92,7 @@ wayu <command> <action> [arguments] [flags]
 | `alias` | Manage shell aliases |
 | `constants` | Manage environment variables |
 | `completions` | Manage Zsh completion scripts |
+| `plugin` | Install and manage shell plugins |
 | `backup` | Manage configuration backups |
 | `init` | Initialize config directory |
 | `migrate` | Migrate config between shells |
@@ -135,6 +149,15 @@ Launch with `wayu --tui` for an interactive terminal interface.
 - Tab-navigable forms with focus indicators
 - Automatic backups before modifications
 - Dashboard-style main menu
+
+**Plugin view keybindings** (navigate to Plugins from the main menu):
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move selection up/down |
+| `e` | Enable selected plugin |
+| `d` | Disable selected plugin |
+| `q` / `Esc` | Return to main menu |
 
 Built from scratch with raw termios control, alternate screen buffer, differential rendering, and signal handling. No external TUI libraries.
 
