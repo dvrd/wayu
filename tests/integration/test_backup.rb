@@ -3,97 +3,47 @@
 
 require 'open3'
 require 'fileutils'
-require 'tempfile'
+require_relative 'test_helper'
 
 class BackupIntegrationTest
-  attr_reader :passed, :failed
+  include WayuTestHelper
 
   def initialize
-    @passed = 0
-    @failed = 0
-    @wayu_bin = './bin/wayu'
-    @config_dir = File.expand_path('~/.config/wayu')
-    @config_backup = File.expand_path('~/.config/wayu.backup')
+    setup_test_env
   end
 
   def run
     puts "💾 Testing backup system integration..."
     puts
 
-    build_project
-    backup_config
-    initialize_wayu
+    begin
+      build_project
+      initialize_wayu
 
-    test_automatic_backup_creation
-    test_backup_list_empty
-    test_backup_list_with_backups
-    test_backup_list_specific_config
-    test_backup_restore_functionality
-    test_backup_cleanup
-    test_backup_help
-    test_backup_error_handling
+      test_automatic_backup_creation
+      test_backup_list_empty
+      test_backup_list_with_backups
+      test_backup_list_specific_config
+      test_backup_restore_functionality
+      test_backup_cleanup
+      test_backup_help
+      test_backup_error_handling
+    ensure
+      cleanup
+      teardown_test_env
+    end
 
-    restore_config
-    print_summary
+    print_summary("backup")
     exit(@failed > 0 ? 1 : 0)
   end
 
   private
 
-  def build_project
-    print "Building wayu..."
-    stdout, stderr, status = Open3.capture3('task build')
-    if status.success?
-      puts " ✓"
-    else
-      puts " ✗"
-      puts "Build failed: #{stderr}"
-      exit 1
-    end
-    puts
-  end
-
-  def backup_config
-    if Dir.exist?(@config_dir)
-      print "Backing up existing config..."
-      if Dir.exist?(@config_backup)
-        FileUtils.rm_rf(@config_backup)
-      end
-      FileUtils.mv(@config_dir, @config_backup)
-      puts " ✓"
-    end
-  end
-
-  def initialize_wayu
-    print "Initializing wayu config..."
-    output, status = run_wayu("init")
-    if status.success?
-      puts " ✓"
-    else
-      puts " ✗"
-      puts "Init failed: #{output}"
-      restore_config
-      exit 1
-    end
-    puts
-  end
-
-  def restore_config
-    print "\nRestoring original config..."
-    if Dir.exist?(@config_dir)
-      FileUtils.rm_rf(@config_dir)
-    end
-    if Dir.exist?(@config_backup)
-      FileUtils.mv(@config_backup, @config_dir)
-    end
-    puts " ✓"
-  end
-
   def test_automatic_backup_creation
     print "Test 1: Automatic backup creation... "
 
     # Clear any existing backups
-    backup_files = Dir.glob("#{@config_dir}/*.backup.*")
+    backup_files = Dir.glob("#{@config_dir}/backup/*.backup.*")
     backup_files.each { |f| File.delete(f) }
 
     # Create test directory
@@ -105,7 +55,7 @@ class BackupIntegrationTest
 
     if status.success?
       # Check if backup was created
-      backup_files = Dir.glob("#{@config_dir}/path.zsh.backup.*")
+      backup_files = Dir.glob("#{@config_dir}/backup/path.zsh.backup.*")
       if backup_files.length > 0
         puts "✓"
         @passed += 1
@@ -125,7 +75,7 @@ class BackupIntegrationTest
     print "Test 2: List backups when none exist... "
 
     # Clear all backups
-    backup_files = Dir.glob("#{@config_dir}/*.backup.*")
+    backup_files = Dir.glob("#{@config_dir}/backup/*.backup.*")
     backup_files.each { |f| File.delete(f) }
 
     output, status = run_wayu("backup list")
@@ -232,13 +182,13 @@ class BackupIntegrationTest
     end
 
     # Count backups before cleanup
-    backup_files_before = Dir.glob("#{@config_dir}/path.zsh.backup.*")
+    backup_files_before = Dir.glob("#{@config_dir}/backup/path.zsh.backup.*")
 
     # Run cleanup
     output, status = run_wayu("backup rm")
 
     if status.success?
-      backup_files_after = Dir.glob("#{@config_dir}/path.zsh.backup.*")
+      backup_files_after = Dir.glob("#{@config_dir}/backup/path.zsh.backup.*")
 
       # Should have cleaned up some backups (keeping last 5)
       if backup_files_after.length <= 5
@@ -290,15 +240,6 @@ class BackupIntegrationTest
     end
   end
 
-  def run_wayu(args)
-    stdout, stderr, status = Open3.capture3("#{@wayu_bin} #{args}")
-    # Force UTF-8 encoding for the output
-    stdout = stdout.force_encoding('UTF-8') if stdout
-    stderr = stderr.force_encoding('UTF-8') if stderr
-    # Return combined output for easier checking
-    [stdout + stderr, status]
-  end
-
   def cleanup
     # Clean up test directories
     test_dirs = ["/tmp/test1", "/tmp/test2", "/tmp/test3", "/tmp/original", "/tmp/modified"] +
@@ -309,17 +250,6 @@ class BackupIntegrationTest
     end
   end
 
-  def print_summary
-    puts
-    puts "━" * 50
-    total = @passed + @failed
-    if @failed == 0
-      puts "✓ All #{total} backup integration tests passed!"
-    else
-      puts "Results: #{@passed}/#{total} tests passed, #{@failed} failed"
-    end
-    puts "━" * 50
-  end
 end
 
 # Run tests if executed directly

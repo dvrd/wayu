@@ -4,51 +4,39 @@
 require 'open3'
 require 'fileutils'
 require 'tempfile'
+require_relative 'test_helper'
 
 class ErrorsIntegrationTest
-  attr_reader :passed, :failed
+  include WayuTestHelper
 
   def initialize
-    @passed = 0
-    @failed = 0
-    @wayu_bin = './bin/wayu'
-    @config_dir = File.expand_path('~/.config/wayu')
-    @config_backup = File.expand_path('~/.config/wayu.backup')
+    setup_test_env
   end
 
   def run
     puts "🚨 Testing enhanced error messages integration..."
     puts
 
-    build_project
+    begin
+      build_project
 
-    test_file_not_found_error
-    test_permission_denied_error
-    test_config_not_initialized_error
-    test_directory_not_found_error
-    test_invalid_input_error
-    test_contextual_help_messages
-    test_recovery_commands
-    test_error_categorization
+      test_file_not_found_error
+      test_permission_denied_error
+      test_config_not_initialized_error
+      test_directory_not_found_error
+      test_invalid_input_error
+      test_contextual_help_messages
+      test_recovery_commands
+      test_error_categorization
+    ensure
+      teardown_test_env
+    end
 
-    print_summary
+    print_summary("error handling")
     exit(@failed > 0 ? 1 : 0)
   end
 
   private
-
-  def build_project
-    print "Building wayu..."
-    stdout, stderr, status = Open3.capture3('task build')
-    if status.success?
-      puts " ✓"
-    else
-      puts " ✗"
-      puts "Build failed: #{stderr}"
-      exit 1
-    end
-    puts
-  end
 
   def test_file_not_found_error
     print "Test 1: File not found error with context... "
@@ -98,15 +86,14 @@ class ErrorsIntegrationTest
   def test_config_not_initialized_error
     print "Test 3: Config not initialized error... "
 
-    # Temporarily rename config if it exists
-    config_moved = false
-    if Dir.exist?(@config_dir)
-      FileUtils.mv(@config_dir, @config_backup)
-      config_moved = true
-    end
+    # Use a fresh tmp dir that has never been initialized as HOME
+    no_config_home = "/tmp/wayu_no_config_#{$$}_#{Time.now.to_i}"
 
     begin
-      output, status = run_wayu("path list")
+      env = { 'HOME' => no_config_home }
+      project_root = File.expand_path('../..', __dir__)
+      stdout, stderr, status = Open3.capture3(env, "#{@wayu_bin} path list", chdir: project_root)
+      output = (stdout + stderr).force_encoding('UTF-8')
 
       if output.include?("not initialized") || output.include?("wayu init")
         puts "✓"
@@ -118,9 +105,7 @@ class ErrorsIntegrationTest
         @failed += 1
       end
     ensure
-      if config_moved && Dir.exist?(@config_backup)
-        FileUtils.mv(@config_backup, @config_dir)
-      end
+      FileUtils.rm_rf(no_config_home) if Dir.exist?(no_config_home)
     end
   end
 
@@ -177,15 +162,14 @@ class ErrorsIntegrationTest
   def test_recovery_commands
     print "Test 7: Recovery commands in errors... "
 
-    # Temporarily rename config
-    config_moved = false
-    if Dir.exist?(@config_dir)
-      FileUtils.mv(@config_dir, @config_backup)
-      config_moved = true
-    end
+    # Use a fresh tmp dir that has never been initialized as HOME
+    no_config_home = "/tmp/wayu_no_config_recovery_#{$$}_#{Time.now.to_i}"
 
     begin
-      output, status = run_wayu("alias list")
+      env = { 'HOME' => no_config_home }
+      project_root = File.expand_path('../..', __dir__)
+      stdout, stderr, status = Open3.capture3(env, "#{@wayu_bin} alias list", chdir: project_root)
+      output = (stdout + stderr).force_encoding('UTF-8')
 
       if output.include?("wayu init") || output.include?("initialize")
         puts "✓"
@@ -197,9 +181,7 @@ class ErrorsIntegrationTest
         @failed += 1
       end
     ensure
-      if config_moved && Dir.exist?(@config_backup)
-        FileUtils.mv(@config_backup, @config_dir)
-      end
+      FileUtils.rm_rf(no_config_home) if Dir.exist?(no_config_home)
     end
   end
 
@@ -231,26 +213,6 @@ class ErrorsIntegrationTest
     end
   end
 
-  def run_wayu(args)
-    stdout, stderr, status = Open3.capture3("#{@wayu_bin} #{args}")
-    # Force UTF-8 encoding for the output
-    stdout = stdout.force_encoding('UTF-8') if stdout
-    stderr = stderr.force_encoding('UTF-8') if stderr
-    # Return combined output for easier checking
-    [stdout + stderr, status]
-  end
-
-  def print_summary
-    puts
-    puts "━" * 50
-    total = @passed + @failed
-    if @failed == 0
-      puts "✓ All #{total} error handling integration tests passed!"
-    else
-      puts "Results: #{@passed}/#{total} tests passed, #{@failed} failed"
-    end
-    puts "━" * 50
-  end
 end
 
 # Run tests if executed directly

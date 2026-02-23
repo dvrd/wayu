@@ -3,17 +3,13 @@
 
 require 'open3'
 require 'fileutils'
-require 'tempfile'
+require_relative 'test_helper'
 
 class PathIntegrationTest
-  attr_reader :passed, :failed
+  include WayuTestHelper
 
   def initialize
-    @passed = 0
-    @failed = 0
-    @wayu_bin = './bin/wayu'
-    @config_dir = File.expand_path('~/.config/wayu')
-    @config_backup = File.expand_path('~/.config/wayu.backup')
+    setup_test_env
     @path_file = "#{@config_dir}/path.zsh"
   end
 
@@ -21,79 +17,32 @@ class PathIntegrationTest
     puts "🛤️  Testing PATH command integration..."
     puts
 
-    build_project
-    backup_config
-    initialize_wayu
+    begin
+      build_project
+      initialize_wayu
 
-    test_add_single_path
-    test_add_multiple_paths
-    test_list_paths
-    test_remove_path_by_name
-    test_duplicate_path_handling
-    test_path_order_preservation
-    test_relative_path_resolution
-    test_path_with_spaces
-    test_symlink_handling
-    test_nonexistent_path_handling
-    test_remove_nonexistent_path
-    test_path_persistence_after_modifications
-    test_help_command
+      test_add_single_path
+      test_add_multiple_paths
+      test_list_paths
+      test_remove_path_by_name
+      test_duplicate_path_handling
+      test_path_order_preservation
+      test_relative_path_resolution
+      test_path_with_spaces
+      test_symlink_handling
+      test_nonexistent_path_handling
+      test_remove_nonexistent_path
+      test_path_persistence_after_modifications
+      test_help_command
+    ensure
+      teardown_test_env
+    end
 
-    restore_config
-    print_summary
+    print_summary("PATH")
     exit(@failed > 0 ? 1 : 0)
   end
 
   private
-
-  def build_project
-    print "Building wayu..."
-    stdout, stderr, status = Open3.capture3('task build')
-    if status.success?
-      puts " ✓"
-    else
-      puts " ✗"
-      puts "Build failed: #{stderr}"
-      exit 1
-    end
-    puts
-  end
-
-  def backup_config
-    if Dir.exist?(@config_dir)
-      print "Backing up existing config..."
-      if Dir.exist?(@config_backup)
-        FileUtils.rm_rf(@config_backup)
-      end
-      FileUtils.mv(@config_dir, @config_backup)
-      puts " ✓"
-    end
-  end
-
-  def initialize_wayu
-    print "Initializing wayu config..."
-    output, status = run_wayu("init")
-    if status.success?
-      puts " ✓"
-    else
-      puts " ✗"
-      puts "Init failed: #{output}"
-      restore_config
-      exit 1
-    end
-    puts
-  end
-
-  def restore_config
-    print "\nRestoring original config..."
-    if Dir.exist?(@config_dir)
-      FileUtils.rm_rf(@config_dir)
-    end
-    if Dir.exist?(@config_backup)
-      FileUtils.mv(@config_backup, @config_dir)
-    end
-    puts " ✓"
-  end
 
   def test_add_single_path
     print "Test 1: Add single path... "
@@ -375,26 +324,6 @@ class PathIntegrationTest
     end
   end
 
-  def run_wayu(args)
-    stdout, stderr, status = Open3.capture3("#{@wayu_bin} #{args}")
-    # Force UTF-8 encoding for the output
-    stdout = stdout.force_encoding('UTF-8') if stdout
-    stderr = stderr.force_encoding('UTF-8') if stderr
-    # Return combined output for easier checking
-    [stdout + stderr, status]
-  end
-
-  def print_summary
-    puts
-    puts "━" * 50
-    total = @passed + @failed
-    if @failed == 0
-      puts "✓ All #{total} PATH integration tests passed!"
-    else
-      puts "Results: #{@passed}/#{total} tests passed, #{@failed} failed"
-    end
-    puts "━" * 50
-  end
 end
 
 # Run tests if executed directly

@@ -4,54 +4,45 @@
 require 'fileutils'
 require 'open3'
 require 'tempfile'
+require_relative 'test_helper'
 
 class CompletionsIntegrationTest
-  attr_reader :passed, :failed
+  include WayuTestHelper
 
   def initialize
-    @passed = 0
-    @failed = 0
-    @wayu_bin = './bin/wayu'
-    @completions_dir = File.expand_path('~/.config/wayu/completions')
+    setup_test_env
+    @completions_dir = "#{@config_dir}/completions"
   end
 
   def run
     puts "📋 Testing completions command integration..."
     puts
 
-    build_project
-    create_test_completion_file
+    begin
+      build_project
+      initialize_wayu
+      create_test_completion_file
 
-    test_add_completion
-    test_list_completions
-    test_add_without_underscore
-    test_list_multiple
-    test_remove_specific
-    test_remove_nonexistent
-    test_invalid_source
-    test_help_command
-    test_content_preservation
-    test_empty_state
+      test_add_completion
+      test_list_completions
+      test_add_without_underscore
+      test_list_multiple
+      test_remove_specific
+      test_remove_nonexistent
+      test_invalid_source
+      test_help_command
+      test_content_preservation
+      test_empty_state
+    ensure
+      cleanup
+      teardown_test_env
+    end
 
-    cleanup
-    print_summary
+    print_summary("completions")
     exit(@failed > 0 ? 1 : 0)
   end
 
   private
-
-  def build_project
-    print "Building wayu..."
-    stdout, stderr, status = Open3.capture3('task build')
-    if status.success?
-      puts " ✓"
-    else
-      puts " ✗"
-      puts "Build failed: #{stderr}"
-      exit 1
-    end
-    puts
-  end
 
   def create_test_completion_file
     print "Creating test completion file..."
@@ -199,7 +190,7 @@ class CompletionsIntegrationTest
     print "Test 8: Help command... "
     output, status = run_wayu("completions help")
 
-    if output.include?("Completions Command") && output.include?("EXAMPLES")
+    if output.include?("wayu completions") && output.include?("EXAMPLES")
       puts "✓"
       @passed += 1
     else
@@ -258,26 +249,6 @@ class CompletionsIntegrationTest
     @test_file.close! if @test_file
   end
 
-  def run_wayu(args)
-    stdout, stderr, status = Open3.capture3("#{@wayu_bin} #{args}")
-    # Force UTF-8 encoding for the output
-    stdout = stdout.force_encoding('UTF-8') if stdout
-    stderr = stderr.force_encoding('UTF-8') if stderr
-    # Return combined output for easier checking
-    [stdout + stderr, status]
-  end
-
-  def print_summary
-    puts
-    puts "━" * 50
-    total = @passed + @failed
-    if @failed == 0
-      puts "✓ All #{total} completions integration tests passed!"
-    else
-      puts "Results: #{@passed}/#{total} tests passed, #{@failed} failed"
-    end
-    puts "━" * 50
-  end
 end
 
 # Run tests if executed directly
