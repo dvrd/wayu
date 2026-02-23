@@ -43,12 +43,14 @@ handle_plugin_check :: proc(args: []string) {
 		fmt.printfln("Checking %s...", plugin.name)
 
 		// Fetch remote commit SHA
+		// NOTE: get_remote_commit returns an allocated string — must delete explicitly.
+		// defer inside a loop defers to function exit (not iteration end), so we use
+		// a plain delete at the bottom of the loop body instead.
 		remote_commit := get_remote_commit(plugin.url, plugin.git.branch)
 		if remote_commit == "" {
 			print_warning("  ⚠ Failed to check remote (network error or invalid URL)")
 			continue
 		}
-		defer delete(remote_commit)  // CRITICAL: get_remote_commit returns allocated string
 
 		// Update metadata with remote commit and timestamp
 		delete(plugin.git.remote_commit)  // Clean up old value
@@ -68,6 +70,8 @@ handle_plugin_check :: proc(args: []string) {
 		} else {
 			print_info("  ✓ Up to date")
 		}
+
+		delete(remote_commit)  // Free per-iteration — not deferred (see note above)
 	}
 
 	fmt.println()
@@ -818,27 +822,12 @@ handle_plugin_remove :: proc(args: []string) {
 		print_warning("Removing this plugin may break these plugins.")
 		fmt.println()
 
-		// In CLI mode: respect --yes flag
+		// In CLI mode: require --yes flag to proceed when dependents exist
 		if !YES_FLAG {
-			fmt.print("Continue anyway? [y/N] ")
-
-			// Read user input
-			input_buf: [256]byte
-			n, err := os.read(os.stdin, input_buf[:])
-			if err != nil || n == 0 {
-				fmt.println("Cancelled.")
-				os.exit(EXIT_SUCCESS)
-			}
-
-			response := string(input_buf[:n])
-			response = strings.trim_space(response)
-			response = strings.to_lower(response)
-			defer delete(response)
-
-			if response != "y" && response != "yes" {
-				fmt.println("Cancelled.")
-				os.exit(EXIT_SUCCESS)
-			}
+			print_error_simple("Aborted: use --yes to remove plugin with dependents")
+			fmt.printfln("%sHint:%s wayu plugin rm %s --yes",
+				get_muted(), RESET, plugin_name)
+			os.exit(EXIT_USAGE)
 		}
 	}
 
@@ -923,24 +912,20 @@ handle_plugin_get :: proc(args: []string) {
 
 	plugin_name := args[0]
 
-	// Read current config
-	config := read_plugin_config()
-	defer {
-		for plugin in config.plugins {
-			delete(plugin.name)
-			delete(plugin.url)
-			delete(plugin.installed_path)
-			delete(plugin.entry_file)
-		}
-		delete(config.plugins)
+	// Read current config (JSON format)
+	config, ok := read_plugin_config_json()
+	if !ok {
+		print_error_simple("Error: Failed to read plugin configuration")
+		os.exit(EXIT_CONFIG)
 	}
+	defer cleanup_plugin_config_json(&config)
 
 	// Find plugin
-	plugin_ptr, found := find_plugin(&config, plugin_name)
+	plugin_ptr, found := find_plugin_json(&config, plugin_name)
 	if !found {
 		print_error_simple("Error: Plugin '%s' not found", plugin_name)
 		fmt.println("\nRun 'wayu plugin list' to see installed plugins")
-		os.exit(1)
+		os.exit(EXIT_DATAERR)
 	}
 
 	// Display plugin information
@@ -1020,5 +1005,58 @@ handle_plugin_get :: proc(args: []string) {
 	} else {
 		print_info("[DRY RUN] Would copy URL to clipboard: %s", plugin_ptr.url)
 	}
+}
+
+// Search the built-in popular plugins registry.
+// With no args: list all 9 entries.
+// With a query: filter by name/description substring (case-insensitive).
+handle_plugin_search :: proc(args: []string) {
+	query := len(args) > 0 ? strings.to_lower(args[0]) : ""
+	defer if len(query) > 0 { delete(query) }
+
+	print_header("Popular Plugins", EMOJI_COMMAND)
+	fmt.println()
+
+	table := new_table([]string{"Key", "Name", "Shell", "Description"})
+	defer delete(table.rows)
+
+	matched := 0
+	for entry in POPULAR_PLUGINS {
+		info := entry.info
+
+		// Filter: skip if query doesn't match key, name, or description
+		if len(query) > 0 {
+			key_lower   := strings.to_lower(entry.key)
+			name_lower  := strings.to_lower(info.name)
+			desc_lower  := strings.to_lower(info.description)
+			defer delete(key_lower)
+			defer delete(name_lower)
+			defer delete(desc_lower)
+
+			if !strings.contains(key_lower, query) &&
+			   !strings.contains(name_lower, query) &&
+			   !strings.contains(desc_lower, query) {
+				continue
+			}
+		}
+
+		shell_str := shell_compat_to_string(info.shell)
+		table_add_row(&table, []string{entry.key, info.name, shell_str, info.description})
+		matched += 1
+	}
+
+	if matched == 0 {
+		fmt.printfln("No plugins found matching %q", args[0])
+		fmt.println()
+		fmt.println("Run 'wayu plugin search' to list all popular plugins.")
+		return
+	}
+
+	output := table_render(table)
+	defer delete(output)
+	fmt.print(output)
+
+	fmt.println()
+	fmt.printfln("%sTo install:%s wayu plugin add <key>", get_muted(), RESET)
 }
 
