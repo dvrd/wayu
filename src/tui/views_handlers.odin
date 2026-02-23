@@ -205,8 +205,40 @@ handle_backups_event :: proc(state: ^TUIState, key: KeyEvent) {
 // ============================================================================
 
 handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
-	// Placeholder - no actions yet
-	// Future feature
+	#partial switch key.key {
+	case .Char:
+		switch key.char {
+		case 'e':
+			// Enable selected plugin
+			if state.data_cache[.PLUGINS_VIEW] != nil {
+				items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
+				if state.selected_index >= 0 && state.selected_index < len(items) {
+					item := items[state.selected_index]
+					// Extract name before first " | "
+					sep_idx := strings.index(item, " | ")
+					plugin_name := item[:sep_idx] if sep_idx >= 0 else item
+					if tui_enable_plugin(plugin_name) {
+						clear_view_cache(state, .PLUGINS_VIEW)
+						state.needs_refresh = true
+					}
+				}
+			}
+		case 'd':
+			// Disable selected plugin
+			if state.data_cache[.PLUGINS_VIEW] != nil {
+				items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
+				if state.selected_index >= 0 && state.selected_index < len(items) {
+					item := items[state.selected_index]
+					sep_idx := strings.index(item, " | ")
+					plugin_name := item[:sep_idx] if sep_idx >= 0 else item
+					if tui_disable_plugin(plugin_name) {
+						clear_view_cache(state, .PLUGINS_VIEW)
+						state.needs_refresh = true
+					}
+				}
+			}
+		}
+	}
 }
 
 // ============================================================================

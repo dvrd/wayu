@@ -7,7 +7,6 @@
 package wayu
 
 import "core:fmt"
-import "core:mem"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -353,49 +352,86 @@ extract_path_items :: proc() -> []string {
 	return items
 }
 
-// Expand environment variables in path strings
+// is_env_var_char returns true for characters valid in a shell identifier:
+// A-Z, a-z, 0-9, underscore.
+@(private="file")
+is_env_var_char :: proc(c: byte) -> bool {
+	return (c >= 'A' && c <= 'Z') ||
+	       (c >= 'a' && c <= 'z') ||
+	       (c >= '0' && c <= '9') ||
+	       c == '_'
+}
+
+// Expand environment variables in path strings.
+// Handles $VAR and ${VAR} syntax for any variable present in the environment.
+// Unresolved tokens (variable not set or empty) are left as-is.
+// The caller must delete the returned string.
 expand_env_vars :: proc(path: string) -> string {
-	result := strings.clone(path)
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
 
-	// Arena for the map header/buckets and the env var strings.
-	// Stack-allocated: freed automatically when the proc returns.
-	scratch_buf: [1024]byte
-	scratch: mem.Arena
-	mem.arena_init(&scratch, scratch_buf[:])
-	scratch_alloc := mem.arena_allocator(&scratch)
+	i := 0
+	for i < len(path) {
+		if path[i] != '$' {
+			strings.write_byte(&builder, path[i])
+			i += 1
+			continue
+		}
 
-	// Common environment variables to expand.
-	// Fetched into the arena — no individual defer deletes needed.
-	home  := os.get_env("HOME", scratch_alloc)
-	oss   := os.get_env("OSS",  scratch_alloc)
-	user  := os.get_env("USER", scratch_alloc)
-	pwd, pwd_err := os.getwd(scratch_alloc)
-	_ = pwd_err // getwd failure leaves pwd as "" which is harmless
+		// We are at a '$' — determine token length and variable name.
+		token_start := i
+		i += 1 // skip '$'
 
-	env_vars := map[string]string{
-		"$HOME" = home,
-		"$OSS"  = oss,
-		"$USER" = user,
-		"$PWD"  = pwd,
-	}
-	// Map allocated into scratch arena — no explicit delete needed.
+		var_name: string
+		token_len: int
 
-	for var, value in env_vars {
-		if len(value) > 0 && strings.contains(result, var) {
-			new_result, _ := strings.replace_all(result, var, value)
-			delete(result)
-			result = new_result
+		if i < len(path) && path[i] == '{' {
+			// ${VAR} syntax — find closing '}'
+			i += 1 // skip '{'
+			name_start := i
+			for i < len(path) && path[i] != '}' {
+				i += 1
+			}
+			var_name = path[name_start:i]
+			if i < len(path) {
+				i += 1 // skip '}'
+			}
+			token_len = i - token_start
+		} else {
+			// $VAR syntax — scan identifier characters
+			name_start := i
+			for i < len(path) && is_env_var_char(path[i]) {
+				i += 1
+			}
+			var_name = path[name_start:i]
+			token_len = i - token_start
+		}
+
+		if len(var_name) == 0 {
+			// Bare '$' with no identifier — emit as-is
+			strings.write_byte(&builder, '$')
+			continue
+		}
+
+		value := os.get_env(var_name, context.allocator)
+		defer delete(value)
+
+		if len(value) > 0 {
+			strings.write_string(&builder, value)
+		} else {
+			// Variable not set or empty — preserve original token
+			strings.write_string(&builder, path[token_start : token_start + token_len])
 		}
 	}
 
-	// Expand relative paths (., .., ./, ../, etc.) to absolute paths
-	// This handles cases like "./bin", "../tools", "." etc.
+	result := strings.clone(strings.to_string(builder))
+
+	// Resolve relative paths (., .., ./, ../) and any remaining ~ to absolute.
 	abs_path, abs_err := filepath.abs(result, context.allocator)
 	if abs_err == nil {
 		delete(result)
 		result = abs_path
 	}
-	// If abs() fails, keep the result as-is (already has env vars expanded)
 
 	return result
 }

@@ -261,68 +261,143 @@ render_column_header :: proc(screen: ^Screen, x, y: int, key_label, value_label:
 }
 
 // ============================================================================
-// PATH View
+// Generic List View — shared skeleton for all five data views
 // ============================================================================
 
-render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
+ListViewRowKind :: enum { Single, Table }
+
+ListViewConfig :: struct {
+	view_key:     TUIView,
+	title:        string,
+	count_format: string,
+	row_kind:     ListViewRowKind,
+	col_label_0:  string,
+	col_label_1:  string,
+	empty_line_1: string,
+	empty_line_2: string,   // "" means skip second empty line
+	footer:       string,
+}
+
+// render_list_view is the single generic implementation shared by all five
+// data views (path, alias, constants, completions, backups).
+// Each public render_*_view proc constructs a ListViewConfig and delegates here.
+render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig) {
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
 	max_text_width := calculate_content_width(border_width)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
 
-	if state.data_cache[.PATH_VIEW] == nil {
-		render_view_loading(screen, state, "PATH CONFIGURATION", border_width)
+	// Nil-cache guard: data not yet loaded — show loading state and request refresh
+	if state.data_cache[cfg.view_key] == nil {
+		render_view_loading(screen, state, cfg.title, border_width)
 		return
 	}
 
-	items := cast(^[dynamic]string)state.data_cache[.PATH_VIEW]
-	count_text := fmt.tprintf("%d entries", len(items))
-	render_view_header(screen, state, "PATH CONFIGURATION", count_text, border_width)
+	items := cast(^[dynamic]string)state.data_cache[cfg.view_key]
+	count_text := fmt.tprintf(cfg.count_format, len(items))
+	render_view_header(screen, state, cfg.title, count_text, border_width)
 
-	// Filter bar (after divider)
+	// Column widths — only computed for Table row_kind
+	key_col_width   := 0
+	value_col_width := 0
+	if cfg.row_kind == .Table {
+		key_col_width = calculate_key_column_width(items, max_text_width)
+		value_col_width = max_text_width - key_col_width - COLUMN_GAP
+		if value_col_width < 1 {
+			value_col_width = 1
+		}
+	}
+
 	has_filter := state.filter_active || len(state.filter_text) > 0
 	list_start_offset := render_filter_bar(screen, state, len(items))
 
-	// Content area starts after divider + filter
-	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset  // +1 for divider
+	// Content area starts after divider (+1) and optional filter bar
+	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset
+
+	// Column header row — only for Table views when items are visible
+	show_items := (has_filter && len(state.filtered_indices) > 0) || (!has_filter && len(items) > 0)
+	col_header_offset := 0
+	if cfg.row_kind == .Table && show_items {
+		render_column_header(screen, header_x, content_start, cfg.col_label_0, cfg.col_label_1, key_col_width, border_width)
+		col_header_offset = 2  // header line + divider line
+	}
+
+	data_start := content_start + col_header_offset
+
+	// Unified text_x for empty state rendering (same expression used inline in all five original procs)
+	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
 	if has_filter && len(state.filtered_indices) > 0 {
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset - 1
+		// Filtered — show matching items
+		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset - 1 - col_header_offset
 		start := state.scroll_offset
 		end := min(start + visible_height, len(state.filtered_indices))
 
 		for idx in start..<end {
-			y := content_start + (idx - start)
+			y := data_start + (idx - start)
 			original_idx := state.filtered_indices[idx]
-			render_list_item(screen, header_x, y, items[original_idx], max_text_width, idx == state.selected_index)
+			switch cfg.row_kind {
+			case .Single:
+				render_list_item(screen, header_x, y, items[original_idx], max_text_width, idx == state.selected_index)
+			case .Table:
+				render_table_row(screen, header_x, y, items[original_idx], key_col_width, value_col_width, idx == state.selected_index)
+			}
 		}
 
 		if len(state.filtered_indices) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
-			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
+			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
 		}
 	} else if has_filter && len(state.filtered_indices) == 0 {
-		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No matches found", TUI_DIM)
+		// Filtered — no matches
+		render_text_styled(screen, text_x, data_start + 1, "No matches found", TUI_DIM)
 	} else if len(items) == 0 {
-		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No PATH entries found", TUI_DIM)
+		// Empty (no items at all)
+		// Note: use content_start (not data_start) — col_header_offset is 0 when items==0,
+		// so they are equal, but content_start is the canonical anchor for empty state.
+		render_text_styled(screen, text_x, content_start + 1, cfg.empty_line_1, TUI_DIM)
+		if cfg.empty_line_2 != "" {
+			render_text_styled(screen, text_x, content_start + 3, cfg.empty_line_2, TUI_MUTED)
+		}
 	} else {
-		visible_height := calculate_visible_height(state.terminal_height) - 1
+		// Normal — show all items
+		visible_height := calculate_visible_height(state.terminal_height) - 1 - col_header_offset
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
 
 		for i in start..<end {
-			y := content_start + (i - start)
-			render_list_item(screen, header_x, y, items[i], max_text_width, i == state.selected_index)
+			y := data_start + (i - start)
+			switch cfg.row_kind {
+			case .Single:
+				render_list_item(screen, header_x, y, items[i], max_text_width, i == state.selected_index)
+			case .Table:
+				render_table_row(screen, header_x, y, items[i], key_col_width, value_col_width, i == state.selected_index)
+			}
 		}
 
 		if len(items) > visible_height {
 			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
+			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
 		}
 	}
 
-	render_data_footer(screen, state, FOOTER_DATA_VIEW)
+	render_data_footer(screen, state, cfg.footer)
+}
+
+// ============================================================================
+// PATH View
+// ============================================================================
+
+render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
+	render_list_view(state, screen, ListViewConfig{
+		view_key     = .PATH_VIEW,
+		title        = "PATH CONFIGURATION",
+		count_format = "%d entries",
+		row_kind     = .Single,
+		empty_line_1 = "No PATH entries found",
+		footer       = FOOTER_DATA_VIEW,
+	})
 }
 
 // ============================================================================
@@ -330,80 +405,16 @@ render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
 // ============================================================================
 
 render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
-	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
-	max_text_width := calculate_content_width(border_width)
-	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
-
-	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-
-	if state.data_cache[.ALIAS_VIEW] == nil {
-		render_view_loading(screen, state, "ALIASES", border_width)
-		return
-	}
-
-	items := cast(^[dynamic]string)state.data_cache[.ALIAS_VIEW]
-	count_text := fmt.tprintf("%d aliases", len(items))
-	render_view_header(screen, state, "ALIASES", count_text, border_width)
-
-	// Calculate table column widths
-	key_col_width := calculate_key_column_width(items, max_text_width)
-	value_col_width := max_text_width - key_col_width - COLUMN_GAP
-	if value_col_width < 1 {
-		value_col_width = 1
-	}
-
-	has_filter := state.filter_active || len(state.filter_text) > 0
-	list_start_offset := render_filter_bar(screen, state, len(items))
-
-	// Content area starts after divider + filter
-	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset
-
-	// Column header row (when there are items to show)
-	show_items := (has_filter && len(state.filtered_indices) > 0) || (!has_filter && len(items) > 0)
-	col_header_offset := 0
-	if show_items {
-		render_column_header(screen, header_x, content_start, "ALIAS", "COMMAND", key_col_width, border_width)
-		col_header_offset = 2  // header line + divider line
-	}
-
-	data_start := content_start + col_header_offset
-
-	if has_filter && len(state.filtered_indices) > 0 {
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset - 1 - col_header_offset
-		start := state.scroll_offset
-		end := min(start + visible_height, len(state.filtered_indices))
-
-		for idx in start..<end {
-			y := data_start + (idx - start)
-			original_idx := state.filtered_indices[idx]
-			render_table_row(screen, header_x, y, items[original_idx], key_col_width, value_col_width, idx == state.selected_index)
-		}
-
-		if len(state.filtered_indices) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
-			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
-		}
-	} else if has_filter && len(state.filtered_indices) == 0 {
-		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, data_start + 1, "No matches found", TUI_DIM)
-	} else if len(items) == 0 {
-		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No aliases found", TUI_DIM)
-	} else {
-		visible_height := calculate_visible_height(state.terminal_height) - 1 - col_header_offset
-		start := state.scroll_offset
-		end := min(start + visible_height, len(items))
-
-		for i in start..<end {
-			y := data_start + (i - start)
-			render_table_row(screen, header_x, y, items[i], key_col_width, value_col_width, i == state.selected_index)
-		}
-
-		if len(items) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
-		}
-	}
-
-	render_data_footer(screen, state, FOOTER_DATA_VIEW)
+	render_list_view(state, screen, ListViewConfig{
+		view_key     = .ALIAS_VIEW,
+		title        = "ALIASES",
+		count_format = "%d aliases",
+		row_kind     = .Table,
+		col_label_0  = "ALIAS",
+		col_label_1  = "COMMAND",
+		empty_line_1 = "No aliases found",
+		footer       = FOOTER_DATA_VIEW,
+	})
 }
 
 // ============================================================================
@@ -411,77 +422,16 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 // ============================================================================
 
 render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
-	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
-	max_text_width := calculate_content_width(border_width)
-	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
-
-	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-
-	if state.data_cache[.CONSTANTS_VIEW] == nil {
-		render_view_loading(screen, state, "ENVIRONMENT CONSTANTS", border_width)
-		return
-	}
-
-	items := cast(^[dynamic]string)state.data_cache[.CONSTANTS_VIEW]
-	count_text := fmt.tprintf("%d constants", len(items))
-	render_view_header(screen, state, "ENVIRONMENT CONSTANTS", count_text, border_width)
-
-	key_col_width := calculate_key_column_width(items, max_text_width)
-	value_col_width := max_text_width - key_col_width - COLUMN_GAP
-	if value_col_width < 1 {
-		value_col_width = 1
-	}
-
-	has_filter := state.filter_active || len(state.filter_text) > 0
-	list_start_offset := render_filter_bar(screen, state, len(items))
-
-	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset
-
-	show_items := (has_filter && len(state.filtered_indices) > 0) || (!has_filter && len(items) > 0)
-	col_header_offset := 0
-	if show_items {
-		render_column_header(screen, header_x, content_start, "NAME", "VALUE", key_col_width, border_width)
-		col_header_offset = 2
-	}
-
-	data_start := content_start + col_header_offset
-
-	if has_filter && len(state.filtered_indices) > 0 {
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset - 1 - col_header_offset
-		start := state.scroll_offset
-		end := min(start + visible_height, len(state.filtered_indices))
-
-		for idx in start..<end {
-			y := data_start + (idx - start)
-			original_idx := state.filtered_indices[idx]
-			render_table_row(screen, header_x, y, items[original_idx], key_col_width, value_col_width, idx == state.selected_index)
-		}
-
-		if len(state.filtered_indices) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
-			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
-		}
-	} else if has_filter && len(state.filtered_indices) == 0 {
-		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, data_start + 1, "No matches found", TUI_DIM)
-	} else if len(items) == 0 {
-		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No constants found", TUI_DIM)
-	} else {
-		visible_height := calculate_visible_height(state.terminal_height) - 1 - col_header_offset
-		start := state.scroll_offset
-		end := min(start + visible_height, len(items))
-
-		for i in start..<end {
-			y := data_start + (i - start)
-			render_table_row(screen, header_x, y, items[i], key_col_width, value_col_width, i == state.selected_index)
-		}
-
-		if len(items) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
-		}
-	}
-
-	render_data_footer(screen, state, FOOTER_DATA_VIEW)
+	render_list_view(state, screen, ListViewConfig{
+		view_key     = .CONSTANTS_VIEW,
+		title        = "ENVIRONMENT CONSTANTS",
+		count_format = "%d constants",
+		row_kind     = .Table,
+		col_label_0  = "NAME",
+		col_label_1  = "VALUE",
+		empty_line_1 = "No constants found",
+		footer       = FOOTER_DATA_VIEW,
+	})
 }
 
 // ============================================================================
@@ -489,64 +439,15 @@ render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 // ============================================================================
 
 render_completions_view :: proc(state: ^TUIState, screen: ^Screen) {
-	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
-	max_text_width := calculate_content_width(border_width)
-	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
-
-	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-
-	if state.data_cache[.COMPLETIONS_VIEW] == nil {
-		render_view_loading(screen, state, "COMPLETIONS", border_width)
-		return
-	}
-
-	items := cast(^[dynamic]string)state.data_cache[.COMPLETIONS_VIEW]
-	count_text := fmt.tprintf("%d completion scripts", len(items))
-	render_view_header(screen, state, "COMPLETIONS", count_text, border_width)
-
-	has_filter := state.filter_active || len(state.filter_text) > 0
-	list_start_offset := render_filter_bar(screen, state, len(items))
-
-	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset
-
-	if has_filter && len(state.filtered_indices) > 0 {
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset - 1
-		start := state.scroll_offset
-		end := min(start + visible_height, len(state.filtered_indices))
-
-		for idx in start..<end {
-			y := content_start + (idx - start)
-			original_idx := state.filtered_indices[idx]
-			render_list_item(screen, header_x, y, items[original_idx], max_text_width, idx == state.selected_index)
-		}
-
-		if len(state.filtered_indices) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
-			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
-		}
-	} else if has_filter && len(state.filtered_indices) == 0 {
-		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No matches found", TUI_DIM)
-	} else if len(items) == 0 {
-		text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
-		render_text_styled(screen, text_x, content_start + 1, "No completion scripts found", TUI_DIM)
-		render_text_styled(screen, text_x, content_start + 3, "Add completions with: wayu completions add <name> <file>", TUI_MUTED)
-	} else {
-		visible_height := calculate_visible_height(state.terminal_height) - 1
-		start := state.scroll_offset
-		end := min(start + visible_height, len(items))
-
-		for i in start..<end {
-			y := content_start + (i - start)
-			render_list_item(screen, header_x, y, items[i], max_text_width, i == state.selected_index)
-		}
-
-		if len(items) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
-		}
-	}
-
-	render_data_footer(screen, state, FOOTER_READONLY_VIEW)
+	render_list_view(state, screen, ListViewConfig{
+		view_key     = .COMPLETIONS_VIEW,
+		title        = "COMPLETIONS",
+		count_format = "%d completion scripts",
+		row_kind     = .Single,
+		empty_line_1 = "No completion scripts found",
+		empty_line_2 = "Add completions with: wayu completions add <name> <file>",
+		footer       = FOOTER_READONLY_VIEW,
+	})
 }
 
 // ============================================================================
@@ -554,62 +455,14 @@ render_completions_view :: proc(state: ^TUIState, screen: ^Screen) {
 // ============================================================================
 
 render_backups_view :: proc(state: ^TUIState, screen: ^Screen) {
-	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
-	max_text_width := calculate_content_width(border_width)
-	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
-
-	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-
-	if state.data_cache[.BACKUPS_VIEW] == nil {
-		render_view_loading(screen, state, "BACKUPS", border_width)
-		return
-	}
-
-	items := cast(^[dynamic]string)state.data_cache[.BACKUPS_VIEW]
-	count_text := fmt.tprintf("%d backups available", len(items))
-	render_view_header(screen, state, "BACKUPS", count_text, border_width)
-
-	has_filter := state.filter_active || len(state.filter_text) > 0
-	list_start_offset := render_filter_bar(screen, state, len(items))
-
-	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset
-
-	if has_filter && len(state.filtered_indices) > 0 {
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset - 1
-		start := state.scroll_offset
-		end := min(start + visible_height, len(state.filtered_indices))
-
-		for idx in start..<end {
-			y := content_start + (idx - start)
-			original_idx := state.filtered_indices[idx]
-			render_list_item(screen, header_x, y, items[original_idx], max_text_width, idx == state.selected_index)
-		}
-
-		if len(state.filtered_indices) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
-			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
-		}
-	} else if has_filter && len(state.filtered_indices) == 0 {
-		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No matches found", TUI_DIM)
-	} else if len(items) == 0 {
-		render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, content_start + 1, "No backups found", TUI_DIM)
-	} else {
-		visible_height := calculate_visible_height(state.terminal_height) - 1
-		start := state.scroll_offset
-		end := min(start + visible_height, len(items))
-
-		for i in start..<end {
-			y := content_start + (i - start)
-			render_list_item(screen, header_x, y, items[i], max_text_width, i == state.selected_index)
-		}
-
-		if len(items) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
-		}
-	}
-
-	render_data_footer(screen, state, FOOTER_BACKUP_VIEW)
+	render_list_view(state, screen, ListViewConfig{
+		view_key     = .BACKUPS_VIEW,
+		title        = "BACKUPS",
+		count_format = "%d backups available",
+		row_kind     = .Single,
+		empty_line_1 = "No backups found",
+		footer       = FOOTER_BACKUP_VIEW,
+	})
 }
 
 // ============================================================================
@@ -618,16 +471,43 @@ render_backups_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
-	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_NORMAL)
-
-	render_view_header(screen, state, "PLUGINS", "Plugin management system", border_width)
+	max_text_width := calculate_content_width(border_width)
+	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
-	content_start := LIST_ITEM_START_LINE + 2
-	render_text_styled(screen, text_x, content_start, "(Future feature)", TUI_DIM)
 
-	render_data_footer(screen, state, FOOTER_STATIC_VIEW)
+	if state.data_cache[.PLUGINS_VIEW] == nil {
+		render_view_loading(screen, state, "PLUGINS", border_width)
+		return
+	}
+
+	items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
+	count_text := fmt.tprintf("%d plugins", len(items))
+	render_view_header(screen, state, "PLUGINS", count_text, border_width)
+
+	content_start := LIST_ITEM_START_LINE + 1  // +1 for divider
+
+	if len(items) == 0 {
+		text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+		render_text_styled(screen, text_x, content_start + 1, "No plugins installed", TUI_DIM)
+		render_text_styled(screen, text_x, content_start + 2, "Run: wayu plugin add <name>", TUI_MUTED)
+	} else {
+		visible_height := calculate_visible_height(state.terminal_height) - 1
+		start := state.scroll_offset
+		end := min(start + visible_height, len(items))
+
+		for i in start..<end {
+			y := content_start + (i - start)
+			render_list_item(screen, header_x, y, items[i], max_text_width, i == state.selected_index)
+		}
+
+		if len(items) > visible_height {
+			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
+			render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
+		}
+	}
+
+	render_data_footer(screen, state, FOOTER_DATA_VIEW)
 }
 
 // ============================================================================
@@ -724,8 +604,15 @@ get_view_item_count :: proc(state: ^TUIState) -> int {
 		}
 		return 0
 
-	case .PLUGINS_VIEW, .SETTINGS_VIEW:
-		return 0  // No navigation in these views yet
+	case .PLUGINS_VIEW:
+		if state.data_cache[.PLUGINS_VIEW] != nil {
+			items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
+			return len(items)
+		}
+		return 0
+
+	case .SETTINGS_VIEW:
+		return 0  // Read-only view
 	}
 	return 0
 }

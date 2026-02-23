@@ -114,12 +114,9 @@ table_render :: proc(table: Table) -> string {
 	result := strings.Builder{}
 	defer strings.builder_destroy(&result)
 
-	// Derive border color from theme primary palette — computed once, reused throughout.
-	// fmt.tprintf uses the temp allocator so no heap allocation is needed here.
-	theme          := get_theme()
-	border_code    := get_theme_color(theme, .Primary)
-	border_on      := fmt.tprintf("\x1b[%sm", border_code)
-	border_off     :: "\x1b[0m"
+	// Border color: adaptive primary color from colors.odin (truecolor/256/ANSI).
+	border_on  := get_primary()
+	border_off :: "\x1b[0m"
 
 	// Calculate total width
 	total_width := 0

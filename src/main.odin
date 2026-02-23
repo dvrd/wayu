@@ -21,11 +21,6 @@ YES_FLAG := false  // Skip confirmation prompts
 DETECTED_SHELL : ShellType
 SHELL_EXT : string
 
-// TUI mode globals - used to prevent os.exit() in TUI context
-TUI_MODE := false
-TUI_LAST_ERROR: string
-TUI_LAST_SUCCESS := false
-
 // Global temp arena for cleaning up after commands
 TEMP_ARENA: ^mem.Arena
 
@@ -63,6 +58,7 @@ Action :: enum {
 	ENABLE,   // NEW - Phase 3
 	DISABLE,  // NEW - Phase 3
 	PRIORITY, // NEW - Phase 5
+	SEARCH,
 	RESTORE,
 	CLEAN,
 	DEDUP,
@@ -171,8 +167,10 @@ main :: proc() {
 			tui_bridge_add_path,
 			tui_bridge_add_alias,
 			tui_bridge_add_constant,
+			tui_bridge_load_plugins,
+			tui_bridge_enable_plugin,
+			tui_bridge_disable_plugin,
 		)
-		tui.g_get_last_error = tui_bridge_get_last_error
 
 		// Launch TUI
 		tui.tui_run()
@@ -325,6 +323,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	case "enable":          parsed.action = .ENABLE
 	case "disable":         parsed.action = .DISABLE
 	case "priority":        parsed.action = .PRIORITY
+	case "search":          parsed.action = .SEARCH
 	case "restore":         parsed.action = .RESTORE
 	case "clean":           parsed.action = .CLEAN
 	case "dedup":           parsed.action = .DEDUP

@@ -131,3 +131,63 @@ test_expand_env_vars_no_vars :: proc(t: ^testing.T) {
 // The PATH functionality is fully tested through:
 // - Integration tests: Full add/remove/list workflow with duplicate detection and missing path handling
 // - Unit tests above: expand_env_vars(), extract_path_items(), parsing logic
+
+@(test)
+test_expand_env_vars_gopath :: proc(t: ^testing.T) {
+	// Set a known env var and verify it is expanded.
+	// os.set_env is not available in Odin stdlib; we test with HOME which is
+	// always set in a normal shell environment.
+	result := wayu.expand_env_vars("$HOME/.local/bin")
+	defer delete(result)
+	testing.expect(t, !strings.contains(result, "$HOME"),
+		"$HOME token should be replaced")
+	testing.expect(t, len(result) > len("/.local/bin"),
+		"Expanded path should be longer than the suffix alone")
+}
+
+@(test)
+test_expand_env_vars_brace_syntax :: proc(t: ^testing.T) {
+	// ${HOME} brace syntax must expand identically to $HOME.
+	result_bare  := wayu.expand_env_vars("$HOME/bin")
+	result_brace := wayu.expand_env_vars("${HOME}/bin")
+	defer delete(result_bare)
+	defer delete(result_brace)
+	testing.expect_value(t, result_bare, result_brace)
+}
+
+@(test)
+test_expand_env_vars_multiple_tokens :: proc(t: ^testing.T) {
+	// A path with two env var tokens must have both expanded.
+	// Use HOME (always set) twice to keep the test hermetic.
+	result := wayu.expand_env_vars("$HOME/a/$HOME/b")
+	defer delete(result)
+	testing.expect(t, !strings.contains(result, "$HOME"),
+		"All $HOME tokens should be replaced")
+}
+
+@(test)
+test_expand_env_vars_unset_variable :: proc(t: ^testing.T) {
+	// An unset variable token must be left as-is (not silently dropped).
+	result := wayu.expand_env_vars("$WAYU_NONEXISTENT_VAR_XYZ_12345/bin")
+	defer delete(result)
+	testing.expect(t, strings.contains(result, "$WAYU_NONEXISTENT_VAR_XYZ_12345"),
+		"Unset variable token should be preserved verbatim")
+}
+
+@(test)
+test_expand_env_vars_bare_dollar :: proc(t: ^testing.T) {
+	// A bare '$' with no identifier must be emitted as-is without panic.
+	result := wayu.expand_env_vars("/path/with$/dollar")
+	defer delete(result)
+	testing.expect(t, strings.contains(result, "$"),
+		"Bare dollar sign should be preserved")
+}
+
+@(test)
+test_expand_env_vars_no_vars_unchanged :: proc(t: ^testing.T) {
+	// A plain absolute path with no tokens must survive unchanged
+	// (modulo filepath.abs normalisation, which is a no-op for clean paths).
+	result := wayu.expand_env_vars("/usr/local/bin")
+	defer delete(result)
+	testing.expect_value(t, result, "/usr/local/bin")
+}

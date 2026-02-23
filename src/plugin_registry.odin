@@ -3,7 +3,6 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:c/libc"
 import "core:slice"
 import "core:sync"
 import "core:encoding/json"
@@ -268,48 +267,22 @@ migrate_plugin_config :: proc() -> bool {
 
 // Clone plugin repository
 git_clone :: proc(url: string, dest: string) -> bool {
-	// Validate inputs against shell injection
-	if !is_safe_shell_arg(url) || !is_safe_shell_arg(dest) {
-		print_error_simple("Error: URL or destination contains unsafe characters")
-		return false
-	}
-
-	cmd := fmt.aprintf("git clone --depth=1 --quiet \"%s\" \"%s\" 2>&1", url, dest)
-	defer delete(cmd)
-
 	if DRY_RUN {
-		print_info("[DRY RUN] Would execute: %s", cmd)
+		print_info("[DRY RUN] Would execute: git clone --depth=1 --quiet %s %s", url, dest)
 		return true
 	}
 
-	cmd_cstr := strings.clone_to_cstring(cmd)
-	defer delete(cmd_cstr)
-
-	result := libc.system(cmd_cstr)
-	return result == 0
+	return run_command([]string{"git", "clone", "--depth=1", "--quiet", url, dest})
 }
 
 // Update plugin (git pull)
 git_update :: proc(plugin_dir: string) -> bool {
-	// Validate plugin_dir against shell injection
-	if !is_safe_shell_arg(plugin_dir) {
-		print_error_simple("Error: Plugin directory path contains unsafe characters")
-		return false
-	}
-
-	cmd := fmt.aprintf("git -C \"%s\" pull --quiet 2>&1", plugin_dir)
-	defer delete(cmd)
-
 	if DRY_RUN {
-		print_info("[DRY RUN] Would execute: %s", cmd)
+		print_info("[DRY RUN] Would execute: git -C %s pull --quiet", plugin_dir)
 		return true
 	}
 
-	cmd_cstr := strings.clone_to_cstring(cmd)
-	defer delete(cmd_cstr)
-
-	result := libc.system(cmd_cstr)
-	return result == 0
+	return run_command([]string{"git", "-C", plugin_dir, "pull", "--quiet"})
 }
 
 // Check if directory is git repo
@@ -984,38 +957,35 @@ resolve_plugin :: proc(name_or_url: string) -> (PluginInfo, bool) {
 // Returns short SHA (7 chars) or empty string on failure
 // CRITICAL: Returned string is ALLOCATED - caller must delete()
 get_remote_commit :: proc(url: string, branch: string) -> string {
-	// Validate URL against shell injection
-	if !is_safe_shell_arg(url) {
-		print_error_simple("Error: URL contains unsafe characters")
-		return ""
-	}
-
 	// Use HEAD if no branch specified
 	branch_ref := branch != "" ? branch : "HEAD"
 
-	// Validate branch ref against shell injection
-	if !is_safe_shell_arg(branch_ref) {
-		print_error_simple("Error: Branch name contains unsafe characters")
+	// Run: git ls-remote <url> <branch_ref>
+	// Output format: "<40-char-SHA>\t<ref-name>\n"
+	// No shell needed — parse the first field in Odin
+	output := capture_command([]string{"git", "ls-remote", url, branch_ref})
+	defer delete(output)
+
+	if output == "" {
 		return ""
 	}
 
-	// Build command: git ls-remote "<url>" "<branch>" 2>/dev/null | cut -f1
-	// The '2>/dev/null' suppresses error output
-	// The 'cut -f1' extracts just the commit SHA (first field)
-	cmd := fmt.aprintf("git ls-remote \"%s\" \"%s\" 2>/dev/null | cut -f1", url, branch_ref)
-	defer delete(cmd)
+	// Parse: first field before any whitespace is the full SHA
+	// git ls-remote output: "abc123def456...\trefs/heads/main"
+	// NOTE: Odin for-string syntax is "for value, index in str" — r=rune, i=byte_offset
+	full_sha := output
+	for r, i in output {
+		if r == '\t' || r == ' ' || r == '\n' || r == '\r' {
+			full_sha = output[:i]
+			break
+		}
+	}
 
-	// Execute and get full SHA (40 chars) or empty string
-	full_sha := exec_command_output(cmd)  // ALLOCATED - must delete
-	if full_sha == "" {
+	if len(full_sha) == 0 {
 		return ""
 	}
 
-	// Extract short SHA (first 7 chars)
-	// NOTE: Create new allocated string before deleting full_sha
-	short_sha := strings.clone(full_sha[0:min(7, len(full_sha))])
-	delete(full_sha)  // Clean up full SHA
-
-	return short_sha  // Caller's responsibility to delete
+	// Return short SHA (first 7 chars) — ALLOCATED, caller must delete
+	return strings.clone(full_sha[0:min(7, len(full_sha))])
 }
 

@@ -340,16 +340,18 @@ execute_pending_delete :: proc(state: ^TUIState) {
 	item_count := get_view_item_count(state)
 
 	success := false
+	err_msg := ""
 	switch view {
 	case .PATH_VIEW:
-		success = tui_delete_path(name)
+		success, err_msg = tui_delete_path(name)
 	case .ALIAS_VIEW:
-		success = tui_delete_alias(name)
+		success, err_msg = tui_delete_alias(name)
 	case .CONSTANTS_VIEW:
-		success = tui_delete_constant(name)
+		success, err_msg = tui_delete_constant(name)
 	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
 		// No delete for these views
 	}
+	defer if len(err_msg) > 0 do delete(err_msg)
 
 	// Dismiss the overlay (this also frees confirm_delete_name)
 	clear_detail(state)
@@ -377,10 +379,6 @@ execute_pending_delete :: proc(state: ^TUIState) {
 			state.scroll_offset = state.selected_index
 		}
 	} else {
-		err_msg := ""
-		if g_get_last_error != nil {
-			err_msg = g_get_last_error()
-		}
 		if len(err_msg) > 0 {
 			set_notification(state, .ERROR, err_msg)
 		} else {
@@ -668,16 +666,18 @@ execute_add_form :: proc(state: ^TUIState) {
 
 	view := state.add_form.view
 	success := false
+	err_msg := ""
 	switch view {
 	case .PATH_VIEW:
-		success = tui_add_path(val_0)
+		success, err_msg = tui_add_path(val_0)
 	case .ALIAS_VIEW:
-		success = tui_add_alias(val_0, val_1)
+		success, err_msg = tui_add_alias(val_0, val_1)
 	case .CONSTANTS_VIEW:
-		success = tui_add_constant(val_0, val_1)
+		success, err_msg = tui_add_constant(val_0, val_1)
 	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
 		// unsupported
 	}
+	defer if len(err_msg) > 0 do delete(err_msg)
 
 	if success {
 		label: string
@@ -693,10 +693,6 @@ execute_add_form :: proc(state: ^TUIState) {
 		clear_view_cache(state, view)
 		set_notification(state, .SUCCESS, msg)
 	} else {
-		err_msg := ""
-		if g_get_last_error != nil {
-			err_msg = g_get_last_error()
-		}
 		if len(err_msg) > 0 {
 			state.add_form.error_message = fmt.tprintf("Error: %s", err_msg)
 		} else {
