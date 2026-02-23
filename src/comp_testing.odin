@@ -17,11 +17,6 @@ import tui "tui"
 // Golden file directory
 GOLDEN_DIR :: "tests/golden"
 
-// Simple test function
-simple_test_function :: proc() {
-	fmt.println("Test")
-}
-
 // Run component test mode
 run_component_testing :: proc(component_name: string, args: []string, snapshot: bool, verify: bool) {
 	// Parse component type

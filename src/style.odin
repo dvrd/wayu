@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:slice"
+import "core:unicode/utf8"
 
 // Complete style system for PRP-07
 // Note: Style, Alignment, and BorderStyle types are defined in types.odin
@@ -902,4 +903,149 @@ style_foreground_adaptive :: proc(s: Style, light: string, dark: string) -> Styl
 	result.foreground = light
 	result.foreground_dark = dark
 	return result
+}
+
+// ============================================================================
+// UNICODE WIDTH UTILITIES (moved from layout.odin)
+// ============================================================================
+
+// visual_width returns the number of terminal columns a string occupies.
+// It correctly handles ANSI escape sequences (zero width) and wide Unicode
+// characters such as CJK ideographs and emoji (two columns each).
+visual_width :: proc(str: string) -> int {
+	visible_chars := 0
+	runes := utf8.string_to_runes(str)
+	defer delete(runes)
+
+	i := 0
+	for i < len(runes) {
+		r := runes[i]
+
+		// Check for ANSI escape sequences
+		if r == '\x1b' && i + 1 < len(runes) {
+			if runes[i + 1] == '[' {
+				// CSI sequence (ESC[...m)
+				i += 2 // Skip ESC[
+				for i < len(runes) && runes[i] != 'm' && runes[i] != 'K' && runes[i] != 'J' && runes[i] != 'H' {
+					i += 1
+				}
+				if i < len(runes) {
+					i += 1 // Skip the terminator
+				}
+			} else if runes[i + 1] == ']' {
+				// OSC sequence (ESC]...BEL or ESC]...ST)
+				i += 2 // Skip ESC]
+				for i < len(runes) {
+					if runes[i] == '\x07' || (runes[i] == '\x1b' && i + 1 < len(runes) && runes[i + 1] == '\\') {
+						if runes[i] == '\x1b' {
+							i += 2 // Skip ESC\
+						} else {
+							i += 1 // Skip BEL
+						}
+						break
+					}
+					i += 1
+				}
+			} else {
+				// Other escape sequences
+				i += 2
+			}
+		} else {
+			// Handle Unicode characters with proper width calculation
+			width := get_rune_width(r)
+			visible_chars += width
+			i += 1
+		}
+	}
+
+	return visible_chars
+}
+
+// get_rune_width returns the display width of a single Unicode rune.
+// Control characters return 0; wide characters (CJK, emoji) return 2;
+// all other printable characters return 1.
+get_rune_width :: proc(r: rune) -> int {
+	// Control characters have zero width
+	if r < 32 || (r >= 0x7F && r < 0xA0) {
+		return 0
+	}
+
+	// Wide characters (CJK, emojis, etc.) take 2 columns
+	if is_wide_character(r) {
+		return 2
+	}
+
+	// Regular characters take 1 column
+	return 1
+}
+
+// is_wide_character reports whether a rune occupies two terminal columns.
+// Covers emoji, CJK unified ideographs, Hangul, Katakana, Hiragana, and
+// related Unicode blocks. Common single-width symbols (✓ ✗) are excluded.
+is_wide_character :: proc(r: rune) -> bool {
+	// Special handling for problematic characters that appear in our tables
+	// These specific characters are often rendered as single-width in modern terminals
+	if r == 0x2713 || r == 0x2717 { // ✓ ✗ - Check mark and X mark
+		return false // These are actually single-width in most terminals
+	}
+
+	// Emoji ranges (simplified)
+	if (r >= 0x1F600 && r <= 0x1F64F) || // Emoticons
+	   (r >= 0x1F300 && r <= 0x1F5FF) || // Misc Symbols and Pictographs
+	   (r >= 0x1F680 && r <= 0x1F6FF) || // Transport and Map
+	   (r >= 0x1F700 && r <= 0x1F77F) || // Alchemical Symbols
+	   (r >= 0x1F780 && r <= 0x1F7FF) || // Geometric Shapes Extended
+	   (r >= 0x1F800 && r <= 0x1F8FF) || // Supplemental Arrows-C
+	   (r >= 0x1F900 && r <= 0x1F9FF) || // Supplemental Symbols and Pictographs
+	   (r >= 0x1FA00 && r <= 0x1FA6F) || // Chess Symbols
+	   (r >= 0x1FA70 && r <= 0x1FAFF) || // Symbols and Pictographs Extended-A
+	   (r >= 0x2600 && r <= 0x26FF) ||   // Miscellaneous Symbols
+	   (r >= 0x1F000 && r <= 0x1F02F) || // Mahjong Tiles
+	   (r >= 0x1F0A0 && r <= 0x1F0FF) {  // Playing Cards
+		return true
+	}
+
+	// Dingbats range but excluding specific single-width characters
+	if r >= 0x2700 && r <= 0x27BF {
+		// Most dingbats are wide, but some common ones are single-width
+		if r == 0x2713 || r == 0x2717 || r == 0x2718 || r == 0x2719 ||
+		   r == 0x271A || r == 0x271B || r == 0x271C || r == 0x271D {
+			return false
+		}
+		return true
+	}
+
+	// CJK ranges
+	if (r >= 0x1100 && r <= 0x115F) ||   // Hangul Jamo
+	   (r >= 0x2E80 && r <= 0x2EFF) ||   // CJK Radicals Supplement
+	   (r >= 0x2F00 && r <= 0x2FDF) ||   // Kangxi Radicals
+	   (r >= 0x3000 && r <= 0x303F) ||   // CJK Symbols and Punctuation
+	   (r >= 0x3040 && r <= 0x309F) ||   // Hiragana
+	   (r >= 0x30A0 && r <= 0x30FF) ||   // Katakana
+	   (r >= 0x3100 && r <= 0x312F) ||   // Bopomofo
+	   (r >= 0x3130 && r <= 0x318F) ||   // Hangul Compatibility Jamo
+	   (r >= 0x3190 && r <= 0x319F) ||   // Kanbun
+	   (r >= 0x31A0 && r <= 0x31BF) ||   // Bopomofo Extended
+	   (r >= 0x31C0 && r <= 0x31EF) ||   // CJK Strokes
+	   (r >= 0x31F0 && r <= 0x31FF) ||   // Katakana Phonetic Extensions
+	   (r >= 0x3200 && r <= 0x32FF) ||   // Enclosed CJK Letters and Months
+	   (r >= 0x3300 && r <= 0x33FF) ||   // CJK Compatibility
+	   (r >= 0x3400 && r <= 0x4DBF) ||   // CJK Extension A
+	   (r >= 0x4E00 && r <= 0x9FFF) ||   // CJK Unified Ideographs
+	   (r >= 0xA000 && r <= 0xA48F) ||   // Yi Syllables
+	   (r >= 0xA490 && r <= 0xA4CF) ||   // Yi Radicals
+	   (r >= 0xAC00 && r <= 0xD7AF) ||   // Hangul Syllables
+	   (r >= 0xF900 && r <= 0xFAFF) ||   // CJK Compatibility Ideographs
+	   (r >= 0xFE10 && r <= 0xFE1F) ||   // Vertical Forms
+	   (r >= 0xFE30 && r <= 0xFE4F) ||   // CJK Compatibility Forms
+	   (r >= 0xFF00 && r <= 0xFFEF) ||   // Halfwidth and Fullwidth Forms
+	   (r >= 0x20000 && r <= 0x2A6DF) || // CJK Extension B
+	   (r >= 0x2A700 && r <= 0x2B73F) || // CJK Extension C
+	   (r >= 0x2B740 && r <= 0x2B81F) || // CJK Extension D
+	   (r >= 0x2B820 && r <= 0x2CEAF) || // CJK Extension E
+	   (r >= 0x2CEB0 && r <= 0x2EBEF) {  // CJK Extension F
+		return true
+	}
+
+	return false
 }

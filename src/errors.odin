@@ -193,7 +193,7 @@ check_wayu_initialized :: proc() -> bool {
 
 	// Check for essential files using the detected shell extension.
 	// Arena-backed: all four paths are freed in bulk when the proc returns.
-	scratch_buf: [512]byte
+	scratch_buf: [2048]byte
 	scratch: mem.Arena
 	mem.arena_init(&scratch, scratch_buf[:])
 	scratch_alloc := mem.arena_allocator(&scratch)

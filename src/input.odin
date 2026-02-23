@@ -206,38 +206,78 @@ input_delete_at_cursor :: proc(input: ^Input) {
 	// Cursor position stays the same
 }
 
-// Render the input field
+// Render the input field.
+// Returns an allocated string the caller must delete.
+// Handles text longer than the inner content area (width - 4) by truncating
+// with a "..." indicator so the box is always exactly input.width columns wide.
 input_render :: proc(input: ^Input) -> string {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 
-	// Top border
+	content_width := input.width - 4 // 2 border chars + 2 space padding
+
+	// ── Top border ──────────────────────────────────────────────────────────
 	strings.write_string(&builder, "┌")
 	for i in 0 ..< input.width - 2 {
 		strings.write_string(&builder, "─")
 	}
 	strings.write_string(&builder, "┐\r\n")
 
-	// Content line
+	// ── Content line ────────────────────────────────────────────────────────
 	strings.write_string(&builder, "│ ")
 
 	display_text := input.value
-	display_len := len(display_text)
+	display_len  := len(display_text)
 
-	// Show placeholder if empty
 	if display_len == 0 {
+		// ── Placeholder ─────────────────────────────────────────────────────
 		fmt.sbprintf(&builder, "%s%s%s", DIM, input.placeholder, RESET)
-		padding_needed := input.width - 4 - len(input.placeholder)
+		padding_needed := max(0, content_width - len(input.placeholder))
 		for i in 0 ..< padding_needed {
 			strings.write_byte(&builder, ' ')
 		}
-	} else {
-		// Show value with cursor
-		if input.focused {
-			// Render value with cursor indicator
+
+	} else if input.focused {
+		// ── Focused: text + block cursor ────────────────────────────────────
+		// visible_len accounts for the cursor block appended at end-of-string.
+		visible_len := display_len
+		if input.cursor_pos >= display_len {
+			visible_len = display_len + 1 // cursor sits past last char
+		}
+
+		if visible_len > content_width {
+			// Truncate: show "..." + last (content_width - 3) chars of text.
+			// The cursor is always at the right edge of the visible window.
+			trunc_chars := content_width - 3
+			if trunc_chars < 0 { trunc_chars = 0 }
+
+			// Take the last trunc_chars bytes of display_text.
+			start := len(display_text) - trunc_chars
+			if start < 0 { start = 0 }
+			visible_text := display_text[start:]
+
+			strings.write_string(&builder, "...")
+
+			if input.cursor_pos < display_len && len(visible_text) > 0 {
+				// Cursor is on a character — show text up to last char, then
+				// highlight the last visible char as the cursor position.
+				if len(visible_text) > 1 {
+					strings.write_string(&builder, visible_text[:len(visible_text)-1])
+				}
+				last_char := string([]byte{visible_text[len(visible_text)-1]})
+				fmt.sbprintf(&builder, "%s%s%s%s", BOLD, get_primary(), last_char, RESET)
+			} else {
+				// Cursor at end — show all visible text then append block cursor.
+				strings.write_string(&builder, visible_text)
+				fmt.sbprintf(&builder, "%s%s%s%s", BOLD, get_primary(), "█", RESET)
+			}
+			// padding_needed is 0 when overflowing — box closes immediately.
+
+		} else {
+			// Normal focused render — text fits within content_width.
 			before_cursor := ""
-			cursor_char := "█" // Block cursor
-			after_cursor := ""
+			cursor_char   := "█"
+			after_cursor  := ""
 
 			if input.cursor_pos > 0 {
 				before_cursor = display_text[:input.cursor_pos]
@@ -249,26 +289,29 @@ input_render :: proc(input: ^Input) -> string {
 				}
 			}
 
-			// Write with cursor highlight
 			strings.write_string(&builder, before_cursor)
 			fmt.sbprintf(&builder, "%s%s%s%s", BOLD, get_primary(), cursor_char, RESET)
 			strings.write_string(&builder, after_cursor)
 
-			// Calculate padding
-			visible_len := display_len
-			if input.cursor_pos < display_len {
-				visible_len = display_len // Cursor replaces char
-			} else {
-				visible_len = display_len + 1 // Cursor at end
-			}
-			padding_needed := input.width - 4 - visible_len
+			padding_needed := max(0, content_width - visible_len)
 			for i in 0 ..< padding_needed {
 				strings.write_byte(&builder, ' ')
 			}
+		}
+
+	} else {
+		// ── Unfocused: plain text ────────────────────────────────────────────
+		if display_len > content_width {
+			// Truncate: show first (content_width - 3) chars + "..."
+			trunc_chars := content_width - 3
+			if trunc_chars < 0 { trunc_chars = 0 }
+			end := trunc_chars
+			if end > len(display_text) { end = len(display_text) }
+			strings.write_string(&builder, display_text[:end])
+			strings.write_string(&builder, "...")
 		} else {
-			// Not focused - just show text
 			strings.write_string(&builder, display_text)
-			padding_needed := input.width - 4 - display_len
+			padding_needed := max(0, content_width - display_len)
 			for i in 0 ..< padding_needed {
 				strings.write_byte(&builder, ' ')
 			}
@@ -277,7 +320,7 @@ input_render :: proc(input: ^Input) -> string {
 
 	strings.write_string(&builder, " │\r\n")
 
-	// Bottom border
+	// ── Bottom border ────────────────────────────────────────────────────────
 	strings.write_string(&builder, "└")
 	for i in 0 ..< input.width - 2 {
 		strings.write_string(&builder, "─")

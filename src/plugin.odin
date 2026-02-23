@@ -4,7 +4,6 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:time"
-import "core:c/libc"
 
 // Shell compatibility for plugins
 ShellCompat :: enum {
@@ -192,43 +191,6 @@ get_iso8601_timestamp :: proc() -> string {
 		year, month, day, hour, minute, second)
 }
 
-// Execute command and return trimmed output
-exec_command_output :: proc(cmd: string) -> string {
-	// Use unique temporary file for output to avoid race conditions
-	now := time.now()
-	unix_nanos := time.to_unix_nanoseconds(now)
-	temp_file := fmt.aprintf("/tmp/wayu_cmd_output_%d.txt", unix_nanos)
-	defer delete(temp_file)
-
-	full_cmd := fmt.aprintf("%s > %s 2>&1", cmd, temp_file)
-	defer delete(full_cmd)
-
-	cmd_cstr := strings.clone_to_cstring(full_cmd)
-	defer delete(cmd_cstr)
-
-	result := libc.system(cmd_cstr)
-	if result != 0 {
-		// Clean up temp file on error
-		os.remove(temp_file)
-		return ""
-	}
-
-	data, read_err := os.read_entire_file(temp_file, context.allocator)
-	if read_err != nil {
-		os.remove(temp_file)
-		return ""
-	}
-	defer delete(data)
-
-	// Clean up temp file after reading
-	os.remove(temp_file)
-
-	output := string(data)
-	trimmed := strings.trim_space(output)
-	// Clone the trimmed string before data is deleted
-	return strings.clone(trimmed)
-}
-
 // Get git information for an installed plugin
 get_git_info :: proc(plugin_dir: string) -> GitMetadata {
 	info := GitMetadata{}
@@ -237,24 +199,15 @@ get_git_info :: proc(plugin_dir: string) -> GitMetadata {
 		return info
 	}
 
-	// Validate plugin_dir against shell injection
-	if !is_safe_shell_arg(plugin_dir) {
-		print_error_simple("Error: Plugin directory path contains unsafe characters")
-		return info
-	}
-
-	// Get current branch
-	branch_cmd := fmt.aprintf("git -C \"%s\" rev-parse --abbrev-ref HEAD 2>/dev/null", plugin_dir)
-	defer delete(branch_cmd)
-	info.branch = exec_command_output(branch_cmd)
+	// Get current branch — no shell, args passed directly to git
+	info.branch = capture_command([]string{"git", "-C", plugin_dir, "rev-parse", "--abbrev-ref", "HEAD"})
 
 	// Get local commit (short SHA)
-	commit_cmd := fmt.aprintf("git -C \"%s\" rev-parse --short HEAD 2>/dev/null", plugin_dir)
-	defer delete(commit_cmd)
-	info.commit = exec_command_output(commit_cmd)
+	info.commit = capture_command([]string{"git", "-C", plugin_dir, "rev-parse", "--short", "HEAD"})
 
 	// Remote commit will be fetched during check/update
-	info.remote_commit = info.commit
+	// IMPORTANT: Must be a separate allocation (cleanup_plugin_metadata deletes both independently)
+	info.remote_commit = strings.clone(info.commit)
 	info.last_checked = get_iso8601_timestamp()
 
 	return info
@@ -322,6 +275,8 @@ handle_plugin_command :: proc(action: Action, args: []string) {
 		handle_plugin_disable(args)
 	case .PRIORITY:
 		handle_plugin_priority(args)
+	case .SEARCH:
+		handle_plugin_search(args)
 	case .HELP:
 		print_plugin_help()
 	case:

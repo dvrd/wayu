@@ -16,15 +16,17 @@ g_load_alias_data: proc(^TUIState)
 g_load_constants_data: proc(^TUIState)
 g_load_completions_data: proc(^TUIState)
 g_load_backups_data: proc(^TUIState)
-g_delete_path: proc(string) -> bool
-g_delete_alias: proc(string) -> bool
-g_delete_constant: proc(string) -> bool
+g_load_plugins_data: proc(^TUIState)
+g_delete_path: proc(string) -> (bool, string)
+g_delete_alias: proc(string) -> (bool, string)
+g_delete_constant: proc(string) -> (bool, string)
 g_cleanup_backups: proc() -> bool
 g_get_path_detail: proc(string) -> [dynamic]string
-g_get_last_error: proc() -> string
-g_add_path:       proc(string) -> bool
-g_add_alias:      proc(string, string) -> bool
-g_add_constant:   proc(string, string) -> bool
+g_add_path:       proc(string) -> (bool, string)
+g_add_alias:      proc(string, string) -> (bool, string)
+g_add_constant:   proc(string, string) -> (bool, string)
+g_enable_plugin:  proc(string) -> bool
+g_disable_plugin: proc(string) -> bool
 
 // Set bridge functions (called from main.odin before tui_run)
 tui_set_bridge_functions :: proc(
@@ -33,14 +35,17 @@ tui_set_bridge_functions :: proc(
 	load_constants: proc(^TUIState),
 	load_completions: proc(^TUIState),
 	load_backups: proc(^TUIState),
-	delete_path: proc(string) -> bool,
-	delete_alias: proc(string) -> bool,
-	delete_constant: proc(string) -> bool,
+	delete_path: proc(string) -> (bool, string),
+	delete_alias: proc(string) -> (bool, string),
+	delete_constant: proc(string) -> (bool, string),
 	cleanup_backups: proc() -> bool,
 	get_path_detail: proc(string) -> [dynamic]string,
-	add_path: proc(string) -> bool,
-	add_alias: proc(string, string) -> bool,
-	add_constant: proc(string, string) -> bool,
+	add_path: proc(string) -> (bool, string),
+	add_alias: proc(string, string) -> (bool, string),
+	add_constant: proc(string, string) -> (bool, string),
+	load_plugins: proc(^TUIState) = nil,
+	enable_plugin: proc(string) -> bool = nil,
+	disable_plugin: proc(string) -> bool = nil,
 ) {
 	g_load_path_data = load_path
 	g_load_alias_data = load_alias
@@ -55,6 +60,9 @@ tui_set_bridge_functions :: proc(
 	g_add_path = add_path
 	g_add_alias = add_alias
 	g_add_constant = add_constant
+	g_load_plugins_data = load_plugins
+	g_enable_plugin = enable_plugin
+	g_disable_plugin = disable_plugin
 }
 
 // Bridge functions to load data into TUI state cache
@@ -97,28 +105,35 @@ tui_load_backups_data :: proc(state: ^TUIState) {
 	}
 }
 
+// Load Plugins into cache
+tui_load_plugins_data :: proc(state: ^TUIState) {
+	if g_load_plugins_data != nil {
+		g_load_plugins_data(state)
+	}
+}
+
 // Delete PATH entry
-tui_delete_path :: proc(name: string) -> bool {
+tui_delete_path :: proc(name: string) -> (bool, string) {
 	if g_delete_path != nil {
 		return g_delete_path(name)
 	}
-	return false
+	return false, ""
 }
 
 // Delete Alias entry
-tui_delete_alias :: proc(name: string) -> bool {
+tui_delete_alias :: proc(name: string) -> (bool, string) {
 	if g_delete_alias != nil {
 		return g_delete_alias(name)
 	}
-	return false
+	return false, ""
 }
 
 // Delete Constants entry
-tui_delete_constant :: proc(name: string) -> bool {
+tui_delete_constant :: proc(name: string) -> (bool, string) {
 	if g_delete_constant != nil {
 		return g_delete_constant(name)
 	}
-	return false
+	return false, ""
 }
 
 // Cleanup old backups
@@ -130,25 +145,41 @@ tui_cleanup_backups :: proc() -> bool {
 }
 
 // Add PATH entry
-tui_add_path :: proc(path: string) -> bool {
+tui_add_path :: proc(path: string) -> (bool, string) {
 	if g_add_path != nil {
 		return g_add_path(path)
 	}
-	return false
+	return false, ""
 }
 
 // Add Alias entry
-tui_add_alias :: proc(name: string, command: string) -> bool {
+tui_add_alias :: proc(name: string, command: string) -> (bool, string) {
 	if g_add_alias != nil {
 		return g_add_alias(name, command)
+	}
+	return false, ""
+}
+
+// Add Constants entry
+tui_add_constant :: proc(name: string, value: string) -> (bool, string) {
+	if g_add_constant != nil {
+		return g_add_constant(name, value)
+	}
+	return false, ""
+}
+
+// Enable plugin by name
+tui_enable_plugin :: proc(name: string) -> bool {
+	if g_enable_plugin != nil {
+		return g_enable_plugin(name)
 	}
 	return false
 }
 
-// Add Constants entry
-tui_add_constant :: proc(name: string, value: string) -> bool {
-	if g_add_constant != nil {
-		return g_add_constant(name, value)
+// Disable plugin by name
+tui_disable_plugin :: proc(name: string) -> bool {
+	if g_disable_plugin != nil {
+		return g_disable_plugin(name)
 	}
 	return false
 }
@@ -182,7 +213,9 @@ tui_ensure_data_loaded :: proc(state: ^TUIState, view: TUIView) {
 		tui_load_completions_data(state)
 	case .BACKUPS_VIEW:
 		tui_load_backups_data(state)
-	case .MAIN_MENU, .PLUGINS_VIEW, .SETTINGS_VIEW:
+	case .PLUGINS_VIEW:
+		tui_load_plugins_data(state)
+	case .MAIN_MENU, .SETTINGS_VIEW:
 		// No data to load for these views
 	}
 }

@@ -102,13 +102,31 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 			os.exit(EXIT_USAGE)
 		}
 
-		add_config_entry(spec, entry)
+		ok, err := add_config_entry(spec, entry)
+		if !ok {
+			print_error_simple(err)
+			exit_code := EXIT_DATAERR
+			if strings.has_prefix(err, "I/O error") {
+				exit_code = EXIT_IOERR
+			}
+			delete(err)
+			os.exit(exit_code)
+		}
 	case .REMOVE:
 		if len(args) == 0 {
 			print_cli_usage_error(spec, "remove")
 			os.exit(EXIT_USAGE)
 		}
-		remove_config_entry(spec, args[0])
+		ok2, err2 := remove_config_entry(spec, args[0])
+		if !ok2 {
+			print_error_simple(err2)
+			exit_code := EXIT_DATAERR
+			if strings.has_prefix(err2, "I/O error") {
+				exit_code = EXIT_IOERR
+			}
+			delete(err2)
+			os.exit(exit_code)
+		}
 	case .LIST:
 		// CLI defaults to static (non-interactive)
 		list_config_static(spec)
@@ -226,12 +244,13 @@ add_submit_callback :: proc(form: ^Form) -> bool {
 		return false
 	}
 
-	add_config_entry(spec, entry)
-	return true
+	ok, err := add_config_entry(spec, entry)
+	if !ok { delete(err) }
+	return ok
 }
 
 // Generic add implementation
-add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
+add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (ok: bool, error: string) {
 	// For PATH entries, expand environment variables before saving
 	entry_to_save := entry
 	if spec.type == .PATH {
@@ -246,9 +265,9 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 	// Validate (using original entry for validation to allow checking $HOME etc.)
 	validation_result := spec.validator(entry)
 	if !validation_result.valid {
-		print_error("%s", validation_result.error_message)
+		err := strings.clone(validation_result.error_message)
 		delete(validation_result.error_message)
-		os.exit(EXIT_DATAERR)
+		return false, err
 	}
 	// Print and free any convention warning (e.g. lowercase constant name)
 	if len(validation_result.warning) > 0 {
@@ -268,7 +287,7 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 		fmt.printfln("  %s", line)
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
-		return
+		return true, ""
 	}
 
 	// Get config file
@@ -277,7 +296,7 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 
 	// Read current content
 	content, read_ok := safe_read_file(config_file)
-	if !read_ok { os.exit(EXIT_IOERR) }
+	if !read_ok { return false, "I/O error: could not read config file" }
 	defer delete(content)
 
 	content_str := string(content)
@@ -348,12 +367,12 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 
 	// Create backup
 	if !create_backup_cli(config_file) {
-		os.exit(EXIT_IOERR)
+		return false, "I/O error: could not create backup"
 	}
 
 	// Write file
 	write_ok := safe_write_file(config_file, transmute([]byte)final_content)
-	if !write_ok { os.exit(EXIT_IOERR) }
+	if !write_ok { return false, "I/O error: could not write config file" }
 
 	// Cleanup old backups
 	cleanup_old_backups(config_file, 5)
@@ -364,10 +383,11 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) {
 	} else {
 		print_success("%s added successfully: %s", spec.display_name, entry_to_save.name)
 	}
+	return true, ""
 }
 
 // Generic remove implementation
-remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
+remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) -> (ok: bool, error: string) {
 	// For PATH entries, expand environment variables to support removing with $HOME, $OSS, etc.
 	name_to_remove := name
 	if spec.type == .PATH {
@@ -388,7 +408,7 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 		fmt.printfln("  %s: %s", spec.display_name, name_to_remove)
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
-		return
+		return true, ""
 	}
 
 	// Get config file
@@ -398,11 +418,7 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 	// Read current content
 	content, read_ok := safe_read_file(config_file)
 	if !read_ok {
-		if TUI_MODE {
-			TUI_LAST_ERROR = "I/O error: could not read config file"
-			return
-		}
-		os.exit(EXIT_IOERR)
+		return false, "I/O error: could not read config file"
 	}
 	defer delete(content)
 
@@ -434,24 +450,14 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 	}
 
 	if !removed {
-		if TUI_MODE {
-			// Clone into heap so TUI can hold the string past this stack frame.
-			// fmt.tprintf itself uses the temp allocator — no separate leak.
-			TUI_LAST_ERROR = strings.clone(fmt.tprintf("Error: %s not found: %s", spec.display_name, name_to_remove))
-			return
-		}
-		// fmt.tprintf uses the temp allocator — printed immediately, no heap allocation needed.
-		print_error_simple(fmt.tprintf("Error: %s not found: %s", spec.display_name, name_to_remove))
-		os.exit(EXIT_DATAERR)
+		// Clone into heap so caller owns the string past this stack frame.
+		// fmt.tprintf itself uses the temp allocator — no separate leak.
+		return false, strings.clone(fmt.tprintf("Error: %s not found: %s", spec.display_name, name_to_remove))
 	}
 
 	// Create backup
 	if !create_backup_cli(config_file) {
-		if TUI_MODE {
-			TUI_LAST_ERROR = "I/O error: could not create backup"
-			return
-		}
-		os.exit(EXIT_IOERR)
+		return false, "I/O error: could not create backup"
 	}
 
 	// Write back
@@ -460,20 +466,14 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) {
 
 	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
 	if !write_ok {
-		if TUI_MODE {
-			TUI_LAST_ERROR = "I/O error: could not write config file"
-			return
-		}
-		os.exit(EXIT_IOERR)
+		return false, "I/O error: could not write config file"
 	}
 
 	// Cleanup old backups
 	cleanup_old_backups(config_file, 5)
 
-	if !TUI_MODE {
-		print_success("%s removed successfully: %s", spec.display_name, name_to_remove)
-	}
-	TUI_LAST_SUCCESS = true
+	print_success("%s removed successfully: %s", spec.display_name, name_to_remove)
+	return true, ""
 }
 
 // TUI-only: Interactive fuzzy finder for removing config entries
@@ -517,7 +517,11 @@ remove_config_interactive :: proc(spec: ^ConfigEntrySpec) {
 	selected_copy := strings.clone(selected)
 	defer delete(selected_copy)
 
-	remove_config_entry(spec, selected_copy)
+	remove_ok, remove_err := remove_config_entry(spec, selected_copy)
+	if !remove_ok {
+		print_error_simple(remove_err)
+		delete(remove_err)
+	}
 }
 
 // Generic static list (table view)
@@ -680,8 +684,9 @@ list_remove_action_callback :: proc(item: ^FuzzyItem) -> bool {
 	if spec == nil do return false
 
 	name := item.metadata["name"]
-	remove_config_entry(spec, name)
-	return true  // Refresh
+	ok, err := remove_config_entry(spec, name)
+	if !ok { delete(err) }
+	return ok
 }
 
 // Helper: Read all entries from config file

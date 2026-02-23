@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:strconv"
-import "core:c/libc"
+
 
 // Handle plugin check command - check for available updates
 // CLI-only command (no interactive mode)
@@ -837,21 +837,8 @@ handle_plugin_remove :: proc(args: []string) {
 
 	// Remove plugin directory
 	if os.exists(plugin_ptr.installed_path) && !DRY_RUN {
-		// Validate path against shell injection before rm -rf
-		if !is_safe_shell_arg(plugin_ptr.installed_path) {
-			print_error_simple("Error: Plugin path contains unsafe characters")
-			os.exit(EXIT_DATAERR)
-		}
-
-		// Use rm -rf to remove directory
-		rm_cmd := fmt.aprintf("rm -rf \"%s\"", plugin_ptr.installed_path)
-		defer delete(rm_cmd)
-
-		cmd_cstr := strings.clone_to_cstring(rm_cmd)
-		defer delete(cmd_cstr)
-
-		result := libc.system(cmd_cstr)
-		if result != 0 {
+		remove_err := os.remove_all(plugin_ptr.installed_path)
+		if remove_err != nil {
 			print_error_simple("Error: Failed to remove plugin directory")
 			os.exit(EXIT_IOERR)
 		}
@@ -948,58 +935,29 @@ handle_plugin_get :: proc(args: []string) {
 
 	fmt.println()
 
-	// Copy URL to clipboard
-	if !DRY_RUN && is_safe_shell_arg(plugin_ptr.url) {
-		// Detect platform and use appropriate clipboard command
+	// Copy URL to clipboard — write URL to stdin of clipboard command (no shell)
+	if !DRY_RUN {
+		clipboard_ok := false
 		when ODIN_OS == .Darwin {
-			// macOS - use pbcopy
-			cmd := fmt.aprintf("printf '%%s' \"%s\" | pbcopy", plugin_ptr.url)
-			defer delete(cmd)
-
-			cmd_cstr := strings.clone_to_cstring(cmd)
-			defer delete(cmd_cstr)
-
-			result := libc.system(cmd_cstr)
-			if result == 0 {
-				print_success("URL copied to clipboard: %s", plugin_ptr.url)
-			} else {
-				print_warning("Failed to copy URL to clipboard")
-				print_info("URL: %s", plugin_ptr.url)
-			}
+			// macOS: pbcopy reads from stdin
+			clipboard_ok = run_command_with_stdin([]string{"pbcopy"}, plugin_ptr.url)
 		} else when ODIN_OS == .Linux {
-			// Linux - try xclip first, then xsel
-			cmd := fmt.aprintf("printf '%%s' \"%s\" | xclip -selection clipboard 2>/dev/null || printf '%%s' \"%s\" | xsel --clipboard",
-				plugin_ptr.url, plugin_ptr.url)
-			defer delete(cmd)
-
-			cmd_cstr := strings.clone_to_cstring(cmd)
-			defer delete(cmd_cstr)
-
-			result := libc.system(cmd_cstr)
-			if result == 0 {
-				print_success("URL copied to clipboard: %s", plugin_ptr.url)
-			} else {
-				print_warning("Failed to copy URL to clipboard (install xclip or xsel)")
-				print_info("URL: %s", plugin_ptr.url)
+			// Linux: try xclip first, fall back to xsel
+			clipboard_ok = run_command_with_stdin(
+				[]string{"xclip", "-selection", "clipboard"}, plugin_ptr.url)
+			if !clipboard_ok {
+				clipboard_ok = run_command_with_stdin(
+					[]string{"xsel", "--clipboard", "--input"}, plugin_ptr.url)
 			}
 		} else when ODIN_OS == .Windows {
-			// Windows - use clip.exe
-			cmd := fmt.aprintf("echo %s | clip", plugin_ptr.url)
-			defer delete(cmd)
+			// Windows: clip reads from stdin
+			clipboard_ok = run_command_with_stdin([]string{"clip"}, plugin_ptr.url)
+		}
 
-			cmd_cstr := strings.clone_to_cstring(cmd)
-			defer delete(cmd_cstr)
-
-			result := libc.system(cmd_cstr)
-			if result == 0 {
-				print_success("URL copied to clipboard: %s", plugin_ptr.url)
-			} else {
-				print_warning("Failed to copy URL to clipboard")
-				print_info("URL: %s", plugin_ptr.url)
-			}
+		if clipboard_ok {
+			print_success("URL copied to clipboard: %s", plugin_ptr.url)
 		} else {
-			// Unsupported OS
-			print_warning("Clipboard copy not supported on this platform")
+			print_warning("Failed to copy URL to clipboard")
 			print_info("URL: %s", plugin_ptr.url)
 		}
 	} else {
