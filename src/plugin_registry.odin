@@ -740,43 +740,6 @@ resolve_dependencies_with_priority :: proc(config: ^PluginConfigJSON) -> (order:
 	return order, true
 }
 
-// Phase 5: DFS visit for topological sort with priority awareness
-dfs_visit_with_priority :: proc(
-	node: string,
-	graph: ^map[string][dynamic]string,
-	visited: ^map[string]bool,
-	temp_mark: ^map[string]bool,
-	order: ^[dynamic]string,
-	config: ^PluginConfigJSON,
-) -> bool {
-	// Already processed
-	if visited[node] {
-		return true
-	}
-
-	// Cycle detection
-	if temp_mark[node] {
-		return false
-	}
-
-	temp_mark[node] = true
-
-	// Visit dependencies first
-	if deps, has_deps := graph[node]; has_deps {
-		for dep in deps {
-			if !dfs_visit_with_priority(dep, graph, visited, temp_mark, order, config) {
-				return false
-			}
-		}
-	}
-
-	delete_key(temp_mark, node)
-	visited[node] = true
-	append(order, strings.clone(node))
-
-	return true
-}
-
 // Phase 6: Conflict Detection
 
 // Scan plugin for potential conflicts (exports, functions, aliases)
