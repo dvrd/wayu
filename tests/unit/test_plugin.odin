@@ -380,21 +380,33 @@ test_is_plugin_installed :: proc(t: ^testing.T) {
 
 @(test)
 test_popular_plugins_registry :: proc(t: ^testing.T) {
-	// Test that popular plugins registry is not empty
-	testing.expect(t, len(wayu.POPULAR_PLUGINS) > 0,
-		"Popular plugins registry should not be empty")
+	// Registry should have grown to 54 curated entries
+	testing.expect(t, len(wayu.POPULAR_PLUGINS) == 54,
+		"Popular plugins registry should have 54 entries")
 
-	// Test that known plugins exist
+	// Test that known plugins exist by key
 	known_plugins := []string{
 		"syntax-highlighting",
 		"autosuggestions",
 		"git-open",
+		"powerlevel10k",
+		"fzf",
+		"forgit",
+		"atuin",
+		"zoxide",
 	}
 
 	for plugin_name in known_plugins {
 		_, exists := wayu.popular_plugin_find(plugin_name)
 		msg := fmt.aprintf("Popular plugin '%s' should exist in registry", plugin_name)
 		testing.expect(t, exists, msg)
+		delete(msg)
+	}
+
+	// Every entry must have a non-empty category
+	for entry in wayu.POPULAR_PLUGINS {
+		msg := fmt.aprintf("Plugin '%s' must have a non-empty category", entry.key)
+		testing.expect(t, len(entry.category) > 0, msg)
 		delete(msg)
 	}
 }
