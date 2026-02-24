@@ -170,6 +170,8 @@ main :: proc() {
 			tui_bridge_load_plugins,
 			tui_bridge_enable_plugin,
 			tui_bridge_disable_plugin,
+			tui_bridge_load_registry,
+			tui_bridge_install_plugin,
 		)
 
 		// Launch TUI
