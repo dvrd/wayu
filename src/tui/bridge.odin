@@ -27,6 +27,8 @@ g_add_alias:      proc(string, string) -> (bool, string)
 g_add_constant:   proc(string, string) -> (bool, string)
 g_enable_plugin:  proc(string) -> bool
 g_disable_plugin: proc(string) -> bool
+g_load_registry:  proc(^TUIState)        // populate state.plugin_registry_cache
+g_install_plugin: proc(string) -> bool   // install by registry key
 
 // Set bridge functions (called from main.odin before tui_run)
 tui_set_bridge_functions :: proc(
@@ -46,6 +48,8 @@ tui_set_bridge_functions :: proc(
 	load_plugins: proc(^TUIState) = nil,
 	enable_plugin: proc(string) -> bool = nil,
 	disable_plugin: proc(string) -> bool = nil,
+	load_registry: proc(^TUIState) = nil,
+	install_plugin: proc(string) -> bool = nil,
 ) {
 	g_load_path_data = load_path
 	g_load_alias_data = load_alias
@@ -63,6 +67,8 @@ tui_set_bridge_functions :: proc(
 	g_load_plugins_data = load_plugins
 	g_enable_plugin = enable_plugin
 	g_disable_plugin = disable_plugin
+	g_load_registry = load_registry
+	g_install_plugin = install_plugin
 }
 
 // Bridge functions to load data into TUI state cache
@@ -184,6 +190,21 @@ tui_disable_plugin :: proc(name: string) -> bool {
 	return false
 }
 
+// Load plugin registry into state.plugin_registry_cache
+tui_load_registry :: proc(state: ^TUIState) {
+	if g_load_registry != nil {
+		g_load_registry(state)
+	}
+}
+
+// Install plugin by registry key
+tui_install_plugin :: proc(key: string) -> bool {
+	if g_install_plugin != nil {
+		return g_install_plugin(key)
+	}
+	return false
+}
+
 // Get PATH entry detail information
 tui_get_path_detail :: proc(path: string) -> [dynamic]string {
 	if g_get_path_detail != nil {
@@ -215,6 +236,7 @@ tui_ensure_data_loaded :: proc(state: ^TUIState, view: TUIView) {
 		tui_load_backups_data(state)
 	case .PLUGINS_VIEW:
 		tui_load_plugins_data(state)
+		tui_load_registry(state)
 	case .MAIN_MENU, .SETTINGS_VIEW:
 		// No data to load for these views
 	}

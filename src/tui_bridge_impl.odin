@@ -335,6 +335,42 @@ tui_bridge_disable_plugin :: proc(name: string) -> bool {
 	return _tui_bridge_set_plugin_enabled(name, false)
 }
 
+// Load plugin registry into TUI state cache.
+// Each item is NUL-delimited: "key\x00category\x00shell\x00description"
+// Idempotent — skips if cache is already populated.
+tui_bridge_load_registry :: proc(state: ^tui.TUIState) {
+	if state.plugin_registry_cache != nil { return }
+
+	items := make([dynamic]string)
+	for entry in POPULAR_PLUGINS {
+		item := strings.clone(fmt.tprintf("%s\x00%s\x00%s\x00%s",
+			entry.key,
+			entry.category,
+			shell_compat_to_string(entry.info.shell),
+			entry.info.description))
+		append(&items, item)
+	}
+
+	ptr := new([dynamic]string)
+	ptr^ = items
+	state.plugin_registry_cache = ptr
+}
+
+// Install a plugin from the registry by its key.
+// Looks up the key in POPULAR_PLUGINS, then clones the repo into the plugins dir.
+tui_bridge_install_plugin :: proc(key: string) -> bool {
+	info, found := popular_plugin_find(key)
+	if !found { return false }
+
+	plugins_dir := get_plugins_dir()
+	defer delete(plugins_dir)
+
+	dest := fmt.aprintf("%s/%s", plugins_dir, info.name)
+	defer delete(dest)
+
+	return git_clone(info.url, dest)
+}
+
 // Get PATH entry detail information
 tui_bridge_get_path_detail :: proc(path_str: string) -> [dynamic]string {
 	lines := make([dynamic]string)

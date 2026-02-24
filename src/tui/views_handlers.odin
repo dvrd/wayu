@@ -206,15 +206,54 @@ handle_backups_event :: proc(state: ^TUIState, key: KeyEvent) {
 
 handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 	#partial switch key.key {
+	case .Tab:
+		// Switch between Installed and Registry tabs; reset cursor + filter
+		deactivate_filter(state)
+		state.selected_index = 0
+		state.scroll_offset  = 0
+		state.plugin_tab = 1 - state.plugin_tab  // toggle 0↔1
+		state.needs_refresh = true
+
+	case .Enter:
+		// Registry tab: install selected plugin
+		if state.plugin_tab == PLUGIN_TAB_REGISTRY && state.plugin_registry_cache != nil {
+			items := state.plugin_registry_cache
+			idx   := state.selected_index
+			if len(state.filtered_indices) > 0 {
+				if idx >= 0 && idx < len(state.filtered_indices) {
+					idx = state.filtered_indices[idx]
+				} else {
+					return
+				}
+			}
+			if idx < 0 || idx >= len(items^) do return
+
+			// Extract key (first \x00-delimited field)
+			item    := items[idx]
+			sep_idx := strings.index(item, "\x00")
+			plugin_key := item[:sep_idx] if sep_idx >= 0 else item
+
+			ok := tui_install_plugin(plugin_key)
+			if ok {
+				// Reload installed list so it reflects the new plugin
+				clear_view_cache(state, .PLUGINS_VIEW)
+				set_notification(state, .SUCCESS,
+					fmt.tprintf("Installed %s", plugin_key))
+			} else {
+				set_notification(state, .ERROR,
+					fmt.tprintf("Failed to install %s", plugin_key))
+			}
+			state.needs_refresh = true
+		}
+
 	case .Char:
 		switch key.char {
 		case 'e':
-			// Enable selected plugin
-			if state.data_cache[.PLUGINS_VIEW] != nil {
+			// Installed tab: enable selected plugin
+			if state.plugin_tab == PLUGIN_TAB_INSTALLED && state.data_cache[.PLUGINS_VIEW] != nil {
 				items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
 				if state.selected_index >= 0 && state.selected_index < len(items) {
 					item := items[state.selected_index]
-					// Extract name before first " | "
 					sep_idx := strings.index(item, " | ")
 					plugin_name := item[:sep_idx] if sep_idx >= 0 else item
 					if tui_enable_plugin(plugin_name) {
@@ -224,8 +263,8 @@ handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 				}
 			}
 		case 'd':
-			// Disable selected plugin
-			if state.data_cache[.PLUGINS_VIEW] != nil {
+			// Installed tab: disable selected plugin
+			if state.plugin_tab == PLUGIN_TAB_INSTALLED && state.data_cache[.PLUGINS_VIEW] != nil {
 				items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
 				if state.selected_index >= 0 && state.selected_index < len(items) {
 					item := items[state.selected_index]
