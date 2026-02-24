@@ -163,6 +163,10 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 		item_count := get_view_item_count(state)
 		tui_state_move_selection(state, 1, item_count)
 
+	case .Tab:
+		// Route Tab to the current view handler (e.g. plugins tab switcher)
+		handle_view_event(state, key)
+
 	case .Char:
 		// Vim-style navigation
 		if key.char == 'k' {
@@ -185,7 +189,13 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 		}
 
 	case .Enter:
-		handle_selection(state)
+		// Give the plugins view first crack at Enter (registry install).
+		// For all other views, fall through to handle_selection.
+		if state.current_view == .PLUGINS_VIEW {
+			handle_view_event(state, key)
+		} else {
+			handle_selection(state)
+		}
 
 	case .Escape:
 		if state.current_view != .MAIN_MENU {
