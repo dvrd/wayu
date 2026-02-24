@@ -217,26 +217,22 @@ tui_get_path_detail :: proc(path: string) -> [dynamic]string {
 
 // Auto-load data when entering a view
 tui_ensure_data_loaded :: proc(state: ^TUIState, view: TUIView) {
-	// Check if data is already loaded
-	if state.data_cache[view] != nil {
-		return
-	}
-
-	// Load data based on view
+	// Load data based on view (each loader is idempotent — skips if already loaded)
 	switch view {
 	case .PATH_VIEW:
-		tui_load_path_data(state)
+		if state.data_cache[view] == nil do tui_load_path_data(state)
 	case .ALIAS_VIEW:
-		tui_load_alias_data(state)
+		if state.data_cache[view] == nil do tui_load_alias_data(state)
 	case .CONSTANTS_VIEW:
-		tui_load_constants_data(state)
+		if state.data_cache[view] == nil do tui_load_constants_data(state)
 	case .COMPLETIONS_VIEW:
-		tui_load_completions_data(state)
+		if state.data_cache[view] == nil do tui_load_completions_data(state)
 	case .BACKUPS_VIEW:
-		tui_load_backups_data(state)
+		if state.data_cache[view] == nil do tui_load_backups_data(state)
 	case .PLUGINS_VIEW:
-		tui_load_plugins_data(state)
-		tui_load_registry(state)
+		// Installed plugins and registry are independent caches — load each if missing
+		if state.data_cache[view] == nil do tui_load_plugins_data(state)
+		tui_load_registry(state)  // idempotent: skips if plugin_registry_cache != nil
 	case .MAIN_MENU, .SETTINGS_VIEW:
 		// No data to load for these views
 	}

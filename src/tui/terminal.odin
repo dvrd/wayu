@@ -19,6 +19,8 @@ ENTER_ALT_SCREEN :: "\x1b[?1049h"
 EXIT_ALT_SCREEN  :: "\x1b[?1049l"
 HIDE_CURSOR      :: "\x1b[?25l"
 SHOW_CURSOR      :: "\x1b[?25h"
+CLEAR_SCREEN     :: "\x1b[2J"
+CURSOR_HOME      :: "\x1b[H"
 
 // Terminal size structure
 winsize :: struct {
@@ -133,6 +135,9 @@ tui_lifecycle_init :: proc() {
 
 // TUI lifecycle cleanup
 tui_lifecycle_cleanup :: proc() {
+    // Clear the alt screen before exiting so no TUI content bleeds through
+    fmt.print(CLEAR_SCREEN)
+    fmt.print(CURSOR_HOME)
     fmt.print(SHOW_CURSOR)
     exit_alt_screen()
 }
