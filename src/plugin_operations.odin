@@ -966,47 +966,94 @@ handle_plugin_get :: proc(args: []string) {
 }
 
 // Search the built-in popular plugins registry.
-// With no args: list all 9 entries.
-// With a query: filter by name/description substring (case-insensitive).
+//
+// Usage:
+//   wayu plugin search                       – list all 55 entries
+//   wayu plugin search <query>               – filter by name/key/description/category
+//   wayu plugin search --category <cat>      – show only a specific category
+//
+// Recognized categories: syntax, completion, navigation, git, history,
+//   prompt, productivity, tools, utility
 handle_plugin_search :: proc(args: []string) {
-	query := len(args) > 0 ? strings.to_lower(args[0]) : ""
-	defer if len(query) > 0 { delete(query) }
+	// Parse --category flag and free-text query from args.
+	// Supported forms:
+	//   search git
+	//   search --category git
+	//   search --category=git
+	query:    string
+	category: string
+
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+		if strings.has_prefix(arg, "--category=") {
+			category = strings.to_lower(arg[len("--category="):])
+			i += 1
+		} else if arg == "--category" || arg == "-c" {
+			if i + 1 < len(args) {
+				category = strings.to_lower(args[i + 1])
+				i += 2
+			} else {
+				print_error_simple("--category requires a value")
+				os.exit(EXIT_USAGE)
+			}
+		} else {
+			query = strings.to_lower(arg)
+			i += 1
+		}
+	}
+	defer if len(query)    > 0 { delete(query) }
+	defer if len(category) > 0 { delete(category) }
 
 	print_header("Popular Plugins", EMOJI_COMMAND)
 	fmt.println()
 
-	table := new_table([]string{"Key", "Name", "Shell", "Description"})
+	table := new_table([]string{"Key", "Category", "Shell", "Description"})
 	defer delete(table.rows)
 
 	matched := 0
 	for entry in POPULAR_PLUGINS {
 		info := entry.info
 
-		// Filter: skip if query doesn't match key, name, or description
+		// Category filter (exact match on category field).
+		if len(category) > 0 && entry.category != category {
+			continue
+		}
+
+		// Free-text filter: key, name, description, or category substring.
 		if len(query) > 0 {
-			key_lower   := strings.to_lower(entry.key)
-			name_lower  := strings.to_lower(info.name)
-			desc_lower  := strings.to_lower(info.description)
+			key_lower  := strings.to_lower(entry.key)
+			name_lower := strings.to_lower(info.name)
+			desc_lower := strings.to_lower(info.description)
+			cat_lower  := strings.to_lower(entry.category)
 			defer delete(key_lower)
 			defer delete(name_lower)
 			defer delete(desc_lower)
+			defer delete(cat_lower)
 
-			if !strings.contains(key_lower, query) &&
+			if !strings.contains(key_lower,  query) &&
 			   !strings.contains(name_lower, query) &&
-			   !strings.contains(desc_lower, query) {
+			   !strings.contains(desc_lower, query) &&
+			   !strings.contains(cat_lower,  query) {
 				continue
 			}
 		}
 
 		shell_str := shell_compat_to_string(info.shell)
-		table_add_row(&table, []string{entry.key, info.name, shell_str, info.description})
+		table_add_row(&table, []string{entry.key, entry.category, shell_str, info.description})
 		matched += 1
 	}
 
 	if matched == 0 {
-		fmt.printfln("No plugins found matching %q", args[0])
-		fmt.println()
-		fmt.println("Run 'wayu plugin search' to list all popular plugins.")
+		if len(category) > 0 {
+			fmt.printfln("No plugins found in category %q", category)
+			fmt.println()
+			fmt.println("Categories: syntax, completion, navigation, git, history, prompt, productivity, tools, utility")
+		} else {
+			fmt.printfln("No plugins found matching %q", query)
+			fmt.println()
+			fmt.println("Run 'wayu plugin search' to list all popular plugins.")
+		}
 		return
 	}
 
@@ -1016,5 +1063,6 @@ handle_plugin_search :: proc(args: []string) {
 
 	fmt.println()
 	fmt.printfln("%sTo install:%s wayu plugin add <key>", get_muted(), RESET)
+	fmt.printfln("%sFilter by category:%s wayu plugin search --category <cat>", get_muted(), RESET)
 }
 

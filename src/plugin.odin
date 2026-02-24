@@ -74,70 +74,361 @@ PluginConfigJSON :: struct {
 	plugins:      [dynamic]PluginMetadata,
 }
 
-// PluginEntry pairs a short lookup key with its PluginInfo.
+// PluginEntry pairs a short lookup key with its PluginInfo and a category tag.
 // Using a fixed-size array of structs instead of a map avoids the
 // #+feature dynamic-literals requirement and the permanent heap allocation
 // that a global map[string]PluginInfo would incur.
 PluginEntry :: struct {
-	key:  string,
-	info: PluginInfo,
+	key:      string,
+	category: string,
+	info:     PluginInfo,
 }
 
 // Popular plugins registry — compile-time constant, zero heap allocation.
-POPULAR_PLUGINS := [9]PluginEntry{
-	{"syntax-highlighting", {
+// Organized by category: syntax, completion, navigation, git, history,
+// prompt, productivity, tools, and utility.
+POPULAR_PLUGINS := [54]PluginEntry{
+
+	// ── Syntax & Colors ──────────────────────────────────────────────────
+	{"syntax-highlighting", "syntax", {
 		name        = "zsh-syntax-highlighting",
 		url         = "https://github.com/zsh-users/zsh-syntax-highlighting.git",
 		shell       = .ZSH,
 		description = "Fish-like syntax highlighting for ZSH",
 	}},
-	{"autosuggestions", {
-		name        = "zsh-autosuggestions",
-		url         = "https://github.com/zsh-users/zsh-autosuggestions.git",
-		shell       = .ZSH,
-		description = "Fish-like autosuggestions for ZSH",
-	}},
-	{"fast-syntax-highlighting", {
+	{"fast-syntax-highlighting", "syntax", {
 		name        = "fast-syntax-highlighting",
 		url         = "https://github.com/zdharma-continuum/fast-syntax-highlighting.git",
 		shell       = .ZSH,
-		description = "Feature-rich syntax highlighting for ZSH",
+		description = "Feature-rich alternative syntax highlighting for ZSH",
 	}},
-	{"completions", {
+	{"colored-man-pages", "syntax", {
+		name        = "zsh-colored-man-pages",
+		url         = "https://github.com/ael-code/zsh-colored-man-pages.git",
+		shell       = .ZSH,
+		description = "Colorize man pages with ANSI colors",
+	}},
+
+	// ── Completion ───────────────────────────────────────────────────────
+	{"autosuggestions", "completion", {
+		name        = "zsh-autosuggestions",
+		url         = "https://github.com/zsh-users/zsh-autosuggestions.git",
+		shell       = .ZSH,
+		description = "Fish-like autosuggestions based on command history",
+	}},
+	{"completions", "completion", {
 		name        = "zsh-completions",
 		url         = "https://github.com/zsh-users/zsh-completions.git",
 		shell       = .ZSH,
 		description = "Additional completion definitions for ZSH",
 	}},
-	{"history-substring-search", {
-		name        = "zsh-history-substring-search",
-		url         = "https://github.com/zsh-users/zsh-history-substring-search.git",
+	{"fzf-tab", "completion", {
+		name        = "fzf-tab",
+		url         = "https://github.com/Aloxaf/fzf-tab.git",
 		shell       = .ZSH,
-		description = "Fish-like history search",
+		description = "Replace ZSH default completion with fzf",
 	}},
-	{"git-open", {
-		name        = "git-open",
-		url         = "https://github.com/paulirish/git-open.git",
-		shell       = .BOTH,
-		description = "Open repo in browser from command line",
+	{"zsh-better-npm-completion", "completion", {
+		name        = "zsh-better-npm-completion",
+		url         = "https://github.com/lukechilds/zsh-better-npm-completion.git",
+		shell       = .ZSH,
+		description = "Better npm completion for ZSH",
 	}},
-	{"z", {
+
+	// ── Navigation ───────────────────────────────────────────────────────
+	{"z", "navigation", {
 		name        = "z",
 		url         = "https://github.com/rupa/z.git",
 		shell       = .BOTH,
 		description = "Jump to frecent directories",
 	}},
-	{"you-should-use", {
+	{"zoxide", "navigation", {
+		name        = "zoxide",
+		url         = "https://github.com/ajeetdsouza/zoxide.git",
+		shell       = .BOTH,
+		description = "Smarter cd command with learning and fzf integration",
+	}},
+	{"autojump", "navigation", {
+		name        = "autojump",
+		url         = "https://github.com/wting/autojump.git",
+		shell       = .BOTH,
+		description = "A cd command that learns your habits",
+	}},
+	{"fasd", "navigation", {
+		name        = "fasd",
+		url         = "https://github.com/clvv/fasd.git",
+		shell       = .BOTH,
+		description = "Quick access to files and directories by frecency",
+	}},
+	{"zsh-interactive-cd", "navigation", {
+		name        = "zsh-interactive-cd",
+		url         = "https://github.com/changyuheng/zsh-interactive-cd.git",
+		shell       = .ZSH,
+		description = "Fish-like interactive tab completion for cd",
+	}},
+
+	// ── Git ──────────────────────────────────────────────────────────────
+	{"git-open", "git", {
+		name        = "git-open",
+		url         = "https://github.com/paulirish/git-open.git",
+		shell       = .BOTH,
+		description = "Open the current repo in your browser",
+	}},
+	{"forgit", "git", {
+		name        = "forgit",
+		url         = "https://github.com/wfxr/forgit.git",
+		shell       = .BOTH,
+		description = "Interactive git commands using fzf",
+	}},
+	{"git-extras", "git", {
+		name        = "git-extras",
+		url         = "https://github.com/tj/git-extras.git",
+		shell       = .BOTH,
+		description = "Extra git commands: summary, changelog, effort, and more",
+	}},
+	{"git-flow", "git", {
+		name        = "gitflow-avh",
+		url         = "https://github.com/petervanderdoes/gitflow-avh.git",
+		shell       = .BOTH,
+		description = "Git extensions for the git-flow branching model",
+	}},
+	{"delta", "git", {
+		name        = "delta",
+		url         = "https://github.com/dandavison/delta.git",
+		shell       = .BOTH,
+		description = "Syntax-highlighting pager for git diff output",
+	}},
+
+	// ── History ──────────────────────────────────────────────────────────
+	{"history-substring-search", "history", {
+		name        = "zsh-history-substring-search",
+		url         = "https://github.com/zsh-users/zsh-history-substring-search.git",
+		shell       = .ZSH,
+		description = "Fish-like history search: type then press Up to filter",
+	}},
+	{"atuin", "history", {
+		name        = "atuin",
+		url         = "https://github.com/atuinsh/atuin.git",
+		shell       = .BOTH,
+		description = "Magical shell history with sync and statistics",
+	}},
+	{"zsh-history-enquirer", "history", {
+		name        = "zsh-history-enquirer",
+		url         = "https://github.com/popstas/zsh-command-time.git",
+		shell       = .ZSH,
+		description = "Show elapsed time for long-running commands",
+	}},
+
+	// ── Prompt ───────────────────────────────────────────────────────────
+	{"powerlevel10k", "prompt", {
+		name        = "powerlevel10k",
+		url         = "https://github.com/romkatv/powerlevel10k.git",
+		shell       = .ZSH,
+		description = "Fast and flexible ZSH prompt theme",
+	}},
+	{"pure", "prompt", {
+		name        = "pure",
+		url         = "https://github.com/sindresorhus/pure.git",
+		shell       = .ZSH,
+		description = "Minimal, fast, and pretty ZSH prompt",
+	}},
+	{"starship", "prompt", {
+		name        = "starship",
+		url         = "https://github.com/starship/starship.git",
+		shell       = .BOTH,
+		description = "Cross-shell minimal and fast prompt",
+	}},
+	{"spaceship-prompt", "prompt", {
+		name        = "spaceship-prompt",
+		url         = "https://github.com/spaceship-prompt/spaceship-prompt.git",
+		shell       = .ZSH,
+		description = "Astronaut-themed ZSH prompt with git, node, and more",
+	}},
+	{"oh-my-posh", "prompt", {
+		name        = "oh-my-posh",
+		url         = "https://github.com/JanDeDobbeleer/oh-my-posh.git",
+		shell       = .BOTH,
+		description = "A prompt theme engine for any shell",
+	}},
+
+	// ── Productivity ─────────────────────────────────────────────────────
+	{"you-should-use", "productivity", {
 		name        = "zsh-you-should-use",
 		url         = "https://github.com/MichaelAquilina/zsh-you-should-use.git",
 		shell       = .ZSH,
-		description = "Reminds you to use aliases",
+		description = "Reminds you to use your existing aliases",
 	}},
-	{"colored-man-pages", {
-		name        = "zsh-colored-man-pages",
-		url         = "https://github.com/ael-code/zsh-colored-man-pages.git",
+	{"zsh-abbr", "productivity", {
+		name        = "zsh-abbr",
+		url         = "https://github.com/olets/zsh-abbr.git",
 		shell       = .ZSH,
-		description = "Colorize man pages",
+		description = "Fish-like abbreviations that expand on space",
+	}},
+	{"zsh-autopair", "productivity", {
+		name        = "zsh-autopair",
+		url         = "https://github.com/hlissner/zsh-autopair.git",
+		shell       = .ZSH,
+		description = "Auto-close and delete matching delimiters",
+	}},
+	{"zsh-vi-mode", "productivity", {
+		name        = "zsh-vi-mode",
+		url         = "https://github.com/jeffreytse/zsh-vi-mode.git",
+		shell       = .ZSH,
+		description = "Better vi mode for ZSH with text objects",
+	}},
+	{"zsh-fzf-history-search", "productivity", {
+		name        = "zsh-fzf-history-search",
+		url         = "https://github.com/joshskidmore/zsh-fzf-history-search.git",
+		shell       = .ZSH,
+		description = "Use fzf for interactive history search (Ctrl+R)",
+	}},
+	{"zsh-command-time", "productivity", {
+		name        = "zsh-command-time",
+		url         = "https://github.com/popstas/zsh-command-time.git",
+		shell       = .ZSH,
+		description = "Print execution time for long-running commands",
+	}},
+	{"zsh-notify", "productivity", {
+		name        = "zsh-notify",
+		url         = "https://github.com/marzocchi/zsh-notify.git",
+		shell       = .ZSH,
+		description = "Desktop notifications for long-running commands",
+	}},
+
+	// ── Version Managers / Tools ─────────────────────────────────────────
+	{"nvm", "tools", {
+		name        = "zsh-nvm",
+		url         = "https://github.com/lukechilds/zsh-nvm.git",
+		shell       = .ZSH,
+		description = "ZSH plugin for installing and loading nvm",
+	}},
+	{"asdf", "tools", {
+		name        = "asdf-vm",
+		url         = "https://github.com/asdf-vm/asdf.git",
+		shell       = .BOTH,
+		description = "Manage multiple runtime versions with one tool",
+	}},
+	{"mise", "tools", {
+		name        = "mise",
+		url         = "https://github.com/jdx/mise.git",
+		shell       = .BOTH,
+		description = "Fast polyglot runtime manager (asdf-compatible)",
+	}},
+	{"pyenv", "tools", {
+		name        = "pyenv",
+		url         = "https://github.com/pyenv/pyenv.git",
+		shell       = .BOTH,
+		description = "Simple Python version management",
+	}},
+	{"rbenv", "tools", {
+		name        = "rbenv",
+		url         = "https://github.com/rbenv/rbenv.git",
+		shell       = .BOTH,
+		description = "Manage multiple Ruby versions",
+	}},
+	{"rustup", "tools", {
+		name        = "rustup",
+		url         = "https://github.com/rust-lang/rustup.git",
+		shell       = .BOTH,
+		description = "The Rust toolchain installer and version manager",
+	}},
+	{"volta", "tools", {
+		name        = "volta",
+		url         = "https://github.com/volta-cli/volta.git",
+		shell       = .BOTH,
+		description = "Hassle-free JavaScript tool manager",
+	}},
+	{"direnv", "tools", {
+		name        = "direnv",
+		url         = "https://github.com/direnv/direnv.git",
+		shell       = .BOTH,
+		description = "Load and unload env vars based on current directory",
+	}},
+	{"docker-zsh-completion", "tools", {
+		name        = "docker-zsh-completion",
+		url         = "https://github.com/greymd/docker-zsh-completion.git",
+		shell       = .ZSH,
+		description = "ZSH completion for Docker",
+	}},
+	{"kubectl-zsh-completion", "tools", {
+		name        = "kubectl-zsh-completion",
+		url         = "https://github.com/nnao45/zsh-kubectl-completion.git",
+		shell       = .ZSH,
+		description = "ZSH completion for kubectl",
+	}},
+
+	// ── Utility ──────────────────────────────────────────────────────────
+	{"zsh-safe-rm", "utility", {
+		name        = "zsh-safe-rm",
+		url         = "https://github.com/mattmc3/zsh-safe-rm.git",
+		shell       = .ZSH,
+		description = "Use trash instead of rm to prevent accidental deletion",
+	}},
+	{"zsh-dotenv", "utility", {
+		name        = "zsh-dotenv",
+		url         = "https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/dotenv",
+		shell       = .ZSH,
+		description = "Automatically load .env files when entering directories",
+	}},
+	{"zsh-bd", "utility", {
+		name        = "zsh-bd",
+		url         = "https://github.com/Tarrasch/zsh-bd.git",
+		shell       = .ZSH,
+		description = "Jump back to a specific directory in your history",
+	}},
+	{"zsh-titles", "utility", {
+		name        = "zsh-titles",
+		url         = "https://github.com/jreese/zsh-titles.git",
+		shell       = .ZSH,
+		description = "Automatic terminal and tmux title management",
+	}},
+	{"zsh-256color", "utility", {
+		name        = "zsh-256color",
+		url         = "https://github.com/chrissicool/zsh-256color.git",
+		shell       = .ZSH,
+		description = "Enable 256 color support in ZSH",
+	}},
+	{"zsh-ssh-agent", "utility", {
+		name        = "zsh-ssh-agent",
+		url         = "https://github.com/bobsoppe/zsh-ssh-agent.git",
+		shell       = .ZSH,
+		description = "Persistent ssh-agent with keychain integration",
+	}},
+	{"zsh-gpg-agent", "utility", {
+		name        = "zsh-gpg-agent",
+		url         = "https://github.com/axtl/gpg-agent.zsh.git",
+		shell       = .ZSH,
+		description = "Manage GPG agent for signing and encryption",
+	}},
+	{"fzf", "utility", {
+		name        = "fzf",
+		url         = "https://github.com/junegunn/fzf.git",
+		shell       = .BOTH,
+		description = "General-purpose fuzzy finder with shell integration",
+	}},
+	{"ripgrep", "utility", {
+		name        = "ripgrep",
+		url         = "https://github.com/BurntSushi/ripgrep.git",
+		shell       = .BOTH,
+		description = "Fast recursive search tool, grep replacement",
+	}},
+	{"bat", "utility", {
+		name        = "bat",
+		url         = "https://github.com/sharkdp/bat.git",
+		shell       = .BOTH,
+		description = "A cat clone with syntax highlighting and git integration",
+	}},
+	{"eza", "utility", {
+		name        = "eza",
+		url         = "https://github.com/eza-community/eza.git",
+		shell       = .BOTH,
+		description = "Modern replacement for ls with colors and icons",
+	}},
+	{"zsh-thefuck", "utility", {
+		name        = "zsh-thefuck",
+		url         = "https://github.com/laggardkernel/zsh-thefuck.git",
+		shell       = .ZSH,
+		description = "Lazy load thefuck with ZSH integration",
 	}},
 }
 
