@@ -233,10 +233,17 @@ handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 			sep_idx := strings.index(item, "\x00")
 			plugin_key := item[:sep_idx] if sep_idx >= 0 else item
 
+			// Show "Installing..." before the blocking git clone
+			set_notification(state, .SUCCESS,
+				fmt.tprintf("Installing %s...", plugin_key))
+			state.needs_refresh = true
+
 			ok := tui_install_plugin(plugin_key)
 			if ok {
-				// Reload installed list so it reflects the new plugin
+				// Reload installed list and invalidate registry so the
+				// installed plugin is filtered out on next registry load
 				clear_view_cache(state, .PLUGINS_VIEW)
+				clear_registry_cache(state)
 				set_notification(state, .SUCCESS,
 					fmt.tprintf("Installed %s", plugin_key))
 			} else {
@@ -248,6 +255,47 @@ handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 
 	case .Char:
 		switch key.char {
+		case '/':
+			// Activate inline filter (works on both Installed and Registry tabs)
+			activate_filter(state)
+			cache := get_current_cache(state)
+			if cache != nil {
+				apply_filter(state, cache)
+			}
+			state.needs_refresh = true
+		case 't':
+			// 't' also switches tabs (fallback for terminals where Tab is intercepted)
+			deactivate_filter(state)
+			state.selected_index = 0
+			state.scroll_offset  = 0
+			state.plugin_tab = 1 - state.plugin_tab
+			state.needs_refresh = true
+		case 'i':
+			// 'i' installs selected registry plugin (fallback for terminals where Enter is intercepted)
+			if state.plugin_tab == PLUGIN_TAB_REGISTRY && state.plugin_registry_cache != nil {
+				items := state.plugin_registry_cache
+				idx   := state.selected_index
+				if len(state.filtered_indices) > 0 {
+					if idx >= 0 && idx < len(state.filtered_indices) {
+						idx = state.filtered_indices[idx]
+					} else { break }
+				}
+				if idx < 0 || idx >= len(items^) { break }
+				item    := items[idx]
+				sep_idx := strings.index(item, "\x00")
+				plugin_key := item[:sep_idx] if sep_idx >= 0 else item
+				set_notification(state, .SUCCESS, fmt.tprintf("Installing %s...", plugin_key))
+				state.needs_refresh = true
+				ok := tui_install_plugin(plugin_key)
+				if ok {
+					clear_view_cache(state, .PLUGINS_VIEW)
+					clear_registry_cache(state)
+					set_notification(state, .SUCCESS, fmt.tprintf("Installed %s", plugin_key))
+				} else {
+					set_notification(state, .ERROR, fmt.tprintf("Failed to install %s", plugin_key))
+				}
+				state.needs_refresh = true
+			}
 		case 'e':
 			// Installed tab: enable selected plugin
 			if state.plugin_tab == PLUGIN_TAB_INSTALLED && state.data_cache[.PLUGINS_VIEW] != nil {
