@@ -8,6 +8,22 @@ import "core:fmt"
 import "core:strings"
 import wayu "../../src"
 
+// Redirect WAYU_CONFIG to an isolated temp directory so tests never touch
+// the real ~/.config/wayu/plugins.json or plugins/ directory.
+// Usage:
+//   original := plugin_use_temp_config()
+//   defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
+PLUGIN_TEST_DIR :: "/tmp/wayu-test-plugin"
+
+plugin_use_temp_config :: proc() -> string {
+	original := wayu.WAYU_CONFIG
+	wayu.WAYU_CONFIG = PLUGIN_TEST_DIR
+	if !os.exists(PLUGIN_TEST_DIR) {
+		os.make_directory(PLUGIN_TEST_DIR)
+	}
+	return original
+}
+
 @(test)
 test_parse_shell_compat :: proc(t: ^testing.T) {
 	// Test shell compatibility parsing
@@ -91,24 +107,10 @@ test_get_plugins_dir :: proc(t: ^testing.T) {
 test_read_plugin_config_empty :: proc(t: ^testing.T) {
 	// Initialize shell globals before testing
 	wayu.init_shell_globals()
+	original := plugin_use_temp_config()
+	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
 
-	// Test reading non-existent config file
-	// First ensure no config exists
-	config_file := wayu.get_plugins_config_file()
-	defer delete(config_file)
-
-	// Save existing config if any
-	existing_config: []byte
-	has_existing := false
-	if os.exists(config_file) {
-		existing_config, _ = os.read_entire_file(config_file, context.allocator)
-		has_existing = true
-		os.remove(config_file)
-	}
-	defer if has_existing {
-		_ = os.write_entire_file(config_file, existing_config)
-		delete(existing_config)
-	}
+	// Test reading non-existent config file (temp dir has no plugins.conf)
 
 	config := wayu.read_plugin_config()
 	defer {
@@ -128,27 +130,8 @@ test_read_plugin_config_empty :: proc(t: ^testing.T) {
 test_write_and_read_plugin_config :: proc(t: ^testing.T) {
 	// Initialize shell globals before testing
 	wayu.init_shell_globals()
-
-	// Ensure config directory exists for this test
-	if !os.exists(wayu.WAYU_CONFIG) {
-		os.make_directory(wayu.WAYU_CONFIG)
-	}
-
-	// Test writing and reading plugin config
-	config_file := wayu.get_plugins_config_file()
-	defer delete(config_file)
-
-	// Save existing config
-	existing_config: []byte
-	has_existing := false
-	if os.exists(config_file) {
-		existing_config, _ = os.read_entire_file(config_file, context.allocator)
-		has_existing = true
-	}
-	defer if has_existing {
-		_ = os.write_entire_file(config_file, existing_config)
-		delete(existing_config)
-	}
+	original := plugin_use_temp_config()
+	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	// Create test config
 	test_config := wayu.PluginConfig{}
@@ -211,8 +194,6 @@ test_write_and_read_plugin_config :: proc(t: ^testing.T) {
 		testing.expect(t, read_config.plugins[1].shell == wayu.ShellCompat.BOTH, "Second plugin shell should be BOTH")
 	}
 
-	// Clean up test file
-	os.remove(config_file)
 }
 
 @(test)
@@ -415,23 +396,8 @@ test_popular_plugins_registry :: proc(t: ^testing.T) {
 test_generate_plugins_file_empty :: proc(t: ^testing.T) {
 	// Initialize shell globals before testing
 	wayu.init_shell_globals()
-
-	// Test generating plugins file with no plugins
-	config_file := wayu.get_plugins_config_file()
-	defer delete(config_file)
-
-	// Save existing config
-	existing_config: []byte
-	has_existing := false
-	if os.exists(config_file) {
-		existing_config, _ = os.read_entire_file(config_file, context.allocator)
-		has_existing = true
-		os.remove(config_file)
-	}
-	defer if has_existing {
-		_ = os.write_entire_file(config_file, existing_config)
-		delete(existing_config)
-	}
+	original := plugin_use_temp_config()
+	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	// Ensure we're in dry-run mode for this test
 	old_dry_run := wayu.DRY_RUN
@@ -645,11 +611,8 @@ test_plugin_enable_idempotent :: proc(t: ^testing.T) {
 
 	// Initialize shell globals
 	wayu.init_shell_globals()
-
-	// Ensure config directory exists
-	if !os.exists(wayu.WAYU_CONFIG) {
-		os.make_directory(wayu.WAYU_CONFIG)
-	}
+	original := plugin_use_temp_config()
+	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	// Create test config with one enabled plugin
 	config := wayu.PluginConfigJSON{
@@ -706,11 +669,8 @@ test_plugin_disable_idempotent :: proc(t: ^testing.T) {
 
 	// Initialize shell globals
 	wayu.init_shell_globals()
-
-	// Ensure config directory exists
-	if !os.exists(wayu.WAYU_CONFIG) {
-		os.make_directory(wayu.WAYU_CONFIG)
-	}
+	original := plugin_use_temp_config()
+	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	config := wayu.PluginConfigJSON{
 		version = strings.clone("1.0"),
@@ -759,10 +719,8 @@ test_plugin_enable_toggles_state :: proc(t: ^testing.T) {
 	// Initialize shell globals
 	wayu.init_shell_globals()
 
-	// Ensure config directory exists
-	if !os.exists(wayu.WAYU_CONFIG) {
-		os.make_directory(wayu.WAYU_CONFIG)
-	}
+	original := plugin_use_temp_config()
+	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	config := wayu.PluginConfigJSON{
 		version = strings.clone("1.0"),
@@ -827,10 +785,8 @@ test_plugin_disable_toggles_state :: proc(t: ^testing.T) {
 	// Initialize shell globals
 	wayu.init_shell_globals()
 
-	// Ensure config directory exists
-	if !os.exists(wayu.WAYU_CONFIG) {
-		os.make_directory(wayu.WAYU_CONFIG)
-	}
+	original := plugin_use_temp_config()
+	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	config := wayu.PluginConfigJSON{
 		version = strings.clone("1.0"),
@@ -896,10 +852,8 @@ test_generate_plugins_file_skips_disabled :: proc(t: ^testing.T) {
 	// Initialize shell globals
 	wayu.init_shell_globals()
 
-	// Ensure config directory exists
-	if !os.exists(wayu.WAYU_CONFIG) {
-		os.make_directory(wayu.WAYU_CONFIG)
-	}
+	original := plugin_use_temp_config()
+	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	// Create test config with mixed enabled/disabled plugins
 	config := wayu.PluginConfigJSON{
