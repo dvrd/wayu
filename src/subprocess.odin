@@ -40,8 +40,12 @@ run_command :: proc(args: []string) -> bool {
 
 	if pid == 0 {
 		// Child process
-		// Redirect stdout (fd 1) and stderr (fd 2) to /dev/null
+		// Redirect stdin (fd 0), stdout (fd 1), and stderr (fd 2) to /dev/null.
+		// Stdin must be redirected so git (and other tools) don't try to read
+		// credential prompts from the terminal — especially important when the
+		// parent is running in raw terminal mode (TUI).
 		if devnull >= 0 {
+			posix.dup2(devnull, posix.FD(0))
 			posix.dup2(devnull, posix.FD(1))
 			posix.dup2(devnull, posix.FD(2))
 			posix.close(devnull)

@@ -337,12 +337,25 @@ tui_bridge_disable_plugin :: proc(name: string) -> bool {
 
 // Load plugin registry into TUI state cache.
 // Each item is NUL-delimited: "key\x00category\x00shell\x00description"
+// Skips plugins that are already installed (present in plugins.json).
 // Idempotent — skips if cache is already populated.
 tui_bridge_load_registry :: proc(state: ^tui.TUIState) {
 	if state.plugin_registry_cache != nil { return }
 
+	// Build a set of installed plugin names so we can filter them out
+	installed_names := make(map[string]bool)
+	defer delete(installed_names)
+	config, _ := read_plugin_config_json()
+	defer cleanup_plugin_config_json(&config)
+	for plugin in config.plugins {
+		installed_names[plugin.name] = true
+	}
+
 	items := make([dynamic]string)
 	for entry in POPULAR_PLUGINS {
+		// Skip if this plugin is already installed
+		if installed_names[entry.info.name] { continue }
+
 		item := strings.clone(fmt.tprintf("%s\x00%s\x00%s\x00%s",
 			entry.key,
 			entry.category,
@@ -357,7 +370,8 @@ tui_bridge_load_registry :: proc(state: ^tui.TUIState) {
 }
 
 // Install a plugin from the registry by its key.
-// Looks up the key in POPULAR_PLUGINS, then clones the repo into the plugins dir.
+// Looks up the key in POPULAR_PLUGINS, clones the repo, then registers it in
+// plugins.json and regenerates the shell loader so it appears in the Installed tab.
 tui_bridge_install_plugin :: proc(key: string) -> bool {
 	info, found := popular_plugin_find(key)
 	if !found { return false }
@@ -365,10 +379,50 @@ tui_bridge_install_plugin :: proc(key: string) -> bool {
 	plugins_dir := get_plugins_dir()
 	defer delete(plugins_dir)
 
+	// Ensure plugins directory exists
+	if !os.exists(plugins_dir) {
+		if err := os.make_directory(plugins_dir); err != nil {
+			return false
+		}
+	}
+
 	dest := fmt.aprintf("%s/%s", plugins_dir, info.name)
 	defer delete(dest)
 
-	return git_clone(info.url, dest)
+	// Clone the repository (blocking — TUI freezes here; notification shown by caller).
+	// run_command redirects stdin to /dev/null so git won't try to prompt for
+	// credentials via the raw terminal.
+	if !git_clone(info.url, dest) { return false }
+
+	// read_plugin_config_json always returns ok=true (creates empty config when file absent)
+	config, _ := read_plugin_config_json()
+	defer cleanup_plugin_config_json(&config)
+
+	// Skip registration if already present (idempotent)
+	_, already_found := find_plugin_json(&config, info.name)
+	if !already_found {
+		git_info := get_git_info(dest)
+		new_plugin := PluginMetadata{
+			name           = strings.clone(info.name),
+			url            = strings.clone(info.url),
+			enabled        = true,
+			shell          = info.shell,
+			installed_path = strings.clone(dest),
+			entry_file     = "",   // detected by generate_plugins_file
+			git            = git_info,
+			dependencies   = make([dynamic]string),
+			priority       = 100,
+			config         = make(map[string]string),
+			conflicts      = ConflictInfo{},
+		}
+		append(&config.plugins, new_plugin)
+	}
+
+	// Persist config
+	if !write_plugin_config_json(&config) { return false }
+
+	// Regenerate shell loader so the plugin is sourced
+	return generate_plugins_file(DETECTED_SHELL)
 }
 
 // Get PATH entry detail information

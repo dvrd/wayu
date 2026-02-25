@@ -61,6 +61,10 @@ TUIState :: struct {
 	confirm_delete_view:           TUIView,
 	confirm_delete_name:           string,  // heap-cloned name to delete (freed on clear)
 	confirm_delete_focused_delete: bool,    // true = DELETE button focused, false = CANCEL focused
+	// Plugin view tab state (0 = Installed, 1 = Registry)
+	plugin_tab:            int,
+	plugin_registry_cache: ^[dynamic]string,  // static registry rows, loaded once
+
 	// Inline filter state
 	filter_active:     bool,
 	filter_text:       [dynamic]u8,
@@ -95,6 +99,9 @@ tui_state_destroy :: proc(state: ^TUIState) {
 
 	// Free notification resources
 	clear_notification(state)
+
+	// Free plugin registry cache
+	clear_registry_cache(state)
 
 	// Free inline filter resources
 	delete(state.filter_text)
@@ -341,8 +348,16 @@ apply_filter :: proc(state: ^TUIState, items: []string) {
 	state.scroll_offset = 0
 }
 
-// Get the current view's cache items as a string slice
+// Get the current view's cache items as a string slice.
+// When on the Plugins Registry tab, returns the registry cache instead of
+// the installed-plugins data_cache entry.
 get_current_cache :: proc(state: ^TUIState) -> []string {
+	if state.current_view == .PLUGINS_VIEW && state.plugin_tab == PLUGIN_TAB_REGISTRY {
+		if state.plugin_registry_cache != nil {
+			return state.plugin_registry_cache^[:]
+		}
+		return nil
+	}
 	view := state.current_view
 	if state.data_cache[view] == nil {
 		return nil
