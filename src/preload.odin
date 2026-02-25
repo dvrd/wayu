@@ -39,6 +39,22 @@ ALIASES_TEMPLATE :: `#!/usr/bin/env zsh
 # This file contains all command aliases and shortcuts
 `
 
+// Template for alias-sources.conf — lists external alias sources shown by
+// "wayu alias list". Not a shell script; plain config format.
+ALIAS_SOURCES_TEMPLATE :: `# alias-sources.conf - External alias source registry
+# Managed by wayu - edit manually to add external alias sources
+#
+# Format (one source per line):
+#   dir <path> <command_template>
+#
+# <path>             : directory whose entries become alias names
+# <command_template> : command to run; {name} is replaced with the entry name
+#
+# Example - fabric AI patterns:
+#   dir ~/.config/fabric/patterns fabric --pattern {name}
+#
+`
+
 CONSTANTS_TEMPLATE :: `#!/usr/bin/env zsh
 
 # Environment Constants and Configuration Variables

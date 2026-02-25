@@ -475,6 +475,25 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	} else {
 		print_info("All config files already exist")
 	}
+
+	// alias-sources.conf is shell-agnostic — create once regardless of shell
+	alias_sources_file := fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_SOURCES_FILE)
+	defer delete(alias_sources_file)
+
+	if !os.exists(alias_sources_file) {
+		spinner := new_spinner(.Line)
+		spinner_text(&spinner, "Creating alias-sources.conf")
+		spinner_start(&spinner)
+		success := init_config_file(alias_sources_file, ALIAS_SOURCES_TEMPLATE)
+		spinner_stop(&spinner)
+		if success {
+			print_success("Created config file: %s", alias_sources_file)
+		} else {
+			print_error_simple("Failed to create config file: %s", alias_sources_file)
+		}
+	} else {
+		print_info("Config file already exists: %s", alias_sources_file)
+	}
 }
 
 update_shell_rc :: proc(shell: ShellType, ext: string) {
