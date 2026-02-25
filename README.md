@@ -172,11 +172,27 @@ wayu stores shell-specific config files in `~/.config/wayu/`:
   aliases.{zsh,bash}     # alias definitions
   constants.{zsh,bash}   # environment variable exports
   tools.{zsh,bash}       # external tool initialization
+  alias-sources.conf      # external alias sources (shell-agnostic, read-only)
   completions/            # Zsh completion scripts
   backup/                 # timestamped backups
 ```
 
 Shell is detected automatically from `$SHELL`. Override with `--shell bash` or `--shell zsh`.
+
+### External Alias Sources
+
+`alias-sources.conf` lets you surface aliases from external tools (e.g. [fabric](https://github.com/danielmiessler/fabric) patterns) in `wayu alias list` as read-only sections.
+
+```
+# Format: dir <path> <command_template>
+# {name} is replaced with each directory entry name
+dir ~/.config/fabric/patterns fabric --pattern {name}
+```
+
+- Lines starting with `#` are comments
+- Only `dir` type is supported — one alias per subdirectory (or per file if no subdirectories exist)
+- Sources appear as labelled read-only tables after your managed aliases
+- Missing directories are silently skipped
 
 ## Development
 
