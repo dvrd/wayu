@@ -1,5 +1,7 @@
 package test_wayu
 
+import "core:fmt"
+import "core:os"
 import "core:testing"
 import "core:strings"
 import wayu "../../src"
@@ -125,4 +127,132 @@ test_alias_command_with_quotes :: proc(t: ^testing.T) {
 		testing.expect(t, strings.has_prefix(command, "\""), "Command should have quotes")
 		testing.expect(t, strings.has_suffix(command, "\""), "Command should end with quotes")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// alias_sources.odin tests
+// ---------------------------------------------------------------------------
+
+@(test)
+test_path_basename_simple :: proc(t: ^testing.T) {
+	testing.expect_value(t, wayu.path_basename("/home/user/patterns"), "patterns")
+}
+
+@(test)
+test_path_basename_trailing_slash :: proc(t: ^testing.T) {
+	testing.expect_value(t, wayu.path_basename("/home/user/patterns/"), "patterns")
+}
+
+@(test)
+test_path_basename_no_slash :: proc(t: ^testing.T) {
+	testing.expect_value(t, wayu.path_basename("patterns"), "patterns")
+}
+
+@(test)
+test_path_basename_empty :: proc(t: ^testing.T) {
+	testing.expect_value(t, wayu.path_basename(""), "")
+}
+
+@(test)
+test_expand_home_with_tilde :: proc(t: ^testing.T) {
+	home := os.get_env("HOME", context.allocator)
+	defer delete(home)
+
+	result := wayu.expand_home("~/foo/bar")
+	defer delete(result)
+
+	expected := strings.concatenate([]string{home, "/foo/bar"})
+	defer delete(expected)
+
+	testing.expect_value(t, result, expected)
+}
+
+@(test)
+test_expand_home_no_tilde :: proc(t: ^testing.T) {
+	result := wayu.expand_home("/absolute/path")
+	defer delete(result)
+	testing.expect_value(t, result, "/absolute/path")
+}
+
+@(test)
+test_read_alias_sources_empty_file :: proc(t: ^testing.T) {
+	// Set up temp config dir
+	tmp_dir :: "/tmp/wayu-test-alias-sources"
+	os.make_directory(tmp_dir)
+	defer os.remove_all(tmp_dir)
+
+	original := wayu.WAYU_CONFIG
+	wayu.WAYU_CONFIG = tmp_dir
+	defer wayu.WAYU_CONFIG = original
+
+	// Write empty conf (only comments)
+	conf_path := fmt.aprintf("%s/alias-sources.conf", tmp_dir)
+	defer delete(conf_path)
+	_ = os.write_entire_file(conf_path, transmute([]byte)string("# no sources here\n"))
+
+	sources := wayu.read_alias_sources()
+	defer wayu.cleanup_alias_sources(sources)
+
+	testing.expect_value(t, len(sources), 0)
+}
+
+@(test)
+test_read_alias_sources_missing_file :: proc(t: ^testing.T) {
+	tmp_dir :: "/tmp/wayu-test-alias-sources-missing"
+	os.make_directory(tmp_dir)
+	defer os.remove_all(tmp_dir)
+
+	original := wayu.WAYU_CONFIG
+	wayu.WAYU_CONFIG = tmp_dir
+	defer wayu.WAYU_CONFIG = original
+
+	// No conf file written — should return nil gracefully
+	sources := wayu.read_alias_sources()
+	testing.expect(t, sources == nil, "Expected nil when conf file missing")
+}
+
+@(test)
+test_read_alias_sources_parses_dir_entry :: proc(t: ^testing.T) {
+	tmp_dir :: "/tmp/wayu-test-alias-sources-parse"
+	os.make_directory(tmp_dir)
+	defer os.remove_all(tmp_dir)
+
+	original := wayu.WAYU_CONFIG
+	wayu.WAYU_CONFIG = tmp_dir
+	defer wayu.WAYU_CONFIG = original
+
+	conf_path := fmt.aprintf("%s/alias-sources.conf", tmp_dir)
+	defer delete(conf_path)
+	conf_content := "dir /some/path/patterns mytool --run {name}\n"
+	_ = os.write_entire_file(conf_path, transmute([]byte)string(conf_content))
+
+	sources := wayu.read_alias_sources()
+	defer wayu.cleanup_alias_sources(sources)
+
+	testing.expect_value(t, len(sources), 1)
+	testing.expect_value(t, sources[0].label, "patterns")
+	testing.expect_value(t, sources[0].path, "/some/path/patterns")
+	testing.expect_value(t, sources[0].command_template, "mytool --run {name}")
+}
+
+@(test)
+test_read_alias_sources_skips_unknown_type :: proc(t: ^testing.T) {
+	tmp_dir :: "/tmp/wayu-test-alias-sources-skip"
+	os.make_directory(tmp_dir)
+	defer os.remove_all(tmp_dir)
+
+	original := wayu.WAYU_CONFIG
+	wayu.WAYU_CONFIG = tmp_dir
+	defer wayu.WAYU_CONFIG = original
+
+	conf_path := fmt.aprintf("%s/alias-sources.conf", tmp_dir)
+	defer delete(conf_path)
+	// "file" type is not supported yet — should be skipped
+	conf_content := "file /some/path/aliases.sh\n"
+	_ = os.write_entire_file(conf_path, transmute([]byte)string(conf_content))
+
+	sources := wayu.read_alias_sources()
+	defer wayu.cleanup_alias_sources(sources)
+
+	testing.expect_value(t, len(sources), 0)
 }
