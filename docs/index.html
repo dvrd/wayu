@@ -1822,6 +1822,17 @@
       });
     }
 
+    // ─── INSTALL TABS ──────────────────────────────────────────────────────
+    function switchInstallTab(method) {
+      document.querySelectorAll('.install-tab').forEach(t => {
+        const active = t.getAttribute('onclick').includes(`'${method}'`);
+        t.classList.toggle('active', active);
+        t.setAttribute('aria-selected', active);
+      });
+      document.getElementById('imethod-brew').style.display   = method === 'brew'   ? 'block' : 'none';
+      document.getElementById('imethod-source').style.display = method === 'source' ? 'block' : 'none';
+    }
+
     // ─── COPY CODE ─────────────────────────────────────────────────────────
     function copyCode(tab) {
       const el = document.getElementById(`code-${tab}`);
