@@ -11,6 +11,7 @@
 //   clean     — remove build artifacts
 //   install   — build + copy to /usr/local/bin + wayu init
 //   dev       — debug build + run with remaining args
+//   release   — test + tag + push (triggers GitHub Actions → Homebrew)
 //   help      — show available targets
 
 package main
@@ -56,6 +57,8 @@ main :: proc() {
 		do_install()
 	case "dev":
 		do_dev()
+	case "release":
+		do_release()
 	case "help":
 		do_help()
 	case:
@@ -177,6 +180,66 @@ do_dev :: proc() {
 	}
 }
 
+do_release :: proc() {
+	if len(os.args) < 3 {
+		bld.log_error("Usage: ./build_it release <version>  (e.g. v3.2.0)")
+		os.exit(1)
+	}
+
+	version := os.args[2]
+
+	// Validate format: must start with 'v' followed by digits/dots
+	if len(version) < 2 || version[0] != 'v' {
+		bld.log_error("Version must start with 'v' (e.g. v3.2.0), got: %s", version)
+		os.exit(1)
+	}
+
+	bld.log_info("Releasing %s...", version)
+
+	// 1. Run tests first — abort if any fail
+	bld.log_info("Running tests...")
+	do_test()
+
+	// 2. Verify clean working tree
+	bld.log_info("Checking working tree is clean...")
+	status_cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&status_cmd, "git", "diff", "--exit-code")
+	if !bld.cmd_run(&status_cmd) {
+		bld.log_error("Working tree has unstaged changes — commit or stash before releasing")
+		os.exit(1)
+	}
+	staged_cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&staged_cmd, "git", "diff", "--cached", "--exit-code")
+	if !bld.cmd_run(&staged_cmd) {
+		bld.log_error("Working tree has staged changes — commit before releasing")
+		os.exit(1)
+	}
+
+	// 3. Create git tag
+	bld.log_info("Creating tag %s...", version)
+	tag_cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&tag_cmd, "git", "tag", version)
+	if !bld.cmd_run(&tag_cmd) {
+		bld.log_error("Failed to create tag %s (already exists?)", version)
+		os.exit(1)
+	}
+
+	// 4. Push tag — this triggers the GitHub Actions release workflow
+	bld.log_info("Pushing tag %s to origin...", version)
+	push_cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&push_cmd, "git", "push", "origin", version)
+	if !bld.cmd_run(&push_cmd) {
+		bld.log_error("Failed to push tag — rolling back local tag")
+		rollback := bld.cmd_create(context.temp_allocator)
+		bld.cmd_append(&rollback, "git", "tag", "-d", version)
+		bld.cmd_run(&rollback)
+		os.exit(1)
+	}
+
+	bld.log_info("Release %s triggered — GitHub Actions will build, publish, and update Homebrew tap", version)
+	bld.log_info("Track progress at: https://github.com/dvrd/wayu/actions")
+}
+
 do_help :: proc() {
 	fmt.println("wayu build system")
 	fmt.println("")
@@ -190,6 +253,7 @@ do_help :: proc() {
 	fmt.println("  clean     Remove build artifacts")
 	fmt.println("  install   Build + install to /usr/local/bin + wayu init")
 	fmt.println("  dev       Debug build + run (extra args passed through)")
+	fmt.println("  release   Run tests, tag, and push to trigger GitHub release + Homebrew update")
 	fmt.println("  help      Show this help")
 	fmt.println("")
 	fmt.println("Bootstrap:")
