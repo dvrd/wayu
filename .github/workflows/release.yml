@@ -18,10 +18,7 @@ jobs:
           - os: ubuntu-latest
             target: linux-amd64
             artifact: wayu-linux-amd64
-          - os: macos-12
-            target: macos-amd64
-            artifact: wayu-macos-amd64
-          - os: macos-latest
+          - os: macos-latest   # Apple Silicon (arm64)
             target: macos-arm64
             artifact: wayu-macos-arm64
 
@@ -100,7 +97,6 @@ jobs:
         | Platform | File |
         |----------|------|
         | macOS (Apple Silicon) | \`wayu-macos-arm64.tar.gz\` |
-        | macOS (Intel)         | \`wayu-macos-amd64.tar.gz\` |
         | Linux (x86_64)        | \`wayu-linux-amd64.tar.gz\` |
 
         \`\`\`bash
@@ -119,8 +115,6 @@ jobs:
         files: |
           artifacts/wayu-linux-amd64/wayu-linux-amd64.tar.gz
           artifacts/wayu-linux-amd64/wayu-linux-amd64.sha256
-          artifacts/wayu-macos-amd64/wayu-macos-amd64.tar.gz
-          artifacts/wayu-macos-amd64/wayu-macos-amd64.sha256
           artifacts/wayu-macos-arm64/wayu-macos-arm64.tar.gz
           artifacts/wayu-macos-arm64/wayu-macos-arm64.sha256
       env:
@@ -144,7 +138,6 @@ jobs:
         echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
         echo "VERSION_BARE=${VERSION#v}" >> $GITHUB_OUTPUT
         echo "ARM64_SHA=$(cat artifacts/wayu-macos-arm64/wayu-macos-arm64.sha256)" >> $GITHUB_OUTPUT
-        echo "AMD64_SHA=$(cat artifacts/wayu-macos-amd64/wayu-macos-amd64.sha256)" >> $GITHUB_OUTPUT
 
     - name: Checkout tap repo
       uses: actions/checkout@v4
@@ -158,7 +151,6 @@ jobs:
         VERSION:      ${{ steps.vars.outputs.VERSION }}
         VERSION_BARE: ${{ steps.vars.outputs.VERSION_BARE }}
         ARM64_SHA:    ${{ steps.vars.outputs.ARM64_SHA }}
-        AMD64_SHA:    ${{ steps.vars.outputs.AMD64_SHA }}
       run: |
         mkdir -p tap/Formula
         cat > tap/Formula/wayu.rb << FORMULA
@@ -168,16 +160,8 @@ jobs:
           version "${VERSION_BARE}"
           license "MIT"
 
-          on_macos do
-            on_arm do
-              url "https://github.com/dvrd/wayu/releases/download/${VERSION}/wayu-macos-arm64.tar.gz"
-              sha256 "${ARM64_SHA}"
-            end
-            on_intel do
-              url "https://github.com/dvrd/wayu/releases/download/${VERSION}/wayu-macos-amd64.tar.gz"
-              sha256 "${AMD64_SHA}"
-            end
-          end
+          url "https://github.com/dvrd/wayu/releases/download/${VERSION}/wayu-macos-arm64.tar.gz"
+          sha256 "${ARM64_SHA}"
 
           def install
             bin.install "wayu"
