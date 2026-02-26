@@ -91,6 +91,7 @@ compinit
 # === 5. Plugins Loading ===
 # Load Wayu-managed plugins
 [ -f "$HOME/.config/wayu/plugins.zsh" ] && source "$HOME/.config/wayu/plugins.zsh"
+[ -f "$HOME/.config/wayu/plugins/config.zsh" ] && source "$HOME/.config/wayu/plugins/config.zsh"
 
 # === 6. Aliases ===
 # Load command aliases and shortcuts
@@ -335,6 +336,7 @@ fi
 # === 5. Plugins Loading ===
 # Load Wayu-managed plugins
 [ -f "$HOME/.config/wayu/plugins.bash" ] && source "$HOME/.config/wayu/plugins.bash"
+[ -f "$HOME/.config/wayu/plugins/config.zsh" ] && source "$HOME/.config/wayu/plugins/config.zsh"
 
 # === 6. Aliases ===
 # Load command aliases and shortcuts
