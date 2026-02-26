@@ -18,6 +18,16 @@ A shell configuration management CLI written in [Odin](https://odin-lang.org/) w
 
 ## Installation
 
+### Homebrew (recommended)
+
+```bash
+brew tap dvrd/wayu
+brew install wayu
+wayu init
+```
+
+### From source
+
 Requires the [Odin compiler](https://odin-lang.org/docs/install/).
 
 ```bash
