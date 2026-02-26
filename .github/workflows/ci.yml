@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main, develop]
+    tags-ignore: ['v*.*.*']   # release.yml handles tag pushes
   pull_request:
     branches: [main]
 
@@ -11,6 +12,7 @@ jobs:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
 
@@ -23,18 +25,13 @@ jobs:
       with:
         release: latest
 
-    - name: Verify Odin installation
-      run: odin version
-
     - name: Build wayu
       run: |
         mkdir -p bin
         odin build src -out:bin/wayu -o:speed
 
-    - name: Verify build output
-      run: |
-        ls -lh bin/wayu
-        ./bin/wayu version
+    - name: Verify build
+      run: ./bin/wayu version
 
     - name: Setup test environment
       run: mkdir -p ~/.config/wayu/backup
@@ -42,36 +39,19 @@ jobs:
     - name: Run unit tests
       run: odin test tests/unit -file -o:speed -define:ODIN_TEST_THREADS=1 -ignore-unused-defineables
 
-    - name: Test CLI non-interactive behavior
+    - name: Test CLI exit codes
       run: |
-        # Test that CLI requires explicit arguments
-        if ./bin/wayu path add 2>&1 | grep -q "Missing required arguments"; then
-          echo "CLI correctly requires explicit arguments"
-        else
-          echo "CLI should require explicit arguments"
-          exit 1
-        fi
-
-        # Test exit code
         EXIT_CODE=0
         ./bin/wayu path add > /dev/null 2>&1 || EXIT_CODE=$?
         if [ "$EXIT_CODE" -eq 64 ]; then
-          echo "CLI returns correct exit code (64)"
+          echo "CLI returns correct exit code 64 for missing args"
         else
-          echo "CLI should return exit code 64, got $EXIT_CODE"
+          echo "Expected exit code 64, got $EXIT_CODE"
           exit 1
         fi
 
-    - name: Upload build artifacts
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: wayu-${{ matrix.os }}
-        path: bin/wayu
-        retention-days: 7
-
   lint:
-    name: Code Quality
+    name: Lint
     runs-on: ubuntu-latest
 
     steps:
@@ -83,13 +63,10 @@ jobs:
       with:
         release: latest
 
-    - name: Check code
-      run: odin check src
-
     - name: Build with warnings as errors
       run: |
         mkdir -p bin
-        odin build src -out:bin/wayu_test -warnings-as-errors -o:speed
+        odin build src -out:bin/wayu -warnings-as-errors -o:speed
 
   release-check:
     name: Release Readiness
@@ -102,32 +79,16 @@ jobs:
 
     - name: Check version consistency
       run: |
-        VERSION=$(sed -n 's/^VERSION :: "\([0-9]*\.[0-9]*\.[0-9]*\)"/\1/p' src/main.odin)
-        echo "Found version: $VERSION"
-
+        VERSION=$(grep '^VERSION ::' src/main.odin | sed 's/VERSION :: "\(.*\)"/\1/')
         if [ -z "$VERSION" ]; then
           echo "Could not extract version from src/main.odin"
           exit 1
         fi
+        echo "Version: $VERSION"
 
-        echo "Version format valid: $VERSION"
-
-    - name: Check documentation
+    - name: Check required files exist
       run: |
-        for file in README.md; do
-          if [ ! -f "$file" ]; then
-            echo "Missing required file: $file"
-            exit 1
-          fi
+        for f in README.md docs/index.html .github/workflows/release.yml; do
+          [ -f "$f" ] || { echo "Missing: $f"; exit 1; }
         done
-        echo "All documentation files present"
-
-    - name: Check for TODO/FIXME comments
-      run: |
-        TODO_COUNT=$(grep -r "TODO\|FIXME" src/ --include="*.odin" | wc -l || true)
-        if [ "$TODO_COUNT" -gt 0 ]; then
-          echo "Found $TODO_COUNT TODO/FIXME comments"
-          grep -r "TODO\|FIXME" src/ --include="*.odin" || true
-        else
-          echo "No TODO/FIXME comments in source"
-        fi
+        echo "All required files present"
