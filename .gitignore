@@ -2,7 +2,6 @@ CLAUDE.md
 bin/
 .task/
 coverage/
-docs/
 PRPs/
 
 *.backup
