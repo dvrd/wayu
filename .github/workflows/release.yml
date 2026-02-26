@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-release:
-    name: Build Release for ${{ matrix.target }}
+    name: Build ${{ matrix.artifact }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -18,7 +18,7 @@ jobs:
           - os: ubuntu-latest
             target: linux-amd64
             artifact: wayu-linux-amd64
-          - os: macos-13
+          - os: macos-12
             target: macos-amd64
             artifact: wayu-macos-amd64
           - os: macos-latest
@@ -43,19 +43,23 @@ jobs:
     - name: Verify build
       run: ./bin/wayu version
 
-    - name: Create release package
+    - name: Package and compute SHA256
       run: |
-        mkdir -p release
-        cp bin/wayu release/
-        cp README.md release/
-        cd release
-        tar -czf ../${{ matrix.artifact }}.tar.gz *
+        tar -czf ${{ matrix.artifact }}.tar.gz -C bin wayu
+        if [[ "$RUNNER_OS" == "macOS" ]]; then
+          shasum -a 256 ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.sha256
+        else
+          sha256sum ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.sha256
+        fi
+        echo "SHA256=$(cat ${{ matrix.artifact }}.sha256)"
 
-    - name: Upload release artifact
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact }}
-        path: ${{ matrix.artifact }}.tar.gz
+        path: |
+          ${{ matrix.artifact }}.tar.gz
+          ${{ matrix.artifact }}.sha256
 
   create-release:
     name: Create GitHub Release
@@ -77,28 +81,32 @@ jobs:
 
     - name: Generate release notes
       run: |
-        cat > release_notes.md << 'EOF'
-        ## wayu ${{ steps.get_version.outputs.VERSION }}
+        VERSION="${{ steps.get_version.outputs.VERSION }}"
+        cat > release_notes.md << EOF
+        ## wayu ${VERSION}
 
         Shell configuration management CLI for Zsh and Bash.
 
-        ### Downloads
+        ### Install via Homebrew
+
+        \`\`\`bash
+        brew tap dvrd/wayu
+        brew install wayu
+        wayu init
+        \`\`\`
+
+        ### Manual install
 
         | Platform | File |
         |----------|------|
-        | Linux (x86_64) | `wayu-linux-amd64.tar.gz` |
-        | macOS (Intel) | `wayu-macos-amd64.tar.gz` |
-        | macOS (Apple Silicon) | `wayu-macos-arm64.tar.gz` |
+        | macOS (Apple Silicon) | \`wayu-macos-arm64.tar.gz\` |
+        | macOS (Intel)         | \`wayu-macos-amd64.tar.gz\` |
+        | Linux (x86_64)        | \`wayu-linux-amd64.tar.gz\` |
 
-        ### Installation
-
-        ```bash
-        tar -xzf wayu-*.tar.gz
-        sudo cp release/wayu /usr/local/bin/
+        \`\`\`bash
+        tar -xzf wayu-*.tar.gz && sudo mv wayu /usr/local/bin/
         wayu init
-        ```
-
-        See [README.md](README.md) for full documentation.
+        \`\`\`
         EOF
 
     - name: Create Release
@@ -110,7 +118,93 @@ jobs:
         prerelease: false
         files: |
           artifacts/wayu-linux-amd64/wayu-linux-amd64.tar.gz
+          artifacts/wayu-linux-amd64/wayu-linux-amd64.sha256
           artifacts/wayu-macos-amd64/wayu-macos-amd64.tar.gz
+          artifacts/wayu-macos-amd64/wayu-macos-amd64.sha256
           artifacts/wayu-macos-arm64/wayu-macos-arm64.tar.gz
+          artifacts/wayu-macos-arm64/wayu-macos-arm64.sha256
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew-tap:
+    name: Update Homebrew tap
+    needs: create-release
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download macOS artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Extract version and SHAs
+      id: vars
+      run: |
+        VERSION="${GITHUB_REF#refs/tags/}"
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "VERSION_BARE=${VERSION#v}" >> $GITHUB_OUTPUT
+        echo "ARM64_SHA=$(cat artifacts/wayu-macos-arm64/wayu-macos-arm64.sha256)" >> $GITHUB_OUTPUT
+        echo "AMD64_SHA=$(cat artifacts/wayu-macos-amd64/wayu-macos-amd64.sha256)" >> $GITHUB_OUTPUT
+
+    - name: Checkout tap repo
+      uses: actions/checkout@v4
+      with:
+        repository: dvrd/homebrew-wayu
+        token: ${{ secrets.TAP_GITHUB_TOKEN }}
+        path: tap
+
+    - name: Update formula
+      env:
+        VERSION:      ${{ steps.vars.outputs.VERSION }}
+        VERSION_BARE: ${{ steps.vars.outputs.VERSION_BARE }}
+        ARM64_SHA:    ${{ steps.vars.outputs.ARM64_SHA }}
+        AMD64_SHA:    ${{ steps.vars.outputs.AMD64_SHA }}
+      run: |
+        mkdir -p tap/Formula
+        cat > tap/Formula/wayu.rb << FORMULA
+        class Wayu < Formula
+          desc "Shell configuration management CLI — PATH, aliases, env vars, plugins"
+          homepage "https://github.com/dvrd/wayu"
+          version "${VERSION_BARE}"
+          license "MIT"
+
+          on_macos do
+            on_arm do
+              url "https://github.com/dvrd/wayu/releases/download/${VERSION}/wayu-macos-arm64.tar.gz"
+              sha256 "${ARM64_SHA}"
+            end
+            on_intel do
+              url "https://github.com/dvrd/wayu/releases/download/${VERSION}/wayu-macos-amd64.tar.gz"
+              sha256 "${AMD64_SHA}"
+            end
+          end
+
+          def install
+            bin.install "wayu"
+          end
+
+          def caveats
+            <<~EOS
+              Initialize wayu config files by running:
+                wayu init
+
+              Then add this line to your shell RC file:
+                source ~/.config/wayu/init.zsh   # zsh
+                source ~/.config/wayu/init.bash  # bash
+            EOS
+          end
+
+          test do
+            assert_match version.to_s, shell_output("#{bin}/wayu version")
+          end
+        end
+        FORMULA
+
+    - name: Commit and push formula
+      working-directory: tap
+      run: |
+        git config user.name  "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add Formula/wayu.rb
+        git commit -m "wayu ${{ steps.vars.outputs.VERSION }}"
+        git push
