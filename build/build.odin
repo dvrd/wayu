@@ -215,7 +215,32 @@ do_release :: proc() {
 		os.exit(1)
 	}
 
-	// 3. Create git tag
+	// 3. Generate CHANGELOG with git-cliff (if available)
+	cliff_check := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&cliff_check, "which", "git-cliff")
+	if bld.cmd_run(&cliff_check) {
+		bld.log_info("Generating CHANGELOG with git-cliff...")
+		cliff_cmd := bld.cmd_create(context.temp_allocator)
+		bld.cmd_append(&cliff_cmd, "git-cliff", "--tag", version, "-o", "CHANGELOG.md")
+		if !bld.cmd_run(&cliff_cmd) {
+			bld.log_error("git-cliff failed")
+			os.exit(1)
+		}
+		add_cmd := bld.cmd_create(context.temp_allocator)
+		bld.cmd_append(&add_cmd, "git", "add", "CHANGELOG.md")
+		bld.cmd_run(&add_cmd)
+		commit_msg := fmt.tprintf("chore: update CHANGELOG for %s", version)
+		commit_cmd := bld.cmd_create(context.temp_allocator)
+		bld.cmd_append(&commit_cmd, "git", "commit", "-m", commit_msg)
+		bld.cmd_run(&commit_cmd)
+		push_main := bld.cmd_create(context.temp_allocator)
+		bld.cmd_append(&push_main, "git", "push", "origin", "main")
+		bld.cmd_run(&push_main)
+	} else {
+		bld.log_info("git-cliff not found — skipping CHANGELOG (install: cargo install git-cliff)")
+	}
+
+	// 4. Create git tag
 	bld.log_info("Creating tag %s...", version)
 	tag_cmd := bld.cmd_create(context.temp_allocator)
 	bld.cmd_append(&tag_cmd, "git", "tag", version)
@@ -224,7 +249,7 @@ do_release :: proc() {
 		os.exit(1)
 	}
 
-	// 4. Push tag — this triggers the GitHub Actions release workflow
+	// 5. Push tag — this triggers the GitHub Actions release workflow
 	bld.log_info("Pushing tag %s to origin...", version)
 	push_cmd := bld.cmd_create(context.temp_allocator)
 	bld.cmd_append(&push_cmd, "git", "push", "origin", version)
