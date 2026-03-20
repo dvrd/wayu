@@ -23,14 +23,9 @@ jobs:
   bump-and-release:
     name: Bump version and trigger release
     runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message, 'chore: release')"
 
     steps:
-    - name: Skip release commits (prevents infinite loop)
-      if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: release')
-      run: |
-        echo "Release commit detected — skipping."
-        exit 0
-
     - name: Checkout code
       uses: actions/checkout@v4
       with:
@@ -43,8 +38,9 @@ jobs:
     - name: Determine next version
       id: version
       run: |
-        if [ -n "${{ inputs.bump_type }}" ]; then
-          VERSION=$(git cliff --bumped-version --bump ${{ inputs.bump_type }})
+        BUMP_TYPE="${{ inputs.bump_type || '' }}"
+        if [ -n "$BUMP_TYPE" ]; then
+          VERSION=$(git cliff --bumped-version --bump "$BUMP_TYPE")
         else
           VERSION=$(git cliff --bumped-version)
         fi
