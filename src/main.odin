@@ -10,7 +10,7 @@ import "core:mem"
 import tui "tui"
 
 // Semantic versioning - update with each release
-VERSION :: "3.1.0"
+VERSION :: "3.2.0"
 
 HOME : string
 WAYU_CONFIG : string
