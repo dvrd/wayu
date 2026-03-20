@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v3.2.0)'
+        required: true
 
 permissions:
   contents: write
@@ -74,7 +79,12 @@ jobs:
 
     - name: Extract version from tag
       id: get_version
-      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      run: |
+        if [ -n "${{ inputs.tag }}" ]; then
+          echo "VERSION=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
 
     - name: Install git-cliff
       run: cargo install git-cliff --locked
