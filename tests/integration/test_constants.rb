@@ -38,6 +38,7 @@ class ConstantsIntegrationTest
       test_multiline_value_handling
       test_constant_persistence
       test_help_command
+      test_const_alias
     ensure
       teardown_test_env
     end
@@ -346,6 +347,30 @@ class ConstantsIntegrationTest
       puts "✗"
       puts "  Help output incomplete"
       puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_const_alias
+    print "Test 14: 'const' alias behaves identically to 'constants'... "
+
+    run_wayu('const add CONST_ALIAS_TEST "alias_value"')
+    added = File.read(@constants_file).include?('export CONST_ALIAS_TEST=')
+
+    list_out, list_status = run_wayu("const list")
+    listed = list_status.success? && list_out.include?("CONST_ALIAS_TEST")
+
+    get_out, get_status = run_wayu("const get CONST_ALIAS_TEST")
+    got = get_status.success? && get_out.strip == "alias_value"
+
+    run_wayu("const rm CONST_ALIAS_TEST")
+
+    if added && listed && got
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  const alias failed (add=#{added}, list=#{listed}, get=#{got})"
       @failed += 1
     end
   end
