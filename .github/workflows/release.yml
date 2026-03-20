@@ -67,6 +67,8 @@ jobs:
     name: Create GitHub Release
     needs: build-release
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.VERSION }}
 
     steps:
     - name: Checkout code
@@ -122,7 +124,7 @@ jobs:
     - name: Extract version and SHAs
       id: vars
       run: |
-        VERSION="${GITHUB_REF#refs/tags/}"
+        VERSION="${{ needs.create-release.outputs.version }}"
         echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
         echo "VERSION_BARE=${VERSION#v}" >> $GITHUB_OUTPUT
         echo "ARM64_SHA=$(cat artifacts/wayu-macos-arm64/wayu-macos-arm64.sha256)" >> $GITHUB_OUTPUT
