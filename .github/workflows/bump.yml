@@ -1,6 +1,8 @@
 name: Bump Version & Release
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       bump_type:
@@ -23,6 +25,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Skip release commits (prevents infinite loop)
+      if: github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: release')
+      run: |
+        echo "Release commit detected — skipping."
+        exit 0
+
     - name: Checkout code
       uses: actions/checkout@v4
       with:
@@ -40,10 +48,18 @@ jobs:
         else
           VERSION=$(git cliff --bumped-version)
         fi
-        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-        echo "Next version: $VERSION"
+        CURRENT=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+        echo "Current tag: $CURRENT  →  Next version: $VERSION"
+        if [ "$VERSION" = "$CURRENT" ]; then
+          echo "No version bump needed — skipping release."
+          echo "SKIP=true" >> $GITHUB_OUTPUT
+        else
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "SKIP=false" >> $GITHUB_OUTPUT
+        fi
 
     - name: Update VERSION in src/main.odin
+      if: steps.version.outputs.SKIP != 'true'
       run: |
         VERSION="${{ steps.version.outputs.VERSION }}"
         VERSION_BARE="${VERSION#v}"
@@ -51,9 +67,11 @@ jobs:
         grep 'VERSION ::' src/main.odin
 
     - name: Generate CHANGELOG
+      if: steps.version.outputs.SKIP != 'true'
       run: git cliff --tag ${{ steps.version.outputs.VERSION }} -o CHANGELOG.md
 
     - name: Commit release files
+      if: steps.version.outputs.SKIP != 'true'
       run: |
         git config user.name  "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -62,6 +80,7 @@ jobs:
         git push origin main
 
     - name: Create and push tag
+      if: steps.version.outputs.SKIP != 'true'
       run: |
         git tag ${{ steps.version.outputs.VERSION }}
         git push origin ${{ steps.version.outputs.VERSION }}
