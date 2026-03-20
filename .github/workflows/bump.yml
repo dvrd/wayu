@@ -80,3 +80,10 @@ jobs:
       run: |
         git tag ${{ steps.version.outputs.VERSION }}
         git push origin ${{ steps.version.outputs.VERSION }}
+
+    - name: Trigger release workflow
+      if: steps.version.outputs.SKIP != 'true'
+      run: |
+        gh workflow run release.yml -f tag=${{ steps.version.outputs.VERSION }}
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
