@@ -298,7 +298,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	switch filtered_args[0] {
 	case "path":       parsed.command = .PATH
 	case "alias":      parsed.command = .ALIAS
-	case "constants":  parsed.command = .CONSTANTS
+	case "constants", "const":  parsed.command = .CONSTANTS
 	case "completions": parsed.command = .COMPLETIONS
 	case "backup":     parsed.command = .BACKUP
 	case "plugin":     parsed.command = .PLUGIN
