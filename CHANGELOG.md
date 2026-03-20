@@ -5,201 +5,153 @@ All notable changes to wayu will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-03-20
+
+### Added
+
+- Rename landing to docs to use on github pages
+- Add SVG favicon with transparent background for landing page
+- Add release target to build script — tests + tag + push to trigger CI
+- Add git-cliff for automatic CHANGELOG generation on release
+- Add wayu constants get command ([#3](https://github.com/dvrd/wayu/pull/3))
+- Add 'const' as alias for 'constants' command ([#5](https://github.com/dvrd/wayu/pull/5))
+- Automatic changelog and versioning system
+
+### Fixed
+
+- Source plugins/config.zsh in shell init templates for both zsh and bash
+- Add og:image meta tags and screenshot
+- Mention 'const' alias in wayu help output ([#5](https://github.com/dvrd/wayu/pull/5))
 ## [3.1.0] - 2026-02-26
 
 ### Added
 
-- **Homebrew tap** (`dvrd/wayu`) — `brew tap dvrd/wayu && brew install wayu` now works
-- **Automated Homebrew releases** — pushing a git tag triggers build → GitHub Release → formula update
-- **`release` target in build script** — `./build_it release v3.x.x` runs tests, tags, and pushes
-- **Landing page** at `dvrd.github.io/wayu` — hero terminal animation, features, install tabs
-- **`alias-sources.conf`** — surface read-only aliases from external tools (e.g. fabric patterns)
-  - Format: `dir <path> <command_template>` with `{name}` placeholder
-  - Missing directories silently skipped
-- **Plugin registry expanded to 54 plugins** with category-based search (`wayu plugin search <keyword>`)
-- **TUI plugin install from Registry tab** — browse and install plugins without leaving the TUI
-- **TUI add modal** for PATH, alias, and constants with Tab navigation between fields
-- **TUI delete confirmation modal** with focusable buttons (h/l navigation)
-- **TUI notification system** with auto-dismiss
-- **TUI inline fuzzy filter** on all list views
-- **TUI detail overlay** views
-- **Viewport scroll follows cursor** in all list views
-- **`bld` build system** replaces Taskfile — pure Odin, zero external tools required
-- **SVG favicon** for landing page
+- Expand environment variables and relative paths in PATH operations
+- More updates and fixes
+- Add TUI detail overlay views and inline fuzzy filter
+- Update gitignore
+- Add TUI notification system with auto-dismiss
+- **tui**: Add two-column table layout for alias and constants views
+- Multiple updates
+- Optimize shell templates for fast startup + fix TUI buffer reuse
+- **tui**: Dashboard-style main menu with accent bars and dividers
+- **tui**: Dashboard views, delete confirmation modal, vim keys, arena memory
+- **tui**: Focusable delete modal buttons with h/l navigation and Enter to confirm
+- **tui**: Add modal for PATH/ALIAS/CONSTANTS + orange focused button highlight
+- **tui**: Focus-aware add modal + Tab navigation in both modals
+- Replace Taskfile with bld build system
+- **plugin**: Document search action, remove dead dfs_visit_with_priority, update README
+- **plugin**: Expand registry to 54 plugins with category search
+- **tui/plugin**: Wire registry load + install into TUI bridge
+- Show external alias sources in alias list via alias-sources.conf
 
 ### Changed
 
-- **BREAKING**: PATH format migrated from `add_to_path "path"` function calls to centralized `WAYU_PATHS=()` array (see v3.0.0 notes)
-- Shell init templates load `plugins/config.zsh` for both zsh and bash
-- `docs/` directory moved from `landing/` for GitHub Pages compatibility
-- CI workflow skips tag pushes (handled exclusively by `release.yml`)
-- CI `fail-fast: false` — matrix jobs run independently
+- Extract truncate_to_width, merge enable/disable, add PATH ops tests
+- Consolidate layout/theme into style.odin, add subprocess module, clean up TUI and plugin layers
 
 ### Fixed
 
-- TUI: Tab and Enter keys now correctly reach plugins view handler
-- TUI: Registry tab loads reliably and exits cleanly with no residue
-- TUI: Main menu clips to terminal bounds and scrolls with cursor
-- TUI: Scroll-indicator row reserved so last item is never hidden
-- TUI: Color bleeding fixed with active-state ANSI tracking in screen flush
-- TUI: Memory safety and UB fixes for release builds
-- TUI: Responsive terminal size with 3-method fallback
-- Plugin: Memory leak in check loop, swallowed loader error, duplicate bridge procs
-- Shell injection hardening across all input paths
-- 116 → 0 memory leaks (tracking allocator clean)
-- Integration tests isolated to `/tmp`, never touch real config
-
-### Internal
-
-- Migrated from Taskfile to `bld` (Odin build system library)
-- Consolidated `layout/theme` into `style.odin`
-- Added `subprocess` module
-- Migrated to new `core:os` API (dev-2026-02)
-- Arena allocations throughout TUI for deterministic cleanup
-
----
-
+- Harden shell injection, decompose plugin, add tests and docs
+- Rewrite screen_flush with active-state ANSI tracking to fix TUI color bleeding
+- Migrate to new Odin core:os API (dev-2026-02)
+- **tui**: Memory safety and UB fixes for release builds
+- **tui**: Responsive terminal size with 3-method fallback
+- **tui**: Cursor persistence bug and visual delete confirmation buttons
+- **tui**: Modal button margin, border overlap, and no-background button style
+- **tui**: Add extra blank row between modal body and buttons
+- **tui**: Move extra modal margin above buttons, not below
+- **tui**: H/l type freely in fields; bordered box input indicator
+- Eliminate all memory leaks and bad frees (116 -> 0)
+- CI failures — bad free in plugin config, missing dirs, CLAUDE.md check, single-threaded tests
+- Code review fixes — self-rebuild mtime bug, install/dev run built binary, extract bin_path()
+- Code review — arena allocs, shell-ext hardcode, parse_args dedup, table theme colors, plugin map global
+- Code review — circular dep check result, backup no-op semantics, validate_constant stdout side effect
+- **tui**: Viewport follows cursor in list views
+- **tui**: Reserve scroll-indicator row so last item is never hidden
+- **tui**: Main menu clips to terminal bounds and scrolls with cursor
+- **plugin**: Memory leak in check loop, swallowed loader error, duplicate bridge procs
+- **tests**: Isolate Ruby integration tests to /tmp, never touch real config
+- **tui**: Registry tab always loads + clean exit with no residue
+- **tui**: Tab and Enter keys never reached plugins view handler
+- TUI plugin install from Registry tab end-to-end
 ## [3.0.0] - 2025-11-09
-
-### ⚠️ Breaking Change — PATH format migration required
-
-The PATH management system was rewritten to fix a critical bug where newly added
-entries were ineffective: they were appended *after* all `export` statements had
-already executed, so the shell never saw the new paths.
 
 ### Added
 
-- **Centralized `WAYU_PATHS=()` array** — all PATH entries live in one place
-- **Single for-loop export** — `for p in "${WAYU_PATHS[@]}"; do export PATH="$p:$PATH"; done`
-- **Smart array insertion** — new entries inserted inside the array, before the closing `)`
-- **Plugin system Phase 1–4** — install, enable/disable, priority, dependency management
+- Implement Phase 1 of plugin system enhancement (PRP-15)
+- Implement completions view and apply layout constants across all TUI views
+- Implement Phase 3 plugin enable/disable (PRP-15)
+- Implement Phase 4 dependency management (PRP-15)
+- Implement array-based PATH system (v3.0.0)
 
 ### Changed
 
-- PATH config format: `add_to_path "/usr/local/bin"` → entry inside `WAYU_PATHS=(...)`
-- New entries are guaranteed to be exported in the correct order
-
-### Migration
-
-Users upgrading from v2.x need to re-initialize their PATH config:
-
-```bash
-wayu init          # regenerates path.{zsh,bash} with new format
-# then re-add your paths:
-wayu path add /usr/local/bin
-wayu path add ~/.cargo/bin
-# etc.
-```
-
-Or manually replace your `~/.config/wayu/path.{zsh,bash}`:
-
-```bash
-# Old format (v2.x)
-add_to_path "/usr/local/bin"
-add_to_path "$HOME/.cargo/bin"
-
-# New format (v3.x)
-WAYU_PATHS=(
-  "/usr/local/bin"
-  "$HOME/.cargo/bin"
-)
-for _wayu_p in "${WAYU_PATHS[@]}"; do
-  [[ -d "$_wayu_p" ]] && export PATH="$_wayu_p:$PATH"
-done
-```
-
----
-
+- Remove tui_ prefix from files in src/tui/ directory
 ## [2.2.0] - 2025-10-16
 
 ### Added
 
-- **CLI/TUI Isolation (PRP-13)**: Complete separation of interactive and non-interactive modes
-  - CLI is now fully non-interactive — safe for scripts, pipes, and CI/CD
-  - All interactive features consolidated in TUI mode (`wayu --tui`)
-- **BSD sysexits.h exit codes** — industry-standard codes for scripting:
-  - `0` Success, `1` General error, `64` Usage error, `65` Data format error
-  - `66` Input not found, `73` Can't create output, `74` I/O error, `77` Permission denied, `78` Config error
-- **`--yes` / `-y` flag** — skip confirmation prompts for automation
-- **CI/CD workflows** — automated testing on Ubuntu and macOS, multi-platform release builds
+- Initial implementation of wayu
+- Add wayu init command for setup
+- Add test coverage reporting with Ruby script
+- Add input validation and sanitization (PRP-01)
+- Add enhanced error handling system (PRP-02)
+- Add completions command and convert tests to Ruby (PRP-03)
+- Add shell detection and backup system for multi-shell support
+- Add shell-specific configuration templates
+- Implement multi-shell support and migration system (v2.0.0)
+- Update command handlers for multi-shell compatibility
+- Implement comprehensive style system and UI components
+- Integrate style system across all commands
+- Implement vibrant color system with TrueColor support (PRP-09 Phase 1)
+- Replace Charm colors with Zellij 'dvrd' theme (PRP-09 Phase 1)
+- Enhance visual aesthetics with colored symbols and curved table borders
+- Implement PRP-09 Phase 2 - Interactive Add Commands (TUI mode)
+- Add container border to interactive forms
+- Add interactive TUI mode to alias and constants commands
+- Complete PRP-07 style system render pipeline
+- Integrate style system with all help commands (PRP-07 100%)
+- **tui**: Implement Phase 3 enhanced fuzzy finder foundation
+- **tui**: Integrate enhanced fuzzy finder into path list command
+- **tui**: Integrate enhanced fuzzy finder into alias list command
+- **tui**: Integrate enhanced fuzzy finder into constants list command
+- Phase 5 - Terminal state safety with termios
+- Add Vim-like modal keybindings and confirmation prompts
+- Implement full TUI mode with memory bug fixes (PRP-12)
+- Implement PRP-11 command handler abstraction
+- Add TUI component system and box generator tools
+- Add component testing infrastructure (PRP-13)
+- Add component testing infrastructure (PRP-13)
 
 ### Changed
 
-- **BREAKING**: CLI commands require explicit arguments (no more interactive fallback)
-  - `wayu path rm` now requires a path argument; use `wayu --tui` for interactive selection
-- **BREAKING**: Destructive operations require `--yes` flag
-  - `wayu path clean --yes`, `wayu path dedup --yes`
-- **BREAKING**: `wayu path list` outputs static table (not interactive selector)
-- Backup handlers split: CLI fails immediately on backup error, TUI prompts user
-- Exit codes categorized (previously all returned `1`)
+- Clean up code and improve error handling
+- Improve memory management and UI consistency
+- Remove shell script integration tests in favor of Ruby tests
 
-### Migration
+### Fixed
 
-```bash
-# Old (v2.1.x)
-wayu path rm                    # opened fuzzy finder
-wayu path clean                 # prompted [y/N]
-
-# New (v2.2.0)
-wayu path rm /specific/path     # explicit argument required
-wayu path clean --yes           # --yes flag required
-wayu --tui                      # use TUI for interactive mode
-```
-
----
-
-## [2.1.0] - 2025-10-15
-
-### Added
-
-- Full TUI mode with The Elm Architecture (TEA) pattern
-  - 8 interactive views: main menu, PATH, alias, constants, completions, backups, plugins, settings
-  - Vim-style navigation (`j`/`k`, arrow keys)
-  - Alt screen buffer, signal handling, differential rendering
-  - Zero external TUI dependencies — pure Odin termios implementation
-- Component testing infrastructure with golden file visual regression
-- Modern style system with centralized theme and ANSI color support
-- UI components: tables with borders, progress indicators, loading spinners
-
-### Changed
-
-- Improved visual design with bordered panels and consistent color hierarchy
-
----
-
-## [2.0.0] - 2025-10-14
-
-### Added
-
-- **Multi-shell support** — Bash and Zsh with automatic detection
-- **`wayu migrate`** — convert configurations between shells
-- **`wayu version`** — display version information
-- **`wayu backup`** — comprehensive backup and restore system
-- **`--dry-run` / `-n`** — preview any change before applying
-- **`--shell`** — override automatic shell detection
-
-### Changed
-
-- **BREAKING**: Config files now use shell-specific extensions (`.bash`, `.zsh`)
-- Configuration stored in `~/.config/wayu/` with shell-appropriate files
-
----
-
-## [1.0.0] - Initial Release
-
-### Added
-
-- PATH management (`wayu path add/rm/list`)
-- Alias management (`wayu alias add/rm/list`)
-- Environment constants management (`wayu constants add/rm/list`)
-- Backup system with automatic timestamped backups
-- Configuration initialization (`wayu init`)
-
----
-
+- Resolve shell detection global variable initialization order
+- Initialize HOME and WAYU_CONFIG in init_shell_globals
+- Make init_shell_globals idempotent to prevent parallel test race conditions
+- Correct emoji alignment, validation triggering, and memory leaks in forms
+- Improve emoji width detection with precise Unicode ranges
+- Resolve memory leak from double-free of validation strings
+- Clone string literals to prevent freeing unallocated pointers
+- Table rendering and help commands
+- Simplify backup, plugin, and migrate help commands
+- **tui**: Fix alignment issues in fuzzy finder rendering
+- **tui**: Add carriage returns for raw mode terminal rendering
+- **tui**: Improve alignment and add keyboard actions to list commands
+- Resolve fuzzy finder delete actions and title alignment issues
+- Correct border alignment in fuzzy finder list and details panels
+- Correct border alignment to match 62-char line width
+- Correct termios struct for macOS compatibility
+- Resolve unit test failures and improve test robustness
+- Rename run_component_test to run_component_testing
+[3.2.0]: https://github.com/dvrd/wayu/releases/tag/v3.2.0
 [3.1.0]: https://github.com/dvrd/wayu/releases/tag/v3.1.0
 [3.0.0]: https://github.com/dvrd/wayu/releases/tag/v3.0.0
 [2.2.0]: https://github.com/dvrd/wayu/releases/tag/v2.2.0
-[2.1.0]: https://github.com/dvrd/wayu/releases/tag/v2.1.0
-[2.0.0]: https://github.com/dvrd/wayu/releases/tag/v2.0.0
-[1.0.0]: https://github.com/dvrd/wayu/releases/tag/v1.0.0
+
