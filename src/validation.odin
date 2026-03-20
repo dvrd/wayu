@@ -149,6 +149,32 @@ sanitize_shell_value :: proc(value: string) -> string {
 	return strings.clone(strings.to_string(builder))
 }
 
+// Reverse of sanitize_shell_value — used by `get` to return the original user value
+unescape_shell_value :: proc(value: string) -> string {
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+
+	i := 0
+	for i < len(value) {
+		if value[i] == '\\' && i + 1 < len(value) {
+			switch value[i + 1] {
+			case '"':  strings.write_rune(&builder, '"');  i += 2
+			case '`':  strings.write_rune(&builder, '`');  i += 2
+			case '$':  strings.write_rune(&builder, '$');  i += 2
+			case '\\': strings.write_rune(&builder, '\\'); i += 2
+			case 'n':  strings.write_rune(&builder, '\n'); i += 2
+			case:      strings.write_byte(&builder, value[i]); i += 1
+			}
+		} else {
+			strings.write_byte(&builder, value[i])
+			i += 1
+		}
+	}
+
+	return strings.clone(strings.to_string(builder))
+}
+
 // Validate alias-specific rules
 validate_alias :: proc(name: string, command: string) -> ValidationResult {
 	// First validate the identifier
