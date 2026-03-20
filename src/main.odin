@@ -298,7 +298,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	switch filtered_args[0] {
 	case "path":       parsed.command = .PATH
 	case "alias":      parsed.command = .ALIAS
-	case "constants":  parsed.command = .CONSTANTS
+	case "constants", "const":  parsed.command = .CONSTANTS
 	case "completions": parsed.command = .COMPLETIONS
 	case "backup":     parsed.command = .BACKUP
 	case "plugin":     parsed.command = .PLUGIN
@@ -578,7 +578,7 @@ print_help :: proc() {
 	print_section("COMMANDS:", EMOJI_COMMAND)
 	print_item("", "path", "Manage PATH entries", EMOJI_PATH)
 	print_item("", "alias", "Manage shell aliases", EMOJI_ALIAS)
-	print_item("", "constants", "Manage environment constants", EMOJI_CONSTANT)
+	print_item("", "constants", "Manage environment constants (alias: const)", EMOJI_CONSTANT)
 	print_item("", "completions", "Manage Zsh completion scripts", EMOJI_COMMAND)
 	print_item("", "backup", "Manage configuration backups", EMOJI_INFO)
 	print_item("", "plugin", "Manage shell plugins", EMOJI_COMMAND)
