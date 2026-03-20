@@ -76,34 +76,11 @@ jobs:
       id: get_version
       run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-    - name: Generate release notes
-      run: |
-        VERSION="${{ steps.get_version.outputs.VERSION }}"
-        cat > release_notes.md << EOF
-        ## wayu ${VERSION}
+    - name: Install git-cliff
+      run: cargo install git-cliff --locked
 
-        Shell configuration management CLI for Zsh and Bash.
-
-        ### Install via Homebrew
-
-        \`\`\`bash
-        brew tap dvrd/wayu
-        brew install wayu
-        wayu init
-        \`\`\`
-
-        ### Manual install
-
-        | Platform | File |
-        |----------|------|
-        | macOS (Apple Silicon) | \`wayu-macos-arm64.tar.gz\` |
-        | Linux (x86_64)        | \`wayu-linux-amd64.tar.gz\` |
-
-        \`\`\`bash
-        tar -xzf wayu-*.tar.gz && sudo mv wayu /usr/local/bin/
-        wayu init
-        \`\`\`
-        EOF
+    - name: Generate release notes with git-cliff
+      run: git cliff --latest --strip header > release_notes.md
 
     - name: Create Release
       uses: softprops/action-gh-release@v1

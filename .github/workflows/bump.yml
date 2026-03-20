@@ -1,0 +1,67 @@
+name: Bump Version & Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type (leave empty for auto-detect from commits)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  bump-and-release:
+    name: Bump version and trigger release
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Install git-cliff
+      run: cargo install git-cliff --locked
+
+    - name: Determine next version
+      id: version
+      run: |
+        if [ -n "${{ inputs.bump_type }}" ]; then
+          VERSION=$(git cliff --bumped-version --bump ${{ inputs.bump_type }})
+        else
+          VERSION=$(git cliff --bumped-version)
+        fi
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Next version: $VERSION"
+
+    - name: Update VERSION in src/main.odin
+      run: |
+        VERSION="${{ steps.version.outputs.VERSION }}"
+        VERSION_BARE="${VERSION#v}"
+        sed -i "s/VERSION :: \"[^\"]*\"/VERSION :: \"${VERSION_BARE}\"/" src/main.odin
+        grep 'VERSION ::' src/main.odin
+
+    - name: Generate CHANGELOG
+      run: git cliff --tag ${{ steps.version.outputs.VERSION }} -o CHANGELOG.md
+
+    - name: Commit release files
+      run: |
+        git config user.name  "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add src/main.odin CHANGELOG.md
+        git commit -m "chore: release ${{ steps.version.outputs.VERSION }}"
+        git push origin main
+
+    - name: Create and push tag
+      run: |
+        git tag ${{ steps.version.outputs.VERSION }}
+        git push origin ${{ steps.version.outputs.VERSION }}

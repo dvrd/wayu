@@ -18,6 +18,7 @@ package main
 
 import "core:fmt"
 import "core:os"
+import "core:strings"
 import bld "../bld"
 
 SRC_DIR     :: "src"
@@ -181,17 +182,46 @@ do_dev :: proc() {
 }
 
 do_release :: proc() {
-	if len(os.args) < 3 {
-		bld.log_error("Usage: ./build_it release <version>  (e.g. v3.2.0)")
-		os.exit(1)
-	}
+	version: string
 
-	version := os.args[2]
+	// Check if git-cliff is available
+	cliff_check := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&cliff_check, "which", "git-cliff")
+	cliff_available := bld.cmd_run(&cliff_check)
 
-	// Validate format: must start with 'v' followed by digits/dots
-	if len(version) < 2 || version[0] != 'v' {
-		bld.log_error("Version must start with 'v' (e.g. v3.2.0), got: %s", version)
-		os.exit(1)
+	if len(os.args) >= 3 {
+		// Version provided explicitly
+		version = os.args[2]
+		// Validate format: must start with 'v' followed by digits/dots
+		if len(version) < 2 || version[0] != 'v' {
+			bld.log_error("Version must start with 'v' (e.g. v3.2.0), got: %s", version)
+			os.exit(1)
+		}
+	} else {
+		// Auto-detect next version via git-cliff --bumped-version
+		if !cliff_available {
+			bld.log_error("git-cliff not found — either install it (cargo install git-cliff) or provide an explicit version: ./build_it release <version>")
+			os.exit(1)
+		}
+		bld.log_info("Auto-detecting next version with git-cliff...")
+		tmp_file := "/tmp/wayu_next_version"
+		bump_cmd := bld.cmd_create(context.temp_allocator)
+		bld.cmd_append(&bump_cmd, "sh", "-c", fmt.tprintf("git-cliff --bumped-version > %s", tmp_file))
+		if !bld.cmd_run(&bump_cmd) {
+			bld.log_error("git-cliff --bumped-version failed")
+			os.exit(1)
+		}
+		raw, read_err := os.read_entire_file_from_path(tmp_file, context.allocator)
+		if read_err != nil {
+			bld.log_error("Failed to read version from %s", tmp_file)
+			os.exit(1)
+		}
+		version = strings.trim_space(string(raw))
+		if len(version) < 2 || version[0] != 'v' {
+			bld.log_error("git-cliff returned unexpected version: %s", version)
+			os.exit(1)
+		}
+		bld.log_info("Auto-detected next version: %s", version)
 	}
 
 	bld.log_info("Releasing %s...", version)
@@ -215,30 +245,71 @@ do_release :: proc() {
 		os.exit(1)
 	}
 
-	// 3. Generate CHANGELOG with git-cliff (if available)
-	cliff_check := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&cliff_check, "which", "git-cliff")
-	if bld.cmd_run(&cliff_check) {
-		bld.log_info("Generating CHANGELOG with git-cliff...")
-		cliff_cmd := bld.cmd_create(context.temp_allocator)
-		bld.cmd_append(&cliff_cmd, "git-cliff", "--tag", version, "-o", "CHANGELOG.md")
-		if !bld.cmd_run(&cliff_cmd) {
-			bld.log_error("git-cliff failed")
-			os.exit(1)
-		}
-		add_cmd := bld.cmd_create(context.temp_allocator)
-		bld.cmd_append(&add_cmd, "git", "add", "CHANGELOG.md")
-		bld.cmd_run(&add_cmd)
-		commit_msg := fmt.tprintf("chore: update CHANGELOG for %s", version)
-		commit_cmd := bld.cmd_create(context.temp_allocator)
-		bld.cmd_append(&commit_cmd, "git", "commit", "-m", commit_msg)
-		bld.cmd_run(&commit_cmd)
-		push_main := bld.cmd_create(context.temp_allocator)
-		bld.cmd_append(&push_main, "git", "push", "origin", "main")
-		bld.cmd_run(&push_main)
-	} else {
-		bld.log_info("git-cliff not found — skipping CHANGELOG (install: cargo install git-cliff)")
+	// 3. Generate CHANGELOG and update VERSION in src/main.odin
+	if !cliff_available {
+		bld.log_error("git-cliff not found — cannot generate CHANGELOG (install: cargo install git-cliff)")
+		os.exit(1)
 	}
+
+	// 3a. Generate CHANGELOG with git-cliff
+	bld.log_info("Generating CHANGELOG with git-cliff...")
+	cliff_cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&cliff_cmd, "git-cliff", "--tag", version, "-o", "CHANGELOG.md")
+	if !bld.cmd_run(&cliff_cmd) {
+		bld.log_error("git-cliff failed")
+		os.exit(1)
+	}
+
+	// 3b. Update VERSION in src/main.odin
+	bld.log_info("Updating VERSION in src/main.odin...")
+	main_odin_path := "src/main.odin"
+	main_odin_data, read_err := os.read_entire_file_from_path(main_odin_path, context.allocator)
+	if read_err != nil {
+		bld.log_error("Failed to read %s", main_odin_path)
+		os.exit(1)
+	}
+	main_odin_src := string(main_odin_data)
+
+	// Strip leading 'v' to get bare version number (e.g. "3.2.0")
+	version_bare := version[1:]
+
+	// Find and replace the existing VERSION line
+	// Pattern: VERSION :: "X.Y.Z" — we replace everything between the quotes
+	old_prefix := `VERSION :: "`
+	start_idx := strings.index(main_odin_src, old_prefix)
+	if start_idx == -1 {
+		bld.log_error("Could not find VERSION :: line in %s", main_odin_path)
+		os.exit(1)
+	}
+	quote_start := start_idx + len(old_prefix)
+	quote_end   := strings.index(main_odin_src[quote_start:], `"`)
+	if quote_end == -1 {
+		bld.log_error("Malformed VERSION line in %s", main_odin_path)
+		os.exit(1)
+	}
+	old_version := main_odin_src[quote_start : quote_start + quote_end]
+	old_version_line := fmt.tprintf(`VERSION :: "%s"`, old_version)
+	new_version_line := fmt.tprintf(`VERSION :: "%s"`, version_bare)
+
+	updated_src, _ := strings.replace(main_odin_src, old_version_line, new_version_line, 1)
+	write_err := os.write_entire_file(main_odin_path, transmute([]byte)updated_src)
+	if write_err != nil {
+		bld.log_error("Failed to write updated %s", main_odin_path)
+		os.exit(1)
+	}
+	bld.log_info("Updated VERSION from %s to %s", old_version, version_bare)
+
+	// 3c. Commit CHANGELOG.md and src/main.odin together
+	add_cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&add_cmd, "git", "add", "CHANGELOG.md", "src/main.odin")
+	bld.cmd_run(&add_cmd)
+	commit_msg := fmt.tprintf("chore: release %s", version)
+	commit_cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&commit_cmd, "git", "commit", "-m", commit_msg)
+	bld.cmd_run(&commit_cmd)
+	push_main := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&push_main, "git", "push", "origin", "main")
+	bld.cmd_run(&push_main)
 
 	// 4. Create git tag
 	bld.log_info("Creating tag %s...", version)
