@@ -25,6 +25,10 @@ class ConstantsIntegrationTest
       test_add_constant_with_spaces
       test_add_constant_with_special_chars
       test_list_constants
+      test_get_constant
+      test_get_constant_not_found
+      test_get_constant_empty_name
+      test_get_constant_unescapes_value
       test_remove_constant
       test_duplicate_constant_handling
       test_constant_name_validation
@@ -105,6 +109,75 @@ class ConstantsIntegrationTest
       puts "✗"
       puts "  List command failed or missing constants"
       puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_get_constant
+    print "Test 5a: Get constant value (happy path)... "
+
+    run_wayu('constants add GET_TEST "hello_world"')
+    output, status = run_wayu("constants get GET_TEST")
+
+    if status.success? && output.strip == "hello_world"
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected 'hello_world', got '#{output.strip}'"
+      puts "  Exit status: #{status.exitstatus}"
+      @failed += 1
+    end
+  end
+
+  def test_get_constant_not_found
+    print "Test 5b: Get non-existent constant returns error... "
+
+    output, status = run_wayu("constants get NONEXISTENT_XYZ_123")
+
+    if !status.success? && status.exitstatus == 65
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected exit 65, got #{status.exitstatus}"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_get_constant_empty_name
+    print "Test 5c: Get with empty name returns usage error... "
+
+    output, status = run_wayu('constants get ""')
+
+    if !status.success? && status.exitstatus == 64
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected exit 64 (usage), got #{status.exitstatus}"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_get_constant_unescapes_value
+    print "Test 5d: Get unescapes shell-escaped values... "
+
+    # Add a constant with quotes — sanitize_shell_value stores them as \"
+    run_wayu('constants add ESCAPE_TEST \'say "hello"\'')
+    output, status = run_wayu("constants get ESCAPE_TEST")
+    run_wayu("constants rm ESCAPE_TEST")
+
+    expected = 'say "hello"'
+    if status.success? && output.strip == expected
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected: #{expected.inspect}"
+      puts "  Got:      #{output.strip.inspect}"
       @failed += 1
     end
   end
