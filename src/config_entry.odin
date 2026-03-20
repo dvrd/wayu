@@ -78,6 +78,11 @@ print_cli_usage_error :: proc(spec: ^ConfigEntrySpec, action: string) {
 		fmt.println()
 		fmt.printfln("Example:")
 		fmt.printfln("  wayu %s rm %s", spec.file_name, spec.field_placeholders[0])
+	case "get":
+		fmt.printfln("Usage: wayu %s get <%s>", spec.file_name, spec.field_labels[0])
+		fmt.println()
+		fmt.printfln("Example:")
+		fmt.printfln("  wayu %s get %s", spec.file_name, spec.field_placeholders[0])
 	}
 
 	fmt.println()
@@ -127,6 +132,12 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 			delete(err2)
 			os.exit(exit_code)
 		}
+	case .GET:
+		if len(args) == 0 {
+			print_cli_usage_error(spec, "get")
+			os.exit(EXIT_USAGE)
+		}
+		get_config_entry_value(spec, args[0])
 	case .LIST:
 		// CLI defaults to static (non-interactive)
 		list_config_static(spec)
@@ -524,6 +535,60 @@ remove_config_interactive :: proc(spec: ^ConfigEntrySpec) {
 	}
 }
 
+// Get a single entry value by name and print it
+get_config_entry_value :: proc(spec: ^ConfigEntrySpec, name: string) {
+	debug("get: looking up '%s' in %s", name, spec.file_name)
+
+	// Empty name should be a usage error, not a "not found"
+	if len(strings.trim_space(name)) == 0 {
+		print_cli_usage_error(spec, "get")
+		os.exit(EXIT_USAGE)
+	}
+
+	if !check_wayu_initialized() {
+		os.exit(EXIT_CONFIG)
+	}
+
+	// Detect missing file separately from "entry not found" to avoid misleading errors
+	config_file := get_config_file_with_fallback(spec.file_name, DETECTED_SHELL)
+	defer delete(config_file)
+
+	debug("get: config file path: %s", config_file)
+
+	if !os.exists(config_file) {
+		print_error("I/O error: config file not found: %s", config_file)
+		os.exit(EXIT_IOERR)
+	}
+
+	entries := read_config_entries(spec)
+	debug("get: loaded %d entries", len(entries))
+
+	found := false
+	for entry in entries {
+		if entry.name == name {
+			debug("get: found '%s'", name)
+			if spec.fields_count == 1 {
+				fmt.println(entry.name)
+			} else {
+				// Unescape stored shell escapes so the output is the original user value
+				unescaped := unescape_shell_value(entry.value)
+				defer delete(unescaped)
+				fmt.println(unescaped)
+			}
+			found = true
+			break
+		}
+	}
+
+	cleanup_entries(&entries)
+
+	if !found {
+		debug("get: '%s' not found in %s", name, spec.file_name)
+		print_error("%s not found: %s", spec.display_name, name)
+		os.exit(EXIT_DATAERR)
+	}
+}
+
 // Generic static list (table view)
 list_config_static :: proc(spec: ^ConfigEntrySpec) {
 	// Check if wayu is initialized
@@ -812,6 +877,7 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 	}
 
 	fmt.printfln("  wayu %s rm [%s]", spec.file_name, strings.to_lower(spec.display_name))
+	fmt.printfln("  wayu %s get <%s>", spec.file_name, strings.to_lower(spec.display_name))
 	fmt.printfln("  wayu %s list", spec.file_name)
 
 	if spec.has_clean {
@@ -835,6 +901,7 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 	} else {
 		// ALIAS/CONSTANT examples
 		fmt.printfln("  wayu %s add %s %s", spec.file_name, spec.field_placeholders[0], spec.field_placeholders[1])
+		fmt.printfln("  wayu %s get %s", spec.file_name, spec.field_placeholders[0])
 		fmt.printfln("  wayu %s list", spec.file_name)
 		fmt.printfln("  wayu %s rm %s", spec.file_name, spec.field_placeholders[0])
 	}
