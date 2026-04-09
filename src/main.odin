@@ -113,6 +113,32 @@ init_shell_globals :: proc() {
 	_GLOBALS_INITIALIZED = true
 }
 
+// Shared TUI launch helper — used by both no-args and --tui paths
+tui_launch :: proc() {
+	tui.tui_set_bridge_functions(
+		tui_bridge_load_path,
+		tui_bridge_load_alias,
+		tui_bridge_load_constants,
+		tui_bridge_load_completions,
+		tui_bridge_load_backups,
+		tui_bridge_delete_path,
+		tui_bridge_delete_alias,
+		tui_bridge_delete_constant,
+		tui_bridge_cleanup_backups,
+		tui_bridge_get_path_detail,
+		tui_bridge_add_path,
+		tui_bridge_add_alias,
+		tui_bridge_add_constant,
+		tui_bridge_load_plugins,
+		tui_bridge_enable_plugin,
+		tui_bridge_disable_plugin,
+		tui_bridge_load_registry,
+		tui_bridge_install_plugin,
+	)
+
+	tui.tui_run()
+}
+
 main :: proc() {
   // Set up temp arena for transient allocations (string building, intermediate operations, etc.)
   // This arena is automatically cleared, reducing memory fragmentation
@@ -142,9 +168,10 @@ main :: proc() {
 	init_shell_globals()
 	init_config_files()
 
+	// No arguments → launch TUI (the primary interface)
 	if len(os.args) < 2 {
-		print_help()
-		os.exit(EXIT_SUCCESS)  // Help is success, not error
+		tui_launch()
+		return
 	}
 
 	parsed := parse_args(os.args[1:])
@@ -152,30 +179,7 @@ main :: proc() {
 
 	// Launch TUI if flag present
 	if parsed.tui {
-		// Set up bridge functions for TUI
-		tui.tui_set_bridge_functions(
-			tui_bridge_load_path,
-			tui_bridge_load_alias,
-			tui_bridge_load_constants,
-			tui_bridge_load_completions,
-			tui_bridge_load_backups,
-			tui_bridge_delete_path,
-			tui_bridge_delete_alias,
-			tui_bridge_delete_constant,
-			tui_bridge_cleanup_backups,
-			tui_bridge_get_path_detail,
-			tui_bridge_add_path,
-			tui_bridge_add_alias,
-			tui_bridge_add_constant,
-			tui_bridge_load_plugins,
-			tui_bridge_enable_plugin,
-			tui_bridge_disable_plugin,
-			tui_bridge_load_registry,
-			tui_bridge_install_plugin,
-		)
-
-		// Launch TUI
-		tui.tui_run()
+		tui_launch()
 		return
 	}
 
@@ -572,6 +576,7 @@ print_help :: proc() {
 	print_header(header_text, EMOJI_MOUNTAIN)
 
 	print_section("USAGE:", EMOJI_USER)
+	fmt.printf("  wayu                    Launch interactive TUI (default)\n")
 	fmt.printf("  wayu <command> <action> [arguments]\n")
 	fmt.println()
 
@@ -600,7 +605,7 @@ print_help :: proc() {
 	print_section("FLAGS:", EMOJI_ACTION)
 	print_item("", "--dry-run, -n", "Preview changes without modifying files", EMOJI_INFO)
 	print_item("", "--yes, -y", "Skip confirmation prompts (for clean/dedup)", EMOJI_INFO)
-	print_item("", "--tui", "Launch interactive Terminal UI mode", EMOJI_INFO)
+	print_item("", "--tui", "Launch interactive Terminal UI mode (same as no args)", EMOJI_INFO)
 	print_item("", "-c=<component>", "Test TUI component rendering (dev mode)", EMOJI_INFO)
 	print_item("", "--snapshot", "Save component output as golden file", EMOJI_INFO)
 	print_item("", "--test", "Test component against golden file", EMOJI_INFO)
@@ -639,8 +644,8 @@ print_help :: proc() {
 	fmt.printf("  77  Permission denied\n")
 	fmt.printf("  78  Configuration error\n")
 	fmt.println()
+	fmt.printf("  %sNote:%s Running %swayu%s with no arguments opens the interactive TUI\n", BRIGHT_CYAN, RESET, BOLD, RESET)
 	fmt.printf("  %sNote:%s CLI mode is fully non-interactive for scripting/automation\n", BRIGHT_CYAN, RESET)
-	fmt.printf("  %sHint:%s Use %s--tui%s flag for interactive Terminal UI mode\n", BRIGHT_CYAN, RESET, BOLD, RESET)
 	fmt.println()
 }
 
