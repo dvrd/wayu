@@ -346,7 +346,7 @@ render_title_box :: proc(title: string) -> string {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 
-	width := 68 // Standard width (interior content width, not including │ borders)
+	width := min(68, get_cli_terminal_width() - 4)  // -4 for │ borders and margins
 	title_visual_width := get_string_visual_width(title)
 	// Subtract 2 for the padding spaces around title
 	padding_left := (width - title_visual_width) / 2
@@ -385,9 +385,11 @@ render_box :: proc(title: string, content: string) -> string {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 
-	width := 68
+	width := min(68, get_cli_terminal_width() - 4)
 
-	// Top border with title
+	if width < 20 {
+		width = 20
+	}
 	fmt.sbprintf(&builder, "%s╭─ %s ", get_secondary(), title)
 	title_visual_width := get_string_visual_width(title)
 	remaining := width - title_visual_width - 3  // -3 for "─ " before title and " " after title

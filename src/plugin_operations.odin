@@ -696,7 +696,7 @@ handle_plugin_list :: proc(args: []string) {
 			}
 		}
 
-		output := table_render(table)
+		output := table_render(table, get_cli_terminal_width())
 		defer delete(output)
 		fmt.print(output)
 
@@ -755,7 +755,7 @@ handle_plugin_list :: proc(args: []string) {
 			}
 		}
 
-		output := table_render(table)
+		output := table_render(table, get_cli_terminal_width())
 		defer delete(output)
 		fmt.print(output)
 
@@ -929,7 +929,7 @@ handle_plugin_get :: proc(args: []string) {
 	table_add_row(&table, []string{"Shell", shell_compat_to_string(plugin_ptr.shell)})
 	table_add_row(&table, []string{"Path", plugin_ptr.installed_path})
 
-	output := table_render(table)
+	output := table_render(table, get_cli_terminal_width())
 	defer delete(output)
 	fmt.print(output)
 
@@ -1057,7 +1057,7 @@ handle_plugin_search :: proc(args: []string) {
 		return
 	}
 
-	output := table_render(table)
+	output := table_render(table, get_cli_terminal_width())
 	defer delete(output)
 	fmt.print(output)
 

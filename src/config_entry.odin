@@ -644,7 +644,7 @@ list_config_static :: proc(spec: ^ConfigEntrySpec) {
 		table_add_row(&table, row)
 	}
 
-	table_output := table_render(table)
+	table_output := table_render(table, get_cli_terminal_width())
 	defer delete(table_output)
 	fmt.print(table_output)
 }
