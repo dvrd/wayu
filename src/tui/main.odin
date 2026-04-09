@@ -453,14 +453,27 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 	// Header with accent bar (Dribbble dashboard style)
 	title_y := HEADER_TITLE_LINE + CONTENT_PADDING_TOP
 	// Accent bar ┃ before title
+	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+	max_header_width := border_width - (text_x - header_x) - BORDER_RIGHT_WIDTH - 1
+
 	screen_set_cell(screen, header_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
 	screen_set_cell(screen, header_x, title_y + 1, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
-	render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, title_y, "WAYU", TUI_PRIMARY, "", true)
-	render_text_styled(screen, header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP, title_y + 1, "Shell Configuration Manager", TUI_DIM)
+
+	subtitle := "Shell Configuration Manager"
+	if is_compact(state.terminal_width) {
+		subtitle = "Shell Config Manager"
+	}
+	if is_narrow(state.terminal_width) {
+		subtitle = "Config Manager"
+	}
+	subtitle_display := truncate_text(subtitle, max_header_width)
+
+	render_text_styled(screen, text_x, title_y, "WAYU", TUI_PRIMARY, "", true)
+	render_text_styled(screen, text_x, title_y + 1, subtitle_display, TUI_DIM)
 
 	// Header divider line
 	divider_y := LIST_ITEM_START_LINE
-	divider_width := border_width - CONTENT_PADDING_LEFT - 2  // Inset from both sides
+	divider_width := max(0, border_width - CONTENT_PADDING_LEFT - 2)  // Inset from both sides
 	for dx in 0..<divider_width {
 		screen_set_cell(screen, header_x + dx, divider_y, Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
 	}
@@ -478,7 +491,6 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 
 	// First item starts after header divider + 1 blank line
 	menu_start_y := divider_y + 2
-	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
 	// How many items fit — must match get_view_visible_height(.MAIN_MENU)
 	footer_y       := calculate_footer_y(state.terminal_height)
@@ -486,21 +498,25 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 	visible_count  := available_rows / MENU_ITEM_SPACING
 	if visible_count < 1 { visible_count = 1 }
 
+	// Max width for menu item text
+	max_menu_width := max_header_width
+
 	// scroll_offset is managed by tui_state_move_selection via get_view_visible_height
 	start := state.scroll_offset
 	end   := min(start + visible_count, len(menu_items))
 
 	for i in start..<end {
 		item := menu_items[i]
+		display := truncate_text(item, max_menu_width)
 		y := menu_start_y + ((i - start) * MENU_ITEM_SPACING)
 
 		if i == state.selected_index {
 			// Selected: accent bar ┃ + bold primary text
 			screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
-			render_text_styled(screen, text_x, y, item, TUI_PRIMARY, "", true)
+			render_text_styled(screen, text_x, y, display, TUI_PRIMARY, "", true)
 		} else {
 			// Normal: no accent bar, muted text at same x
-			render_text_styled(screen, text_x, y, item, TUI_MUTED)
+			render_text_styled(screen, text_x, y, display, TUI_MUTED)
 		}
 
 		// Divider line after each item (except the last visible one)
@@ -512,8 +528,17 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 		}
 	}
 
-	// Footer — compact keyboard shortcuts
-	render_text_styled(screen, header_x, footer_y, "j/k Navigate   l Select   q Quit", TUI_DIM)
+	// Footer — compact keyboard shortcuts (responsive)
+	// Clear the bottom border row between left border and right corner
+	// to erase leftover border dashes (─) from render_box_styled.
+	footer_text := get_footer_main_menu(state.terminal_width)
+	right_x := state.terminal_width - BORDER_RIGHT_WIDTH - 1
+	for x in header_x..<right_x {
+		screen_set_cell(screen, x, footer_y, Cell{char = ' '})
+	}
+	max_footer_width := right_x - header_x
+	footer_display := truncate_text(footer_text, max_footer_width)
+	render_text_styled(screen, header_x, footer_y, footer_display, TUI_DIM)
 }
 
 // Handle keyboard input when filter mode is active

@@ -3,6 +3,7 @@ package wayu
 import "core:os"
 import "core:strings"
 import "core:fmt"
+import "core:strconv"
 
 // Shell types supported by wayu
 ShellType :: enum {
@@ -154,4 +155,41 @@ validate_shell_compatibility :: proc(shell: ShellType) -> (valid: bool, message:
         return false, "Unable to detect shell type. Please specify --shell bash or --shell zsh"
     }
     return false, "Unsupported shell type"
+}
+
+// Get the terminal width for CLI output.
+// Tries: COLUMNS env var → stty size → fallback of 80.
+get_cli_terminal_width :: proc() -> int {
+    // Method 1: COLUMNS env var (set by most shells)
+    cols_env := os.get_env("COLUMNS", context.temp_allocator)
+    if len(cols_env) > 0 {
+        cols, ok := strconv.parse_int(cols_env)
+        if ok && cols > 0 {
+            return cols
+        }
+    }
+
+    // Method 2: stty size (reads from terminal driver)
+    // Output format: "rows cols\n"
+    {
+        output := capture_command([]string{"stty", "size"})
+        if len(output) > 0 {
+            defer delete(output)
+            space_idx := strings.index_byte(output, ' ')
+            if space_idx >= 0 {
+                cols_str := output[space_idx + 1:]
+                // Trim newline
+                nl_idx := strings.index_byte(cols_str, '\n')
+                if nl_idx >= 0 {
+                    cols_str = cols_str[:nl_idx]
+                }
+                cols, ok := strconv.parse_int(strings.trim_space(cols_str))
+                if ok && cols > 0 {
+                    return cols
+                }
+            }
+        }
+    }
+
+    return 80
 }

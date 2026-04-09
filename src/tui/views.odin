@@ -74,15 +74,17 @@ render_view_header :: proc(
 	screen_set_cell(screen, header_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
 	screen_set_cell(screen, header_x, title_y + 1, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
 
-	// Title (bold primary)
-	render_text_styled(screen, text_x, title_y, title, TUI_PRIMARY, "", true)
+	// Title (bold primary) — truncate if too wide for narrow terminals
+	max_title_width := border_width - (text_x - header_x) - BORDER_RIGHT_WIDTH - 1
+	title_display := truncate_text(title, max_title_width)
+	render_text_styled(screen, text_x, title_y, title_display, TUI_PRIMARY, "", true)
 
-	// Count line (dim)
-	render_text_styled(screen, text_x, title_y + 1, count_text, TUI_DIM)
+	// Count line (dim) — truncate if too wide
+	count_display := truncate_text(count_text, max_title_width)
+	render_text_styled(screen, text_x, title_y + 1, count_display, TUI_DIM)
 
-	// Horizontal divider below header
 	divider_y := LIST_ITEM_START_LINE
-	divider_width := border_width - CONTENT_PADDING_LEFT - 2
+	divider_width := max(0, border_width - CONTENT_PADDING_LEFT - 2)
 	for dx in 0..<divider_width {
 		screen_set_cell(screen, header_x + dx, divider_y, Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
 	}
@@ -111,12 +113,16 @@ render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) ->
 	filter_bar_y := LIST_ITEM_START_LINE + 1
 	filter_str := string(state.filter_text[:])
 
+	max_filter_width := state.terminal_width - BORDER_LEFT_WIDTH - CONTENT_PADDING_LEFT - BORDER_RIGHT_WIDTH - 2
+
 	if state.filter_active {
-		filter_display := fmt.tprintf("/ %s█  (%d/%d matches)", filter_str, len(state.filtered_indices), item_count)
-		render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_SECONDARY, "", true)
+		filter_display := fmt.tprintf("/ %s\u2588  (%d/%d matches)", filter_str, len(state.filtered_indices), item_count)
+		display := truncate_text(filter_display, max_filter_width)
+		render_text_styled(screen, header_x, filter_bar_y, display, TUI_SECONDARY, "", true)
 	} else {
 		filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), item_count)
-		render_text_styled(screen, header_x, filter_bar_y, filter_display, TUI_DIM)
+		display := truncate_text(filter_display, max_filter_width)
+		render_text_styled(screen, header_x, filter_bar_y, display, TUI_DIM)
 	}
 	return 1
 }
@@ -156,10 +162,24 @@ render_data_footer :: proc(screen: ^Screen, state: ^TUIState, footer_text: strin
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
 	footer_y := calculate_footer_y(state.terminal_height)
 
+	// The footer sits on the same row as the bottom border.
+	// Clear the area between the left border and right corner to erase
+	// any leftover border dashes (─) from render_box_styled.
+	right_x := state.terminal_width - BORDER_RIGHT_WIDTH - 1  // column before ╯
+	for x in header_x..<right_x {
+		screen_set_cell(screen, x, footer_y, Cell{char = ' '})
+	}
+
+	// Reserve 1 cell for the bottom-right corner '╯' and the right border
+	max_footer_width := right_x - header_x
+
 	if state.filter_active {
-		render_text_styled(screen, header_x, footer_y, FOOTER_FILTER_ACTIVE, TUI_DIM)
+		footer := get_footer_filter_active(state.terminal_width)
+		display := truncate_text(footer, max_footer_width)
+		render_text_styled(screen, header_x, footer_y, display, TUI_DIM)
 	} else {
-		render_text_styled(screen, header_x, footer_y, footer_text, TUI_DIM)
+		display := truncate_text(footer_text, max_footer_width)
+		render_text_styled(screen, header_x, footer_y, display, TUI_DIM)
 	}
 }
 
@@ -254,7 +274,7 @@ render_column_header :: proc(screen: ^Screen, x, y: int, key_label, value_label:
 
 	// Divider line below column headers
 	divider_y := y + 1
-	divider_width := border_width - CONTENT_PADDING_LEFT - 2
+	divider_width := max(0, border_width - CONTENT_PADDING_LEFT - 2)
 	for dx in 0..<divider_width {
 		screen_set_cell(screen, x + dx, divider_y, Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
 	}
@@ -396,7 +416,7 @@ render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
 		count_format = "%d entries",
 		row_kind     = .Single,
 		empty_line_1 = "No PATH entries found",
-		footer       = FOOTER_DATA_VIEW,
+		footer       = get_footer_data_view(state.terminal_width),
 	})
 }
 
@@ -413,7 +433,7 @@ render_alias_view :: proc(state: ^TUIState, screen: ^Screen) {
 		col_label_0  = "ALIAS",
 		col_label_1  = "COMMAND",
 		empty_line_1 = "No aliases found",
-		footer       = FOOTER_DATA_VIEW,
+		footer       = get_footer_data_view(state.terminal_width),
 	})
 }
 
@@ -430,7 +450,7 @@ render_constants_view :: proc(state: ^TUIState, screen: ^Screen) {
 		col_label_0  = "NAME",
 		col_label_1  = "VALUE",
 		empty_line_1 = "No constants found",
-		footer       = FOOTER_DATA_VIEW,
+		footer       = get_footer_data_view(state.terminal_width),
 	})
 }
 
@@ -446,7 +466,7 @@ render_completions_view :: proc(state: ^TUIState, screen: ^Screen) {
 		row_kind     = .Single,
 		empty_line_1 = "No completion scripts found",
 		empty_line_2 = "Add completions with: wayu completions add <name> <file>",
-		footer       = FOOTER_READONLY_VIEW,
+		footer       = get_footer_readonly_view(state.terminal_width),
 	})
 }
 
@@ -461,7 +481,7 @@ render_backups_view :: proc(state: ^TUIState, screen: ^Screen) {
 		count_format = "%d backups available",
 		row_kind     = .Single,
 		empty_line_1 = "No backups found",
-		footer       = FOOTER_BACKUP_VIEW,
+		footer       = get_footer_backup_view(state.terminal_width),
 	})
 }
 
@@ -491,21 +511,33 @@ render_plugin_tab_bar :: proc(screen: ^Screen, state: ^TUIState, border_width: i
 
 	render_text_styled(screen, text_x, title_y, "PLUGINS", TUI_PRIMARY, "", true)
 
+	// Responsive tab labels
+	compact := is_compact(state.terminal_width)
+	tab_installed_label := "[Installed]"
+	tab_registry_label  := "[Registry]"
+	if compact {
+		tab_installed_label = "[Inst]"
+		tab_registry_label  = "[Reg]"
+	}
+	tab_gap := 2
+
 	// Active tab bold+primary, inactive dim
 	tab_x := text_x
 	if state.plugin_tab == PLUGIN_TAB_INSTALLED {
-		render_text_styled(screen, tab_x, tab_y, "[Installed]", TUI_PRIMARY, "", true)
-		tab_x += len("[Installed]") + 2
-		render_text_styled(screen, tab_x, tab_y, "[Registry]", TUI_DIM)
+		render_text_styled(screen, tab_x, tab_y, tab_installed_label, TUI_PRIMARY, "", true)
+		tab_x += len(tab_installed_label) + tab_gap
+		render_text_styled(screen, tab_x, tab_y, tab_registry_label, TUI_DIM)
 	} else {
-		render_text_styled(screen, tab_x, tab_y, "[Installed]", TUI_DIM)
+		render_text_styled(screen, tab_x, tab_y, tab_installed_label, TUI_DIM)
+		tab_x += len(tab_installed_label) + tab_gap
+		render_text_styled(screen, tab_x, tab_y, tab_registry_label, TUI_PRIMARY, "", true)
 		tab_x += len("[Installed]") + 2
 		render_text_styled(screen, tab_x, tab_y, "[Registry]", TUI_PRIMARY, "", true)
 	}
 
 	// Horizontal divider
 	divider_y     := LIST_ITEM_START_LINE
-	divider_width := border_width - CONTENT_PADDING_LEFT - 2
+	divider_width := max(0, border_width - CONTENT_PADDING_LEFT - 2)
 	for dx in 0..<divider_width {
 		screen_set_cell(screen, header_x + dx, divider_y, Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
 	}
@@ -603,7 +635,7 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 			}
 		}
 
-		render_data_footer(screen, state, FOOTER_PLUGINS_INSTALLED)
+		render_data_footer(screen, state, get_footer_plugins_installed(state.terminal_width))
 		return
 	}
 
@@ -620,20 +652,39 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 	filter_offset := render_filter_bar(screen, state, len(items^))
 	content_start := LIST_ITEM_START_LINE + 1 + filter_offset
 
-	// Column widths
-	col_key_w  := 22
-	col_cat_w  := 12
-	col_sh_w   := 6
+	// Column widths — responsive based on available space
+	compact := is_compact(state.terminal_width)
+	narrow  := is_narrow(state.terminal_width)
+	col_key_w  : int
+	col_cat_w  : int
+	col_sh_w   : int
+	if narrow {
+		col_key_w = 14
+		col_cat_w = 0  // hide category column
+		col_sh_w  = 0  // hide shell column
+	} else if compact {
+		col_key_w = 16
+		col_cat_w = 8
+		col_sh_w  = 4
+	} else {
+		col_key_w = 22
+		col_cat_w = 12
+		col_sh_w  = 6
+	}
 	col_desc_w := max(1, max_text_width - col_key_w - col_cat_w - col_sh_w)
 
 	// Column header row
-	render_text_styled(screen, text_x,                          content_start, "KEY",      TUI_DIM, "", true)
-	render_text_styled(screen, text_x + col_key_w,              content_start, "CATEGORY", TUI_DIM, "", true)
-	render_text_styled(screen, text_x + col_key_w + col_cat_w,  content_start, "SHELL",    TUI_DIM, "", true)
+	render_text_styled(screen, text_x,             content_start, "KEY", TUI_DIM, "", true)
+	if col_cat_w > 0 {
+		render_text_styled(screen, text_x + col_key_w,              content_start, "CATEGORY", TUI_DIM, "", true)
+	}
+	if col_sh_w > 0 {
+		render_text_styled(screen, text_x + col_key_w + col_cat_w,  content_start, "SHELL",    TUI_DIM, "", true)
+	}
 	render_text_styled(screen, text_x + col_key_w + col_cat_w + col_sh_w, content_start, "DESCRIPTION", TUI_DIM, "", true)
 
 	// Thin divider under column headers
-	divider_width := border_width - CONTENT_PADDING_LEFT - 2
+	divider_width := max(0, border_width - CONTENT_PADDING_LEFT - 2)
 	for dx in 0..<divider_width {
 		screen_set_cell(screen, header_x + dx, content_start + 1,
 			Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
@@ -672,7 +723,7 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 		}
 	}
 
-	render_data_footer(screen, state, FOOTER_PLUGINS_REGISTRY)
+	render_data_footer(screen, state, get_footer_plugins_registry(state.terminal_width))
 }
 
 // ============================================================================
@@ -690,9 +741,9 @@ render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 	settings := []string{
 		"Shell: (from bridge)",
-		"Config Directory: (from bridge)",
-		"Backup Retention: 5 (last 5 backups kept)",
-		"Dry-run Mode: (from bridge)",
+		"Config Dir: (from bridge)",
+		"Backups: 5 kept",
+		"Dry-run: (from bridge)",
 	}
 
 	content_start := LIST_ITEM_START_LINE + 2
@@ -700,7 +751,7 @@ render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
 		render_text_styled(screen, text_x, content_start + i, setting, TUI_MUTED)
 	}
 
-	render_data_footer(screen, state, FOOTER_STATIC_VIEW)
+	render_data_footer(screen, state, get_footer_static_view(state.terminal_width))
 }
 
 // ============================================================================
@@ -841,9 +892,9 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	field_rows := form.field_count * 4   // label + box(3 rows) per field
 	overlay_height := 1 + 1 + 1 + field_rows + 1 + 1 + 1 + 1 + 1  // = 11 for 1-field, 15 for 2-field
 
-	overlay_width := min(state.terminal_width - 8, 56)
-	if overlay_width < 30 {
-		overlay_width = 30
+	overlay_width := min(state.terminal_width - 4, 56)
+	if overlay_width < 24 {
+		overlay_width = 24
 	}
 	overlay_x := (state.terminal_width - overlay_width) / 2
 	overlay_y := (state.terminal_height - overlay_height) / 2
@@ -970,8 +1021,14 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 
 	// Button row — each button is orange+bold only when focused, dim otherwise
 	button_y     := error_y + 2
-	cancel_label :: "Esc CANCEL"
-	add_label    :: "Enter ADD"
+	cancel_label := "Esc CANCEL"
+	add_label    := "Enter ADD"
+
+	// Responsive: shorter labels on narrow overlays
+	if is_compact(overlay_width) {
+		cancel_label = "Esc CAN"
+		add_label    = "\u23CE ADD"  // ⏎ ADD
+	}
 	button_gap   :: 2
 	right_edge   := overlay_x + overlay_width - 3
 	add_btn_w    := len(add_label) + 4    // "[ " + label + " ]"
@@ -1022,8 +1079,8 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 
 	// Calculate overlay dimensions
 	// +7 = 1 top border + 1 title + 1 divider gap + content + 2 blank rows before buttons + 1 button row + 1 bottom border
-	overlay_width := min(state.terminal_width - 6, 60)
-	overlay_height := min(len(state.detail_lines) + 7, state.terminal_height - 4)
+	overlay_width := min(state.terminal_width - 4, 60)
+	overlay_height := min(len(state.detail_lines) + 7, state.terminal_height - 2)
 	overlay_x := (state.terminal_width - overlay_width) / 2
 	overlay_y := (state.terminal_height - overlay_height) / 2
 
@@ -1041,7 +1098,8 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	content_x := overlay_x + 2
 	title_y := overlay_y + 1
 	screen_set_cell(screen, content_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
-	render_text_styled(screen, content_x + MENU_ACCENT_BAR_WIDTH + 1, title_y, state.detail_title, TUI_PRIMARY, "", true)
+	title_display := truncate_text(state.detail_title, overlay_width - 6)
+	render_text_styled(screen, content_x + MENU_ACCENT_BAR_WIDTH + 1, title_y, title_display, TUI_PRIMARY, "", true)
 
 	// Detail lines
 	max_lines := overlay_height - 6
@@ -1061,8 +1119,16 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	if state.confirm_delete_pending {
 		// Bordered box buttons, right-aligned within the overlay
 		// Layout: ... [ Esc CANCEL ]  [ y DELETE ] |
-		cancel_label :: "Esc CANCEL"   // 10 chars
-		delete_label :: "y DELETE"     //  8 chars
+		cancel_label := "Esc CANCEL"   // 10 chars
+		delete_label := "y DELETE"     //  8 chars
+
+		// Responsive: use shorter labels on narrow terminals
+		compact := is_compact(overlay_width)
+		if compact {
+			cancel_label = "Esc CAN"
+			delete_label = "y DEL"
+		}
+
 		button_gap   :: 2              // spaces between buttons
 
 		// Right-align: position DELETE button first, then CANCEL to its left

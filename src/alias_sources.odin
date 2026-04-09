@@ -222,7 +222,7 @@ print_alias_source :: proc(source: AliasSource) {
 		table_add_row(&table, row)
 	}
 
-	output := table_render(table)
+	output := table_render(table, get_cli_terminal_width())
 	defer delete(output)
 	fmt.print(output)
 

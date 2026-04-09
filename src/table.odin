@@ -101,8 +101,68 @@ recalculate_column_widths :: proc(table: ^Table) {
 	}
 }
 
-// Render the table to string
-table_render :: proc(table: Table) -> string {
+// Clamp column widths so the total table fits within max_width.
+// Strategy: shrink the widest columns first, keeping a minimum of 4 chars per column.
+clamp_table_widths :: proc(table: ^Table, max_width: int) {
+	ncols := len(table.column_widths)
+	if ncols == 0 do return
+
+	// Table overhead: │ + (" X ") per column + │
+	// Each column: 1 space + content + 1 space = width + 2
+	// Separators: │ between columns = ncols - 1 separators × 1
+	// Borders: │ left + │ right = 2
+	// Total = sum(widths) + 2*ncols + (ncols-1) + 2
+	overhead := 2 * ncols + (ncols - 1) + 2
+	available := max_width - overhead
+	if available < ncols * 4 {
+		// Even minimum widths don't fit — set all to minimum
+		for i in 0..<ncols {
+			table.column_widths[i] = 4
+		}
+		return
+	}
+
+	// Check if current widths fit
+	total := 0
+	for w in table.column_widths {
+		total += w
+	}
+	if total <= available {
+		return  // Already fits
+	}
+
+	// Shrink proportionally, respecting minimum of 4 chars
+	min_per_col := 4
+	widths_copy := make([]int, ncols)
+	for i in 0..<ncols {
+		widths_copy[i] = table.column_widths[i]
+	}
+
+	// Iteratively shrink the widest column until it fits
+	for total > available {
+		// Find widest column
+		max_idx := 0
+		for i in 1..<ncols {
+			if widths_copy[i] > widths_copy[max_idx] {
+				max_idx = i
+			}
+		}
+		if widths_copy[max_idx] <= min_per_col {
+			break  // Can't shrink more
+		}
+		widths_copy[max_idx] -= 1
+		total -= 1
+	}
+
+	for i in 0..<ncols {
+		table.column_widths[i] = widths_copy[i]
+	}
+	delete(widths_copy)
+}
+
+// Render the table to string, fitting within max_width columns if specified (> 0).
+// When max_width > 0, columns are proportionally truncated to fit.
+table_render :: proc(table: Table, max_width: int = 0) -> string {
 	if len(table.headers) == 0 {
 		return ""
 	}
@@ -110,6 +170,11 @@ table_render :: proc(table: Table) -> string {
 	// Make a mutable copy to recalculate widths
 	mutable_table := table
 	recalculate_column_widths(&mutable_table)
+
+	// Clamp column widths to fit within max_width
+	if max_width > 0 {
+		clamp_table_widths(&mutable_table, max_width)
+	}
 
 	result := strings.Builder{}
 	defer strings.builder_destroy(&result)
@@ -214,10 +279,52 @@ table_render :: proc(table: Table) -> string {
 	return strings.clone(strings.to_string(result))
 }
 
+// Truncate a string (which may contain ANSI codes) to fit within max_width visual columns.
+// Returns an allocated string (caller must delete).
+truncate_visual :: proc(str: string, max_width: int) -> string {
+	if max_width <= 0 do return strings.clone("")
+
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+
+	visual := 0
+	in_escape := false
+	for ch in str {
+		if ch == '\x1b' {
+			in_escape = true
+			strings.write_rune(&builder, ch)
+			continue
+		}
+		if in_escape {
+			strings.write_rune(&builder, ch)
+			if ch == 'm' {
+				in_escape = false
+			}
+			continue
+		}
+		if visual >= max_width - 1 {
+			strings.write_rune(&builder, '\u2026')  // …
+			break
+		}
+		strings.write_rune(&builder, ch)
+		visual += 1
+	}
+
+	return strings.clone(strings.to_string(builder))
+}
+
 // Helper function to pad string to specific width
 // NOTE: Always returns an ALLOCATED string — caller must delete()
 pad_string :: proc(str: string, width: int) -> string {
 	current_width := visual_width(str)
+
+	// Truncate if wider than target width
+	if current_width > width {
+		truncated := truncate_visual(str, width)
+		defer delete(truncated)
+		return strings.clone(truncated)
+	}
+
 	if current_width >= width {
 		return strings.clone(str)
 	}

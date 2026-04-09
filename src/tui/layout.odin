@@ -120,6 +120,30 @@ calculate_notification_y :: proc(terminal_height: int) -> int {
 	return terminal_height - NOTIFICATION_HEIGHT
 }
 
+// ============================================================================
+// Responsive Breakpoints
+// ============================================================================
+
+// Minimum terminal dimensions the TUI supports.
+// Below these the layout still renders but content may truncate.
+MIN_TERMINAL_WIDTH  :: 40
+MIN_TERMINAL_HEIGHT :: 12
+
+// Width thresholds for layout adaptations.
+BREAKPOINT_COMPACT  :: 60  // compact footers, reduced padding
+BREAKPOINT_NARROW   :: 50  // minimal layout
+
+// is_compact returns true when the terminal is narrow enough to use
+// shortened footer strings and tighter padding.
+is_compact :: proc(terminal_width: int) -> bool {
+	return terminal_width < BREAKPOINT_COMPACT
+}
+
+// is_narrow returns true when the terminal is very narrow.
+is_narrow :: proc(terminal_width: int) -> bool {
+	return terminal_width < BREAKPOINT_NARROW
+}
+
 // Calculate the actual number of item rows the renderer draws in the current view.
 //
 // Each view subtracts rows from calculate_visible_height():
@@ -181,4 +205,85 @@ get_view_visible_height :: proc(state: ^TUIState) -> int {
 		// -1 divider, -1 scroll-indicator row, -filter_offset
 		return base - 2 - filter_offset
 	}
+}
+
+// ============================================================================
+// Responsive Footer Strings
+// ============================================================================
+
+// Compact footer variants for narrow terminals.
+// Each returns the appropriate string based on terminal width.
+
+get_footer_filter_active :: proc(width: int) -> string {
+	if width < BREAKPOINT_NARROW {
+		return "Type filter  Esc Cancel"
+	}
+	if width < BREAKPOINT_COMPACT {
+		return "Type to filter   Esc Cancel   Enter Accept"
+	}
+	return FOOTER_FILTER_ACTIVE
+}
+
+get_footer_data_view :: proc(width: int) -> string {
+	if width < BREAKPOINT_NARROW {
+		return "/ Filter   a Add   h Back"
+	}
+	if width < BREAKPOINT_COMPACT {
+		return "/ Filter   a Add   d Del   h Back   j/k Nav"
+	}
+	return FOOTER_DATA_VIEW
+}
+
+get_footer_readonly_view :: proc(width: int) -> string {
+	if width < BREAKPOINT_NARROW {
+		return "/ Filter   h Back"
+	}
+	if width < BREAKPOINT_COMPACT {
+		return "/ Filter   h Back   j/k Navigate"
+	}
+	return FOOTER_READONLY_VIEW
+}
+
+get_footer_backup_view :: proc(width: int) -> string {
+	if width < BREAKPOINT_NARROW {
+		return "/ Filter   c Clean   h Back"
+	}
+	if width < BREAKPOINT_COMPACT {
+		return "/ Filter   c Cleanup   h Back   j/k Nav"
+	}
+	return FOOTER_BACKUP_VIEW
+}
+
+get_footer_static_view :: proc(width: int) -> string {
+	return FOOTER_STATIC_VIEW
+}
+
+get_footer_plugins_installed :: proc(width: int) -> string {
+	if width < BREAKPOINT_NARROW {
+		return "Tab Switch   / Filter   h Back"
+	}
+	if width < BREAKPOINT_COMPACT {
+		return "Tab Switch   / Filter   e Ena   d Dis   h Back"
+	}
+	return FOOTER_PLUGINS_INSTALLED
+}
+
+get_footer_plugins_registry :: proc(width: int) -> string {
+	if width < BREAKPOINT_NARROW {
+		return "Tab Switch   / Filter   h Back"
+	}
+	if width < BREAKPOINT_COMPACT {
+		return "Tab Switch   / Filter   Enter Install   h Back"
+	}
+	return FOOTER_PLUGINS_REGISTRY
+}
+
+get_footer_main_menu :: proc(width: int) -> string {
+	if width < BREAKPOINT_NARROW {
+		return "j/k Nav   l Sel   q Quit"
+	}
+	if width < BREAKPOINT_COMPACT {
+		return "j/k Navigate   l Select   q Quit"
+	}
+	return "j/k Navigate   l Select   q Quit"
 }
