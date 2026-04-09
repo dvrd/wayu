@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       tag:
@@ -23,13 +20,15 @@ jobs:
           - os: ubuntu-latest
             target: linux-amd64
             artifact: wayu-linux-amd64
-          - os: macos-latest   # Apple Silicon (arm64)
+          - os: macos-latest
             target: macos-arm64
             artifact: wayu-macos-arm64
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.tag }}
 
     - name: Setup Odin
       uses: laytan/setup-odin@v2
@@ -68,25 +67,18 @@ jobs:
     needs: build-release
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.get_version.outputs.VERSION }}
+      version: ${{ inputs.tag }}
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.tag }}
 
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
         path: artifacts
-
-    - name: Extract version from tag
-      id: get_version
-      run: |
-        if [ -n "${{ inputs.tag }}" ]; then
-          echo "VERSION=${{ inputs.tag }}" >> $GITHUB_OUTPUT
-        else
-          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-        fi
 
     - name: Install git-cliff
       run: cargo install git-cliff --locked
@@ -97,8 +89,8 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ steps.get_version.outputs.VERSION }}
-        name: wayu ${{ steps.get_version.outputs.VERSION }}
+        tag_name: ${{ inputs.tag }}
+        name: wayu ${{ inputs.tag }}
         body_path: release_notes.md
         draft: false
         prerelease: false
@@ -169,7 +161,7 @@ jobs:
           end
 
           test do
-            assert_match version.to_s, shell_output("#{bin}/wayu version")
+            assert_match version.to_s, shell_output("#{bin!}/wayu version")
           end
         end
         FORMULA

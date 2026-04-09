@@ -20,10 +20,14 @@ permissions:
   contents: write
 
 jobs:
-  bump-and-release:
-    name: Bump version and trigger release
+  bump:
+    name: Bump version
     runs-on: ubuntu-latest
     if: "!startsWith(github.event.head_commit.message, 'chore: release')"
+
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+      skip: ${{ steps.version.outputs.SKIP }}
 
     steps:
     - name: Checkout code
@@ -66,24 +70,177 @@ jobs:
       if: steps.version.outputs.SKIP != 'true'
       run: git cliff --tag ${{ steps.version.outputs.VERSION }} -o CHANGELOG.md
 
-    - name: Commit release files
+    - name: Commit release files and tag
       if: steps.version.outputs.SKIP != 'true'
       run: |
         git config user.name  "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add src/main.odin CHANGELOG.md
         git commit -m "chore: release ${{ steps.version.outputs.VERSION }}"
-        git push origin main
-
-    - name: Create and push tag
-      if: steps.version.outputs.SKIP != 'true'
-      run: |
         git tag ${{ steps.version.outputs.VERSION }}
+        git push origin main
         git push origin ${{ steps.version.outputs.VERSION }}
 
-    - name: Trigger release workflow
-      if: steps.version.outputs.SKIP != 'true'
+  build-release:
+    name: Build ${{ matrix.artifact }}
+    needs: bump
+    if: needs.bump.outputs.skip != 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-amd64
+            artifact: wayu-linux-amd64
+          - os: macos-latest
+            target: macos-arm64
+            artifact: wayu-macos-arm64
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.bump.outputs.version }}
+
+    - name: Setup Odin
+      uses: laytan/setup-odin@v2
+      with:
+        release: latest
+
+    - name: Build optimized release
       run: |
-        gh workflow run release.yml -f tag=${{ steps.version.outputs.VERSION }}
+        mkdir -p bin
+        odin build src -out:bin/wayu -o:speed
+        chmod +x bin/wayu
+
+    - name: Verify build
+      run: ./bin/wayu version
+
+    - name: Package and compute SHA256
+      run: |
+        tar -czf ${{ matrix.artifact }}.tar.gz -C bin wayu
+        if [[ "$RUNNER_OS" == "macOS" ]]; then
+          shasum -a 256 ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.sha256
+        else
+          sha256sum ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.sha256
+        fi
+        echo "SHA256=$(cat ${{ matrix.artifact }}.sha256)"
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact }}
+        path: |
+          ${{ matrix.artifact }}.tar.gz
+          ${{ matrix.artifact }}.sha256
+
+  create-release:
+    name: Create GitHub Release
+    needs: [bump, build-release]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.bump.outputs.version }}
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Install git-cliff
+      run: cargo install git-cliff --locked
+
+    - name: Generate release notes
+      run: git cliff --latest --strip header > release_notes.md
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ needs.bump.outputs.version }}
+        name: wayu ${{ needs.bump.outputs.version }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+        files: |
+          artifacts/wayu-linux-amd64/wayu-linux-amd64.tar.gz
+          artifacts/wayu-linux-amd64/wayu-linux-amd64.sha256
+          artifacts/wayu-macos-arm64/wayu-macos-arm64.tar.gz
+          artifacts/wayu-macos-arm64/wayu-macos-arm64.sha256
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew-tap:
+    name: Update Homebrew tap
+    needs: [bump, create-release]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download macOS artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Extract version and SHAs
+      id: vars
+      run: |
+        VERSION="${{ needs.bump.outputs.version }}"
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "VERSION_BARE=${VERSION#v}" >> $GITHUB_OUTPUT
+        echo "ARM64_SHA=$(cat artifacts/wayu-macos-arm64/wayu-macos-arm64.sha256)" >> $GITHUB_OUTPUT
+
+    - name: Checkout tap repo
+      uses: actions/checkout@v4
+      with:
+        repository: dvrd/homebrew-wayu
+        token: ${{ secrets.TAP_GITHUB_TOKEN }}
+        path: tap
+
+    - name: Update formula
+      env:
+        VERSION:      ${{ steps.vars.outputs.VERSION }}
+        VERSION_BARE: ${{ steps.vars.outputs.VERSION_BARE }}
+        ARM64_SHA:    ${{ steps.vars.outputs.ARM64_SHA }}
+      run: |
+        mkdir -p tap/Formula
+        cat > tap/Formula/wayu.rb << FORMULA
+        class Wayu < Formula
+          desc "Shell configuration management CLI — PATH, aliases, env vars, plugins"
+          homepage "https://github.com/dvrd/wayu"
+          version "${VERSION_BARE}"
+          license "MIT"
+
+          url "https://github.com/dvrd/wayu/releases/download/${VERSION}/wayu-macos-arm64.tar.gz"
+          sha256 "${ARM64_SHA}"
+
+          def install
+            bin.install "wayu"
+          end
+
+          def caveats
+            <<~EOS
+              Initialize wayu config files by running:
+                wayu init
+
+              Then add this line to your shell RC file:
+                source ~/.config/wayu/init.zsh   # zsh
+                source ~/.config/wayu/init.bash  # bash
+            EOS
+          end
+
+          test do
+            assert_match version.to_s, shell_output("#{bin}/wayu version")
+          end
+        end
+        FORMULA
+
+    - name: Commit and push formula
+      working-directory: tap
+      run: |
+        git config user.name  "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add Formula/wayu.rb
+        git commit -m "wayu ${{ steps.vars.outputs.VERSION }}"
+        git push
