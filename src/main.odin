@@ -446,6 +446,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		{"constants", get_constants_template},
 		{"init", get_init_template},
 		{"tools", get_tools_template},
+		{"extra", get_extra_template},
 	}
 
 	for config in config_files {

@@ -105,6 +105,10 @@ source "$HOME/.config/wayu/tools.zsh"
 # Additional completions are loaded from:
 # - ~/.config/wayu/completions (jj, bun, etc.)
 # - Tools may add their own completions during initialization
+
+# === 8. Extra Config ===
+# User-defined shell snippets (hooks, env loaders, ad-hoc settings)
+[ -f "$HOME/.config/wayu/extra.zsh" ] && source "$HOME/.config/wayu/extra.zsh"
 `
 
 TOOLS_TEMPLATE :: `#!/usr/bin/env zsh
@@ -235,6 +239,20 @@ _wayu_cached_eval() {
 # Use lazy-load wrappers for heavy tools (NVM, SDKMAN, Conda, etc.)
 `
 
+EXTRA_TEMPLATE :: `#!/usr/bin/env zsh
+
+# Extra Shell Configuration
+# This file is for custom shell snippets that don't fit into other wayu categories.
+# Anything written here is sourced at the end of init, before PATH deduplication.
+#
+# Common uses:
+#   - Conditional hooks (chpwd, preexec, precmd)
+#   - Third-party tool env loaders (cargo, bun, conda, etc.)
+#   - Custom functions that don't belong in ~/.config/wayu/functions
+#   - Completion fpath additions
+#   - Ad-hoc exports and settings
+`
+
 // Bash-compatible templates
 PATH_TEMPLATE_BASH :: `#!/usr/bin/env bash
 
@@ -350,6 +368,10 @@ source "$HOME/.config/wayu/tools.bash"
 # Additional completions are loaded from:
 # - ~/.config/wayu/completions (tools may install .bash-completion files)
 # - Tools may add their own completions during initialization
+
+# === 8. Extra Config ===
+# User-defined shell snippets (hooks, env loaders, ad-hoc settings)
+[ -f "$HOME/.config/wayu/extra.bash" ] && source "$HOME/.config/wayu/extra.bash"
 `
 
 TOOLS_TEMPLATE_BASH :: `#!/usr/bin/env bash
@@ -375,6 +397,18 @@ TOOLS_TEMPLATE_BASH :: `#!/usr/bin/env bash
 
 # === Other Tools ===
 # Add your other tool initializations here
+`
+
+EXTRA_TEMPLATE_BASH :: `#!/usr/bin/env bash
+
+# Extra Shell Configuration
+# This file is for custom shell snippets that don't fit into other wayu categories.
+# Anything written here is sourced at the end of init, before PATH deduplication.
+#
+# Common uses:
+#   - Third-party tool env loaders (cargo, bun, conda, etc.)
+#   - Custom functions that don't belong in ~/.config/wayu/functions
+#   - Ad-hoc exports and settings
 `
 
 // Common configuration directory paths
@@ -471,6 +505,18 @@ get_tools_template :: proc(shell: ShellType) -> string {
 	return TOOLS_TEMPLATE_BASH
 }
 
+get_extra_template :: proc(shell: ShellType) -> string {
+	switch shell {
+	case .BASH:
+		return EXTRA_TEMPLATE_BASH
+	case .ZSH:
+		return EXTRA_TEMPLATE
+	case .UNKNOWN:
+		return EXTRA_TEMPLATE_BASH
+	}
+	return EXTRA_TEMPLATE_BASH
+}
+
 // Initialize all config files with shell-specific templates
 init_config_files :: proc() {
 	shell := DETECTED_SHELL
@@ -495,6 +541,12 @@ init_config_files :: proc() {
 	defer delete(constants_file)
 	if !os.exists(constants_file) {
 		init_config_file(constants_file, get_constants_template(shell))
+	}
+
+	extra_file := get_config_file_with_fallback("extra", shell)
+	defer delete(extra_file)
+	if !os.exists(extra_file) {
+		init_config_file(extra_file, get_extra_template(shell))
 	}
 }
 
