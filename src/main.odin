@@ -1,12 +1,14 @@
 package wayu
 
 import "base:runtime"
+import "core:c"
 import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:slice"
 import "core:log"
 import "core:mem"
+import "core:sys/posix"
 import tui "tui"
 
 // Semantic versioning - update with each release
@@ -43,6 +45,7 @@ Command :: enum {
 	PLUGIN,
 	INIT,
 	MIGRATE,
+	CONFIG,
 	VERSION,
 	HELP,
 	UNKNOWN,
@@ -207,6 +210,8 @@ main :: proc() {
 		handle_init_command()
 	case .MIGRATE:
 		handle_migrate_command(parsed.args)
+	case .CONFIG:
+		handle_edit_config()
 	case .VERSION:
 		print_version()
 	case .HELP:
@@ -308,6 +313,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	case "plugin":     parsed.command = .PLUGIN
 	case "init":       parsed.command = .INIT;    return parsed
 	case "migrate":    parsed.command = .MIGRATE; return parsed
+	case "config":     parsed.command = .CONFIG;  return parsed
 	case "version", "-v", "--version": parsed.command = .VERSION; return parsed
 	case "help", "-h", "--help":       parsed.command = .HELP;    return parsed
 	case:              parsed.command = .UNKNOWN; return parsed
@@ -590,6 +596,7 @@ print_help :: proc() {
 	print_item("", "plugin", "Manage shell plugins", EMOJI_COMMAND)
 	print_item("", "init", "Initialize wayu configuration directory", EMOJI_INFO)
 	print_item("", "migrate", "Migrate configuration between shells", EMOJI_INFO)
+	print_item("", "config", "Open extra config in $EDITOR (nvim default)", EMOJI_INFO)
 	print_item("", "version", "Show version information", EMOJI_INFO)
 	print_item("", "help", "Show this help message", EMOJI_INFO)
 	fmt.println()
@@ -648,6 +655,54 @@ print_help :: proc() {
 	fmt.printf("  %sNote:%s Running %swayu%s with no arguments opens the interactive TUI\n", BRIGHT_CYAN, RESET, BOLD, RESET)
 	fmt.printf("  %sNote:%s CLI mode is fully non-interactive for scripting/automation\n", BRIGHT_CYAN, RESET)
 	fmt.println()
+}
+
+handle_edit_config :: proc() {
+	extra_file := fmt.aprintf("%s/extra.%s", WAYU_CONFIG, SHELL_EXT)
+	defer delete(extra_file)
+
+	if !os.exists(extra_file) {
+		print_error_simple("Config file not found: %s", extra_file)
+		print_info("Run 'wayu init' first to create config files")
+		os.exit(EXIT_NOINPUT)
+	}
+
+	editor: string
+	if e := os.get_env("EDITOR", context.temp_allocator); len(e) > 0 {
+		editor = e
+	} else if e := os.get_env("VISUAL", context.temp_allocator); len(e) > 0 {
+		editor = e
+	} else {
+		editor = "nvim"
+	}
+
+	args := []string{editor, extra_file}
+
+	argv := make([dynamic]cstring, len(args) + 1)
+	defer {
+		for i in 0..<len(args) {
+			delete(argv[i])
+		}
+		delete(argv)
+	}
+	for arg, i in args {
+		argv[i] = strings.clone_to_cstring(arg)
+	}
+	argv[len(args)] = nil
+
+	pid := posix.fork()
+	if pid < 0 {
+		print_error_simple("Failed to fork process")
+		os.exit(EXIT_IOERR)
+	}
+
+	if pid == 0 {
+		posix.execvp(argv[0], raw_data(argv[:]))
+		posix._exit(1)
+	}
+
+	status: c.int = 0
+	posix.waitpid(pid, &status, {})
 }
 
 handle_migrate_command :: proc(args: []string) {
