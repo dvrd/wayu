@@ -12,7 +12,7 @@ import "core:sys/posix"
 import tui "tui"
 
 // Semantic versioning - update with each release
-VERSION :: "3.4.0"
+VERSION :: "3.5.0"
 
 HOME : string
 WAYU_CONFIG : string
