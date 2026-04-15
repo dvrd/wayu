@@ -46,6 +46,7 @@ Command :: enum {
 	INIT,
 	MIGRATE,
 	CONFIG,
+	EXPORT,     // High-performance turbo export
 	VERSION,
 	HELP,
 	SEARCH,     // Global fuzzy search across all configs
@@ -65,6 +66,8 @@ Action :: enum {
 	SEARCH,
 	RESTORE,
 	CLEAN,
+	TURBO,    // Export turbo mode
+	EVAL,     // Export eval mode
 	DEDUP,
 	HELP,
 	UNKNOWN,
@@ -213,6 +216,8 @@ main :: proc() {
 		handle_migrate_command(parsed.args)
 	case .CONFIG:
 		handle_edit_config()
+	case .EXPORT:
+		handle_export_command(parsed.action, parsed.args)
 	case .VERSION:
 		print_version()
 	case .HELP:
@@ -317,6 +322,33 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	case "init":       parsed.command = .INIT;    return parsed
 	case "migrate":    parsed.command = .MIGRATE; return parsed
 	case "config":     parsed.command = .CONFIG;  return parsed
+	case "export":
+		parsed.command = .EXPORT
+		parsed.action = .TURBO // Default action for export is turbo
+		// Capture sub-action and args for export
+		if len(filtered_args) > 1 {
+			// First arg after "export" is the action
+			action_str := filtered_args[1]
+			switch action_str {
+			case "turbo":
+				parsed.action = .TURBO
+			case "eval":
+				parsed.action = .EVAL
+			case "list", "ls":
+				parsed.action = .LIST
+			case "help", "-h", "--help":
+				parsed.action = .HELP
+			case:
+				// Unknown action - default to turbo
+				parsed.action = .TURBO
+			}
+			// Capture remaining args after action
+			if len(filtered_args) > 2 {
+				parsed.args = make([]string, len(filtered_args) - 2)
+				copy(parsed.args, filtered_args[2:])
+			}
+		}
+		return parsed
 	case "version", "-v", "--version": parsed.command = .VERSION; return parsed
 	case "help", "-h", "--help":       parsed.command = .HELP;    return parsed
 	case "search", "find", "f":
@@ -351,6 +383,8 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	case "restore":         parsed.action = .RESTORE
 	case "clean":           parsed.action = .CLEAN
 	case "dedup":           parsed.action = .DEDUP
+	case "turbo":           parsed.action = .TURBO
+	case "eval":            parsed.action = .EVAL
 	case "help", "-h", "--help": parsed.action = .HELP
 	case:                   parsed.action = .UNKNOWN; return parsed
 	}
