@@ -1,0 +1,432 @@
+chezmoi - chezmoi
+  URL: https://chezmoi.io/
+  chezmoi helps you manage your personal configuration files (dotfiles, like ~/.gitconfig ) across multiple machines. chezmoi provides many features beyond ...
+
+  --- Content ---
+  [Skip to content](https://www.chezmoi.io/#chezmoi)
+  
+  # chezmoi
+  
+  Manage your dotfiles across multiple diverse machines, securely.
+  
+  The latest version of chezmoi is 2.70.1 ( [release notes](https://github.com/twpayne/chezmoi/releases/tag/v2.70.1),
+  [release history](https://www.chezmoi.io/reference/release-history/)).
+  
+  ## What does chezmoi do?
+  
+  chezmoi helps you manage your personal configuration files (dotfiles, like
+  `~/.gitconfig`) across multiple machines.
+  
+  chezmoi provides many features beyond symlinking or using a bare git repo
+  including:
+  
+  - templates (to handle small differences between machines)
+  - password manager support (to store your secrets securely)
+  - importing files from archives (great for shell and editor plugins)
+  - full file encryption (using age, gpg, git-crypt, or transcrypt)
+  - running scripts (to handle everything else)
+  
+  With chezmoi, pronounced /ʃeɪ mwa/ (shay-mwa) (listen [1](https://www.chezmoi.io/voice_30-04-2025_09-20-13.ogx) [2](https://www.chezmoi.io/voice_30-04-2025_09-20-48.ogx) [3](https://www.chezmoi.io/voice_30-04-2025_09-20-56.ogx)), you can install chezmoi and your dotfiles from your GitHub
+  dotfiles repo on a new, empty machine with a single command:
+  
+  ```
+  sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply $GITHUB_USERNAME
+  ```
+  
+  As well as the `curl | sh` installation, you can [install chezmoi with your\\
+  favorite package manager](https://www.chezmoi.io/install/).
+  
+  Updating your dotfiles on any machine is a single command:
+  
+  ```
+  chezmoi update
+  ```
+  
+  chezmoi runs on all popular operating systems, is distributed as a single
+  statically-linked binary with no dependencies, and does not require root access.
+  
+  ## How do I start with chezmoi?
+  
+  [Install chezmoi](https://www.chezmoi.io/install/) then read the [quick start guide](https://www.chezmoi.io/quick-start/). The
+  [user guide](https://www.chezmoi.io/user-guide/setup/) covers most common tasks. For a full description, consult
+  the [reference](https://www.chezmoi.io/reference/).
+  
+  ## Should I use chezmoi?
+  
+  See what other people think about chezmoi by reading [articles](https://www.chezmoi.io/links/articles/),
+  listening to [podcasts](https://www.chezmoi.io/links/podcasts/), and watching [videos](https://www.chezmoi.io/links/videos/) about chezmoi.
+  Read how [chezmoi compares to other dotfile managers](https://www.chezmoi.io/comparison-table/). Explore other
+  people's [dotfile repos that use chezmoi](https://www.chezmoi.io/links/dotfile-repos/).
+  
+  ## How do I get help using chezmoi?
+  
+  chezmoi has extensive documentation. First, use the search bar at the top of
+  this page using a few, short, and specific keywords related to your problem.
+  
+  chezmoi is an open source project with tens of thousands of users, so it is very
+  likely that someone else has already encountered and solved your problem. Search
+  [chezmoi's GitHub repo](https://github.com/twpayne/chezmoi) for issues and discussions with keywords related
+  to your problem.
+  
+  If your question is still unanswered, please [open a GitHub issue for\\
+  support](https://github.com/twpayne/chezmoi/issues/new?assignees=&labels=support&projects=&template=01_support_request.md&title=.).
+  
+  ## I like chezmoi. How do I say thanks?
+  
+  Please [give chezmoi a star on GitHub](https://github.com/twpayne/chezmoi).
+  
+  [Share chezmoi](https://www.chezmoi.io/links/social-media/) and, if you're happy to share your public dotfiles repo,
+  then [tag your repo with `chezmoi`](https://www.chezmoi.io/links/dotfile-repos/).
+  
+  [Contributions are very welcome](https://www.chezmoi.io/developer-guide/contributing-changes/) and every [bug report, support\\
+  request, and feature request](https://github.com/twpayne/chezmoi/issues) helps make chezmoi better. Thank you :)
+  
+  chezmoi does not accept financial contributions. Instead, please make a donation
+  to a charity or cause of your choice.
+  
+  Back to top
+  --- End Content ---
+
+Managing dot files with Chezmoi - Ettore Ciarcia
+  URL: https://ettoreciarcia.com/publication/21-chezmoi/
+  In this article, we've explored how to manage multiple dotfiles across multiple clients using a versioning system, ensuring they're always up-to-date and ...
+
+  --- Content ---
+  Clear
+  
+  # Managing dot files with Chezmoi
+  
+  May 19, 2024·
+  
+  ![Ettore Ciarcia](https://ettoreciarcia.com/author/ettore-ciarcia/avatar_hu142786366313216904.webp)
+  
+  Ettore Ciarcia
+  
+  ·4 min read
+  
+  ![](https://ettoreciarcia.com/publication/21-chezmoi/featured_hu14410579079187808179.webp)Image credit:
+  
+  Abstract
+  
+  How to manage and back up your dot files with Chezmoi
+  
+  ## 0 Intro
+  
+  If you’re in the trenches fighting the DevOps war, you’re definitely using a vast array of tools on different clients. You might have one client you use for work, one for your hobbies, and perhaps others scattered around your homelab where it would be convenient to have your beloved dotfiles configurations perfectly aligned.
+  
+  It may seem trivial to an outsider, but each dotfile tells who we are and holds the memory of our preferred settings, our shortcuts, and everything that helps us be more productive when we work.
+  
+  I vividly remember when, after years of using my MacBook Pro, I found myself with a new MacBook in my hands and was going crazy.
+  My productivity was significantly impacted without the tools I use daily and without their exact configurations.
+  
+  After spending the first few days making sure I had every tool installed and configured them all manually, painstakingly populating each dotfile, I thought: there must be a tool in this world that can help me speed up the configuration of a new client when it comes my way.
+  
+  And so I tried several (some of which COMPLETELY SCREWED UP my old dotfiles), until I found [Chezmoi](https://www.chezmoi.io/)
+  
+  I’ve been a happy user for over a year now, so it’s time to tell you about it.
+  
+  Chezmoi provides many features beyond symlinking or using a bare git repo including: templates (to handle small differences between machines), password manager support (to store your secrets securely), importing files from archives (great for shell and editor plugins), full file encryption (using gpg or age), and running scripts (to handle everything else).
+  
+  ## 1 My Chezmoi Configuration
+  
+  The Chezmoi documentation is really well done (kudos to its creators), which is why I’ll avoid showing you step-by-step how to configure Chezmoi on your client. I’ll just show you my configuration. But first, here are some premises about my use case.
+  
+  1. I’m using GitHub to store the files synchronized by Chezmoi; having a version control system to manage configurations is incredibly convenient.
+  2. Both for hobbies and work, I use two MacBooks, so my dotfiles are synchronized across two similar operating systems
+  3. I’m terrible at keeping track of configurations, so I absolutely need to automate the processes.
+  
+  ### 1.1 Chezmoiignore
+  
+  Just like Git, Chezmoi also uses a file to specify objects that should not be involved in the versioning process. In my case, the only files excluded from this process are some Oh My Zsh files. Therefore, my .chezmoiignore file is composed as follows:
+  
+  ```bash
+  .oh-my-zsh/.git/
+  .oh-my-zsh/plugins/
+  .oh-my-zsh/custom/
+  .oh-my-zsh/themes
+  ```
+  
+  Copy
+  
+  ### 1.2 Automatically commit and push changes to your repo
+  
+  Having a system like this is useless if you don’t keep your dotfiles aligned with Chezmoi. One feature I found very interesting is the autocommit and autopush functionality when a dotfile is modified. To enable these features, you can configure Chezmoi as follows
+  
+  ```toml
+  [git]
+      autoCommit = true
+      autoPush = true
+  ```
+  
+  Copy
+  
+  Paste this into your _~/.config/chezmoi/chezmoi.toml_ file
+  
+  ### 1.3 Automatically add changes to your repo
+  
+  To keep all the files automatically aligned, the last piece of the puzzle is automating the addition of new or modified files. I solved this issue with a script executed by a cron job on a daily basis. Below is the script I use:
+  
+  ```bash
+  #!/bin/bash
+  
+  current_time=$(date +"%d-%m-%Y-%H")
+  log_filename="${current_time}.log"
+  
+  # Redirect stdout and stderr to the log file
+  exec > >(tee -a "$log_filename") 2>&1
+  
+  cd $HOME || { echo "Failed to change directory to $HOME"; exit 1; }
+  
+  # Run the 'chezmoi managed' command and save the output to a variable
+  managed_files=$(chezmoi managed)
+  
+  if [ $? -ne 0 ]; then
+    echo "Error during the execution of 'chezmoi managed'"
+    exit 1
+  fi
+  
+  while IFS= read -r file; do
+    # Run the 'chezmoi add' command for each file
+    chezmoi add "$file"
+  done <<< "$managed_files"
+  ```
+  
+  Copy
+  
+  Now you can create a cron job that executes this script whenever you want!
+  
+  ## 2 Bonus Point: Homebrew Dump for Restoring on Other Clients
+  
+  If you’ve installed most of your packages with Homebrew, I recommend installing brew bundle with the following command:
+  
+  `brew bundle install`
+  
+  To generate a file containing all installed packages along with their respective versions, you can use the command:
+  
+  `brew bundle dump`
+  
+  And to install all the packages on a new client:
+  
+  `brew bundle --file=~/.private/Brewfile`
+  
+  With Chezmoi, you just need to keep track of this file in the synchronization process, and you’re all set!
+  
+  ## 3 Conclusions
+  
+  In this article, we’ve explored how to manage multiple dotfiles across multiple clients using a versioning system, ensuring they’re always up-to-date and aligned. I hope you found it helpful! If you encounter any issues with the configurations discussed in this article, feel free to reach out to me. See you soon!
+  
+  ## 4 Useful Links
+  
+  [Chezmoi](https://www.chezmoi.io/)
+  
+  [Automatically commit and push changes to your repo](https://www.chezmoi.io/user-guide/daily-operations/#automatically-commit-and-push-changes-to-your-repo)
+  
+  [Brew Bundle](https://gist.github.com/ChristopherA/a579274536aab36ea9966f301ff14f3f)
+  
+  Last updated on
+  May 19, 2024
+  
+  [How To](https://ettoreciarcia.com/tags/how-to/)
+  
+  [X](https://twitter.com/intent/tweet?url=https%3A%2F%2Fettoreciarcia.com%2Fpublication%2F21-chezmoi%2F&text=Managing+dot+files+with+Chezmoi "X")[Facebook](https://www.facebook.com/sharer.php?u=https%3A%2F%2Fettoreciarcia.com%2Fpublication%2F21-chezmoi%2F&t=Managing+dot+files+with+Chezmoi "Facebook")[Email](mailto:?subject=Managing%20dot%20files%20with%20Chezmoi&body=https%3A%2F%2Fettoreciarcia.com%2Fpublication%2F21-chezmoi%2F "Email")[LinkedIn](https://www.linkedin.com/shareArticle?url=https%3A%2F%2Fettoreciarcia.com%2Fpublication%2F21-chezmoi%2F&title=Managing+dot+files+with+Chezmoi "LinkedIn")[WhatsApp](whatsapp://send?text=Managing+dot+files+with+Chezmoi%20https%3A%2F%2Fettoreciarcia.com%2Fpublication%2F21-chezmoi%2F "WhatsApp")
+  
+  ![Ettore Ciarcia](https://ettoreciarcia.com/author/ettore-ciarcia/avatar_hu2444867835082845204.jpg)
+  
+  Authors
+  
+  [Ettore Ciarcia](https://ettoreciarcia.com/)
+  
+  Kubernetes & Cloud Engineer
+  
+  [At-Symbol](mailto:ettoreciarcia.tech@gmail.com)[Brands/Github](https://github.com/ettoreciarcia)[Brands/Linkedin](https://www.linkedin.com/in/ettoreciarcia/)
+  
+  * * *
+  
+  [←How to become a KubestronautJul 21, 2024](https://ettoreciarcia.com/publication/22-kubestronaut/)
+  
+  [The native integration between Alert Manager and Microsoft TeamsApr 26, 2024\\
+  →](https://ettoreciarcia.com/publication/20-alertmanager-teams/)
+  --- End Content ---
+
+twpayne/chezmoi: Manage your dotfiles across multiple ... - GitHub
+  URL: https://github.com/twpayne/chezmoi
+  Manage your dotfiles across multiple diverse machines, securely. chezmoi's documentation is at chezmoi.io. If you're contributing to chezmoi, then please read ...
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/twpayne/chezmoi#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/twpayne/chezmoi) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/twpayne/chezmoi) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/twpayne/chezmoi) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [twpayne](https://github.com/twpayne)/ **[chezmoi](https://github.com/twpayne/chezmoi)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2Ftwpayne%2Fchezmoi) You must be signed in to change notification settings
+  - [Fork\\
+  629](https://github.com/login?return_to=%2Ftwpayne%2Fchezmoi)
+  - [Star\\
+  19.1k](https://github.com/login?return_to=%2Ftwpayne%2Fchezmoi)
+  
+  
+  master
+  
+  [**17** Branches](https://github.com/twpayne/chezmoi/branches) [**256** Tags](https://github.com/twpayne/chezmoi/tags)
+  
+  [Go to Branches page](https://github.com/twpayne/chezmoi/branches)[Go to Tags page](https://github.com/twpayne/chezmoi/tags)
+  
+  Go to file
+  
+  Code
+  
+  Open more actions menu
+  
+  ## Folders and files
+  
+  | Name | Name | Last commit message | Last commit date |
+  | --- | --- | --- | --- |
+  | ## Latest commit<br>[![twpayne](https://avatars.githubusercontent.com/u/6942?v=4&size=40)](https://github.com/twpayne)[twpayne](https://github.com/twpayne/chezmoi/commits?author=twpayne)<br>[chore: Update dependencies](https://github.com/twpayne/chezmoi/commit/5ffd82cb395bc0c33ad885234a72bef108f8243c)<br>success<br>yesterdayApr 14, 2026<br>[5ffd82c](https://github.com/twpayne/chezmoi/commit/5ffd82cb395bc0c33ad885234a72bef108f8243c) · yesterdayApr 14, 2026<br>## History<br>[5,661 Commits](https://github.com/twpayne/chezmoi/commits/master/) <br>Open commit details<br>[View commit history for this file.](https://github.com/twpayne/chezmoi/commits/master/) 5,661 Commits |
+  | [.config](https://github.com/twpayne/chezmoi/tree/master/.config ".config") | [.config](https://github.com/twpayne/chezmoi/tree/master/.config ".config") | [feat: Switch to betterleaks for secret detection](https://github.com/twpayne/chezmoi/commit/135c0430dcc0b6f201394932f6f310ea93ba2929 "feat: Switch to betterleaks for secret detection") | 3 days agoApr 12, 2026 |
+  | [.github](https://github.com/twpayne/chezmoi/tree/master/.github ".github") | [.github](https://github.com/twpayne/chezmoi/tree/master/.github ".github") | [chore: Update tools](https://github.com/twpayne/chezmoi/commit/9747019b9e39ba99ad9076a110d1ce09ebd8d183 "chore: Update tools") | yesterdayApr 14, 2026 |
+  | [assets](https://github.com/twpayne/chezmoi/tree/master/assets "assets") | [assets](https://github.com/twpayne/chezmoi/tree/master/assets "assets") | [docs: Always use https to get install script](https://github.com/twpayne/chezmoi/commit/c4f940fefedb19cabfcd9ad0ec843955e65309fc "docs: Always use https to get install script") | 2 days agoApr 13, 2026 |
+  | [bin](https://github.com/twpayne/chezmoi/tree/master/bin "bin") | [bin](https://github.com/twpayne/chezmoi/tree/master/bin "bin") | [chore: Tidy up handling of bin directory](https://github.com/twpayne/chezmoi/commit/350a8b9c6670240cf6f7d8c0bd7b6e881e3e9d67 "chore: Tidy up handling of bin directory") | last yearMar 24, 2025 |
+  | [completions](https://github.com/twpayne/chezmoi/tree/master/completions "completions") | [completions](https://github.com/twpayne/chezmoi/tree/master/completions "completions") | [feat: Include description in PowerShell completions](https://github.com/twpayne/chezmoi/commit/a0e0b34a2a6325efe087f407ead3b1159905025b "feat: Include description in PowerShell completions  Co-authored-by: Thomas N Atkins <dev.csnova@gmail.com>") | last yearMar 5, 2025 |
+  | [internal](https://github.com/twpayne/chezmoi/tree/master/internal "internal") | [internal](https://github.com/twpayne/chezmoi/tree/master/internal "internal") | [feat: Switch to betterleaks for secret detection](https://github.com/twpayne/chezmoi/commit/135c0430dcc0b6f201394932f6f310ea93ba2929 "feat: Switch to betterleaks for secret detection") | 3 days agoApr 12, 2026 |
+  | [.editorconfig](https://github.com/twpayne/chezmoi/blob/master/.editorconfig ".editorconfig") | [.editorconfig](https://github.com/twpayne/chezmoi/blob/master/.editorconfig ".editorconfig") | [chore: Add editorconfig-checker check](https://github.com/twpayne/chezmoi/commit/07ef06eff8ba5a88c9f821f77c53a7ce89795a24 "chore: Add editorconfig-checker check") | 3 years agoDec 18, 2023 |
+  | [.gitattributes](https://github.com/twpayne/chezmoi/blob/master/.gitattributes ".gitattributes") | [.gitattributes](https://github.com/twpayne/chezmoi/blob/master/.gitattributes ".gitattributes") | [chore: Pre-parse documentation for help, examples, and flags](https://github.com/twpayne/chezmoi/commit/250c04c49b8948deaecd4fcc0910208f0b9da80b "chore: Pre-parse documentation for help, examples, and flags  This reduces start-up time by about 5ms on my machine.") | last yearFeb 20, 2025 |
+  | [.gitignore](https://github.com/twpayne/chezmoi/blob/master/.gitignore ".gitignore") | [.gitignore](https://github.com/twpayne/chezmoi/blob/master/.gitignore ".gitignore") | [chore: Tidy up handling of bin directory](https://github.com/twpayne/chezmoi/commit/350a8b9c6670240cf6f7d8c0bd7b6e881e3e9d67 "chore: Tidy up handling of bin directory") | last yearMar 24, 2025 |
+  | [LICENSE](https://github.com/twpayne/chezmoi/blob/master/LICENSE "LICENSE") | [LICENSE](https://github.com/twpayne/chezmoi/blob/master/LICENSE "LICENSE") | [chore: Update copyright year](https://github.com/twpayne/chezmoi/commit/df68555adc8080398990834502ab0e44bebbda2c "chore: Update copyright year") | 3 months agoJan 8, 2026 |
+  | [Makefile](https://github.com/twpayne/chezmoi/blob/master/Makefile "Makefile") | [Makefile](https://github.com/twpayne/chezmoi/blob/master/Makefile "Makefile") | [chore: Add update-go-tools make target](https://github.com/twpayne/chezmoi/commit/55d34970f29e132af3b690040ea9a720b4f4d08c "chore: Add update-go-tools make target") | 3 months agoJan 10, 2026 |
+  | [README.md](https://github.com/twpayne/chezmoi/blob/master/README.md "README.md") | [README.md](https://github.com/twpayne/chezmoi/blob/master/README.md "README.md") | [docs: Tidy up formatting as suggested by markdownlint](https://github.com/twpayne/chezmoi/commit/6c4431e430d4ad45b10bd44e711bd5d5c64ed5a5 "docs: Tidy up formatting as suggested by markdownlint") | last yearJan 12, 2025 |
+  | [go.mod](https://github.com/twpayne/chezmoi/blob/master/go.mod "go.mod") | [go.mod](https://github.com/twpayne/chezmoi/blob/master/go.mod "go.mod") | [chore: Update dependencies](https://github.com/twpayne/chezmoi/commit/5ffd82cb395bc0c33ad885234a72bef108f8243c "chore: Update dependencies") | yesterdayApr 14, 2026 |
+  | [go.sum](https://github.com/twpayne/chezmoi/blob/master/go.sum "go.sum") | [go.sum](https://github.com/twpayne/chezmoi/blob/master/go.sum "go.sum") | [chore: Update dependencies](https://github.com/twpayne/chezmoi/commit/5ffd82cb395bc0c33ad885234a72bef108f8243c "chore: Update dependencies") | yesterdayApr 14, 2026 |
+  | [main.go](https://github.com/twpayne/chezmoi/blob/master/main.go "main.go") | [main.go](https://github.com/twpayne/chezmoi/blob/master/main.go "main.go") | [chore: Switch module to custom domain](https://github.com/twpayne/chezmoi/commit/ea932bcaf2557f547ccc4b278f6391b7d6733419 "chore: Switch module to custom domain") | 7 months agoSep 21, 2025 |
+  | [main\_test.go](https://github.com/twpayne/chezmoi/blob/master/main_test.go "main_test.go") | [main\_test.go](https://github.com/twpayne/chezmoi/blob/master/main_test.go "main_test.go") | [chore: Switch module to custom domain](https://github.com/twpayne/chezmoi/commit/ea932bcaf2557f547ccc4b278f6391b7d6733419 "chore: Switch module to custom domain") | 7 months agoSep 21, 2025 |
+  | [pyproject.toml](https://github.com/twpayne/chezmoi/blob/master/pyproject.toml "pyproject.toml") | [pyproject.toml](https://github.com/twpayne/chezmoi/blob/master/pyproject.toml "pyproject.toml") | [chore: Exclude Python dependencies newer than 5 days](https://github.com/twpayne/chezmoi/commit/b1c6f0af8a9b5e6117b7e21b863b41aae02ad656 "chore: Exclude Python dependencies newer than 5 days") | last weekApr 5, 2026 |
+  | [uv.lock](https://github.com/twpayne/chezmoi/blob/master/uv.lock "uv.lock") | [uv.lock](https://github.com/twpayne/chezmoi/blob/master/uv.lock "uv.lock") | [chore: Exclude Python dependencies newer than 5 days](https://github.com/twpayne/chezmoi/commit/b1c6f0af8a9b5e6117b7e21b863b41aae02ad656 "chore: Exclude Python dependencies newer than 5 days") | last weekApr 5, 2026 |
+  | View all files |
+  
+  ## Repository files navigation
+  
+  # [![chezmoi logo](https://github.com/twpayne/chezmoi/raw/master/assets/images/logo-144px.svg)](https://github.com/twpayne/chezmoi/blob/master/assets/images/logo-144px.svg) chezmoi
+  
+  [Permalink:  chezmoi](https://github.com/twpayne/chezmoi#-chezmoi)
+  
+  [![GitHub Release](https://camo.githubusercontent.com/388be90560d1d6c2b0408d429cb7bfc4abf836a7e109340af310f6406ad5eb3f/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f72656c656173652f74777061796e652f6368657a6d6f692e737667)](https://github.com/twpayne/chezmoi/releases)
+  
+  Manage your dotfiles across multiple diverse machines, securely.
+  
+  chezmoi's documentation is at [chezmoi.io](https://chezmoi.io/).
+  
+  If you're contributing to chezmoi, then please read the [developer guide](https://www.chezmoi.io/developer-guide/).
+  
+  ## Contributors
+  
+  [Permalink: Contributors](https://github.com/twpayne/chezmoi#contributors)
+  
+  ![Contributor avatars](https://camo.githubusercontent.com/717996d6be7ecdb6694e2b61bfb56d4f7f93b042c8bebd465b386a669746b333/68747470733a2f2f636f6e747269622e726f636b732f696d6167653f7265706f3d74777061796e652f6368657a6d6f69266d61783d31303234)
+  
+  ## License
+  
+  [Permalink: License](https://github.com/twpayne/chezmoi#license)
+  
+  MIT
+  
+  ## About
+  
+  Manage your dotfiles across multiple diverse machines, securely.
+  
+  
+  [www.chezmoi.io/](https://www.chezmoi.io/ "https://www.chezmoi.io/")
+  
+  ### Topics
+  
+  [windows](https://github.com/topics/windows "Topic: windows") [macos](https://github.com/topics/macos "Topic: macos") [linux](https://github.com/topics/linux "Topic: linux") [dotfiles](https://github.com/topics/dotfiles "Topic: dotfiles") [security](https://github.com/topics/security "Topic: security") [configuration](https://github.com/topics/configuration "Topic: configuration") [dotfile-manager](https://github.com/topics/dotfile-manager "Topic: dotfile-manager") [dotfile-management](https://github.com/topics/dotfile-management "Topic: dotfile-management") [dotfile](https://github.com/topics/dotfile "Topic: dotfile") [dotfile-managers](https://github.com/topics/dotfile-managers "Topic: dotfile-managers")
+  
+  ### Resources
+  
+  [Readme](https://github.com/twpayne/chezmoi#readme-ov-file)
+  
+  ### License
+  
+  [MIT license](https://github.com/twpayne/chezmoi#MIT-1-ov-file)
+  
+  ### Code of conduct
+  
+  [Code of conduct](https://github.com/twpayne/chezmoi#coc-ov-file)
+  
+  ### Contributing
+  
+  [Contributing](https://github.com/twpayne/chezmoi#contributing-ov-file)
+  
+  ### Security policy
+  
+  [Security policy](https://github.com/twpayne/chezmoi#security-ov-file)
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/twpayne/chezmoi).
+  
+  [Activity](https://github.com/twpayne/chezmoi/activity)
+  
+  ### Stars
+  
+  [**19.1k**\\
+  stars](https://github.com/twpayne/chezmoi/stargazers)
+  
+  ### Watchers
+  
+  [**50**\\
+  watching](https://github.com/twpayne/chezmoi/watchers)
+  
+  ### Forks
+  
+  [**629**\\
+  forks](https://github.com/twpayne/chezmoi/forks)
+  
+  [Report repository](https://github.com/contact/report-content?content_url=https%3A%2F%2Fgithub.com%2Ftwpayne%2Fchezmoi&report=twpayne+%28user%29)
+  
+  ## [Releases\  249](https://github.com/twpayne/chezmoi/releases)
+  
+  [v2.70.1\\
+  Latest\\
+  \\
+  last weekApr 8, 2026](https://github.com/twpayne/chezmoi/releases/tag/v2.70.1)
+  
+  [\+ 248 releases](https://github.com/twpayne/chezmoi/releases)
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/twpayne/chezmoi).
+  
+  ## [Contributors\  228](https://github.com/twpayne/chezmoi/graphs/contributors)
+  
+  - [![@twpayne](https://avatars.githubusercontent.com/u/6942?s=64&v=4)](https://github.com/twpayne)
+  - [![@dependabot[bot]](https://avatars.githubusercontent.com/in/29110?s=64&v=4)](https://github.com/apps/dependabot)
+  - [![@halostatue](https://avatars.githubusercontent.com/u/11361?s=64&v=4)](https://github.com/halostatue)
+  - [![@KapJI](https://avatars.githubusercontent.com/u/3767331?s=64&v=4)](https://github.com/KapJI)
+  - [![@bradenhilton](https://avatars.githubusercontent.com/u/23157013?s=64&v=4)](https://github.com/bradenhilton)
+  - [![@zb140](https://avatars.githubusercontent.com/u/38841359?s=64&v=4)](https://github.com/zb140)
+  - [![@felipecrs](https://avatars.githubusercontent.com/u/29582865?s=64&v=4)](https://github.com/felipecrs)
+  - [![@TheLocehiliosan](https://avatars.githubusercontent.com/u/1503609?s=64&v=4)](https://github.com/TheLocehiliosan)
+  - [![@JustinGrote](https://avatars.githubusercontent.com/u/15258962?s=64&v=4)](https://github.com/JustinGrote)
+  - [![@ronlut](https://avatars.githubusercontent.com/u/3050627?s=64&v=4)](https://github.com/ronlut)
+  - [![@alexandear](https://avatars.githubusercontent.com/u/3228886?s=64&v=4)](https://github.com/alexandear)
+  - [![@davewongillies](https://avatars.githubusercontent.com/u/69970?s=64&v=4)](https://github.com/davewongillies)
+  - [![@scop](https://avatars.githubusercontent.com/u/109152?s=64&v=4)](https://github.com/scop)
+  - [![@alexvy86](https://avatars.githubusercontent.com/u/716334?s=64&v=4)](https://github.com/alexvy86)
+  
+  [\+ 214 contributors](https://github.com/twpayne/chezmoi/graphs/contributors)
+  
+  ## Languages
+  
+  - [Go95.1%](https://github.com/twpayne/chezmoi/search?l=go)
+  - [Go Template1.6%](https://github.com/twpayne/chezmoi/search?l=go-template)
+  - [Shell1.3%](https://github.com/twpayne/chezmoi/search?l=shell)
+  - [PowerShell0.7%](https://github.com/twpayne/chezmoi/search?l=powershell)
+  - [Python0.7%](https://github.com/twpayne/chezmoi/search?l=python)
+  - [Makefile0.4%](https://github.com/twpayne/chezmoi/search?l=makefile)
+  - Other0.2%
+  
+  You can’t perform that action at this time.
+  --- End Content ---

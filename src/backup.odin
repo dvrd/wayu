@@ -185,27 +185,22 @@ restore_from_backup :: proc(file_path: string) -> bool {
 
 // List all backups for a file from backup/ directory
 list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
-	debug("Listing backups for: %s", file_path)
-
 	// Search in backup/ directory instead of alongside original file
 	dir := fmt.aprintf("%s/backup", WAYU_CONFIG)
 	defer delete(dir)
 
 	base := get_base_name(file_path)
-
 	pattern := fmt.aprintf("%s.backup.", base)
 	defer delete(pattern)
 
 	dir_handle, err := os.open(dir)
 	if err != nil {
-		debug("Failed to open directory: %s", dir)
 		return {}
 	}
 	defer os.close(dir_handle)
 
 	file_infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
 	if read_err != nil {
-		debug("Failed to read directory")
 		return {}
 	}
 	defer os.file_info_slice_delete(file_infos, context.allocator)
@@ -214,7 +209,7 @@ list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 	defer delete(backups)
 
 	for info in file_infos {
-		if strings.has_prefix(info.name, pattern) && info.type != .Directory {
+		if strings.has_prefix(info.name, pattern) && info.type != os.File_Type.Directory {
 			full_path := fmt.aprintf("%s/%s", dir, info.name)
 
 			// Extract timestamp from filename
@@ -240,7 +235,6 @@ list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 	for i in 0..<len(backups) {
 		result[i] = backups[i]
 	}
-	debug("Found %d backups", len(result))
 	return result
 }
 

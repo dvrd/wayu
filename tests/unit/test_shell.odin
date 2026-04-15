@@ -17,6 +17,12 @@ test_shell_extension_zsh :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_shell_extension_fish :: proc(t: ^testing.T) {
+	ext := wayu.get_shell_extension(.FISH)
+	testing.expect_value(t, ext, "fish")
+}
+
+@(test)
 test_shell_extension_unknown :: proc(t: ^testing.T) {
 	ext := wayu.get_shell_extension(.UNKNOWN)
 	testing.expect_value(t, ext, "sh")
@@ -30,6 +36,9 @@ test_get_shell_name :: proc(t: ^testing.T) {
 	zsh_name := wayu.get_shell_name(.ZSH)
 	testing.expect_value(t, zsh_name, "ZSH")
 
+	fish_name := wayu.get_shell_name(.FISH)
+	testing.expect_value(t, fish_name, "Fish")
+
 	unknown_name := wayu.get_shell_name(.UNKNOWN)
 	testing.expect_value(t, unknown_name, "Unknown")
 }
@@ -42,6 +51,9 @@ test_get_shebang :: proc(t: ^testing.T) {
 	zsh_shebang := wayu.get_shebang(.ZSH)
 	testing.expect_value(t, zsh_shebang, "#!/usr/bin/env zsh")
 
+	fish_shebang := wayu.get_shebang(.FISH)
+	testing.expect_value(t, fish_shebang, "#!/usr/bin/env fish")
+
 	unknown_shebang := wayu.get_shebang(.UNKNOWN)
 	testing.expect_value(t, unknown_shebang, "#!/bin/sh")
 }
@@ -50,6 +62,7 @@ test_get_shebang :: proc(t: ^testing.T) {
 test_shell_supports_arrays :: proc(t: ^testing.T) {
 	testing.expect_value(t, wayu.shell_supports_arrays(.BASH), true)
 	testing.expect_value(t, wayu.shell_supports_arrays(.ZSH), true)
+	testing.expect_value(t, wayu.shell_supports_arrays(.FISH), true)
 	testing.expect_value(t, wayu.shell_supports_arrays(.UNKNOWN), false)
 }
 
@@ -57,6 +70,7 @@ test_shell_supports_arrays :: proc(t: ^testing.T) {
 test_shell_supports_completion :: proc(t: ^testing.T) {
 	testing.expect_value(t, wayu.shell_supports_completion(.BASH), true)
 	testing.expect_value(t, wayu.shell_supports_completion(.ZSH), true)
+	testing.expect_value(t, wayu.shell_supports_completion(.FISH), true)
 	testing.expect_value(t, wayu.shell_supports_completion(.UNKNOWN), false)
 }
 
@@ -82,7 +96,13 @@ test_parse_shell_type :: proc(t: ^testing.T) {
 	zsh_upper := wayu.parse_shell_type("ZSH")
 	testing.expect_value(t, zsh_upper, wayu.ShellType.ZSH)
 
-	unknown_type := wayu.parse_shell_type("fish")
+	fish_type := wayu.parse_shell_type("fish")
+	testing.expect_value(t, fish_type, wayu.ShellType.FISH)
+
+	fish_upper := wayu.parse_shell_type("FISH")
+	testing.expect_value(t, fish_upper, wayu.ShellType.FISH)
+
+	unknown_type := wayu.parse_shell_type("tcsh")
 	testing.expect_value(t, unknown_type, wayu.ShellType.UNKNOWN)
 }
 
@@ -96,6 +116,10 @@ test_validate_shell_compatibility :: proc(t: ^testing.T) {
 	zsh_valid, zsh_msg := wayu.validate_shell_compatibility(.ZSH)
 	testing.expect_value(t, zsh_valid, true)
 	testing.expect_value(t, zsh_msg, "")
+
+	fish_valid, fish_msg := wayu.validate_shell_compatibility(.FISH)
+	testing.expect_value(t, fish_valid, true)
+	testing.expect_value(t, fish_msg, "")
 
 	// Test unknown shell
 	unknown_valid, unknown_msg := wayu.validate_shell_compatibility(.UNKNOWN)

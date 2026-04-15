@@ -404,15 +404,19 @@ tui_bridge_install_plugin :: proc(key: string) -> bool {
 		git_info := get_git_info(dest)
 		new_plugin := PluginMetadata{
 			name           = strings.clone(info.name),
+			display_name   = strings.clone(info.name),
 			url            = strings.clone(info.url),
+			source_type    = .GitHub,  // Default
 			enabled        = true,
 			shell          = info.shell,
 			installed_path = strings.clone(dest),
 			entry_file     = "",   // detected by generate_plugins_file
+			use            = make([dynamic]string),
+			template       = .Source,
 			git            = git_info,
 			dependencies   = make([dynamic]string),
 			priority       = 100,
-			config         = make(map[string]string),
+			profiles       = make([dynamic]string),
 			conflicts      = ConflictInfo{},
 		}
 		append(&config.plugins, new_plugin)

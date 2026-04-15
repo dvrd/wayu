@@ -1,6 +1,9 @@
 // interfaces.odin - Shared types and interfaces for all workstreams
 // This file is the contract between all parallel workstreams
 // VERSION: 1.0.0 - DO NOT MODIFY WITHOUT COORDINATION
+//
+// NOTE: This file contains ONLY type definitions. Function implementations
+// are in other files to avoid redeclaration errors.
 
 package wayu
 
@@ -41,13 +44,7 @@ ConfigType :: enum {
     COMPLETION,
 }
 
-// Lock file operations - to be implemented by WS1 (Core Infrastructure)
-lock_read :: proc(path: string) -> (LockFile, bool)
-lock_write :: proc(path: string, lock: LockFile) -> bool
-lock_generate_hash :: proc(entry: ConfigEntry) -> string
-lock_add_entry :: proc(lock: ^LockFile, entry: LockEntry) -> bool
-lock_remove_entry :: proc(lock: ^LockFile, name: string, type: ConfigType) -> bool
-lock_find_entry :: proc(lock: LockFile, name: string, type: ConfigType) -> (LockEntry, bool)
+// Note: Lock file operations (lock_read, lock_write, etc.) implemented in lock.odin
 
 // ============================================================================
 // TOML CONFIGURATION SYSTEM
@@ -95,7 +92,7 @@ TomlPlugin :: struct {
     version:     string,           // commit/tag/branch
     
     // Loading options
-    defer:       bool,              // Load after prompt
+    defer_load:  bool,              // Load after prompt
     priority:    int,               // Lower = earlier (default 100)
     condition:   string,            // Conditional loading expression
     
@@ -123,12 +120,7 @@ WayuSettings :: struct {
     dry_run_default: bool,          // Default --dry-run for safety
 }
 
-// TOML operations - to be implemented by WS2 (Config System)
-toml_parse :: proc(content: string) -> (TomlConfig, bool)
-toml_validate :: proc(config: TomlConfig) -> ValidationResult
-toml_to_string :: proc(config: TomlConfig) -> string
-toml_merge_profiles :: proc(base: TomlConfig, profile: string) -> TomlConfig
-toml_get_active_profile :: proc(config: TomlConfig) -> string
+// Note: TOML operations (toml_parse, toml_validate, etc.) implemented in config_toml.odin
 
 // ============================================================================
 // OUTPUT FORMATS
@@ -140,17 +132,7 @@ OutputFormat :: enum {
     YAML,
 }
 
-// Output operations - to be implemented by WS1 (Core Infrastructure)
-output_format_set :: proc(format: OutputFormat)
-output_get_current_format :: proc() -> OutputFormat
-
-// JSON serialization
-output_to_json :: proc(data: any) -> string
-output_to_json_pretty :: proc(data: any) -> string
-output_from_json :: proc(json_str: string, target: ^any) -> bool
-
-// YAML serialization  
-output_to_yaml :: proc(data: any) -> string
+// Note: Output operations implemented in output.odin
 
 // ============================================================================
 // PLUGIN SYSTEM ENHANCED
@@ -208,12 +190,7 @@ EnhancedPlugin :: struct {
     homepage:    string,
 }
 
-// Plugin operations - to be implemented by WS3 (Plugin System)
-plugin_enhanced_install :: proc(plugin: EnhancedPlugin) -> bool
-plugin_enhanced_remove :: proc(name: string) -> bool
-plugin_enhanced_load :: proc(plugin: EnhancedPlugin) -> bool
-plugin_enhanced_deferred_load :: proc(plugins: []EnhancedPlugin)
-plugin_evaluate_condition :: proc(condition: string) -> bool
+// Note: Plugin operations implemented in plugin files
 
 // ============================================================================
 // STATIC GENERATION
@@ -226,14 +203,7 @@ StaticConfig :: struct {
     content:      string,           // Generated shell script
 }
 
-// Static generation operations - to be implemented by WS4 (Performance)
-static_generate :: proc(config: TomlConfig, lock: LockFile) -> StaticConfig
-static_generate_path :: proc(entries: []string) -> string
-static_generate_aliases :: proc(aliases: []TomlAlias) -> string
-static_generate_constants :: proc(constants: []TomlConstant) -> string
-static_generate_plugins :: proc(plugins: []TomlPlugin) -> string
-static_optimize :: proc(content: string) -> string
-static_write :: proc(path: string, static_config: StaticConfig) -> bool
+// Note: Static generation operations implemented in static_gen.odin
 
 // ============================================================================
 // HOT RELOAD
@@ -247,11 +217,7 @@ FileWatcherEvent :: enum {
 
 FileWatcherCallback :: proc(event: FileWatcherEvent, path: string)
 
-// Hot reload operations - to be implemented by WS4 (Performance)
-hot_reload_init :: proc(watch_paths: []string, callback: FileWatcherCallback)
-hot_reload_start :: proc()
-hot_reload_stop :: proc()
-hot_reload_regenerate :: proc()
+// Note: Hot reload operations implemented in hot_reload.odin
 
 // ============================================================================
 // THEMES AND PROMPTS
@@ -272,21 +238,14 @@ ThemeConfig :: struct {
     colors:      map[string]string, // Color definitions
 }
 
-// Theme operations - to be implemented by WS5 (UI)
-theme_list_available :: proc() -> []ThemeConfig
-theme_apply :: proc(name: string) -> bool
-theme_detect_starship :: proc() -> bool
-theme_generate_starship_config :: proc() -> string
+// Note: Theme operations to be implemented
 
 // ============================================================================
 // SHELL SUPPORT
 // ============================================================================
 
-ShellType :: enum {
-    Zsh,
-    Bash,
-    Fish,
-}
+// Note: ShellType defined in shell.odin (BASH, ZSH, UNKNOWN)
+// Note: ValidationResult defined in validation.odin
 
 ShellInfo :: struct {
     type:       ShellType,
@@ -295,13 +254,7 @@ ShellInfo :: struct {
     wayu_init_file: string,        // Where to source wayu
 }
 
-// Shell operations - to be implemented by WS6 (Integrations)
-shell_fish_detect :: proc() -> bool
-shell_fish_get_version :: proc() -> string
-shell_fish_generate_init :: proc(config: TomlConfig) -> string
-shell_fish_template_path :: proc() -> string
-shell_fish_template_alias :: proc() -> string
-shell_fish_template_constant :: proc() -> string
+// Note: Fish shell operations to be implemented
 
 // ============================================================================
 // INTEGRATIONS
@@ -319,24 +272,7 @@ MiseConfig :: struct {
     tools:       map[string]string, // tool -> version
 }
 
-// Integration operations - to be implemented by WS6 (Integrations)
-direnv_detect :: proc() -> bool
-direnv_init :: proc() -> bool
-direnv_generate_envrc :: proc(config: TomlConfig) -> string
-
-mise_detect :: proc() -> bool
-mise_sync_versions :: proc(config: TomlConfig) -> bool
-mise_generate_tool_versions :: proc(config: TomlConfig) -> string
-
-// ============================================================================
-// VALIDATION
-// ============================================================================
-
-ValidationResult :: struct {
-    valid:         bool,
-    error_message: string,
-    warnings:      []string,
-}
+// Note: Integration operations to be implemented
 
 // ============================================================================
 // BENCHMARKING
@@ -358,28 +294,10 @@ BenchmarkSuite :: struct {
     results: []BenchmarkResult,
 }
 
-// Benchmark operations - to be implemented by WS7 (QA)
-benchmark_startup :: proc() -> BenchmarkResult
-benchmark_plugin_load :: proc() -> BenchmarkResult
-benchmark_list_operation :: proc() -> BenchmarkResult
-benchmark_generate_static :: proc() -> BenchmarkResult
+// Note: Benchmark operations to be implemented
 
 // ============================================================================
 // UTILITY FUNCTIONS (Shared)
 // ============================================================================
 
-// Hash generation
-hash_sha256 :: proc(data: string) -> string
-hash_file :: proc(path: string) -> (string, bool)
-
-// Time formatting
-time_now_rfc3339 :: proc() -> string
-time_parse_rfc3339 :: proc(s: string) -> (time.Time, bool)
-
-// Path utilities
-path_expand :: proc(path: string) -> string
-path_normalize :: proc(path: string) -> string
-
-// String utilities  
-string_is_valid_identifier :: proc(s: string) -> bool
-string_to_upper_snake_case :: proc(s: string) -> string
+// Note: Utility functions implemented in their respective modules

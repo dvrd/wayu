@@ -411,6 +411,136 @@ EXTRA_TEMPLATE_BASH :: `#!/usr/bin/env bash
 #   - Ad-hoc exports and settings
 `
 
+// Fish shell templates
+PATH_TEMPLATE_FISH :: `#!/usr/bin/env fish
+
+# Centralized PATH registry
+# Managed by wayu - Add entries below
+set -gx WAYU_PATHS
+
+# Build PATH from registry with deduplication
+for dir in $WAYU_PATHS
+    # Check if directory exists
+    if not test -d "$dir"
+        continue
+    end
+
+    # Check if directory is already in PATH
+    if contains "$dir" $PATH
+        continue
+    end
+
+    # Add to PATH (prepend)
+    set -gx PATH "$dir" $PATH
+end
+`
+
+ALIASES_TEMPLATE_FISH :: `#!/usr/bin/env fish
+
+# Shell Aliases Configuration
+# This file contains all command aliases and shortcuts
+# Use 'alias' command for Fish shell
+`
+
+CONSTANTS_TEMPLATE_FISH :: `#!/usr/bin/env fish
+
+# Environment Constants and Configuration Variables
+# This file centralizes all constant definitions and environment variables
+# Use 'set -gx' for exported globals in Fish
+`
+
+INIT_TEMPLATE_FISH :: `#!/usr/bin/env fish
+
+# Wayu Shell Initialization - Main Orchestrator (Fish)
+# This file loads all configuration modules in the correct order
+
+# === 1. Core Configuration ===
+# Load constants and environment variables first (they may be needed by other modules)
+source "$HOME/.config/wayu/constants.fish"
+
+# === 2. PATH Configuration ===
+# Set up PATH with duplicate prevention
+source "$HOME/.config/wayu/path.fish"
+
+# === 3. Functions Loading ===
+# Load custom shell functions from the functions directory
+if test -d "$HOME/.config/wayu/functions"
+    for f in $HOME/.config/wayu/functions/*.fish
+        if test -f "$f"
+            source "$f"
+        end
+    end
+end
+
+# === 4. Completions Setup ===
+# Fish completions are loaded from ~/.config/fish/completions/
+# Add wayu completions path if exists
+if test -d "$HOME/.config/wayu/completions"
+    set -gx fish_complete_path "$HOME/.config/wayu/completions" $fish_complete_path
+end
+
+# === 5. Plugins Loading ===
+# Load Wayu-managed plugins
+if test -f "$HOME/.config/wayu/plugins.fish"
+    source "$HOME/.config/wayu/plugins.fish"
+end
+if test -f "$HOME/.config/wayu/plugins/config.fish"
+    source "$HOME/.config/wayu/plugins/config.fish"
+end
+
+# === 6. Aliases ===
+# Load command aliases and shortcuts
+source "$HOME/.config/wayu/aliases.fish"
+
+# === 7. External Tools Initialization ===
+# Initialize external tools and utilities (NVM, Starship, Zoxide, etc.)
+source "$HOME/.config/wayu/tools.fish"
+
+# === 8. Extra Config ===
+# User-defined shell snippets (hooks, env loaders, ad-hoc settings)
+if test -f "$HOME/.config/wayu/extra.fish"
+    source "$HOME/.config/wayu/extra.fish"
+end
+`
+
+TOOLS_TEMPLATE_FISH :: `#!/usr/bin/env fish
+
+# External Tool Initialization (Fish)
+# This file handles the setup and initialization of external tools and utilities
+
+# Add your tool initializations below. Examples:
+
+# === NVM (Node Version Manager) Setup ===
+# Uncomment and adjust path if using NVM
+# set -gx NVM_DIR "$HOME/.nvm"
+# if test -s "$NVM_DIR/nvm.sh"
+#     bass source "$NVM_DIR/nvm.sh"
+# end
+
+# === Starship Prompt ===
+# Uncomment if using Starship
+# starship init fish | source
+
+# === Zoxide - Smarter cd ===
+# Uncomment if using Zoxide
+# zoxide init fish | source
+
+# === Other Tools ===
+# Add your other tool initializations here
+`
+
+EXTRA_TEMPLATE_FISH :: `#!/usr/bin/env fish
+
+# Extra Shell Configuration
+# This file is for custom shell snippets that don't fit into other wayu categories.
+# Anything written here is sourced at the end of init.
+#
+# Common uses:
+#   - Third-party tool env loaders (cargo, bun, conda, etc.)
+#   - Custom functions that don't belong in ~/.config/wayu/functions
+#   - Ad-hoc exports and settings
+`
+
 // Common configuration directory paths
 CONFIG_PATHS :: []string{
 	"/usr/local/bin",
@@ -451,6 +581,8 @@ get_path_template :: proc(shell: ShellType) -> string {
 		return PATH_TEMPLATE_BASH
 	case .ZSH:
 		return PATH_TEMPLATE
+	case .FISH:
+		return PATH_TEMPLATE_FISH
 	case .UNKNOWN:
 		return PATH_TEMPLATE_BASH // Default to Bash for compatibility
 	}
@@ -463,6 +595,8 @@ get_aliases_template :: proc(shell: ShellType) -> string {
 		return ALIASES_TEMPLATE_BASH
 	case .ZSH:
 		return ALIASES_TEMPLATE
+	case .FISH:
+		return ALIASES_TEMPLATE_FISH
 	case .UNKNOWN:
 		return ALIASES_TEMPLATE_BASH
 	}
@@ -475,6 +609,8 @@ get_constants_template :: proc(shell: ShellType) -> string {
 		return CONSTANTS_TEMPLATE_BASH
 	case .ZSH:
 		return CONSTANTS_TEMPLATE
+	case .FISH:
+		return CONSTANTS_TEMPLATE_FISH
 	case .UNKNOWN:
 		return CONSTANTS_TEMPLATE_BASH
 	}
@@ -487,6 +623,8 @@ get_init_template :: proc(shell: ShellType) -> string {
 		return INIT_TEMPLATE_BASH
 	case .ZSH:
 		return INIT_TEMPLATE
+	case .FISH:
+		return INIT_TEMPLATE_FISH
 	case .UNKNOWN:
 		return INIT_TEMPLATE_BASH
 	}
@@ -499,6 +637,8 @@ get_tools_template :: proc(shell: ShellType) -> string {
 		return TOOLS_TEMPLATE_BASH
 	case .ZSH:
 		return TOOLS_TEMPLATE
+	case .FISH:
+		return TOOLS_TEMPLATE_FISH
 	case .UNKNOWN:
 		return TOOLS_TEMPLATE_BASH
 	}
@@ -511,6 +651,8 @@ get_extra_template :: proc(shell: ShellType) -> string {
 		return EXTRA_TEMPLATE_BASH
 	case .ZSH:
 		return EXTRA_TEMPLATE
+	case .FISH:
+		return EXTRA_TEMPLATE_FISH
 	case .UNKNOWN:
 		return EXTRA_TEMPLATE_BASH
 	}

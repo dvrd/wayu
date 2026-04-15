@@ -1,0 +1,1055 @@
+Wasted 10 years with Bash. Try Fish or ZSH - Adam Brodziak
+  URL: https://adambrodziak.medium.com/wasted-10-years-with-bash-a7f6cb480419
+  modern Bash alternatives that make shell more productive and cool. Do not waste time with Bash as I did ...
+
+  --- Content ---
+  [Sitemap](https://adambrodziak.medium.com/sitemap/sitemap.xml)
+  
+  [Open in app](https://play.google.com/store/apps/details?id=com.medium.reader&referrer=utm_source%3DmobileNavBar&source=post_page---top_nav_layout_nav-----------------------------------------)
+  
+  Sign up
+  
+  [Sign in](https://medium.com/m/signin?operation=login&redirect=https%3A%2F%2Fadambrodziak.medium.com%2Fwasted-10-years-with-bash-a7f6cb480419&source=post_page---top_nav_layout_nav-----------------------global_nav------------------)
+  
+  [Medium Logo](https://medium.com/?source=post_page---top_nav_layout_nav-----------------------------------------)
+  
+  Get app
+  
+  [Write](https://medium.com/m/signin?operation=register&redirect=https%3A%2F%2Fmedium.com%2Fnew-story&source=---top_nav_layout_nav-----------------------new_post_topnav------------------)
+  
+  [Search](https://medium.com/search?source=post_page---top_nav_layout_nav-----------------------------------------)
+  
+  Sign up
+  
+  [Sign in](https://medium.com/m/signin?operation=login&redirect=https%3A%2F%2Fadambrodziak.medium.com%2Fwasted-10-years-with-bash-a7f6cb480419&source=post_page---top_nav_layout_nav-----------------------global_nav------------------)
+  
+  ![](https://miro.medium.com/v2/resize:fill:32:32/1*dmbNkD5D-u45r44go_cf0g.png)
+  
+  # Wasted 10 years with Bash
+  
+  ## Try Fish or ZSH — modern Bash alternatives that make shell more productive and cool. Do not waste time with Bash as I did.
+  
+  [![Adam Brodziak](https://miro.medium.com/v2/resize:fill:32:32/1*HdV-_9ULgFzVS0x4IJzyOA.jpeg)](https://adambrodziak.medium.com/?source=post_page---byline--a7f6cb480419---------------------------------------)
+  
+  [Adam Brodziak](https://adambrodziak.medium.com/?source=post_page---byline--a7f6cb480419---------------------------------------)
+  
+  Follow
+  
+  4 min read
+  
+  ·
+  
+  Jan 30, 2019
+  
+  79
+  
+  2
+  
+  [Listen](https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2Fplans%3Fdimension%3Dpost_audio_button%26postId%3Da7f6cb480419&operation=register&redirect=https%3A%2F%2Fadambrodziak.medium.com%2Fwasted-10-years-with-bash-a7f6cb480419&source=---header_actions--a7f6cb480419---------------------post_audio_button------------------)
+  
+  Share
+  
+  When you’re thinking of shell on any Linux system you probably think [Bash](https://www.gnu.org/software/bash/) (Bourne Again Shell). On Windows too actually, as Git Bash is quite popular (despite it has got an ugly terminal emulator) and WSL (Windows Subsystem for Linux) uses Bash as well (by default). At least those have quite modern 4.x versions of Bash, while MacOS X ships an outdated 3.2 version and there are tutorials how to [upgrade Bash on Mac to 5.0](https://itnext.io/upgrading-bash-on-macos-7138bd1066ba) which was released days ago.
+  
+  The Bash 5.0 upgrade on Mac looks quite complicated and can yield unexpected errors, so that begs the question: why not use better shell instead?
+  
+  ## My history with Bash
+  
+  My story with Linux started in 2007 and for 10 years straight I’ve been using stock Bash, as it came with Ubuntu. It’s not _that bad_, as Ubuntu at least ships autocomplete configuration by default, so you can use Tab to complete command or its parameters. Just try to type `apt ins<Tab>` to see it in action. I've learned that very quickly and blessed Ubuntu for [making it work for me](https://www.tecmint.com/install-and-enable-bash-auto-completion-in-centos-rhel/).
+  
+  Over the years I’ve learned [some useful things](https://zwischenzugs.com/2018/01/06/ten-things-i-wish-id-known-about-bash/), like Ctrl+R to search history or Ctrl+K to clear line. I did not know any better (unconscious incompetence), because for me shell==Bash back then. Even after finding that there are other shells and relying on [Bash quirks in scripts is bad practice](https://linux.die.net/man/1/checkbashisms) I haven’t looked for greener pastures. Somehow it did not even occur to me to alter Bash stupid defaults (case sensitive file completion — why?!), besides maybe increasing history buffer (huge productivity boost BTW).
+  
+  Press enter or click to view image in full size
+  
+  ![](https://miro.medium.com/v2/resize:fit:700/1*Cnkyf62bqddhWlokAi28qg.jpeg)
+  
+  This is how it feels to use Bash nowadays. Photo from [Flickr](https://www.flickr.com/photos/fhwrdh/5390966278).
+  
+  BTW: There is [sensible Bash config](https://github.com/mrzool/bash-sensible) that you should definitely check out!
+  
+  ## Fish — The user-friendly command line shell
+  
+  It was late 2017 when I stumbled upon [Fish Shell](https://fishshell.com/). The tipping point was aptly named [The fish shell is awesome](https://jvns.ca/blog/2017/04/23/the-fish-shell-is-awesome/) post by Julia Evans. Then I’ve watched few [videos](https://www.youtube.com/watch?v=g_HoW4iek2Q) and was totally hooked. Fish comes with all bells and whistles out of the box, setup for you. No need to configure anything, install plugins, etc.
+  
+  As you can see Fish (on the right) has got [the best tab-completion](https://www.youtube.com/watch?v=0NOAUogSSMo) compared to ZSH and Bash.
+  
+  Of course Fish community created [plugins for more advanced features](https://github.com/jorgebucaran/awesome-fish) — I can recommend the following:
+  
+  - [rafaelrinaldi/pure](https://github.com/rafaelrinaldi/pure) — Pure-fish port of [sindresorhus/pure](https://github.com/sindresorhus/pure) prompt
+  - [franciscolourenco/done](https://github.com/franciscolourenco/done) — Automatically receive notifications when a long process finish
+  - [jethrokuan/z](https://github.com/jethrokuan/z) — Pure-fish [rupa/z](https://github.com/rupa/z)-like directory jumping
+  
+  Notice those plugins are _Pure-fish_ implementations of 3rd party scripts. The reason is: Fish offers sane scripting ( [unlike other shells](https://twitter.com/fishpkg/status/1087159872561414145) some say), but it’s not POSIX compliant. This is probably the biggest drawback (or downside) of using Fish. Over the years I’ve accumulated one-liners, scripts and habits from Bash (i.e. using `&&` to join commands), but most were POSIX-compliant. Which led me to ZSH…
+  
+  ## Get Adam Brodziak’s stories in your inbox
+  
+  Join Medium for free to get updates from this writer.
+  
+  Subscribe
+  
+  Subscribe
+  
+  Remember me for faster sign in
+  
+  Note: [Fish 3.0.0](https://github.com/fish-shell/fish-shell/releases/tag/3.0.0) released month ago have added `&&` support. I might give Fish another try. It is that important :)
+  
+  ## ZSH (Z shell) — designed for interactive use
+  
+  ZSH has been recommended to me by my colleagues at work as better Bash alternative, because it is POSIX-compliant. That means my Bash habits still work: `&&` to join commands, way of exporting ENV variables, storing command output in var using backticks, etc.
+  
+  Since I’ve been using Fish before I’ve started to look for plugins that replicate features that Fish provides out of the box. To get some of the Fish coolness install the following:
+  
+  - [zsh-autosuggestions](https://github.com/zsh-users/zsh-autosuggestions) — Fish-like fast/unobtrusive autosuggestions for zsh.
+  - [zsh-syntax-highlighting](https://github.com/zsh-users/zsh-syntax-highlighting) — Fish shell-like syntax highlighting for Zsh.
+  - [zsh-history-substring-search](https://github.com/zsh-users/zsh-history-substring-search) — This is a clean-room implementation of the Fish shell’s history search feature
+  
+  There’s plenty of [awesome ZSH plugins](https://github.com/unixorn/awesome-zsh-plugins), but I tend use only few, not to overload [my .zshrc](https://github.com/adambro/dotfiles/blob/master/home/.zshrc) file. The reason: it is on me to make sure everything works well. I’m using [Antigen plugin manager](http://antigen.sharats.me/) that is supposedly solving plugins installation issues (see motivation section), but problems still happen. To be honest I have never tried installing [oh-my-zsh](https://ohmyz.sh/) directly, because it does not ship Fish-like plugins listed above and [configuring custom plugins in OMZ is awful](https://joshldavis.com/2014/07/26/oh-my-zsh-is-a-disease-antigen-is-the-vaccine/).
+  
+  ## Bash as a scripts runtime
+  
+  OK, so we’ve established that there are better interactive shells than Bash, but Bash is still useful for scripts. It’s because of it’s ubiquitousness obviously — it’s available on (almost) every Linux/Unix system those days. However Bash has it’s gotachas as scripting language, so beware. Here are few links to make your life easier with Bash scripts:
+  
+  - [http://redsymbol.net/articles/unofficial-bash-strict-mode/](http://redsymbol.net/articles/unofficial-bash-strict-mode/)
+  - [https://zwischenzugs.com/2018/01/06/ten-things-i-wish-id-known-about-bash/](https://zwischenzugs.com/2018/01/06/ten-things-i-wish-id-known-about-bash/)
+  - [https://github.com/dylanaraps/pure-bash-bible](https://github.com/dylanaraps/pure-bash-bible)
+  
+  ## Partying words
+  
+  If you’re working with shell do yourself a favor and try something more modern than Bash. Do not waste a decade as I did. My suggestions are as follows:
+  
+  - Try Fish as it’s awesome out of the box. Not only cooler, but much more productive. If you know something even better— let me know!
+  - If you like to tinker or need POSIX shell give ZSH a go. No idea which plugin manager to recommend though ;)
+  - Use [Bash sensible config](https://github.com/mrzool/bash-sensible) if you really need to use Bash, i.e. on remote host you do not control.
+  
+  Let me know if I missed anything or there’s even better shell that I’m not aware of. Basically rising awareness of Bash alternatives is my point here, so I’m open to learn.
+  
+  [Terminal](https://medium.com/tag/terminal?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [Shell](https://medium.com/tag/shell?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [Shell Script](https://medium.com/tag/shell-script?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [Bash](https://medium.com/tag/bash?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [Software Development](https://medium.com/tag/software-development?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [![Adam Brodziak](https://miro.medium.com/v2/resize:fill:48:48/1*HdV-_9ULgFzVS0x4IJzyOA.jpeg)](https://adambrodziak.medium.com/?source=post_page---post_author_info--a7f6cb480419---------------------------------------)
+  
+  [![Adam Brodziak](https://miro.medium.com/v2/resize:fill:64:64/1*HdV-_9ULgFzVS0x4IJzyOA.jpeg)](https://adambrodziak.medium.com/?source=post_page---post_author_info--a7f6cb480419---------------------------------------)
+  
+  Follow
+  
+  [**Written by Adam Brodziak**](https://adambrodziak.medium.com/?source=post_page---post_author_info--a7f6cb480419---------------------------------------)
+  
+  [164 followers](https://adambrodziak.medium.com/followers?source=post_page---post_author_info--a7f6cb480419---------------------------------------)
+  
+  · [294 following](https://adambrodziak.medium.com/following?source=post_page---post_author_info--a7f6cb480419---------------------------------------)
+  
+  New blog in DevOps at [https://adambrodziak.pl](https://adambrodziak.pl/)
+  
+  Follow
+  
+  ## Responses (2)
+  
+  ![](https://miro.medium.com/v2/resize:fill:32:32/1*dmbNkD5D-u45r44go_cf0g.png)
+  
+  Write a response
+  
+  [What are your thoughts?](https://medium.com/m/signin?operation=register&redirect=https%3A%2F%2Fadambrodziak.medium.com%2Fwasted-10-years-with-bash-a7f6cb480419&source=---post_responses--a7f6cb480419---------------------respond_sidebar------------------)
+  
+  Cancel
+  
+  Respond
+  
+  [![Al K](https://miro.medium.com/v2/resize:fill:32:32/1*dmbNkD5D-u45r44go_cf0g.png)](https://medium.com/@a01234567890123456789012345670?source=post_page---post_responses--a7f6cb480419----0-----------------------------------)
+  
+  [Al K](https://medium.com/@a01234567890123456789012345670?source=post_page---post_responses--a7f6cb480419----0-----------------------------------)
+  
+  [Apr 11, 2024](https://medium.com/@a01234567890123456789012345670/the-benefits-you-have-described-nothing-at-all-to-one-requirement-214b70511481?source=post_page---post_responses--a7f6cb480419----0-----------------------------------)
+  
+  ```
+  The benefits you have described nothing at all to one requirement. There should be a reliable and nice frameworks & IDE support for unit testing your scripts. I used to write using BATs for bash but this is the pain there were cases when BASH…more
+  ```
+  
+  1 reply
+  
+  Reply
+  
+  [![Stephen Price](https://miro.medium.com/v2/resize:fill:32:32/0*-rRKixdaLG-zTncg.)](https://medium.com/@methion?source=post_page---post_responses--a7f6cb480419----1-----------------------------------)
+  
+  [Stephen Price](https://medium.com/@methion?source=post_page---post_responses--a7f6cb480419----1-----------------------------------)
+  
+  [Jan 3, 2023](https://medium.com/@methion/these-days-you-could-just-use-powershell-pwsh-everywhere-373b94b60f6f?source=post_page---post_responses--a7f6cb480419----1-----------------------------------)
+  
+  ```
+  These days, you could just use PowerShell (pwsh) everywhere. It's modern, object-oriented, functional, and open source/ cross platform :P
+  ```
+  
+  1 reply
+  
+  Reply
+  
+  ## More from Adam Brodziak
+  
+  ![Singleton with async constructor in JavaScript](https://miro.medium.com/v2/resize:fit:679/format:webp/1*nqystAGZ7ELqZBHJMwApCA.png)
+  
+  [![Adam Brodziak](https://miro.medium.com/v2/resize:fill:20:20/1*HdV-_9ULgFzVS0x4IJzyOA.jpeg)](https://adambrodziak.medium.com/?source=post_page---author_recirc--a7f6cb480419----0---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  [Adam Brodziak](https://adambrodziak.medium.com/?source=post_page---author_recirc--a7f6cb480419----0---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  Jun 29, 2018
+  
+  [A clap icon84\\
+  \\
+  A response icon4](https://adambrodziak.medium.com/singleton-with-async-constructor-in-javascript-32367f52540f?source=post_page---author_recirc--a7f6cb480419----0---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  ![OOP best practices that are anti-patterns in (functional) JavaScript](https://miro.medium.com/v2/resize:fit:679/format:webp/1*RWwbii6ig3GQOfhW0nwAMA.jpeg)
+  
+  [![Level Up Coding](https://miro.medium.com/v2/resize:fill:20:20/1*5D9oYBd58pyjMkV_5-zXXQ.jpeg)](https://levelup.gitconnected.com/?source=post_page---author_recirc--a7f6cb480419----1---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  In
+  
+  [Level Up Coding](https://levelup.gitconnected.com/?source=post_page---author_recirc--a7f6cb480419----1---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  by
+  
+  [Adam Brodziak](https://adambrodziak.medium.com/?source=post_page---author_recirc--a7f6cb480419----1---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  May 4, 2020
+  
+  [A clap icon164](https://adambrodziak.medium.com/oop-best-practices-that-are-anti-patterns-in-functional-javascript-61ee1af35452?source=post_page---author_recirc--a7f6cb480419----1---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  ![Use JS object spread operator instead of Object.assign() pattern in Node 8](https://miro.medium.com/v2/resize:fit:679/format:webp/253d1ac7271c0a7cc8f41cd8f9de7fb7148297ef9c17b11e085fd6559557c22b)
+  
+  [![Adam Brodziak](https://miro.medium.com/v2/resize:fill:20:20/1*HdV-_9ULgFzVS0x4IJzyOA.jpeg)](https://adambrodziak.medium.com/?source=post_page---author_recirc--a7f6cb480419----2---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  [Adam Brodziak](https://adambrodziak.medium.com/?source=post_page---author_recirc--a7f6cb480419----2---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  Dec 21, 2017
+  
+  [A clap icon74\\
+  \\
+  A response icon3](https://adambrodziak.medium.com/use-js-object-spread-operator-instead-of-object-assign-pattern-in-node-8-125a4914f6dd?source=post_page---author_recirc--a7f6cb480419----2---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  ![More #OpsEmpathy In Software Development](https://miro.medium.com/v2/resize:fit:679/format:webp/1*QjOFLLeMK4uAiwH24e9OEQ.jpeg)
+  
+  [![Adam Brodziak](https://miro.medium.com/v2/resize:fill:20:20/1*HdV-_9ULgFzVS0x4IJzyOA.jpeg)](https://adambrodziak.medium.com/?source=post_page---author_recirc--a7f6cb480419----3---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  [Adam Brodziak](https://adambrodziak.medium.com/?source=post_page---author_recirc--a7f6cb480419----3---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  Aug 22, 2016
+  
+  [A clap icon3\\
+  \\
+  A response icon1](https://adambrodziak.medium.com/more-opsempathy-in-software-development-ce2f8e8f4b89?source=post_page---author_recirc--a7f6cb480419----3---------------------74f4d9fb_9861_4562_8c5c_827fae9799fb--------------)
+  
+  [See all from Adam Brodziak](https://adambrodziak.medium.com/?source=post_page---author_recirc--a7f6cb480419---------------------------------------)
+  
+  ## Recommended from Medium
+  
+  ![My Hot Neovim Setup (Or: How I Stopped Worrying and Learned to Love Lua)](https://miro.medium.com/v2/resize:fit:679/format:webp/1*PXI8Lfzr7F9Koy9N4mRqyg.png)
+  
+  [![Patrick Koss](https://miro.medium.com/v2/resize:fill:20:20/1*cWZsdHVl53nTQxRCgjnwww.jpeg)](https://medium.com/@patrickkoss?source=post_page---read_next_recirc--a7f6cb480419----0---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  [Patrick Koss](https://medium.com/@patrickkoss?source=post_page---read_next_recirc--a7f6cb480419----0---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  Feb 19
+  
+  [A clap icon29](https://medium.com/@patrickkoss/my-hot-neovim-setup-or-how-i-stopped-worrying-and-learned-to-love-lua-43cc3fb587ce?source=post_page---read_next_recirc--a7f6cb480419----0---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  ![My Terminal Setup: A Deep Dive into My Zsh Configuration](https://miro.medium.com/v2/resize:fit:679/format:webp/1*3pSLVe3KlYmH-zNwri1btw.png)
+  
+  [![Abhishek Amralkar](https://miro.medium.com/v2/resize:fill:20:20/2*FnUlumBTfoGDiNLc-eH5nA.jpeg)](https://abhishekamralkar.medium.com/?source=post_page---read_next_recirc--a7f6cb480419----1---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  [Abhishek Amralkar](https://abhishekamralkar.medium.com/?source=post_page---read_next_recirc--a7f6cb480419----1---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  Jan 31
+  
+  [A clap icon54](https://abhishekamralkar.medium.com/my-terminal-setup-a-deep-dive-into-my-zsh-configuration-e36eeb46535b?source=post_page---read_next_recirc--a7f6cb480419----1---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  ![If You Understand These 5 AI Terms, You’re Ahead of 90% of People](https://miro.medium.com/v2/resize:fit:679/format:webp/1*qbVrf-wO9PYtthAj6E4RYQ.png)
+  
+  [![Towards AI](https://miro.medium.com/v2/resize:fill:20:20/1*JyIThO-cLjlChQLb6kSlVQ.png)](https://pub.towardsai.net/?source=post_page---read_next_recirc--a7f6cb480419----0---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  In
+  
+  [Towards AI](https://pub.towardsai.net/?source=post_page---read_next_recirc--a7f6cb480419----0---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  by
+  
+  [Shreyas Naphad](https://medium.com/@shreyasnaphad?source=post_page---read_next_recirc--a7f6cb480419----0---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  Mar 29
+  
+  [A clap icon10.3K\\
+  \\
+  A response icon209](https://medium.com/@shreyasnaphad/if-you-understand-these-5-ai-terms-youre-ahead-of-90-of-people-c7622d353319?source=post_page---read_next_recirc--a7f6cb480419----0---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  ![I Woke Up at 4:30 AM Every Day for 30 Days — Here Is What Nobody Tells You](https://miro.medium.com/v2/resize:fit:679/format:webp/1*0XnPmr19m6XJf9vZ9ojJ-Q.png)
+  
+  [![ILLUMINATION](https://miro.medium.com/v2/resize:fill:20:20/1*AZxiin1Cvws3J0TwNUP2sQ.png)](https://medium.com/illumination?source=post_page---read_next_recirc--a7f6cb480419----1---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  In
+  
+  [ILLUMINATION](https://medium.com/illumination?source=post_page---read_next_recirc--a7f6cb480419----1---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  by
+  
+  [Sufyan Maan, M.Eng](https://sufyanmaan.medium.com/?source=post_page---read_next_recirc--a7f6cb480419----1---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  Apr 3
+  
+  [A clap icon8K\\
+  \\
+  A response icon345](https://sufyanmaan.medium.com/i-woke-up-at-4-30-am-every-day-for-30-days-here-is-what-nobody-tells-you-054bf0160903?source=post_page---read_next_recirc--a7f6cb480419----1---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  ![Vibe Coding is Over illustration of three ai generated landing pages with the words IT’S OVER written at the top in large text](https://miro.medium.com/v2/resize:fit:679/format:webp/1*1OGKfKCooEZbKCSoSXXY8g.png)
+  
+  [![Michal Malewicz](https://miro.medium.com/v2/resize:fill:20:20/1*149zXrb2FXvS_mctL4NKSg.png)](https://michalmalewicz.medium.com/?source=post_page---read_next_recirc--a7f6cb480419----2---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  [Michal Malewicz](https://michalmalewicz.medium.com/?source=post_page---read_next_recirc--a7f6cb480419----2---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  Mar 24
+  
+  [A clap icon5.7K\\
+  \\
+  A response icon219](https://michalmalewicz.medium.com/vibe-coding-is-over-5a84da799e0d?source=post_page---read_next_recirc--a7f6cb480419----2---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  ![6 brain images](https://miro.medium.com/v2/resize:fit:679/format:webp/1*Q-mzQNzJSVYkVGgsmHVjfw.png)
+  
+  [![Write A Catalyst](https://miro.medium.com/v2/resize:fill:20:20/1*KCHN5TM3Ga2PqZHA4hNbaw.png)](https://medium.com/write-a-catalyst?source=post_page---read_next_recirc--a7f6cb480419----3---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  In
+  
+  [Write A Catalyst](https://medium.com/write-a-catalyst?source=post_page---read_next_recirc--a7f6cb480419----3---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  by
+  
+  [Dr. Patricia Schmidt](https://medium.com/@creatorschmidt?source=post_page---read_next_recirc--a7f6cb480419----3---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  Jan 14
+  
+  [A clap icon46K\\
+  \\
+  A response icon942](https://medium.com/@creatorschmidt/as-a-neuroscientist-i-quit-these-5-morning-habits-that-destroy-your-brain-3efe1f410226?source=post_page---read_next_recirc--a7f6cb480419----3---------------------20446811_8067_42e1_8706_65e10e8d8a35--------------)
+  
+  [See more recommendations](https://medium.com/?source=post_page---read_next_recirc--a7f6cb480419---------------------------------------)
+  
+  [Help](https://help.medium.com/hc/en-us?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [Status](https://status.medium.com/?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [About](https://medium.com/about?autoplay=1&source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [Careers](https://medium.com/jobs-at-medium/work-at-medium-959d1a85284e?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [Press](mailto:pressinquiries@medium.com)
+  
+  [Blog](https://blog.medium.com/?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [Privacy](https://policy.medium.com/medium-privacy-policy-f03bf92035c9?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [Rules](https://policy.medium.com/medium-rules-30e5502c4eb4?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [Terms](https://policy.medium.com/medium-terms-of-service-9db0094a1e0f?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  [Text to speech](https://speechify.com/medium?source=post_page-----a7f6cb480419---------------------------------------)
+  
+  reCAPTCHA
+  
+  Recaptcha requires verification.
+  
+  protected by **reCAPTCHA**
+  --- End Content ---
+
+What are good alternatives to bash? : r/commandline
+  URL: https://www.reddit.com/r/commandline/comments/9vheyy/what_are_good_alternatives_to_bash/
+  I'm totally fine with bash, but I want to try an alternative with a saner scripting langauge and a better interactive environment.
+
+oh-my-zsh alternatives - Notes from the Rabbit Hole
+  URL: https://magnus919.com/notes/oh-my-zsh-alternatives/
+  Antidote is a Zsh plugin manager made from the ground up thinking about performance. It is fast because it can do things concurrently, and generates an ultra- ...
+
+  --- Content ---
+  # [oh-my-zsh alternatives](https://magnus919.com/notes/oh-my-zsh-alternatives/)
+  
+  2025-01-192 min read (276 words)
+  
+  # [oh-my-zsh](https://magnus919.com/tags/oh-my-zsh/)
+  # [zsh](https://magnus919.com/tags/zsh/)
+  # [macOS](https://magnus919.com/tags/macos/)
+  # [linux](https://magnus919.com/tags/linux/)![oh-my-zsh alternatives](https://magnus919.com/null)
+  
+  ## Table of Contents
+  
+  # Background [\#](https://magnus919.com/notes/oh-my-zsh-alternatives/\#background)
+  
+  I’ve been a `zsh` user for a long time, both on Linux (where it’s not the default) and ~~OS X~~ macOS (where it now _is_ the default).
+  
+  The first thing I used to do on new machines is port all of my `.oh-my-zsh` stuff over.
+  
+  [Oh My Zsh](https://ohmyz.sh/) is not bad! This is not mean to slam the project at all.
+  
+  But I’ve recently (Jan 2025) upgraded to a new [Mac](https://magnus919.com/tags/mac/) Mini M4 and I thought maybe I should see what else is out there. If there’s something that’s _good enough_ without being quite as large in size.
+  
+  # Alternatives [\#](https://magnus919.com/notes/oh-my-zsh-alternatives/\#alternatives)
+  
+  ## Antidote [\#](https://magnus919.com/notes/oh-my-zsh-alternatives/\#antidote)
+  
+  [Antidote](https://antidote.sh/) is the only one I’m really messing with right now (Jan 2025).
+  
+  > Antidote is a Zsh plugin manager made from the ground up thinking about performance.
+  >
+  > It is fast because it can do things concurrently, and generates an ultra-fast static plugin file that you can easily load from your Zsh config.
+  
+  The author of Antidote also [claims](https://www.reddit.com/r/zsh/comments/13ekut5/comment/jjqhxzb/):
+  
+  > You can use antidote to load [oh-my-zsh plugins](https://github.com/ohmyzsh/ohmyzsh/wiki/Plugins) pretty easily.
+  
+  I’m going to give it a try.
+  
+  ### ~/.zshrc [\#](https://magnus919.com/notes/oh-my-zsh-alternatives/\#zshrc)
+  
+  zshCopy
+  
+  ```zsh
+  autoload -Uz compinit
+  compinit
+  
+  . "$HOME/.cargo/env"
+  
+  zstyle :omz:plugins:iterm2 shell-integration yes
+  
+  # Set OMZ variables if you want.
+  ZSH_THEME="kphoen"
+  
+  # Set any helper functions used by your antidote config.
+  function is-macos() {
+  	[[ $OSTYPE == darwin* ]]
+  }
+  
+  # source antidote
+  source ~/.antidote/antidote.zsh
+  
+  # initialize plugins statically with ${ZDOTDIR:-~}/.zsh_plugins.txt
+  antidote load
+  ```
+  
+  ### ~/.zsh\_plugins.txt [\#](https://magnus919.com/notes/oh-my-zsh-alternatives/\#zsh_pluginstxt)
+  
+  zshCopy
+  
+  ```zsh
+  #.zsh_plugins.txt
+  
+  # use-omz needs to be FIRST
+  getantidote/use-omz
+  
+  # Add in some oh-my-zsh stuff
+  ohmyzsh/ohmyzsh path:lib
+  ohmyzsh/ohmyzsh path:plugins/colored-man-pages
+  ohmyzsh/ohmyzsh path:plugins/docker-compose
+  ohmyzsh/ohmyzsh path:plugins/gh
+  ohmyzsh/ohmyzsh path:plugins/git
+  ohmyzsh/ohmyzsh path:plugins/git-prompt
+  ohmyzsh/ohmyzsh path:plugins/rsync
+  ohmyzsh/ohmyzsh path:plugins/ssh
+  
+  # Add macOS specific plugins
+  ohmyzsh/ohmyzsh path:plugins/brew conditional:is-macos
+  ohmyzsh/ohmyzsh path:plugins/macos conditional:is-macos
+  ohmyzsh/ohmyzsh path:plugins/iterm2 conditional:is-macos
+  # zsh-users
+  zsh-users/zsh-autosuggestions
+  zsh-users/zsh-syntax-highlighting
+  ```
+  --- End Content ---
+
+Back to the Basics: Zsh without Oh My Zsh
+  URL: https://batsov.com/articles/2025/03/01/back-to-the-basics-zsh-without-oh-my-zsh/
+  These days Bash has closed the gap with Zsh when it comes to core functionality (e.g. Bash has its own equivalent of autocd and programmable ...
+
+  --- Content ---
+  > `.zshrc` simplicity is the ultimate sophistication.
+  >
+  > – Leonardo Da Zshinci
+  
+  I’ve been using the Z Shell (a.k.a. Zsh) for a [very long time now](https://batsov.com/articles/2008/07/27/zsh-prompt/). There was a time early on in my Zsh journey when I read the entire documentation, plus a book on Zsh and I had a simple, yet pretty decent custom configuration. At some point, however, I bought into the hype of [Oh My Zsh](https://ohmyz.sh/) and I’ve been mostly using it ever since.
+  
+  Oh My Zsh (OMZ) is a nice setup if you’re on the lazy side when it comes to customizing your shell, but I recently realized I’m barely using anything from it. Fundamentally OMZ is mostly a collection of:
+  
+  - Zsh prompt themes
+  - Aliases
+  - Some utility plugins (e.g. the `bundler` plugin allows you to run Ruby commands without typing `bundle exec`)
+  - Some sane Zsh defaults
+  
+  I got drawn to OMZ mostly because of the fancy prompt themes that had things like VCS status, etc. That was a long time ago, though, and the competition has caught up. These days there are a ton of portable prompt themes that one can install on any shell. I don’t use almost any of the aliases coming with the various OMZ plugins, so those are not really a big features for me. Finally, I used to modify only a handful of Zsh defaults in the past - mostly things to do with history management and `autocd`. So when I asked myself recently why am I using OMZ exactly I couldn’t provide a meaningful answer. Just a classic case of inertia. Oh, well…
+  
+  It became clear to me I don’t really need OMZ and I quickly replaced it with a tiny custom `.zshrc`. Before I show you its contents, I’ll mention that I’m using [Starship](https://starship.rs/) as my prompt, `zoxide` (a modern alternative to `z` and `autojump`) to move efficiently between directories, and `fzf` to navigate the shell history, so if you want to emulate my setup completely you’ll have to install them first. On macOS that’s as easy as:
+  
+  `brew install starship
+  brew install fzf
+  brew install zoxide
+  
+  `
+  
+  And here’s my `.zshrc`:
+  
+  `# Enable persistent history
+  HISTFILE=~/.zsh_history
+  HISTSIZE=100000
+  SAVEHIST=100000
+  
+  setopt HIST_SAVE_NO_DUPS
+  setopt INC_APPEND_HISTORY
+  
+  # Configure the push directory stack (most people don't need this)
+  setopt AUTO_PUSHD
+  setopt PUSHD_IGNORE_DUPS
+  setopt PUSHD_SILENT
+  
+  # Emacs keybindings
+  bindkey -e
+  # Use the up and down keys to navigate the history
+  bindkey "\e[A" history-beginning-search-backward\
+  bindkey "\e[B" history-beginning-search-forward\
+  \
+  # Move to directories without cd\
+  setopt autocd\
+  \
+  # Initialize completion\
+  autoload -U compinit; compinit\
+  \
+  # The most important aliases ever (the only thing I borrowed from OMZ)\
+  alias l='ls -lah'\
+  alias la='ls -lAh'\
+  alias ll='ls -lh'\
+  alias ls='ls -G'\
+  alias lsa='ls -lah'\
+  \
+  # Set up fzf key bindings and fuzzy completion\
+  source <(fzf --zsh)\
+  \
+  # Set up zoxide to move between folders efficiently\
+  eval "$(zoxide init zsh)"\
+  \
+  # Set up the Starship prompt\
+  eval "$(starship init zsh)"\
+  \
+  `\
+  \
+  I told you it was small and simple and I hope you’ll agree I didn’t lie. Now I know everything in my Zsh setup and I frankly don’t miss anything from OMZ. Not to mention that Starship is a much better and faster theme than anything bundled in OMZ.\
+  \
+  By the way, if you really miss some particular plugins from OMZ, you don’t really need the whole OMZ to be able to use it. [Antidote](https://antidote.sh/) is a Zsh plugin manager that allows you to install OMZ plugins, if you really need them. I don’t care much about things like syntax highlighting (the most common use case of a Zsh plugin IMO) or pressing `ESC` twice to prefix a command with `sudo` (people should really learn what `C-a` does in the shell), so as you can imagine it’s unlikely I’ll be installing any plugins soon. Still, it’s good to know you have options. The vast Zsh plugin ecosystem is probably its main advantage over its arch-nemesis Bash.\
+  \
+  So, what are you waiting for? Are you going to go back to the basics as well or you’re going to stick with OMZ?\
+  \
+  That’s all I have for you today. Keep hacking!\
+  \
+  **P.S.** Truth be told I probably don’t really need to be using Zsh at all, given that I’m not using many of its unique features. These days Bash has closed the gap with Zsh when it comes to core functionality (e.g. Bash has its own equivalent of `autocd` and programmable completion, although not as fancy as Zsh’s) and it will probably be enough for me if I wanted to really go back to the basics.\
+  \
+  On the other end of the spectrum - knowing I’m not particularly tied to Zsh means I can easily switch to some fancier shell like Fish or Nushell. Decisions, decisions…\
+  \
+  [Zsh](https://batsov.com/tags/zsh/)\
+  \
+  This post is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) by the author.\
+  \
+  Share[Twitter](https://twitter.com/intent/tweet?text=Back%20to%20the%20Basics:%20Zsh%20without%20Oh%20My%20Zsh%20-%20(think)&url=https%3A%2F%2Fbatsov.com%2Farticles%2F2025%2F03%2F01%2Fback-to-the-basics-zsh-without-oh-my-zsh%2F)\
+  \
+  ## Share to Mastodon\
+  \
+  Select or set which instance you'd like to share to.\
+  \
+  Remember My Instance (locally only)\
+  \
+  ShareCancel\
+  \
+  \
+  [Bluesky](https://bsky.app/intent/compose?text=Back%20to%20the%20Basics:%20Zsh%20without%20Oh%20My%20Zsh%20-%20(think)%20https%3A%2F%2Fbatsov.com%2Farticles%2F2025%2F03%2F01%2Fback-to-the-basics-zsh-without-oh-my-zsh%2F)[Reddit](https://www.reddit.com/submit?url=https%3A%2F%2Fbatsov.com%2Farticles%2F2025%2F03%2F01%2Fback-to-the-basics-zsh-without-oh-my-zsh%2F&title=Back%20to%20the%20Basics:%20Zsh%20without%20Oh%20My%20Zsh%20-%20(think))[Linkedin](https://www.linkedin.com/feed/?shareActive=true&shareUrl=https%3A%2F%2Fbatsov.com%2Farticles%2F2025%2F03%2F01%2Fback-to-the-basics-zsh-without-oh-my-zsh%2F)\
+  \
+  What's your reaction?\
+  \
+  ![superb](https://talk.hyvor.com/res/reactions/superb.svg)3superb![love](https://talk.hyvor.com/res/reactions/love.svg)0love![wow](https://talk.hyvor.com/res/reactions/wow.svg)0wow![sad](https://talk.hyvor.com/res/reactions/sad.svg)0sad![laugh](https://talk.hyvor.com/res/reactions/laugh.svg)0laugh![angry](https://talk.hyvor.com/res/reactions/angry.svg)0angry\
+  \
+  3 Comments1  online\
+  \
+  login\
+  \
+  Top\
+  \
+  A\
+  \
+  Anon [11 months ago](https://batsov.com/articles/2025/03/01/back-to-the-basics-zsh-without-oh-my-zsh/?ht-comment-id=24828758)\
+  \
+  very informative, thanks\
+  \
+  00\
+  \
+  Reply\
+  \
+  O\
+  \
+  OFK [11 months ago](https://batsov.com/articles/2025/03/01/back-to-the-basics-zsh-without-oh-my-zsh/?ht-comment-id=24727047)\
+  \
+  If you really feel free from OMZ and want to try a cool shell, I’d go with Xonsh!\
+  \
+  Python in the shell, the shell as a Python runtime.\
+  \
+  It DOES take getting used to, sure, but it has some really cool aces, plural, up its sleeve… for those willing to make the effort of climbing the “mountain of incompatibility”.\
+  \
+  Myself, I’m too tied to Zsh, and even OMZ, so I bailed, but the time I did try it was the happiest I had on the shell (with my clothes on). ☺️\
+  \
+  00\
+  \
+  Reply\
+  \
+  N\
+  \
+  Nithin Bekal [1 year ago](https://batsov.com/articles/2025/03/01/back-to-the-basics-zsh-without-oh-my-zsh/?ht-comment-id=23226547)\
+  \
+  Thank you so much for sharing this! I wanted to do the same, but wasn’t sure if I wanted to lose out on the niceties that omz brings. Once I went through this, it turned out it wasn’t all that hard.\
+  \
+  00\
+  \
+  Reply\
+  \
+  [by Hyvor Talk](https://talk.hyvor.com/?utm_source=embed&utm_medium=batsov.com)\
+  \
+  ## Trending Tags\
+  \
+  [Emacs](https://batsov.com/tags/emacs/) [Ruby](https://batsov.com/tags/ruby/) [Meta](https://batsov.com/tags/meta/) [OCaml](https://batsov.com/tags/ocaml/) [Linux](https://batsov.com/tags/linux/) [Tips](https://batsov.com/tags/tips/) [Vim](https://batsov.com/tags/vim/) [Clojure](https://batsov.com/tags/clojure/) [Jekyll](https://batsov.com/tags/jekyll/) [Learning OCaml](https://batsov.com/tags/learning-ocaml/)
+  --- End Content ---
+
+Zsh vs Bash: 7 Key Differences Tested [2026] (Winner?)
+  URL: https://tech-insider.org/zsh-vs-bash-2026/
+  The fundamental difference between zsh vs bash comes down to philosophy. Bash prioritizes portability, POSIX compliance, and predictability ...
+
+  --- Content ---
+  [Skip to content](https://tech-insider.org/zsh-vs-bash-2026/#main)
+  
+  ![](https://tech-insider.org/wp-content/uploads/2026/04/zsh-vs-bash-2026.webp)
+  
+  [Sofia Lindström](https://tech-insider.org/author/sofia-lindstrom/)
+  
+  Stockholm, Sweden
+  
+  April 5, 2026
+  
+  24 min read
+  
+  Choosing between Zsh and Bash is one of the most consequential decisions a developer makes when setting up their workflow. With macOS defaulting to Zsh since Catalina and Linux distributions sticking with Bash, the zsh vs bash debate has intensified in 2026 as both shells continue to evolve. This definitive comparison breaks down every aspect—from raw performance benchmarks and scripting capabilities to plugin ecosystems and real-world use cases—so you can make an informed choice for your terminal environment.
+  
+  Whether you are a DevOps engineer writing deployment scripts, a full-stack developer customizing your interactive prompt, or a system administrator managing hundreds of servers, the shell you choose directly impacts your daily productivity. In this 2026 comparison, we analyze startup times, memory footprint, POSIX compliance, tab completion, globbing, and the plugin ecosystems that define the modern zsh vs bash landscape.
+  
+  ## Zsh vs Bash 2026: Quick Overview
+  
+  Bash (Bourne Again Shell) has been the default shell on virtually every Linux distribution since its release in 1989. Created by Brian Fox for the GNU Project, Bash is a POSIX-compliant shell designed for both interactive use and scripting. Its ubiquity means that nearly every tutorial, deployment guide, and CI/CD pipeline in existence assumes Bash as the default interpreter. As of April 2026, Bash 5.2 remains the stable release, with patch level 5.2.37 addressing minor bug fixes and security hardening.
+  
+  Zsh (Z Shell), created by Paul Falstad in 1990, takes a different approach. While maintaining broad compatibility with Bash syntax, Zsh layers on powerful interactive features: context-aware tab completion, spelling correction, right-side prompts, extended globbing, and a plugin architecture that has spawned an entire ecosystem led by Oh My Zsh. Apple’s decision to make Zsh the default shell on macOS Catalina in 2019 catapulted it into the mainstream. Zsh 5.9.1, released in late 2025, is the current stable version with improvements to completion matching and prompt rendering.
+  
+  The fundamental difference between zsh vs bash comes down to philosophy. Bash prioritizes portability, POSIX compliance, and predictability across every Unix-like system. Zsh prioritizes the interactive developer experience, offering features that make daily terminal work faster and more pleasant. Both are excellent shells—but they excel in different contexts.
+  
+  ## Complete Specifications Comparison Table
+  
+  Before diving into benchmarks and real-world scenarios, here is a comprehensive side-by-side specifications table covering every major dimension of the zsh vs bash comparison in 2026.
+  
+  | Feature | Bash 5.2 | Zsh 5.9 |
+  | --- | --- | --- |
+  | Initial Release | 1989 | 1990 |
+  | Current Stable Version | 5.2.37 (2025) | 5.9.1 (2025) |
+  | License | GPLv3+ | MIT-like (custom) |
+  | POSIX Compliance | Full (with –posix flag) | Partial (emulate sh mode) |
+  | Default on macOS | No (deprecated since Catalina) | Yes (since macOS 10.15) |
+  | Default on Linux | Yes (most distributions) | No (available via package manager) |
+  | Array Indexing | 0-based | 1-based (default) |
+  | Extended Globbing | Requires shopt -s extglob | Enabled by default |
+  | Tab Completion | Basic (programmable via bash-completion) | Advanced menu-driven with context awareness |
+  | Spelling Correction | Not built-in | Built-in (setopt CORRECT) |
+  | Right-Side Prompt (RPROMPT) | Not supported | Native support |
+  | Syntax Highlighting | Not built-in | Via zsh-syntax-highlighting plugin |
+  | Plugin Framework | Bash-it (limited) | Oh My Zsh, Zinit, Prezto, Antigen |
+  | Shared History Across Sessions | Manual configuration required | Built-in (setopt SHARE\_HISTORY) |
+  | Floating-Point Arithmetic | Not supported (integer only) | Native support |
+  | Recursive Path Expansion | Not supported | Supported (cd /u/l/b → /usr/local/bin) |
+  | Bare Startup Time | <50 ms | <100 ms |
+  | Memory Usage (bare) | ~1.5 MB | ~3.2 MB |
+  | Community Size (GitHub stars) | ~11,000 (bash mirror) | ~4,800 (zsh mirror), 175,000+ (Oh My Zsh) |
+  
+  ## Performance Benchmarks: Startup Time, Execution Speed, and Memory
+  
+  Performance is where the zsh vs bash debate gets quantifiable. We compiled benchmark data from three independent sources—Phoronix Test Suite shell comparisons (2025), the Shell Benchmark Project on GitHub, and real-world measurements published by developers on Hacker News and dev.to throughout late 2025 and early 2026—to present a fair picture of how these shells perform under different workloads.
+  
+  ### Startup Time Benchmarks
+  
+  Startup time matters most for interactive use and scripts that spawn subshells. Bash launches in under 50 milliseconds with a bare configuration, making it the fastest mainstream shell to initialize. Zsh without any framework loads in approximately 80–100 milliseconds—still fast, but roughly twice as slow as Bash. The real performance penalty hits when you add frameworks: Oh My Zsh with a typical plugin configuration (git, docker, kubectl, syntax highlighting, autosuggestions) pushes startup time to 500–1,000 milliseconds. That is a noticeable delay every time you open a new terminal tab.
+  
+  The Zsh community has responded with lighter alternatives. Zinit (formerly zplugin), which uses turbo mode to defer plugin loading, brings framework-enhanced Zsh startup down to 100–200 milliseconds. Sheldon and Antigen offer similar deferred-loading approaches. ThePrimeagen, the popular developer and content creator known for his Neovim advocacy, has discussed shell performance in multiple livestreams, noting that he switched from Oh My Zsh to a minimal Zsh configuration because “waiting a full second for your terminal to load is insane when you open 50 terminals a day.” His recommendation: either use Bash or strip Zsh down to only the plugins you actually need.
+  
+  | Configuration | Avg Startup Time | Cold Start (first launch) |
+  | --- | --- | --- |
+  | Bash (bare) | 38 ms | 52 ms |
+  | Bash + bash-completion | 85 ms | 120 ms |
+  | Zsh (bare) | 82 ms | 110 ms |
+  | Zsh + Zinit (turbo) | 145 ms | 210 ms |
+  | Zsh + Oh My Zsh (10 plugins) | 620 ms | 890 ms |
+  | Zsh + Oh My Zsh (20+ plugins) | 1,050 ms | 1,400 ms |
+  | Fish 4.5 (bare) | 75 ms | 95 ms |
+  
+  ### Script Execution Benchmarks
+  
+  For pure scripting performance, Bash and Zsh are remarkably close. The Shell Benchmark Project tested both shells across common operations—loop iterations, string manipulation, file processing, and arithmetic—on an AMD Ryzen 9 7950X running Ubuntu 24.04. Bash completed a 10-million-iteration integer loop in 14.2 seconds compared to Zsh’s 15.8 seconds. String concatenation in a 100,000-iteration loop took Bash 8.7 seconds versus Zsh’s 9.1 seconds. File-by-file processing of 50,000 small text files showed Bash at 6.3 seconds and Zsh at 6.9 seconds. The difference is typically under 10%, which is negligible for most real-world scripts.
+  
+  Where Bash pulls ahead significantly is in subshell spawning. Because Bash’s process initialization is lighter, scripts that fork many subshells—common in CI/CD pipelines and deployment automation—run measurably faster. A benchmark spawning 10,000 subshells showed Bash completing in 4.1 seconds versus Zsh’s 7.3 seconds. This is why virtually every Dockerfile and GitHub Actions workflow uses `#!/bin/bash` rather than `#!/bin/zsh`.
+  
+  Memory usage follows a similar pattern. A bare Bash process consumes approximately 1.5 MB of RAM, while a bare Zsh process uses around 3.2 MB. With Oh My Zsh loaded, Zsh memory consumption jumps to 15–25 MB depending on plugin count. In a Docker container where you might run dozens of shell processes, this difference compounds quickly.
+  
+  ## Interactive Features: Where Zsh Dominates
+  
+  If performance benchmarks favor Bash, the interactive experience is where Zsh pulls decisively ahead. The gap in daily usability between the two shells is substantial, and it is the primary reason millions of developers choose Zsh despite its slower startup time. As Fireship noted in his popular “Zsh in 100 Seconds” video, Zsh transforms the terminal from a “boring black box into a productive development environment” thanks to its extensive customization options and intelligent defaults.
+  
+  **Tab Completion:** Zsh’s completion system is its crown jewel. While Bash offers programmable completion through the bash-completion package, Zsh’s built-in completion engine is context-aware and menu-driven. Type `git ch` and press Tab in Zsh, and you get a navigable menu showing `checkout`, `cherry`, `cherry-pick` with descriptions. Zsh can complete command flags, file paths, hostnames, process IDs, package names, and even Kubernetes resource names with the right plugins. The completion system uses a sophisticated matching algorithm that handles case-insensitive matching, partial-word matching, and fuzzy matching out of the box.
+  
+  **Spelling Correction:** Enable `setopt CORRECT` in Zsh, and it will suggest corrections for mistyped commands. Type `gti status` and Zsh asks “zsh: correct ‘gti’ to ‘git’?” This feature alone saves countless keystrokes over the course of a day, particularly when working with long command names or unfamiliar tools.
+  
+  **Right-Side Prompt (RPROMPT):** Zsh natively supports a right-aligned prompt that can display information like the current time, git branch status, or execution duration without cluttering your main prompt. This is a feature Bash simply does not have, and it is one of the most visible differences when comparing terminal setups.
+  
+  **Shared History:** With `setopt SHARE_HISTORY`, Zsh shares command history across all open terminal sessions in real time. In Bash, each terminal session maintains its own history buffer, and history is only written to `.bash_history` when the session ends. This means a command you run in one Bash terminal is not available via up-arrow in another terminal until you close the first one. Zsh’s shared history is a significant productivity improvement for developers who routinely work with multiple terminal tabs.
+  
+  **Recursive Path Expansion:** Type `cd /u/l/b` in Zsh and press Tab—it expands to `cd /usr/local/bin`. This recursive path shorthand does not exist in Bash and dramatically speeds up filesystem navigation for developers who know their directory structures.
+  
+  ## The Oh My Zsh Ecosystem: 175,000 Stars and Growing
+  
+  No discussion of zsh vs bash is complete without examining Oh My Zsh, the community-driven framework that has become synonymous with the Zsh experience. With over 175,000 GitHub stars as of April 2026, Oh My Zsh is one of the most popular open-source projects in existence—more starred than React Native, Electron, or Vue.js. It ships with over 300 plugins, 150+ themes, and an auto-update mechanism that keeps the framework current.
+  
+  The most popular Oh My Zsh plugins in 2026 include `git` (aliases and status indicators), `docker` (completion for Docker CLI), `kubectl` (Kubernetes command completion), `z` (directory jumping based on frequency), `zsh-autosuggestions` (Fish-like inline suggestions), and `zsh-syntax-highlighting` (real-time command coloring). These plugins transform the terminal into an intelligent workspace where common operations require fewer keystrokes and provide richer feedback.
+  
+  However, Oh My Zsh’s convenience comes at a cost. Loading 15–20 plugins adds 500+ milliseconds to every shell startup. This has driven the adoption of lighter plugin managers. Zinit (14,000+ GitHub stars) uses a “turbo mode” that defers plugin loading until after the prompt appears, reducing perceived startup time to under 200 milliseconds. Prezto, another popular framework, takes a more curated approach with fewer but more optimized modules. Sheldon and Antigen offer additional alternatives for developers who want plugin management without the overhead.
+  
+  Bash’s equivalent framework, Bash-it, has approximately 14,000 GitHub stars—a fraction of Oh My Zsh’s community. Bash-it provides aliases, completions, and themes, but its ecosystem is significantly smaller and less actively maintained. This disparity in community investment is one of the strongest arguments for choosing Zsh for interactive use: the sheer volume of available plugins, themes, and configurations means that whatever workflow optimization you need, someone has already built it for Zsh.
+  
+  MKBHD, while primarily known for tech hardware reviews, has showcased his terminal setup in multiple studio tour videos, consistently featuring a customized Zsh environment with the Powerlevel10k theme. This reflects a broader trend: Zsh has become the default for developer-focused content creators who use the terminal daily. The aesthetic customization possibilities—Nerd Fonts, Powerlevel10k’s instant prompt, color schemes that match IDE themes—make Zsh the natural choice for developers who spend hours looking at their terminal.
+  
+  ## Scripting and POSIX Compliance: Where Bash Wins
+  
+  While Zsh excels interactively, Bash remains the undisputed champion for scripting, and the reason is straightforward: POSIX compliance and universal availability. Every Linux distribution, every Docker base image, every CI/CD runner, and every cloud provider’s shell environment ships with Bash. When you write a script with `#!/bin/bash`, you can be confident it will execute identically on Ubuntu, CentOS, Alpine (with bash installed), Amazon Linux, and virtually any other Unix-like system.
+  
+  Zsh’s scripting capabilities are technically powerful—in many ways more powerful than Bash’s—but they come with a critical portability problem. Zsh is not installed by default on most Linux servers, Docker containers, or CI environments. Scripts written with Zsh-specific syntax (1-based arrays, extended globbing patterns, Zsh parameter expansion flags) will fail on systems that only have Bash. This is why the overwhelming majority of open-source projects, infrastructure-as-code repositories, and DevOps toolchains use Bash for their shell scripts.
+  
+  The differences between Bash and Zsh scripting are subtle but important. Array indexing is the most commonly cited divergence: Bash arrays are 0-based (`${array[0]}` is the first element), while Zsh arrays are 1-based by default (`${array[1]}` is the first element). Word splitting also differs: in Bash, unquoted variable expansion undergoes word splitting, while Zsh does not split by default. This means a script that works perfectly in Bash may behave differently in Zsh without modification.
+  
+  Zsh does offer an `emulate sh` mode that increases POSIX compatibility, but it disables many of the features that make Zsh attractive in the first place. In practice, developers who need portable scripts write them in Bash (or pure POSIX sh), regardless of which shell they use interactively. This is the recommended approach in the [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html), which mandates Bash for all shell scripts at Google.
+  
+  ## Developer Adoption and Industry Trends in 2026
+  
+  The 2025 Stack Overflow Developer Survey reported that 49% of developers use Bash/shell scripting regularly, a 15-percentage-point increase year over year that reflects growing DevOps adoption and infrastructure-as-code practices. While the survey does not separate Bash from Zsh usage, complementary data from the 2025 JetBrains Developer Ecosystem Survey found that among developers who customize their shell, 62% use Zsh as their interactive shell, 31% use Bash, and 7% use Fish or other alternatives.
+  
+  The macOS effect is significant. With Apple shipping Zsh as the default since 2019, an entire generation of developers—particularly those entering the industry through coding bootcamps and university programs that use Macs—have grown up with Zsh as their first shell. The 2025 GitHub Octosurvey found that 58% of developers primarily use macOS for development, which correlates directly with Zsh’s rising adoption numbers.
+  
+  In enterprise environments, the picture is more nuanced. Infrastructure teams, SRE departments, and DevOps engineers overwhelmingly use Bash for automation scripts, Ansible playbooks, Terraform provisioners, and Kubernetes init containers. A 2025 CNCF survey of platform engineering teams found that 94% of CI/CD pipelines use Bash as the script interpreter. Zsh usage in production infrastructure is essentially zero—its role is firmly in the developer workstation domain.
+  
+  The Docker ecosystem further reinforces Bash’s dominance in automation. Alpine Linux, the most popular Docker base image (with over 1 billion pulls on Docker Hub), ships with `ash` (a lightweight POSIX shell) by default and offers Bash as an installable package. Most Dockerfiles that need a shell explicitly install Bash. Zsh is almost never installed in container images due to its larger footprint and the lack of need for interactive features in automated environments.
+  
+  ## Configuration and Customization Deep Dive
+  
+  Both shells are highly configurable, but they approach configuration differently. Understanding these configuration files and options is essential for making the most of whichever shell you choose in the zsh vs bash comparison.
+  
+  Bash reads several configuration files in a specific order: `/etc/profile` (system-wide login), `~/.bash_profile` or `~/.bash_login` or `~/.profile` (user login), `~/.bashrc` (interactive non-login), and `~/.bash_logout` (on exit). The distinction between login and non-login shells is a common source of confusion—many developers have spent hours debugging why their aliases or PATH modifications do not work, only to discover they edited the wrong file.
+  
+  Zsh simplifies this with a more intuitive configuration hierarchy: `~/.zshenv` (always sourced), `~/.zprofile` (login shells), `~/.zshrc` (interactive shells), and `~/.zlogin` (after .zshrc for login shells). In practice, most Zsh users put everything in `~/.zshrc` and rarely touch the other files. Oh My Zsh further simplifies configuration by providing a single `~/.zshrc` template where users enable plugins and set themes by modifying simple variables.
+  
+  Prompt customization illustrates the gap between the two shells. A basic Bash prompt with git branch information requires manually writing PS1 with escape sequences and calling `git` commands in a `PROMPT_COMMAND` function. In Zsh, frameworks like Powerlevel10k provide a guided setup wizard that configures a rich, informative prompt in minutes—complete with git status, execution time, background job indicators, Python virtualenv names, Kubernetes context, and more. Powerlevel10k’s “instant prompt” feature even renders the prompt immediately while plugins load in the background, effectively eliminating perceived startup delay.
+  
+  ## Zsh vs Bash Pricing and Cost Comparison
+  
+  Both Bash and Zsh are free and open-source software, so there is no direct monetary cost to using either shell. However, there are indirect costs worth considering for teams and organizations making a standardized shell choice.
+  
+  | Cost Factor | Bash | Zsh |
+  | --- | --- | --- |
+  | License Cost | Free (GPLv3) | Free (MIT-like) |
+  | Installation Cost (Linux) | Pre-installed | Package install required |
+  | Installation Cost (macOS) | Available via Homebrew | Pre-installed |
+  | Docker Image Size Impact | ~3 MB (already included) | ~8–12 MB additional |
+  | CI/CD Setup Time | Zero (default everywhere) | Additional setup step needed |
+  | Team Onboarding (standardized config) | Low (minimal configuration) | Medium (framework + plugin choices) |
+  | Maintenance Overhead | Minimal | Plugin updates, framework updates |
+  | Productivity ROI (interactive use) | Baseline | High (reduced keystrokes, better completion) |
+  
+  The hidden cost of Zsh is complexity. Teams that standardize on Zsh must decide on a framework (Oh My Zsh vs Zinit vs Prezto), manage plugin configurations across developer machines, and troubleshoot framework-specific issues. Bash’s simplicity means less configuration drift between team members and fewer “works on my machine” shell-related issues. For organizations managing developer workstations through MDM or dotfile repositories, the operational overhead of standardized Zsh configurations is real but manageable.
+  
+  ## 5 Real-World Use Cases: When to Choose Each Shell
+  
+  The best way to settle the zsh vs bash debate is to examine concrete scenarios where one shell clearly outperforms the other. Here are five real-world use cases that illustrate when each shell is the right choice.
+  
+  ### Use Case 1: Full-Stack Developer on macOS
+  
+  **Winner: Zsh.** You are building a Next.js application, managing Docker containers, and deploying to Kubernetes. Your terminal is open 8+ hours a day. Zsh with Powerlevel10k gives you instant git branch visibility, kubectl context in your prompt, node version display, and Docker status indicators. The zsh-autosuggestions plugin saves you from retyping long commands. Tab completion for `docker compose` subcommands and `kubectl` resources eliminates the need to constantly reference documentation. The productivity gains from Zsh’s interactive features far outweigh the slightly slower startup time.
+  
+  ### Use Case 2: DevOps Engineer Writing CI/CD Pipelines
+  
+  **Winner: Bash.** You are writing GitHub Actions workflows, GitLab CI scripts, and Terraform provisioners. These scripts run in ephemeral containers where Zsh is not installed. POSIX compliance matters because your scripts must work on Ubuntu runners, Alpine containers, and Amazon Linux EC2 instances. Bash’s faster subshell spawning and lower memory footprint directly impact pipeline execution times when scripts fork hundreds of processes. Every shell script you write should use `#!/bin/bash` with `set -euo pipefail` for reliability.
+  
+  ### Use Case 3: Data Scientist Processing Log Files
+  
+  **Winner: Bash.** You are writing one-off scripts to parse CSV files, grep through log directories, and pipe data between `awk`, `sed`, and `sort`. These scripts are often shared with colleagues who use different operating systems. Bash’s universal availability means your coworker on a fresh Ubuntu server can run your script without installing anything. Zsh’s extended globbing (`**/*.log(mh-1)` to match log files modified in the last hour) is powerful, but your team will not learn Zsh-specific syntax for throwaway data processing scripts.
+  
+  ### Use Case 4: Security Engineer Managing Multiple SSH Sessions
+  
+  **Winner: Zsh.** You SSH into dozens of servers daily and need to distinguish between environments quickly. Zsh’s RPROMPT can display the hostname and environment (production/staging/development) on the right side of every line without cluttering your command space. Shared history across terminal sessions means a complex `iptables` command you ran in one tab is immediately accessible in another. The spelling correction feature catches potentially dangerous typos before execution—critical when a mistyped `rm` command could have catastrophic consequences.
+  
+  ### Use Case 5: Embedded Systems Developer on Resource-Constrained Hardware
+  
+  **Winner: Bash (or ash/dash).** You are working on IoT devices with 64 MB of RAM. Bash’s 1.5 MB memory footprint per process is already heavier than you would like; Zsh’s 3.2 MB (bare) to 20+ MB (with framework) is out of the question. Many embedded systems use BusyBox ash, which is even lighter than Bash. In this context, shell overhead directly impacts the resources available for your application. Every megabyte matters.
+  
+  ## Migration Guide: Switching Between Bash and Zsh
+  
+  Whether you are moving from Bash to Zsh or considering the reverse, migration is straightforward if you understand the key differences. Here is a step-by-step guide for both directions.
+  
+  ### Migrating from Bash to Zsh
+  
+  **Step 1: Install Zsh.** On Ubuntu/Debian: `sudo apt install zsh`. On Fedora/RHEL: `sudo dnf install zsh`. On macOS, it is already installed.
+  
+  **Step 2: Set Zsh as your default shell.** Run `chsh -s $(which zsh)` and log out and back in. Verify with `echo $SHELL`.
+  
+  **Step 3: Transfer your configuration.** Most of your `.bashrc` content (aliases, environment variables, PATH modifications) can be copied directly into `.zshrc`. The syntax for aliases, exports, and functions is identical between Bash and Zsh.
+  
+  **Step 4: Install a framework (optional).** For Oh My Zsh: `sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"`. For a lighter setup, use Zinit or configure Zsh manually.
+  
+  **Step 5: Address compatibility issues.** Review any custom Bash functions for 0-based array indexing (change to 1-based or add `setopt KSH_ARRAYS`), check for word-splitting-dependent code, and test any scripts that use Bash-specific syntax like `[[ ]]` with process substitution.
+  
+  ```
+  # Essential .zshrc additions after migrating from Bash
+  # Enable Bash-like word splitting (if needed for compatibility)
+  setopt SH_WORD_SPLIT
+  
+  # Use 0-based arrays like Bash (if you prefer)
+  setopt KSH_ARRAYS
+  
+  # Enable spelling correction
+  setopt CORRECT
+  
+  # Share history across sessions
+  setopt SHARE_HISTORY
+  HISTSIZE=50000
+  SAVEHIST=50000
+  HISTFILE=~/.zsh_history
+  
+  # Enable extended globbing
+  setopt EXTENDED_GLOB
+  
+  # Source your existing aliases
+  [[ -f ~/.aliases ]] && source ~/.aliases
+  ```
+  
+  ### Migrating from Zsh to Bash
+  
+  **Step 1: Set Bash as default.** Run `chsh -s /bin/bash`. On macOS, ignore the deprecation warning—Bash 5.2 is available via Homebrew (`brew install bash`) and works perfectly.
+  
+  **Step 2: Transfer aliases and environment variables.** Copy alias definitions, export statements, and functions from `.zshrc` to `.bashrc`. Remove any Zsh-specific syntax like `setopt` commands.
+  
+  **Step 3: Install bash-completion.** Run `sudo apt install bash-completion` on Debian/Ubuntu to get enhanced tab completion. It is not as powerful as Zsh’s, but it covers most common tools.
+  
+  **Step 4: Set up a prompt.** Use Starship (`curl -sS https://starship.rs/install.sh | sh`), a cross-shell prompt that works identically in both Bash and Zsh. It provides git information, language versions, and execution time—bridging much of the visual gap between Bash and a configured Zsh prompt.
+  
+  **Step 5: Replace Zsh-specific features.** Use `fzf` for fuzzy history search (replaces Zsh’s history widgets), `zoxide` for smart directory jumping (replaces the z plugin), and Starship for prompt customization. These cross-shell tools mean you do not lose much functionality when switching to Bash.
+  
+  ## Expert Opinions: What Top Developers Recommend
+  
+  The zsh vs bash debate has been addressed by some of the most influential voices in developer content. Their perspectives reflect different priorities and workflows, providing valuable context for your own decision.
+  
+  **ThePrimeagen**, a former Netflix senior engineer and one of the most-watched developer streamers on YouTube, has been vocal about shell performance. In his setup videos and live coding sessions, he emphasizes that shell startup time compounds throughout the day. He uses a minimal Zsh configuration without Oh My Zsh, relying on just zsh-autosuggestions and a custom prompt. His advice: “Your shell should load faster than you can blink. If it does not, you have too many plugins.” He also maintains that all automation scripts should be written in Bash for portability.
+  
+  **Fireship**, the creator behind one of YouTube’s fastest-growing programming channels with over 3 million subscribers, has covered both shells in his popular “100 Seconds” series. His take is pragmatic: Zsh is the better interactive shell for most developers in 2026, primarily because of Oh My Zsh’s ecosystem and macOS’s default. He recommends that developers new to the terminal start with Zsh and Oh My Zsh because the out-of-box experience is dramatically better than Bash’s, while emphasizing that learning Bash scripting is still essential for automation and infrastructure work.
+  
+  **MKBHD** (Marques Brownlee) has featured Zsh with Powerlevel10k in his studio setup tours, reflecting the broader trend of Zsh adoption among tech professionals who value a polished, visually appealing terminal. While he is not primarily a developer content creator, his influence in the broader tech community has helped normalize the idea that terminal customization—once seen as niche—is a mainstream productivity practice.
+  
+  The consensus among experienced developers in 2026 is clear: use Zsh interactively, script in Bash. This “best of both worlds” approach leverages Zsh’s superior daily experience while ensuring scripts remain portable. As the [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html) states: “Executables must start with `#!/bin/bash`.” The guide does not mention Zsh at all—a telling indicator of Bash’s dominance in professional scripting contexts.
+  
+  ## Pros and Cons Summary
+  
+  Here is a comprehensive breakdown of the advantages and disadvantages of each shell in the zsh vs bash comparison.
+  
+  **Bash Pros:**
+  
+  - Universal availability on all Linux distributions, Docker images, and CI/CD environments
+  - Full POSIX compliance ensures script portability across systems
+  - Fastest startup time of any full-featured shell (under 50 ms bare)
+  - Lowest memory footprint (~1.5 MB per process)
+  - Decades of documentation, tutorials, and community knowledge
+  - Industry standard for automation scripts and infrastructure code
+  - Simple, predictable behavior with minimal configuration required
+  
+  **Bash Cons:**
+  
+  - Basic tab completion compared to Zsh (even with bash-completion)
+  - No built-in spelling correction or auto-suggestions
+  - No right-side prompt support
+  - Limited plugin ecosystem compared to Zsh
+  - Prompt customization requires manual escape sequence work
+  - No shared history across sessions without manual workarounds
+  - Integer-only arithmetic (no floating-point support)
+  
+  **Zsh Pros:**
+  
+  - Superior tab completion with context-aware menu selection
+  - Built-in spelling correction saves keystrokes and prevents errors
+  - Oh My Zsh ecosystem with 300+ plugins and 150+ themes
+  - Right-side prompt (RPROMPT) for additional context display
+  - Shared history across all terminal sessions
+  - Recursive path expansion for faster navigation
+  - Native floating-point arithmetic
+  - Default on macOS—zero setup for Mac users
+  - Extended globbing enabled by default
+  
+  **Zsh Cons:**
+  
+  - Slower startup time, especially with Oh My Zsh (500–1,000 ms)
+  - Higher memory usage than Bash (3.2 MB bare, 15–25 MB with framework)
+  - Not installed by default on most Linux servers and CI environments
+  - Incomplete POSIX compliance creates portability issues for scripts
+  - 1-based array indexing is a common source of bugs when mixing with Bash scripts
+  - Framework maintenance (updates, plugin conflicts) adds overhead
+  - Configuration complexity can lead to “works on my machine” issues in teams
+  
+  ## Use Case Recommendations: Which Shell Should You Choose?
+  
+  Based on our comprehensive analysis of performance, features, ecosystem, and real-world usage patterns, here are our definitive recommendations for different user profiles in the zsh vs bash comparison.
+  
+  | User Profile | Recommended Shell | Key Reason |
+  | --- | --- | --- |
+  | Full-stack developer on macOS | Zsh with Powerlevel10k + Zinit | Best interactive experience, already default on Mac |
+  | DevOps/SRE engineer | Zsh interactive + Bash scripts | Zsh for daily work, Bash for portable automation |
+  | System administrator (Linux servers) | Bash | Universal availability, POSIX compliance, low overhead |
+  | Backend developer (Docker-heavy) | Zsh interactive + Bash in containers | Zsh locally, Bash in Dockerfiles and CI pipelines |
+  | Data engineer/scientist | Zsh with conda/pyenv plugins | Plugin integration with Python tooling |
+  | Embedded systems developer | Bash (or ash/dash) | Minimal memory footprint, POSIX compliance |
+  | Security professional | Zsh | RPROMPT for environment awareness, spelling correction |
+  | Complete beginner | Zsh with Oh My Zsh | Best out-of-box experience, forgiving with corrections |
+  | Open-source contributor | Bash for scripts, Zsh interactive | Scripts must be portable; daily work benefits from Zsh |
+  | Platform engineering team | Bash (standardized) | Consistency across team, CI/CD, and production |
+  
+  ## Zsh vs Bash for Docker and Kubernetes in 2026
+  
+  Container environments deserve special attention in the zsh vs bash comparison because they represent one of the fastest-growing contexts for shell usage. According to the 2025 CNCF Annual Survey, 96% of organizations are either using or evaluating Kubernetes, and container-based development is now the default for most engineering teams.
+  
+  In Dockerfiles, Bash is the only practical choice. The `RUN` instruction in a Dockerfile executes commands through `/bin/sh` by default, and when shell features beyond POSIX are needed, developers switch to `SHELL ["/bin/bash", "-c"]`. Installing Zsh in a Docker image adds 8–12 MB and provides no benefit since Docker commands are non-interactive. The [Docker best practices documentation](https://docs.docker.com/build/building/best-practices/) recommends minimizing image size, which means avoiding unnecessary packages like Zsh.
+  
+  For Kubernetes management on a developer workstation, however, Zsh provides significant advantages. The `kubectl` plugin for Oh My Zsh offers comprehensive completion for every kubectl subcommand, resource type, and namespace. The `kubectx` and `kubens` tools integrate seamlessly with Zsh’s completion system. Displaying the current Kubernetes context and namespace in the prompt (a Powerlevel10k feature) prevents the common and potentially catastrophic mistake of running commands against the wrong cluster.
+  
+  Helm chart development, Terraform modules, and Ansible playbooks all embed shell scripts that must be Bash-compatible. When writing the `command` or `script` sections of a Kubernetes Job, Helm hook, or Terraform `local-exec` provisioner, always use Bash syntax. The target environment will almost certainly be a minimal container image with only `/bin/sh` or `/bin/bash` available.
+  
+  ## Security Considerations
+  
+  Security is an often-overlooked dimension of the zsh vs bash comparison, but it matters for teams that take terminal hardening seriously. Both shells have had security vulnerabilities over the years, with Bash’s “Shellshock” (CVE-2014-6271) being the most notorious shell-related vulnerability in computing history. Shellshock affected Bash’s function export feature and allowed remote code execution through crafted environment variables. The vulnerability was patched in 2014, and subsequent Bash releases have been audited more thoroughly as a result.
+  
+  Zsh has had fewer high-profile vulnerabilities, partly because it is less commonly used in server-facing contexts where attack surface matters. However, its plugin ecosystem introduces a different security consideration: Oh My Zsh plugins are community-contributed code that executes with your user permissions every time you open a terminal. A compromised or malicious plugin could exfiltrate environment variables (including API keys and tokens), modify PATH to intercept commands, or establish persistent backdoors. The Oh My Zsh project reviews contributions, but the sheer volume of plugins makes comprehensive security auditing challenging.
+  
+  For security-conscious environments, the recommendation is to use Bash on servers (minimal attack surface, well-audited, POSIX predictability) and Zsh on developer workstations with a carefully curated set of plugins from trusted sources. Avoid installing plugins from unknown GitHub repositories, and periodically audit your Zsh configuration for unnecessary or outdated plugins.
+  
+  ## Related Coverage
+  
+  For more in-depth comparisons and tutorials related to developer tooling, check out these articles from our archives:
+  
+  - [Neovim vs Vim 2026: The Definitive Text Editor Comparison](https://tech-insider.org/en/neovim-vs-vim-2026/) — Another critical terminal tool choice for developers who live in the command line.
+  - [How to Master Git: Complete Tutorial from Beginner to Advanced (2026)](https://tech-insider.org/en/git-tutorial-complete-beginner-advanced-2026/) — Pair your shell choice with comprehensive Git mastery.
+  - [How to Get Started with Docker: Complete Beginner Tutorial (2026)](https://tech-insider.org/en/docker-tutorial-beginners-containerization-2026/) — Learn how Bash powers Docker containers and CI/CD pipelines.
+  - [Bun vs Node.js 2026: The Definitive JavaScript Runtime Comparison](https://tech-insider.org/en/bun-vs-nodejs-2026/) — Another popular developer tooling comparison for JavaScript engineers.
+  - [How to Build a CI/CD Pipeline with GitHub Actions: Complete Tutorial (2026)](https://tech-insider.org/en/github-actions-ci-cd-pipeline-tutorial-2026/) — See Bash scripting in action within modern CI/CD workflows.
+  - [AI Coding Tools in 2026: How Generative Code Is Transforming Software Development](https://tech-insider.org/en/ai-coding-tools-guide/) — Our pillar guide to the developer tools ecosystem.
+  
+  ## The Definitive Verdict: Zsh vs Bash in 2026
+  
+  After examining performance benchmarks, interactive features, plugin ecosystems, scripting capabilities, security considerations, and real-world use cases, our verdict on the zsh vs bash debate in 2026 is nuanced but clear: **use both**.
+  
+  Zsh is the superior interactive shell. Its tab completion, spelling correction, shared history, recursive path expansion, and the Oh My Zsh ecosystem provide a dramatically better daily experience than Bash. If you are a developer who spends hours in the terminal, Zsh with Zinit or a minimal Oh My Zsh configuration will make you measurably more productive. The macOS default status and the 175,000-star Oh My Zsh project ensure that Zsh’s ecosystem will continue to grow.
+  
+  Bash is the superior scripting shell. Its universal availability, full POSIX compliance, faster startup, lower memory footprint, and status as the industry standard for automation make it irreplaceable for infrastructure code, CI/CD pipelines, Docker containers, and any script that needs to run on systems you do not fully control. Writing scripts in Zsh is a portability risk that professionals should avoid.
+  
+  The optimal setup in 2026 is Zsh as your interactive login shell with a performance-optimized configuration (Zinit + Powerlevel10k + curated plugins), combined with Bash for every `#!/bin/bash` script you write. This gives you the best interactive experience without sacrificing script portability. Install cross-shell tools like Starship, fzf, and zoxide that work identically in both environments, and you will be productive regardless of which shell you happen to be in.
+  
+  If you must pick exactly one: choose Zsh if you are primarily a developer on macOS or Linux who values daily productivity. Choose Bash if you are primarily a system administrator, DevOps engineer, or embedded developer who values portability and minimal overhead above all else. But in 2026, most professionals will benefit from mastering both.
+  
+  ## FAQ: Zsh vs Bash Common Questions
+  
+  ### Is Zsh faster than Bash?
+  
+  No. Bash is faster in both startup time and script execution. Bare Bash starts in under 50 ms compared to Zsh’s 80–100 ms. With Oh My Zsh, Zsh startup can exceed 1,000 ms. For script execution, Bash is approximately 5–10% faster in most benchmarks due to its lighter process initialization. However, these performance differences are negligible for interactive use—both shells feel instantaneous when typing commands.
+  
+  ### Can I use Bash scripts in Zsh?
+  
+  Most Bash scripts will run in Zsh without modification, but there are important exceptions. Array indexing (0-based in Bash, 1-based in Zsh), word splitting behavior, and some parameter expansion features differ between the shells. Scripts with `#!/bin/bash` shebang lines will always use Bash regardless of your interactive shell, so this is rarely an issue in practice. For maximum compatibility, always include the shebang line and avoid running scripts with `source` or `.` in Zsh if they were written for Bash.
+  
+  ### Should I switch from Bash to Zsh in 2026?
+  
+  If you are on macOS, you are already using Zsh by default. If you are on Linux and primarily use the terminal for interactive work (running commands, navigating files, managing git repositories), switching to Zsh with Oh My Zsh or Zinit will improve your daily experience significantly. However, continue writing all your automation scripts in Bash. The switch takes about 30 minutes and is easily reversible.
+  
+  ### What about Fish shell as an alternative?
+  
+  Fish 4.5, released in February 2026, offers an excellent out-of-box interactive experience with syntax highlighting, auto-suggestions, and web-based configuration—all without plugins. However, Fish uses a non-POSIX syntax that is incompatible with both Bash and Zsh scripts. Its adoption is around 7% among developers who customize their shell, compared to Zsh’s 62% and Bash’s 31%. Fish is a great choice if you want the best interactive experience with zero configuration, but the smaller community and non-standard syntax are trade-offs to consider.
+  
+  ### Does Zsh work in Docker containers?
+  
+  Zsh can be installed in Docker containers but is not recommended. It adds 8–12 MB to image size, provides no benefit for non-interactive container commands, and is not included in any standard base image. Use `/bin/sh` or `/bin/bash` in Dockerfiles. Zsh is designed for developer workstations, not production containers.
+  
+  ### How do I make Zsh start faster?
+  
+  Replace Oh My Zsh with Zinit and use its turbo mode to defer plugin loading. Remove plugins you do not actively use (most developers only need 5–8 plugins). Use Powerlevel10k’s instant prompt feature. Compile your .zshrc with `zcompile`. Profile your startup time with `zprof` (add `zmodload zsh/zprof` to the top of your .zshrc and run `zprof` after loading). A well-optimized Zsh configuration should start in under 200 ms.
+  
+  ### Which shell do most professional developers use in 2026?
+  
+  According to the 2025 JetBrains Developer Ecosystem Survey, 62% of developers who customize their shell use Zsh interactively. Bash remains dominant for scripting (used in 94% of CI/CD pipelines per the 2025 CNCF survey). The trend is clear: Zsh for interactive use, Bash for automation. Most senior developers are comfortable with both.
+  
+  ### Is Zsh more secure than Bash?
+  
+  Neither shell is inherently more secure. Bash had the major Shellshock vulnerability (CVE-2014-6271) in 2014, which has been fully patched. Zsh has had fewer vulnerabilities but is also used in fewer attack-surface-relevant contexts. The greater security risk with Zsh comes from its plugin ecosystem—community-contributed plugins execute with your user permissions and could potentially be compromised. Use plugins from trusted sources and audit your configuration regularly.
+  
+  ![Sofia Lindström](https://tech-insider.org/wp-content/uploads/2026/03/ti-author-sofia.jpg)
+  
+  #### [Sofia Lindström](https://tech-insider.org/author/sofia-lindstrom/)
+  
+  Editor-in-Chief
+  
+  Sofia Lindström is the Editor-in-Chief at Tech Insider, where she leads editorial strategy and oversees coverage across AI, cybersecurity, and enterprise technology. With over a decade in Swedish tech journalism, she previously served as technology editor at Dagens Industri and covered the Nordic startup ecosystem for Breakit. Sofia holds an MSc in Media Technology from KTH Royal Institute of Technology and is a frequent speaker at Web Summit and Slush. She is passionate about making complex technology accessible to business leaders.
+  
+  [View all articles](https://tech-insider.org/author/sofia-lindstrom/)
+  
+  ![Tech Insider](https://tech-insider.org/wp-content/uploads/2026/03/ti-eye-logo-150x150.png)Tech
+  
+  Insider
+  
+  Tech Insider delivers in-depth coverage of the technologies shaping our future — AI, cybersecurity, cloud computing, hardware, and emerging trends.
+  
+  Kungsgatan 44, 111 35 Stockholm, Sweden
+  
+  editorial@tech-insider.org
+  
+  #### Company
+  
+  - [About Us](https://tech-insider.org/about/)
+  - [Terms of Service](https://tech-insider.org/terms/)
+  - [Privacy Policy](https://tech-insider.org/privacy-policy/)
+  - [Contact](https://tech-insider.org/contact/)
+  
+  #### Explore
+  
+  - [AI & Machine Learning](https://tech-insider.org/category/ai-machine-learning/)
+  - [Cloud Computing](https://tech-insider.org/category/cloud-computing/)
+  - [Cybersecurity](https://tech-insider.org/category/cybersecurity/)
+  - [Gaming](https://tech-insider.org/category/gaming/)
+  - [Hardware](https://tech-insider.org/category/hardware/)
+  
+  #### Categories
+  
+  - [Mobile](https://tech-insider.org/category/mobile/)
+  - [Software](https://tech-insider.org/category/software/)
+  - [Startups](https://tech-insider.org/category/startups/)
+  
+  © 2026 Tech Insider Media AB.
+  Kungsgatan 44, Stockholm, Sweden.
+  
+  
+  [EN](https://tech-insider.org/) [SV](https://tech-insider.org/sv/) [FR](https://tech-insider.org/fr/) [FI](https://tech-insider.org/fi/)
+  
+  [X (Twitter)](https://x.com/techinsider)[LinkedIn](https://linkedin.com/company/tech-insider)
+  
+  [Go to top](https://tech-insider.org/zsh-vs-bash-2026/#main-container "Go to top")
+  --- End Content ---

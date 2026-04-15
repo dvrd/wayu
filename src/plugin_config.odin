@@ -166,31 +166,32 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 			delete(conflict_warning)
 		}
 
-		if found {
-			// Single file to source
-			comment := fmt.aprintf("# %s (priority: %d)\n", plugin.name, plugin.priority)
-			strings.write_string(&sb, comment)
-			delete(comment)
-
-			source_line := fmt.aprintf("if [ -f %s ]; then\n    source %s\nfi\n\n",
-				entry_file, entry_file)
+		// Generate plugin loading code using new template system
+		comment := fmt.aprintf("# %s (priority: %d, template: %s)\n", 
+			plugin.name, plugin.priority, plugin_load_template_to_string(plugin.template))
+		strings.write_string(&sb, comment)
+		delete(comment)
+		
+		// Get files to source based on 'use' globs or auto-detect
+		files_to_source := get_plugin_files_to_source(plugin, shell)
+		defer {
+			for f in files_to_source {
+				delete(f)
+			}
+			delete(files_to_source)
+		}
+		
+		// Apply template to generate loading code
+		for file in files_to_source {
+			templated := apply_load_template(plugin.template, file, plugin.name, plugin.installed_path)
+			defer delete(templated)
+			
+			source_line := fmt.aprintf("if [ -f \"%s\" ]; then\n    %s\nfi\n", file, templated)
 			strings.write_string(&sb, source_line)
 			delete(source_line)
-		} else {
-			// Source all .{zsh,bash} files in directory
-			comment := fmt.aprintf("# %s (priority: %d, all .%s files)\n", plugin.name, plugin.priority, ext)
-			strings.write_string(&sb, comment)
-			delete(comment)
-
-			source_block := fmt.aprintf(
-				"for f in %s/*.%s; do\n" +
-				"    [ -f \"$f\" ] && source \"$f\"\n" +
-				"done\n\n",
-				plugin.installed_path, ext)
-			strings.write_string(&sb, source_block)
-			delete(source_block)
 		}
-
+		strings.write_string(&sb, "\n")
+		
 		if found {
 			delete(entry_file)
 		}
@@ -207,5 +208,128 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 	}
 
 	return os.write_entire_file(plugins_file, transmute([]byte)content) == nil
+}
+
+// Get files to source for a plugin based on 'use' globs or auto-detect
+get_plugin_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> []string {
+	// If 'use' is specified, match globs
+	if len(plugin.use) > 0 {
+		return match_files_with_globs(plugin.installed_path, plugin.use[:])
+	}
+	
+	// Auto-detect: try common entry files
+	ext := get_shell_extension(shell)
+	auto_files := make([dynamic]string)
+	
+	// Try common plugin entry points
+	candidates := []string{
+		fmt.tprintf("%s.plugin.%s", plugin.name, ext),
+		fmt.tprintf("%s.%s", plugin.name, ext),
+		fmt.tprintf("%s-init.%s", plugin.name, ext),
+		fmt.tprintf("init.%s", ext),
+		fmt.tprintf("plugin.%s", ext),
+	}
+	
+	for candidate in candidates {
+		full_path := fmt.aprintf("%s/%s", plugin.installed_path, candidate)
+		if os.exists(full_path) {
+			append(&auto_files, full_path)
+		}
+	}
+	
+	// If no specific entry file found, include all .{zsh,bash} files
+	if len(auto_files) == 0 {
+		glob := make([]string, 1)
+		glob[0] = fmt.tprintf("*.%s", ext)
+		return match_files_with_globs(plugin.installed_path, glob)
+	}
+	
+	return auto_files[:]
+}
+
+// Match files using glob patterns
+match_files_with_globs :: proc(dir: string, globs: []string) -> []string {
+	matches := make([dynamic]string)
+	
+	fd, err := os.open(dir)
+	if err != nil {
+		return matches[:]
+	}
+	defer os.close(fd)
+	
+	entries, read_err := os.read_dir(fd, -1, context.allocator)
+	if read_err != nil {
+		return matches[:]
+	}
+	defer os.file_info_slice_delete(entries, context.allocator)
+	
+	for entry in entries {
+		if entry.type == os.File_Type.Regular || entry.type == os.File_Type.Symlink {
+			for glob in globs {
+				if match_simple_glob(entry.name, glob) {
+					full_path := fmt.aprintf("%s/%s", dir, entry.name)
+					append(&matches, full_path)
+					break
+				}
+			}
+		}
+	}
+	
+	return matches[:]
+}
+
+// Simple glob matching (* and ?)
+match_simple_glob :: proc(name, pattern: string) -> bool {
+	// Common patterns
+	if pattern == "*" {
+		return true
+	}
+	if pattern == "*.zsh" || pattern == "*.bash" || pattern == "*.sh" {
+		return strings.has_suffix(name, pattern[1:])  // Skip the *
+	}
+	if strings.contains(pattern, "*") {
+		// Handle patterns like "*.plugin.zsh"
+		parts := strings.split(pattern, "*")
+		defer delete(parts)
+		if len(parts) == 2 {
+			return strings.has_prefix(name, parts[0]) && strings.has_suffix(name, parts[1])
+		}
+	}
+	// Exact match
+	return name == pattern
+}
+
+// Apply load template to generate shell code
+apply_load_template :: proc(template: PluginLoadTemplate, file, plugin_name, plugin_dir: string) -> string {
+	switch template {
+	case .Source:
+		return fmt.aprintf("source \"%s\"", file)
+	case .Path:
+		return fmt.aprintf("export PATH=\"%s:$PATH\"", plugin_dir)
+	case .FPath:
+		return fmt.aprintf("export FPATH=\"%s:$FPATH\"", plugin_dir)
+	case .Autoload:
+		return fmt.aprintf("autoload -Uz %s", plugin_name)
+	case .Eval:
+		return fmt.aprintf("eval \"$(%s)\"", file)
+	}
+	return fmt.aprintf("source \"%s\"", file)  // Default
+}
+
+// Convert template enum to string
+plugin_load_template_to_string :: proc(template: PluginLoadTemplate) -> string {
+	switch template {
+	case .Source:
+		return "source"
+	case .Path:
+		return "path"
+	case .FPath:
+		return "fpath"
+	case .Autoload:
+		return "autoload"
+	case .Eval:
+		return "eval"
+	}
+	return "source"
 }
 

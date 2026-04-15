@@ -536,6 +536,7 @@ remove_config_interactive :: proc(spec: ^ConfigEntrySpec) {
 }
 
 // Get a single entry value by name and print it
+// Enhanced with fuzzy fallback - if exact match not found, tries fuzzy matching
 get_config_entry_value :: proc(spec: ^ConfigEntrySpec, name: string) {
 	debug("get: looking up '%s' in %s", name, spec.file_name)
 
@@ -564,17 +565,11 @@ get_config_entry_value :: proc(spec: ^ConfigEntrySpec, name: string) {
 	debug("get: loaded %d entries", len(entries))
 
 	found := false
+	found_entry: ConfigEntry
 	for entry in entries {
 		if entry.name == name {
-			debug("get: found '%s'", name)
-			if spec.fields_count == 1 {
-				fmt.println(entry.name)
-			} else {
-				// Unescape stored shell escapes so the output is the original user value
-				unescaped := unescape_shell_value(entry.value)
-				defer delete(unescaped)
-				fmt.println(unescaped)
-			}
+			debug("get: found exact match '%s'", name)
+			found_entry = clone_entry(entry)
 			found = true
 			break
 		}
@@ -582,11 +577,85 @@ get_config_entry_value :: proc(spec: ^ConfigEntrySpec, name: string) {
 
 	cleanup_entries(&entries)
 
-	if !found {
+	// If exact match not found, try fuzzy fallback
+	if !found && fff_is_enabled() && FFF_AUTO_FALLBACK {
+		debug("get: exact match not found, trying fuzzy fallback for '%s'", name)
+		
+		matches := fuzzy_find_entries(spec, name, max_results = 10)
+		
+		if matches != nil && len(matches) > 0 {
+			// Check if best match is good enough
+			best := matches[0]
+			
+			// Use strong matches directly
+			if best.match_type == .Exact || best.match_type == .Prefix || 
+			   (best.match_type == .Acronym && best.score > 500) {
+				debug("get: using fuzzy match '%s' (type: %v, score: %d)", 
+					best.entry.name, best.match_type, best.score)
+				found_entry = clone_entry(best.entry)
+				found = true
+				
+				// Print suggestion notice
+				type_str := match_type_to_string(best.match_type)
+				fmt.eprintf("%sNote:%s Using %s match '%s' for '%s'\n", 
+					get_secondary(), RESET, type_str, best.entry.name, name)
+			} else if len(matches) > 1 && FFF_INTERACTIVE_SELECT && is_stdin_tty() {
+				// Multiple matches - show interactive selector
+				print_fuzzy_suggestions(spec, name, matches)
+				
+				selected := interactive_select_match(spec, matches, name)
+				if selected.name != "" {
+					found_entry = selected
+					found = true
+					debug("get: user selected '%s' from fuzzy matches", selected.name)
+				}
+			} else if best.score >= 50 {
+				// Single reasonable match - use it with notice
+				debug("get: using best fuzzy match '%s' (score: %d)", 
+					best.entry.name, best.score)
+				found_entry = clone_entry(best.entry)
+				found = true
+				
+				type_str := match_type_to_string(best.match_type)
+				fmt.eprintf("%sNote:%s Using %s match '%s' for '%s'\n", 
+					get_secondary(), RESET, type_str, best.entry.name, name)
+			} else {
+				// Show suggestions but don't auto-select
+				print_fuzzy_suggestions(spec, name, matches)
+			}
+			
+			free_fuzzy_matches(matches)
+		}
+	}
+
+	if found {
+		// Print the value
+		if spec.fields_count == 1 {
+			fmt.println(found_entry.name)
+		} else {
+			// Unescape stored shell escapes so the output is the original user value
+			unescaped := unescape_shell_value(found_entry.value)
+			defer delete(unescaped)
+			fmt.println(unescaped)
+		}
+		cleanup_entry(&found_entry)
+	} else {
 		debug("get: '%s' not found in %s", name, spec.file_name)
 		print_error("%s not found: %s", spec.display_name, name)
 		os.exit(EXIT_DATAERR)
 	}
+}
+
+// Helper to convert match type to string
+match_type_to_string :: proc(mt: MatchType) -> string {
+	switch mt {
+	case .Exact: return "exact"
+	case .Prefix: return "prefix"
+	case .Substring: return "substring"
+	case .Fuzzy: return "fuzzy"
+	case .Acronym: return "acronym"
+	}
+	return "unknown"
 }
 
 // Generic static list (table view)
@@ -889,22 +958,77 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 
 	fmt.printfln("  wayu %s help", spec.file_name)
 
-	// Examples section
+	// Examples section - specific to each type
 	fmt.println()
 	fmt.printf("%s%sEXAMPLES:%s\n", BOLD, get_secondary(), RESET)
 
-	if spec.fields_count == 1 {
-		// PATH examples
-		fmt.printfln("  wayu %s add %s", spec.file_name, spec.field_placeholders[0])
-		fmt.printfln("  wayu %s list", spec.file_name)
-		fmt.printfln("  wayu %s rm %s", spec.file_name, spec.field_placeholders[0])
-	} else {
-		// ALIAS/CONSTANT examples
-		fmt.printfln("  wayu %s add %s %s", spec.file_name, spec.field_placeholders[0], spec.field_placeholders[1])
-		fmt.printfln("  wayu %s get %s", spec.file_name, spec.field_placeholders[0])
-		fmt.printfln("  wayu %s list", spec.file_name)
-		fmt.printfln("  wayu %s rm %s", spec.file_name, spec.field_placeholders[0])
+	switch spec.type {
+	case .PATH:
+		// PATH-specific examples
+		fmt.printfln("  %s# Add a directory to PATH%s", get_muted(), RESET)
+		fmt.printfln("  wayu path add /usr/local/bin")
+		fmt.printfln("  wayu path add $HOME/go/bin")
+		fmt.println()
+		fmt.printfln("  %s# List all PATH entries%s", get_muted(), RESET)
+		fmt.printfln("  wayu path list")
+		fmt.println()
+		fmt.printfln("  %s# Remove a PATH entry%s", get_muted(), RESET)
+		fmt.printfln("  wayu path rm /usr/local/bin")
+		fmt.println()
+		fmt.printfln("  %s# Clean non-existent directories%s", get_muted(), RESET)
+		fmt.printfln("  wayu path clean --yes")
+		fmt.println()
+		fmt.printfln("  %s# Remove duplicates%s", get_muted(), RESET)
+		fmt.printfln("  wayu path dedup --yes")
+
+	case .ALIAS:
+		// ALIAS-specific examples
+		fmt.printfln("  %s# Create a simple alias%s", get_muted(), RESET)
+		fmt.printfln("  wayu alias add ll 'ls -lah'")
+		fmt.printfln("  wayu alias add gcm 'git commit -m'")
+		fmt.println()
+		fmt.printfln("  %s# Create an alias with arguments%s", get_muted(), RESET)
+		fmt.printfln("  wayu alias add gp 'git push'")
+		fmt.printfln("  wayu alias add gs 'git status'")
+		fmt.println()
+		fmt.printfln("  %s# List all aliases%s", get_muted(), RESET)
+		fmt.printfln("  wayu alias list")
+		fmt.println()
+		fmt.printfln("  %s# Remove an alias%s", get_muted(), RESET)
+		fmt.printfln("  wayu alias rm ll")
+		fmt.println()
+		fmt.printfln("  %s# Use fuzzy matching to find aliases%s", get_muted(), RESET)
+		fmt.printfln("  wayu alias get git")
+
+	case .CONSTANT:
+		// CONSTANT-specific examples
+		fmt.printfln("  %s# Add an environment variable%s", get_muted(), RESET)
+		fmt.printfln("  wayu const add API_KEY 'sk-abc123'")
+		fmt.printfln("  wayu const add EDITOR vim")
+		fmt.println()
+		fmt.printfln("  %s# Add a variable with spaces (use quotes)%s", get_muted(), RESET)
+		fmt.printfln("  wayu const add GREETING 'Hello World'")
+		fmt.println()
+		fmt.printfln("  %s# List all constants%s", get_muted(), RESET)
+		fmt.printfln("  wayu const list")
+		fmt.println()
+		fmt.printfln("  %s# Get a variable value%s", get_muted(), RESET)
+		fmt.printfln("  wayu const get API_KEY")
+		fmt.printfln("  wayu const get FIREWORKS_AI_API_KEY")
+		fmt.println()
+		fmt.printfln("  %s# Use fuzzy matching (e.g., 'frwrks' finds 'FIREWORKS_AI_API_KEY')%s", get_muted(), RESET)
+		fmt.printfln("  wayu const get frwrks")
+		fmt.println()
+		fmt.printfln("  %s# Remove a constant%s", get_muted(), RESET)
+		fmt.printfln("  wayu const rm API_KEY")
 	}
+
+	// Tips section
+	fmt.println()
+	fmt.printf("%s%sTIPS:%s\n", BOLD, get_secondary(), RESET)
+	fmt.printfln("  %s• Use fuzzy matching: try partial names or acronyms%s", get_muted(), RESET)
+	fmt.printfln("  %s• Add --yes to skip confirmation on destructive operations%s", get_muted(), RESET)
+	fmt.printfln("  %s• Use --tui for interactive mode%s", get_muted(), RESET)
 
 	fmt.println()
 }

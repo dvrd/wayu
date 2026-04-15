@@ -1,0 +1,1296 @@
+lra/mackup: Backup and keep your application settings in sync.
+  URL: https://github.com/lra/mackup
+  mackup backup. Back up your application files. Copy your local config files into the Mackup folder. mackup restore. Restore your application settings on a ...
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/lra/mackup#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/lra/mackup) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/lra/mackup) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/lra/mackup) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [lra](https://github.com/lra)/ **[mackup](https://github.com/lra/mackup)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2Flra%2Fmackup) You must be signed in to change notification settings
+  - [Fork\\
+  941](https://github.com/login?return_to=%2Flra%2Fmackup)
+  - [Star\\
+  15.2k](https://github.com/login?return_to=%2Flra%2Fmackup)
+  
+  
+  master
+  
+  [**5** Branches](https://github.com/lra/mackup/branches) [**81** Tags](https://github.com/lra/mackup/tags)
+  
+  [Go to Branches page](https://github.com/lra/mackup/branches)[Go to Tags page](https://github.com/lra/mackup/tags)
+  
+  Go to file
+  
+  Code
+  
+  Open more actions menu
+  
+  ## Folders and files
+  
+  | Name | Name | Last commit message | Last commit date |
+  | --- | --- | --- | --- |
+  | ## Latest commit<br>[![dependabot[bot]](https://avatars.githubusercontent.com/in/29110?v=4&size=40)](https://github.com/apps/dependabot)[dependabot\[bot\]](https://github.com/lra/mackup/commits?author=dependabot%5Bbot%5D)<br>[Bump pygments from 2.19.2 to 2.20.0 (](https://github.com/lra/mackup/commit/cd10656be32306ba8fa3c5ac46b0e50faed4b3c1) [#2170](https://github.com/lra/mackup/pull/2170) [)](https://github.com/lra/mackup/commit/cd10656be32306ba8fa3c5ac46b0e50faed4b3c1)<br>Open commit detailssuccess<br>last weekApr 7, 2026<br>[cd10656](https://github.com/lra/mackup/commit/cd10656be32306ba8fa3c5ac46b0e50faed4b3c1) · last weekApr 7, 2026<br>## History<br>[2,447 Commits](https://github.com/lra/mackup/commits/master/) <br>Open commit details<br>[View commit history for this file.](https://github.com/lra/mackup/commits/master/) 2,447 Commits |
+  | [.github](https://github.com/lra/mackup/tree/master/.github ".github") | [.github](https://github.com/lra/mackup/tree/master/.github ".github") | [Update snap (](https://github.com/lra/mackup/commit/e1d8ed28fd32ed8f981ea8e5b2a66838d421fb61 "Update snap (#2161)") [#2161](https://github.com/lra/mackup/pull/2161) [)](https://github.com/lra/mackup/commit/e1d8ed28fd32ed8f981ea8e5b2a66838d421fb61 "Update snap (#2161)") | last monthMar 10, 2026 |
+  | [doc](https://github.com/lra/mackup/tree/master/doc "doc") | [doc](https://github.com/lra/mackup/tree/master/doc "doc") | [Add support for custom applications directory location (](https://github.com/lra/mackup/commit/42fac006cb7c12c37b79931f24fe54218b920a9a "Add support for custom applications directory location (#2149)  Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>") [#2149](https://github.com/lra/mackup/pull/2149) [)](https://github.com/lra/mackup/commit/42fac006cb7c12c37b79931f24fe54218b920a9a "Add support for custom applications directory location (#2149)  Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>") | 2 months agoFeb 11, 2026 |
+  | [snap](https://github.com/lra/mackup/tree/master/snap "snap") | [snap](https://github.com/lra/mackup/tree/master/snap "snap") | [Update snap (](https://github.com/lra/mackup/commit/e1d8ed28fd32ed8f981ea8e5b2a66838d421fb61 "Update snap (#2161)") [#2161](https://github.com/lra/mackup/pull/2161) [)](https://github.com/lra/mackup/commit/e1d8ed28fd32ed8f981ea8e5b2a66838d421fb61 "Update snap (#2161)") | last monthMar 10, 2026 |
+  | [src/mackup](https://github.com/lra/mackup/tree/master/src/mackup "This path skips through empty directories") | [src/mackup](https://github.com/lra/mackup/tree/master/src/mackup "This path skips through empty directories") | [fix(claude-code): remove plugin files containing absolute paths (](https://github.com/lra/mackup/commit/a57bba5ad3b404b4e4194611edb73d40dd23b03b "fix(claude-code): remove plugin files containing absolute paths (#2167)  Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com>") [#2167](https://github.com/lra/mackup/pull/2167) [)](https://github.com/lra/mackup/commit/a57bba5ad3b404b4e4194611edb73d40dd23b03b "fix(claude-code): remove plugin files containing absolute paths (#2167)  Co-authored-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com>") | 3 weeks agoMar 28, 2026 |
+  | [tests](https://github.com/lra/mackup/tree/master/tests "tests") | [tests](https://github.com/lra/mackup/tree/master/tests "tests") | [Enable PLR0913, PT009 and PT027 (](https://github.com/lra/mackup/commit/8c6df3ede90ea1d3bd3e7766d17c8b75f4ed962b "Enable PLR0913, PT009 and PT027 (#2159)") [#2159](https://github.com/lra/mackup/pull/2159) [)](https://github.com/lra/mackup/commit/8c6df3ede90ea1d3bd3e7766d17c8b75f4ed962b "Enable PLR0913, PT009 and PT027 (#2159)") | 2 months agoFeb 16, 2026 |
+  | [.gitignore](https://github.com/lra/mackup/blob/master/.gitignore ".gitignore") | [.gitignore](https://github.com/lra/mackup/blob/master/.gitignore ".gitignore") | [Add test coverage (](https://github.com/lra/mackup/commit/0b749fe5b58241b6b8b74f5fbd6638511e56fd97 "Add test coverage (#2130)") [#2130](https://github.com/lra/mackup/pull/2130) [)](https://github.com/lra/mackup/commit/0b749fe5b58241b6b8b74f5fbd6638511e56fd97 "Add test coverage (#2130)") | 5 months agoNov 7, 2025 |
+  | [.linelint.yml](https://github.com/lra/mackup/blob/master/.linelint.yml ".linelint.yml") | [.linelint.yml](https://github.com/lra/mackup/blob/master/.linelint.yml ".linelint.yml") | [Make sure that all text files end with a newline character. (](https://github.com/lra/mackup/commit/28811b74400b1983dc76e4b35c509f697f9760a4 "Make sure that all text files end with a newline character. (#1836)  * Make sure that all text files end with a newline character.  * Ignore legit files without newlines  * enable all rules  * Update .linelint.yml") [#1836](https://github.com/lra/mackup/pull/1836) [)](https://github.com/lra/mackup/commit/28811b74400b1983dc76e4b35c509f697f9760a4 "Make sure that all text files end with a newline character. (#1836)  * Make sure that all text files end with a newline character.  * Ignore legit files without newlines  * enable all rules  * Update .linelint.yml") | 4 years agoJul 9, 2022 |
+  | [.markdownlint.yaml](https://github.com/lra/mackup/blob/master/.markdownlint.yaml ".markdownlint.yaml") | [.markdownlint.yaml](https://github.com/lra/mackup/blob/master/.markdownlint.yaml ".markdownlint.yaml") | [Fix CI (](https://github.com/lra/mackup/commit/3b8dc531ba4f81cee01365ffbadc7b922cbc4f5e "Fix CI (#1952)  * Fix CI  * use dash  * ignore test fixtures  * Update python versions  Follows https://devguide.python.org/versions/  * More python versions  * typo  * 3.13 container not found  * Test with poetry  * Add path  * fix path  * test only on 3.8 and 3.9  * Update CHANGELOG.md  * Use nose-py3  * Update test.yaml  * on PRs only") [#1952](https://github.com/lra/mackup/pull/1952) [)](https://github.com/lra/mackup/commit/3b8dc531ba4f81cee01365ffbadc7b922cbc4f5e "Fix CI (#1952)  * Fix CI  * use dash  * ignore test fixtures  * Update python versions  Follows https://devguide.python.org/versions/  * More python versions  * typo  * 3.13 container not found  * Test with poetry  * Add path  * fix path  * test only on 3.8 and 3.9  * Update CHANGELOG.md  * Use nose-py3  * Update test.yaml  * on PRs only") | 3 years agoNov 4, 2023 |
+  | [.markdownlintignore](https://github.com/lra/mackup/blob/master/.markdownlintignore ".markdownlintignore") | [.markdownlintignore](https://github.com/lra/mackup/blob/master/.markdownlintignore ".markdownlintignore") | [Bunch of cleanups (](https://github.com/lra/mackup/commit/ca38f2a9e6fa6d9c7fe2f5d9bf70fd7c5d82add7 "Bunch of cleanups (#1999)") [#1999](https://github.com/lra/mackup/pull/1999) [)](https://github.com/lra/mackup/commit/ca38f2a9e6fa6d9c7fe2f5d9bf70fd7c5d82add7 "Bunch of cleanups (#1999)") | 2 years agoFeb 11, 2024 |
+  | [INSTALL.md](https://github.com/lra/mackup/blob/master/INSTALL.md "INSTALL.md") | [INSTALL.md](https://github.com/lra/mackup/blob/master/INSTALL.md "INSTALL.md") | [Fix outdated install docs (](https://github.com/lra/mackup/commit/edde216020d907abf72ec159ffd8f47f9dbe9097 "Fix outdated install docs (#2136)") [#2136](https://github.com/lra/mackup/pull/2136) [)](https://github.com/lra/mackup/commit/edde216020d907abf72ec159ffd8f47f9dbe9097 "Fix outdated install docs (#2136)") | 5 months agoNov 8, 2025 |
+  | [LICENSE](https://github.com/lra/mackup/blob/master/LICENSE "LICENSE") | [LICENSE](https://github.com/lra/mackup/blob/master/LICENSE "LICENSE") | [Updated the license](https://github.com/lra/mackup/commit/41c34e23e4557899ca5e1a97fd554c431322729b "Updated the license @github's style") [@github](https://github.com/github) ['s style](https://github.com/lra/mackup/commit/41c34e23e4557899ca5e1a97fd554c431322729b "Updated the license @github's style") | 13 years agoAug 9, 2013 |
+  | [Makefile](https://github.com/lra/mackup/blob/master/Makefile "Makefile") | [Makefile](https://github.com/lra/mackup/blob/master/Makefile "Makefile") | [Add ty (](https://github.com/lra/mackup/commit/dba6ef2733c0a6e760da32c4b16e0a3c50a9170e "Add ty (#2151)") [#2151](https://github.com/lra/mackup/pull/2151) [)](https://github.com/lra/mackup/commit/dba6ef2733c0a6e760da32c4b16e0a3c50a9170e "Add ty (#2151)") | 2 months agoFeb 11, 2026 |
+  | [README.md](https://github.com/lra/mackup/blob/master/README.md "README.md") | [README.md](https://github.com/lra/mackup/blob/master/README.md "README.md") | [Added Application: Podman (Connections only) (](https://github.com/lra/mackup/commit/f2ba87681eb10a48981a3a5ff37d1b1da7c11095 "Added Application: Podman (Connections only) (#2148)  Co-authored-by: lra <analogue@glop.org>") [#2148](https://github.com/lra/mackup/pull/2148) [)](https://github.com/lra/mackup/commit/f2ba87681eb10a48981a3a5ff37d1b1da7c11095 "Added Application: Podman (Connections only) (#2148)  Co-authored-by: lra <analogue@glop.org>") | 2 months agoFeb 8, 2026 |
+  | [pyproject.toml](https://github.com/lra/mackup/blob/master/pyproject.toml "pyproject.toml") | [pyproject.toml](https://github.com/lra/mackup/blob/master/pyproject.toml "pyproject.toml") | [Enable PLR0913, PT009 and PT027 (](https://github.com/lra/mackup/commit/8c6df3ede90ea1d3bd3e7766d17c8b75f4ed962b "Enable PLR0913, PT009 and PT027 (#2159)") [#2159](https://github.com/lra/mackup/pull/2159) [)](https://github.com/lra/mackup/commit/8c6df3ede90ea1d3bd3e7766d17c8b75f4ed962b "Enable PLR0913, PT009 and PT027 (#2159)") | 2 months agoFeb 16, 2026 |
+  | [uv.lock](https://github.com/lra/mackup/blob/master/uv.lock "uv.lock") | [uv.lock](https://github.com/lra/mackup/blob/master/uv.lock "uv.lock") | [Bump pygments from 2.19.2 to 2.20.0 (](https://github.com/lra/mackup/commit/cd10656be32306ba8fa3c5ac46b0e50faed4b3c1 "Bump pygments from 2.19.2 to 2.20.0 (#2170)  Signed-off-by: dependabot[bot] <support@github.com> Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>") [#2170](https://github.com/lra/mackup/pull/2170) [)](https://github.com/lra/mackup/commit/cd10656be32306ba8fa3c5ac46b0e50faed4b3c1 "Bump pygments from 2.19.2 to 2.20.0 (#2170)  Signed-off-by: dependabot[bot] <support@github.com> Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>") | last weekApr 7, 2026 |
+  | View all files |
+  
+  ## Repository files navigation
+  
+  # Mackup™
+  
+  [Permalink: Mackup™](https://github.com/lra/mackup#mackup)
+  
+  [![Tests](https://github.com/lra/mackup/actions/workflows/test.yaml/badge.svg)](https://github.com/lra/mackup/actions/workflows/test.yaml)[![PyPI version](https://camo.githubusercontent.com/9641f870e6977717a353c714fa35e923534ed1f97d1e27f716711ad295722a04/68747470733a2f2f62616467652e667572792e696f2f70792f6d61636b75702e737667)](https://badge.fury.io/py/mackup)[![Python Versions](https://camo.githubusercontent.com/b89e6f22ffd6e091cac5d3d8efb4a62b959a6b812306ac5de21b28e6986732bc/68747470733a2f2f696d672e736869656c64732e696f2f707970692f707976657273696f6e732f6d61636b75702e737667)](https://pypi.org/project/mackup/)[![Ruff](https://camo.githubusercontent.com/d6c7524504b7d886a9d34c11f44b9d31b2de1a579325b42e932744c4575a063b/68747470733a2f2f696d672e736869656c64732e696f2f656e64706f696e743f75726c3d68747470733a2f2f7261772e67697468756275736572636f6e74656e742e636f6d2f61737472616c2d73682f727566662f6d61696e2f6173736574732f62616467652f76322e6a736f6e)](https://github.com/astral-sh/ruff)[![mypy](https://camo.githubusercontent.com/bb9404fcdb58a323eb20121827036de34979e5d96ec9f11a377f574060c9c65e/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f6d7970792d636865636b65642d626c7565)](http://mypy-lang.org/)[![License](https://camo.githubusercontent.com/d8d140f5fa260aa18da303601fa46d1b661d863aa3e81ddaf0f2c7e5a4224443/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6c6963656e73652f6c72612f6d61636b75702e737667)](https://github.com/lra/mackup/blob/master/LICENSE)
+  
+  Backup and keep your application settings in sync.
+  
+  ## Table of contents
+  
+  [Permalink: Table of contents](https://github.com/lra/mackup#table-of-contents)
+  
+  - [Mackup™](https://github.com/lra/mackup#mackup)
+    - [Table of contents](https://github.com/lra/mackup#table-of-contents)
+    - [Quickstart](https://github.com/lra/mackup#quickstart)
+    - [Usage](https://github.com/lra/mackup#usage)
+    - [What does it do](https://github.com/lra/mackup#what-does-it-do)
+      - [Copy mode](https://github.com/lra/mackup#copy-mode)
+      - [Link mode](https://github.com/lra/mackup#link-mode)
+        - [`mackup link install`](https://github.com/lra/mackup#mackup-link-install)
+        - [`mackup link`](https://github.com/lra/mackup#mackup-link)
+        - [`mackup link uninstall`](https://github.com/lra/mackup#mackup-link-uninstall)
+    - [Supported Storages](https://github.com/lra/mackup#supported-storages)
+    - [Unsupported Storages](https://github.com/lra/mackup#unsupported-storages)
+    - [Supported Applications](https://github.com/lra/mackup#supported-applications)
+    - [Can you support application X](https://github.com/lra/mackup#can-you-support-application-x)
+    - [Personalization & configuration](https://github.com/lra/mackup#personalization--configuration)
+    - [Why did you do this](https://github.com/lra/mackup#why-did-you-do-this)
+    - [What platforms are supported](https://github.com/lra/mackup#what-platforms-are-supported)
+    - [What's up with the weird name](https://github.com/lra/mackup#whats-up-with-the-weird-name)
+    - [Architecture](https://github.com/lra/mackup#architecture)
+    - [Where can I find more information](https://github.com/lra/mackup#where-can-i-find-more-information)
+  
+  ## Quickstart
+  
+  [Permalink: Quickstart](https://github.com/lra/mackup#quickstart)
+  
+  On macOS or Linux, if you want an easy install, you can install
+  [Homebrew](http://brew.sh/) and do:
+  
+  ```
+  # Install Mackup
+  brew install mackup
+  
+  # Launch it and back up your files
+  mackup backup
+  ```
+  
+  If not running macOS or Linux, or you don't like Homebrew, you can use [pip](https://pip.pypa.io/en/stable/).
+  
+  ```
+  # Install Mackup with PIP
+  pip install --upgrade mackup
+  
+  # Launch it and back up your files
+  mackup backup
+  ```
+  
+  You're all set and can back up from now on.
+  
+  Next, on any new workstation, do:
+  
+  ```
+  # Install Mackup
+  brew install mackup
+  
+  # Launch it and restore your files
+  mackup restore
+  ```
+  
+  Done!
+  
+  You can find more detailed instructions in [INSTALL.md](https://github.com/lra/mackup/blob/master/INSTALL.md).
+  
+  ## Usage
+  
+  [Permalink: Usage](https://github.com/lra/mackup#usage)
+  
+  `mackup backup`
+  
+  Back up your application files. Copy your local config files into the Mackup folder.
+  
+  `mackup restore`
+  
+  Restore your application settings on a newly installed workstation.
+  Copy config files from the Mackup folder to your home folder.
+  
+  `mackup link install`
+  
+  Move your local config files into the Mackup folder,
+  and link them to their original place.
+  
+  warning_the `link` strategy [doesn't work correctly on macOS](https://github.com/lra/mackup#link-mode)_
+  
+  `mackup link`
+  
+  On another workstation, links local config files from the Mackup folder.
+  
+  `mackup link uninstall`
+  
+  Copy back any synced config file to its original place.
+  Removes the links and copies config files from the Mackup folder back into your
+  home.
+  
+  `mackup list`
+  
+  Display the list of applications supported by Mackup.
+  
+  `mackup -h`
+  
+  Get some help, obviously...
+  
+  ## What does it do
+  
+  [Permalink: What does it do](https://github.com/lra/mackup#what-does-it-do)
+  
+  By only tracking pure configuration files, it keeps the crap out of your
+  freshly new installed workstation (no cache, temporary and locally specific
+  files are transferred).
+  
+  Mackup makes setting up the environment easy and simple.
+  
+  There are 2 modes of operations: copy mode and link mode.
+  
+  ### Copy mode
+  
+  [Permalink: Copy mode](https://github.com/lra/mackup#copy-mode)
+  
+  Copy mode is used to back up and restore your files.
+  The files are backed up into the configured Mackup folder,
+  which can be in Dropbox, iCloud, or wherever you configure it.
+  
+  It is covered by the 2 commands:
+  
+  - `mackup backup`
+  - `mackup restore`
+  
+  ### Link mode
+  
+  [Permalink: Link mode](https://github.com/lra/mackup#link-mode)
+  
+  Warning
+  
+  If you are using Mackup on a current version of macOS, link mode will BREAK
+  YOUR PREFERENCES. macOS Sonoma (macOS 14) and later don't support symlinked
+  preferences, see [issue #2035](https://github.com/lra/mackup/issues/2035) for
+  additional information. [PR #2085](https://github.com/lra/mackup/pull/2085)
+  added copy mode, which should be used instead.
+  
+  Link mode is used to move your config files into the Mackup folder,
+  and link them back to their original place.
+  
+  This mode is useful if you are using multiple workstations,
+  and want to keep your application settings in sync at all times.
+  
+  - Backs up your application settings in a safe directory (e.g. Dropbox)
+  - Syncs your application settings among all your workstations
+  - Restores your configuration on any fresh install in one command line
+  
+  Let's take `git` as an example. Your settings for `git` are saved in your home
+  folder, in the `.gitconfig` file.
+  
+  It is covered by the 3 commands:
+  
+  - `mackup link install`
+  - `mackup link`
+  - `mackup link uninstall`
+  
+  #### `mackup link install`
+  
+  [Permalink: mackup link install](https://github.com/lra/mackup#mackup-link-install)
+  
+  If you have Dropbox, these things happen when you launch `mackup link install`:
+  
+  1. `cp ~/.gitconfig ~/Dropbox/Mackup/.gitconfig`
+  2. `rm ~/.gitconfig`
+  3. `ln -s ~/Dropbox/Mackup/.gitconfig ~/.gitconfig`
+  
+  Now your `git` config is always backed up and up to date on all your workstations.
+  
+  #### `mackup link`
+  
+  [Permalink: mackup link](https://github.com/lra/mackup#mackup-link)
+  
+  When you launch `mackup link`, here's what it's really doing:
+  
+  1. `ln -s ~/Dropbox/Mackup/.gitconfig ~/.gitconfig`
+  
+  That's it, you got your `git` config setup on your new workstation.
+  
+  `mackup` does the same for any supported application.
+  
+  #### `mackup link uninstall`
+  
+  [Permalink: mackup link uninstall](https://github.com/lra/mackup#mackup-link-uninstall)
+  
+  You can revert all your files to their original state.
+  
+  ```
+  # Just run this
+  mackup link uninstall
+  ```
+  
+  This will remove the symlinks and copy back the files from the Mackup folder in
+  Dropbox to their original places in your home. The Mackup folder and the files
+  in it stay put, so that any other computer also running Mackup is unaffected.
+  
+  ## Supported Storages
+  
+  [Permalink: Supported Storages](https://github.com/lra/mackup#supported-storages)
+  
+  - [Dropbox](https://www.dropbox.com/)
+  - [Google Drive](https://drive.google.com/)
+  - [iCloud](http://www.apple.com/icloud/)
+  - Anything able to sync a folder (e.g. [Git](http://git-scm.com/))
+  
+  See the [README](https://github.com/lra/mackup/blob/master/doc/README.md) file in the doc directory for more info.
+  
+  ## Unsupported Storages
+  
+  [Permalink: Unsupported Storages](https://github.com/lra/mackup#unsupported-storages)
+  
+  - [Box](https://www.box.com/): No longer supported as it ignores dotfiles, see
+  [#807](https://github.com/lra/mackup/issues/807).
+  
+  ## Supported Applications
+  
+  [Permalink: Supported Applications](https://github.com/lra/mackup#supported-applications)
+  
+  - [1Password 4](https://agilebits.com/onepassword)
+  - [2Do](http://www.2doapp.com/)
+  - [Ack](http://beyondgrep.com/)
+  - [act](https://github.com/nektos/act)
+  - [Adium](https://adium.im/)
+  - [Adobe Camera Raw](http://www.adobe.com/products/photoshop/extend.html)
+  - [Adobe Illustrator CC](https://www.adobe.com/products/illustrator.html)
+  - [Adobe Photoshop CC](http://www.adobe.com/products/photoshop.html)
+  - [Adobe Photoshop Lightroom CC](https://www.adobe.com/products/photoshop-lightroom.html)
+  - [Adobe Photoshop Lightroom Classic](https://www.adobe.com/de/products/photoshop-lightroom-classic.html)
+  - [aerc](https://aerc-mail.org/)
+  - [AeroSpace](https://github.com/nikitabobko/AeroSpace)
+  - [Affinity Designer](https://affinity.serif.com/designer)
+  - [Affinity Photo](https://affinity.serif.com/photo)
+  - [Affinity Publisher](https://affinity.serif.com/publisher)
+  - [Airflow](https://airflowapp.com/)
+  - [Airmail](http://airmailapp.com/)
+  - [Akamai-CLI](https://developer.akamai.com/cli)
+  - [Alacritty](https://github.com/jwilm/alacritty)
+  - [AlDente](https://apphousekitchen.com/)
+  - [AltTab](https://alt-tab-macos.netlify.app/)
+  - [Amethyst](https://ianyh.com/amethyst/)
+  - [Ancient Domains of Mystery](http://www.adom.de/home/index.html)
+  - [Android Studio](https://developer.android.com/sdk/)
+  - [Ansible](http://www.ansible.com/)
+  - [AppCleaner](http://freemacsoft.net/appcleaner/)
+  - [AppCode](http://www.jetbrains.com/objc/)
+  - [Apple Music](https://www.apple.com/apple-music/)
+  - [Apptivate](http://www.apptivateapp.com/)
+  - [Arara](https://github.com/cereda/arara)
+  - [aria2c](http://aria2.sourceforge.net/)
+  - [Arm](https://www.atagar.com/arm/)
+  - [Artistic Style](http://astyle.sourceforge.net/)
+  - [asciinema](https://asciinema.org/)
+  - [asdf version manager](https://github.com/asdf-vm/asdf)
+  - [Aspell](http://aspell.net/)
+  - [Atlantis](http://www.riverdark.net/atlantis/)
+  - [Atom](https://atom.io/)
+  - [Audacious](http://audacious-media-player.org/)
+  - [AusKey](https://abr.gov.au/AUSkey/)
+  - [Autokey](https://code.google.com/p/autokey/)
+  - [Awareness](http://iamfutureproof.com/tools/awareness/)
+  - [AWS Command Line Interface](https://aws.amazon.com/cli/)
+  - [ActivityWatch](http://activitywatch.net/)
+  - [Bartender](http://www.macbartender.com/)
+  - [Bash it](https://github.com/Bash-it/bash-it)
+  - [Bash](http://www.gnu.org/software/bash/)
+  - [Base](https://menial.co.uk/base/)
+  - [Bat](https://github.com/sharkdp/bat)
+  - [Bc](https://www.gnu.org/software/bc/)
+  - [Beatport Pro](https://www.beatport.com/desktop)
+  - [Beets](http://beets.io/)
+  - [BetterSnapTool](http://www.boastr.net/)
+  - [BetterTouchTool](http://www.boastr.net/)
+  - [Beyond Compare](https://scootersoftware.com/)
+  - [BibDesk](http://bibdesk.sourceforge.net/)
+  - [Billings Pro Server Admin](https://www.marketcircle.com/billingspro/download/billingspro-server/)
+  - [BitBar](https://getbitbar.com/)
+  - [Bitchx](http://www.bitchx.org/)
+  - [Blackfire](https://blackfire.io/)
+  - [Blender](https://blender.org/)
+  - [ble.sh](https://github.com/akinomyoga/ble.sh)
+  - [Boto](https://github.com/boto/boto)
+  - [Boxer](http://boxerapp.com/)
+  - [Brackets](http://brackets.io/)
+  - [Brave](https://brave.com/)
+  - [Btop](https://github.com/aristocratos/btop)
+  - [Bump](https://github.com/fabiospampinato/bump)
+  - [Bundler](http://bundler.io/)
+  - [Byobu](http://byobu.co/)
+  - [Caffeine](http://lightheadsw.com/caffeine/)
+  - [Calibre](https://calibre-ebook.com/)
+  - [Capture One](http://www.phaseone.com/Imaging-Software/Capture-One.aspx)
+  - [Cartographica](https://www.macgis.com/)
+  - [Cerebro](https://cerebroapp.com/)
+  - [Charles](http://www.charlesproxy.com/)
+  - [Cheat](https://github.com/chrisallenlane/cheat)
+  - [Chef](https://www.chef.io/chef/)
+  - [Chicken](http://sourceforge.net/projects/chicken/)
+  - [Choosy](https://www.choosyosx.com/)
+  - [chunkwm](https://github.com/koekeishiya/chunkwm)
+  - [Cider](https://github.com/msanders/cider)
+  - [ClashX](https://github.com/yichengchen/clashX)
+  - [Clasp](https://github.com/google/clasp)
+  - [Claude Code](https://www.claude.com/product/claude-code)
+  - [CleanShot](https://cleanshot.com/)
+  - [Clementine](https://www.clementine-player.org/)
+  - [CLion](https://www.jetbrains.com/clion/)
+  - [ClipMenu](http://www.clipmenu.com/)
+  - [Clipy](https://clipy-app.com/)
+  - [CloudApp](http://getcloudapp.com/)
+  - [Coda 2](http://panic.com/coda/)
+  - [Codex](https://openai.com/codex/)
+  - [Colloquy](http://colloquy.info/)
+  - [ColorSchemer Studio 2](http://www.colorschemer.com/osx_info.php)
+  - [ColorSlurp](http://colorslurp.com/)
+  - [ColorSync](https://en.wikipedia.org/wiki/ColorSync)
+  - [Composer](https://getcomposer.org/)
+  - [Concentrate](http://www.getconcentrating.com/)
+  - [Conky](https://github.com/brndnmtthws/conky)
+  - [Consular](https://github.com/achiu/consular)
+  - [Contexts](https://contexts.co/)
+  - [ControlPlane](http://www.controlplaneapp.com/)
+  - [CopyQ](https://github.com/hluk/CopyQ)
+  - [CoRD](http://cord.sourceforge.net/)
+  - [CotEditor](http://coteditor.com/)
+  - [Ctags](http://ctags.sourceforge.net/)
+  - [Cursor](https://cursor.sh/)
+  - [cVim](https://github.com/1995eaton/chromium-vim)
+  - [Cyberduck](https://cyberduck.io/)
+  - [DaisyDisk](https://daisydiskapp.com/)
+  - [DataGrip](https://www.jetbrains.com/datagrip/)
+  - [Dash](https://kapeli.com/dash)
+  - [Day-O](http://www.shauninman.com/archive/2011/10/20/day_o_mac_menu_bar_clock)
+  - [DBeaver](https://dbeaver.io/)
+  - [DbVisualizer](https://www.dbvis.com/)
+  - [Deal Alert](http://dealalertapp.com/)
+  - [Deepin-dde-dock](https://github.com/linuxdeepin/dde-dock)
+  - [Deepin-dde-file-manager](https://www.deepin.org/en/original/dde-file-manager/)
+  - [Deepin-Terminal](https://github.com/linuxdeepin/deepin-terminal)
+  - [Default Folder X](http://www.stclairsoft.com/DefaultFolderX/)
+  - [Devil's Pie 2](http://www.gusnan.se/devilspie2/)
+  - [Devil's Pie](https://en.wikipedia.org/wiki/Devil's_Pie_(software))
+  - [dig](http://en.wikipedia.org/wiki/Dig_(command))
+  - [Divvy](http://mizage.com/divvy/)
+  - [Docker](https://www.docker.com/)
+  - [Dolphin](https://dolphin-emu.org/)
+  - [Doom Emacs](https://github.com/hlissner/doom-emacs)
+  - [Double Commander](http://doublecmd.sourceforge.net/)
+  - [Doxie](http://www.getdoxie.com/)
+  - [Dozer](https://github.com/Mortennn/Dozer)
+  - [Draft](https://draft.sh/)
+  - [Droplr](https://droplr.com/)
+  - [Dropzone 3](https://aptonic.com/dropzone3/)
+  - [Drush](http://www.drush.org/)
+  - [Eagle (ogdesign)](https://eagle.cool/)
+  - [EditorConfig](http://editorconfig.org/)
+  - [Electrum](https://electrum.org/#home)
+  - [Elgato StreamDeck](https://www.elgato.com/en/welcome-to-stream-deck)
+  - [Emacs](http://www.gnu.org/software/emacs/)
+  - [Enjoyable](https://yukkurigames.com/enjoyable/)
+  - [Environmental Station Alpha](http://www.hempuli.com/esa/)
+  - [eqMac2](https://bitgapp.com/eqmac/)
+  - [ESLint](https://eslint.org/)
+  - [espanso](https://espanso.org/)
+  - [Exercism](http://exercism.io/)
+  - [ExpanDrive](http://www.expandrive.com/)
+  - [Factorio](https://www.factorio.com/)
+  - [Factory Droid](https://factory.ai/)
+  - [Fantastical](http://flexibits.com/fantastical)
+  - [fasd](https://github.com/clvv/fasd)
+  - [fastlane](https://fastlane.tools/)
+  - [FastScripts](https://redsweater.com/fastscripts/)
+  - [Feeds](http://www.feedsapp.com/)
+  - [FileZilla](https://filezilla-project.org/)
+  - [Finicky](https://github.com/johnste/finicky)
+  - [Fish](http://fishshell.com/)
+  - [Fisher](https://github.com/jorgebucaran/fisher)
+  - [Flake8](https://flake8.pycqa.org/)
+  - [Flameshot](https://flameshot.org/)
+  - [FlexGet](http://flexget.com/)
+  - [Flux](https://justgetflux.com/)
+  - [Focus](https://heyfocus.com/)
+  - [Fontconfig](https://www.freedesktop.org/wiki/Software/fontconfig/)
+  - [FontExplorer X](http://www.fontexplorerx.com/)
+  - [Forge](http://www.slightlymagic.net/wiki/Forge)
+  - [Fork](https://git-fork.com/)
+  - [ForkLift](http://www.binarynights.com/forklift/)
+  - [Franz](https://meetfranz.com/)
+  - [Gas Mask](https://github.com/2ndalpha/gasmask/)
+  - [gdb](https://www.gnu.org/software/gdb/)
+  - [Gear Player](https://www.gearmusicplayer.com/)
+  - [GeekTool](http://projects.tynsoe.org/en/geektool/)
+  - [GHCi](https://wiki.haskell.org/GHC/GHCi)
+  - [Ghidra](https://ghidra-sre.org/)
+  - [Ghostty](https://ghostty.org/)
+  - [Ghostwriter](https://wereturtle.github.io/ghostwriter/)
+  - [Gimp](https://www.gimp.org/)
+  - [Git Hooks](https://github.com/git-hooks/git-hooks)
+  - [Git](http://git-scm.com/)
+  - [Gitbox](http://gitboxapp.com/)
+  - [GitFox](https://www.gitfox.app/)
+  - [GitHub CLI](https://cli.github.com/)
+  - [GitKraken](https://www.gitkraken.com/)
+  - [GitUp](http://gitup.co/)
+  - [Gmail Notifr](http://ashchan.com/projects/gmail-notifr)
+  - [gmailctl](https://github.com/mbrt/gmailctl)
+  - [GMVault](http://gmvault.org/)
+  - [Gnome SSH Tunnel Manager](http://sourceforge.net/projects/gstm/)
+  - [GnuPG](https://www.gnupg.org/)
+  - [GNU Stow](https://www.gnu.org/software/stow/)
+  - [Go2Shell](http://zipzapmac.com/Go2Shell)
+  - [Goku](https://github.com/yqrashawn/GokuRakuJoudo)
+  - [GoLand](https://www.jetbrains.com/go/)
+  - [Goldendict](http://goldendict.org/)
+  - [GoodSync](https://goodsync.com/)
+  - [GoShare](https://github.com/dictget/goshare)
+  - [Gradle](http://gradle.org/)
+  - [GrandTotal 3](http://www.mediaatelier.com/GrandTotal4/)
+  - [grsync](http://www.opbyte.it/grsync/)
+  - [Hammerspoon](http://www.hammerspoon.org/)
+  - [HandBrake](https://handbrake.fr/)
+  - [Hands Off!](http://www.oneperiodic.com/products/handsoff/)
+  - [Hazel](http://www.noodlesoft.com/hazel.php)
+  - [Hero Lab](http://www.wolflair.com/index.php?context=hero_lab)
+  - [Heroku](https://www.heroku.com/)
+  - [HexChat](https://hexchat.github.io/)
+  - [Hexels](http://hexraystudios.com/hexels/)
+  - [Hocus Focus](http://hocusfoc.us/)
+  - [Homebridge](https://github.com/nfarina/homebridge)
+  - [Homebrew](https://brew.sh/)
+  - [Houdini](http://uglyapps.co.uk/houdini/)
+  - [Hstr](https://github.com/dvorka/hstr)
+  - [HTML Tidy](https://www.html-tidy.org/)
+  - [Htop](http://htop.sourceforge.net/)
+  - [HTTPie](https://httpie.org/)
+  - [hub](https://hub.github.com/)
+  - [Hyper.app](https://hyper.is/)
+  - [HyperDock](https://bahoom.com/hyperdock)
+  - [HyperSwitch](https://bahoom.com/hyperswitch)
+  - [i2cssh](https://github.com/wouterdebie/i2cssh)
+  - [i3](https://i3wm.org/)
+  - [IDA Pro](https://www.hex-rays.com/products/ida/)
+  - [IdeaVim](https://github.com/JetBrains/ideavim)
+  - [IINA](https://iina.io/)
+  - [Inkscape](https://inkscape.org/)
+  - [Insomnia](https://insomnia.rest/)
+  - [IntelliJIDEA](http://www.jetbrains.com/idea/)
+  - [IPython](http://ipython.org/)
+  - [Irssi](http://www.irssi.org/)
+  - [iStat Menus](https://bjango.com/mac/istatmenus/)
+  - [Itsycal](https://github.com/sfsam/Itsycal)
+  - [iTerm2](https://www.iterm2.com/)
+  - [iTermocil](https://github.com/TomAnthony/itermocil)
+  - [iTunes Scripts](https://www.apple.com/)
+  - [JankyBorders](https://github.com/FelixKratz/JankyBorders)
+  - [Janus](https://github.com/carlhuda/janus)
+  - [Jitouch](http://www.jitouch.com/)
+  - [Joplin](https://joplinapp.org/)
+  - [jrnl](https://jrnl.sh/)
+  - [JS Beautifier](https://github.com/beautify-web/js-beautify)
+  - [JSHint](http://jshint.com/)
+  - [Julia](http://julialang.org/)
+  - [Jumpcut](http://jumpcut.sourceforge.net/)
+  - [Jupyter](http://jupyter.org/)
+  - [k9s](https://k9scli.io/)
+  - [Kaggle](https://kaggle.com/)
+  - [Kaleidoscope](http://www.kaleidoscopeapp.com/)
+  - [Karabiner Elements](https://github.com/tekezo/Karabiner-Elements)
+  - [Karabiner](https://pqrs.org/osx/karabiner/)
+  - [Kdenlive](https://kdenlive.org/)
+  - [KeePassX](http://www.keepassx.org/)
+  - [KeePassXC](https://keepassxc.org/)
+  - [KeepingYouAwake](https://github.com/newmarcel/KeepingYouAwake)
+  - [Keka](http://www.kekaosx.com/en/)
+  - [Keybase](https://keybase.io/)
+  - [Keyboard Maestro](http://www.keyboardmaestro.com/)
+  - [Keymo](http://manytricks.com/keymo/)
+  - [KeyRemap4MacBook](https://pqrs.org/osx/karabiner/)
+  - [Khd](https://github.com/koekeishiya/khd/)
+  - [kitty](https://sw.kovidgoyal.net/kitty/)
+  - [Kiro](https://kiro.dev/)
+  - [Krew](https://github.com/kubernetes-sigs/krew)
+  - [Kubectl](https://kubernetes.io/docs/reference/kubectl/overview/)
+  - [Kwm](https://koekeishiya.github.io/kwm/)
+  - [LaTeXiT](http://www.chachatelier.fr/latexit/latexit-home.php?lang=en)
+  - [LaunchBar](https://www.obdev.at/products/launchbar/index.html)
+  - [lazydocker](https://github.com/jesseduffield/lazydocker)
+  - [lazygit](https://github.com/jesseduffield/lazygit)
+  - [Ledger](http://ledger-cli.org/)
+  - [Leiningen](http://leiningen.org/)
+  - [lf](https://github.com/gokcehan/lf)
+  - [LibreOffice](https://www.libreoffice.org/)
+  - [Liftoff](https://github.com/thoughtbot/liftoff)
+  - [Light Table](http://lighttable.com/)
+  - [LightPaper](https://getlightpaper.com/)
+  - [LimeChat](http://limechat.net/mac/)
+  - [Liquid Prompt](https://github.com/nojhan/liquidprompt)
+  - [LittleSnitch](http://www.obdev.at/products/littlesnitch/)
+  - [Livestreamer](http://livestreamer.tanuki.se/)
+  - [Logitech Options](https://www.logitech.com/en-us/product/options)
+  - [Logseq](https://logseq.com/)
+  - [Lollypop](https://gnumdk.github.io/lollypop-web/)
+  - [Loopback](https://rogueamoeba.com/loopback/)
+  - [Luftrausers](http://luftrausers.com/)
+  - [LunarVim](https://www.lunarvim.org/)
+  - [MacDive](http://www.mac-dive.com/)
+  - [MacDown](http://macdown.uranusjr.com/)
+  - [MacOSX](http://www.apple.com/osx/)
+  - [MacVim](https://github.com/macvim-dev/macvim)
+  - [Magic Launch](https://www.oneperiodic.com/products/magiclaunch/)
+  - [MagicPrefs](http://magicprefs.com/)
+  - [Magnet](https://magnet.crowdcafe.com/)
+  - [Maid](https://github.com/benjaminoakes/maid/)
+  - [Mail](https://support.apple.com/guide/mail/welcome/mac)
+  - [Mailmate](http://freron.com/)
+  - [Mailplane](http://mailplaneapp.com/)
+  - [mako](https://wayland.emersion.fr/mako/)
+  - [Marked 2](http://marked2app.com/)
+  - [Marta](https://marta.yanex.org/)
+  - [MATLAB](http://www.mathworks.com/products/matlab/)
+  - [Maven](http://maven.apache.org/)
+  - [Max](http://sbooth.org/Max/)
+  - [Mendeley Desktop](https://www.mendeley.com/)
+  - [MenuMeters](http://www.ragingmenace.com/software/menumeters/)
+  - [Mercurial](https://www.mercurial-scm.org/)
+  - [MercuryMover](http://www.heliumfoot.com/mercurymover/)
+  - [Messages](http://www.apple.com/osx/apps/#messages)
+  - [Micro](https://github.com/zyedidia/micro)
+  - [Microsoft Azure CLI](https://github.com/Azure/azure-xplat-cli)
+  - [Microsoft Remote Desktop](https://itunes.apple.com/us/app/microsoft-remote-desktop-10/id1295203466)
+  - [mise-en-place](https://github.com/jdx/mise)
+  - [mitmproxy](https://mitmproxy.org/)
+  - [mkcert](https://github.com/FiloSottile/mkcert)
+  - [Mole](https://github.com/tw93/Mole)
+  - [MonoDevelop](http://www.monodevelop.com/)
+  - [Moom](http://manytricks.com/moom/)
+  - [Mosaic](https://lightpillar.com/mosaic.html)
+  - [Mou](http://25.io/mou/)
+  - [mpd](http://www.musicpd.org/)
+  - [MPlayerX](http://mplayerx.org/)
+  - [MPS Youtube](https://github.com/mps-youtube/mps-youtube)
+  - [MPV](https://mpv.io/)
+  - [MTMR](https://github.com/Toxblh/MTMR)
+  - [Multitouch](https://multitouch.app/)
+  - [Mumu](https://getmumu.com/)
+  - [MusicBrainz Picard](https://picard.musicbrainz.org/)
+  - [MuteSpotifyAds](https://github.com/simonmeusel/MuteSpotifyAds)
+  - [mycli](https://www.mycli.net/)
+  - [myrepos](https://github.com/joeyh/myrepos)
+  - [MySQL Workbench](https://www.mysql.com/products/workbench/)
+  - [MySQL](http://www.mysql.com/)
+  - [Name Mangler](http://manytricks.com/namemangler/)
+  - [Nano](http://www.nano-editor.org/)
+  - [Navicat](http://navicat.com/)
+  - [ncmpcpp](http://rybczak.net/ncmpcpp/)
+  - [Neofetch](https://github.com/dylanaraps/neofetch)
+  - [neovim](https://github.com/neovim/neovim)
+  - [Nethack](http://www.nethack.org/)
+  - [Netlify](https://www.netlify.com/)
+  - [newsbeuter](http://newsbeuter.org/)
+  - [ngrok](https://ngrok.com/)
+  - [ni](https://github.com/antfu/ni/)
+  - [Nomacs](http://nomacs.org/)
+  - [NoSQLBooster for MongoDB](https://www.nosqlbooster.com/)
+  - [notion-enhancer](https://notion-enhancer.github.io/)
+  - [Nova](https://www.nova.app/)
+  - [npm](https://www.npmjs.com/)
+  - [npmrc](https://github.com/deoxxa/npmrc/)
+  - [NSLogger](https://github.com/fpillet/NSLogger)
+  - [nuget](https://www.nuget.org/)
+  - [Nushell](https://www.nushell.sh/)
+  - [nvALT](http://brettterpstra.com/projects/nvalt/)
+  - [nvm](https://github.com/nvm-sh/nvm)
+  - [nvpy](https://github.com/cpbotha/nvpy)
+  - [OBS](https://obsproject.com/)
+  - [OfflineIMAP](https://www.offlineimap.org/)
+  - [Oh My Fish](https://github.com/bpinto/oh-my-fish)
+  - [Oh My Tmux](https://github.com/gpakosz/.tmux)
+  - [OmniFocus](https://www.omnigroup.com/omnifocus/)
+  - [OmniGraffle](https://www.omnigroup.com/omnigraffle/)
+  - [Openbox](http://openbox.org/)
+  - [OpenCode](https://opencode.ai/)
+  - [OpenEmu](http://openemu.org/)
+  - [OpenSSH](http://www.openssh.com/)
+  - [Opera](http://www.opera.com/)
+  - [Oracle Cloud Infrastructure CLI](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/cliconcepts.htm)
+  - [Paintbrush](http://paintbrush.sourceforge.net/)
+  - [Pandoc](http://pandoc.org/)
+  - [Pass](http://www.passwordstore.org/)
+  - [Pastebot](http://tapbots.com/software/pastebot/)
+  - [Path Finder](http://www.cocoatech.com/pathfinder/)
+  - [PDFjam](https://warwick.ac.uk/fac/sci/statistics/staff/academic-research/firth/software/pdfjam/)
+  - [Pear](http://pear.php.net/)
+  - [Pentadactyl](http://5digits.org/pentadactyl/)
+  - [Perl](https://www.perl.org/)
+  - [Phoenix](https://github.com/kasper/phoenix)
+  - [PhoneView](https://www.ecamm.com/mac/phoneview/)
+  - [PhpStorm](http://www.jetbrains.com/phpstorm/)
+  - [PicGo](https://github.com/Molunerfinn/PicGo)
+  - [Pidgin](https://www.pidgin.im/)
+  - [PIP](http://www.pip-installer.org/)
+  - [PixelSnap](https://getpixelsnap.com/)
+  - [PixelSnap 2](https://getpixelsnap.com/)
+  - [Planner](https://useplanner.com/)
+  - [Plover](http://www.openstenoproject.org/plover/)
+  - [Pnpm](https://pnpm.js.org/)
+  - [Pock](https://pock.pigigaldi.com/)
+  - [Podman](https://podman.io/)
+  - [Poedit](http://poedit.net/)
+  - [Poetry](https://python-poetry.org/)
+  - [PokerStars](https://www.pokerstars.com/)
+  - [Polybar](https://polybar.github.io/)
+  - [PopClip](http://pilotmoon.com/popclip/)
+  - [Popcorn-Time](https://popcorntime.io/)
+  - [PostgreSQL](http://www.postgresql.org/)
+  - [Postico](https://eggerapps.at/postico/)
+  - [Pow](http://pow.cx/)
+  - [Powerlevel10k](https://github.com/romkatv/powerlevel10k)
+  - [Powerline](https://github.com/powerline/powerline)
+  - [Powerline-shell](https://github.com/b-ryan/powerline-shell)
+  - [Prezto](https://github.com/sorin-ionescu/prezto)
+  - [Processing](https://processing.org/)
+  - [Proselint](https://github.com/amperser/proselint)
+  - [ProxyChains NG](http://sourceforge.net/projects/proxychains-ng/)
+  - [ProxyChains](http://proxychains.sourceforge.net/)
+  - [Proxyman](https://proxyman.io/)
+  - [PrusaSlicer](https://www.prusa3d.com/prusaslicer/)
+  - [PsySH](https://psysh.org/)
+  - [Punto Switcher](https://punto.yandex.ru/)
+  - [PyCharm](https://www.jetbrains.com/pycharm/)
+  - [PyPI](https://pypi.python.org/pypi)
+  - [PyRadio](http://www.coderholic.com/pyradio/)
+  - [Querious](http://www.araelium.com/querious/)
+  - [Quicksilver](http://qsapp.com/)
+  - [Quitter](https://marco.org/apps)
+  - [Qutebrowser](http://qutebrowser.org/)
+  - [Qv2ray](https://qv2ray.net/)
+  - [R](http://www.r-project.org/)
+  - [Rails](http://rubyonrails.org/)
+  - [Ranger](https://ranger.github.io/)
+  - [Rbenv](https://www.github.com/rbenv/rbenv)
+  - [Rclone](https://rclone.org/)
+  - [Rectangle](https://rectangleapp.com/)
+  - [Redshift Scheduler](https://github.com/spantaleev/redshift-scheduler)
+  - [Redshift](http://jonls.dk/redshift/)
+  - [Remote Desktop Manager](https://remotedesktopmanager.com/)
+  - [Rhythmbox](https://wiki.gnome.org/Apps/Rhythmbox)
+  - [Rime](http://rime.im/)
+  - [ripgrep](https://github.com/BurntSushi/ripgrep)
+  - [Robo 3T](http://robomongo.org/)
+  - [Rocket](https://matthewpalmer.net/rocket/)
+  - [Rofi](https://github.com/DaveDavenport/rofi)
+  - [Royal TSX](http://www.royaltsx.com/ts/osx/features)
+  - [RStudio](https://www.rstudio.com/)
+  - [rTorrent](http://libtorrent.rakshasa.no/)
+  - [rtx](https://github.com/jdx/rtx)
+  - [rubiTrack 5](https://www.rubitrack.com/)
+  - [Rubocop](https://github.com/bbatsov/rubocop)
+  - [Ruby Version Manager](https://rvm.io/)
+  - [Ruby Version](https://gist.github.com/fnichol/1912050)
+  - [Ruby](https://www.ruby-lang.org/)
+  - [RubyMine](http://www.jetbrains.com/ruby/)
+  - [Rust](https://www.rust-lang.org/)
+  - [RustRover](https://www.jetbrains.com/rust/)
+  - [S3cmd](http://s3tools.org/s3cmd)
+  - [SABnzbd](http://sabnzbd.org/)
+  - [SBCL](http://www.sbcl.org/)
+  - [SBT](http://www.scala-sbt.org/)
+  - [Scenario](http://www.lagentesoft.com/scenario/)
+  - [Screen](http://www.gnu.org/software/screen/)
+  - [Screenhero](https://screenhero.com/)
+  - [Scrivener](http://www.literatureandlatte.com/scrivener.php)
+  - [Scroll Reverser](https://pilotmoon.com/scrollreverser/)
+  - [SecureCRT](https://www.vandyke.com/products/securecrt/)
+  - [Secure Pipes](http://www.opoet.com/)
+  - [Seil](https://pqrs.org/osx/karabiner/seil.html.en)
+  - [SelfControl](http://selfcontrolapp.com/)
+  - [Sequel Pro](http://www.sequelpro.com/)
+  - [ShadowsocksX-NG](https://github.com/shadowsocks/ShadowsocksX-NG)
+  - [ShiftIt](https://github.com/fikovnik/ShiftIt)
+  - [Shifty](https://shifty.natethompson.io/)
+  - [Shimo](https://www.feingeist.io/shimo/)
+  - [ShowyEdge](https://pqrs.org/osx/ShowyEdge/index.html.en)
+  - [SHSH Blobs](https://en.wikipedia.org/wiki/SHSH_blob)
+  - [Shuttle](http://fitztrev.github.io/shuttle/)
+  - [SizeUp](http://www.irradiatedsoftware.com/sizeup/)
+  - [Sizzy](https://sizzy.co/)
+  - [SketchyBar](https://felixkratz.github.io/SketchyBar/)
+  - [skhd](https://github.com/koekeishiya/skhd/)
+  - [Skim](http://skim-app.sourceforge.net/)
+  - [Skitch](https://evernote.com/skitch/)
+  - [Slate](https://github.com/jigish/slate)
+  - [Slic3r](http://slic3r.org/)
+  - [Slogger](http://brettterpstra.com/projects/slogger/)
+  - [SmartGit](http://www.syntevo.com/smartgit/)
+  - [Smooth Mouse](http://smoothmouse.com/)
+  - [Soulver](http://www.acqualia.com/soulver/)
+  - [SourceTree](https://www.sourcetreeapp.com/)
+  - [SpaceLauncher](https://spacelauncherapp.com/)
+  - [Spacemacs](https://github.com/syl20bnr/spacemacs)
+  - [SpaceVim](https://github.com/SpaceVim/SpaceVim)
+  - [SpamSieve](https://c-command.com/spamsieve)
+  - [Spark](http://www.shadowlab.org/softwares/spark.php)
+  - [Spectacle](https://www.spectacleapp.com/)
+  - [Spectrwm](https://github.com/conformal/spectrwm/wiki)
+  - [Splice](https://splice.com/)
+  - [Spotify Notifications](http://spotify-notifications.citruspi.io/)
+  - [Spotify](https://www.spotify.com/)
+  - [Sqitch](https://sqitch.org/)
+  - [Starship](https://starship.rs/)
+  - [Startupizer2](http://appledoc.gentlebytes.com/startupizer/)
+  - [Stata](http://www.stata.com/)
+  - [Stats](https://github.com/exelban/stats)
+  - [Stay](https://cordlessdog.com/stay/)
+  - [Storyist](http://storyist.com/)
+  - [Subler](https://subler.org/)
+  - [Sublime Merge](https://www.sublimemerge.com/)
+  - [Sublime Text](http://www.sublimetext.com/)
+  - [Subversion](http://subversion.apache.org/)
+  - [SuperDuper!](http://www.shirt-pocket.com/SuperDuper/SuperDuperDescription.html)
+  - [Surge](http://surge.run/manual/)
+  - [Sway](https://swaywm.org/)
+  - [Swinsian](http://swinsian.com/)
+  - [Swish](https://highlyopinionated.co/swish/)
+  - [SwitchHosts](https://github.com/oldj/SwitchHosts)
+  - [T](http://sferik.github.io/t/)
+  - [TablePlus](https://tableplus.io/)
+  - [TaskPaper](https://www.taskpaper.com/)
+  - [Taskwarrior](http://taskwarrior.org/)
+  - [Teamocil](https://github.com/remi/teamocil)
+  - [Telegram for macOS](https://macos.telegram.org/)
+  - [Terminal](http://www.apple.com/osx/apps/)
+  - [Terminator](https://launchpad.net/terminator/)
+  - [termite](https://github.com/thestinger/termite)
+  - [Termux](https://termux.dev/)
+  - [Terraform](https://developer.hashicorp.com/terraform)
+  - [TextExpander](https://smilesoftware.com/textexpander)
+  - [TextMate](http://macromates.com/)
+  - [Textual](http://www.codeux.com/textual/)
+  - [Things](https://culturedcode.com/things/)
+  - [Tig](https://github.com/jonas/tig)
+  - [Tiles](https://www.sempliva.com/tiles/)
+  - [Tilix](https://github.com/gnunn1/tilix)
+  - [Timeout](https://www.dejal.com/timeout/)
+  - [tint2](https://code.google.com/p/tint2/)
+  - [TinyFugue](http://tinyfugue.sourceforge.net/)
+  - [Tmux](http://tmux.sourceforge.net/)
+  - [Tmuxp](https://github.com/tony/tmuxp)
+  - [Tmuxinator](https://github.com/tmuxinator/tmuxinator)
+  - [Todo.txt CLI](http://todotxt.com/)
+  - [ToothFairy](https://c-command.com/toothfairy/)
+  - [TotalSpaces2](http://totalspaces.binaryage.com/)
+  - [Tower](http://www.git-tower.com/)
+  - [Transmission](http://www.transmissionbt.com/)
+  - [Transmit](http://panic.com/transmit/)
+  - [TripMode](https://www.tripmode.ch/)
+  - [Trizen](https://github.com/trizen/trizen)
+  - [Tunnelblick](https://tunnelblick.net/)
+  - [tvnamer](https://github.com/dbr/tvnamer)
+  - [Twitterrific](http://twitterrific.com/)
+  - [Typinator](http://www.ergonis.com/products/typinator/)
+  - [Typora](https://typora.io/)
+  - [uTorrent](http://www.utorrent.com/)
+  - [ulauncher](https://ulauncher.io/)
+  - [Ventrilo](http://www.ventrilo.com/)
+  - [Verdaccio](https://verdaccio.org/)
+  - [Versions](http://www.versionsapp.com/)
+  - [Vim](http://www.vim.org/)
+  - [Vimperator](http://www.vimperator.org/vimperator)
+  - [Vimwiki](https://vimwiki.github.io/)
+  - [Viscosity](http://www.sparklabs.com/viscosity/)
+  - [Visual Studio Code](https://code.visualstudio.com/)
+  - [Visual Studio Code - Insiders](https://code.visualstudio.com/insiders)
+  - [Visual Studio Code - OSS](https://github.com/Microsoft/vscode)
+  - [VSCodium](https://vscodium.com/)
+  - [Visual Studio for Mac](https://www.visualstudio.com/vs/visual-studio-mac/)
+  - [VLC](http://www.videolan.org/)
+  - [Volt](https://github.com/vim-volt/volt)
+  - [Wakatime](https://wakatime.com/)
+  - [Warp](https://www.warp.dev/)
+  - [waybar](https://github.com/Alexays/Waybar)
+  - [WebStorm](https://www.jetbrains.com/webstorm/)
+  - [WezTerm](https://wezfurlong.org/wezterm/)
+  - [Wget](https://www.gnu.org/software/wget/)
+  - [WhatsApp Web](https://web.whatsapp.com/)
+  - [Windsurf](https://www.codeium.com/)
+  - [Wireshark 2](https://www.wireshark.org/)
+  - [Witch](http://manytricks.com/witch/)
+  - [WordGrinder](https://cowlark.com/wordgrinder/)
+  - [WordPress WP-CLI](http://wp-cli.org/)
+  - [Workrave](http://www.workrave.org/)
+  - [X11](http://www.x.org/)
+  - [Xee](https://theunarchiver.com/xee)
+  - [Xamarin Studio](https://xamarin.com/studio)
+  - [xbar](https://xbarapp.com/)
+  - [XBindKeys](http://www.nongnu.org/xbindkeys/)
+  - [Xchat](http://xchat.org/)
+  - [Xcode](https://developer.apple.com/xcode/)
+  - [XEmacs](http://www.xemacs.org/)
+  - [XLD](http://tmkk.undo.jp/xld/)
+  - [Xonsh](https://xon.sh/)
+  - [XtraFinder](http://www.trankynam.com/xtrafinder/)
+  - [yabai](https://github.com/koekeishiya/yabai)
+  - [yarn](https://yarnpkg.com/)
+  - [yazi](https://github.com/sxyazi/yazi)
+  - [youtube-dl](https://ytdl-org.github.io/youtube-dl/)
+  - [Yummy FTP](http://www.yummysoftware.com/)
+  - [zabbix-cli](https://github.com/usit-gd/zabbix-cli)
+  - [zathura](https://pwmt.org/projects/zathura/)
+  - [zed](https://zed.dev/)
+  - [Zoom](http://zoom.com/)
+  - [zoxide](https://github.com/ajeetdsouza/zoxide)
+  - [Zsh](http://zsh.sourceforge.net/)
+  - [Übersicht](http://tracesof.net/uebersicht/)
+  
+  ## Can you support application X
+  
+  [Permalink: Can you support application X](https://github.com/lra/mackup#can-you-support-application-x)
+  
+  We can [with your help](https://github.com/lra/mackup/blob/master/doc#get-official-support-for-an-application) ;)
+  
+  ## Personalization & configuration
+  
+  [Permalink: Personalization & configuration](https://github.com/lra/mackup#personalization--configuration)
+  
+  Have an application that shouldn't be generally supported but that you use?
+  Or some personal files you want to sync, e.g. various config files in a `~/.config/`
+  directory or your personal `~/.gitignore`?
+  
+  - Create a `~/.mackup` directory to [sync an application or any file or directory](https://github.com/lra/mackup/blob/master/doc#add-support-for-an-application-or-any-file-or-directory)
+  
+  ## Why did you do this
+  
+  [Permalink: Why did you do this](https://github.com/lra/mackup#why-did-you-do-this)
+  
+  Yesterday, I had a talk with [Zach Zaro](http://zacharyzaro.com/), complaining
+  about the pain it is to reconfigure our Macbook each time we get a new one or
+  install from scratch. That's a talk we have already had months ago.
+  
+  I change my workstation every X months. Each time I either lose my apps'
+  configurations, or I just waste a bunch of hours getting setup like I was on my
+  old box. I also spend a lot of time reconfiguring the same stuff again on all my
+  workstations (home, work).
+  
+  Boring...
+  
+  Some people tried to solve the problem on the application layer, like
+  [Github's Boxen](https://boxen.github.com/),
+  but it solves a different problem, from my point of view. I don't spend a lot
+  of time installing or downloading stuff. I spend time configuring it.
+  
+  For years, I've used a personal shell script that was copying known config
+  files into Subversion, Git or Dropbox, and linked them into my home. But I felt
+  a lot of us had the same problem: Making a more generic tool could help others
+  and I could get help from others to support more apps in the tool.
+  
+  So here comes Mackup, the little tool that will sync all your application
+  configs to Dropbox (or Google Drive, or anything).
+  
+  And it's [GPL](http://www.gnu.org/licenses/gpl.html), of course.
+  
+  ## What platforms are supported
+  
+  [Permalink: What platforms are supported](https://github.com/lra/mackup#what-platforms-are-supported)
+  
+  - macOS
+  - GNU/Linux
+  
+  ## What's up with the weird name
+  
+  [Permalink: What's up with the weird name](https://github.com/lra/mackup#whats-up-with-the-weird-name)
+  
+  Mackup is just a portmanteau of Mac and Backup. It is simple, short, and easy to
+  remember, and it corresponds with the whole idea of Mackup: the simpler – the better!
+  (And I suck at naming stuff, but who doesn't.)
+  
+  ## Architecture
+  
+  [Permalink: Architecture](https://github.com/lra/mackup#architecture)
+  
+  Want to understand how Mackup works internally? Check out the
+  [Architecture Guide](https://github.com/lra/mackup/blob/master/doc/ARCHITECTURE.md) which includes:
+  
+  - Visual architecture diagram
+  - Component breakdown
+  - Data flow diagrams
+  - Design decisions
+  - Extension points for contributors
+  
+  Perfect for contributors who want to understand the codebase or users
+  curious about how their configs are managed.
+  
+  ## Where can I find more information
+  
+  [Permalink: Where can I find more information](https://github.com/lra/mackup#where-can-i-find-more-information)
+  
+  In the [doc](https://github.com/lra/mackup/blob/master/doc) directory.
+  
+  ## About
+  
+  Backup and keep your application settings in sync.
+  
+  
+  ### Resources
+  
+  [Readme](https://github.com/lra/mackup#readme-ov-file)
+  
+  ### License
+  
+  [GPL-3.0 license](https://github.com/lra/mackup#GPL-3.0-1-ov-file)
+  
+  ### Contributing
+  
+  [Contributing](https://github.com/lra/mackup#contributing-ov-file)
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/lra/mackup).
+  
+  [Activity](https://github.com/lra/mackup/activity)
+  
+  ### Stars
+  
+  [**15.2k**\\
+  stars](https://github.com/lra/mackup/stargazers)
+  
+  ### Watchers
+  
+  [**135**\\
+  watching](https://github.com/lra/mackup/watchers)
+  
+  ### Forks
+  
+  [**941**\\
+  forks](https://github.com/lra/mackup/forks)
+  
+  [Report repository](https://github.com/contact/report-content?content_url=https%3A%2F%2Fgithub.com%2Flra%2Fmackup&report=lra+%28user%29)
+  
+  ## [Releases\  34](https://github.com/lra/mackup/releases)
+  
+  [0.10.2\\
+  Latest\\
+  \\
+  on Feb 11Feb 11, 2026](https://github.com/lra/mackup/releases/tag/0.10.2)
+  
+  [\+ 33 releases](https://github.com/lra/mackup/releases)
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/lra/mackup).
+  
+  ## [Contributors\  456](https://github.com/lra/mackup/graphs/contributors)
+  
+  - [![@lra](https://avatars.githubusercontent.com/u/122286?s=64&v=4)](https://github.com/lra)
+  - [![@kfinlay](https://avatars.githubusercontent.com/u/5224071?s=64&v=4)](https://github.com/kfinlay)
+  - [![@EstebanForge](https://avatars.githubusercontent.com/u/1696145?s=64&v=4)](https://github.com/EstebanForge)
+  - [![@dnicolson](https://avatars.githubusercontent.com/u/2276355?s=64&v=4)](https://github.com/dnicolson)
+  - [![@vitorgalvao](https://avatars.githubusercontent.com/u/1699443?s=64&v=4)](https://github.com/vitorgalvao)
+  - [![@shrwnsan](https://avatars.githubusercontent.com/u/38465?s=64&v=4)](https://github.com/shrwnsan)
+  - [![@Timidger](https://avatars.githubusercontent.com/u/3515754?s=64&v=4)](https://github.com/Timidger)
+  - [![@iloveitaly](https://avatars.githubusercontent.com/u/150855?s=64&v=4)](https://github.com/iloveitaly)
+  - [![@orschiro](https://avatars.githubusercontent.com/u/170947?s=64&v=4)](https://github.com/orschiro)
+  - [![@paxperscientiam](https://avatars.githubusercontent.com/u/7539871?s=64&v=4)](https://github.com/paxperscientiam)
+  - [![@doubleloop](https://avatars.githubusercontent.com/u/2602750?s=64&v=4)](https://github.com/doubleloop)
+  - [![@icopp](https://avatars.githubusercontent.com/u/1162876?s=64&v=4)](https://github.com/icopp)
+  - [![@hiyer](https://avatars.githubusercontent.com/u/6592798?s=64&v=4)](https://github.com/hiyer)
+  - [![@orenshk](https://avatars.githubusercontent.com/u/2558366?s=64&v=4)](https://github.com/orenshk)
+  
+  [\+ 442 contributors](https://github.com/lra/mackup/graphs/contributors)
+  
+  ## Languages
+  
+  - [Python99.6%](https://github.com/lra/mackup/search?l=python)
+  - [Makefile0.4%](https://github.com/lra/mackup/search?l=makefile)
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+Setting Up a New Mac with Dotfiles, Brew Bundle, and Mackup
+  URL: https://respawn.io/posts/dotfiles-brew-bundle-and-mackup
+  Mackup is a neat little backup utility for Mac computers that can backup a lot of applicaation specific and system settings that don't quite fit into dotfiles .
+
+  --- Content ---
+  ## [Natik's Journal](https://respawn.io/)
+  
+  - [About](https://respawn.io/about)
+  - [TIL](https://respawn.io/daily)
+  - [RSS](https://respawn.io/rss/feed.xml)
+  
+  Notes on engineering leadership and software development.
+  
+  - [About](https://respawn.io/about)
+  - [TIL](https://respawn.io/daily)
+  - [RSS](https://respawn.io/rss/feed.xml)
+  
+  # Setting Up a New Mac With Dotfiles, Brew Bundle, and Mackup
+  
+  I was rather stubborn at having just one laptop for work and personal use, but
+  finally decided it’s time to separate the two activities out. So it was time to
+  setup a new machine!
+  
+  Everyone has their own little script to set things up. I just had a dotfiles
+  repo that I mostly used to to set things up on Linux boxes.
+  [Here’s how I cleaned it up](https://github.com/natikgadzhi/dotfiles):
+  
+  1. dotfiles with `dotbot` with settings for common unix software, the usual.
+     This way, the first layer of the backup is applicable on any POSIX platform.
+  2. `Brewfile` for `brew bundle install` downloads all the things, including apps
+     from casks and Mac App Store.
+     [Here’s my current `Brewfile`](https://github.com/natikgadzhi/dotfiles/blob/main/Brewfile).
+     UPD: turns out, it bundles `vscode` extensions in it, too — that’s not
+     necessarily the best way to manage your VSCode extensions.
+  3. `mackup restore` grabs Mackup dump that has Mac-specific apps and settings.
+  
+  ## Backing Up the Old Machine
+  
+  To setup a new machine with just the software and configuration that you need,
+  you first need to back it up from the old machine. Here’s the minimal path to
+  get it to work with the dotfiles like mine:
+  
+  ### Backing Up Your Dotfiles
+  
+  First, you need to install `dotbot` and move your existing configuration files
+  into a dotfiles directory and push it up to a git or Mercurial repository.
+  [Here’s the installation instructions on GitHub](https://github.com/anishathalye/dotbot#integrate-with-existing-dotfiles).
+  
+  > If you already have a directory with dotfiles — great! You can restore them
+  >
+  > manually, sure, or you can still use `dotbot` install script to simplify it
+  >
+  > for you, or run arbitrary commands after copying the dotfiles over. The
+  >
+  > internal structure of your existing dotfiles does not matter, you can
+  >
+  > configure it for dotbot in `install.conf.yaml`.
+  
+  ```
+  # First off, you need to make a directory to collect all the important dotfiles.
+  # This example assumes a new directory, but you can just cd in yours if you have one already.
+  # This example is based on the one in dotbot GitHub, but tweaked for my personal directory structure.
+  mkdir -p ~/src/dotfiles
+  cd ~/src/dotfiles
+  git init # initialize repository if needed
+  git submodule add https://github.com/anishathalye/dotbot
+  git config -f .gitmodules submodule.dotbot.ignore dirty # ignore dirty commits in the submodule
+  cp dotbot/tools/git-submodule/install .
+  touch install.conf.yaml
+  ```
+  
+  ```
+  # install.conf.yaml
+  # This example is based on my install.conf.yaml at the time of the writing:
+  # https://github.com/natikgadzhi/dotfiles/blob/main/install.conf.yaml
+  #
+  # Here's the dotbot config guide: https://github.com/anishathalye/dotbot#configuration
+  
+  # By default, create, relink, and rewrite each config file defined in this config.
+  - defaults:
+      link:
+        create: true
+        relink: true
+        force: true
+  
+  # clean will prune any dead symlinks to any of the listed file paths below in the directory.
+  - clean: ["~"]
+  
+  # links specify which configuration files from the dotfiles repository to
+  # link on a target system, and where they should be located on
+  # the target system, and in the repo.
+  - link:
+      ~/.tmux.conf:
+        path: .tmux.conf
+      ~/.gitconfig:
+        path: .gitconfig
+      # Take all of the files and directories in .config dir of this repo,
+      # and link them to the target system
+      # at ~/.config.
+      ~/.config/:
+        glob: true
+        path: .config/*
+      ~/.gnupg/gpg-agent.conf:
+        path: gpg-agent.conf
+      ~/.ansible.cfg:
+        path: .ansible.cfg
+      # This is the neat part: dotbot configuration manages Mackup configuration.
+      ~/.mackup.cfg:
+        path: .mackup.cfg
+  
+      # These two launchctl agents are only required on Mac OS
+      # to make gpg-agent play nice with ssh auth in apps that don't start
+      # from shell with it's environment.
+      ~/Library/LaunchAgents/homebrew.gpg.gpg-agent.plist:
+        path: Library/LaunchAgents/homebrew.gpg.gpg-agent.plist
+      ~/Library/LaunchAgents/link-ssh-auth-sock.plist:
+        path: Library/LaunchAgents/link-ssh-auth-sock.plist
+  
+  # If you want to run any commands right after the dotfiles setup is complete,
+  # you can do that here.
+  # For example:
+  # - chsh -s $(which fish) to setup your shell, assuming fish is installed.
+  # - vim +'PlugInstall --sync' +qa to istall vim plugins, assuming you use vim-plug to manage them.
+  - shell: []
+  ```
+  
+  ### Making a `Brewfile`
+  
+  Homebrew has a mechanism to dump all your installed packates into a `Brewfile`:
+  
+  ```
+  # brew bundle dump will make a Brewfile in the current directory,
+  # but you can explicitly give it a path with --file flag.
+  brew bundle dump --file ~/src/dotfiles/Brewfile --force
+  ```
+  
+  The resulting file will include:
+  
+  - Homebrew native packages that you installed manually that are not dependencies
+    of other packages. If you’re making a new `Brewfile` on an existing system
+    that has a few years of cruft on it, you might want to review your `Brewfile`
+    and only keep the packages that you want on your new system(s).
+  - List of all `Casks` installed — that’s why I prefer to install as much
+    software as I can with Homebrew. A lot of applications
+    [can be installed via Casks](https://github.com/Homebrew/homebrew-cask): Zoom,
+    Firefox, Slack, Fantastical, Spotify to name a few.
+  - Homebew **also has a way to bundle all of the applications that you installed**
+    **via Mac App Store** [called `mas`](https://github.com/mas-cli/mas). For App
+    Store apps to be included, you will need to `brew install mas` before you
+    `brew bundle dump`.
+  
+  **Note:**`Brewfile` is in the `dotfiles` repository, but it will not be
+  symlinked into the target system with `dotbot`.
+  
+  ### Backing Up Various Mac-Specific App Settings With Mackup
+  
+  [Mackup](https://github.com/lra/mackup) is a neat little backup utility for Mac
+  computers that can backup a lot of applicaation specific and system settings
+  that don’t quite fit into `dotfiles`. I think it’s intended to be used
+  standalone, and by default it would attempt to backup into Dropbox, if it
+  detects that it’s available. But
+  [you can backup to any directory you want](https://github.com/lra/mackup#supported-storages),
+  and I prefer backing up into my dotfiles repository.
+  
+  To only backup the app settings that you want, you can do the following:
+  
+  1. `brew install mackup`
+  2. Create a `.mackup.cfg` file in your home directory. I prefer to backup this
+     file with `dotbot` as well.
+  3. Run `mackup backup`.
+  
+  Be careful about what you mackup. Some applications, like VSCode, prefer to sync
+  their configuration to a cloud on their own, and that can mess things up a
+  little bit — you’ll end up with forever dirty dotfiles working copy.
+  
+  Here’s my configuration:
+  
+  ```
+  [storage]
+  engine = file_system
+  path = src/dotfiles
+  directory = mackup
+  
+  # These applications are managed by dotfiles themselves,
+  # No need to re-link them to mackup
+  [applications_to_ignore]
+  # I don't like symlinking vscode settings personally.
+  vscode
+  starship
+  netrc
+  yarn
+  neovim
+  tmux
+  fish
+  git
+  vim
+  zsh
+  mackup
+  ssh
+  gnupg
+  ansible
+  skhd
+  yabai
+  ```
+  
+  > As a nice example, `mackup` backs up your Xcode keyboard shortcuts!
+  
+  ## Restoring on a New Mac
+  
+  Restoring is straightforward, and essentially walks the same steps as the
+  backup:
+  
+  1. Get SSH keys to work so you can download your dotfiles.
+  2. `dotbot install` — that gets you the barebones of shell settings and other
+     niceties. It also gets my `gpg` to work in my case.
+  3. `brew bundle install` will install all your Homebrew packages, casks, and App
+     Store applications. This will require that you sign in with your Apple ID in
+     the App Store app. You don’t have to have the same iCloudID that you had when
+     you purchased the apps, as long as the Apple ID that you’re using has those
+     apps purchased too.
+  4. `mackup restore` to get the rest of the apps and settings.
+  
+  ## What’s Not Covered?
+  
+  I’m still looking for a way to backup some Mac-specific system settings — please
+  @ me if you know how to get them backed up in an elegant way. Perhaps I should
+  shove them into the `shell` section of `dotbot` config for now:
+  
+  - Mouse and Keyboard settings like key repeat interval and mouse sensitivity.
+  - Dock settings (put Dock in the left side, autohide: on).
+  - Screenshot directory settings, including creating a `~/Screenshots` and putting a shortcut to it to your Dock.
+  - Disable all interface sounds.
+  - Disable all/most UI animations.
+  - Disable Keyboard input autocorrect and auto-capitalization.
+  - Add Keyboard Input sources (yay Russian).
+  - System keyboard shortcuts like Spotlight and changing input sources.
+  
+  I believe they all are possible to setup with `defaults write something something`, but I’m too lazy to do that.
+  
+  ⌘ ⌘ ⌘
+  
+  [#coding](https://respawn.io/tags/coding)
+  
+  Originally published on
+  Dec 14, 2022.
+  
+  Last update on
+  Jul 24, 2023.
+  
+  ![](https://1ca90c7a.counterscale-a1l.pages.dev/collect?p=%2Fposts%2Fdotfiles-brew-bundle-and-mackup&h=https%3A%2F%2Frespawn.io&r=https%3A%2F%2Fwww.google.com%2F&sid=respawn-io)
+  --- End Content ---

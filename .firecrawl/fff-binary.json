@@ -1,0 +1,630 @@
+Is fff.nvim just an extension of Snacks.picker or is there ... - Reddit
+  URL: https://www.reddit.com/r/neovim/comments/1n3y6zc/is_fffnvim_just_an_extension_of_snackspicker_or/
+  It is not a reimplementation of fzf in lua, it is an alternative to fzf.vim, written in vimscript, but both are using the fzf binary. funnyFrank.
+
+dmtrKovalenko/fff.nvim - Neovim plugin - Dotfyle
+  URL: https://dotfyle.com/plugins/dmtrKovalenko/fff.nvim
+  The fastest and the most accurate file search toolkit for AI agents, Neovim, Rust, C, and NodeJS.
+
+  --- Content ---
+  Done
+  
+  GenerateSave
+  
+  Done
+  
+  lazy.nvimpacker.nvim
+  
+  GenerateSave
+  
+  Done
+  
+  ![](https://avatars.githubusercontent.com/u/16926049?v=4)[dmtrKovalenko](https://dotfyle.com/dmtrKovalenko) / fff.nvim
+  
+  # fff.nvim
+  
+  The fastest and the most accurate file search toolkit for AI agents, Neovim, Rust, C, and NodeJS
+  
+  * * *
+  
+  4514 48 0 2 days ago
+  
+  [GitHub](https://github.com/dmtrKovalenko/fff.nvim)
+  
+  fuzzy-finderawesome-neovim
+  
+  ### Breaking changes in fff.nvim
+  
+  [Breaking change in fff.nvim](https://dotfyle.com/plugins/dmtrKovalenko/fff.nvim)
+  
+  [0a993d](https://github.com/dmtrKovalenko/fff.nvim/commit/0a993d7a30805b3c2e253080c9a9a0fe77a8637c) 1 month ago
+  
+  feat!: Make layout flex on small screens & responsive (#255)
+  
+  [Breaking change in fff.nvim](https://dotfyle.com/plugins/dmtrKovalenko/fff.nvim)
+  
+  [6b01f9](https://github.com/dmtrKovalenko/fff.nvim/commit/6b01f95ca6305511ef28175c42b250925376f181) 2 months ago
+  
+  feat!: add all items to quickfix list if none are selected (#216)
+  
+  [Breaking change in fff.nvim](https://dotfyle.com/plugins/dmtrKovalenko/fff.nvim)
+  
+  [5a8980](https://github.com/dmtrKovalenko/fff.nvim/commit/5a898066d2fe5aaa856342a5b711bc6e73daf5a3) 6 months ago
+  
+  feat!: Prebuilt binaries (no more need in cargo build) (#156)
+  
+  ## Media
+  
+  ![Plugin media](https://raw.githubusercontent.com/dmtrKovalenko/fff.nvim/main/chart.png)
+  
+  ## Developers using fff.nvim
+  
+  [more configs](https://dotfyle.com/neovim/configurations/top?plugins=dmtrKovalenko/fff.nvim)
+  
+  [![](https://avatars.githubusercontent.com/u/2036594?v=4)joshmedeski/dotfiles\\
+  \\
+  /.config/nvim](https://dotfyle.com/joshmedeski/dotfiles-config-nvim)
+  
+  448 init.lua 73 4591
+  
+  1 mention
+  
+  [![](https://avatars.githubusercontent.com/u/3678?v=4)megalithic/dotfiles\\
+  \\
+  /config/nvim](https://dotfyle.com/megalithic/dotfiles-config-nvim)
+  
+  215 init.lua 51 19477
+  
+  2 mentions
+  
+  [![](https://avatars.githubusercontent.com/u/21010072?v=4)catgoose/nvim\\
+  \\
+  /](https://dotfyle.com/catgoose/nvim)
+  
+  174 init.lua 86 10778
+  
+  1 mention
+  
+  [![](https://avatars.githubusercontent.com/u/351256?v=4)AmmarCodes/dotfiles\\
+  \\
+  /nvim](https://dotfyle.com/AmmarCodes/dotfiles-nvim)
+  
+  18 init.lua 28 1149
+  
+  1 mention
+  
+  ## Other fuzzy-finder plugins
+  
+  [more plugins](https://dotfyle.com/neovim/plugins/top?categories=fuzzy-finder)
+  
+  [nvim-telescope/telescope.nvim\\
+  \\
+  Find, Filter, Preview, Pick. All lua, all the time.](https://dotfyle.com/plugins/nvim-telescope/telescope.nvim)
+  
+  19302 0fuzzy-finder
+  
+  [1886 configs](https://dotfyle.com/neovim/configurations/top?plugins=nvim-telescope/telescope.nvim)
+  
+  [ibhagwan/fzf-lua\\
+  \\
+  Improved fzf.vim written in lua\\
+  \\
+  ![ibhagwan/fzf-lua thumbnail](https://raw.githubusercontent.com/wiki/ibhagwan/fzf-lua/demo.gif)](https://dotfyle.com/plugins/ibhagwan/fzf-lua)
+  
+  4192 0fuzzy-finder
+  
+  [552 configs](https://dotfyle.com/neovim/configurations/top?plugins=ibhagwan/fzf-lua)
+  
+  [echasnovski/mini.pick\\
+  \\
+  Pick anything. Part of 'mini.nvim' library. \\
+  \\
+  ![echasnovski/mini.pick thumbnail](https://raw.githubusercontent.com/echasnovski/media/main/mini.nvim/logo/logo_pick.png)](https://dotfyle.com/plugins/echasnovski/mini.pick)
+  
+  192 0fuzzy-finder
+  
+  [94 configs](https://dotfyle.com/neovim/configurations/top?plugins=echasnovski/mini.pick)
+  
+  [nvim-telescope/telescope-media-files.nvim\\
+  \\
+  Telescope extension to preview media files using Ueberzug.](https://dotfyle.com/plugins/nvim-telescope/telescope-media-files.nvim)
+  
+  524 0fuzzy-finder
+  
+  [65 configs](https://dotfyle.com/neovim/configurations/top?plugins=nvim-telescope/telescope-media-files.nvim)
+  
+  ### Plugin usage badge
+  
+  ![plugin usage](https://dotfyle.com/plugins/dmtrKovalenko/fff.nvim/shield?style=flat)
+  --- End Content ---
+
+helix-editor/nucleo: A fast and convenient fuzzy matcher library for rust
+  URL: https://github.com/helix-editor/nucleo
+  Compared to fzf nucleo has a significantly faster matching algorithm. This mainly makes a difference when matching patterns with low selectivity on many items.
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/helix-editor/nucleo#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/helix-editor/nucleo) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/helix-editor/nucleo) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/helix-editor/nucleo) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [helix-editor](https://github.com/helix-editor)/ **[nucleo](https://github.com/helix-editor/nucleo)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2Fhelix-editor%2Fnucleo) You must be signed in to change notification settings
+  - [Fork\\
+  55](https://github.com/login?return_to=%2Fhelix-editor%2Fnucleo)
+  - [Star\\
+  1.4k](https://github.com/login?return_to=%2Fhelix-editor%2Fnucleo)
+  
+  
+  master
+  
+  [**1** Branch](https://github.com/helix-editor/nucleo/branches) [**4** Tags](https://github.com/helix-editor/nucleo/tags)
+  
+  [Go to Branches page](https://github.com/helix-editor/nucleo/branches)[Go to Tags page](https://github.com/helix-editor/nucleo/tags)
+  
+  Go to file
+  
+  Code
+  
+  Open more actions menu
+  
+  ## Folders and files
+  
+  | Name | Name | Last commit message | Last commit date |
+  | --- | --- | --- | --- |
+  | ## Latest commit<br>[![archseer](https://avatars.githubusercontent.com/u/1372918?v=4&size=40)](https://github.com/archseer)[archseer](https://github.com/helix-editor/nucleo/commits?author=archseer)<br>[Merge pull request](https://github.com/helix-editor/nucleo/commit/4253de9faabb4e5c6d81d946a5e35a90f87347ee) [#88](https://github.com/helix-editor/nucleo/pull/88) [from rutar-forks/better-panic-parse](https://github.com/helix-editor/nucleo/commit/4253de9faabb4e5c6d81d946a5e35a90f87347ee)<br>Open commit detailsfailure<br>3 months agoJan 21, 2026<br>[4253de9](https://github.com/helix-editor/nucleo/commit/4253de9faabb4e5c6d81d946a5e35a90f87347ee) · 3 months agoJan 21, 2026<br>## History<br>[123 Commits](https://github.com/helix-editor/nucleo/commits/master/) <br>Open commit details<br>[View commit history for this file.](https://github.com/helix-editor/nucleo/commits/master/) 123 Commits |
+  | [.github/workflows](https://github.com/helix-editor/nucleo/tree/master/.github/workflows "This path skips through empty directories") | [.github/workflows](https://github.com/helix-editor/nucleo/tree/master/.github/workflows "This path skips through empty directories") | [add typos-rs to ci (](https://github.com/helix-editor/nucleo/commit/2abe133a941dc5b1a020bf1dc06a5828db9162a9 "add typos-rs to ci (#24)") [#24](https://github.com/helix-editor/nucleo/pull/24) [)](https://github.com/helix-editor/nucleo/commit/2abe133a941dc5b1a020bf1dc06a5828db9162a9 "add typos-rs to ci (#24)") | 3 years agoSep 10, 2023 |
+  | [bench](https://github.com/helix-editor/nucleo/tree/master/bench "bench") | [bench](https://github.com/helix-editor/nucleo/tree/master/bench "bench") | [release version 0.4](https://github.com/helix-editor/nucleo/commit/355938f0eeeeec040c02b93b8105aa508e6922b5 "release version 0.4") | 2 years agoFeb 20, 2024 |
+  | [matcher](https://github.com/helix-editor/nucleo/tree/master/matcher "matcher") | [matcher](https://github.com/helix-editor/nucleo/tree/master/matcher "matcher") | [Slightly better panic message when non-match is not caught by prefilter](https://github.com/helix-editor/nucleo/commit/cb06e274a1d6253603837d2b5efe9c14758b2d8b "Slightly better panic message when non-match is not caught by prefilter") | 7 months agoSep 3, 2025 |
+  | [src](https://github.com/helix-editor/nucleo/tree/master/src "src") | [src](https://github.com/helix-editor/nucleo/tree/master/src "src") | [fix typo (](https://github.com/helix-editor/nucleo/commit/4f561f8969fbeb9c0d4acf221c5c46e5ed0d9285 "fix typo (#94)") [#94](https://github.com/helix-editor/nucleo/pull/94) [)](https://github.com/helix-editor/nucleo/commit/4f561f8969fbeb9c0d4acf221c5c46e5ed0d9285 "fix typo (#94)") | 3 months agoJan 21, 2026 |
+  | [.gitignore](https://github.com/helix-editor/nucleo/blob/master/.gitignore ".gitignore") | [.gitignore](https://github.com/helix-editor/nucleo/blob/master/.gitignore ".gitignore") | [Remove `Cargo.lock` from .gitignore file](https://github.com/helix-editor/nucleo/commit/15e07ffb88fc6cf138edccd2632ce262cc8bad42 "Remove `Cargo.lock` from .gitignore file") | 2 years agoDec 7, 2024 |
+  | [CHANGELOG.md](https://github.com/helix-editor/nucleo/blob/master/CHANGELOG.md "CHANGELOG.md") | [CHANGELOG.md](https://github.com/helix-editor/nucleo/blob/master/CHANGELOG.md "CHANGELOG.md") | [allow access to injected item while creating filter text](https://github.com/helix-editor/nucleo/commit/a82a24999b899e588a73da830d3a6957f0fbea2b "allow access to injected item while creating filter text") | 2 years agoApr 1, 2024 |
+  | [Cargo.lock](https://github.com/helix-editor/nucleo/blob/master/Cargo.lock "Cargo.lock") | [Cargo.lock](https://github.com/helix-editor/nucleo/blob/master/Cargo.lock "Cargo.lock") | [fix CI](https://github.com/helix-editor/nucleo/commit/f13f2dc9401dd3259209d199f438ecc1a1fb8cb7 "fix CI") | 2 years agoDec 7, 2024 |
+  | [Cargo.toml](https://github.com/helix-editor/nucleo/blob/master/Cargo.toml "Cargo.toml") | [Cargo.toml](https://github.com/helix-editor/nucleo/blob/master/Cargo.toml "Cargo.toml") | [add an](https://github.com/helix-editor/nucleo/commit/c754da51d5679e33c5456f0f39121347d4ec41c9 "add an `extend` method to Nucleo's injector (#74)  * feat(injector): add an `extend` method to Nucleo's injector  * Update lib.rs  Co-authored-by: Michael Davis <mcarsondavis@gmail.com>  * remove benches and #73 patch  * udpates following pascalkuthe's review  * simplification  * adding tests  * remove unused method  ---------  Co-authored-by: Michael Davis <mcarsondavis@gmail.com>")`extend` [method to Nucleo's injector (](https://github.com/helix-editor/nucleo/commit/c754da51d5679e33c5456f0f39121347d4ec41c9 "add an `extend` method to Nucleo's injector (#74)  * feat(injector): add an `extend` method to Nucleo's injector  * Update lib.rs  Co-authored-by: Michael Davis <mcarsondavis@gmail.com>  * remove benches and #73 patch  * udpates following pascalkuthe's review  * simplification  * adding tests  * remove unused method  ---------  Co-authored-by: Michael Davis <mcarsondavis@gmail.com>") [#74](https://github.com/helix-editor/nucleo/pull/74) [)](https://github.com/helix-editor/nucleo/commit/c754da51d5679e33c5456f0f39121347d4ec41c9 "add an `extend` method to Nucleo's injector (#74)  * feat(injector): add an `extend` method to Nucleo's injector  * Update lib.rs  Co-authored-by: Michael Davis <mcarsondavis@gmail.com>  * remove benches and #73 patch  * udpates following pascalkuthe's review  * simplification  * adding tests  * remove unused method  ---------  Co-authored-by: Michael Davis <mcarsondavis@gmail.com>") | last yearFeb 14, 2025 |
+  | [LICENSE](https://github.com/helix-editor/nucleo/blob/master/LICENSE "LICENSE") | [LICENSE](https://github.com/helix-editor/nucleo/blob/master/LICENSE "LICENSE") | [Initial commit](https://github.com/helix-editor/nucleo/commit/93c75f686726950ed10ef6b9328a4490d1ebff36 "Initial commit") | 3 years agoJul 17, 2023 |
+  | [README.md](https://github.com/helix-editor/nucleo/blob/master/README.md "README.md") | [README.md](https://github.com/helix-editor/nucleo/blob/master/README.md "README.md") | [docs(readme): capitalize 'Rust'](https://github.com/helix-editor/nucleo/commit/44e711b5484b071d4d46a72c18ab9a1b16c83052 "docs(readme): capitalize 'Rust'") | 2 years agoJan 21, 2024 |
+  | [tarpaulin.toml](https://github.com/helix-editor/nucleo/blob/master/tarpaulin.toml "tarpaulin.toml") | [tarpaulin.toml](https://github.com/helix-editor/nucleo/blob/master/tarpaulin.toml "tarpaulin.toml") | [Fix file name and excluded no needed files in Cargo.toml (](https://github.com/helix-editor/nucleo/commit/e86f523e333a9019b17427648a3d7c14c61780d5 "Fix file name and excluded no needed files in Cargo.toml (#30)  * Fix typo in file name  * Exclude files that don't need to be published on crates.io") [#30](https://github.com/helix-editor/nucleo/pull/30) [)](https://github.com/helix-editor/nucleo/commit/e86f523e333a9019b17427648a3d7c14c61780d5 "Fix file name and excluded no needed files in Cargo.toml (#30)  * Fix typo in file name  * Exclude files that don't need to be published on crates.io") | 3 years agoOct 20, 2023 |
+  | [typos.toml](https://github.com/helix-editor/nucleo/blob/master/typos.toml "typos.toml") | [typos.toml](https://github.com/helix-editor/nucleo/blob/master/typos.toml "typos.toml") | [move pattern API to nucleo-matcher](https://github.com/helix-editor/nucleo/commit/de844d6acec4c3e4435c8f9595796db9470ea1a8 "move pattern API to nucleo-matcher") | 3 years agoAug 27, 2023 |
+  | View all files |
+  
+  ## Repository files navigation
+  
+  # Nucleo
+  
+  [Permalink: Nucleo](https://github.com/helix-editor/nucleo#nucleo)
+  
+  `nucleo` is a highly performant fuzzy matcher written in Rust. It aims to fill the same use case as `fzf` and `skim`. Compared to `fzf``nucleo` has a significantly faster matching algorithm. This mainly makes a difference when matching patterns with low selectivity on many items. An (unscientific) comparison is shown in the benchmark section below.
+  
+  > Note: If you are looking for a replacement of the `fuzzy-matcher` crate and not a fully managed fuzzy picker, you should use the [`nucleo-matcher`](https://crates.io/crates/nucleo-matcher) crate.
+  
+  `nucleo` uses the exact **same scoring system as fzf**. That means you should get the same ranking quality (or better) as you are used to from fzf. However, `nucleo` has a more faithful implementation of the Smith-Waterman algorithm which is normally used in DNA sequence alignment (see [https://www.cs.cmu.edu/~ckingsf/bioinfo-lectures/gaps.pdf](https://www.cs.cmu.edu/~ckingsf/bioinfo-lectures/gaps.pdf)) with two separate matrices (instead of one like fzf). This means that `nucleo` finds the optimal match more often. For example if you match `foo` in `xf foo``nucleo` will match `x__foo` but `fzf` will match `xf_oo` (you can increase the word length the result will stay the same). The former is the more intuitive match and has a higher score according to the ranking system that both `nucleo` and fzf.
+  
+  **Compared to `skim`** (and the `fuzzy-matcher` crate) `nucleo` has an even larger performance advantage and is often around **six times faster** (see benchmarks below). Furthermore, the bonus system used by nucleo and fzf is (in my opinion) more consistent/superior. `nucleo` also handles non-ascii text much better. (`skim`s bonus system and even case insensitivity only work for ASCII).
+  
+  Nucleo also handles Unicode graphemes more correctly. `Fzf` and `skim` both operate on Unicode code points (chars). That means that multi codepoint graphemes can have weird effects (match multiple times, weirdly change the score, ...). `nucleo` will always use the first codepoint of the grapheme for matching instead (and reports grapheme indices, so they can be highlighted correctly).
+  
+  ## Status
+  
+  [Permalink: Status](https://github.com/helix-editor/nucleo#status)
+  
+  Nucleo is used in the helix-editor and therefore has a large user base with lots of real world testing. The core matcher implementation is considered complete and is unlikely to see major changes. The `nucleo-matcher` crate is finished and ready for widespread use, breaking changes should be very rare (a 1.0 release should not be far away).
+  
+  While the high level `nucleo` crate also works well (and is also used in helix), there are still additional features that will be added in the future. The high level crate also need better documentation and will likely see a few API changes in the future.
+  
+  ## Benchmarks
+  
+  [Permalink: Benchmarks](https://github.com/helix-editor/nucleo#benchmarks)
+  
+  > WIP currently more of a demonstration than a comprehensive benchmark suit
+  > most notably scientific comparisons with `fzf` are missing (a pain because it can't be called as a library)
+  
+  ### Matcher micro benchmarks
+  
+  [Permalink: Matcher micro benchmarks](https://github.com/helix-editor/nucleo#matcher-micro-benchmarks)
+  
+  Benchmark comparing the runtime of various patterns matched against all files in the source of the linux kernel. Repeat on your system with `BENCHMARK_DIR=<path_to_linux> cargo run -p benches --release` (you can specify an empty directory and the kernel is cloned automatically).
+  
+  | Method | Mean | Samples |
+  | --- | --- | --- |
+  | nucleo "never\_matches" | 2.30 ms | 2,493/2,500 |
+  | skim "never\_matches" | 17.44 ms | 574/574 |
+  | nucleo "copying" | 2.12 ms | 2,496/2,500 |
+  | skim "copying" | 16.85 ms | 593/594 |
+  | nucleo "/doc/kernel" | 2.59 ms | 2,499/2,500 |
+  | skim "/doc/kernel" | 18.32 ms | 546/546 |
+  | nucleo "//.h" | 9.53 ms | 1,049/1,049 |
+  | skim "//.h" | 35.46 ms | 282/282 |
+  
+  ### Comparison with fzf
+  
+  [Permalink: Comparison with fzf](https://github.com/helix-editor/nucleo#comparison-with-fzf)
+  
+  For example in the following two screencasts the pattern `///.` is pasted into `fzf` and `nucleo` (both with about 3 million items open).
+  
+  `fzf` takes a while to filter the text (about 1 second) while `nucleo` has barely any noticeable delay (a single frame in the screencast so about 1/30 seconds). This comparison was made on a very beefy CPU (Ryzen 5950x) so on slower systems the difference may be larger:
+  
+  [![asciicast](https://camo.githubusercontent.com/693840b0d07a0673db1521a2bc60df13e0043611f93e6562390052990df60386/68747470733a2f2f61736369696e656d612e6f72672f612f3630303531372e737667)](https://asciinema.org/a/600517)[![asciicast](https://camo.githubusercontent.com/22d60c55e0500e635648cba6880a8a52ac5babee483ac37f12a3ef14d6897531/68747470733a2f2f61736369696e656d612e6f72672f612f3630303531362e737667)](https://asciinema.org/a/600516)
+  
+  # Future Work
+  
+  [Permalink: Future Work](https://github.com/helix-editor/nucleo#future-work)
+  
+  - [x]  merge integration into helix
+  - [ ] build a standalone CLI application
+  
+    - [ ]  reach feature parity with `fzf` (mostly `--no-sort` and `--tac`)
+    - [ ]  add a way to allow columnar matching
+  - [ ]  expose C API so both the high level API and the matching algorithm itself can be used in other applications (like various nvim plugins)
+  
+  # Naming
+  
+  [Permalink: Naming](https://github.com/helix-editor/nucleo#naming)
+  
+  The name `nucleo` plays on the fact that the `Smith-Waterman` algorithm (that it's based on) was originally developed for matching DNA/RNA sequences. The elements of DNA/RNA that are matched are called _nucleotides_ which was shortened to `nucleo` here.
+  
+  The name also indicates its close relationship with the _helix_ editor (sticking with the DNA theme).
+  
+  # Implementation Details
+  
+  [Permalink: Implementation Details](https://github.com/helix-editor/nucleo#implementation-details)
+  
+  > This is only intended for those interested and will not be relevant to most people. I plan to turn this into a blog post when I have more time
+  
+  The fuzzy matching algorithm is based on the `Smith-Waterman` (with affine gaps) as described in [https://www.cs.cmu.edu/~ckingsf/bioinfo-lectures/gaps.pdf](https://www.cs.cmu.edu/~ckingsf/bioinfo-lectures/gaps.pdf) (TODO: explain). `Nucleo` faithfully implements this algorithm and therefore has two separate matrices. However, by precomputing the next `m-matrix` row we can avoid storing the p-matrix at all and instead just store the value in a variable as we iterate the row.
+  
+  Nucleo also never really stores the `m-matrix` instead we only ever store the current row (which simultaneously serves as the next row). During index calculation a full matrix is however required to backtrack which indices were actually matched. We only store two bools here (to indicate where we came from in the matrix).
+  
+  By comparison `skim` stores the full p and m matrix in that case. `fzf` always allocates a full `mn` matrix (even during matching!).
+  
+  `nucleo`s' matrix is only width `n-m+1` instead of width `n`. This comes from the observation that the `p` char requires `p-1` chars before it and `m-p` chars after it, so there are always `p-1 + m-p = m+1` chars that can never match the current char. This works especially well with only using a single row because the first relevant char is always at the same position even though it's technically further to the right. This is particularly nice because we precalculate the m-matrix row. The m-matrix is computed from diagonal elements, so the precalculated values stay in the same matrix cell.
+  
+  Compared to `skim` nucleo does couple simpler (but arguably even more impactful) optimizations:
+  
+  - _Presegment Unicode_: Unicode segmentation is somewhat slow and matcher will filter the same elements quite often so only doing it once is nice. It also prevents a very common source of bugs (mixing of char indices which we use here and utf8 indices) and makes the code a lot simpler as a result. Fzf does the same.
+  - _Aggressive prefiltering_: Especially for ASCII this works very well, but we also do this for Unicode to a lesser extent. This ensures we reject non-matching haystacks as fast as possible. Usually most haystacks will not match when fuzzy matching large lists so having fast path for that case is a huge win.
+  - _Special-case ASCII_: 90% of practical text is ASCII. ASCII can be stored as bytes instead of `chars`, so cache locality is improved a lot, and we can use `memchar` for superfast prefilters (even case-insensitive prefilter are possible that way)
+  - _Fallback for very long matches_: We fall back to greedy matcher which runs in `O(N)` (and `O(1)` space complexity) to avoid the `O(mn)` blowup for large matches. This is fzfs old algorithm and yields decent (but not great) results.
+  
+  ## About
+  
+  A fast and convenient fuzzy matcher library for rust
+  
+  
+  ### Topics
+  
+  [rust](https://github.com/topics/rust "Topic: rust") [performance](https://github.com/topics/performance "Topic: performance") [fuzzy-search](https://github.com/topics/fuzzy-search "Topic: fuzzy-search") [fuzzy-matching](https://github.com/topics/fuzzy-matching "Topic: fuzzy-matching") [text-processing](https://github.com/topics/text-processing "Topic: text-processing")
+  
+  ### Resources
+  
+  [Readme](https://github.com/helix-editor/nucleo#readme-ov-file)
+  
+  ### License
+  
+  [MPL-2.0 license](https://github.com/helix-editor/nucleo#MPL-2.0-1-ov-file)
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/helix-editor/nucleo).
+  
+  [Activity](https://github.com/helix-editor/nucleo/activity)
+  
+  [Custom properties](https://github.com/helix-editor/nucleo/custom-properties)
+  
+  ### Stars
+  
+  [**1.4k**\\
+  stars](https://github.com/helix-editor/nucleo/stargazers)
+  
+  ### Watchers
+  
+  [**15**\\
+  watching](https://github.com/helix-editor/nucleo/watchers)
+  
+  ### Forks
+  
+  [**55**\\
+  forks](https://github.com/helix-editor/nucleo/forks)
+  
+  [Report repository](https://github.com/contact/report-content?content_url=https%3A%2F%2Fgithub.com%2Fhelix-editor%2Fnucleo&report=helix-editor+%28user%29)
+  
+  ## [Releases\  4](https://github.com/helix-editor/nucleo/releases)
+  
+  [Nucleo 0.4.0\\
+  Latest\\
+  \\
+  on Feb 20, 2024Feb 20, 2024](https://github.com/helix-editor/nucleo/releases/tag/nucleo-v0.4.0)
+  
+  [\+ 3 releases](https://github.com/helix-editor/nucleo/releases)
+  
+  ## [Used by 528](https://github.com/helix-editor/nucleo/network/dependents)
+  
+  [- ![@yonasBSD](https://avatars.githubusercontent.com/u/115436743?s=64&v=4)\\
+  - ![@Dyztiny-Project](https://avatars.githubusercontent.com/u/68858879?s=64&v=4)\\
+  - ![@fattain-naime](https://avatars.githubusercontent.com/u/25886142?s=64&v=4)\\
+  - ![@nssuwan186-dev](https://avatars.githubusercontent.com/u/229412827?s=64&v=4)\\
+  - ![@reonokiy](https://avatars.githubusercontent.com/u/65524316?s=64&v=4)\\
+  - ![@c-b-g-m](https://avatars.githubusercontent.com/u/227904937?s=64&v=4)\\
+  - ![@openai](https://avatars.githubusercontent.com/u/14957082?s=64&v=4)\\
+  - ![@gnostr-org](https://avatars.githubusercontent.com/u/135379339?s=64&v=4)\\
+  \\
+  \+ 520](https://github.com/helix-editor/nucleo/network/dependents)
+  
+  ## [Contributors\  17](https://github.com/helix-editor/nucleo/graphs/contributors)
+  
+  - [![@pascalkuthe](https://avatars.githubusercontent.com/u/61850714?s=64&v=4)](https://github.com/pascalkuthe)
+  - [![@alexrutar](https://avatars.githubusercontent.com/u/20098676?s=64&v=4)](https://github.com/alexrutar)
+  - [![@the-mikedavis](https://avatars.githubusercontent.com/u/21230295?s=64&v=4)](https://github.com/the-mikedavis)
+  - [![@blinxen](https://avatars.githubusercontent.com/u/26602648?s=64&v=4)](https://github.com/blinxen)
+  - [![@doy](https://avatars.githubusercontent.com/u/78547?s=64&v=4)](https://github.com/doy)
+  - [![@a-kenji](https://avatars.githubusercontent.com/u/65275785?s=64&v=4)](https://github.com/a-kenji)
+  - [![@zub](https://avatars.githubusercontent.com/u/314435?s=64&v=4)](https://github.com/zub)
+  - [![@Hywan](https://avatars.githubusercontent.com/u/946104?s=64&v=4)](https://github.com/Hywan)
+  - [![@archseer](https://avatars.githubusercontent.com/u/1372918?s=64&v=4)](https://github.com/archseer)
+  - [![@poliorcetics](https://avatars.githubusercontent.com/u/7951708?s=64&v=4)](https://github.com/poliorcetics)
+  - [![@ysthakur](https://avatars.githubusercontent.com/u/45539777?s=64&v=4)](https://github.com/ysthakur)
+  - [![@alexpasmantier](https://avatars.githubusercontent.com/u/47638216?s=64&v=4)](https://github.com/alexpasmantier)
+  - [![@Tudyx](https://avatars.githubusercontent.com/u/56633664?s=64&v=4)](https://github.com/Tudyx)
+  - [![@noib3](https://avatars.githubusercontent.com/u/59321248?s=64&v=4)](https://github.com/noib3)
+  
+  [\+ 3 contributors](https://github.com/helix-editor/nucleo/graphs/contributors)
+  
+  ## Languages
+  
+  - [Rust99.9%](https://github.com/helix-editor/nucleo/search?l=rust)
+  - [Shell0.1%](https://github.com/helix-editor/nucleo/search?l=shell)
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+Rust - fzf Alternative with Skim
+  URL: https://williamhuey.github.io/posts/rust-fzf-alternative-skim/
+  Skim's API is very similar to fzf as Skim is heavily inspired by it. You might want to use Skim when you prefer to only use Rust applications, ...
+
+  --- Content ---
+  # [WH](https://williamhuey.github.io/)
+  
+  [RSS](https://williamhuey.github.io/atom.xml)
+  
+  [Archives](https://williamhuey.github.io/posts)
+  
+  [Code](https://williamhuey.github.io/code)
+  
+  [About](https://williamhuey.github.io/about)
+  
+  ## Rust - fzf Alternative with Skim
+  
+  
+  
+  
+  
+  08/29/2021, Sun
+  
+  
+  
+  
+  
+  
+  Categories:
+  
+  [#rust](https://williamhuey.github.io/categories/rust/) [#shell](https://williamhuey.github.io/categories/shell/)
+  
+  ### Open File with Real-Time Fuzzy Search
+  
+  Using an interactive CLI search tool can be a big productivity booster when you are uncertain of which files contain the term you are trying to seek out. You will end up performing multiple searches at a time and may jump into multiple files in doing so. GUI tools will be able to perform such a task, but using Skim offers you the ability to perform this task much faster since it is a keyboard focus tool with instant feedback in mind.
+  
+  [Skim](https://github.com/lotabout/skim) by itself is a not an extensive search tool, and you will need a dedicated search CLI tool such as grep or rg to search within files to assist Skim in what you need to find. Skim's API is very similar to [fzf](https://github.com/junegunn/fzf) as Skim is heavily inspired by it. You might want to use Skim when you prefer to only use Rust applications, and this library has the added convenience of being able to be used as a library too.
+  
+  In addition to getting Skim onto your system, you will also need the "preview.sh" from the [fzf.vi](https://github.com/junegunn/fzf.vim/blob/master/bin/preview.sh) project because this will provide the functionality to get a glimpse into which line contains your search term on the right side of the terminal window.
+  
+  This example will use the home directory to store the helper, "preview.sh" file, but you may go into a directory of your choice to store the "preview.sh" file.
+  
+  Make it script executable
+  
+  ```
+  chmod a+xCopy
+  ```
+  
+  The first example shown will use skim as a one-time search event in interactive mode like so
+  
+  ```
+  sk --ansi -i -c 'rg -l <search-term>'Copy
+  ```
+  
+  The previous example shows the use of rg with a fixed search term, but this lacks flexibility in interactive mode as you can not type in a new term to update your search.
+  
+  Now, to overcome this issue and get a sense of the real-time power of Skim, rg can be adjusted using the example below.
+  
+  ```
+  sk --ansi -i -c 'rg --color=always -l "{}"'Copy
+  ```
+  
+  However, there is still something to be desired with using this command because
+  you do not know exactly what lines contain the term within the file when only the filenames are display. We have downloaded the "preview.sh" file from before, but now is the time to use it to get more information from our searches.
+  
+  ```
+  sk --ansi -i -c 'rg --color=always -l "{}"' --preview "~/preview.sh {}"Copy
+  ```
+  
+  Scroll through the preview window using the shift + Up Arrow or shift + Down Arrow to navigate the preview window.
+  
+  You also have the option to pass in the filename into another external program using a keybinding. This command will open up VsCode and close Skim when an item is selected.
+  
+  ```
+  sk --bind 'f1:execute(code {}),ctrl-y)+abort'Copy
+  ```
+  
+  Now to combine all basic features together for a real-time search and preview with hotkey binding to open a file with an external program
+  
+  ```
+  sk --ansi -i -c 'rg --color=always -l "{}"' --preview "~/preview.sh {}" --bind 'f1:execute-silent(code {}),ctrl-y)+abort'Copy
+  ```
+  
+  Typing all the above out is tedious, and it will simplify your life when you create a shell function to wrap the above command in your startup shell script.
+  
+  ```
+  skc() {
+    sk --ansi -i -c 'rg --color=always -l "{}"' --preview "~/preview.sh {}" --bind 'f1:execute-silent(code {}),ctrl-y)+abort'
+  }Copy
+  ```
+  
+  utterances
+  
+  # 0 Comments _\- powered by_ _[utteranc.es](https://utteranc.es/)_
+  
+  ![@anonymous](<Base64-Image-Removed>)
+  
+  Nothing to preview
+  
+  
+  ## [Categories](https://williamhuey.github.io/categories)
+  
+  [api](https://williamhuey.github.io/categories/api)
+  
+  [browser](https://williamhuey.github.io/categories/browser)
+  
+  [cms](https://williamhuey.github.io/categories/cms)
+  
+  [containers](https://williamhuey.github.io/categories/containers)
+  
+  [css](https://williamhuey.github.io/categories/css)
+  
+  [documentation](https://williamhuey.github.io/categories/documentation)
+  
+  [editor](https://williamhuey.github.io/categories/editor)
+  
+  [fzf](https://williamhuey.github.io/categories/fzf)
+  
+  [git](https://williamhuey.github.io/categories/git)
+  
+  [html](https://williamhuey.github.io/categories/html)
+  
+  [installer](https://williamhuey.github.io/categories/installer)
+  
+  [javascript](https://williamhuey.github.io/categories/javascript)
+  
+  [latex](https://williamhuey.github.io/categories/latex)
+  
+  [markdown](https://williamhuey.github.io/categories/markdown)
+  
+  [markup](https://williamhuey.github.io/categories/markup)
+  
+  [python](https://williamhuey.github.io/categories/python)
+  
+  [ruby](https://williamhuey.github.io/categories/ruby)
+  
+  [rust](https://williamhuey.github.io/categories/rust)
+  
+  [server](https://williamhuey.github.io/categories/server)
+  
+  [shell](https://williamhuey.github.io/categories/shell)
+  
+  [testing](https://williamhuey.github.io/categories/testing)
+  
+  [tooling](https://williamhuey.github.io/categories/tooling)
+  
+  [typescript](https://williamhuey.github.io/categories/typescript)
+  
+  [typst](https://williamhuey.github.io/categories/typst)
+  
+  ## [Tags](https://williamhuey.github.io/tags)
+  
+  [angular](https://williamhuey.github.io/tags/angular)
+  
+  [cli-tools](https://williamhuey.github.io/tags/cli-tools)
+  
+  [css](https://williamhuey.github.io/tags/css)
+  
+  [dearpygui](https://williamhuey.github.io/tags/dearpygui)
+  
+  [dev-tools](https://williamhuey.github.io/tags/dev-tools)
+  
+  [emberjs](https://williamhuey.github.io/tags/emberjs)
+  
+  [frontend](https://williamhuey.github.io/tags/frontend)
+  
+  [graphing](https://williamhuey.github.io/tags/graphing)
+  
+  [javascript-animations](https://williamhuey.github.io/tags/javascript-animations)
+  
+  [jquery](https://williamhuey.github.io/tags/jquery)
+  
+  [julia](https://williamhuey.github.io/tags/julia)
+  
+  [meteorjs](https://williamhuey.github.io/tags/meteorjs)
+  
+  [nodejs](https://williamhuey.github.io/tags/nodejs)
+  
+  [octopress](https://williamhuey.github.io/tags/octopress)
+  
+  [pandoc](https://williamhuey.github.io/tags/pandoc)
+  
+  [pyqt](https://williamhuey.github.io/tags/pyqt)
+  
+  [pyside](https://williamhuey.github.io/tags/pyside)
+  
+  [quarto](https://williamhuey.github.io/tags/quarto)
+  
+  [ramda](https://williamhuey.github.io/tags/ramda)
+  
+  [restructuredtext](https://williamhuey.github.io/tags/restructuredtext)
+  
+  [rmarkdown](https://williamhuey.github.io/tags/rmarkdown)
+  
+  [rxjs](https://williamhuey.github.io/tags/rxjs)
+  
+  [selenium](https://williamhuey.github.io/tags/selenium)
+  
+  [svg](https://williamhuey.github.io/tags/svg)
+  
+  [wordpress](https://williamhuey.github.io/tags/wordpress)
+  --- End Content ---
+
+So it's a fancy fuzzy finder? How is it different/better than fzf? Is it ...
+  URL: https://news.ycombinator.com/item?id=27163965
+  So it's a fancy fuzzy finder? How is it different/better than fzf? Is it more integrated but therefore less flexible (e.g. less UNIXy)?.
+
+  --- Content ---
+  |     |     |     |
+  | --- | --- | --- |
+  | |     |     |     |
+  | --- | --- | --- |
+  | [![](https://news.ycombinator.com/y18.svg)](https://news.ycombinator.com/) | **[Hacker News](https://news.ycombinator.com/news)** [new](https://news.ycombinator.com/newest) \| [past](https://news.ycombinator.com/front) \| [comments](https://news.ycombinator.com/newcomments) \| [ask](https://news.ycombinator.com/ask) \| [show](https://news.ycombinator.com/show) \| [jobs](https://news.ycombinator.com/jobs) \| [submit](https://news.ycombinator.com/submit) | [login](https://news.ycombinator.com/login?goto=item%3Fid%3D27163965) | |
+  
+  | |     |     |     |
+  | --- | --- | --- |
+  |  |  | [ruph123](https://news.ycombinator.com/user?id=ruph123) [on May 15, 2021](https://news.ycombinator.com/item?id=27163965) \| [parent](https://news.ycombinator.com/item?id=27163694) \| [context](https://news.ycombinator.com/item?id=27155306#27163965) \| [favorite](https://news.ycombinator.com/fave?id=27163965&auth=a04a694ff92b0fbf1172e44a4829d6075282bddf) \| on: [Telescope.nvim: Find, Filter, Preview, Pick](https://news.ycombinator.com/item?id=27155306 "Telescope.nvim: Find, Filter, Preview, Pick")<br>So it’s a fancy fuzzy finder? How is it different/better than fzf? Is it more integrated but therefore less flexible (e.g. less UNIXy)?<br>I read some early report on the neovim reddit where people complained that it was slower than fzf. So I did not bother looking into it more, also because no one could really explain it well. |
+  |  |  |
+  
+  |     |     |     |
+  | --- | --- | --- |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [tjdevries](https://news.ycombinator.com/user?id=tjdevries) [on May 15, 2021](https://news.ycombinator.com/item?id=27164688) \| [next](https://news.ycombinator.com/item?id=27163965#27165370)\[–\]<br>I would say it's more integrated but also more flexible (only within neovim though. I don't have any good solution to run telescope from command line at this moment).<br>Each aspect of telescope can be customized (so you can change the sorting algorithm, the previewer, the search text, the format of the UI, etc). It was designed for vimmers to spend endless hours configuring (which is my favorite pasttime) ;)<br>The speed difference should be less now (for most of the pickers, I haven't fixed all of them yet), but fzf is (and probably always will be) faster than telescope.<br>It's a bit difficult to explain in short amounts, but I will hopefully put together a youtube series and/or some writing where I can explain it more succinctly. I usually feel like I have too much to say when it comes to telescope.<br>Ultimately though, I think if fzf is working well for you then I probably would not switch. fzf is really awesome! | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [ruph123](https://news.ycombinator.com/user?id=ruph123) [on May 15, 2021](https://news.ycombinator.com/item?id=27165289) \| [parent](https://news.ycombinator.com/item?id=27163965#27164688) \| [next](https://news.ycombinator.com/item?id=27163965#27165370)\[–\]<br>That sounds really exciting, thank you so much for your work. I'll give it a try. Great new neovim prospects! | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [tjdevries](https://news.ycombinator.com/user?id=tjdevries) [on May 15, 2021](https://news.ycombinator.com/item?id=27165576) \| [root](https://news.ycombinator.com/item?id=27163965#27164688) \| [parent](https://news.ycombinator.com/item?id=27163965#27165289) \| [next](https://news.ycombinator.com/item?id=27163965#27165370)\[–\]<br>Thanks :) Hope you enjoy it! | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [waylonwalker](https://news.ycombinator.com/user?id=waylonwalker) [on May 15, 2021](https://news.ycombinator.com/item?id=27165370) \| [prev](https://news.ycombinator.com/item?id=27163965#27164688) \| [next](https://news.ycombinator.com/item?id=27163965#27164343)\[–\]<br>For me it does so much more out of the box than fzf does. It takes advantage of the lsp to search your project in unique ways. Simply calling :Telescope will bring up a fuzzy list of all the built in commands making it far more discoverable than fzf was.<br>Check out the fantastic Gallery of uses<br>[https://github.com/nvim-telescope/telescope.nvim/wiki/Showca...](https://github.com/nvim-telescope/telescope.nvim/wiki/Showcase) | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [ZeroGravitas](https://news.ycombinator.com/user?id=ZeroGravitas) [on May 15, 2021](https://news.ycombinator.com/item?id=27164343) \| [prev](https://news.ycombinator.com/item?id=27163965#27165370)\[–\]<br>Yes, it's a fancy fuzzy finder for NeoVim.<br>If you're already familiar with and enjoy FZF or CtrlP-like fuzzy finders in Vim interfaces then the tl;dr is "Telescope is to FZF as Neovim is to Vim'. It would be easy to say "they're both the same picture" and that would be very true to a degree but I'd say Telescope looks like the next evolutionary step in this area to me because:<br>\- it's written in lua (I know for NeoVim this is like 'X rewritten in Rust' headlines are for the general HN audience, but thought I'd get it out of the way. I do believe this will lead to a faster/bigger development ecosystem and also provide a very Vim-appropriate degree of configurability for people who want to invest some time in coding to tweak their worflow.)<br>\- The "speed" issue is mostly about implementing async-aware stuff so nothing blocks. This is a general trend in Neovim and it seems to be going well but people who tried it a while back may have hit issues and not seen the full benefit of this yet as it's an ongoing process.<br>\- Like Ripgrep, the fastest search is the smartest search i.e. that doesn't actually search everything, and the configurability and still nascent UI experiments seems likely to lead to some optimums here as people specialize in different things.<br>\- It assumes you have a recent (currently unstable nightly) version of Neovim, and takes advantage of that opportunity to make full use of NeoVim core changes at the design stage. You could probably ask the exact same question of "Why do I want Neovim if I'm fine with Vim?" and there's probably many good write-ups of that question that will transitively apply here as well.<br>\- Because the basic UI it provides is a sweet spot of 'pretty, usable, fast, easy-to-build-on, configurable' and they're working with this connecting layer in mind it looks like it might absorb/replace a lot of other plugins that are currently reinventing wheels in this regard and let them focus on the bit they actually care about.<br>But yeah, it wouldn't exist without those other things existing before it and I'd be more excited to introduce someone to this whole world of tools, than this one in particular. But anyone using these kind of tools, should try this out, and probably the first impression for those people would be, "Oh that looks cooler" and then shortly after "I'm going to write my own plugin!". | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [ruph123](https://news.ycombinator.com/user?id=ruph123) [on May 15, 2021](https://news.ycombinator.com/item?id=27165175) \| [parent](https://news.ycombinator.com/item?id=27163965#27164343)\[–\]<br>Thank you so much for the thorough answer! There is a lot of exciting stuff for neovim rolling by e.g. on Reddit and I am already very happy with 0.5 so far. It is just hard to filter which new neovim/lua project is really worth the time to check out and potentially break your current setup.<br>I will give it a try. | | |
+  | ![](https://news.ycombinator.com/s.gif)
+  
+  |     |
+  | --- |
+  |  |
+  
+  [Guidelines](https://news.ycombinator.com/newsguidelines.html) \| [FAQ](https://news.ycombinator.com/newsfaq.html) \| [Lists](https://news.ycombinator.com/lists) \| [API](https://github.com/HackerNews/API) \| [Security](https://news.ycombinator.com/security.html) \| [Legal](https://www.ycombinator.com/legal/) \| [Apply to YC](https://www.ycombinator.com/apply/) \| [Contact](mailto:hn@ycombinator.com)
+  
+  Search: |
+  --- End Content ---

@@ -1,0 +1,158 @@
+# Diagrama de Arquitectura de Integración fff.nvim con wayu
+
+```mermaid
+graph TB
+    subgraph "wayu (Odin)"
+        A[CLI Entry] --> B{TUI Mode?}
+        B -->|No| C[CLI Commands]
+        B -->|Yes| D[TUI System]
+        
+        D --> E[Views Handlers]
+        E --> F[Existing Views]
+        E --> G[NEW: FFF Search View]
+        
+        C --> H[Path/Alias Commands]
+        H --> I[fff Search Helper]
+        
+        subgraph "fff.odin (FFI Module)"
+            J[Foreign Functions]
+            K[Odin Wrappers]
+            L[JSON Parser]
+            M[TUI Helpers]
+            
+            J --> K
+            K --> L
+            K --> M
+        end
+        
+        G --> K
+        I --> K
+    end
+    
+    subgraph "fff-c Library (Rust)"
+        N[Instance Manager]
+        O[File Picker]
+        P[Grep Engine]
+        Q[Index Scanner]
+        R[Frecency Tracker]
+        S[Git Monitor]
+        
+        N --> O
+        N --> P
+        N --> Q
+        N --> R
+        N --> S
+    end
+    
+    subgraph "System"
+        T[Filesystem]
+        U[LMDB Database]
+        V[Git Repository]
+    end
+    
+    J -. FFI .-> N
+    O --> T
+    R --> U
+    S --> V
+    Q --> T
+    P --> T
+```
+
+## Flujo de Datos
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant T as TUI
+    participant F as fff.odin
+    participant C as libfff_c
+    participant R as Rust Core
+    
+    U->>T: Open FFF Search View
+    T->>F: fff_create(base_path)
+    F->>C: fff_create_instance()
+    C->>R: Create FilePicker
+    R-->>C: Return handle
+    C-->>F: Return FffResult
+    F-->>T: Return FileFinder
+    
+    T->>F: fff_start_scan()
+    F->>C: fff_scan_files()
+    C->>R: Background scan
+    
+    loop User types query
+        U->>T: Type character
+        T->>F: fff_fuzzy_search(query)
+        F->>C: fff_search(handle, query)
+        C->>R: Fuzzy match
+        R-->>C: JSON results
+        C-->>F: FffResult with data
+        F->>F: json.unmarshal()
+        F-->>T: FffSearchResult
+        T->>U: Render results
+    end
+    
+    U->>T: Select item
+    T->>F: fff_track_selection()
+    F->>C: fff_track_query()
+    C->>R: Update frecency
+```
+
+## Estructura de Módulos
+
+```mermaid
+graph LR
+    subgraph "src/fff.odin"
+        A[Foreign Declarations] 
+        B[Type Definitions]
+        C[Lifecycle: create/destroy]
+        D[Search: fuzzy_search]
+        E[Grep: live_grep/multi_grep]
+        F[Scanning: scan/progress/wait]
+        G[Tracking: git/track]
+        H[Memory: free results]
+        I[TUI Helpers]
+        
+        A --> B
+        B --> C
+        B --> D
+        B --> E
+        B --> F
+        B --> G
+        B --> H
+        D --> I
+        E --> I
+    end
+```
+
+## Casos de Uso
+
+```mermaid
+flowchart TD
+    A[User Action] --> B{Type?}
+    
+    B -->|Command Search| C[fff_create_for_commands]
+    B -->|PATH Edit| D[fff_create_for_home]
+    B -->|Config Search| E[fff_create_for_config]
+    B -->|Plugin Grep| F[fff_create_for_plugins]
+    
+    C --> G[Wait Scan]
+    D --> G
+    E --> G
+    F --> G
+    
+    G --> H{Interactive?}
+    
+    H -->|Yes| I[Real-time fuzzy search]
+    H -->|No| J[One-shot search]
+    
+    I --> K[Update on keystroke]
+    K --> L[Render results]
+    L --> M{Selection?}
+    M -->|Yes| N[Track query]
+    M -->|No| K
+    
+    J --> O[Return results]
+    N --> P[Execute action]
+    O --> P
+```

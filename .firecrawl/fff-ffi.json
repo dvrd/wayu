@@ -1,0 +1,1717 @@
+GitHub - dmtrKovalenko/fff.nvim
+  URL: https://github.com/dmtrKovalenko/fff.nvim
+  FFF is a tool for grepping, fuzzy file matching, globbing, and multigrepping with a strong focus on performance and useful search results. For humans - provides ...
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/dmtrKovalenko/fff.nvim#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/dmtrKovalenko/fff.nvim) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/dmtrKovalenko/fff.nvim) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/dmtrKovalenko/fff.nvim) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [dmtrKovalenko](https://github.com/dmtrKovalenko)/ **[fff.nvim](https://github.com/dmtrKovalenko/fff.nvim)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2FdmtrKovalenko%2Ffff.nvim) You must be signed in to change notification settings
+  - [Fork\\
+  187](https://github.com/login?return_to=%2FdmtrKovalenko%2Ffff.nvim)
+  - [Star\\
+  4.5k](https://github.com/login?return_to=%2FdmtrKovalenko%2Ffff.nvim)
+  
+  
+  main
+  
+  [**109** Branches](https://github.com/dmtrKovalenko/fff.nvim/branches) [**392** Tags](https://github.com/dmtrKovalenko/fff.nvim/tags)
+  
+  [Go to Branches page](https://github.com/dmtrKovalenko/fff.nvim/branches)[Go to Tags page](https://github.com/dmtrKovalenko/fff.nvim/tags)
+  
+  Go to file
+  
+  Code
+  
+  Open more actions menu
+  
+  ## Folders and files
+  
+  | Name | Name | Last commit message | Last commit date |
+  | --- | --- | --- | --- |
+  | ## Latest commit<br>[![dmtrKovalenko](https://avatars.githubusercontent.com/u/16926049?v=4&size=40)](https://github.com/dmtrKovalenko)[dmtrKovalenko](https://github.com/dmtrKovalenko/fff.nvim/commits?author=dmtrKovalenko)<br>[feat: Correct bonuses for actual path prefix (](https://github.com/dmtrKovalenko/fff.nvim/commit/d25ea7562bb5a128c056e48060e3a54e84f6d2f5) [#372](https://github.com/dmtrKovalenko/fff.nvim/pull/372) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/d25ea7562bb5a128c056e48060e3a54e84f6d2f5)<br>Open commit detailspending<br>16 minutes agoApr 13, 2026<br>[d25ea75](https://github.com/dmtrKovalenko/fff.nvim/commit/d25ea7562bb5a128c056e48060e3a54e84f6d2f5) · 16 minutes agoApr 13, 2026<br>## History<br>[208 Commits](https://github.com/dmtrKovalenko/fff.nvim/commits/main/) <br>Open commit details<br>[View commit history for this file.](https://github.com/dmtrKovalenko/fff.nvim/commits/main/) 208 Commits |
+  | [.cargo](https://github.com/dmtrKovalenko/fff.nvim/tree/main/.cargo ".cargo") | [.cargo](https://github.com/dmtrKovalenko/fff.nvim/tree/main/.cargo ".cargo") | [feat: cross-compile for android (! for termux users) (](https://github.com/dmtrKovalenko/fff.nvim/commit/d2e39933985407be79babcaa41ee2555c22c9ba3 "feat: cross-compile for android (! for termux users) (#264)  * feat: cross-compile for android (! for termux users)  * chore: Update docs for - feat: cross-compile for android (! for termux users)") [#264](https://github.com/dmtrKovalenko/fff.nvim/pull/264) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/d2e39933985407be79babcaa41ee2555c22c9ba3 "feat: cross-compile for android (! for termux users) (#264)  * feat: cross-compile for android (! for termux users)  * chore: Update docs for - feat: cross-compile for android (! for termux users)") | 2 months agoFeb 27, 2026 |
+  | [.github/workflows](https://github.com/dmtrKovalenko/fff.nvim/tree/main/.github/workflows "This path skips through empty directories") | [.github/workflows](https://github.com/dmtrKovalenko/fff.nvim/tree/main/.github/workflows "This path skips through empty directories") | [feat: Cross compile with thin lto (](https://github.com/dmtrKovalenko/fff.nvim/commit/406bf2531c98a720afda9da626142742b0d19c7b "feat: Cross compile with thin lto (#355)  * feat: Compile with thin lto  * chore: Update docs for - feat: Compile with thin lto") [#355](https://github.com/dmtrKovalenko/fff.nvim/pull/355) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/406bf2531c98a720afda9da626142742b0d19c7b "feat: Cross compile with thin lto (#355)  * feat: Compile with thin lto  * chore: Update docs for - feat: Compile with thin lto") | 5 days agoApr 8, 2026 |
+  | [crates](https://github.com/dmtrKovalenko/fff.nvim/tree/main/crates "crates") | [crates](https://github.com/dmtrKovalenko/fff.nvim/tree/main/crates "crates") | [feat: Correct bonuses for actual path prefix (](https://github.com/dmtrKovalenko/fff.nvim/commit/d25ea7562bb5a128c056e48060e3a54e84f6d2f5 "feat: Correct bonuses for actual path prefix (#372)  * feat: Correct bonuses for actual path prefix  The issue is related to the fact that long prefix similarity the suffix difference got neglected as a small typo which is wrong  * chore: Update docs for - feat: Correct bonuses for actual path prefix") [#372](https://github.com/dmtrKovalenko/fff.nvim/pull/372) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/d25ea7562bb5a128c056e48060e3a54e84f6d2f5 "feat: Correct bonuses for actual path prefix (#372)  * feat: Correct bonuses for actual path prefix  The issue is related to the fact that long prefix similarity the suffix difference got neglected as a small typo which is wrong  * chore: Update docs for - feat: Correct bonuses for actual path prefix") | 16 minutes agoApr 13, 2026 |
+  | [doc](https://github.com/dmtrKovalenko/fff.nvim/tree/main/doc "doc") | [doc](https://github.com/dmtrKovalenko/fff.nvim/tree/main/doc "doc") | [feat: Correct bonuses for actual path prefix (](https://github.com/dmtrKovalenko/fff.nvim/commit/d25ea7562bb5a128c056e48060e3a54e84f6d2f5 "feat: Correct bonuses for actual path prefix (#372)  * feat: Correct bonuses for actual path prefix  The issue is related to the fact that long prefix similarity the suffix difference got neglected as a small typo which is wrong  * chore: Update docs for - feat: Correct bonuses for actual path prefix") [#372](https://github.com/dmtrKovalenko/fff.nvim/pull/372) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/d25ea7562bb5a128c056e48060e3a54e84f6d2f5 "feat: Correct bonuses for actual path prefix (#372)  * feat: Correct bonuses for actual path prefix  The issue is related to the fact that long prefix similarity the suffix difference got neglected as a small typo which is wrong  * chore: Update docs for - feat: Correct bonuses for actual path prefix") | 16 minutes agoApr 13, 2026 |
+  | [lua](https://github.com/dmtrKovalenko/fff.nvim/tree/main/lua "lua") | [lua](https://github.com/dmtrKovalenko/fff.nvim/tree/main/lua "lua") | [fix: restore FFFClearCache command implementation (](https://github.com/dmtrKovalenko/fff.nvim/commit/ea1f9802d7879345f02bef72bcadecd7252b8add "fix: restore FFFClearCache command implementation (#338)") [#338](https://github.com/dmtrKovalenko/fff.nvim/pull/338) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/ea1f9802d7879345f02bef72bcadecd7252b8add "fix: restore FFFClearCache command implementation (#338)") | 3 days agoApr 10, 2026 |
+  | [packages](https://github.com/dmtrKovalenko/fff.nvim/tree/main/packages "packages") | [packages](https://github.com/dmtrKovalenko/fff.nvim/tree/main/packages "packages") | [feat: Prefiltering for regex and multigrep (](https://github.com/dmtrKovalenko/fff.nvim/commit/0fd47ab72dae50984af8784cb645e5cff3e12c1d "feat: Prefiltering for regex and multigrep (#361)") [#361](https://github.com/dmtrKovalenko/fff.nvim/pull/361) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/0fd47ab72dae50984af8784cb645e5cff3e12c1d "feat: Prefiltering for regex and multigrep (#361)") | 4 days agoApr 9, 2026 |
+  | [plugin](https://github.com/dmtrKovalenko/fff.nvim/tree/main/plugin "plugin") | [plugin](https://github.com/dmtrKovalenko/fff.nvim/tree/main/plugin "plugin") | [feat: MCP (](https://github.com/dmtrKovalenko/fff.nvim/commit/736c41ecd618980a81af51ab79ec1767ca0aa7ae "feat: MCP (#272)  * feat: MCP  * chore: Update docs for - feat: MCP  * feat: Perf optimizations  * chore: Update docs for - feat: Perf optimizations") [#272](https://github.com/dmtrKovalenko/fff.nvim/pull/272) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/736c41ecd618980a81af51ab79ec1767ca0aa7ae "feat: MCP (#272)  * feat: MCP  * chore: Update docs for - feat: MCP  * feat: Perf optimizations  * chore: Update docs for - feat: Perf optimizations") | last monthMar 12, 2026 |
+  | [scripts](https://github.com/dmtrKovalenko/fff.nvim/tree/main/scripts "scripts") | [scripts](https://github.com/dmtrKovalenko/fff.nvim/tree/main/scripts "scripts") | [fix: Download binaries for new versioning system (](https://github.com/dmtrKovalenko/fff.nvim/commit/aee5fbb8c456852a311b6cd7675756942b4c56d0 "fix: Download binaries for new versioning system (#302)") [#302](https://github.com/dmtrKovalenko/fff.nvim/pull/302) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/aee5fbb8c456852a311b6cd7675756942b4c56d0 "fix: Download binaries for new versioning system (#302)") | last monthMar 19, 2026 |
+  | [tests](https://github.com/dmtrKovalenko/fff.nvim/tree/main/tests "tests") | [tests](https://github.com/dmtrKovalenko/fff.nvim/tree/main/tests "tests") | [fix: restore FFFClearCache command implementation (](https://github.com/dmtrKovalenko/fff.nvim/commit/ea1f9802d7879345f02bef72bcadecd7252b8add "fix: restore FFFClearCache command implementation (#338)") [#338](https://github.com/dmtrKovalenko/fff.nvim/pull/338) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/ea1f9802d7879345f02bef72bcadecd7252b8add "fix: restore FFFClearCache command implementation (#338)") | 3 days agoApr 10, 2026 |
+  | [.gitignore](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.gitignore ".gitignore") | [.gitignore](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.gitignore ".gitignore") | [perf: SIMD optimized perfilter for grep (](https://github.com/dmtrKovalenko/fff.nvim/commit/d54b17ba81a750fd2579a3c203ab5535779c8cdc "perf: SIMD optimized perfilter for grep (#318)  * perf: SIMD optimized perfilter for grep  * chore: Update docs for - perf: SIMD optimized perfilter for grep") [#318](https://github.com/dmtrKovalenko/fff.nvim/pull/318) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/d54b17ba81a750fd2579a3c203ab5535779c8cdc "perf: SIMD optimized perfilter for grep (#318)  * perf: SIMD optimized perfilter for grep  * chore: Update docs for - perf: SIMD optimized perfilter for grep") | 2 weeks agoApr 1, 2026 |
+  | [.luacheckrc](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.luacheckrc ".luacheckrc") | [.luacheckrc](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.luacheckrc ".luacheckrc") | [fix: Binary download integrity issues (](https://github.com/dmtrKovalenko/fff.nvim/commit/c3ed9fb17b3591dc47852943f560b5a9184c0455 "fix: Binary download integrity issues (#260)  * feat: cleanup hl groups resolution (#259)  * feat: cleanup hl groups resolution  * chore: Update docs for - feat: cleanup hl groups resolution  * chore: Update docs for - feat: cleanup hl groups resolution (#259)  * feat: cleanup hl groups resolution (#259)  * feat: cleanup hl groups resolution  * chore: Update docs for - feat: cleanup hl groups resolution") [#260](https://github.com/dmtrKovalenko/fff.nvim/pull/260) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/c3ed9fb17b3591dc47852943f560b5a9184c0455 "fix: Binary download integrity issues (#260)  * feat: cleanup hl groups resolution (#259)  * feat: cleanup hl groups resolution  * chore: Update docs for - feat: cleanup hl groups resolution  * chore: Update docs for - feat: cleanup hl groups resolution (#259)  * feat: cleanup hl groups resolution (#259)  * feat: cleanup hl groups resolution  * chore: Update docs for - feat: cleanup hl groups resolution") | 2 months agoFeb 24, 2026 |
+  | [.luarc.ci.json](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.luarc.ci.json ".luarc.ci.json") | [.luarc.ci.json](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.luarc.ci.json ".luarc.ci.json") | [chore: Upgrade every used neovim deprecated lua apis (](https://github.com/dmtrKovalenko/fff.nvim/commit/7c2d46f1e262bed2b042b965899af2eb0f4c62f1 "chore: Upgrade every used neovim deprecated lua apis (#261)  * chore: Do not use any neovim deprecated apis  * chore: Update docs for - chore: Do not use any neovim deprecated apis") [#261](https://github.com/dmtrKovalenko/fff.nvim/pull/261) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/7c2d46f1e262bed2b042b965899af2eb0f4c62f1 "chore: Upgrade every used neovim deprecated lua apis (#261)  * chore: Do not use any neovim deprecated apis  * chore: Update docs for - chore: Do not use any neovim deprecated apis") | 2 months agoFeb 25, 2026 |
+  | [.luarc.json](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.luarc.json ".luarc.json") | [.luarc.json](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.luarc.json ".luarc.json") | [chore: Upgrade every used neovim deprecated lua apis (](https://github.com/dmtrKovalenko/fff.nvim/commit/7c2d46f1e262bed2b042b965899af2eb0f4c62f1 "chore: Upgrade every used neovim deprecated lua apis (#261)  * chore: Do not use any neovim deprecated apis  * chore: Update docs for - chore: Do not use any neovim deprecated apis") [#261](https://github.com/dmtrKovalenko/fff.nvim/pull/261) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/7c2d46f1e262bed2b042b965899af2eb0f4c62f1 "chore: Upgrade every used neovim deprecated lua apis (#261)  * chore: Do not use any neovim deprecated apis  * chore: Update docs for - chore: Do not use any neovim deprecated apis") | 2 months agoFeb 25, 2026 |
+  | [.mcp.json](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.mcp.json ".mcp.json") | [.mcp.json](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.mcp.json ".mcp.json") | [perf: Hint allocator to release memory back to OS (](https://github.com/dmtrKovalenko/fff.nvim/commit/51e0ef7a64e42b0197550fe6b2f1ac514834fa47 "perf: Hint allocator to release memory back to OS (#348)  * perf: Hint allocator to release memory back to OS  * chore: Update docs for - perf: Hint allocator to release memory back to OS") [#348](https://github.com/dmtrKovalenko/fff.nvim/pull/348) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/51e0ef7a64e42b0197550fe6b2f1ac514834fa47 "perf: Hint allocator to release memory back to OS (#348)  * perf: Hint allocator to release memory back to OS  * chore: Update docs for - perf: Hint allocator to release memory back to OS") | last weekApr 7, 2026 |
+  | [.nixignore](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.nixignore ".nixignore") | [.nixignore](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.nixignore ".nixignore") | [chore: Add all highlights groups to config and improve icons highligh…](https://github.com/dmtrKovalenko/fff.nvim/commit/03124925701ce1730856bcf9a21f73fa3e55455b "chore: Add all highlights groups to config and improve icons highlight resolution (#190)") | 4 months agoDec 14, 2025 |
+  | [.stylua.toml](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.stylua.toml ".stylua.toml") | [.stylua.toml](https://github.com/dmtrKovalenko/fff.nvim/blob/main/.stylua.toml ".stylua.toml") | [feat: Significant performance improvements up to +190% (](https://github.com/dmtrKovalenko/fff.nvim/commit/9edf195c8fe71f1ab8f84e863fb27b469d2342bf "feat: Significant performance improvements up to +190% (#182)") [#182](https://github.com/dmtrKovalenko/fff.nvim/pull/182) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/9edf195c8fe71f1ab8f84e863fb27b469d2342bf "feat: Significant performance improvements up to +190% (#182)") | 4 months agoDec 6, 2025 |
+  | [Cargo.lock](https://github.com/dmtrKovalenko/fff.nvim/blob/main/Cargo.lock "Cargo.lock") | [Cargo.lock](https://github.com/dmtrKovalenko/fff.nvim/blob/main/Cargo.lock "Cargo.lock") | [feat: Prefiltering for regex and multigrep (](https://github.com/dmtrKovalenko/fff.nvim/commit/0fd47ab72dae50984af8784cb645e5cff3e12c1d "feat: Prefiltering for regex and multigrep (#361)") [#361](https://github.com/dmtrKovalenko/fff.nvim/pull/361) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/0fd47ab72dae50984af8784cb645e5cff3e12c1d "feat: Prefiltering for regex and multigrep (#361)") | 4 days agoApr 9, 2026 |
+  | [Cargo.toml](https://github.com/dmtrKovalenko/fff.nvim/blob/main/Cargo.toml "Cargo.toml") | [Cargo.toml](https://github.com/dmtrKovalenko/fff.nvim/blob/main/Cargo.toml "Cargo.toml") | [feat: Prefiltering for regex and multigrep (](https://github.com/dmtrKovalenko/fff.nvim/commit/0fd47ab72dae50984af8784cb645e5cff3e12c1d "feat: Prefiltering for regex and multigrep (#361)") [#361](https://github.com/dmtrKovalenko/fff.nvim/pull/361) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/0fd47ab72dae50984af8784cb645e5cff3e12c1d "feat: Prefiltering for regex and multigrep (#361)") | 4 days agoApr 9, 2026 |
+  | [LICENSE](https://github.com/dmtrKovalenko/fff.nvim/blob/main/LICENSE "LICENSE") | [LICENSE](https://github.com/dmtrKovalenko/fff.nvim/blob/main/LICENSE "LICENSE") | [Initial commit](https://github.com/dmtrKovalenko/fff.nvim/commit/198ab9430aabf48b9d22344db9d07a0c96b2cb5d "Initial commit") | 9 months agoAug 1, 2025 |
+  | [Makefile](https://github.com/dmtrKovalenko/fff.nvim/blob/main/Makefile "Makefile") | [Makefile](https://github.com/dmtrKovalenko/fff.nvim/blob/main/Makefile "Makefile") | [chore: add serialization accessors to BigramFilter (](https://github.com/dmtrKovalenko/fff.nvim/commit/b1c4f8e7d7a11cfd58ce5623bd4676a467a064b2 "chore: add serialization accessors to BigramFilter (#330)  * feat: add serialization accessors to BigramFilter  Add read-only accessors and a from_raw_parts constructor to BigramFilter, enabling external tools to serialize/deserialize the bigram index to/from disk without reaching into private fields.  New public methods: - lookup(), dense_data(), words(), dense_count(), populated() - skip_index() -> Option<&BigramFilter> - from_raw_parts(lookup, dense_data, ...) -> Self  * Remove section header, rename from_raw_parts to reconstruct  * fix lint and rename  * fix ci  ---------  Co-authored-by: Dmitriy Kovalenko <dmtr.kovalenko@outlook.com>") [#330](https://github.com/dmtrKovalenko/fff.nvim/pull/330) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/b1c4f8e7d7a11cfd58ce5623bd4676a467a064b2 "chore: add serialization accessors to BigramFilter (#330)  * feat: add serialization accessors to BigramFilter  Add read-only accessors and a from_raw_parts constructor to BigramFilter, enabling external tools to serialize/deserialize the bigram index to/from disk without reaching into private fields.  New public methods: - lookup(), dense_data(), words(), dense_count(), populated() - skip_index() -> Option<&BigramFilter> - from_raw_parts(lookup, dense_data, ...) -> Self  * Remove section header, rename from_raw_parts to reconstruct  * fix lint and rename  * fix ci  ---------  Co-authored-by: Dmitriy Kovalenko <dmtr.kovalenko@outlook.com>") | last weekApr 3, 2026 |
+  | [README.md](https://github.com/dmtrKovalenko/fff.nvim/blob/main/README.md "README.md") | [README.md](https://github.com/dmtrKovalenko/fff.nvim/blob/main/README.md "README.md") | [feat: trim\_whitespace option for grep (](https://github.com/dmtrKovalenko/fff.nvim/commit/7979004d77b596db7ba39d719e621107a3dc0f8d "feat: trim_whitespace option for grep (#356)  * feat: trim_whitespace optin for grep  closes https://github.com/dmtrKovalenko/fff.nvim/issues/307  * chore: Update docs for - feat: trim_whitespace optin for grep") [#356](https://github.com/dmtrKovalenko/fff.nvim/pull/356) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/7979004d77b596db7ba39d719e621107a3dc0f8d "feat: trim_whitespace option for grep (#356)  * feat: trim_whitespace optin for grep  closes https://github.com/dmtrKovalenko/fff.nvim/issues/307  * chore: Update docs for - feat: trim_whitespace optin for grep") | 4 days agoApr 9, 2026 |
+  | [\_typos.toml](https://github.com/dmtrKovalenko/fff.nvim/blob/main/_typos.toml "_typos.toml") | [\_typos.toml](https://github.com/dmtrKovalenko/fff.nvim/blob/main/_typos.toml "_typos.toml") | [feat: Prefiltering for regex and multigrep (](https://github.com/dmtrKovalenko/fff.nvim/commit/0fd47ab72dae50984af8784cb645e5cff3e12c1d "feat: Prefiltering for regex and multigrep (#361)") [#361](https://github.com/dmtrKovalenko/fff.nvim/pull/361) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/0fd47ab72dae50984af8784cb645e5cff3e12c1d "feat: Prefiltering for regex and multigrep (#361)") | 4 days agoApr 9, 2026 |
+  | [biome.json](https://github.com/dmtrKovalenko/fff.nvim/blob/main/biome.json "biome.json") | [biome.json](https://github.com/dmtrKovalenko/fff.nvim/blob/main/biome.json "biome.json") | [feat: MCP (](https://github.com/dmtrKovalenko/fff.nvim/commit/736c41ecd618980a81af51ab79ec1767ca0aa7ae "feat: MCP (#272)  * feat: MCP  * chore: Update docs for - feat: MCP  * feat: Perf optimizations  * chore: Update docs for - feat: Perf optimizations") [#272](https://github.com/dmtrKovalenko/fff.nvim/pull/272) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/736c41ecd618980a81af51ab79ec1767ca0aa7ae "feat: MCP (#272)  * feat: MCP  * chore: Update docs for - feat: MCP  * feat: Perf optimizations  * chore: Update docs for - feat: Perf optimizations") | last monthMar 12, 2026 |
+  | [bun.lock](https://github.com/dmtrKovalenko/fff.nvim/blob/main/bun.lock "bun.lock") | [bun.lock](https://github.com/dmtrKovalenko/fff.nvim/blob/main/bun.lock "bun.lock") | [feat: SDKs for Nodejs FFI, Rust, and C (](https://github.com/dmtrKovalenko/fff.nvim/commit/2b6ace888d596725456bb8f729657da3b6e0f3f4 "feat: SDKs for Nodejs FFI, Rust, and C  (#295)  * feat: Nodejs FFI package  * chore: Update docs for - feat: Nodejs FFI package") [#295](https://github.com/dmtrKovalenko/fff.nvim/pull/295) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/2b6ace888d596725456bb8f729657da3b6e0f3f4 "feat: SDKs for Nodejs FFI, Rust, and C  (#295)  * feat: Nodejs FFI package  * chore: Update docs for - feat: Nodejs FFI package") | last monthMar 18, 2026 |
+  | [chart.png](https://github.com/dmtrKovalenko/fff.nvim/blob/main/chart.png "chart.png") | [chart.png](https://github.com/dmtrKovalenko/fff.nvim/blob/main/chart.png "chart.png") | [feat: MCP (](https://github.com/dmtrKovalenko/fff.nvim/commit/736c41ecd618980a81af51ab79ec1767ca0aa7ae "feat: MCP (#272)  * feat: MCP  * chore: Update docs for - feat: MCP  * feat: Perf optimizations  * chore: Update docs for - feat: Perf optimizations") [#272](https://github.com/dmtrKovalenko/fff.nvim/pull/272) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/736c41ecd618980a81af51ab79ec1767ca0aa7ae "feat: MCP (#272)  * feat: MCP  * chore: Update docs for - feat: MCP  * feat: Perf optimizations  * chore: Update docs for - feat: Perf optimizations") | last monthMar 12, 2026 |
+  | [empty\_config.lua](https://github.com/dmtrKovalenko/fff.nvim/blob/main/empty_config.lua "empty_config.lua") | [empty\_config.lua](https://github.com/dmtrKovalenko/fff.nvim/blob/main/empty_config.lua "empty_config.lua") | [feat: Pagination (](https://github.com/dmtrKovalenko/fff.nvim/commit/7fd361a36969179ee95c9e22b45cf2d6d1ca2df9 "feat: Pagination (#194)  closes https://github.com/dmtrKovalenko/fff.nvim/issues/83") [#194](https://github.com/dmtrKovalenko/fff.nvim/pull/194) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/7fd361a36969179ee95c9e22b45cf2d6d1ca2df9 "feat: Pagination (#194)  closes https://github.com/dmtrKovalenko/fff.nvim/issues/83") | 4 months agoDec 15, 2025 |
+  | [flake.lock](https://github.com/dmtrKovalenko/fff.nvim/blob/main/flake.lock "flake.lock") | [flake.lock](https://github.com/dmtrKovalenko/fff.nvim/blob/main/flake.lock "flake.lock") | [feat: Migrate to stable rust (](https://github.com/dmtrKovalenko/fff.nvim/commit/e64d2e2a55e07cd468eff8c7eedd495aa54f1923 "feat: Migrate to stable rust (#300)") [#300](https://github.com/dmtrKovalenko/fff.nvim/pull/300) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/e64d2e2a55e07cd468eff8c7eedd495aa54f1923 "feat: Migrate to stable rust (#300)") | last monthMar 18, 2026 |
+  | [flake.nix](https://github.com/dmtrKovalenko/fff.nvim/blob/main/flake.nix "flake.nix") | [flake.nix](https://github.com/dmtrKovalenko/fff.nvim/blob/main/flake.nix "flake.nix") | [fix(nix): warnings on flake (](https://github.com/dmtrKovalenko/fff.nvim/commit/46e87e5928bbd94c3459227ba28c2878dad2fa56 "fix(nix): warnings on flake (#246)") [#246](https://github.com/dmtrKovalenko/fff.nvim/pull/246) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/46e87e5928bbd94c3459227ba28c2878dad2fa56 "fix(nix): warnings on flake (#246)") | 2 months agoFeb 18, 2026 |
+  | [install-mcp.sh](https://github.com/dmtrKovalenko/fff.nvim/blob/main/install-mcp.sh "install-mcp.sh") | [install-mcp.sh](https://github.com/dmtrKovalenko/fff.nvim/blob/main/install-mcp.sh "install-mcp.sh") | [feat(mcp): Make install script understand upgrade use case](https://github.com/dmtrKovalenko/fff.nvim/commit/fcdf4a9172fba824ca6834731b93b74eba51d1c3 "feat(mcp): Make install script understand upgrade use case") | last monthMar 13, 2026 |
+  | [package-lock.json](https://github.com/dmtrKovalenko/fff.nvim/blob/main/package-lock.json "package-lock.json") | [package-lock.json](https://github.com/dmtrKovalenko/fff.nvim/blob/main/package-lock.json "package-lock.json") | [feat: SDKs for Nodejs FFI, Rust, and C (](https://github.com/dmtrKovalenko/fff.nvim/commit/2b6ace888d596725456bb8f729657da3b6e0f3f4 "feat: SDKs for Nodejs FFI, Rust, and C  (#295)  * feat: Nodejs FFI package  * chore: Update docs for - feat: Nodejs FFI package") [#295](https://github.com/dmtrKovalenko/fff.nvim/pull/295) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/2b6ace888d596725456bb8f729657da3b6e0f3f4 "feat: SDKs for Nodejs FFI, Rust, and C  (#295)  * feat: Nodejs FFI package  * chore: Update docs for - feat: Nodejs FFI package") | last monthMar 18, 2026 |
+  | [package.json](https://github.com/dmtrKovalenko/fff.nvim/blob/main/package.json "package.json") | [package.json](https://github.com/dmtrKovalenko/fff.nvim/blob/main/package.json "package.json") | [feat: SDKs for Nodejs FFI, Rust, and C (](https://github.com/dmtrKovalenko/fff.nvim/commit/2b6ace888d596725456bb8f729657da3b6e0f3f4 "feat: SDKs for Nodejs FFI, Rust, and C  (#295)  * feat: Nodejs FFI package  * chore: Update docs for - feat: Nodejs FFI package") [#295](https://github.com/dmtrKovalenko/fff.nvim/pull/295) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/2b6ace888d596725456bb8f729657da3b6e0f3f4 "feat: SDKs for Nodejs FFI, Rust, and C  (#295)  * feat: Nodejs FFI package  * chore: Update docs for - feat: Nodejs FFI package") | last monthMar 18, 2026 |
+  | [rust-toolchain.toml](https://github.com/dmtrKovalenko/fff.nvim/blob/main/rust-toolchain.toml "rust-toolchain.toml") | [rust-toolchain.toml](https://github.com/dmtrKovalenko/fff.nvim/blob/main/rust-toolchain.toml "rust-toolchain.toml") | [feat: Migrate to stable rust (](https://github.com/dmtrKovalenko/fff.nvim/commit/e64d2e2a55e07cd468eff8c7eedd495aa54f1923 "feat: Migrate to stable rust (#300)") [#300](https://github.com/dmtrKovalenko/fff.nvim/pull/300) [)](https://github.com/dmtrKovalenko/fff.nvim/commit/e64d2e2a55e07cd468eff8c7eedd495aa54f1923 "feat: Migrate to stable rust (#300)") | last monthMar 18, 2026 |
+  | View all files |
+  
+  ## Repository files navigation
+  
+  # FFF
+  
+  [Permalink: FFF](https://github.com/dmtrKovalenko/fff.nvim#fff)
+  
+  [**AI agents (MCP)**](https://github.com/dmtrKovalenko/fff.nvim#mcp)   \|   [**Neovim users**](https://github.com/dmtrKovalenko/fff.nvim#neovim-guide)
+  
+  _A fast file search for your AI and neovim, with memory built-in_
+  
+  [![Stars](https://camo.githubusercontent.com/07072e8a5381c3ef12316a270278db6c619215132a76b5e3f1473dfa747d3539/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f73746172732f646d74724b6f76616c656e6b6f2f6666662e6e76696d3f7374796c653d666f722d7468652d6261646765266c6f676f3d737461727368697026636f6c6f723d433943424646266c6f676f436f6c6f723d443945304545266c6162656c436f6c6f723d333032443431)](https://github.com/dmtrKovalenko/fff.nvim/stargazers)[![Issues](https://camo.githubusercontent.com/4bb85eb3b0ef2c1a773ab74054ffa143bb72233f2a0bf407dfa37cdadaa43a2a/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f6973737565732f646d74724b6f76616c656e6b6f2f6666662e6e76696d3f7374796c653d666f722d7468652d6261646765266c6f676f3d62696c6962696c6926636f6c6f723d463545304443266c6f676f436f6c6f723d443945304545266c6162656c436f6c6f723d333032443431)](https://github.com/dmtrKovalenko/fff.nvim/issues)[![Contributors](https://camo.githubusercontent.com/c6f3989a47c26598b6e7fbe625945f30c990b5015078cb7b28aad13e3db779e4/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f636f6e7472696275746f72732f646d74724b6f76616c656e6b6f2f6666662e6e76696d3f636f6c6f723d253233444442364632266c6162656c3d434f4e5452494255544f5253266c6f676f3d676974267374796c653d666f722d7468652d6261646765266c6f676f436f6c6f723d443945304545266c6162656c436f6c6f723d333032443431)](https://github.com/dmtrKovalenko/fff.nvim/contributors)
+  
+  * * *
+  
+  **FFF** stands for ~~freakin fast fuzzy file finder~~ (pick 3) and it is an opinionated fuzzy file picker for your AI agent and Neovim. Just for file search, but we do the file search really fff well.
+  
+  FFF is a tool for grepping, fuzzy file matching, globbing, and multigrepping with a strong focus on performance and useful search results. For humans - provides an unbelievable typo-resistant experience, for AI agents - implements the fastest file search with additional free memory suggesting the best search results based on various factors like frecency, git status, file size, definition matches, and more.
+  
+  ## MCP
+  
+  [Permalink: MCP](https://github.com/dmtrKovalenko/fff.nvim#mcp)
+  
+  FFF is an amazing way to reduce the time and tokens by giving your AI agent a bit of memory built-in to their file search tools. It makes your AI harness to find the code faster and spend less tokens by doing less roundtrips and reading less useless files.
+  
+  [![Chart showing the superiority of fff.nvim over builtin claude code tools](https://github.com/dmtrKovalenko/fff.nvim/raw/main/chart.png)](https://github.com/dmtrKovalenko/fff.nvim/blob/main/chart.png)
+  
+  You can install FFF as a dependency for your AI agent using a simple bash script:
+  
+  ```
+  curl -L https://dmtrkovalenko.dev/install-fff-mcp.sh | bash
+  ```
+  
+  > The installation script is here [./install-mcp.sh](https://github.com/dmtrKovalenko/fff.nvim/blob/main/install-mcp.sh) if you want to review it before running.
+  
+  It will print out the instructions on how to connect it to your `Claude Code`, `Codex`, `OpenCode`, etc. Once you have it connected just ask your agent to "use fff".
+  Here is an example addition to `CLAUDE.md` that works perfectly:
+  
+  ```
+  # CLAUDE.md
+  For any file search or grep in the current git indexed directory use fff tools
+  ```
+  
+  ## Neovim guide
+  
+  [Permalink: Neovim guide](https://github.com/dmtrKovalenko/fff.nvim#neovim-guide)
+  
+  Here is some demo on the linux repository (100k files, 8GB) but you better fill it yourself and see the magic
+  
+  fff\_nvim\_demo.mp4
+  
+  ### Installation
+  
+  [Permalink: Installation](https://github.com/dmtrKovalenko/fff.nvim#installation)
+  
+  FFF.nvim requires neovim 0.10.0 or higher
+  
+  #### lazy.nvim
+  
+  [Permalink: lazy.nvim](https://github.com/dmtrKovalenko/fff.nvim#lazynvim)
+  
+  ```
+  {
+    'dmtrKovalenko/fff.nvim',
+    build = function()
+      -- this will download prebuild binary or try to use existing rustup toolchain to build from source
+      -- (if you are using lazy you can use gb for rebuilding a plugin if needed)
+      require("fff.download").download_or_build_binary()
+    end,
+    -- if you are using nixos
+    -- build = "nix run .#release",
+    opts = { -- (optional)
+      debug = {
+        enabled = true,     -- we expect your collaboration at least during the beta
+        show_scores = true, -- to help us optimize the scoring system, feel free to share your scores!
+      },
+    },
+    -- No need to lazy-load with lazy.nvim.
+    -- This plugin initializes itself lazily.
+    lazy = false,
+    keys = {
+      {
+        "ff", -- try it if you didn't it is a banger keybinding for a picker
+        function() require('fff').find_files() end,
+        desc = 'FFFind files',
+      },
+      {
+        "fg",
+        function() require('fff').live_grep() end,
+        desc = 'LiFFFe grep',
+      },
+      {
+        "fz",
+        function() require('fff').live_grep({
+          grep = {
+            modes = { 'fuzzy', 'plain' }
+          }
+        }) end,
+        desc = 'Live fffuzy grep',
+      },
+      {
+        "fc",
+        function() require('fff').live_grep({ query = vim.fn.expand("<cword>") }) end,
+        desc = 'Search current word',
+      },
+    }
+  }
+  ```
+  
+  #### vim.pack
+  
+  [Permalink: vim.pack](https://github.com/dmtrKovalenko/fff.nvim#vimpack)
+  
+  ```
+  vim.pack.add({ 'https://github.com/dmtrKovalenko/fff.nvim' })
+  
+  vim.api.nvim_create_autocmd('PackChanged', {
+    callback = function(ev)
+      local name, kind = ev.data.spec.name, ev.data.kind
+      if name == 'fff.nvim' and (kind == 'install' or kind == 'update') then
+        if not ev.data.active then
+          vim.cmd.packadd('fff.nvim')
+        end
+        require('fff.download').download_or_build_binary()
+      end
+    end,
+  })
+  
+  -- the plugin will automatically lazy load
+  vim.g.fff = {
+    lazy_sync = true, -- start syncing only when the picker is open
+    debug = {
+      enabled = true,
+      show_scores = true,
+    },
+  }
+  
+  vim.keymap.set(
+    'n',
+    'ff',
+    function() require('fff').find_files() end,
+    { desc = 'FFFind files' }
+  )
+  ```
+  
+  ### Configuration
+  
+  [Permalink: Configuration](https://github.com/dmtrKovalenko/fff.nvim#configuration)
+  
+  FFF.nvim comes with sensible defaults. Here's the complete configuration with all available options:
+  
+  ```
+  require('fff').setup({
+      base_path = vim.fn.getcwd(),
+      prompt = '🪿 ',
+      title = 'FFFiles',
+      max_results = 100,
+      max_threads = 4,
+      lazy_sync = true, -- set to false if you want file indexing to start on open
+      layout = {
+        height = 0.8,
+        width = 0.8,
+        prompt_position = 'bottom', -- or 'top'
+        preview_position = 'right', -- or 'left', 'right', 'top', 'bottom'
+        preview_size = 0.5,
+        flex = { -- set to false to disable flex layout
+          size = 130, -- column threshold: if screen width >= size, use preview_position; otherwise use wrap
+          wrap = 'top', -- position to use when screen is narrower than size
+        },
+        show_scrollbar = true, -- Show scrollbar for pagination
+        -- How to shorten long directory paths in the file list:
+        -- 'middle_number' (default): uses dots for 1-3 hidden (a/./b, a/../b, a/.../b)
+        --                            and numbers for 4+ (a/.4./b, a/.5./b)
+        -- 'middle': always uses dots (a/./b, a/../b, a/.../b)
+        -- 'end': truncates from the end (home/user/projects)
+        path_shorten_strategy = 'middle_number',
+      },
+      preview = {
+        enabled = true,
+        max_size = 10 * 1024 * 1024, -- Do not try to read files larger than 10MB
+        chunk_size = 8192, -- Bytes per chunk for dynamic loading (8kb - fits ~100-200 lines)
+        binary_file_threshold = 1024, -- amount of bytes to scan for binary content (set 0 to disable)
+        imagemagick_info_format_str = '%m: %wx%h, %[colorspace], %q-bit',
+        line_numbers = false,
+        cursorlineopt = 'both', -- the cursorlineopt used for lines in grep file previews, see :h cursorlineopt
+        wrap_lines = false,
+        filetypes = {
+          svg = { wrap_lines = true },
+          markdown = { wrap_lines = true },
+          text = { wrap_lines = true },
+        },
+      },
+      keymaps = {
+        close = '<Esc>',
+        select = '<CR>',
+        select_split = '<C-s>',
+        select_vsplit = '<C-v>',
+        select_tab = '<C-t>',
+        -- you can assign multiple keys to any action
+        move_up = { '<Up>', '<C-p>' },
+        move_down = { '<Down>', '<C-n>' },
+        preview_scroll_up = '<C-u>',
+        preview_scroll_down = '<C-d>',
+        toggle_debug = '<F2>',
+        -- grep mode: cycle between plain text, regex, and fuzzy search
+        cycle_grep_modes = '<S-Tab>',
+        -- goes to the previous query in history
+        cycle_previous_query = '<C-Up>',
+        -- multi-select keymaps for quickfix
+        toggle_select = '<Tab>',
+        send_to_quickfix = '<C-q>',
+        -- this are specific for the normal mode (you can exit it using any other keybind like jj)
+        focus_list = '<leader>l',
+        focus_preview = '<leader>p',
+      },
+      hl = {
+        border = 'FloatBorder',
+        normal = 'Normal',
+        cursor = 'CursorLine',  -- Falls back to 'Visual' if CursorLine is not defined
+        matched = 'IncSearch',
+        title = 'Title',
+        prompt = 'Question',
+        frecency = 'Number',
+        debug = 'Comment',
+        combo_header = 'Number',
+        scrollbar = 'Comment',
+        directory_path = 'Comment',
+        -- Multi-select highlights
+        selected = 'FFFSelected',
+        selected_active = 'FFFSelectedActive',
+        -- Git text highlights for file names
+        git_staged = 'FFFGitStaged',
+        git_modified = 'FFFGitModified',
+        git_deleted = 'FFFGitDeleted',
+        git_renamed = 'FFFGitRenamed',
+        git_untracked = 'FFFGitUntracked',
+        git_ignored = 'FFFGitIgnored',
+        -- Git sign/border highlights
+        git_sign_staged = 'FFFGitSignStaged',
+        git_sign_modified = 'FFFGitSignModified',
+        git_sign_deleted = 'FFFGitSignDeleted',
+        git_sign_renamed = 'FFFGitSignRenamed',
+        git_sign_untracked = 'FFFGitSignUntracked',
+        git_sign_ignored = 'FFFGitSignIgnored',
+        -- Git sign selected highlights
+        git_sign_staged_selected = 'FFFGitSignStagedSelected',
+        git_sign_modified_selected = 'FFFGitSignModifiedSelected',
+        git_sign_deleted_selected = 'FFFGitSignDeletedSelected',
+        git_sign_renamed_selected = 'FFFGitSignRenamedSelected',
+        git_sign_untracked_selected = 'FFFGitSignUntrackedSelected',
+        git_sign_ignored_selected = 'FFFGitSignIgnoredSelected',
+        -- Grep highlights
+        grep_match = 'IncSearch',               -- Highlight for matched text in grep results
+        grep_line_number = 'LineNr',            -- Highlight for :line:col location
+        grep_regex_active = 'DiagnosticInfo',   -- Highlight for keybind + label when regex is on
+        grep_plain_active = 'Comment',        -- Highlight for keybind + label when regex is off
+        grep_fuzzy_active = 'DiagnosticHint',   -- Highlight for keybind + label when fuzzy is on
+        -- Cross-mode suggestion highlights
+        suggestion_header = 'WarningMsg', -- Highlight for the "No results found. Suggested..." banner
+      },
+      -- Store file open frecency
+      frecency = {
+        enabled = true,
+        db_path = vim.fn.stdpath('cache') .. '/fff_nvim',
+      },
+      -- Store successfully opened queries with respective matches
+      history = {
+        enabled = true,
+        db_path = vim.fn.stdpath('data') .. '/fff_queries',
+        min_combo_count = 3, -- Minimum selections before combo boost applies (3 = boost starts on 3rd selection)
+        combo_boost_score_multiplier = 100, -- Score multiplier for combo matches (files repeatedly opened with same query)
+      },
+      -- Git integration
+      git = {
+        status_text_color = false, -- Apply git status colors to filename text (default: false, only sign column)
+      },
+      debug = {
+        enabled = false, -- Show file info panel in preview
+        show_scores = false, -- Show scores inline in the UI
+      },
+      logging = {
+        enabled = true,
+        log_file = vim.fn.stdpath('log') .. '/fff.log',
+        log_level = 'info',
+      },
+      -- find_files settings
+      file_picker = {
+        current_file_label = '(current)',
+      },
+      -- grep settings
+      grep = {
+        max_file_size = 10 * 1024 * 1024, -- Skip files larger than 10MB
+        max_matches_per_file = 100, -- Maximum matches per file (set 0 to unlimited)
+        smart_case = true, -- Case-insensitive unless query has uppercase
+        time_budget_ms = 150, -- Max search time in ms per call (prevents UI freeze, 0 = no limit)
+        modes = { 'plain', 'regex', 'fuzzy' }, -- Available grep modes and their cycling order
+        trim_whitespace = false, -- Strip leading whitespace from matched lines
+      },
+    })
+  ```
+  
+  ### Key Features
+  
+  [Permalink: Key Features](https://github.com/dmtrKovalenko/fff.nvim#key-features)
+  
+  #### Available Methods
+  
+  [Permalink: Available Methods](https://github.com/dmtrKovalenko/fff.nvim#available-methods)
+  
+  ```
+  require('fff').find_files()                         -- Find files in current repository
+  require('fff').scan_files()                         -- Trigger rescan of files in the current directory
+  require('fff').refresh_git_status()                 -- Refresh git status for the active file list
+  require('fff').find_files_in_dir(path)              -- Find files in a specific directory
+  require('fff').change_indexing_directory(new_path)  -- Change the base directory for the file picker
+  ```
+  
+  just jump to the definition and see what other APIs are exposed we have a plenty
+  
+  #### Commands
+  
+  [Permalink: Commands](https://github.com/dmtrKovalenko/fff.nvim#commands)
+  
+  FFF.nvim provides several commands for interacting with the file picker:
+  
+  - `:FFFScan` \- Manually trigger a rescan of files in the current directory
+  - `:FFFRefreshGit` \- Manually refresh git status for all files
+  - `:FFFClearCache [all|frecency|files]` \- Clear various caches
+  - `:FFFHealth` \- Check FFF health status and dependencies
+  - `:FFFDebug [on|off|toggle]` \- Toggle debug scores display
+  - `:FFFOpenLog` \- Open the FFF log file in a new tab
+  
+  #### Debug Mode
+  
+  [Permalink: Debug Mode](https://github.com/dmtrKovalenko/fff.nvim#debug-mode)
+  
+  Toggle scoring information display:
+  
+  - Press `F2` while in the picker
+  - Use `:FFFDebug` command
+  - Enable by default with `debug.show_scores = true`
+  
+  #### Multi-Select and Quickfix Integration
+  
+  [Permalink: Multi-Select and Quickfix Integration](https://github.com/dmtrKovalenko/fff.nvim#multi-select-and-quickfix-integration)
+  
+  Select multiple files and send them to Neovim's quickfix list (keymaps are configurable):
+  
+  - `<Tab>` \- Toggle selection for the current file (shows thick border `▊` in signcolumn)
+  - `<C-q>` \- Send selected files to quickfix list and close picker
+  
+  #### Live Grep Search Modes
+  
+  [Permalink: Live Grep Search Modes](https://github.com/dmtrKovalenko/fff.nvim#live-grep-search-modes)
+  
+  Live grep supports three search modes, cycled with `<S-Tab>`:
+  
+  - **Plain text** (default) - The query is matched literally. Special regex characters like `.`, `*`, `(`, `)`, `$` have no special meaning. This is the safest mode for searching code containing regex metacharacters.
+  - **Regex** \- The query is interpreted as a regular expression. Supports character classes (`[a-z]`), quantifiers (`+`, `*`, `{n}`), alternation (`foo|bar`), anchors (`^`, `$`), word boundaries (`\b`), and more.
+  - **Fuzzy** \- The query is fuzzy matched using Smith-Waterman scoring. Accommodates typos and scattered characters (e.g., "mtxlk" matches "mutex\_lock"). Results are filtered by a quality threshold to avoid overly fuzzy matches.
+  
+  The current mode is shown on the right side of the input field (e.g., `plain`, `regex`, `fuzzy`) with color-coded highlighting.
+  
+  You can customize which modes are available and their cycling order globally in your configuration, or per-call when invoking `live_grep()`.
+  
+  **Global configuration:**
+  
+  ```
+  require('fff').setup({
+    grep = {
+      modes = { 'plain', 'regex' }, -- Only plain and regex, no fuzzy
+    }
+  })
+  ```
+  
+  **Per-call configuration:**
+  
+  ```
+  -- Only fuzzy and plain modes for this specific grep
+  require('fff').live_grep({
+    grep = {
+      modes = { 'fuzzy', 'plain' },
+    }
+  })
+  
+  -- Single mode (hides mode indicator completely)
+  require('fff').live_grep({
+    grep = {
+      modes = { 'fuzzy' },
+    }
+  })
+  
+  -- Pre-fill the search with an initial query
+  require('fff').live_grep({ query = 'search term' })
+  ```
+  
+  When only one mode is configured, the mode indicator is hidden completely and the cycle keybind does nothing.
+  
+  #### Constraints
+  
+  [Permalink: Constraints](https://github.com/dmtrKovalenko/fff.nvim#constraints)
+  
+  There are a number of constraints you can use to refine your search in both grep and file search mode:
+  
+  - `git:modified` \- show only modified files (one of `modified`, `staged`, `deleted`, `renamed`, `untracked`, `ignored`)
+  - `test/` \- any deeply nested children of any test/ dir
+  - `!something` \- exclude results matching something
+  - `!test/`, `!git:modified` \- combining with any other constraint works as negation
+  - `./**/*.{rs,lua}` \- any valid glob expression via [the fastest globbing library](https://github.com/dmtrKovalenko/zlob)
+  
+  For grep only:
+  
+  - `*.md`, `*.{c,h}` \- extension filtering
+  - `src/main.rs` \- grep in a single file
+  
+  In addition to that, all constraints can be combined together like:
+  
+  ```
+  git:modified src/**/*.rs !src/**/mod.rs user controller
+  ```
+  
+  This will find all the files that qualify the constraints and:
+  
+  - match **both** user and controller (for file mode)
+  - match "user controller" (for grep mode)
+  
+  #### Cross-Mode Suggestions
+  
+  [Permalink: Cross-Mode Suggestions](https://github.com/dmtrKovalenko/fff.nvim#cross-mode-suggestions)
+  
+  When a search returns no results, FFF automatically queries the opposite search mode and displays the results as suggestions:
+  
+  - **File search with no matches** → shows suggested **content matches** (grep results) for the same query
+  - **Grep search with no matches** → shows suggested **file name matches** for the same query
+  
+  Suggestions are clearly labeled with a "No results found. Suggested ..." banner (highlighted with `hl.suggestion_header`). You can navigate and select suggestion items just like normal results — selecting a grep suggestion will open the file at the matching line.
+  
+  #### Git Status Highlighting
+  
+  [Permalink: Git Status Highlighting](https://github.com/dmtrKovalenko/fff.nvim#git-status-highlighting)
+  
+  FFF integrates with git to show file status through sign column indicators (enabled by default) and optional filename text coloring.
+  
+  **Sign Column Indicators** (enabled by default) - Border characters shown in the sign column:
+  
+  ```
+  hl = {
+    git_sign_staged = 'FFFGitSignStaged',
+    git_sign_modified = 'FFFGitSignModified',
+    git_sign_deleted = 'FFFGitSignDeleted',
+    git_sign_renamed = 'FFFGitSignRenamed',
+    git_sign_untracked = 'FFFGitSignUntracked',
+    git_sign_ignored = 'FFFGitSignIgnored',
+  }
+  ```
+  
+  **Text Highlights** (opt-in) - Apply colors to filenames based on git status:
+  
+  To enable git status text coloring, set `git.status_text_color = true`:
+  
+  ```
+  require('fff').setup({
+    git = {
+      status_text_color = true, -- Enable git status colors on filename text
+    },
+    hl = {
+      git_staged = 'FFFGitStaged',       -- Files staged for commit
+      git_modified = 'FFFGitModified',   -- Modified unstaged files
+      git_deleted = 'FFFGitDeleted',     -- Deleted files
+      git_renamed = 'FFFGitRenamed',     -- Renamed files
+      git_untracked = 'FFFGitUntracked', -- New untracked files
+      git_ignored = 'FFFGitIgnored',     -- Git-ignored files
+    }
+  })
+  ```
+  
+  The plugin provides sensible default highlight groups that link to common git highlight groups (e.g., GitSignsAdd, GitSignsChange). You can override these with your own custom highlight groups to match your colorscheme.
+  
+  **Example - Custom Bright Colors for Text:**
+  
+  ```
+  vim.api.nvim_set_hl(0, 'CustomGitModified', { fg = '#FFA500' })
+  vim.api.nvim_set_hl(0, 'CustomGitUntracked', { fg = '#00FF00' })
+  
+  require('fff').setup({
+    git = {
+      status_text_color = true,
+    },
+    hl = {
+      git_modified = 'CustomGitModified',
+      git_untracked = 'CustomGitUntracked',
+    }
+  })
+  ```
+  
+  #### File Filtering
+  
+  [Permalink: File Filtering](https://github.com/dmtrKovalenko/fff.nvim#file-filtering)
+  
+  FFF.nvim respects `.gitignore` patterns automatically. To filter files from the picker without modifying `.gitignore`, create a `.ignore` file in your project root:
+  
+  ```
+  # Exclude all markdown files
+  *.md
+  
+  # Exclude specific subdirectory
+  docs/archive/**/*.md
+  ```
+  
+  Run `:FFFScan` to force a rescan if needed.
+  
+  ### Troubleshooting
+  
+  [Permalink: Troubleshooting](https://github.com/dmtrKovalenko/fff.nvim#troubleshooting)
+  
+  #### Health Check
+  
+  [Permalink: Health Check](https://github.com/dmtrKovalenko/fff.nvim#health-check)
+  
+  Run `:FFFHealth` to check the status of FFF.nvim and its dependencies. This will verify:
+  
+  - File picker initialization status
+  - Optional dependencies (git, image preview tools)
+  - Database connectivity
+  
+  #### Viewing Logs
+  
+  [Permalink: Viewing Logs](https://github.com/dmtrKovalenko/fff.nvim#viewing-logs)
+  
+  If you encounter issues, check the log file:
+  
+  ```
+  :FFFOpenLog
+  ```
+  
+  Or manually open the log file at `~/.local/state/nvim/log/fff.log` (default location).
+  
+  ## About
+  
+  The fastest and the most accurate file search toolkit for AI agents, Neovim, Rust, C, and NodeJS
+  
+  
+  [fff.dmtrkovalenko.dev/](https://fff.dmtrkovalenko.dev/ "https://fff.dmtrkovalenko.dev/")
+  
+  ### Topics
+  
+  [rust](https://github.com/topics/rust "Topic: rust") [lua](https://github.com/topics/lua "Topic: lua") [neovim](https://github.com/topics/neovim "Topic: neovim") [neovim-plugin](https://github.com/topics/neovim-plugin "Topic: neovim-plugin") [filesearch](https://github.com/topics/filesearch "Topic: filesearch")
+  
+  ### Resources
+  
+  [Readme](https://github.com/dmtrKovalenko/fff.nvim#readme-ov-file)
+  
+  ### License
+  
+  [MIT license](https://github.com/dmtrKovalenko/fff.nvim#MIT-1-ov-file)
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim).
+  
+  [Activity](https://github.com/dmtrKovalenko/fff.nvim/activity)
+  
+  ### Stars
+  
+  [**4.5k**\\
+  stars](https://github.com/dmtrKovalenko/fff.nvim/stargazers)
+  
+  ### Watchers
+  
+  [**10**\\
+  watching](https://github.com/dmtrKovalenko/fff.nvim/watchers)
+  
+  ### Forks
+  
+  [**187**\\
+  forks](https://github.com/dmtrKovalenko/fff.nvim/forks)
+  
+  [Report repository](https://github.com/contact/report-content?content_url=https%3A%2F%2Fgithub.com%2FdmtrKovalenko%2Ffff.nvim&report=dmtrKovalenko+%28user%29)
+  
+  ## [Releases\  391](https://github.com/dmtrKovalenko/fff.nvim/releases)
+  
+  [0.5.2\\
+  Latest\\
+  \\
+  last weekApr 5, 2026](https://github.com/dmtrKovalenko/fff.nvim/releases/tag/v0.5.2)
+  
+  [\+ 390 releases](https://github.com/dmtrKovalenko/fff.nvim/releases)
+  
+  ## [Contributors\  51](https://github.com/dmtrKovalenko/fff.nvim/graphs/contributors)
+  
+  - [![@dmtrKovalenko](https://avatars.githubusercontent.com/u/16926049?s=64&v=4)](https://github.com/dmtrKovalenko)
+  - [![@github-actions[bot]](https://avatars.githubusercontent.com/in/15368?s=64&v=4)](https://github.com/apps/github-actions)
+  - [![@sQVe](https://avatars.githubusercontent.com/u/2284724?s=64&v=4)](https://github.com/sQVe)
+  - [![@WillLillis](https://avatars.githubusercontent.com/u/87077023?s=64&v=4)](https://github.com/WillLillis)
+  - [![@claude](https://avatars.githubusercontent.com/u/81847?s=64&v=4)](https://github.com/claude)
+  - [![@anmonteiro](https://avatars.githubusercontent.com/u/661909?s=64&v=4)](https://github.com/anmonteiro)
+  - [![@disrupted](https://avatars.githubusercontent.com/u/4771462?s=64&v=4)](https://github.com/disrupted)
+  - [![@ndom91](https://avatars.githubusercontent.com/u/7415984?s=64&v=4)](https://github.com/ndom91)
+  - [![@mrcjkb](https://avatars.githubusercontent.com/u/12857160?s=64&v=4)](https://github.com/mrcjkb)
+  - [![@bansheerubber](https://avatars.githubusercontent.com/u/31485741?s=64&v=4)](https://github.com/bansheerubber)
+  - [![@dinhmai74](https://avatars.githubusercontent.com/u/40544043?s=64&v=4)](https://github.com/dinhmai74)
+  - [![@madmaxieee](https://avatars.githubusercontent.com/u/76544194?s=64&v=4)](https://github.com/madmaxieee)
+  - [![@AmaliaHaible](https://avatars.githubusercontent.com/u/137095716?s=64&v=4)](https://github.com/AmaliaHaible)
+  - [![@moibraheem3](https://avatars.githubusercontent.com/u/157206832?s=64&v=4)](https://github.com/moibraheem3)
+  
+  [\+ 37 contributors](https://github.com/dmtrKovalenko/fff.nvim/graphs/contributors)
+  
+  ## Languages
+  
+  - [Rust63.2%](https://github.com/dmtrKovalenko/fff.nvim/search?l=rust)
+  - [Lua19.8%](https://github.com/dmtrKovalenko/fff.nvim/search?l=lua)
+  - [TypeScript11.3%](https://github.com/dmtrKovalenko/fff.nvim/search?l=typescript)
+  - [Shell3.0%](https://github.com/dmtrKovalenko/fff.nvim/search?l=shell)
+  - [C1.2%](https://github.com/dmtrKovalenko/fff.nvim/search?l=c)
+  - [JavaScript0.7%](https://github.com/dmtrKovalenko/fff.nvim/search?l=javascript)
+  - Other0.8%
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+libffi - crates.io: Rust Package Registry
+  URL: https://crates.io/crates/libffi
+  The C libffi library provides two main facilities: assembling calls to functions dynamically, and creating closures that can be called as ...
+
+  --- Content ---
+  # libffiv5.1.0
+  
+  Rust bindings for libffi
+  
+  
+  - [#c](https://crates.io/keywords/c)
+  - [#closure](https://crates.io/keywords/closure)
+  - [#ffi](https://crates.io/keywords/ffi)
+  - [#libffi](https://crates.io/keywords/libffi)
+  
+  # libffi-rs: Rust bindings for [libffi](https://sourceware.org/libffi/)
+  
+  [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/tov/libffi-rs/test.yml?branch=master)](https://github.com/tov/libffi-rs/actions)[![Documentation](https://img.shields.io/docsrs/libffi/latest)](https://docs.rs/libffi/latest/libffi/)[![Crates.io](https://img.shields.io/crates/v/libffi.svg?maxAge=2592000)](https://crates.io/crates/libffi)[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/libffi-rs/libffi-rs/blob/HEAD/libffi-rs/LICENSE-MIT)[![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](https://github.com/libffi-rs/libffi-rs/blob/HEAD/libffi-rs/LICENSE-APACHE)
+  
+  The C libffi library provides two main facilities: assembling calls
+  to functions dynamically, and creating closures that can be called
+  as ordinary C functions. In Rust, the latter means that we can turn
+  a Rust lambda (or any object implementing `Fn`/`FnMut`) into an
+  ordinary C function pointer that we can pass as a callback to C.
+  
+  ## Usage
+  
+  Building `libffi` will build `lifbffi-sys`, which will in turn build the
+  libffi C library [from github](https://github.com/libffi/libffi), which
+  requires that you have a working make, C compiler, automake, and
+  autoconf first. It’s [on crates.io](https://crates.io/crates/libffi), so
+  you can add
+  
+  ```toml
+  [dependencies]
+  libffi = "5.1.0"
+  ```
+  
+  to your `Cargo.toml`.
+  
+  This crate depends on [the `libffi-sys` crate](https://crates.io/crates/libffi-sys/), which by default
+  attempts to build its own version of the C libffi library. In order to
+  use your system’s C libffi instead, enable this crate’s `system`
+  feature in your `Cargo.toml`:
+  
+  ```toml
+  [features]
+  libffi = { version = "5.1.0", features = ["system"] }
+  ```
+  
+  See [the `libffi-sys` documentation](https://docs.rs/libffi-sys/#usage) for more information about how it
+  finds C libffi.
+  
+  This crate supports Rust version 1.78 and later.
+  
+  ### Examples
+  
+  In this example, we convert a Rust lambda containing a free variable
+  into an ordinary C code pointer. The type of `fun` below is
+  `extern "C" fn(u64, u64) -> u64`.
+  
+  ```rust
+  use libffi::high::Closure2;
+  
+  let x = 5u64;
+  let f = |y: u64, z: u64| x + y + z;
+  
+  let closure = Closure2::new(&f);
+  let fun = closure.code_ptr();
+  
+  assert_eq!(18, fun(6, 7));
+  ```
+  
+  ## Metadata
+  
+  3 months ago
+  
+  
+  v1.78.0
+  
+  
+  
+  [MIT](https://choosealicense.com/licenses/mit) OR [Apache-2.0](https://choosealicense.com/licenses/apache-2.0)
+  
+  2.2K
+  SLoC
+  
+  
+  32.5 KiB
+  
+  
+  pkg:cargo/libffi@5.1.0[Learn more](https://github.com/package-url/purl-spec)
+  
+  ## Install
+  
+  Run the following Cargo command in your project directory:
+  
+  cargo add libffi
+  
+  Or add the following line to your Cargo.toml:
+  
+  libffi = "5.1.0"
+  
+  ## Documentation
+  
+  [docs.rs/libffi/5.1.0](https://docs.rs/libffi/5.1.0)
+  
+  ## Browse source
+  
+  [docs.rs/crate/libffi/5.1.0/source](https://docs.rs/crate/libffi/5.1.0/source/)
+  
+  ## Repository
+  
+  [github.com/libffi-rs/libffi-rs](https://github.com/libffi-rs/libffi-rs)
+  
+  ## Owners
+  
+  - [![Jesse A. Tov (tov)](https://avatars.githubusercontent.com/u/732548?v=4&s=64)Jesse A. Tov](https://crates.io/users/tov)
+  - [![Yorick Peterse (yorickpeterse)](https://avatars.githubusercontent.com/u/86065?v=4&s=64)Yorick Peterse](https://crates.io/users/yorickpeterse)
+  - [![Divy (littledivy)](https://avatars.githubusercontent.com/u/34997667?v=4&s=64)Divy](https://crates.io/users/littledivy)
+  - [![Ashwin Naren (arihant2math)](https://avatars.githubusercontent.com/u/58895652?v=4&s=64)Ashwin Naren](https://crates.io/users/arihant2math)
+  
+  ## Categories
+  
+  - [FFI](https://crates.io/categories/development-tools::ffi)
+  
+  [Report crate](https://crates.io/support?crate=libffi&inquire=crate-violation)
+  
+  ### Stats Overview
+  
+  2,460,623Downloads all time
+  
+  46Versions published
+  
+  #### Downloads over the last 90 days
+  
+  Display as
+  
+  Stacked
+  
+  
+  - Stacked
+  
+  - Unstacked
+  --- End Content ---
+
+Announcing fff.nvim - the file picker you've been waiting for ... - Reddit
+  URL: https://www.reddit.com/r/neovim/comments/1maz9uf/announcing_fffnvim_the_file_picker_youve_been/
+  965 votes, 101 comments. I've had a long story with telescope and snacks.nvim. I used them, I tried to improve them myself, but no matter ...
+
+Fff.nvim – Typo-resistant code search - Hacker News
+  URL: https://news.ycombinator.com/item?id=47039440
+  The new release of fff.nvim showed out the new compatiblity for the code search both for human and agents - typo resistant and usable code ...
+
+  --- Content ---
+  |     |     |     |
+  | --- | --- | --- |
+  | |     |     |     |
+  | --- | --- | --- |
+  | [![](https://news.ycombinator.com/y18.svg)](https://news.ycombinator.com/) | **[Hacker News](https://news.ycombinator.com/news)** [new](https://news.ycombinator.com/newest) \| [past](https://news.ycombinator.com/front) \| [comments](https://news.ycombinator.com/newcomments) \| [ask](https://news.ycombinator.com/ask) \| [show](https://news.ycombinator.com/show) \| [jobs](https://news.ycombinator.com/jobs) \| [submit](https://news.ycombinator.com/submit) | [login](https://news.ycombinator.com/login?goto=item%3Fid%3D47039440) | |
+  
+  | |     |     |     |
+  | --- | --- | --- |
+  |  |  | [Fff.nvim – Typo-resistant code search](https://github.com/dmtrKovalenko/fff.nvim) ( [github.com/dmtrkovalenko](https://news.ycombinator.com/from?site=github.com/dmtrkovalenko)) |
+  |  | 66 points by [neogoose](https://news.ycombinator.com/user?id=neogoose) [52 days ago](https://news.ycombinator.com/item?id=47039440) \| [hide](https://news.ycombinator.com/hide?id=47039440&goto=item%3Fid%3D47039440) \| [past](https://hn.algolia.com/?query=Fff.nvim%20%E2%80%93%20Typo-resistant%20code%20search&type=story&dateRange=all&sort=byDate&storyText=false&prefix&page=0) \| [favorite](https://news.ycombinator.com/fave?id=47039440&auth=7d3fd92b26129a65a5efd154a2c0782cb2e57f6c) \| [15 comments](https://news.ycombinator.com/item?id=47039440) |
+  |  | The new release of fff.nvim showed out the new compatiblity for the code search both for human and agents - typo resistant and usable code search for real codebases<br>It can match query "shcema" _only_ to "schema" and "SortedMap" only to "SortedArrayMap" and "SortedHashMap" without bloating the results |
+  
+  |     |     |     |
+  | --- | --- | --- |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [blueaquilae](https://news.ycombinator.com/user?id=blueaquilae) [52 days ago](https://news.ycombinator.com/item?id=47072383) \| [next](https://news.ycombinator.com/item?id=47039440#47040121)\[–\]<br>At least point to the lib not the software<br>[https://crates.io/crates/neo\_frizbee](https://crates.io/crates/neo_frizbee) <br>This is where the typo resistance comes from. | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [rjzzleep](https://news.ycombinator.com/user?id=rjzzleep) [51 days ago](https://news.ycombinator.com/item?id=47073117) \| [parent](https://news.ycombinator.com/item?id=47039440#47072383) \| [next](https://news.ycombinator.com/item?id=47039440#47073648)\[–\]<br>If you want to do that this is the actual lib [https://github.com/saghen/frizbee](https://github.com/saghen/frizbee) | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [femiagbabiaka](https://news.ycombinator.com/user?id=femiagbabiaka) [51 days ago](https://news.ycombinator.com/item?id=47073601) \| [root](https://news.ycombinator.com/item?id=47039440#47072383) \| [parent](https://news.ycombinator.com/item?id=47039440#47073117) \| [next](https://news.ycombinator.com/item?id=47039440#47073648)\[–\]<br><snip, was wrong> | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [lefrenchy](https://news.ycombinator.com/user?id=lefrenchy) [51 days ago](https://news.ycombinator.com/item?id=47073641) \| [root](https://news.ycombinator.com/item?id=47039440#47072383) \| [parent](https://news.ycombinator.com/item?id=47039440#47073601) \| [next](https://news.ycombinator.com/item?id=47039440#47073648)\[–\]<br>Blink is for completion, not fuzzy find. | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [femiagbabiaka](https://news.ycombinator.com/user?id=femiagbabiaka) [51 days ago](https://news.ycombinator.com/item?id=47073927) \| [root](https://news.ycombinator.com/item?id=47039440#47072383) \| [parent](https://news.ycombinator.com/item?id=47039440#47073641) \| [next](https://news.ycombinator.com/item?id=47039440#47073648)\[–\]<br>Ahh good call! Removed | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [lefrenchy](https://news.ycombinator.com/user?id=lefrenchy) [51 days ago](https://news.ycombinator.com/item?id=47073648) \| [parent](https://news.ycombinator.com/item?id=47039440#47072383) \| [prev](https://news.ycombinator.com/item?id=47039440#47073117) \| [next](https://news.ycombinator.com/item?id=47039440#47040121)\[–\]<br>Why? The author is a contributor to that project. What’s wrong with posting this project? | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [retrofuturism](https://news.ycombinator.com/user?id=retrofuturism) [52 days ago](https://news.ycombinator.com/item?id=47040121) \| [prev](https://news.ycombinator.com/item?id=47039440#47072383) \| [next](https://news.ycombinator.com/item?id=47039440#47074515)\[–\]<br>Ah, this a plugin I need. I just \_really\_ want to navigate with j/k like issue #77 states. | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [davidee](https://news.ycombinator.com/user?id=davidee) [51 days ago](https://news.ycombinator.com/item?id=47074515) \| [prev](https://news.ycombinator.com/item?id=47039440#47040121) \| [next](https://news.ycombinator.com/item?id=47039440#47072280)\[–\]<br>As someone whose core workflow in neovim involves no tabs, limited panes/split views and a copious amount of 'ff' (while also being incapable of spelling), this tickles me right where I itch.<br>My current fuzzy find key combinations include:<br>ff: fuzzy find, limited to current project<br>fc: fuzzy find (c)ode -> expand search scope to all projects<br>fg: fuzzy find (g)lobal -> let's just search my entire home folder<br>I imagine I'd have to limit it to the first and remap 'fg', I use 'gf', 'gc', 'gg' for the grep versions of these commands.<br>Either way, very cool. | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [maerch](https://news.ycombinator.com/user?id=maerch) [52 days ago](https://news.ycombinator.com/item?id=47072280) \| [prev](https://news.ycombinator.com/item?id=47039440#47074515) \| [next](https://news.ycombinator.com/item?id=47039440#47076990)\[–\]<br>Finally, someone is fixing a problem that’s tailored to me. For me, FFF obviously stands for “Fat-Fingered Finder.” | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [alfalfasprout](https://news.ycombinator.com/user?id=alfalfasprout) [51 days ago](https://news.ycombinator.com/item?id=47076990) \| [prev](https://news.ycombinator.com/item?id=47039440#47072280) \| [next](https://news.ycombinator.com/item?id=47039440#47072264)\[–\]<br>I've been using this for a few months now and it's amazing. Crazy fast and the vast majority of the time I get the result I want in one shot. | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [Myzel394](https://news.ycombinator.com/user?id=Myzel394) [52 days ago](https://news.ycombinator.com/item?id=47072264) \| [prev](https://news.ycombinator.com/item?id=47039440#47076990) \| [next](https://news.ycombinator.com/item?id=47039440#47072502)\[–\]<br>We need that for Emacs | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [antonalekseev](https://news.ycombinator.com/user?id=antonalekseev) [51 days ago](https://news.ycombinator.com/item?id=47074021) \| [parent](https://news.ycombinator.com/item?id=47039440#47072264) \| [next](https://news.ycombinator.com/item?id=47039440#47072606)\[–\]<br>[https://github.com/minad/affe](https://github.com/minad/affe) | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [dolibasija](https://news.ycombinator.com/user?id=dolibasija) [52 days ago](https://news.ycombinator.com/item?id=47072606) \| [parent](https://news.ycombinator.com/item?id=47039440#47072264) \| [prev](https://news.ycombinator.com/item?id=47039440#47074021) \| [next](https://news.ycombinator.com/item?id=47039440#47072502)\[–\]<br>Not trying to be controversial, but why don't you just switch to a normal editor? \\s | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [defraudbah](https://news.ycombinator.com/user?id=defraudbah) [52 days ago](https://news.ycombinator.com/item?id=47072502) \| [prev](https://news.ycombinator.com/item?id=47039440#47072264) \| [next](https://news.ycombinator.com/item?id=47039440#47039441)\[–\]<br>i used it and I really like it, the only thing that annoys me is every time i need to rebuild rust bindings | |
+  | |     |     |     |
+  | --- | --- | --- |
+  | ![](https://news.ycombinator.com/s.gif) |  | [alfalfasprout](https://news.ycombinator.com/user?id=alfalfasprout) [51 days ago](https://news.ycombinator.com/item?id=47076986) \| [parent](https://news.ycombinator.com/item?id=47039440#47072502) \| [next](https://news.ycombinator.com/item?id=47039440#47039441)\[–\]<br>They have prebuilt binaries now for fff | | |
+  | ![](https://news.ycombinator.com/s.gif)
+  
+  |     |
+  | --- |
+  |  |
+  
+  [Guidelines](https://news.ycombinator.com/newsguidelines.html) \| [FAQ](https://news.ycombinator.com/newsfaq.html) \| [Lists](https://news.ycombinator.com/lists) \| [API](https://github.com/HackerNews/API) \| [Security](https://news.ycombinator.com/security.html) \| [Legal](https://www.ycombinator.com/legal/) \| [Apply to YC](https://www.ycombinator.com/apply/) \| [Contact](mailto:hn@ycombinator.com)
+  
+  Search: |
+  --- End Content ---
+
+Releases · dmtrKovalenko/fff.nvim · GitHub
+  URL: https://github.com/dmtrKovalenko/fff.nvim/releases
+  The fastest and the most accurate file search toolkit for AI agents, Neovim, Rust, C, and NodeJS - Releases · dmtrKovalenko/fff.nvim.
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/dmtrKovalenko/fff.nvim/releases#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/dmtrKovalenko/fff.nvim/releases) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/dmtrKovalenko/fff.nvim/releases) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/dmtrKovalenko/fff.nvim/releases) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [dmtrKovalenko](https://github.com/dmtrKovalenko)/ **[fff.nvim](https://github.com/dmtrKovalenko/fff.nvim)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2FdmtrKovalenko%2Ffff.nvim) You must be signed in to change notification settings
+  - [Fork\\
+  215](https://github.com/login?return_to=%2FdmtrKovalenko%2Ffff.nvim)
+  - [Star\\
+  5k](https://github.com/login?return_to=%2FdmtrKovalenko%2Ffff.nvim)
+  
+  
+  # Releases: dmtrKovalenko/fff.nvim
+  
+  Releases · dmtrKovalenko/fff.nvim
+  
+  ## 0.5.3-nightly.7de55be
+  
+  9 hours ago
+  15 Apr 03:01
+  
+  
+  ![@github-actions](https://avatars.githubusercontent.com/in/15368?s=40&v=4)[github-actions](https://github.com/apps/github-actions)
+  
+  [0.5.3-nightly.7de55be](https://github.com/dmtrKovalenko/fff.nvim/tree/0.5.3-nightly.7de55be)
+  
+  [`7de55be`](https://github.com/dmtrKovalenko/fff.nvim/commit/7de55be63d725d94944e5e89206284a67b8baa08)
+  
+  This commit was created on GitHub.com and signed with GitHub’s **verified signature**.
+  
+  
+  GPG key ID: B5690EEEBB952194
+  
+  Verified
+  on Apr 14, 2026, 10:49 PM
+  
+  [Learn about vigilant mode](https://docs.github.com/github/authenticating-to-github/displaying-verification-statuses-for-all-of-your-commits).
+  
+  
+  Compare
+  
+  # Choose a tag to compare
+  
+  ## Sorry, something went wrong.
+  
+  Filter
+  
+  Loading
+  
+  ## Sorry, something went wrong.
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  ## No results found
+  
+  [View all tags](https://github.com/dmtrKovalenko/fff.nvim/tags)
+  
+  [0.5.3-nightly.7de55be](https://github.com/dmtrKovalenko/fff.nvim/releases/tag/0.5.3-nightly.7de55be)Pre-release
+  
+  Pre-release
+  
+  Nightly release from commit: [`7de55be`](https://github.com/dmtrKovalenko/fff.nvim/commit/7de55be63d725d94944e5e89206284a67b8baa08)
+  
+  ## Neovim Plugin
+  
+  - `{target}.so` / `.dylib` / `.dll` \- Lua module for Neovim
+  
+  ## C FFI Library (for Bun/Node/Python)
+  
+  - `c-lib-{target}.so` / `.dylib` / `.dll` \- C FFI library
+  
+  ## MCP Server
+  
+  - `fff-mcp-{target}` \- MCP server binary
+  
+  Install with:
+  
+  ```
+  curl -fsSL https://raw.githubusercontent.com/dmtrKovalenko/fff.nvim/main/install-mcp.sh | bash
+  ```
+  
+  Assets54
+  
+  Loading
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  All reactions
+  
+  ## 0.5.3-nightly.7c30055
+  
+  12 hours ago
+  15 Apr 00:09
+  
+  
+  ![@github-actions](https://avatars.githubusercontent.com/in/15368?s=40&v=4)[github-actions](https://github.com/apps/github-actions)
+  
+  [0.5.3-nightly.7c30055](https://github.com/dmtrKovalenko/fff.nvim/tree/0.5.3-nightly.7c30055)
+  
+  [`2606dce`](https://github.com/dmtrKovalenko/fff.nvim/commit/2606dce6bc0514b3addf46d6726c868f6752180f)
+  
+  This commit was created on GitHub.com and signed with GitHub’s **verified signature**.
+  
+  
+  GPG key ID: B5690EEEBB952194
+  
+  Verified
+  on Apr 14, 2026, 08:03 PM
+  
+  [Learn about vigilant mode](https://docs.github.com/github/authenticating-to-github/displaying-verification-statuses-for-all-of-your-commits).
+  
+  
+  Compare
+  
+  # Choose a tag to compare
+  
+  ## Sorry, something went wrong.
+  
+  Filter
+  
+  Loading
+  
+  ## Sorry, something went wrong.
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  ## No results found
+  
+  [View all tags](https://github.com/dmtrKovalenko/fff.nvim/tags)
+  
+  [0.5.3-nightly.7c30055](https://github.com/dmtrKovalenko/fff.nvim/releases/tag/0.5.3-nightly.7c30055)Pre-release
+  
+  Pre-release
+  
+  Nightly release from commit: [`7c30055`](https://github.com/dmtrKovalenko/fff.nvim/commit/7c300556e1f350e84eab9a06464ffe700b2305ba)
+  
+  ## Neovim Plugin
+  
+  - `{target}.so` / `.dylib` / `.dll` \- Lua module for Neovim
+  
+  ## C FFI Library (for Bun/Node/Python)
+  
+  - `c-lib-{target}.so` / `.dylib` / `.dll` \- C FFI library
+  
+  ## MCP Server
+  
+  - `fff-mcp-{target}` \- MCP server binary
+  
+  Install with:
+  
+  ```
+  curl -fsSL https://raw.githubusercontent.com/dmtrKovalenko/fff.nvim/main/install-mcp.sh | bash
+  ```
+  
+  Assets54
+  
+  Loading
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  All reactions
+  
+  ## 0.5.3-nightly.2606dce
+  
+  12 hours ago
+  15 Apr 00:15
+  
+  
+  ![@github-actions](https://avatars.githubusercontent.com/in/15368?s=40&v=4)[github-actions](https://github.com/apps/github-actions)
+  
+  [0.5.3-nightly.2606dce](https://github.com/dmtrKovalenko/fff.nvim/tree/0.5.3-nightly.2606dce)
+  
+  [`2606dce`](https://github.com/dmtrKovalenko/fff.nvim/commit/2606dce6bc0514b3addf46d6726c868f6752180f)
+  
+  This commit was created on GitHub.com and signed with GitHub’s **verified signature**.
+  
+  
+  GPG key ID: B5690EEEBB952194
+  
+  Verified
+  on Apr 14, 2026, 08:03 PM
+  
+  [Learn about vigilant mode](https://docs.github.com/github/authenticating-to-github/displaying-verification-statuses-for-all-of-your-commits).
+  
+  
+  Compare
+  
+  # Choose a tag to compare
+  
+  ## Sorry, something went wrong.
+  
+  Filter
+  
+  Loading
+  
+  ## Sorry, something went wrong.
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  ## No results found
+  
+  [View all tags](https://github.com/dmtrKovalenko/fff.nvim/tags)
+  
+  [0.5.3-nightly.2606dce](https://github.com/dmtrKovalenko/fff.nvim/releases/tag/0.5.3-nightly.2606dce)Pre-release
+  
+  Pre-release
+  
+  Nightly release from commit: [`2606dce`](https://github.com/dmtrKovalenko/fff.nvim/commit/2606dce6bc0514b3addf46d6726c868f6752180f)
+  
+  ## Neovim Plugin
+  
+  - `{target}.so` / `.dylib` / `.dll` \- Lua module for Neovim
+  
+  ## C FFI Library (for Bun/Node/Python)
+  
+  - `c-lib-{target}.so` / `.dylib` / `.dll` \- C FFI library
+  
+  ## MCP Server
+  
+  - `fff-mcp-{target}` \- MCP server binary
+  
+  Install with:
+  
+  ```
+  curl -fsSL https://raw.githubusercontent.com/dmtrKovalenko/fff.nvim/main/install-mcp.sh | bash
+  ```
+  
+  Assets54
+  
+  Loading
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  All reactions
+  
+  ## 0.5.3-nightly.d25ea75
+  
+  2 days ago
+  13 Apr 21:47
+  
+  
+  ![@github-actions](https://avatars.githubusercontent.com/in/15368?s=40&v=4)[github-actions](https://github.com/apps/github-actions)
+  
+  [0.5.3-nightly.d25ea75](https://github.com/dmtrKovalenko/fff.nvim/tree/0.5.3-nightly.d25ea75)
+  
+  [`d25ea75`](https://github.com/dmtrKovalenko/fff.nvim/commit/d25ea7562bb5a128c056e48060e3a54e84f6d2f5)
+  
+  This commit was created on GitHub.com and signed with GitHub’s **verified signature**.
+  
+  
+  GPG key ID: B5690EEEBB952194
+  
+  Verified
+  on Apr 13, 2026, 05:32 PM
+  
+  [Learn about vigilant mode](https://docs.github.com/github/authenticating-to-github/displaying-verification-statuses-for-all-of-your-commits).
+  
+  
+  Compare
+  
+  # Choose a tag to compare
+  
+  ## Sorry, something went wrong.
+  
+  Filter
+  
+  Loading
+  
+  ## Sorry, something went wrong.
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  ## No results found
+  
+  [View all tags](https://github.com/dmtrKovalenko/fff.nvim/tags)
+  
+  [0.5.3-nightly.d25ea75](https://github.com/dmtrKovalenko/fff.nvim/releases/tag/0.5.3-nightly.d25ea75)Pre-release
+  
+  Pre-release
+  
+  Nightly release from commit: [`d25ea75`](https://github.com/dmtrKovalenko/fff.nvim/commit/d25ea7562bb5a128c056e48060e3a54e84f6d2f5)
+  
+  ## Neovim Plugin
+  
+  - `{target}.so` / `.dylib` / `.dll` \- Lua module for Neovim
+  
+  ## C FFI Library (for Bun/Node/Python)
+  
+  - `c-lib-{target}.so` / `.dylib` / `.dll` \- C FFI library
+  
+  ## MCP Server
+  
+  - `fff-mcp-{target}` \- MCP server binary
+  
+  Install with:
+  
+  ```
+  curl -fsSL https://raw.githubusercontent.com/dmtrKovalenko/fff.nvim/main/install-mcp.sh | bash
+  ```
+  
+  Assets54
+  
+  Loading
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  All reactions
+  
+  ## 0.5.3-nightly.ccbab83
+  
+  2 days ago
+  13 Apr 21:34
+  
+  
+  ![@github-actions](https://avatars.githubusercontent.com/in/15368?s=40&v=4)[github-actions](https://github.com/apps/github-actions)
+  
+  [0.5.3-nightly.ccbab83](https://github.com/dmtrKovalenko/fff.nvim/tree/0.5.3-nightly.ccbab83)
+  
+  [`d25ea75`](https://github.com/dmtrKovalenko/fff.nvim/commit/d25ea7562bb5a128c056e48060e3a54e84f6d2f5)
+  
+  This commit was created on GitHub.com and signed with GitHub’s **verified signature**.
+  
+  
+  GPG key ID: B5690EEEBB952194
+  
+  Verified
+  on Apr 13, 2026, 05:32 PM
+  
+  [Learn about vigilant mode](https://docs.github.com/github/authenticating-to-github/displaying-verification-statuses-for-all-of-your-commits).
+  
+  
+  Compare
+  
+  # Choose a tag to compare
+  
+  ## Sorry, something went wrong.
+  
+  Filter
+  
+  Loading
+  
+  ## Sorry, something went wrong.
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  ## No results found
+  
+  [View all tags](https://github.com/dmtrKovalenko/fff.nvim/tags)
+  
+  [0.5.3-nightly.ccbab83](https://github.com/dmtrKovalenko/fff.nvim/releases/tag/0.5.3-nightly.ccbab83)Pre-release
+  
+  Pre-release
+  
+  Nightly release from commit: [`ccbab83`](https://github.com/dmtrKovalenko/fff.nvim/commit/ccbab83134fec368c40f3a7b33723c677bb5312c)
+  
+  ## Neovim Plugin
+  
+  - `{target}.so` / `.dylib` / `.dll` \- Lua module for Neovim
+  
+  ## C FFI Library (for Bun/Node/Python)
+  
+  - `c-lib-{target}.so` / `.dylib` / `.dll` \- C FFI library
+  
+  ## MCP Server
+  
+  - `fff-mcp-{target}` \- MCP server binary
+  
+  Install with:
+  
+  ```
+  curl -fsSL https://raw.githubusercontent.com/dmtrKovalenko/fff.nvim/main/install-mcp.sh | bash
+  ```
+  
+  Assets54
+  
+  Loading
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  All reactions
+  
+  ## 0.5.3-nightly.ad188ea
+  
+  2 days ago
+  13 Apr 22:18
+  
+  
+  ![@github-actions](https://avatars.githubusercontent.com/in/15368?s=40&v=4)[github-actions](https://github.com/apps/github-actions)
+  
+  [0.5.3-nightly.ad188ea](https://github.com/dmtrKovalenko/fff.nvim/tree/0.5.3-nightly.ad188ea)
+  
+  [`d25ea75`](https://github.com/dmtrKovalenko/fff.nvim/commit/d25ea7562bb5a128c056e48060e3a54e84f6d2f5)
+  
+  This commit was created on GitHub.com and signed with GitHub’s **verified signature**.
+  
+  
+  GPG key ID: B5690EEEBB952194
+  
+  Verified
+  on Apr 13, 2026, 05:32 PM
+  
+  [Learn about vigilant mode](https://docs.github.com/github/authenticating-to-github/displaying-verification-statuses-for-all-of-your-commits).
+  
+  
+  Compare
+  
+  # Choose a tag to compare
+  
+  ## Sorry, something went wrong.
+  
+  Filter
+  
+  Loading
+  
+  ## Sorry, something went wrong.
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  ## No results found
+  
+  [View all tags](https://github.com/dmtrKovalenko/fff.nvim/tags)
+  
+  [0.5.3-nightly.ad188ea](https://github.com/dmtrKovalenko/fff.nvim/releases/tag/0.5.3-nightly.ad188ea)Pre-release
+  
+  Pre-release
+  
+  Nightly release from commit: [`ad188ea`](https://github.com/dmtrKovalenko/fff.nvim/commit/ad188ea819695adf7252be3fa2dda71249c4eda6)
+  
+  ## Neovim Plugin
+  
+  - `{target}.so` / `.dylib` / `.dll` \- Lua module for Neovim
+  
+  ## C FFI Library (for Bun/Node/Python)
+  
+  - `c-lib-{target}.so` / `.dylib` / `.dll` \- C FFI library
+  
+  ## MCP Server
+  
+  - `fff-mcp-{target}` \- MCP server binary
+  
+  Install with:
+  
+  ```
+  curl -fsSL https://raw.githubusercontent.com/dmtrKovalenko/fff.nvim/main/install-mcp.sh | bash
+  ```
+  
+  Assets54
+  
+  Loading
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  All reactions
+  
+  ## 0.5.3-nightly.8912a1a
+  
+  2 days ago
+  13 Apr 23:37
+  
+  
+  ![@github-actions](https://avatars.githubusercontent.com/in/15368?s=40&v=4)[github-actions](https://github.com/apps/github-actions)
+  
+  [0.5.3-nightly.8912a1a](https://github.com/dmtrKovalenko/fff.nvim/tree/0.5.3-nightly.8912a1a)
+  
+  [`8912a1a`](https://github.com/dmtrKovalenko/fff.nvim/commit/8912a1abdbdcb91b73cda91058b378e4233ab58f)
+  
+  This commit was created on GitHub.com and signed with GitHub’s **verified signature**.
+  
+  
+  GPG key ID: B5690EEEBB952194
+  
+  Verified
+  on Apr 13, 2026, 07:26 PM
+  
+  [Learn about vigilant mode](https://docs.github.com/github/authenticating-to-github/displaying-verification-statuses-for-all-of-your-commits).
+  
+  
+  Compare
+  
+  # Choose a tag to compare
+  
+  ## Sorry, something went wrong.
+  
+  Filter
+  
+  Loading
+  
+  ## Sorry, something went wrong.
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  ## No results found
+  
+  [View all tags](https://github.com/dmtrKovalenko/fff.nvim/tags)
+  
+  [0.5.3-nightly.8912a1a](https://github.com/dmtrKovalenko/fff.nvim/releases/tag/0.5.3-nightly.8912a1a)Pre-release
+  
+  Pre-release
+  
+  Nightly release from commit: [`8912a1a`](https://github.com/dmtrKovalenko/fff.nvim/commit/8912a1abdbdcb91b73cda91058b378e4233ab58f)
+  
+  ## Neovim Plugin
+  
+  - `{target}.so` / `.dylib` / `.dll` \- Lua module for Neovim
+  
+  ## C FFI Library (for Bun/Node/Python)
+  
+  - `c-lib-{target}.so` / `.dylib` / `.dll` \- C FFI library
+  
+  ## MCP Server
+  
+  - `fff-mcp-{target}` \- MCP server binary
+  
+  Install with:
+  
+  ```
+  curl -fsSL https://raw.githubusercontent.com/dmtrKovalenko/fff.nvim/main/install-mcp.sh | bash
+  ```
+  
+  Assets54
+  
+  Loading
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  All reactions
+  
+  ## 0.5.3-nightly.690fbcf
+  
+  13 hours ago
+  14 Apr 23:52
+  
+  
+  ![@github-actions](https://avatars.githubusercontent.com/in/15368?s=40&v=4)[github-actions](https://github.com/apps/github-actions)
+  
+  [0.5.3-nightly.690fbcf](https://github.com/dmtrKovalenko/fff.nvim/tree/0.5.3-nightly.690fbcf)
+  
+  [`8912a1a`](https://github.com/dmtrKovalenko/fff.nvim/commit/8912a1abdbdcb91b73cda91058b378e4233ab58f)
+  
+  This commit was created on GitHub.com and signed with GitHub’s **verified signature**.
+  
+  
+  GPG key ID: B5690EEEBB952194
+  
+  Verified
+  on Apr 13, 2026, 07:26 PM
+  
+  [Learn about vigilant mode](https://docs.github.com/github/authenticating-to-github/displaying-verification-statuses-for-all-of-your-commits).
+  
+  
+  Compare
+  
+  # Choose a tag to compare
+  
+  ## Sorry, something went wrong.
+  
+  Filter
+  
+  Loading
+  
+  ## Sorry, something went wrong.
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  ## No results found
+  
+  [View all tags](https://github.com/dmtrKovalenko/fff.nvim/tags)
+  
+  [0.5.3-nightly.690fbcf](https://github.com/dmtrKovalenko/fff.nvim/releases/tag/0.5.3-nightly.690fbcf)Pre-release
+  
+  Pre-release
+  
+  Nightly release from commit: [`690fbcf`](https://github.com/dmtrKovalenko/fff.nvim/commit/690fbcf8aa5dd252bb7ce0f7e4ac4a183bf3f65f)
+  
+  ## Neovim Plugin
+  
+  - `{target}.so` / `.dylib` / `.dll` \- Lua module for Neovim
+  
+  ## C FFI Library (for Bun/Node/Python)
+  
+  - `c-lib-{target}.so` / `.dylib` / `.dll` \- C FFI library
+  
+  ## MCP Server
+  
+  - `fff-mcp-{target}` \- MCP server binary
+  
+  Install with:
+  
+  ```
+  curl -fsSL https://raw.githubusercontent.com/dmtrKovalenko/fff.nvim/main/install-mcp.sh | bash
+  ```
+  
+  Assets54
+  
+  Loading
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  All reactions
+  
+  ## 0.5.3-nightly.5b10cb3
+  
+  12 hours ago
+  15 Apr 00:02
+  
+  
+  ![@github-actions](https://avatars.githubusercontent.com/in/15368?s=40&v=4)[github-actions](https://github.com/apps/github-actions)
+  
+  [0.5.3-nightly.5b10cb3](https://github.com/dmtrKovalenko/fff.nvim/tree/0.5.3-nightly.5b10cb3)
+  
+  [`8912a1a`](https://github.com/dmtrKovalenko/fff.nvim/commit/8912a1abdbdcb91b73cda91058b378e4233ab58f)
+  
+  This commit was created on GitHub.com and signed with GitHub’s **verified signature**.
+  
+  
+  GPG key ID: B5690EEEBB952194
+  
+  Verified
+  on Apr 13, 2026, 07:26 PM
+  
+  [Learn about vigilant mode](https://docs.github.com/github/authenticating-to-github/displaying-verification-statuses-for-all-of-your-commits).
+  
+  
+  Compare
+  
+  # Choose a tag to compare
+  
+  ## Sorry, something went wrong.
+  
+  Filter
+  
+  Loading
+  
+  ## Sorry, something went wrong.
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  ## No results found
+  
+  [View all tags](https://github.com/dmtrKovalenko/fff.nvim/tags)
+  
+  [0.5.3-nightly.5b10cb3](https://github.com/dmtrKovalenko/fff.nvim/releases/tag/0.5.3-nightly.5b10cb3)Pre-release
+  
+  Pre-release
+  
+  Nightly release from commit: [`5b10cb3`](https://github.com/dmtrKovalenko/fff.nvim/commit/5b10cb3ccdb0c9ad7430b4bf3f9fe3a21622de2e)
+  
+  ## Neovim Plugin
+  
+  - `{target}.so` / `.dylib` / `.dll` \- Lua module for Neovim
+  
+  ## C FFI Library (for Bun/Node/Python)
+  
+  - `c-lib-{target}.so` / `.dylib` / `.dll` \- C FFI library
+  
+  ## MCP Server
+  
+  - `fff-mcp-{target}` \- MCP server binary
+  
+  Install with:
+  
+  ```
+  curl -fsSL https://raw.githubusercontent.com/dmtrKovalenko/fff.nvim/main/install-mcp.sh | bash
+  ```
+  
+  Assets54
+  
+  Loading
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  All reactions
+  
+  ## 0.5.3-nightly.5515969
+  
+  13 hours ago
+  14 Apr 23:46
+  
+  
+  ![@github-actions](https://avatars.githubusercontent.com/in/15368?s=40&v=4)[github-actions](https://github.com/apps/github-actions)
+  
+  [0.5.3-nightly.5515969](https://github.com/dmtrKovalenko/fff.nvim/tree/0.5.3-nightly.5515969)
+  
+  [`8912a1a`](https://github.com/dmtrKovalenko/fff.nvim/commit/8912a1abdbdcb91b73cda91058b378e4233ab58f)
+  
+  This commit was created on GitHub.com and signed with GitHub’s **verified signature**.
+  
+  
+  GPG key ID: B5690EEEBB952194
+  
+  Verified
+  on Apr 13, 2026, 07:26 PM
+  
+  [Learn about vigilant mode](https://docs.github.com/github/authenticating-to-github/displaying-verification-statuses-for-all-of-your-commits).
+  
+  
+  Compare
+  
+  # Choose a tag to compare
+  
+  ## Sorry, something went wrong.
+  
+  Filter
+  
+  Loading
+  
+  ## Sorry, something went wrong.
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  ## No results found
+  
+  [View all tags](https://github.com/dmtrKovalenko/fff.nvim/tags)
+  
+  [0.5.3-nightly.5515969](https://github.com/dmtrKovalenko/fff.nvim/releases/tag/0.5.3-nightly.5515969)Pre-release
+  
+  Pre-release
+  
+  Nightly release from commit: [`5515969`](https://github.com/dmtrKovalenko/fff.nvim/commit/55159691ec628ac0af0069da6c8ea231d8fa6696)
+  
+  ## Neovim Plugin
+  
+  - `{target}.so` / `.dylib` / `.dll` \- Lua module for Neovim
+  
+  ## C FFI Library (for Bun/Node/Python)
+  
+  - `c-lib-{target}.so` / `.dylib` / `.dll` \- C FFI library
+  
+  ## MCP Server
+  
+  - `fff-mcp-{target}` \- MCP server binary
+  
+  Install with:
+  
+  ```
+  curl -fsSL https://raw.githubusercontent.com/dmtrKovalenko/fff.nvim/main/install-mcp.sh | bash
+  ```
+  
+  Assets54
+  
+  Loading
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/dmtrKovalenko/fff.nvim/releases).
+  
+  All reactions
+  
+  Previous _1_ [2](https://github.com/dmtrKovalenko/fff.nvim/releases?page=2) [3](https://github.com/dmtrKovalenko/fff.nvim/releases?page=3) [4](https://github.com/dmtrKovalenko/fff.nvim/releases?page=4) [5](https://github.com/dmtrKovalenko/fff.nvim/releases?page=5)… [39](https://github.com/dmtrKovalenko/fff.nvim/releases?page=39) [40](https://github.com/dmtrKovalenko/fff.nvim/releases?page=40) [Next](https://github.com/dmtrKovalenko/fff.nvim/releases?page=2)
+  
+  Previous [Next](https://github.com/dmtrKovalenko/fff.nvim/releases?page=2)
+  
+  You can’t perform that action at this time.
+  --- End Content ---
