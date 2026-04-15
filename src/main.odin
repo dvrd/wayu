@@ -47,6 +47,7 @@ Command :: enum {
 	MIGRATE,
 	CONFIG,
 	EXPORT,     // High-performance turbo export
+	TOML,       // TOML configuration management
 	VERSION,
 	HELP,
 	SEARCH,     // Global fuzzy search across all configs
@@ -218,6 +219,8 @@ main :: proc() {
 		handle_edit_config()
 	case .EXPORT:
 		handle_export_command(parsed.action, parsed.args)
+	case .TOML:
+		handle_toml_command(parsed.action)
 	case .VERSION:
 		print_version()
 	case .HELP:
@@ -347,6 +350,24 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 				parsed.args = make([]string, len(filtered_args) - 2)
 				copy(parsed.args, filtered_args[2:])
 			}
+		}
+		return parsed
+	case "toml":
+		parsed.command = .TOML
+		// Parse toml subcommand
+		if len(filtered_args) > 1 {
+			switch filtered_args[1] {
+			case "validate":
+				parsed.action = .CHECK
+			case "convert", "apply":
+				parsed.action = .UPDATE
+			case "help", "-h", "--help":
+				parsed.action = .HELP
+			case:
+				parsed.action = .UNKNOWN
+			}
+		} else {
+			parsed.action = .LIST // Default: list/info
 		}
 		return parsed
 	case "version", "-v", "--version": parsed.command = .VERSION; return parsed
@@ -638,6 +659,7 @@ print_help :: proc() {
 	print_item("", "alias", "Manage shell aliases", EMOJI_ALIAS)
 	print_item("", "constants", "Manage environment constants (alias: const)", EMOJI_CONSTANT)
 	print_item("", "search, find, f", "Fuzzy search across all configurations", "🔍")
+	print_item("", "toml", "TOML configuration management", "⚙️ ")
 	print_item("", "completions", "Manage Zsh completion scripts", EMOJI_COMMAND)
 	print_item("", "backup", "Manage configuration backups", EMOJI_INFO)
 	print_item("", "plugin", "Manage shell plugins", EMOJI_COMMAND)
@@ -681,6 +703,11 @@ print_help :: proc() {
 	fmt.printf("  wayu plugin update plugin-name   # Update specific plugin\n")
 	fmt.printf("  wayu plugin update --all         # Update all plugins\n")
 	fmt.printf("  wayu migrate --from zsh --to bash # Migrate between shells\n")
+	fmt.println()
+	fmt.printf("  # TOML configuration (declarative mode):\n")
+	fmt.printf("  wayu toml validate               # Check wayu.toml syntax\n")
+	fmt.printf("  wayu toml convert                # Migrate to TOML format\n")
+	fmt.printf("  # Edit ~/.config/wayu/wayu.toml  # Edit declarative config\n")
 	fmt.println()
 	fmt.printf("  # Preview changes with dry-run:\n")
 	fmt.printf("  wayu --dry-run path add /new/path\n")

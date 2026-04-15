@@ -1548,3 +1548,62 @@ handle_convert_to_toml :: proc() -> bool {
     fmt.println("Note: Migration from existing configs not yet fully implemented")
     return true
 }
+
+// Main handler for TOML command (wayu toml <action>)
+handle_toml_command :: proc(action: Action) {
+	#partial switch action {
+	case .CHECK, .LIST:
+		// Validate TOML config
+		if !check_wayu_initialized() {
+			os.exit(EXIT_CONFIG)
+		}
+		if !handle_validate() {
+			os.exit(EXIT_DATAERR)
+		}
+	case .UPDATE:
+		// Convert/apply TOML config
+		if !check_wayu_initialized() {
+			os.exit(EXIT_CONFIG)
+		}
+		if !handle_convert_to_toml() {
+			os.exit(EXIT_CANTCREAT)
+		}
+	case .HELP, .UNKNOWN:
+		print_toml_usage()
+	case:
+		print_toml_usage()
+	}
+}
+
+// Print TOML command usage
+print_toml_usage :: proc() {
+	fmt.println()
+	fmt.printfln("%swayu toml - TOML configuration management%s", BOLD, RESET)
+	fmt.println()
+	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
+	fmt.printfln("  wayu toml                    Validate TOML config (default)")
+	fmt.printfln("  wayu toml validate           Validate wayu.toml syntax")
+	fmt.printfln("  wayu toml convert            Convert existing configs to TOML")
+	fmt.printfln("  wayu toml apply              Apply TOML config to shell")
+	fmt.printfln("  wayu toml help               Show this help")
+	fmt.println()
+	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
+	fmt.println("  Manage wayu configuration through TOML files.")
+	fmt.println("  TOML enables declarative, version-controlled configs.")
+	fmt.println()
+	fmt.printfln("%sFILE LOCATIONS:%s", get_primary(), RESET)
+	fmt.printfln("  ~/.config/wayu/wayu.toml         Main config (check into git)")
+	fmt.printfln("  ~/.config/wayu/wayu.local.toml   Local overrides (gitignored)")
+	fmt.println()
+	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
+	fmt.println("  # Validate your TOML config")
+	fmt.println("  wayu toml validate")
+	fmt.println()
+	fmt.println("  # Convert existing shell configs to TOML")
+	fmt.println("  wayu toml convert")
+	fmt.println()
+	fmt.println("  # Apply TOML config to shell")
+	fmt.println("  wayu toml apply")
+	fmt.println()
+	fmt.printfln("%sSee:%s ~/.config/wayu/wayu.toml for example configuration", get_muted(), RESET)
+}
