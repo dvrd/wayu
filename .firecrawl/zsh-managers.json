@@ -1,0 +1,1614 @@
+My Updated ZSH Config 2025 - Scott Spence
+  URL: https://scottspence.com/posts/my-updated-zsh-config-2025
+  This will be a walkthrough of getting set up, from scratch with a new shell! I'll be walking through this in a fresh install of Ubuntu 24.04.
+
+  --- Content ---
+  [Skip Navigation](https://scottspence.com/posts/my-updated-zsh-config-2025#main-content)
+  
+  [Scott Spence](https://scottspence.com/)
+  
+  🐱Choose a theme:Select a themeacidaquaautumnblackbumblebeebusinesscmykcoffeecorporatecupcakecyberpunkdarkdimdraculaemeraldfantasygardenhalloweenlemonadelightlofiluxurynightnordpastelretrosunsetsynthwavetealixvalentinewinterwireframe
+  
+  [Posts](https://scottspence.com/posts) [Tags](https://scottspence.com/tags) [Speaking](https://scottspence.com/speaking) [Contact](https://scottspence.com/contact)
+  
+  # My Updated ZSH Config 2025
+  
+  February 6, 2025 • 6 min read
+  
+  [zsh](https://scottspence.com/tags/zsh) [guide](https://scottspence.com/tags/guide) [notes](https://scottspence.com/tags/notes)
+  
+  [3 people viewing now](https://scottspence.com/stats)
+  
+  Hey! Thanks for stopping by! Just a word of warning, this post
+  is 1 year old, . If there's technical information in here it's more than likely out
+  of date.
+  
+  So, this is my updated Zsh config! To be honest there’s little that’s
+  changed over the years since I originally posted about this a good
+  three years ago now in [My Zsh Config](https://scottspence.com/posts/my-zsh-config). But! The
+  changes are substantial enough for me to justify a new post. I
+  essentially write this for me to come back to when I need to go
+  through this process again.
+  
+  With the improvements I discovered on a whim when I thought to myself,
+  “should opening this shell up always be this slow?” Then went on a
+  little side quest in [Speeding Up My ZSH Shell](https://scottspence.com/posts/speeding-up-my-zsh-shell) so I thought I better document the rest of the changes I made.
+  
+  Tl;Dr: It’s essentially the same config, but faster (see previous
+  paragraph) and with Volta instead of nvm. 😂
+  
+  Much like the previous post though, this will be a walkthrough of
+  getting set up, from scratch with a new shell! I’ll be walking through
+  this in a fresh install of Ubuntu 24.04.
+  
+  ## [Install Zsh](https://scottspence.com/posts/my-updated-zsh-config-2025\#install-zsh)
+  
+  Ok, as stated, this is going to be a fresh install of Ubuntu 24.04,
+  I’ll be going through the steps I do, so you can follow along, I’ll be
+  adding links to the sources if you’re not ok with pasting random
+  commands into your terminal!
+  
+  ```bash
+  sudo apt install zsh -y
+  # enter sudo password
+  ```
+  
+  This will install Zsh but that’s it, I can access from here by
+  entering `zsh` but I’m not going to do that I’m going to go straight
+  to installing Oh My Zsh.
+  
+  ## [Install Oh My Zsh](https://scottspence.com/posts/my-updated-zsh-config-2025\#install-oh-my-zsh)
+  
+  So, [Oh My Zsh](https://ohmyz.sh/) (for my use case) allows you to add
+  plugins and themes, which is what I’m using it for. There’s a load of
+  other super useful stuff on there which I’ve not looked into, like,
+  ever! 😅
+  
+  Install is a one liner from the website:
+  
+  ```bash
+  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+  # when prompted to change default to zsh, enter y
+  # enter sudo password again
+  ```
+  
+  So, I’m prompted to change default to zsh, and yes, I do want that,
+  thanks!
+  
+  Now, for me, I’m essentially gutting the `.zshrc` file and adding in
+  my config I’ve detailed in the [Speeding Up My ZSH Shell](https://scottspence.com/posts/speeding-up-my-zsh-shell) post.
+  
+  You can have a poke around in the `.zshrc` file, there’s a load of
+  info in there to get familiar with the file contents.
+  
+  Have a look around, I use `nano` to edit files:
+  
+  ```bash
+  nano ~/.zshrc
+  ```
+  
+  For the next section I’m essentially adding in the theme and plugins
+  I’m using. So, going from this:
+  
+  ```bash
+  ZSH_THEME="robbyrussell"
+  
+  plugins=(git)
+  ```
+  
+  To this:
+  
+  ```bash
+  ZSH_THEME="spaceship"
+  
+  plugins=(
+    git
+    zsh-autosuggestions
+    zsh-syntax-highlighting
+  )
+  ```
+  
+  For the purposes of this exercise, this is just to confirm the theme
+  and plugins are working, I’ll switch to my preferred config when it’s
+  up and running.
+  
+  After editing the `.zshrc` file in nano it’s `Ctrl+o` to save and `Ctrl+x` to exit the file.
+  
+  ## [Adding plugins and themes](https://scottspence.com/posts/my-updated-zsh-config-2025\#adding-plugins-and-themes)
+  
+  So, Zsh plugins! There’s a lot! I essentially use three, the built in `git` one and [`zsh-autosuggestions`](https://github.com/zsh-users/zsh-autosuggestions) and [`zsh-syntax-highlighting`](https://github.com/zsh-users/zsh-syntax-highlighting).
+  That’s it, you can go bananas installing all you like, there’s a
+  performance overhead though so be aware of this if you adding in a
+  load of extensions.
+  
+  For the auto suggestions plugin, in the [instructions](https://github.com/zsh-users/zsh-autosuggestions/blob/master/INSTALL.md) in the GitHub repo it’s essentially add this (`zsh-autosuggestions`)
+  to your plugin array and run this command:
+  
+  ```bash
+  git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+  ```
+  
+  Then add in my autosuggest preferred settings:
+  
+  ```bash
+  # Autosuggest settings
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#663399,standout"
+  ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE="20"
+  ZSH_AUTOSUGGEST_USE_ASYNC=1
+  ```
+  
+  That’s going to give me some nice looking autosuggestions now!
+  
+  Onto the syntax highlighting, same again, I already have the `zsh-syntax-highlighting` in the plugin array and in the [instructions](https://github.com/zsh-users/zsh-syntax-highlighting/blob/master/INSTALL.md) it’s run this command:
+  
+  ```bash
+  git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+  ```
+  
+  Done for the plugins! Now the theme!
+  
+  I like [Spaceship Prompt](https://github.com/spaceship-prompt/spaceship-prompt),
+  there’s loads of other options out there, I’ve been with this one for
+  many years now and see no reason to switch!
+  
+  ```bash
+  # Clone the repo
+  git clone https://github.com/spaceship-prompt/spaceship-prompt.git "$ZSH_CUSTOM/themes/spaceship-prompt" --depth=1
+  # Link the theme
+  ln -s "$ZSH_CUSTOM/themes/spaceship-prompt/spaceship.zsh-theme" "$ZSH_CUSTOM/themes/spaceship.zsh-theme"
+  ```
+  
+  There’s a load of config you can use for spaceship, see the [spaceship-prompt](https://github.com/spaceship-prompt/spaceship-prompt) repo for details! I’ll be taking my preferred config from the [Speeding Up My ZSH Shell](https://scottspence.com/posts/speeding-up-my-zsh-shell) post.
+  
+  ```bash
+  ZSH_THEME="spaceship"
+  
+  # Spaceship settings
+  SPACESHIP_PROMPT_ASYNC=true
+  SPACESHIP_PROMPT_ADD_NEWLINE=true
+  SPACESHIP_CHAR_SYMBOL="⚡"
+  
+  # Minimal spaceship sections for performance
+  SPACESHIP_PROMPT_ORDER=(
+    time
+    user
+    dir
+    git
+    line_sep
+    char
+  )
+  ```
+  
+  Aight! Plugins and theme sorted!
+  
+  ## [Volta](https://scottspence.com/posts/my-updated-zsh-config-2025\#volta)
+  
+  So, as a JavaScript developer I need tooling and differing node
+  versions, nvm was the way for me until I was recommended [Volta](https://volta.sh/) by [JYC](https://jyc.dev/card), thanks!
+  
+  So, this isn’t essentially a Zsh thing and more of a me thing! But,
+  this is what I’ll be referring to when I want to get set up with a new
+  shell instance! For me, this is exactly where this should be!
+  
+  Install is a one liner from the website:
+  
+  ```bash
+  curl https://get.volta.sh | bash
+  ```
+  
+  So, now I can install node, pnpm, npm-check-updates, etc. Essentially
+  any global package I need, I install it with Volta now.
+  
+  ## [Global aliases](https://scottspence.com/posts/my-updated-zsh-config-2025\#global-aliases)
+  
+  I still use the super awesome auto expansions from gotbletu (no idea
+  how to pronounce that!) but the video (from over 7 years ago now) on [ZSH Global Alias Expansion - Linux ZSH](https://www.youtube.com/watch?v=WTTIGjZAMGg) is still solid and what I still have in my config!
+  
+  Check out my [dotfiles](https://github.com/spences10/dotfiles/blob/main/.zsh_aliases) repo for that and my `.zshrc` config too!
+  
+  ## [The Config](https://scottspence.com/posts/my-updated-zsh-config-2025\#the-config)
+  
+  That’s it, as mentioned earlier you can check out my [dotfiles](https://github.com/spences10/dotfiles) repo for the full
+  config!
+  
+  Here’s where I’m at with it currently:
+  
+  ```bash
+  # Performance optimizations
+  DISABLE_AUTO_UPDATE="true"
+  DISABLE_MAGIC_FUNCTIONS="true"
+  DISABLE_COMPFIX="true"
+  
+  # Cache completions aggressively
+  autoload -Uz compinit
+  if [ "$(date +'%j')" != "$(stat -f '%Sm' -t '%j' ~/.zcompdump 2>/dev/null)" ]; then
+      compinit
+  else
+      compinit -C
+  fi
+  
+  # Oh My Zsh path
+  export ZSH="$HOME/.oh-my-zsh"
+  
+  # Theme config
+  ZSH_THEME="spaceship"
+  
+  # Spaceship settings
+  SPACESHIP_PROMPT_ASYNC=true
+  SPACESHIP_PROMPT_ADD_NEWLINE=true
+  SPACESHIP_CHAR_SYMBOL="⚡"
+  
+  # Minimal spaceship sections for performance
+  SPACESHIP_PROMPT_ORDER=(
+    time
+    user
+    dir
+    git
+    line_sep
+    char
+  )
+  
+  # Carefully ordered plugins (syntax highlighting must be last)
+  plugins=(
+    git
+    zsh-autosuggestions
+    zsh-syntax-highlighting
+  )
+  
+  # Source Oh My Zsh
+  source $ZSH/oh-my-zsh.sh
+  
+  # Autosuggest settings
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#663399,standout"
+  ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE="20"
+  ZSH_AUTOSUGGEST_USE_ASYNC=1
+  
+  # Alias expansion function
+  globalias() {
+     if [[ $LBUFFER =~ '[a-zA-Z0-9]+$' ]]; then
+         zle _expand_alias
+         zle expand-word
+     fi
+     zle self-insert
+  }
+  zle -N globalias
+  bindkey " " globalias
+  bindkey "^[[Z" magic-space\
+  bindkey -M isearch " " magic-space\
+  \
+  # Lazy load SSH agent\
+  function _load_ssh_agent() {\
+      if [ -z "$$SSH_AUTH_SOCK" ]; then\
+          eval "$(ssh-agent -s)" > /dev/null\
+          ssh-add ~/.ssh/id_github_sign_and_auth 2>/dev/null\
+      fi\
+  }\
+  \
+  autoload -U add-zsh-hook\
+  add-zsh-hook precmd _load_ssh_agent\
+  \
+  # Path configurations\
+  export VOLTA_HOME="$HOME/.volta"\
+  PATH="$VOLTA_HOME/bin:$PATH:/home/scott/.turso:/home/scott/.local/bin"\
+  export PATH\
+  \
+  # Source aliases last\
+  [ -f ~/.zsh_aliases ] && source ~/.zsh_aliases\
+  ```\
+  \
+  ## [Wrapping Up](https://scottspence.com/posts/my-updated-zsh-config-2025\#wrapping-up)\
+  \
+  Ok, so that’s my Zsh config updated! Everything’s running super smooth\
+  now. The shell opens instantly with the improvements I made in the [Speeding Up My ZSH Shell](https://scottspence.com/posts/speeding-up-my-zsh-shell) post, I’ve got Volta handling my global tool installs, and\
+  everything’s set up just how I like it.\
+  \
+  If you’re following along with this, remember this is my config that\
+  I’ve tweaked over the years - take what works for you and leave what\
+  doesn’t!\
+  \
+  Like I said at the start, I write these posts mainly for me to refer\
+  back to when I inevitably need to set up a new machine. But if you’ve\
+  found it useful, that’s awesome! 🙌\
+  \
+  Right, back to actually using the terminal instead of tweaking it…\
+  until the next side quest catches my eye! 😅\
+  \
+  **87**\
+  \
+  **86**\
+  \
+  👍\
+  \
+  **19**\
+  \
+  **18**\
+  \
+  ❤️\
+  \
+  **28**\
+  \
+  **27**\
+  \
+  💩\
+  \
+  **39**\
+  \
+  **38**\
+  \
+  🎉\
+  \
+  There's a [reactions leaderboard](https://scottspence.com/reactions-leaderboard) you can check out too.\
+  \
+  [Useful? Share it on Bluesky.](https://bsky.app/intent/compose?text=Check%20out%20this%20post%20from%20@scottspence.dev,%20My%20Updated%20ZSH%20Config%202025:%20https://scottspence.com/posts/my-updated-zsh-config-2025)\
+  \
+  [✨ View the stats for this post ✨](https://scottspence.com/stats/my-updated-zsh-config-2025)\
+  \
+  Take a look at some popular content from me... Views todayViews this monthViews this year\
+  \
+  Related posts...\
+  \
+  ### Sign up for the newsletter\
+  \
+  Want to keep up to date with what I'm working on?\
+  \
+  Join 493\
+  other developers and sign up for the newsletter.\
+  \
+  Your Email\
+  \
+  Checking your Browser…\
+  \
+  Verifying...\
+  \
+  Stuck? [Troubleshoot](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/c7l4z/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  Success!\
+  \
+  Verification failed\
+  \
+  [Troubleshoot](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/c7l4z/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  Verification expired\
+  \
+  [Refresh](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/c7l4z/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  Verification expired\
+  \
+  [Refresh](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/c7l4z/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  [Troubleshoot](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/c7l4z/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  [Privacy](https://www.cloudflare.com/privacypolicy/) • [Help](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/help)\
+  \
+  I care about the protection of your data. Read the [Privacy Policy](https://scottspence.com/privacy-policy) for more info.\
+  \
+  Back to top\
+  \
+  Copyright © 2017 - 2026 - All rights\
+  reserved\
+  Scott Spence
+  --- End Content ---
+
+bug: Upgrading from 24.11 to 25.11 completely broke zsh and shell ...
+  URL: https://github.com/nix-community/home-manager/issues/8346
+  I changed the flake to 25.11 and my server inspiron updated without problems. However on my mac, I'm using home-manager as a module with my nix ...
+  Category: github
+
+  --- Content ---
+  # This page isn’t working
+  
+  If the problem continues, contact the site owner.
+  
+  HTTP ERROR 401
+  
+  Reload
+  
+  
+  If the problem continues, contact the site owner.
+  
+  ![](<Base64-Image-Removed>)![](<Base64-Image-Removed>)
+  --- End Content ---
+
+Zsh vs Fish: The Ultimate Shell Showdown for 2025 - Medium
+  URL: https://medium.com/@awaleedpk/zsh-vs-fish-the-ultimate-shell-showdown-for-2025-27b89599859b
+  Winner: Zsh wins for scripting due to its Bash compatibility, which is crucial for professional environments and sharing scripts with others. 6.
+
+  --- Content ---
+  [Sitemap](https://medium.com/sitemap/sitemap.xml)
+  
+  [Open in app](https://play.google.com/store/apps/details?id=com.medium.reader&referrer=utm_source%3DmobileNavBar&source=post_page---top_nav_layout_nav-----------------------------------------)
+  
+  Sign up
+  
+  [Sign in](https://medium.com/m/signin?operation=login&redirect=https%3A%2F%2Fmedium.com%2F%40awaleedpk%2Fzsh-vs-fish-the-ultimate-shell-showdown-for-2025-27b89599859b&source=post_page---top_nav_layout_nav-----------------------global_nav------------------)
+  
+  [Medium Logo](https://medium.com/?source=post_page---top_nav_layout_nav-----------------------------------------)
+  
+  Get app
+  
+  [Write](https://medium.com/m/signin?operation=register&redirect=https%3A%2F%2Fmedium.com%2Fnew-story&source=---top_nav_layout_nav-----------------------new_post_topnav------------------)
+  
+  [Search](https://medium.com/search?source=post_page---top_nav_layout_nav-----------------------------------------)
+  
+  Sign up
+  
+  [Sign in](https://medium.com/m/signin?operation=login&redirect=https%3A%2F%2Fmedium.com%2F%40awaleedpk%2Fzsh-vs-fish-the-ultimate-shell-showdown-for-2025-27b89599859b&source=post_page---top_nav_layout_nav-----------------------global_nav------------------)
+  
+  ![](https://miro.medium.com/v2/resize:fill:32:32/1*dmbNkD5D-u45r44go_cf0g.png)
+  
+  # Zsh vs Fish: The Ultimate Shell Showdown for 2025
+  
+  [![Ahmad Waleed](https://miro.medium.com/v2/da:true/resize:fill:32:32/0*uMS_dfRJD1pweHUm)](https://medium.com/@awaleedpk?source=post_page---byline--27b89599859b---------------------------------------)
+  
+  [Ahmad Waleed](https://medium.com/@awaleedpk?source=post_page---byline--27b89599859b---------------------------------------)
+  
+  Follow
+  
+  12 min read
+  
+  ·
+  
+  Oct 16, 2025
+  
+  [Listen](https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2Fplans%3Fdimension%3Dpost_audio_button%26postId%3D27b89599859b&operation=register&redirect=https%3A%2F%2Fmedium.com%2F%40awaleedpk%2Fzsh-vs-fish-the-ultimate-shell-showdown-for-2025-27b89599859b&source=---header_actions--27b89599859b---------------------post_audio_button------------------)
+  
+  Share
+  
+  Choosing the right shell can dramatically impact your productivity and command-line experience. Two of the most popular modern shells — Zsh (Z Shell) and Fish (Friendly Interactive Shell) — have been battling for developers’ hearts and terminals. But which one deserves a place in your workflow?
+  
+  Press enter or click to view image in full size
+  
+  ![](https://miro.medium.com/v2/resize:fit:700/1*kxQLxyTYN46V1D87MShCzg.png)
+  
+  In this comprehensive comparison, we’ll dive deep into Zsh vs Fish, exploring their features, performance, customization options, and use cases. By the end, you’ll know exactly which shell is right for you.
+  
+  ## What Are Zsh and Fish?
+  
+  Before we jump into the comparison, let’s establish what these shells actually are.
+  
+  ## What is Zsh?
+  
+  Zsh, short for Z Shell, is a powerful Unix shell that extends the capabilities of the traditional Bash shell. Created by Paul Falstad in 1990, Zsh has evolved into one of the most feature-rich shells available. Since macOS Catalina (2019), Apple has made Zsh the default shell for Mac users, replacing Bash — a testament to its power and versatility.
+  
+  Zsh offers extensive customization, powerful scripting capabilities, and a rich ecosystem of plugins and themes, particularly through frameworks like Oh My Zsh.
+  
+  ## What is Fish?
+  
+  Fish, which stands for Friendly Interactive Shell, takes a different approach. Released in 2005 by Axel Liljencrantz, Fish prioritizes user-friendliness and works beautifully right out of the box. Its philosophy is simple: a shell should be intuitive, helpful, and require minimal configuration.
+  
+  Fish comes with syntax highlighting, auto-suggestions, and an innovative web-based configuration interface — all without installing a single plugin.
+  
+  ## Quick Comparison Table
+  
+  Let’s start with a high-level overview of how these shells stack up:
+  
+  ## Installation: Getting Started
+  
+  ## Installing Zsh
+  
+  **On macOS:** Zsh comes pre-installed on macOS Catalina and later. Check your version with:
+  
+  ```
+  zsh --version
+  ```
+  
+  If you need to update or install Zsh:
+  
+  ```
+  brew install zsh
+  ```
+  
+  **On Linux (Ubuntu/Debian):**
+  
+  ```
+  sudo apt-get install zsh
+  ```
+  
+  **On Linux (Fedora):**
+  
+  ```
+  sudo dnf install zsh
+  ```
+  
+  After installation, set Zsh as your default shell:
+  
+  ```
+  chsh -s $(which zsh)
+  ```
+  
+  ## Installing Fish
+  
+  **On macOS:**
+  
+  ```
+  brew install fish
+  ```
+  
+  **On Linux (Ubuntu/Debian):**
+  
+  ```
+  sudo apt-get install fish
+  ```
+  
+  **On Linux (Fedora):**
+  
+  ```
+  sudo dnf install fish
+  ```
+  
+  Set Fish as your default shell:
+  
+  ```
+  chsh -s $(which fish)
+  ```
+  
+  After setting either shell as default, restart your terminal for changes to take effect.
+  
+  ## Feature Comparison: Zsh vs Fish
+  
+  Now let’s dive into the detailed feature comparison between these two powerful shells.
+  
+  ## 1\. Auto-Suggestions and Predictions
+  
+  **Zsh:**
+  
+  Zsh requires the `zsh-autosuggestions` plugin to enable auto-suggestions. Once installed (typically through Oh My Zsh or manually), it suggests commands based on your history as you type. You can accept suggestions by pressing the right arrow key.
+  
+  The setup requires:
+  
+  ```
+  git clone https://github.com/zsh-users/zsh-autosuggestions ~/.zsh/zsh-autosuggestions
+  ```
+  
+  Then add to your `.zshrc`:
+  
+  ```
+  source ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh
+  ```
+  
+  **Fish:**
+  
+  Fish comes with intelligent auto-suggestions built right in — no configuration needed. As you type, Fish suggests commands from your history in gray text. Press the right arrow key or Control + F to accept the suggestion.
+  
+  What makes Fish special is its context-awareness. It suggests not just commands, but also arguments and file paths based on what you’re typing.
+  
+  **Winner:** Fish takes this round for its zero-configuration approach and slightly smarter context-aware suggestions.
+  
+  ## 2\. Syntax Highlighting
+  
+  **Zsh:**
+  
+  Syntax highlighting in Zsh requires the `zsh-syntax-highlighting` plugin. Once installed, it colors your commands as you type, showing valid commands in green and invalid ones in red.
+  
+  Installation:
+  
+  ```
+  git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.zsh/zsh-syntax-highlighting
+  ```
+  
+  Add to `.zshrc`:
+  
+  ```
+  source ~/.zsh/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+  ```
+  
+  **Fish:**
+  
+  Fish includes sophisticated syntax highlighting out of the box. Valid commands appear in one color, invalid commands in another, and strings, variables, and operators all have distinct colors. This immediate visual feedback helps you catch typos before executing commands.
+  
+  Fish highlights:
+  
+  - Commands (blue for valid, red for invalid)
+  - Options and flags
+  - Strings and quotes
+  - Variables
+  - File paths (underlined if they exist)
+  
+  **Winner:** Fish wins again with its built-in, comprehensive syntax highlighting that requires zero setup.
+  
+  ## 3\. Tab Completion
+  
+  **Zsh:**
+  
+  Zsh has incredibly powerful tab completion capabilities. It can complete commands, filenames, options, and even specific arguments for many common commands. Zsh’s completion system is context-aware and can be extensively customized.
+  
+  Features include:
+  
+  - Case-insensitive completion
+  - Partial word completion (type `cd /u/lo/b` and press Tab to complete to `/usr/local/bin`)
+  - Correction suggestions
+  - Menu selection for multiple matches
+  - Programmable completion for custom commands
+  
+  **Fish:**
+  
+  Fish’s tab completion is equally impressive and often more intuitive. It shows completions in a searchable menu with descriptions, making it easier to find the right option. Fish can complete:
+  
+  - Commands with descriptions
+  - File paths with previews
+  - Git branches and tags
+  - Command options with explanations
+  - Man page options automatically
+  
+  When you press Tab, Fish displays all possibilities with helpful descriptions, not just a list of names.
+  
+  **Winner:** Tie. Both are excellent, but Fish’s descriptive completions might be more beginner-friendly, while Zsh’s completion is more powerful for advanced users.
+  
+  ## 4\. Customization and Themes
+  
+  **Zsh:**
+  
+  Zsh is a customization powerhouse. With frameworks like Oh My Zsh, Prezto, or Zinit, you can transform your shell’s appearance and behavior extensively.
+  
+  Oh My Zsh alone offers:
+  
+  - 300+ plugins
+  - 150+ themes
+  - Extensive configuration options
+  - Easy plugin management
+  
+  You can customize:
+  
+  - Prompt appearance (with frameworks like Powerlevel10k or Starship)
+  - Key bindings
+  - Aliases and functions
+  - Completion behaviors
+  - Directory navigation shortcuts
+  
+  Your `.zshrc` file can become quite sophisticated:
+  
+  ```
+  # Example .zshrc customizations
+  ZSH_THEME="powerlevel10k/powerlevel10k"
+  plugins=(git docker kubectl npm z)
+  # Custom aliases
+  alias ll="ls -lah"
+  alias gs="git status"
+  ```
+  
+  **Fish:**
+  
+  Fish takes a different approach to customization. It uses a web-based configuration interface that you can launch with:
+  
+  ```
+  fish_config
+  ```
+  
+  This opens a browser window where you can:
+  
+  - Choose from built-in themes
+  - Set colors
+  - View and manage functions
+  - Configure abbreviations
+  - Adjust bindings
+  
+  Fish also supports:
+  
+  - Plugin managers like Oh My Fish and Fisher
+  - Custom functions stored in `~/.config/fish/functions/`
+  - Configuration file at `~/.config/fish/config.fish`
+  - Universal variables that persist across sessions
+  
+  Example Fish configuration:
+  
+  ```
+  # Example config.fish
+  set -g theme_color_scheme dracula
+  abbr gs git status
+  abbr gp git push
+  function mkcd
+      mkdir -p $argv && cd $argv
+  end
+  ```
+  
+  **Winner:** Zsh edges out Fish here due to its more mature ecosystem and greater flexibility, though Fish’s web-based configuration is wonderfully user-friendly for beginners.
+  
+  ## 5\. Scripting Capabilities
+  
+  **Zsh:**
+  
+  Zsh’s scripting syntax is largely compatible with Bash, making it easy to write portable scripts or adapt existing Bash scripts. This POSIX compliance means most Bash scripts will run in Zsh with little to no modification.
+  
+  Zsh scripting features:
+  
+  - Array handling
+  - Associative arrays (hash tables)
+  - Advanced pattern matching
+  - Floating-point arithmetic
+  - Powerful parameter expansion
+  - Rich conditional expressions
+  
+  Example Zsh script:
+  
+  ```
+  #!/bin/zsh
+  for file in *.txt; do
+      mv "$file" "${file%.txt}.md"
+  done
+  ```
+  
+  **Fish:**
+  
+  Fish deliberately breaks from POSIX compliance in favor of a cleaner, more intuitive syntax. While this makes Fish scripts more readable, it also means they’re not compatible with Bash or Zsh.
+  
+  Fish scripting features:
+  
+  - Clean, readable syntax
+  - No variable sigils like `$` for assignment
+  - Logical operators written as words (`and`, `or`, `not`)
+  - Universal variables
+  - Better error messages
+  
+  Example Fish script:
+  
+  ```
+  #!/usr/bin/fish
+  for file in *.txt
+      mv $file (string replace .txt .md $file)
+  end
+  ```
+  
+  **Winner:** Zsh wins for scripting due to its Bash compatibility, which is crucial for professional environments and sharing scripts with others.
+  
+  ## 6\. Performance and Speed
+  
+  **Zsh:**
+  
+  Zsh’s performance is generally excellent, though startup time can be affected by the number of plugins and configurations you load. A heavily configured Zsh with Oh My Zsh and multiple plugins might take 0.5–1 second to start.
+  
+  Performance tips for Zsh:
+  
+  - Use lazy-loading for plugins
+  - Minimize plugin count
+  - Use Zinit or other fast plugin managers
+  - Disable unnecessary completion scripts
+  
+  **Fish:**
+  
+  Fish is designed for speed and typically has faster startup times than heavily-configured Zsh. Its built-in features don’t slow down performance the way multiple Zsh plugins might.
+  
+  Average startup times (varies by system):
+  
+  - Basic Zsh: ~0.05 seconds
+  - Zsh with Oh My Zsh: 0.5–1.0 seconds
+  - Fish: 0.1–0.3 seconds
+  
+  **Winner:** Fish generally has better out-of-box performance, though optimized Zsh can be equally fast.
+  
+  ## 7\. Community and Ecosystem
+  
+  **Zsh:**
+  
+  Zsh has a massive, established community with decades of development behind it. The Oh My Zsh framework alone has over 170,000 stars on GitHub and countless tutorials, blog posts, and resources.
+  
+  Resources include:
+  
+  - Extensive documentation
+  - Huge plugin repository
+  - Active forums and communities
+  - Books and courses available
+  - Corporate adoption and support
+  
+  **Fish:**
+  
+  ## Get Ahmad Waleed’s stories in your inbox
+  
+  Join Medium for free to get updates from this writer.
+  
+  Subscribe
+  
+  Subscribe
+  
+  Remember me for faster sign in
+  
+  Fish has a smaller but passionate and growing community. While it doesn’t match Zsh’s sheer numbers, the Fish community is active, helpful, and continuously improving the shell.
+  
+  Resources include:
+  
+  - Excellent official documentation
+  - Growing plugin ecosystem
+  - Active GitHub repository
+  - Helpful community on forums and chat
+  
+  **Winner:** Zsh has the larger community and ecosystem, making it easier to find solutions and resources.
+  
+  ## 8\. Learning Curve
+  
+  **Zsh:**
+  
+  If you’re coming from Bash, Zsh is relatively easy to learn since the syntax is familiar. However, mastering Zsh’s advanced features and configuration requires time and effort. Setting up a powerful Zsh environment can be overwhelming for beginners.
+  
+  **Fish:**
+  
+  Fish is designed with beginners in mind. Its intuitive syntax, helpful error messages, and zero-configuration approach make it the easiest shell to start using productively. You can be proficient with Fish in hours rather than days.
+  
+  **Winner:** Fish is unquestionably easier for beginners, while Zsh is better for those who want to gradually build expertise.
+  
+  ## 9\. Compatibility and Portability
+  
+  **Zsh:**
+  
+  Zsh’s POSIX compliance and Bash-like syntax make it highly portable. Scripts written in Zsh can often run on systems with Bash, and you can easily adapt Bash scripts for Zsh.
+  
+  **Fish:**
+  
+  Fish’s unique syntax means Fish scripts won’t run in other shells without modification. This can be a challenge in shared environments or when collaborating with others who use different shells.
+  
+  **Winner:** Zsh wins on compatibility, which is important in professional settings.
+  
+  ## 10\. Documentation and Support
+  
+  **Zsh:**
+  
+  Zsh has comprehensive man pages and documentation, but they can be dense and technical. The community has created numerous guides, tutorials, and configuration examples to help.
+  
+  **Fish:**
+  
+  Fish’s documentation is exceptionally well-written, beginner-friendly, and includes many practical examples. The official tutorial is one of the best shell tutorials available.
+  
+  **Winner:** Fish has more accessible documentation, making it easier to learn and troubleshoot.
+  
+  ## Real-World Use Cases
+  
+  ## When to Choose Zsh
+  
+  **1\. Professional Development Environments:** If you work in a team where Bash is standard, Zsh provides a smooth upgrade path without sacrificing compatibility.
+  
+  **2\. macOS Users:** Since Zsh is the default shell on macOS, you might as well leverage it and learn its advanced features.
+  
+  **3\. Power Users and System Administrators:** If you want maximum control and customization, Zsh’s extensive configuration options are unmatched.
+  
+  **4\. Script Writers:** When you need to write portable scripts that others will use, Zsh’s Bash compatibility is invaluable.
+  
+  **5\. Those Who Love Customization:** If you enjoy tinkering with your tools and want endless customization possibilities, Zsh with Oh My Zsh or Powerlevel10k is perfect.
+  
+  ## When to Choose Fish
+  
+  **1\. Beginners:** If you’re new to the command line, Fish’s intuitive design and helpful features will accelerate your learning.
+  
+  **2\. Users Who Value Simplicity:** If you prefer tools that work well out of the box without extensive configuration, Fish is ideal.
+  
+  **3\. Interactive Shell Users:** If you primarily use your shell interactively rather than for scripting, Fish’s features shine brightest.
+  
+  **4\. Those Who Want Modern Features Immediately:** Fish provides syntax highlighting, auto-suggestions, and smart completions without installing anything extra.
+  
+  **5\. Users Who Don’t Need Bash Compatibility:** If you’re not bound by the need to run Bash scripts or work in POSIX-compliant environments, Fish’s modern syntax is refreshing.
+  
+  ## Making the Switch
+  
+  ## Migrating from Bash to Zsh
+  
+  Switching from Bash to Zsh is relatively straightforward:
+  
+  1. Install Zsh and Oh My Zsh for the easiest transition
+  2. Copy your Bash aliases and functions to `~/.zshrc`
+  3. Most Bash scripts will work with minimal changes
+  4. Explore Zsh-specific features gradually
+  
+  **Want to master Zsh?** Check out the comprehensive [**ZSH Shell: Beginners to Real-World Development**](https://www.amazon.com/ZSH-Shell-Beginners-Real-World-Development-ebook/dp/B0FTFFZBLN) ebook to dive deep into Zsh’s powerful features, or if you’re on macOS, the [**macOS Command Line Terminal Handbook**](https://www.amazon.com/macOS-Command-Line-Terminal-Handbook/dp/B0DS9VJJ4C/) is an excellent resource for mastering the Terminal and Zsh together.
+  
+  ## Migrating from Bash to Fish
+  
+  Switching to Fish requires more adaptation:
+  
+  1. Install Fish
+  2. Learn Fish’s syntax (it’s different from Bash)
+  3. Rewrite your Bash aliases and functions in Fish syntax
+  4. Use `bass` plugin if you need to run Bash scripts
+  5. Embrace Fish’s philosophy and built-in features
+  
+  The transition requires more learning, but Fish’s helpful error messages and documentation make it manageable.
+  
+  ## Can You Use Both?
+  
+  Absolutely! Many developers use Zsh as their default shell but keep Fish installed for specific tasks or to experiment with. You can switch between shells by simply typing their name:
+  
+  ```
+  # From Zsh to Fish
+  fish
+  ```
+  
+  ```
+  # From Fish to Zsh
+  zsh
+  ```
+  
+  Some users even set up different terminal profiles for different shells, choosing based on the task at hand.
+  
+  ## Plugins and Extensions Worth Exploring
+  
+  ## Essential Zsh Plugins
+  
+  **Through Oh My Zsh:**
+  
+  - `git` \- Git aliases and functions
+  - `z` \- Quickly jump to frequently used directories
+  - `zsh-autosuggestions` \- Command suggestions
+  - `zsh-syntax-highlighting` \- Color coding
+  - `docker` \- Docker command completions
+  - `kubectl` \- Kubernetes completions
+  - `nvm` \- Node Version Manager integration
+  
+  **Standalone Tools:**
+  
+  - Powerlevel10k — Beautiful, fast prompt
+  - Starship — Cross-shell customizable prompt
+  - fzf — Fuzzy finder integration
+  
+  ## Essential Fish Plugins
+  
+  **Through Fisher or Oh My Fish:**
+  
+  - `bass` \- Run Bash scripts in Fish
+  - `z` or `autojump` \- Smart directory navigation
+  - `done` \- Desktop notifications for long commands
+  - `colored-man-pages` \- Colorful man pages
+  - `plugin-git` \- Git utilities
+  - `nvm` \- Node version management
+  
+  **Built-in Tools to Explore:**
+  
+  - `fish_config` \- Web-based configuration
+  - `funced` \- Edit functions in your editor
+  - `abbr` \- Create abbreviations (better than aliases)
+  
+  ## Performance Optimization Tips
+  
+  ## Optimizing Zsh
+  
+  If your Zsh is slow to start, try these optimization techniques:
+  
+  **1\. Profile Your Startup:**
+  
+  ```
+  zsh -i -c 'exit'
+  ```
+  
+  **2\. Use Lazy Loading:** Instead of loading all plugins at startup, load them only when needed:
+  
+  ```
+  # Instead of loading NVM immediately
+  # source ~/.nvm/nvm.sh
+  ```
+  
+  ```
+  # Lazy load it
+  nvm() {
+      unset -f nvm
+      source ~/.nvm/nvm.sh
+      nvm "$@"
+  }
+  ```
+  
+  **3\. Reduce Plugin Count:** Only use plugins you actually need. Remove unused plugins from your `.zshrc`.
+  
+  **4\. Use Faster Plugin Managers:** Switch from Oh My Zsh to Zinit or Antibody for faster plugin loading.
+  
+  **5\. Disable Unnecessary Completions:** Comment out completion scripts you don’t use in your `.zshrc`.
+  
+  ## Optimizing Fish
+  
+  Fish is generally fast, but you can make it even faster:
+  
+  **1\. Limit Plugin Count:** Only install plugins you use regularly.
+  
+  **2\. Use Universal Variables Wisely:** Universal variables persist across sessions but can slow things down if overused.
+  
+  **3\. Simplify Your Prompt:** Complex prompts can slow down your shell. Use simpler prompts or async prompt solutions.
+  
+  **4\. Profile Your Configuration:**
+  
+  ```
+  fish --profile /tmp/profile.txt -c exit
+  cat /tmp/profile.txt
+  ```
+  
+  ## Common Issues and Solutions
+  
+  ## Zsh Issues
+  
+  **Problem:** Slow startup time **Solution:** Profile your configuration and lazy-load plugins
+  
+  **Problem:** Permissions error with Oh My Zsh **Solution:**`chmod 755 /usr/local/share/zsh` and restart
+  
+  **Problem:** Completion not working **Solution:** Run `rm ~/.zcompdump && compinit` to rebuild completion cache
+  
+  **Problem:** Theme not displaying correctly **Solution:** Install a powerline-compatible font like FiraCode Nerd Font
+  
+  ## Fish Issues
+  
+  **Problem:** Bash scripts don’t work **Solution:** Install the `bass` plugin or run scripts with `bash script.sh`
+  
+  **Problem:** Environment variables not persisting **Solution:** Use `set -Ux VARIABLE value` for universal variables
+  
+  **Problem:** Can’t source `.bash_profile` **Solution:** Fish doesn't use this file. Put configurations in `~/.config/fish/config.fish`
+  
+  **Problem:** Syntax errors from Bash commands **Solution:** Learn Fish’s syntax or use `bass` to run Bash commands
+  
+  ## The Verdict: Which Shell Should You Choose?
+  
+  After exploring every aspect of Zsh vs Fish, here’s my recommendation:
+  
+  ## Choose Zsh if:
+  
+  - You’re on macOS (it’s already your default)
+  - You need Bash script compatibility
+  - You work in professional environments with shared scripts
+  - You enjoy deep customization and tinkering
+  - You want the largest community and plugin ecosystem
+  - You’re transitioning from Bash
+  
+  ## Choose Fish if:
+  
+  - You’re new to command-line interfaces
+  - You want powerful features without configuration
+  - You primarily use the shell interactively
+  - You value simplicity and user-friendliness
+  - You’re willing to learn a different syntax
+  - You want the best out-of-box experience
+  
+  ## Or Try Both!
+  
+  There’s no law saying you must choose just one. Many developers:
+  
+  - Use Zsh for their main workflow (especially on macOS)
+  - Keep Fish installed for specific tasks
+  - Use Zsh for work (compatibility) and Fish for personal projects
+  - Experiment with both to find their preference
+  
+  The best approach is to try both shells for a week each and see which one feels more natural for your workflow.
+  
+  ## Learning Resources and Next Steps
+  
+  Ready to dive deeper into your chosen shell?
+  
+  ## For Zsh Learners:
+  
+  **Books and Guides:**
+  
+  [**The macOS Command Line and Terminal Handbook: A Comprehensive Guide to Zsh and Scripting for…** \\
+  \\
+  **Unlock the full potential of your macOS system with , your ultimate guide to mastering the Terminal and Zsh shell…**\\
+  \\
+  www.amazon.com](https://www.amazon.com/macOS-Command-Line-Terminal-Handbook/dp/B0DS9VJJ4C/?source=post_page-----27b89599859b---------------------------------------)
+  
+  [**ZSH Shell for Beginners: The Complete Terminal Command Line Guide from Beginner to Advanced with…** \\
+  \\
+  **Amazon.com: ZSH Shell for Beginners: The Complete Terminal Command Line Guide from Beginner to Advanced with Real-World…**\\
+  \\
+  www.amazon.com](https://www.amazon.com/ZSH-Shell-Beginners-Real-World-Development-ebook/dp/B0FTFFZBLN?source=post_page-----27b89599859b---------------------------------------)
+  
+  **Online Resources:**
+  
+  - Zsh official documentation
+  - Oh My Zsh GitHub wiki
+  - Powerlevel10k configuration guide
+  - Zsh subreddit community
+  
+  ## For Fish Learners:
+  
+  **Resources:**
+  
+  - Official Fish documentation and tutorial
+  - Fish cookbook with practical examples
+  - Oh My Fish and Fisher plugin repositories
+  - Fish shell subreddit community
+  
+  ## Final Thoughts
+  
+  Both Zsh and Fish are excellent modern shells that far surpass the capabilities of basic Bash. Your choice ultimately depends on your priorities:
+  
+  **Zsh** is the Swiss Army knife of shells — incredibly powerful, endlessly customizable, and widely supported. It’s the professional’s choice for those who want maximum control and compatibility.
+  
+  **Fish** is the smart car of shells — efficient, user-friendly, and intelligently designed. It’s perfect for those who want to be productive immediately without spending hours on configuration.
+  
+  Whichever you choose, you’ll enjoy a significantly better command-line experience than default Bash. The command line is one of the most powerful tools in your development arsenal, and using a modern shell like Zsh or Fish will make you faster, more efficient, and maybe even enjoy your terminal time a bit more.
+  
+  [Zsh](https://medium.com/tag/zsh?source=post_page-----27b89599859b---------------------------------------)
+  
+  [Fish](https://medium.com/tag/fish?source=post_page-----27b89599859b---------------------------------------)
+  
+  [Bash](https://medium.com/tag/bash?source=post_page-----27b89599859b---------------------------------------)
+  
+  [Terminal](https://medium.com/tag/terminal?source=post_page-----27b89599859b---------------------------------------)
+  
+  [Terminal Commands](https://medium.com/tag/terminal-commands?source=post_page-----27b89599859b---------------------------------------)
+  
+  [![Ahmad Waleed](https://miro.medium.com/v2/resize:fill:48:48/0*uMS_dfRJD1pweHUm)](https://medium.com/@awaleedpk?source=post_page---post_author_info--27b89599859b---------------------------------------)
+  
+  [![Ahmad Waleed](https://miro.medium.com/v2/resize:fill:64:64/0*uMS_dfRJD1pweHUm)](https://medium.com/@awaleedpk?source=post_page---post_author_info--27b89599859b---------------------------------------)
+  
+  Follow
+  
+  [**Written by Ahmad Waleed**](https://medium.com/@awaleedpk?source=post_page---post_author_info--27b89599859b---------------------------------------)
+  
+  [127 followers](https://medium.com/@awaleedpk/followers?source=post_page---post_author_info--27b89599859b---------------------------------------)
+  
+  · [6 following](https://medium.com/@awaleedpk/following?source=post_page---post_author_info--27b89599859b---------------------------------------)
+  
+  I thrive at the intersection of data and discovery, wielding algorithms and statistical models to unlock insights that power informed decisions.
+  
+  Follow
+  
+  ## No responses yet
+  
+  ![](https://miro.medium.com/v2/resize:fill:32:32/1*dmbNkD5D-u45r44go_cf0g.png)
+  
+  Write a response
+  
+  [What are your thoughts?](https://medium.com/m/signin?operation=register&redirect=https%3A%2F%2Fmedium.com%2F%40awaleedpk%2Fzsh-vs-fish-the-ultimate-shell-showdown-for-2025-27b89599859b&source=---post_responses--27b89599859b---------------------respond_sidebar------------------)
+  
+  Cancel
+  
+  Respond
+  
+  ## More from Ahmad Waleed
+  
+  ![macOS Terminal Alternatives: Beyond Terminal.app](https://miro.medium.com/v2/resize:fit:679/format:webp/1*lT8wRl1wBt4xnjzAblK_-A.png)
+  
+  [![Ahmad Waleed](https://miro.medium.com/v2/resize:fill:20:20/0*uMS_dfRJD1pweHUm)](https://medium.com/@awaleedpk?source=post_page---author_recirc--27b89599859b----0---------------------31bb886c_c14f_440f_a8ce_c117cf42ed7c--------------)
+  
+  [**macOS Terminal Alternatives: Beyond Terminal.app**\\
+  \\
+  **Why Even Bother Switching?**](https://medium.com/@awaleedpk/macos-terminal-alternatives-beyond-terminal-app-826923b6405f?source=post_page---author_recirc--27b89599859b----0---------------------31bb886c_c14f_440f_a8ce_c117cf42ed7c--------------)
+  
+  Sep 16, 2025
+  
+  [A clap icon88\\
+  \\
+  A response icon1](https://medium.com/@awaleedpk/macos-terminal-alternatives-beyond-terminal-app-826923b6405f?source=post_page---author_recirc--27b89599859b----0---------------------31bb886c_c14f_440f_a8ce_c117cf42ed7c--------------)
+  
+  ![How to Unzip 7z Files on Mac Using Terminal (Complete Guide)](https://miro.medium.com/v2/resize:fit:679/format:webp/1*xIMgnkEFQfPZx0g9TTbFag.png)
+  
+  [![Ahmad Waleed](https://miro.medium.com/v2/resize:fill:20:20/0*uMS_dfRJD1pweHUm)](https://medium.com/@awaleedpk?source=post_page---author_recirc--27b89599859b----1---------------------31bb886c_c14f_440f_a8ce_c117cf42ed7c--------------)
+  
+  [**How to Unzip 7z Files on Mac Using Terminal (Complete Guide)**\\
+  \\
+  **Have you ever downloaded a file with a .7z extension on your Mac and wondered how to open it? Unlike ZIP files, which macOS handles…**](https://medium.com/@awaleedpk/how-to-unzip-7z-files-on-mac-using-terminal-complete-guide-b7840c557559?source=post_page---author_recirc--27b89599859b----1---------------------31bb886c_c14f_440f_a8ce_c117cf42ed7c--------------)
+  
+  Oct 19, 2025
+  
+  ![How to Fix “zsh: command not found: python” Error on macOS (Complete Guide)](https://miro.medium.com/v2/resize:fit:679/format:webp/1*THUp5b4n2HshjpyzcHNNyQ.png)
+  
+  [![Ahmad Waleed](https://miro.medium.com/v2/resize:fill:20:20/0*uMS_dfRJD1pweHUm)](https://medium.com/@awaleedpk?source=post_page---author_recirc--27b89599859b----2---------------------31bb886c_c14f_440f_a8ce_c117cf42ed7c--------------)
+  
+  [**How to Fix “zsh: command not found: python” Error on macOS (Complete Guide)**\\
+  \\
+  **If you’ve recently upgraded macOS or opened your terminal only to see the dreaded zsh: command not found: python error, you're not alone…**](https://medium.com/@awaleedpk/how-to-fix-zsh-command-not-found-python-error-on-macos-complete-guide-809b22ee1a39?source=post_page---author_recirc--27b89599859b----2---------------------31bb886c_c14f_440f_a8ce_c117cf42ed7c--------------)
+  
+  Oct 15, 2025
+  
+  [A clap icon25](https://medium.com/@awaleedpk/how-to-fix-zsh-command-not-found-python-error-on-macos-complete-guide-809b22ee1a39?source=post_page---author_recirc--27b89599859b----2---------------------31bb886c_c14f_440f_a8ce_c117cf42ed7c--------------)
+  
+  ![The Best Notepad++ Alternatives for Mac Users](https://miro.medium.com/v2/resize:fit:679/format:webp/1*jBpyG0u_rfx2AosqRxOI-A.png)
+  
+  [![Ahmad Waleed](https://miro.medium.com/v2/resize:fill:20:20/0*uMS_dfRJD1pweHUm)](https://medium.com/@awaleedpk?source=post_page---author_recirc--27b89599859b----3---------------------31bb886c_c14f_440f_a8ce_c117cf42ed7c--------------)
+  
+  [**The Best Notepad++ Alternatives for Mac Users**\\
+  \\
+  **Notepad++ has long been a favorite among Windows users for its simplicity and powerful features as a text and code editor. However, if…**](https://medium.com/@awaleedpk/the-best-notepad-alternatives-for-mac-users-163d84558e5e?source=post_page---author_recirc--27b89599859b----3---------------------31bb886c_c14f_440f_a8ce_c117cf42ed7c--------------)
+  
+  Aug 14, 2024
+  
+  [A clap icon63\\
+  \\
+  A response icon4](https://medium.com/@awaleedpk/the-best-notepad-alternatives-for-mac-users-163d84558e5e?source=post_page---author_recirc--27b89599859b----3---------------------31bb886c_c14f_440f_a8ce_c117cf42ed7c--------------)
+  
+  [See all from Ahmad Waleed](https://medium.com/@awaleedpk?source=post_page---author_recirc--27b89599859b---------------------------------------)
+  
+  ## Recommended from Medium
+  
+  ![My Terminal Setup: A Deep Dive into My Zsh Configuration](https://miro.medium.com/v2/resize:fit:679/format:webp/1*3pSLVe3KlYmH-zNwri1btw.png)
+  
+  [![Abhishek Amralkar](https://miro.medium.com/v2/resize:fill:20:20/2*FnUlumBTfoGDiNLc-eH5nA.jpeg)](https://medium.com/@abhishekamralkar?source=post_page---read_next_recirc--27b89599859b----0---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  [**My Terminal Setup: A Deep Dive into My Zsh Configuration**\\
+  \\
+  **Moving from Oh-My-Zsh after 10 years**](https://medium.com/@abhishekamralkar/my-terminal-setup-a-deep-dive-into-my-zsh-configuration-e36eeb46535b?source=post_page---read_next_recirc--27b89599859b----0---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  Jan 31
+  
+  [A clap icon54](https://medium.com/@abhishekamralkar/my-terminal-setup-a-deep-dive-into-my-zsh-configuration-e36eeb46535b?source=post_page---read_next_recirc--27b89599859b----0---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  ![The Coolest Terminal Tools on My Mac Right Now](https://miro.medium.com/v2/resize:fit:679/format:webp/0*tUjKCQx5dY4OcH44)
+  
+  [![Burk](https://miro.medium.com/v2/resize:fill:20:20/1*iQ2uBOw6BWWzmfhzHtJveA.jpeg)](https://medium.com/@burkrosemann?source=post_page---read_next_recirc--27b89599859b----1---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  [**The Coolest Terminal Tools on My Mac Right Now**\\
+  \\
+  **I used to avoid the terminal. Now I install more CLI tools than Mac apps.**](https://medium.com/@burkrosemann/the-coolest-terminal-tools-on-my-mac-right-now-8e3356d8178e?source=post_page---read_next_recirc--27b89599859b----1---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  Mar 21
+  
+  [A clap icon671\\
+  \\
+  A response icon15](https://medium.com/@burkrosemann/the-coolest-terminal-tools-on-my-mac-right-now-8e3356d8178e?source=post_page---read_next_recirc--27b89599859b----1---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  ![How to REALLY supercharge your terminal environment](https://miro.medium.com/v2/resize:fit:679/format:webp/0*UFfQAGvRX9glY5pq)
+  
+  [![Tom Deneire](https://miro.medium.com/v2/resize:fill:20:20/1*ztcUMu4pXh2xaiRAki_zmQ.png)](https://medium.com/@tomdeneire?source=post_page---read_next_recirc--27b89599859b----0---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  [**How to REALLY supercharge your terminal environment**\\
+  \\
+  **Being a terminal aficionado, I often come across stories on this platform and others with titles like “How to improve your terminal” or “10…**](https://medium.com/@tomdeneire/how-to-really-supercharge-your-terminal-environment-53fc7023720b?source=post_page---read_next_recirc--27b89599859b----0---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  Jan 8
+  
+  [A clap icon523\\
+  \\
+  A response icon5](https://medium.com/@tomdeneire/how-to-really-supercharge-your-terminal-environment-53fc7023720b?source=post_page---read_next_recirc--27b89599859b----0---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  ![macOS is Good. These 9 Apps Make It Perfect.](https://miro.medium.com/v2/resize:fit:679/format:webp/1*Ee8Am9mfUNwqhUEWJxgMVg.png)
+  
+  [![Mac O’Clock](https://miro.medium.com/v2/resize:fill:20:20/1*qVYCB8Xw85QdWOPEKZqF_A.png)](https://medium.com/macoclock?source=post_page---read_next_recirc--27b89599859b----1---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  In
+  
+  by
+  
+  [**macOS is Good. These 9 Apps Make It Perfect.**\\
+  \\
+  **M-Series Macs are monsters, but macOS itself still has many friction points. Here is how I “fix” it in 2026.**](https://medium.com/macoclock/macos-is-good-these-9-apps-make-it-perfect-d16aaec1e1f7?source=post_page---read_next_recirc--27b89599859b----1---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  Feb 8
+  
+  [A clap icon1.2K\\
+  \\
+  A response icon22](https://medium.com/macoclock/macos-is-good-these-9-apps-make-it-perfect-d16aaec1e1f7?source=post_page---read_next_recirc--27b89599859b----1---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  ![My Hot Neovim Setup (Or: How I Stopped Worrying and Learned to Love Lua)](https://miro.medium.com/v2/resize:fit:679/format:webp/1*PXI8Lfzr7F9Koy9N4mRqyg.png)
+  
+  [![Patrick Koss](https://miro.medium.com/v2/resize:fill:20:20/1*cWZsdHVl53nTQxRCgjnwww.jpeg)](https://medium.com/@patrickkoss?source=post_page---read_next_recirc--27b89599859b----2---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  [**My Hot Neovim Setup (Or: How I Stopped Worrying and Learned to Love Lua)**\\
+  \\
+  **I’ve spent the last year building a professional-grade Neovim configuration that doesn’t suck. It’s got semantic highlighting that rivals…**](https://medium.com/@patrickkoss/my-hot-neovim-setup-or-how-i-stopped-worrying-and-learned-to-love-lua-43cc3fb587ce?source=post_page---read_next_recirc--27b89599859b----2---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  Feb 19
+  
+  [A clap icon29](https://medium.com/@patrickkoss/my-hot-neovim-setup-or-how-i-stopped-worrying-and-learned-to-love-lua-43cc3fb587ce?source=post_page---read_next_recirc--27b89599859b----2---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  ![9 Ridiculously Useful macOS Tahoe Settings You’re 100% Not Using](https://miro.medium.com/v2/resize:fit:679/format:webp/1*vCZRETrCPH68kjKBRPAXwQ.png)
+  
+  [![The Useful Tech](https://miro.medium.com/v2/resize:fill:20:20/1*GRF22WSeqIyv1lwoyQlCXQ.png)](https://medium.com/the-useful-tech?source=post_page---read_next_recirc--27b89599859b----3---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  In
+  
+  by
+  
+  [**9 Ridiculously Useful macOS Tahoe Settings You’re 100% Not Using**\\
+  \\
+  **Settings so hidden that even Apple’s own feature pages don’t mention them**](https://medium.com/the-useful-tech/9-ridiculously-useful-macos-tahoe-settings-youre-100-not-using-297f86e6345d?source=post_page---read_next_recirc--27b89599859b----3---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  Feb 27
+  
+  [A clap icon1K\\
+  \\
+  A response icon16](https://medium.com/the-useful-tech/9-ridiculously-useful-macos-tahoe-settings-youre-100-not-using-297f86e6345d?source=post_page---read_next_recirc--27b89599859b----3---------------------f92ba821_f5bc_4032_b2d0_784ab5163fb0--------------)
+  
+  [See more recommendations](https://medium.com/?source=post_page---read_next_recirc--27b89599859b---------------------------------------)
+  
+  [Help](https://help.medium.com/hc/en-us?source=post_page-----27b89599859b---------------------------------------)
+  
+  [Status](https://status.medium.com/?source=post_page-----27b89599859b---------------------------------------)
+  
+  [About](https://medium.com/about?autoplay=1&source=post_page-----27b89599859b---------------------------------------)
+  
+  [Careers](https://medium.com/jobs-at-medium/work-at-medium-959d1a85284e?source=post_page-----27b89599859b---------------------------------------)
+  
+  [Press](mailto:pressinquiries@medium.com)
+  
+  [Blog](https://blog.medium.com/?source=post_page-----27b89599859b---------------------------------------)
+  
+  [Privacy](https://policy.medium.com/medium-privacy-policy-f03bf92035c9?source=post_page-----27b89599859b---------------------------------------)
+  
+  [Rules](https://policy.medium.com/medium-rules-30e5502c4eb4?source=post_page-----27b89599859b---------------------------------------)
+  
+  [Terms](https://policy.medium.com/medium-terms-of-service-9db0094a1e0f?source=post_page-----27b89599859b---------------------------------------)
+  
+  [Text to speech](https://speechify.com/medium?source=post_page-----27b89599859b---------------------------------------)
+  
+  reCAPTCHA
+  
+  Recaptcha requires verification.
+  
+  protected by **reCAPTCHA**
+  --- End Content ---
+
+fastest plugin manager : r/zsh - Reddit
+  URL: https://www.reddit.com/r/zsh/comments/1etl9mz/fastest_plugin_manager/
+  I use zgenom. I don't know if it's the fastest but it is very fast. My .zshrc file is 1800 lines, loads many plugins, and executes in 95ms on my main daily ...
+
+Supercharge Your Terminal With Zsh - Callstack
+  URL: https://www.callstack.com/blog/supercharge-your-terminal-with-zsh
+  Learn how to supercharge your terminal with Zsh, optimizing productivity and aesthetics with autocompletion, plugins, and a customized prompt.
+
+  --- Content ---
+  [home](https://www.callstack.com/)
+  
+  [Media kit](https://www.callstack.com/media-kit) [Download logo](https://5711799.fs1.hubspotusercontent-na1.net/hubfs/5711799/media%20kit%202025/Logo%20Callstack%20versions.zip) [Home page](https://www.callstack.com/) [React Universe Conf](https://www.reactuniverseconf.com/)
+  
+  [Articles](https://www.callstack.com/blog)
+  
+  /
+  
+  [Developer Experience](https://www.callstack.com/insights/react-native-developer-experience)
+  
+  Developer Experience
+  
+  9 min read
+  
+  7/26/2018
+  
+  Share
+  
+  Link copied to clipboard!
+  
+  [Share on Linkedin](https://www.callstack.com/blog/supercharge-your-terminal-with-zsh#) [Share on X](https://www.callstack.com/blog/supercharge-your-terminal-with-zsh#) [Share on Facebook](https://www.callstack.com/blog/supercharge-your-terminal-with-zsh#) [Copy Link](https://www.callstack.com/blog/supercharge-your-terminal-with-zsh#)
+  
+  //
+  
+  Developer Experience
+  
+  ## We can help you move  it forward!
+  
+  At Callstack, we work with companies big and small, pushing React Native everyday.
+  
+  [Check our offer](https://www.callstack.com/services)
+  
+  ### React Native Performance Optimization
+  
+  Improve React Native apps speed and efficiency through targeted performance enhancements.
+  
+  [Find out more](https://www.callstack.com/services/react-native-performance-optimization)
+  
+  ### Super App Development
+  
+  Turn your application into a secure platform with independent cross-platform mini apps, developed both internally and externally.
+  
+  [Find out more](https://www.callstack.com/services/super-app-development)
+  
+  ### Mobile App Development
+  
+  Launch on both Android and iOS with single codebase, keeping high-performance and platform-specific UX.
+  
+  [Find out more](https://www.callstack.com/services/mobile-app-development)
+  
+  ### React Development
+  
+  Develop high-performance React applications with advanced patterns and scalable architectures.
+  
+  [Find out more](https://www.callstack.com/services/react-development)
+  
+  ![](https://cdn.prod.website-files.com/67e6b7885e182e1054b556db/6819e60104f353ae503fa1ef_gradient.avif)
+  
+  //
+  
+  Insights
+  
+  ## Learn more about Developer Experience
+  
+  Here's everything we published recently on this topic.
+  
+  [View all](https://www.callstack.com/insights)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/6985c825aeda2349e9e23c86_6985c824854dca6a7014bac7_6981de9aab6d2820d703688f.webp)\\
+  \\
+  Live Stream\\
+  \\
+  2/5/2026\\
+  \\
+  **Storybook Explained: From Basics to Advanced Workflows** \\
+  \\
+  Core Storybook concepts, stories and args, interaction testing, and how Storybook works in React Native projects.](https://www.callstack.com/events/storybook-explained-from-101-to-advanced-workflows)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/697b26bc6c6a924563189fbf_697b26bb3fa832213c438722_697b23114b33d4e53e7d3920.webp)\\
+  \\
+  Article\\
+  \\
+  1/29/2026\\
+  \\
+  **Announcing AI SDK Profiler for React Native** \\
+  \\
+  Announcing the AI SDK Profiler plugin for Rozenite DevTools. Capture OpenTelemetry spans from the Vercel AI SDK and inspect AI requests across on-device and cloud providers.](https://www.callstack.com/blog/announcing-ai-sdk-profiler-for-react-native)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/698ac889a125a9f709528e7a_698ac887bf0f4e0b1dbbab3b_687606aa115ecac11b47a978.webp)\\
+  \\
+  Talk\\
+  \\
+  11/28/2025\\
+  \\
+  **How I Hacked React Native DevTools (And Built a Plugin Framework)** \\
+  \\
+  Learn how React Native DevTools work under the hood, and how to inject custom plugins with clean hooks and no forks.](https://www.callstack.com/events/how-i-hacked-react-native-devtools-and-built-a-plugin-framework)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/68a5f9a6a7356ee9b47929eb_68a5f9a573df73da8891dacf_68a5f9463f66d08d79540ff8.webp)\\
+  \\
+  Talk\\
+  \\
+  9/16/2025\\
+  \\
+  **How I Hacked React Native DevTools (And Built a Plugin Framework)** \\
+  \\
+  Learn how React Native DevTools work under the hood, and how to inject custom plugins with clean hooks and no forks.](https://www.callstack.com/events/how-i-hacked-react-native-devtools-and-built-a-plugin-framework-prague)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/6887a87bc2f89255e7afab67_6887a87a4a9718a4a28f4083_6887a73b4f2e0c5a345bdedc.webp)\\
+  \\
+  Article\\
+  \\
+  7/28/2025\\
+  \\
+  **Introducing Rozenite: A Plugin Framework for React Native DevTools** \\
+  \\
+  Build custom debugging panels inside React Native DevTools with Rozenite: a modular, TypeScript-ready plugin framework with full device-scoped support.](https://www.callstack.com/blog/introducing-rozenite-a-plugin-framework-for-react-native-devtools)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/681d57c331780719439c8102_681d57c2dd48a68538d072cd_67eaca678042effc9ddc3a92.jpeg)\\
+  \\
+  Article\\
+  \\
+  2/12/2025\\
+  \\
+  **How to Easily Create Native Libraries With Nitro and Turbo Modules** \\
+  \\
+  Learn how to optimize React Native performance with Turbo and Nitro Modules. Ditch the legacy bridge and master modern native module development.](https://www.callstack.com/blog/bridgeless-native-development)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/681d42b06cb124ac29c93d0b_681d42af89c996af9af40fa9_67eacbc63aec13954f6af01c.jpeg)\\
+  \\
+  Podcast\\
+  \\
+  12/4/2024\\
+  \\
+  **Radon IDE: Better Developer Experience for React Native Teams** \\
+  \\
+  Find out how Radon IDE can help increase team velocity and rid you of the common React Native app development pain points.](https://www.callstack.com/podcasts/radon-ide-better-developer-experience-for-react-native-teams)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/681d42fdc064b0a07863fe97_681d42fd2406f0074a500438_67eacbc488e7d3f519e35472.jpeg)\\
+  \\
+  Podcast\\
+  \\
+  9/19/2023\\
+  \\
+  **Exploring Bun: Jarred Sumner on Hyperfast JavaScript Toolkit** \\
+  \\
+  Is Bun the future of React Native package management? Join us as we talk with Jarred Sumner, the creator of this lightning-fast JavaScript toolkit.](https://www.callstack.com/podcasts/spotlight-on-bun-lightning-fast-javascript-toolkit)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/681d434a6eabcd4f22d0bced_681d4349092cf902955df2d1_67eacbcad97fa3a45f5b6932.jpeg)\\
+  \\
+  Podcast\\
+  \\
+  9/11/2023\\
+  \\
+  **Vim: from Zero to Hero** \\
+  \\
+  Discover the power of Vim, the legendary text editor, as we explore its origins, standout features, and practical tips to boost your coding efficiency.](https://www.callstack.com/podcasts/vim-from-zero-to-hero)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/681d571f4185a48697183642_681d571ed1ae74911c6f17a4_67eaca5165c01acb6753f143.jpeg)\\
+  \\
+  Article\\
+  \\
+  5/15/2023\\
+  \\
+  **Add-Ons for Web Browsers With React** \\
+  \\
+  At times you may need to create an add-on to use a web browser more effectively. Find out how to build one with React.](https://www.callstack.com/blog/how-react-can-be-used-for-web-browser-add-on-development)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/681d59022f8d9941fe8dc0c4_681d590241d0f674cabfc310_67eaca8c9825febde83ecc31.jpeg)\\
+  \\
+  Article\\
+  \\
+  1/27/2023\\
+  \\
+  **Why Is It Worth to Automate Your Dependency Management with \`Autolinking\`?** \\
+  \\
+  When you automate your dependency management, you can fully focus on developing your app. Find out how you can do it with autolinking.](https://www.callstack.com/blog/automate-dependency-management-with-autolinking)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/681d588905a07d2c2b2f95fe_681d58885ce3d2173caa7a15_67eaca7c491984e4a61529cd.jpeg)\\
+  \\
+  Article\\
+  \\
+  10/11/2022\\
+  \\
+  **Setting up React Native Monorepo With Yarn Workspaces** \\
+  \\
+  Why you should create a React Native monorepo and how to do it.](https://www.callstack.com/blog/setting-up-react-native-monorepo-with-yarn-workspaces)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/69a58bd35551817d1018247e_69a58bc4dc560bea6fd79ddd_69a55f72e27689aed54523c6.webp)\\
+  \\
+  Tutorial\\
+  \\
+  March 19, 2026\\
+  \\
+  **The Hard Way vs. The React Native AI SDK Way: Stop Writing Custom Modules for Every Model** \\
+  \\
+  Learn how React Native AI uses a unified provider model to switch between cloud and on-device LLMs without rewriting application logic, enabling reliable AI experiences online and offline.](https://www.callstack.com/tutorials/the-hard-way-vs-the-react-native-ai-sdk-way-stop-writing-custom-modules-for-every-model)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/69a58bd45551817d10182494_69a58bca4e2c89e47867840c_69a55ef0805022af7dfde4a3.webp)\\
+  \\
+  Tutorial\\
+  \\
+  March 12, 2026\\
+  \\
+  **Build Smarter Apps: Tool Calling & AI Orchestration Explained** \\
+  \\
+  Learn how on-device models in React Native can call tools, interact with external APIs, and return structured outputs you can use directly in application logic.](https://www.callstack.com/tutorials/build-smarter-apps-tool-calling-ai-orchestration-explained)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/69a58bd45551817d10182488_69a58bce00762fb6a0824f72_69a55e745b9ddb6b93b1a8bc.webp)\\
+  \\
+  Tutorial\\
+  \\
+  March 5, 2026\\
+  \\
+  **MLC LLM + React Native: On-Device AI Without the Pain** \\
+  \\
+  Learn how to run third-party on-device LLMs in React Native using MLC LLM. Choose your models, run them efficiently across platforms, and keep a unified JavaScript API with React Native AI.](https://www.callstack.com/tutorials/mlc-llm-react-native-on-device-ai-without-the-pain)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/69a58bd45551817d10182491_69a58bd153ad70d2ba215d3a_69a55d6b70428ae6772ec48b.webp)\\
+  \\
+  Tutorial\\
+  \\
+  February 24, 2026\\
+  \\
+  **Intelligent Fallbacks with Apple Intelligence in React Native** \\
+  \\
+  Learn how to use Apple’s built-in Foundation Models in React Native apps, reduce memory usage, and enable fast, fully on-device AI with React Native AI Apple.](https://www.callstack.com/tutorials/intelligent-fallbacks-with-apple-intelligence-in-react-native)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/698b05f63e3b0b33185cff2c_698b05f59e9b2936ebc66fd8_698b04bdcc0f43107544a963.webp)\\
+  \\
+  Tutorial\\
+  \\
+  February 10, 2026\\
+  \\
+  **What Is the React Native AI SDK? A Complete Intro & Quickstart** \\
+  \\
+  Learn why on-device AI matters for React Native apps, how local LLMs behave offline, and what problems React Native AI is designed to solve from day one.](https://www.callstack.com/tutorials/what-is-the-react-native-ai-sdk-a-complete-intro-quickstart)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/6988ab2a6a80af3824016429_6988ab1bc4b680efbabc05ed_6984a13807399d64cb1c00df.webp)\\
+  \\
+  Tutorial\\
+  \\
+  January 29, 2026\\
+  \\
+  **Implementing an Android TurboModule with Kotlin** \\
+  \\
+  Learn how to implement a React Native TurboModule on Android, from the TypeScript spec and Codegen to the Kotlin implementation and package registration.](https://www.callstack.com/tutorials/implementing-an-android-turbomodule-with-kotlin)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/6988ab2a6a80af3824016431_6988ab1fe7b07387ad5dd5f3_69849fe4aeab9739d8974445.webp)\\
+  \\
+  Tutorial\\
+  \\
+  January 19, 2026\\
+  \\
+  **Working with Different Threads in Swift TurboModules** \\
+  \\
+  Learn how JavaScript, native module, background, and main threads interact in React Native TurboModules, and how to use GCD queues to run async work safely in Swift.](https://www.callstack.com/tutorials/working-with-different-threads-in-swift-turbomodules)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/6988ab2a6a80af382401642e_6988ab17726bd957ee1138a4_69849f5b25bbf19828784e2b.webp)\\
+  \\
+  Tutorial\\
+  \\
+  January 9, 2026\\
+  \\
+  **How to Add Type-Safe Constants to Swift TurboModules** \\
+  \\
+  Learn how to expose typed, immutable constants from a Swift TurboModule using Codegen, and get full end-to-end type safety between native and JavaScript.](https://www.callstack.com/tutorials/how-to-add-type-safe-constants-to-swift-turbomodules)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/6988ab2a6a80af3824016437_6988ab23a13e4f03ef30607d_69849e77a23e6bc8829d50fd.webp)\\
+  \\
+  Tutorial\\
+  \\
+  December 30, 2025\\
+  \\
+  **Adding Event Emitters to Your TurboModule in Swift** \\
+  \\
+  Learn how to emit native events from a Swift TurboModule and subscribe to them in JavaScript, including proper memory management and Codegen integration.](https://www.callstack.com/tutorials/adding-event-emitters-to-your-turbomodule-in-swift)
+  
+  [![cover](https://cdn.prod.website-files.com/67e6c26f2d676c1963e098b9/6988ab2a6a80af3824016434_6988ab274431da9941b8f6ce_69849af1aeae9b8ed2a35bb3.webp)\\
+  \\
+  Tutorial\\
+  \\
+  December 22, 2025\\
+  \\
+  **Writing Your First TurboModule in Swift** \\
+  \\
+  Learn how to build a fully working TurboModule in Swift, integrate it with Codegen, and bridge it through Objective‑C inside an Expo app.](https://www.callstack.com/tutorials/writing-your-first-turbomodule-in-swift)
+  --- End Content ---

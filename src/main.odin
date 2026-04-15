@@ -48,6 +48,7 @@ Command :: enum {
 	CONFIG,
 	VERSION,
 	HELP,
+	SEARCH,     // Global fuzzy search across all configs
 	UNKNOWN,
 }
 
@@ -216,6 +217,8 @@ main :: proc() {
 		print_version()
 	case .HELP:
 		print_help()
+	case .SEARCH:
+		handle_search_command(parsed.args)
 	case .UNKNOWN:
 		fmt.eprintfln("Unknown command: %s", os.args[1])
 		print_help()
@@ -316,6 +319,15 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	case "config":     parsed.command = .CONFIG;  return parsed
 	case "version", "-v", "--version": parsed.command = .VERSION; return parsed
 	case "help", "-h", "--help":       parsed.command = .HELP;    return parsed
+	case "search", "find", "f":
+		parsed.command = .SEARCH
+		// Capture query argument(s) for search
+		if len(filtered_args) > 1 {
+			remaining_args := make([]string, len(filtered_args) - 1)
+			copy(remaining_args, filtered_args[1:])
+			parsed.args = remaining_args
+		}
+		return parsed
 	case:              parsed.command = .UNKNOWN; return parsed
 	}
 
@@ -591,6 +603,7 @@ print_help :: proc() {
 	print_item("", "path", "Manage PATH entries", EMOJI_PATH)
 	print_item("", "alias", "Manage shell aliases", EMOJI_ALIAS)
 	print_item("", "constants", "Manage environment constants (alias: const)", EMOJI_CONSTANT)
+	print_item("", "search, find, f", "Fuzzy search across all configurations", "🔍")
 	print_item("", "completions", "Manage Zsh completion scripts", EMOJI_COMMAND)
 	print_item("", "backup", "Manage configuration backups", EMOJI_INFO)
 	print_item("", "plugin", "Manage shell plugins", EMOJI_COMMAND)
@@ -623,6 +636,9 @@ print_help :: proc() {
 	fmt.printf("  wayu path add /usr/local/bin\n")
 	fmt.printf("  wayu alias add ll 'ls -la'\n")
 	fmt.printf("  wayu constants add MY_VAR value\n")
+	fmt.printf("  wayu search api                  # Search across all configs\n")
+	fmt.printf("  wayu find frwrks                 # Fuzzy find by acronym\n")
+	fmt.printf("  wayu f git                       # Short alias for search\n")
 	fmt.printf("  wayu completions add jj /path/to/_jj\n")
 	fmt.printf("  wayu backup list                 # Show all backups\n")
 	fmt.printf("  wayu backup restore path         # Restore path config\n")

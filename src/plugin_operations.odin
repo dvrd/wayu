@@ -593,15 +593,19 @@ handle_plugin_add :: proc(args: []string) {
 
 	new_plugin := PluginMetadata{
 		name = strings.clone(info.name),
+		display_name = strings.clone(info.name),
 		url = strings.clone(info.url),
+		source_type = .GitHub,  // Default source
 		enabled = true,
 		shell = info.shell,
 		installed_path = strings.clone(plugin_path),
 		entry_file = "",  // Will be detected by generate_plugins_file
+		use = make([dynamic]string),  // Empty = auto-detect
+		template = .Source,  // Default loading template
 		git = git_info,
 		dependencies = make([dynamic]string),  // Phase 4: Initialize empty
 		priority = 100,  // Phase 5: Default priority
-		config = make(map[string]string),  // Phase 6: Empty config
+		profiles = make([dynamic]string),  // Empty = all profiles
 		conflicts = ConflictInfo{},  // Phase 6: No conflicts yet
 	}
 

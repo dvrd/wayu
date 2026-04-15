@@ -550,7 +550,9 @@ test_plugin_update_write_and_cleanup :: proc(t: ^testing.T) {
 		},
 		dependencies = make([dynamic]string),
 		priority = 100,
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -637,7 +639,9 @@ test_plugin_enable_idempotent :: proc(t: ^testing.T) {
 		},
 		dependencies = make([dynamic]string),
 		priority = 100,
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -694,7 +698,9 @@ test_plugin_disable_idempotent :: proc(t: ^testing.T) {
 		},
 		dependencies = make([dynamic]string),
 		priority = 100,
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -744,7 +750,9 @@ test_plugin_enable_toggles_state :: proc(t: ^testing.T) {
 		},
 		dependencies = make([dynamic]string),
 		priority = 100,
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -810,7 +818,9 @@ test_plugin_disable_toggles_state :: proc(t: ^testing.T) {
 		},
 		dependencies = make([dynamic]string),
 		priority = 100,
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -879,7 +889,9 @@ test_generate_plugins_file_skips_disabled :: proc(t: ^testing.T) {
 		},
 		dependencies = make([dynamic]string),
 		priority = 100,
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -906,7 +918,9 @@ test_generate_plugins_file_skips_disabled :: proc(t: ^testing.T) {
 		},
 		dependencies = make([dynamic]string),
 		priority = 100,
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1711,7 +1725,9 @@ test_conflict_detection_env_vars :: proc(t: ^testing.T) {
 		installed_path = strings.clone("/tmp/nonexistent/plugin-a"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1731,7 +1747,9 @@ test_conflict_detection_env_vars :: proc(t: ^testing.T) {
 		installed_path = strings.clone("/tmp/nonexistent/plugin-b"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1783,7 +1801,9 @@ test_conflict_detection_functions :: proc(t: ^testing.T) {
 		installed_path = strings.clone("/tmp/nonexistent/plugin-a"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1803,7 +1823,9 @@ test_conflict_detection_functions :: proc(t: ^testing.T) {
 		installed_path = strings.clone("/tmp/nonexistent/plugin-b"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1855,7 +1877,9 @@ test_conflict_detection_aliases :: proc(t: ^testing.T) {
 		installed_path = strings.clone("/tmp/nonexistent/plugin-a"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1875,7 +1899,9 @@ test_conflict_detection_aliases :: proc(t: ^testing.T) {
 		installed_path = strings.clone("/tmp/nonexistent/plugin-b"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1927,7 +1953,9 @@ test_no_conflicts_when_no_overlap :: proc(t: ^testing.T) {
 		installed_path = strings.clone("/tmp/nonexistent/plugin-a"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1948,7 +1976,9 @@ test_no_conflicts_when_no_overlap :: proc(t: ^testing.T) {
 		installed_path = strings.clone("/tmp/nonexistent/plugin-b"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1969,7 +1999,9 @@ test_no_conflicts_when_no_overlap :: proc(t: ^testing.T) {
 		installed_path = strings.clone("/tmp/nonexistent/plugin-c"),  // Non-existent path
 		priority = 100,
 		dependencies = make([dynamic]string),
-		config = make(map[string]string),
+		use = make([dynamic]string),
+		template = .Source,
+		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),

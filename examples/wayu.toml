@@ -1,0 +1,195 @@
+# wayu.toml - Example configuration file for wayu
+# Documentation: https://github.com/dvrd/wayu
+
+# ============================================================================
+# BASIC SETTINGS
+# ============================================================================
+
+version = "1.0"
+shell = "zsh"
+wayu_version = "3.4.0"
+
+# ============================================================================
+# PATH CONFIGURATION
+# ============================================================================
+
+[path]
+entries = [
+    "/usr/local/bin",
+    "/usr/local/sbin",
+    "$HOME/.cargo/bin",
+    "$HOME/.local/bin",
+    "$HOME/.npm-global/bin",
+]
+dedup = true      # Remove duplicate entries
+clean = false     # Don't remove non-existent paths automatically
+
+# ============================================================================
+# ALIASES
+# ============================================================================
+
+[[aliases]]
+name = "ll"
+command = "ls -lah"
+description = "List all files with human-readable sizes"
+
+[[aliases]]
+name = "la"
+command = "ls -A"
+description = "List all files except . and .."
+
+[[aliases]]
+name = "gs"
+command = "git status"
+description = "Git status shorthand"
+
+[[aliases]]
+name = "gcm"
+command = "git commit -m"
+description = "Git commit with message"
+
+[[aliases]]
+name = "gp"
+command = "git push"
+description = "Git push shorthand"
+
+[[aliases]]
+name = "vim"
+command = "nvim"
+description = "Use neovim instead of vim"
+
+# ============================================================================
+# ENVIRONMENT VARIABLES (CONSTANTS)
+# ============================================================================
+
+[[constants]]
+name = "EDITOR"
+value = "nvim"
+export = true
+secret = false
+description = "Default text editor"
+
+[[constants]]
+name = "PAGER"
+value = "less -R"
+export = true
+secret = false
+description = "Default pager for long output"
+
+[[constants]]
+name = "LANG"
+value = "en_US.UTF-8"
+export = true
+secret = false
+description = "Default language/locale"
+
+# Example of a secret value (masked in logs)
+[[constants]]
+name = "OPENAI_API_KEY"
+value = "sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+export = true
+secret = true
+description = "OpenAI API key for AI tools"
+
+# ============================================================================
+# PLUGINS
+# ============================================================================
+
+[[plugins]]
+name = "zsh-autosuggestions"
+source = "github:zsh-users/zsh-autosuggestions"
+version = "v0.7.0"
+defer = true      # Load after first prompt for faster startup
+priority = 50     # Lower number = loads earlier (default: 100)
+description = "Fish-like suggestions for zsh"
+
+[[plugins]]
+name = "fast-syntax-highlighting"
+source = "github:zdharma-continuum/fast-syntax-highlighting"
+version = "master"
+defer = false
+priority = 60
+description = "Syntax highlighting for zsh"
+
+[[plugins]]
+name = "zsh-completions"
+source = "github:zsh-users/zsh-completions"
+version = "master"
+defer = true
+priority = 70
+description = "Additional completions for zsh"
+
+# Example with custom loading condition
+[[plugins]]
+name = "kubectl-completion"
+source = "local:$HOME/.config/wayu/plugins/kubectl"
+condition = "which kubectl >/dev/null 2>&1"  # Only load if kubectl exists
+defer = true
+priority = 80
+description = "Kubectl completions and aliases"
+
+# ============================================================================
+# SETTINGS
+# ============================================================================
+
+[settings]
+auto_backup = true       # Create backup before modifying configs
+fuzzy_fallback = true    # Enable fuzzy matching on GET operations
+dry_run_default = false  # Don't require --dry-run by default
+
+# ============================================================================
+# PROFILES
+# ============================================================================
+
+# Work profile - activated with `wayu --profile work`
+[profile.work]
+condition = "test -f /work/.env"  # Auto-activate if /work/.env exists
+
+[profile.work.path]
+entries = ["/work/tools/bin", "/opt/company/bin"]
+
+[[profile.work.aliases]]
+name = "deploy"
+command = "make deploy"
+
+[[profile.work.aliases]]
+name = "logs"
+command = "kubectl logs -f deployment/app"
+
+[[profile.work.constants]]
+name = "WORK_ENV"
+value = "production"
+export = true
+
+[[profile.work.constants]]
+name = "PROJECT_ROOT"
+value = "/work/current-project"
+export = true
+
+[[profile.work.plugins]]
+name = "company-zsh-theme"
+source = "local:/work/dotfiles/zsh-theme"
+priority = 10
+
+# Personal/hobby profile
+[profile.personal]
+# No auto-activation condition - must be explicitly selected
+
+[profile.personal.path]
+entries = ["$HOME/projects/bin", "$HOME/.cargo/bin"]
+
+[[profile.personal.aliases]]
+name = "projects"
+command = "cd ~/projects"
+
+[[profile.personal.constants]]
+name = "DEV_MODE"
+value = "true"
+
+# Minimal profile for fast startup
+[profile.minimal]
+condition = "test $WAYU_FAST = 1"  # Activate with WAYU_FAST=1
+
+[profile.minimal.path]
+entries = ["/usr/local/bin", "/usr/bin"]
+# No aliases, constants, or plugins in minimal mode

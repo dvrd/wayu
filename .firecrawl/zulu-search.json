@@ -1,0 +1,470 @@
+Zulu - Total environment manager for ZSH · GitHub
+  URL: https://github.com/zulu-zsh/zulu
+  Zulu is a environment manager for ZSH, which aims to make it easy to manage your shell without writing any code.
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/zulu-zsh/zulu#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/zulu-zsh/zulu) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/zulu-zsh/zulu) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/zulu-zsh/zulu) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [zulu-zsh](https://github.com/zulu-zsh)/ **[zulu](https://github.com/zulu-zsh/zulu)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2Fzulu-zsh%2Fzulu) You must be signed in to change notification settings
+  - [Fork\\
+  12](https://github.com/login?return_to=%2Fzulu-zsh%2Fzulu)
+  - [Star\\
+  156](https://github.com/login?return_to=%2Fzulu-zsh%2Fzulu)
+  
+  
+  master
+  
+  [**6** Branches](https://github.com/zulu-zsh/zulu/branches) [**38** Tags](https://github.com/zulu-zsh/zulu/tags)
+  
+  [Go to Branches page](https://github.com/zulu-zsh/zulu/branches)[Go to Tags page](https://github.com/zulu-zsh/zulu/tags)
+  
+  Go to file
+  
+  Code
+  
+  Open more actions menu
+  
+  ## Folders and files
+  
+  | Name | Name | Last commit message | Last commit date |
+  | --- | --- | --- | --- |
+  | ## Latest commit<br>[![molovo](https://avatars.githubusercontent.com/u/2746289?v=4&size=40)](https://github.com/molovo)[molovo](https://github.com/zulu-zsh/zulu/commits?author=molovo)<br>[Enable travis slack notifications](https://github.com/zulu-zsh/zulu/commit/0c22ab852df4705fe0af2197f5828dada36910a8)<br>7 years agoFeb 20, 2019<br>[0c22ab8](https://github.com/zulu-zsh/zulu/commit/0c22ab852df4705fe0af2197f5828dada36910a8) · 7 years agoFeb 20, 2019<br>## History<br>[361 Commits](https://github.com/zulu-zsh/zulu/commits/master/) <br>Open commit details<br>[View commit history for this file.](https://github.com/zulu-zsh/zulu/commits/master/) 361 Commits |
+  | [.github](https://github.com/zulu-zsh/zulu/tree/master/.github ".github") | [.github](https://github.com/zulu-zsh/zulu/tree/master/.github ".github") | [Stop stale bot whining](https://github.com/zulu-zsh/zulu/commit/f77cd357473dfa24d923518479b1b33bc306fde1 "Stop stale bot whining") | 8 years agoSep 17, 2018 |
+  | [src](https://github.com/zulu-zsh/zulu/tree/master/src "src") | [src](https://github.com/zulu-zsh/zulu/tree/master/src "src") | [Ensure default branch is used unless specified](https://github.com/zulu-zsh/zulu/commit/b91f492ddb96889092bccdd422afa2bad9de76db "Ensure default branch is used unless specified  Was causing dependency installs to break since no ref was supplied  Fix #88") | 9 years agoNov 17, 2017 |
+  | [tests](https://github.com/zulu-zsh/zulu/tree/master/tests "tests") | [tests](https://github.com/zulu-zsh/zulu/tree/master/tests "tests") | [Update domain](https://github.com/zulu-zsh/zulu/commit/70675f8e033a584deda516f6943b54e03fc7f68f "Update domain") | 9 years agoJan 3, 2018 |
+  | [.gitignore](https://github.com/zulu-zsh/zulu/blob/master/.gitignore ".gitignore") | [.gitignore](https://github.com/zulu-zsh/zulu/blob/master/.gitignore ".gitignore") | [Compile zulu source and package files](https://github.com/zulu-zsh/zulu/commit/4d075b0552f1fc194286153fdace1df2838f6245 "Compile zulu source and package files  A number of changes made to the way Zulu and its packages are loaded in order to dramatically increase startup performance.  * Source is now moved into `src` directory, and the script `build.zsh` has been added to the repository, which concatenates all the source files into a single script with comments removed for speed. * The `self-update` command has been modified to run the `build.zsh` script once it has finished downloading updates. * Adds a new `compile` command, which runs `zcompile` on the Zulu core, all files in `~/.zulu/{bin,share,init}`, the completion cache and the following files in the user's `$ZDOTDIR`:   * `.zlogin`   * `.zshenv`   * `.zprofile`   * `.zshrc`   * `.zlogout`   The end result is a massive increase in startup speed. * `zulu compile` is run in the background to compile sources on startup. A new `--no-compile` option has been added to `zulu init` to avoid this.") | 9 years agoFeb 26, 2017 |
+  | [.guardian.yml](https://github.com/zulu-zsh/zulu/blob/master/.guardian.yml ".guardian.yml") | [.guardian.yml](https://github.com/zulu-zsh/zulu/blob/master/.guardian.yml ".guardian.yml") | [Compile zulu source and package files](https://github.com/zulu-zsh/zulu/commit/4d075b0552f1fc194286153fdace1df2838f6245 "Compile zulu source and package files  A number of changes made to the way Zulu and its packages are loaded in order to dramatically increase startup performance.  * Source is now moved into `src` directory, and the script `build.zsh` has been added to the repository, which concatenates all the source files into a single script with comments removed for speed. * The `self-update` command has been modified to run the `build.zsh` script once it has finished downloading updates. * Adds a new `compile` command, which runs `zcompile` on the Zulu core, all files in `~/.zulu/{bin,share,init}`, the completion cache and the following files in the user's `$ZDOTDIR`:   * `.zlogin`   * `.zshenv`   * `.zprofile`   * `.zshrc`   * `.zlogout`   The end result is a massive increase in startup speed. * `zulu compile` is run in the background to compile sources on startup. A new `--no-compile` option has been added to `zulu init` to avoid this.") | 9 years agoFeb 26, 2017 |
+  | [.travis.yml](https://github.com/zulu-zsh/zulu/blob/master/.travis.yml ".travis.yml") | [.travis.yml](https://github.com/zulu-zsh/zulu/blob/master/.travis.yml ".travis.yml") | [Enable travis slack notifications](https://github.com/zulu-zsh/zulu/commit/0c22ab852df4705fe0af2197f5828dada36910a8 "Enable travis slack notifications") | 7 years agoFeb 20, 2019 |
+  | [.version](https://github.com/zulu-zsh/zulu/blob/master/.version ".version") | [.version](https://github.com/zulu-zsh/zulu/blob/master/.version ".version") | [Bump version](https://github.com/zulu-zsh/zulu/commit/53f54bab83b3b82157004a9348068d67527a5699 "Bump version") | 9 years agoNov 17, 2017 |
+  | [.zunit.yml](https://github.com/zulu-zsh/zulu/blob/master/.zunit.yml ".zunit.yml") | [.zunit.yml](https://github.com/zulu-zsh/zulu/blob/master/.zunit.yml ".zunit.yml") | [Add tests for path, fpath and cdpath commands](https://github.com/zulu-zsh/zulu/commit/717561cd0661fd41fe05eb96d424b11dce37596d "Add tests for path, fpath and cdpath commands") | 9 years agoMar 6, 2017 |
+  | [.zvmrc](https://github.com/zulu-zsh/zulu/blob/master/.zvmrc ".zvmrc") | [.zvmrc](https://github.com/zulu-zsh/zulu/blob/master/.zvmrc ".zvmrc") | [Switch zvm default version](https://github.com/zulu-zsh/zulu/commit/bd856c7cf277757e41ca1f86a7672141f870d333 "Switch zvm default version") | 9 years agoMar 6, 2017 |
+  | [CODE-OF-CONDUCT.md](https://github.com/zulu-zsh/zulu/blob/master/CODE-OF-CONDUCT.md "CODE-OF-CONDUCT.md") | [CODE-OF-CONDUCT.md](https://github.com/zulu-zsh/zulu/blob/master/CODE-OF-CONDUCT.md "CODE-OF-CONDUCT.md") | [Add README, license and contribution information](https://github.com/zulu-zsh/zulu/commit/28136183a53fdfc61c89aa041810ff2bc66dbf3f "Add README, license and contribution information") | 10 years agoAug 23, 2016 |
+  | [CONTRIBUTING.md](https://github.com/zulu-zsh/zulu/blob/master/CONTRIBUTING.md "CONTRIBUTING.md") | [CONTRIBUTING.md](https://github.com/zulu-zsh/zulu/blob/master/CONTRIBUTING.md "CONTRIBUTING.md") | [Add README, license and contribution information](https://github.com/zulu-zsh/zulu/commit/28136183a53fdfc61c89aa041810ff2bc66dbf3f "Add README, license and contribution information") | 10 years agoAug 23, 2016 |
+  | [LICENSE](https://github.com/zulu-zsh/zulu/blob/master/LICENSE "LICENSE") | [LICENSE](https://github.com/zulu-zsh/zulu/blob/master/LICENSE "LICENSE") | [Add README, license and contribution information](https://github.com/zulu-zsh/zulu/commit/28136183a53fdfc61c89aa041810ff2bc66dbf3f "Add README, license and contribution information") | 10 years agoAug 23, 2016 |
+  | [README.md](https://github.com/zulu-zsh/zulu/blob/master/README.md "README.md") | [README.md](https://github.com/zulu-zsh/zulu/blob/master/README.md "README.md") | [Update domain](https://github.com/zulu-zsh/zulu/commit/70675f8e033a584deda516f6943b54e03fc7f68f "Update domain") | 9 years agoJan 3, 2018 |
+  | [build.zsh](https://github.com/zulu-zsh/zulu/blob/master/build.zsh "build.zsh") | [build.zsh](https://github.com/zulu-zsh/zulu/blob/master/build.zsh "build.zsh") | [Don't strip blank lines from the compiled script](https://github.com/zulu-zsh/zulu/commit/abdda994a285f222ad81b2461d59290bebb73ccf "Don't strip blank lines from the compiled script") | 9 years agoMar 6, 2017 |
+  | [zulu.zsh-completion](https://github.com/zulu-zsh/zulu/blob/master/zulu.zsh-completion "zulu.zsh-completion") | [zulu.zsh-completion](https://github.com/zulu-zsh/zulu/blob/master/zulu.zsh-completion "zulu.zsh-completion") | [Allow specifying version when installing packages](https://github.com/zulu-zsh/zulu/commit/fb3fc78540c171de4a06125c94a727a18acdddbb "Allow specifying version when installing packages") | 9 years agoMar 31, 2017 |
+  | View all files |
+  
+  ## Repository files navigation
+  
+  # Zulu
+  
+  [Permalink: Zulu](https://github.com/zulu-zsh/zulu#zulu)
+  
+  Zulu: [![GitHub release](https://camo.githubusercontent.com/c1759f9e215344fe15f8c88498cd82b0befc26d70d8c1ed7df9fb1c53b4c63d8/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f72656c656173652f7a756c752d7a73682f7a756c752e737667)](https://github.com/zulu-zsh/zulu/releases/latest)[![Build Status](https://camo.githubusercontent.com/4b227d9a83670293bcd1a6ed541efc073afc3bafde6ee57a94666bb2a5fe689c/68747470733a2f2f7472617669732d63692e6f72672f7a756c752d7a73682f7a756c752e7376673f6272616e63683d6d6173746572)](https://travis-ci.org/zulu-zsh/zulu) \| Index: [![Build Status](https://camo.githubusercontent.com/80ef612d0fc79df0de87dc84ce30a500ba638a87e49c70d2e7a0e47fcb4f0346/68747470733a2f2f7472617669732d63692e6f72672f7a756c752d7a73682f696e6465782e7376673f6272616e63683d6d6173746572)](https://travis-ci.org/zulu-zsh/index) \| [![Join the chat at https://gitter.im/zulu-zsh/zulu](https://camo.githubusercontent.com/81af4215f20b761d17dd7aad8321190485189c19e136b98915d0ca9aff53603c/68747470733a2f2f6261646765732e6769747465722e696d2f7a756c752d7a73682f7a756c752e737667)](https://gitter.im/zulu-zsh/zulu?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+  
+  Thanks for using Zulu. Zulu is a environment manager for ZSH, which aims to make it easy to manage your shell without writing any code.
+  
+  ## Features
+  
+  [Permalink: Features](https://github.com/zulu-zsh/zulu#features)
+  
+  - Easily manage your shell environment without editing files.
+  - Create aliases, functions and environment variables, and have them available to you at the next shell startup.
+  - Add and remove directories from `$path`, `$fpath` and `$cdpath` with simple commands.
+  - Install packages, plugins and themes easily, and have them available to you immediately.
+  
+  ## Requirements
+  
+  [Permalink: Requirements](https://github.com/zulu-zsh/zulu#requirements)
+  
+  - ZSH `5.0.2` or above
+  - git `1.9.1` or above
+  
+  ## Installation
+  
+  [Permalink: Installation](https://github.com/zulu-zsh/zulu#installation)
+  
+  Zulu comes with its own install script, which is the recommended method of install.
+  
+  ```
+  curl -L https://zulu.molovo.co/install | zsh && zsh
+  ```
+  
+  If you'd rather not pipe a script into ZSH, take a look at the [manual installation process](https://zulu.molovo.co/docs/getting-started/manual-installation).
+  
+  ## Usage
+  
+  [Permalink: Usage](https://github.com/zulu-zsh/zulu#usage)
+  
+  For detailed usage instructions, take a look at Zulu's [official documentation](https://zulu.molovo.co/docs)
+  
+  ## Contributing
+  
+  [Permalink: Contributing](https://github.com/zulu-zsh/zulu#contributing)
+  
+  All contributions are welcome, and encouraged. Please read our [contribution guidelines](https://github.com/zulu-zsh/zulu/blob/master/CONTRIBUTING.md) and [code of conduct](https://github.com/zulu-zsh/zulu/blob/master/CODE-OF-CONDUCT.md) for more information.
+  
+  ## License
+  
+  [Permalink: License](https://github.com/zulu-zsh/zulu#license)
+  
+  Copyright (c) 2016 James Dinsdale [hi@molovo.co](mailto:hi@molovo.co) (molovo.co)
+  
+  Zulu is licensed under The MIT License (MIT)
+  
+  Icon is [Shield](https://thenounproject.com/search/?q=zulu&i=163736) by Ivan Colic from The Noun Project
+  
+  ## Team
+  
+  [Permalink: Team](https://github.com/zulu-zsh/zulu#team)
+  
+  - [James Dinsdale](http://molovo.co/)
+  
+  ## About
+  
+  Total environment manager for ZSH
+  
+  
+  [zulu.molovo.co](https://zulu.molovo.co/ "https://zulu.molovo.co")
+  
+  ### Topics
+  
+  [zsh](https://github.com/topics/zsh "Topic: zsh") [framework](https://github.com/topics/framework "Topic: framework") [zulu](https://github.com/topics/zulu "Topic: zulu") [plugin-manager](https://github.com/topics/plugin-manager "Topic: plugin-manager")
+  
+  ### Resources
+  
+  [Readme](https://github.com/zulu-zsh/zulu#readme-ov-file)
+  
+  ### License
+  
+  [MIT license](https://github.com/zulu-zsh/zulu#MIT-1-ov-file)
+  
+  ### Code of conduct
+  
+  [Code of conduct](https://github.com/zulu-zsh/zulu#coc-ov-file)
+  
+  ### Contributing
+  
+  [Contributing](https://github.com/zulu-zsh/zulu#contributing-ov-file)
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/zulu-zsh/zulu).
+  
+  [Activity](https://github.com/zulu-zsh/zulu/activity)
+  
+  [Custom properties](https://github.com/zulu-zsh/zulu/custom-properties)
+  
+  ### Stars
+  
+  [**156**\\
+  stars](https://github.com/zulu-zsh/zulu/stargazers)
+  
+  ### Watchers
+  
+  [**6**\\
+  watching](https://github.com/zulu-zsh/zulu/watchers)
+  
+  ### Forks
+  
+  [**12**\\
+  forks](https://github.com/zulu-zsh/zulu/forks)
+  
+  [Report repository](https://github.com/contact/report-content?content_url=https%3A%2F%2Fgithub.com%2Fzulu-zsh%2Fzulu&report=zulu-zsh+%28user%29)
+  
+  ## [Releases\  33](https://github.com/zulu-zsh/zulu/releases)
+  
+  [v1.5.0\\
+  Latest\\
+  \\
+  on Nov 17, 2017Nov 17, 2017](https://github.com/zulu-zsh/zulu/releases/tag/v1.5.0)
+  
+  [\+ 32 releases](https://github.com/zulu-zsh/zulu/releases)
+  
+  ## [Packages\  0](https://github.com/orgs/zulu-zsh/packages?repo_name=zulu)
+  
+  No packages published
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/zulu-zsh/zulu).
+  
+  ## [Contributors\  4](https://github.com/zulu-zsh/zulu/graphs/contributors)
+  
+  - [![@molovo](https://avatars.githubusercontent.com/u/2746289?s=64&v=4)](https://github.com/molovo)[**molovo** James Dinsdale](https://github.com/molovo)
+  - [![@AdrieanKhisbe](https://avatars.githubusercontent.com/u/2601132?s=64&v=4)](https://github.com/AdrieanKhisbe)[**AdrieanKhisbe** Adrien Becchis](https://github.com/AdrieanKhisbe)
+  - [![@dritter](https://avatars.githubusercontent.com/u/1544760?s=64&v=4)](https://github.com/dritter)[**dritter** Dominik Ritter](https://github.com/dritter)
+  - [![@gitter-badger](https://avatars.githubusercontent.com/u/8518239?s=64&v=4)](https://github.com/gitter-badger)[**gitter-badger** The Gitter Badger](https://github.com/gitter-badger)
+  
+  ## Languages
+  
+  - [Shell100.0%](https://github.com/zulu-zsh/zulu/search?l=shell)
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+Zulu. The ZSH environment manager
+  URL: https://zulu.molovo.co/
+  Zulu is a environment manager for ZSH, which aims to make it easy to manage your shell without writing any code.
+
+  --- Content ---
+  [![Fork me on GitHub](https://camo.githubusercontent.com/652c5b9acfaddf3a9c326fa6bde407b87f7be0f4/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f6f72616e67655f6666373630302e706e67)](https://github.com/zulu-zsh/zulu)
+  
+  # Zulu
+  
+  The ZSH Environment Manager
+  
+  ```sh
+  curl -L https://zulu.molovo.co/install | zsh && zsh
+  ```
+  
+  ## Features
+  
+  Choose from a wide range of packages, including plugins, autoloadable ZSH modules and standalone applications.
+  
+  ```
+  fzf-git                   -- A plugin which sets up git keybindings for    fzf-marks                 -- Little script to create  navigate and dele    git                       -- A selection of handy git aliases              gitignore                 -- ZSH plugin for creating .gitignore files      gitio                     -- A zsh plugin for generating a GitHub short    gnu-utility               -- Provides for the interactive use of GNU ut    history-substring-search  -- ZSH port of Fish shell's history search fe    history-sync              -- plugin for synced zsh_history; with encryp    homebrew                  -- Aliases and functions for homebrew            insert-sudo               -- A little zsh snippet to prepend sudo to th    k                         -- k is the new l  yo                            load-graph                -- Outputs the current 1-minute load average     lumberjack                -- A logging interface for shell scripts         node                      -- Aliases and functions for node                nvm-auto-use              -- ZSH plugin to call `nvm use` automatically    osx                       -- macOS related functions                       pretty-time               -- Convert seconds to a human readable string    pure                      -- Pretty  minimal and fast ZSH prompt           rbenv                     -- ruby/rails aliases; rbenv init                revolver                  -- A progress spinner for shell scripts          39/45     matches
+  ```
+  
+  00:00-00:17Keyboard shortcuts (?)Fullscreen (f)
+  
+  Recorded with [asciinema](https://asciinema.org/)
+  
+  Manage your $path, $fpath and $cdpath variables and have them take effect immediately, without editing any code.
+  
+  ```
+     1 #!/usr/                                                               ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                           [+] >> test.sh [sh]                              < sh << 100% :   1:  8  <-- INSERT --
+  ```
+  
+  00:00-00:33Keyboard shortcuts (?)Fullscreen (f)
+  
+  Recorded with [asciinema](https://asciinema.org/)
+  
+  Decorate your terminal with a range of beautiful prompt themes.
+  
+  ```
+  % zulu install agnoster                                                    ✔ Finished installing agnoster                                             ✔ Finished linking agnoster                                                 molovo@sammy   ~   zulu install agnoster
+  ```
+  
+  00:00-00:27Keyboard shortcuts (?)Fullscreen (f)
+  
+  Recorded with [asciinema](https://asciinema.org/)
+  
+  Easily add and remove aliases, functions and environment variables.
+  
+  ```
+       1 #!/usr/bin/env zsh                                                       2                                                                          3 (( $+functions[myawesomefunction] )) || function myawesomefunction()        {                                                                       4   echo 'Tada!'                                                           5 }                                                                     ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                          ~                                                                        </.config/zulu/functions/myawesomefunction [zsh] < zsh <<  80% :   4: 14  <-- INSERT --
+  ```
+  
+  00:00-01:09Keyboard shortcuts (?)Fullscreen (f)
+  
+  Recorded with [asciinema](https://asciinema.org/)
+  
+  ## Installation
+  
+  Just paste the following into your terminal, and you’re all set.
+  
+  ```sh
+  curl -L https://zulu.molovo.co/install | zsh && zsh
+  ```
+  
+  For more detailed instructions, see the [Installation Guide](https://zulu.molovo.co/docs/getting-started/installation).
+  
+  ## Using Zulu
+  
+  If you’re new to Zulu, get started by checking out our [Quick Guides section](https://zulu.molovo.co/docs/quick-guides/packages).
+  --- End Content ---
+
+ZSH > zulu - Project Awesome
+  URL: https://project-awesome.org/r/zulu-zsh-zulu
+  Total environment manager for ZSH 5+. Package 157 stars GitHub.
+
+  --- Content ---
+  # ZSH > zulu
+  
+  Total environment manager for ZSH 5+.
+  
+  Package
+  157 stars
+  [GitHub](https://github.com/zulu-zsh/zulu)
+  
+  [Back to Terminals Are Sexy](https://project-awesome.org/r/terminals-are-sexy)
+  --- End Content ---
+
+Installation | Zulu. The ZSH environment manager - molovo
+  URL: https://zulu.molovo.co/docs/getting-started/installation/
+  Zulu is a environment manager for ZSH, which aims to make it easy to manage your shell without writing any code.
+
+  --- Content ---
+  # Installation
+  
+  The easiest way to install Zulu is with its install script:
+  
+  ```sh
+  curl -L https://zulu.molovo.co/install | zsh && zsh
+  ```
+  
+  If you’d rather download and inspect the script before running it manually, follow these steps:
+  
+  ```sh
+  git clone https://github.com/zulu-zsh/install
+  cd install
+  ./install
+  ```
+  --- End Content ---
+
+zulu/README.md at master - GitHub
+  URL: https://github.com/zulu-zsh/zulu/blob/master/README.md
+  Zulu is a environment manager for ZSH, which aims to make it easy to manage your shell without writing any code. Features. Easily manage your shell environment ...
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/zulu-zsh/zulu/blob/master/README.md#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/zulu-zsh/zulu/blob/master/README.md) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/zulu-zsh/zulu/blob/master/README.md) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/zulu-zsh/zulu/blob/master/README.md) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [zulu-zsh](https://github.com/zulu-zsh)/ **[zulu](https://github.com/zulu-zsh/zulu)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2Fzulu-zsh%2Fzulu) You must be signed in to change notification settings
+  - [Fork\\
+  12](https://github.com/login?return_to=%2Fzulu-zsh%2Fzulu)
+  - [Star\\
+  156](https://github.com/login?return_to=%2Fzulu-zsh%2Fzulu)
+  
+  
+  ## Collapse file tree
+  
+  ## Files
+  
+  master
+  
+  Search this repository(forward slash)` forward slash/`
+  
+  /
+  
+  # README.md
+  
+  Copy path
+  
+  Blame
+  
+  More file actions
+  
+  Blame
+  
+  More file actions
+  
+  ## Latest commit
+  
+  [![molovo](https://avatars.githubusercontent.com/u/2746289?v=4&size=40)](https://github.com/molovo)[molovo](https://github.com/zulu-zsh/zulu/commits?author=molovo)
+  
+  [Update domain](https://github.com/zulu-zsh/zulu/commit/70675f8e033a584deda516f6943b54e03fc7f68f)
+  
+  9 years agoJan 3, 2018
+  
+  [70675f8](https://github.com/zulu-zsh/zulu/commit/70675f8e033a584deda516f6943b54e03fc7f68f) · 9 years agoJan 3, 2018
+  
+  ## History
+  
+  [History](https://github.com/zulu-zsh/zulu/commits/master/README.md)
+  
+  Open commit details
+  
+  [View commit history for this file.](https://github.com/zulu-zsh/zulu/commits/master/README.md) History
+  
+  47 lines (27 loc) · 2.01 KB
+  
+  /
+  
+  # README.md
+  
+  Top
+  
+  ## File metadata and controls
+  
+  - Preview
+  
+  - Code
+  
+  - Blame
+  
+  
+  47 lines (27 loc) · 2.01 KB
+  
+  [Raw](https://github.com/zulu-zsh/zulu/raw/refs/heads/master/README.md)
+  
+  Copy raw file
+  
+  Download raw file
+  
+  Outline
+  
+  Edit and raw actions
+  
+  # Zulu
+  
+  [Permalink: Zulu](https://github.com/zulu-zsh/zulu/blob/master/README.md#zulu)
+  
+  Zulu: [![GitHub release](https://camo.githubusercontent.com/c1759f9e215344fe15f8c88498cd82b0befc26d70d8c1ed7df9fb1c53b4c63d8/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f72656c656173652f7a756c752d7a73682f7a756c752e737667)](https://github.com/zulu-zsh/zulu/releases/latest)[![Build Status](https://camo.githubusercontent.com/4b227d9a83670293bcd1a6ed541efc073afc3bafde6ee57a94666bb2a5fe689c/68747470733a2f2f7472617669732d63692e6f72672f7a756c752d7a73682f7a756c752e7376673f6272616e63683d6d6173746572)](https://travis-ci.org/zulu-zsh/zulu) \| Index: [![Build Status](https://camo.githubusercontent.com/80ef612d0fc79df0de87dc84ce30a500ba638a87e49c70d2e7a0e47fcb4f0346/68747470733a2f2f7472617669732d63692e6f72672f7a756c752d7a73682f696e6465782e7376673f6272616e63683d6d6173746572)](https://travis-ci.org/zulu-zsh/index) \| [![Join the chat at https://gitter.im/zulu-zsh/zulu](https://camo.githubusercontent.com/81af4215f20b761d17dd7aad8321190485189c19e136b98915d0ca9aff53603c/68747470733a2f2f6261646765732e6769747465722e696d2f7a756c752d7a73682f7a756c752e737667)](https://gitter.im/zulu-zsh/zulu?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+  
+  Thanks for using Zulu. Zulu is a environment manager for ZSH, which aims to make it easy to manage your shell without writing any code.
+  
+  ## Features
+  
+  [Permalink: Features](https://github.com/zulu-zsh/zulu/blob/master/README.md#features)
+  
+  - Easily manage your shell environment without editing files.
+  - Create aliases, functions and environment variables, and have them available to you at the next shell startup.
+  - Add and remove directories from `$path`, `$fpath` and `$cdpath` with simple commands.
+  - Install packages, plugins and themes easily, and have them available to you immediately.
+  
+  ## Requirements
+  
+  [Permalink: Requirements](https://github.com/zulu-zsh/zulu/blob/master/README.md#requirements)
+  
+  - ZSH `5.0.2` or above
+  - git `1.9.1` or above
+  
+  ## Installation
+  
+  [Permalink: Installation](https://github.com/zulu-zsh/zulu/blob/master/README.md#installation)
+  
+  Zulu comes with its own install script, which is the recommended method of install.
+  
+  ```
+  curl -L https://zulu.molovo.co/install | zsh && zsh
+  ```
+  
+  If you'd rather not pipe a script into ZSH, take a look at the [manual installation process](https://zulu.molovo.co/docs/getting-started/manual-installation).
+  
+  ## Usage
+  
+  [Permalink: Usage](https://github.com/zulu-zsh/zulu/blob/master/README.md#usage)
+  
+  For detailed usage instructions, take a look at Zulu's [official documentation](https://zulu.molovo.co/docs)
+  
+  ## Contributing
+  
+  [Permalink: Contributing](https://github.com/zulu-zsh/zulu/blob/master/README.md#contributing)
+  
+  All contributions are welcome, and encouraged. Please read our [contribution guidelines](https://github.com/zulu-zsh/zulu/blob/master/CONTRIBUTING.md) and [code of conduct](https://github.com/zulu-zsh/zulu/blob/master/CODE-OF-CONDUCT.md) for more information.
+  
+  ## License
+  
+  [Permalink: License](https://github.com/zulu-zsh/zulu/blob/master/README.md#license)
+  
+  Copyright (c) 2016 James Dinsdale [hi@molovo.co](mailto:hi@molovo.co) (molovo.co)
+  
+  Zulu is licensed under The MIT License (MIT)
+  
+  Icon is [Shield](https://thenounproject.com/search/?q=zulu&i=163736) by Ivan Colic from The Noun Project
+  
+  ## Team
+  
+  [Permalink: Team](https://github.com/zulu-zsh/zulu/blob/master/README.md#team)
+  
+  - [James Dinsdale](http://molovo.co/)
+  
+  You can’t perform that action at this time.
+  --- End Content ---

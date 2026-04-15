@@ -226,15 +226,19 @@ migrate_plugin_config :: proc() -> bool {
 
 		new_plugin := PluginMetadata{
 			name = strings.clone(old_plugin.name),
+			display_name = strings.clone(old_plugin.name),
 			url = strings.clone(old_plugin.url),
+			source_type = .GitHub,  // Default for migrated plugins
 			enabled = old_plugin.enabled,
 			shell = old_plugin.shell,
 			installed_path = strings.clone(old_plugin.installed_path),
 			entry_file = strings.clone(old_plugin.entry_file),
+			use = make([dynamic]string),  // Empty = auto-detect
+			template = .Source,  // Default template
 			git = git_info,
 			dependencies = make([dynamic]string),
 			priority = 100, // Default priority
-			config = make(map[string]string),
+			profiles = make([dynamic]string),  // Empty = all profiles
 			conflicts = ConflictInfo{
 				env_vars = make([dynamic]string),
 				functions = make([dynamic]string),

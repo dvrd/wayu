@@ -1,0 +1,2232 @@
+zdharma-continuum/zinit: Flexible and fast ZSH plugin manager
+  URL: https://github.com/zdharma-continuum/zinit
+  Zinit is currently the only plugin manager that provides Turbo mode, which yields 50-80% faster Zsh startup (i.e., the shell will start up to 5 times faster!).
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/zdharma-continuum/zinit#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/zdharma-continuum/zinit) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/zdharma-continuum/zinit) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/zdharma-continuum/zinit) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [zdharma-continuum](https://github.com/zdharma-continuum)/ **[zinit](https://github.com/zdharma-continuum/zinit)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2Fzdharma-continuum%2Fzinit) You must be signed in to change notification settings
+  - [Fork\\
+  148](https://github.com/login?return_to=%2Fzdharma-continuum%2Fzinit)
+  - [Star\\
+  4.6k](https://github.com/login?return_to=%2Fzdharma-continuum%2Fzinit)
+  
+  
+  main
+  
+  [**18** Branches](https://github.com/zdharma-continuum/zinit/branches) [**46** Tags](https://github.com/zdharma-continuum/zinit/tags)
+  
+  [Go to Branches page](https://github.com/zdharma-continuum/zinit/branches)[Go to Tags page](https://github.com/zdharma-continuum/zinit/tags)
+  
+  Go to file
+  
+  Code
+  
+  Open more actions menu
+  
+  ## Folders and files
+  
+  | Name | Name | Last commit message | Last commit date |
+  | --- | --- | --- | --- |
+  | ## Latest commit<br>[![actions-user](https://avatars.githubusercontent.com/u/65916846?v=4&size=40)](https://github.com/actions-user)[actions-user](https://github.com/zdharma-continuum/zinit/commits?author=actions-user)<br>[docs: generate](https://github.com/zdharma-continuum/zinit/commit/6c9ac1c4bc9bcaede64cb473759ac2c5b9187f98)<br>Open commit details<br>3 weeks agoMar 24, 2026<br>[6c9ac1c](https://github.com/zdharma-continuum/zinit/commit/6c9ac1c4bc9bcaede64cb473759ac2c5b9187f98) · 3 weeks agoMar 24, 2026<br>## History<br>[3,936 Commits](https://github.com/zdharma-continuum/zinit/commits/main/) <br>Open commit details<br>[View commit history for this file.](https://github.com/zdharma-continuum/zinit/commits/main/) 3,936 Commits |
+  | [.github](https://github.com/zdharma-continuum/zinit/tree/main/.github ".github") | [.github](https://github.com/zdharma-continuum/zinit/tree/main/.github ".github") | [build(deps): bump EndBug/add-and-commit from 9 to 10 (](https://github.com/zdharma-continuum/zinit/commit/61a0244bb4832c339e5a055c6717f8ba18c86c8c "build(deps): bump EndBug/add-and-commit from 9 to 10 (#773)  Signed-off-by: dependabot[bot] <support@github.com> Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>") [#773](https://github.com/zdharma-continuum/zinit/pull/773) [)](https://github.com/zdharma-continuum/zinit/commit/61a0244bb4832c339e5a055c6717f8ba18c86c8c "build(deps): bump EndBug/add-and-commit from 9 to 10 (#773)  Signed-off-by: dependabot[bot] <support@github.com> Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>") | 3 weeks agoMar 23, 2026 |
+  | [doc](https://github.com/zdharma-continuum/zinit/tree/main/doc "doc") | [doc](https://github.com/zdharma-continuum/zinit/tree/main/doc "doc") | [docs: generate](https://github.com/zdharma-continuum/zinit/commit/6c9ac1c4bc9bcaede64cb473759ac2c5b9187f98 "docs: generate  Signed-off-by: GitHub Actions <actions@github.com>") | 3 weeks agoMar 24, 2026 |
+  | [docker](https://github.com/zdharma-continuum/zinit/tree/main/docker "docker") | [docker](https://github.com/zdharma-continuum/zinit/tree/main/docker "docker") | [revert: "Merge branch 'refactor/zinit-function-names' into main"](https://github.com/zdharma-continuum/zinit/commit/515688bc976e793422d21ba9debfdd1a982c611e "revert: \"Merge branch 'refactor/zinit-function-names' into main\"  This reverts commit b979847bd465e1bcd565c694daeac54d55e5f6cf, reversing changes made to da924a21a1b60b01de345c8cef5a7faa874f61da.  I (@vladdoster) accidentally merged this into the wrong repository. Apologies for the lack of due diligence.") | 4 years agoDec 17, 2022 |
+  | [scripts](https://github.com/zdharma-continuum/zinit/tree/main/scripts "scripts") | [scripts](https://github.com/zdharma-continuum/zinit/tree/main/scripts "scripts") | [installer: Set min zsh version to 5.8 (](https://github.com/zdharma-continuum/zinit/commit/8a7257a8e51ca2f505c80d5b213d25cf2f1a57d0 "installer: Set min zsh version to 5.8 (#696)") [#696](https://github.com/zdharma-continuum/zinit/pull/696) [)](https://github.com/zdharma-continuum/zinit/commit/8a7257a8e51ca2f505c80d5b213d25cf2f1a57d0 "installer: Set min zsh version to 5.8 (#696)") | last yearFeb 18, 2025 |
+  | [share](https://github.com/zdharma-continuum/zinit/tree/main/share "share") | [share](https://github.com/zdharma-continuum/zinit/tree/main/share "share") | [revert: "Merge branch 'refactor/zinit-function-names' into main"](https://github.com/zdharma-continuum/zinit/commit/515688bc976e793422d21ba9debfdd1a982c611e "revert: \"Merge branch 'refactor/zinit-function-names' into main\"  This reverts commit b979847bd465e1bcd565c694daeac54d55e5f6cf, reversing changes made to da924a21a1b60b01de345c8cef5a7faa874f61da.  I (@vladdoster) accidentally merged this into the wrong repository. Apologies for the lack of due diligence.") | 4 years agoDec 17, 2022 |
+  | [tests](https://github.com/zdharma-continuum/zinit/tree/main/tests "tests") | [tests](https://github.com/zdharma-continuum/zinit/tree/main/tests "tests") | [fix: trust archive permissions instead of `file(1)` heuristics in \`zi…](https://github.com/zdharma-continuum/zinit/commit/1334994f20d58e7279d308401dea2b680c0cade1 "fix: trust archive permissions instead of `file(1)` heuristics in `ziextract` (#771)") | last monthMar 14, 2026 |
+  | [.dockerignore](https://github.com/zdharma-continuum/zinit/blob/main/.dockerignore ".dockerignore") | [.dockerignore](https://github.com/zdharma-continuum/zinit/blob/main/.dockerignore ".dockerignore") | [revert: "Merge branch 'refactor/zinit-function-names' into main"](https://github.com/zdharma-continuum/zinit/commit/515688bc976e793422d21ba9debfdd1a982c611e "revert: \"Merge branch 'refactor/zinit-function-names' into main\"  This reverts commit b979847bd465e1bcd565c694daeac54d55e5f6cf, reversing changes made to da924a21a1b60b01de345c8cef5a7faa874f61da.  I (@vladdoster) accidentally merged this into the wrong repository. Apologies for the lack of due diligence.") | 4 years agoDec 17, 2022 |
+  | [.gitattributes](https://github.com/zdharma-continuum/zinit/blob/main/.gitattributes ".gitattributes") | [.gitattributes](https://github.com/zdharma-continuum/zinit/blob/main/.gitattributes ".gitattributes") | [maint: add multiple 'EOL' & 'diff' rules to .gitattributes (](https://github.com/zdharma-continuum/zinit/commit/37a592fccc6003905892e327508c279355272945 "maint: add multiple 'EOL' & 'diff' rules to .gitattributes (#336)  Signed-off-by: Christian Höltje <christian.holtje@boxcast.com>") [#336](https://github.com/zdharma-continuum/zinit/pull/336) [)](https://github.com/zdharma-continuum/zinit/commit/37a592fccc6003905892e327508c279355272945 "maint: add multiple 'EOL' & 'diff' rules to .gitattributes (#336)  Signed-off-by: Christian Höltje <christian.holtje@boxcast.com>") | 4 years agoJul 9, 2022 |
+  | [.gitignore](https://github.com/zdharma-continuum/zinit/blob/main/.gitignore ".gitignore") | [.gitignore](https://github.com/zdharma-continuum/zinit/blob/main/.gitignore ".gitignore") | [fix: failing zunit tests & bootstrap script](https://github.com/zdharma-continuum/zinit/commit/d618467ff090a6dbfb327ca0a29141d0c9312b24 "fix: failing zunit tests & bootstrap script  Signed-off-by: Vladislav Doster <mvdoster@gmail.com>") | 4 years agoJan 5, 2023 |
+  | [.releaserc.json](https://github.com/zdharma-continuum/zinit/blob/main/.releaserc.json ".releaserc.json") | [.releaserc.json](https://github.com/zdharma-continuum/zinit/blob/main/.releaserc.json ".releaserc.json") | [feat: add releases via semantic-release](https://github.com/zdharma-continuum/zinit/commit/73542b490981e43adca4a09b64c327fe811d01e1 "feat: add releases via semantic-release  - release workflow - semantic-release configuration file - new CHANGELOG.md  Signed-off-by: Vladislav Doster <mvdoster@gmail.com>") | 4 years agoNov 6, 2022 |
+  | [.zunit.yml](https://github.com/zdharma-continuum/zinit/blob/main/.zunit.yml ".zunit.yml") | [.zunit.yml](https://github.com/zdharma-continuum/zinit/blob/main/.zunit.yml ".zunit.yml") | [ci: Disable commit lint, and disable fail-fast for zunit tests (](https://github.com/zdharma-continuum/zinit/commit/c8246d7223dbdaab521ff22ce9d8bc90f39bfca2 "ci: Disable commit lint, and disable fail-fast for zunit tests (#693)") [#693](https://github.com/zdharma-continuum/zinit/pull/693) [)](https://github.com/zdharma-continuum/zinit/commit/c8246d7223dbdaab521ff22ce9d8bc90f39bfca2 "ci: Disable commit lint, and disable fail-fast for zunit tests (#693)") | last yearJan 25, 2025 |
+  | [CHANGELOG.md](https://github.com/zdharma-continuum/zinit/blob/main/CHANGELOG.md "CHANGELOG.md") | [CHANGELOG.md](https://github.com/zdharma-continuum/zinit/blob/main/CHANGELOG.md "CHANGELOG.md") | [release: v3.13.0 → v3.13.1](https://github.com/zdharma-continuum/zinit/commit/30514edc4a3e67229ce11306061ee92db9558cec "release: v3.13.0 → v3.13.1  ## [3.13.1](https://github.com/zdharma-continuum/zinit/compare/v3.13.0...v3.13.1) (2024-01-22)  ### Bug Fixes  *  `plugins` command correctly handles keyword argument ([#626](https://github.com/zdharma-continuum/zinit/issues/626)) ([f26d387](https://github.com/zdharma-continuum/zinit/commit/f26d387e51c9103f2ba7142a8c1a25ba1d62e065))") | 2 years agoJan 22, 2024 |
+  | [CODE\_OF\_CONDUCT.md](https://github.com/zdharma-continuum/zinit/blob/main/CODE_OF_CONDUCT.md "CODE_OF_CONDUCT.md") | [CODE\_OF\_CONDUCT.md](https://github.com/zdharma-continuum/zinit/blob/main/CODE_OF_CONDUCT.md "CODE_OF_CONDUCT.md") | [style: format CODE\_OF\_CONDUCT to fix failing test (](https://github.com/zdharma-continuum/zinit/commit/92a235654a7b321731ce4a12e75efe0415dcc52d "style: format CODE_OF_CONDUCT to fix failing test (#275)  Signed-off-by: Vladislav Doster <mvdoster@gmail.com>") [#275](https://github.com/zdharma-continuum/zinit/pull/275) [)](https://github.com/zdharma-continuum/zinit/commit/92a235654a7b321731ce4a12e75efe0415dcc52d "style: format CODE_OF_CONDUCT to fix failing test (#275)  Signed-off-by: Vladislav Doster <mvdoster@gmail.com>") | 4 years agoMay 14, 2022 |
+  | [LICENSE](https://github.com/zdharma-continuum/zinit/blob/main/LICENSE "LICENSE") | [LICENSE](https://github.com/zdharma-continuum/zinit/blob/main/LICENSE "LICENSE") | [maint: update license (](https://github.com/zdharma-continuum/zinit/commit/1e49316210c46448df0ed264542098650deb46bb "maint: update license (#326)  - update copyright") [#326](https://github.com/zdharma-continuum/zinit/pull/326) [)](https://github.com/zdharma-continuum/zinit/commit/1e49316210c46448df0ed264542098650deb46bb "maint: update license (#326)  - update copyright") | 4 years agoJul 4, 2022 |
+  | [Makefile](https://github.com/zdharma-continuum/zinit/blob/main/Makefile "Makefile") | [Makefile](https://github.com/zdharma-continuum/zinit/blob/main/Makefile "Makefile") | [fix: makefile clean target less verbose](https://github.com/zdharma-continuum/zinit/commit/3396f5e3aa1fb81d128d4f34b9ff868011d68981 "fix: makefile clean target less verbose  Signed-off-by: Vladislav Doster <mvdoster@gmail.com>") | 3 years agoMay 1, 2023 |
+  | [README.md](https://github.com/zdharma-continuum/zinit/blob/main/README.md "README.md") | [README.md](https://github.com/zdharma-continuum/zinit/blob/main/README.md "README.md") | [docs: improve documentation of extract modifiers (their documentation…](https://github.com/zdharma-continuum/zinit/commit/4205b399dd744fb5d4e78974d3acc265b98b7f27 "docs: improve documentation of extract modifiers (their documentation was so far completely missing)") | last monthMar 5, 2026 |
+  | [VERSION](https://github.com/zdharma-continuum/zinit/blob/main/VERSION "VERSION") | [VERSION](https://github.com/zdharma-continuum/zinit/blob/main/VERSION "VERSION") | [release: v3.13.0 → v3.13.1](https://github.com/zdharma-continuum/zinit/commit/30514edc4a3e67229ce11306061ee92db9558cec "release: v3.13.0 → v3.13.1  ## [3.13.1](https://github.com/zdharma-continuum/zinit/compare/v3.13.0...v3.13.1) (2024-01-22)  ### Bug Fixes  *  `plugins` command correctly handles keyword argument ([#626](https://github.com/zdharma-continuum/zinit/issues/626)) ([f26d387](https://github.com/zdharma-continuum/zinit/commit/f26d387e51c9103f2ba7142a8c1a25ba1d62e065))") | 2 years agoJan 22, 2024 |
+  | [\_zinit](https://github.com/zdharma-continuum/zinit/blob/main/_zinit "_zinit") | [\_zinit](https://github.com/zdharma-continuum/zinit/blob/main/_zinit "_zinit") | [refactor: implemented parsing of options for self-update using .zinit…](https://github.com/zdharma-continuum/zinit/commit/95ba7d1dd4d4913bf698bcac4c6fbda84c6b0e83 "refactor: implemented parsing of options for self-update using .zinit-parse-opts; extended number of supports variants, options  Follows suggestions from https://github.com/zdharma-continuum/zinit/pull/762#pullrequestreview-3811990006  Co-authored-by: vladislav doster <mvdoster@gmail.com>") | last monthMar 3, 2026 |
+  | [zi-browse-symbol](https://github.com/zdharma-continuum/zinit/blob/main/zi-browse-symbol "zi-browse-symbol") | [zi-browse-symbol](https://github.com/zdharma-continuum/zinit/blob/main/zi-browse-symbol "zi-browse-symbol") | [fix: absolute path support in the symbol browser](https://github.com/zdharma-continuum/zinit/commit/d29a8ba2b757b936663c16d12e46d3638f44027a "fix: absolute path support in the symbol browser") | 3 years agoFeb 15, 2023 |
+  | [zinit-additional.zsh](https://github.com/zdharma-continuum/zinit/blob/main/zinit-additional.zsh "zinit-additional.zsh") | [zinit-additional.zsh](https://github.com/zdharma-continuum/zinit/blob/main/zinit-additional.zsh "zinit-additional.zsh") | [feat: refactor debug commands](https://github.com/zdharma-continuum/zinit/commit/930b25ee3c6cc66931eda0030c422fddd69ef9c4 "feat: refactor debug commands  Signed-off-by: Vladislav Doster <mvdoster@gmail.com>") | 3 years agoMay 1, 2023 |
+  | [zinit-autoload.zsh](https://github.com/zdharma-continuum/zinit/blob/main/zinit-autoload.zsh "zinit-autoload.zsh") | [zinit-autoload.zsh](https://github.com/zdharma-continuum/zinit/blob/main/zinit-autoload.zsh "zinit-autoload.zsh") | [fix: remove](https://github.com/zdharma-continuum/zinit/commit/e88ed77319c9a2e0187b964f9ad99f17a33d5999 "fix: remove `local -A OPTS` that shadows caller's parallel flag (#774)")`local -A OPTS` [that shadows caller's parallel flag (](https://github.com/zdharma-continuum/zinit/commit/e88ed77319c9a2e0187b964f9ad99f17a33d5999 "fix: remove `local -A OPTS` that shadows caller's parallel flag (#774)") [#774](https://github.com/zdharma-continuum/zinit/pull/774) [)](https://github.com/zdharma-continuum/zinit/commit/e88ed77319c9a2e0187b964f9ad99f17a33d5999 "fix: remove `local -A OPTS` that shadows caller's parallel flag (#774)") | 3 weeks agoMar 24, 2026 |
+  | [zinit-install.zsh](https://github.com/zdharma-continuum/zinit/blob/main/zinit-install.zsh "zinit-install.zsh") | [zinit-install.zsh](https://github.com/zdharma-continuum/zinit/blob/main/zinit-install.zsh "zinit-install.zsh") | [fix: trust archive permissions instead of `file(1)` heuristics in \`zi…](https://github.com/zdharma-continuum/zinit/commit/1334994f20d58e7279d308401dea2b680c0cade1 "fix: trust archive permissions instead of `file(1)` heuristics in `ziextract` (#771)") | last monthMar 14, 2026 |
+  | [zinit-side.zsh](https://github.com/zdharma-continuum/zinit/blob/main/zinit-side.zsh "zinit-side.zsh") | [zinit-side.zsh](https://github.com/zdharma-continuum/zinit/blob/main/zinit-side.zsh "zinit-side.zsh") | [refactor: rename](https://github.com/zdharma-continuum/zinit/commit/14cc16167fb019033872600339d74d6039816b88 "refactor: rename `+zinit-message` to `+zi-log` (#563)  - Rename all instances of +zinit-message to +zi-log - Maintain compatibility with community plugins/annexes by forwarding +zinit-message calls to +zi-log  Signed-off-by: Doster, Vladislav <mvdoster@gmail.com>")`+zinit-message` [to](https://github.com/zdharma-continuum/zinit/commit/14cc16167fb019033872600339d74d6039816b88 "refactor: rename `+zinit-message` to `+zi-log` (#563)  - Rename all instances of +zinit-message to +zi-log - Maintain compatibility with community plugins/annexes by forwarding +zinit-message calls to +zi-log  Signed-off-by: Doster, Vladislav <mvdoster@gmail.com>")`+zi-log` [(](https://github.com/zdharma-continuum/zinit/commit/14cc16167fb019033872600339d74d6039816b88 "refactor: rename `+zinit-message` to `+zi-log` (#563)  - Rename all instances of +zinit-message to +zi-log - Maintain compatibility with community plugins/annexes by forwarding +zinit-message calls to +zi-log  Signed-off-by: Doster, Vladislav <mvdoster@gmail.com>") [#563](https://github.com/zdharma-continuum/zinit/pull/563) [)](https://github.com/zdharma-continuum/zinit/commit/14cc16167fb019033872600339d74d6039816b88 "refactor: rename `+zinit-message` to `+zi-log` (#563)  - Rename all instances of +zinit-message to +zi-log - Maintain compatibility with community plugins/annexes by forwarding +zinit-message calls to +zi-log  Signed-off-by: Doster, Vladislav <mvdoster@gmail.com>") | 3 years agoAug 20, 2023 |
+  | [zinit.zsh](https://github.com/zdharma-continuum/zinit/blob/main/zinit.zsh "zinit.zsh") | [zinit.zsh](https://github.com/zdharma-continuum/zinit/blob/main/zinit.zsh "zinit.zsh") | [maint: remove duplicate `.zinit-parse-opts` call in `self-update` cas…](https://github.com/zdharma-continuum/zinit/commit/91e8e6a65f49350aa5d144d67d85f5372a87bcda "maint: remove duplicate `.zinit-parse-opts` call in `self-update` case block  - Removed since [`.zinit-parse-opts` is ran earlier](https://github.com/zdharma-continuum/zinit/pull/762/changes#diff-475a2f1e35813d9641ea77e854b9bf0d8c36b077bedbb6ae0bde1a0529dbbf0cR2634) in `zinit`") | last monthMar 3, 2026 |
+  | View all files |
+  
+  ## Repository files navigation
+  
+  [![zinit logo](https://raw.githubusercontent.com/zdharma-continuum/zinit/images/zinit.png)](https://github.com/zdharma-continuum/zinit)
+  
+  # Zinit
+  
+  [Permalink: Zinit](https://github.com/zdharma-continuum/zinit#zinit)
+  
+  [![MIT License](https://camo.githubusercontent.com/7013272bd27ece47364536a221edb554cd69683b68a46fc0ee96881174c4214c/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f6c6963656e73652d4d49542d626c75652e737667)](https://github.com/zdharma-continuum/zinit/blob/main/LICENSE)[![zinit version](https://camo.githubusercontent.com/606ed93bc86d82000004d436cbcd766eed7a244901711c82740f343e9dd9ba69/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f7461672f7a646861726d612d636f6e74696e75756d2f7a696e69742e737667)](https://github.com/zdharma-continuum/zinit/releases)[![zunit tests](https://github.com/zdharma-continuum/zinit/actions/workflows/tests.yaml/badge.svg)](https://github.com/zdharma-continuum/zinit/actions/workflows/tests.yaml)[![Join the chat at https://matrix.to/#/#zdharma-continuum_community:gitter.im](https://camo.githubusercontent.com/6d54078d333bdfa751241d7eba44600c23579d3bc6a8127f0dcb4d9fb9f3193e/68747470733a2f2f6261646765732e6769747465722e696d2f7a646861726d612d636f6e74696e75756d2f7a696e69742e737667)](https://matrix.to/#/#zdharma-continuum_community:gitter.im)
+  
+  - [Zinit Wiki](https://github.com/zdharma-continuum/zinit#zinit-wiki)
+  - [Install](https://github.com/zdharma-continuum/zinit#install)
+    - [Automatic](https://github.com/zdharma-continuum/zinit#automatic)
+    - [Manual](https://github.com/zdharma-continuum/zinit#manual)
+  - [Usage](https://github.com/zdharma-continuum/zinit#usage)
+    - [Introduction](https://github.com/zdharma-continuum/zinit#introduction)
+    - [Plugins and snippets](https://github.com/zdharma-continuum/zinit#plugins-and-snippets)
+    - [Upgrade Zinit and plugins](https://github.com/zdharma-continuum/zinit#upgrade-zinit-and-plugins)
+    - [Turbo and lucid](https://github.com/zdharma-continuum/zinit#turbo-and-lucid)
+    - [Migration](https://github.com/zdharma-continuum/zinit#migration)
+  - [Frequently Asked Questions](https://github.com/zdharma-continuum/zinit#frequently-asked-questions)
+    - [Use `zi ice svn` if a plugin/snippet requires an entire subdirectory](https://github.com/zdharma-continuum/zinit#use-zi-ice-svn-if-a-pluginsnippet-requires-an-entire-subdirectory)
+    - [Use `zi ice as'completion'` to directly add single file completion snippets](https://github.com/zdharma-continuum/zinit#use-zi-ice-ascompletion-to-directly-add-single-file-completion-snippets)
+    - [More Examples](https://github.com/zdharma-continuum/zinit#more-examples)
+  - [Ice Modifiers](https://github.com/zdharma-continuum/zinit#ice-modifiers)
+    - [Cloning Options](https://github.com/zdharma-continuum/zinit#cloning-options)
+    - [Selection of Files (To Source, …)](https://github.com/zdharma-continuum/zinit#selection-of-files-to-source-%E2%80%A6)
+    - [Conditional Loading](https://github.com/zdharma-continuum/zinit#conditional-loading)
+    - [Plugin Output](https://github.com/zdharma-continuum/zinit#plugin-output)
+    - [Completions](https://github.com/zdharma-continuum/zinit#completions)
+    - [Command Execution After Cloning, Updating or Loading](https://github.com/zdharma-continuum/zinit#command-execution-after-cloning-updating-or-loading)
+    - [Sticky-Emulation Of Other Shells](https://github.com/zdharma-continuum/zinit#sticky-emulation-of-other-shells)
+    - [Others](https://github.com/zdharma-continuum/zinit#others)
+    - [Order of Execution](https://github.com/zdharma-continuum/zinit#order-of-execution)
+  - [Zinit Commands](https://github.com/zdharma-continuum/zinit#zinit-commands)
+    - [Help](https://github.com/zdharma-continuum/zinit#help)
+    - [Loading and Unloading](https://github.com/zdharma-continuum/zinit#loading-and-unloading)
+    - [Completions](https://github.com/zdharma-continuum/zinit#completions-1)
+    - [Tracking of the Active Session](https://github.com/zdharma-continuum/zinit#tracking-of-the-active-session)
+    - [Reports and Statistics](https://github.com/zdharma-continuum/zinit#reports-and-statistics)
+    - [Compiling](https://github.com/zdharma-continuum/zinit#compiling)
+    - [Other](https://github.com/zdharma-continuum/zinit#other)
+  - [Updating Zinit and Plugins](https://github.com/zdharma-continuum/zinit#updating-zinit-and-plugins)
+  - [Completions](https://github.com/zdharma-continuum/zinit#completions-2)
+    - [Calling `compinit` Without Turbo Mode](https://github.com/zdharma-continuum/zinit#calling-compinit-without-turbo-mode)
+    - [Calling `compinit` With Turbo Mode](https://github.com/zdharma-continuum/zinit#calling-compinit-with-turbo-mode)
+    - [Ignoring Compdefs](https://github.com/zdharma-continuum/zinit#ignoring-compdefs)
+    - [Disabling System-Wide `compinit` Call](https://github.com/zdharma-continuum/zinit#disabling-system-wide-compinit-call)
+      - [Ubuntu](https://github.com/zdharma-continuum/zinit#disabling-system-wide-compinit-call-ubuntu)
+      - [NixOS](https://github.com/zdharma-continuum/zinit#disabling-system-wide-compinit-call-nixos)
+  - [Zinit Module](https://github.com/zdharma-continuum/zinit#zinit-module)
+  - [Hints and Tips](https://github.com/zdharma-continuum/zinit#hints-and-tips)
+    - [Using ZPFX variable](https://github.com/zdharma-continuum/zinit#using-zpfx-variable)
+    - [Customizing Paths](https://github.com/zdharma-continuum/zinit#customizing-paths)
+    - [Non-GitHub (Local) Plugins](https://github.com/zdharma-continuum/zinit#non-github-local-plugins)
+    - [Extending Git](https://github.com/zdharma-continuum/zinit#extending-git)
+  - [Changelog](https://github.com/zdharma-continuum/zinit#changelog)
+  - [Support](https://github.com/zdharma-continuum/zinit#support)
+  - [Getting Help and Community](https://github.com/zdharma-continuum/zinit#getting-help-and-community)
+  
+  [![startup times graph](https://raw.githubusercontent.com/zdharma-continuum/zinit/images/startup-times.png)](https://github.com/zdharma-continuum/pm-perf-test)
+  
+  Zinit is a flexible and fast Zshell plugin manager that will allow you to install everything from GitHub and other
+  sites. Its characteristics are:
+  
+  1. Zinit is currently the only plugin manager that provides Turbo mode, which yields **50-80% faster Zsh startup**
+  (i.e., the shell will start up to **5** times faster!). Check out a speed comparison with other popular plugin
+  managers [here](https://github.com/zdharma-continuum/pm-perf-test).
+  
+  2. The plugin manager gives **reports** from plugin loadings describing what **aliases**, functions, **bindkeys**, Zle
+  widgets, zstyles, **completions**, variables, `PATH` and `FPATH` elements a plugin has set up. This allows one to
+  quickly familiarize oneself with a new plugin and provides rich and easy-to-digest information which might be helpful
+  on various occasions.
+  
+  3. Supported is the unloading of plugin and ability to list, (un)install and **selectively disable**, **enable**
+  plugin's completions.
+  
+  4. The plugin manager supports loading plugins and libraries from Oh My Zsh or Prezto. However, the implementation isn't
+  framework-specific and doesn't bloat the plugin manager with such code (more on this topic can be found on the Wiki,
+  in the [Introduction](https://zdharma-continuum.github.io/zinit/wiki/INTRODUCTION/#oh_my_zsh_prezto)).
+  
+  5. The system does not use `$FPATH`, loading multiple plugins doesn't clutter `$FPATH` with the same number of entries
+  (e.g. `10`, `15` or more). Code is immune to `KSH_ARRAYS` and other options typically causing compatibility problems.
+  
+  6. Zinit supports special, dedicated **packages** that offload the user from providing long and complex commands. See
+  the [zinit-packages repository](https://github.com/zdharma-continuum/zinit-packages) for a growing, complete list of
+  Zinit packages and the [Wiki page](https://zdharma-continuum.github.io/zinit/wiki/Zinit-Packages/) for an article
+  about the feature.
+  
+  7. Also, specialized Zinit extensions — called **annexes** — have the ability to extend the plugin manager with new
+  commands, URL-preprocessors (used by e.g.:
+  [zinit-annex-readurl](https://github.com/zdharma-continuum/zinit-annex-readurl) annex), post-install and post-update
+  hooks, and much more. See the [zdharma-continuum](https://github.com/zdharma-continuum) organization for a growing,
+  complete list of available Zinit extensions and refer to the
+  [Wiki article](https://zdharma-continuum.github.io/zinit/wiki/Annexes/) for an introduction on creating your annex.
+  
+  
+  ## Zinit Wiki
+  
+  [Permalink: Zinit Wiki](https://github.com/zdharma-continuum/zinit#zinit-wiki)
+  
+  The information in this README is complemented by the [Zinit Wiki](https://zdharma-continuum.github.io/zinit/wiki/). The
+  README is an introductory overview of Zinit, while the Wiki gives complete information with examples. Make sure to read
+  it to get the most out of Zinit.
+  
+  ## Install
+  
+  [Permalink: Install](https://github.com/zdharma-continuum/zinit#install)
+  
+  ### Automatic
+  
+  [Permalink: Automatic](https://github.com/zdharma-continuum/zinit#automatic)
+  
+  The easiest way to install Zinit is to execute:
+  
+  ```
+  bash -c "$(curl --fail --show-error --silent --location https://raw.githubusercontent.com/zdharma-continuum/zinit/HEAD/scripts/install.sh)"
+  ```
+  
+  This will install Zinit in `~/.local/share/zinit/zinit.git`. `.zshrc` will be updated with three lines of code that will
+  be added to the bottom. The lines will be sourcing `zinit.zsh` and setting up completion for command `zinit`.
+  
+  After installing and reloading the shell, compile Zinit via:
+  
+  ```
+  zinit self-update
+  ```
+  
+  ### Manual
+  
+  [Permalink: Manual](https://github.com/zdharma-continuum/zinit#manual)
+  
+  In your `.zshrc`, add the following snippet
+  
+  ```
+  ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
+  [ ! -d $ZINIT_HOME ] && mkdir -p "$(dirname $ZINIT_HOME)"
+  [ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
+  source "${ZINIT_HOME}/zinit.zsh"
+  ```
+  
+  [compinit](http://zsh.sourceforge.net/Doc/Release/Completion-System.html#Initialization):
+  
+  If you source `zinit.zsh` after `compinit`, add the following snippet after sourcing `zinit.zsh`:
+  
+  ```
+  autoload -Uz _zinit
+  (( ${+_comps} )) && _comps[zinit]=_zinit
+  ```
+  
+  Reload Zsh to install Zinit:
+  
+  ```
+  exec zsh
+  ```
+  
+  Various paths can be customized; see section [Customizing Paths](https://github.com/zdharma-continuum/zinit#customizing-paths).
+  
+  ## Usage
+  
+  [Permalink: Usage](https://github.com/zdharma-continuum/zinit#usage)
+  
+  ### Introduction
+  
+  [Permalink: Introduction](https://github.com/zdharma-continuum/zinit#introduction)
+  
+  [Click here to read the introduction to Zinit](https://zdharma-continuum.github.io/zinit/wiki/INTRODUCTION/). It
+  explains basic usage and some of the more unique features of Zinit, such as the Turbo mode. If you're new to Zinit, we
+  recommend you read it at least once.
+  
+  ### Plugins and snippets
+  
+  [Permalink: Plugins and snippets](https://github.com/zdharma-continuum/zinit#plugins-and-snippets)
+  
+  Plugins can be loaded using `load` or `light`.
+  
+  ```
+  zinit load  <repo/plugin> # Load with reporting/investigating.
+  zinit light <repo/plugin> # Load without reporting/investigating.
+  ```
+  
+  If you want to source local or remote files (using direct URL), you can do so with `snippet`.
+  
+  ```
+  zinit snippet <URL>
+  ```
+  
+  Such lines should be added to `.zshrc`. Snippets are cached locally. Use the `-f` option to download a new version of a
+  snippet or `zinit update {URL}`. You can also use `zinit update --all` to update all snippets (and plugins).
+  
+  **Example**
+  
+  ```
+  # Plugin history-search-multi-word loaded with investigating.
+  zinit load zdharma-continuum/history-search-multi-word
+  
+  # Two regular plugins loaded without investigating.
+  zinit light zsh-users/zsh-autosuggestions
+  zinit light zdharma-continuum/fast-syntax-highlighting
+  
+  # Snippet
+  zinit snippet https://gist.githubusercontent.com/hightemp/5071909/raw/
+  ```
+  
+  **Prompt(Theme) Example**
+  
+  This is [powerlevel10k](https://github.com/romkatv/powerlevel10k), [pure](https://github.com/sindresorhus/pure),
+  [starship](https://github.com/starship/starship) sample:
+  
+  ```
+  # Load powerlevel10k theme
+  zinit ice depth"1" # git clone depth
+  zinit light romkatv/powerlevel10k
+  
+  # Load pure theme
+  zinit ice pick"async.zsh" src"pure.zsh" # with zsh-async library that's bundled with it.
+  zinit light sindresorhus/pure
+  
+  # Load starship theme
+  # line 1: `starship` binary as command, from github release
+  # line 2: starship setup at clone(create init.zsh, completion)
+  # line 3: pull behavior same as clone, source init.zsh
+  zinit ice as"command" from"gh-r" \
+            atclone"./starship init zsh > init.zsh; ./starship completions zsh > _starship" \
+            atpull"%atclone" src"init.zsh"
+  zinit light starship/starship
+  ```
+  
+  ### Upgrade Zinit and plugins
+  
+  [Permalink: Upgrade Zinit and plugins](https://github.com/zdharma-continuum/zinit#upgrade-zinit-and-plugins)
+  
+  Zinit can be updated to `self-update` and plugins to `update`.
+  
+  ```
+  # Self update
+  zinit self-update
+  
+  # Plugin update
+  zinit update
+  
+  # Plugin parallel update
+  zinit update --parallel
+  
+  # Increase the number of jobs in a concurrent-set to 40
+  zinit update --parallel 40
+  ```
+  
+  ### Turbo and lucid
+  
+  [Permalink: Turbo and lucid](https://github.com/zdharma-continuum/zinit#turbo-and-lucid)
+  
+  Turbo and lucid are the most used options.
+  
+  **Turbo Mode**
+  Turbo mode is the key to performance. It can be loaded asynchronously, which makes a huge difference when the amount of plugins increases.
+  
+  Usually used as `zinit ice wait"<SECONDS>"`, let's use the previous example:
+  
+  ```
+  zinit ice wait    # wait is the same as wait"0"
+  zinit load zdharma-continuum/history-search-multi-word
+  
+  zinit ice wait"2" # load after 2 seconds
+  zinit load zdharma-continuum/history-search-multi-word
+  
+  zinit ice wait    # also be used in `light` and `snippet`
+  zinit snippet https://gist.githubusercontent.com/hightemp/5071909/raw/
+  ```
+  
+  **Lucid**
+  
+  Turbo mode is verbose, so you need an option for quiet.
+  
+  You can use `lucid`:
+  
+  ```
+  zinit ice wait lucid
+  zinit load zdharma-continuum/history-search-multi-word
+  ```
+  
+  **_F&A:_** What is `ice`?
+  
+  `ice` is zinit's options command. The option melts like ice and is used only once. (more:
+  [Ice Modifiers](https://github.com/zdharma-continuum/zinit#ice-modifiers))
+  
+  ### Migration
+  
+  [Permalink: Migration](https://github.com/zdharma-continuum/zinit#migration)
+  
+  **Migration from Oh-My-ZSH**
+  
+  **Basic**
+  
+  ```
+  zinit snippet <URL>        # Raw Syntax with URL
+  zinit snippet OMZ::<PATH>  # Shorthand OMZ/ (https://github.com/ohmyzsh/ohmyzsh/raw/master/)
+  zinit snippet OMZL::<PATH> # Shorthand OMZ/lib/
+  zinit snippet OMZT::<PATH> # Shorthand OMZ/themes/
+  zinit snippet OMZP::<PATH> # Shorthand OMZ/plugins/
+  ```
+  
+  **Library**
+  
+  Importing the [clipboard](https://github.com/ohmyzsh/ohmyzsh/blob/master/lib/clipboard.zsh) and
+  [termsupport](https://github.com/ohmyzsh/ohmyzsh/blob/master/lib/termsupport.zsh) Oh-My-Zsh Library Sample:
+  
+  ```
+  # Raw Syntax
+  zi snippet https://github.com/ohmyzsh/ohmyzsh/blob/master/lib/clipboard.zsh
+  zi snippet https://github.com/ohmyzsh/ohmyzsh/blob/master/lib/termsupport.zsh
+  
+  # OMZ Shorthand Syntax
+  zi snippet OMZ::lib/clipboard.zsh
+  zi snippet OMZ::lib/termsupport.zsh
+  
+  # OMZL Shorthand Syntax
+  zi snippet OMZL::clipboard.zsh
+  zi snippet OMZL::termsupport.zsh
+  ```
+  
+  **Theme**
+  
+  To use **themes** created for Oh My Zsh you might want to first source the `git` library there.
+  
+  Then you can use the themes as snippets (`zinit snippet <file path or GitHub URL>`). Some themes require not only Oh My
+  Zsh's Git **library**, but also Git **plugin** (error about `current_branch` may appear). Load this Git-plugin as
+  single-file snippet directly from OMZ.
+  
+  Most themes require `promptsubst` option (`setopt promptsubst` in `zshrc`), if it isn't set, then prompt will appear as
+  something like: `... $(build_prompt) ...`.
+  
+  You might want to suppress completions provided by the git plugin by issuing `zinit cdclear -q` (`-q` is for quiet) –
+  see below **Ignoring Compdefs**.
+  
+  To summarize:
+  
+  ```
+  ## Oh My Zsh Setting
+  ZSH_THEME="robbyrussell"
+  
+  ## Zinit Setting
+  # Must Load OMZ Git library
+  zi snippet OMZL::git.zsh
+  
+  # Must Load OMZ Async prompt library
+  zi snippet OMZL::async_prompt.zsh
+  
+  # Load Git plugin from OMZ
+  zi snippet OMZP::git
+  zi cdclear -q # <- forget completions provided up to this moment
+  
+  setopt promptsubst
+  
+  # Load Prompt
+  zi snippet OMZT::robbyrussell
+  ```
+  
+  External Theme Sample: [NicoSantangelo/Alpharized](https://github.com/nicosantangelo/Alpharized)
+  
+  ```
+  ## Oh My Zsh Setting
+  ZSH_THEME="alpharized"
+  
+  ## Zinit Setting
+  # Must Load OMZ Git library
+  zi snippet OMZL::git.zsh
+  
+  # Load Git plugin from OMZ
+  zi snippet OMZP::git
+  zi cdclear -q # <- forget completions provided up to this moment
+  
+  setopt promptsubst
+  
+  # Load Prompt
+  zi light NicoSantangelo/Alpharized
+  ```
+  
+  ## Frequently Asked Questions
+  
+  [Permalink: Frequently Asked Questions](https://github.com/zdharma-continuum/zinit#frequently-asked-questions)
+  
+  Error occurs when loading OMZ's theme.
+  
+  If the `git` library will not be loaded, the following errors will appear:
+  
+  ```
+  ........:1: command not found: git_prompt_status
+  ........:1: command not found: git_prompt_short_sha
+  ```
+  
+  **Plugin**
+  
+  If it consists of a single file, you can just load it.
+  
+  ```
+  ## Oh-My-Zsh Setting
+  plugins=(
+    git
+    dotenv
+    rake
+    rbenv
+    ruby
+  )
+  
+  ## Zinit Setting
+  zi snippet OMZP::git
+  zi snippet OMZP::dotenv
+  zi snippet OMZP::rake
+  zi snippet OMZP::rbenv
+  zi snippet OMZP::ruby
+  ```
+  
+  ### Use `zi ice svn` if a plugin/snippet requires an entire subdirectory
+  
+  [Permalink: Use zi ice svn if a plugin/snippet requires an entire subdirectory](https://github.com/zdharma-continuum/zinit#use-zi-ice-svn-if-a-pluginsnippet-requires-an-entire-subdirectory)
+  
+  1. [gitfast](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/gitfast)
+  2. [osx](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/osx)
+  
+  ```
+  zi ice svn
+  zi snippet OMZP::gitfast
+  
+  zi ice svn
+  zi snippet OMZP::osx
+  ```
+  
+  ### Use `zi ice as'completion'` to directly add single file completion snippets
+  
+  [Permalink: Use zi ice as'completion' to directly add single file completion snippets](https://github.com/zdharma-continuum/zinit#use-zi-ice-ascompletion-to-directly-add-single-file-completion-snippets)
+  
+  1. [docker](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/docker)
+  2. [fd](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/fd)
+  
+  ```
+  zi ice as"completion"
+  zi snippet OMZP::docker/_docker
+  
+  zi ice as"completion"
+  zi snippet OMZP::fd/_fd
+  ```
+  
+  [Find more information on Oh-My-Zsh + Zinit on the Wiki](https://zdharma-continuum.github.io/zinit/wiki/Example-Oh-My-Zsh-setup/)
+  
+  **Migration from Prezto**
+  
+  **Basic**
+  
+  ```
+  zi snippet <URL>        # Raw Syntax with URL
+  zi snippet PZT::<PATH>  # Shorthand PZT/ (https://github.com/sorin-ionescu/prezto/tree/master/)
+  zi snippet PZTM::<PATH> # Shorthand PZT/modules/
+  ```
+  
+  **Modules**
+  
+  Importing the [environment](https://github.com/sorin-ionescu/prezto/tree/master/modules/environment) and
+  [terminal](https://github.com/sorin-ionescu/prezto/tree/master/modules/terminal) Prezto Modules Sample:
+  
+  ```
+  ## Prezto Setting
+  zstyle ':prezto:load' pmodule 'environment' 'terminal'
+  
+  ## Zinit Setting
+  # Raw Syntax
+  zi snippet https://github.com/sorin-ionescu/prezto/blob/master/modules/environment/init.zsh
+  zi snippet https://github.com/sorin-ionescu/prezto/blob/master/modules/terminal/init.zsh
+  
+  # PZT Shorthand Syntax
+  zi snippet PZT::modules/environment
+  zi snippet PZT::modules/terminal
+  
+  # PZTM Shorthand Syntax
+  zi snippet PZTM::environment
+  zi snippet PZTM::terminal
+  ```
+  
+  Use `zinit ice svn` if multiple files require an entire subdirectory. Like
+  [docker](https://github.com/sorin-ionescu/prezto/tree/master/modules/docker),
+  [git](https://github.com/sorin-ionescu/prezto/tree/master/modules/git):
+  
+  ```
+  zi ice svn
+  zi snippet PZTM::docker
+  
+  zi ice svn
+  zi snippet PZTM::git
+  ```
+  
+  Use `zinit ice as"null"` if don't exist `*.plugin.zsh`, `init.zsh`, `*.zsh-theme*` files in module. Like
+  [archive](https://github.com/sorin-ionescu/prezto/tree/master/modules/archive):
+  
+  ```
+  zi ice svn as"null"
+  zi snippet PZTM::archive
+  ```
+  
+  Use `zinit ice atclone"git clone <repo> <location>"` if module have external module. Like
+  [completion](https://github.com/sorin-ionescu/prezto/tree/master/modules/completion):
+  
+  ```
+  zi ice \
+    atclone"git clone --recursive https://github.com/zsh-users/zsh-completions.git external" \
+    blockf \ # use blockf to prevent any unnecessary additions to fpath, as zinit manages fpath
+    svn
+  
+  zi snippet PZTM::completion
+  ```
+  
+  **_F&A:_** What is `zstyle`?
+  
+  Read [zstyle](http://zsh.sourceforge.net/Doc/Release/Zsh-Modules.html#The-zsh_002fzutil-Module) doc (more:
+  [What does `zstyle` do?](https://unix.stackexchange.com/questions/214657/what-does-zstyle-do)).
+  
+  **Migration from Zgen**
+  
+  **Oh My Zsh**
+  
+  More reference: check **Migration from Oh-My-ZSH**
+  
+  ```
+  # Load ohmyzsh base
+  zgen oh-my-zsh
+  zi snippet OMZL::<ALL OF THEM>
+  
+  # Load ohmyzsh plugins
+  zgen oh-my-zsh <PATH>
+  zi snippet OMZ::<PATH>
+  ```
+  
+  **Prezto**
+  
+  More reference: check **Migration from Prezto**
+  
+  ```
+  # Load Prezto
+  zgen prezto
+  zi snippet PZTM::<COMMENT's List> # environment terminal editor history directory spectrum utility completion prompt
+  
+  # Load prezto plugins
+  zgen prezto <modulename>
+  zi snippet PZTM::<modulename>
+  
+  # Load a repo as Prezto plugins
+  zgen pmodule <reponame> <branch>
+  zi ice ver"<branch>"
+  zi load <repo/plugin>
+  
+  # Set prezto options
+  zgen prezto <modulename> <option> <value(s)>
+  zstyle ':prezto:<modulename>:' <option> <values(s)> # Set original prezto style
+  ```
+  
+  **General**
+  
+  `location`: refer [Selection of Files](https://github.com/zdharma-continuum/zinit#selection-of-files-to-source-)
+  
+  ```
+  zgen load <repo> [location] [branch]
+  
+  zi ice ver"[branch]"
+  zi load <repo>
+  ```
+  
+  **Migration from Zplug**
+  
+  **Basic**
+  
+  ```
+  zplug <repo/plugin>, tag1:<option1>, tag2:<option2>
+  
+  zi ice tag1"<option1>" tag2"<option2>"
+  zi load <repo/plugin>
+  ```
+  
+  **Tag comparison**
+  
+  - `as` =\> `as`
+  - `use` =\> `pick`, `src`, `multisrc`
+  - `ignore` =\> None
+  - `from` =\> `from`
+  - `at` =\> `ver`
+  - `rename-to` =\> `mv`, `cp`
+  - `dir` =\> Selection(`pick`, ...) with rename
+  - `if` =\> `if`
+  - `hook-build` =\> `atclone`, `atpull`
+  - `hook-load` =\> `atload`
+  - `frozen` =\> None
+  - `on` =\> None
+  - `defer` =\> `wait`
+  - `lazy` =\> `autoload`
+  - `depth` =\> `depth`
+  
+  ### More Examples
+  
+  [Permalink: More Examples](https://github.com/zdharma-continuum/zinit#more-examples)
+  
+  After installing Zinit you can start adding some actions (load some plugins) to `~/.zshrc`, at bottom. Some examples:
+  
+  ```
+  # Load the pure theme, with zsh-async library that's bundled with it.
+  zi ice pick"async.zsh" src"pure.zsh"
+  zi light sindresorhus/pure
+  
+  # A glance at the new for-syntax – load all of the above
+  # plugins with a single command. For more information see:
+  # https://zdharma-continuum.github.io/zinit/wiki/For-Syntax/
+  zinit for \
+      light-mode \
+    zsh-users/zsh-autosuggestions \
+      light-mode \
+    zdharma-continuum/fast-syntax-highlighting \
+    zdharma-continuum/history-search-multi-word \
+      light-mode \
+      pick"async.zsh" \
+      src"pure.zsh" \
+    sindresorhus/pure
+  
+  # Binary release in archive, from GitHub-releases page.
+  # After automatic unpacking it provides program "fzf".
+  zi ice from"gh-r" as"program"
+  zi light junegunn/fzf
+  
+  # One other binary release, it needs renaming from `docker-compose-Linux-x86_64`.
+  # This is done by ice-mod `mv'{from} -> {to}'. There are multiple packages per
+  # single version, for OS X, Linux and Windows – so ice-mod `bpick' is used to
+  # select Linux package – in this case this is actually not needed, Zinit will
+  # grep operating system name and architecture automatically when there's no `bpick'.
+  zi ice from"gh-r" as"program" mv"docker* -> docker-compose" bpick"*linux*"
+  zi load docker/compose
+  
+  # Vim repository on GitHub – a typical source code that needs compilation – Zinit
+  # can manage it for you if you like, run `./configure` and other `make`, etc.
+  # Ice-mod `pick` selects a binary program to add to $PATH. You could also install the
+  # package under the path $ZPFX, see: https://zdharma-continuum.github.io/zinit/wiki/Compiling-programs
+  zi ice \
+    as"program" \
+    atclone"rm -f src/auto/config.cache; ./configure" \
+    atpull"%atclone" \
+    make \
+    pick"src/vim"
+  zi light vim/vim
+  
+  # Scripts built at install (there's single default make target, "install",
+  # and it constructs scripts by `cat'ing a few files). The make'' ice could also be:
+  # `make"install PREFIX=$ZPFX"`, if "install" wouldn't be the only default target.
+  zi ice as"program" pick"$ZPFX/bin/git-*" make"PREFIX=$ZPFX"
+  zi light tj/git-extras
+  
+  # Handle completions without loading any plugin; see "completions" command.
+  # This one is to be ran just once, in interactive session.
+  zi creinstall %HOME/my_completions
+  ```
+  
+  ```
+  # For GNU ls (the binaries can be gls, gdircolors, e.g. on OS X when installing the
+  # coreutils package from Homebrew; you can also use https://github.com/ogham/exa)
+  zi ice atclone"dircolors -b LS_COLORS > c.zsh" atpull'%atclone' pick"c.zsh" nocompile'!'
+  zi light trapd00r/LS_COLORS
+  ```
+  
+  [You can see an extended explanation of LS\_COLORS in the Wiki.](https://zdharma-continuum.github.io/zinit/wiki/LS_COLORS-explanation/)
+  
+  ```
+  # make'!...' -> run make before atclone & atpull
+  zi ice as"program" make'!' atclone'./direnv hook zsh > zhook.zsh' atpull'%atclone' src"zhook.zsh"
+  zi light direnv/direnv
+  ```
+  
+  [You can see an extended explanation of direnv in the Wiki.](https://zdharma-continuum.github.io/zinit/wiki/Direnv-explanation/)
+  
+  If you're interested in more examples, then check out the
+  [zinit-configs repository](https://github.com/zdharma-continuum/zinit-configs), where users have uploaded their
+  `~/.zshrc` and Zinit configurations. Feel free to
+  [submit](https://github.com/zdharma-continuum/zinit-configs/issues/new?template=request-to-add-zshrc-to-the-zinit-configs-repo.md)
+  your `~/.zshrc` there if it contains Zinit commands.
+  
+  You can also check out the [Gallery of Zinit Invocations](https://zdharma-continuum.github.io/zinit/wiki/GALLERY/) for
+  some additional examples.
+  
+  Also, two articles on the Wiki present a
+  [Minimal Setup](https://zdharma-continuum.github.io/zinit/wiki/Example-Minimal-Setup/) and
+  [Oh-My-Zsh Setup](https://zdharma-continuum.github.io/zinit/wiki/Example-Oh-My-Zsh-setup/).
+  
+  # How to Use
+  
+  [Permalink: How to Use](https://github.com/zdharma-continuum/zinit#how-to-use)
+  
+  ## Ice Modifiers
+  
+  [Permalink: Ice Modifiers](https://github.com/zdharma-continuum/zinit#ice-modifiers)
+  
+  Following `ice` modifiers are to be [passed](https://zdharma-continuum.github.io/zinit/wiki/Alternate-Ice-Syntax/) to
+  `zinit ice ...` to obtain described effects. The word `ice` means something that's added (like ice to a drink) – and in
+  Zinit it means adding modifier to a next `zinit` command, and also something that's temporary because it melts – and
+  this means that the modification will last only for a **single** next `zinit` command.
+  
+  Some Ice-modifiers are highlighted and clicking on them will take you to the appropriate Wiki page for an extended
+  explanation.
+  
+  You may safely assume a given ice works with both plugins and snippets unless explicitly stated otherwise.
+  
+  ### Cloning Options
+  
+  [Permalink: Cloning Options](https://github.com/zdharma-continuum/zinit#cloning-options)
+  
+  | Modifier | Description |
+  | :-- | --- |
+  | `bpick` | Used to select which release from GitHub Releases to download, e.g. `zini ice from"gh-r" as"program" bpick"*Darwin*"; zini load docker/compose`. **Does not work with snippets.** |
+  | `cloneopts` | Pass the contents of `cloneopts` to `git clone`. Defaults to `--recursive`. I.e.: change cloning options. Pass empty ice to disable recursive cloning. **Does not work with snippets.** |
+  | `depth` | Pass `--depth` to `git`, i.e. limit how much of history to download. **Does not work with snippets.** |
+  | `from` | Clone plugin from given site. Supported are `from"github"` (default), `..."github-rel"`, `..."gitlab"`, `..."bitbucket"`, `..."notabug"` (short names: `gh`, `gh-r`, `gl`, `bb`, `nb`). Can also be a full domain name (e.g. for GitHub enterprise). **Does not work with snippets.** |
+  | `proto` | Change protocol to `git`,`ftp`,`ftps`,`ssh`, `rsync`, etc. Default is `https`. **Does not work with snippets.** |
+  | `pullopts` | Pass the contents of `pullopts` to `git pull` used when updating plugins. **Does not work with snippets.** |
+  | `svn` | Use Subversion for downloading snippet. GitHub supports `SVN` protocol, this allows to clone subdirectories as snippets, e.g. `zinit ice svn; zinit snippet OMZP::git`. Other ice `pick` can be used to select file to source (default are: `*.plugin.zsh`, `init.zsh`, `*.zsh-theme`). **Does not work with plugins.** |
+  | `ver` | Used with `from"gh-r"` (i.e. downloading a binary release, e.g. for use with `as"program"`) – selects which version to download. Default is latest, can also be explicitly `ver"latest"`. Works also with regular plugins and packages (`pack` ice) checkouts e.g. `ver"abranch"`, i.e. a specific version. **Does not work with snippets.** |
+  
+  ### Selection of Files (To Source, …)
+  
+  [Permalink: Selection of Files (To Source, …)](https://github.com/zdharma-continuum/zinit#selection-of-files-to-source-)
+  
+  | Modifier | Description |
+  | :-- | --- |
+  | `multisrc` | Allows to specify multiple files for sourcing, enumerated with spaces as the separators (e.g. `multisrc'misc.zsh grep.zsh'`) and also using brace-expansion syntax (e.g. `multisrc'{misc,grep}.zsh'`). Supports patterns. |
+  | `pick` | Select the file to source, or the file to set as command (when using `snippet --command` or the ice `as"program"`); it is a pattern, alphabetically first matched file is being chosen; e.g. `zinit ice pick"*.plugin.zsh"; zinit load …`. |
+  | `src` | Specify additional file to source after sourcing main file or after setting up command (via `as"program"`). It is not a pattern but a plain file name. |
+  
+  ### Conditional Loading
+  
+  [Permalink: Conditional Loading](https://github.com/zdharma-continuum/zinit#conditional-loading)
+  
+  | Modifier | Description |
+  | :-- | --- |
+  | `cloneonly` | Don't load the plugin / snippet, only download it |
+  | `has` | Load plugin or snippet only when given command is available (in $PATH), e.g. `zinit ice has'git' ...` |
+  | `if` | Load plugin or snippet only when given condition is fulfilled, for example: `zinit ice if'[[ -n "$commands[otool]" ]]'; zinit load ...`. |
+  | `load` | A condition to check which should cause plugin to load. It will load once, the condition can be still true, but will not trigger second load (unless plugin is unloaded earlier, see `unload` below). E.g.: `load'[[ $PWD = */github* ]]'`. |
+  | `subscribe` / `on-update-of` | Postpone loading of a plugin or snippet until the given file(s) get updated, e.g. `subscribe'{~/files-*,/tmp/files-*}'` |
+  | `trigger-load` | Creates a function that loads the associated plugin/snippet, with an option (to use it, precede the ice content with `!`) to automatically forward the call afterwards, to a command of the same name as the function. Can obtain multiple functions to create – separate with `;`. |
+  | `unload` | A condition to check causing plugin to unload. It will unload once, then only if loaded again. E.g.: `unload'[[ $PWD != */github* ]]'`. |
+  | `wait` | Postpone loading a plugin or snippet. For `wait'1'`, loading is done `1` second after prompt. For `wait'[[ ... ]]'`, `wait'(( ... ))'`, loading is done when given condition is meet. For `wait'!...'`, prompt is reset after load. Zsh can start 80% (i.e.: 5x) faster thanks to postponed loading. **Fact:** when `wait` is used without value, it works as `wait'0'`. |
+  
+  ### Plugin Output
+  
+  [Permalink: Plugin Output](https://github.com/zdharma-continuum/zinit#plugin-output)
+  
+  | Modifier | Description |
+  | :-- | --- |
+  | `lucid` | Skip `Loaded ...` message under prompt for `wait`, etc. loaded plugins (a subset of `silent`). |
+  | `notify` | Output given message under-prompt after successfully loading a plugin/snippet. In case of problems with the loading, output a warning message and the return code. If starts with `!` it will then always output the given message. Hint: if the message is empty, then it will just notify about problems. |
+  | `silent` | Mute plugin's or snippet's `stderr` & `stdout`. Also skip `Loaded ...` message under prompt for `wait`, etc. loaded plugins, and completion-installation messages. |
+  
+  ### Completions
+  
+  [Permalink: Completions](https://github.com/zdharma-continuum/zinit#completions)
+  
+  | Modifier | Description |
+  | :-- | --- |
+  | `blockf` | Disallow plugin to modify `fpath`. Useful when a plugin wants to provide completions in traditional way. Zinit can manage completions and plugin can be blocked from exposing them. |
+  | `completions` | Do detect, install and manage completions for this plugin. Overwrites `as'null'` or `nocompletions`. |
+  | `nocompletions` | Don't detect, install and manage completions for this plugin. Completions can be installed later with `zinit creinstall {plugin-spec}`. |
+  
+  ### Command Execution After Cloning, Updating or Loading
+  
+  [Permalink: Command Execution After Cloning, Updating or Loading](https://github.com/zdharma-continuum/zinit#command-execution-after-cloning-updating-or-loading)
+  
+  | Modifier | Description |
+  | :-- | --- |
+  | `atclone` | Run command after cloning, within plugin's directory, e.g. `zinit ice atclone"echo Cloned"`. Ran also after downloading snippet. |
+  | `atinit` | Run command after directory setup (cloning, checking it, etc.) of plugin/snippet but before loading. |
+  | `atload` | Run command after loading, within plugin's directory. Can be also used with snippets. Passed code can be preceded with `!`, it will then be investigated (if using `load`, not `light`). |
+  | `atpull` | Run command after updating ( **only if new commits are waiting for download**), within plugin's directory. If starts with "!" then command will be ran before `mv` & `cp` ices and before `git pull` or `svn update`. Otherwise it is ran after them. Can be `atpull'%atclone'`, to repeat `atclone` Ice-mod. |
+  | `configure` | Runs `./configure` script and by default changes the installation directory by passing `--prefix=$ZPFX` to the script. Runs before `make''` and after `make'!'`, you can pass `'!'` too to this ice (i.e.: `configure'!'`) to make it execute earlier – before `make'!'` and after `make'!!'`. If `#` given in the ice value then also executes script `./autogen.sh` first before running `./configure`. The script is run anyway if there is no `configure` script. Also, when there exist another build-system related files, then it is run if no `configure` script is found. Currently supported systems are: CMake, scons and meson, checked-for/run in this order |
+  | `countdown` | Causes an interruptable (by Ctrl-C) countdown 5…4…3…2…1…0 to be displayed before executing `atclone''`,`atpull''` and `make` ices |
+  | `cp` | Copy file after cloning or after update (then, only if new commits were downloaded). Example: `cp "docker-c* -> dcompose"`. Ran after `mv`. |
+  | `make` | Run `make` command after cloning/updating and executing `mv`, `cp`, `atpull`, `atclone` Ice mods. Can obtain argument, e.g. `make"install PREFIX=/opt"`. If the value starts with `!` then `make` is ran before `atclone`/`atpull`, e.g. `make'!'`. |
+  | `mv` | Move file after cloning or after update (then, only if new commits were downloaded). Example: `mv "fzf-* -> fzf"`. It uses `->` as separator for old and new file names. Works also with snippets. |
+  | `nocd` | Don't switch the current directory into the plugin's directory when evaluating the above ice-mods `atinit''`,`atload''`, etc. |
+  | `reset` | Invokes `git reset --hard HEAD` for plugins or `svn revert` for SVN snippets before pulling any new changes. This way `git` or `svn` will not report conflicts if some changes were done in e.g.: `atclone''` ice. For file snippets and `gh-r` plugins it invokes `rm -rf *`. |
+  | `run-atpull` | Always run the atpull hook (when updating), not only when there are new commits to be downloaded. |
+  
+  ### Sticky-Emulation Of Other Shells
+  
+  [Permalink: Sticky-Emulation Of Other Shells](https://github.com/zdharma-continuum/zinit#sticky-emulation-of-other-shells)
+  
+  | Modifier | Description |
+  | :-- | --- |
+  | `sh`/`!sh` | Source the plugin's (or snippet's) script with `sh` emulation so that also all functions declared within the file will get a _sticky_ emulation assigned – when invoked they'll execute also with the `sh` emulation set-up. The `!sh` version switches additional options that are rather not important from the portability perspective. |
+  | `csh`/`!csh` | The same as `sh`, but emulating `csh` shell. |
+  | `ksh`/`!ksh` | The same as `sh`, but emulating `ksh` shell. |
+  | `bash`/`!bash` | The same as `sh`, but with the `SH_GLOB` option disabled, so that Bash regular expressions work. |
+  
+  ### Others
+  
+  [Permalink: Others](https://github.com/zdharma-continuum/zinit#others)
+  
+  | Modifier | Description |
+  | :-- | --- |
+  | `as` | Can be `as"program"` (also the alias: `as"command"`), and will cause to add script/program to `$PATH` instead of sourcing (see `pick`). Can also be `as"completion"` – use with plugins or snippets in whose only underscore-starting `_*` files you are interested in. The third possible value is `as"null"` – a shorthand for `pick"/dev/null" nocompletions` – i.e.: it disables the default script-file sourcing and also the installation of completions. |
+  | `link` | Use a symlink to cache a local snippet instead of copying into the snippets directory. Uses relative links if realpath >= 8.23 is found. **_Does not apply to URL-based snippets. Does not work with plugins._** |
+  | `id-as` | Nickname a plugin or snippet, to e.g. create a short handler for long-url snippet. |
+  | `subst` | Substitute the given string into another string when sourcing the plugin script, e.g.: `zinit subst'autoload → autoload -Uz' …`. |
+  | `aliases` | Load the plugin with the aliases mechanism enabled. Use with plugins that define **and use** aliases in their scripts. |
+  | `autoload` | Autoload the given functions (from their files). Equivalent to calling `atinit'autoload the-function'`. Supports renaming of the function – pass `'… → new-name'` or `'… -> new-name'`, e.g.: `zinit autoload'fun → my-fun; fun2 → my-fun2'`. |
+  | `bindmap` | To hold `;`-separated strings like `Key(s)A -> Key(s)B`, e.g. `^R -> ^T; ^A -> ^B`. In general, `bindmap''`changes bindings (done with the `bindkey` builtin) the plugin does. The example would cause the plugin to map Ctrl-T instead of Ctrl-R, and Ctrl-B instead of Ctrl-A. **Does not work with snippets.** |
+  | `compile` | Pattern (+ possible `{...}` expansion, like `{a/*,b*}`) to select additional files to compile, e.g. `compile'*.zsh'`. |
+  | `extract` | Performs archive extraction supporting multiple formats like `zip`, `tar.gz`, etc. and also notably OS X `dmg` images. Supports optional prefix modifiers and/or an explicit filename. **Without a value** (`extract`): scans the plugin/snippet directory for files with recognized archive extensions (`zip`, `tar.gz`, `gz`, `xz`, etc.) at most one level deep (to avoid unpacking helper archives buried deeper in the tree); if no such files are found, runs the `file` Unix command on all files to detect archives that lack a standard extension (e.g. a file named `binary` that is actually a gzip stream). In both cases the archive is extracted **preserving its internal directory structure** (no flattening). **With a filename** (`extract'file.tar.gz'`): extracts that specific file instead of scanning — useful when a cloned repository contains an embedded archive. Multiple space-separated filenames are supported. **Prefix modifiers** control flattening after extraction and whether the archive is deleted afterwards: `!` flattens one directory level (e.g. `tool-1.2.3/binary` → `binary`), `!!` flattens two levels (e.g. `tool-1.2.3/bin/binary` → `binary`), `-` keeps the archive file instead of deleting it after extraction. Modifiers can be combined: `!-` or `-!` flattens one level and keeps the archive. Examples: `extract'!'`, `extract'!!'`, `extract'-'`, `extract'!-'`, `extract'!tool.tar.gz'` (extract and flatten a specific file). |
+  | `service` | Make following plugin or snippet a _service_, which will be ran in background, and only in single Zshell instance. See [the zservice-\* repositories](https://github.com/orgs/zdharma-continuum/repositories?q=zservice-). |
+  | `light-mode` | Load the plugin without the investigating, i.e.: as if it would be loaded with the `light` command. Useful for the for-syntax, where there is no `load` nor `light` subcommand |
+  | `nocompile` | Don't try to compile `pick`-pointed files. If passed the exclamation mark (i.e. `nocompile'!'`), then do compile, but after `make''` and `atclone''` (useful if Makefile installs some scripts, to point `pick''` at the location of their installation). |
+  | `trackbinds` | Shadow but only `bindkey` calls even with `zinit light ...`, i.e. even with investigating disabled (fast loading), to allow `bindmap` to remap the key-binds. The same effect has `zinit light -b ...`, i.e. additional `-b` option to the `light`-subcommand. **Does not work with snippets.** |
+  | `wrap-track` | Takes a `;`-separated list of function names that are to be investigated (meaning gathering report and unload data) **once** during execution. It works by wrapping the functions with a investigating-enabling and disabling snippet of code. In summary, `wrap-track` allows to extend the investigating beyond the moment of loading of a plugin. Example use is to `wrap-track` a precmd function of a prompt (like `_p9k_precmd()` of powerlevel10k) or other plugin that _postpones its initialization till the first prompt_ (like e.g.: zsh-autosuggestions). **Does not work with snippets.** |
+  | `reset-prompt` | Reset the prompt after loading the plugin/snippet (by issuing `zle .reset-prompt`). Note: normally it's sufficient to precede the value of `wait''` ice with `!`. |
+  
+  ### Order of Execution
+  
+  [Permalink: Order of Execution](https://github.com/zdharma-continuum/zinit#order-of-execution)
+  
+  Order of execution of related Ice-mods: `atinit` -\> `atpull!` -\> `make'!!'` -\> `mv` -\> `cp` -\> `make!` ->
+  `atclone`/`atpull` -\> `make` -\> `(plugin script loading)` -\> `src` -\> `multisrc` -\> `atload`.
+  
+  ## Zinit Commands
+  
+  [Permalink: Zinit Commands](https://github.com/zdharma-continuum/zinit#zinit-commands)
+  
+  Following commands are passed to `zinit ...` to obtain described effects.
+  
+  ### Help
+  
+  [Permalink: Help](https://github.com/zdharma-continuum/zinit#help)
+  
+  | Command | Description |
+  | :-- | --- |
+  | `help` | Usage information. |
+  | `man` | Manual. |
+  | `version` | Display Zinit version |
+  
+  ### Loading and Unloading
+  
+  [Permalink: Loading and Unloading](https://github.com/zdharma-continuum/zinit#loading-and-unloading)
+  
+  | Command | Description |
+  | :-- | --- |
+  | `load {plg-spec}` | Load plugin, can also receive absolute local path. |
+  | `snippet [-f] {url}` | Source local or remote file (by direct URL). `-f` – don't use cache (force redownload). The URL can use the following shorthands: `PZT::` (Prezto), `PZTM::` (Prezto module), `OMZ::` (Oh My Zsh), `OMZP::` (OMZ plugin), `OMZL::` (OMZ library), `OMZT::` (OMZ theme), e.g.: `PZTM::environment`, `OMZP::git`, etc. |
+  | `light [-b] {plg-spec}` | Light plugin load, without reporting/investigating. `-b` – investigate `bindkey`-calls only. There's also `light-mode` ice which can be used to induce the no-investigating (i.e.: _light_) loading, regardless of the command used. |
+  | `unload [-q] {plg-spec}` | Unload plugin loaded with `zinit load ...`. `-q` – quiet. |
+  
+  ### Completions
+  
+  [Permalink: Completions](https://github.com/zdharma-continuum/zinit#completions-1)
+  
+  | Command | Description |
+  | --- | --- |
+  | `cclear` | Clear stray and improper completions. |
+  | `cdclear [-q]` | Clear compdef replay list. `-q` – quiet. |
+  | `cdisable {cname}` | Disable completion `cname`. |
+  | `cdlist` | Show compdef replay list. |
+  | `cdreplay [-q]` | Replay compdefs (to be done after compinit). `-q` – quiet. |
+  | `cenable {cname}` | Enable completion `cname`. |
+  | `completions \[*columns*\]` | List completions in use, with `columns` completions per line. `zpl clist 5` will for example print 5 completions per line. Default is 3. |
+  | `compinit` | Refresh installed completions. |
+  | `creinstall [-q] [-Q] {plg-spec}` | Install completions for plugin, can also receive absolute local path. `-q` – quiet. `-Q` \- quiet all. |
+  | `csearch` | Search for available completions from any plugin. |
+  | `cuninstall {plg-spec}` | Uninstall completions for plugin. |
+  
+  ### Tracking of the Active Session
+  
+  [Permalink: Tracking of the Active Session](https://github.com/zdharma-continuum/zinit#tracking-of-the-active-session)
+  
+  | Command | Description |
+  | --- | --- |
+  | `dclear` | Clear report of what was going on in session. |
+  | `dstop` | Stop investigating what's going on in session. |
+  | `dreport` | Report what was going on in session. |
+  | `dunload` | Revert changes recorded between dstart and dstop. |
+  | `dtrace, dstart` | Start investigating what's going on in session. |
+  
+  ### Reports and Statistics
+  
+  [Permalink: Reports and Statistics](https://github.com/zdharma-continuum/zinit#reports-and-statistics)
+  
+  | Command | Description |
+  | --- | --- |
+  | `bindkeys` | Lists bindkeys set up by each plugin. |
+  | `list-plugins [keyword]` | Show what plugins are loaded (filter with 'keyword'). |
+  | `list-snippets` | List snippets in formatted and colorized manner. Requires `tree` program. |
+  | `recently [time-spec]` | Show plugins that changed recently, argument is e.g. 1 month 2 days. |
+  | `report {plg-spec}` | Show plugin report. `--all` – do it for all plugins. |
+  | `status {plg-spec}` | Git status for plugin or svn status for snippet. `--all` – do it for all plugins and snippets. |
+  | `zstatus` | Display brief statistics for your Zinit installation. |
+  | `times [-a] [-m] [-s]` | Print load times for each plugin. `-s` – Times are printed in seconds. `-m` – Show plugin loading moments. `-a` \- Times and loading moments are printed. |
+  
+  ### Compiling
+  
+  [Permalink: Compiling](https://github.com/zdharma-continuum/zinit#compiling)
+  
+  #### compile
+  
+  [Permalink: compile](https://github.com/zdharma-continuum/zinit#compile)
+  
+  List plugins that are compiled.
+  
+  ```
+  zinit [options] compile PLUGIN
+  ```
+  
+  | Option | Description |
+  | --- | --- |
+  | `-a, --all` | Compile all plugins |
+  | `-h, --help` | Print usage |
+  | `-q, --quiet` | Suppress the build output |
+  
+  #### compiled
+  
+  [Permalink: compiled](https://github.com/zdharma-continuum/zinit#compiled)
+  
+  List plugins that are compiled.
+  
+  ```
+  zinit compiled
+  ```
+  
+  #### uncompile
+  
+  [Permalink: uncompile](https://github.com/zdharma-continuum/zinit#uncompile)
+  
+  List plugins that are compiled.
+  
+  ```
+  zinit [options] uncompile PLUGIN
+  ```
+  
+  | Option | Description |
+  | --- | --- |
+  | `-a, --all` | Remove any compiled files for all plugins |
+  | `-h, --help` | Print usage |
+  | `-q, --quiet` | Suppress the output |
+  
+  ### Other
+  
+  [Permalink: Other](https://github.com/zdharma-continuum/zinit#other)
+  
+  | Command | Description |
+  | --- | --- |
+  | `module` | Manage binary Zsh module shipped with Zinit, see `zinit module help`. |
+  | `self-update` | Updates and compiles Zinit. |
+  | `cd {plg-spec}` | Cd into plugin's directory. Also support snippets if fed with URL. |
+  | `edit {plg-spec}` | Edit plugin's file with $EDITOR. |
+  | `changes {plg-spec}` | View plugin's git log. |
+  | `create {plg-spec}` | Create plugin (also together with GitHub repository). |
+  | `glance {plg-spec}` | Look at plugin's source (pygmentize, {,source-}highlight). |
+  | `stress {plg-spec}` | Test plugin for compatibility with set of options. |
+  | `recall {plg-spec}|URL` | Fetch saved ice modifiers and construct `zinit ice ...` command. |
+  | `srv {service-id} [cmd]` | Control a service, command can be: stop,start,restart,next,quit; `next` moves the service to another Zshell. |
+  | `ice <ice specification>` | Add ice to next command, argument is e.g. from"gitlab". |
+  | `env-whitelist [-v] [-h] {env..}` | Allows to specify names (also patterns) of variables left unchanged during an unload. `-v` – verbose. |
+  | `run``[-l]``[plugin]``{command}` | Runs the given command in the given plugin's directory. If the option `-l` will be given then the plugin should be skipped – the option will cause the previous plugin to be reused. |
+  | `delete {plg-spec}|URL|--clean|--all` | Remove plugin or snippet from disk (good to forget wrongly passed ice-mods). <br>`--all` – purge.<br>`--clean` – delete plugins and snippets that are not loaded. |
+  | `update [-q] [-r] {plg-spec}|URL|--all` | Git update plugin or snippet.<br>`--all` – update all plugins and snippets.<br>`-q` – quiet.<br>`-r` \| `--reset` – run `git reset --hard` / `svn revert` before pulling changes. |
+  | `add-fpath|fpath``[-f|--front]``{plg-spec}``[subdirectory]` | Adds given plugin (not yet snippet) directory to `$fpath`. If the second argument is given, it is appended to the directory path. If the option `-f`/`--front` is given, the directory path is prepended instead of appended to `$fpath`. The `{plg-spec}` can be absolute path, i.e.: it's possible to also add regular directories. |
+  
+  ## Updating Zinit and Plugins
+  
+  [Permalink: Updating Zinit and Plugins](https://github.com/zdharma-continuum/zinit#updating-zinit-and-plugins)
+  
+  To update Zinit issue `zinit self-update` in the command line.
+  
+  To update all plugins and snippets, issue `zinit update`. If you wish to update only a single plugin/snippet instead
+  issue `zinit update NAME_OF_PLUGIN`. A list of commits will be shown:
+  
+  [![screenshot displaying zinit update tj/git-extras and its output](https://github.com/zdharma-continuum/zinit/raw/main/doc/img/update.png)](https://github.com/zdharma-continuum/zinit/blob/main/doc/img/update.png)
+  
+  Some plugins require performing an action each time they're updated. One way you can do this is by using the `atpull`
+  ice modifier. For example, writing `zinit ice atpull'./configure'` before loading a plugin will execute `./configure`
+  after a successful update. Refer to [Ice Modifiers](https://github.com/zdharma-continuum/zinit#ice-modifiers) for more information.
+  
+  The ice modifiers for any plugin or snippet are stored in their directory in a `._zinit` subdirectory, hence the plugin
+  doesn't have to be loaded to be correctly updated. There's one other file created there, `.zinit_lstupd` – it holds the
+  log of the new commits pulled-in in the last update.
+  
+  ## Completions
+  
+  [Permalink: Completions](https://github.com/zdharma-continuum/zinit#completions-2)
+  
+  ### Calling `compinit` Without Turbo Mode
+  
+  [Permalink: Calling compinit Without Turbo Mode](https://github.com/zdharma-continuum/zinit#calling-compinit-without-turbo-mode)
+  
+  With no Turbo mode in use, compinit can be called normally, i.e.: as `autoload compinit; compinit`. This should be done
+  after loading of all plugins and before possibly calling `zinit cdreplay`.
+  
+  The `cdreplay` subcommand is provided to re-play all caught `compdef` calls. The `compdef` calls are used to define a
+  completion for a command. For example, `compdef _git git` defines that the `git` command should be completed by a `_git`
+  function.
+  
+  The `compdef` function is provided by `compinit` call. As it should be called later, after loading all of the plugins,
+  Zinit provides its own `compdef` function that catches (i.e.: records in an array) the arguments of the call, so that
+  the loaded plugins can freely call `compdef`. Then, the `cdreplay` ( _compdef-replay_) can be used, after `compinit` will
+  be called (and the original `compdef` function will become available), to execute all detected `compdef` calls. To
+  summarize:
+  
+  ```
+  ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
+  source "${ZINIT_HOME}/zinit.zsh"
+  
+  zinit load "some/plugin"
+  ...
+  compdef _gnu_generic fd  # this will be intercepted by Zinit, because as the compinit
+                           # isn't yet loaded, thus there's no such function `compdef'; yet
+                           # Zinit provides its own `compdef' function which saves the
+                           # completion-definition for later possible re-run with `zinit
+                           # cdreplay' or `zicdreplay' (the second one can be used in hooks
+                           # like atload'', atinit'', etc.)
+  ...
+  zinit load "other/plugin"
+  
+  autoload -Uz compinit
+  compinit
+  
+  # -q is for quiet; actually run all the `compdef's saved before `compinit` call
+  # (`compinit' declares the `compdef' function, so it cannot be used until
+  # `compinit' is ran; Zinit solves this via intercepting the `compdef'-calls and
+  # storing them for later use with `zinit cdreplay')
+  
+  zinit cdreplay -q
+  ```
+  
+  This allows to call compinit once. Performance gains are huge, example shell startup time with double `compinit`:
+  **0.980** sec, with `cdreplay` and single `compinit`: **0.156** sec.
+  
+  ### Calling `compinit` With Turbo Mode
+  
+  [Permalink: Calling compinit With Turbo Mode](https://github.com/zdharma-continuum/zinit#calling-compinit-with-turbo-mode)
+  
+  If you load completions using `wait''` Turbo mode then you can add `atinit'zicompinit'` to syntax-highlighting plugin
+  (which should be the last one loaded, as their (2 projects,
+  [z-sy-h](https://github.com/zsh-users/zsh-syntax-highlighting) &
+  [f-sy-h](https://github.com/zdharma-continuum/fast-syntax-highlighting)) documentation state), or `atload'zicompinit'`
+  to last completion-related plugin. `zicompinit` is a function that just runs `autoload compinit; compinit`, created for
+  convenience. There's also `zicdreplay` which will replay any caught compdefs so you can also do:
+  `atinit'zicompinit; zicdreplay'`, etc. Basically, the whole topic is the same as normal `compinit` call, but it is done
+  in `atinit` or `atload` hook of the last related plugin with use of the helper functions (`zicompinit`,`zicdreplay` &
+  `zicdclear` – see below for explanation of the last one). To summarize:
+  
+  ```
+  ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share/zinit}"
+  source "${ZINIT_HOME}/zinit.zsh"
+  
+  # Load using the for-syntax
+  zinit lucid wait for \
+    "some/plugin"
+  
+  zinit lucid wait for \
+    "other/plugin"
+  
+  zi for \
+      atload"zicompinit; zicdreplay" \
+      blockf \
+      lucid \
+      wait \
+    zsh-users/zsh-completions
+  ```
+  
+  ### Ignoring Compdefs
+  
+  [Permalink: Ignoring Compdefs](https://github.com/zdharma-continuum/zinit#ignoring-compdefs)
+  
+  If you want to ignore compdefs provided by some plugins or snippets, place their load commands before commands loading
+  other plugins or snippets, and issue `zinit cdclear` (or `zicdclear`, designed to be used in hooks like `atload''`):
+  
+  ```
+  ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
+  source "${ZINIT_HOME}/zinit.zsh"
+  
+  zi snippet OMZP::git
+  zi cdclear -q # <- forget completions provided by Git plugin
+  
+  zi load "some/plugin"
+  ...
+  zi load "other/plugin"
+  
+  autoload -Uz compinit
+  compinit
+  zi cdreplay -q # <- execute compdefs provided by rest of plugins
+  zi cdlist # look at gathered compdefs
+  ```
+  
+  The `cdreplay` is important if you use plugins like `OMZP::kubectl` or `asdf-vm/asdf`, because these plugins call
+  `compdef`.
+  
+  ### Disabling System-Wide `compinit` Call
+  
+  [Permalink: Disabling System-Wide compinit Call](https://github.com/zdharma-continuum/zinit#disabling-system-wide-compinit-call)
+  
+  On some systems, users might be surprised to see that completions work even though they didn’t call `compinit` in their
+  `~/.zshrc`. This happens because `compinit` is being called from `/etc/zshrc`. To disable this behavior -- which is
+  recommended to avoid slow startup, especially if you load plugins that bring their own completions (which is almost
+  always the case) -- follow the instructions for your system below:
+  
+  #### Ubuntu
+  
+  [Permalink: Ubuntu](https://github.com/zdharma-continuum/zinit#ubuntu)
+  
+  On Ubuntu, the global `compinit` call can be disabled on a per-user basis by adding the following lines to a users
+  `~/.zshenv`:
+  
+  ```
+  # Skip the not really helping Ubuntu global compinit
+  skip_global_compinit=1
+  ```
+  
+  #### NixOS
+  
+  [Permalink: NixOS](https://github.com/zdharma-continuum/zinit#nixos)
+  
+  On NixOS, the global `compinit` call can be disabled system-wide by setting the following option in your
+  `/etc/nixos/configuration.nix`:
+  
+  ```
+  # Disable global completion init to speed up `compinit` call in `~/.zshrc`.
+  programs.zsh.enableGlobalCompInit = false;
+  ```
+  
+  Don't forget to add the `compinit` call to every user's `~/.zshrc`! Otherwise completions for system packages might not
+  work.
+  
+  ## Zinit Module
+  
+  [Permalink: Zinit Module](https://github.com/zdharma-continuum/zinit#zinit-module)
+  
+  The module is now hosted [in its own repository](https://github.com/zdharma-continuum/zinit-module)
+  
+  ## Hints and Tips
+  
+  [Permalink: Hints and Tips](https://github.com/zdharma-continuum/zinit#hints-and-tips)
+  
+  ### Using ZPFX variable
+  
+  [Permalink: Using ZPFX variable](https://github.com/zdharma-continuum/zinit#using-zpfx-variable)
+  
+  Zinit uses a special, short named variable `$ZPFX` to denote a standard "prefix" for installing compiled software. Such,
+  commonly used, prefixes are usually, e.g.: `/usr/`,`/usr/local` or `$HOME/.local`. Basically, when one would want to
+  explain what a prefix-dir is in one sentence, it would be something like: a root directory, under which
+  `…/bin`,`…/share`, `…/lib` sub-dirs are populated with installed binaries, data-files, libraries, etc.
+  
+  How to use the variable? It is automatically exploited when using `configure''` and `make''` ices, and user doesn't have
+  to take any actions. This means that the `configure` command that'll be run will be:
+  
+  ```
+  ./configure --prefix=$ZPFX
+  ```
+  
+  The default location used for `$ZPFX` is: `~/.local/share/zinit/polaris`. You can, for example, set it to `$HOME/.local`
+  to have the software installed with `configure''` and `make''` ices installed to that directory.
+  
+  Typical use cases when working with `$ZPFX` are, e.g.:
+  
+  ```
+  ls $ZPFX
+  cd $ZPFX
+  cd $ZPFX/bin  # note: $ZPFX/bin is automatically prepended to $PATH
+  cd $ZPFX/share
+  ```
+  
+  Before the `configure''` ice appeared one would use `$ZPFX` as follows:
+  
+  ```
+  zinit atclone'./configure --prefix=$ZPFX` atpull'%atclone' make \
+          for universal-ctags/ctags
+  ```
+  
+  but now it's sufficient to do:
+  
+  ```
+  # Will work for any build system
+  # (supported are: configure, cmake, scons and meson)
+  zinit configure make for universal-ctags/ctags
+  ```
+  
+  To set ZPFX, one should do (in `.zshrc` before loading `zinit`):
+  
+  ```
+  export ZPFX=$HOME/my-software # or: ZPFX=$HOME/.local, etc.
+  ```
+  
+  We encourage people to install compiled software with use of `$ZPFX` and `configure''` and `make''` ices, to have a
+  nice, clean user-home dir based setup.
+  
+  ### Customizing Paths
+  
+  [Permalink: Customizing Paths](https://github.com/zdharma-continuum/zinit#customizing-paths)
+  
+  Following variables can be set to custom values, before sourcing Zinit. The previous global variables like `$ZPLG_HOME`
+  have been removed to not pollute the namespace – there's single `$ZINIT` hash instead of `8` string variables. Please
+  update your dotfiles.
+  
+  ```
+  declare -A ZINIT  # initial Zinit's hash definition, if configuring before loading Zinit, and then:
+  ```
+  
+  | Hash Field | Description |
+  | --- | --- |
+  | ZINIT\[BIN\_DIR\] | Where Zinit code resides, e.g.: "~/.local/share/zinit/zinit.git" |
+  | ZINIT\[HOME\_DIR\] | Where Zinit should create all working directories, e.g.: "~/.local/share/zinit" |
+  | ZINIT\[MAN\_DIR\] | Directory where plugins can store their manpages (`atclone"cp -vf myplugin.1 $ZINIT[MAN_DIR]/man1"`). If overridden, this directory will not necessarily be used by `man` (See #8). Default: `$ZPFX/man` |
+  | ZINIT\[PLUGINS\_DIR\] | Override single working directory – for plugins, e.g. "/opt/zsh/zinit/plugins" |
+  | ZINIT\[COMPLETIONS\_DIR\] | As above, but for completion files, e.g. "/opt/zsh/zinit/root\_completions" |
+  | ZINIT\[SNIPPETS\_DIR\] | As above, but for snippets |
+  | ZINIT\[LIST\_COMMAND\] | Command to use for displaying a directory tree (e.g., `ls --tree`, `tree`, etc.) |
+  | ZINIT\[ZCOMPDUMP\_PATH\] | Path to `.zcompdump` file, with the file included (i.e. its name can be different) |
+  | ZINIT\[COMPINIT\_OPTS\] | Options for `compinit` call (i.e. done by `zicompinit`), use to pass -C to speed up loading |
+  | ZINIT\[MUTE\_WARNINGS\] | If set to `1`, then mutes some of the Zinit warnings, specifically the `plugin already registered` warning |
+  | ZINIT\[OPTIMIZE\_OUT\_DISK\_ACCESSES\] | If set to `1`, then Zinit will skip checking if a Turbo-loaded object exists on the disk. By default Zinit skips Turbo for non-existing objects (plugins or snippets) to install them before the first prompt – without any delays, during the normal processing of `zshrc`. This option can give a performance gain of about 10 ms out of 150 ms (i.e.: Zsh will start up in 140 ms instead of 150 ms). |
+  | ZINIT\[NO\_ALIASES\] | If set to `1`, then Zinit will not set aliases such as `zi` or `zini` |
+  
+  There is also `$ZPFX`, set by default to `~/.local/share/zinit/polaris` – a directory where software with `Makefile`,
+  etc. can be pointed to, by e.g. `atclone'./configure --prefix=$ZPFX'`.
+  
+  ### Non-GitHub (Local) Plugins
+  
+  [Permalink: Non-GitHub (Local) Plugins](https://github.com/zdharma-continuum/zinit#non-github-local-plugins)
+  
+  Use `create` subcommand with user name `_local` (the default) to create plugin's skeleton in `$ZINIT[PLUGINS_DIR]`. It
+  will be not connected with GitHub repository (because of user name being `_local`). To enter the plugin's directory use
+  `cd` command with just plugin's name (without `_local`, it's optional).
+  
+  If user name will not be `_local`, then Zinit will create repository also on GitHub and setup correct repository origin.
+  
+  ### Extending Git
+  
+  [Permalink: Extending Git](https://github.com/zdharma-continuum/zinit#extending-git)
+  
+  There are several projects that provide git extensions. Installing them with Zinit has many benefits:
+  
+  - all files are under `$HOME` – no administrator rights needed,
+  - declarative setup (like Chef or Puppet) – copying `.zshrc` to different account brings also git-related setup,
+  - easy update by e.g. `zinit update --all`.
+  
+  Below is a configuration that adds multiple git extensions, loaded in Turbo mode, 1 second after prompt, with use of the
+  [Bin-Gem-Node](https://github.com/zdharma-continuum/zinit-annex-bin-gem-node) annex:
+  
+  ```
+  zi as'null' lucid sbin wait'1' for \
+    Fakerr/git-recall \
+    davidosomething/git-my \
+    iwata/git-now \
+    paulirish/git-open \
+    paulirish/git-recent \
+      atload'export _MENU_THEME=legacy' \
+    arzzen/git-quick-stats \
+      make'install' \
+    tj/git-extras \
+      make'GITURL_NO_CGITURL=1' \
+      sbin'git-url;git-guclone' \
+    zdharma-continuum/git-url
+  ```
+  
+  Target directory for installed files is `$ZPFX` (`~/.local/share/zinit/polaris` by default).
+  
+  ## Changelog
+  
+  [Permalink: Changelog](https://github.com/zdharma-continuum/zinit#changelog)
+  
+  Link to the [CHANGELOG](https://github.com/zdharma-continuum/zinit/blob/main/doc/CHANGELOG.md).
+  
+  ## Support
+  
+  [Permalink: Support](https://github.com/zdharma-continuum/zinit#support)
+  
+  Zinit is a personal, free-time project with no funding and a huge
+  [feature request backlog](https://github.com/zdharma-continuum/zinit/issues). If you love it, consider supporting its
+  development via GitHub Sponsors \[pending\]. Any help counts!
+  
+  ## Getting Help and Community
+  
+  [Permalink: Getting Help and Community](https://github.com/zdharma-continuum/zinit#getting-help-and-community)
+  
+  Do you need help or wish to get in touch with other Zinit users?
+  
+  - [Open a discussion](https://github.com/zdharma-continuum/zinit/discussions).
+  
+  - Or via reach out via Matrix
+  [![Join the chat at https://matrix.to/#/#zdharma-continuum_community:gitter.im](https://camo.githubusercontent.com/6d54078d333bdfa751241d7eba44600c23579d3bc6a8127f0dcb4d9fb9f3193e/68747470733a2f2f6261646765732e6769747465722e696d2f7a646861726d612d636f6e74696e75756d2f7a696e69742e737667)](https://matrix.to/#/#zdharma-continuum_community:gitter.im)
+  
+  
+  ## About
+  
+  🌻 Flexible and fast ZSH plugin manager
+  
+  
+  ### Topics
+  
+  [zsh](https://github.com/topics/zsh "Topic: zsh") [package-manager](https://github.com/topics/package-manager "Topic: package-manager") [plugin-manager](https://github.com/topics/plugin-manager "Topic: plugin-manager") [zsh-plugin](https://github.com/topics/zsh-plugin "Topic: zsh-plugin") [zsh-configuration](https://github.com/topics/zsh-configuration "Topic: zsh-configuration") [zinit](https://github.com/topics/zinit "Topic: zinit") [zinit-annex](https://github.com/topics/zinit-annex "Topic: zinit-annex")
+  
+  ### Resources
+  
+  [Readme](https://github.com/zdharma-continuum/zinit#readme-ov-file)
+  
+  ### License
+  
+  [MIT license](https://github.com/zdharma-continuum/zinit#MIT-1-ov-file)
+  
+  ### Code of conduct
+  
+  [Code of conduct](https://github.com/zdharma-continuum/zinit#coc-ov-file)
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/zdharma-continuum/zinit).
+  
+  [Activity](https://github.com/zdharma-continuum/zinit/activity)
+  
+  [Custom properties](https://github.com/zdharma-continuum/zinit/custom-properties)
+  
+  ### Stars
+  
+  [**4.6k**\\
+  stars](https://github.com/zdharma-continuum/zinit/stargazers)
+  
+  ### Watchers
+  
+  [**17**\\
+  watching](https://github.com/zdharma-continuum/zinit/watchers)
+  
+  ### Forks
+  
+  [**148**\\
+  forks](https://github.com/zdharma-continuum/zinit/forks)
+  
+  [Report repository](https://github.com/contact/report-content?content_url=https%3A%2F%2Fgithub.com%2Fzdharma-continuum%2Fzinit&report=zdharma-continuum+%28user%29)
+  
+  ## [Releases\  9](https://github.com/zdharma-continuum/zinit/releases)
+  
+  [v3.14.0\\
+  Latest\\
+  \\
+  on Apr 10, 2025Apr 10, 2025](https://github.com/zdharma-continuum/zinit/releases/tag/v3.14.0)
+  
+  [\+ 8 releases](https://github.com/zdharma-continuum/zinit/releases)
+  
+  ## [Packages\  1](https://github.com/orgs/zdharma-continuum/packages?repo_name=zinit)
+  
+  - [zinit](https://github.com/orgs/zdharma-continuum/packages/container/package/zinit)
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/zdharma-continuum/zinit).
+  
+  ## [Contributors\  71](https://github.com/zdharma-continuum/zinit/graphs/contributors)
+  
+  - [![@psprint](https://avatars.githubusercontent.com/u/6049288?s=64&v=4)](https://github.com/psprint)
+  - [![@pschmitt](https://avatars.githubusercontent.com/u/37886?s=64&v=4)](https://github.com/pschmitt)
+  - [![@vladdoster](https://avatars.githubusercontent.com/u/10052309?s=64&v=4)](https://github.com/vladdoster)
+  - [![@alichtman](https://avatars.githubusercontent.com/u/20600565?s=64&v=4)](https://github.com/alichtman)
+  - [![@dependabot[bot]](https://avatars.githubusercontent.com/in/29110?s=64&v=4)](https://github.com/apps/dependabot)
+  - [![@alberti42](https://avatars.githubusercontent.com/u/61808?s=64&v=4)](https://github.com/alberti42)
+  - [![@NICHOLAS85](https://avatars.githubusercontent.com/u/15698885?s=64&v=4)](https://github.com/NICHOLAS85)
+  - [![@actions-user](https://avatars.githubusercontent.com/u/65916846?s=64&v=4)](https://github.com/actions-user)
+  - [![@black7375](https://avatars.githubusercontent.com/u/25581533?s=64&v=4)](https://github.com/black7375)
+  - [![@agkozak](https://avatars.githubusercontent.com/u/7599319?s=64&v=4)](https://github.com/agkozak)
+  - [![@docwhat](https://avatars.githubusercontent.com/u/40799?s=64&v=4)](https://github.com/docwhat)
+  - [![@nbrown](https://avatars.githubusercontent.com/u/59011?s=64&v=4)](https://github.com/nbrown)
+  - [![@davidosomething](https://avatars.githubusercontent.com/u/609213?s=64&v=4)](https://github.com/davidosomething)
+  - [![@jankatins](https://avatars.githubusercontent.com/u/890156?s=64&v=4)](https://github.com/jankatins)
+  
+  [\+ 57 contributors](https://github.com/zdharma-continuum/zinit/graphs/contributors)
+  
+  ## Languages
+  
+  - [Shell99.5%](https://github.com/zdharma-continuum/zinit/search?l=shell)
+  - Other0.5%
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+fastest plugin manager : r/zsh - Reddit
+  URL: https://www.reddit.com/r/zsh/comments/1etl9mz/fastest_plugin_manager/
+  Even though I use zinit myself, just a simple zprof is a great start to fixing slow startup.
+
+This ZSH Plugin Manager Is Really SUS - YouTube
+  URL: https://www.youtube.com/watch?v=pHVbjLTFmVo
+  ... zsh/comments/qinb6j/httpsgithubcomzdharma_has_suddenly_disappeared_i/ Zinit Continuum: https://github.com/zdharma-continuum/zinit Z-shell ...
+
+  --- Content ---
+  ![Thumbnail (1920x1080)](https://i.ytimg.com/vi_webp/pHVbjLTFmVo/maxresdefault.webp)
+  # [This ZSH Plugin Manager Is Really SUS](https://www.youtube.com/watch?v=pHVbjLTFmVo)
+  
+  **Visibility**: Public
+  **Uploaded by**: [Brodie Robertson](http://www.youtube.com/@BrodieRobertson)
+  **Uploaded at**: 2024-04-16T14:00:22-07:00
+  **Published at**: 2024-04-16T14:00:22-07:00
+  **Length**: 19:35
+  **Views**: 34811
+  **Likes**: 1642
+  **Category**: Science & Technology
+  
+  ## Description
+  
+  ```
+  I don't know if there is actually anything malicious about this project but after digging into the zsh plugin manager zi it does look a little bit sus and maube it's best to avoid it.
+  
+  ==========Support The Channel==========
+  ► Patreon: https://brodierobertson.xyz/patreon
+  ► Paypal: https://brodierobertson.xyz/paypal
+  ► Liberapay: https://brodierobertson.xyz/liberapay
+  ► Amazon USA: https://brodierobertson.xyz/amazonusa
+  
+  ==========Resources==========
+  Dylan Nugent Thread: https://recurse.social/@dylnuge/112224580867240812
+  Zdharma Vanishes: https://www.reddit.com/r/zsh/comments/qinb6j/httpsgithubcomzdharma_has_suddenly_disappeared_i/
+  Zinit Continuum: https://github.com/zdharma-continuum/zinit
+  Z-shell Website: https://wiki.zshell.dev/
+  
+  =========Video Platforms==========
+  🎥 Odysee: https://brodierobertson.xyz/odysee
+  🎥 Podcast: https://techovertea.xyz/youtube
+  🎮 Gaming: https://brodierobertson.xyz/gaming
+  
+  ==========Social Media==========
+  🎤 Discord: https://brodierobertson.xyz/discord
+  🐦 Twitter: https://brodierobertson.xyz/twitter
+  🌐 Mastodon: https://brodierobertson.xyz/mastodon
+  🖥️ GitHub: https://brodierobertson.xyz/github
+  
+  ==========Credits==========
+  🎨 Channel Art:
+  Profile Picture:
+  https://www.instagram.com/supercozman_draws/
+  
+  #ZSH #Linux #OpenSource #FOSS #Bash
+  
+  🎵 Ending music
+  Track: Debris & Jonth - Game Time [NCS Release]
+  Music provided by NoCopyrightSounds.
+  Watch:  https://www.youtube.com/watch?v=yDTvvOTie0w 
+  Free Download / Stream: http://ncs.io/GameTime
+  
+  DISCLOSURE: Wherever possible I use referral links, which means if you click one of the links in this video or description and make a purchase I may receive a small commission or other compensation.
+  ```
+  
+  ## Endscreen
+      
+  - [Valve Changes Everything For Low VRAM GPUs On Linux](https://www.youtube.com/watch?v=3ojCgjkGzX0)
+  --- End Content ---
+
+Tuning My Terminal: How Zinit Made My Zsh Setup Fast, Flexible ...
+  URL: https://medium.com/@Smyekh/tuning-my-terminal-how-zinit-made-my-zsh-setup-fast-flexible-and-actually-fun-5f6450589003
+  Zinit isn't just another plugin manager — it's clever about when and how plugins are loaded. It can defer loading to reduce shell startup time.
+
+  --- Content ---
+  [Sitemap](https://medium.com/sitemap/sitemap.xml)
+  
+  [Open in app](https://play.google.com/store/apps/details?id=com.medium.reader&referrer=utm_source%3DmobileNavBar&source=post_page---top_nav_layout_nav-----------------------------------------)
+  
+  Sign up
+  
+  [Sign in](https://medium.com/m/signin?operation=login&redirect=https%3A%2F%2Fmedium.com%2F%40Smyekh%2Ftuning-my-terminal-how-zinit-made-my-zsh-setup-fast-flexible-and-actually-fun-5f6450589003&source=post_page---top_nav_layout_nav-----------------------global_nav------------------)
+  
+  [Medium Logo](https://medium.com/?source=post_page---top_nav_layout_nav-----------------------------------------)
+  
+  Get app
+  
+  [Write](https://medium.com/m/signin?operation=register&redirect=https%3A%2F%2Fmedium.com%2Fnew-story&source=---top_nav_layout_nav-----------------------new_post_topnav------------------)
+  
+  [Search](https://medium.com/search?source=post_page---top_nav_layout_nav-----------------------------------------)
+  
+  Sign up
+  
+  [Sign in](https://medium.com/m/signin?operation=login&redirect=https%3A%2F%2Fmedium.com%2F%40Smyekh%2Ftuning-my-terminal-how-zinit-made-my-zsh-setup-fast-flexible-and-actually-fun-5f6450589003&source=post_page---top_nav_layout_nav-----------------------global_nav------------------)
+  
+  ![](https://miro.medium.com/v2/resize:fill:32:32/1*dmbNkD5D-u45r44go_cf0g.png)
+  
+  # Tuning My Terminal: How Zinit Made My Zsh Setup Fast, Flexible, and Actually Fun
+  
+  ## A modern Zsh setup with Zinit, Rust tools, and Starship — built for speed, clarity, and a terminal that feels _yours_.
+  
+  [![Smyekh](https://miro.medium.com/v2/resize:fill:32:32/1*ZxiMDvzHRgoqyffqOc75_Q.png)](https://medium.com/@Smyekh?source=post_page---byline--5f6450589003---------------------------------------)
+  
+  [Smyekh](https://medium.com/@Smyekh?source=post_page---byline--5f6450589003---------------------------------------)
+  
+  Follow
+  
+  8 min read
+  
+  ·
+  
+  Jun 17, 2025
+  
+  16
+  
+  [Listen](https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2Fplans%3Fdimension%3Dpost_audio_button%26postId%3D5f6450589003&operation=register&redirect=https%3A%2F%2Fmedium.com%2F%40Smyekh%2Ftuning-my-terminal-how-zinit-made-my-zsh-setup-fast-flexible-and-actually-fun-5f6450589003&source=---header_actions--5f6450589003---------------------post_audio_button------------------)
+  
+  Share
+  
+  Press enter or click to view image in full size
+  
+  ![](https://miro.medium.com/v2/resize:fit:700/1*GSh49Ct8vzAlbzBrA2lceg.jpeg)
+  
+  Photo by [Mika Baumeister](https://unsplash.com/@kommumikation?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash) on [Unsplash](https://unsplash.com/photos/red-and-white-stop-sign-WOn90Iui_08?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash)
+  
+  Like most developers, I spend a large portion of my day in the terminal. It’s where I manage servers, commit code, write scripts, and tinker with tools. And for the longest time, I lived with a terminal experience that was just okay. It worked. But it wasn’t _me_. It wasn’t fast, wasn’t intuitive, and certainly wasn’t enjoyable.
+  
+  That all changed when I stumbled on **Zinit**— a powerful Zsh plugin manager that unlocked a whole new level of control, customisation, and fun. This article breaks down my journey of rebuilding my **.zshrc** file — integrating features like autosuggestions, syntax highlighting, fzf-powered fuzzy search, and lightning-fast directory jumping. It’s no secret that I’ve been Rust-curious for a while, and recently, I added another Rust-powered gem to my growing toolkit: **zoxide**.
+  
+  If you’re looking to clean up your terminal, speed things up, and maybe fall back in love with your shell, read on.
+  
+  ## TL;DR: Crafting a Terminal That Works With You
+  
+  ### **1\. Zinit is your shell’s package manager**
+  
+  **For devs:** Think pip, brew, or npm—but for terminal plugins. Fast, lazy-loading, clean.
+  
+  **For non-techies:** It’s like a drawer organiser. Your tools are right where you need them.
+  
+  ### **2\. Autosuggestions and highlighting make your shell feel smart**
+  
+  **For devs:** You get in-line hints and syntax clarity as you type.
+  
+  **For non-techies:** It’s predictive text and spellcheck for your command line.
+  
+  ### **3\. Zoxide and FZF redefine navigation**
+  
+  **For devs:** cd becomes a fuzzy memory jump. Ctrl+R lets you time-travel through your command history.
+  
+  **For non-techies:** It’s Google Maps + Spotlight for your terminal.
+  
+  ### **4\. Rust tools are fast and focused**
+  
+  **For devs:** uv, just, ruff, and maturin make Python development more efficient.
+  
+  **For non-techies:** Imagine switching from a clunky old car to a whisper-silent electric one.
+  
+  ### **5\. Order is everything**
+  
+  **For devs:** Completions must load before you use them. Highlighting comes last.
+  
+  **For non-techies** _:_ Like getting dressed — socks before shoes, every time.
+  
+  ## What Is .zshrc? Your Terminal’s Control Tower
+  
+  If you’re on a Mac and using the Zsh shell (which is the default as of macOS Catalina), the .zshrc file is your shell's startup configuration. It lives in your home directory (~/.zshrc) and runs every time you open a new terminal window or tab. Think of it like your shell’s mission control—it sets environment variables, initialises plugins, defines functions and aliases, and controls how your terminal behaves and looks.
+  
+  Misplacing commands or loading things out of order in this file can cause subtle (and sometimes frustrating) bugs. That’s why tools like Zinit make such a difference.
+  
+  ### Editing Your .zshrc: The Easy Way
+  
+  If all this talk about .zshrc sounds interesting but you’re wondering how to even open or edit the file, don’t worry — you’re not alone. The .zshrc file lives in your home directory (~/.zshrc), but it’s just a text file, and there are a few simple ways to open it depending on your comfort level.
+  
+  ### Quick Edits from the Terminal
+  
+  For fast edits right in your terminal, use **nano**:
+  
+  ```
+  nano ~/.zshrc
+  ```
+  
+  **nano** is a beginner-friendly text editor that runs inside your terminal. Use your arrow keys to move around, make changes, and then press Ctrl + O to save and Ctrl + X to exit.
+  
+  If you prefer something a little more advanced but still terminal-based, try:
+  
+  ```
+  vim ~/.zshrc
+  ```
+  
+  or:
+  
+  ```
+  nvim ~/.zshrc
+  ```
+  
+  Just be warned — Vim and Neovim have a bit of a learning curve, but once you get used to them, they’re super powerful.
+  
+  ### Editing in VS Code (My Favourite Way)
+  
+  If you’re like me and spend a lot of time in Visual Studio Code, editing your .zshrc there is super clean:
+  
+  ```
+  code ~/.zshrc
+  ```
+  
+  This opens the file in a familiar, full-featured editor with syntax highlighting, search, and multi-cursor support.
+  
+  💡 **Tip**: If code doesn’t work in your terminal, open VS Code, hit Cmd+Shift+P, type “Shell Command: Install ‘code’ command in PATH”, and press Enter.
+  
+  ### Don’t Forget to Reload:
+  
+  After editing your .zshrc, changes won’t take effect until you reload the file:
+  
+  ```
+  source ~/.zshrc
+  ```
+  
+  It’s like refreshing your browser — but for your terminal.
+  
+  ## Why Zinit Is My Favorite Zsh Plugin Manager
+  
+  Zinit isn’t just another plugin manager — it’s clever about when and how plugins are loaded. It can defer loading to reduce shell startup time. It fetches plugins directly from GitHub. It keeps your .zshrc readable. And it plays nicely with advanced configurations like completions, PATH, themes, and aliases. Once I switched, I started tweaking with confidence — instead of fearing I’d break something.
+  
+  ### Setting Up Zinit
+  
+  Start by installing it:
+  
+  ```
+  mkdir ~/.zinit
+  git clone https://github.com/zdharma-continuum/zinit ~/.zinit/bin
+  ```
+  
+  Then source it in your .zshrc:
+  
+  ```
+  source "${HOME}/.zinit/bin/zinit.zsh"
+  ```
+  
+  And that’s it. Zinit is ready to be used.
+  
+  ### Keeping Things Fresh: Updating Plugins with Zinit
+  
+  One of my favourite things about Zinit? Updating your plugins is effortless.
+  
+  Just run these two commands:
+  
+  ```
+  zinit self-update
+  zinit update --all
+  ```
+  
+  That’s it.
+  
+  The first command updates Zinit itself, while the second refreshes every plugin in your config. No need to hunt down GitHub links or reinstall anything manually. It’s like **brew upgrade**, but for your shell experience.
+  
+  💡 **Pro Tip**: Add those two lines to a function or alias so you can run zsh-update and keep everything up-to-date with a single command. _(You’ll see how you may set this up later in the article.)_
+  
+  ## Smarter Shell Commands with Autosuggestions & Syntax Highlighting
+  
+  These two are non-negotiables for me. Autosuggestions offer ghost-like command predictions based on history, while syntax highlighting shows you in real time whether your command is valid.
+  
+  ## Get Smyekh’s stories in your inbox
+  
+  Join Medium for free to get updates from this writer.
+  
+  Subscribe
+  
+  Subscribe
+  
+  Remember me for faster sign in
+  
+  Add them with Zinit:
+  
+  ```
+  zinit light zsh-users/zsh-autosuggestions
+  zinit light zsh-users/zsh-syntax-highlighting
+  ```
+  
+  I styled my highlighting to match my favourite Tokyo Night theme from VSCode. It took some tweaking, but my terminal now feels like a well-lit workshop.
+  
+  ## Better Navigation: zoxide and fzf
+  
+  ### fzf: The Fuzzy Finder
+  
+  With fzf, pressing Ctrl+R gives you fuzzy search through your history. Alt+C lets you jump through folders. It replaces muscle memory with intelligent guessing.
+  
+  Install it via Zinit:
+  
+  ```
+  zinit ice wait lucid atinit"source shell/key-bindings.zsh; source shell/completion.zsh"
+  zinit light junegunn/fzf
+  ```
+  
+  Then ditch the old “\[ -f ~/.fzf.zsh \] && source ~/.fzf.zsh” line—Zinit handles it.
+  
+  **💡 Keybindings on macOS:**
+  
+  - Ctrl+R → Fuzzy history search
+  - Alt+C → Jump to directories (or Esc then c if Alt doesn’t work)
+  - Option+C → Works great with Zoxide
+  
+  If you’re using iTerm2: go to Preferences → Profiles → Keyboard and set Left Option Key to act as Esc + to make Alt+C work properly.
+  
+  ### zoxide: Smart cd, Rust Style
+  
+  Here’s where my Rust curiosity paid off. **zoxide** is a smarter cd command that learns your habits. You just type _z my-folder_, and it jumps to the right place based on frequency and recency.
+  
+  ```
+  brew install zoxide
+  ```
+  
+  Then add:
+  
+  ```
+  eval "$(zoxide init zsh)"
+  ```
+  
+  ## Rust Tools That Level Up My CLI
+  
+  Some of my favourite Rust-powered tools:
+  
+  - **uv** — Fast Python package manager
+  - **just**— A simpler alternative to Makefiles
+  - **ruff**— Blazing-fast Python linter
+  - **maturin** — Build Python/Rust hybrid projects
+  - **zoxide**— Smarter, faster cd
+  
+  And then there’s Starship, my terminal prompt of choice. It’s written in Rust, config-driven, and beautifully fast. With the right theme, it makes your shell look sleek and informative at a glance. Combined with Zinit and syntax highlighting, it gives my terminal a clean, responsive look with contextual info (like Git branch, Python version, or time).
+  
+  Using Zoxide feels like a natural extension of that ecosystem — fast, reliable, thoughtful tools built for developers who want performance and clarity.
+  
+  ## Typical Dev Workflow (And What Goes Wrong)
+  
+  Here’s how a typical shell session flows when things are done right:
+  
+  - The environment loads.
+  - Completions get initialised (compinit).
+  - Your PATHs are set.
+  - Plugins like **uv** or **zoxide** are activated.
+  - The shell prompt appears, powered by Starship.
+  - You get syntax highlighting _after_ everything else is in place.
+  
+  But when things are out of order?
+  
+  - Syntax highlighting fails silently.
+  - Completions don’t work.
+  - Your prompt theme might show garbled text.
+  
+  For example, loading zsh-syntax-highlighting _before_ compinit breaks completions. Zinit respects plugin order, but your config still matters. Think of it like building a sandwich—you can’t put the bread last.
+  
+  ## Final Thoughts: The Terminal Isn’t Just a Tool — It’s an Extension of You
+  
+  I never thought I’d enjoy configuring my terminal, but with Zinit, it became a creative activity. It wasn’t about chasing minimal startup times or shaving milliseconds. It was about making a tool I live in every day feel fast, reliable, and mine. And that’s something every dev deserves.
+  
+  If you’re curious, try setting up your shell with Zinit this weekend. You might just fall in love with your command line all over again.
+  
+  Customising my terminal used to feel like a necessary evil. Now, it feels like craftsmanship. Zinit turned my shell from a clunky wrench into a scalpel.
+  
+  Try it. Not to impress anyone — but to impress _yourself_.
+  
+  ## My Personal .zshrc Setup
+  
+  This is the blueprint of how I’ve set up my shell to run every day:
+  
+  Press enter or click to view image in full size
+  
+  ![](https://miro.medium.com/v2/resize:fit:700/1*JiTHiK89CUdF6IP0emwjfg.png)
+  
+  Snippet of my .zshrc file.
+  
+  **Summary:** This .zshrc file initialises Zinit, sets up useful Rust-powered CLI tools, configures the path, establishes plugin loading, enables stylish completions, and adds colour-coded syntax for clarity. It’s tailored for speed, legibility, and ease of extension—perfect for daily development workflows.
+  
+  > _Remember that pro tip? Here’s a handy function you can drop into your .zshrc to update Zinit and all your plugins in one go._
+  
+  ```
+  # === Update Zinit & Plugins Function ===
+  zsh-update() {
+    echo "🔄 Updating Zinit and plugins..."
+    zinit self-update && zinit update --all
+    echo "✅ All Zinit plugins updated!"
+  }
+  
+  # === Optional: Add system-wide updates too ===
+  dev-update() {
+    echo "🛠️ Updating system tools..."
+    brew update && brew upgrade
+    rustup update
+    starship upgrade
+    zsh-update
+    echo "🎉 Everything's fresh and clean!"
+  }
+  ```
+  
+  After saving it, reload your shell with:
+  
+  ```
+  source ~/.zshrc
+  ```
+  
+  Now whenever you want to refresh everything, just run:
+  
+  ```
+  zsh-update
+  
+  #or
+  
+  dev-update
+  ```
+  
+  > _💡_ **_Another_** **_Pro Tip:_** _Kick off your week by running dev-update every Monday morning — it’s a simple way to start fresh before diving into code._
+  
+  ## Key Takeaways
+  
+  1. **Shell configuration is a craft —** The .zshrc file isn’t just boilerplate; it’s a workflow narrative. The more intentional it is, the smoother your daily work becomes.
+  2. **Zinit makes experimentation safe —** With lazy loading, clean syntax, and GitHub integrations, it invites you to tinker without breaking everything.
+  3. **Rust-powered tools are changing the CLI game —** From zoxide to ruff, they bring performance and precision to everyday dev tasks.
+  4. **A smarter terminal saves mental energy —** When your shell suggests, completes, colourises, and remembers for you, you think more about your project — and less about syntax.
+  5. **Customising your environment builds confidence —** The more your terminal reflects your style, the more it feels like a superpower, not just a screen.
+  
+  [Zsh](https://medium.com/tag/zsh?source=post_page-----5f6450589003---------------------------------------)
+  
+  [Developer Tools](https://medium.com/tag/developer-tools?source=post_page-----5f6450589003---------------------------------------)
+  
+  [Terminal](https://medium.com/tag/terminal?source=post_page-----5f6450589003---------------------------------------)
+  
+  [Rust Programming Language](https://medium.com/tag/rust-programming-language?source=post_page-----5f6450589003---------------------------------------)
+  
+  [Productivity](https://medium.com/tag/productivity?source=post_page-----5f6450589003---------------------------------------)
+  
+  [![Smyekh](https://miro.medium.com/v2/resize:fill:48:48/1*ZxiMDvzHRgoqyffqOc75_Q.png)](https://medium.com/@Smyekh?source=post_page---post_author_info--5f6450589003---------------------------------------)
+  
+  [![Smyekh](https://miro.medium.com/v2/resize:fill:64:64/1*ZxiMDvzHRgoqyffqOc75_Q.png)](https://medium.com/@Smyekh?source=post_page---post_author_info--5f6450589003---------------------------------------)
+  
+  Follow
+  
+  [**Written by Smyekh**](https://medium.com/@Smyekh?source=post_page---post_author_info--5f6450589003---------------------------------------)
+  
+  [124 followers](https://medium.com/@Smyekh/followers?source=post_page---post_author_info--5f6450589003---------------------------------------)
+  
+  · [9 following](https://medium.com/@Smyekh/following?source=post_page---post_author_info--5f6450589003---------------------------------------)
+  
+  Product t(h)inker
+  
+  Follow
+  
+  ## No responses yet
+  
+  ![](https://miro.medium.com/v2/resize:fill:32:32/1*dmbNkD5D-u45r44go_cf0g.png)
+  
+  Write a response
+  
+  [What are your thoughts?](https://medium.com/m/signin?operation=register&redirect=https%3A%2F%2Fmedium.com%2F%40Smyekh%2Ftuning-my-terminal-how-zinit-made-my-zsh-setup-fast-flexible-and-actually-fun-5f6450589003&source=---post_responses--5f6450589003---------------------respond_sidebar------------------)
+  
+  Cancel
+  
+  Respond
+  
+  ## More from Smyekh
+  
+  ![I finished IBM’s Full Stack Certificate on Coursera. Here’s Why It Didn’t Get Me a Job](https://miro.medium.com/v2/resize:fit:679/format:webp/1*YHzKR_Na_aFAjgaq3Koizw.jpeg)
+  
+  [![Smyekh](https://miro.medium.com/v2/resize:fill:20:20/1*ZxiMDvzHRgoqyffqOc75_Q.png)](https://medium.com/@Smyekh?source=post_page---author_recirc--5f6450589003----0---------------------55e8ab60_7e41_4df0_b2ab_73c385bb3ae6--------------)
+  
+  [**I finished IBM’s Full Stack Certificate on Coursera. Here’s Why It Didn’t Get Me a Job**\\
+  \\
+  **From Coursera to Career: Why Practical Projects and Cloud Skills Matter More Than Your Certificate in the Age of AI.**](https://medium.com/@Smyekh/i-finished-ibms-full-stack-certificate-on-coursera-here-s-why-it-didn-t-get-me-a-job-25461b90e7b2?source=post_page---author_recirc--5f6450589003----0---------------------55e8ab60_7e41_4df0_b2ab_73c385bb3ae6--------------)
+  
+  Aug 4, 2025
+  
+  [A clap icon12](https://medium.com/@Smyekh/i-finished-ibms-full-stack-certificate-on-coursera-here-s-why-it-didn-t-get-me-a-job-25461b90e7b2?source=post_page---author_recirc--5f6450589003----0---------------------55e8ab60_7e41_4df0_b2ab_73c385bb3ae6--------------)
+  
+  ![20 Untapped Startup Ideas from Reddit You Can Build in 2025](https://miro.medium.com/v2/resize:fit:679/format:webp/1*HaBuzaKU8MNjNUaTDDRjTA.jpeg)
+  
+  [![Smyekh](https://miro.medium.com/v2/resize:fill:20:20/1*ZxiMDvzHRgoqyffqOc75_Q.png)](https://medium.com/@Smyekh?source=post_page---author_recirc--5f6450589003----1---------------------55e8ab60_7e41_4df0_b2ab_73c385bb3ae6--------------)
+  
+  [**20 Untapped Startup Ideas from Reddit You Can Build in 2025**\\
+  \\
+  **100,000+ Upvotes, Zero Products: A Technologist’s Take on Startup Ideas Still Up for Grabs.**](https://medium.com/@Smyekh/20-untapped-startup-ideas-from-reddit-you-can-build-in-2025-a1fa1fff85f0?source=post_page---author_recirc--5f6450589003----1---------------------55e8ab60_7e41_4df0_b2ab_73c385bb3ae6--------------)
+  
+  May 21, 2025
+  
+  [A clap icon348\\
+  \\
+  A response icon17](https://medium.com/@Smyekh/20-untapped-startup-ideas-from-reddit-you-can-build-in-2025-a1fa1fff85f0?source=post_page---author_recirc--5f6450589003----1---------------------55e8ab60_7e41_4df0_b2ab_73c385bb3ae6--------------)
+  
+  ![How Duolingo Uses AI (and Guilt) to Keep You Learning a Language.](https://miro.medium.com/v2/resize:fit:679/format:webp/1*8CsfDiODO2gGM-4KCBoGcg.jpeg)
+  
+  [![Smyekh](https://miro.medium.com/v2/resize:fill:20:20/1*ZxiMDvzHRgoqyffqOc75_Q.png)](https://medium.com/@Smyekh?source=post_page---author_recirc--5f6450589003----2---------------------55e8ab60_7e41_4df0_b2ab_73c385bb3ae6--------------)
+  
+  [**How Duolingo Uses AI (and Guilt) to Keep You Learning a Language.**\\
+  \\
+  **If you’ve ever used Duolingo, you probably know the drill — daily streaks, notifications that feel just a little too personal, and that…**](https://medium.com/@Smyekh/how-duolingo-uses-ai-and-guilt-to-keep-you-learning-a-language-6ac3e11b3e44?source=post_page---author_recirc--5f6450589003----2---------------------55e8ab60_7e41_4df0_b2ab_73c385bb3ae6--------------)
+  
+  Mar 23, 2025
+  
+  [A clap icon20\\
+  \\
+  A response icon1](https://medium.com/@Smyekh/how-duolingo-uses-ai-and-guilt-to-keep-you-learning-a-language-6ac3e11b3e44?source=post_page---author_recirc--5f6450589003----2---------------------55e8ab60_7e41_4df0_b2ab_73c385bb3ae6--------------)
+  
+  ![Terminal Joy: How Fortune, Cowsay, Figlet, and Lolcat Add Life to My Developer Workflow](https://miro.medium.com/v2/resize:fit:679/format:webp/1*IIFCzOMRHLjZMvRUg9hb1w.jpeg)
+  
+  [![Smyekh](https://miro.medium.com/v2/resize:fill:20:20/1*ZxiMDvzHRgoqyffqOc75_Q.png)](https://medium.com/@Smyekh?source=post_page---author_recirc--5f6450589003----3---------------------55e8ab60_7e41_4df0_b2ab_73c385bb3ae6--------------)
+  
+  [**Terminal Joy: How Fortune, Cowsay, Figlet, and Lolcat Add Life to My Developer Workflow**\\
+  \\
+  **Fortune Cookies, Talking Cows, and the Secret to a Happier Terminal (and Developer).**](https://medium.com/@Smyekh/terminal-joy-how-fortune-cowsay-figlet-and-lolcat-add-life-to-my-developer-workflow-b5b1c6b10474?source=post_page---author_recirc--5f6450589003----3---------------------55e8ab60_7e41_4df0_b2ab_73c385bb3ae6--------------)
+  
+  Jul 11, 2025
+  
+  [A clap icon2](https://medium.com/@Smyekh/terminal-joy-how-fortune-cowsay-figlet-and-lolcat-add-life-to-my-developer-workflow-b5b1c6b10474?source=post_page---author_recirc--5f6450589003----3---------------------55e8ab60_7e41_4df0_b2ab_73c385bb3ae6--------------)
+  
+  [See all from Smyekh](https://medium.com/@Smyekh?source=post_page---author_recirc--5f6450589003---------------------------------------)
+  
+  ## Recommended from Medium
+  
+  ![My Terminal Setup: A Deep Dive into My Zsh Configuration](https://miro.medium.com/v2/resize:fit:679/format:webp/1*3pSLVe3KlYmH-zNwri1btw.png)
+  
+  [![Abhishek Amralkar](https://miro.medium.com/v2/resize:fill:20:20/2*FnUlumBTfoGDiNLc-eH5nA.jpeg)](https://medium.com/@abhishekamralkar?source=post_page---read_next_recirc--5f6450589003----0---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  [**My Terminal Setup: A Deep Dive into My Zsh Configuration**\\
+  \\
+  **Moving from Oh-My-Zsh after 10 years**](https://medium.com/@abhishekamralkar/my-terminal-setup-a-deep-dive-into-my-zsh-configuration-e36eeb46535b?source=post_page---read_next_recirc--5f6450589003----0---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  Jan 31
+  
+  [A clap icon54](https://medium.com/@abhishekamralkar/my-terminal-setup-a-deep-dive-into-my-zsh-configuration-e36eeb46535b?source=post_page---read_next_recirc--5f6450589003----0---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  ![The Coolest Terminal Tools on My Mac Right Now](https://miro.medium.com/v2/resize:fit:679/format:webp/0*tUjKCQx5dY4OcH44)
+  
+  [![Burk](https://miro.medium.com/v2/resize:fill:20:20/1*iQ2uBOw6BWWzmfhzHtJveA.jpeg)](https://medium.com/@burkrosemann?source=post_page---read_next_recirc--5f6450589003----1---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  [**The Coolest Terminal Tools on My Mac Right Now**\\
+  \\
+  **I used to avoid the terminal. Now I install more CLI tools than Mac apps.**](https://medium.com/@burkrosemann/the-coolest-terminal-tools-on-my-mac-right-now-8e3356d8178e?source=post_page---read_next_recirc--5f6450589003----1---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  Mar 21
+  
+  [A clap icon671\\
+  \\
+  A response icon15](https://medium.com/@burkrosemann/the-coolest-terminal-tools-on-my-mac-right-now-8e3356d8178e?source=post_page---read_next_recirc--5f6450589003----1---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  ![10 Must-Have Skills for Claude (and Any Coding Agent) in 2026](https://miro.medium.com/v2/resize:fit:679/format:webp/1*5Nup6r8Erd-5lEhYbscyJA.png)
+  
+  [![unicodeveloper](https://miro.medium.com/v2/resize:fill:20:20/0*-kqhhb24fzA5QqSY.jpeg)](https://medium.com/@unicodeveloper?source=post_page---read_next_recirc--5f6450589003----0---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  [**10 Must-Have Skills for Claude (and Any Coding Agent) in 2026**\\
+  \\
+  **The definitive guide to agent skills that change how Claude Code, Cursor, Gemini CLI, and other AI coding assistants perform in production.**](https://medium.com/@unicodeveloper/10-must-have-skills-for-claude-and-any-coding-agent-in-2026-b5451b013051?source=post_page---read_next_recirc--5f6450589003----0---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  Mar 9
+  
+  [A clap icon1.3K\\
+  \\
+  A response icon23](https://medium.com/@unicodeveloper/10-must-have-skills-for-claude-and-any-coding-agent-in-2026-b5451b013051?source=post_page---read_next_recirc--5f6450589003----0---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  ![How to REALLY supercharge your terminal environment](https://miro.medium.com/v2/resize:fit:679/format:webp/0*UFfQAGvRX9glY5pq)
+  
+  [![Tom Deneire](https://miro.medium.com/v2/resize:fill:20:20/1*ztcUMu4pXh2xaiRAki_zmQ.png)](https://medium.com/@tomdeneire?source=post_page---read_next_recirc--5f6450589003----1---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  [**How to REALLY supercharge your terminal environment**\\
+  \\
+  **Being a terminal aficionado, I often come across stories on this platform and others with titles like “How to improve your terminal” or “10…**](https://medium.com/@tomdeneire/how-to-really-supercharge-your-terminal-environment-53fc7023720b?source=post_page---read_next_recirc--5f6450589003----1---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  Jan 8
+  
+  [A clap icon523\\
+  \\
+  A response icon5](https://medium.com/@tomdeneire/how-to-really-supercharge-your-terminal-environment-53fc7023720b?source=post_page---read_next_recirc--5f6450589003----1---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  ![My Hot Neovim Setup (Or: How I Stopped Worrying and Learned to Love Lua)](https://miro.medium.com/v2/resize:fit:679/format:webp/1*PXI8Lfzr7F9Koy9N4mRqyg.png)
+  
+  [![Patrick Koss](https://miro.medium.com/v2/resize:fill:20:20/1*cWZsdHVl53nTQxRCgjnwww.jpeg)](https://medium.com/@patrickkoss?source=post_page---read_next_recirc--5f6450589003----2---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  [**My Hot Neovim Setup (Or: How I Stopped Worrying and Learned to Love Lua)**\\
+  \\
+  **I’ve spent the last year building a professional-grade Neovim configuration that doesn’t suck. It’s got semantic highlighting that rivals…**](https://medium.com/@patrickkoss/my-hot-neovim-setup-or-how-i-stopped-worrying-and-learned-to-love-lua-43cc3fb587ce?source=post_page---read_next_recirc--5f6450589003----2---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  Feb 19
+  
+  [A clap icon29](https://medium.com/@patrickkoss/my-hot-neovim-setup-or-how-i-stopped-worrying-and-learned-to-love-lua-43cc3fb587ce?source=post_page---read_next_recirc--5f6450589003----2---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  ![macOS is Good. These 9 Apps Make It Perfect.](https://miro.medium.com/v2/resize:fit:679/format:webp/1*Ee8Am9mfUNwqhUEWJxgMVg.png)
+  
+  [![Mac O’Clock](https://miro.medium.com/v2/resize:fill:20:20/1*qVYCB8Xw85QdWOPEKZqF_A.png)](https://medium.com/macoclock?source=post_page---read_next_recirc--5f6450589003----3---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  In
+  
+  by
+  
+  [**macOS is Good. These 9 Apps Make It Perfect.**\\
+  \\
+  **M-Series Macs are monsters, but macOS itself still has many friction points. Here is how I “fix” it in 2026.**](https://medium.com/macoclock/macos-is-good-these-9-apps-make-it-perfect-d16aaec1e1f7?source=post_page---read_next_recirc--5f6450589003----3---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  Feb 8
+  
+  [A clap icon1.2K\\
+  \\
+  A response icon22](https://medium.com/macoclock/macos-is-good-these-9-apps-make-it-perfect-d16aaec1e1f7?source=post_page---read_next_recirc--5f6450589003----3---------------------61c3657e_fd80_443f_a452_f67b25294554--------------)
+  
+  [See more recommendations](https://medium.com/?source=post_page---read_next_recirc--5f6450589003---------------------------------------)
+  
+  [Help](https://help.medium.com/hc/en-us?source=post_page-----5f6450589003---------------------------------------)
+  
+  [Status](https://status.medium.com/?source=post_page-----5f6450589003---------------------------------------)
+  
+  [About](https://medium.com/about?autoplay=1&source=post_page-----5f6450589003---------------------------------------)
+  
+  [Careers](https://medium.com/jobs-at-medium/work-at-medium-959d1a85284e?source=post_page-----5f6450589003---------------------------------------)
+  
+  [Press](mailto:pressinquiries@medium.com)
+  
+  [Blog](https://blog.medium.com/?source=post_page-----5f6450589003---------------------------------------)
+  
+  [Privacy](https://policy.medium.com/medium-privacy-policy-f03bf92035c9?source=post_page-----5f6450589003---------------------------------------)
+  
+  [Rules](https://policy.medium.com/medium-rules-30e5502c4eb4?source=post_page-----5f6450589003---------------------------------------)
+  
+  [Terms](https://policy.medium.com/medium-terms-of-service-9db0094a1e0f?source=post_page-----5f6450589003---------------------------------------)
+  
+  [Text to speech](https://speechify.com/medium?source=post_page-----5f6450589003---------------------------------------)
+  
+  reCAPTCHA
+  
+  Recaptcha requires verification.
+  
+  protected by **reCAPTCHA**
+  
+  StripeM-Inner
+  --- End Content ---
+
+Zinit Packages - Zinit Wiki
+  URL: https://zdharma-continuum.github.io/zinit/wiki/Zinit-Packages/
+  Zinit is a flexible plugin manager, however, users often feel overwhelmed by its configuration. · It has multiple package-manager -like features, such as:.
+
+  --- Content ---
+  [Skip to content](https://zdharma-continuum.github.io/zinit/wiki/Zinit-Packages/#zinit_packages)
+  
+  # Zinit Packages [\#](https://zdharma-continuum.github.io/zinit/wiki/Zinit-Packages/\#zinit_packages "Permanent link")
+  
+  ## Introduction [\#](https://zdharma-continuum.github.io/zinit/wiki/Zinit-Packages/\#introduction "Permanent link")
+  
+  Zinit can install from so-called _packages_ – GitHub repositories holding
+  a `package.json` file with the Zinit meta-data in them.
+  
+  This way you don't have to (but still can) specify ices, which might be handy
+  when the ice-mod list is long and complex.
+  
+  ## Motivation [\#](https://zdharma-continuum.github.io/zinit/wiki/Zinit-Packages/\#motivation "Permanent link")
+  
+  The motivation for adding such functionality was:
+  
+  1. Zinit is a flexible plugin manager, however, users often feel overwhelmed by
+      its configuration.
+  
+  2. It has multiple package-manager -like features, such as:
+     - it can run `Makefiles`,
+     - automatically provide _shims_ (i.e.: forwarder scripts) for the binaries,
+     - extend `$PATH` to expose the binaries, and more.
+  3. In general, Zinit has many hooks which allow surprising things, however their
+      content often evolves to a gradually better and better one and it's hard to
+      keep track of the current version of them.
+  
+  4. So a solution appeared: why not publish a package at GitHub with the plugin
+      configurations (i.e.: ice-mod lists) stored in a file?
+  
+  
+  ## Introductory Example [\#](https://zdharma-continuum.github.io/zinit/wiki/Zinit-Packages/\#introductory_example "Permanent link")
+  
+  This way, instead of the following command used to install `fzf`:
+  
+  ```zsh
+  zinit lucid as=program pick="$ZPFX/bin/(fzf|fzf-tmux)" \
+      atclone="cp shell/completion.zsh _fzf_completion; \
+        cp bin/(fzf|fzf-tmux) $ZPFX/bin" \
+      make="PREFIX=$ZPFX install" for \
+          junegunn/fzf
+  ```
+  
+  you only need:
+  
+  ```zsh
+  zinit pack for fzf
+  ```
+  
+  to get the complete setup of the fuzzy finder, including:
+  
+  - the completion,
+  - the additional executable-script `fzf-tmux`.
+  
+  The installation is real, package-manager -like, because you don't need to
+  invoke Zinit anymore once installed to use `fzf` (that's because `fzf` is just
+  a binary program and not e.g.: a shell function).
+  
+  You can also update the package with `zinit update fzf` – it'll cause the
+  project to refresh and rebuild, like with a "normal" package manager such as
+  `apt-get`. However, it'll actually be more like to `emerge` from Gentoo, because
+  the installation will be from the source… unless… the user will pick up a binary
+  installation by profile-argument specified in the `pack''` ice :)
+  
+  ## Pros Of Using Zinit Package For Regular Software Installations [\#](https://zdharma-continuum.github.io/zinit/wiki/Zinit-Packages/\#pros_of_using_zinit_package_for_regular_software_installations "Permanent link")
+  
+  Using Zinit to install software where one could use a regular package manager
+  has several advantages:
+  
+  1. **Pro:** The Zinit packages typically use the URLs to the official and
+      _latest_ distributions of the software (like e.g.: the
+      [ecs-cli](https://github.com/zdharma-continuum/zinit-package-ecs-cli)
+      package, which uses the URL:
+      `https://amazon-ecs-cli.s3.amazonaws.com/ecs-cli-linux-amd64-latest` when
+      installing on Linux).
+  
+  2. **Pro:** You can influence the installation easily by specifying Zinit
+      ice-mods, e.g.:
+  
+  `zinit pack=bgn atclone="cp fzy.1 $ZPFX/man/man1" for fzy`
+  
+  to install also the man page for the `fzy` fuzzy finder (this omission in
+  the package will be fixed soon).
+  
+  3. **Pro:** The installation is much more flexible than a normal package
+      manager. Example available degrees of freedom:
+     - to install from Git or from release-tarball, or from binary-release file,
+     - to install via shims or via extending `$PATH`, or by copying to
+        `$ZPFX/bin`,
+     - to download files and apply patches to the source by using the
+        [Patch-Dl](https://zdharma-continuum.github.io/zinit/wiki/z-a-patch-dl/) annex features.
+  4. **Pro:** The installations are located in the user home directory, which
+      doesn't require root access. Also, for Gems and Node modules, they are
+      installed in their plugin directory, which can have advantages (e.g.:
+      isolation allowing e.g: easy removal by `rm -rf …`).
+  
+  5. **Con:** You're somewhat "on your own", with no support from any package
+      maintainer.
+  
+  
+  Thus, summing up 1. with 4., it might be nice/convenient to, for example, have
+  the latest ECS CLI binary installed in the home directory, without using root
+  access and always the latest, and – summing up with 2. and 3. – to, for example,
+  have always the latest `README` downloaded by an additional ice:
+  `dl'https://raw.githubusercontent.com/aws/amazon-ecs-cli/master/README.md'` (and
+  then to have the `README` converted into a man page by the `remark` Markdown
+  processor or other via an `atclone''` ice, as the tool doesn't have any official
+  man page).
+  
+  ## The `Zsh-Packages` Organization [\#](https://zdharma-continuum.github.io/zinit/wiki/Zinit-Packages/\#the_zsh-packages_organization "Permanent link")
+  
+  Packages are hosted [on GitHub, by the zdharma-continuum\\
+  org](https://github.com/zdharma-continuum/zinit-packages):
+  
+  - [asciidoctor](https://github.com/zdharma-continuum/zinit-packages/tree/main/asciidoctor) – the AsciiDoc
+  converter, installed as a Gem locally in the plugin directory with use of the
+  [Bin-Gem-Node](https://zdharma-continuum.github.io/zinit/wiki/z-a-bin-gem-node) annex,
+  - [doctoc](https://github.com/zdharma-continuum/zinit-packages/tree/main/doctoc) – the TOC (table of contents)
+  generator for Markdown documents, installed as a Node package locally in the
+  plugin directory with use of the `Bin-Gem-Node` annex,
+  - [ecs-cli](https://github.com/zdharma-continuum/zinit-packages/tree/main/ecs-cli) – the Amazon ECS command
+  line tool, downloaded directly from the
+  [URL](https://amazon-ecs-cli.s3.amazonaws.com/ecs-cli-linux-amd64-latest) (or
+  from the
+  [URL](https://amazon-ecs-cli.s3.amazonaws.com/ecs-cli-darwin-amd64-latest) for
+  OS X – automatically selected),
+  - [firefox-dev](https://github.com/zdharma-continuum/zinit-packages/tree/main/firefox-dev) – Firefox Developer
+  Edition, downloaded from the
+  [URL](https://download.mozilla.org/?product=firefox-devedition-latest-ssl&os=linux64&lang=en-US)
+  (or from the
+  [URL](https://download.mozilla.org/?product=firefox-devedition-latest-ssl&os=osx&lang=en-US)
+  for OS X; the OS X installation only downloads the `dmg` image, so it is'nt
+  yet complete),
+  - [fzf](https://github.com/zdharma-continuum/zinit-packages/tree/main/fzf) – the fuzzy-finder, installed from
+  source (from a tarball or Git) or from the GitHub-releases binary,
+  - [ls\_colors](https://github.com/zdharma-continuum/zinit-packages/tree/main/ls_colors) – the
+  [trapd00r/LS\_COLORS](https://github.com/trapd00r/LS_COLORS) color definitions
+  for GNU `ls`, `ogham/exa` and Zshell's completion.
+  
+  ## Adding Your Own Package [\#](https://zdharma-continuum.github.io/zinit/wiki/Zinit-Packages/\#adding_your_own_package "Permanent link")
+  
+  1. Contact the author to have the repository at Zsh-Packages organization.
+  
+  2. Populate the `package.json` – I suggest grabbing the one for `fzf` or
+      `doctoc` and doing a few substitutions like `doctoc` → `your-project` and
+      then simply filling the `default` profile in the `zinit-ices` object – it's
+      obvious how to do this.
+  
+  3. The project name in the `package.json` should start with `zsh-`. The prefix
+      will be skipped when specifying it with Zinit.
+  
+  4. Commit and push.
+  
+  
+  That's all!
+  --- End Content ---

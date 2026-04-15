@@ -35,27 +35,72 @@ PluginConfig :: struct {
 	plugins: [dynamic]InstalledPlugin,
 }
 
-// Enhanced plugin metadata with git tracking, dependencies, and conflicts (JSON5 format)
+// Plugin source types (inspired by sheldon - natively integrated)
+PluginSourceType :: enum {
+	GitHub,      // github.com/owner/repo
+	GitLab,      // gitlab.com/owner/repo  
+	Gist,        // gist.github.com/hash
+	Git,         // Generic git URL
+	Remote,      // Direct file URL (curl/wget)
+	Local,       // Local directory
+}
+
+// Template for plugin loading (wayu-native, inspired by sheldon)
+PluginLoadTemplate :: enum {
+	Source,      // source "{{file}}"
+	Path,        // export PATH="{{dir}}:$PATH"
+	FPath,       // export FPATH="{{dir}}:$FPATH" (completions)
+	Autoload,    // autoload -Uz {{name}}
+	Eval,        // eval "$({{file}})"
+}
+
+// Enhanced plugin metadata with sheldon-inspired features (wayu-native)
 PluginMetadata :: struct {
 	name:           string,
-	url:            string,
+	display_name:   string,  // Human-readable name
+	url:            string,  // Clone/download URL
+	source_type:    PluginSourceType,
 	enabled:        bool,
 	shell:          ShellCompat,
 	installed_path: string,
-	entry_file:     string,
+	entry_file:     string,  // Deprecated: use 'use' globs instead
+	
+	// File selection (sheldon-inspired 'use' field)
+	use:            [dynamic]string,  // Globs: ["*.zsh", "*.plugin.zsh"]
+	
+	// Template system (wayu-native)
+	template:       PluginLoadTemplate,  // How to load this plugin
+	
+	// Git tracking with version pinning (sheldon-inspired)
 	git:            GitMetadata,
+	
+	// Dependencies and conflicts
 	dependencies:   [dynamic]string,
-	priority:       int,
-	config:         map[string]string,
+	priority:       int,  // Load order (lower = earlier)
+	
+	// Profile system (wayu-native, inspired by sheldon)
+	profiles:       [dynamic]string,  // Empty = all profiles
+	
+	// Conflict detection
 	conflicts:      ConflictInfo,
 }
 
-// Git metadata for update tracking
+// Git metadata with version pinning (wayu-native, sheldon-inspired)
 GitMetadata :: struct {
-	branch:        string,  // Current branch (default: "master" or "main")
-	commit:        string,  // Local commit SHA (short form)
-	last_checked:  string,  // ISO 8601 timestamp of last update check
-	remote_commit: string,  // Remote commit SHA (short form)
+	ref_type:      GitRefType,  // Branch, Tag, or Commit
+	branch:        string,      // Active branch name
+	tag:           string,      // Tag if pinned to tag
+	commit:        string,      // Current commit SHA (short form)
+	pinned_ref:    string,      // The actual pinned reference
+	last_checked:  string,      // ISO 8601 timestamp
+	remote_commit: string,      // Remote commit SHA (short form)
+}
+
+// Git reference types for version pinning
+GitRefType :: enum {
+	Branch,      // Follow branch (default)
+	Tag,         // Pinned to specific tag
+	Commit,      // Pinned to specific commit
 }
 
 // Conflict detection information
@@ -507,15 +552,25 @@ get_git_info :: proc(plugin_dir: string) -> GitMetadata {
 // Cleanup helper for PluginMetadata
 cleanup_plugin_metadata :: proc(plugin: ^PluginMetadata) {
 	delete(plugin.name)
+	delete(plugin.display_name)
 	delete(plugin.url)
 	delete(plugin.installed_path)
 	delete(plugin.entry_file)
 	delete(plugin.git.branch)
+	delete(plugin.git.tag)
 	delete(plugin.git.commit)
+	delete(plugin.git.pinned_ref)
 	delete(plugin.git.last_checked)
 	delete(plugin.git.remote_commit)
 	delete(plugin.dependencies)
-	delete(plugin.config)
+	for u in plugin.use {
+		delete(u)
+	}
+	delete(plugin.use)
+	for p in plugin.profiles {
+		delete(p)
+	}
+	delete(plugin.profiles)
 	for ev in plugin.conflicts.env_vars {
 		delete(ev)
 	}

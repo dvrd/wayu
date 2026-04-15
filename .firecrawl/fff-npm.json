@@ -1,0 +1,954 @@
+node-ffi - NPM
+  URL: https://www.npmjs.com/package/ffi
+  node-ffi is a Node.js addon for loading and calling dynamic libraries using pure JavaScript. It can be used to create bindings to native libraries without ...
+
+  --- Content ---
+  # ffi  [![DefinitelyTyped icon, indicating that this package has TypeScript declarations provided by the separate @types/ffi package](https://static-production.npmjs.com/6179152a7c724954712283fc030b570d.svg)](https://www.npmjs.com/package/@types/ffi)
+  
+  2.3.0 • Public • Published 7 years ago
+  
+  - [Readme](https://www.npmjs.com/package/ffi?activeTab=readme)
+  - [Code Beta](https://www.npmjs.com/package/ffi?activeTab=code)
+  - [5 Dependencies](https://www.npmjs.com/package/ffi?activeTab=dependencies)
+  - [295 Dependents](https://www.npmjs.com/package/ffi?activeTab=dependents)
+  - [26 Versions](https://www.npmjs.com/package/ffi?activeTab=versions)
+  
+  # node-ffi
+  
+  ### Node.js Foreign Function Interface
+  
+  [![Build Status](https://travis-ci.org/node-ffi/node-ffi.svg?branch=master)](https://travis-ci.org/node-ffi/node-ffi)[![Build Status](https://ci.appveyor.com/api/projects/status/n81apam1igfw8491?svg=true)](https://ci.appveyor.com/project/TooTallNate/node-ffi)
+  
+  `node-ffi` is a Node.js addon for loading and calling dynamic libraries using
+  pure JavaScript. It can be used to create bindings to native libraries without
+  writing any C++ code.
+  
+  It also simplifies the augmentation of node.js with C code as it takes care of
+  handling the translation of types across JavaScript and C, which can add reams
+  of boilerplate code to your otherwise simple C. See the `example/factorial`
+  for an example of this use case.
+  
+  **WARNING**: node-ffi assumes you know what you're doing. You can pretty easily
+  create situations where you will segfault the interpreter and unless you've got
+  C debugger skills, you probably won't know what's going on.
+  
+  ## Example
+  
+  ```
+  var ffi = require('ffi');
+  
+  var libm = ffi.Library('libm', {
+    'ceil': [ 'double', [ 'double' ] ]
+  });
+  libm.ceil(1.5); // 2
+  
+  // You can also access just functions in the current process by passing a null
+  var current = ffi.Library(, {
+    'atoi': [ 'int', [ 'string' ] ]
+  });
+  current.atoi('1234'); // 1234
+  ```
+  
+  For a more detailed introduction, see the [node-ffi tutorial page](https://github.com/node-ffi/node-ffi/wiki/Node-FFI-Tutorial).
+  
+  ## Requirements
+  
+  - Linux, OS X, Windows, or Solaris.
+  - `libffi` comes bundled with node-ffi; it does _not_ need to be installed on your system.
+  - The current version is tested to run on node v0.6, v0.8, v0.9 and v0.10.
+  
+  ## Installation
+  
+  Make sure you've installed all the [necessary build\\
+  tools](https://github.com/TooTallNate/node-gyp#installation) for your platform,
+  then invoke:
+  
+  ```
+  $ npm install ffi
+  ```
+  
+  ## Source Install / Manual Compilation
+  
+  To compile from source it's easiest to use
+  [`node-gyp`](https://github.com/TooTallNate/node-gyp):
+  
+  ```
+  $ npm install -g node-gyp
+  ```
+  
+  Now you can compile `node-ffi`:
+  
+  ```
+  $ git clone git://github.com/node-ffi/node-ffi.git
+  $ cd node-ffi
+  $ node-gyp rebuild
+  ```
+  
+  ## Types
+  
+  The types that you specify in function declarations correspond to ref's types
+  system. So [see its docs](https://github.com/TooTallNate/ref#built-in-types) for
+  a reference if you are unfamiliar.
+  
+  ## V8 and 64-bit Types
+  
+  Internally, V8 stores integers that will fit into a 32-bit space in a 32-bit
+  integer, and those that fall outside of this get put into double-precision
+  floating point numbers. This is problematic because FP numbers are imprecise.
+  To get around this, the methods in node-ffi that deal with 64-bit integers return
+  strings and can accept strings as parameters.
+  
+  ## Call Overhead
+  
+  There is non-trivial overhead associated with FFI calls. Comparing a hard-coded
+  binding version of `strtoul()` to an FFI version of `strtoul()` shows that the
+  native hard-coded binding is orders of magnitude faster. So don't just use the
+  C version of a function just because it's faster. There's a significant cost in
+  FFI calls, so make them worth it.
+  
+  ## License
+  
+  MIT License. See the `LICENSE` file.
+  
+  ## Readme
+  
+  ### Keywords
+  
+  - [foreign](https://www.npmjs.com/search?q=keywords:foreign)
+  - [function](https://www.npmjs.com/search?q=keywords:function)
+  - [interface](https://www.npmjs.com/search?q=keywords:interface)
+  - [ffi](https://www.npmjs.com/search?q=keywords:ffi)
+  - [libffi](https://www.npmjs.com/search?q=keywords:libffi)
+  - [binding](https://www.npmjs.com/search?q=keywords:binding)
+  - [c](https://www.npmjs.com/search?q=keywords:c)
+  
+  Viewing ffi version 2.3.0
+  --- End Content ---
+
+Binding data using Node.js FFI (javascript & c) - Stack Overflow
+  URL: https://stackoverflow.com/questions/5532159/binding-data-using-node-js-ffi-javascript-c
+  I'm using node ffi to call a c library, and I have some issues using this code : This c program create a folder in the current directory and ...
+
+  --- Content ---
+  ##### Collectives™ on Stack Overflow
+  
+  Find centralized, trusted content and collaborate around the technologies you use most.
+  
+  [Learn more about Collectives](https://stackoverflow.com/collectives)
+  
+  **Stack Internal**
+  
+  Knowledge at work
+  
+  Bring the best of human thought and AI automation together at your work.
+  
+  [Explore Stack Internal](https://stackoverflow.co/internal/?utm_medium=referral&utm_source=stackoverflow-community&utm_campaign=side-bar&utm_content=explore-teams-compact-popover)
+  
+  # [Binding data using Node.js FFI (javascript & c)](https://stackoverflow.com/questions/5532159/binding-data-using-node-js-ffi-javascript-c)
+  
+  [Ask Question](https://stackoverflow.com/questions/ask)
+  
+  Asked15 years ago
+  
+  Modified [9 years, 7 months ago](https://stackoverflow.com/questions/5532159/binding-data-using-node-js-ffi-javascript-c?lastactivity "2016-09-08 19:44:24Z")
+  
+  Viewed
+  2k times
+  
+  
+  This question shows research effort; it is useful and clear
+  
+  1
+  
+  Save this question.
+  
+  [Timeline](https://stackoverflow.com/posts/5532159/timeline)
+  
+  Show activity on this post.
+  
+  I'm using [node ffi](https://github.com/rbranson/node-ffi) to call a c library, and I have some issues using this code :
+  
+  This c program create a folder in the current directory and return 1 if no error.
+  
+  ```cpp
+  Copy
+  #include <stdint.h>
+  #include <stdio.h>
+  #include <sys/stat.h>
+  
+  int create(int dir)
+  {
+  int id;
+  id = mkdir(dir, S_IRWXU);
+  if (id == -1)
+    return 1;
+  else
+    return 2;
+  }
+  ```
+  
+  the javascript code I'm using to call this c program is :
+  
+  ```lua
+  Copy
+  var FFI = require("../lib/ffi");
+  var libsender = new FFI.Library("./libsender", {"create": [ "int", [ "int" ] ] });
+  
+  if (process.argv.length < 3) {
+  console.log("Arguments: " + process.argv[0] + " " + process.argv[1] + " <max>");
+  process.exit();
+  }
+  
+  var output;
+  output = libsender.create(process.argv[2])
+  console.log("Your output: " + output);
+  ```
+  
+  This program is working just if I use int instead of char in the create function (like shown), but I need to use char \* in this function. So if I change the function to `create(char * dir)` I't does not work.
+  
+  I tried to change the call in the js from
+  
+  `{"create": [ "int", ["int"] ] })`;
+  
+  to
+  
+  `{"create": [ "int", ["char *"] ] });`.
+  
+  can you help with that ?
+  
+  Thanks
+  
+  - [javascript](https://stackoverflow.com/questions/tagged/javascript "show questions tagged 'javascript'")
+  - [c](https://stackoverflow.com/questions/tagged/c "show questions tagged 'c'")
+  - [node.js](https://stackoverflow.com/questions/tagged/node.js "show questions tagged 'node.js'")
+  - [bind](https://stackoverflow.com/questions/tagged/bind "show questions tagged 'bind'")
+  - [node-ffi](https://stackoverflow.com/questions/tagged/node-ffi "show questions tagged 'node-ffi'")
+  
+  [Share](https://stackoverflow.com/q/5532159 "Short permalink to this question")
+  
+  Share a link to this question
+  
+  Copy link [CC BY-SA 2.5](https://creativecommons.org/licenses/by-sa/2.5/ "The current license for this post: CC BY-SA 2.5")
+  
+  [Improve this question](https://stackoverflow.com/posts/5532159/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this question to receive notifications
+  
+  [edited Sep 8, 2016 at 19:44](https://stackoverflow.com/posts/5532159/revisions "show all edits to this post")
+  
+  [![simon-p-r's user avatar](https://www.gravatar.com/avatar/4ee5233745133e1754dadebd0e424ff4?s=64&d=identicon&r=PG&f=y&so-version=2)](https://stackoverflow.com/users/3829154/simon-p-r)
+  
+  [simon-p-r](https://stackoverflow.com/users/3829154/simon-p-r)
+  
+  3,76222 gold badges2424 silver badges3737 bronze badges
+  
+  asked Apr 3, 2011 at 20:09
+  
+  [![Farmer's user avatar](https://i.sstatic.net/x7PDPMiI.png?s=64)](https://stackoverflow.com/users/346297/farmer)
+  
+  [Farmer](https://stackoverflow.com/users/346297/farmer)
+  
+  11.1k4040 gold badges124124 silver badges176176 bronze badges
+  
+  [Add a comment](https://stackoverflow.com/questions/5532159/binding-data-using-node-js-ffi-javascript-c# "Use comments to ask for more information or suggest improvements. Avoid answering questions in comments.") \| [Expand to show all comments on this post](https://stackoverflow.com/questions/5532159/binding-data-using-node-js-ffi-javascript-c# "Expand to show all comments on this post")
+  
+  ## 1 Answer 1
+  
+  Sorted by:
+  [Reset to default](https://stackoverflow.com/questions/5532159/binding-data-using-node-js-ffi-javascript-c?answertab=scoredesc#tab-top)
+  
+  Highest score (default)
+  
+  Trending (recent votes count more)
+  
+  Date modified (newest first)
+  
+  Date created (oldest first)
+  
+  
+  This answer is useful
+  
+  2
+  
+  Save this answer.
+  
+  [Timeline](https://stackoverflow.com/posts/5538769/timeline)
+  
+  Show activity on this post.
+  
+  Try to change `int create(int dir)` to `int create(char* dir)`, and…
+  
+  ```csharp
+  Copy
+  var libsender = new FFI.Library("./libsender", { "create": [ "int", [ "int" ] ]
+  ```
+  
+  …to…
+  
+  ```csharp
+  Copy
+  var libsender = new FFI.Library("./libsender", { "create": [ "int", [ "string" ] ]
+  ```
+  
+  [Share](https://stackoverflow.com/a/5538769 "Short permalink to this answer")
+  
+  Share a link to this answer
+  
+  Copy link [CC BY-SA 2.5](https://creativecommons.org/licenses/by-sa/2.5/ "The current license for this post: CC BY-SA 2.5")
+  
+  [Improve this answer](https://stackoverflow.com/posts/5538769/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this answer to receive notifications
+  
+  [edited Apr 4, 2011 at 13:08](https://stackoverflow.com/posts/5538769/revisions "show all edits to this post")
+  
+  [![Mathias Bynens's user avatar](https://www.gravatar.com/avatar/24e08a9ea84deb17ae121074d0f17125?s=64&d=identicon&r=PG)](https://stackoverflow.com/users/96656/mathias-bynens)
+  
+  [Mathias Bynens](https://stackoverflow.com/users/96656/mathias-bynens)
+  
+  151k5454 gold badges225225 silver badges255255 bronze badges
+  
+  answered Apr 4, 2011 at 12:56
+  
+  [![VisaMasterCard's user avatar](https://www.gravatar.com/avatar/942f198e3f5cfa0e8cac4fda5ec40c27?s=64&d=identicon&r=PG)](https://stackoverflow.com/users/580350/visamastercard)
+  
+  [VisaMasterCard](https://stackoverflow.com/users/580350/visamastercard)
+  
+  1,69444 gold badges1818 silver badges2222 bronze badges
+  
+  Sign up to request clarification or add additional context in comments.
+  
+  
+  ## Comments
+  
+  Add a comment
+  
+  ## Your Answer
+  
+  Draft saved
+  
+  Draft discarded
+  
+  ### Sign up or [log in](https://stackoverflow.com/users/login?ssrc=question_page&returnurl=https%3a%2f%2fstackoverflow.com%2fquestions%2f5532159%2fbinding-data-using-node-js-ffi-javascript-c%23new-answer)
+  
+  Sign up using Google
+  
+  
+  Sign up using Email and Password
+  
+  
+  Submit
+  
+  ### Post as a guest
+  
+  Name
+  
+  Email
+  
+  Required, but never shown
+  
+  Post Your Answer
+  
+  Discard
+  
+  
+  By clicking “Post Your Answer”, you agree to our [terms of service](https://stackoverflow.com/legal/terms-of-service/public) and acknowledge you have read our [privacy policy](https://stackoverflow.com/legal/privacy-policy).
+  
+  
+  Start asking to get answers
+  
+  Find the answer to your question by asking.
+  
+  [Ask question](https://stackoverflow.com/questions/ask)
+  
+  Explore related questions
+  
+  - [javascript](https://stackoverflow.com/questions/tagged/javascript "show questions tagged 'javascript'")
+  - [c](https://stackoverflow.com/questions/tagged/c "show questions tagged 'c'")
+  - [node.js](https://stackoverflow.com/questions/tagged/node.js "show questions tagged 'node.js'")
+  - [bind](https://stackoverflow.com/questions/tagged/bind "show questions tagged 'bind'")
+  - [node-ffi](https://stackoverflow.com/questions/tagged/node-ffi "show questions tagged 'node-ffi'")
+  
+  See similar questions with these tags.
+  
+  default
+  --- End Content ---
+
+ffast - An experimental node.js FFI library · GitHub
+  URL: https://github.com/just-js/ffast
+  This is an initial Proof of Concept for surfacing all the lower level bindings necessary into JS-land so we can generate FFI wrappers from JS itself, ...
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/just-js/ffast#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/just-js/ffast) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/just-js/ffast) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/just-js/ffast) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [just-js](https://github.com/just-js)/ **[ffast](https://github.com/just-js/ffast)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2Fjust-js%2Fffast) You must be signed in to change notification settings
+  - [Fork\\
+  1](https://github.com/login?return_to=%2Fjust-js%2Fffast)
+  - [Star\\
+  42](https://github.com/login?return_to=%2Fjust-js%2Fffast)
+  
+  
+  main
+  
+  [**1** Branch](https://github.com/just-js/ffast/branches) [**1** Tag](https://github.com/just-js/ffast/tags)
+  
+  [Go to Branches page](https://github.com/just-js/ffast/branches)[Go to Tags page](https://github.com/just-js/ffast/tags)
+  
+  Go to file
+  
+  Code
+  
+  Open more actions menu
+  
+  ## Folders and files
+  
+  | Name | Name | Last commit message | Last commit date |
+  | --- | --- | --- | --- |
+  | ## Latest commit<br>[![billywhizz](https://avatars.githubusercontent.com/u/159073?v=4&size=40)](https://github.com/billywhizz)[billywhizz](https://github.com/just-js/ffast/commits?author=billywhizz)<br>[ignore logs](https://github.com/just-js/ffast/commit/b09f97675c5eea81d81a04909f446fee87f6a2f1)<br>10 months agoJun 22, 2025<br>[b09f976](https://github.com/just-js/ffast/commit/b09f97675c5eea81d81a04909f446fee87f6a2f1) · 10 months agoJun 22, 2025<br>## History<br>[22 Commits](https://github.com/just-js/ffast/commits/main/) <br>Open commit details<br>[View commit history for this file.](https://github.com/just-js/ffast/commits/main/) 22 Commits |
+  | [bench](https://github.com/just-js/ffast/tree/main/bench "bench") | [bench](https://github.com/just-js/ffast/tree/main/bench "bench") | [fix: benches working](https://github.com/just-js/ffast/commit/6801b98543cf184013e6bbc448316182b06d5961 "fix: benches working") | 10 months agoJun 22, 2025 |
+  | [bindings](https://github.com/just-js/ffast/tree/main/bindings "bindings") | [bindings](https://github.com/just-js/ffast/tree/main/bindings "bindings") | [fix: bindings examples](https://github.com/just-js/ffast/commit/17fe14419a5edf2e871d5107428e0bb202adbdf3 "fix: bindings examples") | 10 months agoJun 22, 2025 |
+  | [lib](https://github.com/just-js/ffast/tree/main/lib "lib") | [lib](https://github.com/just-js/ffast/tree/main/lib "lib") | [add some bindings](https://github.com/just-js/ffast/commit/d93ef78606385046b584746f69bad739d2eff613 "add some bindings") | 11 months agoMay 21, 2025 |
+  | [src](https://github.com/just-js/ffast/tree/main/src "src") | [src](https://github.com/just-js/ffast/tree/main/src "src") | [add some bindings](https://github.com/just-js/ffast/commit/d93ef78606385046b584746f69bad739d2eff613 "add some bindings") | 11 months agoMay 21, 2025 |
+  | [.gitignore](https://github.com/just-js/ffast/blob/main/.gitignore ".gitignore") | [.gitignore](https://github.com/just-js/ffast/blob/main/.gitignore ".gitignore") | [ignore logs](https://github.com/just-js/ffast/commit/b09f97675c5eea81d81a04909f446fee87f6a2f1 "ignore logs") | 10 months agoJun 22, 2025 |
+  | [LICENSE](https://github.com/just-js/ffast/blob/main/LICENSE "LICENSE") | [LICENSE](https://github.com/just-js/ffast/blob/main/LICENSE "LICENSE") | [feat: package publish](https://github.com/just-js/ffast/commit/cd50dd78f325c91ddb180d22c3dacb7bfc1ef922 "feat: package publish") | 10 months agoJun 19, 2025 |
+  | [Makefile](https://github.com/just-js/ffast/blob/main/Makefile "Makefile") | [Makefile](https://github.com/just-js/ffast/blob/main/Makefile "Makefile") | [fix: benches working](https://github.com/just-js/ffast/commit/6801b98543cf184013e6bbc448316182b06d5961 "fix: benches working") | 10 months agoJun 22, 2025 |
+  | [README.md](https://github.com/just-js/ffast/blob/main/README.md "README.md") | [README.md](https://github.com/just-js/ffast/blob/main/README.md "README.md") | [add some bindings](https://github.com/just-js/ffast/commit/d93ef78606385046b584746f69bad739d2eff613 "add some bindings") | 11 months agoMay 21, 2025 |
+  | [gen.js](https://github.com/just-js/ffast/blob/main/gen.js "gen.js") | [gen.js](https://github.com/just-js/ffast/blob/main/gen.js "gen.js") | [initial commit](https://github.com/just-js/ffast/commit/24f50a20f3a22a6a5c752ce745b49613dd728c12 "initial commit") | last yearFeb 1, 2025 |
+  | [package.json](https://github.com/just-js/ffast/blob/main/package.json "package.json") | [package.json](https://github.com/just-js/ffast/blob/main/package.json "package.json") | [fix: benches working](https://github.com/just-js/ffast/commit/6801b98543cf184013e6bbc448316182b06d5961 "fix: benches working") | 10 months agoJun 22, 2025 |
+  | View all files |
+  
+  ## Repository files navigation
+  
+  # ffast
+  
+  [Permalink: ffast](https://github.com/just-js/ffast#ffast)
+  
+  The fast (and dangerous 🐉) node.js FFI library
+  
+  ## Introduction
+  
+  [Permalink: Introduction](https://github.com/just-js/ffast#introduction)
+  
+  This is an initial Proof of Concept for surfacing all the lower level bindings
+  necessary into JS-land so we can generate FFI wrappers from JS itself, without
+  any dependencies on third party non-JS libraries like `libffi` or `libtcc`.
+  
+  This should run on [`node.js`](https://nodejs.org/) current and LTS on `Linux x64/arm64` and `macos arm64`.
+  It has been tested on `Raspberry Pi 3B+` which has a `Cortex A53` and works fine there.
+  It will also probably work on older versions of `node.js` but will need to be
+  rebuilt for older versions of V8 that `node.js` embeds. Please report on issues
+  you find.
+  
+  It currently supports (with bugs and pretty much zero safety) passing any `integer`
+  types, `strings` and `pointers`. float support and struct passing will be coming a
+  little later. There are benchmarks coming soon that will show how to do callbacks
+  from `C/C++` to `JS` too.
+  
+  It should be pretty easy to add a lot of libraries to this using the [bindings\\
+  definitions](https://github.com/just-js/lo/tree/main/lib) that already exist for the [lo](https://github.com/just-js/lo) runtime. It should also be possible to
+  run this on [`Bun`](https://bun.sh/) if there is some work done on Bun side to add symbols for the
+  V8 fastcall api's (which won't have any effect on Bun/JSC).
+  
+  Windows support should not be a lot of work (famous last words!).
+  
+  Right now assumption is 64-bit platforms only.
+  
+  🐉🐉🐉 Beware! 🐉🐉🐉
+  There are many dragons here. This is surfacing a lot of dangerous things
+  into JS-land which break things like JavaScript memory safety. It should be possible
+  to wrap this in an internal module and hide the unsafe things away, but further
+  research needs to be done on that front. The goal rn is to see how fast we can go
+  with few if any guardrails. We can then measure the overhead any safety features
+  we add have on the baseline implementation.
+  
+  ## Support
+  
+  [Permalink: Support](https://github.com/just-js/ffast#support)
+  
+  | OS | Arch | Supported | Planned |
+  | --- | --- | --- | --- |
+  | linux | x64 | ✅ |  |
+  | linux | arm64 | ✅ |  |
+  | macos | x64 |  | ✔️ |
+  | macos | arn64 | ✅ |  |
+  | windows | x64 |  | ✔️ |
+  | windows | arm64 |  | ✔️ |
+  | android | arm64 |  | ✔️ |
+  | windows/wsl2 | x64 | ✅ |  |
+  
+  ## Building
+  
+  [Permalink: Building](https://github.com/just-js/ffast#building)
+  
+  ### Requirements
+  
+  [Permalink: Requirements](https://github.com/just-js/ffast#requirements)
+  
+  - curl
+  - make
+  - a C compiler toolchain to compile the benchmark shared library
+  - a C++ compiler toolchain to compile the bindings
+  - node LTS (v22.13.1) or Current (v23.7.0) with `npm` and `node-gyp`
+  
+  ### Makefile
+  
+  [Permalink: Makefile](https://github.com/just-js/ffast#makefile)
+  
+  ```
+  $ make help
+  bench/bench.so                 build the shared library for the benchmarks
+  bench                          run the benchmark
+  src/v8-fast-api-calls.h        download the v8 fast api headers for current node/v8 version
+  src/ffast.cc                   generate the ffast node binding source
+  node_modules/.bin/node-gyp     install node-gyp locally
+  build/Release/ffast.node       build the ffast binding
+  library                        build the ffast binding
+  clean                          clean all the build artifacts except node_modules
+  cleanall                       clean everything including node_modules and package-lock.json
+  
+  ## build everything and run the benchmarks
+  $ make cleanall bench
+  ```
+  
+  ## About
+  
+  🐉 An experimental node.js FFI library
+  
+  
+  ### Resources
+  
+  [Readme](https://github.com/just-js/ffast#readme-ov-file)
+  
+  ### License
+  
+  [View license](https://github.com/just-js/ffast#License-1-ov-file)
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/just-js/ffast).
+  
+  [Activity](https://github.com/just-js/ffast/activity)
+  
+  [Custom properties](https://github.com/just-js/ffast/custom-properties)
+  
+  ### Stars
+  
+  [**42**\\
+  stars](https://github.com/just-js/ffast/stargazers)
+  
+  ### Watchers
+  
+  [**1**\\
+  watching](https://github.com/just-js/ffast/watchers)
+  
+  ### Forks
+  
+  [**1**\\
+  fork](https://github.com/just-js/ffast/forks)
+  
+  [Report repository](https://github.com/contact/report-content?content_url=https%3A%2F%2Fgithub.com%2Fjust-js%2Fffast&report=just-js+%28user%29)
+  
+  ## [Releases](https://github.com/just-js/ffast/releases)
+  
+  [1tags](https://github.com/just-js/ffast/tags)
+  
+  ## [Packages\  0](https://github.com/orgs/just-js/packages?repo_name=ffast)
+  
+  No packages published
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/just-js/ffast).
+  
+  ## [Contributors\  1](https://github.com/just-js/ffast/graphs/contributors)
+  
+  - [![@billywhizz](https://avatars.githubusercontent.com/u/159073?s=64&v=4)](https://github.com/billywhizz)[**billywhizz** Andrew Johnston](https://github.com/billywhizz)
+  
+  ## Languages
+  
+  - [JavaScript96.8%](https://github.com/just-js/ffast/search?l=javascript)
+  - [Makefile1.5%](https://github.com/just-js/ffast/search?l=makefile)
+  - [C++1.1%](https://github.com/just-js/ffast/search?l=c%2B%2B)
+  - [C0.6%](https://github.com/just-js/ffast/search?l=c)
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+Foreign Function Interface (FFI) - Bun - Mintlify
+  URL: https://www.mintlify.com/oven-sh/bun/runtime/ffi
+  To compile these bindings, Bun embeds TinyCC, a small and fast C compiler. This approach makes bun:ffi roughly 2–6x faster than Node.js FFI via ...
+
+  --- Content ---
+  # This page has moved
+  
+  Continue to [https://mintlify.wiki/oven-sh/bun/runtime/ffi](https://mintlify.wiki/oven-sh/bun/runtime/ffi).
+  --- End Content ---
+
+ffi - npm search
+  URL: https://www.npmjs.com/search?q=ffi
+  Fast and simple C FFI (foreign function interface) for Node.js. foreign ... Node bindings for libmagic using ffi. nomagick. • 0.1.4 • a year ago • 0 ...
+
+  --- Content ---
+  # Search results
+  
+  ## 933packages found
+  
+  Sort by: Default
+  
+  - Default
+  
+  - Most downloaded this week
+  
+  - Most downloaded this month
+  
+  - Most dependents
+  
+  - Recently published
+  
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**ffi**](https://www.npmjs.com/package/ffi) exact match
+  
+  A foreign function interface (FFI) for Node.js
+  
+  - [foreign](https://www.npmjs.com/search?q=keywords:foreign)
+  - [function](https://www.npmjs.com/search?q=keywords:function)
+  - [interface](https://www.npmjs.com/search?q=keywords:interface)
+  - [ffi](https://www.npmjs.com/search?q=keywords:ffi)
+  - [libffi](https://www.npmjs.com/search?q=keywords:libffi)
+  - [binding](https://www.npmjs.com/search?q=keywords:binding)
+  - [c](https://www.npmjs.com/search?q=keywords:c)
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci82OTMzMDdiNGUwY2I5MzY2ZjM0ODYyYzlkZmFjZDdmYz9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.5FRTxoUQpmyApkOfmzioLU8ZemZFiLFgr1Xfpd688X8)
+  
+  [tootallnate](https://www.npmjs.com/~tootallnate)
+  
+  •2.3.0 • 7 years ago• 295 dependents• MITpublished version 2.3.0, 7 years ago295 dependents licensed under $MIT
+  
+  28,284
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**ffi-napi**](https://www.npmjs.com/package/ffi-napi)
+  
+  A foreign function interface (FFI) for Node.js, N-API style
+  
+  - [foreign](https://www.npmjs.com/search?q=keywords:foreign)
+  - [function](https://www.npmjs.com/search?q=keywords:function)
+  - [interface](https://www.npmjs.com/search?q=keywords:interface)
+  - [ffi](https://www.npmjs.com/search?q=keywords:ffi)
+  - [libffi](https://www.npmjs.com/search?q=keywords:libffi)
+  - [binding](https://www.npmjs.com/search?q=keywords:binding)
+  - [c](https://www.npmjs.com/search?q=keywords:c)
+  - [napi](https://www.npmjs.com/search?q=keywords:napi)
+  - [stable](https://www.npmjs.com/search?q=keywords:stable)
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci9jZDUzMWZhMzIwYjA4NmQxNThhYTgxNDYwYjY4OThlZj9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.LBRjfe6awrY6OpTpsFEfUtT8R_YIs_TkEydGEe8kRe0)
+  
+  [addaleax](https://www.npmjs.com/~addaleax)
+  
+  •4.0.3 • 5 years ago• 329 dependents• MITpublished version 4.0.3, 5 years ago329 dependents licensed under $MIT
+  
+  80,463
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**koffi**](https://www.npmjs.com/package/koffi)
+  
+  Fast and simple C FFI (foreign function interface) for Node.js
+  
+  - [foreign](https://www.npmjs.com/search?q=keywords:foreign)
+  - [function](https://www.npmjs.com/search?q=keywords:function)
+  - [interface](https://www.npmjs.com/search?q=keywords:interface)
+  - [ffi](https://www.npmjs.com/search?q=keywords:ffi)
+  - [binding](https://www.npmjs.com/search?q=keywords:binding)
+  - [c](https://www.npmjs.com/search?q=keywords:c)
+  - [napi](https://www.npmjs.com/search?q=keywords:napi)
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci9lYzBmMmZkMWI3YWU5MTVlMWUyMzUzNzFlZDZlY2QyZT9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.Hh6b6Y_mpzWJsHOJMYUr_lDyrfIJxSrqHA71QgHXf-w)
+  
+  [koromix](https://www.npmjs.com/~koromix)
+  
+  •2.16.0 • 17 hours ago• 260 dependents• MITpublished version 2.16.0, 17 hours ago260 dependents licensed under $MIT
+  
+  7,753,001
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**ffi-rs**](https://www.npmjs.com/package/ffi-rs)
+  
+  A module written in Rust and N-API provides interface (FFI) features for Node.js
+  
+  - [ffi](https://www.npmjs.com/search?q=keywords:ffi)
+  - [rust](https://www.npmjs.com/search?q=keywords:rust)
+  - [node.js](https://www.npmjs.com/search?q=keywords:node.js)
+  - [napi](https://www.npmjs.com/search?q=keywords:napi)
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci8xYmZjNzBjZDkzNjVmZDVmODdkYzZlMTY5ODA3ZmFiNz9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.4LWN9MoeX9EXMgszmTwU9UxEJXK4lfWcx8h5QA2BTQw)
+  
+  [zhangyuang](https://www.npmjs.com/~zhangyuang)
+  
+  •1.3.1 • 5 months ago• 51 dependents• MITpublished version 1.3.1, 5 months ago51 dependents licensed under $MIT
+  
+  55,774
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**@types/ffi-napi**](https://www.npmjs.com/package/@types/ffi-napi)
+  
+  TypeScript definitions for ffi-napi
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci8zZTJiMzQyNjE2ODIyZjhlYWJjOWRkMzkzODQwZGI0YT9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.EUOa_GBepJl2c81YEIz3BI_m3t-HTZSrDib9X7tvWjo)
+  
+  [types](https://www.npmjs.com/~types)
+  
+  •4.0.10 • 2 years ago• 29 dependents• MITpublished version 4.0.10, 2 years ago29 dependents licensed under $MIT
+  
+  11,640
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**@2060.io/ffi-napi**](https://www.npmjs.com/package/@2060.io/ffi-napi)
+  
+  A foreign function interface (FFI) for Node.js, N-API style
+  
+  - [foreign](https://www.npmjs.com/search?q=keywords:foreign)
+  - [function](https://www.npmjs.com/search?q=keywords:function)
+  - [interface](https://www.npmjs.com/search?q=keywords:interface)
+  - [ffi](https://www.npmjs.com/search?q=keywords:ffi)
+  - [libffi](https://www.npmjs.com/search?q=keywords:libffi)
+  - [binding](https://www.npmjs.com/search?q=keywords:binding)
+  - [c](https://www.npmjs.com/search?q=keywords:c)
+  - [napi](https://www.npmjs.com/search?q=keywords:napi)
+  - [stable](https://www.npmjs.com/search?q=keywords:stable)
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci9jOWY2ODUyZjQ4NWIwYmEyMDUyOGE4MjJiOTNhZTJmOT9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.TMCURtLTOph5DnemKHZErvhxirl7Gd83OvS4-7Spooo)
+  
+  [genaris](https://www.npmjs.com/~genaris)
+  
+  •4.0.9 • 2 years ago• 5 dependents• MITpublished version 4.0.9, 2 years ago5 dependents licensed under $MIT
+  
+  18,007
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**@cipherstash/protect-ffi-linux-x64-musl**](https://www.npmjs.com/package/@cipherstash/protect-ffi-linux-x64-musl)
+  
+  Prebuilt binary package for \`@cipherstash/protect-ffi\` on \`linux-x64-musl\`.
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci84MWE0ZWExNWYwMTYzZTE1MTUzNGZkODBjYzdhNjA2Mj9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.fWHk5o_GDhjBDJf3qn3WlNh6e_u45RQJX0W1vgPLhE8)
+  
+  [cs-zcjbrewer](https://www.npmjs.com/~cs-zcjbrewer)
+  
+  •0.21.2 • 6 days ago• 0 dependents• ISCpublished version 0.21.2, 6 days ago0 dependents licensed under $ISC
+  
+  46,204
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**@cipherstash/protect-ffi-linux-x64-gnu**](https://www.npmjs.com/package/@cipherstash/protect-ffi-linux-x64-gnu)
+  
+  Prebuilt binary package for \`@cipherstash/protect-ffi\` on \`linux-x64-gnu\`.
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci84MWE0ZWExNWYwMTYzZTE1MTUzNGZkODBjYzdhNjA2Mj9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.fWHk5o_GDhjBDJf3qn3WlNh6e_u45RQJX0W1vgPLhE8)
+  
+  [cs-zcjbrewer](https://www.npmjs.com/~cs-zcjbrewer)
+  
+  •0.21.2 • 6 days ago• 0 dependents• ISCpublished version 0.21.2, 6 days ago0 dependents licensed under $ISC
+  
+  51,209
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**@yuuang/ffi-rs-linux-x64-musl**](https://www.npmjs.com/package/@yuuang/ffi-rs-linux-x64-musl)
+  
+  <div> <a href="https://github.com/zhangyuang/node-ffi-rs/blob/master/README.md">English</a> \| <a href="https://github.com/zhangyuang/node-ffi-rs/blob/master/README\_Zh.md">简体中文</a> </div>
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci8xYmZjNzBjZDkzNjVmZDVmODdkYzZlMTY5ODA3ZmFiNz9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.4LWN9MoeX9EXMgszmTwU9UxEJXK4lfWcx8h5QA2BTQw)
+  
+  [zhangyuang](https://www.npmjs.com/~zhangyuang)
+  
+  •1.3.1 • 5 months ago• 0 dependents• MITpublished version 1.3.1, 5 months ago0 dependents licensed under $MIT
+  
+  50,189
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**clp-ffi-js**](https://www.npmjs.com/package/clp-ffi-js)
+  
+  clp-ffi-js is a JavaScript FFI library for CLP.
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci9hN2RlMzkxMDU3NDIwNWFmN2M3MjU2MzQ4ZjZhMGMyOD9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.xqUfRSfvlcgJg24ww4qiOMx6HgzdmykPU_p3nz7-3gE)
+  
+  [y-scope](https://www.npmjs.com/~y-scope)
+  
+  •0.6.1 • 8 months ago• 0 dependents• Apache-2.0published version 0.6.1, 8 months ago0 dependents licensed under $Apache-2.0
+  
+  4,144
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**@livekit/rtc-ffi-bindings-linux-x64-gnu**](https://www.npmjs.com/package/@livekit/rtc-ffi-bindings-linux-x64-gnu)
+  
+  LiveKit RTC Node FFI bindings for internal use only
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci80NjE4ZTZmMjhkZmY5ZjhjM2NjMTNlYTg0OTU1ZWE2Nj9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.ukXIpmz1leILTUQeO__2vDsU1A2vwjY8XCG8QJT7wmY)
+  
+  [GitHub Actions](https://gh.io/npm-docs-trusted-publishers)
+  
+  •0.12.52-patch.0 • 8 days ago• 0 dependents• Apache-2.0published version 0.12.52-patch.0, 8 days ago0 dependents licensed under $Apache-2.0
+  
+  21,788
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**@yuuang/ffi-rs-linux-x64-gnu**](https://www.npmjs.com/package/@yuuang/ffi-rs-linux-x64-gnu)
+  
+  <div> <a href="https://github.com/zhangyuang/node-ffi-rs/blob/master/README.md">English</a> \| <a href="https://github.com/zhangyuang/node-ffi-rs/blob/master/README\_Zh.md">简体中文</a> </div>
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci8xYmZjNzBjZDkzNjVmZDVmODdkYzZlMTY5ODA3ZmFiNz9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.4LWN9MoeX9EXMgszmTwU9UxEJXK4lfWcx8h5QA2BTQw)
+  
+  [zhangyuang](https://www.npmjs.com/~zhangyuang)
+  
+  •1.3.1 • 5 months ago• 2 dependents• MITpublished version 1.3.1, 5 months ago2 dependents licensed under $MIT
+  
+  50,198
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**@types/ffi**](https://www.npmjs.com/package/@types/ffi)
+  
+  TypeScript definitions for ffi
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci8zZTJiMzQyNjE2ODIyZjhlYWJjOWRkMzkzODQwZGI0YT9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.EUOa_GBepJl2c81YEIz3BI_m3t-HTZSrDib9X7tvWjo)
+  
+  [types](https://www.npmjs.com/~types)
+  
+  •0.2.7 • 2 years ago• 12 dependents• MITpublished version 0.2.7, 2 years ago12 dependents licensed under $MIT
+  
+  1,358
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**steamworks-ffi-node**](https://www.npmjs.com/package/steamworks-ffi-node)
+  
+  Steamworks SDK wrapper using FFI for Node.js/Electron - Full Steam Integration
+  
+  - [steam](https://www.npmjs.com/search?q=keywords:steam)
+  - [steam-sdk](https://www.npmjs.com/search?q=keywords:steam-sdk)
+  - [steamworks](https://www.npmjs.com/search?q=keywords:steamworks)
+  - [steamworks-sdk](https://www.npmjs.com/search?q=keywords:steamworks-sdk)
+  - [ffi](https://www.npmjs.com/search?q=keywords:ffi)
+  - [typescript](https://www.npmjs.com/search?q=keywords:typescript)
+  - [achievements](https://www.npmjs.com/search?q=keywords:achievements)
+  - [steam-achievements](https://www.npmjs.com/search?q=keywords:steam-achievements)
+  - [steam-cloud](https://www.npmjs.com/search?q=keywords:steam-cloud)
+  - [steam-workshop](https://www.npmjs.com/search?q=keywords:steam-workshop)
+  - [steam-ugc](https://www.npmjs.com/search?q=keywords:steam-ugc)
+  - [steam-stats](https://www.npmjs.com/search?q=keywords:steam-stats)
+  - [steam-overlay](https://www.npmjs.com/search?q=keywords:steam-overlay)
+  - [gaming](https://www.npmjs.com/search?q=keywords:gaming)
+  - [View more](https://www.npmjs.com/package/steamworks-ffi-node#keywords)
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci80NjE4ZTZmMjhkZmY5ZjhjM2NjMTNlYTg0OTU1ZWE2Nj9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.ukXIpmz1leILTUQeO__2vDsU1A2vwjY8XCG8QJT7wmY)
+  
+  [GitHub Actions](https://gh.io/npm-docs-trusted-publishers)
+  
+  •0.10.2 • 19 days ago• 1 dependents• MITpublished version 0.10.2, 19 days ago1 dependents licensed under $MIT
+  
+  5,195
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**@gtkx/ffi**](https://www.npmjs.com/package/@gtkx/ffi)
+  
+  Generated TypeScript FFI bindings for GTKX
+  
+  - [gtkx](https://www.npmjs.com/search?q=keywords:gtkx)
+  - [gtk](https://www.npmjs.com/search?q=keywords:gtk)
+  - [gtk4](https://www.npmjs.com/search?q=keywords:gtk4)
+  - [ffi](https://www.npmjs.com/search?q=keywords:ffi)
+  - [bindings](https://www.npmjs.com/search?q=keywords:bindings)
+  - [typescript](https://www.npmjs.com/search?q=keywords:typescript)
+  - [linux](https://www.npmjs.com/search?q=keywords:linux)
+  - [desktop](https://www.npmjs.com/search?q=keywords:desktop)
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci80NjE4ZTZmMjhkZmY5ZjhjM2NjMTNlYTg0OTU1ZWE2Nj9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.ukXIpmz1leILTUQeO__2vDsU1A2vwjY8XCG8QJT7wmY)
+  
+  [GitHub Actions](https://gh.io/npm-docs-trusted-publishers)
+  
+  •0.21.0 • 20 days ago• 4 dependents• MPL-2.0published version 0.21.0, 20 days ago4 dependents licensed under $MPL-2.0
+  
+  2,717
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**win32-api**](https://www.npmjs.com/package/win32-api)
+  
+  FFI definitions of windows win32 api for node-ffi
+  
+  - [windows](https://www.npmjs.com/search?q=keywords:windows)
+  - [win32](https://www.npmjs.com/search?q=keywords:win32)
+  - [api](https://www.npmjs.com/search?q=keywords:api)
+  - [kernel32](https://www.npmjs.com/search?q=keywords:kernel32)
+  - [user32](https://www.npmjs.com/search?q=keywords:user32)
+  - [comctl32](https://www.npmjs.com/search?q=keywords:comctl32)
+  - [winspool](https://www.npmjs.com/search?q=keywords:winspool)
+  - [printer](https://www.npmjs.com/search?q=keywords:printer)
+  - [ffi](https://www.npmjs.com/search?q=keywords:ffi)
+  - [koffi](https://www.npmjs.com/search?q=keywords:koffi)
+  - [Electron](https://www.npmjs.com/search?q=keywords:Electron)
+  - [ESM](https://www.npmjs.com/search?q=keywords:ESM)
+  - [typescript](https://www.npmjs.com/search?q=keywords:typescript)
+  - [ts](https://www.npmjs.com/search?q=keywords:ts)
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci83NmRlNWJlMzhhZDJhYmNjZDBjNGI4OTdiYjJkYzg5MD9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.nTkxDnxhkWyVB-NXShYysMiZVUkS1iCHmfx8wEsRIV0)
+  
+  [waiting](https://www.npmjs.com/~waiting)
+  
+  •26.1.2 • a year ago• 5 dependents• MITpublished version 26.1.2, a year ago5 dependents licensed under $MIT
+  
+  4,507
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**@livekit/rtc-ffi-bindings**](https://www.npmjs.com/package/@livekit/rtc-ffi-bindings)
+  
+  LiveKit RTC Node FFI bindings for internal use only
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci80NjE4ZTZmMjhkZmY5ZjhjM2NjMTNlYTg0OTU1ZWE2Nj9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.ukXIpmz1leILTUQeO__2vDsU1A2vwjY8XCG8QJT7wmY)
+  
+  [GitHub Actions](https://gh.io/npm-docs-trusted-publishers)
+  
+  •0.12.52-patch.0 • 8 days ago• 1 dependents• Apache-2.0published version 0.12.52-patch.0, 8 days ago1 dependents licensed under $Apache-2.0
+  
+  25,532
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**libmagic-ffi**](https://www.npmjs.com/package/libmagic-ffi)
+  
+  Node bindings for libmagic using ffi
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci84YzY1MDVmNjY3ZDIwZmQzZjM1YTg0ZGM3NDAwODUzZT9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.odwask6GTSWPfZW7Ky-nc8UMg4ycT6-bn_uh8vOpOjU)
+  
+  [nomagick](https://www.npmjs.com/~nomagick)
+  
+  •0.1.4 • 2 years ago• 0 dependents• MITpublished version 0.1.4, 2 years ago0 dependents licensed under $MIT
+  
+  1,299
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**@makeomatic/ffi-napi**](https://www.npmjs.com/package/@makeomatic/ffi-napi)
+  
+  A foreign function interface (FFI) for Node.js, N-API style
+  
+  - [foreign](https://www.npmjs.com/search?q=keywords:foreign)
+  - [function](https://www.npmjs.com/search?q=keywords:function)
+  - [interface](https://www.npmjs.com/search?q=keywords:interface)
+  - [ffi](https://www.npmjs.com/search?q=keywords:ffi)
+  - [libffi](https://www.npmjs.com/search?q=keywords:libffi)
+  - [binding](https://www.npmjs.com/search?q=keywords:binding)
+  - [c](https://www.npmjs.com/search?q=keywords:c)
+  - [napi](https://www.npmjs.com/search?q=keywords:napi)
+  - [stable](https://www.npmjs.com/search?q=keywords:stable)
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci9lNTA5N2UzOTQ3ZDA2N2QyZjBlMjZhOTcwN2Q1NGI5ZT9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.CHMZWhf0gKbSFTwVhhREdlBIOGMmnNG2wUoJg85VM6Q)
+  
+  [avvs](https://www.npmjs.com/~avvs)
+  
+  •4.2.0 • 2 years ago• 5 dependents• MITpublished version 4.2.0, 2 years ago5 dependents licensed under $MIT
+  
+  1,691
+  
+  [![](https://static-production.npmjs.com/1910ec33cf83ceabb2a74a6c60959a12.svg)**@yuuang/ffi-rs-win32-ia32-msvc**](https://www.npmjs.com/package/@yuuang/ffi-rs-win32-ia32-msvc)
+  
+  <div> <a href="https://github.com/zhangyuang/node-ffi-rs/blob/master/README.md">English</a> \| <a href="https://github.com/zhangyuang/node-ffi-rs/blob/master/README\_Zh.md">简体中文</a> </div>
+  
+  ![](https://www.npmjs.com/npm-avatar/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdmF0YXJVUkwiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci8xYmZjNzBjZDkzNjVmZDVmODdkYzZlMTY5ODA3ZmFiNz9zaXplPTEwMCZkZWZhdWx0PXJldHJvIn0.4LWN9MoeX9EXMgszmTwU9UxEJXK4lfWcx8h5QA2BTQw)
+  
+  [zhangyuang](https://www.npmjs.com/~zhangyuang)
+  
+  •1.3.1 • 5 months ago• 0 dependents• MITpublished version 1.3.1, 5 months ago0 dependents licensed under $MIT
+  
+  4,961
+  --- End Content ---

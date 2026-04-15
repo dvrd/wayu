@@ -1,0 +1,415 @@
+chezmoi - chezmoi
+  URL: https://www.chezmoi.io/
+  chezmoi helps you manage your personal configuration files (dotfiles, like ~/.gitconfig ) across multiple machines. chezmoi provides many features beyond ...
+
+  --- Content ---
+  [Skip to content](https://www.chezmoi.io/#chezmoi)
+  
+  # chezmoi
+  
+  Manage your dotfiles across multiple diverse machines, securely.
+  
+  The latest version of chezmoi is 2.70.1 ( [release notes](https://github.com/twpayne/chezmoi/releases/tag/v2.70.1),
+  [release history](https://www.chezmoi.io/reference/release-history/)).
+  
+  ## What does chezmoi do?
+  
+  chezmoi helps you manage your personal configuration files (dotfiles, like
+  `~/.gitconfig`) across multiple machines.
+  
+  chezmoi provides many features beyond symlinking or using a bare git repo
+  including:
+  
+  - templates (to handle small differences between machines)
+  - password manager support (to store your secrets securely)
+  - importing files from archives (great for shell and editor plugins)
+  - full file encryption (using age, gpg, git-crypt, or transcrypt)
+  - running scripts (to handle everything else)
+  
+  With chezmoi, pronounced /ʃeɪ mwa/ (shay-mwa) (listen [1](https://www.chezmoi.io/voice_30-04-2025_09-20-13.ogx) [2](https://www.chezmoi.io/voice_30-04-2025_09-20-48.ogx) [3](https://www.chezmoi.io/voice_30-04-2025_09-20-56.ogx)), you can install chezmoi and your dotfiles from your GitHub
+  dotfiles repo on a new, empty machine with a single command:
+  
+  ```
+  sh -c "$(curl -fsLS get.chezmoi.io)" -- init --apply $GITHUB_USERNAME
+  ```
+  
+  As well as the `curl | sh` installation, you can [install chezmoi with your\\
+  favorite package manager](https://www.chezmoi.io/install/).
+  
+  Updating your dotfiles on any machine is a single command:
+  
+  ```
+  chezmoi update
+  ```
+  
+  chezmoi runs on all popular operating systems, is distributed as a single
+  statically-linked binary with no dependencies, and does not require root access.
+  
+  ## How do I start with chezmoi?
+  
+  [Install chezmoi](https://www.chezmoi.io/install/) then read the [quick start guide](https://www.chezmoi.io/quick-start/). The
+  [user guide](https://www.chezmoi.io/user-guide/setup/) covers most common tasks. For a full description, consult
+  the [reference](https://www.chezmoi.io/reference/).
+  
+  ## Should I use chezmoi?
+  
+  See what other people think about chezmoi by reading [articles](https://www.chezmoi.io/links/articles/),
+  listening to [podcasts](https://www.chezmoi.io/links/podcasts/), and watching [videos](https://www.chezmoi.io/links/videos/) about chezmoi.
+  Read how [chezmoi compares to other dotfile managers](https://www.chezmoi.io/comparison-table/). Explore other
+  people's [dotfile repos that use chezmoi](https://www.chezmoi.io/links/dotfile-repos/).
+  
+  ## How do I get help using chezmoi?
+  
+  chezmoi has extensive documentation. First, use the search bar at the top of
+  this page using a few, short, and specific keywords related to your problem.
+  
+  chezmoi is an open source project with tens of thousands of users, so it is very
+  likely that someone else has already encountered and solved your problem. Search
+  [chezmoi's GitHub repo](https://github.com/twpayne/chezmoi) for issues and discussions with keywords related
+  to your problem.
+  
+  If your question is still unanswered, please [open a GitHub issue for\\
+  support](https://github.com/twpayne/chezmoi/issues/new?assignees=&labels=support&projects=&template=01_support_request.md&title=.).
+  
+  ## I like chezmoi. How do I say thanks?
+  
+  Please [give chezmoi a star on GitHub](https://github.com/twpayne/chezmoi).
+  
+  [Share chezmoi](https://www.chezmoi.io/links/social-media/) and, if you're happy to share your public dotfiles repo,
+  then [tag your repo with `chezmoi`](https://www.chezmoi.io/links/dotfile-repos/).
+  
+  [Contributions are very welcome](https://www.chezmoi.io/developer-guide/contributing-changes/) and every [bug report, support\\
+  request, and feature request](https://github.com/twpayne/chezmoi/issues) helps make chezmoi better. Thank you :)
+  
+  chezmoi does not accept financial contributions. Instead, please make a donation
+  to a charity or cause of your choice.
+  
+  Back to top
+  --- End Content ---
+
+Managing dot files with Chezmoi - Ettore Ciarcia
+  URL: https://ettoreciarcia.com/publication/21-chezmoi/
+  In this article, we've explored how to manage multiple dotfiles across multiple clients using a versioning system, ensuring they're always up-to-date and ...
+
+  --- Content ---
+  Clear
+  
+  # Managing dot files with Chezmoi
+  
+  May 19, 2024·
+  
+  ![Ettore Ciarcia](https://ettoreciarcia.com/author/ettore-ciarcia/avatar_hu142786366313216904.webp)
+  
+  Ettore Ciarcia
+  
+  ·4 min read
+  
+  ![](https://ettoreciarcia.com/publication/21-chezmoi/featured_hu14410579079187808179.webp)Image credit:
+  
+  Abstract
+  
+  How to manage and back up your dot files with Chezmoi
+  
+  ## 0 Intro
+  
+  If you’re in the trenches fighting the DevOps war, you’re definitely using a vast array of tools on different clients. You might have one client you use for work, one for your hobbies, and perhaps others scattered around your homelab where it would be convenient to have your beloved dotfiles configurations perfectly aligned.
+  
+  It may seem trivial to an outsider, but each dotfile tells who we are and holds the memory of our preferred settings, our shortcuts, and everything that helps us be more productive when we work.
+  
+  I vividly remember when, after years of using my MacBook Pro, I found myself with a new MacBook in my hands and was going crazy.
+  My productivity was significantly impacted without the tools I use daily and without their exact configurations.
+  
+  After spending the first few days making sure I had every tool installed and configured them all manually, painstakingly populating each dotfile, I thought: there must be a tool in this world that can help me speed up the configuration of a new client when it comes my way.
+  
+  And so I tried several (some of which COMPLETELY SCREWED UP my old dotfiles), until I found [Chezmoi](https://www.chezmoi.io/)
+  
+  I’ve been a happy user for over a year now, so it’s time to tell you about it.
+  
+  Chezmoi provides many features beyond symlinking or using a bare git repo including: templates (to handle small differences between machines), password manager support (to store your secrets securely), importing files from archives (great for shell and editor plugins), full file encryption (using gpg or age), and running scripts (to handle everything else).
+  
+  ## 1 My Chezmoi Configuration
+  
+  The Chezmoi documentation is really well done (kudos to its creators), which is why I’ll avoid showing you step-by-step how to configure Chezmoi on your client. I’ll just show you my configuration. But first, here are some premises about my use case.
+  
+  1. I’m using GitHub to store the files synchronized by Chezmoi; having a version control system to manage configurations is incredibly convenient.
+  2. Both for hobbies and work, I use two MacBooks, so my dotfiles are synchronized across two similar operating systems
+  3. I’m terrible at keeping track of configurations, so I absolutely need to automate the processes.
+  
+  ### 1.1 Chezmoiignore
+  
+  Just like Git, Chezmoi also uses a file to specify objects that should not be involved in the versioning process. In my case, the only files excluded from this process are some Oh My Zsh files. Therefore, my .chezmoiignore file is composed as follows:
+  
+  ```bash
+  .oh-my-zsh/.git/
+  .oh-my-zsh/plugins/
+  .oh-my-zsh/custom/
+  .oh-my-zsh/themes
+  ```
+  
+  Copy
+  
+  ### 1.2 Automatically commit and push changes to your repo
+  
+  Having a system like this is useless if you don’t keep your dotfiles aligned with Chezmoi. One feature I found very interesting is the autocommit and autopush functionality when a dotfile is modified. To enable these features, you can configure Chezmoi as follows
+  
+  ```toml
+  [git]
+      autoCommit = true
+      autoPush = true
+  ```
+  
+  Copy
+  
+  Paste this into your _~/.config/chezmoi/chezmoi.toml_ file
+  
+  ### 1.3 Automatically add changes to your repo
+  
+  To keep all the files automatically aligned, the last piece of the puzzle is automating the addition of new or modified files. I solved this issue with a script executed by a cron job on a daily basis. Below is the script I use:
+  
+  ```bash
+  #!/bin/bash
+  
+  current_time=$(date +"%d-%m-%Y-%H")
+  log_filename="${current_time}.log"
+  
+  # Redirect stdout and stderr to the log file
+  exec > >(tee -a "$log_filename") 2>&1
+  
+  cd $HOME || { echo "Failed to change directory to $HOME"; exit 1; }
+  
+  # Run the 'chezmoi managed' command and save the output to a variable
+  managed_files=$(chezmoi managed)
+  
+  if [ $? -ne 0 ]; then
+    echo "Error during the execution of 'chezmoi managed'"
+    exit 1
+  fi
+  
+  while IFS= read -r file; do
+    # Run the 'chezmoi add' command for each file
+    chezmoi add "$file"
+  done <<< "$managed_files"
+  ```
+  
+  Copy
+  
+  Now you can create a cron job that executes this script whenever you want!
+  
+  ## 2 Bonus Point: Homebrew Dump for Restoring on Other Clients
+  
+  If you’ve installed most of your packages with Homebrew, I recommend installing brew bundle with the following command:
+  
+  `brew bundle install`
+  
+  To generate a file containing all installed packages along with their respective versions, you can use the command:
+  
+  `brew bundle dump`
+  
+  And to install all the packages on a new client:
+  
+  `brew bundle --file=~/.private/Brewfile`
+  
+  With Chezmoi, you just need to keep track of this file in the synchronization process, and you’re all set!
+  
+  ## 3 Conclusions
+  
+  In this article, we’ve explored how to manage multiple dotfiles across multiple clients using a versioning system, ensuring they’re always up-to-date and aligned. I hope you found it helpful! If you encounter any issues with the configurations discussed in this article, feel free to reach out to me. See you soon!
+  
+  ## 4 Useful Links
+  
+  [Chezmoi](https://www.chezmoi.io/)
+  
+  [Automatically commit and push changes to your repo](https://www.chezmoi.io/user-guide/daily-operations/#automatically-commit-and-push-changes-to-your-repo)
+  
+  [Brew Bundle](https://gist.github.com/ChristopherA/a579274536aab36ea9966f301ff14f3f)
+  
+  Last updated on
+  May 19, 2024
+  
+  [How To](https://ettoreciarcia.com/tags/how-to/)
+  
+  [X](https://twitter.com/intent/tweet?url=https%3A%2F%2Fettoreciarcia.com%2Fpublication%2F21-chezmoi%2F&text=Managing+dot+files+with+Chezmoi "X")[Facebook](https://www.facebook.com/sharer.php?u=https%3A%2F%2Fettoreciarcia.com%2Fpublication%2F21-chezmoi%2F&t=Managing+dot+files+with+Chezmoi "Facebook")[Email](mailto:?subject=Managing%20dot%20files%20with%20Chezmoi&body=https%3A%2F%2Fettoreciarcia.com%2Fpublication%2F21-chezmoi%2F "Email")[LinkedIn](https://www.linkedin.com/shareArticle?url=https%3A%2F%2Fettoreciarcia.com%2Fpublication%2F21-chezmoi%2F&title=Managing+dot+files+with+Chezmoi "LinkedIn")[WhatsApp](whatsapp://send?text=Managing+dot+files+with+Chezmoi%20https%3A%2F%2Fettoreciarcia.com%2Fpublication%2F21-chezmoi%2F "WhatsApp")
+  
+  ![Ettore Ciarcia](https://ettoreciarcia.com/author/ettore-ciarcia/avatar_hu2444867835082845204.jpg)
+  
+  Authors
+  
+  [Ettore Ciarcia](https://ettoreciarcia.com/)
+  
+  Kubernetes & Cloud Engineer
+  
+  [At-Symbol](mailto:ettoreciarcia.tech@gmail.com)[Brands/Github](https://github.com/ettoreciarcia)[Brands/Linkedin](https://www.linkedin.com/in/ettoreciarcia/)
+  
+  * * *
+  
+  [←How to become a KubestronautJul 21, 2024](https://ettoreciarcia.com/publication/22-kubestronaut/)
+  
+  [The native integration between Alert Manager and Microsoft TeamsApr 26, 2024\\
+  →](https://ettoreciarcia.com/publication/20-alertmanager-teams/)
+  --- End Content ---
+
+Why use chezmoi?
+  URL: https://www.chezmoi.io/why-use-chezmoi/
+  Dotfile managers give you the combined benefit of a consistent environment everywhere with an undo command and a restore from backup.
+
+  --- Content ---
+  [Skip to content](https://www.chezmoi.io/why-use-chezmoi/#why-use-chezmoi)
+  
+  # Why use chezmoi?
+  
+  ## Why should I use a dotfile manager?
+  
+  Dotfile managers give you the combined benefit of a consistent environment
+  everywhere with an undo command and a restore from backup.
+  
+  As the core of our development environments become increasingly standardized
+  (e.g. using git at both home and work), and we further customize them, at the
+  same time we increasingly work in ephemeral environments like Docker
+  containers, virtual machines, and GitHub Codespaces.
+  
+  In the same way that nobody would use an editor without an undo command, or
+  develop software without a version control system, chezmoi brings the
+  investment that you have made in mastering your tools to every environment that
+  you work in.
+  
+  ## I already have a system to manage my dotfiles, why should I use chezmoi?
+  
+  Quote
+  
+  I’ve been using Chezmoi for more than a year now, across at least 3
+  computers simultaneously, and I really love it. Most of all, I love how
+  fast I can configure a new machine when I use it. In just a couple minutes
+  of work, I can kick off a process on a brand-new computer that will set up
+  my dotfiles and install all my usual software so it feels like a computer
+  I’ve been using for years. I also appreciate features like secrets
+  management, which allow me to share my dotfiles while keeping my secrets
+  safe. Overall, I love the way Chezmoi fits so perfectly into the niche of
+  managing dotfiles.
+  
+  — [@mike\_kasberg](https://www.mikekasberg.com/blog/2021/05/12/my-dotfiles-story.html)
+  
+  Quote
+  
+  I had initially been turned off when I first encountered \[chezmoi\], because
+  \[chezmoi\] seemed overkill for (what appeared to me) a simple task.
+  
+  But the problem of managing a relatively small number of dotfiles across a
+  relatively small number of machines with small differences between them and
+  keeping them up to date proved to be _MUCH_ more complex than I imagined.
+  Copy things around by hand, and then later distributing them via source
+  control got hairy very quickly.
+  
+  I finally realized all those features were absolutely necessary to manage
+  things sanely, and once I took some time to learn how to do things with
+  chezmoi, I have never looked back.
+  
+  — [njt](https://news.ycombinator.com/item?id=31015669)
+  
+  Quote
+  
+  Regular reminder that chezmoi is the best dotfile manager utility I've used
+  and you can too
+  
+  — @mbbroberg
+  
+  If you're using any of the following methods:
+  
+  - A custom shell script.
+  
+  - An existing dotfile manager like [dotbot](https://github.com/anishathalye/dotbot), [rcm](https://github.com/thoughtbot/rcm),
+  [homesick](https://github.com/technicalpickles/homesick), [vcsh](https://github.com/RichiH/vcsh), [yadm](https://yadm.io/), or [GNU Stow](https://www.gnu.org/software/stow/).
+  
+  - A [bare git repo](https://www.atlassian.com/git/tutorials/dotfiles).
+  
+  
+  Then you've probably run into at least one of the following problems.
+  
+  ### ...if coping with differences between machines requires extra effort
+  
+  If you want to synchronize your dotfiles across multiple operating systems or
+  distributions, then you may need to manually perform extra steps to cope with
+  differences from machine to machine. You might need to run different commands on
+  different machines, maintain separate per-machine files or branches (with the
+  associated hassle of merging, rebasing, or copying each change), or hope that
+  your custom logic handles the differences correctly.
+  
+  chezmoi uses a single source of truth (a single branch) and a single command
+  that works on every machine. Individual files can be templates to handle machine
+  to machine differences, if needed.
+  
+  ### ...if you have to keep your dotfiles repo private
+  
+  Quote
+  
+  And regarding dotfiles, I saw that. It's only public dotfiles repos so I
+  have to evaluate my dotfiles history to be sure. I have secrets scanning
+  and more, but it was easier to keep it private for security, I'm ok mostly
+  though. I'm using chezmoi and it's easier now
+  
+  — @sheldon\_hull
+  
+  If your system stores secrets in plain text, then you must be very careful about
+  where you clone your dotfiles. If you clone them on your work machine then
+  anyone with access to your work machine (e.g. your IT department) will have
+  access to your home secrets. If you clone it on your home machine then you risk
+  leaking work secrets.
+  
+  With chezmoi you can store secrets in your password manager or encrypt them, and
+  even store passwords in different ways on different machines. You can clone your
+  dotfiles repository anywhere, and even make your dotfiles repo public, without
+  leaving personal secrets on your work machine or work secrets on your personal
+  machine.
+  
+  ### ...if you have to maintain your own tool
+  
+  Quote
+  
+  I've offloaded my dotfiles deployment from a homespun shell script to chezmoi.
+  I'm quite happy with this decision.
+  
+  — @gotgenes
+  
+  Quote
+  
+  I discovered chezmoi and it's pretty cool, just migrated my old custom
+  multi-machine sync dotfile setup and it's so much simpler now
+  
+  in case you're wondering I have written 0 code
+  
+  — @buritica
+  
+  Quote
+  
+  Chezmoi is like what you might get if you re-wrote my bash script in Go,
+  came up with better solutions than `diff` for managing config on multiple
+  machines, added in secrets management and other useful dotfile tools, and
+  tweaked and perfected it over years.
+  
+  - [@mike\_kasberg](https://www.mikekasberg.com/blog/2021/05/12/my-dotfiles-story.html)
+  
+  If your system was written by you for your personal use, then it probably has
+  the functionality that you needed when you wrote it. If you need more
+  functionality then you have to implement it yourself.
+  
+  chezmoi includes a huge range of battle-tested functionality out-of-the-box,
+  including dry-run and diff modes, script execution, conflict resolution, Windows
+  support, and much, much more. chezmoi is [used by thousands of people](https://github.com/twpayne/chezmoi/stargazers)
+  and has a rich suite of both unit and integration tests. When you hit the limits
+  of your existing dotfile management system, chezmoi already has
+  a tried-and-tested solution ready for you to use.
+  
+  ### ...if setting up your dotfiles requires more than one short command
+  
+  If your system is written in a scripting language like Python, Perl, or Ruby,
+  then you also need to install a compatible version of that language's runtime
+  before you can use your system.
+  
+  chezmoi is distributed as a single stand-alone statically-linked binary with no
+  dependencies that you can simply copy onto your machine and run. You don't even
+  need git installed. chezmoi provides one-line installs, pre-built binaries,
+  packages for Linux and BSD distributions, Homebrew formulae, Scoop and
+  Chocolatey support on Windows, and a initial config file generation mechanism to
+  make installing your dotfiles on a new machine as painless as possible.
+  
+  Back to top
+  --- End Content ---

@@ -9,6 +9,7 @@ import "core:strconv"
 ShellType :: enum {
     BASH,
     ZSH,
+    FISH,
     UNKNOWN,
 }
 
@@ -33,6 +34,8 @@ detect_shell :: proc() -> ShellType {
         return .ZSH
     } else if strings.contains(shell_lower, "bash") {
         return .BASH
+    } else if strings.contains(shell_lower, "fish") {
+        return .FISH
     }
 
     return .UNKNOWN
@@ -45,6 +48,8 @@ get_shell_extension :: proc(shell: ShellType) -> string {
         return "bash"
     case .ZSH:
         return "zsh"
+    case .FISH:
+        return "fish"
     case .UNKNOWN:
         return "sh" // Fallback to POSIX shell
     }
@@ -65,6 +70,8 @@ get_rc_file_path :: proc(shell: ShellType) -> string {
         return fmt.aprintf("%s/.bashrc", home)
     case .ZSH:
         return fmt.aprintf("%s/.zshrc", home)
+    case .FISH:
+        return fmt.aprintf("%s/.config/fish/config.fish", home)
     case .UNKNOWN:
         return fmt.aprintf("%s/.profile", home)
     }
@@ -78,6 +85,8 @@ get_shebang :: proc(shell: ShellType) -> string {
         return "#!/usr/bin/env bash"
     case .ZSH:
         return "#!/usr/bin/env zsh"
+    case .FISH:
+        return "#!/usr/bin/env fish"
     case .UNKNOWN:
         return "#!/bin/sh"
     }
@@ -91,6 +100,8 @@ get_shell_name :: proc(shell: ShellType) -> string {
         return "Bash"
     case .ZSH:
         return "ZSH"
+    case .FISH:
+        return "Fish"
     case .UNKNOWN:
         return "Unknown"
     }
@@ -99,11 +110,11 @@ get_shell_name :: proc(shell: ShellType) -> string {
 
 // Check if shell supports specific features
 shell_supports_arrays :: proc(shell: ShellType) -> bool {
-    return shell == .BASH || shell == .ZSH
+    return shell == .BASH || shell == .ZSH || shell == .FISH
 }
 
 shell_supports_completion :: proc(shell: ShellType) -> bool {
-    return shell == .BASH || shell == .ZSH
+    return shell == .BASH || shell == .ZSH || shell == .FISH
 }
 
 shell_supports_functions :: proc(shell: ShellType) -> bool {
@@ -120,6 +131,8 @@ parse_shell_type :: proc(shell_str: string) -> ShellType {
         return .BASH
     } else if shell_lower == "zsh" {
         return .ZSH
+    } else if shell_lower == "fish" {
+        return .FISH
     }
     return .UNKNOWN
 }
@@ -149,10 +162,10 @@ get_config_file_with_fallback :: proc(base_name: string, shell: ShellType) -> st
 // Validate shell compatibility
 validate_shell_compatibility :: proc(shell: ShellType) -> (valid: bool, message: string) {
     switch shell {
-    case .BASH, .ZSH:
+    case .BASH, .ZSH, .FISH:
         return true, ""
     case .UNKNOWN:
-        return false, "Unable to detect shell type. Please specify --shell bash or --shell zsh"
+        return false, "Unable to detect shell type. Please specify --shell bash, --shell zsh, or --shell fish"
     }
     return false, "Unsupported shell type"
 }
