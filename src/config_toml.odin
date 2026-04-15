@@ -818,60 +818,109 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
     path_clean_val := get_toml_value(doc, "path.clean")
     config.path.clean = get_bool(path_clean_val, false)
     
-    // Parse aliases (array of tables format [[aliases]])
+    // Parse aliases - support both formats:
+    // New format: [aliases] section with key = "value" pairs
+    // Old format: [[aliases]] array of tables
     aliases_val := get_toml_value(doc, "aliases")
-    if aliases_val != nil && aliases_val.type == .ARRAY {
-        for alias_table in aliases_val.arr_val {
-            if alias_table.type != .TABLE {
-                continue
+    if aliases_val != nil {
+        if aliases_val.type == .TABLE {
+            // New format: simple table with key-value pairs
+            for name, cmd_val in aliases_val.table_val {
+                if cmd_val.type == .STRING {
+                    alias: TomlAlias
+                    alias.name = strings.clone(name)
+                    alias.command = strings.clone(cmd_val.str_val)
+                    append(&aliases_dyn, alias)
+                }
             }
-            
-            alias: TomlAlias
-            if name_val, ok := alias_table.table_val["name"]; ok && name_val.type == .STRING {
-                alias.name = strings.clone(name_val.str_val)
-            }
-            if cmd_val, ok := alias_table.table_val["command"]; ok && cmd_val.type == .STRING {
-                alias.command = strings.clone(cmd_val.str_val)
-            }
-            if desc_val, ok := alias_table.table_val["description"]; ok && desc_val.type == .STRING {
-                alias.description = strings.clone(desc_val.str_val)
-            }
-            
-            if len(alias.name) > 0 {
-                append(&aliases_dyn, alias)
+        } else if aliases_val.type == .ARRAY {
+            // Old format: array of tables [[aliases]]
+            for alias_table in aliases_val.arr_val {
+                if alias_table.type != .TABLE {
+                    continue
+                }
+                
+                alias: TomlAlias
+                if name_val, ok := alias_table.table_val["name"]; ok && name_val.type == .STRING {
+                    alias.name = strings.clone(name_val.str_val)
+                }
+                if cmd_val, ok := alias_table.table_val["command"]; ok && cmd_val.type == .STRING {
+                    alias.command = strings.clone(cmd_val.str_val)
+                }
+                if desc_val, ok := alias_table.table_val["description"]; ok && desc_val.type == .STRING {
+                    alias.description = strings.clone(desc_val.str_val)
+                }
+                
+                if len(alias.name) > 0 {
+                    append(&aliases_dyn, alias)
+                }
             }
         }
     }
     
-    // Parse constants
+    // Parse constants - support both formats:
+    // New format: [constants] section with NAME = "value" pairs
+    // Old format: [[constants]] array of tables
     constants_val := get_toml_value(doc, "constants")
-    if constants_val != nil && constants_val.type == .ARRAY {
-        for const_table in constants_val.arr_val {
-            if const_table.type != .TABLE {
-                continue
+    if constants_val != nil {
+        if constants_val.type == .TABLE {
+            // New format: simple table with key-value pairs
+            for name, val_val in constants_val.table_val {
+                if val_val.type == .STRING {
+                    constant: TomlConstant
+                    constant.name = strings.clone(name)
+                    constant.value = strings.clone(val_val.str_val)
+                    constant.export = true  // Default to exported
+                    append(&constants_dyn, constant)
+                } else if val_val.type == .TABLE {
+                    // Inline table format: CONSTANT = { value = "...", secret = true }
+                    constant: TomlConstant
+                    constant.name = strings.clone(name)
+                    if v, ok := val_val.table_val["value"]; ok && v.type == .STRING {
+                        constant.value = strings.clone(v.str_val)
+                    }
+                    if e, ok := val_val.table_val["export"]; ok {
+                        constant.export = get_bool(e, true)
+                    } else {
+                        constant.export = true
+                    }
+                    if s, ok := val_val.table_val["secret"]; ok {
+                        constant.secret = get_bool(s, false)
+                    }
+                    if len(constant.value) > 0 {
+                        append(&constants_dyn, constant)
+                    }
+                }
             }
-            
-            constant: TomlConstant
-            if name_val, ok := const_table.table_val["name"]; ok && name_val.type == .STRING {
-                constant.name = strings.clone(name_val.str_val)
-            }
-            if val_val, ok := const_table.table_val["value"]; ok && val_val.type == .STRING {
-                constant.value = strings.clone(val_val.str_val)
-            }
-            if export_val, ok := const_table.table_val["export"]; ok {
-                constant.export = get_bool(export_val, true)
-            } else {
-                constant.export = true
-            }
-            if secret_val, ok := const_table.table_val["secret"]; ok {
-                constant.secret = get_bool(secret_val, false)
-            }
-            if desc_val, ok := const_table.table_val["description"]; ok && desc_val.type == .STRING {
-                constant.description = strings.clone(desc_val.str_val)
-            }
-            
-            if len(constant.name) > 0 {
-                append(&constants_dyn, constant)
+        } else if constants_val.type == .ARRAY {
+            // Old format: array of tables [[constants]]
+            for const_table in constants_val.arr_val {
+                if const_table.type != .TABLE {
+                    continue
+                }
+                
+                constant: TomlConstant
+                if name_val, ok := const_table.table_val["name"]; ok && name_val.type == .STRING {
+                    constant.name = strings.clone(name_val.str_val)
+                }
+                if val_val, ok := const_table.table_val["value"]; ok && val_val.type == .STRING {
+                    constant.value = strings.clone(val_val.str_val)
+                }
+                if export_val, ok := const_table.table_val["export"]; ok {
+                    constant.export = get_bool(export_val, true)
+                } else {
+                    constant.export = true
+                }
+                if secret_val, ok := const_table.table_val["secret"]; ok {
+                    constant.secret = get_bool(secret_val, false)
+                }
+                if desc_val, ok := const_table.table_val["description"]; ok && desc_val.type == .STRING {
+                    constant.description = strings.clone(desc_val.str_val)
+                }
+                
+                if len(constant.name) > 0 {
+                    append(&constants_dyn, constant)
+                }
             }
         }
     }
@@ -956,40 +1005,67 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
             profile_constants_dyn := make([dynamic]TomlConstant)
             profile_plugins_dyn := make([dynamic]TomlPlugin)
             
-            // Parse profile aliases
-            if aliases_val, ok := profile_table.table_val["aliases"]; ok && aliases_val.type == .ARRAY {
-                for alias_table in aliases_val.arr_val {
-                    if alias_table.type != .TABLE {
-                        continue
+            // Parse profile aliases - support both formats
+            if aliases_val, ok := profile_table.table_val["aliases"]; ok {
+                if aliases_val.type == .TABLE {
+                    // New format: simple table
+                    for name, cmd_val in aliases_val.table_val {
+                        if cmd_val.type == .STRING {
+                            alias: TomlAlias
+                            alias.name = strings.clone(name)
+                            alias.command = strings.clone(cmd_val.str_val)
+                            append(&profile_aliases_dyn, alias)
+                        }
                     }
-                    alias: TomlAlias
-                    if name_val, ok2 := alias_table.table_val["name"]; ok2 && name_val.type == .STRING {
-                        alias.name = strings.clone(name_val.str_val)
-                    }
-                    if cmd_val, ok2 := alias_table.table_val["command"]; ok2 && cmd_val.type == .STRING {
-                        alias.command = strings.clone(cmd_val.str_val)
-                    }
-                    if len(alias.name) > 0 {
-                        append(&profile_aliases_dyn, alias)
+                } else if aliases_val.type == .ARRAY {
+                    // Old format: array of tables
+                    for alias_table in aliases_val.arr_val {
+                        if alias_table.type != .TABLE {
+                            continue
+                        }
+                        alias: TomlAlias
+                        if name_val, ok2 := alias_table.table_val["name"]; ok2 && name_val.type == .STRING {
+                            alias.name = strings.clone(name_val.str_val)
+                        }
+                        if cmd_val, ok2 := alias_table.table_val["command"]; ok2 && cmd_val.type == .STRING {
+                            alias.command = strings.clone(cmd_val.str_val)
+                        }
+                        if len(alias.name) > 0 {
+                            append(&profile_aliases_dyn, alias)
+                        }
                     }
                 }
             }
             
-            // Parse profile constants
-            if constants_val, ok := profile_table.table_val["constants"]; ok && constants_val.type == .ARRAY {
-                for const_table in constants_val.arr_val {
-                    if const_table.type != .TABLE {
-                        continue
+            // Parse profile constants - support both formats
+            if constants_val, ok := profile_table.table_val["constants"]; ok {
+                if constants_val.type == .TABLE {
+                    // New format: simple table
+                    for name, val_val in constants_val.table_val {
+                        if val_val.type == .STRING {
+                            constant: TomlConstant
+                            constant.name = strings.clone(name)
+                            constant.value = strings.clone(val_val.str_val)
+                            constant.export = true
+                            append(&profile_constants_dyn, constant)
+                        }
                     }
-                    constant: TomlConstant
-                    if name_val, ok2 := const_table.table_val["name"]; ok2 && name_val.type == .STRING {
-                        constant.name = strings.clone(name_val.str_val)
-                    }
-                    if val_val, ok2 := const_table.table_val["value"]; ok2 && val_val.type == .STRING {
-                        constant.value = strings.clone(val_val.str_val)
-                    }
-                    if len(constant.name) > 0 {
-                        append(&profile_constants_dyn, constant)
+                } else if constants_val.type == .ARRAY {
+                    // Old format: array of tables
+                    for const_table in constants_val.arr_val {
+                        if const_table.type != .TABLE {
+                            continue
+                        }
+                        constant: TomlConstant
+                        if name_val, ok2 := const_table.table_val["name"]; ok2 && name_val.type == .STRING {
+                            constant.name = strings.clone(name_val.str_val)
+                        }
+                        if val_val, ok2 := const_table.table_val["value"]; ok2 && val_val.type == .STRING {
+                            constant.value = strings.clone(val_val.str_val)
+                        }
+                        if len(constant.name) > 0 {
+                            append(&profile_constants_dyn, constant)
+                        }
                     }
                 }
             }
