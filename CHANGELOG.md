@@ -5,6 +5,11 @@ All notable changes to wayu will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - 2026-04-15
+
+### Added
+
+- **export**: Add turbo export mode for faster shell startup
 ## [3.6.0] - 2026-04-15
 
 ### Added
@@ -176,6 +181,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Correct termios struct for macOS compatibility
 - Resolve unit test failures and improve test robustness
 - Rename run_component_test to run_component_testing
+[3.7.0]: https://github.com/dvrd/wayu/releases/tag/v3.7.0
 [3.6.0]: https://github.com/dvrd/wayu/releases/tag/v3.6.0
 [3.5.0]: https://github.com/dvrd/wayu/releases/tag/v3.5.0
 [3.4.0]: https://github.com/dvrd/wayu/releases/tag/v3.4.0
