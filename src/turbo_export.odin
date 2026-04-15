@@ -16,8 +16,8 @@ import "core:path/filepath"
 import "core:slice"
 
 // Turbo export configuration
-TURBO_EXPORT_FILE :: "wayu-turbo.zsh"
-TURBO_EXPORT_FILE_BASH :: "wayu-turbo.bash"
+TURBO_EXPORT_FILE :: "turbo.zsh"
+TURBO_EXPORT_FILE_BASH :: "turbo.bash"
 
 // Entry point for turbo export command
 handle_export_command :: proc(action: Action, args: []string) {
@@ -378,12 +378,12 @@ print_export_usage :: proc() {
 	fmt.println("  wayu export --turbo")
 	fmt.println()
 	fmt.println("  # Use in .zshrc (replace source ~/.config/wayu/init.zsh)")
-	fmt.println("  source \"$HOME/.config/wayu/wayu-turbo.zsh\"")
+	fmt.println("  source \"$HOME/.config/wayu/turbo.zsh\"")
 	fmt.println()
 	fmt.println("  # Or use eval mode (even faster)")
 	fmt.println("  eval $(wayu export --eval)")
 	fmt.println()
-	fmt.printfln("%sTURBO FILE:%s ~/.config/wayu/wayu-turbo.zsh", get_muted(), RESET)
+	fmt.printfln("%sTURBO FILE:%s ~/.config/wayu/turbo.zsh", get_muted(), RESET)
 }
 
 // Check if turbo file exists and is current
