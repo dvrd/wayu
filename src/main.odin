@@ -48,6 +48,9 @@ Command :: enum {
 	CONFIG,
 	EXPORT,     // High-performance turbo export
 	TOML,       // TOML configuration management
+	DOCTOR,     // Health check and diagnostics
+	TEMPLATE,   // Configuration presets
+	HOOKS,      // Pre/post action hooks
 	VERSION,
 	HELP,
 	SEARCH,     // Global fuzzy search across all configs
@@ -206,7 +209,11 @@ main :: proc() {
 	case .CONSTANTS:
 		handle_constants_command(parsed.action, parsed.args)
 	case .COMPLETIONS:
-		handle_completions_command(parsed.action, parsed.args)
+		if parsed.action == .UPDATE {
+			handle_completions_generate()
+		} else {
+			handle_completions_command_extended(parsed.action, parsed.args)
+		}
 	case .BACKUP:
 		handle_backup_command(parsed.action, parsed.args)
 	case .PLUGIN:
@@ -221,6 +228,12 @@ main :: proc() {
 		handle_export_command(parsed.action, parsed.args)
 	case .TOML:
 		handle_toml_command(parsed.action)
+	case .DOCTOR:
+		handle_doctor_command()
+	case .TEMPLATE:
+		handle_template_command(parsed.action, parsed.args)
+	case .HOOKS:
+		handle_hooks_command(parsed.action, parsed.args)
 	case .VERSION:
 		print_version()
 	case .HELP:
@@ -319,12 +332,36 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	case "path":       parsed.command = .PATH
 	case "alias":      parsed.command = .ALIAS
 	case "constants", "const":  parsed.command = .CONSTANTS
-	case "completions": parsed.command = .COMPLETIONS
 	case "backup":     parsed.command = .BACKUP
 	case "plugin":     parsed.command = .PLUGIN
 	case "init":       parsed.command = .INIT;    return parsed
 	case "migrate":    parsed.command = .MIGRATE; return parsed
 	case "config":     parsed.command = .CONFIG;  return parsed
+	case "completions":
+		parsed.command = .COMPLETIONS
+		if len(filtered_args) > 1 {
+			switch filtered_args[1] {
+			case "add":
+				parsed.action = .ADD
+			case "remove", "rm":
+				parsed.action = .REMOVE
+			case "list", "ls":
+				parsed.action = .LIST
+			case "generate", "gen":
+				parsed.action = .UPDATE  // Use UPDATE for generate
+			case "help", "-h", "--help":
+				parsed.action = .HELP
+			case:
+				parsed.action = .UNKNOWN
+			}
+			if len(filtered_args) > 2 {
+				parsed.args = make([]string, len(filtered_args) - 2)
+				copy(parsed.args, filtered_args[2:])
+			}
+		} else {
+			parsed.action = .LIST
+		}
+		return parsed
 	case "export":
 		parsed.command = .EXPORT
 		parsed.action = .TURBO // Default action for export is turbo
@@ -372,6 +409,45 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		return parsed
 	case "version", "-v", "--version": parsed.command = .VERSION; return parsed
 	case "help", "-h", "--help":       parsed.command = .HELP;    return parsed
+	case "doctor":                     parsed.command = .DOCTOR;  return parsed
+	case "template":
+		parsed.command = .TEMPLATE
+		if len(filtered_args) > 1 {
+			switch filtered_args[1] {
+			case "list", "ls":
+				parsed.action = .LIST
+			case "apply":
+				parsed.action = .ADD
+				if len(filtered_args) > 2 {
+					parsed.args = make([]string, len(filtered_args) - 2)
+					copy(parsed.args, filtered_args[2:])
+				}
+			case "help", "-h", "--help":
+				parsed.action = .HELP
+			case:
+				parsed.action = .UNKNOWN
+			}
+		} else {
+			parsed.action = .LIST
+		}
+		return parsed
+	case "hooks":
+		parsed.command = .HOOKS
+		if len(filtered_args) > 1 {
+			switch filtered_args[1] {
+			case "list", "ls":
+				parsed.action = .LIST
+			case "edit":
+				parsed.action = .ADD
+			case "help", "-h", "--help":
+				parsed.action = .HELP
+			case:
+				parsed.action = .UNKNOWN
+			}
+		} else {
+			parsed.action = .LIST
+		}
+		return parsed
 	case "search", "find", "f":
 		parsed.command = .SEARCH
 		// Capture query argument(s) for search
@@ -660,6 +736,9 @@ print_help :: proc() {
 	print_item("", "constants", "Manage environment constants (alias: const)", EMOJI_CONSTANT)
 	print_item("", "search, find, f", "Fuzzy search across all configurations", "🔍")
 	print_item("", "toml", "TOML configuration management", "⚙️ ")
+	print_item("", "doctor", "Health check and diagnostics", "🔬")
+	print_item("", "template", "Configuration presets", "📋")
+	print_item("", "hooks", "Pre/post action hooks", "🪝")
 	print_item("", "completions", "Manage Zsh completion scripts", EMOJI_COMMAND)
 	print_item("", "backup", "Manage configuration backups", EMOJI_INFO)
 	print_item("", "plugin", "Manage shell plugins", EMOJI_COMMAND)
@@ -708,6 +787,19 @@ print_help :: proc() {
 	fmt.printf("  wayu toml validate               # Check wayu.toml syntax\n")
 	fmt.printf("  wayu toml convert                # Migrate to TOML format\n")
 	fmt.printf("  # Edit ~/.config/wayu/wayu.toml  # Edit declarative config\n")
+	fmt.println()
+	fmt.printf("  # Diagnostics:\n")
+	fmt.printf("  wayu doctor                      # Health check all configs\n")
+	fmt.printf("  wayu doctor --fix                # Auto-fix issues\n")
+	fmt.println()
+	fmt.printf("  # Templates:\n")
+	fmt.printf("  wayu template list               # List config presets\n")
+	fmt.printf("  wayu template apply developer    # Apply developer preset\n")
+	fmt.printf("  wayu init --template minimal     # Initialize with preset\n")
+	fmt.println()
+	fmt.printf("  # Hooks:\n")
+	fmt.printf("  wayu hooks                       # Show configured hooks\n")
+	fmt.printf("  wayu hooks edit                  # Edit hooks config\n")
 	fmt.println()
 	fmt.printf("  # Preview changes with dry-run:\n")
 	fmt.printf("  wayu --dry-run path add /new/path\n")
