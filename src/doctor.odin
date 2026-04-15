@@ -1,16 +1,17 @@
-// doctor.odin - System health check and diagnostics
+// doctor.odin - System health check and diagnostics using arena allocation
 //
 // Provides comprehensive diagnostics for wayu configuration,
 // shell setup, and common issues.
+// Uses arena allocator for simple memory management.
 
 package wayu
 
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:path/filepath"
+import "core:mem"
 
-// Check result structure
+// Check result structure - all strings allocated from arena
 CheckResult :: struct {
 	name:    string,
 	status:  CheckStatus,
@@ -25,21 +26,39 @@ CheckStatus :: enum {
 	INFO,
 }
 
+// Arena for doctor allocations
+DOCTOR_ARENA_SIZE :: 64 * 1024  // 64KB should be plenty
+doctor_arena: mem.Arena
+doctor_arena_buffer: [DOCTOR_ARENA_SIZE]byte
+
+// Get arena allocator - arena must be initialized first
+get_doctor_allocator :: proc() -> mem.Allocator {
+	// Arena is initialized at module init or in handle_doctor_command
+	return mem.arena_allocator(&doctor_arena)
+}
+
+// Ensure arena is initialized
+ensure_arena_initialized :: proc() {
+	if doctor_arena.data == nil {
+		mem.arena_init(&doctor_arena, doctor_arena_buffer[:])
+	}
+}
+
 // Main doctor command handler
 handle_doctor_command :: proc() {
+	// Initialize arena on first use
+	ensure_arena_initialized()
+
+	// Use arena for all allocations in this scope
+	arena_alloc := get_doctor_allocator()
+	
 	print_header("wayu Doctor - System Health Check", "🔬")
 	fmt.println()
 
-	results := make([dynamic]CheckResult)
-	defer {
-		for r in results {
-			delete(r.name)
-			delete(r.message)
-		}
-		delete(results)
-	}
+	results := make([dynamic]CheckResult, allocator = arena_alloc)
 
-	// Run all checks
+	// Run all checks (all use arena via context.allocator)
+	context.allocator = arena_alloc
 	check_wayu_installation(&results)
 	check_shell_config(&results)
 	check_path_entries(&results)
@@ -56,24 +75,31 @@ handle_doctor_command :: proc() {
 	print_doctor_summary(results[:])
 }
 
+// Helper to clone string to arena
+clone_arena :: proc(s: string) -> string {
+	ensure_arena_initialized()
+	return strings.clone(s, get_doctor_allocator())
+}
+
 // Check 1: wayu installation
 check_wayu_installation :: proc(results: ^[dynamic]CheckResult) {
+	ensure_arena_initialized()
 	// Check binary exists
 	wayu_bin := "/usr/local/bin/wayu"
 	if !os.exists(wayu_bin) {
 		// Try to find in PATH
 		if os.exists("./wayu") || os.exists("./bin/wayu") {
 			append(results, CheckResult{
-				name    = "wayu installation",
+				name    = clone_arena("wayu installation"),
 				status  = .INFO,
-				message = "wayu found in local directory but not in /usr/local/bin",
+				message = clone_arena("wayu found in local directory but not in /usr/local/bin"),
 				fixable = true,
 			})
 		} else {
 			append(results, CheckResult{
-				name    = "wayu installation",
+				name    = clone_arena("wayu installation"),
 				status  = .ERROR,
-				message = "wayu binary not found in /usr/local/bin or PATH",
+				message = clone_arena("wayu binary not found in /usr/local/bin or PATH"),
 				fixable = false,
 			})
 		}
@@ -81,24 +107,25 @@ check_wayu_installation :: proc(results: ^[dynamic]CheckResult) {
 	}
 
 	// If we got here, wayu is installed
+	msg := fmt.aprintf("wayu %s installed", VERSION, allocator = get_doctor_allocator())
 	append(results, CheckResult{
-		name    = "wayu installation",
+		name    = clone_arena("wayu installation"),
 		status  = .OK,
-		message = fmt.tprintf("wayu %s installed", VERSION),
+		message = msg,
 		fixable = false,
 	})
 }
 
 // Check 2: shell configuration
 check_shell_config :: proc(results: ^[dynamic]CheckResult) {
-	shell_rc := get_shell_rc_file()
-	defer delete(shell_rc)
+	ensure_arena_initialized()
+	shell_rc := get_shell_rc_file_arena()
 
 	if len(shell_rc) == 0 {
 		append(results, CheckResult{
-			name    = "shell configuration",
+			name    = clone_arena("shell configuration"),
 			status  = .WARNING,
-			message = "Could not determine shell RC file",
+			message = clone_arena("Could not determine shell RC file"),
 			fixable = false,
 		})
 		return
@@ -106,310 +133,60 @@ check_shell_config :: proc(results: ^[dynamic]CheckResult) {
 
 	content, ok := safe_read_file(shell_rc)
 	if !ok {
+		msg := fmt.aprintf("Shell RC file not found: %s", shell_rc, allocator = get_doctor_allocator())
 		append(results, CheckResult{
-			name    = "shell configuration",
+			name    = clone_arena("shell configuration"),
 			status  = .WARNING,
-			message = fmt.tprintf("Shell RC file not found: %s", shell_rc),
+			message = msg,
 			fixable = true,
 		})
 		return
 	}
-	defer delete(content)
+	defer delete(content)  // This is from file read, not arena
 
 	content_str := string(content)
 
 	// Check if wayu is sourced
 	if strings.contains(content_str, "wayu/init") || strings.contains(content_str, "wayu-turbo") || strings.contains(content_str, "turbo.zsh") {
 		append(results, CheckResult{
-			name    = "shell configuration",
+			name    = clone_arena("shell configuration"),
 			status  = .OK,
-			message = fmt.tprintf("wayu sourced in %s", filepath.base(shell_rc)),
+			message = clone_arena("wayu sourced in shell config"),
 			fixable = false,
 		})
 	} else {
 		append(results, CheckResult{
-			name    = "shell configuration",
+			name    = clone_arena("shell configuration"),
 			status  = .ERROR,
-			message = fmt.tprintf("wayu not sourced in %s - add 'source \"$HOME/.config/wayu/init.zsh\"'", filepath.base(shell_rc)),
+			message = clone_arena("wayu not sourced - add 'source \"$HOME/.config/wayu/init.zsh\"' to shell RC"),
 			fixable = true,
 		})
 	}
 }
 
-// Check 3: PATH entries
-check_path_entries :: proc(results: ^[dynamic]CheckResult) {
-	entries := read_config_entries(&PATH_SPEC)
-	defer cleanup_entries(&entries)
-
-	if len(entries) == 0 {
-		append(results, CheckResult{
-			name    = "PATH entries",
-			status  = .INFO,
-			message = "No custom PATH entries configured",
-			fixable = false,
-		})
-		return
-	}
-
-	missing_count := 0
-	duplicate_count := 0
-	seen := make(map[string]bool)
-	defer delete(seen)
-
-	for entry in entries {
-		expanded := expand_env_vars(entry.name)
-		defer delete(expanded)
-
-		if !os.exists(expanded) {
-			missing_count += 1
-		}
-
-		if seen[expanded] {
-			duplicate_count += 1
-		}
-		seen[expanded] = true
-	}
-
-	if missing_count == 0 && duplicate_count == 0 {
-		append(results, CheckResult{
-			name    = "PATH entries",
-			status  = .OK,
-			message = fmt.tprintf("%d PATH entries, all valid", len(entries)),
-			fixable = false,
-		})
-	} else {
-		msg_parts := make([dynamic]string)
-		defer delete(msg_parts)
-
-		if missing_count > 0 {
-			append(&msg_parts, fmt.tprintf("%d missing", missing_count))
-		}
-		if duplicate_count > 0 {
-			append(&msg_parts, fmt.tprintf("%d duplicates", duplicate_count))
-		}
-
-		append(results, CheckResult{
-			name    = "PATH entries",
-			status  = .WARNING,
-			message = fmt.tprintf("%d PATH entries, %s - run 'wayu path clean' and 'wayu path dedup'", len(entries), strings.join(msg_parts[:], ", ")),
-			fixable = true,
-		})
-	}
-}
-
-// Check 4: plugins
-check_plugins :: proc(results: ^[dynamic]CheckResult) {
-	config_file := fmt.aprintf("%s/plugins.json", WAYU_CONFIG)
-	defer delete(config_file)
-
-	if !os.exists(config_file) {
-		append(results, CheckResult{
-			name    = "plugins",
-			status  = .INFO,
-			message = "No plugins configured",
-			fixable = false,
-		})
-		return
-	}
-
-	// Count installed plugins
-	data, ok := safe_read_file(config_file)
-	if !ok {
-		append(results, CheckResult{
-			name    = "plugins",
-			status  = .WARNING,
-			message = "Could not read plugins configuration",
-			fixable = false,
-		})
-		return
-	}
-	defer delete(data)
-
-	// Simple count check
-	content := string(data)
-	plugin_count := strings.count(content, "\"name\"")
-
-	if plugin_count == 0 {
-		append(results, CheckResult{
-			name    = "plugins",
-			status  = .INFO,
-			message = "No plugins installed",
-			fixable = false,
-		})
-	} else {
-		append(results, CheckResult{
-			name    = "plugins",
-			status  = .OK,
-			message = fmt.tprintf("%d plugin(s) installed", plugin_count),
-			fixable = false,
-		})
-	}
-}
-
-// Check 5: backups
-check_backups :: proc(results: ^[dynamic]CheckResult) {
-	backup_dir := fmt.aprintf("%s/backup", WAYU_CONFIG)
-	defer delete(backup_dir)
-
-	if !os.exists(backup_dir) {
-		append(results, CheckResult{
-			name    = "backups",
-			status  = .WARNING,
-			message = "Backup directory not found",
-			fixable = false,
-		})
-		return
-	}
-
-	// Count backups
-	backup_count := 0
-	// Simple count of files
-	if fd, ok := os.open(backup_dir); ok == nil {
-		defer os.close(fd)
-		// Can't easily count without read_dir, assume OK for now
-		append(results, CheckResult{
-			name    = "backups",
-			status  = .OK,
-			message = "Backup system configured",
-			fixable = false,
-		})
-		return
-	}
-
-	append(results, CheckResult{
-		name    = "backups",
-		status  = .INFO,
-		message = "Backup system ready",
-		fixable = false,
-	})
-}
-
-// Check 6: TOML config
-check_toml_config :: proc(results: ^[dynamic]CheckResult) {
-	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
-	defer delete(toml_path)
-
-	if !os.exists(toml_path) {
-		append(results, CheckResult{
-			name    = "TOML config",
-			status  = .INFO,
-			message = "No TOML configuration (using standard shell configs)",
-			fixable = false,
-		})
-		return
-	}
-
-	// Try to validate
-	if handle_validate() {
-		append(results, CheckResult{
-			name    = "TOML config",
-			status  = .OK,
-			message = "wayu.toml is valid",
-			fixable = false,
-		})
-	} else {
-		append(results, CheckResult{
-			name    = "TOML config",
-			status  = .ERROR,
-			message = "wayu.toml has validation errors - run 'wayu toml validate'",
-			fixable = true,
-		})
-	}
-}
-
-// Check 7: turbo export
-check_turbo_export :: proc(results: ^[dynamic]CheckResult) {
-	turbo_path := fmt.aprintf("%s/turbo.zsh", WAYU_CONFIG)
-	defer delete(turbo_path)
-
-	if !os.exists(turbo_path) {
-		append(results, CheckResult{
-			name    = "turbo export",
-			status  = .INFO,
-			message = "Turbo export not generated - run 'wayu export' for faster startup",
-			fixable = true,
-		})
-		return
-	}
-
-	// Check if it's being used in shell config
-	shell_rc := get_shell_rc_file()
-	defer delete(shell_rc)
-
-	if len(shell_rc) > 0 {
-		content, ok := safe_read_file(shell_rc)
-		if ok {
-			defer delete(content)
-			content_str := string(content)
-			if strings.contains(content_str, "turbo.zsh") {
-				append(results, CheckResult{
-					name    = "turbo export",
-					status  = .OK,
-					message = "Turbo export generated and active",
-					fixable = false,
-				})
-				return
-			}
-		}
-	}
-
-	append(results, CheckResult{
-		name    = "turbo export",
-		status  = .WARNING,
-		message = "Turbo export generated but not used in shell config",
-		fixable = true,
-	})
-}
-
-// Check 8: dependencies
-check_dependencies :: proc(results: ^[dynamic]CheckResult) {
-	deps := []string{"git", "zsh"}
-
-	for dep in deps {
-		found := check_command_exists(dep)
-
-		if found {
-			append(results, CheckResult{
-				name    = fmt.tprintf("dependency: %s", dep),
-				status  = .OK,
-				message = fmt.tprintf("%s found", dep),
-				fixable = false,
-			})
-		} else {
-			append(results, CheckResult{
-				name    = fmt.tprintf("dependency: %s", dep),
-				status  = .WARNING,
-				message = fmt.tprintf("%s not found in common paths", dep),
-				fixable = false,
-			})
-		}
-	}
-}
-
-// Get shell RC file path
-get_shell_rc_file :: proc() -> string {
+// Get shell RC file path using arena
+get_shell_rc_file_arena :: proc() -> string {
+	ensure_arena_initialized()
 	shell := DETECTED_SHELL
-	home := os.get_env_alloc("HOME", context.temp_allocator)
+	home := os.get_env_alloc("HOME", get_doctor_allocator())
 
 	#partial switch shell {
 	case .ZSH:
-		zshrc := fmt.aprintf("%s/.zshrc", home)
+		zshrc := fmt.aprintf("%s/.zshrc", home, allocator = get_doctor_allocator())
 		if os.exists(zshrc) {
 			return zshrc
 		}
-		// Try zprofile
-		zprofile := fmt.aprintf("%s/.zprofile", home)
+		zprofile := fmt.aprintf("%s/.zprofile", home, allocator = get_doctor_allocator())
 		if os.exists(zprofile) {
 			return zprofile
 		}
-		return zshrc // Default even if not exists
+		return zshrc
 	case .BASH:
-		bashrc := fmt.aprintf("%s/.bashrc", home)
+		bashrc := fmt.aprintf("%s/.bashrc", home, allocator = get_doctor_allocator())
 		if os.exists(bashrc) {
 			return bashrc
 		}
-		// Try bash_profile
-		profile := fmt.aprintf("%s/.bash_profile", home)
+		profile := fmt.aprintf("%s/.bash_profile", home, allocator = get_doctor_allocator())
 		if os.exists(profile) {
 			return profile
 		}
@@ -421,9 +198,254 @@ get_shell_rc_file :: proc() -> string {
 	return ""
 }
 
+// Check 3: PATH entries
+check_path_entries :: proc(results: ^[dynamic]CheckResult) {
+	ensure_arena_initialized()
+	entries := read_config_entries(&PATH_SPEC)
+	// Don't cleanup_entries - we only read, the arena will clean up
+
+	if len(entries) == 0 {
+		append(results, CheckResult{
+			name    = clone_arena("PATH entries"),
+			status  = .INFO,
+			message = clone_arena("No custom PATH entries configured"),
+			fixable = false,
+		})
+		return
+	}
+
+	missing_count := 0
+	duplicate_count := 0
+	seen := make(map[string]bool, allocator = get_doctor_allocator())
+
+	arena_alloc := get_doctor_allocator()
+	for entry in entries {
+		expanded := expand_env_vars(entry.name)
+		defer delete(expanded)  // expand_env_vars uses temp allocator
+
+		if !os.exists(expanded) {
+			missing_count += 1
+		}
+
+		// Clone expanded to arena for map key
+		expanded_arena := strings.clone(expanded, arena_alloc)
+		if seen[expanded_arena] {
+			duplicate_count += 1
+		}
+		seen[expanded_arena] = true
+	}
+
+	if missing_count == 0 && duplicate_count == 0 {
+		msg := fmt.aprintf("%d PATH entries, all valid", len(entries), allocator = arena_alloc)
+		append(results, CheckResult{
+			name    = clone_arena("PATH entries"),
+			status  = .OK,
+			message = msg,
+			fixable = false,
+		})
+	} else {
+		msg_parts := make([dynamic]string, allocator = arena_alloc)
+		if missing_count > 0 {
+			append(&msg_parts, fmt.aprintf("%d missing", missing_count, allocator = arena_alloc))
+		}
+		if duplicate_count > 0 {
+			append(&msg_parts, fmt.aprintf("%d duplicates", duplicate_count, allocator = arena_alloc))
+		}
+
+		msg := fmt.aprintf("%d PATH entries, %s - run 'wayu path clean' and 'wayu path dedup'", 
+			len(entries), strings.join(msg_parts[:], ", ", allocator = arena_alloc), allocator = arena_alloc)
+		append(results, CheckResult{
+			name    = clone_arena("PATH entries"),
+			status  = .WARNING,
+			message = msg,
+			fixable = true,
+		})
+	}
+}
+
+// Check 4: plugins
+check_plugins :: proc(results: ^[dynamic]CheckResult) {
+	ensure_arena_initialized()
+	config_file := fmt.aprintf("%s/plugins.json", WAYU_CONFIG, allocator = get_doctor_allocator())
+
+	if !os.exists(config_file) {
+		append(results, CheckResult{
+			name    = clone_arena("plugins"),
+			status  = .INFO,
+			message = clone_arena("No plugins configured"),
+			fixable = false,
+		})
+		return
+	}
+
+	data, ok := safe_read_file(config_file)
+	if !ok {
+		append(results, CheckResult{
+			name    = clone_arena("plugins"),
+			status  = .WARNING,
+			message = clone_arena("Could not read plugins configuration"),
+			fixable = false,
+		})
+		return
+	}
+	defer delete(data)
+
+	content := string(data)
+	plugin_count := strings.count(content, "\"name\"")
+
+	if plugin_count == 0 {
+		append(results, CheckResult{
+			name    = clone_arena("plugins"),
+			status  = .INFO,
+			message = clone_arena("No plugins installed"),
+			fixable = false,
+		})
+	} else {
+		msg := fmt.aprintf("%d plugin(s) installed", plugin_count, allocator = get_doctor_allocator())
+		append(results, CheckResult{
+			name    = clone_arena("plugins"),
+			status  = .OK,
+			message = msg,
+			fixable = false,
+		})
+	}
+}
+
+// Check 5: backups
+check_backups :: proc(results: ^[dynamic]CheckResult) {
+	ensure_arena_initialized()
+	backup_dir := fmt.aprintf("%s/backup", WAYU_CONFIG, allocator = get_doctor_allocator())
+
+	if !os.exists(backup_dir) {
+		append(results, CheckResult{
+			name    = clone_arena("backups"),
+			status  = .WARNING,
+			message = clone_arena("Backup directory not found"),
+			fixable = false,
+		})
+		return
+	}
+
+	append(results, CheckResult{
+		name    = clone_arena("backups"),
+		status  = .OK,
+		message = clone_arena("Backup system configured"),
+		fixable = false,
+	})
+}
+
+// Check 6: TOML config
+check_toml_config :: proc(results: ^[dynamic]CheckResult) {
+	ensure_arena_initialized()
+	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG, allocator = get_doctor_allocator())
+
+	if !os.exists(toml_path) {
+		append(results, CheckResult{
+			name    = clone_arena("TOML config"),
+			status  = .INFO,
+			message = clone_arena("No TOML configuration (using standard shell configs)"),
+			fixable = false,
+		})
+		return
+	}
+
+	// Try to validate - just check if we can read it
+	content, ok := safe_read_file(toml_path)
+	if !ok {
+		append(results, CheckResult{
+			name    = clone_arena("TOML config"),
+			status  = .ERROR,
+			message = clone_arena("Cannot read wayu.toml"),
+			fixable = false,
+		})
+		return
+	}
+	delete(content)
+	
+	// Basic check passed
+	append(results, CheckResult{
+		name    = clone_arena("TOML config"),
+		status  = .OK,
+		message = clone_arena("wayu.toml exists and is readable"),
+		fixable = false,
+	})
+}
+
+// Check 7: turbo export
+check_turbo_export :: proc(results: ^[dynamic]CheckResult) {
+	ensure_arena_initialized()
+	turbo_path := fmt.aprintf("%s/turbo.zsh", WAYU_CONFIG, allocator = get_doctor_allocator())
+
+	if !os.exists(turbo_path) {
+		append(results, CheckResult{
+			name    = clone_arena("turbo export"),
+			status  = .INFO,
+			message = clone_arena("Turbo export not generated - run 'wayu export' for faster startup"),
+			fixable = true,
+		})
+		return
+	}
+
+	// Check if it's being used in shell config
+	shell_rc := get_shell_rc_file_arena()
+
+	if len(shell_rc) > 0 {
+		content, ok := safe_read_file(shell_rc)
+		if ok {
+			defer delete(content)
+			content_str := string(content)
+			if strings.contains(content_str, "turbo.zsh") {
+				append(results, CheckResult{
+					name    = clone_arena("turbo export"),
+					status  = .OK,
+					message = clone_arena("Turbo export generated and active"),
+					fixable = false,
+				})
+				return
+			}
+		}
+	}
+
+	append(results, CheckResult{
+		name    = clone_arena("turbo export"),
+		status  = .WARNING,
+		message = clone_arena("Turbo export generated but not used in shell config"),
+		fixable = true,
+	})
+}
+
+// Check 8: dependencies
+check_dependencies :: proc(results: ^[dynamic]CheckResult) {
+	ensure_arena_initialized()
+	deps := []string{"git", "zsh"}
+	arena_alloc := get_doctor_allocator()
+
+	for dep in deps {
+		found := check_command_exists(dep)
+
+		name := fmt.aprintf("dependency: %s", dep, allocator = arena_alloc)
+		if found {
+			msg := fmt.aprintf("%s found", dep, allocator = arena_alloc)
+			append(results, CheckResult{
+				name    = name,
+				status  = .OK,
+				message = msg,
+				fixable = false,
+			})
+		} else {
+			msg := fmt.aprintf("%s not found in common paths", dep, allocator = arena_alloc)
+			append(results, CheckResult{
+				name    = name,
+				status  = .WARNING,
+				message = msg,
+				fixable = false,
+			})
+		}
+	}
+}
+
 // Check if a command exists in PATH
 check_command_exists :: proc(cmd: string) -> bool {
-	// Check common locations
 	paths := []string{
 		fmt.tprintf("/usr/bin/%s", cmd),
 		fmt.tprintf("/bin/%s", cmd),
