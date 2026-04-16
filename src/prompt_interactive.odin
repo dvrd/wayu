@@ -75,6 +75,9 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 		generate_transient_feature(&builder, cfg.transient_format)
 	}
 	
+	// 6. SEPARATOR LINE (línea entre output y prompt)
+	generate_separator_feature(&builder)
+	
 	// Función de prompt maestra que combina todo
 	fmt.sbprintln(&builder, "# === Master Prompt Function ===")
 	fmt.sbprintln(&builder, "_wayu_prompt_master() {")
@@ -305,6 +308,17 @@ generate_transient_feature :: proc(b: ^strings.Builder, format: string) {
 	
 	fmt.sbprintln(b, `  echo "$result"`)
 	fmt.sbprintln(b, "}")
+	fmt.sbprintln(b)
+}
+
+// 6. SEPARATOR LINE FEATURE
+generate_separator_feature :: proc(b: ^strings.Builder) {
+	fmt.sbprintln(b, "# === Feature: Separator Line ===")
+	fmt.sbprintln(b, "_wayu_separator() {")
+	fmt.sbprintln(b, "  # Imprimir línea divisoria antes del prompt")
+	fmt.sbprintln(b, `  print -P "%F{8}${(l:$COLUMNS::-:)}%f"`)
+	fmt.sbprintln(b, "}")
+	fmt.sbprintln(b, "add-zsh-hook precmd _wayu_separator")
 	fmt.sbprintln(b)
 }
 
