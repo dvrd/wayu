@@ -1478,16 +1478,20 @@ generate_eval_output_optimized :: proc() {
 	// 3. Aliases - Direct definitions
 	append_aliases_optimized(&builder, config.aliases)
 	
-	// 4. Load plugins inline
+	// 4. Prompt - inline Starship only (the essential part)
+	fmt.sbprintln(&builder, "# Prompt (Starship)")
+	append_starship_inline(&builder)
+	fmt.sbprintln(&builder)
+	
+	// 5. Load plugins inline
 	fmt.sbprintln(&builder, "# Plugins")
 	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" ] && source "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh"`)
 	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] && source "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"`)
 	fmt.sbprintln(&builder)
 	
-	// 5. Source external configs
-	fmt.sbprintln(&builder, "# External configuration (tools, completions, functions)")
-	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/tools.zsh" ] && source "$HOME/.config/wayu/tools.zsh"`)
-	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/extra.zsh" ] && source "$HOME/.config/wayu/extra.zsh"`)
+	// 6. Rest of tools (Zoxide, Atuin, completions, functions) - only if needed
+	fmt.sbprintln(&builder, "# Additional tools (Zoxide, Atuin, completions, lazy loaders)")
+	fmt.sbprintln(&builder, `[[ -z "$_WAYU_EXTRA_LOADED" ]] && { export _WAYU_EXTRA_LOADED=1; [[ -f "$HOME/.config/wayu/tools.zsh" ]] && source "$HOME/.config/wayu/tools.zsh"; [[ -f "$HOME/.config/wayu/extra.zsh" ]] && source "$HOME/.config/wayu/extra.zsh"; }`)
 	fmt.sbprintln(&builder)
 	
 	// Output the result
@@ -1601,24 +1605,21 @@ validate_and_sort_paths :: proc(paths: []BuildPathEntry, level: OptimizationLeve
 	return paths
 }
 
-// Append single cached tool inline
-append_cached_tool_inline :: proc(builder: ^strings.Builder, tool: string) {
+// Append Starship init inline from cache (only the essential part for fast prompt)
+append_starship_inline :: proc(builder: ^strings.Builder) {
 	home := os.get_env("HOME", context.temp_allocator)
-	cache_file := fmt.aprintf("%s/.cache/wayu/%s.zsh", home, tool)
+	cache_file := fmt.aprintf("%s/.cache/wayu/starship.zsh", home)
 	defer delete(cache_file)
 	
 	if os.exists(cache_file) {
 		content, ok := safe_read_file(cache_file)
 		if ok && len(content) > 0 {
-			// Extract only essential parts (first ~50 lines usually enough for init)
-			lines := strings.split(string(content), "\n")
-			defer delete(lines)
-			
-			// Output all lines (starship needs full init)
-			for line in lines {
-				fmt.sbprintln(builder, line)
-			}
+			// Inline the full starship init (it's needed for the prompt)
+			fmt.sbprintln(builder, string(content))
 		}
+	} else {
+		// Fallback: source starship the old way if cache doesn't exist
+		fmt.sbprintln(builder, `eval "$(starship init zsh)"`)
 	}
 }
 
