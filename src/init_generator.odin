@@ -53,36 +53,23 @@ generate_core_init_v2 :: proc() {
 	fmt.sbprintln(&builder, "# Generado automáticamente por wayu build")
 	fmt.sbprintln(&builder)
 	
-	// PATH pre-computado con TODAS las rutas del usuario (28 paths)
+	// PATH leído dinámicamente desde [[paths]] en wayu.toml
 	fmt.sbprintln(&builder, "# === PATH ===")
-	fmt.sbprint(&builder, "export PATH=\"")
-	fmt.sbprint(&builder, "/Users/kakurega/go/bin:")
-	fmt.sbprint(&builder, "/Users/kakurega/.local/bin:")
-	fmt.sbprint(&builder, "/Users/kakurega/.local/share/bob/nvim-bin:")
-	fmt.sbprint(&builder, "/Users/kakurega/.cargo/bin:")
-	fmt.sbprint(&builder, "/Users/kakurega/.bun/bin:")
-	fmt.sbprint(&builder, "/Users/kakurega/.atuin/bin:")
-	fmt.sbprint(&builder, "/Users/kakurega/.updev/cli:")
-	fmt.sbprint(&builder, "/Users/kakurega/dev/oss/zig:")
-	fmt.sbprint(&builder, "/Users/kakurega/dev/oss/ols:")
-	fmt.sbprint(&builder, "/Users/kakurega/dev/oss/yabai/bin:")
-	fmt.sbprint(&builder, "/Users/kakurega/dev/projects/wayu/bin:")
-	fmt.sbprint(&builder, "/Users/kakurega/dev/oss/Odin:")
-	fmt.sbprint(&builder, "/Users/kakurega/.amp/bin:")
-	fmt.sbprint(&builder, "/Users/kakurega/dev/oss/c3c:")
-	fmt.sbprint(&builder, "/Users/kakurega/.mint/bin:")
-	fmt.sbprint(&builder, "/Users/kakurega/.opencode/bin:")
-	fmt.sbprint(&builder, "/Users/kakurega/dev/projects/pegasus/bin:")
-	fmt.sbprint(&builder, "/Users/kakurega/dev/oss/soft-serve:")
-	fmt.sbprint(&builder, "/Users/kakurega/dev/projects/mel/target/release:")
-	fmt.sbprint(&builder, "/opt/homebrew/bin:")
-	fmt.sbprint(&builder, "/opt/homebrew/sbin:")
-	fmt.sbprint(&builder, "/opt/homebrew/opt/llvm/bin:")
-	fmt.sbprint(&builder, "/opt/homebrew/opt/postgresql@17/bin:")
-	fmt.sbprint(&builder, "/opt/homebrew/anaconda3/bin:")
-	fmt.sbprint(&builder, "/usr/local/bin:")
-	fmt.sbprint(&builder, "/usr/local/sbin:")
-	fmt.sbprintln(&builder, "/usr/bin:/bin:/usr/sbin:/sbin\"")
+	toml_paths := read_wayu_toml_paths()
+	defer {
+		for p in toml_paths { delete(p) }
+		delete(toml_paths)
+	}
+	if len(toml_paths) > 0 {
+		fmt.sbprint(&builder, "export PATH=\"")
+		for p, i in toml_paths {
+			if i > 0 { fmt.sbprint(&builder, ":") }
+			fmt.sbprint(&builder, p)
+		}
+		fmt.sbprintln(&builder, ":$PATH\"")
+	} else {
+		fmt.sbprintln(&builder, `source "$HOME/.config/wayu/path.zsh"`)
+	}
 	fmt.sbprintln(&builder)
 	
 	// Batch exports esenciales (una sola línea)
@@ -93,6 +80,19 @@ generate_core_init_v2 :: proc() {
 	// Batch aliases esenciales
 	fmt.sbprintln(&builder, "# === Aliases esenciales (batch) ===")
 	fmt.sbprintln(&builder, "alias vim=nvim ls=lsd reload=\"source ~/.zshrc\" x=exit cat=bat")
+	fmt.sbprintln(&builder)
+
+	// Shell wrapper para wayu: intercepta "path add" y exporta al shell actual
+	fmt.sbprintln(&builder, "# === wayu shell wrapper ===")
+	fmt.sbprintln(&builder, "wayu() {")
+	fmt.sbprintln(&builder, "  command wayu \"$@\"")
+	fmt.sbprintln(&builder, "  local _exit=$?")
+	fmt.sbprintln(&builder, "  if [[ $_exit -eq 0 && \"$1\" == \"path\" && \"$2\" == \"add\" ]]; then")
+	fmt.sbprintln(&builder, "    command wayu build eval > /dev/null 2>&1")
+	fmt.sbprintln(&builder, "    export PATH=\"${3}:$PATH\"")
+	fmt.sbprintln(&builder, "  fi")
+	fmt.sbprintln(&builder, "  return $_exit")
+	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
 	
 	// Completions (necesario para autocomplete)
@@ -342,4 +342,49 @@ wayu_compile() {
 `
 	
 	_ = os.write_entire_file(path, transmute([]byte)helper)
+}
+
+// Lee los [[paths]] de wayu.toml y retorna la lista de rutas
+read_wayu_toml_paths :: proc() -> [dynamic]string {
+	config_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	defer delete(config_path)
+
+	content, ok := safe_read_file(config_path)
+	if !ok { return make([dynamic]string) }
+	defer delete(content)
+
+	paths := make([dynamic]string)
+	lines := strings.split(string(content), "\n")
+	defer delete(lines)
+
+	in_paths_section := false
+	for line in lines {
+		trimmed := strings.trim_space(line)
+
+		if trimmed == "[[paths]]" {
+			in_paths_section = true
+			continue
+		}
+
+		// Cualquier otro header termina la sección actual
+		if strings.has_prefix(trimmed, "[") {
+			in_paths_section = false
+			continue
+		}
+
+		if in_paths_section && strings.has_prefix(trimmed, "path = ") {
+			value := strings.trim_space(trimmed[7:])
+			if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+				p := value[1 : len(value)-1]
+				if os.exists(p) {
+					append(&paths, strings.clone(p))
+				} else {
+					fmt.eprintf("wayu: warning: path does not exist, skipping: %s\n", p)
+				}
+				in_paths_section = false
+			}
+		}
+	}
+
+	return paths
 }

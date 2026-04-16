@@ -11,15 +11,45 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 
-// Main handler for PATH commands - delegates to generic handler
+// Main handler for PATH commands - uses wayu.toml as source of truth
 handle_path_command :: proc(action: Action, args: []string) {
 	#partial switch action {
 	case .CLEAN:
 		clean_missing_paths()
 	case .DEDUP:
 		remove_duplicate_paths()
+	case .ADD:
+		if len(args) == 0 {
+			print_error("Usage: wayu path add <path>")
+			os.exit(EXIT_USAGE)
+		}
+		entry := ConfigEntry{type = .PATH, name = args[0], value = "", line = ""}
+		result := validate_path_entry(entry)
+		if !result.valid {
+			print_error(result.error_message)
+			delete(result.error_message)
+			os.exit(EXIT_DATAERR)
+		}
+		if toml_path_add(args[0]) {
+			print_success("✅ Added to wayu.toml: %s", args[0])
+			fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
+		} else {
+			os.exit(EXIT_IOERR)
+		}
+	case .REMOVE:
+		if len(args) == 0 {
+			print_error("Usage: wayu path remove <path>")
+			os.exit(EXIT_USAGE)
+		}
+		if toml_path_remove(args[0]) {
+			print_success("✅ Removed from wayu.toml: %s", args[0])
+			fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
+		} else {
+			os.exit(EXIT_IOERR)
+		}
+	case .LIST:
+		toml_path_list()
 	case:
-		// All other actions (ADD, REMOVE, LIST, HELP) are handled generically
 		handle_config_command(&PATH_SPEC, action, args)
 	}
 }
@@ -434,4 +464,168 @@ expand_env_vars :: proc(path: string) -> string {
 	}
 
 	return result
+}
+
+// ============================================================================
+// wayu.toml PATH operations
+// ============================================================================
+
+WAYU_TOML :: "wayu.toml"
+
+// Lee los [[paths]] de wayu.toml y retorna la lista (caller debe liberar)
+toml_path_read :: proc() -> [dynamic]string {
+	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	defer delete(config_file)
+
+	content, ok := safe_read_file(config_file)
+	if !ok { return make([dynamic]string) }
+	defer delete(content)
+
+	paths := make([dynamic]string)
+	lines := strings.split(string(content), "\n")
+	defer delete(lines)
+
+	in_paths := false
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		if trimmed == "[[paths]]" {
+			in_paths = true
+			continue
+		}
+		if strings.has_prefix(trimmed, "[") {
+			in_paths = false
+			continue
+		}
+		if in_paths && strings.has_prefix(trimmed, "path = ") {
+			value := strings.trim_space(trimmed[7:])
+			if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+				append(&paths, strings.clone(value[1:len(value)-1]))
+				in_paths = false
+			}
+		}
+	}
+
+	return paths
+}
+
+// Lista los paths de wayu.toml en stdout
+toml_path_list :: proc() {
+	paths := toml_path_read()
+	defer {
+		for p in paths { delete(p) }
+		delete(paths)
+	}
+
+	print_header("PATH (wayu.toml)", PATH_SPEC.icon)
+	fmt.println()
+
+	if len(paths) == 0 {
+		fmt.printfln("  No paths configured in wayu.toml")
+		return
+	}
+
+	for p, i in paths {
+		exists := os.exists(p)
+		marker := "  "
+		if !exists { marker = "✗ " }
+		fmt.printfln("%s%d. %s", marker, i+1, p)
+	}
+
+	fmt.println()
+	fmt.printfln("Total: %d paths", len(paths))
+}
+
+// Agrega un path al final de wayu.toml
+toml_path_add :: proc(path: string) -> bool {
+	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	defer delete(config_file)
+
+	// Verificar duplicado
+	existing := toml_path_read()
+	defer {
+		for p in existing { delete(p) }
+		delete(existing)
+	}
+	for p in existing {
+		if p == path {
+			print_warning("Path already exists in wayu.toml: %s", path)
+			return true
+		}
+	}
+
+	content, ok := safe_read_file(config_file)
+	if !ok { return false }
+	defer delete(content)
+
+	// Construir nueva entrada
+	new_entry := fmt.aprintf("\n[[paths]]\npath = \"%s\"\n", path)
+	defer delete(new_entry)
+
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+	strings.write_string(&builder, string(content))
+	strings.write_string(&builder, new_entry)
+
+	new_content := strings.clone(strings.to_string(builder))
+	defer delete(new_content)
+
+	if !create_backup_cli(config_file) { return false }
+	return safe_write_file(config_file, transmute([]byte)new_content)
+}
+
+// Elimina un path del wayu.toml
+toml_path_remove :: proc(path: string) -> bool {
+	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	defer delete(config_file)
+
+	content, ok := safe_read_file(config_file)
+	if !ok { return false }
+	defer delete(content)
+
+	lines := strings.split(string(content), "\n")
+	defer delete(lines)
+
+	new_lines := make([dynamic]string)
+	defer {
+		for line in new_lines { delete(line) }
+		delete(new_lines)
+	}
+
+	found := false
+	i := 0
+	for i < len(lines) {
+		trimmed := strings.trim_space(lines[i])
+		if trimmed == "[[paths]]" {
+			// Buscar la línea path = "..." que sigue
+			j := i + 1
+			for j < len(lines) && strings.trim_space(lines[j]) == "" {
+				j += 1
+			}
+			if j < len(lines) {
+				next := strings.trim_space(lines[j])
+				target := fmt.aprintf("path = \"%s\"", path)
+				is_match := next == target
+				delete(target)
+				if is_match {
+					found = true
+					i = j + 1
+					continue
+				}
+			}
+		}
+		append(&new_lines, strings.clone(lines[i]))
+		i += 1
+	}
+
+	if !found {
+		print_error("Path not found in wayu.toml: %s", path)
+		return false
+	}
+
+	if !create_backup_cli(config_file) { return false }
+
+	new_content := strings.join(new_lines[:], "\n")
+	defer delete(new_content)
+	return safe_write_file(config_file, transmute([]byte)new_content)
 }
