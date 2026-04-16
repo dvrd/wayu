@@ -44,6 +44,17 @@ else
     FONT_PATCHER="font-patcher"
 fi
 
+# Configurar PYTHONPATH para fontforge en macOS
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # Encontrar el site-packages donde está fontforge.so (no solo cualquiera)
+    FONTFORGE_SO=$(find /opt/homebrew/lib -name "fontforge.so" 2>/dev/null | head -1)
+    if [[ -n "$FONTFORGE_SO" ]]; then
+        FONTFORGE_PY=$(dirname "$FONTFORGE_SO")
+        export PYTHONPATH="$FONTFORGE_PY:$PYTHONPATH"
+        echo "✓ Python path configurado: $FONTFORGE_PY"
+    fi
+fi
+
 # 4. Parchear fuente
 OUTPUT_DIR="$HOME/Library/Fonts"
 echo "🎨 Parcheando fuente (puede tardar 1-2 minutos)..."
