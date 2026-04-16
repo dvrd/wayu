@@ -5,6 +5,7 @@ import "core:os"
 import "core:strings"
 import "core:slice"
 import "core:sync"
+import "core:strconv"
 import "core:encoding/json"
 
 // Mutex to protect concurrent access to plugins.json
@@ -371,15 +372,168 @@ is_plugin_installed :: proc(config: ^PluginConfig, name: string) -> bool {
 	return found
 }
 
-// Find plugin in JSON config by name
+// Plugin match result with score
+PluginMatch :: struct {
+	plugin: ^PluginMetadata,
+	score:  int,
+}
+
+// Find plugin in JSON config by name (exact match first, then fuzzy with selection)
 // Returns pointer to plugin in config array, or nil if not found
+// If multiple matches above threshold, shows selection menu
 find_plugin_json :: proc(config: ^PluginConfigJSON, name: string) -> (^PluginMetadata, bool) {
+	// First try exact match by full name
 	for &plugin in config.plugins {
 		if plugin.name == name {
 			return &plugin, true
 		}
 	}
-	return nil, false
+	
+	// Then try exact match by display name
+	for &plugin in config.plugins {
+		if plugin.display_name == name {
+			return &plugin, true
+		}
+	}
+	
+	// Collect all fuzzy matches with scores
+	matches := make([dynamic]PluginMatch, allocator = context.temp_allocator)
+	
+	for &plugin in config.plugins {
+		// Check against full name
+		score := fuzzy_match_score(plugin.name, name)
+		
+		// Check against display name
+		if plugin.display_name != "" && plugin.display_name != plugin.name {
+			dn_score := fuzzy_match_score(plugin.display_name, name)
+			if dn_score > score {
+				score = dn_score
+			}
+		}
+		
+		if score >= 50 {  // Minimum threshold for fuzzy match
+			append(&matches, PluginMatch{plugin = &plugin, score = score})
+		}
+	}
+	
+	if len(matches) == 0 {
+		return nil, false
+	}
+	
+	// Sort by score descending
+	slice.sort_by(matches[:], proc(a, b: PluginMatch) -> bool {
+		return a.score > b.score
+	})
+	
+	// If only one match, return it directly
+	if len(matches) == 1 {
+		return matches[0].plugin, true
+	}
+	
+	// If best match has significantly higher score (20+ points), use it
+	if len(matches) >= 2 && matches[0].score >= matches[1].score + 20 {
+		return matches[0].plugin, true
+	}
+	
+	// Multiple close matches - show selection menu (max 3 options)
+	num_options := min(len(matches), 3)
+	
+	fmt.println()
+	fmt.printfln("%sMultiple matches found for '%s':%s", BOLD, name, RESET)
+	fmt.println()
+	
+	for i in 0..<num_options {
+		marker := "  "
+		if i == 0 {
+			marker = "→ "  // Preselected option
+		}
+		
+		status_icon := "○"
+		if matches[i].plugin.enabled {
+			status_icon = "✓"
+		}
+		
+		score_str := ""
+		if matches[i].score < 100 {
+			score_str = fmt.tprintf(" (%d%% match)", matches[i].score)
+		}
+		
+		fmt.printfln("%s%d. %s %s%s%s%s", 
+			marker, i + 1, status_icon, matches[i].plugin.name, 
+			RESET, score_str, get_muted())
+	}
+	
+	fmt.println()
+	fmt.printf("Select option [1-%d, Enter for 1]: ", num_options)
+	
+	// Read user input
+	input_buf: [8]byte
+	n, _ := os.read(os.stdin, input_buf[:])
+	
+	selection := 1  // Default to first (preselected)
+	if n > 1 {
+		// User typed something
+		input_str := strings.trim_space(string(input_buf[:n]))
+		if parsed, ok := strconv.parse_int(input_str); ok && parsed >= 1 && parsed <= num_options {
+			selection = parsed
+		}
+	}
+	
+	fmt.printfln("%sSelected: %s%s", get_success(), matches[selection - 1].plugin.name, RESET)
+	fmt.println()
+	
+	return matches[selection - 1].plugin, true
+}
+
+// Simple fuzzy match score (0-100+)
+fuzzy_match_score :: proc(text: string, query: string) -> int {
+	if len(query) == 0 {
+		return 0
+	}
+	if len(text) == 0 {
+		return 0
+	}
+	
+	text_lower := strings.to_lower(text)
+	defer delete(text_lower)
+	query_lower := strings.to_lower(query)
+	defer delete(query_lower)
+	
+	// Exact match = 100
+	if text_lower == query_lower {
+		return 100
+	}
+	
+	// Starts with = 90
+	if strings.has_prefix(text_lower, query_lower) {
+		return 90
+	}
+	
+	// Contains = 70
+	if strings.contains(text_lower, query_lower) {
+		return 70
+	}
+	
+	// Fuzzy match - all characters in order
+	score := 0
+	text_idx := 0
+	for query_char in query_lower {
+		for text_idx < len(text_lower) {
+			if rune(text_lower[text_idx]) == query_char {
+				score += 10
+				text_idx += 1
+				break
+			}
+			text_idx += 1
+		}
+	}
+	
+	// Normalize by query length
+	if score > 0 {
+		return score * 10 / len(query)
+	}
+	
+	return 0
 }
 
 // Validate that all of a plugin's dependencies are installed

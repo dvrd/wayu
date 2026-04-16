@@ -92,6 +92,23 @@ wayu plugin priority zsh-autosuggestions 50 # lower = loads earlier
 wayu plugin update --all
 wayu plugin remove zsh-autosuggestions --yes
 
+# Extra configuration (scripts that run at shell startup end)
+wayu config edit                 # Edit wayu.toml (declarative config)
+wayu config extend               # Edit extra.zsh (custom scripts)
+wayu config scan                 # Detect scripts in .zshrc to migrate
+
+# Turbo export (fast shell startup)
+wayu export                      # Generate turbo.zsh
+# Then in .zshrc: source "$HOME/.config/wayu/turbo.zsh"
+
+# Diagnostics
+wayu doctor                      # Health check all configs
+wayu doctor --fix                # Auto-fix issues
+
+# TOML configuration (declarative mode)
+wayu toml validate               # Check wayu.toml syntax
+wayu toml convert                # Convert shell configs to TOML
+
 # Shell migration
 wayu migrate --from zsh --to bash
 
@@ -115,6 +132,10 @@ wayu <command> <action> [arguments] [flags]
 | `search`, `find`, `f` | Fuzzy search across all configurations |
 | `completions` | Manage Zsh completion scripts |
 | `plugin` | Install and manage shell plugins |
+| `config` | Manage extra config and TOML files |
+| `export` | Generate turbo export for fast startup |
+| `doctor` | Health check and diagnostics |
+| `toml` | TOML configuration management |
 | `backup` | Manage configuration backups |
 | `init` | Initialize config directory |
 | `migrate` | Migrate config between shells |

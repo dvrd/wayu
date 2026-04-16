@@ -89,6 +89,10 @@ ParsedArgs :: struct {
 	component_name: string,
 	component_snapshot: bool,
 	component_verify: bool,
+
+	// Doctor options
+	doctor_fix:  bool,
+	doctor_json: bool,
 }
 
 init_shell_globals :: proc() {
@@ -223,13 +227,13 @@ main :: proc() {
 	case .MIGRATE:
 		handle_migrate_command(parsed.args)
 	case .CONFIG:
-		handle_edit_config()
+		handle_config_extra_command(parsed.action)
 	case .EXPORT:
 		handle_export_command(parsed.action, parsed.args)
 	case .TOML:
 		handle_toml_command(parsed.action)
 	case .DOCTOR:
-		handle_doctor_command()
+		handle_doctor_command(parsed.doctor_fix, parsed.doctor_json)
 	case .TEMPLATE:
 		handle_template_command(parsed.action, parsed.args)
 	case .HOOKS:
@@ -336,7 +340,26 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	case "plugin":     parsed.command = .PLUGIN
 	case "init":       parsed.command = .INIT;    return parsed
 	case "migrate":    parsed.command = .MIGRATE; return parsed
-	case "config":     parsed.command = .CONFIG;  return parsed
+	case "config":
+		parsed.command = .CONFIG
+		// Parse config subcommand
+		if len(filtered_args) > 1 {
+			switch filtered_args[1] {
+			case "extend", "e":
+				parsed.action = .ADD  // Use ADD for extend (extra.zsh)
+			case "edit":
+				parsed.action = .UPDATE  // Use UPDATE for edit (wayu.toml)
+			case "scan", "s", "detect":
+				parsed.action = .CHECK  // Use CHECK for scan
+			case "help", "-h", "--help":
+				parsed.action = .HELP
+			case:
+				parsed.action = .UNKNOWN
+			}
+		} else {
+			parsed.action = .HELP // Default: show help
+		}
+		return parsed
 	case "completions":
 		parsed.command = .COMPLETIONS
 		if len(filtered_args) > 1 {
@@ -409,7 +432,19 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		return parsed
 	case "version", "-v", "--version": parsed.command = .VERSION; return parsed
 	case "help", "-h", "--help":       parsed.command = .HELP;    return parsed
-	case "doctor":                     parsed.command = .DOCTOR;  return parsed
+	case "doctor":
+		parsed.command = .DOCTOR
+		// Parse doctor flags
+		for i := 1; i < len(filtered_args); i += 1 {
+			switch filtered_args[i] {
+			case "--fix":    parsed.doctor_fix = true
+			case "--json":   parsed.doctor_json = true
+			case "--help", "-h":
+				print_doctor_usage()
+				os.exit(0)
+			}
+		}
+		return parsed
 	case "template":
 		parsed.command = .TEMPLATE
 		if len(filtered_args) > 1 {
@@ -744,7 +779,7 @@ print_help :: proc() {
 	print_item("", "plugin", "Manage shell plugins", EMOJI_COMMAND)
 	print_item("", "init", "Initialize wayu configuration directory", EMOJI_INFO)
 	print_item("", "migrate", "Migrate configuration between shells", EMOJI_INFO)
-	print_item("", "config", "Open extra config in $EDITOR (nvim default)", EMOJI_INFO)
+	print_item("", "config", "Manage extra config (extend, scan)", EMOJI_INFO)
 	print_item("", "version", "Show version information", EMOJI_INFO)
 	print_item("", "help", "Show this help message", EMOJI_INFO)
 	fmt.println()
@@ -788,6 +823,12 @@ print_help :: proc() {
 	fmt.printf("  wayu toml convert                # Migrate to TOML format\n")
 	fmt.printf("  # Edit ~/.config/wayu/wayu.toml  # Edit declarative config\n")
 	fmt.println()
+	fmt.printf("  # Configuration files:\n")
+	fmt.printf("  wayu config edit                 # Edit wayu.toml (declarative)\n")
+	fmt.printf("  wayu config extend               # Edit extra.zsh (scripts)\n")
+	fmt.printf("  wayu config scan                 # Detect scripts in .zshrc\n")
+	fmt.printf("  wayu config extend               # Same as 'config'\n")
+	fmt.println()
 	fmt.printf("  # Diagnostics:\n")
 	fmt.printf("  wayu doctor                      # Health check all configs\n")
 	fmt.printf("  wayu doctor --fix                # Auto-fix issues\n")
@@ -826,14 +867,35 @@ print_help :: proc() {
 	fmt.println()
 }
 
-handle_edit_config :: proc() {
-	extra_file := fmt.aprintf("%s/extra.%s", WAYU_CONFIG, SHELL_EXT)
-	defer delete(extra_file)
+handle_config_extra_command :: proc(action: Action) {
+	#partial switch action {
+	case .ADD: // extend (extra.zsh)
+		extra_file := fmt.aprintf("%s/extra.%s", WAYU_CONFIG, SHELL_EXT)
+		defer delete(extra_file)
+		edit_extra_config(extra_file)
+	case .UPDATE: // edit (wayu.toml)
+		toml_file := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+		defer delete(toml_file)
+		edit_toml_config(toml_file)
+	case .CHECK: // scan/detect
+		scan_zshrc_for_scripts()
+	case .HELP:
+		print_config_usage()
+	case:
+		// Default: show help
+		print_config_usage()
+	}
+}
 
+edit_extra_config :: proc(extra_file: string) {
+	// Create file if doesn't exist
 	if !os.exists(extra_file) {
-		print_error_simple("Config file not found: %s", extra_file)
-		print_info("Run 'wayu init' first to create config files")
-		os.exit(EXIT_NOINPUT)
+		content := "# Extra configuration - runs at end of shell initialization\n# Add custom scripts, conda initialization, etc. here\n"
+		if write_ok := os.write_entire_file_from_string(extra_file, content); write_ok != nil {
+			print_error_simple("Failed to create extra config: %s", extra_file)
+			os.exit(EXIT_CANTCREAT)
+		}
+		print_success("Created extra config: %s", extra_file)
 	}
 
 	editor: string
@@ -872,6 +934,216 @@ handle_edit_config :: proc() {
 
 	status: c.int = 0
 	posix.waitpid(pid, &status, {})
+}
+
+edit_toml_config :: proc(toml_file: string) {
+	// Create file with default content if doesn't exist
+	if !os.exists(toml_file) {
+		default_content := `# Wayu TOML Configuration
+# This is a declarative way to manage your shell configuration
+# See: https://github.com/kakurega/wayu/blob/main/TOML_GUIDE.md
+
+[settings]
+shell = "zsh"
+
+# Example PATH entries
+# [[path]]
+# value = "/usr/local/bin"
+# priority = 100
+
+# Example aliases
+# [[aliases]]
+# name = "ll"
+# command = "ls -la"
+
+# Example constants
+# [[constants]]
+# name = "EDITOR"
+# value = "nvim"
+`
+		if write_ok := os.write_entire_file_from_string(toml_file, default_content); write_ok != nil {
+			print_error_simple("Failed to create wayu.toml: %s", toml_file)
+			os.exit(EXIT_CANTCREAT)
+		}
+		print_success("Created wayu.toml: %s", toml_file)
+	}
+
+	editor: string
+	if e := os.get_env("EDITOR", context.temp_allocator); len(e) > 0 {
+		editor = e
+	} else if e := os.get_env("VISUAL", context.temp_allocator); len(e) > 0 {
+		editor = e
+	} else {
+		editor = "nvim"
+	}
+
+	args := []string{editor, toml_file}
+
+	argv := make([dynamic]cstring, len(args) + 1)
+	defer {
+		for i in 0..<len(args) {
+			delete(argv[i])
+		}
+		delete(argv)
+	}
+	for arg, i in args {
+		argv[i] = strings.clone_to_cstring(arg)
+	}
+	argv[len(args)] = nil
+
+	pid := posix.fork()
+	if pid < 0 {
+		print_error_simple("Failed to fork process")
+		os.exit(EXIT_IOERR)
+	}
+
+	if pid == 0 {
+		posix.execvp(argv[0], raw_data(argv[:]))
+		posix._exit(1)
+	}
+
+	status: c.int = 0
+	posix.waitpid(pid, &status, {})
+}
+
+// Scan .zshrc for inline scripts that should move to extra.zsh
+scan_zshrc_for_scripts :: proc() {
+	zshrc_file := fmt.aprintf("%s/.zshrc", os.get_env("HOME", context.temp_allocator))
+	defer delete(zshrc_file)
+
+	if !os.exists(zshrc_file) {
+		print_error_simple(".zshrc not found: %s", zshrc_file)
+		os.exit(EXIT_NOINPUT)
+	}
+
+	content, read_ok := safe_read_file(zshrc_file)
+	if !read_ok {
+		print_error_simple("Failed to read .zshrc")
+		os.exit(EXIT_IOERR)
+	}
+	defer delete(content)
+
+	content_str := string(content)
+	
+	// Patterns that indicate inline scripts (not source commands, not aliases managed by wayu)
+	patterns := []string{
+		"eval \"$(",
+		"export PATH=",
+		"alias ",
+		"conda initialize",
+		"nvm ",
+		"pyenv ",
+		"rbenv ",
+		"fzf ",
+		"starship ",
+		"zoxide ",
+		"eval $(",
+		"# >>>",
+		"# <<<",
+	}
+	
+	// Find lines that match patterns
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+	
+	detected_blocks := make([dynamic][dynamic]string)
+	defer {
+		for block in detected_blocks {
+			delete(block)
+		}
+		delete(detected_blocks)
+	}
+	
+	current_block: [dynamic]string
+	in_block := false
+	
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
+			if in_block && len(current_block) > 0 {
+				// End of block
+				block_copy := make([dynamic]string)
+				append(&block_copy, ..current_block[:])
+				append(&detected_blocks, block_copy)
+				clear(&current_block)
+				in_block = false
+			}
+			continue
+		}
+		
+		// Check if line starts a script block
+		if !in_block {
+			for pattern in patterns {
+				if strings.contains(trimmed, pattern) {
+					in_block = true
+					append(&current_block, line)
+					break
+				}
+			}
+		} else {
+			// Continue block
+			append(&current_block, line)
+		}
+	}
+	
+	// Add final block if exists
+	if in_block && len(current_block) > 0 {
+		block_copy := make([dynamic]string)
+		append(&block_copy, ..current_block[:])
+		append(&detected_blocks, block_copy)
+	}
+	delete(current_block)
+	
+	if len(detected_blocks) == 0 {
+		print_success("No inline scripts detected in .zshrc")
+		print_info("Your .zshrc is clean - all scripts properly sourced")
+		return
+	}
+	
+	print_header("Detected Inline Scripts", "🔍")
+	fmt.printfln("Found %d potential script blocks in .zshrc:", len(detected_blocks))
+	fmt.println()
+	
+	for block, i in detected_blocks {
+		fmt.printfln("%sBlock %d:%s", get_primary(), i + 1, RESET)
+		for line in block {
+			fmt.printfln("  %s", line)
+		}
+		fmt.println()
+	}
+	
+	print_info("These scripts should be moved to extra.zsh for better management")
+	fmt.println()
+	fmt.printfln("Run %swayu config extend%s to edit extra.zsh", get_primary(), RESET)
+	fmt.printfln("Or run %swayu config scan --fix%s to auto-migrate (coming soon)", get_primary(), RESET)
+}
+
+print_config_usage :: proc() {
+	fmt.println()
+	fmt.printfln("%swayu config - Manage configuration files%s", BOLD, RESET)
+	fmt.println()
+	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
+	fmt.printfln("  wayu config              Edit extra.zsh (custom scripts)")
+	fmt.printfln("  wayu config extend       Same as 'config'")
+	fmt.printfln("  wayu config edit         Edit wayu.toml (declarative config)")
+	fmt.printfln("  wayu config scan         Scan .zshrc for inline scripts")
+	fmt.println()
+	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
+	fmt.println("  wayu.toml: Declarative configuration (PATH, aliases, constants)")
+	fmt.println("  extra.zsh: Shell scripts that run at end of initialization")
+	fmt.println("             Use for conda init, tool evals, custom functions, etc.")
+	fmt.println()
+	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
+	fmt.println("  # Edit declarative config")
+	fmt.println("  wayu config edit")
+	fmt.println()
+	fmt.println("  # Add conda initialization script")
+	fmt.println("  wayu config extend")
+	fmt.println("  # Then paste conda init block in the editor")
+	fmt.println()
+	fmt.println("  # Detect scripts that should move to extra.zsh")
+	fmt.println("  wayu config scan")
+	fmt.println()
 }
 
 handle_migrate_command :: proc(args: []string) {

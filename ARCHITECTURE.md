@@ -33,7 +33,11 @@ wayu/
 │   ├── constants.odin            # Environment variable management
 │   ├── completions.odin          # Zsh completion script management
 │   ├── backup.odin               # Timestamped backup/restore system
-│   ├── plugin.odin               # Plugin management (basic, not fully integrated)
+│   ├── plugin.odin               # Plugin management with fuzzy matching
+│   ├── plugin_registry.odin      # Plugin registry and metadata
+│   ├── plugin_operations.odin    # Plugin install/update/remove operations
+│   ├── plugin_config.odin        # Plugin configuration (JSON-based)
+│   ├── plugin_help.odin          # Plugin help and documentation
 │   │
 │   ├── config_entry.odin         # Generic config entry CRUD (Strategy pattern)
 │   ├── config_specs.odin         # ConfigEntrySpec instances (PATH_SPEC, ALIAS_SPEC, etc.)
