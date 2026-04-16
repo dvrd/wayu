@@ -125,10 +125,10 @@ generate_core_init_v2 :: proc() {
 	fmt.sbprintfln(&builder, "source \"%s/init-helpers.zsh\" 2>/dev/null || true", WAYU_CONFIG)
 	fmt.sbprintln(&builder)
 	
-	// Prompt: Nativo wayu (pre-compilado, no starship)
-	fmt.sbprintln(&builder, "# === Prompt (wayu native, pre-compiled) ===")
+	// Prompt: Nativo wayu completo (copied from starship.toml)
+	fmt.sbprintln(&builder, "# === Prompt (wayu native, from starship.toml) ===")
 	
-	// Parse prompt config from TOML
+	// Parse full prompt config from TOML
 	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
 	defer delete(toml_path)
 	
@@ -136,9 +136,10 @@ generate_core_init_v2 :: proc() {
 		toml_data, ok := safe_read_file(toml_path)
 		if ok {
 			defer delete(toml_data)
-			prompt_config := parse_prompt_config(string(toml_data))
-			prompt_code := generate_native_prompt(prompt_config)
+			prompt_cfg := parse_full_prompt_config(string(toml_data))
+			prompt_code := generate_full_prompt(prompt_cfg)
 			fmt.sbprint(&builder, prompt_code)
+			delete(prompt_code)
 		}
 	}
 	fmt.sbprintln(&builder)

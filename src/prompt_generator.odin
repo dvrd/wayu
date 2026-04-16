@@ -1,147 +1,35 @@
 // prompt_generator.odin - Genera prompt nativo zsh pre-compilado
+// Copied from starship.toml configuration - SIMPLIFIED VERSION
 package wayu
 
 import "core:fmt"
-import "core:os"
 import "core:strings"
 
-// Configuración del prompt
-PromptConfig :: struct {
-	format:           string,
-	symbols_success:  string,
-	symbols_error:    string,
-	colors_directory: string,
-	colors_git_branch: string,
-	colors_symbol_success: string,
-	colors_symbol_error: string,
+// Configuración del prompt (basada en starship.toml)
+PromptConfigFull :: struct {
+	format: string,
+	character_success: string,
+	character_error: string,
 }
 
-// Genera prompt nativo zsh desde configuración
-generate_native_prompt :: proc(config: PromptConfig) -> string {
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-	
-	// Función de prompt nativa
-	fmt.sbprintln(&builder, "# === Wayu Native Prompt (pre-compiled) ===")
-	fmt.sbprintln(&builder, "_wayu_prompt() {")
-	fmt.sbprintln(&builder, "  local exit_code=$?")
-	fmt.sbprintln(&builder, "  local dir=\"%~\"")
-	fmt.sbprintln(&builder, "  local git_branch=\"\"")
-	fmt.sbprintln(&builder, "  local git_status=\"\"")
-	fmt.sbprintln(&builder)
-	
-	// Git branch (fast check)
-	fmt.sbprintln(&builder, "  # Fast git branch detection")
-	fmt.sbprintln(&builder, "  if git rev-parse --git-dir > /dev/null 2>&1; then")
-	fmt.sbprintln(&builder, "    git_branch=\"$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)\"")
-	fmt.sbprint(&builder, "    [[ -n \"$git_branch\" ]] && git_branch=\"")
-	fmt.sbprint(&builder, color_to_code(config.colors_git_branch))
-	fmt.sbprintln(&builder, "($git_branch)%f\"")
-	fmt.sbprintln(&builder, "  fi")
-	fmt.sbprintln(&builder)
-	
-	// Symbol basado en exit code
-	fmt.sbprintln(&builder, "  # Success/error symbol")
-	fmt.sbprintln(&builder, "  local symbol")
-	fmt.sbprintln(&builder, "  if [[ $exit_code -eq 0 ]]; then")
-	fmt.sbprintfln(&builder, "    symbol=\"%s%s\"", color_to_code(config.colors_symbol_success), config.symbols_success)
-	fmt.sbprintln(&builder, "  else")
-	fmt.sbprintfln(&builder, "    symbol=\"%s%s\"", color_to_code(config.colors_symbol_error), config.symbols_error)
-	fmt.sbprintln(&builder, "  fi")
-	fmt.sbprintln(&builder)
-	
-	// Construir prompt
-	fmt.sbprintln(&builder, "  # Build prompt")
-	fmt.sbprint(&builder, "  echo \"")
-	
-	// Procesar format string manualmente
-	parts := strings.split(config.format, " ")
-	defer delete(parts)
-	
-	for part in parts {
-		switch part {
-		case "{dir}":
-			fmt.sbprint(&builder, color_to_code(config.colors_directory))
-			fmt.sbprint(&builder, "%~%f ")
-		case "{git_branch}":
-			fmt.sbprint(&builder, "${git_branch} ")
-		case "{symbol}":
-			fmt.sbprint(&builder, "${symbol}%f ")
-		case "{exit_status}":
-			fmt.sbprint(&builder, "${exit_code} ")
-		case:
-			fmt.sbprint(&builder, part)
-			fmt.sbprint(&builder, " ")
-		}
+// Parse config simple desde TOML
+parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
+	cfg := PromptConfigFull{
+		format = "{username}{dir}{git_branch}{character}",
+		character_success = "➜",
+		character_error = "✗",
 	}
 	
-	fmt.sbprintln(&builder, "\"")
-	fmt.sbprintln(&builder, "}")
-	fmt.sbprintln(&builder)
-	
-	// Configurar PROMPT
-	fmt.sbprintln(&builder, "setopt promptsubst")
-	fmt.sbprintln(&builder, "PROMPT='$(_wayu_prompt)'")
-	fmt.sbprintln(&builder, "unset RPROMPT  # Clean right prompt")
-	
-	return strings.clone(strings.to_string(builder))
-}
-
-// Convierte nombre de color a código ANSI zsh
-color_to_code :: proc(color: string) -> string {
-	switch strings.to_lower(color) {
-	case "black":   return "%F{0}"
-	case "red":     return "%F{1}"
-	case "green":   return "%F{2}"
-	case "yellow":  return "%F{3}"
-	case "blue":    return "%F{4}"
-	case "magenta": return "%F{5}"
-	case "cyan":    return "%F{6}"
-	case "white":   return "%F{7}"
-	case "gray", "grey": return "%F{8}"
-	case "default": return "%f"
-	case "reset":   return "%f"
-	case:
-		// Si es un número (0-255), usar directamente
-		if is_numeric(color) {
-			return fmt.aprintf("%%F{%s}", color)
-		}
-		return "%f"  // default
-	}
-}
-
-is_numeric :: proc(s: string) -> bool {
-	for c in s {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return len(s) > 0
-}
-
-// Parsea prompt config desde TOML (simplificado)
-parse_prompt_config :: proc(toml_data: string) -> PromptConfig {
-	config := PromptConfig{
-		format = "{dir} {git_branch} {symbol} ",
-		symbols_success = "➜",
-		symbols_error = "✗",
-		colors_directory = "cyan",
-		colors_git_branch = "magenta",
-		colors_symbol_success = "green",
-		colors_symbol_error = "red",
-	}
-	
-	// Parse simple: buscar [prompt] section
-	lines := strings.split(toml_data, "\n")
+	lines := strings.split(toml, "\n")
 	defer delete(lines)
 	
 	in_prompt_section := false
+	
 	for line in lines {
 		trimmed := strings.trim_space(line)
 		
-		// Detectar inicio de sección
-		if strings.contains(trimmed, "[prompt]") && !strings.contains(trimmed, "[prompt.") {
+		// Detectar sección [prompt]
+		if trimmed == "[prompt]" {
 			in_prompt_section = true
 			continue
 		}
@@ -152,28 +40,212 @@ parse_prompt_config :: proc(toml_data: string) -> PromptConfig {
 		
 		if !in_prompt_section { continue }
 		
-		// Parsear key = value
-		eq_idx := strings.index(trimmed, "=")
-		if eq_idx > 0 {
-			key := strings.trim_space(trimmed[:eq_idx])
-			value := strings.trim_space(trimmed[eq_idx+1:])
-			
-			// Remover comillas
-			value = strings.trim_prefix(value, `"`)
-			value = strings.trim_suffix(value, `"`)
-			value = strings.trim_prefix(value, "'")
-			value = strings.trim_suffix(value, "'")
-			
-			switch key {
-			case "format": config.format = value
+		// Buscar format = "..."
+		if strings.has_prefix(trimmed, "format") && strings.contains(trimmed, "=") {
+			eq_idx := strings.index(trimmed, "=")
+			if eq_idx > 0 {
+				value := strings.trim_space(trimmed[eq_idx+1:])
+				value = strings.trim_prefix(value, `"`)
+				value = strings.trim_suffix(value, `"`)
+				value = strings.trim_prefix(value, "'")
+				value = strings.trim_suffix(value, "'")
+				if len(value) > 0 && value != "true" && value != "false" {
+					cfg.format = value
+				}
 			}
 		}
 		
-		// Parsear subsecciones [prompt.symbols], [prompt.colors]
-		if strings.contains(trimmed, "[prompt.symbols]") {
-			in_prompt_section = false  // Cambiar a subsección
+		if strings.contains(trimmed, "success_symbol") && strings.contains(trimmed, "=") {
+			eq_idx := strings.index(trimmed, "=")
+			if eq_idx > 0 {
+				value := strings.trim_space(trimmed[eq_idx+1:])
+				// Extraer emoji/caracter del formato [icon ](style)
+				start := strings.index(value, "[")
+				end := strings.index(value, "]")
+				if start >= 0 && end > start {
+					cfg.character_success = strings.trim_space(value[start+1:end])
+				}
+			}
+		}
+		
+		if strings.contains(trimmed, "error_symbol") && strings.contains(trimmed, "=") {
+			eq_idx := strings.index(trimmed, "=")
+			if eq_idx > 0 {
+				value := strings.trim_space(trimmed[eq_idx+1:])
+				start := strings.index(value, "[")
+				end := strings.index(value, "]")
+				if start >= 0 && end > start {
+					cfg.character_error = strings.trim_space(value[start+1:end])
+				}
+			}
 		}
 	}
 	
-	return config
+	return cfg
+}
+
+// Genera prompt nativo simplificado pero completo
+generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+	
+	fmt.sbprintln(&builder, "# === Wayu Native Prompt (from starship.toml) ===")
+	fmt.sbprintln(&builder)
+	
+	// Variables globales para cachear git info
+	fmt.sbprintln(&builder, "typeset -g _WAYU_GIT_BRANCH=\"\"")
+	fmt.sbprintln(&builder, "typeset -g _WAYU_GIT_DIR=\"\"")
+	fmt.sbprintln(&builder)
+	
+	// Función para actualizar git info
+	fmt.sbprintln(&builder, "_wayu_update_git_info() {")
+	fmt.sbprintln(&builder, "  if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then")
+	fmt.sbprintln(&builder, `    _WAYU_GIT_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)"`)
+	fmt.sbprintln(&builder, `    _WAYU_GIT_DIR="$(git rev-parse --show-toplevel 2>/dev/null)"`)
+	fmt.sbprintln(&builder, "  else")
+	fmt.sbprintln(&builder, `    _WAYU_GIT_BRANCH=""`)
+	fmt.sbprintln(&builder, `    _WAYU_GIT_DIR=""`)
+	fmt.sbprintln(&builder, "  fi")
+	fmt.sbprintln(&builder, "}")
+	fmt.sbprintln(&builder)
+	
+	// Hook precmd
+	fmt.sbprintln(&builder, "autoload -Uz add-zsh-hook")
+	fmt.sbprintln(&builder, "add-zsh-hook precmd _wayu_update_git_info")
+	fmt.sbprintln(&builder)
+	
+	// Función principal de prompt
+	fmt.sbprintln(&builder, "_wayu_prompt() {")
+	fmt.sbprintln(&builder, "  local exit_code=$?")
+	fmt.sbprintln(&builder, `  local result=""`)
+	fmt.sbprintln(&builder)
+	
+	// Procesar cada componente según el format
+	if strings.contains(cfg.format, "{username}") {
+		fmt.sbprintln(&builder, "  # Username (only in SSH)")
+		fmt.sbprintln(&builder, `  if [[ -n "$SSH_CONNECTION" ]]; then`)
+		fmt.sbprintln(&builder, `    result+="%F{7}%B%n%b%F{reset}@"`)
+		fmt.sbprintln(&builder, "  fi")
+		fmt.sbprintln(&builder)
+	}
+	
+	if strings.contains(cfg.format, "{localip}") {
+		fmt.sbprintln(&builder, "  # Local IP (only in SSH)")
+		fmt.sbprintln(&builder, `  if [[ -n "$SSH_CONNECTION" ]]; then`)
+		fmt.sbprintln(&builder, `    local ip="${$(ip route get 1 2>/dev/null | awk '{print $7; exit}')}"`)
+		fmt.sbprintln(&builder, `    result+="%F{4}[$ip]%F{reset} "`)
+		fmt.sbprintln(&builder, "  fi")
+		fmt.sbprintln(&builder)
+	}
+	
+	// Directory (siempre)
+	fmt.sbprintln(&builder, "  # Directory")
+	fmt.sbprintln(&builder, `  result+="%F{6}%B%~%b%F{reset} "`)
+	fmt.sbprintln(&builder)
+	
+	// Git branch
+	if strings.contains(cfg.format, "{git_branch}") {
+		fmt.sbprintln(&builder, "  # Git branch")
+		fmt.sbprintln(&builder, `  if [[ -n "$_WAYU_GIT_BRANCH" ]]; then`)
+		fmt.sbprintln(&builder, `    result+="🌱 %F{5}%B${_WAYU_GIT_BRANCH}%b%F{reset} "`)
+		fmt.sbprintln(&builder, "  fi")
+		fmt.sbprintln(&builder)
+	}
+	
+	// Git commit (solo detached HEAD)
+	if strings.contains(cfg.format, "{git_commit}") {
+		fmt.sbprintln(&builder, "  # Git commit (detached HEAD only)")
+		fmt.sbprintln(&builder, `  if [[ -n "$_WAYU_GIT_BRANCH" ]] && [[ "$_WAYU_GIT_BRANCH" =~ ^[a-f0-9]+$ ]]; then`)
+		fmt.sbprintln(&builder, `    result+="%F{3}${_WAYU_GIT_BRANCH}%F{reset} "`)
+		fmt.sbprintln(&builder, "  fi")
+		fmt.sbprintln(&builder)
+	}
+	
+	// Git state (rebase, merge, cherry-pick)
+	if strings.contains(cfg.format, "{git_state}") {
+		fmt.sbprintln(&builder, "  # Git state")
+		fmt.sbprintln(&builder, `  if [[ -d "$_WAYU_GIT_DIR/rebase-merge" ]] || [[ -d "$_WAYU_GIT_DIR/rebase-apply" ]]; then`)
+		fmt.sbprintln(&builder, `    result+="%F{1}REBASING%F{reset} "`)
+		fmt.sbprintln(&builder, `  elif [[ -f "$_WAYU_GIT_DIR/MERGE_HEAD" ]]; then`)
+		fmt.sbprintln(&builder, `    result+="%F{1}MERGING%F{reset} "`)
+		fmt.sbprintln(&builder, `  elif [[ -f "$_WAYU_GIT_DIR/CHERRY_PICK_HEAD" ]]; then`)
+		fmt.sbprintln(&builder, `    result+="🍒 %F{1}PICKING%F{reset} "`)
+		fmt.sbprintln(&builder, "  fi")
+		fmt.sbprintln(&builder)
+	}
+	
+	// Odin
+	if strings.contains(cfg.format, "{odin}") {
+		fmt.sbprintln(&builder, "  # Odin")
+		fmt.sbprintln(&builder, `  if [[ -f "ols.json" ]] || ls *.odin >/dev/null 2>&1; then`)
+		fmt.sbprintln(&builder, `    local ver="$(odin version 2>/dev/null | head -1 | awk '{print $2}')"`)
+		fmt.sbprintln(&builder, `    if [[ -n "$ver" ]]; then`)
+		fmt.sbprintln(&builder, `      result+="via %F{4}󰹩 ${ver}%F{reset} "`)
+		fmt.sbprintln(&builder, "    fi")
+		fmt.sbprintln(&builder, "  fi")
+		fmt.sbprintln(&builder)
+	}
+	
+	// Character (success/error)
+	if strings.contains(cfg.format, "{character}") {
+		fmt.sbprintln(&builder, "  # Character (success/error)")
+		fmt.sbprintln(&builder, "  if [[ $exit_code -eq 0 ]]; then")
+		// Usar símbolos directamente sin format
+		fmt.sbprint(&builder, `    result+="%F{2}%B`)
+		fmt.sbprint(&builder, cfg.character_success)
+		fmt.sbprintln(&builder, `%b%F{reset} "`)
+		fmt.sbprintln(&builder, "  else")
+		fmt.sbprint(&builder, `    result+="%F{1}%B`)
+		fmt.sbprint(&builder, cfg.character_error)
+		fmt.sbprintln(&builder, `%b%F{reset} "`)
+		fmt.sbprintln(&builder, "  fi")
+		fmt.sbprintln(&builder)
+	}
+	
+	// Output final
+	fmt.sbprintln(&builder, `  echo "$result"`)
+	fmt.sbprintln(&builder, "}")
+	fmt.sbprintln(&builder)
+	
+	// Configurar PROMPT
+	fmt.sbprintln(&builder, "setopt promptsubst")
+	fmt.sbprintln(&builder, `PROMPT='$(_wayu_prompt)'`)
+	fmt.sbprintln(&builder, "unset RPROMPT")
+	
+	return strings.clone(strings.to_string(builder))
+}
+
+// Para backward compatibility
+PromptConfig :: struct {
+	format:           string,
+	symbols_success:  string,
+	symbols_error:    string,
+	colors_directory: string,
+	colors_git_branch: string,
+	colors_symbol_success: string,
+	colors_symbol_error: string,
+}
+
+parse_prompt_config :: proc(toml_data: string) -> PromptConfig {
+	full := parse_full_prompt_config(toml_data)
+	
+	return PromptConfig{
+		format = full.format,
+		symbols_success = "➜",
+		symbols_error = "✗",
+		colors_directory = "cyan",
+		colors_git_branch = "magenta",
+		colors_symbol_success = "green",
+		colors_symbol_error = "red",
+	}
+}
+
+generate_native_prompt :: proc(config: PromptConfig) -> string {
+	full := PromptConfigFull{
+		format = config.format,
+		character_success = config.symbols_success,
+		character_error = config.symbols_error,
+	}
+	return generate_full_prompt(full)
 }
