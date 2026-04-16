@@ -211,16 +211,22 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 			fmt.sbprintln(&builder)
 		}
 		
-		// Context icon (from _WAYU_CONTEXT)
+		// Context icon (from _WAYU_CONTEXT) con versiones para algunos lenguajes
 		if strings.contains(part, "{context_icon}") {
-			fmt.sbprintln(&builder, "  # Context icon from Nerd Fonts")
+			fmt.sbprintln(&builder, "  # Context icon from Nerd Fonts (con versiones)")
 			fmt.sbprintln(&builder, `  case "$_WAYU_CONTEXT" in`)
-			fmt.sbprintln(&builder, `    rust) result+="󱘗 " ;;`)
+			fmt.sbprintln(&builder, `    rust)`)
+			fmt.sbprintln(&builder, `      local rust_ver="$(rustc --version 2>/dev/null | awk '{print $2}')"`)
+			fmt.sbprintln(&builder, `      result+="󱘗 ${rust_ver:-?} " ;;`)
 			fmt.sbprintln(&builder, `    nodejs) result+=" " ;;`)
-			fmt.sbprintln(&builder, `    golang) result+=" " ;;`)
+			fmt.sbprintln(&builder, `    golang)`)
+			fmt.sbprintln(&builder, `      local go_ver="$(go version 2>/dev/null | awk '{print $3}' | sed 's/go//')"`)
+			fmt.sbprintln(&builder, `      result+=" ${go_ver:-?} " ;;`)
 			fmt.sbprintln(&builder, `    python) result+=" " ;;`)
 			fmt.sbprintln(&builder, `    zig) result+=" " ;;`)
-			fmt.sbprintln(&builder, `    odin) result+="Ø " ;;`)
+			fmt.sbprintln(&builder, `    odin)`)
+			fmt.sbprintln(&builder, `      local odin_ver="$(odin version 2>/dev/null | head -1 | awk '{print $2}')"`)
+			fmt.sbprintln(&builder, `      result+="Ø ${odin_ver:-?} " ;;`)
 			fmt.sbprintln(&builder, `    bun) result+=" " ;;`)
 			fmt.sbprintln(&builder, `    java) result+=" " ;;`)
 			fmt.sbprintln(&builder, `    kotlin) result+=" " ;;`)
