@@ -1431,106 +1431,19 @@ handle_build_command :: proc(action: Action) {
 	handle_export_command(.TURBO, {})
 }
 
-// Generate optimized eval output - all config in one export
+// Generate optimized eval output - simply source the pre-generated init.zsh
 generate_eval_output_optimized :: proc() {
-	// Check if we can use cached init file
-	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
-	defer delete(toml_path)
-	cache_path := fmt.aprintf("%s/init-cache.zsh", WAYU_CONFIG)
-	defer delete(cache_path)
+	// Just output source command to init.zsh
+	// init.zsh is pre-generated with 'wayu build' command
+	init_file := fmt.aprintf("%s/init.zsh", WAYU_CONFIG)
+	defer delete(init_file)
 	
-	if !os.exists(toml_path) {
-		fmt.eprintln("Error: wayu.toml not found. Run 'wayu init' to create config.")
+	if !os.exists(init_file) {
+		fmt.eprintln("Error: init.zsh not found. Run 'wayu build' first.")
 		os.exit(EXIT_NOINPUT)
 	}
 	
-	// Check if cache is up to date
-	use_cache := false
-	if os.exists(cache_path) {
-		toml_stat, toml_ok := os.stat(toml_path, context.temp_allocator)
-		cache_stat, cache_ok := os.stat(cache_path, context.temp_allocator)
-		
-		if toml_ok == nil && cache_ok == nil {
-			// Cache is valid if newer than TOML
-			if cache_stat.modification_time._nsec >= toml_stat.modification_time._nsec {
-				use_cache = true
-			}
-		}
-	}
-	
-	if use_cache {
-		// Fast path: just source the cache
-		fmt.printfln(`source "%s"`, cache_path)
-		return
-	}
-	
-	// Slow path: regenerate cache
-	start_time := get_time()
-	
-	// Parse TOML
-	toml_data, ok := safe_read_file(toml_path)
-	if !ok {
-		fmt.eprintln("Error: Failed to read wayu.toml")
-		os.exit(EXIT_NOINPUT)
-	}
-	defer delete(toml_data)
-	
-	config := parse_toml_config(toml_data)
-	
-	// Analyze and select optimization level
-	profile := analyze_config_size(
-		len(config.paths),
-		len(config.aliases),
-		len(config.constants),
-		len(config.plugins),
-		len(toml_data),
-	)
-	
-	// Build output
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-	
-	// 1. PATH - Pre-computed, single export
-	append_path_optimized(&builder, config.paths, profile.path_level)
-	
-	// 2. Environment variables - Direct exports
-	append_constants_optimized(&builder, config.constants)
-	
-	// 3. Aliases - Direct definitions
-	append_aliases_optimized(&builder, config.aliases)
-	
-	// 4. Prompt - inline Starship only (the essential part)
-	fmt.sbprintln(&builder, "# Prompt (Starship)")
-	append_starship_inline(&builder)
-	fmt.sbprintln(&builder)
-	
-	// 5. Load plugins inline
-	fmt.sbprintln(&builder, "# Plugins")
-	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" ] && source "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh"`)
-	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] && source "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"`)
-	fmt.sbprintln(&builder)
-	
-	// 6. Rest of tools (Zoxide, Atuin, completions, functions) - only if needed
-	fmt.sbprintln(&builder, "# Additional tools (Zoxide, Atuin, completions, lazy loaders)")
-	fmt.sbprintln(&builder, `[[ -z "$_WAYU_EXTRA_LOADED" ]] && { export _WAYU_EXTRA_LOADED=1; [[ -f "$HOME/.config/wayu/tools.zsh" ]] && source "$HOME/.config/wayu/tools.zsh"; [[ -f "$HOME/.config/wayu/extra.zsh" ]] && source "$HOME/.config/wayu/extra.zsh"; }`)
-	fmt.sbprintln(&builder)
-	
-	// Generate output
-	output := strings.to_string(builder)
-	
-	// Save to cache file
-	write_ok := os.write_entire_file(cache_path, transmute([]byte)output)
-	if write_ok != nil {
-		fmt.eprintfln("Error: Failed to write cache file: %s", cache_path)
-	}
-	
-	// Output source command (the eval result)
-	fmt.printfln(`source "%s"`, cache_path)
-	
-	// Print timing to stderr
-	elapsed := (get_time() - start_time) * 1000
-	fmt.eprintfln("# Generated in %.2fms using %v optimization", elapsed, profile.path_level)
+	fmt.printfln(`source "%s"`, init_file)
 }
 
 // Append optimized PATH export - ordered: personal > homebrew > system
