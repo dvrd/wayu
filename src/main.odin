@@ -1492,6 +1492,34 @@ generate_eval_output_optimized :: proc() {
 	// 4. Plugins - With lazy loading for heavy ones
 	append_plugins_optimized(&builder, config.plugins, profile.plugin_level)
 	
+	// 5. Functions loading
+	fmt.sbprintln(&builder, "# Functions")
+	fmt.sbprintln(&builder, `for f in "$HOME/.config/wayu/functions"/*(N); do [[ -f "$f" ]] && source "$f"; done`)
+	fmt.sbprintln(&builder)
+	
+	// 6. Completions setup
+	fmt.sbprintln(&builder, "# Completions")
+	fmt.sbprintln(&builder, `fpath=("$HOME/.config/wayu/completions" $fpath)`)
+	fmt.sbprintln(&builder, "autoload -Uz compinit && compinit -C")
+	fmt.sbprintln(&builder)
+	
+	// 7. Plugins (zsh-autosuggestions, syntax-highlighting)
+	fmt.sbprintln(&builder, "# Plugins")
+	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" ] && source "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh"`)
+	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] && source "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"`)
+	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/plugins/config.zsh" ] && source "$HOME/.config/wayu/plugins/config.zsh"`)
+	fmt.sbprintln(&builder)
+	
+	// 8. Tools (lazy-loaded via tools.zsh)
+	fmt.sbprintln(&builder, "# Tools (Starship, Zoxide, etc.)")
+	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/tools.zsh" ] && source "$HOME/.config/wayu/tools.zsh"`)
+	fmt.sbprintln(&builder)
+	
+	// 9. Extra config
+	fmt.sbprintln(&builder, "# Extra config")
+	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/extra.zsh" ] && source "$HOME/.config/wayu/extra.zsh"`)
+	fmt.sbprintln(&builder)
+	
 	// Output the result
 	fmt.println(strings.to_string(builder))
 	
