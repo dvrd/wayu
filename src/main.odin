@@ -1478,8 +1478,14 @@ generate_eval_output_optimized :: proc() {
 	// 3. Aliases - Direct definitions
 	append_aliases_optimized(&builder, config.aliases)
 	
-	// 4. Source external configs (plugins, tools, completions, extra)
-	fmt.sbprintln(&builder, "# External configuration (plugins, tools, completions)")
+	// 4. Load plugins inline (fast, no external file)
+	fmt.sbprintln(&builder, "# Plugins")
+	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" ] && source "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh"`)
+	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] && source "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"`)
+	fmt.sbprintln(&builder)
+	
+	// 5. Source external configs (completions, functions, lazy tools)
+	fmt.sbprintln(&builder, "# Completions, functions, and lazy-loaded tools")
 	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/extra.zsh" ] && source "$HOME/.config/wayu/extra.zsh"`)
 	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/tools.zsh" ] && source "$HOME/.config/wayu/tools.zsh"`)
 	fmt.sbprintln(&builder)
