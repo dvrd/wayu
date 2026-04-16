@@ -5,23 +5,20 @@ All notable changes to wayu will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.9.0] - 2026-04-16
+## [3.10.0] - 2026-04-16
 
 ### Added
 
-- **doctor**: Health check command with auto-fix capability (`wayu doctor --fix`)
-- **doctor**: JSON output support (`wayu doctor --json`)
-- **plugin**: Fuzzy matching for plugin names (e.g., `wayu plugin priority auto 50` matches `zsh-autosuggestions`)
-- **plugin**: Interactive selection menu when multiple plugins match
-- **config**: Add `scan` subcommand to detect inline scripts in .zshrc
-- **config**: Add `edit` subcommand to edit wayu.toml declarative config
-- **export**: Include `tools.zsh` and `extra.zsh` in turbo export generation
+- Implement doctor command, fuzzy plugin matching, and config scan
 
 ### Fixed
 
-- **export**: Now loads external tools (Starship, etc.) and extra config when using turbo mode
-- **plugin**: Commands now support fuzzy matching (priority, enable, disable, remove)
+- **doctor**: Use arena allocator for memory safety
+## [3.9.0] - 2026-04-15
 
+### Added
+
+- Implement all requested features
 ## [3.8.0] - 2026-04-15
 
 ### Added
@@ -208,6 +205,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Correct termios struct for macOS compatibility
 - Resolve unit test failures and improve test robustness
 - Rename run_component_test to run_component_testing
+[3.10.0]: https://github.com/dvrd/wayu/releases/tag/v3.10.0
 [3.9.0]: https://github.com/dvrd/wayu/releases/tag/v3.9.0
 [3.8.0]: https://github.com/dvrd/wayu/releases/tag/v3.8.0
 [3.7.1]: https://github.com/dvrd/wayu/releases/tag/v3.7.1
