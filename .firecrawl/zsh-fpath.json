@@ -1,0 +1,1934 @@
+Where should I put compinit? : r/zsh - Reddit
+  URL: https://www.reddit.com/r/zsh/comments/gk2c91/where_should_i_put_compinit/
+  compinit has a chicken-and-egg problem. You need to have your fpath fully built before calling it so that all your autoloaded completion ...
+
+Speed up zsh compinit by only checking cache once a day. · GitHub
+  URL: https://gist.github.com/ctechols/ca1035271ad134841284
+  On slow systems, checking the cached .zcompdump file to see if it must be regenerated adds a noticable delay to zsh startup. This little hack restricts it to ...
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://gist.github.com/ctechols/ca1035271ad134841284#start-of-content)
+  
+  [Gist Homepage ](https://gist.github.com/)
+  
+  Search Gists
+  
+  Search Gists
+  
+  [Gist Homepage ](https://gist.github.com/)
+  
+  [Sign in](https://gist.github.com/auth/github?return_to=https%3A%2F%2Fgist.github.com%2Fctechols%2Fca1035271ad134841284) [Sign up](https://gist.github.com/join?return_to=https%3A%2F%2Fgist.github.com%2Fctechols%2Fca1035271ad134841284&source=header-gist)
+  
+  You signed in with another tab or window. [Reload](https://gist.github.com/ctechols/ca1035271ad134841284) to refresh your session.You signed out in another tab or window. [Reload](https://gist.github.com/ctechols/ca1035271ad134841284) to refresh your session.You switched accounts on another tab or window. [Reload](https://gist.github.com/ctechols/ca1035271ad134841284) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  Instantly share code, notes, and snippets.
+  
+  
+  [![@ctechols](https://avatars.githubusercontent.com/u/8201715?s=64&v=4)](https://gist.github.com/ctechols)
+  
+  # [ctechols](https://gist.github.com/ctechols)/ **[compinit.zsh](https://gist.github.com/ctechols/ca1035271ad134841284)**
+  
+  Last active
+  last weekApril 10, 2026 07:10
+  
+  Show Gist options
+  
+  - [Download ZIP](https://gist.github.com/ctechols/ca1035271ad134841284/archive/4015636580fa5a936bd5335277b7f11a9c2ba6b6.zip)
+  
+  - [Star212(212)](https://gist.github.com/login?return_to=https%3A%2F%2Fgist.github.com%2Fctechols%2Fca1035271ad134841284) You must be signed in to star a gist
+  - [Fork12(12)](https://gist.github.com/login?return_to=https%3A%2F%2Fgist.github.com%2Fctechols%2Fca1035271ad134841284) You must be signed in to fork a gist
+  
+  - Embed
+  
+  
+  
+  
+  
+  
+  
+  
+  # Select an option
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+    - Embed
+      Embed this gist in your website.
+    - Share
+      Copy sharable link for this gist.
+    - Clone via HTTPS
+      Clone using the web URL.
+  
+  ## No results found
+  
+  [Learn more about clone URLs](https://docs.github.com/articles/which-remote-url-should-i-use)
+  
+  Clone this repository at &lt;script src=&quot;https://gist.github.com/ctechols/ca1035271ad134841284.js&quot;&gt;&lt;/script&gt;
+  
+  - Save ctechols/ca1035271ad134841284 to your computer and use it in GitHub Desktop.
+  
+  Embed
+  
+  # Select an option
+  
+  - Embed
+  Embed this gist in your website.
+  - Share
+  Copy sharable link for this gist.
+  - Clone via HTTPS
+  Clone using the web URL.
+  
+  ## No results found
+  
+  [Learn more about clone URLs](https://docs.github.com/articles/which-remote-url-should-i-use)
+  
+  Clone this repository at &lt;script src=&quot;https://gist.github.com/ctechols/ca1035271ad134841284.js&quot;&gt;&lt;/script&gt;
+  
+  Save ctechols/ca1035271ad134841284 to your computer and use it in GitHub Desktop.
+  
+  [Download ZIP](https://gist.github.com/ctechols/ca1035271ad134841284/archive/4015636580fa5a936bd5335277b7f11a9c2ba6b6.zip)
+  
+  Speed up zsh compinit by only checking cache once a day.
+  
+  
+  [Raw](https://gist.github.com/ctechols/ca1035271ad134841284/raw/4015636580fa5a936bd5335277b7f11a9c2ba6b6/compinit.zsh)
+  
+  [**compinit.zsh**](https://gist.github.com/ctechols/ca1035271ad134841284#file-compinit-zsh)
+  
+  This file contains hidden or bidirectional Unicode text that may be interpreted or compiled differently than what appears below. To review, open the file in an editor that reveals hidden Unicode characters.
+  [Learn more about bidirectional Unicode characters](https://github.co/hiddenchars)
+  
+  [Show hidden characters](https://gist.github.com/ctechols/ca1035271ad134841284)
+  
+  |     |     |
+  | --- | --- |
+  |  | # On slow systems, checking the cached .zcompdump file to see if it must be |
+  |  | # regenerated adds a noticable delay to zsh startup. This little hack restricts |
+  |  | # it to once a day. It should be pasted into your own completion file. |
+  |  | # |
+  |  | # The globbing is a little complicated here: |
+  |  | # \- '#q' is an explicit glob qualifier that makes globbing work within zsh's \[\[ \]\] construct. |
+  |  | # \- 'N' makes the glob pattern evaluate to nothing when it doesn't match (rather than throw a globbing error) |
+  |  | # \- '.' matches "regular files" |
+  |  | # \- 'mh+24' matches files (or directories or whatever) that are older than 24 hours. |
+  |  | autoload -Uz compinit |
+  |  | if \[\[ -n${ZDOTDIR}/.zcompdump(#qN.mh+24) \]\]; then |
+  |  | compinit; |
+  |  | else |
+  |  | compinit -C; |
+  |  | fi; |
+  |  |  |
+  
+  Load earlier comments...
+  
+  [![@ctechols](https://avatars.githubusercontent.com/u/8201715?s=80&v=4)](https://gist.github.com/ctechols)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  Author
+  
+  ### **[ctechols](https://gist.github.com/ctechols)**     commented    [on Oct 9, 2020Oct 9, 2020](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=3483853\#gistcomment-3483853)
+  
+  [@faaizajaz](https://github.com/faaizajaz), [@duraki](https://github.com/duraki) I can't speak with specifics about most of the additional discussion on this gist. (I no longer use any of these approaches) In general though, you are going to want to make your changes right after you load the `compinit` module. This is likely to be the file that `compinstall` created or edited.
+  
+  To find this file on your system try `zstyle | grep compinstall`
+  
+  [![@duraki](https://avatars.githubusercontent.com/u/5892610?s=80&v=4)](https://gist.github.com/duraki)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[duraki](https://gist.github.com/duraki)**     commented    [on Oct 11, 2020Oct 11, 2020](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=3485425\#gistcomment-3485425)
+  
+  Thanks [@ctechols](https://github.com/ctechols)
+  
+  This is how I did it.
+  
+  I created this folder:
+  
+  - `mkdir ~/.oh-my-zsh/plugins/zshfl`
+  
+  Inside I've put:
+  
+  - `touch zshfl.plugin.zsh`
+  
+  ```
+  # compinit optimization for oh-my-zsh
+  # On slow systems, checking the cached .zcompdump file to see if it must be
+  # regenerated adds a noticable delay to zsh startup.  This little hack restricts
+  # it to once a day.  It should be pasted into your own completion file.
+  #
+  # The globbing is a little complicated here:
+  # - '#q' is an explicit glob qualifier that makes globbing work within zsh's [[ ]] construct.
+  # - 'N' makes the glob pattern evaluate to nothing when it doesn't match (rather than throw a globbing error)
+  # - '.' matches "regular files"
+  # - 'mh+24' matches files (or directories or whatever) that are older than 24 hours.
+  #autoload -U compaudit compinit
+  #: ${ZSH_DISABLE_COMPFIX:=true}
+  # ...
+  setopt extendedglob
+  if [[ $ZSH_DISABLE_COMPFIX != true ]]; then
+  # If completion insecurities exist, warn the user without enabling completions.
+  if ! compaudit &>/dev/null; then
+  # This function resides in the "lib/compfix.zsh" script sourced above.
+      handle_completion_insecurities
+  # Else, enable and cache completions to the desired file.
+  else
+  if [[ -n "${ZSH_COMPDUMP}"(#qN.mh+24) ]]; then
+        compinit -d "${ZSH_COMPDUMP}"
+        compdump
+  else
+        compinit -C
+  fi
+  fi
+  else
+  if [[ -n "${ZSH_COMPDUMP}"(#qN.mh+24) ]]; then
+      compinit -i -d "${ZSH_COMPDUMP}"
+      compdump
+  else
+      compinit -C
+  fi
+  fi
+  ```
+  
+  And I've loaded it through `.zshrc` in `plugins=(zshfs git ...)`
+  
+  [![@ftlno](https://avatars.githubusercontent.com/u/681234?s=80&v=4)](https://gist.github.com/ftlno)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[ftlno](https://gist.github.com/ftlno)**     commented    [on Oct 27, 2020Oct 27, 2020](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=3505562\#gistcomment-3505562)
+  
+  > Thanks [@ctechols](https://github.com/ctechols)
+  >
+  > This is how I did it.
+  >
+  > I created this folder:
+  >
+  > - `mkdir ~/.oh-my-zsh/plugins/zshfl`
+  >
+  > Inside I've put:
+  >
+  > - `touch zshfl.plugin.zsh`
+  >
+  > ```
+  > # compinit optimization for oh-my-zsh
+  > # On slow systems, checking the cached .zcompdump file to see if it must be
+  > # regenerated adds a noticable delay to zsh startup.  This little hack restricts
+  > # it to once a day.  It should be pasted into your own completion file.
+  > #
+  > # The globbing is a little complicated here:
+  > # - '#q' is an explicit glob qualifier that makes globbing work within zsh's [[ ]] construct.
+  > # - 'N' makes the glob pattern evaluate to nothing when it doesn't match (rather than throw a globbing error)
+  > # - '.' matches "regular files"
+  > # - 'mh+24' matches files (or directories or whatever) that are older than 24 hours.
+  > #autoload -U compaudit compinit
+  > #: ${ZSH_DISABLE_COMPFIX:=true}
+  > # ...
+  > setopt extendedglob
+  > if [[ $ZSH_DISABLE_COMPFIX != true ]]; then
+  > # If completion insecurities exist, warn the user without enabling completions.
+  > if ! compaudit &>/dev/null; then
+  > # This function resides in the "lib/compfix.zsh" script sourced above.
+  >     handle_completion_insecurities
+  > # Else, enable and cache completions to the desired file.
+  > else
+  > if [[ -n "${ZSH_COMPDUMP}"(#qN.mh+24) ]]; then
+  >       compinit -d "${ZSH_COMPDUMP}"
+  >       compdump
+  > else
+  >       compinit -C
+  > fi
+  > fi
+  > else
+  > if [[ -n "${ZSH_COMPDUMP}"(#qN.mh+24) ]]; then
+  >     compinit -i -d "${ZSH_COMPDUMP}"
+  >     compdump
+  > else
+  >     compinit -C
+  > fi
+  > fi
+  > ```
+  >
+  > And I've loaded it through `.zshrc` in `plugins=(zshfs git ...)`
+  
+  Thank you!
+  
+  Did you mean plugins=(zshfl git ... ? :)
+  
+  [![@divyekapoor](https://avatars.githubusercontent.com/u/219248?s=80&v=4)](https://gist.github.com/divyekapoor)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[divyekapoor](https://gist.github.com/divyekapoor)**     commented    [on Nov 6, 2020Nov 6, 2020](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=3518354\#gistcomment-3518354)
+  
+  Just check if the shell is an interactive shell before executing compinit?
+  
+  eg. with \[\[ -o interactive \]\] ?
+  
+  [![@MostHated](https://avatars.githubusercontent.com/u/3442753?s=80&v=4)](https://gist.github.com/MostHated)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[MostHated](https://gist.github.com/MostHated)**     commented    [on Mar 13, 2021Mar 14, 2021](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=3664231\#gistcomment-3664231)•   edited      Loading          \#\#\# Uh oh!        There was an error while loading. [Please reload this page](https://gist.github.com/ctechols/ca1035271ad134841284).
+  
+  > #### Skip the not really helping Ubuntu global compinit
+  >
+  > skip\_global\_compinit=1
+  
+  Just adding this one thing to .zshenv cut my initial loading time in half. 👍
+  
+  For plugins, though. I use this: [https://getantibody.github.io/](https://getantibody.github.io/) "The fastest shell plugin manager."
+  
+  Plus, here are some additional tips to make initial loading faster if anyone is interested.
+  
+  [https://carlosbecker.com/posts/speeding-up-zsh/](https://carlosbecker.com/posts/speeding-up-zsh/)
+  
+  (Man, I didn't realize it's already been 5 years since I came across that site. So I suppose its a bit of an old post, but most of it should still be relevant and helpful)
+  
+  [![@smac89](https://avatars.githubusercontent.com/u/8305511?s=80&v=4)](https://gist.github.com/smac89)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[smac89](https://gist.github.com/smac89)**     commented    [on Nov 8, 2021Nov 8, 2021](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=3955314\#gistcomment-3955314)•   edited      Loading          \#\#\# Uh oh!        There was an error while loading. [Please reload this page](https://gist.github.com/ctechols/ca1035271ad134841284).
+  
+  Over time, I've improved this snippet to become something like this:
+  
+  ```
+  function {
+      # http://zsh.sourceforge.net/Doc/Release/Options.html#Scripts-and-Functions
+      setopt LOCAL_OPTIONS extendedglob nullglob
+      # http://zsh.sourceforge.net/Doc/Release/Expansion.html#Glob-Qualifiers
+      # http://zsh.sourceforge.net/Doc/Release/Conditional-Expressions.html#Conditional-Expressions
+      if [[ ! -e "${ZSH_COMPDUMP}" || -n ${~"${ZSH_COMPDUMP}"}(#qmh+24) ]]; then
+          zi compinit > /dev/null
+          zi cdreplay -q
+      fi
+  }
+  ```
+  
+  * * *
+  
+  A few notes:
+  
+  - `zi` comes from [zinit](https://github.com/zdharma-continuum/zinit)
+  - `ZSH_COMPDUMP` comes from [ohmyzsh](https://github.com/ohmyzsh/ohmyzsh), which I use in addition to `zinit`
+  - The `${~...}` syntax is to enable glob expansion with braces because the name of the file is in a variable
+  - Everything is in an anonymous function so that we can enable `extendedglob` just for the function, and not for the entire shell
+  
+  [![@aztack](https://avatars.githubusercontent.com/u/782871?s=80&v=4)](https://gist.github.com/aztack)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[aztack](https://gist.github.com/aztack)**     commented    [on Dec 13, 2021Dec 14, 2021](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=3994613\#gistcomment-3994613)
+  
+  ```
+  autoload -Uz compinit
+  for dump in ~/.zcompdump(N.mh+24); do
+    compinit
+  done
+  compinit -C
+  ```
+  
+  works for me.
+  
+  Timing with `timezsh`:
+  
+  ```
+  timezsh() {
+    shell=${1-$SHELL}
+    for i in $(seq 1 4); do /usr/bin/time $shell -i -c exit; done
+  }
+  ```
+  
+  Before:
+  
+  ```
+          1.33 real         0.80 user         0.52 sys
+          1.38 real         0.80 user         0.57 sys
+          1.55 real         0.82 user         0.64 sys
+          1.50 real         0.81 user         0.63 sys
+  ```
+  
+  After:
+  
+  ```
+          0.78 real         0.32 user         0.42 sys
+          0.81 real         0.33 user         0.45 sys
+          0.96 real         0.37 user         0.55 sys
+          1.21 real         0.42 user         0.71 sys
+  ```
+  
+  [![@renato-ll](https://avatars.githubusercontent.com/u/38674705?s=80&v=4)](https://gist.github.com/renato-ll)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[renato-ll](https://gist.github.com/renato-ll)**     commented    [on Mar 1, 2022Mar 1, 2022](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=4082115\#gistcomment-4082115)
+  
+  It was faster here
+  
+  Definitive solution?
+  
+  [![@vincentbernat](https://avatars.githubusercontent.com/u/631446?s=80&v=4)](https://gist.github.com/vincentbernat)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[vincentbernat](https://gist.github.com/vincentbernat)**     commented    [on Apr 7, 2022Apr 7, 2022](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=4125312\#gistcomment-4125312)•   edited      Loading          \#\#\# Uh oh!        There was an error while loading. [Please reload this page](https://gist.github.com/ctechols/ca1035271ad134841284).
+  
+  I am going for
+  
+  ```
+  () {
+      emulate -L zsh
+      setopt extendedglob
+      autoload -Uz compinit complist
+      local zcd=$1                # compdump
+      local zcdc=$1.zwc           # compiled compdump
+      local zcda=$1.last          # last compilation
+      local zcdl=$1.lock          # lock file
+      local attempts=30
+      while (( attempts-- > 0 )) && ! ln $zcd $zcdl 2> /dev/null; do sleep 0.1; done
+      {
+          if [[ ! -e $zcda || -n $zcda(#qN.mh+24) ]]; then
+              compinit -i -d $zcd
+              : > $zcda
+          else
+              compinit -C -d $zcd
+          fi
+          [[ ! -f $zcdc || $zcd -nt $zcdc ]] && rm -f $zcdc && zcompile $zcd &!
+      } always {
+          rm -f $zcdl
+      }
+  } $ZSH/run/u/$HOST-$UID/zcompdump
+  ```
+  
+  I didn't see a mention what happens when multiple shells are spawned at the same time. Maybe that's the reason we sometime run into empty dump file.
+  
+  [![@medwatt](https://avatars.githubusercontent.com/u/17733465?s=80&v=4)](https://gist.github.com/medwatt)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[medwatt](https://gist.github.com/medwatt)**     commented    [on Apr 11, 2022Apr 12, 2022](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=4129664\#gistcomment-4129664)
+  
+  Where exactly do we put this code:
+  
+  ```
+  autoload -Uz compinit
+  for dump in ~/.zcompdump(N.mh+24); do
+    compinit
+  done
+  compinit -C
+  ```
+  
+  [![@faelin](https://avatars.githubusercontent.com/u/8279240?s=80&v=4)](https://gist.github.com/faelin)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[faelin](https://gist.github.com/faelin)**     commented    [on Jun 3, 2022Jun 3, 2022](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=4188641\#gistcomment-4188641)
+  
+  [@medwatt](https://github.com/medwatt) put the snippet somewhere in your **.zshrc** file, or put it in an external script file and call it from your .zshrc
+  
+  [![@thefotios](https://avatars.githubusercontent.com/u/166175?s=80&v=4)](https://gist.github.com/thefotios)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[thefotios](https://gist.github.com/thefotios)**     commented    [on Sep 7, 2022Sep 7, 2022](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=4293215\#gistcomment-4293215)
+  
+  [@vincentbernat](https://github.com/vincentbernat) I solved the multiple shell problem by using a lockfile and a `trap` to remove it. This ensures that only one process is responsible for updating the file. Even though there's still a race condition, it's now almost impossibly small [1](https://gist.github.com/ctechols/ca1035271ad134841284#user-content-fn-1-acae554488ba4f0066969ba5ddc31736)
+  
+  ```
+  () {
+  	setopt local_options
+  	setopt extendedglob
+  
+  	local zcd=${1}
+  	local zcomp_hours=${2:-24} # how often to regenerate the file
+  	local lock_timeout=${2:-1} # change this if compinit normally takes longer to run
+  	local lockfile=${zcd}.lock
+  
+  	if [ -f ${lockfile} ]; then
+  		if [[ -f ${lockfile}(#qN.mm+${lock_timeout}) ]]; then
+  			(
+  				echo "${lockfile} has been held by $(< ${lockfile}) for longer than ${lock_timeout} minute(s)."
+  				echo "This may indicate a problem with compinit"
+  			) >&2
+  		fi
+  		# Exit if there's a lockfile; another process is handling things
+  		return
+  	else
+  		# Create the lockfile with this shell's PID for debugging
+  		echo $$ > ${lockfile}
+  		# Ensure the lockfile is removed
+  		trap "rm -f ${lockfile}" EXIT
+  	fi
+  
+  	autoload -Uz compinit
+  
+  	if [[ -n ${zcd}(#qN.mh+${zcomp_hours}) ]]; then
+  		# The file is old and needs to be regenerated
+  		compinit
+  	else
+  		# The file is either new or does not exist. Either way, -C will handle it correctly
+  		compinit -C
+  	fi
+  } ${ZDOTDIR:-$HOME}/.zcompdump
+  ```
+  
+  * * *
+  
+  For those who are new to some of this stuff, check out
+  
+  - [https://zsh.sourceforge.io/Doc/Release/Completion-System.html](https://zsh.sourceforge.io/Doc/Release/Completion-System.html)
+    - For how `compinit` works
+  - [https://zsh.sourceforge.io/Doc/Release/Expansion.html#Filename-Generation](https://zsh.sourceforge.io/Doc/Release/Expansion.html#Filename-Generation)
+    - For the `(#q.N.....)` syntax, search for "file access qualifier"
+  
+  ## Footnotes
+  
+  1. A second process would have to check for the file in between 2 (effectively) subsequent commands. `if [ -f ${lockfile} ]` and `echo $$ > ${lockfile}` [↩](https://gist.github.com/ctechols/ca1035271ad134841284#user-content-fnref-1-acae554488ba4f0066969ba5ddc31736)
+  
+  
+  [![@vincentbernat](https://avatars.githubusercontent.com/u/631446?s=80&v=4)](https://gist.github.com/vincentbernat)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[vincentbernat](https://gist.github.com/vincentbernat)**     commented    [on Sep 7, 2022Sep 7, 2022](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=4293231\#gistcomment-4293231)
+  
+  [@thefotios](https://github.com/thefotios) my solution is already handling this case (but my message wasn't quite clear on that, so I understand you thought this was not the case). This is the purpose of the ln command (which is atomic, so no race condition).
+  
+  [![@rafpaf](https://avatars.githubusercontent.com/u/130925?s=80&v=4)](https://gist.github.com/rafpaf)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[rafpaf](https://gist.github.com/rafpaf)**     commented    [on Dec 23, 2022Dec 24, 2022](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=4412313\#gistcomment-4412313)
+  
+  I commented out these lines in my `.zshrc` which sped it up a lot:
+  
+  ```
+  if type brew &>/dev/null; then
+      FPATH=$(brew --prefix)/share/zsh-completions:$FPATH
+  
+      autoload -Uz compinit
+      compinit
+  if
+  ```
+  
+  As [this comment above](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=3301732#gistcomment-3301732) pointed out, oh-my-zsh already runs compinit.
+  
+  [![@asumbek](https://avatars.githubusercontent.com/u/71205197?s=80&v=4)](https://gist.github.com/asumbek)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[asumbek](https://gist.github.com/asumbek)**     commented    [on Jul 8, 2023Jul 9, 2023](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=4623143\#gistcomment-4623143)
+  
+  [@aztack](https://github.com/aztack) Thank you for your snippet, it helps alot :)
+  
+  [![@acid-bong](https://avatars.githubusercontent.com/u/94849097?s=80&v=4)](https://gist.github.com/acid-bong)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[acid-bong](https://gist.github.com/acid-bong)**     commented    [on Jul 10, 2023Jul 10, 2023](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=4624611\#gistcomment-4624611)
+  
+  Fellas, if you're of that kind that checks their .zsh files and scripts with shellcheck (like I am), here's a more POSIX-compliant (as much as zsh allows) statement:
+  
+  ```
+  if [ "$(find ~/.zcompdump -mtime 1)" ] ; then
+      compinit
+  fi
+  compinit -C
+  ```
+  
+  or oneliner, if you prefer that:
+  
+  ```
+  # negation, so that at least one exits on 0
+  [ ! "$(find ~/.zcompdump -mtime 1)" ] || compinit
+  compinit -C
+  ```
+  
+  [![@eeweegh](https://avatars.githubusercontent.com/u/23082161?s=80&v=4)](https://gist.github.com/eeweegh)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[eeweegh](https://gist.github.com/eeweegh)**     commented    [on Sep 16, 2023Sep 16, 2023](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=4694631\#gistcomment-4694631)
+  
+  find's manpage is not clear on this, but I believe you want `-mtime +1` to catch a file **at least** 24h old, rather than _exactly_ 24h old.
+  
+  On OSX, my .zcomdump was several days old, and the above would not trigger until I added the '+'.
+  
+  [![@nimitagr](https://avatars.githubusercontent.com/u/1106834?s=80&v=4)](https://gist.github.com/nimitagr)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[nimitagr](https://gist.github.com/nimitagr)**     commented    [on Oct 1, 2023Oct 1, 2023](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=4710196\#gistcomment-4710196)
+  
+  [@aztack](https://github.com/aztack) It helped. 🙇
+  
+  [![@niqodea](https://avatars.githubusercontent.com/u/112023843?s=80&v=4)](https://gist.github.com/niqodea)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[niqodea](https://gist.github.com/niqodea)**     commented    [on Jan 21, 2024Jan 21, 2024](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=4842464\#gistcomment-4842464)
+  
+  This is my take on the problem, it's a tradeoff between efficiency and simplicity:
+  
+  ```
+  autoload -Uz compinit; compinit -C  # Use cache to reduce startup time by ~0.1s
+  # Have another thread refresh the cache in the background (subshell to hide output)
+  (autoload -Uz compinit; compinit &)
+  ```
+  
+  Despite the obvious pitfall (having the shell start another thread at startup), I wonder if it's overall a good solution 🤔
+  
+  [![@faelin](https://avatars.githubusercontent.com/u/8279240?s=80&v=4)](https://gist.github.com/faelin)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[faelin](https://gist.github.com/faelin)**     commented    [on Oct 7, 2024Oct 7, 2024](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=5224370\#gistcomment-5224370)•   edited      Loading          \#\#\# Uh oh!        There was an error while loading. [Please reload this page](https://gist.github.com/ctechols/ca1035271ad134841284).
+  
+  Here is an update that combines everyone's suggestions into one function! Add this to your `.zshrc` for a fast, (relatively) thread-safe load of your zsh completions! (I left out the zinit suggestion shared above, to keep this more universal)
+  
+  ```
+  () {
+    setopt local_options
+  
+    local zcompdump="${ZDOTDIR:-$HOME}/.zcompdump"
+    local zcomp_ttl=1  # how many days to let the zcompdump file live before it must be recompiled
+    local lock_timeout=1  # register an error if lock-timeout exceeded
+    local lockfile="${zcompdump}.lock"
+  
+    autoload -Uz compinit
+  
+    # check for lockfile — if the lockfile exists, we cannot run a compinit
+    #   if no lockfile, then we will create one, and set a trap on EXIT to remove it;
+    #   the trap will trigger after the rest of the function has run.
+    if [ -f "${lockfile}" ]
+    then
+  
+      # error log if the lockfile outlived its timeout
+      if [ "$( find "${lockfile}" -mmin $lock_timeout )" ]
+      then
+        (
+          echo "${lockfile} has been held by $(< ${lockfile}) for longer than ${lock_timeout} minute(s)."
+          echo "This may indicate a problem with compinit"
+        ) >&2
+      fi
+  
+      # since the zcompdump is still locked, run compinit without generating a new dump
+      compinit -D -d "$zcompdump"
+  
+      # Exit if there's a lockfile; another process is handling things
+      return 1
+  
+    else
+  
+      # Create the lockfile with this shell's PID for debugging
+      echo $$ > "${lockfile}"
+  
+      # Ensure the lockfile is removed on exit
+      trap "rm -f '${lockfile}'" EXIT
+  
+    fi
+  
+    # refresh the zcompdump file if needed
+    if [ ! -f "$zcompdump" -o "$( find "$zcompdump" -mtime "+${zcomp_ttl}" )" ]
+    then
+      # if the zcompdump is expired (past its ttl) or absent, we rebuild it
+      compinit -d "$zcompdump"
+  
+    else
+  
+      # load the zcompdump without updating
+      compinit -CD -d "$zcompdump"
+  
+      # asynchronously rebuild the zcompdump file
+      (autoload -Uz compinit; compinit -d "$zcompdump" &);
+  
+    fi
+  }
+  ```
+  
+  [![@faelin](https://avatars.githubusercontent.com/u/8279240?s=80&v=4)](https://gist.github.com/faelin)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[faelin](https://gist.github.com/faelin)**     commented    [on Oct 7, 2024Oct 7, 2024](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=5224401\#gistcomment-5224401)•   edited      Loading          \#\#\# Uh oh!        There was an error while loading. [Please reload this page](https://gist.github.com/ctechols/ca1035271ad134841284).
+  
+  Follow-on to the above, I ran a benchmark using [hyperfine](https://github.com/sharkdp/hyperfine) and found that a regular compinit is still faster...
+  
+  Just to be extra fair I compared three versions: standard compinit; the script I shared directly above this message; same as the script above ( _compinit\_subshells.zsh_), but using the extendedglob syntax suggested by [@thefotios](https://github.com/thefotios) above instead of the subshells ( _compinit\_fast.zsh_).
+  
+  ```
+  ❯ hyperfine --show-output --shell='zsh -l' --warmup 3 --min-runs 30 --setup 'autoload -Uz compinit; compinit;' './compinit_fast.zsh' './compinit_subshells.zsh' 'autoload -Uz compinit; compinit'
+  Benchmark 1: ./compinit_fast.zsh
+    Time (mean ± σ):      70.5 ms ±  40.0 ms    [User: 0.0 ms, System: 0.0 ms]
+    Range (min … max):    18.1 ms … 191.8 ms    30 runs
+  
+  Benchmark 2: ./compinit_subshells.zsh
+    Time (mean ± σ):      89.1 ms ±  50.7 ms    [User: 0.0 ms, System: 0.0 ms]
+    Range (min … max):    14.3 ms … 229.7 ms    30 runs
+  
+  Benchmark 3: autoload -Uz compinit; compinit
+    Time (mean ± σ):      59.1 ms ±  31.1 ms    [User: 45.0 ms, System: 17.2 ms]
+    Range (min … max):    16.4 ms … 119.3 ms    30 runs
+  
+  Summary
+    autoload -Uz compinit; compinit ran
+      1.19 ± 0.92 times faster than ./compinit_fast.zsh
+      1.51 ± 1.17 times faster than ./compinit_subshells.zsh                                                                                                            /1m18.1s
+  
+  ❯ hyperfine --show-output --shell='zsh' --warmup 3 --min-runs 30 --setup 'autoload -Uz compinit; compinit;' './compinit_fast.zsh' './compinit_subshells.zsh' 'autoload -Uz compinit; compinit'
+  Benchmark 1: ./compinit_fast.zsh
+    Time (mean ± σ):      69.1 ms ±   6.2 ms    [User: 38.9 ms, System: 23.8 ms]
+    Range (min … max):    61.2 ms …  84.4 ms    32 runs
+  
+  Benchmark 2: ./compinit_subshells.zsh
+    Time (mean ± σ):      75.3 ms ±   5.6 ms    [User: 39.5 ms, System: 26.8 ms]
+    Range (min … max):    68.3 ms …  90.2 ms    34 runs
+  
+  Benchmark 3: autoload -Uz compinit; compinit
+    Time (mean ± σ):      58.7 ms ±   4.0 ms    [User: 44.2 ms, System: 14.3 ms]
+    Range (min … max):    53.1 ms …  74.5 ms    43 runs
+  
+  Summary
+    autoload -Uz compinit; compinit ran
+      1.18 ± 0.13 times faster than ./compinit_fast.zsh
+      1.28 ± 0.13 times faster than ./compinit_subshells.zsh                                                                                                              /10.7s
+  ```
+  
+  This even includes using antidote to load a bunch of plugins, so I know there are a lot of completions to load.
+  
+  So at this point, the above "fast" implementation may no longer hold value in recent zsh builds. Please feel free to share your own benchmarks, though in case it's useful!
+  
+  [![@forivall](https://avatars.githubusercontent.com/u/760204?s=80&v=4)](https://gist.github.com/forivall)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[forivall](https://gist.github.com/forivall)**     commented    [on Nov 4, 2024Nov 4, 2024](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=5266707\#gistcomment-5266707)•   edited      Loading          \#\#\# Uh oh!        There was an error while loading. [Please reload this page](https://gist.github.com/ctechols/ca1035271ad134841284).
+  
+  For oh-my-zsh users, I wrote a bit to integrate this check into oh-my-zsh. At some point, I'll submit a PR to omz: [ohmyzsh/ohmyzsh@ `master...forivall:oh-my-zsh:use-cached-compdump`](https://github.com/ohmyzsh/ohmyzsh/compare/master...forivall:oh-my-zsh:use-cached-compdump)
+  
+  ```
+  From 3514d7099b68a06659f4882adfff808ab6fa0d51 Mon Sep 17 00:00:00 2001
+  From: Emily M Klassen <forivall@gmail.com>
+  Date: Fri, 1 Nov 2024 14:12:56 -0700
+  Subject: [PATCH] feat(completions): add option to use a cached compdump
+  
+  ---
+   oh-my-zsh.sh | 6 +++++-
+   1 file changed, 5 insertions(+), 1 deletion(-)
+  
+  diff --git a/oh-my-zsh.sh b/oh-my-zsh.sh
+  index b1032841c677..447b006f4344 100644
+  --- a/oh-my-zsh.sh
+  +++ b/oh-my-zsh.sh
+  @@ -121,7 +121,11 @@ if ! command grep -q -Fx "$zcompdump_revision" "$ZSH_COMPDUMP" 2>/dev/null \
+     zcompdump_refresh=1
+   fi
+  
+  -if [[ "$ZSH_DISABLE_COMPFIX" != true ]]; then
+  +if [[ "$ZSH_COMPINIT_CACHE" == true && ! (( $zcompdump_refresh )) ]] \
+  +   && () { setopt local_options extendedglob; [[ -z "$ZSH_COMPDUMP"(#qN.mh+24) ]] }; then
+  +  # If the compdump was modified less than 24 hours ago, use the cached compdump, disable autodump
+  +  compinit -C -d "$ZSH_COMPDUMP" -D
+  +elif [[ "$ZSH_DISABLE_COMPFIX" != true ]]; then
+     source "$ZSH/lib/compfix.zsh"
+     # Load only from secure directories
+     compinit -i -d "$ZSH_COMPDUMP"
+  ```
+  
+  From my ad-hoc testing, this saves about 50ms on startup, on my dotfiles setup, which loads omz through [`zgenom`](https://github.com/jandamm/zgenom)
+  
+  [![@joshuataylor](https://avatars.githubusercontent.com/u/225131?s=80&v=4)](https://gist.github.com/joshuataylor)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[joshuataylor](https://gist.github.com/joshuataylor)**     commented    [on Jan 31, 2025Jan 31, 2025](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=5417048\#gistcomment-5417048)•   edited      Loading          \#\#\# Uh oh!        There was an error while loading. [Please reload this page](https://gist.github.com/ctechols/ca1035271ad134841284).
+  
+  If you see random zsh CPU issues with subshells and compinit/background compilation, as certain IDEs like JetBrains (intellij, pycharm), vscode etc all will call this, and I've had instances where zsh got stuck doing funky things, causing CPU usage to max out.
+  
+  I end up double checking interactive, login (which vscode/intellij both say they are), but also $INTELLIJ\_ENVIRONMENT\_READER and $TERM\_PROGRAM.
+  
+  [![@pa-0](https://avatars.githubusercontent.com/u/134162878?s=80&v=4)](https://gist.github.com/pa-0)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[pa-0](https://gist.github.com/pa-0)**     commented    [on Feb 2, 2025Feb 3, 2025](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=5419499\#gistcomment-5419499)
+  
+  Does anybody have a `.zcompdump_capture` file being created in their `$HOME` directory?
+  
+  [![@quyenvsp](https://avatars.githubusercontent.com/u/35319492?s=80&v=4)](https://gist.github.com/quyenvsp)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[quyenvsp](https://gist.github.com/quyenvsp)**     commented    [on Mar 28, 2025Mar 28, 2025](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=5516185\#gistcomment-5516185)
+  
+  [@forivall](https://github.com/forivall) hello, did you created MR?
+  
+  [![@FlorianHeigl](https://avatars.githubusercontent.com/u/2828955?s=80&v=4)](https://gist.github.com/FlorianHeigl)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[FlorianHeigl](https://gist.github.com/FlorianHeigl)**     commented    [on Apr 2, 2025Apr 2, 2025](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=5524890\#gistcomment-5524890)
+  
+  This has helped a bit with the start on OSX after they defaulted to zsh. (gonna set my user to go back to ksh93 anyway)
+  
+  [![@forivall](https://avatars.githubusercontent.com/u/760204?s=80&v=4)](https://gist.github.com/forivall)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[forivall](https://gist.github.com/forivall)**     commented    [on Apr 3, 2025Apr 3, 2025](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=5526263\#gistcomment-5526263)
+  
+  [@quyenvsp](https://github.com/quyenvsp) not yet.
+  
+  [![@Anonymous941](https://avatars.githubusercontent.com/u/36797492?s=80&v=4)](https://gist.github.com/Anonymous941)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[Anonymous941](https://gist.github.com/Anonymous941)**     commented    [on Jun 13, 2025Jun 13, 2025](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=5616621\#gistcomment-5616621)
+  
+  Where do you put this, in `.zshrc`?
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://gist.github.com/ctechols/ca1035271ad134841284).
+  
+  [![@faelin](https://avatars.githubusercontent.com/u/8279240?s=80&v=4)](https://gist.github.com/faelin)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[faelin](https://gist.github.com/faelin)**     commented    [on Jun 13, 2025Jun 13, 2025](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=5616754\#gistcomment-5616754)
+  
+  [@Anonymous941](https://github.com/Anonymous941) — that is answered several times in this comment thread:
+  
+  > [@medwatt](https://github.com/medwatt) put the snippet somewhere in your **.zshrc** file, or put it in an external script file and call it from your .zshrc
+  
+  Sorry, something went wrong.
+  
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://gist.github.com/ctechols/ca1035271ad134841284).
+  
+  [![@Anonymous941](https://avatars.githubusercontent.com/u/36797492?s=80&v=4)](https://gist.github.com/Anonymous941)
+  
+  
+  Copy link
+  
+  
+  Copy Markdown
+  
+  ### **[Anonymous941](https://gist.github.com/Anonymous941)**     commented    [on Jun 13, 2025Jun 13, 2025](https://gist.github.com/ctechols/ca1035271ad134841284?permalink_comment_id=5616833\#gistcomment-5616833)
+  
+  My bad, I read a lot of the comments but there are so many
+  
+  Sorry, something went wrong.
+  
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://gist.github.com/ctechols/ca1035271ad134841284).
+  
+  [Sign up for free](https://gist.github.com/join?source=comment-gist) **to join this conversation on GitHub**.
+  Already have an account?
+  [Sign in to comment](https://gist.github.com/login?return_to=https%3A%2F%2Fgist.github.com%2Fctechols%2Fca1035271ad134841284)
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+How to properly make custom zsh completions "just work"?
+  URL: https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work
+  The simple answer is to write the completion function in a file where the first line is #compdef fab. The file must be in a directory on $fpath.
+
+  --- Content ---
+  **Stack Internal**
+  
+  Knowledge at work
+  
+  Bring the best of human thought and AI automation together at your work.
+  
+  [Explore Stack Internal](https://stackoverflow.co/internal/?utm_medium=referral&utm_source=unix-community&utm_campaign=side-bar&utm_content=explore-teams-compact-popover)
+  
+  # [How to properly make custom zsh completions "just work"?](https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work)
+  
+  [Ask Question](https://unix.stackexchange.com/questions/ask)
+  
+  Asked6 years, 8 months ago
+  
+  Modified [6 years, 8 months ago](https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work?lastactivity "2019-08-14 21:39:18Z")
+  
+  Viewed
+  14k times
+  
+  
+  This question shows research effort; it is useful and clear
+  
+  9
+  
+  Save this question.
+  
+  [Timeline](https://unix.stackexchange.com/posts/535509/timeline)
+  
+  Show activity on this post.
+  
+  Please forgive me if I'm doing something stupid here, the documentation is huge and searching didn't turn up anything yet.
+  
+  I'm trying to create shell completions for my custom script called `fab`. For bash it was easy, just drop them in `/etc/bash_completion.d` and they work. But oh boy, is zsh a PITA...
+  
+  I have the completion function `_fab` and it works fine when enabled with `compdef _fab fab`. I put it in `/usr/share/zsh/vendor-completions/_fab` which already was in my `$fpath`. The file starts with `#compdef fab` and ends with `compdef _fab fab`. Looks good:
+  
+  ```bash
+  $ type _fab
+  _fab is an autoload shell function
+  ```
+  
+  But whenever I started a new shell, `fab` completions didn't work (other functions from `vendor-completions`, like `_docker`, were fine). `compinit` fixed this for that specific shell. I figured out that `rm ~/.zcompdump ~/.zcompdump-$(hostname)-5.1.1; compinit` make it work permanently (5.1.1 = my zsh version).
+  
+  **Questions:**
+  
+  1. What and when reads `~/.zcompdump` to set up initial completions?
+  2. `man zshall` says:
+  
+  
+  > The next invocation of compinit will read the dumped file instead of performing a full initialization.
+  
+  
+  If that was the case, `compinit` wouldn't fix my completions before I deleted `~/.zcompdump`, right? Am I missing something?
+  
+  3. What's `~/.zcompdump-$(hostname)-5.1.1` and how is it related to `.zcompdump`? The only difference is one completion which is in `~/.oh-my-zsh/completions` (because `$ZSH` points to `~/.oh-my-zsh`). Is it an oh-my-zsh thing?
+  4. If I were to package these completions into a redistributable package or create an installer script, where should I place zsh completions and what else should I do during installation to make sure everything just works?
+  
+  I'm targeting Ubuntu 16.04, 18.04 and 19.04, but non-distro-specific information is welcome. I'm testing this on Ubuntu 16.04 with zsh 5.1.1 and recent oh-my-zsh.
+  
+  - [ubuntu](https://unix.stackexchange.com/questions/tagged/ubuntu "show questions tagged 'ubuntu'")
+  - [zsh](https://unix.stackexchange.com/questions/tagged/zsh "show questions tagged 'zsh'")
+  - [autocomplete](https://unix.stackexchange.com/questions/tagged/autocomplete "show questions tagged 'autocomplete'")
+  - [oh-my-zsh](https://unix.stackexchange.com/questions/tagged/oh-my-zsh "show questions tagged 'oh-my-zsh'")
+  
+  [Share](https://unix.stackexchange.com/q/535509 "Short permalink to this question")
+  
+  Share a link to this question
+  
+  Copy link [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/ "The current license for this post: CC BY-SA 4.0")
+  
+  [Improve this question](https://unix.stackexchange.com/posts/535509/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this question to receive notifications
+  
+  asked Aug 14, 2019 at 8:06
+  
+  [![gronostaj's user avatar](https://www.gravatar.com/avatar/c752390e4ef6506b9d4c8e3849f8bd4b?s=64&d=identicon&r=PG)](https://unix.stackexchange.com/users/53467/gronostaj)
+  
+  [gronostaj](https://unix.stackexchange.com/users/53467/gronostaj)
+  
+  71822 gold badges99 silver badges2020 bronze badges
+  
+  [Add a comment](https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work# "Use comments to ask for more information or suggest improvements. Avoid answering questions in comments.") \| [Expand to show all comments on this post](https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work# "Expand to show all comments on this post")
+  
+  ## 1 Answer 1
+  
+  Sorted by:
+  [Reset to default](https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work?answertab=scoredesc#tab-top)
+  
+  Highest score (default)
+  
+  Date modified (newest first)
+  
+  Date created (oldest first)
+  
+  
+  This answer is useful
+  
+  12
+  
+  Save this answer.
+  
+  [Timeline](https://unix.stackexchange.com/posts/535646/timeline)
+  
+  Show activity on this post.
+  
+  TL,DR: In normal operations, just drop the file into the appropriate directory. While testing, you need to remove the cache file (`.zcompdump` by default, but users can put it in a different location, and oh-my-zsh does put it in a different location).
+  
+  * * *
+  
+  The simple answer is to write the completion function in a file where the first line is [`#compdef fab`](http://zsh.sourceforge.net/Doc/Release/Completion-System.html#index-compdef_002c-use-of-by-compinit). The file must be in a directory on `$fpath`.
+  
+  The file can either contain the function body, or a definition of the function followed by a call to the function. That is, either the file contains something like
+  
+  ```bash
+  #compdef fab
+  _arguments …
+  ```
+  
+  or
+  
+  ```bash
+  #compdef fab
+  function _fab {
+    _arguments …
+  }
+  _fab "$@"
+  ```
+  
+  The file must be present on `$fpath` before `compinit` runs. That means you need to pay attention to the order of things in `.zshrc`: first add any custom directories to `$fpath`, then call `compinit`. If you use a framework such as oh-my-zsh, make sure to add any custom directories to `$fpath` before the oh-my-zsh code.
+  
+  [`compinit`](http://zsh.sourceforge.net/Doc/Release/Completion-System.html#index-compinit) is the function that initializes the completion system. It reads all the files in `$fpath` and checks their first line for magic directives [`#autoload` and `#compdef`](http://zsh.sourceforge.net/Doc/Release/Completion-System.html#Autoloaded-files).
+  
+  `.zcompdump` is a cache file used by `compinit`. `~/.zcompdump` is the default location; you can choose a different location when running `compinit`. Oh-my-zsh calls `compinit` with the `-d` option to use a different cache file name given by the variable `ZSH_COMPDUMP`, which [defaults to](https://github.com/robbyrussell/oh-my-zsh/blob/master/oh-my-zsh.sh#L61)
+  
+  ```bash
+  ZSH_COMPDUMP="${ZDOTDIR:-${HOME}}/.zcompdump-${SHORT_HOST}-${ZSH_VERSION}"
+  ```
+  
+  The host name is included for the sake of people whose home directory is shared between machines and who may have different software installed on different machines. The zsh version is included because the cache file is incompatible between versions (it includes code that changes from version to version).
+  
+  I think all of your problems are due to a stale cache file (and that's made you overcomplicate the situation). Unfortunately, [zsh's algorithm to determine whether the cache file is stale](https://github.com/zsh-users/zsh/blob/zsh-5.7/Completion/compinit#L480) is not perfect, presumably in the interest of speed. It doesn't check the content or the timestamps of the files on `$fpath`, it just counts them. A `.zcompdump` file starts with a line like
+  
+  ```bash
+  #files: 858     version: 5.1.1
+  ```
+  
+  If the zsh version and the number of files are correct, zsh loads the cache file.
+  
+  The cache file only contains associations between command names, not the code of completion functions. Here's are some common scenarios where the cache works transparently:
+  
+  - If you add a new file to `$fpath`, this invalidates the cache.
+  - More generally, if you add and remove files on `$fpath`, and the total number of removed files is not the same as the total number of removed files, this invalidates the cache.
+  - If you move a file to a different directory in `$fpath` without changing its name, this does not affect anything that's in the cache, so the cache remains correct.
+  - If you modify a file in `$fpath` without changing its first line, this does not affect anything that's in the cache, so the cache remains correct.
+  
+  Here are some common scenarios where the cache becomes invalid, but zsh doesn't realize it.
+  
+  - You add some files to `$fpath` and remove exactly the same number of files.
+  - You rename a file in `$fpath`.
+  - You add or modify the `#compdef` (or `#autoload`) line at the top of the file.
+  
+  That last point is what tends to bite during testing. If you change the `#compdef` line, you need to remove the `.zcompdump` file and restart zsh (or rerun `compinit`).
+  
+  If you put completions in a redistributable package, just drop the completion file into a directory that's in the system-wide `$fpath`. For an Ubuntu package, the appropriate place is `/usr/share/zsh/vendor-completions`. For something installed under `/usr/local`, that's `/usr/local/share/zsh/site-functions`. That's all you need to do.
+  
+  The one thing that isn't transparent is if you need to change the `#compdef` line in an upgrade, or if you remove or rename some files. In such cases, users will need to remove their cache file, and that's not something you can do from a package that gets installed on a multiuser machine.
+  
+  [Share](https://unix.stackexchange.com/a/535646 "Short permalink to this answer")
+  
+  Share a link to this answer
+  
+  Copy link [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/ "The current license for this post: CC BY-SA 4.0")
+  
+  [Improve this answer](https://unix.stackexchange.com/posts/535646/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this answer to receive notifications
+  
+  answered Aug 14, 2019 at 21:39
+  
+  [![Gilles 'SO- stop being evil''s user avatar](https://i.sstatic.net/cFyP6.jpg?s=64)](https://unix.stackexchange.com/users/885/gilles-so-stop-being-evil)
+  
+  [Gilles 'SO- stop being evil'](https://unix.stackexchange.com/users/885/gilles-so-stop-being-evil)
+  
+  869k207207 gold badges1.8k1.8k silver badges2.3k2.3k bronze badges
+  
+  5
+  
+  - 1
+  
+  
+  
+  
+  
+  Thanks for an answer. Maybe oh-my-zsh was loading outdated completions from its `zcompdump` and then I was running `compinit` manually with the default zcompdump to fix it... Is there a standardized path where I should put completions so that they work both with and without oh-my-zsh? Can I rely on `$ZSH`?
+  
+  
+  
+  gronostaj
+  
+  
+  –
+  [gronostaj](https://unix.stackexchange.com/users/53467/gronostaj "718 reputation")
+  
+  
+  
+  2019-08-15 10:05:26 +00:00
+  
+  [CommentedAug 15, 2019 at 10:05](https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work#comment992886_535646)
+  
+  - @gronostaj Oh-my-zsh doesn't affect what system directories are included in `$fpath`. On the other hand, distributions might change the default fpath, so you may need to tune your packaging scripts for each distribution (like any other system path). Zsh doesn't use the variable `ZSH` for anything.
+  
+  
+  
+  Gilles 'SO- stop being evil'
+  
+  
+  –
+  [Gilles 'SO- stop being evil'](https://unix.stackexchange.com/users/885/gilles-so-stop-being-evil "869,354 reputation")
+  
+  
+  
+  2019-08-15 10:28:40 +00:00
+  
+  [CommentedAug 15, 2019 at 10:28](https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work#comment992900_535646)
+  
+  - Just mentioning, with trial and error I found that your file cannot have `-` (dash/hyphen/minus character) in it.
+  
+  
+  
+  ssi-anik
+  
+  
+  –
+  [ssi-anik](https://unix.stackexchange.com/users/140177/ssi-anik "101 reputation")
+  
+  
+  
+  2023-11-16 02:39:38 +00:00
+  
+  [CommentedNov 16, 2023 at 2:39](https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work#comment1452500_535646)
+  
+  - @ssi-anik There may be problems if the function name starts with a dash, but otherwise a dash is fine. Conventionally the file name is the function name and the function name is an underscore followed by the command name. This works fine even for command names that contain a dash, e.g. `_pkg-config` and `_invoke-rc.d`.
+  
+  
+  
+  Gilles 'SO- stop being evil'
+  
+  
+  –
+  [Gilles 'SO- stop being evil'](https://unix.stackexchange.com/users/885/gilles-so-stop-being-evil "869,354 reputation")
+  
+  
+  
+  2023-11-16 12:08:33 +00:00
+  
+  [CommentedNov 16, 2023 at 12:08](https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work#comment1452584_535646)
+  
+  - @Gilles'SO-stopbeingevil' I am not sure. The author of the package didn't provide any zsh-specific function. In the doc, he said to append the content to the zsh. But I don't want to add those functions to my zsh. That's why I tried to add it as a custom function.
+  
+  
+  
+  ssi-anik
+  
+  
+  –
+  [ssi-anik](https://unix.stackexchange.com/users/140177/ssi-anik "101 reputation")
+  
+  
+  
+  2023-11-16 15:37:38 +00:00
+  
+  [CommentedNov 16, 2023 at 15:37](https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work#comment1452650_535646)
+  
+  
+  [Add a comment](https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work# "Use comments to ask for more information or suggest improvements. Avoid comments like “+1” or “thanks”.") \| [Expand to show all comments on this post](https://unix.stackexchange.com/questions/535509/how-to-properly-make-custom-zsh-completions-just-work# "Expand to show all comments on this post")
+  
+  ## You must [log in](https://unix.stackexchange.com/users/login?ssrc=question_page&returnurl=https%3a%2f%2funix.stackexchange.com%2fquestions%2f535509) to answer this question.
+  
+  Start asking to get answers
+  
+  Find the answer to your question by asking.
+  
+  [Ask question](https://unix.stackexchange.com/questions/ask)
+  
+  Explore related questions
+  
+  - [ubuntu](https://unix.stackexchange.com/questions/tagged/ubuntu "show questions tagged 'ubuntu'")
+  - [zsh](https://unix.stackexchange.com/questions/tagged/zsh "show questions tagged 'zsh'")
+  - [autocomplete](https://unix.stackexchange.com/questions/tagged/autocomplete "show questions tagged 'autocomplete'")
+  - [oh-my-zsh](https://unix.stackexchange.com/questions/tagged/oh-my-zsh "show questions tagged 'oh-my-zsh'")
+  
+  See similar questions with these tags.
+  
+  lang-bash
+  --- End Content ---
+
+Speeding Up My ZSH Shell - Scott Spence
+  URL: https://scottspence.com/posts/speeding-up-my-zsh-shell
+  My ZSH shell was taking ages to load. When I say ages, more like 5+ seconds every time I opened a new terminal, that sort of thing can add up.
+
+  --- Content ---
+  [Skip Navigation](https://scottspence.com/posts/speeding-up-my-zsh-shell#main-content)
+  
+  [Scott Spence](https://scottspence.com/)
+  
+  🐱Choose a theme:Select a themeacidaquaautumnblackbumblebeebusinesscmykcoffeecorporatecupcakecyberpunkdarkdimdraculaemeraldfantasygardenhalloweenlemonadelightlofiluxurynightnordpastelretrosunsetsynthwavetealixvalentinewinterwireframe
+  
+  [Posts](https://scottspence.com/posts) [Tags](https://scottspence.com/tags) [Speaking](https://scottspence.com/speaking) [Contact](https://scottspence.com/contact)
+  
+  # Speeding Up My ZSH Shell ⚡
+  
+  January 31, 2025 • 5 min read
+  
+  [zsh](https://scottspence.com/tags/zsh) [guide](https://scottspence.com/tags/guide) [notes](https://scottspence.com/tags/notes)
+  
+  [5 people viewing now](https://scottspence.com/stats)
+  
+  Hey! Thanks for stopping by! Just a word of warning, this post
+  is 1 year old, . If there's technical information in here it's more than likely out
+  of date.
+  
+  Super quick one I want to document here! I got myself on a side quest,
+  again! No biggie, my ZSH shell was taking ages to load. When I say
+  ages, more like 5+ seconds every time I opened a new terminal, that
+  sort of thing can add up. This is just something I’ve lived with over
+  the years, nothing has prompted this other than me wondering why it’s
+  slow, then searching for how to profile it.
+  
+  ## [How to profile your ZSH](https://scottspence.com/posts/speeding-up-my-zsh-shell\#how-to-profile-your-zsh)
+  
+  So, what’s actually slowing things down? Zsh comes with this super
+  handy profiling tool called `zprof`. Here’s how to use it:
+  
+  ```bash
+  # Add this to the TOP of your .zshrc
+  zmodload zsh/zprof
+  
+  # Add this to the BOTTOM of your .zshrc
+  zprof
+  ```
+  
+  This give a load of output, but it’s a good starting point.
+  
+  I had no idea this existed so massive shout out to [Jacek’s Blog](https://blog.askesis.pl/post/2017/04/how-to-debug-zsh-startup-time.html) for this tip!
+  
+  ## [Ok, so what was making my shell slow?](https://scottspence.com/posts/speeding-up-my-zsh-shell\#ok-so-what-was-making-my-shell-slow)
+  
+  When I ran the profiler, here’s what I found:
+  
+  ```bash
+  1) _omz_source        55.73%   # Oh-My-Zsh loading everything
+  2) compinit           30.76%   # Completion system being slow
+  3) syntax-highlight   14.63%   # Making things pretty, but slow
+  ```
+  
+  So, Oh-My-Zsh was taking up over half the startup time!
+  
+  ## [Oh-My-Zsh (55.73% → ~20%)](https://scottspence.com/posts/speeding-up-my-zsh-shell\#oh-my-zsh-5573--20)
+  
+  According to [JonLuca’s research](https://blog.jonlu.ca/posts/speeding-up-zsh),
+  this can cut the load time in half! The auto-updates are nice, but I’d
+  rather do them manually when I want to.
+  
+  ```bash
+  # Top of .zshrc
+  DISABLE_AUTO_UPDATE="true"
+  DISABLE_MAGIC_FUNCTIONS="true"
+  DISABLE_COMPFIX="true"
+  ```
+  
+  ## [Fixing the completion system (30.76% → ~10%)](https://scottspence.com/posts/speeding-up-my-zsh-shell\#fixing-the-completion-system-3076--10)
+  
+  The completion system (`compinit`) is zsh’s built-in command
+  completion - it’s what shows possible completions when you hit tab.
+  This is a neat trick I found. Instead of rebuilding the completion
+  cache every time, we only do it once a day:
+  
+  ```bash
+  # Smarter completion initialization
+  autoload -Uz compinit
+  if [ "$(date +'%j')" != "$(stat -f '%Sm' -t '%j' ~/.zcompdump 2>/dev/null)" ]; then
+      compinit
+  else
+      compinit -C
+  fi
+  ```
+  
+  This comes from [a popular GitHub gist](https://gist.github.com/ctechols/ca1035271ad134841284) -
+  cheers for sharing this one!
+  
+  ## [Making Spaceship Prompt Faster (22.47% → ~5%)](https://scottspence.com/posts/speeding-up-my-zsh-shell\#making-spaceship-prompt-faster-2247--5)
+  
+  I love Spaceship prompt (been using it for years!), but it was being a
+  bit of a resource hog. Here’s how to speed it up:
+  
+  ```bash
+  SPACESHIP_PROMPT_ASYNC=true
+  SPACESHIP_PROMPT_ADD_NEWLINE=true
+  SPACESHIP_CHAR_SYMBOL="⚡"
+  
+  # Only load what you actually use
+  SPACESHIP_PROMPT_ORDER=(
+      time
+      user
+      dir
+      git
+      line_sep
+      char
+  )
+  ```
+  
+  The Spaceship team actually [recommended this approach](https://github.com/spaceship-prompt/spaceship-prompt/issues/161) -
+  only load what you need!
+  
+  ## [Plugin management](https://scottspence.com/posts/speeding-up-my-zsh-shell\#plugin-management)
+  
+  I have very few plugins, here’s how I organize my plugins now:
+  
+  ```bash
+  plugins=(
+      git
+      zsh-autosuggestions
+      zsh-syntax-highlighting  # Always last!
+  )
+  ```
+  
+  The order is super important here! According to the [zsh-syntax-highlighting docs](https://github.com/zsh-users/zsh-syntax-highlighting#why-must-zsh-syntax-highlightingzsh-be-sourced-at-the-end-of-the-zshrc-file),
+  it needs to be last to work properly.
+  
+  For autosuggestions, I added these performance tweaks:
+  
+  ```bash
+  ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE="20"
+  ZSH_AUTOSUGGEST_USE_ASYNC=1
+  ```
+  
+  ## [The results? FAST! ⚡](https://scottspence.com/posts/speeding-up-my-zsh-shell\#the-results-fast-)
+  
+  Check this out:
+  
+  | Component | Before | After |
+  | --- | --- | --- |
+  | Oh-My-Zsh | 55.73% | ~20% |
+  | Completions | 30.76% | ~10% |
+  | Syntax Highlight | 14.63% | ~8% |
+  | Total Time | ~5s | ~0.5s |
+  
+  That’s like a 10x improvement! My terminal now opens in the blink of
+  an eye!
+  
+  ## [Want to try this yourself?](https://scottspence.com/posts/speeding-up-my-zsh-shell\#want-to-try-this-yourself)
+  
+  1. Add the profiling code (I showed you earlier) to see what’s slow
+  
+  2. Try the fixes one at a time - that way you know what’s actually
+  helping
+  
+  3. Keep what works for you - everyone’s setup is different!
+  
+  
+  ## [Before and after](https://scottspence.com/posts/speeding-up-my-zsh-shell\#before-and-after)
+  
+  For comparison here’s a before and after configs:
+  
+  ```bash
+  # Path to your Oh My Zsh installation.
+  export ZSH="$HOME/.oh-my-zsh"
+  
+  # See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
+  ZSH_THEME="spaceship"
+  
+  # spaceship config
+  SPACESHIP_PROMPT_ASYNC=false
+  SPACESHIP_PROMPT_ADD_NEWLINE="true"
+  SPACESHIP_CHAR_SYMBOL="⚡"
+  
+  # Which plugins would you like to load?
+  # Standard plugins can be found in $ZSH/plugins/
+  # Custom plugins may be added to $ZSH_CUSTOM/plugins/
+  # Example format: plugins=(rails git textmate ruby lighthouse)
+  # Add wisely, as too many plugins slow down shell startup.
+  plugins=(
+          git
+          zsh-syntax-highlighting
+          zsh-autosuggestions
+  )
+  
+  source $ZSH/oh-my-zsh.sh
+  
+  # User configuration
+  
+  # auto suggest
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#663399,standout"
+  
+  #-------- Global Alias {{{
+  globalias() {
+    if [[ $LBUFFER =~ '[a-zA-Z0-9]+$' ]]; then
+      zle _expand_alias
+      zle expand-word
+    fi
+    zle self-insert
+  }
+  zle -N globalias
+  bindkey " " globalias                 # space key to expand globalalias
+  # bindkey "^ " magic-space            # control-space to bypass completion
+  bindkey "^[[Z" magic-space            # shift-tab to bypass completion\
+  bindkey -M isearch " " magic-space    # normal space during searches\
+  . ~/.zsh_aliases\
+  #}}}\
+  \
+  # Start SSH agent if not running\
+  if [ -z "$SSH_AUTH_SOCK" ]; then\
+     eval "$(ssh-agent -s)" > /dev/null\
+     ssh-add ~/.ssh/id_github_sign_and_auth 2>/dev/null\
+  fi\
+  \
+  # volta\
+  export VOLTA_HOME="$HOME/.volta"\
+  export PATH="$VOLTA_HOME/bin:$PATH"\
+  # volta end\
+  \
+  # bun completions\
+  #[ -s "/home/scott/.bun/_bun" ] && source "/home/scott/.bun/_bun"\
+  \
+  # Turso\
+  export PATH="$PATH:/home/scott/.turso"\
+  ```\
+  \
+  With all the optimisations in place, here’s the after config:\
+  \
+  ```bash\
+  # Performance optimizations\
+  DISABLE_AUTO_UPDATE="true"\
+  DISABLE_MAGIC_FUNCTIONS="true"\
+  DISABLE_COMPFIX="true"\
+  \
+  # Cache completions aggressively\
+  autoload -Uz compinit\
+  if [ "$(date +'%j')" != "$(stat -f '%Sm' -t '%j' ~/.zcompdump 2>/dev/null)" ]; then\
+      compinit\
+  else\
+      compinit -C\
+  fi\
+  \
+  # Oh My Zsh path\
+  export ZSH="$HOME/.oh-my-zsh"\
+  \
+  # Theme config - fixed syntax\
+  ZSH_THEME="spaceship"\
+  \
+  # Spaceship settings (fixed syntax)\
+  SPACESHIP_PROMPT_ASYNC=true\
+  SPACESHIP_PROMPT_ADD_NEWLINE=true\
+  SPACESHIP_CHAR_SYMBOL="⚡"\
+  \
+  # Minimal spaceship sections for performance\
+  SPACESHIP_PROMPT_ORDER=(\
+    time\
+    user\
+    dir\
+    git\
+    line_sep\
+    char\
+  )\
+  \
+  # Carefully ordered plugins (syntax highlighting must be last)\
+  plugins=(\
+    git\
+    zsh-autosuggestions\
+    zsh-syntax-highlighting\
+  )\
+  \
+  # Source Oh My Zsh\
+  source $ZSH/oh-my-zsh.sh\
+  \
+  # Autosuggest settings\
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#663399,standout"\
+  ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE="20"\
+  ZSH_AUTOSUGGEST_USE_ASYNC=1\
+  \
+  # Alias expansion function\
+  globalias() {\
+     if [[ $LBUFFER =~ '[a-zA-Z0-9]+$' ]]; then\
+         zle _expand_alias\
+         zle expand-word\
+     fi\
+     zle self-insert\
+  }\
+  zle -N globalias\
+  bindkey " " globalias\
+  bindkey "^[[Z" magic-space\
+  bindkey -M isearch " " magic-space\
+  \
+  # Lazy load SSH agent\
+  function _load_ssh_agent() {\
+      if [ -z "$SSH_AUTH_SOCK" ]; then\
+          eval "$(ssh-agent -s)" > /dev/null\
+          ssh-add ~/.ssh/id_github_sign_and_auth 2>/dev/null\
+      fi\
+  }\
+  autoload -U add-zsh-hook\
+  add-zsh-hook precmd _load_ssh_agent\
+  \
+  # Path configurations\
+  export VOLTA_HOME="$HOME/.volta"\
+  PATH="$VOLTA_HOME/bin:$PATH:/home/scott/.turso"\
+  export PATH\
+  \
+  # Source aliases last\
+  [ -f ~/.zsh_aliases ] && source ~/.zsh_aliases\
+  ```\
+  \
+  ## [Other things](https://scottspence.com/posts/speeding-up-my-zsh-shell\#other-things)\
+  \
+  As per usual when I do this sort of thing I alway search around for\
+  alternitives, I tried [Starship](https://starship.rs/) and to be\
+  honest, I’m pretty happy with zsh, what it was for me (when trying it)\
+  is I don’t use `cd` I’m so used to just entering the directory name I\
+  was pretty put off straight away. 😅\
+  \
+  There were other things out there, like:\
+  \
+  - Pure prompt (super fast alternative to Spaceship)\
+  - [fast-syntax-highlighting](https://github.com/zdharma-continuum/fast-syntax-highlighting) (potentially faster than regular syntax highlighting, though the\
+  default is pretty quick already!)\
+  - Zinit (a faster alternative to Oh-My-Zsh if you want to try\
+  something different)\
+  \
+  But, honestly? If you’re happy with your current setup (and I am) and\
+  it’s fast enough, stick with it! This was me going on a little side\
+  quest because I was curious. My curiosity was rewarded with a much\
+  faster shell!\
+  \
+  That’s it! Hope this helps if you were having similar issues!\
+  \
+  **129**\
+  \
+  **128**\
+  \
+  👍\
+  \
+  **39**\
+  \
+  **38**\
+  \
+  ❤️\
+  \
+  **9**\
+  \
+  **8**\
+  \
+  💩\
+  \
+  **38**\
+  \
+  **37**\
+  \
+  🎉\
+  \
+  There's a [reactions leaderboard](https://scottspence.com/reactions-leaderboard) you can check out too.\
+  \
+  [Useful? Share it on Bluesky.](https://bsky.app/intent/compose?text=Check%20out%20this%20post%20from%20@scottspence.dev,%20Speeding%20Up%20My%20ZSH%20Shell%20%E2%9A%A1:%20https://scottspence.com/posts/speeding-up-my-zsh-shell)\
+  \
+  [✨ View the stats for this post ✨](https://scottspence.com/stats/speeding-up-my-zsh-shell)\
+  \
+  Take a look at some popular content from me... Views todayViews this monthViews this year\
+  \
+  Related posts...\
+  \
+  ### Sign up for the newsletter\
+  \
+  Want to keep up to date with what I'm working on?\
+  \
+  Join 493\
+  other developers and sign up for the newsletter.\
+  \
+  Your Email\
+  \
+  Checking your Browser…\
+  \
+  Verifying...\
+  \
+  Stuck? [Troubleshoot](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/ittce/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  Success!\
+  \
+  Verification failed\
+  \
+  [Troubleshoot](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/ittce/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  Verification expired\
+  \
+  [Refresh](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/ittce/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  Verification expired\
+  \
+  [Refresh](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/ittce/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  [Troubleshoot](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/ittce/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  [Privacy](https://www.cloudflare.com/privacypolicy/) • [Help](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/help)\
+  \
+  I care about the protection of your data. Read the [Privacy Policy](https://scottspence.com/privacy-policy) for more info.\
+  \
+  Back to top\
+  \
+  Copyright © 2017 - 2026 - All rights\
+  reserved\
+  Scott Spence
+  --- End Content ---
+
+Trying to run `compinit` on zsh but getting the error ... - Stack Overflow
+  URL: https://stackoverflow.com/questions/76040838/trying-to-run-compinit-on-zsh-but-getting-the-error-compinit141-parse-error
+  On m1 pro macbook using zsh, was trying to get git autocomplete to work by pasting autoload -Uz compinit && compinit in my .zshrc however I am getting the ...
+
+  --- Content ---
+  ##### Collectives™ on Stack Overflow
+  
+  Find centralized, trusted content and collaborate around the technologies you use most.
+  
+  [Learn more about Collectives](https://stackoverflow.com/collectives)
+  
+  **Stack Internal**
+  
+  Knowledge at work
+  
+  Bring the best of human thought and AI automation together at your work.
+  
+  [Explore Stack Internal](https://stackoverflow.co/internal/?utm_medium=referral&utm_source=stackoverflow-community&utm_campaign=side-bar&utm_content=explore-teams-compact-popover)
+  
+  # [Trying to run \`compinit\` on zsh but getting the error \`compinit:141: parse error: condition expected: $1\`](https://stackoverflow.com/questions/76040838/trying-to-run-compinit-on-zsh-but-getting-the-error-compinit141-parse-error)
+  
+  [Ask Question](https://stackoverflow.com/questions/ask)
+  
+  Asked2 years, 11 months ago
+  
+  Modified [2 years, 11 months ago](https://stackoverflow.com/questions/76040838/trying-to-run-compinit-on-zsh-but-getting-the-error-compinit141-parse-error?lastactivity "2023-04-18 13:49:36Z")
+  
+  Viewed
+  2k times
+  
+  
+  This question shows research effort; it is useful and clear
+  
+  0
+  
+  Save this question.
+  
+  [Timeline](https://stackoverflow.com/posts/76040838/timeline)
+  
+  Show activity on this post.
+  
+  On m1 pro macbook using zsh, was trying to get git autocomplete to work by pasting `autoload -Uz compinit && compinit` in my .zshrc however I am getting the error `compinit:141: parse error: condition expected: $1`
+  
+  $FPATH is not being set in .zshrc so that shouldn't be the issue.
+  
+  It's clear the problem is with compinit, since when I run just `compinit` in the shell I get the same error.
+  
+  - I've tried to comb through the functions in fpath to find an issue, no luck
+  - Tried installing zsh-completion and setting the fpath, no luck
+  - Also upgraded zsh from 5.8.1 to 5.9 and manually set the fpath to the corresponding functions, no luck
+  - Even left the issue with `compinit` and tried `autoload -Uz vcs_info` instead, no luck
+  
+  - [git](https://stackoverflow.com/questions/tagged/git "show questions tagged 'git'")
+  - [zsh](https://stackoverflow.com/questions/tagged/zsh "show questions tagged 'zsh'")
+  - [apple-m1](https://stackoverflow.com/questions/tagged/apple-m1 "show questions tagged 'apple-m1'")
+  - [zshrc](https://stackoverflow.com/questions/tagged/zshrc "show questions tagged 'zshrc'")
+  - [git-completion](https://stackoverflow.com/questions/tagged/git-completion "show questions tagged 'git-completion'")
+  
+  [Share](https://stackoverflow.com/q/76040838 "Short permalink to this question")
+  
+  [Improve this question](https://stackoverflow.com/posts/76040838/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this question to receive notifications
+  
+  asked Apr 18, 2023 at 3:17
+  
+  [![raf's user avatar](https://www.gravatar.com/avatar/9570df762103593ddf0b41222367f801?s=64&d=identicon&r=PG)](https://stackoverflow.com/users/21050342/raf)
+  
+  [raf](https://stackoverflow.com/users/21050342/raf)
+  
+  1133 bronze badges
+  
+  2
+  
+  - 1
+  
+  
+  
+  
+  
+  The high line number is strange. Could it be that you have your own `compinit` function, which kind of dominates the builtin one? Does it give some insight when you do a `whence -f compinit`?
+  
+  
+  
+  user1934428
+  
+  
+  –
+  [user1934428](https://stackoverflow.com/users/1934428/user1934428 "22,950 reputation")
+  
+  
+  
+  2023-04-18 06:37:53 +00:00
+  
+  CommentedApr 18, 2023 at 6:37
+  
+  - 1
+  
+  
+  
+  
+  
+  The error also appears after the shell is launched with [`zsh --emulate sh`](https://www.zsh.org/mla/workers/2021/msg00072.html). This suggests that something else in `~/.zshrc` is [setting options](https://unix.stackexchange.com/a/663726) that are causing the issue, possibly due to an interaction with [`oh-my-zsh`](https://github.com/ohmyzsh/ohmyzsh/issues/10611). You may need to rebuild`~/.zshrc` one piece at a time to find the problem.
+  
+  
+  
+  Gairfowl
+  
+  
+  –
+  [Gairfowl](https://stackoverflow.com/users/9307265/gairfowl "3,220 reputation")
+  
+  
+  
+  2023-04-18 08:23:09 +00:00
+  
+  CommentedApr 18, 2023 at 8:23
+  
+  
+  [Add a comment](https://stackoverflow.com/questions/76040838/trying-to-run-compinit-on-zsh-but-getting-the-error-compinit141-parse-error# "Use comments to ask for more information or suggest improvements. Avoid answering questions in comments.") \| [Expand to show all comments on this post](https://stackoverflow.com/questions/76040838/trying-to-run-compinit-on-zsh-but-getting-the-error-compinit141-parse-error# "Expand to show all comments on this post")
+  
+  ## 1 Answer 1
+  
+  Sorted by:
+  [Reset to default](https://stackoverflow.com/questions/76040838/trying-to-run-compinit-on-zsh-but-getting-the-error-compinit141-parse-error?answertab=scoredesc#tab-top)
+  
+  Highest score (default)
+  
+  Trending (recent votes count more)
+  
+  Date modified (newest first)
+  
+  Date created (oldest first)
+  
+  
+  This answer is useful
+  
+  1
+  
+  Save this answer.
+  
+  [Timeline](https://stackoverflow.com/posts/76045424/timeline)
+  
+  Show activity on this post.
+  
+  ## Solved
+  
+  The issue was this line in my .zprofile which I thought I had to add after installing [posh-git-sh](https://github.com/lyze/posh-git-sh) (step 3) `[[ -e ~/.zshrc ]] && emulate sh -c 'source ~/.zshrc'`
+  
+  Once I removed it the expected behaviour returned
+  
+  [Share](https://stackoverflow.com/a/76045424 "Short permalink to this answer")
+  
+  [Improve this answer](https://stackoverflow.com/posts/76045424/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this answer to receive notifications
+  
+  answered Apr 18, 2023 at 13:49
+  
+  [![raf's user avatar](https://www.gravatar.com/avatar/9570df762103593ddf0b41222367f801?s=64&d=identicon&r=PG)](https://stackoverflow.com/users/21050342/raf)
+  
+  [raf](https://stackoverflow.com/users/21050342/raf)
+  
+  1133 bronze badges
+  
+  Sign up to request clarification or add additional context in comments.
+  
+  
+  ## Comments
+  
+  Add a comment
+  
+  ## Your Answer
+  
+  Draft saved
+  
+  Draft discarded
+  
+  ### Sign up or [log in](https://stackoverflow.com/users/login?ssrc=question_page&returnurl=https%3a%2f%2fstackoverflow.com%2fquestions%2f76040838%2ftrying-to-run-compinit-on-zsh-but-getting-the-error-compinit141-parse-error%23new-answer)
+  
+  Sign up using Google
+  
+  
+  Sign up using Email and Password
+  
+  
+  Submit
+  
+  ### Post as a guest
+  
+  Name
+  
+  Email
+  
+  Required, but never shown
+  
+  Post Your Answer
+  
+  Discard
+  
+  
+  By clicking “Post Your Answer”, you agree to our [terms of service](https://stackoverflow.com/legal/terms-of-service/public) and acknowledge you have read our [privacy policy](https://stackoverflow.com/legal/privacy-policy).
+  
+  
+  Start asking to get answers
+  
+  Find the answer to your question by asking.
+  
+  [Ask question](https://stackoverflow.com/questions/ask)
+  
+  Explore related questions
+  
+  - [git](https://stackoverflow.com/questions/tagged/git "show questions tagged 'git'")
+  - [zsh](https://stackoverflow.com/questions/tagged/zsh "show questions tagged 'zsh'")
+  - [apple-m1](https://stackoverflow.com/questions/tagged/apple-m1 "show questions tagged 'apple-m1'")
+  - [zshrc](https://stackoverflow.com/questions/tagged/zshrc "show questions tagged 'zshrc'")
+  - [git-completion](https://stackoverflow.com/questions/tagged/git-completion "show questions tagged 'git-completion'")
+  
+  See similar questions with these tags.
+  --- End Content ---

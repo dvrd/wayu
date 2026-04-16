@@ -1,0 +1,494 @@
+Optimizing Zsh Init with ZProf (and Switching to Mise) - Mike Kasberg
+  URL: https://www.mikekasberg.com/blog/2025/05/29/optimizing-zsh-init-with-zprof.html
+  ZProf is a great tool to profile slow ~/.zshrc init time. When adding Oh-My-Zsh plugins or making other changes to ~/.zshrc , consider ...
+
+  --- Content ---
+  # [Mike Kasberg](https://www.mikekasberg.com/)
+  
+  Husband. Father. Software engineer. Ubuntu Linux user.
+  
+  [X (Twitter)](https://x.com/mike_kasberg "X (Twitter)") [GitHub](https://github.com/mkasberg "GitHub") [LinkedIn](https://www.linkedin.com/in/mkasberg "LinkedIn") [Email](mailto:mike@mikekasberg.com "Email") [RSS](https://www.mikekasberg.com/feed.xml "RSS")
+  
+  ![Image for Optimizing Zsh Init with ZProf (and Switching to Mise)](https://www.mikekasberg.com/images/posts/optimizing-zsh-init-with-zprof-full.jpg)
+  
+  # Optimizing Zsh Init with ZProf (and Switching to Mise)
+  
+  29 May 2025
+  
+  I’ve been noticing for a while that on my personal laptop, new terminal
+  tabs/windows were very slow to start (more than a second). It bugged me a lot
+  since I knew something seemed wrong, but I’d been putting off digging into the
+  problem for a long time. A few days ago, I finally took some time to
+  investigate! I’m glad I did, because I found some low hanging fruit that
+  ended up saving more than two seconds on zsh (Oh-My-Zsh) init!
+  
+  ## ZProf [\#](https://www.mikekasberg.com/blog/2025/05/29/optimizing-zsh-init-with-zprof.html\#zprof)
+  
+  I knew zsh was slow to start up, but I didn’t know why. Fortunately, there’s a
+  tool that can easily profile this! Zsh comes with a tool called
+  [zprof](https://zsh.sourceforge.io/Doc/Release/Zsh-Modules.html#The-zsh_002fzprof-Module)
+  that can profile zsh startup. To use it, you just add `zmodload zsh/zprof` as
+  the first line in your `~/.zshrc` (to cause the following lines to be profiled),
+  and `zprof` as the last line in your `~/.zshrc` (to print the profile results).
+  With those lines in `~/.zshrc`, opening a new terminal will print profiling
+  information! Here’s the important bits of what my first profile showed.
+  
+  ```
+  num  calls                time                       self            name
+  -----------------------------------------------------------------------------------
+   1)    1        1693.34  1693.34   55.59%   1693.34  1693.34   55.59%  load-nvmrc
+   2)    2         587.73   293.87   19.29%    286.15   143.07    9.39%  nvm
+   3)    1         264.29   264.29    8.68%    264.29   264.29    8.68%  compdump
+   4)    1         238.42   238.42    7.83%    207.30   207.30    6.80%  nvm_ensure_version_installed
+   5)    2         692.22   346.11   22.72%    182.89    91.44    6.00%  compinit
+   6)  845         176.20     0.21    5.78%    176.20     0.21    5.78%  compdef
+   7)    4          70.58    17.65    2.32%     70.58    17.65    2.32%  compaudit
+   ...
+  ```
+  
+  There’s an obvious optimization here. `load-nvmrc` is responsible for more than
+  half of my zsh init time, taking more than 1.5 seconds! There _might_ have been some
+  kind of misconfiguration or reason for the poor nvm performance. (I see 2 calls to
+  `nvm`, which seems wrong.) But I actually
+  didn’t bother to troubleshoot nvm any further. I’d been interested in trying
+  [mise-en-place](https://mise.jdx.dev/) for a while, and this seemed like a great
+  excuse to give it a go (since it can replace nvm). I [ripped out the nvm\\
+  Oh-My-Zsh\\
+  plugin](https://github.com/mkasberg/dotfiles/commit/693111880e80b6a4a3157f30426a53444b84d06a)
+  and saw immediate improvement in my init time!
+  
+  ```
+  num  calls                time                       self            name
+  -----------------------------------------------------------------------------------
+   1)    2         499.94   249.97   40.72%    499.94   249.97   40.72%  compdump
+   2) 1674         327.03     0.20   26.63%    327.03     0.20   26.63%  compdef
+   3)    2        1193.22   596.61   97.18%    300.31   150.15   24.46%  compinit
+   4)    4          67.30    16.83    5.48%     67.30    16.83    5.48%  compaudit
+   5)    1          19.11    19.11    1.56%     19.11    19.11    1.56%  is_update_available
+   ...
+  
+  -----------------------------------------------------------------------------------
+  
+   3)    2        1193.22   596.61   97.18%    300.31   150.15   24.46%  compinit
+         2/4        67.30    33.65    5.48%      0.78     0.39             compaudit [4]
+      1662/1674    325.67     0.20   26.52%    325.67     0.20             compdef [2]
+         2/2       499.94   249.97   40.72%    499.94   249.97             compdump [1]
+  
+  -----------------------------------------------------------------------------------
+  
+         2/2       499.94   249.97   40.72%    499.94   249.97             compinit [3]
+   1)    2         499.94   249.97   40.72%    499.94   249.97   40.72%  compdump
+  
+  -----------------------------------------------------------------------------------
+  
+      1662/1674    325.67     0.20   26.52%    325.67     0.20             compinit [3]
+   2) 1674         327.03     0.20   26.63%    327.03     0.20   26.63%  compdef
+  
+  -----------------------------------------------------------------------------------
+  
+         2/4        67.30    33.65    5.48%      0.78     0.39             compinit [3]
+         2/4        66.52    33.26    5.42%     66.52    33.26             compaudit [4]
+   4)    4          67.30    16.83    5.48%     67.30    16.83    5.48%  compaudit
+         2/4        66.52    33.26    5.42%     66.52    33.26             compaudit [4]
+  ```
+  
+  But something still seemed off. Although I’d saved more than 1.5 seconds of
+  init time by ripping out nvm, nearly 0.5 seconds still felt abnormally slow to
+  initialize a shell. I didn’t know what `compdump` was, but I decided to find
+  out! LLMs are _excellent_ for helping to debug things like this. I’ve found that
+  they particularly excel at providing detailed explanations of problems from
+  relatively short error or trace output – particularly for common problems in open
+  source tooling that are well-documented. I pasted the above output into Gemini
+  2.5 Pro and asked it to interpret the zprof output and provide recommendations
+  to improve my init time.
+  
+  Gemini noted (correctly) that there were _two_ calls to `compinit`, and that this
+  function should normally only be called once during zsh init. It also let me
+  know that Oh-My-Zsh calls `compinit` for me when sourcing `$ZSH/oh-my-zsh.sh`, and
+  recommended that I make sure I’m not calling compinit elsewhere in my
+  `~/.zshrc`. As it turns out, _I was calling compinit elsewhere in my_
+  _`~/.zshrc`_. A long time ago, I’d pasted a few lines that added some completions to my `fpath`
+  and called `compinit`. I could avoid calling `compinit` twice by just modifying
+  the `fpath` _before_ sourcing `oh-my-zsh.sh`! I [edited my ~/.zshrc to do\\
+  that](https://github.com/mkasberg/dotfiles/commit/766601070434341903e977f849752535bd174362), and saved
+  another 0.25 seconds by removing the duplicate call!
+  
+  ```
+  num  calls                time                       self            name
+  -----------------------------------------------------------------------------------
+   1)    1         250.01   250.01   42.55%    250.01   250.01   42.55%  compdump
+   2)  843         146.91     0.17   25.00%    146.91     0.17   25.00%  compdef
+   3)    1         552.65   552.65   94.05%    137.29   137.29   23.36%  compinit
+   ...
+  
+  -----------------------------------------------------------------------------------
+  
+   3)    1         552.65   552.65   94.05%    137.29   137.29   23.36%  compinit
+         1/2        19.79    19.79    3.37%      0.28     0.28             compaudit [5]
+       831/843     145.57     0.18   24.77%    145.57     0.18             compdef [2]
+         1/1       250.01   250.01   42.55%    250.01   250.01             compdump [1]
+  
+  -----------------------------------------------------------------------------------
+  
+         1/1       250.01   250.01   42.55%    250.01   250.01             compinit [3]
+   1)    1         250.01   250.01   42.55%    250.01   250.01   42.55%  compdump
+  
+  -----------------------------------------------------------------------------------
+  
+       831/843     145.57     0.18   24.77%    145.57     0.18             compinit [3]
+   2)  843         146.91     0.17   25.00%    146.91     0.17   25.00%  compdef
+  ```
+  
+  This is progress! I’d already saved 1.75 seconds of init time, but I was hungry
+  to keep going since all the fixes so far had been easy and obvious (in
+  hindsight). Still in the Gemini session, I asked the LLM to analyze my new
+  profile and explain what `compdump` and `compinit` do. Gemini explained that
+  `compdump` and `compinit` are used to set up completions, but it also noted that
+  `compdump` is used to build a cache file, which _shouldn’t be slow every time_
+  (even though it was for me). It suggested to try removing the cache files at
+  `~/.zcompdump*` to see if `compdump` is then faster after rebuilding the cache
+  once.
+  
+  Before removing `~/.zcompdump*`, I looked at the files I was about to remove, and
+  noticed the reason why zsh was trying to rebuild the compdump cache each time!
+  
+  ```
+  $ ls -l .zcompdump*
+  ...
+  -r--r--r-- 1 mkasberg mkasberg 122128 Dec 28  2022 .zcompdump-mkasberg-latitude-e7450-5.9.zwc
+  ...
+  ```
+  
+  Apparently, something I’d done in the distant past (probably due to a laptop
+  migration) had triggered the creation of this compdump file that was readonly,
+  and the existence of this readonly compdump file caused compdump to silently
+  fail, or at least to retry on every shell init rather than only when something
+  had changed. I deleted all the `~/.zcompdump*` files, including the readonly one
+  (since they’re just cache files that can be easily regenerated anyway), and
+  after that the zsh init process generated a single cache file on the first run
+  and then stopped regenerating them! This fix shaved an additional 200ms off
+  my zsh init time, and we’re in very good territory now! **In total, I shaved**
+  **nearly 2 seconds off the startup time for opening a new terminal window or**
+  **tab!!!**
+  
+  ```
+  num  calls                time                       self            name
+  -----------------------------------------------------------------------------------
+   1)    1          47.03    47.03   56.59%     25.72    25.72   30.94%  compinit
+   2)    2          21.31    10.66   25.65%     21.31    10.66   25.65%  compaudit
+   3)    1          20.19    20.19   24.30%     20.19    20.19   24.30%  is_update_available
+   4)    1          27.75    27.75   33.39%      7.56     7.56    9.10%  (anon) [/home/mkasberg/.oh-my-zsh/tools/check_for_upgrade.sh:126]
+   5)    1           2.05     2.05    2.47%      2.05     2.05    2.47%  detect-clipboard
+   6)    1           1.56     1.56    1.88%      1.56     1.56    1.88%  colors
+   7)   12           1.47     0.12    1.76%      1.47     0.12    1.76%  compdef
+   8)    3           1.13     0.38    1.36%      1.13     0.38    1.36%  is-at-least
+   9)    2           0.86     0.43    1.04%      0.86     0.43    1.04%  add-zsh-hook
+  10)    1           0.78     0.78    0.94%      0.78     0.78    0.94%  regexp-replace
+  11)   10           0.29     0.03    0.35%      0.29     0.03    0.35%  is_plugin
+  12)    2           0.09     0.04    0.11%      0.09     0.04    0.11%  is_theme
+  13)    2           0.06     0.03    0.07%      0.06     0.03    0.07%  env_default
+  14)    1           0.02     0.02    0.03%      0.02     0.02    0.03%  bashcompinit
+  ```
+  
+  ## Test Driving Mise [\#](https://www.mikekasberg.com/blog/2025/05/29/optimizing-zsh-init-with-zprof.html\#test-driving-mise)
+  
+  With NVM ripped out, I still needed to setup Mise to replace it. I opted to
+  install Mise with apt on Ubuntu since that would provide an easy mechanism to
+  keep Mise itself up to date. And with Mise installed, setting up a default
+  global Node version was a piece of cake! I used the [Oh-My-Zsh Mise\\
+  plugin](https://github.com/ohmyzsh/ohmyzsh/tree/95ef2516697aa764d1d4bb93ad3490584cc118ec/plugins/mise)
+  to init Mise on shell startup, and it’s only adding about 60ms to startup time
+  (compared to over 1500ms for NVM)!
+  
+  ```
+  num  calls                time                       self            name
+  -----------------------------------------------------------------------------------
+   2)    1          58.35    58.35   18.07%     58.35    58.35   18.07%  _mise_hook
+  ```
+  
+  So far, I’m very happy with Mise. It’s going to replace not only nvm for me, but
+  also rbenv and probably a couple other tools. It’s fast, it has a nice
+  interface, and it’s easy to configure. I really like the way it stores its
+  user-level configuration at `~/.config/mise/config.toml`, and I’ve [set mine\\
+  up](https://github.com/mkasberg/dotfiles/commit/cee3d99b02ecccc190cc94f9a6153858af8f22f5)
+  to respect `.ruby-version` and `.nvmrc` files in my projects.
+  
+  ## Lessons Learned [\#](https://www.mikekasberg.com/blog/2025/05/29/optimizing-zsh-init-with-zprof.html\#lessons-learned)
+  
+  So, what did I learn along the way?
+  
+  - ZProf is a great tool to profile slow `~/.zshrc` init time.
+  - When adding Oh-My-Zsh plugins or making other changes to `~/.zshrc`, consider
+  running a profile to see if the changes made the init process significantly
+  slower.
+  - Mise is a great tool, and can replace multiple other tools with something
+  faster!
+  
+  ## About the Author
+  
+  ![Mike Kasberg](https://www.mikekasberg.com/images/mike_kasberg.jpg)
+  
+  👋 Hi, I'm Mike! I'm a husband, I'm a father, and I'm a staff software engineer at [Strava](https://www.strava.com/). I use [Ubuntu Linux](https://ubuntu.com/download/desktop) daily at work and at home. And I enjoy writing about Linux, open source, programming, 3D printing, tech, and other random topics. I'd love to have you follow me on [X](https://x.com/mike_kasberg) or [LinkedIn](https://www.linkedin.com/in/mkasberg/) to show your support and see when I write new content!
+  
+  
+  ## Share!
+  
+  If you enjoyed this blog post, I'd love it if you could share it with your network!
+  
+  - [Share this article on Hacker News](https://news.ycombinator.com/submitlink?u=https%3A%2F%2Fwww.mikekasberg.com%2Fblog%2F2025%2F05%2F29%2Foptimizing-zsh-init-with-zprof.html&t=Optimizing+Zsh+Init+with+ZProf+%28and+Switching+to+Mise%29 "Share this article on Hacker News")
+  - [Share this article on X (Twitter)](https://x.com/intent/tweet?text=Optimizing+Zsh+Init+with+ZProf+%28and+Switching+to+Mise%29&url=https%3A%2F%2Fwww.mikekasberg.com%2Fblog%2F2025%2F05%2F29%2Foptimizing-zsh-init-with-zprof.html "Share this article on X (Twitter)")
+  - [Share this article on LinkedIn](https://www.linkedin.com/shareArticle?mini=true&url=https%3A%2F%2Fwww.mikekasberg.com%2Fblog%2F2025%2F05%2F29%2Foptimizing-zsh-init-with-zprof.html&title=Optimizing+Zsh+Init+with+ZProf+%28and+Switching+to+Mise%29&summary=I%E2%80%99ve+been+noticing+for+a+while+that+on+my+personal+laptop%2C+new+terminaltabs%2Fwindows+were+very+slow+to+start+%28more+than+a+second%29.+It+bugged+me+a+lotsince+I+k... "Share this article on LinkedIn")
+  - [Share this article on Reddit](https://www.reddit.com/submit?url=https%3A%2F%2Fwww.mikekasberg.com%2Fblog%2F2025%2F05%2F29%2Foptimizing-zsh-init-with-zprof.html&title=Optimizing+Zsh+Init+with+ZProf+%28and+Switching+to+Mise%29 "Share this article on Reddit")
+  - [Share this article on Facebook](https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fwww.mikekasberg.com%2Fblog%2F2025%2F05%2F29%2Foptimizing-zsh-init-with-zprof.html "Share this article on Facebook")
+  
+  [☕ Buy Me A Coffee](https://www.buymeacoffee.com/mkasberg)
+  
+  I run this blog in my spare time. There's no need to pay to access any of the content on this site, but if you find my content useful and would like to show your support, buying me a coffee is a small gesture to let me know what you like and encourage me to write more great content!
+  
+  
+  You can also support me by visiting [LinuxLaptopPrices.com](https://linuxlaptopprices.com/), a website I run as a side project.
+  
+  
+  ## Related Posts
+  
+  - [My New Bash Prompt (PS1)](https://www.mikekasberg.com/blog/2021/06/28/my-new-bash-prompt.html) 28 Jun 2021
+  - [My Dotfiles Story: A Journey to Chezmoi](https://www.mikekasberg.com/blog/2021/05/12/my-dotfiles-story.html) 12 May 2021
+  - [Dotfiles Secrets in Chezmoi, Without Password Headaches](https://www.mikekasberg.com/blog/2026/01/31/dotfiles-secrets-in-chezmoi.html) 31 Jan 2026
+  --- End Content ---
+
+Profiling ZSH - How I Made My Shell Startup Exponentially Faster ...
+  URL: https://alextheobold.com/posts/profiling_zsh/
+  To profile a zsh shell with zprof you need to edit your .zshrc like the following. copy zmodload zsh/zprof # The rest of your config zprof.
+
+  --- Content ---
+  [Top of Page](https://alextheobold.com/posts/profiling_zsh/#)
+  
+  - [Previous](https://alextheobold.com/posts/copilot_short_term_review/)
+  - [Top of Page](https://alextheobold.com/posts/profiling_zsh/#)
+  - [Share](https://alextheobold.com/posts/profiling_zsh/#)
+  
+  Previous postNext postBack to topShare post
+  
+  Flashback to 2023. I was working with Node on a project and needed to switch between versions easily. A quick Google search led me to [nvm](https://github.com/nvm-sh/nvm) (Node Version Manager)
+  which promised to allow me to install and use different Node versions via the command line. Perfect. Or so I thought.
+  
+  I installed it without a second thought as you do with any script you find on the internet and I was away. It solved my problem and I was able to easily switch between Node versions as I pleased.
+  After a while though I began to notice something. Nothing major but something felt off. Slow. Not as snappy as I am used to. At first I couldn’t pinpoint it but then one day it hit me. Starting up a new shell
+  was hanging. Only for a short while but noticeable and long enough just to throw me out of my flow. As someone that lives on the command line and spawns lots of short lived shell sessions via tmux, it was starting
+  to become an issue. What had started as a solution, was now looking like a problem, but at this stage I had no idea what the culprit of my slow shell startup was. Without having looked into it, I was wondering
+  whether my old laptop was starting to struggle, but then the issue was also noticeable on my work machine which was vastly more powerful. I needed to figure out what was causing the slowness and quick because
+  when you are in a tool all day long and there is noticeable lag and latency, it is a real productivity killer. It is one of the reasons why I am a shell and vim user in the first place. The speed and resource usage.
+  
+  So I needed to figure out why my shell was slow to start up and had a couple of theories that proved to be false. I also considered uninstalling Oh My Zsh as I wondered whether that might be the culprit. I use
+  barely any of the features other than a minimal prompt that I wrote myself including git branch information and zsh-autosuggestions which really, I could live without and instead rely on bck-search or fzf.
+  
+  Before I did anything drastic though, I thought I would look into a profiling tool called `zprof` which had been mentioned in a couple of Stack Overflow posts while I had been researching around my issue.
+  
+  `zprof` is simple a utility that comes pre-packaged with `zsh` and can be used to profile the shell. It is incredibly simple to use, but first I wanted to benchmark my shell startup time. To do this, I just did
+  a simple one liner on the command line to give me my shell startup time averaged out over 10 new sessions.
+  
+  ```shell
+  copyfor i in {1..10}; do /usr/bin/time -f "Run $i: %e seconds" $SHELL -i -c exit; done
+  ```
+  
+  I was not looking for total accuracy here, just a quick ball park benchmark of the shell startup time. It did the trick. I could see that every time the shell started up, it was taking around 1 second for the
+  prompt to be available. Far too long to be usable.
+  
+  OK, now I could get to finding the culprit of the slowness. To profile a `zsh` shell with `zprof` you need to edit your `.zshrc` like the following.
+  
+  ```shell
+  copyzmodload zsh/zprof
+  
+  # The rest of your config
+  
+  zprof
+  ```
+  
+  Once you have saved and sourced your config, you can now spawn a new shell and it will print out a table showing the slowest processes in a descending list. Bingo! `nvm` was taking up over 60% of the time it
+  took to spawn a new shell. With `nvm` disabled, I then ran my benchmark and saw my shell startup time back down to below 1/10th second.
+  
+  The only thing left to do now is remove the profiler calls from the `.zshrc` and resource so that the profiler does not run on every new session. Don’t do what I did at this point though.
+  
+  At the time, I had a shell alias `nah` that I had picked up from somewhere (I think it was Freek Van Der Verten but not sure). It was a simple alias.
+  
+  ```shell
+  copyalias nah='git reset --hard;git clean -df'
+  ```
+  
+  This alias might seem pretty innocuous at first glance and it is, IF YOU RUN IT IN A DIRECTORY THAT IS UNDER VERSION CONTROL WITH GIT! Unfortunately for me, I ran it in my home directory where my `.zshrc` resided. By the time I had realised what was happening, it was too late. Far too late. Git had cleaned up all the unversioned files in my home directory. It was a bad day to be me.
+  
+  I no longer have that alias and I have my dotfiles repo set up in a much more sane way to avoid similar issues in future but it was a good learning exercise in how accidentally running a command in the wrong
+  directory can have dire consequences. You live and learn.
+  
+  Nowadays, I keep the profiler lines in my `.zshrc` and have them commented so they are easy enough to toggle on and off with a couple of shortcuts. Perhaps you might do the same.
+  
+  :wq
+  
+  - [Facebook](http://www.facebook.com/sharer.php?u=https%3a%2f%2falextheobold.com%2fposts%2fprofiling_zsh%2f)
+  - [Twitter](https://twitter.com/share?url=https%3a%2f%2falextheobold.com%2fposts%2fprofiling_zsh%2f&text=Profiling%20ZSH%20-%20How%20I%20Made%20My%20Shell%20Startup%20Exponentially%20Faster%20%28and%20borked%20my%20machine%29)
+  - [Linkedin](http://www.linkedin.com/shareArticle?url=https%3a%2f%2falextheobold.com%2fposts%2fprofiling_zsh%2f&title=Profiling%20ZSH%20-%20How%20I%20Made%20My%20Shell%20Startup%20Exponentially%20Faster%20%28and%20borked%20my%20machine%29)
+  - [Pinterest](https://pinterest.com/pin/create/bookmarklet/?url=https%3a%2f%2falextheobold.com%2fposts%2fprofiling_zsh%2f&is_video=false&description=Profiling%20ZSH%20-%20How%20I%20Made%20My%20Shell%20Startup%20Exponentially%20Faster%20%28and%20borked%20my%20machine%29)
+  - [Email](mailto:?subject=Profiling%20ZSH%20-%20How%20I%20Made%20My%20Shell%20Startup%20Exponentially%20Faster%20%28and%20borked%20my%20machine%29&body=Check%20out%20this%20article:%20https%3a%2f%2falextheobold.com%2fposts%2fprofiling_zsh%2f)
+  - [Pocket](https://getpocket.com/save?url=https%3a%2f%2falextheobold.com%2fposts%2fprofiling_zsh%2f&title=Profiling%20ZSH%20-%20How%20I%20Made%20My%20Shell%20Startup%20Exponentially%20Faster%20%28and%20borked%20my%20machine%29)
+  - [reddit](http://reddit.com/submit?url=https%3a%2f%2falextheobold.com%2fposts%2fprofiling_zsh%2f&title=Profiling%20ZSH%20-%20How%20I%20Made%20My%20Shell%20Startup%20Exponentially%20Faster%20%28and%20borked%20my%20machine%29)
+  - [Tumblr](http://www.tumblr.com/share/link?url=https%3a%2f%2falextheobold.com%2fposts%2fprofiling_zsh%2f&name=Profiling%20ZSH%20-%20How%20I%20Made%20My%20Shell%20Startup%20Exponentially%20Faster%20%28and%20borked%20my%20machine%29&description=%3cp%3eFlashback%20to%202023.%20I%20was%20working%20with%20Node%20on%20a%20project%20and%20needed%20to%20switch%20between%20versions%20easily.%20A%20quick%20Google%20search%20led%20me%20to%20%3ca%20href%3d%22https%3a%2f%2fgithub.com%2fnvm-sh%2fnvm%22%3envm%3c%2fa%3e%20%28Node%20Version%20Manager%29%0awhich%20promised%20to%20allow%20me%20to%20install%20and%20use%20different%20Node%20versions%20via%20the%20command%20line.%20Perfect.%20Or%20so%20I%20thought.%3c%2fp%3e%0a%3cp%3eI%20installed%20it%20without%20a%20second%20thought%20as%20you%20do%20with%20any%20script%20you%20find%20on%20the%20internet%20and%20I%20was%20away.%20It%20solved%20my%20problem%20and%20I%20was%20able%20to%20easily%20switch%20between%20Node%20versions%20as%20I%20pleased.%0aAfter%20a%20while%20though%20I%20began%20to%20notice%20something.%20Nothing%20major%20but%20something%20felt%20off.%20Slow.%20Not%20as%20snappy%20as%20I%20am%20used%20to.%20At%20first%20I%20couldn%26rsquo%3bt%20pinpoint%20it%20but%20then%20one%20day%20it%20hit%20me.%20Starting%20up%20a%20new%20shell%0awas%20hanging.%20Only%20for%20a%20short%20while%20but%20noticeable%20and%20long%20enough%20just%20to%20throw%20me%20out%20of%20my%20flow.%20As%20someone%20that%20lives%20on%20the%20command%20line%20and%20spawns%20lots%20of%20short%20lived%20shell%20sessions%20via%20tmux%2c%20it%20was%20starting%0ato%20become%20an%20issue.%20What%20had%20started%20as%20a%20solution%2c%20was%20now%20looking%20like%20a%20problem%2c%20but%20at%20this%20stage%20I%20had%20no%20idea%20what%20the%20culprit%20of%20my%20slow%20shell%20startup%20was.%20Without%20having%20looked%20into%20it%2c%20I%20was%20wondering%0awhether%20my%20old%20laptop%20was%20starting%20to%20struggle%2c%20but%20then%20the%20issue%20was%20also%20noticeable%20on%20my%20work%20machine%20which%20was%20vastly%20more%20powerful.%20I%20needed%20to%20figure%20out%20what%20was%20causing%20the%20slowness%20and%20quick%20because%0awhen%20you%20are%20in%20a%20tool%20all%20day%20long%20and%20there%20is%20noticeable%20lag%20and%20latency%2c%20it%20is%20a%20real%20productivity%20killer.%20It%20is%20one%20of%20the%20reasons%20why%20I%20am%20a%20shell%20and%20vim%20user%20in%20the%20first%20place.%20The%20speed%20and%20resource%20usage.%3c%2fp%3e)
+  - [Hacker News](https://news.ycombinator.com/submitlink?u=https%3a%2f%2falextheobold.com%2fposts%2fprofiling_zsh%2f&t=Profiling%20ZSH%20-%20How%20I%20Made%20My%20Shell%20Startup%20Exponentially%20Faster%20%28and%20borked%20my%20machine%29)
+  
+  [Menu](https://alextheobold.com/posts/profiling_zsh/#) [TOC](https://alextheobold.com/posts/profiling_zsh/#) [share](https://alextheobold.com/posts/profiling_zsh/#) [Top](https://alextheobold.com/posts/profiling_zsh/#)
+  --- End Content ---
+
+Profiling zsh and fixing my slow shell - Ellie Huxtable
+  URL: https://ellie.wtf/notes/profiling-zsh/
+  My zsh has been a little slow to start for a while. Never enough to be a significant bother, but always something I've been meaning to get ...
+
+  --- Content ---
+  # Profiling zsh and fixing my slow shell
+  
+  Feb 16, 2024\[ [shell](https://ellie.wtf/tags/shell/), [zsh](https://ellie.wtf/tags/zsh/)\]
+  
+  My zsh has been a _little_ slow to start for a while. Never enough to be a significant bother, but always something I've been meaning to get around to. Thorsten Ball had a great writeup about this [here](https://registerspill.thorstenball.com/p/how-fast-is-your-shell). Maybe I've had weights in my shoes for too long!
+  
+  Recently I've been messing with the `atuin init` command - this is ran at shell startup. I want to ensure it's fast, and we don't cause slow shells for anyone.
+  
+  What I did:
+  
+  1. Whack `zmodload zsh/zprof` at the top of my `.zshrc`
+  2. `zprof` at the bottom of the same file
+  
+  Upon opening a new shell, I get a nice table showing where zsh is spending time
+  
+  ![](https://img.ellie.wtf/i/eeadd0c2efb5f70b219c7d6cfba2bad121ea7d17e3459e661a437369f7e68053.png)
+  
+  It's pretty obvious that `nvm` is to blame here! With a bit of Googling, it seems like I'm among the last to figure this out. Oops.
+  
+  ## Fixing it
+  
+  I do use nvm reasonably often, so let's fix it
+  
+  ### Lazy loading
+  
+  [zsh-lazyload](https://github.com/qoomon/zsh-lazyload) allows you to lazy load commands! That way I only pay the slow nvm penalty when I'm actually using nvm. Not bad.
+  
+  Install the plugin as per the readme (I used zplug), and then
+  
+  ```
+  lazyload nvm -- 'source ~/.nvm/nvm.sh'
+  ```
+  
+  Copy
+  
+  in my .zshrc. Good to go!
+  
+  ### Replacements
+  
+  There are a number of other options nowadays. I've been debating using [asdf](https://asdf-vm.com/) or [mise](https://mise.jdx.dev/), but haven't gotten around to figuring out which works best for me.
+  --- End Content ---
+
+zsh very slow to open. How to debug? - Reddit
+  URL: https://www.reddit.com/r/zsh/comments/kums6q/zsh_very_slow_to_open_how_to_debug/
+  Add zmodload zsh/zprof at the top of your ~/.zshrc and zprof at the bottom. Then you get a profile of the startup time usage.
+
+Profiling zsh startup time - Steven Van Bael
+  URL: https://stevenvanbael.com/profiling-zsh-startup
+  Zsh has a builtin profiler to profile startup time usage. It is called zprof and can be enabled by adding zmodload zsh/zprof to the top and zprof to the bottom.
+
+  --- Content ---
+  # Steven Van Bael
+  
+  ### Freelance software developer
+  
+  ## Profiling zsh startup time
+  
+  Aug 17, 2018
+  
+  I am a heavy `tmux` and `zsh` user and today I noticed that starting a new tmux pane started getting slow. Sometimes it took more than 1 second for my shell in the new pane to become interactive.
+  The only thing a new pane is doing is starting up `zsh`, so zsh initialization was the likely culprit.
+  
+  ## Measuring initial startup time
+  
+  As with any optimization, before we start making changes we want to measure the current performance. The following command shows us how long it takes for zsh to startup and become interactive.
+  
+  ```
+  $ time  zsh -i -c exit
+  zsh -i -c exit  0.67s user 0.06s system 86% cpu 0.842 total
+  ```
+  
+  ## Enabling profiling
+  
+  Zsh has a builtin profiler to profile startup time usage. It is called `zprof` and can be enabled by adding `zmodload zsh/zprof` to the top and `zprof` to the bottom of your `~/.zshrc`.
+  
+  Now when we start up zsh, it will start profiling, execute the rest of `~/.zshrc` and print out the results:
+  
+  ```
+  $ zsh
+  num  calls                time                       self            name
+  -----------------------------------------------------------------------------------
+   1)    1         305.98   305.98   50.52%    305.95   305.95   50.51%  nvm_die_on_prefix
+   2)    1         463.42   463.42   76.51%     82.96    82.96   13.70%  nvm
+   3)    1          79.69    79.69   13.16%     79.53    79.53   13.13%  __kubectl_bash_source
+   4)    1          74.43    74.43   12.29%     74.43    74.43   12.29%  nvm_ensure_version_installed
+   5)    3          30.63    10.21    5.06%     30.63    10.21    5.06%  compaudit
+   6)    1          12.47    12.47    2.06%     12.32    12.32    2.03%  __kops_bash_source
+   7)    1          20.58    20.58    3.40%      7.16     7.16    1.18%  compinit
+   8)    2           3.33     1.66    0.55%      3.33     1.66    0.55%  env_default
+   9)    2           3.24     1.62    0.53%      3.24     1.62    0.53%  grep-flag-available
+  10)    1         465.72   465.72   76.89%      2.30     2.30    0.38%  nvm_auto
+  11)    1           1.31     1.31    0.22%      1.31     1.31    0.22%  colors
+  12)   18           1.03     0.06    0.17%      1.03     0.06    0.17%  compdef
+  13)    1           0.73     0.73    0.12%      0.73     0.73    0.12%  nvm_supports_source_options
+  14)    1           0.27     0.27    0.04%      0.27     0.27    0.04%  is-at-least
+  15)    2           0.31     0.16    0.05%      0.16     0.08    0.03%  complete
+  16)    4           0.11     0.03    0.02%      0.11     0.03    0.02%  is_plugin
+  17)    3           0.11     0.04    0.02%      0.11     0.04    0.02%  nvm_has
+  18)    1           0.06     0.06    0.01%      0.06     0.06    0.01%  start_tmux
+  19)    2           0.05     0.03    0.01%      0.05     0.03    0.01%  bashcompinit
+  20)    1         466.49   466.49   77.02%      0.04     0.04    0.01%  nvm_process_parameters
+  ...
+  ```
+  
+  These results show that almost 90% of startup time is taken by `nvm` (the Nodejs version manager) and bash completion initialization for `kubectl` and `kops` (2 kubernetes tools).
+  
+  I commented out the `nvm` initialization as I don’t use Node anymore. I moved the Kubernetes bash completion initialization inside a `kube()` function that was already there for configuration my kubernetes credentials. This way the bash completions only load lazily when I configure my shell for a specific kubernetes cluster.
+  
+  ```
+  function kube() {
+    if [ $commands[kubectl] ]; then
+        source <(kubectl completion zsh)
+    fi
+    if [ $commands[kops] ]; then
+      source <(kops completion --shell zsh)
+    fi
+    # omitted kubectl configuration code
+  }
+  ```
+  
+  ## Measuring results again
+  
+  After making the changes I ran zsh with the profiler again:
+  
+  ```
+  $ zsh
+  num  calls                time                       self            name
+  -----------------------------------------------------------------------------------
+   1)    3          22.71     7.57   60.31%     22.71     7.57   60.31%  compaudit
+   2)    1          17.40    17.40   46.20%      6.85     6.85   18.20%  compinit
+   3)    2           3.14     1.57    8.34%      3.14     1.57    8.34%  grep-flag-available
+   4)    2           2.73     1.36    7.24%      2.73     1.36    7.24%  env_default
+   5)    1           0.96     0.96    2.55%      0.96     0.96    2.55%  colors
+   6)   16           0.89     0.06    2.37%      0.89     0.06    2.37%  compdef
+   7)    1           0.22     0.22    0.58%      0.22     0.22    0.58%  is-at-least
+   8)    4           0.08     0.02    0.22%      0.08     0.02    0.22%  is_plugin
+   9)    1           0.07     0.07    0.19%      0.07     0.07    0.19%  start_tmux
+  ```
+  
+  And with profiling disabled to measure the result of our optimizations
+  
+  ```
+  $ time  zsh -i -c exit
+  zsh -i -c exit  0.04s user 0.03s system 70% cpu 0.108 total
+  ```
+  
+  Now it starts up in 108ms instead of 842ms which is a noticeable improvement when opening new tmux panes.
+  
+  The largest offenders now seem to be `compaudit` and `compinit` which need 22ms and 17ms to complete. I did a Google search to find solutions for improving these but I could not find anything that was worth the effort. For now +- 100ms startup time for Zsh is `good enough` and I’m going to call it a day.
+  --- End Content ---

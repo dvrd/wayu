@@ -1,0 +1,1275 @@
+Loading speed matters / how I optimized my zsh shell to ... - Reddit
+  URL: https://www.reddit.com/r/zsh/comments/1kjferw/loading_speed_matters_how_i_optimized_my_zsh/
+  My shell loaded way too slow so I spent an hour to fix it, and 5 more hours to write a blog post about it, and the importance of maintaining your tools.
+
+Improving Zsh Performance | Dave Dribin's Blog
+  URL: https://www.dribin.org/dave/blog/archives/2024/01/01/zsh-performance/
+  This gives you some tips to speed up your Zsh config. Bringing startup time and especially command lag down from hundreds of milliseconds will make your shell ...
+
+  --- Content ---
+  [Zsh](https://www.zsh.org/) itself is a speedy shell, but it’s all too easy to blindly add stuff to its startup scripts and prompt that drastically slow it down. I’ve been using Zsh since around 2002 (narrator: that’s over 20 years ago, which is making me feel really old!), and my Zsh config has accumulated a lot of cruft. A few years back, there was a very noticeable delay when opening a new terminal tab where I’d stare at a blank screen for a bit. And worse, typing commands felt very sluggish even when the commands executed quickly.
+  
+  Once I started digging into it, I found some great optimizations to make it fast, without losing any functionality. In fact, by the time I was done, I had a _much better_ prompt than I previously had, yet it was orders of magnitude faster.
+  
+  If you don’t want to read the whole post, the single best thing you can do is to use [Powerlevel10k](https://github.com/romkatv/powerlevel10k). And the next best thing is to avoid using `eval $(some other command)`, if possible. But read on for the details.
+  
+  ## Measuring Performance
+  
+  Before going into the changes I made, I need to talk about taking quantitative measurements. As with all optimizations, taking measurements is the first step. How do you measure the speed, and how do you know if you’ve improved anything? Fortunately, this is very easy with [`zsh-bench`](https://github.com/romkatv/zsh-bench). Once you clone the `git` repository, you run the `zsh-bench` command, wait a bit, and it’ll print out some numbers. Here’s what mine first looked like:
+  
+  ```
+  creates_tty=0
+  has_compsys=1
+  has_syntax_highlighting=0
+  has_autosuggestions=0
+  has_git_prompt=1
+  first_prompt_lag_ms=446.035
+  first_command_lag_ms=451.599
+  command_lag_ms=328.553
+  input_lag_ms=0.606
+  exit_time_ms=99.853
+  ```
+  
+  There’s a lot here, but there are two sets of important numbers. The first set is the shell startup time:
+  
+  ```
+  first_prompt_lag_ms=446.035
+  first_command_lag_ms=451.599
+  ```
+  
+  `first_prompt_lag_ms` is the time until you see a prompt. Basically, how long are you staring at a blank screen. This is almost a half a second! `first_command_lag_ms` is how long before you can actually type a command. In this case, they are pretty much the same.
+  
+  The second set of important numbers is:
+  
+  ```
+  command_lag_ms=328.553
+  input_lag_ms=0.606
+  ```
+  
+  `command_lag_ms` is probably the most important number, which represents the time between one command completing and getting a prompt to start typing another command. You see this delay for _every_ command you type, but also in the simplest case, when you just hit `Return` and wait until you get another prompt. 328ms here is very noticeable. `input_lag_ms` is the time in between each keystroke.
+  
+  Both `first_prompt_lag_ms` and `command_lag_ms` were noticeably slow for me. Hundreds of milliseconds is easily perceptible. The `zsh-bench``README` has numbers for “indistinguishable from zero”. For `first_prompt_lag_ms`, it is 50ms, and for `command_lag_ms`, it is 10ms. Both of my numbers were an order of magnitude above this at 446ms and 328ms, respectively
+  
+  After making some changes, I was able to drastically improve these numbers:
+  
+  ```
+  first_prompt_lag_ms=24.802
+  first_command_lag_ms=205.137
+  
+  command_lag_ms=15.747
+  input_lag_ms=2.148
+  ```
+  
+  These are both very close to the “indistinguishable from zero” goals. And these numbers were on an Intel iMac Pro. On my shiny new M3 Max MacBook Pro, they clock in about twice as fast:
+  
+  ```
+  first_prompt_lag_ms=16.288
+  first_command_lag_ms=100.066
+  
+  command_lag_ms=7.247
+  input_lag_ms=1.318
+  ```
+  
+  Both numbers are now well under the “indistinguishable from zero” goals. Let’s dig into how I made this improvement.
+  
+  ## Profiling
+  
+  With a way to measure “what is slow?” and to measure if I was making things better, I needed a way to find out what part of my Zsh config was slow. It’s grown to hundreds of lines spread over many files, so it’s not possible to just intuit what is slow. Here are a number of resources I used:
+  
+  - [Profiling ZSH startup time](https://kevin.burke.dev/kevin/profiling-zsh-startup-time/), by Kevin Burke
+  - [Speeding up my ZSH load time](https://carlosbecker.com/posts/speeding-up-zsh/), by Carlos Becker
+  - [How to profile your zsh startup time](https://esham.io/2018/02/zsh-profiling), by Benjamin Esham
+  
+  I found Kevin Burke’s page most helpful, and it boils down to adding a bit of code at the start of your `~/.zshenv`, as that is the [first file in your home directory to run](https://shreevatsa.wordpress.com/2008/03/30/zshbash-startup-files-loading-order-bashrc-zshrc-etc/), for interactive shells:
+  
+  ```
+  # Profiling via:
+  # https://kev.inburke.com/kevin/profiling-zsh-startup-time/
+  : "${PROFILE_STARTUP:=false}"
+  : "${PROFILE_ALL:=false}"
+  # Run this to get a profile trace and exit: time zsh -i -c echo
+  # Or: time PROFILE_STARTUP=true /bin/zsh -i --login -c echo
+  if [[ "$PROFILE_STARTUP" == true || "$PROFILE_ALL" == true ]]; then
+      # http://zsh.sourceforge.net/Doc/Release/Prompt-Expansion.html
+      PS4=$'%D{%H:%M:%S.%.} %N:%i> '
+      #zmodload zsh/datetime
+      #PS4='+$EPOCHREALTIME %N:%i> '
+      exec 3>&2 2>/tmp/zsh_profile.$$
+      setopt xtrace prompt_subst
+  fi
+  # "unsetopt xtrace" is at the end of ~/.zshrc
+  ```
+  
+  This produces a file in named `/tmp/zsh_profile.<pid>` which contains every command run, along with a timestamp, down to the millisecond. From this, you can infer which commands are slow. Here’s an example:
+  
+  ```
+  00:24:09.378 redacted:7> computer_name=
+  00:24:09.379 redacted:7> /usr/sbin/scutil --get ComputerName
+  00:24:09.378 redacted:7> computer_name=guts
+  00:24:09.385 redacted:29> redacted
+  ```
+  
+  It’s a bit convoluted, but you can see this `scutil` command takes 7ms to run: `09.385 - 09.378`. While this is not a lot, this is basically death by a thousand cuts, and you have to identify all these cases where you bleed out ~7ms or more.
+  
+  ## Making it Faster
+  
+  Command lag was my priority, and the biggest slowdown, by far, was my [Git](https://git-scm.com/) status prompt. I was using the `git-prompt.sh` file found in the Git repository’s [`contrib/` directory](https://github.com/git/git/blob/master/contrib/completion/git-prompt.sh). This runs multiple `git` commands and it turns out this gets _really_ slow for large repositories.
+  
+  I did a lot of searching for how to make my Git prompt faster, and eventually I found [`gitstatus`](https://github.com/romkatv/gitstatus). This project is truly amazing. The author, [Roman](https://github.com/romkatv), is obsessed with performance. He also wrote `zsh-bench`. `gitstatus` uses a combination of tricks like async prompt updates and avoiding executing a separate executable by using a deamon to drastically speed up `git status`.
+  
+  The easiest way to use `gitstatus` is to use [Powerlevel10k](https://github.com/romkatv/powerlevel10k), _also_ written by Roman. I liked how my prompt was setup, and was a little reluctant to switch, but I’m glad I did. I won’t go into the details on my Powerlevel10k setup, but suffice to say, the speedup was impressive, and the benefits of Powerlevel10k don’t stop with Git status. Performance is the headlining feature of Powerlevel10k, and it shows.
+  
+  It also turns out executing commands, any command, adds noticeable delay. There’s fixed overhead in spawning a process, so you want to avoid this, where possible.
+  
+  I’m a big fan of [`direnv`](https://direnv.net/), but the way it works requires running a command as a pre-command hook, so it directly affects command lag. `direnv` adds about 5ms of command lag on my M3 Max MacBook Pro, but for me, it’s worth it. The total command lag of 8ms is still imperceptible. I wish there was a faster alternative which used the same tricks as `gitstatus`, but I don’t know of one.
+  
+  While I am able to live with the `direnv` command lag, executing commands is more of an issue for shell startup time. For example, [Homebrew](https://brew.sh/) says you should add this to your shell startup:
+  
+  ```
+  eval $(/opt/homebrew/bin/brew shellenv)
+  ```
+  
+  All this does is set some environment variables:
+  
+  ```
+  > brew shellenv
+  export HOMEBREW_PREFIX="/opt/homebrew";
+  export HOMEBREW_CELLAR="/opt/homebrew/Cellar";
+  export HOMEBREW_REPOSITORY="/opt/homebrew";
+  export PATH="/opt/homebrew/bin:/opt/homebrew/sbin${PATH+:$PATH}";
+  export MANPATH="/opt/homebrew/share/man${MANPATH+:$MANPATH}:";
+  export INFOPATH="/opt/homebrew/share/info:${INFOPATH:-}";
+  ```
+  
+  However, this executes the command `brew`, just to set these environment variables. `brew` is written in Ruby, so this also has to startup the full Ruby runtime environment. The values of the environment variables almost never change. It’s _much_ faster to just paste the output of `brew shellenv` directly into your `.zshrc`.
+  
+  Similarly, [`rbenv`](https://github.com/rbenv/rbenv) recommends you `eval` the output of `rbenv init - zsh`:
+  
+  ```
+  echo 'eval "$(~/.rbenv/bin/rbenv init - zsh)"' >> ~/.zshrc
+  ```
+  
+  Again, this has to run an executable, and again, it is much faster to just paste the output into your `.zshrc`.
+  
+  Another way to speed up startup is to run some stuff asynchronously and defer it out of the startup “hot path”. [`zsh-defer`](https://github.com/romkatv/zsh-defer) (also written by Roman) is one such way to do this. But Powerlevel10k has an Instant Prompt feature which builds upon this. By avoiding running commands and using Instant Prompt, my startup time is now quite fast.
+  
+  ## Conclusion
+  
+  Hopefully this gives you some tips to speed up your Zsh config. Bringing startup time and especially command lag down from hundreds of milliseconds will make your shell feel _much_ faster. Also, use Powerlevel10k. Between its Git prompt, Instant Prompt, and deferred startup features, it’s incredible.
+  --- End Content ---
+
+Speeding Up My ZSH Shell - Scott Spence
+  URL: https://scottspence.com/posts/speeding-up-my-zsh-shell
+  My ZSH shell was taking ages to load. When I say ages, more like 5+ seconds every time I opened a new terminal, that sort of thing can add up.
+
+  --- Content ---
+  [Skip Navigation](https://scottspence.com/posts/speeding-up-my-zsh-shell#main-content)
+  
+  [Scott Spence](https://scottspence.com/)
+  
+  🐱Choose a theme:Select a themeacidaquaautumnblackbumblebeebusinesscmykcoffeecorporatecupcakecyberpunkdarkdimdraculaemeraldfantasygardenhalloweenlemonadelightlofiluxurynightnordpastelretrosunsetsynthwavetealixvalentinewinterwireframe
+  
+  [Posts](https://scottspence.com/posts) [Tags](https://scottspence.com/tags) [Speaking](https://scottspence.com/speaking) [Contact](https://scottspence.com/contact)
+  
+  # Speeding Up My ZSH Shell ⚡
+  
+  January 31, 2025 • 5 min read
+  
+  [zsh](https://scottspence.com/tags/zsh) [guide](https://scottspence.com/tags/guide) [notes](https://scottspence.com/tags/notes)
+  
+  [5 people viewing now](https://scottspence.com/stats)
+  
+  Hey! Thanks for stopping by! Just a word of warning, this post
+  is 1 year old, . If there's technical information in here it's more than likely out
+  of date.
+  
+  Super quick one I want to document here! I got myself on a side quest,
+  again! No biggie, my ZSH shell was taking ages to load. When I say
+  ages, more like 5+ seconds every time I opened a new terminal, that
+  sort of thing can add up. This is just something I’ve lived with over
+  the years, nothing has prompted this other than me wondering why it’s
+  slow, then searching for how to profile it.
+  
+  ## [How to profile your ZSH](https://scottspence.com/posts/speeding-up-my-zsh-shell\#how-to-profile-your-zsh)
+  
+  So, what’s actually slowing things down? Zsh comes with this super
+  handy profiling tool called `zprof`. Here’s how to use it:
+  
+  ```bash
+  # Add this to the TOP of your .zshrc
+  zmodload zsh/zprof
+  
+  # Add this to the BOTTOM of your .zshrc
+  zprof
+  ```
+  
+  This give a load of output, but it’s a good starting point.
+  
+  I had no idea this existed so massive shout out to [Jacek’s Blog](https://blog.askesis.pl/post/2017/04/how-to-debug-zsh-startup-time.html) for this tip!
+  
+  ## [Ok, so what was making my shell slow?](https://scottspence.com/posts/speeding-up-my-zsh-shell\#ok-so-what-was-making-my-shell-slow)
+  
+  When I ran the profiler, here’s what I found:
+  
+  ```bash
+  1) _omz_source        55.73%   # Oh-My-Zsh loading everything
+  2) compinit           30.76%   # Completion system being slow
+  3) syntax-highlight   14.63%   # Making things pretty, but slow
+  ```
+  
+  So, Oh-My-Zsh was taking up over half the startup time!
+  
+  ## [Oh-My-Zsh (55.73% → ~20%)](https://scottspence.com/posts/speeding-up-my-zsh-shell\#oh-my-zsh-5573--20)
+  
+  According to [JonLuca’s research](https://blog.jonlu.ca/posts/speeding-up-zsh),
+  this can cut the load time in half! The auto-updates are nice, but I’d
+  rather do them manually when I want to.
+  
+  ```bash
+  # Top of .zshrc
+  DISABLE_AUTO_UPDATE="true"
+  DISABLE_MAGIC_FUNCTIONS="true"
+  DISABLE_COMPFIX="true"
+  ```
+  
+  ## [Fixing the completion system (30.76% → ~10%)](https://scottspence.com/posts/speeding-up-my-zsh-shell\#fixing-the-completion-system-3076--10)
+  
+  The completion system (`compinit`) is zsh’s built-in command
+  completion - it’s what shows possible completions when you hit tab.
+  This is a neat trick I found. Instead of rebuilding the completion
+  cache every time, we only do it once a day:
+  
+  ```bash
+  # Smarter completion initialization
+  autoload -Uz compinit
+  if [ "$(date +'%j')" != "$(stat -f '%Sm' -t '%j' ~/.zcompdump 2>/dev/null)" ]; then
+      compinit
+  else
+      compinit -C
+  fi
+  ```
+  
+  This comes from [a popular GitHub gist](https://gist.github.com/ctechols/ca1035271ad134841284) -
+  cheers for sharing this one!
+  
+  ## [Making Spaceship Prompt Faster (22.47% → ~5%)](https://scottspence.com/posts/speeding-up-my-zsh-shell\#making-spaceship-prompt-faster-2247--5)
+  
+  I love Spaceship prompt (been using it for years!), but it was being a
+  bit of a resource hog. Here’s how to speed it up:
+  
+  ```bash
+  SPACESHIP_PROMPT_ASYNC=true
+  SPACESHIP_PROMPT_ADD_NEWLINE=true
+  SPACESHIP_CHAR_SYMBOL="⚡"
+  
+  # Only load what you actually use
+  SPACESHIP_PROMPT_ORDER=(
+      time
+      user
+      dir
+      git
+      line_sep
+      char
+  )
+  ```
+  
+  The Spaceship team actually [recommended this approach](https://github.com/spaceship-prompt/spaceship-prompt/issues/161) -
+  only load what you need!
+  
+  ## [Plugin management](https://scottspence.com/posts/speeding-up-my-zsh-shell\#plugin-management)
+  
+  I have very few plugins, here’s how I organize my plugins now:
+  
+  ```bash
+  plugins=(
+      git
+      zsh-autosuggestions
+      zsh-syntax-highlighting  # Always last!
+  )
+  ```
+  
+  The order is super important here! According to the [zsh-syntax-highlighting docs](https://github.com/zsh-users/zsh-syntax-highlighting#why-must-zsh-syntax-highlightingzsh-be-sourced-at-the-end-of-the-zshrc-file),
+  it needs to be last to work properly.
+  
+  For autosuggestions, I added these performance tweaks:
+  
+  ```bash
+  ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE="20"
+  ZSH_AUTOSUGGEST_USE_ASYNC=1
+  ```
+  
+  ## [The results? FAST! ⚡](https://scottspence.com/posts/speeding-up-my-zsh-shell\#the-results-fast-)
+  
+  Check this out:
+  
+  | Component | Before | After |
+  | --- | --- | --- |
+  | Oh-My-Zsh | 55.73% | ~20% |
+  | Completions | 30.76% | ~10% |
+  | Syntax Highlight | 14.63% | ~8% |
+  | Total Time | ~5s | ~0.5s |
+  
+  That’s like a 10x improvement! My terminal now opens in the blink of
+  an eye!
+  
+  ## [Want to try this yourself?](https://scottspence.com/posts/speeding-up-my-zsh-shell\#want-to-try-this-yourself)
+  
+  1. Add the profiling code (I showed you earlier) to see what’s slow
+  
+  2. Try the fixes one at a time - that way you know what’s actually
+  helping
+  
+  3. Keep what works for you - everyone’s setup is different!
+  
+  
+  ## [Before and after](https://scottspence.com/posts/speeding-up-my-zsh-shell\#before-and-after)
+  
+  For comparison here’s a before and after configs:
+  
+  ```bash
+  # Path to your Oh My Zsh installation.
+  export ZSH="$HOME/.oh-my-zsh"
+  
+  # See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
+  ZSH_THEME="spaceship"
+  
+  # spaceship config
+  SPACESHIP_PROMPT_ASYNC=false
+  SPACESHIP_PROMPT_ADD_NEWLINE="true"
+  SPACESHIP_CHAR_SYMBOL="⚡"
+  
+  # Which plugins would you like to load?
+  # Standard plugins can be found in $ZSH/plugins/
+  # Custom plugins may be added to $ZSH_CUSTOM/plugins/
+  # Example format: plugins=(rails git textmate ruby lighthouse)
+  # Add wisely, as too many plugins slow down shell startup.
+  plugins=(
+          git
+          zsh-syntax-highlighting
+          zsh-autosuggestions
+  )
+  
+  source $ZSH/oh-my-zsh.sh
+  
+  # User configuration
+  
+  # auto suggest
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#663399,standout"
+  
+  #-------- Global Alias {{{
+  globalias() {
+    if [[ $LBUFFER =~ '[a-zA-Z0-9]+$' ]]; then
+      zle _expand_alias
+      zle expand-word
+    fi
+    zle self-insert
+  }
+  zle -N globalias
+  bindkey " " globalias                 # space key to expand globalalias
+  # bindkey "^ " magic-space            # control-space to bypass completion
+  bindkey "^[[Z" magic-space            # shift-tab to bypass completion\
+  bindkey -M isearch " " magic-space    # normal space during searches\
+  . ~/.zsh_aliases\
+  #}}}\
+  \
+  # Start SSH agent if not running\
+  if [ -z "$SSH_AUTH_SOCK" ]; then\
+     eval "$(ssh-agent -s)" > /dev/null\
+     ssh-add ~/.ssh/id_github_sign_and_auth 2>/dev/null\
+  fi\
+  \
+  # volta\
+  export VOLTA_HOME="$HOME/.volta"\
+  export PATH="$VOLTA_HOME/bin:$PATH"\
+  # volta end\
+  \
+  # bun completions\
+  #[ -s "/home/scott/.bun/_bun" ] && source "/home/scott/.bun/_bun"\
+  \
+  # Turso\
+  export PATH="$PATH:/home/scott/.turso"\
+  ```\
+  \
+  With all the optimisations in place, here’s the after config:\
+  \
+  ```bash\
+  # Performance optimizations\
+  DISABLE_AUTO_UPDATE="true"\
+  DISABLE_MAGIC_FUNCTIONS="true"\
+  DISABLE_COMPFIX="true"\
+  \
+  # Cache completions aggressively\
+  autoload -Uz compinit\
+  if [ "$(date +'%j')" != "$(stat -f '%Sm' -t '%j' ~/.zcompdump 2>/dev/null)" ]; then\
+      compinit\
+  else\
+      compinit -C\
+  fi\
+  \
+  # Oh My Zsh path\
+  export ZSH="$HOME/.oh-my-zsh"\
+  \
+  # Theme config - fixed syntax\
+  ZSH_THEME="spaceship"\
+  \
+  # Spaceship settings (fixed syntax)\
+  SPACESHIP_PROMPT_ASYNC=true\
+  SPACESHIP_PROMPT_ADD_NEWLINE=true\
+  SPACESHIP_CHAR_SYMBOL="⚡"\
+  \
+  # Minimal spaceship sections for performance\
+  SPACESHIP_PROMPT_ORDER=(\
+    time\
+    user\
+    dir\
+    git\
+    line_sep\
+    char\
+  )\
+  \
+  # Carefully ordered plugins (syntax highlighting must be last)\
+  plugins=(\
+    git\
+    zsh-autosuggestions\
+    zsh-syntax-highlighting\
+  )\
+  \
+  # Source Oh My Zsh\
+  source $ZSH/oh-my-zsh.sh\
+  \
+  # Autosuggest settings\
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#663399,standout"\
+  ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE="20"\
+  ZSH_AUTOSUGGEST_USE_ASYNC=1\
+  \
+  # Alias expansion function\
+  globalias() {\
+     if [[ $LBUFFER =~ '[a-zA-Z0-9]+$' ]]; then\
+         zle _expand_alias\
+         zle expand-word\
+     fi\
+     zle self-insert\
+  }\
+  zle -N globalias\
+  bindkey " " globalias\
+  bindkey "^[[Z" magic-space\
+  bindkey -M isearch " " magic-space\
+  \
+  # Lazy load SSH agent\
+  function _load_ssh_agent() {\
+      if [ -z "$SSH_AUTH_SOCK" ]; then\
+          eval "$(ssh-agent -s)" > /dev/null\
+          ssh-add ~/.ssh/id_github_sign_and_auth 2>/dev/null\
+      fi\
+  }\
+  autoload -U add-zsh-hook\
+  add-zsh-hook precmd _load_ssh_agent\
+  \
+  # Path configurations\
+  export VOLTA_HOME="$HOME/.volta"\
+  PATH="$VOLTA_HOME/bin:$PATH:/home/scott/.turso"\
+  export PATH\
+  \
+  # Source aliases last\
+  [ -f ~/.zsh_aliases ] && source ~/.zsh_aliases\
+  ```\
+  \
+  ## [Other things](https://scottspence.com/posts/speeding-up-my-zsh-shell\#other-things)\
+  \
+  As per usual when I do this sort of thing I alway search around for\
+  alternitives, I tried [Starship](https://starship.rs/) and to be\
+  honest, I’m pretty happy with zsh, what it was for me (when trying it)\
+  is I don’t use `cd` I’m so used to just entering the directory name I\
+  was pretty put off straight away. 😅\
+  \
+  There were other things out there, like:\
+  \
+  - Pure prompt (super fast alternative to Spaceship)\
+  - [fast-syntax-highlighting](https://github.com/zdharma-continuum/fast-syntax-highlighting) (potentially faster than regular syntax highlighting, though the\
+  default is pretty quick already!)\
+  - Zinit (a faster alternative to Oh-My-Zsh if you want to try\
+  something different)\
+  \
+  But, honestly? If you’re happy with your current setup (and I am) and\
+  it’s fast enough, stick with it! This was me going on a little side\
+  quest because I was curious. My curiosity was rewarded with a much\
+  faster shell!\
+  \
+  That’s it! Hope this helps if you were having similar issues!\
+  \
+  **129**\
+  \
+  **128**\
+  \
+  👍\
+  \
+  **39**\
+  \
+  **38**\
+  \
+  ❤️\
+  \
+  **9**\
+  \
+  **8**\
+  \
+  💩\
+  \
+  **38**\
+  \
+  **37**\
+  \
+  🎉\
+  \
+  There's a [reactions leaderboard](https://scottspence.com/reactions-leaderboard) you can check out too.\
+  \
+  [Useful? Share it on Bluesky.](https://bsky.app/intent/compose?text=Check%20out%20this%20post%20from%20@scottspence.dev,%20Speeding%20Up%20My%20ZSH%20Shell%20%E2%9A%A1:%20https://scottspence.com/posts/speeding-up-my-zsh-shell)\
+  \
+  [✨ View the stats for this post ✨](https://scottspence.com/stats/speeding-up-my-zsh-shell)\
+  \
+  Take a look at some popular content from me... Views todayViews this monthViews this year\
+  \
+  Related posts...\
+  \
+  ### Sign up for the newsletter\
+  \
+  Want to keep up to date with what I'm working on?\
+  \
+  Join 493\
+  other developers and sign up for the newsletter.\
+  \
+  Your Email\
+  \
+  Checking your Browser…\
+  \
+  Verifying...\
+  \
+  Stuck? [Troubleshoot](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/ittce/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  Success!\
+  \
+  Verification failed\
+  \
+  [Troubleshoot](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/ittce/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  Verification expired\
+  \
+  [Refresh](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/ittce/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  Verification expired\
+  \
+  [Refresh](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/ittce/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  [Troubleshoot](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/g/turnstile/f/ov2/av0/rch/ittce/0x4AAAAAAB7B-TdXwl1NxA3R/auto/fbE/new/flexible?lang=auto#refresh)\
+  \
+  [Privacy](https://www.cloudflare.com/privacypolicy/) • [Help](https://challenges.cloudflare.com/cdn-cgi/challenge-platform/help)\
+  \
+  I care about the protection of your data. Read the [Privacy Policy](https://scottspence.com/privacy-policy) for more info.\
+  \
+  Back to top\
+  \
+  Copyright © 2017 - 2026 - All rights\
+  reserved\
+  Scott Spence
+  --- End Content ---
+
+Speeding Up My Zsh Startup by 81%: From 640ms to 120ms
+  URL: https://wicksipedia.com/blog/speeding-up-zsh-startup/
+  My Zsh shell took 640ms to start. After profiling with zprof and migrating from Antigen to Zinit, I cut it down to 120ms.
+
+  --- Content ---
+  > `esc`
+  
+  Navigate
+  
+  [→Blog /blog](https://wicksipedia.com/blog) [→Tags /tags](https://wicksipedia.com/tags) [→About /about](https://wicksipedia.com/about) [→Archives /archives](https://wicksipedia.com/archives) [→Search /search](https://wicksipedia.com/search)
+  
+  Results
+  
+  // DEV MODE
+  
+  Run `bun run build` first to enable search.
+  
+  searching...
+  
+  no results found
+  
+  `↑`  `↓` navigate`↵` open`esc` close
+  
+  [Skip to content](https://wicksipedia.com/blog/speeding-up-zsh-startup/#main-content)
+  
+  ![Speeding Up My Zsh Startup by 81%: From 640ms to 120ms](https://wicksipedia.com/_astro/cover.CIHwopf9_Zri1i8.webp)
+  
+  Dispatch
+  
+  # Speeding Up My Zsh Startup by 81%: From 640ms to 120ms
+  
+  My Zsh shell took 640ms to start. After profiling with zprof and migrating from Antigen to Zinit, I cut it down to 120ms. Here is exactly how.
+  
+  February 16, 2026
+  
+  - [MacOS](https://wicksipedia.com/tags/macos)
+  - [Zsh](https://wicksipedia.com/tags/zsh)
+  - [productivity](https://wicksipedia.com/tags/productivity)
+  - [shell](https://wicksipedia.com/tags/shell)
+  - [developer-setup](https://wicksipedia.com/tags/developer-setup)
+  - [terminal](https://wicksipedia.com/tags/terminal)
+  
+  [Go back](https://wicksipedia.com/)
+  
+  ## The Problem [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#the-problem)
+  
+  My terminal was slow. Really slow. Every time I opened a new shell, there was a noticeable lag before my prompt appeared. Admittedly this was a papercut, but it made me feel like my laptop was slowing down. I don’t really want to upgrade right now, and I don’t really want to go scorched earth and wipe my machine to start again to get a fresh, fast terminal. So I decided to optimize my existing setup.
+  
+  I jumped straight into fix-it mode. Let’s start with `zoxide`, that must slow down things, right? So I disabled it, which promptly broke tab completion with errors like `__zoxide_z_complete: command not found`. Great, now I have broken tab completion _and_ a slow terminal. Fantastic.
+  
+  I fell into the classic trap of “ready, fire, aim”. I made changes without measuring first.
+  
+  So I needed to do what I should’ve from the start, I added profiling to figure out where all that time was actually going. 🤦
+  
+  ```
+  # Add to the top of ~/.zshrc
+  zmodload zsh/zprof
+  
+  # Add to the bottom
+  zprofCopy
+  ```
+  
+  As usual, the results were not what I expected.
+  
+  ## The Diagnosis [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#the-diagnosis)
+  
+  **Startup time: 640ms** 🐌
+  
+  Here’s what `zprof` revealed:
+  
+  | Function | Time (ms) | % of Total | Issue |
+  | --- | --- | --- | --- |
+  | `compinit` | 444 | 78.87% | **Called twice!** |
+  | `compdump` | 181 | 32.20% | Writing completion cache |
+  | `compdef` | 123 | 21.78% | 1,633 calls! |
+  | `antigen` | 317 | 56.32% | Slow plugin manager |
+  | `_omz_source` | 53 | 9.33% | Loading Oh-My-Zsh plugins |
+  
+  That’s nice, but what does it actually mean? I had no idea what `compinit` or `compdef` were doing, and I had no idea why they were taking so long. I just knew that `zoxide` was the last thing I added, so it must be the problem, right?
+  
+  ## A Different Kind of Pair Programming [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#a-different-kind-of-pair-programming)
+  
+  I usually use GitHub Copilot for my day-to-day coding, but this week I decided to try out Claude Code for this optimization problem. The difference was notable.
+  
+  I pasted my `zprof` output into Claude and asked it to analyze the results. Within seconds, it identified the major culprits, and `zoxide` wasn’t one of them.
+  
+  1. `compinit` was being called twice—once by Antigen, once by Oh-My-Zsh
+  2. The plugin manager itself was eating 300ms+
+  3. I had previously put in a quick fix for some plugins not working, and the full Oh-My-Zsh was loading when I only needed a handful of features
+  4. I was loading a built in and external fzf plugin
+  
+  > Two minutes with `zprof` and a dash of AI would have saved me 20 minutes of wrong guesses. Measure first, tinker second.
+  
+  It suggested migrating from Antigen to Zinit. Ironically, I’d tried Zinit a few years ago when I first set up [my terminal with Antigen](https://wicksipedia.com/blog/terminal-setup) but couldn’t get it configured quite right so I parked it. Now with the power of AI, this would be different.
+  
+  Here’s what made it valuable: **this wasn’t just handing off the problem**. I asked questions throughout:
+  
+  - “Why is compinit being called twice?”
+  - “What’s the difference between these fzf plugins?”
+  - “Can we keep the OMZ git plugin features I use?”
+  
+  We debugged the ZLE warnings together, and I understood each change we made. It felt more like pair programming than autocomplete — and I ended up with a configuration I still understand.
+  
+  ## What Actually Worked [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#what-actually-worked)
+  
+  ### Step 1: Replace Antigen with Zinit [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#step-1-replace-antigen-with-zinit)
+  
+  Antigen is convenient but slow. [Zinit](https://github.com/zdharma-continuum/zinit) is a modern, faster alternative. This was a great suggestion from Claude, and it did a great job of converting my setup in a couple of minutes with only a few back-and-forths to fix edge cases.
+  
+  ```
+  # Zinit installation (faster than antigen)
+  ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
+  [ ! -d $ZINIT_HOME ] && mkdir -p "$(dirname $ZINIT_HOME)"
+  [ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
+  source "${ZINIT_HOME}/zinit.zsh"Copy
+  ```
+  
+  **Savings: ~200ms**
+  
+  ### Step 2: Load Only What You Need from Oh-My-Zsh [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#step-2-load-only-what-you-need-from-oh-my-zsh)
+  
+  Instead of loading the entire Oh-My-Zsh framework, I cherry-picked just the libraries and plugins I actually use. I had a list of plugins at the top of my `~/.zshrc` that I wanted to keep, so I made sure to include those. I wasn’t aware that I had added a call in the prompt that caused the entire framework to load.
+  
+  ```
+  # Load OMZ libs we need (not the whole thing)
+  zinit snippet OMZL::git.zsh
+  zinit snippet OMZL::theme-and-appearance.zsh
+  zinit snippet OMZL::async_prompt.zsh  # Required by git plugin
+  
+  # Load OMZ plugins
+  zinit snippet OMZP::git
+  zinit snippet OMZP::brew
+  zinit snippet OMZP::direnv
+  zinit snippet OMZP::eza
+  # Removed OMZP::fzf - using fzf-tab insteadCopy
+  ```
+  
+  This eliminated the overhead of loading unused OMZ plugins and prevented the double `compinit` call.
+  
+  **Savings: ~150ms**
+  
+  ### Step 3: Loading 3rd Party Plugins [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#step-3-loading-3rd-party-plugins)
+  
+  ```
+  # Fast syntax highlighting and autosuggestions
+  zinit light zsh-users/zsh-syntax-highlighting
+  zinit light zsh-users/zsh-autosuggestions
+  
+  # fzf-tab for better tab completion
+  zinit light Aloxaf/fzf-tab
+  # Don't load fzf-tab-source - it has bugs and we don't need itCopy
+  ```
+  
+  **Key learning**: The OMZP::fzf plugin was causing harmless but annoying ZLE warnings. Since we’re using the superior `fzf-tab` plugin, we don’t need it.
+  
+  **Savings: ~50ms + eliminated warnings**
+  
+  ### Step 4: Load Completions Once [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#step-4-load-completions-once)
+  
+  Instead of letting multiple plugins call `compinit`, do it once explicitly:
+  
+  ```
+  # Load completions efficiently
+  autoload -Uz compinit
+  compinitCopy
+  ```
+  
+  **Savings: ~180ms (from eliminating duplicate call)**
+  
+  ### Step 5: Initialize Tools Properly [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#step-5-initialize-tools-properly)
+  
+  Re-enable zoxide (it wasn’t the problem after all!):
+  
+  ```
+  # Initialize tools
+  eval "$(starship init zsh)"
+  eval "$(fnm env --use-on-cd --shell zsh --version-file-strategy=recursive)"
+  eval "$(zoxide init zsh)"Copy
+  ```
+  
+  ## The Results [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#the-results)
+  
+  **New startup time: 120ms** 🚀
+  
+  | Metric | Before | After | Improvement |
+  | --- | --- | --- | --- |
+  | Plugin manager | Antigen (slow) | Zinit (fast) | ✅ Upgraded |
+  | ZLE Warnings | Multiple | None | ✅ Fixed |
+  | `compinit` calls | 2 | 1 | ✅ Fixed |
+  | Startup time | 640ms | 120ms | **81% faster** |
+  
+  ### New `zprof` breakdown: [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#new-zprof-breakdown)
+  
+  ```
+  num  calls                time                       self            name
+  -----------------------------------------------------------------------------------
+   1)  508          16.88     0.03   19.72%     14.13     0.03   16.50%  :zinit-tmp-subst-alias
+   2)    2          11.05     5.53   12.91%     11.05     5.53   12.91%  compaudit
+   3)    7          12.58     1.80   14.70%      9.23     1.32   10.78%  .zinit-load-snippet
+   4)    1          19.04    19.04   22.24%      7.99     7.99    9.33%  compinit
+   5)    4          43.43    10.86   50.73%      6.23     1.56    7.28%  .zinit-load-plugin
+   6)    1           5.07     5.07    5.92%      5.07     5.07    5.92%  _fnm_autoload_hookCopy
+  ```
+  
+  ## Cleanup: Removing Old Caches [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#cleanup-removing-old-caches)
+  
+  After migrating to Zinit, I cleaned up the old Antigen cache. If you’re setting up a new Mac and want to start fresh with this faster setup, check out my [Mac setup guide](https://wicksipedia.com/blog/setting-up-a-new-mac) for the complete list of tools to install.
+  
+  ```
+  #!/bin/bash
+  # Remove old antigen cache
+  rm -rf ~/.antigen
+  
+  # Clean old completion dumps
+  rm -f ~/.zcompdump*
+  
+  # Regenerate fresh cache
+  zsh -i -c "autoload -Uz compinit && compinit -C"Copy
+  ```
+  
+  ## The Complete Configuration [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#the-complete-configuration)
+  
+  Here’s the final `~/.zshrc`:
+  
+  ```
+  # used for debugging and profiling - uncomment if needed
+  # zmodload zsh/zprof
+  
+  # Zinit installation (faster than antigen)
+  ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
+  [ ! -d $ZINIT_HOME ] && mkdir -p "$(dirname $ZINIT_HOME)"
+  [ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
+  source "${ZINIT_HOME}/zinit.zsh"
+  
+  # Load OMZ libs we need (not the whole thing)
+  zinit snippet OMZL::git.zsh
+  zinit snippet OMZL::theme-and-appearance.zsh
+  zinit snippet OMZL::async_prompt.zsh
+  
+  # eza config - must be set BEFORE loading the plugin
+  zstyle ':omz:plugins:eza' 'dirs-first' yes
+  zstyle ':omz:plugins:eza' 'git-status' yes
+  zstyle ':omz:plugins:eza' 'header' yes
+  zstyle ':omz:plugins:eza' 'icons' yes
+  
+  # Load OMZ plugins
+  zinit snippet OMZP::git
+  zinit snippet OMZP::brew
+  zinit snippet OMZP::direnv
+  zinit snippet OMZP::eza
+  
+  # Fast syntax highlighting and autosuggestions
+  zinit light zsh-users/zsh-syntax-highlighting
+  zinit light zsh-users/zsh-autosuggestions
+  
+  # fzf-tab
+  zinit light Aloxaf/fzf-tab
+  
+  # Load completions efficiently (after prompt is ready)
+  autoload -Uz compinit
+  compinit
+  
+  # Initialize tools - these need to load synchronously
+  eval "$(starship init zsh)"
+  eval "$(fnm env --use-on-cd --shell zsh --version-file-strategy=recursive)"
+  eval "$(zoxide init zsh)"
+  
+  export HOMEBREW_AUTO_UPDATE_SECS="86400"
+  
+  # history setup
+  HISTFILE=$HOME/.zhistory
+  SAVEHIST=1000
+  HISTSIZE=999
+  setopt share_history
+  setopt hist_expire_dups_first
+  setopt hist_ignore_dups
+  setopt hist_verify
+  
+  # Aliases
+  alias code=code-insiders
+  alias d=dotnet
+  alias db="dotnet build"
+  alias dw="dotnet watch"
+  alias dr="dotnet run"
+  alias dt="dotnet test"
+  alias gprune='git branch --merged origin/$(git_main_branch) | xargs git branch -d'
+  alias zshconfig="code ~/.zshrc"
+  
+  # pnpm
+  export PNPM_HOME="/Users/matt/Library/pnpm"
+  case ":$PATH:" in
+    *":$PNPM_HOME:"*) ;;
+    *) export PATH="$PNPM_HOME:$PATH" ;;
+  esac
+  
+  # RVM
+  export PATH="$PATH:$HOME/.rvm/bin"
+  
+  # Aspire
+  export PATH="$HOME/.aspire/bin:$PATH"
+  
+  # vscode integration
+  [[ "$TERM_PROGRAM" == "vscode" ]] && . "$(code --locate-shell-integration-path zsh)"
+  
+  # used for profiling only
+  # zprofCopy
+  ```
+  
+  ## Try It Yourself [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#try-it-yourself)
+  
+  1. **First, profile your current setup**:
+  
+  
+  
+     ```
+     # Add to top of ~/.zshrc
+     zmodload zsh/zprof
+  
+     ...
+  
+     # Add to bottom of ~/.zshrc
+     zprofCopy
+     ```
+  
+  2. **Measure your startup time**:
+  
+  
+  
+     ```
+     for i in {1..5}; do /usr/bin/time zsh -i -c exit 2>&1 | grep real; doneCopy
+     ```
+  
+  3. **Review the `zprof` output** to identify your actual bottlenecks (don’t guess like I did!)
+  
+  4. **Optimize based on what the data shows**
+  
+  5. **Measure again** to verify your improvements
+  
+  
+  ## Wrapping Up [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#wrapping-up)
+  
+  Your terminal is where you spend a huge chunk of your dev time. If yours feels sluggish, don’t guess — profile it first. My intuition was completely wrong, and two minutes with `zprof` saved me from going down the wrong rabbit hole.
+  
+  **Data > Intuition.** Always.
+  
+  **Update:** The setup has evolved since this post. I’ve since added Starship, fnm, zoxide, Atuin, and a few other tools. See [my current Zsh setup](https://wicksipedia.com/blog/modern-zsh-setup) for the full config.
+  
+  Happy profiling! ⚡
+  
+  [Edit page](https://github.com/wicksipedia/wicksipedia.com/edit/main/src/data/blog/speeding-up-zsh-startup/index.mdx)
+  
+  Back To Top
+  
+  Share this post on:
+  
+  [Share this post on Facebook](https://www.facebook.com/sharer.php?u=https://wicksipedia.com/blog/speeding-up-zsh-startup "Share this post on Facebook") [Share this post on X](https://x.com/intent/post?url=https://wicksipedia.com/blog/speeding-up-zsh-startup "Share this post on X") [Share this post on LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https://wicksipedia.com/blog/speeding-up-zsh-startup "Share this post on LinkedIn")
+  
+  Related
+  
+  - ### [My Fast Zsh Setup Without Oh My Zsh (But With Its Best Plugins)](https://wicksipedia.com/blog/modern-zsh-setup) [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#)
+  
+  
+  
+  
+  
+  5 Mar, 2026
+  
+  
+  
+  
+  
+  A modern Zsh config that cherry-picks the best Oh My Zsh plugins via Zinit, adds Starship, fnm, zoxide, and Atuin, and starts in 120ms. Full .zshrc included.
+  
+  
+  
+    - [MacOS](https://wicksipedia.com/tags/macos)
+    - [Zsh](https://wicksipedia.com/tags/zsh)
+    - [terminal](https://wicksipedia.com/tags/terminal)
+    - [shell](https://wicksipedia.com/tags/shell)
+    - [developer-setup](https://wicksipedia.com/tags/developer-setup)
+    - [productivity](https://wicksipedia.com/tags/productivity)
+  
+  - ### [Git Worktrees Are Great Until You Forget Which One You're Running](https://wicksipedia.com/blog/git-worktrees-are-great-until-you-forget-which-one-youre-running) [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#)
+  
+  
+  
+  
+  
+  6 Mar, 2026
+  
+  
+  
+  
+  
+  My code changes weren't showing up. Turns out I was running the app from the wrong worktree. So I built a fzf plugin to fix that.
+  
+  
+  
+    - [git](https://wicksipedia.com/tags/git)
+    - [Zsh](https://wicksipedia.com/tags/zsh)
+    - [shell](https://wicksipedia.com/tags/shell)
+    - [developer-setup](https://wicksipedia.com/tags/developer-setup)
+    - [Claude Code](https://wicksipedia.com/tags/claude-code)
+  
+  - ### [One CLI to Rule npm, yarn, pnpm, and bun](https://wicksipedia.com/blog/ni-universal-package-manager) [\#](https://wicksipedia.com/blog/speeding-up-zsh-startup/\#)
+  
+  
+  
+  
+  
+  5 Mar, 2026
+  
+  
+  
+  
+  
+  Juggling npm, yarn, pnpm, and bun across projects? ni detects your package manager and runs the right command. Here's my setup.
+  
+  
+  
+    - [productivity](https://wicksipedia.com/tags/productivity)
+    - [developer-setup](https://wicksipedia.com/tags/developer-setup)
+    - [terminal](https://wicksipedia.com/tags/terminal)
+    - [javascript](https://wicksipedia.com/tags/javascript)
+  
+  Discussion
+  
+  Continue Reading
+  
+  [Previous\\
+  \\
+  Your Mac Can See You Slouching](https://wicksipedia.com/blog/posturr-posture-monitoring) [Next\\
+  \\
+  Stop Babysitting Your Terminal: Audio Notifications for AI Coding Agents](https://wicksipedia.com/blog/peon-ping-setup)
+  --- End Content ---
+
+Speeding Up My Shell (Oh My Zsh) - Matthew J. Clemente
+  URL: https://blog.mattclemente.com/2020/06/26/oh-my-zsh-slow-to-load/
+  Today I finally put in work, managing to shave nearly a second off its load time through a few adjustments to my setup with Oh My ZSH.
+
+  --- Content ---
+  Matthew J. Clemente
+  
+  [Posts](https://blog.mattclemente.com/) › Speeding Up My Shell (Oh My Zsh)
+  
+  Cancel
+  
+  # Speeding Up My Shell (Oh My Zsh)
+  
+  Jun 26, 2020
+  
+  
+  10 minutes
+  
+  
+  My shell startup has felt laggy for a while, but never quite slow enough that I felt compelled to track down the cause. Until today. Today I finally put in work, managing to shave nearly a second off its load time through a few adjustments to my setup with Oh My ZSH.
+  
+  **tldr;** Virtual environment managers ( [nvm](https://github.com/nvm-sh/nvm), [rbenv](https://github.com/rbenv/rbenv), [jenv](https://www.jenv.be/), etc) are the most common culprits for a slow loading terminal, and there are a few approaches to speeding them up.
+  
+  Terminal configuration/optimization is a rabbit hole leading to infinite other rabbit holes. Some of the dotfile setups that I came across are truly impressive.[\[1\]](https://blog.mattclemente.com/2020/06/26/oh-my-zsh-slow-to-load/#fn1) But I don't have the time right now to craft a setup like that; I'll take the easy wins, without getting bogged down by micro-optimizations.
+  
+  ## Initial Setup
+  
+  I'm on a Mac, using [iTerm2](https://iterm2.com/) with [Oh My Zsh](https://ohmyz.sh/), which seems to be a fairly common setup. Over the course of years and software projects, I've hooked a handful of tools into my shell's startup/config, including:
+  
+  - [nvm](https://github.com/nvm-sh/nvm)
+  - [rbenv](https://github.com/rbenv/rbenv)
+  - [jenv](https://www.jenv.be/)
+  - [jabba](https://github.com/shyiko/jabba)
+  - [direnv](https://direnv.net/)
+  
+  I've also installed a number of [plugins](https://github.com/ohmyzsh/ohmyzsh/wiki/Plugins) for zsh; when I started investigating what was slowing down my shell, my plugin list was: [git](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git), [zsh-autosuggestions](https://github.com/zsh-users/zsh-autosuggestions), [npm](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/npm), [docker](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/docker), [docker-compose](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/docker-compose), [doctl](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/doctl), and [terraform](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/terraform).
+  
+  So, at the start of this, my shell load time was: _1.35 seconds_. First, let's take a look at how I found that out.
+  
+  ## How To Test Your Shell Load Time
+  
+  If you want to improve your shell's load time, you need to be able to measure it. For that, I found a [handy script](https://blog.jonlu.ca/posts/speeding-up-zsh) that times the startup of an interactive shell:
+  
+  ```bash
+  for i in $(seq 1 10); do /usr/bin/time $SHELL -i -c exit; done
+  ```
+  
+  In my case, the `$SHELL` being referenced is `/bin/zsh`, and we're looping over the startup ten times to account for variability.[\[2\]](https://blog.mattclemente.com/2020/06/26/oh-my-zsh-slow-to-load/#fn2) After reading a few more blog posts I [learned that](https://medium.com/tarkalabs/optimize-zsh-fce424fcfd5#5038), for ease of calling, we can add this as a function to our `~/.zshrc`
+  
+  ```bash
+  timezsh() {
+    shell=${1-$SHELL}
+    for i in $(seq 1 10); do /usr/bin/time $shell -i -c exit; done
+  }
+  ```
+  
+  With that, we can just call `timezsh` whenever we want to measure the shell's load time. And my initial results were:
+  
+  ![test results for the first shell load test](https://blog.mattclemente.com/assets/images/shell-load-time-first-test.png)
+  
+  Not good, which meant there was a lot of room for improvement.
+  
+  ### Measuring Plugin Load Time
+  
+  I began by examining my plugins, to see if any of them were slowing down the load time of the shell. Initially I tested this manually, by removing the plugins listed in my `~/.zshrc` one at a time and then timing the updated config. Not the most efficient approach, though it certainly works.
+  
+  #### How to Reload the Shell After Making Changes
+  
+  A quick, but important note. If you're trying to speed up your shell, you're going to be making a number of changes to your configuration files, primarily `~/.zshrc`. In order for these changes to be picked up, you'll need to restart your shell session. Here's the important part: **Don't use `source ~/.zshrc` to reload your shell config**. The [docs](https://github.com/ohmyzsh/ohmyzsh/wiki/FAQ#how-do-i-reload-the-zshrc-file) make it clear that this is the wrong approach and can cause problems. **Instead, you should run `exec zsh`**. Boom, shell session restarted, changes picked up, and you're good to go.
+  
+  #### Timing All Plugins Programmatically
+  
+  A little [more reading](https://blog.jonlu.ca/posts/speeding-up-zsh#fixing-the-problem) lead me to realize that I could programmatically profile the source/load time of all my plugins at once by making some temporary adjustments to `~/.oh-my-zsh/oh-my-zsh.sh`. If you've installed `Homebrew/coreutils`, this can be done using `gdate`. In `oh-my-zsh.sh`, you'll want to update the portion of the script that loads the plugins (around [line 101](https://github.com/ohmyzsh/ohmyzsh/blob/d47447a5e63715ae6ab6c2f46924dc8766c8e746/oh-my-zsh.sh#L101) at the time this was written), with the following, which wraps the process in a timer:
+  
+  ```bash
+  # Load all of the plugins that were defined in ~/.zshrc
+  for plugin ($plugins); do
+    timer=$(($(gdate +%s%N)/1000000))
+    if [ -f $ZSH_CUSTOM/plugins/$plugin/$plugin.plugin.zsh ]; then
+      source $ZSH_CUSTOM/plugins/$plugin/$plugin.plugin.zsh
+    elif [ -f $ZSH/plugins/$plugin/$plugin.plugin.zsh ]; then
+      source $ZSH/plugins/$plugin/$plugin.plugin.zsh
+    fi
+    now=$(($(gdate +%s%N)/1000000))
+    elapsed=$(($now-$timer))
+    echo $elapsed":" $plugin
+  done
+  ```
+  
+  Now, I don't use Homebrew, so I had to adjust this a little - I managed to put together an approximation, using Python. In place of the `gdate` scripts, I used:
+  
+  ```bash
+  $(python -c 'from time import time; print int(round(time() * 1000))')
+  ```
+  
+  And, the result was:
+  
+  ![all plugin load times](https://blog.mattclemente.com/assets/images/all-zsh-plugin-load-times.png)
+  
+  So, the `doctl` plugin was taking 10x longer than the others to load. I haven't been using [doctl](https://github.com/digitalocean/doctl) recently, so it was easy to remove the plugin. And, while it wasn't slow, I also dropped `zsh-autosuggestions`, which brought the shell load time down to about 1.10 seconds. Better, but still too slow.
+  
+  Reminder: don't forget to remove those changes from `oh-my-zsh.sh` when you're done timing your plugins.
+  
+  ### A Note on Profiling with `zsh/zprof`
+  
+  So, at this point I probably could/should have used `zsh/zprof`, a profiling module that's built into Zsh.[\[3\]](https://blog.mattclemente.com/2020/06/26/oh-my-zsh-slow-to-load/#fn3) But I didn't. Honestly, when I first explored it, I found the output a bit overwhelming and just moved on. A later, more thorough analysis lead me to realize its value.
+  
+  Using `zsh/zprof` is straightforward: add the line `zmodload zsh/zprof` to the start of your `~/.zshrc`; after saving/reloading your shell, you can run the command `zprof` to get profiling information. The results look something like this, though they'll be far longer:
+  
+  ![zprof results](https://blog.mattclemente.com/assets/images/zprof-results.png)
+  
+  Now, that's a lot of information; don't let your eyes glaze over.
+  
+  Here's my opinion - for speeding up your shell, the information that matters the most is the self/percent column, right before the function names. This indicates the the percentage of time spent in the function, and it gives you a _general_ idea of what's taking up most of the shell load time. You'll still need to do some digging to determine where the function is being called, and how to address it.
+  
+  In my case, it's pretty clear from those results that something with `nvm` is taking up more than 50% of the shell load time - a conclusion I had reached independently, while searching for causes of slow-loading shells.
+  
+  ## It's Probably `nvm`
+  
+  If you start searching the web for reasons that your shell is slow, you're [going](https://www.growingwiththeweb.com/2018/01/slow-nvm-init.html) [to](https://github.com/nvm-sh/nvm/issues/1277) [come](https://www.reddit.com/r/node/comments/4tg5jg/lazy_load_nvm_for_faster_shell_start/d5ib9fs/) [across](https://htr3n.github.io/2018/07/faster-zsh/) [posts](http://broken-by.me/lazy-load-nvm/) (like this one) pointing the finger at `nvm`. I'm not here to diagnose why; just to say that it was the single longest loading portion of my shell startup as well. **Removing `nvm` shaved a half-second off the startup time, dropping it to .57 seconds**.[\[4\]](https://blog.mattclemente.com/2020/06/26/oh-my-zsh-slow-to-load/#fn4)
+  
+  Obviously, I want to use `nvm` \- it's a really helpful tool - getting rid of it entirely might speed up my shell, but it doesn't actually help me. Fortunately, there are a couple of more practical solutions that enable us to keep `nvm` and speed up the shell load time. Even better, these will work for other virtual environment tools as well.
+  
+  ## Handling Virtual Environments
+  
+  While `nvm` turned out to be the biggest culprit for my shell's slowdown, the other virtual environment tools I use, `rbenv` and `jenv`, were not without blame. Removing them resulted in a startup that was .35 seconds faster.
+  
+  So, the question arises, how do we use these virtual environment tools while also keeping our shell startup snappy? It seems there are two primary answers: Lazy Loading and Caching Eval statements.
+  
+  ### Lazy Loading
+  
+  The issue with these virtual environment tools, as [helpfully explained by @htr3n](https://htr3n.github.io/2018/07/faster-zsh/#loading-virtual-environments), is that they are eagerly loaded, even when they are not needed. There's no reason for `nvm` to be loaded if I'm not working on a node project. The only reason I have `rbenv` is for when I'm using Jekyll for this blog - it doesn't need to be loaded every time. Lazy loading refers to a variety of approaches for delaying the loading of these virtual environments until they are needed.
+  
+  If you search the web, you'll find a number of approaches to lazy loading `nvm`, but the best and easier one I found is built into the plugin [zsh-nvm](https://github.com/lukechilds/zsh-nvm).[\[5\]](https://blog.mattclemente.com/2020/06/26/oh-my-zsh-slow-to-load/#fn5) Actual loading of `nvm` is not only triggered by running the `nvm` command, but also by `node`, `npm`, or any of your npm global binaries. I added it to my Oh My ZSH plugins and configured it like this:
+  
+  ```bash
+  export NVM_LAZY_LOAD=true
+  export NVM_COMPLETION=true
+  plugins=(zsh-nvm git npm docker docker-compose terraform)
+  ```
+  
+  The resulting shell startup time was .70 seconds. A little bit slower than removing `nvm` entirely, but totally worth the tradeoff, because I can still use `nvm` as needed.
+  
+  Now, there are some scripts out there for lazy loading `jenv` and `rbenv`, but I couldn't find any that I was entirely comfortable with, so I took a different tack with them.
+  
+  ### Caching Eval
+  
+  The way `rbenv` and `jenv` work is by running an `eval` statement in your config file:
+  
+  ```bash
+  # ~/.zshrc
+  eval "$(rbenv init -)"
+  eval "$(jenv init -)"
+  ```
+  
+  The approach I settled on for these was to cache the result of that `eval` statement when it's first run, so that subsequent loads don't incur a startup penalty. This was not my idea. It came from the zsh [evalcache](https://github.com/mroth/evalcache) plugin, which I stumbled across during my research. The docs outline how the plugin works to address slow startups, and it seemed a clever solution.
+  
+  The resulting config looks something like this:
+  
+  ```bash
+  plugins=(evalcache zsh-nvm git npm docker docker-compose terraform)
+  
+  export PATH="$HOME/.rbenv/bin:$PATH"
+  export PATH="$HOME/.jenv/bin:$PATH"
+  
+  source $ZSH/oh-my-zsh.sh
+  
+  _evalcache rbenv init -
+  _evalcache jenv init -
+  _evalcache direnv hook zsh
+  ```
+  
+  You'll notice that I also passed `direnv` to the evalcache plugin, since it's loaded the same way. With that adjustment, shell startup was down to .56 seconds
+  
+  ## Summary
+  
+  So, we started with a shell load time of 1.35 seconds, and ended at .56 seconds - reducing the startup time 0.79 seconds, all while keeping our essential tools and commands. We did it by:
+  
+  - Finding and removing a slow/little used plugin
+  - Lazy loading `nvm` using the [zsh-nvm plugin](https://github.com/lukechilds/zsh-nvm)
+  - Speeding up other virtual environments using the [evalcache plugin](https://github.com/mroth/evalcache)
+  
+  Now, I know that I could do more to shave off fractions of a second, but like I said at the top, I'm not interested in spending hours micro-optimizing. I'm happy with the result, and hope it helps you if you've experiencing any issues with a slow loading zsh shell.
+  
+  ## Resources
+  
+  The following are some of the posts and guides I used while working on this - many thanks to the authors for sharing them - and hopefully you find them helpful as well. In no particular order:
+  
+  - [https://blog.jonlu.ca/posts/speeding-up-zsh](https://blog.jonlu.ca/posts/speeding-up-zsh)
+  - [http://broken-by.me/lazy-load-nvm/](http://broken-by.me/lazy-load-nvm/)
+  - [https://www.growingwiththeweb.com/2018/01/slow-nvm-init.html](https://www.growingwiththeweb.com/2018/01/slow-nvm-init.html)
+  - [https://bennycwong.github.io/post/speeding-up-oh-my-zsh/](https://bennycwong.github.io/post/speeding-up-oh-my-zsh/)
+  - [https://carlosbecker.com/posts/speeding-up-zsh](https://carlosbecker.com/posts/speeding-up-zsh)
+  - [https://htr3n.github.io/2018/07/faster-zsh/](https://htr3n.github.io/2018/07/faster-zsh/)
+  - [https://medium.com/tarkalabs/optimize-zsh-fce424fcfd5](https://medium.com/tarkalabs/optimize-zsh-fce424fcfd5)
+  
+  * * *
+  
+  #### Footnotes
+  
+  1. For examples of elaborate dotfiles, see those by [caarlos0](https://github.com/caarlos0/dotfiles) or [holman](https://github.com/holman/dotfiles) [↩︎](https://blog.mattclemente.com/2020/06/26/oh-my-zsh-slow-to-load/#fnref1)
+  
+  2. For my own reference, the `zsh` [docs](https://linux.die.net/man/1/zsh) explain the`-i` and `-c` arg [↩︎](https://blog.mattclemente.com/2020/06/26/oh-my-zsh-slow-to-load/#fnref2)
+  
+  3. Here are the [docs on the zsh/zprof module](http://zsh.sourceforge.net/Doc/Release/Zsh-Modules.html#The-zsh_002fzprof-Module), for those interested. [↩︎](https://blog.mattclemente.com/2020/06/26/oh-my-zsh-slow-to-load/#fnref3)
+  
+  4. To be clear, by removing NVM, I mean removing it from my `~/.zshrc`. That is, deleting [the source lines you're instructed to add](https://github.com/nvm-sh/nvm#install--update-script) when installing it. [↩︎](https://blog.mattclemente.com/2020/06/26/oh-my-zsh-slow-to-load/#fnref4)
+  
+  5. Not to be confused with the plugin named simply [nvm](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/nvm), which is listed on the official [Oh My Zsh plugins page](https://github.com/ohmyzsh/ohmyzsh/wiki/Plugins), but which doesn't provide the functionality we're looking for. [↩︎](https://blog.mattclemente.com/2020/06/26/oh-my-zsh-slow-to-load/#fnref5)
+  
+  
+  Disqus Comments
+  
+  We were unable to load Disqus. If you are a moderator please see our [troubleshooting guide](https://docs.disqus.com/help/83/).
+  
+  G
+  
+  ###### Log in with
+  
+  ###### or sign up with Disqus  or pick a name
+  
+  ### Disqus is a discussion network
+  
+  - Don't be a jerk or do anything illegal. Everything is easier that way.
+  
+  [Read full terms and conditions](https://docs.disqus.com/kb/terms-and-policies/)
+  
+  This comment platform is hosted by Disqus, Inc. I authorize Disqus and its affiliates to:
+  
+  - Use, sell, and share my information to enable me to use its comment services and for marketing purposes, including cross-context behavioral advertising, as described in our [Terms of Service](https://help.disqus.com/customer/portal/articles/466260-terms-of-service) and [Privacy Policy](https://disqus.com/privacy-policy), including supplementing that information with other data about me, such as my browsing and location data.
+  - Contact me or enable others to contact me by email with offers for goods or services
+  - Process any sensitive personal information that I submit in a comment. See our [Privacy Policy](https://disqus.com/privacy-policy) for more information
+  
+  Acknowledge I am 18 or older
+  
+  - [5](https://disqus.com/embed/comments/?base=default&f=mattclemente&t_i=%2F2020%2F06%2F26%2Foh-my-zsh-slow-to-load%2F&t_u=https%3A%2F%2Fblog.mattclemente.com%2F2020%2F06%2F26%2Foh-my-zsh-slow-to-load%2F&t_d=Speeding%20Up%20My%20Shell%20(Oh%20My%20Zsh)%20%7C%20Matthew%20J.%20Clemente&t_t=Speeding%20Up%20My%20Shell%20(Oh%20My%20Zsh)%20%7C%20Matthew%20J.%20Clemente&s_o=default# "Favorite this discussion")
+  
+    - ## Discussion Favorited!
+  
+  
+  
+      Favoriting means this is a discussion worth sharing. It gets shared to your followers' Disqus feeds, and gives the creator kudos!
+  
+  
+       [Find More Discussions](https://disqus.com/home/?utm_source=disqus_embed&utm_content=recommend_btn)
+  
+  [Share](https://disqus.com/embed/comments/?base=default&f=mattclemente&t_i=%2F2020%2F06%2F26%2Foh-my-zsh-slow-to-load%2F&t_u=https%3A%2F%2Fblog.mattclemente.com%2F2020%2F06%2F26%2Foh-my-zsh-slow-to-load%2F&t_d=Speeding%20Up%20My%20Shell%20(Oh%20My%20Zsh)%20%7C%20Matthew%20J.%20Clemente&t_t=Speeding%20Up%20My%20Shell%20(Oh%20My%20Zsh)%20%7C%20Matthew%20J.%20Clemente&s_o=default#)
+  
+    - Tweet this discussion
+    - Share this discussion on Facebook
+    - Share this discussion via email
+    - Copy link to discussion
+  
+    - [Best](https://disqus.com/embed/comments/?base=default&f=mattclemente&t_i=%2F2020%2F06%2F26%2Foh-my-zsh-slow-to-load%2F&t_u=https%3A%2F%2Fblog.mattclemente.com%2F2020%2F06%2F26%2Foh-my-zsh-slow-to-load%2F&t_d=Speeding%20Up%20My%20Shell%20(Oh%20My%20Zsh)%20%7C%20Matthew%20J.%20Clemente&t_t=Speeding%20Up%20My%20Shell%20(Oh%20My%20Zsh)%20%7C%20Matthew%20J.%20Clemente&s_o=default#)
+    - [Newest](https://disqus.com/embed/comments/?base=default&f=mattclemente&t_i=%2F2020%2F06%2F26%2Foh-my-zsh-slow-to-load%2F&t_u=https%3A%2F%2Fblog.mattclemente.com%2F2020%2F06%2F26%2Foh-my-zsh-slow-to-load%2F&t_d=Speeding%20Up%20My%20Shell%20(Oh%20My%20Zsh)%20%7C%20Matthew%20J.%20Clemente&t_t=Speeding%20Up%20My%20Shell%20(Oh%20My%20Zsh)%20%7C%20Matthew%20J.%20Clemente&s_o=default#)
+    - [Oldest](https://disqus.com/embed/comments/?base=default&f=mattclemente&t_i=%2F2020%2F06%2F26%2Foh-my-zsh-slow-to-load%2F&t_u=https%3A%2F%2Fblog.mattclemente.com%2F2020%2F06%2F26%2Foh-my-zsh-slow-to-load%2F&t_d=Speeding%20Up%20My%20Shell%20(Oh%20My%20Zsh)%20%7C%20Matthew%20J.%20Clemente&t_t=Speeding%20Up%20My%20Shell%20(Oh%20My%20Zsh)%20%7C%20Matthew%20J.%20Clemente&s_o=default#)
+  
+  [Load more comments](https://disqus.com/embed/comments/?base=default&f=mattclemente&t_i=%2F2020%2F06%2F26%2Foh-my-zsh-slow-to-load%2F&t_u=https%3A%2F%2Fblog.mattclemente.com%2F2020%2F06%2F26%2Foh-my-zsh-slow-to-load%2F&t_d=Speeding%20Up%20My%20Shell%20(Oh%20My%20Zsh)%20%7C%20Matthew%20J.%20Clemente&t_t=Speeding%20Up%20My%20Shell%20(Oh%20My%20Zsh)%20%7C%20Matthew%20J.%20Clemente&s_o=default#)
+  
+  [OlderFat Arrow Function Support in Lucee 5...](https://blog.mattclemente.com/2020/06/04/arrow-functions-in-adobe-coldfusion-and-lucee/) [NewerBuilding a Basic Uptime Monitor with...](https://blog.mattclemente.com/2020/09/06/pipedream-uptime-monitoring/)
+  
+  No data found for the given query.
+  ![Search powered by Algolia](https://blog.mattclemente.com/assets/images/algolia.png)
+  --- End Content ---
