@@ -142,6 +142,10 @@ generate_toggle_feature :: proc(b: ^strings.Builder, key: string) {
 // 2. VI MODE FEATURE
 generate_vi_mode_feature :: proc(b: ^strings.Builder, cfg: InteractiveConfig) {
 	fmt.sbprintln(b, "# === Feature: VI Mode Indicator ===")
+	fmt.sbprintln(b, "# Activar modo VI para selección visual")
+	fmt.sbprintln(b, "bindkey -v")
+	fmt.sbprintln(b, "export KEYTIMEOUT=1  # Reducir delay al cambiar modos")
+	fmt.sbprintln(b)
 	fmt.sbprintln(b, "function zle-keymap-select {")
 	fmt.sbprintln(b, "  case $KEYMAP in")
 	fmt.sbprintln(b, `    vicmd) _WAYU_VI_MODE="NORMAL" ;;`)
@@ -152,6 +156,9 @@ generate_vi_mode_feature :: proc(b: ^strings.Builder, cfg: InteractiveConfig) {
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b, "zle -N zle-keymap-select")
 	fmt.sbprintln(b, "zle -N zle-line-init zle-keymap-select")
+	fmt.sbprintln(b)
+	fmt.sbprintln(b, "# Activar modo visual con 'v' en modo normal")
+	fmt.sbprintln(b, "bindkey -M vicmd 'v' visual-mode")
 	fmt.sbprintln(b)
 }
 
