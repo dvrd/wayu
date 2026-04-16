@@ -1433,17 +1433,39 @@ handle_build_command :: proc(action: Action) {
 
 // Generate optimized eval output - all config in one export
 generate_eval_output_optimized :: proc() {
-	// Start timing
-	start_time := get_time()
-	
-	// Read and parse wayu.toml
+	// Check if we can use cached init file
 	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
 	defer delete(toml_path)
+	cache_path := fmt.aprintf("%s/init-cache.zsh", WAYU_CONFIG)
+	defer delete(cache_path)
 	
 	if !os.exists(toml_path) {
 		fmt.eprintln("Error: wayu.toml not found. Run 'wayu init' to create config.")
 		os.exit(EXIT_NOINPUT)
 	}
+	
+	// Check if cache is up to date
+	use_cache := false
+	if os.exists(cache_path) {
+		toml_stat, toml_ok := os.stat(toml_path, context.temp_allocator)
+		cache_stat, cache_ok := os.stat(cache_path, context.temp_allocator)
+		
+		if toml_ok == nil && cache_ok == nil {
+			// Cache is valid if newer than TOML
+			if cache_stat.modification_time._nsec >= toml_stat.modification_time._nsec {
+				use_cache = true
+			}
+		}
+	}
+	
+	if use_cache {
+		// Fast path: just source the cache
+		fmt.printfln(`source "%s"`, cache_path)
+		return
+	}
+	
+	// Slow path: regenerate cache
+	start_time := get_time()
 	
 	// Parse TOML
 	toml_data, ok := safe_read_file(toml_path)
@@ -1494,10 +1516,19 @@ generate_eval_output_optimized :: proc() {
 	fmt.sbprintln(&builder, `[[ -z "$_WAYU_EXTRA_LOADED" ]] && { export _WAYU_EXTRA_LOADED=1; [[ -f "$HOME/.config/wayu/tools.zsh" ]] && source "$HOME/.config/wayu/tools.zsh"; [[ -f "$HOME/.config/wayu/extra.zsh" ]] && source "$HOME/.config/wayu/extra.zsh"; }`)
 	fmt.sbprintln(&builder)
 	
-	// Output the result
-	fmt.println(strings.to_string(builder))
+	// Generate output
+	output := strings.to_string(builder)
 	
-	// Print timing info to stderr (so it doesn't interfere with eval)
+	// Save to cache file
+	write_ok := os.write_entire_file(cache_path, transmute([]byte)output)
+	if write_ok != nil {
+		fmt.eprintfln("Error: Failed to write cache file: %s", cache_path)
+	}
+	
+	// Output source command (the eval result)
+	fmt.printfln(`source "%s"`, cache_path)
+	
+	// Print timing to stderr
 	elapsed := (get_time() - start_time) * 1000
 	fmt.eprintfln("# Generated in %.2fms using %v optimization", elapsed, profile.path_level)
 }
