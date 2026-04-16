@@ -76,14 +76,14 @@ generate_core_init_v2 :: proc() {
 	fmt.sbprintln(&builder, "alias vim=nvim ls=lsd reload=\"source ~/.zshrc\" x=exit cat=bat")
 	fmt.sbprintln(&builder)
 	
-	// Prompt: Starship con evalcache
-	fmt.sbprintln(&builder, "# === Prompt (evalcached) ===")
-	fmt.sbprintln(&builder, "_wayu_evalcache starship init zsh")
+	// Load helpers PRIMERO (necesario para evalcache y zsh-defer)
+	fmt.sbprintln(&builder, "# === Load helpers (evalcache + zsh-defer propio) ===")
+	fmt.sbprintfln(&builder, "source \"%s/init-helpers.zsh\" 2>/dev/null", WAYU_CONFIG)
 	fmt.sbprintln(&builder)
 	
-	// Load helpers (zsh-defer propio incluido aquí)
-	fmt.sbprintln(&builder, "# === Load helpers (zsh-defer propio) ===")
-	fmt.sbprintfln(&builder, "source \"%s/init-helpers.zsh\" 2>/dev/null", WAYU_CONFIG)
+	// Prompt: Starship con evalcache (ahora _wayu_evalcache existe)
+	fmt.sbprintln(&builder, "# === Prompt (evalcached) ===")
+	fmt.sbprintln(&builder, "_wayu_evalcache starship init zsh")
 	fmt.sbprintln(&builder)
 	
 	// Defer lazy init
