@@ -114,18 +114,8 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	
 	// Configurar PROMPT final
 	fmt.sbprintln(&builder, "setopt promptsubst")
-	// PROMPT con marco decorativo:
-	// \n (espacio arriba - la línea divisoria de precmd está arriba de esto)
-	// $(_wayu_prompt_master) (el contenido del prompt)
-	// \n\n (espacio vacío entre prompt y línea divisoria inferior)
-	// %F{8}${(l:$COLUMNS::-:)}%f (línea divisoria inferior gris)
-	// \n (cursor aquí para escribir comando)
-	fmt.sbprint(&builder, "PROMPT='")
-	fmt.sbprint(&builder, "\n")  // Espacio arriba (entre divisoria precmd y contenido)
-	fmt.sbprint(&builder, `'$(_wayu_prompt_master)'`)
-	fmt.sbprint(&builder, "\n\n")  // Espacio entre contenido y divisoria inferior
-	fmt.sbprint(&builder, `%F{8}${(l:$COLUMNS::-:)}%f`)
-	fmt.sbprintln(&builder, "\n'")  // Línea divisoria inferior + cursor debajo
+	// PROMPT simple: cursor en la misma línea del prompt
+	fmt.sbprintln(&builder, `PROMPT='$(_wayu_prompt_master)'`)
 	
 	// RPROMPT async si está habilitado
 	if cfg.async_rprompt {
@@ -322,14 +312,20 @@ generate_transient_feature :: proc(b: ^strings.Builder, format: string) {
 	fmt.sbprintln(b)
 }
 
-// 6. SEPARATOR LINE FEATURE (línea arriba del prompt)
+// 6. SEPARATOR LINE FEATURE (antes del output y antes del prompt)
 generate_separator_feature :: proc(b: ^strings.Builder) {
-	fmt.sbprintln(b, "# === Feature: Separator Line (arriba) ===")
-	fmt.sbprintln(b, "_wayu_separator() {")
-	fmt.sbprintln(b, "  # Línea divisoria entre output anterior y el prompt")
+	fmt.sbprintln(b, "# === Feature: Separator Lines ===")
+	fmt.sbprintln(b, "# Línea antes del output del comando")
+	fmt.sbprintln(b, "_wayu_preexec_separator() {")
 	fmt.sbprintln(b, `  print -P "%F{8}${(l:$COLUMNS::-:)}%f"`)
 	fmt.sbprintln(b, "}")
-	fmt.sbprintln(b, "add-zsh-hook precmd _wayu_separator")
+	fmt.sbprintln(b, "add-zsh-hook preexec _wayu_preexec_separator")
+	fmt.sbprintln(b)
+	fmt.sbprintln(b, "# Línea antes del prompt (después del output)")
+	fmt.sbprintln(b, "_wayu_precmd_separator() {")
+	fmt.sbprintln(b, `  print -P "%F{8}${(l:$COLUMNS::-:)}%f"`)
+	fmt.sbprintln(b, "}")
+	fmt.sbprintln(b, "add-zsh-hook precmd _wayu_precmd_separator")
 	fmt.sbprintln(b)
 }
 
