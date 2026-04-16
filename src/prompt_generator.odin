@@ -115,8 +115,8 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	fmt.sbprintln(&builder, "add-zsh-hook precmd _wayu_update_git_info")
 	fmt.sbprintln(&builder)
 	
-	// Función principal de prompt
-	fmt.sbprintln(&builder, "_wayu_prompt() {")
+	// Función principal de prompt (full version)
+	fmt.sbprintln(&builder, "_wayu_prompt_full() {")
 	fmt.sbprintln(&builder, "  local exit_code=$?")
 	fmt.sbprintln(&builder, `  local result=""`)
 	fmt.sbprintln(&builder)
