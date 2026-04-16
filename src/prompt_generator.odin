@@ -34,8 +34,8 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 	for line in lines {
 		trimmed := strings.trim_space(line)
 		
-		// Detectar sección [prompt]
-		if trimmed == "[prompt]" {
+		// Detectar sección [prompt] o subsecciones [prompt.character]
+		if trimmed == "[prompt]" || trimmed == "[prompt.character]" {
 			in_prompt_section = true
 			continue
 		}
@@ -86,19 +86,7 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 			}
 		}
 		
-		// VI mode symbols
-		if strings.contains(trimmed, "vimcmd_symbol") && strings.contains(trimmed, "=") {
-			eq_idx := strings.index(trimmed, "=")
-			if eq_idx > 0 {
-				value := strings.trim_space(trimmed[eq_idx+1:])
-				start := strings.index(value, "[")
-				end := strings.index(value, "]")
-				if start >= 0 && end > start {
-					cfg.vimcmd_symbol = strings.trim_space(value[start+1:end])
-				}
-			}
-		}
-		
+		// VI mode symbols - procesar específicos primero para evitar substring matches
 		if strings.contains(trimmed, "vimcmd_visual_symbol") && strings.contains(trimmed, "=") {
 			eq_idx := strings.index(trimmed, "=")
 			if eq_idx > 0 {
@@ -107,6 +95,30 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 				end := strings.index(value, "]")
 				if start >= 0 && end > start {
 					cfg.vimcmd_visual_symbol = strings.trim_space(value[start+1:end])
+				}
+			}
+		}
+		
+		if strings.contains(trimmed, "vimcmd_replace_symbol") && strings.contains(trimmed, "=") {
+			eq_idx := strings.index(trimmed, "=")
+			if eq_idx > 0 {
+				value := strings.trim_space(trimmed[eq_idx+1:])
+				start := strings.index(value, "[")
+				end := strings.index(value, "]")
+				if start >= 0 && end > start {
+					cfg.vimcmd_replace_symbol = strings.trim_space(value[start+1:end])
+				}
+			}
+		}
+		
+		if strings.contains(trimmed, "vimcmd_symbol") && strings.contains(trimmed, "=") {
+			eq_idx := strings.index(trimmed, "=")
+			if eq_idx > 0 {
+				value := strings.trim_space(trimmed[eq_idx+1:])
+				start := strings.index(value, "[")
+				end := strings.index(value, "]")
+				if start >= 0 && end > start {
+					cfg.vimcmd_symbol = strings.trim_space(value[start+1:end])
 				}
 			}
 		}
@@ -308,12 +320,20 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 			fmt.sbprintln(&builder, "    fi")
 			fmt.sbprintln(&builder, "  fi")
 			
-			// Color según exit code (siempre)
-			fmt.sbprintln(&builder, "  if [[ ${_WAYU_LAST_EXIT:-0} -eq 0 ]]; then")
-			fmt.sbprintln(&builder, `    char_color="2"`)
-			fmt.sbprintln(&builder, "  else")
-			fmt.sbprintln(&builder, `    char_color="1"`)
-			fmt.sbprintln(&builder, "  fi")
+			// Color según modo VI (diferente para cada modo)
+			fmt.sbprintln(&builder, "  case \"$_WAYU_VI_MODE\" in")
+			fmt.sbprintln(&builder, `    VISUAL) char_color="3" ;;`)     // Amarillo para visual
+			fmt.sbprintln(&builder, `    REPLACE|REPLACE_ONE) char_color="5" ;;`) // Púrpura para replace
+			fmt.sbprintln(&builder, `    NORMAL) char_color="2" ;;`)    // Verde para normal
+			fmt.sbprintln(&builder, `    *)`)
+			fmt.sbprintln(&builder, "      # INSERT u otros: usar exit code")
+			fmt.sbprintln(&builder, "      if [[ ${_WAYU_LAST_EXIT:-0} -eq 0 ]]; then")
+			fmt.sbprintln(&builder, `        char_color="2"`)
+			fmt.sbprintln(&builder, "      else")
+			fmt.sbprintln(&builder, `        char_color="1"`)
+			fmt.sbprintln(&builder, "      fi")
+			fmt.sbprintln(&builder, `    ;;`)
+			fmt.sbprintln(&builder, "  esac")
 			
 			fmt.sbprintln(&builder, `  result+="%F{${char_color}}%B${char_symbol}%b%F{reset} "`)
 			fmt.sbprintln(&builder)
