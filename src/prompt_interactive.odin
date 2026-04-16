@@ -114,10 +114,8 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	
 	// Configurar PROMPT final
 	fmt.sbprintln(&builder, "setopt promptsubst")
-	// PROMPT: línea vacía arriba, contenido, cursor en la misma línea
-	fmt.sbprint(&builder, `PROMPT='`)
-	fmt.sbprint(&builder, `\n`)  // Línea vacía arriba del prompt
-	fmt.sbprint(&builder, `'$(_wayu_prompt_master)'`)
+	// PROMPT: línea vacía arriba usando $'...' para interpretar \n
+	fmt.sbprint(&builder, `PROMPT=$'\n'$(_wayu_prompt_master)'`)
 	fmt.sbprintln(&builder, `'`)
 	
 	// RPROMPT async si está habilitado
