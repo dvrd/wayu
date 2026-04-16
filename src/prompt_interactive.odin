@@ -114,8 +114,11 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	
 	// Configurar PROMPT final
 	fmt.sbprintln(&builder, "setopt promptsubst")
-	// PROMPT simple: cursor en la misma línea del prompt
-	fmt.sbprintln(&builder, `PROMPT='$(_wayu_prompt_master)'`)
+	// PROMPT: línea vacía arriba, contenido, cursor en la misma línea
+	fmt.sbprint(&builder, `PROMPT='`)
+	fmt.sbprint(&builder, `\n`)  // Línea vacía arriba del prompt
+	fmt.sbprint(&builder, `'$(_wayu_prompt_master)'`)
+	fmt.sbprintln(&builder, `'`)
 	
 	// RPROMPT async si está habilitado
 	if cfg.async_rprompt {
@@ -312,18 +315,20 @@ generate_transient_feature :: proc(b: ^strings.Builder, format: string) {
 	fmt.sbprintln(b)
 }
 
-// 6. SEPARATOR LINE FEATURE (antes del output y antes del prompt)
+// 6. SEPARATOR LINE FEATURE (líneas continuas con espacios)
 generate_separator_feature :: proc(b: ^strings.Builder) {
 	fmt.sbprintln(b, "# === Feature: Separator Lines ===")
-	fmt.sbprintln(b, "# Línea antes del output del comando")
+	fmt.sbprintln(b, "# Línea continua antes del output + espacio vacío")
 	fmt.sbprintln(b, "_wayu_preexec_separator() {")
-	fmt.sbprintln(b, `  print -P "%F{8}${(l:$COLUMNS::-:)}%f"`)
+	fmt.sbprintln(b, `  print -P "%F{8}${(l:$COLUMNS::─:)}%f"`)
+	fmt.sbprintln(b, `  echo ""`)
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b, "add-zsh-hook preexec _wayu_preexec_separator")
 	fmt.sbprintln(b)
-	fmt.sbprintln(b, "# Línea antes del prompt (después del output)")
+	fmt.sbprintln(b, "# Línea continua antes del prompt + espacio vacío")
 	fmt.sbprintln(b, "_wayu_precmd_separator() {")
-	fmt.sbprintln(b, `  print -P "%F{8}${(l:$COLUMNS::-:)}%f"`)
+	fmt.sbprintln(b, `  print -P "%F{8}${(l:$COLUMNS::─:)}%f"`)
+	fmt.sbprintln(b, `  echo ""`)
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b, "add-zsh-hook precmd _wayu_precmd_separator")
 	fmt.sbprintln(b)
