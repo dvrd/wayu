@@ -73,8 +73,25 @@ generate_core_init_v2 :: proc() {
 	fmt.sbprintln(&builder)
 	
 	// Batch exports esenciales (una sola línea)
-	fmt.sbprintln(&builder, "# === Environment esencial (batch) ===")
-	fmt.sbprintln(&builder, "typeset -gx EDITOR=nvim CONFIGS=\"$HOME/.config\" SHELL_CONFIG=\"$HOME/.config/wayu/extra.zsh\" OSS=\"$HOME/dev/oss\"")
+	// Environment desde wayu.toml [env]
+	fmt.sbprintln(&builder, "# === Environment (from wayu.toml [env]) ===")
+	toml_env := read_wayu_toml_env()
+defer {
+		for e in toml_env { delete(e.name); delete(e.value) }
+		delete(toml_env)
+	}
+	for e in toml_env {
+		// Expand $HOME to literal for export compatibility
+		home := os.get_env_alloc("HOME", context.allocator)
+		defer delete(home)
+		if len(home) == 0 { home = "/Users/kakurega" }
+		expanded, _ := strings.replace_all(e.value, "$HOME", home)
+		fmt.sbprint(&builder, "export ")
+		fmt.sbprint(&builder, e.name)
+		fmt.sbprint(&builder, `="`)
+		fmt.sbprint(&builder, expanded)
+		fmt.sbprintln(&builder, `"`)
+	}
 	fmt.sbprintln(&builder)
 	
 	// Batch aliases esenciales
@@ -195,9 +212,7 @@ generate_lazy_init_v2 :: proc() {
 	fmt.sbprintln(&builder, "_wayu_evalcache atuin init zsh --disable-up-arrow")
 	fmt.sbprintln(&builder)
 	
-	// Resto de environment (batch)
-	fmt.sbprintln(&builder, "# === Environment completo (batch) ===")
-	fmt.sbprintln(&builder, "typeset -gx GOPATH=\"$HOME/go\" NVM_DIR=\"$HOME/.nvm\" SDKMAN_DIR=\"$HOME/.sdkman\" BUN_INSTALL=\"$HOME/.bun\" JAVA_HOME=\"/Library/Java/JavaVirtualMachines/zulu-11.jdk/Contents/Home\"")
+	// Environment ya exportado en init-core.zsh desde wayu.toml [env]
 	fmt.sbprintln(&builder)
 	
 	// Resto de aliases
@@ -387,4 +402,64 @@ read_wayu_toml_paths :: proc() -> [dynamic]string {
 	}
 
 	return paths
+}
+
+
+// Lee las variables [env] de wayu.toml y retorna lista de (nombre, valor)
+EnvEntry :: struct {
+	name: string,
+	value: string,
+}
+
+read_wayu_toml_env :: proc() -> [dynamic]EnvEntry {
+	config_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	defer delete(config_path)
+
+	content, ok := safe_read_file(config_path)
+	if !ok { return make([dynamic]EnvEntry) }
+	defer delete(content)
+
+	entries := make([dynamic]EnvEntry)
+	lines := strings.split(string(content), "\n")
+	defer delete(lines)
+
+	in_env := false
+	for line in lines {
+		trimmed := strings.trim_space(line)
+
+		if trimmed == "[env]" {
+			in_env = true
+			continue
+		}
+
+		// Cualquier otro header termina [env]
+		if strings.has_prefix(trimmed, "[") {
+			in_env = false
+			continue
+		}
+
+		if !in_env { continue }
+		if strings.has_prefix(trimmed, "#") { continue }
+
+		eq_idx := strings.index(trimmed, "=")
+		if eq_idx < 1 { continue }
+
+		name := strings.trim_space(trimmed[:eq_idx])
+		value := strings.trim_space(trimmed[eq_idx+1:])
+
+		// Remove quotes
+		value = strings.trim_prefix(value, `"`)
+		value = strings.trim_suffix(value, `"`)
+		value = strings.trim_prefix(value, "'")
+		value = strings.trim_suffix(value, "'")
+
+		if len(name) > 0 && len(value) > 0 {
+			append(&entries, EnvEntry{
+				name = strings.clone(name),
+				value = strings.clone(value),
+			})
+		}
+	}
+
+	return entries
 }
