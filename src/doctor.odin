@@ -10,6 +10,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:mem"
+import "core:path/filepath"
 
 // Check result structure - all strings allocated from arena
 CheckResult :: struct {
@@ -45,34 +46,61 @@ ensure_arena_initialized :: proc() {
 }
 
 // Main doctor command handler
-handle_doctor_command :: proc() {
+handle_doctor_command :: proc(fix_mode: bool, json_output: bool) {
 	// Initialize arena on first use
 	ensure_arena_initialized()
 
 	// Use arena for all allocations in this scope
 	arena_alloc := get_doctor_allocator()
 	
+	// Run all checks (first pass)
+	results := make([dynamic]CheckResult, allocator = arena_alloc)
+	context.allocator = arena_alloc
+	run_all_checks(&results)
+
+	// JSON output mode
+	if json_output {
+		print_doctor_json(results[:])
+		return
+	}
+
+	// Normal output - first pass
 	print_header("wayu Doctor - System Health Check", "🔬")
 	fmt.println()
-
-	results := make([dynamic]CheckResult, allocator = arena_alloc)
-
-	// Run all checks (all use arena via context.allocator)
-	context.allocator = arena_alloc
-	check_wayu_installation(&results)
-	check_shell_config(&results)
-	check_path_entries(&results)
-	check_plugins(&results)
-	check_backups(&results)
-	check_toml_config(&results)
-	check_turbo_export(&results)
-	check_dependencies(&results)
-
-	// Print results
 	print_doctor_results(results[:])
 
-	// Summary
-	print_doctor_summary(results[:])
+	// Fix mode: attempt to fix issues, then re-run checks
+	fix_attempts: []FixAttempt
+	if fix_mode {
+		fmt.println()
+		print_section("Auto-fix", "🔧")
+		fix_attempts = attempt_auto_fixes(results[:], arena_alloc)
+		fmt.println()
+		
+		// Re-run checks to show updated status
+		print_section("Re-checking", "🔄")
+		fmt.println()
+		
+		// Clear previous results and run again
+		clear(&results)
+		run_all_checks(&results)
+		print_doctor_results(results[:])
+	}
+
+	// Summary with current results and fix attempts
+	print_doctor_summary(results[:], fix_mode, fix_attempts)
+}
+
+// Run all diagnostic checks
+run_all_checks :: proc(results: ^[dynamic]CheckResult) {
+	check_wayu_installation(results)
+	check_shell_config(results)
+	check_path_entries(results)
+	check_plugins(results)
+	check_backups(results)
+	check_toml_config(results)
+	check_turbo_export(results)
+	check_dependencies(results)
 }
 
 // Helper to clone string to arena
@@ -494,7 +522,7 @@ print_doctor_results :: proc(results: []CheckResult) {
 }
 
 // Print doctor summary
-print_doctor_summary :: proc(results: []CheckResult) {
+print_doctor_summary :: proc(results: []CheckResult, fix_mode: bool = false, fix_attempts: []FixAttempt = {}) {
 	ok_count := 0
 	warning_count := 0
 	error_count := 0
@@ -519,26 +547,91 @@ print_doctor_summary :: proc(results: []CheckResult) {
 	}
 
 	print_section("Summary", EMOJI_INFO)
-	fmt.printfln("  %s%d OK%s  %s%d warnings%s  %s%d errors%s  %d info",
+
+	// Proper singular/plural formatting
+	warning_word := "warning"
+	if warning_count != 1 {
+		warning_word = "warnings"
+	}
+	error_word := "error"
+	if error_count != 1 {
+		error_word = "errors"
+	}
+	info_word := "info"
+	if info_count != 1 {
+		info_word = "infos"
+	}
+
+	fmt.printfln("  %s%d OK%s  %s%d %s%s  %s%d %s%s  %d %s",
 		get_success(), ok_count, RESET,
-		get_warning(), warning_count, RESET,
-		get_error(), error_count, RESET,
-		info_count)
+		get_warning(), warning_count, warning_word, RESET,
+		get_error(), error_count, error_word, RESET,
+		info_count, info_word)
 	fmt.println()
 
 	if error_count > 0 {
-		fmt.printfln("  %s✗ Found %d error(s) that need attention%s", get_error(), error_count, RESET)
+		error_label := "error"
+		if error_count != 1 {
+			error_label = "errors"
+		}
+		fmt.printfln("  %s✗ Found %d %s that need attention%s", get_error(), error_count, error_label, RESET)
 	}
 
 	if warning_count > 0 {
-		fmt.printfln("  %s⚠ Found %d warning(s) to review%s", get_warning(), warning_count, RESET)
+		warning_label := "warning"
+		if warning_count != 1 {
+			warning_label = "warnings"
+		}
+		fmt.printfln("  %s⚠ Found %d %s to review%s", get_warning(), warning_count, warning_label, RESET)
 	}
 
-	if fixable_count > 0 {
-		fmt.printfln("  %s🔧 %d issue(s) can be auto-fixed%s", get_primary(), fixable_count, RESET)
+	if fixable_count > 0 && !fix_mode {
+		fixable_label := "issue"
+		if fixable_count != 1 {
+			fixable_label = "issues"
+		}
+		fmt.printfln("  %s🔧 %d %s can be auto-fixed%s", get_primary(), fixable_count, fixable_label, RESET)
 		fmt.println()
 		fmt.println("  Run with --fix to attempt automatic fixes:")
 		fmt.println("    wayu doctor --fix")
+	}
+
+	// Show fix results after attempting fixes
+	if fix_mode && len(fix_attempts) > 0 {
+		success_count := 0
+		failed_count := 0
+		for attempt in fix_attempts {
+			if attempt.success {
+				success_count += 1
+			} else {
+				failed_count += 1
+			}
+		}
+		
+		if failed_count > 0 {
+			fail_word := "fix"
+			if failed_count != 1 {
+				fail_word = "fixes"
+			}
+			fmt.printfln("  %s⚠ %d %s failed and require manual action%s", 
+				get_warning(), failed_count, fail_word, RESET)
+			fmt.println()
+			fmt.println("  Manual fixes needed:")
+			for attempt in fix_attempts {
+				if !attempt.success {
+					fmt.printfln("    • %s: %s", attempt.name, attempt.message)
+				}
+			}
+		}
+		
+		if success_count > 0 {
+			success_word := "fix"
+			if success_count != 1 {
+				success_word = "fixes"
+			}
+			fmt.printfln("  %s✓ %d %s applied successfully%s", 
+				get_success(), success_count, success_word, RESET)
+		}
 	}
 
 	if error_count == 0 && warning_count == 0 {
@@ -546,6 +639,228 @@ print_doctor_summary :: proc(results: []CheckResult) {
 	}
 
 	fmt.println()
+}
+
+// Fix attempt result
+FixAttempt :: struct {
+	name:    string,
+	success: bool,
+	message: string,
+}
+
+// Attempt to auto-fix issues - returns list of fix attempts
+attempt_auto_fixes :: proc(results: []CheckResult, arena_alloc: mem.Allocator) -> []FixAttempt {
+	attempts := make([dynamic]FixAttempt, allocator = arena_alloc)
+	
+	for result in results {
+		if !result.fixable {
+			continue
+		}
+
+		switch result.name {
+		case "wayu installation":
+			fmt.printfln("  %s• Installing wayu to /usr/local/bin...%s", get_primary(), RESET)
+			
+			if install_wayu_binary() {
+				fmt.printfln("    %s✓ Installed successfully%s", get_success(), RESET)
+				append(&attempts, FixAttempt{
+					name    = result.name,
+					success = true,
+					message = "Installed to /usr/local/bin",
+				})
+			} else {
+				fmt.printfln("    %s✗ Installation failed (may need sudo)%s", get_error(), RESET)
+				fmt.printfln("    Run: sudo ./build_it install")
+				append(&attempts, FixAttempt{
+					name    = result.name,
+					success = false,
+					message = "Requires manual fix: sudo ./build_it install",
+				})
+			}
+
+		case "PATH entries":
+			fmt.printfln("  %s• Cleaning PATH entries...%s", get_primary(), RESET)
+			
+			entries := read_config_entries(&PATH_SPEC)
+			defer cleanup_entries(&entries)
+			
+			removed_missing := 0
+			for entry in entries {
+				expanded := expand_env_vars(entry.name)
+				defer delete(expanded)
+				if !os.exists(expanded) {
+					ok, _ := remove_config_entry(&PATH_SPEC, entry.name)
+					if ok {
+						removed_missing += 1
+					}
+				}
+			}
+			
+			fmt.printfln("    %s✓ Removed %d missing PATH entries%s", 
+				get_success(), removed_missing, RESET)
+			
+			append(&attempts, FixAttempt{
+				name    = result.name,
+				success = true,
+				message = fmt.aprintf("Removed %d missing entries", removed_missing, allocator = arena_alloc),
+			})
+			
+			if removed_missing > 0 {
+				fmt.printfln("    %sRun 'wayu path dedup --yes' to remove duplicates%s", 
+					get_muted(), RESET)
+			}
+
+		case "turbo export":
+			fmt.printfln("  %s• Checking turbo export...%s", get_primary(), RESET)
+			// Check if we need to generate or if shell config needs updating
+			if strings.contains(result.message, "not generated") {
+				handle_export_command(.LIST, {})
+				fmt.printfln("    %s✓ Turbo export generated%s", get_success(), RESET)
+				append(&attempts, FixAttempt{
+					name    = result.name,
+					success = true,
+					message = "Turbo export generated",
+				})
+			} else {
+				fmt.printfln("    %s✗ Shell config needs manual update%s", get_error(), RESET)
+				
+				// Get shell config file name
+				shell_rc := "~/.zshrc"
+				if DETECTED_SHELL == .BASH {
+					shell_rc = "~/.bashrc"
+				}
+				
+				fmt.printfln("    %s1. Edit your %s and change:%s", get_muted(), shell_rc, RESET)
+				fmt.printfln("       FROM: source \"$HOME/.config/wayu/init.zsh\"")
+				fmt.printfln("       TO:   source \"$HOME/.config/wayu/turbo.zsh\"")
+				fmt.printfln("    %s2. Reload your shell: source %s%s", get_muted(), shell_rc, RESET)
+				
+				append(&attempts, FixAttempt{
+					name    = result.name,
+					success = false,
+					message = fmt.aprintf("Edit %s: change init.zsh to turbo.zsh", shell_rc, allocator = arena_alloc),
+				})
+			}
+
+		case:
+			fmt.printfln("  %s• Cannot auto-fix: %s%s", get_muted(), result.name, RESET)
+		}
+	}
+	
+	return attempts[:]
+}
+
+// Import libc for system call
+import "core:c/libc"
+
+// Install wayu binary to /usr/local/bin using symlink
+install_wayu_binary :: proc() -> bool {
+	// Find current wayu binary
+	current_path := ""
+	if os.exists("./wayu") {
+		current_path = "./wayu"
+	} else if os.exists("./bin/wayu") {
+		current_path = "./bin/wayu"
+	} else {
+		return false
+	}
+
+	// Get absolute path of current binary using arena allocator
+	arena_alloc := get_doctor_allocator()
+	abs_path, abs_err := filepath.abs(current_path, arena_alloc)
+	if abs_err != nil {
+		return false
+	}
+	
+	dest_path := "/usr/local/bin/wayu"
+	
+	// Remove existing file/symlink if exists (best effort, ignore errors)
+	os.remove(dest_path)
+	
+	// Create symlink using system ln -sf command
+	// Using -f to force overwrite if exists
+	cmd := fmt.tprintf("ln -sf \"%s\" \"%s\"", abs_path, dest_path)
+	cmd_cstr := strings.clone_to_cstring(cmd, context.temp_allocator)
+	result := libc.system(cmd_cstr)
+	
+	return result == 0
+}
+
+import os2 "core:os"
+
+// Print doctor results as JSON
+print_doctor_json :: proc(results: []CheckResult) {
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+
+	strings.write_string(&builder, "{\n")
+	strings.write_string(&builder, `  "checks": [`)
+	strings.write_string(&builder, "\n")
+	
+	for result, i in results {
+		status_str := ""
+		switch result.status {
+		case .OK:      status_str = "ok"
+		case .WARNING: status_str = "warning"
+		case .ERROR:   status_str = "error"
+		case .INFO:    status_str = "info"
+		}
+		
+		comma := ","
+		if i == len(results) - 1 {
+			comma = ""
+		}
+		
+		// Build the JSON object manually
+		strings.write_string(&builder, `    {`)
+		fmt.sbprintf(&builder, `"name": "%s", "status": "%s", "message": "`, result.name, status_str)
+		
+		// Escape the message content
+		for c in result.message {
+			if c == '"' {
+				strings.write_string(&builder, "\\\"")
+			} else if c == '\\' {
+				strings.write_string(&builder, "\\\\")
+			} else {
+				strings.write_rune(&builder, c)
+			}
+		}
+		
+		fmt.sbprintf(&builder, `", "fixable": %v}`, result.fixable)
+		strings.write_string(&builder, comma)
+		strings.write_string(&builder, "\n")
+	}
+	
+	strings.write_string(&builder, "  ],\n")
+	
+	// Count summary
+	ok_count := 0
+	warning_count := 0
+	error_count := 0
+	info_count := 0
+	fixable_count := 0
+	
+	for result in results {
+		switch result.status {
+		case .OK:      ok_count += 1
+		case .WARNING: warning_count += 1
+		case .ERROR:   error_count += 1
+		case .INFO:    info_count += 1
+		}
+		if result.fixable {
+			fixable_count += 1
+		}
+	}
+	
+	strings.write_string(&builder, `  "summary": {`)
+	fmt.sbprintf(&builder, `"ok": %d, "warnings": %d, "errors": %d, "info": %d, "fixable": %d`, 
+		ok_count, warning_count, error_count, info_count, fixable_count)
+	strings.write_string(&builder, "}\n")
+	strings.write_string(&builder, "}\n")
+	
+	// Output the built string
+	fmt.print(strings.to_string(builder))
 }
 
 // Print doctor usage

@@ -153,16 +153,10 @@ handle_plugin_update :: proc(args: []string) {
 	if !update_all {
 		plugin_name := args[0]
 
-		// Find plugin
-		plugin_ptr: ^PluginMetadata = nil
-		for &plugin in config.plugins {
-			if plugin.name == plugin_name {
-				plugin_ptr = &plugin
-				break
-			}
-		}
-
-		if plugin_ptr == nil {
+		// Find plugin (with fuzzy fallback)
+		plugin_ptr, found := find_plugin_json(&config, plugin_name)
+		
+		if !found {
 			print_error_simple("Error: Plugin '%s' not found", plugin_name)
 			fmt.println()
 			fmt.println("Run 'wayu plugin list' to see installed plugins")
@@ -319,16 +313,10 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		os.exit(EXIT_CONFIG)
 	}
 
-	// 3. Find plugin by name
-	plugin_ptr: ^PluginMetadata = nil
-	for &plugin in config.plugins {
-		if plugin.name == plugin_name {
-			plugin_ptr = &plugin
-			break
-		}
-	}
-
-	if plugin_ptr == nil {
+	// 3. Find plugin by name (with fuzzy fallback)
+	plugin_ptr, found := find_plugin_json(&config, plugin_name)
+	
+	if !found {
 		cleanup_plugin_config_json(&config)
 		print_error_simple("Error: Plugin '%s' not found", plugin_name)
 		fmt.println()

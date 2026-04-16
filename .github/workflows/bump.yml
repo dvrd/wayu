@@ -15,6 +15,11 @@ on:
           - patch
           - minor
           - major
+      recreate_tag:
+        description: 'Recreate a missing tag (e.g., v3.8.0) - use if release failed previously'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
@@ -23,11 +28,13 @@ jobs:
   bump:
     name: Bump version
     runs-on: ubuntu-latest
-    if: "!startsWith(github.event.head_commit.message, 'chore: release')"
+    # Skip if this is a release commit AND the tag already exists
+    if: "!startsWith(github.event.head_commit.message, 'chore: release') || (startsWith(github.event.head_commit.message, 'chore: release') && !contains(github.event.head_commit.message, github.ref_name))"
 
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
       skip: ${{ steps.version.outputs.SKIP }}
+      recreate_tag: ${{ steps.version.outputs.RECREATE_TAG }}
 
     steps:
     - name: Checkout code
@@ -35,6 +42,8 @@ jobs:
       with:
         fetch-depth: 0
         token: ${{ secrets.GITHUB_TOKEN }}
+        # When recreating a tag, we need the specific commit
+        ref: ${{ inputs.recreate_tag != '' && github.sha || github.ref }}
 
     - name: Install git-cliff
       run: cargo install git-cliff --locked
@@ -42,20 +51,46 @@ jobs:
     - name: Determine next version
       id: version
       run: |
-        BUMP_TYPE="${{ inputs.bump_type || '' }}"
-        if [ -n "$BUMP_TYPE" ]; then
-          VERSION=$(git cliff --bumped-version --bump "$BUMP_TYPE")
+        # Check if manual tag recreation requested
+        RECREATE_TAG="false"
+        MANUAL_TAG="${{ inputs.recreate_tag || '' }}"
+        
+        if [ -n "$MANUAL_TAG" ]; then
+          echo "Manual tag recreation requested: $MANUAL_TAG"
+          VERSION="$MANUAL_TAG"
+          RECREATE_TAG="true"
         else
-          VERSION=$(git cliff --bumped-version)
+          BUMP_TYPE="${{ inputs.bump_type || '' }}"
+          if [ -n "$BUMP_TYPE" ]; then
+            VERSION=$(git cliff --bumped-version --bump "$BUMP_TYPE")
+          else
+            VERSION=$(git cliff --bumped-version)
+          fi
         fi
+        
         CURRENT=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
         echo "Current tag: $CURRENT  →  Next version: $VERSION"
-        if [ "$VERSION" = "$CURRENT" ]; then
+        
+        # Check if we need to recreate a missing tag (auto-detect)
+        if [ "$RECREATE_TAG" != "true" ] && [ "${{ startsWith(github.event.head_commit.message, 'chore: release') }}" = "true" ]; then
+          # Extract version from commit message
+          COMMIT_VERSION=$(echo "${{ github.event.head_commit.message }}" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || echo "")
+          if [ -n "$COMMIT_VERSION" ]; then
+            if ! git rev-parse "$COMMIT_VERSION" >/dev/null 2>&1; then
+              echo "Tag $COMMIT_VERSION missing but commit exists — will recreate tag"
+              VERSION="$COMMIT_VERSION"
+              RECREATE_TAG="true"
+            fi
+          fi
+        fi
+        
+        if [ "$VERSION" = "$CURRENT" ] && [ "$RECREATE_TAG" != "true" ]; then
           echo "No version bump needed — skipping release."
           echo "SKIP=true" >> $GITHUB_OUTPUT
         else
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "SKIP=false" >> $GITHUB_OUTPUT
+          echo "RECREATE_TAG=$RECREATE_TAG" >> $GITHUB_OUTPUT
         fi
 
     - name: Update VERSION in src/main.odin
@@ -75,10 +110,22 @@ jobs:
       run: |
         git config user.name  "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        git add src/main.odin CHANGELOG.md
-        git commit -m "chore: release ${{ steps.version.outputs.VERSION }}"
+        
+        # Only commit if we're not recreating a tag
+        if [ "${{ steps.version.outputs.RECREATE_TAG }}" != "true" ]; then
+          git add src/main.odin CHANGELOG.md
+          git commit -m "chore: release ${{ steps.version.outputs.VERSION }}" || echo "Commit may already exist"
+          git push origin main
+        else
+          echo "Recreating tag for existing commit"
+        fi
+        
+        # Create/push tag (force if recreating)
+        if [ "${{ steps.version.outputs.RECREATE_TAG }}" = "true" ]; then
+          git tag -d ${{ steps.version.outputs.VERSION }} 2>/dev/null || true
+          git push origin :refs/tags/${{ steps.version.outputs.VERSION }} 2>/dev/null || true
+        fi
         git tag ${{ steps.version.outputs.VERSION }}
-        git push origin main
         git push origin ${{ steps.version.outputs.VERSION }}
 
   build-release:

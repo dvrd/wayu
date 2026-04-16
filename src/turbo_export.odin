@@ -186,6 +186,16 @@ build_turbo_content :: proc() -> string {
 	append_plugins_direct(&builder)
 	fmt.sbprintf(&builder, "\n")
 
+	// 7. External Tools (Starship, etc.)
+	fmt.sbprintf(&builder, "# === EXTERNAL TOOLS ===\n")
+	append_tools_direct(&builder)
+	fmt.sbprintf(&builder, "\n")
+
+	// 8. Extra Config
+	fmt.sbprintf(&builder, "# === EXTRA CONFIG ===\n")
+	append_extra_direct(&builder)
+	fmt.sbprintf(&builder, "\n")
+
 	return strings.clone(strings.to_string(builder))
 }
 
@@ -316,6 +326,30 @@ append_plugins_direct :: proc(builder: ^strings.Builder) {
 	// Source plugins config if exists
 	fmt.sbprintf(builder, "[ -f \"$HOME/.config/wayu/plugins.zsh\" ] && source \"$HOME/.config/wayu/plugins.zsh\"\n")
 	fmt.sbprintf(builder, "[ -f \"$HOME/.config/wayu/plugins/config.zsh\" ] && source \"$HOME/.config/wayu/plugins/config.zsh\"\n")
+}
+
+// Append external tools loading (Starship, Zoxide, etc.)
+append_tools_direct :: proc(builder: ^strings.Builder) {
+	tools_path := fmt.aprintf("%s/tools.zsh", WAYU_CONFIG)
+	defer delete(tools_path)
+	
+	if os.exists(tools_path) {
+		fmt.sbprintf(builder, "[ -f \"$HOME/.config/wayu/tools.zsh\" ] && source \"$HOME/.config/wayu/tools.zsh\"\n")
+	} else {
+		fmt.sbprintf(builder, "# No tools configuration\n")
+	}
+}
+
+// Append extra config loading
+append_extra_direct :: proc(builder: ^strings.Builder) {
+	extra_path := fmt.aprintf("%s/extra.zsh", WAYU_CONFIG)
+	defer delete(extra_path)
+	
+	if os.exists(extra_path) {
+		fmt.sbprintf(builder, "[ -f \"$HOME/.config/wayu/extra.zsh\" ] && source \"$HOME/.config/wayu/extra.zsh\"\n")
+	} else {
+		fmt.sbprintf(builder, "# No extra configuration\n")
+	}
 }
 
 // Load PATH entries and return clean, deduplicated list
