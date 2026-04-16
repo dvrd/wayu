@@ -1,5 +1,9 @@
 name: Bump Version & Release
 
+permissions:
+  contents: write
+  actions: read
+  
 on:
   push:
     branches: [main]
@@ -223,6 +227,8 @@ jobs:
     name: Update Homebrew tap
     needs: [bump, create-release]
     runs-on: ubuntu-latest
+    # Always run if release was created (even if tag existed before)
+    if: needs.bump.outputs.skip != 'true' || needs.bump.outputs.recreate_tag == 'true'
 
     steps:
     - name: Download macOS artifacts
