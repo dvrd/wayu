@@ -328,9 +328,9 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 			
 			// Color según modo VI (configuración del usuario)
 			fmt.sbprintln(&builder, "  case \"$_WAYU_VI_MODE\" in")
-			fmt.sbprintln(&builder, `    INSERT) char_color="3" ;;`)   // Naranja para insert
-			fmt.sbprintln(&builder, `    NORMAL) char_color="2" ;;`)   // Verde para normal
-			fmt.sbprintln(&builder, `    VISUAL) char_color="5" ;;`)    // Púrpura para visual
+			fmt.sbprintln(&builder, `    INSERT) char_color="202" ;;`)   // Naranja 256-color para insert
+			fmt.sbprintln(&builder, `    NORMAL) char_color="2" ;;`)     // Verde para normal
+			fmt.sbprintln(&builder, `    VISUAL) char_color="5" ;;`)      // Púrpura para visual
 			fmt.sbprintln(&builder, `    REPLACE|REPLACE_ONE) char_color="5" ;;`) // Púrpura para replace
 			fmt.sbprintln(&builder, `    *)`)
 			fmt.sbprintln(&builder, "      # Fallback: usar exit code")

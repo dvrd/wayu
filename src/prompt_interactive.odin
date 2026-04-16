@@ -146,11 +146,14 @@ generate_vi_mode_feature :: proc(b: ^strings.Builder, cfg: InteractiveConfig) {
 	fmt.sbprintln(b, "bindkey -v")
 	fmt.sbprintln(b, "export KEYTIMEOUT=1  # Reducir delay al cambiar modos")
 	fmt.sbprintln(b)
+	fmt.sbprintln(b, "# Variables para tracking de modo")
+	fmt.sbprintln(b, "typeset -g _WAYU_VI_MODE=\"INSERT\"")
+	fmt.sbprintln(b)
 	fmt.sbprintln(b, "function zle-keymap-select {")
 	fmt.sbprintln(b, "  case $KEYMAP in")
 	fmt.sbprintln(b, `    vicmd) _WAYU_VI_MODE="NORMAL" ;;`)
 	fmt.sbprintln(b, `    main|viins) _WAYU_VI_MODE="INSERT" ;;`)
-	fmt.sbprintln(b, `    visual) _WAYU_VI_MODE="VISUAL" ;;`)
+	fmt.sbprintln(b, `    visual|vivis) _WAYU_VI_MODE="VISUAL" ;;`)
 	fmt.sbprintln(b, "  esac")
 	fmt.sbprintln(b, "  zle reset-prompt")
 	fmt.sbprintln(b, "}")
@@ -159,6 +162,7 @@ generate_vi_mode_feature :: proc(b: ^strings.Builder, cfg: InteractiveConfig) {
 	fmt.sbprintln(b)
 	fmt.sbprintln(b, "# Activar modo visual con 'v' en modo normal")
 	fmt.sbprintln(b, "bindkey -M vicmd 'v' visual-mode")
+	fmt.sbprintln(b, "bindkey -M vicmd 'V' visual-line-mode")
 	fmt.sbprintln(b)
 }
 
