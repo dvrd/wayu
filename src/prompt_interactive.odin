@@ -222,7 +222,7 @@ generate_context_feature :: proc(b: ^strings.Builder) {
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="kotlin"`)
 	fmt.sbprintln(b, "  elif [[ -f \"go.mod\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="golang"`)
-	fmt.sbprintln(b, `  elif [[ -f \"ols.json\" ]] || ls *.odin(N) 2>/dev/null | head -1 >/dev/null; then`)
+	fmt.sbprintln(b, `  elif [[ -f \"ols.json\" ]] || find . -maxdepth 2 -name "*.odin" -print -quit 2>/dev/null | grep -q .; then`)
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="odin"`)
 	fmt.sbprintln(b, "  elif [[ -f \"requirements.txt\" ]] || [[ -f \"pyproject.toml\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="python"`)
