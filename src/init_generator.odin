@@ -122,7 +122,7 @@ generate_core_init_v2 :: proc() {
 	
 	// Load helpers (para evalcache y zsh-defer)
 	fmt.sbprintln(&builder, "# === Load helpers (evalcache + zsh-defer propio) ===")
-	fmt.sbprintfln(&builder, "source \"%s/init-helpers.zsh\" 2>/dev/null", WAYU_CONFIG)
+	fmt.sbprintfln(&builder, "source \"%s/init-helpers.zsh\" 2>/dev/null || true", WAYU_CONFIG)
 	fmt.sbprintln(&builder)
 	
 	// Prompt: Starship con evalcache
@@ -138,9 +138,9 @@ generate_core_init_v2 :: proc() {
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
 	
-	// Login shell extras
+	// Login shell extras (|| true para que no falle en non-login shells)
 	fmt.sbprintln(&builder, "# === Login shell ===")
-	fmt.sbprintfln(&builder, "[[ -o login ]] && source \"%s/init-login.zsh\" 2>/dev/null", WAYU_CONFIG)
+	fmt.sbprintfln(&builder, "[[ -o login ]] && source \"%s/init-login.zsh\" 2>/dev/null || true", WAYU_CONFIG)
 	fmt.sbprintln(&builder)
 	
 	content := strings.to_string(builder)
