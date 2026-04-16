@@ -82,18 +82,10 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	fmt.sbprintln(&builder, "  local result=\"\"")
 	fmt.sbprintln(&builder)
 	
-	// Añadir indicador VI si está activo
-	if cfg.vi_mode_indicator {
-		fmt.sbprintln(&builder, "  # VI Mode indicator")
-		fmt.sbprintln(&builder, "  if [[ -n \"$_WAYU_VI_MODE\" ]]; then")
-		fmt.sbprintln(&builder, "    case \"$_WAYU_VI_MODE\" in")
-		fmt.sbprintfln(&builder, "      INSERT) result+=\"%s \" ;;", cfg.vi_insert_symbol)
-		fmt.sbprintfln(&builder, "      NORMAL) result+=\"%s \" ;;", cfg.vi_normal_symbol)
-		fmt.sbprintfln(&builder, "      VISUAL) result+=\"%s \" ;;", cfg.vi_visual_symbol)
-		fmt.sbprintln(&builder, "    esac")
-		fmt.sbprintln(&builder, "  fi")
-		fmt.sbprintln(&builder)
-	}
+	// Guardar exit_code para que _wayu_prompt_full lo use
+	fmt.sbprintln(&builder, "  # Guardar exit_code para funciones hijas")
+	fmt.sbprintln(&builder, "  export _WAYU_LAST_EXIT=$exit_code")
+	fmt.sbprintln(&builder)
 	
 	// Usar prompt según modo (full/minimal)
 	if cfg.toggle_enabled || cfg.transient_enabled {

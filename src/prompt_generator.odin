@@ -10,6 +10,9 @@ PromptConfigFull :: struct {
 	format: string,
 	character_success: string,
 	character_error: string,
+	vimcmd_symbol: string,
+	vimcmd_visual_symbol: string,
+	vimcmd_replace_symbol: string,
 }
 
 // Parse config simple desde TOML
@@ -18,6 +21,9 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 		format = "{username}{dir}{git_branch}{character}",
 		character_success = "➜",
 		character_error = "✗",
+		vimcmd_symbol = "❮",
+		vimcmd_visual_symbol = "❮",
+		vimcmd_replace_symbol = "❮",
 	}
 	
 	lines := strings.split(toml, "\n")
@@ -79,6 +85,31 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 				}
 			}
 		}
+		
+		// VI mode symbols
+		if strings.contains(trimmed, "vimcmd_symbol") && strings.contains(trimmed, "=") {
+			eq_idx := strings.index(trimmed, "=")
+			if eq_idx > 0 {
+				value := strings.trim_space(trimmed[eq_idx+1:])
+				start := strings.index(value, "[")
+				end := strings.index(value, "]")
+				if start >= 0 && end > start {
+					cfg.vimcmd_symbol = strings.trim_space(value[start+1:end])
+				}
+			}
+		}
+		
+		if strings.contains(trimmed, "vimcmd_visual_symbol") && strings.contains(trimmed, "=") {
+			eq_idx := strings.index(trimmed, "=")
+			if eq_idx > 0 {
+				value := strings.trim_space(trimmed[eq_idx+1:])
+				start := strings.index(value, "[")
+				end := strings.index(value, "]")
+				if start >= 0 && end > start {
+					cfg.vimcmd_visual_symbol = strings.trim_space(value[start+1:end])
+				}
+			}
+		}
 	}
 	
 	return cfg
@@ -117,8 +148,8 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	
 	// Función principal de prompt (full version)
 	fmt.sbprintln(&builder, "_wayu_prompt_full() {")
-	fmt.sbprintln(&builder, "  local exit_code=$?")
 	fmt.sbprintln(&builder, `  local result=""`)
+	fmt.sbprintln(&builder, "  # _WAYU_LAST_EXIT set by _wayu_prompt_master")
 	fmt.sbprintln(&builder)
 	
 	// Procesar cada componente según el format
@@ -246,21 +277,47 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 			fmt.sbprintln(&builder)
 		}
 		
-		// Character (success/error)
+		// Character (success/error/vi-mode)
 		if strings.contains(part, "{character}") {
-			fmt.sbprintln(&builder, "  # Character (success/error)")
-			fmt.sbprintln(&builder, "  if [[ $exit_code -eq 0 ]]; then")
-		// Usar símbolos directamente sin format
-		fmt.sbprint(&builder, `    result+="%F{2}%B`)
-		fmt.sbprint(&builder, cfg.character_success)
-		fmt.sbprintln(&builder, `%b%F{reset} "`)
-		fmt.sbprintln(&builder, "  else")
-		fmt.sbprint(&builder, `    result+="%F{1}%B`)
-		fmt.sbprint(&builder, cfg.character_error)
-		fmt.sbprintln(&builder, `%b%F{reset} "`)
-		fmt.sbprintln(&builder, "  fi")
-		fmt.sbprintln(&builder)
-	}
+			fmt.sbprintln(&builder, "  # Character (success/error with VI mode support)")
+			fmt.sbprintln(&builder, "  local char_symbol char_color")
+			
+			// Determinar símbolo según modo VI y exit code
+			fmt.sbprintln(&builder, "  if [[ -n \"$_WAYU_VI_MODE\" ]] && [[ \"$_WAYU_VI_MODE\" != \"INSERT\" ]]; then")
+			fmt.sbprintln(&builder, "    # VI mode: use direction arrows (❮)")
+			fmt.sbprintln(&builder, "    case \"$_WAYU_VI_MODE\" in")
+			fmt.sbprint(&builder, "      VISUAL)")
+			fmt.sbprint(&builder, ` char_symbol="`)
+			fmt.sbprint(&builder, cfg.vimcmd_visual_symbol)
+			fmt.sbprintln(&builder, `" ;;`)
+			fmt.sbprintln(&builder, "      *)")
+			fmt.sbprint(&builder, ` char_symbol="`)
+			fmt.sbprint(&builder, cfg.vimcmd_symbol)
+			fmt.sbprintln(&builder, `" ;;`)
+			fmt.sbprintln(&builder, "    esac")
+			fmt.sbprintln(&builder, "  else")
+			fmt.sbprintln(&builder, "    # Normal mode: use exit code to determine symbol")
+			fmt.sbprintln(&builder, "    if [[ ${_WAYU_LAST_EXIT:-0} -eq 0 ]]; then")
+			fmt.sbprint(&builder, `      char_symbol="`)
+			fmt.sbprint(&builder, cfg.character_success)
+			fmt.sbprintln(&builder, `"`)
+			fmt.sbprintln(&builder, "    else")
+			fmt.sbprint(&builder, `      char_symbol="`)
+			fmt.sbprint(&builder, cfg.character_error)
+			fmt.sbprintln(&builder, `"`)
+			fmt.sbprintln(&builder, "    fi")
+			fmt.sbprintln(&builder, "  fi")
+			
+			// Color según exit code (siempre)
+			fmt.sbprintln(&builder, "  if [[ ${_WAYU_LAST_EXIT:-0} -eq 0 ]]; then")
+			fmt.sbprintln(&builder, `    char_color="2"`)
+			fmt.sbprintln(&builder, "  else")
+			fmt.sbprintln(&builder, `    char_color="1"`)
+			fmt.sbprintln(&builder, "  fi")
+			
+			fmt.sbprintln(&builder, `  result+="%F{${char_color}}%B${char_symbol}%b%F{reset} "`)
+			fmt.sbprintln(&builder)
+		}
 	}  // Cierre del for loop
 	
 	// Output final
@@ -268,10 +325,8 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
 	
-	// Configurar PROMPT
-	fmt.sbprintln(&builder, "setopt promptsubst")
-	fmt.sbprintln(&builder, `PROMPT='$(_wayu_prompt)'`)
-	fmt.sbprintln(&builder, "unset RPROMPT")
+	// NOTA: PROMPT se configura en generate_interactive_prompt
+	// para permitir integración con features interactivas
 	
 	return strings.clone(strings.to_string(builder))
 }
