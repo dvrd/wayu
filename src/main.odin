@@ -1528,22 +1528,70 @@ generate_eval_output_optimized :: proc() {
 	fmt.eprintfln("# Generated in %.2fms using %v optimization", elapsed, profile.path_level)
 }
 
-// Append optimized PATH export
+// Append optimized PATH export - ordered: personal > homebrew > system
+// Generates absolute PATH without depending on existing $PATH (prevents duplication on re-source)
 append_path_optimized :: proc(builder: ^strings.Builder, paths: []BuildPathEntry, level: OptimizationLevel) {
-	// Validate and sort paths using the optimal method
-	valid_paths := validate_and_sort_paths(paths, level)
+	// Validate and categorize paths
+	personal_paths := make([dynamic]string, context.temp_allocator)
+	homebrew_paths := make([dynamic]string, context.temp_allocator)
 	
-	// Build single PATH string (the key optimization)
-	fmt.sbprint(builder, "export PATH=\"")
-	
-	for path, i in valid_paths {
-		if i > 0 {
-			fmt.sbprint(builder, ":")
+	for path in paths {
+		expanded := path.expanded
+		if len(expanded) == 0 { continue }
+		
+		// Skip system paths - they get added explicitly at the end
+		if strings.has_prefix(expanded, "/usr/bin") || 
+		   strings.has_prefix(expanded, "/bin") || 
+		   strings.has_prefix(expanded, "/usr/sbin") || 
+		   strings.has_prefix(expanded, "/sbin") ||
+		   strings.has_prefix(expanded, "/usr/local/bin") ||
+		   strings.has_prefix(expanded, "/usr/local/sbin") ||
+		   strings.has_prefix(expanded, "/Library/") {
+			continue
 		}
-		fmt.sbprint(builder, path.expanded)
+		
+		// Categorize by path type
+		if strings.has_prefix(expanded, "/opt/homebrew/") || strings.has_prefix(expanded, "/usr/local/Cellar/") {
+			append(&homebrew_paths, expanded)
+		} else {
+			// Personal paths (home directory, dev projects, etc.)
+			append(&personal_paths, expanded)
+		}
 	}
 	
-	fmt.sbprintln(builder, ":$PATH\"")
+	// Build complete PATH from scratch - no $PATH dependency
+	fmt.sbprint(builder, "export PATH=\"")
+	
+	first := true
+	
+	// 1. Personal paths first (highest priority)
+	for p in personal_paths {
+		if !first { fmt.sbprint(builder, ":") }
+		fmt.sbprint(builder, p)
+		first = false
+	}
+	
+	// 2. Homebrew paths second
+	for p in homebrew_paths {
+		if !first { fmt.sbprint(builder, ":") }
+		fmt.sbprint(builder, p)
+		first = false
+	}
+	
+	// 3. System paths (absolute, not from $PATH)
+	system_paths := []string{"/usr/local/bin", "/usr/local/sbin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"}
+	for p in system_paths {
+		if !first { fmt.sbprint(builder, ":") }
+		fmt.sbprint(builder, p)
+		first = false
+	}
+	
+	fmt.sbprintln(builder, "\"")
+	fmt.sbprintln(builder)
+	
+	// Add deduplication guard (for safety if user has other PATH modifications)
+	fmt.sbprintln(builder, "# Ensure PATH deduplication")
+	fmt.sbprintln(builder, "typeset -U PATH 2>/dev/null || true")
 	fmt.sbprintln(builder)
 }
 
