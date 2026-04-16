@@ -1,0 +1,575 @@
+Dynamically change transient prompt · Issue #1640 - GitHub
+  URL: https://github.com/romkatv/powerlevel10k/issues/1640
+  I have a question - is it possible to change prompt transience dynamically (using some keyboard shortcut)? I'm afraid it's not possible, but let ...
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/romkatv/powerlevel10k/issues/1640#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/romkatv/powerlevel10k/issues/1640) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/romkatv/powerlevel10k/issues/1640) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/romkatv/powerlevel10k/issues/1640) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [romkatv](https://github.com/romkatv)/ **[powerlevel10k](https://github.com/romkatv/powerlevel10k)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2Fromkatv%2Fpowerlevel10k) You must be signed in to change notification settings
+  - [Fork\\
+  2.4k](https://github.com/login?return_to=%2Fromkatv%2Fpowerlevel10k)
+  - [Star\\
+  53.8k](https://github.com/login?return_to=%2Fromkatv%2Fpowerlevel10k)
+  
+  
+  # Dynamically change transient prompt\#1640
+  
+  [New issue](https://github.com/login?return_to=https://github.com/romkatv/powerlevel10k/issues/1640)
+  
+  Copy link
+  
+  [New issue](https://github.com/login?return_to=https://github.com/romkatv/powerlevel10k/issues/1640)
+  
+  Copy link
+  
+  Closed
+  
+  Closed
+  
+  [Dynamically change transient prompt](https://github.com/romkatv/powerlevel10k/issues/1640#top)#1640
+  
+  Copy link
+  
+  [![@piotrekfus91](https://avatars.githubusercontent.com/u/2010541?v=4&size=80)](https://github.com/piotrekfus91)
+  
+  ## Description
+  
+  [![@piotrekfus91](https://avatars.githubusercontent.com/u/2010541?v=4&size=48)](https://github.com/piotrekfus91)
+  
+  [piotrekfus91](https://github.com/piotrekfus91)
+  
+  opened [on Nov 16, 2021on Nov 16, 2021](https://github.com/romkatv/powerlevel10k/issues/1640#issue-1054615879)
+  
+  Issue body actions
+  
+  Hi! First of all - you do a great job, I love p10k.
+  
+  I have a question - is it possible to change prompt transience dynamically (using some keyboard shortcut)? I'm afraid it's not possible, but let me explain my reasoning.
+  
+  Full prompt (i.e. two liner) looks great and I would really appreciate to work with that. But, on the other hand, when copying and pasting terminal, it looks terrible, so for commands results it is better to keep it simple. So for now i can't use full prompt, but it would be awesome if I can switch view dynamically (shrink just to copy and then return to full version).
+  
+  Thanks in advance :)
+  
+  ## Activity
+  
+  [![romkatv](https://avatars.githubusercontent.com/u/1282067?u=4e6e9bb432f7b5502008624ca3bb3f28cc15ff52&v=4&size=80)](https://github.com/romkatv)
+  
+  ### romkatv commented on Nov 16, 2021on Nov 16, 2021
+  
+  [![@romkatv](https://avatars.githubusercontent.com/u/1282067?u=4e6e9bb432f7b5502008624ca3bb3f28cc15ff52&v=4&size=48)](https://github.com/romkatv)
+  
+  [romkatv](https://github.com/romkatv)
+  
+  [on Nov 16, 2021on Nov 16, 2021](https://github.com/romkatv/powerlevel10k/issues/1640#issuecomment-970066345)
+  
+  Owner
+  
+  More actions
+  
+  Add this to `~/.zshrc`:
+  
+  ```
+  function toggle-transient-prompt() {
+    (( ${+functions[p10k]} )) || return
+    if [[ ${POWERLEVEL9K_TRANSIENT_PROMPT-} == off ]]; then
+      typeset -g POWERLEVEL9K_TRANSIENT_PROMPT=always
+    else
+      typeset -g POWERLEVEL9K_TRANSIENT_PROMPT=off
+    fi
+    p10k reload
+    if zle; then
+      zle push-input
+      zle accept-line
+    fi
+  }
+  ```
+  
+  Invoke this function by typing `toggle-transient-prompt`. You can also bind it to a key by adding two more lines to `~/.zshrc`:
+  
+  ```
+  # Bind Ctrl-T to toggle powerlevel10k transient prompt.
+  zle -N toggle-transient-prompt
+  bindkey '^T' toggle-transient-prompt
+  ```
+  
+  👍React with 👍2yittg and lixiaoquan
+  
+  [![piotrekfus91](https://avatars.githubusercontent.com/u/2010541?v=4&size=80)](https://github.com/piotrekfus91)
+  
+  ### piotrekfus91 commented on Nov 16, 2021on Nov 16, 2021
+  
+  [![@piotrekfus91](https://avatars.githubusercontent.com/u/2010541?v=4&size=48)](https://github.com/piotrekfus91)
+  
+  [piotrekfus91](https://github.com/piotrekfus91)
+  
+  [on Nov 16, 2021on Nov 16, 2021](https://github.com/romkatv/powerlevel10k/issues/1640#issuecomment-970087501)
+  
+  Author
+  
+  More actions
+  
+  That is nice, helpful indeed, but not exactly solving my problem. I would like to change previous lines (results of previous commands), to be able to copy past results. Is it possible?
+  
+  Your solution is also great, obviously, but need to know that you would want to copy before typing command :)
+  
+  [![romkatv](https://avatars.githubusercontent.com/u/1282067?u=4e6e9bb432f7b5502008624ca3bb3f28cc15ff52&v=4&size=80)](https://github.com/romkatv)
+  
+  ### romkatv commented on Nov 16, 2021on Nov 16, 2021
+  
+  [![@romkatv](https://avatars.githubusercontent.com/u/1282067?u=4e6e9bb432f7b5502008624ca3bb3f28cc15ff52&v=4&size=48)](https://github.com/romkatv)
+  
+  [romkatv](https://github.com/romkatv)
+  
+  [on Nov 16, 2021on Nov 16, 2021](https://github.com/romkatv/powerlevel10k/issues/1640#issuecomment-970092586)
+  
+  Owner
+  
+  More actions
+  
+  > Is it possible?
+  
+  Nope. Terminals don't work that way.
+  
+  [![piotrekfus91](https://avatars.githubusercontent.com/u/2010541?v=4&size=80)](https://github.com/piotrekfus91)
+  
+  ### piotrekfus91 commented on Nov 16, 2021on Nov 16, 2021
+  
+  [![@piotrekfus91](https://avatars.githubusercontent.com/u/2010541?v=4&size=48)](https://github.com/piotrekfus91)
+  
+  [piotrekfus91](https://github.com/piotrekfus91)
+  
+  [on Nov 16, 2021on Nov 16, 2021](https://github.com/romkatv/powerlevel10k/issues/1640#issuecomment-970100094)
+  
+  Author
+  
+  More actions
+  
+  Ok, anyway - many thanks for your answers and extremely short response time!
+  
+  [![](https://avatars.githubusercontent.com/u/2010541?s=64&v=4)piotrekfus91](https://github.com/piotrekfus91)
+  
+  closed this as [completed](https://github.com/romkatv/powerlevel10k/issues?q=is%3Aissue%20state%3Aclosed%20archived%3Afalse%20reason%3Acompleted) [on Nov 16, 2021on Nov 16, 2021](https://github.com/romkatv/powerlevel10k/issues/1640#event-5623707144)
+  
+  [![romkatv](https://avatars.githubusercontent.com/u/1282067?u=4e6e9bb432f7b5502008624ca3bb3f28cc15ff52&v=4&size=80)](https://github.com/romkatv)
+  
+  ### romkatv commented on Nov 16, 2021on Nov 16, 2021
+  
+  [![@romkatv](https://avatars.githubusercontent.com/u/1282067?u=4e6e9bb432f7b5502008624ca3bb3f28cc15ff52&v=4&size=48)](https://github.com/romkatv)
+  
+  [romkatv](https://github.com/romkatv)
+  
+  [on Nov 16, 2021on Nov 16, 2021](https://github.com/romkatv/powerlevel10k/issues/1640#issuecomment-970100916)
+  
+  Owner
+  
+  More actions
+  
+  You are welcome.
+  
+  [![yittg](https://avatars.githubusercontent.com/u/4429171?v=4&size=80)](https://github.com/yittg)
+  
+  ### yittg commented on Jan 19, 2022on Jan 19, 2022
+  
+  [![@yittg](https://avatars.githubusercontent.com/u/4429171?v=4&size=48)](https://github.com/yittg)
+  
+  [yittg](https://github.com/yittg)
+  
+  [on Jan 19, 2022on Jan 19, 2022](https://github.com/romkatv/powerlevel10k/issues/1640#issuecomment-1017083423)
+  
+  More actions
+  
+  [@romkatv](https://github.com/romkatv) Can [these feature](https://github.com/romkatv/powerlevel10k/issues/1640#issuecomment-970066345) be builtin? That would be great.
+  
+  👍React with 👍1Jacke
+  
+  [![romkatv](https://avatars.githubusercontent.com/u/1282067?u=4e6e9bb432f7b5502008624ca3bb3f28cc15ff52&v=4&size=80)](https://github.com/romkatv)
+  
+  ### romkatv commented on Jan 20, 2022on Jan 20, 2022
+  
+  [![@romkatv](https://avatars.githubusercontent.com/u/1282067?u=4e6e9bb432f7b5502008624ca3bb3f28cc15ff52&v=4&size=48)](https://github.com/romkatv)
+  
+  [romkatv](https://github.com/romkatv)
+  
+  [on Jan 20, 2022on Jan 20, 2022](https://github.com/romkatv/powerlevel10k/issues/1640#issuecomment-1017209663)
+  
+  Owner
+  
+  More actions
+  
+  [@yittg](https://github.com/yittg) The code I've posted uses only public APIs of powerlevel10k, so it's safe to use as is. It won't break when powerlevel10k is updated. I don't think I'll be including this widget or a binding in powerlevel10k but that shouldn't stop you from using this code.
+  
+  ❤️React with ❤️1yittg
+  
+  [Sign up for free](https://github.com/signup?return_to=https://github.com/romkatv/powerlevel10k/issues/1640)**to join this conversation on GitHub.** Already have an account? [Sign in to comment](https://github.com/login?return_to=https://github.com/romkatv/powerlevel10k/issues/1640)
+  
+  ## Metadata
+  
+  ## Metadata
+  
+  ### Assignees
+  
+  No one assigned
+  
+  ### Labels
+  
+  No labels
+  
+  No labels
+  
+  ### Projects
+  
+  No projects
+  
+  ### Milestone
+  
+  No milestone
+  
+  ### Relationships
+  
+  None yet
+  
+  ### Development
+  
+  No branches or pull requests
+  
+  ### Participants
+  
+  [![@romkatv](https://avatars.githubusercontent.com/u/1282067?s=64&u=4e6e9bb432f7b5502008624ca3bb3f28cc15ff52&v=4)](https://github.com/romkatv)[![@piotrekfus91](https://avatars.githubusercontent.com/u/2010541?s=64&v=4)](https://github.com/piotrekfus91)[![@yittg](https://avatars.githubusercontent.com/u/4429171?s=64&v=4)](https://github.com/yittg)
+  
+  ## Issue actions
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+New Powerlevel10k Feature: Transient Prompt : r/zsh - Reddit
+  URL: https://www.reddit.com/r/zsh/comments/dsh1g3/new_powerlevel10k_feature_transient_prompt/
+  There is a new feature in Powerlevel10k called Transient Prompt. You can enable it via p10k configure or manually.
+
+Transient prompt | Oh My Posh
+  URL: https://ohmyposh.dev/docs/configuration/transient
+  Transient prompt, when enabled, replaces the prompt with a simpler one to allow more screen real estate. You can use go text/template templates extended ...
+
+  --- Content ---
+  [Skip to main content](https://ohmyposh.dev/docs/configuration/transient#__docusaurus_skipToContent_fallback)
+  
+  If you're enjoying Oh My Posh, consider becoming a [sponsor](https://github.com/sponsors/JanDeDobbeleer) to keep the project going strong 💪
+  
+  On this page
+  
+  info
+  
+  This feature only works in `nu`, `fish`, `zsh`, `powershell` (`ConstrainedLanguage` mode unsupported), bash (with [ble.sh](https://github.com/akinomyoga/ble.sh)) and `cmd` for the time being.
+  
+  Transient prompt, when enabled, replaces the prompt with a simpler one to allow more screen real estate.
+  You can use go [text/template](https://golang.org/pkg/text/template/) templates extended with [sprig](https://masterminds.github.io/sprig/) to enrich the text.
+  All [template](https://ohmyposh.dev/docs/configuration/templates) functionality is available, even reusing [cross segment template properties](https://ohmyposh.dev/docs/configuration/templates#cross-segment-template-properties) from
+  the previous primary prompt run.
+  
+  Typically, your prompt will simply leave the prompt on the screen when you execute a command (or press enter) like so:
+  
+  ![Before Transient](https://ohmyposh.dev/assets/images/transient-before-64b3523dac567ad469b17724d73a44b1.gif)
+  
+  By enabling Transient Prompt, you can replace the prompt with some other content for a cleaner console as shown here:
+  
+  ![After Transient](https://ohmyposh.dev/assets/images/transient-after-6d2c40b8b94c749303a9f0003302c99e.gif)
+  
+  ## Configuration [​](https://ohmyposh.dev/docs/configuration/transient\#configuration "Direct link to Configuration")
+  
+  You need to extend or create a custom theme with your transient prompt. For example:
+  
+  - json
+  - yaml
+  - toml
+  
+  ```json
+  {
+  
+    "transient_prompt": {
+  
+      "background": "transparent",
+  
+      "foreground": "#ffffff",
+  
+      "template": "{{ .Shell }}> "
+  
+    }
+  
+  }
+  ```
+  
+  ```yaml
+  transient_prompt:
+  
+    background: transparent
+  
+    foreground: "#ffffff"
+  
+    template: "{{ .Shell }}> "
+  ```
+  
+  ```toml
+  [transient_prompt]
+  
+  background = "transparent"
+  
+  foreground = "#ffffff"
+  
+  template = "{{ .Shell }}> "
+  ```
+  
+  ## Options [​](https://ohmyposh.dev/docs/configuration/transient\#options "Direct link to Options")
+  
+  | Name | Type | Description |
+  | --- | --- | --- |
+  | `foreground` | `string` | [color](https://ohmyposh.dev/docs/configuration/colors) |
+  | `foreground_templates` | `array` | [color templates](https://ohmyposh.dev/docs/configuration/colors#color-templates) |
+  | `background` | `string` | [color](https://ohmyposh.dev/docs/configuration/colors) |
+  | `background_templates` | `array` | [color templates](https://ohmyposh.dev/docs/configuration/colors#color-templates) |
+  | `template` | `string` | a go [text/template](https://golang.org/pkg/text/template/) template extended with [sprig](https://masterminds.github.io/sprig/) utilizing the properties below - defaults to `{{ .Shell }}>` |
+  | `filler` | `string` | when you want to create a line with a repeated set of characters spanning the width of the terminal. Will be added _after_ the `template` text |
+  | `newline` | `boolean` | add a newline before the prompt |
+  
+  ## Enable the feature [​](https://ohmyposh.dev/docs/configuration/transient\#enable-the-feature "Direct link to Enable the feature")
+  
+  Oh My posh handles enabling the feature automatically for all shells except `cmd` when the config contains a
+  transient prompt configuration. For `cmd`, you can run the command below once to enable the feature permanently:
+  
+  ```shell
+  clink set prompt.transient always
+  ```
+  
+  - [Configuration](https://ohmyposh.dev/docs/configuration/transient#configuration)
+  - [Options](https://ohmyposh.dev/docs/configuration/transient#options)
+  - [Enable the feature](https://ohmyposh.dev/docs/configuration/transient#enable-the-feature)
+  --- End Content ---
+
+Transient prompt with Zsh - Vincent Bernat
+  URL: https://vincent.bernat.ch/en/blog/2021-zsh-transient-prompt
+  One of the nice features of Powerlevel10k is transient prompts: past prompts are reduced to a more minimal configuration to save space by ...
+
+  --- Content ---
+  [Powerlevel10k](https://github.com/romkatv/powerlevel10k) is a theme for _Zsh_. It contains some powerful
+  features, is astoundingly fast, and easy to customize. I am quite
+  amazed at the skills of its [main author](https://github.com/romkatv "Roman Perepelitsa"). Be sure to also have a
+  look at [Zsh for Humans](https://github.com/romkatv/zsh4humans), a complete _Zsh_ configuration including
+  this theme.
+  
+  One of the nice features of _Powerlevel10k_ is **transient prompts**:
+  past prompts are reduced to a more minimal configuration to save space
+  by removing unneeded information.
+  
+  ![Demonstration of a transient prompt with Zsh: past prompts use a more compact form](https://d2pzklc15kok91.cloudfront.net/images/zsh-compact-prompt@1x.524cd4ad82069a.jpg)
+  
+  My implementation of a transient prompt with Zsh. Past prompts are compact and include the time of the command execution, the hostname, and the status of the previous command while the complete prompt contains more information like the current directory and the Git branch.
+  
+  When it comes to configuring my shell, I still prefer writing and
+  understanding each line going into it. Therefore, I am still building
+  my _Zsh_ configuration [from scratch](https://vincent.bernat.ch/en/blog/2011-zsh-zshrc "Rewriting my .zshrc"). Here is how I have integrated
+  the above transient feature into my prompt.
+  
+  The first step is to configure the appearance of the prompt in its
+  compact form. Let’s assume we have a variable, `$_vbe_prompt_compact`
+  set to 1 when we want a compact prompt. We use the
+  following function to define the prompt appearance:
+  
+  ```
+  _vbe_prompt () {
+      local retval=$?
+  
+      # When compact, just time + prompt sign
+      if (( $_vbe_prompt_compact )); then
+          # Current time (with timezone for remote hosts)
+          _vbe_prompt_segment cyan default "%D{%H:%M${SSH_TTY+ %Z}}"
+          # Hostname for remote hosts
+          [[ $SSH_TTY ]] && \
+              _vbe_prompt_segment black magenta "%B%M%b"
+          # Status of the last command
+          if (( $retval )); then
+              _vbe_prompt_segment red default ${PRCH[reta]}
+          else
+              _vbe_prompt_segment green cyan ${PRCH[ok]}
+          fi
+          # End of prompt
+          _vbe_prompt_end
+          return
+      fi
+  
+      # Regular prompt with many information
+      # […]
+  }
+  setopt prompt_subst
+  PS1='$(_vbe_prompt) '
+  ```
+  
+  Update (2021-05)
+  
+  The following part has been rewritten to be
+  more robust. The code is stolen from [Powerlevel10k’s issue #888](https://github.com/romkatv/powerlevel10k/issues/888 "Help understanding the implementation of transient prompt #888").
+  See the comments for more details.
+  
+  Our next step is to redraw the prompt after accepting a command. We
+  wrap Zsh line editor into a function:[1](https://vincent.bernat.ch/en/blog/2021-zsh-transient-prompt#sidenote-bracketedpaste)
+  
+  ```
+  _vbe-zle-line-init() {
+      [[ $CONTEXT == start ]] || return 0
+  
+      # Start regular line editor
+      (( $+zle_bracketed_paste )) && print -r -n - $zle_bracketed_paste[1]
+      zle .recursive-edit
+      local -i ret=$?
+      (( $+zle_bracketed_paste )) && print -r -n - $zle_bracketed_paste[2]
+  
+      # If we received EOT, we exit the shell
+      if [[ $ret == 0 && $KEYS == $'\4' ]]; then
+          _vbe_prompt_compact=1
+          zle .reset-prompt
+          exit
+      fi
+  
+      # Line edition is over. Shorten the current prompt.
+      _vbe_prompt_compact=1
+      zle .reset-prompt
+      unset _vbe_prompt_compact
+  
+      if (( ret )); then
+          # Ctrl-C
+          zle .send-break
+      else
+          # Enter
+          zle .accept-line
+      fi
+      return ret
+  }
+  zle -N zle-line-init _vbe-zle-line-init
+  ```
+  
+  That’s all!
+  
+  * * *
+  
+  One downside of using the powerline fonts is that it messes with
+  copy/paste. As I am using _tmux_, I use the following snippet to work
+  around this issue and use only standard Unicode characters when
+  copying from the terminal:
+  
+  ```
+  bind-key -T copy-mode M-w \
+    send -X copy-pipe-and-cancel "sed 's/.*/%/g' | xclip -i -selection clipboard" \;\
+    display-message "Selection saved to clipboard!"
+  ```
+  
+  Copying and pasting the text from the screenshot above yields the
+  following text:
+  
+  ```
+  14:21 % ssh eizo.luffy.cx
+  Linux eizo 4.19.0-16-amd64 #1 SMP Debian 4.19.181-1 (2021-03-19) x86_64
+  Last login: Fri Apr 23 14:20:39 2021 from 2a01:cb00:3f:b02:9db6:efa4:d85:7f9f
+  14:21 CEST % uname -a
+  Linux eizo 4.19.0-16-amd64 #1 SMP Debian 4.19.181-1 (2021-03-19) x86_64 GNU/Linux
+  14:21 CEST %
+  Connection to eizo.luffy.cx closed.
+  14:22 % git status
+  On branch article/zsh-transient
+  Untracked files:
+    (use "git add <file>..." to include in what will be committed)
+          ../../media/images/zsh-compact-prompt@2x.jpg
+  
+  nothing added to commit but untracked files present (use "git add" to track)
+  ```
+  
+  - 📢
+  Share on
+  [Mastodon](https://toot.kytta.dev/?text=Transient%20prompt%20with%20Zsh:%20https%3A//vincent.bernat.ch/en/blog/2021-zsh-transient-prompt%20via%20@vincent@bernat.ch),
+  [Bluesky](https://bsky.app/intent/compose?text=Transient%20prompt%20with%20Zsh:%20https%3A//vincent.bernat.ch/en/blog/2021-zsh-transient-prompt%20via%20@vincent.bernat.ch),
+  [Threads](https://www.threads.com/intent/post?text=Transient%20prompt%20with%20Zsh&url=https%3A//vincent.bernat.ch/en/blog/2021-zsh-transient-prompt),
+  [Facebook](https://www.facebook.com/sharer.php?u=https%3A//vincent.bernat.ch/en/blog/2021-zsh-transient-prompt),
+  [Reddit](https://www.reddit.com/submit?url=https%3A//vincent.bernat.ch/en/blog/2021-zsh-transient-prompt&title=Transient%20prompt%20with%20Zsh),
+  [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A//vincent.bernat.ch/en/blog/2021-zsh-transient-prompt),
+  [Lobsters](https://lobste.rs/stories/new?url=https%3A//vincent.bernat.ch/en/blog/2021-zsh-transient-prompt&title=Transient%20prompt%20with%20Zsh),
+  [Hacker News](https://news.ycombinator.com/submitlink?u=https%3A//vincent.bernat.ch/en/blog/2021-zsh-transient-prompt&t=Transient%20prompt%20with%20Zsh),
+  with an [application](https://vincent.bernat.ch/en/blog/2021-zsh-transient-prompt#),
+  or by [mail](mailto:?subject=Transient%20prompt%20with%20Zsh&body=https%3A//vincent.bernat.ch/en/blog/2021-zsh-transient-prompt).
+  
+  - → [Jerikan+Ansible: a configuration management system for network](https://vincent.bernat.ch/en/blog/2021-network-jerikan-ansible)
+  - ← [Zero-Touch Provisioning for Juniper](https://vincent.bernat.ch/en/blog/2020-dhcp-ztp-juniper)
+  - 💡 [Non-interactive SSH password authentication](https://vincent.bernat.ch/en/blog/2023-sshpass-without-sshpass)
+  - 💡 [Zsh prompt with asynchronous Git status](https://vincent.bernat.ch/en/blog/2019-zsh-async-vcs-info)
+  - 🗞️ [Subscribe to new posts](https://vincent.bernat.ch/en/blog/subscribe)
+  - 💬The comment system uses Isso and requires JavaScript[Comments](https://vincent.bernat.ch/en/blog/2021-zsh-transient-prompt#isso-thread) (they rely on _Isso_ and are 🍪-free)
+  
+  [Back to top](https://vincent.bernat.ch/en/blog/2021-zsh-transient-prompt#)
+  --- End Content ---
+
+We may have killed p10k, so I found the perfect replacement.
+  URL: https://www.youtube.com/watch?v=9U8LCjuQzdc
+  Share your videos with friends, family, and the world.
+
+  --- Content ---
+  ![Thumbnail (1920x1080)](https://i.ytimg.com/vi/9U8LCjuQzdc/maxresdefault.jpg)
+  # [We may have killed p10k, so I found the perfect replacement.](https://www.youtube.com/watch?v=9U8LCjuQzdc)
+  
+  **Visibility**: Public
+  **Uploaded by**: [Dreams of Autonomy](http://www.youtube.com/@dreamsofautonomy)
+  **Uploaded at**: 2024-06-07T10:00:10-07:00
+  **Published at**: 2024-06-07T10:00:10-07:00
+  **Length**: 19:48
+  **Views**: 325863
+  **Likes**: 6245
+  **Category**: People & Blogs
+  
+  ## Description
+  
+  ```
+  Powerlevel10k is now on life support mode.
+  
+  As many of you know, p10k is the prompt I use for my zenful zsh configuration. However, unfortunately. It has entered life support mode.
+  
+  Fortunately, I found another option. Oh My Posh, which I managed to customize to meet my powerlevel10k setup.
+  
+  If you want to support an open source project, and find Oh My Posh useful, you can support the project on their github page.
+  
+  Oh My Posh GitHub: https://github.com/jandedobbeleer/oh-my-posh
+  Oh My Posh Website: https://ohmyposh.dev/
+  Zen Oh My Posh Config: https://github.com/dreamsofautonomy/zen-omp
+  
+  
+  00:00:00 Intro
+  00:00:27 Starship
+  00:01:24 Oh My Posh
+  00:01:54 Installation
+  00:02:44 Config file
+  00:04:26 Config overview
+  00:06:05 Clear config
+  00:07:31 Segment Colors
+  00:08:34 Segment Properties
+  00:08:57 Add in the Right Angle Bracket
+  00:09:13 Template property
+  00:10:07 Multi line prompt
+  00:11:07 Transient Prompt
+  00:11:34 Newline #2
+  00:13:00 Git status
+  00:15:38 Execution time
+  00:17:31 Tooltips
+  00:18:06 Secondary Prompt
+  00:18:47 Pallete
+  00:19:05 Other Themes
+  ```
+  
+  ## Transcript
+  
+  less than a week after my zenful Zell video the power level 10K project went into life support mode and I really hope that's a coincidence the prompt will still work with Zell for the foreseeable future however the project will only receive very limited support and for some people that might be an issue either way I thought it would be a good opportunity to take a look at a couple of other prompts in order to see if I could recreate the minimalism of power level 10K a couple of the comments on my Zell videos gave some good arguments as to why I should reconsider my opinion on Starship so as the open-minded individual that I am I decided to give it a go and installed it on my system however during the configuration I realized it missed a key feature from power level 10K the transient prompt this feature is where the full prompt will only display on the current command for any historical actions The Prompt is displayed in a much more condensed version personally I find this feature helps to draw my eye to the current prompt helping me to remain focused Starship does actually have a transient prompt feature but it's only available for Windows shells weirdly enough and fish for fish it works pretty well but I'm not 100% comfortable making the change to a nonix shell not just yet anyway therefore without a transient prompt on zshell Starship was out of the picture and my search continued fortunately that search wasn't in vain and I discovered another project that supported the transient prompt oh my Posh which is yet another prompt for any shell kind of like Starship however as well as supporting a trans impr prompt on Zell it also supports a lot of themes such as pure Tokyo Knight and even a few based on power level 10K all of this suggests that omip Posh might just be a viable replacement for my zenful prompt let's take a look and see if this is the case first things first we need to get omip Posh installed on our system as I'm using Arch by the way AR and install it using yay once it's installed we then need to enable it for our Shell by heading over to the zshell RC for me I'm going to replace where I Source the p10k file with the following line to initialize om my Posh make sure to do the same for your own configuration with whichever prompt you may be using I'm also going to remove any other references to power level 10K in my configuration additionally if you're using Mac OS the documentation recommends to add in the following line which will prevent omip Posh running on the default terminal app which is unsupported once you've configured your zshell correctly you can open up another terminal window and look at the default theme not bad but not exactly my cup of tea there's just a little bit too much information for me to achieve a Zen 4 experience fortunately it's rather simple to configure om my Posh to make it more minimal let's go ahead and do so by modifying the configuration but uh where does the configuration Live Well OMP as I'm now going to call it does configuration just a little bit differently rather than than having a single dedicated config file like other applications by default OMP makes use of an embedded one in order to use a different configuration we have to pass it in when we initialize the application inside of our zshell RC whilst this approach is different from other applications it does provide some benefits in that you're able to easily swap configurations if you ever desire to create our own configuration let's begin by exporting the default one into its own file to do so first I'm going to create aom config slom directory to store this configuration file in then we can export the default configuration using the following command now let's open up this file and take a look oh yeah by default OMP exports as Json which is not exactly my favorite configuration format to work with instead I prefer to use something such as yaml or even better tommo fortunately for us OMP actually supports all three of these formats and we're able to choose which one we want to use by passing in the format flag to the export command in my case I want to export as tommel so I'm going to pass the tommel argument to the format flag now our configuration is in a bit more of a friendly format All That Remains now is to set up omip Posh to use this new configuration file we can do that by making the following change inside of our zshell RC passing in the config flag with the path to our configuration file if we open up another terminal window everything should look the same as it did before but so now we're able to customize this theme however we want in my my case I want it to be very similar to how it is with power level 10K displaying both minimal information and having the same style of transient prompt fortunately we can achieve this using om my Posh which currently has a lot more information than I'm looking for if we take a quick look at the config we can see how the customization is laid out omip Posh uses the concept of blocks which contain a list of segments in our configuration we have two blocks one for the left side of the prompt and one for the right if we take a quick look at our prompt we can actually see these segments on the left side of the prompt the first segment we can see is our user's name the second one is the current directory that we're in which also has a folder icon the next visible segment is a white check mark which represents the last command status however our prompt actually has more than these three segments and if I navigate over to a git repository you'll see a hidden segment suddenly appear showing some information about our current git status on the right right hand side of the prompt you'll see we have some further information letting us know the shell that we're in as well as the current time if we take a look at our configuration however you'll see we also have a number of other segments on the right hand side these are used to display any information about programming languages in the current directory that we're in if I navigate over to my dreams of code project you'll see icons for both nodejs and goang this is due to the directory having both a package.json and a go dood for some people this level of information can be rather useful however in my case I much prefer a more minimal experience to achieve that however we need to modify the configuration first things first let's remove all of the block segments from both the left and right prompt if I do this one by one you can see these segments being removed from the prompt in real time after that go ahead and remove everything else from underneath our first block don't worry we'll add some of this back in later but we want to make sure we start with a clean slate once you're complete your configuration should look pretty similar to mine nice and lean if we open up a new terminal window to test our prompt it will pretty much look empty with that we have a nice blank canvas let's begin making this look like power level 10K with the first thing we're going to replicate being power level 10 K's path display in order to achieve this we can use the path segment of om my Posh which has some pretty nice documentation showing us how we can use it let's go ahead and add this as our first block segment to do so head on over to your configuration and add in the following lines first defining the type which is going to be path followed by the style in OMP there are four different styles you can choose from for each segment these consist of plane which is just a foreground text with some background color the power line style in which you can also customize the power line symbol that's used diamond which allows you to add symbols to both sides and lastly accordion which is the same as power line except that it will display even when disabled just without text for me as I like to keep it minimal I like the the simple plain style next up let's define the segments colors with omip Posh you can set both the background color and the foreground color for the background I'm going to set this to be transparent and for the foreground I want this to be a shade of blue however before we set it there's actually three different ways we can Define colors in om my Posh the first way is to just pass in the hex code of the color that we want provided that your terminal emulator supports true color the second approach is to use a color palette which we can Define as follows here I'm defining a color of green with the following hex value we can then reference this color from our palette using the following syntax prefixing the name of a color with a p followed by a colon the color palette is useful if you want to make colors reusable in your configuration the last approach to defining colors is to just use the ansy color name which will then use the color defined by your terminal configuration in my case I want to use the color blue defined by my terminal emulator so I'm going to set this value to be the ASI blue which is the same as my power level configuration next we have another section called properties which allows us to customize each segment depending on their own specific configuration in the case of the path we have a number of different options we can choose from however the only one I'm going to set is the style of which there are 10 different flavors in my case I'm going to set this to be full which will display the full path of the current working directory with that our path segment is now configured next up I want to add in the right angled bracket to do this is rather easy all we need to do is add another segment into our block for this segment we're going to select the type of text which is used to display well text to define the text that is displayed we set it in the template property which in my case is going to be the right angle bracket Unicode character pretty simple however it's worth noting that the template property can actually be used in much more powerful ways this is because om myosh uses go under the hers and with it uses the powerful templating features of the language if we check out the documentation you'll see that there's a number of different properties we could actually use with this template field such as displaying the current folder name using the following template or even using conditionals such as displaying different prompts for different shells additionally we're also able to access environment variables within this template for example if we're inside of a t-mo session we can add the word t-mo to our prompt and when we're not inside of one it'll just display as normal for the moment I'm going to keep it simple however we will be using templates with some other sections later on in the video with the text segment in place you'll notice that there's an issue compared to my existing power level 10K configuration both of these segments are on the same line for some people that's okay but for me I want these to be across two lines instead fortunately we can do this by adding in another block just for our text segment however inside of this block we'll need to set the new line property to be true if we you go and test this out you'll see that it's working as expected however there's another bit of a formatting issue you'll notice that there's a space at the front of our path preventing it from sitting flush with our text segment to solve this we could prefix our text segment with a space but honestly that's a waste of a good column character instead a better way to solve this is to add a template to our path segment if we set the template property to the following value you'll see that both segments are now properly aligned for any segment templates you can find the supported properties inside of the OM my Posh documentation which is how I knew which property to set in this case so far our configuration is coming along nicely next it's time to configure the entire reason we went with om my Posh the transient prompt when it comes to omip Posh this is pretty simple to set up all we need to do is add in the following transient prompt section defining both the background and foreground colors as well as the text template in my case I'm going for a minimal configuration however if you want to you can use templates here to do some more Dynamic things now when we compare our transi impr prompt to power level 10K they're starting to look really similar however there is one thing missing in my power level 10K configuration I have a new line between my transient and current prompts if you'll remember we already solved this issue once before by adding in a new line into our second block therefore all we need to do is add the same property to our initial block now the two prompts are starting to look in indistinguishable from one another that is until I encounter an error in power level 10K you'll notice if the last command fails we end up with a red prompt rather than magenta however we're missing that behavior in our new prompt fortunately OMP has a feature that we can use to recreate this this feature is color templates which allows you to define a color using a template with access to various different properties such as the Last Exit code therefore to recreate this behavior let's go ahead and add in a foreground template to our text segment this template will check if the code property is greater than zero if it is that means the last command failed and will set the color to be red next we'll add another foreground template which will check if the code is equal to zero in that case we'll set it to be magenta now our prompt should be the correct color when the status code fails however we also need to apply this color template to our transient prompt as well now if we test this Behavior our prompt is acting just like it would if it was power level 10K which is on the left just for reference with the basic prompt properties now configured the next thing to set up is our git status if we navigate to a git repository in power level 10K you can see that it displays some minimal information about git on the prompt this segment shows either the current Branch name or the current commit if you're in a detached State an asterisk for any staged or working changes and down or up arrows if your local repository is behind or ahead of your remote respectively OMP has a git segment which we can use to rep replicate this information in fact you can actually configure this to do a lot more however again I want to make sure I recreate the power level 10K status in your own case you may want to check out which properties are available to begin let's go ahead and add in the git segment into our first block when we get to our text template let's first add in the head property if we take a peek at the head property however you'll notice that it also comes with a branch icon we can fortunately disable it by setting the branch icon property to be empty which is a more minimal in my opinion next up let's add in the asterisk indicator that will appear if we have any working or staged changes we can perform this by adding an if or conditional based on the working dot changed or staging do changed in order for this to work we also need to set the fetch status property to be true if we check the prompt we can see this asterisk appears for both stage changes and unstage changes as well the next thing to add is the down and up arrows because these arrows can appear at the same time we we need to add a check-in for each one let's add in our down arrow first which will appear if our local repository is behind our remote we can do this by checking if the value of behind is greater than zero if we check out our prompts we can see that this is working correctly however we have a slight difference compared to power level 10K the color fortunately this is easy to resolve as we're able to add XML tags for color inside of our text templates here we're wrapping our arrow in an XML color tag of cyan now if we check our prompt so you can see that it's colored correctly next let's add in the up Arrow by checking if the ahead value is greater than zero let's also make sure this sits inside of the cyan tag with that we're almost complete with our git segment there's just one last thing to change if we enter into a detached head you'll see that by default we have kind of a strange icon power level 10K uses the at symbol so let's go ahead and modify the following property in order to keep parity with that our git segment is now complete with the only difference being some additional text when we're in a detached State personally I'm okay with this slight difference however if it does bother me in the future I can always just Fork the project with that we have one last segment to add in order to obtain parity with power level 10K and that is the execution time that appears on the right hand side for any long running commands again OMP provides another segment we can use called execution time however in order for this segment to appear on the right hand side of our prompts we need to set up another block let's add this above our second block which contains our text segment for the type rather than setting this to be prompt go ahead and set this to be R prompt which is a special position for a number of different shell to show information on the right hand side additionally we also want to set the Overflow property to be hidden which means if there's not enough space for this block to display then OMP will just hide it then we can add in our execution time segment setting the style to plain the background to transparent and the foreground to Yellow I'm also going to set the template as follows to keep it rather minimal next up we have a number of properties we can set the first of which is the threshold this is the number of milliseconds a command needs to take in order for the execution time to appear by default OMP sets this to 500 milliseconds power level 10K on the other hand sets this to be 5 seconds so in order to keep parity with p10k I need to set this to be 5,000 milliseconds next up we have our display style we can see the different options we can select on the documentation as well as a table of how they format different values by default this is set to Austin which is pretty similar to power level 10K with the slight difference being that power level 10K doesn't show any fractional seconds unfortunately there isn't an option that matches power level 10 K's default configuration but I'm happy with this slight change anyway if we wanted to however we could easily recreate to the power level 10K formatting using the segments template with that we've successfully managed to recreate the power level 10K prompt in om we're not fully finished yet however as OMP provides a couple of other features that aren't available on power level 10K let's take a look at each of these and see if they're worth implementing the first of these features is tool tips that enable you to have transient segments that appear on the right hand side of the prompt whenever you type out the associated command for example here I've set up a tool tip to show any git information whenever I type out the git command you can do some really interesting things when it comes to tool tips however for myself I think it just might be a little too distracting so I'm going to go ahead and remove them the second feature is known as the secondary prompt which is used to customize the prompt when it spans across multiple Lines by default this works the same way as power level 10K however I do want to customize this to be just a little bit more Zen to do so first add in the following section into your tal configuration here I'm going to set the foreground color to be magenta and the background color to be transparent now comes the fun part setting in our text template yet again in this case I'm going to keep these same right angle brackets however this time I'm going to put two of them that way it differentiates from the standard prompt but also gives me a little bit of indentation now if we go and check this out we can see this is working as expected All That Remains is to do a tiny bit of refactoring because we have a custom color for our git status it's going to be worthwhile to define a custom palette color that way we can easily reuse or change this color if we ever need to that wraps up the Zen om my Posh theme which is based on power level 10K if you want to use this theme for yourself you can find a link to the GitHub repo in the description down below however for some of you this may not be your taste fortunately OMP provides a number of different themes on their website that you can check out and use to do so all you need to do is download the theme into your config directory and then modify your OMP initialization to make use of it for example here is the Tokyo night theme or perhaps you prefer katuin which is also pretty nice but unfortunately me and katuin have gone our separate ways overall I think I'm going to be pretty happy with om my Posh that is until I finally decide I want to try fish and maybe then Starship as well
+  
+  
+  ## Endscreen
+      
+  - [I found the most "a-peeling" Linux customization of all time.](https://www.youtube.com/watch?v=9YQ4FXV8O1c)
+  --- End Content ---
