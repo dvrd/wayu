@@ -9,20 +9,20 @@ InteractiveConfig :: struct {
 	// Toggle
 	toggle_key: string,
 	toggle_enabled: bool,
-	
+
 	// VI Mode
 	vi_mode_indicator: bool,
 	vi_insert_symbol: string,
 	vi_normal_symbol: string,
 	vi_visual_symbol: string,
-	
+
 	// Context
 	context_aware: bool,
-	
+
 	// Async
 	async_rprompt: bool,
 	async_interval: int,
-	
+
 	// Transient
 	transient_enabled: bool,
 	transient_format: string,
@@ -33,63 +33,64 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
-	
+
 	fmt.sbprintln(&builder, "# === Interactive Prompt Features ===")
 	fmt.sbprintln(&builder)
-	
+
 	// Include base prompt function
 	fmt.sbprintln(&builder, "# === Base Prompt (from starship.toml) ===")
 	fmt.sbprint(&builder, base_prompt)
 	fmt.sbprintln(&builder)
-	
+
 	// Variables de estado
 	fmt.sbprintln(&builder, "# State variables")
 	fmt.sbprintln(&builder, "typeset -g _WAYU_PROMPT_MODE=\"full\"")
 	fmt.sbprintln(&builder, "typeset -g _WAYU_VI_MODE=\"INSERT\"")
 	fmt.sbprintln(&builder, "typeset -g _WAYU_CONTEXT=\"default\"")
+	fmt.sbprintln(&builder, "typeset -g _WAYU_CONTEXT_VER=\"\"")
 	fmt.sbprintln(&builder, "typeset -g _WAYU_ASYNC_DATA=\"\"")
 	fmt.sbprintln(&builder)
-	
+
 	// 1. TOGGLE FEATURE
 	if cfg.toggle_enabled {
 		generate_toggle_feature(&builder, cfg.toggle_key)
 	}
-	
+
 	// 2. VI MODE INDICATOR
 	if cfg.vi_mode_indicator {
 		generate_vi_mode_feature(&builder, cfg)
 	}
-	
+
 	// 3. CONTEXT AWARE
 	if cfg.context_aware {
 		generate_context_feature(&builder)
 	}
-	
+
 	// 4. ASYNC RPROMPT
 	if cfg.async_rprompt {
 		generate_async_feature(&builder, cfg.async_interval)
 	}
-	
+
 	// 5. TRANSIENT PROMPT
 	if cfg.transient_enabled {
 		generate_transient_feature(&builder, cfg.transient_format)
 	}
-	
+
 	// 6. SEPARATOR LINE (línea entre output y prompt)
 	generate_separator_feature(&builder)
-	
+
 	// Función de prompt maestra que combina todo
 	fmt.sbprintln(&builder, "# === Master Prompt Function ===")
 	fmt.sbprintln(&builder, "_wayu_prompt_master() {")
 	fmt.sbprintln(&builder, "  local exit_code=$?")
 	fmt.sbprintln(&builder, "  local result=\"\"")
 	fmt.sbprintln(&builder)
-	
+
 	// Guardar exit_code para que _wayu_prompt_full lo use
 	fmt.sbprintln(&builder, "  # Guardar exit_code para funciones hijas")
 	fmt.sbprintln(&builder, "  export _WAYU_LAST_EXIT=$exit_code")
 	fmt.sbprintln(&builder)
-	
+
 	// Usar prompt según modo (full/minimal)
 	if cfg.toggle_enabled || cfg.transient_enabled {
 		fmt.sbprintln(&builder, "  # Select prompt based on mode")
@@ -106,25 +107,24 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 		fmt.sbprintln(&builder, "  # Full prompt only")
 		fmt.sbprintln(&builder, "  result+=\"$(_wayu_prompt_full)\"")
 	}
-	
+
 	fmt.sbprintln(&builder)
 	fmt.sbprintln(&builder, `  echo "$result"`)
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
-	
+
 	// Configurar PROMPT final
 	fmt.sbprintln(&builder, "setopt promptsubst")
-	// PROMPT: línea vacía arriba usando $'...' para interpretar \n
-	fmt.sbprint(&builder, `PROMPT=$'\n'$(_wayu_prompt_master)'`)
-	fmt.sbprintln(&builder, `'`)
-	
+	// PROMPT: newline + $() in single quotes → promptsubst re-evaluates each render
+	fmt.sbprintln(&builder, `PROMPT=$'\n''$(_wayu_prompt_master)'`)
+
 	// RPROMPT async si está habilitado
 	if cfg.async_rprompt {
 		fmt.sbprintln(&builder, `RPROMPT='${_WAYU_ASYNC_DATA}'`)
 	} else {
 		fmt.sbprintln(&builder, "unset RPROMPT")
 	}
-	
+
 	return strings.clone(strings.to_string(builder))
 }
 
@@ -150,6 +150,8 @@ generate_vi_mode_feature :: proc(b: ^strings.Builder, cfg: InteractiveConfig) {
 	fmt.sbprintln(b, "# Activar modo VI para selección visual")
 	fmt.sbprintln(b, "bindkey -v")
 	fmt.sbprintln(b, "export KEYTIMEOUT=1  # Reducir delay al cambiar modos")
+	fmt.sbprintln(b, "bindkey -M viins '^?' backward-delete-char")
+	fmt.sbprintln(b, "bindkey -M viins '^H' backward-delete-char")
 	fmt.sbprintln(b)
 	fmt.sbprintln(b, "# Variables para tracking de modo")
 	fmt.sbprintln(b, "typeset -g _WAYU_VI_MODE=\"INSERT\"")
@@ -165,9 +167,31 @@ generate_vi_mode_feature :: proc(b: ^strings.Builder, cfg: InteractiveConfig) {
 	fmt.sbprintln(b, "zle -N zle-keymap-select")
 	fmt.sbprintln(b, "zle -N zle-line-init zle-keymap-select")
 	fmt.sbprintln(b)
-	fmt.sbprintln(b, "# Activar modo visual con 'v' en modo normal")
-	fmt.sbprintln(b, "bindkey -M vicmd 'v' visual-mode")
-	fmt.sbprintln(b, "bindkey -M vicmd 'V' visual-line-mode")
+	// Wrappers para visual mode: zle-keymap-select no se dispara al entrar a visual
+	fmt.sbprintln(b, "# Wrappers para visual mode (zle-keymap-select no lo detecta solo)")
+	fmt.sbprintln(b, "_wayu_visual_mode() {")
+	fmt.sbprintln(b, "  zle visual-mode")
+	fmt.sbprintln(b, `  _WAYU_VI_MODE="VISUAL"`)
+	fmt.sbprintln(b, "  zle reset-prompt")
+	fmt.sbprintln(b, "}")
+	fmt.sbprintln(b, "_wayu_visual_line_mode() {")
+	fmt.sbprintln(b, "  zle visual-line-mode")
+	fmt.sbprintln(b, `  _WAYU_VI_MODE="VISUAL"`)
+	fmt.sbprintln(b, "  zle reset-prompt")
+	fmt.sbprintln(b, "}")
+	fmt.sbprintln(b, "zle -N _wayu_visual_mode")
+	fmt.sbprintln(b, "zle -N _wayu_visual_line_mode")
+	fmt.sbprintln(b, "bindkey -M vicmd 'v' _wayu_visual_mode")
+	fmt.sbprintln(b, "bindkey -M vicmd 'V' _wayu_visual_line_mode")
+	fmt.sbprintln(b)
+	fmt.sbprintln(b, "# Salir de visual mode: 'i' → INSERT, Esc → NORMAL (cancelando selección)")
+	fmt.sbprintln(b, "bindkey -M visual 'i' vi-insert")
+	fmt.sbprintln(b, "_wayu_visual_exit() {")
+	fmt.sbprintln(b, "  zle deactivate-region")
+	fmt.sbprintln(b, "  zle vi-cmd-mode")
+	fmt.sbprintln(b, "}")
+	fmt.sbprintln(b, "zle -N _wayu_visual_exit")
+	fmt.sbprintln(b, "bindkey -M visual $'\\e' _wayu_visual_exit")
 	fmt.sbprintln(b)
 }
 
@@ -177,22 +201,29 @@ generate_context_feature :: proc(b: ^strings.Builder) {
 	fmt.sbprintln(b, "# Icons from Nerd Fonts (see nerd-font-symbols.toml)")
 	fmt.sbprintln(b, "_wayu_detect_context() {")
 	fmt.sbprintln(b, "  # Prioridad: archivos específicos primero")
+	fmt.sbprintln(b, `  _WAYU_CONTEXT_VER=""`)
+
 	fmt.sbprintln(b, "  if [[ -f \"Cargo.toml\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="rust"`)
+	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="$(rustc --version 2>/dev/null | awk '{print $2}')"`)
 	fmt.sbprintln(b, "  elif [[ -f \"bun.lockb\" ]] || [[ -f \"bunfig.toml\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="bun"`)
+	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="$(bun --version 2>/dev/null)"`)
 	fmt.sbprintln(b, "  elif [[ -f \"gleam.toml\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="gleam"`)
 	fmt.sbprintln(b, "  elif [[ -f \"Package.swift\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="swift"`)
 	fmt.sbprintln(b, "  elif [[ -f \"pubspec.yaml\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="dart"`)
+	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="$(dart --version 2>/dev/null | awk '{print $4}')"`)
 	fmt.sbprintln(b, "  elif [[ -f \"composer.json\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="php"`)
 	fmt.sbprintln(b, "  elif [[ -f \"Gemfile\" ]] || [[ -f \".ruby-version\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="ruby"`)
+	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="$(ruby --version 2>/dev/null | awk '{print $2}')"`)
 	fmt.sbprintln(b, "  elif [[ -f \"mix.exs\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="elixir"`)
+	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="$(elixir --version 2>/dev/null | awk 'NR==1{print $2}')"`)
 	fmt.sbprintln(b, "  elif [[ -f \"rebar.config\" ]] || [[ -f \"erlang.mk\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="erlang"`)
 	fmt.sbprintln(b, "  elif [[ -f \"stack.yaml\" ]] || [[ -f \"cabal.project\" ]]; then")
@@ -201,8 +232,10 @@ generate_context_feature :: proc(b: ^strings.Builder) {
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="julia"`)
 	fmt.sbprintln(b, `  elif [[ -f "ols.json" ]] || [[ -n "$(find . -maxdepth 2 -name "*.odin" -print -quit 2>/dev/null)" ]]; then`)
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="odin"`)
+	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="$(odin version 2>/dev/null | awk '{print $3}')"`)
 	fmt.sbprintln(b, "  elif [[ -f \"go.mod\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="golang"`)
+	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="$(go version 2>/dev/null | awk '{print $3}' | sed 's/go//')"`)
 	fmt.sbprintln(b, `  elif [[ -f "nim.cfg" ]] || find . -maxdepth 1 -name "*.nim" -print -quit 2>/dev/null | grep -q .; then`)
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="nim"`)
 	fmt.sbprintln(b, `  elif [[ -f \"dune\" ]] ; then`)
@@ -211,6 +244,7 @@ generate_context_feature :: proc(b: ^strings.Builder) {
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="nix"`)
 	fmt.sbprintln(b, "  elif [[ -f \"deno.json\" ]] || [[ -f \"deno.jsonc\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="deno"`)
+	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="$(deno --version 2>/dev/null | head -1 | awk '{print $2}')"`)
 	fmt.sbprintln(b, "  elif [[ -f \"elm.json\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="elm"`)
 	fmt.sbprintln(b, "  elif [[ -f \"shard.yml\" ]]; then")
@@ -222,6 +256,7 @@ generate_context_feature :: proc(b: ^strings.Builder) {
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="buf"`)
 	fmt.sbprintln(b, "  elif [[ -f \"package.json\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="nodejs"`)
+	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="$(node --version 2>/dev/null | sed 's/v//')"`)
 	fmt.sbprintln(b, "  elif [[ -f \"pom.xml\" ]] || [[ -f \"build.gradle\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="java"`)
 	fmt.sbprintln(b, "  elif [[ -f \"build.sbt\" ]]; then")
@@ -229,8 +264,10 @@ generate_context_feature :: proc(b: ^strings.Builder) {
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="kotlin"`)
 	fmt.sbprintln(b, "  elif [[ -f \"requirements.txt\" ]] || [[ -f \"pyproject.toml\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="python"`)
+	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="$(python3 --version 2>/dev/null | awk '{print $2}')"`)
 	fmt.sbprintln(b, "  elif [[ -f \"build.zig\" ]] || [[ -f \"build.zig.zon\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="zig"`)
+	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="$(zig version 2>/dev/null)"`)
 	fmt.sbprintln(b, `  elif [[ -f \"DESCRIPTION\" ]] ; then`)
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="rlang"`)
 	fmt.sbprintln(b, `  elif [[ -f \".lua-version\" ]] ; then`)
@@ -291,7 +328,7 @@ generate_transient_feature :: proc(b: ^strings.Builder, format: string) {
 	fmt.sbprintln(b, "# === Feature: Transient Prompt ===")
 	fmt.sbprintln(b, "_wayu_prompt_transient() {")
 	fmt.sbprintln(b, "  local result=\"\"")
-	
+
 	// Parsear format simple
 	if strings.contains(format, "{dir}") {
 		fmt.sbprintln(b, "  result+=\"%~ \"")
@@ -303,7 +340,7 @@ generate_transient_feature :: proc(b: ^strings.Builder, format: string) {
 		fmt.sbprintln(b, `    result+="✗ "`)
 		fmt.sbprintln(b, "  fi")
 	}
-	
+
 	fmt.sbprintln(b, `  echo "$result"`)
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
@@ -311,21 +348,7 @@ generate_transient_feature :: proc(b: ^strings.Builder, format: string) {
 
 // 6. SEPARATOR LINE FEATURE (líneas continuas con espacios)
 generate_separator_feature :: proc(b: ^strings.Builder) {
-	fmt.sbprintln(b, "# === Feature: Separator Lines ===")
-	fmt.sbprintln(b, "# Línea continua antes del output + espacio vacío")
-	fmt.sbprintln(b, "_wayu_preexec_separator() {")
-	fmt.sbprintln(b, `  print -P "%F{8}${(l:$COLUMNS::─:)}%f"`)
-	fmt.sbprintln(b, `  echo ""`)
-	fmt.sbprintln(b, "}")
-	fmt.sbprintln(b, "add-zsh-hook preexec _wayu_preexec_separator")
-	fmt.sbprintln(b)
-	fmt.sbprintln(b, "# Línea continua antes del prompt + espacio vacío")
-	fmt.sbprintln(b, "_wayu_precmd_separator() {")
-	fmt.sbprintln(b, `  print -P "%F{8}${(l:$COLUMNS::─:)}%f"`)
-	fmt.sbprintln(b, `  echo ""`)
-	fmt.sbprintln(b, "}")
-	fmt.sbprintln(b, "add-zsh-hook precmd _wayu_precmd_separator")
-	fmt.sbprintln(b)
+	// Separator lines disabled
 }
 
 // Parse config interactiva desde TOML (simplificado)
@@ -343,15 +366,15 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 		transient_enabled = true,
 		transient_format = "{dir} {character}",
 	}
-	
+
 	lines := strings.split(toml, "\n")
 	defer delete(lines)
-	
+
 	in_interactive := false
-	
+
 	for line in lines {
 		trimmed := strings.trim_space(line)
-		
+
 		if trimmed == "[prompt.interactive]" {
 			in_interactive = true
 			continue
@@ -360,9 +383,9 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 			in_interactive = false
 			continue
 		}
-		
+
 		if !in_interactive { continue }
-		
+
 		if strings.contains(trimmed, "toggle_key") {
 			start := strings.index(trimmed, `"`)
 			end := strings.last_index(trimmed, `"`)
@@ -386,6 +409,6 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 			cfg.transient_enabled = false
 		}
 	}
-	
+
 	return cfg
 }
