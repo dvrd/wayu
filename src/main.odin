@@ -1484,12 +1484,10 @@ generate_eval_output_optimized :: proc() {
 	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] && source "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"`)
 	fmt.sbprintln(&builder)
 	
-	// 5. Lazy-load all heavy tools after prompt appears
-	fmt.sbprintln(&builder, "# Lazy-loaded tools (prompt, completions, etc.)")
-	fmt.sbprintln(&builder, `(
-		[[ -f "$HOME/.config/wayu/tools.zsh" ]] && source "$HOME/.config/wayu/tools.zsh"
-		[[ -f "$HOME/.config/wayu/extra.zsh" ]] && source "$HOME/.config/wayu/extra.zsh"
-	) &`)
+	// 5. Source external configs
+	fmt.sbprintln(&builder, "# External configuration (tools, completions, functions)")
+	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/tools.zsh" ] && source "$HOME/.config/wayu/tools.zsh"`)
+	fmt.sbprintln(&builder, `[ -f "$HOME/.config/wayu/extra.zsh" ] && source "$HOME/.config/wayu/extra.zsh"`)
 	fmt.sbprintln(&builder)
 	
 	// Output the result
