@@ -199,7 +199,7 @@ generate_context_feature :: proc(b: ^strings.Builder) {
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="haskell"`)
 	fmt.sbprintln(b, "  elif [[ -f \"Project.toml\" ]] || [[ -f \"Manifest.toml\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="julia"`)
-	fmt.sbprintln(b, "  elif [[ -f \"ols.json\" ]] || ls *.odin 2>/dev/null | grep -q .; then")
+	fmt.sbprintln(b, `  elif [[ -f "ols.json" ]] || [[ -n "$(find . -maxdepth 2 -name "*.odin" -print -quit 2>/dev/null)" ]]; then`)
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="odin"`)
 	fmt.sbprintln(b, "  elif [[ -f \"go.mod\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_CONTEXT="golang"`)
