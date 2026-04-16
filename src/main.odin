@@ -1456,6 +1456,16 @@ generate_eval_output_optimized :: proc() {
 	
 	config := parse_toml_config(toml_data)
 	
+	// If TOML has no paths (placeholder/empty), read from shell configs
+	if len(config.paths) == 0 && len(config.aliases) == 0 && len(config.constants) == 0 {
+		// Read real paths from path.zsh
+		config.paths = parse_path_zsh_to_build_entries()
+		// Read real constants
+		config.constants = parse_constants_zsh()
+		// Read real aliases
+		config.aliases = parse_aliases_zsh()
+	}
+	
 	// Analyze and select optimization level
 	profile := analyze_config_size(
 		len(config.paths),
@@ -1577,29 +1587,269 @@ validate_and_sort_paths :: proc(paths: []BuildPathEntry, level: OptimizationLeve
 	return paths
 }
 
-// Generate eval from existing shell configs (fallback)
+// Parse path.zsh and convert to BuildPathEntry slice
+parse_path_zsh_to_build_entries :: proc() -> []BuildPathEntry {
+	raw_paths := parse_path_zsh()
+	if len(raw_paths) == 0 {
+		return nil
+	}
+	
+	entries := make([dynamic]BuildPathEntry, context.temp_allocator)
+	for path in raw_paths {
+		entry := BuildPathEntry{
+			raw_path = path,
+			expanded = path,
+		}
+		append(&entries, entry)
+	}
+	
+	return entries[:]
+}
+
+// Parse constants.zsh
+parse_constants_zsh :: proc() -> []BuildConstantEntry {
+	return parse_shell_exports("constants.zsh")
+}
+
+// Parse aliases.zsh  
+parse_aliases_zsh :: proc() -> []BuildAliasEntry {
+	return parse_shell_aliases("aliases.zsh")
+}
+
+// Generic parser for export statements
+parse_shell_exports :: proc(filename: string) -> []BuildConstantEntry {
+	file_path := fmt.aprintf("%s/%s", WAYU_CONFIG, filename)
+	defer delete(file_path)
+	
+	content, ok := safe_read_file(file_path)
+	if !ok {
+		return nil
+	}
+	defer delete(content)
+	
+	constants := make([dynamic]BuildConstantEntry, context.temp_allocator)
+	
+	content_str := string(content)
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+	
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		
+		// Skip comments and empty lines
+		if len(trimmed) == 0 { continue }
+		if strings.has_prefix(trimmed, "#") { continue }
+		
+		// Parse: export NAME="value" or export NAME='value' or export NAME=value
+		if strings.has_prefix(trimmed, "export ") {
+			rest := strings.trim_prefix(trimmed, "export ")
+			eq_idx := strings.index(rest, "=")
+			
+			if eq_idx > 0 {
+				name := strings.trim_space(rest[:eq_idx])
+				value := rest[eq_idx+1:]
+				
+				// Remove quotes
+				value = strings.trim_prefix(value, "\"")
+				value = strings.trim_suffix(value, "\"")
+				value = strings.trim_prefix(value, "'")
+				value = strings.trim_suffix(value, "'")
+				
+				append(&constants, BuildConstantEntry{
+					name = strings.clone(name, context.temp_allocator),
+					value = strings.clone(value, context.temp_allocator),
+				})
+			}
+		}
+	}
+	
+	return constants[:]
+}
+
+// Generic parser for alias statements
+parse_shell_aliases :: proc(filename: string) -> []BuildAliasEntry {
+	file_path := fmt.aprintf("%s/%s", WAYU_CONFIG, filename)
+	defer delete(file_path)
+	
+	content, ok := safe_read_file(file_path)
+	if !ok {
+		return nil
+	}
+	defer delete(content)
+	
+	aliases := make([dynamic]BuildAliasEntry, context.temp_allocator)
+	
+	content_str := string(content)
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+	
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		
+		// Skip comments and empty lines
+		if len(trimmed) == 0 { continue }
+		if strings.has_prefix(trimmed, "#") { continue }
+		
+		// Parse: alias name='command' or alias name="command"
+		if strings.has_prefix(trimmed, "alias ") {
+			rest := strings.trim_prefix(trimmed, "alias ")
+			eq_idx := strings.index(rest, "=")
+			
+			if eq_idx > 0 {
+				name := strings.trim_space(rest[:eq_idx])
+				command := rest[eq_idx+1:]
+				
+				// Remove quotes
+				command = strings.trim_prefix(command, "\"")
+				command = strings.trim_suffix(command, "\"")
+				command = strings.trim_prefix(command, "'")
+				command = strings.trim_suffix(command, "'")
+				
+				append(&aliases, BuildAliasEntry{
+					name = strings.clone(name, context.temp_allocator),
+					command = strings.clone(command, context.temp_allocator),
+				})
+			}
+		}
+	}
+	
+	return aliases[:]
+}
+
+// Generate eval from existing shell configs (fallback with parsing)
 generate_eval_from_shell_configs :: proc() {
+	start_time := get_time()
+	
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
 	
-	// Read existing configs
-	read_and_append_config(&builder, "constants.zsh", "# Constants")
-	read_and_append_config(&builder, "path.zsh", "# PATH")
-	read_and_append_config(&builder, "aliases.zsh", "# Aliases")
+	// 1. Parse and optimize PATH
+	paths := parse_path_zsh()
+	defer delete(paths)
 	
+	fmt.sbprint(&builder, "# PATH (pre-computed from wayu)\n")
+	fmt.sbprint(&builder, "export PATH=\"")
+	for path, i in paths {
+		if i > 0 { fmt.sbprint(&builder, ":") }
+		fmt.sbprint(&builder, path)
+	}
+	fmt.sbprintln(&builder, ":$PATH\"")
+	fmt.sbprintln(&builder)
+	
+	// 2. Inline constants
+	fmt.sbprintln(&builder, "# Constants")
+	read_and_append_clean(&builder, "constants.zsh")
+	
+	// 3. Inline aliases  
+	fmt.sbprintln(&builder, "# Aliases")
+	read_and_append_clean(&builder, "aliases.zsh")
+	
+	// 4. Tools (optimized lazy loading)
+	fmt.sbprintln(&builder, "# Tools (lazy-loaded)")
+	fmt.sbprintln(&builder, "source \"$HOME/.config/wayu/tools.zsh\" 2>/dev/null || true")
+	
+	// Output
 	fmt.println(strings.to_string(builder))
+	
+	elapsed := (get_time() - start_time) * 1000
+	fmt.eprintfln("# Generated in %.2fms from existing configs", elapsed)
 }
 
-read_and_append_config :: proc(builder: ^strings.Builder, filename: string, comment: string) {
+// Parse path.zsh and extract WAYU_PATHS
+parse_path_zsh :: proc() -> []string {
+	path_file := fmt.aprintf("%s/path.zsh", WAYU_CONFIG)
+	defer delete(path_file)
+	
+	content, ok := safe_read_file(path_file)
+	if !ok {
+		fmt.eprintln("DEBUG: Failed to read path.zsh")
+		return nil
+	}
+	defer delete(content)
+	
+	paths := make([dynamic]string, context.temp_allocator)
+	
+	// Parse WAYU_PATHS array format
+	content_str := string(content)
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+	
+	in_array := false
+	home := os.get_env("HOME", context.temp_allocator)
+	
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		
+		// Detect start: WAYU_PATHS=(
+		if strings.contains(trimmed, "WAYU_PATHS=(") {
+			in_array = true
+			continue
+		}
+		
+		// Detect end: )
+		if in_array && trimmed == ")" {
+			break
+		}
+		
+		// Skip if not in array
+		if !in_array { continue }
+		
+		// Extract quoted path
+		if strings.has_prefix(trimmed, "\"") {
+			// Find closing quote
+			start_idx := 1
+			end_idx := strings.index(trimmed[start_idx:], "\"")
+			
+			if end_idx >= 0 {
+				path := trimmed[start_idx:start_idx+end_idx]
+				
+				// Expand ~ to $HOME
+				if strings.has_prefix(path, "~") {
+					path = fmt.aprintf("%s%s", home, strings.trim_prefix(path, "~"))
+				}
+				
+				if len(path) > 0 {
+					append(&paths, strings.clone(path, context.temp_allocator))
+				}
+			}
+		}
+	}
+	return paths[:]
+}
+
+// Read and append config file (clean version)
+read_and_append_clean :: proc(builder: ^strings.Builder, filename: string) {
 	path := fmt.aprintf("%s/%s", WAYU_CONFIG, filename)
 	defer delete(path)
 	
 	content, ok := safe_read_file(path)
-	if ok {
-		fmt.sbprintf(builder, "\n%s\n", comment)
-		fmt.sbprint(builder, string(content))
-		delete(content)
+	if !ok {
+		return
+	}
+	defer delete(content)
+	
+	// Filter out comments and shebang, keep only exports/aliases
+	content_str := string(content)
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+	
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		
+		// Skip comments and shebang
+		if strings.has_prefix(trimmed, "#") { continue }
+		if strings.has_prefix(trimmed, "#!/") { continue }
+		if len(trimmed) == 0 { continue }
+		
+		// Keep only export and alias lines
+		if strings.has_prefix(trimmed, "export ") || strings.has_prefix(trimmed, "alias ") {
+			fmt.sbprintln(builder, trimmed)
+		}
+	}
+	
+	if len(lines) > 0 {
+		fmt.sbprintln(builder)
 	}
 }
 
