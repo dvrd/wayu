@@ -120,14 +120,27 @@ generate_core_init_v2 :: proc() {
 		}
 	}
 	
-	// Load helpers (para evalcache y zsh-defer)
-	fmt.sbprintln(&builder, "# === Load helpers (evalcache + zsh-defer propio) ===")
+	// Load helpers (para zsh-defer y utilidades)
+	fmt.sbprintln(&builder, "# === Load helpers (zsh-defer propio) ===")
 	fmt.sbprintfln(&builder, "source \"%s/init-helpers.zsh\" 2>/dev/null || true", WAYU_CONFIG)
 	fmt.sbprintln(&builder)
 	
-	// Prompt: Starship con evalcache
-	fmt.sbprintln(&builder, "# === Prompt (evalcached) ===")
-	fmt.sbprintln(&builder, "_wayu_evalcache starship init zsh")
+	// Prompt: Nativo wayu (pre-compilado, no starship)
+	fmt.sbprintln(&builder, "# === Prompt (wayu native, pre-compiled) ===")
+	
+	// Parse prompt config from TOML
+	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	defer delete(toml_path)
+	
+	if os.exists(toml_path) {
+		toml_data, ok := safe_read_file(toml_path)
+		if ok {
+			defer delete(toml_data)
+			prompt_config := parse_prompt_config(string(toml_data))
+			prompt_code := generate_native_prompt(prompt_config)
+			fmt.sbprint(&builder, prompt_code)
+		}
+	}
 	fmt.sbprintln(&builder)
 	
 	// Defer resto (completions, tools, etc.)
