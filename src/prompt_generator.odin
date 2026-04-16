@@ -226,7 +226,7 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 			fmt.sbprintln(&builder, `    zig) result+=" " ;;`)
 			fmt.sbprintln(&builder, `    odin)`)
 			fmt.sbprintln(&builder, `      local odin_ver="$(odin version 2>/dev/null | head -1 | awk '{print $3}')"`)
-			fmt.sbprintln(&builder, `      result+="\ue0f0 ${odin_ver:-?} " ;;`)
+			fmt.sbprintln(&builder, `      result+="\ue800 ${odin_ver:-?} " ;;`)
 			fmt.sbprintln(&builder, `    bun) result+=" " ;;`)
 			fmt.sbprintln(&builder, `    java) result+=" " ;;`)
 			fmt.sbprintln(&builder, `    kotlin) result+=" " ;;`)
