@@ -107,13 +107,18 @@ generate_core_init_v2 :: proc() {
 	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\" ] && source \"$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\"")
 	fmt.sbprintln(&builder)
 	
-	// Bindkeys para autosuggestions
-	fmt.sbprintln(&builder, "# === Autosuggestions keybindings ===")
-	fmt.sbprintln(&builder, "bindkey '^Y' autosuggest-accept  # Ctrl+Y acepta sugerencia")
-	fmt.sbprintln(&builder, "bindkey '^ ' autosuggest-accept  # Ctrl+Espacio también")
-	fmt.sbprintln(&builder, "bindkey '^f' autosuggest-accept   # Ctrl+F acepta")
-	fmt.sbprintln(&builder, "ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'")
-	fmt.sbprintln(&builder)
+	// User configuration from config.zsh
+	config_zsh := fmt.aprintf("%s/config.zsh", WAYU_CONFIG)
+	defer delete(config_zsh)
+	
+	if os.exists(config_zsh) {
+		content, ok := safe_read_file(config_zsh)
+		if ok && len(content) > 0 {
+			fmt.sbprintln(&builder, "# === User configuration (from config.zsh) ===")
+			fmt.sbprintln(&builder, string(content))
+			fmt.sbprintln(&builder)
+		}
+	}
 	
 	// Load helpers (para evalcache y zsh-defer)
 	fmt.sbprintln(&builder, "# === Load helpers (evalcache + zsh-defer propio) ===")
