@@ -6,6 +6,42 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:time"
+
+// ============================================================================
+// Data Types for Build System
+// ============================================================================
+
+BuildPathEntry :: struct {
+    raw_path:  string,
+    expanded:  string,
+    priority:  int,
+    exists:    bool,
+}
+
+BuildAliasEntry :: struct {
+    name:    string,
+    command: string,
+}
+
+BuildConstantEntry :: struct {
+    name:  string,
+    value: string,
+}
+
+BuildPluginEntry :: struct {
+    name:        string,
+    file_path:   string,
+    load_time_ms: int,  // Estimated load time for lazy loading decisions
+    enabled:     bool,
+}
+
+BuildTomlConfig :: struct {
+    paths:     []BuildPathEntry,
+    aliases:   []BuildAliasEntry,
+    constants: []BuildConstantEntry,
+    plugins:   []BuildPluginEntry,
+}
 
 // ============================================================================
 // Optimization Level Detection
@@ -176,6 +212,61 @@ simulate_build_with_optimization :: proc() {
     fmt.println("  4. Generate optimized init.zsh")
     fmt.println()
     fmt.println("Expected speedup at shell startup: 10-50x")
+}
+
+// ============================================================================
+// Path Validation Functions (for --eval mode)
+// ============================================================================
+
+// Scalar validation (fallback, always works)
+validate_paths_scalar :: proc(paths: []BuildPathEntry) -> []BuildPathEntry {
+    valid := make([dynamic]BuildPathEntry, context.temp_allocator)
+    
+    for &path in paths {
+        expanded := expand_env_vars(path.raw_path)
+        defer delete(expanded)
+        
+        if os.exists(expanded) {
+            path.expanded = strings.clone(expanded, context.temp_allocator)
+            path.exists = true
+            append(&valid, path)
+        }
+    }
+    
+    return valid[:]
+}
+
+// SIMD validation (placeholder - would use AVX2 for string ops)
+validate_paths_simd :: proc(paths: []BuildPathEntry) -> []BuildPathEntry {
+    // For now, use scalar with parallel threads
+    // Real SIMD would process multiple paths simultaneously using AVX2
+    return validate_paths_scalar(paths)
+}
+
+// Threaded validation (parallel validation for 1000+ paths)
+validate_paths_threaded :: proc(paths: []BuildPathEntry) -> []BuildPathEntry {
+    // For now, use scalar
+    // Real implementation would use thread pool
+    return validate_paths_scalar(paths)
+}
+
+// GPU validation (batch validation for 10000+ paths)
+validate_paths_gpu :: proc(paths: []BuildPathEntry) -> []BuildPathEntry {
+    // For now, use threaded
+    // Real implementation would use CUDA/OpenCL for batch stat() calls
+    return validate_paths_threaded(paths)
+}
+
+// Parse TOML config (placeholder - integrates with existing parser)
+parse_toml_config :: proc(data: []byte) -> BuildTomlConfig {
+    // This integrates with the existing TOML parser in config_toml.odin
+    // For now, return empty config
+    return BuildTomlConfig{}
+}
+
+// Get current time for profiling
+get_time :: proc() -> f64 {
+    return f64(time.now()._nsec) / 1e9
 }
 
 // ============================================================================

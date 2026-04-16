@@ -372,6 +372,8 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			switch filtered_args[1] {
 			case "turbo":
 				parsed.action = .TURBO
+			case "eval":
+				parsed.action = .EVAL  // Use EVAL for --eval mode
 			case "profile":
 				parsed.action = .CHECK  // Use CHECK for profile
 			case "help", "-h", "--help":
@@ -1386,6 +1388,7 @@ handle_build_command :: proc(action: Action) {
 	}
 	
 	turbo_mode := action == .TURBO
+	eval_mode := action == .EVAL
 	profile_mode := action == .CHECK
 	
 	if profile_mode {
@@ -1396,6 +1399,11 @@ handle_build_command :: proc(action: Action) {
 	
 	if turbo_mode {
 		handle_export_command(.TURBO, {})
+		return
+	}
+	
+	if eval_mode {
+		generate_eval_output_optimized()
 		return
 	}
 	
@@ -1423,6 +1431,178 @@ handle_build_command :: proc(action: Action) {
 	handle_export_command(.TURBO, {})
 }
 
+// Generate optimized eval output - all config in one export
+generate_eval_output_optimized :: proc() {
+	// Start timing
+	start_time := get_time()
+	
+	// Read and parse wayu.toml
+	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	defer delete(toml_path)
+	
+	if !os.exists(toml_path) {
+		// Fallback: read existing shell configs
+		generate_eval_from_shell_configs()
+		return
+	}
+	
+	// Parse TOML
+	toml_data, ok := safe_read_file(toml_path)
+	if !ok {
+		fmt.eprintln("Error: Failed to read wayu.toml")
+		os.exit(EXIT_NOINPUT)
+	}
+	defer delete(toml_data)
+	
+	config := parse_toml_config(toml_data)
+	
+	// Analyze and select optimization level
+	profile := analyze_config_size(
+		len(config.paths),
+		len(config.aliases),
+		len(config.constants),
+		len(config.plugins),
+		len(toml_data),
+	)
+	
+	// Build output using optimal strategy
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+	
+	// 1. PATH - Pre-computed, single export (the key optimization)
+	append_path_optimized(&builder, config.paths, profile.path_level)
+	
+	// 2. Constants - Direct exports
+	append_constants_optimized(&builder, config.constants)
+	
+	// 3. Aliases - Direct definitions
+	append_aliases_optimized(&builder, config.aliases)
+	
+	// 4. Plugins - With lazy loading for heavy ones
+	append_plugins_optimized(&builder, config.plugins, profile.plugin_level)
+	
+	// Output the result
+	fmt.println(strings.to_string(builder))
+	
+	// Print timing info to stderr (so it doesn't interfere with eval)
+	elapsed := (get_time() - start_time) * 1000
+	fmt.eprintfln("# Generated in %.2fms using %v optimization", elapsed, profile.path_level)
+}
+
+// Append optimized PATH export
+append_path_optimized :: proc(builder: ^strings.Builder, paths: []BuildPathEntry, level: OptimizationLevel) {
+	// Validate and sort paths using the optimal method
+	valid_paths := validate_and_sort_paths(paths, level)
+	
+	// Build single PATH string (the key optimization)
+	fmt.sbprint(builder, "export PATH=\"")
+	
+	for path, i in valid_paths {
+		if i > 0 {
+			fmt.sbprint(builder, ":")
+		}
+		fmt.sbprint(builder, path.expanded)
+	}
+	
+	fmt.sbprintln(builder, ":$PATH\"")
+	fmt.sbprintln(builder)
+}
+
+// Append constants as direct exports
+append_constants_optimized :: proc(builder: ^strings.Builder, constants: []BuildConstantEntry) {
+	for c in constants {
+		fmt.sbprintf(builder, "export %s=\"%s\"\n", c.name, c.value)
+	}
+	if len(constants) > 0 {
+		fmt.sbprintln(builder)
+	}
+}
+
+// Append aliases as direct definitions
+append_aliases_optimized :: proc(builder: ^strings.Builder, aliases: []BuildAliasEntry) {
+	for a in aliases {
+		fmt.sbprintf(builder, "alias %s=\"%s\"\n", a.name, a.command)
+	}
+	if len(aliases) > 0 {
+		fmt.sbprintln(builder)
+	}
+}
+
+// Append plugins with lazy loading for heavy ones
+append_plugins_optimized :: proc(builder: ^strings.Builder, plugins: []BuildPluginEntry, level: OptimizationLevel) {
+	// Light plugins: load immediately
+	light_plugins := make([dynamic]BuildPluginEntry, context.temp_allocator)
+	heavy_plugins := make([dynamic]BuildPluginEntry, context.temp_allocator)
+	
+	for p in plugins {
+		if p.load_time_ms < 10 {
+			append(&light_plugins, p)
+		} else {
+			append(&heavy_plugins, p)
+		}
+	}
+	
+	// Immediate load
+	for p in light_plugins {
+		fmt.sbprintf(builder, "[ -f \"%s\" ] && source \"%s\"\n", p.file_path, p.file_path)
+	}
+	
+	// Deferred load for heavy plugins
+	if len(heavy_plugins) > 0 {
+		fmt.sbprintln(builder, "# Heavy plugins - lazy loaded")
+		for p in heavy_plugins {
+			fmt.sbprintf(builder, "zsh-defer source \"%s\" 2>/dev/null || source \"%s\"\n", p.file_path, p.file_path)
+		}
+	}
+	
+	if len(plugins) > 0 {
+		fmt.sbprintln(builder)
+	}
+}
+
+// Validate and sort paths using optimal strategy
+validate_and_sort_paths :: proc(paths: []BuildPathEntry, level: OptimizationLevel) -> []BuildPathEntry {
+	// Use the adaptive optimizer based on level
+	switch level {
+	case .SCALAR:
+		return validate_paths_scalar(paths)
+	case .SIMD:
+		return validate_paths_simd(paths)
+	case .THREADED:
+		return validate_paths_threaded(paths)
+	case .GPU:
+		return validate_paths_gpu(paths)
+	}
+	return paths
+}
+
+// Generate eval from existing shell configs (fallback)
+generate_eval_from_shell_configs :: proc() {
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+	
+	// Read existing configs
+	read_and_append_config(&builder, "constants.zsh", "# Constants")
+	read_and_append_config(&builder, "path.zsh", "# PATH")
+	read_and_append_config(&builder, "aliases.zsh", "# Aliases")
+	
+	fmt.println(strings.to_string(builder))
+}
+
+read_and_append_config :: proc(builder: ^strings.Builder, filename: string, comment: string) {
+	path := fmt.aprintf("%s/%s", WAYU_CONFIG, filename)
+	defer delete(path)
+	
+	content, ok := safe_read_file(path)
+	if ok {
+		fmt.sbprintf(builder, "\n%s\n", comment)
+		fmt.sbprint(builder, string(content))
+		delete(content)
+	}
+}
+
 // Print build command help
 print_build_help :: proc() {
 	fmt.println()
@@ -1431,6 +1611,7 @@ print_build_help :: proc() {
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
 	fmt.printfln("  wayu build              Standard optimized build")
 	fmt.printfln("  wayu build turbo        Maximum optimization (turbo.zsh)")
+	fmt.printfln("  wayu build eval         Generate eval-able output (fastest)")
 	fmt.printfln("  wayu build profile      Profile build performance")
 	fmt.printfln("  wayu build help         Show this help")
 	fmt.println()
@@ -1444,10 +1625,13 @@ print_build_help :: proc() {
 	fmt.println()
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
 	fmt.println("  wayu build              # Build init.zsh from wayu.toml")
-	fmt.println("  wayu build turbo        # Build turbo.zsh (fastest)")
+	fmt.println("  wayu build turbo        # Build turbo.zsh")
+	fmt.println("  wayu build eval         # Fastest: eval in .zshrc")
 	fmt.println()
-	fmt.println("  # The turbo version is ~2-4x faster at shell startup")
-	fmt.println("  # Replace in .zshrc:")
-	fmt.println("  #   source \"$HOME/.config/wayu/turbo.zsh\"")
+	fmt.println("  # Fastest startup (replace in .zshrc):")
+	fmt.println(`  eval "$(wayu build eval)"`)
+	fmt.println()
+	fmt.println("  # This pre-computes PATH and exports everything")
+	fmt.println("  # in a single command - no loops, no conditionals.")
 	fmt.println()
 }
