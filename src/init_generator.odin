@@ -27,19 +27,19 @@ generate_optimized_init_all :: proc() {
 	generate_helpers_init_v2()
 	
 	fmt.println("# Init files generados:")
-	fmt.printfln("#   %s/init-core.zsh  (< 10ms)", WAYU_CONFIG)
+	fmt.printfln("#   %s/init-core.zsh  (menos de 10ms)", WAYU_CONFIG)
 	fmt.printfln("#   %s/init-lazy.zsh   (deferred via zsh-defer propio)", WAYU_CONFIG)
 	fmt.printfln("#   %s/init-login.zsh  (login only)", WAYU_CONFIG)
 	fmt.printfln("#   %s/init-helpers.zsh (evalcache, zsh-defer propio)", WAYU_CONFIG)
 	fmt.println("#")
-	fmt.println("# Para compilar a bytecode (2-3x más rápido):")
+	fmt.println("# Para compilar a bytecode (2-3x mas rapido):")
 	fmt.println("#   zcompile ~/.config/wayu/init-core.zsh")
 	fmt.println("#   zcompile ~/.config/wayu/init-lazy.zsh")
 	fmt.println("#")
 	fmt.println("# NOTA: wayu incluye zsh-defer propio, no requiere plugin externo")
 }
 
-// Core: Solo lo esencial para que aparezca el prompt (< 10ms)
+// Core: Solo lo esencial para que aparezca el prompt (menos de 10ms)
 generate_core_init_v2 :: proc() {
 	path := fmt.aprintf("%s/init-core.zsh", WAYU_CONFIG)
 	defer delete(path)
@@ -49,7 +49,7 @@ generate_core_init_v2 :: proc() {
 	defer strings.builder_destroy(&builder)
 	
 	fmt.sbprintln(&builder, "#!/usr/bin/env zsh")
-	fmt.sbprintln(&builder, "# init-core.zsh - ESENCIAL (< 10ms)")
+	fmt.sbprintln(&builder, "# init-core.zsh - ESENCIAL (menos de 10ms)")
 	fmt.sbprintln(&builder, "# Generado automáticamente por wayu build")
 	fmt.sbprintln(&builder)
 	
