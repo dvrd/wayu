@@ -1,0 +1,1593 @@
+romkatv/zsh-defer: Deferred execution of Zsh commands - GitHub
+  URL: https://github.com/romkatv/zsh-defer
+  Whenever zle is idle, the next command is popped from the queue. If the command has been queued up with -t delay , execution of the command and all deferred ...
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/romkatv/zsh-defer#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/romkatv/zsh-defer) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/romkatv/zsh-defer) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/romkatv/zsh-defer) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [romkatv](https://github.com/romkatv)/ **[zsh-defer](https://github.com/romkatv/zsh-defer)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2Fromkatv%2Fzsh-defer) You must be signed in to change notification settings
+  - [Fork\\
+  15](https://github.com/login?return_to=%2Fromkatv%2Fzsh-defer)
+  - [Star\\
+  480](https://github.com/login?return_to=%2Fromkatv%2Fzsh-defer)
+  
+  
+  master
+  
+  [**1** Branch](https://github.com/romkatv/zsh-defer/branches) [**0** Tags](https://github.com/romkatv/zsh-defer/tags)
+  
+  [Go to Branches page](https://github.com/romkatv/zsh-defer/branches)[Go to Tags page](https://github.com/romkatv/zsh-defer/tags)
+  
+  Go to file
+  
+  Code
+  
+  Open more actions menu
+  
+  ## Folders and files
+  
+  | Name | Name | Last commit message | Last commit date |
+  | --- | --- | --- | --- |
+  | ## Latest commit<br>[![romkatv](https://avatars.githubusercontent.com/u/1282067?v=4&size=40)](https://github.com/romkatv)[romkatv](https://github.com/romkatv/zsh-defer/commits?author=romkatv)<br>[docs: typo](https://github.com/romkatv/zsh-defer/commit/53a26e287fbbe2dcebb3aa1801546c6de32416fa)<br>2 years agoFeb 10, 2024<br>[53a26e2](https://github.com/romkatv/zsh-defer/commit/53a26e287fbbe2dcebb3aa1801546c6de32416fa) · 2 years agoFeb 10, 2024<br>## History<br>[40 Commits](https://github.com/romkatv/zsh-defer/commits/master/) <br>Open commit details<br>[View commit history for this file.](https://github.com/romkatv/zsh-defer/commits/master/) 40 Commits |
+  | [docs](https://github.com/romkatv/zsh-defer/tree/master/docs "docs") | [docs](https://github.com/romkatv/zsh-defer/tree/master/docs "docs") | [first commit](https://github.com/romkatv/zsh-defer/commit/aa9e8931d3b5c0d0510b7cce2071a187d7f5a77b "first commit") | 7 years agoNov 20, 2019 |
+  | [.gitattributes](https://github.com/romkatv/zsh-defer/blob/master/.gitattributes ".gitattributes") | [.gitattributes](https://github.com/romkatv/zsh-defer/blob/master/.gitattributes ".gitattributes") | [add .gitattributes](https://github.com/romkatv/zsh-defer/commit/e220a3ac297ab1fda11c203c522b626dca6823a9 "add .gitattributes") | 6 years agoFeb 9, 2020 |
+  | [.gitignore](https://github.com/romkatv/zsh-defer/blob/master/.gitignore ".gitignore") | [.gitignore](https://github.com/romkatv/zsh-defer/blob/master/.gitignore ".gitignore") | [first commit](https://github.com/romkatv/zsh-defer/commit/aa9e8931d3b5c0d0510b7cce2071a187d7f5a77b "first commit") | 7 years agoNov 20, 2019 |
+  | [LICENSE](https://github.com/romkatv/zsh-defer/blob/master/LICENSE "LICENSE") | [LICENSE](https://github.com/romkatv/zsh-defer/blob/master/LICENSE "LICENSE") | [Initial commit](https://github.com/romkatv/zsh-defer/commit/e2af238aac5dc8936e063a7a02db83e7b806c33f "Initial commit") | 7 years agoNov 20, 2019 |
+  | [README.md](https://github.com/romkatv/zsh-defer/blob/master/README.md "README.md") | [README.md](https://github.com/romkatv/zsh-defer/blob/master/README.md "README.md") | [docs: typo](https://github.com/romkatv/zsh-defer/commit/53a26e287fbbe2dcebb3aa1801546c6de32416fa "docs: typo") | 2 years agoFeb 10, 2024 |
+  | [zsh-defer](https://github.com/romkatv/zsh-defer/blob/master/zsh-defer "zsh-defer") | [zsh-defer](https://github.com/romkatv/zsh-defer/blob/master/zsh-defer "zsh-defer") | [s/\_defer\_tasks/\_zsh\_defer\_tasks/](https://github.com/romkatv/zsh-defer/commit/9b8a3f14fe473f6c7fcb4a91ad14ca96613aed42 "s/_defer_tasks/_zsh_defer_tasks/") | 7 years agoJan 15, 2020 |
+  | [zsh-defer.plugin.zsh](https://github.com/romkatv/zsh-defer/blob/master/zsh-defer.plugin.zsh "zsh-defer.plugin.zsh") | [zsh-defer.plugin.zsh](https://github.com/romkatv/zsh-defer/blob/master/zsh-defer.plugin.zsh "zsh-defer.plugin.zsh") | [Revert "remove unnecessary "emulate -L zsh""](https://github.com/romkatv/zsh-defer/commit/3770c54fb4b25a1256dfaabbde37c4399c1f9298 "Revert \"remove unnecessary \"emulate -L zsh\"\"  This reverts commit a8b1f127d2a0c173dd2ec37a15e85c2336fce124.") | 5 years agoOct 11, 2021 |
+  | View all files |
+  
+  ## Repository files navigation
+  
+  # zsh-defer: Deferred execution of zsh commands
+  
+  [Permalink: zsh-defer: Deferred execution of zsh commands](https://github.com/romkatv/zsh-defer#zsh-defer-deferred-execution-of-zsh-commands)
+  
+  `zsh-defer` defers execution of a zsh command until zsh has nothing else to do and is waiting for
+  user input. Its intended purpose is staged zsh startup. It works similarly to _Turbo mode_ in
+  [zinit](https://github.com/zdharma-continuum/zinit).
+  
+  Features:
+  
+  - **Small and clean**: The API consists of a single function implemented in ~150 lines of
+  straightforward zsh.
+  - **Fast to load**: It takes under 1ms to source `zsh-defer.plugin.zsh`.
+  - **Easy to use**: `source slow.zsh` =\> `zsh-defer source slow.zsh`.
+  - **Plugin manager agnostic**: Can be used with any plugin manager or even without one.
+  
+  ## Table of Contents
+  
+  [Permalink: Table of Contents](https://github.com/romkatv/zsh-defer#table-of-contents)
+  
+  1. [Installation](https://github.com/romkatv/zsh-defer#installation)
+  2. [Usage](https://github.com/romkatv/zsh-defer#usage)
+  3. [Example](https://github.com/romkatv/zsh-defer#example)
+  4. [Caveats](https://github.com/romkatv/zsh-defer#caveats)
+  5. [FAQ](https://github.com/romkatv/zsh-defer#faq)
+  1. [Is it possible to autoload zsh-defer?](https://github.com/romkatv/zsh-defer#is-it-possible-to-autoload-zsh-defer)
+  2. [Is it possible to find out from within a command whether it's being executed by zsh-defer?](https://github.com/romkatv/zsh-defer#is-it-possible-to-find-out-from-within-a-command-whether-its-being-executed-by-zsh-defer)
+  3. [Is zsh-defer a plugin manager?](https://github.com/romkatv/zsh-defer#is-zsh-defer-a-plugin-manager)
+  4. [How useful is it?](https://github.com/romkatv/zsh-defer#how-useful-is-it)
+  5. [Is zsh-defer compatible with Instant Prompt in Powerlevel10k?](https://github.com/romkatv/zsh-defer#is-zsh-defer-compatible-with-instant-prompt-in-powerlevel10k)
+  6. [Can I use zsh-defer together with zinit?](https://github.com/romkatv/zsh-defer#can-i-use-zsh-defer-together-with-zinit)
+  7. [How does zsh-defer compare to Turbo mode in zinit?](https://github.com/romkatv/zsh-defer#how-does-zsh-defer-compare-to-turbo-mode-in-zinit)
+  8. [Why so many references to and comparisons with zinit?](https://github.com/romkatv/zsh-defer#why-so-many-references-to-and-comparisons-with-zinit)
+  
+  ## Installation
+  
+  [Permalink: Installation](https://github.com/romkatv/zsh-defer#installation)
+  
+  1. Clone the repo.
+  
+  ```
+  git clone https://github.com/romkatv/zsh-defer.git ~/zsh-defer
+  ```
+  
+  2. Add the following line at the top of `~/.zshrc`:
+  
+  ```
+  source ~/zsh-defer/zsh-defer.plugin.zsh
+  ```
+  
+  _Using a plugin manager? You can install zsh-defer the same way as any other zsh plugin hosted on_
+  _GitHub._
+  
+  ## Usage
+  
+  [Permalink: Usage](https://github.com/romkatv/zsh-defer#usage)
+  
+  ```
+  zsh-defer [{+|-}12dmshpr] [-t delay] word...
+  zsh-defer [{+|-}12dmshpr] [-t delay] -c list
+  ```
+  
+  Queues up the specified command for deferred execution. Whenever zle is idle, the next command is
+  popped from the queue. If the command has been queued up with `-t delay`, execution of the command
+  and all deferred commands after it is delayed by the specified number of seconds (non-negative real
+  number) without blocking zle. Duration can be specified in any format accepted by `sleep(1)`. After
+  that the command is executed either as `word...` with every word quoted, or, if `-c` is specified,
+  as `eval list`. Commands are executed in the same order they are queued up.
+  
+  Options can be used to enable (`+x`) or disable (`-x`) extra actions taken during and after the
+  execution of the command. By default, all actions are enabled. The same option can be enabled or
+  disabled more than once -- the last instance wins.
+  
+  | **Option** | **Action** |
+  | --- | --- |
+  | _1_ | Redirect standard output to `/dev/null`. |
+  | _2_ | Redirect standard error to `/dev/null`. |
+  | _d_ | Call `chpwd` hooks. |
+  | _m_ | Call `precmd` hooks. |
+  | _s_ | Invalidate suggestions from [zsh-autosuggestions](https://github.com/zsh-users/zsh-autosuggestions). |
+  | _z_ | Invalidate highlighting from [zsh-syntax-highlighting](https://github.com/zsh-users/zsh-syntax-highlighting). |
+  | _p_ | Call `zle reset-prompt`. |
+  | _r_ | Call `zle -R`. |
+  | _a_ | Shorthand for all options: _12dmszpr_. |
+  
+  ## Example
+  
+  [Permalink: Example](https://github.com/romkatv/zsh-defer#example)
+  
+  Here's an example of `~/.zshrc` that uses `zsh-defer` to achieve staged zsh startup. When starting
+  zsh, it takes only a few milliseconds for this `~/.zshrc` to be evaluated and for prompt to appear.
+  After that, prompt and the command line buffer are refreshed and buffered keyboard input are
+  processed after the execution of every deferred command.
+  
+  ```
+  source ~/zsh-defer/zsh-defer.plugin.zsh
+  
+  PS1="%F{12}%~%f "
+  RPS1="%F{240}loading%f"
+  setopt promp_subst
+  
+  zsh-defer source ~/zsh-autosuggestions/zsh-autosuggestions.zsh
+  zsh-defer source ~/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+  zsh-defer source ~/.nvm/nvm.sh
+  zsh-defer -c 'RPS1="%F{2}\$(git rev-parse --abbrev-ref HEAD 2>/dev/null)%f"'
+  ```
+  
+  Zsh startup without `zsh-defer`. Prompt appears once everything is loaded.
+  
+  ![zsh startup without zsh-defer](https://raw.githubusercontent.com/romkatv/zsh-defer/master/docs/zsh-startup-without-defer.gif)![zsh startup without zsh-defer](https://raw.githubusercontent.com/romkatv/zsh-defer/master/docs/zsh-startup-without-defer.gif)[Open zsh startup without zsh-defer in new window](https://raw.githubusercontent.com/romkatv/zsh-defer/master/docs/zsh-startup-without-defer.gif)
+  
+  Zsh startup with `zsh-defer`. Prompt appears instantly and gets updated after every startup stage.
+  
+  ![zsh startup with zsh-defer](https://raw.githubusercontent.com/romkatv/zsh-defer/master/docs/zsh-startup-with-defer.gif)![zsh startup with zsh-defer](https://raw.githubusercontent.com/romkatv/zsh-defer/master/docs/zsh-startup-with-defer.gif)[Open zsh startup with zsh-defer in new window](https://raw.githubusercontent.com/romkatv/zsh-defer/master/docs/zsh-startup-with-defer.gif)
+  
+  1. zsh-autosuggestions is loaded: completion suggestion appears.
+  2. zsh-highlighting is loaded: `nvm` in the command line turns red (no such command).
+  3. nvm is loaded: `nvm` turns green (recognized command).
+  4. `RPS1` is set: the name of the current Git branch appears.
+  
+  ## Caveats
+  
+  [Permalink: Caveats](https://github.com/romkatv/zsh-defer#caveats)
+  
+  `zsh-defer` executes commands from zle. This has several ramifications.
+  
+  - Commands cannot read standard input. Thus, commands that may require keyboard input should not be
+  deferred.
+  - Output from commands can be invisible and can cause prompt to be reprinted. This is the reason
+  why `zsh-defer` redirects standard output and standard error to `/dev/null` by default. This
+  behavior can be disabled with `+1` and `+2`.
+  - Some plugins don't expect to be sourced from zle and may fail to properly initialize.
+    - Corollary: It's often necessary to rely on implementation details of plugins in order to load
+      them from zle. This exposes the user to much higher risk of breakage when updating plugins.
+      The default options in `zsh-defer` can help you sidestep these issues in many cases but not
+      always.
+  
+  `zsh-defer` executes commands in function scope with `LOCAL_OPTIONS`, `LOCAL_PATTERNS` and
+  `LOCAL_TRAPS` options. This can break initialization scripts that use `typeset` without explicit
+  `-g`, set options, change patterns or install traps.
+  
+  ## FAQ
+  
+  [Permalink: FAQ](https://github.com/romkatv/zsh-defer#faq)
+  
+  ### Is it possible to autoload zsh-defer?
+  
+  [Permalink: Is it possible to autoload zsh-defer?](https://github.com/romkatv/zsh-defer#is-it-possible-to-autoload-zsh-defer)
+  
+  Yes.
+  
+  Instead of this:
+  
+  ```
+  source ~/zsh-defer/zsh-defer.plugin.zsh
+  ```
+  
+  You can do this:
+  
+  ```
+  autoload -Uz ~/zsh-defer/zsh-defer
+  ```
+  
+  ### Is it possible to find out from within a command whether it's being executed by zsh-defer?
+  
+  [Permalink: Is it possible to find out from within a command whether it's being executed by zsh-defer?](https://github.com/romkatv/zsh-defer#is-it-possible-to-find-out-from-within-a-command-whether-its-being-executed-by-zsh-defer)
+  
+  Yes. Check whether `zsh_defer_options` parameter is set.
+  
+  ```
+  function say-hi() {
+    if (( $+zsh_defer_options )); then
+      echo "Hello from zsh-defer with options: $zsh_defer_options" >>/tmp/log
+    else
+      echo "Hello from without zsh-defer" >>/tmp/log
+    fi
+  }
+  
+  say-hi            # Hello from without zsh-defer
+  zsh-defer say-hi  # Hello from zsh-defer with options: 12dmshp
+  ```
+  
+  ### Is zsh-defer a plugin manager?
+  
+  [Permalink: Is zsh-defer a plugin manager?](https://github.com/romkatv/zsh-defer#is-zsh-defer-a-plugin-manager)
+  
+  No. `zsh-defer` is a function that allows you to defer execution of zsh commands. You can use it
+  on its own or with a plugin manager.
+  
+  ### How useful is it?
+  
+  [Permalink: How useful is it?](https://github.com/romkatv/zsh-defer#how-useful-is-it)
+  
+  [About as useful](https://github.com/romkatv/zsh-bench#deferred-initialization) as Turbo mode in
+  zinit.
+  
+  ### Is zsh-defer compatible with Instant Prompt in Powerlevel10k?
+  
+  [Permalink: Is zsh-defer compatible with Instant Prompt in Powerlevel10k?](https://github.com/romkatv/zsh-defer#is-zsh-defer-compatible-with-instant-prompt-in-powerlevel10k)
+  
+  Yes. Although if you are using [Powerlevel10k](https://github.com/romkatv/powerlevel10k/) with
+  [Instant Prompt](https://github.com/romkatv/zsh-bench#instant-prompt) you almost certainly don't
+  need to use deferred loading of any kind.
+  
+  ### Can I use zsh-defer together with zinit?
+  
+  [Permalink: Can I use zsh-defer together with zinit?](https://github.com/romkatv/zsh-defer#can-i-use-zsh-defer-together-with-zinit)
+  
+  Yes, both ways.
+  
+  You can load `zsh-defer` with zinit the same way as any other plugin.
+  
+  ```
+  zinit light romkatv/zsh-defer
+  ```
+  
+  You can defer a `zinit` command with `zsh-defer` the same way as any other command.
+  
+  ```
+  zsh-defer zinit light zsh-users/zsh-autosuggestions
+  zsh-defer zinit light zsh-users/zsh-syntax-highlighting
+  ```
+  
+  ### How does zsh-defer compare to Turbo mode in zinit?
+  
+  [Permalink: How does zsh-defer compare to Turbo mode in zinit?](https://github.com/romkatv/zsh-defer#how-does-zsh-defer-compare-to-turbo-mode-in-zinit)
+  
+  They are quite similar. Both allow you to defer execution of a zsh command and both execute the
+  command from zle, with all the [negative consequences](https://github.com/romkatv/zsh-defer#caveats) that this entails.
+  
+  `zsh-defer` is most useful to those who don't use zinit as it gives them access to Turbo mode that
+  they otherwise didn't have. However, there are also a few minor benefits to using
+  `zsh-defer zinit light` compared to the builtin Turbo mode:
+  
+  - `zsh-defer` guarantees that all buffered keyboard input gets processed before every deferred
+  command.
+  - The argument of `-t` can be fractional.
+  - The default options of `zsh-defer` are fairly effective at mitigating the
+  [negative side effects](https://github.com/romkatv/zsh-defer#caveats) of deferred loading.
+  - Options provide full flexibility that hardcore zsh users might desire.
+  - `zsh-defer` has a short and easy-to-understand implementation.
+  
+  _Has zinit closed the gap on one or more of these points? Please send a PR removing them from the_
+  _list._
+  
+  On the other hand, `zinit ice wait` has its own advantages:
+  
+  - _I don't know any. Please help expanding this section._
+  
+  ### Why so many references to and comparisons with zinit?
+  
+  [Permalink: Why so many references to and comparisons with zinit?](https://github.com/romkatv/zsh-defer#why-so-many-references-to-and-comparisons-with-zinit)
+  
+  Turbo mode in zinit is the only other robust implementation of deferred zsh command execution that
+  I'm aware of. There is also `zsh/sched` but it's underpowered by comparison.
+  
+  Note that `zsh-defer` is not a plugin manager and thus not an alternative to zinit.
+  
+  ## About
+  
+  Deferred execution of Zsh commands
+  
+  
+  ### Resources
+  
+  [Readme](https://github.com/romkatv/zsh-defer#readme-ov-file)
+  
+  ### License
+  
+  [GPL-3.0 license](https://github.com/romkatv/zsh-defer#GPL-3.0-1-ov-file)
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/romkatv/zsh-defer).
+  
+  [Activity](https://github.com/romkatv/zsh-defer/activity)
+  
+  ### Stars
+  
+  [**480**\\
+  stars](https://github.com/romkatv/zsh-defer/stargazers)
+  
+  ### Watchers
+  
+  [**4**\\
+  watching](https://github.com/romkatv/zsh-defer/watchers)
+  
+  ### Forks
+  
+  [**15**\\
+  forks](https://github.com/romkatv/zsh-defer/forks)
+  
+  [Report repository](https://github.com/contact/report-content?content_url=https%3A%2F%2Fgithub.com%2Fromkatv%2Fzsh-defer&report=romkatv+%28user%29)
+  
+  ## [Releases](https://github.com/romkatv/zsh-defer/releases)
+  
+  No releases published
+  
+  ## [Packages\  0](https://github.com/users/romkatv/packages?repo_name=zsh-defer)
+  
+  No packages published
+  
+  ### Uh oh!
+  
+  There was an error while loading. [Please reload this page](https://github.com/romkatv/zsh-defer).
+  
+  ## [Contributors\  3](https://github.com/romkatv/zsh-defer/graphs/contributors)
+  
+  - [![@romkatv](https://avatars.githubusercontent.com/u/1282067?s=64&v=4)](https://github.com/romkatv)[**romkatv** Roman Perepelitsa](https://github.com/romkatv)
+  - [![@ahmubashshir](https://avatars.githubusercontent.com/u/24864366?s=64&v=4)](https://github.com/ahmubashshir)[**ahmubashshir** Mubashshir](https://github.com/ahmubashshir)
+  - [![@CodesOfRishi](https://avatars.githubusercontent.com/u/59014665?s=64&v=4)](https://github.com/CodesOfRishi)[**CodesOfRishi** Rishi K.](https://github.com/CodesOfRishi)
+  
+  ## Languages
+  
+  - [Shell100.0%](https://github.com/romkatv/zsh-defer/search?l=shell)
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+Speeding Up Zsh - Josh's Blog
+  URL: https://www.joshyin.cc/blog/speeding-up-zsh
+  We did this by: Lazy loading nvm or switching to fnm; Caching the results of eval statements with the evalcache plugin; Deferring the execution ...
+
+  --- Content ---
+  Authors
+  
+  - ![avatar](https://www.joshyin.cc/_next/image?url=%2Fstatic%2Fimages%2Favatar.png&w=96&q=75)NameJoshua YinTwitter[@ijaeshi](https://twitter.com/ijaeshi)
+  
+  ## Tags
+  
+  [programming](https://www.joshyin.cc/tags/programming) [guide](https://www.joshyin.cc/tags/guide)
+  
+  ## Previous Article
+  
+  [Religion and Language in Dystopian Literature](https://www.joshyin.cc/blog/religion-and-language-in-dystopian-literature)
+  
+  ## Next Article
+  
+  [Night Owl](https://www.joshyin.cc/blog/night-owl)
+  
+  [← Back to the blog](https://www.joshyin.cc/blog)
+  
+  ## Motivations
+  
+  Ever since I embarked on my programming journey, Zsh has been my trusty shell of choice, consistently serving me well. But as time went on and my `.zshrc` file grew longer, I couldn't help but notice that startup times have gotten slow. Unbearably slow. Well... maybe not that slow, but slow enough to be just a tad irritating.
+  
+  Recently, I've had a little bit too much time on my hands, so I finally decided to invest some effort into optimizing my setup. Needless to say, I'm quite happy with the results: I was able to slash Zsh's startup time down from 0.65 seconds to a _whopping_ 0.03 seconds!
+  
+  I hope that anyone else struggling with sluggish startup times will find these optimizations helpful.
+  
+  ## The main culprit: `nvm`
+  
+  For most people, myself included, the main culprit behind sluggish startup times will be none other than [nvm](https://github.com/nvm-sh/nvm). The issue with `nvm` is that it is always loaded, leading to unnecessary slowdowns in the many instances I'm not working on a node project. Thus, the natural solution would be to only lazy load it when needed.
+  
+  ### Lazy loading `nvm`
+  
+  There are several ways to lazy load `nvm`, such as [zsh-nvm](https://github.com/lukechilds/zsh-nvm), but I've personally found the [nvm plugin](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/nvm) bundled with `Oh My Zsh` to be the fastest and easiest to configure. Just add the following lines to your `.zshrc` to enable lazy loading:
+  
+  .zshrc
+  
+  ```shell
+  plugins += (nvm)
+  # add the following before Oh My Zsh is sourced
+  zstyle ':omz:plugins:nvm' lazy yes
+  ```
+  
+  ### Or just use `fnm` instead?
+  
+  [fnm](https://github.com/Schniz/fnm) is a lightweight alternative to nvm, written in rust. Like `nvm`, it manages your node versions, but is much faster, with almost no effect on shell loading times. I'd highly recommend checking `fnm` out if there isn't a specific feature of `nvm` that you need, or if you don't like the idea of installing a plugin or writing a script to lazy load `nvm`.
+  
+  ## Other Virtual Environments
+  
+  While `nvm` was certainly the main cause of slowdown, other virtual environments contribute to startup times as well. These typically work by running an eval statement in your `.zshrc` file:
+  
+  .zshrc
+  
+  ```shell
+  eval "$(rbenv init -)"
+  eval "$(pyenv init -)"
+  ```
+  
+  As it turns out, the output of the eval statement is almost always static, so it often isn't necessary to compute every time. Instead, we can cache the result on the first run so that the overhead in recomputing it can be avoided during subsequent runs.
+  
+  ### Caching evals
+  
+  To cache evals, install the amazing [evalcache](https://github.com/mroth/evalcache) plugin. Now, simply replace all instances of `eval` with `_evalcache`:
+  
+  .zshrc
+  
+  ```shell
+  _evalcache pyenv init -
+  _evalcache rbenv init -
+  ```
+  
+  Note that a minor caveat to caching is that whenever you update your virtual environments, you may need to manually recache the results by running `_evalcache_clear`.
+  
+  ### RTX: The end-all solution
+  
+  If you don't have an attachment to any particular virtual environment tool, then it might be worth trying out [RTX](https://github.com/jdxcode/rtx). While still a fairly young project, it promises to replace the need for all existing language environment tools like `nvm` by offering a single interface to manage them all. The best part is that it's fully backwards-compatible with legacy language-specific files like `.nvmrc` or `.python-version`, meaning that you can literally use it as a drop-in replacement in existing projects. `RTX` is actually based on an older project [asdf](https://github.com/asdf-vm/asdf) with similar goals, but offers many advantages, including being written in rust and not being reliant on shims, making it much faster than `asdf`.
+  
+  Once you have it installed, you can initialize it on startup by adding the following to your `.zshrc`:
+  
+  .zshrc
+  
+  ```shell
+  _evalcache rtx activate zsh
+  ```
+  
+  By now, your shell startup time should be vastly improved. However, there's still more that can be done!
+  
+  ## Alternative plugin managers
+  
+  For the longest time, I've been content with the popular [Oh My Zsh](https://github.com/ohmyzsh/ohmyzsh) framework. When conducting a quick internet search for customizing Zsh and installing plugins, `Oh My Zsh` is typically the first thing that comes up, and rightfully so — it's easy to set up and comes with a large library of plugins out of the box. But over time, I've started to realize that its comprehensive set of features and ease of use comes at a slight performance cost. `Oh My Zsh` has been around for a long time and has inevitably begun to show its age. It's old, bloated, and widely known to be slow.
+  
+  If only there was a way to have speed without sacrificing functionality...
+  
+  ### `Zim`: A modern alternative to `Oh My Zsh`
+  
+  [Zim](https://github.com/zimfw/zimfw) is a _blazingly_ fast plugin manager that aims to solve all these issues and more, while also providing a sensible set of defaults and full support for the `Oh My Zsh` and `Prezto` plugin libraries. Moreover, it automatically installs and updates custom plugins via a `.zimrc` file. No more manually running `git clone` each time you reinstall your shell!
+  
+  It's worth mentioning that there are many alternative Zsh frameworks and plugin managers, like [Prezto](https://github.com/sorin-ionescu/prezto/), [antigen](https://github.com/zsh-users/antigen), [zgen](https://github.com/tarjoilija/zgen), [zplug](https://github.com/zplug/zplug), etc. However, I prefer `Zim` as it provides many useful features and sane defaults without compromising on performance, and crucially, is still being maintained to this day.
+  
+  Migrating from `Oh My Zsh` to `Zim` was a fairly straightforward process. I just followed the handy [installation guide](https://github.com/zimfw/zimfw/blob/master/README.md#installation) and added the plugins I wanted to my `.zimrc` file. For anyone seeking a practical example, feel free to explore my [dotfiles](https://github.com/Subjective/dotfiles) repository.
+  
+  ### What about `zinit`?
+  
+  Before stumbling across `Zim`, I also looked into [zinit](https://github.com/zdharma-continuum/zinit), another performance-centric plugin manager that provides an innovative way to asynchronously load plugins via its turbo mode in addition to still being actively maintained. While `zinit` does offer a lot in terms of customizability, I personally found `zinit` too cumbersome to configure and get turbo mode working correctly, for what seemed like only minimal performance gains over `Zim`.
+  
+  ## Async execution with `Zsh-defer`
+  
+  Turns out turbo mode isn't necessarily a feature exclusive to zinit. [Zsh-defer](https://github.com/romkatv/zsh-defer), as the name implies, is a plugin that allows you to defer the execution of a Zsh command until Zsh has nothing else to do and is waiting for user input. To install the plugin, add the following line to your `.zimrc` file:
+  
+  .zimrc
+  
+  ```shell
+  zmodule romkatv/zsh-defer -d
+  ```
+  
+  Then source the plugin and add `zsh-defer` before any statement you want to defer:
+  
+  .zshrc
+  
+  ```shell
+  source ${ZIM_HOME}/modules/zsh-defer/zsh-defer.plugin.zsh
+  
+  zsh-defer _evalcache fnm env --use-on-cd
+  zsh-defer _evalcache pyenv init -
+  zsh-defer _evalcache rbenv init -
+  zsh-defer _evalcache zoxide init zsh
+  ```
+  
+  You can even defer plugins loaded by `Zim`! Just be careful as not all plugins are intended to be loaded this way and some may not even function properly.
+  
+  .zshrc
+  
+  ```shell
+  # Initialize zsh-defer.
+  source ${ZIM_HOME}/modules/zsh-defer/zsh-defer.plugin.zsh
+  
+  # Install missing modules, and update ${ZIM_HOME}/init.zsh if missing or outdated.
+  if [[ ! ${ZIM_HOME}/init.zsh -nt ${ZDOTDIR:-${HOME}}/.zimrc ]]; then
+    zsh-defer source ${ZIM_HOME}/zimfw.zsh init -q
+  fi
+  
+  # Initialize modules.
+  zsh-defer source ${ZIM_HOME}/init.zsh
+  ```
+  
+  By implementing this approach, I managed to reduce my Zsh startup time down to an impressive 0.02 seconds! Nevertheless, it's worth mentioning that I encountered a few issues with certain plugins. For instance, [Zsh-vim-mode](https://github.com/softmoth/zsh-vim-mode) failed to properly set the cursor style within [tmux](https://github.com/tmux/tmux), the [environment](https://github.com/zimfw/environment) module did not configure specific options, and some of my aliases got overridden by those defined in the [utility](https://github.com/zimfw/utility) module.
+  
+  Ideally, I would like to skip deferring those plugins in particular. Thankfully, it's not too difficult to write some shell script that accomplishes this for us.
+  
+  .zshrc
+  
+  ```shell
+  # Initialize modules.
+  
+  # don't defer loading the following plugins
+  skip_defer=(environment utility zsh-vim-mode)
+  
+  for zline in ${(f)"$(<$ZIM_HOME/init.zsh)"}; do
+    if [[ $zline == source* ]]; then
+      skip_source=0
+      for skip in "${skip_defer[@]}"; do
+        if [[ $zline == *"/modules/$skip/"* ]]; then
+          skip_source=1
+          break
+        fi
+      done
+      if [[ $skip_source -eq 0 ]]; then
+        zsh-defer -c "${zline}"
+      else
+        eval "${zline}"
+      fi
+    else
+      eval "${zline}"
+    fi
+  done
+  ```
+  
+  Now I can provide an array `skip_defer` specifying the plugins I do not want to defer. This only brings up the startup time a tiny bit, to 0.03 seconds. Hooray!
+  
+  By now, your shell should be sufficiently fast, making the next option potentially unnecessary. However, if you opted out of any of the previous optimizations, then the next one could be beneficial.
+  
+  ## Powerline10k Instant Prompt
+  
+  [Powerline10k](https://github.com/romkatv/powerlevel10k) is a performant and highly-customizable prompt that has become quite popular among the Zsh community. For our purposes, we are interested in its Instant Prompt feature, which displays the shell prompt before Zsh finishes starting up. While this doesn't actually eliminate startup lag, it gives the appearance of doing so by immediately showing the text for the shell prompt instead of waiting until after Zsh starts up.
+  
+  To install the plugin, add the following line to your `.zimrc` file:
+  
+  .zimrc
+  
+  ```shell
+  zmodule romkatv/powerlevel10k
+  ```
+  
+  Then enable the instant prompt and source your `Powerline10k` configuration:
+  
+  .zshrc
+  
+  ```shell
+  # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+  if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+    source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+  fi
+  
+  [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+  ```
+  
+  ## Summary
+  
+  All in all, I was able to reduce my Zsh's startup time by more than 95%. The table below summarizes my results in more detail:
+  
+  | Configuration | Average Startup Time |
+  | --- | --- |
+  | `ohmyzsh` | 0.65 s |
+  | `ohmyzsh`+lazy loading `nvm` | 0.43 s |
+  | `ohmyzsh`+lazy loading `nvm`+`evalcache` | 0.35 s |
+  | `ohmyzsh`+`fnm`+`evalcache` | 0.35 s |
+  | `zim` | 0.45 s |
+  | `zim`+lazy loading `nvm` | 0.29 s |
+  | `zim`+`fnm` | 0.27 s |
+  | `zim`+`fnm`+`evalcache` | 0.19 s |
+  | `zim`+`fnm`+`zsh-defer` (evals) | 0.17 s |
+  | `zim`+`fnm`+`evalcache`+`zsh-defer` (evals) | 0.07 s |
+  | `zim`+`fnm`+`evalcache`+`zsh-defer` (evals & most plugins) | 0.03 s |
+  | `zim`+`fnm`+`evalcache`+`zsh-defer` (evals & all plugins) | 0.02 s |
+  
+  To measure the startup time, I used the following shell function, and captured the average time over 10 iterations:
+  
+  ```shell
+  # function to gauge zsh's startup time
+  function timezsh() {
+    shell=${1-$SHELL}
+    for i in $(seq 1 10); do /usr/bin/time $shell -i -c exit; done
+  }
+  ```
+  
+  As you can see, we were able to achieve stellar gains in performance while keeping all the same tools and commands. We did this by:
+  
+  - Lazy loading `nvm` or switching to `fnm`
+  - Caching the results of eval statements with the `evalcache` plugin
+  - Deferring the execution of evals and plugins with the `Zsh-defer` plugin
+  - Migrating from `Oh My Zsh` to `Zim`
+  
+  ## Helpful Resources
+  
+  I found the following resources particularly helpful while working on this. I would like to express my gratitude to the authors for sharing their insights:
+  
+  - [Speeding Up My Shell (Oh My Zsh)](https://blog.mattclemente.com/2020/06/26/oh-my-zsh-slow-to-load/#it's-probably-nvm)
+  - [Zsh Frameworks](https://www.reddit.com/r/linuxadmin/comments/rhg7wx/zsh_frameworks/)
+  - [A Comparison of Zsh Frameworks and Plugin Managers](https://gist.github.com/laggardkernel/4a4c4986ccdcaf47b91e8227f9868ded)
+  
+  [Discuss on Twitter](https://mobile.twitter.com/search?q=https%3A%2F%2Fjoshyin.cc%2Fblog%2Fspeeding-up-zsh) • [View on GitHub](https://github.com/Subjective/website/blob/master/data/blog/speeding-up-zsh.mdx)
+  
+  Load Comments
+  
+  ## Tags
+  
+  [programming](https://www.joshyin.cc/tags/programming) [guide](https://www.joshyin.cc/tags/guide)
+  
+  ## Previous Article
+  
+  [Religion and Language in Dystopian Literature](https://www.joshyin.cc/blog/religion-and-language-in-dystopian-literature)
+  
+  ## Next Article
+  
+  [Night Owl](https://www.joshyin.cc/blog/night-owl)
+  
+  [← Back to the blog](https://www.joshyin.cc/blog)
+  
+  ## Table of Contents
+  
+  - [Motivations](https://www.joshyin.cc/blog/speeding-up-zsh#motivations)
+  - [The main culprit: nvm](https://www.joshyin.cc/blog/speeding-up-zsh#the-main-culprit-nvm)
+  - [Lazy loading nvm](https://www.joshyin.cc/blog/speeding-up-zsh#lazy-loading-nvm)
+  - [Or just use fnm instead?](https://www.joshyin.cc/blog/speeding-up-zsh#or-just-use-fnm-instead)
+  - [Other Virtual Environments](https://www.joshyin.cc/blog/speeding-up-zsh#other-virtual-environments)
+  - [Caching evals](https://www.joshyin.cc/blog/speeding-up-zsh#caching-evals)
+  - [RTX: The end-all solution](https://www.joshyin.cc/blog/speeding-up-zsh#rtx-the-end-all-solution)
+  - [Alternative plugin managers](https://www.joshyin.cc/blog/speeding-up-zsh#alternative-plugin-managers)
+  - [Zim: A modern alternative to Oh My Zsh](https://www.joshyin.cc/blog/speeding-up-zsh#zim-a-modern-alternative-to-oh-my-zsh)
+  - [What about zinit?](https://www.joshyin.cc/blog/speeding-up-zsh#what-about-zinit)
+  - [Async execution with Zsh-defer](https://www.joshyin.cc/blog/speeding-up-zsh#async-execution-with-zsh-defer)
+  - [Powerline10k Instant Prompt](https://www.joshyin.cc/blog/speeding-up-zsh#powerline10k-instant-prompt)
+  - [Summary](https://www.joshyin.cc/blog/speeding-up-zsh#summary)
+  - [Helpful Resources](https://www.joshyin.cc/blog/speeding-up-zsh#helpful-resources)
+  --- End Content ---
+
+Howto properly defer zsh-syntax-highlighting with zsh-defer? - Reddit
+  URL: https://www.reddit.com/r/zsh/comments/h0hlqm/howto_properly_defer_zshsyntaxhighlighting_with/
+  I have zsh-syntax-highlighting defer source at bottom of all other plugins ... How is it any different from lazyvim , is there any difference ...
+
+zsh-defer.plugin.zsh - GitHub
+  URL: https://github.com/romkatv/zsh-defer/blob/master/zsh-defer.plugin.zsh
+  Eager loading: # # source ~/zsh-defer/zsh-defer.plugin.zsh # # 2. Lazy loading: # # fpath+=(~/zsh-defer) ... # source ~/zsh-defer/zsh-defer.plugin.zsh. #. # 2 ...
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/romkatv/zsh-defer/blob/master/zsh-defer.plugin.zsh#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/romkatv/zsh-defer/blob/master/zsh-defer.plugin.zsh) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/romkatv/zsh-defer/blob/master/zsh-defer.plugin.zsh) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/romkatv/zsh-defer/blob/master/zsh-defer.plugin.zsh) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [romkatv](https://github.com/romkatv)/ **[zsh-defer](https://github.com/romkatv/zsh-defer)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2Fromkatv%2Fzsh-defer) You must be signed in to change notification settings
+  - [Fork\\
+  15](https://github.com/login?return_to=%2Fromkatv%2Fzsh-defer)
+  - [Star\\
+  480](https://github.com/login?return_to=%2Fromkatv%2Fzsh-defer)
+  
+  
+  ## Collapse file tree
+  
+  ## Files
+  
+  master
+  
+  Search this repository(forward slash)` forward slash/`
+  
+  /
+  
+  # zsh-defer.plugin.zsh
+  
+  Copy path
+  
+  Blame
+  
+  More file actions
+  
+  Blame
+  
+  More file actions
+  
+  ## Latest commit
+  
+  [![romkatv](https://avatars.githubusercontent.com/u/1282067?v=4&size=40)](https://github.com/romkatv)[romkatv](https://github.com/romkatv/zsh-defer/commits?author=romkatv)
+  
+  [Revert "remove unnecessary "emulate -L zsh""](https://github.com/romkatv/zsh-defer/commit/3770c54fb4b25a1256dfaabbde37c4399c1f9298)
+  
+  Open commit details
+  
+  5 years agoOct 11, 2021
+  
+  [3770c54](https://github.com/romkatv/zsh-defer/commit/3770c54fb4b25a1256dfaabbde37c4399c1f9298) · 5 years agoOct 11, 2021
+  
+  ## History
+  
+  [History](https://github.com/romkatv/zsh-defer/commits/master/zsh-defer.plugin.zsh)
+  
+  Open commit details
+  
+  [View commit history for this file.](https://github.com/romkatv/zsh-defer/commits/master/zsh-defer.plugin.zsh) History
+  
+  187 lines (171 loc) · 6 KB
+  
+  /
+  
+  # zsh-defer.plugin.zsh
+  
+  Top
+  
+  ## File metadata and controls
+  
+  - Code
+  
+  - Blame
+  
+  
+  187 lines (171 loc) · 6 KB
+  
+  [Raw](https://github.com/romkatv/zsh-defer/raw/refs/heads/master/zsh-defer.plugin.zsh)
+  
+  Copy raw file
+  
+  Download raw file
+  
+  Open symbols panel
+  
+  Edit and raw actions
+  
+  1
+  
+  2
+  
+  3
+  
+  4
+  
+  5
+  
+  6
+  
+  7
+  
+  8
+  
+  9
+  
+  10
+  
+  11
+  
+  12
+  
+  13
+  
+  14
+  
+  15
+  
+  16
+  
+  17
+  
+  18
+  
+  19
+  
+  20
+  
+  21
+  
+  22
+  
+  23
+  
+  24
+  
+  25
+  
+  26
+  
+  27
+  
+  28
+  
+  29
+  
+  30
+  
+  31
+  
+  32
+  
+  33
+  
+  34
+  
+  35
+  
+  36
+  
+  37
+  
+  38
+  
+  39
+  
+  40
+  
+  41
+  
+  42
+  
+  43
+  
+  44
+  
+  45
+  
+  46
+  
+  47
+  
+  48
+  
+  49
+  
+  50
+  
+  51
+  
+  52
+  
+  53
+  
+  54
+  
+  55
+  
+  56
+  
+  57
+  
+  58
+  
+  59
+  
+  60
+  
+  61
+  
+  62
+  
+  63
+  
+  64
+  
+  65
+  
+  66
+  
+  67
+  
+  68
+  
+  69
+  
+  70
+  
+  71
+  
+  72
+  
+  73
+  
+  74
+  
+  75
+  
+  76
+  
+  77
+  
+  78
+  
+  79
+  
+  80
+  
+  81
+  
+  82
+  
+  83
+  
+  84
+  
+  85
+  
+  86
+  
+  87
+  
+  88
+  
+  89
+  
+  90
+  
+  91
+  
+  92
+  
+  93
+  
+  94
+  
+  95
+  
+  96
+  
+  97
+  
+  98
+  
+  99
+  
+  100
+  
+  101
+  
+  102
+  
+  103
+  
+  104
+  
+  105
+  
+  106
+  
+  107
+  
+  108
+  
+  109
+  
+  110
+  
+  111
+  
+  112
+  
+  113
+  
+  114
+  
+  115
+  
+  116
+  
+  117
+  
+  118
+  
+  119
+  
+  120
+  
+  121
+  
+  122
+  
+  123
+  
+  124
+  
+  125
+  
+  126
+  
+  127
+  
+  128
+  
+  129
+  
+  130
+  
+  131
+  
+  132
+  
+  133
+  
+  134
+  
+  135
+  
+  136
+  
+  137
+  
+  138
+  
+  139
+  
+  140
+  
+  141
+  
+  142
+  
+  143
+  
+  144
+  
+  145
+  
+  146
+  
+  147
+  
+  148
+  
+  149
+  
+  150
+  
+  151
+  
+  152
+  
+  153
+  
+  154
+  
+  155
+  
+  156
+  
+  157
+  
+  158
+  
+  159
+  
+  160
+  
+  161
+  
+  162
+  
+  163
+  
+  164
+  
+  165
+  
+  166
+  
+  167
+  
+  168
+  
+  169
+  
+  170
+  
+  171
+  
+  172
+  
+  173
+  
+  174
+  
+  175
+  
+  176
+  
+  177
+  
+  178
+  
+  179
+  
+  180
+  
+  181
+  
+  182
+  
+  183
+  
+  184
+  
+  185
+  
+  186
+  
+  187
+  
+  # zsh-defer: Defer execution of a command until zle is idle.
+  
+  #
+  
+  # There are two way to load function zsh-defer:
+  
+  #
+  
+  # 1\. Eager loading:
+  
+  #
+  
+  # source ~/zsh-defer/zsh-defer.plugin.zsh
+  
+  #
+  
+  # 2\. Lazy loading:
+  
+  #
+  
+  # fpath+=(~/zsh-defer)
+  
+  # autoload -Uz zsh-defer
+  
+  #
+  
+  # Once zsh-defer is loaded, type \`zsh-defer -h\` for usage.
+  
+  'builtin''local''-a''\_zsh\_defer\_opts'
+  
+  \[\[ !-o'aliases' \]\] \|\| \_zsh\_defer\_opts+=('aliases')
+  
+  \[\[ !-o'sh\_glob' \]\] \|\| \_zsh\_defer\_opts+=('sh\_glob')
+  
+  \[\[ !-o'no\_brace\_expand' \]\] \|\| \_zsh\_defer\_opts+=('no\_brace\_expand')
+  
+  'builtin''setopt''no\_aliases''no\_sh\_glob''brace\_expand'
+  
+  typeset -ga \_zsh\_defer\_tasks
+  
+  functionzsh-defer-reset-autosuggestions\_() {
+  
+  unsetopt warn\_nested\_var
+  
+  orig\_buffer=
+  
+  orig\_postdisplay=
+  
+  }
+  
+  zle -N zsh-defer-reset-autosuggestions\_
+  
+  function\_zsh-defer-schedule() {
+  
+  local fd
+  
+  if \[\[ $1== 0 \]\];then
+  
+  exec {fd}</dev/null
+  
+  else
+  
+  zmodload zsh/zselect
+  
+  exec {fd}<<(zselect -t $1)
+  
+  fi
+  
+  zle -F $fd \_zsh-defer-resume
+  
+  }
+  
+  function\_zsh-defer-resume() {
+  
+  emulate -L zsh
+  
+  zle -F $1
+  
+  exec {1}>&-
+  
+  while(($#\_zsh\_defer\_tasks &&!KEYS\_QUEUED\_COUNT &&!PENDING ));do
+  
+  local delay=${\_zsh\_defer\_tasks\[1\]%%\*}
+  
+  local task=${\_zsh\_defer\_tasks\[1\]#\* }
+  
+  if \[\[ $delay== 0 \]\];then
+  
+  \_zsh-defer-apply $task
+  
+  shift \_zsh\_defer\_tasks
+  
+  else
+  
+  \_zsh-defer-schedule $delay
+  
+  \_zsh\_defer\_tasks\[1\]="0 $task"
+  
+  return 0
+  
+  fi
+  
+  done
+  
+  (($#\_zsh\_defer\_tasks ))&& \_zsh-defer-schedule 0
+  
+  return 0
+  
+  }
+  
+  zle -N \_zsh-defer-resume
+  
+  function\_zsh-defer-apply() {
+  
+  local opts=${1%%\*}
+  
+  local cmd=${1#\* }
+  
+  local dir=${(%):-%/}
+  
+  local -i fd1=-1 fd2=-1
+  
+  \[\[ $opts==\*1\* \]\] &&exec {fd1}>&11>/dev/null
+  
+  \[\[ $opts==\*2\* \]\] &&exec {fd2}>&22>/dev/null
+  
+  {
+  
+  local zsh\_defer\_options=$opts# this is a part of public API
+  
+  () {
+  
+  if \[\[ $opts==\*c\* \]\];then
+  
+  eval$cmd
+  
+  else
+  
+  "${(@Q)${(z)cmd}}"
+  
+  fi
+  
+  }
+  
+  emulate -L zsh
+  
+  local hook hooks
+  
+  \[\[ $opts==\*d\*&&${(%):-%/}!=$dir \]\] && hooks+=($chpwd$chpwd\_functions)
+  
+  \[\[ $opts==\*m\* \]\] && hooks+=($precmd$precmd\_functions)
+  
+  forhookin$hooks;do
+  
+  (( $+functions\[$hook\] ))\|\|continue
+  
+  $hook
+  
+  emulate -L zsh
+  
+  done
+  
+  \[\[ $opts==\*s\*&& $+ZSH\_AUTOSUGGEST\_STRATEGY == 1 \]\] && zle zsh-defer-reset-autosuggestions\_
+  
+  \[\[ $opts==\*z\*&& $+\_ZSH\_HIGHLIGHT\_PRIOR\_BUFFER == 1 \]\] && \_ZSH\_HIGHLIGHT\_PRIOR\_BUFFER=
+  
+  \[\[ $opts==\*p\* \]\] && zle reset-prompt
+  
+  \[\[ $opts==\*r\* \]\] && zle -R
+  
+  } always {
+  
+  (( fd1>=0))&&exec1>&$fd1 {fd1}>&-
+  
+  (( fd2>=0))&&exec2>&$fd2 {fd2}>&-
+  
+  }
+  
+  }
+  
+  functionzsh-defer() {
+  
+  emulate -L zsh -o extended\_glob
+  
+  local all=12dmszpr
+  
+  local -i delay OPTIND
+  
+  local opts=$all cmd opt OPTARG match mbegin mend
+  
+  whilegetopts":hc:t:a$all" opt;do
+  
+  case$optin
+  
+  \*h)
+  
+  print -r -- 'zsh-defer \[{+\|-}'$all'\] \[-t delay\] word...
+  
+  zsh-defer \[{+\|-}'$all'\] \[-t delay\] -c list
+  
+  Queues up the specified command for deferred execution. Whenever zle is idle,
+  
+  the next command is popped from the queue. If the command has been queued up
+  
+  with \`-t delay\`, execution of the command and all deferred commands after it is
+  
+  delayed by the specified number of seconds (non-negative real number) without
+  
+  blocking zle. After that the command is executed either as \`word...\` with every
+  
+  word quoted, or, if \`-c\` is specified, as \`eval list\`. Commands are executed in
+  
+  the same order they are queued up.
+  
+  Options can be used to enable (\`+x\`) or disable (\`-x\`) extra actions taken
+  
+  during and after the execution of the command. By default, all actions are
+  
+  enabled. The same option can be enabled or disabled more than once -- the last
+  
+  instance wins.
+  
+  Option \| Action
+  
+  \-\-\-\-\-\- \|-------------------------------------------------------
+  
+  1 \| Redirect standard output to \`/dev/null\`.
+  
+  2 \| Redirect standard error to \`/dev/null\`.
+  
+  d \| Call \`chpwd\` hooks.
+  
+  m \| Call \`precmd\` hooks.
+  
+  s \| Invalidate suggestions from zsh-autosuggestions.
+  
+  z \| Invalidate highlighting from zsh-syntax-highlighting.
+  
+  p \| Call \`zle reset-prompt\`.
+  
+  r \| Call \`zle -R\`.
+  
+  a \| Shorthand for all options: \`12dmszpr\`.
+  
+  Example \`~/.zshrc\`:
+  
+  source ~/zsh-defer/zsh-defer.plugin.zsh
+  
+  PS1="%F{12}%~%f "
+  
+  RPS1="%F{240}loading%f"
+  
+  setopt prompt\_subst
+  
+  zsh-defer source ~/zsh-autosuggestions/zsh-autosuggestions.zsh
+  
+  zsh-defer source ~/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+  
+  zsh-defer source ~/.nvm/nvm.sh
+  
+  zsh-defer -c '\\''RPS1="%F{2}\\$(git rev-parse --abbrev-ref HEAD 2>/dev/null)%f"'\\''
+  
+  Full documentation at: <https://github.com/romkatv/zsh-defer>.'
+  
+  return 0
+  
+  ;;
+  
+  c)
+  
+  if \[\[ $opts==\*c\* \]\];then
+  
+  print -r -- "zsh-defer: duplicate option: -c">&2
+  
+  return 1
+  
+  fi
+  
+  opts+=c
+  
+  cmd=$OPTARG
+  
+  ;;
+  
+  t)
+  
+  if \[\[ $OPTARG!= (\|+)<->(\|.<->)(\|\[eE\](\|-\|+)<->) \]\];then
+  
+  print -r -- "zsh-defer: invalid -t argument: $OPTARG">&2
+  
+  return 1
+  
+  fi
+  
+  zmodload zsh/mathfunc
+  
+  delay='ceil(100 \* OPTARG)'
+  
+  ;;
+  
+  +c\|+t) >&2 print -r -- "zsh-defer: invalid option: $opt";return 1;;
+  
+  \\?) >&2 print -r -- "zsh-defer: invalid option: $OPTARG";return 1;;
+  
+  :) >&2 print -r -- "zsh-defer: missing required argument: $OPTARG";return 1;;
+  
+  a) \[\[ $opts==\*c\* \]\] && opts=c \|\| opts= ;;
+  
+  +a) \[\[ $opts==\*c\* \]\] && opts=c$all\|\| opts=$all ;;
+  
+  ?) \[\[ $opts== (#b)(\*)$opt(\*) \]\] && opts=$match\[1\]$match\[2\] ;;
+  
+  +?) \[\[ $opts!=\*${opt:1}\* \]\] && opts+=${opt:1};;
+  
+  esac
+  
+  done
+  
+  if \[\[ $opts!=\*c\* \]\];then
+  
+  cmd="${(@q)@\[OPTIND,-1\]}"
+  
+  elif(( OPTIND <= ARGC ));then
+  
+  print -r -- "zsh-defer: unexpected positional argument: ${\*\[OPTIND\]}">&2
+  
+  return 1
+  
+  fi
+  
+  \[\[ $opts==\*p\*&& $+RPS1 == 0 \]\] && RPS1=
+  
+  (($#\_zsh\_defer\_tasks ))\|\| \_zsh-defer-schedule 0
+  
+  \_zsh\_defer\_tasks+="$delay$opts$cmd"
+  
+  }
+  
+  ((${#\_zsh\_defer\_opts}))&& setopt ${\_zsh\_defer\_opts\[@\]}
+  
+  'builtin''unset''\_zsh\_defer\_opts'
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+Speeding Up zsh Startup with zprof and zsh-defer - Mariano Zunino
+  URL: https://mzunino.com.uy/til/2025/03/speeding-up-zsh-startup-with-zprof-and-zsh-defer/
+  But the real game-changer was discovering zsh-defer, which lets you lazy-load plugins. ... # Defer loading zsh-defer source "$PLUGIN_DIR/zsh ...
+
+  --- Content ---
+  [back to TIL index](https://mzunino.com.uy/til/)
+  
+  # Speeding Up zsh Startup with zprof and zsh-defer
+  
+  March 19, 2025[zsh](https://mzunino.com.uy/tags/zsh) [shell](https://mzunino.com.uy/tags/shell) [cli](https://mzunino.com.uy/tags/cli) [linux](https://mzunino.com.uy/tags/linux) [productivity](https://mzunino.com.uy/tags/productivity) [performance](https://mzunino.com.uy/tags/performance)
+  
+  ## The Problem
+  
+  I noticed my zsh shell was taking several seconds to start up, which was frustrating each time I opened a new terminal. Instead of just accepting the delay, I decided to investigate.
+  
+  ## Diagnosing with zmodload zsh/zprof
+  
+  To find the bottleneck, I used `zmodload zsh/zprof` at the beginning of my `.zshrc` file and added `zprof` at the end to print performance statistics. This showed me which plugins and configurations were causing the slowdown.
+  
+  I was using the [zap](https://github.com/zap-zsh/zap) plugin manager, which is quite simple, but some of my plugins were taking too long to load. This led me to look for faster alternatives ( **not blaming zap at all!**)
+  
+  ## Finding a Solution
+  
+  My search for better performance led me to [sheldon](https://github.com/rossmacarthur/sheldon), a blazingly fast plugin manager. But the real game-changer was discovering [zsh-defer](https://github.com/romkatv/zsh-defer), which lets you lazy-load plugins.
+  
+  ## zsh-defer: The Game Changer
+  
+  After using sheldon with zsh-defer for a few weeks, I was happy with the speed improvements. However, I wasn’t thrilled about having a separate directory just for sheldon’s configuration. Being the engineer I am, I decided to build my own solution combining the best of both worlds.
+  
+  ## My Custom Setup
+  
+  Here’s my streamlined `.zshrc`:
+  
+  Copy
+  
+  ```bash
+  source $ZDOTDIR/init.zsh
+  # Initialize completions with defer
+  autoload -Uz compinit
+  if [ "$(date +'%j')" != "$(stat -f '%Sm' -t '%j' ~/.zcompdump 2>/dev/null)" ]; then
+      zsh-defer compinit
+  else
+      zsh-defer compinit -C
+  fi
+  ```
+  
+  And the heart of my solution, `init.zsh`:
+  
+  Copy
+  
+  ```bash
+  PLUGIN_DIR="$HOME/.local/share/zsh/plugins"
+  PLUGIN_LOCK="$PLUGIN_DIR/.plugins.lock"
+  [ -d "$PLUGIN_DIR" ] || mkdir -p "$PLUGIN_DIR"
+  
+  # Reinstall function
+  update-plugins() {
+    rm -fr "$PLUGIN_DIR"
+    echo "Plugin lock removed. Restart your shell to reinstall plugins."
+  }
+  
+  # Define plugins: "github_repo name"
+  plugins=(
+    "romkatv/zsh-defer"
+    "zsh-users/zsh-autosuggestions"
+    ...
+    "zsh-users/zsh-syntax-highlighting"
+  )
+  
+  # Only install plugins if lock file doesn't exist
+  if [ ! -f "$PLUGIN_LOCK" ]; then
+    for plugin in "${plugins[@]}"; do
+      plugin_name=${plugin##*/}
+      if [ ! -d "$PLUGIN_DIR/$plugin_name" ]; then
+        git clone --quiet "https://github.com/$plugin" "$PLUGIN_DIR/$plugin_name" --depth=1
+      fi
+    done
+    date > "$PLUGIN_LOCK"
+  fi
+  
+  # Source plugins
+  source "$PLUGIN_DIR/zsh-defer/zsh-defer.plugin.zsh"
+  source "$PLUGIN_DIR/zsh-autosuggestions/zsh-autosuggestions.zsh"
+  ...
+  
+  # Source config files
+  source "$ZDOTDIR/opts.zsh"
+  ...
+  
+  # Defer loading
+  zsh-defer source "$PLUGIN_DIR/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+  for config in mise.zsh tmux.zsh functions.zsh alias.zsh keymap.zsh path.zsh pnpm.zsh opts.zsh; do
+    zsh-defer source "$ZDOTDIR/$config"
+  done
+  ```
+  
+  ## The Results
+  
+  After implementing these changes, I ran zprof again to check the performance:
+  
+  Copy
+  
+  ```
+  num  calls                time                       self            name
+  -----------------------------------------------------------------------------------
+   1)    1           2.83     2.83   30.88%      2.83     2.83   30.88%  autopair-init
+   2)    1           1.77     1.77   19.27%      1.77     1.77   19.27%  enable-fzf-tab
+   3)    1           1.71     1.71   18.65%      1.71     1.71   18.65%  check_maintenance
+   4)    1           0.62     0.62    6.79%      0.62     0.62    6.79%  _history-substring-search-function-callable
+  ```
+  
+  The key improvements in my approach:
+  
+  1. **Simple plugin management** \- No external manager needed, just a basic script that clones plugins
+  2. **Strategic loading** \- Critical plugins load synchronously, while others are deferred
+  3. **Performance monitoring** \- Using zprof to validate the improvements
+  4. **Easy maintenance** \- A simple function to reinstall plugins when needed
+  
+  My shell now starts almost instantly, and I get all the functionality I need without the wait. The best part is that this solution is lightweight and doesn’t depend on complex plugin managers.
+  
+  [ZSH Completion for Custom Functions](https://mzunino.com.uy/til/2025/03/zsh-completion-for-custom-functions/) [Nvim Knap: Real-time PDF Preview for Markdown and LaTeX](https://mzunino.com.uy/til/2025/03/nvim-knap-real-time-pdf-preview-for-markdown-and-latex/)
+  --- End Content ---
