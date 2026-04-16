@@ -257,11 +257,163 @@ validate_paths_gpu :: proc(paths: []BuildPathEntry) -> []BuildPathEntry {
     return validate_paths_threaded(paths)
 }
 
-// Parse TOML config (placeholder - integrates with existing parser)
+// Parse simplified TOML config - only handles paths, env, aliases
 parse_toml_config :: proc(data: []byte) -> BuildTomlConfig {
-    // This integrates with the existing TOML parser in config_toml.odin
-    // For now, return empty config
-    return BuildTomlConfig{}
+    content := string(data)
+    lines := strings.split(content, "\n")
+    defer delete(lines)
+    
+    config: BuildTomlConfig
+    paths := make([dynamic]BuildPathEntry, context.temp_allocator)
+    constants := make([dynamic]BuildConstantEntry, context.temp_allocator)
+    aliases := make([dynamic]BuildAliasEntry, context.temp_allocator)
+    
+    current_section := ""
+    in_env_block := false
+    
+    for line in lines {
+        trimmed := strings.trim_space(line)
+        if len(trimmed) == 0 { continue }
+        if strings.has_prefix(trimmed, "#") { continue }
+        
+        // Section detection
+        if strings.has_prefix(trimmed, "[") && strings.has_suffix(trimmed, "]") {
+            section := trimmed[1:len(trimmed)-1]
+            
+            // Check for [[paths]] or [paths]
+            if strings.contains(section, "paths") {
+                current_section = "paths"
+                in_env_block = false
+            } else if section == "env" || strings.contains(section, "env.") {
+                current_section = "env"
+                in_env_block = true
+            } else if strings.contains(section, "aliases") {
+                current_section = "aliases"
+                in_env_block = false
+            } else {
+                current_section = ""
+                in_env_block = false
+            }
+            continue
+        }
+        
+        // Parse based on section
+        switch current_section {
+        case "paths":
+            // Parse: path = "/some/path"
+            if strings.has_prefix(trimmed, "path") {
+                eq_idx := strings.index(trimmed, "=")
+                if eq_idx > 0 {
+                    value := strings.trim_space(trimmed[eq_idx+1:])
+                    // Remove quotes
+                    value = strings.trim_prefix(value, `"`)
+                    value = strings.trim_suffix(value, `"`)
+                    value = strings.trim_prefix(value, "'")
+                    value = strings.trim_suffix(value, "'")
+                    
+                    if len(value) > 0 {
+                        append(&paths, BuildPathEntry{
+                            raw_path = value,
+                            expanded = value,
+                            priority = 0,
+                        })
+                    }
+                }
+            }
+            
+        case "env":
+            // Parse: KEY = "value" or KEY = "value" (inside [env] block)
+            if in_env_block {
+                eq_idx := strings.index(trimmed, "=")
+                if eq_idx > 0 {
+                    name := strings.trim_space(trimmed[:eq_idx])
+                    value := strings.trim_space(trimmed[eq_idx+1:])
+                    // Remove quotes
+                    value = strings.trim_prefix(value, `"`)
+                    value = strings.trim_suffix(value, `"`)
+                    value = strings.trim_prefix(value, "'")
+                    value = strings.trim_suffix(value, "'")
+                    
+                    if len(name) > 0 && len(value) > 0 {
+                        append(&constants, BuildConstantEntry{
+                            name = strings.clone(name, context.temp_allocator),
+                            value = strings.clone(value, context.temp_allocator),
+                        })
+                    }
+                }
+            }
+            
+        case "aliases":
+            // Parse: name = "alias_name" or command = "alias_command"
+            // Simple state machine: expect name then command
+            // For now, simplistic: look for name= and command= lines
+            if strings.has_prefix(trimmed, "name") {
+                eq_idx := strings.index(trimmed, "=")
+                if eq_idx > 0 {
+                    // This is simplistic - assumes name comes before command
+                    // We store temporarily and pair on command
+                }
+            }
+        }
+    }
+    
+    // Re-parse aliases with simple state tracking
+    current_alias_name := ""
+    for line in lines {
+        trimmed := strings.trim_space(line)
+        if len(trimmed) == 0 { continue }
+        if strings.has_prefix(trimmed, "#") { continue }
+        
+        // Detect [[aliases]] section start
+        if strings.contains(trimmed, "aliases") && strings.has_prefix(trimmed, "[") {
+            current_alias_name = ""
+            continue
+        }
+        
+        // Only process if we're potentially in aliases section
+        if strings.has_prefix(trimmed, "name") {
+            eq_idx := strings.index(trimmed, "=")
+            if eq_idx > 0 {
+                value := strings.trim_space(trimmed[eq_idx+1:])
+                value = strings.trim_prefix(value, `"`)
+                value = strings.trim_suffix(value, `"`)
+                value = strings.trim_prefix(value, "'")
+                value = strings.trim_suffix(value, "'")
+                current_alias_name = strings.clone(value, context.temp_allocator)
+            }
+        } else if strings.has_prefix(trimmed, "command") && len(current_alias_name) > 0 {
+            eq_idx := strings.index(trimmed, "=")
+            if eq_idx > 0 {
+                value := strings.trim_space(trimmed[eq_idx+1:])
+                value = strings.trim_prefix(value, `"`)
+                value = strings.trim_suffix(value, `"`)
+                value = strings.trim_prefix(value, "'")
+                value = strings.trim_suffix(value, "'")
+                
+                append(&aliases, BuildAliasEntry{
+                    name = current_alias_name,
+                    command = strings.clone(value, context.temp_allocator),
+                })
+                current_alias_name = ""
+            }
+        }
+    }
+    
+    // Copy to config
+    if len(paths) > 0 {
+        config.paths = make([]BuildPathEntry, len(paths), context.temp_allocator)
+        copy(config.paths, paths[:])
+    }
+    if len(constants) > 0 {
+        config.constants = make([]BuildConstantEntry, len(constants), context.temp_allocator)
+        copy(config.constants, constants[:])
+    }
+    if len(aliases) > 0 {
+        config.aliases = make([]BuildAliasEntry, len(aliases), context.temp_allocator)
+        copy(config.aliases, aliases[:])
+    }
+    
+    return config
 }
 
 // Get current time for profiling
