@@ -122,75 +122,90 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	fmt.sbprintln(&builder)
 	
 	// Procesar cada componente según el format
-	if strings.contains(cfg.format, "{username}") {
-		fmt.sbprintln(&builder, "  # Username (only in SSH)")
-		fmt.sbprintln(&builder, `  if [[ -n "$SSH_CONNECTION" ]]; then`)
-		fmt.sbprintln(&builder, `    result+="%F{7}%B%n%b%F{reset}@"`)
-		fmt.sbprintln(&builder, "  fi")
-		fmt.sbprintln(&builder)
-	}
+	// Manejar newlines en el format (reemplazar \n literal con newline real)
+	format_with_newlines, _ := strings.replace_all(cfg.format, `\n`, "\n")
+	defer delete(format_with_newlines)
+	format_parts := strings.split(format_with_newlines, "\n")
+	defer delete(format_parts)
 	
-	if strings.contains(cfg.format, "{localip}") {
-		fmt.sbprintln(&builder, "  # Local IP (only in SSH)")
-		fmt.sbprintln(&builder, `  if [[ -n "$SSH_CONNECTION" ]]; then`)
-		fmt.sbprintln(&builder, `    local ip="${$(ip route get 1 2>/dev/null | awk '{print $7; exit}')}"`)
-		fmt.sbprintln(&builder, `    result+="%F{4}[$ip]%F{reset} "`)
-		fmt.sbprintln(&builder, "  fi")
-		fmt.sbprintln(&builder)
-	}
-	
-	// Directory (siempre)
-	fmt.sbprintln(&builder, "  # Directory")
-	fmt.sbprintln(&builder, `  result+="%F{6}%B%~%b%F{reset} "`)
-	fmt.sbprintln(&builder)
-	
-	// Git branch
-	if strings.contains(cfg.format, "{git_branch}") {
-		fmt.sbprintln(&builder, "  # Git branch")
-		fmt.sbprintln(&builder, `  if [[ -n "$_WAYU_GIT_BRANCH" ]]; then`)
-		fmt.sbprintln(&builder, `    result+="🌱 %F{5}%B${_WAYU_GIT_BRANCH}%b%F{reset} "`)
-		fmt.sbprintln(&builder, "  fi")
-		fmt.sbprintln(&builder)
-	}
-	
-	// Git commit (solo detached HEAD)
-	if strings.contains(cfg.format, "{git_commit}") {
-		fmt.sbprintln(&builder, "  # Git commit (detached HEAD only)")
-		fmt.sbprintln(&builder, `  if [[ -n "$_WAYU_GIT_BRANCH" ]] && [[ "$_WAYU_GIT_BRANCH" =~ ^[a-f0-9]+$ ]]; then`)
-		fmt.sbprintln(&builder, `    result+="%F{3}${_WAYU_GIT_BRANCH}%F{reset} "`)
-		fmt.sbprintln(&builder, "  fi")
-		fmt.sbprintln(&builder)
-	}
-	
-	// Git state (rebase, merge, cherry-pick)
-	if strings.contains(cfg.format, "{git_state}") {
-		fmt.sbprintln(&builder, "  # Git state")
-		fmt.sbprintln(&builder, `  if [[ -d "$_WAYU_GIT_DIR/rebase-merge" ]] || [[ -d "$_WAYU_GIT_DIR/rebase-apply" ]]; then`)
-		fmt.sbprintln(&builder, `    result+="%F{1}REBASING%F{reset} "`)
-		fmt.sbprintln(&builder, `  elif [[ -f "$_WAYU_GIT_DIR/MERGE_HEAD" ]]; then`)
-		fmt.sbprintln(&builder, `    result+="%F{1}MERGING%F{reset} "`)
-		fmt.sbprintln(&builder, `  elif [[ -f "$_WAYU_GIT_DIR/CHERRY_PICK_HEAD" ]]; then`)
-		fmt.sbprintln(&builder, `    result+="🍒 %F{1}PICKING%F{reset} "`)
-		fmt.sbprintln(&builder, "  fi")
-		fmt.sbprintln(&builder)
-	}
-	
-	// Odin
-	if strings.contains(cfg.format, "{odin}") {
-		fmt.sbprintln(&builder, "  # Odin")
-		fmt.sbprintln(&builder, `  if [[ -f "ols.json" ]] || ls *.odin >/dev/null 2>&1; then`)
-		fmt.sbprintln(&builder, `    local ver="$(odin version 2>/dev/null | head -1 | awk '{print $2}')"`)
-		fmt.sbprintln(&builder, `    if [[ -n "$ver" ]]; then`)
-		fmt.sbprintln(&builder, `      result+="via %F{4}󰹩 ${ver}%F{reset} "`)
-		fmt.sbprintln(&builder, "    fi")
-		fmt.sbprintln(&builder, "  fi")
-		fmt.sbprintln(&builder)
-	}
-	
-	// Character (success/error)
-	if strings.contains(cfg.format, "{character}") {
-		fmt.sbprintln(&builder, "  # Character (success/error)")
-		fmt.sbprintln(&builder, "  if [[ $exit_code -eq 0 ]]; then")
+	for part, i in format_parts {
+		// Añadir newline antes de cada parte excepto la primera
+		if i > 0 {
+			fmt.sbprintln(&builder, `  result+=$'
+'`)
+		}
+		
+		if strings.contains(part, "{username}") {
+			fmt.sbprintln(&builder, "  # Username (only in SSH)")
+			fmt.sbprintln(&builder, `  if [[ -n "$SSH_CONNECTION" ]]; then`)
+			fmt.sbprintln(&builder, `    result+="%F{7}%B%n%b%F{reset}@"`)
+			fmt.sbprintln(&builder, "  fi")
+			fmt.sbprintln(&builder)
+		}
+		
+		if strings.contains(part, "{localip}") {
+			fmt.sbprintln(&builder, "  # Local IP (only in SSH)")
+			fmt.sbprintln(&builder, `  if [[ -n "$SSH_CONNECTION" ]]; then`)
+			fmt.sbprintln(&builder, `    local ip="${$(ip route get 1 2>/dev/null | awk '{print $7; exit}')}"`)
+			fmt.sbprintln(&builder, `    result+="%F{4}[$ip]%F{reset} "`)
+			fmt.sbprintln(&builder, "  fi")
+			fmt.sbprintln(&builder)
+		}
+		
+		// Directory
+		if strings.contains(part, "{dir}") {
+			fmt.sbprintln(&builder, "  # Directory")
+			fmt.sbprintln(&builder, `  result+="%F{6}%B%~%b%F{reset} "`)
+			fmt.sbprintln(&builder)
+		}
+		
+		// Git branch
+		if strings.contains(part, "{git_branch}") {
+			fmt.sbprintln(&builder, "  # Git branch")
+			fmt.sbprintln(&builder, `  if [[ -n "$_WAYU_GIT_BRANCH" ]]; then`)
+			fmt.sbprintln(&builder, `    result+="🌱 %F{5}%B${_WAYU_GIT_BRANCH}%b%F{reset} "`)
+			fmt.sbprintln(&builder, "  fi")
+			fmt.sbprintln(&builder)
+		}
+		
+		// Git commit (solo detached HEAD)
+		if strings.contains(part, "{git_commit}") {
+			fmt.sbprintln(&builder, "  # Git commit (detached HEAD only)")
+			fmt.sbprintln(&builder, `  if [[ -n "$_WAYU_GIT_BRANCH" ]] && [[ "$_WAYU_GIT_BRANCH" =~ ^[a-f0-9]+$ ]]; then`)
+			fmt.sbprintln(&builder, `    result+="%F{3}${_WAYU_GIT_BRANCH}%F{reset} "`)
+			fmt.sbprintln(&builder, "  fi")
+			fmt.sbprintln(&builder)
+		}
+		
+		// Git state (rebase, merge, cherry-pick)
+		if strings.contains(part, "{git_state}") {
+			fmt.sbprintln(&builder, "  # Git state")
+			fmt.sbprintln(&builder, `  if [[ -d "$_WAYU_GIT_DIR/rebase-merge" ]] || [[ -d "$_WAYU_GIT_DIR/rebase-apply" ]]; then`)
+			fmt.sbprintln(&builder, `    result+="%F{1}REBASING%F{reset} "`)
+			fmt.sbprintln(&builder, `  elif [[ -f "$_WAYU_GIT_DIR/MERGE_HEAD" ]]; then`)
+			fmt.sbprintln(&builder, `    result+="%F{1}MERGING%F{reset} "`)
+			fmt.sbprintln(&builder, `  elif [[ -f "$_WAYU_GIT_DIR/CHERRY_PICK_HEAD" ]]; then`)
+			fmt.sbprintln(&builder, `    result+="🍒 %F{1}PICKING%F{reset} "`)
+			fmt.sbprintln(&builder, "  fi")
+			fmt.sbprintln(&builder)
+		}
+		
+		// Odin
+		if strings.contains(part, "{odin}") {
+			fmt.sbprintln(&builder, "  # Odin")
+			fmt.sbprintln(&builder, `  if [[ -f "ols.json" ]] || ls *.odin >/dev/null 2>&1; then`)
+			fmt.sbprintln(&builder, `    local ver="$(odin version 2>/dev/null | head -1 | awk '{print $2}')"`)
+			fmt.sbprintln(&builder, `    if [[ -n "$ver" ]]; then`)
+			fmt.sbprintln(&builder, `      result+="via %F{4}󰹩 ${ver}%F{reset} "`)
+			fmt.sbprintln(&builder, "    fi")
+			fmt.sbprintln(&builder, "  fi")
+			fmt.sbprintln(&builder)
+		}
+		
+		// Character (success/error)
+		if strings.contains(part, "{character}") {
+			fmt.sbprintln(&builder, "  # Character (success/error)")
+			fmt.sbprintln(&builder, "  if [[ $exit_code -eq 0 ]]; then")
 		// Usar símbolos directamente sin format
 		fmt.sbprint(&builder, `    result+="%F{2}%B`)
 		fmt.sbprint(&builder, cfg.character_success)
@@ -202,6 +217,7 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 		fmt.sbprintln(&builder, "  fi")
 		fmt.sbprintln(&builder)
 	}
+	}  // Cierre del for loop
 	
 	// Output final
 	fmt.sbprintln(&builder, `  echo "$result"`)
