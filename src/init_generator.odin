@@ -53,16 +53,35 @@ generate_core_init_v2 :: proc() {
 	fmt.sbprintln(&builder, "# Generado automáticamente por wayu build")
 	fmt.sbprintln(&builder)
 	
-	// PATH pre-computado (sin loops)
+	// PATH pre-computado con TODAS las rutas del usuario (28 paths)
 	fmt.sbprintln(&builder, "# === PATH ===")
 	fmt.sbprint(&builder, "export PATH=\"")
 	fmt.sbprint(&builder, "/Users/kakurega/go/bin:")
 	fmt.sbprint(&builder, "/Users/kakurega/.local/bin:")
+	fmt.sbprint(&builder, "/Users/kakurega/.local/share/bob/nvim-bin:")
 	fmt.sbprint(&builder, "/Users/kakurega/.cargo/bin:")
+	fmt.sbprint(&builder, "/Users/kakurega/.bun/bin:")
+	fmt.sbprint(&builder, "/Users/kakurega/.atuin/bin:")
+	fmt.sbprint(&builder, "/Users/kakurega/.updev/cli:")
+	fmt.sbprint(&builder, "/Users/kakurega/dev/oss/zig:")
+	fmt.sbprint(&builder, "/Users/kakurega/dev/oss/ols:")
+	fmt.sbprint(&builder, "/Users/kakurega/dev/oss/yabai/bin:")
 	fmt.sbprint(&builder, "/Users/kakurega/dev/projects/wayu/bin:")
+	fmt.sbprint(&builder, "/Users/kakurega/dev/oss/Odin:")
+	fmt.sbprint(&builder, "/Users/kakurega/.amp/bin:")
+	fmt.sbprint(&builder, "/Users/kakurega/dev/oss/c3c:")
+	fmt.sbprint(&builder, "/Users/kakurega/.mint/bin:")
+	fmt.sbprint(&builder, "/Users/kakurega/.opencode/bin:")
+	fmt.sbprint(&builder, "/Users/kakurega/dev/projects/pegasus/bin:")
+	fmt.sbprint(&builder, "/Users/kakurega/dev/oss/soft-serve:")
+	fmt.sbprint(&builder, "/Users/kakurega/dev/projects/mel/target/release:")
 	fmt.sbprint(&builder, "/opt/homebrew/bin:")
 	fmt.sbprint(&builder, "/opt/homebrew/sbin:")
+	fmt.sbprint(&builder, "/opt/homebrew/opt/llvm/bin:")
+	fmt.sbprint(&builder, "/opt/homebrew/opt/postgresql@17/bin:")
+	fmt.sbprint(&builder, "/opt/homebrew/anaconda3/bin:")
 	fmt.sbprint(&builder, "/usr/local/bin:")
+	fmt.sbprint(&builder, "/usr/local/sbin:")
 	fmt.sbprintln(&builder, "/usr/bin:/bin:/usr/sbin:/sbin\"")
 	fmt.sbprintln(&builder)
 	
@@ -76,17 +95,29 @@ generate_core_init_v2 :: proc() {
 	fmt.sbprintln(&builder, "alias vim=nvim ls=lsd reload=\"source ~/.zshrc\" x=exit cat=bat")
 	fmt.sbprintln(&builder)
 	
-	// Load helpers PRIMERO (necesario para evalcache y zsh-defer)
+	// Completions (necesario para autocomplete)
+	fmt.sbprintln(&builder, "# === Completions ===")
+	fmt.sbprintln(&builder, "fpath=(\"$HOME/.config/wayu/completions\" $fpath)")
+	fmt.sbprintln(&builder, "autoload -Uz compinit && compinit -C")
+	fmt.sbprintln(&builder)
+	
+	// Plugins críticos (autocomplete, autosuggestions) - NO deferred
+	fmt.sbprintln(&builder, "# === Plugins críticos (inmediato) ===")
+	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\" ] && source \"$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\"")
+	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\" ] && source \"$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\"")
+	fmt.sbprintln(&builder)
+	
+	// Load helpers (para evalcache y zsh-defer)
 	fmt.sbprintln(&builder, "# === Load helpers (evalcache + zsh-defer propio) ===")
 	fmt.sbprintfln(&builder, "source \"%s/init-helpers.zsh\" 2>/dev/null", WAYU_CONFIG)
 	fmt.sbprintln(&builder)
 	
-	// Prompt: Starship con evalcache (ahora _wayu_evalcache existe)
+	// Prompt: Starship con evalcache
 	fmt.sbprintln(&builder, "# === Prompt (evalcached) ===")
 	fmt.sbprintln(&builder, "_wayu_evalcache starship init zsh")
 	fmt.sbprintln(&builder)
 	
-	// Defer lazy init
+	// Defer resto (completions, tools, etc.)
 	fmt.sbprintln(&builder, "# === Deferred loading (lazy init) ===")
 	fmt.sbprintln(&builder, "[[ -z \"$_WAYU_LAZY_LOADED\" ]] && {")
 	fmt.sbprintln(&builder, "  export _WAYU_LAZY_LOADED=1")
@@ -116,21 +147,10 @@ generate_lazy_init_v2 :: proc() {
 	fmt.sbprintln(&builder, "# init-lazy.zsh - CARGA DIFERIDA")
 	fmt.sbprintln(&builder)
 	
-	// Compinit optimizado (cache 24h)
-	fmt.sbprintln(&builder, "# === Completions (compinit optimizado) ===")
-	fmt.sbprintln(&builder, "autoload -Uz compinit")
-	fmt.sbprintln(&builder, "local zcompdump=\"${ZDOTDIR:-$HOME}/.zcompdump\"")
-	fmt.sbprintln(&builder, "if [[ -n $zcompdump(#qN.mh+24) ]]; then")
-	fmt.sbprintln(&builder, "  compinit -C  # Cache válido, modo rápido")
-	fmt.sbprintln(&builder, "else")
-	fmt.sbprintln(&builder, "  compinit")
-	fmt.sbprintln(&builder, "fi")
-	fmt.sbprintln(&builder)
-	
-	// Plugins
-	fmt.sbprintln(&builder, "# === Plugins ===")
-	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\" ] && source \"$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\"")
-	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\" ] && source \"$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\"")
+	// Tools con evalcache
+	fmt.sbprintln(&builder, "# === Tools (evalcached) ===")
+	fmt.sbprintln(&builder, "_wayu_evalcache zoxide init zsh")
+	fmt.sbprintln(&builder, "_wayu_evalcache atuin init zsh --disable-up-arrow")
 	fmt.sbprintln(&builder)
 	
 	// Tools con evalcache
