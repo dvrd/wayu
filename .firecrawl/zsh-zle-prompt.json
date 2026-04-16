@@ -1,0 +1,1170 @@
+zsh: refresh prompt after running zle widget - Stack Overflow
+  URL: https://stackoverflow.com/questions/52325626/zsh-refresh-prompt-after-running-zle-widget
+  Force the prompts on both the left and right of the screen to be re-expanded, then redisplay the edit buffer. This reflects changes both to the ...
+
+  --- Content ---
+  ##### Collectives™ on Stack Overflow
+  
+  Find centralized, trusted content and collaborate around the technologies you use most.
+  
+  [Learn more about Collectives](https://stackoverflow.com/collectives)
+  
+  **Stack Internal**
+  
+  Knowledge at work
+  
+  Bring the best of human thought and AI automation together at your work.
+  
+  [Explore Stack Internal](https://stackoverflow.co/internal/?utm_medium=referral&utm_source=stackoverflow-community&utm_campaign=side-bar&utm_content=explore-teams-compact-popover)
+  
+  # [zsh: refresh prompt after running zle widget](https://stackoverflow.com/questions/52325626/zsh-refresh-prompt-after-running-zle-widget)
+  
+  [Ask Question](https://stackoverflow.com/questions/ask)
+  
+  Asked7 years, 7 months ago
+  
+  Modified [7 years, 7 months ago](https://stackoverflow.com/questions/52325626/zsh-refresh-prompt-after-running-zle-widget?lastactivity "2018-09-16 13:39:53Z")
+  
+  Viewed
+  3k times
+  
+  
+  This question shows research effort; it is useful and clear
+  
+  7
+  
+  Save this question.
+  
+  [Timeline](https://stackoverflow.com/posts/52325626/timeline)
+  
+  Show activity on this post.
+  
+  I have the following widget defined
+  
+  ```
+  function cdd()
+  {
+      cd /
+  }
+  zle -N cdd{,}
+  bindkey "^R" cdd
+  ```
+  
+  After pressing the key combination the cwd is already changed, but the terminal prompt is not updated. Example, after doing this ()
+  
+  ```
+  ~/tmp/todelete$ | # press key ^R  here; "~$" is the prompt; "|" denotes cursor
+  ```
+  
+  the terminal remains exactly unchanged. If I then type `ls -ld .`, it shows
+  
+  ```
+  ~/tmp/todelete$ ls -ld .
+  dr-xr-xr-x 23 root root 4096 Sep 14 07:52 ./
+  
+  /$ |
+  ```
+  
+  which means the `cwd` at the time `ll` is running is already `/`.
+  
+  This is very confusion and may lead to serious errors. (e.g. If after pressing `^R` I was interrupted to leave my desk and then come back, I might forget what I have done)
+  
+  How can I let the terminal to redraw the prompt after pressing the key? Is there a `zle` function to do this?
+  
+  - [zsh](https://stackoverflow.com/questions/tagged/zsh "show questions tagged 'zsh'")
+  - [zsh-zle](https://stackoverflow.com/questions/tagged/zsh-zle "show questions tagged 'zsh-zle'")
+  
+  [Share](https://stackoverflow.com/q/52325626 "Short permalink to this question")
+  
+  [Improve this question](https://stackoverflow.com/posts/52325626/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this question to receive notifications
+  
+  asked Sep 14, 2018 at 5:45
+  
+  [![doraemon's user avatar](https://lh4.googleusercontent.com/-7DdcoRAPNqE/AAAAAAAAAAI/AAAAAAAAAAA/m47uU8augaU/s64-rj/photo.jpg)](https://stackoverflow.com/users/7026980/doraemon)
+  
+  [doraemon](https://stackoverflow.com/users/7026980/doraemon)
+  
+  2,60411 gold badge2424 silver badges4444 bronze badges
+  
+  1
+  
+  - There is a widget (`clear-screen`) to clear the screen and redraw the prompt, but I don't see a way to only redraw the prompt.
+  
+  
+  
+  chepner
+  
+  
+  –
+  [chepner](https://stackoverflow.com/users/1126841/chepner "539,704 reputation")
+  
+  
+  
+  2018-09-14 13:46:53 +00:00
+  
+  CommentedSep 14, 2018 at 13:46
+  
+  
+  [Add a comment](https://stackoverflow.com/questions/52325626/zsh-refresh-prompt-after-running-zle-widget# "Use comments to ask for more information or suggest improvements. Avoid answering questions in comments.") \| [Expand to show all comments on this post](https://stackoverflow.com/questions/52325626/zsh-refresh-prompt-after-running-zle-widget# "Expand to show all comments on this post")
+  
+  ## 1 Answer 1
+  
+  Sorted by:
+  [Reset to default](https://stackoverflow.com/questions/52325626/zsh-refresh-prompt-after-running-zle-widget?answertab=scoredesc#tab-top)
+  
+  Highest score (default)
+  
+  Trending (recent votes count more)
+  
+  Date modified (newest first)
+  
+  Date created (oldest first)
+  
+  
+  This answer is useful
+  
+  9
+  
+  Save this answer.
+  
+  [Timeline](https://stackoverflow.com/posts/52354719/timeline)
+  
+  Show activity on this post.
+  
+  `reset-prompt` could rescue:
+  
+  ```
+  function cdd()
+  {
+      cd /
+      zle reset-prompt # XXX: added
+  }
+  ```
+  
+  > `reset-prompt`
+  >
+  > Force the prompts on both the left and right of the screen to be re-expanded, then redisplay the edit buffer. This reflects changes both to the prompt variables themselves and changes in the expansion of the values (for example, changes in time or directory, or changes to the value of variables referred to by the prompt).
+  >
+  > Otherwise, the prompt is only expanded each time zle starts, and when the display as been interrupted by output from another part of the shell (such as a job notification) which causes the command line to be reprinted.
+  >
+  > \-\-\- [zshzle(1), reset-prompt, Miscellaneous, Widgets, zsh command line editor](http://zsh.sourceforge.net/Doc/Release/Zsh-Line-Editor.html#index-reset_002dprompt)
+  
+  [Share](https://stackoverflow.com/a/52354719 "Short permalink to this answer")
+  
+  [Improve this answer](https://stackoverflow.com/posts/52354719/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this answer to receive notifications
+  
+  answered Sep 16, 2018 at 13:39
+  
+  [![hchbaw's user avatar](https://i.sstatic.net/ExL75.png?s=64)](https://stackoverflow.com/users/4387039/hchbaw)
+  
+  [hchbaw](https://stackoverflow.com/users/4387039/hchbaw)
+  
+  5,47722 gold badges2121 silver badges1616 bronze badges
+  
+  Sign up to request clarification or add additional context in comments.
+  
+  
+  ## Comments
+  
+  Add a comment
+  
+  ## Your Answer
+  
+  Draft saved
+  
+  Draft discarded
+  
+  ### Sign up or [log in](https://stackoverflow.com/users/login?ssrc=question_page&returnurl=https%3a%2f%2fstackoverflow.com%2fquestions%2f52325626%2fzsh-refresh-prompt-after-running-zle-widget%23new-answer)
+  
+  Sign up using Google
+  
+  
+  Sign up using Email and Password
+  
+  
+  Submit
+  
+  ### Post as a guest
+  
+  Name
+  
+  Email
+  
+  Required, but never shown
+  
+  Post Your Answer
+  
+  Discard
+  
+  
+  By clicking “Post Your Answer”, you agree to our [terms of service](https://stackoverflow.com/legal/terms-of-service/public) and acknowledge you have read our [privacy policy](https://stackoverflow.com/legal/privacy-policy).
+  
+  
+  Start asking to get answers
+  
+  Find the answer to your question by asking.
+  
+  [Ask question](https://stackoverflow.com/questions/ask)
+  
+  Explore related questions
+  
+  - [zsh](https://stackoverflow.com/questions/tagged/zsh "show questions tagged 'zsh'")
+  - [zsh-zle](https://stackoverflow.com/questions/tagged/zsh-zle "show questions tagged 'zsh-zle'")
+  
+  See similar questions with these tags.
+  --- End Content ---
+
+Using `zle reset-prompt` with `add-zle-hook-widget` mess up `PS2`
+  URL: https://www.reddit.com/r/zsh/comments/105rak0/using_zle_resetprompt_with_addzlehookwidget_mess/
+  This depends on what you are trying to achieve. It's almost always a mistake to invoke reset-prompt when PS2 is active, so you could avoid doing that.
+
+ZSH: change prompt just before command is run - Super User
+  URL: https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run
+  I tried getting something with the preexec hook and zle reset prompt , but I get the error widgets can only be called when ZLE is active :
+
+  --- Content ---
+  **Stack Internal**
+  
+  Knowledge at work
+  
+  Bring the best of human thought and AI automation together at your work.
+  
+  [Explore Stack Internal](https://stackoverflow.co/internal/?utm_medium=referral&utm_source=superuser-community&utm_campaign=side-bar&utm_content=explore-teams-compact-popover)
+  
+  # [ZSH: change prompt just before command is run](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run)
+  
+  [Ask Question](https://superuser.com/questions/ask)
+  
+  Asked10 years, 3 months ago
+  
+  Modified [1 year, 4 months ago](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run?lastactivity "2024-12-11 01:39:47Z")
+  
+  Viewed
+  3k times
+  
+  
+  This question shows research effort; it is useful and clear
+  
+  6
+  
+  Save this question.
+  
+  [Timeline](https://superuser.com/posts/1027957/timeline)
+  
+  Show activity on this post.
+  
+  I would like to have a two-line prompt in `zsh`, but collapse it to a very small one just after pressing `ENTER`, so that it doesn't show up in the terminal scroll history. After typing two commands, the terminal should look like this while typing the third:
+  
+  ```bash
+  > echo Command 1
+  Command 1
+  > echo Command 2
+  Command 2
+  +------------ Long prompt ----------+
+  `> echo typing a new command here…
+  ```
+  
+  I tried getting something with the `preexec` hook and `zle reset prompt`, but I get the error `widgets can only be called when ZLE is active`:
+  
+  ```bash
+  $ autoload -U add-zsh-hook
+  $ hook_function() { OLD_PROMPT="$PROMPT"; export PROMPT="> "; zle reset-prompt; export PROMPT="$OLD_PROMPT"; }
+  $ PROMPT=$'+------------ Long prompt ----------+\n\`> '
+  +------------ Long prompt ----------+
+  `> add-zsh-hook preexec hook_function
+  +------------ Long prompt ----------+
+  `> echo Test
+  hook_function:zle: widgets can only be called when ZLE is active
+  Test
+  +------------ Long prompt ----------+
+  `>
+  ```
+  
+  - [zsh](https://superuser.com/questions/tagged/zsh "show questions tagged 'zsh'")
+  - [prompt](https://superuser.com/questions/tagged/prompt "show questions tagged 'prompt'")
+  - [hook](https://superuser.com/questions/tagged/hook "show questions tagged 'hook'")
+  
+  [Share](https://superuser.com/q/1027957 "Short permalink to this question")
+  
+  Share a link to this question
+  
+  Copy link [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/ "The current license for this post: CC BY-SA 3.0")
+  
+  [Improve this question](https://superuser.com/posts/1027957/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this question to receive notifications
+  
+  asked Jan 18, 2016 at 13:32
+  
+  [![Suzanne Soy's user avatar](https://www.gravatar.com/avatar/60babc4ee603c9f9156ea0e52280b335?s=64&d=identicon&r=PG)](https://superuser.com/users/84556/suzanne-soy)
+  
+  [Suzanne Soy](https://superuser.com/users/84556/suzanne-soy)
+  
+  53111 gold badge66 silver badges2323 bronze badges
+  
+  [Add a comment](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run# "Use comments to ask for more information or suggest improvements. Avoid answering questions in comments.") \| [Expand to show all comments on this post](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run# "Expand to show all comments on this post")
+  
+  ## 2 Answers 2
+  
+  Sorted by:
+  [Reset to default](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run?answertab=scoredesc#tab-top)
+  
+  Highest score (default)
+  
+  Date modified (newest first)
+  
+  Date created (oldest first)
+  
+  
+  This answer is useful
+  
+  12
+  
+  Save this answer.
+  
+  [Timeline](https://superuser.com/posts/1029103/timeline)
+  
+  Show activity on this post.
+  
+  When the `preexec` function is called, `zle` is already finished and hence, zle widgets can't be used any more.
+  
+  So, you have to intercept the pressing of the `ENTER` key before `zle` terminates. By default `ENTER` is bound to `accept-line`, but this might depend on other tricks you already use;
+  
+  ```bash
+  $ bindkey | grep '\^M'
+  "^M" accept-line
+  ```
+  
+  We now write a new widget we want to bind to `ENTER` instead:
+  
+  ```bash
+  del-prompt-accept-line() {
+      OLD_PROMPT="$PROMPT"
+      PROMPT="> "
+      zle reset-prompt
+      PROMPT="$OLD_PROMPT"
+      zle accept-line
+  }
+  ```
+  
+  The logic is taken from your approach. In the last line we call the `accept-line` widget or anything else which was executed on pressing `ENTER`.
+  
+  Finally we introduce the new widget to `zle` and bind it to `ENTER`:
+  
+  ```bash
+  zle -N del-prompt-accept-line
+  bindkey "^M" del-prompt-accept-line
+  ```
+  
+  Et voilà:
+  
+  ```bash
+  > echo foo bar
+  foo bar
+  +------------ Long prompt ----------+
+  `> echo this is my new command... not pressed ENTER, yet!
+  ```
+  
+  [Share](https://superuser.com/a/1029103 "Short permalink to this answer")
+  
+  Share a link to this answer
+  
+  Copy link [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/ "The current license for this post: CC BY-SA 3.0")
+  
+  [Improve this answer](https://superuser.com/posts/1029103/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this answer to receive notifications
+  
+  answered Jan 20, 2016 at 19:50
+  
+  [![mpy's user avatar](https://i.sstatic.net/ww0JY.gif?s=64)](https://superuser.com/users/195224/mpy)
+  
+  [mpy](https://superuser.com/users/195224/mpy)
+  
+  29.2k88 gold badges9292 silver badges9999 bronze badges
+  
+  4
+  
+  - very cool. i used this and added a timestamp and path which suited my work well.
+  
+  
+  
+  Mike D
+  
+  
+  –
+  [Mike D](https://superuser.com/users/149692/mike-d "280 reputation")
+  
+  
+  
+  2019-03-16 18:06:06 +00:00
+  
+  [CommentedMar 16, 2019 at 18:06](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run#comment2135202_1029103)
+  
+  - How about rewriting on these too: ctrl-c, job ends, etc. lots of ways the prompt can come onto a newline without the user pressing enter
+  
+  
+  
+  user325613
+  
+  
+  –
+  user325613
+  
+  
+  
+  2020-06-23 10:35:32 +00:00
+  
+  [CommentedJun 23, 2020 at 10:35](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run#comment2380062_1029103)
+  
+  - This does not work for multiline commands with `\` line continuation
+  
+  
+  
+  Nils
+  
+  
+  –
+  [Nils](https://superuser.com/users/3138187/nils "101 reputation")
+  
+  
+  
+  2025-11-12 06:03:32 +00:00
+  
+  [CommentedNov 12, 2025 at 6:03](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run#comment3015565_1029103)
+  
+  - @Nils: I should work, too -- and my quick test showed no problems. Maybe something else in your config is interefering (oh-my-zsh?!).
+  
+  
+  
+  mpy
+  
+  
+  –
+  [mpy](https://superuser.com/users/195224/mpy "29,151 reputation")
+  
+  
+  
+  2025-11-12 17:28:15 +00:00
+  
+  [CommentedNov 12, 2025 at 17:28](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run#comment3015607_1029103)
+  
+  
+  [Add a comment](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run# "Use comments to ask for more information or suggest improvements. Avoid comments like “+1” or “thanks”.") \| [Expand to show all comments on this post](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run# "Expand to show all comments on this post")
+  
+  This answer is useful
+  
+  1
+  
+  Save this answer.
+  
+  [Timeline](https://superuser.com/posts/1864487/timeline)
+  
+  Show activity on this post.
+  
+  Extending on @mpy's [answer](https://superuser.com/a/1029103/279964), I found that I can just pass the variable overrides directly in to the call to zle so no need to save old values. I also experimented with adding colour to the scrollback version of the prompt to clearly distinguish it from command output and to delimit the output from different commands.
+  
+  A caveat is that I couldn't reset the terminal colour after redrawing the prompt, so I ended up resetting it in `preexec` instead, and for reasons even less clear I had to include `%k` in `PROMPT` to stop colour bleed during autocompletion. It's not ideal but it works better than trying to edit the command with alternate background colours directly.
+  
+  ```bash
+  SCROLLBACK_PROMPT='%K{blue}%B> %b'
+  SCROLLBACK_PS2="$PS2" # or whatever...
+  SCROLLBACK_PS3="$PS3"
+  SCROLLBACK_PS4="$PS4"
+  
+  function del-prompt-accept-line() {
+      PROMPT="$SCROLLBACK_PROMPT" \
+        PS2="$SCROLLBACK_PS2" \
+        PS3="$SCROLLBACK_PS3" \
+        PS4="$SCROLLBACK_PS4" \
+          zle reset-prompt
+      zle .accept-line
+  }
+  function preexec() {
+      print -n '\E[0m\E[K'\
+  }\
+  zle -N accept-line del-prompt-accept-line\
+  ```\
+  \
+  [Share](https://superuser.com/a/1864487 "Short permalink to this answer")\
+  \
+  Share a link to this answer\
+  \
+  Copy link [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/ "The current license for this post: CC BY-SA 4.0")\
+  \
+  [Improve this answer](https://superuser.com/posts/1864487/edit "")\
+  \
+  Follow\
+  \
+  \
+  \
+  Follow this answer to receive notifications\
+  \
+  [edited Dec 11, 2024 at 1:39](https://superuser.com/posts/1864487/revisions "show all edits to this post")\
+  \
+  answered Dec 10, 2024 at 20:07\
+  \
+  [![sh1's user avatar](https://www.gravatar.com/avatar/d2e6626f1fc0b76fc7e8981687304f40?s=64&d=identicon&r=PG)](https://superuser.com/users/279964/sh1)\
+  \
+  [sh1](https://superuser.com/users/279964/sh1)\
+  \
+  14311 silver badge55 bronze badges\
+  \
+  [Add a comment](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run# "Use comments to ask for more information or suggest improvements. Avoid comments like “+1” or “thanks”.") \| [Expand to show all comments on this post](https://superuser.com/questions/1027957/zsh-change-prompt-just-before-command-is-run# "Expand to show all comments on this post")\
+  \
+  ## You must [log in](https://superuser.com/users/login?ssrc=question_page&returnurl=https%3a%2f%2fsuperuser.com%2fquestions%2f1027957) to answer this question.\
+  \
+  Start asking to get answers\
+  \
+  Find the answer to your question by asking.\
+  \
+  [Ask question](https://superuser.com/questions/ask)\
+  \
+  Explore related questions\
+  \
+  - [zsh](https://superuser.com/questions/tagged/zsh "show questions tagged 'zsh'")\
+  - [prompt](https://superuser.com/questions/tagged/prompt "show questions tagged 'prompt'")\
+  - [hook](https://superuser.com/questions/tagged/hook "show questions tagged 'hook'")\
+  \
+  See similar questions with these tags.\
+  \
+  lang-bash
+  --- End Content ---
+
+Changing edit mode in multiline zsh prompt causes redraw ... - GitHub
+  URL: https://github.com/powerline/powerline/issues/1529
+  Also something may be bound to reset-prompt widget. What is bound to reset-prompt may be checked by running zle -l -L reset-prompt .
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/powerline/powerline/issues/1529#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/powerline/powerline/issues/1529) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/powerline/powerline/issues/1529) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/powerline/powerline/issues/1529) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [powerline](https://github.com/powerline)/ **[powerline](https://github.com/powerline/powerline)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2Fpowerline%2Fpowerline) You must be signed in to change notification settings
+  - [Fork\\
+  1k](https://github.com/login?return_to=%2Fpowerline%2Fpowerline)
+  - [Star\\
+  14.7k](https://github.com/login?return_to=%2Fpowerline%2Fpowerline)
+  
+  
+  # Changing edit mode in multiline zsh prompt causes redraw in the wrong place\#1529
+  
+  [New issue](https://github.com/login?return_to=https://github.com/powerline/powerline/issues/1529)
+  
+  Copy link
+  
+  [New issue](https://github.com/login?return_to=https://github.com/powerline/powerline/issues/1529)
+  
+  Copy link
+  
+  Closed
+  
+  Closed
+  
+  [Changing edit mode in multiline zsh prompt causes redraw in the wrong place](https://github.com/powerline/powerline/issues/1529#top)#1529
+  
+  Copy link
+  
+  Labels
+  
+  [c:e:shell](https://github.com/powerline/powerline/issues?q=state%3Aopen%20label%3A%22c%3Ae%3Ashell%22) [s:invalid:error in environment](https://github.com/powerline/powerline/issues?q=state%3Aopen%20label%3A%22s%3Ainvalid%3Aerror%20in%20environment%22) [t:bug](https://github.com/powerline/powerline/issues?q=state%3Aopen%20label%3A%22t%3Abug%22)
+  
+  [![@alh84001](https://avatars.githubusercontent.com/u/2332355?v=4&size=80)](https://github.com/alh84001)
+  
+  ## Description
+  
+  [![@alh84001](https://avatars.githubusercontent.com/u/2332355?v=4&size=48)](https://github.com/alh84001)
+  
+  [alh84001](https://github.com/alh84001)
+  
+  opened [on Feb 13, 2016on Feb 14, 2016](https://github.com/powerline/powerline/issues/1529#issue-133488107)
+  
+  Issue body actions
+  
+  I configured a multiline zsh prompt (3 lines, first line completely empty), and there is one thing that is quite annoying. When changing edit mode (I use vi mappings), the prompt gets redrawn in such a way that current command entry line jumps two lines up, to where the prompts initial first line was drawn.
+  
+  ![mode](https://cloud.githubusercontent.com/assets/2332355/13031005/17561d9e-d2bd-11e5-82c4-b6d4b2b971a9.gif)![mode](https://cloud.githubusercontent.com/assets/2332355/13031005/17561d9e-d2bd-11e5-82c4-b6d4b2b971a9.gif)[Open mode in new window](https://cloud.githubusercontent.com/assets/2332355/13031005/17561d9e-d2bd-11e5-82c4-b6d4b2b971a9.gif)
+  
+  ## Activity
+  
+  [![](https://avatars.githubusercontent.com/u/322097?s=64&v=4)ZyX-I](https://github.com/ZyX-I)
+  
+  added
+  
+  [t:bug](https://github.com/powerline/powerline/issues?q=state%3Aopen%20label%3A%22t%3Abug%22)
+  
+  [c:e:shell](https://github.com/powerline/powerline/issues?q=state%3Aopen%20label%3A%22c%3Ae%3Ashell%22)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#event-549676799)
+  
+  [![ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=80)](https://github.com/ZyX-I)
+  
+  ### ZyX-I commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=48)](https://github.com/ZyX-I)
+  
+  [ZyX-I](https://github.com/ZyX-I)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183781857)
+  
+  Contributor
+  
+  More actions
+  
+  How did you configure zsh prompt?
+  
+  [![alh84001](https://avatars.githubusercontent.com/u/2332355?v=4&size=80)](https://github.com/alh84001)
+  
+  ### alh84001 commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@alh84001](https://avatars.githubusercontent.com/u/2332355?v=4&size=48)](https://github.com/alh84001)
+  
+  [alh84001](https://github.com/alh84001)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183782784)
+  
+  Author
+  
+  More actions
+  
+  Here is my ~/.config/powerline/themes/shell/default.json
+  
+  [shell\_default.json.txt](https://github.com/powerline/powerline/files/129476/shell_default.json.txt)
+  
+  [![ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=80)](https://github.com/ZyX-I)
+  
+  ### ZyX-I commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=48)](https://github.com/ZyX-I)
+  
+  [ZyX-I](https://github.com/ZyX-I)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183783543)
+  
+  Contributor
+  
+  More actions
+  
+  I am unable to reproduce this using
+  
+  ```
+  POWERLINE_CONFIG_OVERRIDES=ext.shell.theme=alh84001 zsh -f  # Run zsh using your theme saved to ~/.config/powerline/themes/shell/alh84001.json
+  bindkey -v
+  source /path/to/powerline/powerline/bindings/zsh/powerline.zsh
+  ```
+  
+  , also with `POWERLINE_NO_ZSH_ZPYTHON=1`. Zsh version is 5.1.1.
+  
+  What is your zsh version?
+  
+  [![ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=80)](https://github.com/ZyX-I)
+  
+  ### ZyX-I commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=48)](https://github.com/ZyX-I)
+  
+  [ZyX-I](https://github.com/ZyX-I)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183783649)
+  
+  Contributor
+  
+  More actions
+  
+  Also are you able to reproduce this using my sequence of actions (you should not need setting POWERLINE\_CONFIG\_OVERRIDES, I meant with `zsh -f`).
+  
+  [![ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=80)](https://github.com/ZyX-I)
+  
+  ### ZyX-I commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=48)](https://github.com/ZyX-I)
+  
+  [ZyX-I](https://github.com/ZyX-I)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183786777)
+  
+  Contributor
+  
+  More actions
+  
+  And can you reproduce this bug using
+  
+  ```
+  zsh -f
+  setopt promptsubst
+  zle-keymap-select() {
+      MODE=$KEYMAP[1]
+      zle reset-prompt
+  }
+  zle -N zle-keymap-select
+  bindkey -v
+  MODE=u
+  PS1=$'\n~\n$MODE>> '
+  ```
+  
+  and then switching modes (note: this is not a code that may show correct mode always, this is not its purpose)? If yes and your zsh version is not outdated then you should go to zsh mailing list because it is not a powerline bug.
+  
+  [![alh84001](https://avatars.githubusercontent.com/u/2332355?v=4&size=80)](https://github.com/alh84001)
+  
+  ### alh84001 commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@alh84001](https://avatars.githubusercontent.com/u/2332355?v=4&size=48)](https://github.com/alh84001)
+  
+  [alh84001](https://github.com/alh84001)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183789266)
+  
+  Author
+  
+  More actions
+  
+  Loading with `zsh -f`, I couldn't repro the issue. Could it be something conflicting it in prezto? (theme is off, although prompt module is loaded; tried it with prompt module not loaded, the same happens).
+  
+  I still haven't tried the second command set.
+  
+  My zsh is the one which ships with El Capitan
+  
+  ```
+  % zsh --version
+  zsh 5.0.8 (x86_64-apple-darwin15.0)
+  ```
+  
+  [![](https://avatars.githubusercontent.com/u/322097?s=64&v=4)ZyX-I](https://github.com/ZyX-I)
+  
+  added
+  
+  [s:invalid:error in environment](https://github.com/powerline/powerline/issues?q=state%3Aopen%20label%3A%22s%3Ainvalid%3Aerror%20in%20environment%22)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#event-549686683)
+  
+  [![ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=80)](https://github.com/ZyX-I)
+  
+  ### ZyX-I commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=48)](https://github.com/ZyX-I)
+  
+  [ZyX-I](https://github.com/ZyX-I)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183790563)
+  
+  Contributor
+  
+  More actions
+  
+  [@alh84001](https://github.com/alh84001) There should be something conflicting then. Note that powerline keeps widgets that were run at zle-keymap-select and runs them. You may check what is that previous widget (if any) by investigating $\_POWERLINE\_SAVE\_WIDGET
+  
+  [![ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=80)](https://github.com/ZyX-I)
+  
+  ### ZyX-I commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=48)](https://github.com/ZyX-I)
+  
+  [ZyX-I](https://github.com/ZyX-I)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183790636)
+  
+  Contributor
+  
+  More actions
+  
+  Also something may be bound to `reset-prompt` widget. What is bound to `reset-prompt` may be checked by running `zle -l -L reset-prompt`.
+  
+  👍React with 👍1AdrieanKhisbe
+  
+  [![ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=80)](https://github.com/ZyX-I)
+  
+  ### ZyX-I commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=48)](https://github.com/ZyX-I)
+  
+  [ZyX-I](https://github.com/ZyX-I)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183790719)
+  
+  Contributor
+  
+  More actions
+  
+  I have empty (unset) $\_POWERLINE\_SAVE\_WIDGET and \_zsh\_highlight\_widget\_reset-prompt bound to reset-prompt widget and this works fine.
+  
+  [![alh84001](https://avatars.githubusercontent.com/u/2332355?v=4&size=80)](https://github.com/alh84001)
+  
+  ### alh84001 commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@alh84001](https://avatars.githubusercontent.com/u/2332355?v=4&size=48)](https://github.com/alh84001)
+  
+  [alh84001](https://github.com/alh84001)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183791169)
+  
+  Author
+  
+  More actions
+  
+  This is the output on my system.
+  
+  ```
+   ~
+   ❯❯❯ zle -l -L reset-prompt
+   zle -N reset-prompt _zsh_highlight_widget_reset-prompt
+  
+   ~
+   ❯❯❯ echo $_POWERLINE_SAVE_WIDGET
+  _powerline_save_zle-keymap-select
+  ```
+  
+  When running using `zsh -f`, both of these return nothing.
+  
+  [![ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=80)](https://github.com/ZyX-I)
+  
+  ### ZyX-I commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=48)](https://github.com/ZyX-I)
+  
+  [ZyX-I](https://github.com/ZyX-I)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183791474)
+  
+  Contributor
+  
+  More actions
+  
+  [@alh84001](https://github.com/alh84001) Reset-prompt widget should be fine. But you need to do something so that $\_POWERLINE\_SAVE\_WIDGET is empty if I am not mistaking (set it to empty and check to confirm).
+  
+  Based on the contents of $\_POWERLINE\_SAVE\_WIDGET I may say that you additionally have `_powerline_save_zle-keymap-select` function which contains two commands: `emulate -L zsh` and `zle-keymap-select $@`; and you have a function `zle-keymap-select` which is suspected to interfere. Function contents may be obtained by running `whence -f $function_name`.
+  
+  [![ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=80)](https://github.com/ZyX-I)
+  
+  ### ZyX-I commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@ZyX-I](https://avatars.githubusercontent.com/u/322097?v=4&size=48)](https://github.com/ZyX-I)
+  
+  [ZyX-I](https://github.com/ZyX-I)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183791502)
+  
+  Contributor
+  
+  More actions
+  
+  I do not know how to determine where `zle-keymap-select` function and old widget was defined though.
+  
+  [![alh84001](https://avatars.githubusercontent.com/u/2332355?v=4&size=80)](https://github.com/alh84001)
+  
+  ### alh84001 commented on Feb 13, 2016on Feb 13, 2016
+  
+  [![@alh84001](https://avatars.githubusercontent.com/u/2332355?v=4&size=48)](https://github.com/alh84001)
+  
+  [alh84001](https://github.com/alh84001)
+  
+  [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#issuecomment-183795430)
+  
+  Author
+  
+  More actions
+  
+  Well this is interesting. I unset the $\_POWERLINE\_SAVE\_WIDGET var and this almost causes the issue to disappear. Now when I enter vicmd mode, it behaves correct, but returning to viins mode, still causes redraw in the wrong place.
+  
+  This is a bit over my head with regards to zsh, as I started using it only recently, but I'll keep poking around, and tweak the prezto config. Thanks for all the help.
+  
+  Edit: it seems prezto's editor module is in conflict, since disabling it, and only it, causes the issue to go away
+  
+  [![](https://avatars.githubusercontent.com/u/322097?s=64&v=4)ZyX-I](https://github.com/ZyX-I)
+  
+  closed this as [completed](https://github.com/powerline/powerline/issues?q=is%3Aissue%20state%3Aclosed%20archived%3Afalse%20reason%3Acompleted) [on Feb 13, 2016on Feb 13, 2016](https://github.com/powerline/powerline/issues/1529#event-549701438)
+  
+  [Sign up for free](https://github.com/signup?return_to=https://github.com/powerline/powerline/issues/1529)**to join this conversation on GitHub.** Already have an account? [Sign in to comment](https://github.com/login?return_to=https://github.com/powerline/powerline/issues/1529)
+  
+  ## Metadata
+  
+  ## Metadata
+  
+  ### Assignees
+  
+  No one assigned
+  
+  ### Labels
+  
+  [c:e:shell](https://github.com/powerline/powerline/issues?q=state%3Aopen%20label%3A%22c%3Ae%3Ashell%22) [s:invalid:error in environment](https://github.com/powerline/powerline/issues?q=state%3Aopen%20label%3A%22s%3Ainvalid%3Aerror%20in%20environment%22) [t:bug](https://github.com/powerline/powerline/issues?q=state%3Aopen%20label%3A%22t%3Abug%22)
+  
+  ### Type
+  
+  No type
+  
+  ### Projects
+  
+  No projects
+  
+  ### Milestone
+  
+  No milestone
+  
+  ### Relationships
+  
+  None yet
+  
+  ### Development
+  
+  No branches or pull requests
+  
+  ### Participants
+  
+  [![@ZyX-I](https://avatars.githubusercontent.com/u/322097?s=64&v=4)](https://github.com/ZyX-I)[![@alh84001](https://avatars.githubusercontent.com/u/2332355?s=64&v=4)](https://github.com/alh84001)
+  
+  ## Issue actions
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+How to change zsh prompt just before the command runs?
+  URL: https://unix.stackexchange.com/questions/801265/how-to-change-zsh-prompt-just-before-the-command-runs
+  What you could do is bind return to a widget that only calls accept-line if the current buffer contains complete code (would not cause a PS2 ...
+
+  --- Content ---
+  **Stack Internal**
+  
+  Knowledge at work
+  
+  Bring the best of human thought and AI automation together at your work.
+  
+  [Explore Stack Internal](https://stackoverflow.co/internal/?utm_medium=referral&utm_source=unix-community&utm_campaign=side-bar&utm_content=explore-teams-compact-popover)
+  
+  # [How to change zsh prompt just before the command runs?](https://unix.stackexchange.com/questions/801265/how-to-change-zsh-prompt-just-before-the-command-runs)
+  
+  [Ask Question](https://unix.stackexchange.com/questions/ask)
+  
+  Asked5 months ago
+  
+  Modified [5 months ago](https://unix.stackexchange.com/questions/801265/how-to-change-zsh-prompt-just-before-the-command-runs?lastactivity "2025-11-12 06:16:26Z")
+  
+  Viewed
+  120 times
+  
+  
+  This question shows research effort; it is useful and clear
+  
+  0
+  
+  Save this question.
+  
+  [Timeline](https://unix.stackexchange.com/posts/801265/timeline)
+  
+  Show activity on this post.
+  
+  ```bash
+  del-prompt-accept-line() {
+      OLD_PROMPT="$PROMPT"
+      PROMPT="> "
+      zle reset-prompt
+      PROMPT="$OLD_PROMPT"
+      zle accept-line
+  }
+  
+  zle -N del-prompt-accept-line
+  bindkey "^M" del-prompt-accept-line
+  ```
+  
+  This breaks for multiline command lines like
+  
+  ```bash
+  > echo one\
+  > two
+  ```
+  
+  I don't want it to change PROMPT until the command is actually run, not just when pressing enter in the command line.
+  
+  ```bash
+  del-prompt-accept-line() {
+      OLD_PROMPT="$PROMPT"
+      PROMPT="> "
+      zle reset-prompt
+      PROMPT="$OLD_PROMPT"
+      zle accept-line
+  }
+  
+  autoload -Uz add-zsh-hook
+  add-zsh-hook preexec del-prompt-accept-line
+  ```
+  
+  now this version (trying to use `preexec`, the only applicable hook I know about) causes the error
+  
+  > widgets can only be called when ZLE is active
+  
+  So how can I make a prompt that looks like
+  
+  ```bash
+  directory %
+  ```
+  
+  while I am editing the command line, then changes to
+  
+  ```bash
+  >
+  ```
+  
+  when I run the command line?
+  
+  When I scrollback, I want to only see `>` prompts
+  
+  - [zsh](https://unix.stackexchange.com/questions/tagged/zsh "show questions tagged 'zsh'")
+  
+  [Share](https://unix.stackexchange.com/q/801265 "Short permalink to this question")
+  
+  Share a link to this question
+  
+  Copy link [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/ "The current license for this post: CC BY-SA 4.0")
+  
+  [Improve this question](https://unix.stackexchange.com/posts/801265/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this question to receive notifications
+  
+  asked Nov 12, 2025 at 6:16
+  
+  [![Nils's user avatar](https://www.gravatar.com/avatar/221de2347c5f152d997a47358b69029d?s=64&d=identicon&r=PG&f=y&so-version=2)](https://unix.stackexchange.com/users/696135/nils)
+  
+  [Nils](https://unix.stackexchange.com/users/696135/nils)
+  
+  26511 silver badge55 bronze badges
+  
+  10
+  
+  - In your multiline case, if you `accept-line` the first line, then it edits a new line (and switches to the PS2 prompt). At that point, as far as ZLE is concerned the previous line is history, you can't get back to that and edit the prompt that was displayed for a previously edited line.
+  
+  
+  
+  Stéphane Chazelas
+  
+  
+  –
+  [Stéphane Chazelas](https://unix.stackexchange.com/users/22565/st%c3%a9phane-chazelas "593,779 reputation")
+  
+  
+  
+  2025-11-12 06:34:42 +00:00
+  
+  [CommentedNov 12, 2025 at 6:34](https://unix.stackexchange.com/questions/801265/how-to-change-zsh-prompt-just-before-the-command-runs#comment1543177_801265)
+  
+  - What you could do is bind return to a widget that only calls `accept-line` if the current buffer contains complete code (would not cause a PS2 prompt for additional lines) and inserts a newline character into the editing buffer otherwise like `fish` does. IIRC, that approach has already been answered here.
+  
+  
+  
+  Stéphane Chazelas
+  
+  
+  –
+  [Stéphane Chazelas](https://unix.stackexchange.com/users/22565/st%c3%a9phane-chazelas "593,779 reputation")
+  
+  
+  
+  2025-11-12 06:37:40 +00:00
+  
+  [CommentedNov 12, 2025 at 6:37](https://unix.stackexchange.com/questions/801265/how-to-change-zsh-prompt-just-before-the-command-runs#comment1543178_801265)
+  
+  - @StéphaneChazelas what about printing over the last few lines, recreating the command line and just replacing the prompt of the first line
+  
+  
+  
+  Nils
+  
+  
+  –
+  [Nils](https://unix.stackexchange.com/users/696135/nils "265 reputation")
+  
+  
+  
+  2025-11-12 06:44:26 +00:00
+  
+  [CommentedNov 12, 2025 at 6:44](https://unix.stackexchange.com/questions/801265/how-to-change-zsh-prompt-just-before-the-command-runs#comment1543179_801265)
+  
+  - That can't really work reliably and would mean a lot of work and special features not all terminal supports like reporting what's on their screen. The previous line(s) is(are) not even guaranteed to still be on the screen (may have been scrolled out)
+  
+  
+  
+  Stéphane Chazelas
+  
+  
+  –
+  [Stéphane Chazelas](https://unix.stackexchange.com/users/22565/st%c3%a9phane-chazelas "593,779 reputation")
+  
+  
+  
+  2025-11-12 06:48:34 +00:00
+  
+  [CommentedNov 12, 2025 at 6:48](https://unix.stackexchange.com/questions/801265/how-to-change-zsh-prompt-just-before-the-command-runs#comment1543180_801265)
+  
+  - See [github.com/romkatv/zsh-no-ps2](https://github.com/romkatv/zsh-no-ps2) about the approach I suggested above (I've not tested it myself).
+  
+  
+  
+  Stéphane Chazelas
+  
+  
+  –
+  [Stéphane Chazelas](https://unix.stackexchange.com/users/22565/st%c3%a9phane-chazelas "593,779 reputation")
+  
+  
+  
+  2025-11-12 06:51:41 +00:00
+  
+  [CommentedNov 12, 2025 at 6:51](https://unix.stackexchange.com/questions/801265/how-to-change-zsh-prompt-just-before-the-command-runs#comment1543182_801265)
+  
+  
+  [Use comments to ask for more information or suggest improvements. Avoid answering questions in comments.](https://unix.stackexchange.com/questions/801265/how-to-change-zsh-prompt-just-before-the-command-runs# "Use comments to ask for more information or suggest improvements. Avoid answering questions in comments.") \| [Show **5** more comments](https://unix.stackexchange.com/questions/801265/how-to-change-zsh-prompt-just-before-the-command-runs# "Expand to show all comments on this post")
+  
+  ## 0
+  
+  Sorted by:
+  [Reset to default](https://unix.stackexchange.com/questions/801265/how-to-change-zsh-prompt-just-before-the-command-runs?answertab=scoredesc#tab-top)
+  
+  Highest score (default)
+  
+  Date modified (newest first)
+  
+  Date created (oldest first)
+  
+  
+  ## You must [log in](https://unix.stackexchange.com/users/login?ssrc=question_page&returnurl=https%3a%2f%2funix.stackexchange.com%2fquestions%2f801265) to answer this question.
+  
+  Start asking to get answers
+  
+  Find the answer to your question by asking.
+  
+  [Ask question](https://unix.stackexchange.com/questions/ask)
+  
+  Explore related questions
+  
+  - [zsh](https://unix.stackexchange.com/questions/tagged/zsh "show questions tagged 'zsh'")
+  
+  See similar questions with these tags.
+  
+  lang-bash
+  --- End Content ---

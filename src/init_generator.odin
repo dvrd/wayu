@@ -126,9 +126,10 @@ generate_core_init_v2 :: proc() {
 	fmt.sbprintln(&builder)
 	
 	// Prompt: Nativo wayu completo (copied from starship.toml)
-	fmt.sbprintln(&builder, "# === Prompt (wayu native, from starship.toml) ===")
+	// Ahora con features interactivas
+	fmt.sbprintln(&builder, "# === Prompt (wayu native, interactive) ===")
 	
-	// Parse full prompt config from TOML
+	// Parse configs from TOML
 	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
 	defer delete(toml_path)
 	
@@ -136,10 +137,18 @@ generate_core_init_v2 :: proc() {
 		toml_data, ok := safe_read_file(toml_path)
 		if ok {
 			defer delete(toml_data)
+			
+			// Base prompt
 			prompt_cfg := parse_full_prompt_config(string(toml_data))
-			prompt_code := generate_full_prompt(prompt_cfg)
-			fmt.sbprint(&builder, prompt_code)
-			delete(prompt_code)
+			base_prompt := generate_full_prompt(prompt_cfg)
+			
+			// Interactive features
+			interactive_cfg := parse_interactive_config(string(toml_data))
+			interactive_code := generate_interactive_prompt(base_prompt, interactive_cfg)
+			
+			fmt.sbprint(&builder, interactive_code)
+			delete(base_prompt)
+			delete(interactive_code)
 		}
 	}
 	fmt.sbprintln(&builder)

@@ -1,0 +1,1907 @@
+Context-aware history suggestions (current working ...
+  URL: https://github.com/zsh-users/zsh-autosuggestions/issues/697
+  I'd like the context of commands, in particular the current working directory, but perhaps also other user configurable context, to be saved and used by zsh- ...
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/zsh-users/zsh-autosuggestions/issues/697#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/zsh-users/zsh-autosuggestions/issues/697) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/zsh-users/zsh-autosuggestions/issues/697) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/zsh-users/zsh-autosuggestions/issues/697) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [zsh-users](https://github.com/zsh-users)/ **[zsh-autosuggestions](https://github.com/zsh-users/zsh-autosuggestions)** Public
+  
+  - [Notifications](https://github.com/login?return_to=%2Fzsh-users%2Fzsh-autosuggestions) You must be signed in to change notification settings
+  - [Fork\\
+  1.9k](https://github.com/login?return_to=%2Fzsh-users%2Fzsh-autosuggestions)
+  - [Star\\
+  35.3k](https://github.com/login?return_to=%2Fzsh-users%2Fzsh-autosuggestions)
+  
+  
+  # Context-aware history suggestions (current working directory & more)\#697
+  
+  [New issue](https://github.com/login?return_to=https://github.com/zsh-users/zsh-autosuggestions/issues/697)
+  
+  Copy link
+  
+  [New issue](https://github.com/login?return_to=https://github.com/zsh-users/zsh-autosuggestions/issues/697)
+  
+  Copy link
+  
+  Open
+  
+  Open
+  
+  [Context-aware history suggestions (current working directory & more)](https://github.com/zsh-users/zsh-autosuggestions/issues/697#top)#697
+  
+  Copy link
+  
+  Labels
+  
+  [enhancement](https://github.com/zsh-users/zsh-autosuggestions/issues?q=state%3Aopen%20label%3A%22enhancement%22)
+  
+  [![@tejing1](https://avatars.githubusercontent.com/u/5663576?u=055550bb358797b42aea19a7778dec3b2ea4a19c&v=4&size=80)](https://github.com/tejing1)
+  
+  ## Description
+  
+  [![@tejing1](https://avatars.githubusercontent.com/u/5663576?u=055550bb358797b42aea19a7778dec3b2ea4a19c&v=4&size=48)](https://github.com/tejing1)
+  
+  [tejing1](https://github.com/tejing1)
+  
+  opened [on Jul 16, 2022on Jul 16, 2022](https://github.com/zsh-users/zsh-autosuggestions/issues/697#issue-1306901625)
+  
+  Issue body actions
+  
+  ### Is your feature request related to a problem? Please describe.
+  
+  Autosuggestion was the single thing I liked most about fish, so when I considered switching to zsh, I was glad to find there was an implementation. However, upon actually using it, I found it substantially less useful than fish's autosuggestion had been. After considering my experiences carefully, and looking into the implementations, I believe the primary reason is that fish's autosuggestion takes into account the current working directory, while zsh's does not.
+  
+  However, if we're going to do this, we might as well make it extensible. Other forms of context may be useful for particular people. For example, I have a common pattern of terminals I always keep open and on the same virtual desktops, which I use for somewhat different purposes. If I could add some distinguishing factor to the shell environments on those terminals, such as a value in a shell variable, I could get autosuggestions specific to the tasks I normally do in those terminals. (Even with shared history)
+  
+  ### Describe the solution you'd like
+  
+  I'd like the context of commands, in particular the current working directory, but perhaps also other user configurable context, to be saved and used by zsh-autosuggestions to prefer more relevant history-based suggestions.
+  
+  ### Describe alternatives you've considered
+  
+  - Using fish
+  - Just living with less-useful autosuggestions
+  
+  👍React with 👍28jirutka, yzhang-gh, boiledfroginthewell, Benur21, cubiquitous and 23 more
+  
+  ## Activity
+  
+  [![](https://avatars.githubusercontent.com/u/5663576?s=64&u=055550bb358797b42aea19a7778dec3b2ea4a19c&v=4)tejing1](https://github.com/tejing1)
+  
+  added
+  
+  [enhancement](https://github.com/zsh-users/zsh-autosuggestions/issues?q=state%3Aopen%20label%3A%22enhancement%22)
+  
+  [on Jul 16, 2022on Jul 16, 2022](https://github.com/zsh-users/zsh-autosuggestions/issues/697#event-7006547525)
+  
+  [![D3vil0p3r](https://avatars.githubusercontent.com/u/83867734?u=84819d3049a4ad954f615ca4ae25926d3f3230f1&v=4&size=80)](https://github.com/D3vil0p3r)
+  
+  ### D3vil0p3r commented on Jun 23, 2023on Jun 23, 2023
+  
+  [![@D3vil0p3r](https://avatars.githubusercontent.com/u/83867734?u=84819d3049a4ad954f615ca4ae25926d3f3230f1&v=4&size=48)](https://github.com/D3vil0p3r)
+  
+  [D3vil0p3r](https://github.com/D3vil0p3r)
+  
+  [on Jun 23, 2023on Jun 23, 2023](https://github.com/zsh-users/zsh-autosuggestions/issues/697#issuecomment-1605087977)
+  
+  More actions
+  
+  The implementation of this FISH-like feature will be wonderful! Please integrate it!
+  
+  [Sign up for free](https://github.com/signup?return_to=https://github.com/zsh-users/zsh-autosuggestions/issues/697)**to join this conversation on GitHub.** Already have an account? [Sign in to comment](https://github.com/login?return_to=https://github.com/zsh-users/zsh-autosuggestions/issues/697)
+  
+  ## Metadata
+  
+  ## Metadata
+  
+  ### Assignees
+  
+  No one assigned
+  
+  ### Labels
+  
+  [enhancement](https://github.com/zsh-users/zsh-autosuggestions/issues?q=state%3Aopen%20label%3A%22enhancement%22)
+  
+  ### Type
+  
+  No type
+  
+  ### Projects
+  
+  No projects
+  
+  ### Milestone
+  
+  No milestone
+  
+  ### Relationships
+  
+  None yet
+  
+  ### Development
+  
+  No branches or pull requests
+  
+  ### Participants
+  
+  [![@tejing1](https://avatars.githubusercontent.com/u/5663576?s=64&u=055550bb358797b42aea19a7778dec3b2ea4a19c&v=4)](https://github.com/tejing1)[![@D3vil0p3r](https://avatars.githubusercontent.com/u/83867734?s=64&u=84819d3049a4ad954f615ca4ae25926d3f3230f1&v=4)](https://github.com/D3vil0p3r)
+  
+  ## Issue actions
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+Customizing my Zsh Prompt
+  URL: https://dev.to/cassidoo/customizing-my-zsh-prompt-3417
+  I have a little .zshrc file to customize my terminal, and I've always wanted a fun prompt besides the default, but haven't really done much to learn it.
+
+  --- Content ---
+  I have a little `.zshrc` file to customize my terminal, and I've always wanted a fun prompt besides the default, but haven't really done much to learn it.
+  
+  So, after some research, I figured out the basics of how to make my little prompt useful without being too overwhelming or distracting!
+  
+  Here's what it looks like:
+  
+  ![Cassidy's ZSH prompt with the time, directory, and git branch](https://media2.dev.to/dynamic/image/width=800%2Cheight=%2Cfit=scale-down%2Cgravity=auto%2Cformat=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Farticles%2Fsu0lzrgo1movthj0fxc7.png)
+  
+  You might notice that I don't have the typical things like my username or machine name or anything, because... I don't need that personally. But, after reading this, you'll be able to add that yourself!
+  
+  ## What to type
+  
+  If you don't know how to open your configuration file, go ahead and open it with `vim ~/.zshrc` or `code ~/.zshrc` (or whatever editor your prefer).
+  
+  First, add these two lines to your `.zshrc`:
+  
+  ```
+  
+  autoload -Uz vcs_info
+  precmd() { vcs_info }
+  ```
+  
+  Enter fullscreen modeExit fullscreen mode
+  
+  This loads the Version Control System into your prompt ( [here's the documentation for it](https://git-scm.com/book/en/v2/Appendix-A%3A-Git-in-Other-Environments-Git-in-Zsh)).
+  
+  Next, you want to add the next line that sets up the Git branch details into your prompt.
+  
+  ```
+  
+  zstyle ':vcs_info:git:*' formats '%b '
+  ```
+  
+  Enter fullscreen modeExit fullscreen mode
+  
+  That `%b` is the branch name variable. I added a space after it for formatting reasons. You can add other variables in the string there ( [here's a good blog of options](https://arjanvandergaag.nl/blog/customize-zsh-prompt-with-vcs-info.html)), for example information about stashes, the name of the root directory of the repo, staged changes, etc.
+  
+  Now, you'll add these final two lines to put your prompt together!
+  
+  ```
+  
+  setopt PROMPT_SUBST
+  PROMPT='%F{green}%*%f %F{blue}%~%f %F{red}${vcs_info_msg_0_}%f$ '
+  ```
+  
+  Enter fullscreen modeExit fullscreen mode
+  
+  This is hairy-looking, so let me break it down.
+  
+  ### Colors!
+  
+  When you surround things in `%F` and `%f`, that changes the foreground color of anything in between them. The color in the `{curly braces}` is the color that's edited. In this case, you can see green, blue, and red. There's similar things like this with `%U` and `%u` to underline, `%K` and `%k` for background colors, and more ( [with documentation here](https://zsh.sourceforge.io/Doc/Release/Prompt-Expansion.html), scroll to "13.2.5 Visual effects"). ZSH understands the colors black, red, green, yellow, blue, magenta, cyan and white by default!
+  
+  ### Dates and times!
+  
+  The `%*` that you see is the time (in 24-hour format, with seconds). There's more options for this, like `%W` for the date, for example. [The docs for this is here](https://zsh.sourceforge.io/Doc/Release/Prompt-Expansion.html), scroll to "13.2.4 Date and time".
+  
+  ### The directory!
+  
+  The `%~` shows the current working directory, and its path. Look at "13.2.3 Shell state" in [the docs](https://zsh.sourceforge.io/Doc/Release/Prompt-Expansion.html) if you want to replace it with something else.
+  
+  ### The variable!
+  
+  Now the next part is loading in your variable, the `${vcs_info_msg_0_}`. This plops your branch variable that we made before in that red text wrapper, there.
+  
+  The final `$` at the end is just to lead the user input. You can replace it with `>` or `;` or `WOW` or more variables, or whatever you'd like.
+  
+  ## The end!
+  
+  Here is the whole prompt that you can paste in and customize:
+  
+  ```
+  
+  autoload -Uz vcs_info
+  precmd() { vcs_info }
+  
+  zstyle ':vcs_info:git:*' formats '%b '
+  
+  setopt PROMPT_SUBST
+  PROMPT='%F{green}%*%f %F{blue}%~%f %F{red}${vcs_info_msg_0_}%f$ '
+  ```
+  
+  Enter fullscreen modeExit fullscreen mode
+  
+  Once you've saved this, run `source ~/.zshrc` to load it in the terminal (or just restart your terminal/open a new tab). Because I like opening and editing quickly, I added these aliases to make the opening + loading faster:
+  
+  ```
+  
+  alias bp='vim ~/.zshrc'
+  alias sa='source ~/.zshrc;echo "ZSH aliases sourced."'
+  ```
+  
+  Enter fullscreen modeExit fullscreen mode
+  
+  And now the world's ya oystah. I hope this was helpful for you!
+  
+  [![profile](https://media2.dev.to/dynamic/image/width=64,height=64,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Forganization%2Fprofile_image%2F1726%2F2a73f1e6-7995-4348-ae37-44b064274c59.png)\\
+  AWS](https://dev.to/aws) Promoted
+  
+  Dropdown menu
+  
+  - [What's a billboard?](https://dev.to/billboards)
+  - [Manage preferences](https://dev.to/settings/customization#sponsors)
+  
+  * * *
+  
+  - [Report billboard](https://dev.to/report-abuse?billboard=262973)
+  
+  [![Security LIVE! from London](https://media2.dev.to/dynamic/image/width=775%2Cheight=%2Cfit=scale-down%2Cgravity=auto%2Cformat=auto/https%3A%2F%2Fi.imgur.com%2FxVKHfG2.gif)](https://aws-experience.com/emea/smb/e/f7929/security-live-at-aws-partner-summit---london-england?bb=262973)
+  
+  ## [Security LIVE! from London](https://aws-experience.com/emea/smb/e/f7929/security-live-at-aws-partner-summit---london-england?bb=262973)
+  
+  Real-world security insights for the DEV community on April 21 \| 8:00 AM - 5:30 PM BST
+  
+  [Register today](https://aws-experience.com/emea/smb/e/f7929/security-live-at-aws-partner-summit---london-england?bb=262973)
+  
+  Read More
+  
+  
+  ![pic](https://media2.dev.to/dynamic/image/width=256,height=,fit=scale-down,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Farticles%2F8j7kvp660rqzt99zui8e.png)
+  
+  [Create template](https://dev.to/settings/response-templates)
+  
+  Templates let you quickly answer FAQs or store snippets for re-use.
+  
+  SubmitPreview [Dismiss](https://dev.to/404.html)
+  
+  CollapseExpand
+  
+  [![nikfp profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F863872%2F20caf4ac-d23a-42d6-b176-a604779697b1.png)](https://dev.to/nikfp)
+  
+  [Nik F P](https://dev.to/nikfp)
+  
+  Nik F P
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F863872%2F20caf4ac-d23a-42d6-b176-a604779697b1.png)\\
+  Nik F P](https://dev.to/nikfp)
+  
+  Follow
+  
+  I do a little bit of a lot of things. Some of those things are code. I enjoy thinking about how the world and technology interact, and how technology affects the way people interact with each other.
+  
+  
+  - Joined
+  
+  
+  May 17, 2022
+  
+  
+  • [Jun 1 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p40d)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p40d)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/nikfp/comment/1p40d)
+  
+  This is a really nice trick! In trying to figure this out I ended up giving up and going with a prompt styler - the script syntax was too dense for me at the time.
+  
+  If you are interested, you should check out [Oh-my-posh](https://ohmyposh.dev/), it's been awesome to use. Here's a pic of the prompt I've been using:
+  
+  ![A prompt picture](https://media2.dev.to/cdn-cgi/image/width=800%2Cheight=%2Cfit=scale-down%2Cgravity=auto%2Cformat=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Farticles%2Fy05zf79gykgy3up0kkz8.jpg)
+  
+  This is my custom prompt that has the current username, which shell I'm using, current directory, Node version in use, and the end with the heart is the exit code status of the last command. (turns red if the exit code is non-zero) The second line is git status and only appears if I'm in a repo.
+  
+  Setting these up can be tricky though, and the nice thing about what you built is it's easier to sync between machines since it's just a script. Nothing needs to be installed. I think I'll try to do something similar to what you have for shell I use on a few places and see if it comes easier to me this time.
+  
+  CollapseExpand
+  
+  [![nssimeonov profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F66523%2Fe3e4caf7-cf48-48bc-9321-ff80e0994e44.jpg)](https://dev.to/nssimeonov)
+  
+  [Templar++](https://dev.to/nssimeonov)
+  
+  Templar++
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F66523%2Fe3e4caf7-cf48-48bc-9321-ff80e0994e44.jpg)\\
+  Templar++](https://dev.to/nssimeonov)
+  
+  Follow
+  
+  - Joined
+  
+  
+  Apr 8, 2018
+  
+  
+  • [Jun 7 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p8p5)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p8p5)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/nssimeonov/comment/1p8p5)
+  
+  It's really awesome. I love this. Except I use a theme based on the paradox theme, but I added a few more sections. Being a front-end dev lately and using different node versions for different projects it's a must to see the current npm version as well... especially if `direnv` somehow messes up loading the the right version for some reason every now and then)
+  
+  ![](https://res.cloudinary.com/practicaldev/image/fetch/s--HpQQVmEY--/c_limit%2Cf_auto%2Cfl_progressive%2Cq_auto%2Cw_880/https://dev-to-uploads.s3.amazonaws.com/uploads/articles/gwihb8fekv0gthemeu2a.png)
+  
+  CollapseExpand
+  
+  [![narenandu profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F248025%2F742eb6df-1e20-4473-82fc-2bab74c4b609.jpg)](https://dev.to/narenandu)
+  
+  [Narendra Kumar Vadapalli](https://dev.to/narenandu)
+  
+  Narendra Kumar Vadapalli
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F248025%2F742eb6df-1e20-4473-82fc-2bab74c4b609.jpg)\\
+  Narendra Kumar Vadapalli](https://dev.to/narenandu)
+  
+  Follow
+  
+  Building software components and workflows for sythetic data generation for training Autonomous vehicles. Very much interested in learning fullstack webdev and Machine Learning using PyTorch
+  
+  
+  - Location
+  
+  
+  
+  Vancouver
+  
+  
+  - Education
+  
+  
+  
+  Master of Science in Computer Graphics and Game Technology from UPenn
+  
+  
+  - Work
+  
+  
+  
+  Software Engineer at Parallel Domain
+  
+  
+  - Joined
+  
+  
+  Oct 11, 2019
+  
+  
+  • [Jun 7 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p8o2)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p8o2)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/narenandu/comment/1p8o2)
+  
+  I use this one and its pretty great out of the box
+  
+  CollapseExpand
+  
+  [![mrxinu profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F22321%2F71a9c682-4b68-44e5-955e-7d8cc8a4bae5.jpg)](https://dev.to/mrxinu)
+  
+  [Steve Klassen (They/Them)](https://dev.to/mrxinu)
+  
+  Steve Klassen (They/Them)
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F22321%2F71a9c682-4b68-44e5-955e-7d8cc8a4bae5.jpg)\\
+  Steve Klassen (They/Them)](https://dev.to/mrxinu)
+  
+  Follow
+  
+  I learn things, I write things. Repeat.
+  
+  
+  - Email
+  
+  
+  [sklassen@gmail.com](mailto:sklassen@gmail.com)
+  
+  - Location
+  
+  
+  
+  Pacific Northwest
+  
+  
+  - Work
+  
+  
+  
+  Software Engineer at CrowdStrike
+  
+  
+  - Joined
+  
+  
+  Jun 17, 2017
+  
+  
+  • [Jun 6 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p7fd)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p7fd)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/mrxinu/comment/1p7fd)
+  
+  I love that you went through the bare bones configuration. I just assumed 'starship' or something like that when you mentioned it in the newsletter. This was much more cool!
+  
+  CollapseExpand
+  
+  [![cassidoo profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F6401%2F6d75ebdc-706f-4d3b-8c26-47bf7946ece5.png)](https://dev.to/cassidoo)
+  
+  [Cassidy Williams](https://dev.to/cassidoo)
+  
+  Cassidy Williams
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F6401%2F6d75ebdc-706f-4d3b-8c26-47bf7946ece5.png)\\
+  Cassidy Williams](https://dev.to/cassidoo)
+  
+  Follow
+  
+  bold and brash
+  
+  
+  - Location
+  
+  
+  
+  Chicago, IL
+  
+  
+  - Education
+  
+  
+  
+  B.S. Computer Science
+  
+  
+  - Pronouns
+  
+  
+  
+  she/her
+  
+  
+  - Work
+  
+  
+  
+  coding stuff
+  
+  
+  - Joined
+  
+  
+  Feb 22, 2017
+  
+  
+  • [Jun 6 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p80n)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p80n)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/cassidoo/comment/1p80n)
+  
+  Thanks!
+  
+  CollapseExpand
+  
+  [![lucassperez profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F490879%2F05e142c0-02ad-4b45-9947-48d41b5ba4b1.jpeg)](https://dev.to/lucassperez)
+  
+  [Lucas Perez](https://dev.to/lucassperez)
+  
+  Lucas Perez
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F490879%2F05e142c0-02ad-4b45-9947-48d41b5ba4b1.jpeg)\\
+  Lucas Perez](https://dev.to/lucassperez)
+  
+  Follow
+  
+  A fellow mathematician who likes coding a little bit (:
+  
+  
+  - Location
+  
+  
+  
+  Florianópolis, SC
+  
+  
+  - Joined
+  
+  
+  Oct 15, 2020
+  
+  
+  • [May 31 '22• Edited on May 31• Edited](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p38a)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p38a)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/lucassperez/comment/1p38a)
+  
+  Really nice!
+  
+  I remember having a very confusing bash code to get the last exit code on my prompt and a somewhat messy code to get the git branch name and status to color it accordingly. When I decided to try zsh I was delighted to learn that it has some very usefull builtins, like `vcs_info_msg_0_` and the `%?` that gets the last exit code. My prompt is not as minimalistic as yours, but I guess I'm going to go more minimal for a few days and see if I like it.
+  
+  Worth saying that `%0(?..%?)` will show the last exit code but only if it was not 0. You can even style it like `%0(?.. %F{green} exit code: <%?> %f)` and so on.
+  
+  I don't know how to upload images here, please help 😅
+  
+  [dev-to-uploads.s3.amazonaws.com/up...](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/bvnks6z0c2l425k76dn5.png)
+  
+  - Branch in red: nothing changed
+  - Branch in yellow: something changed
+  - Branch in light blue: something in staging area (can commit)
+  - The error code appears in purple and inside brackets
+  
+  There are also some experimental things, like highlighting, underlining and putting the letter D before the branch when the local branch is ahead, behind or have diverged, but they don't seem to work all that well.
+  
+  Here is the code I used to get this prompt.
+  
+  I actually like a lot the different colors for different states of the repo.
+  
+  [gist.github.com/lucassperez/bc04af...](https://gist.github.com/lucassperez/bc04afa332c18ab708a084c1be1ff230)
+  
+  CollapseExpand
+  
+  [![cassidoo profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F6401%2F6d75ebdc-706f-4d3b-8c26-47bf7946ece5.png)](https://dev.to/cassidoo)
+  
+  [Cassidy Williams](https://dev.to/cassidoo)
+  
+  Cassidy Williams
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F6401%2F6d75ebdc-706f-4d3b-8c26-47bf7946ece5.png)\\
+  Cassidy Williams](https://dev.to/cassidoo)
+  
+  Follow
+  
+  bold and brash
+  
+  
+  - Location
+  
+  
+  
+  Chicago, IL
+  
+  
+  - Education
+  
+  
+  
+  B.S. Computer Science
+  
+  
+  - Pronouns
+  
+  
+  
+  she/her
+  
+  
+  - Work
+  
+  
+  
+  coding stuff
+  
+  
+  - Joined
+  
+  
+  Feb 22, 2017
+  
+  
+  • [May 31 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p39l)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p39l)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/cassidoo/comment/1p39l)
+  
+  Oh whoa that is so cool!! Thank you for sharing!
+  
+  CollapseExpand
+  
+  [![dsfaccini profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F837839%2F2a281448-6b23-4cf9-a3f1-844b67a01689.jpeg)](https://dev.to/dsfaccini)
+  
+  [David](https://dev.to/dsfaccini)
+  
+  David
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F837839%2F2a281448-6b23-4cf9-a3f1-844b67a01689.jpeg)\\
+  David](https://dev.to/dsfaccini)
+  
+  Follow
+  
+  Full Stack Dev
+  
+  
+  - Work
+  
+  
+  
+  Software Developer @ Brettschneider
+  
+  
+  - Joined
+  
+  
+  Mar 27, 2022
+  
+  
+  • [May 20 '25](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-2o043)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-2o043)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/dsfaccini/comment/2o043)
+  
+  Your article is definitely the best and easiest on this lol, even the git documentation took me to a script I didn't understand and ended up not working anyway. Thank you!
+  
+  CollapseExpand
+  
+  [![zsh profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F793538%2F36d5d679-e24f-49ec-9c05-dee6705b759a.png)](https://dev.to/zsh)
+  
+  [❮ ZI ❯](https://dev.to/zsh)
+  
+  ❮ ZI ❯
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F793538%2F36d5d679-e24f-49ec-9c05-dee6705b759a.png)\\
+  ❮ ZI ❯](https://dev.to/zsh)
+  
+  Follow
+  
+  The Swiss Army Knife of the for Zsh - Unix Shell.
+  
+  
+  - Email
+  
+  
+  [team@zshell.dev](mailto:team@zshell.dev)
+  
+  - Location
+  
+  
+  
+  Worldwide
+  
+  
+  - Joined
+  
+  
+  Jan 13, 2022
+  
+  
+  • [May 31 '22• Edited on May 31• Edited](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p3e9)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p3e9)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/zsh/comment/1p3e9)
+  
+  🧙‍ Nice post! Would like to propose the advanced level experience of Zsh for Zsh lovers 🧙‍‍♀️
+  
+  A Swiss Army Knife for Zsh - Unix Shell ⚡
+  
+  [z.digitalclouds.dev](https://z.digitalclouds.dev/) ⚡
+  
+  CollapseExpand
+  
+  [![w3ndo profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F473910%2F2d6d4ad0-6f4d-4a79-959f-581b21e1b118.png)](https://dev.to/w3ndo)
+  
+  [Patrick Wendo](https://dev.to/w3ndo)
+  
+  Patrick Wendo
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F473910%2F2d6d4ad0-6f4d-4a79-959f-581b21e1b118.png)\\
+  Patrick Wendo](https://dev.to/w3ndo)
+  
+  Follow
+  
+  Creation > Perfection
+  
+  
+  - Email
+  
+  
+  [wendonyang+dev@gmail.com](mailto:wendonyang+dev@gmail.com)
+  
+  - Location
+  
+  
+  
+  Nairobi, Kenya
+  
+  
+  - Pronouns
+  
+  
+  
+  He/Him
+  
+  
+  - Joined
+  
+  
+  Sep 23, 2020
+  
+  
+  • [May 31 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p341)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p341)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/w3ndo/comment/1p341)
+  
+  Definitely going to try this now. This is something I really want to try and work out
+  
+  CollapseExpand
+  
+  [![thecodetrane profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F68296%2Fafafbc5b-6fb8-472b-9be3-b68cc972e03e.jpeg)](https://dev.to/thecodetrane)
+  
+  [Michael Cain](https://dev.to/thecodetrane)
+  
+  Michael Cain
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F68296%2Fafafbc5b-6fb8-472b-9be3-b68cc972e03e.jpeg)\\
+  Michael Cain](https://dev.to/thecodetrane)
+  
+  Follow
+  
+  Minnesota-made
+  
+  I'm a musician-now-software developer in Philadelphia (Ruby on Rails). I love making things, playing things and teaching.
+  
+  
+  - Email
+  
+  
+  [michael.m.cain.ii@gmail.com](mailto:michael.m.cain.ii@gmail.com)
+  
+  - Location
+  
+  
+  
+  Minneapolis, MN
+  
+  
+  - Education
+  
+  
+  
+  University of the Arts (MM - Jazz Studies)
+  
+  
+  - Work
+  
+  
+  
+  Ruby On Rails Developer at TaskRabbit
+  
+  
+  - Joined
+  
+  
+  Apr 19, 2018
+  
+  
+  • [Jul 20 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-20bi0)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-20bi0)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/thecodetrane/comment/20bi0)
+  
+  Super helpful and easy to use. I was able to sidestep Powerlevel10k (no shame in that game, just a "little much" for me) and get a lean prompt with just what I wanted.
+  
+  CollapseExpand
+  
+  [![cassidoo profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F6401%2F6d75ebdc-706f-4d3b-8c26-47bf7946ece5.png)](https://dev.to/cassidoo)
+  
+  [Cassidy Williams](https://dev.to/cassidoo)
+  
+  Cassidy Williams
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F6401%2F6d75ebdc-706f-4d3b-8c26-47bf7946ece5.png)\\
+  Cassidy Williams](https://dev.to/cassidoo)
+  
+  Follow
+  
+  bold and brash
+  
+  
+  - Location
+  
+  
+  
+  Chicago, IL
+  
+  
+  - Education
+  
+  
+  
+  B.S. Computer Science
+  
+  
+  - Pronouns
+  
+  
+  
+  she/her
+  
+  
+  - Work
+  
+  
+  
+  coding stuff
+  
+  
+  - Joined
+  
+  
+  Feb 22, 2017
+  
+  
+  • [Jul 24 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-20e29)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-20e29)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/cassidoo/comment/20e29)
+  
+  Thanks! Yeah simplicity was what I wanted, too.
+  
+  CollapseExpand
+  
+  [![chrisgreening profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F482393%2F52b5179a-7754-451f-a6bf-233266e3a62f.jpg)](https://dev.to/chrisgreening)
+  
+  [Chris Greening](https://dev.to/chrisgreening)
+  
+  Chris Greening
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F482393%2F52b5179a-7754-451f-a6bf-233266e3a62f.jpg)\\
+  Chris Greening](https://dev.to/chrisgreening)
+  
+  Follow
+  
+  generalized specialist - software engineer and data scientist - particularly fond of Python and R
+  
+  
+  - Email
+  
+  
+  [chris@christophergreening.com](mailto:chris@christophergreening.com)
+  
+  - Location
+  
+  
+  
+  New York metropolitan area
+  
+  
+  - Education
+  
+  
+  
+  BSc in Physics, Stony Brook University, New York
+  
+  
+  - Work
+  
+  
+  
+  Manager of Analytics Engineering at route1.io \| Freelance software engineer and data scientist
+  
+  
+  - Joined
+  
+  
+  Oct 5, 2020
+  
+  
+  • [May 31 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p368)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p368)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/chrisgreening/comment/1p368)
+  
+  I've got a similar prompt w/ branch name and I never realize how much I rely on it until I'm in a place without it and have to `git branch` every 3 seconds to remember where I am 😅
+  
+  Great post - thanks Cassidy!
+  
+  CollapseExpand
+  
+  [![cassidoo profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F6401%2F6d75ebdc-706f-4d3b-8c26-47bf7946ece5.png)](https://dev.to/cassidoo)
+  
+  [Cassidy Williams](https://dev.to/cassidoo)
+  
+  Cassidy Williams
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F6401%2F6d75ebdc-706f-4d3b-8c26-47bf7946ece5.png)\\
+  Cassidy Williams](https://dev.to/cassidoo)
+  
+  Follow
+  
+  bold and brash
+  
+  
+  - Location
+  
+  
+  
+  Chicago, IL
+  
+  
+  - Education
+  
+  
+  
+  B.S. Computer Science
+  
+  
+  - Pronouns
+  
+  
+  
+  she/her
+  
+  
+  - Work
+  
+  
+  
+  coding stuff
+  
+  
+  - Joined
+  
+  
+  Feb 22, 2017
+  
+  
+  • [May 31 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p39j)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p39j)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/cassidoo/comment/1p39j)
+  
+  My `git st` to figure out the branch is CONSTANT if I don't have it in the prompt hahaha! Thank you!
+  
+  CollapseExpand
+  
+  [![dakdad profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F36395%2F198f028c-4dce-49a9-9e24-755bdcb9e9e8.jpg)](https://dev.to/dakdad)
+  
+  [Asanka](https://dev.to/dakdad)
+  
+  Asanka
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F36395%2F198f028c-4dce-49a9-9e24-755bdcb9e9e8.jpg)\\
+  Asanka](https://dev.to/dakdad)
+  
+  Follow
+  
+  - Location
+  
+  
+  
+  Central Coast, NSW, Australia
+  
+  
+  - Education
+  
+  
+  
+  Bachelor of Business - E Business
+  
+  
+  - Work
+  
+  
+  
+  Engineering Lead, Finder
+  
+  
+  - Joined
+  
+  
+  Oct 9, 2017
+  
+  
+  • [Jun 2 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p575)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p575)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/dakdad/comment/1p575)
+  
+  While a vanilla solution is always nice, my go-to is Prezto!
+  
+  [github.com/sorin-ionescu/prezto](https://github.com/sorin-ionescu/prezto)
+  
+  Lot of options and themes with minimal effort :)
+  
+  CollapseExpand
+  
+  [![faisal_foyez profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F868441%2F6100f223-b923-4f11-9ab9-1c643f7be6f4.jpg)](https://dev.to/faisal_foyez)
+  
+  [Faisal Islam](https://dev.to/faisal_foyez)
+  
+  Faisal Islam
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F868441%2F6100f223-b923-4f11-9ab9-1c643f7be6f4.jpg)\\
+  Faisal Islam](https://dev.to/faisal_foyez)
+  
+  Follow
+  
+  I am a software engineer from Dhaka.
+  
+  
+  - Education
+  
+  
+  
+  Comilla University
+  
+  
+  - Work
+  
+  
+  
+  CEO at Sharp Interface
+  
+  
+  - Joined
+  
+  
+  May 26, 2022
+  
+  
+  • [Jun 2 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p51f)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p51f)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/faisal_foyez/comment/1p51f)
+  
+  I have just tried it and Oh gosh! my prompt looks so clean now. Thank you Cassidy.
+  
+  CollapseExpand
+  
+  [![cassidoo profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F6401%2F6d75ebdc-706f-4d3b-8c26-47bf7946ece5.png)](https://dev.to/cassidoo)
+  
+  [Cassidy Williams](https://dev.to/cassidoo)
+  
+  Cassidy Williams
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F6401%2F6d75ebdc-706f-4d3b-8c26-47bf7946ece5.png)\\
+  Cassidy Williams](https://dev.to/cassidoo)
+  
+  Follow
+  
+  bold and brash
+  
+  
+  - Location
+  
+  
+  
+  Chicago, IL
+  
+  
+  - Education
+  
+  
+  
+  B.S. Computer Science
+  
+  
+  - Pronouns
+  
+  
+  
+  she/her
+  
+  
+  - Work
+  
+  
+  
+  coding stuff
+  
+  
+  - Joined
+  
+  
+  Feb 22, 2017
+  
+  
+  • [Jun 5 '22](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p77c)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#comment-1p77c)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/cassidoo/comment/1p77c)
+  
+  I'm so glad it's helpful for you!
+  
+  [View full discussion (32 comments)](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417/comments)
+  
+  Some comments may only be visible to logged-in visitors. [Sign in](https://dev.to/enter) to view all comments.
+  
+  
+  
+  Are you sure you want to hide this comment? It will become hidden in your post, but will still be visible via the comment's [permalink](https://dev.to/cassidoo/customizing-my-zsh-prompt-3417#).
+  
+  
+  Hide child comments as well
+  
+  Confirm
+  
+  
+  For further actions, you may consider blocking this person and/or [reporting abuse](https://dev.to/report-abuse)
+  
+  [![profile](https://media2.dev.to/dynamic/image/width=64,height=64,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Forganization%2Fprofile_image%2F10224%2Fccdcf539-a356-494c-89de-4c0c4df3e019.png)\\
+  Postmark](https://dev.to/postmark) Promoted
+  
+  Dropdown menu
+  
+  - [What's a billboard?](https://dev.to/billboards)
+  - [Manage preferences](https://dev.to/settings/customization#sponsors)
+  
+  * * *
+  
+  - [Report billboard](https://dev.to/report-abuse?billboard=261207)
+  
+  [![Postmark](https://media2.dev.to/dynamic/image/width=775%2Cheight=%2Cfit=scale-down%2Cgravity=auto%2Cformat=auto/https%3A%2F%2Fpro.forem.tools%2Frails%2Factive_storage%2Fblobs%2Fredirect%2FeyJfcmFpbHMiOnsibWVzc2FnZSI6IkJBaHBBb0lEIiwiZXhwIjpudWxsLCJwdXIiOiJibG9iX2lkIn19--443103be7e6e8057900743d418af26697c8fc8c6%2FScreenshot%25202025-11-06%2520at%25203.29.22%25E2%2580%25AFPM.png)](https://postmarkapp.com/lp/postmark-email-api-alt?utm_medium=devto-static&utm_campaign=devto-static-ad-video-thumbnail&utm_source=devto&bb=261207)
+  
+  ## [Seamless email integration with excellent deliverability ✅ 👀](https://postmarkapp.com/lp/postmark-email-api-alt?utm_medium=devto-static&utm_campaign=devto-static-ad-video-thumbnail&utm_source=devto&bb=261207)
+  
+  Start sending in minutes with Postmark's powerful email API.
+  
+  [See how 🎥](https://postmarkapp.com/lp/postmark-email-api-alt?utm_medium=devto-static&utm_campaign=devto-static-ad-video-thumbnail&utm_source=devto&bb=261207)
+  
+  DEV Education Tracks
+  
+  Dropdown menu
+  
+  - [What's a billboard?](https://dev.to/billboards)
+  - [Manage preferences](https://dev.to/settings/customization#sponsors)
+  
+  * * *
+  
+  - [Report billboard](https://dev.to/report-abuse?billboard=238629)
+  
+  x
+  
+  ### Announcing the First DEV Education Track: "Build Apps with Google AI Studio"
+  
+  The moment is here! We recently announced DEV Education Tracks, our new initiative to bring you structured learning paths directly from industry experts.
+  
+  
+  [Dive in and Learn](https://dev.to/devteam/announcing-the-first-dev-education-track-build-apps-with-google-ai-studio-ej7?bb=238629)
+  
+  DEV is bringing Education Tracks to the community. Dismiss if you're not interested. ❤️
+  
+  
+  ![DEV Community](https://media2.dev.to/dynamic/image/width=190,height=,fit=scale-down,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Farticles%2F8j7kvp660rqzt99zui8e.png)
+  
+  We're a place where coders share, stay up-to-date and grow their careers.
+  
+  
+  [Log in](https://dev.to/enter?signup_subforem=1) [Create account](https://dev.to/enter?signup_subforem=1&state=new-user)
+  
+  ![](https://assets.dev.to/assets/sparkle-heart-5f9bee3767e18deb1bb725290cb151c25234768a0e9a2bd39370c382d02920cf.svg)![](https://assets.dev.to/assets/multi-unicorn-b44d6f8c23cdd00964192bedc38af3e82463978aa611b4365bd33a0f1f4f3e97.svg)![](https://assets.dev.to/assets/exploding-head-daceb38d627e6ae9b730f36a1e390fca556a4289d5a41abb2c35068ad3e2c4b5.svg)![](https://assets.dev.to/assets/raised-hands-74b2099fd66a39f2d7eed9305ee0f4553df0eb7b4f11b01b6b1b499973048fe5.svg)![](https://assets.dev.to/assets/fire-f60e7a582391810302117f987b22a8ef04a2fe0df7e3258a5f49332df1cec71e.svg)
+  --- End Content ---
+
+How do I format my zsh prompt based on a condition?
+  URL: https://stackoverflow.com/questions/19820519/how-do-i-format-my-zsh-prompt-based-on-a-condition
+  Is there any way to format the prompt based on some conditions? For example, if the hostname has the word PROD in it, then I'd like my prompt to have a red ...
+
+  --- Content ---
+  ##### Collectives™ on Stack Overflow
+  
+  Find centralized, trusted content and collaborate around the technologies you use most.
+  
+  [Learn more about Collectives](https://stackoverflow.com/collectives)
+  
+  **Stack Internal**
+  
+  Knowledge at work
+  
+  Bring the best of human thought and AI automation together at your work.
+  
+  [Explore Stack Internal](https://stackoverflow.co/internal/?utm_medium=referral&utm_source=stackoverflow-community&utm_campaign=side-bar&utm_content=explore-teams-compact-popover)
+  
+  # [How do I format my zsh prompt based on a condition? \[closed\]](https://stackoverflow.com/questions/19820519/how-do-i-format-my-zsh-prompt-based-on-a-condition)
+  
+  [Ask Question](https://stackoverflow.com/questions/ask)
+  
+  Asked12 years, 5 months ago
+  
+  Modified [4 years, 10 months ago](https://stackoverflow.com/questions/19820519/how-do-i-format-my-zsh-prompt-based-on-a-condition?lastactivity "2021-05-23 07:07:47Z")
+  
+  Viewed
+  6k times
+  
+  
+  This question shows research effort; it is useful and clear
+  
+  7
+  
+  Save this question.
+  
+  [Timeline](https://stackoverflow.com/posts/19820519/timeline)
+  
+  Show activity on this post.
+  
+  I'm using the answer given here: [How do zsh ansi colour codes work?](https://stackoverflow.com/questions/6159856/how-do-zsh-ansi-colour-codes-work) to format and add color to my zsh prompt.
+  
+  Is there any way to format the prompt based on some conditions?
+  
+  For example, if the hostname has the word `PROD` in it, then I'd like my prompt to have a red background. Otherwise, I'd like no background, and bold green text.
+  
+  - [linux](https://stackoverflow.com/questions/tagged/linux "show questions tagged 'linux'")
+  - [terminal](https://stackoverflow.com/questions/tagged/terminal "show questions tagged 'terminal'")
+  - [command-prompt](https://stackoverflow.com/questions/tagged/command-prompt "show questions tagged 'command-prompt'")
+  - [zsh](https://stackoverflow.com/questions/tagged/zsh "show questions tagged 'zsh'")
+  - [prompt](https://stackoverflow.com/questions/tagged/prompt "show questions tagged 'prompt'")
+  
+  [Share](https://stackoverflow.com/q/19820519 "Short permalink to this question")
+  
+  Share a link to this question
+  
+  Copy link [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/ "The current license for this post: CC BY-SA 3.0")
+  
+  [Improve this question](https://stackoverflow.com/posts/19820519/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this question to receive notifications
+  
+  [edited May 23, 2017 at 10:31](https://stackoverflow.com/posts/19820519/revisions "show all edits to this post")
+  
+  [![Community's user avatar](https://www.gravatar.com/avatar/a007be5a61f6aa8f3e85ae2fc18dd66e?s=64&d=identicon&r=PG)](https://stackoverflow.com/users/-1/community)
+  
+  [Community](https://stackoverflow.com/users/-1/community) Bot
+  
+  111 silver badge
+  
+  asked Nov 6, 2013 at 19:01
+  
+  [![Bonz0's user avatar](https://www.gravatar.com/avatar/ab021efeb1e28483826bf4f314452b12?s=64&d=identicon&r=PG)](https://stackoverflow.com/users/1493303/bonz0)
+  
+  [Bonz0](https://stackoverflow.com/users/1493303/bonz0)
+  
+  37322 gold badges55 silver badges1717 bronze badges
+  
+  2
+  
+  - Try to use `if` condition in your `.zsh` file (under your root directory) and `set prompt = '...'`
+  
+  
+  
+  Nir Alfasi
+  
+  
+  –
+  [Nir Alfasi](https://stackoverflow.com/users/1057429/nir-alfasi "53,633 reputation")
+  
+  
+  
+  2013-11-06 19:09:37 +00:00
+  
+  [CommentedNov 6, 2013 at 19:09](https://stackoverflow.com/questions/19820519/how-do-i-format-my-zsh-prompt-based-on-a-condition#comment29470292_19820519)
+  
+  - If you have a function call in your prompt, ZSH will call that function every time the prompt is drawn. If you use an `if...` to set the prompt, your prompt will be set once (at loading) and won't change afterwards. I'd put a conditional in a function: see [this question](http://stackoverflow.com/questions/16125498/how-to-show-battery-status-in-zsh-prompt/16227806#16227806) for an example.
+  
+  
+  
+  simont
+  
+  
+  –
+  [simont](https://stackoverflow.com/users/1084945/simont "73,645 reputation")
+  
+  
+  
+  2013-11-07 01:31:33 +00:00
+  
+  [CommentedNov 7, 2013 at 1:31](https://stackoverflow.com/questions/19820519/how-do-i-format-my-zsh-prompt-based-on-a-condition#comment29480263_19820519)
+  
+  
+  [Add a comment](https://stackoverflow.com/questions/19820519/how-do-i-format-my-zsh-prompt-based-on-a-condition# "Use comments to ask for more information or suggest improvements. Avoid answering questions in comments.") \| [Expand to show all comments on this post](https://stackoverflow.com/questions/19820519/how-do-i-format-my-zsh-prompt-based-on-a-condition# "Expand to show all comments on this post")
+  
+  ## 3 Answers 3
+  
+  Sorted by:
+  [Reset to default](https://stackoverflow.com/questions/19820519/how-do-i-format-my-zsh-prompt-based-on-a-condition?answertab=scoredesc#tab-top)
+  
+  Highest score (default)
+  
+  Trending (recent votes count more)
+  
+  Date modified (newest first)
+  
+  Date created (oldest first)
+  
+  
+  This answer is useful
+  
+  4
+  
+  Save this answer.
+  
+  [Timeline](https://stackoverflow.com/posts/67657080/timeline)
+  
+  Show activity on this post.
+  
+  Its easy to do now you can use the conditional substring
+  
+  This is the syntax `%(condition.ifTrue.ifFalse)`
+  
+  ```
+  export PROMPT="%(%m==PROD.ifTrue.ifFalse)"
+  ```
+  
+  [Share](https://stackoverflow.com/a/67657080 "Short permalink to this answer")
+  
+  Share a link to this answer
+  
+  Copy link [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/ "The current license for this post: CC BY-SA 4.0")
+  
+  [Improve this answer](https://stackoverflow.com/posts/67657080/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this answer to receive notifications
+  
+  answered May 23, 2021 at 7:07
+  
+  [![Unnat's user avatar](https://i.sstatic.net/UlQLN.png?s=64)](https://stackoverflow.com/users/14527864/unnat)
+  
+  [Unnat](https://stackoverflow.com/users/14527864/unnat)
+  
+  41644 silver badges1414 bronze badges
+  
+  Sign up to request clarification or add additional context in comments.
+  
+  
+  ## Comments
+  
+  Add a comment
+  
+  This answer is useful
+  
+  2
+  
+  Save this answer.
+  
+  [Timeline](https://stackoverflow.com/posts/19822172/timeline)
+  
+  Show activity on this post.
+  
+  You can set a `precmd` function that resets your prompt just before it is displayed each time.
+  
+  ```
+  set_red_prompt_background () {
+    if [[ ${(%):-%M} = *PROD* ]]; then
+      PS1="%K{red}$PS1%k"
+    else
+      PS1="%F{green}%B$PS1%f%b"
+    fi
+  }
+  
+  typeset -a precmd_functions
+  precmd_functions+=(set_red_prompt_background)
+  ```
+  
+  This isn't tested, so I'd be surprised if it works as is. But here's how it's intended to work.
+  
+  - `${:-foo}` is a special type of "parameter" expansion which just expands to the word following the `:-`. Seems useless at first...
+  - `${(%):-%M}` is the same as above, but has the `(%)` flag to instruct `zsh` to process any prompt escapes found in the expansion. This turns into a fancy way of getting the full host name that would appear in the prompt using the `%M` escape.
+  - Check if it matches the pattern `*PROD*`, i.e., does the host name contain PROD.
+  - Take whatever the value of `PS1` is, and wrap it in `%K{red}...%k` to make the background red. Note that this might override any background colors already set in `PS1`.
+  - Add `set_red_prompt_background` to the list of functions executed prior to displaying the prompt. If you add any functions after this, they could potentially override the color you set here.
+  
+  [Share](https://stackoverflow.com/a/19822172 "Short permalink to this answer")
+  
+  Share a link to this answer
+  
+  Copy link [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/ "The current license for this post: CC BY-SA 3.0")
+  
+  [Improve this answer](https://stackoverflow.com/posts/19822172/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this answer to receive notifications
+  
+  [edited Nov 6, 2013 at 21:20](https://stackoverflow.com/posts/19822172/revisions "show all edits to this post")
+  
+  answered Nov 6, 2013 at 20:29
+  
+  [![chepner's user avatar](https://www.gravatar.com/avatar/fa05233b2357f8d11c22ef4cfc7bb85c?s=64&d=identicon&r=PG)](https://stackoverflow.com/users/1126841/chepner)
+  
+  [chepner](https://stackoverflow.com/users/1126841/chepner)
+  
+  540k7777 gold badges600600 silver badges753753 bronze badges
+  
+  ## Comments
+  
+  Add a comment
+  
+  This answer is useful
+  
+  -3
+  
+  Save this answer.
+  
+  [Timeline](https://stackoverflow.com/posts/19822195/timeline)
+  
+  Show activity on this post.
+  
+  Edit .zprofile file in your root Directory, with conditions applied on the specific user logged into.
+  
+  [Share](https://stackoverflow.com/a/19822195 "Short permalink to this answer")
+  
+  Share a link to this answer
+  
+  Copy link [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/ "The current license for this post: CC BY-SA 3.0")
+  
+  [Improve this answer](https://stackoverflow.com/posts/19822195/edit "")
+  
+  Follow
+  
+  
+  
+  Follow this answer to receive notifications
+  
+  answered Nov 6, 2013 at 20:31
+  
+  [![sam's user avatar](https://www.gravatar.com/avatar/1e0760529c414650d00698fbddf49bfa?s=64&d=identicon&r=PG)](https://stackoverflow.com/users/1323135/sam)
+  
+  [sam](https://stackoverflow.com/users/1323135/sam)
+  
+  12011 silver badge88 bronze badges
+  
+  ## Comments
+  
+  Add a comment
+  
+  Start asking to get answers
+  
+  Find the answer to your question by asking.
+  
+  [Ask question](https://stackoverflow.com/questions/ask)
+  
+  Explore related questions
+  
+  - [linux](https://stackoverflow.com/questions/tagged/linux "show questions tagged 'linux'")
+  - [terminal](https://stackoverflow.com/questions/tagged/terminal "show questions tagged 'terminal'")
+  - [command-prompt](https://stackoverflow.com/questions/tagged/command-prompt "show questions tagged 'command-prompt'")
+  - [zsh](https://stackoverflow.com/questions/tagged/zsh "show questions tagged 'zsh'")
+  - [prompt](https://stackoverflow.com/questions/tagged/prompt "show questions tagged 'prompt'")
+  
+  See similar questions with these tags.
+  --- End Content ---
+
+Trying to customize my zsh prompt to be similar to bash ...
+  URL: https://www.reddit.com/r/zsh/comments/17o5ke9/trying_to_customize_my_zsh_prompt_to_be_similar/
+  I'm trying to migrate over to zsh and mimic some of my previous bash functionality. Right now I'm working on the prompt itself, and I'm having an issue where a ...
+
+Simplest ZSH Prompt Configs for Git Branch Name
+  URL: https://medium.com/pareture/simplest-zsh-prompt-configs-for-git-branch-name-3d01602a6f33
+  Configure the zsh shell prompt (default on macOS Catalina) to spit out your git branch name if you are inside a git repository with minimal effort.
+
+  --- Content ---
+  [Sitemap](https://medium.com/sitemap/sitemap.xml)
+  
+  [Open in app](https://play.google.com/store/apps/details?id=com.medium.reader&referrer=utm_source%3DmobileNavBar&source=post_page---top_nav_layout_nav-----------------------------------------)
+  
+  Sign up
+  
+  [Sign in](https://medium.com/m/signin?operation=login&redirect=https%3A%2F%2Fmedium.com%2Fpareture%2Fsimplest-zsh-prompt-configs-for-git-branch-name-3d01602a6f33&source=post_page---top_nav_layout_nav-----------------------global_nav------------------)
+  
+  [Medium Logo](https://medium.com/?source=post_page---top_nav_layout_nav-----------------------------------------)
+  
+  Get app
+  
+  [Write](https://medium.com/m/signin?operation=register&redirect=https%3A%2F%2Fmedium.com%2Fnew-story&source=---top_nav_layout_nav-----------------------new_post_topnav------------------)
+  
+  [Search](https://medium.com/search?source=post_page---top_nav_layout_nav-----------------------------------------)
+  
+  Sign up
+  
+  [Sign in](https://medium.com/m/signin?operation=login&redirect=https%3A%2F%2Fmedium.com%2Fpareture%2Fsimplest-zsh-prompt-configs-for-git-branch-name-3d01602a6f33&source=post_page---top_nav_layout_nav-----------------------global_nav------------------)
+  
+  ![](https://miro.medium.com/v2/resize:fill:32:32/1*dmbNkD5D-u45r44go_cf0g.png)
+  
+  [**Pareture**](https://medium.com/pareture?source=post_page---publication_nav-3bfdf3a6fcf2-3d01602a6f33---------------------------------------)
+  
+  ·
+  
+  Follow publication
+  
+  [![Pareture](https://miro.medium.com/v2/resize:fill:38:38/1*ex0K8qdZ0JGYzmmqYf-uFA.png)](https://medium.com/pareture?source=post_page---post_publication_sidebar-3bfdf3a6fcf2-3d01602a6f33---------------------------------------)
+  
+  Mostly modern software engineering related to cloud infrastructure, platforms & tools.
+  
+  Follow publication
+  
+  Press enter or click to view image in full size
+  
+  ![](https://miro.medium.com/v2/resize:fit:700/0*6wEflfh__Vd1_9Wa)
+  
+  Photo by [Amanda Mocci](https://unsplash.com/@amandamocci?utm_source=medium&utm_medium=referral) on [Unsplash](https://unsplash.com/?utm_source=medium&utm_medium=referral)
+  
+  # Simplest ZSH Prompt Configs for Git Branch Name
+  
+  [![Nick Gibbon](https://miro.medium.com/v2/resize:fill:32:32/1*g1iF9N_kCVyiJPRQFprlbw.jpeg)](https://medium.com/@njgibbon?source=post_page---byline--3d01602a6f33---------------------------------------)
+  
+  [Nick Gibbon](https://medium.com/@njgibbon?source=post_page---byline--3d01602a6f33---------------------------------------)
+  
+  Follow
+  
+  4 min read
+  
+  ·
+  
+  Aug 11, 2020
+  
+  196
+  
+  7
+  
+  [Listen](https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2Fplans%3Fdimension%3Dpost_audio_button%26postId%3D3d01602a6f33&operation=register&redirect=https%3A%2F%2Fmedium.com%2Fpareture%2Fsimplest-zsh-prompt-configs-for-git-branch-name-3d01602a6f33&source=---header_actions--3d01602a6f33---------------------post_audio_button------------------)
+  
+  Share
+  
+  Minimal .zshrc examples to include git branch name in prompt
+  
+  ## Goal
+  
+  Configure the zsh shell prompt (default on macOS Catalina) to spit out your git branch name if you are inside a git repository with minimal effort so you can just move on to something else.
+  
+  By _minimal_ I mean some combination of least additional downloads, least dependency on other tools / programs and least configuration while still being simple enough to read, understand and adjust.
+  
+  ## TLWR
+  
+  1. Go to the either ‘Config’ section of this post and copy the code.
+  2. Paste into your `~/.zshrc` file and save.
+  3. Start a new shell or `source ~.zshrc` .
+  4. Done. Forget about it. Move on with whatever you were doing before.
+  
+  ![](https://miro.medium.com/v2/resize:fit:64/0*H90V9qH5I5oBhdru.gif)
+  
+  ## Context
+  
+  I’ve recently started working on a MacBook Pro with macOS Catalina which ships with Z Shell instead of Bash as the default shell.
+  
+  [**Apple replaces bash with zsh as the default shell in macOS Catalina** \\
+  \\
+  **Apple unveiled macOS Catalina yesterday with support for iPad apps and lots of new features, but a big change for…**\\
+  \\
+  www.theverge.com](https://www.theverge.com/2019/6/4/18651872/apple-macos-catalina-zsh-bash-shell-replacement-features?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  Though a lot feels the same as other MacBooks I’ve used there are some little differences which need to be accommodated.
+  
+  1. The config file is `~/.zshrc` instead of `~/.bashrc` . Profiles can also be used (search rc vs profile for context).
+  2. Different commands and options can be used to configure the prompt which are only applicable to one shell. E.g using `setopt` in zsh for options.
+  3. The new OS and point in time can mean new versions of other utilities and dependencies which may be different than before. For example (and this isn’t specific to this OS update) many online examples make use of the function `__git_ps1` which would be available by default when you install git but this has been moved and now needs to be sourced differently\[0\].
+  
+  Note that you are still able to set Bash as the default shell and you can update to a version you want if you wish. I think sticking to zsh is probably the path of least resistance if Apple are now opting for it.
+  
+  ## Config 0
+  
+  ### Output
+  
+  Press enter or click to view image in full size
+  
+  ![](https://miro.medium.com/v2/resize:fit:700/1*W4vodjeP3VlHLsev2Ab6cQ.png)
+  
+  It outputs your current folder and the parent directory along with the git branch and some other basic decoration.
+  
+  ## Get Nick Gibbon’s stories in your inbox
+  
+  Join Medium for free to get updates from this writer.
+  
+  Subscribe
+  
+  Subscribe
+  
+  Remember me for faster sign in
+  
+  This example was informed primarily by this post:
+  
+  [**Git branch in vanilla zsh** \\
+  \\
+  **Recently the thought of having the current branch indicated on my zsh prompt hit me, when I looked up for solutions, I…**\\
+  \\
+  danishpraka.sh](https://danishpraka.sh/2018/07/06/git-branch-zsh.html?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  If you want some more information on common prompt configs like username, host, path and colours then check out this post:
+  
+  [**Moving to zsh, part 6 - Customizing the zsh Prompt** \\
+  \\
+  **Apple has announced that in macOS 10.15 Catalina the default shell will be zsh . In this series, I will document my…**\\
+  \\
+  scriptingosx.com](https://scriptingosx.com/2019/07/moving-to-zsh-06-customizing-the-zsh-prompt/?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  ## Config 1
+  
+  You can also use the zsh `vcs_info`module to obtain the git information. This example will enable the exact same prompt output as Config 0. This is slightly less readable (IMO) but makes it a lot easier to obtain and use various other information from git to use in your prompt if you wish.
+  
+  For an example of some basic additional config options using this module you can learn from this post:
+  
+  [**Customize your ZSH prompt with vcs\_info** \\
+  \\
+  **By Arjan van der Gaag on Dec 23 2011. Tagged Git, ZSH, vcs\_info. You're not cool if you're don't display some Git…**\\
+  \\
+  arjanvandergaag.nl](https://arjanvandergaag.nl/blog/customize-zsh-prompt-with-vcs-info.html?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  You can also read the zsh docs for this\[1\].
+  
+  ## Oh My Zsh
+  
+  [**Oh My Zsh — a delightful & open source framework for Zsh** \\
+  \\
+  **Oh My Zsh is an open source, community-driven framework for managing your zsh configuration. Sounds boring. Let’s try…**\\
+  \\
+  ohmyz.sh](https://ohmyz.sh/?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  This seems to be the right tool for you and I to look into for various jazzy zsh configurations with more features and options with not much additional effort but was outside of the scope of this task.
+  
+  ## Resources
+  
+  \[0\] [https://stackoverflow.com/questions/12870928/mac-bash-git-ps1-command-not-found](https://stackoverflow.com/questions/12870928/mac-bash-git-ps1-command-not-found)
+  
+  \[1\] [http://zsh.sourceforge.net/Doc/Release/User-Contributions.html#Version-Control-Information](http://zsh.sourceforge.net/Doc/Release/User-Contributions.html#Version-Control-Information)
+  
+  A good post series on “moving to zsh”: [https://scriptingosx.com/2019/06/moving-to-zsh/](https://scriptingosx.com/2019/06/moving-to-zsh/)
+  
+  Z Shell Wikipedia: [https://en.wikipedia.org/wiki/Z\_shell](https://en.wikipedia.org/wiki/Z_shell)
+  
+  ZSH Website: [https://www.zsh.org/](https://www.zsh.org/)
+  
+  ZSH Source and docs: [http://zsh.sourceforge.net/](http://zsh.sourceforge.net/)
+  
+  [Bash](https://medium.com/tag/bash?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [Zsh](https://medium.com/tag/zsh?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [Git](https://medium.com/tag/git?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [Programming](https://medium.com/tag/programming?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [Software Development](https://medium.com/tag/software-development?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [![Pareture](https://miro.medium.com/v2/resize:fill:48:48/1*ex0K8qdZ0JGYzmmqYf-uFA.png)](https://medium.com/pareture?source=post_page---post_publication_info--3d01602a6f33---------------------------------------)
+  
+  [![Pareture](https://miro.medium.com/v2/resize:fill:64:64/1*ex0K8qdZ0JGYzmmqYf-uFA.png)](https://medium.com/pareture?source=post_page---post_publication_info--3d01602a6f33---------------------------------------)
+  
+  Follow
+  
+  [**Published in Pareture**](https://medium.com/pareture?source=post_page---post_publication_info--3d01602a6f33---------------------------------------)
+  
+  [82 followers](https://medium.com/pareture/followers?source=post_page---post_publication_info--3d01602a6f33---------------------------------------)
+  
+  · [Last published Jul 13, 2024](https://medium.com/pareture/a-product-mindset-is-a-continual-mindset-ad3c4c37f5ec?source=post_page---post_publication_info--3d01602a6f33---------------------------------------)
+  
+  Mostly modern software engineering related to cloud infrastructure, platforms & tools.
+  
+  Follow
+  
+  [![Nick Gibbon](https://miro.medium.com/v2/resize:fill:48:48/1*g1iF9N_kCVyiJPRQFprlbw.jpeg)](https://medium.com/@njgibbon?source=post_page---post_author_info--3d01602a6f33---------------------------------------)
+  
+  [![Nick Gibbon](https://miro.medium.com/v2/resize:fill:64:64/1*g1iF9N_kCVyiJPRQFprlbw.jpeg)](https://medium.com/@njgibbon?source=post_page---post_author_info--3d01602a6f33---------------------------------------)
+  
+  Follow
+  
+  [**Written by Nick Gibbon**](https://medium.com/@njgibbon?source=post_page---post_author_info--3d01602a6f33---------------------------------------)
+  
+  [412 followers](https://medium.com/@njgibbon/followers?source=post_page---post_author_info--3d01602a6f33---------------------------------------)
+  
+  · [119 following](https://medium.com/@njgibbon/following?source=post_page---post_author_info--3d01602a6f33---------------------------------------)
+  
+  Software reliability engineer & manager in cloud infrastructure, platforms & tools.
+  
+  Follow
+  
+  ## Responses (7)
+  
+  ![](https://miro.medium.com/v2/resize:fill:32:32/1*dmbNkD5D-u45r44go_cf0g.png)
+  
+  Write a response
+  
+  [What are your thoughts?](https://medium.com/m/signin?operation=register&redirect=https%3A%2F%2Fmedium.com%2Fpareture%2Fsimplest-zsh-prompt-configs-for-git-branch-name-3d01602a6f33&source=---post_responses--3d01602a6f33---------------------respond_sidebar------------------)
+  
+  Cancel
+  
+  Respond
+  
+  [![František Gič](https://miro.medium.com/v2/resize:fill:32:32/0*9Zjl706RVkDDnOas)](https://medium.com/@frantisek.gic_28775?source=post_page---post_responses--3d01602a6f33----0-----------------------------------)
+  
+  [František Gič](https://medium.com/@frantisek.gic_28775?source=post_page---post_responses--3d01602a6f33----0-----------------------------------)
+  
+  [Jan 12 (edited)](https://medium.com/@frantisek.gic_28775/the-custom-functions-such-as-parse-git-branch-are-bloating-the-zsh-please-use-oh-my-zsh-or-aa94da91818d?source=post_page---post_responses--3d01602a6f33----0-----------------------------------)
+  
+  ````
+  The custom functions, such as `parse_git_branch` are bloating the zsh. Please use `oh-my-zsh` or
+  
+  ```
+  
+  autoload -Uz vcs_info
+  
+  precmd() { vcs_info }
+  
+  zstyle ':vcs_info:git:*' formats '%b '
+  
+  setopt PROMPT_SUBST
+  
+  PROMPT='%F{green}%*%f %F{blue}%~%f…more
+  ````
+  
+  2
+  
+  Reply
+  
+  [![Siddhant Gupta](https://miro.medium.com/v2/resize:fill:32:32/0*3cgmQyiBjN-ak0CZ.)](https://medium.com/@sidg16?source=post_page---post_responses--3d01602a6f33----1-----------------------------------)
+  
+  [Siddhant Gupta](https://medium.com/@sidg16?source=post_page---post_responses--3d01602a6f33----1-----------------------------------)
+  
+  [Jul 24, 2024](https://medium.com/@sidg16/thanks-for-this-prompt-9b61a9ea7f9c?source=post_page---post_responses--3d01602a6f33----1-----------------------------------)
+  
+  ```
+  Thanks for this prompt !!
+  
+  1 suggestion, for taking branch you can simply do - '$(git branch --show-current 2>/dev/null)'
+  ```
+  
+  3
+  
+  Reply
+  
+  [![Victor Sudakov](https://miro.medium.com/v2/resize:fill:32:32/0*9p7PIO3x5FXV8taL)](https://medium.com/@victor.sudakov?source=post_page---post_responses--3d01602a6f33----2-----------------------------------)
+  
+  [Victor Sudakov](https://medium.com/@victor.sudakov?source=post_page---post_responses--3d01602a6f33----2-----------------------------------)
+  
+  [Jun 4, 2024](https://medium.com/@victor.sudakov/you-dont-have-to-use-awk-just-use-git-symbolic-ref-short-head-1b5bdc57a6a0?source=post_page---post_responses--3d01602a6f33----2-----------------------------------)
+  
+  ```
+  You don't have to use awk, just use `git symbolic-ref --short HEAD`
+  ```
+  
+  Reply
+  
+  See all responses
+  
+  ## More from Nick Gibbon and Pareture
+  
+  [See all from Nick Gibbon](https://medium.com/@njgibbon?source=post_page---author_recirc--3d01602a6f33---------------------------------------)
+  
+  [See all from Pareture](https://medium.com/pareture?source=post_page---author_recirc--3d01602a6f33---------------------------------------)
+  
+  ## Recommended from Medium
+  
+  [See more recommendations](https://medium.com/?source=post_page---read_next_recirc--3d01602a6f33---------------------------------------)
+  
+  [Help](https://help.medium.com/hc/en-us?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [Status](https://status.medium.com/?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [About](https://medium.com/about?autoplay=1&source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [Careers](https://medium.com/jobs-at-medium/work-at-medium-959d1a85284e?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [Press](mailto:pressinquiries@medium.com)
+  
+  [Blog](https://blog.medium.com/?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [Privacy](https://policy.medium.com/medium-privacy-policy-f03bf92035c9?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [Rules](https://policy.medium.com/medium-rules-30e5502c4eb4?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [Terms](https://policy.medium.com/medium-terms-of-service-9db0094a1e0f?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  [Text to speech](https://speechify.com/medium?source=post_page-----3d01602a6f33---------------------------------------)
+  
+  reCAPTCHA
+  
+  Recaptcha requires verification.
+  
+  protected by **reCAPTCHA**
+  --- End Content ---

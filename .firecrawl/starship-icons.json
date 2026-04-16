@@ -1,0 +1,1670 @@
+Nerd Font Symbols Preset - Starship
+  URL: https://starship.rs/presets/nerd-font
+  This preset changes the symbols for each module to use Nerd Font symbols. Screenshot of Nerd Font Symbols preset. Prerequisites ​. A Nerd Font installed and ...
+
+  --- Content ---
+  [Skip to content](https://starship.rs/presets/nerd-font#VPContent)
+  
+  Return to top
+  
+  [Return to Presets](https://starship.rs/presets/#nerd-font-symbols)
+  
+  # Nerd Font Symbols Preset [​](https://starship.rs/presets/nerd-font\#nerd-font-symbols-preset)
+  
+  This preset changes the symbols for each module to use Nerd Font symbols.
+  
+  ![Screenshot of Nerd Font Symbols preset](https://starship.rs/presets/img/nerd-font-symbols.png)
+  
+  ### Prerequisites [​](https://starship.rs/presets/nerd-font\#prerequisites)
+  
+  - A [Nerd Font](https://www.nerdfonts.com/) installed and enabled in your terminal (the example uses Fira Code Nerd Font)
+  
+  ### Configuration [​](https://starship.rs/presets/nerd-font\#configuration)
+  
+  sh
+  
+  ```
+  starship preset nerd-font-symbols -o ~/.config/starship.toml
+  ```
+  
+  [Click to download TOML](https://starship.rs/presets/toml/nerd-font-symbols.toml)
+  
+  toml
+  
+  ```
+  "$schema" = 'https://starship.rs/config-schema.json'
+  
+  [aws]
+  symbol = " "
+  
+  [buf]
+  symbol = " "
+  
+  [bun]
+  symbol = " "
+  
+  [c]
+  symbol = " "
+  
+  [cpp]
+  symbol = " "
+  
+  [cmake]
+  symbol = " "
+  
+  [conda]
+  symbol = " "
+  
+  [crystal]
+  symbol = " "
+  
+  [dart]
+  symbol = " "
+  
+  [deno]
+  symbol = " "
+  
+  [directory]
+  read_only = " 󰌾"
+  
+  [docker_context]
+  symbol = " "
+  
+  [elixir]
+  symbol = " "
+  
+  [elm]
+  symbol = " "
+  
+  [fennel]
+  symbol = " "
+  
+  [fortran]
+  symbol = " "
+  
+  [fossil_branch]
+  symbol = " "
+  
+  [gcloud]
+  symbol = " "
+  
+  [git_branch]
+  symbol = " "
+  
+  [git_commit]
+  tag_symbol = '  '
+  
+  [golang]
+  symbol = " "
+  
+  [gradle]
+  symbol = " "
+  
+  [guix_shell]
+  symbol = " "
+  
+  [haskell]
+  symbol = " "
+  
+  [haxe]
+  symbol = " "
+  
+  [hg_branch]
+  symbol = " "
+  
+  [hostname]
+  ssh_symbol = " "
+  
+  [java]
+  symbol = " "
+  
+  [julia]
+  symbol = " "
+  
+  [kotlin]
+  symbol = " "
+  
+  [lua]
+  symbol = " "
+  
+  [memory_usage]
+  symbol = "󰍛 "
+  
+  [meson]
+  symbol = "󰔷 "
+  
+  [nim]
+  symbol = "󰆥 "
+  
+  [nix_shell]
+  symbol = " "
+  
+  [nodejs]
+  symbol = " "
+  
+  [ocaml]
+  symbol = " "
+  
+  [os.symbols]
+  Alpaquita = " "
+  Alpine = " "
+  AlmaLinux = " "
+  Amazon = " "
+  Android = " "
+  AOSC = " "
+  Arch = " "
+  Artix = " "
+  CachyOS = " "
+  CentOS = " "
+  Debian = " "
+  DragonFly = " "
+  Elementary = " "
+  Emscripten = " "
+  EndeavourOS = " "
+  Fedora = " "
+  FreeBSD = " "
+  Garuda = "󰛓 "
+  Gentoo = " "
+  HardenedBSD = "󰞌 "
+  Illumos = "󰈸 "
+  Ios = "󰀷 "
+  Kali = " "
+  Linux = " "
+  Mabox = " "
+  Macos = " "
+  Manjaro = " "
+  Mariner = " "
+  MidnightBSD = " "
+  Mint = " "
+  NetBSD = " "
+  NixOS = " "
+  Nobara = " "
+  OpenBSD = "󰈺 "
+  openSUSE = " "
+  OracleLinux = "󰌷 "
+  Pop = " "
+  Raspbian = " "
+  Redhat = " "
+  RedHatEnterprise = " "
+  RockyLinux = " "
+  Redox = "󰀘 "
+  Solus = "󰠳 "
+  SUSE = " "
+  Ubuntu = " "
+  Unknown = " "
+  Void = " "
+  Windows = "󰍲 "
+  Zorin = " "
+  
+  [package]
+  symbol = "󰏗 "
+  
+  [perl]
+  symbol = " "
+  
+  [php]
+  symbol = " "
+  
+  [pijul_channel]
+  symbol = " "
+  
+  [pixi]
+  symbol = "󰏗 "
+  
+  [python]
+  symbol = " "
+  
+  [rlang]
+  symbol = "󰟔 "
+  
+  [ruby]
+  symbol = " "
+  
+  [rust]
+  symbol = "󱘗 "
+  
+  [scala]
+  symbol = " "
+  
+  [status]
+  symbol = " "
+  
+  [swift]
+  symbol = " "
+  
+  [xmake]
+  symbol = " "
+  
+  [zig]
+  symbol = " "
+  ```
+  --- End Content ---
+
+starship/Cargo.toml at master - GitHub
+  URL: https://github.com/starship/starship/blob/master/Cargo.toml
+  The minimal, blazing-fast, and infinitely customizable prompt for any shell! - starship/Cargo.toml at master · starship/starship.
+  Category: github
+
+  --- Content ---
+  [Skip to content](https://github.com/starship/starship/blob/master/Cargo.toml#start-of-content)
+  
+  You signed in with another tab or window. [Reload](https://github.com/starship/starship/blob/master/Cargo.toml) to refresh your session.You signed out in another tab or window. [Reload](https://github.com/starship/starship/blob/master/Cargo.toml) to refresh your session.You switched accounts on another tab or window. [Reload](https://github.com/starship/starship/blob/master/Cargo.toml) to refresh your session.Dismiss alert
+  
+  {{ message }}
+  
+  [starship](https://github.com/starship)/ **[starship](https://github.com/starship/starship)** Public
+  
+  - Sponsor
+  
+  
+  
+  
+  
+  
+  
+  # Sponsor starship/starship
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  ##### GitHub Sponsors
+  
+  [Learn more about Sponsors](https://github.com/sponsors)
+  
+  
+  
+  
+  
+  
+  
+  [![@starship](https://avatars.githubusercontent.com/u/49654870?s=80&v=4)](https://github.com/starship)
+  
+  
+  
+  [starship](https://github.com/starship)
+  
+  
+  
+  [starship](https://github.com/starship)
+  
+  
+  
+  [Sponsor](https://github.com/sponsors/starship)
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  ##### External links
+  
+  
+  
+  
+  
+  ![open_collective](https://github.githubassets.com/assets/open_collective-0a706523753d.svg)
+  
+  
+  
+  [opencollective.com/ **starship**](https://opencollective.com/starship)
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  [Learn more about funding links in repositories](https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository).
+  
+  
+  
+  
+  [Report abuse](https://github.com/contact/report-abuse?report=starship%2Fstarship+%28Repository+Funding+Links%29)
+  
+  - [Notifications](https://github.com/login?return_to=%2Fstarship%2Fstarship) You must be signed in to change notification settings
+  - [Fork\\
+  2.5k](https://github.com/login?return_to=%2Fstarship%2Fstarship)
+  - [Star\\
+  56.4k](https://github.com/login?return_to=%2Fstarship%2Fstarship)
+  
+  
+  ## Collapse file tree
+  
+  ## Files
+  
+  master
+  
+  Search this repository(forward slash)` forward slash/`
+  
+  /
+  
+  # Cargo.toml
+  
+  Copy path
+  
+  Blame
+  
+  More file actions
+  
+  Blame
+  
+  More file actions
+  
+  ## Latest commit
+  
+  [![renovate[bot]](https://avatars.githubusercontent.com/in/2740?v=4&size=40)](https://github.com/apps/renovate)[renovate\[bot\]](https://github.com/starship/starship/commits?author=renovate%5Bbot%5D)
+  
+  [build(deps): update rust crate notify-rust to 4.15.0](https://github.com/starship/starship/commit/d96e49c24f938c8cd034950e6fee3bc86bef5e2e)
+  
+  failure
+  
+  2 days agoApr 14, 2026
+  
+  [d96e49c](https://github.com/starship/starship/commit/d96e49c24f938c8cd034950e6fee3bc86bef5e2e) · 2 days agoApr 14, 2026
+  
+  ## History
+  
+  [History](https://github.com/starship/starship/commits/master/Cargo.toml)
+  
+  Open commit details
+  
+  [View commit history for this file.](https://github.com/starship/starship/commits/master/Cargo.toml) History
+  
+  135 lines (122 loc) · 4.07 KB
+  
+  /
+  
+  # Cargo.toml
+  
+  Top
+  
+  ## File metadata and controls
+  
+  - Code
+  
+  - Blame
+  
+  
+  135 lines (122 loc) · 4.07 KB
+  
+  [Raw](https://github.com/starship/starship/raw/refs/heads/master/Cargo.toml)
+  
+  Copy raw file
+  
+  Download raw file
+  
+  Open symbols panel
+  
+  Edit and raw actions
+  
+  1
+  
+  2
+  
+  3
+  
+  4
+  
+  5
+  
+  6
+  
+  7
+  
+  8
+  
+  9
+  
+  10
+  
+  11
+  
+  12
+  
+  13
+  
+  14
+  
+  15
+  
+  16
+  
+  17
+  
+  18
+  
+  19
+  
+  20
+  
+  21
+  
+  22
+  
+  23
+  
+  24
+  
+  25
+  
+  26
+  
+  27
+  
+  28
+  
+  29
+  
+  30
+  
+  31
+  
+  32
+  
+  33
+  
+  34
+  
+  35
+  
+  36
+  
+  37
+  
+  38
+  
+  39
+  
+  40
+  
+  41
+  
+  42
+  
+  43
+  
+  44
+  
+  45
+  
+  46
+  
+  47
+  
+  48
+  
+  49
+  
+  50
+  
+  51
+  
+  52
+  
+  53
+  
+  54
+  
+  55
+  
+  56
+  
+  57
+  
+  58
+  
+  59
+  
+  60
+  
+  61
+  
+  62
+  
+  63
+  
+  64
+  
+  65
+  
+  66
+  
+  67
+  
+  68
+  
+  69
+  
+  70
+  
+  71
+  
+  72
+  
+  73
+  
+  74
+  
+  75
+  
+  76
+  
+  77
+  
+  78
+  
+  79
+  
+  80
+  
+  81
+  
+  82
+  
+  83
+  
+  84
+  
+  85
+  
+  86
+  
+  87
+  
+  88
+  
+  89
+  
+  90
+  
+  91
+  
+  92
+  
+  93
+  
+  94
+  
+  95
+  
+  96
+  
+  97
+  
+  98
+  
+  99
+  
+  100
+  
+  101
+  
+  102
+  
+  103
+  
+  104
+  
+  105
+  
+  106
+  
+  107
+  
+  108
+  
+  109
+  
+  110
+  
+  111
+  
+  112
+  
+  113
+  
+  114
+  
+  115
+  
+  116
+  
+  117
+  
+  118
+  
+  119
+  
+  120
+  
+  121
+  
+  122
+  
+  123
+  
+  124
+  
+  125
+  
+  126
+  
+  127
+  
+  128
+  
+  129
+  
+  130
+  
+  131
+  
+  132
+  
+  133
+  
+  134
+  
+  135
+  
+  \[package\]
+  
+  name = "starship"
+  
+  version = "1.24.2"
+  
+  authors = \["Starship Contributors"\]
+  
+  build = "build.rs"
+  
+  categories = \["command-line-utilities"\]
+  
+  documentation = "https://starship.rs/guide/"
+  
+  edition = "2024"
+  
+  homepage = "https://starship.rs"
+  
+  # Keep \`/\` in front of \`README.md\` to exclude localized readmes
+  
+  include = \[\
+  \
+  "src/\*\*/\*",\
+  \
+  "/starship.exe.manifest",\
+  \
+  "media/icon.ico",\
+  \
+  "build.rs",\
+  \
+  "LICENSE",\
+  \
+  "/README.md",\
+  \
+  "docs/public/presets/toml/",\
+  \
+  ".github/config-schema.json",\
+  \
+  \]
+  
+  keywords = \["prompt", "shell", "bash", "fish", "zsh"\]
+  
+  license = "ISC"
+  
+  readme = "README.md"
+  
+  repository = "https://github.com/starship/starship"
+  
+  # Note: MSRV is only intended as a hint, and only the latest version is officially supported in starship.
+  
+  rust-version = "1.90"
+  
+  description = """
+  
+  The minimal, blazing-fast, and infinitely customizable prompt for any shell! ☄🌌️
+  
+  """
+  
+  \[features\]
+  
+  default = \["battery", "notify"\]
+  
+  battery = \["starship-battery"\]
+  
+  config-schema = \["schemars"\]
+  
+  notify = \["notify-rust"\]
+  
+  \[dependencies\]
+  
+  chrono = { version = "0.4.44", default-features = false, features = \["clock", "std", "wasmbind"\] }
+  
+  clap = { version = "4.6.0", features = \["derive", "cargo", "unicode"\] }
+  
+  clap\_complete = "4.6.2"
+  
+  clap\_complete\_nushell = "4.6.0"
+  
+  dirs = "6.0.0"
+  
+  dunce = "1.0.5"
+  
+  # default feature restriction addresses https://github.com/starship/starship/issues/4251
+  
+  gix = { version = "0.81.0", default-features = false, features = \["max-performance-safe", "revision", "zlib-rs", "status", "sha1"\] }
+  
+  indexmap = { version = "2.14.0", features = \["serde"\] }
+  
+  jsonc-parser = { version = "0.32.3", features = \["serde"\] }
+  
+  log = { version = "0.4.29", features = \["std"\] }
+  
+  # notify-rust is optional (on by default) because the crate doesn't currently build for darwin with nix
+  
+  # see: https://github.com/NixOS/nixpkgs/issues/160876
+  
+  notify-rust = { version = "4.15.0", optional = true }
+  
+  nu-ansi-term = "0.50.3"
+  
+  open = "5.3.3"
+  
+  # update os module config and tests when upgrading os\_info
+  
+  os\_info = { version = "3.14.0", features = \["schemars"\] }
+  
+  # for efficient shared state between \`git\_status\` and \`git\_metrics\`, allowing parallel printing. This is for poison-free locks.
+  
+  parking\_lot = "0.12.5"
+  
+  path-slash = "0.2.1"
+  
+  pest = "2.8.6"
+  
+  pest\_derive = "2.8.6"
+  
+  process\_control = "5.2.0"
+  
+  quick-xml = "0.39.2"
+  
+  rand = "0.10.1"
+  
+  rayon = "1.12.0"
+  
+  regex = { version = "1.12.3", default-features = false, features = \["perf", "std", "unicode-perl"\] }
+  
+  rust-ini = "0.21.3"
+  
+  semver = "1.0.28"
+  
+  serde = { version = "1.0.228", features = \["derive"\] }
+  
+  serde\_json = "1.0.149"
+  
+  sha1 = "0.11.0"
+  
+  shadow-rs = { version = "1.7.1", default-features = false, features = \["build"\] }
+  
+  # battery is optional (on by default) because the crate doesn't currently build for Termux
+  
+  # see: https://github.com/svartalf/rust-battery/issues/33
+  
+  starship-battery = { version = "0.11.0", optional = true }
+  
+  strsim = "0.11.1"
+  
+  systemstat = "=0.2.6"
+  
+  terminal\_size = "0.4.4"
+  
+  toml = { version = "1.1.2", features = \["preserve\_order"\] }
+  
+  toml\_edit = "0.25.11"
+  
+  unicode-segmentation = "1.13.2"
+  
+  unicode-width = "0.2.2"
+  
+  urlencoding = "2.1.3"
+  
+  versions = "7.0.0"
+  
+  which = "8.0.2"
+  
+  whoami = { version = "2.1.1", default-features = false, features = \["std", "wasi-wasite"\] }
+  
+  yaml-rust2 = "0.11.0"
+  
+  guess\_host\_triple = "0.1.5"
+  
+  home = "0.5.12"
+  
+  shell-words = "1.1.1"
+  
+  \[dependencies.schemars\]
+  
+  version = "1.2.1"
+  
+  optional = true
+  
+  features = \["preserve\_order", "indexmap2"\]
+  
+  \[target.'cfg(windows)'.dependencies\]
+  
+  deelevate = "0.2.0"
+  
+  \[target.'cfg(windows)'.dependencies.windows\]
+  
+  version = "0.62.2"
+  
+  features = \[\
+  \
+  "Win32\_Foundation",\
+  \
+  "Win32\_UI\_Shell",\
+  \
+  "Win32\_Security",\
+  \
+  "Win32\_System\_Threading",\
+  \
+  "Win32\_Storage\_FileSystem",\
+  \
+  \]
+  
+  \[target.'cfg(not(windows))'.dependencies\]
+  
+  nix = { version = "0.31.2", default-features = false, features = \["feature", "fs", "user"\] }
+  
+  \[build-dependencies\]
+  
+  shadow-rs = { version = "1.7.1", default-features = false, features = \["build"\] }
+  
+  dunce = "1.0.5"
+  
+  \[target.'cfg(windows)'.build-dependencies\]
+  
+  winres = "0.1.12"
+  
+  \[dev-dependencies\]
+  
+  mockall = "0.14.0"
+  
+  tempfile = "3.27.0"
+  
+  \[profile.release\]
+  
+  codegen-units = 1
+  
+  lto = true
+  
+  strip = true
+  
+  \[profile.bench\]
+  
+  codegen-units = 16
+  
+  lto = "thin"
+  
+  strip = false
+  
+  \[lints.clippy\]
+  
+  use\_self = "warn"
+  
+  You can’t perform that action at this time.
+  --- End Content ---
+
+nerd_font - crates.io: Rust Package Registry
+  URL: https://crates.io/crates/nerd_font
+  Run the following Cargo command in your project directory: cargo add nerd_font. Or add the following line to your Cargo.toml: nerd_font ...
+
+  --- Content ---
+  # nerd\_fontv0.2.8
+  
+  Enumerated contents of the JetBrainsMono Nerd Font
+  
+  
+  - [#font](https://crates.io/keywords/font)
+  - [#fonts](https://crates.io/keywords/fonts)
+  - [#macros](https://crates.io/keywords/macros)
+  - [#svg](https://crates.io/keywords/svg)
+  - [#text](https://crates.io/keywords/text)
+  
+  # `JetbrainsMono Nerd Font`
+  
+  [![Crates.io](https://img.shields.io/crates/v/nerd_font.svg)](https://crates.io/crates/nerd_font/)[![Build Status](https://github.com/rscarson/font-map/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/rscarson/font-map/actions?query=branch%3Amaster)[![docs.rs](https://img.shields.io/docsrs/nerd_font)](https://docs.rs/nerd_font/latest/)[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/rscarson/nerd_font/master/LICENSE)
+  
+  This crate provides an enum of all the glyphs in the `JetbrainsMono Nerd Font`.
+  
+  Additionally, it provides a way to load the font, and QOL features for using the font in iced.
+  
+  In addition - you can hover over the icons in your IDE to see a preview of the icon!
+  
+  See [https://www.nerdfonts.com/](https://www.nerdfonts.com/) for more information
+  
+  **I am not affiliated with Nerd Fonts, nor do I have any rights to the `JetbrainsMono Nerd Font`.**
+  
+  This crate is published with a copy of the font, and its license, as allowed by the license.
+  
+  See \[`NerdFont`\] or \[`categories`\] for the list of available icons, including their names, codepoints and a preview image.
+  
+  * * *
+  
+  The individual glyphs are in seperate enums inside of the \[`categories`\] module:
+  
+  ```rust
+  use nerd_font::categories;
+  
+  let _ = categories::Dev::Android;
+  let _ = categories::Fa::ArrowLeft;
+  ```
+  
+  There is also an enum encapsulating all the glyphs, \[`NerdFont`\], which can be converted to and from the individual enums:
+  
+  ```rust
+  use nerd_font::{NerdFont, categories::Dev};
+  let _: NerdFont = Dev::Android.into();
+  ```
+  
+  * * *
+  
+  Each glyph contains the following information:
+  
+  - Unicode codepoint: e.g. `Dev::Android as u32`
+  - Postfix name: e.g. `Dev::Android.name()`
+  - Glyph preview image, visible in the documentation, and by hovering over the glyphs in your IDE!
+  
+  You can also get the actual char from the enum, with `char::from(Dev::Android)`, or `Dev::Android.to_string()`
+  
+  * * *
+  
+  If you use `iced` there are some QOL features built-in:
+  
+  \*\*NOTE: \*\* you will need to activate the `iced` crate-level feature to use these!
+  
+  - \[`NerdFont::FONT_BYTES`\] is the raw bytes of the font, for loading into iced
+  - \[`IcedExt`\] provides the helper functions for using the font in iced
+  - `NerdFont` also implements `Into<iced::Element>`, which will use the default font size
+  
+  ```rust
+  use nerd_font::{IcedExt, categories::Dev};
+  
+  // A text widget configured to use the icon font, with the selected glyph, and a font size of 24
+  let text_widget = Dev::Android.into_text(24);
+  ```
+  
+  You will additionally need to load the font, by calling `.font(NerdFont::FONT_BYTES)` on your `iced::Application`.
+  
+  ## Crate Features
+  
+  #### `iced`
+  
+  Default: Off
+  
+  Provides some QOL features for using the font in iced, including a font definition, and conversion to an iced Text widget.
+  
+  ## Metadata
+  
+  about 1 year ago
+  
+  
+  2021
+  edition
+  
+  
+  
+  [MIT](https://choosealicense.com/licenses/mit)
+  
+  62
+  SLoC
+  
+  
+  1.28 MiB
+  
+  
+  pkg:cargo/nerd\_font@0.2.8[Learn more](https://github.com/package-url/purl-spec)
+  
+  ## Install
+  
+  Run the following Cargo command in your project directory:
+  
+  cargo add nerd\_font
+  
+  Or add the following line to your Cargo.toml:
+  
+  nerd\_font = "0.2.8"
+  
+  ## Documentation
+  
+  [docs.rs/nerd\_font/0.2.8](https://docs.rs/nerd_font/0.2.8)
+  
+  ## Browse source
+  
+  [docs.rs/crate/nerd\_font/0.2.8/source](https://docs.rs/crate/nerd_font/0.2.8/source/)
+  
+  ## Repository
+  
+  [github.com/rscarson/font-map](https://github.com/rscarson/font-map)
+  
+  ## Owners
+  
+  - [![Richard Carson (rscarson)](https://avatars.githubusercontent.com/u/1036584?v=4&s=64)Richard Carson](https://crates.io/users/rscarson)
+  
+  ## Categories
+  
+  - [API bindings](https://crates.io/categories/api-bindings)
+  - [Encoding](https://crates.io/categories/encoding)
+  - [GUI](https://crates.io/categories/gui)
+  - [Text processing](https://crates.io/categories/text-processing)
+  
+  [Report crate](https://crates.io/support?crate=nerd_font&inquire=crate-violation)
+  
+  ### Stats Overview
+  
+  4,885Downloads all time
+  
+  6Versions published
+  
+  #### Downloads over the last 90 days
+  
+  Display as
+  
+  Stacked
+  
+  
+  - Stacked
+  
+  - Unstacked
+  --- End Content ---
+
+Starship
+  URL: https://mvolkmann.github.io/blog/starship/?v=1.1.1
+  One way to install Starship is to install Rust and enter cargo install starship . ... To see available icons, browse Nerd Fonts Cheatsheet. The prompt ...
+
+  --- Content ---
+  Print
+  
+  ## Starship
+  
+  ## Overview
+  
+  [Starship](https://starship.rs/?v=1.1.1)
+  is a highly customizable tool for customizing shell prompts.
+  It works in nearly all shells including Bash, Fish, Nushell, Powershell, and Zsh.
+  This removes the need to customize the prompt in shell-specific ways.
+  It can be configured in one place for all shells,
+  which is great for users that utilize multiple shells.
+  
+  Starship was inspired by [spaceship-prompt](https://github.com/denysdovhan/spaceship-prompt?v=1.1.1)
+  which has similar functionality, but only for Zsh.
+  
+  Starship is implemented in Rust, so it is very fast.
+  
+  ## Installing
+  
+  One way to install Starship is to install Rust
+  and enter `cargo install starship`.
+  It can also be installed via a `curl` command,
+  using Scoop in Windows, or using Homebrew in macOS.
+  For more details on installation, see [Installation](https://starship.rs/guide/#%F0%9F%9A%80-installation?v=1.1.1).
+  
+  Starship uses “Nerd Font” characters, so a font must be installed.
+  Browse [nerdfonts.com](https://www.nerdfonts.com/?v=1.1.1)
+  and download a font such as “FiraCode Nerd Font”.
+  To install the font in macOS, double-click the file
+  `Fira Code Regular Nerd Font Complete.ttf`
+  and press the “Install Font” button.
+  
+  Terminal apps must then be configured to use the font.
+  
+  - **macOS Terminal app**
+  
+    Select Preferences…Profiles…Text,
+    press the “Change…” button in the “Font” section to open the “Fonts” dialog,
+    and select “FiraCodeNerdFont”.
+  
+  - **macOS iTerm2 app**
+  
+    Select Preferences…Profiles…Text and
+    select “Fira Code Nerd Font” from the Font drop-down.
+    Also consider checking the “Use ligatures” checkbox.
+    A new terminal window must be opened for the changes to take effect.
+  
+  - **VS Code**
+  
+    Select Preferences…Settings, enter “Editor: FontFamily”,
+    and enter “Fira Code Nerd Font”.
+  
+  
+  ## Enabling
+  
+  To enable the use of Starship in each shell:
+  
+  - for Bash, edit `.bashrc` and add
+  
+    `eval "$(starship init bash)"`
+  
+  - for Fish, edit `.config/fish/config.fish` and add
+  
+    `starship init fish | source`
+  
+  - for Nushell:
+  
+    Enter the following commands:
+  
+  
+    ```bash
+    mkdir ~/.cache/starship
+    starship init nu | save ~/.cache/starship/init.nu
+    ```
+  
+  
+    Edit the `config.nu` file at `$nu.config-path`
+    and add the following lines at the bottom:
+  
+  
+    ```text
+    starship init nu | save ~/.cache/starship/init.nu
+    source ~/.cache/starship/init.nu
+    ```
+  
+  
+    `prompt = "starship prompt"`
+  
+  - for Powershell, edit `Microsoft.PowerShell_profile.ps1` and add
+  
+    `Invoke-Expression (&starship init powershell)`
+  
+  - for Zsh, edit `.zshrc` and add
+  
+    `eval "$(starship init zsh)"`
+  
+  - for other shells, see [Getting Started](https://starship.rs/guide/#%F0%9F%9A%80-installation?v=1.1.1)
+  
+  
+  ## Configuring
+  
+  To configure Starship, create the file `~/.config/starship.toml`.
+  Changes to this file take effect immediately.
+  
+  The example configuration below results in the following prompts
+  which begin by indicating the current shell: bash, fish, or Nushell.
+  
+  ![Starship bash prompt](https://mvolkmann.github.io/blog/assets/starship-bash-prompt.png?v=1.1.1)
+  
+  ![Starship fish prompt](https://mvolkmann.github.io/blog/assets/starship-fish-prompt.png?v=1.1.1)
+  
+  ![Starship Nushell prompt](https://mvolkmann.github.io/blog/assets/starship-nu-prompt.png?v=1.1.1)
+  
+  Many string values in the configuration file can contain the syntax
+  `[value](style)` where `value` is literal text and variable values to display,
+  and `style` specifies a color and style.
+  
+  A color specifier can be one of the following:
+  
+  - red, green, blue, yellow, purple, cyan, black, or white
+  - `#` followed by a six-digit hexadecimal number
+    (ex. cornflower blue is #6495ed)
+  - number between 0-255 to specify an 8-bit [ANSI color code](https://i.stack.imgur.com/KTSQa.png?v=1.1.1)
+    (ex. orange is 208)
+  
+  Style prefixes include:
+  
+  - `fg:` (default) or `bg:` with no space after the colon
+    to distinguish between foreground and background styles
+    (ex. `fg:#6495ed bg:yellow`)
+  - `bold`, `italic`, or `underline`
+  - `bright` or `dimmed`
+  
+  For example:
+  
+  ```toml
+  format = "$git_branch$git_status$directory$character"
+  # Nushell controls the color of commands typed after the prompt.
+  
+  # Displays text, typically a single character,
+  # based on the status of the previous command.
+  [character]
+  success_symbol = "[▶](bold green)" # normal prompt
+  error_symbol = "[✗](bold red)" # used if previous command failed
+  # error_symbol does not work in Nushell
+  
+  # Displays current directory.
+  [directory]
+  format = "[$path]($style)"
+  style = "yellow"
+  truncate_to_repo = false
+  truncation_length = 3 # parent directories to show; default is 3
+  truncation_symbol = "…/"
+  
+  # Displays current Git branch when in a directory of a Git repository.
+  [git_branch]
+  format = "[$symbol](green)[$branch]($style)"
+  style = "italic green"
+  symbol = ""
+  
+  # Displays status of Git repository when in a directory of a Git repository.
+  [git_status]
+  format = "[$all_status$ahead_behind]($style)"
+  ahead = "⇡ $count "
+  behind = "⇣ $count "
+  deleted = "🗑 $count "
+  diverged = " $count "
+  stashed = "📦 $count "
+  modified = "פֿ $count "
+  staged = '[ $count ](green)'
+  renamed = " $count "
+  untracked = "🤷 ‍$count "
+  style = "bold red"
+  ```
+  
+  The top `format` setting that defines the prompt
+  can contain newline characters for a multi-line prompt.
+  Alternatively it can be delimited by triple quotes (single or double)
+  to actually specify a multi-line prompt with multiple lines.
+  For example:
+  
+  ```toml
+  format = '''
+  $directory $git_branch$git_status
+  $custom$character'''
+  ```
+  
+  The prompt can contain icons.
+  To see available icons, browse [Nerd Fonts Cheatsheet](https://www.nerdfonts.com/cheat-sheet?v=1.1.1).
+  
+  The prompt defined above displays an icon at the beginning
+  to indicate the current shell.
+  It uses the environment variable `SHELL_ICON` which
+  must be defined in the configuration script of each shell.
+  For example:
+  
+  - For Bash, edit `.bash_profile` and add `export SHELL_ICON=🚀`.
+  - For Fish, edit `~/.config/fish/config.fish` and add `set -x SHELL_ICON 🐠`.
+  - For Nushell, edit `$(config path)` and add `SHELL_ICON = "🦀"`
+    in the `[env]` section.
+  
+  ## Custom Commands
+  
+  Custom commands display the output of a given shell command.
+  To define a custom command, add a `[command.{name}]` section in `starship.toml`.
+  For example:
+  
+  ```toml
+  # Indicates when in bash shell.
+  [custom.bash]
+  command = "echo 🚀"
+  when = '[ "$STARSHIP_SHELL" == "bash" ]'
+  
+  # Indicates when in fish shell.
+  [custom.fish]
+  command = "echo 🐠"
+  when = 'test "$STARSHIP_SHELL" = "fish"'
+  
+  # Indicates when in Nushell.
+  [custom.nu]
+  command = "echo 🦀"
+  shell = 'bash'
+  when = '[ "$STARSHIP_SHELL" == "" ]' # not set in Nushell
+  ```
+  
+  The `command` specified for each of these is only executed
+  if the `when` command returns `0` indicating success.
+  The `shell` option specifies the shell to use when executing the `when` command
+  and defaults to the current shell.
+  To run all the custom commands in the order they are defined,
+  add `$command` to the prompt string.
+  To run a specific custom command, add `${custom.name}` to the prompt string
+  where `name` is the name of a custom command.
+  
+  For more details on configuration, see [Configuration](https://starship.rs/config/#prompt?v=1.1.1).
+  --- End Content ---
+
+I had to edit the starship.toml file myself to include the correct icons ...
+  URL: https://dev.to/jandiee/comment/25p4e
+  Open the detail of the Nerd Font - Font Book -> My Fonts -> double-click Nerd Font, find the appropriate icons, copy them and paste them into the .toml file.
+
+  --- Content ---
+  ## [Replies for:Hi Jessica, \ \ Thanks for the step-by-step guide :D \ \ I'm having an issue though. Don't know why icons are not showing. The font is correctly instal...](https://dev.to/sandaun/comment/25p1o)
+  
+  CollapseExpand
+  
+  [![jandiee profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F1059491%2F31c81d34-2b65-430a-9c41-e6d45d108bde.png)](https://dev.to/jandiee)
+  
+  [Jandiee](https://dev.to/jandiee)
+  
+  Jandiee
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F1059491%2F31c81d34-2b65-430a-9c41-e6d45d108bde.png)\\
+  Jandiee](https://dev.to/jandiee)
+  
+  Follow
+  
+  - Joined
+  
+  
+  Apr 5, 2023
+  
+  
+  • [Apr 5 '23• Edited on Apr 5• Edited](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-25p4e)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-25p4e)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/jandiee/comment/25p4e)
+  
+  I had to edit the _starship.toml_ file myself to include the correct icons. When copy pasting the content from the github, it pasted the symbols as some kind of unknown thingy.
+  
+  Open the detail of the Nerd Font - Font Book -> My Fonts -> double-click Nerd Font, find the appropriate icons, copy them and paste them into the _.toml_ file. You can edit the "format" variables in the appropriate sections. Specifically I had to manually edit the Apple logo, time icon, cmd duration icon and folder icon. Other icons were fine :)
+  
+  CollapseExpand
+  
+  [![sandaun profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F1059367%2Fd52be31a-a690-4c7c-901c-2e4ed82ab663.jpeg)](https://dev.to/sandaun)
+  
+  [Oriol Carbó](https://dev.to/sandaun)
+  
+  Oriol Carbó
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F1059367%2Fd52be31a-a690-4c7c-901c-2e4ed82ab663.jpeg)\\
+  Oriol Carbó](https://dev.to/sandaun)
+  
+  Follow
+  
+  - Joined
+  
+  
+  Apr 5, 2023
+  
+  
+  • [Apr 5 '23](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-25p4i)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-25p4i)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/sandaun/comment/25p4i)
+  
+  That's true! I just noticed now. Thanks a lot!
+  
+  CollapseExpand
+  
+  [![siriguppa_aditya_c6bf1267 profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F1060024%2F628ea3f3-7bbd-4880-bedf-5a0438041cb0.png)](https://dev.to/siriguppa_aditya_c6bf1267)
+  
+  [Siriguppa Aditya](https://dev.to/siriguppa_aditya_c6bf1267)
+  
+  Siriguppa Aditya
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F1060024%2F628ea3f3-7bbd-4880-bedf-5a0438041cb0.png)\\
+  Siriguppa Aditya](https://dev.to/siriguppa_aditya_c6bf1267)
+  
+  Follow
+  
+  - Joined
+  
+  
+  Apr 6, 2023
+  
+  
+  • [Apr 6 '23](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-25pei)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-25pei)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/siriguppa_aditya_c6bf1267/comment/25pei)
+  
+  Even I am facing the same issue can somebody post the screenshot of toml file so that it would be easy to paste which icons
+  
+  [![stephencatano profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F1122938%2F3a7d6c0b-575a-4b24-ab94-48794c6e4fe8.jpeg)](https://dev.to/stephencatano)
+  
+  [Stephen Cataño](https://dev.to/stephencatano)
+  
+  Stephen Cataño
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F1122938%2F3a7d6c0b-575a-4b24-ab94-48794c6e4fe8.jpeg)\\
+  Stephen Cataño](https://dev.to/stephencatano)
+  
+  Follow
+  
+  - Location
+  
+  
+  
+  Colombia
+  
+  
+  - Work
+  
+  
+  
+  Software Engineer at Rappi
+  
+  
+  - Joined
+  
+  
+  Jul 19, 2023
+  
+  
+  • [Jul 19 '23• Edited on Jul 19• Edited](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-2831h)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-2831h)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/stephencatano/comment/2831h)
+  
+  Sure!
+  
+  ![Image description](https://res.cloudinary.com/practicaldev/image/fetch/s--jXecEqQe--/c_limit%2Cf_auto%2Cfl_progressive%2Cq_auto%2Cw_800/https://dev-to-uploads.s3.amazonaws.com/uploads/articles/kgvxcccm5qa11ln39leu.png)
+  
+  I can't identify where appears the CMD Duration Icon, but I put a Tux.
+  
+  [![sajmo profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F814064%2Ff59477eb-365e-4c9e-905b-96d5bc1a5aea.jpg)](https://dev.to/sajmo)
+  
+  [Saj S](https://dev.to/sajmo)
+  
+  Saj S
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F814064%2Ff59477eb-365e-4c9e-905b-96d5bc1a5aea.jpg)\\
+  Saj S](https://dev.to/sajmo)
+  
+  Follow
+  
+  - Joined
+  
+  
+  Feb 12, 2022
+  
+  
+  • [Jun 4 '24](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-2fhg4)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-2fhg4)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/sajmo/comment/2fhg4)
+  
+  Hey [@stephencatano](https://dev.to/stephencatano) would you able to share this file?
+  
+  [![sajmo profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F814064%2Ff59477eb-365e-4c9e-905b-96d5bc1a5aea.jpg)](https://dev.to/sajmo)
+  
+  [Saj S](https://dev.to/sajmo)
+  
+  Saj S
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F814064%2Ff59477eb-365e-4c9e-905b-96d5bc1a5aea.jpg)\\
+  Saj S](https://dev.to/sajmo)
+  
+  Follow
+  
+  - Joined
+  
+  
+  Feb 12, 2022
+  
+  
+  • [Jun 4 '24](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-2fhg5)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-2fhg5)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/sajmo/comment/2fhg5)
+  
+  Hey, would you able to share this file?
+  
+  CollapseExpand
+  
+  [![therubberduckiee profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F880658%2F0f1cbb1a-03b3-4fa5-b5c0-dab995e09c7a.png)](https://dev.to/therubberduckiee)
+  
+  [Jessica Wang](https://dev.to/therubberduckiee)
+  
+  Jessica Wang
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F880658%2F0f1cbb1a-03b3-4fa5-b5c0-dab995e09c7a.png)\\
+  Jessica Wang](https://dev.to/therubberduckiee)
+  
+  Follow
+  
+  I'm Dev Rel at startup (Warp.dev) that's building a modern-day terminal. I have a background as SWE (Microsoft, DoorDash) & enjoy fusing tech with my love for teaching and creating fun projects :)
+  
+  
+  - Location
+  
+  
+  
+  Seattle, WA
+  
+  
+  - Pronouns
+  
+  
+  
+  She/her
+  
+  
+  - Work
+  
+  
+  
+  Warp.dev
+  
+  
+  - Joined
+  
+  
+  Jun 21, 2022
+  
+  
+  • [Apr 12 '23](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-262ab)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-262ab)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/therubberduckiee/comment/262ab)
+  
+  Thanks for the reply here! Yeah, it's weird. When I copy it myself, I can see the icons, but I do see it shows up as gibberish for other people. I'm not sure how to fix this issue, but I will look into it when I have some free time.
+  
+  [![pmorelli profile image](https://media2.dev.to/dynamic/image/width=50,height=50,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F1106702%2Fc36260b1-45cd-4cde-862b-350532609ec0.jpeg)](https://dev.to/pmorelli)
+  
+  [Peter Morelli](https://dev.to/pmorelli)
+  
+  Peter Morelli
+  
+  
+  
+  [![](https://media2.dev.to/dynamic/image/width=90,height=90,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Fuser%2Fprofile_image%2F1106702%2Fc36260b1-45cd-4cde-862b-350532609ec0.jpeg)\\
+  Peter Morelli](https://dev.to/pmorelli)
+  
+  Follow
+  
+  - Joined
+  
+  
+  Jun 22, 2023
+  
+  
+  • [Jun 22 '23](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-27f20)
+  
+  Dropdown menu
+  
+  - [Copy link](https://dev.to/therubberduckiee/how-to-configure-starship-to-look-exactly-like-p10k-zsh-warp-h9h#comment-27f20)
+  - Hide
+  
+  - [Report abuse](https://dev.to/report-abuse?url=https://dev.to/pmorelli/comment/27f20)
+  
+  i think there's some subtle rendering issues, too. i had to set my font size to 15 to get it to line up. What are your font size and line spacing?
+  
+  Even with the font size, every other line seemed rendered slightly off.
+  
+  ![Image description](https://res.cloudinary.com/practicaldev/image/fetch/s--SPurxtSn--/c_limit%2Cf_auto%2Cfl_progressive%2Cq_auto%2Cw_800/https://dev-to-uploads.s3.amazonaws.com/uploads/articles/nrstae84qt38nl4jj28d.png)
+  
+  Are you sure you want to hide this comment? It will become hidden in your post, but will still be visible via the comment's [permalink](https://dev.to/jandiee/comment/25p4e#).
+  
+  
+  Hide child comments as well
+  
+  Confirm
+  
+  
+  For further actions, you may consider blocking this person and/or [reporting abuse](https://dev.to/report-abuse)
+  
+  ![DEV Community](https://media2.dev.to/dynamic/image/width=190,height=,fit=scale-down,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.amazonaws.com%2Fuploads%2Farticles%2F8j7kvp660rqzt99zui8e.png)
+  
+  We're a place where coders share, stay up-to-date and grow their careers.
+  
+  
+  [Log in](https://dev.to/enter?signup_subforem=1) [Create account](https://dev.to/enter?signup_subforem=1&state=new-user)
+  
+  ![](https://assets.dev.to/assets/sparkle-heart-5f9bee3767e18deb1bb725290cb151c25234768a0e9a2bd39370c382d02920cf.svg)![](https://assets.dev.to/assets/multi-unicorn-b44d6f8c23cdd00964192bedc38af3e82463978aa611b4365bd33a0f1f4f3e97.svg)![](https://assets.dev.to/assets/exploding-head-daceb38d627e6ae9b730f36a1e390fca556a4289d5a41abb2c35068ad3e2c4b5.svg)![](https://assets.dev.to/assets/raised-hands-74b2099fd66a39f2d7eed9305ee0f4553df0eb7b4f11b01b6b1b499973048fe5.svg)![](https://assets.dev.to/assets/fire-f60e7a582391810302117f987b22a8ef04a2fe0df7e3258a5f49332df1cec71e.svg)
+  
+  Twitter Widget Iframe
+  --- End Content ---
