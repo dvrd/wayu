@@ -220,7 +220,7 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 			fmt.sbprintln(&builder, `    golang) result+=" " ;;`)
 			fmt.sbprintln(&builder, `    python) result+=" " ;;`)
 			fmt.sbprintln(&builder, `    zig) result+=" " ;;`)
-			fmt.sbprintln(&builder, `    odin) result+="\ue800 " ;;`)
+			fmt.sbprintln(&builder, `    odin) result+="⚔️ " ;;`)
 			fmt.sbprintln(&builder, `    bun) result+=" " ;;`)
 			fmt.sbprintln(&builder, `    java) result+=" " ;;`)
 			fmt.sbprintln(&builder, `    kotlin) result+=" " ;;`)
