@@ -340,7 +340,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	switch filtered_args[0] {
 	case "path":       parsed.command = .PATH
 	case "alias":      parsed.command = .ALIAS
-	case "constants", "const":  parsed.command = .CONSTANTS
+	case "constants", "const", "env":  parsed.command = .CONSTANTS
 	case "backup":     parsed.command = .BACKUP
 	case "plugin":     parsed.command = .PLUGIN
 	case "init":       parsed.command = .INIT;    return parsed
@@ -795,7 +795,7 @@ print_help :: proc() {
 	print_section("COMMANDS:", EMOJI_COMMAND)
 	print_item("", "path", "Manage PATH entries", EMOJI_PATH)
 	print_item("", "alias", "Manage shell aliases", EMOJI_ALIAS)
-	print_item("", "constants", "Manage environment constants (alias: const)", EMOJI_CONSTANT)
+	print_item("", "constants", "Manage environment constants (aliases: const, env)", EMOJI_CONSTANT)
 	print_item("", "search, find, f", "Fuzzy search across all configurations", "🔍")
 	print_item("", "toml", "TOML configuration management", "⚙️ ")
 	print_item("", "doctor", "Health check and diagnostics", "🔬")
