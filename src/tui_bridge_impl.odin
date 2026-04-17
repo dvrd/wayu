@@ -11,7 +11,86 @@ import "core:os"
 import "core:strings"
 import tui "tui"
 
-// Load PATH entries into TUI cache
+// Source glyph colors (from TUI color scheme)
+SOURCE_COLOR_WAYU_ACTIVE :: "\x1b[38;2;34;197;94m"    // green
+SOURCE_COLOR_WAYU_INACTIVE :: "\x1b[38;2;217;119;6m"  // amber
+SOURCE_COLOR_EXTERNAL :: "\x1b[38;2;59;130;246m"      // blue
+SOURCE_COLOR_SHADOWED :: "\x1b[38;2;168;85;247m"      // purple
+COLOR_RESET :: "\x1b[0m"
+
+// Entry with source information for TUI rendering
+// Format: "display_text\x00source_glyph\x00source_enum_value"
+// where source_enum_value is "0" (WAYU_ACTIVE), "1" (WAYU_INACTIVE), "2" (EXTERNAL)
+TUIEntry :: struct {
+	display: string,      // The actual text to display (path/alias=cmd/const=val)
+	glyph:   string,      // Colored glyph: "●" (WAYU_ACTIVE), "⚠" (WAYU_INACTIVE), "○" (EXTERNAL)
+	source:  EntrySource, // For filtering
+}
+
+// Helper: determine if NO_COLOR or --no-color is set
+should_color_output :: proc() -> bool {
+	// Check NO_COLOR env var
+	no_color := os.get_env("NO_COLOR", context.temp_allocator)
+	if len(no_color) > 0 {
+		return false
+	}
+	// Check TTY
+	return os.is_tty(os.stdout)
+}
+
+// Helper: get source glyph with color codes embedded
+get_source_glyph :: proc(source: EntrySource, use_color: bool) -> string {
+	if !use_color {
+		// ASCII-only fallback
+		#partial switch source {
+		case .WAYU_ACTIVE:
+			return "[wayu]"
+		case .WAYU_INACTIVE:
+			return "[wayu(i)]"
+		case .EXTERNAL:
+			return "[ext]"
+		case .SHADOWED:
+			return "[diff]"
+		}
+		return "?"
+	}
+	// Unicode glyphs with embedded ANSI color codes
+	#partial switch source {
+	case .WAYU_ACTIVE:
+		return fmt.tprintf("%s●%s", SOURCE_COLOR_WAYU_ACTIVE, COLOR_RESET)
+	case .WAYU_INACTIVE:
+		return fmt.tprintf("%s⚠%s", SOURCE_COLOR_WAYU_INACTIVE, COLOR_RESET)
+	case .EXTERNAL:
+		return fmt.tprintf("%s○%s", SOURCE_COLOR_EXTERNAL, COLOR_RESET)
+	case .SHADOWED:
+		return fmt.tprintf("%s♦%s", SOURCE_COLOR_SHADOWED, COLOR_RESET)
+	}
+	return "?"
+}
+
+// Helper: format counts line with breakdown: "25 wayu · 3 inactive · 47 external"
+format_summary_counts :: proc(wayu_active, wayu_inactive, external: int) -> string {
+	if wayu_active == 0 && wayu_inactive == 0 && external == 0 {
+		return "0 entries"
+	}
+	parts := make([dynamic]string)
+	defer delete(parts)
+
+	if wayu_active > 0 {
+		append(&parts, fmt.tprintf("%d wayu", wayu_active))
+	}
+	if wayu_inactive > 0 {
+		append(&parts, fmt.tprintf("%d inactive", wayu_inactive))
+	}
+	if external > 0 {
+		append(&parts, fmt.tprintf("%d external", external))
+	}
+
+	result := strings.join(parts[:], " · ")
+	return result
+}
+
+// Load PATH entries into TUI cache with source classification and external entries
 tui_bridge_load_path :: proc(state: ^tui.TUIState) {
 	// Clear existing cache
 	if state.data_cache[.PATH_VIEW] != nil {
@@ -19,8 +98,12 @@ tui_bridge_load_path :: proc(state: ^tui.TUIState) {
 	}
 
 	items := make([dynamic]string)
+	use_color := should_color_output()
 
-	// Check if wayu.toml exists and read from it preferentially
+	// Read wayu-declared entries from TOML
+	wayu_entries := make(map[string]EntrySource)
+	defer delete(wayu_entries)
+
 	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
 	defer delete(toml_file)
 
@@ -32,13 +115,56 @@ tui_bridge_load_path :: proc(state: ^tui.TUIState) {
 			delete(config.path.entries)
 		}
 		if ok {
+			// Get PATH snapshot from env
+			env_paths := snapshot_path_entries()
+
 			for entry in config.path.entries {
-				item := strings.clone(entry)
+				// Classify: check if in env
+				is_in_env := false
+				for env_path in env_paths {
+					if env_path == entry {
+						is_in_env = true
+						break
+					}
+				}
+
+				source := is_in_env ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
+				wayu_entries[entry] = source
+
+				// Add to items with glyph
+				glyph := get_source_glyph(source, use_color)
+				item := fmt.aprintf("%s %s", glyph, entry)
 				append(&items, item)
+			}
+
+			// Now add external entries (in env but not in TOML)
+			// Render separator before external section
+			if len(env_paths) > len(wayu_entries) {
+				// Count externals
+				external_count := 0
+				for env_path in env_paths {
+					if wayu_entries[env_path] == nil {
+						external_count += 1
+					}
+				}
+
+				if external_count > 0 {
+					sep := fmt.tprintf("─── External (%d) ───", external_count)
+					append(&items, sep)
+
+					// Add each external path
+					for env_path in env_paths {
+						if wayu_entries[env_path] == nil {
+							glyph := get_source_glyph(EntrySource.EXTERNAL, use_color)
+							item := fmt.aprintf("%s %s", glyph, env_path)
+							append(&items, item)
+						}
+					}
+				}
 			}
 		}
 	} else {
-		// Fall back to shell config entries
+		// Fall back to shell config entries (no source info)
 		entries := read_config_entries(&PATH_SPEC)
 		defer cleanup_entries(&entries)
 
@@ -54,7 +180,7 @@ tui_bridge_load_path :: proc(state: ^tui.TUIState) {
 	state.data_cache[.PATH_VIEW] = items_ptr
 }
 
-// Load Alias entries into TUI cache
+// Load Alias entries into TUI cache with source classification
 tui_bridge_load_alias :: proc(state: ^tui.TUIState) {
 	// Clear existing cache
 	if state.data_cache[.ALIAS_VIEW] != nil {
@@ -62,6 +188,11 @@ tui_bridge_load_alias :: proc(state: ^tui.TUIState) {
 	}
 
 	items := make([dynamic]string)
+	use_color := should_color_output()
+
+	// Track wayu-declared aliases
+	wayu_aliases := make(map[string]bool)
+	defer delete(wayu_aliases)
 
 	// Check if wayu.toml exists and read from it preferentially
 	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
@@ -79,9 +210,42 @@ tui_bridge_load_alias :: proc(state: ^tui.TUIState) {
 			delete(config.aliases)
 		}
 		if ok {
+			// Get alias snapshot from shell
+			env_aliases := snapshot_aliases()
+
 			for alias in config.aliases {
-				item := fmt.aprintf("%s=%s", alias.name, alias.command)
+				wayu_aliases[alias.name] = true
+
+				// Check if alias is active (in env)
+				env_val, exists := env_aliases[alias.name]
+				is_active := exists && env_val == alias.command
+				source := is_active ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
+
+				// Add to items with glyph
+				glyph := get_source_glyph(source, use_color)
+				item := fmt.aprintf("%s %s=%s", glyph, alias.name, alias.command)
 				append(&items, item)
+			}
+
+			// Add external aliases (in env but not in TOML)
+			external_count := 0
+			for env_name in env_aliases {
+				if wayu_aliases[env_name] == false {
+					external_count += 1
+				}
+			}
+
+			if external_count > 0 {
+				sep := fmt.tprintf("─── External (%d) ───", external_count)
+				append(&items, sep)
+
+				for env_name, env_cmd in env_aliases {
+					if wayu_aliases[env_name] == false {
+						glyph := get_source_glyph(EntrySource.EXTERNAL, use_color)
+						item := fmt.aprintf("%s %s=%s", glyph, env_name, env_cmd)
+						append(&items, item)
+					}
+				}
 			}
 		}
 	} else {
@@ -101,7 +265,7 @@ tui_bridge_load_alias :: proc(state: ^tui.TUIState) {
 	state.data_cache[.ALIAS_VIEW] = items_ptr
 }
 
-// Load Constants entries into TUI cache
+// Load Constants entries into TUI cache with source classification
 tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 	// Clear existing cache
 	if state.data_cache[.CONSTANTS_VIEW] != nil {
@@ -109,6 +273,11 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 	}
 
 	items := make([dynamic]string)
+	use_color := should_color_output()
+
+	// Track wayu-declared constants
+	wayu_constants := make(map[string]bool)
+	defer delete(wayu_constants)
 
 	// Check if wayu.toml exists and read from it preferentially
 	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
@@ -126,10 +295,27 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 			delete(config.constants)
 		}
 		if ok {
+			// Process [constants] section
 			for const in config.constants {
-				item := fmt.aprintf("%s=%s", const.name, const.value)
+				wayu_constants[const.name] = true
+
+				// Check if in env using snapshot
+				// snapshot_env_var returns Maybe(string) — check if exists and matches
+				env_val_maybe := snapshot_env_var(const.name)
+				is_active := false
+				if env_val, ok := env_val_maybe.(string); ok {
+					is_active = env_val == const.value
+				}
+				source := is_active ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
+
+				glyph := get_source_glyph(source, use_color)
+				item := fmt.aprintf("%s %s=%s", glyph, const.name, const.value)
 				append(&items, item)
 			}
+
+			// Note: External constants detection would require enumerating all env vars,
+			// which is expensive. Can be added in future iteration.
+			// For now, just show wayu-declared entries with source.
 		}
 	} else {
 		// Fall back to shell config entries
