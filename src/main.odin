@@ -267,7 +267,12 @@ main :: proc() {
 	case .HOOKS:
 		handle_hooks_command(parsed.action, parsed.args)
 	case .RELOAD:
-		handle_reload_command()
+		// Parse reload action from args
+		action := "start"
+		if len(parsed.args) > 0 {
+			action = parsed.args[0]
+		}
+		handle_watch_command(action, parsed.args[1:] if len(parsed.args) > 1 else nil)
 	case .VERSION:
 		print_version()
 	case .HELP:
@@ -552,6 +557,11 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		return parsed
 	case "reload", "hot-reload", "watch":
 		parsed.command = .RELOAD
+		if len(filtered_args) > 1 {
+			remaining_args := make([]string, len(filtered_args) - 1)
+			copy(remaining_args, filtered_args[1:])
+			parsed.args = remaining_args
+		}
 		return parsed
 	case "search", "find", "f":
 		parsed.command = .SEARCH
@@ -1623,10 +1633,6 @@ append_starship_inline :: proc(builder: ^strings.Builder) {
 		// Fallback: source starship the old way if cache doesn't exist
 		fmt.sbprintln(builder, `eval "$(starship init zsh)"`)
 	}
-}
-
-handle_reload_command :: proc() {
-	handle_watch_command("start", nil)
 }
 
 // Print build command help

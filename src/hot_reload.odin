@@ -156,6 +156,12 @@ hot_reload_regenerate :: proc() {
 
 // Handle watch command
 handle_watch_command :: proc(action: string, args: []string) {
+	// Check for help flag early
+	if action == "--help" || action == "-h" || action == "help" {
+		print_watch_help()
+		return
+	}
+
 	// Check if wayu is initialized
 	if !check_wayu_initialized() {
 		os.exit(EXIT_CONFIG)
