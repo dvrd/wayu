@@ -117,7 +117,14 @@ init_shell_globals :: proc() {
 	// NOTE: These are intentionally not freed - they're globals that live for
 	// the program's lifetime and are accessed throughout the codebase.
 	HOME = os.get_env("HOME", heap)
-	WAYU_CONFIG = fmt.aprintf("%s/.config/wayu", HOME, allocator = heap)
+
+	// Check for WAYU_CONFIG_DIR override (for testing); default to ~/.config/wayu
+	config_dir_override := os.get_env("WAYU_CONFIG_DIR", heap)
+	if config_dir_override != "" {
+		WAYU_CONFIG = config_dir_override
+	} else {
+		WAYU_CONFIG = fmt.aprintf("%s/.config/wayu", HOME, allocator = heap)
+	}
 
 	// Detect shell
 	DETECTED_SHELL = detect_shell()
