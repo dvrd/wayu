@@ -1665,10 +1665,44 @@ handle_convert_to_toml :: proc() -> bool {
     return true
 }
 
+// Handle 'wayu toml show' - display TOML content
+handle_toml_show :: proc() {
+	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	defer delete(toml_file)
+
+	content, err := os.read_entire_file_from_path(toml_file, context.allocator)
+	if err != nil {
+		fmt.eprintfln("Failed to read TOML file: %s", toml_file)
+		os.exit(EXIT_IOERR)
+	}
+	defer delete(content)
+
+	fmt.print(string(content))
+}
+
+// Handle 'wayu toml keys' - display TOML keys
+handle_toml_keys :: proc() {
+	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	defer delete(toml_file)
+
+	// Parse TOML to check it's valid
+	config, ok := toml_read_file(toml_file)
+	if !ok {
+		fmt.eprintfln("Failed to parse TOML file: %s", toml_file)
+		os.exit(EXIT_DATAERR)
+	}
+
+	// Print all top-level keys in sorted order
+	keys := []string{"shell", "path", "aliases", "constants", "plugins", "hooks"}
+	for key in keys {
+		fmt.println(key)
+	}
+}
+
 // Main handler for TOML command (wayu toml <action>)
 handle_toml_command :: proc(action: Action) {
 	#partial switch action {
-	case .CHECK, .LIST:
+	case .CHECK:
 		// Validate TOML config
 		if !check_wayu_initialized() {
 			os.exit(EXIT_CONFIG)
@@ -1676,6 +1710,18 @@ handle_toml_command :: proc(action: Action) {
 		if !handle_validate() {
 			os.exit(EXIT_DATAERR)
 		}
+	case .LIST:
+		// Show all TOML keys
+		if !check_wayu_initialized() {
+			os.exit(EXIT_CONFIG)
+		}
+		handle_toml_keys()
+	case .GET:
+		// Show TOML content
+		if !check_wayu_initialized() {
+			os.exit(EXIT_CONFIG)
+		}
+		handle_toml_show()
 	case .UPDATE:
 		// Convert/apply TOML config
 		if !check_wayu_initialized() {
@@ -1699,6 +1745,8 @@ print_toml_usage :: proc() {
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
 	fmt.printfln("  wayu toml                    Validate TOML config (default)")
 	fmt.printfln("  wayu toml validate           Validate wayu.toml syntax")
+	fmt.printfln("  wayu toml show               Display TOML content")
+	fmt.printfln("  wayu toml keys               List TOML keys")
 	fmt.printfln("  wayu toml convert            Convert existing configs to TOML")
 	fmt.printfln("  wayu toml apply              Apply TOML config to shell")
 	fmt.printfln("  wayu toml help               Show this help")
