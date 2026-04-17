@@ -33,6 +33,10 @@ class AliasIntegrationTest
       test_multiline_command
       test_alias_with_special_chars
       test_alias_persistence
+      test_list_aliases_from_wayu_toml
+      test_get_alias_from_wayu_toml
+      test_add_alias_to_wayu_toml
+      test_remove_alias_from_wayu_toml
       test_help_command
     ensure
       teardown_test_env
@@ -256,6 +260,93 @@ class AliasIntegrationTest
     else
       puts "✗"
       puts "  Aliases not persisted correctly"
+      @failed += 1
+    end
+  end
+
+  def test_list_aliases_from_wayu_toml
+    print "Test 13: List aliases from wayu.toml... "
+
+    File.write("#{@config_dir}/wayu.toml", <<~TOML)
+      [aliases]
+      gs = "git status"
+      gc = "git commit"
+    TOML
+
+    output, status = run_wayu("alias list")
+
+    if status.success? && output.include?("gs") && output.include?("git status")
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected alias list to read from wayu.toml"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_get_alias_from_wayu_toml
+    print "Test 14: Get alias from wayu.toml... "
+
+    File.write("#{@config_dir}/wayu.toml", <<~TOML)
+      [aliases]
+      ga = "git add"
+    TOML
+
+    output, status = run_wayu("alias get ga")
+
+    if status.success? && output.strip == "git add"
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected 'git add', got '#{output.strip}'"
+      @failed += 1
+    end
+  end
+
+  def test_add_alias_to_wayu_toml
+    print "Test 15: Add alias writes to wayu.toml... "
+
+    File.write("#{@config_dir}/wayu.toml", <<~TOML)
+      [aliases]
+      ll = "ls -la"
+    TOML
+
+    output, status = run_wayu('alias add gs "git status"')
+    toml = File.read("#{@config_dir}/wayu.toml")
+
+    if status.success? && toml.include?('gs = "git status"') && !File.read(@alias_file).include?('alias gs=')
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected alias add to update wayu.toml only"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_remove_alias_from_wayu_toml
+    print "Test 16: Remove alias writes to wayu.toml... "
+
+    File.write("#{@config_dir}/wayu.toml", <<~TOML)
+      [aliases]
+      rmme = "echo bye"
+      keepme = "echo stay"
+    TOML
+
+    output, status = run_wayu('alias rm rmme')
+    toml = File.read("#{@config_dir}/wayu.toml")
+
+    if status.success? && !toml.include?('rmme =') && toml.include?('keepme = "echo stay"')
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected alias rm to update wayu.toml"
+      puts "  Output: #{output}"
       @failed += 1
     end
   end

@@ -6,13 +6,18 @@ import "core:mem"
 import "core:os"
 import "core:strings"
 
+// Exit codes (BSD sysexits.h compatible)
+EXIT_SUCCESS      :: 0   // Successful termination
+EXIT_GENERAL      :: 1   // General unspecified error
+EXIT_OSERR        :: 71  // System error (can't fork)
+
 // Main TUI entry point
 tui_run :: proc() {
 	// Check if we're in a TTY first
 	if !is_stdin_tty() || !is_stdout_tty() {
 		fmt.eprintln("Error: TUI requires an interactive terminal (TTY)")
 		fmt.eprintln("Cannot run TUI when stdin or stdout is not a terminal")
-		os.exit(1)
+		os.exit(EXIT_GENERAL)
 	}
 
 	// Initialize all subsystems
@@ -80,7 +85,7 @@ tui_init :: proc() {
 	tui_lifecycle_init()  // Enter alt screen, hide cursor, setup signals
 	if !enable_raw_mode() {
 		fmt.eprintln("Error: Failed to enable raw mode")
-		os.exit(1)
+		os.exit(EXIT_OSERR)
 	}
 }
 
@@ -334,10 +339,57 @@ handle_selection :: proc(state: ^TUIState) {
 		}
 
 	case .PLUGINS_VIEW:
-		// No detail for plugins yet
+		// Show plugin detail or placeholder message
+		if state.plugin_tab == PLUGIN_TAB_INSTALLED {
+			if state.data_cache[.PLUGINS_VIEW] != nil {
+				items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
+				if state.selected_index >= 0 && state.selected_index < len(items) {
+					selected := items[state.selected_index]
+					// Parse plugin info: "name | source | status | priority"
+					parts := strings.split(selected, " | ", context.temp_allocator)
+					if len(parts) >= 1 {
+						plugin_name := parts[0]
+						line1 := fmt.tprintf("Plugin: %s", plugin_name)
+						line2 := "Plugin detail view coming soon"
+						lines := []string{line1, line2}
+						show_detail_overlay(state, "Plugin Detail", lines)
+					}
+				}
+			}
+		} else {
+			// Registry tab - show selected plugin info
+			if state.plugin_registry_cache != nil {
+				items := state.plugin_registry_cache
+				idx := state.selected_index
+				if len(state.filtered_indices) > 0 {
+					if idx >= 0 && idx < len(state.filtered_indices) {
+						idx = state.filtered_indices[idx]
+					} else {
+						return
+					}
+				}
+				if idx >= 0 && idx < len(items^) {
+					item := items[idx]
+					// Parse: key\x00category\x00shell\x00description
+					parts := strings.split(item, "\x00", context.temp_allocator)
+					if len(parts) >= 1 {
+						plugin_key := parts[0]
+						line1 := fmt.tprintf("Plugin: %s", plugin_key)
+						line2 := "Press 'i' or Enter to install"
+						if len(parts) >= 4 {
+							line2 = fmt.tprintf("Description: %s", parts[3])
+						}
+						lines := []string{line1, line2}
+						show_detail_overlay(state, "Plugin Registry", lines)
+					}
+				}
+			}
+		}
 
 	case .SETTINGS_VIEW:
-		// No detail for settings
+		// Show settings info placeholder
+		lines := []string{"Settings view coming soon"}
+		show_detail_overlay(state, "Settings", lines)
 	}
 }
 

@@ -76,9 +76,9 @@ test_sanitize_shell_value :: proc(t: ^testing.T) {
 	testing.expect_value(t, result2, expected2)
 	defer delete(result2)
 
-	// Test dollar sign escaping
+	// Test dollar sign (NOT escaped - allows $1 in aliases)
 	result3 := wayu.sanitize_shell_value("echo $HOME")
-	expected3 := "echo \\$HOME"
+	expected3 := "echo $HOME"
 	testing.expect_value(t, result3, expected3)
 	defer delete(result3)
 }

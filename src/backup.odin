@@ -533,6 +533,76 @@ cleanup_all_old_backups :: proc() {
 		}
 	}
 
+	// First, count how many backups will be removed
+	total_to_remove := 0
+	for config_file in config_files {
+		backups := list_backups_for_file(config_file)
+		if len(backups) > 5 {
+			total_to_remove += len(backups) - 5
+		}
+		// Cleanup backup info
+		for backup in backups {
+			delete(backup.original_file)
+			delete(backup.backup_file)
+		}
+		delete(backups)
+	}
+
+	if total_to_remove == 0 {
+		print_info("No old backups to clean up")
+		return
+	}
+
+	// Dry-run mode check
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		print_warning("Would remove %d old backup(s):", total_to_remove)
+		for config_file in config_files {
+			backups := list_backups_for_file(config_file)
+			defer {
+				for backup in backups {
+					delete(backup.original_file)
+					delete(backup.backup_file)
+				}
+				delete(backups)
+			}
+			if len(backups) > 5 {
+				file_name := get_base_name(config_file)
+				fmt.printfln("  %s: %d backup(s)", file_name, len(backups) - 5)
+			}
+		}
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return
+	}
+
+	// Check for --yes flag (required for confirmation)
+	if !YES_FLAG {
+		print_error("This operation requires confirmation.")
+		fmt.println()
+		fmt.printfln("Found %d old backup(s) to remove:", total_to_remove)
+		for config_file in config_files {
+			backups := list_backups_for_file(config_file)
+			defer {
+				for backup in backups {
+					delete(backup.original_file)
+					delete(backup.backup_file)
+				}
+				delete(backups)
+			}
+			if len(backups) > 5 {
+				file_name := get_base_name(config_file)
+				fmt.printfln("  - %s: %d backup(s)", file_name, len(backups) - 5)
+			}
+		}
+		fmt.println()
+		fmt.printfln("Add --yes flag to proceed:")
+		fmt.printfln("  wayu backup rm --yes")
+		os.exit(EXIT_GENERAL)
+	}
+
+	// Proceed with removal
 	total_removed := 0
 	for config_file in config_files {
 		removed := cleanup_old_backups(config_file, 5)
@@ -555,6 +625,52 @@ cleanup_config_backups :: proc(config_type: string) {
 		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
+
+	// First, count how many backups will be removed
+	backups := list_backups_for_file(config_file)
+	defer {
+		for backup in backups {
+			delete(backup.original_file)
+			delete(backup.backup_file)
+		}
+		delete(backups)
+	}
+
+	if len(backups) <= 5 {
+		print_info("No old backups to clean up for %s", config_type)
+		return
+	}
+
+	to_remove := len(backups) - 5
+
+	// Dry-run mode check
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		print_warning("Would remove %d old backup(s) for %s:", to_remove, config_type)
+		for i in 5..<len(backups) {
+			backup_name := get_base_name(backups[i].backup_file)
+			fmt.printfln("  - %s", backup_name)
+		}
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return
+	}
+
+	// Check for --yes flag (required for confirmation)
+	if !YES_FLAG {
+		print_error("This operation requires confirmation.")
+		fmt.println()
+		fmt.printfln("Found %d old backup(s) to remove for %s:", to_remove, config_type)
+		for i in 5..<len(backups) {
+			backup_name := get_base_name(backups[i].backup_file)
+			fmt.printfln("  - %s", backup_name)
+		}
+		fmt.println()
+		fmt.printfln("Add --yes flag to proceed:")
+		fmt.printfln("  wayu backup rm %s --yes", config_type)
+		os.exit(EXIT_GENERAL)
+	}
 
 	removed := cleanup_old_backups(config_file, 5)
 	if removed > 0 {

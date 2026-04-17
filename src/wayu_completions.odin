@@ -44,9 +44,9 @@ _wayu_path_actions() {
     actions=(
         'add:Add a PATH entry'
         'remove:Remove a PATH entry'
-        'rm:Remove alias'
+        'rm:Remove path entry'
         'list:List PATH entries'
-        'ls:List alias'
+        'ls:List path entries'
         'get:Get PATH by name'
         'clean:Remove missing directories'
         'dedup:Remove duplicates'
@@ -74,9 +74,9 @@ _wayu_constants_actions() {
     actions=(
         'add:Add a constant'
         'remove:Remove a constant'
-        'rm:Remove alias'
+        'rm:Remove constant'
         'list:List constants'
-        'ls:List alias'
+        'ls:List constants'
         'get:Get constant value'
         'help:Show help'
     )
@@ -239,38 +239,26 @@ handle_completions_generate :: proc() {
 	print_success("Tab completion now available: wayu <TAB>")
 }
 
-// Extended completions handler with generate action
+// Extended completions handler with generate action.
+// All regular actions delegate to the main completions handler.
 handle_completions_command_extended :: proc(action: Action, args: []string) {
 	#partial switch action {
-	case .ADD:
-		if len(args) < 2 {
-			print_error("Usage: wayu completions add <name> <path>")
-			fmt.println("Example: wayu completions add _myscript /path/to/_myscript")
-			os.exit(EXIT_USAGE)
-		}
-		// ... existing add logic
+	case .ADD, .REMOVE, .GET, .RESTORE, .CLEAN, .DEDUP, .UNKNOWN:
+		handle_completions_command(action, args)
 	case .LIST:
-		// Check for generate flag
 		for arg in args {
-			if arg == "--generate" || arg == "-g" {
+			if arg == "--generate" || arg == "-g" || arg == "generate" {
 				handle_completions_generate()
 				return
 			}
 		}
-		// Existing list logic
-		handle_completions_list()
+		handle_completions_command(.LIST, args)
 	case .HELP:
 		print_completions_help_extended()
+	case .UPDATE:
+		handle_completions_generate()
 	case:
-		// Default: check if generate was requested
-		for arg in args {
-			if arg == "generate" {
-				handle_completions_generate()
-				return
-			}
-		}
-		// Default to list
-		handle_completions_list()
+		handle_completions_command(action, args)
 	}
 }
 
@@ -291,9 +279,10 @@ print_completions_help_extended :: proc() {
 	fmt.println("  wayu can generate its own completion script for tab completion.")
 	fmt.println("  Run 'wayu completions generate' and follow the setup instructions.")
 	fmt.println()
-	fmt.printfln("%sEXAMPLE:%s", get_primary(), RESET)
+	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
 	fmt.println("  wayu completions generate")
 	fmt.println("  # Then add to .zshrc: fpath=(~/.config/wayu/completions $fpath)")
+	fmt.println("  wayu completions add jj /path/to/_jj")
 }
 
 // List existing completions (existing function wrapper)

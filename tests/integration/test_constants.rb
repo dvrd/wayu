@@ -37,6 +37,10 @@ class ConstantsIntegrationTest
       test_constant_with_numbers
       test_multiline_value_handling
       test_constant_persistence
+      test_list_constants_from_wayu_toml_env
+      test_get_constant_from_wayu_toml_constants
+      test_add_constant_to_wayu_toml
+      test_remove_constant_from_wayu_toml
       test_help_command
       test_const_alias
     ensure
@@ -335,6 +339,93 @@ class ConstantsIntegrationTest
     end
   end
 
+  def test_list_constants_from_wayu_toml_env
+    print "Test 16: List constants from wayu.toml [env]... "
+
+    File.write("#{@config_dir}/wayu.toml", <<~TOML)
+      [env]
+      FROM_TOML = "loaded"
+      SECOND_VAR = "also_loaded"
+    TOML
+
+    output, status = run_wayu("constants list")
+
+    if status.success? && output.include?("FROM_TOML") && output.include?("loaded")
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected constants list to read from wayu.toml [env]"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_get_constant_from_wayu_toml_constants
+    print "Test 17: Get constant from wayu.toml [constants]... "
+
+    File.write("#{@config_dir}/wayu.toml", <<~TOML)
+      [constants]
+      TOML_ONLY = "from_table"
+    TOML
+
+    output, status = run_wayu("constants get TOML_ONLY")
+
+    if status.success? && output.strip == "from_table"
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected 'from_table', got '#{output.strip}'"
+      @failed += 1
+    end
+  end
+
+  def test_add_constant_to_wayu_toml
+    print "Test 18: Add constant writes to wayu.toml... "
+
+    File.write("#{@config_dir}/wayu.toml", <<~TOML)
+      [constants]
+      EXISTING = "value"
+    TOML
+
+    output, status = run_wayu('constants add TOML_ADDED "new_value"')
+    toml = File.read("#{@config_dir}/wayu.toml")
+
+    if status.success? && toml.include?('TOML_ADDED = "new_value"') && !File.read(@constants_file).include?('TOML_ADDED')
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected constants add to update wayu.toml only"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_remove_constant_from_wayu_toml
+    print "Test 19: Remove constant writes to wayu.toml... "
+
+    File.write("#{@config_dir}/wayu.toml", <<~TOML)
+      [constants]
+      REMOVE_ME = "bye"
+      KEEP_ME = "stay"
+    TOML
+
+    output, status = run_wayu('constants rm REMOVE_ME')
+    toml = File.read("#{@config_dir}/wayu.toml")
+
+    if status.success? && !toml.include?('REMOVE_ME =') && toml.include?('KEEP_ME = "stay"')
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected constants rm to update wayu.toml"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
   def test_help_command
     print "Test 13: Help command... "
 
@@ -354,8 +445,14 @@ class ConstantsIntegrationTest
   def test_const_alias
     print "Test 14: 'const' alias behaves identically to 'constants'... "
 
+    File.write("#{@config_dir}/wayu.toml", <<~TOML)
+      [constants]
+      BASE = "value"
+    TOML
+
     run_wayu('const add CONST_ALIAS_TEST "alias_value"')
-    added = File.read(@constants_file).include?('export CONST_ALIAS_TEST=')
+    toml_after_add = File.read("#{@config_dir}/wayu.toml")
+    added = toml_after_add.include?('CONST_ALIAS_TEST = "alias_value"')
 
     list_out, list_status = run_wayu("const list")
     listed = list_status.success? && list_out.include?("CONST_ALIAS_TEST")
@@ -364,13 +461,14 @@ class ConstantsIntegrationTest
     got = get_status.success? && get_out.strip == "alias_value"
 
     run_wayu("const rm CONST_ALIAS_TEST")
+    removed = !File.read("#{@config_dir}/wayu.toml").include?('CONST_ALIAS_TEST =')
 
-    if added && listed && got
+    if added && listed && got && removed
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  const alias failed (add=#{added}, list=#{listed}, get=#{got})"
+      puts "  const alias failed (add=#{added}, list=#{listed}, get=#{got}, rm=#{removed})"
       @failed += 1
     end
   end

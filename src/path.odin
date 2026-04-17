@@ -11,8 +11,15 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 
-// Main handler for PATH commands - uses wayu.toml as source of truth
+// Main handler for PATH commands.
+// When wayu.toml exists, PATH becomes TOML-native; otherwise we preserve the
+// legacy shell-file workflow used by older tests and configs.
 handle_path_command :: proc(action: Action, args: []string) {
+	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	defer delete(toml_file)
+
+	use_toml := os.exists(toml_file)
+
 	#partial switch action {
 	case .CLEAN:
 		clean_missing_paths()
@@ -30,25 +37,43 @@ handle_path_command :: proc(action: Action, args: []string) {
 			delete(result.error_message)
 			os.exit(EXIT_DATAERR)
 		}
-		if toml_path_add(args[0]) {
-			print_success("✅ Added to wayu.toml: %s", args[0])
-			fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
+		expanded := expand_env_vars(args[0])
+		defer delete(expanded)
+		if !os.exists(expanded) {
+			print_error("Path does not exist: %s", args[0])
+			os.exit(EXIT_NOINPUT)
+		}
+		if use_toml {
+			if toml_path_add(args[0]) {
+				print_success("✅ Added to wayu.toml: %s", args[0])
+				fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
+			} else {
+				os.exit(EXIT_IOERR)
+			}
 		} else {
-			os.exit(EXIT_IOERR)
+			handle_config_command(&PATH_SPEC, action, args)
 		}
 	case .REMOVE:
-		if len(args) == 0 {
-			print_error("Usage: wayu path remove <path>")
-			os.exit(EXIT_USAGE)
-		}
-		if toml_path_remove(args[0]) {
-			print_success("✅ Removed from wayu.toml: %s", args[0])
-			fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
+		if use_toml {
+			if len(args) == 0 {
+				print_error("Usage: wayu path remove <path>")
+				os.exit(EXIT_USAGE)
+			}
+			if toml_path_remove(args[0]) {
+				print_success("✅ Removed from wayu.toml: %s", args[0])
+				fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
+			} else {
+				os.exit(EXIT_IOERR)
+			}
 		} else {
-			os.exit(EXIT_IOERR)
+			handle_config_command(&PATH_SPEC, action, args)
 		}
 	case .LIST:
-		toml_path_list()
+		if use_toml {
+			toml_path_list()
+		} else {
+			handle_config_command(&PATH_SPEC, action, args)
+		}
 	case:
 		handle_config_command(&PATH_SPEC, action, args)
 	}

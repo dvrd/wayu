@@ -628,6 +628,6 @@ handle_plugin_command :: proc(action: Action, args: []string) {
 	case:
 		print_error_simple("Unknown plugin action")
 		print_plugin_help()
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	}
 }
