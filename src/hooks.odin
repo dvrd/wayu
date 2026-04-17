@@ -296,6 +296,7 @@ print_hooks_usage :: proc() {
 	fmt.println()
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
 	fmt.printfln("  wayu hooks              Show configured hooks")
+	fmt.printfln("  wayu hooks run          Execute configured hooks")
 	fmt.printfln("  wayu hooks edit         Edit hooks configuration")
 	fmt.printfln("  wayu hooks help         Show this help")
 	fmt.println()
