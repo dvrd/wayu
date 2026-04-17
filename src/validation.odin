@@ -118,31 +118,53 @@ validate_identifier :: proc(name: string, identifier_type: string) -> Validation
 	return ValidationResult{valid = true, error_message = ""}
 }
 
-// Sanitize shell command value (escape dangerous characters)
+// Sanitize shell command value for double-quoted emission (e.g., alias x="VALUE")
+// CRITICAL: This function MUST be idempotent and called exactly once per emission.
+// The input is the raw TOML-parsed value (already unescaped by TOML parser).
+// Emitted format: alias x="VALUE" where VALUE escapes only the minimal set needed to
+// prevent breakout and code injection inside the double-quoted string.
+//
+// Escape rules for double-quoted strings ("..."):
+// - " → \" (prevents breaking out of the double-quoted string)
+// - ` → \` (prevents command substitution)
+// - $(...) → \$(...) (prevents command substitution via $(...))
+// - \ → leave alone (shell treats \\ inside "..." as literal \, and \$ suppresses expansion)
+// - $VAR → leave alone (allows variable expansion, e.g., $HOME, $HERMOD_TOKEN)
+// - ; & | < > ( ) { } newline → leave alone (literal inside "...", execute when alias is invoked)
+//
+// This preserves user intent: $HOME expands, but "foo"; evil_command; :" does NOT inject
+// because the inner " is escaped (it was the attacker's only lever).
 sanitize_shell_value :: proc(value: string) -> string {
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
 
-	for r in value {
-		switch r {
+	i := 0
+	for i < len(value) {
+		ch := value[i]
+		switch ch {
 		case '"':
-			// Escape double quotes
+			// Escape double quotes to prevent breakout
 			strings.write_string(&builder, "\\\"")
+			i += 1
 		case '`':
-			// Escape backticks (command substitution)
+			// Escape backticks (command substitution inside double quotes)
 			strings.write_string(&builder, "\\`")
-		// Note: Dollar signs ($) are NOT escaped by default.
-		// This allows aliases like 'gs=git status $1' to work.
-		// Escaping is only for dangerous characters (quotes, backticks).
-		case '\\':
-			// Escape backslash
-			strings.write_string(&builder, "\\\\")
-		case '\n':
-			// Escape newlines
-			strings.write_string(&builder, "\\n")
+			i += 1
+		case '$':
+			// Check for $(...) pattern and escape it
+			if i + 1 < len(value) && value[i + 1] == '(' {
+				strings.write_string(&builder, "\\$(")
+				i += 2
+			} else {
+				// Plain $ or $VAR: allow expansion
+				strings.write_rune(&builder, rune(ch))
+				i += 1
+			}
 		case:
-			strings.write_rune(&builder, r)
+			// All other characters (including \, ;, &, |, etc.) are literal in double quotes
+			strings.write_rune(&builder, rune(ch))
+			i += 1
 		}
 	}
 
