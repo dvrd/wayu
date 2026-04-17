@@ -191,6 +191,73 @@ _wayu() {
 compdef _wayu wayu
 `
 
+// Fish completion template
+WAYU_COMPLETION_FISH :: `#!/usr/bin/env fish
+
+# wayu fish completion script - Auto-generated
+# Regenerate with: wayu completions fish
+
+# Main commands
+set -l commands path alias constants search find f completions backup plugin init migrate config export toml version help build scan
+
+# Top-level completion
+complete -c wayu -f
+complete -c wayu -n "__fish_seen_subcommand_from" -a "$commands" -d "Commands"
+
+# Path command completions
+complete -c wayu -n "__fish_seen_subcommand_from path" -f
+complete -c wayu -n "__fish_seen_subcommand_from path" -a "add remove rm list ls get clean dedup help"
+
+# Alias command completions
+complete -c wayu -n "__fish_seen_subcommand_from alias" -f
+complete -c wayu -n "__fish_seen_subcommand_from alias" -a "add remove rm list ls get help"
+
+# Constants command completions
+complete -c wayu -n "__fish_seen_subcommand_from constants" -f
+complete -c wayu -n "__fish_seen_subcommand_from constants" -a "add remove rm list ls get help"
+
+# Completions command
+complete -c wayu -n "__fish_seen_subcommand_from completions" -f
+complete -c wayu -n "__fish_seen_subcommand_from completions" -a "list ls add bash fish zsh help"
+
+# Plugin command completions
+complete -c wayu -n "__fish_seen_subcommand_from plugin" -f
+complete -c wayu -n "__fish_seen_subcommand_from plugin" -a "add remove list search enable disable priority check update help"
+
+# Build command completions
+complete -c wayu -n "__fish_seen_subcommand_from build" -f
+complete -c wayu -n "__fish_seen_subcommand_from build" -a "profile turbo eval help"
+
+# Config command completions
+complete -c wayu -n "__fish_seen_subcommand_from config" -f
+complete -c wayu -n "__fish_seen_subcommand_from config" -a "scan edit extend help"
+
+# Export command completions
+complete -c wayu -n "__fish_seen_subcommand_from export" -f
+complete -c wayu -n "__fish_seen_subcommand_from export" -a "turbo eval list help"
+
+# Backup command completions
+complete -c wayu -n "__fish_seen_subcommand_from backup" -f
+complete -c wayu -n "__fish_seen_subcommand_from backup" -a "list restore help"
+
+# Toml command completions
+complete -c wayu -n "__fish_seen_subcommand_from toml" -f
+complete -c wayu -n "__fish_seen_subcommand_from toml" -a "validate help"
+
+# Migrate command completions
+complete -c wayu -n "__fish_seen_subcommand_from migrate" -f
+complete -c wayu -n "__fish_seen_subcommand_from migrate" -a "help"
+
+# Global flags
+complete -c wayu -s h -l help -d "Show help"
+complete -c wayu -s v -l version -d "Show version"
+complete -c wayu -l dry-run -d "Preview changes without writing"
+complete -c wayu -s y -l yes -d "Skip confirmation prompts"
+complete -c wayu -l tui -d "Launch interactive TUI mode"
+complete -c wayu -l shell -x -a "zsh bash fish" -d "Specify shell type"
+complete -c wayu -l no-color -d "Disable colored output"
+`
+
 // Bash completion template
 WAYU_COMPLETION_BASH :: `#!/usr/bin/env bash
 
@@ -316,8 +383,7 @@ handle_completions_bash :: proc() {
 
 // Generate fish completions for wayu
 handle_completions_fish :: proc() {
-	fmt.println("# Fish shell completions not yet implemented")
-	fmt.println("# Use: complete -c wayu ...")
+	fmt.println(WAYU_COMPLETION_FISH)
 }
 
 // Generate zsh completions for wayu
