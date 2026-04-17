@@ -9,6 +9,7 @@ import "core:slice"
 import "core:log"
 import "core:mem"
 import "core:sys/posix"
+import "core:time"
 import tui "tui"
 
 // Semantic versioning - update with each release
@@ -266,7 +267,7 @@ main :: proc() {
 	case .MIGRATE:
 		handle_migrate_command(parsed.args)
 	case .CONFIG:
-		handle_config_extra_command(parsed.action)
+		handle_config_extra_command(parsed.action, parsed.args)
 	case .BUILD:
 		handle_build_command(parsed.action)
 	case .EXPORT:
@@ -1029,7 +1030,7 @@ print_help :: proc() {
 	fmt.println()
 }
 
-handle_config_extra_command :: proc(action: Action) {
+handle_config_extra_command :: proc(action: Action, args: []string) {
 	#partial switch action {
 	case .ADD: // extend (extra.zsh)
 		extra_file := fmt.aprintf("%s/extra.%s", WAYU_CONFIG, SHELL_EXT)
@@ -1040,13 +1041,39 @@ handle_config_extra_command :: proc(action: Action) {
 		defer delete(toml_file)
 		edit_toml_config(toml_file)
 	case .CHECK: // scan/detect
-		scan_zshrc_for_scripts()
+		has_fix, has_dry_run, has_yes := extract_scan_flags(args)
+		if has_fix {
+			scan_and_migrate_scripts(has_dry_run, has_yes)
+		} else {
+			scan_zshrc_for_scripts()
+		}
 	case .HELP:
 		print_config_usage()
 	case:
 		// Default: show help
 		print_config_usage()
 	}
+}
+
+// Parse command line args to find --fix, --dry-run, --yes flags
+extract_scan_flags :: proc(args: []string) -> (bool, bool, bool) {
+	has_fix := false
+	has_dry_run := false
+	has_yes := false
+
+	for arg in args {
+		if arg == "--fix" {
+			has_fix = true
+		}
+		if arg == "--dry-run" || arg == "-n" {
+			has_dry_run = true
+		}
+		if arg == "--yes" || arg == "-y" {
+			has_yes = true
+		}
+	}
+
+	return has_fix, has_dry_run, has_yes
 }
 
 edit_extra_config :: proc(extra_file: string) {
@@ -1277,7 +1304,176 @@ scan_zshrc_for_scripts :: proc() {
 	print_info("These scripts should be moved to extra.zsh for better management")
 	fmt.println()
 	fmt.printfln("Run %swayu config extend%s to edit extra.zsh", get_primary(), RESET)
-	fmt.printfln("Or run %swayu config scan --fix%s to auto-migrate (coming soon)", get_primary(), RESET)
+	fmt.printfln("Or run %swayu config scan --fix%s to auto-migrate", get_primary(), RESET)
+}
+
+// Scan and optionally migrate scripts from .zshrc to extra.zsh
+scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
+	zshrc_file := fmt.aprintf("%s/.zshrc", os.get_env("HOME", context.temp_allocator))
+	defer delete(zshrc_file)
+
+	if !os.exists(zshrc_file) {
+		print_error_simple(".zshrc not found: %s", zshrc_file)
+		os.exit(EXIT_NOINPUT)
+	}
+
+	content, read_ok := safe_read_file(zshrc_file)
+	if !read_ok {
+		print_error_simple("Failed to read .zshrc")
+		os.exit(EXIT_IOERR)
+	}
+	defer delete(content)
+
+	content_str := string(content)
+
+	// Patterns that indicate inline scripts
+	patterns := []string{
+		"eval \"$(",
+		"export PATH=",
+		"alias ",
+		"conda initialize",
+		"nvm ",
+		"pyenv ",
+		"rbenv ",
+		"fzf ",
+		"starship ",
+		"zoxide ",
+		"eval $(",
+		"# >>>",
+		"# <<<",
+	}
+
+	// Find blocks
+	lines := strings.split(content_str, "\n")
+	defer delete(lines)
+
+	detected_blocks := make([dynamic][dynamic]string)
+	defer {
+		for block in detected_blocks {
+			delete(block)
+		}
+		delete(detected_blocks)
+	}
+
+	current_block: [dynamic]string
+	in_block := false
+
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
+			if in_block && len(current_block) > 0 {
+				block_copy := make([dynamic]string)
+				append(&block_copy, ..current_block[:])
+				append(&detected_blocks, block_copy)
+				clear(&current_block)
+				in_block = false
+			}
+			continue
+		}
+
+		if !in_block {
+			for pattern in patterns {
+				if strings.contains(trimmed, pattern) {
+					in_block = true
+					append(&current_block, line)
+					break
+				}
+			}
+		} else {
+			append(&current_block, line)
+		}
+	}
+
+	if in_block && len(current_block) > 0 {
+		block_copy := make([dynamic]string)
+		append(&block_copy, ..current_block[:])
+		append(&detected_blocks, block_copy)
+	}
+	delete(current_block)
+
+	if len(detected_blocks) == 0 {
+		print_success("No inline scripts detected in .zshrc")
+		return
+	}
+
+	// Show what would be imported
+	print_header("Detected Inline Scripts for Import", "🔍")
+	fmt.printfln("Found %d potential script blocks in .zshrc:", len(detected_blocks))
+	fmt.println()
+
+	for block, i in detected_blocks {
+		fmt.printfln("%sBlock %d:%s", get_primary(), i + 1, RESET)
+		for line in block {
+			fmt.printfln("  %s", line)
+		}
+		fmt.println()
+	}
+
+	// Check extra.zsh
+	extra_file := fmt.aprintf("%s/extra.%s", WAYU_CONFIG, SHELL_EXT)
+	defer delete(extra_file)
+
+	if dry_run {
+		print_info("Dry-run mode: would append %d blocks to extra.%s", len(detected_blocks), SHELL_EXT)
+		fmt.println()
+		fmt.printfln("Run %swayu config scan --fix --yes%s to actually migrate", get_primary(), RESET)
+		return
+	}
+
+	if !force_yes {
+		fmt.printfln("This will append %d blocks to %s", len(detected_blocks), extra_file)
+		fmt.println("Pass --yes to confirm")
+		os.exit(EXIT_USAGE)
+	}
+
+	// Create backup first
+	backup_path, ok := create_backup(extra_file)
+	defer if ok do delete(backup_path)
+
+	// Append to extra.zsh
+	extra_exists := os.exists(extra_file)
+
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+
+	// Read existing content if file exists
+	if extra_exists {
+		existing, read_ok := safe_read_file(extra_file)
+		if read_ok {
+			strings.write_string(&builder, string(existing))
+			delete(existing)
+			if !strings.has_suffix(string(existing), "\n") {
+				strings.write_string(&builder, "\n")
+			}
+		}
+	}
+
+	// Append header
+	strings.write_string(&builder, "\n# === Scripts imported by 'wayu config scan --fix' ===\n")
+	strings.write_string(&builder, fmt.aprintf("# Imported on: %v\n", time.now()))
+	strings.write_string(&builder, "\n")
+
+	// Append all blocks
+	for block in detected_blocks {
+		for line in block {
+			strings.write_string(&builder, line)
+			strings.write_string(&builder, "\n")
+		}
+		strings.write_string(&builder, "\n")
+	}
+
+	// Write file
+	migration_content := strings.to_string(builder)
+	write_ok := safe_write_file(extra_file, transmute([]byte)(migration_content))
+
+	if write_ok {
+		print_success("Migrated %d blocks to %s", len(detected_blocks), extra_file)
+		print_info("Original scripts remain in .zshrc - review extra.%s and remove them manually", SHELL_EXT)
+	} else {
+		print_error_simple("Failed to write %s", extra_file)
+		os.exit(EXIT_IOERR)
+	}
 }
 
 print_config_usage :: proc() {
