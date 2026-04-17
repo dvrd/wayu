@@ -239,3 +239,129 @@ grep -c '^\[\[paths\]\]' ~/.config/wayu/wayu.toml
 ### Summary
 
 Both regressions fixed with a minimal, focused change to memory ownership in the snapshot module. The fix ensures all returned strings from `snapshot_path_entries()` are independently owned (cloned), eliminating dangling pointers and enabling correct set-membership tests in the classifier.
+
+---
+
+## Aliases + [env] classification fixes
+
+**Date:** 2026-04-17  
+**Fix Commits:** `a5a4b06`
+
+### Bug A: Alias snapshot not matching
+
+**Issue**: `wayu alias list` showed "0 active · 23 inactive · 0 external"
+
+**Root Cause**:
+- `snapshot_aliases()` was not correctly parsing shell alias output
+- Shell produces format: `name=value` or `name='value'` (no "alias" prefix)
+- Code was looking for "alias " prefix that doesn't exist in shell output
+- Additionally, alias NAME was a string slice of the freed `lines` array, causing memory corruption
+- Map keys showed garbage characters when iterated
+
+**Fix Implementation**:
+1. **Correct parsing format**: Changed from "alias " prefix parsing to direct `name=value` parsing
+2. **Memory safety**: Clone both name and value strings separately (name was a slice of freed line buffer)
+3. **Quote handling**: Properly strip surrounding quotes and unescape escaped quotes in values
+
+**Result**: Aliases now correctly show as ACTIVE when shell has them loaded
+- Before: "0 active · 23 inactive · 0 external"
+- After: "23 active · 0 inactive · 2 external" (2 external are system aliases like `run-help`, `which-command`)
+
+### Bug B: [env] entries classified as external
+
+**Issue**: `wayu constants list` showed "0 active · 0 inactive · 123 external" — zero TOML entries recognized
+
+**Root Cause**:
+- `read_wayu_toml_constants()` had logic to skip `[env]` section entries (line 140-141)
+- Only `[constants]` section was being loaded
+- All 22 `[env]` variables from wayu.toml were classified as external
+
+**Fix Implementation**:
+- Unified the section handling: treat both `[env]` AND `[constants]` as wayu-declared
+- Changed skip condition: `if in_env { continue }` → `if in_env || in_constants_table { upsert... }`
+- Both sections now equally represent the source of truth for environment variables
+
+**Result**: [env] entries now correctly classified as ACTIVE (wayu-declared)
+- Before: "0 active · 0 inactive · 123 external"
+- After: "21 active · 0 inactive · 102 external" (21 from [env], all ACTIVE)
+- Sample: OSS, EDITOR, GOPATH all tagged as [wayu] source
+
+### Verification
+
+**Build Status**: `./build_it check` — PASS ✓
+
+**Command validation**:
+```bash
+# Bug A: Aliases
+wayu alias list | head -1
+# Result: 23 active · 0 inactive · 2 external ✓
+
+# Bug B: Constants
+wayu constants list | head -1
+# Result: 21 active · 0 inactive · 102 external ✓
+
+# Both [env] entries visible with wayu source
+wayu constants list --source wayu | grep -E 'OSS|EDITOR|GOPATH'
+# Result: All three show [wayu] source (active) ✓
+```
+
+**Config integrity**:
+- User config MD5: `c4fda62731b3fb56856ef6b0c00ef02d` (unchanged) ✓
+
+### Summary
+
+Two independent bugs in the env cross-reference feature, both fixed with minimal changes to parsing/classification logic:
+- **Bug A** (aliases): Memory corruption + incorrect output parsing → fixed with proper string cloning and format parsing
+- **Bug B** (constants): Section skip logic → fixed by unifying [env] and [constants] as wayu-declared sources
+- **Result**: Cross-reference feature now correctly identifies active aliases and constants from both TOML sections
+
+---
+
+## TUI Phase B Implementation
+
+**Date:** 2026-04-17  
+**Commits:** `7421d99`, `4effa2b`, `72c4b73`
+
+### Implementation Summary
+
+Completed TUI Phase B to bring env cross-reference info from CLI list commands to TUI views.
+
+#### Commit 1: Bridge with Source Classification (`7421d99`)
+- Extended `tui_bridge_load_path()`, `tui_bridge_load_alias()`, `tui_bridge_load_constants()` to classify each entry
+- New helper functions: `should_color_output()` (checks NO_COLOR and TTY), `get_source_glyph()` (returns colored glyphs)
+- Glyphs embedded with ANSI color codes: 
+  - `●` green (WAYU_ACTIVE)
+  - `⚠` amber (WAYU_INACTIVE)
+  - `○` blue (EXTERNAL)
+  - `♦` purple (SHADOWED)
+- External entries rendered in separate section (separator line: `─── External (N) ───`)
+- All entries classified by matching TOML against env_snapshot cache (no new shell spawns)
+
+#### Commit 2: Header Counts + Per-Row Glyphs (`4effa2b`)
+- New `count_entries_by_source()` helper extracts source classification from glyph prefixes
+- Updated `render_list_view()` to compute and display source breakdown: `"25 wayu · 3 inactive · 47 external"`
+- Added color constants to `tui/colors.odin` for source glyphs
+- Counts calculated from glyph detection (Unicode char `●`, `⚠`, `○`, `♦` in item strings)
+- Separator lines (containing `───`) excluded from counts
+
+#### Commit 3: Footer Hint (`72c4b73`)
+- Updated `FOOTER_DATA_VIEW` constant to include `s Source` key binding
+- Updated `get_footer_data_view()` for responsive rendering on narrow terminals
+- All data views now show source filter option in footer
+
+### Build Status
+- `./build_it check` — PASS ✓
+- `./build_it` — Binary built successfully ✓
+
+### Test Notes
+- SOURCE_COLOR_* constants match semantic color scheme (green/amber/blue/purple)
+- Color codes embedded in glyph strings preserve rendering across TUI pipeline
+- NO_COLOR env var respected; falls back to ASCII glyphs `[wayu]`, `[wayu(i)]`, `[ext]`, `[diff]`
+- Header counts auto-calculated from items; no additional config needed
+
+### Deferred
+- **Filter toggle (s key)**: Requires TUIState source filter mode + specialized filter logic. Marked for future enhancement.
+- **Fuzzy filter syntax**: `source:wayu`, `source:external` — deferred due to filter system complexity.
+
+### User Config Integrity
+- Config MD5: `c4fda62731b3fb56856ef6b0c00ef02d` (unchanged) ✓

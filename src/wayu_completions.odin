@@ -191,6 +191,61 @@ _wayu() {
 compdef _wayu wayu
 `
 
+// Bash completion template
+WAYU_COMPLETION_BASH :: `#!/usr/bin/env bash
+
+# wayu bash completion script - Auto-generated
+# Regenerate with: wayu completions bash
+
+_wayu_completion() {
+    local cur prev words cword
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    # Main commands
+    local commands="path alias constants search find f completions backup plugin init migrate config export toml version help build scan"
+
+    # If we are completing the first word, list main commands
+    if [[ $COMP_CWORD -eq 1 ]]; then
+        COMPREPLY=($(compgen -W "${commands}" -- "${cur}"))
+        return
+    fi
+
+    # Handle subcommands based on the main command
+    case "${COMP_WORDS[1]}" in
+        path|alias|constants|plugin|backup)
+            local actions="add remove rm list ls get help"
+            COMPREPLY=($(compgen -W "${actions}" -- "${cur}"))
+            ;;
+        completions)
+            local actions="list ls add bash fish zsh help"
+            COMPREPLY=($(compgen -W "${actions}" -- "${cur}"))
+            ;;
+        export)
+            local actions="turbo eval list help"
+            COMPREPLY=($(compgen -W "${actions}" -- "${cur}"))
+            ;;
+        toml)
+            local actions="validate help"
+            COMPREPLY=($(compgen -W "${actions}" -- "${cur}"))
+            ;;
+        build)
+            local actions="profile turbo eval help"
+            COMPREPLY=($(compgen -W "${actions}" -- "${cur}"))
+            ;;
+        config|scan)
+            local actions="fix edit extend help"
+            COMPREPLY=($(compgen -W "${actions}" -- "${cur}"))
+            ;;
+        *)
+            ;;
+    esac
+}
+
+complete -F _wayu_completion wayu
+`
+
 // Generate completions for wayu itself
 handle_completions_generate :: proc() {
 	print_header("Generating wayu completions", "🎯")
@@ -209,7 +264,7 @@ handle_completions_generate :: proc() {
 		}
 	}
 
-	// Write completion file
+	// Write zsh completion file
 	completion_path := fmt.aprintf("%s/_wayu", completions_dir)
 	defer delete(completion_path)
 
@@ -220,30 +275,61 @@ handle_completions_generate :: proc() {
 	}
 
 	print_success("Generated: %s", completion_path)
+
+	// Write bash completion file
+	bash_completion_path := fmt.aprintf("%s/wayu.bash", completions_dir)
+	defer delete(bash_completion_path)
+
+	write_ok = safe_write_file(bash_completion_path, transmute([]byte)(string(WAYU_COMPLETION_BASH)))
+	if !write_ok {
+		print_error("Failed to write bash completion file")
+		os.exit(EXIT_IOERR)
+	}
+
+	print_success("Generated: %s", bash_completion_path)
 	fmt.println()
 
 	// Instructions
 	print_section("Setup Instructions", EMOJI_INFO)
-	fmt.println("The completion script has been generated. To enable it:")
+	fmt.println("The completion scripts have been generated. To enable them:")
 	fmt.println()
-	fmt.println("Option 1 - Add to fpath (recommended):")
+	fmt.println("Zsh - Option 1 - Add to fpath (recommended):")
 	fmt.printfln("  fpath=(%s $fpath)", completions_dir)
 	fmt.println("  compinit")
 	fmt.println()
-	fmt.println("Option 2 - Source directly in .zshrc:")
+	fmt.println("Zsh - Option 2 - Source directly in .zshrc:")
 	fmt.printfln("  source %s", completion_path)
 	fmt.println()
+	fmt.println("Bash - Source in .bashrc:")
+	fmt.printfln("  source %s", bash_completion_path)
+	fmt.println()
 	fmt.println("Then restart your shell or run:")
-	fmt.println("  exec zsh")
+	fmt.println("  exec $SHELL")
 	fmt.println()
 	print_success("Tab completion now available: wayu <TAB>")
+}
+
+// Generate bash completions for wayu
+handle_completions_bash :: proc() {
+	fmt.println(WAYU_COMPLETION_BASH)
+}
+
+// Generate fish completions for wayu
+handle_completions_fish :: proc() {
+	fmt.println("# Fish shell completions not yet implemented")
+	fmt.println("# Use: complete -c wayu ...")
+}
+
+// Generate zsh completions for wayu
+handle_completions_zsh :: proc() {
+	fmt.println(WAYU_COMPLETION_TEMPLATE)
 }
 
 // Extended completions handler with generate action.
 // All regular actions delegate to the main completions handler.
 handle_completions_command_extended :: proc(action: Action, args: []string) {
 	#partial switch action {
-	case .ADD, .REMOVE, .GET, .RESTORE, .CLEAN, .DEDUP, .UNKNOWN:
+	case .ADD, .REMOVE, .RESTORE, .CLEAN, .DEDUP, .UNKNOWN:
 		handle_completions_command(action, args)
 	case .LIST:
 		for arg in args {
@@ -257,6 +343,12 @@ handle_completions_command_extended :: proc(action: Action, args: []string) {
 		print_completions_help_extended()
 	case .UPDATE:
 		handle_completions_generate()
+	case .CHECK:  // bash
+		handle_completions_bash()
+	case .GET:    // fish
+		handle_completions_fish()
+	case .TURBO:  // zsh
+		handle_completions_zsh()
 	case:
 		handle_completions_command(action, args)
 	}
