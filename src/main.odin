@@ -20,6 +20,7 @@ WAYU_CONFIG : string
 // Global flags
 DRY_RUN := false
 YES_FLAG := false  // Skip confirmation prompts
+JSON_OUTPUT := false  // --json flag for list commands
 DETECTED_SHELL : ShellType
 SHELL_EXT : string
 
@@ -97,6 +98,9 @@ ParsedArgs :: struct {
 	doctor_json:     bool,
 	doctor_profile:  bool,
 	doctor_optimize: bool,
+
+	// List command options
+	json_output:     bool,  // --json flag for list commands
 }
 
 init_shell_globals :: proc() {
@@ -308,6 +312,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	snapshot_flag := false
 	verify_flag := false
 	no_color_flag := false
+	json_flag := false
 
 	i := 0
 	for i < len(args) {
@@ -325,6 +330,9 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			snapshot_flag = true
 		} else if arg == "--test" {
 			verify_flag = true
+		} else if arg == "--json" {
+			json_flag = true
+			JSON_OUTPUT = true
 		} else if arg == "--no-color" || arg == "--no-colour" {
 			no_color_flag = true
 			// Force ASCII color profile - affects output in this function
@@ -368,6 +376,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	parsed.component_name   = component_name_str
 	parsed.component_snapshot = snapshot_flag
 	parsed.component_verify = verify_flag
+	parsed.json_output      = json_flag
 
 	// Handle component test mode early - all filtered args become component args.
 	if component_test_flag {
