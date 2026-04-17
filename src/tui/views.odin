@@ -727,6 +727,24 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 }
 
 // ============================================================================
+// Hooks View
+// ============================================================================
+
+render_hooks_view :: proc(state: ^TUIState, screen: ^Screen) {
+	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
+	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_NORMAL)
+
+	render_view_header(screen, state, "HOOKS", "Pre/post operation hooks", border_width)
+
+	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
+	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+
+	// Placeholder message
+	content_start := LIST_ITEM_START_LINE + 2
+	render_text_styled(screen, text_x, content_start, "Hooks view coming soon", TUI_DIM)
+	render_text_styled(screen, text_x, content_start + 2, "Use 'wayu hooks' to manage hooks", TUI_DIM)
+}
+
 // Settings View
 // ============================================================================
 
@@ -845,6 +863,9 @@ get_view_item_count :: proc(state: ^TUIState) -> int {
 		}
 		return 0
 
+	case .HOOKS_VIEW:
+		return 0  // Read-only view
+
 	case .SETTINGS_VIEW:
 		return 0  // Read-only view
 	}
@@ -918,7 +939,7 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	case .PATH_VIEW:      view_name = "PATH"
 	case .ALIAS_VIEW:     view_name = "ALIAS"
 	case .CONSTANTS_VIEW: view_name = "CONSTANT"
-	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
+	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .HOOKS_VIEW, .SETTINGS_VIEW:
 		view_name = "ENTRY"
 	}
 	title_text := fmt.tprintf("ADD %s", view_name)

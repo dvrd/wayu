@@ -38,6 +38,9 @@ handle_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 	case .PLUGINS_VIEW:
 		handle_plugins_event(state, key)
 
+	case .HOOKS_VIEW:
+		// Placeholder - hooks view is read-only
+
 	case .SETTINGS_VIEW:
 		handle_settings_event(state, key)
 

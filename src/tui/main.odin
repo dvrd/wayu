@@ -221,6 +221,7 @@ handle_selection :: proc(state: ^TUIState) {
 			.COMPLETIONS_VIEW,
 			.BACKUPS_VIEW,
 			.PLUGINS_VIEW,
+			.HOOKS_VIEW,
 			.SETTINGS_VIEW,
 		}
 		if state.selected_index >= 0 && state.selected_index < len(menu_items) {
@@ -386,6 +387,11 @@ handle_selection :: proc(state: ^TUIState) {
 			}
 		}
 
+	case .HOOKS_VIEW:
+		// Show hooks view placeholder
+		lines := []string{"Hooks view coming soon"}
+		show_detail_overlay(state, "Hooks", lines)
+
 	case .SETTINGS_VIEW:
 		// Show settings info placeholder
 		lines := []string{"Settings view coming soon"}
@@ -410,7 +416,7 @@ execute_pending_delete :: proc(state: ^TUIState) {
 		success, err_msg = tui_delete_alias(name)
 	case .CONSTANTS_VIEW:
 		success, err_msg = tui_delete_constant(name)
-	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
+	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .HOOKS_VIEW, .SETTINGS_VIEW:
 		// No delete for these views
 	}
 	defer if len(err_msg) > 0 do delete(err_msg)
@@ -424,7 +430,7 @@ execute_pending_delete :: proc(state: ^TUIState) {
 		case .PATH_VIEW:     label = "PATH entry"
 		case .ALIAS_VIEW:    label = "alias"
 		case .CONSTANTS_VIEW: label = "constant"
-		case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
+		case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .HOOKS_VIEW, .SETTINGS_VIEW:
 			label = "entry"
 		}
 		msg := fmt.tprintf("Removed %s: %s", label, name)
@@ -478,6 +484,9 @@ tui_render :: proc(state: ^TUIState, screen: ^Screen) {
 
 	case .PLUGINS_VIEW:
 		render_plugins_view(state, screen)
+
+	case .HOOKS_VIEW:
+		render_hooks_view(state, screen)
 
 	case .SETTINGS_VIEW:
 		render_settings_view(state, screen)
@@ -538,6 +547,7 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 		"Completions",
 		"Backups",
 		"Plugins",
+		"Hooks",
 		"Settings",
 	}
 
@@ -761,7 +771,7 @@ execute_add_form :: proc(state: ^TUIState) {
 		success, err_msg = tui_add_alias(val_0, val_1)
 	case .CONSTANTS_VIEW:
 		success, err_msg = tui_add_constant(val_0, val_1)
-	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
+	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .HOOKS_VIEW, .SETTINGS_VIEW:
 		// unsupported
 	}
 	defer if len(err_msg) > 0 do delete(err_msg)
@@ -772,7 +782,7 @@ execute_add_form :: proc(state: ^TUIState) {
 		case .PATH_VIEW:      label = "PATH entry"
 		case .ALIAS_VIEW:     label = "alias"
 		case .CONSTANTS_VIEW: label = "constant"
-		case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .SETTINGS_VIEW:
+		case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .HOOKS_VIEW, .SETTINGS_VIEW:
 			label = "entry"
 		}
 		msg := fmt.tprintf("Added %s: %s", label, val_0)
