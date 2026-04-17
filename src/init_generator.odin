@@ -44,18 +44,29 @@ generate_optimized_init_all :: proc() {
 
 // Core: Solo lo esencial para que aparezca el prompt (menos de 10ms)
 generate_core_init_v2 :: proc() {
-	path := fmt.aprintf("%s/init-core.zsh", WAYU_CONFIG)
+	shell_ext := get_shell_extension(DETECTED_SHELL)
+	path := fmt.aprintf("%s/init-core.%s", WAYU_CONFIG, shell_ext)
 	defer delete(path)
-	
+
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
-	
-	fmt.sbprintln(&builder, "#!/usr/bin/env zsh")
-	fmt.sbprintln(&builder, "# init-core.zsh - ESENCIAL (menos de 10ms)")
+
+	// Use correct shebang for shell type
+	shebang := "#!/usr/bin/env zsh"
+	if DETECTED_SHELL == .BASH {
+		shebang = "#!/usr/bin/env bash"
+	} else if DETECTED_SHELL == .FISH {
+		shebang = "#!/usr/bin/env fish"
+	}
+	fmt.sbprintln(&builder, shebang)
+
+	init_file_name := fmt.aprintf("init-core.%s", shell_ext)
+	fmt.sbprintfln(&builder, "# %s - ESENCIAL (menos de 10ms)", init_file_name)
+	delete(init_file_name)
 	fmt.sbprintln(&builder, "# Generado automáticamente por wayu build")
 	fmt.sbprintln(&builder)
-	
+
 	// PATH leído dinámicamente desde [[paths]] en wayu.toml
 	fmt.sbprintln(&builder, "# === PATH ===")
 	toml_paths := read_wayu_toml_paths()
@@ -71,12 +82,24 @@ generate_core_init_v2 :: proc() {
 		}
 		fmt.sbprintln(&builder, ":$PATH\"")
 	} else {
-		fmt.sbprintln(&builder, `source "$HOME/.config/wayu/path.zsh"`)
+		source_file := fmt.aprintf("$HOME/.config/wayu/path.%s", shell_ext)
+		fmt.sbprintfln(&builder, `source "%s"`, source_file)
+		delete(source_file)
 	}
 
-	// Deduplicación de PATH - prevenir duplicados en cada reload
+	// Deduplicación de PATH - usar syntax correcta por shell type
 	fmt.sbprintln(&builder, "# Deduplicate PATH (preserva orden, elimina duplicados)")
-	fmt.sbprintln(&builder, "typeset -U path PATH")
+	if DETECTED_SHELL == .ZSH {
+		fmt.sbprintln(&builder, "typeset -U path PATH")
+	} else if DETECTED_SHELL == .BASH {
+		// Bash doesn't have typeset -U, use a different dedup method
+		fmt.sbprintln(&builder, `# Bash PATH deduplication`)
+		fmt.sbprintln(&builder, `export PATH=$(echo "$PATH" | tr ':' '\n' | nl | sort -uk2 | sort -n | cut -f2- | tr '\n' ':' | sed 's/:$//g')`)
+	} else if DETECTED_SHELL == .FISH {
+		// Fish handles PATH specially
+		fmt.sbprintln(&builder, `# Fish PATH deduplication`)
+		fmt.sbprintln(&builder, `set -U fish_user_paths (printf '%s\n' $fish_user_paths | awk '!seen[$0]++')`)
+	}
 	fmt.sbprintln(&builder)
 	
 	// Batch exports esenciales (una sola línea)
