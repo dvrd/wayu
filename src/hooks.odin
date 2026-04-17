@@ -11,10 +11,18 @@ import "core:strings"
 
 // Hook types
 HookType :: enum {
-	PRE_ADD,
-	POST_ADD,
-	PRE_REMOVE,
-	POST_REMOVE,
+	PRE_PATH_ADD,
+	POST_PATH_ADD,
+	PRE_PATH_REMOVE,
+	POST_PATH_REMOVE,
+	PRE_ALIAS_ADD,
+	POST_ALIAS_ADD,
+	PRE_ALIAS_REMOVE,
+	POST_ALIAS_REMOVE,
+	PRE_CONSTANT_ADD,
+	POST_CONSTANT_ADD,
+	PRE_CONSTANT_REMOVE,
+	POST_CONSTANT_REMOVE,
 	PRE_EXPORT,
 	POST_EXPORT,
 	PRE_PLUGIN_INSTALL,
@@ -67,26 +75,45 @@ get_hook_command :: proc(hook_type: HookType) -> string {
 	config := load_hook_config()
 	defer free_hook_config(config)
 
+	result := ""
 	switch hook_type {
-	case .PRE_ADD:
-		return config.pre_path_add
-	case .POST_ADD:
-		return config.post_path_add
-	case .PRE_REMOVE:
-		return config.pre_path_remove
-	case .POST_REMOVE:
-		return config.post_path_remove
+	case .PRE_PATH_ADD:
+		result = config.pre_path_add
+	case .POST_PATH_ADD:
+		result = config.post_path_add
+	case .PRE_PATH_REMOVE:
+		result = config.pre_path_remove
+	case .POST_PATH_REMOVE:
+		result = config.post_path_remove
+	case .PRE_ALIAS_ADD:
+		result = config.pre_alias_add
+	case .POST_ALIAS_ADD:
+		result = config.post_alias_add
+	case .PRE_ALIAS_REMOVE:
+		result = config.pre_alias_remove
+	case .POST_ALIAS_REMOVE:
+		result = config.post_alias_remove
+	case .PRE_CONSTANT_ADD:
+		result = config.pre_constant_add
+	case .POST_CONSTANT_ADD:
+		result = config.post_constant_add
+	case .PRE_CONSTANT_REMOVE:
+		result = config.pre_constant_remove
+	case .POST_CONSTANT_REMOVE:
+		result = config.post_constant_remove
 	case .PRE_EXPORT:
-		return config.pre_export
+		result = config.pre_export
 	case .POST_EXPORT:
-		return config.post_export
+		result = config.post_export
 	case .PRE_PLUGIN_INSTALL:
-		return config.pre_plugin_install
+		result = config.pre_plugin_install
 	case .POST_PLUGIN_INSTALL:
-		return config.post_plugin_install
+		result = config.post_plugin_install
 	}
 
-	return ""
+	// Clone the result before freeing config, so the caller gets a valid string
+	cloned := strings.clone(result)
+	return cloned
 }
 
 // Load hook configuration
@@ -323,19 +350,19 @@ print_hooks_usage :: proc() {
 // These should be called from the actual add/remove functions
 
 hook_pre_path_add :: proc(path: string) {
-	execute_hook(.PRE_ADD, path)
+	execute_hook(.PRE_PATH_ADD, path)
 }
 
 hook_post_path_add :: proc(path: string) {
-	execute_hook(.POST_ADD, path)
+	execute_hook(.POST_PATH_ADD, path)
 }
 
 hook_pre_path_remove :: proc(path: string) {
-	execute_hook(.PRE_REMOVE, path)
+	execute_hook(.PRE_PATH_REMOVE, path)
 }
 
 hook_post_path_remove :: proc(path: string) {
-	execute_hook(.POST_REMOVE, path)
+	execute_hook(.POST_PATH_REMOVE, path)
 }
 
 hook_pre_export :: proc() {
@@ -347,35 +374,35 @@ hook_post_export :: proc() {
 }
 
 hook_pre_alias_add :: proc(name: string) {
-	execute_hook(.PRE_ADD, name)
+	execute_hook(.PRE_ALIAS_ADD, name)
 }
 
 hook_post_alias_add :: proc(name: string) {
-	execute_hook(.POST_ADD, name)
+	execute_hook(.POST_ALIAS_ADD, name)
 }
 
 hook_pre_alias_remove :: proc(name: string) {
-	execute_hook(.PRE_REMOVE, name)
+	execute_hook(.PRE_ALIAS_REMOVE, name)
 }
 
 hook_post_alias_remove :: proc(name: string) {
-	execute_hook(.POST_REMOVE, name)
+	execute_hook(.POST_ALIAS_REMOVE, name)
 }
 
 hook_pre_constant_add :: proc(name: string) {
-	execute_hook(.PRE_ADD, name)
+	execute_hook(.PRE_CONSTANT_ADD, name)
 }
 
 hook_post_constant_add :: proc(name: string) {
-	execute_hook(.POST_ADD, name)
+	execute_hook(.POST_CONSTANT_ADD, name)
 }
 
 hook_pre_constant_remove :: proc(name: string) {
-	execute_hook(.PRE_REMOVE, name)
+	execute_hook(.PRE_CONSTANT_REMOVE, name)
 }
 
 hook_post_constant_remove :: proc(name: string) {
-	execute_hook(.POST_REMOVE, name)
+	execute_hook(.POST_CONSTANT_REMOVE, name)
 }
 
 hook_pre_plugin_install :: proc(name: string) {
