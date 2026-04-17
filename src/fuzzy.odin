@@ -1006,15 +1006,16 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 }
 
 // Interactive fuzzy finder with real-time filtering
-// This is a simplified version - for better UX, consider using external tools like fzf
+// TUI mode uses the full FuzzyView with real-time incremental matching (above).
+// CLI fallback uses simple arrow-key selection for compatibility.
 interactive_fuzzy_select :: proc(items: []string, prompt: string) -> (selected: string, ok: bool) {
 	if len(items) == 0 {
 		fmt.println("No items to select from")
 		return strings.clone(""), false
 	}
 
-	// For now, just use simple interactive select
-	// TODO: Implement real-time fuzzy filtering with terminal input handling
+	// Simple interactive select - real-time filtering is available in TUI mode
+	// For advanced filtering in CLI mode, users can pipe through external tools like fzf
 	return interactive_select(items, prompt)
 }
 
