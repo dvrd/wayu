@@ -1511,6 +1511,22 @@ print_config_usage :: proc() {
 }
 
 handle_migrate_command :: proc(args: []string) {
+	// Check for --from flag (shell migration vs legacy config migration)
+	has_from := false
+
+	for arg in args {
+		if arg == "--from" {
+			has_from = true
+			break
+		}
+	}
+
+	// If --dry-run but no --from, this is legacy config migration
+	if DRY_RUN && !has_from {
+		migrate_legacy_to_toml(true)
+		return
+	}
+
 	if len(args) == 0 {
 		print_migrate_help()
 		return
@@ -1683,6 +1699,105 @@ convert_shell_content :: proc(content: string, from_shell: ShellType, to_shell: 
 	}
 
 	return strings.clone(strings.to_string(builder))
+}
+
+// Migrate legacy shell configs to TOML format
+migrate_legacy_to_toml :: proc(dry_run: bool) {
+	print_header("Legacy Config Migration", "🔄")
+	fmt.println()
+
+	// Check which legacy files exist
+	legacy_files := []string{"aliases", "constants", "path"}
+	found_files := make([dynamic]string)
+	defer delete(found_files)
+
+	for file in legacy_files {
+		config_file := fmt.aprintf("%s/%s.%s", WAYU_CONFIG, file, SHELL_EXT)
+		defer delete(config_file)
+
+		if os.exists(config_file) {
+			append(&found_files, file)
+		}
+	}
+
+	if len(found_files) == 0 {
+		print_success("No legacy shell config files found")
+		fmt.println("Your configuration is already organized or empty.")
+		return
+	}
+
+	print_header("Found Legacy Files", "📋")
+	for file in found_files {
+		fmt.printfln("  • %s.%s", file, SHELL_EXT)
+	}
+	fmt.println()
+
+	// Show what would be imported
+	fmt.printfln("These files contain shell-specific syntax. Converting to TOML requires:")
+	fmt.println("  • Parsing alias definitions (name=value)")
+	fmt.println("  • Parsing export statements (name=value)")
+	fmt.println("  • Normalizing PATH entries")
+	fmt.println()
+
+	if dry_run {
+		print_info("Dry-run mode: would parse %d legacy files", len(found_files))
+		fmt.println()
+		fmt.printfln("Sample extraction plan:")
+
+		// Show sample of what would be extracted from aliases
+		has_aliases := false
+		for f in found_files {
+			if f == "aliases" {
+				has_aliases = true
+				break
+			}
+		}
+		if has_aliases {
+			aliases_file := fmt.aprintf("%s/aliases.%s", WAYU_CONFIG, SHELL_EXT)
+			defer delete(aliases_file)
+
+			content, ok := safe_read_file(aliases_file)
+			if ok {
+				lines := strings.split(string(content), "\n")
+				defer delete(lines)
+
+				fmt.println()
+				fmt.println("  [aliases]")
+				count := 0
+				for line in lines {
+					trimmed := strings.trim_space(line)
+					if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
+						continue
+					}
+
+					if strings.contains(trimmed, "alias ") {
+						// Simple parsing: alias name='value'
+						rest := strings.trim_prefix(trimmed, "alias ")
+						if pos := strings.index(rest, "="); pos > 0 {
+							name := rest[:pos]
+							fmt.printfln("    # %s = ...", name)
+							count += 1
+							if count >= 3 {
+								break
+							}
+						}
+					}
+				}
+				delete(content)
+				if count == 0 {
+					fmt.println("    # (no parseable aliases found)")
+				}
+			}
+		}
+
+		fmt.println()
+		fmt.printfln("Run %swayu migrate%s (without --dry-run) for actual migration", get_primary(), RESET)
+		return
+	}
+
+	print_info("Actual migration not yet implemented. Use --dry-run to preview.")
+	fmt.println()
+	fmt.printfln("To manually migrate, see: %swayu config scan --fix%s", get_primary(), RESET)
 }
 
 print_migrate_help :: proc() {
