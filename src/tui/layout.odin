@@ -226,10 +226,10 @@ get_footer_filter_active :: proc(width: int) -> string {
 
 get_footer_data_view :: proc(width: int) -> string {
 	if width < BREAKPOINT_NARROW {
-		return "/ Filter   a Add   h Back"
+		return "/ Filter   s Src   a Add   h Back"
 	}
 	if width < BREAKPOINT_COMPACT {
-		return "/ Filter   a Add   d Del   h Back   j/k Nav"
+		return "/ Filter   s Src   a Add   d Del   h Back   j/k Nav"
 	}
 	return FOOTER_DATA_VIEW
 }
