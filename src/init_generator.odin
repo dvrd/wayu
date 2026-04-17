@@ -94,9 +94,20 @@ defer {
 	}
 	fmt.sbprintln(&builder)
 	
-	// Batch aliases esenciales
-	fmt.sbprintln(&builder, "# === Aliases esenciales (batch) ===")
-	fmt.sbprintln(&builder, "alias vim=nvim ls=lsd reload=\"source ~/.zshrc\" x=exit cat=bat")
+	// Aliases desde wayu.toml [[aliases]]
+	fmt.sbprintln(&builder, "# === Aliases (from wayu.toml [[aliases]]) ===")
+	toml_aliases := read_wayu_toml_aliases()
+	defer {
+		for a in toml_aliases { delete(a.name); delete(a.command) }
+		delete(toml_aliases)
+	}
+	for a in toml_aliases {
+		fmt.sbprint(&builder, "alias ")
+		fmt.sbprint(&builder, a.name)
+		fmt.sbprint(&builder, `="`)
+		fmt.sbprint(&builder, a.command)
+		fmt.sbprintln(&builder, `"`)
+	}
 	fmt.sbprintln(&builder)
 
 	// Shell wrapper para wayu: intercepta "path add" y exporta al shell actual
@@ -215,9 +226,8 @@ generate_lazy_init_v2 :: proc() {
 	// Environment ya exportado en init-core.zsh desde wayu.toml [env]
 	fmt.sbprintln(&builder)
 	
-	// Resto de aliases
-	fmt.sbprintln(&builder, "# === Aliases adicionales ===")
-	fmt.sbprintln(&builder, "alias config=\"vim $SHELL_CONFIG\" dotfiles=\"vim $CONFIGS\" tree=\"lsd --tree\" py=python3")
+	// Aliases ya exportados en init-core.zsh desde wayu.toml [[aliases]]
+	fmt.sbprintln(&builder)
 	fmt.sbprintln(&builder)
 	
 	// Extra config
@@ -459,6 +469,85 @@ read_wayu_toml_env :: proc() -> [dynamic]EnvEntry {
 				value = strings.clone(value),
 			})
 		}
+	}
+
+	return entries
+}
+
+// Lee los [[aliases]] de wayu.toml y retorna lista de (nombre, comando)
+// Uses AliasEntry from output.odin
+read_wayu_toml_aliases :: proc() -> [dynamic]AliasEntry {
+	config_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	defer delete(config_path)
+
+	content, ok := safe_read_file(config_path)
+	if !ok { return make([dynamic]AliasEntry) }
+	defer delete(content)
+
+	entries := make([dynamic]AliasEntry)
+	lines := strings.split(string(content), "\n")
+	defer delete(lines)
+
+	in_alias := false
+	current_name := ""
+	current_cmd := ""
+
+	for line in lines {
+		trimmed := strings.trim_space(line)
+
+		if trimmed == "[[aliases]]" {
+			// Flush previous entry
+			if len(current_name) > 0 {
+				append(&entries, AliasEntry{
+					name = strings.clone(current_name),
+					command = strings.clone(current_cmd),
+				})
+			}
+			in_alias = true
+			current_name = ""
+			current_cmd = ""
+			continue
+		}
+
+		// Any other header ends alias section
+		if strings.has_prefix(trimmed, "[") && !strings.has_prefix(trimmed, "[[") {
+			// Flush last entry
+			if in_alias && len(current_name) > 0 {
+				append(&entries, AliasEntry{
+					name = strings.clone(current_name),
+					command = strings.clone(current_cmd),
+				})
+			}
+			in_alias = false
+			continue
+		}
+
+		if !in_alias { continue }
+
+		// Parse name = "value"
+		if strings.has_prefix(trimmed, "name") && strings.contains(trimmed, "=") {
+			eq_idx := strings.index(trimmed, "=")
+			val := strings.trim_space(trimmed[eq_idx+1:])
+			val = strings.trim_prefix(val, `"`)
+			val = strings.trim_suffix(val, `"`)
+			current_name = val
+		}
+
+		if strings.has_prefix(trimmed, "command") && strings.contains(trimmed, "=") {
+			eq_idx := strings.index(trimmed, "=")
+			val := strings.trim_space(trimmed[eq_idx+1:])
+			val = strings.trim_prefix(val, `"`)
+			val = strings.trim_suffix(val, `"`)
+			current_cmd = val
+		}
+	}
+
+	// Flush last entry
+	if in_alias && len(current_name) > 0 {
+		append(&entries, AliasEntry{
+			name = strings.clone(current_name),
+			command = strings.clone(current_cmd),
+		})
 	}
 
 	return entries
