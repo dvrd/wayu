@@ -18,15 +18,34 @@ tui_bridge_load_path :: proc(state: ^tui.TUIState) {
 		tui.clear_view_cache(state, .PATH_VIEW)
 	}
 
-	// Read entries using PATH_SPEC
-	entries := read_config_entries(&PATH_SPEC)
-	defer cleanup_entries(&entries)
-
-	// Convert to strings
 	items := make([dynamic]string)
-	for entry in entries {
-		item := strings.clone(entry.name)
-		append(&items, item)
+
+	// Check if wayu.toml exists and read from it preferentially
+	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	defer delete(toml_file)
+
+	if os.exists(toml_file) {
+		config, ok := toml_read_file(toml_file)
+		defer {
+			// Clean up config memory
+			for entry in config.path.entries { delete(entry) }
+			delete(config.path.entries)
+		}
+		if ok {
+			for entry in config.path.entries {
+				item := strings.clone(entry)
+				append(&items, item)
+			}
+		}
+	} else {
+		// Fall back to shell config entries
+		entries := read_config_entries(&PATH_SPEC)
+		defer cleanup_entries(&entries)
+
+		for entry in entries {
+			item := strings.clone(entry.name)
+			append(&items, item)
+		}
 	}
 
 	// Store in cache
@@ -42,15 +61,38 @@ tui_bridge_load_alias :: proc(state: ^tui.TUIState) {
 		tui.clear_view_cache(state, .ALIAS_VIEW)
 	}
 
-	// Read entries using ALIAS_SPEC
-	entries := read_config_entries(&ALIAS_SPEC)
-	defer cleanup_entries(&entries)
-
-	// Convert to "name=value" format
 	items := make([dynamic]string)
-	for entry in entries {
-		item := fmt.aprintf("%s=%s", entry.name, entry.value)
-		append(&items, item)
+
+	// Check if wayu.toml exists and read from it preferentially
+	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	defer delete(toml_file)
+
+	if os.exists(toml_file) {
+		config, ok := toml_read_file(toml_file)
+		defer {
+			// Clean up config memory
+			for alias in config.aliases {
+				delete(alias.name)
+				delete(alias.command)
+				delete(alias.description)
+			}
+			delete(config.aliases)
+		}
+		if ok {
+			for alias in config.aliases {
+				item := fmt.aprintf("%s=%s", alias.name, alias.command)
+				append(&items, item)
+			}
+		}
+	} else {
+		// Fall back to shell config entries
+		entries := read_config_entries(&ALIAS_SPEC)
+		defer cleanup_entries(&entries)
+
+		for entry in entries {
+			item := fmt.aprintf("%s=%s", entry.name, entry.value)
+			append(&items, item)
+		}
 	}
 
 	// Store in cache
@@ -66,15 +108,38 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 		tui.clear_view_cache(state, .CONSTANTS_VIEW)
 	}
 
-	// Read entries using CONSTANTS_SPEC
-	entries := read_config_entries(&CONSTANTS_SPEC)
-	defer cleanup_entries(&entries)
-
-	// Convert to "NAME=value" format
 	items := make([dynamic]string)
-	for entry in entries {
-		item := fmt.aprintf("%s=%s", entry.name, entry.value)
-		append(&items, item)
+
+	// Check if wayu.toml exists and read from it preferentially
+	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	defer delete(toml_file)
+
+	if os.exists(toml_file) {
+		config, ok := toml_read_file(toml_file)
+		defer {
+			// Clean up config memory
+			for const in config.constants {
+				delete(const.name)
+				delete(const.value)
+				delete(const.description)
+			}
+			delete(config.constants)
+		}
+		if ok {
+			for const in config.constants {
+				item := fmt.aprintf("%s=%s", const.name, const.value)
+				append(&items, item)
+			}
+		}
+	} else {
+		// Fall back to shell config entries
+		entries := read_config_entries(&CONSTANTS_SPEC)
+		defer cleanup_entries(&entries)
+
+		for entry in entries {
+			item := fmt.aprintf("%s=%s", entry.name, entry.value)
+			append(&items, item)
+		}
 	}
 
 	// Store in cache
@@ -427,6 +492,17 @@ tui_bridge_install_plugin :: proc(key: string) -> bool {
 
 	// Regenerate shell loader so the plugin is sourced
 	return generate_plugins_file(DETECTED_SHELL)
+}
+
+// Load Settings into state cache
+tui_bridge_load_settings :: proc(state: ^tui.TUIState) {
+	// Get shell name from DETECTED_SHELL global
+	shell_name := get_shell_name(DETECTED_SHELL)
+
+	// Store in state fields
+	state.settings_shell = strings.clone(shell_name)
+	state.settings_config_dir = strings.clone(WAYU_CONFIG)
+	state.settings_dry_run = DRY_RUN
 }
 
 // Get PATH entry detail information
