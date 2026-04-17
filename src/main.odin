@@ -464,6 +464,12 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 				parsed.action = .LIST
 			case "generate", "gen":
 				parsed.action = .UPDATE  // Use UPDATE for generate
+			case "bash":
+				parsed.action = .CHECK  // Use CHECK for bash
+			case "fish":
+				parsed.action = .GET    // Use GET for fish
+			case "zsh":
+				parsed.action = .TURBO  // Use TURBO for zsh
 			case "help", "-h", "--help":
 				parsed.action = .HELP
 			case:
