@@ -296,6 +296,11 @@ list_toml_aliases :: proc() {
 		return
 	}
 
+	if JSON_OUTPUT {
+		print_aliases_json(entries[:])
+		return
+	}
+
 	// Snapshot current aliases for cross-reference
 	aliases_env := snapshot_aliases()
 
@@ -334,6 +339,30 @@ list_toml_aliases :: proc() {
 	output := table_render(table, get_cli_terminal_width())
 	defer delete(output)
 	fmt.print(output)
+}
+
+print_aliases_json :: proc(entries: []ConfigEntry) {
+	aliases_env := snapshot_aliases()
+
+	fmt.println("{")
+	fmt.println(`  "aliases": [`)
+
+	for entry, i in entries {
+		source := "wayu"
+		if _, has := aliases_env[entry.name]; !has {
+			source = "wayu (inactive)"
+		}
+
+		comma := ","
+		if i == len(entries) - 1 {
+			comma = ""
+		}
+
+		fmt.printfln(`    {{"alias": "%s", "command": "%s", "source": "%s"}}%s`, entry.name, entry.value, source, comma)
+	}
+
+	fmt.println("  ]")
+	fmt.println("}")
 }
 
 get_toml_alias_value :: proc(name: string) {

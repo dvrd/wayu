@@ -422,6 +422,11 @@ list_toml_constants :: proc() {
 		return
 	}
 
+	if JSON_OUTPUT {
+		print_constants_json(entries[:])
+		return
+	}
+
 	// Count sources
 	active_count := 0
 	inactive_count := 0
@@ -459,6 +464,29 @@ list_toml_constants :: proc() {
 	table_output := table_render(table, get_cli_terminal_width())
 	defer delete(table_output)
 	fmt.print(table_output)
+}
+
+print_constants_json :: proc(entries: []ConfigEntry) {
+	fmt.println("{")
+	fmt.println(`  "constants": [`)
+
+	for entry, i in entries {
+		source := "wayu"
+		env_val := snapshot_env_var(entry.name)
+		if env_val == nil {
+			source = "wayu (inactive)"
+		}
+
+		comma := ","
+		if i == len(entries) - 1 {
+			comma = ""
+		}
+
+		fmt.printfln(`    {{"constant": "%s", "value": "%s", "source": "%s"}}%s`, entry.name, entry.value, source, comma)
+	}
+
+	fmt.println("  ]")
+	fmt.println("}")
 }
 
 get_toml_constant_value :: proc(name: string) {

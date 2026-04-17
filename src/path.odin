@@ -545,6 +545,11 @@ toml_path_list :: proc() {
 		delete(paths)
 	}
 
+	if JSON_OUTPUT {
+		print_paths_json(paths[:])
+		return
+	}
+
 	print_header("PATH (wayu.toml)", PATH_SPEC.icon)
 	fmt.println()
 
@@ -605,6 +610,35 @@ toml_path_list :: proc() {
 
 	fmt.println()
 	fmt.printfln("Total: %d paths", len(paths))
+}
+
+print_paths_json :: proc(paths: []string) {
+	fmt.println("{")
+	fmt.println(`  "paths": [`)
+
+	path_entries := snapshot_path_entries()
+
+	for p, i in paths {
+		found := false
+		for env_path in path_entries {
+			if env_path == p {
+				found = true
+				break
+			}
+		}
+		source := found ? "wayu" : "wayu (inactive)"
+		exists := os.exists(p)
+
+		comma := ","
+		if i == len(paths) - 1 {
+			comma = ""
+		}
+
+		fmt.printfln(`    {{"path": "%s", "source": "%s", "exists": %v}}%s`, p, source, exists, comma)
+	}
+
+	fmt.println("  ]")
+	fmt.println("}")
 }
 
 // Agrega un path al final de wayu.toml
