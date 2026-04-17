@@ -31,7 +31,7 @@ ENV_SNAPSHOT_CACHE: struct {
 } = {}
 
 // snapshot_path_entries splits $PATH on `:` and returns a slice
-// Caches result on first call.
+// Caches result on first call. All returned strings are cloned so caller owns them.
 snapshot_path_entries :: proc() -> [dynamic]string {
 	if ENV_SNAPSHOT_CACHE.initialized && len(ENV_SNAPSHOT_CACHE.path_entries) > 0 {
 		return ENV_SNAPSHOT_CACHE.path_entries
@@ -41,8 +41,9 @@ snapshot_path_entries :: proc() -> [dynamic]string {
 	defer delete(path_str)
 
 	entries := strings.split(path_str, ":", context.allocator)
+	defer delete(entries)
 	for entry in entries {
-		append(&ENV_SNAPSHOT_CACHE.path_entries, entry)
+		append(&ENV_SNAPSHOT_CACHE.path_entries, strings.clone(entry))
 	}
 
 	ENV_SNAPSHOT_CACHE.initialized = true
@@ -161,6 +162,9 @@ classify_entry :: proc(name: string, wayu_value: string, env_value: Maybe(string
 
 // cleanup_env_snapshot frees the cached snapshot (call at program end)
 cleanup_env_snapshot :: proc() {
+	for entry in ENV_SNAPSHOT_CACHE.path_entries {
+		delete(entry)
+	}
 	delete(ENV_SNAPSHOT_CACHE.path_entries)
 	for k, v in ENV_SNAPSHOT_CACHE.env_vars {
 		delete(v)
