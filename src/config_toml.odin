@@ -803,18 +803,33 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
     wayu_version_val := get_toml_value(doc, "wayu_version")
     config.wayu_version = get_string(wayu_version_val, VERSION)
     
-    // Path config
-    path_entries_val := get_toml_value(doc, "path.entries")
-    if path_entries_val != nil {
-        entries, ok := get_string_array(path_entries_val)
-        if ok {
-            config.path.entries = entries
+    // Path config - support [[paths]] array of tables format
+    paths_val := get_toml_value(doc, "paths")
+    if paths_val != nil && paths_val.type == .ARRAY {
+        // Parse [[paths]] array of tables
+        paths_entries := make([dynamic]string)
+        for path_table in paths_val.arr_val {
+            if path_table.type == .TABLE {
+                if path_val, ok := path_table.table_val["path"]; ok && path_val.type == .STRING {
+                    append(&paths_entries, strings.clone(path_val.str_val))
+                }
+            }
+        }
+        config.path.entries = paths_entries[:]
+    } else {
+        // Fall back to old format: path.entries
+        path_entries_val := get_toml_value(doc, "path.entries")
+        if path_entries_val != nil {
+            entries, ok := get_string_array(path_entries_val)
+            if ok {
+                config.path.entries = entries
+            }
         }
     }
-    
+
     path_dedup_val := get_toml_value(doc, "path.dedup")
     config.path.dedup = get_bool(path_dedup_val, true)
-    
+
     path_clean_val := get_toml_value(doc, "path.clean")
     config.path.clean = get_bool(path_clean_val, false)
     
