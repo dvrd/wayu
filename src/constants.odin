@@ -29,24 +29,28 @@ handle_constants_command :: proc(action: Action, args: []string) {
 				print_cli_usage_error(&CONSTANTS_SPEC, "add")
 				os.exit(EXIT_USAGE)
 			}
+			hook_pre_constant_add(entry.name)
 			ok, err := toml_constant_add(entry)
 			if !ok {
 				print_error_simple(err)
 				delete(err)
 				os.exit(EXIT_DATAERR)
 			}
+			hook_post_constant_add(entry.name)
 			return
 		case .REMOVE:
 			if len(args) == 0 {
 				print_cli_usage_error(&CONSTANTS_SPEC, "remove")
 				os.exit(EXIT_USAGE)
 			}
+			hook_pre_constant_remove(args[0])
 			ok, err := toml_constant_remove(args[0])
 			if !ok {
 				print_error_simple(err)
 				delete(err)
 				os.exit(EXIT_DATAERR)
 			}
+			hook_post_constant_remove(args[0])
 			return
 		case .LIST:
 			list_toml_constants()
