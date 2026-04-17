@@ -5,11 +5,18 @@ import "core:os"
 import "core:strings"
 
 // ANSI color codes similar to gum
-RESET     :: "\x1b[0m"
-BOLD      :: "\x1b[1m"
-DIM       :: "\x1b[2m"
-ITALIC    :: "\x1b[3m"
-UNDERLINE :: "\x1b[4m"
+RESET_CODE     :: "\x1b[0m"
+BOLD_CODE      :: "\x1b[1m"
+DIM_CODE       :: "\x1b[2m"
+ITALIC_CODE    :: "\x1b[3m"
+UNDERLINE_CODE :: "\x1b[4m"
+
+// Runtime variables (modified by init_colors())
+RESET:     string = RESET_CODE
+BOLD:      string = BOLD_CODE
+DIM:       string = DIM_CODE
+ITALIC:    string = ITALIC_CODE
+UNDERLINE: string = UNDERLINE_CODE
 
 // Color Profile for terminal capability detection
 ColorProfile :: enum {
@@ -148,6 +155,21 @@ detect_color_profile :: proc() -> ColorProfile {
 // Initialize color profile (call once at startup)
 init_colors :: proc() {
 	CURRENT_COLOR_PROFILE = detect_color_profile()
+
+	// Set ANSI codes based on color profile
+	if CURRENT_COLOR_PROFILE == .ASCII {
+		RESET     = ""
+		BOLD      = ""
+		DIM       = ""
+		ITALIC    = ""
+		UNDERLINE = ""
+	} else {
+		RESET     = RESET_CODE
+		BOLD      = BOLD_CODE
+		DIM       = DIM_CODE
+		ITALIC    = ITALIC_CODE
+		UNDERLINE = UNDERLINE_CODE
+	}
 }
 
 // Get adaptive color based on terminal capabilities
@@ -194,9 +216,84 @@ get_muted :: proc() -> string {
 	return adaptive_color(VIBRANT_MUTED, BRIGHT_BLACK, BRIGHT_BLACK)
 }
 
+get_bold :: proc() -> string {
+	return BOLD
+}
+
+get_reset :: proc() -> string {
+	return RESET
+}
+
 // Get current color profile
 get_color_profile :: proc() -> ColorProfile {
 	return CURRENT_COLOR_PROFILE
+}
+
+// Strip ANSI codes from a string if in ASCII mode
+maybe_strip_ansi :: proc(text: string) -> string {
+	if CURRENT_COLOR_PROFILE != .ASCII {
+		return text
+	}
+
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+
+	i := 0
+	for i < len(text) {
+		if text[i] == '\x1b' && i + 1 < len(text) && text[i+1] == '[' {
+			// Skip ANSI escape sequence
+			i += 2
+			// Skip until 'm'
+			for i < len(text) && text[i] != 'm' {
+				i += 1
+			}
+			if i < len(text) {
+				i += 1
+			}
+		} else {
+			strings.write_byte(&builder, text[i])
+			i += 1
+		}
+	}
+
+	return strings.clone(strings.to_string(builder))
+}
+
+// Wrapper for fmt.printf that strips ANSI codes in ASCII mode
+fmt_printf :: proc(format: string, args: ..any) {
+	if CURRENT_COLOR_PROFILE == .ASCII {
+		text := fmt.tprintf(format, ..args)
+		stripped := maybe_strip_ansi(text)
+		defer delete(stripped)
+		fmt.printf(stripped)
+	} else {
+		fmt.printf(format, ..args)
+	}
+}
+
+// Wrapper for fmt.println that strips ANSI codes in ASCII mode
+fmt_println :: proc(args: ..any) {
+	if CURRENT_COLOR_PROFILE == .ASCII {
+		text := fmt.tprint(..args)
+		stripped := maybe_strip_ansi(text)
+		defer delete(stripped)
+		fmt.println(stripped)
+	} else {
+		fmt.println(..args)
+	}
+}
+
+// Wrapper for fmt.printfln that strips ANSI codes in ASCII mode
+fmt_printfln :: proc(format: string, args: ..any) {
+	if CURRENT_COLOR_PROFILE == .ASCII {
+		text := fmt.tprintf(format, ..args)
+		stripped := maybe_strip_ansi(text)
+		defer delete(stripped)
+		fmt.println(stripped)
+	} else {
+		fmt.printfln(format, ..args)
+	}
 }
 
 // Emojis
@@ -256,11 +353,11 @@ print_info :: proc(msg: string, args: ..any) {
 }
 
 print_header :: proc(msg: string, emoji: string = EMOJI_ROCKET) {
-	fmt.printf("%s%s%s %s%s%s\n", BOLD, get_primary(), emoji, msg, RESET, RESET)
+	fmt.printf("%s%s%s %s%s%s\n", get_bold(), get_primary(), emoji, msg, get_reset(), get_reset())
 }
 
 print_section :: proc(msg: string, emoji: string) {
-	fmt.printf("%s%s%s %s%s%s\n", BOLD, get_secondary(), emoji, msg, RESET, RESET)
+	fmt.printf("%s%s%s %s%s%s\n", get_bold(), get_secondary(), emoji, msg, get_reset(), get_reset())
 }
 
 print_item :: proc(prefix: string, name: string, value: string = "", emoji: string = "") {

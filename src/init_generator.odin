@@ -25,6 +25,9 @@ generate_optimized_init_all :: proc() {
 	
 	// 4. Helper functions (evalcache, zsh-defer propio, etc.)
 	generate_helpers_init_v2()
+
+	// 5. Runtime plugin config generated from wayu.toml
+	_ = generate_plugins_runtime_config(DETECTED_SHELL)
 	
 	fmt.println("# Init files generados:")
 	fmt.printfln("#   %s/init-core.zsh  (menos de 10ms)", WAYU_CONFIG)
@@ -70,6 +73,10 @@ generate_core_init_v2 :: proc() {
 	} else {
 		fmt.sbprintln(&builder, `source "$HOME/.config/wayu/path.zsh"`)
 	}
+
+	// Deduplicación de PATH - prevenir duplicados en cada reload
+	fmt.sbprintln(&builder, "# Deduplicate PATH (preserva orden, elimina duplicados)")
+	fmt.sbprintln(&builder, "typeset -U path PATH")
 	fmt.sbprintln(&builder)
 	
 	// Batch exports esenciales (una sola línea)
@@ -84,7 +91,7 @@ defer {
 		// Expand $HOME to literal for export compatibility
 		home := os.get_env_alloc("HOME", context.allocator)
 		defer delete(home)
-		if len(home) == 0 { home = "/Users/kakurega" }
+		if len(home) == 0 { home = os.get_env_alloc("HOME", context.temp_allocator) }
 		expanded, _ := strings.replace_all(e.value, "$HOME", home)
 		fmt.sbprint(&builder, "export ")
 		fmt.sbprint(&builder, e.name)
@@ -133,6 +140,7 @@ defer {
 	fmt.sbprintln(&builder, "# === Plugins críticos (inmediato) ===")
 	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\" ] && source \"$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\"")
 	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\" ] && source \"$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\"")
+	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/config.zsh\" ] && source \"$HOME/.config/wayu/plugins/config.zsh\"")
 	fmt.sbprintln(&builder)
 	
 	// User configuration from config.zsh
@@ -474,7 +482,8 @@ read_wayu_toml_env :: proc() -> [dynamic]EnvEntry {
 	return entries
 }
 
-// Lee los [[aliases]] de wayu.toml y retorna lista de (nombre, comando)
+// Lee los aliases de wayu.toml y retorna lista de (nombre, comando)
+// Soporta ambos formatos: [aliases] tabla y [[aliases]] array of tables.
 // Uses AliasEntry from output.odin
 read_wayu_toml_aliases :: proc() -> [dynamic]AliasEntry {
 	config_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
@@ -488,67 +497,91 @@ read_wayu_toml_aliases :: proc() -> [dynamic]AliasEntry {
 	lines := strings.split(string(content), "\n")
 	defer delete(lines)
 
-	in_alias := false
+	in_alias_table := false
+	in_alias_array := false
 	current_name := ""
 	current_cmd := ""
 
 	for line in lines {
 		trimmed := strings.trim_space(line)
+		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
+			continue
+		}
 
-		if trimmed == "[[aliases]]" {
-			// Flush previous entry
+		if trimmed == "[aliases]" {
 			if len(current_name) > 0 {
 				append(&entries, AliasEntry{
 					name = strings.clone(current_name),
 					command = strings.clone(current_cmd),
 				})
 			}
-			in_alias = true
 			current_name = ""
 			current_cmd = ""
+			in_alias_table = true
+			in_alias_array = false
 			continue
 		}
-
-		// Any other header ends alias section
-		if strings.has_prefix(trimmed, "[") && !strings.has_prefix(trimmed, "[[") {
-			// Flush last entry
-			if in_alias && len(current_name) > 0 {
+		if trimmed == "[[aliases]]" {
+			if len(current_name) > 0 {
 				append(&entries, AliasEntry{
 					name = strings.clone(current_name),
 					command = strings.clone(current_cmd),
 				})
 			}
-			in_alias = false
+			current_name = ""
+			current_cmd = ""
+			in_alias_table = false
+			in_alias_array = true
 			continue
 		}
 
-		if !in_alias { continue }
-
-		// Parse name = "value"
-		if strings.has_prefix(trimmed, "name") && strings.contains(trimmed, "=") {
-			eq_idx := strings.index(trimmed, "=")
-			val := strings.trim_space(trimmed[eq_idx+1:])
-			val = strings.trim_prefix(val, `"`)
-			val = strings.trim_suffix(val, `"`)
-			current_name = val
+		if strings.has_prefix(trimmed, "[") {
+			if len(current_name) > 0 {
+				append(&entries, AliasEntry{
+					name = strings.clone(current_name),
+					command = strings.clone(current_cmd),
+				})
+			}
+			current_name = ""
+			current_cmd = ""
+			in_alias_table = false
+			in_alias_array = false
+			continue
 		}
 
-		if strings.has_prefix(trimmed, "command") && strings.contains(trimmed, "=") {
-			eq_idx := strings.index(trimmed, "=")
-			val := strings.trim_space(trimmed[eq_idx+1:])
-			val = strings.trim_prefix(val, `"`)
-			val = strings.trim_suffix(val, `"`)
-			current_cmd = val
+		eq_idx := strings.index(trimmed, "=")
+		if eq_idx < 1 { continue }
+
+		name := strings.trim_space(trimmed[:eq_idx])
+		val := strings.trim_space(trimmed[eq_idx+1:])
+		val = strings.trim_prefix(val, `"`)
+		val = strings.trim_suffix(val, `"`)
+		val = strings.trim_prefix(val, "'")
+		val = strings.trim_suffix(val, "'")
+
+		if in_alias_table {
+			append(&entries, AliasEntry{
+				name = strings.clone(name),
+				command = strings.clone(val),
+			})
+			continue
+		}
+
+		if in_alias_array {
+			switch name {
+			case "name":
+				current_name = val
+			case "command":
+				current_cmd = val
+			}
 		}
 	}
 
-	// Flush last entry
-	if in_alias && len(current_name) > 0 {
+	if len(current_name) > 0 {
 		append(&entries, AliasEntry{
 			name = strings.clone(current_name),
 			command = strings.clone(current_cmd),
 		})
 	}
-
 	return entries
 }

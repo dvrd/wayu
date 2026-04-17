@@ -30,7 +30,7 @@ run_component_testing :: proc(component_name: string, args: []string, snapshot: 
 		fmt.eprintln("  - footer")
 		fmt.eprintln("  - scroll-indicator")
 		fmt.eprintln("  - empty-state")
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	}
 
 	// Parse component arguments
@@ -46,13 +46,13 @@ run_component_testing :: proc(component_name: string, args: []string, snapshot: 
 		// Save golden file
 		success := save_golden(component_name, component_args, output)
 		if !success {
-			os.exit(1)
+			os.exit(EXIT_IOERR)
 		}
 	} else if verify {
 		// Test against golden file
 		success := compare_golden(component_name, component_args, output)
 		if !success {
-			os.exit(1)
+			os.exit(EXIT_GENERAL)
 		}
 	} else {
 		// Just print output

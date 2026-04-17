@@ -1112,6 +1112,18 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
         if dry_run_val, ok := settings_val.table_val["dry_run_default"]; ok {
             config.settings.dry_run_default = get_bool(dry_run_val, false)
         }
+        if accept_keys_val, ok := settings_val.table_val["autosuggestions_accept_keys"]; ok && accept_keys_val.type == .ARRAY {
+            accept_keys, ok2 := get_string_array(accept_keys_val)
+            if ok2 {
+                config.settings.autosuggestions_accept_keys = accept_keys
+            }
+        }
+    }
+    if config.settings.autosuggestions_accept_keys == nil || len(config.settings.autosuggestions_accept_keys) == 0 {
+        config.settings.autosuggestions_accept_keys = []string{
+            strings.clone("^Y"),
+            strings.clone("^[[121;5u"),
+        }
     }
     
     return config, true
@@ -1306,6 +1318,16 @@ toml_to_string :: proc(config: TomlConfig) -> string {
     fmt.sbprintfln(&builder, "auto_backup = %t", config.settings.auto_backup)
     fmt.sbprintfln(&builder, "fuzzy_fallback = %t", config.settings.fuzzy_fallback)
     fmt.sbprintfln(&builder, "dry_run_default = %t", config.settings.dry_run_default)
+    if len(config.settings.autosuggestions_accept_keys) > 0 {
+        fmt.sbprint(&builder, "autosuggestions_accept_keys = [")
+        for key, i in config.settings.autosuggestions_accept_keys {
+            if i > 0 {
+                fmt.sbprint(&builder, ", ")
+            }
+            fmt.sbprintf(&builder, "\"%s\"", key)
+        }
+        fmt.sbprintln(&builder, "]")
+    }
     fmt.sbprintln(&builder)
     
     // Profiles
@@ -1449,7 +1471,11 @@ toml_get_config_path :: proc() -> string {
 
 // Create default TOML config
 toml_create_default :: proc() -> TomlConfig {
-    return TomlConfig{
+    accept_keys := make([]string, 2)
+    accept_keys[0] = strings.clone("^Y")
+    accept_keys[1] = strings.clone("^[[121;5u")
+
+    config := TomlConfig{
         version = "1.0",
         shell = "zsh",
         wayu_version = VERSION,
@@ -1466,8 +1492,10 @@ toml_create_default :: proc() -> TomlConfig {
             auto_backup = true,
             fuzzy_fallback = true,
             dry_run_default = false,
+            autosuggestions_accept_keys = accept_keys,
         },
     }
+    return config
 }
 
 // ============================================================================
@@ -1493,6 +1521,10 @@ handle_init_toml :: proc() -> bool {
         delete(config.aliases)
         delete(config.constants)
         delete(config.plugins)
+        for key in config.settings.autosuggestions_accept_keys {
+            delete(key)
+        }
+        delete(config.settings.autosuggestions_accept_keys)
         for _, profile in config.profiles {
             delete(profile.aliases)
             delete(profile.constants)
@@ -1536,6 +1568,10 @@ handle_validate :: proc() -> bool {
         delete(config.shell)
         delete(config.wayu_version)
         delete(config.path.entries)
+        for key in config.settings.autosuggestions_accept_keys {
+            delete(key)
+        }
+        delete(config.settings.autosuggestions_accept_keys)
         for alias in config.aliases {
             delete(alias.name)
             delete(alias.command)
@@ -1600,6 +1636,10 @@ handle_convert_to_toml :: proc() -> bool {
         delete(config.aliases)
         delete(config.constants)
         delete(config.plugins)
+        for key in config.settings.autosuggestions_accept_keys {
+            delete(key)
+        }
+        delete(config.settings.autosuggestions_accept_keys)
         for _, profile in config.profiles {
             delete(profile.aliases)
             delete(profile.constants)

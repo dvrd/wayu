@@ -30,7 +30,25 @@ for dir in "${WAYU_PATHS[@]}"; do
     export PATH="$dir:$PATH"
 done
 
-# PATH is already deduplicated by the loop above
+# Final deduplication pass (Zsh-compatible method)
+remove_path_duplicates() {
+    local new_path=""
+    local dir
+    local -a dirs
+    dirs=(${(s/:/)PATH})
+    for dir in "${dirs[@]}"; do
+        if [[ ":$new_path:" != *":$dir:"* ]] && [ -n "$dir" ]; then
+            if [ -z "$new_path" ]; then
+                new_path="$dir"
+            else
+                new_path="$new_path:$dir"
+            fi
+        fi
+    done
+    export PATH="$new_path"
+}
+
+remove_path_duplicates
 `
 
 ALIASES_TEMPLATE :: `#!/usr/bin/env zsh

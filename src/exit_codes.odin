@@ -16,6 +16,7 @@ import "core:os"
 
 EXIT_SUCCESS      :: 0   // Successful termination
 EXIT_GENERAL      :: 1   // General unspecified error
+EXIT_FAILURE      :: 1   // General error (alias for compatibility)
 EXIT_USAGE        :: 64  // Command line usage error
 EXIT_DATAERR      :: 65  // Data format error
 EXIT_NOINPUT      :: 66  // Cannot open input

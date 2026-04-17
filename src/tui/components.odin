@@ -181,9 +181,13 @@ render_component :: proc(type: ComponentType, args: ComponentArgs) -> string {
 
 	case .EMPTY_STATE:
 		// Center message vertically and horizontally
+		message := args.message
+		if message == "" {
+			message = "No items found"
+		}
 		y := args.height / 2
-		x := (args.width - len(args.message)) / 2
-		render_text(&screen, x, y, args.message)
+		x := (args.width - len(message)) / 2
+		render_text(&screen, x, y, message)
 	}
 
 	// Convert to plain text

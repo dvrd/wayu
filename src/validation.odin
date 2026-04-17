@@ -132,9 +132,9 @@ sanitize_shell_value :: proc(value: string) -> string {
 		case '`':
 			// Escape backticks (command substitution)
 			strings.write_string(&builder, "\\`")
-		case '$':
-			// Escape dollar sign (variable expansion)
-			strings.write_string(&builder, "\\$")
+		// Note: Dollar signs ($) are NOT escaped by default.
+		// This allows aliases like 'gs=git status $1' to work.
+		// Escaping is only for dangerous characters (quotes, backticks).
 		case '\\':
 			// Escape backslash
 			strings.write_string(&builder, "\\\\")

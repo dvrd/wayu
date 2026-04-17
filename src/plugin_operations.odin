@@ -508,7 +508,7 @@ handle_plugin_add :: proc(args: []string) {
 	if len(args) == 0 {
 		print_error_simple("Error: Plugin name or URL required")
 		print_plugin_add_help()
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	}
 
 	name_or_url := args[0]
@@ -518,7 +518,7 @@ handle_plugin_add :: proc(args: []string) {
 	if !resolved {
 		print_error_simple("Error: Unknown plugin '%s'", name_or_url)
 		fmt.println("\nRun 'wayu plugin search' to see available plugins")
-		os.exit(1)
+		os.exit(EXIT_DATAERR)
 	}
 	defer delete(info.name)
 	defer delete(info.url)
@@ -553,7 +553,7 @@ handle_plugin_add :: proc(args: []string) {
 		err := os.make_directory(plugins_dir)
 		if err != nil {
 			print_error_simple("Error: Failed to create plugins directory: %v", err)
-			os.exit(1)
+			os.exit(EXIT_CANTCREAT)
 		}
 	}
 
@@ -571,7 +571,7 @@ handle_plugin_add :: proc(args: []string) {
 
 	if !success {
 		print_error_simple("Error: Failed to clone plugin repository")
-		os.exit(1)
+		os.exit(EXIT_OSERR)
 	}
 
 	print_success("Cloned plugin repository")
@@ -626,7 +626,7 @@ handle_plugin_add :: proc(args: []string) {
 	// Generate plugins file for current shell
 	if !generate_plugins_file(DETECTED_SHELL) {
 		print_error_simple("Error: Failed to generate plugins loader")
-		os.exit(1)
+		os.exit(EXIT_IOERR)
 	}
 
 	print_success("Plugin '%s' installed successfully", info.name)
@@ -801,7 +801,35 @@ handle_plugin_remove :: proc(args: []string) {
 		os.exit(EXIT_DATAERR)
 	}
 
-	// Phase 4: Check if other plugins depend on this one
+	// Phase 1: Check for --yes flag (required for all removals)
+	// Check this BEFORE showing details to ensure consistent behavior
+	if !YES_FLAG {
+		print_error("This operation requires confirmation.")
+		fmt.println()
+		print_info("Plugin to remove: %s", plugin_name)
+		fmt.printfln("  Path: %s", plugin_ptr.installed_path)
+		fmt.println()
+
+		// Phase 2: Check if other plugins depend on this one
+		dependents := check_plugin_dependents(plugin_name, &config)
+
+		if len(dependents) > 0 {
+			print_warning("Warning: The following plugins depend on '%s':", plugin_name)
+			for dep in dependents {
+				fmt.printfln("  - %s", dep)
+			}
+			fmt.println()
+			print_warning("Removing this plugin may break these plugins.")
+			fmt.println()
+		}
+
+		delete(dependents)  // Clean up before exit
+		fmt.printfln("Add --yes flag to proceed:")
+		fmt.printfln("  wayu plugin rm %s --yes", plugin_name)
+		os.exit(EXIT_GENERAL)
+	}
+
+	// Phase 3: Check for dependents (warning only since --yes was provided)
 	dependents := check_plugin_dependents(plugin_name, &config)
 	defer delete(dependents)
 
@@ -813,14 +841,6 @@ handle_plugin_remove :: proc(args: []string) {
 		fmt.println()
 		print_warning("Removing this plugin may break these plugins.")
 		fmt.println()
-
-		// In CLI mode: require --yes flag to proceed when dependents exist
-		if !YES_FLAG {
-			print_error_simple("Aborted: use --yes to remove plugin with dependents")
-			fmt.printfln("%sHint:%s wayu plugin rm %s --yes",
-				get_muted(), RESET, plugin_name)
-			os.exit(EXIT_USAGE)
-		}
 	}
 
 	print_header("Removing Plugin", EMOJI_COMMAND)
@@ -886,7 +906,7 @@ handle_plugin_get :: proc(args: []string) {
 	if len(args) == 0 {
 		print_error_simple("Error: Plugin name required")
 		fmt.println("\nUsage: wayu plugin get <name>")
-		os.exit(1)
+		os.exit(EXIT_USAGE)
 	}
 
 	plugin_name := args[0]

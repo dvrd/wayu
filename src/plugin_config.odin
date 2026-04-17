@@ -5,6 +5,145 @@ import "core:os"
 import "core:strings"
 import "core:time"
 
+make_default_autosuggest_accept_keys :: proc() -> []string {
+	keys := make([]string, 2)
+	keys[0] = strings.clone("^Y")
+	keys[1] = strings.clone("^[[121;5u")
+	return keys
+}
+
+plugin_accept_keys_from_toml :: proc() -> []string {
+	config_path := toml_get_config_path()
+	defer delete(config_path)
+
+	if !os.exists(config_path) {
+		return make_default_autosuggest_accept_keys()
+	}
+
+	content, ok := safe_read_file(config_path)
+	if !ok {
+		return make_default_autosuggest_accept_keys()
+	}
+	defer delete(content)
+
+	lines := strings.split(string(content), "\n")
+	defer delete(lines)
+
+	in_settings := false
+	keys := make([dynamic]string)
+	defer if len(keys) == 0 do delete(keys)
+
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
+			continue
+		}
+		if trimmed == "[settings]" {
+			in_settings = true
+			continue
+		}
+		if in_settings && strings.has_prefix(trimmed, "[") {
+			break
+		}
+		if !in_settings || !strings.has_prefix(trimmed, "autosuggestions_accept_keys") {
+			continue
+		}
+
+		eq_idx := strings.index(trimmed, "=")
+		if eq_idx < 0 {
+			break
+		}
+		raw := strings.trim_space(trimmed[eq_idx+1:])
+		in_quote := false
+		quote_char: byte = 0
+		start := 0
+		for i := 0; i < len(raw); i += 1 {
+			ch := raw[i]
+			if !in_quote && (ch == '"' || ch == '\'') {
+				in_quote = true
+				quote_char = ch
+				start = i + 1
+				continue
+			}
+			if in_quote && ch == quote_char {
+				key := raw[start:i]
+				if len(key) > 0 {
+					duplicate := false
+					for existing in keys {
+						if existing == key {
+							duplicate = true
+							break
+						}
+					}
+					if !duplicate {
+						append(&keys, strings.clone(key))
+					}
+				}
+				in_quote = false
+			}
+		}
+		break
+	}
+
+	if len(keys) == 0 {
+		return make_default_autosuggest_accept_keys()
+	}
+	return keys[:]
+}
+
+generate_plugins_runtime_config :: proc(shell: ShellType) -> bool {
+	if shell != .ZSH {
+		return true
+	}
+
+	plugins_dir := get_plugins_dir()
+	defer delete(plugins_dir)
+	if !os.exists(plugins_dir) {
+		if err := os.make_directory(plugins_dir); err != nil {
+			return false
+		}
+	}
+
+	config_path := fmt.aprintf("%s/config.zsh", plugins_dir)
+	defer delete(config_path)
+
+	accept_keys := plugin_accept_keys_from_toml()
+	defer {
+		for key in accept_keys {
+			delete(key)
+		}
+		delete(accept_keys)
+	}
+
+	sb := strings.builder_make()
+	defer strings.builder_destroy(&sb)
+	strings.write_string(&sb, "#!/usr/bin/env zsh\n\n")
+	strings.write_string(&sb, "# Plugin keybindings and configuration\n")
+	strings.write_string(&sb, "# Auto-generated from wayu.toml\n\n")
+	strings.write_string(&sb, "# === zsh-autosuggestions ===\n")
+	strings.write_string(&sb, "if (( ${+widgets[autosuggest-accept]} )); then\n")
+	for key in accept_keys {
+		if len(key) == 0 {
+			continue
+		}
+		if !strings.has_prefix(key, "^") && !strings.contains(key, "[") {
+			continue
+		}
+		fmt.sbprintf(&sb, "  bindkey '%s' autosuggest-accept\n", key)
+		fmt.sbprintf(&sb, "  bindkey -M emacs '%s' autosuggest-accept\n", key)
+		fmt.sbprintf(&sb, "  bindkey -M main '%s' autosuggest-accept\n", key)
+		fmt.sbprintf(&sb, "  bindkey -M viins '%s' autosuggest-accept\n", key)
+	}
+	strings.write_string(&sb, "fi\n")
+
+	content := strings.to_string(sb)
+	if DRY_RUN {
+		print_info("[DRY RUN] Would write plugin runtime config: %s", config_path)
+		return true
+	}
+	return os.write_entire_file(config_path, transmute([]byte)content) == nil
+}
+
 // Generate plugins.{zsh,bash} loader file
 generate_plugins_file :: proc(shell: ShellType) -> bool {
 	ext := get_shell_extension(shell)
@@ -204,10 +343,13 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 
 	if DRY_RUN {
 		print_info("[DRY RUN] Would write plugins file: %s", plugins_file)
-		return true
+		return generate_plugins_runtime_config(shell)
 	}
 
-	return os.write_entire_file(plugins_file, transmute([]byte)content) == nil
+	if os.write_entire_file(plugins_file, transmute([]byte)content) != nil {
+		return false
+	}
+	return generate_plugins_runtime_config(shell)
 }
 
 // Get files to source for a plugin based on 'use' globs or auto-detect

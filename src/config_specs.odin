@@ -86,23 +86,9 @@ CONSTANTS_SPEC := ConfigEntrySpec{
 // Validate PATH entry
 validate_path_entry :: proc(entry: ConfigEntry) -> ValidationResult {
 	// Validate path format using existing validation system
-	result := validate_path(entry.name)
-	if !result.valid {
-		return result
-	}
-
-	// Check if path exists (expand env vars first)
-	expanded := expand_env_vars(entry.name)
-	defer delete(expanded)
-
-	if !os.exists(expanded) {
-		return ValidationResult{
-			valid = false,
-			error_message = fmt.aprintf("Path does not exist: %s", entry.name),
-		}
-	}
-
-	return ValidationResult{valid = true, error_message = ""}
+	// NOTE: This only validates format (not empty, no invalid chars)
+	// Disk existence checks are intentionally NOT performed here
+	return validate_path(entry.name)
 }
 
 // Format PATH line: array element with indent

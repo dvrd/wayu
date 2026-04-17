@@ -1054,7 +1054,7 @@ test_validate_dependencies_some_missing :: proc(t: ^testing.T) {
 		dependencies = make([dynamic]string),
 	}
 	append(&plugin.dependencies, "dep1")
-	append(&plugin.dependencies, "dep2")  // Missing
+	append(&plugin.dependencies, "missing-dep")  // Missing dependency
 	append(&config.plugins, plugin)
 
 	missing := wayu.validate_plugin_dependencies(&config.plugins[1], &config)
@@ -1066,7 +1066,7 @@ test_validate_dependencies_some_missing :: proc(t: ^testing.T) {
 	}
 
 	testing.expect(t, len(missing) == 1, "One dependency should be missing")
-	testing.expect(t, missing[0] == "dep2", "dep2 should be missing")
+	testing.expect(t, missing[0] == "missing-dep", "missing-dep should be missing")
 }
 
 @(test)

@@ -180,8 +180,29 @@ main :: proc() {
 	// This defer executes after all other defers in this scope
 	defer if TEMP_ARENA != nil do free_all(context.temp_allocator)
 
+	// Check for --no-color flag BEFORE initializing color system
+	// This ensures the flag takes precedence over environment variables
+	no_color_flag := false
+	for arg in os.args[1:] {
+		if arg == "--no-color" || arg == "--no-colour" {
+			no_color_flag = true
+			break
+		}
+	}
+
 	// Initialize color system (PRP-09 Phase 1)
 	init_colors()
+
+	// Override with --no-color if present (takes precedence over NO_COLOR env)
+	if no_color_flag {
+		CURRENT_COLOR_PROFILE = .ASCII
+		// Reinitialize ANSI codes for ASCII mode
+		RESET = ""
+		BOLD = ""
+		DIM = ""
+		ITALIC = ""
+		UNDERLINE = ""
+	}
 
 	init_shell_globals()
 	init_config_files()
@@ -270,6 +291,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	component_name_str := ""
 	snapshot_flag := false
 	verify_flag := false
+	no_color_flag := false
 
 	i := 0
 	for i < len(args) {
@@ -287,6 +309,16 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			snapshot_flag = true
 		} else if arg == "--test" {
 			verify_flag = true
+		} else if arg == "--no-color" || arg == "--no-colour" {
+			no_color_flag = true
+			// Force ASCII color profile - affects output in this function
+			CURRENT_COLOR_PROFILE = .ASCII
+			// Reinitialize ANSI codes for ASCII mode
+			RESET = ""
+			BOLD = ""
+			DIM = ""
+			ITALIC = ""
+			UNDERLINE = ""
 		} else if arg == "--shell" && i + 1 < len(args) {
 			// Parse shell override
 			shell_name := args[i + 1]
@@ -639,6 +671,11 @@ handle_init_command :: proc() {
 	// Initialize shell-specific config files
 	init_shell_configs(shell, ext)
 
+	fmt.println()
+
+	// Generate optimized init files with dynamic [env] exports
+	print_info("Generating optimized shell init files...")
+	generate_optimized_init_all()
 	fmt.println()
 
 	// Update shell RC file

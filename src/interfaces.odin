@@ -118,6 +118,7 @@ WayuSettings :: struct {
     auto_backup:      bool,           // Create backup on modify
     fuzzy_fallback: bool,            // Enable fuzzy matching on GET
     dry_run_default: bool,          // Default --dry-run for safety
+    autosuggestions_accept_keys: []string, // ZLE sequences that accept autosuggestions
 }
 
 // Note: TOML operations (toml_parse, toml_validate, etc.) implemented in config_toml.odin
