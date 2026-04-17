@@ -74,6 +74,11 @@ TUIState :: struct {
 	notification_kind:    NotificationKind,
 	notification_message: string,
 	notification_frames:  int,  // frames remaining before auto-dismiss
+
+	// Settings cache (loaded once on demand)
+	settings_shell:      string,
+	settings_config_dir: string,
+	settings_dry_run:    bool,
 }
 
 // Initialize TUI state
