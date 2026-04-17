@@ -153,6 +153,7 @@ tui_launch :: proc() {
 		tui_bridge_disable_plugin,
 		tui_bridge_load_registry,
 		tui_bridge_install_plugin,
+		tui_bridge_load_settings,
 	)
 
 	tui.tui_run()
@@ -582,8 +583,16 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	case "dedup":           parsed.action = .DEDUP
 	case "turbo":           parsed.action = .TURBO
 	case "eval":            parsed.action = .EVAL
-	case "help", "-h", "--help": parsed.action = .HELP
-	case:                   parsed.action = .UNKNOWN; return parsed
+	case "help", "-h", "--help":
+		parsed.action = .HELP
+	case:
+		// Before returning UNKNOWN, check if this is a help flag for a subcommand
+		if filtered_args[1] == "--help" || filtered_args[1] == "-h" {
+			parsed.action = .HELP
+		} else {
+			parsed.action = .UNKNOWN
+			return parsed
+		}
 	}
 
 	// Remaining positional args (e.g. the path/name/value after the action).
