@@ -422,7 +422,23 @@ list_toml_constants :: proc() {
 		return
 	}
 
-	headers := []string{"Constant", "Value"}
+	// Count sources
+	active_count := 0
+	inactive_count := 0
+	for entry in entries {
+		env_val := snapshot_env_var(entry.name)
+		if env_val != nil {
+			active_count += 1
+		} else {
+			inactive_count += 1
+		}
+	}
+
+	// Print summary
+	fmt.printfln("  %d active · %d inactive", active_count, inactive_count)
+	fmt.println()
+
+	headers := []string{"Constant", "Value", "Source"}
 	table := new_table(headers)
 	defer table_destroy(&table)
 
@@ -431,7 +447,12 @@ list_toml_constants :: proc() {
 	table_border(&table, .Normal)
 
 	for entry in entries {
-		row := []string{entry.name, entry.value}
+		source := "wayu"
+		env_val := snapshot_env_var(entry.name)
+		if env_val == nil {
+			source = "wayu (inactive)"
+		}
+		row := []string{entry.name, entry.value, source}
 		table_add_row(&table, row)
 	}
 

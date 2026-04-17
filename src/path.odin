@@ -553,11 +553,54 @@ toml_path_list :: proc() {
 		return
 	}
 
+	// Snapshot current PATH for cross-reference
+	path_entries := snapshot_path_entries()
+
+	// Count sources
+	active_count := 0
+	inactive_count := 0
+	for p in paths {
+		// Check if path is in current environment
+		found := false
+		for env_path in path_entries {
+			if env_path == p {
+				found = true
+				break
+			}
+		}
+		if found {
+			active_count += 1
+		} else {
+			inactive_count += 1
+		}
+	}
+
+	// Print summary
+	fmt.printfln("  %d active · %d inactive", active_count, inactive_count)
+	fmt.println()
+
+	// Print entries with source indicator
 	for p, i in paths {
-		exists := os.exists(p)
+		// Check if path is in current environment
+		found := false
+		for env_path in path_entries {
+			if env_path == p {
+				found = true
+				break
+			}
+		}
+
+		source := "wayu"
 		marker := "  "
-		if !exists { marker = "✗ " }
-		fmt.printfln("%s%d. %s", marker, i+1, p)
+		if !found {
+			source = "wayu (inactive)"
+			marker = "⚠ "
+		}
+
+		marker_exists := "  "
+		if !os.exists(p) { marker_exists = "✗ " }
+
+		fmt.printfln("%s%d. %s  [%s]", marker_exists, i+1, p, source)
 	}
 
 	fmt.println()
