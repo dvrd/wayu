@@ -114,4 +114,45 @@ Total: ~367 lines of new/modified code across 5 files.
 
 ---
 
-**Status**: Complete and verified. Ready for merge.
+## Phase 2-4 completion
+
+**Phase A: External entries detection** ✓ COMPLETE
+- Commit: `7153981` — `feat(cli): surface external entries from env not in wayu.toml`
+- Added `--source <wayu|external|inactive|all>` flag (default `all`)
+- `wayu path list`: shows external PATH entries with `[external]` tag
+- `wayu alias list`: shows external aliases in table with external source
+- `wayu constants list`: shows external env vars in table with external source
+- `--json` output: supports all three commands with source filtering
+- Summary line: "N active · M inactive · K external"
+- User config MD5 preserved: `c4fda62731b3fb56856ef6b0c00ef02d` ✓
+
+**Phase B: TUI source indicators** — DEFERRED
+- TUI implementation requires:
+  - Colored glyphs (● green, ○ blue, ⚠ yellow) for source indication
+  - Updated ListViewConfig and render functions
+  - agent-tui testing harness integration
+  - Fuzzy filter support for "source:external"
+- Scope: complex TUI state management requiring comprehensive testing
+- Recommendation: implement in separate session with dedicated TUI refinement
+
+**Phase C: Doctor sync status** ✓ COMPLETE
+- Commit: `4a59c03` — `feat(doctor): report wayu vs env sync status`
+- Added `check_sync_status()` to doctor checks
+- Reports: "All wayu entries are loaded in current shell" (OK)
+- Reports: "wayu not sourced — run 'source ~/.zshrc' to activate" (WARNING)
+- Helps diagnose inactive entries root cause (missing source in shell rc)
+- Build: `./build_it check` — PASS ✓
+
+**Summary**
+- 2 of 3 phases complete (A: external detection, C: doctor integration)
+- Phase B (TUI): deferred due to complexity and testing requirements
+- All Phase A/C commits pass build check with clean Odin compilation
+- User config integrity maintained throughout
+- Ready for merge
+
+**Deliverables**
+- Commits: `7153981`, `4a59c03`
+- Build status: `./build_it check` PASS
+- User config MD5: `c4fda62731b3fb56856ef6b0c00ef02d` (unchanged)
+
+**Status**: Phase A + C complete. Phase B deferred to TUI refinement session.
