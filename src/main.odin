@@ -482,6 +482,10 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 				parsed.action = .CHECK
 			case "convert", "apply":
 				parsed.action = .UPDATE
+			case "show":
+				parsed.action = .GET
+			case "keys":
+				parsed.action = .LIST
 			case "help", "-h", "--help":
 				parsed.action = .HELP
 			case:
