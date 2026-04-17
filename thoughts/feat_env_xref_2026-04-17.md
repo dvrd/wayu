@@ -156,3 +156,86 @@ Total: ~367 lines of new/modified code across 5 files.
 - User config MD5: `c4fda62731b3fb56856ef6b0c00ef02d` (unchanged)
 
 **Status**: Phase A + C complete. Phase B deferred to TUI refinement session.
+
+---
+
+## Env xref bugfixes
+
+**Date:** 2026-04-17  
+**Fix Commit:** `75d9532`
+
+### Root Cause Analysis
+
+Two critical bugs were introduced in the env cross-reference feature (commits `3261628`, `eca3894`, `7153981`):
+
+1. **Bug 1: Memory corruption in external PATH listing**
+   - `snapshot_path_entries()` returned strings backed by `strings.split()` result
+   - When the split array was freed, strings became dangling pointers
+   - Output showed garbage characters: `✗ 2. W   /kakurega/.localh	� `...`
+
+2. **Bug 2: Sync status false negatives (24/25 wayu paths marked inactive)**
+   - Only 1 of 25 paths detected as active in $PATH
+   - False negatives caused by corrupted strings in comparisons
+   - Issue cascaded from Bug 1: garbage strings never matched TOML entries
+
+### Fix Implementation
+
+**Single unified fix** in `src/env_snapshot.odin`:
+- Clone all PATH entries from split result: `strings.clone(entry)`
+- Store clones in cache: `append(&ENV_SNAPSHOT_CACHE.path_entries, strings.clone(entry))`
+- Cleanup cloned strings on program exit: delete loop before `delete(ENV_SNAPSHOT_CACHE.path_entries)`
+
+**Insight**: Bug 2 was a symptom of Bug 1. Fixing the memory corruption automatically resolved the sync detection false negatives.
+
+### Before/After Verification
+
+**Before (Bug 1 + Bug 2):**
+```
+wayu path list --source external
+✗ 1. /Users/kakurega/.local/bi   [external]    ← truncated
+✗ 2. W   /kakurega/.localh	� `...  [external]   ← garbage
+✗ 3.  `         ��7 `...         [external]    ← garbage
+
+wayu path list --source wayu
+  2 active · 23 inactive   ← only 1/25 paths detected
+```
+
+**After (Both bugs fixed):**
+```
+wayu path list --source external
+✗ 1. /opt/homebrew/anaconda3/condabin  [external]   ← valid
+✗ 2. /Users/kakurega/Library/pnpm  [external]       ← valid
+  3. /Users/kakurega/.nvm/versions/node/v22.22.0/bin  [external]  ← valid
+
+wayu path list --source wayu
+  25 active · 0 inactive   ← all 25 paths detected correctly ✓
+```
+
+### Commit Details
+
+- **Hash**: `75d9532`
+- **Message**: `fix(env_snapshot): clone PATH strings to prevent dangling pointers`
+- **Changed**: `src/env_snapshot.odin` (6 lines: clone, defer delete split, cleanup loop)
+- **Build**: `./build_it check` — PASS ✓
+- **Config**: MD5 `c4fda62731b3fb56856ef6b0c00ef02d` (unchanged) ✓
+
+### Test Results
+
+Command validation:
+```bash
+# Bug 1: All external paths show valid, readable paths (no garbage)
+wayu path list --source external | head -5
+# ✓ All paths valid: /opt/homebrew/anaconda3/condabin, /Users/kakurega/Library/pnpm, ...
+
+# Bug 2: Sync detection now correct
+wayu path list --source wayu | head -1
+# ✓ Output: "25 active · 0 inactive" (all TOML entries found in $PATH)
+
+# Ground truth: 25 paths in wayu.toml
+grep -c '^\[\[paths\]\]' ~/.config/wayu/wayu.toml
+# ✓ Result: 25
+```
+
+### Summary
+
+Both regressions fixed with a minimal, focused change to memory ownership in the snapshot module. The fix ensures all returned strings from `snapshot_path_entries()` are independently owned (cloned), eliminating dangling pointers and enabling correct set-membership tests in the classifier.
