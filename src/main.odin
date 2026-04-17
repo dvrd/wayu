@@ -807,6 +807,36 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	} else {
 		print_info("Config file already exists: %s", alias_sources_file)
 	}
+
+	// Create wayu.toml scaffold if it doesn't exist
+	toml_file := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	defer delete(toml_file)
+
+	if !os.exists(toml_file) {
+		spinner := new_spinner(.Line)
+		spinner_text(&spinner, "Creating wayu.toml scaffold")
+		spinner_start(&spinner)
+
+		shell_name := get_shell_name(shell)
+		toml_scaffold := fmt.aprintf(`[shell]
+type = "%s"
+
+[aliases]
+
+[env]
+`, shell_name)
+		defer delete(toml_scaffold)
+
+		success := init_config_file(toml_file, toml_scaffold)
+		spinner_stop(&spinner)
+		if success {
+			print_success("Created config file: %s", toml_file)
+		} else {
+			print_error_simple("Failed to create config file: %s", toml_file)
+		}
+	} else {
+		print_info("Config file already exists: %s", toml_file)
+	}
 }
 
 update_shell_rc :: proc(shell: ShellType, ext: string) {
