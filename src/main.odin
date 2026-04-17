@@ -1729,8 +1729,7 @@ handle_build_command :: proc(action: Action) {
 	profile_mode := action == .CHECK
 	
 	if profile_mode {
-		fmt.println("📊 Build profiling not yet implemented.")
-		fmt.println("Use 'time wayu build' for basic timing.")
+		profile_startup_performance()
 		return
 	}
 	
@@ -1766,6 +1765,38 @@ handle_build_command :: proc(action: Action) {
 	fmt.println()
 	fmt.println("For now, using turbo export:")
 	handle_export_command(.TURBO, {})
+}
+
+// Display shell startup profiling information
+profile_startup_performance :: proc() {
+	print_header("Shell Startup Performance", "📊")
+	fmt.println()
+
+	startup_profile_file := fmt.aprintf("%s/startup_profile.zsh", WAYU_CONFIG)
+	defer delete(startup_profile_file)
+
+	// Check if startup profiling output exists
+	if !os.exists(startup_profile_file) {
+		print_info("wayu build profile requires shell instrumentation.")
+		fmt.println("Add 'export WAYU_PROFILE=1' to your shell and reload.")
+		fmt.println()
+		fmt.println("Then run a new shell and:")
+		fmt.println("  wayu build profile")
+		fmt.println()
+		return
+	}
+
+	// Read and display profiling results
+	content, read_ok := safe_read_file(startup_profile_file)
+	if !read_ok {
+		print_error_simple("Failed to read startup profile")
+		os.exit(EXIT_IOERR)
+	}
+	defer delete(content)
+
+	profile_str := string(content)
+	fmt.println(profile_str)
+	fmt.println()
 }
 
 // Generate optimized eval output - implements ALL optimization techniques:
