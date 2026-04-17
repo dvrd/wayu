@@ -233,7 +233,7 @@ tui_ensure_data_loaded :: proc(state: ^TUIState, view: TUIView) {
 		// Installed plugins and registry are independent caches — load each if missing
 		if state.data_cache[view] == nil do tui_load_plugins_data(state)
 		tui_load_registry(state)  // idempotent: skips if plugin_registry_cache != nil
-	case .MAIN_MENU, .SETTINGS_VIEW:
+	case .MAIN_MENU, .HOOKS_VIEW, .SETTINGS_VIEW:
 		// No data to load for these views
 	}
 }
