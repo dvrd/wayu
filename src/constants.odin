@@ -133,6 +133,8 @@ read_wayu_toml_constants :: proc() -> []ConfigEntry {
 		value = strings.trim_suffix(value, `"`)
 		value = strings.trim_prefix(value, "'")
 		value = strings.trim_suffix(value, "'")
+		// Unescape TOML escape sequences in the value
+		value = unescape_toml_string(value)
 
 		if in_env || in_constants_table {
 			if len(name) > 0 && len(value) > 0 {
@@ -197,6 +199,34 @@ escape_toml_string :: proc(value: string) -> string {
 		case '\r': strings.write_string(&builder, `\r`)
 		case '\t': strings.write_string(&builder, `\t`)
 		case: strings.write_rune(&builder, c)
+		}
+	}
+
+	return strings.clone(strings.to_string(builder))
+}
+
+// Unescape TOML escape sequences (inverse of escape_toml_string)
+unescape_toml_string :: proc(value: string) -> string {
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+
+	i := 0
+	for i < len(value) {
+		if value[i] == '\\' && i+1 < len(value) {
+			switch value[i+1] {
+			case '\\': strings.write_rune(&builder, '\\')
+			case '"': strings.write_rune(&builder, '"')
+			case 'n': strings.write_rune(&builder, '\n')
+			case 'r': strings.write_rune(&builder, '\r')
+			case 't': strings.write_rune(&builder, '\t')
+			case:
+				strings.write_rune(&builder, '\\')
+				strings.write_rune(&builder, rune(value[i+1]))
+			}
+			i += 2
+		} else {
+			strings.write_rune(&builder, rune(value[i]))
+			i += 1
 		}
 	}
 

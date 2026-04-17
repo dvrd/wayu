@@ -581,6 +581,8 @@ read_wayu_toml_aliases :: proc() -> [dynamic]AliasEntry {
 		val = strings.trim_suffix(val, `"`)
 		val = strings.trim_prefix(val, "'")
 		val = strings.trim_suffix(val, "'")
+		// Unescape TOML escape sequences in the value
+		val = unescape_toml_string(val)
 
 		if in_alias_table {
 			append(&entries, AliasEntry{
