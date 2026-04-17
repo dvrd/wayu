@@ -179,6 +179,12 @@ render_list_item :: proc(screen: ^Screen, header_x, y: int, text: string, max_wi
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 	display := truncate_text(text, max_width)
 
+	// Clear the entire line width to prevent scroll overlap artifacts
+	// Fill from text_x to screen edge with spaces
+	for clear_x in text_x..<screen.width {
+		screen_set_cell(screen, clear_x, y, Cell{char = ' '})
+	}
+
 	if is_selected {
 		// Selected: accent bar ┃ + bold primary text
 		screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
@@ -195,7 +201,7 @@ render_list_item :: proc(screen: ^Screen, header_x, y: int, text: string, max_wi
 
 // Standard footer for filterable data views
 FOOTER_FILTER_ACTIVE :: "Type to filter   Esc Cancel   Enter Accept   j/k Navigate"
-FOOTER_DATA_VIEW     :: "/ Filter   s Source   a Add   d Delete   h Back   l Enter   j/k Navigate"
+FOOTER_DATA_VIEW     :: "/ Filter   a Add   d Delete   h Back   l Enter   j/k Navigate"
 FOOTER_READONLY_VIEW :: "/ Filter   h Back   l Enter   j/k Navigate"
 FOOTER_BACKUP_VIEW   :: "/ Filter   c Cleanup   h Back   j/k Navigate"
 FOOTER_STATIC_VIEW   :: "h Back"
@@ -268,14 +274,43 @@ render_table_row :: proc(
 	key_col_width, value_col_width: int,
 	is_selected: bool,
 ) {
+	// Items may start with a glyph (● ⚠ ○ ♦) + space; strip it for parsing
+	work_item := item
+	glyph_prefix := ""
+
+	// Check for ANSI-colored glyph prefix (e.g., "\x1b[38;2;34;197;94m●\x1b[0m ")
+	// or plain Unicode glyph + space
+	glyph_strs := []string{"●", "⚠", "○", "♦"}
+	for gc_str in glyph_strs {
+		if strings.contains(work_item, gc_str) {
+			// Find the first occurrence of the glyph
+			gc_idx := strings.index(work_item, gc_str)
+			if gc_idx >= 0 {
+				// Extract everything up to and including the glyph and trailing reset code
+				// ANSI codes end with "m" followed by optional space
+				end_idx := gc_idx + len(gc_str)
+				for end_idx < len(work_item) && work_item[end_idx] != ' ' && work_item[end_idx] != '=' {
+					end_idx += 1
+				}
+				// Skip trailing space if present
+				if end_idx < len(work_item) && work_item[end_idx] == ' ' {
+					end_idx += 1
+				}
+				glyph_prefix = work_item[:end_idx]
+				work_item = work_item[end_idx:]
+				break
+			}
+		}
+	}
+
 	// Split on first '='
-	eq_idx := strings.index_byte(item, '=')
+	eq_idx := strings.index_byte(work_item, '=')
 	key, value: string
 	if eq_idx >= 0 {
-		key = item[:eq_idx]
-		value = item[eq_idx + 1:]
+		key = work_item[:eq_idx]
+		value = work_item[eq_idx + 1:]
 	} else {
-		key = item
+		key = work_item
 		value = ""
 	}
 
@@ -286,6 +321,12 @@ render_table_row :: proc(
 	// Text starts after accent bar + gap
 	text_x := x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 	value_x := text_x + key_col_width + COLUMN_GAP
+
+	// Clear the entire line width to prevent scroll overlap artifacts
+	// Fill from text_x to screen edge with spaces
+	for clear_x in text_x..<screen.width {
+		screen_set_cell(screen, clear_x, y, Cell{char = ' '})
+	}
 
 	if is_selected {
 		// Selected: accent bar ┃ + bold primary key + bold primary value
