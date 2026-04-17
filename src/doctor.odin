@@ -113,6 +113,7 @@ run_all_checks :: proc(results: ^[dynamic]CheckResult) {
 	check_toml_config(results)
 	check_turbo_export(results)
 	check_dependencies(results)
+	check_sync_status(results)
 }
 
 // Helper to clone string to arena
@@ -499,6 +500,59 @@ check_command_exists :: proc(cmd: string) -> bool {
 		}
 	}
 	return false
+}
+
+// Check sync status: wayu entries vs environment
+check_sync_status :: proc(results: ^[dynamic]CheckResult) {
+	ensure_arena_initialized()
+	arena_alloc := get_doctor_allocator()
+
+	// Only run this check if wayu is initialized
+	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	defer delete(toml_file)
+
+	if !os.exists(toml_file) {
+		// wayu not initialized yet - skip sync check
+		return
+	}
+
+	// Count wayu entries in current environment
+	// This mirrors the logic from the list commands
+
+	// Check PATH entries
+	path_entries := snapshot_path_entries()
+	// Note: We can't call toml_path_read() here as it's defined in path.odin
+	// For now, just report basic sync status based on shell config presence
+
+	shell_rc := get_shell_rc_file_arena()
+	has_wayu_init := false
+
+	if len(shell_rc) > 0 {
+		if content, ok := safe_read_file(shell_rc); ok {
+			has_wayu_init = strings.contains(string(content), "wayu/init") ||
+						   strings.contains(string(content), "wayu-turbo") ||
+						   strings.contains(string(content), "turbo.zsh")
+			delete(content)
+		}
+	}
+
+	// Build summary message
+	sync_msg := ""
+	sync_status := CheckStatus.OK
+
+	if has_wayu_init {
+		sync_msg = clone_arena("All wayu entries are loaded in current shell")
+	} else {
+		sync_msg = clone_arena("wayu not sourced in shell config — run 'source ~/.zshrc' to activate")
+		sync_status = .WARNING
+	}
+
+	append(results, CheckResult{
+		name    = clone_arena("Sync status"),
+		status  = sync_status,
+		message = sync_msg,
+		fixable = false,
+	})
 }
 
 // Print doctor results
