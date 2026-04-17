@@ -56,9 +56,10 @@ execute_hook :: proc(hook_type: HookType, context_data: string = "") {
 	cmd, _ = strings.replace_all(cmd, "{name}", context_data, context.temp_allocator)
 	cmd, _ = strings.replace_all(cmd, "{value}", context_data, context.temp_allocator)
 
-	// Execute (fire and forget - don't block)
-	// In a real implementation, this would use subprocess execution
+	// Execute via shell (fire and forget - don't block on output)
 	debug("Executing hook: %s", cmd)
+	hook_args := []string{"sh", "-c", cmd}
+	run_command(hook_args)  // Ignoring return value - hooks are best-effort
 }
 
 // Get hook command for a type
@@ -208,22 +209,23 @@ show_hooks_status :: proc() {
 
 	has_hooks := false
 
-	check_and_print :: proc(name: string, cmd: string) {
+	check_and_print :: proc(name: string, cmd: string, has_hooks: ^bool) {
 		if len(cmd) > 0 {
 			fmt.printfln("  %s%s%s: %s", get_primary(), name, RESET, cmd)
+			has_hooks^ = true
 		}
 	}
 
-	check_and_print("pre_path_add", config.pre_path_add)
-	check_and_print("post_path_add", config.post_path_add)
-	check_and_print("pre_path_remove", config.pre_path_remove)
-	check_and_print("post_path_remove", config.post_path_remove)
-	check_and_print("pre_alias_add", config.pre_alias_add)
-	check_and_print("post_alias_add", config.post_alias_add)
-	check_and_print("pre_plugin_install", config.pre_plugin_install)
-	check_and_print("post_plugin_install", config.post_plugin_install)
-	check_and_print("pre_export", config.pre_export)
-	check_and_print("post_export", config.post_export)
+	check_and_print("pre_path_add", config.pre_path_add, &has_hooks)
+	check_and_print("post_path_add", config.post_path_add, &has_hooks)
+	check_and_print("pre_path_remove", config.pre_path_remove, &has_hooks)
+	check_and_print("post_path_remove", config.post_path_remove, &has_hooks)
+	check_and_print("pre_alias_add", config.pre_alias_add, &has_hooks)
+	check_and_print("post_alias_add", config.post_alias_add, &has_hooks)
+	check_and_print("pre_plugin_install", config.pre_plugin_install, &has_hooks)
+	check_and_print("post_plugin_install", config.post_plugin_install, &has_hooks)
+	check_and_print("pre_export", config.pre_export, &has_hooks)
+	check_and_print("post_export", config.post_export, &has_hooks)
 
 	if !has_hooks {
 		fmt.printfln("  %sNo hooks configured%s", get_muted(), RESET)
@@ -275,12 +277,16 @@ edit_hooks_config :: proc() {
 	// Open in editor
 	editor := os.get_env_alloc("EDITOR", context.temp_allocator)
 	if len(editor) == 0 {
-		editor = "vim"
+		editor = "vi"
 	}
 
 	print_info("Opening hooks config in %s...", editor)
-	// In real implementation: exec(editor, hook_path)
-	fmt.printfln("Edit: %s", hook_path)
+	editor_args := []string{editor, hook_path}
+	ok := run_command_with_stdin(editor_args, "")
+	if !ok {
+		print_error("Failed to open editor: %s", editor)
+		os.exit(EXIT_IOERR)
+	}
 }
 
 // Print hooks usage
