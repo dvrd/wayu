@@ -136,7 +136,12 @@ read_wayu_toml_constants :: proc() -> []ConfigEntry {
 		// Unescape TOML escape sequences in the value
 		value = unescape_toml_string(value)
 
-		if in_env || in_constants_table {
+		// Only add entries from [constants] section, skip [env]
+		if in_env {
+			continue
+		}
+
+		if in_constants_table {
 			if len(name) > 0 && len(value) > 0 {
 				upsert_toml_constant(&entries, name, value)
 			}
