@@ -86,6 +86,7 @@ snapshot_aliases :: proc() -> map[string]string {
 		return ENV_SNAPSHOT_CACHE.aliases
 	}
 
+
 	// Try to spawn shell and capture alias list
 	shell := os.get_env("SHELL", context.allocator)
 	defer delete(shell)
@@ -110,22 +111,32 @@ snapshot_aliases :: proc() -> map[string]string {
 			lines := strings.split(alias_text, "\n", context.allocator)
 			defer delete(lines)
 
+
 			for line in lines {
 				if line == "" {
 					continue
 				}
-				// Parse lines like: alias foo='bar' or alias foo=bar
-				if strings.has_prefix(line, "alias ") {
-					rest := strings.trim_prefix(line, "alias ")
-					// Find the first = to split name and value
-					if eq_idx := strings.index(rest, "="); eq_idx != -1 {
-						name := rest[:eq_idx]
-						value := rest[eq_idx+1:]
-						// Strip surrounding quotes if present
-						value = strings.trim(value, "'\"")
-						ENV_SNAPSHOT_CACHE.aliases[name] = strings.clone(value)
-					}
+				// Parse lines like: foo='bar' or foo=bar (no "alias" prefix)
+				eq_idx := strings.index(line, "=")
+				if eq_idx == -1 || eq_idx == 0 {
+					continue
 				}
+
+				name := line[:eq_idx]
+				value := line[eq_idx+1:]
+
+				// Strip surrounding quotes if present and handle escaped quotes
+				if strings.has_prefix(value, "'") && strings.has_suffix(value, "'") {
+					value = value[1:len(value)-1]
+					// Unescape single quotes that were escaped in the shell output
+					unescaped, _ := strings.replace_all(value, "\\'", "'", context.allocator)
+					value = unescaped
+				} else if strings.has_prefix(value, "\"") && strings.has_suffix(value, "\"") {
+					value = value[1:len(value)-1]
+				}
+
+				// IMPORTANT: Clone both name and value, as name is a slice of line which is freed
+				ENV_SNAPSHOT_CACHE.aliases[strings.clone(name)] = strings.clone(value)
 			}
 		}
 		// Clean up temp file
@@ -139,12 +150,13 @@ snapshot_aliases :: proc() -> map[string]string {
 // classify_entry determines the source of an entry
 // wayu_value is the value declared in wayu.toml (or empty string if not present)
 // env_value is the value from the shell environment (or nil if not present)
+// For aliases, pass empty wayu_value and check the aliases map directly.
 classify_entry :: proc(name: string, wayu_value: string, env_value: Maybe(string)) -> EntrySource {
 	has_wayu := wayu_value != ""
 	has_env := env_value != nil
 
 	if has_wayu && has_env {
-		// Both present — check if they match
+		// Both present — check if they match (for values, not names)
 		if env_value == wayu_value {
 			return .WAYU_ACTIVE
 		} else {
