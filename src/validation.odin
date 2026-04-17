@@ -119,46 +119,34 @@ validate_identifier :: proc(name: string, identifier_type: string) -> Validation
 }
 
 // Sanitize shell command value (escape dangerous characters)
-// Strategy:
-// 1. If value contains shell metacharacters (;, &&, ||, |, >, <, `, newline, etc),
-//    wrap in single quotes and escape any embedded single quotes as '\''
-// 2. If value only contains $VAR references, use double quotes (for expansion)
-// 3. Otherwise leave as-is
 sanitize_shell_value :: proc(value: string) -> string {
-	// Check for dangerous shell metacharacters that require quoting
-	has_dangerous_chars := false
+	builder: strings.Builder
+	strings.builder_init(&builder)
+	defer strings.builder_destroy(&builder)
+
 	for r in value {
 		switch r {
-		case ';', '&', '|', '<', '>', '(', ')', '{', '}', '`', '\n', '\r':
-			has_dangerous_chars = true
-			break
-		case '$':
-			// Check if it's a variable reference ($VAR or ${VAR})
-			// For simplicity, allow single $ chars (could be improved with lookahead)
+		case '"':
+			// Escape double quotes
+			strings.write_string(&builder, "\\\"")
+		case '`':
+			// Escape backticks (command substitution)
+			strings.write_string(&builder, "\\`")
+		// Note: Dollar signs ($) are NOT escaped by default.
+		// This allows aliases like 'gs=git status $1' to work.
+		// Escaping is only for dangerous characters (quotes, backticks).
+		case '\\':
+			// Escape backslash
+			strings.write_string(&builder, "\\\\")
+		case '\n':
+			// Escape newlines
+			strings.write_string(&builder, "\\n")
+		case:
+			strings.write_rune(&builder, r)
 		}
 	}
 
-	if has_dangerous_chars {
-		// Use single quotes to prevent all expansion, escape embedded single quotes
-		// Convert ' to '\''  (end quote, escaped quote, start quote)
-		builder: strings.Builder
-		strings.builder_init(&builder)
-		defer strings.builder_destroy(&builder)
-
-		strings.write_rune(&builder, '\'')
-		for r in value {
-			if r == '\'' {
-				strings.write_string(&builder, "'\\''")
-			} else {
-				strings.write_rune(&builder, r)
-			}
-		}
-		strings.write_rune(&builder, '\'')
-		return strings.clone(strings.to_string(builder))
-	}
-
-	// No dangerous chars detected - return as-is to preserve $VAR expansion
-	return strings.clone(value)
+	return strings.clone(strings.to_string(builder))
 }
 
 // Reverse of sanitize_shell_value — used by `get` to return the original user value
