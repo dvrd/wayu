@@ -15,3 +15,5 @@ thoughts/
 .mindmodel/
 .claude/
 unit
+unit_test
+wayu_test
