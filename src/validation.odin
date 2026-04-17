@@ -74,13 +74,13 @@ validate_identifier :: proc(name: string, identifier_type: string) -> Validation
 		}
 	}
 
-	// Check remaining characters (alphanumeric or underscore only)
+	// Check remaining characters (alphanumeric, underscore, or hyphen allowed)
 	for r, i in name {
-		if !unicode.is_alpha(r) && !unicode.is_digit(r) && r != '_' {
+		if !unicode.is_alpha(r) && !unicode.is_digit(r) && r != '_' && r != '-' {
 			return ValidationResult {
 				valid = false,
 				error_message = fmt.aprintf(
-					"%s name contains invalid character '%c' at position %d. Only letters, digits, and underscores allowed.",
+					"%s name contains invalid character '%c' at position %d. Only letters, digits, underscores, and hyphens allowed.",
 					identifier_type,
 					r,
 					i,
