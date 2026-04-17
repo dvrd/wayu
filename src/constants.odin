@@ -247,7 +247,8 @@ strip_toml_constant_sections :: proc(content: string) -> string {
 	for line in lines {
 		trimmed := strings.trim_space(line)
 
-		if trimmed == "[env]" || trimmed == "[constants]" || trimmed == "[[constants]]" {
+		// Only skip [constants] and [[constants]], preserve [env]
+		if trimmed == "[constants]" || trimmed == "[[constants]]" {
 			skip_section = true
 			continue
 		}
