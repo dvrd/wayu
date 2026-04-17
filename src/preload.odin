@@ -84,23 +84,26 @@ INIT_TEMPLATE :: `#!/usr/bin/env zsh
 # Wayu Shell Initialization - Main Orchestrator
 # This file loads all configuration modules in the correct order
 
+# Determine config directory (supports WAYU_CONFIG_DIR override for testing)
+: ${WAYU_CONFIG_DIR:=$HOME/.config/wayu}
+
 # === 1. Core Configuration ===
 # Load constants and environment variables first (they may be needed by other modules)
-source "$HOME/.config/wayu/constants.zsh"
+source "$WAYU_CONFIG_DIR/constants.zsh"
 
 # === 2. PATH Configuration ===
 # Set up PATH with duplicate prevention
-source "$HOME/.config/wayu/path.zsh"
+source "$WAYU_CONFIG_DIR/path.zsh"
 
 # === 3. Functions Loading ===
 # Load custom shell functions from the functions directory
-for f in "$HOME/.config/wayu/functions"/*(N); do
+for f in "$WAYU_CONFIG_DIR/functions"/*(N); do
     [[ -f "$f" ]] && source "$f"
 done
 
 # === 4. Completions Setup ===
 # Add custom completions directory to fpath
-fpath=(~/.config/wayu/completions $fpath)
+fpath=("$WAYU_CONFIG_DIR/completions" $fpath)
 
 # Initialize completion system
 autoload -U add-zsh-hook compinit
@@ -108,25 +111,25 @@ compinit
 
 # === 5. Plugins Loading ===
 # Load Wayu-managed plugins
-[ -f "$HOME/.config/wayu/plugins.zsh" ] && source "$HOME/.config/wayu/plugins.zsh"
-[ -f "$HOME/.config/wayu/plugins/config.zsh" ] && source "$HOME/.config/wayu/plugins/config.zsh"
+[ -f "$WAYU_CONFIG_DIR/plugins.zsh" ] && source "$WAYU_CONFIG_DIR/plugins.zsh"
+[ -f "$WAYU_CONFIG_DIR/plugins/config.zsh" ] && source "$WAYU_CONFIG_DIR/plugins/config.zsh"
 
 # === 6. Aliases ===
 # Load command aliases and shortcuts
-source "$HOME/.config/wayu/aliases.zsh"
+source "$WAYU_CONFIG_DIR/aliases.zsh"
 
 # === 7. External Tools Initialization ===
 # Initialize external tools and utilities (NVM, Starship, Zoxide, etc.)
-source "$HOME/.config/wayu/tools.zsh"
+source "$WAYU_CONFIG_DIR/tools.zsh"
 
 # === Completion Notes ===
 # Additional completions are loaded from:
-# - ~/.config/wayu/completions (jj, bun, etc.)
+# - $WAYU_CONFIG_DIR/completions (jj, bun, etc.)
 # - Tools may add their own completions during initialization
 
 # === 8. Extra Config ===
 # User-defined shell snippets (hooks, env loaders, ad-hoc settings)
-[ -f "$HOME/.config/wayu/extra.zsh" ] && source "$HOME/.config/wayu/extra.zsh"
+[ -f "$WAYU_CONFIG_DIR/extra.zsh" ] && source "$WAYU_CONFIG_DIR/extra.zsh"
 `
 
 TOOLS_TEMPLATE :: `#!/usr/bin/env zsh
@@ -332,18 +335,21 @@ INIT_TEMPLATE_BASH :: `#!/usr/bin/env bash
 # Wayu Shell Initialization - Main Orchestrator (Bash)
 # This file loads all configuration modules in the correct order
 
+# Determine config directory (supports WAYU_CONFIG_DIR override for testing)
+: ${WAYU_CONFIG_DIR:=$HOME/.config/wayu}
+
 # === 1. Core Configuration ===
 # Load constants and environment variables first (they may be needed by other modules)
-source "$HOME/.config/wayu/constants.bash"
+source "$WAYU_CONFIG_DIR/constants.bash"
 
 # === 2. PATH Configuration ===
 # Set up PATH with duplicate prevention
-source "$HOME/.config/wayu/path.bash"
+source "$WAYU_CONFIG_DIR/path.bash"
 
 # === 3. Functions Loading ===
 # Load custom shell functions from the functions directory
-if [ -d "$HOME/.config/wayu/functions" ]; then
-    for f in "$HOME/.config/wayu/functions"/*; do
+if [ -d "$WAYU_CONFIG_DIR/functions" ]; then
+    for f in "$WAYU_CONFIG_DIR/functions"/*; do
         if [ -f "$f" ]; then
             source "$f"
         fi
@@ -361,8 +367,8 @@ if ! shopt -oq posix; then
 fi
 
 # Load custom completions
-if [ -d "$HOME/.config/wayu/completions" ]; then
-    for f in "$HOME/.config/wayu/completions"/*.bash-completion; do
+if [ -d "$WAYU_CONFIG_DIR/completions" ]; then
+    for f in "$WAYU_CONFIG_DIR/completions"/*.bash-completion; do
         if [ -f "$f" ]; then
             source "$f"
         fi
@@ -371,25 +377,25 @@ fi
 
 # === 5. Plugins Loading ===
 # Load Wayu-managed plugins
-[ -f "$HOME/.config/wayu/plugins.bash" ] && source "$HOME/.config/wayu/plugins.bash"
-[ -f "$HOME/.config/wayu/plugins/config.zsh" ] && source "$HOME/.config/wayu/plugins/config.zsh"
+[ -f "$WAYU_CONFIG_DIR/plugins.bash" ] && source "$WAYU_CONFIG_DIR/plugins.bash"
+[ -f "$WAYU_CONFIG_DIR/plugins/config.zsh" ] && source "$WAYU_CONFIG_DIR/plugins/config.zsh"
 
 # === 6. Aliases ===
 # Load command aliases and shortcuts
-source "$HOME/.config/wayu/aliases.bash"
+source "$WAYU_CONFIG_DIR/aliases.bash"
 
 # === 7. External Tools Initialization ===
 # Initialize external tools and utilities (NVM, Starship, Zoxide, etc.)
-source "$HOME/.config/wayu/tools.bash"
+source "$WAYU_CONFIG_DIR/tools.bash"
 
 # === Completion Notes ===
 # Additional completions are loaded from:
-# - ~/.config/wayu/completions (tools may install .bash-completion files)
+# - $WAYU_CONFIG_DIR/completions (tools may install .bash-completion files)
 # - Tools may add their own completions during initialization
 
 # === 8. Extra Config ===
 # User-defined shell snippets (hooks, env loaders, ad-hoc settings)
-[ -f "$HOME/.config/wayu/extra.bash" ] && source "$HOME/.config/wayu/extra.bash"
+[ -f "$WAYU_CONFIG_DIR/extra.bash" ] && source "$WAYU_CONFIG_DIR/extra.bash"
 `
 
 TOOLS_TEMPLATE_BASH :: `#!/usr/bin/env bash
@@ -472,18 +478,21 @@ INIT_TEMPLATE_FISH :: `#!/usr/bin/env fish
 # Wayu Shell Initialization - Main Orchestrator (Fish)
 # This file loads all configuration modules in the correct order
 
+# Determine config directory (supports WAYU_CONFIG_DIR override for testing)
+set -gx WAYU_CONFIG_DIR (test -n "$WAYU_CONFIG_DIR"; and echo "$WAYU_CONFIG_DIR"; or echo "$HOME/.config/wayu")
+
 # === 1. Core Configuration ===
 # Load constants and environment variables first (they may be needed by other modules)
-source "$HOME/.config/wayu/constants.fish"
+source "$WAYU_CONFIG_DIR/constants.fish"
 
 # === 2. PATH Configuration ===
 # Set up PATH with duplicate prevention
-source "$HOME/.config/wayu/path.fish"
+source "$WAYU_CONFIG_DIR/path.fish"
 
 # === 3. Functions Loading ===
 # Load custom shell functions from the functions directory
-if test -d "$HOME/.config/wayu/functions"
-    for f in $HOME/.config/wayu/functions/*.fish
+if test -d "$WAYU_CONFIG_DIR/functions"
+    for f in $WAYU_CONFIG_DIR/functions/*.fish
         if test -f "$f"
             source "$f"
         end
@@ -493,31 +502,31 @@ end
 # === 4. Completions Setup ===
 # Fish completions are loaded from ~/.config/fish/completions/
 # Add wayu completions path if exists
-if test -d "$HOME/.config/wayu/completions"
-    set -gx fish_complete_path "$HOME/.config/wayu/completions" $fish_complete_path
+if test -d "$WAYU_CONFIG_DIR/completions"
+    set -gx fish_complete_path "$WAYU_CONFIG_DIR/completions" $fish_complete_path
 end
 
 # === 5. Plugins Loading ===
 # Load Wayu-managed plugins
-if test -f "$HOME/.config/wayu/plugins.fish"
-    source "$HOME/.config/wayu/plugins.fish"
+if test -f "$WAYU_CONFIG_DIR/plugins.fish"
+    source "$WAYU_CONFIG_DIR/plugins.fish"
 end
-if test -f "$HOME/.config/wayu/plugins/config.fish"
-    source "$HOME/.config/wayu/plugins/config.fish"
+if test -f "$WAYU_CONFIG_DIR/plugins/config.fish"
+    source "$WAYU_CONFIG_DIR/plugins/config.fish"
 end
 
 # === 6. Aliases ===
 # Load command aliases and shortcuts
-source "$HOME/.config/wayu/aliases.fish"
+source "$WAYU_CONFIG_DIR/aliases.fish"
 
 # === 7. External Tools Initialization ===
 # Initialize external tools and utilities (NVM, Starship, Zoxide, etc.)
-source "$HOME/.config/wayu/tools.fish"
+source "$WAYU_CONFIG_DIR/tools.fish"
 
 # === 8. Extra Config ===
 # User-defined shell snippets (hooks, env loaders, ad-hoc settings)
-if test -f "$HOME/.config/wayu/extra.fish"
-    source "$HOME/.config/wayu/extra.fish"
+if test -f "$WAYU_CONFIG_DIR/extra.fish"
+    source "$WAYU_CONFIG_DIR/extra.fish"
 end
 `
 
