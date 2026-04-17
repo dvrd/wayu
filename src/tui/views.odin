@@ -757,11 +757,26 @@ render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
+	// Load settings from bridge (idempotent — only loads once)
+	tui_load_settings_data(state)
+
+	// Build settings display with real values
+	shell_display := strings.clone(fmt.tprintf("Shell: %s", state.settings_shell))
+	defer delete(shell_display)
+
+	config_dir_display := strings.clone(fmt.tprintf("Config Dir: %s", state.settings_config_dir))
+	defer delete(config_dir_display)
+
+	dry_run_status := "off"
+	if state.settings_dry_run { dry_run_status = "on" }
+	dry_run_display := strings.clone(fmt.tprintf("Dry-run: %s", dry_run_status))
+	defer delete(dry_run_display)
+
 	settings := []string{
-		"Shell: (from bridge)",
-		"Config Dir: (from bridge)",
+		shell_display,
+		config_dir_display,
 		"Backups: 5 kept",
-		"Dry-run: (from bridge)",
+		dry_run_display,
 	}
 
 	content_start := LIST_ITEM_START_LINE + 2

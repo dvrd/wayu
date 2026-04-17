@@ -17,6 +17,7 @@ g_load_constants_data: proc(^TUIState)
 g_load_completions_data: proc(^TUIState)
 g_load_backups_data: proc(^TUIState)
 g_load_plugins_data: proc(^TUIState)
+g_load_settings_data: proc(^TUIState)
 g_delete_path: proc(string) -> (bool, string)
 g_delete_alias: proc(string) -> (bool, string)
 g_delete_constant: proc(string) -> (bool, string)
@@ -50,6 +51,7 @@ tui_set_bridge_functions :: proc(
 	disable_plugin: proc(string) -> bool = nil,
 	load_registry: proc(^TUIState) = nil,
 	install_plugin: proc(string) -> bool = nil,
+	load_settings: proc(^TUIState) = nil,
 ) {
 	g_load_path_data = load_path
 	g_load_alias_data = load_alias
@@ -69,6 +71,7 @@ tui_set_bridge_functions :: proc(
 	g_disable_plugin = disable_plugin
 	g_load_registry = load_registry
 	g_install_plugin = install_plugin
+	g_load_settings_data = load_settings
 }
 
 // Bridge functions to load data into TUI state cache
@@ -115,6 +118,13 @@ tui_load_backups_data :: proc(state: ^TUIState) {
 tui_load_plugins_data :: proc(state: ^TUIState) {
 	if g_load_plugins_data != nil {
 		g_load_plugins_data(state)
+	}
+}
+
+// Load Settings into state
+tui_load_settings_data :: proc(state: ^TUIState) {
+	if g_load_settings_data != nil {
+		g_load_settings_data(state)
 	}
 }
 
