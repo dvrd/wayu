@@ -545,21 +545,37 @@ toml_path_list :: proc() {
 		delete(paths)
 	}
 
+	// Snapshot current PATH for cross-reference
+	path_entries := snapshot_path_entries()
+
+	// Build set of wayu-managed paths for fast lookup
+	wayu_set := make(map[string]bool)
+	defer delete(wayu_set)
+	for p in paths {
+		wayu_set[p] = true
+	}
+
+	// Find external entries (in PATH but not in wayu.toml)
+	external_paths := make([dynamic]string)
+	defer delete(external_paths)
+	for env_path in path_entries {
+		if _, is_wayu := wayu_set[env_path]; !is_wayu {
+			append(&external_paths, env_path)
+		}
+	}
+
 	if JSON_OUTPUT {
-		print_paths_json(paths[:])
+		print_paths_json(paths[:], external_paths[:])
 		return
 	}
 
 	print_header("PATH (wayu.toml)", PATH_SPEC.icon)
 	fmt.println()
 
-	if len(paths) == 0 {
-		fmt.printfln("  No paths configured in wayu.toml")
+	if len(paths) == 0 && len(external_paths) == 0 {
+		fmt.printfln("  No paths configured")
 		return
 	}
-
-	// Snapshot current PATH for cross-reference
-	path_entries := snapshot_path_entries()
 
 	// Count sources
 	active_count := 0
@@ -580,63 +596,139 @@ toml_path_list :: proc() {
 		}
 	}
 
-	// Print summary
-	fmt.printfln("  %d active · %d inactive", active_count, inactive_count)
+	// Print summary with external count
+	fmt.printfln("  %d active · %d inactive · %d external", active_count, inactive_count, len(external_paths))
 	fmt.println()
 
-	// Print entries with source indicator
-	for p, i in paths {
-		// Check if path is in current environment
-		found := false
-		for env_path in path_entries {
-			if env_path == p {
-				found = true
-				break
+	// Filter based on SOURCE_FILTER
+	show_wayu := SOURCE_FILTER == "all" || SOURCE_FILTER == "wayu"
+	show_external := SOURCE_FILTER == "all" || SOURCE_FILTER == "external"
+	show_inactive := SOURCE_FILTER == "all" || SOURCE_FILTER == "inactive"
+
+	// Print wayu entries with source indicator
+	if show_wayu || show_inactive {
+		entry_num := 1
+		for p, i in paths {
+			// Check if path is in current environment
+			found := false
+			for env_path in path_entries {
+				if env_path == p {
+					found = true
+					break
+				}
 			}
+
+			// Skip if not matching filter
+			if found && !show_wayu {
+				continue
+			}
+			if !found && !show_inactive {
+				continue
+			}
+
+			source := "wayu"
+			marker := "  "
+			if !found {
+				source = "wayu (inactive)"
+				marker = "⚠ "
+			}
+
+			marker_exists := "  "
+			if !os.exists(p) { marker_exists = "✗ " }
+
+			fmt.printfln("%s%d. %s  [%s]", marker_exists, entry_num, p, source)
+			entry_num += 1
 		}
+	}
 
-		source := "wayu"
-		marker := "  "
-		if !found {
-			source = "wayu (inactive)"
-			marker = "⚠ "
+	// Print external entries section
+	if show_external && len(external_paths) > 0 {
+		if (show_wayu || show_inactive) && len(paths) > 0 {
+			fmt.println()
+			fmt.printfln("--- External (%d) ---", len(external_paths))
 		}
-
-		marker_exists := "  "
-		if !os.exists(p) { marker_exists = "✗ " }
-
-		fmt.printfln("%s%d. %s  [%s]", marker_exists, i+1, p, source)
+		entry_num := 1
+		for ext_path in external_paths {
+			marker_exists := "  "
+			if !os.exists(ext_path) { marker_exists = "✗ " }
+			fmt.printfln("%s%d. %s  [external]", marker_exists, entry_num, ext_path)
+			entry_num += 1
+		}
 	}
 
 	fmt.println()
-	fmt.printfln("Total: %d paths", len(paths))
+	total_shown := active_count + inactive_count
+	if show_external {
+		total_shown += len(external_paths)
+	}
+	fmt.printfln("Total: %d paths", total_shown)
 }
 
-print_paths_json :: proc(paths: []string) {
+print_paths_json :: proc(paths: []string, external_paths: []string) {
 	fmt.println("{")
+
+	// Build wayu set for fast lookup
+	wayu_set := make(map[string]bool)
+	defer delete(wayu_set)
+	for p in paths {
+		wayu_set[p] = true
+	}
+
+	// Determine if we show different source categories
+	show_wayu := SOURCE_FILTER == "all" || SOURCE_FILTER == "wayu"
+	show_external := SOURCE_FILTER == "all" || SOURCE_FILTER == "external"
+	show_inactive := SOURCE_FILTER == "all" || SOURCE_FILTER == "inactive"
+
 	fmt.println(`  "paths": [`)
 
 	path_entries := snapshot_path_entries()
+	first_entry := true
 
-	for p, i in paths {
-		found := false
-		for env_path in path_entries {
-			if env_path == p {
-				found = true
-				break
+	// Output wayu entries
+	if show_wayu || show_inactive {
+		for p, i in paths {
+			found := false
+			for env_path in path_entries {
+				if env_path == p {
+					found = true
+					break
+				}
 			}
-		}
-		source := found ? "wayu" : "wayu (inactive)"
-		exists := os.exists(p)
 
-		comma := ","
-		if i == len(paths) - 1 {
-			comma = ""
-		}
+			// Skip if not matching filter
+			if found && !show_wayu {
+				continue
+			}
+			if !found && !show_inactive {
+				continue
+			}
 
-		fmt.printfln(`    {{"path": "%s", "source": "%s", "exists": %v}}%s`, p, source, exists, comma)
+			source := found ? "wayu" : "wayu (inactive)"
+			exists := os.exists(p)
+
+			comma := ","
+			if !first_entry {
+				fmt.println(",")
+			}
+			fmt.printf(`    {"path": "%s", "source": "%s", "exists": %v}`, p, source, exists)
+			first_entry = false
+		}
 	}
 
+	// Output external entries
+	if show_external {
+		for ext_path in external_paths {
+			exists := os.exists(ext_path)
+
+			if !first_entry {
+				fmt.println(",")
+			}
+			fmt.printf(`    {"path": "%s", "source": "external", "exists": %v}`, ext_path, exists)
+			first_entry = false
+		}
+	}
+
+	fmt.println()
 	fmt.println("  ]")
 	fmt.println("}")
 }

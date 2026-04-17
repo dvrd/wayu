@@ -21,6 +21,7 @@ WAYU_CONFIG : string
 DRY_RUN := false
 YES_FLAG := false  // Skip confirmation prompts
 JSON_OUTPUT := false  // --json flag for list commands
+SOURCE_FILTER := "all"  // --source filter (wayu|external|inactive|all)
 DETECTED_SHELL : ShellType
 SHELL_EXT : string
 
@@ -101,6 +102,7 @@ ParsedArgs :: struct {
 
 	// List command options
 	json_output:     bool,  // --json flag for list commands
+	source_filter:   string,  // --source filter (wayu|external|inactive|all)
 }
 
 init_shell_globals :: proc() {
@@ -313,6 +315,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	verify_flag := false
 	no_color_flag := false
 	json_flag := false
+	source_filter := "all"
 
 	i := 0
 	for i < len(args) {
@@ -333,6 +336,11 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		} else if arg == "--json" {
 			json_flag = true
 			JSON_OUTPUT = true
+		} else if strings.has_prefix(arg, "--source=") {
+			source_filter = strings.trim_prefix(arg, "--source=")
+		} else if arg == "--source" && i + 1 < len(args) {
+			source_filter = args[i + 1]
+			i += 1
 		} else if arg == "--no-color" || arg == "--no-colour" {
 			no_color_flag = true
 			// Force ASCII color profile - affects output in this function
@@ -377,6 +385,8 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	parsed.component_snapshot = snapshot_flag
 	parsed.component_verify = verify_flag
 	parsed.json_output      = json_flag
+	parsed.source_filter    = source_filter
+	SOURCE_FILTER           = source_filter
 
 	// Handle component test mode early - all filtered args become component args.
 	if component_test_flag {

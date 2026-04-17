@@ -417,13 +417,40 @@ list_toml_constants :: proc() {
 	entries := read_wayu_toml_constants()
 	defer cleanup_entries(&entries)
 
-	if len(entries) == 0 {
+	// Build set of wayu-managed constants for fast lookup
+	wayu_set := make(map[string]bool)
+	defer delete(wayu_set)
+	for entry in entries {
+		wayu_set[entry.name] = true
+	}
+
+	// Find external constants (in env but not in wayu.toml)
+	external_constants := make([dynamic]string)
+	defer delete(external_constants)
+
+	// Get all environment variables
+	env_list, env_err := os.environ(context.allocator)
+	defer delete(env_list)
+	if env_err == nil {
+		for pair in env_list {
+			parts := strings.split(pair, "=", context.allocator)
+			defer delete(parts)
+			if len(parts) > 0 {
+				const_name := parts[0]
+				if _, is_wayu := wayu_set[const_name]; !is_wayu {
+					append(&external_constants, const_name)
+				}
+			}
+		}
+	}
+
+	if len(entries) == 0 && len(external_constants) == 0 {
 		print_info("No Constants found")
 		return
 	}
 
 	if JSON_OUTPUT {
-		print_constants_json(entries[:])
+		print_constants_json(entries[:], external_constants[:])
 		return
 	}
 
@@ -440,8 +467,13 @@ list_toml_constants :: proc() {
 	}
 
 	// Print summary
-	fmt.printfln("  %d active · %d inactive", active_count, inactive_count)
+	fmt.printfln("  %d active · %d inactive · %d external", active_count, inactive_count, len(external_constants))
 	fmt.println()
+
+	// Filter based on SOURCE_FILTER
+	show_wayu := SOURCE_FILTER == "all" || SOURCE_FILTER == "wayu"
+	show_external := SOURCE_FILTER == "all" || SOURCE_FILTER == "external"
+	show_inactive := SOURCE_FILTER == "all" || SOURCE_FILTER == "inactive"
 
 	headers := []string{"Constant", "Value", "Source"}
 	table := new_table(headers)
@@ -451,14 +483,40 @@ list_toml_constants :: proc() {
 	table_header_style(&table, style_bold(style_foreground(new_style(), "cyan"), true))
 	table_border(&table, .Normal)
 
-	for entry in entries {
-		source := "wayu"
-		env_val := snapshot_env_var(entry.name)
-		if env_val == nil {
-			source = "wayu (inactive)"
+	// Add wayu entries
+	if show_wayu || show_inactive {
+		for entry in entries {
+			is_active := false
+			env_val := snapshot_env_var(entry.name)
+			if env_val != nil {
+				is_active = true
+			}
+
+			// Skip if not matching filter
+			if is_active && !show_wayu {
+				continue
+			}
+			if !is_active && !show_inactive {
+				continue
+			}
+
+			source := "wayu"
+			if !is_active {
+				source = "wayu (inactive)"
+			}
+			row := []string{entry.name, entry.value, source}
+			table_add_row(&table, row)
 		}
-		row := []string{entry.name, entry.value, source}
-		table_add_row(&table, row)
+	}
+
+	// Add external entries
+	if show_external {
+		for ext_const_name in external_constants {
+			if env_val := snapshot_env_var(ext_const_name); env_val != nil {
+				row := []string{ext_const_name, env_val.(string), "external"}
+				table_add_row(&table, row)
+			}
+		}
 	}
 
 	table_output := table_render(table, get_cli_terminal_width())
@@ -466,25 +524,68 @@ list_toml_constants :: proc() {
 	fmt.print(table_output)
 }
 
-print_constants_json :: proc(entries: []ConfigEntry) {
+print_constants_json :: proc(entries: []ConfigEntry, external_constants: []string) {
+	// Build wayu set for fast lookup
+	wayu_set := make(map[string]bool)
+	defer delete(wayu_set)
+	for entry in entries {
+		wayu_set[entry.name] = true
+	}
+
+	// Determine if we show different source categories
+	show_wayu := SOURCE_FILTER == "all" || SOURCE_FILTER == "wayu"
+	show_external := SOURCE_FILTER == "all" || SOURCE_FILTER == "external"
+	show_inactive := SOURCE_FILTER == "all" || SOURCE_FILTER == "inactive"
+
 	fmt.println("{")
 	fmt.println(`  "constants": [`)
 
-	for entry, i in entries {
-		source := "wayu"
-		env_val := snapshot_env_var(entry.name)
-		if env_val == nil {
-			source = "wayu (inactive)"
-		}
+	first_entry := true
 
-		comma := ","
-		if i == len(entries) - 1 {
-			comma = ""
-		}
+	// Output wayu entries
+	if show_wayu || show_inactive {
+		for entry, i in entries {
+			is_active := false
+			env_val := snapshot_env_var(entry.name)
+			if env_val != nil {
+				is_active = true
+			}
 
-		fmt.printfln(`    {{"constant": "%s", "value": "%s", "source": "%s"}}%s`, entry.name, entry.value, source, comma)
+			// Skip if not matching filter
+			if is_active && !show_wayu {
+				continue
+			}
+			if !is_active && !show_inactive {
+				continue
+			}
+
+			source := "wayu"
+			if !is_active {
+				source = "wayu (inactive)"
+			}
+
+			if !first_entry {
+				fmt.println(",")
+			}
+			fmt.printf(`    {"constant": "%s", "value": "%s", "source": "%s"}`, entry.name, entry.value, source)
+			first_entry = false
+		}
 	}
 
+	// Output external entries
+	if show_external {
+		for ext_const_name in external_constants {
+			if env_val := snapshot_env_var(ext_const_name); env_val != nil {
+				if !first_entry {
+					fmt.println(",")
+				}
+				fmt.printf(`    {"constant": "%s", "value": "%s", "source": "external"}`, ext_const_name, env_val.(string))
+				first_entry = false
+			}
+		}
+	}
+
+	fmt.println()
 	fmt.println("  ]")
 	fmt.println("}")
 }

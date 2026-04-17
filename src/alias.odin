@@ -291,18 +291,34 @@ list_toml_aliases :: proc() {
 	entries := read_toml_alias_entries()
 	defer cleanup_entries(&entries)
 
-	if len(entries) == 0 {
+	// Snapshot current aliases for cross-reference
+	aliases_env := snapshot_aliases()
+
+	// Build set of wayu-managed aliases for fast lookup
+	wayu_set := make(map[string]bool)
+	defer delete(wayu_set)
+	for entry in entries {
+		wayu_set[entry.name] = true
+	}
+
+	// Find external aliases (in env but not in wayu.toml)
+	external_aliases := make([dynamic]string)
+	defer delete(external_aliases)
+	for alias_name in aliases_env {
+		if _, is_wayu := wayu_set[alias_name]; !is_wayu {
+			append(&external_aliases, alias_name)
+		}
+	}
+
+	if len(entries) == 0 && len(external_aliases) == 0 {
 		print_info("No Aliases found")
 		return
 	}
 
 	if JSON_OUTPUT {
-		print_aliases_json(entries[:])
+		print_aliases_json(entries[:], external_aliases[:])
 		return
 	}
-
-	// Snapshot current aliases for cross-reference
-	aliases_env := snapshot_aliases()
 
 	// Count sources
 	active_count := 0
@@ -316,8 +332,13 @@ list_toml_aliases :: proc() {
 	}
 
 	// Print summary
-	fmt.printfln("  %d active · %d inactive", active_count, inactive_count)
+	fmt.printfln("  %d active · %d inactive · %d external", active_count, inactive_count, len(external_aliases))
 	fmt.println()
+
+	// Filter based on SOURCE_FILTER
+	show_wayu := SOURCE_FILTER == "all" || SOURCE_FILTER == "wayu"
+	show_external := SOURCE_FILTER == "all" || SOURCE_FILTER == "external"
+	show_inactive := SOURCE_FILTER == "all" || SOURCE_FILTER == "inactive"
 
 	headers := []string{"Alias", "Command", "Source"}
 	table := new_table(headers)
@@ -327,13 +348,39 @@ list_toml_aliases :: proc() {
 	table_header_style(&table, style_bold(style_foreground(new_style(), "cyan"), true))
 	table_border(&table, .Normal)
 
-	for entry in entries {
-		source := "wayu"
-		if _, has := aliases_env[entry.name]; !has {
-			source = "wayu (inactive)"
+	// Add wayu entries
+	if show_wayu || show_inactive {
+		for entry in entries {
+			is_active := false
+			if _, has := aliases_env[entry.name]; has {
+				is_active = true
+			}
+
+			// Skip if not matching filter
+			if is_active && !show_wayu {
+				continue
+			}
+			if !is_active && !show_inactive {
+				continue
+			}
+
+			source := "wayu"
+			if !is_active {
+				source = "wayu (inactive)"
+			}
+			row := []string{entry.name, entry.value, source}
+			table_add_row(&table, row)
 		}
-		row := []string{entry.name, entry.value, source}
-		table_add_row(&table, row)
+	}
+
+	// Add external entries
+	if show_external {
+		for alias_name in external_aliases {
+			if value, has := aliases_env[alias_name]; has {
+				row := []string{alias_name, value, "external"}
+				table_add_row(&table, row)
+			}
+		}
 	}
 
 	output := table_render(table, get_cli_terminal_width())
@@ -341,26 +388,69 @@ list_toml_aliases :: proc() {
 	fmt.print(output)
 }
 
-print_aliases_json :: proc(entries: []ConfigEntry) {
+print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
 	aliases_env := snapshot_aliases()
+
+	// Build wayu set for fast lookup
+	wayu_set := make(map[string]bool)
+	defer delete(wayu_set)
+	for entry in entries {
+		wayu_set[entry.name] = true
+	}
+
+	// Determine if we show different source categories
+	show_wayu := SOURCE_FILTER == "all" || SOURCE_FILTER == "wayu"
+	show_external := SOURCE_FILTER == "all" || SOURCE_FILTER == "external"
+	show_inactive := SOURCE_FILTER == "all" || SOURCE_FILTER == "inactive"
 
 	fmt.println("{")
 	fmt.println(`  "aliases": [`)
 
-	for entry, i in entries {
-		source := "wayu"
-		if _, has := aliases_env[entry.name]; !has {
-			source = "wayu (inactive)"
-		}
+	first_entry := true
 
-		comma := ","
-		if i == len(entries) - 1 {
-			comma = ""
-		}
+	// Output wayu entries
+	if show_wayu || show_inactive {
+		for entry, i in entries {
+			is_active := false
+			if _, has := aliases_env[entry.name]; has {
+				is_active = true
+			}
 
-		fmt.printfln(`    {{"alias": "%s", "command": "%s", "source": "%s"}}%s`, entry.name, entry.value, source, comma)
+			// Skip if not matching filter
+			if is_active && !show_wayu {
+				continue
+			}
+			if !is_active && !show_inactive {
+				continue
+			}
+
+			source := "wayu"
+			if !is_active {
+				source = "wayu (inactive)"
+			}
+
+			if !first_entry {
+				fmt.println(",")
+			}
+			fmt.printf(`    {"alias": "%s", "command": "%s", "source": "%s"}`, entry.name, entry.value, source)
+			first_entry = false
+		}
 	}
 
+	// Output external entries
+	if show_external {
+		for alias_name in external_aliases {
+			if value, has := aliases_env[alias_name]; has {
+				if !first_entry {
+					fmt.println(",")
+				}
+				fmt.printf(`    {"alias": "%s", "command": "%s", "source": "external"}`, alias_name, value)
+				first_entry = false
+			}
+		}
+	}
+
+	fmt.println()
 	fmt.println("  ]")
 	fmt.println("}")
 }
