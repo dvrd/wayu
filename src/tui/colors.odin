@@ -42,6 +42,12 @@ TUI_ORANGE :: "\x1b[38;2;255;140;0m"  // #FF8C00
 // Info color - Teal-cyan (same as secondary)
 TUI_INFO :: "\x1b[38;2;14;116;144m"  // #0E7490
 
+// Source indicators - Green for wayu active, Yellow for inactive, Blue for external
+TUI_SOURCE_WAYU_ACTIVE :: "\x1b[38;2;34;197;94m"    // #22C55E (green)
+TUI_SOURCE_WAYU_INACTIVE :: "\x1b[38;2;217;119;6m"  // #D97706 (amber/yellow)
+TUI_SOURCE_EXTERNAL :: "\x1b[38;2;59;130;246m"      // #3B82F6 (blue)
+TUI_SOURCE_SHADOWED :: "\x1b[38;2;168;85;247m"      // #A855F7 (purple)
+
 // ============================================================================
 // UI Element Colors
 // ============================================================================
