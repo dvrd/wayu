@@ -253,13 +253,23 @@ tui_bridge_load_backups :: proc(state: ^tui.TUIState) {
 	}
 	defer os.file_info_slice_delete(infos, context.allocator)
 
-	// Filter and format backup files
+	// Filter and format backup files - match CLI behavior
+	// CLI only shows backups for: path, alias, constants config files
 	for info in infos {
 		if info.type == .Directory { continue }
 
-		// Format: path.zsh.backup.2024-03-15_14-30-00
 		name := info.name
-		if strings.contains(name, ".backup.") {
+		if !strings.contains(name, ".backup.") {
+			continue
+		}
+
+		// Only include backups for path, alias, constants files
+		// Pattern: {path,aliases,constants}.{ext}.backup.{timestamp}
+		is_config := (strings.has_prefix(name, "path.") ||
+		              strings.has_prefix(name, "aliases.") ||
+		              strings.has_prefix(name, "constants."))
+
+		if is_config {
 			item := strings.clone(name)
 			append(&items, item)
 		}
