@@ -44,9 +44,11 @@ handle_path_command :: proc(action: Action, args: []string) {
 			os.exit(EXIT_NOINPUT)
 		}
 		if use_toml {
+			hook_pre_path_add(args[0])
 			if toml_path_add(args[0]) {
 				print_success("✅ Added to wayu.toml: %s", args[0])
 				fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
+				hook_post_path_add(args[0])
 			} else {
 				os.exit(EXIT_IOERR)
 			}
@@ -59,9 +61,11 @@ handle_path_command :: proc(action: Action, args: []string) {
 				print_error("Usage: wayu path remove <path>")
 				os.exit(EXIT_USAGE)
 			}
+			hook_pre_path_remove(args[0])
 			if toml_path_remove(args[0]) {
 				print_success("✅ Removed from wayu.toml: %s", args[0])
 				fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
+				hook_post_path_remove(args[0])
 			} else {
 				os.exit(EXIT_IOERR)
 			}

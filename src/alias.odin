@@ -28,24 +28,28 @@ handle_alias_command :: proc(action: Action, args: []string) {
 				print_cli_usage_error(&ALIAS_SPEC, "add")
 				os.exit(EXIT_USAGE)
 			}
+			hook_pre_alias_add(entry.name)
 			ok, err := toml_alias_add(entry)
 			if !ok {
 				print_error_simple(err)
 				delete(err)
 				os.exit(EXIT_DATAERR)
 			}
+			hook_post_alias_add(entry.name)
 			return
 		case .REMOVE:
 			if len(args) == 0 {
 				print_cli_usage_error(&ALIAS_SPEC, "remove")
 				os.exit(EXIT_USAGE)
 			}
+			hook_pre_alias_remove(args[0])
 			ok, err := toml_alias_remove(args[0])
 			if !ok {
 				print_error_simple(err)
 				delete(err)
 				os.exit(EXIT_DATAERR)
 			}
+			hook_post_alias_remove(args[0])
 			return
 		case .LIST:
 			list_toml_aliases()

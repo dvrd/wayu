@@ -346,6 +346,38 @@ hook_post_export :: proc() {
 	execute_hook(.POST_EXPORT)
 }
 
+hook_pre_alias_add :: proc(name: string) {
+	execute_hook(.PRE_ADD, name)
+}
+
+hook_post_alias_add :: proc(name: string) {
+	execute_hook(.POST_ADD, name)
+}
+
+hook_pre_alias_remove :: proc(name: string) {
+	execute_hook(.PRE_REMOVE, name)
+}
+
+hook_post_alias_remove :: proc(name: string) {
+	execute_hook(.POST_REMOVE, name)
+}
+
+hook_pre_constant_add :: proc(name: string) {
+	execute_hook(.PRE_ADD, name)
+}
+
+hook_post_constant_add :: proc(name: string) {
+	execute_hook(.POST_ADD, name)
+}
+
+hook_pre_constant_remove :: proc(name: string) {
+	execute_hook(.PRE_REMOVE, name)
+}
+
+hook_post_constant_remove :: proc(name: string) {
+	execute_hook(.POST_REMOVE, name)
+}
+
 hook_pre_plugin_install :: proc(name: string) {
 	execute_hook(.PRE_PLUGIN_INSTALL, name)
 }
