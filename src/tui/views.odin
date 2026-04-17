@@ -24,6 +24,48 @@ import "core:strings"
 import "core:unicode/utf8"
 
 // ============================================================================
+// Source Counter Helper
+// ============================================================================
+
+// Count entries by source from item list (items have glyph prefixes)
+// Returns (wayu_active, wayu_inactive, external, shadowed)
+count_entries_by_source :: proc(items: ^[dynamic]string) -> (int, int, int, int) {
+	wayu_active := 0
+	wayu_inactive := 0
+	external := 0
+	shadowed := 0
+
+	for item in items {
+		if len(item) == 0 { continue }
+
+		// Skip separator lines (contain "───")
+		if strings.contains(item, "───") { continue }
+
+		// Check glyph prefix
+		// Glyphs are Unicode chars with ANSI codes:
+		// "●" (U+25CF) = wayu active
+		// "⚠" (U+26A0) = wayu inactive
+		// "○" (U+25CB) = external
+		// "♦" (U+2666) = shadowed
+		//
+		// But they're prefixed with color codes like "\x1b[38;2;R;G;Bm"
+		// Look for the unicode chars directly
+
+		if strings.contains(item, "●") {
+			wayu_active += 1
+		} else if strings.contains(item, "⚠") {
+			wayu_inactive += 1
+		} else if strings.contains(item, "○") {
+			external += 1
+		} else if strings.contains(item, "♦") {
+			shadowed += 1
+		}
+	}
+
+	return wayu_active, wayu_inactive, external, shadowed
+}
+
+// ============================================================================
 // Text Truncation Helper
 // ============================================================================
 
@@ -153,7 +195,7 @@ render_list_item :: proc(screen: ^Screen, header_x, y: int, text: string, max_wi
 
 // Standard footer for filterable data views
 FOOTER_FILTER_ACTIVE :: "Type to filter   Esc Cancel   Enter Accept   j/k Navigate"
-FOOTER_DATA_VIEW     :: "/ Filter   a Add   d Delete   h Back   l Enter   j/k Navigate"
+FOOTER_DATA_VIEW     :: "/ Filter   s Source   a Add   d Delete   h Back   l Enter   j/k Navigate"
 FOOTER_READONLY_VIEW :: "/ Filter   h Back   l Enter   j/k Navigate"
 FOOTER_BACKUP_VIEW   :: "/ Filter   c Cleanup   h Back   j/k Navigate"
 FOOTER_STATIC_VIEW   :: "h Back"
@@ -315,7 +357,32 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 	}
 
 	items := cast(^[dynamic]string)state.data_cache[cfg.view_key]
-	count_text := fmt.tprintf(cfg.count_format, len(items))
+
+	// Count entries by source for the header
+	wayu_active, wayu_inactive, external, shadowed := count_entries_by_source(items)
+	total := wayu_active + wayu_inactive + external + shadowed  // Skip separators
+
+	// Format count text with source breakdown
+	count_text: string
+	if wayu_active + wayu_inactive + external + shadowed == 0 {
+		count_text = "0 entries"
+	} else {
+		parts := make([dynamic]string, allocator = context.temp_allocator)
+		if wayu_active > 0 {
+			append(&parts, fmt.tprintf("%d wayu", wayu_active))
+		}
+		if wayu_inactive > 0 {
+			append(&parts, fmt.tprintf("%d inactive", wayu_inactive))
+		}
+		if external > 0 {
+			append(&parts, fmt.tprintf("%d external", external))
+		}
+		if shadowed > 0 {
+			append(&parts, fmt.tprintf("%d shadowed", shadowed))
+		}
+		count_text = strings.join(parts[:], " · ", context.temp_allocator)
+	}
+
 	render_view_header(screen, state, cfg.title, count_text, border_width)
 
 	// Column widths — only computed for Table row_kind
@@ -413,7 +480,7 @@ render_path_view :: proc(state: ^TUIState, screen: ^Screen) {
 	render_list_view(state, screen, ListViewConfig{
 		view_key     = .PATH_VIEW,
 		title        = "PATH CONFIGURATION",
-		count_format = "%d entries",
+		count_format = "%d entries",  // Unused (calculated from source counts)
 		row_kind     = .Single,
 		empty_line_1 = "No PATH entries found",
 		footer       = get_footer_data_view(state.terminal_width),
