@@ -177,12 +177,34 @@ render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) ->
 // text_x is calculated from header_x + accent bar + gap.
 render_list_item :: proc(screen: ^Screen, header_x, y: int, text: string, max_width: int, is_selected: bool) {
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
-	display := truncate_text(text, max_width)
+
+	// Handle corrupt data: if text contains multiple space-separated paths,
+	// extract only the first one (the glyph and first path)
+	// Split on pattern of 3+ spaces to isolate additional paths
+	work_text := text
+	space_count := 0
+	truncate_idx := len(text)
+	for idx := 0; idx < len(text); idx += 1 {
+		ch := text[idx]
+		if ch == ' ' {
+			space_count += 1
+		} else if space_count >= 3 {
+			// Found 3+ consecutive spaces - truncate before the spaces
+			truncate_idx = idx - space_count
+			work_text = text[:truncate_idx]
+			break
+		} else {
+			space_count = 0
+		}
+	}
+
+	display := truncate_text(work_text, max_width)
 
 	// Clear the entire line width to prevent scroll overlap artifacts
-	// Fill from text_x to screen edge with spaces
-	for clear_x in text_x..<screen.width {
-		screen_set_cell(screen, clear_x, y, Cell{char = ' '})
+	// Clear from the border's right edge all the way to the screen right edge
+	// Use a distinct cell state (empty colors) to ensure diff detection
+	for clear_x in 1..<screen.width {
+		screen_set_cell(screen, clear_x, y, Cell{char = ' ', fg = "", bg = "", bold = false, dim = false})
 	}
 
 	if is_selected {
@@ -323,9 +345,10 @@ render_table_row :: proc(
 	value_x := text_x + key_col_width + COLUMN_GAP
 
 	// Clear the entire line width to prevent scroll overlap artifacts
-	// Fill from text_x to screen edge with spaces
-	for clear_x in text_x..<screen.width {
-		screen_set_cell(screen, clear_x, y, Cell{char = ' '})
+	// Clear from the border's right edge all the way to the screen right edge
+	// Use a distinct cell state (empty colors) to ensure diff detection
+	for clear_x in 1..<screen.width {
+		screen_set_cell(screen, clear_x, y, Cell{char = ' ', fg = "", bg = "", bold = false, dim = false})
 	}
 
 	if is_selected {
