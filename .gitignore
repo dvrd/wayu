@@ -13,6 +13,6 @@ PRPs/
 .logs/
 thoughts/
 .mindmodel/
-unit
-unit_test
-wayu_test
+/unit
+/unit_test
+/wayu_test
