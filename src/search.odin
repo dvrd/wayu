@@ -11,20 +11,28 @@ import "core:os"
 import "core:strings"
 import "core:slice"
 
+// MatchedField indicates which field of an entry matched the query
+MatchedField :: enum {
+	NAME,   // Query matched the entry name
+	VALUE,  // Query matched the entry value
+}
+
 // SearchResult represents a single match from any config type
 SearchResult :: struct {
-	spec_type:  ConfigEntryType,
-	name:       string,
-	value:      string,
-	score:      int,
-	match_type: MatchType,
+	spec_type:     ConfigEntryType,
+	name:          string,
+	value:         string,
+	score:         int,
+	match_type:    MatchType,
+	matched_field: MatchedField,
 }
 
 // Internal wrapper for sorting entries with scores
 SearchEntry :: struct {
-	entry:      ConfigEntry,
-	score:      int,
-	match_type: MatchType,
+	entry:         ConfigEntry,
+	score:         int,
+	match_type:    MatchType,
+	matched_field: MatchedField,
 }
 
 // handle_search_command - Main entry point for search/find/f commands
@@ -75,11 +83,12 @@ handle_search_command :: proc(args: []string) {
 	}
 	for se in path_search_results {
 		append(&all_results, SearchResult{
-			spec_type  = .PATH,
-			name       = strings.clone(se.entry.name),
-			value      = "",
-			score      = se.score,
-			match_type = se.match_type,
+			spec_type      = .PATH,
+			name           = strings.clone(se.entry.name),
+			value          = "",
+			score          = se.score,
+			match_type     = se.match_type,
+			matched_field  = se.matched_field,
 		})
 	}
 
@@ -103,11 +112,12 @@ handle_search_command :: proc(args: []string) {
 	for se in alias_search_results {
 		value := strings.clone(se.entry.value) if se.entry.value != "" else ""
 		append(&all_results, SearchResult{
-			spec_type  = .ALIAS,
-			name       = strings.clone(se.entry.name),
-			value      = value,
-			score      = se.score,
-			match_type = se.match_type,
+			spec_type      = .ALIAS,
+			name           = strings.clone(se.entry.name),
+			value          = value,
+			score          = se.score,
+			match_type     = se.match_type,
+			matched_field  = se.matched_field,
 		})
 	}
 
@@ -131,11 +141,12 @@ handle_search_command :: proc(args: []string) {
 	for se in const_search_results {
 		value := strings.clone(se.entry.value) if se.entry.value != "" else ""
 		append(&all_results, SearchResult{
-			spec_type  = .CONSTANT,
-			name       = strings.clone(se.entry.name),
-			value      = value,
-			score      = se.score,
-			match_type = se.match_type,
+			spec_type      = .CONSTANT,
+			name           = strings.clone(se.entry.name),
+			value          = value,
+			score          = se.score,
+			match_type     = se.match_type,
+			matched_field  = se.matched_field,
 		})
 	}
 
@@ -149,7 +160,7 @@ handle_search_command :: proc(args: []string) {
 }
 
 // search_toml_entries_by_name - Fuzzy search through TOML config entries
-// Returns scored entries for sorting and display
+// Matches on both name and value fields. Returns scored entries for sorting and display.
 search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string) -> [dynamic]SearchEntry {
 	results := make([dynamic]SearchEntry)
 
@@ -161,36 +172,77 @@ search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string) -> [d
 	defer delete(query_lower)
 
 	for entry in entries {
-		score := 0
-		match_type := MatchType.Fuzzy
+		name_score := 0
+		name_match_type := MatchType.Fuzzy
+		value_score := 0
+		value_match_type := MatchType.Fuzzy
+		matched_field := MatchedField.NAME
 
-		// Check for exact match
+		// Score name field
 		if strings.equal_fold(entry.name, query) {
-			score = 10000
-			match_type = .Exact
+			name_score = 10000
+			name_match_type = .Exact
 		} else if strings.has_prefix(strings.to_lower(entry.name), query_lower) {
 			// Prefix match
-			score = 5000 + fuzzy_score(entry.name, query)
-			match_type = .Prefix
+			name_score = 5000 + fuzzy_score(entry.name, query)
+			name_match_type = .Prefix
 		} else if strings.contains(strings.to_lower(entry.name), query_lower) {
 			// Substring match
-			score = 3000 + fuzzy_score(entry.name, query)
-			match_type = .Substring
+			name_score = 3000 + fuzzy_score(entry.name, query)
+			name_match_type = .Substring
 		} else if is_acronym_match(entry.name, query) {
 			// Acronym match (e.g., frwrks → FIREWORKS)
-			score = 2000 + fuzzy_score(entry.name, query)
-			match_type = .Acronym
+			name_score = 2000 + fuzzy_score(entry.name, query)
+			name_match_type = .Acronym
 		} else {
 			// General fuzzy match
-			score = fuzzy_score(entry.name, query)
-			match_type = .Fuzzy
+			name_score = fuzzy_score(entry.name, query)
+			name_match_type = .Fuzzy
+		}
+
+		// Score value field (only if value is not empty)
+		if entry.value != "" {
+			if strings.equal_fold(entry.value, query) {
+				value_score = 10000
+				value_match_type = .Exact
+			} else if strings.has_prefix(strings.to_lower(entry.value), query_lower) {
+				// Prefix match
+				value_score = 5000 + fuzzy_score(entry.value, query)
+				value_match_type = .Prefix
+			} else if strings.contains(strings.to_lower(entry.value), query_lower) {
+				// Substring match
+				value_score = 3000 + fuzzy_score(entry.value, query)
+				value_match_type = .Substring
+			} else if is_acronym_match(entry.value, query) {
+				// Acronym match
+				value_score = 2000 + fuzzy_score(entry.value, query)
+				value_match_type = .Acronym
+			} else {
+				// General fuzzy match
+				value_score = fuzzy_score(entry.value, query)
+				value_match_type = .Fuzzy
+			}
+		}
+
+		// Pick the higher score, prefer name on ties
+		score := 0
+		match_type := MatchType.Fuzzy
+		if name_score >= value_score {
+			score = name_score
+			match_type = name_match_type
+			matched_field = .NAME
+		} else {
+			score = value_score
+			match_type = value_match_type
+			matched_field = .VALUE
 		}
 
 		if score > 0 {
 			append(&results, SearchEntry{
-				entry      = clone_entry(entry),
-				score      = score,
-				match_type = match_type,
+				entry          = clone_entry(entry),
+				score          = score,
+				match_type     = match_type,
+				matched_field  = matched_field,
 			})
 		}
 	}
@@ -311,10 +363,17 @@ print_search_result_line :: proc(result: SearchResult, cmd_type: string) {
 		score_indicator = fmt.tprintf(" %s◆%s", get_warning(), RESET)
 	}
 
+	// Build field indicator (show [in value] for value matches)
+	field_indicator := ""
+	if result.matched_field == .VALUE {
+		field_indicator = fmt.tprintf(" %s[in value]%s", get_muted(), RESET)
+	}
+
 	// Print name with type indicator
-	fmt.printfln("  %s%s%s %s[%s]%s%s",
+	fmt.printfln("  %s%s%s %s[%s]%s%s%s",
 		get_primary(), result.name, RESET,
 		get_muted(), type_indicator, RESET,
+		field_indicator,
 		score_indicator)
 
 	// Print value if present and not too long
