@@ -9,6 +9,7 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
+import "core:slice"
 import "core:strings"
 
 // Main handler for PATH commands.
@@ -25,6 +26,15 @@ handle_path_command :: proc(action: Action, args: []string) {
 		clean_missing_paths()
 	case .DEDUP:
 		remove_duplicate_paths()
+	case .GET:
+		if use_toml {
+			if len(args) == 0 {
+				print_cli_usage_error(&PATH_SPEC, "get")
+				os.exit(EXIT_USAGE)
+			}
+			get_toml_path_value(args[0])
+			return
+		}
 	case .ADD:
 		if len(args) == 0 {
 			print_error("Usage: wayu path add <path>")
@@ -535,6 +545,129 @@ toml_path_read :: proc() -> [dynamic]string {
 	}
 
 	return paths
+}
+
+// Get a specific PATH entry from TOML with fuzzy matching fallback
+get_toml_path_value :: proc(search_path: string) {
+	if len(strings.trim_space(search_path)) == 0 {
+		print_cli_usage_error(&PATH_SPEC, "get")
+		os.exit(EXIT_USAGE)
+	}
+	if !check_wayu_initialized() {
+		os.exit(EXIT_CONFIG)
+	}
+
+	paths := toml_path_read()
+
+	// Try exact match first
+	for path_entry in paths {
+		if path_entry == search_path {
+			fmt.println(path_entry)
+			for p in paths {
+				delete(p)
+			}
+			delete(paths)
+			return
+		}
+	}
+
+	// Fuzzy match fallback
+	fuzzy_matches := make([dynamic]FuzzyMatch)
+
+	search_lower := strings.to_lower(search_path)
+
+	for path_entry in paths {
+		score := 0
+		match_type := MatchType.Fuzzy
+
+		// Check for exact match
+		if strings.equal_fold(path_entry, search_path) {
+			score = 10000
+			match_type = .Exact
+		} else if strings.has_prefix(strings.to_lower(path_entry), search_lower) {
+			// Prefix match
+			score = 5000 + fuzzy_score(path_entry, search_path)
+			match_type = .Prefix
+		} else if strings.contains(strings.to_lower(path_entry), search_lower) {
+			// Substring match
+			score = 3000 + fuzzy_score(path_entry, search_path)
+			match_type = .Substring
+		} else if is_acronym_match(path_entry, search_path) {
+			// Acronym match
+			score = 2000 + fuzzy_score(path_entry, search_path)
+			match_type = .Acronym
+		} else {
+			// General fuzzy match
+			score = fuzzy_score(path_entry, search_path)
+			match_type = .Fuzzy
+		}
+
+		if score > 0 {
+			// For PATH entries, create a ConfigEntry with the path as name
+			entry := ConfigEntry{
+				type = .PATH,
+				name = strings.clone(path_entry),
+				value = "",
+				line = "",
+			}
+			append(&fuzzy_matches, FuzzyMatch{
+				entry = entry,
+				score = score,
+				match_type = match_type,
+			})
+		}
+	}
+
+	if len(fuzzy_matches) > 0 {
+		// Sort by score descending
+		slice.sort_by(fuzzy_matches[:], proc(a, b: FuzzyMatch) -> bool {
+			return a.score > b.score
+		})
+
+		if len(fuzzy_matches) == 1 {
+			// Single fuzzy match: print path and exit 0
+			fmt.println(fuzzy_matches[0].entry.name)
+			// Clean up
+			delete(search_lower)
+			for match in fuzzy_matches {
+				cleanup_clone(match.entry)
+			}
+			delete(fuzzy_matches)
+			for p in paths {
+				delete(p)
+			}
+			delete(paths)
+			return
+		} else {
+			// Multiple matches: show suggestions and exit with error
+			print_fuzzy_suggestions(&PATH_SPEC, search_path, fuzzy_matches[:])
+			// Clean up before exit
+			delete(search_lower)
+			for match in fuzzy_matches {
+				cleanup_clone(match.entry)
+			}
+			delete(fuzzy_matches)
+			for p in paths {
+				delete(p)
+			}
+			delete(paths)
+			os.exit(EXIT_DATAERR)
+		}
+	}
+
+	// No matches at all - clean up
+	delete(search_lower)
+	for match in fuzzy_matches {
+		cleanup_clone(match.entry)
+	}
+	delete(fuzzy_matches)
+	for p in paths {
+		delete(p)
+	}
+	delete(paths)
+
+	print_error("PATH not found: %s", search_path)
+	os.exit(EXIT_DATAERR)
 }
 
 // Lista los paths de wayu.toml en stdout

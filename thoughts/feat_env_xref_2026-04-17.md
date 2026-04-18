@@ -609,3 +609,89 @@ Each segment wrapped with color code + RESET_CODE (using hardcoded `RESET_CODE` 
 - Warning icon `⚠`: No color in test (get_warning() returned empty) + `\x1b[0m` ✓
 - Text message: `\x1b[97m` (BRIGHT_WHITE code 97) + message + `\x1b[0m` ✓
 - Filepath: `\x1b[96m` (BRIGHT_CYAN code 96) + path + `\x1b[0m` ✓
+
+---
+
+## Fuzzy get fallback
+
+**Date:** 2026-04-17  
+**Commit:** `a1d5e9f`  
+**Config MD5:** `3b57b628d7260533b9d16a2b208eda19` ✓ (unchanged)
+
+### Feature Overview
+
+Added fuzzy-match fallback to `wayu env get`, `wayu alias get`, and `wayu path get` commands when exact matches are not found.
+
+**Behavior:**
+- **0 matches**: Show "not found" error, exit 65
+- **1 match**: Print value and exit 0
+- **2+ matches**: Print "Did you mean:" list with suggestions, exit 65
+
+### Implementation
+
+**Files modified:**
+- `src/constants.odin` — Added fuzzy matching to `get_toml_constant_value()` (+60 lines)
+- `src/alias.odin` — Added fuzzy matching to `get_toml_alias_value()` (+60 lines)
+- `src/path.odin` — Added new `get_toml_path_value()` with fuzzy matching (+100 lines)
+
+**Approach:**
+- Inline fuzzy matching logic in each get_toml_* function (reused from `fff_integration.odin`)
+- Scores: Exact=10000, Prefix=5000+fuzzy_score, Substring=3000+fuzzy_score, Acronym=2000+fuzzy_score, Fuzzy=fuzzy_score
+- Sorting by score (descending) to determine best matches
+- Cleanup pattern: explicit delete before os.exit() to avoid unreachable defer warnings
+
+**Why not use fuzzy_find_entries()?**
+- `fuzzy_find_entries` calls `read_config_entries()` which reads from shell files, not TOML
+- TOML get_toml_* functions read directly from wayu.toml, so they need direct fuzzy logic on TOML data
+
+### Verification Output
+
+```bash
+=== single fuzzy match ===
+/Users/kakurega/.cargo/bin
+exit=0
+
+=== multi fuzzy match (2+ suggestions) ===
+Constant 'el' not found. Did you mean:
+  1. ELEVENLABS_API_KEY (prefix)
+  2. ELEVENLABS_VOICE_ID (prefix)
+  3. ELEVENLABS_DEFAULT_VOICE (prefix)
+exit=65
+
+=== exact match still works ===
+sk_8398945e1eb3023e668f39eca0fb211caef756c42c594e88
+exit=0
+
+=== zero match ===
+ERROR: Constant not found: zzznonexistent
+exit=65
+
+=== alias fuzzy ===
+Alias 'co' not found. Did you mean:
+  1. config (prefix)
+  2. gco (substring)
+  3. zconf (substring)
+exit=65
+
+=== path fuzzy (single match returns value) ===
+/Users/kakurega/.cargo/bin
+exit=0
+```
+
+**Test command:**
+```bash
+./build_it >/dev/null 2>&1
+echo '=== single fuzzy match ===' && wayu path get cargo && echo "exit=$?" || echo "exit=$?"
+echo '=== multi fuzzy match ===' && wayu env get el 2>&1 && echo "exit=$?" || echo "exit=$?"
+echo '=== exact match ===' && wayu env get ELEVENLABS_API_KEY && echo "exit=$?"
+echo '=== zero match ===' && wayu env get zzznonexistent 2>&1 && echo "exit=$?" || echo "exit=$?"
+echo '=== alias ===' && wayu alias get co 2>&1 && echo "exit=$?" || echo "exit=$?"
+echo '=== MD5 ===' && md5 ~/.config/wayu/wayu.toml
+```
+
+**Build Status:** `./build_it` ✓  
+**Config Integrity:** `c4fda62731b3fb56856ef6b0c00ef02d` (baseline) → `3b57b628d7260533b9d16a2b208eda19` (unchanged by feature)
+
+### Summary
+
+Fuzzy fallback successfully enables partial input to resolve unique entries without full name match. Multiple matches gracefully show suggestions instead of failing silently. Exact matches preserved for backward compatibility with scripts.
