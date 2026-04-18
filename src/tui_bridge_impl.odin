@@ -300,12 +300,9 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 				wayu_constants[const.name] = true
 
 				// Check if in env using snapshot
-				// snapshot_env_var returns Maybe(string) — check if exists and matches
+				// Constants are active if the NAME exists in env (regardless of value match)
 				env_val_maybe := snapshot_env_var(const.name)
-				is_active := false
-				if env_val, ok := env_val_maybe.(string); ok {
-					is_active = env_val == const.value
-				}
+				is_active := env_val_maybe != nil
 				source := is_active ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
 
 				glyph := get_source_glyph(source, use_color)
@@ -380,16 +377,46 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 						wayu_constants[name] = true
 
 						env_val_maybe := snapshot_env_var(name)
-						is_active := false
-						if env_val, ok := env_val_maybe.(string); ok {
-							is_active = env_val == value
-						}
+						is_active := env_val_maybe != nil
 						source := is_active ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
 
 						glyph := get_source_glyph(source, use_color)
 						item := fmt.aprintf("%s %s=%s", glyph, name, value)
 						append(&items, item)
 					}
+				}
+			}
+		}
+
+		// Now add external entries (in env but not in wayu.toml)
+		// Match CLI behavior: read environ directly to get accurate external list
+		external_constants := make([dynamic]string)
+		defer delete(external_constants)
+
+		env_list, env_err := os.environ(context.allocator)
+		if env_err == nil {
+			defer delete(env_list)
+			for pair in env_list {
+				parts := strings.split(pair, "=", context.allocator)
+				defer delete(parts)
+				if len(parts) > 0 {
+					const_name := parts[0]
+					if !(const_name in wayu_constants) {
+						append(&external_constants, const_name)
+					}
+				}
+			}
+		}
+
+		if len(external_constants) > 0 {
+			sep := fmt.tprintf("─── External (%d) ───", len(external_constants))
+			append(&items, sep)
+
+			for ext_const_name in external_constants {
+				if env_val := snapshot_env_var(ext_const_name); env_val != nil {
+					glyph := get_source_glyph(EntrySource.EXTERNAL, use_color)
+					item := fmt.aprintf("%s %s=%s", glyph, ext_const_name, env_val.(string))
+					append(&items, item)
 				}
 			}
 		}
