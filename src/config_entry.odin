@@ -928,8 +928,15 @@ cleanup_entries :: proc(entries: ^[]ConfigEntry) {
 // Generic help printer
 print_config_help :: proc(spec: ^ConfigEntrySpec) {
 	// Title
-	title := fmt.aprintf("\n%s%swayu %s - Manage %ss%s\n\n",
-		BOLD, get_primary(), spec.file_name, spec.display_name, RESET)
+	plural := spec.display_name
+	if strings.has_suffix(plural, "s") {
+		plural = fmt.aprintf("%ses", plural)
+	} else {
+		plural = fmt.aprintf("%ss", plural)
+	}
+	defer delete(plural)
+	title := fmt.aprintf("\n%s%swayu %s - Manage %s%s\n\n",
+		BOLD, get_primary(), spec.file_name, plural, RESET)
 	defer delete(title)
 	fmt.print(title)
 

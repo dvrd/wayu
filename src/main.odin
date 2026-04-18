@@ -13,7 +13,8 @@ import "core:time"
 import tui "tui"
 
 // Semantic versioning - update with each release
-VERSION :: "3.10.0"
+// v3.10.1 - 2026-04-18
+VERSION :: "3.10.1"
 
 HOME : string
 WAYU_CONFIG : string
@@ -263,7 +264,11 @@ main :: proc() {
 	case .PLUGIN:
 		handle_plugin_command(parsed.action, parsed.args)
 	case .INIT:
-		handle_init_command()
+		if parsed.action == .HELP {
+			print_init_help()
+		} else {
+			handle_init_command()
+		}
 	case .MIGRATE:
 		handle_migrate_command(parsed.args)
 	case .CONFIG:
@@ -411,7 +416,18 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	case "constants", "const", "env":  parsed.command = .CONSTANTS
 	case "backup":     parsed.command = .BACKUP
 	case "plugin":     parsed.command = .PLUGIN
-	case "init":       parsed.command = .INIT;    return parsed
+	case "init":
+		parsed.command = .INIT
+		if len(filtered_args) > 1 {
+			switch filtered_args[1] {
+			case "help", "-h", "--help":
+				parsed.action = .HELP
+			}
+			remaining_args := make([]string, len(filtered_args) - 1)
+			copy(remaining_args, filtered_args[1:])
+			parsed.args = remaining_args
+		}
+		return parsed
 	case "migrate":    parsed.command = .MIGRATE; return parsed
 	case "config":
 		parsed.command = .CONFIG
@@ -915,7 +931,20 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 
 print_version :: proc() {
 	fmt.printfln("wayu v%s", VERSION)
-	fmt.printfln("A shell configuration management CLI for Bash and ZSH")
+	fmt.printfln("Shell configuration management tool")
+}
+
+print_init_help :: proc() {
+	fmt.println("wayu init - Initialize wayu configuration directory")
+	fmt.println()
+	fmt.println("USAGE:")
+	fmt.println("  wayu init")
+	fmt.println()
+	fmt.println("DESCRIPTION:")
+	fmt.println("  Creates ~/.config/wayu with shell-specific config files (path, aliases,")
+	fmt.println("  constants, init, tools, extra) and subdirectories (functions, completions,")
+	fmt.println("  plugins). Detects the current shell and generates wayu.toml scaffolding.")
+	fmt.println("  Safe to re-run — existing files are preserved.")
 }
 
 print_help :: proc() {
@@ -942,7 +971,7 @@ print_help :: proc() {
 	print_item("", "plugin", "Manage shell plugins", EMOJI_COMMAND)
 	print_item("", "init", "Initialize wayu configuration directory", EMOJI_INFO)
 	print_item("", "migrate", "Migrate configuration between shells", EMOJI_INFO)
-	print_item("", "config", "Manage extra config (extend, scan)", EMOJI_INFO)
+	print_item("", "config", "Manage configuration files (edit, extend, scan)", EMOJI_INFO)
 	print_item("", "version", "Show version information", EMOJI_INFO)
 	print_item("", "help", "Show this help message", EMOJI_INFO)
 	fmt.println()
@@ -983,14 +1012,13 @@ print_help :: proc() {
 	fmt.println()
 	fmt.printf("  # TOML configuration (declarative mode):\n")
 	fmt.printf("  wayu toml validate               # Check wayu.toml syntax\n")
-	fmt.printf("  wayu toml convert                # Migrate to TOML format\n")
 	fmt.printf("  # Edit ~/.config/wayu/wayu.toml  # Edit declarative config\n")
 	fmt.println()
 	fmt.printf("  # Configuration files:\n")
 	fmt.printf("  wayu config edit                 # Edit wayu.toml (declarative)\n")
 	fmt.printf("  wayu config extend               # Edit extra.zsh (scripts)\n")
 	fmt.printf("  wayu config scan                 # Detect scripts in .zshrc\n")
-	fmt.printf("  wayu config extend               # Same as 'config'\n")
+	fmt.printf("  wayu config                      # Same as 'config edit'\n")
 	fmt.println()
 	fmt.printf("  # Diagnostics:\n")
 	fmt.printf("  wayu doctor                      # Health check all configs\n")
@@ -999,7 +1027,6 @@ print_help :: proc() {
 	fmt.printf("  # Templates:\n")
 	fmt.printf("  wayu template list               # List config presets\n")
 	fmt.printf("  wayu template apply developer    # Apply developer preset\n")
-	fmt.printf("  wayu init --template minimal     # Initialize with preset\n")
 	fmt.println()
 	fmt.printf("  # Hooks:\n")
 	fmt.printf("  wayu hooks                       # Show configured hooks\n")

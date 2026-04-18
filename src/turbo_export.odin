@@ -26,6 +26,9 @@ handle_export_command :: proc(action: Action, args: []string) {
 	}
 
 	#partial switch action {
+	case .HELP:
+		print_export_usage()
+		return
 	case .LIST:
 		// Default: generate turbo export
 		generate_turbo_export(false)

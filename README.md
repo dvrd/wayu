@@ -107,7 +107,6 @@ wayu doctor --fix                # Auto-fix issues
 
 # TOML configuration (declarative mode)
 wayu toml validate               # Check wayu.toml syntax
-wayu toml convert                # Convert shell configs to TOML
 
 # Shell migration
 wayu migrate --from zsh --to bash
