@@ -7,6 +7,7 @@ package wayu
 
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 
 // Main handler for ALIAS commands.
@@ -465,6 +466,8 @@ get_toml_alias_value :: proc(name: string) {
 	}
 
 	entries := read_toml_alias_entries()
+
+	// Try exact match first
 	for entry in entries {
 		if entry.name == name {
 			fmt.println(entry.value)
@@ -473,7 +476,84 @@ get_toml_alias_value :: proc(name: string) {
 		}
 	}
 
+	// Fuzzy match fallback - do fuzzy matching on entries array directly
+	fuzzy_matches := make([dynamic]FuzzyMatch)
+
+	name_lower := strings.to_lower(name)
+
+	for entry in entries {
+		score := 0
+		match_type := MatchType.Fuzzy
+
+		// Check for exact match
+		if strings.equal_fold(entry.name, name) {
+			score = 10000
+			match_type = .Exact
+		} else if strings.has_prefix(strings.to_lower(entry.name), name_lower) {
+			// Prefix match
+			score = 5000 + fuzzy_score(entry.name, name)
+			match_type = .Prefix
+		} else if strings.contains(strings.to_lower(entry.name), name_lower) {
+			// Substring match
+			score = 3000 + fuzzy_score(entry.name, name)
+			match_type = .Substring
+		} else if is_acronym_match(entry.name, name) {
+			// Acronym match
+			score = 2000 + fuzzy_score(entry.name, name)
+			match_type = .Acronym
+		} else {
+			// General fuzzy match
+			score = fuzzy_score(entry.name, name)
+			match_type = .Fuzzy
+		}
+
+		if score > 0 {
+			append(&fuzzy_matches, FuzzyMatch{
+				entry = clone_entry(entry),
+				score = score,
+				match_type = match_type,
+			})
+		}
+	}
+
 	cleanup_entries(&entries)
+
+	if len(fuzzy_matches) > 0 {
+		// Sort by score descending
+		slice.sort_by(fuzzy_matches[:], proc(a, b: FuzzyMatch) -> bool {
+			return a.score > b.score
+		})
+
+		if len(fuzzy_matches) == 1 {
+			// Single fuzzy match: print value and exit 0
+			fmt.println(fuzzy_matches[0].entry.value)
+			// Clean up before returning
+			delete(name_lower)
+			for match in fuzzy_matches {
+				cleanup_clone(match.entry)
+			}
+			delete(fuzzy_matches)
+			return
+		} else {
+			// Multiple matches: show suggestions and exit with error
+			print_fuzzy_suggestions(&ALIAS_SPEC, name, fuzzy_matches[:])
+			// Clean up before exit
+			delete(name_lower)
+			for match in fuzzy_matches {
+				cleanup_clone(match.entry)
+			}
+			delete(fuzzy_matches)
+			os.exit(EXIT_DATAERR)
+		}
+	}
+
+	// No matches at all - clean up
+	delete(name_lower)
+	for match in fuzzy_matches {
+		cleanup_clone(match.entry)
+	}
+	delete(fuzzy_matches)
+
 	print_error("Alias not found: %s", name)
 	os.exit(EXIT_DATAERR)
 }
