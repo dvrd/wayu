@@ -5,6 +5,28 @@ All notable changes to wayu will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.1] - 2026-04-18
+
+### Added
+
+- **search**: Extend search to match on entry values in addition to names
+- **get**: Fuzzy-match fallback for env/alias/path get commands
+
+### Fixed
+
+- **search**: Read from wayu.toml instead of legacy shell files
+- **init**: `wayu init --help` and `wayu search --help` now show proper help
+- **help**: Remove undocumented `wayu init --template` example; remove `toml convert` (stub) from help output
+- **help**: Fix "Aliass" pluralization typo in `wayu alias --help` header
+- **export**: `wayu export --help` no longer errors as unknown action
+- **version**: `wayu version` string now matches help header
+- **init_generator**: Lowercase 'path' in missing-path warning message
+- **init_generator**: Per-segment coloring for path-missing warning
+
+### Removed
+
+- Orphan `templates/fish/` directory (fish support uses embedded strings)
+
 ## [3.10.0] - 2026-04-16
 
 ### Added

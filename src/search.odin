@@ -43,6 +43,10 @@ handle_search_command :: proc(args: []string) {
 	}
 
 	query := args[0]
+	if query == "--help" || query == "-h" || query == "help" {
+		print_search_usage()
+		os.exit(0)
+	}
 	if len(strings.trim_space(query)) == 0 {
 		print_search_usage()
 		os.exit(EXIT_USAGE)

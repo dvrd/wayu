@@ -2,14 +2,14 @@
 
 > Shell configuration management CLI written in [Odin](https://odin-lang.org/) that manages PATH entries, aliases, environment constants, completions, and backups for Zsh and Bash.
 
-**Version**: 3.0.0 | **Language**: Odin | **Shells**: Zsh (primary), Bash
+**Version**: 3.10.1 | **Language**: Odin | **Shells**: Zsh (primary), Bash, Fish
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | Language | Odin (compiled, manual memory management) |
-| Build | [Taskfile](https://taskfile.dev/) (`Taskfile.yml`) |
+| Build | Custom Odin build tool (`./build_it`, sources in `bld/`) |
 | Unit Tests | Odin `core:testing` framework |
 | Integration Tests | Ruby scripts invoking compiled binary + Odin standalone programs |
 | Visual Regression | Golden file comparison (`tests/golden/`) |
@@ -22,73 +22,73 @@
 
 ```
 wayu/
-├── src/                          # Main package (package wayu) - 29 files
+├── src/                          # Main package (package wayu) - ~57 .odin files
 │   ├── main.odin                 # Entry point, arg parsing, command dispatch
 │   ├── exit_codes.odin           # BSD sysexits.h exit code constants
 │   ├── shell.odin                # Shell detection ($SHELL env), file extensions
+│   ├── shell_fish.odin           # Fish-shell-specific handling
 │   ├── types.odin                # Shared type definitions (Style, enums)
+│   ├── interfaces.odin           # Shared interfaces across workstreams
 │   │
-│   ├── path.odin                 # PATH management (add/remove/list/clean/dedup)
-│   ├── alias.odin                # Alias management (add/remove/list)
-│   ├── constants.odin            # Environment variable management
-│   ├── completions.odin          # Zsh completion script management
-│   ├── backup.odin               # Timestamped backup/restore system
-│   ├── plugin.odin               # Plugin management with fuzzy matching
-│   ├── plugin_registry.odin      # Plugin registry and metadata
-│   ├── plugin_operations.odin    # Plugin install/update/remove operations
-│   ├── plugin_config.odin        # Plugin configuration (JSON-based)
-│   ├── plugin_help.odin          # Plugin help and documentation
+│   ├── path.odin / alias.odin / constants.odin / completions.odin
+│   ├── backup.odin               # Timestamped backup/restore
+│   ├── plugin*.odin              # Plugin: registry, operations, config, help
+│   ├── hooks.odin                # Pre/post action hooks
+│   ├── doctor.odin               # Health checks & auto-fix
+│   ├── migrate.odin              # Shell-to-shell migration
+│   ├── search.odin               # Global fuzzy search across configs
+│   ├── alias_sources.odin        # Per-source alias classification
 │   │
 │   ├── config_entry.odin         # Generic config entry CRUD (Strategy pattern)
-│   ├── config_specs.odin         # ConfigEntrySpec instances (PATH_SPEC, ALIAS_SPEC, etc.)
-│   ├── preload.odin              # Embedded shell script templates for init
+│   ├── config_specs.odin         # ConfigEntrySpec instances (PATH, ALIAS, CONSTANTS)
+│   ├── config_toml.odin          # TOML config read/write
+│   ├── config_toml_reader.odin   # Low-level TOML parsing
+│   ├── preload.odin              # Embedded shell-script templates (incl. fish)
+│   ├── init_generator.odin       # Generates optimized init files from wayu.toml
+│   ├── static_gen.odin           # Ahead-of-time config compilation
+│   ├── turbo_export.odin         # Fastest-path unified export (turbo.{zsh,bash})
+│   ├── adaptive_optimizer.odin   # Picks build strategy by entry count
+│   ├── env_snapshot.odin         # Snapshot/restore of env state
+│   ├── hot_reload.odin           # File-watching hot reload (`wayu reload`/`watch`)
+│   ├── lock.odin                 # File locking for concurrent safety
+│   ├── output.odin               # JSON / structured output helpers
+│   ├── template.odin             # Configuration presets
+│   ├── prompt*.odin              # Interactive prompt helpers
+│   ├── theme_starship.odin       # Starship theme integration
+│   ├── fff_integration.odin      # Fuzzy finder integration
+│   ├── integration_*.odin        # Integration-test shims
+│   ├── wayu_completions.odin     # Emitted shell completion scripts
 │   │
-│   ├── validation.odin           # Input validation (identifiers, reserved words)
-│   ├── input.odin                # Input handling utilities
-│   ├── special_chars.odin        # Dangerous character escaping
-│   │
-│   ├── style.odin                # Core styling: ANSI colors, render pipeline
-│   ├── theme.odin                # Dual light/dark theme with auto-detection
-│   ├── colors.odin               # 3-tier adaptive color system (TrueColor/256/ANSI)
-│   ├── layout.odin               # Layout utilities, visual_width, terminal size
-│   ├── table.odin                # Table rendering with auto-sizing columns
-│   ├── progress.odin             # Progress bar indicators
-│   ├── spinner.odin              # Loading spinner animations
-│   ├── form.odin                 # Form rendering utilities
-│   │
-│   ├── fuzzy.odin                # Fuzzy finder (raw terminal mode)
-│   ├── comp_testing.odin         # Component testing CLI (-c= flag)
-│   ├── errors.odin               # Enhanced errors with context/suggestions
-│   ├── debug.odin                # Compile-time debug logging
+│   ├── validation.odin / input.odin / special_chars.odin
+│   ├── style.odin / theme.odin / colors.odin / layout.odin
+│   ├── table.odin / progress.odin / spinner.odin / form.odin
+│   ├── fuzzy.odin / comp_testing.odin / errors.odin / debug.odin
 │   ├── tui_bridge_impl.odin      # Bridge: connects TUI to main pkg via fn pointers
 │   │
-│   └── tui/                      # TUI subpackage (package wayu_tui) - 15 files
-│       ├── main.odin             # TEA event loop and rendering dispatch
-│       ├── state.odin            # State machine (8 views, transitions)
-│       ├── events.odin           # Event parsing (keyboard → typed events)
-│       ├── input.odin            # Non-blocking stdin read
-│       ├── rawmode.odin          # Terminal raw mode via termios
-│       ├── terminal.odin         # Terminal lifecycle (alt screen, signals)
-│       ├── screen.odin           # Screen buffer with differential rendering
-│       ├── render.odin           # Rendering utilities
-│       ├── layout.odin           # TUI-specific layout constants
-│       ├── panel.odin            # Panel rendering (bordered sections)
-│       ├── colors.odin           # TUI color palette (Zellij-inspired)
-│       ├── components.odin       # Component registry (box, header, footer, etc.)
-│       ├── views.odin            # 8 view implementations
-│       ├── views_handlers.odin   # Per-view event handlers
+│   └── tui/                      # TUI subpackage (package wayu_tui) - 14 files
+│       ├── main.odin / state.odin / events.odin / input.odin
+│       ├── rawmode.odin / terminal.odin / screen.odin / render.odin
+│       ├── layout.odin / panel.odin / colors.odin
+│       ├── components.odin / views.odin / views_handlers.odin
 │       └── bridge.odin           # Bridge interface (function pointer types)
 │
-├── tests/
-│   ├── unit/                     # 22 Odin test files (235+ tests)
-│   ├── integration/              # 5 Odin standalone + 11 Ruby test files
-│   ├── ui/                       # 3 Odin visual rendering tests
-│   └── golden/                   # 9 golden files for visual regression
+├── bld/                          # `./build_it` build tool source (Odin)
+├── build/                        # Secondary build-tooling source
+├── bin/                          # Compiled binary (`bin/wayu`)
 │
-├── scripts/                      # Dev/CI scripts (Ruby, Bash, Python)
-├── docs/                         # Documentation (currently empty)
-├── Taskfile.yml                  # Build & test automation
-├── CLAUDE.md                     # AI assistant guidance
+├── tests/
+│   ├── unit/                     # Odin unit tests
+│   ├── integration/              # Standalone Odin + shell integration tests
+│   ├── ui/                       # Visual rendering tests
+│   ├── tui/                      # TUI-specific tests
+│   ├── benchmark/                # Micro-benchmarks
+│   ├── benchmark_static_gen.sh   # Static-generation benchmarks
+│   └── golden/                   # Golden files for visual regression
+│
+├── docs/                         # Design docs and plans
+├── thoughts/                     # Working notes / RFC drafts
+├── build_it                      # Bootstraps the Odin build tool in `bld/`
+├── CLAUDE.md / AGENTS.md         # AI assistant guidance
 ├── CHANGELOG.md                  # Version history
 └── README.md                     # User documentation
 ```
@@ -264,14 +264,13 @@ export PATH=$(echo "$PATH" | awk -v RS=':' -v ORS=':' '!seen[$0]++' | sed 's/:$/
 ## Build & Deploy
 
 ```bash
-task build              # Production build (optimized, -o:speed)
-task debug              # Debug build (debug symbols + logging)
-task test               # All tests with unified coverage report
-task test:integration   # Standalone integration tests (Odin)
-task install            # Install to /usr/local/bin
+./build_it              # Production build (optimized, -o:speed)
+./build_it debug        # Debug build with logging
+./build_it test         # Run test suite
+./build_it install      # Install to /usr/local/bin
 ```
 
-**Build command**: `odin build src -out:bin/wayu`
+**Underlying command**: `odin build src -out:bin/wayu -o:speed`
 
 ## Memory Model
 

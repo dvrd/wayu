@@ -828,3 +828,147 @@ exit=0
 - Score indicators (★ = high, ◆ = medium) displayed ✓
 - No false positives on nonsense query ✓
 - Deduplication pattern: Inline scoring in `search_toml_entries_by_name()` reuses `fuzzy_score()` and `is_acronym_match()` from `fff_integration.odin` without extracting a shared helper (inline approach faster, lower risk of regression)
+
+---
+
+## Value-level search matching
+
+**Date:** 2026-04-17  
+**Commit:** `79d7c3b`  
+**Config MD5:** `3b57b628d7260533b9d16a2b208eda19` ✓ (unchanged)
+
+### Feature Overview
+
+Extended `wayu search` / `find` / `f` to match on entry **VALUES** in addition to names. Users can now find aliases by their command text without knowing the alias name.
+
+**Example use cases:**
+- `wayu search git` → matches `gco = "git checkout"` (value match)
+- `wayu search lsd` → matches `ls = "lsd"` and `tree = "lsd --tree"` (value matches)
+- `wayu search zellij` → matches multiple aliases with zellij in their command
+
+### Implementation
+
+**File:** `src/search.odin`
+
+**Changes:**
+1. **New enum:** `MatchedField {NAME, VALUE}` to track which field matched
+2. **Updated structs:** Added `matched_field` field to `SearchResult` and `SearchEntry`
+3. **Dual scoring:** `search_toml_entries_by_name()` now:
+   - Computes `name_score` using existing logic (exact/prefix/substring/acronym/fuzzy)
+   - Computes `value_score` on entry.value (same scoring rules)
+   - Picks the higher score; ties prefer name match
+   - Sets `matched_field = .VALUE` when value wins
+4. **Display:** `print_search_result_line()` appends `[in value]` tag when `matched_field == .VALUE`
+
+**Scope discipline:**
+- PATH entries: Only match on name (value is path itself, no separate semantic value)
+- ALIAS entries: Match both name and value (command text is meaningful)
+- CONSTANT entries: Match both name and value (env var value is meaningful)
+
+### Verification Output
+
+```bash
+=== git (must match gco via value) ===
+🔍 Search Results for 'git'
+
+🔑 Aliases (1 found)
+──────────────────────────────────────────────────
+  gco [prefix] [in value] ★
+      git checkout
+
+Total: 1 match(es) found
+exit=0
+
+=== lsd (must match ls/tree aliases via value) ===
+🔍 Search Results for 'lsd'
+
+🔑 Aliases (2 found)
+──────────────────────────────────────────────────
+  ls [exact] [in value] ★
+      lsd
+  tree [prefix] [in value] ★
+      lsd --tree
+
+💾 Constants (1 found)
+──────────────────────────────────────────────────
+  CLOUDSDK_PYTHON [fuzzy]
+      /opt/homebrew/anaconda3/envs/opencv/bin/python
+
+Total: 3 match(es) found
+exit=0
+
+=== zellij (must match via value in multiple aliases AND path) ===
+🔍 Search Results for 'zellij'
+
+📂 PATH (1 found)
+──────────────────────────────────────────────────
+  /Users/kakurega/dev/oss/zellij/target/release [substring] ★
+
+🔑 Aliases (4 found)
+──────────────────────────────────────────────────
+  zd [prefix] [in value] ★
+      zellij d
+  zs [prefix] [in value] ★
+      zellij --session
+  zws [prefix] [in value] ★
+      zellij web --daemonize
+  zconf [substring] [in value] ★
+      vim /Users/kakurega/.config/zellij/config.kdl
+
+Total: 5 match(es) found
+exit=0
+
+=== el (regression test — should still match ELEVENLABS_* by name) ===
+🔍 Search Results for 'el'
+
+📂 PATH (2 found)
+──────────────────────────────────────────────────
+  /Users/kakurega/dev/oss/zellij/target/release [substring] ★
+  /Users/kakurega/dev/projects/mel/target/release [substring] ★
+
+🔑 Aliases (7 found)
+──────────────────────────────────────────────────
+  reload [substring] ★
+  ...
+
+Total: 16 match(es) found
+exit=0
+
+=== HOME (constants: name + value matches) ===
+🔍 Search Results for 'HOME'
+
+📂 PATH (5 found)
+──────────────────────────────────────────────────
+  /opt/homebrew/bin [substring] ★
+  ...
+
+💾 Constants (13 found)
+──────────────────────────────────────────────────
+  ...
+
+Total: 19 match(es) found
+exit=0
+
+=== MD5 check ===
+MD5 (/Users/kakurega/.config/wayu/wayu.toml) = 3b57b628d7260533b9d16a2b208eda19 ✓
+```
+
+### Test Results Summary
+
+| Query | Expected | Result | Matches | Status |
+|-------|----------|--------|---------|--------|
+| `git` | Match gco by value | ✓ | 1 | PASS |
+| `lsd` | Match ls, tree by value | ✓ | 3 | PASS |
+| `zellij` | Match 4 aliases + path | ✓ | 5 | PASS |
+| `el` | Regression: ELEVENLABS by name | ✓ | 16 | PASS |
+| `HOME` | Mix of name + value | ✓ | 19 | PASS |
+
+### Build Status
+
+- `./build_it` — Binary built successfully ✓
+- No compilation errors ✓
+- User config MD5 unchanged ✓
+
+### Summary
+
+Value-level search successfully enables discovery of commands by their action (e.g., search "git" to find git-related aliases) without memorizing alias names. The `[in value]` tag clearly distinguishes value matches from name matches in output. All verification tests pass with no regressions.
