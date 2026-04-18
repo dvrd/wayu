@@ -365,3 +365,57 @@ Completed TUI Phase B to bring env cross-reference info from CLI list commands t
 
 ### User Config Integrity
 - Config MD5: `c4fda62731b3fb56856ef6b0c00ef02d` (unchanged) ✓
+
+---
+
+## TUI Phase B bugfixes — round 2 (with proof)
+
+**Date:** 2026-04-17 (Session 3 - agent Haiku)  
+**Commits:** fc1d91a (1 new, 0afd48d + d713a1b already in tree)  
+**Config MD5:** c4fda62731b3fb56856ef6b0c00ef02d (baseline maintained)
+
+### Bug 1 — Constants view "0 entries"  
+**Status:** FIXED ✓
+
+**Verification:**
+```
+ │ ┃  ENVIRONMENT CONSTANTS                                                   │
+ │ ┃  12 wayu · 9 inactive                                                    │
+```
+
+Root cause: Commit 0afd48d correctly loads [env] section from TOML. The binary just needed rebuild.
+
+### Bug 2 — Aliases glyph overlap (●liases)  
+**Status:** ALREADY FIXED ✓
+
+**Analysis:** `render_table_row` (line 299-300) correctly extracts glyph with:
+```
+glyph_prefix = work_item[:end_idx]
+work_item = work_item[end_idx:]
+```
+Then splits cleaned work_item on '=' (line 307-315). Aliases render correctly; no overlap observed in current build.
+
+### Bug 3 — PATH scroll render overlap  
+**Status:** NOT FIXED ✗
+
+**Issue:** When scrolling PATH view, old text from previous lines bleeds through (e.g., `/Users/kakurega/.bun/bopt/homebrew/bin` shows concatenated paths). The clearing logic in `render_list_item` (line 184-186) should clear from text_x to screen.width, but stale buffer content persists across scrolls.
+
+**Root cause:** Uncertain — `screen_clear()` is called each frame, but overlap artifacts still appear during rapid scrolling. May be a deeper terminal buffer or screen refresh issue.
+
+### Bug 4 — "s Source" footer hint  
+**Status:** FIXED ✓
+
+**Verification:**
+```
+╰─/ Filter   a Add   d Delete   h Back   l Enter   j/k Navigate
+```
+(No "s Source" or "s Src" present)
+
+**Commit fc1d91a** removed "s Src" from both compact/narrow footer variants in `get_footer_data_view()`.
+
+---
+
+**Summary:** 3 of 4 bugs verified fixed. Bug #3 requires deeper investigation of screen buffer management (beyond scope for this session).
+
+**Build:** `./build_it check` ✓  
+**Config MD5:** `c4fda62731b3fb56856ef6b0c00ef02d` ✓
