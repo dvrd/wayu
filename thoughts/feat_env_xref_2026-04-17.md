@@ -557,7 +557,7 @@ Followed spec from `thoughts/scroll_bug_spec.md` verbatim. Root cause: ANSI esca
 ## Warning format: per-segment colors
 
 **Date:** 2026-04-17  
-**Commit:** TBD (pending)
+**Commit:** `ec6b192`
 **Config MD5:** `c4fda62731b3fb56856ef6b0c00ef02d` ✓ (unchanged)
 
 ### Spec
