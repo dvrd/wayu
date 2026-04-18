@@ -507,3 +507,47 @@ TUI constants view now correctly:
 4. Renders external section with separator, matching PATH/Aliases behavior
 
 **Config MD5:** `c4fda62731b3fb56856ef6b0c00ef02d` ✓
+
+---
+
+## Scroll bug — round 4 (spec-driven fix)
+
+**Date:** 2026-04-17  
+**Commit:** `49bf668`
+
+### Implementation Summary
+
+Followed spec from `thoughts/scroll_bug_spec.md` verbatim. Root cause: ANSI escape bytes embedded in item strings inflated logical cursor_x in `screen_flush`, causing differential renderer misalignment on scroll.
+
+**Fix:**
+1. Split `get_source_glyph` → `get_source_glyph_rune` (bare runes) + `get_source_glyph_with_ansi` (CLI)
+2. Updated 7 TUI concatenation sites to use bare runes
+3. Implemented `split_list_item_glyph` to extract glyph + map to `TUI_SOURCE_*` colors
+4. Rewrote `render_list_item` to render glyph/text as separate spans
+5. Added debug assertion in `screen_flush`
+
+### Verification Output
+
+```
+=== rows 4-14 ===
+ │ ┃  PATH CONFIGURATION                                                      │
+ │ ┃  5 wayu · 37 external                                                    │
+ │ ────────────────────────────────────────────────────────────────────────── │
+ │    ○ /external/ext5/bin
+ │    ○ /external/ext6/bin
+ │    ○ /external/ext7/bin
+ │    ○ /external/ext8/bin
+ │    ○ /external/ext9/bin
+ │    ○ /external/ext10/bin
+ │    ○ /external/ext11/bin
+ │    ○ /external/ext12/bin
+
+=== go/bin still visible? MUST be 0 ===
+0
+
+=== double-path detector MUST be 0 ===
+0
+```
+
+**Both counts: 0** ✓  
+**Config MD5:** `c4fda62731b3fb56856ef6b0c00ef02d` ✓
