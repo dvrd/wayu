@@ -178,6 +178,13 @@ render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) ->
 render_list_item :: proc(screen: ^Screen, header_x, y: int, text: string, max_width: int, is_selected: bool) {
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
+	// Clear the entire content row from header_x to right edge to prevent scroll overlap
+	// This ensures no old content bleeds through when scrolling
+	right_edge := screen.width - BORDER_RIGHT_WIDTH
+	for clear_x in header_x..<right_edge {
+		screen_set_cell(screen, clear_x, y, Cell{char = ' ', fg = "", bg = "", bold = false, dim = false})
+	}
+
 	// FIX: Handle corrupted data where multiple paths are concatenated with excess spaces
 	// Find any run of 5+ consecutive spaces and truncate there
 	work_text := text
@@ -223,7 +230,7 @@ render_list_item :: proc(screen: ^Screen, header_x, y: int, text: string, max_wi
 		screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
 		render_text_styled(screen, text_x, y, display_padded, TUI_PRIMARY, "", true)
 	} else {
-		// Normal: no accent bar, muted text at same x offset
+		// Normal: render muted text at same x offset (row already cleared above)
 		render_text_styled(screen, text_x, y, display_padded, TUI_MUTED)
 	}
 }
@@ -493,7 +500,8 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 
 	if has_filter && len(state.filtered_indices) > 0 {
 		// Filtered — show matching items
-		visible_height := calculate_visible_height(state.terminal_height) - list_start_offset - 1 - col_header_offset
+		// Use get_view_visible_height to match the scroll logic's calculation exactly
+		visible_height := get_view_visible_height(state)
 		start := state.scroll_offset
 		end := min(start + visible_height, len(state.filtered_indices))
 
@@ -525,7 +533,8 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 		}
 	} else {
 		// Normal — show all items
-		visible_height := calculate_visible_height(state.terminal_height) - 1 - col_header_offset
+		// Use get_view_visible_height to match the scroll logic's calculation exactly
+		visible_height := get_view_visible_height(state)
 		start := state.scroll_offset
 		end := min(start + visible_height, len(items))
 
@@ -746,7 +755,8 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 		content_start := LIST_ITEM_START_LINE + 1 + filter_offset
 
 		if has_filter && len(state.filtered_indices) > 0 {
-			visible_height := calculate_visible_height(state.terminal_height) - filter_offset - 1
+			// Use get_view_visible_height to match the scroll logic's calculation exactly
+			visible_height := get_view_visible_height(state)
 			start := state.scroll_offset
 			end   := min(start + visible_height, len(state.filtered_indices))
 			for idx in start..<end {
@@ -765,7 +775,8 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 			render_text_styled(screen, text_x, content_start + 3,
 				"Switch to Registry tab (Tab key) to browse and install", TUI_MUTED)
 		} else {
-			visible_height := calculate_visible_height(state.terminal_height) - 1
+			// Use get_view_visible_height to match the scroll logic's calculation exactly
+			visible_height := get_view_visible_height(state)
 			start := state.scroll_offset
 			end   := min(start + visible_height, len(items))
 			for i in start..<end {
