@@ -435,7 +435,7 @@ read_wayu_toml_paths :: proc() -> [dynamic]string {
 				if os.exists(p) {
 					append(&paths, strings.clone(p))
 				} else {
-					fmt.eprintf("%s[wayu]%s %s⚠%s %sPath does not exist, excluding from path: %s%s%s%s\n", VIBRANT_PRIMARY, RESET_CODE, get_warning(), RESET_CODE, BRIGHT_WHITE, RESET_CODE, BRIGHT_CYAN, p, RESET_CODE)
+					fmt.eprintf("%s[wayu]%s %s⚠%s %spath does not exist, excluding from path: %s%s%s%s\n", VIBRANT_PRIMARY, RESET_CODE, get_warning(), RESET_CODE, BRIGHT_WHITE, RESET_CODE, BRIGHT_CYAN, p, RESET_CODE)
 				}
 				in_paths_section = false
 			}
