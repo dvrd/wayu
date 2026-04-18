@@ -547,6 +547,27 @@ toml_path_read :: proc() -> [dynamic]string {
 	return paths
 }
 
+// read_toml_path_entries - Read PATH entries from TOML as ConfigEntry array
+read_toml_path_entries :: proc() -> [dynamic]ConfigEntry {
+	paths := toml_path_read()
+	defer {
+		for p in paths { delete(p) }
+		delete(paths)
+	}
+
+	entries := make([dynamic]ConfigEntry)
+	for path in paths {
+		append(&entries, ConfigEntry{
+			type  = .PATH,
+			name  = strings.clone(path),
+			value = "",
+			line  = fmt.aprintf("add_to_path \"%s\"", path),
+		})
+	}
+
+	return entries
+}
+
 // Get a specific PATH entry from TOML with fuzzy matching fallback
 get_toml_path_value :: proc(search_path: string) {
 	if len(strings.trim_space(search_path)) == 0 {

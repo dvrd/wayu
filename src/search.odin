@@ -13,10 +13,17 @@ import "core:slice"
 
 // SearchResult represents a single match from any config type
 SearchResult :: struct {
-	spec_type: ConfigEntryType,
-	name:      string,
-	value:     string,
-	score:     int,
+	spec_type:  ConfigEntryType,
+	name:       string,
+	value:      string,
+	score:      int,
+	match_type: MatchType,
+}
+
+// Internal wrapper for sorting entries with scores
+SearchEntry :: struct {
+	entry:      ConfigEntry,
+	score:      int,
 	match_type: MatchType,
 }
 
@@ -49,44 +56,86 @@ handle_search_command :: proc(args: []string) {
 		delete(all_results)
 	}
 
-	// Search PATH entries
-	path_results := search_config_entries(&PATH_SPEC, query)
-	defer free_fuzzy_matches(path_results)
-	for match in path_results {
+	// Search PATH entries from TOML
+	path_entries_toml := read_toml_path_entries()
+	defer {
+		for entry in path_entries_toml {
+			delete(entry.name)
+			delete(entry.value)
+			delete(entry.line)
+		}
+		delete(path_entries_toml)
+	}
+	path_search_results := search_toml_entries_by_name(path_entries_toml[:], query)
+	defer {
+		for se in path_search_results {
+			cleanup_clone(se.entry)
+		}
+		delete(path_search_results)
+	}
+	for se in path_search_results {
 		append(&all_results, SearchResult{
 			spec_type  = .PATH,
-			name       = strings.clone(match.entry.name),
-			value       = "",
-			score       = match.score,
-			match_type  = match.match_type,
+			name       = strings.clone(se.entry.name),
+			value      = "",
+			score      = se.score,
+			match_type = se.match_type,
 		})
 	}
 
-	// Search aliases
-	alias_results := search_config_entries(&ALIAS_SPEC, query)
-	defer free_fuzzy_matches(alias_results)
-	for match in alias_results {
-		value := strings.clone(match.entry.value) if match.entry.value != "" else ""
+	// Search aliases from TOML
+	alias_entries_toml := read_toml_alias_entries()
+	defer {
+		for entry in alias_entries_toml {
+			delete(entry.name)
+			delete(entry.value)
+			delete(entry.line)
+		}
+		delete(alias_entries_toml)
+	}
+	alias_search_results := search_toml_entries_by_name(alias_entries_toml[:], query)
+	defer {
+		for se in alias_search_results {
+			cleanup_clone(se.entry)
+		}
+		delete(alias_search_results)
+	}
+	for se in alias_search_results {
+		value := strings.clone(se.entry.value) if se.entry.value != "" else ""
 		append(&all_results, SearchResult{
 			spec_type  = .ALIAS,
-			name       = strings.clone(match.entry.name),
-			value       = value,
-			score       = match.score,
-			match_type  = match.match_type,
+			name       = strings.clone(se.entry.name),
+			value      = value,
+			score      = se.score,
+			match_type = se.match_type,
 		})
 	}
 
-	// Search constants
-	constant_results := search_config_entries(&CONSTANTS_SPEC, query)
-	defer free_fuzzy_matches(constant_results)
-	for match in constant_results {
-		value := strings.clone(match.entry.value) if match.entry.value != "" else ""
+	// Search constants from TOML
+	const_entries_toml := read_wayu_toml_constants()
+	defer {
+		for entry in const_entries_toml {
+			delete(entry.name)
+			delete(entry.value)
+			delete(entry.line)
+		}
+		delete(const_entries_toml)
+	}
+	const_search_results := search_toml_entries_by_name(const_entries_toml[:], query)
+	defer {
+		for se in const_search_results {
+			cleanup_clone(se.entry)
+		}
+		delete(const_search_results)
+	}
+	for se in const_search_results {
+		value := strings.clone(se.entry.value) if se.entry.value != "" else ""
 		append(&all_results, SearchResult{
 			spec_type  = .CONSTANT,
-			name       = strings.clone(match.entry.name),
-			value       = value,
-			score       = match.score,
-			match_type  = match.match_type,
+			name       = strings.clone(se.entry.name),
+			value      = value,
+			score      = se.score,
+			match_type = se.match_type,
 		})
 	}
 
@@ -99,7 +148,81 @@ handle_search_command :: proc(args: []string) {
 	print_search_results(query, all_results[:])
 }
 
-// search_config_entries - Search entries in a specific config spec
+// search_toml_entries_by_name - Fuzzy search through TOML config entries
+// Returns scored entries for sorting and display
+search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string) -> [dynamic]SearchEntry {
+	results := make([dynamic]SearchEntry)
+
+	if len(query) == 0 {
+		return results
+	}
+
+	query_lower := strings.to_lower(query)
+	defer delete(query_lower)
+
+	for entry in entries {
+		score := 0
+		match_type := MatchType.Fuzzy
+
+		// Check for exact match
+		if strings.equal_fold(entry.name, query) {
+			score = 10000
+			match_type = .Exact
+		} else if strings.has_prefix(strings.to_lower(entry.name), query_lower) {
+			// Prefix match
+			score = 5000 + fuzzy_score(entry.name, query)
+			match_type = .Prefix
+		} else if strings.contains(strings.to_lower(entry.name), query_lower) {
+			// Substring match
+			score = 3000 + fuzzy_score(entry.name, query)
+			match_type = .Substring
+		} else if is_acronym_match(entry.name, query) {
+			// Acronym match (e.g., frwrks → FIREWORKS)
+			score = 2000 + fuzzy_score(entry.name, query)
+			match_type = .Acronym
+		} else {
+			// General fuzzy match
+			score = fuzzy_score(entry.name, query)
+			match_type = .Fuzzy
+		}
+
+		if score > 0 {
+			append(&results, SearchEntry{
+				entry      = clone_entry(entry),
+				score      = score,
+				match_type = match_type,
+			})
+		}
+	}
+
+	if len(results) == 0 {
+		return results
+	}
+
+	// Sort by score descending
+	slice.sort_by(results[:], proc(a, b: SearchEntry) -> bool {
+		return a.score > b.score
+	})
+
+	// Limit to top 20 results if needed
+	if len(results) > 20 {
+		// Clean up unused results
+		for i in 20..<len(results) {
+			cleanup_clone(results[i].entry)
+		}
+		// Create new dynamic with only first 20
+		limited := make([dynamic]SearchEntry)
+		for i in 0..<20 {
+			append(&limited, results[i])
+		}
+		delete(results)
+		return limited
+	}
+
+	return results
+}
+
+// search_config_entries - Search entries in a specific config spec (legacy, unused)
 search_config_entries :: proc(spec: ^ConfigEntrySpec, query: string) -> []FuzzyMatch {
 	return fuzzy_find_entries(spec, query, max_results = 20)
 }
