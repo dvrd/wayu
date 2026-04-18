@@ -27,6 +27,11 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 			// But force render on first frame
 			if !force_full_render && curr == prev do continue
 
+			// Debug assertion: no ANSI escape bytes in cell buffer
+			when ODIN_DEBUG {
+				assert(curr.char != 0x1b, "ANSI escape in screen cell — see thoughts/scroll_bug_spec.md")
+			}
+
 			// Move cursor if needed (minimize cursor movement)
 			if x != screen.cursor_x || y != screen.cursor_y {
 				fmt.sbprintf(&builder, "\x1b[%d;%dH", y+1, x+1)

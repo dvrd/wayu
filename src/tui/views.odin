@@ -178,61 +178,47 @@ render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) ->
 render_list_item :: proc(screen: ^Screen, header_x, y: int, text: string, max_width: int, is_selected: bool) {
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
-	// Clear the entire content row from header_x to right edge to prevent scroll overlap
-	// This ensures no old content bleeds through when scrolling
+	// Clear row
 	right_edge := screen.width - BORDER_RIGHT_WIDTH
 	for clear_x in header_x..<right_edge {
-		screen_set_cell(screen, clear_x, y, Cell{char = ' ', fg = "", bg = "", bold = false, dim = false})
+		screen_set_cell(screen, clear_x, y, Cell{char = ' '})
 	}
 
-	// FIX: Handle corrupted data where multiple paths are concatenated with excess spaces
-	// Find any run of 5+ consecutive spaces and truncate there
-	work_text := text
-	space_count := 0
-	space_start_idx := -1
-	for idx := 0; idx < len(text); idx += 1 {
-		if text[idx] == ' ' {
-			if space_count == 0 {
-				space_start_idx = idx  // Mark start of space run
-			}
-			space_count += 1
-			if space_count >= 5 {
-				// Found 5+ consecutive spaces - truncate here
-				work_text = text[:space_start_idx]
-				break
-			}
-		} else {
-			space_count = 0
-			space_start_idx = -1
-		}
-	}
+	// Split "<glyph> <rest>" — glyph is always the first rune, followed by a space.
+	glyph, rest, glyph_color := split_list_item_glyph(text)
 
-	display := truncate_text(work_text, max_width)
-
-	// Pad display to full content area width to ensure ALL old content is overwritten
-	// Calculate available width from text_x to right border
+	// Compute padded visible width (runes only, since no ANSI bytes inflate the count).
 	available_width := screen.width - text_x - BORDER_RIGHT_WIDTH
-	if available_width < 0 {
-		available_width = 0
-	}
+	if available_width < 0 { available_width = 0 }
+	display := truncate_text(rest, max(0, available_width - 2))  // -2 for glyph + space
 
-	display_padded: string
-	display_len := utf8.rune_count_in_string(display)
-	pad_len := max(0, available_width - display_len)
-	if pad_len > 0 {
-		display_padded = strings.concatenate({display, strings.repeat(" ", pad_len)}, context.temp_allocator)
-	} else {
-		display_padded = display
-	}
-
+	x := text_x
 	if is_selected {
-		// Selected: accent bar ┃ + bold primary text
 		screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
-		render_text_styled(screen, text_x, y, display_padded, TUI_PRIMARY, "", true)
+		render_text_styled(screen, x, y, glyph, TUI_PRIMARY, "", true)
+		render_text_styled(screen, x + 2, y, display, TUI_PRIMARY, "", true)
 	} else {
-		// Normal: render muted text at same x offset (row already cleared above)
-		render_text_styled(screen, text_x, y, display_padded, TUI_MUTED)
+		render_text_styled(screen, x, y, glyph, glyph_color)
+		render_text_styled(screen, x + 2, y, display, TUI_MUTED)
 	}
+}
+
+// Inspect the first rune of `item` and map it to the appropriate fg colour.
+split_list_item_glyph :: proc(item: string) -> (glyph, rest, fg: string) {
+	if len(item) == 0 { return "", "", TUI_MUTED }
+	first_rune, sz := utf8.decode_rune_in_string(item)
+	glyph_str := item[:sz]
+	rest_str  := item[sz:]
+	if len(rest_str) > 0 && rest_str[0] == ' ' { rest_str = rest_str[1:] }
+	color: string
+	switch first_rune {
+	case '●': color = TUI_SOURCE_WAYU_ACTIVE
+	case '⚠': color = TUI_SOURCE_WAYU_INACTIVE
+	case '○': color = TUI_SOURCE_EXTERNAL
+	case '♦': color = TUI_SOURCE_SHADOWED
+	case: color = TUI_MUTED  // separator line or ASCII fallback
+	}
+	return glyph_str, rest_str, color
 }
 
 // ============================================================================

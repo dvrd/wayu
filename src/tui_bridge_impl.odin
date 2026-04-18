@@ -39,7 +39,29 @@ should_color_output :: proc() -> bool {
 }
 
 // Helper: get source glyph with color codes embedded
-get_source_glyph :: proc(source: EntrySource, use_color: bool) -> string {
+// Return just the glyph rune (no ANSI). Unicode when available, ASCII fallback otherwise.
+get_source_glyph_rune :: proc(source: EntrySource, use_color: bool) -> string {
+	if !use_color {
+		#partial switch source {
+		case .WAYU_ACTIVE:   return "[wayu]"
+		case .WAYU_INACTIVE: return "[wayu(i)]"
+		case .EXTERNAL:      return "[ext]"
+		case .SHADOWED:      return "[diff]"
+		}
+		return "?"
+	}
+	#partial switch source {
+	case .WAYU_ACTIVE:   return "●"
+	case .WAYU_INACTIVE: return "⚠"
+	case .EXTERNAL:      return "○"
+	case .SHADOWED:      return "♦"
+	}
+	return "?"
+}
+
+// Deprecated — keep only for CLI (path.odin etc.) paths that write ANSI
+// straight to stdout. Do NOT use from tui_bridge_load_*.
+get_source_glyph_with_ansi :: proc(source: EntrySource, use_color: bool) -> string {
 	if !use_color {
 		// ASCII-only fallback
 		#partial switch source {
@@ -132,7 +154,7 @@ tui_bridge_load_path :: proc(state: ^tui.TUIState) {
 				wayu_entries[entry] = source
 
 				// Add to items with glyph
-				glyph := get_source_glyph(source, use_color)
+				glyph := get_source_glyph_rune(source, use_color)
 				item := fmt.aprintf("%s %s", glyph, entry)
 				append(&items, item)
 			}
@@ -155,7 +177,7 @@ tui_bridge_load_path :: proc(state: ^tui.TUIState) {
 					// Add each external path
 					for env_path in env_paths {
 						if wayu_entries[env_path] == nil {
-							glyph := get_source_glyph(EntrySource.EXTERNAL, use_color)
+							glyph := get_source_glyph_rune(EntrySource.EXTERNAL, use_color)
 							item := fmt.aprintf("%s %s", glyph, env_path)
 							append(&items, item)
 						}
@@ -222,7 +244,7 @@ tui_bridge_load_alias :: proc(state: ^tui.TUIState) {
 				source := is_active ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
 
 				// Add to items with glyph
-				glyph := get_source_glyph(source, use_color)
+				glyph := get_source_glyph_rune(source, use_color)
 				item := fmt.aprintf("%s %s=%s", glyph, alias.name, alias.command)
 				append(&items, item)
 			}
@@ -241,7 +263,7 @@ tui_bridge_load_alias :: proc(state: ^tui.TUIState) {
 
 				for env_name, env_cmd in env_aliases {
 					if wayu_aliases[env_name] == false {
-						glyph := get_source_glyph(EntrySource.EXTERNAL, use_color)
+						glyph := get_source_glyph_rune(EntrySource.EXTERNAL, use_color)
 						item := fmt.aprintf("%s %s=%s", glyph, env_name, env_cmd)
 						append(&items, item)
 					}
@@ -305,7 +327,7 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 				is_active := env_val_maybe != nil
 				source := is_active ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
 
-				glyph := get_source_glyph(source, use_color)
+				glyph := get_source_glyph_rune(source, use_color)
 				item := fmt.aprintf("%s %s=%s", glyph, const.name, const.value)
 				append(&items, item)
 			}
@@ -380,7 +402,7 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 						is_active := env_val_maybe != nil
 						source := is_active ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
 
-						glyph := get_source_glyph(source, use_color)
+						glyph := get_source_glyph_rune(source, use_color)
 						item := fmt.aprintf("%s %s=%s", glyph, name, value)
 						append(&items, item)
 					}
@@ -414,7 +436,7 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 
 			for ext_const_name in external_constants {
 				if env_val := snapshot_env_var(ext_const_name); env_val != nil {
-					glyph := get_source_glyph(EntrySource.EXTERNAL, use_color)
+					glyph := get_source_glyph_rune(EntrySource.EXTERNAL, use_color)
 					item := fmt.aprintf("%s %s=%s", glyph, ext_const_name, env_val.(string))
 					append(&items, item)
 				}
