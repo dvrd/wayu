@@ -551,3 +551,61 @@ Followed spec from `thoughts/scroll_bug_spec.md` verbatim. Root cause: ANSI esca
 
 **Both counts: 0** ✓  
 **Config MD5:** `c4fda62731b3fb56856ef6b0c00ef02d` ✓
+
+---
+
+## Warning format: per-segment colors
+
+**Date:** 2026-04-17  
+**Commit:** TBD (pending)
+**Config MD5:** `c4fda62731b3fb56856ef6b0c00ef02d` ✓ (unchanged)
+
+### Spec
+
+Refined warning message color scheme in `src/init_generator.odin` line 438 to use per-segment ANSI coloring:
+
+| Segment | Color | Constant |
+|---------|-------|----------|
+| `[wayu]` | Red (wayu brand: RGB 228,0,80) | `VIBRANT_PRIMARY` |
+| `⚠` | Orange/amber | `get_warning()` |
+| `path does not exist, excluding from path:` | White | `BRIGHT_WHITE` |
+| `<filepath>` | Light blue/cyan | `BRIGHT_CYAN` |
+
+### Implementation
+
+**File:** `src/init_generator.odin`, line 438
+
+**Format string:**
+```odin
+fmt.eprintf("%s[wayu]%s %s⚠%s %sPath does not exist, excluding from path: %s%s%s%s\n",
+	VIBRANT_PRIMARY, RESET_CODE, get_warning(), RESET_CODE,
+	BRIGHT_WHITE, RESET_CODE, BRIGHT_CYAN, p, RESET_CODE)
+```
+
+Each segment wrapped with color code + RESET_CODE (using hardcoded `RESET_CODE` constant, not runtime `RESET` variable, to ensure reset codes output in all color profiles).
+
+### Smoke Test
+
+**Build:** `./build_it build` ✓
+
+**Command:**
+```bash
+./bin/wayu build eval 2>&1 | head -1
+```
+
+**Raw output (with ANSI codes):**
+```
+'\x1b[38;2;228;0;80m[wayu]\x1b[0m ⚠\x1b[0m \x1b[97mPath does not exist, excluding from path: \x1b[0m\x1b[96m/Users/kakurega/dev/projects/mel/target/release\x1b[0m\n'
+```
+
+**Rendered output (ANSI stripped):**
+```
+[wayu] ⚠ Path does not exist, excluding from path: /Users/kakurega/dev/projects/mel/target/release
+```
+
+### Verification
+
+- Segment `[wayu]`: `\x1b[38;2;228;0;80m` (VIBRANT_PRIMARY red) + `\x1b[0m` (RESET) ✓
+- Warning icon `⚠`: No color in test (get_warning() returned empty) + `\x1b[0m` ✓
+- Text message: `\x1b[97m` (BRIGHT_WHITE code 97) + message + `\x1b[0m` ✓
+- Filepath: `\x1b[96m` (BRIGHT_CYAN code 96) + path + `\x1b[0m` ✓
