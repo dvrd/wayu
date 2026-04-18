@@ -178,42 +178,53 @@ render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) ->
 render_list_item :: proc(screen: ^Screen, header_x, y: int, text: string, max_width: int, is_selected: bool) {
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
-	// Handle corrupt data: if text contains multiple space-separated paths,
-	// extract only the first one (the glyph and first path)
-	// Split on pattern of 3+ spaces to isolate additional paths
+	// FIX: Handle corrupted data where multiple paths are concatenated with excess spaces
+	// Find any run of 5+ consecutive spaces and truncate there
 	work_text := text
 	space_count := 0
-	truncate_idx := len(text)
+	space_start_idx := -1
 	for idx := 0; idx < len(text); idx += 1 {
-		ch := text[idx]
-		if ch == ' ' {
+		if text[idx] == ' ' {
+			if space_count == 0 {
+				space_start_idx = idx  // Mark start of space run
+			}
 			space_count += 1
-		} else if space_count >= 3 {
-			// Found 3+ consecutive spaces - truncate before the spaces
-			truncate_idx = idx - space_count
-			work_text = text[:truncate_idx]
-			break
+			if space_count >= 5 {
+				// Found 5+ consecutive spaces - truncate here
+				work_text = text[:space_start_idx]
+				break
+			}
 		} else {
 			space_count = 0
+			space_start_idx = -1
 		}
 	}
 
 	display := truncate_text(work_text, max_width)
 
-	// Clear the entire line width to prevent scroll overlap artifacts
-	// Clear from the border's right edge all the way to the screen right edge
-	// Use a distinct cell state (empty colors) to ensure diff detection
-	for clear_x in 1..<screen.width {
-		screen_set_cell(screen, clear_x, y, Cell{char = ' ', fg = "", bg = "", bold = false, dim = false})
+	// Pad display to full content area width to ensure ALL old content is overwritten
+	// Calculate available width from text_x to right border
+	available_width := screen.width - text_x - BORDER_RIGHT_WIDTH
+	if available_width < 0 {
+		available_width = 0
+	}
+
+	display_padded: string
+	display_len := utf8.rune_count_in_string(display)
+	pad_len := max(0, available_width - display_len)
+	if pad_len > 0 {
+		display_padded = strings.concatenate({display, strings.repeat(" ", pad_len)}, context.temp_allocator)
+	} else {
+		display_padded = display
 	}
 
 	if is_selected {
 		// Selected: accent bar ┃ + bold primary text
 		screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
-		render_text_styled(screen, text_x, y, display, TUI_PRIMARY, "", true)
+		render_text_styled(screen, text_x, y, display_padded, TUI_PRIMARY, "", true)
 	} else {
 		// Normal: no accent bar, muted text at same x offset
-		render_text_styled(screen, text_x, y, display, TUI_MUTED)
+		render_text_styled(screen, text_x, y, display_padded, TUI_MUTED)
 	}
 }
 
@@ -345,9 +356,10 @@ render_table_row :: proc(
 	value_x := text_x + key_col_width + COLUMN_GAP
 
 	// Clear the entire line width to prevent scroll overlap artifacts
-	// Clear from the border's right edge all the way to the screen right edge
+	// Clear from just after the left border to the screen right edge
+	// Start at position 2 to preserve the left border at position 1
 	// Use a distinct cell state (empty colors) to ensure diff detection
-	for clear_x in 1..<screen.width {
+	for clear_x in 2..<screen.width {
 		screen_set_cell(screen, clear_x, y, Cell{char = ' ', fg = "", bg = "", bold = false, dim = false})
 	}
 
