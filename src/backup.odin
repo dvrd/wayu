@@ -397,6 +397,10 @@ format_backup_time :: proc(timestamp: time.Time) -> string {
 handle_backup_command :: proc(action: Action, args: []string) {
 	#partial switch action {
 	case .LIST:
+		if JSON_OUTPUT {
+			print_all_backups_json()
+			return
+		}
 		if len(args) == 0 {
 			list_all_backups()
 		} else {
@@ -438,6 +442,62 @@ handle_backup_command :: proc(action: Action, args: []string) {
 		fmt.println("The dedup action only applies to path entries")
 		os.exit(EXIT_USAGE)
 	}
+}
+
+// Emit the same data as list_all_backups as a JSON document.
+// Shape: { "backups": [ {"file": "<config>", "count": N, "entries": [ ... ]}, ... ] }
+print_all_backups_json :: proc() {
+	config_files := []string{
+		fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE),
+		fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE),
+		fmt.aprintf("%s/%s", WAYU_CONFIG, CONSTANTS_FILE),
+	}
+	defer {
+		for f in config_files { delete(f) }
+	}
+
+	fmt.println("{")
+	fmt.println(`  "backups": [`)
+
+	first_file := true
+	for config_file in config_files {
+		file_name := get_base_name(config_file)
+		backups := list_backups_for_file(config_file)
+		defer {
+			for b in backups {
+				delete(b.original_file)
+				delete(b.backup_file)
+			}
+			delete(backups)
+		}
+
+		if !first_file { fmt.println(",") }
+		first_file = false
+
+		// `{` is a struct-verb opener in Odin's fmt — emit via %c.
+		fmt.printf("    %c\"file\": \"%s\", \"count\": %d, \"entries\": [", '{', file_name, len(backups))
+		if len(backups) == 0 {
+			fmt.print("]")
+			fmt.print('}')
+			continue
+		}
+		fmt.println()
+
+		for backup, i in backups {
+			time_str := format_backup_time(backup.timestamp)
+			defer delete(time_str)
+			if i > 0 { fmt.println(",") }
+			fmt.printf("      %c\"timestamp\": \"%s\", \"size_bytes\": %d, \"path\": \"%s\"%c",
+				'{', time_str, backup.size, backup.backup_file, '}')
+		}
+		fmt.println()
+		fmt.print("    ]")
+		fmt.print('}')
+	}
+
+	fmt.println()
+	fmt.println("  ]")
+	fmt.println("}")
 }
 
 // List backups for all config files

@@ -563,6 +563,15 @@ json_escape_string_builder :: proc(builder: ^strings.Builder, str: string) {
 	}
 }
 
+// json_escape returns `str` with JSON-mandatory characters escaped.
+// Caller owns the returned string and must `delete` it.
+json_escape :: proc(str: string) -> string {
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	json_escape_string_builder(&builder, str)
+	return strings.clone(strings.to_string(builder))
+}
+
 @(private="file")
 config_type_to_string :: proc(t: ConfigType) -> string {
 	switch t {

@@ -433,7 +433,13 @@ print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
 			if !first_entry {
 				fmt.println(",")
 			}
-			fmt.printf(`    {"alias": "%s", "command": "%s", "source": "%s"}`, entry.name, entry.value, source)
+			// Odin's fmt treats a literal `{` as a struct-verb opener, so
+			// emit braces via %c. Values are JSON-escaped so backslashes,
+			// quotes and control chars survive transport.
+			name_j := json_escape(entry.name);  defer delete(name_j)
+			val_j  := json_escape(entry.value); defer delete(val_j)
+			src_j  := json_escape(source);      defer delete(src_j)
+			fmt.printf("    %c\"alias\": \"%s\", \"command\": \"%s\", \"source\": \"%s\"%c", '{', name_j, val_j, src_j, '}')
 			first_entry = false
 		}
 	}
@@ -445,7 +451,9 @@ print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
 				if !first_entry {
 					fmt.println(",")
 				}
-				fmt.printf(`    {"alias": "%s", "command": "%s", "source": "external"}`, alias_name, value)
+				name_j := json_escape(alias_name); defer delete(name_j)
+				val_j  := json_escape(value);      defer delete(val_j)
+				fmt.printf("    %c\"alias\": \"%s\", \"command\": \"%s\", \"source\": \"external\"%c", '{', name_j, val_j, '}')
 				first_entry = false
 			}
 		}

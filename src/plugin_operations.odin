@@ -634,6 +634,45 @@ handle_plugin_add :: proc(args: []string) {
 	print_info("Restart your shell or run 'source ~/.%src' to load the plugin", SHELL_EXT)
 }
 
+// Emit the plugin list as structured JSON. Shape:
+//   { "plugins": [ {"name": ..., "enabled": bool, "priority": N,
+//                   "shell": "zsh|bash|both|fish|any", "url": ...,
+//                   "commit": ..., "installed_path": ...}, ... ],
+//     "count": N, "enabled": M }
+print_plugins_json :: proc(config: ^PluginConfigJSON) {
+	enabled_count := 0
+	for plugin in config.plugins {
+		if plugin.enabled { enabled_count += 1 }
+	}
+
+	fmt.println("{")
+	fmt.println(`  "plugins": [`)
+
+	for plugin, i in config.plugins {
+		if i > 0 { fmt.println(",") }
+		enabled_str := plugin.enabled ? "true" : "false"
+		// `{` is a struct-verb opener in Odin's fmt — emit via %c.
+		fmt.printf(
+			"    %c\"name\": \"%s\", \"enabled\": %s, \"priority\": %d, \"shell\": \"%s\", \"url\": \"%s\", \"commit\": \"%s\", \"installed_path\": \"%s\"%c",
+			'{',
+			plugin.name,
+			enabled_str,
+			plugin.priority,
+			shell_compat_to_string(plugin.shell),
+			plugin.url,
+			plugin.git.commit,
+			plugin.installed_path,
+			'}',
+		)
+	}
+
+	fmt.println()
+	fmt.println("  ],")
+	fmt.printfln("  \"count\": %d,", len(config.plugins))
+	fmt.printfln("  \"enabled\": %d", enabled_count)
+	fmt.println("}")
+}
+
 // Handle plugin list command
 handle_plugin_list :: proc(args: []string) {
 	// Run migration if needed
@@ -654,6 +693,11 @@ handle_plugin_list :: proc(args: []string) {
 			os.exit(EXIT_CONFIG)
 		}
 		defer cleanup_plugin_config_json(&config)
+
+		if JSON_OUTPUT {
+			print_plugins_json(&config)
+			return
+		}
 
 		if len(config.plugins) == 0 {
 			print_info("No plugins installed")

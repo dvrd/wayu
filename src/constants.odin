@@ -565,7 +565,11 @@ print_constants_json :: proc(entries: []ConfigEntry, external_constants: []strin
 			if !first_entry {
 				fmt.println(",")
 			}
-			fmt.printf(`    {"constant": "%s", "value": "%s", "source": "%s"}`, entry.name, entry.value, source)
+			name_j := json_escape(entry.name);  defer delete(name_j)
+			val_j  := json_escape(entry.value); defer delete(val_j)
+			src_j  := json_escape(source);      defer delete(src_j)
+			// `{` is a struct-verb opener in Odin's fmt — emit via %c.
+			fmt.printf("    %c\"constant\": \"%s\", \"value\": \"%s\", \"source\": \"%s\"%c", '{', name_j, val_j, src_j, '}')
 			first_entry = false
 		}
 	}
@@ -574,10 +578,12 @@ print_constants_json :: proc(entries: []ConfigEntry, external_constants: []strin
 	if show_external {
 		for ext_const_name in external_constants {
 			if env_val := snapshot_env_var(ext_const_name); env_val != nil {
+				name_j := json_escape(ext_const_name);       defer delete(name_j)
+				val_j  := json_escape(env_val.(string));     defer delete(val_j)
 				if !first_entry {
 					fmt.println(",")
 				}
-				fmt.printf(`    {"constant": "%s", "value": "%s", "source": "external"}`, ext_const_name, env_val.(string))
+				fmt.printf("    %c\"constant\": \"%s\", \"value\": \"%s\", \"source\": \"external\"%c", '{', name_j, val_j, '}')
 				first_entry = false
 			}
 		}
