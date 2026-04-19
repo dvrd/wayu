@@ -29,8 +29,8 @@ static_generate :: proc(config: TomlConfig, lock: LockFile) -> StaticConfig {
 		fish_content := shell_fish_generate_init(config)
 		return StaticConfig{
 			generated_at = fmt.aprintf("%v", time.now()),
-			wayu_version = VERSION,
-			shell        = "fish",
+			wayu_version = strings.clone(VERSION),
+			shell        = strings.clone("fish"),
 			content      = fish_content,
 		}
 	}
@@ -93,8 +93,8 @@ static_generate :: proc(config: TomlConfig, lock: LockFile) -> StaticConfig {
 
 	return StaticConfig{
 		generated_at = fmt.aprintf("%v", time.now()),
-		wayu_version = VERSION,
-		shell        = shell,
+		wayu_version = strings.clone(VERSION),
+		shell        = strings.clone(shell),
 		content      = optimized,
 	}
 }
