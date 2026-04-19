@@ -127,7 +127,7 @@ class ValidationIntegrationTest
     print "Test 6: Accept valid alias... "
     output, status = run_wayu('alias add myalias "echo hello"')
 
-    if status.success? && output.include?("added successfully")
+    if status.success? && (output.include?("added successfully") || output.include?("Added to wayu.toml"))
       puts "✓"
       @passed += 1
     else
@@ -142,7 +142,7 @@ class ValidationIntegrationTest
     print "Test 7: Accept valid constant... "
     output, status = run_wayu('constants add MY_CONSTANT "value123"')
 
-    if status.success? && output.include?("added successfully")
+    if status.success? && (output.include?("added successfully") || output.include?("Added to wayu.toml"))
       puts "✓"
       @passed += 1
     else
@@ -157,7 +157,7 @@ class ValidationIntegrationTest
     print "Test 8: Accept valid path... "
     output, status = run_wayu('path add /usr/local/bin')
 
-    if status.success? && output.include?("added successfully")
+    if status.success? && (output.include?("added successfully") || output.include?("Added to wayu.toml"))
       puts "✓"
       @passed += 1
     else
