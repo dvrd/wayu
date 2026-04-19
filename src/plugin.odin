@@ -5,11 +5,25 @@ import "core:os"
 import "core:strings"
 import "core:time"
 
-// Shell compatibility for plugins
+// Shell compatibility for plugins.
+// BOTH = works on zsh AND bash (legacy name, pre-fish).
+// ANY  = works on all supported shells including fish.
 ShellCompat :: enum {
 	ZSH,
 	BASH,
-	BOTH,
+	BOTH,  // zsh + bash
+	FISH,
+	ANY,   // zsh + bash + fish
+}
+
+// True if a plugin with compat `pc` should be loaded under runtime shell `rt`.
+plugin_compat_matches :: proc(pc: ShellCompat, rt: ShellType) -> bool {
+	#partial switch rt {
+	case .ZSH:  return pc == .ZSH  || pc == .BOTH || pc == .ANY
+	case .BASH: return pc == .BASH || pc == .BOTH || pc == .ANY
+	case .FISH: return pc == .FISH || pc == .ANY
+	}
+	return false
 }
 
 // Plugin information from registry
@@ -132,7 +146,7 @@ PluginEntry :: struct {
 // Popular plugins registry — compile-time constant, zero heap allocation.
 // Organized by category: syntax, completion, navigation, git, history,
 // prompt, productivity, tools, and utility.
-POPULAR_PLUGINS := [54]PluginEntry{
+POPULAR_PLUGINS := [62]PluginEntry{
 
 	// ── Syntax & Colors ──────────────────────────────────────────────────
 	{"syntax-highlighting", "syntax", {
@@ -475,6 +489,56 @@ POPULAR_PLUGINS := [54]PluginEntry{
 		shell       = .ZSH,
 		description = "Lazy load thefuck with ZSH integration",
 	}},
+
+	// ── Fish-native ──────────────────────────────────────────────────────
+	{"z-fish", "navigation", {
+		name        = "z.fish",
+		url         = "https://github.com/jethrokuan/z.git",
+		shell       = .FISH,
+		description = "Fish port of rupa's z — jump to frecent directories",
+	}},
+	{"pure-fish", "prompt", {
+		name        = "pure",
+		url         = "https://github.com/pure-fish/pure.git",
+		shell       = .FISH,
+		description = "Minimal, fast prompt for fish (port of sindresorhus/pure)",
+	}},
+	{"tide", "prompt", {
+		name        = "tide",
+		url         = "https://github.com/IlanCosman/tide.git",
+		shell       = .FISH,
+		description = "Ultimate minimal, fast, feature-rich fish prompt",
+	}},
+	{"bass", "utility", {
+		name        = "bass",
+		url         = "https://github.com/edc/bass.git",
+		shell       = .FISH,
+		description = "Make bash utilities usable in fish (runs bash scripts)",
+	}},
+	{"nvm-fish", "tools", {
+		name        = "nvm.fish",
+		url         = "https://github.com/jorgebucaran/nvm.fish.git",
+		shell       = .FISH,
+		description = "Node.js version manager for fish, written in fish",
+	}},
+	{"fzf-fish", "utility", {
+		name        = "fzf.fish",
+		url         = "https://github.com/PatrickF1/fzf.fish.git",
+		shell       = .FISH,
+		description = "Ergonomic fzf keybindings for fish (Ctrl-F variants)",
+	}},
+	{"autopair-fish", "productivity", {
+		name        = "autopair.fish",
+		url         = "https://github.com/jorgebucaran/autopair.fish.git",
+		shell       = .FISH,
+		description = "Auto-close and delete paired symbols in fish",
+	}},
+	{"done", "productivity", {
+		name        = "done",
+		url         = "https://github.com/franciscolourenco/done.git",
+		shell       = .FISH,
+		description = "Notify when long-running commands complete in fish",
+	}},
 }
 
 // popular_plugin_find does a linear scan of POPULAR_PLUGINS by key.
@@ -501,6 +565,10 @@ parse_shell_compat :: proc(shell_str: string) -> ShellCompat {
 		return .BASH
 	case "both":
 		return .BOTH
+	case "fish":
+		return .FISH
+	case "any", "all":
+		return .ANY
 	}
 	return .BOTH
 }
@@ -514,6 +582,10 @@ shell_compat_to_string :: proc(compat: ShellCompat) -> string {
 		return "bash"
 	case .BOTH:
 		return "both"
+	case .FISH:
+		return "fish"
+	case .ANY:
+		return "any"
 	}
 	return "both"
 }

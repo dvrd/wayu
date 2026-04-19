@@ -361,9 +361,9 @@ test_is_plugin_installed :: proc(t: ^testing.T) {
 
 @(test)
 test_popular_plugins_registry :: proc(t: ^testing.T) {
-	// Registry should have grown to 54 curated entries
-	testing.expect(t, len(wayu.POPULAR_PLUGINS) == 54,
-		"Popular plugins registry should have 54 entries")
+	// Registry should have 62 curated entries (54 zsh/bash + 8 fish-native).
+	testing.expect(t, len(wayu.POPULAR_PLUGINS) == 62,
+		"Popular plugins registry should have 62 entries")
 
 	// Test that known plugins exist by key
 	known_plugins := []string{
