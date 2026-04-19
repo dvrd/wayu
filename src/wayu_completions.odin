@@ -200,9 +200,9 @@ WAYU_COMPLETION_FISH :: `#!/usr/bin/env fish
 # Main commands
 set -l commands path alias constants search find f completions backup plugin init migrate config export toml version help build scan
 
-# Top-level completion
+# Top-level completion (only when no subcommand has been entered yet)
 complete -c wayu -f
-complete -c wayu -n "__fish_seen_subcommand_from" -a "$commands" -d "Commands"
+complete -c wayu -n "not __fish_seen_subcommand_from $commands" -a "$commands" -d "Commands"
 
 # Path command completions
 complete -c wayu -n "__fish_seen_subcommand_from path" -f
