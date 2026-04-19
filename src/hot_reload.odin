@@ -526,24 +526,29 @@ get_default_watch_paths :: proc() -> []string {
 		delete(toml_path)
 	}
 
-	// Individual config files
+	// Individual config files. Important: delete the path string ONLY when we
+	// didn't hand it off to the paths array — otherwise the array ends up
+	// holding a dangling pointer and later clones emit garbage bytes.
 	path_file := get_config_file_with_fallback("path", DETECTED_SHELL)
 	if os.exists(path_file) {
 		append(&paths, path_file)
+	} else {
+		delete(path_file)
 	}
-	delete(path_file)
 
 	alias_file := get_config_file_with_fallback("aliases", DETECTED_SHELL)
 	if os.exists(alias_file) {
 		append(&paths, alias_file)
+	} else {
+		delete(alias_file)
 	}
-	delete(alias_file)
 
 	constants_file := get_config_file_with_fallback("constants", DETECTED_SHELL)
 	if os.exists(constants_file) {
 		append(&paths, constants_file)
+	} else {
+		delete(constants_file)
 	}
-	delete(constants_file)
 
 	result := make([]string, len(paths))
 	for i := 0; i < len(paths); i += 1 {
