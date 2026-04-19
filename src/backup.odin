@@ -448,9 +448,7 @@ handle_backup_command :: proc(action: Action, args: []string) {
 // Shape: { "backups": [ {"file": "<config>", "count": N, "entries": [ ... ]}, ... ] }
 print_all_backups_json :: proc() {
 	config_files := []string{
-		fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE),
-		fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE),
-		fmt.aprintf("%s/%s", WAYU_CONFIG, CONSTANTS_FILE),
+		fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML),
 	}
 	defer {
 		for f in config_files { delete(f) }
@@ -503,9 +501,7 @@ print_all_backups_json :: proc() {
 // List backups for all config files
 list_all_backups :: proc() {
 	config_files := []string{
-		fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE),
-		fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE),
-		fmt.aprintf("%s/%s", WAYU_CONFIG, CONSTANTS_FILE),
+		fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML),
 	}
 	defer {
 		for file in config_files {
@@ -583,9 +579,7 @@ restore_config_backup :: proc(config_type: string) {
 // Clean up old backups for all config files
 cleanup_all_old_backups :: proc() {
 	config_files := []string{
-		fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE),
-		fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE),
-		fmt.aprintf("%s/%s", WAYU_CONFIG, CONSTANTS_FILE),
+		fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML),
 	}
 	defer {
 		for file in config_files {
@@ -742,13 +736,12 @@ cleanup_config_backups :: proc(config_type: string) {
 
 // Get config file path for backup operations
 get_config_file_path :: proc(config_type: string) -> string {
+	// wayu.toml is now the single source of truth for path/alias/constants,
+	// so every config-type argument resolves to it. The distinction survives
+	// only for CLI compatibility.
 	switch config_type {
-	case "path":
-		return fmt.aprintf("%s/%s", WAYU_CONFIG, PATH_FILE)
-	case "alias":
-		return fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_FILE)
-	case "constants":
-		return fmt.aprintf("%s/%s", WAYU_CONFIG, CONSTANTS_FILE)
+	case "path", "alias", "constants", "toml":
+		return fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
 	case:
 		return ""
 	}
