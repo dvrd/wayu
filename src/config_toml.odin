@@ -14,6 +14,34 @@ import "core:strconv"
 import "core:unicode"
 
 // ============================================================================
+// WAYU.TOML BOOTSTRAP
+// ============================================================================
+
+// ensure_wayu_toml_exists creates a minimal wayu.toml scaffold if the file is
+// absent. Used by alias/constants/path dispatchers so writes always land in
+// TOML instead of the legacy shell-file path.
+ensure_wayu_toml_exists :: proc() -> bool {
+    toml_file := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+    defer delete(toml_file)
+
+    if os.exists(toml_file) {
+        return true
+    }
+
+    shell_name := get_shell_name(DETECTED_SHELL)
+    scaffold := fmt.aprintf(`[shell]
+type = "%s"
+
+[aliases]
+
+[env]
+`, shell_name)
+    defer delete(scaffold)
+
+    return init_config_file(toml_file, scaffold)
+}
+
+// ============================================================================
 // TOML PARSER STATE
 // ============================================================================
 

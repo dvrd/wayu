@@ -10,7 +10,7 @@ class PathIntegrationTest
 
   def initialize
     setup_test_env
-    @path_file = "#{@config_dir}/path.zsh"
+    @toml_file = "#{@config_dir}/wayu.toml"
   end
 
   def run
@@ -52,7 +52,7 @@ class PathIntegrationTest
 
     output, status = run_wayu("path add #{test_dir}")
 
-    if status.success? && File.read(@path_file).include?(test_dir)
+    if status.success? && File.read(@toml_file).include?("path = \"#{test_dir}\"")
       puts "✓"
       @passed += 1
     else
@@ -71,8 +71,8 @@ class PathIntegrationTest
 
     test_dirs.each { |dir| run_wayu("path add #{dir}") }
 
-    path_content = File.read(@path_file)
-    all_present = test_dirs.all? { |dir| path_content.include?(dir) }
+    path_content = File.read(@toml_file)
+    all_present = test_dirs.all? { |dir| path_content.include?("path = \"#{dir}\"") }
 
     if all_present
       puts "✓"
@@ -107,8 +107,8 @@ class PathIntegrationTest
     test_dir = "/tmp/wayu_test_path1"
     output, status = run_wayu("path rm #{test_dir}")
 
-    path_content = File.read(@path_file)
-    if status.success? && !path_content.include?(test_dir)
+    path_content = File.read(@toml_file)
+    if status.success? && !path_content.include?("path = \"#{test_dir}\"")
       puts "✓"
       @passed += 1
     else
@@ -130,7 +130,7 @@ class PathIntegrationTest
     output, status = run_wayu("path add #{test_dir}")
 
     # Should either prevent duplicate or warn
-    path_content = File.read(@path_file)
+    path_content = File.read(@toml_file)
     occurrences = path_content.scan(/#{Regexp.escape(test_dir)}/).length
 
     if occurrences == 1 || output.include?("already") || output.include?("exists")
@@ -157,7 +157,7 @@ class PathIntegrationTest
     # Add in order
     test_dirs.each { |dir| run_wayu("path add #{dir}") }
 
-    path_content = File.read(@path_file)
+    path_content = File.read(@toml_file)
     order1_pos = path_content.index("wayu_order1")
     order2_pos = path_content.index("wayu_order2")
     order3_pos = path_content.index("wayu_order3")
@@ -200,7 +200,7 @@ class PathIntegrationTest
     output, status = run_wayu("path add \"#{test_dir}\"")
 
     if status.success?
-      path_content = File.read(@path_file)
+      path_content = File.read(@toml_file)
       # Should handle spaces correctly (either quoted or escaped)
       if path_content.include?("wayu test with spaces")
         puts "✓"
@@ -288,7 +288,7 @@ class PathIntegrationTest
     run_wayu("path add #{test_dir}")
 
     # Read content
-    content_before = File.read(@path_file)
+    content_before = File.read(@toml_file)
 
     # Add another path (triggers file write)
     test_dir2 = "/tmp/wayu_persist_test2"
@@ -296,7 +296,7 @@ class PathIntegrationTest
     run_wayu("path add #{test_dir2}")
 
     # Check both paths still exist
-    content_after = File.read(@path_file)
+    content_after = File.read(@toml_file)
 
     if content_after.include?(test_dir) && content_after.include?(test_dir2)
       puts "✓"

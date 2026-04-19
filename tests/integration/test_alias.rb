@@ -10,7 +10,7 @@ class AliasIntegrationTest
 
   def initialize
     setup_test_env
-    @alias_file = "#{@config_dir}/aliases.zsh"
+    @toml_file = "#{@config_dir}/wayu.toml"
   end
 
   def run
@@ -53,7 +53,7 @@ class AliasIntegrationTest
 
     output, status = run_wayu('alias add ll "ls -la"')
 
-    if status.success? && File.read(@alias_file).include?('alias ll=')
+    if status.success? && File.read(@toml_file).include?('ll = "ls -la"')
       puts "✓"
       @passed += 1
     else
@@ -69,7 +69,7 @@ class AliasIntegrationTest
 
     output, status = run_wayu('alias add greet "echo \"Hello, World!\""')
 
-    if status.success? && File.read(@alias_file).include?('alias greet=')
+    if status.success? && File.read(@toml_file).include?('greet = ')
       puts "✓"
       @passed += 1
     else
@@ -85,8 +85,8 @@ class AliasIntegrationTest
 
     output, status = run_wayu('alias add gco "git checkout"')
 
-    alias_content = File.read(@alias_file)
-    if status.success? && alias_content.include?('alias gco=')
+    alias_content = File.read(@toml_file)
+    if status.success? && alias_content.include?('gco = "git checkout"')
       puts "✓"
       @passed += 1
     else
@@ -119,8 +119,8 @@ class AliasIntegrationTest
 
     output, status = run_wayu("alias rm ll")
 
-    alias_content = File.read(@alias_file)
-    if status.success? && !alias_content.include?('alias ll=')
+    alias_content = File.read(@toml_file)
+    if status.success? && !alias_content.include?('ll = ')
       puts "✓"
       @passed += 1
     else
@@ -139,8 +139,8 @@ class AliasIntegrationTest
     output, status = run_wayu('alias add myalias "echo second"')
 
     # Should either prevent duplicate or overwrite
-    alias_content = File.read(@alias_file)
-    occurrences = alias_content.scan(/alias myalias=/).length
+    alias_content = File.read(@toml_file)
+    occurrences = alias_content.scan(/myalias = /).length
 
     if occurrences == 1
       puts "✓"
@@ -199,7 +199,7 @@ class AliasIntegrationTest
 
     output, status = run_wayu('alias add findlarge "find . -type f -size +100M | sort -h"')
 
-    if status.success? && File.read(@alias_file).include?('alias findlarge=')
+    if status.success? && File.read(@toml_file).include?('findlarge = ')
       puts "✓"
       @passed += 1
     else
@@ -215,7 +215,7 @@ class AliasIntegrationTest
 
     output, status = run_wayu('alias add multitest "cd /tmp; ls -la; pwd"')
 
-    if status.success? && File.read(@alias_file).include?('alias multitest=')
+    if status.success? && File.read(@toml_file).include?('multitest = ')
       puts "✓"
       @passed += 1
     else
@@ -231,7 +231,7 @@ class AliasIntegrationTest
 
     output, status = run_wayu('alias add lsd "ls -la | grep ^d"')
 
-    if status.success? && File.read(@alias_file).include?('alias lsd=')
+    if status.success? && File.read(@toml_file).include?('lsd = ')
       puts "✓"
       @passed += 1
     else
@@ -247,14 +247,14 @@ class AliasIntegrationTest
 
     # Add an alias
     run_wayu('alias add persistent1 "echo test1"')
-    content_before = File.read(@alias_file)
+    content_before = File.read(@toml_file)
 
     # Add another alias
     run_wayu('alias add persistent2 "echo test2"')
-    content_after = File.read(@alias_file)
+    content_after = File.read(@toml_file)
 
     # Both should exist
-    if content_after.include?('alias persistent1=') && content_after.include?('alias persistent2=')
+    if content_after.include?('persistent1 = ') && content_after.include?('persistent2 = ')
       puts "✓"
       @passed += 1
     else
@@ -317,7 +317,7 @@ class AliasIntegrationTest
     output, status = run_wayu('alias add gs "git status"')
     toml = File.read("#{@config_dir}/wayu.toml")
 
-    if status.success? && toml.include?('gs = "git status"') && !File.read(@alias_file).include?('alias gs=')
+    if status.success? && toml.include?('gs = "git status"')
       puts "✓"
       @passed += 1
     else

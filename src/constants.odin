@@ -1,8 +1,6 @@
 // constants.odin - CONSTANTS entry management
 //
-// Shell-file constants still use the generic config_entry system, but when
-// ~/.config/wayu/wayu.toml exists we treat it as the source of truth for read
-// operations so `wayu const ls/get` reflects declarative config.
+// Constants are always TOML-native; if wayu.toml is absent we create it.
 
 package wayu
 
@@ -12,12 +10,14 @@ import "core:slice"
 import "core:strings"
 
 // Main handler for CONSTANTS commands.
-// When wayu.toml exists it becomes the source of truth for constants.
+// wayu.toml is the single source of truth for constants.
 handle_constants_command :: proc(action: Action, args: []string) {
-	toml_file := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
-	defer delete(toml_file)
+	if !ensure_wayu_toml_exists() {
+		print_error_simple("Failed to create wayu.toml")
+		os.exit(EXIT_IOERR)
+	}
 
-	if os.exists(toml_file) {
+	{
 		#partial switch action {
 		case .ADD:
 			if len(args) == 0 {

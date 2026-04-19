@@ -10,7 +10,7 @@ class ConstantsIntegrationTest
 
   def initialize
     setup_test_env
-    @constants_file = "#{@config_dir}/constants.zsh"
+    @toml_file = "#{@config_dir}/wayu.toml"
   end
 
   def run
@@ -58,7 +58,7 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu('constants add MY_VAR "test_value"')
 
-    if status.success? && File.read(@constants_file).include?('export MY_VAR=')
+    if status.success? && File.read(@toml_file).include?('MY_VAR = ')
       puts "✓"
       @passed += 1
     else
@@ -74,7 +74,7 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu('constants add MY_PATH "/usr/local/my path"')
 
-    if status.success? && File.read(@constants_file).include?('export MY_PATH=')
+    if status.success? && File.read(@toml_file).include?('MY_PATH = ')
       puts "✓"
       @passed += 1
     else
@@ -90,7 +90,7 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu('constants add API_KEY "abc-123_xyz.789"')
 
-    if status.success? && File.read(@constants_file).include?('export API_KEY=')
+    if status.success? && File.read(@toml_file).include?('API_KEY = ')
       puts "✓"
       @passed += 1
     else
@@ -192,8 +192,8 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu("constants rm MY_VAR")
 
-    constants_content = File.read(@constants_file)
-    if status.success? && !constants_content.include?('export MY_VAR=')
+    constants_content = File.read(@toml_file)
+    if status.success? && !constants_content.include?('MY_VAR = ')
       puts "✓"
       @passed += 1
     else
@@ -212,8 +212,8 @@ class ConstantsIntegrationTest
     output, status = run_wayu('constants add DUPLICATE_TEST "second"')
 
     # Should either prevent duplicate or overwrite
-    constants_content = File.read(@constants_file)
-    occurrences = constants_content.scan(/export DUPLICATE_TEST=/).length
+    constants_content = File.read(@toml_file)
+    occurrences = constants_content.scan(/DUPLICATE_TEST = /).length
 
     if occurrences == 1
       puts "✓"
@@ -272,7 +272,7 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu('constants add QUOTED_VALUE "\"Hello, World!\""')
 
-    if status.success? && File.read(@constants_file).include?('export QUOTED_VALUE=')
+    if status.success? && File.read(@toml_file).include?('QUOTED_VALUE = ')
       puts "✓"
       @passed += 1
     else
@@ -288,7 +288,7 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu('constants add VERSION_2024 "1.2.3"')
 
-    if status.success? && File.read(@constants_file).include?('export VERSION_2024=')
+    if status.success? && File.read(@toml_file).include?('VERSION_2024 = ')
       puts "✓"
       @passed += 1
     else
@@ -322,14 +322,14 @@ class ConstantsIntegrationTest
 
     # Add a constant
     run_wayu('constants add PERSIST_TEST_1 "value1"')
-    content_before = File.read(@constants_file)
+    content_before = File.read(@toml_file)
 
     # Add another constant
     run_wayu('constants add PERSIST_TEST_2 "value2"')
-    content_after = File.read(@constants_file)
+    content_after = File.read(@toml_file)
 
     # Both should exist
-    if content_after.include?('export PERSIST_TEST_1=') && content_after.include?('export PERSIST_TEST_2=')
+    if content_after.include?('PERSIST_TEST_1 = ') && content_after.include?('PERSIST_TEST_2 = ')
       puts "✓"
       @passed += 1
     else
@@ -392,7 +392,7 @@ class ConstantsIntegrationTest
     output, status = run_wayu('constants add TOML_ADDED "new_value"')
     toml = File.read("#{@config_dir}/wayu.toml")
 
-    if status.success? && toml.include?('TOML_ADDED = "new_value"') && !File.read(@constants_file).include?('TOML_ADDED')
+    if status.success? && toml.include?('TOML_ADDED = "new_value"')
       puts "✓"
       @passed += 1
     else
