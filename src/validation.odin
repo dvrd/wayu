@@ -74,13 +74,15 @@ validate_identifier :: proc(name: string, identifier_type: string) -> Validation
 		}
 	}
 
-	// Check remaining characters (alphanumeric, underscore, or hyphen allowed)
+	// Check remaining characters (alphanumeric or underscore — matches
+	// POSIX identifier rules; hyphens are invalid in env var names and
+	// problematic for shell parsing).
 	for r, i in name {
-		if !unicode.is_alpha(r) && !unicode.is_digit(r) && r != '_' && r != '-' {
+		if !unicode.is_alpha(r) && !unicode.is_digit(r) && r != '_' {
 			return ValidationResult {
 				valid = false,
 				error_message = fmt.aprintf(
-					"%s name contains invalid character '%c' at position %d. Only letters, digits, underscores, and hyphens allowed.",
+					"%s name contains invalid character '%c' at position %d. Only letters, digits, and underscores allowed.",
 					identifier_type,
 					r,
 					i,
