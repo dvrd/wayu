@@ -21,6 +21,20 @@ static_generate :: proc(config: TomlConfig, lock: LockFile) -> StaticConfig {
 		shell = "zsh" // Default to zsh
 	}
 
+	// Fish shell uses a different syntax — route to the fish-native generator
+	// to avoid emitting bash/zsh constructs under a fish shebang. Use
+	// DETECTED_SHELL since config.shell may carry the [shell] table rather
+	// than a simple string depending on TOML layout.
+	if DETECTED_SHELL == .FISH || strings.equal_fold(shell, "fish") {
+		fish_content := shell_fish_generate_init(config)
+		return StaticConfig{
+			generated_at = fmt.aprintf("%v", time.now()),
+			wayu_version = VERSION,
+			shell        = "fish",
+			content      = fish_content,
+		}
+	}
+
 	// Build static content
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
