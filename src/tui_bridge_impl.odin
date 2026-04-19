@@ -815,15 +815,57 @@ tui_bridge_install_plugin :: proc(key: string) -> bool {
 	return generate_plugins_file(DETECTED_SHELL)
 }
 
-// Load Settings into state cache
+// Load Settings into state cache. Idempotent — only repopulates strings
+// on the first call per view entry. The render pass calls this every frame,
+// so without the guard we'd clone the same strings 60×/s and leak.
 tui_bridge_load_settings :: proc(state: ^tui.TUIState) {
-	// Get shell name from DETECTED_SHELL global
-	shell_name := get_shell_name(DETECTED_SHELL)
+	if state.settings_loaded { return }
 
-	// Store in state fields
-	state.settings_shell = strings.clone(shell_name)
+	// Release any stale strings from a previous session before re-cloning.
+	if len(state.settings_shell)      > 0 { delete(state.settings_shell) }
+	if len(state.settings_config_dir) > 0 { delete(state.settings_config_dir) }
+	if len(state.settings_version)    > 0 { delete(state.settings_version) }
+	if len(state.settings_toml_path)  > 0 { delete(state.settings_toml_path) }
+
+	state.settings_shell      = strings.clone(get_shell_name(DETECTED_SHELL))
 	state.settings_config_dir = strings.clone(WAYU_CONFIG)
-	state.settings_dry_run = DRY_RUN
+	state.settings_dry_run    = DRY_RUN
+	state.settings_version    = strings.clone(VERSION)
+
+	// TOML path + existence
+	toml_full := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	state.settings_toml_path   = toml_full  // ownership transferred to state
+	state.settings_toml_exists = os.exists(toml_full)
+
+	// Aggregate backup count across the three tracked config files.
+	total_backups := 0
+	backup_targets := []string{PATH_FILE, ALIAS_FILE, CONSTANTS_FILE}
+	for f in backup_targets {
+		full := fmt.aprintf("%s/%s", WAYU_CONFIG, f)
+		defer delete(full)
+		backups := list_backups_for_file(full)
+		total_backups += len(backups)
+		for b in backups {
+			delete(b.original_file)
+			delete(b.backup_file)
+		}
+		delete(backups)
+	}
+	state.settings_backups = total_backups
+
+	// Enabled plugin count — honor the JSON config, degrade gracefully
+	// on read failure so the settings view still renders.
+	enabled_plugins := 0
+	config, ok := read_plugin_config_json()
+	if ok {
+		for plugin in config.plugins {
+			if plugin.enabled { enabled_plugins += 1 }
+		}
+		cleanup_plugin_config_json(&config)
+	}
+	state.settings_plugins = enabled_plugins
+
+	state.settings_loaded = true
 }
 
 // Get PATH entry detail information
