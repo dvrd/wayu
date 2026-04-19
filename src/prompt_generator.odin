@@ -166,8 +166,8 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	
 	// Procesar cada componente según el format
 	// Manejar newlines en el format (reemplazar \n literal con newline real)
-	format_with_newlines, _ := strings.replace_all(cfg.format, `\n`, "\n")
-	defer delete(format_with_newlines)
+	format_with_newlines, was_alloc := strings.replace_all(cfg.format, `\n`, "\n")
+	defer if was_alloc { delete(format_with_newlines) }
 	format_parts := strings.split(format_with_newlines, "\n")
 	defer delete(format_parts)
 	
