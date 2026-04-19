@@ -1,7 +1,6 @@
 // alias.odin - ALIAS entry management
 //
-// When wayu.toml exists, aliases become TOML-native. Otherwise we fall back
-// to the legacy shell-file implementation.
+// Aliases are always TOML-native; if wayu.toml is absent we create it.
 
 package wayu
 
@@ -13,10 +12,12 @@ import "core:strings"
 // Main handler for ALIAS commands.
 // For LIST, external alias source sections are still appended.
 handle_alias_command :: proc(action: Action, args: []string) {
-	toml_file := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
-	defer delete(toml_file)
+	if !ensure_wayu_toml_exists() {
+		print_error_simple("Failed to create wayu.toml")
+		os.exit(EXIT_IOERR)
+	}
 
-	if os.exists(toml_file) {
+	{
 		#partial switch action {
 		case .ADD:
 			if len(args) == 0 {

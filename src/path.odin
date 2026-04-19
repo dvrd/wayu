@@ -13,13 +13,12 @@ import "core:slice"
 import "core:strings"
 
 // Main handler for PATH commands.
-// When wayu.toml exists, PATH becomes TOML-native; otherwise we preserve the
-// legacy shell-file workflow used by older tests and configs.
+// wayu.toml is the single source of truth for PATH; we create it if missing.
 handle_path_command :: proc(action: Action, args: []string) {
-	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
-	defer delete(toml_file)
-
-	use_toml := os.exists(toml_file)
+	if !ensure_wayu_toml_exists() {
+		print_error_simple("Failed to create wayu.toml")
+		os.exit(EXIT_IOERR)
+	}
 
 	#partial switch action {
 	case .CLEAN:
@@ -27,14 +26,11 @@ handle_path_command :: proc(action: Action, args: []string) {
 	case .DEDUP:
 		remove_duplicate_paths()
 	case .GET:
-		if use_toml {
-			if len(args) == 0 {
-				print_cli_usage_error(&PATH_SPEC, "get")
-				os.exit(EXIT_USAGE)
-			}
-			get_toml_path_value(args[0])
-			return
+		if len(args) == 0 {
+			print_cli_usage_error(&PATH_SPEC, "get")
+			os.exit(EXIT_USAGE)
 		}
+		get_toml_path_value(args[0])
 	case .ADD:
 		if len(args) == 0 {
 			print_error("Usage: wayu path add <path>")
@@ -53,41 +49,29 @@ handle_path_command :: proc(action: Action, args: []string) {
 			print_error("Path does not exist: %s", args[0])
 			os.exit(EXIT_NOINPUT)
 		}
-		if use_toml {
-			hook_pre_path_add(args[0])
-			if toml_path_add(args[0]) {
-				print_success("✅ Added to wayu.toml: %s", args[0])
-				fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
-				hook_post_path_add(args[0])
-			} else {
-				os.exit(EXIT_IOERR)
-			}
+		hook_pre_path_add(args[0])
+		if toml_path_add(args[0]) {
+			print_success("✅ Added to wayu.toml: %s", args[0])
+			fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
+			hook_post_path_add(args[0])
 		} else {
-			handle_config_command(&PATH_SPEC, action, args)
+			os.exit(EXIT_IOERR)
 		}
 	case .REMOVE:
-		if use_toml {
-			if len(args) == 0 {
-				print_error("Usage: wayu path remove <path>")
-				os.exit(EXIT_USAGE)
-			}
-			hook_pre_path_remove(args[0])
-			if toml_path_remove(args[0]) {
-				print_success("✅ Removed from wayu.toml: %s", args[0])
-				fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
-				hook_post_path_remove(args[0])
-			} else {
-				os.exit(EXIT_IOERR)
-			}
+		if len(args) == 0 {
+			print_error("Usage: wayu path remove <path>")
+			os.exit(EXIT_USAGE)
+		}
+		hook_pre_path_remove(args[0])
+		if toml_path_remove(args[0]) {
+			print_success("✅ Removed from wayu.toml: %s", args[0])
+			fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
+			hook_post_path_remove(args[0])
 		} else {
-			handle_config_command(&PATH_SPEC, action, args)
+			os.exit(EXIT_IOERR)
 		}
 	case .LIST:
-		if use_toml {
-			toml_path_list()
-		} else {
-			handle_config_command(&PATH_SPEC, action, args)
-		}
+		toml_path_list()
 	case:
 		handle_config_command(&PATH_SPEC, action, args)
 	}
