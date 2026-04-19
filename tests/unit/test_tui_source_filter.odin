@@ -83,3 +83,76 @@ test_has_any_filter_reflects_source_alone :: proc(t: ^testing.T) {
 	state.source_filter = .EXTERNAL
 	testing.expect(t, tui.has_any_filter(&state), "Source filter alone must count as active filter")
 }
+
+// ---------------------------------------------------------------------------
+// Inline `source:X` syntax in the text filter (feature #2).
+// ---------------------------------------------------------------------------
+
+@(test)
+test_parse_source_token_extracts_value_and_strips :: proc(t: ^testing.T) {
+	rem, src, ok := tui.parse_source_token("source:external")
+	testing.expect(t, ok, "source:external should parse")
+	testing.expect(t, src == .EXTERNAL, "value must map to EXTERNAL")
+	testing.expect(t, rem == "", "remainder should be empty when token is alone")
+
+	rem2, src2, ok2 := tui.parse_source_token("bin source:wayu")
+	testing.expect(t, ok2, "trailing token should parse")
+	testing.expect(t, src2 == .WAYU_ACTIVE, "wayu must map to WAYU_ACTIVE")
+	testing.expect(t, rem2 == "bin", "remainder should keep free text")
+
+	rem3, src3, ok3 := tui.parse_source_token("source:inactive /usr")
+	testing.expect(t, ok3, "leading token should parse")
+	testing.expect(t, src3 == .WAYU_INACTIVE, "inactive must map to WAYU_INACTIVE")
+	testing.expect(t, rem3 == "/usr", "remainder should keep trailing path")
+
+	rem4, _, ok4 := tui.parse_source_token("source:bogus rest")
+	testing.expect(t, !ok4, "unknown value must report has_source=false")
+	testing.expect(t, rem4 == "rest", "token must still be stripped for text matching")
+}
+
+@(test)
+test_apply_filter_respects_inline_source_token :: proc(t: ^testing.T) {
+	state := tui.tui_state_init()
+	defer tui.tui_state_destroy(&state)
+
+	items := []string{
+		"● /wayu/bin",
+		"⚠ /wayu/missing",
+		"○ /external/bin",
+		"○ /usr/local/bin",
+	}
+
+	// Typing `source:external` into the filter must narrow to the two
+	// externals without needing to press `s`.
+	append(&state.filter_text, 's', 'o', 'u', 'r', 'c', 'e', ':', 'e', 'x', 't', 'e', 'r', 'n', 'a', 'l')
+	tui.apply_filter(&state, items)
+	testing.expect(
+		t,
+		len(state.filtered_indices) == 2,
+		"source:external should match exactly the 2 external items",
+	)
+
+	// Extend with a text term: `source:external bin` — both externals contain `bin`.
+	clear(&state.filter_text)
+	for b in "source:external bin" {
+		append(&state.filter_text, u8(b))
+	}
+	tui.apply_filter(&state, items)
+	testing.expect(
+		t,
+		len(state.filtered_indices) == 2,
+		"source:external + bin should still match the 2 externals",
+	)
+
+	// Narrow further: `source:external usr` — only the `/usr/local/bin` survives.
+	clear(&state.filter_text)
+	for b in "source:external usr" {
+		append(&state.filter_text, u8(b))
+	}
+	tui.apply_filter(&state, items)
+	testing.expect(
+		t,
+		len(state.filtered_indices) == 1,
+		"source:external + usr should narrow to 1 item",
+	)
+}

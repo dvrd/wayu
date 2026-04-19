@@ -370,13 +370,63 @@ matches_source :: proc(item: string, filter: SourceFilter) -> bool {
 	return true
 }
 
+// Parse a `source:<value>` token out of the raw filter text.
+// Recognized values: `all`, `wayu`, `inactive`, `external` (case-sensitive,
+// lower-case — TUI text input is already lowered where it matters).
+// Returns the filter_text with the source token removed (so free-text
+// matching ignores it), plus the parsed SourceFilter if one was found.
+// Unknown values are ignored — the token is stripped but source stays ALL.
+parse_source_token :: proc(text: string) -> (remainder: string, source: SourceFilter, has_source: bool) {
+	idx := strings.index(text, "source:")
+	if idx < 0 { return text, .ALL, false }
+
+	// `source:` runs from idx to idx+7; the value runs until the next space.
+	value_start := idx + 7
+	value_end   := value_start
+	for value_end < len(text) && text[value_end] != ' ' {
+		value_end += 1
+	}
+	value := text[value_start:value_end]
+
+	// Build the remainder by stitching before + after, collapsing the gap.
+	before := strings.trim_space(text[:idx])
+	after  := strings.trim_space(text[value_end:])
+	rem: string
+	switch {
+	case len(before) == 0 && len(after) == 0: rem = ""
+	case len(before) == 0: rem = after
+	case len(after) == 0:  rem = before
+	case: rem = strings.concatenate({before, " ", after}, context.temp_allocator)
+	}
+
+	parsed: SourceFilter = .ALL
+	ok := true
+	switch value {
+	case "all":      parsed = .ALL
+	case "wayu":     parsed = .WAYU_ACTIVE
+	case "inactive": parsed = .WAYU_INACTIVE
+	case "external": parsed = .EXTERNAL
+	case: ok = false  // unknown value; strip token but keep source filter neutral
+	}
+	return rem, parsed, ok
+}
+
 // Rebuild filtered_indices based on current filter_text, source_filter, and cache.
 // An item survives only if it matches BOTH the source filter and the text filter.
+// Free-text filter may contain a `source:<value>` token — when present it
+// overrides state.source_filter for this pass so users can combine `s` cycling
+// with inline typing without fighting each other.
 apply_filter :: proc(state: ^TUIState, items: []string) {
 	clear(&state.filtered_indices)
+
+	rem_text, parsed_src, has_src := parse_source_token(string(state.filter_text[:]))
+	effective_src := state.source_filter
+	if has_src { effective_src = parsed_src }
+	rem_bytes := transmute([]u8)rem_text
+
 	for item, i in items {
-		if !matches_source(item, state.source_filter) { continue }
-		if matches_filter(item, state.filter_text[:]) {
+		if !matches_source(item, effective_src) { continue }
+		if matches_filter(item, rem_bytes) {
 			append(&state.filtered_indices, i)
 		}
 	}
