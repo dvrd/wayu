@@ -55,7 +55,7 @@ class BackupIntegrationTest
 
     if status.success?
       # Check if backup was created
-      backup_files = Dir.glob("#{@config_dir}/backup/path.zsh.backup.*")
+      backup_files = Dir.glob("#{@config_dir}/backup/wayu.toml.backup.*")
       if backup_files.length > 0
         puts "✓"
         @passed += 1
@@ -103,12 +103,12 @@ class BackupIntegrationTest
 
     output, status = run_wayu("backup list")
 
-    if output.include?("Configuration Backups") && output.include?("path.zsh")
+    if output.include?("Configuration Backups") && output.include?("wayu.toml")
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Expected backup list with path.zsh"
+      puts "  Expected backup list with wayu.toml"
       puts "  Output: #{output}"
       @failed += 1
     end
@@ -119,7 +119,7 @@ class BackupIntegrationTest
 
     output, status = run_wayu("backup list path")
 
-    if output.include?("Backups for path.zsh") || output.include?("backup")
+    if output.include?("Backups for wayu.toml") || output.include?("backup")
       puts "✓"
       @passed += 1
     else
@@ -145,15 +145,15 @@ class BackupIntegrationTest
     run_wayu("path add /tmp/modified")
 
     # Verify the modification exists
-    path_content = File.read("#{@config_dir}/path.zsh") rescue ""
+    toml_content = File.read("#{@config_dir}/wayu.toml") rescue ""
 
-    if path_content.include?("/tmp/modified")
+    if toml_content.include?("/tmp/modified")
       # Restore from backup
       output, status = run_wayu("backup restore path")
 
       if status.success? && output.include?("Restored from backup")
         # Check if file was restored (should not contain the latest addition)
-        restored_content = File.read("#{@config_dir}/path.zsh") rescue ""
+        restored_content = File.read("#{@config_dir}/wayu.toml") rescue ""
 
         # The restore should have reverted to a previous state
         puts "✓"
@@ -182,13 +182,13 @@ class BackupIntegrationTest
     end
 
     # Count backups before cleanup
-    backup_files_before = Dir.glob("#{@config_dir}/backup/path.zsh.backup.*")
+    backup_files_before = Dir.glob("#{@config_dir}/backup/wayu.toml.backup.*")
 
     # Run cleanup
     output, status = run_wayu("backup rm")
 
     if status.success?
-      backup_files_after = Dir.glob("#{@config_dir}/backup/path.zsh.backup.*")
+      backup_files_after = Dir.glob("#{@config_dir}/backup/wayu.toml.backup.*")
 
       # Should have cleaned up some backups (keeping last 5)
       if backup_files_after.length <= 5

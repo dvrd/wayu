@@ -911,6 +911,15 @@ toml_path_add :: proc(path: string) -> bool {
 	new_content := strings.clone(strings.to_string(builder))
 	defer delete(new_content)
 
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould add to wayu.toml: %s%s", BRIGHT_CYAN, path, RESET)
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return true
+	}
+
 	if !create_backup_cli(config_file) { return false }
 	return safe_write_file(config_file, transmute([]byte)new_content)
 }
@@ -960,13 +969,28 @@ toml_path_remove :: proc(path: string) -> bool {
 	}
 
 	if !found {
+		if DRY_RUN {
+			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+			fmt.println()
+			fmt.printfln("%sWould remove from wayu.toml: %s (not found)%s", BRIGHT_CYAN, path, RESET)
+			return true
+		}
 		print_error("Path not found in wayu.toml: %s", path)
 		return false
 	}
 
-	if !create_backup_cli(config_file) { return false }
-
 	new_content := strings.join(new_lines[:], "\n")
 	defer delete(new_content)
+
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould remove from wayu.toml: %s%s", BRIGHT_CYAN, path, RESET)
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return true
+	}
+
+	if !create_backup_cli(config_file) { return false }
 	return safe_write_file(config_file, transmute([]byte)new_content)
 }

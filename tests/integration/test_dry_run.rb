@@ -41,7 +41,7 @@ class DryRunIntegrationTest
 
     output, status = run_wayu("--dry-run path add /tmp")
 
-    if status.success? && output.include?("DRY RUN") && output.include?("Would add to path.zsh")
+    if status.success? && output.include?("DRY RUN") && output.include?("Would add to wayu.toml")
       puts "✓"
       @passed += 1
     else
@@ -57,7 +57,7 @@ class DryRunIntegrationTest
 
     output, status = run_wayu("-n path rm /nonexistent")
 
-    if output.include?("DRY RUN") && output.include?("Would remove from path.zsh")
+    if output.include?("DRY RUN") && output.include?("Would remove from wayu.toml")
       puts "✓"
       @passed += 1
     else
@@ -73,7 +73,7 @@ class DryRunIntegrationTest
 
     output, status = run_wayu("--dry-run alias add gc 'git commit'")
 
-    if status.success? && output.include?("DRY RUN") && output.include?("Would add to aliases.zsh")
+    if status.success? && output.include?("DRY RUN") && output.include?("wayu.toml")
       puts "✓"
       @passed += 1
     else
@@ -89,7 +89,7 @@ class DryRunIntegrationTest
 
     output, status = run_wayu("-n constants add MY_VAR 'test value'")
 
-    if status.success? && output.include?("DRY RUN") && output.include?("Would add to constants.zsh")
+    if status.success? && output.include?("DRY RUN") && output.include?("wayu.toml")
       puts "✓"
       @passed += 1
     else

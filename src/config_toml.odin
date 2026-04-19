@@ -19,8 +19,14 @@ import "core:unicode"
 
 // ensure_wayu_toml_exists creates a minimal wayu.toml scaffold if the file is
 // absent. Used by alias/constants/path dispatchers so writes always land in
-// TOML instead of the legacy shell-file path.
+// TOML instead of the legacy shell-file path. If the wayu config directory
+// itself doesn't exist we leave things untouched so downstream code can
+// report the standard "wayu not initialized" error.
 ensure_wayu_toml_exists :: proc() -> bool {
+    if !os.exists(WAYU_CONFIG) {
+        return true
+    }
+
     toml_file := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
     defer delete(toml_file)
 
