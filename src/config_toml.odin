@@ -1633,50 +1633,15 @@ handle_validate :: proc() -> bool {
     return true
 }
 
-// Handle `wayu convert --to-toml`
+// `wayu toml convert` is now an alias for `wayu migrate`. The original
+// implementation was a scaffolding stub that created an empty wayu.toml
+// and printed "Migration not yet implemented". The real migration path
+// lives in migrate_legacy_to_toml (see main.odin).
 handle_convert_to_toml :: proc() -> bool {
-    // This would migrate existing shell configs to TOML
-    // For now, create a new config and populate from existing
-    config_path := toml_get_config_path()
-    defer delete(config_path)
-    
-    if os.exists(config_path) {
-        fmt.eprintfln("Error: TOML config already exists at %s", config_path)
-        return false
-    }
-    
-    config := toml_create_default()
-    defer {
-        delete(config.path.entries)
-        delete(config.aliases)
-        delete(config.constants)
-        delete(config.plugins)
-        for key in config.settings.autosuggestions_accept_keys {
-            delete(key)
-        }
-        delete(config.settings.autosuggestions_accept_keys)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-        }
-        delete(config.profiles)
-    }
-    
-    // TODO: Read existing shell configs and populate
-    // This is a placeholder for future implementation
-    
-    if !toml_write_file(config_path, config) {
-        fmt.eprintfln("Error: Failed to write %s", config_path)
-        return false
-    }
-    
-    fmt.printfln("Created TOML config: %s", config_path)
-    fmt.println("Note: Migration from existing configs not yet fully implemented")
+    fmt.println()
+    print_info("`wayu toml convert` now runs `wayu migrate` under the hood.")
+    fmt.println()
+    migrate_legacy_to_toml(DRY_RUN)
     return true
 }
 
@@ -1738,10 +1703,10 @@ handle_toml_command :: proc(action: Action) {
 		}
 		handle_toml_show()
 	case .UPDATE:
-		// Convert/apply TOML config
-		if !check_wayu_initialized() {
-			os.exit(EXIT_CONFIG)
-		}
+		// `toml convert` — legacy shell configs → wayu.toml. This runs even
+		// when the regular essential-files gate would fail, because the whole
+		// point of migration is to bootstrap an incomplete setup into the
+		// TOML layout.
 		if !handle_convert_to_toml() {
 			os.exit(EXIT_CANTCREAT)
 		}
@@ -1762,8 +1727,7 @@ print_toml_usage :: proc() {
 	fmt.printfln("  wayu toml validate           Validate wayu.toml syntax")
 	fmt.printfln("  wayu toml show               Display TOML content")
 	fmt.printfln("  wayu toml keys               List TOML keys")
-	fmt.printfln("  wayu toml convert            Convert existing configs to TOML")
-	fmt.printfln("  wayu toml apply              Apply TOML config to shell")
+	fmt.printfln("  wayu toml convert            Convert legacy shell configs → wayu.toml (alias of `wayu migrate`)")
 	fmt.printfln("  wayu toml help               Show this help")
 	fmt.println()
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
@@ -1778,11 +1742,11 @@ print_toml_usage :: proc() {
 	fmt.println("  # Validate your TOML config")
 	fmt.println("  wayu toml validate")
 	fmt.println()
-	fmt.println("  # Convert existing shell configs to TOML")
+	fmt.println("  # Convert legacy shell configs to wayu.toml (same as `wayu migrate`)")
 	fmt.println("  wayu toml convert")
 	fmt.println()
-	fmt.println("  # Apply TOML config to shell")
-	fmt.println("  wayu toml apply")
+	fmt.println("  # Apply wayu.toml to shell (rebuild init script)")
+	fmt.println("  wayu build")
 	fmt.println()
 	fmt.printfln("%sSee:%s ~/.config/wayu/wayu.toml for example configuration", get_muted(), RESET)
 }

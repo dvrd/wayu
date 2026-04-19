@@ -534,7 +534,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			switch filtered_args[1] {
 			case "validate":
 				parsed.action = .CHECK
-			case "convert", "apply":
+			case "convert":
 				parsed.action = .UPDATE
 			case "show":
 				parsed.action = .GET
