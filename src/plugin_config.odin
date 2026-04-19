@@ -232,11 +232,9 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 		}
 		plugin := plugin_ptr^
 
-		// Skip if shell incompatible
-		if plugin.shell == .ZSH && shell == .BASH {
-			continue
-		}
-		if plugin.shell == .BASH && shell == .ZSH {
+		// Skip if shell incompatible (zsh-only in bash, bash-only in zsh,
+		// any non-fish plugin in fish, any non-zsh-or-bash plugin elsewhere).
+		if !plugin_compat_matches(plugin.shell, shell) {
 			continue
 		}
 
@@ -320,12 +318,18 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 			delete(files_to_source)
 		}
 		
-		// Apply template to generate loading code
+		// Apply template to generate loading code.
+		// Fish uses `test -f X; and <cmd>; end`; zsh/bash use POSIX `if [ -f X ]; then <cmd>; fi`.
 		for file in files_to_source {
-			templated := apply_load_template(plugin.template, file, plugin.name, plugin.installed_path)
+			templated := apply_load_template(plugin.template, file, plugin.name, plugin.installed_path, shell)
 			defer delete(templated)
-			
-			source_line := fmt.aprintf("if [ -f \"%s\" ]; then\n    %s\nfi\n", file, templated)
+
+			source_line: string
+			if shell == .FISH {
+				source_line = fmt.aprintf("if test -f \"%s\"\n    %s\nend\n", file, templated)
+			} else {
+				source_line = fmt.aprintf("if [ -f \"%s\" ]; then\n    %s\nfi\n", file, templated)
+			}
 			strings.write_string(&sb, source_line)
 			delete(source_line)
 		}
@@ -352,18 +356,42 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 	return generate_plugins_runtime_config(shell)
 }
 
-// Get files to source for a plugin based on 'use' globs or auto-detect
+// Get files to source for a plugin based on 'use' globs or auto-detect.
+// Fish plugins follow a different convention: `conf.d/*.fish` (autoloaded
+// on shell start) and `functions/*.fish` (autoloaded by name). These are
+// collected in addition to any top-level `*.fish` entry file.
 get_plugin_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> []string {
 	// If 'use' is specified, match globs
 	if len(plugin.use) > 0 {
 		return match_files_with_globs(plugin.installed_path, plugin.use[:])
 	}
-	
-	// Auto-detect: try common entry files
+
 	ext := get_shell_extension(shell)
 	auto_files := make([dynamic]string)
-	
-	// Try common plugin entry points
+
+	// Fish path: probe conf.d and functions subdirectories first,
+	// then fall back to top-level entry files.
+	if shell == .FISH {
+		conf_d := fmt.aprintf("%s/conf.d", plugin.installed_path)
+		defer delete(conf_d)
+		if os.is_dir(conf_d) {
+			glob := []string{"*.fish"}
+			for f in match_files_with_globs(conf_d, glob) {
+				append(&auto_files, f)
+			}
+		}
+
+		funcs := fmt.aprintf("%s/functions", plugin.installed_path)
+		defer delete(funcs)
+		if os.is_dir(funcs) {
+			glob := []string{"*.fish"}
+			for f in match_files_with_globs(funcs, glob) {
+				append(&auto_files, f)
+			}
+		}
+	}
+
+	// Try common plugin entry points at the repo root.
 	candidates := []string{
 		fmt.tprintf("%s.plugin.%s", plugin.name, ext),
 		fmt.tprintf("%s.%s", plugin.name, ext),
@@ -371,21 +399,21 @@ get_plugin_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> 
 		fmt.tprintf("init.%s", ext),
 		fmt.tprintf("plugin.%s", ext),
 	}
-	
+
 	for candidate in candidates {
 		full_path := fmt.aprintf("%s/%s", plugin.installed_path, candidate)
 		if os.exists(full_path) {
 			append(&auto_files, full_path)
 		}
 	}
-	
-	// If no specific entry file found, include all .{zsh,bash} files
+
+	// If nothing discovered yet, include every top-level file of the right extension.
 	if len(auto_files) == 0 {
 		glob := make([]string, 1)
 		glob[0] = fmt.tprintf("*.%s", ext)
 		return match_files_with_globs(plugin.installed_path, glob)
 	}
-	
+
 	return auto_files[:]
 }
 
@@ -441,8 +469,28 @@ match_simple_glob :: proc(name, pattern: string) -> bool {
 	return name == pattern
 }
 
-// Apply load template to generate shell code
-apply_load_template :: proc(template: PluginLoadTemplate, file, plugin_name, plugin_dir: string) -> string {
+// Apply load template to generate shell code.
+// For fish, falls back to shell-appropriate builtins:
+//   Path     → fish_add_path
+//   FPath    → prepend to fish_function_path
+//   Autoload → N/A (fish autoloads functions from $fish_function_path)
+//   Eval     → eval (cmd)  — fish uses parens, not $()
+apply_load_template :: proc(template: PluginLoadTemplate, file, plugin_name, plugin_dir: string, shell: ShellType = .UNKNOWN) -> string {
+	if shell == .FISH {
+		switch template {
+		case .Source:
+			return fmt.aprintf("source \"%s\"", file)
+		case .Path:
+			return fmt.aprintf("fish_add_path \"%s\"", plugin_dir)
+		case .FPath:
+			return fmt.aprintf("set -gx fish_function_path \"%s\" $fish_function_path", plugin_dir)
+		case .Autoload:
+			return fmt.aprintf("# autoload is a no-op in fish (auto-loaded from $fish_function_path): %s", plugin_name)
+		case .Eval:
+			return fmt.aprintf("eval (%s)", file)
+		}
+		return fmt.aprintf("source \"%s\"", file)
+	}
 	switch template {
 	case .Source:
 		return fmt.aprintf("source \"%s\"", file)

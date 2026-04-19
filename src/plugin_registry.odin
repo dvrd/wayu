@@ -300,32 +300,48 @@ is_git_repo :: proc(dir: string) -> bool {
 
 // Plugin file detection
 
-// Detect plugin entry file to source
+// Detect plugin entry file to source.
+// Fish plugins don't usually have a single entry file — they rely on
+// conf.d/*.fish and functions/*.fish. This helper still returns the most
+// canonical single file when one exists (useful for the one-file-plugin
+// case) — full discovery happens in get_plugin_files_to_source.
 detect_plugin_file :: proc(plugin_dir: string, plugin_name: string, shell: ShellType) -> (string, bool) {
 	ext := get_shell_extension(shell)
 
-	// 1. Standard plugin file: {name}.plugin.{zsh,bash}
+	// 1. Standard plugin file: {name}.plugin.{zsh,bash,fish}
 	plugin_file := fmt.aprintf("%s/%s.plugin.%s", plugin_dir, plugin_name, ext)
 	if os.exists(plugin_file) {
 		return plugin_file, true
 	}
 	delete(plugin_file)
 
-	// 2. Simple naming: {name}.{zsh,bash}
+	// 2. Simple naming: {name}.{zsh,bash,fish}
 	simple_file := fmt.aprintf("%s/%s.%s", plugin_dir, plugin_name, ext)
 	if os.exists(simple_file) {
 		return simple_file, true
 	}
 	delete(simple_file)
 
-	// 3. Init file: init.{zsh,bash}
+	// 3. Init file: init.{zsh,bash,fish}
 	init_file := fmt.aprintf("%s/init.%s", plugin_dir, ext)
 	if os.exists(init_file) {
 		return init_file, true
 	}
 	delete(init_file)
 
-	// 4. Fallback: return directory (source all .{zsh,bash} files)
+	// 4. Fish-specific: conf.d/ directory is the canonical fish layout.
+	//    Report it as "found" (even though it's a dir) so callers know the
+	//    plugin has loadable content — full file expansion happens in
+	//    get_plugin_files_to_source.
+	if shell == .FISH {
+		conf_d := fmt.aprintf("%s/conf.d", plugin_dir)
+		if os.is_dir(conf_d) {
+			return conf_d, true
+		}
+		delete(conf_d)
+	}
+
+	// 5. Fallback: directory-wide source
 	return "", false
 }
 
