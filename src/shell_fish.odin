@@ -33,34 +33,34 @@ shell_fish_generate_init :: proc(config: TomlConfig) -> string {
     defer strings.builder_destroy(&sb)
 
     // Header
-    fmt.println(&sb, "#!/usr/bin/env fish")
-    fmt.println(&sb, "")
-    fmt.println(&sb, "# Wayu Shell Initialization - Auto-generated for Fish")
-    fmt.println(&sb, "# Version: %s", config.wayu_version)
-    fmt.println(&sb, "")
+    fmt.sbprintln(&sb, "#!/usr/bin/env fish")
+    fmt.sbprintln(&sb, "")
+    fmt.sbprintln(&sb, "# Wayu Shell Initialization - Auto-generated for Fish")
+    fmt.sbprintfln(&sb, "# Version: %s", config.wayu_version)
+    fmt.sbprintln(&sb, "")
 
     // Constants first
     constants_section := shell_fish_generate_constants(config.constants)
-    fmt.println(&sb, constants_section)
+    fmt.sbprintln(&sb, constants_section)
     delete(constants_section)
 
     // PATH
     path_section := shell_fish_generate_path(config.path.entries)
-    fmt.println(&sb, path_section)
+    fmt.sbprintln(&sb, path_section)
     delete(path_section)
 
     // Aliases
     aliases_section := shell_fish_generate_aliases(config.aliases)
-    fmt.println(&sb, aliases_section)
+    fmt.sbprintln(&sb, aliases_section)
     delete(aliases_section)
 
     // Plugins placeholder
-    fmt.println(&sb, "# Plugins loaded from ~/.config/wayu/plugins.fish")
-    fmt.println(&sb, "if test -f \"$HOME/.config/wayu/plugins.fish\"")
-    fmt.println(&sb, "    source \"$HOME/.config/wayu/plugins.fish\"")
-    fmt.println(&sb, "end")
+    fmt.sbprintln(&sb, "# Plugins loaded from ~/.config/wayu/plugins.fish")
+    fmt.sbprintln(&sb, "if test -f \"$HOME/.config/wayu/plugins.fish\"")
+    fmt.sbprintln(&sb, "    source \"$HOME/.config/wayu/plugins.fish\"")
+    fmt.sbprintln(&sb, "end")
 
-    return strings.to_string(sb)
+    return strings.clone(strings.to_string(sb))
 }
 
 // Generate Fish-compatible PATH configuration
@@ -68,9 +68,9 @@ shell_fish_generate_path :: proc(entries: []string) -> string {
     sb := strings.builder_make()
     defer strings.builder_destroy(&sb)
 
-    fmt.println(&sb, "# PATH Configuration")
-    fmt.println(&sb, "set -gx WAYU_PATHS")
-    fmt.println(&sb, "")
+    fmt.sbprintln(&sb, "# PATH Configuration")
+    fmt.sbprintln(&sb, "set -gx WAYU_PATHS")
+    fmt.sbprintln(&sb, "")
 
     // Add each entry to WAYU_PATHS array
     for entry in entries {
@@ -80,23 +80,23 @@ shell_fish_generate_path :: proc(entries: []string) -> string {
     }
 
     if len(entries) > 0 {
-        fmt.println(&sb, "")
+        fmt.sbprintln(&sb, "")
     }
 
     // PATH deduplication and export logic
-    fmt.println(&sb, "# Build PATH from registry with deduplication")
-    fmt.println(&sb, "for dir in $WAYU_PATHS")
-    fmt.println(&sb, "    if not test -d \"$dir\"")
-    fmt.println(&sb, "        continue")
-    fmt.println(&sb, "    end")
-    fmt.println(&sb, "    if contains \"$dir\" $PATH")
-    fmt.println(&sb, "        continue")
-    fmt.println(&sb, "    end")
-    fmt.println(&sb, "    set -gx PATH \"$dir\" $PATH")
-    fmt.println(&sb, "end")
-    fmt.println(&sb, "")
+    fmt.sbprintln(&sb, "# Build PATH from registry with deduplication")
+    fmt.sbprintln(&sb, "for dir in $WAYU_PATHS")
+    fmt.sbprintln(&sb, "    if not test -d \"$dir\"")
+    fmt.sbprintln(&sb, "        continue")
+    fmt.sbprintln(&sb, "    end")
+    fmt.sbprintln(&sb, "    if contains \"$dir\" $PATH")
+    fmt.sbprintln(&sb, "        continue")
+    fmt.sbprintln(&sb, "    end")
+    fmt.sbprintln(&sb, "    set -gx PATH \"$dir\" $PATH")
+    fmt.sbprintln(&sb, "end")
+    fmt.sbprintln(&sb, "")
 
-    return strings.to_string(sb)
+    return strings.clone(strings.to_string(sb))
 }
 
 // Generate Fish-compatible aliases
@@ -104,16 +104,16 @@ shell_fish_generate_aliases :: proc(aliases: []TomlAlias) -> string {
     sb := strings.builder_make()
     defer strings.builder_destroy(&sb)
 
-    fmt.println(&sb, "# Aliases Configuration")
+    fmt.sbprintln(&sb, "# Aliases Configuration")
 
     for alias in aliases {
         escaped_command := escape_fish_string(alias.command)
-        fmt.sbprintf(&sb, "alias %s '%s'\n", alias.name, escaped_command)
+        fmt.sbprintf(&sb, "alias %s %s\n", alias.name, escaped_command)
         delete(escaped_command)
     }
 
-    fmt.println(&sb, "")
-    return strings.to_string(sb)
+    fmt.sbprintln(&sb, "")
+    return strings.clone(strings.to_string(sb))
 }
 
 // Generate Fish-compatible constants (environment variables)
@@ -121,7 +121,7 @@ shell_fish_generate_constants :: proc(constants: []TomlConstant) -> string {
     sb := strings.builder_make()
     defer strings.builder_destroy(&sb)
 
-    fmt.println(&sb, "# Environment Constants")
+    fmt.sbprintln(&sb, "# Environment Constants")
 
     for constant in constants {
         if constant.export {
@@ -135,8 +135,8 @@ shell_fish_generate_constants :: proc(constants: []TomlConstant) -> string {
         }
     }
 
-    fmt.println(&sb, "")
-    return strings.to_string(sb)
+    fmt.sbprintln(&sb, "")
+    return strings.clone(strings.to_string(sb))
 }
 
 // ============================================================================
@@ -170,7 +170,7 @@ escape_fish_string :: proc(s: string) -> string {
     }
     strings.write_byte(&sb, '"')
 
-    return strings.to_string(sb)
+    return strings.clone(strings.to_string(sb))
 }
 
 // Check if a command exists in PATH
