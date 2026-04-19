@@ -985,7 +985,7 @@ get_view_item_count :: proc(state: ^TUIState) -> int {
 
 	switch state.current_view {
 	case .MAIN_MENU:
-		return 7  // 7 menu items
+		return 8  // PATH, Aliases, Constants, Completions, Backups, Plugins, Hooks, Settings
 
 	case .PATH_VIEW:
 		if state.data_cache[.PATH_VIEW] != nil {
