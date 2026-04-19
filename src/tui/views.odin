@@ -913,26 +913,27 @@ render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
-	// Load settings from bridge (idempotent — only loads once)
+	// Load settings from bridge (idempotent — only loads once).
 	tui_load_settings_data(state)
 
-	// Build settings display with real values
-	shell_display := strings.clone(fmt.tprintf("Shell: %s", state.settings_shell))
-	defer delete(shell_display)
-
-	config_dir_display := strings.clone(fmt.tprintf("Config Dir: %s", state.settings_config_dir))
-	defer delete(config_dir_display)
-
+	// Render lines live on context.temp_allocator — automatically freed at
+	// end of frame, so we don't need per-line defer delete churn.
 	dry_run_status := "off"
 	if state.settings_dry_run { dry_run_status = "on" }
-	dry_run_display := strings.clone(fmt.tprintf("Dry-run: %s", dry_run_status))
-	defer delete(dry_run_display)
+
+	toml_status := "missing"
+	if state.settings_toml_exists {
+		toml_status = state.settings_toml_path
+	}
 
 	settings := []string{
-		shell_display,
-		config_dir_display,
-		"Backups: 5 kept",
-		dry_run_display,
+		fmt.tprintf("Version:     %s",    state.settings_version),
+		fmt.tprintf("Shell:       %s",    state.settings_shell),
+		fmt.tprintf("Config Dir:  %s",    state.settings_config_dir),
+		fmt.tprintf("wayu.toml:   %s",    toml_status),
+		fmt.tprintf("Backups:     %d",    state.settings_backups),
+		fmt.tprintf("Plugins:     %d enabled", state.settings_plugins),
+		fmt.tprintf("Dry-run:     %s",    dry_run_status),
 	}
 
 	content_start := LIST_ITEM_START_LINE + 2

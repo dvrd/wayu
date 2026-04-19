@@ -93,6 +93,12 @@ TUIState :: struct {
 	settings_shell:      string,
 	settings_config_dir: string,
 	settings_dry_run:    bool,
+	settings_version:    string,  // wayu binary version
+	settings_toml_path:  string,  // absolute path to wayu.toml
+	settings_toml_exists: bool,   // true when that path is a regular file
+	settings_backups:    int,     // total backup count across all config files
+	settings_plugins:    int,     // enabled plugin count
+	settings_loaded:     bool,    // guard — bridge should only load once per view entry
 }
 
 // Initialize TUI state
@@ -126,6 +132,12 @@ tui_state_destroy :: proc(state: ^TUIState) {
 	// Free inline filter resources
 	delete(state.filter_text)
 	delete(state.filtered_indices)
+
+	// Free settings cache strings (cloned by tui_bridge_load_settings)
+	if len(state.settings_shell)      > 0 { delete(state.settings_shell) }
+	if len(state.settings_config_dir) > 0 { delete(state.settings_config_dir) }
+	if len(state.settings_version)    > 0 { delete(state.settings_version) }
+	if len(state.settings_toml_path)  > 0 { delete(state.settings_toml_path) }
 
 	// Free saved cursors map
 	delete(state.saved_cursors)
@@ -261,6 +273,11 @@ tui_state_goto_view :: proc(state: ^TUIState, view: TUIView) {
 	deactivate_filter(state)
 	state.previous_view = state.current_view
 	state.current_view = view
+	// Invalidate settings cache on entry so backup/plugin counters reflect
+	// state changes that happened while the user was in other views.
+	if view == .SETTINGS_VIEW {
+		state.settings_loaded = false
+	}
 	restore_cursor(state, view)
 	state.needs_refresh = true
 }
