@@ -100,26 +100,43 @@ format_path_line :: proc(entry: ConfigEntry) -> string {
 parse_path_line :: proc(line: string) -> (ConfigEntry, bool) {
 	trimmed := strings.trim_space(line)
 
-	// Check if line is a quoted string (array element)
-	if !strings.has_prefix(trimmed, `"`) || !strings.has_suffix(trimmed, `"`) {
-		return {}, false
+	// bash/zsh wayu-legacy form: "path" inside WAYU_PATHS=(...)
+	if strings.has_prefix(trimmed, `"`) && strings.has_suffix(trimmed, `"`) && len(trimmed) >= 2 {
+		path := trimmed[1:len(trimmed)-1]
+		return ConfigEntry{
+			type = .PATH,
+			name = strings.clone(path),
+			value = "",
+			line  = strings.clone(line),
+		}, true
 	}
 
-	// Extract path (between quotes)
-	if len(trimmed) < 2 {
-		return {}, false
+	// fish form: fish_add_path /some/dir
+	if strings.has_prefix(trimmed, "fish_add_path ") {
+		rest := strings.trim_space(trimmed[len("fish_add_path "):])
+		// skip leading flags like -g, -p
+		for strings.has_prefix(rest, "-") {
+			sp := strings.index_byte(rest, ' ')
+			if sp == -1 { return {}, false }
+			rest = strings.trim_space(rest[sp+1:])
+		}
+		if len(rest) == 0 { return {}, false }
+		if len(rest) >= 2 {
+			first := rest[0]
+			last := rest[len(rest)-1]
+			if (first == '\'' || first == '"') && first == last {
+				rest = rest[1:len(rest)-1]
+			}
+		}
+		return ConfigEntry{
+			type = .PATH,
+			name = strings.clone(rest),
+			value = "",
+			line  = strings.clone(line),
+		}, true
 	}
 
-	path := trimmed[1:len(trimmed)-1]
-
-	entry := ConfigEntry{
-		type = .PATH,
-		name = strings.clone(path),
-		value = "",
-		line = strings.clone(line),
-	}
-
-	return entry, true
+	return {}, false
 }
 
 // Validate path input for interactive mode
@@ -181,32 +198,43 @@ parse_alias_line :: proc(line: string) -> (ConfigEntry, bool) {
 		return {}, false
 	}
 
-	// Find equals sign
-	eq_idx := strings.index(trimmed, "=")
-	if eq_idx == -1 { return {}, false }
-
-	// Extract name (between "alias " and "=")
-	name := strings.trim_space(trimmed[6:eq_idx])
-	if len(name) == 0 { return {}, false }
-
-	// Extract command (after "=" and inside quotes)
-	rest := trimmed[eq_idx+1:]
-	start := strings.index(rest, `"`)
-	if start == -1 { return {}, false }
-
-	end := strings.last_index(rest, `"`)
-	if end == -1 || end <= start { return {}, false }
-
-	command := rest[start+1:end]
-
-	entry := ConfigEntry{
-		type = .ALIAS,
-		name = strings.clone(name),
-		value = strings.clone(command),
-		line = strings.clone(line),
+	// bash/zsh form: alias name="command"
+	if eq_idx := strings.index(trimmed, "="); eq_idx != -1 {
+		name := strings.trim_space(trimmed[6:eq_idx])
+		if len(name) == 0 { return {}, false }
+		rest := trimmed[eq_idx+1:]
+		start := strings.index(rest, `"`)
+		if start == -1 { return {}, false }
+		end := strings.last_index(rest, `"`)
+		if end == -1 || end <= start { return {}, false }
+		command := rest[start+1:end]
+		return ConfigEntry{
+			type  = .ALIAS,
+			name  = strings.clone(name),
+			value = strings.clone(command),
+			line  = strings.clone(line),
+		}, true
 	}
 
-	return entry, true
+	// fish form: alias name 'command'  (or "command")
+	rest := strings.trim_space(trimmed[6:])
+	sp := strings.index_byte(rest, ' ')
+	if sp <= 0 { return {}, false }
+	name := rest[:sp]
+	cmd := strings.trim_space(rest[sp+1:])
+	if len(cmd) >= 2 {
+		first := cmd[0]
+		last := cmd[len(cmd)-1]
+		if (first == '\'' || first == '"') && first == last {
+			cmd = cmd[1:len(cmd)-1]
+		}
+	}
+	return ConfigEntry{
+		type  = .ALIAS,
+		name  = strings.clone(name),
+		value = strings.clone(cmd),
+		line  = strings.clone(line),
+	}, true
 }
 
 // Validate alias name input
@@ -295,36 +323,56 @@ format_constant_line :: proc(entry: ConfigEntry) -> string {
 parse_constant_line :: proc(line: string) -> (ConfigEntry, bool) {
 	trimmed := strings.trim_space(line)
 
-	if !strings.has_prefix(trimmed, "export ") {
-		return {}, false
+	// bash/zsh form: export NAME="value"
+	if strings.has_prefix(trimmed, "export ") {
+		eq_idx := strings.index(trimmed, "=")
+		if eq_idx == -1 { return {}, false }
+		name := strings.trim_space(trimmed[7:eq_idx])
+		if len(name) == 0 { return {}, false }
+		rest := trimmed[eq_idx+1:]
+		start := strings.index(rest, `"`)
+		if start == -1 { return {}, false }
+		end := strings.last_index(rest, `"`)
+		if end == -1 || end <= start { return {}, false }
+		value := rest[start+1:end]
+		return ConfigEntry{
+			type  = .CONSTANT,
+			name  = strings.clone(name),
+			value = strings.clone(value),
+			line  = strings.clone(line),
+		}, true
 	}
 
-	// Find equals sign
-	eq_idx := strings.index(trimmed, "=")
-	if eq_idx == -1 { return {}, false }
-
-	// Extract name (between "export " and "=")
-	name := strings.trim_space(trimmed[7:eq_idx])
-	if len(name) == 0 { return {}, false }
-
-	// Extract value (after "=" and inside quotes)
-	rest := trimmed[eq_idx+1:]
-	start := strings.index(rest, `"`)
-	if start == -1 { return {}, false }
-
-	end := strings.last_index(rest, `"`)
-	if end == -1 || end <= start { return {}, false }
-
-	value := rest[start+1:end]
-
-	entry := ConfigEntry{
-		type = .CONSTANT,
-		name = strings.clone(name),
-		value = strings.clone(value),
-		line = strings.clone(line),
+	// fish form: set -gx NAME value   (also -g, -Ux, -U)
+	if strings.has_prefix(trimmed, "set ") {
+		rest := strings.trim_space(trimmed[4:])
+		// Skip flags (tokens starting with '-')
+		for strings.has_prefix(rest, "-") {
+			sp := strings.index_byte(rest, ' ')
+			if sp == -1 { return {}, false }
+			rest = strings.trim_space(rest[sp+1:])
+		}
+		sp := strings.index_byte(rest, ' ')
+		if sp <= 0 { return {}, false }
+		name := rest[:sp]
+		if name == "PATH" || name == "fish_user_paths" { return {}, false }
+		value := strings.trim_space(rest[sp+1:])
+		if len(value) >= 2 {
+			first := value[0]
+			last := value[len(value)-1]
+			if (first == '\'' || first == '"') && first == last {
+				value = value[1:len(value)-1]
+			}
+		}
+		return ConfigEntry{
+			type  = .CONSTANT,
+			name  = strings.clone(name),
+			value = strings.clone(value),
+			line  = strings.clone(line),
+		}, true
 	}
 
-	return entry, true
+	return {}, false
 }
 
 // Validate constant name input
