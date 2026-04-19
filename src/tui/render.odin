@@ -108,11 +108,14 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 	}
 }
 
-// Render text at position
+// Render text at position.
+// ANSI escape bytes (0x1b) are silently skipped — color belongs in Cell.fg,
+// not the char stream. See thoughts/scroll_bug_spec.md for why this matters.
 render_text :: proc(screen: ^Screen, x, y: int, text: string) {
 	current_x := x
 	for ch in text {
 		if current_x >= screen.width do break
+		if ch == 0x1b do continue
 
 		screen_set_cell(screen, current_x, y, Cell{char = ch})
 		current_x += 1
@@ -156,6 +159,9 @@ render_text_styled :: proc(screen: ^Screen, x, y: int, text: string, fg: string 
 	current_x := x
 	for ch in text {
 		if current_x >= screen.width do break
+		// ESC bytes must never reach Cell.char — they inflate logical cursor_x
+		// and drift the diff renderer. See thoughts/scroll_bug_spec.md.
+		if ch == 0x1b do continue
 
 		screen_set_cell(screen, current_x, y, Cell{
 			char = ch,
