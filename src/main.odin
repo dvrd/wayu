@@ -428,7 +428,14 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			parsed.args = remaining_args
 		}
 		return parsed
-	case "migrate":    parsed.command = .MIGRATE; return parsed
+	case "migrate":
+		parsed.command = .MIGRATE
+		if len(filtered_args) > 1 {
+			remaining := make([]string, len(filtered_args) - 1)
+			copy(remaining, filtered_args[1:])
+			parsed.args = remaining
+		}
+		return parsed
 	case "config":
 		parsed.command = .CONFIG
 		// Parse config subcommand
@@ -1595,13 +1602,13 @@ handle_migrate_command :: proc(args: []string) {
 
 	// Validate arguments
 	if from_shell == .UNKNOWN {
-		fmt.eprintfln("Error: --from shell must be specified (bash or zsh)")
+		fmt.eprintfln("Error: --from shell must be specified (bash, zsh, or fish)")
 		print_migrate_help()
 		os.exit(EXIT_USAGE)
 	}
 
 	if to_shell == .UNKNOWN {
-		fmt.eprintfln("Error: --to shell must be specified (bash or zsh)")
+		fmt.eprintfln("Error: --to shell must be specified (bash, zsh, or fish)")
 		print_migrate_help()
 		os.exit(EXIT_USAGE)
 	}
@@ -1670,10 +1677,14 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 	if migrated_count > 0 {
 		fmt.printfln("\nMigration completed! Migrated %d configuration file(s).", migrated_count)
 		fmt.printfln("To use the new configuration:")
-		if to_shell == .BASH {
+		#partial switch to_shell {
+		case .BASH:
 			fmt.printfln("  1. Add this line to your ~/.bashrc or ~/.bash_profile:")
 			fmt.printfln("     source \"%s/init.bash\"", WAYU_CONFIG)
-		} else {
+		case .FISH:
+			fmt.printfln("  1. Add this line to your ~/.config/fish/config.fish:")
+			fmt.printfln("     source \"%s/init.fish\"", WAYU_CONFIG)
+		case:
 			fmt.printfln("  1. Add this line to your ~/.zshrc:")
 			fmt.printfln("     source \"%s/init.zsh\"", WAYU_CONFIG)
 		}
@@ -1699,10 +1710,33 @@ convert_shell_content :: proc(content: string, from_shell: ShellType, to_shell: 
 
 		// Convert shebang
 		if strings.has_prefix(line, "#!/usr/bin/env") {
-			if to_shell == .BASH {
-				converted_line = "#!/usr/bin/env bash"
-			} else {
-				converted_line = "#!/usr/bin/env zsh"
+			#partial switch to_shell {
+			case .BASH: converted_line = "#!/usr/bin/env bash"
+			case .FISH: converted_line = "#!/usr/bin/env fish"
+			case: converted_line = "#!/usr/bin/env zsh"
+			}
+		}
+
+		// Convert alias + export syntax between POSIX shells and fish.
+		// Fish:  alias NAME 'CMD'       ↔  bash/zsh: alias NAME="CMD"
+		// Fish:  set -gx NAME "VAL"     ↔  bash/zsh: export NAME="VAL"
+		// We work line-by-line with the existing parsers, which already
+		// handle both dialects (see config_specs.odin).
+		if to_shell == .FISH && (from_shell == .BASH || from_shell == .ZSH) {
+			if entry, ok := parse_alias_line(line); ok {
+				converted_line = fmt.aprintf("alias %s '%s'", entry.name, entry.value)
+				cleanup_entry(&entry)
+			} else if entry, ok := parse_constant_line(line); ok {
+				converted_line = fmt.aprintf(`set -gx %s "%s"`, entry.name, entry.value)
+				cleanup_entry(&entry)
+			}
+		} else if from_shell == .FISH && (to_shell == .BASH || to_shell == .ZSH) {
+			if entry, ok := parse_alias_line(line); ok {
+				converted_line = fmt.aprintf(`alias %s="%s"`, entry.name, entry.value)
+				cleanup_entry(&entry)
+			} else if entry, ok := parse_constant_line(line); ok {
+				converted_line = fmt.aprintf(`export %s="%s"`, entry.name, entry.value)
+				cleanup_entry(&entry)
 			}
 		}
 
@@ -1967,8 +2001,8 @@ print_migrate_help :: proc() {
 	// Options section
 	fmt.printf("\n%s%sOPTIONS:%s\n", BOLD, get_secondary(), RESET)
 	fmt.println("  --dry-run, -n        Preview without modifying files (legacy mode only)")
-	fmt.println("  --from <shell>       Source shell (bash or zsh) for cross-shell mode")
-	fmt.println("  --to <shell>         Target shell (bash or zsh) for cross-shell mode")
+	fmt.println("  --from <shell>       Source shell (bash, zsh, or fish) for cross-shell mode")
+	fmt.println("  --to <shell>         Target shell (bash, zsh, or fish) for cross-shell mode")
 	fmt.println("  help, -h, --help     Show this help message")
 
 	// Examples section
