@@ -354,6 +354,18 @@ handle_completions_generate :: proc() {
 	}
 
 	print_success("Generated: %s", bash_completion_path)
+
+	// Write fish completion file
+	fish_completion_path := fmt.aprintf("%s/wayu.fish", completions_dir)
+	defer delete(fish_completion_path)
+
+	write_ok = safe_write_file(fish_completion_path, transmute([]byte)(string(WAYU_COMPLETION_FISH)))
+	if !write_ok {
+		print_error("Failed to write fish completion file")
+		os.exit(EXIT_IOERR)
+	}
+
+	print_success("Generated: %s", fish_completion_path)
 	fmt.println()
 
 	// Instructions
@@ -369,6 +381,9 @@ handle_completions_generate :: proc() {
 	fmt.println()
 	fmt.println("Bash - Source in .bashrc:")
 	fmt.printfln("  source %s", bash_completion_path)
+	fmt.println()
+	fmt.println("Fish - Symlink into completions dir:")
+	fmt.printfln("  ln -sf %s ~/.config/fish/completions/wayu.fish", fish_completion_path)
 	fmt.println()
 	fmt.println("Then restart your shell or run:")
 	fmt.println("  exec $SHELL")
