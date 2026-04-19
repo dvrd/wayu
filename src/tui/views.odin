@@ -147,7 +147,7 @@ render_view_loading :: proc(screen: ^Screen, state: ^TUIState, title: string, bo
 
 // Render the inline filter bar. Returns the list_start_offset (0 if no filter, 1 if filter shown).
 render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) -> int {
-	has_filter := state.filter_active || len(state.filter_text) > 0
+	has_filter := has_any_filter(state)
 	if !has_filter do return 0
 
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
@@ -157,12 +157,18 @@ render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) ->
 
 	max_filter_width := state.terminal_width - BORDER_LEFT_WIDTH - CONTENT_PADDING_LEFT - BORDER_RIGHT_WIDTH - 2
 
+	// Compose an optional `[source:X]` suffix when the source filter is on.
+	src_suffix: string = ""
+	if state.source_filter != .ALL {
+		src_suffix = fmt.tprintf("  [source:%s]", source_filter_label(state.source_filter))
+	}
+
 	if state.filter_active {
-		filter_display := fmt.tprintf("/ %s\u2588  (%d/%d matches)", filter_str, len(state.filtered_indices), item_count)
+		filter_display := fmt.tprintf("/ %s\u2588  (%d/%d matches)%s", filter_str, len(state.filtered_indices), item_count, src_suffix)
 		display := truncate_text(filter_display, max_filter_width)
 		render_text_styled(screen, header_x, filter_bar_y, display, TUI_SECONDARY, "", true)
 	} else {
-		filter_display := fmt.tprintf("/ %s  (%d/%d matches)", filter_str, len(state.filtered_indices), item_count)
+		filter_display := fmt.tprintf("/ %s  (%d/%d matches)%s", filter_str, len(state.filtered_indices), item_count, src_suffix)
 		display := truncate_text(filter_display, max_filter_width)
 		render_text_styled(screen, header_x, filter_bar_y, display, TUI_DIM)
 	}
@@ -227,7 +233,7 @@ split_list_item_glyph :: proc(item: string) -> (glyph, rest, fg: string) {
 
 // Standard footer for filterable data views
 FOOTER_FILTER_ACTIVE :: "Type to filter   Esc Cancel   Enter Accept   j/k Navigate"
-FOOTER_DATA_VIEW     :: "/ Filter   a Add   d Delete   h Back   l Enter   j/k Navigate"
+FOOTER_DATA_VIEW     :: "/ Filter   s Source   a Add   d Delete   h Back   l Enter   j/k"
 FOOTER_READONLY_VIEW :: "/ Filter   h Back   l Enter   j/k Navigate"
 FOOTER_BACKUP_VIEW   :: "/ Filter   c Cleanup   h Back   j/k Navigate"
 FOOTER_STATIC_VIEW   :: "h Back"
@@ -465,7 +471,7 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 		}
 	}
 
-	has_filter := state.filter_active || len(state.filter_text) > 0
+	has_filter := has_any_filter(state)
 	list_start_offset := render_filter_bar(screen, state, len(items))
 
 	// Content area starts after divider (+1) and optional filter bar
@@ -736,7 +742,7 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 		items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
 		render_plugin_tab_bar(screen, state, border_width)
 
-		has_filter    := state.filter_active || len(state.filter_text) > 0
+		has_filter    := has_any_filter(state)
 		filter_offset := render_filter_bar(screen, state, len(items))
 		content_start := LIST_ITEM_START_LINE + 1 + filter_offset
 
@@ -788,7 +794,7 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 	items := state.plugin_registry_cache
 	render_plugin_tab_bar(screen, state, border_width)
 
-	has_filter    := state.filter_active || len(state.filter_text) > 0
+	has_filter    := has_any_filter(state)
 	filter_offset := render_filter_bar(screen, state, len(items^))
 	content_start := LIST_ITEM_START_LINE + 1 + filter_offset
 

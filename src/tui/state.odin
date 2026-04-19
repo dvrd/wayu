@@ -20,6 +20,18 @@ NotificationKind :: enum {
 	ERROR,
 }
 
+// Source filter cycles with `s` in data views. Matches on the glyph rune
+// that tui_bridge_impl.odin prepends to each cache item:
+//   ● = WAYU_ACTIVE, ⚠ = WAYU_INACTIVE, ○ = EXTERNAL.
+// Separator lines (`─── External (N) ───`) and other glyph-less rows are
+// filtered out whenever SourceFilter != ALL.
+SourceFilter :: enum {
+	ALL,
+	WAYU_ACTIVE,
+	WAYU_INACTIVE,
+	EXTERNAL,
+}
+
 // Saved cursor position for a view (selected_index + scroll_offset)
 ViewCursor :: struct {
 	selected_index: int,
@@ -70,6 +82,8 @@ TUIState :: struct {
 	filter_active:     bool,
 	filter_text:       [dynamic]u8,
 	filtered_indices:  [dynamic]int,  // indices into the original cache that match
+	// Source filter — cycles ALL → WAYU_ACTIVE → WAYU_INACTIVE → EXTERNAL → ALL
+	source_filter:     SourceFilter,
 	// Notification state
 	notification_kind:    NotificationKind,
 	notification_message: string,
@@ -340,10 +354,28 @@ matches_filter :: proc(item: string, filter: []u8) -> bool {
 	return false
 }
 
-// Rebuild filtered_indices based on current filter_text and cache
+// Returns true if `item` belongs to the currently selected source filter.
+// SourceFilter.ALL passes everything. Non-ALL filters require the item to
+// start with the matching glyph rune — separator lines and any glyph-less
+// rows are excluded so the filtered view shows a clean single-source list.
+matches_source :: proc(item: string, filter: SourceFilter) -> bool {
+	if filter == .ALL { return true }
+	if len(item) == 0 { return false }
+	switch filter {
+	case .WAYU_ACTIVE:   return strings.has_prefix(item, "●")
+	case .WAYU_INACTIVE: return strings.has_prefix(item, "⚠")
+	case .EXTERNAL:      return strings.has_prefix(item, "○")
+	case .ALL:           return true
+	}
+	return true
+}
+
+// Rebuild filtered_indices based on current filter_text, source_filter, and cache.
+// An item survives only if it matches BOTH the source filter and the text filter.
 apply_filter :: proc(state: ^TUIState, items: []string) {
 	clear(&state.filtered_indices)
 	for item, i in items {
+		if !matches_source(item, state.source_filter) { continue }
 		if matches_filter(item, state.filter_text[:]) {
 			append(&state.filtered_indices, i)
 		}
@@ -352,6 +384,36 @@ apply_filter :: proc(state: ^TUIState, items: []string) {
 		state.selected_index = max(0, len(state.filtered_indices) - 1)
 	}
 	state.scroll_offset = 0
+}
+
+// Cycle the source filter and re-apply over the given cache.
+// Also forces a refresh via filtered_indices even when filter_active is false,
+// so the rendering layer switches to the indexed path.
+cycle_source_filter :: proc(state: ^TUIState, items: []string) {
+	switch state.source_filter {
+	case .ALL:           state.source_filter = .WAYU_ACTIVE
+	case .WAYU_ACTIVE:   state.source_filter = .WAYU_INACTIVE
+	case .WAYU_INACTIVE: state.source_filter = .EXTERNAL
+	case .EXTERNAL:      state.source_filter = .ALL
+	}
+	apply_filter(state, items)
+}
+
+// True when any filter (text or source) is active — used by views to decide
+// whether to render through filtered_indices or over the raw cache.
+has_any_filter :: proc(state: ^TUIState) -> bool {
+	return state.filter_active || len(state.filter_text) > 0 || state.source_filter != .ALL
+}
+
+// Short label for the current source filter — used in footer/header hints.
+source_filter_label :: proc(filter: SourceFilter) -> string {
+	switch filter {
+	case .ALL:           return "all"
+	case .WAYU_ACTIVE:   return "wayu"
+	case .WAYU_INACTIVE: return "inactive"
+	case .EXTERNAL:      return "external"
+	}
+	return "all"
 }
 
 // Get the current view's cache items as a string slice.

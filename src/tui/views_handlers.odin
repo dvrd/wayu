@@ -76,6 +76,12 @@ handle_path_event :: proc(state: ^TUIState, key: KeyEvent) {
 				apply_filter(state, cache)
 			}
 			state.needs_refresh = true
+		case 's':
+			cache := get_current_cache(state)
+			if cache != nil {
+				cycle_source_filter(state, cache)
+			}
+			state.needs_refresh = true
 		}
 	}
 }
@@ -111,6 +117,12 @@ handle_alias_event :: proc(state: ^TUIState, key: KeyEvent) {
 				apply_filter(state, cache)
 			}
 			state.needs_refresh = true
+		case 's':
+			cache := get_current_cache(state)
+			if cache != nil {
+				cycle_source_filter(state, cache)
+			}
+			state.needs_refresh = true
 		}
 	}
 }
@@ -144,6 +156,12 @@ handle_constants_event :: proc(state: ^TUIState, key: KeyEvent) {
 			cache := get_current_cache(state)
 			if cache != nil {
 				apply_filter(state, cache)
+			}
+			state.needs_refresh = true
+		case 's':
+			cache := get_current_cache(state)
+			if cache != nil {
+				cycle_source_filter(state, cache)
 			}
 			state.needs_refresh = true
 		}
