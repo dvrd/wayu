@@ -87,6 +87,20 @@ INIT_TEMPLATE :: `#!/usr/bin/env zsh
 # Determine config directory (supports WAYU_CONFIG_DIR override for testing)
 : ${WAYU_CONFIG_DIR:=$HOME/.config/wayu}
 
+# === Fast path: compiled init-core from wayu.toml ===
+# After wayu v3.10 wayu.toml is the source of truth. 'wayu path/alias/
+# constants add', 'wayu template apply' and 'wayu build eval' all write
+# into init-core.zsh. When it exists we source it exclusively — the legacy
+# individual files below stay empty and would just be no-ops anyway.
+if [ -f "$WAYU_CONFIG_DIR/init-core.zsh" ]; then
+    source "$WAYU_CONFIG_DIR/init-core.zsh"
+    [ -f "$WAYU_CONFIG_DIR/extra.zsh" ] && source "$WAYU_CONFIG_DIR/extra.zsh"
+    [ -f "$WAYU_CONFIG_DIR/tools.zsh" ] && source "$WAYU_CONFIG_DIR/tools.zsh"
+    return 0 2>/dev/null || true
+fi
+
+# === Legacy fallback (pre-wayu.toml era) ===
+
 # === 1. Core Configuration ===
 # Load constants and environment variables first (they may be needed by other modules)
 source "$WAYU_CONFIG_DIR/constants.zsh"
@@ -338,6 +352,17 @@ INIT_TEMPLATE_BASH :: `#!/usr/bin/env bash
 # Determine config directory (supports WAYU_CONFIG_DIR override for testing)
 : ${WAYU_CONFIG_DIR:=$HOME/.config/wayu}
 
+# === Fast path: compiled init-core from wayu.toml ===
+# See the zsh template comment for rationale.
+if [ -f "$WAYU_CONFIG_DIR/init-core.bash" ]; then
+    source "$WAYU_CONFIG_DIR/init-core.bash"
+    [ -f "$WAYU_CONFIG_DIR/extra.bash" ] && source "$WAYU_CONFIG_DIR/extra.bash"
+    [ -f "$WAYU_CONFIG_DIR/tools.bash" ] && source "$WAYU_CONFIG_DIR/tools.bash"
+    return 0 2>/dev/null || true
+fi
+
+# === Legacy fallback (pre-wayu.toml era) ===
+
 # === 1. Core Configuration ===
 # Load constants and environment variables first (they may be needed by other modules)
 source "$WAYU_CONFIG_DIR/constants.bash"
@@ -480,6 +505,23 @@ INIT_TEMPLATE_FISH :: `#!/usr/bin/env fish
 
 # Determine config directory (supports WAYU_CONFIG_DIR override for testing)
 set -gx WAYU_CONFIG_DIR (test -n "$WAYU_CONFIG_DIR"; and echo "$WAYU_CONFIG_DIR"; or echo "$HOME/.config/wayu")
+
+# === Fast path: compiled init-core from wayu.toml ===
+# After wayu v3.10 wayu.toml is the source of truth. When init-core.fish
+# exists we source it exclusively — the legacy individual files below
+# stay empty and would just be no-ops anyway.
+if test -f "$WAYU_CONFIG_DIR/init-core.fish"
+    source "$WAYU_CONFIG_DIR/init-core.fish"
+    if test -f "$WAYU_CONFIG_DIR/extra.fish"
+        source "$WAYU_CONFIG_DIR/extra.fish"
+    end
+    if test -f "$WAYU_CONFIG_DIR/tools.fish"
+        source "$WAYU_CONFIG_DIR/tools.fish"
+    end
+    return 0
+end
+
+# === Legacy fallback (pre-wayu.toml era) ===
 
 # === 1. Core Configuration ===
 # Load constants and environment variables first (they may be needed by other modules)

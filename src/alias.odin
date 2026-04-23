@@ -242,6 +242,8 @@ toml_alias_add :: proc(entry: ConfigEntry) -> (bool, string) {
 		return false, strings.clone("I/O error: could not update wayu.toml")
 	}
 
+	regenerate_init_core_silently()
+
 	if had_existing {
 		print_success("Alias updated successfully in wayu.toml: %s", entry.name)
 	} else {
@@ -280,6 +282,8 @@ toml_alias_remove :: proc(name: string) -> (bool, string) {
 	if !write_wayu_toml_aliases(updated[:]) {
 		return false, strings.clone("I/O error: could not update wayu.toml")
 	}
+
+	regenerate_init_core_silently()
 
 	print_success("Alias removed successfully from wayu.toml: %s", name)
 	return true, ""
