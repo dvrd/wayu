@@ -1,9 +1,5 @@
 name: Bump Version & Release
 
-permissions:
-  contents: write
-  actions: read
-  
 on:
   push:
     branches: [main]
@@ -27,6 +23,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   bump:
