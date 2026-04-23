@@ -170,7 +170,7 @@ test_format_path_list_json_with_entries :: proc(t: ^testing.T) {
 		value = "",
 		line = `  "/home/user/bin"`,
 	}
-	defer wayu.cleanup_entries(&entries)
+	defer delete(entries)
 
 	result := wayu.format_path_list_json(entries)
 	defer delete(result)
@@ -211,7 +211,7 @@ test_format_alias_list_json_with_entries :: proc(t: ^testing.T) {
 		value = "git commit",
 		line = `alias gc="git commit"`,
 	}
-	defer wayu.cleanup_entries(&entries)
+	defer delete(entries)
 
 	result := wayu.format_alias_list_json(entries)
 	defer delete(result)
@@ -254,7 +254,7 @@ test_format_constant_list_json_with_entries :: proc(t: ^testing.T) {
 		value = "/home/user",
 		line = `HOME_DIR="/home/user"`,
 	}
-	defer wayu.cleanup_entries(&entries)
+	defer delete(entries)
 
 	result := wayu.format_constant_list_json(entries)
 	defer delete(result)

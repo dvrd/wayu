@@ -135,7 +135,7 @@ test_generate_custom_theme_template :: proc(t: ^testing.T) {
 test_generate_starship_toml :: proc(t: ^testing.T) {
 	// Test starship config generation
 	config := wayu.generate_starship_toml()
-	defer delete(config)
+	// Note: generate_starship_toml returns a static string literal, don't delete
 
 	testing.expect(t, len(config) > 0)
 	testing.expect(t, strings.contains(config, "format ="))

@@ -846,7 +846,10 @@ read_config_entries :: proc(spec: ^ConfigEntrySpec) -> []ConfigEntry {
 		}
 	}
 
-	return entries[:]
+	result := make([]ConfigEntry, len(entries))
+	copy(result, entries[:])
+	delete(entries)
+	return result
 }
 
 // Helper: Check if entry exists
@@ -911,10 +914,13 @@ is_entry_complete :: proc(entry: ConfigEntry) -> bool {
 }
 
 // Helper: Cleanup single entry
+// Note: String fields are intentionally not deleted here because
+// they may come from different allocation contexts (temp allocator,
+// string literals, etc.). The backing slice/array is freed by the caller.
 cleanup_entry :: proc(entry: ^ConfigEntry) {
-	if len(entry.name) > 0 { delete(entry.name) }
-	if len(entry.value) > 0 { delete(entry.value) }
-	if len(entry.line) > 0 { delete(entry.line) }
+	entry.name = ""
+	entry.value = ""
+	entry.line = ""
 }
 
 // Helper: Cleanup entry array

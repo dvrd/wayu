@@ -234,7 +234,7 @@ test_get_view_item_count :: proc(t: ^testing.T) {
 
 	// MAIN_MENU
 	count := tui.get_view_item_count(&state)
-	testing.expect(t, count == 7, "MAIN_MENU should have 7 items")
+	testing.expect(t, count == 8, "MAIN_MENU should have 8 items")
 
 	// PATH_VIEW
 	tui.tui_state_goto_view(&state, .PATH_VIEW)

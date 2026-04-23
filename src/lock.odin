@@ -66,7 +66,9 @@ lock_generate_hash :: proc(entry: ConfigEntry) -> string {
 
 	// Encode to hex
 	encoded, _ := hex.encode(hash_bytes[:])
-	return string(encoded)
+	result := strings.clone(string(encoded))
+	delete(encoded)
+	return result
 }
 
 // Add an entry to the lock file
@@ -314,7 +316,7 @@ config_entry_to_lock_entry :: proc(entry: ConfigEntry, type: ConfigType) -> Lock
 normalize_entry_for_hash :: proc(entry: ConfigEntry) -> string {
 	// Normalize entry content for consistent hashing
 	// Format: "TYPE:NAME:VALUE:LINE"
-	return fmt.tprintf("%s:%s:%s:%s",
+	return fmt.aprintf("%s:%s:%s:%s",
 		entry.type,
 		strings.trim_space(entry.name),
 		strings.trim_space(entry.value),
