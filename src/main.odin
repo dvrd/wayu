@@ -14,7 +14,7 @@ import tui "tui"
 
 // Semantic versioning - update with each release
 // v3.10.1 - 2026-04-18
-VERSION :: "3.10.1"
+VERSION :: "3.11.0"
 
 HOME : string
 WAYU_CONFIG : string
