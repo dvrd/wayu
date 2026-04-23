@@ -87,78 +87,86 @@ apply_template :: proc(name: string) {
 	}
 }
 
+// Shared helpers so each template routes through the TOML-first add paths
+// instead of the legacy shell-file writer (add_config_entry). Without this,
+// fish users ended up with aliases.fish/constants.fish that shipped bash
+// syntax (`alias g="git"`, `export EDITOR=...`) while wayu.toml stayed
+// empty.
+
+template_add_paths :: proc(paths: []string) {
+	if !ensure_wayu_toml_exists() {
+		print_error_simple("Failed to create wayu.toml")
+		return
+	}
+	for p in paths {
+		fmt.printfln("  Adding: %s%s%s", get_muted(), p, RESET)
+		if !toml_path_add(p) {
+			print_warning("  skipped (could not write): %s", p)
+		}
+	}
+}
+
+template_add_aliases :: proc(aliases: []struct{name, command: string}) {
+	if !ensure_wayu_toml_exists() {
+		print_error_simple("Failed to create wayu.toml")
+		return
+	}
+	for a in aliases {
+		fmt.printfln("  Adding alias: %s%s%s = %s", get_primary(), a.name, RESET, a.command)
+		entry := ConfigEntry{type = .ALIAS, name = a.name, value = a.command}
+		if ok, err := toml_alias_add(entry); !ok {
+			print_warning("  skipped %s: %s", a.name, err)
+			delete(err)
+		}
+	}
+}
+
+template_add_constants :: proc(consts: []struct{name, value: string}) {
+	if !ensure_wayu_toml_exists() {
+		print_error_simple("Failed to create wayu.toml")
+		return
+	}
+	for c in consts {
+		fmt.printfln("  Adding constant: %s%s%s = %s", get_primary(), c.name, RESET, c.value)
+		entry := ConfigEntry{type = .CONSTANT, name = c.name, value = c.value}
+		if ok, err := toml_constant_add(entry); !ok {
+			print_warning("  skipped %s: %s", c.name, err)
+			delete(err)
+		}
+	}
+}
+
 // Developer template
 apply_developer_template :: proc() {
 	print_header("Applying Developer Template", "💻")
 	fmt.println()
 
-	paths := []string{
+	template_add_paths([]string{
 		"/opt/homebrew/bin",
 		"/usr/local/bin",
 		"$HOME/.cargo/bin",
 		"$HOME/.local/bin",
 		"$HOME/.npm-global/bin",
 		"$HOME/go/bin",
-	}
+	})
 
-	for p in paths {
-		fmt.printfln("  Adding: %s%s%s", get_muted(), p, RESET)
-		// Add silently
-		entry := ConfigEntry{
-			type  = .PATH,
-			name  = p,
-			value = "",
-			line  = "",
-		}
-		add_config_entry(&PATH_SPEC, entry)
-	}
-
-	aliases := []struct {
-		name:    string,
-		command: string,
-	}{
+	fmt.println()
+	template_add_aliases([]struct{name, command: string}{
 		{"g", "git"},
 		{"gs", "git status"},
 		{"gcm", "git commit -m"},
 		{"gp", "git push"},
 		{"code", "code ."},
-		{"s", "source ~/.zshrc"},
-	}
+	})
 
 	fmt.println()
-	for a in aliases {
-		fmt.printfln("  Adding alias: %s%s%s = %s", get_primary(), a.name, RESET, a.command)
-		entry := ConfigEntry{
-			type  = .ALIAS,
-			name  = a.name,
-			value = a.command,
-			line  = "",
-		}
-		add_config_entry(&ALIAS_SPEC, entry)
-	}
-
-	constants := []struct {
-		name:  string,
-		value: string,
-	}{
+	template_add_constants([]struct{name, value: string}{
 		{"EDITOR", "code --wait"},
 		{"GOPATH", "$HOME/go"},
-	}
+	})
 
 	fmt.println()
-	for c in constants {
-		fmt.printfln("  Adding constant: %s%s%s = %s", get_primary(), c.name, RESET, c.value)
-		entry := ConfigEntry{
-			type  = .CONSTANT,
-			name  = c.name,
-			value = c.value,
-			line  = "",
-		}
-		add_config_entry(&CONSTANTS_SPEC, entry)
-	}
-
-	fmt.println()
-	print_success("Developer template applied!")
+	print_success("Developer template applied! Run 'wayu build eval' to regenerate shell files.")
 }
 
 // Minimal template
@@ -177,49 +185,23 @@ apply_datascience_template :: proc() {
 	print_header("Applying Data Science Template", "📊")
 	fmt.println()
 
-	paths := []string{
+	template_add_paths([]string{
 		"/opt/homebrew/anaconda3/bin",
 		"$HOME/.conda/bin",
 		"$HOME/.local/bin",
 		"/usr/local/bin",
-	}
+	})
 
-	for p in paths {
-		fmt.printfln("  Adding: %s%s%s", get_muted(), p, RESET)
-		entry := ConfigEntry{
-			type  = .PATH,
-			name  = p,
-			value = "",
-			line  = "",
-		}
-		add_config_entry(&PATH_SPEC, entry)
-	}
-
-	aliases := []struct {
-		name:    string,
-		command: string,
-	}{
+	fmt.println()
+	template_add_aliases([]struct{name, command: string}{
 		{"jlab", "jupyter lab"},
 		{"jnb", "jupyter notebook"},
 		{"py", "python3"},
 		{"pip", "pip3"},
-		{"conda", "conda"},
-	}
+	})
 
 	fmt.println()
-	for a in aliases {
-		fmt.printfln("  Adding alias: %s%s%s = %s", get_primary(), a.name, RESET, a.command)
-		entry := ConfigEntry{
-			type  = .ALIAS,
-			name  = a.name,
-			value = a.command,
-			line  = "",
-		}
-		add_config_entry(&ALIAS_SPEC, entry)
-	}
-
-	fmt.println()
-	print_success("Data Science template applied!")
+	print_success("Data Science template applied! Run 'wayu build eval' to regenerate shell files.")
 }
 
 // Full template
@@ -227,8 +209,7 @@ apply_full_template :: proc() {
 	print_header("Applying Full Template", "🔥")
 	fmt.println()
 
-	// Combine all paths from other templates
-	all_paths := []string{
+	template_add_paths([]string{
 		"/opt/homebrew/bin",
 		"/usr/local/bin",
 		"$HOME/.cargo/bin",
@@ -238,21 +219,10 @@ apply_full_template :: proc() {
 		"$HOME/.julia/bin",
 		"$HOME/.deno/bin",
 		"$HOME/.bun/bin",
-	}
-
-	for p in all_paths {
-		fmt.printfln("  Adding: %s%s%s", get_muted(), p, RESET)
-		entry := ConfigEntry{
-			type  = .PATH,
-			name  = p,
-			value = "",
-			line  = "",
-		}
-		add_config_entry(&PATH_SPEC, entry)
-	}
+	})
 
 	fmt.println()
-	print_success("Full template applied!")
+	print_success("Full template applied! Run 'wayu build eval' to regenerate shell files.")
 }
 
 // Print template usage
