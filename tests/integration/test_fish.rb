@@ -30,6 +30,7 @@ class FishIntegrationTest
       test_path_writes_to_toml
       test_init_core_fish_is_native_syntax
       test_watch_regenerate_emits_fish
+      test_completion_add_uses_fish_naming
     ensure
       teardown_test_env
     end
@@ -128,6 +129,24 @@ class FishIntegrationTest
       puts "  fish_ok=#{fish_ok} bash_leak=#{bash_leak}"
       @failed += 1
     end
+  end
+
+  def test_completion_add_uses_fish_naming
+    print "Test 7: completions add uses fish naming (foo.fish)... "
+    src = "#{@config_dir}/src_completion.fish"
+    File.write(src, "# dummy fish completion\ncomplete -c foo -s h\n")
+    _, status = run_fish("completions add foo #{src}")
+    target = "#{@config_dir}/completions/foo.fish"
+    zsh_target = "#{@config_dir}/completions/_foo"
+    if status.success? && File.exist?(target) && !File.exist?(zsh_target)
+      puts "✓"; @passed += 1
+    else
+      puts "✗"
+      puts "  exit=#{status.success?} target_exists=#{File.exist?(target)} zsh_leaked=#{File.exist?(zsh_target)}"
+      @failed += 1
+    end
+  ensure
+    File.delete(src) if src && File.exist?(src)
   end
 
   def test_watch_regenerate_emits_fish
