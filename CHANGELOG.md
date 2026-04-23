@@ -5,6 +5,11 @@ All notable changes to wayu will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.0] - 2026-04-23
+
+### Added
+
+- **init**: Auto-regenerate init-core; init.ext fast-paths to it
 ## [3.11.1] - 2026-04-23
 
 ### Fixed
@@ -349,6 +354,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Correct termios struct for macOS compatibility
 - Resolve unit test failures and improve test robustness
 - Rename run_component_test to run_component_testing
+[3.12.0]: https://github.com/dvrd/wayu/releases/tag/v3.12.0
 [3.11.1]: https://github.com/dvrd/wayu/releases/tag/v3.11.1
 [3.11.0]: https://github.com/dvrd/wayu/releases/tag/v3.11.0
 [3.10.1]: https://github.com/dvrd/wayu/releases/tag/v3.10.1
