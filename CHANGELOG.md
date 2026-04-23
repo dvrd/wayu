@@ -5,6 +5,11 @@ All notable changes to wayu will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.0] - 2026-04-23
+
+### Added
+
+- **profile**: Per-phase breakdown of init-core.zsh via EPOCHREALTIME
 ## [3.14.1] - 2026-04-23
 
 ### Fixed
@@ -369,6 +374,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Correct termios struct for macOS compatibility
 - Resolve unit test failures and improve test robustness
 - Rename run_component_test to run_component_testing
+[3.15.0]: https://github.com/dvrd/wayu/releases/tag/v3.15.0
 [3.14.1]: https://github.com/dvrd/wayu/releases/tag/v3.14.1
 [3.14.0]: https://github.com/dvrd/wayu/releases/tag/v3.14.0
 [3.13.0]: https://github.com/dvrd/wayu/releases/tag/v3.13.0
