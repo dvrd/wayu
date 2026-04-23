@@ -1,4 +1,4 @@
-// completions.odin - Manage Zsh completion scripts
+// completions.odin - Manage shell completion scripts (zsh, bash, fish)
 
 package wayu
 
@@ -7,6 +7,66 @@ import "core:os"
 import "core:strings"
 
 COMPLETIONS_FILE :: "completions"
+
+// Returns the on-disk filename a completion should have for the current shell.
+//
+// If `name` already carries a conventional prefix/extension, keep it as-is
+// — the user might be porting a completion file across shells and knows
+// what they want. Otherwise apply the shell-specific convention:
+//
+//   zsh  → `_name`               (autoloaded via fpath + compinit)
+//   bash → `name.bash-completion` (loop-sourced by init-core.bash)
+//   fish → `name.fish`           (autoloaded via fish_complete_path)
+completion_filename_for_shell :: proc(name: string, shell: ShellType) -> string {
+	// Already in a recognized shell-specific form — respect it.
+	if strings.has_prefix(name, "_") ||
+	   strings.has_suffix(name, ".fish") ||
+	   strings.has_suffix(name, ".bash") ||
+	   strings.has_suffix(name, ".bash-completion") {
+		return strings.clone(name)
+	}
+
+	switch shell {
+	case .FISH:
+		return fmt.aprintf("%s.fish", name)
+	case .BASH:
+		return fmt.aprintf("%s.bash-completion", name)
+	case .ZSH, .UNKNOWN:
+		return fmt.aprintf("_%s", name)
+	}
+	return strings.clone(name)
+}
+
+// Returns true if a directory entry looks like a completion file
+// (any supported shell). Used by list/cleanup paths.
+is_completion_file :: proc(filename: string) -> bool {
+	if strings.contains(filename, ".backup.") do return false
+	return strings.has_prefix(filename, "_") ||
+	       strings.has_suffix(filename, ".fish") ||
+	       strings.has_suffix(filename, ".bash") ||
+	       strings.has_suffix(filename, ".bash-completion")
+}
+
+// Given a user-supplied name (e.g. "jj"), return the first matching completion
+// file that actually exists in `dir`, trying every shell convention. Returns
+// empty string if nothing matched. Caller owns the returned string.
+find_existing_completion :: proc(dir, name: string) -> string {
+	candidates := [?]string {
+		name,
+		fmt.tprintf("_%s", name),
+		fmt.tprintf("%s.fish", name),
+		fmt.tprintf("%s.bash", name),
+		fmt.tprintf("%s.bash-completion", name),
+	}
+	for cand in candidates {
+		full := fmt.aprintf("%s/%s", dir, cand)
+		if os.exists(full) {
+			return full
+		}
+		delete(full)
+	}
+	return ""
+}
 
 // Handle completions command
 handle_completions_command :: proc(action: Action, args: []string) {
@@ -68,13 +128,10 @@ add_completion :: proc(name: string, source_path: string) {
 		os.exit(EXIT_NOINPUT)
 	}
 
-	// Normalize name (add underscore if missing)
-	completion_name := name
-	allocated_name := false
-	if !strings.has_prefix(name, "_") {
-		completion_name = fmt.aprintf("_%s", name)
-		allocated_name = true
-	}
+	// Normalize name with shell-appropriate convention (zsh `_foo`,
+	// bash `foo.bash-completion`, fish `foo.fish`).
+	completion_name := completion_filename_for_shell(name, DETECTED_SHELL)
+	defer delete(completion_name)
 
 	// Read source file
 	content, read_ok := safe_read_file(source_path)
@@ -110,10 +167,6 @@ add_completion :: proc(name: string, source_path: string) {
 		fmt.printfln("  %s -> %s", source_path, dest_path)
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
-		// Clean up allocated name if needed
-		if allocated_name {
-			delete(completion_name)
-		}
 		return
 	}
 
@@ -132,39 +185,35 @@ add_completion :: proc(name: string, source_path: string) {
 	cleanup_old_backups(dest_path, 5)
 
 	print_success("Added completion: %s", completion_name)
+	init_file := get_config_file_with_fallback("init", DETECTED_SHELL)
+	defer delete(init_file)
 	fmt.printfln("\n%sNext steps:%s", BRIGHT_CYAN, RESET)
-	fmt.printfln("  source ~/.config/wayu/init.zsh")
+	fmt.printfln("  source %s", init_file)
 	fmt.printfln("  or restart your shell")
-
-	// Clean up allocated name if needed
-	if allocated_name {
-		delete(completion_name)
-	}
 }
 
 // Remove completion file
 remove_completion :: proc(name: string) {
-	// Normalize name
-	completion_name := name
-	allocated_name := false
-	if !strings.has_prefix(name, "_") {
-		completion_name = fmt.aprintf("_%s", name)
-		allocated_name = true
-	}
-
-	// Build path
+	// Build directory path
 	completions_dir := fmt.aprintf("%s/completions", WAYU_CONFIG)
 	defer delete(completions_dir)
 
-	file_path := fmt.aprintf("%s/%s", completions_dir, completion_name)
-	defer delete(file_path)
+	// Try shell-appropriate form first, then fall back to any other matching
+	// convention so users don't need to remember underscores vs extensions.
+	file_path := find_existing_completion(completions_dir, name)
+	defer if file_path != "" do delete(file_path)
 
-	// Check exists
-	if !os.exists(file_path) {
-		print_error_simple("Completion not found: %s", completion_name)
+	if file_path == "" {
+		print_error_simple("Completion not found: %s", name)
 		fmt.printfln("\nRun %swayu completions list%s to see available completions",
 			MUTED, RESET)
 		os.exit(EXIT_NOINPUT)
+	}
+
+	// Extract just the filename for status messages.
+	completion_name := file_path
+	if slash := strings.last_index_byte(file_path, '/'); slash >= 0 {
+		completion_name = file_path[slash + 1:]
 	}
 
 	// Dry-run mode check
@@ -175,10 +224,6 @@ remove_completion :: proc(name: string) {
 		fmt.printfln("  %s", file_path)
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
-		// Clean up allocated name if needed
-		if allocated_name {
-			delete(completion_name)
-		}
 		return
 	}
 
@@ -198,11 +243,6 @@ remove_completion :: proc(name: string) {
 	cleanup_old_backups(file_path, 5)
 
 	print_success("Removed completion: %s", completion_name)
-
-	// Clean up allocated name if needed
-	if allocated_name {
-		delete(completion_name)
-	}
 }
 
 // TUI-only: Interactive removal using fuzzy finder
@@ -278,13 +318,9 @@ list_completions :: proc() {
 	defer delete(completion_files)
 
 	for info in file_infos {
-		if strings.has_prefix(info.name, "_") && info.type != .Directory {
-			// Skip backup files
-			if strings.contains(info.name, ".backup.") {
-				continue
-			}
-			append(&completion_files, info)
-		}
+		if info.type == .Directory do continue
+		if !is_completion_file(info.name) do continue
+		append(&completion_files, info)
 	}
 
 	// Print header
@@ -368,7 +404,8 @@ print_completions_help :: proc() {
 	// Notes section
 	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
 	fmt.printf("  %s• Completion files are stored in ~/.config/wayu/completions/%s\n", get_muted(), RESET)
-	fmt.printf("  %s• Files are automatically prefixed with '_' if not already%s\n", get_muted(), RESET)
-	fmt.printf("  %s• Restart your shell or run 'source ~/.config/wayu/init.zsh' after adding%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Naming follows the active shell: zsh `_name`, bash `name.bash-completion`, fish `name.fish`%s\n", get_muted(), RESET)
+	fmt.printf("  %s• If the input already has a recognized form (_foo, foo.fish, ...) it is kept as-is%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Restart your shell or re-source the wayu init file after adding%s\n", get_muted(), RESET)
 	fmt.println()
 }
