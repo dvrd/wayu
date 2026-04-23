@@ -17,3 +17,6 @@ thoughts/
 /unit
 /unit_test
 /wayu_test
+/unit.dSYM/
+/wayu.dSYM/
+*.dSYM/
