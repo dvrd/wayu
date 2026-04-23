@@ -31,6 +31,7 @@ class FishIntegrationTest
       test_init_core_fish_is_native_syntax
       test_watch_regenerate_emits_fish
       test_completion_add_uses_fish_naming
+      test_template_applies_to_toml_with_fish_syntax
     ensure
       teardown_test_env
     end
@@ -129,6 +130,33 @@ class FishIntegrationTest
       puts "  fish_ok=#{fish_ok} bash_leak=#{bash_leak}"
       @failed += 1
     end
+  end
+
+  def test_template_applies_to_toml_with_fish_syntax
+    print "Test 8: template apply writes to wayu.toml + fish-native init... "
+    # Use a dedicated tmp home so previous tests don't influence content.
+    scratch = "#{@tmp_home}/scratch_tpl"
+    FileUtils.mkdir_p("#{scratch}/.config")
+    env = ENV.to_h.merge('HOME' => scratch, 'SHELL' => '/usr/bin/fish')
+    Open3.capture3(env, "#{@wayu_bin} init --shell fish")
+    Open3.capture3(env, "#{@wayu_bin} template apply developer")
+    Open3.capture3(env, "#{@wayu_bin} build eval")
+    toml = File.read("#{scratch}/.config/wayu/wayu.toml")
+    init = File.read("#{scratch}/.config/wayu/init-core.fish")
+    toml_ok = toml.include?('g = "git"') && toml.include?('EDITOR = "code --wait"') &&
+              toml.include?('path = "/opt/homebrew/bin"')
+    fish_native = init.include?("alias g 'git'") && init.include?('set -gx EDITOR') &&
+                  init.include?('set -gx PATH')
+    bash_leak  = init.include?('alias g="git"') || init.include?('export EDITOR=')
+    if toml_ok && fish_native && !bash_leak
+      puts "✓"; @passed += 1
+    else
+      puts "✗"
+      puts "  toml_ok=#{toml_ok} fish_native=#{fish_native} bash_leak=#{bash_leak}"
+      @failed += 1
+    end
+  ensure
+    FileUtils.rm_rf(scratch) if scratch && Dir.exist?(scratch)
   end
 
   def test_completion_add_uses_fish_naming

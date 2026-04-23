@@ -455,7 +455,12 @@ read_wayu_toml_paths :: proc() -> [dynamic]string {
 }
 
 
-// Lee las variables [env] de wayu.toml y retorna lista de (nombre, valor)
+// Lee variables de entorno desde wayu.toml y retorna lista de (nombre, valor).
+//
+// Acepta las dos ubicaciones históricas — `[env]` (formato más antiguo) y
+// `[constants]` (formato actual que usa `wayu constants add`). Antes de este
+// fix los constants iban a `[constants]` pero el init generator sólo leía
+// `[env]`, por lo que nunca aparecían en init-core.{zsh,bash,fish}.
 EnvEntry :: struct {
 	name: string,
 	value: string,
@@ -477,12 +482,19 @@ read_wayu_toml_env :: proc() -> [dynamic]EnvEntry {
 	for line in lines {
 		trimmed := strings.trim_space(line)
 
-		if trimmed == "[env]" {
+		if trimmed == "[env]" || trimmed == "[constants]" {
 			in_env = true
 			continue
 		}
 
-		// Cualquier otro header termina [env]
+		// `[[constants]]` is the array-of-tables legacy form; skip — it's
+		// parsed line-by-line elsewhere with name/value keys across lines.
+		if trimmed == "[[constants]]" {
+			in_env = false
+			continue
+		}
+
+		// Any other header ends the env/constants section.
 		if strings.has_prefix(trimmed, "[") {
 			in_env = false
 			continue
