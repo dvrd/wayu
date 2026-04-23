@@ -73,16 +73,31 @@ test_init_template_loads_all_configs :: proc(t: ^testing.T) {
 
 @(test)
 test_init_template_order :: proc(t: ^testing.T) {
-	// Verify init template loads files in correct order
-	constants_pos := strings.index(wayu.INIT_TEMPLATE, "constants.zsh")
-	path_pos := strings.index(wayu.INIT_TEMPLATE, "path.zsh")
-	aliases_pos := strings.index(wayu.INIT_TEMPLATE, "aliases.zsh")
-	tools_pos := strings.index(wayu.INIT_TEMPLATE, "tools.zsh")
+	// INIT_TEMPLATE now starts with a fast-path block that sources
+	// init-core.zsh (when it exists) and returns before reaching the legacy
+	// sourcing. The legacy fallback below is what this test cares about, so
+	// we constrain our string searches to that region.
+	template := string(wayu.INIT_TEMPLATE)
+	fallback_marker := "=== Legacy fallback (pre-wayu.toml era) ==="
+	fallback_start := strings.index(template, fallback_marker)
+	testing.expect(t, fallback_start > 0,
+		"INIT_TEMPLATE must carry the legacy fallback block for pre-toml users")
 
-	// Constants should load first
+	legacy := template[fallback_start:]
+	constants_pos := strings.index(legacy, "constants.zsh")
+	path_pos := strings.index(legacy, "path.zsh")
+	aliases_pos := strings.index(legacy, "aliases.zsh")
+	tools_pos := strings.index(legacy, "tools.zsh")
+
 	testing.expect(t, constants_pos < path_pos, "Constants should load before PATH")
 	testing.expect(t, path_pos < aliases_pos, "PATH should load before aliases")
 	testing.expect(t, aliases_pos < tools_pos, "Aliases should load before tools")
+
+	// Sanity: the fast path appears before the fallback and references
+	// init-core.zsh, so modern users skip the legacy sourcing entirely.
+	fast_path_ref := strings.index(template, "$WAYU_CONFIG_DIR/init-core.zsh")
+	testing.expect(t, fast_path_ref >= 0 && fast_path_ref < fallback_start,
+		"INIT_TEMPLATE must source init-core.zsh before the legacy fallback")
 }
 
 @(test)

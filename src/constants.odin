@@ -364,6 +364,8 @@ toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
 		return false, strings.clone("I/O error: could not update wayu.toml")
 	}
 
+	regenerate_init_core_silently()
+
 	if had_existing {
 		print_success("Constant updated successfully in wayu.toml: %s", entry.name)
 	} else {
@@ -402,6 +404,8 @@ toml_constant_remove :: proc(name: string) -> (bool, string) {
 	if !write_wayu_toml_constants(updated[:]) {
 		return false, strings.clone("I/O error: could not update wayu.toml")
 	}
+
+	regenerate_init_core_silently()
 
 	print_success("Constant removed successfully from wayu.toml: %s", name)
 	return true, ""

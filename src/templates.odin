@@ -166,7 +166,8 @@ apply_developer_template :: proc() {
 	})
 
 	fmt.println()
-	print_success("Developer template applied! Run 'wayu build eval' to regenerate shell files.")
+	regenerate_init_core_silently()
+	print_success("Developer template applied! Reload your shell to activate.")
 }
 
 // Minimal template
@@ -201,7 +202,8 @@ apply_datascience_template :: proc() {
 	})
 
 	fmt.println()
-	print_success("Data Science template applied! Run 'wayu build eval' to regenerate shell files.")
+	regenerate_init_core_silently()
+	print_success("Data Science template applied! Reload your shell to activate.")
 }
 
 // Full template
@@ -222,7 +224,8 @@ apply_full_template :: proc() {
 	})
 
 	fmt.println()
-	print_success("Full template applied! Run 'wayu build eval' to regenerate shell files.")
+	regenerate_init_core_silently()
+	print_success("Full template applied! Reload your shell to activate.")
 }
 
 // Print template usage

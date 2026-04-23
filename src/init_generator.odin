@@ -12,6 +12,34 @@ import "core:strings"
 // Técnica 5: compinit optimizado (24h cache)
 // Técnica 6: split files (core/lazy/login)
 
+// Silently regenerate init-core.{ext} + plugin runtime config after any
+// mutation (path/alias/constants add/remove, template apply, ...).
+//
+// Unlike generate_optimized_init_all this version emits no log output so it
+// can be called on every CLI write without adding noise. Missing wayu.toml
+// or empty configs are treated as no-ops; errors during generation are
+// swallowed because the CLI already printed the user-visible success and
+// we don't want a secondary "regen failed" line to confuse things.
+regenerate_init_core_silently :: proc() {
+	// Only makes sense when there's a wayu.toml to read from — without it
+	// the generators would just write empty files.
+	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	defer delete(toml_path)
+	if !os.exists(toml_path) do return
+
+	if DETECTED_SHELL == .FISH {
+		generate_core_init_fish()
+		_ = generate_plugins_runtime_config(DETECTED_SHELL)
+		return
+	}
+
+	generate_core_init_v2()
+	generate_lazy_init_v2()
+	generate_login_init_v2()
+	generate_helpers_init_v2()
+	_ = generate_plugins_runtime_config(DETECTED_SHELL)
+}
+
 // Genera todos los archivos de init optimizados (versión v2 con todas las optimizaciones)
 generate_optimized_init_all :: proc() {
 	// Fish uses a single native init-core.fish; zsh-defer / lazy split is

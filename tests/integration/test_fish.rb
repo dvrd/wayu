@@ -32,6 +32,8 @@ class FishIntegrationTest
       test_watch_regenerate_emits_fish
       test_completion_add_uses_fish_naming
       test_template_applies_to_toml_with_fish_syntax
+      test_mutations_auto_regenerate_init_core
+      test_init_fish_prefers_init_core
     ensure
       teardown_test_env
     end
@@ -175,6 +177,46 @@ class FishIntegrationTest
     end
   ensure
     File.delete(src) if src && File.exist?(src)
+  end
+
+  def test_mutations_auto_regenerate_init_core
+    print "Test 9: alias/const/path add auto-regenerate init-core.fish... "
+    scratch = "#{@tmp_home}/scratch_auto"
+    FileUtils.mkdir_p("#{scratch}/.config")
+    env = ENV.to_h.merge('HOME' => scratch, 'SHELL' => '/usr/bin/fish')
+    Open3.capture3(env, "#{@wayu_bin} init --shell fish")
+    core = "#{scratch}/.config/wayu/init-core.fish"
+    # After fresh init, init-core.fish is generated but empty of user config.
+    baseline_has_alias = File.exist?(core) && File.read(core).include?("alias gg")
+    Open3.capture3(env, "#{@wayu_bin} alias add gg 'git status'")
+    Open3.capture3(env, "#{@wayu_bin} constants add MY_VAR xyz")
+    # No explicit 'build eval' run — init-core must reflect changes already.
+    body = File.exist?(core) ? File.read(core) : ''
+    ok = !baseline_has_alias &&
+         body.include?("alias gg 'git status'") &&
+         body.include?('set -gx MY_VAR "xyz"')
+    if ok
+      puts "✓"; @passed += 1
+    else
+      puts "✗"
+      puts "  baseline_has_alias=#{baseline_has_alias} body_has_alias=#{body.include?('alias gg')} body_has_const=#{body.include?('MY_VAR')}"
+      @failed += 1
+    end
+  ensure
+    FileUtils.rm_rf(scratch) if scratch && Dir.exist?(scratch)
+  end
+
+  def test_init_fish_prefers_init_core
+    print "Test 10: init.fish fast-paths through init-core.fish... "
+    body = File.read(@init_core.sub('init-core.fish', 'init.fish'))
+    if body.include?('if test -f "$WAYU_CONFIG_DIR/init-core.fish"') &&
+       body.include?('source "$WAYU_CONFIG_DIR/init-core.fish"')
+      puts "✓"; @passed += 1
+    else
+      puts "✗"
+      puts "  init.fish did not source init-core.fish on fast path"
+      @failed += 1
+    end
   end
 
   def test_watch_regenerate_emits_fish

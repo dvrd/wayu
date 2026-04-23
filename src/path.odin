@@ -51,8 +51,9 @@ handle_path_command :: proc(action: Action, args: []string) {
 		}
 		hook_pre_path_add(args[0])
 		if toml_path_add(args[0]) {
+			regenerate_init_core_silently()
 			print_success("✅ Added to wayu.toml: %s", args[0])
-			fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
+			fmt.printfln("   Reload your shell (or 'source ~/.config/wayu/init.%s') to apply.", SHELL_EXT)
 			hook_post_path_add(args[0])
 		} else {
 			os.exit(EXIT_IOERR)
@@ -64,8 +65,9 @@ handle_path_command :: proc(action: Action, args: []string) {
 		}
 		hook_pre_path_remove(args[0])
 		if toml_path_remove(args[0]) {
+			regenerate_init_core_silently()
 			print_success("✅ Removed from wayu.toml: %s", args[0])
-			fmt.printfln("   Run 'wayu build eval' and reload your shell to apply.")
+			fmt.printfln("   Reload your shell (or 'source ~/.config/wayu/init.%s') to apply.", SHELL_EXT)
 			hook_post_path_remove(args[0])
 		} else {
 			os.exit(EXIT_IOERR)
