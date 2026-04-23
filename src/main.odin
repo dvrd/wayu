@@ -2082,36 +2082,154 @@ handle_build_command :: proc(action: Action) {
 	handle_export_command(.TURBO, {})
 }
 
-// Display shell startup profiling information
+// How many iterations to run per scenario when profiling startup. 5 gives
+// enough samples to compute a meaningful min/mean/max without keeping the
+// user waiting. Bumped up only if there's <1 percent variance.
+PROFILE_ITERATIONS :: 5
+
+// Sample describes a single timed invocation.
+ProfileSample :: struct {
+	label:   string,
+	command: []string,   // argv passed to the subprocess (no shell quoting)
+	times_ms: [PROFILE_ITERATIONS]f64,
+}
+
+// Display shell startup profiling information.
+//
+// Before this was a stub that only rendered a pre-recorded zsh profile file.
+// The real command now spawns the user's shell in a subprocess and measures
+// wall time with Odin's `time.tick_now()`, running each scenario N times
+// and reporting min/mean/max. Two scenarios:
+//
+//   1. `init-core` alone: `shell -c 'source $WAYU_CONFIG/init-core.{ext}'`
+//      — what wayu itself adds to startup.
+//   2. interactive shell: `shell -i -c exit` — total cost the user sees on
+//      every new terminal. The difference is shell-builtin work
+//      (rcfile parsing, compinit, etc.) plus anything the user hand-added
+//      to ~/.zshrc / ~/.bashrc / ~/.config/fish/config.fish.
+//
+// Works for all three supported shells. No temp files, no instrumentation
+// required in the user's init.
 profile_startup_performance :: proc() {
 	print_header("Shell Startup Performance", "📊")
 	fmt.println()
 
-	startup_profile_file := fmt.aprintf("%s/startup_profile.zsh", WAYU_CONFIG)
-	defer delete(startup_profile_file)
+	shell_bin, ok := resolve_profile_shell(DETECTED_SHELL)
+	if !ok {
+		print_error_simple("Could not find a %s binary on $PATH to profile", get_shell_name(DETECTED_SHELL))
+		fmt.println("Install the shell or run 'wayu build profile' from an interactive session of that shell.")
+		os.exit(EXIT_CONFIG)
+	}
+	defer delete(shell_bin)
 
-	// Check if startup profiling output exists
-	if !os.exists(startup_profile_file) {
-		print_info("wayu build profile requires shell instrumentation.")
-		fmt.println("Add 'export WAYU_PROFILE=1' to your shell and reload.")
+	core_file := fmt.aprintf("%s/init-core.%s", WAYU_CONFIG, SHELL_EXT)
+	defer delete(core_file)
+
+	if !os.exists(core_file) {
+		print_warning("init-core.%s not found — run 'wayu init' or any 'wayu path/alias/constants add' first.", SHELL_EXT)
 		fmt.println()
-		fmt.println("Then run a new shell and:")
-		fmt.println("  wayu build profile")
-		fmt.println()
-		return
 	}
 
-	// Read and display profiling results
-	content, read_ok := safe_read_file(startup_profile_file)
-	if !read_ok {
-		print_error_simple("Failed to read startup profile")
-		os.exit(EXIT_IOERR)
-	}
-	defer delete(content)
+	// Build the two scenarios. Keep command slices alive until after rendering.
+	source_cmd := fmt.aprintf("source %s", core_file)
+	defer delete(source_cmd)
 
-	profile_str := string(content)
-	fmt.println(profile_str)
+	scenarios := []ProfileSample{
+		{
+			label   = fmt.tprintf("init-core.%s (sourced in -c)", SHELL_EXT),
+			command = []string{shell_bin, "-c", source_cmd},
+		},
+		{
+			label   = "interactive shell (-i -c exit)",
+			command = []string{shell_bin, "-i", "-c", "exit"},
+		},
+	}
+
+	print_info("Shell: %s", shell_bin)
+	print_info("Iterations per scenario: %d", PROFILE_ITERATIONS)
+	if os.exists(core_file) do print_info("init-core file: %s", core_file)
 	fmt.println()
+
+	for &scenario in scenarios {
+		for i in 0..<PROFILE_ITERATIONS {
+			start := time.tick_now()
+			_ = run_command(scenario.command)
+			elapsed := time.tick_since(start)
+			scenario.times_ms[i] = f64(time.duration_milliseconds(elapsed))
+		}
+		render_profile_sample(scenario)
+	}
+
+	fmt.println()
+	print_section("Interpretation", EMOJI_INFO)
+	fmt.println("  • 'init-core' is what wayu itself costs; aim for <10ms.")
+	fmt.println("  • 'interactive shell' includes wayu + shell rc + any user hooks.")
+	fmt.println("  • Difference ≈ shell/builtin overhead (compinit, rcfile, etc.).")
+	fmt.println()
+	print_section("Next steps", EMOJI_ACTION)
+	fmt.println("  wayu export           Generate turbo.{ext} (compiled, 2-4x faster)")
+	fmt.println("  wayu doctor           Health check and optimization hints")
+	fmt.println()
+}
+
+// Compute min/mean/max from the populated times_ms and print a one-line
+// summary per scenario plus the raw samples.
+render_profile_sample :: proc(s: ProfileSample) {
+	if PROFILE_ITERATIONS == 0 do return
+
+	min_ms := s.times_ms[0]
+	max_ms := s.times_ms[0]
+	sum_ms := 0.0
+	for t in s.times_ms {
+		if t < min_ms do min_ms = t
+		if t > max_ms do max_ms = t
+		sum_ms += t
+	}
+	mean_ms := sum_ms / f64(PROFILE_ITERATIONS)
+
+	fmt.printfln("%s%s%s", BOLD, s.label, RESET)
+	fmt.printfln("  min  %.1f ms", min_ms)
+	fmt.printfln("  mean %.1f ms", mean_ms)
+	fmt.printfln("  max  %.1f ms", max_ms)
+	fmt.printf("  raw  ")
+	for t, i in s.times_ms {
+		if i > 0 do fmt.printf(" ")
+		fmt.printf("%.1f", t)
+	}
+	fmt.println(" ms")
+	fmt.println()
+}
+
+// Pick the shell binary to spawn. Tries `which <shell>` first so we respect
+// $PATH, then falls back to $SHELL (which is what wayu used to detect the
+// shell in the first place). Returned string is heap-allocated and owned
+// by the caller.
+resolve_profile_shell :: proc(shell: ShellType) -> (string, bool) {
+	name := ""
+	switch shell {
+	case .ZSH:  name = "zsh"
+	case .BASH: name = "bash"
+	case .FISH: name = "fish"
+	case .UNKNOWN:
+		// No explicit shell — skip the `which` probe and go straight to
+		// the environment fallback below.
+	}
+
+	if len(name) > 0 {
+		if path := capture_command([]string{"which", name}); len(path) > 0 {
+			return path, true
+		}
+	}
+
+	// Fallback: $SHELL — common on systems where the shell lives outside
+	// $PATH (e.g. homebrew fish under /opt/homebrew/bin but $PATH not set
+	// in the calling environment), or when DETECTED_SHELL was forced via
+	// --shell but the binary isn't installed.
+	env_shell := os.get_env("SHELL", context.temp_allocator)
+	if len(env_shell) > 0 && os.exists(env_shell) {
+		return strings.clone(env_shell), true
+	}
+	return "", false
 }
 
 // Generate optimized eval output - implements ALL optimization techniques:
@@ -2262,7 +2380,7 @@ print_build_help :: proc() {
 	fmt.printfln("  wayu build              Standard optimized build")
 	fmt.printfln("  wayu build turbo        Maximum optimization (turbo.zsh)")
 	fmt.printfln("  wayu build eval         Generate eval-able output (fastest)")
-	fmt.printfln("  wayu build profile      Profile build performance")
+	fmt.printfln("  wayu build profile      Measure shell startup time (5-iter mean)")
 	fmt.printfln("  wayu build help         Show this help")
 	fmt.println()
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
@@ -2283,5 +2401,8 @@ print_build_help :: proc() {
 	fmt.println()
 	fmt.println("  # This pre-computes PATH and exports everything")
 	fmt.println("  # in a single command - no loops, no conditionals.")
+	fmt.println()
+	fmt.println("  # Measure impact on startup time:")
+	fmt.println("  wayu build profile       # init-core vs full interactive shell")
 	fmt.println()
 }
