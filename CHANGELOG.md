@@ -5,37 +5,144 @@ All notable changes to wayu will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.10.1] - 2026-04-18
-
-### Added
-
-- **search**: Extend search to match on entry values in addition to names
-- **get**: Fuzzy-match fallback for env/alias/path get commands
-
-### Fixed
-
-- **search**: Read from wayu.toml instead of legacy shell files
-- **init**: `wayu init --help` and `wayu search --help` now show proper help
-- **help**: Remove undocumented `wayu init --template` example; remove `toml convert` (stub) from help output
-- **help**: Fix "Aliass" pluralization typo in `wayu alias --help` header
-- **export**: `wayu export --help` no longer errors as unknown action
-- **version**: `wayu version` string now matches help header
-- **init_generator**: Lowercase 'path' in missing-path warning message
-- **init_generator**: Per-segment coloring for path-missing warning
-
-### Removed
-
-- Orphan `templates/fish/` directory (fish support uses embedded strings)
-
-## [3.10.0] - 2026-04-16
+## [3.10.0] - 2026-04-23
 
 ### Added
 
 - Implement doctor command, fuzzy plugin matching, and config scan
+- Implement adaptive SIMD/GPU optimization system
+- Implement wayu build --eval for optimized shell startup
+- Complete wayu build eval with real config parsing
+- Pre-compute Starship, Zoxide, Atuin in eval mode
+- Inline Starship, lazy load rest of tools
+- Cache eval output to init-cache.zsh
+- Implementa TODAS las optimizaciones de zsh en wayu build
+- Prompt nativo wayu pre-compilado sin starship
+- Prompt nativo completo con todos los modulos de starship
+- Soporte para newline (\n) en prompt format
+- Iconos Nerd Fonts de Starship + nuevos lenguajes
+- 20+ lenguajes con iconos Nerd Fonts/Unicode
+- Iconos Nerd Fonts exactos de nerd-font-symbols.toml
+- Modo VI visual completo con selección de texto
+- Modo visual con símbolo y color diferentes
+- Colores VI mode personalizados - naranja/verde/púrpura
+- Línea separadora entre output y prompt
+- Prompt con marco decorativo - líneas arriba y abajo con espacios
+- Líneas divisorias continuas con espacios alrededor del prompt
+- Mostrar versión de lenguaje en el prompt
+- Icono Odin Nerd Font - símbolo sin fondo azul
+- SVG limpio de Odin para Fontello
+- **prompt**: Show lang version in context icon for Rust, Node, Go, Python, Zig, Bun, Deno, Ruby, Elixir, Dart
+- **init**: Export all [env] vars from wayu.toml dynamically
+- Add 'env' alias for constants command
+- **init**: Generate aliases from wayu.toml [[aliases]] dynamically
+- Expand TOML-driven config to aliases, constants, and plugins
+- **cli**: Wire reload/hot-reload command
+- **config**: Honor WAYU_CONFIG_DIR env var for config directory
+- **env**: Add snapshot module for PATH/aliases/env cross-reference
+- **cli**: Show source column in path/alias/constants list commands
+- **cli**: Add --json output for list commands
+- **cli**: Surface external entries from env not in wayu.toml
+- **doctor**: Report wayu vs env sync status
+- **tui/bridge**: Expose source classification per entry
+- **tui**: Header counts + per-row source glyphs in list views
+- **tui**: Footer hint update for source filter (s key)
+- **completions**: Add bash completion generator
+- **shell**: Complete fish shell support across init + completions
+- **init**: Emit wayu.toml scaffold alongside shell init files
+- **scan**: Implement --fix to import shell rc declarations
+- **build**: Implement profile subcommand
+- **migrate**: Implement legacy-to-TOML migration (dry-run)
+- Improve path-missing warning format with colored output
+- Add fuzzy-match fallback to env/alias/path get commands
+- Extend search to match on entry values in addition to names
+- **tui**: Source filter cycled with `s` in data views
+- **tui**: Parse `source:X` token inline in text filter
+- **plugins**: Complete fish shell support (types, registry, generator)
+- **migrate**: Implement legacy-layout → wayu.toml conversion
+- **tui**: Settings view shows real data (version, toml, backups, plugins)
+- **json**: Fix --json on alias/constants, extend to backup/plugin
+- **completions**: Write wayu.fish alongside zsh + bash on generate
+- **fish**: Native init-core.fish generator
+- **migrate**: Recognize fish syntax in legacy parsers
+- **migrate**: Shell-to-shell conversion supports fish
+
+### Changed
+
+- Wayu.toml is now single source of truth
+- Wayu build eval is now just 'source init.zsh'
+- Config de usuario ahora en config.zsh, no hardcodeada
+- Eliminar comandos lentos del prompt para reducir tiempo de carga
+- Migrate PATH to wayu.toml, remove icon tooling
+- **init_generator**: Add per-segment coloring to path-missing warning
+- **toml**: Make `toml convert` an alias for `wayu migrate`
+- **toml**: Alias/constants/path writes always target wayu.toml
+- **backup,dry-run**: Align with wayu.toml as source of truth
 
 ### Fixed
 
 - **doctor**: Use arena allocator for memory safety
+- Add missing components to wayu build eval
+- Generate absolute PATH without accumulation
+- Load plugins inline in eval mode
+- Remove heavy inline starship, lazy load everything
+- Remove background subshell that broke shell
+- Load helpers before using _wayu_evalcache
+- Arregla PATH incompleto y plugins no cargaban
+- Añade bindkeys para autosuggestions (Ctrl+Y)
+- Añade || true a sources condicionales para evitar error exit code
+- Glob errors y funcion prompt faltante
+- Prompt exit_code y VI mode correctos
+- Modo visual detection y color naranja 256-color
+- Detector de contexto busca archivos en subdirectorios
+- Mover detector Odin antes que Nim y usar find para ambos
+- Líneas separadoras correctas con cursor en el prompt
+- Usar $'\n' para newline literal en PROMPT
+- Mover detector Go antes que Nim para evitar falsos positivos
+- Usar código \ue800 para icono Odin de Fontello
+- Eliminar caracteres < > del output de wayu build eval
+- Usar emoji ⚔️ para Odin en lugar de icono Nerd Font
+- Detector Odin compatible con bash y zsh
+- **hooks**: Implement hook execution and editor integration
+- **toml**: Allow hyphens in alias names
+- **tui**: Add Hooks entry to main menu
+- **cli**: Recognize --help/-h flag for all subcommands
+- **tui**: Load PATH, Aliases, Constants from wayu.toml
+- **tui**: Replace Settings view placeholders with real values
+- **toml**: Implement show/keys actions to display TOML content and keys
+- **reload**: Add --help support and make reload print 'watching' message
+- **toml**: Parse [[paths]] array of tables in TOML config
+- **shell**: Emit bash-specific syntax instead of zsh in init generation
+- **hooks**: Add missing 'run' action to hooks help text
+- **hooks**: Integrate hook execution into add/remove flows
+- **validation**: Sanitize shell metacharacters in alias/constant values
+- **config**: Clarify default action and list available subcommands
+- **tui**: Replace hooks placeholder with helpful guidance
+- **validation**: Idempotent sanitize preserving $ expansion
+- **hooks**: Distinguish hook types by resource and fix string memory bug
+- **tui**: Align backup list filtering with CLI behavior
+- **toml**: Preserve escape sequences when reading and writing TOML values
+- **toml**: Preserve [env] section through constants writer round-trip
+- **init**: Do not block on interactive prompt when stdin is not a TTY
+- **toml**: Do not duplicate [env] entries into [constants] on write
+- **env_snapshot**: Clone PATH strings to prevent dangling pointers
+- **env_snapshot**: Parse alias subshell output and match by name
+- **tui**: Constants view must merge [env] and [constants] sections
+- **tui**: Preserve alias name column when rendering source glyph
+- **tui**: Remove s Source hint from all footer variants
+- **tui constants**: Add external entries classification to match CLI output
+- **tui**: Clear full row width in list rendering to prevent scroll overlap
+- **tui**: Scroll offset applied correctly to viewport render
+- **tui**: Move source glyph color from char stream to Cell.fg
+- **init_generator**: Lowercase 'path' in missing-path warning message
+- **search**: Read from wayu.toml instead of legacy shell files
+- **reload**: Delete path strings only when not handed off to watch array
+- **tui**: Main menu item count was 7 but there are 8 items
+- **init**: Avoid freeing string literal in generate_full_prompt
+- **completions**: Repair broken wayu.fish top-level completion
+- **validation**: Reject hyphens in alias/constant identifiers
+- **fish**: Repair shell_fish generators and route static_generate to fish
+- **memory**: Overhaul TOML/lock/config cleanup to prevent bad frees
 ## [3.9.0] - 2026-04-15
 
 ### Added
