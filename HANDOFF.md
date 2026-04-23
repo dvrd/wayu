@@ -43,7 +43,7 @@ ruby tests/integration/test_fish.rb         #  8 tests ✓  (added coverage for 
 **CI (GitHub Actions):** ALL PASSING. Push-driven release pipeline is fully automated:
 - `push` to `main` → `CI` workflow runs tests
 - Same push → `Bump Version & Release` computes next semver via git-cliff, rewrites `VERSION`/CHANGELOG, tags, builds `wayu-linux-amd64` and `wayu-macos-arm64`, creates GitHub Release with artifacts + SHAs, pushes new `Formula/wayu.rb` to `dvrd/homebrew-wayu`.
-- Verified end-to-end over 5+ releases this session (v3.10.0 → v3.12.x).
+- Verified end-to-end over 6+ releases this session (v3.10.0 → v3.15.x).
 
 ### Performance
 
@@ -197,8 +197,7 @@ ConfigEntrySpec :: struct {parse_line, format_line, validate, ...}  — strategy
 
 | Issue | Severity | Where | Workaround |
 |-------|----------|-------|------------|
-| TOML migration incomplete | Low | `src/config_toml.odin:~1615` | — |
-| Per-phase startup profiling | Low | `profile_startup_performance` reports totals only | — |
+| Per-phase startup profiling is zsh-only | Low | `render_phase_breakdown_zsh` depends on `$EPOCHREALTIME` (zsh/bash5 builtin) | bash/fish users still get init-core vs interactive totals |
 
 ## Incomplete Work
 
@@ -295,6 +294,40 @@ template paths not wired". Audit:
 shell-aware completion naming, the TOML-routed template flow, auto
 regeneration of init-core.fish, and the init.fish fast-path block.
 
+### TOML migration locked down — commit `c4047d4`
+
+`wayu migrate` (and its alias `wayu toml convert`) were already wired to
+turn legacy `aliases.{ext}` / `constants.{ext}` / `path.{ext}` into
+`wayu.toml`, but had no integration tests. Added
+`tests/integration/test_migrate.rb` (7 tests) covering:
+
+- `--dry-run` preview (emits extraction plan, doesn't write toml)
+- full migration of all three legacy files → wayu.toml + `.migrated`
+  archives
+- appending into a pre-existing wayu.toml without clobbering
+- idempotent re-run (second invocation mtime-stable + prints
+  "No legacy shell config files found")
+- fresh HOME with no legacy files reports the same no-op message
+- scaffolded-only files (what `wayu init` writes by default) are
+  correctly skipped rather than detected as "legacy content"
+- `wayu toml convert` delegates to migrate
+
+### Per-phase init-core breakdown — commit `c4047d4`
+
+`wayu build profile` now emits a zsh-only per-phase table in addition
+to the init-core-vs-interactive totals. `split_init_core_by_markers`
+parses the `# === <name> ===` section markers from `init-core.zsh`;
+`render_phase_breakdown_zsh` builds an in-memory profiling wrapper
+(no temp files) that sandwiches each phase body with
+`$EPOCHREALTIME` captures, runs it via `<zsh> -c`, and prints a
+sorted `ms | share% | name` table with a `(sum)` footer.
+
+Resolution is microseconds; in practice the slowest phases (prompt
+features, plugin loads, compinit) dominate and smaller sections show
+up as `0.0 ms`. Bash 5+ has the same builtin but macOS ships bash 3.2,
+so the breakdown is gated to zsh for now — bash/fish users still get
+the two-scenario totals.
+
 ### Real `wayu build profile` — commit `514509f`
 
 Replaced the stub that pointed at a never-populated file with an honest
@@ -361,24 +394,28 @@ user sourced `init-core.{ext}`. Fix shipped across all three shells:
 
 ## What To Work On Next
 
-1. **TOML migration incomplete** — `src/config_toml.odin:~1615` has a stub
-   for migrating existing shell configs into `wayu.toml`. With the refactor
-   landed, finishing this migrator lets users upgrade smoothly from v3.9
-   and earlier. **Difficulty: medium.**
+The session backlog is empty. Possible next directions when you pick wayu
+back up:
 
-2. **Per-phase timing in `wayu build profile`** — current implementation
-   reports init-core total vs full interactive startup. A nice next step
-   would be breaking down by section (PATH, constants, aliases, plugins).
-   Requires generating an instrumented init-core.{ext} on demand with
-   shell-specific high-resolution timers (zsh `typeset -F SECONDS`, bash
-   `date +%s%N` on Linux, fish `(date +%s%N)`). **Difficulty: medium.**
+1. **Per-phase timing for bash and fish** — current breakdown is zsh-only
+   (depends on `$EPOCHREALTIME`, a zsh/bash5 builtin). macOS ships bash
+   3.2 so a portable fallback would need a timing shim (e.g. invoke
+   `python3 -c 'import time; print(time.time())'` or `perl -MTime::HiRes`).
+   Fish has no direct equivalent; `(date +%s%N)` works on Linux but not
+   on macOS's BSD `date`. **Difficulty: medium.**
 
-3. **Keep cleanup symmetric in `toml_merge_profiles`** — recent fix
+2. **Keep cleanup symmetric in `toml_merge_profiles`** — recent fix
    covered `merged.path.entries`, but similar overwrites for aliases,
    constants, and plugins lists are currently handled by always appending
    in dynamic arrays so they don't leak. If someone changes the merge
    strategy (e.g. profile *overrides* rather than *extends*), the same
    pre-free pattern should be applied. **Difficulty: low.**
+
+3. **Bash 5 detection for phase breakdown** — when a non-zsh shell has
+   `$EPOCHREALTIME` available, enable the same breakdown path that zsh
+   uses today. `resolve_profile_shell` could shell out to
+   `<shell> -c 'echo $EPOCHREALTIME'` once and gate on a non-empty reply.
+   **Difficulty: low.**
 
 ## Commands Reference
 
