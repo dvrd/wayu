@@ -2,7 +2,7 @@
 
 ## What is wayu
 
-Shell configuration management CLI written in Odin. Manages PATH entries, aliases, environment constants, completions, and plugins by generating shell config files in `~/.config/wayu/` that users source via an init file. Dual-mode: non-interactive CLI (default) and full-screen TUI (`wayu --tui`). Supports Zsh, Bash, and Fish (all three now have working completions/templates/plugins paths). Current version: **v3.11.1** (published on GitHub Releases + Homebrew tap).
+Shell configuration management CLI written in Odin. Manages PATH entries, aliases, environment constants, completions, and plugins by generating shell config files in `~/.config/wayu/` that users source via an init file. Dual-mode: non-interactive CLI (default) and full-screen TUI (`wayu --tui`). Supports Zsh, Bash, and Fish (all three now have working completions/templates/plugins paths + automatic init-core regeneration on every CLI mutation). Current version: **v3.12.0** (published on GitHub Releases + Homebrew tap).
 
 ## Current State
 
@@ -43,7 +43,7 @@ ruby tests/integration/test_fish.rb         #  8 tests ✓  (added coverage for 
 **CI (GitHub Actions):** ALL PASSING. Push-driven release pipeline is fully automated:
 - `push` to `main` → `CI` workflow runs tests
 - Same push → `Bump Version & Release` computes next semver via git-cliff, rewrites `VERSION`/CHANGELOG, tags, builds `wayu-linux-amd64` and `wayu-macos-arm64`, creates GitHub Release with artifacts + SHAs, pushes new `Formula/wayu.rb` to `dvrd/homebrew-wayu`.
-- Verified end-to-end over 3 releases this session (v3.10.0 → v3.11.1).
+- Verified end-to-end over 4 releases this session (v3.10.0 → v3.12.0).
 
 ### Performance
 
@@ -197,7 +197,6 @@ ConfigEntrySpec :: struct {parse_line, format_line, validate, ...}  — strategy
 
 | Issue | Severity | Where | Workaround |
 |-------|----------|-------|------------|
-| Legacy `aliases.{ext}` / `constants.{ext}` / `path.{ext}` are empty until `wayu build eval` runs | Medium | `src/init_generator.odin` seeds them at init but never syncs from `wayu.toml`; `init.{ext}` sources them | Run `wayu build eval` after any config change, source `init-core.{ext}` |
 | TOML migration incomplete | Low | `src/config_toml.odin:~1615` | — |
 | `wayu build profile` not implemented | Low | Profiling stub | — |
 | Fuzzy real-time filtering falls back | Low | `src/fuzzy.odin:~1017` | Static list works |
@@ -294,42 +293,53 @@ template paths not wired". Audit:
   `wayu constants add` writes to `[constants]`. Widened to accept both
   headers so manually-added constants reach `init-core.{zsh,bash,fish}`.
 
-`tests/integration/test_fish.rb` grew from 6 to 8 tests covering the new
-shell-aware completion naming and the TOML-routed template flow.
+`tests/integration/test_fish.rb` grew from 6 to 10 tests covering the new
+shell-aware completion naming, the TOML-routed template flow, auto
+regeneration of init-core.fish, and the init.fish fast-path block.
+
+### Auto init-core regeneration — commits `c98c885`, `5482ce2`
+
+After the wayu.toml refactor, the seeded `aliases.{ext}` / `constants.{ext}`
+/ `path.{ext}` files stayed empty and `init.{ext}` still sourced them, so
+user changes never applied until `wayu build eval` ran manually and the
+user sourced `init-core.{ext}`. Fix shipped across all three shells:
+
+- New `regenerate_init_core_silently()` in `init_generator.odin` invokes
+  the same generators as `wayu build eval` (minus log prints). Called
+  from every successful `toml_path_add` / `toml_path_remove` /
+  `toml_alias_add` / `toml_alias_remove` / `toml_constant_add` /
+  `toml_constant_remove`, plus every `apply_*_template`.
+- `INIT_TEMPLATE` / `INIT_TEMPLATE_BASH` / `INIT_TEMPLATE_FISH` now open
+  with a fast-path block that sources `init-core.{ext}` (+ extra and
+  tools) and returns when it exists. The legacy sourcing stays below as
+  a pre-toml fallback.
+- Success messages changed from "Run 'wayu build eval' ..." to "Reload
+  your shell ..." since the rebuild already happened.
+- Added `*.dSYM/` to `.gitignore` after accidentally staging debug
+  bundles.
 
 ## What To Work On Next
 
-1. **Regenerate legacy shell files from `wayu.toml` on `wayu init` / `wayu
-   build eval`**. After the "wayu.toml is source of truth" refactor, the
-   seeded `aliases.{ext}`, `constants.{ext}`, and `path.{ext}` files stay
-   empty even though `init.{ext}` still sources them. Users only see their
-   config if they run `wayu build eval` (produces `init-core.{ext}`) and
-   add `source init-core.{ext}` themselves. Either make `wayu init` emit a
-   final `source init-core.{ext}` line in `init.{ext}` (only if it exists),
-   or rebuild the legacy shell files from `wayu.toml` on every mutation
-   hook. This affects all three shells — not fish-specific. **Difficulty:
-   medium.**
-
-2. **Wire `wayu build profile`** — currently a stub. Emit timing data for
+1. **Wire `wayu build profile`** — currently a stub. Emit timing data for
    each phase of init (constants → path → functions → completions →
    plugins → aliases → tools → extras). Useful for users optimizing
    startup. **Difficulty: medium.**
 
-3. **TOML migration incomplete** — `src/config_toml.odin:~1615` has a stub
+2. **TOML migration incomplete** — `src/config_toml.odin:~1615` has a stub
    for migrating existing shell configs into `wayu.toml`. With the refactor
    landed, finishing this migrator lets users upgrade smoothly from v3.9
    and earlier. **Difficulty: medium.**
 
-4. **Real-time fuzzy filtering** — `src/fuzzy.odin:~1017` falls back to a
+3. **Real-time fuzzy filtering** — `src/fuzzy.odin:~1017` falls back to a
    static list instead of re-filtering on every keystroke. **Difficulty:
    low.**
 
-5. **Fix remaining test memory leaks** — Several toml tests still report
+4. **Fix remaining test memory leaks** — Several toml tests still report
    small leaks (2-16 bytes each) from `get_string_array`, `get_string`,
    `doc_to_config`. Non-blocking but flagged by the tracking allocator.
    **Difficulty: low.**
 
-6. **Bash completions integration test** — `test_completions.rb` only
+5. **Bash completions integration test** — `test_completions.rb` only
    covers zsh naming. Now that `add_completion` is shell-aware, add a
    small bash suite asserting `*.bash-completion` output. **Difficulty:
    low.**
