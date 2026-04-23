@@ -6,6 +6,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:slice"
+import "core:strconv"
 import "core:log"
 import "core:mem"
 import "core:sys/posix"
@@ -2160,16 +2161,161 @@ profile_startup_performance :: proc() {
 		render_profile_sample(scenario)
 	}
 
+	// Per-phase breakdown — only implemented for zsh since it relies on
+	// $EPOCHREALTIME (microsecond-precision builtin). bash 5+ has it too but
+	// macOS ships bash 3.2; fish has no equivalent portable primitive. Users
+	// of those shells still get the two-scenario totals above.
+	if DETECTED_SHELL == .ZSH && os.exists(core_file) {
+		render_phase_breakdown_zsh(shell_bin, core_file)
+	}
+
 	fmt.println()
 	print_section("Interpretation", EMOJI_INFO)
 	fmt.println("  • 'init-core' is what wayu itself costs; aim for <10ms.")
 	fmt.println("  • 'interactive shell' includes wayu + shell rc + any user hooks.")
 	fmt.println("  • Difference ≈ shell/builtin overhead (compinit, rcfile, etc.).")
+	if DETECTED_SHELL == .ZSH {
+		fmt.println("  • Phase breakdown marks where the init-core time is spent.")
+	}
 	fmt.println()
 	print_section("Next steps", EMOJI_ACTION)
 	fmt.println("  wayu export           Generate turbo.{ext} (compiled, 2-4x faster)")
 	fmt.println("  wayu doctor           Health check and optimization hints")
 	fmt.println()
+}
+
+// Render a per-phase timing breakdown of init-core.zsh.
+//
+// Strategy: split init-core by `# === <name> ===` markers into sections,
+// generate a profiling wrapper that records $EPOCHREALTIME before and
+// after each section, run it once under the user's zsh, parse `PHASE=...`
+// lines from stdout, and print a sorted table (slowest first).
+//
+// $EPOCHREALTIME is a zsh builtin (with `zmodload zsh/datetime`) that
+// yields floating-point seconds since epoch with microsecond resolution,
+// so each phase timing is accurate enough to matter for anything over
+// ~10us.
+render_phase_breakdown_zsh :: proc(shell_bin, core_file: string) {
+	content, ok := safe_read_file(core_file)
+	if !ok do return
+	defer delete(content)
+
+	phases := split_init_core_by_markers(string(content))
+	defer {
+		for p in phases {
+			delete(p.name)
+			delete(p.body)
+		}
+		delete(phases)
+	}
+	if len(phases) == 0 do return
+
+	// Build the instrumented script in memory, then hand it to zsh via -c
+	// so we don't have to touch the filesystem.
+	sb := strings.builder_make()
+	defer strings.builder_destroy(&sb)
+
+	fmt.sbprintln(&sb, "zmodload zsh/datetime 2>/dev/null || true")
+	for p, i in phases {
+		fmt.sbprintfln(&sb, "__wayu_t_%d_a=$EPOCHREALTIME", i)
+		fmt.sbprint(&sb, p.body)
+		fmt.sbprintln(&sb)
+		fmt.sbprintfln(&sb, "__wayu_t_%d_b=$EPOCHREALTIME", i)
+		// printf with %s keeps the floats as the shell printed them (locale
+		// independent, no precision loss from another printf spec).
+		fmt.sbprintfln(&sb, "printf 'PHASE=%%s|%%s|%%s\\n' %q \"$__wayu_t_%d_a\" \"$__wayu_t_%d_b\"", p.name, i, i)
+	}
+
+	out := capture_command([]string{shell_bin, "-c", strings.to_string(sb)})
+	defer if len(out) > 0 do delete(out)
+	if len(out) == 0 do return
+
+	// Parse `PHASE=name|start|end` lines. Anything else is output from the
+	// phase body itself (e.g. a plugin's banner) and is ignored here.
+	PhaseTiming :: struct { name: string, ms: f64 }
+	timings := make([dynamic]PhaseTiming, context.temp_allocator)
+	for line in strings.split_lines(out) {
+		if !strings.has_prefix(line, "PHASE=") do continue
+		rest := line[len("PHASE="):]
+		parts := strings.split(rest, "|")
+		defer delete(parts)
+		if len(parts) != 3 do continue
+		start_s, ok_a := strconv.parse_f64(parts[1])
+		end_s,   ok_b := strconv.parse_f64(parts[2])
+		if !ok_a || !ok_b do continue
+		append(&timings, PhaseTiming{
+			name = parts[0],
+			ms   = (end_s - start_s) * 1000.0,
+		})
+	}
+	if len(timings) == 0 do return
+
+	slice.sort_by(timings[:], proc(a, b: PhaseTiming) -> bool { return a.ms > b.ms })
+
+	total_ms := 0.0
+	for t in timings do total_ms += t.ms
+
+	fmt.println()
+	fmt.printfln("%sPhase breakdown (sorted by time, single run)%s", BOLD, RESET)
+	for t in timings {
+		share := 0.0
+		if total_ms > 0 do share = (t.ms / total_ms) * 100.0
+		// Odin's %N.1f zero-pads when N > natural width; sidestep with
+		// manual space padding so the column stays neat.
+		ms_str    := fmt.aprintf("%.1f", t.ms);    defer delete(ms_str)
+		share_str := fmt.aprintf("%.1f", share);   defer delete(share_str)
+		fmt.printfln("  %s ms  %s%%   %s", pad_left(ms_str, 6), pad_left(share_str, 4), t.name)
+	}
+	total_str := fmt.aprintf("%.1f", total_ms); defer delete(total_str)
+	fmt.printfln("  %s ms  100.0%%   (sum)", pad_left(total_str, 6))
+	fmt.println()
+}
+
+pad_left :: proc(s: string, width: int) -> string {
+	if len(s) >= width do return s
+	return fmt.tprintf("%s%s", strings.repeat(" ", width - len(s), context.temp_allocator), s)
+}
+
+InitCorePhase :: struct { name, body: string }
+
+// Split init-core by `# === <name> ===` markers. Everything before the
+// first marker (the shebang + comment header) becomes a synthetic
+// "__prelude__" phase so it still gets timed; after that each marker
+// starts a new phase whose body runs until the next marker or EOF.
+// Returned strings are heap-allocated — caller owns them.
+split_init_core_by_markers :: proc(content: string) -> []InitCorePhase {
+	lines := strings.split(content, "\n")
+	defer delete(lines)
+
+	phases := make([dynamic]InitCorePhase)
+	current_name := strings.clone("__prelude__")
+	sb := strings.builder_make()
+
+	flush :: proc(phases: ^[dynamic]InitCorePhase, name: ^string, sb: ^strings.Builder) {
+		body := strings.clone(strings.to_string(sb^))
+		append(phases, InitCorePhase{name = name^, body = body})
+		name^ = ""
+		strings.builder_reset(sb)
+	}
+
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		if strings.has_prefix(trimmed, "# === ") && strings.has_suffix(trimmed, " ===") {
+			flush(&phases, &current_name, &sb)
+			name := trimmed[len("# === "):len(trimmed)-len(" ===")]
+			current_name = strings.clone(name)
+			continue
+		}
+		strings.write_string(&sb, line)
+		strings.write_byte(&sb, '\n')
+	}
+	flush(&phases, &current_name, &sb)
+	strings.builder_destroy(&sb)
+
+	result := make([]InitCorePhase, len(phases))
+	copy(result, phases[:])
+	delete(phases)
+	return result
 }
 
 // Compute min/mean/max from the populated times_ms and print a one-line
