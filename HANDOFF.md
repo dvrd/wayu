@@ -43,7 +43,7 @@ ruby tests/integration/test_fish.rb         #  8 tests ✓  (added coverage for 
 **CI (GitHub Actions):** ALL PASSING. Push-driven release pipeline is fully automated:
 - `push` to `main` → `CI` workflow runs tests
 - Same push → `Bump Version & Release` computes next semver via git-cliff, rewrites `VERSION`/CHANGELOG, tags, builds `wayu-linux-amd64` and `wayu-macos-arm64`, creates GitHub Release with artifacts + SHAs, pushes new `Formula/wayu.rb` to `dvrd/homebrew-wayu`.
-- Verified end-to-end over 4 releases this session (v3.10.0 → v3.12.0).
+- Verified end-to-end over 5+ releases this session (v3.10.0 → v3.12.x).
 
 ### Performance
 
@@ -198,9 +198,7 @@ ConfigEntrySpec :: struct {parse_line, format_line, validate, ...}  — strategy
 | Issue | Severity | Where | Workaround |
 |-------|----------|-------|------------|
 | TOML migration incomplete | Low | `src/config_toml.odin:~1615` | — |
-| `wayu build profile` not implemented | Low | Profiling stub | — |
-| Fuzzy real-time filtering falls back | Low | `src/fuzzy.odin:~1017` | Static list works |
-| Memory leaks in tests | Low | Various toml tests leak small strings from `get_string_array`, `get_string`, `doc_to_config` | Non-blocking, tracked by test framework |
+| Per-phase startup profiling | Low | `profile_startup_performance` reports totals only | — |
 
 ## Incomplete Work
 
@@ -297,6 +295,49 @@ template paths not wired". Audit:
 shell-aware completion naming, the TOML-routed template flow, auto
 regeneration of init-core.fish, and the init.fish fast-path block.
 
+### Real `wayu build profile` — commit `514509f`
+
+Replaced the stub that pointed at a never-populated file with an honest
+wall-clock measurement that works on zsh, bash, and fish with zero setup.
+Five iterations per scenario, reports min/mean/max + raw samples. Two
+scenarios: `init-core.{ext}` alone (wayu's own cost) and `shell -i -c exit`
+(end-to-end startup). The difference is the shell rc + builtins, which
+makes the output directly actionable.
+
+### Subsequence fuzzy matching in interactive pickers — commit `55bd643`
+
+`calculate_fuzzy_score` was already in the tree and used by `wayu search`
+but the interactive pickers (`fuzzy_update_filter`, CLI `interactive_select`)
+still used naive `strings.contains`. Both now score with subsequence
+matching and sort descending, so typing `frwrks` matches `frameworks` and
+prefix hits rise above scattered ones.
+
+### Zero tracked-allocator leaks — commit `8b9d9d5`
+
+Unit suite reported 68 leaks; now reports 0. Five independent bugs:
+
+1. `cleanup_entry` was a no-op after the v3.10 safety-net refactor. Every
+   `parse_*_line` output leaked (35 allocs). Restored the delete + documented
+   the contract: heap or empty strings only.
+2. `lock_remove_entry` dropped entries without freeing their owned strings.
+3. `json_escape_value` returned a heap string that callers passed straight
+   to `fmt.sbprintf` without freeing. Rewrote as `json_escape_into(builder,
+   str)` that writes directly into the existing builder.
+4. `parse_lock_file` cloned `version` and `generated_at` but nothing freed
+   them. Added to `free_lock_entries`; exposed a public `lock_cleanup`
+   wrapper so external callers (tests) can clean up a `LockFile`.
+5. `toml_merge_profiles` overwrote `merged.path.entries` with a profile
+   copy without freeing the earlier base-cloned slice. Pre-free fixed it.
+6. `toml_validate` wrapped inner validator error messages with `aprintf`
+   but never freed the inner copy. Factored to wrap → delete(inner) → return.
+
+### Multishell completions test suite — commit `b0134c8`
+
+Added `tests/integration/test_completions_multishell.rb` (4 tests) to
+cover the shell-aware add/remove paths that `test_completions.rb` (zsh
+only) doesn't touch: bash → `name.bash-completion`, fish → `name.fish`,
+pre-encoded names respected, `rm` finds any convention.
+
 ### Auto init-core regeneration — commits `c98c885`, `5482ce2`
 
 After the wayu.toml refactor, the seeded `aliases.{ext}` / `constants.{ext}`
@@ -320,29 +361,24 @@ user sourced `init-core.{ext}`. Fix shipped across all three shells:
 
 ## What To Work On Next
 
-1. **Wire `wayu build profile`** — currently a stub. Emit timing data for
-   each phase of init (constants → path → functions → completions →
-   plugins → aliases → tools → extras). Useful for users optimizing
-   startup. **Difficulty: medium.**
-
-2. **TOML migration incomplete** — `src/config_toml.odin:~1615` has a stub
+1. **TOML migration incomplete** — `src/config_toml.odin:~1615` has a stub
    for migrating existing shell configs into `wayu.toml`. With the refactor
    landed, finishing this migrator lets users upgrade smoothly from v3.9
    and earlier. **Difficulty: medium.**
 
-3. **Real-time fuzzy filtering** — `src/fuzzy.odin:~1017` falls back to a
-   static list instead of re-filtering on every keystroke. **Difficulty:
-   low.**
+2. **Per-phase timing in `wayu build profile`** — current implementation
+   reports init-core total vs full interactive startup. A nice next step
+   would be breaking down by section (PATH, constants, aliases, plugins).
+   Requires generating an instrumented init-core.{ext} on demand with
+   shell-specific high-resolution timers (zsh `typeset -F SECONDS`, bash
+   `date +%s%N` on Linux, fish `(date +%s%N)`). **Difficulty: medium.**
 
-4. **Fix remaining test memory leaks** — Several toml tests still report
-   small leaks (2-16 bytes each) from `get_string_array`, `get_string`,
-   `doc_to_config`. Non-blocking but flagged by the tracking allocator.
-   **Difficulty: low.**
-
-5. **Bash completions integration test** — `test_completions.rb` only
-   covers zsh naming. Now that `add_completion` is shell-aware, add a
-   small bash suite asserting `*.bash-completion` output. **Difficulty:
-   low.**
+3. **Keep cleanup symmetric in `toml_merge_profiles`** — recent fix
+   covered `merged.path.entries`, but similar overwrites for aliases,
+   constants, and plugins lists are currently handled by always appending
+   in dynamic arrays so they don't leak. If someone changes the merge
+   strategy (e.g. profile *overrides* rather than *extends*), the same
+   pre-free pattern should be applied. **Difficulty: low.**
 
 ## Commands Reference
 
