@@ -242,27 +242,40 @@ new_fuzzy_view :: proc(
 	return view
 }
 
-// Update filter and rebuild filtered items list
+// Update filter and rebuild filtered items list.
+//
+// Uses the subsequence-aware calculate_fuzzy_score rather than a plain
+// strings.contains check, so typing "frwrks" matches "frameworks" and
+// prefix/exact matches sort above scattered matches. Previously only the
+// global 'wayu search' and 'alias get' commands were fuzzy; interactive
+// pickers fell back to substring matching even though the scorer was
+// already in this file.
 fuzzy_update_filter :: proc(view: ^FuzzyView) {
 	clear(&view.filtered_items)
 
 	filter_str := string(view.filter_query[:])
-	filter_lower := strings.to_lower(filter_str)
-	defer delete(filter_lower)
 
-	for item in view.items {
-		if len(filter_str) == 0 {
-			// No filter - show all
-			append(&view.filtered_items, item)
-		} else {
-			// Check if display text matches filter
+	if len(filter_str) == 0 {
+		for item in view.items do append(&view.filtered_items, item)
+	} else {
+		query_lower := strings.to_lower(filter_str)
+		defer delete(query_lower)
+
+		// Collect matches with score, then sort descending so the most
+		// likely candidate floats to the top.
+		Type :: struct { item: FuzzyItem, score: int }
+		tmp := make([dynamic]Type, context.temp_allocator)
+
+		for item in view.items {
 			display_lower := strings.to_lower(item.display)
 			defer delete(display_lower)
 
-			if strings.contains(display_lower, filter_lower) {
-				append(&view.filtered_items, item)
-			}
+			score := calculate_fuzzy_score(display_lower, query_lower)
+			if score > 0 do append(&tmp, Type{item, score})
 		}
+
+		slice.sort_by(tmp[:], proc(a, b: Type) -> bool { return a.score > b.score })
+		for entry in tmp do append(&view.filtered_items, entry.item)
 	}
 
 	// Ensure selected index is valid
@@ -858,16 +871,33 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 
 	selected_index := 0
 
-	// Initial filter (show all items)
+	// Subsequence-aware filter: score each item with calculate_fuzzy_score
+	// (same scorer used by 'wayu search' and suggestion paths) and sort the
+	// survivors by score so prefix / exact matches rise to the top.
 	update_filter :: proc(items: []string, filter: []u8, filtered: ^[dynamic]string) {
 		clear(filtered)
 		filter_str := string(filter)
 
-		for item in items {
-			if len(filter) == 0 || strings.contains(strings.to_lower(item), strings.to_lower(filter_str)) {
-				append(filtered, item)
-			}
+		if len(filter) == 0 {
+			for item in items do append(filtered, item)
+			debug("Filter '' matches %d items", len(filtered))
+			return
 		}
+
+		query_lower := strings.to_lower(filter_str)
+		defer delete(query_lower)
+
+		Scored :: struct { item: string, score: int }
+		tmp := make([dynamic]Scored, context.temp_allocator)
+		for item in items {
+			item_lower := strings.to_lower(item)
+			defer delete(item_lower)
+			score := calculate_fuzzy_score(item_lower, query_lower)
+			if score > 0 do append(&tmp, Scored{item, score})
+		}
+		slice.sort_by(tmp[:], proc(a, b: Scored) -> bool { return a.score > b.score })
+		for entry in tmp do append(filtered, entry.item)
+
 		debug("Filter '%s' matches %d items", filter_str, len(filtered))
 	}
 
