@@ -448,14 +448,22 @@ write_watcher_pid :: proc() {
 	}
 }
 
-// Remove watcher PID file
+// Remove watcher PID file.
+//
+// Falls back to the canonical path when g_watcher.pid_file is empty, which
+// happens when `stop` / `status` run in a different process than `start`
+// (globals aren't shared across processes).
 remove_watcher_pid :: proc() {
-	if g_watcher.pid_file == "" {
-		return
+	path := g_watcher.pid_file
+	ownership := false
+	if path == "" {
+		path = fmt.aprintf("%s/%s", WAYU_CONFIG, WATCHER_PID_FILE)
+		ownership = true
 	}
+	defer if ownership do delete(path)
 
-	if os.exists(g_watcher.pid_file) {
-		os.remove(g_watcher.pid_file)
+	if os.exists(path) {
+		os.remove(path)
 	}
 }
 
@@ -478,16 +486,33 @@ read_watcher_pid :: proc() -> int {
 	return pid
 }
 
-// Check if watcher is running (by PID file and process check)
+// Check if watcher is running (by PID file and process check).
+//
+// Uses the portable `kill(pid, 0)` probe: sends signal 0 (no-op, just permission
+// check) and relies on the kernel to answer "no such process" via ESRCH when
+// the PID is gone. /proc/<pid> only works on Linux, so we used to always
+// return false on macOS/BSD.
 is_watcher_running :: proc() -> bool {
 	pid := read_watcher_pid()
 	if pid <= 0 {
 		return false
 	}
 
-	// Check if process exists
-	proc_path := fmt.aprintf("/proc/%d", pid, allocator = context.temp_allocator)
-	return os.exists(proc_path)
+	when ODIN_OS == .Linux || ODIN_OS == .Darwin {
+		if posix.kill(posix.pid_t(pid), posix.Signal(0)) == .OK {
+			return true
+		}
+		// errno == ESRCH: no such process → stale PID file, clean it up so
+		// future status calls don't keep probing a ghost.
+		if posix.errno() == .ESRCH {
+			remove_watcher_pid()
+			return false
+		}
+		// EPERM means the process exists but we can't signal it — still "running".
+		return posix.errno() == .EPERM
+	} else {
+		return false
+	}
 }
 
 // Stop existing watcher by sending signal
