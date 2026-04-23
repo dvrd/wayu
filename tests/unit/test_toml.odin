@@ -19,34 +19,7 @@ shell = "zsh"
 wayu_version = "3.4.0"
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Basic TOML parsing should succeed")
     testing.expect(t, config.version == "1.0", "Version should be 1.0")
@@ -62,34 +35,7 @@ dedup = true
 clean = false
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Path config parsing should succeed")
     testing.expect(t, len(config.path.entries) == 2, "Should have 2 path entries")
@@ -111,39 +57,7 @@ command = "git commit -m"
 `
     config, ok := wayu.toml_parse(content)
     fmt.printfln("[DEBUG] Parsed %d aliases", len(config.aliases))
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        for alias in config.aliases {
-            delete(alias.name)
-            delete(alias.command)
-            delete(alias.description)
-        }
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Alias parsing should succeed")
     testing.expect(t, len(config.aliases) == 2, "Should have 2 aliases")
@@ -166,39 +80,7 @@ value = "secret123"
 secret = true
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        delete(config.aliases)
-        for constant in config.constants {
-            delete(constant.name)
-            delete(constant.value)
-            delete(constant.description)
-        }
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Constant parsing should succeed")
     testing.expect(t, len(config.constants) == 2, "Should have 2 constants")
@@ -222,34 +104,7 @@ name = "fast-syntax-highlighting"
 source = "github:zdharma-continuum/fast-syntax-highlighting"
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Plugin parsing should succeed")
     testing.expect(t, len(config.plugins) == 2, "Should have 2 plugins")
@@ -276,34 +131,7 @@ name = "WORK_ENV"
 value = "production"
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Profile parsing should succeed")
     testing.expect(t, len(config.profiles) == 1, "Should have 1 profile")
@@ -322,34 +150,7 @@ fuzzy_fallback = true
 dry_run_default = false
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Settings parsing should succeed")
     testing.expect(t, config.settings.auto_backup == true, "auto_backup should be true")
@@ -372,39 +173,7 @@ name = "ll"
 command = "ls -la"
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        for alias in config.aliases {
-            delete(alias.name)
-            delete(alias.command)
-            delete(alias.description)
-        }
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Parsing should succeed")
     
@@ -421,34 +190,7 @@ version = "1.0"
 shell = "invalid_shell"
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Parsing should succeed even with invalid shell")
     
@@ -468,39 +210,7 @@ name = "if"
 command = "echo test"
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        for alias in config.aliases {
-            delete(alias.name)
-            delete(alias.command)
-            delete(alias.description)
-        }
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Parsing should succeed")
     
@@ -525,34 +235,7 @@ entries = ["/usr/local/bin"]
 dedup = true
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Parsing should succeed")
     
@@ -591,77 +274,13 @@ name = "deploy"
 command = "make deploy"
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        for alias in config.aliases {
-            delete(alias.name)
-            delete(alias.command)
-            delete(alias.description)
-        }
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Parsing should succeed")
     testing.expect(t, len(config.profiles) == 1, "Should have work profile")
     
     merged := wayu.toml_merge_profiles(config, "work")
-    defer {
-        delete(merged.version)
-        delete(merged.shell)
-        delete(merged.wayu_version)
-        delete(merged.path.entries)
-        for alias in merged.aliases {
-            delete(alias.name)
-            delete(alias.command)
-            delete(alias.description)
-        }
-        delete(merged.aliases)
-        delete(merged.constants)
-        for plugin in merged.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(merged.plugins)
-        for _, profile in merged.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(merged.profiles)
-    }
+    defer wayu.cleanup_toml_config(&merged)
     
     // Should have base + profile aliases
     testing.expect(t, len(merged.aliases) == 2, "Merged should have 2 aliases (1 base + 1 profile)")
@@ -676,66 +295,12 @@ version = "1.0"
 entries = ["/usr/local/bin"]
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Parsing should succeed")
     
     merged := wayu.toml_merge_profiles(config, "nonexistent")
-    defer {
-        delete(merged.version)
-        delete(merged.shell)
-        delete(merged.wayu_version)
-        delete(merged.path.entries)
-        delete(merged.aliases)
-        delete(merged.constants)
-        for plugin in merged.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(merged.plugins)
-        for _, profile in merged.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(merged.profiles)
-    }
+    defer wayu.cleanup_toml_config(&merged)
     
     // Should return original config unchanged
     testing.expect(t, len(merged.path.entries) == 1, "Should still have 1 path entry")
@@ -748,34 +313,7 @@ entries = ["/usr/local/bin"]
 @(test)
 test_toml_parse_empty :: proc(t: ^testing.T) {
     config, ok := wayu.toml_parse("")
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "Empty TOML parsing should succeed")
 }
@@ -790,34 +328,7 @@ version = "1.0"  # inline comment
 shell = "bash"
 `
     config, ok := wayu.toml_parse(content)
-    defer {
-        delete(config.version)
-        delete(config.shell)
-        delete(config.wayu_version)
-        delete(config.path.entries)
-        delete(config.aliases)
-        delete(config.constants)
-        for plugin in config.plugins {
-            delete(plugin.name)
-            delete(plugin.source)
-            delete(plugin.version)
-            delete(plugin.condition)
-            delete(plugin.description)
-            delete(plugin.use)
-        }
-        delete(config.plugins)
-        for _, profile in config.profiles {
-            delete(profile.aliases)
-            delete(profile.constants)
-            delete(profile.plugins)
-            if profile.path != nil {
-                delete(profile.path.entries)
-                free(profile.path)
-            }
-            delete(profile.condition)
-        }
-        delete(config.profiles)
-    }
+    defer wayu.cleanup_toml_config(&config)
     
     testing.expect(t, ok, "TOML with comments should parse")
     testing.expect(t, config.version == "1.0", "Version should be 1.0")

@@ -778,14 +778,23 @@ get_string_array :: proc(val: ^TomlValue) -> ([]string, bool) {
         return nil, false
     }
     
-    result := make([dynamic]string)
+    n := 0
     for elem in val.arr_val {
         if elem.type == .STRING {
-            append(&result, strings.clone(elem.str_val))
+            n += 1
         }
     }
     
-    return result[:], true
+    result := make([]string, n)
+    i := 0
+    for elem in val.arr_val {
+        if elem.type == .STRING {
+            result[i] = strings.clone(elem.str_val)
+            i += 1
+        }
+    }
+    
+    return result, true
 }
 
 // Extract string from TOML value
@@ -1019,10 +1028,21 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
         }
     }
     
-    // Assign dynamic arrays to config slices
-    config.aliases = aliases_dyn[:]
-    config.constants = constants_dyn[:]
-    config.plugins = plugins_dyn[:]
+    // Extract slices from dynamics and free dynamic metadata
+    aliases_slice := make([]TomlAlias, len(aliases_dyn))
+    copy(aliases_slice, aliases_dyn[:])
+    delete(aliases_dyn)
+    config.aliases = aliases_slice
+    
+    constants_slice := make([]TomlConstant, len(constants_dyn))
+    copy(constants_slice, constants_dyn[:])
+    delete(constants_dyn)
+    config.constants = constants_slice
+    
+    plugins_slice := make([]TomlPlugin, len(plugins_dyn))
+    copy(plugins_slice, plugins_dyn[:])
+    delete(plugins_dyn)
+    config.plugins = plugins_slice
     
     // Parse profiles
     profiles_val := get_toml_value(doc, "profile")
@@ -1136,9 +1156,20 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
             }
             
             // Assign dynamic arrays to profile slices
-            profile.aliases = profile_aliases_dyn[:]
-            profile.constants = profile_constants_dyn[:]
-            profile.plugins = profile_plugins_dyn[:]
+            pa_slice := make([]TomlAlias, len(profile_aliases_dyn))
+            copy(pa_slice, profile_aliases_dyn[:])
+            delete(profile_aliases_dyn)
+            profile.aliases = pa_slice
+            
+            pc_slice := make([]TomlConstant, len(profile_constants_dyn))
+            copy(pc_slice, profile_constants_dyn[:])
+            delete(profile_constants_dyn)
+            profile.constants = pc_slice
+            
+            pp_slice := make([]TomlPlugin, len(profile_plugins_dyn))
+            copy(pp_slice, profile_plugins_dyn[:])
+            delete(profile_plugins_dyn)
+            profile.plugins = pp_slice
             
             // Parse profile condition
             if cond_val, ok := profile_table.table_val["condition"]; ok && cond_val.type == .STRING {
@@ -1169,10 +1200,10 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
         }
     }
     if config.settings.autosuggestions_accept_keys == nil || len(config.settings.autosuggestions_accept_keys) == 0 {
-        config.settings.autosuggestions_accept_keys = []string{
-            strings.clone("^Y"),
-            strings.clone("^[[121;5u"),
-        }
+        keys := make([]string, 2)
+        keys[0] = strings.clone("^Y")
+        keys[1] = strings.clone("^[[121;5u")
+        config.settings.autosuggestions_accept_keys = keys
     }
     
     return config, true
@@ -1423,16 +1454,126 @@ toml_to_string :: proc(config: TomlConfig) -> string {
 toml_merge_profiles :: proc(base: TomlConfig, profile_name: string) -> TomlConfig {
     profile, ok := base.profiles[profile_name]
     if !ok {
-        // Profile not found, return base unchanged
-        return base
+        // Profile not found, return deep clone of base
+        result: TomlConfig
+        result.version = strings.clone(base.version)
+        result.shell = strings.clone(base.shell)
+        result.wayu_version = strings.clone(base.wayu_version)
+        result.path.dedup = base.path.dedup
+        result.path.clean = base.path.clean
+        result.path.entries = make([]string, len(base.path.entries))
+        for e, i in base.path.entries {
+            result.path.entries[i] = strings.clone(e)
+        }
+        result.aliases = make([]TomlAlias, len(base.aliases))
+        for a, i in base.aliases {
+            result.aliases[i] = {strings.clone(a.name), strings.clone(a.command), strings.clone(a.description)}
+        }
+        result.constants = make([]TomlConstant, len(base.constants))
+        for c, i in base.constants {
+            result.constants[i] = {strings.clone(c.name), strings.clone(c.value), c.export, c.secret, strings.clone(c.description)}
+        }
+        result.plugins = make([]TomlPlugin, len(base.plugins))
+        for p, i in base.plugins {
+            result.plugins[i] = {
+                strings.clone(p.name), strings.clone(p.source), strings.clone(p.version),
+                p.defer_load, p.priority,
+                strings.clone(p.condition),
+                make([]string, len(p.use)),
+                strings.clone(p.description),
+            }
+            for u, j in p.use {
+                result.plugins[i].use[j] = strings.clone(u)
+            }
+        }
+        result.settings = base.settings
+        result.settings.autosuggestions_accept_keys = make([]string, len(base.settings.autosuggestions_accept_keys))
+        for k, i in base.settings.autosuggestions_accept_keys {
+            result.settings.autosuggestions_accept_keys[i] = strings.clone(k)
+        }
+        result.profiles = make(map[string]ProfileConfig)
+        for name, pf in base.profiles {
+            pc: ProfileConfig
+            pc.condition = strings.clone(pf.condition)
+            if pf.path != nil {
+                pc.path = new(TomlPathConfig)
+                pc.path.dedup = pf.path.dedup
+                pc.path.clean = pf.path.clean
+                pc.path.entries = make([]string, len(pf.path.entries))
+                for e2, i2 in pf.path.entries {
+                    pc.path.entries[i2] = strings.clone(e2)
+                }
+            }
+            result.profiles[name] = pc
+        }
+        return result
     }
     
-    // Clone base config
-    merged := base
+    // Deep-clone base config to avoid sharing string/map pointers
+    merged: TomlConfig
+    merged.version = strings.clone(base.version)
+    merged.shell = strings.clone(base.shell)
+    merged.wayu_version = strings.clone(base.wayu_version)
+    merged.path.dedup = base.path.dedup
+    merged.path.clean = base.path.clean
+    merged.path.entries = make([]string, len(base.path.entries))
+    for e, i in base.path.entries {
+        merged.path.entries[i] = strings.clone(e)
+    }
+    merged.aliases = nil
+    merged.constants = nil
+    merged.plugins = nil
+    merged.settings = base.settings
+    merged.settings.autosuggestions_accept_keys = make([]string, len(base.settings.autosuggestions_accept_keys))
+    for k, i in base.settings.autosuggestions_accept_keys {
+        merged.settings.autosuggestions_accept_keys[i] = strings.clone(k)
+    }
+    // Clone profiles map
+    merged.profiles = make(map[string]ProfileConfig)
+    for name, pf in base.profiles {
+        pc: ProfileConfig
+        pc.condition = strings.clone(pf.condition)
+        if pf.path != nil {
+            pc.path = new(TomlPathConfig)
+            pc.path.dedup = pf.path.dedup
+            pc.path.clean = pf.path.clean
+            pc.path.entries = make([]string, len(pf.path.entries))
+            for e, i in pf.path.entries {
+                pc.path.entries[i] = strings.clone(e)
+            }
+        }
+        pc.aliases = make([]TomlAlias, len(pf.aliases))
+        for a, i in pf.aliases {
+            pc.aliases[i] = {strings.clone(a.name), strings.clone(a.command), strings.clone(a.description)}
+        }
+        pc.constants = make([]TomlConstant, len(pf.constants))
+        for c, i in pf.constants {
+            pc.constants[i] = {strings.clone(c.name), strings.clone(c.value), c.export, c.secret, strings.clone(c.description)}
+        }
+        pc.plugins = make([]TomlPlugin, len(pf.plugins))
+        for p, i in pf.plugins {
+            pc.plugins[i] = {
+                strings.clone(p.name), strings.clone(p.source), strings.clone(p.version),
+                p.defer_load, p.priority,
+                strings.clone(p.condition),
+                make([]string, len(p.use)),
+                strings.clone(p.description),
+            }
+            for u, j in p.use {
+                pc.plugins[i].use[j] = strings.clone(u)
+            }
+        }
+        merged.profiles[name] = pc
+    }
     
-    // Override path settings if profile has them
+    // Override path settings if profile has them (deep clone to avoid sharing)
     if profile.path != nil {
-        merged.path = profile.path^
+        merged.path.dedup = profile.path.dedup
+        merged.path.clean = profile.path.clean
+        merged.path.entries = make([]string, len(profile.path.entries))
+        for e, i in profile.path.entries {
+            merged.path.entries[i] = strings.clone(e)
+        }
     }
     
     // Temp dynamic arrays for merged config
@@ -1440,37 +1581,64 @@ toml_merge_profiles :: proc(base: TomlConfig, profile_name: string) -> TomlConfi
     merged_constants_dyn := make([dynamic]TomlConstant)
     merged_plugins_dyn := make([dynamic]TomlPlugin)
     
-    // Copy existing aliases
-    for alias in merged.aliases {
-        append(&merged_aliases_dyn, alias)
+    // Copy existing aliases (deep clone strings)
+    for alias in base.aliases {
+        append(&merged_aliases_dyn, TomlAlias{strings.clone(alias.name), strings.clone(alias.command), strings.clone(alias.description)})
     }
-    // Append profile aliases
+    // Append profile aliases (deep clone strings)
     for alias in profile.aliases {
-        append(&merged_aliases_dyn, alias)
+        append(&merged_aliases_dyn, TomlAlias{strings.clone(alias.name), strings.clone(alias.command), strings.clone(alias.description)})
     }
     
-    // Copy existing constants
-    for constant in merged.constants {
-        append(&merged_constants_dyn, constant)
+    // Copy existing constants (deep clone strings)
+    for constant in base.constants {
+        append(&merged_constants_dyn, TomlConstant{strings.clone(constant.name), strings.clone(constant.value), constant.export, constant.secret, strings.clone(constant.description)})
     }
-    // Append profile constants
+    // Append profile constants (deep clone strings)
     for constant in profile.constants {
-        append(&merged_constants_dyn, constant)
+        append(&merged_constants_dyn, TomlConstant{strings.clone(constant.name), strings.clone(constant.value), constant.export, constant.secret, strings.clone(constant.description)})
     }
     
-    // Copy existing plugins
-    for plugin in merged.plugins {
-        append(&merged_plugins_dyn, plugin)
+    // Copy existing plugins (deep clone strings)
+    for plugin in base.plugins {
+        p := TomlPlugin{
+            strings.clone(plugin.name), strings.clone(plugin.source), strings.clone(plugin.version),
+            plugin.defer_load, plugin.priority,
+            strings.clone(plugin.condition),
+            make([]string, len(plugin.use)),
+            strings.clone(plugin.description),
+        }
+        for u, j in plugin.use { p.use[j] = strings.clone(u) }
+        append(&merged_plugins_dyn, p)
     }
-    // Append profile plugins
+    // Append profile plugins (deep clone strings)
     for plugin in profile.plugins {
-        append(&merged_plugins_dyn, plugin)
+        p := TomlPlugin{
+            strings.clone(plugin.name), strings.clone(plugin.source), strings.clone(plugin.version),
+            plugin.defer_load, plugin.priority,
+            strings.clone(plugin.condition),
+            make([]string, len(plugin.use)),
+            strings.clone(plugin.description),
+        }
+        for u, j in plugin.use { p.use[j] = strings.clone(u) }
+        append(&merged_plugins_dyn, p)
     }
     
     // Assign dynamic arrays to merged
-    merged.aliases = merged_aliases_dyn[:]
-    merged.constants = merged_constants_dyn[:]
-    merged.plugins = merged_plugins_dyn[:]
+    ma_slice := make([]TomlAlias, len(merged_aliases_dyn))
+    copy(ma_slice, merged_aliases_dyn[:])
+    delete(merged_aliases_dyn)
+    merged.aliases = ma_slice
+    
+    mc_slice := make([]TomlConstant, len(merged_constants_dyn))
+    copy(mc_slice, merged_constants_dyn[:])
+    delete(merged_constants_dyn)
+    merged.constants = mc_slice
+    
+    mp_slice := make([]TomlPlugin, len(merged_plugins_dyn))
+    copy(mp_slice, merged_plugins_dyn[:])
+    delete(merged_plugins_dyn)
+    merged.plugins = mp_slice
     
     return merged
 }
@@ -1783,4 +1951,80 @@ print_toml_usage :: proc() {
 	fmt.println("  wayu build")
 	fmt.println()
 	fmt.printfln("%sSee:%s ~/.config/wayu/wayu.toml for example configuration", get_muted(), RESET)
+}
+
+// Properly free all memory in a TomlConfig
+cleanup_toml_config :: proc(config: ^TomlConfig) {
+	delete(config.version)
+	delete(config.shell)
+	delete(config.wayu_version)
+	for e in config.path.entries {
+		delete(e)
+	}
+	delete(config.path.entries)
+	for alias in config.aliases {
+		delete(alias.name)
+		delete(alias.command)
+		delete(alias.description)
+	}
+	delete(config.aliases)
+	for constant in config.constants {
+		delete(constant.name)
+		delete(constant.value)
+		delete(constant.description)
+	}
+	delete(config.constants)
+	for plugin in config.plugins {
+		delete(plugin.name)
+		delete(plugin.source)
+		delete(plugin.version)
+		delete(plugin.condition)
+		delete(plugin.description)
+		for u in plugin.use {
+			delete(u)
+		}
+		delete(plugin.use)
+	}
+	delete(config.plugins)
+	for key, profile in config.profiles {
+		for a in profile.aliases {
+			delete(a.name)
+			delete(a.command)
+			delete(a.description)
+		}
+		delete(profile.aliases)
+		for c in profile.constants {
+			delete(c.name)
+			delete(c.value)
+			delete(c.description)
+		}
+		delete(profile.constants)
+		for p in profile.plugins {
+			delete(p.name)
+			delete(p.source)
+			delete(p.version)
+			delete(p.condition)
+			delete(p.description)
+			for u in p.use {
+				delete(u)
+			}
+			delete(p.use)
+		}
+		delete(profile.plugins)
+		if profile.path != nil {
+			for e in profile.path.entries {
+				delete(e)
+			}
+			delete(profile.path.entries)
+			free(profile.path)
+		}
+		delete(profile.condition)
+	}
+	delete(config.profiles)
+	if config.settings.autosuggestions_accept_keys != nil {
+		for k in config.settings.autosuggestions_accept_keys {
+			delete(k)
+		}
+		delete(config.settings.autosuggestions_accept_keys)
+	}
 }

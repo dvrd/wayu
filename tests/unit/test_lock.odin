@@ -98,10 +98,10 @@ test_lock_add_entry :: proc(t: ^testing.T) {
 
 	entry := wayu.LockEntry{
 		type   = .CONSTANT,
-		name   = "TEST_VAR",
-		value  = "test_value",
-		hash   = "abc123",
-		source = "manual",
+		name   = strings.clone("TEST_VAR"),
+		value  = strings.clone("test_value"),
+		hash   = strings.clone("abc123"),
+		source = strings.clone("manual"),
 	}
 
 	success := wayu.lock_add_entry(&lock, entry)
@@ -131,10 +131,10 @@ test_lock_find_entry_found :: proc(t: ^testing.T) {
 
 	entry := wayu.LockEntry{
 		type   = .CONSTANT,
-		name   = "TEST_VAR",
-		value  = "test_value",
-		hash   = "abc123",
-		source = "manual",
+		name   = strings.clone("TEST_VAR"),
+		value  = strings.clone("test_value"),
+		hash   = strings.clone("abc123"),
+		source = strings.clone("manual"),
 	}
 
 	wayu.lock_add_entry(&lock, entry)
@@ -181,10 +181,10 @@ test_lock_remove_entry :: proc(t: ^testing.T) {
 
 	entry := wayu.LockEntry{
 		type   = .CONSTANT,
-		name   = "TEST_VAR",
-		value  = "test_value",
-		hash   = "abc123",
-		source = "manual",
+		name   = strings.clone("TEST_VAR"),
+		value  = strings.clone("test_value"),
+		hash   = strings.clone("abc123"),
+		source = strings.clone("manual"),
 	}
 
 	wayu.lock_add_entry(&lock, entry)
@@ -279,7 +279,7 @@ test_lock_write_and_read :: proc(t: ^testing.T) {
 		type        = .CONSTANT,
 		name        = strings.clone("EDITOR"),
 		value       = strings.clone("nvim"),
-		hash        = "sha256hash1234567890abcdef",
+		hash        = strings.clone("sha256hash1234567890abcdef"),
 		source      = strings.clone("manual"),
 		added_at    = strings.clone("2024-01-15T10:30:00Z"),
 		modified_at = strings.clone("2024-01-15T10:30:00Z"),
@@ -306,7 +306,7 @@ test_lock_write_and_read :: proc(t: ^testing.T) {
 		if e.modified_at != "" { delete(e.modified_at) }
 		delete(e.metadata)
 	}
-	delete(lock.entries)
+	// Note: don't delete(lock.entries) — it shares backing with entries_dyn
 
 	testing.expect(t, write_ok, "Should write lock file successfully")
 

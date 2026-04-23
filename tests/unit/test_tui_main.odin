@@ -59,7 +59,7 @@ test_tui_state_move_selection :: proc(t: ^testing.T) {
 	state := tui.tui_state_init()
 	defer tui.tui_state_destroy(&state)
 
-	item_count := 7  // Main menu has 7 items
+	item_count := 8  // Main menu has 8 items
 
 	// Move down
 	tui.tui_state_move_selection(&state, 1, item_count)
@@ -74,14 +74,14 @@ test_tui_state_move_selection :: proc(t: ^testing.T) {
 	testing.expect(t, state.selected_index == 1, "Should move back to index 1")
 
 	// Test wrap-around at bottom
-	state.selected_index = 6
+	state.selected_index = 7
 	tui.tui_state_move_selection(&state, 1, item_count)
 	testing.expect(t, state.selected_index == 0, "Should wrap to index 0")
 
 	// Test wrap-around at top
 	state.selected_index = 0
 	tui.tui_state_move_selection(&state, -1, item_count)
-	testing.expect(t, state.selected_index == 6, "Should wrap to index 6")
+	testing.expect(t, state.selected_index == 7, "Should wrap to index 7")
 }
 
 // Test: get_view_item_count returns correct count
@@ -90,9 +90,9 @@ test_main_get_view_item_count :: proc(t: ^testing.T) {
 	state := tui.tui_state_init()
 	defer tui.tui_state_destroy(&state)
 
-	// Main menu has 7 items
+	// Main menu has 8 items
 	count := tui.get_view_item_count(&state)
-	testing.expect(t, count == 7, "Main menu should have 7 items")
+	testing.expect(t, count == 8, "Main menu should have 8 items")
 
 	// PATH view (placeholder count)
 	tui.tui_state_goto_view(&state, .PATH_VIEW)
