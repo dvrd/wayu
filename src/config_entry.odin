@@ -917,7 +917,22 @@ is_entry_complete :: proc(entry: ConfigEntry) -> bool {
 // Note: String fields are intentionally not deleted here because
 // they may come from different allocation contexts (temp allocator,
 // string literals, etc.). The backing slice/array is freed by the caller.
+// Free every non-empty field of a ConfigEntry and then reset them.
+//
+// Contract: callers must either heap-allocate (strings.clone / fmt.aprintf)
+// all string fields before passing the entry here, or set them to the empty
+// string so the delete() is a no-op. Callers that intentionally hold string
+// literals (tests with inline data, static fixtures) must use plain
+// `delete(entries)` on the slice instead of `cleanup_entries`.
+//
+// Before this became a full free it was a no-op — which silently leaked
+// every parsed entry (parse_path_line / parse_alias_line / parse_constant_line
+// all strings.clone their outputs). 30+ leaks reported by the tracking
+// allocator traced back to this single function.
 cleanup_entry :: proc(entry: ^ConfigEntry) {
+	if len(entry.name)  > 0 { delete(entry.name)  }
+	if len(entry.value) > 0 { delete(entry.value) }
+	if len(entry.line)  > 0 { delete(entry.line)  }
 	entry.name = ""
 	entry.value = ""
 	entry.line = ""

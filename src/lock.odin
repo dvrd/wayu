@@ -95,10 +95,23 @@ lock_add_entry :: proc(lock: ^LockFile, entry: LockEntry) -> bool {
 	return true
 }
 
-// Remove an entry from the lock file
+// Remove an entry from the lock file.
+//
+// The removed entry's heap-allocated strings are freed here so the caller
+// doesn't need to remember which entry it dropped. lock_add_entry takes
+// ownership of the strings it receives, so this is the inverse.
 lock_remove_entry :: proc(lock: ^LockFile, name: string, type: ConfigType) -> bool {
 	for i := 0; i < len(lock.entries); i += 1 {
 		if lock.entries[i].name == name && lock.entries[i].type == type {
+			// Free the removed entry's owned strings first.
+			removed := lock.entries[i]
+			if len(removed.name)        > 0 do delete(removed.name)
+			if len(removed.value)       > 0 do delete(removed.value)
+			if len(removed.hash)        > 0 do delete(removed.hash)
+			if len(removed.source)      > 0 do delete(removed.source)
+			if len(removed.added_at)    > 0 do delete(removed.added_at)
+			if len(removed.modified_at) > 0 do delete(removed.modified_at)
+
 			// Remove by creating new slice without this element
 			new_entries := make([]LockEntry, len(lock.entries) - 1)
 			copy(new_entries[:i], lock.entries[:i])
@@ -351,21 +364,27 @@ format_lock_file :: proc(lock: LockFile) -> string {
 		fmt.sbprintln(&builder, "[[entries]]")
 
 		fmt.sbprintf(&builder, "type = \"%s\"\n", config_type_to_string(entry.type))
-		fmt.sbprintf(&builder, "name = \"%s\"\n", json_escape_value(entry.name))
+		fmt.sbprint(&builder, "name = \"")
+		json_escape_into(&builder, entry.name)
+		fmt.sbprintln(&builder, "\"")
 		fmt.sbprintf(&builder, "hash = \"%s\"\n", entry.hash)
 		fmt.sbprintf(&builder, "source = \"%s\"\n", entry.source)
 		fmt.sbprintf(&builder, "added_at = \"%s\"\n", entry.added_at)
 		fmt.sbprintf(&builder, "modified_at = \"%s\"\n", entry.modified_at)
 
 		if len(entry.value) > 0 {
-			fmt.sbprintf(&builder, "value = \"%s\"\n", json_escape_value(entry.value))
+			fmt.sbprint(&builder, "value = \"")
+			json_escape_into(&builder, entry.value)
+			fmt.sbprintln(&builder, "\"")
 		}
 
 		// Write metadata if any
 		if len(entry.metadata) > 0 {
 			fmt.sbprintln(&builder, "[metadata]")
 			for key, value in entry.metadata {
-				fmt.sbprintf(&builder, "%s = \"%s\"\n", key, json_escape_value(value))
+				fmt.sbprintf(&builder, "%s = \"", key)
+				json_escape_into(&builder, value)
+				fmt.sbprintln(&builder, "\"")
 			}
 		}
 
@@ -498,27 +517,46 @@ string_to_config_type :: proc(s: string) -> ConfigType {
 	return .PATH
 }
 
+// Write `str` into the given builder with JSON-style escaping for ", \, \n,
+// \t. Previously this function returned a heap-allocated clone and the
+// call sites threw the result into fmt.sbprintf without freeing, leaking
+// one allocation per serialized entry.
 @(private="file")
-json_escape_value :: proc(str: string) -> string {
-	builder := strings.builder_make()
-	defer strings.builder_destroy(&builder)
-
+json_escape_into :: proc(builder: ^strings.Builder, str: string) {
 	for r in str {
 		switch r {
-		case '"':  strings.write_string(&builder, "\\\"")
-		case '\\': strings.write_string(&builder, "\\\\")
-		case '\n': strings.write_string(&builder, "\\n")
-		case '\t': strings.write_string(&builder, "\\t")
+		case '"':  strings.write_string(builder, "\\\"")
+		case '\\': strings.write_string(builder, "\\\\")
+		case '\n': strings.write_string(builder, "\\n")
+		case '\t': strings.write_string(builder, "\\t")
 		case:
-			strings.write_rune(&builder, r)
+			strings.write_rune(builder, r)
 		}
 	}
+}
 
-	return strings.clone(strings.to_string(builder))
+// Public wrapper so callers outside this file (e.g. unit tests) can clean
+// up a LockFile returned by lock_read without having to remember every
+// heap-allocated field.
+lock_cleanup :: proc(lock: ^LockFile) {
+	free_lock_entries(lock)
 }
 
 @(private="file")
 free_lock_entries :: proc(lock: ^LockFile) {
+	// Top-level fields cloned by parse_lock_file — parse them back on read,
+	// free them on cleanup. Before this fix the two strings leaked on every
+	// round-trip (reported at parse_lock_file:461 and :463 by the tracking
+	// allocator).
+	if len(lock.version) > 0 {
+		delete(lock.version)
+		lock.version = ""
+	}
+	if len(lock.generated_at) > 0 {
+		delete(lock.generated_at)
+		lock.generated_at = ""
+	}
+
 	for &entry in lock.entries {
 		if entry.name != "" {
 			delete(entry.name)

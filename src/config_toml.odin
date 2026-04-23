@@ -1258,42 +1258,42 @@ toml_validate :: proc(config: TomlConfig) -> ValidationResult {
         }
     }
     
-    // Validate aliases
+    // Validate aliases. validate_alias allocates result.error_message on
+    // failure — wrap the message with aprintf and free the inner copy so
+    // we don't leak the 'reserved word' error (tracked by leak report at
+    // builder.odin:170 when tests set up an invalid alias).
     for alias in config.aliases {
         result := validate_alias(alias.name, alias.command)
         if !result.valid {
-            return ValidationResult{
-                valid = false,
-                error_message = fmt.aprintf("Invalid alias '%s': %s", alias.name, result.error_message),
-            }
+            wrapped := fmt.aprintf("Invalid alias '%s': %s", alias.name, result.error_message)
+            delete(result.error_message)
+            return ValidationResult{valid = false, error_message = wrapped}
         }
         if result.warning != "" {
             delete(result.warning)
         }
     }
     
-    // Validate constants
+    // Validate constants — same leak shape as aliases above.
     for constant in config.constants {
         result := validate_constant(constant.name, constant.value)
         if !result.valid {
-            return ValidationResult{
-                valid = false,
-                error_message = fmt.aprintf("Invalid constant '%s': %s", constant.name, result.error_message),
-            }
+            wrapped := fmt.aprintf("Invalid constant '%s': %s", constant.name, result.error_message)
+            delete(result.error_message)
+            return ValidationResult{valid = false, error_message = wrapped}
         }
         if result.warning != "" {
             delete(result.warning)
         }
     }
     
-    // Validate path entries
+    // Validate path entries — same pattern.
     for entry in config.path.entries {
         result := validate_path(entry)
         if !result.valid {
-            return ValidationResult{
-                valid = false,
-                error_message = fmt.aprintf("Invalid path entry '%s': %s", entry, result.error_message),
-            }
+            wrapped := fmt.aprintf("Invalid path entry '%s': %s", entry, result.error_message)
+            delete(result.error_message)
+            return ValidationResult{valid = false, error_message = wrapped}
         }
     }
     
@@ -1566,10 +1566,19 @@ toml_merge_profiles :: proc(base: TomlConfig, profile_name: string) -> TomlConfi
         merged.profiles[name] = pc
     }
     
-    // Override path settings if profile has them (deep clone to avoid sharing)
+    // Override path settings if profile has them (deep clone to avoid sharing).
+    // Free the base-cloned entries first — otherwise the earlier
+    // `merged.path.entries = make(...)` allocation (and every cloned entry
+    // inside it) leaks when we swap in the profile version.
     if profile.path != nil {
         merged.path.dedup = profile.path.dedup
         merged.path.clean = profile.path.clean
+        if merged.path.entries != nil {
+            for e in merged.path.entries {
+                delete(e)
+            }
+            delete(merged.path.entries)
+        }
         merged.path.entries = make([]string, len(profile.path.entries))
         for e, i in profile.path.entries {
             merged.path.entries[i] = strings.clone(e)
