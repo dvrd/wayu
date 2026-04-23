@@ -323,17 +323,10 @@ test_lock_write_and_read :: proc(t: ^testing.T) {
 		testing.expect_value(t, read_lock.entries[0].type, wayu.ConfigType.CONSTANT)
 	}
 
-	// Cleanup read lock memory
-	for &e in read_lock.entries {
-		if e.name != "" { delete(e.name) }
-		if e.value != "" { delete(e.value) }
-		if e.hash != "" { delete(e.hash) }
-		if e.source != "" { delete(e.source) }
-		if e.added_at != "" { delete(e.added_at) }
-		if e.modified_at != "" { delete(e.modified_at) }
-		delete(e.metadata)
-	}
-	delete(read_lock.entries)
+	// Let the public cleanup helper handle all owned strings (entries +
+	// top-level version / generated_at). Before this change the two
+	// top-level fields leaked on every round-trip read.
+	wayu.lock_cleanup(&read_lock)
 }
 
 // ============================================================================
