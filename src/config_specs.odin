@@ -53,6 +53,21 @@ ALIAS_SPEC := ConfigEntrySpec{
 		validate_alias_name_input,
 		validate_alias_command_input,
 	},
+
+	// TOML-first ops wired for the generic handle_toml_entry_command dispatcher.
+	toml_add    = toml_alias_add,
+	toml_remove = toml_alias_remove,
+	toml_list   = list_toml_aliases,
+	toml_get    = get_toml_alias_value,
+
+	hook_pre_add     = hook_pre_alias_add,
+	hook_post_add    = hook_post_alias_add,
+	hook_pre_remove  = hook_pre_alias_remove,
+	hook_post_remove = hook_post_alias_remove,
+
+	// Aliases also display external source files (e.g. /etc/shell-aliases.sh)
+	// underneath the native list output — run that epilogue after toml_list.
+	list_epilogue = print_external_alias_sources,
 }
 
 // CONSTANTS entry specification (global variable, not constant)
@@ -77,6 +92,17 @@ CONSTANTS_SPEC := ConfigEntrySpec{
 		validate_constant_name_input,
 		validate_constant_value_input,
 	},
+
+	// TOML-first ops wired for the generic handle_toml_entry_command dispatcher.
+	toml_add    = toml_constant_add,
+	toml_remove = toml_constant_remove,
+	toml_list   = list_toml_constants,
+	toml_get    = get_toml_constant_value,
+
+	hook_pre_add     = hook_pre_constant_add,
+	hook_post_add    = hook_post_constant_add,
+	hook_pre_remove  = hook_pre_constant_remove,
+	hook_post_remove = hook_post_constant_remove,
 }
 
 // ============================================================================

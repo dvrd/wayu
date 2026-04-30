@@ -254,7 +254,7 @@ migrate_plugin_config :: proc() -> bool {
 
 	// Write new config
 	if !write_plugin_config_json(&new_config) {
-		print_error_simple("Error: Failed to write new configuration")
+		print_error_simple("Failed to write new configuration")
 		return false
 	}
 

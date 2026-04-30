@@ -10,69 +10,13 @@ import "core:slice"
 import "core:strings"
 
 // Main handler for ALIAS commands.
-// For LIST, external alias source sections are still appended.
+//
+// Thin delegation to the generic TOML-entry dispatcher. The spec wires up
+// toml_alias_add/remove/list/get + per-action hooks + the external-sources
+// epilogue on LIST (see ALIAS_SPEC in config_specs.odin). All per-type
+// logic lives in toml_alias_* procs below.
 handle_alias_command :: proc(action: Action, args: []string) {
-	if !ensure_wayu_toml_exists() {
-		print_error_simple("Failed to create wayu.toml")
-		os.exit(EXIT_IOERR)
-	}
-
-	{
-		#partial switch action {
-		case .ADD:
-			if len(args) == 0 {
-				print_cli_usage_error(&ALIAS_SPEC, "add")
-				os.exit(EXIT_USAGE)
-			}
-			entry := parse_args_to_entry(&ALIAS_SPEC, args)
-			defer cleanup_entry(&entry)
-			if !is_entry_complete(entry) {
-				print_cli_usage_error(&ALIAS_SPEC, "add")
-				os.exit(EXIT_USAGE)
-			}
-			hook_pre_alias_add(entry.name)
-			ok, err := toml_alias_add(entry)
-			if !ok {
-				print_error_simple(err)
-				delete(err)
-				os.exit(EXIT_DATAERR)
-			}
-			hook_post_alias_add(entry.name)
-			return
-		case .REMOVE:
-			if len(args) == 0 {
-				print_cli_usage_error(&ALIAS_SPEC, "remove")
-				os.exit(EXIT_USAGE)
-			}
-			hook_pre_alias_remove(args[0])
-			ok, err := toml_alias_remove(args[0])
-			if !ok {
-				print_error_simple(err)
-				delete(err)
-				os.exit(EXIT_DATAERR)
-			}
-			hook_post_alias_remove(args[0])
-			return
-		case .LIST:
-			list_toml_aliases()
-			print_external_alias_sources()
-			return
-		case .GET:
-			if len(args) == 0 {
-				print_cli_usage_error(&ALIAS_SPEC, "get")
-				os.exit(EXIT_USAGE)
-			}
-			get_toml_alias_value(args[0])
-			return
-		case:
-		}
-	}
-
-	handle_config_command(&ALIAS_SPEC, action, args)
-
-	if action == .LIST {
-		print_external_alias_sources()
-	}
+	handle_toml_entry_command(&ALIAS_SPEC, action, args)
 }
 
 read_toml_alias_entries :: proc() -> []ConfigEntry {

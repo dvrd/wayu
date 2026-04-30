@@ -211,6 +211,16 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 
 // Handle selection in current view
 handle_selection :: proc(state: ^TUIState) {
+	// Shared scratch arena for the whole proc. Only one `case` runs per call,
+	// so a single 2KB buffer covers every sub-case that previously declared
+	// its own [512]byte or [1024]byte arena. The buffer dies with this stack
+	// frame once the proc returns. Reduces 5 copies of scratch boilerplate
+	// to one declaration. See thoughts/code_review_2026-04-24.md N4.
+	scratch_buf: [2048]byte
+	scratch: mem.Arena
+	mem.arena_init(&scratch, scratch_buf[:])
+	scratch_alloc := mem.arena_allocator(&scratch)
+
 	switch state.current_view {
 	case .MAIN_MENU:
 		// Navigate to selected view
@@ -249,13 +259,6 @@ handle_selection :: proc(state: ^TUIState) {
 			items := cast(^[dynamic]string)state.data_cache[.ALIAS_VIEW]
 			if state.selected_index >= 0 && state.selected_index < len(items) {
 				selected := items[state.selected_index]
-				// Scratch arena for split + detail strings — show_detail_overlay clones,
-				// so everything here can be freed in bulk when scope ends.
-				scratch_buf: [1024]byte
-				scratch: mem.Arena
-				mem.arena_init(&scratch, scratch_buf[:])
-				scratch_alloc := mem.arena_allocator(&scratch)
-
 				parts := strings.split(selected, "=", scratch_alloc)
 				if len(parts) >= 2 {
 					joined_cmd := strings.join(parts[1:], "=", scratch_alloc)
@@ -275,13 +278,6 @@ handle_selection :: proc(state: ^TUIState) {
 			items := cast(^[dynamic]string)state.data_cache[.CONSTANTS_VIEW]
 			if state.selected_index >= 0 && state.selected_index < len(items) {
 				selected := items[state.selected_index]
-				// Scratch arena for split + detail strings — show_detail_overlay clones,
-				// so everything here can be freed in bulk when scope ends.
-				scratch_buf: [1024]byte
-				scratch: mem.Arena
-				mem.arena_init(&scratch, scratch_buf[:])
-				scratch_alloc := mem.arena_allocator(&scratch)
-
 				parts := strings.split(selected, "=", scratch_alloc)
 				if len(parts) >= 2 {
 					value := strings.join(parts[1:], "=", scratch_alloc)
@@ -301,12 +297,6 @@ handle_selection :: proc(state: ^TUIState) {
 			items := cast(^[dynamic]string)state.data_cache[.COMPLETIONS_VIEW]
 			if state.selected_index >= 0 && state.selected_index < len(items) {
 				selected := items[state.selected_index]
-				// Scratch arena — only one string here but arena protects against future additions.
-				scratch_buf: [512]byte
-				scratch: mem.Arena
-				mem.arena_init(&scratch, scratch_buf[:])
-				scratch_alloc := mem.arena_allocator(&scratch)
-
 				line1 := fmt.aprintf("Script: %s", selected, allocator = scratch_alloc)
 				lines := []string{line1}
 				show_detail_overlay(state, selected, lines)
@@ -318,13 +308,6 @@ handle_selection :: proc(state: ^TUIState) {
 			items := cast(^[dynamic]string)state.data_cache[.BACKUPS_VIEW]
 			if state.selected_index >= 0 && state.selected_index < len(items) {
 				selected := items[state.selected_index]
-				// Scratch arena for split + detail strings — show_detail_overlay clones,
-				// so everything here can be freed in bulk when scope ends.
-				scratch_buf: [512]byte
-				scratch: mem.Arena
-				mem.arena_init(&scratch, scratch_buf[:])
-				scratch_alloc := mem.arena_allocator(&scratch)
-
 				// Parse backup filename: e.g. "path.zsh.backup.2024-03-15_14-30-00"
 				parts := strings.split(selected, ".backup.", scratch_alloc)
 				if len(parts) >= 2 {

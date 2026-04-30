@@ -7,6 +7,7 @@ import "core:fmt"
 import "core:time"
 import "core:strings"
 import "core:slice"
+import "core:strconv"
 
 // Backup metadata
 BackupInfo :: struct {
@@ -94,40 +95,35 @@ create_backup_cli :: proc(file_path: string) -> bool {
 
 	if !ok && file_existed {
 		// File was present but backup failed — abort to prevent data loss.
-		print_error("Failed to create backup for %s", file_path)
-		fmt.println("Aborting operation to prevent data loss.")
+		if !TUI_MODE {
+			print_error("Failed to create backup for %s", file_path)
+			fmt.println("Aborting operation to prevent data loss.")
+		}
 		return false
 	}
 
 	return true
 }
 
-// TUI version - prompts user on backup failure
-// This function is ONLY called from TUI bridge, never from CLI.
-// Only prompts when the file existed but the backup actually failed.
+// TUI version — returns false on backup failure without blocking on stdin.
+// In TUI raw mode os.read(stdin) would deadlock, so we rely on the caller
+// (the TUI notification bar) to surface the error to the user.
 create_backup_tui :: proc(file_path: string, auto_backup := true) -> bool {
-	if auto_backup {
-		file_existed := os.exists(file_path)
-
-		backup_path, ok := create_backup(file_path)
-		defer if ok do delete(backup_path)
-
-		if !ok && file_existed {
-			// File was present but backup failed — prompt user.
-			print_warning("Failed to create backup for %s", file_path)
-			fmt.print("Continue anyway? [y/N]: ")
-
-			input_buf: [10]byte
-			n, err := os.read(os.stdin, input_buf[:])
-			if err != nil || n == 0 {
-				return false
-			}
-
-			response := strings.trim_space(string(input_buf[:n]))
-			return response == "y" || response == "Y"
-		}
-
+	if !auto_backup {
 		return true
+	}
+
+	file_existed := os.exists(file_path)
+
+	backup_path, ok := create_backup(file_path)
+	defer if ok do delete(backup_path)
+
+	if !ok && file_existed {
+		// Suppress stdout noise in TUI mode; the notification bar handles messaging.
+		if !TUI_MODE {
+			print_warning("Failed to create backup for %s", file_path)
+		}
+		return false
 	}
 
 	return true
@@ -245,38 +241,35 @@ parse_timestamp :: proc(timestamp_str: string) -> time.Time {
 
 	// Try to parse new format first
 	if len(timestamp_str) >= 19 && timestamp_str[4] == '-' && timestamp_str[7] == '-' && timestamp_str[10] == '_' {
-		year := parse_int(timestamp_str[0:4])
-		month := parse_int(timestamp_str[5:7])
-		day := parse_int(timestamp_str[8:10])
-		hour := parse_int(timestamp_str[11:13])
-		min := parse_int(timestamp_str[14:16])
-		sec := parse_int(timestamp_str[17:19])
+		// Timestamp components are all ASCII digits by construction; if
+		// parse fails (corrupted filename) we fall through to the legacy
+		// Unix-timestamp path below — not the component-zero path — so
+		// parse errors can't silently produce a "year 0" timestamp.
+		year,  year_ok  := strconv.parse_int(timestamp_str[0:4])
+		month, month_ok := strconv.parse_int(timestamp_str[5:7])
+		day,   day_ok   := strconv.parse_int(timestamp_str[8:10])
+		hour,  hour_ok  := strconv.parse_int(timestamp_str[11:13])
+		min,   min_ok   := strconv.parse_int(timestamp_str[14:16])
+		sec,   sec_ok   := strconv.parse_int(timestamp_str[17:19])
 
-		// Create time from components
-		return time.datetime_to_time(year, month, day, hour, min, sec, 0)
-	}
-
-	// Fallback: parse old Unix timestamp format for backwards compatibility
-	timestamp_int: i64 = 0
-	for char in timestamp_str {
-		if char >= '0' && char <= '9' {
-			timestamp_int = timestamp_int * 10 + i64(char - '0')
-		} else {
-			break
+		if year_ok && month_ok && day_ok && hour_ok && min_ok && sec_ok {
+			return time.datetime_to_time(year, month, day, hour, min, sec, 0)
 		}
+		// fall through on parse failure
 	}
+
+	// Fallback: parse old Unix timestamp format for backwards compatibility.
+	// Accepts a leading run of digits; stops at the first non-digit so the
+	// ".bak" suffix and extension are tolerated.
+	end := 0
+	for end < len(timestamp_str) && timestamp_str[end] >= '0' && timestamp_str[end] <= '9' {
+		end += 1
+	}
+	if end == 0 {
+		return time.unix(0, 0)
+	}
+	timestamp_int, _ := strconv.parse_i64(timestamp_str[:end])
 	return time.unix(timestamp_int, 0)
-}
-
-// Helper to parse integer from string
-parse_int :: proc(s: string) -> int {
-	result: int = 0
-	for char in s {
-		if char >= '0' && char <= '9' {
-			result = result * 10 + int(char - '0')
-		}
-	}
-	return result
 }
 
 // Clean up old backups (keep last N)
@@ -653,7 +646,7 @@ cleanup_all_old_backups :: proc() {
 		fmt.println()
 		fmt.printfln("Add --yes flag to proceed:")
 		fmt.printfln("  wayu backup rm --yes")
-		os.exit(EXIT_GENERAL)
+		os.exit(EXIT_USAGE)
 	}
 
 	// Proceed with removal
@@ -723,7 +716,7 @@ cleanup_config_backups :: proc(config_type: string) {
 		fmt.println()
 		fmt.printfln("Add --yes flag to proceed:")
 		fmt.printfln("  wayu backup rm %s --yes", config_type)
-		os.exit(EXIT_GENERAL)
+		os.exit(EXIT_USAGE)
 	}
 
 	removed := cleanup_old_backups(config_file, 5)

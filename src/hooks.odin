@@ -5,9 +5,11 @@
 
 package wayu
 
+import "core:c"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sys/posix"
 
 // Hook types
 HookType :: enum {
@@ -52,22 +54,58 @@ HookConfig :: struct {
 // Hook file path
 HOOK_CONFIG_FILE :: "hooks.conf"
 
-// Execute a hook if configured
-execute_hook :: proc(hook_type: HookType, context_data: string = "") {
+// HookContext disambiguates the three hook placeholders `{path}`, `{name}`,
+// and `{value}`. Previously a single `context_data` string was substituted
+// for all three, which broke hook scripts that referenced more than one
+// placeholder (e.g. `echo "$NAME = $VALUE"` on a constant hook). Now each
+// caller fills in only the placeholders meaningful for its hook type; the
+// others stay empty. See thoughts/code_review_2026-04-24.md N2.
+HookContext :: struct {
+	path:  string,  // for PATH_* hooks: the directory being added/removed
+	name:  string,  // for ALIAS/CONSTANT/PLUGIN_* hooks: the entry identifier
+	value: string,  // for CONSTANT_* hooks: the value being assigned (optional)
+}
+
+// Execute a hook if configured.
+//
+// Accepts either a `HookContext` for precise placeholder disambiguation, or
+// (for backward compatibility) a single positional string used to fill the
+// hook's one meaningful placeholder — the convenience shim `execute_hook`
+// routes the legacy single-string form through a context whose field is
+// chosen based on hook type.
+execute_hook_ctx :: proc(hook_type: HookType, ctx: HookContext) {
 	hook_cmd := get_hook_command(hook_type)
 	if len(hook_cmd) == 0 {
 		return
 	}
 
-	// Replace placeholders
-	cmd, _ := strings.replace_all(hook_cmd, "{path}", context_data, context.temp_allocator)
-	cmd, _ = strings.replace_all(cmd, "{name}", context_data, context.temp_allocator)
-	cmd, _ = strings.replace_all(cmd, "{value}", context_data, context.temp_allocator)
+	// Replace placeholders. Each field defaults to "" so absent placeholders
+	// expand to empty rather than getting conflated with the other fields.
+	cmd, _ := strings.replace_all(hook_cmd, "{path}",  ctx.path,  context.temp_allocator)
+	cmd, _  = strings.replace_all(cmd,       "{name}",  ctx.name,  context.temp_allocator)
+	cmd, _  = strings.replace_all(cmd,       "{value}", ctx.value, context.temp_allocator)
 
 	// Execute via shell (fire and forget - don't block on output)
 	debug("Executing hook: %s", cmd)
 	hook_args := []string{"sh", "-c", cmd}
 	run_command(hook_args)  // Ignoring return value - hooks are best-effort
+}
+
+// Legacy single-string entry point. Routes to execute_hook_ctx by picking the
+// right context field for each hook type.
+execute_hook :: proc(hook_type: HookType, context_data: string = "") {
+	ctx: HookContext
+	#partial switch hook_type {
+	case .PRE_PATH_ADD, .POST_PATH_ADD, .PRE_PATH_REMOVE, .POST_PATH_REMOVE:
+		ctx.path = context_data
+	case .PRE_ALIAS_ADD, .POST_ALIAS_ADD, .PRE_ALIAS_REMOVE, .POST_ALIAS_REMOVE,
+	     .PRE_CONSTANT_ADD, .POST_CONSTANT_ADD, .PRE_CONSTANT_REMOVE, .POST_CONSTANT_REMOVE,
+	     .PRE_PLUGIN_INSTALL, .POST_PLUGIN_INSTALL:
+		ctx.name = context_data
+	case .PRE_EXPORT, .POST_EXPORT:
+		// No context — just run the command as-is.
+	}
+	execute_hook_ctx(hook_type, ctx)
 }
 
 // Get hook command for a type
@@ -301,19 +339,52 @@ edit_hooks_config :: proc() {
 		}
 	}
 
-	// Open in editor
-	editor := os.get_env_alloc("EDITOR", context.temp_allocator)
-	if len(editor) == 0 {
+	// Open in editor.
+	//
+	// IMPORTANT: do NOT route this through run_command_with_stdin(): that helper
+	// redirects stdout+stderr to /dev/null and pipes an empty stdin, which means
+	// any TUI editor (vim/nano/helix) renders nothing and appears to hang.
+	// Use fork + execvp so the editor inherits our stdin/stdout/stderr directly,
+	// mirroring the pattern in edit_toml_config / edit_extra_config (main.odin).
+	editor: string
+	if e := os.get_env("EDITOR", context.temp_allocator); len(e) > 0 {
+		editor = e
+	} else if e := os.get_env("VISUAL", context.temp_allocator); len(e) > 0 {
+		editor = e
+	} else {
 		editor = "vi"
 	}
 
 	print_info("Opening hooks config in %s...", editor)
-	editor_args := []string{editor, hook_path}
-	ok := run_command_with_stdin(editor_args, "")
-	if !ok {
-		print_error("Failed to open editor: %s", editor)
+
+	args := []string{editor, hook_path}
+	argv := make([dynamic]cstring, len(args) + 1)
+	defer {
+		for i in 0..<len(args) {
+			delete(argv[i])
+		}
+		delete(argv)
+	}
+	for arg, i in args {
+		argv[i] = strings.clone_to_cstring(arg)
+	}
+	argv[len(args)] = nil
+
+	pid := posix.fork()
+	if pid < 0 {
+		print_error("Failed to fork editor process")
 		os.exit(EXIT_IOERR)
 	}
+
+	if pid == 0 {
+		// Child: exec editor with inherited stdio.
+		posix.execvp(argv[0], raw_data(argv[:]))
+		posix._exit(1)
+	}
+
+	// Parent: wait for editor to finish.
+	status: c.int = 0
+	posix.waitpid(pid, &status, {})
 }
 
 // Print hooks usage

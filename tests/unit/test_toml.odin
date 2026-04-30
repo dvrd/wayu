@@ -310,6 +310,51 @@ entries = ["/usr/local/bin"]
 // EDGE CASE TESTS
 // ============================================================================
 
+// Regression test for H1: profile path override was emitting literal "%s"
+// because sbprintln (not sbprintfln) was used and profile_name wasn't passed.
+// See thoughts/code_review_2026-04-24.md H1.
+@(test)
+test_toml_to_string_profile_path_roundtrip :: proc(t: ^testing.T) {
+    content := `
+version = "1.0"
+shell = "zsh"
+
+[path]
+entries = ["/usr/local/bin"]
+
+[profile.work]
+
+[profile.work.path]
+entries = ["/opt/work/bin"]
+`
+    config, ok := wayu.toml_parse(content)
+    defer wayu.cleanup_toml_config(&config)
+    testing.expect(t, ok, "Parsing should succeed")
+
+    output := wayu.toml_to_string(config)
+    defer delete(output)
+
+    // The bug: previously emitted literal "[profile.%s.path]" instead of resolving profile_name.
+    testing.expect(t, !strings.contains(output, "%s"), "Output must not contain unresolved %s placeholder")
+    testing.expect(t, strings.contains(output, "[profile.work.path]"), "Output must contain resolved [profile.work.path] header")
+    testing.expect(t, strings.contains(output, "/opt/work/bin"), "Output must contain the profile path entry")
+
+    // Round-trip: the serialized output must re-parse and preserve the override.
+    reparsed, ok2 := wayu.toml_parse(output)
+    defer wayu.cleanup_toml_config(&reparsed)
+    testing.expect(t, ok2, "Serialized output should re-parse cleanly")
+
+    profile, found := reparsed.profiles["work"]
+    testing.expect(t, found, "Re-parsed config should still contain 'work' profile")
+    testing.expect(t, profile.path != nil, "Re-parsed profile should still have a path override")
+    if profile.path != nil {
+        testing.expect(t, len(profile.path.entries) == 1, "Profile path should have 1 entry")
+        if len(profile.path.entries) == 1 {
+            testing.expect(t, profile.path.entries[0] == "/opt/work/bin", "Profile path entry should round-trip")
+        }
+    }
+}
+
 @(test)
 test_toml_parse_empty :: proc(t: ^testing.T) {
     config, ok := wayu.toml_parse("")

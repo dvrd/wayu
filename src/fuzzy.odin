@@ -7,6 +7,7 @@ import "core:sys/unix"
 import "core:c/libc"
 import "core:slice"
 import "core:c"
+import "core:sys/posix"
 
 // Enhanced fuzzy finder implementation with rich metadata, details panels, and actions
 // This provides interactive fuzzy matching with real-time filtering, details, and keyboard actions
@@ -20,14 +21,16 @@ foreign import libc_term "system:c"
 STDIN_FILENO :: 0
 TCSANOW :: 0
 
-// Terminal mode flags
-// c_lflag (local flags)
-ICANON :: 0x00000100  // Canonical input (line buffering)
-ECHO   :: 0x00000008  // Echo input characters
-
-// c_iflag (input flags)
-IXON   :: 0x00000400  // Enable XON/XOFF flow control on output
-IXOFF  :: 0x00001000  // Enable XON/XOFF flow control on input
+// Terminal mode flag constants.
+//
+// Previously hardcoded to the LINUX values (IXON=0x400, IXOFF=0x1000) which
+// silently did the wrong thing on macOS where IXON=0x200, IXOFF=0x400. Now
+// pulled from core:sys/posix so the compiler picks the right per-platform
+// constants automatically. See thoughts/code_review_2026-04-24.md N8.
+ICANON :: posix.ICANON
+ECHO   :: posix.ECHO
+IXON   :: posix.IXON
+IXOFF  :: posix.IXOFF
 
 termios :: struct {
 	c_iflag:  c.ulong,  // tcflag_t is unsigned long on macOS
@@ -1048,9 +1051,6 @@ interactive_fuzzy_select :: proc(items: []string, prompt: string) -> (selected: 
 	// For advanced filtering in CLI mode, users can pipe through external tools like fzf
 	return interactive_select(items, prompt)
 }
-
-// Note: extract_path_items has been moved to path.odin as it's PATH-specific
-// Note: extract_alias_items and extract_constant_items have been removed - use read_config_entries instead
 
 // Extract completion items from completions directory
 extract_completion_items :: proc() -> []string {

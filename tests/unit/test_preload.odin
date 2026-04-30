@@ -61,36 +61,36 @@ test_is_common_path :: proc(t: ^testing.T) {
 
 @(test)
 test_preload_path_template_exists :: proc(t: ^testing.T) {
-	// Test that PATH_TEMPLATE constant exists and is not empty
-	testing.expect(t, len(wayu.PATH_TEMPLATE) > 0, "PATH_TEMPLATE should not be empty")
-	testing.expect(t, strings.contains(wayu.PATH_TEMPLATE, "add_to_path"), "Should contain add_to_path function")
+	// Test that PATH_TEMPLATE_ZSH constant exists and is not empty
+	testing.expect(t, len(wayu.PATH_TEMPLATE_ZSH) > 0, "PATH_TEMPLATE_ZSH should not be empty")
+	testing.expect(t, strings.contains(wayu.PATH_TEMPLATE_ZSH, "add_to_path"), "Should contain add_to_path function")
 }
 
 @(test)
 test_preload_aliases_template_exists :: proc(t: ^testing.T) {
-	// Test that ALIASES_TEMPLATE constant exists and is not empty
-	testing.expect(t, len(wayu.ALIASES_TEMPLATE) > 0, "ALIASES_TEMPLATE should not be empty")
+	// Test that ALIASES_TEMPLATE_ZSH constant exists and is not empty
+	testing.expect(t, len(wayu.ALIASES_TEMPLATE_ZSH) > 0, "ALIASES_TEMPLATE_ZSH should not be empty")
 	testing.expect(t, len(wayu.ALIASES_TEMPLATE_BASH) > 0, "ALIASES_TEMPLATE_BASH should not be empty")
 }
 
 @(test)
 test_preload_constants_template_exists :: proc(t: ^testing.T) {
-	// Test that CONSTANTS_TEMPLATE constant exists and is not empty
-	testing.expect(t, len(wayu.CONSTANTS_TEMPLATE) > 0, "CONSTANTS_TEMPLATE should not be empty")
+	// Test that CONSTANTS_TEMPLATE_ZSH constant exists and is not empty
+	testing.expect(t, len(wayu.CONSTANTS_TEMPLATE_ZSH) > 0, "CONSTANTS_TEMPLATE_ZSH should not be empty")
 	testing.expect(t, len(wayu.CONSTANTS_TEMPLATE_BASH) > 0, "CONSTANTS_TEMPLATE_BASH should not be empty")
 }
 
 @(test)
 test_preload_init_template_exists :: proc(t: ^testing.T) {
-	// Test that INIT_TEMPLATE constant exists and is not empty
-	testing.expect(t, len(wayu.INIT_TEMPLATE) > 0, "INIT_TEMPLATE should not be empty")
-	testing.expect(t, strings.contains(wayu.INIT_TEMPLATE, "source"), "Init should contain source commands")
+	// Test that INIT_TEMPLATE_ZSH constant exists and is not empty
+	testing.expect(t, len(wayu.INIT_TEMPLATE_ZSH) > 0, "INIT_TEMPLATE_ZSH should not be empty")
+	testing.expect(t, strings.contains(wayu.INIT_TEMPLATE_ZSH, "source"), "Init should contain source commands")
 	testing.expect(t, len(wayu.INIT_TEMPLATE_BASH) > 0, "INIT_TEMPLATE_BASH should not be empty")
 }
 
 @(test)
 test_preload_tools_template_exists :: proc(t: ^testing.T) {
-	// Test that TOOLS_TEMPLATE constant exists and is not empty
-	testing.expect(t, len(wayu.TOOLS_TEMPLATE) > 0, "TOOLS_TEMPLATE should not be empty")
+	// Test that TOOLS_TEMPLATE_ZSH constant exists and is not empty
+	testing.expect(t, len(wayu.TOOLS_TEMPLATE_ZSH) > 0, "TOOLS_TEMPLATE_ZSH should not be empty")
 	testing.expect(t, len(wayu.TOOLS_TEMPLATE_BASH) > 0, "TOOLS_TEMPLATE_BASH should not be empty")
 }

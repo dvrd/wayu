@@ -87,7 +87,7 @@ handle_plugin_check :: proc(args: []string) {
 	// Save updated metadata (last_checked timestamps)
 	if !DRY_RUN {
 		if !write_plugin_config_json(&config) {
-			print_error_simple("Error: Failed to save plugin metadata")
+			print_error_simple("Failed to save plugin metadata")
 			os.exit(EXIT_CONFIG)
 		}
 	} else {
@@ -157,7 +157,7 @@ handle_plugin_update :: proc(args: []string) {
 		plugin_ptr, found := find_plugin_json(&config, plugin_name)
 		
 		if !found {
-			print_error_simple("Error: Plugin '%s' not found", plugin_name)
+			print_error_simple("Plugin '%s' not found", plugin_name)
 			fmt.println()
 			fmt.println("Run 'wayu plugin list' to see installed plugins")
 			os.exit(EXIT_DATAERR)
@@ -176,7 +176,7 @@ handle_plugin_update :: proc(args: []string) {
 		spinner_stop(&spinner)
 
 		if !success {
-			print_error_simple("Error: Failed to update plugin")
+			print_error_simple("Failed to update plugin")
 			os.exit(EXIT_IOERR)
 		}
 
@@ -248,7 +248,7 @@ handle_plugin_update :: proc(args: []string) {
 
 		// Write updated config
 		if !write_plugin_config_json(&config) {
-			print_error_simple("Error: Failed to save plugin metadata")
+			print_error_simple("Failed to save plugin metadata")
 			os.exit(EXIT_CONFIG)
 		}
 	} else {
@@ -278,18 +278,30 @@ handle_plugin_update :: proc(args: []string) {
 // Shared implementation for enable/disable plugin commands
 // Sets enabled state in plugins.json and regenerates shell loader
 // Idempotent: Setting a plugin to its current state returns EXIT_SUCCESS
+// Per-direction verb forms used by the user-facing messaging in
+// handle_plugin_set_enabled. Groups the five conjugations of enable/disable
+// into a single struct so the proc body doesn't fan out across ten if-else
+// ternaries. See thoughts/code_review_2026-04-24.md N7.
+PluginVerbForms :: struct {
+	word:   string, // "enable" (imperative / flag name)
+	Word:   string, // "Enable" (sentence-start)
+	ing:    string, // "Enabling"
+	past:   string, // "enabled"
+	header: string, // "Enabling Plugin" (used as section header)
+}
+
+PLUGIN_VERBS := [2]PluginVerbForms{
+	{"disable", "Disable", "Disabling", "disabled", "Disabling Plugin"},
+	{"enable",  "Enable",  "Enabling",  "enabled",  "Enabling Plugin"},
+}
+
 handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
-	// Determine action-specific strings
-	action_word: string = "disable"
-	if enable { action_word = "enable" }
-	action_word_cap: string = "Disable"
-	if enable { action_word_cap = "Enable" }
-	action_ing: string = "Disabling"
-	if enable { action_ing = "Enabling" }
-	action_past: string = "disabled"
-	if enable { action_past = "enabled" }
-	header_text: string = "Disabling Plugin"
-	if enable { header_text = "Enabling Plugin" }
+	v := PLUGIN_VERBS[enable ? 1 : 0]
+	action_word     := v.word
+	action_word_cap := v.Word
+	action_ing      := v.ing
+	action_past     := v.past
+	header_text     := v.header
 
 	// 1. Validate arguments
 	if len(args) == 0 {
@@ -318,7 +330,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	
 	if !found {
 		cleanup_plugin_config_json(&config)
-		print_error_simple("Error: Plugin '%s' not found", plugin_name)
+		print_error_simple("Plugin '%s' not found", plugin_name)
 		fmt.println()
 		fmt.println("Run 'wayu plugin list' to see installed plugins")
 		os.exit(EXIT_DATAERR)
@@ -355,7 +367,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		if !write_plugin_config_json(&config) {
 			delete(config_file)
 			cleanup_plugin_config_json(&config)
-			print_error_simple("Error: Failed to save plugin configuration")
+			print_error_simple("Failed to save plugin configuration")
 			os.exit(EXIT_CONFIG)
 		}
 	} else {
@@ -367,7 +379,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		if !generate_plugins_file(DETECTED_SHELL) {
 			delete(config_file)
 			cleanup_plugin_config_json(&config)
-			print_error_simple("Error: Failed to regenerate plugins loader")
+			print_error_simple("Failed to regenerate plugins loader")
 			os.exit(EXIT_IOERR)
 		}
 	} else {
@@ -435,7 +447,7 @@ handle_plugin_priority :: proc(args: []string) {
 	// 2. Parse priority number
 	priority, ok := strconv.parse_int(priority_str)
 	if !ok {
-		print_error_simple("Error: Invalid priority number '%s'", priority_str)
+		print_error_simple("Invalid priority number '%s'", priority_str)
 		fmt.println()
 		fmt.println("Priority must be a valid integer")
 		os.exit(EXIT_USAGE)
@@ -451,7 +463,7 @@ handle_plugin_priority :: proc(args: []string) {
 	// 4. Find plugin
 	plugin, found := find_plugin_json(&config, plugin_name)
 	if !found {
-		print_error_simple("Error: Plugin '%s' not found", plugin_name)
+		print_error_simple("Plugin '%s' not found", plugin_name)
 		fmt.println()
 		fmt.println("Use 'wayu plugin list' to see installed plugins")
 		os.exit(EXIT_DATAERR)
@@ -485,7 +497,7 @@ handle_plugin_priority :: proc(args: []string) {
 
 	// 6. Save config
 	if !write_plugin_config_json(&config) {
-		print_error_simple("Error: Failed to save configuration")
+		print_error_simple("Failed to save configuration")
 		os.exit(EXIT_CANTCREAT)
 	}
 
@@ -506,7 +518,7 @@ handle_plugin_priority :: proc(args: []string) {
 // Handle plugin add command
 handle_plugin_add :: proc(args: []string) {
 	if len(args) == 0 {
-		print_error_simple("Error: Plugin name or URL required")
+		print_error_simple("Plugin name or URL required")
 		print_plugin_add_help()
 		os.exit(EXIT_USAGE)
 	}
@@ -516,7 +528,7 @@ handle_plugin_add :: proc(args: []string) {
 	// Resolve plugin
 	info, resolved := resolve_plugin(name_or_url)
 	if !resolved {
-		print_error_simple("Error: Unknown plugin '%s'", name_or_url)
+		print_error_simple("Unknown plugin '%s'", name_or_url)
 		fmt.println("\nRun 'wayu plugin search' to see available plugins")
 		os.exit(EXIT_DATAERR)
 	}
@@ -527,7 +539,7 @@ handle_plugin_add :: proc(args: []string) {
 	// Read current config
 	config, ok := read_plugin_config_json()
 	if !ok {
-		print_error_simple("Error: Failed to read plugin configuration")
+		print_error_simple("Failed to read plugin configuration")
 		os.exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
@@ -552,7 +564,7 @@ handle_plugin_add :: proc(args: []string) {
 	if !os.exists(plugins_dir) && !DRY_RUN {
 		err := os.make_directory(plugins_dir)
 		if err != nil {
-			print_error_simple("Error: Failed to create plugins directory: %v", err)
+			print_error_simple("Failed to create plugins directory: %v", err)
 			os.exit(EXIT_CANTCREAT)
 		}
 	}
@@ -570,7 +582,7 @@ handle_plugin_add :: proc(args: []string) {
 	spinner_stop(&spinner)
 
 	if !success {
-		print_error_simple("Error: Failed to clone plugin repository")
+		print_error_simple("Failed to clone plugin repository")
 		os.exit(EXIT_OSERR)
 	}
 
@@ -619,13 +631,13 @@ handle_plugin_add :: proc(args: []string) {
 
 	// Write config
 	if !write_plugin_config_json(&config) {
-		print_error_simple("Error: Failed to write plugin configuration")
+		print_error_simple("Failed to write plugin configuration")
 		os.exit(EXIT_IOERR)
 	}
 
 	// Generate plugins file for current shell
 	if !generate_plugins_file(DETECTED_SHELL) {
-		print_error_simple("Error: Failed to generate plugins loader")
+		print_error_simple("Failed to generate plugins loader")
 		os.exit(EXIT_IOERR)
 	}
 
@@ -812,7 +824,7 @@ handle_plugin_remove :: proc(args: []string) {
 	// Read plugin configuration
 	config, ok := read_plugin_config_json()
 	if !ok {
-		print_error_simple("Error: Failed to read plugin configuration")
+		print_error_simple("Failed to read plugin configuration")
 		os.exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
@@ -841,7 +853,7 @@ handle_plugin_remove :: proc(args: []string) {
 	// Find plugin
 	plugin_ptr, found := find_plugin_json(&config, plugin_name)
 	if !found {
-		print_error_simple("Error: Plugin '%s' not found", plugin_name)
+		print_error_simple("Plugin '%s' not found", plugin_name)
 		os.exit(EXIT_DATAERR)
 	}
 
@@ -870,7 +882,7 @@ handle_plugin_remove :: proc(args: []string) {
 		delete(dependents)  // Clean up before exit
 		fmt.printfln("Add --yes flag to proceed:")
 		fmt.printfln("  wayu plugin rm %s --yes", plugin_name)
-		os.exit(EXIT_GENERAL)
+		os.exit(EXIT_USAGE)
 	}
 
 	// Phase 3: Check for dependents (warning only since --yes was provided)
@@ -895,7 +907,7 @@ handle_plugin_remove :: proc(args: []string) {
 	if os.exists(plugin_ptr.installed_path) && !DRY_RUN {
 		remove_err := os.remove_all(plugin_ptr.installed_path)
 		if remove_err != nil {
-			print_error_simple("Error: Failed to remove plugin directory")
+			print_error_simple("Failed to remove plugin directory")
 			os.exit(EXIT_IOERR)
 		}
 	}
@@ -932,13 +944,13 @@ handle_plugin_remove :: proc(args: []string) {
 
 	// Write config
 	if !write_plugin_config_json(&config) {
-		print_error_simple("Error: Failed to write plugin configuration")
+		print_error_simple("Failed to write plugin configuration")
 		os.exit(EXIT_IOERR)
 	}
 
 	// Generate plugins file
 	if !generate_plugins_file(DETECTED_SHELL) {
-		print_error_simple("Error: Failed to generate plugins loader")
+		print_error_simple("Failed to generate plugins loader")
 		os.exit(EXIT_IOERR)
 	}
 
@@ -948,7 +960,7 @@ handle_plugin_remove :: proc(args: []string) {
 // Handle plugin get command - display plugin info and copy URL to clipboard
 handle_plugin_get :: proc(args: []string) {
 	if len(args) == 0 {
-		print_error_simple("Error: Plugin name required")
+		print_error_simple("Plugin name required")
 		fmt.println("\nUsage: wayu plugin get <name>")
 		os.exit(EXIT_USAGE)
 	}
@@ -958,7 +970,7 @@ handle_plugin_get :: proc(args: []string) {
 	// Read current config (JSON format)
 	config, ok := read_plugin_config_json()
 	if !ok {
-		print_error_simple("Error: Failed to read plugin configuration")
+		print_error_simple("Failed to read plugin configuration")
 		os.exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
@@ -966,7 +978,7 @@ handle_plugin_get :: proc(args: []string) {
 	// Find plugin
 	plugin_ptr, found := find_plugin_json(&config, plugin_name)
 	if !found {
-		print_error_simple("Error: Plugin '%s' not found", plugin_name)
+		print_error_simple("Plugin '%s' not found", plugin_name)
 		fmt.println("\nRun 'wayu plugin list' to see installed plugins")
 		os.exit(EXIT_DATAERR)
 	}

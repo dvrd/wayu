@@ -9,7 +9,18 @@
 // - Dark backgrounds for readability
 // - High contrast for accessibility
 //
-// NOTE: Duplicated from src/colors.odin to avoid circular dependency
+// NOTE: The following `TUI_*` constants are duplicates of `VIBRANT_*` /
+// `BG_*` / `*_CODE` constants in src/colors.odin. Odin's package system
+// does not let us share compile-time constants across the `wayu` and
+// `wayu_tui` packages without a common base package. Until that larger
+// restructure happens (see N1 in thoughts/code_review_2026-04-24.md), the
+// duplication is enforced by a regression test at
+// `tests/unit/test_tui_colors_sync.odin` — if you edit a constant here
+// without updating the matching main-package constant (or vice versa),
+// the `test_tui_color_constants_match_main_package` test will fail.
+//
+// When adding a new TUI color that also exists in the main package, add an
+// assertion to that test so the two cannot silently drift.
 
 package wayu_tui
 

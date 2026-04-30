@@ -36,11 +36,12 @@ integration_direnv_has_envrc :: proc() -> bool {
     return os.exists(envrc_path)
 }
 
-// Check if .envrc is allowed
-integration_direnv_is_allowed :: proc() -> bool {
-    cwd, _ := os.getwd(context.temp_allocator)
-    return run_command([]string{"direnv", "status"})
-}
+// NOTE: integration_direnv_is_allowed was removed 2026-04-24.
+// The previous implementation called `direnv status` and returned its exit code,
+// but direnv exits 0 both when the .envrc is allowed AND when no .envrc exists,
+// so it could never answer the question its name implies. The function had zero
+// callers. If reinstated, use `capture_command(["direnv", "status"])` and parse
+// the output for the literal `Found RC allowed true` line.
 
 // ============================================================================
 // Initialization

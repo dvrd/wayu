@@ -47,6 +47,7 @@ integration_mise_has_config :: proc() -> (path: string, exists: bool) {
     if os.exists(tool_versions) {
         return tool_versions, true
     }
+    defer delete(tool_versions)
 
     return "", false
 }

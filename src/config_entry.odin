@@ -50,6 +50,97 @@ ConfigEntrySpec :: struct {
 	field_labels:     []string,              // Field labels for interactive mode
 	field_placeholders: []string,            // Field placeholders
 	field_validators: []proc(string) -> InputValidation,
+
+	// --------------------------------------------------------------------
+	// TOML-first operations (code review D3, 2026-04-24).
+	//
+	// Non-nil on specs that use the generic `handle_toml_entry_command`
+	// dispatcher. Currently wired for ALIAS + CONSTANTS; PATH keeps its own
+	// handler because it needs CLEAN/DEDUP, filesystem-aware validation,
+	// and post-mutation reload messaging.
+	// --------------------------------------------------------------------
+	toml_add:         proc(entry: ConfigEntry) -> (ok: bool, err: string),
+	toml_remove:      proc(name: string) -> (ok: bool, err: string),
+	toml_list:        proc(),
+	toml_get:         proc(name: string),
+
+	// Optional hooks executed around each mutation. Nil-safe.
+	hook_pre_add:     proc(name: string),
+	hook_post_add:    proc(name: string),
+	hook_pre_remove:  proc(name: string),
+	hook_post_remove: proc(name: string),
+
+	// Optional callback run after toml_list (used by ALIAS to print external
+	// alias sources below the native list).
+	list_epilogue:    proc(),
+}
+
+// Generic dispatcher for TOML-backed config entry commands. Used by
+// `handle_alias_command` and `handle_constants_command`. Assumes the spec has
+// all four `toml_*` fields set; falls back to `handle_config_command` for
+// actions outside ADD/REMOVE/LIST/GET (e.g. HELP, UNKNOWN).
+handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []string) {
+	if !ensure_wayu_toml_exists() {
+		print_error_simple("Failed to create wayu.toml")
+		os.exit(EXIT_IOERR)
+	}
+
+	if spec.toml_add != nil {
+		#partial switch action {
+		case .ADD:
+			if len(args) == 0 {
+				print_cli_usage_error(spec, "add")
+				os.exit(EXIT_USAGE)
+			}
+			entry := parse_args_to_entry(spec, args)
+			defer cleanup_entry(&entry)
+			if !is_entry_complete(entry) {
+				print_cli_usage_error(spec, "add")
+				os.exit(EXIT_USAGE)
+			}
+			if spec.hook_pre_add != nil do spec.hook_pre_add(entry.name)
+			ok, err := spec.toml_add(entry)
+			if !ok {
+				print_error_simple(err)
+				delete(err)
+				os.exit(EXIT_DATAERR)
+			}
+			if spec.hook_post_add != nil do spec.hook_post_add(entry.name)
+			return
+		case .REMOVE:
+			if len(args) == 0 {
+				print_cli_usage_error(spec, "remove")
+				os.exit(EXIT_USAGE)
+			}
+			if spec.hook_pre_remove != nil do spec.hook_pre_remove(args[0])
+			ok, err := spec.toml_remove(args[0])
+			if !ok {
+				print_error_simple(err)
+				delete(err)
+				os.exit(EXIT_DATAERR)
+			}
+			if spec.hook_post_remove != nil do spec.hook_post_remove(args[0])
+			return
+		case .LIST:
+			spec.toml_list()
+			if spec.list_epilogue != nil do spec.list_epilogue()
+			return
+		case .GET:
+			if len(args) == 0 {
+				print_cli_usage_error(spec, "get")
+				os.exit(EXIT_USAGE)
+			}
+			spec.toml_get(args[0])
+			return
+		}
+	}
+
+	// Fall back to legacy handler for non-TOML actions (HELP/UNKNOWN/etc).
+	handle_config_command(spec, action, args)
+
+	if action == .LIST && spec.list_epilogue != nil {
+		spec.list_epilogue()
+	}
 }
 
 // Print usage error with hint to TUI mode (CLI-specific error handling)
@@ -293,8 +384,7 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (ok: boo
 		line := spec.format_line(entry_to_save)
 		defer delete(line)
 
-		shell_ext := DETECTED_SHELL == .ZSH ? "zsh" : "bash"
-		fmt.printfln("%sWould add to %s.%s:%s", BRIGHT_CYAN, spec.file_name, shell_ext, RESET)
+		fmt.printfln("%sWould add to %s.%s:%s", BRIGHT_CYAN, spec.file_name, SHELL_EXT, RESET)
 		fmt.printfln("  %s", line)
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
@@ -414,8 +504,7 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) -> (ok: bool, 
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 
-		shell_ext := DETECTED_SHELL == .ZSH ? "zsh" : "bash"
-		fmt.printfln("%sWould remove from %s.%s:%s", BRIGHT_CYAN, spec.file_name, shell_ext, RESET)
+		fmt.printfln("%sWould remove from %s.%s:%s", BRIGHT_CYAN, spec.file_name, SHELL_EXT, RESET)
 		fmt.printfln("  %s: %s", spec.display_name, name_to_remove)
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
