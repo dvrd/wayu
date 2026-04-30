@@ -10,64 +10,13 @@ import "core:slice"
 import "core:strings"
 
 // Main handler for CONSTANTS commands.
-// wayu.toml is the single source of truth for constants.
+//
+// Thin delegation to the generic TOML-entry dispatcher. The spec wires up
+// toml_constant_add/remove/list/get + per-action hooks (see CONSTANTS_SPEC
+// in config_specs.odin). wayu.toml is the single source of truth for
+// constants; all per-type logic lives in toml_constant_* procs below.
 handle_constants_command :: proc(action: Action, args: []string) {
-	if !ensure_wayu_toml_exists() {
-		print_error_simple("Failed to create wayu.toml")
-		os.exit(EXIT_IOERR)
-	}
-
-	{
-		#partial switch action {
-		case .ADD:
-			if len(args) == 0 {
-				print_cli_usage_error(&CONSTANTS_SPEC, "add")
-				os.exit(EXIT_USAGE)
-			}
-			entry := parse_args_to_entry(&CONSTANTS_SPEC, args)
-			defer cleanup_entry(&entry)
-			if !is_entry_complete(entry) {
-				print_cli_usage_error(&CONSTANTS_SPEC, "add")
-				os.exit(EXIT_USAGE)
-			}
-			hook_pre_constant_add(entry.name)
-			ok, err := toml_constant_add(entry)
-			if !ok {
-				print_error_simple(err)
-				delete(err)
-				os.exit(EXIT_DATAERR)
-			}
-			hook_post_constant_add(entry.name)
-			return
-		case .REMOVE:
-			if len(args) == 0 {
-				print_cli_usage_error(&CONSTANTS_SPEC, "remove")
-				os.exit(EXIT_USAGE)
-			}
-			hook_pre_constant_remove(args[0])
-			ok, err := toml_constant_remove(args[0])
-			if !ok {
-				print_error_simple(err)
-				delete(err)
-				os.exit(EXIT_DATAERR)
-			}
-			hook_post_constant_remove(args[0])
-			return
-		case .LIST:
-			list_toml_constants()
-			return
-		case .GET:
-			if len(args) == 0 {
-				print_cli_usage_error(&CONSTANTS_SPEC, "get")
-				os.exit(EXIT_USAGE)
-			}
-			get_toml_constant_value(args[0])
-			return
-		case:
-		}
-	}
-
-	handle_config_command(&CONSTANTS_SPEC, action, args)
+	handle_toml_entry_command(&CONSTANTS_SPEC, action, args)
 }
 
 read_wayu_toml_constants :: proc() -> []ConfigEntry {

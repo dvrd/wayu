@@ -1,9 +1,14 @@
 package wayu_tui
 
 import "core:c"
+import "core:sys/posix"
 
 // Terminal raw mode management
-// Copied from fuzzy.odin for terminal state management
+//
+// Flag constants come from core:sys/posix so they resolve to the correct
+// values per platform (macOS vs Linux differ for IXON/IXOFF). This file
+// previously hardcoded the Linux values which silently did the wrong thing
+// on macOS — see thoughts/code_review_2026-04-24.md N8.
 
 foreign import libc_term "system:c"
 
@@ -11,14 +16,11 @@ STDIN_FILENO :: 0
 STDOUT_FILENO :: 1
 TCSANOW :: 0
 
-// Terminal mode flags
-// c_lflag (local flags)
-ICANON :: 0x00000100  // Canonical input (line buffering)
-ECHO   :: 0x00000008  // Echo input characters
-
-// c_iflag (input flags)
-IXON   :: 0x00000400  // Enable XON/XOFF flow control on output
-IXOFF  :: 0x00001000  // Enable XON/XOFF flow control on input
+// Terminal mode flags (pulled from core:sys/posix so they track the host OS).
+ICANON :: posix.ICANON
+ECHO   :: posix.ECHO
+IXON   :: posix.IXON
+IXOFF  :: posix.IXOFF
 
 termios :: struct {
 	c_iflag:  c.ulong,  // tcflag_t is unsigned long on macOS

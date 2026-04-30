@@ -371,7 +371,7 @@ theme_remove_command :: proc(name: string) {
 			fmt.println()
 			fmt.printfln("Add --yes flag to proceed:")
 			fmt.printfln("  wayu theme remove %s --yes", name)
-			os.exit(EXIT_GENERAL)
+			os.exit(EXIT_USAGE)
 		}
 
 		// Check if it's the active theme
@@ -410,7 +410,7 @@ theme_remove_command :: proc(name: string) {
 		fmt.println()
 		fmt.printfln("Add --yes flag to proceed:")
 		fmt.printfln("  wayu theme remove %s --yes", name)
-		os.exit(EXIT_GENERAL)
+		os.exit(EXIT_USAGE)
 	}
 
 	// Check if it's the active theme

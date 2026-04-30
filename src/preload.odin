@@ -6,7 +6,7 @@ import "core:fmt"
 // Preload configuration templates for faster startup
 // This reduces filesystem I/O by embedding common configuration templates
 
-PATH_TEMPLATE :: `#!/usr/bin/env zsh
+PATH_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 
 # Centralized PATH registry
 # Managed by wayu - Add entries below
@@ -51,7 +51,7 @@ remove_path_duplicates() {
 remove_path_duplicates
 `
 
-ALIASES_TEMPLATE :: `#!/usr/bin/env zsh
+ALIASES_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 
 # Shell Aliases Configuration
 # This file contains all command aliases and shortcuts
@@ -73,13 +73,13 @@ ALIAS_SOURCES_TEMPLATE :: `# alias-sources.conf - External alias source registry
 #
 `
 
-CONSTANTS_TEMPLATE :: `#!/usr/bin/env zsh
+CONSTANTS_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 
 # Environment Constants and Configuration Variables
 # This file centralizes all constant definitions and environment variables
 `
 
-INIT_TEMPLATE :: `#!/usr/bin/env zsh
+INIT_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 
 # Wayu Shell Initialization - Main Orchestrator
 # This file loads all configuration modules in the correct order
@@ -146,7 +146,7 @@ source "$WAYU_CONFIG_DIR/tools.zsh"
 [ -f "$WAYU_CONFIG_DIR/extra.zsh" ] && source "$WAYU_CONFIG_DIR/extra.zsh"
 `
 
-TOOLS_TEMPLATE :: `#!/usr/bin/env zsh
+TOOLS_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 
 # External Tool Initialization
 # This file handles the setup and initialization of external tools and utilities
@@ -274,7 +274,7 @@ _wayu_cached_eval() {
 # Use lazy-load wrappers for heavy tools (NVM, SDKMAN, Conda, etc.)
 `
 
-EXTRA_TEMPLATE :: `#!/usr/bin/env zsh
+EXTRA_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 
 # Extra Shell Configuration
 # This file is for custom shell snippets that don't fit into other wayu categories.
@@ -643,89 +643,52 @@ init_config_file :: proc(file_path: string, template: string) -> bool {
 	return true
 }
 
-// Template selection functions based on shell type
-get_path_template :: proc(shell: ShellType) -> string {
+// Template selection functions based on shell type.
+//
+// All six getters pick one of three shell-specific templates for the current
+// `ShellType`. They all share the same dispatch logic, so they delegate to
+// `select_template`. `.UNKNOWN` falls back to the Bash template for POSIX-ish
+// compatibility.
+//
+// NOTE: keep these as named procs (not inlined) so they can be used as
+// function pointers — see `main.odin:778-783` where they're stored in a slice.
+
+select_template :: proc(shell: ShellType, zsh, bash, fish: string) -> string {
 	switch shell {
-	case .BASH:
-		return PATH_TEMPLATE_BASH
 	case .ZSH:
-		return PATH_TEMPLATE
+		return zsh
+	case .BASH:
+		return bash
 	case .FISH:
-		return PATH_TEMPLATE_FISH
+		return fish
 	case .UNKNOWN:
-		return PATH_TEMPLATE_BASH // Default to Bash for compatibility
+		return bash // Default to Bash for compatibility
 	}
-	return PATH_TEMPLATE_BASH
+	return bash
+}
+
+get_path_template :: proc(shell: ShellType) -> string {
+	return select_template(shell, PATH_TEMPLATE_ZSH, PATH_TEMPLATE_BASH, PATH_TEMPLATE_FISH)
 }
 
 get_aliases_template :: proc(shell: ShellType) -> string {
-	switch shell {
-	case .BASH:
-		return ALIASES_TEMPLATE_BASH
-	case .ZSH:
-		return ALIASES_TEMPLATE
-	case .FISH:
-		return ALIASES_TEMPLATE_FISH
-	case .UNKNOWN:
-		return ALIASES_TEMPLATE_BASH
-	}
-	return ALIASES_TEMPLATE_BASH
+	return select_template(shell, ALIASES_TEMPLATE_ZSH, ALIASES_TEMPLATE_BASH, ALIASES_TEMPLATE_FISH)
 }
 
 get_constants_template :: proc(shell: ShellType) -> string {
-	switch shell {
-	case .BASH:
-		return CONSTANTS_TEMPLATE_BASH
-	case .ZSH:
-		return CONSTANTS_TEMPLATE
-	case .FISH:
-		return CONSTANTS_TEMPLATE_FISH
-	case .UNKNOWN:
-		return CONSTANTS_TEMPLATE_BASH
-	}
-	return CONSTANTS_TEMPLATE_BASH
+	return select_template(shell, CONSTANTS_TEMPLATE_ZSH, CONSTANTS_TEMPLATE_BASH, CONSTANTS_TEMPLATE_FISH)
 }
 
 get_init_template :: proc(shell: ShellType) -> string {
-	switch shell {
-	case .BASH:
-		return INIT_TEMPLATE_BASH
-	case .ZSH:
-		return INIT_TEMPLATE
-	case .FISH:
-		return INIT_TEMPLATE_FISH
-	case .UNKNOWN:
-		return INIT_TEMPLATE_BASH
-	}
-	return INIT_TEMPLATE_BASH
+	return select_template(shell, INIT_TEMPLATE_ZSH, INIT_TEMPLATE_BASH, INIT_TEMPLATE_FISH)
 }
 
 get_tools_template :: proc(shell: ShellType) -> string {
-	switch shell {
-	case .BASH:
-		return TOOLS_TEMPLATE_BASH
-	case .ZSH:
-		return TOOLS_TEMPLATE
-	case .FISH:
-		return TOOLS_TEMPLATE_FISH
-	case .UNKNOWN:
-		return TOOLS_TEMPLATE_BASH
-	}
-	return TOOLS_TEMPLATE_BASH
+	return select_template(shell, TOOLS_TEMPLATE_ZSH, TOOLS_TEMPLATE_BASH, TOOLS_TEMPLATE_FISH)
 }
 
 get_extra_template :: proc(shell: ShellType) -> string {
-	switch shell {
-	case .BASH:
-		return EXTRA_TEMPLATE_BASH
-	case .ZSH:
-		return EXTRA_TEMPLATE
-	case .FISH:
-		return EXTRA_TEMPLATE_FISH
-	case .UNKNOWN:
-		return EXTRA_TEMPLATE_BASH
-	}
-	return EXTRA_TEMPLATE_BASH
+	return select_template(shell, EXTRA_TEMPLATE_ZSH, EXTRA_TEMPLATE_BASH, EXTRA_TEMPLATE_FISH)
 }
 
 // Initialize all config files with shell-specific templates

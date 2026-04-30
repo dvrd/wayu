@@ -84,6 +84,137 @@ handle_path_command :: proc(action: Action, args: []string) {
 // ============================================================================
 
 // Clean missing paths - remove directories that no longer exist
+// ============================================================================
+// Shared helper for PATH mutation (clean + dedup)
+// ============================================================================
+//
+// Extracted 2026-04-24 (code review D4). clean_missing_paths and
+// remove_duplicate_paths share the identical steps 3-11: empty-set early
+// return, dry-run preview, --yes gate, confirmation banner, line-by-line
+// filter of the shell config file, backup + write, cleanup. Only the
+// verbs/names and the target-set computation differ.
+
+PathMutationSpec :: struct {
+	label:             string, // Human-readable "duplicate entries" / "missing directories"
+	empty_success_msg: string, // Printed when len(targets) == 0
+	header_title:      string, // print_header title on the actual mutation
+	header_icon:       string,
+	yes_hint_cmd:      string, // Usage line for --yes refusal, e.g. "wayu path clean --yes"
+	success_fmt:       string, // Printed on success with the count, e.g. "✅ Removed %d missing ..."
+}
+
+// Walk `path.<shell>` line-by-line, drop each line whose parsed entry.name
+// appears in `targets` (multiset: duplicate detection consumes each match
+// exactly once so later duplicates of the same name survive appropriately).
+// Handles all I/O, backup, and user messaging per `spec`.
+mutate_path_entries :: proc(spec: PathMutationSpec, targets: []ConfigEntry) {
+	if len(targets) == 0 {
+		print_success("%s", spec.empty_success_msg)
+		return
+	}
+
+	// Dry-run preview
+	if DRY_RUN {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		print_warning("Would remove %d %s:", len(targets), spec.label)
+		for entry in targets {
+			fmt.printfln("  - %s", entry.name)
+		}
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return
+	}
+
+	// --yes gate
+	if !YES_FLAG {
+		print_error("This operation requires confirmation.")
+		fmt.println()
+		fmt.printfln("Found %d %s to remove:", len(targets), spec.label)
+		for entry in targets {
+			fmt.printfln("  - %s", entry.name)
+		}
+		fmt.println()
+		fmt.printfln("Add --yes flag to proceed:")
+		fmt.printfln("  %s", spec.yes_hint_cmd)
+		os.exit(EXIT_USAGE)
+	}
+
+	// Confirmation banner
+	print_header(spec.header_title, spec.header_icon)
+	fmt.println()
+	print_warning("Found %d %s to remove:", len(targets), spec.label)
+	for entry in targets {
+		fmt.printfln("  - %s", entry.name)
+	}
+	fmt.println()
+
+	// Read shell config file
+	config_file := get_config_file_with_fallback(PATH_SPEC.file_name, DETECTED_SHELL)
+	defer delete(config_file)
+
+	content, read_ok := safe_read_file(config_file)
+	if !read_ok { os.exit(EXIT_IOERR) }
+	defer delete(content)
+
+	lines := strings.split(string(content), "\n", context.temp_allocator)
+
+	// Multiset of names that still need to be removed. Copying gives us a
+	// mutable pool we can consume one-per-match (this matches the previous
+	// dedup behaviour: first occurrence survives, later duplicates drop).
+	pending_names := make([dynamic]string, 0, len(targets))
+	defer {
+		for name in pending_names { delete(name) }
+		delete(pending_names)
+	}
+	for entry in targets {
+		append(&pending_names, strings.clone(entry.name))
+	}
+
+	new_lines := make([dynamic]string)
+	defer {
+		for line in new_lines { delete(line) }
+		delete(new_lines)
+	}
+
+	removed_count := 0
+	for line in lines {
+		entry, ok := PATH_SPEC.parse_line(line)
+		if ok {
+			defer cleanup_entry(&entry)
+
+			is_target := false
+			for i in 0..<len(pending_names) {
+				if pending_names[i] == entry.name {
+					is_target = true
+					removed_count += 1
+					delete(pending_names[i])
+					last_idx := len(pending_names) - 1
+					if i != last_idx {
+						pending_names[i] = pending_names[last_idx]
+					}
+					resize(&pending_names, last_idx)
+					break
+				}
+			}
+			if is_target do continue
+		}
+		append(&new_lines, strings.clone(line))
+	}
+
+	// Backup, write, rotate
+	if !create_backup_cli(config_file) { os.exit(EXIT_IOERR) }
+
+	new_content := strings.join(new_lines[:], "\n")
+	defer delete(new_content)
+
+	if !safe_write_file(config_file, transmute([]byte)new_content) { os.exit(EXIT_IOERR) }
+
+	cleanup_old_backups(config_file, 5)
+
+	print_success(spec.success_fmt, removed_count)
+}
+
 clean_missing_paths :: proc() {
 	// Check if wayu is initialized first
 	if !check_wayu_initialized() {
@@ -108,7 +239,6 @@ clean_missing_paths :: proc() {
 		defer delete(expanded)
 
 		if !os.exists(expanded) {
-			// Clone the entry for the missing list
 			missing_entry := ConfigEntry{
 				type = entry.type,
 				name = strings.clone(entry.name),
@@ -119,109 +249,14 @@ clean_missing_paths :: proc() {
 		}
 	}
 
-	if len(missing_entries) == 0 {
-		print_success("✅ No missing directories found in PATH")
-		return
-	}
-
-	// Dry-run mode check
-	if DRY_RUN {
-		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-		fmt.println()
-		print_warning("Would remove %d missing directories:", len(missing_entries))
-		for entry in missing_entries {
-			fmt.printfln("  - %s", entry.name)
-		}
-		fmt.println()
-		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
-		return
-	}
-
-	// Check for --yes flag (required for confirmation)
-	if !YES_FLAG {
-		print_error("This operation requires confirmation.")
-		fmt.println()
-		fmt.printfln("Found %d missing directories to remove:", len(missing_entries))
-		for entry in missing_entries {
-			fmt.printfln("  - %s", entry.name)
-		}
-		fmt.println()
-		fmt.printfln("Add --yes flag to proceed:")
-		fmt.printfln("  wayu path clean --yes")
-		os.exit(EXIT_GENERAL)
-	}
-
-	// Show what will be removed
-	print_header("Clean Missing PATH Entries", "🧹")
-	fmt.println()
-	print_warning("Found %d missing directories to remove:", len(missing_entries))
-	for entry in missing_entries {
-		fmt.printfln("  - %s", entry.name)
-	}
-	fmt.println()
-
-	// Get config file
-	config_file := get_config_file_with_fallback(PATH_SPEC.file_name, DETECTED_SHELL)
-	defer delete(config_file)
-
-	// Read current content
-	content, read_ok := safe_read_file(config_file)
-	if !read_ok { os.exit(EXIT_IOERR) }
-	defer delete(content)
-
-	content_str := string(content)
-	// Use temp allocator for the lines array since it's only needed during this function
-	lines := strings.split(content_str, "\n", context.temp_allocator)
-	// No need to defer delete - temp allocator manages this
-
-	// Filter out missing paths
-	new_lines := make([dynamic]string)
-	defer {
-		for line in new_lines {
-			delete(line)
-		}
-		delete(new_lines)
-	}
-
-	removed_count := 0
-	for line in lines {
-		entry, ok := PATH_SPEC.parse_line(line)
-		if ok {
-			defer cleanup_entry(&entry)
-
-			// Check if this is a missing path
-			is_missing := false
-			for missing_entry in missing_entries {
-				if entry.name == missing_entry.name {
-					is_missing = true
-					removed_count += 1
-					break
-				}
-			}
-
-			if is_missing {
-				continue
-			}
-		}
-		append(&new_lines, strings.clone(line))
-	}
-
-	// Create backup before modifying
-	if !create_backup_cli(config_file) {
-		os.exit(EXIT_IOERR)
-	}
-
-	// Write back
-	new_content := strings.join(new_lines[:], "\n")
-	defer delete(new_content)
-
-	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
-	if !write_ok { os.exit(EXIT_IOERR) }
-
-	// Cleanup old backups
-	cleanup_old_backups(config_file, 5)
-
-	print_success("✅ Removed %d missing directories from PATH", removed_count)
+	mutate_path_entries(PathMutationSpec{
+		label             = "missing directories",
+		empty_success_msg = "✅ No missing directories found in PATH",
+		header_title      = "Clean Missing PATH Entries",
+		header_icon       = "🧹",
+		yes_hint_cmd      = "wayu path clean --yes",
+		success_fmt       = "✅ Removed %d missing directories from PATH",
+	}, missing_entries[:])
 }
 
 // Remove duplicate paths
@@ -260,134 +295,30 @@ remove_duplicate_paths :: proc() {
 		}
 	}
 
-	if len(duplicate_indices) == 0 {
-		print_success("✅ No duplicate entries found in PATH")
-		return
-	}
-
-	// Dry-run mode check
-	if DRY_RUN {
-		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-		fmt.println()
-		print_warning("Would remove %d duplicate entries:", len(duplicate_indices))
-		for idx in duplicate_indices {
-			fmt.printfln("  - %s", entries[idx].name)
-		}
-		fmt.println()
-		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
-		return
-	}
-
-	// Check for --yes flag (required for confirmation)
-	if !YES_FLAG {
-		print_error("This operation requires confirmation.")
-		fmt.println()
-		fmt.printfln("Found %d duplicate entries to remove:", len(duplicate_indices))
-		for idx in duplicate_indices {
-			fmt.printfln("  - %s", entries[idx].name)
-		}
-		fmt.println()
-		fmt.printfln("Add --yes flag to proceed:")
-		fmt.printfln("  wayu path dedup --yes")
-		os.exit(EXIT_GENERAL)
-	}
-
-	// Show what will be removed
-	print_header("Remove Duplicate PATH Entries", "🔗")
-	fmt.println()
-	print_warning("Found %d duplicate entries to remove:", len(duplicate_indices))
-	for idx in duplicate_indices {
-		fmt.printfln("  - %s", entries[idx].name)
-	}
-	fmt.println()
-
-	// Get config file
-	config_file := get_config_file_with_fallback(PATH_SPEC.file_name, DETECTED_SHELL)
-	defer delete(config_file)
-
-	// Read current content
-	content, read_ok := safe_read_file(config_file)
-	if !read_ok { os.exit(EXIT_IOERR) }
-	defer delete(content)
-
-	content_str := string(content)
-	// Use temp allocator for the lines array since it's only needed during this function
-	lines := strings.split(content_str, "\n", context.temp_allocator)
-	// No need to defer delete - temp allocator manages this
-
-	// Build list of names to remove
-	names_to_remove := make([dynamic]string)
+	// Materialise targets as ConfigEntry clones so mutate_path_entries can
+	// own the cleanup pool uniformly (same shape as clean_missing_paths).
+	targets := make([dynamic]ConfigEntry, 0, len(duplicate_indices))
 	defer {
-		for name in names_to_remove {
-			delete(name)
-		}
-		delete(names_to_remove)
+		for &e in targets { cleanup_entry(&e) }
+		delete(targets)
 	}
-
 	for idx in duplicate_indices {
-		append(&names_to_remove, strings.clone(entries[idx].name))
+		append(&targets, ConfigEntry{
+			type  = entries[idx].type,
+			name  = strings.clone(entries[idx].name),
+			value = strings.clone(entries[idx].value),
+			line  = strings.clone(entries[idx].line),
+		})
 	}
 
-	// Filter out duplicates
-	new_lines := make([dynamic]string)
-	defer {
-		for line in new_lines {
-			delete(line)
-		}
-		delete(new_lines)
-	}
-
-	removed_count := 0
-	for line in lines {
-		entry, ok := PATH_SPEC.parse_line(line)
-		if ok {
-			defer cleanup_entry(&entry)
-
-			// Check if this is a duplicate to remove
-			is_duplicate := false
-			for name in names_to_remove {
-				if entry.name == name {
-					is_duplicate = true
-					removed_count += 1
-					// Remove this name from the list so we only skip it once
-					for i in 0..<len(names_to_remove) {
-						if names_to_remove[i] == name {
-							// Remove by swapping with last and shrinking
-							last_idx := len(names_to_remove) - 1
-							if i != last_idx {
-								names_to_remove[i] = names_to_remove[last_idx]
-							}
-							resize(&names_to_remove, last_idx)
-							break
-						}
-					}
-					break
-				}
-			}
-
-			if is_duplicate {
-				continue
-			}
-		}
-		append(&new_lines, strings.clone(line))
-	}
-
-	// Create backup before modifying
-	if !create_backup_cli(config_file) {
-		os.exit(EXIT_IOERR)
-	}
-
-	// Write back
-	new_content := strings.join(new_lines[:], "\n")
-	defer delete(new_content)
-
-	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
-	if !write_ok { os.exit(EXIT_IOERR) }
-
-	// Cleanup old backups
-	cleanup_old_backups(config_file, 5)
-
-	print_success("✅ Removed %d duplicate entries from PATH", removed_count)
+	mutate_path_entries(PathMutationSpec{
+		label             = "duplicate entries",
+		empty_success_msg = "✅ No duplicate entries found in PATH",
+		header_title      = "Remove Duplicate PATH Entries",
+		header_icon       = "🔗",
+		yes_hint_cmd      = "wayu path dedup --yes",
+		success_fmt       = "✅ Removed %d duplicate entries from PATH",
+	}, targets[:])
 }
 
 // ============================================================================
