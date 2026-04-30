@@ -314,8 +314,8 @@ def test_settings_view(size_name, cols, rows):
 
     try:
         s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
-        # Navigate to Settings (index 6)
-        for _ in range(6):
+        # Navigate to Settings (index 7)
+        for _ in range(7):
             s.send(b"j")
             s.read(timeout=0.15)
         s.send(b"l")  # Enter Settings
