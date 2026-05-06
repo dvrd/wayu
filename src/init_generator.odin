@@ -1,6 +1,7 @@
 // init_generator.odin - Genera init optimizado con todas las técnicas
 package wayu
 
+import "core:c/libc"
 import "core:fmt"
 import "core:os"
 import "core:strings"
@@ -11,6 +12,14 @@ import "core:strings"
 // Técnica 4: evalcache para tools
 // Técnica 5: compinit optimizado (24h cache)
 // Técnica 6: split files (core/lazy/login)
+
+// Compile a zsh file to bytecode (.zwc) for ~2-3x faster loading.
+// Silently no-ops on non-zsh shells or if zsh isn't available.
+zcompile_file :: proc(path: string) {
+	if g_ctx.shell != .ZSH { return }
+	cmd := fmt.ctprintf("zsh -fc 'zcompile %s' >/dev/null 2>&1", path)
+	libc.system(cmd)
+}
 
 // Silently regenerate init-core.{ext} + plugin runtime config after any
 // mutation (path/alias/constants add/remove, template apply, ...).
@@ -288,6 +297,7 @@ defer {
 	
 	content := strings.to_string(builder)
 	_ = os.write_entire_file(path, transmute([]byte)content)
+	zcompile_file(path)
 }
 
 // Lazy: Plugins, tools, completions (carga diferida via zsh-defer)
@@ -481,6 +491,7 @@ wayu_compile() {
 `
 	
 	_ = os.write_entire_file(path, transmute([]byte)helper)
+	zcompile_file(path)
 }
 
 // Lee los [[paths]] de wayu.toml y retorna la lista de rutas
