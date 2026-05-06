@@ -141,11 +141,15 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	fmt.sbprintln(&builder, "typeset -g _WAYU_GIT_DIR=\"\"")
 	fmt.sbprintln(&builder)
 	
-	// Función para actualizar git info
+	// Git info — single rev-parse call, runs synchronously on precmd
+	// because the prompt needs _WAYU_GIT_BRANCH immediately.
+	// Uses one `git` invocation instead of three.
 	fmt.sbprintln(&builder, "_wayu_update_git_info() {")
-	fmt.sbprintln(&builder, "  if git rev-parse --is-inside-work-tree > /dev/null 2>&1; then")
-	fmt.sbprintln(&builder, `    _WAYU_GIT_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)"`)
-	fmt.sbprintln(&builder, `    _WAYU_GIT_DIR="$(git rev-parse --show-toplevel 2>/dev/null)"`)
+	fmt.sbprintln(&builder, "  local git_info")
+	fmt.sbprintln(&builder, `  git_info="$(git rev-parse --short HEAD --show-toplevel 2>/dev/null)"`) 
+	fmt.sbprintln(&builder, "  if [[ -n \"$git_info\" ]]; then")
+	fmt.sbprintln(&builder, `    _WAYU_GIT_DIR="${git_info##*$'\n'}"`)  // last line = toplevel
+	fmt.sbprintln(&builder, `    _WAYU_GIT_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || echo "${git_info%%$'\n'*}")"`)  // branch or short hash
 	fmt.sbprintln(&builder, "  else")
 	fmt.sbprintln(&builder, `    _WAYU_GIT_BRANCH=""`)
 	fmt.sbprintln(&builder, `    _WAYU_GIT_DIR=""`)
