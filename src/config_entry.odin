@@ -378,13 +378,13 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (ok: boo
 	}
 
 	// Dry-run check
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		line := spec.format_line(entry_to_save)
 		defer delete(line)
 
-		fmt.printfln("%sWould add to %s.%s:%s", BRIGHT_CYAN, spec.file_name, SHELL_EXT, RESET)
+		fmt.printfln("%sWould add to %s.%s:%s", BRIGHT_CYAN, spec.file_name, g_ctx.shell_ext, RESET)
 		fmt.printfln("  %s", line)
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
@@ -392,7 +392,7 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (ok: boo
 	}
 
 	// Get config file
-	config_file := get_config_file_with_fallback(spec.file_name, DETECTED_SHELL)
+	config_file := get_config_file_with_fallback(spec.file_name, g_ctx.shell)
 	defer delete(config_file)
 
 	// Read current content
@@ -500,11 +500,11 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) -> (ok: bool, 
 	}
 
 	// Dry-run check
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 
-		fmt.printfln("%sWould remove from %s.%s:%s", BRIGHT_CYAN, spec.file_name, SHELL_EXT, RESET)
+		fmt.printfln("%sWould remove from %s.%s:%s", BRIGHT_CYAN, spec.file_name, g_ctx.shell_ext, RESET)
 		fmt.printfln("  %s: %s", spec.display_name, name_to_remove)
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
@@ -512,7 +512,7 @@ remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) -> (ok: bool, 
 	}
 
 	// Get config file
-	config_file := get_config_file_with_fallback(spec.file_name, DETECTED_SHELL)
+	config_file := get_config_file_with_fallback(spec.file_name, g_ctx.shell)
 	defer delete(config_file)
 
 	// Read current content
@@ -602,7 +602,7 @@ remove_config_interactive :: proc(spec: ^ConfigEntrySpec) {
 
 	prompt := fmt.aprintf("Select %s to remove:", spec.display_name)
 	defer delete(prompt)
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		prompt_dry := fmt.aprintf("%s (DRY RUN - no changes will be made)", prompt)
 		delete(prompt)
 		prompt = prompt_dry
@@ -640,7 +640,7 @@ get_config_entry_value :: proc(spec: ^ConfigEntrySpec, name: string) {
 	}
 
 	// Detect missing file separately from "entry not found" to avoid misleading errors
-	config_file := get_config_file_with_fallback(spec.file_name, DETECTED_SHELL)
+	config_file := get_config_file_with_fallback(spec.file_name, g_ctx.shell)
 	defer delete(config_file)
 
 	debug("get: config file path: %s", config_file)
@@ -914,7 +914,7 @@ list_remove_action_callback :: proc(item: ^FuzzyItem) -> bool {
 
 // Helper: Read all entries from config file
 read_config_entries :: proc(spec: ^ConfigEntrySpec) -> []ConfigEntry {
-	config_file := get_config_file_with_fallback(spec.file_name, DETECTED_SHELL)
+	config_file := get_config_file_with_fallback(spec.file_name, g_ctx.shell)
 	defer delete(config_file)
 
 	content, read_ok := safe_read_file(config_file)

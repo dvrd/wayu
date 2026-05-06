@@ -73,7 +73,7 @@ print_export_formats :: proc() {
 	fmt.println()
 
 	// Check current status
-	turbo_path := fmt.aprintf("%s/%s", WAYU_CONFIG, TURBO_EXPORT_FILE)
+	turbo_path := fmt.aprintf("%s/%s", g_ctx.wayu_config, TURBO_EXPORT_FILE)
 	defer delete(turbo_path)
 
 	if os.exists(turbo_path) {
@@ -90,13 +90,13 @@ generate_turbo_export :: proc(dry_run: bool) {
 	fmt.println()
 
 	// Determine shell type
-	shell_ext := SHELL_EXT
+	shell_ext := g_ctx.shell_ext
 	output_file := TURBO_EXPORT_FILE
-	if DETECTED_SHELL == .BASH {
+	if g_ctx.shell == .BASH {
 		output_file = TURBO_EXPORT_FILE_BASH
 	}
 
-	output_path := fmt.aprintf("%s/%s", WAYU_CONFIG, output_file)
+	output_path := fmt.aprintf("%s/%s", g_ctx.wayu_config, output_file)
 	defer delete(output_path)
 
 	if dry_run {
@@ -153,7 +153,7 @@ build_turbo_content :: proc() -> string {
 	defer strings.builder_destroy(&builder)
 
 	// Header
-	fmt.sbprintf(&builder, "#!/usr/bin/env %s\n\n", SHELL_EXT)
+	fmt.sbprintf(&builder, "#!/usr/bin/env %s\n\n", g_ctx.shell_ext)
 	fmt.sbprintf(&builder, "# Wayu Turbo Export - Auto-generated unified configuration\n")
 	fmt.sbprintf(&builder, "# Generated: wayu export --turbo\n")
 	fmt.sbprintf(&builder, "# This file is pre-computed for maximum startup speed\n")
@@ -306,7 +306,7 @@ append_aliases_direct :: proc(builder: ^strings.Builder) {
 
 // Append functions (if any exist)
 append_functions_direct :: proc(builder: ^strings.Builder) {
-	funcs_dir := fmt.aprintf("%s/functions", WAYU_CONFIG)
+	funcs_dir := fmt.aprintf("%s/functions", g_ctx.wayu_config)
 	defer delete(funcs_dir)
 
 	if !os.exists(funcs_dir) {
@@ -317,7 +317,7 @@ append_functions_direct :: proc(builder: ^strings.Builder) {
 	// Check if directory has any .zsh files
 	has_functions := false
 	// Simple existence check - actual function loading kept minimal
-	if DETECTED_SHELL == .ZSH {
+	if g_ctx.shell == .ZSH {
 		fmt.sbprintf(builder, "for f in \"$HOME/.config/wayu/functions\"/*(N); do [[ -f \"$f\" ]] && source \"$f\"; done\n")
 	} else {
 		fmt.sbprintf(builder, "for f in \"$HOME/.config/wayu/functions\"/*.zsh; do [ -f \"$f\" ] && source \"$f\"; done\n")
@@ -333,7 +333,7 @@ append_plugins_direct :: proc(builder: ^strings.Builder) {
 
 // Append external tools loading (Starship, Zoxide, etc.)
 append_tools_direct :: proc(builder: ^strings.Builder) {
-	tools_path := fmt.aprintf("%s/tools.zsh", WAYU_CONFIG)
+	tools_path := fmt.aprintf("%s/tools.zsh", g_ctx.wayu_config)
 	defer delete(tools_path)
 	
 	if os.exists(tools_path) {
@@ -345,7 +345,7 @@ append_tools_direct :: proc(builder: ^strings.Builder) {
 
 // Append extra config loading
 append_extra_direct :: proc(builder: ^strings.Builder) {
-	extra_path := fmt.aprintf("%s/extra.zsh", WAYU_CONFIG)
+	extra_path := fmt.aprintf("%s/extra.zsh", g_ctx.wayu_config)
 	defer delete(extra_path)
 	
 	if os.exists(extra_path) {
@@ -425,7 +425,7 @@ print_export_usage :: proc() {
 
 // Check if turbo file exists and is current
 check_turbo_status :: proc() -> (exists: bool, current: bool) {
-	turbo_path := fmt.aprintf("%s/%s", WAYU_CONFIG, TURBO_EXPORT_FILE)
+	turbo_path := fmt.aprintf("%s/%s", g_ctx.wayu_config, TURBO_EXPORT_FILE)
 	defer delete(turbo_path)
 
 	if !os.exists(turbo_path) {

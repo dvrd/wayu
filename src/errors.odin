@@ -186,8 +186,8 @@ print_error_simple :: proc(format: string, args: ..any) {
 
 // Check if wayu is initialized
 check_wayu_initialized :: proc() -> bool {
-	if !os.exists(WAYU_CONFIG) {
-		print_error_with_context(.CONFIG_NOT_INITIALIZED, WAYU_CONFIG)
+	if !os.exists(g_ctx.wayu_config) {
+		print_error_with_context(.CONFIG_NOT_INITIALIZED, g_ctx.wayu_config)
 		return false
 	}
 
@@ -198,12 +198,12 @@ check_wayu_initialized :: proc() -> bool {
 	mem.arena_init(&scratch, scratch_buf[:])
 	scratch_alloc := mem.arena_allocator(&scratch)
 
-	ext := SHELL_EXT // e.g. "zsh" or "bash" — set at startup by detect_shell()
+	ext := g_ctx.shell_ext // e.g. "zsh" or "bash" — set at startup by detect_shell()
 	essential_files := []string{
-		fmt.aprintf("%s/path.%s",      WAYU_CONFIG, ext, allocator = scratch_alloc),
-		fmt.aprintf("%s/aliases.%s",   WAYU_CONFIG, ext, allocator = scratch_alloc),
-		fmt.aprintf("%s/constants.%s", WAYU_CONFIG, ext, allocator = scratch_alloc),
-		fmt.aprintf("%s/init.%s",      WAYU_CONFIG, ext, allocator = scratch_alloc),
+		fmt.aprintf("%s/path.%s",      g_ctx.wayu_config, ext, allocator = scratch_alloc),
+		fmt.aprintf("%s/aliases.%s",   g_ctx.wayu_config, ext, allocator = scratch_alloc),
+		fmt.aprintf("%s/constants.%s", g_ctx.wayu_config, ext, allocator = scratch_alloc),
+		fmt.aprintf("%s/init.%s",      g_ctx.wayu_config, ext, allocator = scratch_alloc),
 	}
 
 	for file in essential_files {

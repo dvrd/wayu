@@ -319,7 +319,7 @@ handle_completions_generate :: proc() {
 	fmt.println()
 
 	// Determine completions directory
-	completions_dir := fmt.aprintf("%s/completions", WAYU_CONFIG)
+	completions_dir := fmt.aprintf("%s/completions", g_ctx.wayu_config)
 	defer delete(completions_dir)
 
 	// Ensure directory exists

@@ -145,7 +145,7 @@ generate_starship_shell_config :: proc() -> string {
 	fmt.sbprintln(&builder, "")
 
 	// Detect shell and generate appropriate initialization
-	switch DETECTED_SHELL {
+	switch g_ctx.shell {
 	case .ZSH:
 		fmt.sbprintln(&builder, "# Initialize Starship for Zsh")
 		fmt.sbprintln(&builder, "if command -v starship &> /dev/null; then")
@@ -177,7 +177,7 @@ generate_starship_shell_config :: proc() -> string {
 // Apply Starship configuration to shell init file
 apply_starship_to_shell :: proc() -> bool {
 	// Read the init file
-	init_file := fmt.aprintf("%s/%s", WAYU_CONFIG, INIT_FILE)
+	init_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, g_ctx.init_file)
 	defer delete(init_file)
 
 	if !os.exists(init_file) {

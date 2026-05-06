@@ -85,7 +85,7 @@ INIT_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 # This file loads all configuration modules in the correct order
 
 # Determine config directory (supports WAYU_CONFIG_DIR override for testing)
-: ${WAYU_CONFIG_DIR:=$HOME/.config/wayu}
+: ${WAYU_CONFIG_DIR:=$g_ctx.home/.config/wayu}
 
 # === Fast path: compiled init-core from wayu.toml ===
 # After wayu v3.10 wayu.toml is the source of truth. 'wayu path/alias/
@@ -169,9 +169,16 @@ _wayu_cached_eval() {
     return 1
   fi
 
-  # Regenerate if cache missing or binary is newer
-  if [[ ! -f "$cache_file" ]] || [[ "$bin_path" -nt "$cache_file" ]]; then
-    "$@" > "$cache_file" 2>/dev/null
+  # Regenerate if cache missing, empty, or older than the binary
+  if [[ ! -s "$cache_file" ]] || [[ "$bin_path" -nt "$cache_file" ]]; then
+    local tmp_file="${cache_file}.tmp.$$"
+    if "$@" > "$tmp_file" 2>/dev/null && [[ -s "$tmp_file" ]]; then
+      mv -f "$tmp_file" "$cache_file"
+    else
+      # Command failed or produced no output — don't poison the cache
+      rm -f "$tmp_file"
+      [[ ! -s "$cache_file" ]] && return 1
+    fi
   fi
 
   source "$cache_file"
@@ -350,7 +357,7 @@ INIT_TEMPLATE_BASH :: `#!/usr/bin/env bash
 # This file loads all configuration modules in the correct order
 
 # Determine config directory (supports WAYU_CONFIG_DIR override for testing)
-: ${WAYU_CONFIG_DIR:=$HOME/.config/wayu}
+: ${WAYU_CONFIG_DIR:=$g_ctx.home/.config/wayu}
 
 # === Fast path: compiled init-core from wayu.toml ===
 # See the zsh template comment for rationale.
@@ -693,8 +700,8 @@ get_extra_template :: proc(shell: ShellType) -> string {
 
 // Initialize all config files with shell-specific templates
 init_config_files :: proc() {
-	shell := DETECTED_SHELL
-	config_dir := fmt.aprintf("%s", WAYU_CONFIG)
+	shell := g_ctx.shell
+	config_dir := fmt.aprintf("%s", g_ctx.wayu_config)
 	defer delete(config_dir)
 
 	// Use fallback-aware config file creation to preserve backward compatibility

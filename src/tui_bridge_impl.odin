@@ -126,7 +126,7 @@ tui_bridge_load_path :: proc(state: ^tui.TUIState) {
 	wayu_entries := make(map[string]EntrySource)
 	defer delete(wayu_entries)
 
-	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	toml_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(toml_file)
 
 	if os.exists(toml_file) {
@@ -217,7 +217,7 @@ tui_bridge_load_alias :: proc(state: ^tui.TUIState) {
 	defer delete(wayu_aliases)
 
 	// Check if wayu.toml exists and read from it preferentially
-	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	toml_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(toml_file)
 
 	if os.exists(toml_file) {
@@ -302,7 +302,7 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 	defer delete(wayu_constants)
 
 	// Check if wayu.toml exists and read from it preferentially
-	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	toml_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(toml_file)
 
 	if os.exists(toml_file) {
@@ -467,7 +467,7 @@ tui_bridge_load_completions :: proc(state: ^tui.TUIState) {
 	}
 
 	// Build completions directory path
-	completions_dir := fmt.aprintf("%s/completions", WAYU_CONFIG)
+	completions_dir := fmt.aprintf("%s/completions", g_ctx.wayu_config)
 	defer delete(completions_dir)
 
 	// Create items array
@@ -532,7 +532,7 @@ tui_bridge_load_backups :: proc(state: ^tui.TUIState) {
 	items := make([dynamic]string)
 
 	// List all backups from the backups directory
-	backups_dir := fmt.aprintf("%s/backup", WAYU_CONFIG)
+	backups_dir := fmt.aprintf("%s/backup", g_ctx.wayu_config)
 	defer delete(backups_dir)
 
 	if !os.exists(backups_dir) {
@@ -594,49 +594,49 @@ tui_bridge_load_backups :: proc(state: ^tui.TUIState) {
 
 // Delete PATH entry
 tui_bridge_delete_path :: proc(name: string) -> (bool, string) {
-	old_dry_run := DRY_RUN
-	DRY_RUN = false
-	defer { DRY_RUN = old_dry_run }
+	old_dry_run := g_ctx.dry_run
+	g_ctx.dry_run = false
+	defer { g_ctx.dry_run = old_dry_run }
 	return remove_config_entry(&PATH_SPEC, name)
 }
 
 // Delete Alias entry
 tui_bridge_delete_alias :: proc(name: string) -> (bool, string) {
-	old_dry_run := DRY_RUN
-	DRY_RUN = false
-	defer { DRY_RUN = old_dry_run }
+	old_dry_run := g_ctx.dry_run
+	g_ctx.dry_run = false
+	defer { g_ctx.dry_run = old_dry_run }
 	return remove_config_entry(&ALIAS_SPEC, name)
 }
 
 // Delete Constants entry
 tui_bridge_delete_constant :: proc(name: string) -> (bool, string) {
-	old_dry_run := DRY_RUN
-	DRY_RUN = false
-	defer { DRY_RUN = old_dry_run }
+	old_dry_run := g_ctx.dry_run
+	g_ctx.dry_run = false
+	defer { g_ctx.dry_run = old_dry_run }
 	return remove_config_entry(&CONSTANTS_SPEC, name)
 }
 
 // Add PATH entry
 tui_bridge_add_path :: proc(path: string) -> (bool, string) {
-	old_dry_run := DRY_RUN
-	DRY_RUN = false
-	defer { DRY_RUN = old_dry_run }
+	old_dry_run := g_ctx.dry_run
+	g_ctx.dry_run = false
+	defer { g_ctx.dry_run = old_dry_run }
 	return add_config_entry(&PATH_SPEC, ConfigEntry{name = path})
 }
 
 // Add Alias entry
 tui_bridge_add_alias :: proc(name: string, command: string) -> (bool, string) {
-	old_dry_run := DRY_RUN
-	DRY_RUN = false
-	defer { DRY_RUN = old_dry_run }
+	old_dry_run := g_ctx.dry_run
+	g_ctx.dry_run = false
+	defer { g_ctx.dry_run = old_dry_run }
 	return add_config_entry(&ALIAS_SPEC, ConfigEntry{name = name, value = command})
 }
 
 // Add Constants entry
 tui_bridge_add_constant :: proc(name: string, value: string) -> (bool, string) {
-	old_dry_run := DRY_RUN
-	DRY_RUN = false
-	defer { DRY_RUN = old_dry_run }
+	old_dry_run := g_ctx.dry_run
+	g_ctx.dry_run = false
+	defer { g_ctx.dry_run = old_dry_run }
 	return add_config_entry(&CONSTANTS_SPEC, ConfigEntry{name = name, value = value})
 }
 
@@ -644,9 +644,9 @@ tui_bridge_add_constant :: proc(name: string, value: string) -> (bool, string) {
 tui_bridge_cleanup_backups :: proc() -> bool {
 	// Get config files
 	config_files := []string{
-		fmt.aprintf("%s/path.%s", WAYU_CONFIG, SHELL_EXT),
-		fmt.aprintf("%s/aliases.%s", WAYU_CONFIG, SHELL_EXT),
-		fmt.aprintf("%s/constants.%s", WAYU_CONFIG, SHELL_EXT),
+		fmt.aprintf("%s/path.%s", g_ctx.wayu_config, g_ctx.shell_ext),
+		fmt.aprintf("%s/aliases.%s", g_ctx.wayu_config, g_ctx.shell_ext),
+		fmt.aprintf("%s/constants.%s", g_ctx.wayu_config, g_ctx.shell_ext),
 	}
 	defer for file in config_files do delete(file)
 
@@ -705,7 +705,7 @@ _tui_bridge_set_plugin_enabled :: proc(name: string, enabled: bool) -> bool {
 		if plugin.name == name {
 			plugin.enabled = enabled
 			if !write_plugin_config_json(&config) { return false }
-			return generate_plugins_file(DETECTED_SHELL)  // propagate loader errors
+			return generate_plugins_file(g_ctx.shell)  // propagate loader errors
 		}
 	}
 	return false // plugin not found
@@ -812,7 +812,7 @@ tui_bridge_install_plugin :: proc(key: string) -> bool {
 	if !write_plugin_config_json(&config) { return false }
 
 	// Regenerate shell loader so the plugin is sourced
-	return generate_plugins_file(DETECTED_SHELL)
+	return generate_plugins_file(g_ctx.shell)
 }
 
 // Load Settings into state cache. Idempotent — only repopulates strings
@@ -827,21 +827,21 @@ tui_bridge_load_settings :: proc(state: ^tui.TUIState) {
 	if len(state.settings_version)    > 0 { delete(state.settings_version) }
 	if len(state.settings_toml_path)  > 0 { delete(state.settings_toml_path) }
 
-	state.settings_shell      = strings.clone(get_shell_name(DETECTED_SHELL))
-	state.settings_config_dir = strings.clone(WAYU_CONFIG)
-	state.settings_dry_run    = DRY_RUN
+	state.settings_shell      = strings.clone(get_shell_name(g_ctx.shell))
+	state.settings_config_dir = strings.clone(g_ctx.wayu_config)
+	state.settings_dry_run    = g_ctx.dry_run
 	state.settings_version    = strings.clone(VERSION)
 
 	// TOML path + existence
-	toml_full := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	toml_full := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	state.settings_toml_path   = toml_full  // ownership transferred to state
 	state.settings_toml_exists = os.exists(toml_full)
 
 	// Aggregate backup count across the three tracked config files.
 	total_backups := 0
-	backup_targets := []string{PATH_FILE, ALIAS_FILE, CONSTANTS_FILE}
+	backup_targets := []string{g_ctx.path_file, g_ctx.alias_file, g_ctx.constants_file}
 	for f in backup_targets {
-		full := fmt.aprintf("%s/%s", WAYU_CONFIG, f)
+		full := fmt.aprintf("%s/%s", g_ctx.wayu_config, f)
 		defer delete(full)
 		backups := list_backups_for_file(full)
 		total_backups += len(backups)

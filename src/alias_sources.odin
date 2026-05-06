@@ -31,7 +31,7 @@ AliasSource :: struct {
 // Read and parse alias-sources.conf. Returns owned slice — caller must call
 // cleanup_alias_sources() when done.
 read_alias_sources :: proc() -> []AliasSource {
-	sources_file := fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_SOURCES_FILE)
+	sources_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, ALIAS_SOURCES_FILE)
 	defer delete(sources_file)
 
 	if !os.exists(sources_file) {

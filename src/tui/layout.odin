@@ -155,7 +155,7 @@ is_narrow :: proc(terminal_width: int) -> bool {
 //   - Alias/Constants: -2 for column header + its divider (col_header_offset)
 //
 // This must stay in sync with the visible_height calculation inside each
-// render_*_view proc in views.odin so that tui_state_move_selection tracks
+// render_*_view proc in the view_*.odin files so that tui_state_move_selection tracks
 // exactly the same drawable rows that the renderer uses.
 get_view_visible_height :: proc(state: ^TUIState) -> int {
 	base := calculate_visible_height(state.terminal_height)

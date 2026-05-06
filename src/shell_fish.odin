@@ -186,7 +186,7 @@ command_exists :: proc(cmd: string) -> bool {
 
 // Write Fish config to file
 shell_fish_write_config :: proc(file_path: string, content: string) -> bool {
-    if DRY_RUN {
+    if g_ctx.dry_run {
         fmt.printfln("[DRY-RUN] Would write Fish config to: %s", file_path)
         return true
     }

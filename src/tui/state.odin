@@ -544,4 +544,4 @@ tick_notification :: proc(state: ^TUIState) {
 	}
 }
 
-// Note: get_view_item_count() is now implemented in tui_views.odin
+// Note: get_view_item_count() is implemented in views_cache.odin

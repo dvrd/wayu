@@ -782,7 +782,7 @@ execute_add_form :: proc(state: ^TUIState) {
 	}
 }
 
-// Note: View rendering functions are now in tui_views.odin
-// render_path_view, render_alias_view, render_constants_view,
-// render_completions_view, render_backups_view, render_plugins_view,
-// render_settings_view are all implemented in tui_views.odin
+// Note: View rendering functions are split across per-view files:
+//   view_path.odin, view_alias.odin, view_constants.odin,
+//   view_completions.odin, view_backups.odin, view_plugins.odin,
+//   view_hooks.odin, view_settings.odin

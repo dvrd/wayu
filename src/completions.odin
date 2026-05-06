@@ -130,7 +130,7 @@ add_completion :: proc(name: string, source_path: string) {
 
 	// Normalize name with shell-appropriate convention (zsh `_foo`,
 	// bash `foo.bash-completion`, fish `foo.fish`).
-	completion_name := completion_filename_for_shell(name, DETECTED_SHELL)
+	completion_name := completion_filename_for_shell(name, g_ctx.shell)
 	defer delete(completion_name)
 
 	// Read source file
@@ -141,12 +141,12 @@ add_completion :: proc(name: string, source_path: string) {
 	defer delete(content)
 
 	// Destination directory
-	completions_dir := fmt.aprintf("%s/completions", WAYU_CONFIG)
+	completions_dir := fmt.aprintf("%s/completions", g_ctx.wayu_config)
 	defer delete(completions_dir)
 
 	// Ensure completions directory exists
 	if !os.exists(completions_dir) {
-		print_error_with_context(.CONFIG_NOT_INITIALIZED, WAYU_CONFIG)
+		print_error_with_context(.CONFIG_NOT_INITIALIZED, g_ctx.wayu_config)
 		os.exit(EXIT_CONFIG)
 	}
 
@@ -160,7 +160,7 @@ add_completion :: proc(name: string, source_path: string) {
 	}
 
 	// Dry-run mode check
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		fmt.printfln("%sWould copy to completions directory:%s", BRIGHT_CYAN, RESET)
@@ -185,7 +185,7 @@ add_completion :: proc(name: string, source_path: string) {
 	cleanup_old_backups(dest_path, 5)
 
 	print_success("Added completion: %s", completion_name)
-	init_file := get_config_file_with_fallback("init", DETECTED_SHELL)
+	init_file := get_config_file_with_fallback("init", g_ctx.shell)
 	defer delete(init_file)
 	fmt.printfln("\n%sNext steps:%s", BRIGHT_CYAN, RESET)
 	fmt.printfln("  source %s", init_file)
@@ -195,7 +195,7 @@ add_completion :: proc(name: string, source_path: string) {
 // Remove completion file
 remove_completion :: proc(name: string) {
 	// Build directory path
-	completions_dir := fmt.aprintf("%s/completions", WAYU_CONFIG)
+	completions_dir := fmt.aprintf("%s/completions", g_ctx.wayu_config)
 	defer delete(completions_dir)
 
 	// Try shell-appropriate form first, then fall back to any other matching
@@ -217,7 +217,7 @@ remove_completion :: proc(name: string) {
 	}
 
 	// Dry-run mode check
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		fmt.printfln("%sWould remove completion file:%s", BRIGHT_CYAN, RESET)
@@ -262,7 +262,7 @@ remove_completion_interactive :: proc() {
 	}
 
 	prompt_text := "Select completion to remove (Ctrl+C to cancel):"
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		prompt_text = "Select completion to remove (DRY RUN - no changes will be made):"
 	}
 
@@ -289,12 +289,12 @@ list_completions :: proc() {
 		os.exit(EXIT_CONFIG)
 	}
 
-	completions_dir := fmt.aprintf("%s/completions", WAYU_CONFIG)
+	completions_dir := fmt.aprintf("%s/completions", g_ctx.wayu_config)
 	defer delete(completions_dir)
 
 	// Check directory exists
 	if !os.exists(completions_dir) {
-		print_error_with_context(.CONFIG_NOT_INITIALIZED, WAYU_CONFIG)
+		print_error_with_context(.CONFIG_NOT_INITIALIZED, g_ctx.wayu_config)
 		os.exit(EXIT_CONFIG)
 	}
 

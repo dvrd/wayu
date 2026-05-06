@@ -23,18 +23,18 @@ import "core:unicode"
 // itself doesn't exist we leave things untouched so downstream code can
 // report the standard "wayu not initialized" error.
 ensure_wayu_toml_exists :: proc() -> bool {
-	if !os.exists(WAYU_CONFIG) {
+	if !os.exists(g_ctx.wayu_config) {
 		return true
 	}
 
-	toml_file := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	toml_file := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(toml_file)
 
 	if os.exists(toml_file) {
 		return true
 	}
 
-	shell_name := get_shell_name(DETECTED_SHELL)
+	shell_name := get_shell_name(g_ctx.shell)
 	scaffold := fmt.aprintf(`[shell]
 type = "%s"
 
@@ -348,7 +348,7 @@ toml_write_file :: proc(path: string, config: TomlConfig) -> bool {
 
 // Get default config file path
 toml_get_config_path :: proc() -> string {
-	return fmt.aprintf("%s/%s", WAYU_CONFIG, TOML_CONFIG_FILE)
+	return fmt.aprintf("%s/%s", g_ctx.wayu_config, TOML_CONFIG_FILE)
 }
 
 // Create default TOML config
@@ -508,13 +508,13 @@ handle_convert_to_toml :: proc() -> bool {
 	fmt.println()
 	print_info("`wayu toml convert` now runs `wayu migrate` under the hood.")
 	fmt.println()
-	migrate_legacy_to_toml(DRY_RUN)
+	migrate_legacy_to_toml(g_ctx.dry_run)
 	return true
 }
 
 // Handle 'wayu toml show' - display TOML content
 handle_toml_show :: proc() {
-	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	toml_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(toml_file)
 
 	content, err := os.read_entire_file_from_path(toml_file, context.allocator)
@@ -529,7 +529,7 @@ handle_toml_show :: proc() {
 
 // Handle 'wayu toml keys' - display TOML keys
 handle_toml_keys :: proc() {
-	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	toml_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(toml_file)
 
 	// Parse TOML to check it's valid

@@ -14,17 +14,17 @@ _plugins_json_mutex: sync.Mutex
 
 // Get plugins config file path
 get_plugins_config_file :: proc() -> string {
-	return fmt.aprintf("%s/plugins.conf", WAYU_CONFIG)
+	return fmt.aprintf("%s/plugins.conf", g_ctx.wayu_config)
 }
 
 // Get plugins JSON config file path
 get_plugins_json_config_file :: proc() -> string {
-	return fmt.aprintf("%s/plugins.json", WAYU_CONFIG)
+	return fmt.aprintf("%s/plugins.json", g_ctx.wayu_config)
 }
 
 // Get plugins directory path
 get_plugins_dir :: proc() -> string {
-	return fmt.aprintf("%s/plugins", WAYU_CONFIG)
+	return fmt.aprintf("%s/plugins", g_ctx.wayu_config)
 }
 
 // Read plugins.conf configuration file
@@ -272,7 +272,7 @@ migrate_plugin_config :: proc() -> bool {
 
 // Clone plugin repository
 git_clone :: proc(url: string, dest: string) -> bool {
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		print_info("[DRY RUN] Would execute: git clone --depth=1 --quiet %s %s", url, dest)
 		return true
 	}
@@ -282,7 +282,7 @@ git_clone :: proc(url: string, dest: string) -> bool {
 
 // Update plugin (git pull)
 git_update :: proc(plugin_dir: string) -> bool {
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		print_info("[DRY RUN] Would execute: git -C %s pull --quiet", plugin_dir)
 		return true
 	}
@@ -893,7 +893,7 @@ resolve_dependencies_with_priority :: proc(config: ^PluginConfigJSON) -> (order:
 // Parses the plugin's entry file and populates ConflictInfo
 scan_plugin_conflicts :: proc(plugin: ^PluginMetadata) -> bool {
 	// Detect the entry file first
-	entry_file, found := detect_plugin_file(plugin.installed_path, plugin.name, DETECTED_SHELL)
+	entry_file, found := detect_plugin_file(plugin.installed_path, plugin.name, g_ctx.shell)
 
 	// If no specific entry file found, return true (no conflicts to scan)
 	if !found {

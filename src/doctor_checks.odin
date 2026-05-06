@@ -129,7 +129,7 @@ check_shell_config :: proc(results: ^[dynamic]CheckResult) {
 // doctor file that owns the presentation layer doesn't depend on the details.
 get_shell_rc_file_arena :: proc() -> string {
 	ensure_arena_initialized()
-	shell := DETECTED_SHELL
+	shell := g_ctx.shell
 	home := os.get_env_alloc("HOME", get_doctor_allocator())
 
 	#partial switch shell {
@@ -231,7 +231,7 @@ check_path_entries :: proc(results: ^[dynamic]CheckResult) {
 // Check 4: plugins
 check_plugins :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	config_file := fmt.aprintf("%s/plugins.json", WAYU_CONFIG, allocator = get_doctor_allocator())
+	config_file := fmt.aprintf("%s/plugins.json", g_ctx.wayu_config, allocator = get_doctor_allocator())
 
 	if !os.exists(config_file) {
 		append(results, CheckResult{
@@ -279,7 +279,7 @@ check_plugins :: proc(results: ^[dynamic]CheckResult) {
 // Check 5: backups
 check_backups :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	backup_dir := fmt.aprintf("%s/backup", WAYU_CONFIG, allocator = get_doctor_allocator())
+	backup_dir := fmt.aprintf("%s/backup", g_ctx.wayu_config, allocator = get_doctor_allocator())
 
 	if !os.exists(backup_dir) {
 		append(results, CheckResult{
@@ -302,7 +302,7 @@ check_backups :: proc(results: ^[dynamic]CheckResult) {
 // Check 6: TOML config
 check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG, allocator = get_doctor_allocator())
+	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config, allocator = get_doctor_allocator())
 
 	if !os.exists(toml_path) {
 		append(results, CheckResult{
@@ -339,7 +339,7 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 // Check 7: turbo export
 check_turbo_export :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	turbo_path := fmt.aprintf("%s/turbo.zsh", WAYU_CONFIG, allocator = get_doctor_allocator())
+	turbo_path := fmt.aprintf("%s/turbo.zsh", g_ctx.wayu_config, allocator = get_doctor_allocator())
 
 	if !os.exists(turbo_path) {
 		append(results, CheckResult{
@@ -432,7 +432,7 @@ check_sync_status :: proc(results: ^[dynamic]CheckResult) {
 	arena_alloc := get_doctor_allocator()
 
 	// Only run this check if wayu is initialized
-	toml_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	toml_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(toml_file)
 
 	if !os.exists(toml_file) {

@@ -34,7 +34,7 @@ generate_eval_output_optimized :: proc() {
 	generate_optimized_init_all()
 	
 	// Output source command for core (essential only, < 10ms)
-	core_file := fmt.aprintf("%s/init-core.zsh", WAYU_CONFIG)
+	core_file := fmt.aprintf("%s/init-core.zsh", g_ctx.wayu_config)
 	defer delete(core_file)
 	
 	fmt.printfln(`source "%s"`, core_file)

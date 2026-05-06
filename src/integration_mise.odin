@@ -80,7 +80,7 @@ integration_mise_sync :: proc(config: TomlConfig) -> bool {
         return false
     }
 
-    if DRY_RUN {
+    if g_ctx.dry_run {
         fmt.printfln("[DRY-RUN] Would sync %d tools from %s to wayu constants", len(tools), config_path)
         for tool, version in tools {
             fmt.printfln("[DRY-RUN]   %s = %s", tool, version)
@@ -186,7 +186,7 @@ integration_mise_create_config :: proc(config: TomlConfig) -> bool {
     // Check if file already exists
     if os.exists(config_path) {
         print_info("%s already exists", config_path)
-        if !YES_FLAG {
+        if !g_ctx.yes_flag {
             confirm := prompt_confirmation_mise("Do you want to overwrite it?")
             if !confirm {
                 print_info("Aborted.")
@@ -195,7 +195,7 @@ integration_mise_create_config :: proc(config: TomlConfig) -> bool {
         }
     }
 
-    if DRY_RUN {
+    if g_ctx.dry_run {
         fmt.printfln("[DRY-RUN] Would create %s", config_path)
         return true
     }
@@ -356,7 +356,7 @@ integration_mise_install :: proc() -> bool {
         return false
     }
 
-    if DRY_RUN {
+    if g_ctx.dry_run {
         fmt.printfln("[DRY-RUN] Would run: mise install")
         return true
     }
@@ -434,14 +434,14 @@ integration_mise_status :: proc() -> string {
 // Export a constant from mise to wayu
 integration_mise_export_constant :: proc(constant: TomlConstant) -> bool {
     // Determine shell extension
-    ext := get_shell_extension(DETECTED_SHELL)
+    ext := get_shell_extension(g_ctx.shell)
 
     // Get the constants file path
-    constants_file := get_config_file_with_fallback("constants", DETECTED_SHELL)
+    constants_file := get_config_file_with_fallback("constants", g_ctx.shell)
     defer delete(constants_file)
 
     // Build the appropriate shell syntax
-    line := shell_fish_build_export_line(constant, DETECTED_SHELL) if DETECTED_SHELL == .FISH else shell_build_export_line(constant, DETECTED_SHELL)
+    line := shell_fish_build_export_line(constant, g_ctx.shell) if g_ctx.shell == .FISH else shell_build_export_line(constant, g_ctx.shell)
     defer delete(line)
 
     // Read existing content
