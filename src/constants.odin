@@ -20,7 +20,7 @@ handle_constants_command :: proc(action: Action, args: []string) {
 }
 
 read_wayu_toml_constants :: proc() -> []ConfigEntry {
-	config_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(config_path)
 
 	content, ok := safe_read_file(config_path)
@@ -199,8 +199,8 @@ strip_toml_constant_sections :: proc(content: string) -> string {
 	for line in lines {
 		trimmed := strings.trim_space(line)
 
-		// Only skip [constants] and [[constants]], preserve [env]
-		if trimmed == "[constants]" || trimmed == "[[constants]]" {
+		// Skip both [env] and [constants] sections — we rewrite as a single [env]
+		if trimmed == "[constants]" || trimmed == "[[constants]]" || trimmed == "[env]" {
 			skip_section = true
 			continue
 		}
@@ -220,7 +220,7 @@ strip_toml_constant_sections :: proc(content: string) -> string {
 }
 
 write_wayu_toml_constants :: proc(entries: []ConfigEntry) -> bool {
-	config_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(config_path)
 
 	content, ok := safe_read_file(config_path)
@@ -245,7 +245,7 @@ write_wayu_toml_constants :: proc(entries: []ConfigEntry) -> bool {
 			strings.write_string(&builder, "\n")
 		}
 
-		strings.write_string(&builder, "[constants]\n")
+		strings.write_string(&builder, "[env]\n")
 		for entry in entries {
 			escaped := escape_toml_string(entry.value)
 			fmt.sbprintfln(&builder, "%s = \"%s\"", entry.name, escaped)
@@ -257,7 +257,7 @@ write_wayu_toml_constants :: proc(entries: []ConfigEntry) -> bool {
 	new_content := strings.clone(strings.to_string(builder))
 	defer delete(new_content)
 
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		fmt.printfln("%sWould update wayu.toml constants:%s", BRIGHT_CYAN, RESET)
@@ -400,7 +400,7 @@ list_toml_constants :: proc() {
 		return
 	}
 
-	if JSON_OUTPUT {
+	if g_ctx.json_output {
 		print_constants_json(entries[:], external_constants[:])
 		return
 	}
@@ -422,9 +422,9 @@ list_toml_constants :: proc() {
 	fmt.println()
 
 	// Filter based on SOURCE_FILTER
-	show_wayu := SOURCE_FILTER == "all" || SOURCE_FILTER == "wayu"
-	show_external := SOURCE_FILTER == "all" || SOURCE_FILTER == "external"
-	show_inactive := SOURCE_FILTER == "all" || SOURCE_FILTER == "inactive"
+	show_wayu := g_ctx.source_filter == "all" || g_ctx.source_filter == "wayu"
+	show_external := g_ctx.source_filter == "all" || g_ctx.source_filter == "external"
+	show_inactive := g_ctx.source_filter == "all" || g_ctx.source_filter == "inactive"
 
 	headers := []string{"Constant", "Value", "Source"}
 	table := new_table(headers)
@@ -484,9 +484,9 @@ print_constants_json :: proc(entries: []ConfigEntry, external_constants: []strin
 	}
 
 	// Determine if we show different source categories
-	show_wayu := SOURCE_FILTER == "all" || SOURCE_FILTER == "wayu"
-	show_external := SOURCE_FILTER == "all" || SOURCE_FILTER == "external"
-	show_inactive := SOURCE_FILTER == "all" || SOURCE_FILTER == "inactive"
+	show_wayu := g_ctx.source_filter == "all" || g_ctx.source_filter == "wayu"
+	show_external := g_ctx.source_filter == "all" || g_ctx.source_filter == "external"
+	show_inactive := g_ctx.source_filter == "all" || g_ctx.source_filter == "inactive"
 
 	fmt.println("{")
 	fmt.println(`  "constants": [`)

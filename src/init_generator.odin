@@ -23,13 +23,13 @@ import "core:strings"
 regenerate_init_core_silently :: proc() {
 	// Only makes sense when there's a wayu.toml to read from — without it
 	// the generators would just write empty files.
-	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(toml_path)
 	if !os.exists(toml_path) do return
 
-	if DETECTED_SHELL == .FISH {
+	if g_ctx.shell == .FISH {
 		generate_core_init_fish()
-		_ = generate_plugins_runtime_config(DETECTED_SHELL)
+		_ = generate_plugins_runtime_config(g_ctx.shell)
 		return
 	}
 
@@ -37,17 +37,17 @@ regenerate_init_core_silently :: proc() {
 	generate_lazy_init_v2()
 	generate_login_init_v2()
 	generate_helpers_init_v2()
-	_ = generate_plugins_runtime_config(DETECTED_SHELL)
+	_ = generate_plugins_runtime_config(g_ctx.shell)
 }
 
 // Genera todos los archivos de init optimizados (versión v2 con todas las optimizaciones)
 generate_optimized_init_all :: proc() {
 	// Fish uses a single native init-core.fish; zsh-defer / lazy split is
 	// zsh/bash-specific and irrelevant under fish.
-	if DETECTED_SHELL == .FISH {
+	if g_ctx.shell == .FISH {
 		generate_core_init_fish()
-		_ = generate_plugins_runtime_config(DETECTED_SHELL)
-		fmt.printfln("# Init file generated: %s/init-core.fish", WAYU_CONFIG)
+		_ = generate_plugins_runtime_config(g_ctx.shell)
+		fmt.printfln("# Init file generated: %s/init-core.fish", g_ctx.wayu_config)
 		return
 	}
 
@@ -64,13 +64,13 @@ generate_optimized_init_all :: proc() {
 	generate_helpers_init_v2()
 
 	// 5. Runtime plugin config generated from wayu.toml
-	_ = generate_plugins_runtime_config(DETECTED_SHELL)
+	_ = generate_plugins_runtime_config(g_ctx.shell)
 	
 	fmt.println("# Init files generados:")
-	fmt.printfln("#   %s/init-core.zsh  (menos de 10ms)", WAYU_CONFIG)
-	fmt.printfln("#   %s/init-lazy.zsh   (deferred via zsh-defer propio)", WAYU_CONFIG)
-	fmt.printfln("#   %s/init-login.zsh  (login only)", WAYU_CONFIG)
-	fmt.printfln("#   %s/init-helpers.zsh (evalcache, zsh-defer propio)", WAYU_CONFIG)
+	fmt.printfln("#   %s/init-core.zsh  (menos de 10ms)", g_ctx.wayu_config)
+	fmt.printfln("#   %s/init-lazy.zsh   (deferred via zsh-defer propio)", g_ctx.wayu_config)
+	fmt.printfln("#   %s/init-login.zsh  (login only)", g_ctx.wayu_config)
+	fmt.printfln("#   %s/init-helpers.zsh (evalcache, zsh-defer propio)", g_ctx.wayu_config)
 	fmt.println("#")
 	fmt.println("# Para compilar a bytecode (2-3x mas rapido):")
 	fmt.println("#   zcompile ~/.config/wayu/init-core.zsh")
@@ -81,8 +81,8 @@ generate_optimized_init_all :: proc() {
 
 // Core: Solo lo esencial para que aparezca el prompt (menos de 10ms)
 generate_core_init_v2 :: proc() {
-	shell_ext := get_shell_extension(DETECTED_SHELL)
-	path := fmt.aprintf("%s/init-core.%s", WAYU_CONFIG, shell_ext)
+	shell_ext := get_shell_extension(g_ctx.shell)
+	path := fmt.aprintf("%s/init-core.%s", g_ctx.wayu_config, shell_ext)
 	defer delete(path)
 
 	builder: strings.Builder
@@ -91,9 +91,9 @@ generate_core_init_v2 :: proc() {
 
 	// Use correct shebang for shell type
 	shebang := "#!/usr/bin/env zsh"
-	if DETECTED_SHELL == .BASH {
+	if g_ctx.shell == .BASH {
 		shebang = "#!/usr/bin/env bash"
-	} else if DETECTED_SHELL == .FISH {
+	} else if g_ctx.shell == .FISH {
 		shebang = "#!/usr/bin/env fish"
 	}
 	fmt.sbprintln(&builder, shebang)
@@ -126,13 +126,13 @@ generate_core_init_v2 :: proc() {
 
 	// Deduplicación de PATH - usar syntax correcta por shell type
 	fmt.sbprintln(&builder, "# Deduplicate PATH (preserva orden, elimina duplicados)")
-	if DETECTED_SHELL == .ZSH {
+	if g_ctx.shell == .ZSH {
 		fmt.sbprintln(&builder, "typeset -U path PATH")
-	} else if DETECTED_SHELL == .BASH {
+	} else if g_ctx.shell == .BASH {
 		// Bash doesn't have typeset -U, use a different dedup method
 		fmt.sbprintln(&builder, `# Bash PATH deduplication`)
 		fmt.sbprintln(&builder, `export PATH=$(echo "$PATH" | tr ':' '\n' | nl | sort -uk2 | sort -n | cut -f2- | tr '\n' ':' | sed 's/:$//g')`)
-	} else if DETECTED_SHELL == .FISH {
+	} else if g_ctx.shell == .FISH {
 		// Fish handles PATH specially
 		fmt.sbprintln(&builder, `# Fish PATH deduplication`)
 		fmt.sbprintln(&builder, `set -U fish_user_paths (printf '%s\n' $fish_user_paths | awk '!seen[$0]++')`)
@@ -204,7 +204,7 @@ defer {
 	fmt.sbprintln(&builder)
 	
 	// User configuration from config.zsh
-	config_zsh := fmt.aprintf("%s/config.zsh", WAYU_CONFIG)
+	config_zsh := fmt.aprintf("%s/config.zsh", g_ctx.wayu_config)
 	defer delete(config_zsh)
 	
 	if os.exists(config_zsh) {
@@ -218,15 +218,39 @@ defer {
 	
 	// Load helpers (para zsh-defer y utilidades)
 	fmt.sbprintln(&builder, "# === Load helpers (zsh-defer propio) ===")
-	fmt.sbprintfln(&builder, "source \"%s/init-helpers.zsh\" 2>/dev/null || true", WAYU_CONFIG)
+	fmt.sbprintfln(&builder, "source \"%s/init-helpers.zsh\" 2>/dev/null || true", g_ctx.wayu_config)
 	fmt.sbprintln(&builder)
+	
+	// Eager tools — loaded immediately in core (e.g. keybinding tools like atuin)
+	tools := read_wayu_toml_tools()
+	defer {
+		for t in tools { delete(t.cmd); delete(t.args) }
+		delete(tools)
+	}
+	
+	eager_count := 0
+	for t in tools {
+		if t.eager { eager_count += 1 }
+	}
+	if eager_count > 0 {
+		fmt.sbprintln(&builder, "# === Tools (eager — keybindings, immediate) ===")
+		for t in tools {
+			if !t.eager { continue }
+			if len(t.args) > 0 {
+				fmt.sbprintfln(&builder, "_wayu_evalcache %s %s", t.cmd, t.args)
+			} else {
+				fmt.sbprintfln(&builder, "_wayu_evalcache %s", t.cmd)
+			}
+		}
+		fmt.sbprintln(&builder)
+	}
 	
 	// Prompt: Nativo wayu completo (copied from starship.toml)
 	// Ahora con features interactivas
 	fmt.sbprintln(&builder, "# === Prompt (wayu native, interactive) ===")
 	
 	// Parse configs from TOML
-	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(toml_path)
 	
 	if os.exists(toml_path) {
@@ -249,17 +273,17 @@ defer {
 	}
 	fmt.sbprintln(&builder)
 	
-	// Defer resto (completions, tools, etc.)
-	fmt.sbprintln(&builder, "# === Deferred loading (lazy init) ===")
-	fmt.sbprintln(&builder, "[[ -z \"$_WAYU_LAZY_LOADED\" ]] && {")
-	fmt.sbprintln(&builder, "  export _WAYU_LAZY_LOADED=1")
-	fmt.sbprintfln(&builder, "  zsh-defer source \"%s/init-lazy.zsh\"", WAYU_CONFIG)
-	fmt.sbprintln(&builder, "}")
+	// Source lazy init directly (tools, extra config).
+	// Previously this used zsh-defer but the home-grown implementation
+	// conflicts with TRAPUSR1 (async rprompt) and silently fails,
+	// leaving tools like zoxide uninitialised.
+	fmt.sbprintln(&builder, "# === Lazy init (tools, extra config) ===")
+	fmt.sbprintfln(&builder, "source \"%s/init-lazy.zsh\"", g_ctx.wayu_config)
 	fmt.sbprintln(&builder)
 	
 	// Login shell extras (|| true para que no falle en non-login shells)
 	fmt.sbprintln(&builder, "# === Login shell ===")
-	fmt.sbprintfln(&builder, "[[ -o login ]] && source \"%s/init-login.zsh\" 2>/dev/null || true", WAYU_CONFIG)
+	fmt.sbprintfln(&builder, "[[ -o login ]] && source \"%s/init-login.zsh\" 2>/dev/null || true", g_ctx.wayu_config)
 	fmt.sbprintln(&builder)
 	
 	content := strings.to_string(builder)
@@ -268,7 +292,7 @@ defer {
 
 // Lazy: Plugins, tools, completions (carga diferida via zsh-defer)
 generate_lazy_init_v2 :: proc() {
-	path := fmt.aprintf("%s/init-lazy.zsh", WAYU_CONFIG)
+	path := fmt.aprintf("%s/init-lazy.zsh", g_ctx.wayu_config)
 	defer delete(path)
 	
 	builder: strings.Builder
@@ -279,17 +303,29 @@ generate_lazy_init_v2 :: proc() {
 	fmt.sbprintln(&builder, "# init-lazy.zsh - CARGA DIFERIDA")
 	fmt.sbprintln(&builder)
 	
-	// Tools con evalcache
-	fmt.sbprintln(&builder, "# === Tools (evalcached) ===")
-	fmt.sbprintln(&builder, "_wayu_evalcache zoxide init zsh")
-	fmt.sbprintln(&builder, "_wayu_evalcache atuin init zsh --disable-up-arrow")
-	fmt.sbprintln(&builder)
+	// Deferred tools (non-eager) from wayu.toml [[tools]]
+	tools := read_wayu_toml_tools()
+	defer {
+		for t in tools { delete(t.cmd); delete(t.args) }
+		delete(tools)
+	}
 	
-	// Tools con evalcache
-	fmt.sbprintln(&builder, "# === Tools (evalcached) ===")
-	fmt.sbprintln(&builder, "_wayu_evalcache zoxide init zsh")
-	fmt.sbprintln(&builder, "_wayu_evalcache atuin init zsh --disable-up-arrow")
-	fmt.sbprintln(&builder)
+	deferred_count := 0
+	for t in tools {
+		if !t.eager { deferred_count += 1 }
+	}
+	if deferred_count > 0 {
+		fmt.sbprintln(&builder, "# === Tools (deferred) ===")
+		for t in tools {
+			if t.eager { continue }
+			if len(t.args) > 0 {
+				fmt.sbprintfln(&builder, "_wayu_evalcache %s %s", t.cmd, t.args)
+			} else {
+				fmt.sbprintfln(&builder, "_wayu_evalcache %s", t.cmd)
+			}
+		}
+		fmt.sbprintln(&builder)
+	}
 	
 	// Environment ya exportado en init-core.zsh desde wayu.toml [env]
 	fmt.sbprintln(&builder)
@@ -309,7 +345,7 @@ generate_lazy_init_v2 :: proc() {
 
 // Login: Solo para shells de login (heavy tools)
 generate_login_init_v2 :: proc() {
-	path := fmt.aprintf("%s/init-login.zsh", WAYU_CONFIG)
+	path := fmt.aprintf("%s/init-login.zsh", g_ctx.wayu_config)
 	defer delete(path)
 	
 	builder: strings.Builder
@@ -331,7 +367,7 @@ generate_login_init_v2 :: proc() {
 
 // Helpers: Funciones de soporte (evalcache, zsh-defer propio, etc.)
 generate_helpers_init_v2 :: proc() {
-	path := fmt.aprintf("%s/init-helpers.zsh", WAYU_CONFIG)
+	path := fmt.aprintf("%s/init-helpers.zsh", g_ctx.wayu_config)
 	defer delete(path)
 	
 	helper := `# init-helpers.zsh - Funciones de soporte para wayu
@@ -345,15 +381,25 @@ _wayu_evalcache() {
   local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/wayu/evalcache"
   local cache_file="$cache_dir/${cmd//\//_}"
   local bin_path="$(command -v $cmd 2>/dev/null)"
-  
+
+  # Skip silently if the tool isn't installed
+  [[ -z "$bin_path" ]] && return 0
+
   [[ -d "$cache_dir" ]] || mkdir -p "$cache_dir"
-  
-  # Regenerar si: no existe cache, o binario es más nuevo que cache
-  if [[ ! -f "$cache_file" ]] || [[ "$bin_path" -nt "$cache_file" ]]; then
-    "$cmd" "$@" > "$cache_file" 2>/dev/null
+
+  # Regenerar si: no existe cache, está vacío, o binario es más nuevo que cache
+  if [[ ! -s "$cache_file" ]] || [[ "$bin_path" -nt "$cache_file" ]]; then
+    local tmp_file="${cache_file}.tmp.$$"
+    if "$cmd" "$@" > "$tmp_file" 2>/dev/null && [[ -s "$tmp_file" ]]; then
+      mv -f "$tmp_file" "$cache_file"
+    else
+      # Failed or empty output — drop the tmpfile, leave any prior good cache alone
+      rm -f "$tmp_file"
+      [[ ! -s "$cache_file" ]] && return 1
+    fi
   fi
-  
-  [[ -f "$cache_file" ]] && source "$cache_file"
+
+  source "$cache_file"
 }
 
 # ============================================================================
@@ -439,7 +485,7 @@ wayu_compile() {
 
 // Lee los [[paths]] de wayu.toml y retorna la lista de rutas
 read_wayu_toml_paths :: proc() -> [dynamic]string {
-	config_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(config_path)
 
 	content, ok := safe_read_file(config_path)
@@ -483,19 +529,104 @@ read_wayu_toml_paths :: proc() -> [dynamic]string {
 }
 
 
-// Lee variables de entorno desde wayu.toml y retorna lista de (nombre, valor).
-//
-// Acepta las dos ubicaciones históricas — `[env]` (formato más antiguo) y
-// `[constants]` (formato actual que usa `wayu constants add`). Antes de este
-// fix los constants iban a `[constants]` pero el init generator sólo leía
-// `[env]`, por lo que nunca aparecían en init-core.{zsh,bash,fish}.
+// ============================================================================
+// Tool init entries from wayu.toml [[tools]]
+// ============================================================================
+
+ToolEntry :: struct {
+	cmd:   string,   // e.g. "atuin"
+	args:  string,   // e.g. "init zsh --disable-up-arrow"
+	eager: bool,     // true = load in init-core (keybindings); false = deferred
+}
+
+// Parse [[tools]] from wayu.toml.
+// Format:
+//   [[tools]]
+//   cmd = "atuin"
+//   args = "init zsh --disable-up-arrow"
+//   eager = true
+read_wayu_toml_tools :: proc() -> [dynamic]ToolEntry {
+	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	defer delete(config_path)
+
+	content, ok := safe_read_file(config_path)
+	if !ok { return make([dynamic]ToolEntry) }
+	defer delete(content)
+
+	entries := make([dynamic]ToolEntry)
+	lines := strings.split(string(content), "\n")
+	defer delete(lines)
+
+	in_tools := false
+	current_cmd := ""
+	current_args := ""
+	current_eager := false
+
+	flush :: proc(entries: ^[dynamic]ToolEntry, cmd, args: ^string, eager: ^bool) {
+		if len(cmd^) > 0 {
+			append(entries, ToolEntry{
+				cmd   = strings.clone(cmd^),
+				args  = strings.clone(args^),
+				eager = eager^,
+			})
+		}
+		cmd^   = ""
+		args^  = ""
+		eager^ = false
+	}
+
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
+
+		if trimmed == "[[tools]]" {
+			flush(&entries, &current_cmd, &current_args, &current_eager)
+			in_tools = true
+			continue
+		}
+
+		if strings.has_prefix(trimmed, "[") {
+			if in_tools { flush(&entries, &current_cmd, &current_args, &current_eager) }
+			in_tools = false
+			continue
+		}
+
+		if !in_tools { continue }
+
+		eq_idx := strings.index(trimmed, "=")
+		if eq_idx < 1 { continue }
+
+		key := strings.trim_space(trimmed[:eq_idx])
+		val := strings.trim_space(trimmed[eq_idx+1:])
+		val = strings.trim_prefix(val, `"`)
+		val = strings.trim_suffix(val, `"`)
+		val = strings.trim_prefix(val, "'")
+		val = strings.trim_suffix(val, "'")
+
+		switch key {
+		case "cmd":  current_cmd  = val
+		case "args": current_args = val
+		case "eager":
+			current_eager = val == "true"
+		}
+	}
+
+	if in_tools { flush(&entries, &current_cmd, &current_args, &current_eager) }
+
+	return entries
+}
+
+// ============================================================================
+// Env entries from wayu.toml [env]
+// ============================================================================
+
 EnvEntry :: struct {
 	name: string,
 	value: string,
 }
 
 read_wayu_toml_env :: proc() -> [dynamic]EnvEntry {
-	config_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(config_path)
 
 	content, ok := safe_read_file(config_path)
@@ -544,10 +675,23 @@ read_wayu_toml_env :: proc() -> [dynamic]EnvEntry {
 		value = strings.trim_suffix(value, "'")
 
 		if len(name) > 0 && len(value) > 0 {
-			append(&entries, EnvEntry{
-				name = strings.clone(name),
-				value = strings.clone(value),
-			})
+			// Deduplicate: if this name already exists, update in place
+			// (last value wins — [constants] overrides [env] if both present)
+			found := false
+			for &e in entries {
+				if e.name == name {
+					delete(e.value)
+					e.value = strings.clone(value)
+					found = true
+					break
+				}
+			}
+			if !found {
+				append(&entries, EnvEntry{
+					name = strings.clone(name),
+					value = strings.clone(value),
+				})
+			}
 		}
 	}
 
@@ -558,7 +702,7 @@ read_wayu_toml_env :: proc() -> [dynamic]EnvEntry {
 // Soporta ambos formatos: [aliases] tabla y [[aliases]] array of tables.
 // Uses AliasEntry from output.odin
 read_wayu_toml_aliases :: proc() -> [dynamic]AliasEntry {
-	config_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(config_path)
 
 	content, ok := safe_read_file(config_path)
@@ -668,7 +812,7 @@ read_wayu_toml_aliases :: proc() -> [dynamic]AliasEntry {
 // init-core.fish rather than sharing generate_core_init_v2. Keep it simple:
 // PATH, env, aliases, plugin runtime, user config.fish. No zsh-defer/lazy.
 generate_core_init_fish :: proc() {
-	path := fmt.aprintf("%s/init-core.fish", WAYU_CONFIG)
+	path := fmt.aprintf("%s/init-core.fish", g_ctx.wayu_config)
 	defer delete(path)
 
 	builder: strings.Builder
@@ -734,7 +878,7 @@ generate_core_init_fish :: proc() {
 	fmt.sbprintln(&builder)
 
 	// User config.fish
-	config_fish := fmt.aprintf("%s/config.fish", WAYU_CONFIG)
+	config_fish := fmt.aprintf("%s/config.fish", g_ctx.wayu_config)
 	defer delete(config_fish)
 	if os.exists(config_fish) {
 		fmt.sbprintln(&builder, "# === User configuration (from config.fish) ===")
