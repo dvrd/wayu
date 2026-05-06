@@ -15,11 +15,14 @@ on:
           - patch
           - minor
           - major
-      recreate_tag:
-        description: 'Recreate a missing tag (e.g., v3.8.0) - use if release failed previously'
-        required: false
-        default: ''
-        type: string
+
+# Serialize all runs of this workflow. The bump step pushes a `chore: release`
+# commit which itself triggers a second run; concurrency makes the second run
+# wait until the first finishes publishing, at which point its republish path
+# detects "tag + release already at HEAD" and short-circuits.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -29,37 +32,45 @@ jobs:
   bump:
     name: Bump version
     runs-on: ubuntu-latest
-    # Skip if this is a release commit AND the tag already exists
-    if: "!startsWith(github.event.head_commit.message, 'chore: release') || (startsWith(github.event.head_commit.message, 'chore: release') && !contains(github.event.head_commit.message, github.ref_name))"
 
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
+      mode: ${{ steps.version.outputs.MODE }}
       skip: ${{ steps.version.outputs.SKIP }}
-      recreate_tag: ${{ steps.version.outputs.RECREATE_TAG }}
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        fetch-tags: true            # fetch ALL tags, including orphans whose commits aren't on main
         token: ${{ secrets.GITHUB_TOKEN }}
-        # When recreating a tag, we need the specific commit
-        ref: ${{ inputs.recreate_tag != '' && github.sha || github.ref }}
 
     - name: Install git-cliff
       run: cargo install git-cliff --locked
 
-    - name: Determine next version
+    - name: Determine action
       id: version
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        # Check if manual tag recreation requested
-        RECREATE_TAG="false"
-        MANUAL_TAG="${{ inputs.recreate_tag || '' }}"
-        
-        if [ -n "$MANUAL_TAG" ]; then
-          echo "Manual tag recreation requested: $MANUAL_TAG"
-          VERSION="$MANUAL_TAG"
-          RECREATE_TAG="true"
+        # Refresh tag state from origin (catches orphan tags whose target
+        # commits are not reachable from main).
+        git fetch --tags --prune --prune-tags origin
+
+        HEAD_MSG=$(git log -1 --format=%s)
+        HEAD_VERSION=$(echo "$HEAD_MSG" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || true)
+
+        # Three operating modes:
+        #   bump      — fresh feature/fix commits since last tag.
+        #               Edit VERSION + CHANGELOG, commit, tag, atomic push.
+        #   republish — HEAD is already "chore: release vX.Y.Z" (a prior run
+        #               committed the bump but didn't finish tagging/publishing).
+        #               Skip the bump; just (re)point tag and publish.
+        #   skip      — nothing to release; tag and release already at HEAD.
+        if [[ "$HEAD_MSG" == "chore: release $HEAD_VERSION" ]] && [ -n "$HEAD_VERSION" ]; then
+          VERSION="$HEAD_VERSION"
+          MODE="republish"
         else
           BUMP_TYPE="${{ inputs.bump_type || '' }}"
           if [ -n "$BUMP_TYPE" ]; then
@@ -67,53 +78,70 @@ jobs:
           else
             VERSION=$(git cliff --bumped-version)
           fi
-        fi
-        
-        CURRENT=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-        echo "Current tag: $CURRENT  →  Next version: $VERSION"
-        
-        # Check if we need to recreate a missing tag (auto-detect)
-        if [ "$RECREATE_TAG" != "true" ] && [ "${{ startsWith(github.event.head_commit.message, 'chore: release') }}" = "true" ]; then
-          # Extract version from commit message
-          COMMIT_VERSION=$(echo "${{ github.event.head_commit.message }}" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || echo "")
-          if [ -n "$COMMIT_VERSION" ]; then
-            if ! git rev-parse "$COMMIT_VERSION" >/dev/null 2>&1; then
-              echo "Tag $COMMIT_VERSION missing but commit exists — will recreate tag"
-              VERSION="$COMMIT_VERSION"
-              RECREATE_TAG="true"
-            fi
+          CURRENT=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          if [ "$VERSION" = "$CURRENT" ]; then
+            MODE="skip"
+          else
+            MODE="bump"
           fi
         fi
-        
-        if [ "$VERSION" = "$CURRENT" ] && [ "$RECREATE_TAG" != "true" ]; then
-          echo "No version bump needed — skipping release."
-          echo "SKIP=true" >> $GITHUB_OUTPUT
-        else
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "SKIP=false" >> $GITHUB_OUTPUT
-          echo "RECREATE_TAG=$RECREATE_TAG" >> $GITHUB_OUTPUT
+
+        # In republish mode, short-circuit if the tag is already at HEAD AND
+        # the GitHub release exists — i.e. a prior run actually finished and
+        # this run was just triggered by the bot's own release commit.
+        if [ "$MODE" = "republish" ]; then
+          TAG_OID=$(git rev-parse "refs/tags/$VERSION" 2>/dev/null || echo "")
+          HEAD_OID=$(git rev-parse HEAD)
+          if [ "$TAG_OID" = "$HEAD_OID" ] && gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Tag and release for $VERSION are already at HEAD — nothing to do."
+            MODE="skip"
+          fi
         fi
 
-    - name: Sanity-check existing tag
-      # Fail fast if the target tag already exists on the remote at a different
-      # commit (e.g. stale tag from a prior aborted release). Without this guard
-      # the workflow would commit + push the bump to main, then die on `git tag`,
-      # leaving main with a release commit that has no matching tag.
-      if: steps.version.outputs.SKIP != 'true' && steps.version.outputs.RECREATE_TAG != 'true'
+        echo "::notice::Mode=$MODE  Version=$VERSION  HEAD=$(git rev-parse --short HEAD)"
+        {
+          echo "VERSION=$VERSION"
+          echo "MODE=$MODE"
+          if [ "$MODE" = "skip" ]; then
+            echo "SKIP=true"
+          else
+            echo "SKIP=false"
+          fi
+        } >> $GITHUB_OUTPUT
+
+    - name: Auto-reconcile stale tag
+      # If a tag for the target version already exists at a commit that is
+      # not HEAD, it's an orphan from a prior aborted run. Auto-delete it
+      # (and its release if any) so the bump/republish step can recreate
+      # it cleanly. This is what makes the workflow self-healing — without
+      # it, a stale tag would force `git tag` to fail and require manual
+      # cleanup.
+      if: steps.version.outputs.SKIP != 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         VERSION="${{ steps.version.outputs.VERSION }}"
-        git fetch --tags --prune --prune-tags origin
-        if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
-          EXISTING=$(git rev-parse "refs/tags/$VERSION")
-          echo "::error::Tag $VERSION already exists at $EXISTING."
-          echo "::error::To recover: delete the stale release with"
-          echo "::error::  gh release delete $VERSION --cleanup-tag --yes"
-          echo "::error::then re-run this workflow with recreate_tag=$VERSION."
-          exit 1
+        if ! git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+          echo "Tag $VERSION does not exist — nothing to reconcile."
+          exit 0
         fi
+        EXISTING=$(git rev-parse "refs/tags/$VERSION")
+        HEAD_OID=$(git rev-parse HEAD)
+        if [ "$EXISTING" = "$HEAD_OID" ]; then
+          echo "Tag $VERSION already at HEAD — nothing to reconcile."
+          exit 0
+        fi
+        echo "::warning::Stale $VERSION tag at $EXISTING (HEAD is $HEAD_OID) — auto-cleaning."
+        # `gh release delete --cleanup-tag` removes the GitHub release AND
+        # the underlying tag in one shot; if the release doesn't exist,
+        # fall back to deleting the remote tag directly.
+        gh release delete "$VERSION" --cleanup-tag --yes 2>/dev/null \
+          || git push origin ":refs/tags/$VERSION" 2>/dev/null \
+          || true
+        git tag -d "$VERSION" 2>/dev/null || true
 
     - name: Update VERSION in src/main.odin
-      if: steps.version.outputs.SKIP != 'true'
+      if: steps.version.outputs.MODE == 'bump'
       run: |
         VERSION="${{ steps.version.outputs.VERSION }}"
         VERSION_BARE="${VERSION#v}"
@@ -121,28 +149,28 @@ jobs:
         grep 'VERSION ::' src/main.odin
 
     - name: Generate CHANGELOG
-      if: steps.version.outputs.SKIP != 'true'
+      if: steps.version.outputs.MODE == 'bump'
       run: git cliff --tag ${{ steps.version.outputs.VERSION }} -o CHANGELOG.md
 
-    - name: Commit release files and tag
+    - name: Commit and tag
       if: steps.version.outputs.SKIP != 'true'
       run: |
         git config user.name  "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         VERSION="${{ steps.version.outputs.VERSION }}"
+        MODE="${{ steps.version.outputs.MODE }}"
 
-        if [ "${{ steps.version.outputs.RECREATE_TAG }}" = "true" ]; then
-          # Recreate path: bump commit already exists on main; just (re)point the tag.
-          echo "Recreating tag $VERSION on existing commit $(git rev-parse HEAD)"
+        if [ "$MODE" = "republish" ]; then
+          # Bump commit already exists at HEAD — only (re)point the tag.
+          # Idempotent: if the tag is already at HEAD this is a no-op net change.
           git tag -d "$VERSION" 2>/dev/null || true
           git push origin ":refs/tags/$VERSION" 2>/dev/null || true
           git tag "$VERSION"
           git push origin "$VERSION"
         else
-          # Normal path: push bump commit + tag atomically. If the tag ref
-          # cannot update (stale tag races in, etc.), the branch ref also
-          # does not update — main stays clean and the run can be retried
-          # without manual cleanup.
+          # bump: ship commit + tag atomically. If either ref refuses to
+          # update (race with another push, etc.) NEITHER updates, leaving
+          # main consistent and the next push to retry from a clean state.
           git add src/main.odin CHANGELOG.md
           git commit -m "chore: release $VERSION"
           git tag "$VERSION"
@@ -205,6 +233,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     needs: [bump, build-release]
+    if: needs.bump.outputs.skip != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -212,6 +241,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         ref: ${{ needs.bump.outputs.version }}
+        fetch-depth: 0
+        fetch-tags: true
 
     - name: Download all artifacts
       uses: actions/download-artifact@v4
@@ -225,6 +256,8 @@ jobs:
       run: git cliff --latest --strip header > release_notes.md
 
     - name: Create Release
+      # softprops/action-gh-release updates an existing release at the same
+      # tag, so this step is idempotent — safe to re-run in republish mode.
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ needs.bump.outputs.version }}
@@ -243,9 +276,8 @@ jobs:
   update-homebrew-tap:
     name: Update Homebrew tap
     needs: [bump, create-release]
+    if: needs.bump.outputs.skip != 'true'
     runs-on: ubuntu-latest
-    # Always run if release was created (even if tag existed before)
-    if: needs.bump.outputs.skip != 'true' || needs.bump.outputs.recreate_tag == 'true'
 
     steps:
     - name: Download macOS artifacts
@@ -312,5 +344,11 @@ jobs:
         git config user.name  "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add Formula/wayu.rb
-        git commit -m "wayu ${{ steps.vars.outputs.VERSION }}"
-        git push
+        # Tolerate "nothing to commit" so re-runs (republish path) don't fail
+        # when the formula already has the right version + SHA.
+        if git diff --cached --quiet; then
+          echo "Formula already up-to-date for ${{ steps.vars.outputs.VERSION }} — nothing to push."
+        else
+          git commit -m "wayu ${{ steps.vars.outputs.VERSION }}"
+          git push
+        fi
