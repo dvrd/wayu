@@ -18,30 +18,28 @@ import tui "tui"
 // should not hardcode a version number that can drift.
 VERSION :: "3.14.1"
 
-HOME : string
-WAYU_CONFIG : string
+// AppContext bundles all mutable program state that used to be scattered
+// globals. It is created once in main() and referenced via g_ctx.
+AppContext :: struct {
+	home:           string,
+	wayu_config:    string,
+	shell:          ShellType,
+	shell_ext:      string,
+	path_file:      string,
+	alias_file:     string,
+	constants_file: string,
+	init_file:      string,
+	tools_file:     string,
+	dry_run:        bool,
+	yes_flag:       bool,
+	json_output:    bool,
+	source_filter:  string,
+	tui_mode:       bool,
+	temp_arena:     ^mem.Arena,
+}
 
-// Global flags
-DRY_RUN := false
-YES_FLAG := false  // Skip confirmation prompts
-JSON_OUTPUT := false  // --json flag for list commands
-SOURCE_FILTER := "all"  // --source filter (wayu|external|inactive|all)
-TUI_MODE := false  // true while TUI is active — suppresses stdout noise
-DETECTED_SHELL : ShellType
-SHELL_EXT : string
-
-// Global temp arena for cleaning up after commands
-TEMP_ARENA: ^mem.Arena
-
-// Track if globals have been initialized
-_GLOBALS_INITIALIZED := false
-
-// Dynamic config file names based on detected shell
-PATH_FILE : string
-ALIAS_FILE : string
-CONSTANTS_FILE : string
-INIT_FILE : string
-TOOLS_FILE : string
+// Global context — populated once by init_app_context().
+g_ctx: AppContext
 
 Command :: enum {
 	PATH,
@@ -86,50 +84,36 @@ Action :: enum {
 	UNKNOWN,
 }
 
-init_shell_globals :: proc() {
-	// Only initialize once - prevents issues with parallel test execution
-	// where multiple threads try to initialize/free shared global strings
-	if _GLOBALS_INITIALIZED {
-		return
-	}
-
-	// Use the heap allocator for globals so they survive the test runner's
-	// per-test tracking allocator cleanup. Without this, the first test to
-	// call init_shell_globals allocates via the tracking allocator; when that
-	// test finishes, the tracker frees the memory, leaving WAYU_CONFIG etc.
-	// as dangling pointers for all subsequent tests.
+init_app_context :: proc(ctx: ^AppContext) {
 	heap := runtime.heap_allocator()
 
-	// Initialize HOME and WAYU_CONFIG
-	// NOTE: These are intentionally not freed - they're globals that live for
-	// the program's lifetime and are accessed throughout the codebase.
-	HOME = os.get_env("HOME", heap)
+	ctx.home = os.get_env("HOME", heap)
 
-	// Check for WAYU_CONFIG_DIR override (for testing); default to ~/.config/wayu
 	config_dir_override := os.get_env("WAYU_CONFIG_DIR", heap)
 	if config_dir_override != "" {
-		WAYU_CONFIG = config_dir_override
+		ctx.wayu_config = config_dir_override
 	} else {
-		WAYU_CONFIG = fmt.aprintf("%s/.config/wayu", HOME, allocator = heap)
+		ctx.wayu_config = fmt.aprintf("%s/.config/wayu", ctx.home, allocator = heap)
 	}
 
-	// Detect shell
-	DETECTED_SHELL = detect_shell()
+	ctx.shell = detect_shell()
+	ctx.shell_ext = get_shell_extension(ctx.shell)
+	ctx.path_file = fmt.aprintf("path.%s", ctx.shell_ext, allocator = heap)
+	ctx.alias_file = fmt.aprintf("aliases.%s", ctx.shell_ext, allocator = heap)
+	ctx.constants_file = fmt.aprintf("constants.%s", ctx.shell_ext, allocator = heap)
+	ctx.init_file = fmt.aprintf("init.%s", ctx.shell_ext, allocator = heap)
+	ctx.tools_file = fmt.aprintf("tools.%s", ctx.shell_ext, allocator = heap)
+}
 
-	SHELL_EXT = get_shell_extension(DETECTED_SHELL)
-	PATH_FILE = fmt.aprintf("path.%s", SHELL_EXT, allocator = heap)
-	ALIAS_FILE = fmt.aprintf("aliases.%s", SHELL_EXT, allocator = heap)
-	CONSTANTS_FILE = fmt.aprintf("constants.%s", SHELL_EXT, allocator = heap)
-	INIT_FILE = fmt.aprintf("init.%s", SHELL_EXT, allocator = heap)
-	TOOLS_FILE = fmt.aprintf("tools.%s", SHELL_EXT, allocator = heap)
-
-	_GLOBALS_INITIALIZED = true
+// Legacy shim — tests call this, so keep the name but populate g_ctx.
+init_shell_globals :: proc() {
+	init_app_context(&g_ctx)
 }
 
 // Shared TUI launch helper — used by both no-args and --tui paths
 tui_launch :: proc() {
-	TUI_MODE = true
-	defer TUI_MODE = false
+	g_ctx.tui_mode = true
+	defer g_ctx.tui_mode = false
 
 	tui.tui_set_bridge_functions(
 		tui_bridge_load_path,
@@ -167,8 +151,7 @@ main :: proc() {
   mem.arena_init(&temp_arena, temp_arena_backing)
   // No need to explicitly destroy arena - just free the backing buffer
 
-  // Make temp arena globally accessible for cleanup after commands
-  TEMP_ARENA = &temp_arena
+  g_ctx.temp_arena = &temp_arena
 
   context.temp_allocator = mem.arena_allocator(&temp_arena)
 
@@ -177,7 +160,7 @@ main :: proc() {
 
 	// Clean up temp arena at the very end (before arena backing is freed)
 	// This defer executes after all other defers in this scope
-	defer if TEMP_ARENA != nil do free_all(context.temp_allocator)
+	defer if g_ctx.temp_arena != nil do free_all(context.temp_allocator)
 
 	// Check for --no-color flag BEFORE initializing color system
 	// This ensures the flag takes precedence over environment variables
@@ -316,7 +299,7 @@ handle_init_command :: proc() {
 	print_info("Using shell: %s (config files will use .%s extension)", get_shell_name(shell), ext)
 	fmt.println()
 
-	config_dir := fmt.aprintf("%s", WAYU_CONFIG)
+	config_dir := fmt.aprintf("%s", g_ctx.wayu_config)
 	defer delete(config_dir)
 
 	// Create main config directory with spinner
@@ -343,7 +326,7 @@ handle_init_command :: proc() {
 	created_subdirs := 0
 
 	for subdir in subdirs {
-		subdir_path := fmt.aprintf("%s/%s", WAYU_CONFIG, subdir)
+		subdir_path := fmt.aprintf("%s/%s", g_ctx.wayu_config, subdir)
 		defer delete(subdir_path)
 
 		if !os.exists(subdir_path) {
@@ -402,7 +385,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	}
 
 	for config in config_files {
-		config_file := fmt.aprintf("%s/%s.%s", WAYU_CONFIG, config.name, ext)
+		config_file := fmt.aprintf("%s/%s.%s", g_ctx.wayu_config, config.name, ext)
 		defer delete(config_file)
 
 		if !os.exists(config_file) {
@@ -434,7 +417,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	}
 
 	// alias-sources.conf is shell-agnostic — create once regardless of shell
-	alias_sources_file := fmt.aprintf("%s/%s", WAYU_CONFIG, ALIAS_SOURCES_FILE)
+	alias_sources_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, ALIAS_SOURCES_FILE)
 	defer delete(alias_sources_file)
 
 	if !os.exists(alias_sources_file) {
@@ -453,7 +436,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	}
 
 	// Create wayu.toml scaffold if it doesn't exist
-	toml_file := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	toml_file := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(toml_file)
 
 	if !os.exists(toml_file) {
@@ -487,7 +470,7 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 	rc_file_path := get_rc_file_path(shell)
 	defer delete(rc_file_path)
 
-	init_file := fmt.aprintf("%s/init.%s", WAYU_CONFIG, ext)
+	init_file := fmt.aprintf("%s/init.%s", g_ctx.wayu_config, ext)
 	defer delete(init_file)
 
 	// Check if RC file exists
@@ -722,7 +705,7 @@ handle_build_command :: proc(action: Action) {
 	fmt.println()
 	
 	// Check for wayu.toml
-	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(toml_path)
 	
 	if !os.exists(toml_path) {

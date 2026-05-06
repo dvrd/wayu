@@ -45,7 +45,7 @@ ParsedArgs :: struct {
 
 parse_args :: proc(args: []string) -> ParsedArgs {
 	parsed := ParsedArgs{
-		shell = DETECTED_SHELL, // Default to detected shell
+		shell = g_ctx.shell, // Default to detected shell
 	}
 
 	// Filter out flags and process them
@@ -65,9 +65,9 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	for i < len(args) {
 		arg := args[i]
 		if arg == "--dry-run" || arg == "-n" {
-			DRY_RUN = true
+			g_ctx.dry_run = true
 		} else if arg == "--yes" || arg == "-y" {
-			YES_FLAG = true
+			g_ctx.yes_flag = true
 		} else if arg == "--tui" {
 			tui_flag = true
 		} else if strings.has_prefix(arg, "-c=") {
@@ -79,7 +79,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			verify_flag = true
 		} else if arg == "--json" {
 			json_flag = true
-			JSON_OUTPUT = true
+			g_ctx.json_output = true
 		} else if strings.has_prefix(arg, "--source=") {
 			source_filter = strings.trim_prefix(arg, "--source=")
 		} else if arg == "--source" && i + 1 < len(args) {
@@ -100,21 +100,21 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			shell_name := args[i + 1]
 			parsed.shell = parse_shell_type(shell_name)
 			// Update global detected shell
-			DETECTED_SHELL = parsed.shell
+			g_ctx.shell = parsed.shell
 			// Update global shell extension for dry-run messages and file operations
-			SHELL_EXT = get_shell_extension(parsed.shell)
+			g_ctx.shell_ext = get_shell_extension(parsed.shell)
 			// Free old file name globals before reassigning (they were allocated by init_shell_globals)
-			delete(PATH_FILE)
-			delete(ALIAS_FILE)
-			delete(CONSTANTS_FILE)
-			delete(INIT_FILE)
-			delete(TOOLS_FILE)
+			delete(g_ctx.path_file)
+			delete(g_ctx.alias_file)
+			delete(g_ctx.constants_file)
+			delete(g_ctx.init_file)
+			delete(g_ctx.tools_file)
 			// Also update the file name globals
-			PATH_FILE = fmt.aprintf("path.%s", SHELL_EXT)
-			ALIAS_FILE = fmt.aprintf("aliases.%s", SHELL_EXT)
-			CONSTANTS_FILE = fmt.aprintf("constants.%s", SHELL_EXT)
-			INIT_FILE = fmt.aprintf("init.%s", SHELL_EXT)
-			TOOLS_FILE = fmt.aprintf("tools.%s", SHELL_EXT)
+			g_ctx.path_file = fmt.aprintf("path.%s", g_ctx.shell_ext)
+			g_ctx.alias_file = fmt.aprintf("aliases.%s", g_ctx.shell_ext)
+			g_ctx.constants_file = fmt.aprintf("constants.%s", g_ctx.shell_ext)
+			g_ctx.init_file = fmt.aprintf("init.%s", g_ctx.shell_ext)
+			g_ctx.tools_file = fmt.aprintf("tools.%s", g_ctx.shell_ext)
 			i += 1 // Skip the shell value
 		} else {
 			append(&filtered_args, arg)
@@ -130,7 +130,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	parsed.component_verify = verify_flag
 	parsed.json_output      = json_flag
 	parsed.source_filter    = source_filter
-	SOURCE_FILTER           = source_filter
+	g_ctx.source_filter           = source_filter
 
 	// Handle component test mode early - all filtered args become component args.
 	if component_test_flag {

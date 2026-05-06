@@ -53,19 +53,19 @@ profile_startup_performance :: proc() {
 	print_header("Shell Startup Performance", "📊")
 	fmt.println()
 
-	shell_bin, ok := resolve_profile_shell(DETECTED_SHELL)
+	shell_bin, ok := resolve_profile_shell(g_ctx.shell)
 	if !ok {
-		print_error_simple("Could not find a %s binary on $PATH to profile", get_shell_name(DETECTED_SHELL))
+		print_error_simple("Could not find a %s binary on $PATH to profile", get_shell_name(g_ctx.shell))
 		fmt.println("Install the shell or run 'wayu build profile' from an interactive session of that shell.")
 		os.exit(EXIT_CONFIG)
 	}
 	defer delete(shell_bin)
 
-	core_file := fmt.aprintf("%s/init-core.%s", WAYU_CONFIG, SHELL_EXT)
+	core_file := fmt.aprintf("%s/init-core.%s", g_ctx.wayu_config, g_ctx.shell_ext)
 	defer delete(core_file)
 
 	if !os.exists(core_file) {
-		print_warning("init-core.%s not found — run 'wayu init' or any 'wayu path/alias/constants add' first.", SHELL_EXT)
+		print_warning("init-core.%s not found — run 'wayu init' or any 'wayu path/alias/constants add' first.", g_ctx.shell_ext)
 		fmt.println()
 	}
 
@@ -75,7 +75,7 @@ profile_startup_performance :: proc() {
 
 	scenarios := []ProfileSample{
 		{
-			label   = fmt.tprintf("init-core.%s (sourced in -c)", SHELL_EXT),
+			label   = fmt.tprintf("init-core.%s (sourced in -c)", g_ctx.shell_ext),
 			command = []string{shell_bin, "-c", source_cmd},
 		},
 		{
@@ -103,7 +103,7 @@ profile_startup_performance :: proc() {
 	// $EPOCHREALTIME (microsecond-precision builtin). bash 5+ has it too but
 	// macOS ships bash 3.2; fish has no equivalent portable primitive. Users
 	// of those shells still get the two-scenario totals above.
-	if DETECTED_SHELL == .ZSH && os.exists(core_file) {
+	if g_ctx.shell == .ZSH && os.exists(core_file) {
 		render_phase_breakdown_zsh(shell_bin, core_file)
 	}
 
@@ -112,7 +112,7 @@ profile_startup_performance :: proc() {
 	fmt.println("  • 'init-core' is what wayu itself costs; aim for <10ms.")
 	fmt.println("  • 'interactive shell' includes wayu + shell rc + any user hooks.")
 	fmt.println("  • Difference ≈ shell/builtin overhead (compinit, rcfile, etc.).")
-	if DETECTED_SHELL == .ZSH {
+	if g_ctx.shell == .ZSH {
 		fmt.println("  • Phase breakdown marks where the init-core time is spent.")
 	}
 	fmt.println()

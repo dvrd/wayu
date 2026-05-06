@@ -85,7 +85,7 @@ handle_plugin_check :: proc(args: []string) {
 	}
 
 	// Save updated metadata (last_checked timestamps)
-	if !DRY_RUN {
+	if !g_ctx.dry_run {
 		if !write_plugin_config_json(&config) {
 			print_error_simple("Failed to save plugin metadata")
 			os.exit(EXIT_CONFIG)
@@ -232,7 +232,7 @@ handle_plugin_update :: proc(args: []string) {
 	fmt.println()
 
 	// Save updated metadata
-	if !DRY_RUN {
+	if !g_ctx.dry_run {
 		// Create backup before writing
 		config_file := get_plugins_json_config_file()
 		defer delete(config_file)
@@ -265,14 +265,14 @@ handle_plugin_update :: proc(args: []string) {
 	}
 
 	// Regenerate plugins loader file for current shell
-	if !DRY_RUN {
-		if !generate_plugins_file(DETECTED_SHELL) {
+	if !g_ctx.dry_run {
+		if !generate_plugins_file(g_ctx.shell) {
 			print_warning("Warning: Failed to regenerate plugins loader")
 		}
 	}
 
 	fmt.println()
-	print_info("Restart your shell or run 'source ~/.%src' to reload plugins", SHELL_EXT)
+	print_info("Restart your shell or run 'source ~/.%src' to reload plugins", g_ctx.shell_ext)
 }
 
 // Shared implementation for enable/disable plugin commands
@@ -363,7 +363,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	plugin_ptr.enabled = enable
 
 	// 7. Write updated configuration
-	if !DRY_RUN {
+	if !g_ctx.dry_run {
 		if !write_plugin_config_json(&config) {
 			delete(config_file)
 			cleanup_plugin_config_json(&config)
@@ -375,8 +375,8 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	}
 
 	// 8. Regenerate shell loader
-	if !DRY_RUN {
-		if !generate_plugins_file(DETECTED_SHELL) {
+	if !g_ctx.dry_run {
+		if !generate_plugins_file(g_ctx.shell) {
 			delete(config_file)
 			cleanup_plugin_config_json(&config)
 			print_error_simple("Failed to regenerate plugins loader")
@@ -397,7 +397,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	} else {
 		fmt.printfln("%sThe plugin will not be loaded in new shell sessions.%s", BRIGHT_CYAN, RESET)
 	}
-	fmt.printfln("Restart your shell or run 'source ~/.%src' to apply changes.", SHELL_EXT)
+	fmt.printfln("Restart your shell or run 'source ~/.%src' to apply changes.", g_ctx.shell_ext)
 
 	if !enable {
 		fmt.println()
@@ -469,7 +469,7 @@ handle_plugin_priority :: proc(args: []string) {
 		os.exit(EXIT_DATAERR)
 	}
 
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		print_info("[DRY RUN] Would set priority of '%s' to %d (current: %d)",
 			plugin_name, priority, plugin.priority)
 		return
@@ -502,7 +502,7 @@ handle_plugin_priority :: proc(args: []string) {
 	}
 
 	// 7. Regenerate loader (load order changed)
-	if !generate_plugins_file(DETECTED_SHELL) {
+	if !generate_plugins_file(g_ctx.shell) {
 		print_warning("Warning: Failed to regenerate plugin loader")
 		// Don't exit - config was saved successfully
 	}
@@ -561,7 +561,7 @@ handle_plugin_add :: proc(args: []string) {
 	plugins_dir := get_plugins_dir()
 	defer delete(plugins_dir)
 
-	if !os.exists(plugins_dir) && !DRY_RUN {
+	if !os.exists(plugins_dir) && !g_ctx.dry_run {
 		err := os.make_directory(plugins_dir)
 		if err != nil {
 			print_error_simple("Failed to create plugins directory: %v", err)
@@ -617,7 +617,7 @@ handle_plugin_add :: proc(args: []string) {
 	}
 
 	// Create backup before writing
-	if !DRY_RUN {
+	if !g_ctx.dry_run {
 		config_file := get_plugins_json_config_file()
 		defer delete(config_file)
 
@@ -636,14 +636,14 @@ handle_plugin_add :: proc(args: []string) {
 	}
 
 	// Generate plugins file for current shell
-	if !generate_plugins_file(DETECTED_SHELL) {
+	if !generate_plugins_file(g_ctx.shell) {
 		print_error_simple("Failed to generate plugins loader")
 		os.exit(EXIT_IOERR)
 	}
 
 	print_success("Plugin '%s' installed successfully", info.name)
 	fmt.println()
-	print_info("Restart your shell or run 'source ~/.%src' to load the plugin", SHELL_EXT)
+	print_info("Restart your shell or run 'source ~/.%src' to load the plugin", g_ctx.shell_ext)
 }
 
 // Emit the plugin list as structured JSON. Shape:
@@ -706,7 +706,7 @@ handle_plugin_list :: proc(args: []string) {
 		}
 		defer cleanup_plugin_config_json(&config)
 
-		if JSON_OUTPUT {
+		if g_ctx.json_output {
 			print_plugins_json(&config)
 			return
 		}
@@ -853,13 +853,14 @@ handle_plugin_remove :: proc(args: []string) {
 	// Find plugin
 	plugin_ptr, found := find_plugin_json(&config, plugin_name)
 	if !found {
-		print_error_simple("Plugin '%s' not found", plugin_name)
-		os.exit(EXIT_DATAERR)
+		cleanup_plugin_config_json(&config)
+		print_info("Plugin '%s' not found (already removed)", plugin_name)
+		os.exit(EXIT_SUCCESS)
 	}
 
 	// Phase 1: Check for --yes flag (required for all removals)
 	// Check this BEFORE showing details to ensure consistent behavior
-	if !YES_FLAG {
+	if !g_ctx.yes_flag {
 		print_error("This operation requires confirmation.")
 		fmt.println()
 		print_info("Plugin to remove: %s", plugin_name)
@@ -904,7 +905,7 @@ handle_plugin_remove :: proc(args: []string) {
 	fmt.println()
 
 	// Remove plugin directory
-	if os.exists(plugin_ptr.installed_path) && !DRY_RUN {
+	if os.exists(plugin_ptr.installed_path) && !g_ctx.dry_run {
 		remove_err := os.remove_all(plugin_ptr.installed_path)
 		if remove_err != nil {
 			print_error_simple("Failed to remove plugin directory")
@@ -930,7 +931,7 @@ handle_plugin_remove :: proc(args: []string) {
 	config.plugins = new_plugins
 
 	// Create backup before writing
-	if !DRY_RUN {
+	if !g_ctx.dry_run {
 		config_file := get_plugins_json_config_file()
 		defer delete(config_file)
 
@@ -949,7 +950,7 @@ handle_plugin_remove :: proc(args: []string) {
 	}
 
 	// Generate plugins file
-	if !generate_plugins_file(DETECTED_SHELL) {
+	if !generate_plugins_file(g_ctx.shell) {
 		print_error_simple("Failed to generate plugins loader")
 		os.exit(EXIT_IOERR)
 	}
@@ -1004,7 +1005,7 @@ handle_plugin_get :: proc(args: []string) {
 	fmt.println()
 
 	// Copy URL to clipboard — write URL to stdin of clipboard command (no shell)
-	if !DRY_RUN {
+	if !g_ctx.dry_run {
 		clipboard_ok := false
 		when ODIN_OS == .Darwin {
 			// macOS: pbcopy reads from stdin

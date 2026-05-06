@@ -365,7 +365,7 @@ attempt_auto_fixes :: proc(results: []CheckResult, arena_alloc: mem.Allocator) -
 				
 				// Get shell config file name
 				shell_rc := "~/.zshrc"
-				#partial switch DETECTED_SHELL {
+				#partial switch g_ctx.shell {
 				case .BASH:
 					shell_rc = "~/.bashrc"
 				case .FISH:
@@ -622,7 +622,7 @@ fi
 echo "  • Use 'wayu export' for turbo mode (~2-4x faster)"
 `
 	
-	script_path := fmt.aprintf("%s/startup_profile.zsh", WAYU_CONFIG)
+	script_path := fmt.aprintf("%s/startup_profile.zsh", g_ctx.wayu_config)
 	defer delete(script_path)
 	
 	write_ok := os.write_entire_file_from_string(script_path, profile_script)
@@ -726,11 +726,11 @@ typeset -U PATH
 # zprof | tail -20
 `
 	
-	init_path := fmt.aprintf("%s/init.zsh", WAYU_CONFIG)
+	init_path := fmt.aprintf("%s/init.zsh", g_ctx.wayu_config)
 	defer delete(init_path)
 	
 	// Backup current init.zsh
-	backup_path := fmt.aprintf("%s/init.zsh.backup", WAYU_CONFIG)
+	backup_path := fmt.aprintf("%s/init.zsh.backup", g_ctx.wayu_config)
 	defer delete(backup_path)
 	
 	if os.exists(init_path) {

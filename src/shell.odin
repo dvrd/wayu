@@ -142,13 +142,13 @@ get_config_file_with_fallback :: proc(base_name: string, shell: ShellType) -> st
 	ext := get_shell_extension(shell)
 
 	// Try shell-specific extension first
-	preferred_file := fmt.aprintf("%s/%s.%s", WAYU_CONFIG, base_name, ext)
+	preferred_file := fmt.aprintf("%s/%s.%s", g_ctx.wayu_config, base_name, ext)
 	if os.exists(preferred_file) {
 		return preferred_file
 	}
 
 	// Fall back to .zsh for backward compatibility
-	zsh_file := fmt.aprintf("%s/%s.zsh", WAYU_CONFIG, base_name)
+	zsh_file := fmt.aprintf("%s/%s.zsh", g_ctx.wayu_config, base_name)
 	if os.exists(zsh_file) {
 		delete(preferred_file)
 		return zsh_file

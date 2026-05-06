@@ -70,7 +70,7 @@ hot_reload_init :: proc(watch_paths: []string, callback: FileWatcherCallback) {
 
 	// Set up PID file path
 	if g_watcher.pid_file == "" {
-		g_watcher.pid_file = fmt.aprintf("%s/%s", WAYU_CONFIG, WATCHER_PID_FILE)
+		g_watcher.pid_file = fmt.aprintf("%s/%s", g_ctx.wayu_config, WATCHER_PID_FILE)
 	}
 }
 
@@ -367,7 +367,7 @@ regenerate_static :: proc() {
 	print_info("Regenerating static configuration...")
 
 	// Read TOML config
-	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(toml_path)
 
 	config: TomlConfig
@@ -387,7 +387,7 @@ regenerate_static :: proc() {
 	defer static_cleanup_config(&config)
 
 	// Read lock file
-	lock_path := fmt.aprintf("%s/wayu.lock", WAYU_CONFIG)
+	lock_path := fmt.aprintf("%s/wayu.lock", g_ctx.wayu_config)
 	defer delete(lock_path)
 
 	lock: LockFile
@@ -402,7 +402,7 @@ regenerate_static :: proc() {
 	defer static_cleanup_static_config(&static_config)
 
 	// Write to file
-	output_path := fmt.aprintf("%s/wayu_static.%s", WAYU_CONFIG, SHELL_EXT)
+	output_path := fmt.aprintf("%s/wayu_static.%s", g_ctx.wayu_config, g_ctx.shell_ext)
 	defer delete(output_path)
 
 	if static_write(output_path, static_config) {
@@ -439,7 +439,7 @@ write_watcher_pid :: proc() {
 	defer delete(pid_str)
 
 	if g_watcher.pid_file == "" {
-		g_watcher.pid_file = fmt.aprintf("%s/%s", WAYU_CONFIG, WATCHER_PID_FILE)
+		g_watcher.pid_file = fmt.aprintf("%s/%s", g_ctx.wayu_config, WATCHER_PID_FILE)
 	}
 
 	err := os.write_entire_file(g_watcher.pid_file, transmute([]byte)pid_str)
@@ -457,7 +457,7 @@ remove_watcher_pid :: proc() {
 	path := g_watcher.pid_file
 	ownership := false
 	if path == "" {
-		path = fmt.aprintf("%s/%s", WAYU_CONFIG, WATCHER_PID_FILE)
+		path = fmt.aprintf("%s/%s", g_ctx.wayu_config, WATCHER_PID_FILE)
 		ownership = true
 	}
 	defer if ownership do delete(path)
@@ -469,7 +469,7 @@ remove_watcher_pid :: proc() {
 
 // Read watcher PID from file
 read_watcher_pid :: proc() -> int {
-	pid_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WATCHER_PID_FILE)
+	pid_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WATCHER_PID_FILE)
 	defer delete(pid_file)
 
 	if !os.exists(pid_file) {
@@ -544,7 +544,7 @@ get_default_watch_paths :: proc() -> []string {
 	paths := make([dynamic]string)
 
 	// Main TOML config
-	toml_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	if os.exists(toml_path) {
 		append(&paths, toml_path)
 	} else {
@@ -554,21 +554,21 @@ get_default_watch_paths :: proc() -> []string {
 	// Individual config files. Important: delete the path string ONLY when we
 	// didn't hand it off to the paths array — otherwise the array ends up
 	// holding a dangling pointer and later clones emit garbage bytes.
-	path_file := get_config_file_with_fallback("path", DETECTED_SHELL)
+	path_file := get_config_file_with_fallback("path", g_ctx.shell)
 	if os.exists(path_file) {
 		append(&paths, path_file)
 	} else {
 		delete(path_file)
 	}
 
-	alias_file := get_config_file_with_fallback("aliases", DETECTED_SHELL)
+	alias_file := get_config_file_with_fallback("aliases", g_ctx.shell)
 	if os.exists(alias_file) {
 		append(&paths, alias_file)
 	} else {
 		delete(alias_file)
 	}
 
-	constants_file := get_config_file_with_fallback("constants", DETECTED_SHELL)
+	constants_file := get_config_file_with_fallback("constants", g_ctx.shell)
 	if os.exists(constants_file) {
 		append(&paths, constants_file)
 	} else {

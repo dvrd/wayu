@@ -8,6 +8,7 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:encoding/json"
 
 // ============================================================================
 // OUTPUT FORMAT STATE
@@ -41,9 +42,72 @@ output_to_json_pretty :: proc(data: any) -> string {
 	return json_format_simple(data, true)
 }
 
-// Parse JSON string into target data structure (basic stub)
+// Parse JSON string into target data structure.
+// Returns false for empty/whitespace input, unsupported types, or parse errors.
 output_from_json :: proc(json_str: string, target: ^any) -> bool {
-	// Basic stub implementation - would need a full JSON parser
+	if len(strings.trim_space(json_str)) == 0 {
+		return false
+	}
+	data := transmute([]byte)json_str
+
+	switch target^.id {
+	case typeid_of(PathEntryList):
+		ptr := (^PathEntryList)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(PathEntry):
+		ptr := (^PathEntry)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(AliasList):
+		ptr := (^AliasList)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(AliasEntry):
+		ptr := (^AliasEntry)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(ConstantList):
+		ptr := (^ConstantList)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(ConstantEntry):
+		ptr := (^ConstantEntry)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(LockFile):
+		ptr := (^LockFile)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(LockEntry):
+		ptr := (^LockEntry)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(VerificationResult):
+		ptr := (^VerificationResult)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(string):
+		ptr := (^string)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(int):
+		ptr := (^int)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(i32):
+		ptr := (^i32)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(i64):
+		ptr := (^i64)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	case typeid_of(bool):
+		ptr := (^bool)(target^.data)
+		err := json.unmarshal(data, ptr, spec = .JSON5)
+		return err == nil
+	}
 	return false
 }
 

@@ -23,11 +23,11 @@ import "core:time"
 handle_config_extra_command :: proc(action: Action, args: []string) {
 	#partial switch action {
 	case .ADD: // extend (extra.zsh)
-		extra_file := fmt.aprintf("%s/extra.%s", WAYU_CONFIG, SHELL_EXT)
+		extra_file := fmt.aprintf("%s/extra.%s", g_ctx.wayu_config, g_ctx.shell_ext)
 		defer delete(extra_file)
 		edit_extra_config(extra_file)
 	case .UPDATE: // edit (wayu.toml)
-		toml_file := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+		toml_file := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 		defer delete(toml_file)
 		edit_toml_config(toml_file)
 	case .CHECK: // scan/detect
@@ -50,8 +50,8 @@ handle_config_extra_command :: proc(action: Action, args: []string) {
 // honour those too to preserve `wayu config scan --fix --dry-run` behaviour.
 extract_scan_flags :: proc(args: []string) -> (bool, bool, bool) {
 	has_fix := false
-	has_dry_run := DRY_RUN   // mirror the global flag
-	has_yes := YES_FLAG       // mirror the global flag
+	has_dry_run := g_ctx.dry_run   // mirror the global flag
+	has_yes := g_ctx.yes_flag       // mirror the global flag
 
 	for arg in args {
 		if arg == "--fix" {
@@ -344,11 +344,11 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 	}
 
 	// Check extra.zsh
-	extra_file := fmt.aprintf("%s/extra.%s", WAYU_CONFIG, SHELL_EXT)
+	extra_file := fmt.aprintf("%s/extra.%s", g_ctx.wayu_config, g_ctx.shell_ext)
 	defer delete(extra_file)
 
 	if dry_run {
-		print_info("Dry-run mode: would append %d blocks to extra.%s", len(detected_blocks), SHELL_EXT)
+		print_info("Dry-run mode: would append %d blocks to extra.%s", len(detected_blocks), g_ctx.shell_ext)
 		fmt.println()
 		fmt.printfln("Run %swayu config scan --fix --yes%s to actually migrate", get_primary(), RESET)
 		return
@@ -403,7 +403,7 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 
 	if write_ok {
 		print_success("Migrated %d blocks to %s", len(detected_blocks), extra_file)
-		print_info("Original scripts remain in .zshrc - review extra.%s and remove them manually", SHELL_EXT)
+		print_info("Original scripts remain in .zshrc - review extra.%s and remove them manually", g_ctx.shell_ext)
 	} else {
 		print_error_simple("Failed to write %s", extra_file)
 		os.exit(EXIT_IOERR)

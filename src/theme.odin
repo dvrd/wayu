@@ -37,9 +37,9 @@ ACTIVE_THEME_FILE : string
 
 // Initialize theme globals
 init_theme_globals :: proc() {
-	if _GLOBALS_INITIALIZED {
-		THEME_DIR = fmt.aprintf("%s/themes", WAYU_CONFIG)
-		ACTIVE_THEME_FILE = fmt.aprintf("%s/active_theme.txt", WAYU_CONFIG)
+	if g_ctx.wayu_config != "" {
+		THEME_DIR = fmt.aprintf("%s/themes", g_ctx.wayu_config)
+		ACTIVE_THEME_FILE = fmt.aprintf("%s/active_theme.txt", g_ctx.wayu_config)
 	}
 }
 
@@ -364,7 +364,7 @@ theme_remove_command :: proc(name: string) {
 		}
 
 		// It's a copy, allow removal
-		if !YES_FLAG {
+		if !g_ctx.yes_flag {
 			print_error("This operation requires confirmation.")
 			fmt.println()
 			fmt.printfln("Will remove theme: %s", name)
@@ -403,7 +403,7 @@ theme_remove_command :: proc(name: string) {
 		os.exit(EXIT_NOINPUT)
 	}
 
-	if !YES_FLAG {
+	if !g_ctx.yes_flag {
 		print_error("This operation requires confirmation.")
 		fmt.println()
 		fmt.printfln("Will remove theme: %s", name)
@@ -450,7 +450,7 @@ theme_enable_command :: proc(name: string) {
 		if theme_starship_apply() {
 			print_success("Starship theme enabled")
 			fmt.println()
-			fmt.printfln("Restart your shell or run 'source %s' to apply changes", get_rc_file_path(DETECTED_SHELL))
+			fmt.printfln("Restart your shell or run 'source %s' to apply changes", get_rc_file_path(g_ctx.shell))
 		} else {
 			print_error("Failed to enable Starship theme")
 			os.exit(EXIT_SOFTWARE)
@@ -470,7 +470,7 @@ theme_enable_command :: proc(name: string) {
 	if theme_apply(name) {
 		print_success("Theme enabled: %s", name)
 		fmt.println()
-		fmt.printfln("Restart your shell or run 'source %s' to apply changes", get_rc_file_path(DETECTED_SHELL))
+		fmt.printfln("Restart your shell or run 'source %s' to apply changes", get_rc_file_path(g_ctx.shell))
 	} else {
 		print_error("Failed to enable theme: %s", name)
 		os.exit(EXIT_SOFTWARE)
@@ -551,7 +551,7 @@ write_active_theme :: proc(name: string, content: string) -> bool {
 // Apply theme settings to the shell configuration
 apply_theme_to_shell :: proc(name: string, content: string) -> bool {
 	// Read the init file
-	init_file := fmt.aprintf("%s/%s", WAYU_CONFIG, INIT_FILE)
+	init_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, g_ctx.init_file)
 	defer delete(init_file)
 
 	if !os.exists(init_file) {

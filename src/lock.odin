@@ -196,12 +196,12 @@ generate_lock_file :: proc() -> (LockFile, bool) {
 
 // Update the lock file with current configuration
 update_lock_file :: proc() -> bool {
-	lock_file_path := fmt.aprintf("%s/%s", WAYU_CONFIG, LOCK_FILE_NAME)
+	lock_file_path := fmt.aprintf("%s/%s", g_ctx.wayu_config, LOCK_FILE_NAME)
 	defer delete(lock_file_path)
 
 	// Ensure config directory exists
-	if !os.exists(WAYU_CONFIG) {
-		os.make_directory(WAYU_CONFIG)
+	if !os.exists(g_ctx.wayu_config) {
+		os.make_directory(g_ctx.wayu_config)
 	}
 
 	lock, ok := generate_lock_file()
@@ -247,7 +247,7 @@ verify_lock_file :: proc() -> (VerificationResult, bool) {
 		valid = true,
 	}
 
-	lock_file_path := fmt.aprintf("%s/%s", WAYU_CONFIG, LOCK_FILE_NAME)
+	lock_file_path := fmt.aprintf("%s/%s", g_ctx.wayu_config, LOCK_FILE_NAME)
 	defer delete(lock_file_path)
 
 	// Check if lock file exists
@@ -685,7 +685,7 @@ verify_single_entry :: proc(lock_entry: LockEntry, current_map: map[string]Curre
 
 @(private="file")
 read_completion_entries :: proc() -> []ConfigEntry {
-	config_file := fmt.aprintf("%s/completions.%s", WAYU_CONFIG, SHELL_EXT)
+	config_file := fmt.aprintf("%s/completions.%s", g_ctx.wayu_config, g_ctx.shell_ext)
 	defer delete(config_file)
 
 	if !os.exists(config_file) {

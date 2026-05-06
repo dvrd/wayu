@@ -62,7 +62,7 @@ integration_direnv_init :: proc() -> bool {
     // Check if .envrc already exists
     if os.exists(envrc_path) {
         print_info(".envrc already exists at %s", envrc_path)
-        if !YES_FLAG {
+        if !g_ctx.yes_flag {
             confirm := prompt_confirmation("Do you want to modify it?")
             if !confirm {
                 print_info("Aborted.")
@@ -71,7 +71,7 @@ integration_direnv_init :: proc() -> bool {
         }
     }
 
-    if DRY_RUN {
+    if g_ctx.dry_run {
         fmt.printfln("[DRY-RUN] Would create/modify .envrc at: %s", envrc_path)
         return true
     }
@@ -125,7 +125,7 @@ integration_direnv_allow :: proc() -> bool {
         return false
     }
 
-    if DRY_RUN {
+    if g_ctx.dry_run {
         fmt.printfln("[DRY-RUN] Would run: direnv allow %s", cwd)
         return true
     }
@@ -158,7 +158,7 @@ integration_direnv_deny :: proc() -> bool {
         return false
     }
 
-    if DRY_RUN {
+    if g_ctx.dry_run {
         fmt.printfln("[DRY-RUN] Would run: direnv deny %s", cwd)
         return true
     }
@@ -275,7 +275,7 @@ escape_shell_value :: proc(value: string) -> string {
 // Load TOML config or return default
 load_config_or_default :: proc() -> TomlConfig {
     // Try to load from wayu config directory
-    config_path := fmt.aprintf("%s/wayu.toml", WAYU_CONFIG)
+    config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
     defer delete(config_path)
 
     if os.exists(config_path) {

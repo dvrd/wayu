@@ -44,14 +44,19 @@ screen_create :: proc(width, height: int) -> Screen {
 	}
 }
 
-// Destroy screen and free memory
-screen_destroy :: proc(screen: ^Screen) {
+// Free only the cell buffers (used by screen_resize to preserve other fields).
+screen_free_buffers :: proc(screen: ^Screen) {
 	for y in 0..<len(screen.buffer) {
 		delete(screen.buffer[y])
 		delete(screen.prev_buffer[y])
 	}
 	delete(screen.buffer)
 	delete(screen.prev_buffer)
+}
+
+// Destroy screen and free memory
+screen_destroy :: proc(screen: ^Screen) {
+	screen_free_buffers(screen)
 }
 
 // Resize screen, preserving content
@@ -78,8 +83,8 @@ screen_resize :: proc(screen: ^Screen, new_width, new_height: int) {
 		}
 	}
 
-	// Free old buffers
-	screen_destroy(screen)
+	// Free old buffers only (preserve cursor and any future fields)
+	screen_free_buffers(screen)
 
 	// Update screen
 	screen.buffer = new_buffer

@@ -53,7 +53,7 @@ handle_path_command :: proc(action: Action, args: []string) {
 		if toml_path_add(args[0]) {
 			regenerate_init_core_silently()
 			print_success("✅ Added to wayu.toml: %s", args[0])
-			fmt.printfln("   Reload your shell (or 'source ~/.config/wayu/init.%s') to apply.", SHELL_EXT)
+			fmt.printfln("   Reload your shell (or 'source ~/.config/wayu/init.%s') to apply.", g_ctx.shell_ext)
 			hook_post_path_add(args[0])
 		} else {
 			os.exit(EXIT_IOERR)
@@ -67,7 +67,7 @@ handle_path_command :: proc(action: Action, args: []string) {
 		if toml_path_remove(args[0]) {
 			regenerate_init_core_silently()
 			print_success("✅ Removed from wayu.toml: %s", args[0])
-			fmt.printfln("   Reload your shell (or 'source ~/.config/wayu/init.%s') to apply.", SHELL_EXT)
+			fmt.printfln("   Reload your shell (or 'source ~/.config/wayu/init.%s') to apply.", g_ctx.shell_ext)
 			hook_post_path_remove(args[0])
 		} else {
 			os.exit(EXIT_IOERR)
@@ -114,7 +114,7 @@ mutate_path_entries :: proc(spec: PathMutationSpec, targets: []ConfigEntry) {
 	}
 
 	// Dry-run preview
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		print_warning("Would remove %d %s:", len(targets), spec.label)
@@ -127,7 +127,7 @@ mutate_path_entries :: proc(spec: PathMutationSpec, targets: []ConfigEntry) {
 	}
 
 	// --yes gate
-	if !YES_FLAG {
+	if !g_ctx.yes_flag {
 		print_error("This operation requires confirmation.")
 		fmt.println()
 		fmt.printfln("Found %d %s to remove:", len(targets), spec.label)
@@ -150,7 +150,7 @@ mutate_path_entries :: proc(spec: PathMutationSpec, targets: []ConfigEntry) {
 	fmt.println()
 
 	// Read shell config file
-	config_file := get_config_file_with_fallback(PATH_SPEC.file_name, DETECTED_SHELL)
+	config_file := get_config_file_with_fallback(PATH_SPEC.file_name, g_ctx.shell)
 	defer delete(config_file)
 
 	content, read_ok := safe_read_file(config_file)
@@ -430,7 +430,7 @@ WAYU_TOML :: "wayu.toml"
 
 // Lee los [[paths]] de wayu.toml y retorna la lista (caller debe liberar)
 toml_path_read :: proc() -> [dynamic]string {
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	config_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(config_file)
 
 	content, ok := safe_read_file(config_file)
@@ -626,7 +626,7 @@ toml_path_list :: proc() {
 		wayu_set[p] = true
 	}
 
-	if JSON_OUTPUT {
+	if g_ctx.json_output {
 		// JSON output: only include wayu entries for now (external JSON support deferred)
 		print_paths_json(paths[:], path_entries[:], wayu_set)
 		return
@@ -680,9 +680,9 @@ toml_path_list :: proc() {
 	fmt.println()
 
 	// Filter based on SOURCE_FILTER
-	show_wayu := SOURCE_FILTER == "all" || SOURCE_FILTER == "wayu"
-	show_external := SOURCE_FILTER == "all" || SOURCE_FILTER == "external"
-	show_inactive := SOURCE_FILTER == "all" || SOURCE_FILTER == "inactive"
+	show_wayu := g_ctx.source_filter == "all" || g_ctx.source_filter == "wayu"
+	show_external := g_ctx.source_filter == "all" || g_ctx.source_filter == "external"
+	show_inactive := g_ctx.source_filter == "all" || g_ctx.source_filter == "inactive"
 
 	// Print wayu entries with source indicator
 	if show_wayu || show_inactive {
@@ -760,9 +760,9 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 	fmt.println("  \"paths\": [")
 
 	// Determine if we show different source categories
-	show_wayu := SOURCE_FILTER == "all" || SOURCE_FILTER == "wayu"
-	show_external := SOURCE_FILTER == "all" || SOURCE_FILTER == "external"
-	show_inactive := SOURCE_FILTER == "all" || SOURCE_FILTER == "inactive"
+	show_wayu := g_ctx.source_filter == "all" || g_ctx.source_filter == "wayu"
+	show_external := g_ctx.source_filter == "all" || g_ctx.source_filter == "external"
+	show_inactive := g_ctx.source_filter == "all" || g_ctx.source_filter == "inactive"
 
 	first_entry := true
 
@@ -811,7 +811,7 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 
 // Agrega un path al final de wayu.toml
 toml_path_add :: proc(path: string) -> bool {
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	config_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(config_file)
 
 	// Verificar duplicado
@@ -844,7 +844,7 @@ toml_path_add :: proc(path: string) -> bool {
 	new_content := strings.clone(strings.to_string(builder))
 	defer delete(new_content)
 
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		fmt.printfln("%sWould add to wayu.toml: %s%s", BRIGHT_CYAN, path, RESET)
@@ -859,7 +859,7 @@ toml_path_add :: proc(path: string) -> bool {
 
 // Elimina un path del wayu.toml
 toml_path_remove :: proc(path: string) -> bool {
-	config_file := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	config_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(config_file)
 
 	content, ok := safe_read_file(config_file)
@@ -902,7 +902,7 @@ toml_path_remove :: proc(path: string) -> bool {
 	}
 
 	if !found {
-		if DRY_RUN {
+		if g_ctx.dry_run {
 			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 			fmt.println()
 			fmt.printfln("%sWould remove from wayu.toml: %s (not found)%s", BRIGHT_CYAN, path, RESET)
@@ -915,7 +915,7 @@ toml_path_remove :: proc(path: string) -> bool {
 	new_content := strings.join(new_lines[:], "\n")
 	defer delete(new_content)
 
-	if DRY_RUN {
+	if g_ctx.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		fmt.printfln("%sWould remove from wayu.toml: %s%s", BRIGHT_CYAN, path, RESET)

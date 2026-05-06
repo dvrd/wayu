@@ -12,12 +12,12 @@ import wayu "../../src"
 // the real ~/.config/wayu/plugins.json or plugins/ directory.
 // Usage:
 //   original := plugin_use_temp_config()
-//   defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
+//   defer { wayu.g_ctx.wayu_config = original; os.remove_all(PLUGIN_TEST_DIR) }
 PLUGIN_TEST_DIR :: "/tmp/wayu-test-plugin"
 
 plugin_use_temp_config :: proc() -> string {
-	original := wayu.WAYU_CONFIG
-	wayu.WAYU_CONFIG = PLUGIN_TEST_DIR
+	original := wayu.g_ctx.wayu_config
+	wayu.g_ctx.wayu_config = PLUGIN_TEST_DIR
 	if !os.exists(PLUGIN_TEST_DIR) {
 		os.make_directory(PLUGIN_TEST_DIR)
 	}
@@ -108,7 +108,7 @@ test_read_plugin_config_empty :: proc(t: ^testing.T) {
 	// Initialize shell globals before testing
 	wayu.init_shell_globals()
 	original := plugin_use_temp_config()
-	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
+	defer { wayu.g_ctx.wayu_config = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	// Test reading non-existent config file (temp dir has no plugins.conf)
 
@@ -131,7 +131,7 @@ test_write_and_read_plugin_config :: proc(t: ^testing.T) {
 	// Initialize shell globals before testing
 	wayu.init_shell_globals()
 	original := plugin_use_temp_config()
-	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
+	defer { wayu.g_ctx.wayu_config = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	// Create test config
 	test_config := wayu.PluginConfig{}
@@ -397,12 +397,12 @@ test_generate_plugins_file_empty :: proc(t: ^testing.T) {
 	// Initialize shell globals before testing
 	wayu.init_shell_globals()
 	original := plugin_use_temp_config()
-	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
+	defer { wayu.g_ctx.wayu_config = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	// Ensure we're in dry-run mode for this test
-	old_dry_run := wayu.DRY_RUN
-	wayu.DRY_RUN = true
-	defer { wayu.DRY_RUN = old_dry_run }
+	old_dry_run := wayu.g_ctx.dry_run
+	wayu.g_ctx.dry_run = true
+	defer { wayu.g_ctx.dry_run = old_dry_run }
 
 	// Generate plugins file
 	result := wayu.generate_plugins_file(wayu.ShellType.ZSH)
@@ -614,7 +614,7 @@ test_plugin_enable_idempotent :: proc(t: ^testing.T) {
 	// Initialize shell globals
 	wayu.init_shell_globals()
 	original := plugin_use_temp_config()
-	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
+	defer { wayu.g_ctx.wayu_config = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	// Create test config with one enabled plugin
 	config := wayu.PluginConfigJSON{
@@ -674,7 +674,7 @@ test_plugin_disable_idempotent :: proc(t: ^testing.T) {
 	// Initialize shell globals
 	wayu.init_shell_globals()
 	original := plugin_use_temp_config()
-	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
+	defer { wayu.g_ctx.wayu_config = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	config := wayu.PluginConfigJSON{
 		version = strings.clone("1.0"),
@@ -726,7 +726,7 @@ test_plugin_enable_toggles_state :: proc(t: ^testing.T) {
 	wayu.init_shell_globals()
 
 	original := plugin_use_temp_config()
-	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
+	defer { wayu.g_ctx.wayu_config = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	config := wayu.PluginConfigJSON{
 		version = strings.clone("1.0"),
@@ -794,7 +794,7 @@ test_plugin_disable_toggles_state :: proc(t: ^testing.T) {
 	wayu.init_shell_globals()
 
 	original := plugin_use_temp_config()
-	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
+	defer { wayu.g_ctx.wayu_config = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	config := wayu.PluginConfigJSON{
 		version = strings.clone("1.0"),
@@ -863,7 +863,7 @@ test_generate_plugins_file_skips_disabled :: proc(t: ^testing.T) {
 	wayu.init_shell_globals()
 
 	original := plugin_use_temp_config()
-	defer { wayu.WAYU_CONFIG = original; os.remove_all(PLUGIN_TEST_DIR) }
+	defer { wayu.g_ctx.wayu_config = original; os.remove_all(PLUGIN_TEST_DIR) }
 
 	// Create test config with mixed enabled/disabled plugins
 	config := wayu.PluginConfigJSON{

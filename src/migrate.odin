@@ -43,7 +43,7 @@ handle_migrate_command :: proc(args: []string) {
 				return
 			}
 		}
-		migrate_legacy_to_toml(DRY_RUN)
+		migrate_legacy_to_toml(g_ctx.dry_run)
 		return
 	}
 
@@ -108,8 +108,8 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 	migrated_count := 0
 
 	for config_type in config_types {
-		from_file := fmt.aprintf("%s/%s.%s", WAYU_CONFIG, config_type, from_ext)
-		to_file := fmt.aprintf("%s/%s.%s", WAYU_CONFIG, config_type, to_ext)
+		from_file := fmt.aprintf("%s/%s.%s", g_ctx.wayu_config, config_type, from_ext)
+		to_file := fmt.aprintf("%s/%s.%s", g_ctx.wayu_config, config_type, to_ext)
 		defer delete(from_file)
 		defer delete(to_file)
 
@@ -156,13 +156,13 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 		#partial switch to_shell {
 		case .BASH:
 			fmt.printfln("  1. Add this line to your ~/.bashrc or ~/.bash_profile:")
-			fmt.printfln("     source \"%s/init.bash\"", WAYU_CONFIG)
+			fmt.printfln("     source \"%s/init.bash\"", g_ctx.wayu_config)
 		case .FISH:
 			fmt.printfln("  1. Add this line to your ~/.config/fish/config.fish:")
-			fmt.printfln("     source \"%s/init.fish\"", WAYU_CONFIG)
+			fmt.printfln("     source \"%s/init.fish\"", g_ctx.wayu_config)
 		case:
 			fmt.printfln("  1. Add this line to your ~/.zshrc:")
-			fmt.printfln("     source \"%s/init.zsh\"", WAYU_CONFIG)
+			fmt.printfln("     source \"%s/init.zsh\"", g_ctx.wayu_config)
 		}
 		fmt.printfln("  2. Restart your shell or source the RC file")
 	} else {
@@ -287,7 +287,7 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 	}
 
 	for file in legacy_files {
-		config_file := fmt.aprintf("%s/%s.%s", WAYU_CONFIG, file, SHELL_EXT)
+		config_file := fmt.aprintf("%s/%s.%s", g_ctx.wayu_config, file, g_ctx.shell_ext)
 		defer delete(config_file)
 
 		if os.exists(config_file) && has_parseable_legacy(config_file, file) {
@@ -303,7 +303,7 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 
 	print_header("Found Legacy Files", "📋")
 	for file in found_files {
-		fmt.printfln("  • %s.%s", file, SHELL_EXT)
+		fmt.printfln("  • %s.%s", file, g_ctx.shell_ext)
 	}
 	fmt.println()
 
@@ -328,7 +328,7 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 			}
 		}
 		if has_aliases {
-			aliases_file := fmt.aprintf("%s/aliases.%s", WAYU_CONFIG, SHELL_EXT)
+			aliases_file := fmt.aprintf("%s/aliases.%s", g_ctx.wayu_config, g_ctx.shell_ext)
 			defer delete(aliases_file)
 
 			content, ok := safe_read_file(aliases_file)
@@ -379,7 +379,7 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 	// and the original content stays on disk for inspection.
 
 	// Ensure wayu.toml exists — toml_*_add expects it to be readable.
-	toml_path := fmt.aprintf("%s/%s", WAYU_CONFIG, WAYU_TOML)
+	toml_path := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(toml_path)
 	if !os.exists(toml_path) {
 		// Seed a minimal scaffold so toml_*_add has a file to append to.
@@ -395,7 +395,7 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 	migrated_constants := 0
 
 	for file in found_files {
-		legacy_file := fmt.aprintf("%s/%s.%s", WAYU_CONFIG, file, SHELL_EXT)
+		legacy_file := fmt.aprintf("%s/%s.%s", g_ctx.wayu_config, file, g_ctx.shell_ext)
 		defer delete(legacy_file)
 
 		content, ok := safe_read_file(legacy_file)
@@ -461,7 +461,7 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 	print_success("Migration complete: %d paths, %d aliases, %d constants", migrated_paths, migrated_aliases, migrated_constants)
 	fmt.println()
 	fmt.printfln("Review the result with %swayu toml show%s", get_primary(), RESET)
-	fmt.printfln("Legacy files preserved as *.%s.migrated (safe to delete once verified)", SHELL_EXT)
+	fmt.printfln("Legacy files preserved as *.%s.migrated (safe to delete once verified)", g_ctx.shell_ext)
 }
 
 print_migrate_help :: proc() {
@@ -494,7 +494,7 @@ print_migrate_help :: proc() {
 
 	// Notes section
 	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
-	fmt.printf("  %s• Legacy migration archives source files as *.%s.migrated%s\n", get_muted(), SHELL_EXT, RESET)
+	fmt.printf("  %s• Legacy migration archives source files as *.%s.migrated%s\n", get_muted(), g_ctx.shell_ext, RESET)
 	fmt.printf("  %s• wayu.toml is backed up before every write (timestamped in ~/.config/wayu)%s\n", get_muted(), RESET)
 	fmt.printf("  %s• Cross-shell mode creates new shell-specific config files%s\n", get_muted(), RESET)
 	fmt.printf("  %s• You may need to update your shell RC file after cross-shell migration%s\n", get_muted(), RESET)
