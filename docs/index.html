@@ -17,6 +17,11 @@
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
+  <link rel="shortcut icon" href="favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <meta name="theme-color" content="#E40050" />
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -63,6 +68,8 @@
     html {
       scroll-behavior: smooth;
       -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
       overflow-x: hidden;
     }
 
@@ -188,9 +195,10 @@
       border: 1px solid var(--pink);
       padding: 8px 16px;
       border-radius: var(--radius-sm);
-      transition: background 0.2s, color 0.2s !important;
+      transition: background 0.2s ease, color 0.2s ease, transform 0.12s var(--ease-spring) !important;
     }
     .nav-cta:hover { background: var(--pink) !important; color: var(--black) !important; }
+    .nav-cta:active { transform: scale(0.96); transition-duration: 0.1s; }
     .nav-version {
       font-family: var(--font-mono);
       font-size: 0.7rem;
@@ -292,6 +300,7 @@
       line-height: 0.95;
       letter-spacing: -0.04em;
       margin-bottom: 28px;
+      text-wrap: balance;
     }
     .hero-title .line-1 { display: block; color: var(--text); }
     .hero-title .line-2 {
@@ -310,6 +319,7 @@
       max-width: 480px;
       margin-bottom: 44px;
       font-weight: 300;
+      text-wrap: pretty;
     }
 
     .hero-actions {
@@ -334,6 +344,10 @@
     .btn-primary:hover {
       transform: translateY(-2px);
       box-shadow: 0 8px 32px var(--pink-glow), 0 0 0 1px var(--pink);
+    }
+    .btn-primary:active {
+      transform: translateY(0) scale(0.96);
+      transition-duration: 0.1s;
     }
     .btn-primary:focus-visible {
       outline: 2px solid var(--pink);
@@ -369,6 +383,7 @@
       font-weight: 700;
       color: var(--text);
       line-height: 1;
+      font-variant-numeric: tabular-nums;
     }
     .hero-stat-label {
       font-size: 0.75rem;
@@ -476,6 +491,7 @@
       letter-spacing: -0.03em;
       line-height: 1.05;
       color: var(--text);
+      text-wrap: balance;
     }
     .section-title em {
       font-style: normal;
@@ -540,6 +556,7 @@
       color: var(--text-2);
       font-weight: 300;
       align-self: end;
+      text-wrap: pretty;
     }
 
     .features-grid {
@@ -605,12 +622,14 @@
       color: var(--text);
       margin-bottom: 10px;
       letter-spacing: -0.01em;
+      text-wrap: balance;
     }
     .feature-desc {
       font-size: 0.875rem;
       line-height: 1.65;
       color: var(--text-2);
       font-weight: 300;
+      text-wrap: pretty;
     }
 
     .feature-badge {
@@ -624,6 +643,50 @@
       padding: 3px 8px;
       border-radius: 100px;
       letter-spacing: 0.04em;
+    }
+
+    /* ─── FEATURE GROUPS ──────────────────────────────────────────────── */
+    .feature-group {
+      margin-top: 64px;
+    }
+    .feature-group:first-of-type {
+      margin-top: 0;
+    }
+    .feature-group-header {
+      display: flex;
+      align-items: baseline;
+      gap: 24px;
+      margin-bottom: 28px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .feature-group-num {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--pink);
+      letter-spacing: 0.1em;
+    }
+    .feature-group-title {
+      font-size: 1.6rem;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+    .feature-group-desc {
+      font-size: 0.85rem;
+      font-weight: 300;
+      color: var(--text-3);
+      line-height: 1.5;
+      margin-left: auto;
+      max-width: 480px;
+      text-align: right;
+      text-wrap: pretty;
+    }
+    @media (max-width: 768px) {
+      .feature-group-header { flex-direction: column; gap: 8px; align-items: flex-start; }
+      .feature-group-desc { text-align: left; margin-left: 0; }
     }
 
     /* ─── COMMANDS SHOWCASE ──────────────────────────────────────────────── */
@@ -645,6 +708,7 @@
 
     .cmd-tabs {
       display: flex; gap: 4px;
+      flex-wrap: wrap;
       margin-bottom: 20px;
       background: var(--bg-2);
       padding: 4px;
@@ -653,15 +717,17 @@
     }
     .cmd-tab {
       font-family: var(--font-mono);
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       color: var(--text-3);
-      padding: 7px 14px;
-      border-radius: 5px;
+      padding: 9px 12px;
+      border-radius: 4px;
       cursor: none;
-      transition: background 0.2s, color 0.2s;
+      transition: background 0.2s ease, color 0.2s ease, transform 0.12s var(--ease-spring);
       border: none;
       background: transparent;
+      white-space: nowrap;
     }
+    .cmd-tab:active { transform: scale(0.96); }
     .cmd-tab.active {
       background: var(--surface);
       color: var(--text);
@@ -691,16 +757,24 @@
       color: var(--text-3);
     }
     .cmd-copy {
+      position: relative;
       font-family: var(--font-mono);
       font-size: 0.65rem;
       color: var(--text-3);
       background: none;
       border: none;
       cursor: none;
-      transition: color 0.2s;
+      transition: color 0.2s ease, transform 0.12s var(--ease-spring);
       padding: 2px 6px;
     }
+    /* Extended hit area — visible button stays small, tap target is ~40×40 */
+    .cmd-copy::before {
+      content: '';
+      position: absolute;
+      inset: -14px -10px;
+    }
     .cmd-copy:hover { color: var(--pink); }
+    .cmd-copy:active { transform: scale(0.96); }
 
     .cmd-block pre {
       padding: 24px;
@@ -779,6 +853,7 @@
       line-height: 1;
       margin-bottom: 8px;
       letter-spacing: -0.04em;
+      font-variant-numeric: tabular-nums;
     }
     .arch-card-num span {
       font-size: 1.2rem;
@@ -797,6 +872,234 @@
       color: var(--text-2);
       line-height: 1.5;
     }
+
+    /* ─── DECLARATIVE ────────────────────────────────────────────────────── */
+    .declarative {
+      padding: 120px 0;
+      background: var(--bg);
+      position: relative;
+    }
+    .declarative::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 50%;
+      width: 1px; height: 80px;
+      background: linear-gradient(180deg, transparent, var(--border));
+      transform: translateX(-50%);
+    }
+    .declarative-inner {
+      display: grid;
+      grid-template-columns: 1fr 1.1fr;
+      gap: 80px;
+      align-items: start;
+    }
+    @media (max-width: 1024px) {
+      .declarative-inner { grid-template-columns: 1fr; gap: 48px; }
+    }
+    .declarative-desc {
+      margin-top: 28px;
+      font-size: 1.05rem;
+      line-height: 1.75;
+      color: var(--text-2);
+      font-weight: 300;
+      max-width: 520px;
+      text-wrap: pretty;
+    }
+    .declarative-bullets {
+      margin-top: 36px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .declarative-bullet {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      font-size: 0.9rem;
+      line-height: 1.65;
+      color: var(--text-2);
+      font-weight: 300;
+    }
+    .declarative-bullet strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .declarative-bullet code {
+      font-family: var(--font-mono);
+      font-size: 0.82em;
+      color: var(--amber);
+      background: rgba(217,119,6,0.08);
+      padding: 1px 6px;
+      border-radius: 3px;
+    }
+    .d-bullet-icon {
+      flex-shrink: 0;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: var(--pink-dim);
+      border: 1px solid var(--border-hot);
+      color: var(--pink);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-top: 1px;
+    }
+
+    .toml-card {
+      background: var(--bg-3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.03),
+        0 32px 64px rgba(0,0,0,0.4);
+    }
+    .toml-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 18px;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--border);
+    }
+    .toml-filename {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-3);
+    }
+    .toml-flag {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: var(--pink);
+      background: var(--pink-dim);
+      border: 1px solid var(--border-hot);
+      padding: 2px 8px;
+      border-radius: 100px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .toml-code {
+      padding: 24px 28px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      line-height: 1.85;
+      overflow-x: auto;
+      color: var(--text-code);
+    }
+    .toml-section { color: var(--pink); font-weight: 700; }
+    .toml-key { color: var(--teal); }
+    .toml-str { color: var(--amber); }
+    .toml-num { color: #c084fc; }
+    .toml-bool { color: #fb7185; }
+
+    .toml-tools {
+      display: flex; gap: 10px; flex-wrap: wrap;
+      margin-top: 18px;
+    }
+    .toml-tool {
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      padding: 8px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-2);
+      transition: border-color 0.2s ease, transform 0.12s var(--ease-spring);
+    }
+    .toml-tool:hover { border-color: var(--border-hot); }
+    .toml-tool:active { transform: scale(0.96); }
+
+    /* ─── DOCTOR ─────────────────────────────────────────────────────────── */
+    .doctor {
+      padding: 120px 0;
+      background: var(--bg);
+      position: relative;
+    }
+    .doctor-inner {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 64px;
+      align-items: start;
+    }
+    @media (max-width: 1024px) {
+      .doctor-inner { grid-template-columns: 1fr; gap: 48px; }
+    }
+    .doctor-desc {
+      margin-top: 24px;
+      font-size: 1.05rem;
+      line-height: 1.75;
+      color: var(--text-2);
+      font-weight: 300;
+      text-wrap: pretty;
+    }
+    .doctor-bullets {
+      margin-top: 32px;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .doctor-bullets li {
+      font-size: 0.9rem;
+      line-height: 1.6;
+      color: var(--text-2);
+      font-weight: 300;
+      padding-left: 20px;
+      position: relative;
+    }
+    .doctor-bullets li::before {
+      content: '→';
+      position: absolute;
+      left: 0;
+      color: var(--pink);
+      font-weight: 700;
+    }
+    .doctor-bullets code {
+      font-family: var(--font-mono);
+      font-size: 0.82em;
+      color: var(--amber);
+    }
+
+    .doctor-tabs {
+      display: flex; gap: 4px;
+      margin-bottom: 16px;
+      background: var(--bg-2);
+      padding: 4px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      width: fit-content;
+    }
+    .doctor-tab {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-3);
+      padding: 9px 14px;
+      border-radius: 4px;
+      cursor: none;
+      transition: background 0.2s ease, color 0.2s ease, transform 0.12s var(--ease-spring);
+      border: none;
+      background: transparent;
+    }
+    .doctor-tab:active { transform: scale(0.96); }
+    .doctor-tab.active {
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    }
+    .doctor-tab:hover:not(.active) { color: var(--text-2); }
+
+    .doctor-pane { display: none; }
+    .doctor-pane.active { display: block; }
+
+    /* extra terminal token colors */
+    .t-warn { color: #FBBF24; }
+    .t-error { color: #F87171; }
+    .t-fix { color: var(--pink); }
+
+    /* JSON syntax */
+    .json-k { color: var(--teal); }
+    .json-s { color: var(--amber); }
+    .json-n { color: #c084fc; }
+    .json-b { color: #fb7185; }
+    .json-p { color: var(--text-3); }
 
     /* ─── DUAL MODE ──────────────────────────────────────────────────────── */
     .dual-mode {
@@ -866,6 +1169,7 @@
       color: var(--text);
       margin-bottom: 16px;
       line-height: 1.1;
+      text-wrap: balance;
     }
     .mode-desc {
       font-size: 0.95rem;
@@ -940,15 +1244,16 @@
     .install-tab {
       font-family: var(--font-mono);
       font-size: 0.8rem;
-      padding: 6px 18px;
-      border-radius: 5px;
+      padding: 9px 18px;
+      border-radius: 4px;
       border: none;
       background: transparent;
       color: var(--text-3);
       cursor: none;
-      transition: background 0.2s, color 0.2s;
+      transition: background 0.2s ease, color 0.2s ease, transform 0.12s var(--ease-spring);
       letter-spacing: 0.02em;
     }
+    .install-tab:active { transform: scale(0.96); }
     .install-tab.active {
       background: var(--pink);
       color: #fff;
@@ -1056,6 +1361,7 @@
       letter-spacing: -0.04em;
       line-height: 0.95;
       margin-bottom: 28px;
+      text-wrap: balance;
     }
     .cta-title .big {
       display: block;
@@ -1095,9 +1401,10 @@
       border-radius: var(--radius-sm);
       text-decoration: none;
       cursor: none;
-      transition: border-color 0.2s, color 0.2s;
+      transition: border-color 0.2s ease, color 0.2s ease, transform 0.12s var(--ease-spring);
     }
     .btn-outline:hover { border-color: var(--text-2); }
+    .btn-outline:active { transform: scale(0.96); transition-duration: 0.1s; }
     .btn-outline:focus-visible { outline: 2px solid var(--pink); outline-offset: 3px; }
 
     /* ─── FOOTER ─────────────────────────────────────────────────────────── */
@@ -1201,8 +1508,10 @@
         <ul class="nav-links">
           <li><a href="#features">Features</a></li>
           <li><a href="#commands">Commands</a></li>
+          <li><a href="#declarative">Declarative</a></li>
+          <li><a href="#doctor">Doctor</a></li>
           <li><a href="#install">Install</a></li>
-          <li><span class="nav-version" aria-label="Version 3.1.0">v3.1.0</span></li>
+          <li><span class="nav-version" aria-label="Version 3.15.0">v3.15.0</span></li>
           <li><a href="https://github.com/dvrd/wayu" class="nav-cta" target="_blank" rel="noopener">GitHub ↗</a></li>
         </ul>
       </div>
@@ -1245,7 +1554,7 @@
 
         <div class="hero-meta reveal reveal-delay-4">
           <div class="hero-stat">
-            <span class="hero-stat-num">434</span>
+            <span class="hero-stat-num">557</span>
             <span class="hero-stat-label">Tests</span>
           </div>
           <div class="hero-stat-divider" aria-hidden="true"></div>
@@ -1255,7 +1564,7 @@
           </div>
           <div class="hero-stat-divider" aria-hidden="true"></div>
           <div class="hero-stat">
-            <span class="hero-stat-num">17K</span>
+            <span class="hero-stat-num">38K</span>
             <span class="hero-stat-label">Lines of Odin</span>
           </div>
           <div class="hero-stat-divider" aria-hidden="true"></div>
@@ -1321,59 +1630,136 @@
         </p>
       </div>
 
-      <div class="features-grid reveal reveal-delay-1">
+      <!-- ── GROUP 1: CORE ─────────────────────────────────────────────── -->
+      <div class="feature-group reveal">
+        <div class="feature-group-header">
+          <span class="feature-group-num" aria-hidden="true">01</span>
+          <h3 class="feature-group-title">Core</h3>
+          <span class="feature-group-desc">The foundation — every config change, validated, backed up, and predictable.</span>
+        </div>
+        <div class="features-grid">
 
-        <article class="feature-card featured">
-          <div class="feature-icon" aria-hidden="true">🛤️</div>
-          <h3 class="feature-name">Array-Based PATH Management</h3>
-          <p class="feature-desc">
-            A centralized <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">WAYU_PATHS=()</code> array with a single export loop. Deduplication, validation, and a <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">clean</code> command that removes entries pointing to missing directories. Fixes the silent bug where new paths added after exports were completely ineffective.
-          </p>
-          <span class="feature-badge">v3.0.0 — Breaking change</span>
-        </article>
+          <article class="feature-card featured">
+            <div class="feature-icon" aria-hidden="true">🛤️</div>
+            <h3 class="feature-name">Array-Based PATH Management</h3>
+            <p class="feature-desc">
+              A centralized <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">WAYU_PATHS=()</code> array with a single export loop. Deduplication, validation, and a <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">clean</code> command that removes entries pointing to missing directories. Fixes the silent bug where new paths added after exports were completely ineffective.
+            </p>
+            <span class="feature-badge">v3.0.0 — Breaking change</span>
+          </article>
 
-        <article class="feature-card">
-          <div class="feature-icon" aria-hidden="true">🔌</div>
-          <h3 class="feature-name">Plugin Management</h3>
-          <p class="feature-desc">54-plugin registry. Install from any Git URL. Dependency resolution with cycle detection. Conflict detection across env vars, functions, and aliases. Priority-based load ordering.</p>
-        </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">💾</div>
+            <h3 class="feature-name">Auto Backup &amp; Restore</h3>
+            <p class="feature-desc">Every modification creates a timestamped backup automatically. Keeps the last 5. Restore any config type with one command. You cannot accidentally lose your shell config.</p>
+          </article>
 
-        <article class="feature-card">
-          <div class="feature-icon" aria-hidden="true">💾</div>
-          <h3 class="feature-name">Auto Backup & Restore</h3>
-          <p class="feature-desc">Every modification creates a timestamped backup automatically. Keeps the last 5. Restore any config type with one command. You cannot accidentally lose your shell config.</p>
-        </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🐚</div>
+            <h3 class="feature-name">Multi-Shell</h3>
+            <p class="feature-desc">Automatic Bash/Zsh detection from <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">$SHELL</code>. Shell-specific config files with correct syntax. Migrate between shells with <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu migrate</code>.</p>
+          </article>
 
-        <article class="feature-card">
-          <div class="feature-icon" aria-hidden="true">🐚</div>
-          <h3 class="feature-name">Multi-Shell</h3>
-          <p class="feature-desc">Automatic Bash/Zsh detection from <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">$SHELL</code>. Shell-specific config files with correct syntax. Migrate between shells with <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu migrate</code>.</p>
-        </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">✅</div>
+            <h3 class="feature-name">Input Validation</h3>
+            <p class="feature-desc">Shell identifier validation, reserved word checking (<code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">if</code>, <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">export</code>, etc.), dangerous character escaping, and path sanitization.</p>
+          </article>
 
-        <article class="feature-card">
-          <div class="feature-icon" aria-hidden="true">🔍</div>
-          <h3 class="feature-name">Dry-Run Mode</h3>
-          <p class="feature-desc">The <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">--dry-run</code> flag previews any change before it's applied. Works across every command. See exactly what would change before it happens.</p>
-        </article>
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🔗</div>
+            <h3 class="feature-name">External Alias Sources</h3>
+            <p class="feature-desc">Surface read-only aliases from external tools (e.g. fabric patterns) in <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu alias list</code> via <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">alias-sources.conf</code>.</p>
+          </article>
 
-        <article class="feature-card">
-          <div class="feature-icon" aria-hidden="true">📜</div>
-          <h3 class="feature-name">Scriptable CLI</h3>
-          <p class="feature-desc">BSD sysexits.h exit codes (0, 1, 64–78). Fully non-interactive — no prompts, no fuzzy finders. Safe for pipes, CI/CD, and provisioning scripts. <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">--yes</code> flag for confirmations.</p>
-        </article>
+        </div>
+      </div>
 
-        <article class="feature-card">
-          <div class="feature-icon" aria-hidden="true">✅</div>
-          <h3 class="feature-name">Input Validation</h3>
-          <p class="feature-desc">Shell identifier validation, reserved word checking (<code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">if</code>, <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">export</code>, etc.), dangerous character escaping, and path sanitization.</p>
-        </article>
+      <!-- ── GROUP 2: POWER ────────────────────────────────────────────── -->
+      <div class="feature-group reveal">
+        <div class="feature-group-header">
+          <span class="feature-group-num" aria-hidden="true">02</span>
+          <h3 class="feature-group-title">Power</h3>
+          <span class="feature-group-desc">v3-era tooling — declarative config, fuzzy search, plugin ecosystem, dual-mode UX.</span>
+        </div>
+        <div class="features-grid">
 
-        <article class="feature-card">
-          <div class="feature-icon" aria-hidden="true">🔗</div>
-          <h3 class="feature-name">External Alias Sources</h3>
-          <p class="feature-desc">Surface read-only aliases from external tools (e.g. fabric patterns) in <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu alias list</code> via <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">alias-sources.conf</code>.</p>
-        </article>
+          <article class="feature-card featured">
+            <div class="feature-icon" aria-hidden="true">📜</div>
+            <h3 class="feature-name">Declarative TOML Config</h3>
+            <p class="feature-desc">
+              Author your entire shell environment in one <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu.toml</code> file — PATH, aliases, constants, plugins, prompt, even the prompt format. Single source of truth, dotfile-friendly, machine-portable. Validated with <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu toml validate</code>.
+            </p>
+            <span class="feature-badge">New in v3</span>
+          </article>
 
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🔍</div>
+            <h3 class="feature-name">Global Fuzzy Search</h3>
+            <p class="feature-desc"><code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu search &lt;query&gt;</code> across PATH, aliases, constants, plugins, and external sources at once. Acronym matching: <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">frwrks</code> finds <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">FIREWORKS_AI_API_KEY</code>.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🔌</div>
+            <h3 class="feature-name">Plugin Registry</h3>
+            <p class="feature-desc">62 curated plugins. Install from registry name or any Git URL. Dependency resolution with cycle detection. Conflict detection across env vars, functions, aliases. Priority-based load ordering.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">⬛</div>
+            <h3 class="feature-name">CLI / TUI Dual Mode</h3>
+            <p class="feature-desc">Default CLI is pipe-safe and CI-ready. Launch <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu --tui</code> for a 9-view full-screen interface with vim-style navigation, fuzzy filter, confirmation modals.</p>
+          </article>
+
+        </div>
+      </div>
+
+      <!-- ── GROUP 3: WORKFLOW ─────────────────────────────────────────── -->
+      <div class="feature-group reveal">
+        <div class="feature-group-header">
+          <span class="feature-group-num" aria-hidden="true">03</span>
+          <h3 class="feature-group-title">Workflow</h3>
+          <span class="feature-group-desc">Diagnostics, automation, and integration with the rest of your toolchain.</span>
+        </div>
+        <div class="features-grid">
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🔬</div>
+            <h3 class="feature-name">wayu doctor</h3>
+            <p class="feature-desc">Health-check every config: install, source line, PATH entries, plugins, backups, TOML, dependencies. <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">--fix</code> auto-repairs known issues. <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">--json</code> output for CI.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">👁</div>
+            <h3 class="feature-name">Hot Reload</h3>
+            <p class="feature-desc"><code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu reload start</code> watches <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu.toml</code> and config files. Regenerates static output on save (debounced 500ms). No more <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">source ~/.zshrc</code> after every tweak.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🪝</div>
+            <h3 class="feature-name">Pre/Post Hooks</h3>
+            <p class="feature-desc">Run custom commands before or after any operation: <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">pre_path_add</code>, <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">post_alias_add</code>, etc. Logging, notifications, custom integrations — wired into <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">hooks.conf</code>.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">📝</div>
+            <h3 class="feature-name">Templates</h3>
+            <p class="feature-desc">Bootstrap with <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu init --template developer</code> or apply later with <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu template apply</code>. Presets: developer, minimal, data-science, full.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">🔄</div>
+            <h3 class="feature-name">Shell Migration</h3>
+            <p class="feature-desc"><code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu migrate --from zsh --to bash</code>. Generates equivalent shell-specific config files. Switch between Zsh and Bash without losing PATH, aliases, env, or plugin state.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">👁‍🗨</div>
+            <h3 class="feature-name">Dry-Run Everywhere</h3>
+            <p class="feature-desc">The <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">--dry-run</code> flag previews any change before it&rsquo;s written to disk. BSD sysexits.h exit codes (0, 1, 64–78). Fails fast, never silently.</p>
+          </article>
+
+        </div>
       </div>
     </div>
   </section>
@@ -1394,6 +1780,9 @@
           <div class="cmd-tabs reveal reveal-delay-3" role="tablist" aria-label="Command examples">
             <button class="cmd-tab active" role="tab" aria-selected="true" aria-controls="tab-path" id="btn-path" onclick="switchTab('path')">path</button>
             <button class="cmd-tab" role="tab" aria-selected="false" aria-controls="tab-alias" id="btn-alias" onclick="switchTab('alias')">alias</button>
+            <button class="cmd-tab" role="tab" aria-selected="false" aria-controls="tab-search" id="btn-search" onclick="switchTab('search')">search</button>
+            <button class="cmd-tab" role="tab" aria-selected="false" aria-controls="tab-doctor" id="btn-doctor" onclick="switchTab('doctor')">doctor</button>
+            <button class="cmd-tab" role="tab" aria-selected="false" aria-controls="tab-config" id="btn-config" onclick="switchTab('config')">config</button>
             <button class="cmd-tab" role="tab" aria-selected="false" aria-controls="tab-plugin" id="btn-plugin" onclick="switchTab('plugin')">plugin</button>
             <button class="cmd-tab" role="tab" aria-selected="false" aria-controls="tab-backup" id="btn-backup" onclick="switchTab('backup')">backup</button>
           </div>
@@ -1460,6 +1849,63 @@
 <span class="cmd-k">wayu</span> <span class="cmd-v">plugin update</span> --all</code></pre>
           </div>
 
+          <div class="cmd-block" id="tab-search" role="tabpanel" aria-labelledby="btn-search">
+            <div class="cmd-block-bar">
+              <span class="cmd-block-label">global fuzzy search</span>
+              <button class="cmd-copy" onclick="copyCode('search')" aria-label="Copy search commands">copy</button>
+            </div>
+            <pre><code id="code-search"><span class="cmd-c"># Search across PATH, aliases, constants, plugins</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">search</span> <span class="cmd-p">git</span>
+
+<span class="cmd-c"># Acronym matching: 'frwrks' → FIREWORKS_AI_API_KEY</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">find</span> <span class="cmd-p">frwrks</span>
+
+<span class="cmd-c"># Short alias</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">f</span> <span class="cmd-p">api</span>
+
+<span class="cmd-c"># Direct lookup of one constant</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">const get</span> <span class="cmd-p">CLOUDFLARE_API_TOKEN</span></code></pre>
+          </div>
+
+          <div class="cmd-block" id="tab-doctor" role="tabpanel" aria-labelledby="btn-doctor">
+            <div class="cmd-block-bar">
+              <span class="cmd-block-label">health check &amp; auto-fix</span>
+              <button class="cmd-copy" onclick="copyCode('doctor')" aria-label="Copy doctor commands">copy</button>
+            </div>
+            <pre><code id="code-doctor"><span class="cmd-c"># Run all checks (10+ diagnostics)</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span>
+
+<span class="cmd-c"># Auto-fix issues marked 🔧</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span> --fix
+
+<span class="cmd-c"># Machine-readable output (CI-friendly)</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span> --json
+
+<span class="cmd-c"># Generate optimized init for faster startup</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span> --optimize</code></pre>
+          </div>
+
+          <div class="cmd-block" id="tab-config" role="tabpanel" aria-labelledby="btn-config">
+            <div class="cmd-block-bar">
+              <span class="cmd-block-label">declarative TOML config</span>
+              <button class="cmd-copy" onclick="copyCode('config')" aria-label="Copy config commands">copy</button>
+            </div>
+            <pre><code id="code-config"><span class="cmd-c"># Edit declarative wayu.toml</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">config edit</span>
+
+<span class="cmd-c"># Validate schema</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">toml validate</span>
+
+<span class="cmd-c"># Watch mode — regenerate on save</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">reload</span> <span class="cmd-p">start</span>
+
+<span class="cmd-c"># Custom shell scripts (extra.zsh)</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">config extend</span>
+
+<span class="cmd-c"># Detect inline scripts to migrate</span>
+<span class="cmd-k">wayu</span> <span class="cmd-v">config scan</span></code></pre>
+          </div>
+
           <div class="cmd-block" id="tab-backup" role="tabpanel" aria-labelledby="btn-backup">
             <div class="cmd-block-bar">
               <span class="cmd-block-label">backup & restore</span>
@@ -1516,22 +1962,111 @@
     </div>
   </section>
 
+  <!-- ─── DECLARATIVE TOML ──────────────────────────────────────────────── -->
+  <section class="declarative" id="declarative" aria-labelledby="declarative-title">
+    <div class="container">
+      <div class="declarative-inner">
+        <div class="declarative-left">
+          <div class="section-label reveal">Declarative</div>
+          <h2 class="section-title reveal reveal-delay-1" id="declarative-title">
+            One file.<br><em>Your whole shell.</em>
+          </h2>
+          <p class="declarative-desc reveal reveal-delay-2">
+            <code style="font-family:var(--font-mono);font-size:0.9em;color:var(--amber);">~/.config/wayu/wayu.toml</code> is the single source of truth: PATH, aliases, constants, plugins, prompt, and inline scripts.
+            Commit it to your dotfiles. Restore your entire shell on any machine in one command. Hot-reload on every save.
+          </p>
+          <div class="declarative-bullets reveal reveal-delay-3">
+            <div class="declarative-bullet">
+              <span class="d-bullet-icon">✓</span>
+              <div>
+                <strong>Imperative or declarative</strong> — use <code>wayu &lt;cmd&gt; add</code> to mutate, or edit the TOML directly.
+                Wayu detects which is your source of truth.
+              </div>
+            </div>
+            <div class="declarative-bullet">
+              <span class="d-bullet-icon">✓</span>
+              <div>
+                <strong>Pre-compiled prompt</strong> — native zsh prompt format with Nerd Font icons, no external binaries (no starship, no oh-my-zsh).
+              </div>
+            </div>
+            <div class="declarative-bullet">
+              <span class="d-bullet-icon">✓</span>
+              <div>
+                <strong>Hot reload</strong> — <code>wayu reload start</code> watches the TOML and regenerates static <code>.zsh</code> files on save (debounced 500ms).
+              </div>
+            </div>
+            <div class="declarative-bullet">
+              <span class="d-bullet-icon">✓</span>
+              <div>
+                <strong>Schema-validated</strong> — <code>wayu toml validate</code> catches typos, malformed values, and missing required keys.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="declarative-right reveal reveal-delay-2">
+          <div class="toml-card">
+            <div class="toml-bar">
+              <span class="toml-filename">~/.config/wayu/wayu.toml</span>
+              <span class="toml-flag">declarative</span>
+            </div>
+            <pre class="toml-code"><code><span class="cmd-c"># Single source of truth for your shell</span>
+
+<span class="toml-section">[shell]</span>
+<span class="toml-key">type</span> = <span class="toml-str">"zsh"</span>
+
+<span class="toml-section">[prompt]</span>
+<span class="toml-key">format</span> = <span class="toml-str">"{username}{dir}{git_branch}\n{character}"</span>
+<span class="toml-key">command_timeout</span> = <span class="toml-num">60000</span>
+
+<span class="toml-section">[paths]</span>
+<span class="toml-key">entries</span> = [
+  <span class="toml-str">"~/.cargo/bin"</span>,
+  <span class="toml-str">"~/.local/bin"</span>,
+  <span class="toml-str">"/opt/homebrew/bin"</span>,
+]
+
+<span class="toml-section">[aliases]</span>
+<span class="toml-key">ll</span> = <span class="toml-str">"ls -la"</span>
+<span class="toml-key">gs</span> = <span class="toml-str">"git status"</span>
+<span class="toml-key">gco</span> = <span class="toml-str">"git checkout"</span>
+
+<span class="toml-section">[constants]</span>
+<span class="toml-key">EDITOR</span> = <span class="toml-str">"nvim"</span>
+<span class="toml-key">PAGER</span>  = <span class="toml-str">"less -R"</span>
+
+<span class="toml-section">[[plugins]]</span>
+<span class="toml-key">name</span>     = <span class="toml-str">"zsh-autosuggestions"</span>
+<span class="toml-key">priority</span> = <span class="toml-num">50</span>
+<span class="toml-key">enabled</span>  = <span class="toml-bool">true</span></code></pre>
+          </div>
+
+          <div class="toml-tools">
+            <code class="toml-tool"><span class="cmd-k">wayu</span> <span class="cmd-v">config edit</span></code>
+            <code class="toml-tool"><span class="cmd-k">wayu</span> <span class="cmd-v">toml validate</span></code>
+            <code class="toml-tool"><span class="cmd-k">wayu</span> <span class="cmd-v">reload start</span></code>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ─── ARCH STRIP ─────────────────────────────────────────────────────── -->
   <div class="arch-strip" aria-label="Project statistics">
     <div class="container">
       <div class="arch-grid">
         <div class="arch-card reveal">
-          <div class="arch-card-num">17<span>K</span></div>
+          <div class="arch-card-num">38<span>K</span></div>
           <div class="arch-card-label">Lines of Odin</div>
           <div class="arch-card-detail">Pure, zero-dependency systems code. Compiles in seconds.</div>
         </div>
         <div class="arch-card reveal reveal-delay-1">
-          <div class="arch-card-num">434</div>
+          <div class="arch-card-num">557</div>
           <div class="arch-card-label">Tests</div>
           <div class="arch-card-detail">Unit, integration, and golden-file visual regression.</div>
         </div>
         <div class="arch-card reveal reveal-delay-2">
-          <div class="arch-card-num">54</div>
+          <div class="arch-card-num">62</div>
           <div class="arch-card-label">Plugins in Registry</div>
           <div class="arch-card-detail">Curated popular plugins. Install any Git URL too.</div>
         </div>
@@ -1570,11 +2105,111 @@
           <p class="mode-desc">Launch with <code style="font-family:var(--font-mono);font-size:0.9em;color:var(--pink);">wayu --tui</code>. A complete terminal UI built from scratch — no external TUI libraries.</p>
           <ul class="mode-points">
             <li>Vim-style navigation (<code style="font-family:var(--font-mono);font-size:0.85em;">j</code>/<code style="font-family:var(--font-mono);font-size:0.85em;">k</code>, arrow keys)</li>
-            <li>8 views: PATH, Aliases, Constants, Plugins, Backups…</li>
+            <li>9 views: PATH, Aliases, Constants, Plugins, Completions, Backups, Hooks, Settings…</li>
             <li>Fuzzy search and inline filtering</li>
             <li>Confirmation modals before destructive actions</li>
             <li>Alternate screen buffer — terminal history preserved</li>
           </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── DOCTOR ─────────────────────────────────────────────────────────── -->
+  <section class="doctor" id="doctor" aria-labelledby="doctor-title">
+    <div class="container">
+      <div class="doctor-inner">
+        <div class="doctor-left reveal">
+          <div class="section-label">Diagnostics</div>
+          <h2 class="section-title reveal-delay-1" id="doctor-title">
+            <em>wayu doctor</em><br>
+            knows what's<br>
+            wrong before you do.
+          </h2>
+          <p class="doctor-desc reveal-delay-2">
+            10+ checks across install state, shell sourcing, PATH validity, plugin health,
+            backups, TOML schema, and external dependencies. Auto-fix what's mechanical.
+            JSON output for CI pipelines.
+          </p>
+          <ul class="doctor-bullets reveal-delay-3">
+            <li><code>wayu doctor</code> — interactive run with status, summary, and fix suggestions</li>
+            <li><code>wayu doctor --fix</code> — auto-repair issues marked 🔧</li>
+            <li><code>wayu doctor --json</code> — structured output for CI / monitoring</li>
+            <li><code>wayu doctor --optimize</code> — generate optimized init for faster shell startup</li>
+          </ul>
+        </div>
+
+        <div class="doctor-right reveal reveal-delay-2">
+          <div class="doctor-tabs" role="tablist" aria-label="Doctor output formats">
+            <button class="doctor-tab active" role="tab" aria-selected="true" onclick="switchDoctorTab('pretty')">interactive</button>
+            <button class="doctor-tab" role="tab" aria-selected="false" onclick="switchDoctorTab('json')">--json</button>
+          </div>
+
+          <div class="doctor-pane active" id="doctor-pretty">
+            <div class="terminal" style="margin:0">
+              <div class="terminal-bar">
+                <span class="terminal-dot"></span>
+                <span class="terminal-dot"></span>
+                <span class="terminal-dot"></span>
+                <span class="terminal-title">wayu doctor</span>
+              </div>
+              <div class="terminal-body" style="min-height:auto;font-size:0.78rem">
+<span class="t-line"><span class="t-info">🔬</span> <span class="t-cmd">wayu Doctor — System Health Check</span></span>
+<span class="t-line"></span>
+<span class="t-line">  <span class="t-success">✓</span> wayu installation</span>
+<span class="t-line">    <span class="t-output">wayu 3.15.0 installed</span></span>
+<span class="t-line">  <span class="t-success">✓</span> shell configuration</span>
+<span class="t-line">    <span class="t-output">init.zsh sourced from ~/.zshrc</span></span>
+<span class="t-line">  <span class="t-success">✓</span> PATH entries</span>
+<span class="t-line">    <span class="t-output">12 entries, all directories exist</span></span>
+<span class="t-line">  <span class="t-success">✓</span> plugins</span>
+<span class="t-line">    <span class="t-output">8 plugin(s) installed</span></span>
+<span class="t-line">  <span class="t-success">✓</span> backups</span>
+<span class="t-line">    <span class="t-output">Backup system configured</span></span>
+<span class="t-line">  <span class="t-success">✓</span> TOML config</span>
+<span class="t-line">    <span class="t-output">wayu.toml exists and is readable</span></span>
+<span class="t-line">  <span class="t-warn">⚠</span> turbo export <span class="t-fix">🔧</span></span>
+<span class="t-line">    <span class="t-output">Turbo export generated but not used in shell config</span></span>
+<span class="t-line">  <span class="t-success">✓</span> dependency: git, zsh</span>
+<span class="t-line">    <span class="t-output">All required dependencies found</span></span>
+<span class="t-line"></span>
+<span class="t-line"><span class="t-info">󰋽</span> <span class="t-cmd">Summary</span></span>
+<span class="t-line">  <span class="t-success">7 OK</span>  <span class="t-warn">1 warning</span>  <span class="t-error">0 errors</span></span>
+<span class="t-line">  <span class="t-fix">🔧</span> <span class="t-output">1 issue can be auto-fixed</span></span>
+<span class="t-line"></span>
+<span class="t-line">  <span class="t-output">Run with --fix to attempt automatic fixes:</span></span>
+<span class="t-line">    <span class="t-cmd">wayu doctor --fix</span></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="doctor-pane" id="doctor-json">
+            <div class="terminal" style="margin:0">
+              <div class="terminal-bar">
+                <span class="terminal-dot"></span>
+                <span class="terminal-dot"></span>
+                <span class="terminal-dot"></span>
+                <span class="terminal-title">wayu doctor --json | jq .</span>
+              </div>
+              <div class="terminal-body" style="min-height:auto;font-size:0.78rem">
+<span class="t-line"><span class="json-p">{</span></span>
+<span class="t-line">  <span class="json-k">"checks"</span>: <span class="json-p">[</span></span>
+<span class="t-line">    <span class="json-p">{</span> <span class="json-k">"name"</span>: <span class="json-s">"wayu installation"</span>, <span class="json-k">"status"</span>: <span class="json-s">"ok"</span>,</span>
+<span class="t-line">      <span class="json-k">"message"</span>: <span class="json-s">"wayu 3.15.0 installed"</span>, <span class="json-k">"fixable"</span>: <span class="json-b">false</span> <span class="json-p">}</span>,</span>
+<span class="t-line">    <span class="json-p">{</span> <span class="json-k">"name"</span>: <span class="json-s">"shell configuration"</span>, <span class="json-k">"status"</span>: <span class="json-s">"ok"</span>,</span>
+<span class="t-line">      <span class="json-k">"message"</span>: <span class="json-s">"init.zsh sourced"</span>, <span class="json-k">"fixable"</span>: <span class="json-b">false</span> <span class="json-p">}</span>,</span>
+<span class="t-line">    <span class="json-p">{</span> <span class="json-k">"name"</span>: <span class="json-s">"turbo export"</span>, <span class="json-k">"status"</span>: <span class="json-s">"warning"</span>,</span>
+<span class="t-line">      <span class="json-k">"message"</span>: <span class="json-s">"Turbo export generated but not used"</span>,</span>
+<span class="t-line">      <span class="json-k">"fixable"</span>: <span class="json-b">true</span> <span class="json-p">}</span></span>
+<span class="t-line">  <span class="json-p">]</span>,</span>
+<span class="t-line">  <span class="json-k">"summary"</span>: <span class="json-p">{</span></span>
+<span class="t-line">    <span class="json-k">"ok"</span>: <span class="json-n">7</span>, <span class="json-k">"warnings"</span>: <span class="json-n">1</span>,</span>
+<span class="t-line">    <span class="json-k">"errors"</span>: <span class="json-n">0</span>, <span class="json-k">"info"</span>: <span class="json-n">0</span>, <span class="json-k">"fixable"</span>: <span class="json-n">1</span></span>
+<span class="t-line">  <span class="json-p">}</span></span>
+<span class="t-line"><span class="json-p">}</span></span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1719,10 +2354,12 @@
         <ul class="footer-links">
           <li><a href="#features">Features</a></li>
           <li><a href="#commands">Commands</a></li>
+          <li><a href="#declarative">Declarative</a></li>
+          <li><a href="#doctor">Doctor</a></li>
           <li><a href="#install">Install</a></li>
           <li><a href="https://github.com/dvrd/wayu" target="_blank" rel="noopener">GitHub</a></li>
         </ul>
-        <p class="footer-copy">v3.1.0 · MIT License · Built with <a href="https://odin-lang.org" style="color:var(--teal);text-decoration:none;" target="_blank" rel="noopener">Odin</a></p>
+        <p class="footer-copy">v3.15.0 · MIT License · Built with <a href="https://odin-lang.org" style="color:var(--teal);text-decoration:none;" target="_blank" rel="noopener">Odin</a></p>
       </div>
     </div>
   </footer>
@@ -1769,22 +2406,26 @@
     // ─── TERMINAL ANIMATION ────────────────────────────────────────────────
     const lines = [
       { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu path add</span> <span class="t-path">~/.cargo/bin</span>', delay: 0 },
-      { html: '<span class="t-success">✓</span> <span class="t-output">Backup created → path.zsh.backup.2026-02-25</span>', delay: 600 },
-      { html: '<span class="t-success">✓</span> <span class="t-output">Added ~/.cargo/bin to WAYU_PATHS</span>', delay: 900 },
-      { html: '', delay: 1400 },
-      { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu alias add</span> <span class="t-arg">gs</span> <span class="t-path">\'git status\'</span>', delay: 1600 },
-      { html: '<span class="t-success">✓</span> <span class="t-output">Added alias: gs="git status"</span>', delay: 2200 },
-      { html: '', delay: 2700 },
-      { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu plugin add</span> <span class="t-arg">zsh-autosuggestions</span>', delay: 2900 },
-      { html: '<span class="t-info">→</span> <span class="t-output">Cloning zsh-users/zsh-autosuggestions...</span>', delay: 3500 },
-      { html: '<span class="t-info">→</span> <span class="t-output">Checking dependencies... none required</span>', delay: 4200 },
-      { html: '<span class="t-success">✓</span> <span class="t-output">Plugin installed and enabled</span>', delay: 4800 },
+      { html: '<span class="t-success">✓</span> <span class="t-output">Backup created → path.zsh.backup.2026-05-06</span>', delay: 500 },
+      { html: '<span class="t-success">✓</span> <span class="t-output">Added ~/.cargo/bin to WAYU_PATHS</span>', delay: 800 },
+      { html: '', delay: 1200 },
+      { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu search</span> <span class="t-arg">frwrks</span>', delay: 1400 },
+      { html: '<span class="t-info">⚡</span> <span class="t-output">Constants · 1 match</span>', delay: 1900 },
+      { html: '<span class="t-output">  FIREWORKS_AI_API_KEY = sk-…</span>', delay: 2100 },
+      { html: '', delay: 2500 },
+      { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu config</span> <span class="t-arg">edit</span>', delay: 2700 },
+      { html: '<span class="t-info">✏</span> <span class="t-output">Opening ~/.config/wayu/wayu.toml in $EDITOR</span>', delay: 3100 },
+      { html: '<span class="t-success">✓</span> <span class="t-output">Schema valid · reload triggered</span>', delay: 3400 },
+      { html: '', delay: 3800 },
+      { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu doctor</span> <span class="t-arg">--fix</span>', delay: 4000 },
+      { html: '<span class="t-success">✓</span> <span class="t-output">9 OK · 1 warning · 0 errors</span>', delay: 4500 },
+      { html: '<span class="t-info">🔧</span> <span class="t-output">Auto-fixed: shell RC source line</span>', delay: 4800 },
       { html: '', delay: 5300 },
-      { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu backup list</span>', delay: 5500 },
-      { html: '<span class="t-output">  1. path.zsh.backup.2026-02-25_15-06-43  (1.2 KB)</span>', delay: 6100 },
-      { html: '<span class="t-output">  2. aliases.zsh.backup.2026-02-25_15-06-44  (0.8 KB)</span>', delay: 6300 },
-      { html: '', delay: 6700 },
-      { html: '<span class="t-prompt">❯</span> <span class="t-cursor"></span>', delay: 6900 },
+      { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu plugin add</span> <span class="t-arg">zsh-autosuggestions</span>', delay: 5500 },
+      { html: '<span class="t-info">→</span> <span class="t-output">Resolving deps · detecting conflicts</span>', delay: 6000 },
+      { html: '<span class="t-success">✓</span> <span class="t-output">Installed at priority 50 · enabled</span>', delay: 6400 },
+      { html: '', delay: 6800 },
+      { html: '<span class="t-prompt">❯</span> <span class="t-cursor"></span>', delay: 7000 },
     ];
 
     const body = document.getElementById('terminal-body');
@@ -1845,6 +2486,18 @@
       });
       document.getElementById('imethod-brew').style.display   = method === 'brew'   ? 'block' : 'none';
       document.getElementById('imethod-source').style.display = method === 'source' ? 'block' : 'none';
+    }
+
+    // ─── DOCTOR TABS ─────────────────────────────────────────────────────
+    function switchDoctorTab(format) {
+      document.querySelectorAll('.doctor-tab').forEach(t => {
+        const active = t.getAttribute('onclick').includes(`'${format}'`);
+        t.classList.toggle('active', active);
+        t.setAttribute('aria-selected', active);
+      });
+      document.querySelectorAll('.doctor-pane').forEach(p => {
+        p.classList.toggle('active', p.id === `doctor-${format}`);
+      });
     }
 
     // ─── COPY CODE ─────────────────────────────────────────────────────────
