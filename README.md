@@ -15,7 +15,7 @@ A shell configuration management CLI written in [Odin](https://odin-lang.org/) w
 - **Shell migration** -- Migrate configs between Bash and Zsh
 - **Dry-run mode** -- Preview any change before applying it
 - **Scriptable** -- BSD sysexits.h exit codes, no interactive prompts in CLI mode
-- **Zero dependencies** -- Pure Odin, ~17K lines, compiles in seconds
+- **Zero dependencies** -- Pure Odin, ~38K lines, compiles in seconds
 
 ## Installation
 
@@ -111,6 +111,20 @@ wayu toml validate               # Check wayu.toml syntax
 # Shell migration
 wayu migrate --from zsh --to bash
 
+# Hot reload (auto-regenerate static output on save)
+wayu reload start                # alias: wayu watch
+wayu reload status
+wayu reload stop
+
+# Pre/post hooks (run custom commands around wayu operations)
+wayu hooks                       # show configured hooks
+wayu hooks edit                  # edit ~/.config/wayu/hooks.conf
+
+# Templates (config presets)
+wayu init --template developer   # bootstrap with a preset
+wayu template list               # available: developer, minimal, data-science, full
+wayu template apply minimal      # apply preset to existing config
+
 # Interactive mode
 wayu --tui
 ```
@@ -135,8 +149,11 @@ wayu <command> <action> [arguments] [flags]
 | `export` | Generate turbo export for fast startup |
 | `doctor` | Health check and diagnostics |
 | `toml` | TOML configuration management |
+| `template` | Apply config presets (developer / minimal / data-science / full) |
+| `hooks` | Pre/post operation hooks |
+| `reload`, `watch`, `hot-reload` | Watch config files and regenerate on change |
 | `backup` | Manage configuration backups |
-| `init` | Initialize config directory |
+| `init` | Initialize config directory (`--template <preset>` to bootstrap) |
 | `migrate` | Migrate config between shells |
 | `version` | Show version |
 | `help` | Show help |
@@ -152,6 +169,11 @@ wayu <command> <action> [arguments] [flags]
 | `restore` | Restore from backup |
 | `clean` | Remove PATH entries pointing to missing directories |
 | `dedup` | Remove duplicate PATH entries |
+| `edit` | Edit config file in `$EDITOR` (`config`, `hooks`) |
+| `extend`, `scan` | Manage `extra.zsh` (`config extend`, `config scan`) |
+| `apply` | Apply preset (`template apply <name>`) |
+| `validate` | Schema-check `wayu.toml` (`toml validate`) |
+| `start`, `stop`, `status` | Manage the file watcher (`reload`) |
 | `help` | Show command-specific help |
 
 ### Flags
@@ -219,7 +241,7 @@ wayu const get fwks               # fuzzy/acronym match
 | `exact` | Exact match | `get API_KEY` → `API_KEY` |
 | `prefix` | Starts with query | `get FIRE` → `FIREWORKS...` |
 | `substring` | Contains query | `get WORKS` → `FIREWORKS...` |
-| `acronym` | Matches uppercase letters | `get frwrks` → `FIREWORKS_AI_API_KEY` |
+| `acronym` | Matches uppercase letters | `get frwrks` → `FIREWORKS...` |
 | `fuzzy` | General fuzzy match | `get frwrx` → `FIREWORKS...` |
 
 ### Score Indicators
@@ -281,14 +303,14 @@ wayu stores shell-specific config files in `~/.config/wayu/`:
 
 ```
 ~/.config/wayu/
-  init.{zsh,bash}        # main orchestrator (source this in your RC file)
-  path.{zsh,bash}        # PATH entries
-  aliases.{zsh,bash}     # alias definitions
-  constants.{zsh,bash}   # environment variable exports
-  tools.{zsh,bash}       # external tool initialization
-  alias-sources.conf      # external alias sources (shell-agnostic, read-only)
-  completions/            # Zsh completion scripts
-  backup/                 # timestamped backups
+  init.{zsh,bash}           # main orchestrator
+  path.{zsh,bash}           # PATH entries
+  aliases.{zsh,bash}        # alias definitions
+  constants.{zsh,bash}      # environment variable exports
+  tools.{zsh,bash}          # external tool initialization
+  alias-sources.conf        # external alias sources (shell-agnostic, read-only)
+  completions/              # Zsh completion scripts
+  backup/                   # timestamped backups
 ```
 
 Shell is detected automatically from `$SHELL`. Override with `--shell bash` or `--shell zsh`.
@@ -308,37 +330,9 @@ dir ~/.config/fabric/patterns fabric --pattern {name}
 - Sources appear as labelled read-only tables after your managed aliases
 - Missing directories are silently skipped
 
-## Documentation
-
-Comprehensive guides for getting the most out of wayu:
-
-| Document | Description |
-|----------|-------------|
-| [MIGRATION.md](./MIGRATION.md) | Migrate from OMZ, Zinit, Sheldon, Antidote, or manual configs |
-| [TOML_GUIDE.md](./TOML_GUIDE.md) | Declarative configuration with profiles, lock files, and templates |
-| [BENCHMARKS.md](./BENCHMARKS.md) | Performance comparison against other shell managers |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | Technical architecture and design decisions |
-
-### Quick Migration Examples
-
-```bash
-# From Oh My Zsh
-wayu plugin add ohmyzsh/ohmyzsh path:plugins/git
-wayu plugin add zsh-users/zsh-autosuggestions
-
-# From Sheldon
-wayu plugin add zsh-users/zsh-syntax-highlighting
-wayu plugin add ~/.config/zsh/my-local-plugin
-
-# From manual .zshrc
-wayu path add ~/.cargo/bin
-wayu alias add ll 'ls -la'
-wayu constants add EDITOR nvim
-```
-
 ## Development
 
-Uses [bld](https://github.com/kakurega/bld), an Odin build system library. No external tools required.
+Uses [bld](https://github.com/dvrd/bld), an Odin build system library. No external tools required.
 
 ```bash
 # Bootstrap (once)
@@ -347,52 +341,17 @@ odin build build -out:build_it
 # Build & test
 ./build_it build          # optimized release build
 ./build_it debug          # debug build with symbols
-./build_it test           # unit tests (434 tests)
+./build_it test           # unit tests (557 tests)
 ./build_it check          # type-check only
 ./build_it dev path list  # debug build + run
 ./build_it clean          # remove build artifacts
 ./build_it install        # build + install to /usr/local/bin
 ./build_it help           # show all targets
 
-# Benchmarks & Integration Tests
-./build_it test:all           # unit + integration + benchmark tests
-cd tests/benchmark && ./compare.sh --full
+# Integration Tests
+./build_it test:all           # unit + integration
 cd tests/integration && odin run integration_tests.odin
 ```
-
-## Performance
-
-wayu is the fastest shell environment manager available:
-
-| Manager | 0 Plugins | 10 Plugins | 20 Plugins |
-|---------|-----------|------------|------------|
-| **wayu** | ~15ms | ~35ms | ~50ms |
-| Zinit Turbo | ~25ms | ~50ms | ~80ms |
-| Sheldon | ~30ms | ~60ms | ~100ms |
-| Antidote | ~35ms | ~75ms | ~120ms |
-| OMZ (default) | ~200ms | ~800ms | ~1200ms |
-
-*See [BENCHMARKS.md](./BENCHMARKS.md) for full details and methodology.*
-
-### Benchmark Yourself
-
-```bash
-# Run wayu benchmarks
-cd tests/benchmark && ./compare.sh --full
-
-# Run integration tests
-cd tests/integration && odin run integration_tests.odin
-```
-
-## Architecture
-
-- **~17K lines of Odin**, zero external dependencies
-- **Dual-mode architecture**: CLI (non-interactive, scriptable) and TUI (interactive, Elm Architecture)
-- **Array-based PATH**: centralized `WAYU_PATHS=()` array with single export loop
-- **Fuzzy matching**: Pure Odin implementation with acronym detection, no external dependencies
-- **Input validation**: shell identifier validation, reserved word checking, injection hardening
-- **Memory management**: arena-first allocation, explicit `defer delete()` cleanup, zero leaks under tracking allocator
-- **500+ tests**: unit, integration, benchmarks, and golden-file visual regression
 
 ## License
 
