@@ -94,6 +94,24 @@ jobs:
           echo "RECREATE_TAG=$RECREATE_TAG" >> $GITHUB_OUTPUT
         fi
 
+    - name: Sanity-check existing tag
+      # Fail fast if the target tag already exists on the remote at a different
+      # commit (e.g. stale tag from a prior aborted release). Without this guard
+      # the workflow would commit + push the bump to main, then die on `git tag`,
+      # leaving main with a release commit that has no matching tag.
+      if: steps.version.outputs.SKIP != 'true' && steps.version.outputs.RECREATE_TAG != 'true'
+      run: |
+        VERSION="${{ steps.version.outputs.VERSION }}"
+        git fetch --tags --prune --prune-tags origin
+        if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+          EXISTING=$(git rev-parse "refs/tags/$VERSION")
+          echo "::error::Tag $VERSION already exists at $EXISTING."
+          echo "::error::To recover: delete the stale release with"
+          echo "::error::  gh release delete $VERSION --cleanup-tag --yes"
+          echo "::error::then re-run this workflow with recreate_tag=$VERSION."
+          exit 1
+        fi
+
     - name: Update VERSION in src/main.odin
       if: steps.version.outputs.SKIP != 'true'
       run: |
@@ -111,23 +129,25 @@ jobs:
       run: |
         git config user.name  "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        
-        # Only commit if we're not recreating a tag
-        if [ "${{ steps.version.outputs.RECREATE_TAG }}" != "true" ]; then
-          git add src/main.odin CHANGELOG.md
-          git commit -m "chore: release ${{ steps.version.outputs.VERSION }}" || echo "Commit may already exist"
-          git push origin main
-        else
-          echo "Recreating tag for existing commit"
-        fi
-        
-        # Create/push tag (force if recreating)
+        VERSION="${{ steps.version.outputs.VERSION }}"
+
         if [ "${{ steps.version.outputs.RECREATE_TAG }}" = "true" ]; then
-          git tag -d ${{ steps.version.outputs.VERSION }} 2>/dev/null || true
-          git push origin :refs/tags/${{ steps.version.outputs.VERSION }} 2>/dev/null || true
+          # Recreate path: bump commit already exists on main; just (re)point the tag.
+          echo "Recreating tag $VERSION on existing commit $(git rev-parse HEAD)"
+          git tag -d "$VERSION" 2>/dev/null || true
+          git push origin ":refs/tags/$VERSION" 2>/dev/null || true
+          git tag "$VERSION"
+          git push origin "$VERSION"
+        else
+          # Normal path: push bump commit + tag atomically. If the tag ref
+          # cannot update (stale tag races in, etc.), the branch ref also
+          # does not update — main stays clean and the run can be retried
+          # without manual cleanup.
+          git add src/main.odin CHANGELOG.md
+          git commit -m "chore: release $VERSION"
+          git tag "$VERSION"
+          git push --atomic origin main "$VERSION"
         fi
-        git tag ${{ steps.version.outputs.VERSION }}
-        git push origin ${{ steps.version.outputs.VERSION }}
 
   build-release:
     name: Build ${{ matrix.artifact }}
