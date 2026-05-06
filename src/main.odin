@@ -16,7 +16,7 @@ import tui "tui"
 // Semantic versioning - update with each release.
 // VERSION here is the single source of truth; docs (AGENTS.md, README)
 // should not hardcode a version number that can drift.
-VERSION :: "3.14.1"
+VERSION :: "3.15.0"
 
 // AppContext bundles all mutable program state that used to be scattered
 // globals. It is created once in main() and referenced via g_ctx.
