@@ -89,28 +89,28 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
 	wayu_version_val := get_toml_value(doc, "wayu_version")
 	config.wayu_version = get_string(wayu_version_val, VERSION)
 	
-	// Path config - support [[paths]] array of tables format
+	// [paths] table: name = "/path/to/dir".
 	paths_val := get_toml_value(doc, "paths")
-	if paths_val != nil && paths_val.type == .ARRAY {
-		// Parse [[paths]] array of tables
+	if paths_val != nil && paths_val.type == .TABLE {
 		paths_entries := make([dynamic]string)
-		for path_table in paths_val.arr_val {
-			if path_table.type == .TABLE {
-				if path_val, ok := path_table.table_val["path"]; ok && path_val.type == .STRING {
-					append(&paths_entries, strings.clone(path_val.str_val))
-				}
+		names := make([dynamic]string)
+		defer delete(names)
+		for name, _ in paths_val.table_val { append(&names, name) }
+		// Sort by key for deterministic order.
+		for i := 1; i < len(names); i += 1 {
+			j := i
+			for j > 0 && names[j-1] > names[j] {
+				names[j-1], names[j] = names[j], names[j-1]
+				j -= 1
+			}
+		}
+		for n in names {
+			v := paths_val.table_val[n]
+			if v != nil && v.type == .STRING {
+				append(&paths_entries, strings.clone(v.str_val))
 			}
 		}
 		config.path.entries = paths_entries[:]
-	} else {
-		// Fall back to old format: path.entries
-		path_entries_val := get_toml_value(doc, "path.entries")
-		if path_entries_val != nil {
-			entries, ok := get_string_array(path_entries_val)
-			if ok {
-				config.path.entries = entries
-			}
-		}
 	}
 
 	path_dedup_val := get_toml_value(doc, "path.dedup")
@@ -119,110 +119,28 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
 	path_clean_val := get_toml_value(doc, "path.clean")
 	config.path.clean = get_bool(path_clean_val, false)
 	
-	// Parse aliases - support both formats:
-	// New format: [aliases] section with key = "value" pairs
-	// Old format: [[aliases]] array of tables
+	// [aliases] table: name = "command".
 	aliases_val := get_toml_value(doc, "aliases")
-	if aliases_val != nil {
-		if aliases_val.type == .TABLE {
-			// New format: simple table with key-value pairs
-			for name, cmd_val in aliases_val.table_val {
-				if cmd_val.type == .STRING {
-					alias: TomlAlias
-					alias.name = strings.clone(name)
-					alias.command = strings.clone(cmd_val.str_val)
-					append(&aliases_dyn, alias)
-				}
-			}
-		} else if aliases_val.type == .ARRAY {
-			// Old format: array of tables [[aliases]]
-			for alias_table in aliases_val.arr_val {
-				if alias_table.type != .TABLE {
-					continue
-				}
-				
-				alias: TomlAlias
-				if name_val, ok := alias_table.table_val["name"]; ok && name_val.type == .STRING {
-					alias.name = strings.clone(name_val.str_val)
-				}
-				if cmd_val, ok := alias_table.table_val["command"]; ok && cmd_val.type == .STRING {
-					alias.command = strings.clone(cmd_val.str_val)
-				}
-				if desc_val, ok := alias_table.table_val["description"]; ok && desc_val.type == .STRING {
-					alias.description = strings.clone(desc_val.str_val)
-				}
-				
-				if len(alias.name) > 0 {
-					append(&aliases_dyn, alias)
-				}
-			}
+	if aliases_val != nil && aliases_val.type == .TABLE {
+		for name, cmd_val in aliases_val.table_val {
+			if cmd_val == nil || cmd_val.type != .STRING { continue }
+			alias: TomlAlias
+			alias.name = strings.clone(name)
+			alias.command = strings.clone(cmd_val.str_val)
+			append(&aliases_dyn, alias)
 		}
 	}
 	
-	// Parse constants - support both formats:
-	// New format: [constants] section with NAME = "value" pairs
-	// Old format: [[constants]] array of tables
-	constants_val := get_toml_value(doc, "constants")
-	if constants_val != nil {
-		if constants_val.type == .TABLE {
-			// New format: simple table with key-value pairs
-			for name, val_val in constants_val.table_val {
-				if val_val.type == .STRING {
-					constant: TomlConstant
-					constant.name = strings.clone(name)
-					constant.value = strings.clone(val_val.str_val)
-					constant.export = true  // Default to exported
-					append(&constants_dyn, constant)
-				} else if val_val.type == .TABLE {
-					// Inline table format: CONSTANT = { value = "...", secret = true }
-					constant: TomlConstant
-					constant.name = strings.clone(name)
-					if v, ok := val_val.table_val["value"]; ok && v.type == .STRING {
-						constant.value = strings.clone(v.str_val)
-					}
-					if e, ok := val_val.table_val["export"]; ok {
-						constant.export = get_bool(e, true)
-					} else {
-						constant.export = true
-					}
-					if s, ok := val_val.table_val["secret"]; ok {
-						constant.secret = get_bool(s, false)
-					}
-					if len(constant.value) > 0 {
-						append(&constants_dyn, constant)
-					}
-				}
-			}
-		} else if constants_val.type == .ARRAY {
-			// Old format: array of tables [[constants]]
-			for const_table in constants_val.arr_val {
-				if const_table.type != .TABLE {
-					continue
-				}
-				
-				constant: TomlConstant
-				if name_val, ok := const_table.table_val["name"]; ok && name_val.type == .STRING {
-					constant.name = strings.clone(name_val.str_val)
-				}
-				if val_val, ok := const_table.table_val["value"]; ok && val_val.type == .STRING {
-					constant.value = strings.clone(val_val.str_val)
-				}
-				if export_val, ok := const_table.table_val["export"]; ok {
-					constant.export = get_bool(export_val, true)
-				} else {
-					constant.export = true
-				}
-				if secret_val, ok := const_table.table_val["secret"]; ok {
-					constant.secret = get_bool(secret_val, false)
-				}
-				if desc_val, ok := const_table.table_val["description"]; ok && desc_val.type == .STRING {
-					constant.description = strings.clone(desc_val.str_val)
-				}
-				
-				if len(constant.name) > 0 {
-					append(&constants_dyn, constant)
-				}
-			}
+	// [env] table: NAME = "value". Always exported (no per-entry flags).
+	env_val := get_toml_value(doc, "env")
+	if env_val != nil && env_val.type == .TABLE {
+		for name, val_val in env_val.table_val {
+			if val_val == nil || val_val.type != .STRING { continue }
+			constant: TomlConstant
+			constant.name = strings.clone(name)
+			constant.value = strings.clone(val_val.str_val)
+			constant.export = true
+			append(&constants_dyn, constant)
 		}
 	}
 	

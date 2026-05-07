@@ -3,7 +3,9 @@ package wayu
 
 import "core:c/libc"
 import "core:fmt"
+import "core:mem"
 import "core:os"
+import "core:slice"
 import "core:strings"
 
 // Técnica 1: zsh-defer propio (no requiere plugin externo)
@@ -113,7 +115,7 @@ generate_core_init_v2 :: proc() {
 	fmt.sbprintln(&builder, "# Generado automáticamente por wayu build")
 	fmt.sbprintln(&builder)
 
-	// PATH leído dinámicamente desde [[paths]] en wayu.toml
+	// PATH leído dinámicamente desde [paths] en wayu.toml
 	fmt.sbprintln(&builder, "# === PATH ===")
 	toml_paths := read_wayu_toml_paths()
 	defer {
@@ -170,8 +172,8 @@ defer {
 	}
 	fmt.sbprintln(&builder)
 	
-	// Aliases desde wayu.toml [[aliases]]
-	fmt.sbprintln(&builder, "# === Aliases (from wayu.toml [[aliases]]) ===")
+	// Aliases desde wayu.toml [aliases]
+	fmt.sbprintln(&builder, "# === Aliases (from wayu.toml [aliases]) ===")
 	toml_aliases := read_wayu_toml_aliases()
 	defer {
 		for a in toml_aliases { delete(a.name); delete(a.command) }
@@ -230,25 +232,27 @@ defer {
 	fmt.sbprintfln(&builder, "source \"%s/init-helpers.zsh\" 2>/dev/null || true", g_ctx.wayu_config)
 	fmt.sbprintln(&builder)
 	
-	// Eager tools — loaded immediately in core (e.g. keybinding tools like atuin)
+	// Eager tools — loaded immediately in core (e.g. keybinding tools like atuin).
+	// Only `evalcache`-kind tools may be eager; other recipes are always deferred.
 	tools := read_wayu_toml_tools()
 	defer {
-		for t in tools { delete(t.cmd); delete(t.args) }
+		for &t in tools { destroy_tool_entry(&t) }
 		delete(tools)
 	}
 	
 	eager_count := 0
 	for t in tools {
-		if t.eager { eager_count += 1 }
+		if t.eager && tool_kind_is_evalcache(t.kind) { eager_count += 1 }
 	}
 	if eager_count > 0 {
 		fmt.sbprintln(&builder, "# === Tools (eager — keybindings, immediate) ===")
 		for t in tools {
 			if !t.eager { continue }
+			if !tool_kind_is_evalcache(t.kind) { continue }
 			if len(t.args) > 0 {
-				fmt.sbprintfln(&builder, "_wayu_evalcache %s %s", t.cmd, t.args)
+				fmt.sbprintfln(&builder, "_wayu_evalcache %s %s", t.name, t.args)
 			} else {
-				fmt.sbprintfln(&builder, "_wayu_evalcache %s", t.cmd)
+				fmt.sbprintfln(&builder, "_wayu_evalcache %s", t.name)
 			}
 		}
 		fmt.sbprintln(&builder)
@@ -313,42 +317,50 @@ generate_lazy_init_v2 :: proc() {
 	fmt.sbprintln(&builder, "# init-lazy.zsh - CARGA DIFERIDA")
 	fmt.sbprintln(&builder)
 	
-	// Deferred tools (non-eager) from wayu.toml [[tools]]
+	// Deferred tools (non-eager) from wayu.toml [tools].
+	// Includes evalcache (default) plus heavy lazy recipes: nvm, conda, lazy.
 	tools := read_wayu_toml_tools()
 	defer {
-		for t in tools { delete(t.cmd); delete(t.args) }
+		for &t in tools { destroy_tool_entry(&t) }
 		delete(tools)
 	}
 	
+	// Anything *not* handled in core (eager evalcache) is deferred here.
+	// Counter must mirror the emit predicate so the header doesn't appear
+	// orphaned (or vanish when an unusual eager non-evalcache slips in).
 	deferred_count := 0
 	for t in tools {
-		if !t.eager { deferred_count += 1 }
+		if t.eager && tool_kind_is_evalcache(t.kind) { continue }
+		deferred_count += 1
 	}
 	if deferred_count > 0 {
 		fmt.sbprintln(&builder, "# === Tools (deferred) ===")
 		for t in tools {
-			if t.eager { continue }
-			if len(t.args) > 0 {
-				fmt.sbprintfln(&builder, "_wayu_evalcache %s %s", t.cmd, t.args)
-			} else {
-				fmt.sbprintfln(&builder, "_wayu_evalcache %s", t.cmd)
-			}
+			if t.eager && tool_kind_is_evalcache(t.kind) { continue }
+			emit_tool_recipe(&builder, t)
 		}
 		fmt.sbprintln(&builder)
 	}
-	
+
 	// Environment ya exportado en init-core.zsh desde wayu.toml [env]
 	fmt.sbprintln(&builder)
-	
-	// Aliases ya exportados en init-core.zsh desde wayu.toml [[aliases]]
+
+	// Aliases ya exportados en init-core.zsh desde wayu.toml [aliases]
 	fmt.sbprintln(&builder)
 	fmt.sbprintln(&builder)
-	
+
+	// User escape hatch: tools.zsh handles tool init that wayu doesn't ship a
+	// recipe for. Sourced here (not just init-login.zsh) so non-login shells
+	// — Ghostty / Zellij / tmux panes — also pick up user lazy loaders.
+	fmt.sbprintln(&builder, "# === User tools.zsh (escape hatch for unrecognised tools) ===")
+	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/tools.zsh\" ] && source \"$HOME/.config/wayu/tools.zsh\"")
+	fmt.sbprintln(&builder)
+
 	// Extra config
 	fmt.sbprintln(&builder, "# === Extra config ===")
 	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/extra.zsh\" ] && source \"$HOME/.config/wayu/extra.zsh\"")
 	fmt.sbprintln(&builder)
-	
+
 	content := strings.to_string(builder)
 	_ = os.write_entire_file(path, transmute([]byte)content)
 }
@@ -364,11 +376,9 @@ generate_login_init_v2 :: proc() {
 	
 	fmt.sbprintln(&builder, "#!/usr/bin/env zsh")
 	fmt.sbprintln(&builder, "# init-login.zsh - LOGIN SHELL ONLY")
-	fmt.sbprintln(&builder, "# NVM, Conda, SDKMAN lazy loaders")
-	fmt.sbprintln(&builder)
-	
-	// tools.zsh contiene los lazy loaders pesados
-	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/tools.zsh\" ] && source \"$HOME/.config/wayu/tools.zsh\"")
+	fmt.sbprintln(&builder, "# Reserved for true login-shell init (motd, ssh-agent, etc.).")
+	fmt.sbprintln(&builder, "# Lazy tool loaders (nvm/conda/evalcache/lazy) live in init-lazy.zsh now,")
+	fmt.sbprintln(&builder, "# so they’re available in non-login shells too (Ghostty/Zellij/tmux panes).")
 	fmt.sbprintln(&builder)
 	
 	content := strings.to_string(builder)
@@ -494,7 +504,9 @@ wayu_compile() {
 	zcompile_file(path)
 }
 
-// Lee los [[paths]] de wayu.toml y retorna la lista de rutas
+// Read the [paths] table from wayu.toml. Returns path values in alphabetical
+// order by key (deterministic generation). Non-existent directories are
+// dropped with a warning.
 read_wayu_toml_paths :: proc() -> [dynamic]string {
 	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(config_path)
@@ -503,59 +515,85 @@ read_wayu_toml_paths :: proc() -> [dynamic]string {
 	if !ok { return make([dynamic]string) }
 	defer delete(content)
 
-	paths := make([dynamic]string)
+	// Collect (key, path) pairs and sort by key for deterministic output.
+	KV :: struct { key, val: string }
+	entries := make([dynamic]KV)
+	defer {
+		for e in entries { delete(e.key); delete(e.val) }
+		delete(entries)
+	}
+
 	lines := strings.split(string(content), "\n")
 	defer delete(lines)
 
-	in_paths_section := false
+	in_section := false
 	for line in lines {
 		trimmed := strings.trim_space(line)
+		if trimmed == "[paths]" { in_section = true; continue }
+		if strings.has_prefix(trimmed, "[") { in_section = false; continue }
+		if !in_section { continue }
+		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
 
-		if trimmed == "[[paths]]" {
-			in_paths_section = true
-			continue
-		}
-
-		// Cualquier otro header termina la sección actual
-		if strings.has_prefix(trimmed, "[") {
-			in_paths_section = false
-			continue
-		}
-
-		if in_paths_section && strings.has_prefix(trimmed, "path = ") {
-			value := strings.trim_space(trimmed[7:])
-			if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-				p := value[1 : len(value)-1]
-				if os.exists(p) {
-					append(&paths, strings.clone(p))
-				} else {
-					fmt.eprintf("%s[wayu]%s %s⚠%s %spath does not exist, excluding from path: %s%s%s%s\n", VIBRANT_PRIMARY, RESET_CODE, get_warning(), RESET_CODE, BRIGHT_WHITE, RESET_CODE, BRIGHT_CYAN, p, RESET_CODE)
-				}
-				in_paths_section = false
-			}
-		}
+		eq := strings.index_byte(trimmed, '=')
+		if eq < 1 { continue }
+		key := strings.trim_space(trimmed[:eq])
+		val := strings.trim_space(trimmed[eq+1:])
+		val = strings.trim_prefix(val, `"`)
+		val = strings.trim_suffix(val, `"`)
+		if len(key) == 0 || len(val) == 0 { continue }
+		append(&entries, KV{key = strings.clone(key), val = unescape_toml_string(val)})
 	}
 
+	slice.sort_by(entries[:], proc(a, b: KV) -> bool { return a.key < b.key })
+
+	paths := make([dynamic]string)
+	for e in entries {
+		if os.exists(e.val) {
+			append(&paths, strings.clone(e.val))
+		} else {
+			fmt.eprintf("%s[wayu]%s %s⚠%s %spath does not exist, excluding from path: %s%s%s%s\n", VIBRANT_PRIMARY, RESET_CODE, get_warning(), RESET_CODE, BRIGHT_WHITE, RESET_CODE, BRIGHT_CYAN, e.val, RESET_CODE)
+		}
+	}
 	return paths
 }
 
 
 // ============================================================================
-// Tool init entries from wayu.toml [[tools]]
+// Tool init entries from wayu.toml [tools]
 // ============================================================================
+//
+//   [tools]
+//   zoxide = { kind = "evalcache", args = "init zsh" }
+//   atuin  = { kind = "evalcache", args = "init zsh --disable-up-arrow", eager = true }
+//   nvm    = { kind = "nvm" }
+//   conda  = { kind = "conda" }
+//   sdk    = { kind = "lazy", init_script = "$HOME/.sdkman/bin/sdkman-init.sh", hook_commands = ["sdk"] }
+//
+// Recognised kinds:
+//   evalcache  default; runs `<name> <args>`, caches output, sources cache
+//   nvm        full lazy NVM wrapper (PATH-only default + on-demand load)
+//   conda      lazy conda wrapper (load on first conda/python/pip invocation)
+//   lazy       generic — wraps `hook_commands`, sources `init_script` once
 
 ToolEntry :: struct {
-	cmd:   string,   // e.g. "atuin"
-	args:  string,   // e.g. "init zsh --disable-up-arrow"
-	eager: bool,     // true = load in init-core (keybindings); false = deferred
+	name:          string,    // recipe label; for evalcache also the binary to invoke
+	kind:          string,    // "evalcache" | "nvm" | "conda" | "lazy"
+	args:          string,    // evalcache: extra args (e.g. "init zsh")
+	eager:         bool,      // evalcache: load in init-core instead of init-lazy
+	init_script:   string,    // lazy: path sourced on first hook invocation
+	hook_commands: []string,  // lazy: commands wrapped to trigger load
 }
 
-// Parse [[tools]] from wayu.toml.
-// Format:
-//   [[tools]]
-//   cmd = "atuin"
-//   args = "init zsh --disable-up-arrow"
-//   eager = true
+destroy_tool_entry :: proc(t: ^ToolEntry) {
+	if len(t.name)        > 0 { delete(t.name) }
+	if len(t.kind)        > 0 { delete(t.kind) }
+	if len(t.args)        > 0 { delete(t.args) }
+	if len(t.init_script) > 0 { delete(t.init_script) }
+	for s in t.hook_commands { delete(s) }
+	if len(t.hook_commands) > 0 { delete(t.hook_commands) }
+}
+
+// Caller must destroy_tool_entry each element + `delete` the dynamic array.
 read_wayu_toml_tools :: proc() -> [dynamic]ToolEntry {
 	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(config_path)
@@ -564,68 +602,299 @@ read_wayu_toml_tools :: proc() -> [dynamic]ToolEntry {
 	if !ok { return make([dynamic]ToolEntry) }
 	defer delete(content)
 
+	arena_buf := make([]byte, 256 * 1024)
+	defer delete(arena_buf)
+	arena: mem.Arena
+	mem.arena_init(&arena, arena_buf)
+
+	doc, _ := toml_doc_parse_simple(string(content), &arena)
+	tools_val, has := doc.values["tools"]
+	if !has || tools_val == nil || tools_val.type != .TABLE {
+		return make([dynamic]ToolEntry)
+	}
+
+	// Sort by tool name so the generated init files are deterministic
+	// run-to-run (Odin map iteration order is undefined).
+	names := make([dynamic]string, 0, len(tools_val.table_val))
+	defer delete(names)
+	for name, val in tools_val.table_val {
+		if val == nil || val.type != .TABLE { continue }
+		append(&names, name)
+	}
+	slice.sort(names[:])
+
 	entries := make([dynamic]ToolEntry)
-	lines := strings.split(string(content), "\n")
-	defer delete(lines)
-
-	in_tools := false
-	current_cmd := ""
-	current_args := ""
-	current_eager := false
-
-	flush :: proc(entries: ^[dynamic]ToolEntry, cmd, args: ^string, eager: ^bool) {
-		if len(cmd^) > 0 {
-			append(entries, ToolEntry{
-				cmd   = strings.clone(cmd^),
-				args  = strings.clone(args^),
-				eager = eager^,
-			})
-		}
-		cmd^   = ""
-		args^  = ""
-		eager^ = false
+	for name in names {
+		append(&entries, tool_entry_from_inline_table(name, tools_val.table_val[name]))
 	}
-
-	for line in lines {
-		trimmed := strings.trim_space(line)
-		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
-
-		if trimmed == "[[tools]]" {
-			flush(&entries, &current_cmd, &current_args, &current_eager)
-			in_tools = true
-			continue
-		}
-
-		if strings.has_prefix(trimmed, "[") {
-			if in_tools { flush(&entries, &current_cmd, &current_args, &current_eager) }
-			in_tools = false
-			continue
-		}
-
-		if !in_tools { continue }
-
-		eq_idx := strings.index(trimmed, "=")
-		if eq_idx < 1 { continue }
-
-		key := strings.trim_space(trimmed[:eq_idx])
-		val := strings.trim_space(trimmed[eq_idx+1:])
-		val = strings.trim_prefix(val, `"`)
-		val = strings.trim_suffix(val, `"`)
-		val = strings.trim_prefix(val, "'")
-		val = strings.trim_suffix(val, "'")
-
-		switch key {
-		case "cmd":  current_cmd  = val
-		case "args": current_args = val
-		case "eager":
-			current_eager = val == "true"
-		}
-	}
-
-	if in_tools { flush(&entries, &current_cmd, &current_args, &current_eager) }
-
 	return entries
 }
+
+// `kind` defaults to "evalcache" so terse entries like `zoxide = { args = "init zsh" }` work.
+tool_entry_from_inline_table :: proc(name: string, table: ^TomlValue) -> ToolEntry {
+	entry: ToolEntry
+	entry.name = strings.clone(name)
+	entry.kind = strings.clone("evalcache")
+
+	if v, ok := table.table_val["kind"]; ok && v != nil && v.type == .STRING {
+		delete(entry.kind)
+		entry.kind = strings.clone(v.str_val)
+	}
+	if v, ok := table.table_val["args"]; ok && v != nil && v.type == .STRING {
+		entry.args = strings.clone(v.str_val)
+	}
+	if v, ok := table.table_val["eager"]; ok && v != nil && v.type == .BOOLEAN {
+		entry.eager = v.bool_val
+	}
+	if v, ok := table.table_val["init_script"]; ok && v != nil && v.type == .STRING {
+		entry.init_script = strings.clone(v.str_val)
+	}
+	if v, ok := table.table_val["hook_commands"]; ok && v != nil && v.type == .ARRAY {
+		n := 0
+		for elem in v.arr_val { if elem.type == .STRING { n += 1 } }
+		cmds := make([]string, n)
+		i := 0
+		for elem in v.arr_val {
+			if elem.type == .STRING {
+				cmds[i] = strings.clone(elem.str_val)
+				i += 1
+			}
+		}
+		entry.hook_commands = cmds
+	}
+	return entry
+}
+
+// ============================================================================
+// Tool recipe dispatch + lazy-loader code generation
+// ============================================================================
+
+// `kind` falls back to evalcache when blank — simplifies the terse form
+// `zoxide = { args = "init zsh" }`.
+tool_kind_is_evalcache :: proc(kind: string) -> bool {
+	return len(kind) == 0 || kind == "evalcache"
+}
+
+// Emit the deferred init code for a single tool entry.
+// Eager evalcache tools are handled in init-core; this dispatcher runs from
+// init-lazy and covers everything else (deferred evalcache + heavy recipes).
+emit_tool_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
+	switch {
+	case tool_kind_is_evalcache(t.kind):
+		if len(t.args) > 0 {
+			fmt.sbprintfln(b, "_wayu_evalcache %s %s", t.name, t.args)
+		} else {
+			fmt.sbprintfln(b, "_wayu_evalcache %s", t.name)
+		}
+	case t.kind == "nvm":
+		fmt.sbprintln(b, "# --- recipe: nvm (lazy) ---")
+		fmt.sbprintln(b, RECIPE_NVM_ZSH)
+	case t.kind == "conda":
+		fmt.sbprintln(b, "# --- recipe: conda (lazy) ---")
+		fmt.sbprintln(b, RECIPE_CONDA_ZSH)
+	case t.kind == "lazy":
+		emit_lazy_recipe(b, t)
+	case:
+		fmt.sbprintfln(b, "# wayu: unknown kind %q for tool %q — skipping", t.kind, t.name)
+	}
+}
+
+// Generic lazy recipe: wrap each `hook_commands` entry so the first call
+// sources `init_script` once and re-invokes the original command.
+//
+// Note: Odin's fmt package treats `{` as the start of an indexed verb, so
+// shell brace characters are appended via plain `sbprint` to keep the
+// generated script readable and verb-error-free.
+emit_lazy_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
+	if len(t.init_script) == 0 || len(t.hook_commands) == 0 {
+		fmt.sbprintfln(b, "# wayu: 'lazy' kind for %q needs init_script + hook_commands — skipping", t.name)
+		return
+	}
+
+	ident  := sanitize_ident(t.name)
+	loader := fmt.tprintf("_wayu_lazy_%s_load", ident)
+	flag   := fmt.tprintf("_WAYU_LAZY_%s_LOADED", strings.to_upper(ident))
+
+	fmt.sbprintfln(b, "# --- recipe: lazy (%s) ---", t.name)
+	fmt.sbprint(b, loader)
+	fmt.sbprintln(b, "() {")
+	fmt.sbprintfln(b, "  if (( $%s )); then return; fi", flag)
+	fmt.sbprintfln(b, "  %s=1", flag)
+	fmt.sbprint(b, "  unset -f")
+	for cmd in t.hook_commands { fmt.sbprintf(b, " %s", cmd) }
+	fmt.sbprintln(b, " 2>/dev/null")
+	fmt.sbprint(b, "  [ -s \"")
+	fmt.sbprint(b, t.init_script)
+	fmt.sbprint(b, "\" ] && \\. \"")
+	fmt.sbprint(b, t.init_script)
+	fmt.sbprintln(b, "\"")
+	fmt.sbprintln(b, "}")
+	for cmd in t.hook_commands {
+		fmt.sbprint(b, cmd)
+		fmt.sbprint(b, "() { ")
+		fmt.sbprint(b, loader)
+		fmt.sbprint(b, "; ")
+		fmt.sbprint(b, cmd)
+		fmt.sbprintln(b, " \"$@\" }")
+	}
+}
+
+// Replace anything that isn’t a portable shell-identifier char with `_`.
+// Tool names come from TOML keys so they’re usually fine, but lazy recipes
+// inject them into function names — stay defensive.
+sanitize_ident :: proc(s: string) -> string {
+	buf := make([]byte, len(s), context.temp_allocator)
+	for i := 0; i < len(s); i += 1 {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z',
+		     c >= 'A' && c <= 'Z',
+		     c >= '0' && c <= '9',
+		     c == '_':
+			buf[i] = c
+		case:
+			buf[i] = '_'
+		}
+	}
+	return string(buf)
+}
+
+// Lazy NVM recipe. Mirrors the hand-rolled block we used to ship in the
+// tools.zsh template: prepend the default node version to PATH instantly,
+// wrap nvm/node/npm/npx/corepack so the real nvm.sh (~5000 lines) is only
+// sourced on first nvm call, and switch versions on `cd` into a directory
+// with a .nvmrc / .node-version file via a pure-zsh PATH swap.
+RECIPE_NVM_ZSH :: `_wayu_setup_nvm_lazy() {
+  # Point PATH to NVM's default node (instant, no subprocess).
+  local nvm_default_path="$NVM_DIR/alias/default"
+  if [[ -f "$nvm_default_path" ]]; then
+    local default_version
+    default_version="$(<"$nvm_default_path")"
+    while [[ -f "$NVM_DIR/alias/$default_version" ]]; do
+      default_version="$(<"$NVM_DIR/alias/$default_version")"
+    done
+    if [[ "$default_version" == "node" ]]; then
+      local latest_dir
+      latest_dir="$(ls -d "$NVM_DIR/versions/node/"v* 2>/dev/null | sort -V | tail -1)"
+      [[ -d "$latest_dir/bin" ]] && export PATH="$latest_dir/bin:$PATH"
+    else
+      local node_dir
+      for node_dir in "$NVM_DIR/versions/node/v${default_version}"*(N); do
+        [[ -d "$node_dir/bin" ]] && export PATH="$node_dir/bin:$PATH" && break
+      done
+    fi
+  fi
+
+  _wayu_load_nvm() {
+    if (( $_WAYU_NVM_LOADED )); then return; fi
+    _WAYU_NVM_LOADED=1
+    unset -f nvm node npm npx corepack 2>/dev/null
+    local nvm_sh=""
+    [ -s "$NVM_DIR/nvm.sh" ] && nvm_sh="$NVM_DIR/nvm.sh"
+    [ -z "$nvm_sh" ] && [ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && nvm_sh="/opt/homebrew/opt/nvm/nvm.sh"
+    [ -z "$nvm_sh" ] && [ -s "/usr/local/opt/nvm/nvm.sh" ] && nvm_sh="/usr/local/opt/nvm/nvm.sh"
+    [ -n "$nvm_sh" ] && \. "$nvm_sh"
+    local nvm_completion=""
+    [ -s "$NVM_DIR/bash_completion" ] && nvm_completion="$NVM_DIR/bash_completion"
+    [ -z "$nvm_completion" ] && [ -s "/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm" ] && nvm_completion="/opt/homebrew/opt/nvm/etc/bash_completion.d/nvm"
+    [ -n "$nvm_completion" ] && \. "$nvm_completion"
+    add-zsh-hook -d chpwd _wayu_chpwd_nvmrc 2>/dev/null
+    add-zsh-hook chpwd load-nvmrc 2>/dev/null
+  }
+
+  _wayu_run_node_bin() {
+    local cmd="$1"; shift
+    unset -f "$cmd" 2>/dev/null
+    local bin_path="$(command -v "$cmd" 2>/dev/null)"
+    local _exit_code
+    if [[ -n "$bin_path" ]]; then
+      "$bin_path" "$@"
+      _exit_code=$?
+    else
+      _wayu_load_nvm
+      "$cmd" "$@"
+      _exit_code=$?
+    fi
+    eval "$cmd() { _wayu_run_node_bin $cmd \"\$@\" }"
+    return $_exit_code
+  }
+
+  nvm()      { _wayu_load_nvm; nvm "$@" }
+  node()     { _wayu_run_node_bin node "$@" }
+  npm()      { _wayu_run_node_bin npm "$@" }
+  npx()      { _wayu_run_node_bin npx "$@" }
+  corepack() { _wayu_run_node_bin corepack "$@" }
+
+  _wayu_fast_nvmrc() {
+    local nvmrc_file=""
+    [[ -f ".nvmrc" ]]        && nvmrc_file=".nvmrc"
+    [[ -f ".node-version" ]] && nvmrc_file=".node-version"
+    [[ -z "$nvmrc_file" ]] && return 1
+    local requested
+    requested="$(<"$nvmrc_file")"
+    requested="${requested#v}"
+    requested="${requested## }"
+    requested="${requested%% }"
+    local match_dir=""
+    for node_dir in "$NVM_DIR/versions/node/"v${requested}*(N); do
+      [[ -d "$node_dir/bin" ]] && match_dir="$node_dir"
+    done
+    if [[ -n "$match_dir" ]]; then
+      local -a path_parts new_parts
+      path_parts=("${(@s/:/)PATH}")
+      local nvm_prefix="$NVM_DIR/versions/node/"
+      for p in "${path_parts[@]}"; do
+        [[ "$p" == ${nvm_prefix}* ]] && continue
+        new_parts+=("$p")
+      done
+      export PATH="$match_dir/bin:${(j/:/)new_parts}"
+      return 0
+    fi
+    return 1
+  }
+
+  _wayu_chpwd_nvmrc() {
+    if [[ -f ".nvmrc" ]] || [[ -f ".node-version" ]]; then
+      _wayu_fast_nvmrc || { _wayu_load_nvm; load-nvmrc 2>/dev/null }
+    fi
+  }
+  autoload -Uz add-zsh-hook 2>/dev/null
+  add-zsh-hook chpwd _wayu_chpwd_nvmrc 2>/dev/null
+  _wayu_fast_nvmrc
+}
+if [ -d "${NVM_DIR:=$HOME/.nvm}" ]; then _wayu_setup_nvm_lazy; fi`
+
+// Lazy Conda recipe. Conda's own `conda init` block spawns Python at every
+// shell start (~500ms); this version defers that work until the first call
+// to conda/python/pip/mamba.
+RECIPE_CONDA_ZSH :: `_wayu_setup_conda_lazy() {
+  local conda_root=""
+  [ -d "$HOME/anaconda3" ]               && conda_root="$HOME/anaconda3"
+  [ -z "$conda_root" ] && [ -d "$HOME/miniconda3" ]    && conda_root="$HOME/miniconda3"
+  [ -z "$conda_root" ] && [ -d "$HOME/miniforge3" ]    && conda_root="$HOME/miniforge3"
+  [ -z "$conda_root" ] && [ -d "/opt/homebrew/anaconda3" ] && conda_root="/opt/homebrew/anaconda3"
+  [ -z "$conda_root" ] && [ -d "/opt/anaconda3" ]      && conda_root="/opt/anaconda3"
+  [ -z "$conda_root" ] && return
+
+  _wayu_load_conda() {
+    if (( $_WAYU_CONDA_LOADED )); then return; fi
+    _WAYU_CONDA_LOADED=1
+    unset -f conda python pip mamba 2>/dev/null
+    local hook_out
+    hook_out="$("$conda_root/bin/conda" shell.zsh hook 2>/dev/null)"
+    if [[ -n "$hook_out" ]]; then
+      eval "$hook_out"
+    elif [ -f "$conda_root/etc/profile.d/conda.sh" ]; then
+      \. "$conda_root/etc/profile.d/conda.sh"
+    fi
+  }
+
+  conda()  { _wayu_load_conda; conda "$@" }
+  python() { _wayu_load_conda; command python "$@" }
+  pip()    { _wayu_load_conda; command pip "$@" }
+  mamba()  { _wayu_load_conda; mamba "$@" }
+}
+_wayu_setup_conda_lazy`
 
 // ============================================================================
 // Env entries from wayu.toml [env]
@@ -651,67 +920,29 @@ read_wayu_toml_env :: proc() -> [dynamic]EnvEntry {
 	in_env := false
 	for line in lines {
 		trimmed := strings.trim_space(line)
-
-		if trimmed == "[env]" || trimmed == "[constants]" {
-			in_env = true
-			continue
-		}
-
-		// `[[constants]]` is the array-of-tables legacy form; skip — it's
-		// parsed line-by-line elsewhere with name/value keys across lines.
-		if trimmed == "[[constants]]" {
-			in_env = false
-			continue
-		}
-
-		// Any other header ends the env/constants section.
-		if strings.has_prefix(trimmed, "[") {
-			in_env = false
-			continue
-		}
-
+		if trimmed == "[env]" { in_env = true; continue }
+		if strings.has_prefix(trimmed, "[") { in_env = false; continue }
 		if !in_env { continue }
-		if strings.has_prefix(trimmed, "#") { continue }
+		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
 
-		eq_idx := strings.index(trimmed, "=")
-		if eq_idx < 1 { continue }
-
-		name := strings.trim_space(trimmed[:eq_idx])
-		value := strings.trim_space(trimmed[eq_idx+1:])
-
-		// Remove quotes
+		eq := strings.index_byte(trimmed, '=')
+		if eq < 1 { continue }
+		name := strings.trim_space(trimmed[:eq])
+		value := strings.trim_space(trimmed[eq+1:])
 		value = strings.trim_prefix(value, `"`)
 		value = strings.trim_suffix(value, `"`)
 		value = strings.trim_prefix(value, "'")
 		value = strings.trim_suffix(value, "'")
-
-		if len(name) > 0 && len(value) > 0 {
-			// Deduplicate: if this name already exists, update in place
-			// (last value wins — [constants] overrides [env] if both present)
-			found := false
-			for &e in entries {
-				if e.name == name {
-					delete(e.value)
-					e.value = strings.clone(value)
-					found = true
-					break
-				}
-			}
-			if !found {
-				append(&entries, EnvEntry{
-					name = strings.clone(name),
-					value = strings.clone(value),
-				})
-			}
-		}
+		if len(name) == 0 || len(value) == 0 { continue }
+		append(&entries, EnvEntry{name = strings.clone(name), value = unescape_toml_string(value)})
 	}
 
+	slice.sort_by(entries[:], proc(a, b: EnvEntry) -> bool { return a.name < b.name })
 	return entries
 }
 
-// Lee los aliases de wayu.toml y retorna lista de (nombre, comando)
-// Soporta ambos formatos: [aliases] tabla y [[aliases]] array of tables.
-// Uses AliasEntry from output.odin
+// Read the [aliases] table from wayu.toml. Returns entries sorted by name
+// for deterministic output. AliasEntry is defined in output.odin.
 read_wayu_toml_aliases :: proc() -> [dynamic]AliasEntry {
 	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
 	defer delete(config_path)
@@ -724,94 +955,32 @@ read_wayu_toml_aliases :: proc() -> [dynamic]AliasEntry {
 	lines := strings.split(string(content), "\n")
 	defer delete(lines)
 
-	in_alias_table := false
-	in_alias_array := false
-	current_name := ""
-	current_cmd := ""
-
+	in_section := false
 	for line in lines {
 		trimmed := strings.trim_space(line)
-		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
-			continue
-		}
+		if trimmed == "[aliases]" { in_section = true; continue }
+		if strings.has_prefix(trimmed, "[") { in_section = false; continue }
+		if !in_section { continue }
+		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
 
-		if trimmed == "[aliases]" {
-			if len(current_name) > 0 {
-				append(&entries, AliasEntry{
-					name = strings.clone(current_name),
-					command = strings.clone(current_cmd),
-				})
-			}
-			current_name = ""
-			current_cmd = ""
-			in_alias_table = true
-			in_alias_array = false
-			continue
-		}
-		if trimmed == "[[aliases]]" {
-			if len(current_name) > 0 {
-				append(&entries, AliasEntry{
-					name = strings.clone(current_name),
-					command = strings.clone(current_cmd),
-				})
-			}
-			current_name = ""
-			current_cmd = ""
-			in_alias_table = false
-			in_alias_array = true
-			continue
-		}
-
-		if strings.has_prefix(trimmed, "[") {
-			if len(current_name) > 0 {
-				append(&entries, AliasEntry{
-					name = strings.clone(current_name),
-					command = strings.clone(current_cmd),
-				})
-			}
-			current_name = ""
-			current_cmd = ""
-			in_alias_table = false
-			in_alias_array = false
-			continue
-		}
-
-		eq_idx := strings.index(trimmed, "=")
-		if eq_idx < 1 { continue }
-
-		name := strings.trim_space(trimmed[:eq_idx])
-		val := strings.trim_space(trimmed[eq_idx+1:])
+		eq := strings.index_byte(trimmed, '=')
+		if eq < 1 { continue }
+		name := strings.trim_space(trimmed[:eq])
+		val := strings.trim_space(trimmed[eq+1:])
 		val = strings.trim_prefix(val, `"`)
 		val = strings.trim_suffix(val, `"`)
 		val = strings.trim_prefix(val, "'")
 		val = strings.trim_suffix(val, "'")
-		// Unescape TOML escape sequences in the value
-		val = unescape_toml_string(val)
-
-		if in_alias_table {
-			append(&entries, AliasEntry{
-				name = strings.clone(name),
-				command = strings.clone(val),
-			})
-			continue
-		}
-
-		if in_alias_array {
-			switch name {
-			case "name":
-				current_name = val
-			case "command":
-				current_cmd = val
-			}
-		}
-	}
-
-	if len(current_name) > 0 {
+		if len(name) == 0 { continue }
+		// unescape_toml_string returns a fresh heap string; transfer ownership
+		// to the entry directly so we don't clone-and-leak.
 		append(&entries, AliasEntry{
-			name = strings.clone(current_name),
-			command = strings.clone(current_cmd),
+			name    = strings.clone(name),
+			command = unescape_toml_string(val),
 		})
 	}
+
+	slice.sort_by(entries[:], proc(a, b: AliasEntry) -> bool { return a.name < b.name })
 	return entries
 }
 
@@ -834,7 +1003,7 @@ generate_core_init_fish :: proc() {
 	fmt.sbprintln(&builder, "# init-core.fish - generated by wayu")
 	fmt.sbprintln(&builder)
 
-	// PATH from [[paths]]
+	// PATH from [paths]
 	fmt.sbprintln(&builder, "# === PATH ===")
 	toml_paths := read_wayu_toml_paths()
 	defer {
@@ -864,8 +1033,8 @@ generate_core_init_fish :: proc() {
 	}
 	fmt.sbprintln(&builder)
 
-	// Aliases from [[aliases]]
-	fmt.sbprintln(&builder, "# === Aliases (from wayu.toml [[aliases]]) ===")
+	// Aliases from [aliases]
+	fmt.sbprintln(&builder, "# === Aliases (from wayu.toml [aliases]) ===")
 	toml_aliases := read_wayu_toml_aliases()
 	defer {
 		for a in toml_aliases { delete(a.name); delete(a.command) }

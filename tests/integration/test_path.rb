@@ -52,7 +52,7 @@ class PathIntegrationTest
 
     output, status = run_wayu("path add #{test_dir}")
 
-    if status.success? && File.read(@toml_file).include?("path = \"#{test_dir}\"")
+    if status.success? && File.read(@toml_file).include?("= \"#{test_dir}\"")
       puts "✓"
       @passed += 1
     else
@@ -72,7 +72,7 @@ class PathIntegrationTest
     test_dirs.each { |dir| run_wayu("path add #{dir}") }
 
     path_content = File.read(@toml_file)
-    all_present = test_dirs.all? { |dir| path_content.include?("path = \"#{dir}\"") }
+    all_present = test_dirs.all? { |dir| path_content.include?("= \"#{dir}\"") }
 
     if all_present
       puts "✓"
@@ -268,7 +268,7 @@ class PathIntegrationTest
     fake_path = "/nonexistent/path/for/removal"
     output, status = run_wayu("path rm #{fake_path}")
 
-    if output.include?("not found") || output.include?("does not exist")
+    if output.include?("not found") || output.include?("does not exist") || output.include?("Not found")
       puts "✓"
       @passed += 1
     else

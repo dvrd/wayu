@@ -333,8 +333,9 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 			}
 		}
 
-		// Also parse [env] and [[constants]] sections from raw TOML file
-		// (these are not in the structured TomlConfig)
+		// Also parse the [env] table from the raw TOML file so we pick up
+		// entries that didn't make it into the structured TomlConfig (e.g.
+		// added since the last load).
 		content, file_ok := safe_read_file(toml_file)
 		if file_ok {
 			defer delete(content)
@@ -342,46 +343,15 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 			defer delete(lines)
 
 			in_env := false
-			in_constants_table := false
-			in_constants_array := false
-			current_name := ""
-			current_value := ""
-
 			for line in lines {
 				trimmed := strings.trim_space(line)
-				if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
-					continue
-				}
+				if trimmed == "[env]" { in_env = true; continue }
+				if strings.has_prefix(trimmed, "[") { in_env = false; continue }
+				if !in_env { continue }
+				if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
 
-				if trimmed == "[env]" {
-					in_env = true
-					in_constants_table = false
-					in_constants_array = false
-					continue
-				}
-				if trimmed == "[constants]" {
-					in_env = false
-					in_constants_table = true
-					in_constants_array = false
-					continue
-				}
-				if trimmed == "[[constants]]" {
-					in_env = false
-					in_constants_table = false
-					in_constants_array = true
-					continue
-				}
-				if strings.has_prefix(trimmed, "[") {
-					in_env = false
-					in_constants_table = false
-					in_constants_array = false
-					continue
-				}
-
-				eq_idx := strings.index(trimmed, "=")
-				if eq_idx < 1 {
-					continue
-				}
+				eq_idx := strings.index_byte(trimmed, '=')
+				if eq_idx < 1 { continue }
 
 				name := strings.trim_space(trimmed[:eq_idx])
 				value := strings.trim_space(trimmed[eq_idx+1:])
@@ -389,24 +359,18 @@ tui_bridge_load_constants :: proc(state: ^tui.TUIState) {
 				value = strings.trim_suffix(value, `"`)
 				value = strings.trim_prefix(value, "'")
 				value = strings.trim_suffix(value, "'")
-				value = unescape_toml_string(value)
+				if len(name) == 0 || len(value) == 0 { continue }
+				if name in wayu_constants { continue }
 
-				// Add entries from [env] and [constants] table sections only
-				// Skip [[constants]] array which is handled above
-				if (in_env || in_constants_table) && len(name) > 0 && len(value) > 0 {
-					// Skip if already processed from structured config
-					if !(name in wayu_constants) {
-						wayu_constants[name] = true
-
-						env_val_maybe := snapshot_env_var(name)
-						is_active := env_val_maybe != nil
-						source := is_active ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
-
-						glyph := get_source_glyph_rune(source, use_color)
-						item := fmt.aprintf("%s %s=%s", glyph, name, value)
-						append(&items, item)
-					}
-				}
+				wayu_constants[name] = true
+				unescaped := unescape_toml_string(value)
+				defer delete(unescaped)
+				env_val_maybe := snapshot_env_var(name)
+				is_active := env_val_maybe != nil
+				source := is_active ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
+				glyph := get_source_glyph_rune(source, use_color)
+				item := fmt.aprintf("%s %s=%s", glyph, name, unescaped)
+				append(&items, item)
 			}
 		}
 

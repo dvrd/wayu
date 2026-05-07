@@ -263,22 +263,105 @@ parse_toml_value_simple :: proc(value_str: string, arena: ^mem.Arena) -> ^TomlVa
         val.arr_val = make([dynamic]TomlValue, allocator = mem.arena_allocator(arena))
         inner := strings.trim_space(s[1:len(s)-1])
         if len(inner) > 0 {
-            elements := strings.split(inner, ",")
+            // Use bracket/quote-aware splitting so nested arrays, inline
+            // tables and strings containing commas survive intact.
+            elements := split_toml_top_level(inner, arena)
             defer delete(elements)
             for elem in elements {
-                elem_trimmed := strings.trim_space(elem)
-                if len(elem_trimmed) > 0 {
-                    parsed_elem := parse_toml_value_simple(elem_trimmed, arena)
+                if len(elem) > 0 {
+                    parsed_elem := parse_toml_value_simple(elem, arena)
                     append(&val.arr_val, parsed_elem^)
                 }
             }
         }
         return val
     }
-    
+
+    // Inline table: { key = value, key2 = value2, ... }
+    // Standard TOML inline-table syntax. Nested arrays/tables and quoted
+    // strings (which may contain commas) are handled by split_toml_top_level.
+    if strings.has_prefix(s, "{") && strings.has_suffix(s, "}") {
+        val.type = .TABLE
+        val.table_val = make(map[string]^TomlValue, allocator = mem.arena_allocator(arena))
+        inner := strings.trim_space(s[1:len(s)-1])
+        if len(inner) > 0 {
+            pairs := split_toml_top_level(inner, arena)
+            defer delete(pairs)
+            for pair in pairs {
+                if len(pair) == 0 { continue }
+                eq_idx := strings.index(pair, "=")
+                if eq_idx <= 0 { continue }
+                key := strings.trim_space(pair[:eq_idx])
+                value_str := strings.trim_space(pair[eq_idx+1:])
+                if len(key) == 0 { continue }
+                child := parse_toml_value_simple(value_str, arena)
+                key_clone := strings.clone(key, allocator = mem.arena_allocator(arena))
+                val.table_val[key_clone] = child
+            }
+        }
+        return val
+    }
+
     val.type = .STRING
     val.str_val = strings.clone(s, allocator = mem.arena_allocator(arena))
     return val
+}
+
+// Split a TOML value-list at top-level commas, ignoring commas that appear
+// inside quoted strings, [arrays], or {inline tables}. The returned slice
+// header is allocated with the default allocator so callers can release it
+// with a plain `delete(parts)`. Substrings are zero-copy views into `s`
+// (which lives in the arena), so no per-element cleanup is required.
+split_toml_top_level :: proc(s: string, arena: ^mem.Arena) -> []string {
+    parts := make([dynamic]string)
+    depth_brk := 0   // [ ] depth
+    depth_brc := 0   // { } depth
+    in_string := false
+    string_char: byte = 0
+    start := 0
+
+    for i := 0; i < len(s); i += 1 {
+        c := s[i]
+        if in_string {
+            // Quote closes the string only if it's not preceded by an odd
+            // number of backslashes — that catches `\"` (escaped) and
+            // `\\"` (literal backslash followed by closing quote) correctly.
+            if c == string_char {
+                bs := 0
+                for j := i - 1; j >= 0 && s[j] == '\\'; j -= 1 { bs += 1 }
+                if bs % 2 == 0 {
+                    in_string = false
+                }
+            }
+            continue
+        }
+        switch c {
+        case '"', '\'':
+            in_string = true
+            string_char = c
+        case '[':
+            depth_brk += 1
+        case ']':
+            if depth_brk > 0 { depth_brk -= 1 }
+        case '{':
+            depth_brc += 1
+        case '}':
+            if depth_brc > 0 { depth_brc -= 1 }
+        case ',':
+            if depth_brk == 0 && depth_brc == 0 {
+                segment := strings.trim_space(s[start:i])
+                append(&parts, segment)
+                start = i + 1
+            }
+        }
+    }
+    if start <= len(s) {
+        tail := strings.trim_space(s[start:])
+        if len(tail) > 0 {
+            append(&parts, tail)
+        }
+    }
+    return parts[:]
 }
 
 get_toml_value_simple :: proc(doc: ^TomlDoc, key: string) -> ^TomlValue {

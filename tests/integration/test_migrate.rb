@@ -91,8 +91,8 @@ class MigrateIntegrationTest
                           toml.include?('gs = "git status"') &&
                           toml.include?('EDITOR = "nvim"') &&
                           toml.include?('LANG = "en_US.UTF-8"') &&
-                          toml.include?('path = "/opt/homebrew/bin"') &&
-                          toml.include?('path = "/usr/local/bin"')
+                          toml.include?('= "/opt/homebrew/bin"') &&
+                          toml.include?('= "/usr/local/bin"')
     archived = File.exist?("#{@config_dir}/aliases.zsh.migrated") &&
                File.exist?("#{@config_dir}/constants.zsh.migrated") &&
                File.exist?("#{@config_dir}/path.zsh.migrated")
@@ -120,7 +120,7 @@ class MigrateIntegrationTest
       [aliases]
       existing = "already here"
 
-      [constants]
+      [env]
       EXISTING_VAR = "keep me"
     TOML
     _, status = run_wayu('migrate')
@@ -128,7 +128,7 @@ class MigrateIntegrationTest
     preserved = toml.include?('existing = "already here"') &&
                 toml.include?('EXISTING_VAR = "keep me"')
     appended  = toml.include?('ll = "ls -la"') && toml.include?('EDITOR = "nvim"') &&
-                toml.include?('path = "/opt/homebrew/bin"')
+                toml.include?('= "/opt/homebrew/bin"')
     if status.success? && preserved && appended
       puts "✓"; @passed += 1
     else

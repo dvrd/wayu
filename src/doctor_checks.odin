@@ -325,9 +325,22 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 		})
 		return
 	}
-	delete(content)
+	defer delete(content)
 
-	// Basic check passed
+	// Schema sanity — if the file still uses [[paths]]/[[aliases]]/[[constants]],
+	// every other wayu command will refuse to run. Surface that here.
+	if header := detect_legacy_schema(string(content)); len(header) > 0 {
+		msg := fmt.aprintf("wayu.toml uses obsolete %s schema — run `wayu migrate --schema`", header)
+		defer delete(msg)
+		append(results, CheckResult{
+			name    = clone_arena("TOML config"),
+			status  = .ERROR,
+			message = clone_arena(msg),
+			fixable = false,
+		})
+		return
+	}
+
 	append(results, CheckResult{
 		name    = clone_arena("TOML config"),
 		status  = .OK,
