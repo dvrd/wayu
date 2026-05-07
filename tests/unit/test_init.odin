@@ -110,13 +110,15 @@ test_path_template_has_add_function :: proc(t: ^testing.T) {
 
 @(test)
 test_tools_template_has_examples :: proc(t: ^testing.T) {
-	// Verify tools template has useful commented examples
-	testing.expect(t, strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "NVM"),
-		"TOOLS_TEMPLATE_ZSH should mention NVM")
-	testing.expect(t, strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "Starship") ||
-	               strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "starship"),
-		"TOOLS_TEMPLATE_ZSH should mention Starship")
-	testing.expect(t, strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "Zoxide") ||
-	               strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "zoxide"),
-		"TOOLS_TEMPLATE_ZSH should mention Zoxide")
+	// tools.zsh is now an escape hatch — the canonical place for tool init
+	// is the [tools] table in wayu.toml, with built-in recipes for
+	// nvm/conda/evalcache/lazy. Verify the template documents that contract
+	// and gives users at least one concrete example to copy.
+	testing.expect(t, strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "[tools]"),
+		"TOOLS_TEMPLATE_ZSH should reference the declarative [tools] table")
+	testing.expect(t, strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "wayu.toml"),
+		"TOOLS_TEMPLATE_ZSH should point users at wayu.toml")
+	testing.expect(t, strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "nvm") ||
+	               strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "NVM"),
+		"TOOLS_TEMPLATE_ZSH should still show an example referencing nvm")
 }

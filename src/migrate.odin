@@ -21,14 +21,21 @@ import "core:os"
 import "core:strings"
 
 handle_migrate_command :: proc(args: []string) {
-	// Check for --from flag (shell migration vs legacy config migration)
+	// Three flows: --schema (toml schema upgrade), --from/--to (shell
+	// migration), or no flag (legacy shell-files → wayu.toml).
 	has_from := false
+	has_schema := false
 
 	for arg in args {
-		if arg == "--from" {
-			has_from = true
-			break
+		switch arg {
+		case "--from":   has_from = true
+		case "--schema": has_schema = true
 		}
+	}
+
+	if has_schema {
+		migrate_toml_schema(g_ctx.dry_run)
+		return
 	}
 
 	// Legacy config migration: `wayu migrate` (no flags) or `wayu migrate --dry-run`.

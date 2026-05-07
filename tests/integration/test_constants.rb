@@ -362,10 +362,10 @@ class ConstantsIntegrationTest
   end
 
   def test_get_constant_from_wayu_toml_constants
-    print "Test 17: Get constant from wayu.toml [constants]... "
+    print "Test 17: Get constant from wayu.toml [env]... "
 
     File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [constants]
+      [env]
       TOML_ONLY = "from_table"
     TOML
 
@@ -385,7 +385,7 @@ class ConstantsIntegrationTest
     print "Test 18: Add constant writes to wayu.toml... "
 
     File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [constants]
+      [env]
       EXISTING = "value"
     TOML
 
@@ -407,7 +407,7 @@ class ConstantsIntegrationTest
     print "Test 19: Remove constant writes to wayu.toml... "
 
     File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [constants]
+      [env]
       REMOVE_ME = "bye"
       KEEP_ME = "stay"
     TOML
@@ -446,7 +446,7 @@ class ConstantsIntegrationTest
     print "Test 14: 'const' alias behaves identically to 'constants'... "
 
     File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [constants]
+      [env]
       BASE = "value"
     TOML
 

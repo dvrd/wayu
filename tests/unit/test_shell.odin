@@ -167,13 +167,19 @@ test_get_init_template :: proc(t: ^testing.T) {
 
 @(test)
 test_get_tools_template :: proc(t: ^testing.T) {
+	// tools.{zsh,bash} is the user escape hatch for tool init that the
+	// declarative [tools] table in wayu.toml doesn't model. Verify the
+	// shebang is correct and the template points users at [tools].
 	bash_template := wayu.get_tools_template(.BASH)
 	testing.expect(t, strings.contains(bash_template, "#!/usr/bin/env bash"), "Bash template should have bash shebang")
-	testing.expect(t, strings.contains(bash_template, "starship init bash"), "Bash template should have bash-specific tool initialization")
+	testing.expect(t, strings.contains(bash_template, "[tools]") ||
+	               strings.contains(bash_template, "starship init bash"),
+	               "Bash template should reference [tools] (or keep a starship example for legacy users)")
 
 	zsh_template := wayu.get_tools_template(.ZSH)
 	testing.expect(t, strings.contains(zsh_template, "#!/usr/bin/env zsh"), "ZSH template should have zsh shebang")
-	testing.expect(t, strings.contains(zsh_template, "starship init zsh"), "ZSH template should have zsh-specific tool initialization")
+	testing.expect(t, strings.contains(zsh_template, "[tools]"),
+	               "ZSH template should point users at the declarative [tools] table")
 }
 
 // Regression test for D2: verify get_*_template routes all four ShellType

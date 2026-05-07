@@ -33,46 +33,69 @@ toml_to_string :: proc(config: TomlConfig) -> string {
 	fmt.sbprintfln(&builder, "wayu_version = \"%s\"", VERSION)
 	fmt.sbprintln(&builder)
 	
-	// Path section
-	fmt.sbprintln(&builder, "[path]")
-	fmt.sbprint(&builder, "entries = [")
-	for entry, i in config.path.entries {
-		if i > 0 {
-			fmt.sbprint(&builder, ", ")
+	// [paths] table: derived-key = "path"
+	if len(config.path.entries) > 0 {
+		fmt.sbprintln(&builder, "[paths]")
+		taken := make(map[string]bool); defer delete(taken)
+		lines := make([dynamic]string); defer { for l in lines { delete(l) }; delete(lines) }
+		for entry in config.path.entries {
+			k := derive_path_key(entry, taken)
+			taken[k] = true
+			escaped := escape_toml_string(entry)
+			append(&lines, fmt.aprintf("%s = \"%s\"", k, escaped))
+			delete(escaped)
 		}
-		fmt.sbprintf(&builder, "\"%s\"", entry)
+		// Sort alphabetically by emitted line (key prefix is the key).
+		for i := 1; i < len(lines); i += 1 {
+			j := i
+			for j > 0 && lines[j-1] > lines[j] {
+				lines[j-1], lines[j] = lines[j], lines[j-1]
+				j -= 1
+			}
+		}
+		for l in lines { fmt.sbprintln(&builder, l) }
+		fmt.sbprintln(&builder)
 	}
-	fmt.sbprintln(&builder, "]")
-	fmt.sbprintfln(&builder, "dedup = %t", config.path.dedup)
-	fmt.sbprintfln(&builder, "clean = %t", config.path.clean)
-	fmt.sbprintln(&builder)
-	
-	// Aliases
+
+	// [aliases] table: name = "command"
 	if len(config.aliases) > 0 {
+		fmt.sbprintln(&builder, "[aliases]")
+		lines := make([dynamic]string); defer { for l in lines { delete(l) }; delete(lines) }
 		for alias in config.aliases {
-			fmt.sbprintln(&builder, "[[aliases]]")
-			fmt.sbprintfln(&builder, "name = \"%s\"", alias.name)
-			fmt.sbprintfln(&builder, "command = \"%s\"", alias.command)
-			if alias.description != "" {
-				fmt.sbprintfln(&builder, "description = \"%s\"", alias.description)
-			}
-			fmt.sbprintln(&builder)
+			escaped := escape_toml_string(alias.command)
+			append(&lines, fmt.aprintf("%s = \"%s\"", alias.name, escaped))
+			delete(escaped)
 		}
+		for i := 1; i < len(lines); i += 1 {
+			j := i
+			for j > 0 && lines[j-1] > lines[j] {
+				lines[j-1], lines[j] = lines[j], lines[j-1]
+				j -= 1
+			}
+		}
+		for l in lines { fmt.sbprintln(&builder, l) }
+		fmt.sbprintln(&builder)
 	}
-	
-	// Constants
+
+	// [env] table: NAME = "value". The legacy `export`/`secret`/`description`
+	// per-entry flags are dropped — every entry is exported, plain string.
 	if len(config.constants) > 0 {
-		for constant in config.constants {
-			fmt.sbprintln(&builder, "[[constants]]")
-			fmt.sbprintfln(&builder, "name = \"%s\"", constant.name)
-			fmt.sbprintfln(&builder, "value = \"%s\"", constant.value)
-			fmt.sbprintfln(&builder, "export = %t", constant.export)
-			fmt.sbprintfln(&builder, "secret = %t", constant.secret)
-			if constant.description != "" {
-				fmt.sbprintfln(&builder, "description = \"%s\"", constant.description)
-			}
-			fmt.sbprintln(&builder)
+		fmt.sbprintln(&builder, "[env]")
+		lines := make([dynamic]string); defer { for l in lines { delete(l) }; delete(lines) }
+		for c in config.constants {
+			escaped := escape_toml_string(c.value)
+			append(&lines, fmt.aprintf("%s = \"%s\"", c.name, escaped))
+			delete(escaped)
 		}
+		for i := 1; i < len(lines); i += 1 {
+			j := i
+			for j > 0 && lines[j-1] > lines[j] {
+				lines[j-1], lines[j] = lines[j], lines[j-1]
+				j -= 1
+			}
+		}
+		for l in lines { fmt.sbprintln(&builder, l) }
+		fmt.sbprintln(&builder)
 	}
 	
 	// Plugins

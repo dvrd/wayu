@@ -33,34 +33,35 @@ handle_path_command :: proc(action: Action, args: []string) {
 		get_toml_path_value(args[0])
 	case .ADD:
 		if len(args) == 0 {
-			print_error("Usage: wayu path add <path>")
+			print_error("Usage: wayu path add [<name>=]<path>")
 			os.exit(EXIT_USAGE)
 		}
-		entry := ConfigEntry{type = .PATH, name = args[0], value = "", line = ""}
+		name_hint, raw_path, _ := parse_path_arg(args[0])
+		entry := ConfigEntry{type = .PATH, name = raw_path, value = "", line = ""}
 		result := validate_path_entry(entry)
 		if !result.valid {
 			print_error(result.error_message)
 			delete(result.error_message)
 			os.exit(EXIT_DATAERR)
 		}
-		expanded := expand_env_vars(args[0])
+		expanded := expand_env_vars(raw_path)
 		defer delete(expanded)
 		if !os.exists(expanded) {
-			print_error("Path does not exist: %s", args[0])
+			print_error("Path does not exist: %s", raw_path)
 			os.exit(EXIT_NOINPUT)
 		}
-		hook_pre_path_add(args[0])
-		if toml_path_add(args[0]) {
+		hook_pre_path_add(raw_path)
+		if toml_path_add(raw_path, name_hint) {
 			regenerate_init_core_silently()
-			print_success("✅ Added to wayu.toml: %s", args[0])
+			print_success("✅ Added to wayu.toml: %s", raw_path)
 			fmt.printfln("   Reload your shell (or 'source ~/.config/wayu/init.%s') to apply.", g_ctx.shell_ext)
-			hook_post_path_add(args[0])
+			hook_post_path_add(raw_path)
 		} else {
 			os.exit(EXIT_IOERR)
 		}
 	case .REMOVE:
 		if len(args) == 0 {
-			print_error("Usage: wayu path remove <path>")
+			print_error("Usage: wayu path remove <name-or-path>")
 			os.exit(EXIT_USAGE)
 		}
 		hook_pre_path_remove(args[0])
@@ -428,23 +429,30 @@ expand_env_vars :: proc(path: string) -> string {
 
 WAYU_TOML :: "wayu.toml"
 
-// Lee los [[paths]] de wayu.toml y retorna la lista (caller debe liberar)
-toml_path_read :: proc() -> [dynamic]string {
+// TomlPathEntry is a (key, value) pair from the [paths] table in wayu.toml.
+// (Distinct from output.odin's PathEntry which models a $PATH directory.)
+TomlPathEntry :: struct {
+	key:  string,
+	path: string,
+}
+
+// Read [paths] table. Aborts (with a migrate-hint) if the file uses the
+// obsolete [[paths]] schema. Caller frees each entry's strings + the slice.
+toml_path_read_keyed :: proc() -> [dynamic]TomlPathEntry {
 	config_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(config_file)
 
-	content, ok := safe_read_file(config_file)
-	if !ok { return make([dynamic]string) }
+	content := must_read_modern_wayu_toml(config_file)
 	defer delete(content)
 
-	paths := make([dynamic]string)
+	entries := make([dynamic]TomlPathEntry)
 	lines := strings.split(string(content), "\n")
 	defer delete(lines)
 
 	in_paths := false
 	for line in lines {
 		trimmed := strings.trim_space(line)
-		if trimmed == "[[paths]]" {
+		if trimmed == "[paths]" {
 			in_paths = true
 			continue
 		}
@@ -452,16 +460,33 @@ toml_path_read :: proc() -> [dynamic]string {
 			in_paths = false
 			continue
 		}
-		if in_paths && strings.has_prefix(trimmed, "path = ") {
-			value := strings.trim_space(trimmed[7:])
-			if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-				append(&paths, strings.clone(value[1:len(value)-1]))
-				in_paths = false
-			}
-		}
-	}
+		if !in_paths { continue }
+		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
 
-	return paths
+		eq := strings.index_byte(trimmed, '=')
+		if eq < 1 { continue }
+		key := strings.trim_space(trimmed[:eq])
+		val := strings.trim_space(trimmed[eq+1:])
+		val = strings.trim_prefix(val, `"`)
+		val = strings.trim_suffix(val, `"`)
+		if len(key) == 0 || len(val) == 0 { continue }
+		unesc := unescape_toml_string(val)
+		append(&entries, TomlPathEntry{key = strings.clone(key), path = unesc})
+	}
+	return entries
+}
+
+// Convenience: returns just the path values, in declaration order. Free with
+// `for p in paths { delete(p) }; delete(paths)`.
+toml_path_read :: proc() -> [dynamic]string {
+	entries := toml_path_read_keyed()
+	defer {
+		for &e in entries { delete(e.key) }
+		delete(entries)
+	}
+	out := make([dynamic]string)
+	for e in entries { append(&out, e.path) }
+	return out
 }
 
 // read_toml_path_entries - Read PATH entries from TOML as ConfigEntry array
@@ -809,47 +834,70 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 	fmt.println("}")
 }
 
-// Agrega un path al final de wayu.toml
-toml_path_add :: proc(path: string) -> bool {
+// Add a path to wayu.toml's [paths] table. `name_hint` is optional; when
+// empty we derive a key from the basename (`/usr/local/bin` → `local_bin`).
+// Existing path values are preserved; the [paths] table is rewritten
+// alphabetically by key.
+toml_path_add :: proc(path: string, name_hint: string = "") -> bool {
 	config_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(config_file)
 
-	// Verificar duplicado
-	existing := toml_path_read()
+	existing := toml_path_read_keyed()
 	defer {
-		for p in existing { delete(p) }
+		for &e in existing { delete(e.key); delete(e.path) }
 		delete(existing)
 	}
-	for p in existing {
-		if p == path {
-			print_warning("Path already exists in wayu.toml: %s", path)
+
+	for e in existing {
+		if e.path == path {
+			print_warning("Path already exists in wayu.toml: %s (key %q)", path, e.key)
 			return true
 		}
 	}
+
+	taken := make(map[string]bool)
+	defer delete(taken)
+	for e in existing { taken[e.key] = true }
+
+	new_key: string
+	if len(name_hint) > 0 {
+		sanitised := sanitize_path_key(name_hint)
+		defer if len(sanitised) > 0 { delete(sanitised) }
+		if len(sanitised) == 0 {
+			print_error("Invalid name %q (must contain alphanumerics)", name_hint)
+			return false
+		}
+		if sanitised in taken {
+			print_error("Name %q already used in [paths]", sanitised)
+			return false
+		}
+		new_key = strings.clone(sanitised)
+	} else {
+		new_key = derive_path_key(path, taken)
+	}
+	defer delete(new_key)
+
+	// Build sorted body (existing entries + the new one).
+	combined := make([dynamic]TomlPathEntry, 0, len(existing) + 1)
+	defer delete(combined)
+	for e in existing { append(&combined, e) }
+	append(&combined, TomlPathEntry{key = new_key, path = path})
+
+	slice_sort_path_entries(combined[:])
+	body := render_keyed_body(combined[:])
+	defer { for s in body { delete(s) }; delete(body) }
 
 	content, ok := safe_read_file(config_file)
 	if !ok { return false }
 	defer delete(content)
 
-	// Construir nueva entrada
-	new_entry := fmt.aprintf("\n[[paths]]\npath = \"%s\"\n", path)
-	defer delete(new_entry)
-
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-	strings.write_string(&builder, string(content))
-	strings.write_string(&builder, new_entry)
-
-	new_content := strings.clone(strings.to_string(builder))
+	new_content := replace_toml_table_section(string(content), "paths", body)
 	defer delete(new_content)
 
 	if g_ctx.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
-		fmt.printfln("%sWould add to wayu.toml: %s%s", BRIGHT_CYAN, path, RESET)
-		fmt.println()
-		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		fmt.printfln("%sWould add to wayu.toml: %s = %q%s", BRIGHT_CYAN, new_key, path, RESET)
 		return true
 	}
 
@@ -857,73 +905,86 @@ toml_path_add :: proc(path: string) -> bool {
 	return safe_write_file(config_file, transmute([]byte)new_content)
 }
 
-// Elimina un path del wayu.toml
-toml_path_remove :: proc(path: string) -> bool {
+// Remove a path. `target` matches against either a key (`local_bin`) or a
+// raw path value (`/usr/local/bin`). Key match is tried first.
+toml_path_remove :: proc(target: string) -> bool {
 	config_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
 	defer delete(config_file)
+
+	existing := toml_path_read_keyed()
+	defer {
+		for &e in existing { delete(e.key); delete(e.path) }
+		delete(existing)
+	}
+
+	match_idx := -1
+	for e, i in existing {
+		if e.key == target { match_idx = i; break }
+	}
+	if match_idx < 0 {
+		for e, i in existing {
+			if e.path == target { match_idx = i; break }
+		}
+	}
+
+	if match_idx < 0 {
+		if g_ctx.dry_run {
+			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+			fmt.printfln("%sWould remove from wayu.toml: %s (not found)%s", BRIGHT_CYAN, target, RESET)
+			return true
+		}
+		print_error("Not found in wayu.toml [paths]: %s", target)
+		return false
+	}
+
+	removed := existing[match_idx]
+	kept := make([dynamic]TomlPathEntry, 0, len(existing) - 1)
+	defer delete(kept)
+	for e, i in existing {
+		if i == match_idx { continue }
+		append(&kept, e)
+	}
+	slice_sort_path_entries(kept[:])
+	body := render_keyed_body(kept[:])
+	defer { for s in body { delete(s) }; delete(body) }
 
 	content, ok := safe_read_file(config_file)
 	if !ok { return false }
 	defer delete(content)
 
-	lines := strings.split(string(content), "\n")
-	defer delete(lines)
-
-	new_lines := make([dynamic]string)
-	defer {
-		for line in new_lines { delete(line) }
-		delete(new_lines)
-	}
-
-	found := false
-	i := 0
-	for i < len(lines) {
-		trimmed := strings.trim_space(lines[i])
-		if trimmed == "[[paths]]" {
-			// Buscar la línea path = "..." que sigue
-			j := i + 1
-			for j < len(lines) && strings.trim_space(lines[j]) == "" {
-				j += 1
-			}
-			if j < len(lines) {
-				next := strings.trim_space(lines[j])
-				target := fmt.aprintf("path = \"%s\"", path)
-				is_match := next == target
-				delete(target)
-				if is_match {
-					found = true
-					i = j + 1
-					continue
-				}
-			}
-		}
-		append(&new_lines, strings.clone(lines[i]))
-		i += 1
-	}
-
-	if !found {
-		if g_ctx.dry_run {
-			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-			fmt.println()
-			fmt.printfln("%sWould remove from wayu.toml: %s (not found)%s", BRIGHT_CYAN, path, RESET)
-			return true
-		}
-		print_error("Path not found in wayu.toml: %s", path)
-		return false
-	}
-
-	new_content := strings.join(new_lines[:], "\n")
+	new_content := replace_toml_table_section(string(content), "paths", body)
 	defer delete(new_content)
 
 	if g_ctx.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-		fmt.println()
-		fmt.printfln("%sWould remove from wayu.toml: %s%s", BRIGHT_CYAN, path, RESET)
-		fmt.println()
-		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		fmt.printfln("%sWould remove from wayu.toml: %s = %q%s", BRIGHT_CYAN, removed.key, removed.path, RESET)
 		return true
 	}
 
 	if !create_backup_cli(config_file) { return false }
 	return safe_write_file(config_file, transmute([]byte)new_content)
+}
+
+// Insertion-sort a small slice of TomlPathEntry by key. We want stable, no deps.
+slice_sort_path_entries :: proc(s: []TomlPathEntry) {
+	for i := 1; i < len(s); i += 1 {
+		j := i
+		for j > 0 && s[j-1].key > s[j].key {
+			s[j-1], s[j] = s[j], s[j-1]
+			j -= 1
+		}
+	}
+}
+
+// Render `entries` as `key = "value"` lines. The path value is escaped so
+// pathological inputs (`"`, `\`, newlines) can't inject TOML structure.
+// Caller frees each line + slice.
+render_keyed_body :: proc(entries: []TomlPathEntry) -> []string {
+	out := make([]string, len(entries))
+	for e, i in entries {
+		escaped := escape_toml_string(e.path)
+		out[i] = fmt.aprintf(`%s = "%s"`, e.key, escaped)
+		delete(escaped)
+	}
+	return out
 }

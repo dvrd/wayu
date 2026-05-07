@@ -29,64 +29,56 @@ wayu_version = "3.4.0"
 @(test)
 test_toml_parse_path_config :: proc(t: ^testing.T) {
     content := `
-[path]
-entries = ["/usr/local/bin", "$HOME/.cargo/bin"]
-dedup = true
-clean = false
+[paths]
+local_bin = "/usr/local/bin"
+cargo_bin = "$HOME/.cargo/bin"
 `
     config, ok := wayu.toml_parse(content)
     defer wayu.cleanup_toml_config(&config)
-    
+
     testing.expect(t, ok, "Path config parsing should succeed")
     testing.expect(t, len(config.path.entries) == 2, "Should have 2 path entries")
-    testing.expect(t, config.path.dedup == true, "Dedup should be true")
-    testing.expect(t, config.path.clean == false, "Clean should be false")
 }
 
 @(test)
 test_toml_parse_aliases :: proc(t: ^testing.T) {
     content := `
-[[aliases]]
-name = "ll"
-command = "ls -la"
-description = "List all files"
-
-[[aliases]]
-name = "gcm"
-command = "git commit -m"
+[aliases]
+ll  = "ls -la"
+gcm = "git commit -m"
 `
     config, ok := wayu.toml_parse(content)
-    fmt.printfln("[DEBUG] Parsed %d aliases", len(config.aliases))
     defer wayu.cleanup_toml_config(&config)
-    
+
     testing.expect(t, ok, "Alias parsing should succeed")
     testing.expect(t, len(config.aliases) == 2, "Should have 2 aliases")
-    testing.expect(t, config.aliases[0].name == "ll", "First alias name should be 'll'")
-    testing.expect(t, config.aliases[0].command == "ls -la", "First alias command should be 'ls -la'")
+    // Map iteration order isn't guaranteed; check by name search.
+    found_ll := false
+    for a in config.aliases {
+        if a.name == "ll" && a.command == "ls -la" { found_ll = true; break }
+    }
+    testing.expect(t, found_ll, `Should contain ll = "ls -la"`)
 }
 
 @(test)
 test_toml_parse_constants :: proc(t: ^testing.T) {
     content := `
-[[constants]]
-name = "EDITOR"
-value = "nvim"
-export = true
-secret = false
-
-[[constants]]
-name = "API_KEY"
-value = "secret123"
-secret = true
+[env]
+EDITOR  = "nvim"
+API_KEY = "secret123"
 `
     config, ok := wayu.toml_parse(content)
     defer wayu.cleanup_toml_config(&config)
-    
-    testing.expect(t, ok, "Constant parsing should succeed")
-    testing.expect(t, len(config.constants) == 2, "Should have 2 constants")
-    testing.expect(t, config.constants[0].name == "EDITOR", "First constant should be EDITOR")
-    testing.expect(t, config.constants[0].export == true, "First constant should be exported")
-    testing.expect(t, config.constants[1].secret == true, "Second constant should be secret")
+
+    testing.expect(t, ok, "Env parsing should succeed")
+    testing.expect(t, len(config.constants) == 2, "Should have 2 env entries")
+    found_editor := false
+    for c in config.constants {
+        if c.name == "EDITOR" && c.value == "nvim" && c.export {
+            found_editor = true; break
+        }
+    }
+    testing.expect(t, found_editor, `Should contain EDITOR = "nvim" (exported)`)
 }
 
 @(test)
@@ -168,9 +160,8 @@ test_toml_validate_valid_config :: proc(t: ^testing.T) {
 version = "1.0"
 shell = "zsh"
 
-[[aliases]]
-name = "ll"
-command = "ls -la"
+[aliases]
+ll = "ls -la"
 `
     config, ok := wayu.toml_parse(content)
     defer wayu.cleanup_toml_config(&config)
@@ -205,9 +196,8 @@ test_toml_validate_invalid_alias :: proc(t: ^testing.T) {
     content := `
 version = "1.0"
 
-[[aliases]]
-name = "if"
-command = "echo test"
+[aliases]
+if = "echo test"
 `
     config, ok := wayu.toml_parse(content)
     defer wayu.cleanup_toml_config(&config)
@@ -230,22 +220,22 @@ test_toml_to_string_basic :: proc(t: ^testing.T) {
 version = "1.0"
 shell = "zsh"
 
-[path]
-entries = ["/usr/local/bin"]
-dedup = true
+[paths]
+local_bin = "/usr/local/bin"
 `
     config, ok := wayu.toml_parse(content)
     defer wayu.cleanup_toml_config(&config)
-    
+
     testing.expect(t, ok, "Parsing should succeed")
-    
+
     output := wayu.toml_to_string(config)
     defer delete(output)
-    
+
     testing.expect(t, len(output) > 0, "Output should not be empty")
     testing.expect(t, strings.contains(output, "version = \"1.0\""), "Output should contain version")
-    testing.expect(t, strings.contains(output, "shell = \"zsh\""), "Output should contain shell")
-    testing.expect(t, strings.contains(output, "[path]"), "Output should contain path section")
+    testing.expect(t, strings.contains(output, "shell = \"zsh\""),  "Output should contain shell")
+    testing.expect(t, strings.contains(output, "[paths]"),         "Output should contain [paths] section")
+    testing.expect(t, strings.contains(output, "/usr/local/bin"),  "Output should contain the path value")
 }
 
 // ============================================================================
@@ -257,12 +247,11 @@ test_toml_merge_profiles :: proc(t: ^testing.T) {
     content := `
 version = "1.0"
 
-[path]
-entries = ["/usr/local/bin"]
+[paths]
+local_bin = "/usr/local/bin"
 
-[[aliases]]
-name = "ll"
-command = "ls -la"
+[aliases]
+ll = "ls -la"
 
 [profile.work]
 
@@ -291,8 +280,8 @@ test_toml_merge_nonexistent_profile :: proc(t: ^testing.T) {
     content := `
 version = "1.0"
 
-[path]
-entries = ["/usr/local/bin"]
+[paths]
+local_bin = "/usr/local/bin"
 `
     config, ok := wayu.toml_parse(content)
     defer wayu.cleanup_toml_config(&config)

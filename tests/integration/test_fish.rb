@@ -104,7 +104,7 @@ class FishIntegrationTest
     print "Test 4: path add writes to wayu.toml (fish)... "
     _, status = run_fish('path add /tmp')
     content = File.read(@toml_file)
-    if status.success? && content.include?('path = "/tmp"')
+    if status.success? && content.include?('= "/tmp"') && content.include?('[paths]')
       puts "✓"; @passed += 1
     else
       puts "✗"; puts "  Path not written to wayu.toml under fish"; @failed += 1
@@ -146,7 +146,7 @@ class FishIntegrationTest
     toml = File.read("#{scratch}/.config/wayu/wayu.toml")
     init = File.read("#{scratch}/.config/wayu/init-core.fish")
     toml_ok = toml.include?('g = "git"') && toml.include?('EDITOR = "code --wait"') &&
-              toml.include?('path = "/opt/homebrew/bin"')
+              toml.include?('= "/opt/homebrew/bin"')
     fish_native = init.include?("alias g 'git'") && init.include?('set -gx EDITOR') &&
                   init.include?('set -gx PATH')
     bash_leak  = init.include?('alias g="git"') || init.include?('export EDITOR=')

@@ -32,50 +32,15 @@ read_wayu_toml_constants :: proc() -> []ConfigEntry {
 	defer delete(lines)
 
 	in_env := false
-	in_constants_table := false
-	in_constants_array := false
-	current_name := ""
-	current_value := ""
-
 	for line in lines {
 		trimmed := strings.trim_space(line)
-		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
-			continue
-		}
+		if trimmed == "[env]" { in_env = true; continue }
+		if strings.has_prefix(trimmed, "[") { in_env = false; continue }
+		if !in_env { continue }
+		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
 
-		if trimmed == "[env]" {
-			flush_toml_constant(&entries, &current_name, &current_value)
-			in_env = true
-			in_constants_table = false
-			in_constants_array = false
-			continue
-		}
-		if trimmed == "[constants]" {
-			flush_toml_constant(&entries, &current_name, &current_value)
-			in_env = false
-			in_constants_table = true
-			in_constants_array = false
-			continue
-		}
-		if trimmed == "[[constants]]" {
-			flush_toml_constant(&entries, &current_name, &current_value)
-			in_env = false
-			in_constants_table = false
-			in_constants_array = true
-			continue
-		}
-		if strings.has_prefix(trimmed, "[") {
-			flush_toml_constant(&entries, &current_name, &current_value)
-			in_env = false
-			in_constants_table = false
-			in_constants_array = false
-			continue
-		}
-
-		eq_idx := strings.index(trimmed, "=")
-		if eq_idx < 1 {
-			continue
-		}
+		eq_idx := strings.index_byte(trimmed, '=')
+		if eq_idx < 1 { continue }
 
 		name := strings.trim_space(trimmed[:eq_idx])
 		value := strings.trim_space(trimmed[eq_idx+1:])
@@ -83,41 +48,12 @@ read_wayu_toml_constants :: proc() -> []ConfigEntry {
 		value = strings.trim_suffix(value, `"`)
 		value = strings.trim_prefix(value, "'")
 		value = strings.trim_suffix(value, "'")
-		// Unescape TOML escape sequences in the value
-		value = unescape_toml_string(value)
-
-		// Add entries from both [env] and [constants] sections
-		// Both sections represent wayu-declared environment variables
-		if in_env || in_constants_table {
-			if len(name) > 0 && len(value) > 0 {
-				upsert_toml_constant(&entries, name, value)
-			}
-			continue
-		}
-
-		if in_constants_array {
-			switch name {
-			case "name":
-				current_name = value
-			case "value":
-				current_value = value
-			}
-		}
+		if len(name) == 0 || len(value) == 0 { continue }
+		unescaped := unescape_toml_string(value)
+		defer delete(unescaped) // upsert clones into the entry; this temporary is ours
+		upsert_toml_constant(&entries, name, unescaped)
 	}
-
-	flush_toml_constant(&entries, &current_name, &current_value)
 	return entries[:]
-}
-
-flush_toml_constant :: proc(entries: ^[dynamic]ConfigEntry, current_name, current_value: ^string) {
-	if len(current_name^) == 0 || len(current_value^) == 0 {
-		current_name^ = ""
-		current_value^ = ""
-		return
-	}
-	upsert_toml_constant(entries, current_name^, current_value^)
-	current_name^ = ""
-	current_value^ = ""
 }
 
 upsert_toml_constant :: proc(entries: ^[dynamic]ConfigEntry, name, value: string) {
@@ -199,8 +135,7 @@ strip_toml_constant_sections :: proc(content: string) -> string {
 	for line in lines {
 		trimmed := strings.trim_space(line)
 
-		// Skip both [env] and [constants] sections — we rewrite as a single [env]
-		if trimmed == "[constants]" || trimmed == "[[constants]]" || trimmed == "[env]" {
+		if trimmed == "[env]" {
 			skip_section = true
 			continue
 		}
@@ -245,8 +180,14 @@ write_wayu_toml_constants :: proc(entries: []ConfigEntry) -> bool {
 			strings.write_string(&builder, "\n")
 		}
 
+		// Sort alphabetically by name for stable output.
+		sorted := make([]ConfigEntry, len(entries))
+		defer delete(sorted)
+		copy(sorted, entries)
+		slice.sort_by(sorted, proc(a, b: ConfigEntry) -> bool { return a.name < b.name })
+
 		strings.write_string(&builder, "[env]\n")
-		for entry in entries {
+		for entry in sorted {
 			escaped := escape_toml_string(entry.value)
 			fmt.sbprintfln(&builder, "%s = \"%s\"", entry.name, escaped)
 			delete(escaped)

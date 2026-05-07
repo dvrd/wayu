@@ -68,8 +68,14 @@ write_wayu_toml_aliases :: proc(entries: []ConfigEntry) -> bool {
 			strings.write_string(&builder, "\n")
 		}
 
+		// Sort alphabetically by name for stable output.
+		sorted := make([]ConfigEntry, len(entries))
+		defer delete(sorted)
+		copy(sorted, entries)
+		slice.sort_by(sorted, proc(a, b: ConfigEntry) -> bool { return a.name < b.name })
+
 		strings.write_string(&builder, "[aliases]\n")
-		for entry in entries {
+		for entry in sorted {
 			escaped := escape_toml_string(entry.value)
 			fmt.sbprintfln(&builder, "%s = \"%s\"", entry.name, escaped)
 			delete(escaped)
@@ -108,7 +114,7 @@ strip_toml_alias_sections :: proc(content: string) -> string {
 	for line in lines {
 		trimmed := strings.trim_space(line)
 
-		if trimmed == "[aliases]" || trimmed == "[[aliases]]" {
+		if trimmed == "[aliases]" {
 			skip_section = true
 			continue
 		}

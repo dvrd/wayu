@@ -217,6 +217,26 @@ main :: proc() {
 		return
 	}
 
+	// Hard-break guard: any command that touches wayu.toml refuses to run
+	// while the file still uses the obsolete [[paths]]/[[aliases]]/[[constants]]
+	// schema. The few commands that either don't read the toml (VERSION/HELP)
+	// or are the recovery path itself (MIGRATE) skip this check.
+	needs_modern_toml := true
+	#partial switch parsed.command {
+	case .VERSION, .HELP, .MIGRATE, .UNKNOWN:
+		// pure non-toml commands and the recovery path itself
+		needs_modern_toml = false
+	case .DOCTOR:
+		// doctor explicitly reports the legacy-schema issue itself
+		// (check_toml_config), and we want it to surface other findings too.
+		needs_modern_toml = false
+	}
+	if needs_modern_toml {
+		toml_guard_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+		defer delete(toml_guard_path)
+		enforce_modern_wayu_toml_or_exit(toml_guard_path)
+	}
+
 	switch parsed.command {
 	case .PATH:
 		handle_path_command(parsed.action, parsed.args)
