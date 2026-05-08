@@ -2,7 +2,7 @@ package test_wayu
 
 import "core:testing"
 import "core:strings"
-import tui "../../src/tui"
+import wayu "../../src"
 
 // Helper to count lines in output
 count_lines :: proc(s: string) -> int {
@@ -17,8 +17,8 @@ count_lines :: proc(s: string) -> int {
 // Box component tests
 @(test)
 test_box_small :: proc(t: ^testing.T) {
-	args := tui.ComponentArgs{width = 10, height = 3}
-	output := tui.render_component(.BOX, args)
+	args := wayu.ComponentArgs{width = 10, height = 3}
+	output := wayu.render_component(.BOX, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Box output should not be empty")
@@ -28,8 +28,8 @@ test_box_small :: proc(t: ^testing.T) {
 
 @(test)
 test_box_large :: proc(t: ^testing.T) {
-	args := tui.ComponentArgs{width = 80, height = 24}
-	output := tui.render_component(.BOX, args)
+	args := wayu.ComponentArgs{width = 80, height = 24}
+	output := wayu.render_component(.BOX, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Box output should not be empty")
@@ -40,7 +40,7 @@ test_box_large :: proc(t: ^testing.T) {
 // List item component tests
 @(test)
 test_list_item_unselected :: proc(t: ^testing.T) {
-	args := tui.ComponentArgs{
+	args := wayu.ComponentArgs{
 		width = 40,
 		height = 1,
 		text = strings.clone("Sample item"),
@@ -48,7 +48,7 @@ test_list_item_unselected :: proc(t: ^testing.T) {
 	}
 	defer delete(args.text)
 
-	output := tui.render_component(.LIST_ITEM, args)
+	output := wayu.render_component(.LIST_ITEM, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "List item output should not be empty")
@@ -58,7 +58,7 @@ test_list_item_unselected :: proc(t: ^testing.T) {
 
 @(test)
 test_list_item_selected :: proc(t: ^testing.T) {
-	args := tui.ComponentArgs{
+	args := wayu.ComponentArgs{
 		width = 40,
 		height = 1,
 		text = strings.clone("Selected item"),
@@ -66,7 +66,7 @@ test_list_item_selected :: proc(t: ^testing.T) {
 	}
 	defer delete(args.text)
 
-	output := tui.render_component(.LIST_ITEM, args)
+	output := wayu.render_component(.LIST_ITEM, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "List item output should not be empty")
@@ -77,7 +77,7 @@ test_list_item_selected :: proc(t: ^testing.T) {
 // Header component tests
 @(test)
 test_header_plain :: proc(t: ^testing.T) {
-	args := tui.ComponentArgs{
+	args := wayu.ComponentArgs{
 		width = 60,
 		height = 3,
 		title = strings.clone("Test Header"),
@@ -85,7 +85,7 @@ test_header_plain :: proc(t: ^testing.T) {
 	}
 	defer delete(args.title)
 
-	output := tui.render_component(.HEADER, args)
+	output := wayu.render_component(.HEADER, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Header output should not be empty")
@@ -94,7 +94,7 @@ test_header_plain :: proc(t: ^testing.T) {
 
 @(test)
 test_header_with_emoji_and_count :: proc(t: ^testing.T) {
-	args := tui.ComponentArgs{
+	args := wayu.ComponentArgs{
 		width = 60,
 		height = 3,
 		title = strings.clone("Path Manager"),
@@ -104,7 +104,7 @@ test_header_with_emoji_and_count :: proc(t: ^testing.T) {
 	defer delete(args.title)
 	defer delete(args.emoji)
 
-	output := tui.render_component(.HEADER, args)
+	output := wayu.render_component(.HEADER, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Header output should not be empty")
@@ -116,14 +116,14 @@ test_header_with_emoji_and_count :: proc(t: ^testing.T) {
 // Footer component tests
 @(test)
 test_footer_simple :: proc(t: ^testing.T) {
-	args := tui.ComponentArgs{
+	args := wayu.ComponentArgs{
 		width = 80,
 		height = 3,
 		shortcuts = strings.clone("q=quit • h=help"),
 	}
 	defer delete(args.shortcuts)
 
-	output := tui.render_component(.FOOTER, args)
+	output := wayu.render_component(.FOOTER, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Footer output should not be empty")
@@ -132,14 +132,14 @@ test_footer_simple :: proc(t: ^testing.T) {
 
 @(test)
 test_footer_complex :: proc(t: ^testing.T) {
-	args := tui.ComponentArgs{
+	args := wayu.ComponentArgs{
 		width = 80,
 		height = 3,
 		shortcuts = strings.clone("j/k=nav • enter=select • q=quit • ?=help"),
 	}
 	defer delete(args.shortcuts)
 
-	output := tui.render_component(.FOOTER, args)
+	output := wayu.render_component(.FOOTER, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Footer output should not be empty")
@@ -149,7 +149,7 @@ test_footer_complex :: proc(t: ^testing.T) {
 // Scroll indicator component tests
 @(test)
 test_scroll_indicator_start :: proc(t: ^testing.T) {
-	args := tui.ComponentArgs{
+	args := wayu.ComponentArgs{
 		width = 50,
 		height = 1,
 		start = 1,
@@ -157,7 +157,7 @@ test_scroll_indicator_start :: proc(t: ^testing.T) {
 		total = 50,
 	}
 
-	output := tui.render_component(.SCROLL_INDICATOR, args)
+	output := wayu.render_component(.SCROLL_INDICATOR, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Scroll indicator output should not be empty")
@@ -166,7 +166,7 @@ test_scroll_indicator_start :: proc(t: ^testing.T) {
 
 @(test)
 test_scroll_indicator_middle :: proc(t: ^testing.T) {
-	args := tui.ComponentArgs{
+	args := wayu.ComponentArgs{
 		width = 50,
 		height = 1,
 		start = 21,
@@ -174,7 +174,7 @@ test_scroll_indicator_middle :: proc(t: ^testing.T) {
 		total = 100,
 	}
 
-	output := tui.render_component(.SCROLL_INDICATOR, args)
+	output := wayu.render_component(.SCROLL_INDICATOR, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Scroll indicator output should not be empty")
@@ -184,14 +184,14 @@ test_scroll_indicator_middle :: proc(t: ^testing.T) {
 // Empty state component tests
 @(test)
 test_empty_state_short_message :: proc(t: ^testing.T) {
-	args := tui.ComponentArgs{
+	args := wayu.ComponentArgs{
 		width = 60,
 		height = 10,
 		message = strings.clone("No items found"),
 	}
 	defer delete(args.message)
 
-	output := tui.render_component(.EMPTY_STATE, args)
+	output := wayu.render_component(.EMPTY_STATE, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Empty state output should not be empty")
@@ -200,14 +200,14 @@ test_empty_state_short_message :: proc(t: ^testing.T) {
 
 @(test)
 test_empty_state_long_message :: proc(t: ^testing.T) {
-	args := tui.ComponentArgs{
+	args := wayu.ComponentArgs{
 		width = 80,
 		height = 20,
 		message = strings.clone("No configuration entries found. Add one to get started."),
 	}
 	defer delete(args.message)
 
-	output := tui.render_component(.EMPTY_STATE, args)
+	output := wayu.render_component(.EMPTY_STATE, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Empty state output should not be empty")
@@ -218,8 +218,8 @@ test_empty_state_long_message :: proc(t: ^testing.T) {
 @(test)
 test_parse_component_args_width_height :: proc(t: ^testing.T) {
 	args := []string{"width=40", "height=10"}
-	parsed := tui.parse_component_args(args)
-	defer tui.component_args_destroy(&parsed)
+	parsed := wayu.parse_component_args(args)
+	defer wayu.component_args_destroy(&parsed)
 
 	testing.expect_value(t, parsed.width, 40)
 	testing.expect_value(t, parsed.height, 10)
@@ -228,8 +228,8 @@ test_parse_component_args_width_height :: proc(t: ^testing.T) {
 @(test)
 test_parse_component_args_text :: proc(t: ^testing.T) {
 	args := []string{"text=Sample text", "selected=true"}
-	parsed := tui.parse_component_args(args)
-	defer tui.component_args_destroy(&parsed)
+	parsed := wayu.parse_component_args(args)
+	defer wayu.component_args_destroy(&parsed)
 
 	testing.expect_value(t, parsed.text, "Sample text")
 	testing.expect_value(t, parsed.selected, true)
@@ -238,8 +238,8 @@ test_parse_component_args_text :: proc(t: ^testing.T) {
 @(test)
 test_parse_component_args_count :: proc(t: ^testing.T) {
 	args := []string{"count=42", "start=1", "end=10", "total=100"}
-	parsed := tui.parse_component_args(args)
-	defer tui.component_args_destroy(&parsed)
+	parsed := wayu.parse_component_args(args)
+	defer wayu.component_args_destroy(&parsed)
 
 	testing.expect_value(t, parsed.count, 42)
 	testing.expect_value(t, parsed.start, 1)
@@ -250,24 +250,24 @@ test_parse_component_args_count :: proc(t: ^testing.T) {
 // Component type parsing tests
 @(test)
 test_parse_component_type_valid :: proc(t: ^testing.T) {
-	box_type, ok := tui.parse_component_type("box")
+	box_type, ok := wayu.parse_component_type("box")
 	testing.expect_value(t, ok, true)
-	testing.expect_value(t, box_type, tui.ComponentType.BOX)
+	testing.expect_value(t, box_type, wayu.ComponentType.BOX)
 
-	list_type, ok2 := tui.parse_component_type("list-item")
+	list_type, ok2 := wayu.parse_component_type("list-item")
 	testing.expect_value(t, ok2, true)
-	testing.expect_value(t, list_type, tui.ComponentType.LIST_ITEM)
+	testing.expect_value(t, list_type, wayu.ComponentType.LIST_ITEM)
 
-	header_type, ok3 := tui.parse_component_type("header")
+	header_type, ok3 := wayu.parse_component_type("header")
 	testing.expect_value(t, ok3, true)
-	testing.expect_value(t, header_type, tui.ComponentType.HEADER)
+	testing.expect_value(t, header_type, wayu.ComponentType.HEADER)
 }
 
 @(test)
 test_parse_component_type_invalid :: proc(t: ^testing.T) {
-	_, ok := tui.parse_component_type("invalid")
+	_, ok := wayu.parse_component_type("invalid")
 	testing.expect_value(t, ok, false)
 
-	_, ok2 := tui.parse_component_type("")
+	_, ok2 := wayu.parse_component_type("")
 	testing.expect_value(t, ok2, false)
 }

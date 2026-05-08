@@ -12,7 +12,6 @@ package wayu
 
 import "core:fmt"
 import "core:os"
-import tui "tui"
 
 // Golden file directory
 GOLDEN_DIR :: "tests/golden"
@@ -20,7 +19,7 @@ GOLDEN_DIR :: "tests/golden"
 // Run component test mode
 run_component_testing :: proc(component_name: string, args: []string, snapshot: bool, verify: bool) {
 	// Parse component type
-	component_type, ok := tui.parse_component_type(component_name)
+	component_type, ok := parse_component_type(component_name)
 	if !ok {
 		fmt.eprintfln("ERROR: Unknown component type: %s", component_name)
 		fmt.eprintln("\nAvailable components:")
@@ -34,11 +33,11 @@ run_component_testing :: proc(component_name: string, args: []string, snapshot: 
 	}
 
 	// Parse component arguments
-	component_args := tui.parse_component_args(args)
-	defer tui.component_args_destroy(&component_args)
+	component_args := parse_component_args(args)
+	defer component_args_destroy(&component_args)
 
 	// Render component
-	output := tui.render_component(component_type, component_args)
+	output := render_component(component_type, component_args)
 	defer delete(output)
 
 	// Handle different modes
@@ -61,7 +60,7 @@ run_component_testing :: proc(component_name: string, args: []string, snapshot: 
 }
 
 // Save golden file
-save_golden :: proc(component: string, args: tui.ComponentArgs, output: string) -> bool {
+save_golden :: proc(component: string, args: ComponentArgs, output: string) -> bool {
 	// Ensure directory exists
 	os.make_directory(GOLDEN_DIR)
 
@@ -82,7 +81,7 @@ save_golden :: proc(component: string, args: tui.ComponentArgs, output: string) 
 }
 
 // Compare output against golden file
-compare_golden :: proc(component: string, args: tui.ComponentArgs, output: string) -> bool {
+compare_golden :: proc(component: string, args: ComponentArgs, output: string) -> bool {
 	// Build golden file path
 	filename := fmt.aprintf("%s/%s_%dx%d.txt",
 		GOLDEN_DIR, component, args.width, args.height)

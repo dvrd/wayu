@@ -9,18 +9,18 @@ package test_wayu
 // color must live exclusively in .fg / .bg.
 
 import "core:testing"
-import tui "../../src/tui"
+import wayu "../../src"
 
 @(test)
 test_render_text_styled_stores_no_ansi_bytes :: proc(t: ^testing.T) {
-	screen := tui.screen_create(80, 3)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(80, 3)
+	defer wayu.screen_destroy(&screen)
 
 	// If callers accidentally pass an ANSI-laden string as `text`, the cells
 	// will contain ESC bytes — which is exactly the bug we must never
 	// reintroduce. This test asserts the happy path: a plain rune string
 	// produces only printable cells.
-	tui.render_text_styled(&screen, 0, 0, "○ /some/path", tui.TUI_MUTED)
+	wayu.render_text_styled(&screen, 0, 0, "○ /some/path", wayu.TUI_MUTED)
 
 	for y in 0..<screen.height {
 		for x in 0..<screen.width {
@@ -39,11 +39,11 @@ test_cell_char_is_single_rune_per_column :: proc(t: ^testing.T) {
 	// The diff renderer assumes one cell == one terminal column. Verify that
 	// rendering a plain string advances the logical cursor by exactly one
 	// column per rune, with no cell holding a multi-byte control sequence.
-	screen := tui.screen_create(20, 1)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(20, 1)
+	defer wayu.screen_destroy(&screen)
 
 	input := "abc123"
-	tui.render_text_styled(&screen, 0, 0, input, tui.TUI_PRIMARY)
+	wayu.render_text_styled(&screen, 0, 0, input, wayu.TUI_PRIMARY)
 
 	expected := []rune{'a', 'b', 'c', '1', '2', '3'}
 	for i in 0..<len(expected) {
@@ -69,13 +69,13 @@ test_cell_char_is_single_rune_per_column :: proc(t: ^testing.T) {
 // cannot reappear even if a caller regresses.
 @(test)
 test_render_text_styled_strips_ansi_escape_bytes :: proc(t: ^testing.T) {
-	screen := tui.screen_create(30, 1)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(30, 1)
+	defer wayu.screen_destroy(&screen)
 
 	// "\x1b[32m●\x1b[0m /path" — green-colored glyph followed by a path,
 	// exactly the shape that broke the diff renderer.
 	poisoned := "\x1b[32m●\x1b[0m /path"
-	tui.render_text_styled(&screen, 0, 0, poisoned, tui.TUI_MUTED)
+	wayu.render_text_styled(&screen, 0, 0, poisoned, wayu.TUI_MUTED)
 
 	for x in 0..<screen.width {
 		testing.expect(
@@ -106,11 +106,11 @@ test_render_text_styled_strips_ansi_escape_bytes :: proc(t: ^testing.T) {
 // that contract so a future refactor can't re-introduce inline ANSI.
 @(test)
 test_render_list_item_maps_glyph_to_fg_not_char :: proc(t: ^testing.T) {
-	screen := tui.screen_create(60, 1)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(60, 1)
+	defer wayu.screen_destroy(&screen)
 
 	// Realistic TUI input: glyph rune + space + text, no ANSI.
-	tui.render_list_item(&screen, 2, 0, "● /some/path", 50, false)
+	wayu.render_list_item(&screen, 2, 0, "● /some/path", 50, false)
 
 	// No ESC byte may appear anywhere after rendering.
 	for x in 0..<screen.width {
@@ -134,7 +134,7 @@ test_render_list_item_maps_glyph_to_fg_not_char :: proc(t: ^testing.T) {
 	if glyph_x >= 0 {
 		testing.expect(
 			t,
-			screen.buffer[0][glyph_x].fg == tui.TUI_SOURCE_WAYU_ACTIVE,
+			screen.buffer[0][glyph_x].fg == wayu.TUI_SOURCE_WAYU_ACTIVE,
 			"Glyph cell must carry source color in Cell.fg, not inline ANSI",
 		)
 	}

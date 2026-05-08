@@ -3,7 +3,7 @@
 // This module provides headless rendering and testing for individual TUI components.
 // Used by component_test.odin for CLI-based visual regression testing.
 
-package wayu_tui
+package wayu
 
 import "core:fmt"
 import "core:strconv"
@@ -136,7 +136,7 @@ render_component :: proc(type: ComponentType, args: ComponentArgs) -> string {
 	switch type {
 	case .BOX:
 		// Render box filling entire screen
-		render_box(&screen, 0, 0, args.width, args.height)
+		tui_render_box(&screen, 0, 0, args.width, args.height)
 
 	case .LIST_ITEM:
 		// Render list item with selection indicator

@@ -3,13 +3,13 @@ package test_wayu
 import "core:fmt"
 import "core:testing"
 import "core:strings"
-import tui "../../src/tui"
+import wayu "../../src"
 
 @(test)
 test_screen_create :: proc(t: ^testing.T) {
 	// Test creating screen with correct dimensions
-	screen := tui.screen_create(80, 24)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(80, 24)
+	defer wayu.screen_destroy(&screen)
 
 	testing.expect(t, screen.width == 80, "Screen width should be 80")
 	testing.expect(t, screen.height == 24, "Screen height should be 24")
@@ -38,11 +38,11 @@ test_screen_create :: proc(t: ^testing.T) {
 @(test)
 test_screen_set_cell :: proc(t: ^testing.T) {
 	// Test cell updates at correct position
-	screen := tui.screen_create(80, 24)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(80, 24)
+	defer wayu.screen_destroy(&screen)
 
 	// Set a cell at position (10, 5)
-	test_cell := tui.Cell {
+	test_cell := wayu.Cell {
 		char = 'X',
 		fg   = "\x1b[31m",
 		bg   = "\x1b[42m",
@@ -50,7 +50,7 @@ test_screen_set_cell :: proc(t: ^testing.T) {
 		dim  = false,
 	}
 
-	tui.screen_set_cell(&screen, 10, 5, test_cell)
+	wayu.screen_set_cell(&screen, 10, 5, test_cell)
 
 	// Verify cell was set correctly
 	cell := screen.buffer[5][10]
@@ -71,18 +71,18 @@ test_screen_set_cell :: proc(t: ^testing.T) {
 @(test)
 test_screen_set_cell_bounds :: proc(t: ^testing.T) {
 	// Test that out-of-bounds coordinates are safely ignored
-	screen := tui.screen_create(80, 24)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(80, 24)
+	defer wayu.screen_destroy(&screen)
 
-	test_cell := tui.Cell{char = 'X'}
+	test_cell := wayu.Cell{char = 'X'}
 
 	// Test negative coordinates
-	tui.screen_set_cell(&screen, -1, 5, test_cell)
-	tui.screen_set_cell(&screen, 10, -1, test_cell)
+	wayu.screen_set_cell(&screen, -1, 5, test_cell)
+	wayu.screen_set_cell(&screen, 10, -1, test_cell)
 
 	// Test coordinates beyond dimensions
-	tui.screen_set_cell(&screen, 100, 5, test_cell)
-	tui.screen_set_cell(&screen, 10, 50, test_cell)
+	wayu.screen_set_cell(&screen, 100, 5, test_cell)
+	wayu.screen_set_cell(&screen, 10, 50, test_cell)
 
 	// Verify no cells were modified (all should still be spaces)
 	for y in 0..<screen.height {
@@ -99,18 +99,18 @@ test_screen_set_cell_bounds :: proc(t: ^testing.T) {
 @(test)
 test_screen_clear :: proc(t: ^testing.T) {
 	// Test that clear fills all cells with spaces
-	screen := tui.screen_create(80, 24)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(80, 24)
+	defer wayu.screen_destroy(&screen)
 
 	// Set some cells
 	for i in 0 ..< 10 {
-		tui.screen_set_cell(&screen, i, 0, tui.Cell{char = 'A'})
-		tui.screen_set_cell(&screen, i, 5, tui.Cell{char = 'B', bold = true})
-		tui.screen_set_cell(&screen, i, 10, tui.Cell{char = 'C', fg = "\x1b[31m"})
+		wayu.screen_set_cell(&screen, i, 0, wayu.Cell{char = 'A'})
+		wayu.screen_set_cell(&screen, i, 5, wayu.Cell{char = 'B', bold = true})
+		wayu.screen_set_cell(&screen, i, 10, wayu.Cell{char = 'C', fg = "\x1b[31m"})
 	}
 
 	// Clear the screen
-	tui.screen_clear(&screen)
+	wayu.screen_clear(&screen)
 
 	// Verify all cells are spaces with no attributes
 	for y in 0..<screen.height {
@@ -124,15 +124,15 @@ test_screen_clear :: proc(t: ^testing.T) {
 @(test)
 test_screen_resize_larger :: proc(t: ^testing.T) {
 	// Test resizing to larger dimensions preserves content
-	screen := tui.screen_create(40, 12)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(40, 12)
+	defer wayu.screen_destroy(&screen)
 
 	// Set some content in original screen
-	tui.screen_set_cell(&screen, 5, 5, tui.Cell{char = 'A'})
-	tui.screen_set_cell(&screen, 10, 10, tui.Cell{char = 'B'})
+	wayu.screen_set_cell(&screen, 5, 5, wayu.Cell{char = 'A'})
+	wayu.screen_set_cell(&screen, 10, 10, wayu.Cell{char = 'B'})
 
 	// Resize to larger
-	tui.screen_resize(&screen, 80, 24)
+	wayu.screen_resize(&screen, 80, 24)
 
 	// Verify dimensions changed
 	testing.expect(t, screen.width == 80, "Width should be 80 after resize")
@@ -157,15 +157,15 @@ test_screen_resize_larger :: proc(t: ^testing.T) {
 @(test)
 test_screen_resize_smaller :: proc(t: ^testing.T) {
 	// Test resizing to smaller dimensions
-	screen := tui.screen_create(80, 24)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(80, 24)
+	defer wayu.screen_destroy(&screen)
 
 	// Set content both inside and outside new bounds
-	tui.screen_set_cell(&screen, 5, 5, tui.Cell{char = 'A'})
-	tui.screen_set_cell(&screen, 50, 15, tui.Cell{char = 'B'}) // Will be outside new bounds
+	wayu.screen_set_cell(&screen, 5, 5, wayu.Cell{char = 'A'})
+	wayu.screen_set_cell(&screen, 50, 15, wayu.Cell{char = 'B'}) // Will be outside new bounds
 
 	// Resize to smaller
-	tui.screen_resize(&screen, 40, 12)
+	wayu.screen_resize(&screen, 40, 12)
 
 	// Verify dimensions changed
 	testing.expect(t, screen.width == 40, "Width should be 40 after resize")
@@ -185,16 +185,16 @@ test_screen_resize_smaller :: proc(t: ^testing.T) {
 @(test)
 test_screen_flush_differential :: proc(t: ^testing.T) {
 	// Test that screen_flush only outputs changed cells
-	screen := tui.screen_create(10, 5)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(10, 5)
+	defer wayu.screen_destroy(&screen)
 
 	// Set initial content
-	tui.screen_set_cell(&screen, 0, 0, tui.Cell{char = 'A'})
-	tui.screen_set_cell(&screen, 1, 0, tui.Cell{char = 'B'})
+	wayu.screen_set_cell(&screen, 0, 0, wayu.Cell{char = 'A'})
+	wayu.screen_set_cell(&screen, 1, 0, wayu.Cell{char = 'B'})
 
 	// First flush - should output both cells
 	// We can't easily capture stdout in tests, but we verify the buffers sync
-	tui.screen_flush(&screen)
+	wayu.screen_flush(&screen)
 
 	// Verify prev_buffer now matches buffer (synced after flush)
 	for y in 0..<screen.height {
@@ -208,7 +208,7 @@ test_screen_flush_differential :: proc(t: ^testing.T) {
 	}
 
 	// Change only one cell
-	tui.screen_set_cell(&screen, 0, 0, tui.Cell{char = 'X'})
+	wayu.screen_set_cell(&screen, 0, 0, wayu.Cell{char = 'X'})
 
 	// Verify only one cell is different (would only output one cell)
 	different_count := 0
@@ -229,12 +229,12 @@ test_screen_flush_differential :: proc(t: ^testing.T) {
 @(test)
 test_render_text :: proc(t: ^testing.T) {
 	// Test rendering text at position
-	screen := tui.screen_create(80, 24)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(80, 24)
+	defer wayu.screen_destroy(&screen)
 
 	// Render text
 	test_text := "Hello, TUI!"
-	tui.render_text(&screen, 5, 10, test_text)
+	wayu.render_text(&screen, 5, 10, test_text)
 
 	// Verify text was rendered at correct positions
 	expected := [?]rune{'H', 'e', 'l', 'l', 'o', ',', ' ', 'T', 'U', 'I', '!'}
@@ -261,12 +261,12 @@ test_render_text :: proc(t: ^testing.T) {
 @(test)
 test_render_text_truncation :: proc(t: ^testing.T) {
 	// Test that text is truncated at screen edge
-	screen := tui.screen_create(10, 5)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(10, 5)
+	defer wayu.screen_destroy(&screen)
 
 	// Render text that would exceed screen width
 	long_text := "This is a very long text"
-	tui.render_text(&screen, 5, 2, long_text)
+	wayu.render_text(&screen, 5, 2, long_text)
 
 	// Verify only characters within screen bounds were rendered
 	// Position 5-9 (5 characters): "This " should be filled
@@ -282,11 +282,11 @@ test_render_text_truncation :: proc(t: ^testing.T) {
 @(test)
 test_render_box :: proc(t: ^testing.T) {
 	// Test rendering box with Unicode borders
-	screen := tui.screen_create(80, 24)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(80, 24)
+	defer wayu.screen_destroy(&screen)
 
 	// Render a 10x5 box at position (5, 5)
-	tui.render_box(&screen, 5, 5, 10, 5)
+	wayu.tui_render_box(&screen, 5, 5, 10, 5)
 
 	// Verify corners
 	testing.expect(t, screen.buffer[5][5].char == '┌', "Top-left corner should be '┌'")
@@ -317,13 +317,13 @@ test_render_box :: proc(t: ^testing.T) {
 @(test)
 test_render_box_too_small :: proc(t: ^testing.T) {
 	// Test that boxes smaller than 2x2 are safely ignored
-	screen := tui.screen_create(80, 24)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(80, 24)
+	defer wayu.screen_destroy(&screen)
 
 	// Try to render invalid boxes
-	tui.render_box(&screen, 5, 5, 1, 5) // Width too small
-	tui.render_box(&screen, 5, 5, 5, 1) // Height too small
-	tui.render_box(&screen, 5, 5, 0, 0) // Zero dimensions
+	wayu.tui_render_box(&screen, 5, 5, 1, 5) // Width too small
+	wayu.tui_render_box(&screen, 5, 5, 5, 1) // Height too small
+	wayu.tui_render_box(&screen, 5, 5, 0, 0) // Zero dimensions
 
 	// Verify screen is still all spaces (nothing was rendered)
 	for y in 0..<screen.height {
@@ -340,9 +340,9 @@ test_render_box_too_small :: proc(t: ^testing.T) {
 @(test)
 test_cell_equality :: proc(t: ^testing.T) {
 	// Test that Cell struct equality works correctly for differential rendering
-	cell1 := tui.Cell{char = 'A', fg = "\x1b[31m", bg = "\x1b[42m", bold = true, dim = false}
-	cell2 := tui.Cell{char = 'A', fg = "\x1b[31m", bg = "\x1b[42m", bold = true, dim = false}
-	cell3 := tui.Cell{char = 'B', fg = "\x1b[31m", bg = "\x1b[42m", bold = true, dim = false}
+	cell1 := wayu.Cell{char = 'A', fg = "\x1b[31m", bg = "\x1b[42m", bold = true, dim = false}
+	cell2 := wayu.Cell{char = 'A', fg = "\x1b[31m", bg = "\x1b[42m", bold = true, dim = false}
+	cell3 := wayu.Cell{char = 'B', fg = "\x1b[31m", bg = "\x1b[42m", bold = true, dim = false}
 
 	testing.expect(t, cell1 == cell2, "Identical cells should be equal")
 	testing.expect(t, cell1 != cell3, "Different cells should not be equal")
@@ -351,8 +351,8 @@ test_cell_equality :: proc(t: ^testing.T) {
 @(test)
 test_cursor_tracking :: proc(t: ^testing.T) {
 	// Test that cursor position is tracked correctly
-	screen := tui.screen_create(80, 24)
-	defer tui.screen_destroy(&screen)
+	screen := wayu.screen_create(80, 24)
+	defer wayu.screen_destroy(&screen)
 
 	// Initial cursor position should be (0, 0)
 	testing.expect(t, screen.cursor_x == 0, "Initial cursor_x should be 0")
@@ -366,9 +366,9 @@ test_cursor_tracking :: proc(t: ^testing.T) {
 test_memory_lifecycle :: proc(t: ^testing.T) {
 	// Test creating and destroying multiple screens
 	for i in 0 ..< 10 {
-		screen := tui.screen_create(80, 24)
-		tui.screen_set_cell(&screen, 10, 10, tui.Cell{char = 'X'})
-		tui.screen_destroy(&screen)
+		screen := wayu.screen_create(80, 24)
+		wayu.screen_set_cell(&screen, 10, 10, wayu.Cell{char = 'X'})
+		wayu.screen_destroy(&screen)
 	}
 
 	// No assertion needed - if we don't crash, memory management is correct

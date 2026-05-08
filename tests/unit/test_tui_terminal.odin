@@ -2,12 +2,12 @@ package test_wayu
 
 import "core:testing"
 import "core:fmt"
-import tui "../../src/tui"
+import wayu "../../src"
 
 @(test)
 test_terminal_size_detection :: proc(t: ^testing.T) {
     // Test that get_terminal_size returns positive dimensions
-    width, height, ok := tui.get_terminal_size()
+    width, height, ok := wayu.get_terminal_size()
 
     // Should return positive values (even if using fallback)
     testing.expect(t, width > 0, fmt.tprintf("Width should be positive, got %d", width))
@@ -33,10 +33,10 @@ test_alt_screen_buffer :: proc(t: ^testing.T) {
     // Note: We can't verify the visual effect in unit tests, only that it doesn't crash
 
     // Enter alternate screen
-    tui.enter_alt_screen()
+    wayu.enter_alt_screen()
 
     // Exit alternate screen
-    tui.exit_alt_screen()
+    wayu.exit_alt_screen()
 
     // If we got here without crashing, test passes
     testing.expect(t, true, "Alternate screen buffer operations completed without crash")
@@ -47,13 +47,13 @@ test_signal_handler :: proc(t: ^testing.T) {
     // Test that setup_resize_handler doesn't crash
     // We can't easily trigger SIGWINCH in a unit test, but we can verify setup works
 
-    tui.setup_resize_handler()
+    wayu.setup_resize_handler()
 
     // If we got here without crashing, test passes
     testing.expect(t, true, "Signal handler setup completed without crash")
 
     // Verify the global flag exists and can be accessed
-    initial_state := tui.terminal_resized
+    initial_state := wayu.terminal_resized
     fmt.printf("Initial terminal_resized state: %v\n", initial_state)
 }
 
@@ -62,8 +62,8 @@ test_tui_lifecycle_init :: proc(t: ^testing.T) {
     // Test that TUI lifecycle init doesn't crash
     // Note: This will enter alternate screen, so we need to clean up
 
-    tui.tui_lifecycle_init()
-    defer tui.tui_lifecycle_cleanup()
+    wayu.tui_lifecycle_init()
+    defer wayu.tui_lifecycle_cleanup()
 
     // If we got here without crashing, test passes
     testing.expect(t, true, "TUI lifecycle init completed without crash")
@@ -73,7 +73,7 @@ test_tui_lifecycle_init :: proc(t: ^testing.T) {
 test_tui_lifecycle_cleanup :: proc(t: ^testing.T) {
     // Test that TUI lifecycle cleanup doesn't crash
 
-    tui.tui_lifecycle_cleanup()
+    wayu.tui_lifecycle_cleanup()
 
     // If we got here without crashing, test passes
     testing.expect(t, true, "TUI lifecycle cleanup completed without crash")
@@ -83,8 +83,8 @@ test_tui_lifecycle_cleanup :: proc(t: ^testing.T) {
 test_terminal_size_consistency :: proc(t: ^testing.T) {
     // Test that calling get_terminal_size multiple times returns consistent results
 
-    width1, height1, ok1 := tui.get_terminal_size()
-    width2, height2, ok2 := tui.get_terminal_size()
+    width1, height1, ok1 := wayu.get_terminal_size()
+    width2, height2, ok2 := wayu.get_terminal_size()
 
     testing.expect(t, width1 == width2,
         fmt.tprintf("Width should be consistent: %d vs %d", width1, width2))
@@ -99,7 +99,7 @@ test_fallback_dimensions :: proc(t: ^testing.T) {
     // Test that fallback dimensions are reasonable
     // Even if ioctl fails, we should get 80x24
 
-    width, height, _ := tui.get_terminal_size()
+    width, height, _ := wayu.get_terminal_size()
 
     // Should be either detected size or fallback (80x24)
     // We can't force ioctl to fail in test, but we can verify the values are reasonable

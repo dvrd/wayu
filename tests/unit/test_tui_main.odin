@@ -2,13 +2,13 @@ package test_wayu
 
 import "core:testing"
 import "core:fmt"
-import tui "../../src/tui"
+import wayu "../../src"
 
 // Test: tui_state_init initializes state correctly
 @(test)
 test_tui_state_init :: proc(t: ^testing.T) {
-	state := tui.tui_state_init()
-	defer tui.tui_state_destroy(&state)
+	state := wayu.tui_state_init()
+	defer wayu.tui_state_destroy(&state)
 
 	testing.expect(t, state.current_view == .MAIN_MENU, "Initial view should be MAIN_MENU")
 	testing.expect(t, state.previous_view == .MAIN_MENU, "Previous view should be MAIN_MENU")
@@ -23,11 +23,11 @@ test_tui_state_init :: proc(t: ^testing.T) {
 // Test: tui_state_goto_view changes view correctly
 @(test)
 test_tui_state_goto_view :: proc(t: ^testing.T) {
-	state := tui.tui_state_init()
-	defer tui.tui_state_destroy(&state)
+	state := wayu.tui_state_init()
+	defer wayu.tui_state_destroy(&state)
 
 	// Navigate to PATH view
-	tui.tui_state_goto_view(&state, .PATH_VIEW)
+	wayu.tui_state_goto_view(&state, .PATH_VIEW)
 
 	testing.expect(t, state.current_view == .PATH_VIEW, "Current view should be PATH_VIEW")
 	testing.expect(t, state.previous_view == .MAIN_MENU, "Previous view should be MAIN_MENU")
@@ -39,14 +39,14 @@ test_tui_state_goto_view :: proc(t: ^testing.T) {
 // Test: tui_state_go_back returns to previous view
 @(test)
 test_tui_state_go_back :: proc(t: ^testing.T) {
-	state := tui.tui_state_init()
-	defer tui.tui_state_destroy(&state)
+	state := wayu.tui_state_init()
+	defer wayu.tui_state_destroy(&state)
 
 	// Navigate to PATH view
-	tui.tui_state_goto_view(&state, .PATH_VIEW)
+	wayu.tui_state_goto_view(&state, .PATH_VIEW)
 
 	// Go back
-	tui.tui_state_go_back(&state)
+	wayu.tui_state_go_back(&state)
 
 	testing.expect(t, state.current_view == .MAIN_MENU, "Should return to MAIN_MENU")
 	testing.expect(t, state.previous_view == .PATH_VIEW, "Previous view should now be PATH_VIEW")
@@ -56,52 +56,52 @@ test_tui_state_go_back :: proc(t: ^testing.T) {
 // Test: tui_state_move_selection navigates correctly
 @(test)
 test_tui_state_move_selection :: proc(t: ^testing.T) {
-	state := tui.tui_state_init()
-	defer tui.tui_state_destroy(&state)
+	state := wayu.tui_state_init()
+	defer wayu.tui_state_destroy(&state)
 
 	item_count := 8  // Main menu has 8 items
 
 	// Move down
-	tui.tui_state_move_selection(&state, 1, item_count)
+	wayu.tui_state_move_selection(&state, 1, item_count)
 	testing.expect(t, state.selected_index == 1, "Should move to index 1")
 
 	// Move down again
-	tui.tui_state_move_selection(&state, 1, item_count)
+	wayu.tui_state_move_selection(&state, 1, item_count)
 	testing.expect(t, state.selected_index == 2, "Should move to index 2")
 
 	// Move up
-	tui.tui_state_move_selection(&state, -1, item_count)
+	wayu.tui_state_move_selection(&state, -1, item_count)
 	testing.expect(t, state.selected_index == 1, "Should move back to index 1")
 
 	// Test wrap-around at bottom
 	state.selected_index = 7
-	tui.tui_state_move_selection(&state, 1, item_count)
+	wayu.tui_state_move_selection(&state, 1, item_count)
 	testing.expect(t, state.selected_index == 0, "Should wrap to index 0")
 
 	// Test wrap-around at top
 	state.selected_index = 0
-	tui.tui_state_move_selection(&state, -1, item_count)
+	wayu.tui_state_move_selection(&state, -1, item_count)
 	testing.expect(t, state.selected_index == 7, "Should wrap to index 7")
 }
 
 // Test: get_view_item_count returns correct count
 @(test)
 test_main_get_view_item_count :: proc(t: ^testing.T) {
-	state := tui.tui_state_init()
-	defer tui.tui_state_destroy(&state)
+	state := wayu.tui_state_init()
+	defer wayu.tui_state_destroy(&state)
 
 	// Main menu has 8 items
-	count := tui.get_view_item_count(&state)
+	count := wayu.get_view_item_count(&state)
 	testing.expect(t, count == 8, "Main menu should have 8 items")
 
 	// PATH view (placeholder count)
-	tui.tui_state_goto_view(&state, .PATH_VIEW)
-	count = tui.get_view_item_count(&state)
+	wayu.tui_state_goto_view(&state, .PATH_VIEW)
+	count = wayu.get_view_item_count(&state)
 	testing.expect(t, count > 0, "PATH view should have items")
 
 	// ALIAS view (placeholder count)
-	tui.tui_state_goto_view(&state, .ALIAS_VIEW)
-	count = tui.get_view_item_count(&state)
+	wayu.tui_state_goto_view(&state, .ALIAS_VIEW)
+	count = wayu.get_view_item_count(&state)
 	testing.expect(t, count > 0, "ALIAS view should have items")
 }
 
@@ -110,13 +110,13 @@ test_main_get_view_item_count :: proc(t: ^testing.T) {
 test_parse_key_event_arrows :: proc(t: ^testing.T) {
 	// Up arrow: ESC [ A
 	buf_up := []byte{27, '[', 'A'}
-	key, ok := tui.parse_key_event(buf_up[:], 3)
+	key, ok := wayu.parse_key_event(buf_up[:], 3)
 	testing.expect(t, ok, "Should parse up arrow")
 	testing.expect(t, key.key == .Up, "Should be Up key")
 
 	// Down arrow: ESC [ B
 	buf_down := []byte{27, '[', 'B'}
-	key, ok = tui.parse_key_event(buf_down[:], 3)
+	key, ok = wayu.parse_key_event(buf_down[:], 3)
 	testing.expect(t, ok, "Should parse down arrow")
 	testing.expect(t, key.key == .Down, "Should be Down key")
 }
@@ -125,7 +125,7 @@ test_parse_key_event_arrows :: proc(t: ^testing.T) {
 @(test)
 test_parse_key_event_enter :: proc(t: ^testing.T) {
 	buf := []byte{13}  // Enter key
-	key, ok := tui.parse_key_event(buf[:], 1)
+	key, ok := wayu.parse_key_event(buf[:], 1)
 	testing.expect(t, ok, "Should parse Enter")
 	testing.expect(t, key.key == .Enter, "Should be Enter key")
 }
@@ -134,7 +134,7 @@ test_parse_key_event_enter :: proc(t: ^testing.T) {
 @(test)
 test_parse_key_event_escape :: proc(t: ^testing.T) {
 	buf := []byte{27}  // Escape key
-	key, ok := tui.parse_key_event(buf[:], 1)
+	key, ok := wayu.parse_key_event(buf[:], 1)
 	testing.expect(t, ok, "Should parse Escape")
 	testing.expect(t, key.key == .Escape, "Should be Escape key")
 }
@@ -143,7 +143,7 @@ test_parse_key_event_escape :: proc(t: ^testing.T) {
 @(test)
 test_parse_key_event_ctrl_c :: proc(t: ^testing.T) {
 	buf := []byte{3}  // Ctrl+C
-	key, ok := tui.parse_key_event(buf[:], 1)
+	key, ok := wayu.parse_key_event(buf[:], 1)
 	testing.expect(t, ok, "Should parse Ctrl+C")
 	testing.expect(t, key.key == .Char, "Should be Char key")
 	testing.expect(t, key.char == 'c', "Should be 'c' character")
@@ -155,21 +155,21 @@ test_parse_key_event_ctrl_c :: proc(t: ^testing.T) {
 test_parse_key_event_chars :: proc(t: ^testing.T) {
 	// Test 'j'
 	buf_j := []byte{'j'}
-	key, ok := tui.parse_key_event(buf_j[:], 1)
+	key, ok := wayu.parse_key_event(buf_j[:], 1)
 	testing.expect(t, ok, "Should parse 'j'")
 	testing.expect(t, key.key == .Char, "Should be Char key")
 	testing.expect(t, key.char == 'j', "Should be 'j' character")
 
 	// Test 'k'
 	buf_k := []byte{'k'}
-	key, ok = tui.parse_key_event(buf_k[:], 1)
+	key, ok = wayu.parse_key_event(buf_k[:], 1)
 	testing.expect(t, ok, "Should parse 'k'")
 	testing.expect(t, key.key == .Char, "Should be Char key")
 	testing.expect(t, key.char == 'k', "Should be 'k' character")
 
 	// Test 'q'
 	buf_q := []byte{'q'}
-	key, ok = tui.parse_key_event(buf_q[:], 1)
+	key, ok = wayu.parse_key_event(buf_q[:], 1)
 	testing.expect(t, ok, "Should parse 'q'")
 	testing.expect(t, key.key == .Char, "Should be Char key")
 	testing.expect(t, key.char == 'q', "Should be 'q' character")
@@ -181,7 +181,7 @@ test_parse_key_event_chars :: proc(t: ^testing.T) {
 // Test: Main loop integration - terminal size
 @(test)
 test_main_terminal_size :: proc(t: ^testing.T) {
-	width, height, ok := tui.get_terminal_size()
+	width, height, ok := wayu.get_terminal_size()
 
 	// Should return fallback values if not a terminal
 	testing.expect(t, width > 0, "Width should be positive")

@@ -1,28 +1,15 @@
-// tui_colors.odin - TUI Color System (Phase 1: Color Foundation)
+// tui_colors.odin - TUI TrueColor palette + box-drawing characters
 //
-// ANSI TrueColor (24-bit RGB) palette for terminal UI.
-// Uses \x1b[38;2;R;G;Bm for foreground, \x1b[48;2;R;G;Bm for background.
+// 24-bit RGB foreground/background codes (\x1b[38;2;R;G;Bm / \x1b[48;2;R;G;Bm)
+// for the TUI's hot-pink + teal accent theme. Used only by the TUI render
+// layer; the CLI uses the lower-resolution constants in colors.odin.
 //
-// Color palette: Zellij "dvrd" inspired theme
-// - Hot pink primary for highlights and focus
-// - Teal-cyan secondary for success and info
-// - Dark backgrounds for readability
-// - High contrast for accessibility
-//
-// NOTE: The following `TUI_*` constants are duplicates of `VIBRANT_*` /
-// `BG_*` / `*_CODE` constants in src/colors.odin. Odin's package system
-// does not let us share compile-time constants across the `wayu` and
-// `wayu_tui` packages without a common base package. Until that larger
-// restructure happens (see N1 in thoughts/code_review_2026-04-24.md), the
-// duplication is enforced by a regression test at
-// `tests/unit/test_tui_colors_sync.odin` — if you edit a constant here
-// without updating the matching main-package constant (or vice versa),
-// the `test_tui_color_constants_match_main_package` test will fail.
-//
-// When adding a new TUI color that also exists in the main package, add an
-// assertion to that test so the two cannot silently drift.
+// Note: this file used to also redeclare RESET/BOLD/DIM control codes to
+// work around the old `wayu_tui` package boundary. Since the merge
+// (Candidate 1) the TUI lives in the same package as colors.odin, so the
+// duplicates were removed and the regression sync test retired.
 
-package wayu_tui
+package wayu
 
 // ============================================================================
 // Primary Colors
@@ -97,19 +84,6 @@ TUI_BORDER_NORMAL :: "\x1b[38;2;100;100;100m"  // #646464
 
 // Focused border color - Hot pink for active panel
 TUI_BORDER_FOCUSED :: "\x1b[38;2;228;0;80m"  // #E40050
-
-// ============================================================================
-// Control Codes
-// ============================================================================
-
-// Reset all attributes
-TUI_RESET :: "\x1b[0m"
-
-// Bold text
-TUI_BOLD :: "\x1b[1m"
-
-// Dim text (lower intensity)
-TUI_DIM_CODE :: "\x1b[2m"
 
 // ============================================================================
 // Box Drawing Characters (Unicode)

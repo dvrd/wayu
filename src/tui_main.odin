@@ -1,15 +1,10 @@
-package wayu_tui
+package wayu
 
 import "core:fmt"
 import "base:intrinsics"
 import "core:mem"
 import "core:os"
 import "core:strings"
-
-// Exit codes (BSD sysexits.h compatible)
-EXIT_SUCCESS      :: 0   // Successful termination
-EXIT_GENERAL      :: 1   // General unspecified error
-EXIT_OSERR        :: 71  // System error (can't fork)
 
 // Main TUI entry point
 tui_run :: proc() {
@@ -394,11 +389,11 @@ execute_pending_delete :: proc(state: ^TUIState) {
 	err_msg := ""
 	switch view {
 	case .PATH_VIEW:
-		success, err_msg = tui_delete_path(name)
+		success, err_msg = entry_remove(EntryPath{path = name})
 	case .ALIAS_VIEW:
-		success, err_msg = tui_delete_alias(name)
+		success, err_msg = entry_remove(EntryAlias{name = name})
 	case .CONSTANTS_VIEW:
-		success, err_msg = tui_delete_constant(name)
+		success, err_msg = entry_remove(EntryConst{name = name})
 	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .HOOKS_VIEW, .SETTINGS_VIEW:
 		// No delete for these views
 	}
@@ -451,19 +446,59 @@ tui_render :: proc(state: ^TUIState, screen: ^Screen) {
 		render_main_menu(state, screen)
 
 	case .PATH_VIEW:
-		render_path_view(state, screen)
+		render_list_view(state, screen, ListViewConfig{
+			view_key     = .PATH_VIEW,
+			title        = "PATH CONFIGURATION",
+			count_format = "%d entries",
+			row_kind     = .Single,
+			empty_line_1 = "No PATH entries found",
+			footer       = get_footer_data_view(state.terminal_width),
+		})
 
 	case .ALIAS_VIEW:
-		render_alias_view(state, screen)
+		render_list_view(state, screen, ListViewConfig{
+			view_key     = .ALIAS_VIEW,
+			title        = "ALIASES",
+			count_format = "%d aliases",
+			row_kind     = .Table,
+			col_label_0  = "ALIAS",
+			col_label_1  = "COMMAND",
+			empty_line_1 = "No aliases found",
+			footer       = get_footer_data_view(state.terminal_width),
+		})
 
 	case .CONSTANTS_VIEW:
-		render_constants_view(state, screen)
+		render_list_view(state, screen, ListViewConfig{
+			view_key     = .CONSTANTS_VIEW,
+			title        = "ENVIRONMENT CONSTANTS",
+			count_format = "%d constants",
+			row_kind     = .Table,
+			col_label_0  = "NAME",
+			col_label_1  = "VALUE",
+			empty_line_1 = "No constants found",
+			footer       = get_footer_data_view(state.terminal_width),
+		})
 
 	case .COMPLETIONS_VIEW:
-		render_completions_view(state, screen)
+		render_list_view(state, screen, ListViewConfig{
+			view_key     = .COMPLETIONS_VIEW,
+			title        = "COMPLETIONS",
+			count_format = "%d completion scripts",
+			row_kind     = .Single,
+			empty_line_1 = "No completion scripts found",
+			empty_line_2 = "Add completions with: wayu completions add <name> <file>",
+			footer       = get_footer_readonly_view(state.terminal_width),
+		})
 
 	case .BACKUPS_VIEW:
-		render_backups_view(state, screen)
+		render_list_view(state, screen, ListViewConfig{
+			view_key     = .BACKUPS_VIEW,
+			title        = "BACKUPS",
+			count_format = "%d backups available",
+			row_kind     = .Single,
+			empty_line_1 = "No backups found",
+			footer       = get_footer_backup_view(state.terminal_width),
+		})
 
 	case .PLUGINS_VIEW:
 		render_plugins_view(state, screen)
@@ -749,11 +784,11 @@ execute_add_form :: proc(state: ^TUIState) {
 	err_msg := ""
 	switch view {
 	case .PATH_VIEW:
-		success, err_msg = tui_add_path(val_0)
+		success, err_msg = entry_add(EntryPath{path = val_0})
 	case .ALIAS_VIEW:
-		success, err_msg = tui_add_alias(val_0, val_1)
+		success, err_msg = entry_add(EntryAlias{name = val_0, command = val_1})
 	case .CONSTANTS_VIEW:
-		success, err_msg = tui_add_constant(val_0, val_1)
+		success, err_msg = entry_add(EntryConst{name = val_0, value = val_1})
 	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .HOOKS_VIEW, .SETTINGS_VIEW:
 		// unsupported
 	}

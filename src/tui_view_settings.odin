@@ -1,4 +1,4 @@
-package wayu_tui
+package wayu
 
 import "core:fmt"
 import "core:mem"
@@ -17,7 +17,7 @@ render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
 	// Load settings from bridge (idempotent — only loads once).
-	tui_load_settings_data(state)
+	tui_load_settings(state)
 
 	// Render lines live on context.temp_allocator — automatically freed at
 	// end of frame, so we don't need per-line defer delete churn.
