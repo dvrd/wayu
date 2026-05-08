@@ -1,7 +1,6 @@
 package wayu
 
 import "base:runtime"
-import "core:c"
 import "core:fmt"
 import "core:os"
 import "core:strings"
@@ -11,7 +10,6 @@ import "core:log"
 import "core:mem"
 import "core:sys/posix"
 import "core:time"
-import tui "tui"
 
 // Semantic versioning - update with each release.
 // VERSION here is the single source of truth; docs (AGENTS.md, README)
@@ -115,29 +113,7 @@ tui_launch :: proc() {
 	g_ctx.tui_mode = true
 	defer g_ctx.tui_mode = false
 
-	tui.tui_set_bridge_functions(
-		tui_bridge_load_path,
-		tui_bridge_load_alias,
-		tui_bridge_load_constants,
-		tui_bridge_load_completions,
-		tui_bridge_load_backups,
-		tui_bridge_delete_path,
-		tui_bridge_delete_alias,
-		tui_bridge_delete_constant,
-		tui_bridge_cleanup_backups,
-		tui_bridge_get_path_detail,
-		tui_bridge_add_path,
-		tui_bridge_add_alias,
-		tui_bridge_add_constant,
-		tui_bridge_load_plugins,
-		tui_bridge_enable_plugin,
-		tui_bridge_disable_plugin,
-		tui_bridge_load_registry,
-		tui_bridge_install_plugin,
-		tui_bridge_load_settings,
-	)
-
-	tui.tui_run()
+	tui_run()
 }
 
 main :: proc() {

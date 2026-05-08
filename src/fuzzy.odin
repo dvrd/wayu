@@ -19,6 +19,7 @@ import "core:sys/posix"
 foreign import libc_term "system:c"
 
 STDIN_FILENO :: 0
+STDOUT_FILENO :: 1
 TCSANOW :: 0
 
 // Terminal mode flag constants.
@@ -45,6 +46,7 @@ termios :: struct {
 foreign libc_term {
 	tcgetattr :: proc(fd: c.int, termios_p: ^termios) -> c.int ---
 	tcsetattr :: proc(fd: c.int, optional_actions: c.int, termios_p: ^termios) -> c.int ---
+	isatty :: proc(fd: c.int) -> c.int ---
 }
 
 // Global variable to save terminal state
@@ -73,6 +75,21 @@ enable_raw_mode :: proc() -> bool {
 
 	debug("Terminal set to raw mode")
 	return true
+}
+
+// Check if file descriptor is a TTY
+is_tty :: proc(fd: c.int) -> bool {
+	return isatty(fd) != 0
+}
+
+// Check if stdin is a TTY
+is_stdin_tty :: proc() -> bool {
+	return is_tty(STDIN_FILENO)
+}
+
+// Check if stdout is a TTY
+is_stdout_tty :: proc() -> bool {
+	return is_tty(STDOUT_FILENO)
 }
 
 // Restore terminal to saved state

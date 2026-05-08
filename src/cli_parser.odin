@@ -17,7 +17,6 @@ import "core:mem"
 import "core:os"
 import "core:strings"
 import "base:runtime"
-import tui "tui"
 
 ParsedArgs :: struct {
 	command: Command,

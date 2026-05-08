@@ -22,6 +22,7 @@ InteractiveConfig :: struct {
 	// Async
 	async_rprompt: bool,
 	async_interval: int,
+	rprompt_format:  string,
 
 	// Transient
 	transient_enabled: bool,
@@ -68,7 +69,7 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 
 	// 4. ASYNC RPROMPT
 	if cfg.async_rprompt {
-		generate_async_feature(&builder, cfg.async_interval)
+		generate_async_feature(&builder, cfg.async_interval, cfg.rprompt_format)
 	}
 
 	// 5. TRANSIENT PROMPT
@@ -249,7 +250,7 @@ generate_context_feature :: proc(b: ^strings.Builder) {
 // Async worker runs in background subshell after each command.
 // Fetches: git pending count + context version string.
 // Writes results to a temp file and signals the parent to re-render.
-generate_async_feature :: proc(b: ^strings.Builder, interval: int) {
+generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_format: string) {
 	fmt.sbprintln(b, "# === Feature: Async RPROMPT ===")
 	fmt.sbprintln(b, "typeset -g _WAYU_ASYNC_FD=")
 	fmt.sbprintln(b)
@@ -280,7 +281,17 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int) {
 	fmt.sbprintln(b, "  if [[ -n \"$_WAYU_GIT_BRANCH\" ]]; then")
 	fmt.sbprintln(b, `    git_pending="$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"`) 
 	fmt.sbprintln(b, "    if [[ \"$git_pending\" -gt 0 ]]; then")
-	fmt.sbprintln(b, `      git_pending="%F{242} ✎${git_pending}%f"`)
+	// Apply rprompt_format: DSL conversion + token substitution
+	{
+		rpfmt := dsl_to_zsh_format(rprompt_format)
+		defer delete(rpfmt)
+		rpfmt, _ = strings.replace_all(rpfmt, "{git_pending}", "${git_pending}")
+		rpfmt, _ = strings.replace_all(rpfmt, "{git_branch}", "${_WAYU_GIT_BRANCH}")
+		fmt.sbprint(b, "      git_pending=\"")
+		fmt.sbprint(b, rpfmt)
+		fmt.sbprint(b, "\"")
+		fmt.sbprintln(b)
+	}
 	fmt.sbprintln(b, "    else")
 	fmt.sbprintln(b, `      git_pending=""`)
 	fmt.sbprintln(b, "    fi")
@@ -357,6 +368,7 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 		context_aware = true,
 		async_rprompt = true,
 		async_interval = 2,
+		rprompt_format = "[✎{git_pending}](242)",
 		transient_enabled = true,
 		transient_format = "{dir} {character}",
 	}
@@ -401,6 +413,15 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 		}
 		if strings.contains(trimmed, "transient_enabled") && strings.contains(trimmed, "false") {
 			cfg.transient_enabled = false
+		}
+		if strings.contains(trimmed, "rprompt_format") && strings.contains(trimmed, "=") {
+			eq_idx := strings.index(trimmed, "=")
+			if eq_idx > 0 {
+				value := strings.trim_space(trimmed[eq_idx+1:])
+				value = strings.trim_prefix(value, `"`)
+				value = strings.trim_suffix(value, `"`)
+				if len(value) > 0 { cfg.rprompt_format = value }
+			}
 		}
 	}
 

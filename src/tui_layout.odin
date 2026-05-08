@@ -3,7 +3,7 @@
 // This file defines all layout-related constants to eliminate magic numbers
 // and make the TUI layout calculations self-documenting.
 
-package wayu_tui
+package wayu
 
 // ============================================================================
 // Border Layout Constants
@@ -109,7 +109,7 @@ calculate_border_dimensions :: proc(terminal_width, terminal_height: int) -> (wi
 }
 
 // Calculate max content width inside the border box (for text truncation)
-calculate_content_width :: proc(border_width: int) -> int {
+tui_calculate_content_width :: proc(border_width: int) -> int {
 	// border_width includes left+right border chars
 	// Inside: CONTENT_PADDING_LEFT + SELECTION_PREFIX_WIDTH + text + right margin
 	return border_width - CONTENT_PADDING_LEFT - SELECTION_PREFIX_WIDTH - BORDER_RIGHT_WIDTH - 1

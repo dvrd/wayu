@@ -600,10 +600,5 @@ fff_integration_init :: proc() -> bool {
     return true
 }
 
-// Check if stdin is a TTY (for interactive selection)
-is_stdin_tty :: proc() -> bool {
-    // Check if we're running in a terminal
-    return os.is_tty(os.stdin)
-}
 
 

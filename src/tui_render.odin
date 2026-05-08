@@ -1,4 +1,4 @@
-package wayu_tui
+package wayu
 
 import "core:fmt"
 import "core:os"
@@ -123,7 +123,7 @@ render_text :: proc(screen: ^Screen, x, y: int, text: string) {
 }
 
 // Render box at position
-render_box :: proc(screen: ^Screen, x, y, width, height: int) {
+tui_render_box :: proc(screen: ^Screen, x, y, width, height: int) {
 	if width < 2 || height < 2 do return
 
 	// Top border

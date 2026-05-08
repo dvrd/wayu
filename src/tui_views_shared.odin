@@ -1,4 +1,4 @@
-package wayu_tui
+package wayu
 
 import "core:fmt"
 import "core:mem"
@@ -402,7 +402,7 @@ ListViewConfig :: struct {
 // Each public render_*_view proc constructs a ListViewConfig and delegates here.
 render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig) {
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
-	max_text_width := calculate_content_width(border_width)
+	max_text_width := tui_calculate_content_width(border_width)
 	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT

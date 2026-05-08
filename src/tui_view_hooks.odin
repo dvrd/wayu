@@ -1,4 +1,4 @@
-package wayu_tui
+package wayu
 
 import "core:fmt"
 import "core:mem"
