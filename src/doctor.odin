@@ -566,8 +566,11 @@ run_step() {
 }
 
 echo "=== Phase 1: Core Config ==="
-run_step "constants.zsh" source "$HOME/.config/wayu/constants.zsh"
-run_step "path.zsh" source "$HOME/.config/wayu/path.zsh"
+# Post-migration: init-core.zsh is the compiled source of truth.
+# Legacy per-type files are fallback-only.
+run_step "init-core.zsh" source "$HOME/.config/wayu/init-core.zsh" 2>/dev/null || true
+run_step "constants.zsh (legacy)" source "$HOME/.config/wayu/constants.zsh" 2>/dev/null || true
+run_step "path.zsh (legacy)" source "$HOME/.config/wayu/path.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 2: Functions ==="
@@ -586,12 +589,12 @@ run_step "plugin config" source "$HOME/.config/wayu/plugins/config.zsh" 2>/dev/n
 
 echo ""
 echo "=== Phase 5: Aliases & Tools ==="
-run_step "aliases.zsh" source "$HOME/.config/wayu/aliases.zsh"
-run_step "tools.zsh" source "$HOME/.config/wayu/tools.zsh"
+run_step "aliases.zsh (legacy)" source "$HOME/.config/wayu/aliases.zsh" 2>/dev/null || true
+run_step "tools.zsh" source "$HOME/.config/wayu/tools.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 6: Extra Config ==="
-run_step "extra.zsh" source "$HOME/.config/wayu/extra.zsh"
+run_step "extra.zsh" source "$HOME/.config/wayu/extra.zsh" 2>/dev/null || true
 
 total=$(($EPOCHREALTIME - start_time))
 
@@ -662,8 +665,11 @@ generate_optimized_init :: proc() {
 # _wayu_debug_time() { echo "[${SECONDS}s] $1"; }
 
 # === 1. Core Configuration (fast) ===
-source "$HOME/.config/wayu/constants.zsh"
-source "$HOME/.config/wayu/path.zsh"
+# Post-migration: init-core.zsh is the compiled source of truth.
+[ -f "$HOME/.config/wayu/init-core.zsh" ] && source "$HOME/.config/wayu/init-core.zsh"
+# Legacy per-type files as fallback:
+[ -f "$HOME/.config/wayu/constants.zsh" ] && source "$HOME/.config/wayu/constants.zsh"
+[ -f "$HOME/.config/wayu/path.zsh" ] && source "$HOME/.config/wayu/path.zsh"
 
 # === 2. Functions (fast - just glob) ===
 for f in "$FUNCS"/*(N); do [[ -f "$f" ]] && source "$f"; done
@@ -680,7 +686,8 @@ else
 fi
 
 # === 4. Aliases (fast) ===
-source "$HOME/.config/wayu/aliases.zsh"
+# Aliases are already in init-core.zsh; legacy file is fallback-only.
+[ -f "$HOME/.config/wayu/aliases.zsh" ] && source "$HOME/.config/wayu/aliases.zsh"
 
 # === 5. Plugins (lazy-loaded for speed) ===
 # zsh-autosuggestions - loaded immediately but lightweight
@@ -736,9 +743,13 @@ typeset -U PATH
 	if os.exists(init_path) {
 		content, ok := safe_read_file(init_path)
 		if ok {
-			_ = os.write_entire_file_from_bytes(backup_path, transmute([]byte)content)
+			backup_ok := os.write_entire_file_from_bytes(backup_path, transmute([]byte)content)
 			delete(content)
-			fmt.printfln("%s✓%s Backed up: %s", get_success(), RESET, backup_path)
+			if backup_ok == nil {
+				fmt.printfln("%s✓%s Backed up: %s", get_success(), RESET, backup_path)
+			} else {
+				print_warning("Failed to back up %s", init_path)
+			}
 		}
 	}
 	
