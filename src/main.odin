@@ -278,18 +278,16 @@ handle_init_command :: proc() {
 	print_header("Initializing Wayu Configuration", "🚀")
 	fmt.println()
 
-	// Detect and confirm shell
-	detected_shell := detect_shell()
-	print_info("Detected shell: %s", get_shell_name(detected_shell))
+	// Use shell from g_ctx (set by detect_shell or --shell flag)
+	shell := g_ctx.shell
 
 	// Validate shell compatibility
-	shell_valid, shell_msg := validate_shell_compatibility(detected_shell)
+	shell_valid, shell_msg := validate_shell_compatibility(shell)
 	if !shell_valid {
 		print_error_simple("%s", shell_msg)
 		os.exit(EXIT_CONFIG)
 	}
 
-	shell := detected_shell
 	ext := get_shell_extension(shell)
 
 	print_info("Using shell: %s (config files will use .%s extension)", get_shell_name(shell), ext)
