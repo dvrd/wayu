@@ -21,3 +21,4 @@ thoughts/
 *.dSYM/
 .firecrawl/
 .cruft/
+src.bak/
