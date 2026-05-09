@@ -1,19 +1,26 @@
+// fuzzy.odin - Fuzzy matching and interactive terminal selection for wayu
+//
+// Provides:
+//   1. Terminal raw mode management (enable_raw_mode, disable_raw_mode, is_tty)
+//   2. calculate_fuzzy_score — subsequence-aware scoring used by search/suggestion
+//   3. interactive_select / interactive_fuzzy_select — CLI interactive picker
+//   4. extract_completion_items — reads completions directory
+//
+// The full-screen FuzzyView-based interactive finder was removed as dead code
+// (only entry point was list_config_interactive which had zero callers).
+
 package wayu
 
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:sys/unix"
-import "core:c/libc"
 import "core:slice"
 import "core:c"
+import "core:c/libc"
 import "core:sys/posix"
 
-// Enhanced fuzzy finder implementation with rich metadata, details panels, and actions
-// This provides interactive fuzzy matching with real-time filtering, details, and keyboard actions
-
 // ============================================================================
-// Terminal State Management with termios
+// Terminal State Management
 // ============================================================================
 
 foreign import libc_term "system:c"
@@ -22,24 +29,19 @@ STDIN_FILENO :: 0
 STDOUT_FILENO :: 1
 TCSANOW :: 0
 
-// Terminal mode flag constants.
-//
-// Previously hardcoded to the LINUX values (IXON=0x400, IXOFF=0x1000) which
-// silently did the wrong thing on macOS where IXON=0x200, IXOFF=0x400. Now
-// pulled from core:sys/posix so the compiler picks the right per-platform
-// constants automatically. See thoughts/code_review_2026-04-24.md N8.
+// Per-platform terminal flag constants from core:sys/posix.
 ICANON :: posix.ICANON
 ECHO   :: posix.ECHO
 IXON   :: posix.IXON
 IXOFF  :: posix.IXOFF
 
 termios :: struct {
-	c_iflag:  c.ulong,  // tcflag_t is unsigned long on macOS
+	c_iflag:  c.ulong,
 	c_oflag:  c.ulong,
 	c_cflag:  c.ulong,
 	c_lflag:  c.ulong,
 	c_cc:     [20]c.uchar,  // NCCS=20 on macOS
-	c_ispeed: c.ulong,  // speed_t is unsigned long on macOS
+	c_ispeed: c.ulong,
 	c_ospeed: c.ulong,
 }
 
@@ -49,25 +51,19 @@ foreign libc_term {
 	isatty :: proc(fd: c.int) -> c.int ---
 }
 
-// Global variable to save terminal state
+// Saved terminal state for restore.
 saved_termios: termios
 
-// Enable raw mode with proper terminal state saving
-// Returns false if terminal control failed
 enable_raw_mode :: proc() -> bool {
-	// Save current terminal state
 	if tcgetattr(STDIN_FILENO, &saved_termios) != 0 {
 		debug("Failed to get terminal attributes")
 		return false
 	}
 
-	// Create raw mode settings
 	raw := saved_termios
 	raw.c_lflag &= ~(c.ulong(ECHO) | c.ulong(ICANON))
-	// Disable XON/XOFF flow control so Ctrl+Q and Ctrl+S work
 	raw.c_iflag &= ~(c.ulong(IXON) | c.ulong(IXOFF))
 
-	// Apply raw mode
 	if tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0 {
 		debug("Failed to set terminal to raw mode")
 		return false
@@ -77,122 +73,31 @@ enable_raw_mode :: proc() -> bool {
 	return true
 }
 
-// Check if file descriptor is a TTY
 is_tty :: proc(fd: c.int) -> bool {
 	return isatty(fd) != 0
 }
 
-// Check if stdin is a TTY
 is_stdin_tty :: proc() -> bool {
 	return is_tty(STDIN_FILENO)
 }
 
-// Check if stdout is a TTY
 is_stdout_tty :: proc() -> bool {
 	return is_tty(STDOUT_FILENO)
 }
 
-// Restore terminal to saved state
 disable_raw_mode :: proc() {
 	tcsetattr(STDIN_FILENO, TCSANOW, &saved_termios)
 	debug("Terminal restored to original state")
 }
 
 // ============================================================================
-// Enhanced Fuzzy Finder Structures
+// Fuzzy Scoring
 // ============================================================================
 
-// FuzzyMode represents the current input mode (Vim-like)
-FuzzyMode :: enum {
-	Normal,   // Command mode (q/j/k/space/d/c/i)
-	Insert,   // Search/filter mode (typing for fuzzy search)
-}
-
-// FuzzyItem represents a single item in the fuzzy finder with rich metadata
-FuzzyItem :: struct {
-	display:  string,                  // What the user sees
-	value:    string,                  // Underlying value
-	metadata: map[string]string,       // Additional data
-	icon:     string,                  // Emoji or symbol
-	color:    string,                  // Color override
-}
-
-// FuzzyAction represents a keyboard action that can be performed on an item
-FuzzyAction :: struct {
-	name:        string,
-	key_name:    string,               // Display name (e.g., "Del", "Ctrl+U")
-	key_code:    u8,                   // Key code to match
-	handler:     proc(^FuzzyItem) -> bool,  // Returns true to refresh list
-	description: string,               // Help text
-}
-
-// FuzzyView is the main structure for the enhanced fuzzy finder
-FuzzyView :: struct {
-	// Data
-	items:          []FuzzyItem,
-	initial_items:  []FuzzyItem,       // Original items (not freed by fuzzy finder)
-	filtered_items: [dynamic]FuzzyItem,
-
-	// State
-	mode:           FuzzyMode,         // Current input mode (Normal/Insert)
-	filter_query:   [dynamic]u8,
-	selected_index: int,
-	scroll_offset:  int,
-
-	// UI config
-	title:          string,
-	show_details:   bool,
-	details_fn:     proc(^FuzzyItem) -> string,
-	actions:        []FuzzyAction,
-	rebuild_items:  proc() -> []FuzzyItem,  // Callback to rebuild items after modification
-
-	// Layout
-	visible_items:  int,               // How many items shown at once
-	details_height: int,               // Height of details panel
-}
-
-// Legacy structure for backward compatibility
-FuzzyResult :: struct {
-	text:  string,
-	score: int,
-}
-
-fuzzy_find :: proc(items: []string, query: string) -> []FuzzyResult {
-	if len(query) == 0 {
-		results := make([]FuzzyResult, len(items))
-		for item, i in items {
-			results[i] = {text = item, score = 0}
-		}
-		return results
-	}
-
-	results := make([dynamic]FuzzyResult)
-	query_lower := strings.to_lower(query)
-	defer delete(query_lower)
-
-	for item in items {
-		item_lower := strings.to_lower(item)
-		score := calculate_fuzzy_score(item_lower, query_lower)
-		delete(item_lower) // Clean up immediately after use
-
-		if score > 0 {
-			append(&results, FuzzyResult{text = item, score = score})
-		}
-	}
-
-	// Sort by score (higher is better)
-	slice.sort_by(results[:], proc(a, b: FuzzyResult) -> bool {
-		return a.score > b.score
-	})
-
-	final_results := make([]FuzzyResult, len(results))
-	for i in 0..<len(results) {
-		final_results[i] = results[i]
-	}
-	delete(results) // Clean up the dynamic array
-	return final_results
-}
-
+// calculate_fuzzy_score returns a match score for text against query.
+// Uses subsequence-aware matching: each consecutive query char match earns
+// points, with bonus for exact substring match and prefix match.
+// Returns 0 if query doesn't match.
 calculate_fuzzy_score :: proc(text: string, query: string) -> int {
 	if len(query) == 0 do return 1
 	if len(text) == 0 do return 0
@@ -214,12 +119,9 @@ calculate_fuzzy_score :: proc(text: string, query: string) -> int {
 		if !found do return 0
 	}
 
-	// Bonus for exact matches
 	if strings.contains(text, query) {
 		score += len(query) * 2
 	}
-
-	// Bonus for matches at the beginning
 	if strings.has_prefix(text, query) {
 		score += len(query) * 3
 	}
@@ -228,643 +130,12 @@ calculate_fuzzy_score :: proc(text: string, query: string) -> int {
 }
 
 // ============================================================================
-// Enhanced Fuzzy Finder Implementation
+// Interactive Terminal Selection
 // ============================================================================
 
-// Create a new enhanced fuzzy view
-new_fuzzy_view :: proc(
-	title: string,
-	items: []FuzzyItem,
-	details_fn: proc(^FuzzyItem) -> string = nil,
-	actions: []FuzzyAction = {},
-) -> FuzzyView {
-	view := FuzzyView{
-		items = items,
-		initial_items = items,  // Keep reference to initial items
-		filtered_items = make([dynamic]FuzzyItem),
-		filter_query = make([dynamic]u8),
-		mode = .Normal,  // Start in Normal mode
-		selected_index = 0,
-		scroll_offset = 0,
-		title = title,
-		show_details = details_fn != nil,
-		details_fn = details_fn,
-		actions = actions,
-		visible_items = 10,
-		details_height = 12,
-	}
-
-	// Initialize with all items
-	for item in items {
-		append(&view.filtered_items, item)
-	}
-
-	return view
-}
-
-// Update filter and rebuild filtered items list.
-//
-// Uses the subsequence-aware calculate_fuzzy_score rather than a plain
-// strings.contains check, so typing "frwrks" matches "frameworks" and
-// prefix/exact matches sort above scattered matches. Previously only the
-// global 'wayu search' and 'alias get' commands were fuzzy; interactive
-// pickers fell back to substring matching even though the scorer was
-// already in this file.
-fuzzy_update_filter :: proc(view: ^FuzzyView) {
-	clear(&view.filtered_items)
-
-	filter_str := string(view.filter_query[:])
-
-	if len(filter_str) == 0 {
-		for item in view.items do append(&view.filtered_items, item)
-	} else {
-		query_lower := strings.to_lower(filter_str)
-		defer delete(query_lower)
-
-		// Collect matches with score, then sort descending so the most
-		// likely candidate floats to the top.
-		Type :: struct { item: FuzzyItem, score: int }
-		tmp := make([dynamic]Type, context.temp_allocator)
-
-		for item in view.items {
-			display_lower := strings.to_lower(item.display)
-			defer delete(display_lower)
-
-			score := calculate_fuzzy_score(display_lower, query_lower)
-			if score > 0 do append(&tmp, Type{item, score})
-		}
-
-		slice.sort_by(tmp[:], proc(a, b: Type) -> bool { return a.score > b.score })
-		for entry in tmp do append(&view.filtered_items, entry.item)
-	}
-
-	// Ensure selected index is valid
-	if view.selected_index >= len(view.filtered_items) {
-		view.selected_index = max(0, len(view.filtered_items) - 1)
-	}
-}
-
-// Update scroll offset to keep selected item visible
-fuzzy_update_scroll :: proc(view: ^FuzzyView) {
-	// Ensure selected item is in view
-	if view.selected_index < view.scroll_offset {
-		view.scroll_offset = view.selected_index
-	} else if view.selected_index >= view.scroll_offset + view.visible_items {
-		view.scroll_offset = view.selected_index - view.visible_items + 1
-	}
-}
-
-// Render title box with fixed width
-fuzzy_render_title :: proc(title: string) -> string {
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-
-	width :: 60
-
-	// Top border
-	fmt.sbprintf(&builder, "%s╭%s╮%s\r\n",
-		get_primary(),
-		strings.repeat("─", width),
-		RESET)
-
-	// Title line with padding - use visible_width for emojis
-	title_len := visible_width(title)
-	padding := (width - title_len) / 2
-	remaining := width - title_len - padding
-
-	fmt.sbprintf(&builder, "%s│%s%s%s%s%s%s│%s\r\n",
-		get_primary(),
-		strings.repeat(" ", padding),
-		BOLD,
-		title,
-		RESET,
-		strings.repeat(" ", remaining),
-		get_primary(),
-		RESET)
-
-	// Bottom border
-	fmt.sbprintf(&builder, "%s╰%s╯%s",
-		get_primary(),
-		strings.repeat("─", width),
-		RESET)
-
-	return strings.clone(strings.to_string(builder))
-}
-
-// Render filter input with cursor and mode indicator
-fuzzy_render_filter :: proc(filter: []u8, mode: FuzzyMode) -> string {
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-
-	// Mode indicator
-	mode_str := mode == .Normal ? "NORMAL" : "INSERT"
-	mode_color := mode == .Normal ? get_success() : get_warning()
-	fmt.sbprintf(&builder, "\r\n%s%s%s %s-- %s --%s",
-		mode_color, BOLD, mode_str, RESET, mode_str, RESET)
-
-	// Filter prompt (only shows text in Insert mode)
-	if mode == .Insert {
-		fmt.sbprintf(&builder, "\r\n%sFilter:%s ", get_secondary(), RESET)
-		fmt.sbprintf(&builder, "%s", string(filter))
-		fmt.sbprintf(&builder, "%s█%s", get_primary(), RESET)  // Cursor
-	} else {
-		// In Normal mode, show current filter but no cursor
-		if len(filter) > 0 {
-			fmt.sbprintf(&builder, "\r\n%sFilter:%s %s", get_muted(), RESET, string(filter))
-		}
-	}
-
-	return strings.clone(strings.to_string(builder))
-}
-
-// Render keyboard shortcuts hint based on mode
-fuzzy_render_shortcuts :: proc(mode: FuzzyMode) -> string {
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-
-	fmt.sbprintf(&builder, "%s  ", get_muted())
-
-	if mode == .Normal {
-		// Normal mode shortcuts
-		fmt.sbprintf(&builder, "q: Quit  •  j/k: Navigate  •  Space: Select  •  d: Delete  •  c: Clean Missing  •  i: Search")
-	} else {
-		// Insert mode shortcuts
-		fmt.sbprintf(&builder, "Type to search  •  Esc: Normal mode  •  Enter: Select")
-	}
-
-	fmt.sbprintf(&builder, "%s\r\n", RESET)
-
-	return strings.clone(strings.to_string(builder))
-}
-
-// Render items list
-fuzzy_render_items :: proc(view: ^FuzzyView) -> string {
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-
-	// Calculate visible range
-	visible_start := view.scroll_offset
-	visible_end := min(len(view.filtered_items), visible_start + view.visible_items)
-
-	// Border top
-	fmt.sbprintf(&builder, "\r\n%s┌%s┐%s\r\n",
-		get_muted(),
-		strings.repeat("─", 60),
-		RESET)
-
-	// Items
-	if len(view.filtered_items) == 0 {
-		fmt.sbprintf(&builder, "%s│ No matches found%s│%s\r\n",
-			get_muted(),
-			strings.repeat(" ", 45),
-			RESET)
-	} else {
-		for i in visible_start..<visible_end {
-			item := view.filtered_items[i]
-
-			if i == view.selected_index {
-				// Highlighted selection
-				icon_part := ""
-				if item.icon != "" {
-					icon_part = fmt.tprintf("%s ", item.icon)
-				}
-				content := fmt.tprintf("▸ %s%s", icon_part, item.display)
-				fmt.sbprintf(&builder, "%s%s│ %s%s ",
-					get_primary(), BOLD,
-					content,
-					RESET)
-
-				// Padding to align border - use visible_width
-				// Total line: │ + space + content + space + padding + │ = 62 chars
-				// Internal: space(1) + content + space(1) + padding = 60 chars
-				// Therefore: content + padding = 58
-				content_len := visible_width(content) + 1 // content + 1 space after
-				padding := max(0, 59 - content_len)  // 59 - (content+1) = 58 - content
-				fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
-				fmt.sbprintf(&builder, "%s│%s\r\n", get_primary(), RESET)
-			} else {
-				// Regular item
-				color := item.color != "" ? item.color : RESET
-				icon_part := ""
-				if item.icon != "" {
-					icon_part = fmt.tprintf("%s ", item.icon)
-				}
-				content := fmt.tprintf("  %s%s", icon_part, item.display)
-				fmt.sbprintf(&builder, "%s│ %s%s ",
-					get_muted(),
-					content,
-					RESET)
-
-				// Padding - use visible_width
-				content_len := visible_width(content) + 1 // content + 1 space after
-				padding := max(0, 59 - content_len)  // Same calculation as selected items
-				fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
-				fmt.sbprintf(&builder, "%s│%s\r\n", get_muted(), RESET)
-			}
-		}
-	}
-
-	// Border bottom
-	fmt.sbprintf(&builder, "%s└%s┘%s\r\n",
-		get_muted(),
-		strings.repeat("─", 60),
-		RESET)
-
-	return strings.clone(strings.to_string(builder))
-}
-
-// Render details panel with fixed width
-fuzzy_render_details :: proc(view: ^FuzzyView) -> string {
-	if !view.show_details || view.details_fn == nil {
-		return ""
-	}
-
-	if len(view.filtered_items) == 0 || view.selected_index >= len(view.filtered_items) {
-		return ""
-	}
-
-	item := &view.filtered_items[view.selected_index]
-	details_content := view.details_fn(item)
-	defer delete(details_content)
-
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-
-	width :: 60
-
-	// Top border with title
-	fmt.sbprintf(&builder, "%s╭─ Details %s╮%s\r\n",
-		get_secondary(),
-		strings.repeat("─", width - 10),
-		RESET)
-
-	// Split content into lines and render each
-	lines := strings.split(details_content, "\n")
-	defer delete(lines)
-
-	for line in lines {
-		// Strip ANSI codes for width calculation
-		clean_line := line
-		line_width := visible_width(clean_line)
-
-		// Left border
-		fmt.sbprintf(&builder, "%s│%s ", get_secondary(), RESET)
-
-		// Content
-		fmt.sbprintf(&builder, "%s", line)
-
-		// Padding: │ + space(1) + line + padding + │ = 62 chars total
-		// Internal: space(1) + line + padding = 60 chars
-		// Therefore: line + padding = 59
-		padding := max(0, 59 - line_width)
-		fmt.sbprintf(&builder, "%s", strings.repeat(" ", padding))
-
-		// Right border
-		fmt.sbprintf(&builder, "%s│%s\r\n", get_secondary(), RESET)
-	}
-
-	// Bottom border
-	fmt.sbprintf(&builder, "%s╰%s╯%s",
-		get_secondary(),
-		strings.repeat("─", width),
-		RESET)
-
-	return strings.clone(strings.to_string(builder))
-}
-
-// Main render function
-fuzzy_render :: proc(view: ^FuzzyView) -> string {
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-
-	// Title
-	title := fuzzy_render_title(view.title)
-	defer delete(title)
-	fmt.sbprintf(&builder, "%s\r\n", title)
-
-	// Legend (show icons meaning)
-	fmt.sbprintf(&builder, "%s  %s✓%s Exists  •  %s✗%s Missing%s\r\n",
-		get_muted(),
-		get_success(), RESET,
-		get_error(), RESET,
-		RESET)
-
-	// Filter input (with mode indicator)
-	filter := fuzzy_render_filter(view.filter_query[:], view.mode)
-	defer delete(filter)
-	fmt.sbprintf(&builder, "%s\r\n", filter)
-
-	// Keyboard shortcuts (based on mode)
-	shortcuts := fuzzy_render_shortcuts(view.mode)
-	defer delete(shortcuts)
-	fmt.sbprintf(&builder, "%s", shortcuts)
-
-	// Items list
-	items := fuzzy_render_items(view)
-	defer delete(items)
-	fmt.sbprintf(&builder, "%s", items)
-
-	// Details panel
-	if view.show_details {
-		details := fuzzy_render_details(view)
-		if len(details) > 0 {
-			defer delete(details)
-			fmt.sbprintf(&builder, "\r\n%s", details)
-		}
-	}
-
-	return strings.clone(strings.to_string(builder))
-}
-
-// Handle keyboard input with Vim-like modes
-fuzzy_handle_key :: proc(view: ^FuzzyView, ch: u8, n: int, input_buf: []byte) -> (continue_loop: bool, has_result: bool) {
-	// Ctrl+C always exits regardless of mode
-	if ch == 3 {
-		return false, false
-	}
-
-	// Mode-specific key handling
-	if view.mode == .Normal {
-		// ============================================================================
-		// NORMAL MODE - Vim-like command mode
-		// ============================================================================
-
-		if ch == 'q' { // Quit
-			return false, false
-
-		} else if ch == 'j' { // Navigate down
-			if len(view.filtered_items) > 0 {
-				view.selected_index = (view.selected_index + 1) % len(view.filtered_items)
-				fuzzy_update_scroll(view)
-			}
-
-		} else if ch == 'k' { // Navigate up
-			if len(view.filtered_items) > 0 {
-				view.selected_index = (view.selected_index - 1 + len(view.filtered_items)) % len(view.filtered_items)
-				fuzzy_update_scroll(view)
-			}
-
-		} else if ch == ' ' { // Space - Select
-			if len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
-				return false, true
-			}
-
-		} else if ch == 'd' { // Delete
-			if len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
-				item := &view.filtered_items[view.selected_index]
-
-				// Ask for confirmation before deleting
-				confirm_msg := fmt.tprintf("Delete '%s'?", item.display)
-				if fuzzy_confirm(confirm_msg) {
-					// User confirmed - proceed with deletion
-					// Find and execute delete action
-					for action in view.actions {
-						if action.key_code == 4 { // Ctrl+D action
-							refresh := action.handler(item)
-							if refresh {
-								libc.fflush(nil)
-								if view.rebuild_items != nil {
-									if len(view.items) > 0 && raw_data(view.items) != raw_data(view.initial_items) {
-										for item_to_free in view.items {
-											delete(item_to_free.display)
-											delete(item_to_free.value)
-											for key, val in item_to_free.metadata {
-												delete(val)
-											}
-											delete(item_to_free.metadata)
-										}
-										delete(view.items)
-									}
-									new_items := view.rebuild_items()
-									view.items = new_items
-								}
-								fuzzy_update_filter(view)
-							}
-							break
-						}
-					}
-				}
-				// If user cancelled (!fuzzy_confirm), we just do nothing and return to the loop
-			}
-
-		} else if ch == 'c' { // Clean missing
-			// Clean action doesn't need a specific item - it cleans ALL missing paths
-			// Call clean handler directly
-			if len(view.filtered_items) > 0 {
-				// Find clean action handler (key_code 12 = Ctrl+L)
-				for action in view.actions {
-					if action.key_code == 12 {
-						item := &view.filtered_items[0]  // Dummy item
-						refresh := action.handler(item)
-						if refresh {
-							libc.fflush(nil)
-							if view.rebuild_items != nil {
-								if len(view.items) > 0 && raw_data(view.items) != raw_data(view.initial_items) {
-									for item_to_free in view.items {
-										delete(item_to_free.display)
-										delete(item_to_free.value)
-										for key, val in item_to_free.metadata {
-											delete(val)
-										}
-										delete(item_to_free.metadata)
-									}
-									delete(view.items)
-								}
-								new_items := view.rebuild_items()
-								view.items = new_items
-							}
-							fuzzy_update_filter(view)
-						}
-						break
-					}
-				}
-			}
-
-		} else if ch == 'i' { // Enter Insert mode
-			view.mode = .Insert
-
-		}
-
-	} else if view.mode == .Insert {
-		// ============================================================================
-		// INSERT MODE - Search/filter mode
-		// ============================================================================
-
-		if ch == 27 { // Esc - Return to Normal mode
-			view.mode = .Normal
-
-		} else if ch == 13 || ch == 10 { // Enter - Select
-			if len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
-				return false, true
-			}
-
-		} else if ch == 127 || ch == 8 { // Backspace
-			if len(view.filter_query) > 0 {
-				ordered_remove(&view.filter_query, len(view.filter_query) - 1)
-				fuzzy_update_filter(view)
-				view.selected_index = 0
-				view.scroll_offset = 0
-			}
-
-		} else if ch >= 32 && ch <= 126 { // Printable characters
-			append(&view.filter_query, ch)
-			fuzzy_update_filter(view)
-			view.selected_index = 0
-			view.scroll_offset = 0
-
-		} else if ch == 27 && n >= 3 { // Arrow keys (ESC sequence)
-			if input_buf[1] == '[' {
-				switch input_buf[2] {
-				case 'A': // Up arrow
-					if len(view.filtered_items) > 0 {
-						view.selected_index = (view.selected_index - 1 + len(view.filtered_items)) % len(view.filtered_items)
-						fuzzy_update_scroll(view)
-					}
-				case 'B': // Down arrow
-					if len(view.filtered_items) > 0 {
-						view.selected_index = (view.selected_index + 1) % len(view.filtered_items)
-						fuzzy_update_scroll(view)
-					}
-				}
-			}
-		}
-	}
-
-	return true, false
-}
-
-// Show a confirmation prompt and wait for y/n response
-fuzzy_confirm :: proc(message: string) -> bool {
-	// Clear screen and show prompt
-	CLEAR_SCREEN :: "\033[2J\033[H"
-	fmt.print(CLEAR_SCREEN)
-
-	// Show message with color
-	fmt.printf("\r\n%s%s⚠ %s%s\r\n", get_warning(), BOLD, message, RESET)
-	fmt.printf("\r\n%sPress %sy%s to confirm, %sn%s to cancel%s\r\n",
-		get_muted(),
-		get_success(), get_muted(),
-		get_error(), get_muted(),
-		RESET)
-
-	// Wait for y or n
-	for {
-		input_buf: [8]byte
-		n, err := os.read(os.stdin, input_buf[:])
-		if err != nil || n == 0 {
-			return false
-		}
-
-		ch := input_buf[0]
-
-		// Ctrl+C cancels
-		if ch == 3 {
-			return false
-		}
-
-		// y or Y confirms
-		if ch == 'y' || ch == 'Y' {
-			return true
-		}
-
-		// n or N or any other key cancels
-		if ch == 'n' || ch == 'N' || ch == 27 { // 27 = Esc
-			return false
-		}
-	}
-
-	return false
-}
-
-// Main loop for enhanced fuzzy finder
-fuzzy_run :: proc(view: ^FuzzyView) -> (selected: FuzzyItem, ok: bool) {
-	// Terminal control sequences
-	CLEAR_SCREEN :: "\033[2J\033[H"
-	HIDE_CURSOR :: "\033[?25l"
-	SHOW_CURSOR :: "\033[?25h"
-
-	// Enter raw mode
-	if !enable_raw_mode() {
-		fmt.eprintln("Error: Failed to enable raw mode")
-		return FuzzyItem{}, false
-	}
-	fmt.print(HIDE_CURSOR)
-
-	// Make sure terminal is always restored
-	defer {
-		fmt.print(CLEAR_SCREEN)
-		fmt.print(SHOW_CURSOR)
-		disable_raw_mode()
-	}
-
-	// Main input loop
-	for {
-		// Render UI
-		fmt.print(CLEAR_SCREEN)
-		rendered := fuzzy_render(view)
-		defer delete(rendered)
-		fmt.print(rendered)
-
-		// Read input
-		input_buf: [8]byte
-		n, err := os.read(os.stdin, input_buf[:])
-		if err != nil {
-			break
-		}
-
-		if n == 0 { continue }
-
-		ch := input_buf[0]
-
-		// Handle key
-		continue_loop, has_result := fuzzy_handle_key(view, ch, n, input_buf[:])
-
-		if !continue_loop {
-			if has_result && len(view.filtered_items) > 0 && view.selected_index < len(view.filtered_items) {
-				// Clone the selected item to avoid use-after-free
-				original := view.filtered_items[view.selected_index]
-
-				// Clone all strings in the item
-				cloned_metadata := make(map[string]string)
-				for key, val in original.metadata {
-					cloned_metadata[strings.clone(key)] = strings.clone(val)
-				}
-
-				result := FuzzyItem{
-					display = strings.clone(original.display),
-					value = strings.clone(original.value),
-					metadata = cloned_metadata,
-					icon = original.icon,  // Icon is a literal, no need to clone
-					color = original.color,  // Color is a literal, no need to clone
-				}
-
-				return result, true
-			}
-			return FuzzyItem{}, false
-		}
-	}
-
-	return FuzzyItem{}, false
-}
-
-// Cleanup function for FuzzyView
-fuzzy_view_destroy :: proc(view: ^FuzzyView) {
-	delete(view.filtered_items)
-	delete(view.filter_query)
-	// Note: items, actions are owned by caller
-}
-
-// ============================================================================
-// Backward Compatible Legacy Functions
-// ============================================================================
-
-// Interactive fuzzy select with real-time filtering and keyboard navigation
+// interactive_select launches a raw-mode terminal picker for the given items.
+// Supports real-time fuzzy filtering, Ctrl+N/P navigation, Ctrl+Y / Enter to
+// select, and Ctrl+C to cancel. Returns the selected string.
 interactive_select :: proc(items: []string, prompt: string) -> (selected: string, ok: bool) {
 	if len(items) == 0 {
 		print_warning("No items to select from")
@@ -873,16 +144,10 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 
 	debug("Starting interactive fuzzy select with %d items", len(items))
 
-	// Terminal control sequences
-	CLEAR_SCREEN :: "\033[2J\033[H"
-	CLEAR_LINE :: "\033[2K"
-	MOVE_UP :: "\033[A"
-	SAVE_CURSOR :: "\033[s"
-	RESTORE_CURSOR :: "\033[u"
-	HIDE_CURSOR :: "\033[?25l"
-	SHOW_CURSOR :: "\033[?25h"
+	CLEAR_SCREEN  :: "\033[2J\033[H"
+	HIDE_CURSOR   :: "\033[?25l"
+	SHOW_CURSOR   :: "\033[?25h"
 
-	// State variables
 	filter_text: [dynamic]u8
 	defer delete(filter_text)
 
@@ -891,9 +156,6 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 
 	selected_index := 0
 
-	// Subsequence-aware filter: score each item with calculate_fuzzy_score
-	// (same scorer used by 'wayu search' and suggestion paths) and sort the
-	// survivors by score so prefix / exact matches rise to the top.
 	update_filter :: proc(items: []string, filter: []u8, filtered: ^[dynamic]string) {
 		clear(filtered)
 		filter_str := string(filter)
@@ -922,24 +184,19 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 	}
 
 	render_ui :: proc(prompt: string, filter: []u8, filtered: []string, selected_idx: int) {
-		// Clear screen and move to top
 		fmt.print(CLEAR_SCREEN)
-
-		// Show prompt
 		print_prompt(prompt)
 		fmt.printf(" %s\r\n", string(filter))
 		fmt.print("\r\n")
 
-		// Show filtered items with selection highlight
-		visible_start := max(0, selected_idx - 10) // Show 20 items max, centered on selection
+		visible_start := max(0, selected_idx - 10)
 		visible_end := min(len(filtered), visible_start + 20)
 
 		for i in visible_start..<visible_end {
 			if i == selected_idx {
-				// Highlight selected item
 				fmt.printf("  %s%s> %s%s\r\n", BRIGHT_YELLOW, BOLD, filtered[i], RESET)
 			} else {
-				fmt.printf("    %s\r\n", filtered[i]) // White text (no color codes)
+				fmt.printf("    %s\r\n", filtered[i])
 			}
 		}
 
@@ -950,59 +207,50 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 		fmt.printf("\r\nType to filter, Ctrl+N/P to navigate, Ctrl+Y to select, Ctrl+C to quit\r\n")
 	}
 
-	// Initialize
 	update_filter(items, filter_text[:], &filtered_items)
 
-	// Enter raw mode (disable line buffering and echo)
 	if !enable_raw_mode() {
 		fmt.eprintln("Error: Failed to enable raw mode")
 		return strings.clone(""), false
 	}
 
 	fmt.print(HIDE_CURSOR)
-
-	// Make sure terminal is always restored
 	defer {
 		fmt.print(CLEAR_SCREEN)
 		fmt.print(SHOW_CURSOR)
 		disable_raw_mode()
 	}
 
-	// Initial render
 	render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
 
-	// Main input loop
 	for {
-		input_buf: [8]byte // Buffer for reading key sequences
+		input_buf: [8]byte
 		n, err := os.read(os.stdin, input_buf[:])
 		if err != nil {
 			debug("Error reading input: %v", err)
 			break
 		}
-
-		if n == 0 { continue }
+		if n == 0 do continue
 
 		ch := input_buf[0]
 
-		// Handle control sequences
 		if ch == 3 { // Ctrl+C
-			// Clear screen and show cursor before exiting
 			fmt.print(CLEAR_SCREEN)
 			return strings.clone(""), false
-		} else if ch == 25 { // Ctrl+Y - Select
+		} else if ch == 25 { // Ctrl+Y
 			debug("User pressed Ctrl+Y - selecting item")
 			if len(filtered_items) > 0 && selected_index < len(filtered_items) {
 				result := strings.clone(filtered_items[selected_index])
 				debug("Selected: %s", result)
 				return result, true
 			}
-		} else if ch == 14 { // Ctrl+N - Move down
+		} else if ch == 14 { // Ctrl+N
 			debug("User pressed Ctrl+N - move down")
 			if len(filtered_items) > 0 {
 				selected_index = (selected_index + 1) % len(filtered_items)
 			}
 			render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
-		} else if ch == 16 { // Ctrl+P - Move up
+		} else if ch == 16 { // Ctrl+P
 			debug("User pressed Ctrl+P - move up")
 			if len(filtered_items) > 0 {
 				selected_index = (selected_index - 1 + len(filtered_items)) % len(filtered_items)
@@ -1013,16 +261,16 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 			if len(filter_text) > 0 {
 				ordered_remove(&filter_text, len(filter_text) - 1)
 				update_filter(items, filter_text[:], &filtered_items)
-				selected_index = 0 // Reset selection to top
+				selected_index = 0
 				render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
 			}
-		} else if ch >= 32 && ch <= 126 { // Printable characters
+		} else if ch >= 32 && ch <= 126 {
 			debug("User typed character: %c", ch)
 			append(&filter_text, ch)
 			update_filter(items, filter_text[:], &filtered_items)
-			selected_index = 0 // Reset selection to top
+			selected_index = 0
 			render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
-		} else if ch == 13 || ch == 10 { // Enter key
+		} else if ch == 13 || ch == 10 { // Enter
 			debug("User pressed Enter - selecting item")
 			if len(filtered_items) > 0 && selected_index < len(filtered_items) {
 				result := strings.clone(filtered_items[selected_index])
@@ -1031,7 +279,6 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 			}
 		}
 
-		// Handle escape sequences (arrow keys, etc.)
 		if ch == 27 && n >= 3 { // ESC sequence
 			if input_buf[1] == '[' {
 				switch input_buf[2] {
@@ -1055,31 +302,30 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 	return strings.clone(""), false
 }
 
-// Interactive fuzzy finder with real-time filtering
-// TUI mode uses the full FuzzyView with real-time incremental matching (above).
-// CLI fallback uses simple arrow-key selection for compatibility.
+// interactive_fuzzy_select delegates to interactive_select.
+// Kept as a separate entry point in case TUI mode wants different behavior later.
 interactive_fuzzy_select :: proc(items: []string, prompt: string) -> (selected: string, ok: bool) {
 	if len(items) == 0 {
 		fmt.println("No items to select from")
 		return strings.clone(""), false
 	}
-
-	// Simple interactive select - real-time filtering is available in TUI mode
-	// For advanced filtering in CLI mode, users can pipe through external tools like fzf
 	return interactive_select(items, prompt)
 }
 
-// Extract completion items from completions directory
+// ============================================================================
+// Completions Helpers
+// ============================================================================
+
+// extract_completion_items reads the completions directory and returns a
+// list of completion names (without the leading underscore).
 extract_completion_items :: proc() -> []string {
 	completions_dir := fmt.aprintf("%s/completions", g_ctx.wayu_config)
 	defer delete(completions_dir)
 
-	// Check directory exists
 	if !os.exists(completions_dir) {
 		return {}
 	}
 
-	// Read directory
 	dir_handle, err := os.open(completions_dir)
 	if err != nil {
 		return {}
@@ -1095,20 +341,16 @@ extract_completion_items :: proc() -> []string {
 	items := make([dynamic]string)
 	defer delete(items)
 
-	// Filter completion files (start with _) but exclude backup files
 	for info in file_infos {
 		if strings.has_prefix(info.name, "_") && info.type != .Directory {
-			// Skip backup files
 			if strings.contains(info.name, ".backup.") {
 				continue
 			}
-			// Remove underscore for display - no need to clone yet
 			name := info.name[1:]
 			append(&items, name)
 		}
 	}
 
-	// Clone once when creating result
 	result := make([]string, len(items))
 	for item, i in items {
 		result[i] = strings.clone(item)
