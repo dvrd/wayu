@@ -21,3 +21,4 @@ thoughts/
 /wayu.dSYM/
 *.dSYM/
 .firecrawl/
+.cruft/

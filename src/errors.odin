@@ -2,7 +2,6 @@
 
 package wayu
 
-import "core:mem"
 import "core:os"
 import "core:fmt"
 import "core:strings"
@@ -191,26 +190,14 @@ check_wayu_initialized :: proc() -> bool {
 		return false
 	}
 
-	// Check for essential files using the detected shell extension.
-	// Arena-backed: all four paths are freed in bulk when the proc returns.
-	scratch_buf: [2048]byte
-	scratch: mem.Arena
-	mem.arena_init(&scratch, scratch_buf[:])
-	scratch_alloc := mem.arena_allocator(&scratch)
-
-	ext := g_ctx.shell_ext // e.g. "zsh" or "bash" — set at startup by detect_shell()
-	essential_files := []string{
-		fmt.aprintf("%s/path.%s",      g_ctx.wayu_config, ext, allocator = scratch_alloc),
-		fmt.aprintf("%s/aliases.%s",   g_ctx.wayu_config, ext, allocator = scratch_alloc),
-		fmt.aprintf("%s/constants.%s", g_ctx.wayu_config, ext, allocator = scratch_alloc),
-		fmt.aprintf("%s/init.%s",      g_ctx.wayu_config, ext, allocator = scratch_alloc),
-	}
-
-	for file in essential_files {
-		if !os.exists(file) {
-			print_error_with_context(.FILE_NOT_FOUND, file)
-			return false
-		}
+	// Post-migration: wayu.toml is the single source of truth.
+	// The legacy per-type files (path.zsh, aliases.zsh, etc.) are no longer
+	// required — they've been superseded by wayu.toml + init-core.<ext>.
+	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	defer delete(toml_path)
+	if !os.exists(toml_path) {
+		print_error_with_context(.FILE_NOT_FOUND, toml_path)
+		return false
 	}
 
 	return true
