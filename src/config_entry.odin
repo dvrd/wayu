@@ -6,11 +6,9 @@
 // the ConfigEntrySpec strategy pattern.
 
 package wayu
-
 import "core:fmt"
 import "core:os"
 import "core:strings"
-
 // ConfigEntryType defines the type of configuration entry
 ConfigEntryType :: enum {
 	PATH,      // PATH entries (add_to_path "...")
@@ -1043,4 +1041,312 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 	fmt.printfln("  %s• Use --tui for interactive mode%s", get_muted(), RESET)
 
 	fmt.println()
+}
+EntryPath :: struct {
+	path: string,
+}
+
+EntryAlias :: struct {
+	name:    string,
+	command: string,
+}
+
+EntryConst :: struct {
+	name:  string,
+	value: string,
+}
+
+Entry :: union {
+	EntryPath,
+	EntryAlias,
+	EntryConst,
+}
+
+// Add an entry to wayu.toml. Both CLI and TUI use this for mutations from
+// outside the spec-driven dispatchers.
+entry_add :: proc(entry: Entry) -> (bool, string) {
+	old := g_ctx.dry_run
+	g_ctx.dry_run = false
+	defer { g_ctx.dry_run = old }
+
+	switch e in entry {
+	case EntryPath:
+		// Validate path format (no existence check — TUI lets you stage a
+		// path that doesn't exist yet, matching pre-bug TUI behavior).
+		result := validate_path(e.path)
+		if !result.valid {
+			err := strings.clone(result.error_message)
+			delete(result.error_message)
+			return false, err
+		}
+		if len(result.warning) > 0 {
+			delete(result.warning)
+		}
+		if !toml_path_add(e.path, "") {
+			return false, strings.clone("failed to write path to wayu.toml")
+		}
+		regenerate_init_core_silently()
+		return true, ""
+	case EntryAlias:
+		return toml_alias_add(ConfigEntry{type = .ALIAS, name = e.name, value = e.command})
+	case EntryConst:
+		return toml_constant_add(ConfigEntry{type = .CONSTANT, name = e.name, value = e.value})
+	}
+	return false, strings.clone("unknown entry type")
+}
+
+// Remove an entry by identity (path for EntryPath, name for the others).
+// The non-identity fields on the variant are ignored.
+entry_remove :: proc(entry: Entry) -> (bool, string) {
+	old := g_ctx.dry_run
+	g_ctx.dry_run = false
+	defer { g_ctx.dry_run = old }
+
+	switch e in entry {
+	case EntryPath:
+		if !toml_path_remove(e.path) {
+			return false, strings.clone("failed to remove path from wayu.toml")
+		}
+		regenerate_init_core_silently()
+		return true, ""
+	case EntryAlias:
+		return toml_alias_remove(e.name)
+	case EntryConst:
+		return toml_constant_remove(e.name)
+	}
+	return false, strings.clone("unknown entry type")
+}
+// Basenames that almost never carry meaning on their own. When we see one,
+// we prefix with the parent directory to keep keys self-describing.
+COMMON_PATH_BASENAMES :: []string{
+	"bin", "sbin",
+	"lib", "lib64",
+	"share", "etc", "var",
+	"src", "dist", "build", "target", "out",
+	"node_modules", "vendor",
+	"current", "default", "latest",
+}
+
+// Lowercase + replace anything outside [a-z0-9_] with `_`. Returns "" when
+// the input has no usable characters so callers can fall back.
+//
+// Special case: a leading dot is rendered as a literal `hidden_` prefix so
+// dotfile dirs round-trip to a self-describing key:
+//   `.local`  → `hidden_local`
+//   `.cargo`  → `hidden_cargo`
+//   `.config` → `hidden_config`
+sanitize_path_key :: proc(s: string) -> string {
+	if len(s) == 0 { return "" }
+
+	hidden := s[0] == '.'
+
+	// Worst case: every char becomes `_` plus the optional `hidden_` prefix.
+	buf := make([]byte, len(s) + 7)
+	defer delete(buf)
+	n := 0
+	prefix_len := 0
+	if hidden {
+		copy(buf[:7], "hidden_")
+		n = 7
+		prefix_len = 7
+	}
+
+	for i := 0; i < len(s); i += 1 {
+		c := s[i]
+		switch {
+		case c >= 'A' && c <= 'Z':
+			buf[n] = c + ('a' - 'A')
+			n += 1
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '_':
+			buf[n] = c
+			n += 1
+		case:
+			// Skip the leading dot (already encoded as `hidden_`) and any
+			// leading garbage. Collapse internal runs to a single `_`.
+			if n > prefix_len && buf[n-1] != '_' {
+				buf[n] = '_'
+				n += 1
+			}
+		}
+	}
+	// Trim trailing `_`.
+	for n > 0 && buf[n-1] == '_' { n -= 1 }
+	// `""` if nothing remains — including bare-prefix cases like "." → "hidden"
+	// would be misleading, so we treat them as empty and let the caller fall back.
+	if n == 0 || n == prefix_len - 1 /* trimmed prefix tail `_` */ { return "" }
+	return strings.clone(string(buf[:n]))
+}
+
+is_common_path_basename :: proc(s: string) -> bool {
+	for c in COMMON_PATH_BASENAMES {
+		if s == c { return true }
+	}
+	return false
+}
+
+// Split a cleaned path into (parent_dir_basename, basename). Either may be
+// empty (e.g. when the path is "/" or just "foo"). Caller does not own the
+// returned strings — they're slices into `path`.
+split_path_tail :: proc(path: string) -> (parent: string, base: string) {
+	cleaned := strings.trim_right(path, "/")
+	if len(cleaned) == 0 { return "", path }
+	last := strings.last_index_byte(cleaned, '/')
+	if last < 0 { return "", cleaned }
+	base = cleaned[last+1:]
+	rest := cleaned[:last]
+	prev := strings.last_index_byte(rest, '/')
+	if prev < 0 {
+		parent = rest
+	} else {
+		parent = rest[prev+1:]
+	}
+	return
+}
+
+// Pick a unique TOML key for `path` given the set of `taken` keys.
+//   /Users/me/dev/oss/Odin    → "odin"
+//   /usr/local/bin            → "local_bin"   (bin is common)
+//   /opt/homebrew/bin         → "homebrew_bin"
+//   /Users/me/.cargo/bin      → "cargo_bin"
+//   collisions                → "<base>_2", "<base>_3", ...
+//
+// Caller owns the returned string.
+derive_path_key :: proc(path: string, taken: map[string]bool) -> string {
+	parent, base := split_path_tail(path)
+
+	// `base_key` is always heap-owned; fallback to a cloned literal when the
+	// basename is unparseable (e.g. "." or pure punctuation) so we can free
+	// it uniformly below.
+	base_key := sanitize_path_key(base)
+	if len(base_key) == 0 { base_key = strings.clone("path") }
+	defer delete(base_key)
+
+	key: string
+	if is_common_path_basename(base_key) {
+		parent_key := sanitize_path_key(parent)
+		if len(parent_key) > 0 {
+			key = fmt.aprintf("%s_%s", parent_key, base_key)
+			delete(parent_key)
+		} else {
+			key = strings.clone(base_key)
+		}
+	} else {
+		key = strings.clone(base_key)
+	}
+
+	if !(key in taken) { return key }
+
+	// Collision — append "_2", "_3", ...
+	stem := key
+	defer delete(stem)
+	for i := 2; ; i += 1 {
+		candidate := fmt.aprintf("%s_%d", stem, i)
+		if !(candidate in taken) { return candidate }
+		delete(candidate)
+	}
+}
+
+// Parse a CLI path argument that may be either:
+//   "/usr/local/bin"           → (name="", path="/usr/local/bin", explicit=false)
+//   "local_bin=/usr/local/bin" → (name="local_bin", path="/usr/local/bin", explicit=true)
+//
+// The `name=path` form is recognised only when the LHS is a non-empty
+// identifier (alphanum + underscore, no slash). Anything else is treated
+// as a bare path so users can still add paths with `=` in them.
+//
+// Returned strings are slices of `arg` — caller does not own them.
+parse_path_arg :: proc(arg: string) -> (name, path: string, explicit: bool) {
+	eq := strings.index_byte(arg, '=')
+	if eq <= 0 { return "", arg, false }
+
+	lhs := arg[:eq]
+	rhs := arg[eq+1:]
+	if len(rhs) == 0 { return "", arg, false }
+
+	for i := 0; i < len(lhs); i += 1 {
+		c := lhs[i]
+		ok := (c >= 'a' && c <= 'z') ||
+		      (c >= 'A' && c <= 'Z') ||
+		      (c >= '0' && c <= '9') ||
+		      c == '_' || c == '-'
+		if !ok { return "", arg, false }
+	}
+	return lhs, rhs, true
+}
+// Section header tokens that no longer exist in the modern schema.
+LEGACY_SECTION_HEADERS :: []string{
+	"[[paths]]",
+	"[[aliases]]",
+	"[[constants]]",
+	"[constants]",
+}
+
+// Returns the first legacy header found in `content`, or "" when the file
+// is clean. Cheap line-by-line scan; we only need to detect, not parse.
+detect_legacy_schema :: proc(content: string) -> string {
+	for header in LEGACY_SECTION_HEADERS {
+		if !strings.contains(content, header) { continue }
+		// Confirm it's an actual section header (line-equal after trim),
+		// not a substring inside a value.
+		lines := strings.split(content, "\n")
+		defer delete(lines)
+		for line in lines {
+			if strings.trim_space(line) == header { return header }
+		}
+	}
+	return ""
+}
+
+// Print the user-visible "obsolete schema, run migrate" banner. Shared by
+// the per-read guard and the global pre-dispatch guard.
+print_legacy_schema_hint :: proc(header: string) {
+	fmt.eprintln()
+	fmt.eprintf("%sError:%s wayu.toml uses the obsolete %s%s%s schema.\n",
+		BRIGHT_RED, RESET, BRIGHT_CYAN, header, RESET)
+	fmt.eprintln()
+	fmt.eprintln("v3.x replaced the array-of-tables forms with single inline tables:")
+	fmt.eprintln()
+	fmt.eprintln("  [paths]")
+	fmt.eprintln("  odin = \"/Users/you/dev/Odin\"")
+	fmt.eprintln()
+	fmt.eprintln("  [aliases]")
+	fmt.eprintln("  ll = \"ls -la\"")
+	fmt.eprintln()
+	fmt.eprintln("  [env]")
+	fmt.eprintln("  EDITOR = \"nvim\"")
+	fmt.eprintln()
+	fmt.eprintf("Run %swayu migrate --schema%s to upgrade in place.\n", BRIGHT_CYAN, RESET)
+	fmt.eprintln()
+}
+
+// Read wayu.toml and abort with a structured error if the schema is stale.
+// Returns the file content (caller frees) on success. On legacy schema or
+// I/O error, prints a message and exits — never returns.
+must_read_modern_wayu_toml :: proc(path: string) -> []byte {
+	content, ok := safe_read_file(path)
+	if !ok {
+		print_error("Could not read %s", path)
+		os.exit(EXIT_NOINPUT)
+	}
+	if header := detect_legacy_schema(string(content)); len(header) > 0 {
+		print_legacy_schema_hint(header)
+		delete(content)
+		os.exit(EXIT_CONFIG)
+	}
+	return content
+}
+
+// Pre-dispatch global guard. Aborts with the migration hint for any command
+// that would touch wayu.toml while it's still on the obsolete schema. Safe
+// commands (the ones that don't read the toml at all, plus the migration
+// command itself) bypass the check.
+enforce_modern_wayu_toml_or_exit :: proc(toml_path: string) {
+	if !os.exists(toml_path) { return }
+	content, ok := safe_read_file(toml_path)
+	if !ok { return } // I/O failures bubble up at the actual call site
+	defer delete(content)
+	if header := detect_legacy_schema(string(content)); len(header) > 0 {
+		print_legacy_schema_hint(header)
+		os.exit(EXIT_CONFIG)
+	}
 }

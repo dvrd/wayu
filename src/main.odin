@@ -1,5 +1,4 @@
 package wayu
-
 import "base:runtime"
 import "core:fmt"
 import "core:os"
@@ -10,7 +9,6 @@ import "core:log"
 import "core:mem"
 import "core:sys/posix"
 import "core:time"
-
 // Semantic versioning - update with each release.
 // VERSION here is the single source of truth; docs (AGENTS.md, README)
 // should not hardcode a version number that can drift.
@@ -717,4 +715,108 @@ handle_build_command :: proc(action: Action) {
 	fmt.println("For now, using turbo export:")
 	handle_export_command(.TURBO, {})
 }
+// Golden file directory
+GOLDEN_DIR :: "tests/golden"
 
+// Run component test mode
+run_component_testing :: proc(component_name: string, args: []string, snapshot: bool, verify: bool) {
+	// Parse component type
+	component_type, ok := parse_component_type(component_name)
+	if !ok {
+		fmt.eprintfln("ERROR: Unknown component type: %s", component_name)
+		fmt.eprintln("\nAvailable components:")
+		fmt.eprintln("  - box")
+		fmt.eprintln("  - list-item")
+		fmt.eprintln("  - header")
+		fmt.eprintln("  - footer")
+		fmt.eprintln("  - scroll-indicator")
+		fmt.eprintln("  - empty-state")
+		os.exit(EXIT_USAGE)
+	}
+
+	// Parse component arguments
+	component_args := parse_component_args(args)
+	defer component_args_destroy(&component_args)
+
+	// Render component
+	output := render_component(component_type, component_args)
+	defer delete(output)
+
+	// Handle different modes
+	if snapshot {
+		// Save golden file
+		success := save_golden(component_name, component_args, output)
+		if !success {
+			os.exit(EXIT_IOERR)
+		}
+	} else if verify {
+		// Test against golden file
+		success := compare_golden(component_name, component_args, output)
+		if !success {
+			os.exit(EXIT_GENERAL)
+		}
+	} else {
+		// Just print output
+		fmt.print(output)
+	}
+}
+
+// Save golden file
+save_golden :: proc(component: string, args: ComponentArgs, output: string) -> bool {
+	// Ensure directory exists
+	os.make_directory(GOLDEN_DIR)
+
+	// Build golden file path
+	filename := fmt.aprintf("%s/%s_%dx%d.txt",
+		GOLDEN_DIR, component, args.width, args.height)
+	defer delete(filename)
+
+	// Write golden file
+	write_err := os.write_entire_file(filename, transmute([]byte)output)
+	if write_err != nil {
+		fmt.eprintfln("ERROR: Failed to write golden file: %s", filename)
+		return false
+	}
+
+	fmt.printfln("✓ Saved golden file: %s", filename)
+	return true
+}
+
+// Compare output against golden file
+compare_golden :: proc(component: string, args: ComponentArgs, output: string) -> bool {
+	// Build golden file path
+	filename := fmt.aprintf("%s/%s_%dx%d.txt",
+		GOLDEN_DIR, component, args.width, args.height)
+	defer delete(filename)
+
+	// Check if golden file exists
+	if !os.exists(filename) {
+		fmt.eprintfln("ERROR: Golden file not found: %s", filename)
+		fmt.eprintfln("Create it with: wayu -c=%s width=%d height=%d --snapshot",
+			component, args.width, args.height)
+		return false
+	}
+
+	// Read golden file
+	golden_data, read_err := os.read_entire_file(filename, context.allocator)
+	if read_err != nil {
+		fmt.eprintfln("ERROR: Failed to read golden file: %s", filename)
+		return false
+	}
+	defer delete(golden_data)
+
+	golden_str := string(golden_data)
+
+	// Compare
+	if output != golden_str {
+		fmt.eprintfln("✗ MISMATCH: %s", filename)
+		fmt.eprintln("\nExpected:")
+		fmt.eprintln(golden_str)
+		fmt.eprintln("\nGot:")
+		fmt.eprintln(output)
+		return false
+	}
+
+	fmt.printfln("✓ MATCH: %s", filename)
+	return true
+}
