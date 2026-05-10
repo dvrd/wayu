@@ -61,24 +61,40 @@ ruby tests/integration/test_plugin.rb
 - **CLI mode (default)**: Fully non-interactive, all operations require explicit arguments, BSD sysexits.h exit codes, `--yes` flag for destructive operations
 - **TUI mode** (`wayu --tui`): Full-screen interactive UI using The Elm Architecture (TEA)
 
-### Key Source Files
+### Key Source Files (44 files, consolidated from 73)
 
 | File | Purpose |
 |------|---------|
-| `src/main.odin` | Entry point, argument parsing, init command |
-| `src/shell.odin` | Shell detection (from `$SHELL`), file extension (.zsh/.bash) |
-| `src/path.odin` | PATH management — array-based `WAYU_PATHS=()` format |
-| `src/config_entry.odin` | Generic config entry read/write |
-| `src/config_specs.odin` | Parser/formatter specs per config type |
-| `src/preload.odin` | Embedded shell script templates for `init` command |
-| `src/validation.odin` | Input validation (reserved words, dangerous chars, length) |
+| `src/main.odin` | Entry point, argument parsing, init command, CLI dispatch |
+| `src/cli_parser.odin` | CLI argument parsing: global flags, command + action resolution |
+| `src/shell.odin` | Shell detection, extension mapping, Fish init generation |
+| `src/path.odin` | PATH management — TOML-native via handle_toml_entry_command |
+| `src/alias.odin` | Alias management + alias sources |
+| `src/constants.odin` | Environment constant management |
+| `src/config_entry.odin` | Generic config entry system: read/write, specs, entry types, path keys, schema check |
+| `src/config_specs.odin` | ConfigEntrySpec per type (PATH, ALIAS, CONSTANTS) |
+| `src/toml.odin` | Hand-rolled TOML parser, serializer, command handler |
+| `src/preload.odin` | Shell script templates for init (zsh/bash/fish) |
+| `src/init_generator.odin` | Generates init-core, init-lazy, init-login, init-helpers shell scripts |
+| `src/plugin.odin` | Plugin command dispatch + builtin plugin catalog |
+| `src/plugin_json.odin` | Plugin JSON config read/write + migration |
+| `src/plugin_ops.odin` | Git ops, dependency resolution, conflict detection |
+| `src/plugin_storage.odin` | Plugin command handlers (add, remove, list, update, etc.) |
+| `src/plugin_loader.odin` | Generates runtime plugin loader shell scripts |
 | `src/backup.odin` | Timestamped backups, restore, cleanup (keeps last 5) |
-| `src/hooks.odin` | Pre/post operation hooks (subprocess execution) |
-| `src/hot_reload.odin` | File watcher for live config reload |
-| `src/config_toml.odin` | TOML-based config management (wayu.toml) |
-| `src/tui/` | Complete TUI implementation |
-| `src/tui_bridge_impl.odin` | Connects TUI to config system via function pointers (avoids circular deps) |
-| `src/exit_codes.odin` | BSD sysexits.h constants — always use these, never bare `os.exit(1)` |
+| `src/doctor.odin` | Health check orchestrator + individual checks |
+| `src/migrate.odin` | Legacy shell config → wayu.toml migration + schema migration |
+| `src/validation.odin` | Input validation + error handling |
+| `src/hooks.odin` | Pre/post operation hook procs (stubs assigned to ConfigEntrySpec) |
+| `src/hot_reload.odin` | File watcher with debounced auto-regeneration |
+| `src/tui_core.odin` | TUI main loop, state machine, data loading, render orchestrator |
+| `src/tui_views.odin` | TUI view renderers (list, overlays, cache, handlers, hooks, plugins, settings) |
+| `src/tui_io.odin` | TUI terminal I/O: raw mode, input, screen buffer, events, colors, layout, components |
+| `src/prompt.odin` | Native zsh prompt generation + interactive features |
+| `src/fuzzy.odin` | Fuzzy matching, interactive terminal selection, completions extraction |
+| `src/interfaces.odin` | Shared types (LockFile, TomlConfig, etc.), exit codes, debug |
+| `src/colors.odin` | ANSI color profiles + output helpers |
+| `src/style.odin` | TUI styling: render pipeline, text styling, unicode width utilities |
 
 ### Config File Format
 
@@ -89,10 +105,10 @@ Config files are plain shell scripts parsed line-by-line:
 
 **PATH format**: `WAYU_PATHS=("dir1" "dir2")` array with a single for-loop export.
 
-### TUI Architecture (src/tui/)
+### TUI Architecture (src/tui_core.odin, tui_views.odin, tui_io.odin)
 
 The Elm Architecture: centralized state → events → update → render.
-Bridge pattern (`bridge.odin` + `src/tui_bridge_impl.odin`) avoids circular imports between the `tui` and main packages using function pointers set at runtime. Data loads lazily per view; cache clears after mutations.
+All TUI code lives in 3 consolidated files (down from 18). No separate `tui/` package — everything is in the `wayu` package to avoid circular imports. Data loads lazily per view (`tui_views_cache`); cache clears after mutations.
 
 ### Exit Codes
 
@@ -169,8 +185,9 @@ Unit tests: `tests/unit/test_<module>.odin`. Integration tests spawn the compile
 
 These are acknowledged incomplete features — do not add workarounds, implement them properly:
 
-- `src/hot_reload.odin`: complete implementation, needs CLI entry point wired in `main.odin`
-- `src/config_toml.odin:~1615`: TOML migration from existing shell configs
+- `src/hot_reload.odin`: file watcher implemented, needs CLI entry point wired in `main.odin`
 - `wayu build profile`: profiling not yet implemented
-- `src/fuzzy.odin:~1017`: real-time filtering (falls back to static list)
-- Fish shell: declared in `parse_shell_type` but completion/plugin/template paths not wired
+- `src/fuzzy.odin`: interactive_select is alive; FuzzyView-based full-screen finder removed as dead code
+- Fish shell: completions and templates wired; `--shell fish` flag fixed in init command
+- `src/hooks.odin`: hook procs are no-op stubs assigned to ConfigEntrySpec function pointers
+- `src/tui_views.odin`: hooks and settings views render minimal placeholder content
