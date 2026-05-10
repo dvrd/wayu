@@ -12,7 +12,7 @@ import "core:time"
 // Semantic versioning - update with each release.
 // VERSION here is the single source of truth; docs (AGENTS.md, README)
 // should not hardcode a version number that can drift.
-VERSION :: "4.0.0"
+VERSION :: "4.1.1"
 
 // AppContext bundles all mutable program state that used to be scattered
 // globals. It is created once in main() and referenced via g_ctx.
