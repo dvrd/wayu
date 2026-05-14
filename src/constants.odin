@@ -10,28 +10,33 @@ import "core:slice"
 import "core:strings"
 
 // Filter out noisy system/shell environment variables that users don't need to see.
-is_noisy_env :: proc(name: string) -> bool {
-	// macOS / system internal vars (prefix-based)
-	if strings.has_prefix(name, "__") { return true }
-	if strings.has_prefix(name, "Apple_") { return true }
-	if strings.has_prefix(name, "ZELLIJ_") { return true }
-	if strings.has_prefix(name, "GHOSTTY_") { return true }
-	if strings.has_prefix(name, "LC_") { return true }
+strip_ansi :: proc(s: string, allocator := context.allocator) -> string {
+	// Shortcut: no ESC bytes at all, return clone of original
+	alive := false
+	for c in s {
+		if c == '\x1b' { alive = true; break }
+	}
+	if !alive { return strings.clone(s, allocator) }
 
-	// Common shell / system vars
-	noisy := []string{
-		"HOME", "PATH", "USER", "SHELL", "LOGNAME", "LANG",
-		"PWD", "OLDPWD", "SHLVL", "TERM", "TMPDIR", "_",
-		"TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERMINFO",
-		"SSH_AUTH_SOCK", "DISPLAY", "COLORTERM", "COMMAND_MODE",
-		"XPC_FLAGS", "XPC_SERVICE_NAME",
-		"Apple_PubSub_Socket_Render", "SECURITYSESSIONID",
-		"WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS",
+	// Build clean copy without ANSI escape sequences
+	buf := make([dynamic]byte, 0, len(s), allocator)
+	i := 0
+	for i < len(s) {
+		if s[i] == '\x1b' && i + 1 < len(s) && s[i + 1] == '[' {
+			// Skip CSI sequence: ESC [ ... m or ESC [ ... ; ... m
+			i += 2
+			for i < len(s) && (is_digit(s[i]) || s[i] == ';') { i += 1 }
+			if i < len(s) { i += 1 }  // skip the terminating letter
+		} else {
+			append(&buf, s[i])
+			i += 1
+		}
 	}
-	for n in noisy {
-		if name == n { return true }
-	}
-	return false
+	return strings.clone(string(buf[:]), allocator)
+}
+
+is_digit :: proc(c: byte) -> bool {
+	return c >= '0' && c <= '9'
 }
 
 // Main handler for CONSTANTS commands.
@@ -355,9 +360,7 @@ list_toml_constants :: proc() {
 			if len(parts) > 0 {
 				const_name := parts[0]
 				if _, is_wayu := wayu_set[const_name]; !is_wayu {
-					if !is_noisy_env(const_name) {
-						append(&external_constants, const_name)
-					}
+					append(&external_constants, const_name)
 				}
 			}
 		}
@@ -405,6 +408,13 @@ list_toml_constants :: proc() {
 	table_header_style(&table, style_bold(style_foreground(new_style(), "cyan"), true))
 	table_border(&table, .Normal)
 
+	// Collect stripped values to defer freeing until after table_render
+	stripped_values := make([dynamic]string)
+	defer {
+		for v in stripped_values { delete(v) }
+		delete(stripped_values)
+	}
+
 	// Add wayu entries
 	if show_wayu || show_inactive {
 		for entry in entries {
@@ -426,7 +436,9 @@ list_toml_constants :: proc() {
 			if !is_active {
 				source = "wayu (inactive)"
 			}
-			row := []string{entry.name, entry.value, source}
+			value := strip_ansi(entry.value)
+			append(&stripped_values, value)
+			row := []string{entry.name, value, source}
 			table_add_row(&table, row)
 		}
 	}
@@ -435,7 +447,9 @@ list_toml_constants :: proc() {
 	if show_external {
 		for ext_const_name in external_constants {
 			if env_val := snapshot_env_var(ext_const_name); env_val != nil {
-				row := []string{ext_const_name, env_val.(string), "external"}
+				value := strip_ansi(env_val.(string))
+				append(&stripped_values, value)
+				row := []string{ext_const_name, value, "external"}
 				table_add_row(&table, row)
 			}
 		}
