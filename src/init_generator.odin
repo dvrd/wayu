@@ -90,7 +90,11 @@ generate_optimized_init_all :: proc() {
 	fmt.println("# Init files generated:")
 	fmt.printfln("#   %s/core.zsh     (< 10ms)", wayu.data)
 	fmt.printfln("#   %s/lazy.zsh     (deferred via built-in zsh-defer)", wayu.data)
-	fmt.printfln("#   %s/login.zsh    (login only, if configured)", wayu.data)
+	login_path := fmt.aprintf("%s/login.zsh", wayu.data)
+	defer delete(login_path)
+	if os.exists(login_path) {
+		fmt.printfln("#   %s/login.zsh    (login only)", wayu.data)
+	}
 	fmt.printfln("#   %s/helpers.zsh  (evalcache, built-in zsh-defer)", wayu.data)
 	fmt.println("#")
 	fmt.println("# To compile to bytecode (2-3x faster):")
