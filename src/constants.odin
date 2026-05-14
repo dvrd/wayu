@@ -9,6 +9,31 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 
+// Filter out noisy system/shell environment variables that users don't need to see.
+is_noisy_env :: proc(name: string) -> bool {
+	// macOS / system internal vars (prefix-based)
+	if strings.has_prefix(name, "__") { return true }
+	if strings.has_prefix(name, "Apple_") { return true }
+	if strings.has_prefix(name, "ZELLIJ_") { return true }
+	if strings.has_prefix(name, "GHOSTTY_") { return true }
+	if strings.has_prefix(name, "LC_") { return true }
+
+	// Common shell / system vars
+	noisy := []string{
+		"HOME", "PATH", "USER", "SHELL", "LOGNAME", "LANG",
+		"PWD", "OLDPWD", "SHLVL", "TERM", "TMPDIR", "_",
+		"TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERMINFO",
+		"SSH_AUTH_SOCK", "DISPLAY", "COLORTERM", "COMMAND_MODE",
+		"XPC_FLAGS", "XPC_SERVICE_NAME",
+		"Apple_PubSub_Socket_Render", "SECURITYSESSIONID",
+		"WAYLAND_DISPLAY", "DBUS_SESSION_BUS_ADDRESS",
+	}
+	for n in noisy {
+		if name == n { return true }
+	}
+	return false
+}
+
 // Main handler for CONSTANTS commands.
 //
 // Thin delegation to the generic TOML-entry dispatcher. The spec wires up
@@ -330,7 +355,9 @@ list_toml_constants :: proc() {
 			if len(parts) > 0 {
 				const_name := parts[0]
 				if _, is_wayu := wayu_set[const_name]; !is_wayu {
-					append(&external_constants, const_name)
+					if !is_noisy_env(const_name) {
+						append(&external_constants, const_name)
+					}
 				}
 			}
 		}
