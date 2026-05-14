@@ -415,12 +415,21 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 
 	// Count entries by source for the header
 	wayu_active, wayu_inactive, external, shadowed := count_entries_by_source(items)
-	total := wayu_active + wayu_inactive + external + shadowed  // Skip separators
+	total := wayu_active + wayu_inactive + external + shadowed
 
-	// Format count text with source breakdown
+	// Format count text
 	count_text: string
-	if wayu_active + wayu_inactive + external + shadowed == 0 {
-		count_text = "0 entries"
+	if total == 0 {
+		// No source glyphs counted — use raw count (completions, backups, etc.)
+		raw := 0
+		for item in items {
+			if len(item) > 0 && !strings.contains(item, "───") { raw += 1 }
+		}
+		if raw == 0 {
+			count_text = "0 entries"
+		} else {
+			count_text = fmt.tprintf(cfg.count_format, raw)
+		}
 	} else {
 		parts := make([dynamic]string, allocator = context.temp_allocator)
 		if wayu_active > 0 {
@@ -1215,9 +1224,9 @@ render_hooks_view :: proc(state: ^TUIState, screen: ^Screen) {
 	// In a real implementation, we'd load hooks from the bridge.
 	// For now, show a helpful message directing users to the CLI.
 	render_text_styled(screen, text_x, content_start, "Hooks Configuration", TUI_PRIMARY, "", true)
-	render_text_styled(screen, text_x, content_start + 2, "To configure hooks, edit your wayu.toml file:", TUI_DIM)
+	render_text_styled(screen, text_x, content_start + 2, "To configure hooks, edit your hooks.conf file:", TUI_DIM)
 	render_text_styled(screen, text_x, content_start + 3, "", TUI_DIM)
-	render_text_styled(screen, text_x, content_start + 4, "  wayu config edit", TUI_DIM)
+	render_text_styled(screen, text_x, content_start + 4, "  wayu hooks edit", TUI_DIM)
 	render_text_styled(screen, text_x, content_start + 5, "", TUI_DIM)
 	render_text_styled(screen, text_x, content_start + 6, "Or view configured hooks with:", TUI_DIM)
 	render_text_styled(screen, text_x, content_start + 7, "", TUI_DIM)
