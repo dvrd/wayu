@@ -346,6 +346,9 @@ list_toml_constants :: proc() {
 		return
 	}
 
+	print_header("Constants (wayu.toml)", CONSTANTS_SPEC.icon)
+	fmt.println()
+
 	// Count sources
 	active_count := 0
 	inactive_count := 0
