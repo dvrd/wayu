@@ -319,7 +319,7 @@ handle_completions_generate :: proc() {
 	fmt.println()
 
 	// Determine completions directory
-	completions_dir := fmt.aprintf("%s/completions", g_ctx.wayu_config)
+	completions_dir := fmt.aprintf("%s/completions", wayu.data)
 	defer delete(completions_dir)
 
 	// Ensure directory exists
@@ -454,7 +454,7 @@ print_completions_help_extended :: proc() {
 	fmt.println()
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
 	fmt.println("  wayu completions generate")
-	fmt.println("  # Then add to .zshrc: fpath=(~/.config/wayu/completions $fpath)")
+	fmt.println("  # Then add to .zshrc: fpath=(~/.local/share/wayu/completions $fpath)")
 	fmt.println("  wayu completions add jj /path/to/_jj")
 }
 
@@ -472,7 +472,7 @@ COMPLETIONS_FILE :: "completions"
 // what they want. Otherwise apply the shell-specific convention:
 //
 //   zsh  → `_name`               (autoloaded via fpath + compinit)
-//   bash → `name.bash-completion` (loop-sourced by init-core.bash)
+//   bash → `name.bash-completion` (loop-sourced by core.bash)
 //   fish → `name.fish`           (autoloaded via fish_complete_path)
 completion_filename_for_shell :: proc(name: string, shell: ShellType) -> string {
 	// Already in a recognized shell-specific form — respect it.
@@ -587,7 +587,7 @@ add_completion :: proc(name: string, source_path: string) {
 
 	// Normalize name with shell-appropriate convention (zsh `_foo`,
 	// bash `foo.bash-completion`, fish `foo.fish`).
-	completion_name := completion_filename_for_shell(name, g_ctx.shell)
+	completion_name := completion_filename_for_shell(name, wayu.shell)
 	defer delete(completion_name)
 
 	// Read source file
@@ -598,12 +598,12 @@ add_completion :: proc(name: string, source_path: string) {
 	defer delete(content)
 
 	// Destination directory
-	completions_dir := fmt.aprintf("%s/completions", g_ctx.wayu_config)
+	completions_dir := fmt.aprintf("%s/completions", wayu.data)
 	defer delete(completions_dir)
 
 	// Ensure completions directory exists
 	if !os.exists(completions_dir) {
-		print_error_with_context(.CONFIG_NOT_INITIALIZED, g_ctx.wayu_config)
+		print_error_with_context(.CONFIG_NOT_INITIALIZED, wayu.config)
 		os.exit(EXIT_CONFIG)
 	}
 
@@ -617,7 +617,7 @@ add_completion :: proc(name: string, source_path: string) {
 	}
 
 	// Dry-run mode check
-	if g_ctx.dry_run {
+	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		fmt.printfln("%sWould copy to completions directory:%s", BRIGHT_CYAN, RESET)
@@ -642,7 +642,7 @@ add_completion :: proc(name: string, source_path: string) {
 	cleanup_old_backups(dest_path, 5)
 
 	print_success("Added completion: %s", completion_name)
-	init_file := get_config_file_with_fallback("init", g_ctx.shell)
+	init_file := get_config_file_with_fallback("init", wayu.shell)
 	defer delete(init_file)
 	fmt.printfln("\n%sNext steps:%s", BRIGHT_CYAN, RESET)
 	fmt.printfln("  source %s", init_file)
@@ -652,7 +652,7 @@ add_completion :: proc(name: string, source_path: string) {
 // Remove completion file
 remove_completion :: proc(name: string) {
 	// Build directory path
-	completions_dir := fmt.aprintf("%s/completions", g_ctx.wayu_config)
+	completions_dir := fmt.aprintf("%s/completions", wayu.data)
 	defer delete(completions_dir)
 
 	// Try shell-appropriate form first, then fall back to any other matching
@@ -674,7 +674,7 @@ remove_completion :: proc(name: string) {
 	}
 
 	// Dry-run mode check
-	if g_ctx.dry_run {
+	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		fmt.printfln("%sWould remove completion file:%s", BRIGHT_CYAN, RESET)
@@ -719,7 +719,7 @@ remove_completion_interactive :: proc() {
 	}
 
 	prompt_text := "Select completion to remove (Ctrl+C to cancel):"
-	if g_ctx.dry_run {
+	if wayu.dry_run {
 		prompt_text = "Select completion to remove (DRY RUN - no changes will be made):"
 	}
 
@@ -746,12 +746,12 @@ list_completions :: proc() {
 		os.exit(EXIT_CONFIG)
 	}
 
-	completions_dir := fmt.aprintf("%s/completions", g_ctx.wayu_config)
+	completions_dir := fmt.aprintf("%s/completions", wayu.data)
 	defer delete(completions_dir)
 
 	// Check directory exists
 	if !os.exists(completions_dir) {
-		print_error_with_context(.CONFIG_NOT_INITIALIZED, g_ctx.wayu_config)
+		print_error_with_context(.CONFIG_NOT_INITIALIZED, wayu.config)
 		os.exit(EXIT_CONFIG)
 	}
 
@@ -860,7 +860,7 @@ print_completions_help :: proc() {
 
 	// Notes section
 	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
-	fmt.printf("  %s• Completion files are stored in ~/.config/wayu/completions/%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Completion files are stored in ~/.local/share/wayu/completions/%s\n", get_muted(), RESET)
 	fmt.printf("  %s• Naming follows the active shell: zsh `_name`, bash `name.bash-completion`, fish `name.fish`%s\n", get_muted(), RESET)
 	fmt.printf("  %s• If the input already has a recognized form (_foo, foo.fish, ...) it is kept as-is%s\n", get_muted(), RESET)
 	fmt.printf("  %s• Restart your shell or re-source the wayu init file after adding%s\n", get_muted(), RESET)

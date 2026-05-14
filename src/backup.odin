@@ -45,7 +45,7 @@ create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 	defer delete(content)
 
 	// Create backup directory if it doesn't exist
-	backup_dir := fmt.aprintf("%s/backup", g_ctx.wayu_config)
+	backup_dir := fmt.aprintf("%s/backup", wayu.data)
 	defer delete(backup_dir)
 
 	if !os.exists(backup_dir) {
@@ -95,7 +95,7 @@ create_backup_cli :: proc(file_path: string) -> bool {
 
 	if !ok && file_existed {
 		// File was present but backup failed — abort to prevent data loss.
-		if !g_ctx.tui_mode {
+		if !wayu.tui_mode {
 			print_error("Failed to create backup for %s", file_path)
 			fmt.println("Aborting operation to prevent data loss.")
 		}
@@ -120,7 +120,7 @@ create_backup_tui :: proc(file_path: string, auto_backup := true) -> bool {
 
 	if !ok && file_existed {
 		// Suppress stdout noise in TUI mode; the notification bar handles messaging.
-		if !g_ctx.tui_mode {
+		if !wayu.tui_mode {
 			print_warning("Failed to create backup for %s", file_path)
 		}
 		return false
@@ -134,7 +134,7 @@ restore_from_backup :: proc(file_path: string) -> bool {
 	debug("Attempting to restore from backup: %s", file_path)
 
 	// Dry-run mode check
-	if g_ctx.dry_run {
+	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		fmt.printfln("%sWould restore from backup:%s", BRIGHT_CYAN, RESET)
@@ -182,7 +182,7 @@ restore_from_backup :: proc(file_path: string) -> bool {
 // List all backups for a file from backup/ directory
 list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 	// Search in backup/ directory instead of alongside original file
-	dir := fmt.aprintf("%s/backup", g_ctx.wayu_config)
+	dir := fmt.aprintf("%s/backup", wayu.data)
 	defer delete(dir)
 
 	base := get_base_name(file_path)
@@ -277,7 +277,7 @@ cleanup_old_backups :: proc(file_path: string, keep_count: int = 5) -> int {
 	debug("Cleaning up old backups for: %s (keep %d)", file_path, keep_count)
 
 	// Dry-run mode check
-	if g_ctx.dry_run {
+	if wayu.dry_run {
 		backups := list_backups_for_file(file_path)
 		defer {
 			for backup in backups {
@@ -390,7 +390,7 @@ format_backup_time :: proc(timestamp: time.Time) -> string {
 handle_backup_command :: proc(action: Action, args: []string) {
 	#partial switch action {
 	case .LIST:
-		if g_ctx.json_output {
+		if wayu.json_output {
 			print_all_backups_json()
 			return
 		}
@@ -441,7 +441,7 @@ handle_backup_command :: proc(action: Action, args: []string) {
 // Shape: { "backups": [ {"file": "<config>", "count": N, "entries": [ ... ]}, ... ] }
 print_all_backups_json :: proc() {
 	config_files := []string{
-		fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML),
+		fmt.aprintf("%s/%s", wayu.config, WAYU_TOML),
 	}
 	defer {
 		for f in config_files { delete(f) }
@@ -494,7 +494,7 @@ print_all_backups_json :: proc() {
 // List backups for all config files
 list_all_backups :: proc() {
 	config_files := []string{
-		fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML),
+		fmt.aprintf("%s/%s", wayu.config, WAYU_TOML),
 	}
 	defer {
 		for file in config_files {
@@ -572,7 +572,7 @@ restore_config_backup :: proc(config_type: string) {
 // Clean up old backups for all config files
 cleanup_all_old_backups :: proc() {
 	config_files := []string{
-		fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML),
+		fmt.aprintf("%s/%s", wayu.config, WAYU_TOML),
 	}
 	defer {
 		for file in config_files {
@@ -601,7 +601,7 @@ cleanup_all_old_backups :: proc() {
 	}
 
 	// Dry-run mode check
-	if g_ctx.dry_run {
+	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		print_warning("Would remove %d old backup(s):", total_to_remove)
@@ -625,7 +625,7 @@ cleanup_all_old_backups :: proc() {
 	}
 
 	// Check for --yes flag (required for confirmation)
-	if !g_ctx.yes_flag {
+	if !wayu.yes_flag {
 		print_error("This operation requires confirmation.")
 		fmt.println()
 		fmt.printfln("Found %d old backup(s) to remove:", total_to_remove)
@@ -691,7 +691,7 @@ cleanup_config_backups :: proc(config_type: string) {
 	to_remove := len(backups) - 5
 
 	// Dry-run mode check
-	if g_ctx.dry_run {
+	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		print_warning("Would remove %d old backup(s) for %s:", to_remove, config_type)
@@ -705,7 +705,7 @@ cleanup_config_backups :: proc(config_type: string) {
 	}
 
 	// Check for --yes flag (required for confirmation)
-	if !g_ctx.yes_flag {
+	if !wayu.yes_flag {
 		print_error("This operation requires confirmation.")
 		fmt.println()
 		fmt.printfln("Found %d old backup(s) to remove for %s:", to_remove, config_type)
@@ -734,7 +734,7 @@ get_config_file_path :: proc(config_type: string) -> string {
 	// only for CLI compatibility.
 	switch config_type {
 	case "path", "alias", "constants", "toml":
-		return fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
+		return fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	case:
 		return ""
 	}

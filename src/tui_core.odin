@@ -1369,9 +1369,9 @@ tick_notification :: proc(state: ^TUIState) {
 
 tui_cleanup_backups :: proc() -> bool {
 	config_files := []string{
-		fmt.aprintf("%s/path.%s", g_ctx.wayu_config, g_ctx.shell_ext),
-		fmt.aprintf("%s/aliases.%s", g_ctx.wayu_config, g_ctx.shell_ext),
-		fmt.aprintf("%s/constants.%s", g_ctx.wayu_config, g_ctx.shell_ext),
+		fmt.aprintf("%s/path.%s", wayu.data, wayu.shell_ext),
+		fmt.aprintf("%s/aliases.%s", wayu.data, wayu.shell_ext),
+		fmt.aprintf("%s/constants.%s", wayu.data, wayu.shell_ext),
 	}
 	defer for file in config_files do delete(file)
 
@@ -1401,7 +1401,7 @@ _tui_set_plugin_enabled :: proc(name: string, enabled: bool) -> bool {
 		if plugin.name == name {
 			plugin.enabled = enabled
 			if !write_plugin_config_json(&config) { return false }
-			return generate_plugins_file(g_ctx.shell)
+			return generate_plugins_file(wayu.shell)
 		}
 	}
 	return false
@@ -1452,7 +1452,7 @@ tui_install_plugin :: proc(key: string) -> bool {
 	}
 
 	if !write_plugin_config_json(&config) { return false }
-	return generate_plugins_file(g_ctx.shell)
+	return generate_plugins_file(wayu.shell)
 }
 
 tui_get_path_detail :: proc(path_str: string) -> [dynamic]string {
@@ -1519,7 +1519,7 @@ tui_load_path :: proc(state: ^TUIState) {
 	wayu_entries := make(map[string]EntrySource)
 	defer delete(wayu_entries)
 
-	toml_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
+	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(toml_file)
 
 	if os.exists(toml_file) {
@@ -1596,7 +1596,7 @@ tui_load_alias :: proc(state: ^TUIState) {
 	wayu_aliases := make(map[string]bool)
 	defer delete(wayu_aliases)
 
-	toml_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
+	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(toml_file)
 
 	if os.exists(toml_file) {
@@ -1670,7 +1670,7 @@ tui_load_constants :: proc(state: ^TUIState) {
 	wayu_constants := make(map[string]bool)
 	defer delete(wayu_constants)
 
-	toml_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
+	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(toml_file)
 
 	if os.exists(toml_file) {
@@ -1785,7 +1785,7 @@ tui_load_completions :: proc(state: ^TUIState) {
 		clear_view_cache(state, .COMPLETIONS_VIEW)
 	}
 
-	completions_dir := fmt.aprintf("%s/completions", g_ctx.wayu_config)
+	completions_dir := fmt.aprintf("%s/completions", wayu.data)
 	defer delete(completions_dir)
 
 	items := make([dynamic]string)
@@ -1835,7 +1835,7 @@ tui_load_backups :: proc(state: ^TUIState) {
 
 	items := make([dynamic]string)
 
-	backups_dir := fmt.aprintf("%s/backup", g_ctx.wayu_config)
+	backups_dir := fmt.aprintf("%s/backup", wayu.data)
 	defer delete(backups_dir)
 
 	if !os.exists(backups_dir) {
@@ -1919,19 +1919,19 @@ tui_load_settings :: proc(state: ^TUIState) {
 	if len(state.settings_version)    > 0 { delete(state.settings_version) }
 	if len(state.settings_toml_path)  > 0 { delete(state.settings_toml_path) }
 
-	state.settings_shell      = strings.clone(get_shell_name(g_ctx.shell))
-	state.settings_config_dir = strings.clone(g_ctx.wayu_config)
-	state.settings_dry_run    = g_ctx.dry_run
+	state.settings_shell      = strings.clone(get_shell_name(wayu.shell))
+	state.settings_config_dir = strings.clone(wayu.config)
+	state.settings_dry_run    = wayu.dry_run
 	state.settings_version    = strings.clone(VERSION)
 
-	toml_full := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
+	toml_full := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	state.settings_toml_path   = toml_full
 	state.settings_toml_exists = os.exists(toml_full)
 
 	total_backups := 0
-	backup_targets := []string{g_ctx.path_file, g_ctx.alias_file, g_ctx.constants_file}
+	backup_targets := []string{wayu.path_file, wayu.alias_file, wayu.constants_file}
 	for f in backup_targets {
-		full := fmt.aprintf("%s/%s", g_ctx.wayu_config, f)
+		full := fmt.aprintf("%s/%s", wayu.data, f)
 		defer delete(full)
 		backups := list_backups_for_file(full)
 		total_backups += len(backups)

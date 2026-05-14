@@ -4,7 +4,7 @@ Agent instructions for AI coding assistants working in this repository.
 
 ## Project Overview
 
-wayu is a shell configuration management CLI written in Odin. It manages PATH entries, aliases, environment constants, and completions by generating shell config files in `~/.config/wayu/` that users source via the main init file.
+wayu is a shell configuration management CLI written in Odin. It manages PATH entries, aliases, environment constants, and completions. User config lives in `~/.config/wayu/` (wayu.toml, hooks, extra.zsh). Generated runtime files live in `~/.local/share/wayu/` (core.zsh, plugins, completions, backups).
 
 **Current version**: see `VERSION` constant in `src/main.odin` (single source of truth) — run `./wayu --version` to print.
 **Supported shells**: Zsh (primary), Bash (full support) — Fish declared in code but not yet wired
@@ -75,7 +75,7 @@ ruby tests/integration/test_plugin.rb
 | `src/config_specs.odin` | ConfigEntrySpec per type (PATH, ALIAS, CONSTANTS) |
 | `src/toml.odin` | Hand-rolled TOML parser, serializer, command handler |
 | `src/preload.odin` | Shell script templates for init (zsh/bash/fish) |
-| `src/init_generator.odin` | Generates init-core, init-lazy, init-login, init-helpers shell scripts |
+| `src/init_generator.odin` | Generates core, lazy, login, helpers shell scripts |
 | `src/plugin.odin` | Plugin command dispatch + builtin plugin catalog |
 | `src/plugin_json.odin` | Plugin JSON config read/write + migration |
 | `src/plugin_ops.odin` | Git ops, dependency resolution, conflict detection |

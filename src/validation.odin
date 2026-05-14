@@ -297,7 +297,7 @@ print_error_with_context :: proc(
 		if strings.contains(resource, ".config/wayu") {
 			fmt.eprintfln("\n%sSuggestion:%s Run %swayu init%s to create configuration files",
 				BRIGHT_CYAN, RESET, BOLD, RESET)
-			fmt.eprintfln("            This will set up all required configuration files in ~/.config/wayu/")
+			fmt.eprintfln("            This will set up all required configuration files in ~/.config/wayu and ~/.local/share/wayu/")
 		} else {
 			fmt.eprintfln("\n%sSuggestion:%s Check the file path and try again",
 				BRIGHT_CYAN, RESET)
@@ -355,7 +355,7 @@ print_error_with_context :: proc(
 			BRIGHT_CYAN, RESET)
 		fmt.eprintfln("  %swayu init%s", BOLD, RESET)
 		fmt.eprintfln("\nThis will:")
-		fmt.eprintfln("  • Create ~/.config/wayu/ directory")
+		fmt.eprintfln("  • Create ~/.config/wayu/ and ~/.local/share/wayu/ directories")
 		fmt.eprintfln("  • Initialize all configuration files")
 		fmt.eprintfln("  • Set up shell integration")
 
@@ -450,15 +450,15 @@ print_error_simple :: proc(format: string, args: ..any) {
 
 // Check if wayu is initialized
 check_wayu_initialized :: proc() -> bool {
-	if !os.exists(g_ctx.wayu_config) {
-		print_error_with_context(.CONFIG_NOT_INITIALIZED, g_ctx.wayu_config)
+	if !os.exists(wayu.config) {
+		print_error_with_context(.CONFIG_NOT_INITIALIZED, wayu.config)
 		return false
 	}
 
 	// Post-migration: wayu.toml is the single source of truth.
 	// The legacy per-type files (path.zsh, aliases.zsh, etc.) are no longer
-	// required — they've been superseded by wayu.toml + init-core.<ext>.
-	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	// required — they've been superseded by wayu.toml + core.<ext>.
+	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(toml_path)
 	if !os.exists(toml_path) {
 		print_error_with_context(.FILE_NOT_FOUND, toml_path)

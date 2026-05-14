@@ -11,11 +11,11 @@ import wayu "../../src"
 @(test)
 test_extract_completion_items_empty :: proc(t: ^testing.T) {
 	// Test with non-existent directory
-	original_config := wayu.g_ctx.wayu_config
-	defer wayu.g_ctx.wayu_config = original_config
+	original_config := wayu.wayu.config
+	defer { wayu.wayu.config = original_config; wayu.wayu.data = original_config }
 
-	wayu.g_ctx.wayu_config = "/tmp/wayu-test-nonexistent"
-
+	wayu.wayu.config = "/tmp/wayu-test-nonexistent"
+	wayu.wayu.data = "/tmp/wayu-test-nonexistent"
 	items := wayu.extract_completion_items()
 	defer {
 		for item in items {
@@ -45,10 +45,10 @@ test_extract_completion_items_single :: proc(t: ^testing.T) {
 	_ = os.write_entire_file(test_file, transmute([]byte)test_content)
 
 	// Test extraction
-	original_config := wayu.g_ctx.wayu_config
-	defer wayu.g_ctx.wayu_config = original_config
-	wayu.g_ctx.wayu_config = test_dir
-
+	original_config := wayu.wayu.config
+	defer { wayu.wayu.config = original_config; wayu.wayu.data = original_config }
+	wayu.wayu.config = test_dir
+	wayu.wayu.data = test_dir
 	items := wayu.extract_completion_items()
 	defer {
 		for item in items {
@@ -82,10 +82,10 @@ test_extract_completion_items_multiple :: proc(t: ^testing.T) {
 	}
 
 	// Test extraction
-	original_config := wayu.g_ctx.wayu_config
-	defer wayu.g_ctx.wayu_config = original_config
-	wayu.g_ctx.wayu_config = test_dir
-
+	original_config := wayu.wayu.config
+	defer { wayu.wayu.config = original_config; wayu.wayu.data = original_config }
+	wayu.wayu.config = test_dir
+	wayu.wayu.data = test_dir
 	items := wayu.extract_completion_items()
 	defer {
 		for item in items {
@@ -138,10 +138,10 @@ test_extract_completion_items_filters :: proc(t: ^testing.T) {
 	os.make_directory(subdir)
 
 	// Test extraction
-	original_config := wayu.g_ctx.wayu_config
-	defer wayu.g_ctx.wayu_config = original_config
-	wayu.g_ctx.wayu_config = test_dir
-
+	original_config := wayu.wayu.config
+	defer { wayu.wayu.config = original_config; wayu.wayu.data = original_config }
+	wayu.wayu.config = test_dir
+	wayu.wayu.data = test_dir
 	items := wayu.extract_completion_items()
 	defer {
 		for item in items {

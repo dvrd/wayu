@@ -25,7 +25,7 @@ static_generate :: proc(config: TomlConfig, lock: LockFile) -> StaticConfig {
 	// to avoid emitting bash/zsh constructs under a fish shebang. Use
 	// DETECTED_SHELL since config.shell may carry the [shell] table rather
 	// than a simple string depending on TOML layout.
-	if g_ctx.shell == .FISH || strings.equal_fold(shell, "fish") {
+	if wayu.shell == .FISH || strings.equal_fold(shell, "fish") {
 		fish_content := shell_fish_generate_init(config)
 		return StaticConfig{
 			generated_at = fmt.aprintf("%v", time.now()),
@@ -342,12 +342,12 @@ resolve_plugin_path :: proc(source: string) -> string {
 	if strings.has_prefix(source, "github:") {
 		// github:user/repo -> ~/.config/wayu/plugins/user-repo
 		repo_part := strings.trim_prefix(source, "github:")
-		return fmt.aprintf("%s/plugins/%s", g_ctx.wayu_config, strings.replace_all(repo_part, "/", "-"))
+		return fmt.aprintf("%s/plugins/%s", wayu.data, strings.replace_all(repo_part, "/", "-"))
 	}
 
 	if strings.has_prefix(source, "https://") || strings.has_prefix(source, "http://") {
 		// Remote URL - use cached version
-		return fmt.aprintf("%s/plugins/remote/%s", g_ctx.wayu_config, sanitize_filename(source))
+		return fmt.aprintf("%s/plugins/remote/%s", wayu.data, sanitize_filename(source))
 	}
 
 	// Assume it's a local path
@@ -383,7 +383,7 @@ handle_generate_static_command :: proc(args: []string) {
 	}
 
 	// Default output path
-	output_path := fmt.aprintf("%s/wayu_static.%s", g_ctx.wayu_config, g_ctx.shell_ext)
+	output_path := fmt.aprintf("%s/wayu_static.%s", wayu.data, wayu.shell_ext)
 	defer delete(output_path)
 
 	// Parse optional --output flag
@@ -398,7 +398,7 @@ handle_generate_static_command :: proc(args: []string) {
 	}
 
 	// Read TOML config
-	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(toml_path)
 
 	config: TomlConfig
@@ -419,7 +419,7 @@ handle_generate_static_command :: proc(args: []string) {
 	defer static_cleanup_config(&config)
 
 	// Read lock file (optional)
-	lock_path := fmt.aprintf("%s/wayu.lock", g_ctx.wayu_config)
+	lock_path := fmt.aprintf("%s/wayu.lock", wayu.data)
 	defer delete(lock_path)
 
 	lock: LockFile
@@ -434,7 +434,7 @@ handle_generate_static_command :: proc(args: []string) {
 	defer static_cleanup_static_config(&static_config)
 
 	// Dry-run mode check
-	if g_ctx.dry_run {
+	if wayu.dry_run {
 		print_header("DRY RUN - Static Generation", EMOJI_INFO)
 		fmt.println()
 		fmt.printfln("Would write to: %s", output_path)
@@ -471,7 +471,7 @@ handle_generate_static_command :: proc(args: []string) {
 static_config_from_files :: proc() -> TomlConfig {
 	config: TomlConfig
 	config.version = "1.0"
-	config.shell = g_ctx.shell_ext // "zsh" or "bash"
+	config.shell = wayu.shell_ext // "zsh" or "bash"
 	config.wayu_version = VERSION
 
 	// Read PATH entries

@@ -74,7 +74,7 @@ test_init_template_loads_all_configs :: proc(t: ^testing.T) {
 @(test)
 test_init_template_order :: proc(t: ^testing.T) {
 	// INIT_TEMPLATE_ZSH now starts with a fast-path block that sources
-	// init-core.zsh (when it exists) and returns before reaching the legacy
+	// core.zsh (when it exists) and returns before reaching the legacy
 	// sourcing. The legacy fallback below is what this test cares about, so
 	// we constrain our string searches to that region.
 	template := string(wayu.INIT_TEMPLATE_ZSH)
@@ -94,10 +94,10 @@ test_init_template_order :: proc(t: ^testing.T) {
 	testing.expect(t, aliases_pos < tools_pos, "Aliases should load before tools")
 
 	// Sanity: the fast path appears before the fallback and references
-	// init-core.zsh, so modern users skip the legacy sourcing entirely.
-	fast_path_ref := strings.index(template, "$WAYU_CONFIG_DIR/init-core.zsh")
+	// core.zsh, so modern users skip the legacy sourcing entirely.
+	fast_path_ref := strings.index(template, "$WAYU_DATA_DIR/core.zsh")
 	testing.expect(t, fast_path_ref >= 0 && fast_path_ref < fallback_start,
-		"INIT_TEMPLATE_ZSH must source init-core.zsh before the legacy fallback")
+		"INIT_TEMPLATE_ZSH must source core.zsh before the legacy fallback")
 }
 
 @(test)

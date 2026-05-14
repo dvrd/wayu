@@ -140,13 +140,13 @@ get_config_file_with_fallback :: proc(base_name: string, shell: ShellType) -> st
 	ext := get_shell_extension(shell)
 
 	// Try shell-specific extension first
-	preferred_file := fmt.aprintf("%s/%s.%s", g_ctx.wayu_config, base_name, ext)
+	preferred_file := fmt.aprintf("%s/%s.%s", wayu.data, base_name, ext)
 	if os.exists(preferred_file) {
 		return preferred_file
 	}
 
 	// Fall back to .zsh for backward compatibility
-	zsh_file := fmt.aprintf("%s/%s.zsh", g_ctx.wayu_config, base_name)
+	zsh_file := fmt.aprintf("%s/%s.zsh", wayu.data, base_name)
 	if os.exists(zsh_file) {
 		delete(preferred_file)
 		return zsh_file
@@ -255,9 +255,9 @@ shell_fish_generate_init :: proc(config: TomlConfig) -> string {
     delete(aliases_section)
 
     // Plugins placeholder
-    fmt.sbprintln(&sb, "# Plugins loaded from ~/.config/wayu/plugins.fish")
-    fmt.sbprintln(&sb, "if test -f \"$HOME/.config/wayu/plugins.fish\"")
-    fmt.sbprintln(&sb, "    source \"$HOME/.config/wayu/plugins.fish\"")
+    fmt.sbprintln(&sb, "# Plugins loaded from ~/.local/share/wayu/plugins.fish")
+    fmt.sbprintln(&sb, "if test -f \"$HOME/.local/share/wayu/plugins.fish\"")
+    fmt.sbprintln(&sb, "    source \"$HOME/.local/share/wayu/plugins.fish\"")
     fmt.sbprintln(&sb, "end")
 
     return strings.clone(strings.to_string(sb))
@@ -386,7 +386,7 @@ command_exists :: proc(cmd: string) -> bool {
 
 // Write Fish config to file
 shell_fish_write_config :: proc(file_path: string, content: string) -> bool {
-    if g_ctx.dry_run {
+    if wayu.dry_run {
         fmt.printfln("[DRY-RUN] Would write Fish config to: %s", file_path)
         return true
     }

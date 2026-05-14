@@ -319,7 +319,7 @@ interactive_fuzzy_select :: proc(items: []string, prompt: string) -> (selected: 
 // extract_completion_items reads the completions directory and returns a
 // list of completion names (without the leading underscore).
 extract_completion_items :: proc() -> []string {
-	completions_dir := fmt.aprintf("%s/completions", g_ctx.wayu_config)
+	completions_dir := fmt.aprintf("%s/completions", wayu.data)
 	defer delete(completions_dir)
 
 	if !os.exists(completions_dir) {

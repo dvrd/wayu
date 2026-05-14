@@ -24,6 +24,13 @@ test_create_backup_nonexistent_file :: proc(t: ^testing.T) {
 
 @(test)
 test_create_backup_existing_file :: proc(t: ^testing.T) {
+	// Point wayu.data to a temp dir so backup/ can be created there
+	original_data := wayu.wayu.data
+	wayu.wayu.data = "/tmp/wayu-test-backup"
+	os.make_directory("/tmp/wayu-test-backup")
+	os.make_directory("/tmp/wayu-test-backup/backup")
+	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-backup") }
+
 	// Create a temporary file
 	test_content := "test backup content\nline 2\n"
 	test_file := "/tmp/wayu-test-backup-source"
@@ -183,6 +190,10 @@ test_get_config_file_path :: proc(t: ^testing.T) {
 @(test)
 test_backup_workflow :: proc(t: ^testing.T) {
 	// Test complete backup workflow: create -> list -> restore
+	original_data := wayu.wayu.data
+	wayu.wayu.data = "/tmp/wayu-test-backup-wf"
+	os.make_directory("/tmp/wayu-test-backup-wf")
+	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-backup-wf") }
 
 	// Setup test file
 	test_content := "original content for backup test\n"
@@ -247,6 +258,10 @@ test_backup_workflow :: proc(t: ^testing.T) {
 @(test)
 test_cleanup_old_backups :: proc(t: ^testing.T) {
 	// Test backup cleanup functionality
+	original_data := wayu.wayu.data
+	wayu.wayu.data = "/tmp/wayu-test-backup-cleanup"
+	os.make_directory("/tmp/wayu-test-backup-cleanup")
+	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-backup-cleanup") }
 
 	// Create test file
 	test_content := "content for cleanup test\n"

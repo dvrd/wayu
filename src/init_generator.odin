@@ -20,17 +20,17 @@ write_init_file :: proc(path, content: string) {
 // Technique 3: batch exports (typeset -gx)
 // Technique 4: evalcache for tools
 // Technique 5: optimized compinit (24h cache)
-// Technique 6: split files (core/lazy/login)
+// Technique 6: split files (core/lazy/login/helpers)
 
 // Compile a zsh file to bytecode (.zwc) for ~2-3x faster loading.
 // Silently no-ops on non-zsh shells or if zsh isn't available.
 zcompile_file :: proc(path: string) {
-	if g_ctx.shell != .ZSH { return }
+	if wayu.shell != .ZSH { return }
 	cmd := fmt.ctprintf("zsh -fc 'zcompile %s' >/dev/null 2>&1", path)
 	libc.system(cmd)
 }
 
-// Silently regenerate init-core.{ext} + plugin runtime config after any
+// Silently regenerate core.{ext} + plugin runtime config after any
 // mutation (path/alias/constants add/remove, template apply, ...).
 //
 // Unlike generate_optimized_init_all this version emits no log output so it
@@ -39,35 +39,34 @@ zcompile_file :: proc(path: string) {
 // swallowed because the CLI already printed the user-visible success and
 // we don't want a secondary "regen failed" line to confuse things.
 regenerate_init_core_silently :: proc() {
-	// Only makes sense when there's a wayu.toml to read from — without it
+	// Only makes sense when there's a wayu.toml to read from - without it
 	// the generators would just write empty files.
-	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(toml_path)
 	if !os.exists(toml_path) do return
 
-	if g_ctx.shell == .FISH {
+	if wayu.shell == .FISH {
 		generate_core_init_fish()
-		_ = generate_plugins_runtime_config(g_ctx.shell)
+		_ = generate_plugins_runtime_config(wayu.shell)
 		return
 	}
 
 	generate_core_init_v2()
 	generate_lazy_init_v2()
-	generate_login_init_v2()
 	generate_helpers_init_v2()
-	_ = generate_plugins_runtime_config(g_ctx.shell)
+	_ = generate_plugins_runtime_config(wayu.shell)
 }
 
 // Generate all optimized init files (v2 with all optimizations)
 generate_optimized_init_all :: proc() {
-	// Fish uses a single native init-core.fish; zsh-defer / lazy split is
+	// Fish uses a single native core.fish; zsh-defer / lazy split is
 	// zsh/bash-specific and irrelevant under fish.
-	if g_ctx.shell == .FISH {
+	if wayu.shell == .FISH {
 		generate_core_init_fish()
-		if !generate_plugins_runtime_config(g_ctx.shell) {
+		if !generate_plugins_runtime_config(wayu.shell) {
 			print_warning("Failed to generate plugin runtime config")
 		}
-		fmt.printfln("# Init file generated: %s/init-core.fish", g_ctx.wayu_config)
+		fmt.printfln("# Init file generated: %s/core.fish", wayu.data)
 		return
 	}
 
@@ -77,34 +76,34 @@ generate_optimized_init_all :: proc() {
 	// 2. Lazy - Plugins, tools, completions (via built-in zsh-defer)
 	generate_lazy_init_v2()
 
-	// 3. Login - Login shells only (NVM, etc.)
+	// 3. Login - Login-shell-only tools (only if configured)
 	generate_login_init_v2()
 
 	// 4. Helper functions (evalcache, zsh-defer propio, etc.)
 	generate_helpers_init_v2()
 
 	// 5. Runtime plugin config generated from wayu.toml
-	if !generate_plugins_runtime_config(g_ctx.shell) {
+	if !generate_plugins_runtime_config(wayu.shell) {
 		print_warning("Failed to generate plugin runtime config")
 	}
 
 	fmt.println("# Init files generated:")
-	fmt.printfln("#   %s/init-core.zsh  (< 10ms)", g_ctx.wayu_config)
-	fmt.printfln("#   %s/init-lazy.zsh   (deferred via built-in zsh-defer)", g_ctx.wayu_config)
-	fmt.printfln("#   %s/init-login.zsh  (login only)", g_ctx.wayu_config)
-	fmt.printfln("#   %s/init-helpers.zsh (evalcache, built-in zsh-defer)", g_ctx.wayu_config)
+	fmt.printfln("#   %s/core.zsh     (< 10ms)", wayu.data)
+	fmt.printfln("#   %s/lazy.zsh     (deferred via built-in zsh-defer)", wayu.data)
+	fmt.printfln("#   %s/login.zsh    (login only, if configured)", wayu.data)
+	fmt.printfln("#   %s/helpers.zsh  (evalcache, built-in zsh-defer)", wayu.data)
 	fmt.println("#")
 	fmt.println("# To compile to bytecode (2-3x faster):")
-	fmt.println("#   zcompile ~/.config/wayu/init-core.zsh")
-	fmt.println("#   zcompile ~/.config/wayu/init-lazy.zsh")
+	fmt.println("#   zcompile ~/.local/share/wayu/core.zsh")
+	fmt.println("#   zcompile ~/.local/share/wayu/lazy.zsh")
 	fmt.println("#")
 	fmt.println("# NOTE: wayu includes built-in zsh-defer, no external plugin needed")
 }
 
 // Core: Only what's needed for the prompt to appear (< 10ms)
 generate_core_init_v2 :: proc() {
-	shell_ext := get_shell_extension(g_ctx.shell)
-	path := fmt.aprintf("%s/init-core.%s", g_ctx.wayu_config, shell_ext)
+	shell_ext := get_shell_extension(wayu.shell)
+	path := fmt.aprintf("%s/core.%s", wayu.data, shell_ext)
 	defer delete(path)
 
 	builder: strings.Builder
@@ -113,14 +112,14 @@ generate_core_init_v2 :: proc() {
 
 	// Use correct shebang for shell type
 	shebang := "#!/usr/bin/env zsh"
-	if g_ctx.shell == .BASH {
+	if wayu.shell == .BASH {
 		shebang = "#!/usr/bin/env bash"
-	} else if g_ctx.shell == .FISH {
+	} else if wayu.shell == .FISH {
 		shebang = "#!/usr/bin/env fish"
 	}
 	fmt.sbprintln(&builder, shebang)
 
-	init_file_name := fmt.aprintf("init-core.%s", shell_ext)
+	init_file_name := fmt.aprintf("core.%s", shell_ext)
 	fmt.sbprintfln(&builder, "# %s - ESSENTIAL (< 10ms)", init_file_name)
 	delete(init_file_name)
 	fmt.sbprintln(&builder, "# Auto-generated by wayu build")
@@ -141,26 +140,26 @@ generate_core_init_v2 :: proc() {
 		}
 		fmt.sbprintln(&builder, ":$PATH\"")
 	} else {
-		source_file := fmt.aprintf("$HOME/.config/wayu/path.%s", shell_ext)
+		source_file := fmt.aprintf("$HOME/.local/share/wayu/path.%s", shell_ext)
 		fmt.sbprintfln(&builder, `source "%s"`, source_file)
 		delete(source_file)
 	}
 
 	// PATH deduplication - use correct syntax for shell type
 	fmt.sbprintln(&builder, "# Deduplicate PATH (preserve order, remove duplicates)")
-	if g_ctx.shell == .ZSH {
+	if wayu.shell == .ZSH {
 		fmt.sbprintln(&builder, "typeset -U path PATH")
-	} else if g_ctx.shell == .BASH {
+	} else if wayu.shell == .BASH {
 		// Bash doesn't have typeset -U, use a different dedup method
 		fmt.sbprintln(&builder, `# Bash PATH deduplication`)
 		fmt.sbprintln(&builder, `export PATH=$(echo "$PATH" | tr ':' '\n' | nl | sort -uk2 | sort -n | cut -f2- | tr '\n' ':' | sed 's/:$//g')`)
-	} else if g_ctx.shell == .FISH {
+	} else if wayu.shell == .FISH {
 		// Fish handles PATH specially
 		fmt.sbprintln(&builder, `# Fish PATH deduplication`)
 		fmt.sbprintln(&builder, `set -U fish_user_paths (printf '%s\n' $fish_user_paths | awk '!seen[$0]++')`)
 	}
 	fmt.sbprintln(&builder)
-	
+
 	// Batch essential exports (single line)
 	// Environment from wayu.toml [env]
 	fmt.sbprintln(&builder, "# === Environment (from wayu.toml [env]) ===")
@@ -182,7 +181,7 @@ defer {
 		fmt.sbprintln(&builder, `"`)
 	}
 	fmt.sbprintln(&builder)
-	
+
 	// Aliases desde wayu.toml [aliases]
 	fmt.sbprintln(&builder, "# === Aliases (from wayu.toml [aliases]) ===")
 	toml_aliases := read_wayu_toml_aliases()
@@ -211,24 +210,24 @@ defer {
 	fmt.sbprintln(&builder, "  return $_exit")
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
-	
+
 	// Completions (necesario para autocomplete)
 	fmt.sbprintln(&builder, "# === Completions ===")
-	fmt.sbprintln(&builder, "fpath=(\"$HOME/.config/wayu/completions\" $fpath)")
+	fmt.sbprintln(&builder, "fpath=(\"$HOME/.local/share/wayu/completions\" $fpath)")
 	fmt.sbprintln(&builder, "autoload -Uz compinit && compinit -C")
 	fmt.sbprintln(&builder)
-	
+
 	// Critical plugins (autocomplete, autosuggestions) - NOT deferred
 	fmt.sbprintln(&builder, "# === Critical plugins (immediate) ===")
-	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\" ] && source \"$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\"")
-	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\" ] && source \"$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\"")
-	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/config.zsh\" ] && source \"$HOME/.config/wayu/plugins/config.zsh\"")
+	fmt.sbprintln(&builder, "[ -f \"$HOME/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\" ] && source \"$HOME/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\"")
+	fmt.sbprintln(&builder, "[ -f \"$HOME/.local/share/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\" ] && source \"$HOME/.local/share/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\"")
+	fmt.sbprintln(&builder, "[ -f \"$HOME/.local/share/wayu/plugins/config.zsh\" ] && source \"$HOME/.local/share/wayu/plugins/config.zsh\"")
 	fmt.sbprintln(&builder)
-	
+
 	// User configuration from config.zsh
-	config_zsh := fmt.aprintf("%s/config.zsh", g_ctx.wayu_config)
+	config_zsh := fmt.aprintf("%s/config.zsh", wayu.config)
 	defer delete(config_zsh)
-	
+
 	if os.exists(config_zsh) {
 		content, ok := safe_read_file(config_zsh)
 		if ok && len(content) > 0 {
@@ -237,28 +236,28 @@ defer {
 			fmt.sbprintln(&builder)
 		}
 	}
-	
+
 	// Load helpers (for zsh-defer and utilities)
 	fmt.sbprintln(&builder, "# === Load helpers (built-in zsh-defer) ===")
-	fmt.sbprintfln(&builder, "source \"%s/init-helpers.zsh\" 2>/dev/null || true", g_ctx.wayu_config)
+	fmt.sbprintfln(&builder, "source \"%s/helpers.zsh\" 2>/dev/null || true", wayu.data)
 	fmt.sbprintln(&builder)
-	
-	// Eager tools — loaded immediately in core (e.g. keybinding tools like atuin).
+
+	// Eager tools - loaded immediately in core (e.g. keybinding tools like atuin).
 	// Only `evalcache`-kind tools may be eager; other recipes are always deferred.
 	tools := read_wayu_toml_tools()
 	defer {
 		for &t in tools { destroy_tool_entry(&t) }
 		delete(tools)
 	}
-	
+
 	eager_count := 0
 	for t in tools {
-		if t.eager && tool_kind_is_evalcache(t.kind) { eager_count += 1 }
+		if t.eager && !t.login_only && tool_kind_is_evalcache(t.kind) { eager_count += 1 }
 	}
 	if eager_count > 0 {
-		fmt.sbprintln(&builder, "# === Tools (eager — keybindings, immediate) ===")
+		fmt.sbprintln(&builder, "# === Tools (eager - keybindings, immediate) ===")
 		for t in tools {
-			if !t.eager { continue }
+			if !t.eager || t.login_only { continue }
 			if !tool_kind_is_evalcache(t.kind) { continue }
 			if len(t.args) > 0 {
 				fmt.sbprintfln(&builder, "_wayu_evalcache %s %s", t.name, t.args)
@@ -268,48 +267,54 @@ defer {
 		}
 		fmt.sbprintln(&builder)
 	}
-	
+
 	// Prompt: Nativo wayu completo (copied from starship.toml)
 	// Ahora con features interactivas
 	fmt.sbprintln(&builder, "# === Prompt (wayu native, interactive) ===")
-	
+
 	// Parse configs from TOML
-	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(toml_path)
-	
+
 	if os.exists(toml_path) {
 		toml_data, ok := safe_read_file(toml_path)
 		if ok {
 			defer delete(toml_data)
-			
+
 			// Base prompt
 			prompt_cfg := parse_full_prompt_config(string(toml_data))
 			base_prompt := generate_full_prompt(prompt_cfg)
-			
+
 			// Interactive features
 			interactive_cfg := parse_interactive_config(string(toml_data))
 			interactive_code := generate_interactive_prompt(base_prompt, interactive_cfg)
-			
+
 			fmt.sbprint(&builder, interactive_code)
 			delete(base_prompt)
 			delete(interactive_code)
 		}
 	}
 	fmt.sbprintln(&builder)
-	
+
 	// Source lazy init directly (tools, extra config).
 	// Previously this used zsh-defer but the home-grown implementation
 	// conflicts with TRAPUSR1 (async rprompt) and silently fails,
 	// leaving tools like zoxide uninitialised.
 	fmt.sbprintln(&builder, "# === Lazy init (tools, extra config) ===")
-	fmt.sbprintfln(&builder, "source \"%s/init-lazy.zsh\"", g_ctx.wayu_config)
+	fmt.sbprintfln(&builder, "source \"%s/lazy.zsh\"", wayu.data)
 	fmt.sbprintln(&builder)
-	
-	// Login shell extras (|| true para que no falle en non-login shells)
-	fmt.sbprintln(&builder, "# === Login shell ===")
-	fmt.sbprintfln(&builder, "[[ -o login ]] && source \"%s/init-login.zsh\" 2>/dev/null || true", g_ctx.wayu_config)
-	fmt.sbprintln(&builder)
-	
+
+	// Login-shell-only tools (if any are configured)
+	login_count := 0
+	for t in tools {
+		if t.login_only { login_count += 1 }
+	}
+	if login_count > 0 {
+		fmt.sbprintln(&builder, "# === Login shell only ===")
+		fmt.sbprintfln(&builder, "[[ -o login ]] && source \"%s/login.zsh\"", wayu.data)
+		fmt.sbprintln(&builder)
+	}
+
 	content := strings.to_string(builder)
 	write_init_file(path, content)
 	zcompile_file(path)
@@ -317,17 +322,17 @@ defer {
 
 // Lazy: Plugins, tools, completions (deferred via built-in zsh-defer)
 generate_lazy_init_v2 :: proc() {
-	path := fmt.aprintf("%s/init-lazy.zsh", g_ctx.wayu_config)
+	path := fmt.aprintf("%s/lazy.zsh", wayu.data)
 	defer delete(path)
-	
+
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
-	
+
 	fmt.sbprintln(&builder, "#!/usr/bin/env zsh")
-	fmt.sbprintln(&builder, "# init-lazy.zsh - CARGA DIFERIDA")
+	fmt.sbprintln(&builder, "# lazy.zsh - CARGA DIFERIDA")
 	fmt.sbprintln(&builder)
-	
+
 	// Deferred tools (non-eager) from wayu.toml [tools].
 	// Includes evalcache (default) plus heavy lazy recipes: nvm, conda, lazy.
 	tools := read_wayu_toml_tools()
@@ -335,73 +340,100 @@ generate_lazy_init_v2 :: proc() {
 		for &t in tools { destroy_tool_entry(&t) }
 		delete(tools)
 	}
-	
+
 	// Anything *not* handled in core (eager evalcache) is deferred here.
 	// Counter must mirror the emit predicate so the header doesn't appear
 	// orphaned (or vanish when an unusual eager non-evalcache slips in).
 	deferred_count := 0
 	for t in tools {
+		if t.login_only { continue }
 		if t.eager && tool_kind_is_evalcache(t.kind) { continue }
 		deferred_count += 1
 	}
 	if deferred_count > 0 {
 		fmt.sbprintln(&builder, "# === Tools (deferred) ===")
 		for t in tools {
+			if t.login_only { continue }
 			if t.eager && tool_kind_is_evalcache(t.kind) { continue }
 			emit_tool_recipe(&builder, t)
 		}
 		fmt.sbprintln(&builder)
 	}
 
-	// Environment ya exportado en init-core.zsh desde wayu.toml [env]
+	// Environment ya exportado en core.zsh desde wayu.toml [env]
 	fmt.sbprintln(&builder)
 
-	// Aliases ya exportados en init-core.zsh desde wayu.toml [aliases]
+	// Aliases ya exportados en core.zsh desde wayu.toml [aliases]
 	fmt.sbprintln(&builder)
 	fmt.sbprintln(&builder)
 
 	// User escape hatch: tools.zsh handles tool init that wayu doesn't ship a
-	// recipe for. Sourced here (not just init-login.zsh) so non-login shells
-	// — Ghostty / Zellij / tmux panes — also pick up user lazy loaders.
+	// recipe for. Sourced here (not just login.zsh) so non-login shells
+	// - Ghostty / Zellij / tmux panes - also pick up user lazy loaders.
 	fmt.sbprintln(&builder, "# === User tools.zsh (escape hatch for unrecognised tools) ===")
-	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/tools.zsh\" ] && source \"$HOME/.config/wayu/tools.zsh\"")
+	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/tools.zsh\" ] && source \"$HOME/.config/wayu/tools.zsh\"")  // stays in config (user file)
 	fmt.sbprintln(&builder)
 
 	// Extra config
 	fmt.sbprintln(&builder, "# === Extra config ===")
-	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/extra.zsh\" ] && source \"$HOME/.config/wayu/extra.zsh\"")
+	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/extra.zsh\" ] && source \"$HOME/.config/wayu/extra.zsh\"")  // stays in config (user file)
 	fmt.sbprintln(&builder)
 
 	content := strings.to_string(builder)
 	write_init_file(path, content)
+	zcompile_file(path)
 }
 
-// Login: Login shells only (heavy tools)
+// Login: Login-shell-only tools from wayu.toml [tools] with login_only = true.
+// Only generates the file when there are login-only tools configured.
 generate_login_init_v2 :: proc() {
-	path := fmt.aprintf("%s/init-login.zsh", g_ctx.wayu_config)
+	tools := read_wayu_toml_tools()
+	defer {
+		for &t in tools { destroy_tool_entry(&t) }
+		delete(tools)
+	}
+
+	login_count := 0
+	for t in tools {
+		if t.login_only { login_count += 1 }
+	}
+	if login_count == 0 {
+		// No login-only tools — remove stale login.zsh if it exists
+		path := fmt.aprintf("%s/login.zsh", wayu.data)
+		defer delete(path)
+		os.remove(path)
+		return
+	}
+
+	path := fmt.aprintf("%s/login.zsh", wayu.data)
 	defer delete(path)
-	
+
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
-	
+
 	fmt.sbprintln(&builder, "#!/usr/bin/env zsh")
-	fmt.sbprintln(&builder, "# init-login.zsh - LOGIN SHELL ONLY")
-	fmt.sbprintln(&builder, "# Reserved for true login-shell init (motd, ssh-agent, etc.).")
-	fmt.sbprintln(&builder, "# Lazy tool loaders (nvm/conda/evalcache/lazy) live in init-lazy.zsh now,")
-	fmt.sbprintln(&builder, "# so they’re available in non-login shells too (Ghostty/Zellij/tmux panes).")
+	fmt.sbprintln(&builder, "# login.zsh - LOGIN SHELL ONLY")
+	fmt.sbprintln(&builder, "# Tools marked login_only=true in wayu.toml [tools]")
 	fmt.sbprintln(&builder)
-	
+	fmt.sbprintln(&builder, "# === Login-only tools ===")
+	for t in tools {
+		if !t.login_only { continue }
+		emit_tool_recipe(&builder, t)
+	}
+	fmt.sbprintln(&builder)
+
 	content := strings.to_string(builder)
 	write_init_file(path, content)
+	zcompile_file(path)
 }
 
 // Helpers: Support functions (evalcache, built-in zsh-defer, etc.)
 generate_helpers_init_v2 :: proc() {
-	path := fmt.aprintf("%s/init-helpers.zsh", g_ctx.wayu_config)
+	path := fmt.aprintf("%s/helpers.zsh", wayu.data)
 	defer delete(path)
-	
-	helper := `# init-helpers.zsh - Support functions for wayu
+
+	helper := `# helpers.zsh - Support functions for wayu
 
 # ============================================================================
 # EVALCACHE - Cache eval output, regenerate if binary changed
@@ -424,7 +456,7 @@ _wayu_evalcache() {
     if "$cmd" "$@" > "$tmp_file" 2>/dev/null && [[ -s "$tmp_file" ]]; then
       mv -f "$tmp_file" "$cache_file"
     else
-      # Failed or empty output — drop the tmpfile, leave any prior good cache alone
+      # Failed or empty output - drop the tmpfile, leave any prior good cache alone
       rm -f "$tmp_file"
       [[ ! -s "$cache_file" ]] && return 1
     fi
@@ -444,7 +476,7 @@ _wayu_evalcache() {
 # Main zsh-defer function
 zsh-defer() {
   local delay=0
-  
+
   # Parse options
   while [[ "$1" == -* ]]; do
     case "$1" in
@@ -452,7 +484,7 @@ zsh-defer() {
       *) shift ;;
     esac
   done
-  
+
   # Add to queue
   local cmd="$*"
   [[ -n "$cmd" ]] && _wayu_defer_queue+=("$cmd:$delay")
@@ -461,30 +493,30 @@ zsh-defer() {
 # Process one deferred command
 _wayu_defer_process_one() {
   [[ ${#_wayu_defer_queue} -eq 0 ]] && return 0
-  
+
   local item="${_wayu_defer_queue[1]}"
   local cmd="${item%:*}"
   local delay="${item##*:}"
-  
+
   shift _wayu_defer_queue
-  
+
   # Execute
   if [[ "$delay" != "0" && "$delay" != "" ]]; then
     (sleep "$delay" && eval "$cmd") &
   else
     eval "$cmd" 2>/dev/null
   fi
-  
+
   return ${#_wayu_defer_queue}
 }
 
 # precmd hook - runs deferred commands after the first prompt
 _wayu_defer_precmd() {
   [[ ${#_wayu_defer_queue} -eq 0 ]] && return
-  
+
   # Execute first one immediately
   _wayu_defer_process_one
-  
+
   # If more remain, schedule execution between commands
   if [[ ${#_wayu_defer_queue} -gt 0 ]]; then
     # Use a small trick: TMOUT with trap
@@ -503,14 +535,16 @@ add-zsh-hook precmd _wayu_defer_precmd
 # WAYU COMPILE - Compilar init files a bytecode (comando manual)
 # ============================================================================
 wayu_compile() {
-  echo "Compilando init files a bytecode..."
-  zcompile ~/.config/wayu/init-core.zsh 2>/dev/null && echo "✓ init-core.zsh"
-  zcompile ~/.config/wayu/init-lazy.zsh 2>/dev/null && echo "✓ init-lazy.zsh"
-  zcompile ~/.config/wayu/init-login.zsh 2>/dev/null && echo "✓ init-login.zsh"
+  echo "Compiling init files to bytecode..."
+  zcompile ~/.local/share/wayu/core.zsh 2>/dev/null && echo "✓ core.zsh"
+  zcompile ~/.local/share/wayu/helpers.zsh 2>/dev/null && echo "✓ helpers.zsh"
+  zcompile ~/.local/share/wayu/lazy.zsh 2>/dev/null && echo "✓ lazy.zsh"
+  zcompile ~/.local/share/wayu/login.zsh 2>/dev/null && echo "✓ login.zsh"
+  zcompile ~/.local/share/wayu/plugins.zsh 2>/dev/null && echo "✓ plugins.zsh"
   echo "Done. Loading 2-3x faster."
 }
 `
-	
+
 	write_init_file(path, helper)
 	zcompile_file(path)
 }
@@ -519,7 +553,7 @@ wayu_compile() {
 // order by key (deterministic generation). Non-existent directories are
 // dropped with a warning.
 read_wayu_toml_paths :: proc() -> [dynamic]string {
-	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(config_path)
 
 	content, ok := safe_read_file(config_path)
@@ -584,13 +618,14 @@ read_wayu_toml_paths :: proc() -> [dynamic]string {
 //   evalcache  default; runs `<name> <args>`, caches output, sources cache
 //   nvm        full lazy NVM wrapper (PATH-only default + on-demand load)
 //   conda      lazy conda wrapper (load on first conda/python/pip invocation)
-//   lazy       generic — wraps `hook_commands`, sources `init_script` once
+//   lazy       generic - wraps `hook_commands`, sources `init_script` once
 
 ToolEntry :: struct {
 	name:          string,    // recipe label; for evalcache also the binary to invoke
 	kind:          string,    // "evalcache" | "nvm" | "conda" | "lazy"
 	args:          string,    // evalcache: extra args (e.g. "init zsh")
-	eager:         bool,      // evalcache: load in init-core instead of init-lazy
+	eager:         bool,      // evalcache: load in core instead of lazy
+	login_only:    bool,      // only load in login shells (login.zsh)
 	init_script:   string,    // lazy: path sourced on first hook invocation
 	hook_commands: []string,  // lazy: commands wrapped to trigger load
 }
@@ -606,7 +641,7 @@ destroy_tool_entry :: proc(t: ^ToolEntry) {
 
 // Caller must destroy_tool_entry each element + `delete` the dynamic array.
 read_wayu_toml_tools :: proc() -> [dynamic]ToolEntry {
-	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(config_path)
 
 	content, ok := safe_read_file(config_path)
@@ -657,6 +692,9 @@ tool_entry_from_inline_table :: proc(name: string, table: ^TomlValue) -> ToolEnt
 	if v, ok := table.table_val["eager"]; ok && v != nil && v.type == .BOOLEAN {
 		entry.eager = v.bool_val
 	}
+	if v, ok := table.table_val["login_only"]; ok && v != nil && v.type == .BOOLEAN {
+		entry.login_only = v.bool_val
+	}
 	if v, ok := table.table_val["init_script"]; ok && v != nil && v.type == .STRING {
 		entry.init_script = strings.clone(v.str_val)
 	}
@@ -680,15 +718,15 @@ tool_entry_from_inline_table :: proc(name: string, table: ^TomlValue) -> ToolEnt
 // Tool recipe dispatch + lazy-loader code generation
 // ============================================================================
 
-// `kind` falls back to evalcache when blank — simplifies the terse form
+// `kind` falls back to evalcache when blank - simplifies the terse form
 // `zoxide = { args = "init zsh" }`.
 tool_kind_is_evalcache :: proc(kind: string) -> bool {
 	return len(kind) == 0 || kind == "evalcache"
 }
 
 // Emit the deferred init code for a single tool entry.
-// Eager evalcache tools are handled in init-core; this dispatcher runs from
-// init-lazy and covers everything else (deferred evalcache + heavy recipes).
+// Eager evalcache tools are handled in core; this dispatcher runs from
+// lazy and covers everything else (deferred evalcache + heavy recipes).
 emit_tool_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 	switch {
 	case tool_kind_is_evalcache(t.kind):
@@ -706,7 +744,7 @@ emit_tool_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 	case t.kind == "lazy":
 		emit_lazy_recipe(b, t)
 	case:
-		fmt.sbprintfln(b, "# wayu: unknown kind %q for tool %q — skipping", t.kind, t.name)
+		fmt.sbprintfln(b, "# wayu: unknown kind %q for tool %q - skipping", t.kind, t.name)
 	}
 }
 
@@ -718,7 +756,7 @@ emit_tool_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 // generated script readable and verb-error-free.
 emit_lazy_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 	if len(t.init_script) == 0 || len(t.hook_commands) == 0 {
-		fmt.sbprintfln(b, "# wayu: 'lazy' kind for %q needs init_script + hook_commands — skipping", t.name)
+		fmt.sbprintfln(b, "# wayu: 'lazy' kind for %q needs init_script + hook_commands - skipping", t.name)
 		return
 	}
 
@@ -750,9 +788,9 @@ emit_lazy_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 	}
 }
 
-// Replace anything that isn’t a portable shell-identifier char with `_`.
-// Tool names come from TOML keys so they’re usually fine, but lazy recipes
-// inject them into function names — stay defensive.
+// Replace anything that isn't a portable shell-identifier char with `_`.
+// Tool names come from TOML keys so they're usually fine, but lazy recipes
+// inject them into function names - stay defensive.
 sanitize_ident :: proc(s: string) -> string {
 	buf := make([]byte, len(s), context.temp_allocator)
 	for i := 0; i < len(s); i += 1 {
@@ -917,7 +955,7 @@ EnvEntry :: struct {
 }
 
 read_wayu_toml_env :: proc() -> [dynamic]EnvEntry {
-	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(config_path)
 
 	content, ok := safe_read_file(config_path)
@@ -955,7 +993,7 @@ read_wayu_toml_env :: proc() -> [dynamic]EnvEntry {
 // Read the [aliases] table from wayu.toml. Returns entries sorted by name
 // for deterministic output. AliasEntry is defined in output.odin.
 read_wayu_toml_aliases :: proc() -> [dynamic]AliasEntry {
-	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(config_path)
 
 	content, ok := safe_read_file(config_path)
@@ -996,14 +1034,14 @@ read_wayu_toml_aliases :: proc() -> [dynamic]AliasEntry {
 }
 
 // ============================================================================
-// Fish init-core generator
+// Fish core generator
 // ============================================================================
 //
 // Fish syntax is incompatible with bash/zsh, so we emit a dedicated
-// init-core.fish rather than sharing generate_core_init_v2. Keep it simple:
+// core.fish rather than sharing generate_core_init_v2. Keep it simple:
 // PATH, env, aliases, plugin runtime, user config.fish. No zsh-defer/lazy.
 generate_core_init_fish :: proc() {
-	path := fmt.aprintf("%s/init-core.fish", g_ctx.wayu_config)
+	path := fmt.aprintf("%s/core.fish", wayu.data)
 	defer delete(path)
 
 	builder: strings.Builder
@@ -1011,7 +1049,7 @@ generate_core_init_fish :: proc() {
 	defer strings.builder_destroy(&builder)
 
 	fmt.sbprintln(&builder, "#!/usr/bin/env fish")
-	fmt.sbprintln(&builder, "# init-core.fish - generated by wayu")
+	fmt.sbprintln(&builder, "# core.fish - generated by wayu")
 	fmt.sbprintln(&builder)
 
 	// PATH from [paths]
@@ -1058,18 +1096,18 @@ generate_core_init_fish :: proc() {
 
 	// Completions directory
 	fmt.sbprintln(&builder, "# === Completions ===")
-	fmt.sbprintln(&builder, `set -p fish_complete_path "$HOME/.config/wayu/completions"`)
+	fmt.sbprintln(&builder, `set -p fish_complete_path "$HOME/.local/share/wayu/completions"`)
 	fmt.sbprintln(&builder)
 
 	// Plugin runtime (generated separately by generate_plugins_runtime_config)
 	fmt.sbprintln(&builder, "# === Plugins ===")
-	fmt.sbprintln(&builder, `if test -f "$HOME/.config/wayu/plugins.fish"`)
-	fmt.sbprintln(&builder, `    source "$HOME/.config/wayu/plugins.fish"`)
+	fmt.sbprintln(&builder, `if test -f "$HOME/.local/share/wayu/plugins.fish"`)
+	fmt.sbprintln(&builder, `    source "$HOME/.local/share/wayu/plugins.fish"`)
 	fmt.sbprintln(&builder, "end")
 	fmt.sbprintln(&builder)
 
 	// User config.fish
-	config_fish := fmt.aprintf("%s/config.fish", g_ctx.wayu_config)
+	config_fish := fmt.aprintf("%s/config.fish", wayu.config)
 	defer delete(config_fish)
 	if os.exists(config_fish) {
 		fmt.sbprintln(&builder, "# === User configuration (from config.fish) ===")
@@ -1086,7 +1124,7 @@ generate_core_init_fish :: proc() {
 generate_eval_output_optimized :: proc() {
 	generate_optimized_init_all()
 
-	core_file := fmt.aprintf("%s/init-core.zsh", g_ctx.wayu_config)
+	core_file := fmt.aprintf("%s/core.zsh", wayu.data)
 	defer delete(core_file)
 
 	fmt.printfln(`source "%s"`, core_file)
@@ -1124,6 +1162,6 @@ print_build_help :: proc() {
 	fmt.println("  # in a single command - no loops, no conditionals.")
 	fmt.println()
 	fmt.println("  # Measure impact on startup time:")
-	fmt.println("  wayu build profile       # init-core vs full interactive shell")
+	fmt.println("  wayu build profile       # core vs full interactive shell")
 	fmt.println()
 }

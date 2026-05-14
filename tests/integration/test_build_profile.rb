@@ -32,10 +32,10 @@ class BuildProfileTest
   private
 
   def test_profile_reports_both_scenarios
-    print "Test 1: reports init-core + interactive shell scenarios... "
+    print "Test 1: reports core + interactive shell scenarios... "
     out, status = run_wayu('build profile')
     ok = status.success? &&
-         out.include?('init-core') && out.include?('interactive shell') &&
+         out.include?('core') && out.include?('interactive shell') &&
          out.match?(/min\s+[\d.]+ ms/) && out.match?(/mean\s+[\d.]+ ms/) && out.match?(/max\s+[\d.]+ ms/)
     if ok
       puts "✓"; @passed += 1
@@ -66,7 +66,7 @@ class BuildProfileTest
 
   def test_profile_zsh_phase_breakdown
     print "Test 4: zsh profile emits per-phase breakdown... "
-    # Re-initialize a known-good zsh config so init-core.zsh exists and has
+    # Re-initialize a known-good zsh config so core.zsh exists and has
     # phase markers. The test run above may have nuked the file.
     initialize_wayu
     # Also add at least one entry so the generator emits non-empty phases.
@@ -74,7 +74,7 @@ class BuildProfileTest
     out, status = run_wayu('build profile')
     has_heading = out.include?('Phase breakdown (sorted by time')
     has_sum     = out.match?(/\(sum\)/)
-    # Should pick up at least two of the standard init-core.zsh section
+    # Should pick up at least two of the standard core.zsh section
     # markers (PATH is always there, Aliases appears after our add above).
     has_path = out.include?('PATH')
     has_aliases = out.match?(/Aliases \(from wayu\.toml/)
@@ -88,11 +88,11 @@ class BuildProfileTest
   end
 
   def test_profile_missing_init_core_warns
-    print "Test 3: warns when init-core.ext is missing... "
-    # Remove the generated init-core so we can observe the warning path.
-    Dir.glob("#{@config_dir}/init-core.*").each { |f| File.delete(f) }
+    print "Test 3: warns when core.ext is missing... "
+    # Remove the generated core so we can observe the warning path.
+    Dir.glob("#{@config_dir}/core.*").each { |f| File.delete(f) }
     out, status = run_wayu('build profile')
-    ok = status.success? && (out.include?('init-core.') && out.downcase.include?('not found'))
+    ok = status.success? && (out.include?('core.') && out.downcase.include?('not found'))
     if ok
       puts "✓"; @passed += 1
     else

@@ -55,7 +55,7 @@ GlobalFlags :: struct {
 
 // Parse global flags (--dry-run, --yes, --tui, --json, --no-color, --shell,
 // --source, etc.) from raw CLI args. Returns the remaining (non-flag)
-// arguments in `filtered_args`. Mutates `g_ctx` for side-effect flags.
+// arguments in `filtered_args`. Mutates `wayu` for side-effect flags.
 @(private = "file")
 parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^[dynamic]string) -> GlobalFlags {
 	flags: GlobalFlags
@@ -66,9 +66,9 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 		arg := args[i]
 		switch {
 		case arg == "--dry-run" || arg == "-n":
-			g_ctx.dry_run = true
+			wayu.dry_run = true
 		case arg == "--yes" || arg == "-y":
-			g_ctx.yes_flag = true
+			wayu.yes_flag = true
 		case arg == "--tui":
 			flags.tui = true
 		case strings.has_prefix(arg, "-c="):
@@ -80,7 +80,7 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 			flags.component_verify = true
 		case arg == "--json":
 			flags.json = true
-			g_ctx.json_output = true
+			wayu.json_output = true
 		case strings.has_prefix(arg, "--source="):
 			flags.source_filter = strings.trim_prefix(arg, "--source=")
 		case arg == "--source" && i + 1 < len(args):
@@ -95,18 +95,18 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 			UNDERLINE = ""
 		case arg == "--shell" && i + 1 < len(args):
 			parsed.shell = parse_shell_type(args[i + 1])
-			g_ctx.shell = parsed.shell
-			g_ctx.shell_ext = get_shell_extension(parsed.shell)
-			delete(g_ctx.path_file)
-			delete(g_ctx.alias_file)
-			delete(g_ctx.constants_file)
-			delete(g_ctx.init_file)
-			delete(g_ctx.tools_file)
-			g_ctx.path_file = fmt.aprintf("path.%s", g_ctx.shell_ext)
-			g_ctx.alias_file = fmt.aprintf("aliases.%s", g_ctx.shell_ext)
-			g_ctx.constants_file = fmt.aprintf("constants.%s", g_ctx.shell_ext)
-			g_ctx.init_file = fmt.aprintf("init.%s", g_ctx.shell_ext)
-			g_ctx.tools_file = fmt.aprintf("tools.%s", g_ctx.shell_ext)
+			wayu.shell = parsed.shell
+			wayu.shell_ext = get_shell_extension(parsed.shell)
+			delete(wayu.path_file)
+			delete(wayu.alias_file)
+			delete(wayu.constants_file)
+			delete(wayu.init_file)
+			delete(wayu.tools_file)
+			wayu.path_file = fmt.aprintf("path.%s", wayu.shell_ext)
+			wayu.alias_file = fmt.aprintf("aliases.%s", wayu.shell_ext)
+			wayu.constants_file = fmt.aprintf("constants.%s", wayu.shell_ext)
+			wayu.init_file = fmt.aprintf("init.%s", wayu.shell_ext)
+			wayu.tools_file = fmt.aprintf("tools.%s", wayu.shell_ext)
 			i += 1
 		case:
 			append(filtered_args, arg)
@@ -389,7 +389,7 @@ parse_hooks_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 
 parse_args :: proc(args: []string) -> ParsedArgs {
 	parsed := ParsedArgs{
-		shell = g_ctx.shell,
+		shell = wayu.shell,
 	}
 
 	filtered_args := make([dynamic]string)
@@ -404,7 +404,7 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	parsed.component_verify = flags.component_verify
 	parsed.json_output      = flags.json
 	parsed.source_filter    = flags.source_filter
-	g_ctx.source_filter     = flags.source_filter
+	wayu.source_filter     = flags.source_filter
 
 	if flags.component_test {
 		if len(filtered_args) > 0 {

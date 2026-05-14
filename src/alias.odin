@@ -42,7 +42,7 @@ read_toml_alias_entries :: proc() -> []ConfigEntry {
 }
 
 write_wayu_toml_aliases :: proc(entries: []ConfigEntry) -> bool {
-	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(config_path)
 
 	content, ok := safe_read_file(config_path)
@@ -85,7 +85,7 @@ write_wayu_toml_aliases :: proc(entries: []ConfigEntry) -> bool {
 	new_content := strings.clone(strings.to_string(builder))
 	defer delete(new_content)
 
-	if g_ctx.dry_run {
+	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		fmt.printfln("%sWould update wayu.toml aliases:%s", BRIGHT_CYAN, RESET)
@@ -270,7 +270,7 @@ list_toml_aliases :: proc() {
 		return
 	}
 
-	if g_ctx.json_output {
+	if wayu.json_output {
 		print_aliases_json(entries[:], external_aliases[:])
 		return
 	}
@@ -291,9 +291,9 @@ list_toml_aliases :: proc() {
 	fmt.println()
 
 	// Filter based on SOURCE_FILTER
-	show_wayu := g_ctx.source_filter == "all" || g_ctx.source_filter == "wayu"
-	show_external := g_ctx.source_filter == "all" || g_ctx.source_filter == "external"
-	show_inactive := g_ctx.source_filter == "all" || g_ctx.source_filter == "inactive"
+	show_wayu := wayu.source_filter == "all" || wayu.source_filter == "wayu"
+	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
+	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
 
 	headers := []string{"Alias", "Command", "Source"}
 	table := new_table(headers)
@@ -354,9 +354,9 @@ print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
 	}
 
 	// Determine if we show different source categories
-	show_wayu := g_ctx.source_filter == "all" || g_ctx.source_filter == "wayu"
-	show_external := g_ctx.source_filter == "all" || g_ctx.source_filter == "external"
-	show_inactive := g_ctx.source_filter == "all" || g_ctx.source_filter == "inactive"
+	show_wayu := wayu.source_filter == "all" || wayu.source_filter == "wayu"
+	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
+	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
 
 	fmt.println("{")
 	fmt.println(`  "aliases": [`)
@@ -531,7 +531,7 @@ AliasSource :: struct {
 // Read and parse alias-sources.conf. Returns owned slice — caller must call
 // cleanup_alias_sources() when done.
 read_alias_sources :: proc() -> []AliasSource {
-	sources_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, ALIAS_SOURCES_FILE)
+	sources_file := fmt.aprintf("%s/%s", wayu.config, ALIAS_SOURCES_FILE)
 	defer delete(sources_file)
 
 	if !os.exists(sources_file) {
