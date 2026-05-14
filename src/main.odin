@@ -14,11 +14,14 @@ import "core:time"
 // should not hardcode a version number that can drift.
 VERSION :: "4.1.1"
 
-// AppContext bundles all mutable program state that used to be scattered
-// globals. It is created once in main() and referenced via g_ctx.
+// AppContext bundles all mutable program state.
+// Created once in main() and referenced as `wayu.*` throughout the codebase.
+// XDG layout: config (~/.config/wayu) for user-edited files,
+//             data (~/.local/share/wayu) for generated/runtime files.
 AppContext :: struct {
 	home:           string,
-	wayu_config:    string,
+	config:         string,  // ~/.config/wayu (user-edited files)
+	data:           string,  // ~/.local/share/wayu (generated/runtime files)
 	shell:          ShellType,
 	shell_ext:      string,
 	path_file:      string,
@@ -35,7 +38,7 @@ AppContext :: struct {
 }
 
 // Global context — populated once by init_app_context().
-g_ctx: AppContext
+wayu: AppContext
 
 Command :: enum {
 	PATH,
@@ -87,9 +90,17 @@ init_app_context :: proc(ctx: ^AppContext) {
 
 	config_dir_override := os.get_env("WAYU_CONFIG_DIR", heap)
 	if config_dir_override != "" {
-		ctx.wayu_config = config_dir_override
+		ctx.config = config_dir_override
+		// When overridden (e.g. tests), data lives alongside config
+		ctx.data = config_dir_override
 	} else {
-		ctx.wayu_config = fmt.aprintf("%s/.config/wayu", ctx.home, allocator = heap)
+		ctx.config = fmt.aprintf("%s/.config/wayu", ctx.home, allocator = heap)
+		data_dir_override := os.get_env("WAYU_DATA_DIR", heap)
+		if data_dir_override != "" {
+			ctx.data = data_dir_override
+		} else {
+			ctx.data = fmt.aprintf("%s/.local/share/wayu", ctx.home, allocator = heap)
+		}
 	}
 
 	ctx.shell = detect_shell()
@@ -101,15 +112,17 @@ init_app_context :: proc(ctx: ^AppContext) {
 	ctx.tools_file = fmt.aprintf("tools.%s", ctx.shell_ext, allocator = heap)
 }
 
-// Legacy shim — tests call this, so keep the name but populate g_ctx.
+// Legacy shim — tests call this, so keep the name but populate wayu.
+// Idempotent: skips if config or data are already set (avoids overwriting test overrides).
 init_shell_globals :: proc() {
-	init_app_context(&g_ctx)
+	if len(wayu.config) > 0 || len(wayu.data) > 0 do return
+	init_app_context(&wayu)
 }
 
 // Shared TUI launch helper — used by both no-args and --tui paths
 tui_launch :: proc() {
-	g_ctx.tui_mode = true
-	defer g_ctx.tui_mode = false
+	wayu.tui_mode = true
+	defer wayu.tui_mode = false
 
 	tui_run()
 }
@@ -125,7 +138,7 @@ main :: proc() {
   mem.arena_init(&temp_arena, temp_arena_backing)
   // No need to explicitly destroy arena - just free the backing buffer
 
-  g_ctx.temp_arena = &temp_arena
+  wayu.temp_arena = &temp_arena
 
   context.temp_allocator = mem.arena_allocator(&temp_arena)
 
@@ -134,7 +147,7 @@ main :: proc() {
 
 	// Clean up temp arena at the very end (before arena backing is freed)
 	// This defer executes after all other defers in this scope
-	defer if g_ctx.temp_arena != nil do free_all(context.temp_allocator)
+	defer if wayu.temp_arena != nil do free_all(context.temp_allocator)
 
 	// Check for --no-color flag BEFORE initializing color system
 	// This ensures the flag takes precedence over environment variables
@@ -206,7 +219,7 @@ main :: proc() {
 		needs_modern_toml = false
 	}
 	if needs_modern_toml {
-		toml_guard_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+		toml_guard_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 		defer delete(toml_guard_path)
 		enforce_modern_wayu_toml_or_exit(toml_guard_path)
 	}
@@ -276,8 +289,8 @@ handle_init_command :: proc() {
 	print_header("Initializing Wayu Configuration", "🚀")
 	fmt.println()
 
-	// Use shell from g_ctx (set by detect_shell or --shell flag)
-	shell := g_ctx.shell
+	// Use shell from wayu (set by detect_shell or --shell flag)
+	shell := wayu.shell
 
 	// Validate shell compatibility
 	shell_valid, shell_msg := validate_shell_compatibility(shell)
@@ -291,10 +304,12 @@ handle_init_command :: proc() {
 	print_info("Using shell: %s (config files will use .%s extension)", get_shell_name(shell), ext)
 	fmt.println()
 
-	config_dir := fmt.aprintf("%s", g_ctx.wayu_config)
+	config_dir := fmt.aprintf("%s", wayu.config)
 	defer delete(config_dir)
+	data_dir := fmt.aprintf("%s", wayu.data)
+	defer delete(data_dir)
 
-	// Create main config directory with spinner
+	// Create config directory (~/.config/wayu)
 	if !os.exists(config_dir) {
 		spinner := new_spinner(.Dots)
 		spinner_text(&spinner, "Creating config directory")
@@ -313,12 +328,31 @@ handle_init_command :: proc() {
 		print_info("Directory already exists: %s", config_dir)
 	}
 
-	// Create subdirectories with spinner
+	// Create data directory (~/.local/share/wayu)
+	if !os.exists(data_dir) {
+		spinner := new_spinner(.Dots)
+		spinner_text(&spinner, "Creating data directory")
+		spinner_start(&spinner)
+
+		err := os.make_directory(data_dir)
+
+		spinner_stop(&spinner)
+
+		if err != nil {
+			print_error_simple("Error creating data directory: %v", err)
+			os.exit(EXIT_CANTCREAT)
+		}
+		print_success("Created directory: %s", data_dir)
+	} else {
+		print_info("Directory already exists: %s", data_dir)
+	}
+
+	// Create subdirectories (in data dir — generated/runtime files)
 	subdirs := []string{"functions", "completions", "plugins"}
 	created_subdirs := 0
 
 	for subdir in subdirs {
-		subdir_path := fmt.aprintf("%s/%s", g_ctx.wayu_config, subdir)
+		subdir_path := fmt.aprintf("%s/%s", wayu.data, subdir)
 		defer delete(subdir_path)
 
 		if !os.exists(subdir_path) {
@@ -367,17 +401,18 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	config_files := []struct {
 		name:     string,
 		template: proc(ShellType) -> string,
+		dir:      string,  // which base directory to use
 	}{
-		{"path", get_path_template},
-		{"aliases", get_aliases_template},
-		{"constants", get_constants_template},
-		{"init", get_init_template},
-		{"tools", get_tools_template},
-		{"extra", get_extra_template},
+		{"path", get_path_template, wayu.data},
+		{"aliases", get_aliases_template, wayu.data},
+		{"constants", get_constants_template, wayu.data},
+		{"init", get_init_template, wayu.data},
+		{"tools", get_tools_template, wayu.config},
+		{"extra", get_extra_template, wayu.config},
 	}
 
 	for config in config_files {
-		config_file := fmt.aprintf("%s/%s.%s", g_ctx.wayu_config, config.name, ext)
+		config_file := fmt.aprintf("%s/%s.%s", config.dir, config.name, ext)
 		defer delete(config_file)
 
 		if !os.exists(config_file) {
@@ -409,7 +444,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	}
 
 	// alias-sources.conf is shell-agnostic — create once regardless of shell
-	alias_sources_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, ALIAS_SOURCES_FILE)
+	alias_sources_file := fmt.aprintf("%s/%s", wayu.config, ALIAS_SOURCES_FILE)
 	defer delete(alias_sources_file)
 
 	if !os.exists(alias_sources_file) {
@@ -428,7 +463,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	}
 
 	// Create wayu.toml scaffold if it doesn't exist
-	toml_file := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	toml_file := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(toml_file)
 
 	if !os.exists(toml_file) {
@@ -462,7 +497,7 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 	rc_file_path := get_rc_file_path(shell)
 	defer delete(rc_file_path)
 
-	init_file := fmt.aprintf("%s/init.%s", g_ctx.wayu_config, ext)
+	init_file := fmt.aprintf("%s/init.%s", wayu.data, ext)
 	defer delete(init_file)
 
 	// Check if RC file exists
@@ -543,7 +578,7 @@ print_init_help :: proc() {
 	fmt.println("  wayu init")
 	fmt.println()
 	fmt.println("DESCRIPTION:")
-	fmt.println("  Creates ~/.config/wayu with shell-specific config files (path, aliases,")
+	fmt.println("  Creates ~/.config/wayu and ~/.local/share/wayu with shell-specific config files (path, aliases,")
 	fmt.println("  constants, init, tools, extra) and subdirectories (functions, completions,")
 	fmt.println("  plugins). Detects the current shell and generates wayu.toml scaffolding.")
 	fmt.println("  Safe to re-run — existing files are preserved.")
@@ -697,7 +732,7 @@ handle_build_command :: proc(action: Action) {
 	fmt.println()
 	
 	// Check for wayu.toml
-	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(toml_path)
 	
 	if !os.exists(toml_path) {

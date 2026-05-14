@@ -181,9 +181,11 @@ test_read_alias_sources_empty_file :: proc(t: ^testing.T) {
 	os.make_directory(tmp_dir)
 	defer os.remove_all(tmp_dir)
 
-	original := wayu.g_ctx.wayu_config
-	wayu.g_ctx.wayu_config = tmp_dir
-	defer wayu.g_ctx.wayu_config = original
+	original := wayu.wayu.config
+	wayu.wayu.config = tmp_dir
+
+	wayu.wayu.data = tmp_dir
+	defer { wayu.wayu.config = original; wayu.wayu.data = original }
 
 	// Write empty conf (only comments)
 	conf_path := fmt.aprintf("%s/alias-sources.conf", tmp_dir)
@@ -202,9 +204,11 @@ test_read_alias_sources_missing_file :: proc(t: ^testing.T) {
 	os.make_directory(tmp_dir)
 	defer os.remove_all(tmp_dir)
 
-	original := wayu.g_ctx.wayu_config
-	wayu.g_ctx.wayu_config = tmp_dir
-	defer wayu.g_ctx.wayu_config = original
+	original := wayu.wayu.config
+	wayu.wayu.config = tmp_dir
+
+	wayu.wayu.data = tmp_dir
+	defer { wayu.wayu.config = original; wayu.wayu.data = original }
 
 	// No conf file written — should return nil gracefully
 	sources := wayu.read_alias_sources()
@@ -217,9 +221,11 @@ test_read_alias_sources_parses_dir_entry :: proc(t: ^testing.T) {
 	os.make_directory(tmp_dir)
 	defer os.remove_all(tmp_dir)
 
-	original := wayu.g_ctx.wayu_config
-	wayu.g_ctx.wayu_config = tmp_dir
-	defer wayu.g_ctx.wayu_config = original
+	original := wayu.wayu.config
+	wayu.wayu.config = tmp_dir
+
+	wayu.wayu.data = tmp_dir
+	defer { wayu.wayu.config = original; wayu.wayu.data = original }
 
 	conf_path := fmt.aprintf("%s/alias-sources.conf", tmp_dir)
 	defer delete(conf_path)
@@ -241,9 +247,11 @@ test_read_alias_sources_skips_unknown_type :: proc(t: ^testing.T) {
 	os.make_directory(tmp_dir)
 	defer os.remove_all(tmp_dir)
 
-	original := wayu.g_ctx.wayu_config
-	wayu.g_ctx.wayu_config = tmp_dir
-	defer wayu.g_ctx.wayu_config = original
+	original := wayu.wayu.config
+	wayu.wayu.config = tmp_dir
+
+	wayu.wayu.data = tmp_dir
+	defer { wayu.wayu.config = original; wayu.wayu.data = original }
 
 	conf_path := fmt.aprintf("%s/alias-sources.conf", tmp_dir)
 	defer delete(conf_path)

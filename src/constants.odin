@@ -20,7 +20,7 @@ handle_constants_command :: proc(action: Action, args: []string) {
 }
 
 read_wayu_toml_constants :: proc() -> []ConfigEntry {
-	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(config_path)
 
 	content, ok := safe_read_file(config_path)
@@ -155,7 +155,7 @@ strip_toml_constant_sections :: proc(content: string) -> string {
 }
 
 write_wayu_toml_constants :: proc(entries: []ConfigEntry) -> bool {
-	config_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config)
+	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(config_path)
 
 	content, ok := safe_read_file(config_path)
@@ -198,7 +198,7 @@ write_wayu_toml_constants :: proc(entries: []ConfigEntry) -> bool {
 	new_content := strings.clone(strings.to_string(builder))
 	defer delete(new_content)
 
-	if g_ctx.dry_run {
+	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		fmt.printfln("%sWould update wayu.toml constants:%s", BRIGHT_CYAN, RESET)
@@ -341,7 +341,7 @@ list_toml_constants :: proc() {
 		return
 	}
 
-	if g_ctx.json_output {
+	if wayu.json_output {
 		print_constants_json(entries[:], external_constants[:])
 		return
 	}
@@ -363,9 +363,9 @@ list_toml_constants :: proc() {
 	fmt.println()
 
 	// Filter based on SOURCE_FILTER
-	show_wayu := g_ctx.source_filter == "all" || g_ctx.source_filter == "wayu"
-	show_external := g_ctx.source_filter == "all" || g_ctx.source_filter == "external"
-	show_inactive := g_ctx.source_filter == "all" || g_ctx.source_filter == "inactive"
+	show_wayu := wayu.source_filter == "all" || wayu.source_filter == "wayu"
+	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
+	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
 
 	headers := []string{"Constant", "Value", "Source"}
 	table := new_table(headers)
@@ -425,9 +425,9 @@ print_constants_json :: proc(entries: []ConfigEntry, external_constants: []strin
 	}
 
 	// Determine if we show different source categories
-	show_wayu := g_ctx.source_filter == "all" || g_ctx.source_filter == "wayu"
-	show_external := g_ctx.source_filter == "all" || g_ctx.source_filter == "external"
-	show_inactive := g_ctx.source_filter == "all" || g_ctx.source_filter == "inactive"
+	show_wayu := wayu.source_filter == "all" || wayu.source_filter == "wayu"
+	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
+	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
 
 	fmt.println("{")
 	fmt.println(`  "constants": [`)

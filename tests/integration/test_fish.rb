@@ -12,7 +12,7 @@ class FishIntegrationTest
   def initialize
     setup_test_env
     @toml_file = "#{@config_dir}/wayu.toml"
-    @init_core = "#{@config_dir}/init-core.fish"
+    @init_core = "#{@config_dir}/core.fish"
     @static    = "#{@config_dir}/wayu_static.fish"
   end
 
@@ -112,11 +112,11 @@ class FishIntegrationTest
   end
 
   def test_init_core_fish_is_native_syntax
-    print "Test 5: init-core.fish uses fish-native syntax... "
-    # Rebuild after alias/path were added so init-core.fish reflects them.
+    print "Test 5: core.fish uses fish-native syntax... "
+    # Rebuild after alias/path were added so core.fish reflects them.
     run_fish('build eval')
     unless File.exist?(@init_core)
-      puts "✗"; puts "  init-core.fish not created"; @failed += 1
+      puts "✗"; puts "  core.fish not created"; @failed += 1
       return
     end
     body = File.read(@init_core)
@@ -144,7 +144,7 @@ class FishIntegrationTest
     Open3.capture3(env, "#{@wayu_bin} template apply developer")
     Open3.capture3(env, "#{@wayu_bin} build eval")
     toml = File.read("#{scratch}/.config/wayu/wayu.toml")
-    init = File.read("#{scratch}/.config/wayu/init-core.fish")
+    init = File.read("#{scratch}/.config/wayu/core.fish")
     toml_ok = toml.include?('g = "git"') && toml.include?('EDITOR = "code --wait"') &&
               toml.include?('= "/opt/homebrew/bin"')
     fish_native = init.include?("alias g 'git'") && init.include?('set -gx EDITOR') &&
@@ -180,17 +180,17 @@ class FishIntegrationTest
   end
 
   def test_mutations_auto_regenerate_init_core
-    print "Test 9: alias/const/path add auto-regenerate init-core.fish... "
+    print "Test 9: alias/const/path add auto-regenerate core.fish... "
     scratch = "#{@tmp_home}/scratch_auto"
     FileUtils.mkdir_p("#{scratch}/.config")
     env = ENV.to_h.merge('HOME' => scratch, 'SHELL' => '/usr/bin/fish')
     Open3.capture3(env, "#{@wayu_bin} init --shell fish")
-    core = "#{scratch}/.config/wayu/init-core.fish"
-    # After fresh init, init-core.fish is generated but empty of user config.
+    core = "#{scratch}/.config/wayu/core.fish"
+    # After fresh init, core.fish is generated but empty of user config.
     baseline_has_alias = File.exist?(core) && File.read(core).include?("alias gg")
     Open3.capture3(env, "#{@wayu_bin} alias add gg 'git status'")
     Open3.capture3(env, "#{@wayu_bin} constants add MY_VAR xyz")
-    # No explicit 'build eval' run — init-core must reflect changes already.
+    # No explicit 'build eval' run — core must reflect changes already.
     body = File.exist?(core) ? File.read(core) : ''
     ok = !baseline_has_alias &&
          body.include?("alias gg 'git status'") &&
@@ -207,14 +207,14 @@ class FishIntegrationTest
   end
 
   def test_init_fish_prefers_init_core
-    print "Test 10: init.fish fast-paths through init-core.fish... "
-    body = File.read(@init_core.sub('init-core.fish', 'init.fish'))
-    if body.include?('if test -f "$WAYU_CONFIG_DIR/init-core.fish"') &&
-       body.include?('source "$WAYU_CONFIG_DIR/init-core.fish"')
+    print "Test 10: init.fish fast-paths through core.fish... "
+    body = File.read(@init_core.sub('core.fish', 'init.fish'))
+    if body.include?('if test -f "$WAYU_CONFIG_DIR/core.fish"') &&
+       body.include?('source "$WAYU_CONFIG_DIR/core.fish"')
       puts "✓"; @passed += 1
     else
       puts "✗"
-      puts "  init.fish did not source init-core.fish on fast path"
+      puts "  init.fish did not source core.fish on fast path"
       @failed += 1
     end
   end

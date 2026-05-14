@@ -137,7 +137,7 @@ generate_plugins_runtime_config :: proc(shell: ShellType) -> bool {
 	strings.write_string(&sb, "fi\n")
 
 	content := strings.to_string(sb)
-	if g_ctx.dry_run {
+	if wayu.dry_run {
 		print_info("[DRY RUN] Would write plugin runtime config: %s", config_path)
 		return true
 	}
@@ -147,7 +147,7 @@ generate_plugins_runtime_config :: proc(shell: ShellType) -> bool {
 // Generate plugins.{zsh,bash} loader file
 generate_plugins_file :: proc(shell: ShellType) -> bool {
 	ext := get_shell_extension(shell)
-	plugins_file := fmt.aprintf("%s/plugins.%s", g_ctx.wayu_config, ext)
+	plugins_file := fmt.aprintf("%s/plugins.%s", wayu.data, ext)
 	defer delete(plugins_file)
 
 	// Read current configuration (JSON format with dependencies support)
@@ -345,13 +345,17 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 	// Write to file
 	content := strings.to_string(sb)
 
-	if g_ctx.dry_run {
+	if wayu.dry_run {
 		print_info("[DRY RUN] Would write plugins file: %s", plugins_file)
 		return generate_plugins_runtime_config(shell)
 	}
 
 	if os.write_entire_file(plugins_file, transmute([]byte)content) != nil {
 		return false
+	}
+	// Compile to bytecode for faster loading (zsh only)
+	if shell == .ZSH {
+		zcompile_file(plugins_file)
 	}
 	return generate_plugins_runtime_config(shell)
 }

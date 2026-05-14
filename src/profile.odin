@@ -6,7 +6,7 @@
 // The current build has two entry points in common:
 //   - `profile_startup_performance()` — run N iterations per scenario,
 //     print a min/mean/max table across (no-rc, wayu-init, turbo, full).
-//   - `render_phase_breakdown_zsh()` — per-phase init-core.zsh timing,
+//   - `render_phase_breakdown_zsh()` — per-phase core.zsh timing,
 //     useful for finding which wayu section costs the most ms at launch.
 //
 // Works for Bash/Zsh/Fish; resolves the shell binary via `which <shell>`
@@ -40,7 +40,7 @@ ProfileSample :: struct {
 // wall time with Odin's `time.tick_now()`, running each scenario N times
 // and reporting min/mean/max. Two scenarios:
 //
-//   1. `init-core` alone: `shell -c 'source $WAYU_CONFIG/init-core.{ext}'`
+//   1. `core` alone: `shell -c 'source $WAYU_CONFIG/core.{ext}'`
 //      — what wayu itself adds to startup.
 //   2. interactive shell: `shell -i -c exit` — total cost the user sees on
 //      every new terminal. The difference is shell-builtin work
@@ -53,19 +53,19 @@ profile_startup_performance :: proc() {
 	print_header("Shell Startup Performance", "📊")
 	fmt.println()
 
-	shell_bin, ok := resolve_profile_shell(g_ctx.shell)
+	shell_bin, ok := resolve_profile_shell(wayu.shell)
 	if !ok {
-		print_error_simple("Could not find a %s binary on $PATH to profile", get_shell_name(g_ctx.shell))
+		print_error_simple("Could not find a %s binary on $PATH to profile", get_shell_name(wayu.shell))
 		fmt.println("Install the shell or run 'wayu build profile' from an interactive session of that shell.")
 		os.exit(EXIT_CONFIG)
 	}
 	defer delete(shell_bin)
 
-	core_file := fmt.aprintf("%s/init-core.%s", g_ctx.wayu_config, g_ctx.shell_ext)
+	core_file := fmt.aprintf("%s/core.%s", wayu.data, wayu.shell_ext)
 	defer delete(core_file)
 
 	if !os.exists(core_file) {
-		print_warning("init-core.%s not found — run 'wayu init' or any 'wayu path/alias/constants add' first.", g_ctx.shell_ext)
+		print_warning("core.%s not found — run 'wayu init' or any 'wayu path/alias/constants add' first.", wayu.shell_ext)
 		fmt.println()
 	}
 
@@ -75,7 +75,7 @@ profile_startup_performance :: proc() {
 
 	scenarios := []ProfileSample{
 		{
-			label   = fmt.tprintf("init-core.%s (sourced in -c)", g_ctx.shell_ext),
+			label   = fmt.tprintf("core.%s (sourced in -c)", wayu.shell_ext),
 			command = []string{shell_bin, "-c", source_cmd},
 		},
 		{
@@ -86,7 +86,7 @@ profile_startup_performance :: proc() {
 
 	print_info("Shell: %s", shell_bin)
 	print_info("Iterations per scenario: %d", PROFILE_ITERATIONS)
-	if os.exists(core_file) do print_info("init-core file: %s", core_file)
+	if os.exists(core_file) do print_info("core file: %s", core_file)
 	fmt.println()
 
 	for &scenario in scenarios {
@@ -103,17 +103,17 @@ profile_startup_performance :: proc() {
 	// $EPOCHREALTIME (microsecond-precision builtin). bash 5+ has it too but
 	// macOS ships bash 3.2; fish has no equivalent portable primitive. Users
 	// of those shells still get the two-scenario totals above.
-	if g_ctx.shell == .ZSH && os.exists(core_file) {
+	if wayu.shell == .ZSH && os.exists(core_file) {
 		render_phase_breakdown_zsh(shell_bin, core_file)
 	}
 
 	fmt.println()
 	print_section("Interpretation", EMOJI_INFO)
-	fmt.println("  • 'init-core' is what wayu itself costs; aim for <10ms.")
+	fmt.println("  • 'core' is what wayu itself costs; aim for <10ms.")
 	fmt.println("  • 'interactive shell' includes wayu + shell rc + any user hooks.")
 	fmt.println("  • Difference ≈ shell/builtin overhead (compinit, rcfile, etc.).")
-	if g_ctx.shell == .ZSH {
-		fmt.println("  • Phase breakdown marks where the init-core time is spent.")
+	if wayu.shell == .ZSH {
+		fmt.println("  • Phase breakdown marks where the core time is spent.")
 	}
 	fmt.println()
 	print_section("Next steps", EMOJI_ACTION)
@@ -122,9 +122,9 @@ profile_startup_performance :: proc() {
 	fmt.println()
 }
 
-// Render a per-phase timing breakdown of init-core.zsh.
+// Render a per-phase timing breakdown of core.zsh.
 //
-// Strategy: split init-core by `# === <name> ===` markers into sections,
+// Strategy: split core by `# === <name> ===` markers into sections,
 // generate a profiling wrapper that records $EPOCHREALTIME before and
 // after each section, run it once under the user's zsh, parse `PHASE=...`
 // lines from stdout, and print a sorted table (slowest first).
@@ -216,7 +216,7 @@ pad_left :: proc(s: string, width: int) -> string {
 
 InitCorePhase :: struct { name, body: string }
 
-// Split init-core by `# === <name> ===` markers. Everything before the
+// Split core by `# === <name> ===` markers. Everything before the
 // first marker (the shebang + comment header) becomes a synthetic
 // "__prelude__" phase so it still gets timed; after that each marker
 // starts a new phase whose body runs until the next marker or EOF.

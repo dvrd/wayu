@@ -12,17 +12,17 @@ _plugins_json_mutex: sync.Mutex
 
 // Get plugins config file path
 get_plugins_config_file :: proc() -> string {
-	return fmt.aprintf("%s/plugins.conf", g_ctx.wayu_config)
+	return fmt.aprintf("%s/plugins.conf", wayu.data)
 }
 
 // Get plugins JSON config file path
 get_plugins_json_config_file :: proc() -> string {
-	return fmt.aprintf("%s/plugins.json", g_ctx.wayu_config)
+	return fmt.aprintf("%s/plugins.json", wayu.data)
 }
 
 // Get plugins directory path
 get_plugins_dir :: proc() -> string {
-	return fmt.aprintf("%s/plugins", g_ctx.wayu_config)
+	return fmt.aprintf("%s/plugins", wayu.data)
 }
 
 // Read plugins.conf configuration file

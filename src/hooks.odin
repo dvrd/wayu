@@ -158,7 +158,7 @@ get_hook_command :: proc(hook_type: HookType) -> string {
 load_hook_config :: proc() -> HookConfig {
 	config: HookConfig
 
-	hook_path := fmt.aprintf("%s/%s", g_ctx.wayu_config, HOOK_CONFIG_FILE)
+	hook_path := fmt.aprintf("%s/%s", wayu.config, HOOK_CONFIG_FILE)
 	defer delete(hook_path)
 
 	if !os.exists(hook_path) {
@@ -297,7 +297,7 @@ show_hooks_status :: proc() {
 		fmt.println()
 		fmt.println("Hooks let you run custom commands before/after wayu operations.")
 		fmt.println()
-		fmt.printfln("Edit %s/%s to configure hooks.", g_ctx.wayu_config, HOOK_CONFIG_FILE)
+		fmt.printfln("Edit %s/%s to configure hooks.", wayu.config, HOOK_CONFIG_FILE)
 	}
 
 	fmt.println()
@@ -309,7 +309,7 @@ show_hooks_status :: proc() {
 
 // Edit hooks configuration
 edit_hooks_config :: proc() {
-	hook_path := fmt.aprintf("%s/%s", g_ctx.wayu_config, HOOK_CONFIG_FILE)
+	hook_path := fmt.aprintf("%s/%s", wayu.config, HOOK_CONFIG_FILE)
 	defer delete(hook_path)
 
 	if !os.exists(hook_path) {
@@ -403,7 +403,7 @@ print_hooks_usage :: proc() {
 	fmt.println("  Useful for logging, notifications, or custom integrations.")
 	fmt.println()
 	fmt.printfln("%sCONFIG FILE:%s", get_primary(), RESET)
-	fmt.printfln("  ~/.config/wayu/hooks.conf", g_ctx.wayu_config)
+	fmt.printfln("  ~/.config/wayu/hooks.conf", wayu.config)
 	fmt.println()
 	fmt.printfln("%sEXAMPLE HOOKS:%s", get_primary(), RESET)
 	fmt.println()

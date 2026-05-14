@@ -365,7 +365,7 @@ attempt_auto_fixes :: proc(results: []CheckResult, arena_alloc: mem.Allocator) -
 				
 				// Get shell config file name
 				shell_rc := "~/.zshrc"
-				#partial switch g_ctx.shell {
+				#partial switch wayu.shell {
 				case .BASH:
 					shell_rc = "~/.bashrc"
 				case .FISH:
@@ -373,8 +373,8 @@ attempt_auto_fixes :: proc(results: []CheckResult, arena_alloc: mem.Allocator) -
 				}
 				
 				fmt.printfln("    %s1. Edit your %s and change:%s", get_muted(), shell_rc, RESET)
-				fmt.printfln("       FROM: source \"$HOME/.config/wayu/init.zsh\"")
-				fmt.printfln("       TO:   source \"$HOME/.config/wayu/turbo.zsh\"")
+				fmt.printfln("       FROM: source \"$HOME/.local/share/wayu/init.zsh\"")
+				fmt.printfln("       TO:   source \"$HOME/.local/share/wayu/turbo.zsh\"")
 				fmt.printfln("    %s2. Reload your shell: source %s%s", get_muted(), shell_rc, RESET)
 				
 				append(&attempts, FixAttempt{
@@ -564,30 +564,30 @@ run_step() {
 }
 
 echo "=== Phase 1: Core Config ==="
-# Post-migration: init-core.zsh is the compiled source of truth.
+# Post-migration: core.zsh is the compiled source of truth.
 # Legacy per-type files are fallback-only.
-run_step "init-core.zsh" source "$HOME/.config/wayu/init-core.zsh" 2>/dev/null || true
-run_step "constants.zsh (legacy)" source "$HOME/.config/wayu/constants.zsh" 2>/dev/null || true
-run_step "path.zsh (legacy)" source "$HOME/.config/wayu/path.zsh" 2>/dev/null || true
+run_step "core.zsh" source "$HOME/.local/share/wayu/core.zsh" 2>/dev/null || true
+run_step "constants.zsh (legacy)" source "$HOME/.local/share/wayu/constants.zsh" 2>/dev/null || true
+run_step "path.zsh (legacy)" source "$HOME/.local/share/wayu/path.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 2: Functions ==="
-run_step "functions (glob)" zsh -c 'for f in "$HOME/.config/wayu/functions"/*(N); do [[ -f "$f" ]] && source "$f"; done'
+run_step "functions (glob)" zsh -c 'for f in "$HOME/.local/share/wayu/functions"/*(N); do [[ -f "$f" ]] && source "$f"; done'
 
 echo ""
 echo "=== Phase 3: Completions Setup ==="
-run_step "fpath setup" zsh -c 'fpath=("$HOME/.config/wayu/completions" $fpath)'
+run_step "fpath setup" zsh -c 'fpath=("$HOME/.local/share/wayu/completions" $fpath)'
 run_step "compinit" autoload -Uz compinit && compinit -C
 
 echo ""
 echo "=== Phase 4: Plugins ==="
-run_step "autosuggestions" source "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" 2>/dev/null || true
-run_step "syntax-highlighting" source "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" 2>/dev/null || true
-run_step "plugin config" source "$HOME/.config/wayu/plugins/config.zsh" 2>/dev/null || true
+run_step "autosuggestions" source "$HOME/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" 2>/dev/null || true
+run_step "syntax-highlighting" source "$HOME/.local/share/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" 2>/dev/null || true
+run_step "plugin config" source "$HOME/.local/share/wayu/plugins/config.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 5: Aliases & Tools ==="
-run_step "aliases.zsh (legacy)" source "$HOME/.config/wayu/aliases.zsh" 2>/dev/null || true
+run_step "aliases.zsh (legacy)" source "$HOME/.local/share/wayu/aliases.zsh" 2>/dev/null || true
 run_step "tools.zsh" source "$HOME/.config/wayu/tools.zsh" 2>/dev/null || true
 
 echo ""
@@ -623,7 +623,7 @@ fi
 echo "  • Use 'wayu export' for turbo mode (~2-4x faster)"
 `
 	
-	script_path := fmt.aprintf("%s/startup_profile.zsh", g_ctx.wayu_config)
+	script_path := fmt.aprintf("%s/startup_profile.zsh", wayu.data)
 	defer delete(script_path)
 	
 	write_ok := os.write_entire_file_from_string(script_path, profile_script)
@@ -663,17 +663,17 @@ generate_optimized_init :: proc() {
 # _wayu_debug_time() { echo "[${SECONDS}s] $1"; }
 
 # === 1. Core Configuration (fast) ===
-# Post-migration: init-core.zsh is the compiled source of truth.
-[ -f "$HOME/.config/wayu/init-core.zsh" ] && source "$HOME/.config/wayu/init-core.zsh"
+# Post-migration: core.zsh is the compiled source of truth.
+[ -f "$HOME/.local/share/wayu/core.zsh" ] && source "$HOME/.local/share/wayu/core.zsh"
 # Legacy per-type files as fallback:
-[ -f "$HOME/.config/wayu/constants.zsh" ] && source "$HOME/.config/wayu/constants.zsh"
-[ -f "$HOME/.config/wayu/path.zsh" ] && source "$HOME/.config/wayu/path.zsh"
+[ -f "$HOME/.local/share/wayu/constants.zsh" ] && source "$HOME/.local/share/wayu/constants.zsh"
+[ -f "$HOME/.local/share/wayu/path.zsh" ] && source "$HOME/.local/share/wayu/path.zsh"
 
 # === 2. Functions (fast - just glob) ===
 for f in "$FUNCS"/*(N); do [[ -f "$f" ]] && source "$f"; done
 
 # === 3. Completions Setup (cached) ===
-fpath=("$HOME/.config/wayu/completions" $fpath)
+fpath=("$HOME/.local/share/wayu/completions" $fpath)
 autoload -Uz add-zsh-hook compinit
 
 # Use cached completions if available (saves ~100-300ms)
@@ -684,25 +684,25 @@ else
 fi
 
 # === 4. Aliases (fast) ===
-# Aliases are already in init-core.zsh; legacy file is fallback-only.
-[ -f "$HOME/.config/wayu/aliases.zsh" ] && source "$HOME/.config/wayu/aliases.zsh"
+# Aliases are already in core.zsh; legacy file is fallback-only.
+[ -f "$HOME/.local/share/wayu/aliases.zsh" ] && source "$HOME/.local/share/wayu/aliases.zsh"
 
 # === 5. Plugins (lazy-loaded for speed) ===
 # zsh-autosuggestions - loaded immediately but lightweight
-[ -f "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" ] && \
-  source "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh"
+[ -f "$HOME/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" ] && \
+  source "$HOME/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh"
 
 # zsh-syntax-highlighting - DEFERRED to avoid startup lag
 # Loaded after first prompt appears
 zsh_defer_highlighting() {
-  [ -f "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] && \
-    source "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+  [ -f "$HOME/.local/share/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] && \
+    source "$HOME/.local/share/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
   add-zsh-hook -d precmd zsh_defer_highlighting
 }
 add-zsh-hook precmd zsh_defer_highlighting
 
 # Plugin config
-[ -f "$HOME/.config/wayu/plugins/config.zsh" ] && source "$HOME/.config/wayu/plugins/config.zsh"
+[ -f "$HOME/.local/share/wayu/plugins/config.zsh" ] && source "$HOME/.local/share/wayu/plugins/config.zsh"
 
 # === 6. Tools (cached/lazy via tools.zsh) ===
 source "$HOME/.config/wayu/tools.zsh"
@@ -731,11 +731,11 @@ typeset -U PATH
 # zprof | tail -20
 `
 	
-	init_path := fmt.aprintf("%s/init.zsh", g_ctx.wayu_config)
+	init_path := fmt.aprintf("%s/init.zsh", wayu.data)
 	defer delete(init_path)
 	
 	// Backup current init.zsh
-	backup_path := fmt.aprintf("%s/init.zsh.backup", g_ctx.wayu_config)
+	backup_path := fmt.aprintf("%s/init.zsh.backup", wayu.data)
 	defer delete(backup_path)
 	
 	if os.exists(init_path) {
@@ -874,7 +874,7 @@ check_shell_config :: proc(results: ^[dynamic]CheckResult) {
 		append(results, CheckResult{
 			name    = clone_arena("shell configuration"),
 			status  = .ERROR,
-			message = clone_arena("wayu not sourced - add 'source \"$HOME/.config/wayu/init.zsh\"' to shell RC"),
+			message = clone_arena("wayu not sourced - add 'source \"$HOME/.local/share/wayu/init.zsh\"' to shell RC"),
 			fixable = true,
 		})
 	}
@@ -885,7 +885,7 @@ check_shell_config :: proc(results: ^[dynamic]CheckResult) {
 // doctor file that owns the presentation layer doesn't depend on the details.
 get_shell_rc_file_arena :: proc() -> string {
 	ensure_arena_initialized()
-	shell := g_ctx.shell
+	shell := wayu.shell
 	home := os.get_env_alloc("HOME", get_doctor_allocator())
 
 	#partial switch shell {
@@ -987,7 +987,7 @@ check_path_entries :: proc(results: ^[dynamic]CheckResult) {
 // Check 4: plugins
 check_plugins :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	config_file := fmt.aprintf("%s/plugins.json", g_ctx.wayu_config, allocator = get_doctor_allocator())
+	config_file := fmt.aprintf("%s/plugins.json", wayu.data, allocator = get_doctor_allocator())
 
 	if !os.exists(config_file) {
 		append(results, CheckResult{
@@ -1035,7 +1035,7 @@ check_plugins :: proc(results: ^[dynamic]CheckResult) {
 // Check 5: backups
 check_backups :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	backup_dir := fmt.aprintf("%s/backup", g_ctx.wayu_config, allocator = get_doctor_allocator())
+	backup_dir := fmt.aprintf("%s/backup", wayu.data, allocator = get_doctor_allocator())
 
 	if !os.exists(backup_dir) {
 		append(results, CheckResult{
@@ -1058,7 +1058,7 @@ check_backups :: proc(results: ^[dynamic]CheckResult) {
 // Check 6: TOML config
 check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	toml_path := fmt.aprintf("%s/wayu.toml", g_ctx.wayu_config, allocator = get_doctor_allocator())
+	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config, allocator = get_doctor_allocator())
 
 	if !os.exists(toml_path) {
 		append(results, CheckResult{
@@ -1108,7 +1108,7 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 // Check 7: turbo export
 check_turbo_export :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	turbo_path := fmt.aprintf("%s/turbo.zsh", g_ctx.wayu_config, allocator = get_doctor_allocator())
+	turbo_path := fmt.aprintf("%s/turbo.zsh", wayu.data, allocator = get_doctor_allocator())
 
 	if !os.exists(turbo_path) {
 		append(results, CheckResult{
@@ -1201,7 +1201,7 @@ check_sync_status :: proc(results: ^[dynamic]CheckResult) {
 	arena_alloc := get_doctor_allocator()
 
 	// Only run this check if wayu is initialized
-	toml_file := fmt.aprintf("%s/%s", g_ctx.wayu_config, WAYU_TOML)
+	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(toml_file)
 
 	if !os.exists(toml_file) {
