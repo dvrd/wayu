@@ -709,10 +709,18 @@ toml_path_list :: proc() {
 	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
 	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
 
-	// Print wayu entries with source indicator
+	// Build table (consistent with alias ls / constants ls)
+	headers := []string{"Path", "Source"}
+	path_table := new_table(headers)
+	defer table_destroy(&path_table)
+
+	table_style(&path_table, style_foreground(new_style(), "white"))
+	table_header_style(&path_table, style_bold(style_foreground(new_style(), "cyan"), true))
+	table_border(&path_table, .Normal)
+
+	// Add wayu entries
 	if show_wayu || show_inactive {
-		entry_num := 1
-		for p, i in paths {
+		for p in paths {
 			// Check if path is in current environment
 			found := false
 			for env_path in path_entries {
@@ -730,54 +738,32 @@ toml_path_list :: proc() {
 				continue
 			}
 
+			display_path := p
+			if !os.exists(p) { display_path = fmt.tprintf("✗ %s", p) }
+
 			source := "wayu"
-			marker := "  "
-			if !found {
-				source = "wayu (inactive)"
-				marker = "⚠ "
-			}
+			if !found { source = "wayu (inactive)" }
 
-			marker_exists := "  "
-			if !os.exists(p) { marker_exists = "✗ " }
-
-			fmt.printfln("%s%d. %s  [%s]", marker_exists, entry_num, p, source)
-			entry_num += 1
+			row := []string{display_path, source}
+			table_add_row(&path_table, row)
 		}
 	}
 
-	// Print external entries section
+	// Add external entries
 	if show_external {
-		// Count actual external entries to print
-		actual_external_count := 0
 		for env_path in path_entries {
 			if _, is_wayu := wayu_set[env_path]; !is_wayu {
-				actual_external_count += 1
-			}
-		}
-
-		if actual_external_count > 0 {
-			if (show_wayu || show_inactive) && len(paths) > 0 {
-				fmt.println()
-				fmt.printfln("--- External (%d) ---", actual_external_count)
-			}
-			entry_num := 1
-			for env_path in path_entries {
-				if _, is_wayu := wayu_set[env_path]; !is_wayu {
-					marker_exists := "  "
-					if !os.exists(env_path) { marker_exists = "✗ " }
-					fmt.printfln("%s%d. %s  [external]", marker_exists, entry_num, env_path)
-					entry_num += 1
-				}
+				display_path := env_path
+				if !os.exists(env_path) { display_path = fmt.tprintf("✗ %s", env_path) }
+				row := []string{display_path, "external"}
+				table_add_row(&path_table, row)
 			}
 		}
 	}
 
-	fmt.println()
-	total_shown := active_count + inactive_count
-	if show_external {
-		total_shown += external_count
-	}
-	fmt.printfln("Total: %d paths", total_shown)
+	output := table_render(path_table, get_cli_terminal_width())
+	defer delete(output)
+	fmt.print(output)
 }
 
 print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[string]bool) {
