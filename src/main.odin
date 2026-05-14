@@ -645,6 +645,7 @@ print_help :: proc() {
 	print_section("FLAGS:", EMOJI_ACTION)
 	print_item("", "--dry-run, -n", "Preview changes without modifying files", EMOJI_INFO)
 	print_item("", "--yes, -y", "Skip confirmation prompts (for clean/dedup)", EMOJI_INFO)
+	print_item("", "--full, -f", "Show all entries including external", EMOJI_INFO)
 	print_item("", "--tui", "Launch interactive Terminal UI mode (same as no args)", EMOJI_INFO)
 	print_item("", "-c=<component>", "Test TUI component rendering (dev mode)", EMOJI_INFO)
 	print_item("", "--snapshot", "Save component output as golden file", EMOJI_INFO)

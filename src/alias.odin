@@ -344,6 +344,10 @@ list_toml_aliases :: proc() {
 	output := table_render(table, get_cli_terminal_width())
 	defer delete(output)
 	fmt.print(output)
+
+	if !show_external && len(external_aliases) > 0 {
+		fmt.printfln("%sPass --full to show %d external entries%s", get_muted(), len(external_aliases), RESET)
+	}
 }
 
 print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
@@ -735,6 +739,11 @@ print_alias_source :: proc(source: AliasSource) {
 // Print all external alias sources. Called from handle_alias_command after
 // the managed list is shown.
 print_external_alias_sources :: proc() {
+	// Respect source filter — skip external alias sources when hidden
+	if wayu.source_filter != "all" && wayu.source_filter != "external" {
+		return
+	}
+
 	sources := read_alias_sources()
 	if sources == nil {
 		return

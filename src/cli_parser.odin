@@ -59,12 +59,14 @@ GlobalFlags :: struct {
 @(private = "file")
 parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^[dynamic]string) -> GlobalFlags {
 	flags: GlobalFlags
-	flags.source_filter = "all"
+	flags.source_filter = "wayu"  // hide external by default; --full shows everything
 
 	i := 0
 	for i < len(args) {
 		arg := args[i]
 		switch {
+		case arg == "--full" || arg == "-f":
+			flags.source_filter = "all"
 		case arg == "--dry-run" || arg == "-n":
 			wayu.dry_run = true
 		case arg == "--yes" || arg == "-y":

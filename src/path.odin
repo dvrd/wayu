@@ -764,6 +764,10 @@ toml_path_list :: proc() {
 	output := table_render(path_table, get_cli_terminal_width())
 	defer delete(output)
 	fmt.print(output)
+
+	if !show_external && external_count > 0 {
+		fmt.printfln("%sPass --full to show %d external entries%s", get_muted(), external_count, RESET)
+	}
 }
 
 print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[string]bool) {
