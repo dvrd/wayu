@@ -43,7 +43,7 @@ class BackupIntegrationTest
     print "Test 1: Automatic backup creation... "
 
     # Clear any existing backups
-    backup_files = Dir.glob("#{@config_dir}/backup/*.backup.*")
+    backup_files = Dir.glob("#{@data_dir}/backup/*.backup.*")
     backup_files.each { |f| File.delete(f) }
 
     # Create test directory
@@ -55,7 +55,7 @@ class BackupIntegrationTest
 
     if status.success?
       # Check if backup was created
-      backup_files = Dir.glob("#{@config_dir}/backup/wayu.toml.backup.*")
+      backup_files = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*")
       if backup_files.length > 0
         puts "✓"
         @passed += 1
@@ -75,7 +75,7 @@ class BackupIntegrationTest
     print "Test 2: List backups when none exist... "
 
     # Clear all backups
-    backup_files = Dir.glob("#{@config_dir}/backup/*.backup.*")
+    backup_files = Dir.glob("#{@data_dir}/backup/*.backup.*")
     backup_files.each { |f| File.delete(f) }
 
     output, status = run_wayu("backup list")
@@ -182,13 +182,13 @@ class BackupIntegrationTest
     end
 
     # Count backups before cleanup
-    backup_files_before = Dir.glob("#{@config_dir}/backup/wayu.toml.backup.*")
+    backup_files_before = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*")
 
     # Run cleanup
     output, status = run_wayu("backup rm")
 
     if status.success?
-      backup_files_after = Dir.glob("#{@config_dir}/backup/wayu.toml.backup.*")
+      backup_files_after = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*")
 
       # Should have cleaned up some backups (keeping last 5)
       if backup_files_after.length <= 5

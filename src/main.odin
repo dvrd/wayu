@@ -119,6 +119,24 @@ init_shell_globals :: proc() {
 	init_app_context(&wayu)
 }
 
+// Create a directory and all parent directories (like mkdir -p).
+make_directory_all :: proc(path: string) -> (err: os.Error) {
+	// Try creating directly first (fast path for when parents exist)
+	if make_err := os.make_directory(path); make_err == nil do return nil
+
+	// Build parent path and create parents recursively
+	last_slash := strings.last_index(path, "/")
+	if last_slash > 1 {
+		parent := path[:last_slash]
+		if !os.exists(parent) {
+			if err = make_directory_all(parent); err != nil {
+				return
+			}
+		}
+	}
+	return os.make_directory(path)
+}
+
 // Shared TUI launch helper — used by both no-args and --tui paths
 tui_launch :: proc() {
 	wayu.tui_mode = true
@@ -334,7 +352,8 @@ handle_init_command :: proc() {
 		spinner_text(&spinner, "Creating data directory")
 		spinner_start(&spinner)
 
-		err := os.make_directory(data_dir)
+		// Create parent directories if needed (e.g. .local/share/ may not exist in test envs)
+		err := make_directory_all(data_dir)
 
 		spinner_stop(&spinner)
 

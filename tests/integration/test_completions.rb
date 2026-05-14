@@ -11,7 +11,7 @@ class CompletionsIntegrationTest
 
   def initialize
     setup_test_env
-    @completions_dir = "#{@config_dir}/completions"
+    @completions_dir = "#{@data_dir}/completions"
   end
 
   def run
