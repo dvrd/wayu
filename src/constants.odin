@@ -417,6 +417,10 @@ list_toml_constants :: proc() {
 	table_output := table_render(table, get_cli_terminal_width())
 	defer delete(table_output)
 	fmt.print(table_output)
+
+	if !show_external && len(external_constants) > 0 {
+		fmt.printfln("%sPass --full to show %d external entries%s", get_muted(), len(external_constants), RESET)
+	}
 }
 
 print_constants_json :: proc(entries: []ConfigEntry, external_constants: []string) {
