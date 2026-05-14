@@ -1,21 +1,21 @@
 # wayu
 
-A shell configuration management CLI written in [Odin](https://odin-lang.org/) with zero external dependencies. Manages PATH entries, aliases, environment variables, completions, and backups across Bash and Zsh.
+A shell configuration management CLI written in [Odin](https://odin-lang.org/) with zero external dependencies. Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
 
 ## Features
 
-- **Multi-shell** -- Automatic Bash/Zsh detection with shell-specific config files
-- **Dual mode** -- Non-interactive CLI for scripting + interactive TUI for humans
-- **PATH management** -- Centralized array-based system with deduplication and validation
+- **Multi-shell** -- Automatic Bash/Zsh/Fish detection with shell-specific config files
+- **Dual mode** -- Non-interactive CLI for scripting + interactive TUI (default when run with no args)
+- **PATH management** -- TOML-based keyed entries with deduplication and validation
 - **Alias & constants** -- Add, remove, list with input validation and reserved word checking
 - **Fuzzy matching** -- Smart search with acronym support (e.g., `frwrks` → `FIREWORKS_AI_API_KEY`)
-- **Completions** -- Manage Zsh completion scripts
+- **Completions** -- Manage shell completion scripts (Zsh, Bash, Fish)
 - **Plugin management** -- Install, enable/disable, and prioritize shell plugins with dependency resolution
 - **Backup & restore** -- Automatic timestamped backups before every modification
-- **Shell migration** -- Migrate configs between Bash and Zsh
+- **Shell migration** -- Migrate configs between Bash, Zsh, and Fish
 - **Dry-run mode** -- Preview any change before applying it
 - **Scriptable** -- BSD sysexits.h exit codes, no interactive prompts in CLI mode
-- **Zero dependencies** -- Pure Odin, ~38K lines, compiles in seconds
+- **Zero dependencies** -- Pure Odin, ~31K lines, compiles in seconds
 
 ## Installation
 
@@ -41,6 +41,8 @@ wayu init       # creates ~/.config/wayu/ with shell-appropriate config files
 ```
 
 ## Quick Start
+
+> **Tip:** Running `wayu` with no arguments opens the interactive TUI.
 
 ```bash
 # PATH
@@ -72,9 +74,10 @@ wayu const get frwrks          # gets FIREWORKS_AI_API_KEY (fuzzy match)
 wayu const get ai_key          # gets any constant containing "ai_key"
 wayu alias get gcm             # gets "git commit -m" (fuzzy match)
 
-# Completions (Zsh)
+# Completions
 wayu completions add jj /path/to/_jj
 wayu completions list
+wayu completions generate          # generate wayu self-completions (zsh + bash + fish)
 
 # Backups
 wayu backup list
@@ -83,7 +86,7 @@ wayu backup restore path
 # Plugins
 wayu plugin search                          # browse popular plugins
 wayu plugin search syntax                   # filter by keyword
-wayu plugin add zsh-autosuggestions         # install popular plugin
+wayu plugin add autosuggestions             # install popular plugin (registry key)
 wayu plugin add https://github.com/user/plugin.git  # install from URL
 wayu plugin list                            # list installed plugins
 wayu plugin enable zsh-autosuggestions
@@ -94,7 +97,7 @@ wayu plugin remove zsh-autosuggestions --yes
 
 # Extra configuration (scripts that run at shell startup end)
 wayu config edit                 # Edit wayu.toml (declarative config)
-wayu config extend               # Edit extra.zsh (custom scripts)
+wayu config extend               # Edit extra.<shell> (custom scripts)
 wayu config scan                 # Detect scripts in .zshrc to migrate
 
 # Turbo export (fast shell startup)
@@ -121,12 +124,13 @@ wayu hooks                       # show configured hooks
 wayu hooks edit                  # edit ~/.config/wayu/hooks.conf
 
 # Templates (config presets)
-wayu init --template developer   # bootstrap with a preset
 wayu template list               # available: developer, minimal, data-science, full
-wayu template apply minimal      # apply preset to existing config
+wayu template apply developer    # apply preset to existing config
+wayu template apply minimal      # minimal preset
 
 # Interactive mode
-wayu --tui
+wayu                             # TUI opens by default with no args
+wayu --tui                       # explicit flag
 ```
 
 ## CLI Reference
@@ -141,9 +145,9 @@ wayu <command> <action> [arguments] [flags]
 |---------|-------------|
 | `path` | Manage PATH entries |
 | `alias` | Manage shell aliases |
-| `constants`, `const` | Manage environment variables |
+| `constants`, `const`, `env` | Manage environment variables |
 | `search`, `find`, `f` | Fuzzy search across all configurations |
-| `completions` | Manage Zsh completion scripts |
+| `completions` | Manage shell completion scripts |
 | `plugin` | Install and manage shell plugins |
 | `config` | Manage extra config and TOML files |
 | `export` | Generate turbo export for fast startup |
@@ -153,7 +157,7 @@ wayu <command> <action> [arguments] [flags]
 | `hooks` | Pre/post operation hooks |
 | `reload`, `watch`, `hot-reload` | Watch config files and regenerate on change |
 | `backup` | Manage configuration backups |
-| `init` | Initialize config directory (`--template <preset>` to bootstrap) |
+| `init` | Initialize config directory |
 | `migrate` | Migrate config between shells |
 | `version` | Show version |
 | `help` | Show help |
@@ -170,7 +174,7 @@ wayu <command> <action> [arguments] [flags]
 | `clean` | Remove PATH entries pointing to missing directories |
 | `dedup` | Remove duplicate PATH entries |
 | `edit` | Edit config file in `$EDITOR` (`config`, `hooks`) |
-| `extend`, `scan` | Manage `extra.zsh` (`config extend`, `config scan`) |
+| `extend`, `scan` | Manage extra config (`config extend`, `config scan`) |
 | `apply` | Apply preset (`template apply <name>`) |
 | `validate` | Schema-check `wayu.toml` (`toml validate`) |
 | `start`, `stop`, `status` | Manage the file watcher (`reload`) |
@@ -180,10 +184,13 @@ wayu <command> <action> [arguments] [flags]
 
 | Flag | Description |
 |------|-------------|
-| `--shell <bash\|zsh>` | Override shell detection |
+| `--shell <bash\|zsh\|fish>` | Override shell detection |
 | `--dry-run`, `-n` | Preview changes without applying |
 | `--yes`, `-y` | Skip confirmation prompts |
 | `--tui` | Launch interactive TUI |
+| `--json` | Machine-readable output (doctor, list, plugin list) |
+| `--source <filter>` | List filter: `all`, `wayu`, `external`, `inactive` |
+| `--no-color` | Disable ANSI colors (equivalent to `NO_COLOR=1`) |
 | `--from <shell>` | Source shell for migration |
 | `--to <shell>` | Target shell for migration |
 | `-v`, `--version` | Show version |
@@ -259,6 +266,8 @@ export WAYU_FFF_AUTO_FALLBACK=0  # Disable auto fuzzy fallback on GET
 export WAYU_FFF_INTERACTIVE=0    # Disable interactive selector
 ```
 
+> **Note:** These toggles are only partially honored in the current codebase. The TOML-native `get` and `search` code paths always use fuzzy matching regardless of these variables. The toggles affect the legacy generic config entry path only.
+
 ## Exit Codes
 
 BSD sysexits.h compatible for scripting:
@@ -277,43 +286,67 @@ BSD sysexits.h compatible for scripting:
 
 ## TUI Mode
 
-Launch with `wayu --tui` for an interactive terminal interface.
+Launch with `wayu` (no args) or `wayu --tui` for an interactive terminal interface.
 
-- Vim-style navigation (`j`/`k`, arrow keys)
+- Vim-style navigation (`j`/`k`, `h`/`l`, arrow keys)
+- Inline fuzzy filtering with `/`
+- Source filter cycling with `s` (all → wayu → inactive → external)
 - Add and delete entries with confirmation modals
-- Fuzzy search and inline filtering
 - Tab-navigable forms with focus indicators
 - Automatic backups before modifications
-- Dashboard-style main menu
+- Dashboard-style main menu with 8 views
 
-**Plugin view keybindings** (navigate to Plugins from the main menu):
+**Keybindings:**
 
-| Key | Action |
-|-----|--------|
-| `j` / `k` | Move selection up/down |
-| `e` | Enable selected plugin |
-| `d` | Disable selected plugin |
-| `q` / `Esc` | Return to main menu |
+| Key | Context | Action |
+|-----|---------|--------|
+| `j` / `k` / ↑ / ↓ | All views | Move selection |
+| `l` / Enter | All views | Select / enter |
+| `h` / Esc | All views | Go back |
+| `q` | Main menu | Quit |
+| `/` | Data / plugin views | Start inline filter |
+| `s` | PATH / Alias / Constants | Cycle source filter |
+| `a` | PATH / Alias / Constants | Add entry (modal form) |
+| `d` / `x` | PATH / Alias / Constants | Delete entry (with confirmation) |
+| Tab / `t` | Plugins view | Switch Installed ↔ Registry tab |
+| `e` | Plugins (Installed) | Enable selected plugin |
+| `d` | Plugins (Installed) | Disable selected plugin |
+| `i` / Enter | Plugins (Registry) | Install selected plugin |
+| `c` | Backups view | Cleanup old backups |
+| Ctrl+C | Anywhere | Quit |
 
 Built from scratch with raw termios control, alternate screen buffer, differential rendering, and signal handling. No external TUI libraries.
 
 ## Configuration
 
-wayu stores shell-specific config files in `~/.config/wayu/`:
+wayu stores configuration in `~/.config/wayu/`:
 
 ```
 ~/.config/wayu/
-  init.{zsh,bash}           # main orchestrator
-  path.{zsh,bash}           # PATH entries
-  aliases.{zsh,bash}        # alias definitions
-  constants.{zsh,bash}      # environment variable exports
-  tools.{zsh,bash}          # external tool initialization
+  wayu.toml                 # declarative config (source of truth for path/alias/env)
+  plugins.json              # installed plugin metadata (JSON5)
+  init-core.{zsh,bash,fish} # generated optimized init (source this in your RC file)
+  init-lazy.{zsh,bash}      # deferred plugin/tool loading (zsh/bash only)
+  init-login.{zsh,bash}     # login-shell-only init (zsh/bash only)
+  init-helpers.{zsh,bash}   # utility functions, evalcache, built-in zsh-defer (zsh/bash only)
+  plugins.{zsh,bash,fish}   # generated plugin loader
+  plugins/                  # cloned plugin repos + runtime config
+  turbo.{zsh,bash}          # pre-computed fast startup via `wayu export` (zsh/bash only)
+  extra.{zsh,bash,fish}     # custom scripts (conda init, tool evals, etc.)
   alias-sources.conf        # external alias sources (shell-agnostic, read-only)
-  completions/              # Zsh completion scripts
-  backup/                   # timestamped backups
+  completions/              # shell completion scripts
+  functions/                # custom shell functions
+  backup/                   # timestamped backups (last 5 per file)
+  hooks.conf                # pre/post operation hooks
+  # Legacy files (kept for bootstrap/back-compat):
+  init.{zsh,bash}           # legacy orchestrator
+  path.{zsh,bash}           # legacy PATH entries
+  aliases.{zsh,bash}        # legacy alias definitions
+  constants.{zsh,bash}      # legacy env exports
+  tools.{zsh,bash}          # legacy tool initialization
 ```
 
-Shell is detected automatically from `$SHELL`. Override with `--shell bash` or `--shell zsh`.
+Shell is detected automatically from `$SHELL`. Override with `--shell bash`, `--shell zsh`, or `--shell fish`.
 
 ### External Alias Sources
 
@@ -341,16 +374,16 @@ odin build build -out:build_it
 # Build & test
 ./build_it build          # optimized release build
 ./build_it debug          # debug build with symbols
-./build_it test           # unit tests (557 tests)
+./build_it test           # unit tests (473 tests)
 ./build_it check          # type-check only
 ./build_it dev path list  # debug build + run
 ./build_it clean          # remove build artifacts
-./build_it install        # build + install to /usr/local/bin
+./build_it install        # build + install to /usr/local/bin + wayu init
+./build_it release vX.Y.Z # test, tag, push (triggers GitHub Actions + Homebrew)
 ./build_it help           # show all targets
 
-# Integration Tests
-./build_it test:all           # unit + integration
-cd tests/integration && odin run integration_tests.odin
+# Integration Tests (Ruby)
+ruby tests/integration/run_all.rb
 ```
 
 ## License
