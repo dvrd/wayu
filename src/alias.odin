@@ -275,6 +275,9 @@ list_toml_aliases :: proc() {
 		return
 	}
 
+	print_header("Aliases (wayu.toml)", ALIAS_SPEC.icon)
+	fmt.println()
+
 	// Count sources
 	active_count := 0
 	inactive_count := 0
