@@ -403,7 +403,7 @@ print_hooks_usage :: proc() {
 	fmt.println("  Useful for logging, notifications, or custom integrations.")
 	fmt.println()
 	fmt.printfln("%sCONFIG FILE:%s", get_primary(), RESET)
-	fmt.printfln("  ~/.config/wayu/hooks.conf", wayu.config)
+	fmt.println("  ~/.config/wayu/hooks.conf")
 	fmt.println()
 	fmt.printfln("%sEXAMPLE HOOKS:%s", get_primary(), RESET)
 	fmt.println()
