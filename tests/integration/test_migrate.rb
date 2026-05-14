@@ -42,18 +42,20 @@ class MigrateIntegrationTest
   # simulates a pre-v3.10 install.
   def seed_legacy_home
     FileUtils.rm_rf("#{@tmp_home}/.config")
+    FileUtils.rm_rf("#{@tmp_home}/.local")
     FileUtils.mkdir_p("#{@config_dir}")
-    File.write("#{@config_dir}/aliases.zsh", <<~ZSH)
+    FileUtils.mkdir_p("#{@data_dir}")
+    File.write("#{@data_dir}/aliases.zsh", <<~ZSH)
       #!/usr/bin/env zsh
       alias ll="ls -la"
       alias gs="git status"
     ZSH
-    File.write("#{@config_dir}/constants.zsh", <<~ZSH)
+    File.write("#{@data_dir}/constants.zsh", <<~ZSH)
       #!/usr/bin/env zsh
       export EDITOR="nvim"
       export LANG="en_US.UTF-8"
     ZSH
-    File.write("#{@config_dir}/path.zsh", <<~ZSH)
+    File.write("#{@data_dir}/path.zsh", <<~ZSH)
       #!/usr/bin/env zsh
       WAYU_PATHS=(
         "/opt/homebrew/bin"
@@ -69,9 +71,9 @@ class MigrateIntegrationTest
     toml_absent = !File.exist?("#{@config_dir}/wayu.toml")
     preview_ok  = out.include?('Dry-run mode') && out.include?('aliases.zsh') &&
                   out.include?('ll = ...')
-    legacy_kept = File.exist?("#{@config_dir}/aliases.zsh") &&
-                  File.exist?("#{@config_dir}/constants.zsh") &&
-                  File.exist?("#{@config_dir}/path.zsh")
+    legacy_kept = File.exist?("#{@data_dir}/aliases.zsh") &&
+                  File.exist?("#{@data_dir}/constants.zsh") &&
+                  File.exist?("#{@data_dir}/path.zsh")
     if status.success? && toml_absent && preview_ok && legacy_kept
       puts "✓"; @passed += 1
     else
@@ -93,12 +95,12 @@ class MigrateIntegrationTest
                           toml.include?('LANG = "en_US.UTF-8"') &&
                           toml.include?('= "/opt/homebrew/bin"') &&
                           toml.include?('= "/usr/local/bin"')
-    archived = File.exist?("#{@config_dir}/aliases.zsh.migrated") &&
-               File.exist?("#{@config_dir}/constants.zsh.migrated") &&
-               File.exist?("#{@config_dir}/path.zsh.migrated")
-    originals_gone = !File.exist?("#{@config_dir}/aliases.zsh") &&
-                     !File.exist?("#{@config_dir}/constants.zsh") &&
-                     !File.exist?("#{@config_dir}/path.zsh")
+    archived = File.exist?("#{@data_dir}/aliases.zsh.migrated") &&
+               File.exist?("#{@data_dir}/constants.zsh.migrated") &&
+               File.exist?("#{@data_dir}/path.zsh.migrated")
+    originals_gone = !File.exist?("#{@data_dir}/aliases.zsh") &&
+                     !File.exist?("#{@data_dir}/constants.zsh") &&
+                     !File.exist?("#{@data_dir}/path.zsh")
     summary_ok = out.include?('Migration complete: 2 paths, 2 aliases, 2 constants')
 
     if status.success? && toml_has_everything && archived && originals_gone && summary_ok
@@ -182,11 +184,13 @@ class MigrateIntegrationTest
     # / constants.zsh / path.zsh but with no user content. Those should be
     # treated as empty, not as "has legacy content to migrate".
     FileUtils.rm_rf("#{@tmp_home}/.config")
+    FileUtils.rm_rf("#{@tmp_home}/.local")
     FileUtils.mkdir_p(@config_dir)
+    FileUtils.mkdir_p("#{@tmp_home}/.local/share")
     run_wayu('init --shell zsh')
     out, status = run_wayu('migrate')
-    scaffolded_untouched = File.exist?("#{@config_dir}/aliases.zsh") &&
-                           !File.exist?("#{@config_dir}/aliases.zsh.migrated")
+    scaffolded_untouched = File.exist?("#{@data_dir}/aliases.zsh") &&
+                           !File.exist?("#{@data_dir}/aliases.zsh.migrated")
     if status.success? && out.include?('No legacy shell config files') && scaffolded_untouched
       puts "✓"; @passed += 1
     else

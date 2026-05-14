@@ -25,8 +25,10 @@ module WayuTestHelper
     # predictable path avoids symlink resolution issues on macOS.
     @tmp_home   = "/tmp/wayu_test_#{$$}_#{rand(9999)}"
     @config_dir = "#{@tmp_home}/.config/wayu"
-    # Pre-create ~/.config/ so the binary can create ~/.config/wayu inside it
+    @data_dir   = "#{@tmp_home}/.local/share/wayu"
+    # Pre-create parent dirs so the binary can create config/data inside
     FileUtils.mkdir_p("#{@tmp_home}/.config")
+    FileUtils.mkdir_p("#{@tmp_home}/.local/share")
   end
 
   # Call at the end of run (in ensure block so it always fires)

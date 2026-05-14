@@ -59,9 +59,10 @@ class InitIntegrationTest
     # Check that all required directories exist
     required_dirs = [
       @config_dir,
-      "#{@config_dir}/functions",
-      "#{@config_dir}/completions",
-      "#{@config_dir}/plugins"
+      @data_dir,
+      "#{@data_dir}/functions",
+      "#{@data_dir}/completions",
+      "#{@data_dir}/plugins"
     ]
 
     all_exist = required_dirs.all? { |dir| Dir.exist?(dir) }
@@ -82,10 +83,10 @@ class InitIntegrationTest
     print "Test 2: Init creates config files... "
 
     required_files = [
-      "#{@config_dir}/path.zsh",
-      "#{@config_dir}/aliases.zsh",
-      "#{@config_dir}/constants.zsh",
-      "#{@config_dir}/init.zsh",
+      "#{@data_dir}/path.zsh",
+      "#{@data_dir}/aliases.zsh",
+      "#{@data_dir}/constants.zsh",
+      "#{@data_dir}/init.zsh",
       "#{@config_dir}/tools.zsh"
     ]
 
@@ -147,10 +148,10 @@ class InitIntegrationTest
 
     # Check that each file has proper shebang and structure (relaxed checks)
     files_to_check = {
-      "#{@config_dir}/path.zsh" => ["WAYU_PATHS"],
-      "#{@config_dir}/aliases.zsh" => ["alias"],
-      "#{@config_dir}/constants.zsh" => [],
-      "#{@config_dir}/init.zsh" => ["source"],
+      "#{@data_dir}/path.zsh" => ["WAYU_PATHS"],
+      "#{@data_dir}/aliases.zsh" => ["alias"],
+      "#{@data_dir}/constants.zsh" => [],
+      "#{@data_dir}/init.zsh" => ["source"],
       "#{@config_dir}/tools.zsh" => []  # May be empty
     }
 
@@ -177,7 +178,7 @@ class InitIntegrationTest
   def test_init_file_orchestration
     print "Test 6: Init file orchestrates all configs... "
 
-    init_content = File.read("#{@config_dir}/init.zsh")
+    init_content = File.read("#{@data_dir}/init.zsh")
 
     # Should source all config files in correct order
     sources_path = init_content.include?("path.zsh")
@@ -246,7 +247,7 @@ class InitIntegrationTest
     output, status = run_wayu("--dry-run init")
 
     # In dry-run mode, should not create files or show preview
-    if !Dir.exist?("#{@config_dir}/path.zsh") || output.include?("DRY RUN") || output.include?("Would")
+    if !File.exist?("#{@data_dir}/path.zsh") || output.include?("DRY RUN") || output.include?("Would")
       puts "✓"
       @passed += 1
     else
