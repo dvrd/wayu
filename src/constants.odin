@@ -18,7 +18,7 @@ strip_ansi :: proc(s: string, allocator := context.allocator) -> string {
 	}
 	if !alive { return strings.clone(s, allocator) }
 
-	// Build clean copy without ANSI escape sequences
+	// Build clean copy without ANSI escape sequences and newlines
 	buf := make([dynamic]byte, 0, len(s), allocator)
 	i := 0
 	for i < len(s) {
@@ -27,6 +27,10 @@ strip_ansi :: proc(s: string, allocator := context.allocator) -> string {
 			i += 2
 			for i < len(s) && (is_digit(s[i]) || s[i] == ';') { i += 1 }
 			if i < len(s) { i += 1 }  // skip the terminating letter
+		} else if s[i] == '\n' || s[i] == '\r' {
+			// Replace newlines with space to keep table rows intact
+			append(&buf, ' ')
+			i += 1
 		} else {
 			append(&buf, s[i])
 			i += 1
