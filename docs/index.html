@@ -4,16 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>wayu — Shell config management that gets out of the way</title>
-  <meta name="description" content="A zero-dependency CLI for Bash, Zsh, and Fish. Manage PATH, aliases, env vars, and plugins with one command. Every change backed up automatically. Written in pure Odin." />
+  <meta name="description" content="A zero-dependency CLI for Zsh and Bash (Fish experimental). Manage PATH, aliases, env vars, and plugins with one command. Every change backed up automatically. Written in pure Odin." />
 
   <!-- Open Graph -->
   <meta property="og:title" content="wayu — Shell config management that gets out of the way" />
-  <meta property="og:description" content="A zero-dependency CLI for Bash, Zsh, and Fish. Manage PATH, aliases, env vars, and plugins with one command." />
-  <meta property="og:image" content="https://wayu.devoured.io/og.png" />
+  <meta property="og:description" content="A zero-dependency CLI for Zsh and Bash. Manage PATH, aliases, env vars, and plugins with one command." />
+  <!-- TODO: create og.png (1200×630) and uncomment -->
+  <!-- <meta property="og:image" content="https://wayu.devoured.io/og.png" /> -->
   <meta property="og:url" content="https://wayu.devoured.io" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="https://wayu.devoured.io/og.png" />
+  <!-- <meta name="twitter:image" content="https://wayu.devoured.io/og.png" /> -->
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
@@ -1511,7 +1512,7 @@
           <li><a href="#declarative">Declarative</a></li>
           <li><a href="#doctor">Doctor</a></li>
           <li><a href="#install">Install</a></li>
-          <li><span class="nav-version" aria-label="Version 4.1.1">v4.1.1</span></li>
+          <li><span class="nav-version" aria-label="Version 4.2.0">v4.2.0</span></li>
           <li><a href="https://github.com/dvrd/wayu" class="nav-cta" target="_blank" rel="noopener">GitHub ↗</a></li>
         </ul>
       </div>
@@ -1534,7 +1535,7 @@
         </h1>
 
         <p class="hero-desc reveal reveal-delay-2">
-          wayu is a zero-dependency CLI for Bash, Zsh, and Fish. Manage PATH entries, aliases, env vars, and plugins with one command. Every change backed up automatically.
+          wayu is a zero-dependency CLI for Zsh and Bash. Manage PATH entries, aliases, env vars, and plugins with one command. Every change backed up automatically.
         </p>
 
         <div class="hero-actions reveal reveal-delay-3">
@@ -1554,7 +1555,7 @@
 
         <div class="hero-meta reveal reveal-delay-4">
           <div class="hero-stat">
-            <span class="hero-stat-num">473</span>
+            <span class="hero-stat-num">474</span>
             <span class="hero-stat-label">Tests</span>
           </div>
           <div class="hero-stat-divider" aria-hidden="true"></div>
@@ -1657,7 +1658,7 @@
           <article class="feature-card">
             <div class="feature-icon" aria-hidden="true">🐚</div>
             <h3 class="feature-name">Multi-Shell</h3>
-            <p class="feature-desc">Automatic Bash/Zsh/Fish detection from <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">$SHELL</code>. Shell-specific config files with correct syntax. Migrate between shells with <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu migrate</code>.</p>
+            <p class="feature-desc">Automatic Zsh/Bash detection from <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">$SHELL</code>. Shell-specific config files with correct syntax. Fish support is experimental. Migrate between shells with <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu migrate</code>.</p>
           </article>
 
           <article class="feature-card">
@@ -1738,7 +1739,7 @@
           <article class="feature-card">
             <div class="feature-icon" aria-hidden="true">🪝</div>
             <h3 class="feature-name">Pre/Post Hooks</h3>
-            <p class="feature-desc">Run custom commands before or after any operation: <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">pre_path_add</code>, <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">post_alias_add</code>, etc. Logging, notifications, custom integrations — wired into <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">hooks.conf</code>.</p>
+            <p class="feature-desc">Configure custom commands to run before or after operations via <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">hooks.conf</code>. Supports <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">pre_path_add</code>, <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">post_alias_add</code>, etc. Logging, notifications, custom integrations.</p>
           </article>
 
           <article class="feature-card">
@@ -1750,7 +1751,7 @@
           <article class="feature-card">
             <div class="feature-icon" aria-hidden="true">🔄</div>
             <h3 class="feature-name">Shell Migration</h3>
-            <p class="feature-desc"><code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu migrate --from zsh --to bash</code>. Generates equivalent shell-specific config files. Switch between Zsh, Bash, and Fish without losing PATH, aliases, env, or plugin state.</p>
+            <p class="feature-desc"><code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu migrate --from zsh --to bash</code>. Generates equivalent shell-specific config files. Switch between Zsh and Bash without losing PATH, aliases, env, or plugin state. Fish migration is experimental.</p>
           </article>
 
           <article class="feature-card">
@@ -1819,14 +1820,13 @@
 <span class="cmd-k">wayu</span> <span class="cmd-v">alias add</span> <span class="cmd-p">gs</span> <span class="cmd-p">'git status'</span>
 <span class="cmd-k">wayu</span> <span class="cmd-v">alias add</span> <span class="cmd-p">gc</span> <span class="cmd-p">'git commit'</span>
 
-<span class="cmd-c"># List all (includes external sources)</span>
+<span class="cmd-c"># List wayu-managed (--full for external too)</span>
 <span class="cmd-k">wayu</span> <span class="cmd-v">alias list</span>
 
 <span class="cmd-c"># Remove an alias</span>
 <span class="cmd-k">wayu</span> <span class="cmd-v">alias rm</span> <span class="cmd-p">ll</span>
 
-<span class="cmd-c"># Add constants</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">constants add</span> <span class="cmd-p">EDITOR</span> <span class="cmd-p">nvim</span></code></pre>
+</code></pre>
           </div>
 
           <div class="cmd-block" id="tab-plugin" role="tabpanel" aria-labelledby="btn-plugin">
@@ -1872,7 +1872,7 @@
               <span class="cmd-block-label">health check &amp; auto-fix</span>
               <button class="cmd-copy" onclick="copyCode('doctor')" aria-label="Copy doctor commands">copy</button>
             </div>
-            <pre><code id="code-doctor"><span class="cmd-c"># Run all checks (10+ diagnostics)</span>
+            <pre><code id="code-doctor"><span class="cmd-c"># Run all checks (9 diagnostics)</span>
 <span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span>
 
 <span class="cmd-c"># Auto-fix issues marked 🔧</span>
@@ -2057,7 +2057,7 @@
           <div class="arch-card-detail">Pure, zero-dependency systems code. Compiles in seconds.</div>
         </div>
         <div class="arch-card reveal reveal-delay-1">
-          <div class="arch-card-num">473</div>
+          <div class="arch-card-num">474</div>
           <div class="arch-card-label">Tests</div>
           <div class="arch-card-detail">Unit, integration, and golden-file visual regression.</div>
         </div>
@@ -2123,7 +2123,7 @@
             wrong before you do.
           </h2>
           <p class="doctor-desc reveal-delay-2">
-            10+ checks across install state, shell sourcing, PATH validity, plugin health,
+            9 checks across install state, shell sourcing, PATH validity, plugin health,
             backups, TOML schema, and external dependencies. Auto-fix what's mechanical.
             JSON output for CI pipelines.
           </p>
@@ -2153,7 +2153,7 @@
 <span class="t-line"><span class="t-info">🔬</span> <span class="t-cmd">wayu Doctor — System Health Check</span></span>
 <span class="t-line"></span>
 <span class="t-line">  <span class="t-success">✓</span> wayu installation</span>
-<span class="t-line">    <span class="t-output">wayu 4.1.1 installed</span></span>
+<span class="t-line">    <span class="t-output">wayu 4.2.0 installed</span></span>
 <span class="t-line">  <span class="t-success">✓</span> shell configuration</span>
 <span class="t-line">    <span class="t-output">init.zsh sourced from ~/.zshrc</span></span>
 <span class="t-line">  <span class="t-success">✓</span> PATH entries</span>
@@ -2191,7 +2191,7 @@
 <span class="t-line"><span class="json-p">{</span></span>
 <span class="t-line">  <span class="json-k">"checks"</span>: <span class="json-p">[</span></span>
 <span class="t-line">    <span class="json-p">{</span> <span class="json-k">"name"</span>: <span class="json-s">"wayu installation"</span>, <span class="json-k">"status"</span>: <span class="json-s">"ok"</span>,</span>
-<span class="t-line">      <span class="json-k">"message"</span>: <span class="json-s">"wayu 4.1.1 installed"</span>, <span class="json-k">"fixable"</span>: <span class="json-b">false</span> <span class="json-p">}</span>,</span>
+<span class="t-line">      <span class="json-k">"message"</span>: <span class="json-s">"wayu 4.2.0 installed"</span>, <span class="json-k">"fixable"</span>: <span class="json-b">false</span> <span class="json-p">}</span>,</span>
 <span class="t-line">    <span class="json-p">{</span> <span class="json-k">"name"</span>: <span class="json-s">"shell configuration"</span>, <span class="json-k">"status"</span>: <span class="json-s">"ok"</span>,</span>
 <span class="t-line">      <span class="json-k">"message"</span>: <span class="json-s">"init.zsh sourced"</span>, <span class="json-k">"fixable"</span>: <span class="json-b">false</span> <span class="json-p">}</span>,</span>
 <span class="t-line">    <span class="json-p">{</span> <span class="json-k">"name"</span>: <span class="json-s">"turbo export"</span>, <span class="json-k">"status"</span>: <span class="json-s">"warning"</span>,</span>
@@ -2249,7 +2249,7 @@
               <div class="step-num" aria-hidden="true">3</div>
               <div class="step-content">
                 <div class="step-title">Source the init file in your shell RC</div>
-                <div class="step-code"><span style="color:var(--text-3)"># ~/.zshrc or ~/.bashrc</span><br>source ~/.config/wayu/init.zsh</div>
+                <div class="step-code"><span style="color:var(--text-3)"># ~/.zshrc or ~/.bashrc</span><br>source ~/.local/share/wayu/init.zsh</div>
               </div>
             </div>
           </div>
@@ -2274,28 +2274,28 @@
               <div class="step-num" aria-hidden="true">3</div>
               <div class="step-content">
                 <div class="step-title">Source the init file in your shell RC</div>
-                <div class="step-code"><span style="color:var(--text-3)"># ~/.zshrc or ~/.bashrc</span><br>source ~/.config/wayu/init.zsh</div>
+                <div class="step-code"><span style="color:var(--text-3)"># ~/.zshrc or ~/.bashrc</span><br>source ~/.local/share/wayu/init.zsh</div>
               </div>
             </div>
           </div>
         </div>
 
         <div class="install-right reveal reveal-delay-2">
-          <p style="font-size:0.75rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;">Config files created in <code style="font-family:var(--font-mono);">~/.config/wayu/</code></p>
+          <p style="font-size:0.75rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;">Config &amp; runtime files in <code style="font-family:var(--font-mono);">~/.config/wayu/</code> + <code style="font-family:var(--font-mono);">~/.local/share/wayu/</code></p>
           <div class="config-file">
             <div class="config-file-name">wayu.toml</div>
             <div class="config-file-desc">Declarative config — source of truth for PATH entries, aliases, and environment variables. Version-controllable.</div>
           </div>
           <div class="config-file">
-            <div class="config-file-name">init-core.{zsh,bash,fish}</div>
-            <div class="config-file-desc">Generated optimized init. Source this in your shell RC file — compiles PATH, aliases, env, and completions into fast shell code.</div>
+            <div class="config-file-name">init.{zsh,bash} + core, lazy, helpers</div>
+            <div class="config-file-desc">Generated init files in <code style="font-family:var(--font-mono)">~/.local/share/wayu/</code>. Source <code style="font-family:var(--font-mono)">init.zsh</code> from your shell RC — it loads core, lazy, and helper scripts automatically.</div>
           </div>
           <div class="config-file">
             <div class="config-file-name">plugins.json</div>
             <div class="config-file-desc">Installed plugin metadata (JSON5). Tracks enabled state, priority, dependencies, and git commit SHAs.</div>
           </div>
           <div class="config-file">
-            <div class="config-file-name">plugins.{zsh,bash,fish}</div>
+            <div class="config-file-name">plugins.{zsh,bash}</div>
             <div class="config-file-desc">Generated plugin loader. Resolves dependencies, respects priority order, detects conflicts.</div>
           </div>
           <div class="config-file">
@@ -2355,7 +2355,7 @@
           <li><a href="#install">Install</a></li>
           <li><a href="https://github.com/dvrd/wayu" target="_blank" rel="noopener">GitHub</a></li>
         </ul>
-        <p class="footer-copy">v4.1.1 · MIT License · Built with <a href="https://odin-lang.org" style="color:var(--teal);text-decoration:none;" target="_blank" rel="noopener">Odin</a></p>
+        <p class="footer-copy">v4.2.0 · MIT License · Built with <a href="https://odin-lang.org" style="color:var(--teal);text-decoration:none;" target="_blank" rel="noopener">Odin</a></p>
       </div>
     </div>
   </footer>
