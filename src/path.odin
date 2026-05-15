@@ -710,7 +710,7 @@ toml_path_list :: proc() {
 	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
 
 	// Build table (consistent with alias ls / constants ls)
-	headers := []string{"", "Path", "Source"}
+	headers := []string{"Path", "", "Source"}
 	path_table := new_table(headers)
 	defer table_destroy(&path_table)
 
@@ -744,7 +744,7 @@ toml_path_list :: proc() {
 			source := "wayu"
 			if !found { source = "wayu (inactive)" }
 
-			row := []string{status, p, source}
+			row := []string{p, status, source}
 			table_add_row(&path_table, row)
 		}
 	}
@@ -755,7 +755,7 @@ toml_path_list :: proc() {
 			if _, is_wayu := wayu_set[env_path]; !is_wayu {
 				status := " "
 				if !os.exists(env_path) { status = "✗" }
-				row := []string{status, env_path, "external"}
+				row := []string{env_path, status, "external"}
 				table_add_row(&path_table, row)
 			}
 		}
