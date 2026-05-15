@@ -5,6 +5,11 @@ All notable changes to wayu will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.1] - 2026-05-15
+
+### Fixed
+
+- **docs**: Fix double line spacing and pretty-print doctor JSON
 ## [4.3.0] - 2026-05-15
 
 ### Added
@@ -445,6 +450,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Correct termios struct for macOS compatibility
 - Resolve unit test failures and improve test robustness
 - Rename run_component_test to run_component_testing
+[4.3.1]: https://github.com/dvrd/wayu/releases/tag/v4.3.1
 [4.3.0]: https://github.com/dvrd/wayu/releases/tag/v4.3.0
 [4.2.0]: https://github.com/dvrd/wayu/releases/tag/v4.2.0
 [4.1.1]: https://github.com/dvrd/wayu/releases/tag/v4.1.1
