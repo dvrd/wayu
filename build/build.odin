@@ -12,6 +12,7 @@
 //   install   — build + copy to /usr/local/bin + wayu init
 //   dev       — debug build + run with remaining args
 //   release   — test + tag + push (triggers GitHub Actions → Homebrew)
+//   docs      — sync landing page version from src/main.odin
 //   help      — show available targets
 
 package main
@@ -60,6 +61,8 @@ main :: proc() {
 		do_dev()
 	case "release":
 		do_release()
+	case "docs":
+		sync_docs_version()
 	case "help":
 		do_help()
 	case:
@@ -299,9 +302,12 @@ do_release :: proc() {
 	}
 	bld.log_info("Updated VERSION from %s to %s", old_version, version_bare)
 
-	// 3c. Commit CHANGELOG.md and src/main.odin together
+	// 3c. Sync version into docs/index.html
+	sync_docs_version_str(version_bare)
+
+	// 3d. Commit CHANGELOG.md, src/main.odin, and docs together
 	add_cmd := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&add_cmd, "git", "add", "CHANGELOG.md", "src/main.odin")
+	bld.cmd_append(&add_cmd, "git", "add", "CHANGELOG.md", "src/main.odin", "docs/index.html")
 	bld.cmd_run(&add_cmd)
 	commit_msg := fmt.tprintf("chore: release %s", version)
 	commit_cmd := bld.cmd_create(context.temp_allocator)
@@ -336,6 +342,84 @@ do_release :: proc() {
 	bld.log_info("Track progress at: https://github.com/dvrd/wayu/actions")
 }
 
+// ---------------------------------------------------------------------------
+// docs — sync version from src/main.odin into docs/index.html
+// ---------------------------------------------------------------------------
+
+// Read the current VERSION from src/main.odin.
+read_source_version :: proc() -> string {
+	data, err := os.read_entire_file_from_path("src/main.odin", context.temp_allocator)
+	if err != nil {
+		bld.log_error("Failed to read src/main.odin")
+		os.exit(1)
+	}
+	src := string(data)
+	prefix :: `VERSION :: "`
+	start := strings.index(src, prefix)
+	if start == -1 {
+		bld.log_error("VERSION line not found in src/main.odin")
+		os.exit(1)
+	}
+	after := src[start + len(prefix):]
+	end := strings.index(after, `"`)
+	if end == -1 {
+		bld.log_error("Malformed VERSION line")
+		os.exit(1)
+	}
+	return after[:end]
+}
+
+// Replace every occurrence of a semver pattern (X.Y.Z) that matches the old
+// version with the new one inside docs/index.html.
+sync_docs_version_str :: proc(new_ver: string) {
+	path :: "docs/index.html"
+	data, err := os.read_entire_file_from_path(path, context.allocator)
+	if err != nil {
+		bld.log_error("Failed to read %s", path)
+		os.exit(1)
+	}
+	html := string(data)
+
+	// Find current version in the nav badge: aria-label="Version X.Y.Z"
+	marker :: `aria-label="Version `
+	idx := strings.index(html, marker)
+	if idx == -1 {
+		bld.log_error("Could not find version marker in %s", path)
+		os.exit(1)
+	}
+	old_start := idx + len(marker)
+	old_end := strings.index(html[old_start:], `"`)
+	if old_end == -1 {
+		bld.log_error("Malformed version marker in %s", path)
+		os.exit(1)
+	}
+	old_ver := html[old_start : old_start + old_end]
+
+	if old_ver == new_ver {
+		bld.log_info("docs/index.html already at v%s", new_ver)
+		return
+	}
+
+	// Replace all occurrences of the old version string with the new one.
+	// This covers nav badge, footer, doctor output, etc.
+	updated, _ := strings.replace_all(html, old_ver, new_ver)
+
+	werr := os.write_entire_file(path, transmute([]byte)updated)
+	if werr != nil {
+		bld.log_error("Failed to write %s", path)
+		os.exit(1)
+	}
+
+	count := strings.count(html, old_ver)
+	bld.log_info("docs/index.html: %s → %s (%d replacements)", old_ver, new_ver, count)
+}
+
+// Standalone entry point: read VERSION from source, patch docs.
+sync_docs_version :: proc() {
+	ver := read_source_version()
+	sync_docs_version_str(ver)
+}
+
 do_help :: proc() {
 	fmt.println("wayu build system")
 	fmt.println("")
@@ -350,6 +434,7 @@ do_help :: proc() {
 	fmt.println("  install   Build + install to /usr/local/bin + wayu init")
 	fmt.println("  dev       Debug build + run (extra args passed through)")
 	fmt.println("  release   Run tests, tag, and push to trigger GitHub release + Homebrew update")
+	fmt.println("  docs      Sync landing page version from src/main.odin")
 	fmt.println("  help      Show this help")
 	fmt.println("")
 	fmt.println("Bootstrap:")
