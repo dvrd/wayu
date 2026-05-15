@@ -5,6 +5,30 @@ All notable changes to wayu will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] - 2026-05-15
+
+### Added
+
+- Hide external entries by default, add --full/-f flag
+
+### Changed
+
+- Rename g_ctx→wayu, init-*→base names, add XDG data dir
+
+### Fixed
+
+- Remove hooks help format string bug, hide login.zsh from build output when not generated
+- Add consistent emoji headers to alias and constants list output
+- Add emoji headers to alias/constants list, fix data dir creation and integration tests
+- TUI bugfixes for counts and hooks view
+- Use table format for path ls, matching alias/constants style
+- Use separate status column for path ls instead of ✗ prefix
+- Filter noisy system env vars from constants list
+- Strip ANSI escape codes from env var values in table
+- Replace newlines in env var values to prevent table row breaks
+- Strip_ansi shortcut was skipping newline replacement
+- Move path status column from left to right of path
+- Hide Source column when only wayu entries shown
 ## [4.1.1] - 2026-05-10
 
 ### Changed
@@ -410,6 +434,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Correct termios struct for macOS compatibility
 - Resolve unit test failures and improve test robustness
 - Rename run_component_test to run_component_testing
+[4.2.0]: https://github.com/dvrd/wayu/releases/tag/v4.2.0
 [4.1.1]: https://github.com/dvrd/wayu/releases/tag/v4.1.1
 [4.1.0]: https://github.com/dvrd/wayu/releases/tag/v4.1.0
 [3.15.0]: https://github.com/dvrd/wayu/releases/tag/v3.15.0
