@@ -298,7 +298,13 @@ list_toml_aliases :: proc() {
 	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
 	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
 
-	headers := []string{"Alias", "Command", "Source"}
+	has_multiple_sources := show_external || (show_wayu && show_inactive)
+	headers: []string
+	if has_multiple_sources {
+		headers = []string{"Alias", "Command", "Source"}
+	} else {
+		headers = []string{"Alias", "Command"}
+	}
 	table := new_table(headers)
 	defer table_destroy(&table)
 
@@ -322,12 +328,15 @@ list_toml_aliases :: proc() {
 				continue
 			}
 
-			source := "wayu"
-			if !is_active {
-				source = "wayu (inactive)"
+			if has_multiple_sources {
+				source := "wayu"
+				if !is_active { source = "wayu (inactive)" }
+				row := []string{entry.name, entry.value, source}
+				table_add_row(&table, row)
+			} else {
+				row := []string{entry.name, entry.value}
+				table_add_row(&table, row)
 			}
-			row := []string{entry.name, entry.value, source}
-			table_add_row(&table, row)
 		}
 	}
 
