@@ -442,7 +442,6 @@
       font-size: 0.82rem;
       line-height: 1.8;
       min-height: 320px;
-      white-space: pre-wrap;
     }
     .t-prompt {
       color: var(--teal);
@@ -455,7 +454,7 @@
     .t-success { color: #28C840; }
     .t-info { color: var(--teal); }
     .t-output { color: var(--text-2); }
-    .t-line { display: block; }
+    .t-line { display: block; white-space: pre; }
     .t-line.hidden { display: none; }
     .t-cursor {
       display: inline-block;
@@ -2190,18 +2189,32 @@
               </div>
               <div class="terminal-body" style="min-height:auto;font-size:0.78rem">
 <span class="t-line"><span class="json-p">{</span></span>
-<span class="t-line">  <span class="json-k">"checks"</span>: <span class="json-p">[</span></span>
-<span class="t-line">    <span class="json-p">{</span> <span class="json-k">"name"</span>: <span class="json-s">"wayu installation"</span>, <span class="json-k">"status"</span>: <span class="json-s">"ok"</span>,</span>
-<span class="t-line">      <span class="json-k">"message"</span>: <span class="json-s">"wayu 4.2.0 installed"</span>, <span class="json-k">"fixable"</span>: <span class="json-b">false</span> <span class="json-p">}</span>,</span>
-<span class="t-line">    <span class="json-p">{</span> <span class="json-k">"name"</span>: <span class="json-s">"shell configuration"</span>, <span class="json-k">"status"</span>: <span class="json-s">"ok"</span>,</span>
-<span class="t-line">      <span class="json-k">"message"</span>: <span class="json-s">"init.zsh sourced"</span>, <span class="json-k">"fixable"</span>: <span class="json-b">false</span> <span class="json-p">}</span>,</span>
-<span class="t-line">    <span class="json-p">{</span> <span class="json-k">"name"</span>: <span class="json-s">"turbo export"</span>, <span class="json-k">"status"</span>: <span class="json-s">"warning"</span>,</span>
-<span class="t-line">      <span class="json-k">"message"</span>: <span class="json-s">"Turbo export generated but not used"</span>,</span>
-<span class="t-line">      <span class="json-k">"fixable"</span>: <span class="json-b">true</span> <span class="json-p">}</span></span>
-<span class="t-line">  <span class="json-p">]</span>,</span>
-<span class="t-line">  <span class="json-k">"summary"</span>: <span class="json-p">{</span></span>
-<span class="t-line">    <span class="json-k">"ok"</span>: <span class="json-n">7</span>, <span class="json-k">"warnings"</span>: <span class="json-n">1</span>,</span>
-<span class="t-line">    <span class="json-k">"errors"</span>: <span class="json-n">0</span>, <span class="json-k">"info"</span>: <span class="json-n">0</span>, <span class="json-k">"fixable"</span>: <span class="json-n">1</span></span>
+<span class="t-line">  <span class="json-k">"checks"</span><span class="json-p">:</span> <span class="json-p">[</span></span>
+<span class="t-line">    <span class="json-p">{</span></span>
+<span class="t-line">      <span class="json-k">"name"</span><span class="json-p">:</span> <span class="json-s">"wayu installation"</span><span class="json-p">,</span></span>
+<span class="t-line">      <span class="json-k">"status"</span><span class="json-p">:</span> <span class="json-s">"ok"</span><span class="json-p">,</span></span>
+<span class="t-line">      <span class="json-k">"message"</span><span class="json-p">:</span> <span class="json-s">"wayu 4.2.0 installed"</span><span class="json-p">,</span></span>
+<span class="t-line">      <span class="json-k">"fixable"</span><span class="json-p">:</span> <span class="json-b">false</span></span>
+<span class="t-line">    <span class="json-p">},</span></span>
+<span class="t-line">    <span class="json-p">{</span></span>
+<span class="t-line">      <span class="json-k">"name"</span><span class="json-p">:</span> <span class="json-s">"shell configuration"</span><span class="json-p">,</span></span>
+<span class="t-line">      <span class="json-k">"status"</span><span class="json-p">:</span> <span class="json-s">"ok"</span><span class="json-p">,</span></span>
+<span class="t-line">      <span class="json-k">"message"</span><span class="json-p">:</span> <span class="json-s">"init.zsh sourced"</span><span class="json-p">,</span></span>
+<span class="t-line">      <span class="json-k">"fixable"</span><span class="json-p">:</span> <span class="json-b">false</span></span>
+<span class="t-line">    <span class="json-p">},</span></span>
+<span class="t-line">    <span class="json-p">{</span></span>
+<span class="t-line">      <span class="json-k">"name"</span><span class="json-p">:</span> <span class="json-s">"turbo export"</span><span class="json-p">,</span></span>
+<span class="t-line">      <span class="json-k">"status"</span><span class="json-p">:</span> <span class="json-s">"warning"</span><span class="json-p">,</span></span>
+<span class="t-line">      <span class="json-k">"message"</span><span class="json-p">:</span> <span class="json-s">"Turbo export generated but not used"</span><span class="json-p">,</span></span>
+<span class="t-line">      <span class="json-k">"fixable"</span><span class="json-p">:</span> <span class="json-b">true</span></span>
+<span class="t-line">    <span class="json-p">}</span></span>
+<span class="t-line">  <span class="json-p">],</span></span>
+<span class="t-line">  <span class="json-k">"summary"</span><span class="json-p">:</span> <span class="json-p">{</span></span>
+<span class="t-line">    <span class="json-k">"ok"</span><span class="json-p">:</span> <span class="json-n">7</span><span class="json-p">,</span></span>
+<span class="t-line">    <span class="json-k">"warnings"</span><span class="json-p">:</span> <span class="json-n">1</span><span class="json-p">,</span></span>
+<span class="t-line">    <span class="json-k">"errors"</span><span class="json-p">:</span> <span class="json-n">0</span><span class="json-p">,</span></span>
+<span class="t-line">    <span class="json-k">"info"</span><span class="json-p">:</span> <span class="json-n">0</span><span class="json-p">,</span></span>
+<span class="t-line">    <span class="json-k">"fixable"</span><span class="json-p">:</span> <span class="json-n">1</span></span>
 <span class="t-line">  <span class="json-p">}</span></span>
 <span class="t-line"><span class="json-p">}</span></span>
               </div>
