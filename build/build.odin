@@ -12,7 +12,7 @@
 //   install   — build + copy to /usr/local/bin + wayu init
 //   dev       — debug build + run with remaining args
 //   release   — test + tag + push (triggers GitHub Actions → Homebrew)
-//   docs      — sync landing page version from src/main.odin
+//   docs      — sync docs/index.html + README.md version from src/main.odin
 //   help      — show available targets
 
 package main
@@ -302,12 +302,12 @@ do_release :: proc() {
 	}
 	bld.log_info("Updated VERSION from %s to %s", old_version, version_bare)
 
-	// 3c. Sync version into docs/index.html
+	// 3c. Sync version into docs/index.html and README.md
 	sync_docs_version_str(version_bare)
 
-	// 3d. Commit CHANGELOG.md, src/main.odin, and docs together
+	// 3d. Commit CHANGELOG.md, src/main.odin, docs, and README together
 	add_cmd := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&add_cmd, "git", "add", "CHANGELOG.md", "src/main.odin", "docs/index.html")
+	bld.cmd_append(&add_cmd, "git", "add", "CHANGELOG.md", "src/main.odin", "docs/index.html", "README.md")
 	bld.cmd_run(&add_cmd)
 	commit_msg := fmt.tprintf("chore: release %s", version)
 	commit_cmd := bld.cmd_create(context.temp_allocator)
@@ -343,7 +343,7 @@ do_release :: proc() {
 }
 
 // ---------------------------------------------------------------------------
-// docs — sync version from src/main.odin into docs/index.html
+// docs — sync version from src/main.odin into docs + README
 // ---------------------------------------------------------------------------
 
 // Read the current VERSION from src/main.odin.
@@ -369,52 +369,62 @@ read_source_version :: proc() -> string {
 	return after[:end]
 }
 
-// Replace every occurrence of a semver pattern (X.Y.Z) that matches the old
-// version with the new one inside docs/index.html.
-sync_docs_version_str :: proc(new_ver: string) {
-	path :: "docs/index.html"
+// Generic version sync: find old_ver via marker string, replace all old→new.
+sync_file_version :: proc(path: string, marker: string, new_ver: string) {
 	data, err := os.read_entire_file_from_path(path, context.allocator)
 	if err != nil {
 		bld.log_error("Failed to read %s", path)
 		os.exit(1)
 	}
-	html := string(data)
+	content := string(data)
 
-	// Find current version in the nav badge: aria-label="Version X.Y.Z"
-	marker :: `aria-label="Version `
-	idx := strings.index(html, marker)
+	idx := strings.index(content, marker)
 	if idx == -1 {
 		bld.log_error("Could not find version marker in %s", path)
 		os.exit(1)
 	}
 	old_start := idx + len(marker)
-	old_end := strings.index(html[old_start:], `"`)
-	if old_end == -1 {
-		bld.log_error("Malformed version marker in %s", path)
+	// Find the end delimiter: first char that isn't part of a semver
+	old_end := 0
+	for old_end < len(content[old_start:]) {
+		c := content[old_start + old_end]
+		if c >= '0' && c <= '9' || c == '.' {
+			old_end += 1
+		} else {
+			break
+		}
+	}
+	if old_end == 0 {
+		bld.log_error("Malformed version after marker in %s", path)
 		os.exit(1)
 	}
-	old_ver := html[old_start : old_start + old_end]
+	old_ver := content[old_start : old_start + old_end]
 
 	if old_ver == new_ver {
-		bld.log_info("docs/index.html already at v%s", new_ver)
+		bld.log_info("%s already at v%s", path, new_ver)
 		return
 	}
 
-	// Replace all occurrences of the old version string with the new one.
-	// This covers nav badge, footer, doctor output, etc.
-	updated, _ := strings.replace_all(html, old_ver, new_ver)
-
+	updated, _ := strings.replace_all(content, old_ver, new_ver)
 	werr := os.write_entire_file(path, transmute([]byte)updated)
 	if werr != nil {
 		bld.log_error("Failed to write %s", path)
 		os.exit(1)
 	}
 
-	count := strings.count(html, old_ver)
-	bld.log_info("docs/index.html: %s → %s (%d replacements)", old_ver, new_ver, count)
+	count := strings.count(content, old_ver)
+	bld.log_info("%s: %s → %s (%d replacements)", path, old_ver, new_ver, count)
 }
 
-// Standalone entry point: read VERSION from source, patch docs.
+// Sync version into docs/index.html and README.md.
+sync_docs_version_str :: proc(new_ver: string) {
+	// docs/index.html — anchor on the nav badge aria-label
+	sync_file_version("docs/index.html", `aria-label="Version `, new_ver)
+	// README.md — anchor on the bold version tag at the top
+	sync_file_version("README.md", "**v", new_ver)
+}
+
+// Standalone entry point: read VERSION from source, patch docs + README.
 sync_docs_version :: proc() {
 	ver := read_source_version()
 	sync_docs_version_str(ver)
@@ -434,7 +444,7 @@ do_help :: proc() {
 	fmt.println("  install   Build + install to /usr/local/bin + wayu init")
 	fmt.println("  dev       Debug build + run (extra args passed through)")
 	fmt.println("  release   Run tests, tag, and push to trigger GitHub release + Homebrew update")
-	fmt.println("  docs      Sync landing page version from src/main.odin")
+	fmt.println("  docs      Sync docs/index.html + README.md version from src/main.odin")
 	fmt.println("  help      Show this help")
 	fmt.println("")
 	fmt.println("Bootstrap:")
