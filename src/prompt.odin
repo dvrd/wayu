@@ -1020,7 +1020,7 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 		context_aware = true,
 		async_rprompt = true,
 		async_interval = 2,
-		rprompt_format = "[✎{git_pending}](242)",
+		rprompt_format = "[ {git_pending}](242)",
 		transient_enabled = true,
 		transient_format = "{dir} {character}",
 	}
