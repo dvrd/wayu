@@ -404,7 +404,13 @@ list_toml_constants :: proc() {
 	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
 	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
 
-	headers := []string{"Constant", "Value", "Source"}
+	has_multiple_sources := show_external || (show_wayu && show_inactive)
+	headers: []string
+	if has_multiple_sources {
+		headers = []string{"Constant", "Value", "Source"}
+	} else {
+		headers = []string{"Constant", "Value"}
+	}
 	table := new_table(headers)
 	defer table_destroy(&table)
 
@@ -429,21 +435,20 @@ list_toml_constants :: proc() {
 			}
 
 			// Skip if not matching filter
-			if is_active && !show_wayu {
-				continue
-			}
-			if !is_active && !show_inactive {
-				continue
-			}
+			if is_active && !show_wayu { continue }
+			if !is_active && !show_inactive { continue }
 
-			source := "wayu"
-			if !is_active {
-				source = "wayu (inactive)"
-			}
 			value := strip_ansi(entry.value)
 			append(&stripped_values, value)
-			row := []string{entry.name, value, source}
-			table_add_row(&table, row)
+			if has_multiple_sources {
+				source := "wayu"
+				if !is_active { source = "wayu (inactive)" }
+				row := []string{entry.name, value, source}
+				table_add_row(&table, row)
+			} else {
+				row := []string{entry.name, value}
+				table_add_row(&table, row)
+			}
 		}
 	}
 

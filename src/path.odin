@@ -709,8 +709,14 @@ toml_path_list :: proc() {
 	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
 	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
 
-	// Build table (consistent with alias ls / constants ls)
-	headers := []string{"Path", "", "Source"}
+	// Build table: only show Source column when multiple sources are visible
+	has_multiple_sources := show_external || (show_wayu && show_inactive)
+	headers: []string
+	if has_multiple_sources {
+		headers = []string{"Path", "", "Source"}
+	} else {
+		headers = []string{"Path", ""}
+	}
 	path_table := new_table(headers)
 	defer table_destroy(&path_table)
 
@@ -741,11 +747,15 @@ toml_path_list :: proc() {
 			status := " "
 			if !os.exists(p) { status = "✗" }
 
-			source := "wayu"
-			if !found { source = "wayu (inactive)" }
-
-			row := []string{p, status, source}
-			table_add_row(&path_table, row)
+			if has_multiple_sources {
+				source := "wayu"
+				if !found { source = "wayu (inactive)" }
+				row := []string{p, status, source}
+				table_add_row(&path_table, row)
+			} else {
+				row := []string{p, status}
+				table_add_row(&path_table, row)
+			}
 		}
 	}
 
