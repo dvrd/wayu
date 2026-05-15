@@ -14,7 +14,7 @@ strip_ansi :: proc(s: string, allocator := context.allocator) -> string {
 	// Shortcut: no ESC bytes at all, return clone of original
 	alive := false
 	for c in s {
-		if c == '\x1b' { alive = true; break }
+		if c == '\x1b' || c == '\n' || c == '\r' { alive = true; break }
 	}
 	if !alive { return strings.clone(s, allocator) }
 
