@@ -6,6 +6,7 @@
 
 package wayu
 import "core:log"
+import "core:strings"
 // ============================================================================
 // VERSION
 // ============================================================================
@@ -182,4 +183,33 @@ debug :: proc(msg: string, args: ..any) {
 	when ODIN_DEBUG {
 		log.debugf(msg, ..args)
 	}
+}
+
+// ============================================================================
+// ZERO-ALLOCATION LINE ITERATOR
+// ============================================================================
+
+// LineIterator walks a string line-by-line without allocating a []string.
+// Usage:
+//   it := make_line_iter(content)
+//   for line in line_iter_next(&it) { ... }
+LineIterator :: struct {
+	remaining: string,
+}
+
+make_line_iter :: proc(s: string) -> LineIterator {
+	return LineIterator{remaining = s}
+}
+
+line_iter_next :: proc(it: ^LineIterator) -> (line: string, ok: bool) {
+	if len(it.remaining) == 0 { return "", false }
+	nl := strings.index_byte(it.remaining, '\n')
+	if nl < 0 {
+		line = it.remaining
+		it.remaining = ""
+	} else {
+		line = it.remaining[:nl]
+		it.remaining = it.remaining[nl + 1:]
+	}
+	return line, true
 }
