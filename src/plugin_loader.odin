@@ -13,27 +13,26 @@ make_default_autosuggest_accept_keys :: proc() -> []string {
 }
 
 plugin_accept_keys_from_toml :: proc() -> []string {
-	config_path := toml_get_config_path()
-	defer delete(config_path)
-
-	if !os.exists(config_path) {
-		return make_default_autosuggest_accept_keys()
+	// Use cached TOML content when available; fall back to direct read.
+	content_str, cached := get_cached_toml_content()
+	uncached_raw: []byte
+	if !cached {
+		config_path := toml_get_config_path()
+		defer delete(config_path)
+		if !os.exists(config_path) { return make_default_autosuggest_accept_keys() }
+		ok: bool
+		uncached_raw, ok = safe_read_file(config_path)
+		if !ok { return make_default_autosuggest_accept_keys() }
+		content_str = string(uncached_raw)
 	}
+	defer if len(uncached_raw) > 0 { delete(uncached_raw) }
 
-	content, ok := safe_read_file(config_path)
-	if !ok {
-		return make_default_autosuggest_accept_keys()
-	}
-	defer delete(content)
-
-	lines := strings.split(string(content), "\n")
-	defer delete(lines)
-
+	it := make_line_iter(content_str)
 	in_settings := false
 	keys := make([dynamic]string)
 	defer if len(keys) == 0 do delete(keys)
 
-	for line in lines {
+	for line in line_iter_next(&it) {
 		trimmed := strings.trim_space(line)
 		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
 			continue

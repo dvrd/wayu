@@ -439,18 +439,23 @@ TomlPathEntry :: struct {
 // Read [paths] table. Aborts (with a migrate-hint) if the file uses the
 // obsolete [[paths]] schema. Caller frees each entry's strings + the slice.
 toml_path_read_keyed :: proc() -> [dynamic]TomlPathEntry {
-	config_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
-	defer delete(config_file)
-
-	content := must_read_modern_wayu_toml(config_file)
-	defer delete(content)
+	// Use the shared TOML content cache when available (avoids re-reading
+	// the file that enforce_modern_wayu_toml_or_exit already read).
+	content_str, cached := get_cached_toml_content()
+	uncached_content: []byte
+	if !cached {
+		config_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
+		defer delete(config_file)
+		uncached_content = must_read_modern_wayu_toml(config_file)
+		content_str = string(uncached_content)
+	}
+	defer if len(uncached_content) > 0 { delete(uncached_content) }
 
 	entries := make([dynamic]TomlPathEntry)
-	lines := strings.split(string(content), "\n")
-	defer delete(lines)
 
+	it := make_line_iter(content_str)
 	in_paths := false
-	for line in lines {
+	for line in line_iter_next(&it) {
 		trimmed := strings.trim_space(line)
 		if trimmed == "[paths]" {
 			in_paths = true
@@ -503,7 +508,7 @@ read_toml_path_entries :: proc() -> [dynamic]ConfigEntry {
 			type  = .PATH,
 			name  = strings.clone(path),
 			value = "",
-			line  = fmt.aprintf("add_to_path \"%s\"", path),
+			line  = "",  // Only populated on-demand by write paths
 		})
 	}
 
@@ -673,19 +678,18 @@ toml_path_list :: proc() {
 		return
 	}
 
+	// Build a set of env paths for O(1) lookup instead of O(N×M)
+	env_path_set := make(map[string]bool, len(path_entries))
+	defer delete(env_path_set)
+	for env_path in path_entries {
+		env_path_set[env_path] = true
+	}
+
 	// Count sources
 	active_count := 0
 	inactive_count := 0
 	for p in paths {
-		// Check if path is in current environment
-		found := false
-		for env_path in path_entries {
-			if env_path == p {
-				found = true
-				break
-			}
-		}
-		if found {
+		if _, found := env_path_set[p]; found {
 			active_count += 1
 		} else {
 			inactive_count += 1
@@ -704,10 +708,13 @@ toml_path_list :: proc() {
 	fmt.printfln("  %d active · %d inactive · %d external", active_count, inactive_count, external_count)
 	fmt.println()
 
-	// Filter based on SOURCE_FILTER
+	// Filter based on SOURCE_FILTER.
+	// "wayu" shows ALL wayu-managed entries (active + inactive) so users
+	// can always see and manage their own config. Hiding inactive wayu
+	// entries makes stale paths invisible and only discoverable via --full.
 	show_wayu := wayu.source_filter == "all" || wayu.source_filter == "wayu"
 	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
-	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
+	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive" || wayu.source_filter == "wayu"
 
 	// Build table: only show Source column when multiple sources are visible
 	has_multiple_sources := show_external || (show_wayu && show_inactive)
@@ -727,14 +734,8 @@ toml_path_list :: proc() {
 	// Add wayu entries
 	if show_wayu || show_inactive {
 		for p in paths {
-			// Check if path is in current environment
-			found := false
-			for env_path in path_entries {
-				if env_path == p {
-					found = true
-					break
-				}
-			}
+			// O(1) lookup using env_path_set built above
+			found := p in env_path_set
 
 			// Skip if not matching filter
 			if found && !show_wayu {
@@ -784,10 +785,10 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 	fmt.println("{")
 	fmt.println("  \"paths\": [")
 
-	// Determine if we show different source categories
+	// Determine if we show different source categories (same logic as table view)
 	show_wayu := wayu.source_filter == "all" || wayu.source_filter == "wayu"
 	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
-	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
+	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive" || wayu.source_filter == "wayu"
 
 	first_entry := true
 

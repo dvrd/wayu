@@ -99,16 +99,26 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 			parsed.shell = parse_shell_type(args[i + 1])
 			wayu.shell = parsed.shell
 			wayu.shell_ext = get_shell_extension(parsed.shell)
-			delete(wayu.path_file)
-			delete(wayu.alias_file)
-			delete(wayu.constants_file)
-			delete(wayu.init_file)
-			delete(wayu.tools_file)
-			wayu.path_file = fmt.aprintf("path.%s", wayu.shell_ext)
-			wayu.alias_file = fmt.aprintf("aliases.%s", wayu.shell_ext)
-			wayu.constants_file = fmt.aprintf("constants.%s", wayu.shell_ext)
-			wayu.init_file = fmt.aprintf("init.%s", wayu.shell_ext)
-			wayu.tools_file = fmt.aprintf("tools.%s", wayu.shell_ext)
+			// Re-derive filenames using the same static-string approach as
+			// init_app_context (no heap allocation).
+			switch parsed.shell {
+			case .ZSH:
+				wayu.path_file = "path.zsh"; wayu.alias_file = "aliases.zsh"
+				wayu.constants_file = "constants.zsh"; wayu.init_file = "init.zsh"
+				wayu.tools_file = "tools.zsh"
+			case .BASH:
+				wayu.path_file = "path.bash"; wayu.alias_file = "aliases.bash"
+				wayu.constants_file = "constants.bash"; wayu.init_file = "init.bash"
+				wayu.tools_file = "tools.bash"
+			case .FISH:
+				wayu.path_file = "path.fish"; wayu.alias_file = "aliases.fish"
+				wayu.constants_file = "constants.fish"; wayu.init_file = "init.fish"
+				wayu.tools_file = "tools.fish"
+			case .UNKNOWN:
+				wayu.path_file = "path.zsh"; wayu.alias_file = "aliases.zsh"
+				wayu.constants_file = "constants.zsh"; wayu.init_file = "init.zsh"
+				wayu.tools_file = "tools.zsh"
+			}
 			i += 1
 		case:
 			append(filtered_args, arg)

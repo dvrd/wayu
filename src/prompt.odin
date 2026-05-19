@@ -140,12 +140,10 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 		context_detects = make(map[string][dynamic]string),
 	}
 	
-	lines := strings.split(toml, "\n")
-	defer delete(lines)
-	
+	it := make_line_iter(toml)
 	current_section := ""  // which [prompt.*] section we're in
 	
-	for line in lines {
+	for line in line_iter_next(&it) {
 		trimmed := strings.trim_space(line)
 		
 		if trimmed == "[prompt]" {
@@ -1025,12 +1023,10 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 		transient_format = "{dir} {character}",
 	}
 
-	lines := strings.split(toml, "\n")
-	defer delete(lines)
-
+	it := make_line_iter(toml)
 	in_interactive := false
 
-	for line in lines {
+	for line in line_iter_next(&it) {
 		trimmed := strings.trim_space(line)
 
 		if trimmed == "[prompt.interactive]" {
