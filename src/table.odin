@@ -48,19 +48,12 @@ table_add_row :: proc(table: ^Table, row: []string) {
 
 	append(&table.rows, cloned_row)
 
-	// Update column widths based on raw text (styles will be applied during rendering)
+	// Track max column widths incrementally (avoid recomputing headers
+	// every row — headers are already measured in new_table).
 	for cell, i in row {
 		cell_width := visual_width(cell)
 		if cell_width > table.column_widths[i] {
 			table.column_widths[i] = cell_width
-		}
-	}
-
-	// Update header widths based on raw text
-	for header, i in table.headers {
-		header_width := visual_width(header)
-		if header_width > table.column_widths[i] {
-			table.column_widths[i] = header_width
 		}
 	}
 }
@@ -167,11 +160,9 @@ table_render :: proc(table: Table, max_width: int = 0) -> string {
 		return ""
 	}
 
-	// Make a mutable copy to recalculate widths
+	// Column widths are tracked incrementally during table_add_row
+	// so no recalculation is needed. Only clamp for max_width.
 	mutable_table := table
-	recalculate_column_widths(&mutable_table)
-
-	// Clamp column widths to fit within max_width
 	if max_width > 0 {
 		clamp_table_widths(&mutable_table, max_width)
 	}
