@@ -54,19 +54,24 @@ handle_constants_command :: proc(action: Action, args: []string) {
 }
 
 read_wayu_toml_constants :: proc() -> []ConfigEntry {
-	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	defer delete(config_path)
-
-	content, ok := safe_read_file(config_path)
-	if !ok { return {} }
-	defer delete(content)
+	// Use cached TOML content when available (populated by main pre-dispatch)
+	content_str, cached := get_cached_toml_content()
+	uncached_raw: []byte
+	if !cached {
+		config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
+		defer delete(config_path)
+		ok: bool
+		uncached_raw, ok = safe_read_file(config_path)
+		if !ok { return {} }
+		content_str = string(uncached_raw)
+	}
+	defer if len(uncached_raw) > 0 { delete(uncached_raw) }
 
 	entries := make([dynamic]ConfigEntry)
-	lines := strings.split(string(content), "\n")
-	defer delete(lines)
 
+	it := make_line_iter(content_str)
 	in_env := false
-	for line in lines {
+	for line in line_iter_next(&it) {
 		trimmed := strings.trim_space(line)
 		if trimmed == "[env]" { in_env = true; continue }
 		if strings.has_prefix(trimmed, "[") { in_env = false; continue }
@@ -156,17 +161,13 @@ unescape_toml_string :: proc(value: string) -> string {
 }
 
 strip_toml_constant_sections :: proc(content: string) -> string {
-	lines := strings.split(content, "\n")
-	defer delete(lines)
+	builder := strings.builder_make(len(content))
+	defer strings.builder_destroy(&builder)
 
-	result := make([dynamic]string)
-	defer {
-		for line in result { delete(line) }
-		delete(result)
-	}
-
+	it := make_line_iter(content)
 	skip_section := false
-	for line in lines {
+	first := true
+	for line in line_iter_next(&it) {
 		trimmed := strings.trim_space(line)
 
 		if trimmed == "[env]" {
@@ -182,10 +183,12 @@ strip_toml_constant_sections :: proc(content: string) -> string {
 			continue
 		}
 
-		append(&result, strings.clone(line))
+		if !first { strings.write_byte(&builder, '\n') }
+		strings.write_string(&builder, line)
+		first = false
 	}
 
-	return strings.join(result[:], "\n")
+	return strings.clone(strings.to_string(builder))
 }
 
 write_wayu_toml_constants :: proc(entries: []ConfigEntry) -> bool {
@@ -354,15 +357,14 @@ list_toml_constants :: proc() {
 	external_constants := make([dynamic]string)
 	defer delete(external_constants)
 
-	// Get all environment variables
+	// Get all environment variables (zero-alloc name extraction)
 	env_list, env_err := os.environ(context.allocator)
 	defer delete(env_list)
 	if env_err == nil {
 		for pair in env_list {
-			parts := strings.split(pair, "=", context.allocator)
-			defer delete(parts)
-			if len(parts) > 0 {
-				const_name := parts[0]
+			eq := strings.index_byte(pair, '=')
+			const_name := pair[:eq] if eq > 0 else pair
+			if len(const_name) > 0 {
 				if _, is_wayu := wayu_set[const_name]; !is_wayu {
 					append(&external_constants, const_name)
 				}
@@ -399,10 +401,11 @@ list_toml_constants :: proc() {
 	fmt.printfln("  %d active · %d inactive · %d external", active_count, inactive_count, len(external_constants))
 	fmt.println()
 
-	// Filter based on SOURCE_FILTER
+	// Filter based on SOURCE_FILTER.
+	// "wayu" shows ALL wayu-managed entries (active + inactive).
 	show_wayu := wayu.source_filter == "all" || wayu.source_filter == "wayu"
 	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
-	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
+	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive" || wayu.source_filter == "wayu"
 
 	has_multiple_sources := show_external || (show_wayu && show_inactive)
 	headers: []string
@@ -481,10 +484,10 @@ print_constants_json :: proc(entries: []ConfigEntry, external_constants: []strin
 		wayu_set[entry.name] = true
 	}
 
-	// Determine if we show different source categories
+	// Determine if we show different source categories (same logic as table view)
 	show_wayu := wayu.source_filter == "all" || wayu.source_filter == "wayu"
 	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
-	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive"
+	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive" || wayu.source_filter == "wayu"
 
 	fmt.println("{")
 	fmt.println(`  "constants": [`)

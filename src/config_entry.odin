@@ -1287,10 +1287,19 @@ detect_legacy_schema :: proc(content: string) -> string {
 	for header in LEGACY_SECTION_HEADERS {
 		if !strings.contains(content, header) { continue }
 		// Confirm it's an actual section header (line-equal after trim),
-		// not a substring inside a value.
-		lines := strings.split(content, "\n")
-		defer delete(lines)
-		for line in lines {
+		// not a substring inside a value. Scan line-by-line without
+		// allocating a split array.
+		remaining := content
+		for len(remaining) > 0 {
+			nl := strings.index_byte(remaining, '\n')
+			line: string
+			if nl < 0 {
+				line = remaining
+				remaining = ""
+			} else {
+				line = remaining[:nl]
+				remaining = remaining[nl + 1:]
+			}
 			if strings.trim_space(line) == header { return header }
 		}
 	}

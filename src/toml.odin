@@ -152,9 +152,12 @@ get_toml_value :: proc(doc: ^TomlDoc, key: string) -> ^TomlValue {
 
 // Parse TOML content into TomlConfig
 toml_parse :: proc(content: string) -> (TomlConfig, bool) {
-	// Use arena-based simple parser for reliability
+	// Use arena-based simple parser for reliability.
+	// Size the arena to ~4x the input (enough for parsed AST + cloned strings)
+	// with a floor of 16KB and a cap of 1MB.
 	arena: mem.Arena
-	arena_buffer := make([]byte, 1024*1024, context.allocator)
+	arena_size := max(64 * 1024, min(len(content) * 16, 1024 * 1024))
+	arena_buffer := make([]byte, arena_size, context.allocator)
 	defer delete(arena_buffer)
 	mem.arena_init(&arena, arena_buffer)
 
