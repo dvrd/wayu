@@ -34,7 +34,7 @@ read_toml_alias_entries :: proc() -> []ConfigEntry {
 			type = .ALIAS,
 			name = strings.clone(entry.name),
 			value = strings.clone(entry.command),
-			line = fmt.aprintf(`alias %s="%s"`, entry.name, entry.command),
+			line = "",  // Only populated on-demand by write paths
 		})
 	}
 
@@ -100,17 +100,13 @@ write_wayu_toml_aliases :: proc(entries: []ConfigEntry) -> bool {
 }
 
 strip_toml_alias_sections :: proc(content: string) -> string {
-	lines := strings.split(content, "\n")
-	defer delete(lines)
+	builder := strings.builder_make(len(content))
+	defer strings.builder_destroy(&builder)
 
-	result := make([dynamic]string)
-	defer {
-		for line in result { delete(line) }
-		delete(result)
-	}
-
+	it := make_line_iter(content)
 	skip_section := false
-	for line in lines {
+	first := true
+	for line in line_iter_next(&it) {
 		trimmed := strings.trim_space(line)
 
 		if trimmed == "[aliases]" {
@@ -126,10 +122,12 @@ strip_toml_alias_sections :: proc(content: string) -> string {
 			continue
 		}
 
-		append(&result, strings.clone(line))
+		if !first { strings.write_byte(&builder, '\n') }
+		strings.write_string(&builder, line)
+		first = false
 	}
 
-	return strings.join(result[:], "\n")
+	return strings.clone(strings.to_string(builder))
 }
 
 toml_alias_add :: proc(entry: ConfigEntry) -> (bool, string) {
@@ -170,7 +168,7 @@ toml_alias_add :: proc(entry: ConfigEntry) -> (bool, string) {
 			delete(e.value)
 			e.value = strings.clone(entry.value)
 			delete(e.line)
-			e.line = fmt.aprintf(`alias %s="%s"`, entry.name, entry.value)
+			e.line = ""
 			had_existing = true
 			if !write_wayu_toml_aliases(updated[:]) {
 				return false, strings.clone("I/O error: could not update wayu.toml")
@@ -184,7 +182,7 @@ toml_alias_add :: proc(entry: ConfigEntry) -> (bool, string) {
 		type = .ALIAS,
 		name = strings.clone(entry.name),
 		value = strings.clone(entry.value),
-		line = fmt.aprintf(`alias %s="%s"`, entry.name, entry.value),
+		line = "",
 	})
 
 	if !write_wayu_toml_aliases(updated[:]) {
@@ -246,8 +244,16 @@ list_toml_aliases :: proc() {
 	entries := read_toml_alias_entries()
 	defer cleanup_entries(&entries)
 
-	// Snapshot current aliases for cross-reference
-	aliases_env := snapshot_aliases()
+	// Determine if we need the expensive shell spawn.
+	// Default source_filter is "wayu" — no need to cross-reference the
+	// live shell environment. Only spawn when the user asks for external
+	// aliases (--full / --source=all / --source=external / --source=inactive).
+	needs_env := wayu.source_filter != "wayu"
+
+	aliases_env: map[string]string
+	if needs_env {
+		aliases_env = snapshot_aliases()
+	}
 
 	// Build set of wayu-managed aliases for fast lookup
 	wayu_set := make(map[string]bool)
@@ -259,9 +265,11 @@ list_toml_aliases :: proc() {
 	// Find external aliases (in env but not in wayu.toml)
 	external_aliases := make([dynamic]string)
 	defer delete(external_aliases)
-	for alias_name in aliases_env {
-		if _, is_wayu := wayu_set[alias_name]; !is_wayu {
-			append(&external_aliases, alias_name)
+	if needs_env {
+		for alias_name in aliases_env {
+			if _, is_wayu := wayu_set[alias_name]; !is_wayu {
+				append(&external_aliases, alias_name)
+			}
 		}
 	}
 
@@ -278,19 +286,28 @@ list_toml_aliases :: proc() {
 	print_header("Aliases (wayu.toml)", ALIAS_SPEC.icon)
 	fmt.println()
 
-	// Count sources
+	// Count sources — when env is available, cross-reference; otherwise
+	// treat all wayu entries as active (we can't tell without spawning).
 	active_count := 0
 	inactive_count := 0
-	for entry in entries {
-		if _, has := aliases_env[entry.name]; has {
-			active_count += 1
-		} else {
-			inactive_count += 1
+	if needs_env {
+		for entry in entries {
+			if _, has := aliases_env[entry.name]; has {
+				active_count += 1
+			} else {
+				inactive_count += 1
+			}
 		}
+	} else {
+		active_count = len(entries)
 	}
 
 	// Print summary
-	fmt.printfln("  %d active · %d inactive · %d external", active_count, inactive_count, len(external_aliases))
+	if needs_env {
+		fmt.printfln("  %d active · %d inactive · %d external", active_count, inactive_count, len(external_aliases))
+	} else {
+		fmt.printfln("  %d entries", active_count)
+	}
 	fmt.println()
 
 	// Filter based on SOURCE_FILTER
@@ -315,9 +332,14 @@ list_toml_aliases :: proc() {
 	// Add wayu entries
 	if show_wayu || show_inactive {
 		for entry in entries {
-			is_active := false
-			if _, has := aliases_env[entry.name]; has {
-				is_active = true
+			// When env snapshot is available, cross-reference; otherwise
+			// treat all wayu entries as active (fast path).
+			is_active := true
+			if needs_env {
+				is_active = false
+				if _, has := aliases_env[entry.name]; has {
+					is_active = true
+				}
 			}
 
 			// Skip if not matching filter
@@ -354,13 +376,20 @@ list_toml_aliases :: proc() {
 	defer delete(output)
 	fmt.print(output)
 
-	if !show_external && len(external_aliases) > 0 {
+	if !needs_env {
+		fmt.printfln("%sPass --full to cross-reference with shell environment%s", get_muted(), RESET)
+	} else if !show_external && len(external_aliases) > 0 {
 		fmt.printfln("%sPass --full to show %d external entries%s", get_muted(), len(external_aliases), RESET)
 	}
 }
 
 print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
-	aliases_env := snapshot_aliases()
+	// Only spawn an interactive shell when we need external/inactive info.
+	needs_env := wayu.source_filter != "wayu"
+	aliases_env: map[string]string
+	if needs_env {
+		aliases_env = snapshot_aliases()
+	}
 
 	// Build wayu set for fast lookup
 	wayu_set := make(map[string]bool)
@@ -382,9 +411,12 @@ print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
 	// Output wayu entries
 	if show_wayu || show_inactive {
 		for entry, i in entries {
-			is_active := false
-			if _, has := aliases_env[entry.name]; has {
-				is_active = true
+			is_active := true
+			if needs_env {
+				is_active = false
+				if _, has := aliases_env[entry.name]; has {
+					is_active = true
+				}
 			}
 
 			// Skip if not matching filter
