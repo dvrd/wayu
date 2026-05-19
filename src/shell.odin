@@ -3,6 +3,7 @@ import "core:os"
 import "core:strings"
 import "core:fmt"
 import "core:strconv"
+import "core:c"
 // Shell types supported by wayu
 ShellType :: enum {
     BASH,
@@ -11,30 +12,30 @@ ShellType :: enum {
     UNKNOWN,
 }
 
-// Detect the user's current shell from environment variables
+// Detect the user's current shell from environment variables.
+// Zero-allocation: uses case-insensitive contains instead of to_lower.
 detect_shell :: proc() -> ShellType {
-    // Check SHELL environment variable first
     shell_env := os.get_env("SHELL", context.temp_allocator)
-
     if len(shell_env) == 0 {
-        // Fallback to checking 0 command (current shell process)
         shell_env = os.get_env("0", context.temp_allocator)
         if len(shell_env) == 0 {
             return .UNKNOWN
         }
     }
 
-    // Extract shell name from path
-    shell_lower := strings.to_lower(shell_env)
-    defer delete(shell_lower)
-
-    if strings.contains(shell_lower, "zsh") {
-        return .ZSH
-    } else if strings.contains(shell_lower, "bash") {
-        return .BASH
-    } else if strings.contains(shell_lower, "fish") {
-        return .FISH
+    // Check suffix after last '/' for common paths like /bin/zsh, /usr/bin/bash
+    name := shell_env
+    if last_slash := strings.last_index_byte(shell_env, '/'); last_slash >= 0 {
+        name = shell_env[last_slash + 1:]
     }
+    if strings.equal_fold(name, "zsh")  { return .ZSH  }
+    if strings.equal_fold(name, "bash") { return .BASH }
+    if strings.equal_fold(name, "fish") { return .FISH }
+
+    // Fallback: scan full path for substring
+    if strings.contains(shell_env, "zsh")  { return .ZSH  }
+    if strings.contains(shell_env, "bash") { return .BASH }
+    if strings.contains(shell_env, "fish") { return .FISH }
 
     return .UNKNOWN
 }
@@ -180,25 +181,12 @@ get_cli_terminal_width :: proc() -> int {
         }
     }
 
-    // Method 2: stty size (reads from terminal driver)
-    // Output format: "rows cols\n"
-    {
-        output := capture_command([]string{"stty", "size"})
-        if len(output) > 0 {
-            defer delete(output)
-            space_idx := strings.index_byte(output, ' ')
-            if space_idx >= 0 {
-                cols_str := output[space_idx + 1:]
-                // Trim newline
-                nl_idx := strings.index_byte(cols_str, '\n')
-                if nl_idx >= 0 {
-                    cols_str = cols_str[:nl_idx]
-                }
-                cols, ok := strconv.parse_int(strings.trim_space(cols_str))
-                if ok && cols > 0 {
-                    return cols
-                }
-            }
+    // Method 2: ioctl TIOCGWINSZ (direct syscall, no subprocess)
+    ws: winsize
+    // Try stdout (fd 1), then stderr (fd 2), then stdin (fd 0)
+    for fd in ([3]c.int{1, 2, 0}) {
+        if ioctl(fd, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 {
+            return int(ws.ws_col)
         }
     }
 
