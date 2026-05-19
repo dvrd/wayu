@@ -698,49 +698,50 @@ style_bold :: proc(s: Style, enable: bool = true) -> Style {
 // visual_width returns the number of terminal columns a string occupies.
 // It correctly handles ANSI escape sequences (zero width) and wide Unicode
 // characters such as CJK ideographs and emoji (two columns each).
+// Zero-allocation: iterates runes in-place via utf8.decode_rune.
 visual_width :: proc(str: string) -> int {
 	visible_chars := 0
-	runes := utf8.string_to_runes(str)
-	defer delete(runes)
-
 	i := 0
-	for i < len(runes) {
-		r := runes[i]
+	raw := transmute([]u8)str
 
-		// Check for ANSI escape sequences
-		if r == '\x1b' && i + 1 < len(runes) {
-			if runes[i + 1] == '[' {
-				// CSI sequence (ESC[...m)
-				i += 2 // Skip ESC[
-				for i < len(runes) && runes[i] != 'm' && runes[i] != 'K' && runes[i] != 'J' && runes[i] != 'H' {
+	for i < len(raw) {
+		b := raw[i]
+
+		// Fast path: ANSI escape sequences
+		if b == 0x1B && i + 1 < len(raw) {
+			next := raw[i + 1]
+			if next == '[' {
+				// CSI sequence (ESC[...m/K/J/H)
+				i += 2
+				for i < len(raw) && raw[i] != 'm' && raw[i] != 'K' && raw[i] != 'J' && raw[i] != 'H' {
 					i += 1
 				}
-				if i < len(runes) {
-					i += 1 // Skip the terminator
+				if i < len(raw) {
+					i += 1 // Skip terminator
 				}
-			} else if runes[i + 1] == ']' {
+			} else if next == ']' {
 				// OSC sequence (ESC]...BEL or ESC]...ST)
-				i += 2 // Skip ESC]
-				for i < len(runes) {
-					if runes[i] == '\x07' || (runes[i] == '\x1b' && i + 1 < len(runes) && runes[i + 1] == '\\') {
-						if runes[i] == '\x1b' {
-							i += 2 // Skip ESC\
-						} else {
-							i += 1 // Skip BEL
-						}
+				i += 2
+				for i < len(raw) {
+					if raw[i] == 0x07 {
+						i += 1
+						break
+					}
+					if raw[i] == 0x1B && i + 1 < len(raw) && raw[i + 1] == '\\' {
+						i += 2
 						break
 					}
 					i += 1
 				}
 			} else {
-				// Other escape sequences
 				i += 2
 			}
 		} else {
-			// Handle Unicode characters with proper width calculation
-			width := get_rune_width(r)
-			visible_chars += width
-			i += 1
+			// Decode one UTF-8 rune in-place (no allocation)
+			r, size := utf8.decode_rune(raw[i:])
+			if size == 0 { size = 1 } // skip invalid byte
+			visible_chars += get_rune_width(r)
+			i += size
 		}
 	}
 
