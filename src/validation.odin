@@ -449,21 +449,29 @@ print_error_simple :: proc(format: string, args: ..any) {
 }
 
 // Check if wayu is initialized
+// Cached result for check_wayu_initialized — avoids repeated os.exists
+// calls and path allocation on every sub-command.
+@(private = "file")
+WAYU_INIT_CHECK: struct { done: bool, result: bool } = {}
+
 check_wayu_initialized :: proc() -> bool {
+	if WAYU_INIT_CHECK.done { return WAYU_INIT_CHECK.result }
+
 	if !os.exists(wayu.config) {
 		print_error_with_context(.CONFIG_NOT_INITIALIZED, wayu.config)
+		WAYU_INIT_CHECK = { done = true, result = false }
 		return false
 	}
 
 	// Post-migration: wayu.toml is the single source of truth.
-	// The legacy per-type files (path.zsh, aliases.zsh, etc.) are no longer
-	// required — they've been superseded by wayu.toml + core.<ext>.
 	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(toml_path)
 	if !os.exists(toml_path) {
 		print_error_with_context(.FILE_NOT_FOUND, toml_path)
+		WAYU_INIT_CHECK = { done = true, result = false }
 		return false
 	}
 
+	WAYU_INIT_CHECK = { done = true, result = true }
 	return true
 }

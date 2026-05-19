@@ -22,12 +22,94 @@ write_init_file :: proc(path, content: string) {
 // Technique 5: optimized compinit (24h cache)
 // Technique 6: split files (core/lazy/login/helpers)
 
-// Compile a zsh file to bytecode (.zwc) for ~2-3x faster loading.
-// Silently no-ops on non-zsh shells or if zsh isn't available.
+// --------------------------------------------------------------------------
+// Cached wayu.toml content — shared across all commands in a single
+// invocation to avoid redundant reads.  Lazy-loaded on first call; cleared
+// by regenerate_init_core_silently (before regen) and generate_optimized_init_all.
+// --------------------------------------------------------------------------
+TOML_CONTENT_CACHE: struct {
+	content:     string,
+	loaded:      bool,
+	owned:       bool,    // true when content was heap-allocated
+} = {}
+
+get_cached_toml_content :: proc() -> (string, bool) {
+	if TOML_CONTENT_CACHE.loaded {
+		if len(TOML_CONTENT_CACHE.content) == 0 { return "", false }
+		return TOML_CONTENT_CACHE.content, true
+	}
+
+	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
+	defer delete(config_path)
+
+	raw, ok := safe_read_file(config_path)
+	TOML_CONTENT_CACHE.loaded = true
+	if !ok {
+		return "", false
+	}
+
+	TOML_CONTENT_CACHE.content = string(raw)
+	TOML_CONTENT_CACHE.owned   = true
+	return TOML_CONTENT_CACHE.content, true
+}
+
+clear_toml_content_cache :: proc() {
+	if TOML_CONTENT_CACHE.owned && len(TOML_CONTENT_CACHE.content) > 0 {
+		delete(TOML_CONTENT_CACHE.content)
+	}
+	TOML_CONTENT_CACHE = {}
+}
+
+// --------------------------------------------------------------------------
+// Batched zcompile — collect paths, compile in one shell invocation.
+// --------------------------------------------------------------------------
+@(private = "file")
+ZCOMPILE_BATCH: [dynamic]string
+
+// Queue a path for zcompile (batched). The path is NOT cloned; callers
+// must ensure it lives until flush_zcompile_batch is called.
 zcompile_file :: proc(path: string) {
 	if wayu.shell != .ZSH { return }
-	cmd := fmt.ctprintf("zsh -fc 'zcompile %s' >/dev/null 2>&1", path)
-	libc.system(cmd)
+	append(&ZCOMPILE_BATCH, strings.clone(path))
+}
+
+// Discard all queued zcompile paths without running them.
+// Used by regenerate_init_core_silently to skip the ~10ms zsh spawn
+// on write operations where bytecode freshness is not critical.
+@(private = "file")
+discard_zcompile_batch :: proc() {
+	for p in ZCOMPILE_BATCH { delete(p) }
+	clear(&ZCOMPILE_BATCH)
+}
+
+// Flush all queued zcompile paths in a single zsh invocation.
+@(private = "file")
+flush_zcompile_batch :: proc() {
+	if wayu.shell != .ZSH || len(ZCOMPILE_BATCH) == 0 {
+		for p in ZCOMPILE_BATCH { delete(p) }
+		clear(&ZCOMPILE_BATCH)
+		return
+	}
+
+	// Build "zcompile a; zcompile b; zcompile c"
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+	strings.write_string(&builder, "zsh -fc '")
+	for p, i in ZCOMPILE_BATCH {
+		if i > 0 { strings.write_string(&builder, "; ") }
+		fmt.sbprintf(&builder, "zcompile %s", p)
+	}
+	strings.write_string(&builder, "' >/dev/null 2>&1")
+
+	cmd_str := strings.to_string(builder)
+
+	// Fire-and-forget: fork a child to run zcompile in background.
+	// The parent returns immediately. Zcompile is a non-critical
+	// startup optimization; if it fails, zsh just sources the .zsh text.
+	run_background_shell(cmd_str)
+
+	for p in ZCOMPILE_BATCH { delete(p) }
+	clear(&ZCOMPILE_BATCH)
 }
 
 // Silently regenerate core.{ext} + plugin runtime config after any
@@ -45,9 +127,18 @@ regenerate_init_core_silently :: proc() {
 	defer delete(toml_path)
 	if !os.exists(toml_path) do return
 
+	// Invalidate stale cache BEFORE generation so generators read the
+	// freshly written wayu.toml (callers modify the file before calling us).
+	clear_toml_content_cache()
+
 	if wayu.shell == .FISH {
 		generate_core_init_fish()
 		_ = generate_plugins_runtime_config(wayu.shell)
+		clear_toml_content_cache()
+		// Skip zcompile on mutations — only zcompile during explicit `wayu init`.
+		// The .zsh text files work fine without bytecode; zcompile is a
+		// startup-time micro-optimization that isn’t worth ~10ms per CLI write.
+		discard_zcompile_batch()
 		return
 	}
 
@@ -55,6 +146,11 @@ regenerate_init_core_silently :: proc() {
 	generate_lazy_init_v2()
 	generate_helpers_init_v2()
 	_ = generate_plugins_runtime_config(wayu.shell)
+
+	// Flush cached resources after all generators have run.
+	clear_toml_content_cache()
+	// Skip zcompile on mutations (see comment above).
+	discard_zcompile_batch()
 }
 
 // Generate all optimized init files (v2 with all optimizations)
@@ -86,6 +182,10 @@ generate_optimized_init_all :: proc() {
 	if !generate_plugins_runtime_config(wayu.shell) {
 		print_warning("Failed to generate plugin runtime config")
 	}
+
+	// Flush cached resources after all generators have run.
+	clear_toml_content_cache()
+	flush_zcompile_batch()
 
 	fmt.println("# Init files generated:")
 	fmt.printfln("#   %s/core.zsh     (< 10ms)", wayu.data)
@@ -276,27 +376,20 @@ defer {
 	// Ahora con features interactivas
 	fmt.sbprintln(&builder, "# === Prompt (wayu native, interactive) ===")
 
-	// Parse configs from TOML
-	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	defer delete(toml_path)
+	// Parse configs from cached TOML content
+	toml_data, toml_ok := get_cached_toml_content()
+	if toml_ok {
+		// Base prompt
+		prompt_cfg := parse_full_prompt_config(toml_data)
+		base_prompt := generate_full_prompt(prompt_cfg)
 
-	if os.exists(toml_path) {
-		toml_data, ok := safe_read_file(toml_path)
-		if ok {
-			defer delete(toml_data)
+		// Interactive features
+		interactive_cfg := parse_interactive_config(toml_data)
+		interactive_code := generate_interactive_prompt(base_prompt, interactive_cfg)
 
-			// Base prompt
-			prompt_cfg := parse_full_prompt_config(string(toml_data))
-			base_prompt := generate_full_prompt(prompt_cfg)
-
-			// Interactive features
-			interactive_cfg := parse_interactive_config(string(toml_data))
-			interactive_code := generate_interactive_prompt(base_prompt, interactive_cfg)
-
-			fmt.sbprint(&builder, interactive_code)
-			delete(base_prompt)
-			delete(interactive_code)
-		}
+		fmt.sbprint(&builder, interactive_code)
+		delete(base_prompt)
+		delete(interactive_code)
 	}
 	fmt.sbprintln(&builder)
 
@@ -557,12 +650,8 @@ wayu_compile() {
 // order by key (deterministic generation). Non-existent directories are
 // dropped with a warning.
 read_wayu_toml_paths :: proc() -> [dynamic]string {
-	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	defer delete(config_path)
-
-	content, ok := safe_read_file(config_path)
+	content_str, ok := get_cached_toml_content()
 	if !ok { return make([dynamic]string) }
-	defer delete(content)
 
 	// Collect (key, path) pairs and sort by key for deterministic output.
 	KV :: struct { key, val: string }
@@ -572,11 +661,9 @@ read_wayu_toml_paths :: proc() -> [dynamic]string {
 		delete(entries)
 	}
 
-	lines := strings.split(string(content), "\n")
-	defer delete(lines)
-
+	it_paths := make_line_iter(content_str)
 	in_section := false
-	for line in lines {
+	for line in line_iter_next(&it_paths) {
 		trimmed := strings.trim_space(line)
 		if trimmed == "[paths]" { in_section = true; continue }
 		if strings.has_prefix(trimmed, "[") { in_section = false; continue }
@@ -645,19 +732,18 @@ destroy_tool_entry :: proc(t: ^ToolEntry) {
 
 // Caller must destroy_tool_entry each element + `delete` the dynamic array.
 read_wayu_toml_tools :: proc() -> [dynamic]ToolEntry {
-	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	defer delete(config_path)
-
-	content, ok := safe_read_file(config_path)
+	content_str, ok := get_cached_toml_content()
 	if !ok { return make([dynamic]ToolEntry) }
-	defer delete(content)
 
-	arena_buf := make([]byte, 256 * 1024)
+	// The TOML parser allocates TomlValue structs, maps, and cloned strings
+	// inside the arena. Use 16x the input size with a floor of 64KB.
+	arena_size := max(64 * 1024, min(len(content_str) * 16, 512 * 1024))
+	arena_buf := make([]byte, arena_size)
 	defer delete(arena_buf)
 	arena: mem.Arena
 	mem.arena_init(&arena, arena_buf)
 
-	doc, _ := toml_doc_parse_simple(string(content), &arena)
+	doc, _ := toml_doc_parse_simple(content_str, &arena)
 	tools_val, has := doc.values["tools"]
 	if !has || tools_val == nil || tools_val.type != .TABLE {
 		return make([dynamic]ToolEntry)
@@ -959,19 +1045,14 @@ EnvEntry :: struct {
 }
 
 read_wayu_toml_env :: proc() -> [dynamic]EnvEntry {
-	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	defer delete(config_path)
-
-	content, ok := safe_read_file(config_path)
+	content_str, ok := get_cached_toml_content()
 	if !ok { return make([dynamic]EnvEntry) }
-	defer delete(content)
 
 	entries := make([dynamic]EnvEntry)
-	lines := strings.split(string(content), "\n")
-	defer delete(lines)
 
+	it_env := make_line_iter(content_str)
 	in_env := false
-	for line in lines {
+	for line in line_iter_next(&it_env) {
 		trimmed := strings.trim_space(line)
 		if trimmed == "[env]" { in_env = true; continue }
 		if strings.has_prefix(trimmed, "[") { in_env = false; continue }
@@ -997,19 +1078,14 @@ read_wayu_toml_env :: proc() -> [dynamic]EnvEntry {
 // Read the [aliases] table from wayu.toml. Returns entries sorted by name
 // for deterministic output. AliasEntry is defined in output.odin.
 read_wayu_toml_aliases :: proc() -> [dynamic]AliasEntry {
-	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	defer delete(config_path)
-
-	content, ok := safe_read_file(config_path)
+	content_str, ok := get_cached_toml_content()
 	if !ok { return make([dynamic]AliasEntry) }
-	defer delete(content)
 
 	entries := make([dynamic]AliasEntry)
-	lines := strings.split(string(content), "\n")
-	defer delete(lines)
 
+	it_aliases := make_line_iter(content_str)
 	in_section := false
-	for line in lines {
+	for line in line_iter_next(&it_aliases) {
 		trimmed := strings.trim_space(line)
 		if trimmed == "[aliases]" { in_section = true; continue }
 		if strings.has_prefix(trimmed, "[") { in_section = false; continue }

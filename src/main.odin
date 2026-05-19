@@ -105,11 +105,34 @@ init_app_context :: proc(ctx: ^AppContext) {
 
 	ctx.shell = detect_shell()
 	ctx.shell_ext = get_shell_extension(ctx.shell)
-	ctx.path_file = fmt.aprintf("path.%s", ctx.shell_ext, allocator = heap)
-	ctx.alias_file = fmt.aprintf("aliases.%s", ctx.shell_ext, allocator = heap)
-	ctx.constants_file = fmt.aprintf("constants.%s", ctx.shell_ext, allocator = heap)
-	ctx.init_file = fmt.aprintf("init.%s", ctx.shell_ext, allocator = heap)
-	ctx.tools_file = fmt.aprintf("tools.%s", ctx.shell_ext, allocator = heap)
+
+	// Use static strings for per-shell filenames (avoids 5 heap allocations)
+	switch ctx.shell {
+	case .ZSH:
+		ctx.path_file      = "path.zsh"
+		ctx.alias_file     = "aliases.zsh"
+		ctx.constants_file = "constants.zsh"
+		ctx.init_file      = "init.zsh"
+		ctx.tools_file     = "tools.zsh"
+	case .BASH:
+		ctx.path_file      = "path.bash"
+		ctx.alias_file     = "aliases.bash"
+		ctx.constants_file = "constants.bash"
+		ctx.init_file      = "init.bash"
+		ctx.tools_file     = "tools.bash"
+	case .FISH:
+		ctx.path_file      = "path.fish"
+		ctx.alias_file     = "aliases.fish"
+		ctx.constants_file = "constants.fish"
+		ctx.init_file      = "init.fish"
+		ctx.tools_file     = "tools.fish"
+	case .UNKNOWN:
+		ctx.path_file      = "path.zsh"
+		ctx.alias_file     = "aliases.zsh"
+		ctx.constants_file = "constants.zsh"
+		ctx.init_file      = "init.zsh"
+		ctx.tools_file     = "tools.zsh"
+	}
 }
 
 // Legacy shim — tests call this, so keep the name but populate wayu.
@@ -149,7 +172,13 @@ main :: proc() {
   // Set up temp arena for transient allocations (string building, intermediate operations, etc.)
   // This arena is automatically cleared, reducing memory fragmentation
   // Keep context.allocator as heap for now to maintain compatibility with existing delete() calls
-  temp_arena_backing := make([]byte, 2 * 1024 * 1024)  // 2MB for temp arena
+  // TUI needs more arena space for rendering; CLI is lightweight.
+  is_tui := len(os.args) < 2
+  for arg in os.args[1:] {
+    if arg == "--tui" { is_tui = true; break }
+  }
+  temp_arena_size := 2 * 1024 * 1024 if is_tui else 256 * 1024  // 2MB TUI, 256KB CLI
+  temp_arena_backing := make([]byte, temp_arena_size)
   defer delete(temp_arena_backing)
 
   temp_arena: mem.Arena
@@ -166,6 +195,16 @@ main :: proc() {
 	// Clean up temp arena at the very end (before arena backing is freed)
 	// This defer executes after all other defers in this scope
 	defer if wayu.temp_arena != nil do free_all(context.temp_allocator)
+
+	// Fast-exit for --version / -v: skip all initialization.
+	if len(os.args) == 2 {
+		a := os.args[1]
+		if a == "--version" || a == "-v" || a == "version" {
+			fmt.printfln("wayu v%s", VERSION)
+			fmt.println("Shell configuration management tool")
+			return
+		}
+	}
 
 	// Check for --no-color flag BEFORE initializing color system
 	// This ensures the flag takes precedence over environment variables
@@ -236,10 +275,21 @@ main :: proc() {
 		// (check_toml_config), and we want it to surface other findings too.
 		needs_modern_toml = false
 	}
-	if needs_modern_toml {
-		toml_guard_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-		defer delete(toml_guard_path)
-		enforce_modern_wayu_toml_or_exit(toml_guard_path)
+	// Pre-warm the TOML content cache and run the legacy-schema guard in
+	// one pass (avoids reading wayu.toml twice at startup). Skip for
+	// commands that never touch wayu.toml (--version, --help, etc.).
+	needs_toml := true
+	#partial switch parsed.command {
+	case .VERSION, .HELP, .UNKNOWN:
+		needs_toml = false
+	}
+	if needs_toml {
+		if toml_str, toml_ok := get_cached_toml_content(); toml_ok && needs_modern_toml {
+			if header := detect_legacy_schema(toml_str); len(header) > 0 {
+				print_legacy_schema_hint(header)
+				os.exit(EXIT_CONFIG)
+			}
+		}
 	}
 
 	switch parsed.command {

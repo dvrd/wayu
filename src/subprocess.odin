@@ -225,3 +225,35 @@ run_command_with_stdin :: proc(args: []string, input: string) -> bool {
 	posix.waitpid(pid, &status, {})
 	return posix.WIFEXITED(status) && posix.WEXITSTATUS(status) == 0
 }
+
+// run_background_shell fires a shell command in the background and returns
+// immediately. The child is double-forked so the parent doesn't need to
+// waitpid (init inherits the orphan). Stdout/stderr go to /dev/null.
+run_background_shell :: proc(cmd: string) {
+	pid := posix.fork()
+	if pid < 0 { return }
+	if pid > 0 {
+		// Parent: reap the intermediate child immediately
+		status: c.int = 0
+		posix.waitpid(pid, &status, {})
+		return
+	}
+	// Intermediate child: fork again so the grandchild is orphaned
+	gpid := posix.fork()
+	if gpid < 0 { posix._exit(1) }
+	if gpid > 0 { posix._exit(0) } // intermediate exits, grandchild reparents to init
+
+	// Grandchild: redirect I/O and exec
+	devnull := posix.open("/dev/null", {.WRONLY})
+	if devnull >= 0 {
+		posix.dup2(devnull, posix.FD(0))
+		posix.dup2(devnull, posix.FD(1))
+		posix.dup2(devnull, posix.FD(2))
+		posix.close(devnull)
+	}
+
+	cmd_cstr := strings.clone_to_cstring(cmd)
+	argv := [4]cstring{"sh", "-c", cmd_cstr, nil}
+	posix.execvp("sh", raw_data(argv[:]))
+	posix._exit(1)
+}
