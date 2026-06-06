@@ -1180,19 +1180,11 @@ check_dependencies :: proc(results: ^[dynamic]CheckResult) {
 
 // Check if a command exists in PATH (helper for check_dependencies).
 check_command_exists :: proc(cmd: string) -> bool {
-	paths := []string{
-		fmt.tprintf("/usr/bin/%s", cmd),
-		fmt.tprintf("/bin/%s", cmd),
-		fmt.tprintf("/usr/local/bin/%s", cmd),
-		fmt.tprintf("/opt/homebrew/bin/%s", cmd),
-	}
-
-	for path in paths {
-		if os.exists(path) {
-			return true
-		}
-	}
-	return false
+	// Delegate to the canonical PATH-aware lookup (shell.odin) so there is a
+	// single source of truth for "is this command installed". The previous
+	// hardcoded 4-path scan missed anything outside /usr/bin, /bin,
+	// /usr/local/bin, /opt/homebrew/bin.
+	return command_exists(cmd)
 }
 
 // Check 9: sync status — wayu entries vs environment

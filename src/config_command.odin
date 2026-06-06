@@ -283,7 +283,7 @@ cleanup_zshrc_blocks :: proc(blocks: [dynamic][dynamic]string, content: []byte) 
 
 // Scan .zshrc for inline scripts that should move to extra.zsh
 scan_zshrc_for_scripts :: proc() {
-	zshrc_file := fmt.aprintf("%s/.zshrc", os.get_env("HOME", context.temp_allocator))
+	zshrc_file := fmt.aprintf("%s/.zshrc", wayu.home)
 	defer delete(zshrc_file)
 
 	detected_blocks, content := detect_zshrc_script_blocks(zshrc_file)
@@ -315,7 +315,7 @@ scan_zshrc_for_scripts :: proc() {
 
 // Scan and optionally migrate scripts from .zshrc to extra.zsh
 scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
-	zshrc_file := fmt.aprintf("%s/.zshrc", os.get_env("HOME", context.temp_allocator))
+	zshrc_file := fmt.aprintf("%s/.zshrc", wayu.home)
 	defer delete(zshrc_file)
 
 	detected_blocks, content := detect_zshrc_script_blocks(zshrc_file)

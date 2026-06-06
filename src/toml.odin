@@ -21,6 +21,7 @@ package wayu
 import "core:fmt"
 import "core:mem"
 import "core:os"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
 import "core:unicode"
@@ -260,6 +261,151 @@ toml_read_file :: proc(path: string) -> (TomlConfig, bool) {
 // Get default config file path
 toml_get_config_path :: proc() -> string {
 	return fmt.aprintf("%s/%s", wayu.config, TOML_CONFIG_FILE)
+}
+
+// Return `content` with the entire `[section]` table removed (header + body),
+// preserving every other line verbatim. Single source of truth for the
+// section-rewrite used by alias + constant management.
+strip_toml_section :: proc(content: string, section: string) -> string {
+	header := fmt.aprintf("[%s]", section)
+	defer delete(header)
+
+	builder := strings.builder_make(len(content))
+	defer strings.builder_destroy(&builder)
+
+	it := make_line_iter(content)
+	skip_section := false
+	first := true
+	for line in line_iter_next(&it) {
+		trimmed := strings.trim_space(line)
+
+		if trimmed == header {
+			skip_section = true
+			continue
+		}
+
+		if skip_section && strings.has_prefix(trimmed, "[") {
+			skip_section = false
+		}
+
+		if skip_section {
+			continue
+		}
+
+		if !first { strings.write_byte(&builder, '\n') }
+		strings.write_string(&builder, line)
+		first = false
+	}
+
+	return strings.clone(strings.to_string(builder))
+}
+
+// Rewrite a single `[section]` key/value table in wayu.toml from `entries`,
+// preserving all other content. Entries are emitted sorted by name with TOML
+// string escaping. Honors --dry-run and creates a backup before writing.
+// `dry_label` is the human word shown in dry-run output (e.g. "aliases").
+// Single source of truth shared by alias + constant writers.
+write_toml_kv_section :: proc(section, dry_label: string, entries: []ConfigEntry) -> bool {
+	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
+	defer delete(config_path)
+
+	content, ok := safe_read_file(config_path)
+	if !ok { return false }
+	defer delete(content)
+
+	base_content := strip_toml_section(string(content), section)
+	defer delete(base_content)
+
+	builder := strings.builder_make()
+	defer strings.builder_destroy(&builder)
+
+	if len(base_content) > 0 {
+		strings.write_string(&builder, base_content)
+	}
+
+	if len(entries) > 0 {
+		if len(base_content) > 0 && !strings.has_suffix(base_content, "\n") {
+			strings.write_string(&builder, "\n")
+		}
+		if len(strings.trim_space(base_content)) > 0 {
+			strings.write_string(&builder, "\n")
+		}
+
+		// Sort alphabetically by name for stable output.
+		sorted := make([]ConfigEntry, len(entries))
+		defer delete(sorted)
+		copy(sorted, entries)
+		slice.sort_by(sorted, proc(a, b: ConfigEntry) -> bool { return a.name < b.name })
+
+		fmt.sbprintf(&builder, "[%s]\n", section)
+		for entry in sorted {
+			escaped := escape_toml_string(entry.value)
+			fmt.sbprintfln(&builder, "%s = \"%s\"", entry.name, escaped)
+			delete(escaped)
+		}
+		strings.write_string(&builder, "\n")
+	}
+
+	new_content := strings.clone(strings.to_string(builder))
+	defer delete(new_content)
+
+	if wayu.dry_run {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould update wayu.toml %s:%s", BRIGHT_CYAN, dry_label, RESET)
+		fmt.print(new_content)
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return true
+	}
+
+	if !create_backup_cli(config_path) { return false }
+	return safe_write_file(config_path, transmute([]byte)new_content)
+}
+
+// Remove the entry named `name` from a TOML-backed config, persist, and
+// regenerate the shell core. `noun` is the display word ("Alias"/"Constant").
+// `read_fn`/`write_fn` are the per-type accessors. Single source of truth
+// shared by alias + constant removal.
+toml_entry_remove :: proc(
+	name, noun: string,
+	read_fn: proc() -> []ConfigEntry,
+	write_fn: proc([]ConfigEntry) -> bool,
+) -> (bool, string) {
+	existing := read_fn()
+	defer cleanup_entries(&existing)
+
+	updated := make([dynamic]ConfigEntry)
+	defer {
+		for &e in updated { cleanup_entry(&e) }
+		delete(updated)
+	}
+
+	found := false
+	for e in existing {
+		if e.name == name {
+			found = true
+			continue
+		}
+		append(&updated, ConfigEntry{
+			type = e.type,
+			name = strings.clone(e.name),
+			value = strings.clone(e.value),
+			line = strings.clone(e.line),
+		})
+	}
+
+	if !found {
+		return false, fmt.aprintf("%s not found: %s", noun, name)
+	}
+	if !write_fn(updated[:]) {
+		return false, strings.clone("I/O error: could not update wayu.toml")
+	}
+
+	regenerate_init_core_silently()
+
+	print_success("%s removed successfully from wayu.toml: %s", noun, name)
+	return true, ""
 }
 
 // ============================================================================

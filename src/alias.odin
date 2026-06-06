@@ -41,93 +41,10 @@ read_toml_alias_entries :: proc() -> []ConfigEntry {
 	return entries[:]
 }
 
+// Thin wrapper over the generic TOML section writer (toml.odin). Aliases live
+// in the `[aliases]` table; all rewrite logic is shared with constants.
 write_wayu_toml_aliases :: proc(entries: []ConfigEntry) -> bool {
-	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	defer delete(config_path)
-
-	content, ok := safe_read_file(config_path)
-	if !ok { return false }
-	defer delete(content)
-
-	base_content := strip_toml_alias_sections(string(content))
-	defer delete(base_content)
-
-	builder := strings.builder_make()
-	defer strings.builder_destroy(&builder)
-
-	if len(base_content) > 0 {
-		strings.write_string(&builder, base_content)
-	}
-
-	if len(entries) > 0 {
-		if len(base_content) > 0 && !strings.has_suffix(base_content, "\n") {
-			strings.write_string(&builder, "\n")
-		}
-		if len(strings.trim_space(base_content)) > 0 {
-			strings.write_string(&builder, "\n")
-		}
-
-		// Sort alphabetically by name for stable output.
-		sorted := make([]ConfigEntry, len(entries))
-		defer delete(sorted)
-		copy(sorted, entries)
-		slice.sort_by(sorted, proc(a, b: ConfigEntry) -> bool { return a.name < b.name })
-
-		strings.write_string(&builder, "[aliases]\n")
-		for entry in sorted {
-			escaped := escape_toml_string(entry.value)
-			fmt.sbprintfln(&builder, "%s = \"%s\"", entry.name, escaped)
-			delete(escaped)
-		}
-		strings.write_string(&builder, "\n")
-	}
-
-	new_content := strings.clone(strings.to_string(builder))
-	defer delete(new_content)
-
-	if wayu.dry_run {
-		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-		fmt.println()
-		fmt.printfln("%sWould update wayu.toml aliases:%s", BRIGHT_CYAN, RESET)
-		fmt.print(new_content)
-		fmt.println()
-		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
-		return true
-	}
-
-	if !create_backup_cli(config_path) { return false }
-	return safe_write_file(config_path, transmute([]byte)new_content)
-}
-
-strip_toml_alias_sections :: proc(content: string) -> string {
-	builder := strings.builder_make(len(content))
-	defer strings.builder_destroy(&builder)
-
-	it := make_line_iter(content)
-	skip_section := false
-	first := true
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-
-		if trimmed == "[aliases]" {
-			skip_section = true
-			continue
-		}
-
-		if skip_section && strings.has_prefix(trimmed, "[") {
-			skip_section = false
-		}
-
-		if skip_section {
-			continue
-		}
-
-		if !first { strings.write_byte(&builder, '\n') }
-		strings.write_string(&builder, line)
-		first = false
-	}
-
-	return strings.clone(strings.to_string(builder))
+	return write_toml_kv_section("aliases", "aliases", entries)
 }
 
 toml_alias_add :: proc(entry: ConfigEntry) -> (bool, string) {
@@ -200,40 +117,7 @@ toml_alias_add :: proc(entry: ConfigEntry) -> (bool, string) {
 }
 
 toml_alias_remove :: proc(name: string) -> (bool, string) {
-	existing := read_toml_alias_entries()
-	defer cleanup_entries(&existing)
-
-	updated := make([dynamic]ConfigEntry)
-	defer {
-		for &e in updated { cleanup_entry(&e) }
-		delete(updated)
-	}
-
-	found := false
-	for e in existing {
-		if e.name == name {
-			found = true
-			continue
-		}
-		append(&updated, ConfigEntry{
-			type = e.type,
-			name = strings.clone(e.name),
-			value = strings.clone(e.value),
-			line = strings.clone(e.line),
-		})
-	}
-
-	if !found {
-		return false, fmt.aprintf("Alias not found: %s", name)
-	}
-	if !write_wayu_toml_aliases(updated[:]) {
-		return false, strings.clone("I/O error: could not update wayu.toml")
-	}
-
-	regenerate_init_core_silently()
-
-	print_success("Alias removed successfully from wayu.toml: %s", name)
-	return true, ""
+	return toml_entry_remove(name, "Alias", read_toml_alias_entries, write_wayu_toml_aliases)
 }
 
 list_toml_aliases :: proc() {

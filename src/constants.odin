@@ -9,40 +9,6 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 
-// Filter out noisy system/shell environment variables that users don't need to see.
-strip_ansi :: proc(s: string, allocator := context.allocator) -> string {
-	// Shortcut: no ESC bytes at all, return clone of original
-	alive := false
-	for c in s {
-		if c == '\x1b' || c == '\n' || c == '\r' { alive = true; break }
-	}
-	if !alive { return strings.clone(s, allocator) }
-
-	// Build clean copy without ANSI escape sequences and newlines
-	buf := make([dynamic]byte, 0, len(s), allocator)
-	i := 0
-	for i < len(s) {
-		if s[i] == '\x1b' && i + 1 < len(s) && s[i + 1] == '[' {
-			// Skip CSI sequence: ESC [ ... m or ESC [ ... ; ... m
-			i += 2
-			for i < len(s) && (is_digit(s[i]) || s[i] == ';') { i += 1 }
-			if i < len(s) { i += 1 }  // skip the terminating letter
-		} else if s[i] == '\n' || s[i] == '\r' {
-			// Replace newlines with space to keep table rows intact
-			append(&buf, ' ')
-			i += 1
-		} else {
-			append(&buf, s[i])
-			i += 1
-		}
-	}
-	return strings.clone(string(buf[:]), allocator)
-}
-
-is_digit :: proc(c: byte) -> bool {
-	return c >= '0' && c <= '9'
-}
-
 // Main handler for CONSTANTS commands.
 //
 // Thin delegation to the generic TOML-entry dispatcher. The spec wires up
@@ -160,93 +126,10 @@ unescape_toml_string :: proc(value: string) -> string {
 	return strings.clone(strings.to_string(builder))
 }
 
-strip_toml_constant_sections :: proc(content: string) -> string {
-	builder := strings.builder_make(len(content))
-	defer strings.builder_destroy(&builder)
-
-	it := make_line_iter(content)
-	skip_section := false
-	first := true
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-
-		if trimmed == "[env]" {
-			skip_section = true
-			continue
-		}
-
-		if skip_section && strings.has_prefix(trimmed, "[") {
-			skip_section = false
-		}
-
-		if skip_section {
-			continue
-		}
-
-		if !first { strings.write_byte(&builder, '\n') }
-		strings.write_string(&builder, line)
-		first = false
-	}
-
-	return strings.clone(strings.to_string(builder))
-}
-
+// Thin wrapper over the generic TOML section writer (toml.odin). Constants
+// live in the `[env]` table; all rewrite logic is shared with aliases.
 write_wayu_toml_constants :: proc(entries: []ConfigEntry) -> bool {
-	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	defer delete(config_path)
-
-	content, ok := safe_read_file(config_path)
-	if !ok { return false }
-	defer delete(content)
-
-	base_content := strip_toml_constant_sections(string(content))
-	defer delete(base_content)
-
-	builder := strings.builder_make()
-	defer strings.builder_destroy(&builder)
-
-	if len(base_content) > 0 {
-		strings.write_string(&builder, base_content)
-	}
-
-	if len(entries) > 0 {
-		if len(base_content) > 0 && !strings.has_suffix(base_content, "\n") {
-			strings.write_string(&builder, "\n")
-		}
-		if len(strings.trim_space(base_content)) > 0 {
-			strings.write_string(&builder, "\n")
-		}
-
-		// Sort alphabetically by name for stable output.
-		sorted := make([]ConfigEntry, len(entries))
-		defer delete(sorted)
-		copy(sorted, entries)
-		slice.sort_by(sorted, proc(a, b: ConfigEntry) -> bool { return a.name < b.name })
-
-		strings.write_string(&builder, "[env]\n")
-		for entry in sorted {
-			escaped := escape_toml_string(entry.value)
-			fmt.sbprintfln(&builder, "%s = \"%s\"", entry.name, escaped)
-			delete(escaped)
-		}
-		strings.write_string(&builder, "\n")
-	}
-
-	new_content := strings.clone(strings.to_string(builder))
-	defer delete(new_content)
-
-	if wayu.dry_run {
-		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-		fmt.println()
-		fmt.printfln("%sWould update wayu.toml constants:%s", BRIGHT_CYAN, RESET)
-		fmt.print(new_content)
-		fmt.println()
-		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
-		return true
-	}
-
-	if !create_backup_cli(config_path) { return false }
-	return safe_write_file(config_path, transmute([]byte)new_content)
+	return write_toml_kv_section("env", "constants", entries)
 }
 
 toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
@@ -302,40 +185,7 @@ toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
 }
 
 toml_constant_remove :: proc(name: string) -> (bool, string) {
-	existing := read_wayu_toml_constants()
-	defer cleanup_entries(&existing)
-
-	updated := make([dynamic]ConfigEntry)
-	defer {
-		for &e in updated { cleanup_entry(&e) }
-		delete(updated)
-	}
-
-	found := false
-	for e in existing {
-		if e.name == name {
-			found = true
-			continue
-		}
-		append(&updated, ConfigEntry{
-			type = e.type,
-			name = strings.clone(e.name),
-			value = strings.clone(e.value),
-			line = strings.clone(e.line),
-		})
-	}
-
-	if !found {
-		return false, fmt.aprintf("Constant not found: %s", name)
-	}
-	if !write_wayu_toml_constants(updated[:]) {
-		return false, strings.clone("I/O error: could not update wayu.toml")
-	}
-
-	regenerate_init_core_silently()
-
-	print_success("Constant removed successfully from wayu.toml: %s", name)
-	return true, ""
+	return toml_entry_remove(name, "Constant", read_wayu_toml_constants, write_wayu_toml_constants)
 }
 
 list_toml_constants :: proc() {
@@ -441,7 +291,7 @@ list_toml_constants :: proc() {
 			if is_active && !show_wayu { continue }
 			if !is_active && !show_inactive { continue }
 
-			value := strip_ansi(entry.value)
+			value := strip_ansi_codes(entry.value, true)
 			append(&stripped_values, value)
 			if has_multiple_sources {
 				source := "wayu"
@@ -459,7 +309,7 @@ list_toml_constants :: proc() {
 	if show_external {
 		for ext_const_name in external_constants {
 			if env_val := snapshot_env_var(ext_const_name); env_val != nil {
-				value := strip_ansi(env_val.(string))
+				value := strip_ansi_codes(env_val.(string), true)
 				append(&stripped_values, value)
 				row := []string{ext_const_name, value, "external"}
 				table_add_row(&table, row)

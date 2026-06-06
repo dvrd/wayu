@@ -227,35 +227,54 @@ get_color_profile :: proc() -> ColorProfile {
 	return CURRENT_COLOR_PROFILE
 }
 
+// Canonical ANSI-strip routine. Removes CSI escape sequences (ESC '[' ... final)
+// where the final byte is in the standard CSI range 0x40..0x7E. When
+// newlines_to_space is set, '\n' and '\r' are collapsed to a single space so
+// table rows stay intact. A lone ESC not starting a CSI sequence is preserved.
+strip_ansi_codes :: proc(text: string, newlines_to_space := false, allocator := context.allocator) -> string {
+	// Fast path: nothing to strip or rewrite.
+	needs := false
+	for i := 0; i < len(text); i += 1 {
+		c := text[i]
+		if c == '\x1b' || (newlines_to_space && (c == '\n' || c == '\r')) {
+			needs = true
+			break
+		}
+	}
+	if !needs {
+		return strings.clone(text, allocator)
+	}
+
+	buf := make([dynamic]byte, 0, len(text), allocator)
+	i := 0
+	for i < len(text) {
+		c := text[i]
+		if c == '\x1b' && i + 1 < len(text) && text[i+1] == '[' {
+			// Skip CSI: ESC '[' params/intermediates until final byte 0x40..0x7E.
+			i += 2
+			for i < len(text) && !(text[i] >= 0x40 && text[i] <= 0x7e) {
+				i += 1
+			}
+			if i < len(text) {
+				i += 1 // skip the terminating final byte
+			}
+		} else if newlines_to_space && (c == '\n' || c == '\r') {
+			append(&buf, ' ')
+			i += 1
+		} else {
+			append(&buf, c)
+			i += 1
+		}
+	}
+	return strings.clone(string(buf[:]), allocator)
+}
+
 // Strip ANSI codes from a string if in ASCII mode
 maybe_strip_ansi :: proc(text: string) -> string {
 	if CURRENT_COLOR_PROFILE != .ASCII {
 		return text
 	}
-
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-
-	i := 0
-	for i < len(text) {
-		if text[i] == '\x1b' && i + 1 < len(text) && text[i+1] == '[' {
-			// Skip ANSI escape sequence
-			i += 2
-			// Skip until 'm'
-			for i < len(text) && text[i] != 'm' {
-				i += 1
-			}
-			if i < len(text) {
-				i += 1
-			}
-		} else {
-			strings.write_byte(&builder, text[i])
-			i += 1
-		}
-	}
-
-	return strings.clone(strings.to_string(builder))
+	return strip_ansi_codes(text)
 }
 
 // Wrapper for fmt.printf that strips ANSI codes in ASCII mode

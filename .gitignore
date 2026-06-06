@@ -14,12 +14,9 @@ PRPs/
 thoughts/
 .mindmodel/
 .claude/
-/unit
-/unit_test
-/wayu_test
-/unit.dSYM/
-/wayu.dSYM/
-*.dSYM/
+.mel/
 .firecrawl/
 .cruft/
-src.bak/
+HANDOFF.md
+
+*.dSYM/
