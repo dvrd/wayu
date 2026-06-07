@@ -189,5 +189,6 @@ test_is_wide_character :: proc(t: ^testing.T) {
 test_apply_text_only_style :: proc(t: ^testing.T) {
 	style := wayu.Style{bold = true, foreground = "red"}
 	result := wayu.apply_text_only_style(style, "Test")
+	defer delete(result)
 	testing.expect(t, len(result) > 4, "Styled text should have ANSI codes")
 }

@@ -317,7 +317,7 @@ handle_selection :: proc(state: ^TUIState) {
 		}
 
 	case .PLUGINS_VIEW:
-		// Show plugin detail or placeholder message
+		// Show detail for the selected installed plugin or registry entry.
 		if state.plugin_tab == PLUGIN_TAB_INSTALLED {
 			if state.data_cache[.PLUGINS_VIEW] != nil {
 				items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
@@ -327,10 +327,13 @@ handle_selection :: proc(state: ^TUIState) {
 					parts := strings.split(selected, " | ", context.temp_allocator)
 					if len(parts) >= 1 {
 						plugin_name := parts[0]
-						line1 := fmt.tprintf("Plugin: %s", plugin_name)
-						line2 := "Plugin detail view coming soon"
-						lines := []string{line1, line2}
-						show_detail_overlay(state, "Plugin Detail", lines)
+						// Installed-plugin rows are "name | source | status | priority".
+						detail := make([dynamic]string, context.temp_allocator)
+						append(&detail, fmt.tprintf("Plugin:   %s", plugin_name))
+						if len(parts) >= 2 do append(&detail, fmt.tprintf("Source:   %s", strings.trim_space(parts[1])))
+						if len(parts) >= 3 do append(&detail, fmt.tprintf("Status:   %s", strings.trim_space(parts[2])))
+						if len(parts) >= 4 do append(&detail, fmt.tprintf("Priority: %s", strings.trim_space(parts[3])))
+						show_detail_overlay(state, "Plugin Detail", detail[:])
 					}
 				}
 			}
@@ -365,14 +368,10 @@ handle_selection :: proc(state: ^TUIState) {
 		}
 
 	case .HOOKS_VIEW:
-		// Show hooks view placeholder
-		lines := []string{"Hooks view coming soon"}
-		show_detail_overlay(state, "Hooks", lines)
+		// Hooks view renders all configured hooks inline; no detail overlay.
 
 	case .SETTINGS_VIEW:
-		// Show settings info placeholder
-		lines := []string{"Settings view coming soon"}
-		show_detail_overlay(state, "Settings", lines)
+		// Settings view renders all values inline; no detail overlay.
 	}
 }
 
@@ -1423,6 +1422,8 @@ tui_install_plugin :: proc(key: string) -> bool {
 	dest := fmt.aprintf("%s/%s", plugins_dir, info.name)
 	defer delete(dest)
 
+	hook_pre_plugin_install(info.name)
+
 	if !git_clone(info.url, dest) { return false }
 
 	config, _ := read_plugin_config_json()
@@ -1452,7 +1453,10 @@ tui_install_plugin :: proc(key: string) -> bool {
 	}
 
 	if !write_plugin_config_json(&config) { return false }
-	return generate_plugins_file(wayu.shell)
+	if !generate_plugins_file(wayu.shell) { return false }
+
+	hook_post_plugin_install(info.name)
+	return true
 }
 
 tui_get_path_detail :: proc(path_str: string) -> [dynamic]string {

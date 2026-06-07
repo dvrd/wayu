@@ -757,6 +757,14 @@ get_rune_width :: proc(r: rune) -> int {
 		return 0
 	}
 
+	// Authoritative per-glyph widths (Ghostty-tuned) for the specific symbols,
+	// box-drawing characters, and emoji used across the app. This table is the
+	// single source of truth shared with the form/TUI width path; it overrides
+	// the coarse range checks below for known characters (e.g. ⚠ is width 1).
+	if w, ok := special_char_width(r); ok {
+		return w
+	}
+
 	// Wide characters (CJK, emojis, etc.) take 2 columns
 	if is_wide_character(r) {
 		return 2

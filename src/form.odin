@@ -609,46 +609,33 @@ special_char_widths: map[rune]int
 @(private)
 special_chars_initialized := false
 
-// Initialize the special character width map
+// Deprecated no-op. Rune widths now come from the zero-allocation
+// special_char_width() scan over SPECIAL_CHARS (see get_rune_width in
+// style.odin), so there is no longer a heap map to initialize. Kept as a
+// symbol for backward compatibility with form_run and the visual test tools.
 init_special_chars :: proc() {
-	if special_chars_initialized {
-		return
-	}
-
-	special_char_widths = make(map[rune]int)
-	for char in SPECIAL_CHARS {
-		special_char_widths[char.char] = char.visual_width
-	}
-
-	special_chars_initialized = true
 }
 
-// Get the visual width of a single rune
-// Returns the accurate width based on:
-// 1. Special character mapping (for known characters)
-// 2. Unicode ranges for CJK and emojis (for unmapped characters)
-// 3. Default to width 1 for everything else
+// Zero-allocation lookup of a rune's explicit width from the static
+// SPECIAL_CHARS table. Used by the canonical get_rune_width (style.odin) so
+// the width path never has to allocate the special_char_widths map. The table
+// is tiny (~50 entries), so a linear scan is cheap and avoids global heap state
+// (which the unit-test leak tracker would otherwise flag).
+special_char_width :: proc(r: rune) -> (int, bool) {
+	for entry in SPECIAL_CHARS {
+		if entry.char == r {
+			return entry.visual_width, true
+		}
+	}
+	return 0, false
+}
+
+// Get the visual width of a single rune.
+// Delegates to the canonical get_rune_width (style.odin), which consults the
+// same special-character table first and then the wide-character ranges. Kept
+// as a thin alias so existing form/TUI/visual-test callers keep working.
 get_rune_visual_width :: proc(r: rune) -> int {
-	// Ensure special chars are initialized
-	if !special_chars_initialized {
-		init_special_chars()
-	}
-
-	// Check if it's a known special character
-	if width, ok := special_char_widths[r]; ok {
-		return width
-	}
-
-	// Fallback: Use Unicode ranges for unmapped characters
-	// CJK, Fullwidth, and Emojis are width 2 in Ghostty
-	if (r >= 0x3000 && r <= 0x303F) ||     // CJK Symbols and Punctuation
-	   (r >= 0xFF00 && r <= 0xFFEF) ||     // Fullwidth Forms
-	   (r >= 0x1F300 && r <= 0x1F9FF) {    // Emoji range
-		return 2
-	}
-
-	// Default: most characters are width 1 (symbols, box drawing, etc.)
-	return 1
+	return get_rune_width(r)
 }
 
 // Calculate the visual width of a string
@@ -661,25 +648,6 @@ get_string_visual_width :: proc(s: string) -> int {
 	for r in s {
 		width += get_rune_visual_width(r)
 	}
-	return width
-}
-
-// Calculate the visual width of a string, ignoring ANSI escape codes
-// This strips color codes and formatting before calculating width
-get_visual_width_no_ansi :: proc(s: string) -> int {
-	width := 0
-	in_escape := false
-
-	for r in s {
-		if r == '\x1b' {
-			in_escape = true
-		} else if in_escape && r == 'm' {
-			in_escape = false
-		} else if !in_escape {
-			width += get_rune_visual_width(r)
-		}
-	}
-
 	return width
 }
 

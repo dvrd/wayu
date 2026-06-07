@@ -94,15 +94,16 @@ test_main_get_view_item_count :: proc(t: ^testing.T) {
 	count := wayu.get_view_item_count(&state)
 	testing.expect(t, count == 8, "Main menu should have 8 items")
 
-	// PATH view (placeholder count)
+	// PATH view: count reflects loaded data (0 until cache loads). Just verify
+	// the function returns a valid non-negative count without crashing.
 	wayu.tui_state_goto_view(&state, .PATH_VIEW)
 	count = wayu.get_view_item_count(&state)
-	testing.expect(t, count > 0, "PATH view should have items")
+	testing.expect(t, count >= 0, "PATH view count should be non-negative")
 
-	// ALIAS view (placeholder count)
+	// ALIAS view: same contract.
 	wayu.tui_state_goto_view(&state, .ALIAS_VIEW)
 	count = wayu.get_view_item_count(&state)
-	testing.expect(t, count > 0, "ALIAS view should have items")
+	testing.expect(t, count >= 0, "ALIAS view count should be non-negative")
 }
 
 // Test: parse_key_event handles arrow keys

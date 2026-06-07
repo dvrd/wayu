@@ -75,6 +75,7 @@ HookContext :: struct {
 // chosen based on hook type.
 execute_hook_ctx :: proc(hook_type: HookType, ctx: HookContext) {
 	hook_cmd := get_hook_command(hook_type)
+	defer delete(hook_cmd)
 	if len(hook_cmd) == 0 {
 		return
 	}
@@ -394,7 +395,6 @@ print_hooks_usage :: proc() {
 	fmt.println()
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
 	fmt.printfln("  wayu hooks              Show configured hooks")
-	fmt.printfln("  wayu hooks run          Execute configured hooks")
 	fmt.printfln("  wayu hooks edit         Edit hooks configuration")
 	fmt.printfln("  wayu hooks help         Show this help")
 	fmt.println()
