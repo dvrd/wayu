@@ -548,6 +548,8 @@ handle_plugin_add :: proc(args: []string) {
 		os.exit(EXIT_SUCCESS)
 	}
 
+	hook_pre_plugin_install(info.name)
+
 	print_header("Installing Plugin", EMOJI_COMMAND)
 	print_info("Name: %s", info.name)
 	print_info("URL: %s", info.url)
@@ -641,6 +643,8 @@ handle_plugin_add :: proc(args: []string) {
 	print_success("Plugin '%s' installed successfully", info.name)
 	fmt.println()
 	print_info("Restart your shell or run 'source ~/.%src' to load the plugin", wayu.shell_ext)
+
+	hook_post_plugin_install(info.name)
 }
 
 // Emit the plugin list as structured JSON. Shape:

@@ -242,7 +242,7 @@ shell_fish_generate_init :: proc(config: TomlConfig) -> string {
     fmt.sbprintln(&sb, aliases_section)
     delete(aliases_section)
 
-    // Plugins placeholder
+    // Plugins (sources the generated fish plugin loader if present)
     fmt.sbprintln(&sb, "# Plugins loaded from ~/.local/share/wayu/plugins.fish")
     fmt.sbprintln(&sb, "if test -f \"$HOME/.local/share/wayu/plugins.fish\"")
     fmt.sbprintln(&sb, "    source \"$HOME/.local/share/wayu/plugins.fish\"")

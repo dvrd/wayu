@@ -897,14 +897,14 @@ get_view_item_count :: proc(state: ^TUIState) -> int {
 			items := cast(^[dynamic]string)state.data_cache[.PATH_VIEW]
 			return len(items)
 		}
-		return 10  // placeholder count when cache not yet loaded
+		return 0  // cache not yet loaded
 
 	case .ALIAS_VIEW:
 		if state.data_cache[.ALIAS_VIEW] != nil {
 			items := cast(^[dynamic]string)state.data_cache[.ALIAS_VIEW]
 			return len(items)
 		}
-		return 8  // placeholder count when cache not yet loaded
+		return 0  // cache not yet loaded
 
 	case .CONSTANTS_VIEW:
 		if state.data_cache[.CONSTANTS_VIEW] != nil {
@@ -1218,19 +1218,55 @@ render_hooks_view :: proc(state: ^TUIState, screen: ^Screen) {
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 	content_start := LIST_ITEM_START_LINE + 1
 
-	// Read-only display of configured hooks from wayu.toml
-	// Shows hook name and command for all configured hooks
+	// Read-only display of the hooks configured in ~/.config/wayu/hooks.conf.
+	// Mirrors the CLI `wayu hooks` status output: each configured hook is shown
+	// as "name → command"; an empty config shows guidance instead.
+	config := load_hook_config()
+	defer free_hook_config(config)
 
-	// In a real implementation, we'd load hooks from the bridge.
-	// For now, show a helpful message directing users to the CLI.
-	render_text_styled(screen, text_x, content_start, "Hooks Configuration", TUI_PRIMARY, "", true)
-	render_text_styled(screen, text_x, content_start + 2, "To configure hooks, edit your hooks.conf file:", TUI_DIM)
-	render_text_styled(screen, text_x, content_start + 3, "", TUI_DIM)
-	render_text_styled(screen, text_x, content_start + 4, "  wayu hooks edit", TUI_DIM)
-	render_text_styled(screen, text_x, content_start + 5, "", TUI_DIM)
-	render_text_styled(screen, text_x, content_start + 6, "Or view configured hooks with:", TUI_DIM)
-	render_text_styled(screen, text_x, content_start + 7, "", TUI_DIM)
-	render_text_styled(screen, text_x, content_start + 8, "  wayu hooks list", TUI_DIM)
+	HookRow :: struct { name: string, cmd: string }
+	rows := []HookRow{
+		{"pre_path_add", config.pre_path_add},
+		{"post_path_add", config.post_path_add},
+		{"pre_path_remove", config.pre_path_remove},
+		{"post_path_remove", config.post_path_remove},
+		{"pre_alias_add", config.pre_alias_add},
+		{"post_alias_add", config.post_alias_add},
+		{"pre_alias_remove", config.pre_alias_remove},
+		{"post_alias_remove", config.post_alias_remove},
+		{"pre_constant_add", config.pre_constant_add},
+		{"post_constant_add", config.post_constant_add},
+		{"pre_constant_remove", config.pre_constant_remove},
+		{"post_constant_remove", config.post_constant_remove},
+		{"pre_plugin_install", config.pre_plugin_install},
+		{"post_plugin_install", config.post_plugin_install},
+		{"pre_export", config.pre_export},
+		{"post_export", config.post_export},
+	}
+
+	// Width budget for the "name → command" line inside the content box.
+	avail := max(0, border_width - CONTENT_PADDING_LEFT - 2)
+	max_rows := max(0, state.terminal_height - content_start - 2)
+
+	configured := 0
+	y := content_start
+	for row in rows {
+		if len(row.cmd) == 0 do continue
+		if configured >= max_rows do break
+		line := fmt.tprintf("%s → %s", row.name, row.cmd)
+		render_text_styled(screen, text_x, y, truncate_text(line, avail), TUI_MUTED)
+		y += 1
+		configured += 1
+	}
+
+	if configured == 0 {
+		render_text_styled(screen, text_x, content_start, "No hooks configured", TUI_PRIMARY, "", true)
+		render_text_styled(screen, text_x, content_start + 2, "Hooks run custom commands before/after wayu operations.", TUI_DIM)
+		render_text_styled(screen, text_x, content_start + 3, "Configure them by editing hooks.conf:", TUI_DIM)
+		render_text_styled(screen, text_x, content_start + 5, "  wayu hooks edit", TUI_DIM)
+	}
+
+	render_data_footer(screen, state, get_footer_static_view(state.terminal_width))
 }
 
 // Settings View
