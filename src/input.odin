@@ -20,6 +20,31 @@ InputValidation :: struct {
 	info:          string,
 }
 
+// Builders for InputValidation. They replace the repeated explicit
+// empty-field initializers in the validate_*_input helpers (config_specs.odin),
+// keeping each construction to one self-documenting call.
+
+// input_validation_ok marks input as valid with no feedback.
+input_validation_ok :: proc() -> InputValidation {
+	return InputValidation{valid = true}
+}
+
+// input_validation_empty marks input as not-yet-valid with no error message —
+// used for empty interactive input (blocks submit but shows nothing to display).
+input_validation_empty :: proc() -> InputValidation {
+	return InputValidation{valid = false}
+}
+
+// input_validation_error wraps a failed validation; msg ownership is transferred.
+input_validation_error :: proc(msg: string) -> InputValidation {
+	return InputValidation{valid = false, error_message = msg}
+}
+
+// input_validation_warn marks input valid but attaches a non-blocking warning.
+input_validation_warn :: proc(warning: string) -> InputValidation {
+	return InputValidation{valid = true, warning = warning}
+}
+
 // Input represents a text input field
 Input :: struct {
 	value:       string,        // Current input value

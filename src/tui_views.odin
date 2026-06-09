@@ -133,7 +133,7 @@ render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) ->
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
 	// Filter bar goes right after the divider line
 	filter_bar_y := LIST_ITEM_START_LINE + 1
-	filter_str := string(state.filter_text[:])
+	filter_str := string(state.filter.text[:])
 
 	max_filter_width := state.terminal_width - BORDER_LEFT_WIDTH - CONTENT_PADDING_LEFT - BORDER_RIGHT_WIDTH - 2
 
@@ -143,12 +143,12 @@ render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) ->
 		src_suffix = fmt.tprintf("  [source:%s]", source_filter_label(state.source_filter))
 	}
 
-	if state.filter_active {
-		filter_display := fmt.tprintf("/ %s\u2588  (%d/%d matches)%s", filter_str, len(state.filtered_indices), item_count, src_suffix)
+	if state.filter.active {
+		filter_display := fmt.tprintf("/ %s\u2588  (%d/%d matches)%s", filter_str, len(state.filter.indices), item_count, src_suffix)
 		display := truncate_text(filter_display, max_filter_width)
 		render_text_styled(screen, header_x, filter_bar_y, display, TUI_SECONDARY, "", true)
 	} else {
-		filter_display := fmt.tprintf("/ %s  (%d/%d matches)%s", filter_str, len(state.filtered_indices), item_count, src_suffix)
+		filter_display := fmt.tprintf("/ %s  (%d/%d matches)%s", filter_str, len(state.filter.indices), item_count, src_suffix)
 		display := truncate_text(filter_display, max_filter_width)
 		render_text_styled(screen, header_x, filter_bar_y, display, TUI_DIM)
 	}
@@ -233,7 +233,7 @@ render_data_footer :: proc(screen: ^Screen, state: ^TUIState, footer_text: strin
 	// Reserve 1 cell for the bottom-right corner '╯' and the right border
 	max_footer_width := right_x - header_x
 
-	if state.filter_active {
+	if state.filter.active {
 		footer := get_footer_filter_active(state.terminal_width)
 		display := truncate_text(footer, max_footer_width)
 		render_text_styled(screen, header_x, footer_y, display, TUI_DIM)
@@ -467,7 +467,7 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset
 
 	// Column header row — only for Table views when items are visible
-	show_items := (has_filter && len(state.filtered_indices) > 0) || (!has_filter && len(items) > 0)
+	show_items := (has_filter && len(state.filter.indices) > 0) || (!has_filter && len(items) > 0)
 	col_header_offset := 0
 	if cfg.row_kind == .Table && show_items {
 		render_column_header(screen, header_x, content_start, cfg.col_label_0, cfg.col_label_1, key_col_width, border_width)
@@ -479,16 +479,16 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 	// Unified text_x for empty state rendering (same expression used inline in all five original procs)
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
-	if has_filter && len(state.filtered_indices) > 0 {
+	if has_filter && len(state.filter.indices) > 0 {
 		// Filtered — show matching items
 		// Use get_view_visible_height to match the scroll logic's calculation exactly
 		visible_height := get_view_visible_height(state)
 		start := state.scroll_offset
-		end := min(start + visible_height, len(state.filtered_indices))
+		end := min(start + visible_height, len(state.filter.indices))
 
 		for idx in start..<end {
 			y := data_start + (idx - start)
-			original_idx := state.filtered_indices[idx]
+			original_idx := state.filter.indices[idx]
 			switch cfg.row_kind {
 			case .Single:
 				render_list_item(screen, header_x, y, items[original_idx], max_text_width, idx == state.selected_index)
@@ -497,11 +497,11 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 			}
 		}
 
-		if len(state.filtered_indices) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
+		if len(state.filter.indices) > visible_height {
+			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filter.indices))
 			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
 		}
-	} else if has_filter && len(state.filtered_indices) == 0 {
+	} else if has_filter && len(state.filter.indices) == 0 {
 		// Filtered — no matches
 		render_text_styled(screen, text_x, data_start + 1, "No matches found", TUI_DIM)
 	} else if len(items) == 0 {
@@ -761,12 +761,12 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 
 // Render a detail overlay centered on screen with accent bar on title
 render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
-	if !state.show_detail do return
+	if !state.detail.shown do return
 
 	// Calculate overlay dimensions
 	// +7 = 1 top border + 1 title + 1 divider gap + content + 2 blank rows before buttons + 1 button row + 1 bottom border
 	overlay_width := min(state.terminal_width - 4, 60)
-	overlay_height := min(len(state.detail_lines) + 7, state.terminal_height - 2)
+	overlay_height := min(len(state.detail.lines) + 7, state.terminal_height - 2)
 	overlay_x := (state.terminal_width - overlay_width) / 2
 	overlay_y := (state.terminal_height - overlay_height) / 2
 
@@ -784,12 +784,12 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	content_x := overlay_x + 2
 	title_y := overlay_y + 1
 	screen_set_cell(screen, content_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
-	title_display := truncate_text(state.detail_title, overlay_width - 6)
+	title_display := truncate_text(state.detail.title, overlay_width - 6)
 	render_text_styled(screen, content_x + MENU_ACCENT_BAR_WIDTH + 1, title_y, title_display, TUI_PRIMARY, "", true)
 
 	// Detail lines
 	max_lines := overlay_height - 6
-	for line, i in state.detail_lines {
+	for line, i in state.detail.lines {
 		if i >= max_lines do break
 		line_y := title_y + 2 + i
 		max_line_width := overlay_width - 4
@@ -802,7 +802,7 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 
 	// Footer hint — one row above the bottom border; extra blank rows sit between content and buttons
 	footer_y := overlay_y + overlay_height - 3
-	if state.confirm_delete_pending {
+	if state.delete_confirm.pending {
 		// Bordered box buttons, right-aligned within the overlay
 		// Layout: ... [ Esc CANCEL ]  [ y DELETE ] |
 		cancel_label := "Esc CANCEL"   // 10 chars
@@ -827,10 +827,10 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 
 		// Button colors driven by focus state
 		// Focused button: TUI_ORANGE (bright orange), bold. Unfocused: TUI_DIM.
-		cancel_fg := TUI_ORANGE if !state.confirm_delete_focused_delete else TUI_DIM
-		delete_fg := TUI_ORANGE if  state.confirm_delete_focused_delete else TUI_DIM
-		cancel_bold := !state.confirm_delete_focused_delete
-		delete_bold :=  state.confirm_delete_focused_delete
+		cancel_fg := TUI_ORANGE if !state.delete_confirm.focused else TUI_DIM
+		delete_fg := TUI_ORANGE if  state.delete_confirm.focused else TUI_DIM
+		cancel_bold := !state.delete_confirm.focused
+		delete_bold :=  state.delete_confirm.focused
 
 		// Render CANCEL button
 		screen_set_cell(screen, cancel_start, footer_y, Cell{char = '[', fg = cancel_fg, bold = cancel_bold})
@@ -884,8 +884,8 @@ clear_view_cache :: proc(state: ^TUIState, view: TUIView) {
 // Get item count for current view (updated version with actual data)
 get_view_item_count :: proc(state: ^TUIState) -> int {
 	// When filter has results, use filtered count
-	if len(state.filtered_indices) > 0 {
-		return len(state.filtered_indices)
+	if len(state.filter.indices) > 0 {
+		return len(state.filter.indices)
 	}
 
 	switch state.current_view {
@@ -1096,9 +1096,9 @@ handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 		if state.plugin_tab == PLUGIN_TAB_REGISTRY && state.plugin_registry_cache != nil {
 			items := state.plugin_registry_cache
 			idx   := state.selected_index
-			if len(state.filtered_indices) > 0 {
-				if idx >= 0 && idx < len(state.filtered_indices) {
-					idx = state.filtered_indices[idx]
+			if len(state.filter.indices) > 0 {
+				if idx >= 0 && idx < len(state.filter.indices) {
+					idx = state.filter.indices[idx]
 				} else {
 					return
 				}
@@ -1152,9 +1152,9 @@ handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 			if state.plugin_tab == PLUGIN_TAB_REGISTRY && state.plugin_registry_cache != nil {
 				items := state.plugin_registry_cache
 				idx   := state.selected_index
-				if len(state.filtered_indices) > 0 {
-					if idx >= 0 && idx < len(state.filtered_indices) {
-						idx = state.filtered_indices[idx]
+				if len(state.filter.indices) > 0 {
+					if idx >= 0 && idx < len(state.filter.indices) {
+						idx = state.filter.indices[idx]
 					} else { break }
 				}
 				if idx < 0 || idx >= len(items^) { break }
@@ -1387,21 +1387,21 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 		filter_offset := render_filter_bar(screen, state, len(items))
 		content_start := LIST_ITEM_START_LINE + 1 + filter_offset
 
-		if has_filter && len(state.filtered_indices) > 0 {
+		if has_filter && len(state.filter.indices) > 0 {
 			// Use get_view_visible_height to match the scroll logic's calculation exactly
 			visible_height := get_view_visible_height(state)
 			start := state.scroll_offset
-			end   := min(start + visible_height, len(state.filtered_indices))
+			end   := min(start + visible_height, len(state.filter.indices))
 			for idx in start..<end {
 				y            := content_start + (idx - start)
-				original_idx := state.filtered_indices[idx]
+				original_idx := state.filter.indices[idx]
 				render_list_item(screen, header_x, y, items[original_idx], max_text_width, idx == state.selected_index)
 			}
-			if len(state.filtered_indices) > visible_height {
-				scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
+			if len(state.filter.indices) > visible_height {
+				scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filter.indices))
 				render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
 			}
-		} else if has_filter && len(state.filtered_indices) == 0 {
+		} else if has_filter && len(state.filter.indices) == 0 {
 			render_text_styled(screen, text_x, content_start + 1, "No matches found", TUI_DIM)
 		} else if len(items) == 0 {
 			render_text_styled(screen, text_x, content_start + 1, "No plugins installed", TUI_DIM)
@@ -1479,21 +1479,21 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 	data_start := content_start + 2  // col header + divider
 
-	if has_filter && len(state.filtered_indices) > 0 {
+	if has_filter && len(state.filter.indices) > 0 {
 		visible_height := calculate_visible_height(state.terminal_height) - filter_offset - 3
 		start := state.scroll_offset
-		end   := min(start + visible_height, len(state.filtered_indices))
+		end   := min(start + visible_height, len(state.filter.indices))
 		for list_pos in start..<end {
-			original_idx := state.filtered_indices[list_pos]
+			original_idx := state.filter.indices[list_pos]
 			render_registry_row(screen, header_x, text_x, data_start + (list_pos - start),
 				items[original_idx], col_key_w, col_cat_w, col_sh_w, col_desc_w,
 				list_pos == state.selected_index)
 		}
-		if len(state.filtered_indices) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filtered_indices))
+		if len(state.filter.indices) > visible_height {
+			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filter.indices))
 			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
 		}
-	} else if has_filter && len(state.filtered_indices) == 0 {
+	} else if has_filter && len(state.filter.indices) == 0 {
 		render_text_styled(screen, text_x, data_start + 1, "No matches found", TUI_DIM)
 	} else {
 		visible_height := calculate_visible_height(state.terminal_height) - 3
@@ -1529,20 +1529,20 @@ render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
 	// Render lines live on context.temp_allocator — automatically freed at
 	// end of frame, so we don't need per-line defer delete churn.
 	dry_run_status := "off"
-	if state.settings_dry_run { dry_run_status = "on" }
+	if state.settings.dry_run { dry_run_status = "on" }
 
 	toml_status := "missing"
-	if state.settings_toml_exists {
-		toml_status = state.settings_toml_path
+	if state.settings.toml_exists {
+		toml_status = state.settings.toml_path
 	}
 
 	settings := []string{
-		fmt.tprintf("Version:     %s",    state.settings_version),
-		fmt.tprintf("Shell:       %s",    state.settings_shell),
-		fmt.tprintf("Config Dir:  %s",    state.settings_config_dir),
+		fmt.tprintf("Version:     %s",    state.settings.version),
+		fmt.tprintf("Shell:       %s",    state.settings.shell),
+		fmt.tprintf("Config Dir:  %s",    state.settings.config_dir),
 		fmt.tprintf("wayu.toml:   %s",    toml_status),
-		fmt.tprintf("Backups:     %d",    state.settings_backups),
-		fmt.tprintf("Plugins:     %d enabled", state.settings_plugins),
+		fmt.tprintf("Backups:     %d",    state.settings.backups),
+		fmt.tprintf("Plugins:     %d enabled", state.settings.plugins),
 		fmt.tprintf("Dry-run:     %s",    dry_run_status),
 	}
 

@@ -90,7 +90,7 @@ class BuildProfileTest
   def test_profile_missing_init_core_warns
     print "Test 3: warns when core.ext is missing... "
     # Remove the generated core so we can observe the warning path.
-    Dir.glob("#{@config_dir}/core.*").each { |f| File.delete(f) }
+    Dir.glob("#{@data_dir}/core.*").each { |f| File.delete(f) }
     out, status = run_wayu('build profile')
     ok = status.success? && (out.include?('core.') && out.downcase.include?('not found'))
     if ok

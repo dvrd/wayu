@@ -71,8 +71,8 @@ class CompletionsMultishellTest
     File.write(src, "# dummy bash completion for jj\n")
 
     _, status = run_with_shell('/bin/bash', "--shell bash completions add jj #{src}")
-    expected = "#{@config_dir}/completions/jj.bash-completion"
-    zsh_leak = "#{@config_dir}/completions/_jj"
+    expected = "#{@data_dir}/completions/jj.bash-completion"
+    zsh_leak = "#{@data_dir}/completions/_jj"
 
     if status.success? && File.exist?(expected) && !File.exist?(zsh_leak)
       puts "✓"; @passed += 1
@@ -93,7 +93,7 @@ class CompletionsMultishellTest
     File.write(src, "# dummy fish completion\ncomplete -c jj -s h\n")
 
     _, status = run_with_shell('/usr/bin/fish', "--shell fish completions add jj #{src}")
-    expected = "#{@config_dir}/completions/jj.fish"
+    expected = "#{@data_dir}/completions/jj.fish"
     if status.success? && File.exist?(expected)
       puts "✓"; @passed += 1
     else
@@ -114,8 +114,8 @@ class CompletionsMultishellTest
 
     # User passes 'foo.fish' under zsh — wayu should not rename it to _foo.fish.
     _, status = run_with_shell('/bin/zsh', "--shell zsh completions add foo.fish #{src}")
-    expected = "#{@config_dir}/completions/foo.fish"
-    zsh_leak = "#{@config_dir}/completions/_foo.fish"
+    expected = "#{@data_dir}/completions/foo.fish"
+    zsh_leak = "#{@data_dir}/completions/_foo.fish"
     if status.success? && File.exist?(expected) && !File.exist?(zsh_leak)
       puts "✓"; @passed += 1
     else
@@ -134,14 +134,14 @@ class CompletionsMultishellTest
     # Manually drop a fish-style completion into the dir, then try to remove
     # using only the bare name under zsh. find_existing_completion should
     # find foo.fish even though zsh convention would look for _foo first.
-    File.write("#{@config_dir}/completions/foo.fish", "# manually installed\n")
+    File.write("#{@data_dir}/completions/foo.fish", "# manually installed\n")
     _, status = run_with_shell('/bin/zsh', "--shell zsh completions remove foo")
 
-    if status.success? && !File.exist?("#{@config_dir}/completions/foo.fish")
+    if status.success? && !File.exist?("#{@data_dir}/completions/foo.fish")
       puts "✓"; @passed += 1
     else
       puts "✗"
-      puts "  exit_ok=#{status.success?} file_removed=#{!File.exist?("#{@config_dir}/completions/foo.fish")}"
+      puts "  exit_ok=#{status.success?} file_removed=#{!File.exist?("#{@data_dir}/completions/foo.fish")}"
       @failed += 1
     end
   end

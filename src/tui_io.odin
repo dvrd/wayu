@@ -206,10 +206,15 @@ poll_event :: proc() -> Event {
 
     return nil
 }
+// Field order is layout-optimized (data-oriented): the 8-byte-aligned
+// strings come first, then the 4-byte rune, then the 1-byte bools. This
+// packs Cell into 40 bytes instead of 48 (rune no longer forces 4 bytes of
+// padding before `fg`). Cells are bulk-allocated as a width*height grid and
+// touched every frame, so the 17% shrink improves render-loop cache density.
 Cell :: struct {
-	char:  rune,
 	fg:    string,
 	bg:    string,
+	char:  rune,
 	bold:  bool,
 	dim:   bool,
 }
@@ -751,14 +756,14 @@ get_view_visible_height :: proc(state: ^TUIState) -> int {
 	case .ALIAS_VIEW, .CONSTANTS_VIEW:
 		// filter bar row (when filter is active or has text)
 		filter_offset := 0
-		if state.filter_active || len(state.filter_text) > 0 {
+		if state.filter.active || len(state.filter.text) > 0 {
 			filter_offset = 1
 		}
 		// column header row + its divider (only when items exist)
 		col_header_offset := 0
 		has_items := false
-		if state.filter_active || len(state.filter_text) > 0 {
-			has_items = len(state.filtered_indices) > 0
+		if state.filter.active || len(state.filter.text) > 0 {
+			has_items = len(state.filter.indices) > 0
 		} else {
 			view := state.current_view
 			if state.data_cache[view] != nil {
@@ -775,7 +780,7 @@ get_view_visible_height :: proc(state: ^TUIState) -> int {
 	case:
 		// PATH_VIEW, COMPLETIONS_VIEW, BACKUPS_VIEW
 		filter_offset := 0
-		if state.filter_active || len(state.filter_text) > 0 {
+		if state.filter.active || len(state.filter.text) > 0 {
 			filter_offset = 1
 		}
 		// -1 divider, -1 scroll-indicator row, -filter_offset
