@@ -50,6 +50,11 @@ run_command :: proc(args: []string) -> bool {
 			posix.dup2(devnull, posix.FD(2))
 			posix.close(devnull)
 		}
+		// Belt-and-suspenders with the stdin redirect above: git consults
+		// /dev/tty directly for credential prompts, bypassing stdin, so also
+		// disable terminal prompting outright. Keeps `git clone`/`pull` from
+		// hanging on an unreachable or private remote.
+		posix.setenv("GIT_TERMINAL_PROMPT", "0", true)
 		// Execute — execvp searches $PATH
 		posix.execvp(argv[0], raw_data(argv[:]))
 		// execvp only returns on failure — use _exit to avoid Odin atexit handlers
@@ -116,6 +121,16 @@ capture_command :: proc(args: []string) -> string {
 			posix.dup2(devnull, posix.FD(2))       // stderr → /dev/null
 			posix.close(devnull)
 		}
+		// Detach stdin from the controlling terminal so a captured command can
+		// never block on an interactive prompt. Without this, `git ls-remote`
+		// against an unreachable/private plugin remote hangs forever asking for
+		// credentials. Paired with GIT_TERMINAL_PROMPT=0, git fails fast instead.
+		stdin_null := posix.open("/dev/null", {})  // {} = O_RDONLY (read-only is the default mode)
+		if stdin_null >= 0 {
+			posix.dup2(stdin_null, posix.FD(0))
+			posix.close(stdin_null)
+		}
+		posix.setenv("GIT_TERMINAL_PROMPT", "0", true)
 		posix.execvp(argv[0], raw_data(argv[:]))
 		posix._exit(1)
 	}

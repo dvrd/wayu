@@ -114,16 +114,16 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 	}
 
 	// Handle detail overlay dismissal (and delete confirmation)
-	if state.show_detail {
-		if state.confirm_delete_pending {
+	if state.detail.shown {
+		if state.delete_confirm.pending {
 			// Delete confirmation mode: h/l/Tab toggle focus, Enter confirms focused button, Esc always cancels
 			if key.key == .Escape {
 				clear_detail(state)
 			} else if key.key == .Tab || (key.key == .Char && (key.char == 'h' || key.char == 'l')) {
-				state.confirm_delete_focused_delete = !state.confirm_delete_focused_delete
+				state.delete_confirm.focused = !state.delete_confirm.focused
 				state.needs_refresh = true
 			} else if key.key == .Enter {
-				if state.confirm_delete_focused_delete {
+				if state.delete_confirm.focused {
 					execute_pending_delete(state)
 				} else {
 					clear_detail(state)
@@ -139,7 +139,7 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 	}
 
 	// When filter is active, route ALL input to filter handler
-	if state.filter_active {
+	if state.filter.active {
 		handle_filter_input(state, key)
 		return
 	}
@@ -342,9 +342,9 @@ handle_selection :: proc(state: ^TUIState) {
 			if state.plugin_registry_cache != nil {
 				items := state.plugin_registry_cache
 				idx := state.selected_index
-				if len(state.filtered_indices) > 0 {
-					if idx >= 0 && idx < len(state.filtered_indices) {
-						idx = state.filtered_indices[idx]
+				if len(state.filter.indices) > 0 {
+					if idx >= 0 && idx < len(state.filter.indices) {
+						idx = state.filter.indices[idx]
 					} else {
 						return
 					}
@@ -377,10 +377,10 @@ handle_selection :: proc(state: ^TUIState) {
 
 // Execute a confirmed delete operation. Called when user presses 'y' on the confirm overlay.
 execute_pending_delete :: proc(state: ^TUIState) {
-	if !state.confirm_delete_pending { return }
+	if !state.delete_confirm.pending { return }
 
-	view := state.confirm_delete_view
-	name := state.confirm_delete_name
+	view := state.delete_confirm.view
+	name := state.delete_confirm.name
 	item_count := get_view_item_count(state)
 
 	success := false
@@ -630,14 +630,14 @@ handle_filter_input :: proc(state: ^TUIState, key: KeyEvent) {
 	case .Enter:
 		// Accept filter result and exit filter mode
 		// Keep the current selection position
-		state.filter_active = false
+		state.filter.active = false
 		// Don't clear filter_text or filtered_indices — keep the filtered view
 		state.needs_refresh = true
 
 	case .Backspace:
 		// Remove last character from filter
-		if len(state.filter_text) > 0 {
-			pop(&state.filter_text)
+		if len(state.filter.text) > 0 {
+			pop(&state.filter.text)
 			cache := get_current_cache(state)
 			if cache != nil {
 				apply_filter(state, cache)
@@ -647,7 +647,7 @@ handle_filter_input :: proc(state: ^TUIState, key: KeyEvent) {
 
 	case .Up:
 		// Navigate within filtered results
-		item_count := len(state.filtered_indices)
+		item_count := len(state.filter.indices)
 		if item_count == 0 {
 			item_count = get_view_item_count(state)
 		}
@@ -655,7 +655,7 @@ handle_filter_input :: proc(state: ^TUIState, key: KeyEvent) {
 
 	case .Down:
 		// Navigate within filtered results
-		item_count := len(state.filtered_indices)
+		item_count := len(state.filter.indices)
 		if item_count == 0 {
 			item_count = get_view_item_count(state)
 		}
@@ -664,21 +664,21 @@ handle_filter_input :: proc(state: ^TUIState, key: KeyEvent) {
 	case .Char:
 		if key.char == 'k' && .Ctrl in key.modifiers {
 			// Ctrl+K: navigate up in filter mode
-			item_count := len(state.filtered_indices)
+			item_count := len(state.filter.indices)
 			if item_count == 0 {
 				item_count = get_view_item_count(state)
 			}
 			tui_state_move_selection(state, -1, item_count)
 		} else if key.char == 'j' && .Ctrl in key.modifiers {
 			// Ctrl+J: navigate down in filter mode
-			item_count := len(state.filtered_indices)
+			item_count := len(state.filter.indices)
 			if item_count == 0 {
 				item_count = get_view_item_count(state)
 			}
 			tui_state_move_selection(state, 1, item_count)
 		} else if .Ctrl not_in key.modifiers {
 			// Printable character: add to filter
-			append(&state.filter_text, u8(key.char))
+			append(&state.filter.text, u8(key.char))
 			cache := get_current_cache(state)
 			if cache != nil {
 				apply_filter(state, cache)
@@ -868,54 +868,74 @@ AddForm :: struct {
 	error_message: string,    // points into temp allocator — do NOT delete
 }
 
+// Detail overlay state (the delete-confirm dialog reuses this surface).
+DetailOverlay :: struct {
+	title: string,
+	lines: [dynamic]string,
+	shown: bool,
+}
+
+// Delete-confirmation state — when pending, the detail overlay acts as a confirm dialog.
+DeleteConfirm :: struct {
+	name:    string,   // heap-cloned name to delete (freed on clear)
+	view:    TUIView,
+	pending: bool,
+	focused: bool,     // true = DELETE button focused, false = CANCEL focused
+}
+
+// Inline filter state.
+FilterState :: struct {
+	text:    [dynamic]u8,
+	indices: [dynamic]int,  // indices into the original cache that match
+	active:  bool,
+}
+
+// Transient notification banner state.
+Notification :: struct {
+	message: string,
+	kind:    NotificationKind,
+	frames:  int,  // frames remaining before auto-dismiss
+}
+
+// Settings view cache (loaded once on demand).
+SettingsCache :: struct {
+	shell:       string,
+	config_dir:  string,
+	version:     string,  // wayu binary version
+	toml_path:   string,  // absolute path to wayu.toml
+	backups:     int,     // total backup count across all config files
+	plugins:     int,     // enabled plugin count
+	dry_run:     bool,
+	toml_exists: bool,    // true when that path is a regular file
+	loaded:      bool,    // guard — bridge should only load once per view entry
+}
+
 TUIState :: struct {
-	current_view:    TUIView,
-	previous_view:   TUIView,
+	data_cache:    ^map[TUIView]rawptr,
+	// Per-view cursor memory — remembers selection when navigating away
+	saved_cursors: map[TUIView]ViewCursor,
+	// Add form state — modal overlay for adding new entries
+	add_form:      AddForm,
+	// Static plugin registry rows, loaded once
+	plugin_registry_cache: ^[dynamic]string,
+	// Grouped subsystem state
+	detail:         DetailOverlay,
+	delete_confirm: DeleteConfirm,
+	filter:         FilterState,
+	notify:         Notification,
+	settings:       SettingsCache,
+	// View navigation
+	current_view:   TUIView,
+	previous_view:  TUIView,
+	// Source filter — cycles ALL → WAYU_ACTIVE → WAYU_INACTIVE → EXTERNAL → ALL
+	source_filter:  SourceFilter,
 	selected_index:  int,
 	scroll_offset:   int,
 	terminal_width:  int,
 	terminal_height: int,
+	plugin_tab:      int,  // 0 = Installed, 1 = Registry
 	needs_refresh:   bool,
 	running:         bool,
-	data_cache:      ^map[TUIView]rawptr,
-	// Per-view cursor memory — remembers selection when navigating away
-	saved_cursors:   map[TUIView]ViewCursor,
-	// Detail overlay state
-	show_detail:     bool,
-	detail_title:    string,
-	detail_lines:    [dynamic]string,
-	// Add form state — modal overlay for adding new entries
-	add_form: AddForm,
-	// Delete confirmation state — when set, the detail overlay acts as a confirm dialog
-	confirm_delete_pending:        bool,
-	confirm_delete_view:           TUIView,
-	confirm_delete_name:           string,  // heap-cloned name to delete (freed on clear)
-	confirm_delete_focused_delete: bool,    // true = DELETE button focused, false = CANCEL focused
-	// Plugin view tab state (0 = Installed, 1 = Registry)
-	plugin_tab:            int,
-	plugin_registry_cache: ^[dynamic]string,  // static registry rows, loaded once
-
-	// Inline filter state
-	filter_active:     bool,
-	filter_text:       [dynamic]u8,
-	filtered_indices:  [dynamic]int,  // indices into the original cache that match
-	// Source filter — cycles ALL → WAYU_ACTIVE → WAYU_INACTIVE → EXTERNAL → ALL
-	source_filter:     SourceFilter,
-	// Notification state
-	notification_kind:    NotificationKind,
-	notification_message: string,
-	notification_frames:  int,  // frames remaining before auto-dismiss
-
-	// Settings cache (loaded once on demand)
-	settings_shell:      string,
-	settings_config_dir: string,
-	settings_dry_run:    bool,
-	settings_version:    string,  // wayu binary version
-	settings_toml_path:  string,  // absolute path to wayu.toml
-	settings_toml_exists: bool,   // true when that path is a regular file
-	settings_backups:    int,     // total backup count across all config files
-	settings_plugins:    int,     // enabled plugin count
-	settings_loaded:     bool,    // guard — bridge should only load once per view entry
 }
 
 // Initialize TUI state
@@ -938,7 +958,7 @@ tui_state_init :: proc() -> TUIState {
 tui_state_destroy :: proc(state: ^TUIState) {
 	// Free detail overlay resources
 	clear_detail(state)
-	delete(state.detail_lines)
+	delete(state.detail.lines)
 
 	// Free notification resources
 	clear_notification(state)
@@ -947,14 +967,14 @@ tui_state_destroy :: proc(state: ^TUIState) {
 	clear_registry_cache(state)
 
 	// Free inline filter resources
-	delete(state.filter_text)
-	delete(state.filtered_indices)
+	delete(state.filter.text)
+	delete(state.filter.indices)
 
 	// Free settings cache strings (cloned by tui_bridge_load_settings)
-	if len(state.settings_shell)      > 0 { delete(state.settings_shell) }
-	if len(state.settings_config_dir) > 0 { delete(state.settings_config_dir) }
-	if len(state.settings_version)    > 0 { delete(state.settings_version) }
-	if len(state.settings_toml_path)  > 0 { delete(state.settings_toml_path) }
+	if len(state.settings.shell)      > 0 { delete(state.settings.shell) }
+	if len(state.settings.config_dir) > 0 { delete(state.settings.config_dir) }
+	if len(state.settings.version)    > 0 { delete(state.settings.version) }
+	if len(state.settings.toml_path)  > 0 { delete(state.settings.toml_path) }
 
 	// Free saved cursors map
 	delete(state.saved_cursors)
@@ -982,22 +1002,22 @@ tui_state_destroy :: proc(state: ^TUIState) {
 
 // Clear detail overlay and free its resources (also clears any pending delete)
 clear_detail :: proc(state: ^TUIState) {
-	state.show_detail = false
-	if len(state.detail_title) > 0 {
-		delete(state.detail_title)
+	state.detail.shown = false
+	if len(state.detail.title) > 0 {
+		delete(state.detail.title)
 	}
-	state.detail_title = ""
-	for line in state.detail_lines {
+	state.detail.title = ""
+	for line in state.detail.lines {
 		delete(line)
 	}
-	clear(&state.detail_lines)
+	clear(&state.detail.lines)
 	// Clear pending delete confirmation
-	if state.confirm_delete_pending {
-		if len(state.confirm_delete_name) > 0 {
-			delete(state.confirm_delete_name)
+	if state.delete_confirm.pending {
+		if len(state.delete_confirm.name) > 0 {
+			delete(state.delete_confirm.name)
 		}
-		state.confirm_delete_name = ""
-		state.confirm_delete_pending = false
+		state.delete_confirm.name = ""
+		state.delete_confirm.pending = false
 	}
 	state.needs_refresh = true
 }
@@ -1005,16 +1025,16 @@ clear_detail :: proc(state: ^TUIState) {
 // Show a delete confirmation overlay for the given item
 show_delete_confirmation :: proc(state: ^TUIState, view: TUIView, display_name: string, delete_key: string) {
 	clear_detail(state)
-	state.show_detail = true
-	state.detail_title = strings.clone("DELETE CONFIRMATION")
-	append(&state.detail_lines, strings.clone(display_name))
-	append(&state.detail_lines, strings.clone(""))
-	append(&state.detail_lines, strings.clone("This action cannot be undone."))
-	append(&state.detail_lines, strings.clone("A backup will be created automatically."))
-	state.confirm_delete_pending = true
-	state.confirm_delete_view = view
-	state.confirm_delete_name = strings.clone(delete_key)
-	state.confirm_delete_focused_delete = false  // start focused on CANCEL (safe default)
+	state.detail.shown = true
+	state.detail.title = strings.clone("DELETE CONFIRMATION")
+	append(&state.detail.lines, strings.clone(display_name))
+	append(&state.detail.lines, strings.clone(""))
+	append(&state.detail.lines, strings.clone("This action cannot be undone."))
+	append(&state.detail.lines, strings.clone("A backup will be created automatically."))
+	state.delete_confirm.pending = true
+	state.delete_confirm.view = view
+	state.delete_confirm.name = strings.clone(delete_key)
+	state.delete_confirm.focused = false  // start focused on CANCEL (safe default)
 	state.needs_refresh = true
 }
 
@@ -1057,10 +1077,10 @@ show_add_form :: proc(state: ^TUIState, view: TUIView) {
 // Show detail overlay with title and content lines
 show_detail_overlay :: proc(state: ^TUIState, title: string, lines: []string) {
 	clear_detail(state)
-	state.show_detail = true
-	state.detail_title = strings.clone(title)
+	state.detail.shown = true
+	state.detail.title = strings.clone(title)
 	for line in lines {
-		append(&state.detail_lines, strings.clone(line))
+		append(&state.detail.lines, strings.clone(line))
 	}
 	state.needs_refresh = true
 }
@@ -1093,7 +1113,7 @@ tui_state_goto_view :: proc(state: ^TUIState, view: TUIView) {
 	// Invalidate settings cache on entry so backup/plugin counters reflect
 	// state changes that happened while the user was in other views.
 	if view == .SETTINGS_VIEW {
-		state.settings_loaded = false
+		state.settings.loaded = false
 	}
 	restore_cursor(state, view)
 	state.needs_refresh = true
@@ -1143,18 +1163,18 @@ tui_state_move_selection :: proc(state: ^TUIState, delta: int, item_count: int) 
 
 // Activate inline filter mode
 activate_filter :: proc(state: ^TUIState) {
-	state.filter_active = true
-	clear(&state.filter_text)
-	clear(&state.filtered_indices)
+	state.filter.active = true
+	clear(&state.filter.text)
+	clear(&state.filter.indices)
 	state.selected_index = 0
 	state.scroll_offset = 0
 }
 
 // Deactivate inline filter mode
 deactivate_filter :: proc(state: ^TUIState) {
-	state.filter_active = false
-	clear(&state.filter_text)
-	clear(&state.filtered_indices)
+	state.filter.active = false
+	clear(&state.filter.text)
+	clear(&state.filter.indices)
 	state.selected_index = 0
 	state.scroll_offset = 0
 }
@@ -1251,9 +1271,9 @@ parse_source_token :: proc(text: string) -> (remainder: string, source: SourceFi
 // overrides state.source_filter for this pass so users can combine `s` cycling
 // with inline typing without fighting each other.
 apply_filter :: proc(state: ^TUIState, items: []string) {
-	clear(&state.filtered_indices)
+	clear(&state.filter.indices)
 
-	rem_text, parsed_src, has_src := parse_source_token(string(state.filter_text[:]))
+	rem_text, parsed_src, has_src := parse_source_token(string(state.filter.text[:]))
 	effective_src := state.source_filter
 	if has_src { effective_src = parsed_src }
 	rem_bytes := transmute([]u8)rem_text
@@ -1261,11 +1281,11 @@ apply_filter :: proc(state: ^TUIState, items: []string) {
 	for item, i in items {
 		if !matches_source(item, effective_src) { continue }
 		if matches_filter(item, rem_bytes) {
-			append(&state.filtered_indices, i)
+			append(&state.filter.indices, i)
 		}
 	}
-	if state.selected_index >= len(state.filtered_indices) {
-		state.selected_index = max(0, len(state.filtered_indices) - 1)
+	if state.selected_index >= len(state.filter.indices) {
+		state.selected_index = max(0, len(state.filter.indices) - 1)
 	}
 	state.scroll_offset = 0
 }
@@ -1286,7 +1306,7 @@ cycle_source_filter :: proc(state: ^TUIState, items: []string) {
 // True when any filter (text or source) is active — used by views to decide
 // whether to render through filtered_indices or over the raw cache.
 has_any_filter :: proc(state: ^TUIState) -> bool {
-	return state.filter_active || len(state.filter_text) > 0 || state.source_filter != .ALL
+	return state.filter.active || len(state.filter.text) > 0 || state.source_filter != .ALL
 }
 
 // Short label for the current source filter — used in footer/header hints.
@@ -1331,31 +1351,31 @@ NOTIFICATION_FRAMES_ERROR   :: 200  // ~4 seconds at 50fps
 // Set a notification message with auto-dismiss countdown
 set_notification :: proc(state: ^TUIState, kind: NotificationKind, message: string) {
 	clear_notification(state)
-	state.notification_kind = kind
-	state.notification_message = strings.clone(message)
+	state.notify.kind = kind
+	state.notify.message = strings.clone(message)
 	if kind == .SUCCESS {
-		state.notification_frames = NOTIFICATION_FRAMES_SUCCESS
+		state.notify.frames = NOTIFICATION_FRAMES_SUCCESS
 	} else {
-		state.notification_frames = NOTIFICATION_FRAMES_ERROR
+		state.notify.frames = NOTIFICATION_FRAMES_ERROR
 	}
 	state.needs_refresh = true
 }
 
 // Clear the current notification and free its message
 clear_notification :: proc(state: ^TUIState) {
-	if len(state.notification_message) > 0 {
-		delete(state.notification_message)
+	if len(state.notify.message) > 0 {
+		delete(state.notify.message)
 	}
-	state.notification_message = ""
-	state.notification_kind = .NONE
-	state.notification_frames = 0
+	state.notify.message = ""
+	state.notify.kind = .NONE
+	state.notify.frames = 0
 }
 
 // Tick the notification countdown; clears when expired
 tick_notification :: proc(state: ^TUIState) {
-	if state.notification_kind == .NONE { return }
-	state.notification_frames -= 1
-	if state.notification_frames <= 0 {
+	if state.notify.kind == .NONE { return }
+	state.notify.frames -= 1
+	if state.notify.frames <= 0 {
 		clear_notification(state)
 		state.needs_refresh = true
 	}
@@ -1916,21 +1936,21 @@ tui_load_plugins :: proc(state: ^TUIState) {
 }
 
 tui_load_settings :: proc(state: ^TUIState) {
-	if state.settings_loaded { return }
+	if state.settings.loaded { return }
 
-	if len(state.settings_shell)      > 0 { delete(state.settings_shell) }
-	if len(state.settings_config_dir) > 0 { delete(state.settings_config_dir) }
-	if len(state.settings_version)    > 0 { delete(state.settings_version) }
-	if len(state.settings_toml_path)  > 0 { delete(state.settings_toml_path) }
+	if len(state.settings.shell)      > 0 { delete(state.settings.shell) }
+	if len(state.settings.config_dir) > 0 { delete(state.settings.config_dir) }
+	if len(state.settings.version)    > 0 { delete(state.settings.version) }
+	if len(state.settings.toml_path)  > 0 { delete(state.settings.toml_path) }
 
-	state.settings_shell      = strings.clone(get_shell_name(wayu.shell))
-	state.settings_config_dir = strings.clone(wayu.config)
-	state.settings_dry_run    = wayu.dry_run
-	state.settings_version    = strings.clone(VERSION)
+	state.settings.shell      = strings.clone(get_shell_name(wayu.shell))
+	state.settings.config_dir = strings.clone(wayu.config)
+	state.settings.dry_run    = wayu.dry_run
+	state.settings.version    = strings.clone(VERSION)
 
 	toml_full := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
-	state.settings_toml_path   = toml_full
-	state.settings_toml_exists = os.exists(toml_full)
+	state.settings.toml_path   = toml_full
+	state.settings.toml_exists = os.exists(toml_full)
 
 	total_backups := 0
 	backup_targets := []string{wayu.path_file, wayu.alias_file, wayu.constants_file}
@@ -1945,7 +1965,7 @@ tui_load_settings :: proc(state: ^TUIState) {
 		}
 		delete(backups)
 	}
-	state.settings_backups = total_backups
+	state.settings.backups = total_backups
 
 	enabled_plugins := 0
 	config, cfg_ok := read_plugin_config_json()
@@ -1955,9 +1975,9 @@ tui_load_settings :: proc(state: ^TUIState) {
 		}
 		cleanup_plugin_config_json(&config)
 	}
-	state.settings_plugins = enabled_plugins
+	state.settings.plugins = enabled_plugins
 
-	state.settings_loaded = true
+	state.settings.loaded = true
 }
 
 tui_load_registry :: proc(state: ^TUIState) {
@@ -2205,7 +2225,7 @@ render_box_styled :: proc(screen: ^Screen, x, y, width, height: int, fg: string 
 
 // Render notification bar below the main content box
 render_notification :: proc(state: ^TUIState, screen: ^Screen) {
-	if state.notification_kind == .NONE {
+	if state.notify.kind == .NONE {
 		return
 	}
 
@@ -2217,7 +2237,7 @@ render_notification :: proc(state: ^TUIState, screen: ^Screen) {
 	// Choose color and prefix based on notification kind
 	color: string
 	prefix: string
-	if state.notification_kind == .SUCCESS {
+	if state.notify.kind == .SUCCESS {
 		color = TUI_SUCCESS
 		prefix = " ✓ "
 	} else {
@@ -2226,7 +2246,7 @@ render_notification :: proc(state: ^TUIState, screen: ^Screen) {
 	}
 
 	// Build display text
-	text := fmt.tprintf("%s%s", prefix, state.notification_message)
+	text := fmt.tprintf("%s%s", prefix, state.notify.message)
 
 	// Truncate to screen width (rune-aware to avoid splitting multi-byte chars)
 	max_width := screen.width - BORDER_LEFT_WIDTH - CONTENT_PADDING_LEFT

@@ -12,7 +12,7 @@ class PluginIntegrationTest
 
   def initialize
     setup_test_env
-    @plugins_dir = "#{@config_dir}/plugins"
+    @plugins_dir = "#{@data_dir}/plugins"
   end
 
   def run
@@ -228,7 +228,7 @@ class PluginIntegrationTest
     print "Test 9: Plugin check with no plugins... "
 
     # Reset plugins to empty state for this test
-    plugins_json = "#{@config_dir}/plugins.json"
+    plugins_json = "#{@data_dir}/plugins.json"
     File.write(plugins_json, JSON.generate({"version" => "1.0", "lastUpdated" => Time.now.utc.iso8601, "plugins" => []}))
     FileUtils.rm_rf(Dir.glob("#{@plugins_dir}/*/"))
 
@@ -288,7 +288,7 @@ class PluginIntegrationTest
     File.write("#{plugin_dir}/specific-update-test.plugin.zsh", "# Specific update")
 
     # Register plugin in plugins.json
-    plugins_json = "#{@config_dir}/plugins.json"
+    plugins_json = "#{@data_dir}/plugins.json"
     config = JSON.parse(File.read(plugins_json)) rescue {"version" => "1.0", "lastUpdated" => Time.now.utc.iso8601, "plugins" => []}
     config["plugins"] << {"name" => "specific-update-test", "url" => "https://github.com/test/specific-update-test.git", "enabled" => true, "shell" => "zsh", "installedPath" => plugin_dir, "entryFile" => "specific-update-test.plugin.zsh", "git" => {"branch" => "main", "commit" => "abc123", "lastChecked" => Time.now.utc.iso8601}, "lastUpdated" => Time.now.utc.iso8601}
     File.write(plugins_json, JSON.generate(config))
@@ -311,7 +311,7 @@ class PluginIntegrationTest
     print "Test 12: Plugin update --all flag (dry-run)... "
 
     # Create multiple mock plugins and register them
-    plugins_json = "#{@config_dir}/plugins.json"
+    plugins_json = "#{@data_dir}/plugins.json"
     config = JSON.parse(File.read(plugins_json)) rescue {"version" => "1.0", "lastUpdated" => Time.now.utc.iso8601, "plugins" => []}
     ['plugin-a', 'plugin-b'].each do |name|
       plugin_dir = "#{@plugins_dir}/#{name}"
@@ -437,7 +437,7 @@ class PluginIntegrationTest
     }
 
     # Write JSON config
-    json_file = "#{@config_dir}/plugins.json"
+    json_file = "#{@data_dir}/plugins.json"
     File.write(json_file, JSON.pretty_generate(json_config))
 
     # Run enable command
@@ -509,7 +509,7 @@ class PluginIntegrationTest
     }
 
     # Write JSON config
-    json_file = "#{@config_dir}/plugins.json"
+    json_file = "#{@data_dir}/plugins.json"
     File.write(json_file, JSON.pretty_generate(json_config))
 
     # Run disable command
@@ -581,7 +581,7 @@ class PluginIntegrationTest
     }
 
     # Write JSON config
-    json_file = "#{@config_dir}/plugins.json"
+    json_file = "#{@data_dir}/plugins.json"
     File.write(json_file, JSON.pretty_generate(json_config))
 
     # Run enable on already-enabled plugin
@@ -647,7 +647,7 @@ class PluginIntegrationTest
     }
 
     # Write JSON config
-    json_file = "#{@config_dir}/plugins.json"
+    json_file = "#{@data_dir}/plugins.json"
     File.write(json_file, JSON.pretty_generate(json_config))
 
     # Run disable on already-disabled plugin
@@ -740,7 +740,7 @@ class PluginIntegrationTest
     }
 
     # Write JSON config
-    json_file = "#{@config_dir}/plugins.json"
+    json_file = "#{@data_dir}/plugins.json"
     File.write(json_file, JSON.pretty_generate(json_config))
 
     # Run list command
@@ -801,7 +801,7 @@ class PluginIntegrationTest
     }
 
     # Write JSON config
-    json_file = "#{@config_dir}/plugins.json"
+    json_file = "#{@data_dir}/plugins.json"
     File.write(json_file, JSON.pretty_generate(json_config))
 
     # Run priority command to change priority to 50
@@ -895,7 +895,7 @@ class PluginIntegrationTest
     }
 
     # Write JSON config
-    json_file = "#{@config_dir}/plugins.json"
+    json_file = "#{@data_dir}/plugins.json"
     File.write(json_file, JSON.pretty_generate(json_config))
 
     # Run list command
@@ -1007,14 +1007,14 @@ class PluginIntegrationTest
     }
 
     # Write JSON config
-    json_file = "#{@config_dir}/plugins.json"
+    json_file = "#{@data_dir}/plugins.json"
     File.write(json_file, JSON.pretty_generate(json_config))
 
     # Trigger shell loader generation (enable regenerates the file)
     run_wayu("plugin enable plugin-high")
 
     # Read generated plugins.zsh file
-    plugins_file = "#{@config_dir}/plugins.zsh"
+    plugins_file = "#{@data_dir}/plugins.zsh"
     if File.exist?(plugins_file)
       loader_content = File.read(plugins_file)
 
@@ -1139,14 +1139,14 @@ class PluginIntegrationTest
     }
 
     # Write JSON config
-    json_file = "#{@config_dir}/plugins.json"
+    json_file = "#{@data_dir}/plugins.json"
     File.write(json_file, JSON.pretty_generate(json_config))
 
     # Trigger loader generation (enable regenerates the file)
     run_wayu("plugin enable conflict-plugin-a")
 
     # Read generated plugins.zsh file and check for conflict warnings
-    plugins_file = "#{@config_dir}/plugins.zsh"
+    plugins_file = "#{@data_dir}/plugins.zsh"
     if File.exist?(plugins_file)
       loader_content = File.read(plugins_file)
 
@@ -1213,14 +1213,14 @@ class PluginIntegrationTest
       ]
     }
 
-    json_file = "#{@config_dir}/plugins.json"
+    json_file = "#{@data_dir}/plugins.json"
     File.write(json_file, JSON.pretty_generate(json_config))
 
     # Trigger loader regeneration with a clean, conflict-free config
     run_wayu("plugin enable unique-plugin")
 
     # Read generated plugins.zsh file
-    plugins_file = "#{@config_dir}/plugins.zsh"
+    plugins_file = "#{@data_dir}/plugins.zsh"
     if File.exist?(plugins_file)
       loader_content = File.read(plugins_file)
 

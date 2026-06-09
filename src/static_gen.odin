@@ -7,6 +7,7 @@ package wayu
 
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:time"
 
@@ -201,14 +202,12 @@ static_generate_plugins :: proc(plugins: []TomlPlugin) -> string {
 	copy(sorted_plugins, plugins)
 	defer delete(sorted_plugins)
 
-	// Bubble sort by priority
-	for i := 0; i < len(sorted_plugins); i += 1 {
-		for j := i + 1; j < len(sorted_plugins); j += 1 {
-			if sorted_plugins[j].priority < sorted_plugins[i].priority {
-				sorted_plugins[i], sorted_plugins[j] = sorted_plugins[j], sorted_plugins[i]
-			}
-		}
-	}
+	// Stable sort by priority (lower = earlier). Stable keeps equal-priority
+	// plugins in their original insertion order, which the previous hand-rolled
+	// selection sort did not guarantee.
+	slice.stable_sort_by(sorted_plugins, proc(a, b: TomlPlugin) -> bool {
+		return a.priority < b.priority
+	})
 
 	for plugin in sorted_plugins {
 		if len(plugin.description) > 0 {

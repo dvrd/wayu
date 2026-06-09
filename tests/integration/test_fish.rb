@@ -12,8 +12,8 @@ class FishIntegrationTest
   def initialize
     setup_test_env
     @toml_file = "#{@config_dir}/wayu.toml"
-    @init_core = "#{@config_dir}/core.fish"
-    @static    = "#{@config_dir}/wayu_static.fish"
+    @init_core = "#{@data_dir}/core.fish"
+    @static    = "#{@data_dir}/wayu_static.fish"
   end
 
   def run
@@ -144,7 +144,7 @@ class FishIntegrationTest
     Open3.capture3(env, "#{@wayu_bin} template apply developer")
     Open3.capture3(env, "#{@wayu_bin} build eval")
     toml = File.read("#{scratch}/.config/wayu/wayu.toml")
-    init = File.read("#{scratch}/.config/wayu/core.fish")
+    init = File.read("#{scratch}/.local/share/wayu/core.fish")
     toml_ok = toml.include?('g = "git"') && toml.include?('EDITOR = "code --wait"') &&
               toml.include?('= "/opt/homebrew/bin"')
     fish_native = init.include?("alias g 'git'") && init.include?('set -gx EDITOR') &&
@@ -166,8 +166,8 @@ class FishIntegrationTest
     src = "#{@config_dir}/src_completion.fish"
     File.write(src, "# dummy fish completion\ncomplete -c foo -s h\n")
     _, status = run_fish("completions add foo #{src}")
-    target = "#{@config_dir}/completions/foo.fish"
-    zsh_target = "#{@config_dir}/completions/_foo"
+    target = "#{@data_dir}/completions/foo.fish"
+    zsh_target = "#{@data_dir}/completions/_foo"
     if status.success? && File.exist?(target) && !File.exist?(zsh_target)
       puts "✓"; @passed += 1
     else
@@ -185,7 +185,7 @@ class FishIntegrationTest
     FileUtils.mkdir_p("#{scratch}/.config")
     env = ENV.to_h.merge('HOME' => scratch, 'SHELL' => '/usr/bin/fish')
     Open3.capture3(env, "#{@wayu_bin} init --shell fish")
-    core = "#{scratch}/.config/wayu/core.fish"
+    core = "#{scratch}/.local/share/wayu/core.fish"
     # After fresh init, core.fish is generated but empty of user config.
     baseline_has_alias = File.exist?(core) && File.read(core).include?("alias gg")
     Open3.capture3(env, "#{@wayu_bin} alias add gg 'git status'")
@@ -209,8 +209,8 @@ class FishIntegrationTest
   def test_init_fish_prefers_init_core
     print "Test 10: init.fish fast-paths through core.fish... "
     body = File.read(@init_core.sub('core.fish', 'init.fish'))
-    if body.include?('if test -f "$WAYU_CONFIG_DIR/core.fish"') &&
-       body.include?('source "$WAYU_CONFIG_DIR/core.fish"')
+    if body.include?('if test -f "$WAYU_DATA_DIR/core.fish"') &&
+       body.include?('source "$WAYU_DATA_DIR/core.fish"')
       puts "✓"; @passed += 1
     else
       puts "✗"

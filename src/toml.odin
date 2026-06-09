@@ -270,7 +270,7 @@ strip_toml_section :: proc(content: string, section: string) -> string {
 	header := fmt.aprintf("[%s]", section)
 	defer delete(header)
 
-	builder := strings.builder_make(len(content))
+	builder := strings.builder_make(0, len(content))
 	defer strings.builder_destroy(&builder)
 
 	it := make_line_iter(content)

@@ -55,22 +55,22 @@ test_cycle_source_filter_rotates_and_reapplies :: proc(t: ^testing.T) {
 	// Start: ALL → WAYU_ACTIVE (1 match)
 	wayu.cycle_source_filter(&state, items)
 	testing.expect(t, state.source_filter == .WAYU_ACTIVE, "First cycle should land on WAYU_ACTIVE")
-	testing.expect(t, len(state.filtered_indices) == 1, "WAYU_ACTIVE should match exactly 1 item")
+	testing.expect(t, len(state.filter.indices) == 1, "WAYU_ACTIVE should match exactly 1 item")
 
 	// WAYU_ACTIVE → WAYU_INACTIVE (1 match)
 	wayu.cycle_source_filter(&state, items)
 	testing.expect(t, state.source_filter == .WAYU_INACTIVE, "Second cycle should land on WAYU_INACTIVE")
-	testing.expect(t, len(state.filtered_indices) == 1, "WAYU_INACTIVE should match exactly 1 item")
+	testing.expect(t, len(state.filter.indices) == 1, "WAYU_INACTIVE should match exactly 1 item")
 
 	// WAYU_INACTIVE → EXTERNAL (2 matches; separator excluded)
 	wayu.cycle_source_filter(&state, items)
 	testing.expect(t, state.source_filter == .EXTERNAL, "Third cycle should land on EXTERNAL")
-	testing.expect(t, len(state.filtered_indices) == 2, "EXTERNAL should match 2 items, separator excluded")
+	testing.expect(t, len(state.filter.indices) == 2, "EXTERNAL should match 2 items, separator excluded")
 
 	// EXTERNAL → ALL (wraps — filtered_indices includes everything)
 	wayu.cycle_source_filter(&state, items)
 	testing.expect(t, state.source_filter == .ALL, "Fourth cycle should wrap to ALL")
-	testing.expect(t, len(state.filtered_indices) == len(items), "ALL should include every item including separator")
+	testing.expect(t, len(state.filter.indices) == len(items), "ALL should include every item including separator")
 }
 
 @(test)
@@ -124,35 +124,35 @@ test_apply_filter_respects_inline_source_token :: proc(t: ^testing.T) {
 
 	// Typing `source:external` into the filter must narrow to the two
 	// externals without needing to press `s`.
-	append(&state.filter_text, 's', 'o', 'u', 'r', 'c', 'e', ':', 'e', 'x', 't', 'e', 'r', 'n', 'a', 'l')
+	append(&state.filter.text, 's', 'o', 'u', 'r', 'c', 'e', ':', 'e', 'x', 't', 'e', 'r', 'n', 'a', 'l')
 	wayu.apply_filter(&state, items)
 	testing.expect(
 		t,
-		len(state.filtered_indices) == 2,
+		len(state.filter.indices) == 2,
 		"source:external should match exactly the 2 external items",
 	)
 
 	// Extend with a text term: `source:external bin` — both externals contain `bin`.
-	clear(&state.filter_text)
+	clear(&state.filter.text)
 	for b in "source:external bin" {
-		append(&state.filter_text, u8(b))
+		append(&state.filter.text, u8(b))
 	}
 	wayu.apply_filter(&state, items)
 	testing.expect(
 		t,
-		len(state.filtered_indices) == 2,
+		len(state.filter.indices) == 2,
 		"source:external + bin should still match the 2 externals",
 	)
 
 	// Narrow further: `source:external usr` — only the `/usr/local/bin` survives.
-	clear(&state.filter_text)
+	clear(&state.filter.text)
 	for b in "source:external usr" {
-		append(&state.filter_text, u8(b))
+		append(&state.filter.text, u8(b))
 	}
 	wayu.apply_filter(&state, items)
 	testing.expect(
 		t,
-		len(state.filtered_indices) == 1,
+		len(state.filter.indices) == 1,
 		"source:external + usr should narrow to 1 item",
 	)
 }

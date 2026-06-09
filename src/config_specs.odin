@@ -168,12 +168,7 @@ parse_path_line :: proc(line: string) -> (ConfigEntry, bool) {
 // Validate path input for interactive mode
 validate_path_input :: proc(value: string) -> InputValidation {
 	if len(value) == 0 {
-		return InputValidation{
-			valid = false,
-			error_message = "",
-			warning = "",
-			info = "",
-		}
+		return input_validation_empty()
 	}
 
 	result := validate_path(value)
@@ -181,20 +176,10 @@ validate_path_input :: proc(value: string) -> InputValidation {
 	if !result.valid {
 		// result.error_message is already heap-allocated by validate_path (via fmt.aprintf).
 		// Move ownership directly — no clone needed, avoids a redundant allocation.
-		return InputValidation{
-			valid = false,
-			error_message = result.error_message,
-			warning = "",
-			info = "",
-		}
+		return input_validation_error(result.error_message)
 	}
 
-	return InputValidation{
-		valid = true,
-		error_message = "",
-		warning = "",
-		info = "",
-	}
+	return input_validation_ok()
 }
 
 // ============================================================================
@@ -266,12 +251,7 @@ parse_alias_line :: proc(line: string) -> (ConfigEntry, bool) {
 // Validate alias name input
 validate_alias_name_input :: proc(value: string) -> InputValidation {
 	if len(value) == 0 {
-		return InputValidation{
-			valid = false,
-			error_message = "",
-			warning = "",
-			info = "",
-		}
+		return input_validation_empty()
 	}
 
 	// Use existing validate_identifier function
@@ -280,50 +260,25 @@ validate_alias_name_input :: proc(value: string) -> InputValidation {
 	if !result.valid {
 		// result.error_message is already heap-allocated by validate_identifier (via fmt.aprintf).
 		// Move ownership directly — no clone needed.
-		return InputValidation{
-			valid = false,
-			error_message = result.error_message,
-			warning = "",
-			info = "",
-		}
+		return input_validation_error(result.error_message)
 	}
 
-	return InputValidation{
-		valid = true,
-		error_message = "",
-		warning = "",
-		info = "",
-	}
+	return input_validation_ok()
 }
 
 // Validate alias command input
 validate_alias_command_input :: proc(value: string) -> InputValidation {
 	if len(value) == 0 {
-		return InputValidation{
-			valid = false,
-			error_message = "",
-			warning = "",
-			info = "",
-		}
+		return input_validation_empty()
 	}
 
 	// Command just needs to be non-empty (trimmed)
 	trimmed := strings.trim_space(value)
 	if len(trimmed) == 0 {
-		return InputValidation{
-			valid = false,
-			error_message = "",
-			warning = "",
-			info = "",
-		}
+		return input_validation_empty()
 	}
 
-	return InputValidation{
-		valid = true,
-		error_message = "",
-		warning = "",
-		info = "",
-	}
+	return input_validation_ok()
 }
 
 // ============================================================================
@@ -404,12 +359,7 @@ parse_constant_line :: proc(line: string) -> (ConfigEntry, bool) {
 // Validate constant name input
 validate_constant_name_input :: proc(value: string) -> InputValidation {
 	if len(value) == 0 {
-		return InputValidation{
-			valid = false,
-			error_message = "",
-			warning = "",
-			info = "",
-		}
+		return input_validation_empty()
 	}
 
 	// Use existing validate_identifier function
@@ -418,12 +368,7 @@ validate_constant_name_input :: proc(value: string) -> InputValidation {
 	if !result.valid {
 		// result.error_message is already heap-allocated by validate_identifier (via fmt.aprintf).
 		// Move ownership directly — no clone needed.
-		return InputValidation{
-			valid = false,
-			error_message = result.error_message,
-			warning = "",
-			info = "",
-		}
+		return input_validation_error(result.error_message)
 	}
 
 	// Check for lowercase warning
@@ -436,39 +381,19 @@ validate_constant_name_input :: proc(value: string) -> InputValidation {
 	}
 
 	if has_lower {
-		return InputValidation{
-			valid = true,
-			error_message = "",
-			warning = strings.clone("Convention: use UPPER_CASE for constants"),
-			info = "",
-		}
+		return input_validation_warn(strings.clone("Convention: use UPPER_CASE for constants"))
 	}
 
-	return InputValidation{
-		valid = true,
-		error_message = "",
-		warning = "",
-		info = "",
-	}
+	return input_validation_ok()
 }
 
 // Validate constant value input
 validate_constant_value_input :: proc(value: string) -> InputValidation {
 	if len(value) == 0 {
-		return InputValidation{
-			valid = false,
-			error_message = "",
-			warning = "",
-			info = "",
-		}
+		return input_validation_empty()
 	}
 
 	// Value just needs to be non-empty for interactive input
 	// Full validation happens during submit
-	return InputValidation{
-		valid = true,
-		error_message = "",
-		warning = "",
-		info = "",
-	}
+	return input_validation_ok()
 }

@@ -903,7 +903,11 @@ toml_path_add :: proc(path: string, name_hint: string = "") -> bool {
 	}
 
 	if !create_backup_cli(config_file) { return false }
-	return safe_write_file(config_file, transmute([]byte)new_content)
+	wrote := safe_write_file(config_file, transmute([]byte)new_content)
+	// Invalidate the shared TOML cache so subsequent in-process reads see the
+	// new content (mirrors the constants path which regenerates after writing).
+	if wrote { clear_toml_content_cache() }
+	return wrote
 }
 
 // Remove a path. `target` matches against either a key (`local_bin`) or a
@@ -963,7 +967,11 @@ toml_path_remove :: proc(target: string) -> bool {
 	}
 
 	if !create_backup_cli(config_file) { return false }
-	return safe_write_file(config_file, transmute([]byte)new_content)
+	wrote := safe_write_file(config_file, transmute([]byte)new_content)
+	// Invalidate the shared TOML cache so subsequent in-process reads see the
+	// new content (mirrors the constants path which regenerates after writing).
+	if wrote { clear_toml_content_cache() }
+	return wrote
 }
 
 // Insertion-sort a small slice of TomlPathEntry by key. We want stable, no deps.

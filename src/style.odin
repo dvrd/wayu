@@ -24,6 +24,12 @@ Style :: struct {
 	blink: bool,
 	reverse: bool,
 	faint: bool,
+	// border_* bools grouped here with the other style bools so all 12 share
+	// 8-byte slots instead of stranding 4 bytes of padding before border_fg.
+	border_top: bool,
+	border_right: bool,
+	border_bottom: bool,
+	border_left: bool,
 	padding_top: int,
 	padding_right: int,
 	padding_bottom: int,
@@ -39,10 +45,6 @@ Style :: struct {
 	align_horizontal: Alignment,
 	align_vertical: Alignment,
 	border_style: BorderStyle,
-	border_top: bool,
-	border_right: bool,
-	border_bottom: bool,
-	border_left: bool,
 	border_fg: string,
 	border_bg: string,
 	foreground_dark: string,
