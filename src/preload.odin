@@ -85,8 +85,8 @@ INIT_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 # This file loads all configuration modules in the correct order
 
 # Determine directories (supports overrides for testing)
-: ${WAYU_CONFIG_DIR:=$wayu.home/.config/wayu}
-: ${WAYU_DATA_DIR:=$wayu.home/.local/share/wayu}
+: ${WAYU_CONFIG_DIR:=$HOME/.config/wayu}
+: ${WAYU_DATA_DIR:=$HOME/.local/share/wayu}
 
 # === Fast path: compiled core from wayu.toml ===
 # After wayu v3.10 wayu.toml is the source of truth. 'wayu path/alias/
@@ -112,7 +112,7 @@ source "$WAYU_DATA_DIR/path.zsh"
 
 # === 3. Functions Loading ===
 # Load custom shell functions from the functions directory
-for f in "$WAYU_DATA_DIR/functions"/*(N); do
+for f in "$WAYU_CONFIG_DIR/functions"/*(N); do
     [[ -f "$f" ]] && source "$f"
 done
 
@@ -178,7 +178,7 @@ EXTRA_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 # Common uses:
 #   - Conditional hooks (chpwd, preexec, precmd)
 #   - Third-party tool env loaders (cargo, bun, conda, etc.)
-#   - Custom functions that don't belong in ~/.local/share/wayu/functions
+#   - Custom functions that don't belong in ~/.config/wayu/functions
 #   - Completion fpath additions
 #   - Ad-hoc exports and settings
 `
@@ -245,8 +245,8 @@ INIT_TEMPLATE_BASH :: `#!/usr/bin/env bash
 # This file loads all configuration modules in the correct order
 
 # Determine directories (supports overrides for testing)
-: ${WAYU_CONFIG_DIR:=$wayu.home/.config/wayu}
-: ${WAYU_DATA_DIR:=$wayu.home/.local/share/wayu}
+: ${WAYU_CONFIG_DIR:=$HOME/.config/wayu}
+: ${WAYU_DATA_DIR:=$HOME/.local/share/wayu}
 
 # === Fast path: compiled core from wayu.toml ===
 # See the zsh template comment for rationale.
@@ -269,8 +269,8 @@ source "$WAYU_DATA_DIR/path.bash"
 
 # === 3. Functions Loading ===
 # Load custom shell functions from the functions directory
-if [ -d "$WAYU_DATA_DIR/functions" ]; then
-    for f in "$WAYU_DATA_DIR/functions"/*; do
+if [ -d "$WAYU_CONFIG_DIR/functions" ]; then
+    for f in "$WAYU_CONFIG_DIR/functions"/*; do
         if [ -f "$f" ]; then
             source "$f"
         fi
@@ -352,7 +352,7 @@ EXTRA_TEMPLATE_BASH :: `#!/usr/bin/env bash
 #
 # Common uses:
 #   - Third-party tool env loaders (cargo, bun, conda, etc.)
-#   - Custom functions that don't belong in ~/.local/share/wayu/functions
+#   - Custom functions that don't belong in ~/.config/wayu/functions
 #   - Ad-hoc exports and settings
 `
 
@@ -429,8 +429,8 @@ source "$WAYU_DATA_DIR/path.fish"
 
 # === 3. Functions Loading ===
 # Load custom shell functions from the functions directory
-if test -d "$WAYU_DATA_DIR/functions"
-    for f in $WAYU_DATA_DIR/functions/*.fish
+if test -d "$WAYU_CONFIG_DIR/functions"
+    for f in $WAYU_CONFIG_DIR/functions/*.fish
         if test -f "$f"
             source "$f"
         end
@@ -502,7 +502,7 @@ EXTRA_TEMPLATE_FISH :: `#!/usr/bin/env fish
 #
 # Common uses:
 #   - Third-party tool env loaders (cargo, bun, conda, etc.)
-#   - Custom functions that don't belong in ~/.local/share/wayu/functions
+#   - Custom functions that don't belong in ~/.config/wayu/functions
 #   - Ad-hoc exports and settings
 `
 

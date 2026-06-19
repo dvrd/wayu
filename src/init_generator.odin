@@ -328,6 +328,17 @@ defer {
 	fmt.sbprintln(&builder, "[ -f \"$HOME/.local/share/wayu/plugins/config.zsh\" ] && source \"$HOME/.local/share/wayu/plugins/config.zsh\"")
 	fmt.sbprintln(&builder)
 
+	// Custom shell functions (user-authored, loaded immediately so they are
+	// available in interactive and non-interactive shells alike). Use a
+	// shell-appropriate glob: zsh's (N) null-glob qualifier vs bash's nullglob.
+	fmt.sbprintln(&builder, "# === Functions ===")
+	if wayu.shell == .ZSH {
+		fmt.sbprintfln(&builder, "for f in \"%s/functions\"/*(N); do [[ -f \"$f\" ]] && source \"$f\"; done", wayu.config)
+	} else {
+		fmt.sbprintfln(&builder, "if [ -d \"%s/functions\" ]; then for f in \"%s/functions\"/*; do [ -f \"$f\" ] && source \"$f\"; done; fi", wayu.config, wayu.config)
+	}
+	fmt.sbprintln(&builder)
+
 	// User configuration from config.zsh
 	config_zsh := fmt.aprintf("%s/config.zsh", wayu.config)
 	defer delete(config_zsh)

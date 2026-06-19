@@ -11,6 +11,7 @@
 - **Fuzzy matching** -- Smart search with acronym support (e.g., `frwrks` → `FIREWORKS_AI_API_KEY`)
 - **Completions** -- Manage shell completion scripts (Zsh, Bash, Fish)
 - **Plugin management** -- Install, enable/disable, and prioritize shell plugins with dependency resolution
+- **Custom functions** -- `wayu function add` seeds a skeleton in `~/.config/wayu/functions/`, opens `$EDITOR`, and sources it on startup
 - **Backup & restore** -- Automatic timestamped backups before every modification
 - **Shell migration** -- Migrate configs between Bash, Zsh, and Fish
 - **Dry-run mode** -- Preview any change before applying it
@@ -123,6 +124,11 @@ wayu reload stop
 wayu hooks                       # show configured hooks
 wayu hooks edit                  # edit ~/.config/wayu/hooks.conf
 
+# Custom shell functions (stored in ~/.config/wayu/functions/, sourced at startup)
+wayu function add mkcd           # seed a skeleton and open it in $EDITOR
+wayu function list               # list defined functions
+wayu function remove mkcd --yes  # delete a function file
+
 # Templates (config presets)
 wayu template list               # available: developer, minimal, data-science, full
 wayu template apply developer    # apply preset to existing config
@@ -155,6 +161,7 @@ wayu <command> <action> [arguments] [flags]
 | `toml` | TOML configuration management |
 | `template` | Apply config presets (developer / minimal / data-science / full) |
 | `hooks` | Pre/post operation hooks |
+| `function` | Manage custom shell functions in `~/.config/wayu/functions/` (opens `$EDITOR`) |
 | `reload`, `watch`, `hot-reload` | Watch config files and regenerate on change |
 | `backup` | Manage configuration backups |
 | `init` | Initialize config directory |

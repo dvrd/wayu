@@ -31,12 +31,27 @@ _wayu_commands() {
         'init:Initialize wayu configuration'
         'migrate:Migrate between shells'
         'config:Open extra config in EDITOR'
+        'function:Manage custom shell functions'
         'export:Generate turbo export file'
         'toml:TOML configuration management'
         'version:Show version'
         'help:Show help'
     )
     _describe -t commands 'wayu command' commands
+}
+
+_wayu_function_actions() {
+    local actions
+    actions=(
+        'add:Create/edit a function in $EDITOR'
+        'edit:Edit an existing function'
+        'list:List functions'
+        'ls:List functions'
+        'remove:Delete a function'
+        'rm:Delete a function'
+        'help:Show help'
+    )
+    _describe -t actions 'function action' actions
 }
 
 _wayu_path_actions() {
@@ -169,6 +184,7 @@ _wayu() {
                 completions) _wayu_completions_actions ;;
                 export) _wayu_export_actions ;;
                 toml) _wayu_toml_actions ;;
+                function|func|fn) _wayu_function_actions ;;
             esac
             ;;
         args)
@@ -198,7 +214,7 @@ WAYU_COMPLETION_FISH :: `#!/usr/bin/env fish
 # Regenerate with: wayu completions fish
 
 # Main commands
-set -l commands path alias constants search find f completions backup plugin init migrate config export toml version help build scan
+set -l commands path alias constants search find f completions backup plugin init migrate config export toml version help build scan function
 
 # Top-level completion (only when no subcommand has been entered yet)
 complete -c wayu -f

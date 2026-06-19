@@ -201,6 +201,10 @@ parse_command_and_action :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 		parsed.command = .HOOKS
 		parse_hooks_command(filtered_args, parsed)
 		return
+	case "function", "func", "fn", "functions":
+		parsed.command = .FUNCTION
+		parse_function_command(filtered_args, parsed)
+		return
 	case "reload", "hot-reload", "watch":
 		parsed.command = .RELOAD
 		if len(filtered_args) > 1 {
@@ -393,6 +397,25 @@ parse_hooks_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 		case "edit":            parsed.action = .ADD
 		case "help", "-h", "--help": parsed.action = .HELP
 		case:                   parsed.action = .UNKNOWN
+		}
+	} else {
+		parsed.action = .LIST
+	}
+}
+
+@(private = "file")
+parse_function_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
+	if len(filtered_args) > 1 {
+		switch filtered_args[1] {
+		case "add", "edit", "new":     parsed.action = .ADD
+		case "remove", "rm", "delete": parsed.action = .REMOVE
+		case "list", "ls":            parsed.action = .LIST
+		case "help", "-h", "--help":   parsed.action = .HELP
+		case:                         parsed.action = .UNKNOWN
+		}
+		if len(filtered_args) > 2 {
+			parsed.args = make([]string, len(filtered_args) - 2)
+			copy(parsed.args, filtered_args[2:])
 		}
 	} else {
 		parsed.action = .LIST

@@ -306,7 +306,7 @@ append_aliases_direct :: proc(builder: ^strings.Builder) {
 
 // Append functions (if any exist)
 append_functions_direct :: proc(builder: ^strings.Builder) {
-	funcs_dir := fmt.aprintf("%s/functions", wayu.data)
+	funcs_dir := fmt.aprintf("%s/functions", wayu.config)
 	defer delete(funcs_dir)
 
 	if !os.exists(funcs_dir) {
@@ -318,9 +318,9 @@ append_functions_direct :: proc(builder: ^strings.Builder) {
 	has_functions := false
 	// Simple existence check - actual function loading kept minimal
 	if wayu.shell == .ZSH {
-		fmt.sbprintf(builder, "for f in \"$HOME/.local/share/wayu/functions\"/*(N); do [[ -f \"$f\" ]] && source \"$f\"; done\n")
+		fmt.sbprintf(builder, "for f in \"$HOME/.config/wayu/functions\"/*(N); do [[ -f \"$f\" ]] && source \"$f\"; done\n")
 	} else {
-		fmt.sbprintf(builder, "for f in \"$HOME/.local/share/wayu/functions\"/*.zsh; do [ -f \"$f\" ] && source \"$f\"; done\n")
+		fmt.sbprintf(builder, "for f in \"$HOME/.config/wayu/functions\"/*.zsh; do [ -f \"$f\" ] && source \"$f\"; done\n")
 	}
 }
 

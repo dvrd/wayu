@@ -60,7 +60,7 @@ class InitIntegrationTest
     required_dirs = [
       @config_dir,
       @data_dir,
-      "#{@data_dir}/functions",
+      "#{@config_dir}/functions",
       "#{@data_dir}/completions",
       "#{@data_dir}/plugins"
     ]
