@@ -12,7 +12,7 @@ import "core:time"
 // Semantic versioning - update with each release.
 // VERSION here is the single source of truth; docs (AGENTS.md, README)
 // should not hardcode a version number that can drift.
-VERSION :: "4.3.4"
+VERSION :: "4.4.0"
 
 // AppContext bundles all mutable program state.
 // Created once in main() and referenced as `wayu.*` throughout the codebase.
