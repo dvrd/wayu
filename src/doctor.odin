@@ -572,7 +572,7 @@ run_step "path.zsh (legacy)" source "$HOME/.local/share/wayu/path.zsh" 2>/dev/nu
 
 echo ""
 echo "=== Phase 2: Functions ==="
-run_step "functions (glob)" zsh -c 'for f in "$HOME/.local/share/wayu/functions"/*(N); do [[ -f "$f" ]] && source "$f"; done'
+run_step "functions (glob)" zsh -c 'for f in "$HOME/.config/wayu/functions"/*(N); do [[ -f "$f" ]] && source "$f"; done'
 
 echo ""
 echo "=== Phase 3: Completions Setup ==="

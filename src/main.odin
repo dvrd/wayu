@@ -56,6 +56,7 @@ Command :: enum {
 	DOCTOR,     // Health check and diagnostics
 	TEMPLATE,   // Configuration presets
 	HOOKS,      // Pre/post action hooks
+	FUNCTION,   // Manage custom shell functions (functions/ dir)
 	RELOAD,     // File watcher for hot reload
 	VERSION,
 	HELP,
@@ -331,6 +332,8 @@ main :: proc() {
 		handle_template_command(parsed.action, parsed.args)
 	case .HOOKS:
 		handle_hooks_command(parsed.action, parsed.args)
+	case .FUNCTION:
+		handle_function_command(parsed.action, parsed.args)
 	case .RELOAD:
 		// Parse reload action from args
 		action := "start"
@@ -416,12 +419,18 @@ handle_init_command :: proc() {
 		print_info("Directory already exists: %s", data_dir)
 	}
 
-	// Create subdirectories (in data dir — generated/runtime files)
+	// Create subdirectories. functions/ lives in the config dir (user-authored,
+	// editable via `wayu function`); completions/ and plugins/ are generated
+	// runtime files in the data dir.
 	subdirs := []string{"functions", "completions", "plugins"}
 	created_subdirs := 0
 
 	for subdir in subdirs {
-		subdir_path := fmt.aprintf("%s/%s", wayu.data, subdir)
+		base_dir := wayu.data
+		if subdir == "functions" {
+			base_dir = wayu.config
+		}
+		subdir_path := fmt.aprintf("%s/%s", base_dir, subdir)
 		defer delete(subdir_path)
 
 		if !os.exists(subdir_path) {
@@ -447,6 +456,10 @@ handle_init_command :: proc() {
 	if created_subdirs == 0 {
 		print_info("All subdirectories already exist")
 	}
+
+	// Migrate any functions left at the legacy data-dir location into the
+	// config-dir location that the loader now sources.
+	migrate_legacy_functions()
 
 	fmt.println()
 
@@ -672,6 +685,7 @@ print_help :: proc() {
 	print_item("", "doctor", "Health check and diagnostics", "🔬")
 	print_item("", "template", "Configuration presets", "📋")
 	print_item("", "hooks", "Pre/post action hooks", "🪝")
+	print_item("", "function", "Manage custom shell functions (add, list, remove)", "🔧")
 	print_item("", "completions", "Manage Zsh completion scripts", EMOJI_COMMAND)
 	print_item("", "backup", "Manage configuration backups", EMOJI_INFO)
 	print_item("", "plugin", "Manage shell plugins", EMOJI_COMMAND)
