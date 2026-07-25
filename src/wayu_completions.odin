@@ -470,7 +470,7 @@ print_completions_help_extended :: proc() {
 	fmt.println()
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
 	fmt.println("  wayu completions generate")
-	fmt.println("  # Then add to .zshrc: fpath=(~/.local/share/wayu/completions $fpath)")
+	fmt.println("  # Then add to .zshrc: fpath=(~/.config/wayu/completions $fpath)")
 	fmt.println("  wayu completions add jj /path/to/_jj")
 }
 
@@ -876,7 +876,7 @@ print_completions_help :: proc() {
 
 	// Notes section
 	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
-	fmt.printf("  %s• Completion files are stored in ~/.local/share/wayu/completions/%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Completion files are stored in ~/.config/wayu/completions/%s\n", get_muted(), RESET)
 	fmt.printf("  %s• Naming follows the active shell: zsh `_name`, bash `name.bash-completion`, fish `name.fish`%s\n", get_muted(), RESET)
 	fmt.printf("  %s• If the input already has a recognized form (_foo, foo.fish, ...) it is kept as-is%s\n", get_muted(), RESET)
 	fmt.printf("  %s• Restart your shell or re-source the wayu init file after adding%s\n", get_muted(), RESET)

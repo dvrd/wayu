@@ -4,7 +4,7 @@ Agent instructions for AI coding assistants working in this repository.
 
 ## Project Overview
 
-wayu is a shell configuration management CLI written in Odin. It manages PATH entries, aliases, environment constants, and completions. User config lives in `~/.config/wayu/` (wayu.toml, hooks, extra.zsh). Generated runtime files live in `~/.local/share/wayu/` (core.zsh, plugins, completions, backups).
+wayu is a shell configuration management CLI written in Odin. It manages PATH entries, aliases, environment constants, and completions. All wayu files live under `~/.config/wayu/` — user-edited files (wayu.toml, hooks, extra.zsh) alongside generated runtime files (init.zsh, core.zsh, plugins, completions, backups).
 
 **Current version**: see `VERSION` constant in `src/main.odin` (single source of truth) — run `./wayu --version` to print.
 **Supported shells**: Zsh (primary), Bash (full support) — Fish declared in code but not yet wired

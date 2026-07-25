@@ -69,7 +69,7 @@ print_export_formats :: proc() {
 	print_item("", "--check", "Check if turbo file is up to date", "✓")
 
 	fmt.println()
-	fmt.printfln("%sTurbo file:%s ~/.local/share/wayu/%s", get_muted(), RESET, TURBO_EXPORT_FILE)
+	fmt.printfln("%sTurbo file:%s ~/.config/wayu/%s", get_muted(), RESET, TURBO_EXPORT_FILE)
 	fmt.println()
 
 	// Check current status
@@ -135,10 +135,10 @@ generate_turbo_export :: proc(dry_run: bool) {
 	print_section("Next Steps", EMOJI_INFO)
 	fmt.printfln("Replace in your ~/.zshrc or ~/.bashrc:")
 	fmt.printfln("  %s# Old (slower):%s", get_muted(), RESET)
-	fmt.printfln("  source \"$HOME/.local/share/wayu/init.zsh\"")
+	fmt.printfln("  source \"$HOME/.config/wayu/init.zsh\"")
 	fmt.println()
 	fmt.printfln("  %s# New (faster):%s", get_muted(), RESET)
-	fmt.printfln("  source \"$HOME/.local/share/wayu/%s\"", output_file)
+	fmt.printfln("  source \"$HOME/.config/wayu/%s\"", output_file)
 	fmt.println()
 	fmt.printfln("%sOr use eval mode (fastest):%s", get_secondary(), RESET)
 	fmt.printfln("  eval $(wayu export --eval)")
@@ -181,7 +181,7 @@ build_turbo_content :: proc() -> string {
 
 	// 5. Completions
 	fmt.sbprintf(&builder, "# === COMPLETIONS ===\n")
-	fmt.sbprintf(&builder, "fpath=(\"$HOME/.local/share/wayu/completions\" $fpath)\n")
+	fmt.sbprintf(&builder, "fpath=(\"$HOME/.config/wayu/completions\" $fpath)\n")
 	fmt.sbprintf(&builder, "\n")
 
 	// 6. Plugins
@@ -327,8 +327,8 @@ append_functions_direct :: proc(builder: ^strings.Builder) {
 // Append plugins loading
 append_plugins_direct :: proc(builder: ^strings.Builder) {
 	// Source plugins config if exists
-	fmt.sbprintf(builder, "[ -f \"$HOME/.local/share/wayu/plugins.zsh\" ] && source \"$HOME/.local/share/wayu/plugins.zsh\"\n")
-	fmt.sbprintf(builder, "[ -f \"$HOME/.local/share/wayu/plugins/config.zsh\" ] && source \"$HOME/.local/share/wayu/plugins/config.zsh\"\n")
+	fmt.sbprintf(builder, "[ -f \"$HOME/.config/wayu/plugins.zsh\" ] && source \"$HOME/.config/wayu/plugins.zsh\"\n")
+	fmt.sbprintf(builder, "[ -f \"$HOME/.config/wayu/plugins/config.zsh\" ] && source \"$HOME/.config/wayu/plugins/config.zsh\"\n")
 }
 
 // Append external tools loading (Starship, Zoxide, etc.)
@@ -414,13 +414,13 @@ print_export_usage :: proc() {
 	fmt.println("  # Generate turbo file")
 	fmt.println("  wayu export --turbo")
 	fmt.println()
-	fmt.println("  # Use in .zshrc (replace source ~/.local/share/wayu/init.zsh)")
-	fmt.println("  source \"$HOME/.local/share/wayu/turbo.zsh\"")
+	fmt.println("  # Use in .zshrc (replace source ~/.config/wayu/init.zsh)")
+	fmt.println("  source \"$HOME/.config/wayu/turbo.zsh\"")
 	fmt.println()
 	fmt.println("  # Or use eval mode (even faster)")
 	fmt.println("  eval $(wayu export --eval)")
 	fmt.println()
-	fmt.printfln("%sTURBO FILE:%s ~/.local/share/wayu/turbo.zsh", get_muted(), RESET)
+	fmt.printfln("%sTURBO FILE:%s ~/.config/wayu/turbo.zsh", get_muted(), RESET)
 }
 
 // Check if turbo file exists and is current

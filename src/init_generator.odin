@@ -198,8 +198,8 @@ generate_optimized_init_all :: proc() {
 	fmt.printfln("#   %s/helpers.zsh  (evalcache, built-in zsh-defer)", wayu.data)
 	fmt.println("#")
 	fmt.println("# To compile to bytecode (2-3x faster):")
-	fmt.println("#   zcompile ~/.local/share/wayu/core.zsh")
-	fmt.println("#   zcompile ~/.local/share/wayu/lazy.zsh")
+	fmt.println("#   zcompile ~/.config/wayu/core.zsh")
+	fmt.println("#   zcompile ~/.config/wayu/lazy.zsh")
 	fmt.println("#")
 	fmt.println("# NOTE: wayu includes built-in zsh-defer, no external plugin needed")
 }
@@ -244,7 +244,7 @@ generate_core_init_v2 :: proc() {
 		}
 		fmt.sbprintln(&builder, ":$PATH\"")
 	} else {
-		source_file := fmt.aprintf("$HOME/.local/share/wayu/path.%s", shell_ext)
+		source_file := fmt.aprintf("$HOME/.config/wayu/path.%s", shell_ext)
 		fmt.sbprintfln(&builder, `source "%s"`, source_file)
 		delete(source_file)
 	}
@@ -317,15 +317,15 @@ defer {
 
 	// Completions (necesario para autocomplete)
 	fmt.sbprintln(&builder, "# === Completions ===")
-	fmt.sbprintln(&builder, "fpath=(\"$HOME/.local/share/wayu/completions\" $fpath)")
+	fmt.sbprintln(&builder, "fpath=(\"$HOME/.config/wayu/completions\" $fpath)")
 	fmt.sbprintln(&builder, "autoload -Uz compinit && compinit -C")
 	fmt.sbprintln(&builder)
 
 	// Critical plugins (autocomplete, autosuggestions) - NOT deferred
 	fmt.sbprintln(&builder, "# === Critical plugins (immediate) ===")
-	fmt.sbprintln(&builder, "[ -f \"$HOME/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\" ] && source \"$HOME/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\"")
-	fmt.sbprintln(&builder, "[ -f \"$HOME/.local/share/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\" ] && source \"$HOME/.local/share/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\"")
-	fmt.sbprintln(&builder, "[ -f \"$HOME/.local/share/wayu/plugins/config.zsh\" ] && source \"$HOME/.local/share/wayu/plugins/config.zsh\"")
+	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\" ] && source \"$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\"")
+	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\" ] && source \"$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\"")
+	fmt.sbprintln(&builder, "[ -f \"$HOME/.config/wayu/plugins/config.zsh\" ] && source \"$HOME/.config/wayu/plugins/config.zsh\"")
 	fmt.sbprintln(&builder)
 
 	// Custom shell functions (user-authored, loaded immediately so they are
@@ -644,11 +644,11 @@ add-zsh-hook precmd _wayu_defer_precmd
 # ============================================================================
 wayu_compile() {
   echo "Compiling init files to bytecode..."
-  zcompile ~/.local/share/wayu/core.zsh 2>/dev/null && echo "✓ core.zsh"
-  zcompile ~/.local/share/wayu/helpers.zsh 2>/dev/null && echo "✓ helpers.zsh"
-  zcompile ~/.local/share/wayu/lazy.zsh 2>/dev/null && echo "✓ lazy.zsh"
-  zcompile ~/.local/share/wayu/login.zsh 2>/dev/null && echo "✓ login.zsh"
-  zcompile ~/.local/share/wayu/plugins.zsh 2>/dev/null && echo "✓ plugins.zsh"
+  zcompile ~/.config/wayu/core.zsh 2>/dev/null && echo "✓ core.zsh"
+  zcompile ~/.config/wayu/helpers.zsh 2>/dev/null && echo "✓ helpers.zsh"
+  zcompile ~/.config/wayu/lazy.zsh 2>/dev/null && echo "✓ lazy.zsh"
+  zcompile ~/.config/wayu/login.zsh 2>/dev/null && echo "✓ login.zsh"
+  zcompile ~/.config/wayu/plugins.zsh 2>/dev/null && echo "✓ plugins.zsh"
   echo "Done. Loading 2-3x faster."
 }
 `
@@ -1187,13 +1187,13 @@ generate_core_init_fish :: proc() {
 
 	// Completions directory
 	fmt.sbprintln(&builder, "# === Completions ===")
-	fmt.sbprintln(&builder, `set -p fish_complete_path "$HOME/.local/share/wayu/completions"`)
+	fmt.sbprintln(&builder, `set -p fish_complete_path "$HOME/.config/wayu/completions"`)
 	fmt.sbprintln(&builder)
 
 	// Plugin runtime (generated separately by generate_plugins_runtime_config)
 	fmt.sbprintln(&builder, "# === Plugins ===")
-	fmt.sbprintln(&builder, `if test -f "$HOME/.local/share/wayu/plugins.fish"`)
-	fmt.sbprintln(&builder, `    source "$HOME/.local/share/wayu/plugins.fish"`)
+	fmt.sbprintln(&builder, `if test -f "$HOME/.config/wayu/plugins.fish"`)
+	fmt.sbprintln(&builder, `    source "$HOME/.config/wayu/plugins.fish"`)
 	fmt.sbprintln(&builder, "end")
 	fmt.sbprintln(&builder)
 

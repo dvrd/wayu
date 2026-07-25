@@ -373,8 +373,8 @@ attempt_auto_fixes :: proc(results: []CheckResult, arena_alloc: mem.Allocator) -
 				}
 				
 				fmt.printfln("    %s1. Edit your %s and change:%s", get_muted(), shell_rc, RESET)
-				fmt.printfln("       FROM: source \"$HOME/.local/share/wayu/init.zsh\"")
-				fmt.printfln("       TO:   source \"$HOME/.local/share/wayu/turbo.zsh\"")
+				fmt.printfln("       FROM: source \"$HOME/.config/wayu/init.zsh\"")
+				fmt.printfln("       TO:   source \"$HOME/.config/wayu/turbo.zsh\"")
 				fmt.printfln("    %s2. Reload your shell: source %s%s", get_muted(), shell_rc, RESET)
 				
 				append(&attempts, FixAttempt{
@@ -566,9 +566,9 @@ run_step() {
 echo "=== Phase 1: Core Config ==="
 # Post-migration: core.zsh is the compiled source of truth.
 # Legacy per-type files are fallback-only.
-run_step "core.zsh" source "$HOME/.local/share/wayu/core.zsh" 2>/dev/null || true
-run_step "constants.zsh (legacy)" source "$HOME/.local/share/wayu/constants.zsh" 2>/dev/null || true
-run_step "path.zsh (legacy)" source "$HOME/.local/share/wayu/path.zsh" 2>/dev/null || true
+run_step "core.zsh" source "$HOME/.config/wayu/core.zsh" 2>/dev/null || true
+run_step "constants.zsh (legacy)" source "$HOME/.config/wayu/constants.zsh" 2>/dev/null || true
+run_step "path.zsh (legacy)" source "$HOME/.config/wayu/path.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 2: Functions ==="
@@ -576,18 +576,18 @@ run_step "functions (glob)" zsh -c 'for f in "$HOME/.config/wayu/functions"/*(N)
 
 echo ""
 echo "=== Phase 3: Completions Setup ==="
-run_step "fpath setup" zsh -c 'fpath=("$HOME/.local/share/wayu/completions" $fpath)'
+run_step "fpath setup" zsh -c 'fpath=("$HOME/.config/wayu/completions" $fpath)'
 run_step "compinit" autoload -Uz compinit && compinit -C
 
 echo ""
 echo "=== Phase 4: Plugins ==="
-run_step "autosuggestions" source "$HOME/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" 2>/dev/null || true
-run_step "syntax-highlighting" source "$HOME/.local/share/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" 2>/dev/null || true
-run_step "plugin config" source "$HOME/.local/share/wayu/plugins/config.zsh" 2>/dev/null || true
+run_step "autosuggestions" source "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" 2>/dev/null || true
+run_step "syntax-highlighting" source "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" 2>/dev/null || true
+run_step "plugin config" source "$HOME/.config/wayu/plugins/config.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 5: Aliases & Tools ==="
-run_step "aliases.zsh (legacy)" source "$HOME/.local/share/wayu/aliases.zsh" 2>/dev/null || true
+run_step "aliases.zsh (legacy)" source "$HOME/.config/wayu/aliases.zsh" 2>/dev/null || true
 run_step "tools.zsh" source "$HOME/.config/wayu/tools.zsh" 2>/dev/null || true
 
 echo ""
@@ -664,16 +664,16 @@ generate_optimized_init :: proc() {
 
 # === 1. Core Configuration (fast) ===
 # Post-migration: core.zsh is the compiled source of truth.
-[ -f "$HOME/.local/share/wayu/core.zsh" ] && source "$HOME/.local/share/wayu/core.zsh"
+[ -f "$HOME/.config/wayu/core.zsh" ] && source "$HOME/.config/wayu/core.zsh"
 # Legacy per-type files as fallback:
-[ -f "$HOME/.local/share/wayu/constants.zsh" ] && source "$HOME/.local/share/wayu/constants.zsh"
-[ -f "$HOME/.local/share/wayu/path.zsh" ] && source "$HOME/.local/share/wayu/path.zsh"
+[ -f "$HOME/.config/wayu/constants.zsh" ] && source "$HOME/.config/wayu/constants.zsh"
+[ -f "$HOME/.config/wayu/path.zsh" ] && source "$HOME/.config/wayu/path.zsh"
 
 # === 2. Functions (fast - just glob) ===
 for f in "$FUNCS"/*(N); do [[ -f "$f" ]] && source "$f"; done
 
 # === 3. Completions Setup (cached) ===
-fpath=("$HOME/.local/share/wayu/completions" $fpath)
+fpath=("$HOME/.config/wayu/completions" $fpath)
 autoload -Uz add-zsh-hook compinit
 
 # Use cached completions if available (saves ~100-300ms)
@@ -685,24 +685,24 @@ fi
 
 # === 4. Aliases (fast) ===
 # Aliases are already in core.zsh; legacy file is fallback-only.
-[ -f "$HOME/.local/share/wayu/aliases.zsh" ] && source "$HOME/.local/share/wayu/aliases.zsh"
+[ -f "$HOME/.config/wayu/aliases.zsh" ] && source "$HOME/.config/wayu/aliases.zsh"
 
 # === 5. Plugins (lazy-loaded for speed) ===
 # zsh-autosuggestions - loaded immediately but lightweight
-[ -f "$HOME/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" ] && \
-  source "$HOME/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh"
+[ -f "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" ] && \
+  source "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh"
 
 # zsh-syntax-highlighting - DEFERRED to avoid startup lag
 # Loaded after first prompt appears
 zsh_defer_highlighting() {
-  [ -f "$HOME/.local/share/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] && \
-    source "$HOME/.local/share/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
+  [ -f "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ] && \
+    source "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
   add-zsh-hook -d precmd zsh_defer_highlighting
 }
 add-zsh-hook precmd zsh_defer_highlighting
 
 # Plugin config
-[ -f "$HOME/.local/share/wayu/plugins/config.zsh" ] && source "$HOME/.local/share/wayu/plugins/config.zsh"
+[ -f "$HOME/.config/wayu/plugins/config.zsh" ] && source "$HOME/.config/wayu/plugins/config.zsh"
 
 # === 6. Tools (cached/lazy via tools.zsh) ===
 source "$HOME/.config/wayu/tools.zsh"
@@ -874,7 +874,7 @@ check_shell_config :: proc(results: ^[dynamic]CheckResult) {
 		append(results, CheckResult{
 			name    = clone_arena("shell configuration"),
 			status  = .ERROR,
-			message = clone_arena("wayu not sourced - add 'source \"$HOME/.local/share/wayu/init.zsh\"' to shell RC"),
+			message = clone_arena("wayu not sourced - add 'source \"$HOME/.config/wayu/init.zsh\"' to shell RC"),
 			fixable = true,
 		})
 	}

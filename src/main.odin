@@ -17,11 +17,11 @@ VERSION :: "4.4.0"
 // AppContext bundles all mutable program state.
 // Created once in main() and referenced as `wayu.*` throughout the codebase.
 // XDG layout: config (~/.config/wayu) for user-edited files,
-//             data (~/.local/share/wayu) for generated/runtime files.
+//             data (~/.config/wayu by default; WAYU_DATA_DIR to override) for generated/runtime files.
 AppContext :: struct {
 	home:           string,
 	config:         string,  // ~/.config/wayu (user-edited files)
-	data:           string,  // ~/.local/share/wayu (generated/runtime files)
+	data:           string,  // generated/runtime files (defaults to ~/.config/wayu; WAYU_DATA_DIR override)
 	shell:          ShellType,
 	shell_ext:      string,
 	path_file:      string,
@@ -100,7 +100,7 @@ init_app_context :: proc(ctx: ^AppContext) {
 		if data_dir_override != "" {
 			ctx.data = data_dir_override
 		} else {
-			ctx.data = fmt.aprintf("%s/.local/share/wayu", ctx.home, allocator = heap)
+			ctx.data = fmt.aprintf("%s/.config/wayu", ctx.home, allocator = heap)
 		}
 	}
 
@@ -399,13 +399,13 @@ handle_init_command :: proc() {
 		print_info("Directory already exists: %s", config_dir)
 	}
 
-	// Create data directory (~/.local/share/wayu)
+	// Create data directory (defaults to ~/.config/wayu)
 	if !os.exists(data_dir) {
 		spinner := new_spinner(.Dots)
 		spinner_text(&spinner, "Creating data directory")
 		spinner_start(&spinner)
 
-		// Create parent directories if needed (e.g. .local/share/ may not exist in test envs)
+		// Create parent directories if needed (may not exist in test envs)
 		err := make_directory_all(data_dir)
 
 		spinner_stop(&spinner)
@@ -660,7 +660,7 @@ print_init_help :: proc() {
 	fmt.println("  wayu init")
 	fmt.println()
 	fmt.println("DESCRIPTION:")
-	fmt.println("  Creates ~/.config/wayu and ~/.local/share/wayu with shell-specific config files (path, aliases,")
+	fmt.println("  Creates ~/.config/wayu with shell-specific config files (path, aliases,")
 	fmt.println("  constants, init, tools, extra) and subdirectories (functions, completions,")
 	fmt.println("  plugins). Detects the current shell and generates wayu.toml scaffolding.")
 	fmt.println("  Safe to re-run — existing files are preserved.")

@@ -10,11 +10,11 @@
   <meta property="og:title" content="wayu — Shell config management that gets out of the way" />
   <meta property="og:description" content="A zero-dependency CLI for Zsh and Bash. Manage PATH, aliases, env vars, and plugins with one command." />
   <!-- TODO: create og.png (1200×630) and uncomment -->
-  <!-- <meta property="og:image" content="https://wayu.devoured.io/og.png" /> -->
-  <meta property="og:url" content="https://wayu.devoured.io" />
+  <!-- <meta property="og:image" content="https://wayu.dvrd.io/og.png" /> -->
+  <meta property="og:url" content="https://wayu.dvrd.io" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
-  <!-- <meta name="twitter:image" content="https://wayu.devoured.io/og.png" /> -->
+  <!-- <meta name="twitter:image" content="https://wayu.dvrd.io/og.png" /> -->
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
@@ -1512,7 +1512,7 @@
           <li><a href="#declarative">Declarative</a></li>
           <li><a href="#doctor">Doctor</a></li>
           <li><a href="#install">Install</a></li>
-          <li><span class="nav-version" aria-label="Version 4.2.0">v4.2.0</span></li>
+          <li><span class="nav-version" aria-label="Version 4.3.4">v4.3.4</span></li>
           <li><a href="https://github.com/dvrd/wayu" class="nav-cta" target="_blank" rel="noopener">GitHub ↗</a></li>
         </ul>
       </div>
@@ -1709,7 +1709,7 @@
           <article class="feature-card">
             <div class="feature-icon" aria-hidden="true">⬛</div>
             <h3 class="feature-name">CLI / TUI Dual Mode</h3>
-            <p class="feature-desc">CLI mode is pipe-safe and CI-ready. Run <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu</code> with no args (or <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">--tui</code>) for a 9-view full-screen interface with vim-style navigation, fuzzy filter, confirmation modals.</p>
+            <p class="feature-desc">CLI mode is pipe-safe and CI-ready. Run <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu</code> with no args (or <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">--tui</code>) for an 8-view full-screen interface with vim-style navigation, fuzzy filter, confirmation modals.</p>
           </article>
 
         </div>
@@ -2107,7 +2107,7 @@
           <p class="mode-desc">Launch with <code style="font-family:var(--font-mono);font-size:0.9em;color:var(--pink);">wayu</code> (no args) or <code style="font-family:var(--font-mono);font-size:0.9em;color:var(--pink);">wayu --tui</code>. A complete terminal UI built from scratch — no external TUI libraries.</p>
           <ul class="mode-points">
             <li>Vim-style navigation (<code style="font-family:var(--font-mono);font-size:0.85em;">j</code>/<code style="font-family:var(--font-mono);font-size:0.85em;">k</code>, arrow keys)</li>
-            <li>9 views: PATH, Aliases, Constants, Plugins, Completions, Backups, Hooks, Settings…</li>
+            <li>8 views: PATH, Aliases, Constants, Completions, Backups, Plugins, Hooks, Settings</li>
             <li>Fuzzy search and inline filtering</li>
             <li>Confirmation modals before destructive actions</li>
             <li>Alternate screen buffer — terminal history preserved</li>
@@ -2159,7 +2159,7 @@
 <span class="t-line"><span class="t-info">🔬</span> <span class="t-cmd">wayu Doctor — System Health Check</span></span>
 <span class="t-line"></span>
 <span class="t-line">  <span class="t-success">✓</span> wayu installation</span>
-<span class="t-line">    <span class="t-output">wayu 4.2.0 installed</span></span>
+<span class="t-line">    <span class="t-output">wayu 4.3.4 installed</span></span>
 <span class="t-line">  <span class="t-success">✓</span> shell configuration</span>
 <span class="t-line">    <span class="t-output">init.zsh sourced from ~/.zshrc</span></span>
 <span class="t-line">  <span class="t-success">✓</span> PATH entries</span>
@@ -2199,7 +2199,7 @@
 <span class="t-line">    <span class="json-p">{</span></span>
 <span class="t-line">      <span class="json-k">"name"</span><span class="json-p">:</span> <span class="json-s">"wayu installation"</span><span class="json-p">,</span></span>
 <span class="t-line">      <span class="json-k">"status"</span><span class="json-p">:</span> <span class="json-s">"ok"</span><span class="json-p">,</span></span>
-<span class="t-line">      <span class="json-k">"message"</span><span class="json-p">:</span> <span class="json-s">"wayu 4.2.0 installed"</span><span class="json-p">,</span></span>
+<span class="t-line">      <span class="json-k">"message"</span><span class="json-p">:</span> <span class="json-s">"wayu 4.3.4 installed"</span><span class="json-p">,</span></span>
 <span class="t-line">      <span class="json-k">"fixable"</span><span class="json-p">:</span> <span class="json-b">false</span></span>
 <span class="t-line">    <span class="json-p">},</span></span>
 <span class="t-line">    <span class="json-p">{</span></span>
@@ -2269,7 +2269,7 @@
               <div class="step-num" aria-hidden="true">3</div>
               <div class="step-content">
                 <div class="step-title">Source the init file in your shell RC</div>
-                <div class="step-code"><span style="color:var(--text-3)"># ~/.zshrc or ~/.bashrc</span><br>source ~/.local/share/wayu/init.zsh</div>
+                <div class="step-code"><span style="color:var(--text-3)"># ~/.zshrc or ~/.bashrc</span><br>source ~/.config/wayu/init.zsh</div>
               </div>
             </div>
           </div>
@@ -2294,21 +2294,21 @@
               <div class="step-num" aria-hidden="true">3</div>
               <div class="step-content">
                 <div class="step-title">Source the init file in your shell RC</div>
-                <div class="step-code"><span style="color:var(--text-3)"># ~/.zshrc or ~/.bashrc</span><br>source ~/.local/share/wayu/init.zsh</div>
+                <div class="step-code"><span style="color:var(--text-3)"># ~/.zshrc or ~/.bashrc</span><br>source ~/.config/wayu/init.zsh</div>
               </div>
             </div>
           </div>
         </div>
 
         <div class="install-right reveal reveal-delay-2">
-          <p style="font-size:0.75rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;">Config &amp; runtime files in <code style="font-family:var(--font-mono);">~/.config/wayu/</code> + <code style="font-family:var(--font-mono);">~/.local/share/wayu/</code></p>
+          <p style="font-size:0.75rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;">Config &amp; runtime files in <code style="font-family:var(--font-mono);">~/.config/wayu/</code></p>
           <div class="config-file">
             <div class="config-file-name">wayu.toml</div>
             <div class="config-file-desc">Declarative config — source of truth for PATH entries, aliases, and environment variables. Version-controllable.</div>
           </div>
           <div class="config-file">
             <div class="config-file-name">init.{zsh,bash} + core, lazy, helpers</div>
-            <div class="config-file-desc">Generated init files in <code style="font-family:var(--font-mono)">~/.local/share/wayu/</code>. Source <code style="font-family:var(--font-mono)">init.zsh</code> from your shell RC — it loads core, lazy, and helper scripts automatically.</div>
+            <div class="config-file-desc">Generated init files in <code style="font-family:var(--font-mono)">~/.config/wayu/</code>. Source <code style="font-family:var(--font-mono)">init.zsh</code> from your shell RC — it loads core, lazy, and helper scripts automatically.</div>
           </div>
           <div class="config-file">
             <div class="config-file-name">plugins.json</div>
@@ -2375,7 +2375,7 @@
           <li><a href="#install">Install</a></li>
           <li><a href="https://github.com/dvrd/wayu" target="_blank" rel="noopener">GitHub</a></li>
         </ul>
-        <p class="footer-copy">v4.2.0 · MIT License · Built with <a href="https://odin-lang.org" style="color:var(--teal);text-decoration:none;" target="_blank" rel="noopener">Odin</a></p>
+        <p class="footer-copy">v4.3.4 · MIT License · Built with <a href="https://odin-lang.org" style="color:var(--teal);text-decoration:none;" target="_blank" rel="noopener">Odin</a></p>
       </div>
     </div>
   </footer>

@@ -297,7 +297,7 @@ print_error_with_context :: proc(
 		if strings.contains(resource, ".config/wayu") {
 			fmt.eprintfln("\n%sSuggestion:%s Run %swayu init%s to create configuration files",
 				BRIGHT_CYAN, RESET, BOLD, RESET)
-			fmt.eprintfln("            This will set up all required configuration files in ~/.config/wayu and ~/.local/share/wayu/")
+			fmt.eprintfln("            This will set up all required configuration files in ~/.config/wayu/")
 		} else {
 			fmt.eprintfln("\n%sSuggestion:%s Check the file path and try again",
 				BRIGHT_CYAN, RESET)
@@ -355,7 +355,7 @@ print_error_with_context :: proc(
 			BRIGHT_CYAN, RESET)
 		fmt.eprintfln("  %swayu init%s", BOLD, RESET)
 		fmt.eprintfln("\nThis will:")
-		fmt.eprintfln("  • Create ~/.config/wayu/ and ~/.local/share/wayu/ directories")
+		fmt.eprintfln("  • Create ~/.config/wayu/ directory")
 		fmt.eprintfln("  • Initialize all configuration files")
 		fmt.eprintfln("  • Set up shell integration")
 

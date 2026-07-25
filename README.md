@@ -1,6 +1,6 @@
 # wayu
 
-**v4.2.0** · A shell configuration management CLI written in [Odin](https://odin-lang.org/) with zero external dependencies. Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
+**v4.3.4** · A shell configuration management CLI written in [Odin](https://odin-lang.org/) with zero external dependencies. Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
 
 ## Features
 
@@ -326,31 +326,31 @@ Built from scratch with raw termios control, alternate screen buffer, differenti
 
 ## Configuration
 
-wayu stores configuration in `~/.config/wayu/`:
+wayu stores everything under `~/.config/wayu/` — the files you edit and the files it generates:
 
 ```
 ~/.config/wayu/
+  # --- You edit these (version-control them) ---
   wayu.toml                 # declarative config (source of truth for path/alias/env)
+  extra.{zsh,bash,fish}     # custom scripts (conda init, tool evals, etc.)
+  alias-sources.conf        # external alias sources (shell-agnostic, read-only)
+  hooks.conf                # pre/post operation hooks
+  functions/                # custom shell functions
+
+  # --- wayu generates these (safe to delete; regenerated on change) ---
+  init.{zsh,bash,fish}      # entry point — source THIS in your RC file
+  core.{zsh,bash}           # generated optimized init loaded by init.<shell>
+  lazy.{zsh,bash}           # deferred plugin/tool loading (zsh/bash only)
+  helpers.{zsh,bash}        # utility functions, evalcache, built-in zsh-defer (zsh/bash only)
   plugins.json              # installed plugin metadata (JSON5)
-  init-core.{zsh,bash,fish} # generated optimized init (source this in your RC file)
-  init-lazy.{zsh,bash}      # deferred plugin/tool loading (zsh/bash only)
-  init-login.{zsh,bash}     # login-shell-only init (zsh/bash only)
-  init-helpers.{zsh,bash}   # utility functions, evalcache, built-in zsh-defer (zsh/bash only)
   plugins.{zsh,bash,fish}   # generated plugin loader
   plugins/                  # cloned plugin repos + runtime config
   turbo.{zsh,bash}          # pre-computed fast startup via `wayu export` (zsh/bash only)
-  extra.{zsh,bash,fish}     # custom scripts (conda init, tool evals, etc.)
-  alias-sources.conf        # external alias sources (shell-agnostic, read-only)
   completions/              # shell completion scripts
-  functions/                # custom shell functions
   backup/                   # timestamped backups (last 5 per file)
-  hooks.conf                # pre/post operation hooks
-  # Legacy files (kept for bootstrap/back-compat):
-  init.{zsh,bash}           # legacy orchestrator
-  path.{zsh,bash}           # legacy PATH entries
-  aliases.{zsh,bash}        # legacy alias definitions
-  constants.{zsh,bash}      # legacy env exports
-  tools.{zsh,bash}          # legacy tool initialization
+  path.{zsh,bash}           # legacy PATH entries (bootstrap/back-compat)
+  aliases.{zsh,bash}        # legacy alias definitions (bootstrap/back-compat)
+  constants.{zsh,bash}      # legacy env exports (bootstrap/back-compat)
 ```
 
 Shell is detected automatically from `$SHELL`. Override with `--shell bash`, `--shell zsh`, or `--shell fish`.

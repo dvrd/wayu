@@ -86,7 +86,7 @@ INIT_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 
 # Determine directories (supports overrides for testing)
 : ${WAYU_CONFIG_DIR:=$HOME/.config/wayu}
-: ${WAYU_DATA_DIR:=$HOME/.local/share/wayu}
+: ${WAYU_DATA_DIR:=$HOME/.config/wayu}
 
 # === Fast path: compiled core from wayu.toml ===
 # After wayu v3.10 wayu.toml is the source of truth. 'wayu path/alias/
@@ -246,7 +246,7 @@ INIT_TEMPLATE_BASH :: `#!/usr/bin/env bash
 
 # Determine directories (supports overrides for testing)
 : ${WAYU_CONFIG_DIR:=$HOME/.config/wayu}
-: ${WAYU_DATA_DIR:=$HOME/.local/share/wayu}
+: ${WAYU_DATA_DIR:=$HOME/.config/wayu}
 
 # === Fast path: compiled core from wayu.toml ===
 # See the zsh template comment for rationale.
@@ -401,7 +401,7 @@ INIT_TEMPLATE_FISH :: `#!/usr/bin/env fish
 
 # Determine config directory (supports WAYU_CONFIG_DIR override for testing)
 set -gx WAYU_CONFIG_DIR (test -n "$WAYU_CONFIG_DIR"; and echo "$WAYU_CONFIG_DIR"; or echo "$HOME/.config/wayu")
-set -gx WAYU_DATA_DIR (test -n "$WAYU_DATA_DIR"; and echo "$WAYU_DATA_DIR"; or echo "$HOME/.local/share/wayu")
+set -gx WAYU_DATA_DIR (test -n "$WAYU_DATA_DIR"; and echo "$WAYU_DATA_DIR"; or echo "$HOME/.config/wayu")
 # === Fast path: compiled core from wayu.toml ===
 # After wayu v3.10 wayu.toml is the source of truth. When core.fish
 # exists we source it exclusively — the legacy individual files below

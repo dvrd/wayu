@@ -144,7 +144,7 @@ class FishIntegrationTest
     Open3.capture3(env, "#{@wayu_bin} template apply developer")
     Open3.capture3(env, "#{@wayu_bin} build eval")
     toml = File.read("#{scratch}/.config/wayu/wayu.toml")
-    init = File.read("#{scratch}/.local/share/wayu/core.fish")
+    init = File.read("#{scratch}/.config/wayu/core.fish")
     toml_ok = toml.include?('g = "git"') && toml.include?('EDITOR = "code --wait"') &&
               toml.include?('= "/opt/homebrew/bin"')
     fish_native = init.include?("alias g 'git'") && init.include?('set -gx EDITOR') &&
@@ -185,7 +185,7 @@ class FishIntegrationTest
     FileUtils.mkdir_p("#{scratch}/.config")
     env = ENV.to_h.merge('HOME' => scratch, 'SHELL' => '/usr/bin/fish')
     Open3.capture3(env, "#{@wayu_bin} init --shell fish")
-    core = "#{scratch}/.local/share/wayu/core.fish"
+    core = "#{scratch}/.config/wayu/core.fish"
     # After fresh init, core.fish is generated but empty of user config.
     baseline_has_alias = File.exist?(core) && File.read(core).include?("alias gg")
     Open3.capture3(env, "#{@wayu_bin} alias add gg 'git status'")
