@@ -386,12 +386,30 @@ odin build build -out:build_it
 ./build_it dev path list  # debug build + run
 ./build_it clean          # remove build artifacts
 ./build_it install        # build + install to /usr/local/bin + wayu init
-./build_it release vX.Y.Z # test, tag, push (triggers GitHub Actions + Homebrew)
+./build_it release [vX.Y.Z] # manual release override (version optional; see Releasing)
 ./build_it help           # show all targets
 
 # Integration Tests (Ruby)
 ruby tests/integration/run_all.rb
 ```
+
+## Releasing
+
+Releases are **automatic**. Every push to `main` runs
+[`.github/workflows/bump.yml`](.github/workflows/bump.yml), which:
+
+1. Derives the next version from [Conventional Commits](https://www.conventionalcommits.org/)
+   since the last tag via [`git-cliff`](https://github.com/orhun/git-cliff)
+   (`feat` → minor, `fix`/`refactor`/etc. → patch, `!`/`BREAKING CHANGE` → major).
+2. Bumps `VERSION` in `src/main.odin`, regenerates `CHANGELOG.md`, commits
+   `chore: release vX.Y.Z`, and tags it.
+3. Builds the release binaries, publishes the GitHub release, and regenerates
+   the Homebrew tap formula (`dvrd/homebrew-wayu`).
+
+So you do **not** bump the version by hand — just land your Conventional Commits
+on `main`. `./build_it release [vX.Y.Z]` exists as a manual override (it also
+auto-detects the version when the argument is omitted); the version argument is
+only needed when `git-cliff` is unavailable.
 
 ## License
 
