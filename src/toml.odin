@@ -153,6 +153,10 @@ get_toml_value :: proc(doc: ^TomlDoc, key: string) -> ^TomlValue {
 
 // Parse TOML content into TomlConfig
 toml_parse :: proc(content: string) -> (TomlConfig, bool) {
+	if !toml_content_is_sane(content) {
+		return {}, false
+	}
+
 	// Use arena-based simple parser for reliability.
 	// Size the arena to ~4x the input (enough for parsed AST + cloned strings)
 	// with a floor of 16KB and a cap of 1MB.
@@ -594,6 +598,7 @@ cleanup_toml_config :: proc(config: ^TomlConfig) {
 	}
 	delete(config.plugins)
 	for key, profile in config.profiles {
+		delete(key)
 		for a in profile.aliases {
 			delete(a.name)
 			delete(a.command)
@@ -645,6 +650,170 @@ cleanup_toml_config :: proc(config: ^TomlConfig) {
 
 
 
+// Reject malformed TOML before the permissive legacy parser builds the AST.
+// This keeps wayu from silently accepting corrupt configs or unknown bare values.
+toml_content_is_sane :: proc(content: string) -> bool {
+	lines := strings.split(content, "\n")
+	defer delete(lines)
+
+	current_section := make(map[string]bool)
+	defer delete(current_section)
+
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
+
+		line_no_comment, ok := toml_strip_inline_comment_strict(trimmed)
+		if !ok { return false }
+		trimmed = strings.trim_space(line_no_comment)
+		if len(trimmed) == 0 { continue }
+
+		if strings.has_prefix(trimmed, "[") {
+			array_table := strings.has_prefix(trimmed, "[[")
+			if array_table {
+				if !strings.has_suffix(trimmed, "]]") || len(trimmed) <= 4 { return false }
+				section := strings.trim_space(trimmed[2:len(trimmed)-2])
+				if !toml_key_path_is_plain(section) { return false }
+				continue
+			}
+
+			if !strings.has_suffix(trimmed, "]") || strings.has_prefix(trimmed, "[[") || len(trimmed) <= 2 { return false }
+			section := strings.trim_space(trimmed[1:len(trimmed)-1])
+			if !toml_key_path_is_plain(section) { return false }
+			if current_section[section] { return false }
+			current_section[section] = true
+			continue
+		}
+
+		eq_idx := strings.index(trimmed, "=")
+		if eq_idx <= 0 { return false }
+		key := strings.trim_space(trimmed[:eq_idx])
+		value := strings.trim_space(trimmed[eq_idx+1:])
+		if !toml_key_is_plain(key) || !toml_value_is_sane(value) { return false }
+	}
+	return true
+}
+
+toml_strip_inline_comment_strict :: proc(line: string) -> (string, bool) {
+	in_string := false
+	string_char: byte = 0
+	for i := 0; i < len(line); i += 1 {
+		c := line[i]
+		if in_string {
+			if c == string_char {
+				if string_char == '\'' || !toml_is_escaped_quote(line, i) {
+					in_string = false
+				}
+			}
+			continue
+		}
+		switch c {
+		case '"', '\'':
+			in_string = true
+			string_char = c
+		case '#':
+			return line[:i], true
+		}
+	}
+	return line, !in_string
+}
+
+toml_is_escaped_quote :: proc(s: string, i: int) -> bool {
+	bs := 0
+	for j := i - 1; j >= 0 && s[j] == '\\'; j -= 1 { bs += 1 }
+	return bs % 2 == 1
+}
+
+toml_key_is_plain :: proc(key: string) -> bool {
+	if len(key) == 0 { return false }
+	for c in key {
+		ok := (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-'
+		if !ok { return false }
+	}
+	return true
+}
+
+toml_key_path_is_plain :: proc(path: string) -> bool {
+	if len(path) == 0 { return false }
+	parts := strings.split(path, ".")
+	defer delete(parts)
+	for part in parts {
+		if !toml_key_is_plain(strings.trim_space(part)) { return false }
+	}
+	return true
+}
+
+toml_value_is_sane :: proc(value: string) -> bool {
+	if len(value) == 0 { return false }
+
+	if strings.has_prefix(value, "\"") {
+		return toml_basic_string_is_sane(value)
+	}
+	if strings.has_prefix(value, "'") {
+		return len(value) >= 2 && strings.has_suffix(value, "'")
+	}
+	if value == "true" || value == "false" { return true }
+	if _, ok := strconv.parse_int(value); ok { return true }
+	if strings.has_prefix(value, "[") {
+		if !strings.has_suffix(value, "]") { return false }
+		return toml_collection_is_balanced(value)
+	}
+	if strings.has_prefix(value, "{") {
+		if !strings.has_suffix(value, "}") { return false }
+		return toml_collection_is_balanced(value)
+	}
+	return false
+}
+
+toml_basic_string_is_sane :: proc(value: string) -> bool {
+	if len(value) < 2 || !strings.has_suffix(value, "\"") { return false }
+	for i := 1; i < len(value) - 1; i += 1 {
+		c := value[i]
+		if c == '"' && !toml_is_escaped_quote(value, i) { return false }
+		if c == '\\' {
+			if i + 1 >= len(value) - 1 { return false }
+			switch value[i+1] {
+			case 'b', 't', 'n', 'f', 'r', '"', '\\':
+				i += 1
+			case:
+				return false
+			}
+		}
+	}
+	return true
+}
+
+toml_collection_is_balanced :: proc(value: string) -> bool {
+	depth_brk, depth_brc := 0, 0
+	in_string := false
+	string_char: byte = 0
+	for i := 0; i < len(value); i += 1 {
+		c := value[i]
+		if in_string {
+			if c == string_char {
+				if string_char == '\'' || !toml_is_escaped_quote(value, i) { in_string = false }
+			}
+			continue
+		}
+		switch c {
+		case '"', '\'':
+			in_string = true
+			string_char = c
+		case '[':
+			depth_brk += 1
+		case ']':
+			depth_brk -= 1
+			if depth_brk < 0 { return false }
+		case '{':
+			depth_brc += 1
+		case '}':
+			depth_brc -= 1
+			if depth_brc < 0 { return false }
+		}
+	}
+	return !in_string && depth_brk == 0 && depth_brc == 0
+}
+
 // TomlDocSimple uses an arena for all allocations
 toml_doc_parse_simple :: proc(content: string, arena: ^mem.Arena) -> (TomlDoc, bool) {
     doc: TomlDoc
@@ -676,7 +845,9 @@ toml_doc_parse_simple :: proc(content: string, arena: ^mem.Arena) -> (TomlDoc, b
                 in_string = true
                 string_char = c
             } else if in_string && c == string_char {
-                in_string = false
+				if string_char == '\'' || !toml_is_escaped_quote(line_trimmed, i) {
+					in_string = false
+				}
             } else if !in_string && c == '#' {
                 comment_start = i
                 break
@@ -802,6 +973,7 @@ toml_doc_parse_simple :: proc(content: string, arena: ^mem.Arena) -> (TomlDoc, b
                 value_str := strings.trim_space(line_trimmed[eq_idx+1:])
 
                 val := parse_toml_value_simple(value_str, arena)
+				if val == nil { return {}, false }
 
                 if current_array_idx >= 0 && len(current_section) > 0 {
                     if strings.contains(current_section, ".") {
@@ -867,16 +1039,27 @@ parse_toml_value_simple :: proc(value_str: string, arena: ^mem.Arena) -> ^TomlVa
 
     s := strings.trim_space(value_str)
 
-    if (strings.has_prefix(s, "\"") && strings.has_suffix(s, "\"")) ||
-       (strings.has_prefix(s, "'") && strings.has_suffix(s, "'")) {
-        val.type = .STRING
-        if len(s) >= 2 {
-            val.str_val = strings.clone(s[1:len(s)-1], allocator = mem.arena_allocator(arena))
-        } else {
-            val.str_val = ""
-        }
-        return val
-    }
+	if strings.has_prefix(s, "\"") && strings.has_suffix(s, "\"") {
+		val.type = .STRING
+		if len(s) >= 2 {
+			unescaped := unescape_toml_string(s[1:len(s)-1])
+			defer delete(unescaped)
+			val.str_val = strings.clone(unescaped, allocator = mem.arena_allocator(arena))
+		} else {
+			val.str_val = ""
+		}
+		return val
+	}
+
+	if strings.has_prefix(s, "'") && strings.has_suffix(s, "'") {
+		val.type = .STRING
+		if len(s) >= 2 {
+			val.str_val = strings.clone(s[1:len(s)-1], allocator = mem.arena_allocator(arena))
+		} else {
+			val.str_val = ""
+		}
+		return val
+	}
 
     if s == "true" {
         val.type = .BOOLEAN
@@ -907,6 +1090,7 @@ parse_toml_value_simple :: proc(value_str: string, arena: ^mem.Arena) -> ^TomlVa
             for elem in elements {
                 if len(elem) > 0 {
                     parsed_elem := parse_toml_value_simple(elem, arena)
+					if parsed_elem == nil { return nil }
                     append(&val.arr_val, parsed_elem^)
                 }
             }
@@ -932,6 +1116,7 @@ parse_toml_value_simple :: proc(value_str: string, arena: ^mem.Arena) -> ^TomlVa
                 value_str := strings.trim_space(pair[eq_idx+1:])
                 if len(key) == 0 { continue }
                 child := parse_toml_value_simple(value_str, arena)
+				if child == nil { return nil }
                 key_clone := strings.clone(key, allocator = mem.arena_allocator(arena))
                 val.table_val[key_clone] = child
             }
@@ -939,9 +1124,7 @@ parse_toml_value_simple :: proc(value_str: string, arena: ^mem.Arena) -> ^TomlVa
         return val
     }
 
-    val.type = .STRING
-    val.str_val = strings.clone(s, allocator = mem.arena_allocator(arena))
-    return val
+	return nil
 }
 
 // Split a TOML value-list at top-level commas, ignoring commas that appear
@@ -1238,7 +1421,7 @@ doc_parse_profiles_section :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
 		profile.plugins = make([]TomlPlugin, len(plugins_dyn)); copy(profile.plugins, plugins_dyn[:])
 		delete(aliases_dyn); delete(constants_dyn); delete(plugins_dyn)
 		if v, ok := t.table_val["condition"]; ok && v.type == .STRING { profile.condition = strings.clone(v.str_val) }
-		config.profiles[name] = profile
+		config.profiles[strings.clone(name)] = profile
 	}
 }
 
