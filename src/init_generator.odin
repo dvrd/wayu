@@ -279,7 +279,7 @@ emit_env_exports :: proc(b: ^strings.Builder, sep: string = "\n") {
 		delete(toml_env)
 	}
 	for e in toml_env {
-		if !is_shell_identifier(e.name) {
+		if !is_shell_var_name(e.name) {
 			fmt.sbprintf(b, "# wayu: skipping invalid env name %q%s", e.name, sep)
 			continue
 		}
@@ -964,20 +964,52 @@ destroy_tool_entry :: proc(t: ^ToolEntry) {
 	if len(t.hook_commands) > 0 { delete(t.hook_commands) }
 }
 
+// Return the text of one top-level table (header line included, sub-tables
+// like [tools.x] too), or "" when absent. Caller deletes the result.
+extract_toml_section :: proc(content, section: string) -> string {
+	sb := strings.builder_make()
+	it := make_line_iter(content)
+	in_section := false
+	for line in line_iter_next(&it) {
+		trimmed := strings.trim_space(line)
+		if name, is_header := toml_line_section(trimmed); is_header {
+			name = strings.trim(name, "[]")
+			in_section = name == section || strings.has_prefix(name, fmt.tprintf("%s.", section))
+		}
+		if in_section {
+			strings.write_string(&sb, line)
+			strings.write_byte(&sb, '\n')
+		}
+	}
+	if strings.builder_len(sb) == 0 {
+		strings.builder_destroy(&sb)
+		return ""
+	}
+	return strings.to_string(sb)
+}
+
 // Caller must destroy_tool_entry each element + `delete` the dynamic array.
 read_wayu_toml_tools :: proc() -> [dynamic]ToolEntry {
 	content_str, ok := get_cached_toml_content()
 	if !ok { return make([dynamic]ToolEntry) }
 
+	// Only the [tools] table matters here. Parsing the whole file into the
+	// fixed-size arena (previously capped at 512KB) ran out of memory and
+	// segfaulted on large configs (thousands of aliases). Feed the parser
+	// just the [tools] section and size the arena proportionally, uncapped.
+	tools_src := extract_toml_section(content_str, "tools")
+	if len(tools_src) == 0 { return make([dynamic]ToolEntry) }
+	defer delete(tools_src)
+
 	// The TOML parser allocates TomlValue structs, maps, and cloned strings
-	// inside the arena. Use 16x the input size with a floor of 64KB.
-	arena_size := max(64 * 1024, min(len(content_str) * 16, 512 * 1024))
+	// inside the arena: 32x the input with a 64KB floor is ample.
+	arena_size := max(64 * 1024, len(tools_src) * 32)
 	arena_buf := make([]byte, arena_size)
 	defer delete(arena_buf)
 	arena: mem.Arena
 	mem.arena_init(&arena, arena_buf)
 
-	doc, _ := toml_doc_parse_simple(content_str, &arena)
+	doc, _ := toml_doc_parse_simple(tools_src, &arena)
 	tools_val, has := doc.values["tools"]
 	if !has || tools_val == nil || tools_val.type != .TABLE {
 		return make([dynamic]ToolEntry)
@@ -1447,7 +1479,7 @@ generate_core_init_fish :: proc() {
 		delete(toml_env)
 	}
 	for e in toml_env {
-		if !is_shell_identifier(e.name) {
+		if !is_shell_var_name(e.name) {
 			fmt.sbprintfln(&builder, "# wayu: skipping invalid env name %q", e.name)
 			continue
 		}

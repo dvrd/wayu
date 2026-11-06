@@ -32,6 +32,7 @@ class InitIntegrationTest
       %w[zsh bash].each { |sh| test_generated_files_valid_syntax(sh); test_core_wiring(sh) }
       test_stale_init_is_resynced
       test_build_eval_dry_run_writes_nothing
+      test_large_toml_regenerates
     ensure
       teardown_test_env
     end
@@ -390,6 +391,25 @@ class InitIntegrationTest
       puts "✓"; @passed += 1
     else
       puts "✗"; puts "  init.zsh not resynced"; @failed += 1
+    end
+  end
+
+  # Large configs (thousands of aliases) must not overflow the [tools] parser arena.
+  def test_large_toml_regenerates
+    print "Test: regenerate with 4000 aliases + [tools] succeeds... "
+    home = "#{@tmp_home}/large"
+    FileUtils.mkdir_p("#{home}/.config/wayu")
+    env = { 'HOME' => home, 'SHELL' => '/bin/zsh' }
+    aliases = (1..4000).map { |i| "a#{i} = \"echo #{'x' * 120} #{i}\"" }.join("\n")
+    File.write("#{home}/.config/wayu/wayu.toml",
+               "[tools]\nnosuchtoolxyz = { kind = \"evalcache\", args = \"init zsh\" }\n\n[aliases]\n#{aliases}\n")
+    _, _, st = Open3.capture3(env, "#{@wayu_bin} build eval")
+    core = "#{home}/.config/wayu/core.zsh"
+    lazy = "#{home}/.config/wayu/lazy.zsh"
+    if st.success? && File.read(core).include?("alias a4000=") && File.read(lazy).include?('_wayu_evalcache nosuchtoolxyz init zsh')
+      puts "✓"; @passed += 1
+    else
+      puts "✗"; puts "  exit=#{st.exitstatus}"; @failed += 1
     end
   end
 

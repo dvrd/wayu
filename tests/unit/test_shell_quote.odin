@@ -44,9 +44,9 @@ test_expand_leading_tilde :: proc(t: ^testing.T) {
 
 @(test)
 test_identifier_and_alias_name_checks :: proc(t: ^testing.T) {
-	testing.expect(t, wayu.is_shell_identifier("GO_PATH1"), "GO_PATH1 is an identifier")
-	testing.expect(t, !wayu.is_shell_identifier("1X"), "leading digit rejected")
-	testing.expect(t, !wayu.is_shell_identifier("A-B"), "dash rejected")
+	testing.expect(t, wayu.is_shell_var_name("GO_PATH1"), "GO_PATH1 is an identifier")
+	testing.expect(t, !wayu.is_shell_var_name("1X"), "leading digit rejected")
+	testing.expect(t, !wayu.is_shell_var_name("A-B"), "dash rejected")
 	testing.expect(t, wayu.is_safe_alias_name("g.st-x"), "dots/dashes allowed in alias names")
 	testing.expect(t, !wayu.is_safe_alias_name("a;rm"), "metachar rejected")
 	testing.expect(t, !wayu.is_safe_alias_name("a b"), "space rejected")

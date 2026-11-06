@@ -353,7 +353,7 @@ expand_leading_tilde_to_home_var :: proc(s: string, allocator := context.allocat
 }
 
 // True when `s` is a portable shell variable name ([A-Za-z_][A-Za-z0-9_]*).
-is_shell_identifier :: proc(s: string) -> bool {
+is_shell_var_name :: proc(s: string) -> bool {
     if len(s) == 0 { return false }
     for i in 0..<len(s) {
         c := s[i]
