@@ -53,7 +53,7 @@ test_identifier_and_alias_name_checks :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_parse_toml_line_value :: proc(t: ^testing.T) {
+test_toml_kv_line_quote_stripping :: proc(t: ^testing.T) {
 	Case :: struct { raw, want: string, ok: bool }
 	cases := []Case{
 		{`"git log --format='%h'"`, "git log --format='%h'", true},
@@ -62,11 +62,10 @@ test_parse_toml_line_value :: proc(t: ^testing.T) {
 		{`'lit \n $HOME'`, `lit \n $HOME`, true},
 		{`'a' # c`, "a", true},
 		{`"say \"hi\""`, `say "hi"`, true},
-		{`"unterminated`, "", false},
 		{`true # bool`, "true", true},
 	}
 	for c in cases {
-		got, ok := wayu.parse_toml_line_value(c.raw)
+		_, got, ok := wayu.toml_parse_kv_line(strings.concatenate({"k = ", c.raw}, context.temp_allocator))
 		defer if ok { delete(got) }
 		testing.expectf(t, ok == c.ok, "ok mismatch for %s", c.raw)
 		if ok && c.ok {

@@ -2,7 +2,7 @@
 package wayu
 import "core:c/libc"
 import "core:fmt"
-import "core:mem"
+import "core:mem/virtual"
 import "core:os"
 import "core:slice"
 import "core:strings"
@@ -797,53 +797,13 @@ generate_helpers_init_v2 :: proc() {
 }
 
 // ============================================================================
-// Minimal TOML line readers for [paths] / [env] / [aliases]
+// TOML table readers for [paths] / [env] / [aliases]
 // ============================================================================
-
-// If `trimmed` is a table header (`[name]`, optionally followed by a
-// comment), return the table name.
-toml_line_section :: proc(trimmed: string) -> (name: string, is_header: bool) {
-	if !strings.has_prefix(trimmed, "[") { return "", false }
-	end := strings.index_byte(trimmed, ']')
-	if end < 0 { return strings.trim_space(trimmed[1:]), true }
-	return strings.trim_space(trimmed[1:end]), true
-}
-
-// Parse the right-hand side of a simple `key = value` TOML line. Handles
-// basic strings ("..." with escapes), literal strings ('...'), and bare
-// values, each optionally followed by an inline `# comment`. Exactly one
-// matching quote pair is removed, so `'%h'` inside a "..." value keeps its
-// quotes, and "" yields an empty (but valid) value. Returns an owned string.
-parse_toml_line_value :: proc(raw: string) -> (value: string, ok: bool) {
-	s := strings.trim_space(raw)
-	if len(s) == 0 { return "", false }
-	switch s[0] {
-	case '"':
-		if strings.has_prefix(s, `"""`) { return "", false } // multi-line: unsupported here
-		i := 1
-		for i < len(s) {
-			if s[i] == '\\' { i += 2; continue }
-			if s[i] == '"' { break }
-			i += 1
-		}
-		if i >= len(s) { return "", false } // unterminated
-		rest := strings.trim_space(s[i+1:])
-		if len(rest) > 0 && rest[0] != '#' { return "", false }
-		return unescape_toml_string(s[1:i]), true
-	case '\'':
-		if strings.has_prefix(s, "'''") { return "", false }
-		end := strings.index_byte(s[1:], '\'')
-		if end < 0 { return "", false }
-		end += 1
-		rest := strings.trim_space(s[end+1:])
-		if len(rest) > 0 && rest[0] != '#' { return "", false }
-		return strings.clone(s[1:end]), true
-	case:
-		v := s
-		if hash := strings.index_byte(v, '#'); hash >= 0 { v = strings.trim_space(v[:hash]) }
-		return strings.clone(v), true
-	}
-}
+//
+// Line parsing is delegated to the shared toml.odin helpers
+// (toml_line_is_section / toml_parse_kv_line): inline comments stripped, one
+// MATCHING quote pair removed ("..." unescaped, '...' literal), empty ""
+// values kept — so `git log --format='%h'` keeps its trailing quote.
 
 TomlKV :: struct { key, value: string }
 
@@ -858,22 +818,21 @@ read_toml_section_kvs :: proc(section: string) -> [dynamic]TomlKV {
 	in_section := false
 	for line in line_iter_next(&it) {
 		trimmed := strings.trim_space(line)
-		if name, is_header := toml_line_section(trimmed); is_header {
-			in_section = name == section
+		if strings.has_prefix(trimmed, "[") {
+			in_section = toml_line_is_section(trimmed, section)
 			continue
 		}
 		if !in_section { continue }
-		if len(trimmed) == 0 || trimmed[0] == '#' { continue }
 
-		eq := strings.index_byte(trimmed, '=')
-		if eq < 1 { continue }
-		key := strings.trim_space(trimmed[:eq])
+		key, value, kv_ok := toml_parse_kv_line(trimmed)
+		if !kv_ok { continue }
 		if len(key) >= 2 && ((key[0] == '"' && key[len(key)-1] == '"') || (key[0] == '\'' && key[len(key)-1] == '\'')) {
 			key = key[1:len(key)-1]
 		}
-		if len(key) == 0 { continue }
-		value, vok := parse_toml_line_value(trimmed[eq+1:])
-		if !vok { continue }
+		if len(key) == 0 {
+			delete(value)
+			continue
+		}
 		append(&out, TomlKV{key = strings.clone(key), value = value})
 	}
 	return out
@@ -964,52 +923,20 @@ destroy_tool_entry :: proc(t: ^ToolEntry) {
 	if len(t.hook_commands) > 0 { delete(t.hook_commands) }
 }
 
-// Return the text of one top-level table (header line included, sub-tables
-// like [tools.x] too), or "" when absent. Caller deletes the result.
-extract_toml_section :: proc(content, section: string) -> string {
-	sb := strings.builder_make()
-	it := make_line_iter(content)
-	in_section := false
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-		if name, is_header := toml_line_section(trimmed); is_header {
-			name = strings.trim(name, "[]")
-			in_section = name == section || strings.has_prefix(name, fmt.tprintf("%s.", section))
-		}
-		if in_section {
-			strings.write_string(&sb, line)
-			strings.write_byte(&sb, '\n')
-		}
-	}
-	if strings.builder_len(sb) == 0 {
-		strings.builder_destroy(&sb)
-		return ""
-	}
-	return strings.to_string(sb)
-}
-
 // Caller must destroy_tool_entry each element + `delete` the dynamic array.
 read_wayu_toml_tools :: proc() -> [dynamic]ToolEntry {
 	content_str, ok := get_cached_toml_content()
 	if !ok { return make([dynamic]ToolEntry) }
 
-	// Only the [tools] table matters here. Parsing the whole file into the
-	// fixed-size arena (previously capped at 512KB) ran out of memory and
-	// segfaulted on large configs (thousands of aliases). Feed the parser
-	// just the [tools] section and size the arena proportionally, uncapped.
-	tools_src := extract_toml_section(content_str, "tools")
-	if len(tools_src) == 0 { return make([dynamic]ToolEntry) }
-	defer delete(tools_src)
+	// Growing virtual arena: the old fixed arena (capped at 512KB) ran out on
+	// large configs (thousands of aliases) and segfaulted every regenerate.
+	arena: virtual.Arena
+	if err := virtual.arena_init_growing(&arena); err != nil {
+		return make([dynamic]ToolEntry)
+	}
+	defer virtual.arena_destroy(&arena)
 
-	// The TOML parser allocates TomlValue structs, maps, and cloned strings
-	// inside the arena: 32x the input with a 64KB floor is ample.
-	arena_size := max(64 * 1024, len(tools_src) * 32)
-	arena_buf := make([]byte, arena_size)
-	defer delete(arena_buf)
-	arena: mem.Arena
-	mem.arena_init(&arena, arena_buf)
-
-	doc, _ := toml_doc_parse_simple(tools_src, &arena)
+	doc, _ := toml_doc_parse_alloc(content_str, virtual.arena_allocator(&arena))
 	tools_val, has := doc.values["tools"]
 	if !has || tools_val == nil || tools_val.type != .TABLE {
 		return make([dynamic]ToolEntry)
