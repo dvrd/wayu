@@ -5,6 +5,7 @@ require 'open3'
 require 'fileutils'
 require 'json'
 require 'time'
+require 'timeout'
 require_relative 'test_helper'
 
 class PluginIntegrationTest
@@ -48,6 +49,17 @@ class PluginIntegrationTest
       test_loader_respects_priority
       test_conflict_warning_in_loader
       test_no_conflict_warning_when_unique
+      test_rm_exact_match_and_ownership
+      test_rm_fuzzy_name_refused
+      test_rm_dry_run_no_side_effects
+      test_add_dry_run_no_side_effects
+      test_enable_dry_run_no_backup
+      test_add_exact_installed_check
+      test_ambiguous_fuzzy_does_not_block
+      test_url_trailing_slash_and_unsafe_names
+      test_rm_empty_name_never_wipes_root
+      test_update_all_failure_exit_code
+      test_update_respects_pinned_ref
     ensure
       teardown_test_env
     end
@@ -165,10 +177,14 @@ class PluginIntegrationTest
     FileUtils.mkdir_p(plugin_dir)
     File.write("#{plugin_dir}/removable-plugin.plugin.zsh", "# Removable")
 
-    output, status = run_wayu("plugin rm removable-plugin")
+    seed_plugins([plugin_entry("removable-plugin", plugin_dir)])
 
-    # Should either succeed or show not found error (both acceptable)
-    if !Dir.exist?(plugin_dir) || output.include?("not found")
+    # Without --yes: refuses with EXIT_USAGE and deletes nothing
+    _, refused = run_wayu("plugin rm removable-plugin")
+    output, status = run_wayu("plugin rm removable-plugin --yes")
+
+    if refused.exitstatus == 64 && status.exitstatus == 0 && !Dir.exist?(plugin_dir) &&
+       !plugin_names_in_config.include?("removable-plugin")
       puts "✓"
       @passed += 1
     else
@@ -1243,7 +1259,199 @@ class PluginIntegrationTest
     end
   end
 
+  # ---------------------------------------------------------------------------
+  # Regression tests (exit status + on-disk side effects)
+  # ---------------------------------------------------------------------------
+
+  # Minimal plugins.json entry using the binary's own (snake_case) field names.
+  def plugin_entry(name, path, enabled: true, deps: [])
+    {
+      "name" => name,
+      "display_name" => name,
+      "url" => "https://github.com/test/#{name}.git",
+      "enabled" => enabled,
+      "shell" => "ZSH",
+      "installed_path" => path,
+      "dependencies" => deps,
+      "priority" => 100,
+      "git" => { "branch" => "main", "commit" => "abc1234" }
+    }
+  end
+
+  def seed_plugins(entries)
+    FileUtils.mkdir_p(@plugins_dir)
+    json = { "version" => "1.0", "last_updated" => Time.now.utc.iso8601, "plugins" => entries }
+    File.write("#{@data_dir}/plugins.json", JSON.pretty_generate(json))
+  end
+
+  def plugin_names_in_config
+    JSON.parse(File.read("#{@data_dir}/plugins.json"))["plugins"].map { |p| p["name"] }
+  end
+
+  def backup_files
+    Dir.glob("#{@data_dir}/backup/plugins.json.backup.*")
+  end
+
+  def check(label, ok, output, status)
+    if ok
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  #{label}"
+      puts "  Exit: #{status&.exitstatus}"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  def test_rm_exact_match_and_ownership
+    print "Test 26: rm --yes removes exact target, keeps others, exit 0... "
+    a = "#{@plugins_dir}/rm-alpha"; b = "#{@plugins_dir}/rm-alpha-extra"
+    FileUtils.mkdir_p(a); FileUtils.mkdir_p(b)
+    seed_plugins([plugin_entry("rm-alpha", a), plugin_entry("rm-alpha-extra", b)])
+
+    output, status = run_wayu("plugin rm rm-alpha --yes")
+    ok = status.exitstatus == 0 && !Dir.exist?(a) && Dir.exist?(b) &&
+         plugin_names_in_config == ["rm-alpha-extra"]
+    check("exact rm failed", ok, output, status)
+  end
+
+  def test_rm_fuzzy_name_refused
+    print "Test 27: rm with non-exact name refuses (exit 65), suggests, deletes nothing... "
+    dir = "#{@plugins_dir}/zsh-autosuggestions"
+    FileUtils.mkdir_p(dir)
+    seed_plugins([plugin_entry("zsh-autosuggestions", dir)])
+
+    output, status = run_wayu("plugin rm autosuggest --yes")
+    ok = status.exitstatus == 65 && Dir.exist?(dir) &&
+         plugin_names_in_config == ["zsh-autosuggestions"] &&
+         output.include?("Did you mean") && output.include?("zsh-autosuggestions")
+    check("fuzzy rm must not delete", ok, output, status)
+  end
+
+  def test_rm_dry_run_no_side_effects
+    print "Test 28: --dry-run rm leaves plugins.json, dir and backups untouched... "
+    dir = "#{@plugins_dir}/dry-rm"
+    FileUtils.mkdir_p(dir)
+    seed_plugins([plugin_entry("dry-rm", dir)])
+    before = File.read("#{@data_dir}/plugins.json")
+    FileUtils.rm_rf("#{@data_dir}/backup")
+
+    output, status = run_wayu("--dry-run plugin rm dry-rm --yes")
+    ok = status.exitstatus == 0 && Dir.exist?(dir) &&
+         File.read("#{@data_dir}/plugins.json") == before && backup_files.empty?
+    check("dry-run rm had side effects", ok, output, status)
+  end
+
+  def test_add_dry_run_no_side_effects
+    print "Test 29: --dry-run add (registry key + URL) writes nothing, exit 0... "
+    FileUtils.rm_f("#{@data_dir}/plugins.json")
+
+    out1, st1 = run_wayu("--dry-run plugin add syntax-highlighting")
+    out2, st2 = run_wayu("--dry-run plugin add https://github.com/user/custom-plugin.git")
+    ok = st1.exitstatus == 0 && st2.exitstatus == 0 &&
+         !File.exist?("#{@data_dir}/plugins.json") &&
+         !Dir.exist?("#{@plugins_dir}/zsh-syntax-highlighting")
+    check("dry-run add wrote config or crashed", ok, out1 + out2, st2)
+  end
+
+  def test_enable_dry_run_no_backup
+    print "Test 30: --dry-run enable creates no backup and no config change... "
+    dir = "#{@plugins_dir}/dry-enable"
+    FileUtils.mkdir_p(dir)
+    seed_plugins([plugin_entry("dry-enable", dir, enabled: false)])
+    before = File.read("#{@data_dir}/plugins.json")
+    FileUtils.rm_rf("#{@data_dir}/backup")
+
+    output, status = run_wayu("--dry-run plugin enable dry-enable")
+    ok = status.exitstatus == 0 && backup_files.empty? &&
+         File.read("#{@data_dir}/plugins.json") == before
+    check("dry-run enable had side effects", ok, output, status)
+  end
+
+  def test_add_exact_installed_check
+    print "Test 31: add 'git' is not 'already installed' when only 'forgit' is... "
+    dir = "#{@plugins_dir}/forgit"
+    FileUtils.mkdir_p(dir)
+    seed_plugins([plugin_entry("forgit", dir)])
+
+    output, status = run_wayu("--dry-run plugin add https://github.com/someone/git.git")
+    ok = status.exitstatus == 0 && !output.include?("already installed") && output.include?("Name: git")
+    check("fuzzy 'already installed' false positive", ok, output, status)
+  end
+
+  def test_ambiguous_fuzzy_does_not_block
+    print "Test 32: ambiguous fuzzy name with non-TTY stdin fails fast (exit 65)... "
+    a = "#{@plugins_dir}/zsh-autosuggestions"; b = "#{@plugins_dir}/zsh-autocomplete"
+    FileUtils.mkdir_p(a); FileUtils.mkdir_p(b)
+    seed_plugins([plugin_entry("zsh-autosuggestions", a, enabled: false),
+                  plugin_entry("zsh-autocomplete", b, enabled: false)])
+
+    output, status = nil, nil
+    begin
+      Timeout.timeout(10) { output, status = run_wayu("plugin enable zsh-auto") }
+    rescue Timeout::Error
+      output = "TIMEOUT (blocked on stdin)"
+    end
+    ok = status && status.exitstatus == 65
+    check("ambiguous lookup blocked or succeeded", ok, output, status)
+  end
+
+  def test_url_trailing_slash_and_unsafe_names
+    print "Test 33: trailing-slash URL derives name; unsafe names rejected (exit 65)... "
+    out1, st1 = run_wayu("--dry-run plugin add https://github.com/user/repo/")
+    out2, st2 = run_wayu("--dry-run plugin add https://github.com/user/..")
+    ok = st1.exitstatus == 0 && out1.include?("Name: repo") && st2.exitstatus == 65
+    check("URL name derivation/validation", ok, out1 + out2, st2)
+  end
+
+  def test_rm_empty_name_never_wipes_root
+    print "Test 34: rm of legacy empty-name entry never deletes plugins root... "
+    keep = "#{@plugins_dir}/keep-me"
+    FileUtils.mkdir_p(keep)
+    seed_plugins([plugin_entry("", @plugins_dir), plugin_entry("keep-me", keep)])
+
+    output, status = run_wayu("plugin rm '' --yes")
+    ok = status.exitstatus == 0 && Dir.exist?(keep) && plugin_names_in_config == ["keep-me"]
+    check("plugins root wiped", ok, output, status)
+  end
+
+  def test_update_all_failure_exit_code
+    print "Test 35: update --all exits 74 when an update fails... "
+    dir = "#{@plugins_dir}/not-a-repo"
+    FileUtils.mkdir_p(dir)
+    seed_plugins([plugin_entry("not-a-repo", dir)])
+
+    output, status = run_wayu("plugin update --all")
+    check("update --all failure must be non-zero", status.exitstatus == 74, output, status)
+  end
+
+  def test_update_respects_pinned_ref
+    print "Test 36: update skips pinned plugin and keeps pin metadata... "
+    # Real clone of a local origin so `pull` would succeed if (wrongly) run —
+    # the old code then replaced the whole git block and dropped the pin.
+    origin = "#{@tmp_home}/pinned-origin"
+    dir = "#{@plugins_dir}/pinned"
+    FileUtils.rm_rf([origin, dir])
+    git_env = { "GIT_AUTHOR_NAME" => "t", "GIT_AUTHOR_EMAIL" => "t@t", "GIT_COMMITTER_NAME" => "t", "GIT_COMMITTER_EMAIL" => "t@t" }
+    system(git_env, "git", "init", "-q", origin)
+    File.write("#{origin}/pinned.plugin.zsh", "# pinned\n")
+    system(git_env, "git", "-C", origin, "add", ".")
+    system(git_env, "git", "-C", origin, "commit", "-q", "-m", "init")
+    system(git_env, "git", "clone", "-q", origin, dir)
+    entry = plugin_entry("pinned", dir)
+    entry["git"] = { "ref_type" => "Tag", "tag" => "v1.0.0", "pinned_ref" => "v1.0.0", "commit" => "abc1234" }
+    seed_plugins([entry])
+
+    output, status = run_wayu("plugin update --all")
+    git = JSON.parse(File.read("#{@data_dir}/plugins.json"))["plugins"][0]["git"]
+    ok = status.exitstatus == 0 && git["tag"] == "v1.0.0" && git["pinned_ref"] == "v1.0.0"
+    check("pinned plugin was updated or lost its pin", ok, output, status)
+  end
+
 end
+
 
 # Run tests if executed directly
 if __FILE__ == $0
