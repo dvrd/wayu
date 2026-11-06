@@ -4,20 +4,27 @@
 // that eliminates runtime overhead from loops, conditionals, and multiple
 // file sources. Achieves 2-4x faster shell startup compared to standard init.
 //
+// Content is built from wayu.toml ([paths] / [env] / [aliases]) through the
+// same readers and quoting helpers as core.{ext}, so turbo output and core
+// never disagree (the legacy *.zsh registries are empty for TOML users).
+//
 // Usage: wayu export --turbo
-//        eval $(wayu export --eval)
+//        eval "$(wayu export --eval)"
 
 package wayu
 
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:path/filepath"
-import "core:slice"
 
 // Turbo export configuration
 TURBO_EXPORT_FILE :: "turbo.zsh"
 TURBO_EXPORT_FILE_BASH :: "turbo.bash"
+
+// Turbo file name for the active shell.
+turbo_export_file_name :: proc() -> string {
+	return TURBO_EXPORT_FILE_BASH if wayu.shell == .BASH else TURBO_EXPORT_FILE
+}
 
 // Entry point for turbo export command
 handle_export_command :: proc(action: Action, args: []string) {
@@ -29,21 +36,13 @@ handle_export_command :: proc(action: Action, args: []string) {
 	case .HELP:
 		print_export_usage()
 		return
-	case .LIST:
-		// Default: generate turbo export
-		generate_turbo_export(false)
-	case .TURBO:
-		// Explicit turbo mode
-		generate_turbo_export(false)
+	case .LIST, .TURBO, .UNKNOWN:
+		// Default / explicit turbo mode. Honors the global --dry-run flag.
+		generate_turbo_export(wayu.dry_run)
 	case .EVAL:
-		// Generate eval output
 		handle_export_eval()
 	case .CHECK:
-		// Check turbo status
 		handle_export_check()
-	case .UNKNOWN:
-		// Default: generate turbo export
-		generate_turbo_export(false)
 	case:
 		print_error("Unknown export action")
 		print_export_usage()
@@ -51,7 +50,7 @@ handle_export_command :: proc(action: Action, args: []string) {
 	}
 }
 
-// Handle --eval flag for direct shell integration
+// Handle --eval flag for direct shell integration (stdout only, no writes)
 handle_export_eval :: proc() {
 	if !check_wayu_initialized() {
 		os.exit(EXIT_CONFIG)
@@ -69,14 +68,11 @@ print_export_formats :: proc() {
 	print_item("", "--check", "Check if turbo file is up to date", "✓")
 
 	fmt.println()
-	fmt.printfln("%sTurbo file:%s ~/.config/wayu/%s", get_muted(), RESET, TURBO_EXPORT_FILE)
+	fmt.printfln("%sTurbo file:%s %s/%s", get_muted(), RESET, wayu.data, turbo_export_file_name())
 	fmt.println()
 
-	// Check current status
-	turbo_path := fmt.aprintf("%s/%s", wayu.data, TURBO_EXPORT_FILE)
-	defer delete(turbo_path)
-
-	if os.exists(turbo_path) {
+	exists, _ := check_turbo_status()
+	if exists {
 		fmt.printfln("%s✓ Turbo file exists%s", get_success(), RESET)
 	} else {
 		fmt.printfln("%s○ Turbo file not generated yet%s", get_warning(), RESET)
@@ -89,13 +85,7 @@ generate_turbo_export :: proc(dry_run: bool) {
 	print_header("Generating Turbo Export", "🚀")
 	fmt.println()
 
-	// Determine shell type
-	shell_ext := wayu.shell_ext
-	output_file := TURBO_EXPORT_FILE
-	if wayu.shell == .BASH {
-		output_file = TURBO_EXPORT_FILE_BASH
-	}
-
+	output_file := turbo_export_file_name()
 	output_path := fmt.aprintf("%s/%s", wayu.data, output_file)
 	defer delete(output_path)
 
@@ -105,7 +95,6 @@ generate_turbo_export :: proc(dry_run: bool) {
 		fmt.println()
 	}
 
-	// Build the turbo content
 	content := build_turbo_content()
 	defer delete(content)
 
@@ -121,7 +110,6 @@ generate_turbo_export :: proc(dry_run: bool) {
 		return
 	}
 
-	// Write the file
 	write_ok := safe_write_file(output_path, transmute([]byte)content)
 	if !write_ok {
 		print_error("Failed to write turbo export file")
@@ -131,267 +119,120 @@ generate_turbo_export :: proc(dry_run: bool) {
 	print_success("Turbo export generated: %s", output_path)
 	fmt.println()
 
-	// Print usage instructions
 	print_section("Next Steps", EMOJI_INFO)
-	fmt.printfln("Replace in your ~/.zshrc or ~/.bashrc:")
+	fmt.printfln("Replace in your shell rc file:")
 	fmt.printfln("  %s# Old (slower):%s", get_muted(), RESET)
-	fmt.printfln("  source \"$HOME/.config/wayu/init.zsh\"")
+	fmt.printfln("  source \"%s/init.%s\"", wayu.data, get_shell_extension(wayu.shell))
 	fmt.println()
 	fmt.printfln("  %s# New (faster):%s", get_muted(), RESET)
-	fmt.printfln("  source \"$HOME/.config/wayu/%s\"", output_file)
+	fmt.printfln("  source \"%s\"", output_path)
 	fmt.println()
 	fmt.printfln("%sOr use eval mode (fastest):%s", get_secondary(), RESET)
-	fmt.printfln("  eval $(wayu export --eval)")
+	fmt.printfln("  eval \"$(wayu export --eval)\"")
 	fmt.println()
 	fmt.printfln("%sSpeed improvement: ~2-4x faster startup%s", get_success(), RESET)
 }
 
 // Build the complete turbo content
 build_turbo_content :: proc() -> string {
+	clear_toml_content_cache()
+	defer clear_toml_content_cache()
+
+	ext := get_shell_extension(wayu.shell)
+
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
 
-	// Header
-	fmt.sbprintf(&builder, "#!/usr/bin/env %s\n\n", wayu.shell_ext)
-	fmt.sbprintf(&builder, "# Wayu Turbo Export - Auto-generated unified configuration\n")
-	fmt.sbprintf(&builder, "# Generated: wayu export --turbo\n")
-	fmt.sbprintf(&builder, "# This file is pre-computed for maximum startup speed\n")
-	fmt.sbprintf(&builder, "# DO NOT EDIT - Run 'wayu export --turbo' to regenerate\n\n")
+	fmt.sbprintln(&builder, get_shebang(wayu.shell))
+	fmt.sbprintln(&builder)
+	fmt.sbprintln(&builder, "# Wayu Turbo Export - Auto-generated unified configuration")
+	fmt.sbprintln(&builder, "# Generated: wayu export --turbo")
+	fmt.sbprintln(&builder, "# This file is pre-computed for maximum startup speed")
+	fmt.sbprintln(&builder, "# DO NOT EDIT - Run 'wayu export --turbo' to regenerate")
+	fmt.sbprintln(&builder)
 
-	// 1. Constants (environment variables) - No loops, direct exports
-	fmt.sbprintf(&builder, "# === CONSTANTS ===\n")
-	append_constants_direct(&builder)
-	fmt.sbprintf(&builder, "\n")
+	// 1. Constants (environment variables) - direct exports, file order
+	fmt.sbprintln(&builder, "# === CONSTANTS ===")
+	emit_env_exports(&builder)
+	fmt.sbprintln(&builder)
 
-	// 2. PATH - Pre-computed, single export
-	fmt.sbprintf(&builder, "# === PATH ===\n")
-	append_path_direct(&builder)
-	fmt.sbprintf(&builder, "\n")
+	// 2. PATH - pre-computed, single export
+	fmt.sbprintln(&builder, "# === PATH ===")
+	if !emit_path_export(&builder) {
+		fmt.sbprintln(&builder, "# No PATH entries configured")
+	}
+	fmt.sbprintln(&builder)
 
-	// 3. Aliases - Direct definitions
-	fmt.sbprintf(&builder, "# === ALIASES ===\n")
-	append_aliases_direct(&builder)
-	fmt.sbprintf(&builder, "\n")
+	// 3. Aliases
+	fmt.sbprintln(&builder, "# === ALIASES ===")
+	emit_alias_definitions(&builder)
+	fmt.sbprintln(&builder)
 
-	// 4. Functions - Direct source if any exist
-	fmt.sbprintf(&builder, "# === FUNCTIONS ===\n")
-	append_functions_direct(&builder)
-	fmt.sbprintf(&builder, "\n")
+	// 4. Functions
+	fmt.sbprintln(&builder, "# === FUNCTIONS ===")
+	emit_functions_loader(&builder)
+	fmt.sbprintln(&builder)
 
-	// 5. Completions
-	fmt.sbprintf(&builder, "# === COMPLETIONS ===\n")
-	fmt.sbprintf(&builder, "fpath=(\"$HOME/.config/wayu/completions\" $fpath)\n")
-	fmt.sbprintf(&builder, "\n")
+	// 5. Completions (zsh fpath; bash completion files)
+	fmt.sbprintln(&builder, "# === COMPLETIONS ===")
+	completions_q := shell_double_quote_literal(fmt.tprintf("%s/completions", wayu.data), context.temp_allocator)
+	if wayu.shell == .ZSH {
+		fmt.sbprintfln(&builder, "fpath=(%s $fpath)", completions_q)
+	} else {
+		fmt.sbprintfln(&builder, `if [ -d %s ]; then for f in %s/*.bash-completion; do [ -f "$f" ] && source "$f"; done; fi`, completions_q, completions_q)
+	}
+	fmt.sbprintln(&builder)
 
 	// 6. Plugins
-	fmt.sbprintf(&builder, "# === PLUGINS ===\n")
-	append_plugins_direct(&builder)
-	fmt.sbprintf(&builder, "\n")
+	fmt.sbprintln(&builder, "# === PLUGINS ===")
+	append_source_line(&builder, fmt.tprintf("%s/plugins.%s", wayu.data, ext))
+	if wayu.shell == .ZSH {
+		append_source_line(&builder, fmt.tprintf("%s/plugins/config.zsh", wayu.data))
+	}
+	fmt.sbprintln(&builder)
 
-	// 7. External Tools (Starship, etc.)
-	fmt.sbprintf(&builder, "# === EXTERNAL TOOLS ===\n")
-	append_tools_direct(&builder)
-	fmt.sbprintf(&builder, "\n")
+	// 7. External tools escape hatch
+	fmt.sbprintln(&builder, "# === EXTERNAL TOOLS ===")
+	append_source_line(&builder, fmt.tprintf("%s/tools.%s", wayu.config, ext))
+	fmt.sbprintln(&builder)
 
-	// 8. Extra Config
-	fmt.sbprintf(&builder, "# === EXTRA CONFIG ===\n")
-	append_extra_direct(&builder)
-	fmt.sbprintf(&builder, "\n")
+	// 8. Extra config
+	fmt.sbprintln(&builder, "# === EXTRA CONFIG ===")
+	append_source_line(&builder, fmt.tprintf("%s/extra.%s", wayu.config, ext))
+	fmt.sbprintln(&builder)
 
 	return strings.clone(strings.to_string(builder))
 }
 
-// Generate eval-compatible output (for eval $(wayu export --eval))
+@(private = "file")
+append_source_line :: proc(b: ^strings.Builder, file: string) {
+	q := shell_double_quote_literal(file, context.temp_allocator)
+	fmt.sbprintfln(b, "[ -f %s ] && source %s", q, q)
+}
+
+// Generate eval-compatible output (for eval "$(wayu export --eval)")
 generate_eval_output :: proc() {
-	// Similar to turbo but outputs to stdout for immediate eval
 	content := build_eval_content()
 	defer delete(content)
 	fmt.println(content)
 }
 
-// Build eval content (more compact than turbo file)
+// Build eval content (compact; statements separated by `;` so it also
+// survives the unquoted `eval $(...)` form).
 build_eval_content :: proc() -> string {
+	clear_toml_content_cache()
+	defer clear_toml_content_cache()
+
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
 
-	// Constants - compact format
-	entries := read_config_entries(&CONSTANTS_SPEC)
-	defer cleanup_entries(&entries)
-
-	for entry in entries {
-		if entry.value != "" {
-			fmt.sbprintf(&builder, "export %s=\"%s\";", entry.name, entry.value)
-		}
-	}
-
-	// PATH - single compact export
-	path_entries := load_path_entries_clean()
-	defer delete(path_entries)
-
-	if len(path_entries) > 0 {
-		// Build PATH string
-		fmt.sbprintf(&builder, "export PATH=\"")
-		for p, i in path_entries {
-			if i > 0 {
-				fmt.sbprintf(&builder, ":")
-			}
-			fmt.sbprintf(&builder, "%s", p)
-		}
-		fmt.sbprintf(&builder, ":$PATH\";")
-	}
-
-	// Aliases
-	alias_entries := read_config_entries(&ALIAS_SPEC)
-	defer cleanup_entries(&alias_entries)
-
-	for entry in alias_entries {
-		if entry.value != "" {
-			fmt.sbprintf(&builder, "alias %s=\"%s\";", entry.name, entry.value)
-		}
-	}
+	emit_env_exports(&builder, ";")
+	emit_path_export(&builder, ";")
+	emit_alias_definitions(&builder, ";")
 
 	return strings.clone(strings.to_string(builder))
-}
-
-// Append constants in direct export format
-append_constants_direct :: proc(builder: ^strings.Builder) {
-	entries := read_config_entries(&CONSTANTS_SPEC)
-	defer cleanup_entries(&entries)
-
-	for entry in entries {
-		if entry.value != "" {
-			// Escape special characters
-			escaped_value := escape_turbo_value(entry.value)
-			fmt.sbprintf(builder, "export %s=\"%s\"\n", entry.name, escaped_value)
-		}
-	}
-}
-
-// Append PATH in pre-computed format (single export)
-append_path_direct :: proc(builder: ^strings.Builder) {
-	path_entries := load_path_entries_clean()
-	defer delete(path_entries)
-
-	if len(path_entries) == 0 {
-		fmt.sbprintf(builder, "# No PATH entries configured\n")
-		return
-	}
-
-	// Build pre-computed PATH export
-	fmt.sbprintf(builder, "export PATH=\"")
-	for p, i in path_entries {
-		if i > 0 {
-			fmt.sbprintf(builder, ":")
-		}
-		fmt.sbprintf(builder, "%s", p)
-	}
-	fmt.sbprintf(builder, ":$PATH\"\n")
-}
-
-// Append aliases in direct format
-append_aliases_direct :: proc(builder: ^strings.Builder) {
-	entries := read_config_entries(&ALIAS_SPEC)
-	defer cleanup_entries(&entries)
-
-	for entry in entries {
-		if entry.value != "" {
-			// Escape the command value
-			escaped_cmd := escape_turbo_value(entry.value)
-			fmt.sbprintf(builder, "alias %s=\"%s\"\n", entry.name, escaped_cmd)
-		}
-	}
-}
-
-// Append functions (if any exist)
-append_functions_direct :: proc(builder: ^strings.Builder) {
-	funcs_dir := fmt.aprintf("%s/functions", wayu.config)
-	defer delete(funcs_dir)
-
-	if !os.exists(funcs_dir) {
-		fmt.sbprintf(builder, "# No custom functions\n")
-		return
-	}
-
-	// Check if directory has any .zsh files
-	has_functions := false
-	// Simple existence check - actual function loading kept minimal
-	if wayu.shell == .ZSH {
-		fmt.sbprintf(builder, "for f in \"$HOME/.config/wayu/functions\"/*(N); do [[ -f \"$f\" ]] && source \"$f\"; done\n")
-	} else {
-		fmt.sbprintf(builder, "for f in \"$HOME/.config/wayu/functions\"/*.zsh; do [ -f \"$f\" ] && source \"$f\"; done\n")
-	}
-}
-
-// Append plugins loading
-append_plugins_direct :: proc(builder: ^strings.Builder) {
-	// Source plugins config if exists
-	fmt.sbprintf(builder, "[ -f \"$HOME/.config/wayu/plugins.zsh\" ] && source \"$HOME/.config/wayu/plugins.zsh\"\n")
-	fmt.sbprintf(builder, "[ -f \"$HOME/.config/wayu/plugins/config.zsh\" ] && source \"$HOME/.config/wayu/plugins/config.zsh\"\n")
-}
-
-// Append external tools loading (Starship, Zoxide, etc.)
-append_tools_direct :: proc(builder: ^strings.Builder) {
-	tools_path := fmt.aprintf("%s/tools.zsh", wayu.config)
-	defer delete(tools_path)
-	
-	if os.exists(tools_path) {
-		fmt.sbprintf(builder, "[ -f \"$HOME/.config/wayu/tools.zsh\" ] && source \"$HOME/.config/wayu/tools.zsh\"\n")
-	} else {
-		fmt.sbprintf(builder, "# No tools configuration\n")
-	}
-}
-
-// Append extra config loading
-append_extra_direct :: proc(builder: ^strings.Builder) {
-	extra_path := fmt.aprintf("%s/extra.zsh", wayu.config)
-	defer delete(extra_path)
-	
-	if os.exists(extra_path) {
-		fmt.sbprintf(builder, "[ -f \"$HOME/.config/wayu/extra.zsh\" ] && source \"$HOME/.config/wayu/extra.zsh\"\n")
-	} else {
-		fmt.sbprintf(builder, "# No extra configuration\n")
-	}
-}
-
-// Load PATH entries and return clean, deduplicated list
-load_path_entries_clean :: proc() -> []string {
-	entries := read_config_entries(&PATH_SPEC)
-	defer cleanup_entries(&entries)
-
-	result := make([dynamic]string)
-
-	seen := make(map[string]bool)
-	defer delete(seen)
-
-	for entry in entries {
-		// Expand environment variables
-		expanded := expand_env_vars(entry.name)
-		defer delete(expanded)
-
-		// Skip if doesn't exist
-		if !os.exists(expanded) {
-			continue
-		}
-
-		// Skip duplicates
-		if seen[expanded] {
-			continue
-		}
-
-		seen[expanded] = true
-		append(&result, strings.clone(expanded))
-	}
-
-	return result[:]
-}
-
-// Escape shell value for safe export in turbo files
-escape_turbo_value :: proc(value: string) -> string {
-	// Replace " with \"
-	result, _ := strings.replace_all(value, "\"", "\\\"", context.temp_allocator)
-	return result
 }
 
 // Print export usage
@@ -418,23 +259,29 @@ print_export_usage :: proc() {
 	fmt.println("  source \"$HOME/.config/wayu/turbo.zsh\"")
 	fmt.println()
 	fmt.println("  # Or use eval mode (even faster)")
-	fmt.println("  eval $(wayu export --eval)")
+	fmt.println("  eval \"$(wayu export --eval)\"")
 	fmt.println()
-	fmt.printfln("%sTURBO FILE:%s ~/.config/wayu/turbo.zsh", get_muted(), RESET)
+	fmt.printfln("%sTURBO FILE:%s ~/.config/wayu/%s", get_muted(), RESET, turbo_export_file_name())
 }
 
-// Check if turbo file exists and is current
+// Check if the turbo file for the active shell exists and is current
+// (not older than wayu.toml).
 check_turbo_status :: proc() -> (exists: bool, current: bool) {
-	turbo_path := fmt.aprintf("%s/%s", wayu.data, TURBO_EXPORT_FILE)
+	turbo_path := fmt.aprintf("%s/%s", wayu.data, turbo_export_file_name())
 	defer delete(turbo_path)
 
-	if !os.exists(turbo_path) {
+	turbo_info, err := os.stat(turbo_path, context.temp_allocator)
+	if err != nil {
 		return false, false
 	}
 
-	// For now, just check existence - consider implementing modification time
-	// comparison if needed for automatic staleness detection
-	return true, true
+	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
+	defer delete(toml_path)
+	toml_info, terr := os.stat(toml_path, context.temp_allocator)
+	if terr != nil {
+		return true, true
+	}
+	return true, turbo_info.modification_time._nsec >= toml_info.modification_time._nsec
 }
 
 // Handle export --check action
@@ -454,5 +301,5 @@ handle_export_check :: proc() {
 	}
 
 	fmt.printfln("%s✓ Turbo file is up to date%s", get_success(), RESET)
-	os.exit(0)
+	os.exit(EXIT_SUCCESS)
 }

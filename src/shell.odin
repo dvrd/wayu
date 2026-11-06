@@ -212,153 +212,172 @@ shell_fish_get_version :: proc() -> string {
 }
 
 // ============================================================================
-// Fish Config Generation
-// ============================================================================
-
-// Generate complete Fish init script from TomlConfig
-shell_fish_generate_init :: proc(config: TomlConfig) -> string {
-    sb := strings.builder_make()
-    defer strings.builder_destroy(&sb)
-
-    // Header
-    fmt.sbprintln(&sb, "#!/usr/bin/env fish")
-    fmt.sbprintln(&sb, "")
-    fmt.sbprintln(&sb, "# Wayu Shell Initialization - Auto-generated for Fish")
-    fmt.sbprintfln(&sb, "# Version: %s", config.wayu_version)
-    fmt.sbprintln(&sb, "")
-
-    // Constants first
-    constants_section := shell_fish_generate_constants(config.constants)
-    fmt.sbprintln(&sb, constants_section)
-    delete(constants_section)
-
-    // PATH
-    path_section := shell_fish_generate_path(config.path.entries)
-    fmt.sbprintln(&sb, path_section)
-    delete(path_section)
-
-    // Aliases
-    aliases_section := shell_fish_generate_aliases(config.aliases)
-    fmt.sbprintln(&sb, aliases_section)
-    delete(aliases_section)
-
-    // Plugins (sources the generated fish plugin loader if present)
-    fmt.sbprintln(&sb, "# Plugins loaded from ~/.config/wayu/plugins.fish")
-    fmt.sbprintln(&sb, "if test -f \"$HOME/.config/wayu/plugins.fish\"")
-    fmt.sbprintln(&sb, "    source \"$HOME/.config/wayu/plugins.fish\"")
-    fmt.sbprintln(&sb, "end")
-
-    return strings.clone(strings.to_string(sb))
-}
-
-// Generate Fish-compatible PATH configuration
-shell_fish_generate_path :: proc(entries: []string) -> string {
-    sb := strings.builder_make()
-    defer strings.builder_destroy(&sb)
-
-    fmt.sbprintln(&sb, "# PATH Configuration")
-    fmt.sbprintln(&sb, "set -gx WAYU_PATHS")
-    fmt.sbprintln(&sb, "")
-
-    // Add each entry to WAYU_PATHS array
-    for entry in entries {
-        escaped := escape_fish_string(entry)
-        fmt.sbprintf(&sb, "set -a WAYU_PATHS %s\n", escaped)
-        delete(escaped)
-    }
-
-    if len(entries) > 0 {
-        fmt.sbprintln(&sb, "")
-    }
-
-    // PATH deduplication and export logic
-    fmt.sbprintln(&sb, "# Build PATH from registry with deduplication")
-    fmt.sbprintln(&sb, "for dir in $WAYU_PATHS")
-    fmt.sbprintln(&sb, "    if not test -d \"$dir\"")
-    fmt.sbprintln(&sb, "        continue")
-    fmt.sbprintln(&sb, "    end")
-    fmt.sbprintln(&sb, "    if contains \"$dir\" $PATH")
-    fmt.sbprintln(&sb, "        continue")
-    fmt.sbprintln(&sb, "    end")
-    fmt.sbprintln(&sb, "    set -gx PATH \"$dir\" $PATH")
-    fmt.sbprintln(&sb, "end")
-    fmt.sbprintln(&sb, "")
-
-    return strings.clone(strings.to_string(sb))
-}
-
-// Generate Fish-compatible aliases
-shell_fish_generate_aliases :: proc(aliases: []TomlAlias) -> string {
-    sb := strings.builder_make()
-    defer strings.builder_destroy(&sb)
-
-    fmt.sbprintln(&sb, "# Aliases Configuration")
-
-    for alias in aliases {
-        escaped_command := escape_fish_string(alias.command)
-        fmt.sbprintf(&sb, "alias %s %s\n", alias.name, escaped_command)
-        delete(escaped_command)
-    }
-
-    fmt.sbprintln(&sb, "")
-    return strings.clone(strings.to_string(sb))
-}
-
-// Generate Fish-compatible constants (environment variables)
-shell_fish_generate_constants :: proc(constants: []TomlConstant) -> string {
-    sb := strings.builder_make()
-    defer strings.builder_destroy(&sb)
-
-    fmt.sbprintln(&sb, "# Environment Constants")
-
-    for constant in constants {
-        if constant.export {
-            escaped_value := escape_fish_string(constant.value)
-            fmt.sbprintf(&sb, "set -gx %s %s\n", constant.name, escaped_value)
-            delete(escaped_value)
-        } else {
-            escaped_value := escape_fish_string(constant.value)
-            fmt.sbprintf(&sb, "set -g %s %s\n", constant.name, escaped_value)
-            delete(escaped_value)
-        }
-    }
-
-    fmt.sbprintln(&sb, "")
-    return strings.clone(strings.to_string(sb))
-}
-
-// ============================================================================
 // Utility Functions
 // ============================================================================
 
-// Escape a string for safe use in Fish shell
-escape_fish_string :: proc(s: string) -> string {
-    // Fish uses single quotes for literal strings
-    // To include a single quote, we need to escape it or use different approach
-
-    // Check if string contains single quotes
-    if !strings.contains(s, "'") {
-        return fmt.aprintf("'%s'", s)
-    }
-
-    // Contains single quotes - use double quotes and escape special chars
-    // In Fish, \ only escapes $, *, \, and " inside double quotes
-    sb := strings.builder_make()
-    defer strings.builder_destroy(&sb)
-
-    strings.write_byte(&sb, '"')
-    for ch in s {
-        switch ch {
-        case '$', '*', '\\', '"':
+// Escape a string as a fully literal Fish word.
+//
+// Inside fish single quotes only `\\` and `\'` are escape sequences, so both
+// backslash and single quote must be escaped; everything else (including `$`
+// and `*`) is literal. Works byte-wise, so UTF-8 passes through untouched.
+escape_fish_string :: proc(s: string, allocator := context.allocator) -> string {
+    sb := strings.builder_make(allocator)
+    strings.write_byte(&sb, '\'')
+    for i in 0..<len(s) {
+        c := s[i]
+        if c == '\\' || c == '\'' {
             strings.write_byte(&sb, '\\')
-            strings.write_byte(&sb, byte(ch))
+        }
+        strings.write_byte(&sb, c)
+    }
+    strings.write_byte(&sb, '\'')
+    return strings.to_string(sb)
+}
+
+// ============================================================================
+// Shell quoting helpers (shared by every generator that emits shell code)
+// ============================================================================
+//
+// Policy for values written into generated scripts:
+//
+//   aliases       → single-quoted (shell_single_quote). The alias body is
+//                   stored verbatim and `$VAR` expands when the alias *runs*,
+//                   which is what users expect from `alias x='cd $HOME/y'`.
+//   env values    → double-quoted (shell_double_quote_env). `$VAR` and
+//                   `${VAR}` keep expanding at source time (GOPATH="$HOME/go"),
+//                   but `"`, `\` and backtick are escaped, and command
+//                   substitution `$(...)` / `$((...))` is neutralised to a
+//                   literal `$(`. Rationale: values come from data files and
+//                   are re-evaluated on every shell start; parameter expansion
+//                   is the documented feature, executing arbitrary commands
+//                   is not. Backticks and `$(` are treated the same way so the
+//                   rule is simple: variables expand, commands never run.
+//   literal paths → double-quoted with `$` escaped too
+//                   (shell_double_quote_literal) — used for already-expanded
+//                   absolute paths.
+//
+// All helpers operate byte-wise so non-ASCII (UTF-8) content is preserved.
+
+// Wrap `s` in single quotes for zsh/bash, encoding embedded `'` as `'\''`.
+shell_single_quote :: proc(s: string, allocator := context.allocator) -> string {
+    sb := strings.builder_make(allocator)
+    strings.write_byte(&sb, '\'')
+    for i in 0..<len(s) {
+        c := s[i]
+        if c == '\'' {
+            strings.write_string(&sb, `'\''`)
+        } else {
+            strings.write_byte(&sb, c)
+        }
+    }
+    strings.write_byte(&sb, '\'')
+    return strings.to_string(sb)
+}
+
+// Double-quote an env value for zsh/bash keeping `$VAR` / `${VAR}` expansion.
+// See the policy comment above for what gets escaped and why.
+shell_double_quote_env :: proc(s: string, allocator := context.allocator) -> string {
+    sb := strings.builder_make(allocator)
+    strings.write_byte(&sb, '"')
+    for i in 0..<len(s) {
+        c := s[i]
+        switch c {
+        case '"', '\\', '`':
+            strings.write_byte(&sb, '\\')
+            strings.write_byte(&sb, c)
+        case '$':
+            if i + 1 < len(s) && s[i+1] == '(' {
+                strings.write_byte(&sb, '\\')
+            }
+            strings.write_byte(&sb, c)
         case:
-            strings.write_byte(&sb, byte(ch))
+            strings.write_byte(&sb, c)
         }
     }
     strings.write_byte(&sb, '"')
+    return strings.to_string(sb)
+}
 
-    return strings.clone(strings.to_string(sb))
+// Double-quote a fully literal value for zsh/bash (no expansion of any kind).
+shell_double_quote_literal :: proc(s: string, allocator := context.allocator) -> string {
+    sb := strings.builder_make(allocator)
+    strings.write_byte(&sb, '"')
+    for i in 0..<len(s) {
+        c := s[i]
+        switch c {
+        case '"', '\\', '`', '$':
+            strings.write_byte(&sb, '\\')
+        }
+        strings.write_byte(&sb, c)
+    }
+    strings.write_byte(&sb, '"')
+    return strings.to_string(sb)
+}
+
+// Double-quote an env value for fish keeping `$VAR` expansion. Inside fish
+// double quotes only `\"`, `\$`, `\\` are escapes; `$(` is command
+// substitution since fish 3.4, so it is neutralised like in bash/zsh.
+fish_double_quote_env :: proc(s: string, allocator := context.allocator) -> string {
+    sb := strings.builder_make(allocator)
+    strings.write_byte(&sb, '"')
+    for i in 0..<len(s) {
+        c := s[i]
+        switch c {
+        case '"', '\\':
+            strings.write_byte(&sb, '\\')
+            strings.write_byte(&sb, c)
+        case '$':
+            if i + 1 < len(s) && s[i+1] == '(' {
+                strings.write_byte(&sb, '\\')
+            }
+            strings.write_byte(&sb, c)
+        case:
+            strings.write_byte(&sb, c)
+        }
+    }
+    strings.write_byte(&sb, '"')
+    return strings.to_string(sb)
+}
+
+// Rewrite a leading `~` / `~/` into `$HOME` so env values like
+// LEDGER_FILE = "~/x" expand (tilde is not expanded inside quotes).
+// Returns a new string the caller owns.
+expand_leading_tilde_to_home_var :: proc(s: string, allocator := context.allocator) -> string {
+    if s == "~" {
+        return strings.clone("$HOME", allocator)
+    }
+    if strings.has_prefix(s, "~/") {
+        return strings.concatenate({"$HOME", s[1:]}, allocator)
+    }
+    return strings.clone(s, allocator)
+}
+
+// True when `s` is a portable shell variable name ([A-Za-z_][A-Za-z0-9_]*).
+is_shell_var_name :: proc(s: string) -> bool {
+    if len(s) == 0 { return false }
+    for i in 0..<len(s) {
+        c := s[i]
+        alpha := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+        digit := c >= '0' && c <= '9'
+        if !alpha && !(digit && i > 0) { return false }
+    }
+    return true
+}
+
+// True when `s` can be used verbatim as an alias name in zsh/bash/fish
+// without quoting (rejects whitespace, quotes, `=`, and shell metachars).
+is_safe_alias_name :: proc(s: string) -> bool {
+    if len(s) == 0 { return false }
+    for i in 0..<len(s) {
+        c := s[i]
+        switch c {
+        case ' ', '\t', '\n', '\r', '\'', '"', '`', '$', '=', ';', '&', '|',
+             '<', '>', '(', ')', '{', '}', '\\', '*', '?', '[', ']', '#', '~', '!':
+            return false
+        }
+        if c < 0x20 { return false }
+    }
+    return true
 }
 
 // Check if a command exists in PATH

@@ -362,56 +362,27 @@ check_file_changes :: proc() -> []string {
 // Regeneration
 // ============================================================================
 
-// Regenerate static configuration
+// Regenerate the shell init files (core/lazy/login/helpers + plugin runtime)
+// from wayu.toml. These are the files init.<ext> actually sources, so a hot
+// reload is picked up by the next shell (or `source ~/.config/wayu/init.<ext>`).
+// The old implementation wrote an orphaned wayu_static.<ext> that nothing
+// sourced and crashed on missing/malformed TOML.
 regenerate_static :: proc() {
-	print_info("Regenerating static configuration...")
+	print_info("Regenerating shell init files...")
 
-	// Read TOML config
 	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(toml_path)
-
-	config: TomlConfig
-	config_ok := false
-
-	if os.exists(toml_path) {
-		content, read_ok := safe_read_file(toml_path)
-		if read_ok {
-			defer delete(content)
-			config, config_ok = toml_parse(string(content))
-		}
+	if !os.exists(toml_path) {
+		print_warning("No wayu.toml found at %s - nothing to regenerate", toml_path)
+		return
 	}
 
-	if !config_ok {
-		config = static_config_from_files()
-	}
-	defer static_cleanup_config(&config)
+	regenerate_init_core_silently()
 
-	// Read lock file
-	lock_path := fmt.aprintf("%s/wayu.lock", wayu.data)
-	defer delete(lock_path)
-
-	lock: LockFile
-	lock_ok := false
-
-	if os.exists(lock_path) {
-		lock, lock_ok = lock_read(lock_path)
-	}
-
-	// Generate static config
-	static_config := static_generate(config, lock)
-	defer static_cleanup_static_config(&static_config)
-
-	// Write to file
-	output_path := fmt.aprintf("%s/wayu_static.%s", wayu.data, wayu.shell_ext)
-	defer delete(output_path)
-
-	if static_write(output_path, static_config) {
-		print_success("Static configuration regenerated")
-		fmt.printfln("  File: %s", output_path)
-		fmt.printfln("  Size: %d bytes", len(static_config.content))
-	} else {
-		print_error("Failed to regenerate static configuration")
-	}
+	core_path := fmt.aprintf("%s/core.%s", wayu.data, get_shell_extension(wayu.shell))
+	defer delete(core_path)
+	print_success("Shell init files regenerated")
+	fmt.printfln("  File: %s", core_path)
 }
 
 // Default callback for file changes
