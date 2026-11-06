@@ -853,6 +853,12 @@ generate_context_feature :: proc(b: ^strings.Builder) {
 	fmt.sbprintln(b, "# === Feature: Context-Aware Prompt ===")
 	fmt.sbprintln(b, "# File-only detection (instant). Version fetched async.")
 	fmt.sbprintln(b, "_wayu_detect_context() {")
+	// Reset options locally: the *.odin(NY1) tests below use bare glob
+	// qualifiers, which blow up with "no matches found" in any shell that runs
+	// with NO_BARE_GLOB_QUAL (some tool/agent harnesses do). emulate -L zsh
+	// restores zsh defaults for the body only, and null_glob keeps a
+	// non-matching pattern from erroring at all.
+	fmt.sbprintln(b, "  emulate -L zsh -o null_glob")
 	fmt.sbprintln(b, `  _WAYU_CONTEXT_VER=""`)
 
 	// Each entry: file test → context name. No subprocess calls.
