@@ -864,7 +864,8 @@ rc_has_active_reference :: proc(content: string, markers: []string) -> bool {
 	return false
 }
 
-WAYU_RC_MARKERS :: []string{"wayu/init", "wayu-turbo", "turbo.zsh"}
+// `eval "$(wayu build eval)"` is the documented dynamic setup.
+WAYU_RC_MARKERS :: []string{"wayu/init", "wayu-turbo", "turbo.zsh", "wayu build eval"}
 
 // Check 2: shell configuration
 check_shell_config :: proc(results: ^[dynamic]CheckResult) {
