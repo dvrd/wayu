@@ -197,6 +197,11 @@ migrate_plugin_config :: proc() -> bool {
 		return true
 	}
 
+	if wayu.dry_run {
+		print_info("[DRY RUN] Would migrate plugins.conf to plugins.json")
+		return true
+	}
+
 	print_info("Migrating plugins.conf to plugins.json...")
 
 	// Read old config
@@ -213,7 +218,7 @@ migrate_plugin_config :: proc() -> bool {
 
 	// Convert to new format
 	new_config := PluginConfigJSON{
-		version = "1.0",
+		version = strings.clone("1.0"),
 		last_updated = get_iso8601_timestamp(),
 		plugins = make([dynamic]PluginMetadata),
 	}
