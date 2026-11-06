@@ -1,0 +1,13 @@
+# Component golden cases: one per tests/golden/<component>_<W>x<H>.txt
+# Format: <component> <args...>   (shell-quoted; width/height come from the name)
+# Verify:     ruby tests/integration/test_golden.rb
+# Regenerate: ./bin/wayu -c=<component> --snapshot width=W height=H <args...>
+box_10x3              box
+box_80x24             box
+empty-state_60x10     empty-state
+footer_80x3           footer
+header_40x3           header title=PATH count=10
+header_60x3           header 'title=Test Header'
+list-item_40x1        list-item 'text=Sample item'
+list-item_40x24       list-item 'text=Test Item' selected=true
+scroll-indicator_50x1 scroll-indicator start=1 end=10 total=50

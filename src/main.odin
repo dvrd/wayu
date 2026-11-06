@@ -737,7 +737,7 @@ print_help :: proc() {
 	print_item("", "init", "Initialize wayu configuration directory", EMOJI_INFO)
 	print_item("", "migrate", "Migrate configuration between shells", EMOJI_INFO)
 	print_item("", "config", "Manage configuration files (edit, extend, scan)", EMOJI_INFO)
-	print_item("", "reload", "Watch config files and regenerate static output (aliases: watch, hot-reload)", "\U0001F440")
+	print_item("", "reload", "Watch config files and regenerate init files (aliases: watch, hot-reload)", "\U0001F440")
 	print_item("", "version", "Show version information", EMOJI_INFO)
 	print_item("", "help", "Show this help message", EMOJI_INFO)
 	fmt.println()

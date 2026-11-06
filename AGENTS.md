@@ -43,9 +43,12 @@ ruby tests/integration/test_plugin.rb
 
 **Visual regression (golden files)**:
 ```bash
-./build_it && ./unit --test-component-snapshot   # regenerate goldens
-./build_it && ./unit --test-components            # compare against goldens
+ruby tests/integration/test_golden.rb             # compare every golden (also run by run_all.rb)
+./bin/wayu -c=header --test width=40 height=3 title=PATH count=10      # check one component
+./bin/wayu -c=header --snapshot width=40 height=3 title=PATH count=10  # regenerate one golden
 ```
+
+Each `tests/golden/<component>_<W>x<H>.txt` needs a matching line (component + args) in `tests/golden/cases.txt`; the test fails if a golden has no case.
 
 ## Architecture
 
@@ -86,7 +89,7 @@ ruby tests/integration/test_plugin.rb
 | `src/migrate.odin` | Legacy shell config → wayu.toml migration + schema migration |
 | `src/validation.odin` | Input validation + error handling |
 | `src/hooks.odin` | Pre/post operation hook procs (stubs assigned to ConfigEntrySpec) |
-| `src/hot_reload.odin` | File watcher with debounced auto-regeneration |
+| `src/hot_reload.odin` | `wayu reload`/`watch`: file watcher, debounced core regeneration |
 | `src/tui_core.odin` | TUI main loop, state machine, data loading, render orchestrator |
 | `src/tui_views.odin` | TUI view renderers (list, overlays, cache, handlers, hooks, plugins, settings) |
 | `src/tui_io.odin` | TUI terminal I/O: raw mode, input, screen buffer, events, colors, layout, components |
@@ -112,7 +115,7 @@ All TUI code lives in 3 consolidated files (down from 18). No separate `tui/` pa
 
 ### Exit Codes
 
-Always use the constants from `src/exit_codes.odin`. **Never use bare `os.exit(1)`**.
+Always use the `EXIT_*` constants from `src/interfaces.odin`. **Never use bare `os.exit(1)`**.
 
 | Constant | Value | When to use |
 |---|---|---|
@@ -156,8 +159,7 @@ if !global_yes_flag {
 ```
 tests/
 ├── unit/          # Odin unit tests, one file per module
-├── ui/            # Visual/alignment component tests (Odin)
-├── golden/        # Golden files for component visual regression
+├── golden/        # Component goldens + cases.txt (checked by integration/test_golden.rb)
 ├── integration/   # Integration tests (Ruby) — test end-to-end CLI behavior
 ├── tui/           # TUI responsive tests (Python/pyte)
 └── benchmark/     # Performance benchmarks
@@ -185,7 +187,6 @@ Unit tests: `tests/unit/test_<module>.odin`. Integration tests spawn the compile
 
 These are acknowledged incomplete features — do not add workarounds, implement them properly:
 
-- `src/hot_reload.odin`: file watcher implemented, needs CLI entry point wired in `main.odin`
 - `wayu build profile`: profiling not yet implemented
 - `src/fuzzy.odin`: interactive_select is alive; FuzzyView-based full-screen finder removed as dead code
 - Fish shell: completions and templates wired; `--shell fish` flag fixed in init command
