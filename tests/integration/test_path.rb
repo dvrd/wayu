@@ -35,6 +35,9 @@ class PathIntegrationTest
       test_nonexistent_path_handling
       test_remove_nonexistent_path
       test_path_persistence_after_modifications
+      test_clean_operates_on_wayu_toml
+      test_dedup_operates_on_wayu_toml
+      test_add_detects_resolved_duplicate
       test_help_command
     ensure
       teardown_test_env
@@ -119,6 +122,70 @@ class PathIntegrationTest
       puts "  Output: #{output}"
       @failed += 1
     end
+  end
+
+  def report(ok, detail)
+    if ok
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  #{detail}"
+      @failed += 1
+    end
+  end
+
+  # Replace the [paths] table of wayu.toml with raw `key = "value"` lines.
+  def write_paths_table(lines)
+    content = File.read(@toml_file).sub(/^\[paths\][^\[]*/m, "")
+    File.write(@toml_file, content.rstrip + "\n\n[paths]\n" + lines.join("\n") + "\n")
+  end
+
+  # Regression: clean/dedup used to edit the legacy path.zsh, never wayu.toml.
+  def test_clean_operates_on_wayu_toml
+    print "Test 13: path clean removes missing entries from wayu.toml... "
+
+    keep = "/tmp/wayu_test_clean_keep"
+    FileUtils.mkdir_p(keep)
+    write_paths_table([%(keep = "#{keep}"), %(gone = "/tmp/wayu_test_clean_gone_#{$$}"), %(home_var = "$HOME")])
+
+    dry_out, dry_status = run_wayu("--dry-run path clean")
+    after_dry = File.read(@toml_file)
+    refuse_out, refuse_status = run_wayu("path clean")
+    output, status = run_wayu("path clean --yes")
+    content = File.read(@toml_file)
+
+    report(dry_status.success? && dry_out.include?("gone") && after_dry.include?("gone =") &&
+           refuse_status.exitstatus == 64 &&
+           status.success? && !content.include?("gone =") && content.include?("keep =") &&
+           content.include?("home_var ="),  # $HOME expands → exists → kept
+           "dry=#{dry_out}\nrefuse=#{refuse_out}\nout=#{output}\ntoml=#{content}")
+  end
+
+  def test_dedup_operates_on_wayu_toml
+    print "Test 14: path dedup removes resolved duplicates from wayu.toml... "
+
+    write_paths_table([%(a_home = "$HOME"), %(b_home = "#{@tmp_home}"), %(c_tmp = "/tmp")])
+    output, status = run_wayu("path dedup --yes")
+    content = File.read(@toml_file)
+
+    report(status.success? && content.include?("a_home =") && !content.include?("b_home =") &&
+           content.include?("c_tmp ="),
+           "out=#{output}\ntoml=#{content}")
+  end
+
+  # Regression: `$HOME/x` stored + `add ~/x` (or the absolute form) was not
+  # detected as a duplicate because only the new side was expanded.
+  def test_add_detects_resolved_duplicate
+    print "Test 15: add detects duplicate of an env-var path... "
+
+    write_paths_table([%(home = "$HOME")])
+    output, status = run_wayu("path add #{@tmp_home}")
+    content = File.read(@toml_file)
+
+    report(status.success? && output.include?("already") && !output.include?("Added") &&
+           content.scan("#{@tmp_home}").empty?,
+           "out=#{output}\ntoml=#{content}")
   end
 
   def test_duplicate_path_handling

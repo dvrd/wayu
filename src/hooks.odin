@@ -73,23 +73,100 @@ HookContext :: struct {
 // hook's one meaningful placeholder — the convenience shim `execute_hook`
 // routes the legacy single-string form through a context whose field is
 // chosen based on hook type.
+//
+// Security: placeholder values are NEVER spliced into the shell text. Each
+// placeholder is rewritten into a quoted reference to an environment variable
+// (WAYU_HOOK_PATH / WAYU_HOOK_NAME / WAYU_HOOK_VALUE) that is set only for the
+// hook's lifetime, so a value like `x; rm -rf ~` stays inert data.
+//
+// Hooks never run under --dry-run (nothing is actually being changed).
 execute_hook_ctx :: proc(hook_type: HookType, ctx: HookContext) {
+	if wayu.dry_run do return
+
 	hook_cmd := get_hook_command(hook_type)
 	defer delete(hook_cmd)
 	if len(hook_cmd) == 0 {
 		return
 	}
 
-	// Replace placeholders. Each field defaults to "" so absent placeholders
-	// expand to empty rather than getting conflated with the other fields.
-	cmd, _ := strings.replace_all(hook_cmd, "{path}",  ctx.path,  context.temp_allocator)
-	cmd, _  = strings.replace_all(cmd,       "{name}",  ctx.name,  context.temp_allocator)
-	cmd, _  = strings.replace_all(cmd,       "{value}", ctx.value, context.temp_allocator)
+	cmd := hook_render_command(hook_cmd)
+	defer delete(cmd)
+
+	// Each field defaults to "" so absent placeholders expand to empty rather
+	// than getting conflated with the other fields.
+	_ = os.set_env(HOOK_ENV_PATH, ctx.path)
+	_ = os.set_env(HOOK_ENV_NAME, ctx.name)
+	_ = os.set_env(HOOK_ENV_VALUE, ctx.value)
+	defer {
+		_ = os.unset_env(HOOK_ENV_PATH)
+		_ = os.unset_env(HOOK_ENV_NAME)
+		_ = os.unset_env(HOOK_ENV_VALUE)
+	}
 
 	// Execute via shell (fire and forget - don't block on output)
 	debug("Executing hook: %s", cmd)
 	hook_args := []string{"sh", "-c", cmd}
 	run_command(hook_args)  // Ignoring return value - hooks are best-effort
+}
+
+HOOK_ENV_PATH  :: "WAYU_HOOK_PATH"
+HOOK_ENV_NAME  :: "WAYU_HOOK_NAME"
+HOOK_ENV_VALUE :: "WAYU_HOOK_VALUE"
+
+// Rewrite `{path}`/`{name}`/`{value}` placeholders in a hook command into
+// references to the WAYU_HOOK_* environment variables, quoted for the shell
+// context the placeholder appears in:
+//   unquoted       {name}  →  "${WAYU_HOOK_NAME}"
+//   inside "..."   {name}  →  ${WAYU_HOOK_NAME}        (no word splitting in "")
+//   inside '...'   {name}  →  '"${WAYU_HOOK_NAME}"'    (close, expand, reopen)
+// Expansion results are never re-parsed by the shell, so values cannot inject
+// syntax. Caller owns the returned string.
+hook_render_command :: proc(cmd: string) -> string {
+	Placeholder :: struct { token, env: string }
+	placeholders := [3]Placeholder{
+		{"{path}", HOOK_ENV_PATH},
+		{"{name}", HOOK_ENV_NAME},
+		{"{value}", HOOK_ENV_VALUE},
+	}
+
+	b := strings.builder_make()
+	in_single, in_double := false, false
+	i := 0
+	outer: for i < len(cmd) {
+		c := cmd[i]
+		if c == '{' {
+			for p in placeholders {
+				if !strings.has_prefix(cmd[i:], p.token) { continue }
+				ref := strings.concatenate({"${", p.env, "}"}, context.temp_allocator)
+				switch {
+				case in_single: strings.write_string(&b, strings.concatenate({`'"`, ref, `"'`}, context.temp_allocator))
+				case in_double: strings.write_string(&b, ref)
+				case:           strings.write_string(&b, strings.concatenate({`"`, ref, `"`}, context.temp_allocator))
+				}
+				i += len(p.token)
+				continue outer
+			}
+		}
+		switch {
+		case in_single:
+			if c == '\'' { in_single = false }
+		case c == '\\' && i + 1 < len(cmd):
+			// Escaped char (outside single quotes): copy the pair untouched.
+			strings.write_byte(&b, c)
+			strings.write_byte(&b, cmd[i+1])
+			i += 2
+			continue outer
+		case in_double:
+			if c == '"' { in_double = false }
+		case c == '\'':
+			in_single = true
+		case c == '"':
+			in_double = true
+		}
+		strings.write_byte(&b, c)
+		i += 1
+	}
+	return strings.to_string(b)
 }
 
 // Legacy single-string entry point. Routes to execute_hook_ctx by picking the
@@ -190,7 +267,11 @@ load_hook_config :: proc() -> HookConfig {
 
 		key := strings.trim_space(parts[0])
 		value := strings.trim_space(parts[1])
-		value = strings.trim(value, "\"") // Remove quotes if present
+		// Remove ONE matching pair of surrounding quotes (not every quote
+		// char at either end, which would eat a trailing `'` of the command).
+		if len(value) >= 2 && value[0] == value[len(value)-1] && (value[0] == '"' || value[0] == '\'') {
+			value = value[1:len(value)-1]
+		}
 
 		switch key {
 		case "pre_path_add":
@@ -288,6 +369,12 @@ show_hooks_status :: proc() {
 	check_and_print("post_path_remove", config.post_path_remove, &has_hooks)
 	check_and_print("pre_alias_add", config.pre_alias_add, &has_hooks)
 	check_and_print("post_alias_add", config.post_alias_add, &has_hooks)
+	check_and_print("pre_alias_remove", config.pre_alias_remove, &has_hooks)
+	check_and_print("post_alias_remove", config.post_alias_remove, &has_hooks)
+	check_and_print("pre_constant_add", config.pre_constant_add, &has_hooks)
+	check_and_print("post_constant_add", config.post_constant_add, &has_hooks)
+	check_and_print("pre_constant_remove", config.pre_constant_remove, &has_hooks)
+	check_and_print("post_constant_remove", config.post_constant_remove, &has_hooks)
 	check_and_print("pre_plugin_install", config.pre_plugin_install, &has_hooks)
 	check_and_print("post_plugin_install", config.post_plugin_install, &has_hooks)
 	check_and_print("pre_export", config.pre_export, &has_hooks)
@@ -306,6 +393,10 @@ show_hooks_status :: proc() {
 	fmt.println("  {path}   - The PATH entry being added/removed")
 	fmt.println("  {name}   - The alias/constant name")
 	fmt.println("  {value}  - The alias command or constant value")
+	fmt.println()
+	fmt.println("  Values are passed via $WAYU_HOOK_PATH / $WAYU_HOOK_NAME /")
+	fmt.println("  $WAYU_HOOK_VALUE and substituted quoted, never as shell code.")
+	fmt.println("  Hooks are skipped under --dry-run.")
 }
 
 // Edit hooks configuration
@@ -444,36 +535,36 @@ hook_post_export :: proc() {
 	execute_hook(.POST_EXPORT)
 }
 
-hook_pre_alias_add :: proc(name: string) {
-	execute_hook(.PRE_ALIAS_ADD, name)
+hook_pre_alias_add :: proc(name: string, value: string) {
+	execute_hook_ctx(.PRE_ALIAS_ADD, HookContext{name = name, value = value})
 }
 
-hook_post_alias_add :: proc(name: string) {
-	execute_hook(.POST_ALIAS_ADD, name)
+hook_post_alias_add :: proc(name: string, value: string) {
+	execute_hook_ctx(.POST_ALIAS_ADD, HookContext{name = name, value = value})
 }
 
-hook_pre_alias_remove :: proc(name: string) {
-	execute_hook(.PRE_ALIAS_REMOVE, name)
+hook_pre_alias_remove :: proc(name: string, value: string) {
+	execute_hook_ctx(.PRE_ALIAS_REMOVE, HookContext{name = name, value = value})
 }
 
-hook_post_alias_remove :: proc(name: string) {
-	execute_hook(.POST_ALIAS_REMOVE, name)
+hook_post_alias_remove :: proc(name: string, value: string) {
+	execute_hook_ctx(.POST_ALIAS_REMOVE, HookContext{name = name, value = value})
 }
 
-hook_pre_constant_add :: proc(name: string) {
-	execute_hook(.PRE_CONSTANT_ADD, name)
+hook_pre_constant_add :: proc(name: string, value: string) {
+	execute_hook_ctx(.PRE_CONSTANT_ADD, HookContext{name = name, value = value})
 }
 
-hook_post_constant_add :: proc(name: string) {
-	execute_hook(.POST_CONSTANT_ADD, name)
+hook_post_constant_add :: proc(name: string, value: string) {
+	execute_hook_ctx(.POST_CONSTANT_ADD, HookContext{name = name, value = value})
 }
 
-hook_pre_constant_remove :: proc(name: string) {
-	execute_hook(.PRE_CONSTANT_REMOVE, name)
+hook_pre_constant_remove :: proc(name: string, value: string) {
+	execute_hook_ctx(.PRE_CONSTANT_REMOVE, HookContext{name = name, value = value})
 }
 
-hook_post_constant_remove :: proc(name: string) {
-	execute_hook(.POST_CONSTANT_REMOVE, name)
+hook_post_constant_remove :: proc(name: string, value: string) {
+	execute_hook_ctx(.POST_CONSTANT_REMOVE, HookContext{name = name, value = value})
 }
 
 hook_pre_plugin_install :: proc(name: string) {

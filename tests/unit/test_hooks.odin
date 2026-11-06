@@ -73,3 +73,70 @@ test_plugin_install_hooks_absent_noop :: proc(t: ^testing.T) {
 
 	testing.expect(t, true, "absent hooks should be a safe no-op")
 }
+
+@(test)
+test_hook_render_command_quotes_per_context :: proc(t: ^testing.T) {
+	r1 := wayu.hook_render_command("echo {name}")
+	defer delete(r1)
+	testing.expect_value(t, r1, `echo "${WAYU_HOOK_NAME}"`)
+
+	r2 := wayu.hook_render_command(`echo "n={name} v={value}"`)
+	defer delete(r2)
+	testing.expect_value(t, r2, `echo "n=${WAYU_HOOK_NAME} v=${WAYU_HOOK_VALUE}"`)
+
+	r3 := wayu.hook_render_command(`echo 'Adding {path}' >> log`)
+	defer delete(r3)
+	testing.expect_value(t, r3, `echo 'Adding '"${WAYU_HOOK_PATH}"'' >> log`)
+}
+
+// Placeholder values are data: shell metacharacters in a name/value must not
+// execute, and {value} must be filled.
+@(test)
+test_hook_values_cannot_inject :: proc(t: ^testing.T) {
+	tmp := "/tmp/wayu_test_hooks_inject"
+	os.remove_all(tmp)
+	testing.expect(t, os.make_directory(tmp) == nil)
+	defer os.remove_all(tmp)
+
+	saved_config := wayu.wayu.config
+	wayu.wayu.config = tmp
+	defer wayu.wayu.config = saved_config
+
+	log_path := fmt.tprintf("%s/hook.log", tmp)
+	pwned := fmt.tprintf("%s/PWNED", tmp)
+	conf := fmt.tprintf("post_alias_add = \"echo {{name}}={{value}} >> %s; echo 'q:{{name}}' >> %s\"\n", log_path, log_path)
+	testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/hooks.conf", tmp), transmute([]byte)conf))
+
+	evil := fmt.tprintf("x; touch %s", pwned)
+	wayu.hook_post_alias_add(evil, "$(touch PWNED2) v")
+
+	content, ok := wayu.safe_read_file(log_path)
+	testing.expect(t, ok, "hook should have run")
+	defer delete(content)
+	testing.expect(t, !os.exists(pwned), "name must not be executed as shell code")
+	testing.expect(t, strings.contains(string(content), evil), "name passed through literally")
+	testing.expect(t, strings.contains(string(content), "$(touch PWNED2) v"), "{value} filled literally")
+	testing.expect(t, strings.contains(string(content), fmt.tprintf("q:%s", evil)), "single-quoted placeholder filled")
+}
+
+@(test)
+test_hooks_skipped_in_dry_run :: proc(t: ^testing.T) {
+	tmp := "/tmp/wayu_test_hooks_dryrun"
+	os.remove_all(tmp)
+	testing.expect(t, os.make_directory(tmp) == nil)
+	defer os.remove_all(tmp)
+
+	saved_config := wayu.wayu.config
+	wayu.wayu.config = tmp
+	defer wayu.wayu.config = saved_config
+	saved_dry := wayu.wayu.dry_run
+	wayu.wayu.dry_run = true
+	defer wayu.wayu.dry_run = saved_dry
+
+	log_path := fmt.tprintf("%s/hook.log", tmp)
+	conf := fmt.tprintf("pre_path_add = \"echo X >> %s\"\n", log_path)
+	testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/hooks.conf", tmp), transmute([]byte)conf))
+
+	wayu.hook_pre_path_add("/x")
+	testing.expect(t, !os.exists(log_path), "hooks must not run under --dry-run")
+}

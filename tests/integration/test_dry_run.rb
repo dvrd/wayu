@@ -22,6 +22,9 @@ class DryRunIntegrationTest
 
       test_path_dry_run_add
       test_path_dry_run_remove
+      test_path_dry_run_remove_missing
+      test_dry_run_no_success_no_hooks
+      test_init_dry_run_writes_nothing
       test_alias_dry_run_add
       test_constants_dry_run_add
       test_backup_dry_run_restore
@@ -55,14 +58,89 @@ class DryRunIntegrationTest
   def test_path_dry_run_remove
     print "Test 2: PATH remove dry-run mode... "
 
-    output, status = run_wayu("-n path rm /nonexistent")
+    run_wayu("path add /tmp")
+    toml = "#{@config_dir}/wayu.toml"
+    before = File.read(toml)
+    output, status = run_wayu("-n path rm /tmp")
+    after = File.read(toml)
+    run_wayu("path rm /tmp")
 
-    if output.include?("DRY RUN") && output.include?("Would remove from wayu.toml")
+    if status.success? && output.include?("DRY RUN") && output.include?("Would remove from wayu.toml") &&
+       !output.include?("Removed from wayu.toml") && before == after
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Expected dry-run output for path remove"
+      puts "  Expected dry-run preview, no success line, file unchanged"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  # Regression: dry-run remove of a missing entry printed "✅ Removed".
+  def test_path_dry_run_remove_missing
+    print "Test 2b: PATH remove dry-run of missing entry fails cleanly... "
+
+    output, status = run_wayu("-n path rm /nonexistent")
+
+    if status.exitstatus == 65 && output.include?("Not found") && !output.include?("Removed")
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Expected exit 65 + not-found, got #{status.exitstatus}"
+      puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  # Regression: dry-run printed ✅ success, regenerated init files and ran
+  # post-hooks even though nothing was written.
+  def test_dry_run_no_success_no_hooks
+    print "Test 2c: Dry-run prints no success and runs no hooks... "
+
+    log = "#{@tmp_home}/hook.log"
+    hooks = "#{@config_dir}/hooks.conf"
+    File.write(hooks, %(pre_path_add = "echo pre >> #{log}"\npost_path_add = "echo post >> #{log}"\n) +
+                      %(post_alias_add = "echo alias >> #{log}"\npost_constant_add = "echo const >> #{log}"\n))
+    core = "#{@config_dir}/core.zsh"
+    core_before = File.exist?(core) ? File.read(core) : nil
+
+    out1, s1 = run_wayu("--dry-run path add /tmp")
+    out2, s2 = run_wayu("--dry-run alias add dryal 'echo hi'")
+    out3, s3 = run_wayu("--dry-run const add DRY_C v")
+    core_after = File.exist?(core) ? File.read(core) : nil
+    File.delete(hooks)
+
+    all = out1 + out2 + out3
+    if s1.success? && s2.success? && s3.success? && !File.exist?(log) &&
+       !all.include?("✅") && !all.include?("successfully") && core_before == core_after
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  hook log exists: #{File.exist?(log)}; core changed: #{core_before != core_after}"
+      puts "  Output: #{all}"
+      @failed += 1
+    end
+  end
+
+  def test_init_dry_run_writes_nothing
+    print "Test 2d: init --dry-run touches nothing... "
+
+    home = "#{@tmp_home}/fresh_home"
+    FileUtils.mkdir_p(home)
+    File.write("#{home}/.zshrc", "# rc\n")
+    env = ENV.to_h.merge('HOME' => home)
+    stdout, stderr, status = Open3.capture3(env, "#{@wayu_bin} --dry-run init --shell zsh")
+    output = stdout + stderr
+
+    if status.success? && output.include?("DRY RUN") && !Dir.exist?("#{home}/.config/wayu") &&
+       File.read("#{home}/.zshrc") == "# rc\n"
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
       puts "  Output: #{output}"
       @failed += 1
     end
