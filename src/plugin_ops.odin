@@ -6,6 +6,7 @@ import "core:slice"
 import "core:sync"
 import "core:strconv"
 import "core:encoding/json"
+import "core:path/filepath"
 git_clone :: proc(url: string, dest: string) -> bool {
 	if wayu.dry_run {
 		print_info("[DRY RUN] Would execute: git clone --depth=1 --quiet %s %s", url, dest)
@@ -91,20 +92,62 @@ is_valid_git_url :: proc(url: string) -> bool {
 	return false
 }
 
-// Extract plugin name from URL
+// Extract plugin name from URL.
+// Trailing slashes and a ".git" suffix are stripped before taking the last
+// path component ("https://h/u/repo.git/" -> "repo"). For scp-style URLs
+// without a slash ("git@host:repo") the part after the last ':' is used.
+// Returns an ALLOCATED string (possibly empty) — caller must delete. Callers
+// must still run is_valid_plugin_name on the result.
 extract_plugin_name_from_url :: proc(url: string) -> string {
-	// Remove .git suffix if present
-	url_clean := strings.trim_suffix(url, ".git")
+	url_clean := strings.trim_right(url, "/")
+	url_clean = strings.trim_suffix(url_clean, ".git")
+	url_clean = strings.trim_right(url_clean, "/")
 
-	// Extract last component from URL
-	parts := strings.split(url_clean, "/")
-	defer delete(parts)
-
-	if len(parts) > 0 {
-		return strings.clone(parts[len(parts) - 1])
+	name := url_clean
+	if idx := strings.last_index_byte(name, '/'); idx >= 0 {
+		name = name[idx + 1:]
 	}
+	if idx := strings.last_index_byte(name, ':'); idx >= 0 {
+		name = name[idx + 1:]
+	}
+	return strings.clone(name)
+}
 
-	return ""
+// A plugin name becomes a directory under the plugins root and an argument
+// to `rm`, so it must be a single, non-special path component.
+is_valid_plugin_name :: proc(name: string) -> bool {
+	if len(name) == 0 || name == "." || name == ".." {
+		return false
+	}
+	if strings.has_prefix(name, "-") {
+		return false
+	}
+	for c in name {
+		if c == '/' || c == '\\' || c == 0 || c == '\n' || c == '\r' {
+			return false
+		}
+	}
+	return true
+}
+
+// True when `path` is strictly inside `root` (never root itself). Both are
+// cleaned first so "root/x/.." and "root/" are rejected.
+is_path_inside_dir :: proc(path: string, root: string) -> bool {
+	if len(path) == 0 || len(root) == 0 {
+		return false
+	}
+	clean_path, _ := filepath.clean(path, context.temp_allocator)
+	clean_root, _ := filepath.clean(root, context.temp_allocator)
+	prefix := strings.concatenate({clean_root, "/"}, context.temp_allocator)
+	return strings.has_prefix(clean_path, prefix) && len(clean_path) > len(prefix)
+}
+
+// Free a PluginInfo returned by resolve_plugin (all fields are owned).
+plugin_info_destroy :: proc(info: ^PluginInfo) {
+	delete(info.name)
+	delete(info.url)
+	delete(info.description)
+	info^ = PluginInfo{}
 }
 
 // Find plugin by name in config
@@ -129,110 +172,142 @@ PluginMatch :: struct {
 	score:  int,
 }
 
-// Find plugin in JSON config by name (exact match first, then fuzzy with selection)
-// Returns pointer to plugin in config array, or nil if not found
-// If multiple matches above threshold, shows selection menu
+// Find plugin in JSON config by EXACT name (or exact display name).
+// Never prompts and never fuzzy-matches: this is the lookup used for
+// identity checks ("already installed", dependency resolution, loader
+// generation, removal, TUI). User-facing CLI commands that want typo
+// tolerance call find_plugin_json_fuzzy instead.
 find_plugin_json :: proc(config: ^PluginConfigJSON, name: string) -> (^PluginMetadata, bool) {
-	// First try exact match by full name
 	for &plugin in config.plugins {
 		if plugin.name == name {
 			return &plugin, true
 		}
 	}
-	
-	// Then try exact match by display name
 	for &plugin in config.plugins {
-		if plugin.display_name == name {
+		if plugin.display_name != "" && plugin.display_name == name {
 			return &plugin, true
 		}
 	}
-	
-	// Collect all fuzzy matches with scores
+	return nil, false
+}
+
+// Collect fuzzy candidates (score >= 50), best first. Allocated in temp.
+plugin_fuzzy_candidates :: proc(config: ^PluginConfigJSON, name: string) -> [dynamic]PluginMatch {
 	matches := make([dynamic]PluginMatch, allocator = context.temp_allocator)
-	
+
 	for &plugin in config.plugins {
-		// Check against full name
 		score := fuzzy_match_score(plugin.name, name)
-		
-		// Check against display name
 		if plugin.display_name != "" && plugin.display_name != plugin.name {
 			dn_score := fuzzy_match_score(plugin.display_name, name)
 			if dn_score > score {
 				score = dn_score
 			}
 		}
-		
-		if score >= 50 {  // Minimum threshold for fuzzy match
+		if score >= 50 {
 			append(&matches, PluginMatch{plugin = &plugin, score = score})
 		}
 	}
-	
+
+	slice.stable_sort_by(matches[:], proc(a, b: PluginMatch) -> bool {
+		return a.score > b.score
+	})
+	return matches
+}
+
+// Print up to 3 "did you mean" suggestions to stderr. Returns true when at
+// least one suggestion was printed.
+print_plugin_suggestions :: proc(config: ^PluginConfigJSON, name: string) -> bool {
+	matches := plugin_fuzzy_candidates(config, name)
+	if len(matches) == 0 {
+		return false
+	}
+	fmt.eprintln("Did you mean:")
+	for i in 0..<min(len(matches), 3) {
+		fmt.eprintfln("  %s", matches[i].plugin.name)
+	}
+	return true
+}
+
+// Find plugin by name with fuzzy fallback (CLI convenience lookup).
+// Exact match wins. Otherwise a single/clearly-best fuzzy match is returned.
+// With several close matches, an interactive selection is shown ONLY when
+// stdin is a terminal; otherwise the candidates are listed on stderr and the
+// lookup fails (never blocks on stdin in scripts/pipes).
+find_plugin_json_fuzzy :: proc(config: ^PluginConfigJSON, name: string) -> (^PluginMetadata, bool) {
+	if p, ok := find_plugin_json(config, name); ok {
+		return p, true
+	}
+
+	matches := plugin_fuzzy_candidates(config, name)
+
 	if len(matches) == 0 {
 		return nil, false
 	}
-	
-	// Sort by score descending
-	slice.sort_by(matches[:], proc(a, b: PluginMatch) -> bool {
-		return a.score > b.score
-	})
-	
+
 	// If only one match, return it directly
 	if len(matches) == 1 {
 		return matches[0].plugin, true
 	}
-	
+
 	// If best match has significantly higher score (20+ points), use it
-	if len(matches) >= 2 && matches[0].score >= matches[1].score + 20 {
+	if matches[0].score >= matches[1].score + 20 {
 		return matches[0].plugin, true
 	}
-	
-	// Multiple close matches - show selection menu (max 3 options)
+
 	num_options := min(len(matches), 3)
-	
+
+	if !os.is_tty(os.stdin) {
+		fmt.eprintfln("Ambiguous plugin name '%s'. Candidates:", name)
+		for i in 0..<num_options {
+			fmt.eprintfln("  %s", matches[i].plugin.name)
+		}
+		return nil, false
+	}
+
+	// Multiple close matches - show selection menu (max 3 options)
 	fmt.println()
 	fmt.printfln("%sMultiple matches found for '%s':%s", BOLD, name, RESET)
 	fmt.println()
-	
+
 	for i in 0..<num_options {
 		marker := "  "
 		if i == 0 {
 			marker = "→ "  // Preselected option
 		}
-		
+
 		status_icon := "○"
 		if matches[i].plugin.enabled {
 			status_icon = "✓"
 		}
-		
+
 		score_str := ""
 		if matches[i].score < 100 {
 			score_str = fmt.tprintf(" (%d%% match)", matches[i].score)
 		}
-		
-		fmt.printfln("%s%d. %s %s%s%s%s", 
-			marker, i + 1, status_icon, matches[i].plugin.name, 
+
+		fmt.printfln("%s%d. %s %s%s%s%s",
+			marker, i + 1, status_icon, matches[i].plugin.name,
 			RESET, score_str, get_muted())
 	}
-	
+
 	fmt.println()
 	fmt.printf("Select option [1-%d, Enter for 1]: ", num_options)
-	
+
 	// Read user input
 	input_buf: [8]byte
 	n, _ := os.read(os.stdin, input_buf[:])
-	
+
 	selection := 1  // Default to first (preselected)
 	if n > 1 {
-		// User typed something
 		input_str := strings.trim_space(string(input_buf[:n]))
 		if parsed, ok := strconv.parse_int(input_str); ok && parsed >= 1 && parsed <= num_options {
 			selection = parsed
 		}
 	}
-	
+
 	fmt.printfln("%sSelected: %s%s", get_success(), matches[selection - 1].plugin.name, RESET)
 	fmt.println()
-	
+
 	return matches[selection - 1].plugin, true
 }
 
@@ -505,6 +580,12 @@ validate_no_circular_dependencies :: proc(config: ^PluginConfigJSON) -> bool {
 	return true
 }
 
+// zsh-syntax-highlighting wraps every ZLE widget that exists when it is
+// sourced, so upstream requires it to be loaded after all other plugins.
+plugin_must_load_last :: proc(name: string) -> bool {
+	return name == "zsh-syntax-highlighting"
+}
+
 // Phase 5: Resolve dependencies with priority-based ordering
 // Uses Kahn's algorithm (BFS topological sort) with a priority queue so that
 // among all nodes whose dependencies are already satisfied, the one with the
@@ -575,20 +656,46 @@ resolve_dependencies_with_priority :: proc(config: ^PluginConfigJSON) -> (order:
 		delete(ready)
 	}
 
-	for name, deg in in_degree {
-		if deg == 0 {
-			append(&ready, strings.clone(name))
+	// Config position of each enabled plugin — deterministic tie-breaker.
+	index_map := make(map[string]int)
+	defer delete(index_map)
+	for plugin, i in config.plugins {
+		if plugin.enabled && plugin.name not_in index_map {
+			index_map[plugin.name] = i
 		}
+	}
+
+	// Seed in config order (map iteration order is unspecified).
+	for plugin in config.plugins {
+		if !plugin.enabled {
+			continue
+		}
+		if in_degree[plugin.name] == 0 && !slice.contains(ready[:], plugin.name) {
+			append(&ready, strings.clone(plugin.name))
+		}
+	}
+
+	// Ordering key among ready nodes: (must-load-last, priority, config index).
+	ready_less :: proc(a, b: string, priority_map, index_map: map[string]int) -> bool {
+		a_last := plugin_must_load_last(a)
+		b_last := plugin_must_load_last(b)
+		if a_last != b_last {
+			return !a_last
+		}
+		pa, pb := priority_map[a], priority_map[b]
+		if pa != pb {
+			return pa < pb
+		}
+		return index_map[a] < index_map[b]
 	}
 
 	emitted := 0
 	total_enabled := len(in_degree)
 
 	for len(ready) > 0 {
-		// Find the ready node with the lowest priority number
 		best_idx := 0
 		for i in 1..<len(ready) {
-			if priority_map[ready[i]] < priority_map[ready[best_idx]] {
+			if ready_less(ready[i], ready[best_idx], priority_map, index_map) {
 				best_idx = i
 			}
 		}
@@ -624,41 +731,102 @@ resolve_dependencies_with_priority :: proc(config: ^PluginConfigJSON) -> (order:
 
 // Phase 6: Conflict Detection
 
-// Scan plugin for potential conflicts (exports, functions, aliases)
-// Parses the plugin's entry file and populates ConflictInfo
-scan_plugin_conflicts :: proc(plugin: ^PluginMetadata) -> bool {
-	// Detect the entry file first
-	entry_file, found := detect_plugin_file(plugin.installed_path, plugin.name, wayu.shell)
+// Variables every plugin legitimately appends to; sharing them is not a
+// conflict.
+SHARED_ENV_VARS :: [?]string{
+	"PATH", "FPATH", "MANPATH", "INFOPATH", "CDPATH",
+	"path", "fpath", "manpath", "infopath", "cdpath",
+}
 
-	// If no specific entry file found, return true (no conflicts to scan)
-	if !found {
-		return true
+is_shared_env_var :: proc(name: string) -> bool {
+	for v in SHARED_ENV_VARS {
+		if v == name {
+			return true
+		}
 	}
-	defer delete(entry_file)
+	return false
+}
 
-	if !os.exists(entry_file) {
-		return true
+// Shell function/alias identifier: no whitespace, quotes, '=', '$', parens
+// or redirection characters.
+is_shell_identifier :: proc(name: string) -> bool {
+	if len(name) == 0 {
+		return false
+	}
+	for c in name {
+		switch c {
+		case ' ', '\t', '=', '$', '(', ')', '{', '}', '"', '\'', '`', ';', '&', '|', '<', '>', '[', ']':
+			return false
+		}
+	}
+	return true
+}
+
+// Parse a function definition line. Recognizes:
+//   function name() {   function name {   function name
+//   name() {            name ()  {        name()
+// Rejects assignments such as `reply=()` or `arr=( a b )`.
+parse_function_definition :: proc(trimmed: string) -> (string, bool) {
+	if strings.has_prefix(trimmed, "function ") {
+		rest := strings.trim_left_space(trimmed[len("function "):])
+		end := len(rest)
+		for c, i in rest {
+			if c == ' ' || c == '\t' || c == '(' || c == '{' {
+				end = i
+				break
+			}
+		}
+		name := rest[:end]
+		if is_shell_identifier(name) {
+			return name, true
+		}
+		return "", false
 	}
 
-	content, read_err := os.read_entire_file(entry_file, context.allocator)
+	paren_idx := strings.index(trimmed, "()")
+	if paren_idx <= 0 {
+		return "", false
+	}
+	name := strings.trim_right_space(trimmed[:paren_idx])
+	if !is_shell_identifier(name) {
+		return "", false
+	}
+	after := strings.trim_left_space(trimmed[paren_idx + 2:])
+	if len(after) != 0 && !strings.has_prefix(after, "{") && !strings.has_prefix(after, "(") {
+		return "", false
+	}
+	return name, true
+}
+
+append_unique :: proc(list: ^[dynamic]string, value: string) {
+	for existing in list {
+		if existing == value {
+			return
+		}
+	}
+	append(list, strings.clone(value))
+}
+
+free_string_list :: proc(list: ^[dynamic]string) {
+	for s in list {
+		delete(s)
+	}
+	delete(list^)
+	list^ = make([dynamic]string)
+}
+
+// Scan one script file and record exports/functions/aliases.
+@(private="file")
+scan_conflicts_in_file :: proc(plugin: ^PluginMetadata, path: string) -> bool {
+	content, read_err := os.read_entire_file(path, context.allocator)
 	if read_err != nil {
 		return false
 	}
 	defer delete(content)
 
-	script := string(content)
-	lines := strings.split_lines(script)
+	lines := strings.split_lines(string(content))
 	defer delete(lines)
 
-	// Clear existing conflict data
-	delete(plugin.conflicts.env_vars)
-	delete(plugin.conflicts.functions)
-	delete(plugin.conflicts.aliases_)
-	plugin.conflicts.env_vars = make([dynamic]string)
-	plugin.conflicts.functions = make([dynamic]string)
-	plugin.conflicts.aliases_ = make([dynamic]string)
-
-	// Scan for exports, functions, and aliases
 	for line in lines {
 		trimmed := strings.trim_space(line)
 
@@ -667,60 +835,79 @@ scan_plugin_conflicts :: proc(plugin: ^PluginMetadata) -> bool {
 			continue
 		}
 
-		// Check for exports: export VAR=value
+		// export VAR=value / export VAR
 		if strings.has_prefix(trimmed, "export ") {
-			after_export := trimmed[7:]  // Skip "export "
-			parts := strings.split(after_export, "=")
-			if len(parts) >= 1 {
-				var_name := strings.trim_space(parts[0])
-				if len(var_name) > 0 {
-					append(&plugin.conflicts.env_vars, strings.clone(var_name))
+			after_export := strings.trim_left_space(trimmed[len("export "):])
+			end := len(after_export)
+			for c, i in after_export {
+				if c == '=' || c == ' ' || c == '\t' || c == ';' {
+					end = i
+					break
 				}
 			}
-			delete(parts)
+			var_name := after_export[:end]
+			if is_shell_identifier(var_name) && !strings.has_prefix(var_name, "-") && !is_shared_env_var(var_name) {
+				append_unique(&plugin.conflicts.env_vars, var_name)
+			}
+			continue
 		}
 
-		// Check for functions (bash/zsh syntax)
-		// Pattern 1: function name() {
-		// Pattern 2: name() {
-		if strings.contains(trimmed, "()") {
-			func_name := ""
-
-			if strings.has_prefix(trimmed, "function ") {
-				// Pattern: function name() {
-				after_function := trimmed[9:]  // Skip "function "
-				paren_idx := strings.index(after_function, "(")
-				if paren_idx > 0 {
-					func_name = strings.trim_space(after_function[:paren_idx])
-				}
-			} else {
-				// Pattern: name() {
-				paren_idx := strings.index(trimmed, "()")
-				if paren_idx > 0 {
-					func_name = strings.trim_space(trimmed[:paren_idx])
-				}
-			}
-
-			if len(func_name) > 0 {
-				append(&plugin.conflicts.functions, strings.clone(func_name))
-			}
-		}
-
-		// Check for aliases: alias name=value
+		// alias [-flags] name=value
 		if strings.has_prefix(trimmed, "alias ") {
-			after_alias := trimmed[6:]  // Skip "alias "
-			parts := strings.split(after_alias, "=")
-			if len(parts) >= 1 {
-				alias_name := strings.trim_space(parts[0])
-				if len(alias_name) > 0 {
-					append(&plugin.conflicts.aliases_, strings.clone(alias_name))
+			rest := strings.trim_left_space(trimmed[len("alias "):])
+			for strings.has_prefix(rest, "-") {
+				sp := strings.index_any(rest, " \t")
+				if sp < 0 {
+					rest = ""
+					break
+				}
+				rest = strings.trim_left_space(rest[sp:])
+			}
+			eq := strings.index_byte(rest, '=')
+			if eq > 0 {
+				alias_name := rest[:eq]
+				if is_shell_identifier(alias_name) {
+					append_unique(&plugin.conflicts.aliases_, alias_name)
 				}
 			}
-			delete(parts)
+			continue
+		}
+
+		if func_name, ok := parse_function_definition(trimmed); ok {
+			append_unique(&plugin.conflicts.functions, func_name)
 		}
 	}
 
 	return true
+}
+
+// Scan plugin for potential conflicts (exports, functions, aliases).
+// Scans every file the loader would source for this plugin, not just the
+// detected entry file.
+scan_plugin_conflicts :: proc(plugin: ^PluginMetadata) -> bool {
+	files := get_plugin_files_to_source(plugin^, wayu.shell)
+	defer {
+		for f in files {
+			delete(f)
+		}
+		delete(files)
+	}
+
+	// Clear existing conflict data (free owned strings too)
+	free_string_list(&plugin.conflicts.env_vars)
+	free_string_list(&plugin.conflicts.functions)
+	free_string_list(&plugin.conflicts.aliases_)
+
+	ok := true
+	for f in files {
+		if os.is_dir(f) {
+			continue
+		}
+		if !scan_conflicts_in_file(plugin, f) {
+			ok = false
+		}
+	}
+	return ok
 }
 
 // Detect conflicts between all enabled plugins
@@ -747,8 +934,7 @@ detect_conflicts :: proc(config: ^PluginConfigJSON) {
 		if !plugin.enabled {
 			continue
 		}
-		delete(plugin.conflicts.conflicting_plugins)
-		plugin.conflicts.conflicting_plugins = make([dynamic]string)
+		free_string_list(&plugin.conflicts.conflicting_plugins)
 		plugin.conflicts.detected = false
 	}
 
@@ -839,31 +1025,58 @@ detect_conflicts :: proc(config: ^PluginConfigJSON) {
 	}
 }
 
-// Resolve plugin name or URL to PluginInfo
+// Resolve plugin name or URL to PluginInfo.
+// On success every string field is ALLOCATED (registry entries and argv are
+// cloned) — release with plugin_info_destroy. Fails for unknown keys and for
+// URLs whose derived name is not a safe directory name (see
+// is_valid_plugin_name), e.g. "https://github.com/" or ".../..".
 resolve_plugin :: proc(name_or_url: string) -> (PluginInfo, bool) {
 	// Check if it's a URL
 	if is_valid_git_url(name_or_url) {
-		// Extract name from URL
 		plugin_name := extract_plugin_name_from_url(name_or_url)
+		if !is_valid_plugin_name(plugin_name) {
+			delete(plugin_name)
+			return PluginInfo{}, false
+		}
 
 		return PluginInfo{
 			name = plugin_name,
-			url = name_or_url,
+			url = strings.clone(name_or_url),
 			shell = .BOTH, // Unknown shell compat for custom URLs
-			description = "Custom plugin",
+			description = strings.clone("Custom plugin"),
 		}, true
 	}
 
-	// Check popular plugins registry (linear scan — 9 entries, no heap)
+	// Check popular plugins registry (static literals — clone for ownership)
 	if info, found := popular_plugin_find(name_or_url); found {
-		return info, true
+		return PluginInfo{
+			name = strings.clone(info.name),
+			url = strings.clone(info.url),
+			shell = info.shell,
+			description = strings.clone(info.description),
+		}, true
 	}
 
 	return PluginInfo{}, false
 }
 
+// True when local and remote commit SHAs refer to the same commit. Either
+// side may be abbreviated (rev-parse --short length varies), so the shorter
+// one must be a prefix of the longer one.
+git_commits_match :: proc(a: string, b: string) -> bool {
+	la := strings.trim_space(a)
+	lb := strings.trim_space(b)
+	if len(la) == 0 || len(lb) == 0 {
+		return false
+	}
+	if len(la) <= len(lb) {
+		return strings.has_prefix(lb, la)
+	}
+	return strings.has_prefix(la, lb)
+}
+
 // Get remote commit SHA for a git repository
-// Returns short SHA (7 chars) or empty string on failure
+// Returns full SHA or empty string on failure
 // CRITICAL: Returned string is ALLOCATED - caller must delete()
 get_remote_commit :: proc(url: string, branch: string) -> string {
 	// Use HEAD if no branch specified
@@ -894,8 +1107,9 @@ get_remote_commit :: proc(url: string, branch: string) -> string {
 		return ""
 	}
 
-	// Return short SHA (first 7 chars) — ALLOCATED, caller must delete
-	return strings.clone(full_sha[0:min(7, len(full_sha))])
+	// Return the full SHA — ALLOCATED, caller must delete. Comparison against
+	// the (abbreviated) local commit uses git_commits_match.
+	return strings.clone(full_sha)
 }
 
 

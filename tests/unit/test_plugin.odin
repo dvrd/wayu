@@ -264,7 +264,7 @@ test_resolve_plugin_from_registry :: proc(t: ^testing.T) {
 
 	// Test known plugin
 	info, ok := wayu.resolve_plugin("syntax-highlighting")
-	// NOTE: No cleanup needed - registry returns static literals from map
+	defer if ok { wayu.plugin_info_destroy(&info) }
 
 	testing.expect(t, ok, "Should resolve 'syntax-highlighting' from registry")
 	if ok {
@@ -279,10 +279,7 @@ test_resolve_plugin_from_url :: proc(t: ^testing.T) {
 	test_url := "https://github.com/user/custom-plugin.git"
 
 	info, ok := wayu.resolve_plugin(test_url)
-	defer if ok {
-		delete(info.name) // Only name is allocated by extract_plugin_name_from_url
-		// NOTE: url and description are literals, no need to delete
-	}
+	defer if ok { wayu.plugin_info_destroy(&info) }
 
 	testing.expect(t, ok, "Should resolve plugin from URL")
 	if ok {
@@ -422,12 +419,12 @@ test_get_remote_commit_valid_repo :: proc(t: ^testing.T) {
 	remote_commit := wayu.get_remote_commit(url, branch)
 	defer delete(remote_commit)
 
-	// Should return a non-empty string (7 char SHA)
+	// Should return a non-empty string (full SHA)
 	testing.expect(t, len(remote_commit) > 0, "Should return non-empty commit SHA")
 
-	// Should return exactly 7 characters (short SHA)
-	msg := fmt.aprintf("Should return 7-char SHA, got %d chars", len(remote_commit))
-	testing.expect(t, len(remote_commit) == 7, msg)
+	// Full 40-char SHA (compared by prefix against the abbreviated local SHA)
+	msg := fmt.aprintf("Should return 40-char SHA, got %d chars", len(remote_commit))
+	testing.expect(t, len(remote_commit) == 40, msg)
 	delete(msg)
 
 	// Should contain only valid hex characters
@@ -461,7 +458,7 @@ test_get_remote_commit_empty_branch :: proc(t: ^testing.T) {
 
 	// Should still work and return a valid SHA (defaults to HEAD)
 	testing.expect(t, len(remote_commit) > 0, "Should return non-empty commit SHA when branch is empty")
-	testing.expect(t, len(remote_commit) == 7, "Should return 7-char SHA even with empty branch")
+	testing.expect(t, len(remote_commit) == 40, "Should return full SHA even with empty branch")
 }
 
 @(test)
@@ -475,7 +472,7 @@ test_get_remote_commit_memory_safety :: proc(t: ^testing.T) {
 	for i in 0..<5 {
 		remote_commit := wayu.get_remote_commit(url, branch)
 		// Verify we got a valid result
-		testing.expect(t, len(remote_commit) == 7, "Should return valid SHA on each iteration")
+		testing.expect(t, len(remote_commit) == 40, "Should return valid SHA on each iteration")
 		// Clean up immediately
 		delete(remote_commit)
 	}
