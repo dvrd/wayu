@@ -54,12 +54,16 @@ test_parse_printable_char_symbol :: proc(t: ^testing.T) {
 // ============================================================================
 
 @(test)
-test_parse_enter_lf :: proc(t: ^testing.T) {
-    input_buf := []byte{10}  // LF (Line Feed)
+test_parse_lf_is_ctrl_j :: proc(t: ^testing.T) {
+    // TUI raw mode clears ICRNL: Enter arrives as CR, so LF is Ctrl+J
+    // (used for down-navigation in filter mode).
+    input_buf := []byte{10}
     event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse Enter (LF)")
-    testing.expect_value(t, event.key, wayu.Key.Enter)
+    testing.expect(t, ok, "Should parse LF")
+    testing.expect_value(t, event.key, wayu.Key.Char)
+    testing.expect_value(t, event.char, 'j')
+    testing.expect(t, .Ctrl in event.modifiers, "LF must be Ctrl+J")
 }
 
 @(test)
@@ -254,39 +258,22 @@ test_parse_f4 :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_parse_f5 :: proc(t: ^testing.T) {
-    input_buf := []byte{27, '[', '5', '~'}  // ESC [ 5 ~
-    event, ok := wayu.parse_key_event(input_buf, 4)
-
-    testing.expect(t, ok, "Should parse F5")
-    testing.expect_value(t, event.key, wayu.Key.F5)
-}
-
-@(test)
-test_parse_f6 :: proc(t: ^testing.T) {
-    input_buf := []byte{27, '[', '7', '~'}  // ESC [ 7 ~
-    event, ok := wayu.parse_key_event(input_buf, 4)
-
-    testing.expect(t, ok, "Should parse F6")
-    testing.expect_value(t, event.key, wayu.Key.F6)
-}
-
-@(test)
-test_parse_f7 :: proc(t: ^testing.T) {
-    input_buf := []byte{27, '[', '8', '~'}  // ESC [ 8 ~
-    event, ok := wayu.parse_key_event(input_buf, 4)
-
-    testing.expect(t, ok, "Should parse F7")
-    testing.expect_value(t, event.key, wayu.Key.F7)
-}
-
-@(test)
-test_parse_f8 :: proc(t: ^testing.T) {
-    input_buf := []byte{27, '[', '9', '~'}  // ESC [ 9 ~
-    event, ok := wayu.parse_key_event(input_buf, 4)
-
-    testing.expect(t, ok, "Should parse F8")
-    testing.expect_value(t, event.key, wayu.Key.F8)
+test_parse_tilde_function_keys :: proc(t: ^testing.T) {
+    Case :: struct { seq: string, key: wayu.Key }
+    cases := []Case{
+        {"\x1b[15~", .F5}, {"\x1b[17~", .F6}, {"\x1b[18~", .F7}, {"\x1b[19~", .F8},
+        {"\x1b[20~", .F9}, {"\x1b[21~", .F10}, {"\x1b[23~", .F11}, {"\x1b[24~", .F12},
+        // ESC[5~/6~ are PageUp/PageDown (previously misread as F5/F6-ish).
+        {"\x1b[5~", .PageUp}, {"\x1b[6~", .PageDown},
+        {"\x1b[3~", .Delete}, {"\x1b[1~", .Home}, {"\x1b[4~", .End},
+        {"\x1b[7~", .Home}, {"\x1b[8~", .End},
+    }
+    for c in cases {
+        buf := transmute([]byte)c.seq
+        event, ok := wayu.parse_key_event(buf, len(buf))
+        testing.expectf(t, ok, "should parse %q", c.seq)
+        testing.expectf(t, event.key == c.key, "%q: got %v want %v", c.seq, event.key, c.key)
+    }
 }
 
 // ============================================================================

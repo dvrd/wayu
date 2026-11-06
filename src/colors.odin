@@ -246,6 +246,7 @@ strip_ansi_codes :: proc(text: string, newlines_to_space := false, allocator := 
 	}
 
 	buf := make([dynamic]byte, 0, len(text), allocator)
+	defer delete(buf)
 	i := 0
 	for i < len(text) {
 		c := text[i]
@@ -344,26 +345,60 @@ SYMBOL_CHECK_WARN    :: "\x1b[38;2;217;119;6m⚠\x1b[0m"    // Orange warning
 // Using adaptive vibrant colors
 // ============================================================================
 
+// When true, print_success/print_warning/print_info/print_error write nothing.
+// The TUI sets this while it owns the terminal so shared CLI code paths
+// (entry_add, backups, plugin ops) can't scribble over the alternate screen.
+// print_error messages are captured instead (see take_print_capture).
+print_quiet: bool
+
+// Last print_error message emitted while print_quiet was set (heap-owned).
+@(private="file")
+print_captured_error: string
+
+// Return the last captured print_error message ("" if none) and reset the
+// capture. Caller owns the returned string when non-empty.
+take_print_capture :: proc() -> string {
+	msg := print_captured_error
+	print_captured_error = ""
+	return msg
+}
+
+// Drop any captured message.
+clear_print_capture :: proc() {
+	if len(print_captured_error) > 0 {
+		delete(print_captured_error)
+	}
+	print_captured_error = ""
+}
+
 // Styled print functions
 print_success :: proc(msg: string, args: ..any) {
+	if print_quiet do return
 	fmt.printf("%s✓ ", get_success())
 	fmt.printf(msg, ..args)
 	fmt.printf("%s\n", RESET)
 }
 
 print_error :: proc(msg: string, args: ..any) {
+	if print_quiet {
+		clear_print_capture()
+		print_captured_error = fmt.aprintf(msg, ..args)
+		return
+	}
 	fmt.printf("%s%sERROR:%s ", BOLD, get_error(), RESET)
 	fmt.printf(msg, ..args)
 	fmt.println()
 }
 
 print_warning :: proc(msg: string, args: ..any) {
+	if print_quiet do return
 	fmt.printf("%s⚠ ", get_warning())
 	fmt.printf(msg, ..args)
 	fmt.printf("%s\n", RESET)
 }
 
 print_info :: proc(msg: string, args: ..any) {
+	if print_quiet do return
 	fmt.printf("%sℹ ", get_info())
 	fmt.printf(msg, ..args)
 	fmt.printf("%s\n", RESET)

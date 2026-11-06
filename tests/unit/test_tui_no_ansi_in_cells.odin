@@ -101,16 +101,16 @@ test_render_text_styled_strips_ansi_escape_bytes :: proc(t: ^testing.T) {
 
 // Option B — caller-level test. render_list_item is the function that the
 // original bug lived in: it used to receive "\x1b[32m●\x1b[0m /path" and
-// write ESC bytes into cells. Post-fix, it receives "● /path" and uses
-// split_list_item_glyph to map the glyph rune to Cell.fg. This test pins
+// write ESC bytes into cells. Post-fix, it receives the plain row text plus
+// the row's RowSource and maps the source glyph to Cell.fg. This test pins
 // that contract so a future refactor can't re-introduce inline ANSI.
 @(test)
 test_render_list_item_maps_glyph_to_fg_not_char :: proc(t: ^testing.T) {
 	screen := wayu.screen_create(60, 1)
 	defer wayu.screen_destroy(&screen)
 
-	// Realistic TUI input: glyph rune + space + text, no ANSI.
-	wayu.render_list_item(&screen, 2, 0, "● /some/path", 50, false)
+	// Realistic TUI input: plain text + source metadata, no ANSI.
+	wayu.render_list_item(&screen, 2, 0, "/some/path", 50, false, .WAYU_ACTIVE)
 
 	// No ESC byte may appear anywhere after rendering.
 	for x in 0..<screen.width {

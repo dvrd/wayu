@@ -1,10 +1,10 @@
 package wayu
 import "core:fmt"
 import "base:intrinsics"
-import "core:mem"
 import "core:os"
 import "core:strings"
 import "core:unicode/utf8"
+import "core:time"
 // Main TUI entry point
 tui_run :: proc() {
 	// Check if we're in a TTY first
@@ -13,6 +13,9 @@ tui_run :: proc() {
 		fmt.eprintln("Cannot run TUI when stdin or stdout is not a terminal")
 		os.exit(EXIT_GENERAL)
 	}
+
+	// Restore the terminal before printing any assert/panic message.
+	context.assertion_failure_proc = tui_assertion_failure_proc
 
 	// Initialize all subsystems
 	tui_init()
@@ -32,61 +35,93 @@ tui_run :: proc() {
 	state.terminal_width = width
 	state.terminal_height = height
 	state.needs_refresh = true  // Force initial render
+	state.full_redraw = true    // First frame paints every cell
 	defer tui_state_destroy(&state)
 
-	first_frame := true  // Track first frame for full render
+	// NO_COLOR / --no-color: drop color escapes and use ASCII source tags.
+	tui_color_mode = CURRENT_COLOR_PROFILE
+	tui_plain_glyphs = CURRENT_COLOR_PROFILE == .ASCII
+	defer {
+		tui_color_mode = .TRUECOLOR
+		tui_plain_glyphs = false
+	}
+
+	// CLI print helpers (print_success/print_error/...) would scribble over
+	// the alternate screen when entry_add/entry_remove report progress.
+	// Silence them while the TUI owns the terminal; the last error is
+	// captured for notifications.
+	print_quiet = true
+	defer {
+		print_quiet = false
+		clear_print_capture()
+	}
 
 	// Main event loop (The Elm Architecture)
 	for state.running {
+		// Nothing allocated with the temp allocator may outlive an iteration
+		// (persistent strings are heap-cloned), so reset the arena every pass.
+		defer free_all(context.temp_allocator)
+
 		// Handle terminal resize (volatile load/store for signal handler safety)
 		if intrinsics.volatile_load(&terminal_resized) {
-			new_width, new_height, _ := get_terminal_size()
-			screen_resize(&screen, new_width, new_height)
-			state.terminal_width = new_width
-			state.terminal_height = new_height
-			state.needs_refresh = true
 			intrinsics.volatile_store(&terminal_resized, false)
+			if new_width, new_height, size_ok := get_terminal_size(); size_ok {
+				screen_resize(&screen, new_width, new_height)
+				state.terminal_width = new_width
+				state.terminal_height = new_height
+			}
+			// Old cell contents no longer line up with the terminal's reflowed
+			// screen: repaint everything and keep the selection visible.
+			tui_clamp_selection(&state)
+			state.full_redraw = true
+			state.needs_refresh = true
 		}
 
 		// Ensure data is loaded for current view (lazy loading)
 		tui_ensure_data_loaded(&state, state.current_view)
 
 		// Render current state
-		if state.needs_refresh {
+		if state.needs_refresh || state.full_redraw {
 			tui_render(&state, &screen)
-			screen_flush(&screen, first_frame)  // Force full render on first frame
+			screen_flush(&screen, state.full_redraw)
 			state.needs_refresh = false
-			first_frame = false
+			state.full_redraw = false
 		}
 
-		// Poll for events (non-blocking)
+		// Poll for events (non-blocking, ~50ms timeout)
 		event := poll_event()
+
+		// Expire notifications on wall-clock time, even when idle.
+		tick_notification(&state)
+
 		if event == nil {
 			continue  // No input, loop again
 		}
 
 		// Update state based on event
 		tui_handle_event(&state, event)
-
-		// Tick notification countdown
-		tick_notification(&state)
 	}
-
 }
 
-// Initialize TUI subsystems
+// Initialize TUI subsystems.
+// Raw mode is entered BEFORE the alternate screen so a failure exits with the
+// terminal untouched (os.exit skips deferred cleanup).
 tui_init :: proc() {
-	tui_lifecycle_init()  // Enter alt screen, hide cursor, setup signals
-	if !enable_raw_mode() {
+	if !tui_enable_raw_mode() {
 		fmt.eprintln("Error: Failed to enable raw mode")
 		os.exit(EXIT_OSERR)
 	}
+	tui_install_signal_handlers()
+	tui_lifecycle_init()  // Enter alt screen, hide cursor, SIGWINCH handler
+	tui_set_screen_active(true)
 }
 
 // Cleanup TUI subsystems
 tui_cleanup :: proc() {
-	disable_raw_mode()         // Restore cooked mode
 	tui_lifecycle_cleanup()    // Exit alt screen, show cursor
+	tui_set_screen_active(false)
+	tui_disable_raw_mode()     // Restore cooked mode
+	tui_uninstall_signal_handlers()
 }
 
 // Handle single event and update state
@@ -116,10 +151,14 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 	// Handle detail overlay dismissal (and delete confirmation)
 	if state.detail.shown {
 		if state.delete_confirm.pending {
-			// Delete confirmation mode: h/l/Tab toggle focus, Enter confirms focused button, Esc always cancels
-			if key.key == .Escape {
+			// Delete confirmation mode: h/l/Tab toggle focus, Enter confirms focused button,
+			// y confirms directly (the button label advertises "y DELETE"), n/Esc cancel.
+			is_char := key.key == .Char && .Ctrl not_in key.modifiers
+			if key.key == .Escape || (is_char && (key.char == 'n' || key.char == 'N')) {
 				clear_detail(state)
-			} else if key.key == .Tab || (key.key == .Char && (key.char == 'h' || key.char == 'l')) {
+			} else if is_char && (key.char == 'y' || key.char == 'Y') {
+				execute_pending_delete(state)
+			} else if key.key == .Tab || (is_char && (key.char == 'h' || key.char == 'l')) {
 				state.delete_confirm.focused = !state.delete_confirm.focused
 				state.needs_refresh = true
 			} else if key.key == .Enter {
@@ -167,6 +206,16 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 		handle_view_event(state, key)
 
 	case .Char:
+		// Control chords (other than the navigation aliases Ctrl+N/P/J/K)
+		// must not trigger single-letter actions: Ctrl+D is not 'd'.
+		if .Ctrl in key.modifiers {
+			item_count := get_view_item_count(state)
+			switch key.char {
+			case 'n', 'j': tui_state_move_selection(state, 1, item_count)
+			case 'p', 'k': tui_state_move_selection(state, -1, item_count)
+			}
+			return
+		}
 		// Vim-style navigation
 		if key.char == 'k' {
 			item_count := get_view_item_count(state)
@@ -205,16 +254,8 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 
 // Handle selection in current view
 handle_selection :: proc(state: ^TUIState) {
-	// Shared scratch arena for the whole proc. Only one `case` runs per call,
-	// so a single 2KB buffer covers every sub-case that previously declared
-	// its own [512]byte or [1024]byte arena. The buffer dies with this stack
-	// frame once the proc returns. Reduces 5 copies of scratch boilerplate
-	// to one declaration. See thoughts/code_review_2026-04-24.md N4.
-	scratch_buf: [2048]byte
-	scratch: mem.Arena
-	mem.arena_init(&scratch, scratch_buf[:])
-	scratch_alloc := mem.arena_allocator(&scratch)
-
+	// Detail lines are cloned by show_detail_overlay, so scratch strings can
+	// live in the temp allocator (reset every frame by tui_run).
 	switch state.current_view {
 	case .MAIN_MENU:
 		// Navigate to selected view
@@ -233,138 +274,67 @@ handle_selection :: proc(state: ^TUIState) {
 		}
 
 	case .PATH_VIEW:
-		if state.data_cache[.PATH_VIEW] != nil {
-			items := cast(^[dynamic]string)state.data_cache[.PATH_VIEW]
-			if state.selected_index >= 0 && state.selected_index < len(items) {
-				selected := items[state.selected_index]
-				detail_lines := tui_get_path_detail(selected)
-				// Convert dynamic array to slice for show_detail_overlay
-				show_detail_overlay(state, selected, detail_lines[:])
-				// Free the returned dynamic array (show_detail_overlay clones)
-				for line in detail_lines {
-					delete(line)
-				}
-				delete(detail_lines)
-			}
+		_, row, ok := selected_row(state)
+		if !ok || row.kind == .Separator do return
+		detail_lines := tui_get_path_detail(row.key)
+		defer {
+			for line in detail_lines { delete(line) }
+			delete(detail_lines)
 		}
+		show_detail_overlay(state, row.key, detail_lines[:])
 
-	case .ALIAS_VIEW:
-		if state.data_cache[.ALIAS_VIEW] != nil {
-			items := cast(^[dynamic]string)state.data_cache[.ALIAS_VIEW]
-			if state.selected_index >= 0 && state.selected_index < len(items) {
-				selected := items[state.selected_index]
-				parts := strings.split(selected, "=", scratch_alloc)
-				if len(parts) >= 2 {
-					joined_cmd := strings.join(parts[1:], "=", scratch_alloc)
-					line1 := fmt.aprintf("Name: %s", parts[0], allocator = scratch_alloc)
-					line2 := fmt.aprintf("Command: %s", joined_cmd, allocator = scratch_alloc)
-					lines := []string{line1, line2}
-					show_detail_overlay(state, parts[0], lines)
-				} else {
-					lines := []string{selected}
-					show_detail_overlay(state, "Alias", lines)
-				}
-			}
+	case .ALIAS_VIEW, .CONSTANTS_VIEW:
+		_, row, ok := selected_row(state)
+		if !ok || row.kind == .Separator do return
+		value_label := "Command" if state.current_view == .ALIAS_VIEW else "Value"
+		lines := []string{
+			fmt.tprintf("Name: %s", row.key),
+			fmt.tprintf("%s: %s", value_label, row.value),
 		}
-
-	case .CONSTANTS_VIEW:
-		if state.data_cache[.CONSTANTS_VIEW] != nil {
-			items := cast(^[dynamic]string)state.data_cache[.CONSTANTS_VIEW]
-			if state.selected_index >= 0 && state.selected_index < len(items) {
-				selected := items[state.selected_index]
-				parts := strings.split(selected, "=", scratch_alloc)
-				if len(parts) >= 2 {
-					value := strings.join(parts[1:], "=", scratch_alloc)
-					line1 := fmt.aprintf("Name: %s", parts[0], allocator = scratch_alloc)
-					line2 := fmt.aprintf("Value: %s", value, allocator = scratch_alloc)
-					lines := []string{line1, line2}
-					show_detail_overlay(state, parts[0], lines)
-				} else {
-					lines := []string{selected}
-					show_detail_overlay(state, "Constant", lines)
-				}
-			}
-		}
+		show_detail_overlay(state, row.key, lines)
 
 	case .COMPLETIONS_VIEW:
-		if state.data_cache[.COMPLETIONS_VIEW] != nil {
-			items := cast(^[dynamic]string)state.data_cache[.COMPLETIONS_VIEW]
-			if state.selected_index >= 0 && state.selected_index < len(items) {
-				selected := items[state.selected_index]
-				line1 := fmt.aprintf("Script: %s", selected, allocator = scratch_alloc)
-				lines := []string{line1}
-				show_detail_overlay(state, selected, lines)
-			}
-		}
+		display, _, ok := selected_row(state)
+		if !ok do return
+		lines := []string{fmt.tprintf("Script: %s", display)}
+		show_detail_overlay(state, display, lines)
 
 	case .BACKUPS_VIEW:
-		if state.data_cache[.BACKUPS_VIEW] != nil {
-			items := cast(^[dynamic]string)state.data_cache[.BACKUPS_VIEW]
-			if state.selected_index >= 0 && state.selected_index < len(items) {
-				selected := items[state.selected_index]
-				// Parse backup filename: e.g. "path.zsh.backup.2024-03-15_14-30-00"
-				parts := strings.split(selected, ".backup.", scratch_alloc)
-				if len(parts) >= 2 {
-					line1 := fmt.aprintf("Config: %s", parts[0], allocator = scratch_alloc)
-					line2 := fmt.aprintf("Timestamp: %s", parts[1], allocator = scratch_alloc)
-					lines := []string{line1, line2}
-					show_detail_overlay(state, "Backup Detail", lines)
-				} else {
-					lines := []string{selected}
-					show_detail_overlay(state, "Backup", lines)
-				}
+		display, _, ok := selected_row(state)
+		if !ok do return
+		// Parse backup filename: e.g. "path.zsh.backup.2024-03-15_14-30-00"
+		sep := strings.index(display, ".backup.")
+		if sep >= 0 {
+			lines := []string{
+				fmt.tprintf("Config: %s", display[:sep]),
+				fmt.tprintf("Timestamp: %s", display[sep + len(".backup."):]),
 			}
+			show_detail_overlay(state, "Backup Detail", lines)
+		} else {
+			lines := []string{display}
+			show_detail_overlay(state, "Backup", lines)
 		}
 
 	case .PLUGINS_VIEW:
-		// Show detail for the selected installed plugin or registry entry.
+		display, row, ok := selected_row(state)
+		if !ok do return
 		if state.plugin_tab == PLUGIN_TAB_INSTALLED {
-			if state.data_cache[.PLUGINS_VIEW] != nil {
-				items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
-				if state.selected_index >= 0 && state.selected_index < len(items) {
-					selected := items[state.selected_index]
-					// Parse plugin info: "name | source | status | priority"
-					parts := strings.split(selected, " | ", context.temp_allocator)
-					if len(parts) >= 1 {
-						plugin_name := parts[0]
-						// Installed-plugin rows are "name | source | status | priority".
-						detail := make([dynamic]string, context.temp_allocator)
-						append(&detail, fmt.tprintf("Plugin:   %s", plugin_name))
-						if len(parts) >= 2 do append(&detail, fmt.tprintf("Source:   %s", strings.trim_space(parts[1])))
-						if len(parts) >= 3 do append(&detail, fmt.tprintf("Status:   %s", strings.trim_space(parts[2])))
-						if len(parts) >= 4 do append(&detail, fmt.tprintf("Priority: %s", strings.trim_space(parts[3])))
-						show_detail_overlay(state, "Plugin Detail", detail[:])
-					}
-				}
-			}
+			// Installed-plugin rows are "name | status | priority:N".
+			parts := strings.split(display, " | ", context.temp_allocator)
+			detail := make([dynamic]string, context.temp_allocator)
+			append(&detail, fmt.tprintf("Plugin:   %s", row.key))
+			if len(parts) >= 2 do append(&detail, fmt.tprintf("Status:   %s", strings.trim_space(parts[1])))
+			if len(parts) >= 3 do append(&detail, fmt.tprintf("Priority: %s", strings.trim_prefix(strings.trim_space(parts[2]), "priority:")))
+			show_detail_overlay(state, "Plugin Detail", detail[:])
 		} else {
-			// Registry tab - show selected plugin info
-			if state.plugin_registry_cache != nil {
-				items := state.plugin_registry_cache
-				idx := state.selected_index
-				if len(state.filter.indices) > 0 {
-					if idx >= 0 && idx < len(state.filter.indices) {
-						idx = state.filter.indices[idx]
-					} else {
-						return
-					}
-				}
-				if idx >= 0 && idx < len(items^) {
-					item := items[idx]
-					// Parse: key\x00category\x00shell\x00description
-					parts := strings.split(item, "\x00", context.temp_allocator)
-					if len(parts) >= 1 {
-						plugin_key := parts[0]
-						line1 := fmt.tprintf("Plugin: %s", plugin_key)
-						line2 := "Press 'i' or Enter to install"
-						if len(parts) >= 4 {
-							line2 = fmt.tprintf("Description: %s", parts[3])
-						}
-						lines := []string{line1, line2}
-						show_detail_overlay(state, "Plugin Registry", lines)
-					}
-				}
+			// Registry row: key\x00category\x00shell\x00description
+			parts := strings.split(display, "\x00", context.temp_allocator)
+			line2 := "Press 'i' or Enter to install"
+			if len(parts) >= 4 {
+				line2 = fmt.tprintf("Description: %s", parts[3])
 			}
+			lines := []string{fmt.tprintf("Plugin: %s", parts[0]), line2}
+			show_detail_overlay(state, "Plugin Registry", lines)
 		}
 
 	case .HOOKS_VIEW:
@@ -375,13 +345,14 @@ handle_selection :: proc(state: ^TUIState) {
 	}
 }
 
-// Execute a confirmed delete operation. Called when user presses 'y' on the confirm overlay.
+// Execute a confirmed delete operation (DELETE button + Enter, or 'y').
 execute_pending_delete :: proc(state: ^TUIState) {
 	if !state.delete_confirm.pending { return }
 
 	view := state.delete_confirm.view
-	name := state.delete_confirm.name
-	item_count := get_view_item_count(state)
+	// clear_detail frees delete_confirm.name — keep our own copy.
+	name := strings.clone(state.delete_confirm.name)
+	defer delete(name)
 
 	success := false
 	err_msg := ""
@@ -397,7 +368,7 @@ execute_pending_delete :: proc(state: ^TUIState) {
 	}
 	defer if len(err_msg) > 0 do delete(err_msg)
 
-	// Dismiss the overlay (this also frees confirm_delete_name)
+	// Dismiss the overlay (this also frees delete_confirm.name)
 	clear_detail(state)
 
 	if success {
@@ -409,27 +380,16 @@ execute_pending_delete :: proc(state: ^TUIState) {
 		case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .HOOKS_VIEW, .SETTINGS_VIEW:
 			label = "entry"
 		}
-		msg := fmt.tprintf("Removed %s: %s", label, name)
-		set_notification(state, .SUCCESS, msg)
+		set_notification(state, .SUCCESS, fmt.tprintf("Removed %s: %s", label, name))
 
-		// Clear cache to force reload
+		// Drop the cache; tui_ensure_data_loaded reloads it next frame and
+		// re-applies the filter + clamps selection to the shorter list.
 		clear_view_cache(state, view)
-
-		// Preserve cursor position: only adjust if was on last item
-		if state.selected_index >= item_count - 1 {
-			state.selected_index = max(0, item_count - 2)
-		}
-		if state.selected_index < state.scroll_offset {
-			state.scroll_offset = state.selected_index
-		}
 	} else {
-		if len(err_msg) > 0 {
-			set_notification(state, .ERROR, err_msg)
-		} else {
-			set_notification(state, .ERROR, fmt.tprintf("Failed to delete: %s", name))
-		}
+		set_notification(state, .ERROR, failure_message(err_msg, fmt.tprintf("Failed to delete: %s", name)))
 	}
 
+	state.full_redraw = true
 	state.needs_refresh = true
 }
 
@@ -635,57 +595,49 @@ handle_filter_input :: proc(state: ^TUIState, key: KeyEvent) {
 		state.needs_refresh = true
 
 	case .Backspace:
-		// Remove last character from filter
-		if len(state.filter.text) > 0 {
-			pop(&state.filter.text)
-			cache := get_current_cache(state)
-			if cache != nil {
-				apply_filter(state, cache)
-			}
+		// Remove last character (whole UTF-8 rune) from filter
+		if rune_buffer_pop(&state.filter.text) {
+			apply_filter(state, get_current_cache(state), get_current_meta(state))
 			state.needs_refresh = true
 		}
 
+	// Item count is len(filter.indices) while filtering — zero matches means
+	// navigation is a no-op rather than walking the unfiltered list.
 	case .Up:
-		// Navigate within filtered results
-		item_count := len(state.filter.indices)
-		if item_count == 0 {
-			item_count = get_view_item_count(state)
-		}
-		tui_state_move_selection(state, -1, item_count)
+		tui_state_move_selection(state, -1, get_view_item_count(state))
 
 	case .Down:
-		// Navigate within filtered results
-		item_count := len(state.filter.indices)
-		if item_count == 0 {
-			item_count = get_view_item_count(state)
-		}
-		tui_state_move_selection(state, 1, item_count)
+		tui_state_move_selection(state, 1, get_view_item_count(state))
 
 	case .Char:
-		if key.char == 'k' && .Ctrl in key.modifiers {
-			// Ctrl+K: navigate up in filter mode
-			item_count := len(state.filter.indices)
-			if item_count == 0 {
-				item_count = get_view_item_count(state)
+		if .Ctrl in key.modifiers {
+			// Ctrl+K/Ctrl+P up, Ctrl+J/Ctrl+N down. Ctrl+J is LF: ICRNL is off in
+			// TUI raw mode, so Enter arrives as CR and LF stays distinguishable.
+			switch key.char {
+			case 'k', 'p': tui_state_move_selection(state, -1, get_view_item_count(state))
+			case 'j', 'n': tui_state_move_selection(state, 1, get_view_item_count(state))
 			}
-			tui_state_move_selection(state, -1, item_count)
-		} else if key.char == 'j' && .Ctrl in key.modifiers {
-			// Ctrl+J: navigate down in filter mode
-			item_count := len(state.filter.indices)
-			if item_count == 0 {
-				item_count = get_view_item_count(state)
-			}
-			tui_state_move_selection(state, 1, item_count)
-		} else if .Ctrl not_in key.modifiers {
+		} else {
 			// Printable character: add to filter
-			append(&state.filter.text, u8(key.char))
-			cache := get_current_cache(state)
-			if cache != nil {
-				apply_filter(state, cache)
-			}
+			rune_buffer_push(&state.filter.text, key.char)
+			apply_filter(state, get_current_cache(state), get_current_meta(state))
 			state.needs_refresh = true
 		}
 	}
+}
+
+// Append `r` UTF-8 encoded to a byte buffer.
+rune_buffer_push :: proc(buf: ^[dynamic]u8, r: rune) {
+	bytes, n := utf8.encode_rune(r)
+	append(buf, ..bytes[:n])
+}
+
+// Remove the last UTF-8 rune from a byte buffer. Returns false when empty.
+rune_buffer_pop :: proc(buf: ^[dynamic]u8) -> bool {
+	if len(buf) == 0 do return false
+	_, size := utf8.decode_last_rune(buf[:])
+	resize(buf, len(buf) - clamp(size, 1, len(buf)))
+	return true
 }
 
 // Handle keyboard input when add form modal is active
@@ -712,16 +664,9 @@ handle_add_form_input :: proc(state: ^TUIState, key: KeyEvent) {
 	case .Backspace:
 		// Only applies when a field is focused
 		if on_field {
-			if form.field_index == 0 {
-				if len(form.input_0) > 0 {
-					pop(&form.input_0)
-					state.needs_refresh = true
-				}
-			} else {
-				if len(form.input_1) > 0 {
-					pop(&form.input_1)
-					state.needs_refresh = true
-				}
+			buf := &form.input_0 if form.field_index == 0 else &form.input_1
+			if rune_buffer_pop(buf) {
+				state.needs_refresh = true
 			}
 		}
 
@@ -737,11 +682,8 @@ handle_add_form_input :: proc(state: ^TUIState, key: KeyEvent) {
 		if .Ctrl not_in key.modifiers {
 			if on_field {
 				// Field is focused: all characters go into the buffer, including h and l
-				if form.field_index == 0 {
-					append(&form.input_0, u8(key.char))
-				} else {
-					append(&form.input_1, u8(key.char))
-				}
+				buf := &form.input_0 if form.field_index == 0 else &form.input_1
+				rune_buffer_push(buf, key.char)
 				state.needs_refresh = true
 			} else {
 				// Button is focused: h/l cycle stops
@@ -766,13 +708,13 @@ execute_add_form :: proc(state: ^TUIState) {
 
 	// Validate: first field must be non-empty
 	if len(val_0) == 0 {
-		state.add_form.error_message = fmt.tprintf("Error: %s cannot be empty", state.add_form.label_0)
+		set_add_form_error(state, fmt.tprintf("Error: %s cannot be empty", state.add_form.label_0))
 		state.needs_refresh = true
 		return
 	}
 	// For two-field forms, second field must also be non-empty
 	if state.add_form.field_count == 2 && len(val_1) == 0 {
-		state.add_form.error_message = fmt.tprintf("Error: %s cannot be empty", state.add_form.label_1)
+		set_add_form_error(state, fmt.tprintf("Error: %s cannot be empty", state.add_form.label_1))
 		state.needs_refresh = true
 		return
 	}
@@ -805,14 +747,23 @@ execute_add_form :: proc(state: ^TUIState) {
 		clear_add_form(state)
 		clear_view_cache(state, view)
 		set_notification(state, .SUCCESS, msg)
+		state.full_redraw = true
 	} else {
-		if len(err_msg) > 0 {
-			state.add_form.error_message = fmt.tprintf("Error: %s", err_msg)
-		} else {
-			state.add_form.error_message = fmt.tprintf("Error: failed to add %s", val_0)
-		}
+		set_add_form_error(state, fmt.tprintf("Error: %s", failure_message(err_msg, fmt.tprintf("failed to add %s", val_0))))
+		state.full_redraw = true
 		state.needs_refresh = true
 	}
+}
+
+// Pick the most specific failure text: the returned error, else the last
+// print_error captured while the TUI silenced CLI output, else `fallback`.
+// Result lives in the temp allocator.
+failure_message :: proc(err_msg: string, fallback: string) -> string {
+	captured := take_print_capture()
+	defer if len(captured) > 0 do delete(captured)
+	if len(err_msg) > 0 do return err_msg
+	if len(captured) > 0 do return strings.clone(captured, context.temp_allocator)
+	return fallback
 }
 
 // Note: View rendering functions are split across per-view files:
@@ -837,16 +788,188 @@ NotificationKind :: enum {
 	ERROR,
 }
 
-// Source filter cycles with `s` in data views. Matches on the glyph rune
-// that tui_bridge_impl.odin prepends to each cache item:
-//   ● = WAYU_ACTIVE, ⚠ = WAYU_INACTIVE, ○ = EXTERNAL.
-// Separator lines (`─── External (N) ───`) and other glyph-less rows are
-// filtered out whenever SourceFilter != ALL.
+// Source filter cycles with `s` in data views. Matches on RowMeta.source
+// (never on rendered glyph text, which changes under NO_COLOR).
+// Separator rows and source-less rows are filtered out whenever
+// SourceFilter != ALL.
 SourceFilter :: enum {
 	ALL,
 	WAYU_ACTIVE,
 	WAYU_INACTIVE,
 	EXTERNAL,
+}
+
+// Where a cached row comes from. NONE = view has no source concept
+// (completions, backups, plugins, non-TOML fallback).
+RowSource :: enum u8 {
+	NONE,
+	WAYU_ACTIVE,
+	WAYU_INACTIVE,
+	EXTERNAL,
+	SHADOWED,
+}
+
+RowKind :: enum u8 {
+	Entry,
+	Separator,
+}
+
+// Structured data kept alongside each display row of a data-view cache.
+// Actions (delete, detail, enable/disable) read key/value from here instead of
+// re-parsing the display text, so glyphs or formatting can never leak into the
+// name passed to entry_remove.
+RowMeta :: struct {
+	key:    string,  // owned — path, alias/constant name, plugin name, file name
+	value:  string,  // owned — alias command / constant value ("" otherwise)
+	source: RowSource,
+	kind:   RowKind,
+}
+
+row_source_from_entry :: proc(source: EntrySource) -> RowSource {
+	switch source {
+	case .WAYU_ACTIVE:   return .WAYU_ACTIVE
+	case .WAYU_INACTIVE: return .WAYU_INACTIVE
+	case .EXTERNAL:      return .EXTERNAL
+	case .SHADOWED:      return .SHADOWED
+	}
+	return .NONE
+}
+
+// When true, source glyphs render as ASCII tags ("[wayu]") instead of Unicode
+// symbols. Set by tui_run from the active color profile (NO_COLOR/--no-color).
+tui_plain_glyphs: bool
+
+// Glyph text for a row source ("" for NONE).
+source_glyph :: proc(source: RowSource) -> string {
+	if tui_plain_glyphs {
+		switch source {
+		case .NONE:          return ""
+		case .WAYU_ACTIVE:   return "[wayu]"
+		case .WAYU_INACTIVE: return "[wayu(i)]"
+		case .EXTERNAL:      return "[ext]"
+		case .SHADOWED:      return "[diff]"
+		}
+		return ""
+	}
+	switch source {
+	case .NONE:          return ""
+	case .WAYU_ACTIVE:   return "●"
+	case .WAYU_INACTIVE: return "⚠"
+	case .EXTERNAL:      return "○"
+	case .SHADOWED:      return "♦"
+	}
+	return ""
+}
+
+// Foreground color for a row source glyph.
+source_glyph_color :: proc(source: RowSource) -> string {
+	switch source {
+	case .NONE:          return TUI_MUTED
+	case .WAYU_ACTIVE:   return TUI_SOURCE_WAYU_ACTIVE
+	case .WAYU_INACTIVE: return TUI_SOURCE_WAYU_INACTIVE
+	case .EXTERNAL:      return TUI_SOURCE_EXTERNAL
+	case .SHADOWED:      return TUI_SOURCE_SHADOWED
+	}
+	return TUI_MUTED
+}
+
+// Append one display row + its metadata. `display` ownership transfers to the
+// cache; key/value are cloned.
+cache_push :: proc(
+	items: ^[dynamic]string,
+	meta: ^[dynamic]RowMeta,
+	display: string,
+	key: string,
+	value: string = "",
+	source: RowSource = .NONE,
+	kind: RowKind = .Entry,
+) {
+	append(items, display)
+	append(meta, RowMeta{
+		key    = strings.clone(key),
+		value  = strings.clone(value),
+		source = source,
+		kind   = kind,
+	})
+}
+
+// Free every RowMeta in `meta` and the array itself.
+row_meta_destroy :: proc(meta: ^[dynamic]RowMeta) {
+	for m in meta {
+		delete(m.key)
+		delete(m.value)
+	}
+	delete(meta^)
+	meta^ = nil
+}
+
+// Install a freshly-loaded cache for `view` (takes ownership of both arrays).
+tui_store_cache :: proc(state: ^TUIState, view: TUIView, items: [dynamic]string, meta: [dynamic]RowMeta) {
+	clear_view_cache(state, view)
+	items_ptr := new([dynamic]string)
+	items_ptr^ = items
+	state.data_cache[view] = items_ptr
+	state.row_meta[view] = meta
+}
+
+// Map the on-screen selection to an index into the current view's cache.
+// With any filter active the selection counts over filter.indices; with zero
+// matches (or an out-of-range selection) there is nothing to act on.
+resolve_selection :: proc(state: ^TUIState, cache_len: int) -> (index: int, ok: bool) {
+	idx := state.selected_index
+	if has_any_filter(state) {
+		if idx < 0 || idx >= len(state.filter.indices) do return -1, false
+		idx = state.filter.indices[idx]
+	}
+	if idx < 0 || idx >= cache_len do return -1, false
+	return idx, true
+}
+
+// Selected row (display + metadata) of the current data view.
+// ok=false when the cache isn't loaded, the filter has no matches, or the
+// selection is out of range.
+selected_row :: proc(state: ^TUIState) -> (display: string, meta: RowMeta, ok: bool) {
+	items := get_current_cache(state)
+	idx, found := resolve_selection(state, len(items))
+	if !found do return "", {}, false
+	all_meta := get_current_meta(state)
+	if idx < len(all_meta) {
+		meta = all_meta[idx]
+	} else {
+		meta = RowMeta{key = items[idx]}
+	}
+	return items[idx], meta, true
+}
+
+// Keep selection and scroll inside the current item count / viewport.
+tui_clamp_selection :: proc(state: ^TUIState) {
+	count := get_view_item_count(state)
+	if count <= 0 {
+		state.selected_index = 0
+		state.scroll_offset = 0
+		return
+	}
+	state.selected_index = clamp(state.selected_index, 0, count - 1)
+	vh := max(1, get_view_visible_height(state))
+	if state.selected_index < state.scroll_offset {
+		state.scroll_offset = state.selected_index
+	}
+	if state.selected_index >= state.scroll_offset + vh {
+		state.scroll_offset = state.selected_index - vh + 1
+	}
+	state.scroll_offset = clamp(state.scroll_offset, 0, max(0, count - vh))
+}
+
+// Recompute filter.indices against the (possibly reloaded) cache and clamp
+// selection. Must run after any cache reload so stale indices never index
+// past the new cache.
+tui_refresh_filter :: proc(state: ^TUIState) {
+	if has_any_filter(state) {
+		sel := state.selected_index
+		apply_filter(state, get_current_cache(state), get_current_meta(state))
+		state.selected_index = sel
+	}
+	tui_clamp_selection(state)
 }
 
 // Saved cursor position for a view (selected_index + scroll_offset)
@@ -865,7 +988,7 @@ AddForm :: struct {
 	label_1:       string,    // e.g. "", "COMMAND", "VALUE"
 	input_0:       [dynamic]u8,
 	input_1:       [dynamic]u8,
-	error_message: string,    // points into temp allocator — do NOT delete
+	error_message: string,    // owned (heap) — set via set_add_form_error
 }
 
 // Detail overlay state (the delete-confirm dialog reuses this surface).
@@ -892,9 +1015,9 @@ FilterState :: struct {
 
 // Transient notification banner state.
 Notification :: struct {
-	message: string,
-	kind:    NotificationKind,
-	frames:  int,  // frames remaining before auto-dismiss
+	message:    string,
+	kind:       NotificationKind,
+	expires_at: time.Tick,  // wall-clock deadline (ticks even without input)
 }
 
 // Settings view cache (loaded once on demand).
@@ -912,6 +1035,8 @@ SettingsCache :: struct {
 
 TUIState :: struct {
 	data_cache:    ^map[TUIView]rawptr,
+	// Structured metadata parallel to each data_cache display array.
+	row_meta:      [TUIView][dynamic]RowMeta,
 	// Per-view cursor memory — remembers selection when navigating away
 	saved_cursors: map[TUIView]ViewCursor,
 	// Add form state — modal overlay for adding new entries
@@ -935,6 +1060,9 @@ TUIState :: struct {
 	terminal_height: int,
 	plugin_tab:      int,  // 0 = Installed, 1 = Registry
 	needs_refresh:   bool,
+	// Repaint every cell (and clear the terminal) on the next flush — set
+	// after resizes and mutations, which may have scribbled over the screen.
+	full_redraw:     bool,
 	running:         bool,
 }
 
@@ -965,6 +1093,11 @@ tui_state_destroy :: proc(state: ^TUIState) {
 
 	// Free plugin registry cache
 	clear_registry_cache(state)
+
+	// Free add form resources
+	set_add_form_error(state, "")
+	delete(state.add_form.input_0)
+	delete(state.add_form.input_1)
 
 	// Free inline filter resources
 	delete(state.filter.text)
@@ -998,6 +1131,10 @@ tui_state_destroy :: proc(state: ^TUIState) {
 	}
 	delete(state.data_cache^)
 	free(state.data_cache)
+
+	for &meta in state.row_meta {
+		row_meta_destroy(&meta)
+	}
 }
 
 // Clear detail overlay and free its resources (also clears any pending delete)
@@ -1041,10 +1178,19 @@ show_delete_confirmation :: proc(state: ^TUIState, view: TUIView, display_name: 
 // Clear add form and free its input buffers
 clear_add_form :: proc(state: ^TUIState) {
 	state.add_form.active        = false
-	state.add_form.error_message = ""
+	set_add_form_error(state, "")
 	clear(&state.add_form.input_0)
 	clear(&state.add_form.input_1)
 	state.needs_refresh = true
+}
+
+// Replace the add-form error with an owned copy of `msg` ("" clears it).
+// Must be heap-owned: the temp allocator is reset every frame.
+set_add_form_error :: proc(state: ^TUIState, msg: string) {
+	if len(state.add_form.error_message) > 0 {
+		delete(state.add_form.error_message)
+	}
+	state.add_form.error_message = strings.clone(msg) if len(msg) > 0 else ""
 }
 
 // Open add form modal for the given view
@@ -1170,11 +1316,13 @@ activate_filter :: proc(state: ^TUIState) {
 	state.scroll_offset = 0
 }
 
-// Deactivate inline filter mode
+// Deactivate inline filter mode (text AND source filter — otherwise a source
+// filter set in one view would make the next view render "No matches").
 deactivate_filter :: proc(state: ^TUIState) {
 	state.filter.active = false
 	clear(&state.filter.text)
 	clear(&state.filter.indices)
+	state.source_filter = .ALL
 	state.selected_index = 0
 	state.scroll_offset = 0
 }
@@ -1208,18 +1356,16 @@ matches_filter :: proc(item: string, filter: []u8) -> bool {
 	return false
 }
 
-// Returns true if `item` belongs to the currently selected source filter.
-// SourceFilter.ALL passes everything. Non-ALL filters require the item to
-// start with the matching glyph rune — separator lines and any glyph-less
-// rows are excluded so the filtered view shows a clean single-source list.
-matches_source :: proc(item: string, filter: SourceFilter) -> bool {
-	if filter == .ALL { return true }
-	if len(item) == 0 { return false }
+// Returns true if a row with `source` belongs to the selected source filter.
+// SourceFilter.ALL passes everything. Non-ALL filters require an exact source
+// match — separators and source-less rows (NONE) are excluded so the filtered
+// view shows a clean single-source list.
+matches_source :: proc(source: RowSource, filter: SourceFilter) -> bool {
 	switch filter {
-	case .WAYU_ACTIVE:   return strings.has_prefix(item, "●")
-	case .WAYU_INACTIVE: return strings.has_prefix(item, "⚠")
-	case .EXTERNAL:      return strings.has_prefix(item, "○")
 	case .ALL:           return true
+	case .WAYU_ACTIVE:   return source == .WAYU_ACTIVE
+	case .WAYU_INACTIVE: return source == .WAYU_INACTIVE
+	case .EXTERNAL:      return source == .EXTERNAL
 	}
 	return true
 }
@@ -1270,7 +1416,9 @@ parse_source_token :: proc(text: string) -> (remainder: string, source: SourceFi
 // Free-text filter may contain a `source:<value>` token — when present it
 // overrides state.source_filter for this pass so users can combine `s` cycling
 // with inline typing without fighting each other.
-apply_filter :: proc(state: ^TUIState, items: []string) {
+// `meta` is parallel to `items` (may be nil/shorter: missing rows count as
+// source NONE). Separator rows only survive the unfiltered ALL view.
+apply_filter :: proc(state: ^TUIState, items: []string, meta: []RowMeta = nil) {
 	clear(&state.filter.indices)
 
 	rem_text, parsed_src, has_src := parse_source_token(string(state.filter.text[:]))
@@ -1279,7 +1427,14 @@ apply_filter :: proc(state: ^TUIState, items: []string) {
 	rem_bytes := transmute([]u8)rem_text
 
 	for item, i in items {
-		if !matches_source(item, effective_src) { continue }
+		source := RowSource.NONE
+		is_separator := false
+		if i < len(meta) {
+			source = meta[i].source
+			is_separator = meta[i].kind == .Separator
+		}
+		if is_separator && (effective_src != .ALL || len(rem_bytes) > 0) { continue }
+		if !matches_source(source, effective_src) { continue }
 		if matches_filter(item, rem_bytes) {
 			append(&state.filter.indices, i)
 		}
@@ -1293,14 +1448,14 @@ apply_filter :: proc(state: ^TUIState, items: []string) {
 // Cycle the source filter and re-apply over the given cache.
 // Also forces a refresh via filtered_indices even when filter_active is false,
 // so the rendering layer switches to the indexed path.
-cycle_source_filter :: proc(state: ^TUIState, items: []string) {
+cycle_source_filter :: proc(state: ^TUIState, items: []string, meta: []RowMeta = nil) {
 	switch state.source_filter {
 	case .ALL:           state.source_filter = .WAYU_ACTIVE
 	case .WAYU_ACTIVE:   state.source_filter = .WAYU_INACTIVE
 	case .WAYU_INACTIVE: state.source_filter = .EXTERNAL
 	case .EXTERNAL:      state.source_filter = .ALL
 	}
-	apply_filter(state, items)
+	apply_filter(state, items, meta)
 }
 
 // True when any filter (text or source) is active — used by views to decide
@@ -1341,23 +1496,29 @@ get_current_cache :: proc(state: ^TUIState) -> []string {
 	return items[:]
 }
 
+// Metadata parallel to get_current_cache (nil for the registry tab, which
+// stores its own \x00-delimited rows).
+get_current_meta :: proc(state: ^TUIState) -> []RowMeta {
+	if state.current_view == .PLUGINS_VIEW && state.plugin_tab == PLUGIN_TAB_REGISTRY {
+		return nil
+	}
+	return state.row_meta[state.current_view][:]
+}
+
 // ============================================================================
 // Notification helpers
 // ============================================================================
 
-NOTIFICATION_FRAMES_SUCCESS :: 150  // ~3 seconds at 50fps
-NOTIFICATION_FRAMES_ERROR   :: 200  // ~4 seconds at 50fps
+NOTIFICATION_DURATION_SUCCESS :: 3 * time.Second
+NOTIFICATION_DURATION_ERROR   :: 4 * time.Second
 
 // Set a notification message with auto-dismiss countdown
 set_notification :: proc(state: ^TUIState, kind: NotificationKind, message: string) {
 	clear_notification(state)
 	state.notify.kind = kind
 	state.notify.message = strings.clone(message)
-	if kind == .SUCCESS {
-		state.notify.frames = NOTIFICATION_FRAMES_SUCCESS
-	} else {
-		state.notify.frames = NOTIFICATION_FRAMES_ERROR
-	}
+	duration := NOTIFICATION_DURATION_SUCCESS if kind == .SUCCESS else NOTIFICATION_DURATION_ERROR
+	state.notify.expires_at = time.tick_add(time.tick_now(), duration)
 	state.needs_refresh = true
 }
 
@@ -1368,14 +1529,15 @@ clear_notification :: proc(state: ^TUIState) {
 	}
 	state.notify.message = ""
 	state.notify.kind = .NONE
-	state.notify.frames = 0
+	state.notify.expires_at = {}
 }
 
-// Tick the notification countdown; clears when expired
-tick_notification :: proc(state: ^TUIState) {
+// Clear the notification once its deadline passes. Called every loop
+// iteration (including poll timeouts), so expiry doesn't wait for a keypress.
+tick_notification :: proc(state: ^TUIState, now := time.Tick{}) {
 	if state.notify.kind == .NONE { return }
-	state.notify.frames -= 1
-	if state.notify.frames <= 0 {
+	current := now if now != {} else time.tick_now()
+	if time.tick_diff(state.notify.expires_at, current) >= 0 {
 		clear_notification(state)
 		state.needs_refresh = true
 	}
@@ -1505,43 +1667,19 @@ tui_get_path_detail :: proc(path_str: string) -> [dynamic]string {
 // Data loading — populates TUI state caches
 // ============================================================================
 
-@(private="file")
-should_color_output :: proc() -> bool {
-	no_color := os.get_env("NO_COLOR", context.temp_allocator)
-	if len(no_color) > 0 { return false }
-	return os.is_tty(os.stdout)
-}
+// Every loader builds a display array plus a parallel RowMeta array and hands
+// both to tui_store_cache. Display rows never carry glyphs — renderers derive
+// the glyph from RowMeta.source — so filtering and actions see clean text.
 
+// Owned separator display row: "─── External (N) ───".
 @(private="file")
-get_source_glyph_rune :: proc(source: EntrySource, use_color: bool) -> string {
-	if !use_color {
-		#partial switch source {
-		case .WAYU_ACTIVE:   return "[wayu]"
-		case .WAYU_INACTIVE: return "[wayu(i)]"
-		case .EXTERNAL:      return "[ext]"
-		case .SHADOWED:      return "[diff]"
-		}
-		return "?"
-	}
-	#partial switch source {
-	case .WAYU_ACTIVE:   return "●"
-	case .WAYU_INACTIVE: return "⚠"
-	case .EXTERNAL:      return "○"
-	case .SHADOWED:      return "♦"
-	}
-	return "?"
+external_separator :: proc(count: int) -> string {
+	return fmt.aprintf("─── External (%d) ───", count)
 }
 
 tui_load_path :: proc(state: ^TUIState) {
-	if state.data_cache[.PATH_VIEW] != nil {
-		clear_view_cache(state, .PATH_VIEW)
-	}
-
 	items := make([dynamic]string)
-	use_color := should_color_output()
-
-	wayu_entries := make(map[string]EntrySource)
-	defer delete(wayu_entries)
+	meta  := make([dynamic]RowMeta)
 
 	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(toml_file)
@@ -1553,7 +1691,11 @@ tui_load_path :: proc(state: ^TUIState) {
 			delete(config.path.entries)
 		}
 		if ok {
+			// Cached by env_snapshot — not owned here.
 			env_paths := snapshot_path_entries()
+
+			wayu_entries := make(map[string]bool)
+			defer delete(wayu_entries)
 
 			for entry in config.path.entries {
 				is_in_env := false
@@ -1563,33 +1705,23 @@ tui_load_path :: proc(state: ^TUIState) {
 						break
 					}
 				}
-
-				source := is_in_env ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
-				wayu_entries[entry] = source
-
-				glyph := get_source_glyph_rune(source, use_color)
-				item := fmt.aprintf("%s %s", glyph, entry)
-				append(&items, item)
+				wayu_entries[entry] = true
+				source := RowSource.WAYU_ACTIVE if is_in_env else RowSource.WAYU_INACTIVE
+				cache_push(&items, &meta, strings.clone(entry), entry, "", source)
 			}
 
-			if len(env_paths) > len(wayu_entries) {
-				external_count := 0
-				for env_path in env_paths {
-					if wayu_entries[env_path] == nil {
-						external_count += 1
-					}
+			external_count := 0
+			for env_path in env_paths {
+				if _, in_wayu := wayu_entries[env_path]; !in_wayu {
+					external_count += 1
 				}
-
-				if external_count > 0 {
-					sep := fmt.tprintf("─── External (%d) ───", external_count)
-					append(&items, sep)
-
-					for env_path in env_paths {
-						if wayu_entries[env_path] == nil {
-							glyph := get_source_glyph_rune(EntrySource.EXTERNAL, use_color)
-							item := fmt.aprintf("%s %s", glyph, env_path)
-							append(&items, item)
-						}
+			}
+			if external_count > 0 {
+				sep := external_separator(external_count)
+				cache_push(&items, &meta, sep, sep, "", .NONE, .Separator)
+				for env_path in env_paths {
+					if _, in_wayu := wayu_entries[env_path]; !in_wayu {
+						cache_push(&items, &meta, strings.clone(env_path), env_path, "", .EXTERNAL)
 					}
 				}
 			}
@@ -1599,26 +1731,16 @@ tui_load_path :: proc(state: ^TUIState) {
 		defer cleanup_entries(&entries)
 
 		for entry in entries {
-			item := strings.clone(entry.name)
-			append(&items, item)
+			cache_push(&items, &meta, strings.clone(entry.name), entry.name)
 		}
 	}
 
-	items_ptr := new([dynamic]string)
-	items_ptr^ = items
-	state.data_cache[.PATH_VIEW] = items_ptr
+	tui_store_cache(state, .PATH_VIEW, items, meta)
 }
 
 tui_load_alias :: proc(state: ^TUIState) {
-	if state.data_cache[.ALIAS_VIEW] != nil {
-		clear_view_cache(state, .ALIAS_VIEW)
-	}
-
 	items := make([dynamic]string)
-	use_color := should_color_output()
-
-	wayu_aliases := make(map[string]bool)
-	defer delete(wayu_aliases)
+	meta  := make([dynamic]RowMeta)
 
 	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(toml_file)
@@ -1636,34 +1758,35 @@ tui_load_alias :: proc(state: ^TUIState) {
 		if ok {
 			env_aliases := snapshot_aliases()
 
+			wayu_aliases := make(map[string]bool)
+			defer delete(wayu_aliases)
+
 			for alias in config.aliases {
 				wayu_aliases[alias.name] = true
 
 				env_val, exists := env_aliases[alias.name]
 				is_active := exists && env_val == alias.command
-				source := is_active ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
+				source := RowSource.WAYU_ACTIVE if is_active else RowSource.WAYU_INACTIVE
 
-				glyph := get_source_glyph_rune(source, use_color)
-				item := fmt.aprintf("%s %s=%s", glyph, alias.name, alias.command)
-				append(&items, item)
+				display := fmt.aprintf("%s=%s", alias.name, alias.command)
+				cache_push(&items, &meta, display, alias.name, alias.command, source)
 			}
 
 			external_count := 0
 			for env_name in env_aliases {
-				if wayu_aliases[env_name] == false {
+				if _, in_wayu := wayu_aliases[env_name]; !in_wayu {
 					external_count += 1
 				}
 			}
 
 			if external_count > 0 {
-				sep := fmt.tprintf("─── External (%d) ───", external_count)
-				append(&items, sep)
+				sep := external_separator(external_count)
+				cache_push(&items, &meta, sep, sep, "", .NONE, .Separator)
 
 				for env_name, env_cmd in env_aliases {
-					if wayu_aliases[env_name] == false {
-						glyph := get_source_glyph_rune(EntrySource.EXTERNAL, use_color)
-						item := fmt.aprintf("%s %s=%s", glyph, env_name, env_cmd)
-						append(&items, item)
+					if _, in_wayu := wayu_aliases[env_name]; !in_wayu {
+						display := fmt.aprintf("%s=%s", env_name, env_cmd)
+						cache_push(&items, &meta, display, env_name, env_cmd, .EXTERNAL)
 					}
 				}
 			}
@@ -1673,31 +1796,25 @@ tui_load_alias :: proc(state: ^TUIState) {
 		defer cleanup_entries(&entries)
 
 		for entry in entries {
-			item := fmt.aprintf("%s=%s", entry.name, entry.value)
-			append(&items, item)
+			display := fmt.aprintf("%s=%s", entry.name, entry.value)
+			cache_push(&items, &meta, display, entry.name, entry.value)
 		}
 	}
 
-	items_ptr := new([dynamic]string)
-	items_ptr^ = items
-	state.data_cache[.ALIAS_VIEW] = items_ptr
+	tui_store_cache(state, .ALIAS_VIEW, items, meta)
 }
 
 tui_load_constants :: proc(state: ^TUIState) {
-	if state.data_cache[.CONSTANTS_VIEW] != nil {
-		clear_view_cache(state, .CONSTANTS_VIEW)
-	}
-
 	items := make([dynamic]string)
-	use_color := should_color_output()
-
-	wayu_constants := make(map[string]bool)
-	defer delete(wayu_constants)
+	meta  := make([dynamic]RowMeta)
 
 	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(toml_file)
 
 	if os.exists(toml_file) {
+		wayu_constants := make(map[string]bool)
+		defer delete(wayu_constants)
+
 		config, ok := toml_read_file(toml_file)
 		defer {
 			for const in config.constants {
@@ -1711,13 +1828,11 @@ tui_load_constants :: proc(state: ^TUIState) {
 			for const in config.constants {
 				wayu_constants[const.name] = true
 
-				env_val_maybe := snapshot_env_var(const.name)
-				is_active := env_val_maybe != nil
-				source := is_active ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
+				is_active := snapshot_env_var(const.name) != nil
+				source := RowSource.WAYU_ACTIVE if is_active else RowSource.WAYU_INACTIVE
 
-				glyph := get_source_glyph_rune(source, use_color)
-				item := fmt.aprintf("%s %s=%s", glyph, const.name, const.value)
-				append(&items, item)
+				display := fmt.aprintf("%s=%s", const.name, const.value)
+				cache_push(&items, &meta, display, const.name, const.value, source)
 			}
 		}
 
@@ -1747,45 +1862,48 @@ tui_load_constants :: proc(state: ^TUIState) {
 				if len(name) == 0 || len(value) == 0 { continue }
 				if name in wayu_constants { continue }
 
+				// Key must outlive this loop iteration (map stores the slice).
+				// `name` points into `content`, which lives until proc exit.
 				wayu_constants[name] = true
 				unescaped := unescape_toml_string(value)
 				defer delete(unescaped)
-				env_val_maybe := snapshot_env_var(name)
-				is_active := env_val_maybe != nil
-				source := is_active ? EntrySource.WAYU_ACTIVE : EntrySource.WAYU_INACTIVE
-				glyph := get_source_glyph_rune(source, use_color)
-				item := fmt.aprintf("%s %s=%s", glyph, name, unescaped)
-				append(&items, item)
+				is_active := snapshot_env_var(name) != nil
+				source := RowSource.WAYU_ACTIVE if is_active else RowSource.WAYU_INACTIVE
+				display := fmt.aprintf("%s=%s", name, unescaped)
+				cache_push(&items, &meta, display, name, unescaped, source)
 			}
 		}
 
 		external_constants := make([dynamic]string)
-		defer delete(external_constants)
+		defer {
+			for name in external_constants { delete(name) }
+			delete(external_constants)
+		}
 
 		env_list, env_err := os.environ(context.allocator)
 		if env_err == nil {
-			defer delete(env_list)
+			defer {
+				for pair in env_list { delete(pair) }
+				delete(env_list)
+			}
 			for pair in env_list {
-				parts := strings.split(pair, "=", context.allocator)
-				defer delete(parts)
-				if len(parts) > 0 {
-					const_name := parts[0]
-					if !(const_name in wayu_constants) {
-						append(&external_constants, const_name)
-					}
+				eq := strings.index_byte(pair, '=')
+				const_name := pair[:eq] if eq >= 0 else pair
+				if len(const_name) == 0 { continue }
+				if !(const_name in wayu_constants) {
+					append(&external_constants, strings.clone(const_name))
 				}
 			}
 		}
 
 		if len(external_constants) > 0 {
-			sep := fmt.tprintf("─── External (%d) ───", len(external_constants))
-			append(&items, sep)
+			sep := external_separator(len(external_constants))
+			cache_push(&items, &meta, sep, sep, "", .NONE, .Separator)
 
 			for ext_const_name in external_constants {
-				if env_val := snapshot_env_var(ext_const_name); env_val != nil {
-					glyph := get_source_glyph_rune(EntrySource.EXTERNAL, use_color)
-					item := fmt.aprintf("%s %s=%s", glyph, ext_const_name, env_val.(string))
-					append(&items, item)
+				if env_val, has := snapshot_env_var(ext_const_name).?; has {
+					display := fmt.aprintf("%s=%s", ext_const_name, env_val)
+					cache_push(&items, &meta, display, ext_const_name, env_val, .EXTERNAL)
 				}
 			}
 		}
@@ -1794,145 +1912,73 @@ tui_load_constants :: proc(state: ^TUIState) {
 		defer cleanup_entries(&entries)
 
 		for entry in entries {
-			item := fmt.aprintf("%s=%s", entry.name, entry.value)
-			append(&items, item)
+			display := fmt.aprintf("%s=%s", entry.name, entry.value)
+			cache_push(&items, &meta, display, entry.name, entry.value)
 		}
 	}
 
-	items_ptr := new([dynamic]string)
-	items_ptr^ = items
-	state.data_cache[.CONSTANTS_VIEW] = items_ptr
+	tui_store_cache(state, .CONSTANTS_VIEW, items, meta)
 }
 
-tui_load_completions :: proc(state: ^TUIState) {
-	if state.data_cache[.COMPLETIONS_VIEW] != nil {
-		clear_view_cache(state, .COMPLETIONS_VIEW)
-	}
-
-	completions_dir := fmt.aprintf("%s/completions", wayu.data)
-	defer delete(completions_dir)
-
+// List regular files in `dir` that satisfy `keep`, as a plain (source NONE) cache.
+@(private="file")
+load_dir_listing :: proc(state: ^TUIState, view: TUIView, dir: string, keep: proc(name: string) -> bool) {
 	items := make([dynamic]string)
+	meta  := make([dynamic]RowMeta)
+	defer tui_store_cache(state, view, items, meta)
 
-	if !os.exists(completions_dir) {
-		items_ptr := new([dynamic]string)
-		items_ptr^ = items
-		state.data_cache[.COMPLETIONS_VIEW] = items_ptr
-		return
-	}
+	if !os.exists(dir) do return
 
-	dir_handle, err := os.open(completions_dir)
-	if err != nil {
-		items_ptr := new([dynamic]string)
-		items_ptr^ = items
-		state.data_cache[.COMPLETIONS_VIEW] = items_ptr
-		return
-	}
-	defer os.close(dir_handle)
-
-	file_infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
-	if read_err != nil {
-		items_ptr := new([dynamic]string)
-		items_ptr^ = items
-		state.data_cache[.COMPLETIONS_VIEW] = items_ptr
-		return
-	}
-	defer os.file_info_slice_delete(file_infos, context.allocator)
-
-	for info in file_infos {
-		if strings.has_prefix(info.name, "_") && info.type != .Directory {
-			if strings.contains(info.name, ".backup.") { continue }
-			item := strings.clone(info.name)
-			append(&items, item)
-		}
-	}
-
-	items_ptr := new([dynamic]string)
-	items_ptr^ = items
-	state.data_cache[.COMPLETIONS_VIEW] = items_ptr
-}
-
-tui_load_backups :: proc(state: ^TUIState) {
-	if state.data_cache[.BACKUPS_VIEW] != nil {
-		clear_view_cache(state, .BACKUPS_VIEW)
-	}
-
-	items := make([dynamic]string)
-
-	backups_dir := fmt.aprintf("%s/backup", wayu.data)
-	defer delete(backups_dir)
-
-	if !os.exists(backups_dir) {
-		items_ptr := new([dynamic]string)
-		items_ptr^ = items
-		state.data_cache[.BACKUPS_VIEW] = items_ptr
-		return
-	}
-
-	dir_handle, err := os.open(backups_dir)
-	if err != nil {
-		items_ptr := new([dynamic]string)
-		items_ptr^ = items
-		state.data_cache[.BACKUPS_VIEW] = items_ptr
-		return
-	}
+	dir_handle, err := os.open(dir)
+	if err != nil do return
 	defer os.close(dir_handle)
 
 	infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
-	if read_err != nil {
-		items_ptr := new([dynamic]string)
-		items_ptr^ = items
-		state.data_cache[.BACKUPS_VIEW] = items_ptr
-		return
-	}
+	if read_err != nil do return
 	defer os.file_info_slice_delete(infos, context.allocator)
 
 	for info in infos {
 		if info.type == .Directory { continue }
-
-		name := info.name
-		if !strings.contains(name, ".backup.") { continue }
-
-		is_config := (strings.has_prefix(name, "path.") ||
-		              strings.has_prefix(name, "aliases.") ||
-		              strings.has_prefix(name, "constants."))
-
-		if is_config {
-			item := strings.clone(name)
-			append(&items, item)
-		}
+		if !keep(info.name) { continue }
+		cache_push(&items, &meta, strings.clone(info.name), info.name)
 	}
+}
 
-	items_ptr := new([dynamic]string)
-	items_ptr^ = items
-	state.data_cache[.BACKUPS_VIEW] = items_ptr
+tui_load_completions :: proc(state: ^TUIState) {
+	completions_dir := fmt.aprintf("%s/completions", wayu.data)
+	defer delete(completions_dir)
+
+	load_dir_listing(state, .COMPLETIONS_VIEW, completions_dir, proc(name: string) -> bool {
+		return strings.has_prefix(name, "_") && !strings.contains(name, ".backup.")
+	})
+}
+
+tui_load_backups :: proc(state: ^TUIState) {
+	backups_dir := fmt.aprintf("%s/backup", wayu.data)
+	defer delete(backups_dir)
+
+	load_dir_listing(state, .BACKUPS_VIEW, backups_dir, proc(name: string) -> bool {
+		if !strings.contains(name, ".backup.") { return false }
+		return strings.has_prefix(name, "path.") ||
+		       strings.has_prefix(name, "aliases.") ||
+		       strings.has_prefix(name, "constants.")
+	})
 }
 
 tui_load_plugins :: proc(state: ^TUIState) {
-	if state.data_cache[.PLUGINS_VIEW] != nil {
-		clear_view_cache(state, .PLUGINS_VIEW)
-	}
+	items := make([dynamic]string)
+	meta  := make([dynamic]RowMeta)
+	defer tui_store_cache(state, .PLUGINS_VIEW, items, meta)
 
 	config, ok := read_plugin_config_json()
-	if !ok {
-		items_ptr := new([dynamic]string)
-		items_ptr^ = make([dynamic]string)
-		state.data_cache[.PLUGINS_VIEW] = items_ptr
-		return
-	}
+	if !ok do return
 	defer cleanup_plugin_config_json(&config)
 
-	items := make([dynamic]string)
 	for plugin in config.plugins {
-		status := "○ Disabled"
-		if plugin.enabled { status = "✓ Active" }
-		item := strings.clone(fmt.tprintf("%s | %s | priority:%d", plugin.name, status, plugin.priority))
-		append(&items, item)
+		status := "✓ Active" if plugin.enabled else "○ Disabled"
+		display := fmt.aprintf("%s | %s | priority:%d", plugin.name, status, plugin.priority)
+		cache_push(&items, &meta, display, plugin.name, status)
 	}
-
-	items_ptr := new([dynamic]string)
-	items_ptr^ = items
-	state.data_cache[.PLUGINS_VIEW] = items_ptr
 }
 
 tui_load_settings :: proc(state: ^TUIState) {
@@ -2008,28 +2054,48 @@ tui_load_registry :: proc(state: ^TUIState) {
 }
 
 tui_ensure_data_loaded :: proc(state: ^TUIState, view: TUIView) {
-	switch view {
-	case .PATH_VIEW:
-		if state.data_cache[view] == nil do tui_load_path(state)
-	case .ALIAS_VIEW:
-		if state.data_cache[view] == nil do tui_load_alias(state)
-	case .CONSTANTS_VIEW:
-		if state.data_cache[view] == nil do tui_load_constants(state)
-	case .COMPLETIONS_VIEW:
-		if state.data_cache[view] == nil do tui_load_completions(state)
-	case .BACKUPS_VIEW:
-		if state.data_cache[view] == nil do tui_load_backups(state)
-	case .PLUGINS_VIEW:
-		if state.data_cache[view] == nil do tui_load_plugins(state)
+	loaded := false
+	if state.data_cache[view] == nil {
+		loaded = true
+		switch view {
+		case .PATH_VIEW:        tui_load_path(state)
+		case .ALIAS_VIEW:       tui_load_alias(state)
+		case .CONSTANTS_VIEW:   tui_load_constants(state)
+		case .COMPLETIONS_VIEW: tui_load_completions(state)
+		case .BACKUPS_VIEW:     tui_load_backups(state)
+		case .PLUGINS_VIEW:     tui_load_plugins(state)
+		case .MAIN_MENU, .HOOKS_VIEW, .SETTINGS_VIEW:
+			loaded = false
+		}
+	}
+	if view == .PLUGINS_VIEW && state.plugin_registry_cache == nil {
 		tui_load_registry(state)
-	case .MAIN_MENU, .HOOKS_VIEW, .SETTINGS_VIEW:
+		loaded = true
+	}
+	// A (re)load invalidates filter.indices and may shrink the list: rebuild
+	// the filter and clamp selection/scroll before anything indexes the cache.
+	if loaded && view == state.current_view {
+		tui_refresh_filter(state)
+		state.needs_refresh = true
 	}
 }
-// Flush screen with differential rendering
+// Flush screen with differential rendering.
+// force_full_render clears the terminal and repaints every cell — used for the
+// first frame, after resizes, and after mutations that may have written to
+// the terminal behind our back.
 screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
+
+	if force_full_render {
+		strings.write_string(&builder, "\x1b[0m\x1b[2J")
+		// Terminal cursor position is unknown: force a move before the first cell.
+		screen.cursor_x = -1
+		screen.cursor_y = -1
+	}
+
+	use_color := tui_color_mode != .ASCII
 
 	// Track what ANSI state the terminal is currently in so we can
 	// emit only the minimal escape sequences needed.
@@ -2047,10 +2113,16 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 			// But force render on first frame
 			if !force_full_render && curr == prev do continue
 
+			// Right half of a wide glyph: the lead cell already covered it.
+			if curr.char == CELL_CONTINUATION do continue
+
 			// Debug assertion: no ANSI escape bytes in cell buffer
 			when ODIN_DEBUG {
 				assert(curr.char != 0x1b, "ANSI escape in screen cell — see thoughts/scroll_bug_spec.md")
 			}
+
+			fg := curr.fg if use_color else ""
+			bg := curr.bg if use_color else ""
 
 			// Move cursor if needed (minimize cursor movement)
 			if x != screen.cursor_x || y != screen.cursor_y {
@@ -2068,12 +2140,12 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 			// Reset all attributes if the cell has none but terminal has some
 			needs_reset := false
 			if (active_bold && !curr.bold) || (active_dim && !curr.dim) ||
-			   (active_fg != "" && curr.fg == "") || (active_bg != "" && curr.bg == "") {
+			   (active_fg != "" && fg == "") || (active_bg != "" && bg == "") {
 				needs_reset = true
 			}
 
 			if needs_reset {
-				fmt.sbprintf(&builder, "\x1b[0m")
+				strings.write_string(&builder, "\x1b[0m")
 				active_fg   = ""
 				active_bg   = ""
 				active_bold = false
@@ -2082,37 +2154,39 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 
 			// Apply bold if needed
 			if curr.bold && !active_bold {
-				fmt.sbprintf(&builder, "\x1b[1m")
+				strings.write_string(&builder, "\x1b[1m")
 				active_bold = true
 			}
 
 			// Apply dim if needed
 			if curr.dim && !active_dim {
-				fmt.sbprintf(&builder, "\x1b[2m")
+				strings.write_string(&builder, "\x1b[2m")
 				active_dim = true
 			}
 
-			// Apply foreground color if needed
-			if curr.fg != "" && curr.fg != active_fg {
-				fmt.sbprintf(&builder, "%s", curr.fg)
-				active_fg = curr.fg
+			// Apply foreground color if needed (adapted to the color profile)
+			if fg != "" && fg != active_fg {
+				write_tui_color(&builder, fg)
+				active_fg = fg
 			}
 
 			// Apply background color if needed
-			if curr.bg != "" && curr.bg != active_bg {
-				fmt.sbprintf(&builder, "%s", curr.bg)
-				active_bg = curr.bg
+			if bg != "" && bg != active_bg {
+				write_tui_color(&builder, bg)
+				active_bg = bg
 			}
 
-			// Write character
-			fmt.sbprintf(&builder, "%c", curr.char)
-			screen.cursor_x += 1
+			// Write character; wide glyphs advance the terminal cursor by two.
+			ch := curr.char
+			if ch < 0x20 do ch = ' '
+			strings.write_rune(&builder, ch)
+			screen.cursor_x += max(1, get_rune_width(ch))
 		}
 	}
 
 	// Reset attributes at end of frame
 	if active_fg != "" || active_bg != "" || active_bold || active_dim {
-		fmt.sbprintf(&builder, "\x1b[0m")
+		strings.write_string(&builder, "\x1b[0m")
 	}
 
 	// Single write to terminal (batch for performance)
@@ -2131,15 +2205,9 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 // Render text at position.
 // ANSI escape bytes (0x1b) are silently skipped — color belongs in Cell.fg,
 // not the char stream. See thoughts/scroll_bug_spec.md for why this matters.
+// Wide runes (CJK, emoji) occupy two cells; zero-width runes are dropped.
 render_text :: proc(screen: ^Screen, x, y: int, text: string) {
-	current_x := x
-	for ch in text {
-		if current_x >= screen.width do break
-		if ch == 0x1b do continue
-
-		screen_set_cell(screen, current_x, y, Cell{char = ch})
-		current_x += 1
-	}
+	render_text_styled(screen, x, y, text)
 }
 
 // Render box at position
@@ -2177,19 +2245,17 @@ tui_render_box :: proc(screen: ^Screen, x, y, width, height: int) {
 // bold: Apply bold formatting
 render_text_styled :: proc(screen: ^Screen, x, y: int, text: string, fg: string = "", bg: string = "", bold := false) {
 	current_x := x
+	style := Cell{fg = fg, bg = bg, bold = bold}
 	for ch in text {
 		if current_x >= screen.width do break
 		// ESC bytes must never reach Cell.char — they inflate logical cursor_x
 		// and drift the diff renderer. See thoughts/scroll_bug_spec.md.
 		if ch == 0x1b do continue
+		if get_rune_width(ch) == 0 do continue
 
-		screen_set_cell(screen, current_x, y, Cell{
-			char = ch,
-			fg = fg,
-			bg = bg,
-			bold = bold,
-		})
-		current_x += 1
+		w := screen_put_rune(screen, current_x, y, ch, style)
+		if w == 0 do break  // wide rune doesn't fit before the right edge
+		current_x += w
 	}
 }
 
@@ -2245,22 +2311,10 @@ render_notification :: proc(state: ^TUIState, screen: ^Screen) {
 		prefix = " ✗ "
 	}
 
-	// Build display text
+	// Build display text, truncated to the visible width (wide-char aware)
 	text := fmt.tprintf("%s%s", prefix, state.notify.message)
-
-	// Truncate to screen width (rune-aware to avoid splitting multi-byte chars)
 	max_width := screen.width - BORDER_LEFT_WIDTH - CONTENT_PADDING_LEFT
-	display := text
-	rune_count := 0
-	byte_end := 0
-	for ch in display {
-		if rune_count >= max_width do break
-		rune_count += 1
-		byte_end += utf8.rune_size(ch)
-	}
-	if rune_count >= max_width {
-		display = display[:byte_end]
-	}
+	display := truncate_text(text, max_width)
 
 	x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
 	render_text_styled(screen, x, y, display, color, "", true)

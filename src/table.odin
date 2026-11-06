@@ -171,8 +171,9 @@ table_render :: proc(table: Table, max_width: int = 0) -> string {
 	defer strings.builder_destroy(&result)
 
 	// Border color: adaptive primary color from colors.odin (truecolor/256/ANSI).
+	// Both are "" under NO_COLOR/--no-color (ASCII profile).
 	border_on  := get_primary()
-	border_off :: "\x1b[0m"
+	border_off := RESET
 
 	// Calculate total width
 	total_width := 0
@@ -271,13 +272,17 @@ table_render :: proc(table: Table, max_width: int = 0) -> string {
 }
 
 // Truncate a string (which may contain ANSI codes) to fit within max_width visual columns.
+// Widths come from get_rune_width (CJK/emoji = 2) so this agrees with
+// visual_width used for column sizing. Appends "…" when truncated.
 // Returns an allocated string (caller must delete).
 truncate_visual :: proc(str: string, max_width: int) -> string {
 	if max_width <= 0 do return strings.clone("")
+	if visual_width(str) <= max_width do return strings.clone(str)
 
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 
+	budget := max_width - 1  // reserve one column for "…"
 	visual := 0
 	in_escape := false
 	for ch in str {
@@ -293,12 +298,16 @@ truncate_visual :: proc(str: string, max_width: int) -> string {
 			}
 			continue
 		}
-		if visual >= max_width - 1 {
-			strings.write_rune(&builder, '\u2026')  // …
+		w := get_rune_width(ch)
+		if visual + w > budget {
 			break
 		}
 		strings.write_rune(&builder, ch)
-		visual += 1
+		visual += w
+	}
+	strings.write_rune(&builder, '\u2026')  // …
+	if strings.contains(str, "\x1b[") {
+		strings.write_string(&builder, RESET)
 	}
 
 	return strings.clone(strings.to_string(builder))

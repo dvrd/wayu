@@ -7,38 +7,23 @@ import "core:unicode/utf8"
 // Source Counter Helper
 // ============================================================================
 
-// Count entries by source from item list (items have glyph prefixes)
-// Returns (wayu_active, wayu_inactive, external, shadowed)
-count_entries_by_source :: proc(items: ^[dynamic]string) -> (int, int, int, int) {
+// Count entries by source from row metadata.
+// Returns (wayu_active, wayu_inactive, external, shadowed). Separators and
+// source-less rows are not counted.
+count_entries_by_source :: proc(meta: []RowMeta) -> (int, int, int, int) {
 	wayu_active := 0
 	wayu_inactive := 0
 	external := 0
 	shadowed := 0
 
-	for item in items {
-		if len(item) == 0 { continue }
-
-		// Skip separator lines (contain "───")
-		if strings.contains(item, "───") { continue }
-
-		// Check glyph prefix
-		// Glyphs are Unicode chars with ANSI codes:
-		// "●" (U+25CF) = wayu active
-		// "⚠" (U+26A0) = wayu inactive
-		// "○" (U+25CB) = external
-		// "♦" (U+2666) = shadowed
-		//
-		// But they're prefixed with color codes like "\x1b[38;2;R;G;Bm"
-		// Look for the unicode chars directly
-
-		if strings.contains(item, "●") {
-			wayu_active += 1
-		} else if strings.contains(item, "⚠") {
-			wayu_inactive += 1
-		} else if strings.contains(item, "○") {
-			external += 1
-		} else if strings.contains(item, "♦") {
-			shadowed += 1
+	for m in meta {
+		if m.kind == .Separator { continue }
+		switch m.source {
+		case .WAYU_ACTIVE:   wayu_active += 1
+		case .WAYU_INACTIVE: wayu_inactive += 1
+		case .EXTERNAL:      external += 1
+		case .SHADOWED:      shadowed += 1
+		case .NONE:
 		}
 	}
 
@@ -49,25 +34,25 @@ count_entries_by_source :: proc(items: ^[dynamic]string) -> (int, int, int, int)
 // Text Truncation Helper
 // ============================================================================
 
-// Truncate text to fit within max_runes, appending "…" if truncated.
-// Works on rune count (not byte count) for correct Unicode handling.
-// Returns a tprintf'd string (temp allocation, do NOT delete).
-truncate_text :: proc(text: string, max_runes: int) -> string {
-	if max_runes <= 0 do return ""
-	count := utf8.rune_count_in_string(text)
-	if count <= max_runes do return text
-	// Truncate: take (max_runes - 1) runes + "…"
-	truncated_bytes := 0
-	runes_seen := 0
-	remaining := text
-	for len(remaining) > 0 {
-		if runes_seen >= max_runes - 1 do break
-		_, size := utf8.decode_rune_in_string(remaining)
-		truncated_bytes += size
-		remaining = remaining[size:]
-		runes_seen += 1
+// Truncate text to fit within max_width terminal columns, appending "…" if
+// truncated. Measures display width (CJK/emoji = 2 columns, ANSI = 0) via
+// visual_width/get_rune_width so it agrees with the cell renderer.
+// Returns `text` itself when it fits, otherwise a temp-allocated string
+// (do NOT delete).
+truncate_text :: proc(text: string, max_width: int) -> string {
+	if max_width <= 0 do return ""
+	if visual_width(text) <= max_width do return text
+	// Keep runes while they fit in (max_width - 1) columns, then add "…".
+	budget := max_width - 1
+	used := 0
+	end := 0
+	for r, i in text {
+		w := get_rune_width(r)
+		if used + w > budget do break
+		used += w
+		end = i + utf8.rune_size(r)
 	}
-	return fmt.tprintf("%s…", text[:truncated_bytes])
+	return fmt.tprintf("%s…", text[:end])
 }
 
 // ============================================================================
@@ -160,8 +145,17 @@ render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) ->
 // ============================================================================
 
 // Render a single list item with ┃ accent bar for selected state.
-// text_x is calculated from header_x + accent bar + gap.
-render_list_item :: proc(screen: ^Screen, header_x, y: int, text: string, max_width: int, is_selected: bool) {
+// `source` selects the leading glyph (none for .NONE); `text` is the plain row
+// text without any glyph. Separator rows render dim with no glyph.
+render_list_item :: proc(
+	screen: ^Screen,
+	header_x, y: int,
+	text: string,
+	max_width: int,
+	is_selected: bool,
+	source := RowSource.NONE,
+	is_separator := false,
+) {
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
 	// Clear row
@@ -170,41 +164,26 @@ render_list_item :: proc(screen: ^Screen, header_x, y: int, text: string, max_wi
 		screen_set_cell(screen, clear_x, y, Cell{char = ' '})
 	}
 
-	// Split "<glyph> <rest>" — glyph is always the first rune, followed by a space.
-	glyph, rest, glyph_color := split_list_item_glyph(text)
+	glyph := source_glyph(source)
+	glyph_w := visual_width(glyph)
+	text_offset := glyph_w + 1 if glyph_w > 0 else 0
 
-	// Compute padded visible width (runes only, since no ANSI bytes inflate the count).
-	available_width := screen.width - text_x - BORDER_RIGHT_WIDTH
-	if available_width < 0 { available_width = 0 }
-	display := truncate_text(rest, max(0, available_width - 2))  // -2 for glyph + space
+	available_width := screen.width - text_x - BORDER_RIGHT_WIDTH - text_offset
+	display := truncate_text(text, max(0, available_width))
 
-	x := text_x
+	if is_separator {
+		render_text_styled(screen, text_x, y, display, TUI_DIM)
+		return
+	}
+
 	if is_selected {
 		screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
-		render_text_styled(screen, x, y, glyph, TUI_PRIMARY, "", true)
-		render_text_styled(screen, x + 2, y, display, TUI_PRIMARY, "", true)
+		if glyph_w > 0 do render_text_styled(screen, text_x, y, glyph, TUI_PRIMARY, "", true)
+		render_text_styled(screen, text_x + text_offset, y, display, TUI_PRIMARY, "", true)
 	} else {
-		render_text_styled(screen, x, y, glyph, glyph_color)
-		render_text_styled(screen, x + 2, y, display, TUI_MUTED)
+		if glyph_w > 0 do render_text_styled(screen, text_x, y, glyph, source_glyph_color(source))
+		render_text_styled(screen, text_x + text_offset, y, display, TUI_MUTED)
 	}
-}
-
-// Inspect the first rune of `item` and map it to the appropriate fg colour.
-split_list_item_glyph :: proc(item: string) -> (glyph, rest, fg: string) {
-	if len(item) == 0 { return "", "", TUI_MUTED }
-	first_rune, sz := utf8.decode_rune_in_string(item)
-	glyph_str := item[:sz]
-	rest_str  := item[sz:]
-	if len(rest_str) > 0 && rest_str[0] == ' ' { rest_str = rest_str[1:] }
-	color: string
-	switch first_rune {
-	case '●': color = TUI_SOURCE_WAYU_ACTIVE
-	case '⚠': color = TUI_SOURCE_WAYU_INACTIVE
-	case '○': color = TUI_SOURCE_EXTERNAL
-	case '♦': color = TUI_SOURCE_SHADOWED
-	case: color = TUI_MUTED  // separator line or ASCII fallback
-	}
-	return glyph_str, rest_str, color
 }
 
 // ============================================================================
@@ -252,22 +231,21 @@ COLUMN_GAP          :: 3   // spaces between key and value columns
 MIN_KEY_COL_WIDTH   :: 8   // minimum key column width
 KEY_COL_MAX_PERCENT :: 30  // max % of content width for key column
 
-// Calculate optimal key column width by scanning all items for max key length.
-// Items are "key=value" strings; key length is measured in runes.
+// Calculate optimal key column width from the widest key (display columns).
+// Keys come from RowMeta when available (separators skipped); otherwise the
+// part of the display row before the first '='.
 // Returns width clamped between MIN_KEY_COL_WIDTH and 30% of max_text_width.
-calculate_key_column_width :: proc(items: ^[dynamic]string, max_text_width: int) -> int {
+calculate_key_column_width :: proc(items: []string, meta: []RowMeta, max_text_width: int) -> int {
 	max_key_len := 0
-	for item in items {
-		eq_idx := strings.index_byte(item, '=')
-		key_len: int
-		if eq_idx >= 0 {
-			key_len = utf8.rune_count_in_string(item[:eq_idx])
-		} else {
-			key_len = utf8.rune_count_in_string(item)
+	for item, i in items {
+		key := item
+		if i < len(meta) {
+			if meta[i].kind == .Separator { continue }
+			key = meta[i].key
+		} else if eq_idx := strings.index_byte(item, '='); eq_idx >= 0 {
+			key = item[:eq_idx]
 		}
-		if key_len > max_key_len {
-			max_key_len = key_len
-		}
+		max_key_len = max(max_key_len, visual_width(key))
 	}
 	desired := max_key_len + 2  // breathing room
 	max_allowed := max_text_width * KEY_COL_MAX_PERCENT / 100
@@ -282,50 +260,11 @@ calculate_key_column_width :: proc(items: ^[dynamic]string, max_text_width: int)
 render_table_row :: proc(
 	screen: ^Screen,
 	x, y: int,
-	item: string,
+	key, value: string,
 	key_col_width, value_col_width: int,
 	is_selected: bool,
+	is_separator := false,
 ) {
-	// Items may start with a glyph (● ⚠ ○ ♦) + space; strip it for parsing
-	work_item := item
-	glyph_prefix := ""
-
-	// Check for ANSI-colored glyph prefix (e.g., "\x1b[38;2;34;197;94m●\x1b[0m ")
-	// or plain Unicode glyph + space
-	glyph_strs := []string{"●", "⚠", "○", "♦"}
-	for gc_str in glyph_strs {
-		if strings.contains(work_item, gc_str) {
-			// Find the first occurrence of the glyph
-			gc_idx := strings.index(work_item, gc_str)
-			if gc_idx >= 0 {
-				// Extract everything up to and including the glyph and trailing reset code
-				// ANSI codes end with "m" followed by optional space
-				end_idx := gc_idx + len(gc_str)
-				for end_idx < len(work_item) && work_item[end_idx] != ' ' && work_item[end_idx] != '=' {
-					end_idx += 1
-				}
-				// Skip trailing space if present
-				if end_idx < len(work_item) && work_item[end_idx] == ' ' {
-					end_idx += 1
-				}
-				glyph_prefix = work_item[:end_idx]
-				work_item = work_item[end_idx:]
-				break
-			}
-		}
-	}
-
-	// Split on first '='
-	eq_idx := strings.index_byte(work_item, '=')
-	key, value: string
-	if eq_idx >= 0 {
-		key = work_item[:eq_idx]
-		value = work_item[eq_idx + 1:]
-	} else {
-		key = work_item
-		value = ""
-	}
-
 	// Truncate key and value independently
 	truncated_key := truncate_text(key, key_col_width)
 	truncated_value := truncate_text(value, value_col_width)
@@ -340,6 +279,11 @@ render_table_row :: proc(
 	// Use a distinct cell state (empty colors) to ensure diff detection
 	for clear_x in 2..<screen.width {
 		screen_set_cell(screen, clear_x, y, Cell{char = ' ', fg = "", bg = "", bold = false, dim = false})
+	}
+
+	if is_separator {
+		render_text_styled(screen, text_x, y, truncate_text(key, key_col_width + COLUMN_GAP + value_col_width), TUI_DIM)
+		return
 	}
 
 	if is_selected {
@@ -411,19 +355,22 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 		return
 	}
 
-	items := cast(^[dynamic]string)state.data_cache[cfg.view_key]
+	items_ptr := cast(^[dynamic]string)state.data_cache[cfg.view_key]
+	items := items_ptr[:]
+	meta := state.row_meta[cfg.view_key][:]
 
 	// Count entries by source for the header
-	wayu_active, wayu_inactive, external, shadowed := count_entries_by_source(items)
+	wayu_active, wayu_inactive, external, shadowed := count_entries_by_source(meta)
 	total := wayu_active + wayu_inactive + external + shadowed
 
 	// Format count text
 	count_text: string
 	if total == 0 {
-		// No source glyphs counted — use raw count (completions, backups, etc.)
+		// No source info — use raw count (completions, backups, etc.)
 		raw := 0
-		for item in items {
-			if len(item) > 0 && !strings.contains(item, "───") { raw += 1 }
+		for item, i in items {
+			if i < len(meta) && meta[i].kind == .Separator { continue }
+			if len(item) > 0 { raw += 1 }
 		}
 		if raw == 0 {
 			count_text = "0 entries"
@@ -453,7 +400,7 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 	key_col_width   := 0
 	value_col_width := 0
 	if cfg.row_kind == .Table {
-		key_col_width = calculate_key_column_width(items, max_text_width)
+		key_col_width = calculate_key_column_width(items, meta, max_text_width)
 		value_col_width = max_text_width - key_col_width - COLUMN_GAP
 		if value_col_width < 1 {
 			value_col_width = 1
@@ -467,9 +414,9 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 	content_start := LIST_ITEM_START_LINE + 1 + list_start_offset
 
 	// Column header row — only for Table views when items are visible
-	show_items := (has_filter && len(state.filter.indices) > 0) || (!has_filter && len(items) > 0)
+	// (must agree with view_shows_column_header used by get_view_visible_height)
 	col_header_offset := 0
-	if cfg.row_kind == .Table && show_items {
+	if cfg.row_kind == .Table && view_shows_column_header(state) {
 		render_column_header(screen, header_x, content_start, cfg.col_label_0, cfg.col_label_1, key_col_width, border_width)
 		col_header_offset = 2  // header line + divider line
 	}
@@ -479,63 +426,66 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 	// Unified text_x for empty state rendering (same expression used inline in all five original procs)
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
-	if has_filter && len(state.filter.indices) > 0 {
-		// Filtered — show matching items
-		// Use get_view_visible_height to match the scroll logic's calculation exactly
-		visible_height := get_view_visible_height(state)
-		start := state.scroll_offset
-		end := min(start + visible_height, len(state.filter.indices))
+	// Rows to draw: filter.indices when filtering, else every cache index.
+	row_count := len(state.filter.indices) if has_filter else len(items)
 
-		for idx in start..<end {
-			y := data_start + (idx - start)
-			original_idx := state.filter.indices[idx]
-			switch cfg.row_kind {
-			case .Single:
-				render_list_item(screen, header_x, y, items[original_idx], max_text_width, idx == state.selected_index)
-			case .Table:
-				render_table_row(screen, header_x, y, items[original_idx], key_col_width, value_col_width, idx == state.selected_index)
-			}
-		}
-
-		if len(state.filter.indices) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filter.indices))
-			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
-		}
-	} else if has_filter && len(state.filter.indices) == 0 {
+	if has_filter && row_count == 0 {
 		// Filtered — no matches
 		render_text_styled(screen, text_x, data_start + 1, "No matches found", TUI_DIM)
 	} else if len(items) == 0 {
 		// Empty (no items at all)
-		// Note: use content_start (not data_start) — col_header_offset is 0 when items==0,
-		// so they are equal, but content_start is the canonical anchor for empty state.
 		render_text_styled(screen, text_x, content_start + 1, cfg.empty_line_1, TUI_DIM)
 		if cfg.empty_line_2 != "" {
 			render_text_styled(screen, text_x, content_start + 3, cfg.empty_line_2, TUI_MUTED)
 		}
 	} else {
-		// Normal — show all items
 		// Use get_view_visible_height to match the scroll logic's calculation exactly
-		visible_height := get_view_visible_height(state)
-		start := state.scroll_offset
-		end := min(start + visible_height, len(items))
+		visible_height := max(1, get_view_visible_height(state))
+		start := clamp(state.scroll_offset, 0, row_count)
+		end := min(start + visible_height, row_count)
 
-		for i in start..<end {
-			y := data_start + (i - start)
+		for pos in start..<end {
+			y := data_start + (pos - start)
+			idx := state.filter.indices[pos] if has_filter else pos
+			if idx < 0 || idx >= len(items) { continue }  // stale index guard
+			m := meta[idx] if idx < len(meta) else RowMeta{}
+			is_sep := m.kind == .Separator
+			selected := pos == state.selected_index
 			switch cfg.row_kind {
 			case .Single:
-				render_list_item(screen, header_x, y, items[i], max_text_width, i == state.selected_index)
+				render_list_item(screen, header_x, y, items[idx], max_text_width, selected, m.source, is_sep)
 			case .Table:
-				render_table_row(screen, header_x, y, items[i], key_col_width, value_col_width, i == state.selected_index)
+				key, value := items[idx], ""
+				if idx < len(meta) {
+					key, value = m.key, m.value
+				} else if eq_idx := strings.index_byte(key, '='); eq_idx >= 0 {
+					key, value = items[idx][:eq_idx], items[idx][eq_idx + 1:]
+				}
+				render_table_row(screen, header_x, y, key, value, key_col_width, value_col_width, selected, is_sep)
 			}
 		}
 
-		if len(items) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
+		if row_count > visible_height {
+			scroll_info: string
+			if has_filter {
+				scroll_info = fmt.tprintf("Showing %d-%d of %d matches", start+1, end, row_count)
+			} else {
+				scroll_info = fmt.tprintf("Showing %d-%d of %d", start+1, end, row_count)
+			}
 			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
 		}
 	}
 
 	render_data_footer(screen, state, cfg.footer)
+}
+
+// True when a Table view draws its column header row (+ divider): items are
+// visible either through the filter or, unfiltered, from the cache.
+view_shows_column_header :: proc(state: ^TUIState) -> bool {
+	if has_any_filter(state) {
+		return len(state.filter.indices) > 0
+	}
+	return len(get_current_cache(state)) > 0
 }
 // ============================================================================
 // Add Form Overlay
@@ -792,11 +742,8 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	for line, i in state.detail.lines {
 		if i >= max_lines do break
 		line_y := title_y + 2 + i
-		max_line_width := overlay_width - 4
-		display_line := line
-		if len(line) > max_line_width {
-			display_line = line[:max_line_width]
-		}
+		max_line_width := overlay_width - 6  // 2 indent + border + padding
+		display_line := truncate_text(line, max_line_width)
 		render_text_styled(screen, content_x + 2, line_y, display_line, TUI_MUTED)
 	}
 
@@ -879,12 +826,14 @@ clear_view_cache :: proc(state: ^TUIState, view: TUIView) {
 		}
 		delete_key(state.data_cache, view)
 	}
+	row_meta_destroy(&state.row_meta[view])
 }
 
 // Get item count for current view (updated version with actual data)
 get_view_item_count :: proc(state: ^TUIState) -> int {
-	// When filter has results, use filtered count
-	if len(state.filter.indices) > 0 {
+	// While any filter is active the visible list IS filter.indices — even
+	// when it is empty (zero matches → nothing to navigate or act on).
+	if state.current_view != .MAIN_MENU && has_any_filter(state) {
 		return len(state.filter.indices)
 	}
 
@@ -967,20 +916,13 @@ handle_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 // Unified Data-View Event Handler
 // ============================================================================
 
-// How to extract the entity name from a cache row when prompting for delete.
-NameExtractor :: enum {
-	None,           // No delete supported
-	Whole,          // Use the entire row as the name (PATH)
-	BeforeEquals,   // Substring before '=' (ALIAS, CONSTANT)
-}
-
 // Per-view behavior knobs. Computed inline by `data_view_behavior`.
 DataViewBehavior :: struct {
 	supports_add:           bool,
 	supports_source_filter: bool,
 	supports_cleanup:       bool,
+	supports_delete:        bool,
 	delete_label:           string,        // "" for raw display (PATH); "Alias"/"Constant" otherwise
-	name_extractor:         NameExtractor,
 }
 
 @(private="file")
@@ -990,21 +932,21 @@ data_view_behavior :: proc(view: TUIView) -> DataViewBehavior {
 		return DataViewBehavior{
 			supports_add           = true,
 			supports_source_filter = true,
-			name_extractor         = .Whole,
+			supports_delete        = true,
 		}
 	case .ALIAS_VIEW:
 		return DataViewBehavior{
 			supports_add           = true,
 			supports_source_filter = true,
+			supports_delete        = true,
 			delete_label           = "Alias",
-			name_extractor         = .BeforeEquals,
 		}
 	case .CONSTANTS_VIEW:
 		return DataViewBehavior{
 			supports_add           = true,
 			supports_source_filter = true,
+			supports_delete        = true,
 			delete_label           = "Constant",
-			name_extractor         = .BeforeEquals,
 		}
 	case .BACKUPS_VIEW:
 		return DataViewBehavior{
@@ -1028,25 +970,21 @@ handle_data_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 				show_add_form(state, view)
 			}
 		case 'd', 'x':
-			if b.name_extractor == .None do return
-			if state.data_cache[view] == nil do return
-			items := cast(^[dynamic]string)state.data_cache[view]
-			if state.selected_index < 0 || state.selected_index >= len(items) do return
-
-			item := items[state.selected_index]
-			delete_key, display: string
-			switch b.name_extractor {
-			case .None:
+			if !b.supports_delete do return
+			// Selection maps through filter.indices; zero matches → no-op.
+			_, row, ok := selected_row(state)
+			if !ok || row.kind == .Separator || len(row.key) == 0 do return
+			if row.source == .EXTERNAL {
+				set_notification(state, .ERROR, fmt.tprintf("%s is not managed by wayu (external)", row.key))
 				return
-			case .Whole:
-				delete_key = item
-				display    = item
-			case .BeforeEquals:
-				eq_idx := strings.index_byte(item, '=')
-				delete_key = item[:eq_idx] if eq_idx >= 0 else item
-				display    = fmt.tprintf("%s: %s", b.delete_label, delete_key)
 			}
-			show_delete_confirmation(state, view, display, delete_key)
+			// Delete key comes from RowMeta — never from display text, so
+			// glyphs ("●", "[wayu]") can't leak into entry_remove.
+			display := row.key
+			if len(b.delete_label) > 0 {
+				display = fmt.tprintf("%s: %s", b.delete_label, row.key)
+			}
+			show_delete_confirmation(state, view, display, row.key)
 
 		case 'c':
 			if !b.supports_cleanup do return
@@ -1056,22 +994,18 @@ handle_data_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 			} else {
 				set_notification(state, .ERROR, "Failed to cleanup backups")
 			}
+			state.full_redraw = true
 			state.needs_refresh = true
 
 		case '/':
 			activate_filter(state)
-			cache := get_current_cache(state)
-			if cache != nil {
-				apply_filter(state, cache)
-			}
+			apply_filter(state, get_current_cache(state), get_current_meta(state))
 			state.needs_refresh = true
 
 		case 's':
 			if !b.supports_source_filter do return
-			cache := get_current_cache(state)
-			if cache != nil {
-				cycle_source_filter(state, cache)
-			}
+			cycle_source_filter(state, get_current_cache(state), get_current_meta(state))
+			tui_clamp_selection(state)
 			state.needs_refresh = true
 		}
 	}
@@ -1085,49 +1019,12 @@ handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 	#partial switch key.key {
 	case .Tab:
 		// Switch between Installed and Registry tabs; reset cursor + filter
-		deactivate_filter(state)
-		state.selected_index = 0
-		state.scroll_offset  = 0
-		state.plugin_tab = 1 - state.plugin_tab  // toggle 0↔1
-		state.needs_refresh = true
+		switch_plugin_tab(state)
 
 	case .Enter:
 		// Registry tab: install selected plugin
-		if state.plugin_tab == PLUGIN_TAB_REGISTRY && state.plugin_registry_cache != nil {
-			items := state.plugin_registry_cache
-			idx   := state.selected_index
-			if len(state.filter.indices) > 0 {
-				if idx >= 0 && idx < len(state.filter.indices) {
-					idx = state.filter.indices[idx]
-				} else {
-					return
-				}
-			}
-			if idx < 0 || idx >= len(items^) do return
-
-			// Extract key (first \x00-delimited field)
-			item    := items[idx]
-			sep_idx := strings.index(item, "\x00")
-			plugin_key := item[:sep_idx] if sep_idx >= 0 else item
-
-			// Show "Installing..." before the blocking git clone
-			set_notification(state, .SUCCESS,
-				fmt.tprintf("Installing %s...", plugin_key))
-			state.needs_refresh = true
-
-			ok := tui_install_plugin(plugin_key)
-			if ok {
-				// Reload installed list and invalidate registry so the
-				// installed plugin is filtered out on next registry load
-				clear_view_cache(state, .PLUGINS_VIEW)
-				clear_registry_cache(state)
-				set_notification(state, .SUCCESS,
-					fmt.tprintf("Installed %s", plugin_key))
-			} else {
-				set_notification(state, .ERROR,
-					fmt.tprintf("Failed to install %s", plugin_key))
-			}
-			state.needs_refresh = true
+		if state.plugin_tab == PLUGIN_TAB_REGISTRY {
+			install_selected_registry_plugin(state)
 		}
 
 	case .Char:
@@ -1135,75 +1032,68 @@ handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 		case '/':
 			// Activate inline filter (works on both Installed and Registry tabs)
 			activate_filter(state)
-			cache := get_current_cache(state)
-			if cache != nil {
-				apply_filter(state, cache)
-			}
+			apply_filter(state, get_current_cache(state), get_current_meta(state))
 			state.needs_refresh = true
 		case 't':
 			// 't' also switches tabs (fallback for terminals where Tab is intercepted)
-			deactivate_filter(state)
-			state.selected_index = 0
-			state.scroll_offset  = 0
-			state.plugin_tab = 1 - state.plugin_tab
-			state.needs_refresh = true
+			switch_plugin_tab(state)
 		case 'i':
 			// 'i' installs selected registry plugin (fallback for terminals where Enter is intercepted)
-			if state.plugin_tab == PLUGIN_TAB_REGISTRY && state.plugin_registry_cache != nil {
-				items := state.plugin_registry_cache
-				idx   := state.selected_index
-				if len(state.filter.indices) > 0 {
-					if idx >= 0 && idx < len(state.filter.indices) {
-						idx = state.filter.indices[idx]
-					} else { break }
-				}
-				if idx < 0 || idx >= len(items^) { break }
-				item    := items[idx]
-				sep_idx := strings.index(item, "\x00")
-				plugin_key := item[:sep_idx] if sep_idx >= 0 else item
-				set_notification(state, .SUCCESS, fmt.tprintf("Installing %s...", plugin_key))
-				state.needs_refresh = true
-				ok := tui_install_plugin(plugin_key)
-				if ok {
-					clear_view_cache(state, .PLUGINS_VIEW)
-					clear_registry_cache(state)
-					set_notification(state, .SUCCESS, fmt.tprintf("Installed %s", plugin_key))
-				} else {
-					set_notification(state, .ERROR, fmt.tprintf("Failed to install %s", plugin_key))
-				}
-				state.needs_refresh = true
+			if state.plugin_tab == PLUGIN_TAB_REGISTRY {
+				install_selected_registry_plugin(state)
 			}
-		case 'e':
-			// Installed tab: enable selected plugin
-			if state.plugin_tab == PLUGIN_TAB_INSTALLED && state.data_cache[.PLUGINS_VIEW] != nil {
-				items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
-				if state.selected_index >= 0 && state.selected_index < len(items) {
-					item := items[state.selected_index]
-					sep_idx := strings.index(item, " | ")
-					plugin_name := item[:sep_idx] if sep_idx >= 0 else item
-					if tui_enable_plugin(plugin_name) {
-						clear_view_cache(state, .PLUGINS_VIEW)
-						state.needs_refresh = true
-					}
-				}
+		case 'e', 'd':
+			// Installed tab: enable/disable selected plugin
+			if state.plugin_tab != PLUGIN_TAB_INSTALLED do return
+			_, row, ok := selected_row(state)
+			if !ok || len(row.key) == 0 do return
+			enable := key.char == 'e'
+			done := tui_enable_plugin(row.key) if enable else tui_disable_plugin(row.key)
+			if done {
+				set_notification(state, .SUCCESS, fmt.tprintf("%s %s", "Enabled" if enable else "Disabled", row.key))
+				clear_view_cache(state, .PLUGINS_VIEW)
+			} else {
+				set_notification(state, .ERROR, fmt.tprintf("Failed to %s %s", "enable" if enable else "disable", row.key))
 			}
-		case 'd':
-			// Installed tab: disable selected plugin
-			if state.plugin_tab == PLUGIN_TAB_INSTALLED && state.data_cache[.PLUGINS_VIEW] != nil {
-				items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
-				if state.selected_index >= 0 && state.selected_index < len(items) {
-					item := items[state.selected_index]
-					sep_idx := strings.index(item, " | ")
-					plugin_name := item[:sep_idx] if sep_idx >= 0 else item
-					if tui_disable_plugin(plugin_name) {
-						clear_view_cache(state, .PLUGINS_VIEW)
-						state.needs_refresh = true
-					}
-				}
-			}
+			state.full_redraw = true
+			state.needs_refresh = true
 		}
 	}
 }
+
+@(private="file")
+switch_plugin_tab :: proc(state: ^TUIState) {
+	deactivate_filter(state)
+	state.selected_index = 0
+	state.scroll_offset  = 0
+	state.plugin_tab = 1 - state.plugin_tab  // toggle 0↔1
+	state.needs_refresh = true
+}
+
+// Install the registry row under the (filter-mapped) selection.
+@(private="file")
+install_selected_registry_plugin :: proc(state: ^TUIState) {
+	display, _, ok := selected_row(state)
+	if !ok do return
+
+	// Extract key (first \x00-delimited field)
+	sep_idx := strings.index_byte(display, 0)
+	plugin_key := strings.clone(display[:sep_idx] if sep_idx >= 0 else display, context.temp_allocator)
+
+	ok = tui_install_plugin(plugin_key)
+	if ok {
+		// Reload installed list and invalidate registry so the
+		// installed plugin is filtered out on next registry load
+		clear_view_cache(state, .PLUGINS_VIEW)
+		clear_registry_cache(state)
+		set_notification(state, .SUCCESS, fmt.tprintf("Installed %s", plugin_key))
+	} else {
+		set_notification(state, .ERROR, fmt.tprintf("Failed to install %s", plugin_key))
+	}
+	state.full_redraw = true
+	state.needs_refresh = true
+}
+
 // ============================================================================
 // Hooks View
 // ============================================================================
@@ -1316,8 +1206,6 @@ render_plugin_tab_bar :: proc(screen: ^Screen, state: ^TUIState, border_width: i
 		render_text_styled(screen, tab_x, tab_y, tab_installed_label, TUI_DIM)
 		tab_x += len(tab_installed_label) + tab_gap
 		render_text_styled(screen, tab_x, tab_y, tab_registry_label, TUI_PRIMARY, "", true)
-		tab_x += len("[Installed]") + 2
-		render_text_styled(screen, tab_x, tab_y, "[Registry]", TUI_PRIMARY, "", true)
 	}
 
 	// Horizontal divider
@@ -1395,6 +1283,7 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 			for idx in start..<end {
 				y            := content_start + (idx - start)
 				original_idx := state.filter.indices[idx]
+				if original_idx < 0 || original_idx >= len(items) { continue }
 				render_list_item(screen, header_x, y, items[original_idx], max_text_width, idx == state.selected_index)
 			}
 			if len(state.filter.indices) > visible_height {
@@ -1480,11 +1369,13 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 	data_start := content_start + 2  // col header + divider
 
 	if has_filter && len(state.filter.indices) > 0 {
-		visible_height := calculate_visible_height(state.terminal_height) - filter_offset - 3
+		// Same row budget as tui_state_move_selection uses for scrolling.
+		visible_height := max(1, get_view_visible_height(state))
 		start := state.scroll_offset
 		end   := min(start + visible_height, len(state.filter.indices))
 		for list_pos in start..<end {
 			original_idx := state.filter.indices[list_pos]
+			if original_idx < 0 || original_idx >= len(items^) { continue }
 			render_registry_row(screen, header_x, text_x, data_start + (list_pos - start),
 				items[original_idx], col_key_w, col_cat_w, col_sh_w, col_desc_w,
 				list_pos == state.selected_index)
@@ -1496,7 +1387,7 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 	} else if has_filter && len(state.filter.indices) == 0 {
 		render_text_styled(screen, text_x, data_start + 1, "No matches found", TUI_DIM)
 	} else {
-		visible_height := calculate_visible_height(state.terminal_height) - 3
+		visible_height := max(1, get_view_visible_height(state))
 		start := state.scroll_offset
 		end   := min(start + visible_height, len(items^))
 		for i in start..<end {
