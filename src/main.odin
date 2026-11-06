@@ -170,10 +170,9 @@ main :: proc() {
   // This arena is automatically cleared, reducing memory fragmentation
   // Keep context.allocator as heap for now to maintain compatibility with existing delete() calls
   // TUI needs more arena space for rendering; CLI is lightweight.
-  is_tui := len(os.args) < 2
-  for arg in os.args[1:] {
-    if arg == "--tui" { is_tui = true; break }
-  }
+  // Same flag-position rules as parse_args (`--` / add-value tail), so
+  // `wayu alias add x echo --tui` doesn't size the arena for the TUI.
+  is_tui := len(os.args) < 2 || global_flag_present(os.args[1:], "--tui")
   temp_arena_size := 2 * 1024 * 1024 if is_tui else 256 * 1024  // 2MB TUI, 256KB CLI
   temp_arena_backing := make([]byte, temp_arena_size)
   defer delete(temp_arena_backing)
@@ -205,13 +204,8 @@ main :: proc() {
 
 	// Check for --no-color flag BEFORE initializing color system
 	// This ensures the flag takes precedence over environment variables
-	no_color_flag := false
-	for arg in os.args[1:] {
-		if arg == "--no-color" || arg == "--no-colour" {
-			no_color_flag = true
-			break
-		}
-	}
+	no_color_flag := global_flag_present(os.args[1:], "--no-color") ||
+	                 global_flag_present(os.args[1:], "--no-colour")
 
 	// Initialize color system (PRP-09 Phase 1)
 	init_colors()
@@ -319,7 +313,13 @@ main :: proc() {
 	case .BUILD:
 		handle_build_command(parsed.action)
 	case .EXPORT:
+		// pre/post_export hooks wrap the actions that generate the turbo
+		// file (default/turbo); help/eval/check produce no export artifact.
+		// post_export only runs if generation didn't exit with an error.
+		generates := parsed.action == .TURBO || parsed.action == .LIST || parsed.action == .UNKNOWN
+		if generates do hook_pre_export()
 		handle_export_command(parsed.action, parsed.args)
+		if generates do hook_post_export()
 	case .TOML:
 		handle_toml_command(parsed.action)
 	case .DOCTOR:
@@ -371,6 +371,11 @@ handle_init_command :: proc() {
 	print_info("Using shell: %s (config files will use .%s extension)", get_shell_name(shell), ext)
 	fmt.println()
 
+	if wayu.dry_run {
+		print_init_dry_run(shell, ext)
+		return
+	}
+
 	config_dir := fmt.aprintf("%s", wayu.config)
 	defer delete(config_dir)
 	data_dir := fmt.aprintf("%s", wayu.data)
@@ -382,7 +387,7 @@ handle_init_command :: proc() {
 		spinner_text(&spinner, "Creating config directory")
 		spinner_start(&spinner)
 
-		err := os.make_directory(config_dir)
+		err := make_directory_all(config_dir) // ~/.config may not exist yet
 
 		spinner_stop(&spinner)
 
@@ -436,7 +441,7 @@ handle_init_command :: proc() {
 			spinner_text(&spinner, spinner_text_str)
 			spinner_start(&spinner)
 
-			err := os.make_directory(subdir_path)
+			err := make_directory_all(subdir_path)
 
 			spinner_stop(&spinner)
 
@@ -471,6 +476,42 @@ handle_init_command :: proc() {
 
 	// Update shell RC file
 	update_shell_rc(shell, ext)
+}
+
+// `wayu init --dry-run`: list what init would create/modify, touch nothing.
+print_init_dry_run :: proc(shell: ShellType, ext: string) {
+	print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+	fmt.println()
+
+	would :: proc(path: string, what: string) {
+		if !os.exists(path) { fmt.printfln("  Would create %s: %s", what, path) }
+	}
+	would(wayu.config, "directory")
+	would(wayu.data, "directory")
+	for sub in ([]string{"functions", "completions", "plugins"}) {
+		base := wayu.config if sub == "functions" else wayu.data
+		would(fmt.tprintf("%s/%s", base, sub), "directory")
+	}
+	for name in ([]string{"path", "aliases", "constants", "init"}) {
+		would(fmt.tprintf("%s/%s.%s", wayu.data, name, ext), "file")
+	}
+	for name in ([]string{"tools", "extra"}) {
+		would(fmt.tprintf("%s/%s.%s", wayu.config, name, ext), "file")
+	}
+	would(fmt.tprintf("%s/%s", wayu.config, ALIAS_SOURCES_FILE), "file")
+	would(fmt.tprintf("%s/wayu.toml", wayu.config), "file")
+	fmt.printfln("  Would regenerate init files in %s", wayu.data)
+
+	rc_file_path := get_rc_file_path(shell)
+	defer delete(rc_file_path)
+	if data, err := os.read_entire_file(rc_file_path, context.allocator); err == nil {
+		defer delete(data)
+		if !strings.contains(string(data), "wayu/init") {
+			fmt.printfln("  Would offer to append 'source %s/init.%s' to %s (backup first)", wayu.data, ext, rc_file_path)
+		}
+	}
+	fmt.println()
+	fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
 }
 
 init_shell_configs :: proc(shell: ShellType, ext: string) {
@@ -630,6 +671,14 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 		new_content := fmt.aprintf("%s\n# Wayu shell configuration\nsource \"%s\"\n", content, init_file)
 		defer delete(new_content)
 
+		// The RC file is the user's, not ours: never modify it without a
+		// restorable copy.
+		if !create_backup_cli(rc_file_path) {
+			fmt.printfln("\nTo manually initialize wayu, add this line to your %s:", rc_file_path)
+			fmt.printfln("  source %s", init_file)
+			return
+		}
+
 		write_err := os.write_entire_file(rc_file_path, transmute([]byte)new_content)
 		if write_err != nil {
 			fmt.eprintfln("Error: Failed to write to %s", rc_file_path)
@@ -706,6 +755,7 @@ print_help :: proc() {
 	print_item("", "--dry-run, -n", "Preview changes without modifying files", EMOJI_INFO)
 	print_item("", "--yes, -y", "Skip confirmation prompts (for clean/dedup)", EMOJI_INFO)
 	print_item("", "--full, -f", "Show all entries including external", EMOJI_INFO)
+	print_item("", "--", "End of flags: everything after is a literal argument", EMOJI_INFO)
 	print_item("", "--tui", "Launch interactive Terminal UI mode (same as no args)", EMOJI_INFO)
 	print_item("", "-c=<component>", "Test TUI component rendering (dev mode)", EMOJI_INFO)
 	print_item("", "--snapshot", "Save component output as golden file", EMOJI_INFO)
@@ -758,6 +808,13 @@ print_help :: proc() {
 	fmt.printf("  # Preview changes with dry-run:\n")
 	fmt.printf("  wayu --dry-run path add /new/path\n")
 	fmt.printf("  wayu -n alias add gc 'git commit'\n")
+	fmt.println()
+	fmt.printf("  # Flags are global and may appear anywhere, except: after '--', and\n")
+	fmt.printf("  # in 'alias add' / 'const add' once the name and first value word were\n")
+	fmt.printf("  # given — the rest of the line is the value, flags included:\n")
+	fmt.printf("  wayu alias add gpf git push -f    # value: 'git push -f'\n")
+	fmt.printf("  wayu -n alias add gpf git push -f # dry-run; value keeps -f\n")
+	fmt.printf("  wayu alias add g -- -n            # value: '-n'\n")
 	fmt.println()
 	fmt.printf("  # Destructive operations require --yes flag:\n")
 	fmt.printf("  wayu path clean --yes            # Remove missing directories\n")

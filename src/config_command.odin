@@ -372,10 +372,10 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 		existing, read_ok := safe_read_file(extra_file)
 		if read_ok {
 			strings.write_string(&builder, string(existing))
-			delete(existing)
 			if !strings.has_suffix(string(existing), "\n") {
 				strings.write_string(&builder, "\n")
 			}
+			delete(existing) // only after the last read (was use-after-free)
 		}
 	}
 

@@ -53,6 +53,56 @@ GlobalFlags :: struct {
 	source_filter:    string,
 }
 
+// Where global flags are recognised (documented in `wayu help` → FLAGS):
+//
+//   1. `--` ends flag parsing: every later token is a literal positional
+//      (the `--` itself is dropped). `wayu alias add x -- grep -n foo`
+//   2. For value-taking adds (`alias add`, `const|constants|env add`), once
+//      the name AND the first value token have been seen, the rest of argv
+//      is part of the value. `wayu alias add gpf git push -f` keeps `-f`.
+//      Flags may still go anywhere before the first value token
+//      (`wayu alias add -n gc 'git commit'`).
+//   3. Everywhere else a global flag may appear in any position.
+//
+// True when `positional` (non-flag tokens seen so far) has reached the value
+// tail of an add command, i.e. rule 2 applies to every following token.
+@(private = "file")
+in_add_value_tail :: proc(positional: []string) -> bool {
+	if len(positional) < 4 || positional[1] != "add" { return false }
+	switch positional[0] {
+	case "alias", "constants", "const", "env": return true
+	}
+	return false
+}
+
+// Global flags that take no value (or carry it inline, `--source=x`/`-c=x`).
+@(private = "file")
+is_simple_global_flag :: proc(arg: string) -> bool {
+	switch arg {
+	case "--full", "-f", "--dry-run", "-n", "--yes", "-y", "--tui",
+	     "--snapshot", "--test", "--json", "--no-color", "--no-colour":
+		return true
+	}
+	return strings.has_prefix(arg, "-c=") || strings.has_prefix(arg, "--source=")
+}
+
+// Cheap pre-scan used by main() before full parsing (arena sizing, color
+// init): is `flag` present in a position where it counts as a global flag
+// under the rules above?
+global_flag_present :: proc(args: []string, flag: string) -> bool {
+	positional := make([dynamic]string)
+	defer delete(positional)
+	for i := 0; i < len(args); i += 1 {
+		a := args[i]
+		if a == "--" || in_add_value_tail(positional[:]) { return false }
+		if a == flag { return true }
+		if (a == "--shell" || a == "--source") && i + 1 < len(args) { i += 1; continue }
+		if is_simple_global_flag(a) { continue }
+		append(&positional, a)
+	}
+	return false
+}
+
 // Parse global flags (--dry-run, --yes, --tui, --json, --no-color, --shell,
 // --source, etc.) from raw CLI args. Returns the remaining (non-flag)
 // arguments in `filtered_args`. Mutates `wayu` for side-effect flags.
@@ -61,9 +111,20 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 	flags: GlobalFlags
 	flags.source_filter = "wayu"  // hide external by default; --full shows everything
 
+	literal := false
 	i := 0
 	for i < len(args) {
 		arg := args[i]
+		if literal || in_add_value_tail(filtered_args[:]) {
+			append(filtered_args, arg)
+			i += 1
+			continue
+		}
+		if arg == "--" {
+			literal = true
+			i += 1
+			continue
+		}
 		switch {
 		case arg == "--full" || arg == "-f":
 			flags.source_filter = "all"

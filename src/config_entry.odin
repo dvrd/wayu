@@ -63,10 +63,11 @@ ConfigEntrySpec :: struct {
 	toml_get:         proc(name: string),
 
 	// Optional hooks executed around each mutation. Nil-safe.
-	hook_pre_add:     proc(name: string),
-	hook_post_add:    proc(name: string),
-	hook_pre_remove:  proc(name: string),
-	hook_post_remove: proc(name: string),
+	// `value` is the alias command / constant value ("" on remove).
+	hook_pre_add:     proc(name: string, value: string),
+	hook_post_add:    proc(name: string, value: string),
+	hook_pre_remove:  proc(name: string, value: string),
+	hook_post_remove: proc(name: string, value: string),
 
 	// Optional callback run after toml_list (used by ALIAS to print external
 	// alias sources below the native list).
@@ -96,28 +97,24 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 				print_cli_usage_error(spec, "add")
 				os.exit(EXIT_USAGE)
 			}
-			if spec.hook_pre_add != nil do spec.hook_pre_add(entry.name)
+			if spec.hook_pre_add != nil do spec.hook_pre_add(entry.name, entry.value)
 			ok, err := spec.toml_add(entry)
 			if !ok {
-				print_error_simple(err)
-				delete(err)
-				os.exit(EXIT_DATAERR)
+				exit_with_entry_error(err)
 			}
-			if spec.hook_post_add != nil do spec.hook_post_add(entry.name)
+			if spec.hook_post_add != nil do spec.hook_post_add(entry.name, entry.value)
 			return
 		case .REMOVE:
 			if len(args) == 0 {
 				print_cli_usage_error(spec, "remove")
 				os.exit(EXIT_USAGE)
 			}
-			if spec.hook_pre_remove != nil do spec.hook_pre_remove(args[0])
+			if spec.hook_pre_remove != nil do spec.hook_pre_remove(args[0], "")
 			ok, err := spec.toml_remove(args[0])
 			if !ok {
-				print_error_simple(err)
-				delete(err)
-				os.exit(EXIT_DATAERR)
+				exit_with_entry_error(err)
 			}
-			if spec.hook_post_remove != nil do spec.hook_post_remove(args[0])
+			if spec.hook_post_remove != nil do spec.hook_post_remove(args[0], "")
 			return
 		case .LIST:
 			spec.toml_list()
@@ -139,6 +136,21 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 	if action == .LIST && spec.list_epilogue != nil {
 		spec.list_epilogue()
 	}
+}
+
+// Print an add/remove failure and exit with the code matching its kind:
+// messages starting with "I/O error" (the convention used by every
+// toml_* writer) are EXIT_IOERR, everything else (not found, invalid
+// input) is EXIT_DATAERR. The message is user-derived, so it is always
+// printed through "%s" and never used as a format string. Frees `err`.
+exit_with_entry_error :: proc(err: string) -> ! {
+	print_error_simple("%s", err)
+	exit_code := EXIT_DATAERR
+	if strings.has_prefix(err, "I/O error") {
+		exit_code = EXIT_IOERR
+	}
+	delete(err)
+	os.exit(exit_code)
 }
 
 // Print usage error with hint to TUI mode (CLI-specific error handling)
@@ -198,13 +210,7 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 
 		ok, err := add_config_entry(spec, entry)
 		if !ok {
-			print_error_simple(err)
-			exit_code := EXIT_DATAERR
-			if strings.has_prefix(err, "I/O error") {
-				exit_code = EXIT_IOERR
-			}
-			delete(err)
-			os.exit(exit_code)
+			exit_with_entry_error(err)
 		}
 	case .REMOVE:
 		if len(args) == 0 {
@@ -213,13 +219,7 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 		}
 		ok2, err2 := remove_config_entry(spec, args[0])
 		if !ok2 {
-			print_error_simple(err2)
-			exit_code := EXIT_DATAERR
-			if strings.has_prefix(err2, "I/O error") {
-				exit_code = EXIT_IOERR
-			}
-			delete(err2)
-			os.exit(exit_code)
+			exit_with_entry_error(err2)
 		}
 	case .GET:
 		if len(args) == 0 {
@@ -251,102 +251,6 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 		print_config_help(spec)
 		os.exit(EXIT_USAGE)
 	}
-}
-
-// TUI-only: Interactive form for adding config entries
-// This function is ONLY called from TUI bridge, never from CLI
-add_config_interactive :: proc(spec: ^ConfigEntrySpec) {
-	// TTY check
-	if !os.exists("/dev/tty") {
-		print_error("Interactive mode requires a TTY")
-		os.exit(EXIT_CONFIG)
-	}
-
-	// Create form fields based on spec
-	fields := make([]FormField, spec.fields_count)
-	defer delete(fields)
-
-	for i in 0..<spec.fields_count {
-		input := new_input_with_validator(
-			spec.field_placeholders[i],
-			64,
-			spec.field_validators[i],
-		)
-		validation := spec.field_validators[i]("")
-
-		fields[i] = FormField{
-			label = spec.field_labels[i],
-			input = input,
-			validation = validation,
-			required = true,
-		}
-	}
-
-	// Create and run form - use wrapper approach to avoid closures
-	title := fmt.aprintf("✨ Add %s", spec.display_name)
-	defer delete(title)
-
-	// Store spec temporarily for callback access
-	g_current_spec = spec
-	defer g_current_spec = nil
-
-	form := new_form(title, fields, add_preview_callback, add_submit_callback)
-	defer form_destroy(&form)
-
-	success := form_run(&form)
-
-	if !success {
-		print_info("Operation cancelled")
-	}
-}
-
-// Module-level variable to pass spec to callbacks (workaround for no closure capture)
-g_current_spec: ^ConfigEntrySpec = nil
-
-// Preview callback for add operations
-add_preview_callback :: proc(form: ^Form) -> string {
-	spec := g_current_spec
-	if spec == nil do return ""
-
-	entry := form_to_entry(spec, form)
-	defer cleanup_entry(&entry)
-
-	if !is_entry_complete(entry) {
-		return ""
-	}
-
-	builder := strings.builder_make()
-	defer strings.builder_destroy(&builder)
-
-	fmt.sbprintf(&builder, "Will add %s:\n", spec.display_name)
-	line := spec.format_line(entry)
-	defer delete(line)
-	fmt.sbprintf(&builder, "  %s%s%s\n\n", get_secondary(), line, RESET)
-
-	// Check for duplicates
-	if entry_exists(spec, entry) {
-		fmt.sbprintf(&builder, "%s⚠ %s already exists (will be updated)%s\n",
-			get_warning(), spec.display_name, RESET)
-	}
-
-	return strings.clone(strings.to_string(builder))
-}
-
-// Submit callback for add operations
-add_submit_callback :: proc(form: ^Form) -> bool {
-	spec := g_current_spec
-	if spec == nil do return false
-
-	entry := form_to_entry(spec, form)
-	defer cleanup_entry(&entry)
-
-	if !is_entry_complete(entry) {
-		return false
-	}
-
-	ok, err := add_config_entry(spec, entry)
-	if !ok { delete(err) }
-	return ok
 }
 
 // Generic add implementation
@@ -617,7 +521,7 @@ remove_config_interactive :: proc(spec: ^ConfigEntrySpec) {
 
 	remove_ok, remove_err := remove_config_entry(spec, selected_copy)
 	if !remove_ok {
-		print_error_simple(remove_err)
+		print_error_simple("%s", remove_err)
 		delete(remove_err)
 	}
 }
@@ -805,8 +709,27 @@ list_config_static :: proc(spec: ^ConfigEntrySpec) {
 	fmt.print(table_output)
 }
 
-// Helper: Read all entries from config file
+// Helper: Read all entries of `spec`'s type. wayu.toml is the source of
+// truth, so when it exists (modern schema) entries come from its tables;
+// the legacy shell file is only consulted for pre-migration installs.
 read_config_entries :: proc(spec: ^ConfigEntrySpec) -> []ConfigEntry {
+	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
+	has_toml := os.exists(toml_path)
+	delete(toml_path)
+	if has_toml {
+		if content, ok := get_cached_toml_content(); ok && len(detect_legacy_schema(content)) == 0 {
+			switch spec.type {
+			case .PATH:
+				entries := read_toml_path_entries()
+				return entries[:]
+			case .ALIAS:
+				return read_toml_alias_entries()
+			case .CONSTANT:
+				return read_wayu_toml_constants()
+			}
+		}
+	}
+
 	config_file := get_config_file_with_fallback(spec.file_name, wayu.shell)
 	defer delete(config_file)
 
@@ -832,36 +755,6 @@ read_config_entries :: proc(spec: ^ConfigEntrySpec) -> []ConfigEntry {
 	copy(result, entries[:])
 	delete(entries)
 	return result
-}
-
-// Helper: Check if entry exists
-entry_exists :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> bool {
-	entries := read_config_entries(spec)
-	defer cleanup_entries(&entries)
-
-	for existing in entries {
-		if existing.name == entry.name {
-			return true
-		}
-	}
-
-	return false
-}
-
-// Helper: Convert form to entry
-form_to_entry :: proc(spec: ^ConfigEntrySpec, form: ^Form) -> ConfigEntry {
-	entry := ConfigEntry{type = spec.type}
-
-	switch spec.fields_count {
-	case 1:
-		entry.name = strings.clone(form.fields[0].input.value)
-		entry.value = ""
-	case 2:
-		entry.name = strings.clone(form.fields[0].input.value)
-		entry.value = strings.clone(form.fields[1].input.value)
-	}
-
-	return entry
 }
 
 // Helper: Parse command line args to entry
@@ -1064,11 +957,11 @@ Entry :: union {
 
 // Add an entry to wayu.toml. Both CLI and TUI use this for mutations from
 // outside the spec-driven dispatchers.
+//
+// Mirrors the CLI: runs the same pre/post hooks (post only after a real
+// change) and honors wayu.dry_run (the toml_* writers print a preview and
+// skip the write; hooks are skipped by execute_hook_ctx).
 entry_add :: proc(entry: Entry) -> (bool, string) {
-	old := wayu.dry_run
-	wayu.dry_run = false
-	defer { wayu.dry_run = old }
-
 	switch e in entry {
 	case EntryPath:
 		// Validate path format (no existence check — TUI lets you stage a
@@ -1082,39 +975,68 @@ entry_add :: proc(entry: Entry) -> (bool, string) {
 		if len(result.warning) > 0 {
 			delete(result.warning)
 		}
-		if !toml_path_add(e.path, "") {
+		hook_pre_path_add(e.path)
+		#partial switch toml_path_add_result(e.path, "") {
+		case .OK:
+			if wayu.dry_run { return true, "" }
+			regenerate_init_core_silently()
+			hook_post_path_add(e.path)
+			return true, ""
+		case .NOOP:
+			return true, ""
+		case .IO_ERROR:
+			return false, strings.clone("I/O error: failed to write path to wayu.toml")
+		case:
 			return false, strings.clone("failed to write path to wayu.toml")
 		}
-		regenerate_init_core_silently()
-		return true, ""
 	case EntryAlias:
-		return toml_alias_add(ConfigEntry{type = .ALIAS, name = e.name, value = e.command})
+		return entry_add_with_hooks(&ALIAS_SPEC, ConfigEntry{type = .ALIAS, name = e.name, value = e.command})
 	case EntryConst:
-		return toml_constant_add(ConfigEntry{type = .CONSTANT, name = e.name, value = e.value})
+		return entry_add_with_hooks(&CONSTANTS_SPEC, ConfigEntry{type = .CONSTANT, name = e.name, value = e.value})
 	}
 	return false, strings.clone("unknown entry type")
 }
 
-// Remove an entry by identity (path for EntryPath, name for the others).
-// The non-identity fields on the variant are ignored.
-entry_remove :: proc(entry: Entry) -> (bool, string) {
-	old := wayu.dry_run
-	wayu.dry_run = false
-	defer { wayu.dry_run = old }
+@(private = "file")
+entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (bool, string) {
+	if spec.hook_pre_add != nil do spec.hook_pre_add(entry.name, entry.value)
+	ok, err := spec.toml_add(entry)
+	if ok && spec.hook_post_add != nil do spec.hook_post_add(entry.name, entry.value)
+	return ok, err
+}
 
+// Remove an entry by identity (path for EntryPath, name for the others).
+// The non-identity fields on the variant are ignored. Same hook / dry-run
+// semantics as entry_add.
+entry_remove :: proc(entry: Entry) -> (bool, string) {
 	switch e in entry {
 	case EntryPath:
-		if !toml_path_remove(e.path) {
+		hook_pre_path_remove(e.path)
+		#partial switch toml_path_remove_result(e.path) {
+		case .OK:
+			if wayu.dry_run { return true, "" }
+			regenerate_init_core_silently()
+			hook_post_path_remove(e.path)
+			return true, ""
+		case .IO_ERROR:
+			return false, strings.clone("I/O error: failed to remove path from wayu.toml")
+		case:
 			return false, strings.clone("failed to remove path from wayu.toml")
 		}
-		regenerate_init_core_silently()
-		return true, ""
 	case EntryAlias:
-		return toml_alias_remove(e.name)
+		return entry_remove_with_hooks(&ALIAS_SPEC, e.name)
 	case EntryConst:
-		return toml_constant_remove(e.name)
+		return entry_remove_with_hooks(&CONSTANTS_SPEC, e.name)
 	}
 	return false, strings.clone("unknown entry type")
+}
+
+@(private = "file")
+entry_remove_with_hooks :: proc(spec: ^ConfigEntrySpec, name: string) -> (bool, string) {
+	if spec.hook_pre_remove != nil do spec.hook_pre_remove(name, "")
+	ok, err := spec.toml_remove(name)
+	if ok && spec.hook_post_remove != nil do spec.hook_post_remove(name, "")
+	return ok, err
 }
 // Basenames that almost never carry meaning on their own. When we see one,
 // we prefix with the parent directory to keep keys self-describing.

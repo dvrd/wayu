@@ -43,6 +43,7 @@ class ConstantsIntegrationTest
       test_remove_constant_from_wayu_toml
       test_help_command
       test_const_alias
+      test_utf8_and_empty_values_survive_rewrite
     ensure
       teardown_test_env
     end
@@ -52,6 +53,34 @@ class ConstantsIntegrationTest
   end
 
   private
+
+  # Regressions: unescape mangled UTF-8 (é → Ã©); `FOO = ""` was skipped by
+  # the reader and so deleted on the next write; `[env]  # c` header was not
+  # recognised, producing a duplicate [env] table; inline comments leaked
+  # into values.
+  def test_utf8_and_empty_values_survive_rewrite
+    print "Test R1: UTF-8, empty values, commented header survive rewrite... "
+
+    content = File.read(@toml_file).sub(/^\[env\][ \t]*$/, "[env]  # my vars\n# keep me\nEMPTY_C = \"\"\nCMT_C = \"nvim\" # editor")
+    File.write(@toml_file, content)
+    run_wayu("const add CAFE_C 'café'")
+    out_cafe, s1 = run_wayu("const get CAFE_C")
+    out_cmt, _ = run_wayu("const get CMT_C")
+    toml = File.read(@toml_file)
+    _, valid = run_wayu("toml validate")
+
+    ok = s1.success? && out_cafe.strip == "café" && out_cmt.strip == "nvim" &&
+         toml.include?(%(EMPTY_C = "")) && toml.scan(/^\[env\]/).length == 1 &&
+         toml.include?("# keep me") && valid.success?
+    if ok
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  cafe=#{out_cafe} cmt=#{out_cmt}\n  toml=#{toml}"
+      @failed += 1
+    end
+  end
 
   def test_add_simple_constant
     print "Test 1: Add simple constant... "

@@ -109,8 +109,21 @@ migrate_legacy_functions :: proc() {
 add_function :: proc(name: string) {
 	result := validate_identifier(name, "Function")
 	if !result.valid {
-		print_error(result.error_message)
+		print_error("%s", result.error_message)
+		delete(result.error_message)
 		os.exit(EXIT_DATAERR)
+	}
+
+	if wayu.dry_run {
+		func_file := function_file_path(name)
+		defer delete(func_file)
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		if os.exists(func_file) {
+			fmt.printfln("Would open %s in $EDITOR", func_file)
+		} else {
+			fmt.printfln("Would create %s and open it in $EDITOR", func_file)
+		}
+		return
 	}
 
 	dir := ensure_functions_dir()
@@ -159,6 +172,15 @@ function_skeleton :: proc(name: string) -> string {
 }
 
 remove_function :: proc(name: string) {
+	// Validate first: the name becomes a path component, so `../../x` must
+	// never reach function_file_path / os.remove.
+	result := validate_identifier(name, "Function")
+	if !result.valid {
+		print_error("%s", result.error_message)
+		delete(result.error_message)
+		os.exit(EXIT_DATAERR)
+	}
+
 	func_file := function_file_path(name)
 	defer delete(func_file)
 
@@ -167,14 +189,22 @@ remove_function :: proc(name: string) {
 		os.exit(EXIT_NOINPUT)
 	}
 
+	if wayu.dry_run {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.printfln("Would delete function file: %s", func_file)
+		return
+	}
+
 	if !wayu.yes_flag {
 		fmt.printfln("This will delete %s. Pass --yes to confirm.", func_file)
 		os.exit(EXIT_USAGE)
 	}
 
 	// Backup before deleting so the user can recover the function body.
-	backup_path, ok := create_backup(func_file)
-	defer if ok do delete(backup_path)
+	// No backup → no delete (the file is the only copy of the user's code).
+	if !create_backup_cli(func_file) {
+		os.exit(EXIT_IOERR)
+	}
 
 	if err := os.remove(func_file); err != nil {
 		print_error_simple("Failed to remove function file: %s", func_file)
