@@ -3,7 +3,7 @@
 
 import os, sys, pty, time, select, struct, fcntl, termios
 
-WAYU_BIN = os.environ.get("WAYU_BIN", os.path.join(os.path.dirname(__file__), "..", "..", "bin", "wayu_debug"))
+WAYU_BIN = os.environ.get("WAYU_BIN", os.path.join(os.path.dirname(__file__), "..", "..", "bin", "wayu"))
 
 def main():
     cols, rows = 80, 24

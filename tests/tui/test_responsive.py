@@ -25,7 +25,7 @@ import pyte
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
-WAYU_BIN = os.environ.get("WAYU_BIN", os.path.join(os.path.dirname(__file__), "..", "..", "bin", "wayu_debug"))
+WAYU_BIN = os.environ.get("WAYU_BIN", os.path.join(os.path.dirname(__file__), "..", "..", "bin", "wayu"))
 TUI_ARGS = ["--tui"]
 
 SIZES = {

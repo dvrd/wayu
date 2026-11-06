@@ -41,6 +41,11 @@ ruby tests/integration/test_completions.rb
 ruby tests/integration/test_plugin.rb
 ```
 
+**TUI layout tests** (Python, needs `pip install pyte`; uses `bin/wayu`, override with `WAYU_BIN`):
+```bash
+./build_it && python3 tests/tui/test_responsive.py
+```
+
 **Visual regression (golden files)**:
 ```bash
 ruby tests/integration/test_golden.rb             # compare every golden (also run by run_all.rb)
@@ -64,7 +69,7 @@ Each `tests/golden/<component>_<W>x<H>.txt` needs a matching line (component + a
 - **CLI mode (default)**: Fully non-interactive, all operations require explicit arguments, BSD sysexits.h exit codes, `--yes` flag for destructive operations
 - **TUI mode** (`wayu --tui`): Full-screen interactive UI using The Elm Architecture (TEA)
 
-### Key Source Files (44 files, consolidated from 73)
+### Key Source Files
 
 | File | Purpose |
 |------|---------|

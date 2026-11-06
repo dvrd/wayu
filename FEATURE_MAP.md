@@ -164,10 +164,10 @@ These files are alive at their entry point but contain large amounts of likely-d
 
 1. **`src/plugin_storage.odin` (2302 lines)** — massive file; many internal procs may be unused
 2. **`src/toml.odin` (1844 lines)** — only a few entry points used; many TOML helper procs likely dead
-3. **`src/style.odin` (1134 lines)** — only a few procs called by `form.odin`; vast majority likely dead
+3. **`src/style.odin`** — `form.odin`/`input.odin` were removed (2026-11-06); audit remaining style procs for dead code
 4. **`src/fuzzy.odin` (1116 lines)** — only `enable_raw_mode` and `is_tty` are widely used
 5. **`src/init_generator.odin` (1086 lines)** — entry points alive but many internal procs likely unused
-6. **`src/config_entry.odin` (1151 lines)** — alive but contains dead interactive/form procs
+6. **`src/config_entry.odin`** — dead interactive/form procs removed (2026-11-06)
 7. **`src/wayu_completions.odin` (867 lines)** — merged from completions.odin; some dead procs remain
 8. **`src/lock.odin` (734 lines)** — only `lock_read` is used externally; rest is unused lock write/update logic
 9. **`src/doctor.odin` (776 lines)** — alive but `attempt_auto_fixes` is dead

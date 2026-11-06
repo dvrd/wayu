@@ -772,3 +772,79 @@ is_wide_character :: proc(r: rune) -> bool {
 
 	return false
 }
+// ============================================================================
+// Special-character widths (moved from the removed form.odin)
+// ============================================================================
+
+// SpecialChar represents a special character with its visual width
+SpecialChar :: struct {
+	char:         rune,
+	visual_width: int,
+	description:  string,
+}
+
+// All special characters used in wayu with their accurate visual widths
+// Width is determined by actual terminal rendering behavior
+// Note: Different terminals render these characters differently:
+// - Ghostty terminal: Width 1 for nerd font symbols, Width 2 for emojis
+// - Legacy terminals: May vary
+// These mappings are based on Ghostty terminal behavior
+SPECIAL_CHARS :: [?]SpecialChar{
+	// Status and UI symbols - Width 1 (nerd font icons in Ghostty)
+	{char = '⚠', visual_width = 1, description = "Warning Sign (U+26A0)"},
+	{char = '✓', visual_width = 1, description = "Check Mark (U+2713)"},
+	{char = '✗', visual_width = 1, description = "Ballot X (U+2717)"},
+	{char = '⌨', visual_width = 1, description = "Keyboard (U+2328)"},
+	{char = 'ℹ', visual_width = 1, description = "Information Source (U+2139)"},
+
+	// Emojis - Width 2 (true emojis in Ghostty)
+	{char = '✨', visual_width = 2, description = "Sparkles (U+2728)"},
+	{char = '📝', visual_width = 2, description = "Memo (U+1F4DD)"},
+	{char = '💾', visual_width = 2, description = "Floppy Disk (U+1F4BE)"},
+	{char = '🚀', visual_width = 2, description = "Rocket (U+1F680)"},
+	{char = '⛰', visual_width = 2, description = "Mountain (U+26F0)"},
+	{char = '🔧', visual_width = 2, description = "Wrench (U+1F527)"},
+	{char = '🎯', visual_width = 2, description = "Direct Hit (U+1F3AF)"},
+
+	// Box drawing characters (Width 1 - ASCII-like)
+	{char = '╭', visual_width = 1, description = "Box Drawings Light Arc Down and Right"},
+	{char = '╮', visual_width = 1, description = "Box Drawings Light Arc Down and Left"},
+	{char = '╰', visual_width = 1, description = "Box Drawings Light Arc Up and Right"},
+	{char = '╯', visual_width = 1, description = "Box Drawings Light Arc Up and Left"},
+	{char = '│', visual_width = 1, description = "Box Drawings Light Vertical"},
+	{char = '─', visual_width = 1, description = "Box Drawings Light Horizontal"},
+	{char = '┌', visual_width = 1, description = "Box Drawings Light Down and Right"},
+	{char = '┐', visual_width = 1, description = "Box Drawings Light Down and Left"},
+	{char = '└', visual_width = 1, description = "Box Drawings Light Up and Right"},
+	{char = '┘', visual_width = 1, description = "Box Drawings Light Up and Left"},
+	{char = '├', visual_width = 1, description = "Box Drawings Light Vertical and Right"},
+	{char = '┤', visual_width = 1, description = "Box Drawings Light Vertical and Left"},
+	{char = '┬', visual_width = 1, description = "Box Drawings Light Down and Horizontal"},
+	{char = '┴', visual_width = 1, description = "Box Drawings Light Up and Horizontal"},
+	{char = '┼', visual_width = 1, description = "Box Drawings Light Vertical and Horizontal"},
+
+	// Additional symbols used in the app
+	{char = '•', visual_width = 1, description = "Bullet (U+2022)"},
+	{char = '◦', visual_width = 1, description = "White Bullet (U+25E6)"},
+	{char = '→', visual_width = 1, description = "Rightwards Arrow (U+2192)"},
+	{char = '←', visual_width = 1, description = "Leftwards Arrow (U+2190)"},
+	{char = '↑', visual_width = 1, description = "Upwards Arrow (U+2191)"},
+	{char = '↓', visual_width = 1, description = "Downwards Arrow (U+2193)"},
+	{char = '█', visual_width = 1, description = "Full Block (U+2588)"},
+	{char = '▌', visual_width = 1, description = "Left Half Block (U+258C)"},
+	{char = '▐', visual_width = 1, description = "Right Half Block (U+2590)"},
+}
+
+// Zero-allocation lookup of a rune's explicit width from the static
+// SPECIAL_CHARS table. Used by the canonical get_rune_width (style.odin) so
+// the width path never has to allocate the special_char_widths map. The table
+// is tiny (~50 entries), so a linear scan is cheap and avoids global heap state
+// (which the unit-test leak tracker would otherwise flag).
+special_char_width :: proc(r: rune) -> (int, bool) {
+	for entry in SPECIAL_CHARS {
+		if entry.char == r {
+			return entry.visual_width, true
+		}
+	}
+	return 0, false
+}

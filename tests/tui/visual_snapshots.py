@@ -2,7 +2,7 @@
 """Visual snapshot of TUI at different terminal sizes."""
 import os, pty, time, select, struct, fcntl, termios, pyte
 
-WAYU_BIN = os.environ.get("WAYU_BIN", "bin/wayu_debug")
+WAYU_BIN = os.environ.get("WAYU_BIN", "bin/wayu")
 
 def capture(cols, rows, keys, label):
     master_fd, slave_fd = pty.openpty()
