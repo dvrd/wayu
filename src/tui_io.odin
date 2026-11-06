@@ -6,6 +6,8 @@ import "core:strconv"
 import "core:strings"
 import "base:intrinsics"
 import "core:time"
+import "core:sys/posix"
+import "base:runtime"
 foreign import libc "system:c"
 
 foreign libc {
@@ -140,6 +142,119 @@ tui_lifecycle_cleanup :: proc() {
     fmt.print(CURSOR_HOME)
     fmt.print(SHOW_CURSOR)
     exit_alt_screen()
+}
+
+// ============================================================================
+// TUI raw mode + emergency terminal restore
+// ============================================================================
+//
+// The TUI owns its own termios snapshot (separate from fuzzy.odin's CLI raw
+// mode) because it needs a stricter mode: ISIG/IEXTEN off so Ctrl+C/Ctrl+Z/
+// Ctrl+V arrive in-band as bytes, and ICRNL off so Enter (CR) and Ctrl+J (LF)
+// stay distinguishable. Every exit path — normal return, SIGTERM/SIGHUP,
+// fatal signals from bounds traps, and assert/panic — funnels through
+// tui_emergency_restore so the user's shell is never left in raw mode on the
+// alternate screen with a hidden cursor.
+
+@(private="file")
+tui_saved_termios: posix.termios
+
+// Set once raw mode is active; read from signal handlers (async-signal-safe).
+@(private="file")
+tui_termios_saved: bool
+
+// Set once the alternate screen has been entered.
+@(private="file")
+tui_screen_active: bool
+
+// Bytes written on emergency exit: reset SGR, clear, show cursor, leave alt screen.
+@(private="file")
+TUI_RESTORE_SEQ :: "\x1b[0m\x1b[2J\x1b[H\x1b[?25h\x1b[?1049l"
+
+// Enable the TUI's raw mode. Returns false (terminal untouched) on failure.
+tui_enable_raw_mode :: proc() -> bool {
+    saved: posix.termios
+    if posix.tcgetattr(posix.FD(STDIN_FILENO), &saved) != .OK {
+        return false
+    }
+    raw := saved
+    raw.c_lflag -= {.ECHO, .ICANON, .ISIG, .IEXTEN}
+    raw.c_iflag -= {.IXON, .IXOFF, .ICRNL, .INLCR, .IGNCR}
+    // Fully non-blocking reads are driven by select(); VMIN=1 keeps read()
+    // semantics simple when select() reports readiness.
+    raw.c_cc[.VMIN]  = 1
+    raw.c_cc[.VTIME] = 0
+    if posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &raw) != .OK {
+        return false
+    }
+    tui_saved_termios = saved
+    intrinsics.volatile_store(&tui_termios_saved, true)
+    return true
+}
+
+// Restore the termios captured by tui_enable_raw_mode (idempotent).
+tui_disable_raw_mode :: proc() {
+    if !intrinsics.volatile_load(&tui_termios_saved) do return
+    posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &tui_saved_termios)
+    intrinsics.volatile_store(&tui_termios_saved, false)
+}
+
+// Mark the alternate screen active/inactive so the emergency path knows
+// whether it must leave it.
+tui_set_screen_active :: proc(active: bool) {
+    intrinsics.volatile_store(&tui_screen_active, active)
+}
+
+// Async-signal-safe restore: only tcsetattr + write. Safe to call from a
+// signal handler, an assertion-failure proc, or normal cleanup.
+tui_emergency_restore :: proc "contextless" () {
+    if intrinsics.volatile_load(&tui_termios_saved) {
+        posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &tui_saved_termios)
+        intrinsics.volatile_store(&tui_termios_saved, false)
+    }
+    if intrinsics.volatile_load(&tui_screen_active) {
+        seq := TUI_RESTORE_SEQ
+        posix.write(posix.FD(STDOUT_FILENO), raw_data(seq), uint(len(seq)))
+        intrinsics.volatile_store(&tui_screen_active, false)
+    }
+}
+
+// Termination + fatal signals that must restore the terminal before dying.
+// SIGILL/SIGTRAP cover Odin bounds-check traps; SIGABRT covers libc aborts.
+@(private="file")
+TUI_RESTORE_SIGNALS :: [?]posix.Signal{
+    .SIGTERM, .SIGHUP, .SIGINT, .SIGQUIT,
+    .SIGSEGV, .SIGBUS, .SIGILL, .SIGTRAP, .SIGABRT, .SIGFPE,
+}
+
+@(private="file")
+tui_signal_handler :: proc "c" (sig: posix.Signal) {
+    tui_emergency_restore()
+    // Re-raise with the default disposition so the exit status reflects the
+    // signal (and core dumps still happen for fatal ones).
+    posix.signal(sig, auto_cast posix.SIG_DFL)
+    posix.raise(sig)
+}
+
+// Install handlers for TUI_RESTORE_SIGNALS.
+tui_install_signal_handlers :: proc() {
+    for sig in TUI_RESTORE_SIGNALS {
+        posix.signal(sig, tui_signal_handler)
+    }
+}
+
+// Reset handlers installed by tui_install_signal_handlers to SIG_DFL.
+tui_uninstall_signal_handlers :: proc() {
+    for sig in TUI_RESTORE_SIGNALS {
+        posix.signal(sig, auto_cast posix.SIG_DFL)
+    }
+}
+
+// Assertion-failure proc installed into the TUI's context: restore the
+// terminal first so the panic message is readable in the user's shell.
+tui_assertion_failure_proc :: proc(prefix, message: string, loc: runtime.Source_Code_Location) -> ! {
+    tui_emergency_restore()
+    runtime.default_assertion_failure_proc(prefix, message, loc)
 }
 // timeval struct for select timeout
 timeval :: struct {

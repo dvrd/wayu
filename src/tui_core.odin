@@ -14,6 +14,9 @@ tui_run :: proc() {
 		os.exit(EXIT_GENERAL)
 	}
 
+	// Restore the terminal before printing any assert/panic message.
+	context.assertion_failure_proc = tui_assertion_failure_proc
+
 	// Initialize all subsystems
 	tui_init()
 	defer tui_cleanup()
@@ -74,19 +77,25 @@ tui_run :: proc() {
 
 }
 
-// Initialize TUI subsystems
+// Initialize TUI subsystems.
+// Raw mode is entered BEFORE the alternate screen so a failure exits with the
+// terminal untouched (os.exit skips deferred cleanup).
 tui_init :: proc() {
-	tui_lifecycle_init()  // Enter alt screen, hide cursor, setup signals
-	if !enable_raw_mode() {
+	if !tui_enable_raw_mode() {
 		fmt.eprintln("Error: Failed to enable raw mode")
 		os.exit(EXIT_OSERR)
 	}
+	tui_install_signal_handlers()
+	tui_lifecycle_init()  // Enter alt screen, hide cursor, SIGWINCH handler
+	tui_set_screen_active(true)
 }
 
 // Cleanup TUI subsystems
 tui_cleanup :: proc() {
-	disable_raw_mode()         // Restore cooked mode
 	tui_lifecycle_cleanup()    // Exit alt screen, show cursor
+	tui_set_screen_active(false)
+	tui_disable_raw_mode()     // Restore cooked mode
+	tui_uninstall_signal_handlers()
 }
 
 // Handle single event and update state
