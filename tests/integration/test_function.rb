@@ -24,7 +24,10 @@ class FunctionIntegrationTest
       test_add_creates_file_in_config_dir
       test_list_shows_added_function
       test_remove_requires_yes
+      test_remove_dry_run_keeps_file
       test_remove_with_yes
+      test_remove_rejects_path_traversal
+      test_add_dry_run_creates_nothing
       test_remove_missing_function
       test_add_rejects_invalid_name
       test_fn_alias
@@ -99,6 +102,32 @@ class FunctionIntegrationTest
     check("Test 5: Remove with --yes deletes the function",
           status.success? && !File.exist?("#{functions_dir}/greet.zsh"),
           "Output: #{output}")
+  end
+
+  # Regression: `fn rm` ignored --dry-run and deleted the file.
+  def test_remove_dry_run_keeps_file
+    output, status = run_wayu_func("--dry-run function remove greet --yes")
+    check("Test 4b: Remove --dry-run keeps the file",
+          status.success? && output.include?("DRY RUN") && File.exist?("#{functions_dir}/greet.zsh"),
+          "Exit: #{status.exitstatus}; Output: #{output}")
+  end
+
+  # Regression: the name was not validated, so `../../x` resolved outside
+  # the functions dir and got deleted.
+  def test_remove_rejects_path_traversal
+    victim = "#{@tmp_home}/victim.zsh"
+    File.write(victim, "keep me\n")
+    output, status = run_wayu_func("function remove ../../../victim --yes")
+    check("Test 5b: Remove rejects a path-traversal name",
+          status.exitstatus == 65 && File.exist?(victim),
+          "Exit: #{status.exitstatus}; Output: #{output}")
+  end
+
+  def test_add_dry_run_creates_nothing
+    output, status = run_wayu_func("-n function add dryfn")
+    check("Test 5c: Add --dry-run creates nothing",
+          status.success? && output.include?("DRY RUN") && !File.exist?("#{functions_dir}/dryfn.zsh"),
+          "Exit: #{status.exitstatus}; Output: #{output}")
   end
 
   def test_remove_missing_function

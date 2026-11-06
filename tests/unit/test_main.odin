@@ -146,3 +146,68 @@ test_print_migrate_help :: proc(t: ^testing.T) {
 	wayu.print_migrate_help()
 	testing.expect(t, true, "print_migrate_help should not crash")
 }
+// Global-flag position rules (see cli_parser.odin): flags inside the value
+// tail of `alias add` / `const add` belong to the value.
+@(test)
+test_parse_args_alias_add_keeps_value_flags :: proc(t: ^testing.T) {
+	saved_yes, saved_dry := wayu.wayu.yes_flag, wayu.wayu.dry_run
+	defer { wayu.wayu.yes_flag = saved_yes; wayu.wayu.dry_run = saved_dry }
+	wayu.wayu.yes_flag, wayu.wayu.dry_run = false, false
+
+	args := []string{"alias", "add", "gpf", "git", "push", "-f", "-n", "-y"}
+	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
+
+	testing.expect_value(t, parsed.action, wayu.Action.ADD)
+	testing.expect_value(t, len(parsed.args), 6)
+	testing.expect_value(t, parsed.args[3], "-f")
+	testing.expect_value(t, parsed.args[5], "-y")
+	testing.expect(t, !wayu.wayu.yes_flag, "-y in the value tail must not enable --yes")
+	testing.expect(t, !wayu.wayu.dry_run, "-n in the value tail must not enable dry-run")
+	testing.expect_value(t, parsed.source_filter, "wayu")
+}
+
+@(test)
+test_parse_args_flags_before_value_still_global :: proc(t: ^testing.T) {
+	saved_yes, saved_dry := wayu.wayu.yes_flag, wayu.wayu.dry_run
+	defer { wayu.wayu.yes_flag = saved_yes; wayu.wayu.dry_run = saved_dry }
+	wayu.wayu.dry_run = false
+
+	args := []string{"-n", "const", "add", "-y", "FOO", "bar", "-n"}
+	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
+
+	testing.expect(t, wayu.wayu.dry_run, "leading -n is global")
+	testing.expect_value(t, len(parsed.args), 3)
+	testing.expect_value(t, parsed.args[0], "FOO")
+	testing.expect_value(t, parsed.args[2], "-n")
+}
+
+@(test)
+test_parse_args_double_dash_terminator :: proc(t: ^testing.T) {
+	saved_dry := wayu.wayu.dry_run
+	defer wayu.wayu.dry_run = saved_dry
+	wayu.wayu.dry_run = false
+
+	args := []string{"alias", "add", "g", "--", "-n"}
+	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
+
+	testing.expect(t, !wayu.wayu.dry_run, "flags after -- are literal")
+	testing.expect_value(t, len(parsed.args), 2)
+	testing.expect_value(t, parsed.args[1], "-n")
+
+	testing.expect(t, !wayu.global_flag_present([]string{"alias", "add", "x", "echo", "--tui"}, "--tui"))
+	testing.expect(t, !wayu.global_flag_present([]string{"--", "--tui"}, "--tui"))
+	testing.expect(t, wayu.global_flag_present([]string{"path", "list", "--no-color"}, "--no-color"))
+}
+
+// Elsewhere flags still work in any position (path list --full).
+@(test)
+test_parse_args_trailing_flag_on_list :: proc(t: ^testing.T) {
+	args := []string{"path", "list", "-f"}
+	parsed := wayu.parse_args(args)
+	defer if len(parsed.args) > 0 do delete(parsed.args)
+	testing.expect_value(t, parsed.source_filter, "all")
+	wayu.wayu.source_filter = "wayu"
+}
