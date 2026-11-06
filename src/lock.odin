@@ -34,8 +34,10 @@ lock_read :: proc(path: string) -> (LockFile, bool) {
 // Parse a lock file from its text content.
 @(private="file")
 parse_lock_file :: proc(content: string) -> (LockFile, bool) {
+	// Every string in the returned LockFile is owned (freed by lock_cleanup),
+	// including the default version.
 	lock := LockFile{
-		version = LOCK_VERSION,
+		version = strings.clone(LOCK_VERSION),
 	}
 
 	entries := make([dynamic]LockEntry)
@@ -87,27 +89,34 @@ parse_lock_file :: proc(content: string) -> (LockFile, bool) {
 			if current_entry.metadata == nil {
 				current_entry.metadata = make(map[string]string)
 			}
-			current_entry.metadata[key] = value
+			// Keys/values point into `content`, which the caller frees —
+			// clone both. On a duplicate key, replace the old value.
+			if key in current_entry.metadata {
+				old_key, old_val := delete_key(&current_entry.metadata, key)
+				delete(old_key)
+				delete(old_val)
+			}
+			current_entry.metadata[strings.clone(key)] = strings.clone(value)
 		} else {
 			switch key {
 			case "version":
-				lock.version = strings.clone(value)
+				replace_owned_string(&lock.version, value)
 			case "generated_at":
-				lock.generated_at = strings.clone(value)
+				replace_owned_string(&lock.generated_at, value)
 			case "type":
 				current_entry.type = string_to_config_type(value)
 			case "name":
-				current_entry.name = strings.clone(value)
+				replace_owned_string(&current_entry.name, value)
 			case "value":
-				current_entry.value = strings.clone(value)
+				replace_owned_string(&current_entry.value, value)
 			case "hash":
-				current_entry.hash = strings.clone(value)
+				replace_owned_string(&current_entry.hash, value)
 			case "source":
-				current_entry.source = strings.clone(value)
+				replace_owned_string(&current_entry.source, value)
 			case "added_at":
-				current_entry.added_at = strings.clone(value)
+				replace_owned_string(&current_entry.added_at, value)
 			case "modified_at":
-				current_entry.modified_at = strings.clone(value)
+				replace_owned_string(&current_entry.modified_at, value)
 			}
 		}
 	}
@@ -122,6 +131,15 @@ parse_lock_file :: proc(content: string) -> (LockFile, bool) {
 	}
 
 	return lock, true
+}
+
+// Free the previous owned value (if any) and store a clone of `value`.
+@(private="file")
+replace_owned_string :: proc(field: ^string, value: string) {
+	if len(field^) > 0 {
+		delete(field^)
+	}
+	field^ = strings.clone(value)
 }
 
 @(private="file")
