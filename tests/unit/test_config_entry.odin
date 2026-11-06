@@ -360,12 +360,3 @@ test_cleanup_entry_with_allocated_fields :: proc(t: ^testing.T) {
 	}
 	wayu.cleanup_entry(&entry)
 }
-
-// ============================================================================
-// g_current_spec global workaround
-// ============================================================================
-
-@(test)
-test_g_current_spec_default_nil :: proc(t: ^testing.T) {
-	testing.expect(t, wayu.g_current_spec == nil, "g_current_spec should be nil by default")
-}

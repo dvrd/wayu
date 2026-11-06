@@ -20,6 +20,7 @@ package wayu
 
 import "core:fmt"
 import "core:mem"
+import "core:mem/virtual"
 import "core:os"
 import "core:slice"
 import "core:strconv"
@@ -157,20 +158,20 @@ toml_parse :: proc(content: string) -> (TomlConfig, bool) {
 		return {}, false
 	}
 
-	// Use arena-based simple parser for reliability.
-	// Size the arena to ~4x the input (enough for parsed AST + cloned strings)
-	// with a floor of 16KB and a cap of 1MB.
-	arena: mem.Arena
-	arena_size := max(64 * 1024, min(len(content) * 16, 1024 * 1024))
-	arena_buffer := make([]byte, arena_size, context.allocator)
-	defer delete(arena_buffer)
-	mem.arena_init(&arena, arena_buffer)
+	// Arena-backed parse. A *growing* virtual arena: the previous fixed
+	// buffer (capped at 1MB) overflowed on large configs (~3000 aliases),
+	// returning nil allocations and crashing. doc_to_config copies what it
+	// keeps, so the whole AST is released in one go below.
+	arena: virtual.Arena
+	if err := virtual.arena_init_growing(&arena); err != nil {
+		return {}, false
+	}
+	defer virtual.arena_destroy(&arena)
 
-	doc, ok := toml_doc_parse_simple(content, &arena)
+	doc, ok := toml_doc_parse_alloc(content, virtual.arena_allocator(&arena))
 	if !ok {
 		return {}, false
 	}
-	// Note: arena is freed automatically via defer, no need for destroy_toml_doc
 
 	return doc_to_config(&doc)
 }
@@ -847,8 +848,13 @@ toml_collection_is_balanced :: proc(value: string) -> bool {
 
 // TomlDocSimple uses an arena for all allocations
 toml_doc_parse_simple :: proc(content: string, arena: ^mem.Arena) -> (TomlDoc, bool) {
+	return toml_doc_parse_alloc(content, mem.arena_allocator(arena))
+}
+
+// Parse with any allocator; every AST node and string lives in `alloc`.
+toml_doc_parse_alloc :: proc(content: string, alloc: mem.Allocator) -> (TomlDoc, bool) {
     doc: TomlDoc
-    doc.values = make(map[string]^TomlValue, allocator = mem.arena_allocator(arena))
+    doc.values = make(map[string]^TomlValue, allocator = alloc)
 
     lines := strings.split(content, "\n")
     defer delete(lines)
@@ -892,7 +898,7 @@ toml_doc_parse_simple :: proc(content: string, arena: ^mem.Arena) -> (TomlDoc, b
         // Check for array of tables [[section]] or [[section.sub.array]]
         if strings.has_prefix(line_trimmed, "[[") && strings.has_suffix(line_trimmed, "]]") {
             section_name := line_trimmed[2:len(line_trimmed)-2]
-            current_section = strings.clone(section_name, allocator = mem.arena_allocator(arena))
+            current_section = strings.clone(section_name, allocator = alloc)
 
             // Handle dotted array names like [[profile.work.aliases]]
             if strings.contains(section_name, ".") {
@@ -906,13 +912,13 @@ toml_doc_parse_simple :: proc(content: string, arena: ^mem.Arena) -> (TomlDoc, b
                     if existing, ok := current_map[part]; ok {
                         if existing.type != .TABLE {
                             existing.type = .TABLE
-                            existing.table_val = make(map[string]^TomlValue, allocator = mem.arena_allocator(arena))
+                            existing.table_val = make(map[string]^TomlValue, allocator = alloc)
                         }
                         current_map = &existing.table_val
                     } else {
-                        new_table := new(TomlValue, allocator = mem.arena_allocator(arena))
+                        new_table := new(TomlValue, allocator = alloc)
                         new_table.type = .TABLE
-                        new_table.table_val = make(map[string]^TomlValue, allocator = mem.arena_allocator(arena))
+                        new_table.table_val = make(map[string]^TomlValue, allocator = alloc)
                         current_map[part] = new_table
                         current_map = &new_table.table_val
                     }
@@ -922,35 +928,35 @@ toml_doc_parse_simple :: proc(content: string, arena: ^mem.Arena) -> (TomlDoc, b
 
                 arr_val, ok := current_map[array_name]
                 if !ok {
-                    arr_val = new(TomlValue, allocator = mem.arena_allocator(arena))
+                    arr_val = new(TomlValue, allocator = alloc)
                     arr_val.type = .ARRAY
-                    arr_val.arr_val = make([dynamic]TomlValue, allocator = mem.arena_allocator(arena))
+                    arr_val.arr_val = make([dynamic]TomlValue, allocator = alloc)
                     current_map[array_name] = arr_val
                 } else if arr_val.type != .ARRAY {
                     arr_val.type = .ARRAY
-                    arr_val.arr_val = make([dynamic]TomlValue, allocator = mem.arena_allocator(arena))
+                    arr_val.arr_val = make([dynamic]TomlValue, allocator = alloc)
                 }
 
                 new_table: TomlValue
                 new_table.type = .TABLE
-                new_table.table_val = make(map[string]^TomlValue, allocator = mem.arena_allocator(arena))
+                new_table.table_val = make(map[string]^TomlValue, allocator = alloc)
                 append(&arr_val.arr_val, new_table)
                 current_array_idx = len(arr_val.arr_val) - 1
             } else {
                 arr_val, ok := doc.values[current_section]
                 if !ok {
-                    arr_val = new(TomlValue, allocator = mem.arena_allocator(arena))
+                    arr_val = new(TomlValue, allocator = alloc)
                     arr_val.type = .ARRAY
-                    arr_val.arr_val = make([dynamic]TomlValue, allocator = mem.arena_allocator(arena))
+                    arr_val.arr_val = make([dynamic]TomlValue, allocator = alloc)
                     doc.values[current_section] = arr_val
                 } else if arr_val.type != .ARRAY {
                     arr_val.type = .ARRAY
-                    arr_val.arr_val = make([dynamic]TomlValue, allocator = mem.arena_allocator(arena))
+                    arr_val.arr_val = make([dynamic]TomlValue, allocator = alloc)
                 }
 
                 new_table: TomlValue
                 new_table.type = .TABLE
-                new_table.table_val = make(map[string]^TomlValue, allocator = mem.arena_allocator(arena))
+                new_table.table_val = make(map[string]^TomlValue, allocator = alloc)
                 append(&arr_val.arr_val, new_table)
                 current_array_idx = len(arr_val.arr_val) - 1
             }
@@ -960,7 +966,7 @@ toml_doc_parse_simple :: proc(content: string, arena: ^mem.Arena) -> (TomlDoc, b
         // Check for regular table [section] or [section.subsection]
         if strings.has_prefix(line_trimmed, "[") && strings.has_suffix(line_trimmed, "]") && !strings.has_prefix(line_trimmed, "[[") {
             section_name := line_trimmed[1:len(line_trimmed)-1]
-            current_section = strings.clone(section_name, allocator = mem.arena_allocator(arena))
+            current_section = strings.clone(section_name, allocator = alloc)
             current_array_idx = -1
 
             if strings.contains(section_name, ".") {
@@ -974,22 +980,22 @@ toml_doc_parse_simple :: proc(content: string, arena: ^mem.Arena) -> (TomlDoc, b
                     if existing, ok := current_map[part]; ok {
                         if existing.type != .TABLE {
                             existing.type = .TABLE
-                            existing.table_val = make(map[string]^TomlValue, allocator = mem.arena_allocator(arena))
+                            existing.table_val = make(map[string]^TomlValue, allocator = alloc)
                         }
                         current_map = &existing.table_val
                     } else {
-                        new_table := new(TomlValue, allocator = mem.arena_allocator(arena))
+                        new_table := new(TomlValue, allocator = alloc)
                         new_table.type = .TABLE
-                        new_table.table_val = make(map[string]^TomlValue, allocator = mem.arena_allocator(arena))
+                        new_table.table_val = make(map[string]^TomlValue, allocator = alloc)
                         current_map[part] = new_table
                         current_map = &new_table.table_val
                     }
                 }
             } else {
                 if _, ok := doc.values[current_section]; !ok {
-                    table_val := new(TomlValue, allocator = mem.arena_allocator(arena))
+                    table_val := new(TomlValue, allocator = alloc)
                     table_val.type = .TABLE
-                    table_val.table_val = make(map[string]^TomlValue, allocator = mem.arena_allocator(arena))
+                    table_val.table_val = make(map[string]^TomlValue, allocator = alloc)
                     doc.values[current_section] = table_val
                 }
             }
@@ -1003,7 +1009,7 @@ toml_doc_parse_simple :: proc(content: string, arena: ^mem.Arena) -> (TomlDoc, b
                 key := strings.trim_space(line_trimmed[:eq_idx])
                 value_str := strings.trim_space(line_trimmed[eq_idx+1:])
 
-                val := parse_toml_value_simple(value_str, arena)
+                val := parse_toml_value_simple(value_str, alloc)
 				if val == nil { return {}, false }
 
                 if current_array_idx >= 0 && len(current_section) > 0 {
@@ -1065,8 +1071,8 @@ toml_doc_parse_simple :: proc(content: string, arena: ^mem.Arena) -> (TomlDoc, b
     return doc, true
 }
 
-parse_toml_value_simple :: proc(value_str: string, arena: ^mem.Arena) -> ^TomlValue {
-    val := new(TomlValue, allocator = mem.arena_allocator(arena))
+parse_toml_value_simple :: proc(value_str: string, alloc: mem.Allocator) -> ^TomlValue {
+    val := new(TomlValue, allocator = alloc)
 
     s := strings.trim_space(value_str)
 
@@ -1075,7 +1081,7 @@ parse_toml_value_simple :: proc(value_str: string, arena: ^mem.Arena) -> ^TomlVa
 		if len(s) >= 2 {
 			unescaped := unescape_toml_string(s[1:len(s)-1])
 			defer delete(unescaped)
-			val.str_val = strings.clone(unescaped, allocator = mem.arena_allocator(arena))
+			val.str_val = strings.clone(unescaped, allocator = alloc)
 		} else {
 			val.str_val = ""
 		}
@@ -1085,7 +1091,7 @@ parse_toml_value_simple :: proc(value_str: string, arena: ^mem.Arena) -> ^TomlVa
 	if strings.has_prefix(s, "'") && strings.has_suffix(s, "'") {
 		val.type = .STRING
 		if len(s) >= 2 {
-			val.str_val = strings.clone(s[1:len(s)-1], allocator = mem.arena_allocator(arena))
+			val.str_val = strings.clone(s[1:len(s)-1], allocator = alloc)
 		} else {
 			val.str_val = ""
 		}
@@ -1111,16 +1117,16 @@ parse_toml_value_simple :: proc(value_str: string, arena: ^mem.Arena) -> ^TomlVa
 
     if strings.has_prefix(s, "[") && strings.has_suffix(s, "]") {
         val.type = .ARRAY
-        val.arr_val = make([dynamic]TomlValue, allocator = mem.arena_allocator(arena))
+        val.arr_val = make([dynamic]TomlValue, allocator = alloc)
         inner := strings.trim_space(s[1:len(s)-1])
         if len(inner) > 0 {
             // Use bracket/quote-aware splitting so nested arrays, inline
             // tables and strings containing commas survive intact.
-            elements := split_toml_top_level(inner, arena)
+            elements := split_toml_top_level(inner, alloc)
             defer delete(elements)
             for elem in elements {
                 if len(elem) > 0 {
-                    parsed_elem := parse_toml_value_simple(elem, arena)
+                    parsed_elem := parse_toml_value_simple(elem, alloc)
 					if parsed_elem == nil { return nil }
                     append(&val.arr_val, parsed_elem^)
                 }
@@ -1134,10 +1140,10 @@ parse_toml_value_simple :: proc(value_str: string, arena: ^mem.Arena) -> ^TomlVa
     // strings (which may contain commas) are handled by split_toml_top_level.
     if strings.has_prefix(s, "{") && strings.has_suffix(s, "}") {
         val.type = .TABLE
-        val.table_val = make(map[string]^TomlValue, allocator = mem.arena_allocator(arena))
+        val.table_val = make(map[string]^TomlValue, allocator = alloc)
         inner := strings.trim_space(s[1:len(s)-1])
         if len(inner) > 0 {
-            pairs := split_toml_top_level(inner, arena)
+            pairs := split_toml_top_level(inner, alloc)
             defer delete(pairs)
             for pair in pairs {
                 if len(pair) == 0 { continue }
@@ -1146,9 +1152,9 @@ parse_toml_value_simple :: proc(value_str: string, arena: ^mem.Arena) -> ^TomlVa
                 key := strings.trim_space(pair[:eq_idx])
                 value_str := strings.trim_space(pair[eq_idx+1:])
                 if len(key) == 0 { continue }
-                child := parse_toml_value_simple(value_str, arena)
+                child := parse_toml_value_simple(value_str, alloc)
 				if child == nil { return nil }
-                key_clone := strings.clone(key, allocator = mem.arena_allocator(arena))
+                key_clone := strings.clone(key, allocator = alloc)
                 val.table_val[key_clone] = child
             }
         }
@@ -1163,7 +1169,7 @@ parse_toml_value_simple :: proc(value_str: string, arena: ^mem.Arena) -> ^TomlVa
 // header is allocated with the default allocator so callers can release it
 // with a plain `delete(parts)`. Substrings are zero-copy views into `s`
 // (which lives in the arena), so no per-element cleanup is required.
-split_toml_top_level :: proc(s: string, arena: ^mem.Arena) -> []string {
+split_toml_top_level :: proc(s: string, alloc: mem.Allocator) -> []string {
     parts := make([dynamic]string)
     depth_brk := 0   // [ ] depth
     depth_brc := 0   // { } depth

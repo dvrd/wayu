@@ -253,102 +253,6 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 	}
 }
 
-// TUI-only: Interactive form for adding config entries
-// This function is ONLY called from TUI bridge, never from CLI
-add_config_interactive :: proc(spec: ^ConfigEntrySpec) {
-	// TTY check
-	if !os.exists("/dev/tty") {
-		print_error("Interactive mode requires a TTY")
-		os.exit(EXIT_CONFIG)
-	}
-
-	// Create form fields based on spec
-	fields := make([]FormField, spec.fields_count)
-	defer delete(fields)
-
-	for i in 0..<spec.fields_count {
-		input := new_input_with_validator(
-			spec.field_placeholders[i],
-			64,
-			spec.field_validators[i],
-		)
-		validation := spec.field_validators[i]("")
-
-		fields[i] = FormField{
-			label = spec.field_labels[i],
-			input = input,
-			validation = validation,
-			required = true,
-		}
-	}
-
-	// Create and run form - use wrapper approach to avoid closures
-	title := fmt.aprintf("✨ Add %s", spec.display_name)
-	defer delete(title)
-
-	// Store spec temporarily for callback access
-	g_current_spec = spec
-	defer g_current_spec = nil
-
-	form := new_form(title, fields, add_preview_callback, add_submit_callback)
-	defer form_destroy(&form)
-
-	success := form_run(&form)
-
-	if !success {
-		print_info("Operation cancelled")
-	}
-}
-
-// Module-level variable to pass spec to callbacks (workaround for no closure capture)
-g_current_spec: ^ConfigEntrySpec = nil
-
-// Preview callback for add operations
-add_preview_callback :: proc(form: ^Form) -> string {
-	spec := g_current_spec
-	if spec == nil do return ""
-
-	entry := form_to_entry(spec, form)
-	defer cleanup_entry(&entry)
-
-	if !is_entry_complete(entry) {
-		return ""
-	}
-
-	builder := strings.builder_make()
-	defer strings.builder_destroy(&builder)
-
-	fmt.sbprintf(&builder, "Will add %s:\n", spec.display_name)
-	line := spec.format_line(entry)
-	defer delete(line)
-	fmt.sbprintf(&builder, "  %s%s%s\n\n", get_secondary(), line, RESET)
-
-	// Check for duplicates
-	if entry_exists(spec, entry) {
-		fmt.sbprintf(&builder, "%s⚠ %s already exists (will be updated)%s\n",
-			get_warning(), spec.display_name, RESET)
-	}
-
-	return strings.clone(strings.to_string(builder))
-}
-
-// Submit callback for add operations
-add_submit_callback :: proc(form: ^Form) -> bool {
-	spec := g_current_spec
-	if spec == nil do return false
-
-	entry := form_to_entry(spec, form)
-	defer cleanup_entry(&entry)
-
-	if !is_entry_complete(entry) {
-		return false
-	}
-
-	ok, err := add_config_entry(spec, entry)
-	if !ok { delete(err) }
-	return ok
-}
-
 // Generic add implementation
 add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (ok: bool, error: string) {
 	// For PATH entries, expand environment variables before saving
@@ -805,8 +709,27 @@ list_config_static :: proc(spec: ^ConfigEntrySpec) {
 	fmt.print(table_output)
 }
 
-// Helper: Read all entries from config file
+// Helper: Read all entries of `spec`'s type. wayu.toml is the source of
+// truth, so when it exists (modern schema) entries come from its tables;
+// the legacy shell file is only consulted for pre-migration installs.
 read_config_entries :: proc(spec: ^ConfigEntrySpec) -> []ConfigEntry {
+	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
+	has_toml := os.exists(toml_path)
+	delete(toml_path)
+	if has_toml {
+		if content, ok := get_cached_toml_content(); ok && len(detect_legacy_schema(content)) == 0 {
+			switch spec.type {
+			case .PATH:
+				entries := read_toml_path_entries()
+				return entries[:]
+			case .ALIAS:
+				return read_toml_alias_entries()
+			case .CONSTANT:
+				return read_wayu_toml_constants()
+			}
+		}
+	}
+
 	config_file := get_config_file_with_fallback(spec.file_name, wayu.shell)
 	defer delete(config_file)
 
@@ -832,36 +755,6 @@ read_config_entries :: proc(spec: ^ConfigEntrySpec) -> []ConfigEntry {
 	copy(result, entries[:])
 	delete(entries)
 	return result
-}
-
-// Helper: Check if entry exists
-entry_exists :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> bool {
-	entries := read_config_entries(spec)
-	defer cleanup_entries(&entries)
-
-	for existing in entries {
-		if existing.name == entry.name {
-			return true
-		}
-	}
-
-	return false
-}
-
-// Helper: Convert form to entry
-form_to_entry :: proc(spec: ^ConfigEntrySpec, form: ^Form) -> ConfigEntry {
-	entry := ConfigEntry{type = spec.type}
-
-	switch spec.fields_count {
-	case 1:
-		entry.name = strings.clone(form.fields[0].input.value)
-		entry.value = ""
-	case 2:
-		entry.name = strings.clone(form.fields[0].input.value)
-		entry.value = strings.clone(form.fields[1].input.value)
-	}
-
-	return entry
 }
 
 // Helper: Parse command line args to entry

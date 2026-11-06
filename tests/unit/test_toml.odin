@@ -432,3 +432,20 @@ test_strip_toml_section_header_with_comment :: proc(t: ^testing.T) {
 	testing.expect(t, !strings.contains(out, "ll ="), "commented header must be recognised")
 	testing.expect(t, strings.contains(out, "[env]"))
 }
+
+// Regression: toml_parse used a fixed arena capped at 1MB, so a large
+// wayu.toml (thousands of aliases) exhausted it and crashed.
+@(test)
+test_toml_parse_large_config :: proc(t: ^testing.T) {
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	strings.write_string(&b, "[aliases]\n")
+	N :: 6000
+	for i in 0..<N {
+		fmt.sbprintf(&b, "a_%d = \"echo some fairly long command number %d with --flags here\"\n", i, i)
+	}
+	config, ok := wayu.toml_parse(strings.to_string(b))
+	defer wayu.cleanup_toml_config(&config)
+	testing.expect(t, ok, "large config must parse")
+	testing.expect_value(t, len(config.aliases), N)
+}
