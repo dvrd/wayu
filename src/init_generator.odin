@@ -719,7 +719,7 @@ read_wayu_toml_paths :: proc() -> [dynamic]string {
 // Recognised kinds:
 //   evalcache  default; runs `<name> <args>`, caches output, sources cache
 //   nvm        full lazy NVM wrapper (PATH-only default + on-demand load)
-//   conda      lazy conda wrapper (load on first conda/python/pip invocation)
+//   conda      lazy conda wrapper (load on first conda/mamba invocation)
 //   lazy       generic - wraps `hook_commands`, sources `init_script` once
 
 ToolEntry :: struct {
@@ -1016,7 +1016,13 @@ if [ -d "${NVM_DIR:=$HOME/.nvm}" ]; then _wayu_setup_nvm_lazy; fi`
 
 // Lazy Conda recipe. Conda's own `conda init` block spawns Python at every
 // shell start (~500ms); this version defers that work until the first call
-// to conda/python/pip/mamba.
+// to conda/mamba.
+//
+// Only `conda`/`mamba` trigger the load — deliberately not python/pip. Conda
+// puts a full toolchain on PATH (its own python, pip, and an ancient ld), so
+// loading it from a bare `python` call silently shadows system tools for the
+// rest of the session. Nothing from conda enters PATH until the user asks for
+// it by name.
 RECIPE_CONDA_ZSH :: `_wayu_setup_conda_lazy() {
   local conda_root=""
   [ -d "$HOME/anaconda3" ]               && conda_root="$HOME/anaconda3"
@@ -1026,22 +1032,30 @@ RECIPE_CONDA_ZSH :: `_wayu_setup_conda_lazy() {
   [ -z "$conda_root" ] && [ -d "/opt/anaconda3" ]      && conda_root="/opt/anaconda3"
   [ -z "$conda_root" ] && return
 
+  # Global, not local: _wayu_load_conda runs long after this function has
+  # returned, so a local would be empty at call time and the hook would
+  # silently never load.
+  typeset -g _WAYU_CONDA_ROOT="$conda_root"
+
   _wayu_load_conda() {
     if (( $_WAYU_CONDA_LOADED )); then return; fi
     _WAYU_CONDA_LOADED=1
-    unset -f conda python pip mamba 2>/dev/null
+    unset -f conda mamba 2>/dev/null
     local hook_out
-    hook_out="$("$conda_root/bin/conda" shell.zsh hook 2>/dev/null)"
+    hook_out="$("$_WAYU_CONDA_ROOT/bin/conda" shell.zsh hook 2>/dev/null)"
     if [[ -n "$hook_out" ]]; then
       eval "$hook_out"
-    elif [ -f "$conda_root/etc/profile.d/conda.sh" ]; then
-      \. "$conda_root/etc/profile.d/conda.sh"
+    elif [ -f "$_WAYU_CONDA_ROOT/etc/profile.d/conda.sh" ]; then
+      \. "$_WAYU_CONDA_ROOT/etc/profile.d/conda.sh"
+    fi
+    # Last resort: if neither path produced a usable conda, put its bin on
+    # PATH. Only reachable after an explicit conda/mamba call, never at startup.
+    if ! (( $+functions[conda] )) && ! command -v conda >/dev/null 2>&1; then
+      export PATH="$_WAYU_CONDA_ROOT/bin:$PATH"
     fi
   }
 
   conda()  { _wayu_load_conda; conda "$@" }
-  python() { _wayu_load_conda; command python "$@" }
-  pip()    { _wayu_load_conda; command pip "$@" }
   mamba()  { _wayu_load_conda; mamba "$@" }
 }
 _wayu_setup_conda_lazy`
