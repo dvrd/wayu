@@ -45,7 +45,7 @@ handle_search_command :: proc(args: []string) {
 	query := args[0]
 	if query == "--help" || query == "-h" || query == "help" {
 		print_search_usage()
-		os.exit(0)
+		os.exit(EXIT_SUCCESS)
 	}
 	if len(strings.trim_space(query)) == 0 {
 		print_search_usage()
@@ -182,15 +182,22 @@ search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string) -> [d
 		value_match_type := MatchType.Fuzzy
 		matched_field := MatchedField.NAME
 
+		// Lower-case once per field (strings.to_lower allocates; the old
+		// inline calls leaked one string per comparison).
+		name_lower := strings.to_lower(entry.name)
+		defer delete(name_lower)
+		value_lower := strings.to_lower(entry.value)
+		defer delete(value_lower)
+
 		// Score name field
 		if strings.equal_fold(entry.name, query) {
 			name_score = 10000
 			name_match_type = .Exact
-		} else if strings.has_prefix(strings.to_lower(entry.name), query_lower) {
+		} else if strings.has_prefix(name_lower, query_lower) {
 			// Prefix match
 			name_score = 5000 + fuzzy_score(entry.name, query)
 			name_match_type = .Prefix
-		} else if strings.contains(strings.to_lower(entry.name), query_lower) {
+		} else if strings.contains(name_lower, query_lower) {
 			// Substring match
 			name_score = 3000 + fuzzy_score(entry.name, query)
 			name_match_type = .Substring
@@ -209,11 +216,11 @@ search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string) -> [d
 			if strings.equal_fold(entry.value, query) {
 				value_score = 10000
 				value_match_type = .Exact
-			} else if strings.has_prefix(strings.to_lower(entry.value), query_lower) {
+			} else if strings.has_prefix(value_lower, query_lower) {
 				// Prefix match
 				value_score = 5000 + fuzzy_score(entry.value, query)
 				value_match_type = .Prefix
-			} else if strings.contains(strings.to_lower(entry.value), query_lower) {
+			} else if strings.contains(value_lower, query_lower) {
 				// Substring match
 				value_score = 3000 + fuzzy_score(entry.value, query)
 				value_match_type = .Substring
@@ -380,13 +387,10 @@ print_search_result_line :: proc(result: SearchResult, cmd_type: string) {
 		field_indicator,
 		score_indicator)
 
-	// Print value if present and not too long
-	if result.value != "" && len(result.value) < 60 {
-		truncated := result.value
-		if len(truncated) > 50 {
-			truncated = fmt.tprintf("%s...", truncated[:47])
-		}
-		fmt.printfln("      %s%s%s", get_muted(), truncated, RESET)
+	// Print value (truncated on a rune boundary so multi-byte UTF-8 is never
+	// split; long values used to be hidden entirely).
+	if result.value != "" {
+		fmt.printfln("      %s%s%s", get_muted(), truncate_display(result.value, 50), RESET)
 	}
 }
 

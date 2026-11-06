@@ -19,62 +19,77 @@ import "core:c/libc"
 import "core:sys/posix"
 import "core:path/filepath"
 import "core:unicode"
-foreign import libc_term "system:c"
+import "core:unicode/utf8"
 
 STDIN_FILENO :: 0
 STDOUT_FILENO :: 1
-TCSANOW :: 0
 
-// Per-platform terminal flag constants from core:sys/posix.
-ICANON :: posix.ICANON
-ECHO   :: posix.ECHO
-IXON   :: posix.IXON
-IXOFF  :: posix.IXOFF
-
-termios :: struct {
-	c_iflag:  c.ulong,
-	c_oflag:  c.ulong,
-	c_cflag:  c.ulong,
-	c_lflag:  c.ulong,
-	c_cc:     [20]c.uchar,  // NCCS=20 on macOS
-	c_ispeed: c.ulong,
-	c_ospeed: c.ulong,
-}
 // ============================================================================
 // Terminal State Management
 // ============================================================================
-
-
-foreign libc_term {
-	tcgetattr :: proc(fd: c.int, termios_p: ^termios) -> c.int ---
-	tcsetattr :: proc(fd: c.int, optional_actions: c.int, termios_p: ^termios) -> c.int ---
-	isatty :: proc(fd: c.int) -> c.int ---
-}
+//
+// Uses core:sys/posix termios (correct struct layout per OS) instead of a
+// hand-rolled macOS-only struct.
+//
+// Raw mode clears ISIG and IEXTEN in addition to ECHO/ICANON: Ctrl+C (3)
+// is then delivered in-band to the pickers/TUI instead of raising SIGINT and
+// killing the process with the terminal left raw + cursor hidden, and
+// Ctrl+Y no longer triggers macOS's VDSUSP (delayed suspend). SIGTERM /
+// SIGHUP still arrive as signals, so a handler restores the terminal before
+// re-raising them with the default disposition.
 
 // Saved terminal state for restore.
-saved_termios: termios
+saved_termios: posix.termios
+raw_mode_active: bool
+
+@(private = "file")
+prev_sigterm_handler: proc "c" (libc.int)
+@(private = "file")
+prev_sighup_handler: proc "c" (libc.int)
+
+SIGHUP_NUM :: 1 // POSIX value on macOS/Linux/BSD
+
+// Async-signal-safe: only tcsetattr, write, signal, raise.
+terminal_restore_signal_handler :: proc "c" (sig: libc.int) {
+	if raw_mode_active {
+		posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &saved_termios)
+		raw_mode_active = false
+	}
+	show := "\x1b[?25h"
+	posix.write(posix.FD(STDOUT_FILENO), raw_data(show), len(show))
+	if wayu.tui_mode {
+		leave_alt := "\x1b[?1049l"
+		posix.write(posix.FD(STDOUT_FILENO), raw_data(leave_alt), len(leave_alt))
+	}
+	libc.signal(sig, cast(proc "c" (libc.int))libc.SIG_DFL)
+	libc.raise(sig)
+}
 
 enable_raw_mode :: proc() -> bool {
-	if tcgetattr(STDIN_FILENO, &saved_termios) != 0 {
+	if posix.tcgetattr(posix.FD(STDIN_FILENO), &saved_termios) != .OK {
 		debug("Failed to get terminal attributes")
 		return false
 	}
 
 	raw := saved_termios
-	raw.c_lflag &= ~(c.ulong(ECHO) | c.ulong(ICANON))
-	raw.c_iflag &= ~(c.ulong(IXON) | c.ulong(IXOFF))
+	raw.c_lflag -= {.ECHO, .ICANON, .ISIG, .IEXTEN}
+	raw.c_iflag -= {.IXON, .IXOFF}
 
-	if tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0 {
+	if posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &raw) != .OK {
 		debug("Failed to set terminal to raw mode")
 		return false
 	}
+	raw_mode_active = true
+
+	prev_sigterm_handler = libc.signal(libc.SIGTERM, terminal_restore_signal_handler)
+	prev_sighup_handler  = libc.signal(SIGHUP_NUM, terminal_restore_signal_handler)
 
 	debug("Terminal set to raw mode")
 	return true
 }
 
 is_tty :: proc(fd: c.int) -> bool {
-	return isatty(fd) != 0
+	return bool(posix.isatty(posix.FD(fd)))
 }
 
 is_stdin_tty :: proc() -> bool {
@@ -86,7 +101,13 @@ is_stdout_tty :: proc() -> bool {
 }
 
 disable_raw_mode :: proc() {
-	tcsetattr(STDIN_FILENO, TCSANOW, &saved_termios)
+	if !raw_mode_active { return }
+	posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &saved_termios)
+	raw_mode_active = false
+
+	// Put back whatever handlers were installed before raw mode.
+	libc.signal(libc.SIGTERM, prev_sigterm_handler)
+	libc.signal(SIGHUP_NUM, prev_sighup_handler)
 	debug("Terminal restored to original state")
 }
 
@@ -97,36 +118,53 @@ disable_raw_mode :: proc() {
 // calculate_fuzzy_score returns a match score for text against query.
 // Uses subsequence-aware matching: each consecutive query char match earns
 // points, with bonus for exact substring match and prefix match.
-// Returns 0 if query doesn't match.
+// Returns 0 if query doesn't match. Compares runes (UTF-8 aware).
 calculate_fuzzy_score :: proc(text: string, query: string) -> int {
 	if len(query) == 0 do return 1
 	if len(text) == 0 do return 0
 
 	score := 0
-	text_idx := 0
+	rest := text
 
 	for query_char in query {
 		found := false
-		for text_idx < len(text) {
-			if rune(text[text_idx]) == query_char {
+		for len(rest) > 0 {
+			r, w := utf8.decode_rune_in_string(rest)
+			rest = rest[w:]
+			if r == query_char {
 				score += 1
-				text_idx += 1
 				found = true
 				break
 			}
-			text_idx += 1
 		}
 		if !found do return 0
 	}
 
+	query_runes := utf8.rune_count_in_string(query)
 	if strings.contains(text, query) {
-		score += len(query) * 2
+		score += query_runes * 2
 	}
 	if strings.has_prefix(text, query) {
-		score += len(query) * 3
+		score += query_runes * 3
 	}
 
 	return score
+}
+
+// Truncate `s` to at most `max_runes` runes (appending "..." when cut),
+// never splitting a UTF-8 sequence. Result is either `s` itself or a
+// temp-allocated string — do not delete.
+truncate_display :: proc(s: string, max_runes: int) -> string {
+	if utf8.rune_count_in_string(s) <= max_runes { return s }
+	keep := max(0, max_runes - 3)
+	count := 0
+	for _, i in s {
+		if count == keep {
+			return fmt.tprintf("%s...", s[:i])
+		}
+		count += 1
+	}
+	return s
 }
 
 // ============================================================================
@@ -259,14 +297,21 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 		} else if ch == 127 || ch == 8 { // Backspace/Delete
 			debug("User pressed backspace")
 			if len(filter_text) > 0 {
-				ordered_remove(&filter_text, len(filter_text) - 1)
+				// Drop the whole last rune, not just its final byte.
+				_, w := utf8.decode_last_rune(filter_text[:])
+				resize(&filter_text, len(filter_text) - max(w, 1))
 				update_filter(items, filter_text[:], &filtered_items)
 				selected_index = 0
 				render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
 			}
-		} else if ch >= 32 && ch <= 126 {
-			debug("User typed character: %c", ch)
-			append(&filter_text, ch)
+		} else if (ch >= 32 && ch <= 126) || (ch >= 0xC2 && ch <= 0xF4 && utf8.valid_string(string(input_buf[:n]))) {
+			// Printable ASCII, or one complete UTF-8 encoded character.
+			debug("User typed character: %s", string(input_buf[:n]))
+			if ch < 0x80 {
+				append(&filter_text, ch)
+			} else {
+				append(&filter_text, ..input_buf[:n])
+			}
 			update_filter(items, filter_text[:], &filtered_items)
 			selected_index = 0
 			render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
@@ -398,44 +443,48 @@ fuzzy_score :: proc(text: string, query: string) -> int {
     defer delete(query_lower)
     
     score := 0
-    text_idx := 0
+    rest := text_lower
     consecutive_bonus := 0
-    
+
+    // Rune-by-rune (UTF-8 aware): comparing text bytes against query runes
+    // never matched non-ASCII characters.
     for query_char in query_lower {
         found := false
-        for text_idx < len(text_lower) {
-            if rune(text_lower[text_idx]) == query_char {
+        for len(rest) > 0 {
+            r, w := utf8.decode_rune_in_string(rest)
+            rest = rest[w:]
+            if r == query_char {
                 score += 10 + consecutive_bonus
                 consecutive_bonus += 5  // Bonus for consecutive matches
-                text_idx += 1
                 found = true
                 break
             }
-            text_idx += 1
             consecutive_bonus = 0  // Reset consecutive bonus
         }
         if !found {
             return 0
         }
     }
-    
+
+    query_runes := utf8.rune_count_in_string(query)
+
     // Bonus for exact substring match
     if strings.contains(text_lower, query_lower) {
-        score += len(query) * 20
+        score += query_runes * 20
     }
-    
+
     // Bonus for exact match at start
     if strings.has_prefix(text_lower, query_lower) {
-        score += len(query) * 30
+        score += query_runes * 30
     }
-    
+
     // Bonus for acronym match (e.g., "frwrks" matches "FIREWORKS")
     if is_acronym_match(text, query) {
-        score += len(query) * 25
+        score += query_runes * 25
     }
-    
+
     // Penalty for length difference
-    length_diff := len(text) - len(query)
+    length_diff := utf8.rune_count_in_string(text) - query_runes
     if length_diff > 0 {
         score -= length_diff * 2
     }
@@ -446,31 +495,28 @@ fuzzy_score :: proc(text: string, query: string) -> int {
 // Check if query matches acronym of text
 // e.g., text="FIREWORKS_AI_API_KEY", query="frwrks" → true
 is_acronym_match :: proc(text: string, query: string) -> bool {
-    // Build acronym from text (uppercase letters and underscores)
-    acronym := make([dynamic]u8)
-    defer delete(acronym)
-    
+    // Build acronym from the first rune of each separator-delimited word,
+    // lower-cased as a full rune (u8 truncation corrupted non-ASCII).
+    acronym := strings.builder_make()
+    defer strings.builder_destroy(&acronym)
+
     prev_was_sep := true  // Start true to capture first letter
-    
+
     for c in text {
         is_sep := c == '_' || c == '-' || c == ' ' || c == '.' || (c >= '0' && c <= '9')
-        
+
         if is_sep {
             prev_was_sep = true
-        } else if prev_was_sep && unicode.is_upper(c) {
-            append(&acronym, u8(unicode.to_lower(c)))
-            prev_was_sep = false
         } else if prev_was_sep {
-            append(&acronym, u8(unicode.to_lower(c)))
+            strings.write_rune(&acronym, unicode.to_lower(c))
             prev_was_sep = false
         }
     }
-    
-    if len(acronym) == 0 {
+
+    acronym_str := strings.to_string(acronym)
+    if len(acronym_str) == 0 {
         return false
     }
-    
-    acronym_str := string(acronym[:])
     query_lower := strings.to_lower(query)
     defer delete(query_lower)
     
@@ -689,10 +735,7 @@ print_fuzzy_suggestions :: proc(spec: ^ConfigEntrySpec, query: string, matches: 
             type_str, score_indicator)
         
         if spec.fields_count > 1 && match.entry.value != "" {
-            truncated := match.entry.value
-            if len(truncated) > 50 {
-                truncated = fmt.tprintf("%s...", truncated[:47])
-            }
+            truncated := truncate_display(match.entry.value, 50)
             fmt.printf("      %s%s%s\n", get_muted(), truncated, RESET)
         }
     }
@@ -723,24 +766,26 @@ interactive_select_match :: proc(spec: ^ConfigEntrySpec, matches: []FuzzyMatch, 
         case .Fuzzy: type_indicator = " [*]"
         }
         
-        item_strings[i] = fmt.tprintf("%s%s", match.entry.name, type_indicator)
+        // Heap-allocated: the deferred cleanup above deletes these with the
+        // heap allocator (tprintf strings must never be freed that way).
+        item_strings[i] = fmt.aprintf("%s%s", match.entry.name, type_indicator)
     }
-    
+
     // Use wayu's built-in fuzzy picker
-    selected_display, ok := interactive_fuzzy_select(item_strings, 
+    selected_display, ok := interactive_fuzzy_select(item_strings,
         fmt.tprintf("Select %s matching '%s'", spec.display_name, query))
-    
+    // interactive_select always returns a heap string (even on cancel).
+    defer delete(selected_display)
+
     if !ok || selected_display == "" {
         return ConfigEntry{}
     }
-    
-    // Extract just the name (remove type indicator)
+
+    // Extract just the name (remove type indicator); a view into
+    // selected_display, freed with it.
     selected_name := selected_display
-    if idx := strings.index(selected_display, " ["); idx != -1 {
+    if idx := strings.last_index(selected_display, " ["); idx != -1 {
         selected_name = selected_display[:idx]
-    }
-    defer if selected_name != selected_display {
-        delete(selected_name)
     }
     
     // Find the matching entry

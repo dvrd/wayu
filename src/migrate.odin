@@ -18,62 +18,43 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:strconv"
 handle_migrate_command :: proc(args: []string) {
 	// Three flows: --schema (toml schema upgrade), --from/--to (shell
-	// migration), or no flag (legacy shell-files → wayu.toml).
-	has_from := false
-	has_schema := false
-
-	for arg in args {
-		switch arg {
-		case "--from":   has_from = true
-		case "--schema": has_schema = true
-		}
-	}
-
-	if has_schema {
-		migrate_toml_schema(wayu.dry_run)
-		return
-	}
-
-	// Legacy config migration: `wayu migrate` (no flags) or `wayu migrate --dry-run`.
-	// The shell→shell path requires --from, so anything without --from that isn't
-	// "help" is treated as a legacy config migration.
-	if !has_from {
-		// Allow `wayu migrate help` / `-h` / `--help` to fall through to the
-		// help printer rather than running a migration.
-		for arg in args {
-			if arg == "help" || arg == "-h" || arg == "--help" {
-				print_migrate_help()
-				return
-			}
-		}
-		migrate_legacy_to_toml(wayu.dry_run)
-		return
-	}
-
-	if len(args) == 0 {
-		print_migrate_help()
-		return
-	}
-
+	// migration), or no flag (legacy shell-files → wayu.toml). Global flags
+	// (--dry-run, --yes, ...) were already stripped by the CLI parser, so
+	// anything left that we don't recognise is a usage error — it must NOT
+	// fall through to the legacy migration, which archives files.
+	has_from, has_to, has_schema, want_help := false, false, false, false
 	from_shell := ShellType.UNKNOWN
 	to_shell := ShellType.UNKNOWN
+	from_arg, to_arg := "", ""
 
-	// Parse migration arguments
 	i := 0
 	for i < len(args) {
 		arg := args[i]
-		if arg == "--from" && i + 1 < len(args) {
-			from_shell = parse_shell_type(args[i + 1])
+		switch arg {
+		case "--schema":
+			has_schema = true
+		case "--from", "--to":
+			if i + 1 >= len(args) {
+				fmt.eprintfln("Error: %s requires a shell argument (bash, zsh, or fish)", arg)
+				print_migrate_help()
+				os.exit(EXIT_USAGE)
+			}
+			if arg == "--from" {
+				has_from = true
+				from_arg = args[i + 1]
+				from_shell = parse_shell_type(from_arg)
+			} else {
+				has_to = true
+				to_arg = args[i + 1]
+				to_shell = parse_shell_type(to_arg)
+			}
 			i += 1
-		} else if arg == "--to" && i + 1 < len(args) {
-			to_shell = parse_shell_type(args[i + 1])
-			i += 1
-		} else if arg == "help" || arg == "-h" || arg == "--help" {
-			print_migrate_help()
-			return
-		} else {
+		case "help", "-h", "--help":
+			want_help = true
+		case:
 			fmt.eprintfln("Unknown migrate option: %s", arg)
 			print_migrate_help()
 			os.exit(EXIT_USAGE)
@@ -81,16 +62,43 @@ handle_migrate_command :: proc(args: []string) {
 		i += 1
 	}
 
-	// Validate arguments
-	if from_shell == .UNKNOWN {
-		fmt.eprintfln("Error: --from shell must be specified (bash, zsh, or fish)")
+	if want_help {
+		print_migrate_help()
+		return
+	}
+
+	if has_schema {
+		if has_from || has_to {
+			fmt.eprintln("Error: --schema cannot be combined with --from/--to")
+			os.exit(EXIT_USAGE)
+		}
+		migrate_toml_schema(wayu.dry_run)
+		return
+	}
+
+	// Legacy config migration: `wayu migrate` (no flags) or `wayu migrate --dry-run`.
+	if !has_from && !has_to {
+		migrate_legacy_to_toml(wayu.dry_run)
+		return
+	}
+
+	if !has_from {
+		fmt.eprintln("Error: --to requires --from <shell> (bash, zsh, or fish)")
+		print_migrate_help()
+		os.exit(EXIT_USAGE)
+	}
+	if !has_to {
+		fmt.eprintln("Error: --from requires --to <shell> (bash, zsh, or fish)")
 		print_migrate_help()
 		os.exit(EXIT_USAGE)
 	}
 
+	if from_shell == .UNKNOWN {
+		fmt.eprintfln("Error: unknown --from shell %q (expected bash, zsh, or fish)", from_arg)
+		os.exit(EXIT_USAGE)
+	}
 	if to_shell == .UNKNOWN {
-		fmt.eprintfln("Error: --to shell must be specified (bash, zsh, or fish)")
-		print_migrate_help()
+		fmt.eprintfln("Error: unknown --to shell %q (expected bash, zsh, or fish)", to_arg)
 		os.exit(EXIT_USAGE)
 	}
 
@@ -107,10 +115,15 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 	from_ext := get_shell_extension(from_shell)
 	to_ext := get_shell_extension(to_shell)
 
+	if wayu.dry_run {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+	}
 	fmt.printfln("Migrating from %s to %s...", get_shell_name(from_shell), get_shell_name(to_shell))
 
 	config_types := []string{"path", "aliases", "constants", "init", "tools"}
 	migrated_count := 0
+	failed_count := 0
 
 	for config_type in config_types {
 		from_file := fmt.aprintf("%s/%s.%s", wayu.data, config_type, from_ext)
@@ -134,6 +147,7 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 		data, read_err := os.read_entire_file(from_file, context.allocator)
 		if read_err != nil {
 			fmt.eprintfln("  Error: Failed to read %s", from_file)
+			failed_count += 1
 			continue
 		}
 		defer delete(data)
@@ -144,15 +158,29 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 		migrated_content := convert_shell_content(content, from_shell, to_shell, config_type)
 		defer delete(migrated_content)
 
+		if wayu.dry_run {
+			fmt.printfln("  Would migrate %s.%s → %s.%s", config_type, from_ext, config_type, to_ext)
+			migrated_count += 1
+			continue
+		}
+
 		// Write to target file
 		write_err := os.write_entire_file(to_file, transmute([]byte)migrated_content)
 		if write_err != nil {
 			fmt.eprintfln("  Error: Failed to write %s", to_file)
+			failed_count += 1
 			continue
 		}
 
 		fmt.printfln("  ✓ Migrated %s.%s → %s.%s", config_type, from_ext, config_type, to_ext)
 		migrated_count += 1
+	}
+
+	if wayu.dry_run {
+		fmt.println()
+		fmt.printfln("Would migrate %d configuration file(s).", migrated_count)
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return
 	}
 
 	if migrated_count > 0 {
@@ -173,11 +201,272 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 	} else {
 		fmt.printfln("\nNo files were migrated. Check that source files exist and target files don't already exist.")
 	}
+
+	if failed_count > 0 {
+		print_error("%d file(s) failed to migrate", failed_count)
+		os.exit(EXIT_IOERR)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cross-shell quoting helpers. Local to migrate so the conversion doesn't
+// depend on shell.odin's generators. All return heap strings (caller frees).
+// ---------------------------------------------------------------------------
+
+// Which quote style a fish value was written in (fish keeps the quotes in
+// the source line; parse_*_line strips them).
+MigrateQuote :: enum { None, Single, Double }
+
+// Detect the quote style of the value at the end of a fish line.
+migrate_fish_value_quote :: proc(line: string) -> MigrateQuote {
+	trimmed := strings.trim_space(line)
+	if len(trimmed) == 0 { return .None }
+	switch trimmed[len(trimmed) - 1] {
+	case '\'': return .Single
+	case '"':  return .Double
+	}
+	return .None
+}
+
+// Decode a fish single-quoted body: only `\\` and `\'` are escapes.
+migrate_fish_sq_decode :: proc(raw: string) -> string {
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	i := 0
+	for i < len(raw) {
+		if raw[i] == '\\' && i + 1 < len(raw) && (raw[i+1] == '\\' || raw[i+1] == '\'') {
+			strings.write_byte(&b, raw[i+1])
+			i += 2
+			continue
+		}
+		strings.write_byte(&b, raw[i])
+		i += 1
+	}
+	return strings.clone(strings.to_string(b))
+}
+
+// Decode a POSIX double-quoted body into the literal text it denotes,
+// ignoring expansions (used for alias bodies, which are re-evaluated when
+// the alias runs).
+migrate_posix_dq_decode :: proc(raw: string) -> string {
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	i := 0
+	for i < len(raw) {
+		if raw[i] == '\\' && i + 1 < len(raw) {
+			switch raw[i+1] {
+			case '\\', '"', '$', '`':
+				strings.write_byte(&b, raw[i+1])
+				i += 2
+				continue
+			}
+		}
+		strings.write_byte(&b, raw[i])
+		i += 1
+	}
+	return strings.clone(strings.to_string(b))
+}
+
+// Literal text → fish single-quoted word (no expansion).
+migrate_fish_sq_quote :: proc(s: string) -> string {
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	strings.write_byte(&b, '\'')
+	for i in 0..<len(s) {
+		if s[i] == '\\' || s[i] == '\'' { strings.write_byte(&b, '\\') }
+		strings.write_byte(&b, s[i])
+	}
+	strings.write_byte(&b, '\'')
+	return strings.clone(strings.to_string(b))
+}
+
+// Literal text → POSIX double-quoted word (no expansion).
+migrate_posix_dq_quote :: proc(s: string) -> string {
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	strings.write_byte(&b, '"')
+	for i in 0..<len(s) {
+		switch s[i] {
+		case '\\', '"', '$', '`': strings.write_byte(&b, '\\')
+		}
+		strings.write_byte(&b, s[i])
+	}
+	strings.write_byte(&b, '"')
+	return strings.clone(strings.to_string(b))
+}
+
+// POSIX double-quoted body → fish double-quoted word, preserving `$VAR`
+// expansion. `${NAME}` (invalid in fish) becomes `{$NAME}`; `\`` becomes a
+// plain backtick (literal in fish). `\"`, `\\`, `\$` mean the same in both.
+migrate_posix_dq_to_fish_dq :: proc(raw: string) -> string {
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	strings.write_byte(&b, '"')
+	i := 0
+	for i < len(raw) {
+		c := raw[i]
+		if c == '\\' && i + 1 < len(raw) {
+			if raw[i+1] == '`' {
+				strings.write_byte(&b, '`')
+			} else {
+				strings.write_byte(&b, c)
+				strings.write_byte(&b, raw[i+1])
+			}
+			i += 2
+			continue
+		}
+		if c == '$' && i + 1 < len(raw) && raw[i+1] == '{' {
+			if close := strings.index_byte(raw[i+2:], '}'); close > 0 {
+				strings.write_string(&b, "{$"); strings.write_string(&b, raw[i+2:i+2+close]); strings.write_byte(&b, '}')
+				i += 2 + close + 1
+				continue
+			}
+		}
+		if c == '"' {
+			// Unbalanced quote that slipped through the parser — escape it.
+			strings.write_byte(&b, '\\')
+		}
+		strings.write_byte(&b, c)
+		i += 1
+	}
+	strings.write_byte(&b, '"')
+	return strings.clone(strings.to_string(b))
+}
+
+// fish double-quoted (or bare) body → POSIX double-quoted word, preserving
+// `$VAR` expansion. `{$NAME}` becomes `${NAME}`; backticks (literal in fish)
+// are escaped; a bare `"` is escaped.
+migrate_fish_dq_to_posix_dq :: proc(raw: string) -> string {
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	strings.write_byte(&b, '"')
+	i := 0
+	for i < len(raw) {
+		c := raw[i]
+		if c == '\\' && i + 1 < len(raw) {
+			strings.write_byte(&b, c)
+			strings.write_byte(&b, raw[i+1])
+			i += 2
+			continue
+		}
+		if c == '{' && i + 1 < len(raw) && raw[i+1] == '$' {
+			if close := strings.index_byte(raw[i+2:], '}'); close > 0 {
+				strings.write_string(&b, "${"); strings.write_string(&b, raw[i+2:i+2+close]); strings.write_byte(&b, '}')
+				i += 2 + close + 1
+				continue
+			}
+		}
+		if c == '`' || c == '"' {
+			strings.write_byte(&b, '\\')
+		}
+		strings.write_byte(&b, c)
+		i += 1
+	}
+	strings.write_byte(&b, '"')
+	return strings.clone(strings.to_string(b))
+}
+
+// Convert a fish value (as captured by parse_*_line, quotes stripped) to a
+// POSIX double-quoted word, honouring the original quote style.
+migrate_fish_value_to_posix :: proc(raw: string, quote: MigrateQuote) -> string {
+	if quote == .Single {
+		lit := migrate_fish_sq_decode(raw)
+		defer delete(lit)
+		return migrate_posix_dq_quote(lit)
+	}
+	return migrate_fish_dq_to_posix_dq(raw)
+}
+
+// Extract PATH entries from a path.<ext> file in either dialect. Returns
+// already-target-quoted words for `to_shell`. Caller frees each + slice.
+migrate_collect_path_words :: proc(content: string, from_shell, to_shell: ShellType) -> [dynamic]string {
+	out := make([dynamic]string)
+	lines := strings.split_lines(content)
+	defer delete(lines)
+
+	for line in lines {
+		trimmed := strings.trim_space(line)
+		raw: string
+		quote := MigrateQuote.Double
+		found := false
+
+		if from_shell == .FISH {
+			rest := ""
+			if strings.has_prefix(trimmed, "set -a WAYU_PATHS ") {
+				rest = strings.trim_space(trimmed[len("set -a WAYU_PATHS "):])
+			} else if strings.has_prefix(trimmed, "fish_add_path ") {
+				rest = strings.trim_space(trimmed[len("fish_add_path "):])
+				for strings.has_prefix(rest, "-") {
+					sp := strings.index_byte(rest, ' ')
+					if sp == -1 { rest = ""; break }
+					rest = strings.trim_space(rest[sp+1:])
+				}
+			}
+			if len(rest) == 0 { continue }
+			quote = .None
+			if len(rest) >= 2 && (rest[0] == '\'' || rest[0] == '"') && rest[0] == rest[len(rest)-1] {
+				quote = rest[0] == '\'' ? .Single : .Double
+				rest = rest[1:len(rest)-1]
+			}
+			raw = rest
+			found = true
+		} else {
+			// POSIX: array element lines `"dir"` inside WAYU_PATHS=( ... ).
+			if len(trimmed) >= 2 && trimmed[0] == '"' && trimmed[len(trimmed)-1] == '"' {
+				raw = trimmed[1:len(trimmed)-1]
+				found = true
+			}
+		}
+		if !found { continue }
+
+		word: string
+		if to_shell == .FISH {
+			word = migrate_posix_dq_to_fish_dq(raw)
+		} else if from_shell == .FISH {
+			word = migrate_fish_value_to_posix(raw, quote)
+		} else {
+			word = fmt.aprintf(`"%s"`, raw) // POSIX → POSIX: same syntax
+		}
+		append(&out, word)
+	}
+	return out
+}
+
+// Render a complete path.<ext> for `to_shell` from the shell's template,
+// inserting `words` into the WAYU_PATHS registry.
+migrate_render_path_file :: proc(words: []string, to_shell: ShellType) -> string {
+	template := get_path_template(to_shell)
+	lines := strings.split_lines(template)
+	defer delete(lines)
+
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	for line, i in lines {
+		strings.write_string(&b, line)
+		if i < len(lines) - 1 { strings.write_byte(&b, '\n') }
+		trimmed := strings.trim_space(line)
+		if to_shell == .FISH && trimmed == "set -gx WAYU_PATHS" {
+			for w in words { fmt.sbprintf(&b, "set -a WAYU_PATHS %s\n", w) }
+		} else if to_shell != .FISH && trimmed == "WAYU_PATHS=(" {
+			for w in words { fmt.sbprintf(&b, "  %s\n", w) }
+		}
+	}
+	return strings.clone(strings.to_string(b))
 }
 
 convert_shell_content :: proc(content: string, from_shell: ShellType, to_shell: ShellType, config_type: string) -> string {
-	// For now, simply convert shebang and basic shell references
-	// More sophisticated conversion can be added later
+	// path.<ext> is a wayu-managed registry: its loop/dedup code is
+	// dialect-specific (zsh array syntax is invalid in fish, the zsh
+	// `${(s/:/)PATH}` split is invalid in bash), so rebuild it from the
+	// target template instead of translating line by line.
+	if config_type == "path" {
+		words := migrate_collect_path_words(content, from_shell, to_shell)
+		defer {
+			for w in words { delete(w) }
+			delete(words)
+		}
+		return migrate_render_path_file(words[:], to_shell)
+	}
 
 	builder: strings.Builder
 	strings.builder_init(&builder)
@@ -188,6 +477,7 @@ convert_shell_content :: proc(content: string, from_shell: ShellType, to_shell: 
 
 	for line, i in lines {
 		converted_line := line
+		owned := ""
 
 		// Convert shebang
 		if strings.has_prefix(line, "#!/usr/bin/env") {
@@ -196,58 +486,45 @@ convert_shell_content :: proc(content: string, from_shell: ShellType, to_shell: 
 			case .FISH: converted_line = "#!/usr/bin/env fish"
 			case: converted_line = "#!/usr/bin/env zsh"
 			}
-		}
-
-		// Convert alias + export syntax between POSIX shells and fish.
-		// Fish:  alias NAME 'CMD'       ↔  bash/zsh: alias NAME="CMD"
-		// Fish:  set -gx NAME "VAL"     ↔  bash/zsh: export NAME="VAL"
-		// We work line-by-line with the existing parsers, which already
-		// handle both dialects (see config_specs.odin).
-		if to_shell == .FISH && (from_shell == .BASH || from_shell == .ZSH) {
+		} else if to_shell == .FISH && (from_shell == .BASH || from_shell == .ZSH) {
+			// POSIX → fish. Alias bodies are literal command text, so decode
+			// and re-quote for fish single quotes; constants keep $VAR
+			// expansion via fish double quotes.
 			if entry, ok := parse_alias_line(line); ok {
-				converted_line = fmt.aprintf("alias %s '%s'", entry.name, entry.value)
+				lit := migrate_posix_dq_decode(entry.value)
+				q := migrate_fish_sq_quote(lit)
+				owned = fmt.aprintf("alias %s %s", entry.name, q)
+				delete(q); delete(lit)
 				cleanup_entry(&entry)
 			} else if entry, ok := parse_constant_line(line); ok {
-				converted_line = fmt.aprintf(`set -gx %s "%s"`, entry.name, entry.value)
+				q := migrate_posix_dq_to_fish_dq(entry.value)
+				owned = fmt.aprintf("set -gx %s %s", entry.name, q)
+				delete(q)
 				cleanup_entry(&entry)
 			}
 		} else if from_shell == .FISH && (to_shell == .BASH || to_shell == .ZSH) {
+			// fish → POSIX, honouring the fish quote style.
 			if entry, ok := parse_alias_line(line); ok {
-				converted_line = fmt.aprintf(`alias %s="%s"`, entry.name, entry.value)
+				quote := migrate_fish_value_quote(line)
+				lit := quote == .Single ? migrate_fish_sq_decode(entry.value) : strings.clone(entry.value)
+				q := migrate_posix_dq_quote(lit)
+				owned = fmt.aprintf("alias %s=%s", entry.name, q)
+				delete(q); delete(lit)
 				cleanup_entry(&entry)
 			} else if entry, ok := parse_constant_line(line); ok {
-				converted_line = fmt.aprintf(`export %s="%s"`, entry.name, entry.value)
+				q := migrate_fish_value_to_posix(entry.value, migrate_fish_value_quote(line))
+				owned = fmt.aprintf("export %s=%s", entry.name, q)
+				delete(q)
 				cleanup_entry(&entry)
 			}
 		}
-
-		// Convert shell comments
-		if strings.contains(line, "(ZSH)") && to_shell == .BASH {
-			// Basic replacement - will improve later
-			converted_line = line  // Keep original for now
-		} else if strings.contains(line, "(Bash)") && to_shell == .ZSH {
-			converted_line = line  // Keep original for now
-		}
-
-		// Special handling for path.* files - convert deduplication method
-		if config_type == "path" {
-			if from_shell == .ZSH && to_shell == .BASH {
-				// Convert ZSH awk one-liner to Bash array method
-				if strings.contains(line, "export PATH=$(echo \"$PATH\" | awk") {
-					converted_line = "remove_path_duplicates"
-				}
-			} else if from_shell == .BASH && to_shell == .ZSH {
-				// Convert Bash array method to ZSH awk one-liner
-				if strings.trim_space(line) == "remove_path_duplicates" {
-					converted_line = "# Remove duplicates from PATH (ZSH-optimized method)\nexport PATH=$(echo \"$PATH\" | awk -v RS=':' -v ORS=':' '!seen[$0]++' | sed 's/:$//')"
-				}
-			}
-		}
+		if len(owned) > 0 { converted_line = owned }
 
 		strings.write_string(&builder, converted_line)
 		if i < len(lines) - 1 {
 			strings.write_string(&builder, "\n")
 		}
+		if len(owned) > 0 { delete(owned) }
 	}
 
 	return strings.clone(strings.to_string(builder))
@@ -398,6 +675,8 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 	migrated_paths     := 0
 	migrated_aliases   := 0
 	migrated_constants := 0
+	total_failed       := 0
+	kept_files         := 0
 
 	for file in found_files {
 		legacy_file := fmt.aprintf("%s/%s.%s", wayu.data, file, wayu.shell_ext)
@@ -406,10 +685,13 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 		content, ok := safe_read_file(legacy_file)
 		if !ok {
 			print_warning("Could not read %s — skipping", legacy_file)
+			total_failed += 1
+			kept_files += 1
 			continue
 		}
 
 		lines := strings.split(string(content), "\n")
+		failed := 0
 
 		switch file {
 		case "path":
@@ -418,6 +700,9 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 				if !parsed { continue }
 				if toml_path_add(entry.name) {
 					migrated_paths += 1
+				} else {
+					print_warning("Failed to migrate path %s", entry.name)
+					failed += 1
 				}
 				cleanup_entry(&entry)
 			}
@@ -428,9 +713,14 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 				ok_add, err_msg := toml_alias_add(entry)
 				if ok_add {
 					migrated_aliases += 1
-				} else if len(err_msg) > 0 {
-					print_warning("Skipped alias %s: %s", entry.name, err_msg)
-					delete(err_msg)
+				} else {
+					failed += 1
+					if len(err_msg) > 0 {
+						print_warning("Failed to migrate alias %s: %s", entry.name, err_msg)
+						delete(err_msg)
+					} else {
+						print_warning("Failed to migrate alias %s", entry.name)
+					}
 				}
 				cleanup_entry(&entry)
 			}
@@ -441,9 +731,14 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 				ok_add, err_msg := toml_constant_add(entry)
 				if ok_add {
 					migrated_constants += 1
-				} else if len(err_msg) > 0 {
-					print_warning("Skipped constant %s: %s", entry.name, err_msg)
-					delete(err_msg)
+				} else {
+					failed += 1
+					if len(err_msg) > 0 {
+						print_warning("Failed to migrate constant %s: %s", entry.name, err_msg)
+						delete(err_msg)
+					} else {
+						print_warning("Failed to migrate constant %s", entry.name)
+					}
 				}
 				cleanup_entry(&entry)
 			}
@@ -451,6 +746,16 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 
 		delete(lines)
 		delete(content)
+
+		// Only archive when every entry made it into wayu.toml — otherwise
+		// the legacy file is the only remaining copy of the failed entries.
+		if failed > 0 {
+			total_failed += failed
+			kept_files += 1
+			print_warning("%d entr%s from %s failed — left it in place (not archived)",
+				failed, failed == 1 ? "y" : "ies", legacy_file)
+			continue
+		}
 
 		// Rename legacy file to `.migrated` so a re-run is a clean no-op.
 		archived := fmt.aprintf("%s.migrated", legacy_file)
@@ -463,6 +768,13 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 	}
 
 	fmt.println()
+	if total_failed > 0 {
+		print_error("Migration incomplete: %d paths, %d aliases, %d constants migrated; %d entr%s failed",
+			migrated_paths, migrated_aliases, migrated_constants, total_failed, total_failed == 1 ? "y" : "ies")
+		fmt.printfln("%d legacy file(s) were left in place. Fix the entries above and re-run %swayu migrate%s.",
+			kept_files, get_primary(), RESET)
+		os.exit(EXIT_DATAERR)
+	}
 	print_success("Migration complete: %d paths, %d aliases, %d constants", migrated_paths, migrated_aliases, migrated_constants)
 	fmt.println()
 	fmt.printfln("Review the result with %swayu toml show%s", get_primary(), RESET)
@@ -478,10 +790,12 @@ print_migrate_help :: proc() {
 	fmt.println("  wayu migrate                         # Legacy file layout → wayu.toml")
 	fmt.println("  wayu migrate --dry-run               # Preview legacy → TOML conversion")
 	fmt.println("  wayu migrate --from <shell> --to <shell>   # Cross-shell migration")
+	fmt.println("  wayu migrate --schema                # Upgrade obsolete wayu.toml schema")
 
 	// Options section
 	fmt.printf("\n%s%sOPTIONS:%s\n", BOLD, get_secondary(), RESET)
-	fmt.println("  --dry-run, -n        Preview without modifying files (legacy mode only)")
+	fmt.println("  --dry-run, -n        Preview without modifying files (all modes)")
+	fmt.println("  --schema             Rewrite [[paths]]/[[aliases]]/[[constants]] as tables")
 	fmt.println("  --from <shell>       Source shell (bash, zsh, or fish) for cross-shell mode")
 	fmt.println("  --to <shell>         Target shell (bash, zsh, or fish) for cross-shell mode")
 	fmt.println("  help, -h, --help     Show this help message")
@@ -500,7 +814,8 @@ print_migrate_help :: proc() {
 	// Notes section
 	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
 	fmt.printf("  %s• Legacy migration archives source files as *.%s.migrated%s\n", get_muted(), wayu.shell_ext, RESET)
-	fmt.printf("  %s• wayu.toml is backed up before every write (timestamped in ~/.config/wayu)%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Legacy files are only archived when every entry migrated successfully%s\n", get_muted(), RESET)
+	fmt.printf("  %s• wayu.toml is backed up before every write (~/.config/wayu/backup/)%s\n", get_muted(), RESET)
 	fmt.printf("  %s• Cross-shell mode creates new shell-specific config files%s\n", get_muted(), RESET)
 	fmt.printf("  %s• You may need to update your shell RC file after cross-shell migration%s\n", get_muted(), RESET)
 	fmt.println()
@@ -529,7 +844,7 @@ migrate_toml_schema :: proc(dry_run: bool) {
 
 	// Parse legacy sections out of the existing file.
 	paths := parse_legacy_paths(content)
-	defer { for p in paths { delete(p) }; delete(paths) }
+	defer { for p in paths { delete(p.key); delete(p.path) }; delete(paths) }
 
 	aliases := parse_legacy_aliases(content)
 	defer {
@@ -541,6 +856,19 @@ migrate_toml_schema :: proc(dry_run: bool) {
 	defer {
 		for e in envs { delete(e.name); delete(e.value) }
 		delete(envs)
+	}
+
+	// wayu only reads bare keys; refuse rather than silently renaming an
+	// alias/constant whose name isn't one.
+	bad_keys := make([dynamic]string)
+	defer delete(bad_keys)
+	for a in aliases { if !toml_key_is_plain(a.name) { append(&bad_keys, a.name) } }
+	for e in envs    { if !toml_key_is_plain(e.name) { append(&bad_keys, e.name) } }
+	if len(bad_keys) > 0 {
+		print_error("Cannot migrate entries whose names are not plain TOML keys (A-Z a-z 0-9 _ -):")
+		for k in bad_keys { fmt.eprintfln("  • %s", k) }
+		fmt.eprintln("Rename them in wayu.toml and re-run `wayu migrate --schema`.")
+		os.exit(EXIT_DATAERR)
 	}
 
 	// Build the modernised file. Start by stripping every legacy section,
@@ -557,32 +885,13 @@ migrate_toml_schema :: proc(dry_run: bool) {
 	if len(paths) > 0 {
 		fmt.sbprintln(&builder, "")
 		fmt.sbprintln(&builder, "[paths]")
-		taken := make(map[string]bool)
-		defer delete(taken)
-		// Emit in alphabetical key order for deterministic output.
-		keyed := make([dynamic]struct{ key, path: string })
-		defer {
-			for kp in keyed { delete(kp.key) }
-			delete(keyed)
-		}
-		for p in paths {
-			k := derive_path_key(p, taken)
-			taken[k] = true
-			append(&keyed, struct{ key, path: string }{key = k, path = p})
-		}
-		// Sort by key.
-		for i := 1; i < len(keyed); i += 1 {
-			j := i
-			for j > 0 && keyed[j-1].key > keyed[j].key {
-				keyed[j-1], keyed[j] = keyed[j], keyed[j-1]
-				j -= 1
-			}
-		}
-		for kp in keyed {
-			escaped := escape_toml_string(kp.path)
-			fmt.sbprintfln(&builder, "%s = \"%s\"", kp.key, escaped)
-			delete(escaped)
-		}
+		sorted := make([dynamic]TomlPathEntry, 0, len(paths))
+		defer delete(sorted)
+		for p in paths { append(&sorted, p) }
+		slice_sort_path_entries(sorted[:])
+		body := render_keyed_body(sorted[:])
+		defer { for l in body { delete(l) }; delete(body) }
+		for l in body { fmt.sbprintln(&builder, l) }
 	}
 
 	if len(aliases) > 0 {
@@ -629,6 +938,12 @@ migrate_toml_schema :: proc(dry_run: bool) {
 
 	new_content := strings.to_string(builder)
 
+	if !toml_content_is_sane(new_content) {
+		print_error("Schema migration produced invalid TOML — aborting without writing")
+		fmt.eprintln("Please report this with a copy of your wayu.toml.")
+		os.exit(EXIT_DATAERR)
+	}
+
 	if dry_run {
 		print_header("DRY RUN - schema migration preview", EMOJI_INFO)
 		fmt.println()
@@ -649,42 +964,145 @@ migrate_toml_schema :: proc(dry_run: bool) {
 
 	print_success("Schema upgraded — %d path(s), %d alias(es), %d env entr%s migrated",
 		len(paths), len(aliases), len(envs), len(envs) == 1 ? "y" : "ies")
-	fmt.printfln("Backup written under %s/backups/", wayu.data)
+	fmt.printfln("Backup written under %s/backup/", wayu.data)
 }
 
 // ---------------------------------------------------------------------------
-// Legacy-section parsers (used only by `wayu migrate --schema`)
+// Minimal TOML key/value line parser (used only by `wayu migrate --schema`)
 // ---------------------------------------------------------------------------
 
-// Collect path values from BOTH the legacy [[paths]] array-of-tables and any
-// hand-written modern [paths] table. Returning the union lets the migration
-// produce a single canonical [paths] section even when the source file has a
-// half-applied mix of both forms.
-parse_legacy_paths :: proc(content: string) -> [dynamic]string {
-	paths := make([dynamic]string)
+// Parse one `key = value` line. Handles bare and quoted keys, basic strings
+// ("..." with escapes), literal strings ('...', no escapes), bare scalars
+// (numbers/booleans, kept verbatim) and trailing `# comments`. Returns the
+// DECODED key and value (heap, caller frees) so re-serialising with
+// escape_toml_string never double-escapes. Multi-line strings and inline
+// tables/arrays are not supported (ok=false).
+migrate_parse_toml_kv :: proc(line: string) -> (key: string, value: string, ok: bool) {
+	s := strings.trim_space(line)
+	if len(s) == 0 || s[0] == '#' || s[0] == '[' { return }
+
+	rest: string
+	if s[0] == '"' || s[0] == '\'' {
+		k, after, k_ok := migrate_parse_toml_string(s)
+		if !k_ok { return }
+		rest = strings.trim_left_space(after)
+		if len(rest) == 0 || rest[0] != '=' { delete(k); return }
+		key = k
+		rest = rest[1:]
+	} else {
+		eq := strings.index_byte(s, '=')
+		if eq < 1 { return }
+		key = strings.clone(strings.trim_space(s[:eq]))
+		rest = s[eq+1:]
+	}
+
+	rest = strings.trim_left_space(rest)
+	if len(rest) == 0 { delete(key); key = ""; return }
+
+	tail: string
+	switch rest[0] {
+	case '"', '\'':
+		if strings.has_prefix(rest, `"""`) || strings.has_prefix(rest, "'''") {
+			delete(key); key = ""; return
+		}
+		v, after, v_ok := migrate_parse_toml_string(rest)
+		if !v_ok { delete(key); key = ""; return }
+		value = v
+		tail = after
+	case '[', '{':
+		delete(key); key = ""; return
+	case:
+		// Bare scalar: runs up to an inline comment.
+		end := strings.index_byte(rest, '#')
+		if end < 0 { end = len(rest) }
+		value = strings.clone(strings.trim_space(rest[:end]))
+		tail = rest[end:]
+	}
+
+	tail = strings.trim_space(tail)
+	if len(tail) > 0 && tail[0] != '#' {
+		delete(key); delete(value); key = ""; value = ""
+		return
+	}
+	return key, value, true
+}
+
+// Parse a TOML basic ("...") or literal ('...') string at the start of `s`.
+// Returns the decoded string (heap) and the remainder after the closing
+// quote. Byte-oriented so multi-byte UTF-8 passes through untouched.
+migrate_parse_toml_string :: proc(s: string) -> (decoded: string, rest: string, ok: bool) {
+	if len(s) == 0 { return }
+	q := s[0]
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+
+	i := 1
+	if q == '\'' {
+		for i < len(s) {
+			if s[i] == '\'' {
+				return strings.clone(strings.to_string(b)), s[i+1:], true
+			}
+			strings.write_byte(&b, s[i])
+			i += 1
+		}
+		return
+	}
+
+	for i < len(s) {
+		c := s[i]
+		if c == '"' {
+			return strings.clone(strings.to_string(b)), s[i+1:], true
+		}
+		if c == '\\' && i + 1 < len(s) {
+			switch s[i+1] {
+			case '\\': strings.write_byte(&b, '\\')
+			case '"':  strings.write_byte(&b, '"')
+			case 'n':  strings.write_byte(&b, '\n')
+			case 'r':  strings.write_byte(&b, '\r')
+			case 't':  strings.write_byte(&b, '\t')
+			case 'b':  strings.write_byte(&b, '\b')
+			case 'f':  strings.write_byte(&b, '\f')
+			case 'u', 'U':
+				width := s[i+1] == 'u' ? 4 : 8
+				if i + 2 + width > len(s) { return }
+				cp, cp_ok := strconv.parse_u64_of_base(s[i+2:i+2+width], 16)
+				if !cp_ok { return }
+				strings.write_rune(&b, rune(cp))
+				i += 2 + width
+				continue
+			case:
+				// Invalid escape in TOML; keep it verbatim rather than lose data.
+				strings.write_byte(&b, '\\')
+				strings.write_byte(&b, s[i+1])
+			}
+			i += 2
+			continue
+		}
+		strings.write_byte(&b, c)
+		i += 1
+	}
+	return
+}
+
+// Collect path entries from BOTH the legacy [[paths]] array-of-tables and any
+// hand-written modern [paths] table, preserving the user's [paths] key names.
+// [[paths]] blocks may carry a `name`/`key` field, which becomes the key;
+// otherwise one is derived. De-duplicated by path value (first wins, modern
+// [paths] entries take precedence). Caller frees key+path of each + slice.
+parse_legacy_paths :: proc(content: string) -> [dynamic]TomlPathEntry {
+	out := make([dynamic]TomlPathEntry)
 	lines := strings.split(content, "\n")
 	defer delete(lines)
 
-	// 1. [[paths]] array-of-tables (each block has a `path = "..."` line).
-	{
-		in_block := false
-		for line in lines {
-			trimmed := strings.trim_space(line)
-			if trimmed == "[[paths]]" { in_block = true; continue }
-			if strings.has_prefix(trimmed, "[") { in_block = false; continue }
-			if !in_block { continue }
-			if strings.has_prefix(trimmed, "path") {
-				eq := strings.index_byte(trimmed, '=')
-				if eq < 0 { continue }
-				val := strings.trim_space(trimmed[eq+1:])
-				val = strings.trim_prefix(val, `"`)
-				val = strings.trim_suffix(val, `"`)
-				if len(val) > 0 { append(&paths, strings.clone(val)) }
-			}
-		}
+	taken := make(map[string]bool)
+	defer delete(taken)
+
+	has_path :: proc(out: []TomlPathEntry, p: string) -> bool {
+		for e in out { if e.path == p { return true } }
+		return false
 	}
 
-	// 2. Modern [paths] table (key = "value"). De-duplicate against #1.
+	// 1. Modern [paths] table — keys are user-chosen; keep them verbatim.
 	{
 		in_block := false
 		for line in lines {
@@ -692,21 +1110,79 @@ parse_legacy_paths :: proc(content: string) -> [dynamic]string {
 			if trimmed == "[paths]" { in_block = true; continue }
 			if strings.has_prefix(trimmed, "[") { in_block = false; continue }
 			if !in_block { continue }
-			if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
-			eq := strings.index_byte(trimmed, '=')
-			if eq < 1 { continue }
-			val := strings.trim_space(trimmed[eq+1:])
-			val = strings.trim_prefix(val, `"`)
-			val = strings.trim_suffix(val, `"`)
-			if len(val) == 0 { continue }
-			dup := false
-			for existing in paths {
-				if existing == val { dup = true; break }
+			k, v, ok := migrate_parse_toml_kv(trimmed)
+			if !ok { continue }
+			if len(v) == 0 || has_path(out[:], v) || k in taken {
+				delete(k); delete(v)
+				continue
 			}
-			if !dup { append(&paths, strings.clone(val)) }
+			taken[k] = true
+			append(&out, TomlPathEntry{key = k, path = v})
 		}
 	}
-	return paths
+
+	// 2. [[paths]] array-of-tables.
+	Pending :: struct { name, path: string }
+	pending := make([dynamic]Pending)
+	defer delete(pending)
+	{
+		in_block := false
+		cur: Pending
+		flush :: proc(pending: ^[dynamic]Pending, cur: ^Pending) {
+			if len(cur.path) > 0 {
+				append(pending, cur^)
+			} else {
+				delete(cur.name)
+			}
+			cur^ = {}
+		}
+		for line in lines {
+			trimmed := strings.trim_space(line)
+			if trimmed == "[[paths]]" {
+				if in_block { flush(&pending, &cur) }
+				in_block = true
+				continue
+			}
+			if strings.has_prefix(trimmed, "[") {
+				if in_block { flush(&pending, &cur) }
+				in_block = false
+				continue
+			}
+			if !in_block { continue }
+			k, v, ok := migrate_parse_toml_kv(trimmed)
+			if !ok { continue }
+			switch k {
+			case "path":
+				delete(cur.path); cur.path = v
+			case "name", "key":
+				delete(cur.name); cur.name = v
+			case:
+				delete(v)
+			}
+			delete(k)
+		}
+		if in_block { flush(&pending, &cur) }
+	}
+
+	// Explicit names first (so derived keys can't steal them), then derive.
+	for &p in pending {
+		if has_path(out[:], p.path) { delete(p.name); p.name = ""; delete(p.path); p.path = ""; continue }
+		if len(p.name) == 0 { continue }
+		k := sanitize_path_key(p.name)
+		delete(p.name); p.name = ""
+		if len(k) == 0 || k in taken { delete(k); continue }
+		taken[k] = true
+		append(&out, TomlPathEntry{key = k, path = p.path})
+		p.path = ""
+	}
+	for &p in pending {
+		if len(p.path) == 0 { continue }
+		if has_path(out[:], p.path) { delete(p.path); continue }
+		k := derive_path_key(p.path, taken)
+		taken[k] = true
+		append(&out, TomlPathEntry{key = k, path = p.path})
+	}
+	return out
 }
 
 // Same dual-form approach as parse_legacy_paths: collect from [[aliases]]
@@ -733,23 +1209,14 @@ parse_legacy_aliases :: proc(content: string) -> [dynamic]AliasEntry {
 		cur_name := ""
 		cur_cmd  := ""
 		flush :: proc(out: ^[dynamic]AliasEntry, name, cmd: ^string) {
-			if len(name^) > 0 {
-				for &e in out {
-					if e.name == name^ {
-						delete(e.command)
-						e.command = strings.clone(cmd^)
-						name^ = ""; cmd^ = ""
-						return
-					}
-				}
-				append(out, AliasEntry{name = strings.clone(name^), command = strings.clone(cmd^)})
-			}
+			if len(name^) > 0 { upsert(out, name^, cmd^) }
+			delete(name^); delete(cmd^)
 			name^ = ""; cmd^ = ""
 		}
 		for line in lines {
 			trimmed := strings.trim_space(line)
 			if trimmed == "[[aliases]]" {
-				flush(&out, &cur_name, &cur_cmd)
+				if in_block { flush(&out, &cur_name, &cur_cmd) }
 				in_block = true
 				continue
 			}
@@ -759,16 +1226,14 @@ parse_legacy_aliases :: proc(content: string) -> [dynamic]AliasEntry {
 				continue
 			}
 			if !in_block { continue }
-			eq := strings.index_byte(trimmed, '=')
-			if eq < 1 { continue }
-			key := strings.trim_space(trimmed[:eq])
-			val := strings.trim_space(trimmed[eq+1:])
-			val = strings.trim_prefix(val, `"`)
-			val = strings.trim_suffix(val, `"`)
+			key, val, ok := migrate_parse_toml_kv(trimmed)
+			if !ok { continue }
 			switch key {
-			case "name":    cur_name = val
-			case "command": cur_cmd  = val
+			case "name":    delete(cur_name); cur_name = val
+			case "command": delete(cur_cmd);  cur_cmd  = val
+			case:           delete(val)
 			}
+			delete(key)
 		}
 		if in_block { flush(&out, &cur_name, &cur_cmd) }
 	}
@@ -781,15 +1246,10 @@ parse_legacy_aliases :: proc(content: string) -> [dynamic]AliasEntry {
 			if trimmed == "[aliases]" { in_block = true; continue }
 			if strings.has_prefix(trimmed, "[") { in_block = false; continue }
 			if !in_block { continue }
-			if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
-			eq := strings.index_byte(trimmed, '=')
-			if eq < 1 { continue }
-			name := strings.trim_space(trimmed[:eq])
-			val := strings.trim_space(trimmed[eq+1:])
-			val = strings.trim_prefix(val, `"`)
-			val = strings.trim_suffix(val, `"`)
-			if len(name) == 0 { continue }
-			upsert(&out, name, val)
+			name, val, ok := migrate_parse_toml_kv(trimmed)
+			if !ok { continue }
+			if len(name) > 0 { upsert(&out, name, val) }
+			delete(name); delete(val)
 		}
 	}
 	return out
@@ -819,15 +1279,14 @@ parse_legacy_constants :: proc(content: string) -> [dynamic]EnvEntry {
 		cur_name := ""
 		cur_val  := ""
 		flush :: proc(out: ^[dynamic]EnvEntry, name, val: ^string) {
-			if len(name^) > 0 {
-				append(out, EnvEntry{name = strings.clone(name^), value = strings.clone(val^)})
-			}
+			if len(name^) > 0 { upsert(out, name^, val^) }
+			delete(name^); delete(val^)
 			name^ = ""; val^ = ""
 		}
 		for line in lines {
 			trimmed := strings.trim_space(line)
 			if trimmed == "[[constants]]" {
-				flush(&out, &cur_name, &cur_val)
+				if in_block { flush(&out, &cur_name, &cur_val) }
 				in_block = true
 				continue
 			}
@@ -837,16 +1296,14 @@ parse_legacy_constants :: proc(content: string) -> [dynamic]EnvEntry {
 				continue
 			}
 			if !in_block { continue }
-			eq := strings.index_byte(trimmed, '=')
-			if eq < 1 { continue }
-			key := strings.trim_space(trimmed[:eq])
-			v := strings.trim_space(trimmed[eq+1:])
-			v = strings.trim_prefix(v, `"`)
-			v = strings.trim_suffix(v, `"`)
+			key, v, ok := migrate_parse_toml_kv(trimmed)
+			if !ok { continue }
 			switch key {
-			case "name":  cur_name = v
-			case "value": cur_val  = v
+			case "name":  delete(cur_name); cur_name = v
+			case "value": delete(cur_val);  cur_val  = v
+			case:         delete(v)
 			}
+			delete(key)
 		}
 		if in_block { flush(&out, &cur_name, &cur_val) }
 	}
@@ -860,15 +1317,10 @@ parse_legacy_constants :: proc(content: string) -> [dynamic]EnvEntry {
 			if trimmed == section { in_block = true; continue }
 			if strings.has_prefix(trimmed, "[") { in_block = false; continue }
 			if !in_block { continue }
-			if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
-			eq := strings.index_byte(trimmed, '=')
-			if eq < 1 { continue }
-			name := strings.trim_space(trimmed[:eq])
-			v := strings.trim_space(trimmed[eq+1:])
-			v = strings.trim_prefix(v, `"`)
-			v = strings.trim_suffix(v, `"`)
-			if len(name) == 0 { continue }
-			upsert(&out, name, v)
+			name, v, ok := migrate_parse_toml_kv(trimmed)
+			if !ok { continue }
+			if len(name) > 0 { upsert(&out, name, v) }
+			delete(name); delete(v)
 		}
 	}
 	return out
