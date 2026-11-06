@@ -82,14 +82,19 @@ form_run :: proc(form: ^Form) -> bool {
 	for {
 		input_buf: [8]byte
 		n, err := os.read(os.stdin, input_buf[:])
-		if err != nil || n == 0 {
-			continue
+		if err != nil || n <= 0 {
+			// EOF / closed stdin: no more input can ever arrive — cancel
+			// instead of spinning on read().
+			form.cancelled = true
+			return false
 		}
 
 		ch := input_buf[0]
 
-		// Handle form-level navigation and actions
-		if ch == 3 || ch == 'q' || ch == 'Q' { // Ctrl+C or 'q' - Cancel
+		// Handle form-level navigation and actions.
+		// Only Ctrl+C or a lone Esc cancel: 'q' is ordinary text (paths and
+		// alias commands contain it).
+		if ch == 3 || (ch == 27 && n == 1) {
 			form.cancelled = true
 			return false
 
@@ -222,11 +227,12 @@ form_validate :: proc(form: ^Form) -> bool {
 			delete(form.fields[i].validation.info)
 		}
 
-		// Check required fields
+		// Check required fields (message is heap-owned: validation strings
+		// are delete()d on the next validation pass and in form_destroy)
 		if field.required && len(field.input.value) == 0 {
 			form.fields[i].validation = InputValidation{
 				valid = false,
-				error_message = "This field is required",
+				error_message = strings.clone("This field is required"),
 				warning = "",
 				info = "",
 			}
@@ -249,8 +255,9 @@ form_validate :: proc(form: ^Form) -> bool {
 
 // Render the complete form UI
 form_render_full :: proc(form: ^Form) {
-	// Clear screen and scrollback buffer, move to top
-	fmt.print("\033[2J\033[3J\033[H")
+	// Clear the visible screen and move to top. (No \033[3J: wiping the
+	// user's scrollback on every keystroke destroys their terminal history.)
+	fmt.print("\033[2J\033[H")
 
 	// Build form content
 	content_builder := strings.builder_make()
@@ -310,7 +317,7 @@ form_render_full :: proc(form: ^Form) {
 	}
 
 	// Keyboard hints
-	fmt.sbprintf(&content_builder, "  %s⌨  Tab/↑↓ Navigate  •  Enter Submit  •  Ctrl+C Cancel%s\r\n\r\n", DIM, RESET)
+	fmt.sbprintf(&content_builder, "  %s⌨  Tab/↑↓ Navigate  •  Enter Submit  •  Esc/Ctrl+C Cancel%s\r\n\r\n", DIM, RESET)
 
 	// Preview panel (if function provided)
 	if form.preview_fn != nil {
