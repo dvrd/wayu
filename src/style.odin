@@ -187,57 +187,11 @@ calculate_content_width :: proc(s: Style, lines: []string) -> int {
 	return max_len
 }
 
-// Get visible width of text (excluding ANSI codes)
+// Get visible width of text (excluding ANSI codes).
+// Alias of visual_width — kept so every width measurement in the style
+// pipeline (align, truncate, content width) agrees on CJK/emoji widths.
 visible_width :: proc(text: string) -> int {
-	// Handle ANSI codes and approximate emoji width
-	count := 0
-	in_escape := false
-	i := 0
-	for i < len(text) {
-		b := text[i]
-
-		// ANSI escape sequence
-		if b == '\x1b' {
-			in_escape = true
-			i += 1
-			continue
-		}
-
-		if in_escape {
-			if b == 'm' {
-				in_escape = false
-			}
-			i += 1
-			continue
-		}
-
-		// Count character width
-		// Most emojis are in range U+1F300 to U+1F9FF (4-byte UTF-8)
-		// They display as 2 characters wide
-		if b >= 0xF0 && b <= 0xF4 { // 4-byte UTF-8 start byte
-			// Emoji or other wide character - count as 2
-			count += 2
-			// Skip remaining bytes of UTF-8 sequence
-			i += 4
-		} else if b >= 0xE0 && b <= 0xEF { // 3-byte UTF-8
-			// Check for special symbols that might be wide
-			if b == 0xE2 && i + 2 < len(text) {
-				// Common symbols like ✓, ✗, ▸, etc are in this range
-				// Most are 1 char wide except emoji variants
-				count += 1
-			} else {
-				count += 1
-			}
-			i += 3
-		} else if b >= 0xC0 && b <= 0xDF { // 2-byte UTF-8
-			count += 1
-			i += 2
-		} else { // ASCII
-			count += 1
-			i += 1
-		}
-	}
-	return count
+	return visual_width(text)
 }
 
 // Render a border line (top or bottom) for styled content
@@ -335,6 +289,7 @@ render_content_line :: proc(builder: ^strings.Builder, s: Style, line: string, w
 
 	// Apply text styles and render content
 	styled_content := apply_text_styles(s, line, width)
+	defer delete(styled_content)
 	strings.write_string(builder, styled_content)
 
 	// Right padding
@@ -354,7 +309,8 @@ render_content_line :: proc(builder: ^strings.Builder, s: Style, line: string, w
 	strings.write_string(builder, "\n")
 }
 
-// Apply text styles (colors, bold, italic, etc.) to content
+// Apply text styles (colors, bold, italic, etc.) to content.
+// Returns an allocated string — caller must delete().
 apply_text_styles :: proc(s: Style, text: string, width: int) -> string {
 	builder: strings.Builder
 	strings.builder_init(&builder)
@@ -392,7 +348,8 @@ apply_text_styles :: proc(s: Style, text: string, width: int) -> string {
 	// Reset all styles
 	strings.write_string(&builder, RESET)
 
-	return strings.to_string(builder)
+	// Clone: the builder's buffer is freed by the deferred builder_destroy.
+	return strings.clone(strings.to_string(builder))
 }
 
 // Apply only text styles (colors, bold, italic) without layout (borders, padding, margins)
@@ -521,86 +478,55 @@ get_border_char :: proc(style: BorderStyle, pos: BorderPosition) -> string {
 	return " "
 }
 
-// Truncate text to fit within a given visual width, adding ellipsis if needed
-// Handles ANSI escape sequences properly (doesn't count them as visible width)
+// Truncate text to fit within a given visual width, adding ellipsis if needed.
+// ANSI escape sequences are copied through without counting toward width;
+// rune widths come from get_rune_width (CJK/emoji = 2 columns), matching
+// visual_width. Returns `text` itself when it fits, otherwise an allocated
+// string.
 truncate_to_width :: proc(text: string, max_width: int) -> string {
 	if max_width <= 0 {
 		return ""
 	}
 
-	text_width := visual_width(text)
-
 	// No truncation needed
-	if text_width <= max_width {
+	if visual_width(text) <= max_width {
 		return text
 	}
 
-	// Need at least 4 chars for truncation to make sense (1 char + "...")
+	// Need at least 4 columns for truncation to make sense (1 char + "...")
 	if max_width < 4 {
-		// Just return dots up to max_width
-		dots := strings.repeat(".", max_width)
-		return dots
+		return strings.repeat(".", max_width)
 	}
 
-	// Build truncated string character by character
-	result := strings.Builder{}
-	strings.builder_init(&result)
+	result := strings.builder_make()
 	defer strings.builder_destroy(&result)
 
 	target_width := max_width - 3 // Reserve space for "..."
 	current_width := 0
-	in_escape := false
 	i := 0
 
 	for i < len(text) {
-		b := text[i]
-
-		// Handle ANSI escape sequences - copy them without counting width
-		if b == '\x1b' {
-			in_escape = true
-			strings.write_byte(&result, b)
-			i += 1
-			continue
-		}
-
-		if in_escape {
-			strings.write_byte(&result, b)
-			if b == 'm' {
-				in_escape = false
+		// Copy CSI sequences (ESC [ ... final) verbatim, zero width.
+		if text[i] == 0x1B && i + 1 < len(text) && text[i + 1] == '[' {
+			j := i + 2
+			for j < len(text) && !(text[j] >= 0x40 && text[j] <= 0x7E) {
+				j += 1
 			}
-			i += 1
+			if j < len(text) do j += 1
+			strings.write_string(&result, text[i:j])
+			i = j
 			continue
 		}
 
-		// Determine character width
-		char_width := 1
-		char_len := 1
-
-		if b >= 0xF0 && b <= 0xF4 { // 4-byte UTF-8 (emoji)
-			char_width = 2
-			char_len = 4
-		} else if b >= 0xE0 && b <= 0xEF { // 3-byte UTF-8
-			char_width = 1
-			char_len = 3
-		} else if b >= 0xC0 && b <= 0xDF { // 2-byte UTF-8
-			char_width = 1
-			char_len = 2
-		}
-
-		// Check if adding this character would exceed target width
-		if current_width + char_width > target_width {
+		r, size := utf8.decode_rune_in_string(text[i:])
+		if size <= 0 do size = 1
+		w := get_rune_width(r)
+		if current_width + w > target_width {
 			break
 		}
-
-		// Copy the character bytes
-		for j in 0..<char_len {
-			if i + j < len(text) {
-				strings.write_byte(&result, text[i + j])
-			}
-		}
-
-		current_width += char_width
-		i += char_len
+		strings.write_string(&result, text[i:i + size])
+		current_width += w
+		i += size
 	}
 
 	// Add ellipsis

@@ -10,6 +10,7 @@ Spinner :: struct {
 	current_frame: int,
 	style: Style,
 	text: string,
+	owns_text: bool,  // text was cloned by spinner_text
 	active: bool,
 	speed: time.Duration, // Time between frame updates
 }
@@ -24,6 +25,22 @@ SpinnerType :: enum {
 	Clock,
 }
 
+// Frame tables live in static read-only memory. (A slice literal assigned
+// inside new_spinner was backed by that proc's stack frame, so the returned
+// Spinner pointed at dead stack memory.)
+@(rodata, private="file")
+SPINNER_FRAMES_DOTS := [?]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+@(rodata, private="file")
+SPINNER_FRAMES_LINE := [?]string{"|", "/", "-", "\\"}
+@(rodata, private="file")
+SPINNER_FRAMES_ARROW := [?]string{"←", "↖", "↑", "↗", "→", "↘", "↓", "↙"}
+@(rodata, private="file")
+SPINNER_FRAMES_BOUNCE := [?]string{"⠁", "⠂", "⠄", "⠂"}
+@(rodata, private="file")
+SPINNER_FRAMES_ARC := [?]string{"◜", "◠", "◝", "◞", "◡", "◟"}
+@(rodata, private="file")
+SPINNER_FRAMES_CLOCK := [?]string{"🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛"}
+
 // Create a new spinner with predefined type
 new_spinner :: proc(spinner_type: SpinnerType) -> Spinner {
 	frames: []string
@@ -31,20 +48,20 @@ new_spinner :: proc(spinner_type: SpinnerType) -> Spinner {
 
 	switch spinner_type {
 	case .Dots:
-		frames = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		frames = SPINNER_FRAMES_DOTS[:]
 	case .Line:
-		frames = {"|", "/", "-", "\\"}
+		frames = SPINNER_FRAMES_LINE[:]
 		speed = 150 * time.Millisecond
 	case .Arrow:
-		frames = {"←", "↖", "↑", "↗", "→", "↘", "↓", "↙"}
+		frames = SPINNER_FRAMES_ARROW[:]
 	case .Bounce:
-		frames = {"⠁", "⠂", "⠄", "⠂"}
+		frames = SPINNER_FRAMES_BOUNCE[:]
 		speed = 200 * time.Millisecond
 	case .Arc:
-		frames = {"◜", "◠", "◝", "◞", "◡", "◟"}
+		frames = SPINNER_FRAMES_ARC[:]
 		speed = 120 * time.Millisecond
 	case .Clock:
-		frames = {"🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛"}
+		frames = SPINNER_FRAMES_CLOCK[:]
 		speed = 200 * time.Millisecond
 	}
 
@@ -70,10 +87,22 @@ new_custom_spinner :: proc(frames: []string, speed: time.Duration) -> Spinner {
 	}
 }
 
-// Set spinner text
+// Set spinner text (cloned; freed by spinner_stop/spinner_destroy, and any
+// previous text is released here).
 spinner_text :: proc(spinner: ^Spinner, text: string) -> ^Spinner {
+	spinner_free_text(spinner)
 	spinner.text = strings.clone(text)
+	spinner.owns_text = true
 	return spinner
+}
+
+@(private="file")
+spinner_free_text :: proc(spinner: ^Spinner) {
+	if spinner.owns_text && len(spinner.text) > 0 {
+		delete(spinner.text)
+	}
+	spinner.text = ""
+	spinner.owns_text = false
 }
 
 // Style the spinner
@@ -88,9 +117,11 @@ spinner_start :: proc(spinner: ^Spinner) {
 	spinner.current_frame = 0
 }
 
-// Stop the spinner animation
+// Stop the spinner animation. Releases the text set by spinner_text —
+// callers typically stop a spinner and drop it without spinner_destroy.
 spinner_stop :: proc(spinner: ^Spinner) {
 	spinner.active = false
+	spinner_free_text(spinner)
 }
 
 // Update spinner to next frame
@@ -112,6 +143,7 @@ spinner_render :: proc(spinner: Spinner) -> string {
 	styled_frame := render(spinner.style, frame)
 
 	if len(spinner.text) > 0 {
+		defer delete(styled_frame)
 		return fmt.aprintf("%s %s", styled_frame, spinner.text)
 	}
 
@@ -126,6 +158,7 @@ spinner_render_with_text :: proc(spinner: Spinner, text: string) -> string {
 
 	frame := spinner.frames[spinner.current_frame]
 	styled_frame := render(spinner.style, frame)
+	defer delete(styled_frame)
 
 	return fmt.aprintf("%s %s", styled_frame, text)
 }
@@ -145,6 +178,7 @@ spinner_show_for :: proc(spinner: ^Spinner, duration: time.Duration, text_update
 		if len(text_updates) > 0 && text_index < len(text_updates) {
 			update_interval := duration / time.Duration(len(text_updates))
 			if time.since(last_update) >= update_interval {
+				spinner_free_text(spinner)
 				spinner.text = text_updates[text_index]
 				text_index += 1
 				last_update = time.now()
@@ -153,7 +187,9 @@ spinner_show_for :: proc(spinner: ^Spinner, duration: time.Duration, text_update
 
 		// Clear line and render spinner
 		fmt.print("\r\033[K") // Clear current line
-		fmt.print(spinner_render(spinner^))
+		frame := spinner_render(spinner^)
+		fmt.print(frame)
+		delete(frame)
 
 		time.sleep(spinner.speed)
 		spinner_tick(spinner)
@@ -166,13 +202,16 @@ spinner_show_for :: proc(spinner: ^Spinner, duration: time.Duration, text_update
 
 // Simple loading animation with completion message
 spinner_loading :: proc(spinner: ^Spinner, loading_text: string, completion_text: string, duration: time.Duration) {
+	spinner_free_text(spinner)
 	spinner.text = loading_text
 	spinner_start(spinner)
 
 	start_time := time.now()
 	for time.since(start_time) < duration {
 		fmt.print("\r\033[K") // Clear current line
-		fmt.print(spinner_render(spinner^))
+		frame := spinner_render(spinner^)
+		fmt.print(frame)
+		delete(frame)
 
 		time.sleep(spinner.speed)
 		spinner_tick(spinner)
@@ -182,15 +221,14 @@ spinner_loading :: proc(spinner: ^Spinner, loading_text: string, completion_text
 	fmt.print("\r\033[K")
 	success_style := style_foreground(new_style(), "green")
 	success_mark := render(success_style, "✓")
+	defer delete(success_mark)
 	fmt.printf("%s %s\n", success_mark, completion_text)
 
 	spinner_stop(spinner)
 }
 
 
-// Clean up spinner memory
+// Clean up spinner memory (idempotent).
 spinner_destroy :: proc(spinner: ^Spinner) {
-	if len(spinner.text) > 0 {
-		delete(spinner.text)
-	}
+	spinner_free_text(spinner)
 }
