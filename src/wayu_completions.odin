@@ -204,7 +204,15 @@ _wayu() {
     esac
 }
 
-compdef _wayu wayu
+# Standard #compdef dispatch: when compinit autoloads this file as the
+# _wayu function, run the completer immediately (otherwise the very first
+# TAB only defines functions and completes nothing). When the file is
+# sourced directly, register it with compdef instead.
+if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
+    _wayu "$@"
+else
+    compdef _wayu wayu
+fi
 `
 
 // Fish completion template
