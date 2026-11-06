@@ -118,6 +118,20 @@ PromptConfigFull :: struct {
 	// Key = language name, value = format string for {language_context}
 	context_formats: map[string]string,
 	context_detects: map[string][dynamic]string,
+	// Context names in [prompt.contexts] file order (first match wins).
+	context_order:   [dynamic]string,
+}
+
+// Free the heap parts of a PromptConfigFull (detect lists + containers).
+// Format strings are slices of the TOML text and are not owned.
+destroy_full_prompt_config :: proc(cfg: ^PromptConfigFull) {
+	for _, list in cfg.context_detects {
+		for item in list { delete(item) }
+		delete(list)
+	}
+	delete(cfg.context_detects)
+	delete(cfg.context_formats)
+	delete(cfg.context_order)
 }
 
 // Parse config simple desde TOML
@@ -138,6 +152,7 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 		git_branch_format = "[$branch](magenta bold)",
 		context_formats = make(map[string]string),
 		context_detects = make(map[string][dynamic]string),
+		context_order   = make([dynamic]string),
 	}
 	
 	it := make_line_iter(toml)
@@ -260,6 +275,11 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 			first_eq := strings.index(trimmed, "=")
 			if first_eq > 0 {
 				lang_name := strings.trim_space(trimmed[:first_eq])
+				seen := false
+				for n in cfg.context_order {
+					if n == lang_name { seen = true; break }
+				}
+				if !seen { append(&cfg.context_order, lang_name) }
 				// Extract format value between quotes after "format"
 				fmt_idx := strings.index(trimmed, "format")
 				if fmt_idx > 0 {
@@ -295,6 +315,10 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 							if len(val) > 0 {
 								append(&detect_list, strings.clone(val))
 							}
+						}
+						if old, exists := cfg.context_detects[lang_name]; exists {
+							for item in old { delete(item) }
+							delete(old)
 						}
 						cfg.context_detects[lang_name] = detect_list
 					}
@@ -429,7 +453,7 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 		fmt.sbprint(builder, cfg.vimcmd_symbol)
 		fmt.sbprintln(builder, `" ;;`)
 		fmt.sbprint(builder, `    VISUAL) char_symbol="`)
-		fmt.sbprint(builder, cfg.vimcmd_symbol)
+		fmt.sbprint(builder, cfg.vimcmd_visual_symbol)
 		fmt.sbprintln(builder, `" ;;`)
 		fmt.sbprint(builder, `    REPLACE|REPLACE_ONE) char_symbol="`)
 		fmt.sbprint(builder, cfg.vimcmd_replace_symbol)
@@ -677,6 +701,10 @@ InteractiveConfig :: struct {
 	// Transient
 	transient_enabled: bool,
 	transient_format: string,
+
+	// [prompt.contexts] (detect lists) used to generate context detection.
+	// Optional; nil means built-in detection only.
+	contexts: ^PromptConfigFull,
 }
 
 // Genera todo el código interactivo
@@ -714,7 +742,7 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 
 	// 3. CONTEXT AWARE
 	if cfg.context_aware {
-		generate_context_feature(&builder)
+		generate_context_feature(&builder, cfg.contexts)
 	}
 
 	// 4. ASYNC RPROMPT
@@ -849,7 +877,7 @@ generate_vi_mode_feature :: proc(b: ^strings.Builder, cfg: InteractiveConfig) {
 // 3. CONTEXT AWARE
 // File-existence only detection (instant, no subprocesses).
 // Version string is fetched asynchronously by the async worker.
-generate_context_feature :: proc(b: ^strings.Builder) {
+generate_context_feature :: proc(b: ^strings.Builder, contexts: ^PromptConfigFull = nil) {
 	fmt.sbprintln(b, "# === Feature: Context-Aware Prompt ===")
 	fmt.sbprintln(b, "# File-only detection (instant). Version fetched async.")
 	fmt.sbprintln(b, "_wayu_detect_context() {")
@@ -861,37 +889,68 @@ generate_context_feature :: proc(b: ^strings.Builder) {
 	fmt.sbprintln(b, "  emulate -L zsh -o null_glob")
 	fmt.sbprintln(b, `  _WAYU_CONTEXT_VER=""`)
 
-	// Each entry: file test → context name. No subprocess calls.
-	fmt.sbprintln(b, `  if [[ -f "Cargo.toml" ]]; then _WAYU_CONTEXT="rust"`)
-	fmt.sbprintln(b, `  elif [[ -f "bun.lockb" ]] || [[ -f "bunfig.toml" ]]; then _WAYU_CONTEXT="bun"`)
-	fmt.sbprintln(b, `  elif [[ -f "gleam.toml" ]]; then _WAYU_CONTEXT="gleam"`)
-	fmt.sbprintln(b, `  elif [[ -f "Package.swift" ]]; then _WAYU_CONTEXT="swift"`)
-	fmt.sbprintln(b, `  elif [[ -f "pubspec.yaml" ]]; then _WAYU_CONTEXT="dart"`)
-	fmt.sbprintln(b, `  elif [[ -f "composer.json" ]]; then _WAYU_CONTEXT="php"`)
-	fmt.sbprintln(b, `  elif [[ -f "Gemfile" ]] || [[ -f ".ruby-version" ]]; then _WAYU_CONTEXT="ruby"`)
-	fmt.sbprintln(b, `  elif [[ -f "mix.exs" ]]; then _WAYU_CONTEXT="elixir"`)
-	fmt.sbprintln(b, `  elif [[ -f "rebar.config" ]] || [[ -f "erlang.mk" ]]; then _WAYU_CONTEXT="erlang"`)
-	fmt.sbprintln(b, `  elif [[ -f "stack.yaml" ]] || [[ -f "cabal.project" ]]; then _WAYU_CONTEXT="haskell"`)
-	fmt.sbprintln(b, `  elif [[ -f "Project.toml" ]] || [[ -f "Manifest.toml" ]]; then _WAYU_CONTEXT="julia"`)
-	fmt.sbprintln(b, `  elif [[ -f "ols.json" ]] || (){ [[ -e $1 ]] } *.odin(NY1) || (){ [[ -e $1 ]] } src/*.odin(NY1); then _WAYU_CONTEXT="odin"`)
-	fmt.sbprintln(b, `  elif [[ -f "go.mod" ]]; then _WAYU_CONTEXT="golang"`)
-	fmt.sbprintln(b, `  elif [[ -f "nim.cfg" ]]; then _WAYU_CONTEXT="nim"`)
-	fmt.sbprintln(b, `  elif [[ -f "dune" ]]; then _WAYU_CONTEXT="ocaml"`)
-	fmt.sbprintln(b, `  elif [[ -f "flake.nix" ]] || [[ -f "default.nix" ]]; then _WAYU_CONTEXT="nix"`)
-	fmt.sbprintln(b, `  elif [[ -f "deno.json" ]] || [[ -f "deno.jsonc" ]]; then _WAYU_CONTEXT="deno"`)
-	fmt.sbprintln(b, `  elif [[ -f "elm.json" ]]; then _WAYU_CONTEXT="elm"`)
-	fmt.sbprintln(b, `  elif [[ -f "shard.yml" ]]; then _WAYU_CONTEXT="crystal"`)
-	fmt.sbprintln(b, `  elif [[ -f "cpanfile" ]]; then _WAYU_CONTEXT="perl"`)
-	fmt.sbprintln(b, `  elif [[ -f "buf.yaml" ]]; then _WAYU_CONTEXT="buf"`)
-	fmt.sbprintln(b, `  elif [[ -f "package.json" ]]; then _WAYU_CONTEXT="nodejs"`)
-	fmt.sbprintln(b, `  elif [[ -f "pom.xml" ]] || [[ -f "build.gradle" ]]; then _WAYU_CONTEXT="java"`)
-	fmt.sbprintln(b, `  elif [[ -f "build.sbt" ]]; then _WAYU_CONTEXT="scala"`)
-	fmt.sbprintln(b, `  elif [[ -f "requirements.txt" ]] || [[ -f "pyproject.toml" ]]; then _WAYU_CONTEXT="python"`)
-	fmt.sbprintln(b, `  elif [[ -f "build.zig" ]] || [[ -f "build.zig.zon" ]]; then _WAYU_CONTEXT="zig"`)
-	fmt.sbprintln(b, `  elif [[ -f "DESCRIPTION" ]]; then _WAYU_CONTEXT="rlang"`)
-	fmt.sbprintln(b, `  elif [[ -f ".lua-version" ]]; then _WAYU_CONTEXT="lua"`)
-	fmt.sbprintln(b, `  elif [[ -f "Dockerfile" ]] || [[ -f "docker-compose.yml" ]]; then _WAYU_CONTEXT="docker"`)
-	fmt.sbprintln(b, `  elif [[ -f ".aws" ]] || [[ -d ".aws" ]]; then _WAYU_CONTEXT="aws"`)
+	// User-defined [prompt.contexts] detect lists come first, in file order;
+	// built-in rules follow only for names the user didn't configure.
+	configured := make(map[string]bool, 16, context.temp_allocator)
+	first := true
+	if contexts != nil {
+		for name in contexts.context_order {
+			detects, has := contexts.context_detects[name]
+			if !has || len(detects) == 0 { continue }
+			cond := context_detect_condition(detects[:])
+			if len(cond) == 0 { continue }
+			configured[name] = true
+			strings.write_string(b, "  if " if first else "  elif ")
+			strings.write_string(b, cond)
+			strings.write_string(b, `; then _WAYU_CONTEXT="`)
+			strings.write_string(b, sanitize_ident(name))
+			strings.write_string(b, "\"\n")
+			first = false
+		}
+	}
+
+	// Built-in detection: (context name, condition).
+	BUILTIN :: [?][2]string{
+		{"rust",    `[[ -f "Cargo.toml" ]]`},
+		{"bun",     `[[ -f "bun.lockb" ]] || [[ -f "bunfig.toml" ]]`},
+		{"gleam",   `[[ -f "gleam.toml" ]]`},
+		{"swift",   `[[ -f "Package.swift" ]]`},
+		{"dart",    `[[ -f "pubspec.yaml" ]]`},
+		{"php",     `[[ -f "composer.json" ]]`},
+		{"ruby",    `[[ -f "Gemfile" ]] || [[ -f ".ruby-version" ]]`},
+		{"elixir",  `[[ -f "mix.exs" ]]`},
+		{"erlang",  `[[ -f "rebar.config" ]] || [[ -f "erlang.mk" ]]`},
+		{"haskell", `[[ -f "stack.yaml" ]] || [[ -f "cabal.project" ]]`},
+		{"julia",   `[[ -f "Project.toml" ]] || [[ -f "Manifest.toml" ]]`},
+		{"odin",    `[[ -f "ols.json" ]] || (){ [[ -e $1 ]] } *.odin(NY1) || (){ [[ -e $1 ]] } src/*.odin(NY1)`},
+		{"golang",  `[[ -f "go.mod" ]]`},
+		{"nim",     `[[ -f "nim.cfg" ]]`},
+		{"ocaml",   `[[ -f "dune" ]]`},
+		{"nix",     `[[ -f "flake.nix" ]] || [[ -f "default.nix" ]]`},
+		{"deno",    `[[ -f "deno.json" ]] || [[ -f "deno.jsonc" ]]`},
+		{"elm",     `[[ -f "elm.json" ]]`},
+		{"crystal", `[[ -f "shard.yml" ]]`},
+		{"perl",    `[[ -f "cpanfile" ]]`},
+		{"buf",     `[[ -f "buf.yaml" ]]`},
+		{"nodejs",  `[[ -f "package.json" ]]`},
+		{"java",    `[[ -f "pom.xml" ]] || [[ -f "build.gradle" ]]`},
+		{"scala",   `[[ -f "build.sbt" ]]`},
+		{"python",  `[[ -f "requirements.txt" ]] || [[ -f "pyproject.toml" ]]`},
+		{"zig",     `[[ -f "build.zig" ]] || [[ -f "build.zig.zon" ]]`},
+		{"rlang",   `[[ -f "DESCRIPTION" ]]`},
+		{"lua",     `[[ -f ".lua-version" ]]`},
+		{"docker",  `[[ -f "Dockerfile" ]] || [[ -f "docker-compose.yml" ]]`},
+		{"aws",     `[[ -e ".aws" ]]`},
+	}
+	for entry in BUILTIN {
+		if configured[entry[0]] { continue }
+		strings.write_string(b, "  if " if first else "  elif ")
+		strings.write_string(b, entry[1])
+		strings.write_string(b, `; then _WAYU_CONTEXT="`)
+		strings.write_string(b, entry[0])
+		strings.write_string(b, "\"\n")
+		first = false
+	}
 	fmt.sbprintln(b, `  else _WAYU_CONTEXT="default"`)
 	fmt.sbprintln(b, "  fi")
 	fmt.sbprintln(b, "}")
@@ -900,6 +959,48 @@ generate_context_feature :: proc(b: ^strings.Builder) {
 	fmt.sbprintln(b, "add-zsh-hook chpwd _wayu_detect_context")
 	fmt.sbprintln(b, "_wayu_detect_context  # Detect on startup")
 	fmt.sbprintln(b)
+}
+
+// Build a zsh condition from a [prompt.contexts] detect list.
+//   "Cargo.toml" -> [[ -e 'Cargo.toml' ]]
+//   "*.kt"       -> (){ [[ -e $1 ]] } *.kt(NY1)   (null-glob, stop at 1)
+// Entries with characters outside a conservative filename/glob set are
+// skipped so a config value can never inject shell code. Returns a
+// temp-allocated string ("" when no entry is usable).
+context_detect_condition :: proc(detects: []string) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	n := 0
+	for raw in detects {
+		item := strings.trim_space(raw)
+		if len(item) == 0 { continue }
+		safe := true
+		is_glob := false
+		for i in 0..<len(item) {
+			c := item[i]
+			switch {
+			case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+			case c == '.' || c == '_' || c == '-' || c == '/' || c == '+' || c == '@':
+			case c == '*' || c == '?':
+				is_glob = true
+			case c >= 0x80: // UTF-8 bytes in file names
+			case:
+				safe = false
+			}
+		}
+		if !safe { continue }
+		if n > 0 { strings.write_string(&sb, " || ") }
+		if is_glob {
+			strings.write_string(&sb, "(){ [[ -e $1 ]] } ")
+			strings.write_string(&sb, item)
+			strings.write_string(&sb, "(NY1)")
+		} else {
+			strings.write_string(&sb, "[[ -e ")
+			strings.write_string(&sb, shell_single_quote(item, context.temp_allocator))
+			strings.write_string(&sb, " ]]")
+		}
+		n += 1
+	}
+	return strings.to_string(sb)
 }
 
 // 4. ASYNC FEATURE
@@ -963,8 +1064,10 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
 
-	// Signal handler reads results from temp file
-	fmt.sbprintln(b, "TRAPUSR1() {")
+	// USR1 handler body. helpers.zsh owns the single TRAPUSR1 (shared with
+	// zsh-defer) and forwards here; defining TRAPUSR1 in the prompt used to
+	// clobber the zsh-defer trap. Fallback TRAPUSR1 only if none exists.
+	fmt.sbprintln(b, "_wayu_async_on_usr1() {")
 	fmt.sbprintln(b, `  local tmpf="${TMPDIR:-/tmp}/.wayu_async_$$"`)
 	fmt.sbprintln(b, "  if [[ -f \"$tmpf\" ]]; then")
 	fmt.sbprintln(b, `    local lines=("${(@f)$(< "$tmpf")}")`)
@@ -973,7 +1076,11 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 	fmt.sbprintln(b, `    rm -f "$tmpf"`)
 	fmt.sbprintln(b, "  fi")
 	fmt.sbprintln(b, "  zle && zle reset-prompt")
+	fmt.sbprintln(b, "  return 0")
 	fmt.sbprintln(b, "}")
+	fmt.sbprintln(b, "if (( ! ${+functions[TRAPUSR1]} )); then")
+	fmt.sbprintln(b, "  TRAPUSR1() { _wayu_async_on_usr1; return 0; }")
+	fmt.sbprintln(b, "fi")
 	fmt.sbprintln(b)
 
 	fmt.sbprintln(b, "_wayu_start_async() {")
@@ -995,7 +1102,9 @@ generate_transient_feature :: proc(b: ^strings.Builder, format: string) {
 		fmt.sbprintln(b, "  result+=\"%~ \"")
 	}
 	if strings.contains(format, "{character}") {
-		fmt.sbprintln(b, "  if [[ $? -eq 0 ]]; then")
+		// $? here would be the status of `local result` (always 0); use the
+		// exit code captured by _wayu_prompt_master instead.
+		fmt.sbprintln(b, "  if [[ ${_WAYU_LAST_EXIT:-0} -eq 0 ]]; then")
 		fmt.sbprintln(b, `    result+="➜ "`)
 		fmt.sbprintln(b, "  else")
 		fmt.sbprintln(b, `    result+="✗ "`)

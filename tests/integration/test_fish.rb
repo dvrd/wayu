@@ -13,7 +13,6 @@ class FishIntegrationTest
     setup_test_env
     @toml_file = "#{@config_dir}/wayu.toml"
     @init_core = "#{@data_dir}/core.fish"
-    @static    = "#{@data_dir}/wayu_static.fish"
   end
 
   def run
@@ -34,6 +33,7 @@ class FishIntegrationTest
       test_template_applies_to_toml_with_fish_syntax
       test_mutations_auto_regenerate_init_core
       test_init_fish_prefers_init_core
+      test_fish_escaping
     ensure
       teardown_test_env
     end
@@ -219,23 +219,57 @@ class FishIntegrationTest
     end
   end
 
+  # `wayu watch regenerate` (hot reload) must rewrite core.fish — the file
+  # init.fish actually sources — instead of an orphaned wayu_static.fish.
   def test_watch_regenerate_emits_fish
-    print "Test 6: watch regenerate emits fish wayu_static.fish... "
+    print "Test 6: watch regenerate rewrites core.fish... "
+    File.delete(@init_core) if File.exist?(@init_core)
     _, status = run_fish('watch regenerate')
-    unless status.success? && File.exist?(@static)
-      puts "✗"; puts "  regenerate failed or file missing"; @failed += 1
+    unless status.success? && File.exist?(@init_core)
+      puts "✗"; puts "  regenerate failed or core.fish missing"; @failed += 1
       return
     end
-    body = File.read(@static)
+    body = File.read(@init_core)
     fish_ok = body.include?('#!/usr/bin/env fish') &&
               body.include?('set -gx PATH') &&
               body.include?("alias ll 'ls -la'")
     bash_leak = body.include?('export PATH=') || body.include?('typeset -U')
-    if fish_ok && !bash_leak
+    no_orphan = !File.exist?("#{@data_dir}/wayu_static.fish")
+    if fish_ok && !bash_leak && no_orphan
       puts "✓"; @passed += 1
     else
       puts "✗"
-      puts "  fish_ok=#{fish_ok} bash_leak=#{bash_leak}"
+      puts "  fish_ok=#{fish_ok} bash_leak=#{bash_leak} no_orphan=#{no_orphan}"
+      @failed += 1
+    end
+  end
+
+  # Fish escaping: single-quoted alias bodies escape \ and ', env values stay
+  # double-quoted (so $VAR expands) with " and \ escaped. Validated with
+  # `fish -n` when fish is installed.
+  def test_fish_escaping
+    print "Test 11: core.fish escapes quotes/backslashes... "
+    toml = File.read(@toml_file)
+    sq_line = "sq = \"echo 'it' a\\\\b\"\n"
+    fq_line = "FQ = \"say \\\"hi\\\" $HOME\"\n"
+    toml = toml.include?("[aliases]\n") ? toml.sub("[aliases]\n") { "[aliases]\n#{sq_line}" } : toml + "\n[aliases]\n#{sq_line}"
+    toml = toml.include?("[env]\n") ? toml.sub("[env]\n") { "[env]\n#{fq_line}" } : toml + "\n[env]\n#{fq_line}"
+    File.write(@toml_file, toml)
+    run_fish('build eval')
+    body = File.read(@init_core)
+    alias_ok = body.include?(%q{alias sq 'echo \'it\' a\\\\b'})
+    env_ok = body.include?(%q{set -gx FQ "say \"hi\" $HOME"})
+    syntax_ok = true
+    if system('command -v fish >/dev/null 2>&1')
+      _, _, st = Open3.capture3('fish', '-n', @init_core)
+      syntax_ok = st.success?
+    end
+    if alias_ok && env_ok && syntax_ok
+      puts "✓"; @passed += 1
+    else
+      puts "✗"
+      puts "  alias_ok=#{alias_ok} env_ok=#{env_ok} syntax_ok=#{syntax_ok}"
+      puts body.lines.grep(/sq|FQ/).join
       @failed += 1
     end
   end

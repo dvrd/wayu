@@ -29,6 +29,9 @@ class InitIntegrationTest
       test_reinit_preserves_data
       test_dry_run_init
       test_help_command
+      %w[zsh bash].each { |sh| test_generated_files_valid_syntax(sh); test_core_wiring(sh) }
+      test_stale_init_is_resynced
+      test_build_eval_dry_run_writes_nothing
     ensure
       teardown_test_env
     end
@@ -270,6 +273,138 @@ class InitIntegrationTest
       puts "  Help output incomplete"
       puts "  Output: #{output}"
       @failed += 1
+    end
+  end
+
+  TRICKY_TOML = <<~'TOML'
+    [shell]
+    type = "x"
+
+    [paths]
+    zz = "$HOME/pz"
+    aa = "~/pa"
+    mm = "$HOME/p m" # comment
+    gone = "/nonexistent/wayu/xyz"
+
+    [env]
+    GOPATH = "$HOME/go"
+    GOBIN = "$GOPATH/bin"
+    BREW = "$HOMEBREW_PREFIX/x"
+    LEDGER_FILE = "~/ledger.journal"
+    QUOTED = "he said \"hi\" `whoami` $(id) back\\slash"
+    UNI = "héllo ✓"
+    EMPTY = ""
+
+    [aliases]
+    gl = "git log --format='%h %s'"
+    q = "echo \"double\" and 'single' `tick` $HOME"
+    u = "echo ünï"
+
+    [tools]
+    nvm = { kind = "nvm" }
+    conda = { kind = "conda" }
+    sdk = { kind = "lazy", init_script = "~/.sdk/init.sh", hook_commands = ["sdk"] }
+    nosuchtoolxyz = { kind = "evalcache", args = "init x" }
+    nosuchlogin = { kind = "evalcache", args = "init x", login_only = true }
+
+    [prompt.contexts]
+    kotlin = { format = "[K $version](magenta)", detect = ["*.kt", "build.gradle.kts"] }
+  TOML
+
+  # Build a fresh HOME for `shell`, write a tricky wayu.toml and regenerate.
+  def generate_tricky(shell)
+    home = "#{@tmp_home}/tricky_#{shell}"
+    FileUtils.rm_rf(home)
+    %w[pz pa p\ m].each { |d| FileUtils.mkdir_p("#{home}/#{d}") }
+    FileUtils.mkdir_p("#{home}/.config")
+    env = { 'HOME' => home, 'SHELL' => "/bin/#{shell}" }
+    Open3.capture3(env, "#{@wayu_bin} init --shell #{shell}")
+    cfg = "#{home}/.config/wayu"
+    File.write("#{cfg}/wayu.toml", TRICKY_TOML)
+    Open3.capture3(env, "#{@wayu_bin} build eval")
+    [home, cfg, env]
+  end
+
+  # Every generated runtime file must parse with `<shell> -n`, and sourcing
+  # core must reproduce the tricky values exactly.
+  def test_generated_files_valid_syntax(shell)
+    print "Test: generated #{shell} files pass #{shell} -n with tricky values... "
+    home, cfg, env = generate_tricky(shell)
+    files = Dir.glob("#{cfg}/*.#{shell}")
+    bad = files.reject { |f| system(shell, '-n', f, out: File::NULL, err: File::NULL) }
+    probe = %q{printf '%s\n' "$GOBIN" "$LEDGER_FILE" "$QUOTED" "$UNI" "[$EMPTY]" "$BREW"; alias gl}
+    out, _, _ = Open3.capture3(env.merge('HOMEBREW_PREFIX' => '/hb'), shell, '-c', "source '#{cfg}/core.#{shell}' >/dev/null 2>&1; #{probe}")
+    lines = out.force_encoding('UTF-8').lines.map(&:chomp)
+    want = ["#{home}/go/bin", "#{home}/ledger.journal", 'he said "hi" `whoami` $(id) back\\slash',
+            nil, '[]', '/hb/x']
+    values_ok = lines[0] == want[0] && lines[1] == want[1] && lines[2] == want[2] &&
+                lines[4] == want[4] && lines[5] == want[5] && lines[6].to_s.include?("%h %s")
+    if files.size >= 4 && bad.empty? && values_ok
+      puts "✓"; @passed += 1
+    else
+      puts "✗"
+      puts "  files=#{files.size} syntax_errors=#{bad.map { |f| File.basename(f) }}"
+      puts "  got=#{lines.inspect}"
+      @failed += 1
+    end
+  end
+
+  # core sources plugins.<ext>; tools/extra are sourced exactly once across
+  # init + core + lazy; [paths] keep file order (not alphabetical).
+  def test_core_wiring(shell)
+    print "Test: #{shell} core sources plugins, tools/extra once, PATH in file order... "
+    home, cfg, _ = generate_tricky(shell)
+    core = File.read("#{cfg}/core.#{shell}")
+    all = %w[init core lazy].map { |b| File.exist?("#{cfg}/#{b}.#{shell}") ? File.read("#{cfg}/#{b}.#{shell}") : '' }.join("\n")
+    plugins_ok = core.include?("#{cfg}/plugins.#{shell}\" ] && source")
+    extra_count = all.scan(/source "[^"]*extra\.#{shell}"/).size
+    tools_count = all.scan(/source "[^"]*tools\.#{shell}"/).size
+    # init.<ext> legacy fallback also sources them, but after `return` on the
+    # fast path; count only the fast path + core + lazy.
+    init_fast = File.read("#{cfg}/init.#{shell}").split('# === Legacy fallback').first
+    fast_extra = init_fast.scan(/source "[^"]*(extra|tools)\.#{shell}"/).size
+    path_line = core.lines.find { |l| l.start_with?('export PATH=') }.to_s
+    order_ok = path_line.index("#{home}/pz").to_i < path_line.index("#{home}/pa").to_i &&
+               path_line.index("#{home}/pa").to_i < path_line.index("#{home}/p m").to_i &&
+               !path_line.include?('nonexistent')
+    zsh_only_leak = shell == 'bash' && (core.include?('compinit') || core.include?('add-zsh-hook') || core.include?('helpers.zsh') || core.include?('lazy.zsh'))
+    if plugins_ok && fast_extra == 0 && extra_count == 2 && tools_count == 2 && order_ok && !zsh_only_leak
+      puts "✓"; @passed += 1
+    else
+      puts "✗"
+      puts "  plugins_ok=#{plugins_ok} fast_extra=#{fast_extra} extra=#{extra_count} tools=#{tools_count} order_ok=#{order_ok} zsh_leak=#{zsh_only_leak}"
+      puts "  #{path_line}"
+      @failed += 1
+    end
+  end
+
+  # Existing users: a stale wayu-generated init.zsh is rewritten on regen.
+  def test_stale_init_is_resynced
+    print "Test: stale init.zsh is rewritten on regeneration... "
+    _, cfg, env = generate_tricky('zsh')
+    init = "#{cfg}/init.zsh"
+    File.write(init, "#!/usr/bin/env zsh\n# Wayu Shell Initialization - Main Orchestrator\nsource old\n")
+    Open3.capture3(env, "#{@wayu_bin} alias add zz 'echo hi'")
+    body = File.read(init)
+    if body.include?('source "$WAYU_DATA_DIR/core.zsh"') && !body.include?('source old')
+      puts "✓"; @passed += 1
+    else
+      puts "✗"; puts "  init.zsh not resynced"; @failed += 1
+    end
+  end
+
+  # `build eval --dry-run` must not write anything.
+  def test_build_eval_dry_run_writes_nothing
+    print "Test: build eval --dry-run writes nothing... "
+    home = "#{@tmp_home}/dry_eval"
+    FileUtils.mkdir_p("#{home}/.config/wayu")
+    env = { 'HOME' => home, 'SHELL' => '/bin/zsh' }
+    File.write("#{home}/.config/wayu/wayu.toml", "[aliases]\nx = \"y\"\n")
+    out, _, st = Open3.capture3(env, "#{@wayu_bin} --dry-run build eval")
+    if st.success? && !File.exist?("#{home}/.config/wayu/core.zsh")
+      puts "✓"; @passed += 1
+    else
+      puts "✗"; puts "  core.zsh written under dry-run: #{out}"; @failed += 1
     end
   end
 

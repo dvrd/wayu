@@ -93,10 +93,10 @@ INIT_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 # constants add', 'wayu template apply' and 'wayu build eval' all write
 # into core.zsh. When it exists we source it exclusively — the legacy
 # individual files below stay empty and would just be no-ops anyway.
+# core.zsh sources plugins.zsh and lazy.zsh (which sources tools.zsh and
+# extra.zsh exactly once), so nothing else is sourced here.
 if [ -f "$WAYU_DATA_DIR/core.zsh" ]; then
     source "$WAYU_DATA_DIR/core.zsh"
-    [ -f "$WAYU_CONFIG_DIR/extra.zsh" ] && source "$WAYU_CONFIG_DIR/extra.zsh"
-    [ -f "$WAYU_CONFIG_DIR/tools.zsh" ] && source "$WAYU_CONFIG_DIR/tools.zsh"
     return 0 2>/dev/null || true
 fi
 
@@ -249,11 +249,10 @@ INIT_TEMPLATE_BASH :: `#!/usr/bin/env bash
 : ${WAYU_DATA_DIR:=$HOME/.config/wayu}
 
 # === Fast path: compiled core from wayu.toml ===
-# See the zsh template comment for rationale.
+# See the zsh template comment for rationale (core.bash sources
+# plugins.bash and lazy.bash, which sources tools.bash/extra.bash once).
 if [ -f "$WAYU_DATA_DIR/core.bash" ]; then
     source "$WAYU_DATA_DIR/core.bash"
-    [ -f "$WAYU_CONFIG_DIR/extra.bash" ] && source "$WAYU_CONFIG_DIR/extra.bash"
-    [ -f "$WAYU_CONFIG_DIR/tools.bash" ] && source "$WAYU_CONFIG_DIR/tools.bash"
     return 0 2>/dev/null || true
 fi
 
@@ -299,7 +298,6 @@ fi
 # === 5. Plugins Loading ===
 # Load Wayu-managed plugins
 [ -f "$WAYU_DATA_DIR/plugins.bash" ] && source "$WAYU_DATA_DIR/plugins.bash"
-[ -f "$WAYU_DATA_DIR/plugins/config.zsh" ] && source "$WAYU_DATA_DIR/plugins/config.zsh"
 
 # === 6. Aliases ===
 # Load command aliases and shortcuts
