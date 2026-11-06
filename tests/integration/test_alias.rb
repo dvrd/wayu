@@ -37,6 +37,9 @@ class AliasIntegrationTest
       test_get_alias_from_wayu_toml
       test_add_alias_to_wayu_toml
       test_remove_alias_from_wayu_toml
+      test_update_alias_regenerates_core
+      test_alias_inner_single_quotes_round_trip
+      test_alias_value_keeps_trailing_flags
       test_help_command
     ensure
       teardown_test_env
@@ -47,6 +50,56 @@ class AliasIntegrationTest
   end
 
   private
+
+  def report(ok, detail)
+    if ok
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  #{detail}"
+      @failed += 1
+    end
+  end
+
+  # Regression: updating an existing alias returned early and never
+  # regenerated core.zsh, so the shell kept the old command.
+  def test_update_alias_regenerates_core
+    print "Test R1: Updating an alias regenerates core.zsh... "
+
+    run_wayu("alias add updme 'echo old_value'")
+    output, status = run_wayu("alias add updme 'echo new_value'")
+    core = "#{@config_dir}/core.zsh"
+    content = File.exist?(core) ? File.read(core) : ""
+
+    report(status.success? && content.include?("new_value") && !content.include?("old_value"),
+           "out=#{output}\ncore=#{content}")
+  end
+
+  # Regression: readers trimmed `"` then `'` independently, so the trailing
+  # `'` of `--format='%h'` was lost (and the loss persisted on rewrite).
+  def test_alias_inner_single_quotes_round_trip
+    print "Test R2: Inner single quotes survive read/rewrite... "
+
+    run_wayu(%q(alias add glf "git log --format='%h'"))
+    run_wayu("alias add other_after_glf ls")  # forces a rewrite of [aliases]
+    output, status = run_wayu("alias get glf")
+
+    report(status.success? && output.strip == "git log --format='%h'", "got: #{output}")
+  end
+
+  # Regression: global flags were stripped from anywhere in argv, so
+  # `alias add gpf git push -f` stored `git push`.
+  def test_alias_value_keeps_trailing_flags
+    print "Test R3: Value keeps trailing -f / -n... "
+
+    run_wayu("alias add gpf git push -f")
+    out1, _ = run_wayu("alias get gpf")
+    run_wayu("alias add gn -- -n")
+    out2, _ = run_wayu("alias get gn")
+
+    report(out1.strip == "git push -f" && out2.strip == "-n", "gpf=#{out1} gn=#{out2}")
+  end
 
   def test_add_simple_alias
     print "Test 1: Add simple alias... "

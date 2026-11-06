@@ -19,22 +19,47 @@ handle_alias_command :: proc(action: Action, args: []string) {
 }
 
 read_toml_alias_entries :: proc() -> []ConfigEntry {
-	alias_entries := read_wayu_toml_aliases()
-	defer {
-		for entry in alias_entries {
-			delete(entry.name)
-			delete(entry.command)
-		}
-		delete(alias_entries)
+	// Parse [aliases] directly (rather than via init_generator's reader) so
+	// values round-trip exactly: inline comments are stripped and only ONE
+	// matching quote pair is removed (`"git log --format='%h'"` keeps its `'`).
+	content_str, cached := get_cached_toml_content()
+	uncached_raw: []byte
+	if !cached {
+		config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
+		defer delete(config_path)
+		ok: bool
+		uncached_raw, ok = safe_read_file(config_path)
+		if !ok { return {} }
+		content_str = string(uncached_raw)
 	}
+	defer if len(uncached_raw) > 0 { delete(uncached_raw) }
 
 	entries := make([dynamic]ConfigEntry)
-	for entry in alias_entries {
+	it := make_line_iter(content_str)
+	in_section := false
+	for line in line_iter_next(&it) {
+		trimmed := strings.trim_space(line)
+		if toml_line_is_section(trimmed, "aliases") { in_section = true; continue }
+		if strings.has_prefix(trimmed, "[") { in_section = false; continue }
+		if !in_section { continue }
+
+		name, value, ok := toml_parse_kv_line(trimmed)
+		if !ok { continue }
+		replaced := false
+		for &e in entries {
+			if e.name == name {
+				delete(e.value)
+				e.value = value
+				replaced = true
+				break
+			}
+		}
+		if replaced { continue }
 		append(&entries, ConfigEntry{
-			type = .ALIAS,
-			name = strings.clone(entry.name),
-			value = strings.clone(entry.command),
-			line = "",  // Only populated on-demand by write paths
+			type  = .ALIAS,
+			name  = strings.clone(name),
+			value = value,
+			line  = "",  // Only populated on-demand by write paths
 		})
 	}
 
@@ -72,39 +97,31 @@ toml_alias_add :: proc(entry: ConfigEntry) -> (bool, string) {
 		})
 	}
 
+	// Upsert: update in place when the alias exists, append otherwise. Both
+	// paths share the write → regenerate → report tail below.
 	had_existing := false
-	for e in updated {
-		if e.name == entry.name {
-			had_existing = true
-			break
-		}
-	}
-
 	for &e in updated {
 		if e.name == entry.name {
 			delete(e.value)
 			e.value = strings.clone(entry.value)
-			delete(e.line)
-			e.line = ""
 			had_existing = true
-			if !write_wayu_toml_aliases(updated[:]) {
-				return false, strings.clone("I/O error: could not update wayu.toml")
-			}
-			print_success("Alias updated successfully in wayu.toml: %s", entry.name)
-			return true, ""
+			break
 		}
 	}
-
-	append(&updated, ConfigEntry{
-		type = .ALIAS,
-		name = strings.clone(entry.name),
-		value = strings.clone(entry.value),
-		line = "",
-	})
+	if !had_existing {
+		append(&updated, ConfigEntry{
+			type = .ALIAS,
+			name = strings.clone(entry.name),
+			value = strings.clone(entry.value),
+			line = "",
+		})
+	}
 
 	if !write_wayu_toml_aliases(updated[:]) {
 		return false, strings.clone("I/O error: could not update wayu.toml")
 	}
+	// Dry-run: the preview was printed by the writer; nothing changed on disk.
+	if wayu.dry_run { return true, "" }
 
 	regenerate_init_core_silently()
 
@@ -648,8 +665,10 @@ print_alias_source :: proc(source: AliasSource) {
 	table_border(&table, .Normal)
 
 	for name in names {
-		cmd, _ := strings.replace(source.command_template, "{name}", name, 1)
-		defer delete(cmd)
+		// strings.replace returns the input itself (allocated=false) when
+		// there is nothing to replace — only free what it allocated.
+		cmd, allocated := strings.replace(source.command_template, "{name}", name, 1)
+		defer if allocated do delete(cmd)
 		row := []string{name, cmd}
 		table_add_row(&table, row)
 	}

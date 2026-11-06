@@ -145,3 +145,37 @@ test_validate_identifier_long_name :: proc(t: ^testing.T) {
 	defer delete(result2.error_message)
 	testing.expect(t, !result2.valid, "256 character name should fail")
 }
+
+@(test)
+test_validate_identifier_rejects_non_ascii :: proc(t: ^testing.T) {
+	for name in ([]string{"café", "naïve_x", "ñ", "x y"}) {
+		result := wayu.validate_identifier(name, "Alias")
+		testing.expectf(t, !result.valid, "non-ASCII name %q must be rejected", name)
+		delete(result.error_message)
+	}
+	ok := wayu.validate_identifier("Ok_Name_9", "Alias")
+	testing.expect(t, ok.valid)
+}
+
+@(test)
+test_sanitize_shell_value_user_escapes_cannot_break_out :: proc(t: ^testing.T) {
+	// `\"` used to become `\\"` → literal backslash + string-closing quote.
+	r1 := wayu.sanitize_shell_value(`a\"; rm -rf ~; echo \"b`)
+	defer delete(r1)
+	testing.expect_value(t, r1, `a\"; rm -rf ~; echo \"b`)
+
+	// `\$(` used to become `\\$(` → command substitution.
+	r2 := wayu.sanitize_shell_value(`x \$(id)`)
+	defer delete(r2)
+	testing.expect_value(t, r2, `x \$(id)`)
+
+	// A trailing backslash would escape our closing quote.
+	r3 := wayu.sanitize_shell_value(`dir\`)
+	defer delete(r3)
+	testing.expect_value(t, r3, `dir\\`)
+
+	// UTF-8 passes through intact.
+	r4 := wayu.sanitize_shell_value("café")
+	defer delete(r4)
+	testing.expect_value(t, r4, "café")
+}

@@ -3,6 +3,7 @@
 package wayu
 import "core:strings"
 import "core:unicode"
+import "core:unicode/utf8"
 import "core:fmt"
 import "core:os"
 // Validation result with detailed error message and optional warning
@@ -60,13 +61,19 @@ validate_identifier :: proc(name: string, identifier_type: string) -> Validation
 		}
 	}
 
+	// ASCII only: names become TOML bare keys and shell identifiers, and both
+	// are restricted to [A-Za-z_][A-Za-z0-9_] (unicode.is_alpha would let
+	// `café` through, producing an invalid wayu.toml and shell syntax errors).
+	is_ascii_alpha :: proc(r: rune) -> bool { return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') }
+	is_ascii_digit :: proc(r: rune) -> bool { return r >= '0' && r <= '9' }
+
 	// Check first character (must be letter or underscore)
-	first_rune := rune(name[0])
-	if !unicode.is_alpha(first_rune) && first_rune != '_' {
+	first_rune, _ := utf8.decode_rune_in_string(name)
+	if !is_ascii_alpha(first_rune) && first_rune != '_' {
 		return ValidationResult {
 			valid = false,
 			error_message = fmt.aprintf(
-				"%s name must start with a letter or underscore, got '%c'",
+				"%s name must start with an ASCII letter or underscore, got '%c'",
 				identifier_type,
 				first_rune,
 			),
@@ -77,11 +84,11 @@ validate_identifier :: proc(name: string, identifier_type: string) -> Validation
 	// POSIX identifier rules; hyphens are invalid in env var names and
 	// problematic for shell parsing).
 	for r, i in name {
-		if !unicode.is_alpha(r) && !unicode.is_digit(r) && r != '_' {
+		if !is_ascii_alpha(r) && !is_ascii_digit(r) && r != '_' {
 			return ValidationResult {
 				valid = false,
 				error_message = fmt.aprintf(
-					"%s name contains invalid character '%c' at position %d. Only letters, digits, and underscores allowed.",
+					"%s name contains invalid character '%c' at position %d. Only ASCII letters, digits, and underscores allowed.",
 					identifier_type,
 					r,
 					i,
@@ -129,7 +136,8 @@ validate_identifier :: proc(name: string, identifier_type: string) -> Validation
 // - " → \" (prevents breaking out of the double-quoted string)
 // - ` → \` (prevents command substitution)
 // - $(...) → \$(...) (prevents command substitution via $(...))
-// - \ → leave alone (shell treats \\ inside "..." as literal \, and \$ suppresses expansion)
+// - \X → copied verbatim as a pair (keeps the user's escape; never re-escapes X)
+// - trailing \ → \\ (would otherwise escape the closing quote)
 // - $VAR → leave alone (allows variable expansion, e.g., $HOME, $HERMOD_TOKEN)
 // - ; & | < > ( ) { } newline → leave alone (literal inside "...", execute when alias is invoked)
 //
@@ -144,6 +152,21 @@ sanitize_shell_value :: proc(value: string) -> string {
 	for i < len(value) {
 		ch := value[i]
 		switch ch {
+		case '\\':
+			// A user escape is copied as a PAIR so the escaped char can't be
+			// re-processed: `\"` stays `\"` (literal quote) instead of becoming
+			// `\\"` (literal backslash + string-closing quote → breakout), and
+			// `\$(` stays `\$(` (literal) instead of `\\$(` (command
+			// substitution). A trailing lone `\` would escape our closing
+			// quote, so it is doubled.
+			if i + 1 < len(value) {
+				strings.write_byte(&builder, '\\')
+				strings.write_byte(&builder, value[i + 1])
+				i += 2
+			} else {
+				strings.write_string(&builder, "\\\\")
+				i += 1
+			}
 		case '"':
 			// Escape double quotes to prevent breakout
 			strings.write_string(&builder, "\\\"")
@@ -159,12 +182,12 @@ sanitize_shell_value :: proc(value: string) -> string {
 				i += 2
 			} else {
 				// Plain $ or $VAR: allow expansion
-				strings.write_rune(&builder, rune(ch))
+				strings.write_byte(&builder, ch)
 				i += 1
 			}
 		case:
 			// All other characters (including \, ;, &, |, etc.) are literal in double quotes
-			strings.write_rune(&builder, rune(ch))
+			strings.write_byte(&builder, ch)
 			i += 1
 		}
 	}

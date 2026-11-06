@@ -267,13 +267,53 @@ toml_get_config_path :: proc() -> string {
 	return fmt.aprintf("%s/%s", wayu.config, TOML_CONFIG_FILE)
 }
 
+// True when `trimmed` (an already-trimmed line) is the `[section]` header,
+// tolerating an inline comment and inner whitespace: `[env]  # vars` and
+// `[ env ]` both match "env". Array-of-tables (`[[x]]`) never matches.
+toml_line_is_section :: proc(trimmed: string, section: string) -> bool {
+	if !strings.has_prefix(trimmed, "[") || strings.has_prefix(trimmed, "[[") { return false }
+	no_comment, _ := toml_strip_inline_comment_strict(trimmed)
+	h := strings.trim_space(no_comment)
+	if len(h) < 2 || h[len(h)-1] != ']' { return false }
+	return strings.trim_space(h[1:len(h)-1]) == section
+}
+
+// Parse one `key = value` line from a TOML table body into (key, value).
+// The inline comment is stripped first, then exactly one MATCHING pair of
+// quotes: "basic" strings are unescaped, 'literal' strings are taken
+// verbatim, anything else (bare ints/bools) is returned trimmed. An empty
+// quoted value (`FOO = ""`) is valid and returned as ok with value "".
+// `value` is always heap-allocated (caller deletes); `key` aliases `line`.
+toml_parse_kv_line :: proc(line: string) -> (key: string, value: string, ok: bool) {
+	trimmed := strings.trim_space(line)
+	if len(trimmed) == 0 || trimmed[0] == '#' || trimmed[0] == '[' { return }
+	eq := strings.index_byte(trimmed, '=')
+	if eq < 1 { return }
+	key = strings.trim_space(trimmed[:eq])
+	if len(key) == 0 { return }
+
+	raw := strings.trim_space(trimmed[eq+1:])
+	if stripped, balanced := toml_strip_inline_comment_strict(raw); balanced {
+		raw = strings.trim_space(stripped)
+	}
+	n := len(raw)
+	switch {
+	case n >= 2 && raw[0] == '"' && raw[n-1] == '"':
+		value = unescape_toml_string(raw[1:n-1])
+	case n >= 2 && raw[0] == '\'' && raw[n-1] == '\'':
+		value = strings.clone(raw[1:n-1])
+	case n == 0:
+		return "", "", false
+	case:
+		value = strings.clone(raw)
+	}
+	return key, value, true
+}
+
 // Return `content` with the entire `[section]` table removed (header + body),
 // preserving every other line verbatim. Single source of truth for the
 // section-rewrite used by alias + constant management.
 strip_toml_section :: proc(content: string, section: string) -> string {
-	header := fmt.aprintf("[%s]", section)
-	defer delete(header)
-
 	builder := strings.builder_make(0, len(content))
 	defer strings.builder_destroy(&builder)
 
@@ -283,7 +323,7 @@ strip_toml_section :: proc(content: string, section: string) -> string {
 	for line in line_iter_next(&it) {
 		trimmed := strings.trim_space(line)
 
-		if trimmed == header {
+		if toml_line_is_section(trimmed, section) {
 			skip_section = true
 			continue
 		}
@@ -317,40 +357,26 @@ write_toml_kv_section :: proc(section, dry_label: string, entries: []ConfigEntry
 	if !ok { return false }
 	defer delete(content)
 
-	base_content := strip_toml_section(string(content), section)
-	defer delete(base_content)
+	// Sort alphabetically by name for stable output.
+	sorted := make([]ConfigEntry, len(entries))
+	defer delete(sorted)
+	copy(sorted, entries)
+	slice.sort_by(sorted, proc(a, b: ConfigEntry) -> bool { return a.name < b.name })
 
-	builder := strings.builder_make()
-	defer strings.builder_destroy(&builder)
-
-	if len(base_content) > 0 {
-		strings.write_string(&builder, base_content)
+	body := make([]string, len(sorted))
+	defer {
+		for line in body { delete(line) }
+		delete(body)
+	}
+	for entry, i in sorted {
+		escaped := escape_toml_string(entry.value)
+		body[i] = fmt.aprintf("%s = \"%s\"", entry.name, escaped)
+		delete(escaped)
 	}
 
-	if len(entries) > 0 {
-		if len(base_content) > 0 && !strings.has_suffix(base_content, "\n") {
-			strings.write_string(&builder, "\n")
-		}
-		if len(strings.trim_space(base_content)) > 0 {
-			strings.write_string(&builder, "\n")
-		}
-
-		// Sort alphabetically by name for stable output.
-		sorted := make([]ConfigEntry, len(entries))
-		defer delete(sorted)
-		copy(sorted, entries)
-		slice.sort_by(sorted, proc(a, b: ConfigEntry) -> bool { return a.name < b.name })
-
-		fmt.sbprintf(&builder, "[%s]\n", section)
-		for entry in sorted {
-			escaped := escape_toml_string(entry.value)
-			fmt.sbprintfln(&builder, "%s = \"%s\"", entry.name, escaped)
-			delete(escaped)
-		}
-		strings.write_string(&builder, "\n")
-	}
-
-	new_content := strings.clone(strings.to_string(builder))
+	// Splice in place: keeps the table's position, its header comment and any
+	// comment lines inside it (see replace_toml_table_section).
+	new_content := replace_toml_table_section(string(content), section, body)
 	defer delete(new_content)
 
 	if wayu.dry_run {
@@ -364,7 +390,9 @@ write_toml_kv_section :: proc(section, dry_label: string, entries: []ConfigEntry
 	}
 
 	if !create_backup_cli(config_path) { return false }
-	return safe_write_file(config_path, transmute([]byte)new_content)
+	wrote := safe_write_file(config_path, transmute([]byte)new_content)
+	if wrote { clear_toml_content_cache() }
+	return wrote
 }
 
 // Remove the entry named `name` from a TOML-backed config, persist, and
@@ -405,6 +433,9 @@ toml_entry_remove :: proc(
 	if !write_fn(updated[:]) {
 		return false, strings.clone("I/O error: could not update wayu.toml")
 	}
+	// Dry-run: write_fn already printed the preview; nothing was written so
+	// there is nothing to regenerate and no success to report.
+	if wayu.dry_run { return true, "" }
 
 	regenerate_init_core_silently()
 
@@ -773,7 +804,7 @@ toml_basic_string_is_sane :: proc(value: string) -> bool {
 		if c == '\\' {
 			if i + 1 >= len(value) - 1 { return false }
 			switch value[i+1] {
-			case 'b', 't', 'n', 'f', 'r', '"', '\\':
+			case 'b', 't', 'n', 'f', 'r', '"', '\\', 'u', 'U':
 				i += 1
 			case:
 				return false
@@ -1484,10 +1515,13 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
 // `body_lines` is rendered verbatim under a freshly emitted `[<section>]`
 // header. Caller is responsible for ordering and formatting; this proc
 // just splices.
+//
+// The existing header line is kept verbatim (so `[env]  # note` survives) and
+// full-line comments inside the old table are re-emitted right after the
+// header, ahead of the new body. A header carrying an inline comment is
+// recognised via toml_line_is_section, so it is never duplicated. When the
+// body is empty and the old table held no comments the table is dropped.
 replace_toml_table_section :: proc(content: string, section: string, body_lines: []string) -> string {
-	header := fmt.aprintf("[%s]", section)
-	defer delete(header)
-
 	lines := strings.split(content, "\n")
 	defer delete(lines)
 
@@ -1501,29 +1535,44 @@ replace_toml_table_section :: proc(content: string, section: string, body_lines:
 		}
 	}
 
+	// Pending state for the target table: emitted once the table closes.
+	target_header := ""
+	target_comments := make([dynamic]string)
+	defer delete(target_comments)
+	flush_target :: proc(b: ^strings.Builder, header: string, comments: []string, body_lines: []string) {
+		if len(body_lines) == 0 && len(comments) == 0 { return }
+		fmt.sbprintln(b, header)
+		for c in comments { fmt.sbprintln(b, c) }
+		for line in body_lines { fmt.sbprintln(b, line) }
+	}
+
 	in_target := false
 	replaced := false
 	for i := 0; i < len(lines); i += 1 {
 		trimmed := strings.trim_space(lines[i])
 
-		if trimmed == header {
+		if !replaced && toml_line_is_section(trimmed, section) {
 			in_target = true
-			if len(body_lines) > 0 {
-				emit_new_section(&out, section, body_lines)
-				replaced = true
-			} else {
-				replaced = true // we're "replacing" with nothing
-			}
+			replaced = true
+			target_header = lines[i]
 			continue
 		}
 
 		// Closing the target on the next section header (any `[...]`).
 		if in_target && strings.has_prefix(trimmed, "[") {
 			in_target = false
+			flush_target(&out, target_header, target_comments[:], body_lines)
+			if len(body_lines) > 0 || len(target_comments) > 0 { fmt.sbprintln(&out, "") }
 		}
 
-		if in_target { continue }
+		if in_target {
+			if strings.has_prefix(trimmed, "#") { append(&target_comments, lines[i]) }
+			continue
+		}
 		fmt.sbprintln(&out, lines[i])
+	}
+	if in_target {
+		flush_target(&out, target_header, target_comments[:], body_lines)
 	}
 
 	result := strings.to_string(out)

@@ -339,3 +339,96 @@ test_replace_toml_table_section_preserves_head :: proc(t: ^testing.T) {
  testing.expect(t, strings.contains(out, "new_b = \"/b\""), "new body entry b must be present")
  testing.expect(t, !strings.contains(out, "old = \"/old\""), "old body entry must be replaced")
 }
+
+// ---------------------------------------------------------------------------
+// Value / header parsing regressions (quote stripping, comments, UTF-8)
+// ---------------------------------------------------------------------------
+
+@(test)
+test_toml_parse_kv_line_keeps_inner_single_quote :: proc(t: ^testing.T) {
+	// Old reader trimmed `"` then `'` independently → lost the trailing `'`.
+	key, val, ok := wayu.toml_parse_kv_line(`glf = "git log --format='%h'"`)
+	defer delete(val)
+	testing.expect(t, ok)
+	testing.expect_value(t, key, "glf")
+	testing.expect_value(t, val, "git log --format='%h'")
+}
+
+@(test)
+test_toml_parse_kv_line_strips_inline_comment :: proc(t: ^testing.T) {
+	_, val, ok := wayu.toml_parse_kv_line(`EDITOR = "nvim" # my editor`)
+	defer delete(val)
+	testing.expect(t, ok)
+	testing.expect_value(t, val, "nvim")
+
+	// A `#` inside the string is data, not a comment.
+	_, val2, ok2 := wayu.toml_parse_kv_line(`X = "a # b"`)
+	defer delete(val2)
+	testing.expect(t, ok2)
+	testing.expect_value(t, val2, "a # b")
+}
+
+@(test)
+test_toml_parse_kv_line_literal_and_empty :: proc(t: ^testing.T) {
+	// 'literal' strings are verbatim (no escape processing).
+	_, lit, ok := wayu.toml_parse_kv_line(`P = 'C:\path\n'`)
+	defer delete(lit)
+	testing.expect(t, ok)
+	testing.expect_value(t, lit, `C:\path\n`)
+
+	// Empty quoted value is a real value, not "skip this line".
+	_, empty, ok2 := wayu.toml_parse_kv_line(`FOO = ""`)
+	defer delete(empty)
+	testing.expect(t, ok2, "FOO = \"\" must parse (was dropped on next rewrite)")
+	testing.expect_value(t, empty, "")
+}
+
+@(test)
+test_unescape_toml_string_utf8 :: proc(t: ^testing.T) {
+	out := wayu.unescape_toml_string("café ☕")
+	defer delete(out)
+	testing.expect_value(t, out, "café ☕") // was mangled to cafÃ©
+
+	out2 := wayu.unescape_toml_string(`caf\u00e9 \U0001F600 \"q\"`)
+	defer delete(out2)
+	testing.expect_value(t, out2, "café 😀 \"q\"")
+
+	// Malformed \u stays literal.
+	out3 := wayu.unescape_toml_string(`\u12`)
+	defer delete(out3)
+	testing.expect_value(t, out3, `\u12`)
+}
+
+@(test)
+test_toml_line_is_section_with_comment :: proc(t: ^testing.T) {
+	testing.expect(t, wayu.toml_line_is_section("[env]", "env"))
+	testing.expect(t, wayu.toml_line_is_section("[env]  # vars", "env"))
+	testing.expect(t, wayu.toml_line_is_section("[ env ]", "env"))
+	testing.expect(t, !wayu.toml_line_is_section("[[env]]", "env"))
+	testing.expect(t, !wayu.toml_line_is_section("[environment]", "env"))
+}
+
+@(test)
+test_replace_toml_table_section_header_comment_no_duplicate :: proc(t: ^testing.T) {
+	content := "[shell]\ntype = \"zsh\"\n\n[env]  # my vars\n# keep me\nA = \"1\"\n\n[paths]\nx = \"/x\"\n"
+	body := []string{`A = "1"`, `B = "2"`}
+	out := wayu.replace_toml_table_section(content, "env", body)
+	defer delete(out)
+
+	testing.expect_value(t, strings.count(out, "[env]"), 1)
+	testing.expect(t, strings.contains(out, "[env]  # my vars"), "header comment must survive")
+	testing.expect(t, strings.contains(out, "# keep me"), "comment inside the table must survive")
+	testing.expect(t, strings.contains(out, `B = "2"`))
+	testing.expect(t, strings.contains(out, "[paths]\nx = \"/x\""), "following table untouched")
+	// Result must still be valid for wayu's own sanity checker.
+	testing.expect(t, wayu.toml_content_is_sane(out), "rewritten TOML must be sane")
+}
+
+@(test)
+test_strip_toml_section_header_with_comment :: proc(t: ^testing.T) {
+	content := "[aliases]  # c\nll = \"ls\"\n[env]\nA = \"1\"\n"
+	out := wayu.strip_toml_section(content, "aliases")
+	defer delete(out)
+	testing.expect(t, !strings.contains(out, "ll ="), "commented header must be recognised")
+	testing.expect(t, strings.contains(out, "[env]"))
+}

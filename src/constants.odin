@@ -39,24 +39,16 @@ read_wayu_toml_constants :: proc() -> []ConfigEntry {
 	in_env := false
 	for line in line_iter_next(&it) {
 		trimmed := strings.trim_space(line)
-		if trimmed == "[env]" { in_env = true; continue }
+		if toml_line_is_section(trimmed, "env") { in_env = true; continue }
 		if strings.has_prefix(trimmed, "[") { in_env = false; continue }
 		if !in_env { continue }
-		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
 
-		eq_idx := strings.index_byte(trimmed, '=')
-		if eq_idx < 1 { continue }
-
-		name := strings.trim_space(trimmed[:eq_idx])
-		value := strings.trim_space(trimmed[eq_idx+1:])
-		value = strings.trim_prefix(value, `"`)
-		value = strings.trim_suffix(value, `"`)
-		value = strings.trim_prefix(value, "'")
-		value = strings.trim_suffix(value, "'")
-		if len(name) == 0 || len(value) == 0 { continue }
-		unescaped := unescape_toml_string(value)
-		defer delete(unescaped) // upsert clones into the entry; this temporary is ours
-		upsert_toml_constant(&entries, name, unescaped)
+		// Empty values (`FOO = ""`) are kept so a later rewrite of [env]
+		// doesn't silently drop them.
+		name, value, ok := toml_parse_kv_line(trimmed)
+		if !ok { continue }
+		defer delete(value) // upsert clones into the entry; this temporary is ours
+		upsert_toml_constant(&entries, name, value)
 	}
 	return entries[:]
 }
@@ -103,27 +95,63 @@ unescape_toml_string :: proc(value: string) -> string {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 
+	// Work byte-wise and copy bytes verbatim: multi-byte UTF-8 sequences must
+	// pass through untouched (write_rune(rune(b)) would re-encode each byte as
+	// its own code point, turning `é` into `Ã©`).
 	i := 0
 	for i < len(value) {
 		if value[i] == '\\' && i+1 < len(value) {
 			switch value[i+1] {
-			case '\\': strings.write_rune(&builder, '\\')
-			case '"': strings.write_rune(&builder, '"')
-			case 'n': strings.write_rune(&builder, '\n')
-			case 'r': strings.write_rune(&builder, '\r')
-			case 't': strings.write_rune(&builder, '\t')
+			case '\\': strings.write_byte(&builder, '\\')
+			case '"': strings.write_byte(&builder, '"')
+			case 'n': strings.write_byte(&builder, '\n')
+			case 'r': strings.write_byte(&builder, '\r')
+			case 't': strings.write_byte(&builder, '\t')
+			case 'b': strings.write_byte(&builder, '\b')
+			case 'f': strings.write_byte(&builder, '\f')
+			case 'u', 'U':
+				// \uXXXX / \UXXXXXXXX → UTF-8. Malformed sequences are kept literally.
+				width := 4 if value[i+1] == 'u' else 8
+				if cp, ok := parse_hex_codepoint(value, i+2, width); ok {
+					strings.write_rune(&builder, cp)
+					i += 2 + width
+					continue
+				}
+				strings.write_byte(&builder, '\\')
+				strings.write_byte(&builder, value[i+1])
 			case:
-				strings.write_rune(&builder, '\\')
-				strings.write_rune(&builder, rune(value[i+1]))
+				strings.write_byte(&builder, '\\')
+				strings.write_byte(&builder, value[i+1])
 			}
 			i += 2
 		} else {
-			strings.write_rune(&builder, rune(value[i]))
+			strings.write_byte(&builder, value[i])
 			i += 1
 		}
 	}
 
 	return strings.clone(strings.to_string(builder))
+}
+
+// Parse `width` hex digits of value starting at `start` into a valid Unicode
+// scalar value (surrogates and out-of-range values are rejected).
+@(private = "file")
+parse_hex_codepoint :: proc(value: string, start, width: int) -> (rune, bool) {
+	if start + width > len(value) { return 0, false }
+	cp: u32 = 0
+	for j in start..<start+width {
+		c := value[j]
+		d: u32
+		switch c {
+		case '0'..='9': d = u32(c - '0')
+		case 'a'..='f': d = u32(c - 'a' + 10)
+		case 'A'..='F': d = u32(c - 'A' + 10)
+		case: return 0, false
+		}
+		cp = cp * 16 + d
+	}
+	if cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) { return 0, false }
+	return rune(cp), true
 }
 
 // Thin wrapper over the generic TOML section writer (toml.odin). Constants
@@ -173,6 +201,8 @@ toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
 	if !write_wayu_toml_constants(updated[:]) {
 		return false, strings.clone("I/O error: could not update wayu.toml")
 	}
+	// Dry-run: the preview was printed by the writer; nothing changed on disk.
+	if wayu.dry_run { return true, "" }
 
 	regenerate_init_core_silently()
 
