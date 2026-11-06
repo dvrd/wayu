@@ -9,10 +9,8 @@
 
 package wayu
 
-import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:strconv"
 
 EntrySource :: enum {
 	WAYU_ACTIVE,    // in wayu.toml AND in current env
@@ -21,10 +19,14 @@ EntrySource :: enum {
 	SHADOWED,       // in both but values differ
 }
 
-// Cached snapshot (per-invocation)
+// Cached snapshot (per-invocation). Each cache has its own init flag: a
+// single shared flag made snapshot_env_var skip populating env_vars whenever
+// PATH or aliases had been snapshotted first (constants then showed inactive).
 @private
 ENV_SNAPSHOT_CACHE: struct {
-	initialized: bool,
+	path_initialized:    bool,
+	env_initialized:     bool,
+	aliases_initialized: bool,
 	path_entries: [dynamic]string,
 	env_vars: map[string]string,
 	aliases: map[string]string,
@@ -33,7 +35,7 @@ ENV_SNAPSHOT_CACHE: struct {
 // snapshot_path_entries splits $PATH on `:` and returns a slice
 // Caches result on first call. All returned strings are cloned so caller owns them.
 snapshot_path_entries :: proc() -> [dynamic]string {
-	if ENV_SNAPSHOT_CACHE.initialized && len(ENV_SNAPSHOT_CACHE.path_entries) > 0 {
+	if ENV_SNAPSHOT_CACHE.path_initialized {
 		return ENV_SNAPSHOT_CACHE.path_entries
 	}
 
@@ -46,30 +48,29 @@ snapshot_path_entries :: proc() -> [dynamic]string {
 		append(&ENV_SNAPSHOT_CACHE.path_entries, strings.clone(entry))
 	}
 
-	ENV_SNAPSHOT_CACHE.initialized = true
+	ENV_SNAPSHOT_CACHE.path_initialized = true
 	return ENV_SNAPSHOT_CACHE.path_entries
 }
 
 // snapshot_env_var returns the value of an environment variable, or nil if not set
 // Caches all env vars on first call.
 snapshot_env_var :: proc(name: string) -> Maybe(string) {
-	if !ENV_SNAPSHOT_CACHE.initialized {
-		// Populate cache from process environment via os.environ proc
+	if !ENV_SNAPSHOT_CACHE.env_initialized {
 		env_list, err := os.environ(context.allocator)
 		if err == nil {
-			defer delete(env_list)
+			defer {
+				for pair in env_list { delete(pair) }
+				delete(env_list)
+			}
 			for pair in env_list {
-				parts := strings.split(pair, "=", context.allocator)
-				defer delete(parts)
-				if len(parts) >= 2 {
-					key := parts[0]
-					value := strings.join(parts[1:], "=", context.allocator)
-					defer delete(value)
-					ENV_SNAPSHOT_CACHE.env_vars[key] = strings.clone(value)
-				}
+				eq := strings.index_byte(pair, '=')
+				if eq <= 0 { continue }
+				key := pair[:eq]
+				if key in ENV_SNAPSHOT_CACHE.env_vars { continue }
+				ENV_SNAPSHOT_CACHE.env_vars[strings.clone(key)] = strings.clone(pair[eq+1:])
 			}
 		}
-		ENV_SNAPSHOT_CACHE.initialized = true
+		ENV_SNAPSHOT_CACHE.env_initialized = true
 	}
 
 	if val, ok := ENV_SNAPSHOT_CACHE.env_vars[name]; ok {
@@ -78,73 +79,105 @@ snapshot_env_var :: proc(name: string) -> Maybe(string) {
 	return nil
 }
 
-// snapshot_aliases spawns $SHELL -i -c alias and parses output
+// snapshot_aliases spawns `$SHELL -i -c alias` and parses its output.
 // Caches result on first call (expensive, ~100-500ms for interactive shell)
 // Falls back gracefully if shell spawn fails.
+//
+// Output is read through a pipe (capture_command) instead of a fixed
+// /tmp file, which raced between concurrent invocations and could be
+// redirected through a planted symlink.
 snapshot_aliases :: proc() -> map[string]string {
-	if ENV_SNAPSHOT_CACHE.initialized && len(ENV_SNAPSHOT_CACHE.aliases) > 0 {
+	if ENV_SNAPSHOT_CACHE.aliases_initialized {
 		return ENV_SNAPSHOT_CACHE.aliases
 	}
+	ENV_SNAPSHOT_CACHE.aliases_initialized = true
 
-
-	// Try to spawn shell and capture alias list
 	shell := os.get_env("SHELL", context.allocator)
 	defer delete(shell)
-	if shell == "" {
-		shell = "zsh"  // Default fallback
-	}
+	shell_bin := shell if len(shell) > 0 else "zsh"
 
-	// Use a temporary file to capture alias output (more reliable than pipe)
-	temp_file := "/tmp/wayu_aliases.tmp"
-	cmd := fmt.aprintf("%s -i -c 'alias > %s' 2>/dev/null || true", shell, temp_file, allocator = context.allocator)
-	defer delete(cmd)
+	output := capture_command([]string{shell_bin, "-i", "-c", "alias"})
+	defer if len(output) > 0 { delete(output) }
 
-	// Run in background to avoid blocking
-	ret := run_shell_command(cmd)
-
-	// Parse the temp file if it exists
-	if os.exists(temp_file) {
-		alias_data, err := os.read_entire_file(temp_file, context.allocator)
-		if err == nil {
-			defer delete(alias_data)
-			alias_text := string(alias_data)
-			lines := strings.split(alias_text, "\n", context.allocator)
-			defer delete(lines)
-
-
-			for line in lines {
-				if line == "" {
-					continue
-				}
-				// Parse lines like: foo='bar' or foo=bar (no "alias" prefix)
-				eq_idx := strings.index(line, "=")
-				if eq_idx == -1 || eq_idx == 0 {
-					continue
-				}
-
-				name := line[:eq_idx]
-				value := line[eq_idx+1:]
-
-				// Strip surrounding quotes if present and handle escaped quotes
-				if strings.has_prefix(value, "'") && strings.has_suffix(value, "'") {
-					value = value[1:len(value)-1]
-					// Unescape single quotes that were escaped in the shell output
-					unescaped, _ := strings.replace_all(value, "\\'", "'", context.allocator)
-					value = unescaped
-				} else if strings.has_prefix(value, "\"") && strings.has_suffix(value, "\"") {
-					value = value[1:len(value)-1]
-				}
-
-				// IMPORTANT: Clone both name and value, as name is a slice of line which is freed
-				ENV_SNAPSHOT_CACHE.aliases[strings.clone(name)] = strings.clone(value)
-			}
-		}
-		// Clean up temp file
-		os.remove(temp_file)
-	}
-
-	ENV_SNAPSHOT_CACHE.initialized = true
+	parse_alias_listing(output, &ENV_SNAPSHOT_CACHE.aliases)
 	return ENV_SNAPSHOT_CACHE.aliases
+}
+
+// Parse the output of the `alias` builtin into name -> command.
+// Handles both formats:
+//   zsh:  ll='ls -la'          (or ll=ls when no quoting is needed)
+//   bash: alias ll='ls -la'
+// Values are shell words; quoting ('...', "...", \x and the '\'' idiom) is
+// removed. Inserted keys and values are heap-allocated.
+parse_alias_listing :: proc(text: string, out: ^map[string]string) {
+	it := text
+	for line in strings.split_lines_iterator(&it) {
+		l := strings.trim_right(line, "\r")
+		l = strings.trim_prefix(l, "alias ")
+		eq := strings.index_byte(l, '=')
+		if eq <= 0 { continue }
+		name := l[:eq]
+		// zsh quotes names containing special chars: 'a-b'=...
+		if len(name) >= 2 && name[0] == '\'' && name[len(name)-1] == '\'' {
+			name = name[1:len(name)-1]
+		}
+		if len(name) == 0 { continue }
+		value := shell_unquote_word(l[eq+1:])
+		if old, exists := out[name]; exists {
+			delete(old)
+			out[name] = value
+		} else {
+			out[strings.clone(name)] = value
+		}
+	}
+}
+
+// Remove shell quoting from a single word as printed by `alias`.
+// Returns a heap-allocated string.
+shell_unquote_word :: proc(s: string) -> string {
+	sb := strings.builder_make()
+	i := 0
+	for i < len(s) {
+		c := s[i]
+		switch c {
+		case '\'':
+			end := strings.index_byte(s[i+1:], '\'')
+			if end < 0 {
+				strings.write_string(&sb, s[i+1:])
+				i = len(s)
+			} else {
+				strings.write_string(&sb, s[i+1:i+1+end])
+				i += end + 2
+			}
+		case '"':
+			i += 1
+			for i < len(s) && s[i] != '"' {
+				if s[i] == '\\' && i + 1 < len(s) {
+					i += 1
+				}
+				strings.write_byte(&sb, s[i])
+				i += 1
+			}
+			i += 1
+		case '\\':
+			if i + 1 < len(s) {
+				strings.write_byte(&sb, s[i+1])
+			}
+			i += 2
+		case '$':
+			// bash may print $'...' ANSI-C strings; keep the inner text.
+			if i + 1 < len(s) && s[i+1] == '\'' {
+				i += 1
+				continue
+			}
+			strings.write_byte(&sb, c)
+			i += 1
+		case:
+			strings.write_byte(&sb, c)
+			i += 1
+		}
+	}
+	return strings.to_string(sb)
 }
 
 // classify_entry determines the source of an entry
@@ -179,21 +212,14 @@ cleanup_env_snapshot :: proc() {
 	}
 	delete(ENV_SNAPSHOT_CACHE.path_entries)
 	for k, v in ENV_SNAPSHOT_CACHE.env_vars {
+		delete(k)
 		delete(v)
 	}
 	delete(ENV_SNAPSHOT_CACHE.env_vars)
 	for k, v in ENV_SNAPSHOT_CACHE.aliases {
+		delete(k)
 		delete(v)
 	}
 	delete(ENV_SNAPSHOT_CACHE.aliases)
-}
-
-// run_shell_command executes a shell command via sh -c
-// Returns true if command exits with 0, false otherwise.
-// Minimally intrusive — stdout/stderr to /dev/null.
-@private
-run_shell_command :: proc(cmd: string) -> bool {
-	// Use /bin/sh for portability
-	args := []string{"sh", "-c", cmd}
-	return run_command(args)
+	ENV_SNAPSHOT_CACHE = {}
 }
