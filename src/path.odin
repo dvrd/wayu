@@ -44,18 +44,22 @@ handle_path_command :: proc(action: Action, args: []string) {
 			delete(result.error_message)
 			os.exit(EXIT_DATAERR)
 		}
-		expanded := expand_env_vars(raw_path)
+		expanded := expand_env_vars(raw_path, require_resolved = true)
 		defer delete(expanded)
+		if len(expanded) == 0 {
+			print_error("Could not resolve path to an absolute path: %s", raw_path)
+			os.exit(EXIT_DATAERR)
+		}
 		if !os.exists(expanded) {
 			print_error("Path does not exist: %s", raw_path)
 			os.exit(EXIT_NOINPUT)
 		}
-		hook_pre_path_add(raw_path)
+		hook_pre_path_add(expanded)
 		if toml_path_add(raw_path, name_hint) {
 			regenerate_init_core_silently()
-			print_success("✅ Added to wayu.toml: %s", raw_path)
+			print_success("✅ Added to wayu.toml: %s", expanded)
 			fmt.printfln("   Reload your shell (or 'source ~/.config/wayu/init.%s') to apply.", wayu.shell_ext)
-			hook_post_path_add(raw_path)
+			hook_post_path_add(expanded)
 		} else {
 			os.exit(EXIT_IOERR)
 		}
@@ -352,12 +356,26 @@ is_env_var_char :: proc(c: byte) -> bool {
 // Expand environment variables in path strings.
 // Handles $VAR and ${VAR} syntax for any variable present in the environment.
 // Unresolved tokens (variable not set or empty) are left as-is.
+// With require_resolved, return an empty string on unresolved variables or failure.
 // The caller must delete the returned string.
-expand_env_vars :: proc(path: string) -> string {
+expand_env_vars :: proc(path: string, require_resolved: bool = false) -> string {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 
 	i := 0
+	if path == "~" || strings.has_prefix(path, "~/") {
+		home := os.get_env("HOME", context.allocator)
+		defer delete(home)
+		if len(home) == 0 {
+			if require_resolved { return "" }
+		} else {
+			strings.write_string(&builder, home)
+			i = 1
+		}
+	} else if require_resolved && strings.has_prefix(path, "~") {
+		// Named-user home expansion is unsupported; never anchor it to cwd.
+		return ""
+	}
 	for i < len(path) {
 		if path[i] != '$' {
 			strings.write_byte(&builder, path[i])
@@ -406,6 +424,7 @@ expand_env_vars :: proc(path: string) -> string {
 		if len(value) > 0 {
 			strings.write_string(&builder, value)
 		} else {
+			if require_resolved { return "" }
 			// Variable not set or empty — preserve original token
 			strings.write_string(&builder, path[token_start : token_start + token_len])
 		}
@@ -413,14 +432,22 @@ expand_env_vars :: proc(path: string) -> string {
 
 	result := strings.clone(strings.to_string(builder))
 
-	// Resolve relative paths (., .., ./, ../) and any remaining ~ to absolute.
-	abs_path, abs_err := filepath.abs(result, context.allocator)
-	if abs_err == nil {
-		delete(result)
-		result = abs_path
+	// Make the path absolute without resolving symlinks or requiring it to
+	// exist (TUI and templates may stage paths before creating directories).
+	defer delete(result)
+	if filepath.is_abs(result) {
+		cleaned, err := filepath.clean(result)
+		if err == nil { return cleaned }
+	} else {
+		cwd, cwd_err := os.getwd(context.allocator)
+		defer delete(cwd)
+		if cwd_err == nil {
+			joined, err := filepath.join({cwd, result})
+			if err == nil { return joined }
+		}
 	}
-
-	return result
+	if require_resolved { return "" }
+	return strings.clone(result)
 }
 
 // ============================================================================
@@ -839,7 +866,16 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 // empty we derive a key from the basename (`/usr/local/bin` → `local_bin`).
 // Existing path values are preserved; the [paths] table is rewritten
 // alphabetically by key.
-toml_path_add :: proc(path: string, name_hint: string = "") -> bool {
+toml_path_add :: proc(raw_path: string, name_hint: string = "") -> bool {
+	// Freeze the intended path at every write boundary (CLI, TUI, templates,
+	// migration), before duplicate detection or key generation.
+	path := expand_env_vars(raw_path, require_resolved = true)
+	defer delete(path)
+	if len(path) == 0 {
+		print_error("Could not resolve path to an absolute path: %s", raw_path)
+		return false
+	}
+
 	config_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(config_file)
 
@@ -929,6 +965,22 @@ toml_path_remove :: proc(target: string) -> bool {
 	if match_idx < 0 {
 		for e, i in existing {
 			if e.path == target { match_idx = i; break }
+		}
+	}
+	// Resolve the target the same way toml_path_add does (~, $VAR, relative →
+	// absolute) so `wayu path rm ./bin` matches what `wayu path add ./bin` stored.
+	// Stored values are expanded too, covering legacy unexpanded entries.
+	if match_idx < 0 {
+		resolved := expand_env_vars(target, require_resolved = true)
+		defer delete(resolved)
+		if len(resolved) > 0 {
+			for e, i in existing {
+				if e.path == resolved { match_idx = i; break }
+				stored := expand_env_vars(e.path, require_resolved = true)
+				same := stored == resolved
+				delete(stored)
+				if same { match_idx = i; break }
+			}
 		}
 	}
 

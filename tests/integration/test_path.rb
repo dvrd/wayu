@@ -28,6 +28,8 @@ class PathIntegrationTest
       test_duplicate_path_handling
       test_path_order_preservation
       test_relative_path_resolution
+      test_relative_path_removal
+      test_expanded_path_storage
       test_path_with_spaces
       test_symlink_handling
       test_nonexistent_path_handling
@@ -176,17 +178,107 @@ class PathIntegrationTest
   def test_relative_path_resolution
     print "Test 7: Relative path resolution... "
 
-    # Try to add a relative path
-    output, status = run_wayu("path add .")
+    project_root = File.expand_path('../..', __dir__)
+    cases = {
+      '.' => project_root,
+      './bin' => "#{project_root}/bin",
+      'bin/wayu' => "#{project_root}/bin/wayu",
+      '../wayu/tests' => "#{project_root}/tests",
+      'relative_named=tests/integration' => "#{project_root}/tests/integration"
+    }
 
-    # Should resolve to absolute path or show error
-    if status.success? || output.include?("absolute") || output.include?("does not exist")
+    failures = cases.map do |argument, expected|
+      output, status = run_wayu("path add #{argument}")
+      content = File.read(@toml_file)
+      stored = content.include?("= \"#{expected}\"")
+      named = !argument.start_with?('relative_named=') ||
+              content.include?("relative_named = \"#{expected}\"")
+      "#{argument}: #{output}" unless status.success? && stored && named
+    end
+
+    failures.compact!
+
+    if failures.empty?
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Relative path handling unclear"
-      puts "  Output: #{output}"
+      puts "  Relative paths were not stored as absolute paths:"
+      failures.each { |failure| puts "  #{failure}" }
+      @failed += 1
+    end
+  end
+
+  def test_relative_path_removal
+    print "Test: Remove relative paths like add resolves them... "
+
+    project_root = File.expand_path('../..', __dir__)
+    cases = {
+      './bin' => "#{project_root}/bin",
+      'bin/wayu' => "#{project_root}/bin/wayu",
+      '../wayu/tests' => "#{project_root}/tests"
+    }
+
+    failures = cases.map do |argument, expected|
+      run_wayu("path add #{argument}")
+      output, status = run_wayu("path rm #{argument}")
+      still_there = File.read(@toml_file).include?("= \"#{expected}\"")
+      "#{argument}: #{output}" unless status.success? && !still_there
+    end
+
+    failures.compact!
+
+    if failures.empty?
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  Relative paths were not removed:"
+      failures.each { |failure| puts "  #{failure}" }
+      @failed += 1
+    end
+  end
+
+  def test_expanded_path_storage
+    print "Test: Store expanded paths and deduplicate equivalent inputs... "
+    FileUtils.mkdir_p("#{@tmp_home}/bin")
+    FileUtils.mkdir_p("#{@tmp_home}/tools")
+    cases = {
+      "'$HOME/bin'" => "#{@tmp_home}/bin",
+      "'${HOME}/tools'" => "#{@tmp_home}/tools",
+      "'~/bin'" => "#{@tmp_home}/bin",
+      "'home_named=~'" => @tmp_home
+    }
+    failures = cases.map do |argument, expected|
+      output, status = run_wayu("path add #{argument}")
+      content = File.read(@toml_file)
+      "#{argument}: #{output}" unless status.success? &&
+        content.include?("= \"#{expected}\"") &&
+        !content.include?('$HOME') && !content.include?('${HOME}') &&
+        !content.include?('"~')
+    end.compact
+
+    content = File.read(@toml_file)
+    failures << 'Equivalent home paths were duplicated' unless
+      content.scan("= \"#{@tmp_home}/bin\"").length == 1
+
+    # An unresolved token must fail even if a directory with that literal name exists.
+    FileUtils.mkdir_p("#{@tmp_home}/$WAYU_UNSET_PATH_TEST/bin")
+    output, status = run_wayu("path add '#{@tmp_home}/$WAYU_UNSET_PATH_TEST/bin'")
+    failures << "Unresolved variable was saved: #{output}" if
+      status.success? || File.read(@toml_file) != content
+
+    output, status = run_wayu("path add 'preview=$HOME/.config' --dry-run")
+    failures << "Dry run did not resolve the path: #{output}" unless
+      status.success? && output.include?("#{@tmp_home}/.config") &&
+      File.read(@toml_file) == content
+
+    if failures.empty?
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      failures.each { |failure| puts "  #{failure}" }
       @failed += 1
     end
   end
