@@ -119,3 +119,20 @@ test_extract_completion_items :: proc(t: ^testing.T) {
 	defer delete(items)
 	testing.expect(t, len(items) >= 0, "Should return valid array")
 }
+
+// UTF-8: query runes used to be compared against text BYTES, so any
+// non-ASCII character never matched.
+@(test)
+test_fuzzy_scores_are_utf8_aware :: proc(t: ^testing.T) {
+	testing.expect(t, wayu.calculate_fuzzy_score("café_menu", "éu") > 0, "é must match é")
+	testing.expect(t, wayu.fuzzy_score("Ñandú", "ñú") > 0, "case-folded non-ASCII subsequence")
+	testing.expect(t, wayu.is_acronym_match("ÉCOLE_NORMALE", "én"), "acronym with non-ASCII initial")
+}
+
+@(test)
+test_truncate_display_keeps_runes_whole :: proc(t: ^testing.T) {
+	s := "ééééééééééé" // 11 two-byte runes
+	out := wayu.truncate_display(s, 6)
+	testing.expect_value(t, out, "ééé...")
+	testing.expect_value(t, wayu.truncate_display("short", 50), "short")
+}
