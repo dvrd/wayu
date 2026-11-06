@@ -105,6 +105,14 @@ do_debug :: proc() {
 do_test :: proc() {
 	bld.log_info("Running unit tests...")
 	bld.mkdir_if_not_exists(BIN_DIR)
+	// Sandbox HOME so no test can ever write into the real ~/.config/wayu
+	// (several tests swap the global config dir; a missed restore used to
+	// leak fixture plugins into the user's plugins.json).
+	test_home := fmt.tprintf("/tmp/wayu_unit_home_%d", os.get_pid())
+	os.remove_all(test_home)
+	os.make_directory_all(test_home)
+	os.set_env("HOME", test_home)
+	defer os.remove_all(test_home)
 	ok := bld.test({
 		package_path = TEST_DIR,
 		file_mode    = true,
