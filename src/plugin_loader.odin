@@ -324,10 +324,11 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 			defer delete(templated)
 
 			source_line: string
+			qfile := shell_quote(file, shell)
 			if shell == .FISH {
-				source_line = fmt.aprintf("if test -f \"%s\"\n    %s\nend\n", file, templated)
+				source_line = fmt.aprintf("if test -f %s\n    %s\nend\n", qfile, templated)
 			} else {
-				source_line = fmt.aprintf("if [ -f \"%s\" ]; then\n    %s\nfi\n", file, templated)
+				source_line = fmt.aprintf("if [ -f %s ]; then\n    %s\nfi\n", qfile, templated)
 			}
 			strings.write_string(&sb, source_line)
 			delete(source_line)
@@ -407,13 +408,15 @@ get_plugin_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> 
 		full_path := fmt.aprintf("%s/%s", plugin.installed_path, candidate)
 		if os.exists(full_path) {
 			append(&auto_files, full_path)
+		} else {
+			delete(full_path)
 		}
 	}
 
 	// If nothing discovered yet, include every top-level file of the right extension.
 	if len(auto_files) == 0 {
-		glob := make([]string, 1)
-		glob[0] = fmt.tprintf("*.%s", ext)
+		delete(auto_files)
+		glob := []string{fmt.tprintf("*.%s", ext)}
 		return match_files_with_globs(plugin.installed_path, glob)
 	}
 
@@ -472,41 +475,68 @@ match_simple_glob :: proc(name, pattern: string) -> bool {
 	return name == pattern
 }
 
-// Apply load template to generate shell code.
+// Quote `s` as a single shell word. POSIX (zsh/bash): wrap in '...' and
+// encode embedded quotes as '\''. Fish: inside single quotes only \\ and \'
+// are special, so escape those. Uses the temp allocator.
+shell_quote :: proc(s: string, shell: ShellType) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	strings.write_byte(&sb, '\'')
+	for i in 0..<len(s) {
+		c := s[i]
+		if shell == .FISH {
+			if c == '\\' || c == '\'' {
+				strings.write_byte(&sb, '\\')
+			}
+			strings.write_byte(&sb, c)
+		} else if c == '\'' {
+			strings.write_string(&sb, `'\''`)
+		} else {
+			strings.write_byte(&sb, c)
+		}
+	}
+	strings.write_byte(&sb, '\'')
+	return strings.to_string(sb)
+}
+
+// Apply load template to generate shell code. Paths/names are emitted as
+// single-quoted words (see shell_quote) so `$`, backticks and quotes in a
+// plugin path can never be interpreted by the shell.
 // For fish, falls back to shell-appropriate builtins:
 //   Path     → fish_add_path
 //   FPath    → prepend to fish_function_path
 //   Autoload → N/A (fish autoloads functions from $fish_function_path)
 //   Eval     → eval (cmd)  — fish uses parens, not $()
 apply_load_template :: proc(template: PluginLoadTemplate, file, plugin_name, plugin_dir: string, shell: ShellType = .UNKNOWN) -> string {
+	qfile := shell_quote(file, shell)
+	qdir  := shell_quote(plugin_dir, shell)
 	if shell == .FISH {
 		switch template {
 		case .Source:
-			return fmt.aprintf("source \"%s\"", file)
+			return fmt.aprintf("source %s", qfile)
 		case .Path:
-			return fmt.aprintf("fish_add_path \"%s\"", plugin_dir)
+			return fmt.aprintf("fish_add_path %s", qdir)
 		case .FPath:
-			return fmt.aprintf("set -gx fish_function_path \"%s\" $fish_function_path", plugin_dir)
+			return fmt.aprintf("set -gx fish_function_path %s $fish_function_path", qdir)
 		case .Autoload:
 			return fmt.aprintf("# autoload is a no-op in fish (auto-loaded from $fish_function_path): %s", plugin_name)
 		case .Eval:
-			return fmt.aprintf("eval (%s)", file)
+			return fmt.aprintf("eval (%s)", qfile)
 		}
-		return fmt.aprintf("source \"%s\"", file)
+		return fmt.aprintf("source %s", qfile)
 	}
 	switch template {
 	case .Source:
-		return fmt.aprintf("source \"%s\"", file)
+		return fmt.aprintf("source %s", qfile)
 	case .Path:
-		return fmt.aprintf("export PATH=\"%s:$PATH\"", plugin_dir)
+		return fmt.aprintf("export PATH=%s:\"$PATH\"", qdir)
 	case .FPath:
-		return fmt.aprintf("export FPATH=\"%s:$FPATH\"", plugin_dir)
+		return fmt.aprintf("export FPATH=%s:\"$FPATH\"", qdir)
 	case .Autoload:
-		return fmt.aprintf("autoload -Uz %s", plugin_name)
+		return fmt.aprintf("autoload -Uz %s", shell_quote(plugin_name, shell))
 	case .Eval:
-		return fmt.aprintf("eval \"$(%s)\"", file)
+		return fmt.aprintf("eval \"$(%s)\"", qfile)
 	}
-	return fmt.aprintf("source \"%s\"", file)  // Default
+	return fmt.aprintf("source %s", qfile)  // Default
 }
 
 // Convert template enum to string

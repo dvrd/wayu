@@ -47,21 +47,21 @@ test_plugin_compat_matches_matrix :: proc(t: ^testing.T) {
 test_apply_load_template_fish_source :: proc(t: ^testing.T) {
 	out := wayu.apply_load_template(.Source, "/tmp/x.fish", "x", "/tmp", .FISH)
 	defer delete(out)
-	testing.expect(t, out == "source \"/tmp/x.fish\"", "fish source uses plain `source` builtin")
+	testing.expect(t, out == "source '/tmp/x.fish'", "fish source uses plain `source` builtin")
 }
 
 @(test)
 test_apply_load_template_fish_path_uses_builtin :: proc(t: ^testing.T) {
 	out := wayu.apply_load_template(.Path, "", "plug", "/opt/plug/bin", .FISH)
 	defer delete(out)
-	testing.expect(t, out == "fish_add_path \"/opt/plug/bin\"", "fish Path uses fish_add_path")
+	testing.expect(t, out == "fish_add_path '/opt/plug/bin'", "fish Path uses fish_add_path")
 }
 
 @(test)
 test_apply_load_template_fish_fpath :: proc(t: ^testing.T) {
 	out := wayu.apply_load_template(.FPath, "", "plug", "/opt/plug/functions", .FISH)
 	defer delete(out)
-	expected := "set -gx fish_function_path \"/opt/plug/functions\" $fish_function_path"
+	expected := "set -gx fish_function_path '/opt/plug/functions' $fish_function_path"
 	testing.expect(t, out == expected, "fish FPath maps to fish_function_path prepend")
 }
 
@@ -83,7 +83,7 @@ test_apply_load_template_fish_autoload_is_noop :: proc(t: ^testing.T) {
 test_apply_load_template_fish_eval_uses_parens :: proc(t: ^testing.T) {
 	out := wayu.apply_load_template(.Eval, "/opt/plug/init", "plug", "/opt/plug", .FISH)
 	defer delete(out)
-	testing.expect(t, out == "eval (/opt/plug/init)", "fish eval uses parens, not $()")
+	testing.expect(t, out == "eval ('/opt/plug/init')", "fish eval uses parens, not $()")
 }
 
 @(test)
@@ -92,19 +92,19 @@ test_apply_load_template_zsh_unchanged :: proc(t: ^testing.T) {
 	// after adding the fish branch. If this test fails, we broke zsh users.
 	out := wayu.apply_load_template(.Source, "/tmp/x.zsh", "x", "/tmp", .ZSH)
 	defer delete(out)
-	testing.expect(t, out == "source \"/tmp/x.zsh\"", "zsh Source must keep legacy format")
+	testing.expect(t, out == "source '/tmp/x.zsh'", "zsh Source must keep legacy format")
 
 	out2 := wayu.apply_load_template(.Path, "", "x", "/opt/x/bin", .ZSH)
 	defer delete(out2)
-	testing.expect(t, out2 == "export PATH=\"/opt/x/bin:$PATH\"", "zsh Path must keep legacy format")
+	testing.expect(t, out2 == "export PATH='/opt/x/bin':\"$PATH\"", "zsh Path must keep legacy format")
 
 	out3 := wayu.apply_load_template(.Autoload, "", "fn", "/opt", .ZSH)
 	defer delete(out3)
-	testing.expect(t, out3 == "autoload -Uz fn", "zsh Autoload must keep legacy format")
+	testing.expect(t, out3 == "autoload -Uz 'fn'", "zsh Autoload must keep legacy format")
 
 	out4 := wayu.apply_load_template(.Eval, "/opt/init", "x", "/opt", .ZSH)
 	defer delete(out4)
-	testing.expect(t, out4 == "eval \"$(/opt/init)\"", "zsh Eval must keep legacy $() form")
+	testing.expect(t, out4 == "eval \"$('/opt/init')\"", "zsh Eval must keep legacy $() form")
 }
 
 @(test)

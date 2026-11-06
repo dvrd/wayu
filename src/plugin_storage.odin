@@ -39,6 +39,11 @@ handle_plugin_check :: proc(args: []string) {
 		check_count += 1
 		fmt.printfln("Checking %s...", plugin.name)
 
+		if pinned, ref := plugin_pinned_ref(&plugin); pinned {
+			print_info("  ⚓ Pinned to %s (skipped)", ref)
+			continue
+		}
+
 		// Fetch remote commit SHA
 		// NOTE: get_remote_commit returns an allocated string — must delete explicitly.
 		// defer inside a loop defers to function exit (not iteration end), so we use
@@ -57,7 +62,7 @@ handle_plugin_check :: proc(args: []string) {
 		plugin.git.last_checked = get_iso8601_timestamp()  // ALLOCATED
 
 		// Compare local vs remote commits
-		if plugin.git.commit != remote_commit {
+		if !git_commits_match(plugin.git.commit, remote_commit) {
 			// Truncate to 7 chars for display
 			local_short := plugin.git.commit[0:min(7, len(plugin.git.commit))]
 			remote_short := remote_commit[0:min(7, len(remote_commit))]
@@ -145,13 +150,14 @@ handle_plugin_update :: proc(args: []string) {
 	fmt.println()
 
 	updated_count := 0
+	failed_count := 0
 
 	// Update specific plugin
 	if !update_all {
 		plugin_name := args[0]
 
 		// Find plugin (with fuzzy fallback)
-		plugin_ptr, found := find_plugin_json(&config, plugin_name)
+		plugin_ptr, found := find_plugin_json_fuzzy(&config, plugin_name)
 		
 		if !found {
 			print_error_simple("Plugin '%s' not found", plugin_name)
@@ -160,34 +166,31 @@ handle_plugin_update :: proc(args: []string) {
 			os.exit(EXIT_DATAERR)
 		}
 
+		if pinned, ref := plugin_pinned_ref(plugin_ptr); pinned {
+			print_info("Plugin '%s' is pinned to %s — not updating", plugin_ptr.name, ref)
+			fmt.println("Unpin it in plugins.json to follow a branch again")
+			return
+		}
+
 		// Perform update
 		print_info("Updating %s...", plugin_ptr.name)
 
 		// Show spinner for long operation
 		spinner := new_spinner(.Dots)
-		spinner_text(&spinner, fmt.aprintf("Updating %s", plugin_ptr.name))
+		spinner_text(&spinner, fmt.tprintf("Updating %s", plugin_ptr.name))
 		spinner_start(&spinner)
 
 		success := git_update(plugin_ptr.installed_path)
 
 		spinner_stop(&spinner)
+		delete(spinner.text)
 
 		if !success {
 			print_error_simple("Failed to update plugin")
 			os.exit(EXIT_IOERR)
 		}
 
-		// Refresh git metadata after update
-		new_git_info := get_git_info(plugin_ptr.installed_path)
-
-		// Clean up old git metadata
-		delete(plugin_ptr.git.branch)
-		delete(plugin_ptr.git.commit)
-		delete(plugin_ptr.git.last_checked)
-		delete(plugin_ptr.git.remote_commit)
-
-		// Assign new metadata
-		plugin_ptr.git = new_git_info
+		plugin_refresh_git_metadata(plugin_ptr)
 
 		print_success("Plugin '%s' updated successfully", plugin_ptr.name)
 		updated_count = 1
@@ -201,25 +204,21 @@ handle_plugin_update :: proc(args: []string) {
 
 			print_info("Updating %s...", plugin.name)
 
+			if pinned, ref := plugin_pinned_ref(&plugin); pinned {
+				print_info("  ⚓ Pinned to %s (skipped)", ref)
+				continue
+			}
+
 			// Perform update
 			success := git_update(plugin.installed_path)
 
 			if !success {
 				print_warning("  ⚠ Failed to update plugin")
+				failed_count += 1
 				continue
 			}
 
-			// Refresh git metadata
-			new_git_info := get_git_info(plugin.installed_path)
-
-			// Clean up old git metadata
-			delete(plugin.git.branch)
-			delete(plugin.git.commit)
-			delete(plugin.git.last_checked)
-			delete(plugin.git.remote_commit)
-
-			// Assign new metadata
-			plugin.git = new_git_info
+			plugin_refresh_git_metadata(&plugin)
 
 			print_success("  ✓ Updated")
 			updated_count += 1
@@ -270,6 +269,47 @@ handle_plugin_update :: proc(args: []string) {
 
 	fmt.println()
 	print_info("Restart your shell or run 'source ~/.%src' to reload plugins", wayu.shell_ext)
+
+	if failed_count > 0 {
+		print_error_simple("%d plugin(s) failed to update", failed_count)
+		os.exit(EXIT_IOERR)
+	}
+}
+
+// Report whether a plugin is pinned to a tag/commit (or sits on a detached
+// HEAD). Pinned plugins must not be pulled: pull fails on a detached HEAD
+// and would silently move a checkout the user pinned on purpose.
+plugin_pinned_ref :: proc(plugin: ^PluginMetadata) -> (pinned: bool, ref: string) {
+	if len(plugin.git.pinned_ref) > 0 {
+		return true, plugin.git.pinned_ref
+	}
+	if plugin.git.ref_type == .Tag {
+		return true, len(plugin.git.tag) > 0 ? plugin.git.tag : "tag"
+	}
+	if plugin.git.ref_type == .Commit {
+		return true, len(plugin.git.commit) > 0 ? plugin.git.commit : "commit"
+	}
+	if plugin.git.branch == "HEAD" {
+		return true, "detached HEAD"
+	}
+	return false, ""
+}
+
+// Refresh the fields a pull changes (branch, commit, timestamps) while
+// preserving user-set pinning fields (ref_type, tag, pinned_ref).
+plugin_refresh_git_metadata :: proc(plugin: ^PluginMetadata) {
+	fresh := get_git_info(plugin.installed_path)
+
+	delete(plugin.git.branch)
+	delete(plugin.git.commit)
+	delete(plugin.git.last_checked)
+	delete(plugin.git.remote_commit)
+
+	plugin.git.branch        = fresh.branch
+	plugin.git.commit        = fresh.commit
+	plugin.git.last_checked  = fresh.last_checked
+	plugin.git.remote_commit = fresh.remote_commit
+	// fresh.tag / fresh.pinned_ref are never set by get_git_info.
 }
 
 // Shared implementation for enable/disable plugin commands
@@ -323,7 +363,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	}
 
 	// 3. Find plugin by name (with fuzzy fallback)
-	plugin_ptr, found := find_plugin_json(&config, plugin_name)
+	plugin_ptr, found := find_plugin_json_fuzzy(&config, plugin_name)
 	
 	if !found {
 		cleanup_plugin_config_json(&config)
@@ -332,6 +372,10 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		fmt.println("Run 'wayu plugin list' to see installed plugins")
 		os.exit(EXIT_DATAERR)
 	}
+
+	// Messages use the resolved name (the arg may have been a fuzzy query).
+	// Cloned because config is freed before the final messages (proc always exits).
+	plugin_name = strings.clone(plugin_ptr.name)
 
 	// 4. Check if already in target state (idempotent operation)
 	if plugin_ptr.enabled == enable {
@@ -344,10 +388,10 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	print_header(header_text, EMOJI_COMMAND)
 	fmt.println()
 
-	// 5. Create backup before modifying
+	// 5. Create backup before modifying (never in dry-run: no side effects)
 	config_file := get_plugins_json_config_file()
 
-	if os.exists(config_file) {
+	if !wayu.dry_run && os.exists(config_file) {
 		backup_path, backup_ok := create_backup(config_file)
 		if backup_ok {
 			delete(backup_path)
@@ -458,7 +502,7 @@ handle_plugin_priority :: proc(args: []string) {
 	defer cleanup_plugin_config_json(&config)
 
 	// 4. Find plugin
-	plugin, found := find_plugin_json(&config, plugin_name)
+	plugin, found := find_plugin_json_fuzzy(&config, plugin_name)
 	if !found {
 		print_error_simple("Plugin '%s' not found", plugin_name)
 		fmt.println()
@@ -522,16 +566,18 @@ handle_plugin_add :: proc(args: []string) {
 
 	name_or_url := args[0]
 
-	// Resolve plugin
+	// Resolve plugin (all fields of `info` are owned)
 	info, resolved := resolve_plugin(name_or_url)
 	if !resolved {
-		print_error_simple("Unknown plugin '%s'", name_or_url)
-		fmt.println("\nRun 'wayu plugin search' to see available plugins")
+		if is_valid_git_url(name_or_url) {
+			print_error_simple("Cannot derive a valid plugin name from URL '%s'", name_or_url)
+		} else {
+			print_error_simple("Unknown plugin '%s'", name_or_url)
+			fmt.println("\nRun 'wayu plugin search' to see available plugins")
+		}
 		os.exit(EXIT_DATAERR)
 	}
-	defer delete(info.name)
-	defer delete(info.url)
-	defer delete(info.description)
+	defer plugin_info_destroy(&info)
 
 	// Read current config
 	config, ok := read_plugin_config_json()
@@ -541,9 +587,9 @@ handle_plugin_add :: proc(args: []string) {
 	}
 	defer cleanup_plugin_config_json(&config)
 
-	// Check if already installed
-	_, found := find_plugin_json(&config, info.name)
-	if found {
+	// Check if already installed (exact match — fuzzy would treat e.g. "git"
+	// as installed whenever "forgit" is)
+	if _, found := find_plugin_json(&config, info.name); found {
 		print_warning("Plugin '%s' is already installed", info.name)
 		os.exit(EXIT_SUCCESS)
 	}
@@ -572,6 +618,9 @@ handle_plugin_add :: proc(args: []string) {
 	plugin_path := fmt.aprintf("%s/%s", plugins_dir, info.name)
 	defer delete(plugin_path)
 
+	// Never clean up a directory we did not create.
+	existed_before := os.exists(plugin_path)
+
 	spinner := new_spinner(.Dots)
 	spinner_text(&spinner, "Cloning repository")
 	spinner_start(&spinner)
@@ -579,13 +628,19 @@ handle_plugin_add :: proc(args: []string) {
 	success := git_clone(info.url, plugin_path)
 
 	spinner_stop(&spinner)
+	delete(spinner.text)
 
 	if !success {
+		if !existed_before {
+			remove_cloned_plugin_dir(plugin_path, plugins_dir)
+		}
 		print_error_simple("Failed to clone plugin repository")
-		os.exit(EXIT_OSERR)
+		os.exit(EXIT_IOERR)
 	}
 
-	print_success("Cloned plugin repository")
+	if !wayu.dry_run {
+		print_success("Cloned plugin repository")
+	}
 
 	// Add to config
 	git_info := get_git_info(plugin_path)
@@ -612,30 +667,47 @@ handle_plugin_add :: proc(args: []string) {
 
 	// Phase 4: Validate no circular dependencies before writing config
 	if !validate_no_circular_dependencies(&config) {
+		if !existed_before {
+			remove_cloned_plugin_dir(plugin_path, plugins_dir)
+		}
 		os.exit(EXIT_DATAERR)
 	}
 
-	// Create backup before writing
-	if !wayu.dry_run {
-		config_file := get_plugins_json_config_file()
-		defer delete(config_file)
+	if wayu.dry_run {
+		print_info("[DRY RUN] Would add '%s' to plugins.json and regenerate the plugin loader", info.name)
+		return
+	}
 
-		if os.exists(config_file) {
-			backup_path, backup_ok := create_backup(config_file)
-			if backup_ok {
-				defer delete(backup_path)
-			}
+	// Create backup before writing
+	config_file := get_plugins_json_config_file()
+	defer delete(config_file)
+
+	if os.exists(config_file) {
+		backup_path, backup_ok := create_backup(config_file)
+		if backup_ok {
+			defer delete(backup_path)
 		}
 	}
 
 	// Write config
 	if !write_plugin_config_json(&config) {
+		if !existed_before {
+			remove_cloned_plugin_dir(plugin_path, plugins_dir)
+		}
 		print_error_simple("Failed to write plugin configuration")
 		os.exit(EXIT_IOERR)
 	}
 
 	// Generate plugins file for current shell
 	if !generate_plugins_file(wayu.shell) {
+		// Roll back: drop the new entry, rewrite config, remove the clone.
+		last := pop(&config.plugins)
+		cleanup_plugin_metadata(&last)
+		write_plugin_config_json(&config)
+		if !existed_before {
+			remove_cloned_plugin_dir(plugin_path, plugins_dir)
+		}
+		generate_plugins_file(wayu.shell)
 		print_error_simple("Failed to generate plugins loader")
 		os.exit(EXIT_IOERR)
 	}
@@ -645,6 +717,23 @@ handle_plugin_add :: proc(args: []string) {
 	print_info("Restart your shell or run 'source ~/.%src' to load the plugin", wayu.shell_ext)
 
 	hook_post_plugin_install(info.name)
+}
+
+// Remove a plugin directory, but only if it lies strictly inside the plugins
+// root. Guards against wiping the root itself (empty/"." names from legacy
+// configs) or anything outside it (hand-edited installed_path).
+// Returns false when removal was refused or failed.
+remove_cloned_plugin_dir :: proc(plugin_path: string, plugins_dir: string) -> bool {
+	if wayu.dry_run {
+		return true
+	}
+	if !is_path_inside_dir(plugin_path, plugins_dir) {
+		return false
+	}
+	if !os.exists(plugin_path) {
+		return true
+	}
+	return os.remove_all(plugin_path) == nil
 }
 
 // Emit the plugin list as structured JSON. Shape:
@@ -849,18 +938,26 @@ handle_plugin_remove :: proc(args: []string) {
 		os.exit(EXIT_USAGE)
 	}
 
-	plugin_name := args[0]
+	arg_name := args[0]
 
-	// Find plugin
-	plugin_ptr, found := find_plugin_json(&config, plugin_name)
+	// Exact match only: removal is destructive, so a fuzzy guess must never
+	// pick the target. Offer suggestions instead.
+	plugin_ptr, found := find_plugin_json(&config, arg_name)
 	if !found {
-		cleanup_plugin_config_json(&config)
-		print_info("Plugin '%s' not found (already removed)", plugin_name)
+		if print_plugin_suggestions(&config, arg_name) {
+			print_error_simple("Plugin '%s' not found", arg_name)
+			os.exit(EXIT_DATAERR)
+		}
+		print_info("Plugin '%s' not found (already removed)", arg_name)
 		os.exit(EXIT_SUCCESS)
 	}
 
+	// From here on use the canonical name (arg may have matched display_name).
+	// Cloned: the config entry is freed before the final message.
+	plugin_name := strings.clone(plugin_ptr.name)
+	defer delete(plugin_name)
+
 	// Phase 1: Check for --yes flag (required for all removals)
-	// Check this BEFORE showing details to ensure consistent behavior
 	if !wayu.yes_flag {
 		print_error("This operation requires confirmation.")
 		fmt.println()
@@ -881,7 +978,10 @@ handle_plugin_remove :: proc(args: []string) {
 			fmt.println()
 		}
 
-		delete(dependents)  // Clean up before exit
+		for dep in dependents {
+			delete(dep)
+		}
+		delete(dependents)
 		fmt.printfln("Add --yes flag to proceed:")
 		fmt.printfln("  wayu plugin rm %s --yes", plugin_name)
 		os.exit(EXIT_USAGE)
@@ -889,7 +989,12 @@ handle_plugin_remove :: proc(args: []string) {
 
 	// Phase 3: Check for dependents (warning only since --yes was provided)
 	dependents := check_plugin_dependents(plugin_name, &config)
-	defer delete(dependents)
+	defer {
+		for dep in dependents {
+			delete(dep)
+		}
+		delete(dependents)
+	}
 
 	if len(dependents) > 0 {
 		print_warning("Warning: The following plugins depend on '%s':", plugin_name)
@@ -902,45 +1007,52 @@ handle_plugin_remove :: proc(args: []string) {
 	}
 
 	print_header("Removing Plugin", EMOJI_COMMAND)
-	print_info("Name: %s", plugin_ptr.name)
+	print_info("Name: %s", plugin_name)
 	fmt.println()
 
-	// Remove plugin directory
-	if os.exists(plugin_ptr.installed_path) && !wayu.dry_run {
-		remove_err := os.remove_all(plugin_ptr.installed_path)
-		if remove_err != nil {
+	// Remove plugin directory — only when it is strictly inside the plugins
+	// root (never the root itself, never outside it).
+	plugins_dir := get_plugins_dir()
+	defer delete(plugins_dir)
+
+	installed_path := plugin_ptr.installed_path
+	if len(installed_path) == 0 {
+		// Nothing on disk to remove.
+	} else if !is_path_inside_dir(installed_path, plugins_dir) {
+		print_warning("Not deleting '%s': outside the plugins directory", installed_path)
+	} else if wayu.dry_run {
+		print_info("[DRY RUN] Would remove directory: %s", installed_path)
+	} else if os.exists(installed_path) {
+		if os.remove_all(installed_path) != nil {
 			print_error_simple("Failed to remove plugin directory")
 			os.exit(EXIT_IOERR)
 		}
+		print_success("Removed plugin directory")
 	}
 
-	print_success("Removed plugin directory")
+	if wayu.dry_run {
+		print_info("[DRY RUN] Would remove '%s' from plugins.json and regenerate the plugin loader", plugin_name)
+		return
+	}
 
-	// Remove from config
-	new_plugins := make([dynamic]PluginMetadata)
-	defer delete(new_plugins)
-
-	for &plugin in config.plugins {
-		if plugin.name != plugin_name {
-			append(&new_plugins, plugin)
-		} else {
-			// Clean up memory for removed plugin
-			cleanup_plugin_metadata(&plugin)
+	// Remove from config in place. config.plugins keeps ownership of the
+	// remaining entries; the removed entry is freed here exactly once.
+	for i := 0; i < len(config.plugins); i += 1 {
+		if config.plugins[i].name == plugin_name {
+			cleanup_plugin_metadata(&config.plugins[i])
+			ordered_remove(&config.plugins, i)
+			break
 		}
 	}
 
-	config.plugins = new_plugins
-
 	// Create backup before writing
-	if !wayu.dry_run {
-		config_file := get_plugins_json_config_file()
-		defer delete(config_file)
+	config_file := get_plugins_json_config_file()
+	defer delete(config_file)
 
-		if os.exists(config_file) {
-			backup_path, backup_ok := create_backup(config_file)
-			if backup_ok {
-				defer delete(backup_path)
-			}
+	if os.exists(config_file) {
+		backup_path, backup_ok := create_backup(config_file)
+		if backup_ok {
+			defer delete(backup_path)
 		}
 	}
 
@@ -978,7 +1090,7 @@ handle_plugin_get :: proc(args: []string) {
 	defer cleanup_plugin_config_json(&config)
 
 	// Find plugin
-	plugin_ptr, found := find_plugin_json(&config, plugin_name)
+	plugin_ptr, found := find_plugin_json_fuzzy(&config, plugin_name)
 	if !found {
 		print_error_simple("Plugin '%s' not found", plugin_name)
 		fmt.println("\nRun 'wayu plugin list' to see installed plugins")

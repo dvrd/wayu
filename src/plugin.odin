@@ -634,6 +634,9 @@ cleanup_plugin_metadata :: proc(plugin: ^PluginMetadata) {
 	delete(plugin.git.pinned_ref)
 	delete(plugin.git.last_checked)
 	delete(plugin.git.remote_commit)
+	for d in plugin.dependencies {
+		delete(d)
+	}
 	delete(plugin.dependencies)
 	for u in plugin.use {
 		delete(u)
