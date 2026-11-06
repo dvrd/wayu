@@ -15,6 +15,7 @@ BackupInfo :: struct {
 	backup_file:   string,
 	timestamp:     time.Time,
 	size:          i64,
+	seq:           int, // collision suffix (-N) for same-microsecond backups
 }
 
 // Create backup of file with timestamp in backup/ directory
@@ -60,27 +61,50 @@ create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 	// Extract base filename from path
 	base_name := get_base_name(file_path)
 
-	// Generate backup filename with human-readable date format
+	// Generate backup filename with human-readable date format plus
+	// microseconds. Second resolution alone let two backups taken within the
+	// same second (migrate / doctor --fix write once per entry) overwrite
+	// each other, losing the pristine pre-operation copy. The file is also
+	// created exclusively (O_EXCL) with a `-N` suffix on collision, so an
+	// existing backup is never clobbered.
+	//
+	// Format: basename.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]
 	now := time.now()
 	year, month, day := time.date(now)
-	hour, min, sec := time.clock(now)
+	hour, min, sec, nanos := time.precise_clock_from_time(now)
 
-	// Format: basename.backup.YYYY-MM-DD_HH-MM-SS
-	backup_file := fmt.aprintf("%s/%s.backup.%04d-%02d-%02d_%02d-%02d-%02d",
-		backup_dir, base_name, year, month, day, hour, min, sec)
+	stem := fmt.aprintf("%s/%s.backup.%04d-%02d-%02d_%02d-%02d-%02d.%06d",
+		backup_dir, base_name, year, int(month), day, hour, min, sec, nanos / 1000)
+	defer delete(stem)
 
-	debug("Creating backup file: %s", backup_file)
+	MAX_BACKUP_SEQ :: 1000
+	for seq in 0..<MAX_BACKUP_SEQ {
+		candidate := seq == 0 ? strings.clone(stem) : fmt.aprintf("%s-%d", stem, seq)
 
-	// Write backup
-	write_ok := safe_write_file(backup_file, content)
-	if !write_ok {
-		delete(backup_file)
-		debug("Failed to write backup file")
-		return "", false
+		f, open_err := os.open(candidate, {.Write, .Create, .Excl}, os.Permissions_Read_All + {.Write_User})
+		if open_err != nil {
+			delete(candidate)
+			if open_err == os.General_Error.Exist { continue }
+			debug("Failed to create backup file: %v", open_err)
+			return "", false
+		}
+
+		debug("Creating backup file: %s", candidate)
+		n, write_err := os.write(f, content)
+		close_err := os.close(f)
+		if write_err != nil || close_err != nil || n != len(content) {
+			os.remove(candidate)
+			delete(candidate)
+			debug("Failed to write backup file")
+			return "", false
+		}
+
+		debug("Backup created successfully")
+		return candidate, true
 	}
 
-	debug("Backup created successfully")
-	return backup_file, true
+	debug("Could not find a free backup filename for %s", base_name)
+	return "", false
 }
 
 // CLI version - fails immediately without prompt
@@ -129,20 +153,18 @@ create_backup_tui :: proc(file_path: string, auto_backup := true) -> bool {
 	return true
 }
 
-// Restore from most recent backup
+// Restore `file_path` from its most recent backup.
+//
+// Safety contract:
+//   * the backup content is validated before anything is written (for
+//     wayu.toml: toml_content_is_sane), so a corrupt backup can't replace a
+//     working config;
+//   * the CURRENT file is backed up first, so a restore is itself undoable;
+//   * after restoring wayu.toml the generated shell init is regenerated so
+//     the shell actually sees the restored state.
+// The --yes confirmation gate lives in the CLI handler (restore_config_backup).
 restore_from_backup :: proc(file_path: string) -> bool {
 	debug("Attempting to restore from backup: %s", file_path)
-
-	// Dry-run mode check
-	if wayu.dry_run {
-		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-		fmt.println()
-		fmt.printfln("%sWould restore from backup:%s", BRIGHT_CYAN, RESET)
-		fmt.printfln("  File: %s", file_path)
-		fmt.println()
-		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
-		return true
-	}
 
 	backups := list_backups_for_file(file_path)
 	defer {
@@ -153,26 +175,65 @@ restore_from_backup :: proc(file_path: string) -> bool {
 		delete(backups)
 	}
 
+	// Dry-run mode check
+	if wayu.dry_run {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+		fmt.println()
+		fmt.printfln("%sWould restore from backup:%s", BRIGHT_CYAN, RESET)
+		fmt.printfln("  File:   %s", file_path)
+		if len(backups) > 0 {
+			fmt.printfln("  Backup: %s", backups[0].backup_file)
+		} else {
+			fmt.printfln("  Backup: (none found — restore would fail)")
+		}
+		fmt.println()
+		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+		return true
+	}
+
 	if len(backups) == 0 {
 		print_error_simple("No backups found for: %s", file_path)
 		return false
 	}
 
-	// Get most recent backup
+	// Get most recent backup BEFORE we back up the current file (which
+	// would otherwise become the newest backup).
 	latest := backups[0]
 	debug("Restoring from: %s", latest.backup_file)
 
-	// Read backup
 	content, read_ok := safe_read_file(latest.backup_file)
 	if !read_ok {
 		return false
 	}
 	defer delete(content)
 
-	// Write to original location
-	write_ok := safe_write_file(file_path, content)
-	if !write_ok {
+	is_wayu_toml := get_base_name(file_path) == WAYU_TOML
+	if is_wayu_toml && !toml_content_is_sane(string(content)) {
+		print_error_simple("Backup %s is not valid TOML — refusing to restore it", latest.backup_file)
 		return false
+	}
+
+	// Back up the current state so the restore can be undone.
+	if os.exists(file_path) {
+		pre_path, pre_ok := create_backup(file_path)
+		if !pre_ok {
+			print_error_simple("Could not back up current %s — aborting restore", file_path)
+			return false
+		}
+		debug("Backed up current state to: %s", pre_path)
+		delete(pre_path)
+	}
+
+	if !safe_write_file(file_path, content) {
+		return false
+	}
+
+	// Only regenerate when restoring the live config (not an arbitrary
+	// file that happens to be named wayu.toml).
+	live_toml := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
+	defer delete(live_toml)
+	if file_path == live_toml {
+		regenerate_init_core_silently()
 	}
 
 	print_success("Restored from backup: %s", latest.backup_file)
@@ -208,23 +269,27 @@ list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 		if strings.has_prefix(info.name, pattern) && info.type != os.File_Type.Directory {
 			full_path := fmt.aprintf("%s/%s", dir, info.name)
 
-			// Extract timestamp from filename
-			timestamp_str := info.name[len(pattern):]
-			timestamp := parse_timestamp(timestamp_str)
+			// Extract timestamp (+ collision sequence) from filename
+			timestamp, seq := parse_backup_suffix(info.name[len(pattern):])
 
 			backup := BackupInfo{
 				original_file = strings.clone(file_path),
 				backup_file   = full_path,
 				timestamp     = timestamp,
 				size          = info.size,
+				seq           = seq,
 			}
 			append(&backups, backup)
 		}
 	}
 
-	// Sort by timestamp (most recent first)
+	// Sort most recent first: timestamp, then collision sequence, then name
+	// (deterministic tie-break).
 	slice.sort_by(backups[:], proc(a, b: BackupInfo) -> bool {
-		return time.diff(a.timestamp, b.timestamp) < 0
+		d := time.diff(a.timestamp, b.timestamp)
+		if d != 0 { return d < 0 }
+		if a.seq != b.seq { return a.seq > b.seq }
+		return a.backup_file > b.backup_file
 	})
 
 	result := make([]BackupInfo, len(backups))
@@ -234,12 +299,17 @@ list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 	return result
 }
 
-// Parse timestamp from backup filename (format: YYYY-MM-DD_HH-MM-SS)
+// Parse timestamp from backup filename suffix.
+// Accepts (newest first):
+//   YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]   (sub-second + collision sequence)
+//   YYYY-MM-DD_HH-MM-SS              (pre-4.5 second resolution)
+//   <unix seconds>[...]              (legacy)
 parse_timestamp :: proc(timestamp_str: string) -> time.Time {
-	// Parse date format: YYYY-MM-DD_HH-MM-SS
-	// Example: 2026-01-09_19-45-30
+	t, _ := parse_backup_suffix(timestamp_str)
+	return t
+}
 
-	// Try to parse new format first
+parse_backup_suffix :: proc(timestamp_str: string) -> (t: time.Time, seq: int) {
 	if len(timestamp_str) >= 19 && timestamp_str[4] == '-' && timestamp_str[7] == '-' && timestamp_str[10] == '_' {
 		// Timestamp components are all ASCII digits by construction; if
 		// parse fails (corrupted filename) we fall through to the legacy
@@ -253,7 +323,27 @@ parse_timestamp :: proc(timestamp_str: string) -> time.Time {
 		sec,   sec_ok   := strconv.parse_int(timestamp_str[17:19])
 
 		if year_ok && month_ok && day_ok && hour_ok && min_ok && sec_ok {
-			return time.datetime_to_time(year, month, day, hour, min, sec, 0)
+			rest := timestamp_str[19:]
+			nanos := 0
+			if len(rest) > 0 && rest[0] == '.' {
+				// Fractional seconds: up to 9 digits, scaled to nanoseconds.
+				i := 1
+				digits := 0
+				for i < len(rest) && rest[i] >= '0' && rest[i] <= '9' {
+					if digits < 9 {
+						nanos = nanos * 10 + int(rest[i] - '0')
+						digits += 1
+					}
+					i += 1
+				}
+				for _ in digits..<9 { nanos *= 10 }
+				rest = rest[i:]
+			}
+			if len(rest) > 1 && rest[0] == '-' {
+				if n, n_ok := strconv.parse_int(rest[1:]); n_ok { seq = n }
+			}
+			parsed, ok := time.datetime_to_time(year, month, day, hour, min, sec, nanos)
+			if ok { return parsed, seq }
 		}
 		// fall through on parse failure
 	}
@@ -266,10 +356,10 @@ parse_timestamp :: proc(timestamp_str: string) -> time.Time {
 		end += 1
 	}
 	if end == 0 {
-		return time.unix(0, 0)
+		return time.unix(0, 0), 0
 	}
 	timestamp_int, _ := strconv.parse_i64(timestamp_str[:end])
-	return time.unix(timestamp_int, 0)
+	return time.unix(timestamp_int, 0), 0
 }
 
 // Clean up old backups (keep last N)
@@ -466,7 +556,9 @@ print_all_backups_json :: proc() {
 		first_file = false
 
 		// `{` is a struct-verb opener in Odin's fmt — emit via %c.
-		fmt.printf("    %c\"file\": \"%s\", \"count\": %d, \"entries\": [", '{', file_name, len(backups))
+		file_name_j := json_escape(file_name)
+		defer delete(file_name_j)
+		fmt.printf("    %c\"file\": \"%s\", \"count\": %d, \"entries\": [", '{', file_name_j, len(backups))
 		if len(backups) == 0 {
 			fmt.print("]")
 			fmt.print('}')
@@ -478,8 +570,12 @@ print_all_backups_json :: proc() {
 			time_str := format_backup_time(backup.timestamp)
 			defer delete(time_str)
 			if i > 0 { fmt.println(",") }
+			// Paths come from $HOME and may contain `"`, `\` or control
+			// characters — escape so the document stays valid JSON.
+			path_j := json_escape(backup.backup_file)
+			defer delete(path_j)
 			fmt.printf("      %c\"timestamp\": \"%s\", \"size_bytes\": %d, \"path\": \"%s\"%c",
-				'{', time_str, backup.size, backup.backup_file, '}')
+				'{', time_str, backup.size, path_j, '}')
 		}
 		fmt.println()
 		fmt.print("    ]")
@@ -564,6 +660,39 @@ restore_config_backup :: proc(config_type: string) {
 	}
 	defer delete(config_file)
 
+	// path/alias/constants all live in the single wayu.toml, so restoring
+	// any of them reverts the WHOLE file. Make that explicit.
+	shared_note :: "wayu.toml holds paths, aliases AND constants — restoring reverts the entire file, not just %s entries."
+
+	if wayu.dry_run {
+		fmt.printfln("%sNote:%s " + shared_note, BRIGHT_YELLOW, RESET, config_type)
+		restore_from_backup(config_file)
+		return
+	}
+
+	if !wayu.yes_flag {
+		backups := list_backups_for_file(config_file)
+		print_error("This operation requires confirmation.")
+		fmt.println()
+		fmt.printfln(shared_note, config_type)
+		if len(backups) > 0 {
+			fmt.printfln("Would restore %s from: %s", get_base_name(config_file), backups[0].backup_file)
+			fmt.println("The current wayu.toml will be backed up first.")
+		} else {
+			fmt.printfln("No backups found for %s.", get_base_name(config_file))
+		}
+		for b in backups {
+			delete(b.original_file)
+			delete(b.backup_file)
+		}
+		delete(backups)
+		fmt.println()
+		fmt.printfln("Add --yes flag to proceed:")
+		fmt.printfln("  wayu backup restore %s --yes", config_type)
+		os.exit(EXIT_USAGE)
+	}
+
+	fmt.printfln("%sNote:%s " + shared_note, BRIGHT_YELLOW, RESET, config_type)
 	if !restore_from_backup(config_file) {
 		os.exit(EXIT_IOERR)
 	}
@@ -748,15 +877,15 @@ print_backup_help :: proc() {
 	// Usage section
 	fmt.printf("%s%sUSAGE:%s\n", BOLD, get_secondary(), RESET)
 	fmt.println("  wayu backup list [config-type]     List all backups (or for specific config)")
-	fmt.println("  wayu backup restore <config-type>  Restore from most recent backup")
+	fmt.println("  wayu backup restore <config-type> --yes  Restore from most recent backup")
 	fmt.println("  wayu backup remove [config-type]   Clean up old backups (alias: rm)")
 	fmt.println("  wayu backup help                   Show this help")
 
 	// Config types section
 	fmt.printf("\n%s%sCONFIG TYPES:%s\n", BOLD, get_secondary(), RESET)
-	fmt.println("  path       PATH configuration")
-	fmt.println("  alias      Alias configuration")
-	fmt.println("  constants  Environment constants")
+	fmt.println("  path, alias, constants, toml")
+	fmt.println("             All map to the single wayu.toml file — a restore")
+	fmt.println("             reverts the WHOLE wayu.toml, not just one section")
 
 	// Examples section
 	fmt.printf("\n%s%sEXAMPLES:%s\n", BOLD, get_secondary(), RESET)
@@ -767,7 +896,7 @@ print_backup_help :: proc() {
 	fmt.printf("  %swayu backup list path%s\n", get_muted(), RESET)
 	fmt.println()
 	fmt.printf("  %s# Restore path configuration from backup%s\n", get_muted(), RESET)
-	fmt.printf("  %swayu backup restore path%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu backup restore path --yes%s\n", get_muted(), RESET)
 	fmt.println()
 	fmt.printf("  %s# Clean up old backups%s\n", get_muted(), RESET)
 	fmt.printf("  %swayu backup rm%s\n", get_muted(), RESET)
@@ -776,7 +905,7 @@ print_backup_help :: proc() {
 	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
 	fmt.printf("  %s• Backups are created automatically before modifications%s\n", get_muted(), RESET)
 	fmt.printf("  %s• Only the last 5 backups are kept per file%s\n", get_muted(), RESET)
-	fmt.printf("  %s• Backup files are stored in the same directory as config files%s\n", get_muted(), RESET)
-	fmt.printf("  %s• Restore always uses the most recent backup%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Backup files are stored in ~/.config/wayu/backup/%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Restore uses the most recent backup and backs up the current file first%s\n", get_muted(), RESET)
 	fmt.println()
 }

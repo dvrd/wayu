@@ -340,3 +340,146 @@ test_restore_nonexistent_backup :: proc(t: ^testing.T) {
 	result := wayu.restore_from_backup(fake_file)
 	testing.expect(t, !result, "Should fail when no backups exist")
 }
+// Regression (#1): back-to-back backups within the same second used to share
+// a second-resolution filename, so the second write overwrote the first and
+// the pristine pre-operation copy was lost.
+@(test)
+test_rapid_backups_are_unique :: proc(t: ^testing.T) {
+	original_data := wayu.wayu.data
+	wayu.wayu.data = "/tmp/wayu-test-backup-rapid"
+	os.make_directory("/tmp/wayu-test-backup-rapid")
+	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-backup-rapid") }
+
+	test_file := "/tmp/wayu-test-backup-rapid-src"
+	defer os.remove(test_file)
+
+	contents := []string{"v0\n", "v1\n", "v2\n", "v3\n", "v4\n"}
+	paths: [dynamic]string
+	defer { for p in paths { delete(p) }; delete(paths) }
+
+	for c in contents {
+		_ = os.write_entire_file(test_file, transmute([]byte)c)
+		p, ok := wayu.create_backup(test_file)
+		testing.expect(t, ok, "backup should succeed")
+		if ok { append(&paths, p) }
+	}
+	testing.expect_value(t, len(paths), len(contents))
+
+	// All distinct, each holds the content it was taken from.
+	for p, i in paths {
+		for q, j in paths {
+			if i != j { testing.expect(t, p != q, "backup paths must be unique") }
+		}
+		data, err := os.read_entire_file(p, context.allocator)
+		if err == nil {
+			testing.expect_value(t, string(data), contents[i])
+			delete(data)
+		}
+	}
+
+	// list_backups_for_file returns newest first: v4 .. v0.
+	backups := wayu.list_backups_for_file(test_file)
+	defer {
+		for b in backups { delete(b.original_file); delete(b.backup_file) }
+		delete(backups)
+	}
+	testing.expect_value(t, len(backups), len(contents))
+	if len(backups) == len(contents) {
+		for b, i in backups {
+			testing.expect_value(t, b.backup_file, paths[len(paths) - 1 - i])
+		}
+	}
+
+	// Cleanup keeps the newest N.
+	removed := wayu.cleanup_old_backups(test_file, 2)
+	testing.expect_value(t, removed, 3)
+	testing.expect(t, os.exists(paths[4]) && os.exists(paths[3]), "newest backups kept")
+	testing.expect(t, !os.exists(paths[0]), "oldest backup removed")
+}
+
+@(test)
+test_parse_backup_suffix_formats :: proc(t: ^testing.T) {
+	// Old second-resolution format still parses.
+	old := wayu.parse_timestamp("2026-01-09_19-45-30")
+	y, m, d := time.date(old)
+	testing.expect(t, y == 2026 && int(m) == 1 && d == 9, "old format date")
+
+	// New microsecond format orders after the old same-second name.
+	newer, seq0 := wayu.parse_backup_suffix("2026-01-09_19-45-30.000250")
+	testing.expect(t, time.diff(old, newer) > 0, "fractional part must be honoured")
+	testing.expect_value(t, seq0, 0)
+
+	// Collision sequence suffix.
+	same, seq := wayu.parse_backup_suffix("2026-01-09_19-45-30.000250-3")
+	testing.expect(t, time.diff(newer, same) == 0, "seq does not change time")
+	testing.expect_value(t, seq, 3)
+}
+
+// Regression (#2): restore must refuse a corrupt wayu.toml backup and must
+// back up the current file before overwriting it.
+@(test)
+test_restore_rejects_invalid_toml_backup :: proc(t: ^testing.T) {
+	original_data := wayu.wayu.data
+	wayu.wayu.data = "/tmp/wayu-test-restore-invalid"
+	os.make_directory("/tmp/wayu-test-restore-invalid")
+	os.make_directory("/tmp/wayu-test-restore-invalid/backup")
+	os.make_directory("/tmp/wayu-test-restore-invalid/cfg")
+	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-restore-invalid") }
+
+	target := "/tmp/wayu-test-restore-invalid/cfg/wayu.toml"
+	good := "[paths]\nbin = \"/usr/bin\"\n"
+	_ = os.write_entire_file(target, transmute([]byte)good)
+
+	bad := "[paths\nnot = = toml\n"
+	bad_backup := "/tmp/wayu-test-restore-invalid/backup/wayu.toml.backup.2030-01-01_00-00-00.000000"
+	_ = os.write_entire_file(bad_backup, transmute([]byte)bad)
+
+	ok := wayu.restore_from_backup(target)
+	testing.expect(t, !ok, "restore of invalid TOML must fail")
+
+	data, err := os.read_entire_file(target, context.allocator)
+	if err == nil {
+		testing.expect_value(t, string(data), good)
+		delete(data)
+	}
+}
+
+@(test)
+test_restore_backs_up_current_first :: proc(t: ^testing.T) {
+	original_data := wayu.wayu.data
+	wayu.wayu.data = "/tmp/wayu-test-restore-pre"
+	os.make_directory("/tmp/wayu-test-restore-pre")
+	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-restore-pre") }
+
+	target := "/tmp/wayu-test-restore-pre-src"
+	defer os.remove(target)
+
+	_ = os.write_entire_file(target, transmute([]byte)string("old\n"))
+	p, ok := wayu.create_backup(target)
+	testing.expect(t, ok, "seed backup")
+	if ok { delete(p) }
+	_ = os.write_entire_file(target, transmute([]byte)string("current\n"))
+
+	testing.expect(t, wayu.restore_from_backup(target), "restore succeeds")
+
+	data, err := os.read_entire_file(target, context.allocator)
+	if err == nil {
+		testing.expect_value(t, string(data), "old\n")
+		delete(data)
+	}
+
+	// The pre-restore "current" content must be preserved as the newest backup.
+	backups := wayu.list_backups_for_file(target)
+	defer {
+		for b in backups { delete(b.original_file); delete(b.backup_file) }
+		delete(backups)
+	}
+	testing.expect_value(t, len(backups), 2)
+	if len(backups) > 0 {
+		newest, rerr := os.read_entire_file(backups[0].backup_file, context.allocator)
+		if rerr == nil {
+			testing.expect_value(t, string(newest), "current\n")
+			delete(newest)
+		}
+	}
+}
