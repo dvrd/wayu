@@ -1845,28 +1845,20 @@ tui_load_constants :: proc(state: ^TUIState) {
 			in_env := false
 			for line in lines {
 				trimmed := strings.trim_space(line)
-				if trimmed == "[env]" { in_env = true; continue }
+				if toml_line_is_section(trimmed, "env") { in_env = true; continue }
 				if strings.has_prefix(trimmed, "[") { in_env = false; continue }
 				if !in_env { continue }
-				if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
 
-				eq_idx := strings.index_byte(trimmed, '=')
-				if eq_idx < 1 { continue }
-
-				name := strings.trim_space(trimmed[:eq_idx])
-				value := strings.trim_space(trimmed[eq_idx+1:])
-				value = strings.trim_prefix(value, `"`)
-				value = strings.trim_suffix(value, `"`)
-				value = strings.trim_prefix(value, "'")
-				value = strings.trim_suffix(value, "'")
-				if len(name) == 0 || len(value) == 0 { continue }
+				// Shared parser: strips inline comment + one matching quote pair,
+				// so values like `--format='%h'` keep their trailing quote.
+				name, unescaped, kv_ok := toml_parse_kv_line(trimmed)
+				if !kv_ok { continue }
+				defer delete(unescaped)
 				if name in wayu_constants { continue }
 
 				// Key must outlive this loop iteration (map stores the slice).
 				// `name` points into `content`, which lives until proc exit.
 				wayu_constants[name] = true
-				unescaped := unescape_toml_string(value)
-				defer delete(unescaped)
 				is_active := snapshot_env_var(name) != nil
 				source := RowSource.WAYU_ACTIVE if is_active else RowSource.WAYU_INACTIVE
 				display := fmt.aprintf("%s=%s", name, unescaped)
