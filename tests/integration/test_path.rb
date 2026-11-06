@@ -250,7 +250,7 @@ class PathIntegrationTest
       '.' => project_root,
       './bin' => "#{project_root}/bin",
       'bin/wayu' => "#{project_root}/bin/wayu",
-      '../wayu/tests' => "#{project_root}/tests",
+      "../#{File.basename(project_root)}/tests" => "#{project_root}/tests",
       'relative_named=tests/integration' => "#{project_root}/tests/integration"
     }
 
@@ -283,7 +283,7 @@ class PathIntegrationTest
     cases = {
       './bin' => "#{project_root}/bin",
       'bin/wayu' => "#{project_root}/bin/wayu",
-      '../wayu/tests' => "#{project_root}/tests"
+      "../#{File.basename(project_root)}/tests" => "#{project_root}/tests"
     }
 
     failures = cases.map do |argument, expected|
