@@ -198,10 +198,7 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 			eq_idx := strings.index(trimmed, "=")
 			if eq_idx > 0 {
 				value := strings.trim_space(trimmed[eq_idx+1:])
-				value = strings.trim_prefix(value, `"`)
-				value = strings.trim_suffix(value, `"`)
-				value = strings.trim_prefix(value, "'")
-				value = strings.trim_suffix(value, "'")
+				value = prompt_strip_matching_quotes(value)
 				if len(value) > 0 && value != "true" && value != "false" {
 					cfg.format = value
 				}
@@ -334,10 +331,7 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 			eq_idx := strings.index(trimmed, "=")
 			if eq_idx > 0 {
 				value := strings.trim_space(trimmed[eq_idx+1:])
-				value = strings.trim_prefix(value, `"`)
-				value = strings.trim_suffix(value, `"`)
-				value = strings.trim_prefix(value, "'")
-				value = strings.trim_suffix(value, "'")
+				value = prompt_strip_matching_quotes(value)
 				if len(value) > 0 {
 					switch current_section {
 					case "username":   cfg.username_format = value
@@ -358,10 +352,7 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 			eq_idx := strings.index(trimmed, "=")
 			if eq_idx > 0 {
 				value := strings.trim_space(trimmed[eq_idx+1:])
-				value = strings.trim_prefix(value, `"`)
-				value = strings.trim_suffix(value, `"`)
-				value = strings.trim_prefix(value, "'")
-				value = strings.trim_suffix(value, "'")
+				value = prompt_strip_matching_quotes(value)
 				if len(value) > 0 { cfg.username_style_user = value }
 			}
 		}
@@ -1189,4 +1180,15 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 	}
 
 	return cfg
+}
+
+// Strip exactly one MATCHING pair of surrounding quotes ("…" or '…').
+// Borrowed slice, no allocation. Independent trimming of " and ' used to cut
+// a trailing ' off values such as "[%n]'".
+prompt_strip_matching_quotes :: proc(v: string) -> string {
+	n := len(v)
+	if n >= 2 && ((v[0] == '"' && v[n-1] == '"') || (v[0] == '\'' && v[n-1] == '\'')) {
+		return v[1:n-1]
+	}
+	return v
 }
