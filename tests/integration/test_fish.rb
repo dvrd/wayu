@@ -34,6 +34,7 @@ class FishIntegrationTest
       test_mutations_auto_regenerate_init_core
       test_init_fish_prefers_init_core
       test_fish_escaping
+      test_all_generated_fish_files_parse
     ensure
       teardown_test_env
     end
@@ -270,6 +271,26 @@ class FishIntegrationTest
       puts "✗"
       puts "  alias_ok=#{alias_ok} env_ok=#{env_ok} syntax_ok=#{syntax_ok}"
       puts body.lines.grep(/sq|FQ/).join
+      @failed += 1
+    end
+  end
+  # Every generated *.fish file must parse, and init.fish must source cleanly
+  # in a real fish (values from earlier tests include quotes and $HOME).
+  def test_all_generated_fish_files_parse
+    print "Test 12: every generated .fish file passes fish -n and sources... "
+    unless system('command -v fish >/dev/null 2>&1')
+      puts "SKIP (fish not installed)"
+      return
+    end
+    files = Dir.glob("#{@config_dir}/**/*.fish")
+    bad = files.reject { |f| Open3.capture3('fish', '-n', f)[2].success? }
+    env = ENV.to_h.merge('HOME' => @tmp_home)
+    _, err, st = Open3.capture3(env, 'fish', '-c', "source #{@config_dir}/init.fish")
+    if !files.empty? && bad.empty? && st.success? && err.strip.empty?
+      puts "✓"; @passed += 1
+    else
+      puts "✗"
+      puts "  files=#{files.size} bad=#{bad} source_ok=#{st.success?} stderr=#{err.strip[0, 300]}"
       @failed += 1
     end
   end
