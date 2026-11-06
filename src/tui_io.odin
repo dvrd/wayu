@@ -8,6 +8,7 @@ import "base:intrinsics"
 import "core:time"
 import "core:sys/posix"
 import "base:runtime"
+import "core:unicode/utf8"
 foreign import libc "system:c"
 
 foreign libc {
@@ -287,40 +288,6 @@ fd_isset :: proc(set: ^fd_set, fd: c.int) -> bool {
     return (set.bits[fd / (8 * size_of(c.long))] >> (uint(fd) % (8 * size_of(c.long)))) & 1 != 0
 }
 
-// Poll for events with timeout (non-blocking)
-// Returns: Event if available, nil if timeout or no data
-poll_event :: proc() -> Event {
-    // Use select with 50ms timeout to allow periodic resize checks
-    readfds: fd_set
-    fd_zero(&readfds)
-    fd_set_bit(&readfds, c.int(STDIN_FILENO))
-
-    timeout := timeval{
-        tv_sec  = 0,
-        tv_usec = 50_000,  // 50ms
-    }
-
-    ready := select(c.int(STDIN_FILENO) + 1, &readfds, nil, nil, &timeout)
-
-    // No data available (timeout)
-    if ready <= 0 {
-        return nil
-    }
-
-    // Data available on stdin
-    input_buf: [8]byte
-    n, err := os.read(os.stdin, input_buf[:])
-
-    if err != nil || n == 0 {
-        return nil
-    }
-
-    if key, ok := parse_key_event(input_buf[:], n); ok {
-        return key
-    }
-
-    return nil
-}
 // Field order is layout-optimized (data-oriented): the 8-byte-aligned
 // strings come first, then the 4-byte rune, then the 1-byte bools. This
 // packs Cell into 40 bytes instead of 48 (rune no longer forces 4 bytes of
@@ -416,11 +383,43 @@ screen_resize :: proc(screen: ^Screen, new_width, new_height: int) {
 	screen.height = new_height
 }
 
-// Set cell at position
+// Marks the right half of a double-width glyph. The lead cell (x-1) holds
+// the rune; screen_flush emits nothing for continuation cells because the
+// terminal already advanced two columns when printing the lead.
+CELL_CONTINUATION :: rune(-1)
+
+// Set cell at position.
+// Overwriting either half of a double-width glyph blanks the other half so
+// the buffer never holds an orphaned lead or continuation cell.
 screen_set_cell :: proc(screen: ^Screen, x, y: int, cell: Cell) {
-	if x >= 0 && x < screen.width && y >= 0 && y < screen.height {
-		screen.buffer[y][x] = cell
+	if x < 0 || x >= screen.width || y < 0 || y >= screen.height do return
+	row := screen.buffer[y]
+	if row[x].char == CELL_CONTINUATION && cell.char != CELL_CONTINUATION && x > 0 {
+		row[x - 1] = Cell{char = ' '}
 	}
+	if x + 1 < screen.width && row[x + 1].char == CELL_CONTINUATION {
+		row[x + 1] = Cell{char = ' '}
+	}
+	row[x] = cell
+}
+
+// Put one rune at (x, y) honoring its display width. Returns the number of
+// columns consumed: 0 for zero-width runes or when a wide rune doesn't fit
+// before `limit` (exclusive right edge; defaults to the screen width).
+screen_put_rune :: proc(screen: ^Screen, x, y: int, r: rune, cell: Cell, limit := -1) -> int {
+	right := screen.width if limit < 0 else min(limit, screen.width)
+	w := get_rune_width(r)
+	if w <= 0 do return 0
+	if x + w > right do return 0
+	c := cell
+	c.char = r
+	screen_set_cell(screen, x, y, c)
+	if w == 2 {
+		cont := cell
+		cont.char = CELL_CONTINUATION
+		screen_set_cell(screen, x + 1, y, cont)
+	}
+	return w
 }
 
 // Clear screen (fill with spaces, reset all formatting)
@@ -443,7 +442,8 @@ screen_to_string :: proc(screen: ^Screen) -> string {
 	for y in 0..<screen.height {
 		for x in 0..<screen.width {
 			cell := screen.buffer[y][x]
-			fmt.sbprintf(&builder, "%c", cell.char)
+			if cell.char == CELL_CONTINUATION do continue
+			strings.write_rune(&builder, cell.char)
 		}
 		// Add newline after each row except the last
 		if y < screen.height - 1 {
@@ -503,82 +503,361 @@ KeyModifier :: enum {
     Alt,
 }
 
-// Parse key event from input buffer
-parse_key_event :: proc(input_buf: []byte, n: int) -> (KeyEvent, bool) {
-    if n == 0 do return {}, false
+// ============================================================================
+// Input decoding
+// ============================================================================
+//
+// Raw bytes from stdin are accumulated in input_pending and decoded one event
+// at a time, so a single read() containing several keys (paste, key repeat,
+// fast typing) yields several events instead of only the first byte.
+// Sequences split across reads are completed by the next read; a lone ESC is
+// disambiguated from the start of an escape sequence by waiting
+// ESC_SEQUENCE_TIMEOUT_US for more bytes.
 
-    ch := input_buf[0]
+INPUT_BUFFER_SIZE       :: 512
+POLL_TIMEOUT_US         :: 50_000  // main-loop tick (resize checks, notifications)
+ESC_SEQUENCE_TIMEOUT_US :: 25_000  // lone ESC vs. start of a CSI/SS3 sequence
 
-    // Escape sequences (arrow keys, function keys)
-    if ch == 27 {
-        if n == 1 {
-            return KeyEvent{key = .Escape}, true
-        }
+@(private="file")
+input_pending: [INPUT_BUFFER_SIZE]u8
+@(private="file")
+input_pending_len: int
 
-        // Arrow keys: ESC [ A/B/C/D
-        if n >= 3 && input_buf[1] == '[' {
-            switch input_buf[2] {
-            case 'A': return KeyEvent{key = .Up}, true
-            case 'B': return KeyEvent{key = .Down}, true
-            case 'C': return KeyEvent{key = .Right}, true
-            case 'D': return KeyEvent{key = .Left}, true
-            case 'H': return KeyEvent{key = .Home}, true
-            case 'F': return KeyEvent{key = .End}, true
-            }
-
-            // Function keys: ESC [ 1 5 ~ (F5), etc.
-            if n >= 4 && input_buf[3] == '~' {
-                code := int(input_buf[2] - '0')
-                switch code {
-                case 5: return KeyEvent{key = .F5}, true
-                case 7: return KeyEvent{key = .F6}, true
-                case 8: return KeyEvent{key = .F7}, true
-                case 9: return KeyEvent{key = .F8}, true
-                }
-            }
-        }
-
-        // Function keys F1-F4: ESC O P/Q/R/S
-        if n >= 3 && input_buf[1] == 'O' {
-            switch input_buf[2] {
-            case 'P': return KeyEvent{key = .F1}, true
-            case 'Q': return KeyEvent{key = .F2}, true
-            case 'R': return KeyEvent{key = .F3}, true
-            case 'S': return KeyEvent{key = .F4}, true
-            }
-        }
-
-        return {}, false
-    }
-
-    // Special keys (must check before Ctrl keys to avoid conflicts)
-    switch ch {
-    case 10, 13: return KeyEvent{key = .Enter}, true
-    case 9:      return KeyEvent{key = .Tab}, true
-    case 127, 8: return KeyEvent{key = .Backspace}, true
-    }
-
-    // Control keys (Ctrl+A = 1, Ctrl+C = 3, etc.)
-    // Note: Tab (9), LF (10), CR (13) are handled above
-    if ch >= 1 && ch <= 26 {
-        char := rune('a' + ch - 1)
-        return KeyEvent{
-            key = .Char,
-            char = char,
-            modifiers = {.Ctrl},
-        }, true
-    }
-
-    // Printable characters
-    if ch >= 32 && ch <= 126 {
-        return KeyEvent{
-            key = .Char,
-            char = rune(ch),
-        }, true
-    }
-
-    return {}, false
+ParseStatus :: enum {
+	Ok,          // event decoded, `consumed` bytes used
+	Incomplete,  // need more bytes to decide
+	Invalid,     // unrecognised input; skip `consumed` bytes
 }
+
+// Wait up to timeout_us for stdin to become readable.
+@(private="file")
+stdin_ready :: proc(timeout_us: int) -> bool {
+	readfds: fd_set
+	fd_zero(&readfds)
+	fd_set_bit(&readfds, c.int(STDIN_FILENO))
+	timeout := timeval{
+		tv_sec  = c.long(timeout_us / 1_000_000),
+		tv_usec = c.long(timeout_us % 1_000_000),
+	}
+	return select(c.int(STDIN_FILENO) + 1, &readfds, nil, nil, &timeout) > 0
+}
+
+// Append whatever stdin has to input_pending. Returns false on EOF/error.
+@(private="file")
+fill_input :: proc() -> bool {
+	space := input_pending[input_pending_len:]
+	if len(space) == 0 do return true
+	n, err := os.read(os.stdin, space)
+	if err != nil || n <= 0 do return false
+	input_pending_len += n
+	return true
+}
+
+@(private="file")
+consume_input :: proc(count: int) {
+	n := clamp(count, 0, input_pending_len)
+	copy(input_pending[:], input_pending[n:input_pending_len])
+	input_pending_len -= n
+}
+
+// Poll for events with timeout (non-blocking).
+// Returns: Event if available, nil if timeout or no decodable data.
+poll_event :: proc() -> Event {
+	if input_pending_len == 0 {
+		if !stdin_ready(POLL_TIMEOUT_US) do return nil
+		if !fill_input() do return nil
+	}
+
+	for input_pending_len > 0 {
+		key, consumed, status := parse_input_event(input_pending[:input_pending_len], false)
+		switch status {
+		case .Ok:
+			consume_input(consumed)
+			return key
+		case .Invalid:
+			consume_input(max(1, consumed))
+		case .Incomplete:
+			// More bytes may be in flight (split escape sequence / UTF-8 rune).
+			if input_pending_len < INPUT_BUFFER_SIZE && stdin_ready(ESC_SEQUENCE_TIMEOUT_US) && fill_input() {
+				continue
+			}
+			// Nothing more arrived: decode what we have as final input
+			// (a lone ESC becomes the Escape key).
+			key, consumed, status = parse_input_event(input_pending[:input_pending_len], true)
+			consume_input(max(1, consumed))
+			if status == .Ok do return key
+		}
+	}
+	return nil
+}
+
+// Decode the first event in `buf`. When `final` is true no more bytes will
+// follow, so a lone ESC is the Escape key and truncated sequences are invalid.
+parse_input_event :: proc(buf: []u8, final: bool) -> (key: KeyEvent, consumed: int, status: ParseStatus) {
+	if len(buf) == 0 do return {}, 0, .Incomplete
+
+	ch := buf[0]
+
+	if ch == 27 {
+		return parse_escape_sequence(buf, final)
+	}
+
+	switch ch {
+	case 13:     return KeyEvent{key = .Enter}, 1, .Ok
+	case 9:      return KeyEvent{key = .Tab}, 1, .Ok
+	case 127, 8: return KeyEvent{key = .Backspace}, 1, .Ok
+	case 0:      return {}, 1, .Invalid
+	}
+
+	// Control keys (Ctrl+A = 1 … Ctrl+Z = 26). LF (10) is Ctrl+J: the TUI
+	// clears ICRNL, so Enter arrives as CR and LF stays distinguishable.
+	if ch >= 1 && ch <= 26 {
+		return KeyEvent{key = .Char, char = rune('a' + ch - 1), modifiers = {.Ctrl}}, 1, .Ok
+	}
+	if ch < 32 do return {}, 1, .Invalid  // other C0 controls (FS, GS, …)
+
+	// Printable ASCII
+	if ch < 0x80 {
+		return KeyEvent{key = .Char, char = rune(ch)}, 1, .Ok
+	}
+
+	// UTF-8 multi-byte rune
+	need := 0
+	switch {
+	case ch & 0xE0 == 0xC0: need = 2
+	case ch & 0xF0 == 0xE0: need = 3
+	case ch & 0xF8 == 0xF0: need = 4
+	case:                   return {}, 1, .Invalid  // stray continuation byte
+	}
+	if len(buf) < need {
+		// Make sure what we have so far is a plausible prefix.
+		for i in 1..<len(buf) {
+			if buf[i] & 0xC0 != 0x80 do return {}, 1, .Invalid
+		}
+		return {}, 0, .Invalid if final else .Incomplete
+	}
+	r, size := utf8.decode_rune(buf[:need])
+	if r == utf8.RUNE_ERROR || size != need do return {}, 1, .Invalid
+	if r < 0xA0 do return {}, need, .Invalid  // C1 controls
+	return KeyEvent{key = .Char, char = r}, need, .Ok
+}
+
+@(private="file")
+parse_escape_sequence :: proc(buf: []u8, final: bool) -> (key: KeyEvent, consumed: int, status: ParseStatus) {
+	if len(buf) == 1 {
+		if final do return KeyEvent{key = .Escape}, 1, .Ok
+		return {}, 0, .Incomplete
+	}
+
+	switch buf[1] {
+	case '[':
+		// CSI: ESC [ params(0x30-0x3F)* intermediates(0x20-0x2F)* final(0x40-0x7E)
+		i := 2
+		for i < len(buf) && buf[i] >= 0x20 && buf[i] <= 0x3F {
+			i += 1
+		}
+		if i >= len(buf) {
+			return {}, (len(buf) if final else 0), (.Invalid if final else .Incomplete)
+		}
+		final_byte := buf[i]
+		if final_byte < 0x40 || final_byte > 0x7E {
+			return {}, i, .Invalid  // malformed: drop up to the bad byte
+		}
+		consumed = i + 1
+		params := string(buf[2:i])
+		// Modifier parameter (e.g. ESC [ 1 ; 5 A = Ctrl+Up).
+		mods: KeyModifiers
+		first := params
+		if semi := strings.index_byte(params, ';'); semi >= 0 {
+			first = params[:semi]
+			if m, ok := strconv.parse_int(params[semi + 1:]); ok && m > 1 {
+				bits := m - 1
+				if bits & 1 != 0 do mods += {.Shift}
+				if bits & 2 != 0 do mods += {.Alt}
+				if bits & 4 != 0 do mods += {.Ctrl}
+			}
+		}
+		k: Key
+		switch final_byte {
+		case 'A': k = .Up
+		case 'B': k = .Down
+		case 'C': k = .Right
+		case 'D': k = .Left
+		case 'H': k = .Home
+		case 'F': k = .End
+		case 'Z': return KeyEvent{key = .Tab, modifiers = {.Shift}}, consumed, .Ok
+		case '~':
+			n, ok := strconv.parse_int(first)
+			if !ok do return {}, consumed, .Invalid
+			switch n {
+			case 1, 7:  k = .Home
+			case 2:     return {}, consumed, .Invalid  // Insert: unused
+			case 3:     k = .Delete
+			case 4, 8:  k = .End
+			case 5:     k = .PageUp
+			case 6:     k = .PageDown
+			case 11:    k = .F1
+			case 12:    k = .F2
+			case 13:    k = .F3
+			case 14:    k = .F4
+			case 15:    k = .F5
+			case 17:    k = .F6
+			case 18:    k = .F7
+			case 19:    k = .F8
+			case 20:    k = .F9
+			case 21:    k = .F10
+			case 23:    k = .F11
+			case 24:    k = .F12
+			case:       return {}, consumed, .Invalid
+			}
+		case:
+			return {}, consumed, .Invalid  // unsupported CSI (mouse, focus, …)
+		}
+		return KeyEvent{key = k, modifiers = mods}, consumed, .Ok
+
+	case 'O':
+		// SS3: ESC O <final> (F1-F4, application-mode arrows/Home/End)
+		if len(buf) < 3 {
+			return {}, (len(buf) if final else 0), (.Invalid if final else .Incomplete)
+		}
+		k: Key
+		switch buf[2] {
+		case 'P': k = .F1
+		case 'Q': k = .F2
+		case 'R': k = .F3
+		case 'S': k = .F4
+		case 'A': k = .Up
+		case 'B': k = .Down
+		case 'C': k = .Right
+		case 'D': k = .Left
+		case 'H': k = .Home
+		case 'F': k = .End
+		case:     return {}, 3, .Invalid
+		}
+		return KeyEvent{key = k}, 3, .Ok
+
+	case 27:
+		// ESC ESC: first one is a plain Escape.
+		return KeyEvent{key = .Escape}, 1, .Ok
+	}
+
+	// ESC followed by anything else: a plain Escape keypress (the next byte is
+	// decoded as its own key). wayu has no Alt bindings, and treating it as
+	// Alt+key would turn a quick "Esc, d" into a stray 'd' action.
+	return KeyEvent{key = .Escape}, 1, .Ok
+}
+
+// Parse the first key event from input_buf[:n], treating the buffer as
+// complete (no further bytes will arrive). Kept for callers/tests that hand
+// in one key's worth of bytes.
+parse_key_event :: proc(input_buf: []byte, length: int) -> (KeyEvent, bool) {
+	n := clamp(length, 0, len(input_buf))
+	if n == 0 do return {}, false
+	key, _, status := parse_input_event(input_buf[:n], true)
+	return key, status == .Ok
+}
+// ============================================================================
+// Color profile adaptation
+// ============================================================================
+
+// Color capability the TUI renders with. tui_run copies CURRENT_COLOR_PROFILE
+// here (NO_COLOR/--no-color → .ASCII). Defaults to TRUECOLOR so headless
+// rendering/tests see the raw palette.
+tui_color_mode: ColorProfile = .TRUECOLOR
+
+// Write a TUI color escape adapted to tui_color_mode. TUI palette constants
+// are truecolor SGR ("\x1b[38;2;R;G;Bm" / "\x1b[48;2;...m"); lower profiles get
+// the nearest 256/16 color, ASCII gets nothing.
+write_tui_color :: proc(b: ^strings.Builder, code: string) {
+	if len(code) == 0 do return
+	switch tui_color_mode {
+	case .TRUECOLOR:
+		strings.write_string(b, code)
+		return
+	case .ASCII:
+		return
+	case .ANSI256, .ANSI:
+	}
+	is_bg, r, g, bl, ok := parse_truecolor_sgr(code)
+	if !ok {
+		strings.write_string(b, code)
+		return
+	}
+	if tui_color_mode == .ANSI256 {
+		fmt.sbprintf(b, "\x1b[%d;5;%dm", 48 if is_bg else 38, rgb_to_ansi256(r, g, bl))
+	} else {
+		idx := rgb_to_ansi16(r, g, bl)
+		base := 40 if is_bg else 30
+		if idx >= 8 {
+			base = 100 if is_bg else 90
+		}
+		fmt.sbprintf(b, "\x1b[%dm", base + idx % 8)
+	}
+}
+
+// Parse "\x1b[38;2;R;G;Bm" (fg) or "\x1b[48;2;R;G;Bm" (bg).
+parse_truecolor_sgr :: proc(code: string) -> (is_bg: bool, r, g, b: int, ok: bool) {
+	body := code
+	if !strings.has_prefix(body, "\x1b[") || !strings.has_suffix(body, "m") do return
+	body = body[2:len(body) - 1]
+	if strings.has_prefix(body, "38;2;") {
+		is_bg = false
+	} else if strings.has_prefix(body, "48;2;") {
+		is_bg = true
+	} else {
+		return
+	}
+	body = body[5:]
+	vals: [3]int
+	for i in 0..<3 {
+		end := strings.index_byte(body, ';')
+		part := body if end < 0 else body[:end]
+		v, v_ok := strconv.parse_int(part)
+		if !v_ok || v < 0 || v > 255 do return
+		vals[i] = v
+		if i < 2 {
+			if end < 0 do return
+			body = body[end + 1:]
+		}
+	}
+	return is_bg, vals[0], vals[1], vals[2], true
+}
+
+// Nearest xterm-256 color index for an RGB triple.
+rgb_to_ansi256 :: proc(r, g, b: int) -> int {
+	if r == g && g == b {
+		if r < 8 do return 16
+		if r > 248 do return 231
+		return 232 + (r - 8) * 24 / 247
+	}
+	level :: proc(v: int) -> int {
+		if v < 48 do return 0
+		if v < 115 do return 1
+		return (v - 35) / 40
+	}
+	return 16 + 36 * level(r) + 6 * level(g) + level(b)
+}
+
+// Nearest of the 16 standard ANSI colors (0-7 normal, 8-15 bright).
+rgb_to_ansi16 :: proc(r, g, b: int) -> int {
+	PALETTE :: [16][3]int{
+		{0, 0, 0}, {205, 0, 0}, {0, 205, 0}, {205, 205, 0},
+		{0, 0, 238}, {205, 0, 205}, {0, 205, 205}, {229, 229, 229},
+		{127, 127, 127}, {255, 0, 0}, {0, 255, 0}, {255, 255, 0},
+		{92, 92, 255}, {255, 0, 255}, {0, 255, 255}, {255, 255, 255},
+	}
+	palette := PALETTE
+	best, best_dist := 0, max(int)
+	for c, i in palette {
+		dr, dg, db := r - c[0], g - c[1], b - c[2]
+		dist := dr*dr + dg*dg + db*db
+		if dist < best_dist {
+			best, best_dist = i, dist
+		}
+	}
+	return best
+}
+
 // ============================================================================
 // Primary Colors
 // ============================================================================
@@ -868,36 +1147,26 @@ get_view_visible_height :: proc(state: ^TUIState) -> int {
 		if visible_count < 1 { visible_count = 1 }
 		return visible_count
 
+	}
+
+	// Filter bar row — render_filter_bar draws it whenever any filter
+	// (text, active input, or source) is on.
+	filter_offset := 1 if has_any_filter(state) else 0
+
+	#partial switch state.current_view {
 	case .ALIAS_VIEW, .CONSTANTS_VIEW:
-		// filter bar row (when filter is active or has text)
-		filter_offset := 0
-		if state.filter.active || len(state.filter.text) > 0 {
-			filter_offset = 1
-		}
-		// column header row + its divider (only when items exist)
-		col_header_offset := 0
-		has_items := false
-		if state.filter.active || len(state.filter.text) > 0 {
-			has_items = len(state.filter.indices) > 0
-		} else {
-			view := state.current_view
-			if state.data_cache[view] != nil {
-				items := cast(^[dynamic]string)state.data_cache[view]
-				has_items = len(items) > 0
-			}
-		}
-		if has_items {
-			col_header_offset = 2
-		}
+		// column header row + its divider (only when items are visible)
+		col_header_offset := 2 if view_shows_column_header(state) else 0
 		// -1 divider, -1 scroll-indicator row, -filter_offset, -col_header_offset
+		return base - 2 - filter_offset - col_header_offset
+
+	case .PLUGINS_VIEW:
+		// Registry tab always draws a column header + divider (2 rows).
+		col_header_offset := 2 if state.plugin_tab == PLUGIN_TAB_REGISTRY else 0
 		return base - 2 - filter_offset - col_header_offset
 
 	case:
 		// PATH_VIEW, COMPLETIONS_VIEW, BACKUPS_VIEW
-		filter_offset := 0
-		if state.filter.active || len(state.filter.text) > 0 {
-			filter_offset = 1
-		}
 		// -1 divider, -1 scroll-indicator row, -filter_offset
 		return base - 2 - filter_offset
 	}
