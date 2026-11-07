@@ -20,6 +20,8 @@ import select
 import struct
 import fcntl
 import termios
+import shutil
+import tempfile
 
 import pyte
 
@@ -364,11 +366,45 @@ def test_live_resize():
 
 # ── Main ────────────────────────────────────────────────────────────────────
 
+FIXTURE_TOML = """[paths]
+bin = "/usr/bin"
+local = "/usr/local/bin"
+
+[aliases]
+ll = "ls -la"
+gs = "git status"
+
+[env]
+EDITOR = "vim"
+"""
+
+
+def sandbox_home():
+    """Temp HOME with a small fixed config: never reads the real
+    ~/.config/wayu, and every run renders the same data (CI + local)."""
+    home = tempfile.mkdtemp(prefix="wayu_tui_")
+    cfg = os.path.join(home, ".config", "wayu")
+    os.makedirs(cfg)
+    with open(os.path.join(cfg, "wayu.toml"), "w") as f:
+        f.write(FIXTURE_TOML)
+    os.environ["HOME"] = home
+    os.environ["SHELL"] = "/bin/zsh"
+    return home
+
+
 def main():
     if not os.path.exists(WAYU_BIN):
         print(f"ERROR: wayu binary not found at {WAYU_BIN}")
-        print("Run: ./build_it debug")
+        print("Run: ./build_it")
         sys.exit(1)
+    home = sandbox_home()
+    try:
+        run_all()
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
+
+
+def run_all():
 
     print("=" * 60)
     print("  WAYU TUI Responsiveness Tests")

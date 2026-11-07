@@ -68,6 +68,12 @@ jobs:
     - name: Run integration tests (incl. golden)
       run: ruby tests/integration/run_all.rb
 
+    - name: Run TUI layout tests (pyte)
+      run: |
+        python3 -m venv "$RUNNER_TEMP/tui-venv"
+        "$RUNNER_TEMP/tui-venv/bin/pip" install --quiet pyte
+        "$RUNNER_TEMP/tui-venv/bin/python" tests/tui/test_responsive.py
+
     - name: Test CLI exit codes
       run: |
         EXIT_CODE=0
