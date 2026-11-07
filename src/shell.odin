@@ -69,13 +69,63 @@ get_rc_file_path :: proc(shell: ShellType) -> string {
         }
         return fmt.aprintf("%s/.bashrc", home)
     case .ZSH:
-        return fmt.aprintf("%s/.zshrc", home)
+        // zsh reads its rc files from $ZDOTDIR when set.
+        return fmt.aprintf("%s/.zshrc", zsh_dotdir(home))
     case .FISH:
         return fmt.aprintf("%s/.config/fish/config.fish", home)
     case .UNKNOWN:
         return fmt.aprintf("%s/.profile", home)
     }
     return ""
+}
+
+// $ZDOTDIR when set and non-empty, else `home`. Temp-allocated.
+zsh_dotdir :: proc(home: string) -> string {
+    zdot := os.get_env("ZDOTDIR", context.temp_allocator)
+    return len(zdot) > 0 ? zdot : home
+}
+
+// Every startup file `shell` may read (login and interactive), in load
+// order, whether or not it exists. `wayu init` writes to get_rc_file_path;
+// doctor accepts a wayu source line in any of these. Fish also reads every
+// conf.d/*.fish snippet, which is listed when the directory exists.
+shell_startup_files :: proc(shell: ShellType, allocator := context.allocator) -> []string {
+    context.allocator = allocator
+    home := os.get_env("HOME", context.temp_allocator)
+    files := make([dynamic]string)
+
+    switch shell {
+    case .ZSH:
+        zdot := zsh_dotdir(home)
+        // ~/.zshenv is read before ZDOTDIR is known (it often sets it).
+        if zdot != home {
+            append(&files, fmt.aprintf("%s/.zshenv", home))
+        }
+        for name in ([]string{".zshenv", ".zprofile", ".zshrc", ".zlogin"}) {
+            append(&files, fmt.aprintf("%s/%s", zdot, name))
+        }
+    case .BASH:
+        for name in ([]string{".bash_profile", ".bash_login", ".profile", ".bashrc"}) {
+            append(&files, fmt.aprintf("%s/%s", home, name))
+        }
+    case .FISH:
+        fish_dir := fmt.aprintf("%s/.config/fish", home)
+        append(&files, fmt.aprintf("%s/config.fish", fish_dir))
+        conf_d := fmt.aprintf("%s/conf.d", fish_dir)
+        if handle, err := os.open(conf_d); err == nil {
+            defer os.close(handle)
+            if infos, read_err := os.read_dir(handle, -1, context.temp_allocator); read_err == nil {
+                for info in infos {
+                    if info.type != .Directory && strings.has_suffix(info.name, ".fish") {
+                        append(&files, fmt.aprintf("%s/%s", conf_d, info.name))
+                    }
+                }
+            }
+        }
+    case .UNKNOWN:
+        append(&files, fmt.aprintf("%s/.profile", home))
+    }
+    return files[:]
 }
 
 // Get shell-specific shebang for config files

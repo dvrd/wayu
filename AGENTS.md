@@ -197,8 +197,9 @@ Unit tests: `tests/unit/test_<module>.odin`. Integration tests spawn the compile
 - `--help` / `-h`: works globally and per-command
 - `--version` / `-v`: prints `wayu vX.Y.Z`
 - `--no-color`: disables ANSI colors (equivalent to `NO_COLOR=1`)
-- `--yes` / `-y`: skip confirmation on destructive operations (required by: `path clean`, `path dedup`, `backup rm`, `plugin remove`)
+- `--yes` / `-y`: skip confirmation on destructive operations (required by: `path clean`, `path dedup`, `backup rm`, `plugin remove`, `doctor --fix`)
 - `--json`: machine-readable output (currently only `doctor` — expand to list commands)
+- `wayu doctor` exits `EXIT_CONFIG` (78) when any check reports an error, so it can gate CI
 - `--dry-run`: show what would happen without writing
 
 ## Known Stubs / In-Progress Areas
