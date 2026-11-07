@@ -616,9 +616,15 @@ class InitIntegrationTest
         "$W" --shell #{sh} build >/dev/null 2>&1; _wayu_paths_sync; echo "build=$(has d2)"
         sleep 1; EDITOR="$ED" "$W" --shell #{sh} config edit >/dev/null 2>&1; _wayu_paths_sync; echo "edit=$(has d3)"
         sleep 1; printf 'd4 = "%s/d4"\\n' "$HOME" >> "$TOML"
-        PATH="$WDIR:$PATH"; _wayu_paths_sync; echo "hook=$(has d4)"
+        PATH="$DECOY:$PATH"; _wayu_paths_sync; echo "hook=$(has d4)"
       SH
-      extra = { 'TOML' => toml, 'ED' => editor, 'WDIR' => File.dirname(@wayu_bin) }
+      # A stale wayu earlier on PATH (e.g. Homebrew while running a dev build)
+      # must not be the one the hook runs: it uses _WAYU_BIN, the generator.
+      decoy = "#{home}/decoy"
+      FileUtils.mkdir_p(decoy)
+      File.write("#{decoy}/wayu", "#!/bin/sh\nexit 0\n")
+      File.chmod(0o755, "#{decoy}/wayu")
+      extra = { 'TOML' => toml, 'ED' => editor, 'DECOY' => decoy }
       out, err, = Open3.capture3(env.merge(extra), bin, '-c', script)
       if out.lines.map(&:strip) == %w[build=y edit=y hook=y]
         puts "✓"; @passed += 1
