@@ -101,6 +101,59 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   is a terminal). To adopt the new template, move it aside and run
   `wayu init`.
 
+**Flags**
+- Unknown options are an error: `wayu path add DIR --dryrun` (typo) exits `64`
+  and writes nothing instead of performing the add. Each command accepts the
+  global flags plus its own (`doctor --fix`, `plugin update --all`,
+  `migrate --from/--to/--schema`, `export --eval/--turbo/--check`, …). A value
+  that starts with `-` goes after `--` (`wayu path rm -- -odd`); the first
+  value word of `alias add` / `const add` (`const add OFFSET -5`) and negative
+  numbers (`plugin priority foo -1`) are still taken as values.
+- A global long flag at the very end of `alias add` / `const add`
+  (`--dry-run`, `--yes`, `--json`, `--no-color`) is now a flag, not part of
+  the value: `wayu alias add x y --dry-run` previews instead of storing
+  `y --dry-run`. To keep it in the value, put `--` before the value:
+  `wayu alias add hd -- helm install --dry-run`. A trailing `-n` / `-y`
+  still belongs to the value (`grep -n`) but prints a warning on stderr.
+
+**Hooks**
+- A `{path}` / `{name}` / `{value}` placeholder inside single quotes in
+  `hooks.conf` is no longer substituted by wayu: it becomes
+  `"$WAYU_HOOK_PATH"` (etc.) for an inner shell to expand. This closes a
+  command injection through `sh -c '... {path}'`, `ssh`, `eval`. A plain
+  `echo 'Adding {path}'` now logs the literal reference — use double quotes
+  (`echo "Adding {path}"`) for direct substitution. `wayu hooks` flags such
+  placeholders.
+- `pre_*` hooks run only when the operation will really write: not for
+  invalid names, missing entries on remove, or duplicate path adds.
+
+**Backups**
+- Every write now keeps only the newest 5 backups per file (previously only
+  `path clean/dedup` pruned, so the backup dir grew without bound).
+- A command takes at most one backup per file (the state before it ran):
+  `migrate`, `template apply`, `doctor --fix` no longer leave one backup per
+  entry. The TUI still backs up every change.
+- `wayu backup restore <type> [N|file] --yes` restores backup `#N` from
+  `wayu backup list` (or that file). The snapshot taken before a restore is
+  marked `[pre-restore]`, and a restore without `N` skips those, so repeating
+  it no longer flips between the last two states; undo a restore with
+  `wayu backup restore <type> 1 --yes`. `backup list --json` entries gain
+  `index` and `pre_restore`.
+
+**export / build**
+- `wayu export --eval`, `--check` and `--turbo` now do what the help says
+  (they all used to regenerate the turbo file and print decorated output,
+  so `eval "$(wayu export --eval)"` broke the shell). `--check` exits `78`
+  when the turbo file is missing or older than `wayu.toml`.
+- `wayu export list` shows the formats instead of writing the turbo file; an
+  unknown `export` mode or `build` target exits `64`.
+- `wayu export` refuses fish (exit `64`): its output is sh syntax. `wayu
+  build` no longer refreshes a turbo file for fish.
+- Turbo/eval output does not include `[tools]` lazy loaders, the prompt,
+  login hooks or live PATH sync; the help now says so (it used to promise a
+  drop-in faster replacement). `wayu build` help no longer claims
+  SIMD/threaded/GPU optimisation.
+
 ## 4.4.4
 
 **Lookups and output**

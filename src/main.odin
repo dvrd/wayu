@@ -239,6 +239,18 @@ main :: proc() {
 	parsed := parse_args(os.args[1:])
 	defer if len(parsed.args) > 0 do delete(parsed.args)
 
+	if len(parsed.unknown_flag) > 0 {
+		print_error_simple("Unknown option: %s", parsed.unknown_flag)
+		fmt.eprintln("Run 'wayu help' (or 'wayu <command> --help') for the accepted options.")
+		fmt.eprintln("To pass a value that starts with '-', put it after '--'.")
+		os.exit(EXIT_USAGE)
+	}
+	if f := parsed.ambiguous_tail_flag; len(f) > 0 {
+		long := "--dry-run" if f == "-n" else "--yes"
+		fmt.eprintfln("%s⚠ trailing '%s' was kept as part of the value; use '%s' for the flag (put '--' before the value to silence this)%s",
+			get_warning(), f, long, RESET)
+	}
+
 	// Launch TUI if flag present
 	if parsed.tui {
 		tui_launch()
@@ -311,12 +323,17 @@ main :: proc() {
 	case .CONFIG:
 		handle_config_extra_command(parsed.action, parsed.args)
 	case .BUILD:
+		if parsed.action == .UNKNOWN || len(parsed.args) > 0 {
+			print_error_simple("Unknown build target (expected: turbo, eval, profile, help)")
+			print_build_help()
+			os.exit(EXIT_USAGE)
+		}
 		handle_build_command(parsed.action)
 	case .EXPORT:
 		// pre/post_export hooks wrap the actions that generate the turbo
 		// file (default/turbo); help/eval/check produce no export artifact.
 		// post_export only runs if generation didn't exit with an error.
-		generates := parsed.action == .TURBO || parsed.action == .LIST || parsed.action == .UNKNOWN
+		generates := parsed.action == .TURBO
 		if generates do hook_pre_export()
 		handle_export_command(parsed.action, parsed.args)
 		if generates do hook_post_export()
@@ -811,10 +828,13 @@ print_help :: proc() {
 	fmt.println()
 	fmt.printf("  # Flags are global and may appear anywhere, except: after '--', and\n")
 	fmt.printf("  # in 'alias add' / 'const add' once the name and first value word were\n")
-	fmt.printf("  # given — the rest of the line is the value, flags included:\n")
+	fmt.printf("  # given — the rest of the line is the value, flags included (but a\n")
+	fmt.printf("  # trailing --dry-run/--yes/--json/--no-color is still a flag).\n")
+	fmt.printf("  # Unknown options are an error (exit 64).\n")
 	fmt.printf("  wayu alias add gpf git push -f    # value: 'git push -f'\n")
-	fmt.printf("  wayu -n alias add gpf git push -f # dry-run; value keeps -f\n")
+	fmt.printf("  wayu alias add gpf git push -f --dry-run  # preview\n")
 	fmt.printf("  wayu alias add g -- -n            # value: '-n'\n")
+	fmt.printf("  wayu alias add hd -- helm install --dry-run  # value keeps --dry-run\n")
 	fmt.println()
 	fmt.printf("  # Destructive operations require --yes flag:\n")
 	fmt.printf("  wayu path clean --yes            # Remove missing directories\n")
@@ -839,7 +859,7 @@ print_help :: proc() {
 
 // handle_build_command - Compile wayu.toml to optimized shell config
 handle_build_command :: proc(action: Action) {
-	// Show help for unknown actions or explicit help request
+	// Explicit help (unknown targets are rejected by main with exit 64)
 	if action == .HELP || action == .UNKNOWN {
 		print_build_help()
 		return
@@ -899,7 +919,7 @@ handle_build_command :: proc(action: Action) {
 	// Keep an existing turbo export in step; `wayu build turbo` creates it.
 	turbo_path := fmt.aprintf("%s/%s", wayu.data, turbo_export_file_name())
 	defer delete(turbo_path)
-	if os.exists(turbo_path) {
+	if os.exists(turbo_path) && wayu.shell != .FISH {
 		handle_export_command(.TURBO, {})
 	}
 }

@@ -8,8 +8,13 @@
 // same readers and quoting helpers as core.{ext}, so turbo output and core
 // never disagree (the legacy *.zsh registries are empty for TOML users).
 //
-// Usage: wayu export --turbo
-//        eval "$(wayu export --eval)"
+// Usage: wayu export [--turbo]          (writes turbo.<ext>)
+//        eval "$(wayu export --eval)"   (env + PATH + aliases only)
+//
+// Scope: turbo/eval cover [env], [paths], [aliases], functions, completions,
+// plugins and the tools/extra escape hatches. They do NOT include [tools]
+// lazy loaders, the prompt, login hooks or live PATH sync; use init.<ext>
+// (`wayu build`) for those. zsh/bash only: fish is refused.
 
 package wayu
 
@@ -36,7 +41,24 @@ handle_export_command :: proc(action: Action, args: []string) {
 	case .HELP:
 		print_export_usage()
 		return
-	case .LIST, .TURBO, .UNKNOWN:
+	case .LIST:
+		print_export_formats()
+		return
+	case .UNKNOWN:
+		print_error_simple("Unknown export mode")
+		print_export_usage()
+		os.exit(EXIT_USAGE)
+	}
+
+	// Turbo/eval emit sh syntax (`if [ ... ]; then`, `export`): never hand
+	// that to fish (OKAMI-233).
+	if wayu.shell == .FISH && (action == .TURBO || action == .EVAL) {
+		print_error_simple("wayu export does not support fish; source init.fish instead (wayu build)")
+		os.exit(EXIT_USAGE)
+	}
+
+	#partial switch action {
+	case .TURBO:
 		// Default / explicit turbo mode. Honors the global --dry-run flag.
 		generate_turbo_export(wayu.dry_run)
 	case .EVAL:
@@ -128,10 +150,11 @@ generate_turbo_export :: proc(dry_run: bool) {
 	fmt.printfln("  %s# New (faster):%s", get_muted(), RESET)
 	fmt.printfln("  source \"%s\"", output_path)
 	fmt.println()
-	fmt.printfln("%sOr use eval mode (fastest):%s", get_secondary(), RESET)
+	fmt.printfln("%sOr eval mode (env, PATH and aliases only):%s", get_secondary(), RESET)
 	fmt.printfln("  eval \"$(wayu export --eval)\"")
 	fmt.println()
-	fmt.printfln("%sSpeed improvement: ~2-4x faster startup%s", get_success(), RESET)
+	fmt.printfln("%sNot included: [tools] lazy loaders, prompt, login hooks, live PATH sync.%s", get_warning(), RESET)
+	fmt.printfln("%sKeep sourcing init.%s if you rely on those.%s", get_warning(), get_shell_extension(wayu.shell), RESET)
 }
 
 // Build the complete turbo content
@@ -245,13 +268,16 @@ print_export_usage :: proc() {
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
 	fmt.printfln("  wayu export              Generate turbo export file")
 	fmt.printfln("  wayu export --turbo      Same as above (explicit)")
-	fmt.printfln("  wayu export --eval       Output for eval (fastest)")
+	fmt.printfln("  wayu export --eval       Print env/PATH/aliases for eval (no writes)")
+	fmt.printfln("  wayu export --check      Exit 0 if the turbo file is current, 78 if not")
 	fmt.printfln("  wayu export --dry-run    Preview without writing")
 	fmt.printfln("  wayu export list         Show available formats")
 	fmt.println()
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
 	fmt.println("  Generates a unified, pre-computed shell configuration")
-	fmt.println("  that eliminates loops and conditionals for 2-4x faster startup.")
+	fmt.println("  without loops or conditionals. zsh/bash only.")
+	fmt.println("  Not included: [tools] lazy loaders, prompt, login hooks and live")
+	fmt.println("  PATH sync — keep sourcing init.<ext> (`wayu build`) for those.")
 	fmt.println()
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
 	fmt.println("  # Generate turbo file")
@@ -260,7 +286,7 @@ print_export_usage :: proc() {
 	fmt.println("  # Use in .zshrc (replace source ~/.config/wayu/init.zsh)")
 	fmt.println("  source \"$HOME/.config/wayu/turbo.zsh\"")
 	fmt.println()
-	fmt.println("  # Or use eval mode (even faster)")
+	fmt.println("  # Or eval mode (env, PATH and aliases only)")
 	fmt.println("  eval \"$(wayu export --eval)\"")
 	fmt.println()
 	fmt.printfln("%sTURBO FILE:%s ~/.config/wayu/%s", get_muted(), RESET, turbo_export_file_name())

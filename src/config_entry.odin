@@ -97,7 +97,7 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 				print_cli_usage_error(spec, "add")
 				os.exit(EXIT_USAGE)
 			}
-			if spec.hook_pre_add != nil do spec.hook_pre_add(entry.name, entry.value)
+			if spec.hook_pre_add != nil && entry_add_is_valid(spec, entry) do spec.hook_pre_add(entry.name, entry.value)
 			ok, err := spec.toml_add(entry)
 			if !ok {
 				exit_with_entry_error(err)
@@ -109,7 +109,7 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 				print_cli_usage_error(spec, "remove")
 				os.exit(EXIT_USAGE)
 			}
-			if spec.hook_pre_remove != nil do spec.hook_pre_remove(args[0], "")
+			if spec.hook_pre_remove != nil && entry_exists_in_toml(spec, args[0]) do spec.hook_pre_remove(args[0], "")
 			ok, err := spec.toml_remove(args[0])
 			if !ok {
 				exit_with_entry_error(err)
@@ -136,6 +136,38 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 	if action == .LIST && spec.list_epilogue != nil {
 		spec.list_epilogue()
 	}
+}
+
+// Silent preview of spec.toml_add's validation, so pre_*_add hooks fire only
+// for adds that pass it (OKAMI-230). The writer validates again and reports.
+entry_add_is_valid :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> bool {
+	v: ValidationResult
+	#partial switch spec.type {
+	case .ALIAS:    v = validate_alias(entry.name, entry.value)
+	case .CONSTANT: v = validate_constant(entry.name, entry.value)
+	case:           return true
+	}
+	if len(v.error_message) > 0 do delete(v.error_message)
+	if len(v.warning) > 0 do delete(v.warning)
+	return v.valid
+}
+
+// True when `name` is a key of the spec's wayu.toml table (aliases / env),
+// so pre_*_remove hooks skip names that are not there. A malformed table
+// counts as present: the writer reports that error itself.
+entry_exists_in_toml :: proc(spec: ^ConfigEntrySpec, name: string) -> bool {
+	section: string
+	#partial switch spec.type {
+	case .ALIAS:    section = "aliases"
+	case .CONSTANT: section = "env"
+	case:           return true
+	}
+	content, ok := read_wayu_toml_fresh()
+	if !ok { return false }
+	defer delete(content)
+	new_content, removed, bad := toml_table_delete(string(content), section, {name})
+	delete(new_content)
+	return removed > 0 || bad > 0
 }
 
 // Print an add/remove failure and exit with the code matching its kind:
@@ -914,7 +946,7 @@ entry_add :: proc(entry: Entry) -> (bool, string) {
 		if len(result.warning) > 0 {
 			delete(result.warning)
 		}
-		hook_pre_path_add(e.path)
+		if toml_path_add_would_change(e.path) { hook_pre_path_add(e.path) }
 		#partial switch toml_path_add_result(e.path, "") {
 		case .OK:
 			if wayu.dry_run { return true, "" }
@@ -938,7 +970,7 @@ entry_add :: proc(entry: Entry) -> (bool, string) {
 
 @(private = "file")
 entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (bool, string) {
-	if spec.hook_pre_add != nil do spec.hook_pre_add(entry.name, entry.value)
+	if spec.hook_pre_add != nil && entry_add_is_valid(spec, entry) do spec.hook_pre_add(entry.name, entry.value)
 	ok, err := spec.toml_add(entry)
 	if ok && spec.hook_post_add != nil do spec.hook_post_add(entry.name, entry.value)
 	return ok, err
@@ -950,7 +982,7 @@ entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (boo
 entry_remove :: proc(entry: Entry) -> (bool, string) {
 	switch e in entry {
 	case EntryPath:
-		hook_pre_path_remove(e.path)
+		if toml_path_exists(e.path) { hook_pre_path_remove(e.path) }
 		#partial switch toml_path_remove_result(e.path) {
 		case .OK:
 			if wayu.dry_run { return true, "" }
@@ -972,7 +1004,7 @@ entry_remove :: proc(entry: Entry) -> (bool, string) {
 
 @(private = "file")
 entry_remove_with_hooks :: proc(spec: ^ConfigEntrySpec, name: string) -> (bool, string) {
-	if spec.hook_pre_remove != nil do spec.hook_pre_remove(name, "")
+	if spec.hook_pre_remove != nil && entry_exists_in_toml(spec, name) do spec.hook_pre_remove(name, "")
 	ok, err := spec.toml_remove(name)
 	if ok && spec.hook_post_remove != nil do spec.hook_post_remove(name, "")
 	return ok, err

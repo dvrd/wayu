@@ -29,6 +29,11 @@ class DryRunIntegrationTest
       test_constants_dry_run_add
       test_backup_dry_run_restore
       test_dry_run_no_file_changes
+      test_unknown_flag_rejected
+      test_trailing_dry_run_on_value_add
+      test_literal_values_after_double_dash
+      test_pre_hooks_skip_failed_ops
+      test_hook_nested_shell_no_injection
     ensure
       teardown_test_env
     end
@@ -38,6 +43,70 @@ class DryRunIntegrationTest
   end
 
   private
+
+  def check(label, ok, detail)
+    print "#{label}... "
+    if ok
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  #{detail}"
+      @failed += 1
+    end
+  end
+
+  # OKAMI-231: a typo in a safety flag must fail, never perform the write.
+  def test_unknown_flag_rejected
+    toml = "#{@config_dir}/wayu.toml"
+    before = File.read(toml)
+    results = [
+      run_wayu("path add /tmp --dryrun"),
+      run_wayu("path list --bogus"),
+      run_wayu("init --template nonexistent"),
+      run_wayu("alias rm x --yess"),
+    ]
+    after = File.read(toml)
+    ok = results.all? { |out, st| st.exitstatus == 64 && out.include?("Unknown option") } && before == after
+    check("Test 7: unknown flags exit 64 and write nothing", ok,
+          "Got: #{results.map { |o, s| [s.exitstatus, o[0, 120]] }.inspect}")
+
+    # Documented command-local flags keep working.
+    ok2 = [
+      run_wayu("doctor --json"),
+      run_wayu("path list --full"),
+      run_wayu("backup list --json"),
+      run_wayu("plugin search --category git"),
+      run_wayu("path list -h"),
+    ].all? { |_out, st| st.exitstatus != 64 }
+    check("Test 7b: documented flags still accepted", ok2, "a documented flag was rejected")
+  end
+
+  # OKAMI-231: `alias add x y --dry-run` previews instead of writing "y --dry-run".
+  def test_trailing_dry_run_on_value_add
+    toml = "#{@config_dir}/wayu.toml"
+    before = File.read(toml)
+    out1, st1 = run_wayu("alias add trailx echo hi --dry-run")
+    out2, st2 = run_wayu("const add TRAILC v --dry-run")
+    after = File.read(toml)
+    ok = st1.success? && st2.success? && out1.include?("DRY RUN") && out2.include?("DRY RUN") && before == after
+    check("Test 8: trailing --dry-run on alias/const add writes nothing", ok,
+          "out1=#{out1[0, 200]} out2=#{out2[0, 200]} changed=#{before != after}")
+  end
+
+  # `--` and the add value keep dash tokens literal (4.4.3 behavior).
+  def test_literal_values_after_double_dash
+    run_wayu("alias add litd -- helm install --dry-run")
+    run_wayu("alias add litg grep -n")
+    _out, st = run_wayu("const add LITNEG -5")
+    toml = File.read("#{@config_dir}/wayu.toml")
+    ok = st.success? && toml.include?('litd = "helm install --dry-run"') &&
+         toml.include?('litg = "grep -n"') && toml.include?('LITNEG = "-5"')
+    check("Test 9: literal dash values after -- / in value position", ok, "toml=#{toml}")
+    run_wayu("alias rm litd")
+    run_wayu("alias rm litg")
+    run_wayu("const rm LITNEG")
+  end
 
   def test_path_dry_run_add
     print "Test 1: PATH add dry-run mode... "
@@ -96,6 +165,53 @@ class DryRunIntegrationTest
 
   # Regression: dry-run printed ✅ success, regenerated init files and ran
   # post-hooks even though nothing was written.
+  # OKAMI-230: pre-hooks fire only for operations that will really write.
+  def test_pre_hooks_skip_failed_ops
+    log = "#{@tmp_home}/prehook.log"
+    hooks = "#{@config_dir}/hooks.conf"
+    File.write(hooks, %(pre_alias_add = echo "add {name}" >> #{log}\n) +
+                      %(pre_alias_remove = echo "rm {name}" >> #{log}\n) +
+                      %(pre_constant_add = echo "cadd {name}" >> #{log}\n) +
+                      %(pre_path_add = echo "padd {path}" >> #{log}\n) +
+                      %(pre_path_remove = echo "prm {path}" >> #{log}\n))
+    run_wayu("path add /tmp")
+    File.delete(log) if File.exist?(log)
+    run_wayu("alias add bad-name! x")   # invalid name
+    run_wayu("alias add if x")          # reserved word
+    run_wayu("alias rm NOPE_MISSING")   # not found
+    run_wayu("const add 1BAD v")        # invalid name
+    run_wayu("path add /tmp")           # duplicate (NOOP)
+    run_wayu("path rm /nonexistent/nope") # not found
+    phantom = File.exist?(log) ? File.read(log) : ""
+    run_wayu("alias add realal x")      # real change: hook fires
+    real = File.exist?(log) ? File.read(log) : ""
+    run_wayu("alias rm realal")
+    run_wayu("path rm /tmp")
+    File.delete(hooks)
+    check("Test 10: pre-hooks skip invalid / missing / no-op operations",
+          phantom.empty? && real.include?("add realal"),
+          "phantom=#{phantom.inspect} real=#{real.inspect}")
+  end
+
+  # OKAMI-230: a placeholder inside a nested `sh -c '...'` must not execute
+  # the value.
+  def test_hook_nested_shell_no_injection
+    log = "#{@tmp_home}/nested.log"
+    hooks = "#{@config_dir}/hooks.conf"
+    File.write(hooks, %(post_alias_add = sh -c 'echo "a {name}={value}" >> #{log}'\n) +
+                      %(post_alias_remove = bash -c 'echo r {name} >> #{log}'\n))
+    pwn = "#{@tmp_home}/PWNED"
+    pwn2 = "#{@tmp_home}/PWNED2"
+    _o, st = run_wayu(%(alias add nest 'echo $(touch #{pwn}) `touch #{pwn2}`; touch #{pwn}'))
+    run_wayu("alias rm nest")
+    content = File.exist?(log) ? File.read(log) : ""
+    File.delete(hooks)
+    check("Test 11: nested-shell hook placeholders never execute values",
+          st.success? && !File.exist?(pwn) && !File.exist?(pwn2) &&
+            content.include?("$(touch #{pwn})") && content.include?("r nest"),
+          "pwned=#{File.exist?(pwn)}/#{File.exist?(pwn2)} log=#{content.inspect}")
+  end
+
   def test_dry_run_no_success_no_hooks
     print "Test 2c: Dry-run prints no success and runs no hooks... "
 

@@ -483,3 +483,91 @@ test_restore_backs_up_current_first :: proc(t: ^testing.T) {
 		}
 	}
 }
+
+// OKAMI-232: every CLI write prunes to BACKUP_KEEP_COUNT, and one process
+// backs a file up only once (bulk commands keep their pre-command copy).
+@(test)
+test_backup_cli_retention_and_once_per_run :: proc(t: ^testing.T) {
+	dir := "/tmp/wayu-test-backup-retention"
+	original_data := wayu.wayu.data
+	wayu.wayu.data = dir
+	os.remove_all(dir)
+	os.make_directory(dir)
+	defer { wayu.wayu.data = original_data; os.remove_all(dir) }
+	target := "/tmp/wayu-test-backup-retention-src"
+	defer os.remove(target)
+	defer wayu.backup_run_reset()
+
+	count :: proc(f: string) -> int {
+		b := wayu.list_backups_for_file(f)
+		defer wayu.free_backup_infos(b)
+		return len(b)
+	}
+
+	// Same process: only the first write is backed up.
+	wayu.backup_run_reset()
+	_ = os.write_entire_file(target, transmute([]byte)string("v0\n"))
+	testing.expect(t, wayu.create_backup_cli(target))
+	_ = os.write_entire_file(target, transmute([]byte)string("v1\n"))
+	testing.expect(t, wayu.create_backup_cli(target))
+	testing.expect_value(t, count(target), 1)
+
+	// Simulated separate invocations: capped at BACKUP_KEEP_COUNT.
+	for i in 0..<12 {
+		wayu.backup_run_reset()
+		_ = os.write_entire_file(target, transmute([]byte)fmt.tprintf("w%d\n", i))
+		testing.expect(t, wayu.create_backup_cli(target))
+	}
+	testing.expect_value(t, count(target), wayu.BACKUP_KEEP_COUNT)
+}
+
+// OKAMI-232: restore can pick a backup, and the default skips pre-restore
+// snapshots so repeated restores don't ping-pong.
+@(test)
+test_restore_selects_backup :: proc(t: ^testing.T) {
+	dir := "/tmp/wayu-test-restore-select"
+	original_data := wayu.wayu.data
+	wayu.wayu.data = dir
+	os.remove_all(dir)
+	os.make_directory(dir)
+	defer { wayu.wayu.data = original_data; os.remove_all(dir) }
+	target := "/tmp/wayu-test-restore-select-src"
+	defer os.remove(target)
+
+	read :: proc(f: string) -> string {
+		d, err := os.read_entire_file(f, context.temp_allocator)
+		return err == nil ? string(d) : ""
+	}
+
+	for v in ([]string{"a\n", "b\n", "c\n"}) {
+		_ = os.write_entire_file(target, transmute([]byte)v)
+		p, ok := wayu.create_backup(target)
+		if ok { delete(p) }
+	}
+	_ = os.write_entire_file(target, transmute([]byte)string("d\n"))
+	// list (newest first): c, b, a
+
+	testing.expect(t, wayu.restore_from_backup(target), "default restore")
+	testing.expect_value(t, read(target), "c\n")
+	// Second default restore: still c (skips the pre-restore copy of d).
+	testing.expect(t, wayu.restore_from_backup(target), "repeat restore")
+	testing.expect_value(t, read(target), "c\n")
+
+	// list now: pre-restore(c), pre-restore(d), c, b, a  ->  #5 is "a".
+	testing.expect(t, wayu.restore_from_backup(target, "5"), "restore by index")
+	testing.expect_value(t, read(target), "a\n")
+
+	// Undo via the pre-restore snapshot (newest, #1).
+	testing.expect(t, wayu.restore_from_backup(target, "1"), "undo restore")
+	testing.expect_value(t, read(target), "c\n")
+
+	// By file name, and a bad selector fails without writing.
+	b := wayu.list_backups_for_file(target)
+	defer wayu.free_backup_infos(b)
+	last := b[len(b) - 1]
+	testing.expect(t, wayu.restore_from_backup(target, last.backup_file[strings.last_index(last.backup_file, "/") + 1:]))
+	testing.expect_value(t, read(target), "a\n")
+	testing.expect(t, !wayu.restore_from_backup(target, "99"), "out of range")
+	testing.expect(t, !wayu.restore_from_backup(target, "nope"), "unknown file")
+	testing.expect_value(t, read(target), "a\n")
+}

@@ -178,7 +178,7 @@ handle_watch_command :: proc(action: string, args: []string) {
 			if pid > 0 {
 				fmt.printfln("PID: %d", pid)
 			}
-			fmt.println("Use 'wayu watch --stop' to stop it first")
+			fmt.println("Use 'wayu watch stop' to stop it first")
 			return
 		}
 

@@ -70,7 +70,9 @@ handle_path_command :: proc(action: Action, args: []string) {
 			print_error("Path does not exist: %s", raw_path)
 			os.exit(EXIT_NOINPUT)
 		}
-		hook_pre_path_add(expanded)
+		// pre-hook only for an add that will really change wayu.toml
+		// (duplicates / bad names are reported by the write below).
+		if toml_path_add_would_change(raw_path, name_hint) { hook_pre_path_add(expanded) }
 		res := toml_path_add_result(raw_path, name_hint)
 		exit_on_path_failure(res)
 		// NOOP: already present (warning printed). Dry-run: preview printed.
@@ -85,7 +87,7 @@ handle_path_command :: proc(action: Action, args: []string) {
 			print_error("Usage: wayu path remove <name-or-path>")
 			os.exit(EXIT_USAGE)
 		}
-		hook_pre_path_remove(args[0])
+		if toml_path_exists(args[0]) { hook_pre_path_remove(args[0]) }
 		res := toml_path_remove_result(args[0])
 		exit_on_path_failure(res)
 		if wayu.dry_run { return }
@@ -759,6 +761,49 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 toml_path_add :: proc(raw_path: string, name_hint: string = "") -> bool {
 	res := toml_path_add_result(raw_path, name_hint)
 	return res == .OK || res == .NOOP
+}
+
+// Read-only, silent preview of toml_path_add_result: true when the add would
+// change wayu.toml (not a duplicate, name hint usable). Used to fire
+// pre_path_add only for real changes (OKAMI-230); the locked write re-checks.
+toml_path_add_would_change :: proc(raw_path: string, name_hint: string = "") -> bool {
+	path := expand_env_vars(raw_path, require_resolved = true)
+	defer delete(path)
+	if len(path) == 0 { return false }
+
+	clear_toml_content_cache()
+	existing := toml_path_read_keyed()
+	defer {
+		for &e in existing { delete(e.key); delete(e.path) }
+		delete(existing)
+	}
+	for e in existing {
+		if path_values_equal(e.path, path) { return false }
+	}
+	if len(name_hint) > 0 {
+		sanitised := sanitize_path_key(name_hint)
+		defer if len(sanitised) > 0 { delete(sanitised) }
+		if len(sanitised) == 0 { return false }
+		for e in existing {
+			if e.key == sanitised { return false }
+		}
+	}
+	return true
+}
+
+// Read-only: true when `target` names an entry toml_path_remove_result would
+// remove. Lets pre_path_remove skip targets that are not there.
+toml_path_exists :: proc(target: string) -> bool {
+	clear_toml_content_cache()
+	existing := toml_path_read_keyed()
+	defer {
+		for &e in existing { delete(e.key); delete(e.path) }
+		delete(existing)
+	}
+	for e in existing {
+		if e.key == target || e.path == target || path_values_equal(e.path, target) { return true }
+	}
+	return false
 }
 
 toml_path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOpResult {
