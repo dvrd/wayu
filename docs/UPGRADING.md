@@ -4,6 +4,23 @@ User-visible behavior changes per release. From 4.4.5 on, these are generated
 automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 4.4.3 and 4.4.4 shipped them as patch releases, so they are listed here.
 
+## Unreleased
+
+**Flags**
+- Unknown options are an error: `wayu path add DIR --dryrun` (typo) exits `64`
+  and writes nothing instead of performing the add. Each command accepts the
+  global flags plus its own (`doctor --fix`, `plugin update --all`,
+  `migrate --from/--to/--schema`, `export --eval/--turbo/--check`, …). A value
+  that starts with `-` goes after `--` (`wayu path rm -- -odd`); the first
+  value word of `alias add` / `const add` (`const add OFFSET -5`) and negative
+  numbers (`plugin priority foo -1`) are still taken as values.
+- A global long flag at the very end of `alias add` / `const add`
+  (`--dry-run`, `--yes`, `--json`, `--no-color`) is now a flag, not part of
+  the value: `wayu alias add x y --dry-run` previews instead of storing
+  `y --dry-run`. To keep it in the value, put `--` before the value:
+  `wayu alias add hd -- helm install --dry-run`. A trailing `-n` / `-y`
+  still belongs to the value (`grep -n`) but prints a warning on stderr.
+
 ## 4.4.4
 
 **Lookups and output**
