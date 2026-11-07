@@ -6,6 +6,7 @@ import "core:testing"
 import "core:os"
 import "core:fmt"
 import "core:strings"
+import "core:c/libc"
 import wayu "../../src"
 
 // Redirect WAYU_CONFIG to an isolated temp directory so tests never touch
@@ -409,11 +410,25 @@ test_generate_plugins_file_empty :: proc(t: ^testing.T) {
 
 // Phase 2: Plugin Update System Tests
 
+// Local git repo with one commit on `master`, so get_remote_commit tests run
+// offline (they used to ls-remote GitHub and failed without network).
+// Returns a file:// URL; caller deletes it and removes `dir`.
+make_local_remote :: proc(name: string) -> (url: string, dir: string) {
+	dir = fmt.aprintf("/tmp/wayu_unit_remote_%s_%d", name, os.get_pid())
+	os.remove_all(dir)
+	cmd := fmt.ctprintf(
+		"git init -q -b master '%s' && git -C '%s' -c user.name=t -c user.email=t@t -c commit.gpgsign=false commit -q --allow-empty -m init",
+		dir, dir)
+	libc.system(cmd)
+	url = fmt.aprintf("file://%s", dir)
+	return
+}
+
 @(test)
 test_get_remote_commit_valid_repo :: proc(t: ^testing.T) {
-	// Test getting remote commit for a valid public repository
-	// Using Odin's official repository as a stable test target
-	url := "https://github.com/odin-lang/Odin.git"
+	// Test getting remote commit for a valid repository (local, offline)
+	url, dir := make_local_remote("valid_repo")
+	defer { delete(url); os.remove_all(dir); delete(dir) }
 	branch := "master"
 
 	remote_commit := wayu.get_remote_commit(url, branch)
@@ -450,7 +465,8 @@ test_get_remote_commit_invalid_url :: proc(t: ^testing.T) {
 @(test)
 test_get_remote_commit_empty_branch :: proc(t: ^testing.T) {
 	// Test with empty branch (should default to HEAD)
-	url := "https://github.com/odin-lang/Odin.git"
+	url, dir := make_local_remote("empty_branch")
+	defer { delete(url); os.remove_all(dir); delete(dir) }
 	empty_branch := ""
 
 	remote_commit := wayu.get_remote_commit(url, empty_branch)
@@ -465,7 +481,8 @@ test_get_remote_commit_empty_branch :: proc(t: ^testing.T) {
 test_get_remote_commit_memory_safety :: proc(t: ^testing.T) {
 	// Test memory safety - ensure no memory leaks
 	// Run the function multiple times and verify cleanup
-	url := "https://github.com/odin-lang/Odin.git"
+	url, dir := make_local_remote("memory_safety")
+	defer { delete(url); os.remove_all(dir); delete(dir) }
 	branch := "master"
 
 	// Run 5 times to ensure no memory leaks

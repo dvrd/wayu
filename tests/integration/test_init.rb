@@ -40,6 +40,7 @@ class InitIntegrationTest
       test_paths_expanded_in_shell
       test_fish_paths_expanded_in_shell
       test_hand_edits_reach_open_shells
+      test_build_eval_uses_evaluating_shell
       test_legacy_path_file_not_resurrected
     ensure
       teardown_test_env
@@ -365,7 +366,7 @@ class InitIntegrationTest
     home, cfg, env = generate_tricky(shell)
     core = File.read("#{cfg}/core.#{shell}")
     all = %w[init core lazy].map { |b| File.exist?("#{cfg}/#{b}.#{shell}") ? File.read("#{cfg}/#{b}.#{shell}") : '' }.join("\n")
-    plugins_ok = core.include?("#{cfg}/plugins.#{shell}\" ] && source")
+    plugins_ok = core.include?("#{cfg}/plugins.#{shell}\" ]; then source")
     extra_count = all.scan(/source "[^"]*extra\.#{shell}"/).size
     tools_count = all.scan(/source "[^"]*tools\.#{shell}"/).size
     # init.<ext> legacy fallback also sources them, but after `return` on the
@@ -630,6 +631,27 @@ class InitIntegrationTest
         puts "✓"; @passed += 1
       else
         puts "✗"; puts "  out=#{out.lines.map(&:strip).inspect} err=#{err.strip[0, 300]}"; @failed += 1
+      end
+    end
+  end
+
+  # `sudo zsh` resets SHELL to /bin/sh but still sources the user's .zshenv:
+  # `build eval` must emit code for the shell that evals it (its parent), not
+  # $SHELL, never create *.sh files, and startup must end with status 0.
+  def test_build_eval_uses_evaluating_shell
+    { '/bin/zsh' => ['zsh', '/bin/sh', '-fc'], '/bin/bash' => ['bash', '/bin/zsh', '-c'] }.each do |bin, (sh, shell_env, flag)|
+      print "Test: build eval follows the evaluating shell (#{bin}, SHELL=#{shell_env})... "
+      home = "#{@tmp_home}/evalshell_#{sh}"
+      cfg = "#{home}/.config/wayu"
+      FileUtils.mkdir_p(cfg)
+      File.write("#{cfg}/wayu.toml", "[paths]\nb = \"/usr/bin\"\n")
+      env = { 'HOME' => home, 'SHELL' => shell_env }
+      out, err, = Open3.capture3(env, bin, flag, "eval \"$(#{@wayu_bin} build eval)\"; echo rc=$?; type _wayu_paths_sync >/dev/null && echo hook")
+      sh_files = Dir.glob("#{cfg}/*.sh")
+      if out.lines.map(&:strip) == %w[rc=0 hook] && err.strip.empty? && sh_files.empty? && File.exist?("#{cfg}/core.#{sh}")
+        puts "✓"; @passed += 1
+      else
+        puts "✗"; puts "  out=#{out.inspect} err=#{err.strip[0, 300]} sh_files=#{sh_files}"; @failed += 1
       end
     end
   end

@@ -4,6 +4,7 @@ import "core:strings"
 import "core:fmt"
 import "core:strconv"
 import "core:c"
+import "core:sys/posix"
 // Shell types supported by wayu
 ShellType :: enum {
     BASH,
@@ -505,4 +506,80 @@ shell_fish_read_config :: proc(file_path: string) -> (TomlConfig, bool) {
     config.path.entries = path_entries_dyn[:]
 
     return config, true
+}
+
+// Shell of the parent process. `build eval` output is eval'd by its parent
+// (the command-substitution subshell), so this is the shell that will run the
+// generated code — unlike $SHELL, which sudo resets to root's /bin/sh and a
+// bash started from zsh leaves as zsh. UNKNOWN when it can't be determined
+// or the parent isn't zsh/bash/fish (e.g. bash invoked as `sh`).
+detect_parent_shell :: proc() -> ShellType {
+    name := parent_process_name()
+    name = strings.trim_prefix(name, "-") // login shells report "-zsh"
+    if slash := strings.last_index_byte(name, '/'); slash >= 0 { name = name[slash + 1:] }
+    switch name {
+    case "zsh":  return .ZSH
+    case "bash": return .BASH
+    case "fish": return .FISH
+    }
+    return .UNKNOWN
+}
+
+when ODIN_OS == .Darwin {
+    foreign import libsys "system:c"
+    foreign libsys {
+        proc_name :: proc(pid: c.int, buffer: rawptr, buffersize: u32) -> c.int ---
+    }
+}
+
+// Executable name of the parent process (temp-allocated), or "".
+parent_process_name :: proc() -> string {
+    ppid := posix.getppid()
+    when ODIN_OS == .Darwin {
+        buf := make([]u8, 256, context.temp_allocator)
+        n := proc_name(c.int(ppid), raw_data(buf), u32(len(buf)))
+        if n <= 0 { return "" }
+        return string(buf[:n])
+    } else when ODIN_OS == .Linux {
+        data, err := os.read_entire_file(fmt.tprintf("/proc/%d/comm", ppid), context.temp_allocator)
+        if err != nil { return "" }
+        return strings.trim_space(string(data))
+    } else {
+        return ""
+    }
+}
+
+// True when running as root on a config dir owned by another user (e.g. a
+// `sudo zsh` that still sources the user's .zshenv). Writing there would leave
+// root-owned generated files in the user's config.
+running_as_root_on_user_config :: proc(dir: string) -> bool {
+    if posix.geteuid() != 0 { return false }
+    st: posix.stat_t
+    cdir := strings.clone_to_cstring(dir, context.temp_allocator)
+    if posix.stat(cdir, &st) != .OK { return false }
+    return st.st_uid != 0
+}
+
+// Set by `--shell`: an explicit choice that auto-detection must not override.
+shell_flag_given := false
+
+// Switch the active shell and its per-shell filenames (static strings, no
+// allocation). UNKNOWN keeps zsh filenames, as at startup.
+set_active_shell :: proc(s: ShellType) {
+    wayu.shell = s
+    wayu.shell_ext = get_shell_extension(s)
+    switch s {
+    case .BASH:
+        wayu.path_file = "path.bash"; wayu.alias_file = "aliases.bash"
+        wayu.constants_file = "constants.bash"; wayu.init_file = "init.bash"
+        wayu.tools_file = "tools.bash"
+    case .FISH:
+        wayu.path_file = "path.fish"; wayu.alias_file = "aliases.fish"
+        wayu.constants_file = "constants.fish"; wayu.init_file = "init.fish"
+        wayu.tools_file = "tools.fish"
+    case .ZSH, .UNKNOWN:
+        wayu.path_file = "path.zsh"; wayu.alias_file = "aliases.zsh"
+        wayu.constants_file = "constants.zsh"; wayu.init_file = "init.zsh"
+        wayu.tools_file = "tools.zsh"
+    }
 }

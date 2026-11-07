@@ -108,7 +108,11 @@ flush_zcompile_batch :: proc() {
 
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
-	strings.write_string(&builder, `zsh -fc 'umask 077; for f; do zcompile -- "$f"; done' zsh`)
+	// Compile to a temp digest then rename: zcompile writes in place, and a
+	// shell starting meanwhile would source a half-written .zwc
+	// ("invalid zwc file"). The digest entry is named after $f's basename,
+	// same as `zcompile $f`.
+	strings.write_string(&builder, `zsh -fc 'umask 077; for f; do t="$f.$$.tmp.zwc"; zcompile -- "$t" "$f" && mv -f -- "$t" "$f.zwc" || rm -f -- "$t"; done' zsh`)
 	for p in ZCOMPILE_BATCH {
 		strings.write_byte(&builder, ' ')
 		strings.write_string(&builder, shell_single_quote(p, context.temp_allocator))
@@ -131,11 +135,11 @@ runtime_file :: proc(base: string) -> string {
 	return fmt.tprintf("%s/%s.%s", wayu.data, base, get_shell_extension(wayu.shell))
 }
 
-// `[ -f "<file>" ] && source "<file>"` with the path safely quoted.
+// `if [ -f "<file>" ]; then source "<file>"; fi` (status 0 when absent) with the path safely quoted.
 @(private = "file")
 emit_source_if_exists :: proc(b: ^strings.Builder, file: string) {
 	q := shell_double_quote_literal(file, context.temp_allocator)
-	fmt.sbprintfln(b, "[ -f %s ] && source %s", q, q)
+	fmt.sbprintfln(b, "if [ -f %s ]; then source %s; fi", q, q)
 }
 
 // Shells whose generated files are refreshed on every (re)generation: the
@@ -362,9 +366,9 @@ emit_path_export :: proc(b: ^strings.Builder, sep: string = "\n") -> bool {
 emit_functions_loader :: proc(b: ^strings.Builder) {
 	dir := shell_double_quote_literal(fmt.tprintf("%s/functions", wayu.config), context.temp_allocator)
 	if wayu.shell == .ZSH {
-		fmt.sbprintfln(b, `for f in %s/*(N); do [[ -f "$f" ]] && source "$f"; done`, dir)
+		fmt.sbprintfln(b, `for f in %s/*(N); do if [[ -f "$f" ]]; then source "$f"; fi; done`, dir)
 	} else {
-		fmt.sbprintfln(b, `if [ -d %s ]; then for f in %s/*; do [ -f "$f" ] && source "$f"; done; fi`, dir, dir)
+		fmt.sbprintfln(b, `if [ -d %s ]; then for f in %s/*; do if [ -f "$f" ]; then source "$f"; fi; done; fi`, dir, dir)
 	}
 }
 
@@ -747,7 +751,7 @@ generate_core_init_v2 :: proc() {
 	if !toml_has_table("paths") {
 		emit_source_if_exists(&builder, fmt.tprintf("%s/path.%s", wayu.data, shell_ext))
 	}
-	fmt.sbprintln(&builder, `[ -f "$_WAYU_PATHS_FILE" ] && . "$_WAYU_PATHS_FILE"`)
+	fmt.sbprintln(&builder, `if [ -f "$_WAYU_PATHS_FILE" ]; then . "$_WAYU_PATHS_FILE"; fi`)
 
 	fmt.sbprintln(&builder, "# Deduplicate PATH (preserve order, remove duplicates)")
 	if is_zsh {
@@ -778,7 +782,7 @@ generate_core_init_v2 :: proc() {
 		fmt.sbprintln(&builder, "autoload -Uz compinit && compinit -C")
 	} else {
 		q := shell_double_quote_literal(completions_dir, context.temp_allocator)
-		fmt.sbprintfln(&builder, `if [ -d %s ]; then for f in %s/*.bash-completion; do [ -f "$f" ] && source "$f"; done; fi`, q, q)
+		fmt.sbprintfln(&builder, `if [ -d %s ]; then for f in %s/*.bash-completion; do if [ -f "$f" ]; then source "$f"; fi; done; fi`, q, q)
 	}
 	fmt.sbprintln(&builder)
 
@@ -1824,11 +1828,17 @@ generate_core_init_fish :: proc() {
 // prints the source command (meant for `eval "$(wayu build eval)"`).
 // Under --dry-run nothing is written and only comments are printed.
 generate_eval_output_optimized :: proc() {
-	generate_optimized_init_all()
-	if wayu.dry_run { return }
-
 	core_file := fmt.aprintf("%s/core.%s", wayu.data, get_shell_extension(wayu.shell))
 	defer delete(core_file)
+
+	if running_as_root_on_user_config(wayu.data) {
+		// e.g. `sudo zsh` sourcing the user's .zshenv: use the existing files,
+		// never leave root-owned ones in the user's config.
+		if wayu.dry_run || !os.exists(core_file) { return }
+	} else {
+		generate_optimized_init_all()
+		if wayu.dry_run { return }
+	}
 
 	if wayu.shell == .FISH {
 		fmt.printfln("source %s", escape_fish_string(core_file, context.temp_allocator))

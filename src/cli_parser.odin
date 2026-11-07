@@ -158,28 +158,8 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 			UNDERLINE = ""
 		case arg == "--shell" && i + 1 < len(args):
 			parsed.shell = parse_shell_type(args[i + 1])
-			wayu.shell = parsed.shell
-			wayu.shell_ext = get_shell_extension(parsed.shell)
-			// Re-derive filenames using the same static-string approach as
-			// init_app_context (no heap allocation).
-			switch parsed.shell {
-			case .ZSH:
-				wayu.path_file = "path.zsh"; wayu.alias_file = "aliases.zsh"
-				wayu.constants_file = "constants.zsh"; wayu.init_file = "init.zsh"
-				wayu.tools_file = "tools.zsh"
-			case .BASH:
-				wayu.path_file = "path.bash"; wayu.alias_file = "aliases.bash"
-				wayu.constants_file = "constants.bash"; wayu.init_file = "init.bash"
-				wayu.tools_file = "tools.bash"
-			case .FISH:
-				wayu.path_file = "path.fish"; wayu.alias_file = "aliases.fish"
-				wayu.constants_file = "constants.fish"; wayu.init_file = "init.fish"
-				wayu.tools_file = "tools.fish"
-			case .UNKNOWN:
-				wayu.path_file = "path.zsh"; wayu.alias_file = "aliases.zsh"
-				wayu.constants_file = "constants.zsh"; wayu.init_file = "init.zsh"
-				wayu.tools_file = "tools.zsh"
-			}
+			set_active_shell(parsed.shell)
+			shell_flag_given = true
 			i += 1
 		case:
 			append(filtered_args, arg)

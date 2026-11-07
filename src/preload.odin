@@ -113,7 +113,7 @@ source "$WAYU_DATA_DIR/path.zsh"
 # === 3. Functions Loading ===
 # Load custom shell functions from the functions directory
 for f in "$WAYU_CONFIG_DIR/functions"/*(N); do
-    [[ -f "$f" ]] && source "$f"
+    if [[ -f "$f" ]]; then source "$f"; fi
 done
 
 # === 4. Completions Setup ===
@@ -126,8 +126,8 @@ compinit
 
 # === 5. Plugins Loading ===
 # Load Wayu-managed plugins
-[ -f "$WAYU_DATA_DIR/plugins.zsh" ] && source "$WAYU_DATA_DIR/plugins.zsh"
-[ -f "$WAYU_DATA_DIR/plugins/config.zsh" ] && source "$WAYU_DATA_DIR/plugins/config.zsh"
+if [ -f "$WAYU_DATA_DIR/plugins.zsh" ]; then source "$WAYU_DATA_DIR/plugins.zsh"; fi
+if [ -f "$WAYU_DATA_DIR/plugins/config.zsh" ]; then source "$WAYU_DATA_DIR/plugins/config.zsh"; fi
 
 # === 6. Aliases ===
 # Load command aliases and shortcuts
@@ -144,7 +144,7 @@ source "$WAYU_CONFIG_DIR/tools.zsh"
 
 # === 8. Extra Config ===
 # User-defined shell snippets (hooks, env loaders, ad-hoc settings)
-[ -f "$WAYU_CONFIG_DIR/extra.zsh" ] && source "$WAYU_CONFIG_DIR/extra.zsh"
+if [ -f "$WAYU_CONFIG_DIR/extra.zsh" ]; then source "$WAYU_CONFIG_DIR/extra.zsh"; fi
 `
 
 TOOLS_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
@@ -297,7 +297,7 @@ fi
 
 # === 5. Plugins Loading ===
 # Load Wayu-managed plugins
-[ -f "$WAYU_DATA_DIR/plugins.bash" ] && source "$WAYU_DATA_DIR/plugins.bash"
+if [ -f "$WAYU_DATA_DIR/plugins.bash" ]; then source "$WAYU_DATA_DIR/plugins.bash"; fi
 
 # === 6. Aliases ===
 # Load command aliases and shortcuts
@@ -314,7 +314,7 @@ source "$WAYU_CONFIG_DIR/tools.bash"
 
 # === 8. Extra Config ===
 # User-defined shell snippets (hooks, env loaders, ad-hoc settings)
-[ -f "$WAYU_CONFIG_DIR/extra.bash" ] && source "$WAYU_CONFIG_DIR/extra.bash"
+if [ -f "$WAYU_CONFIG_DIR/extra.bash" ]; then source "$WAYU_CONFIG_DIR/extra.bash"; fi
 `
 
 TOOLS_TEMPLATE_BASH :: `#!/usr/bin/env bash
