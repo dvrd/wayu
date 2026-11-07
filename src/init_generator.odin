@@ -350,10 +350,10 @@ emit_functions_loader :: proc(b: ^strings.Builder) {
 WAYU_PATH_SYNC_ZSH :: `_wayu_paths_apply() {
   emulate -L zsh
   local first=0
-  [[ -z "$_WAYU_PATHS_SIG" ]] && first=1
+  [[ -z "${_WAYU_PATHS_SIG-}" ]] && first=1
   typeset -g _WAYU_PATHS_SIG="# wayu-paths $1"
   shift
-  local -a old=( ${(s.:.)_WAYU_PATHS_MANAGED} ) keep add
+  local -a old=( ${(s.:.)${_WAYU_PATHS_MANAGED-}} ) keep add
   local d
   if (( first )); then
     path=( "$@" $path )
@@ -369,9 +369,10 @@ WAYU_PATH_SYNC_ZSH :: `_wayu_paths_apply() {
   export PATH
 }
 _wayu_paths_sync() {
-  local l
-  { read -r l < "$_WAYU_PATHS_FILE" } 2>/dev/null || return 0
-  [[ "$l" == "$_WAYU_PATHS_SIG" ]] || source "$_WAYU_PATHS_FILE"
+  local s=$? l
+  { read -r l < "$_WAYU_PATHS_FILE" } 2>/dev/null || return $s
+  [[ "$l" == "${_WAYU_PATHS_SIG-}" ]] || source "$_WAYU_PATHS_FILE"
+  return $s
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _wayu_paths_sync
@@ -379,10 +380,10 @@ add-zsh-hook precmd _wayu_paths_sync
 
 WAYU_PATH_SYNC_BASH :: `_wayu_paths_apply() {
   local first=0
-  [ -z "$_WAYU_PATHS_SIG" ] && first=1
+  [ -z "${_WAYU_PATHS_SIG-}" ] && first=1
   _WAYU_PATHS_SIG="# wayu-paths $1"
   shift
-  local d want=":" old=":$_WAYU_PATHS_MANAGED:" keep="" add="" IFS=':'
+  local d want=":" old=":${_WAYU_PATHS_MANAGED-}:" keep="" add="" IFS=':'
   local -a cur
   for d in "$@"; do want="$want$d:"; done
   read -r -a cur <<< "$PATH"
@@ -390,7 +391,7 @@ WAYU_PATH_SYNC_BASH :: `_wayu_paths_apply() {
     keep="$PATH"
     for d in "$@"; do add="${add:+$add:}$d"; done
   else
-    for d in "${cur[@]}"; do
+    for d in ${cur[@]+"${cur[@]}"}; do
       [ -n "$d" ] || continue
       case "$old" in *":$d:"*) case "$want" in *":$d:"*) ;; *) continue ;; esac ;; esac
       keep="${keep:+$keep:}$d"
@@ -403,11 +404,12 @@ WAYU_PATH_SYNC_BASH :: `_wayu_paths_apply() {
   export PATH
 }
 _wayu_paths_sync() {
-  local l
-  { read -r l < "$_WAYU_PATHS_FILE"; } 2>/dev/null || return 0
-  [ "$l" = "$_WAYU_PATHS_SIG" ] || . "$_WAYU_PATHS_FILE"
+  local s=$? l
+  { read -r l < "$_WAYU_PATHS_FILE"; } 2>/dev/null || return $s
+  [ "$l" = "${_WAYU_PATHS_SIG-}" ] || . "$_WAYU_PATHS_FILE"
+  return $s
 }
-case ";$PROMPT_COMMAND;" in
+case ";${PROMPT_COMMAND-};" in
   *";_wayu_paths_sync;"*) ;;
   *) PROMPT_COMMAND="_wayu_paths_sync${PROMPT_COMMAND:+;$PROMPT_COMMAND}" ;;
 esac
@@ -1163,7 +1165,10 @@ emit_lazy_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 	fmt.sbprintfln(b, "# --- recipe: lazy (%s) ---", t.name)
 	fmt.sbprint(b, loader)
 	fmt.sbprintln(b, "() {")
-	fmt.sbprintfln(b, "  [ -n \"$%s\" ] && return 0", flag)
+	// `${FLAG-}`: stays valid under `set -u` (OKAMI-210).
+	fmt.sbprint(b, "  [ -n \"${")
+	fmt.sbprint(b, flag)
+	fmt.sbprintln(b, "-}\" ] && return 0")
 	fmt.sbprintfln(b, "  %s=1", flag)
 	fmt.sbprint(b, "  unset -f")
 	for cmd in cmds { fmt.sbprintf(b, " %s", cmd) }
@@ -1324,7 +1329,7 @@ RECIPE_NVM_BASH :: `_wayu_setup_nvm_lazy() {
   fi
 }
 _wayu_load_nvm() {
-  [ -n "$_WAYU_NVM_LOADED" ] && return 0
+  [ -n "${_WAYU_NVM_LOADED-}" ] && return 0
   _WAYU_NVM_LOADED=1
   unset -f nvm 2>/dev/null
   local nvm_sh=""
@@ -1396,7 +1401,7 @@ RECIPE_CONDA_BASH :: `_wayu_setup_conda_lazy() {
   _WAYU_CONDA_ROOT="$conda_root"
 
   _wayu_load_conda() {
-    [ -n "$_WAYU_CONDA_LOADED" ] && return 0
+    [ -n "${_WAYU_CONDA_LOADED-}" ] && return 0
     _WAYU_CONDA_LOADED=1
     unset -f conda mamba 2>/dev/null
     local hook_out

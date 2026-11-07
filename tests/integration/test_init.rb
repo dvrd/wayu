@@ -34,6 +34,7 @@ class InitIntegrationTest
       test_build_eval_dry_run_writes_nothing
       test_large_toml_regenerates
       test_live_path_sync
+      test_path_sync_status_and_nounset
     ensure
       teardown_test_env
     end
@@ -427,6 +428,48 @@ class InitIntegrationTest
         puts "✓"; @passed += 1
       else
         puts "✗"; puts "  out=#{out.strip.inspect} err=#{err.strip[0, 300]}"; @failed += 1
+      end
+    end
+  end
+
+  # Fresh HOME with `shells` initialised and `dirs` created (not added).
+  def sync_home(name, shells, dirs = [])
+    home = "#{@tmp_home}/#{name}"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config/wayu"] + dirs.map { |d| "#{home}/#{d}" })
+    env = { 'HOME' => home, 'PATH' => '/usr/bin:/bin', 'W' => @wayu_bin }
+    shells.each { |sh| Open3.capture3(env, @wayu_bin, 'init', '--shell', sh) }
+    [home, env]
+  end
+
+  # OKAMI-209: the bash PROMPT_COMMAND hook must not clobber $? for prompt
+  # commands that run after it (git-prompt, starship, custom PS1 functions).
+  # OKAMI-210: init + hook must work under `set -u` / `setopt nounset`.
+  def test_path_sync_status_and_nounset
+    { '/bin/bash' => 'bash', 'zsh' => 'zsh' }.each do |bin, sh|
+      print "Test: path sync keeps $? and works under nounset (#{bin})... "
+      home, env = sync_home("nounset_#{sh}", [sh], %w[d1 d2])
+      Open3.capture3(env, @wayu_bin, '--shell', sh, 'path', 'add', "#{home}/d1")
+      strict = sh == 'zsh' ? 'setopt nounset' : 'set -u'
+      script = <<~SH
+        #{strict}
+        __p() { echo "LAST=$?"; }
+        PROMPT_COMMAND=__p
+        . "$HOME/.config/wayu/init.#{sh}"
+        has() { case ":$PATH:" in *":$1:"*) echo y ;; *) echo n ;; esac; }
+        echo "start=$(has "$HOME/d1")"
+        "$W" --shell #{sh} path add "$HOME/d2" >/dev/null 2>&1
+        false; _wayu_paths_sync; echo "sync_rc=$?"
+        echo "added=$(has "$HOME/d2")"
+      SH
+      script += "false; eval \"$PROMPT_COMMAND\"\n(exit 7); eval \"$PROMPT_COMMAND\"\n" if sh == 'bash'
+      out, err, st = Open3.capture3(env, bin, sh == 'zsh' ? '-fc' : '-c', script)
+      want = %w[start=y sync_rc=1 added=y]
+      want += %w[LAST=1 LAST=7] if sh == 'bash'
+      if st.success? && err.strip.empty? && out.lines.map(&:strip) == want
+        puts "✓"; @passed += 1
+      else
+        puts "✗"; puts "  out=#{out.lines.map(&:strip).inspect} err=#{err.strip[0, 300]}"; @failed += 1
       end
     end
   end
