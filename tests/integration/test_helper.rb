@@ -20,6 +20,10 @@ module WayuTestHelper
     @passed = 0
     @failed = 0
     @wayu_bin = File.expand_path('../../bin/wayu', __dir__)
+    # Hermetic default shell: wayu picks file extensions from $SHELL, and CI
+    # runners default to bash. Tests that need another shell pass SHELL or
+    # --shell explicitly (those override this).
+    ENV['SHELL'] = '/bin/zsh'
     # Use /tmp directly (not Dir.mktmpdir which generates /var/folders paths on macOS)
     # The wayu binary reads HOME to construct $HOME/.config/wayu, so a short
     # predictable path avoids symlink resolution issues on macOS.
