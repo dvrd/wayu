@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 
+## [4.4.5] - 2026-11-07
+
+### Fixed
+
+- **tui**: Captured subprocesses can't read the TUI's terminal
 ## [4.4.4] - 2026-11-07
 
 ### Fixed
@@ -160,6 +165,11 @@ Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 
 - Respect --shell flag in init command
 ## [4.1.0] - 2026-05-09
+
+### ⚠ Upgrade notes
+
+- **toml**: [[paths]]/[[aliases]]/[[constants]] removed.
+Run `wayu migrate --schema` to upgrade.
 
 ### Added
 
@@ -478,6 +488,69 @@ Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 - TUI plugin install from Registry tab end-to-end
 ## [3.0.0] - 2025-11-09
 
+### ⚠ Upgrade notes
+
+- Migrate from function-based to array-based PATH management
+
+## What Changed
+- Old Format (v2.x): Individual `add_to_path "/path"` function calls
+- New Format (v3.0.0): Centralized array `WAYU_PATHS=("path1" "path2")`
+
+## Why This Change
+The old format had a critical bug: `wayu path add` appended entries to EOF,
+AFTER all `export PATH=` statements had executed. This made newly added
+paths ineffective until manually moved.
+
+The new array-based system solves this by:
+1. All paths declared in single WAYU_PATHS array
+2. Single for-loop processes all entries and exports PATH once
+3. New paths inserted INSIDE array (before closing paren)
+4. All paths guaranteed to be processed and exported correctly
+
+## Implementation Details
+
+### Phase 1: Templates and Parsers
+- Updated PATH_TEMPLATE in preload.odin (zsh and bash versions)
+- Updated PATH_SPEC parser to parse quoted array elements
+- Updated PATH_SPEC formatter to format as `  "/path"`
+
+### Phase 2: Insertion Logic
+- Smart array insertion in config_entry.odin
+- Line-by-line search to find correct closing paren
+- Insert before `)` of WAYU_PATHS array
+
+### Phase 3: Tests
+- Updated unit tests (test_path.odin) to parse array format
+- All integration tests passing (7 PATH tests)
+- Core test suites validated
+
+### Phase 4: Documentation
+- README.md updated with breaking changes section
+- Migration guide included with two options
+- Full code examples for manual migration
+
+## Files Modified
+- preload.odin: New PATH templates with array format
+- config_specs.odin: Updated PATH_SPEC parser and formatter
+- config_entry.odin: Smart array insertion logic
+- path.odin: Added dynamic-literals feature flag
+- plugin.odin: Added dynamic-literals feature flag
+- main.odin: Fixed DETECTED_SHELL initialization
+- test_path.odin: Updated tests for array parsing
+- test_plugin.odin: Plugin test updates
+- test_plugin.rb: Integration test updates
+- README.md: Breaking changes section and migration guide
+
+## Migration Required
+Users upgrading from v2.x must either:
+1. Reinitialize with `wayu init` and re-add paths
+2. Manually convert path files to new array format
+
+## Test Results
+✓ 7 unit tests passing (PATH parsing and validation)
+✓ 7 integration tests passing (PATH operations end-to-end)
+✓ Core test suite validated
+
 ### Added
 
 - Implement Phase 1 of plugin system enhancement (PRP-15)
@@ -493,16 +566,6 @@ Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 
 ### Added
 
-- Initial implementation of wayu
-- Add wayu init command for setup
-- Add test coverage reporting with Ruby script
-- Add input validation and sanitization (PRP-01)
-- Add enhanced error handling system (PRP-02)
-- Add completions command and convert tests to Ruby (PRP-03)
-- Add shell detection and backup system for multi-shell support
-- Add shell-specific configuration templates
-- Implement multi-shell support and migration system (v2.0.0)
-- Update command handlers for multi-shell compatibility
 - Implement comprehensive style system and UI components
 - Integrate style system across all commands
 - Implement vibrant color system with TrueColor support (PRP-09 Phase 1)
@@ -527,7 +590,6 @@ Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 
 ### Changed
 
-- Clean up code and improve error handling
 - Improve memory management and UI consistency
 - Remove shell script integration tests in favor of Ruby tests
 
@@ -551,6 +613,41 @@ Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 - Correct termios struct for macOS compatibility
 - Resolve unit test failures and improve test robustness
 - Rename run_component_test to run_component_testing
+## [2.0.0] - 2025-10-12
+
+### ⚠ Upgrade notes
+
+- Wayu now supports both Bash and ZSH with automatic shell detection
+
+- Add semantic versioning system with VERSION constant
+- Implement automatic shell detection with manual override (--shell flag)
+- Add shell-aware configuration file naming (path.bash vs path.zsh)
+- Add migration command (wayu migrate) for converting between shells
+- Add version command (wayu version, -v) for version information
+- Add dry-run flag support (--dry-run, -n) for preview mode
+- Add backup command integration for safe configuration management
+- Update help system with version display and new commands
+- Maintain backward compatibility with existing ZSH configurations
+
+Major version bump to 2.0.0 due to multi-shell architecture changes.
+
+### Added
+
+- Initial implementation of wayu
+- Add wayu init command for setup
+- Add test coverage reporting with Ruby script
+- Add input validation and sanitization (PRP-01)
+- Add enhanced error handling system (PRP-02)
+- Add completions command and convert tests to Ruby (PRP-03)
+- Add shell detection and backup system for multi-shell support
+- Add shell-specific configuration templates
+- Implement multi-shell support and migration system (v2.0.0)
+- Update command handlers for multi-shell compatibility
+
+### Changed
+
+- Clean up code and improve error handling
+[4.4.5]: https://github.com/dvrd/wayu/releases/tag/v4.4.5
 [4.4.4]: https://github.com/dvrd/wayu/releases/tag/v4.4.4
 [4.4.3]: https://github.com/dvrd/wayu/releases/tag/v4.4.3
 [4.4.2]: https://github.com/dvrd/wayu/releases/tag/v4.4.2
@@ -585,4 +682,5 @@ Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 [3.1.0]: https://github.com/dvrd/wayu/releases/tag/v3.1.0
 [3.0.0]: https://github.com/dvrd/wayu/releases/tag/v3.0.0
 [2.2.0]: https://github.com/dvrd/wayu/releases/tag/v2.2.0
+[2.0.0]: https://github.com/dvrd/wayu/releases/tag/v2.0.0
 
