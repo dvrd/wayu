@@ -4,6 +4,7 @@ All notable changes to wayu will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 
 ## [4.4.4] - 2026-11-07
 

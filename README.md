@@ -417,6 +417,10 @@ The workflow never deletes or moves an existing tag or release: if the target
 version's tag already exists elsewhere it fails and prints the manual fix.
 CI uses the Odin release pinned in `.github/odin-release`.
 
+Behavior changes users must know about are marked breaking (`fix(scope)!:` or a
+`BREAKING CHANGE:` footer): they force a major bump and are listed under
+"⚠ Upgrade notes" in the changelog and release.
+
 So you do **not** bump the version by hand — just land your Conventional Commits
 on `main`. `./build_it release [vX.Y.Z]` exists as a manual override (it also
 auto-detects the version when the argument is omitted); the version argument is

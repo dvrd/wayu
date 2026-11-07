@@ -42,7 +42,7 @@ ruby tests/integration/test_completions.rb
 ruby tests/integration/test_plugin.rb
 ```
 
-**TUI layout tests** (Python, needs `pip install pyte`; uses `bin/wayu`, override with `WAYU_BIN`):
+**TUI layout tests** (Python, needs `pip install pyte`; uses `bin/wayu`, override with `WAYU_BIN`; runs in a temp HOME with a fixed config; also run by CI):
 ```bash
 ./build_it && python3 tests/tui/test_responsive.py
 ```
@@ -55,6 +55,18 @@ ruby tests/integration/test_golden.rb             # compare every golden (also r
 ```
 
 Each `tests/golden/<component>_<W>x<H>.txt` needs a matching line (component + args) in `tests/golden/cases.txt`; the test fails if a golden has no case.
+
+## Commit convention (drives versioning)
+
+Conventional Commits; `git-cliff` derives the next version from them (`cliff.toml` `[bump]`):
+
+| Commit | Bump |
+|---|---|
+| `type!: …` or a `BREAKING CHANGE: <what users must know>` footer | major |
+| `feat: …` | minor |
+| anything else (`fix:`, `refactor:`, …) | patch |
+
+Any **user-visible behavior change** (output, exit codes, flags, generated shell code, config semantics) is breaking even when it is a fix: mark it `fix(scope)!:` and write the footer — it becomes the release's "⚠ Upgrade notes". No AI attribution in commits/PRs (no `Co-Authored-By`, no "Generated with").
 
 ## Architecture
 
