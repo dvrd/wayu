@@ -89,8 +89,9 @@ hot_reload_start :: proc() {
 		return
 	}
 
-	// Write PID file
+	// Write PID file; a SIGINT/SIGTERM/SIGHUP kill removes it again.
 	write_watcher_pid()
+	watcher_install_signal_handlers()
 
 	// Reset stop signal
 	g_watcher.stop_signal = false
@@ -134,6 +135,7 @@ hot_reload_stop :: proc() {
 
 	// Remove PID file
 	remove_watcher_pid()
+	watcher_uninstall_signal_handlers()
 
 	print_success("Hot reload watcher stopped")
 }
@@ -317,8 +319,53 @@ watcher_thread_proc :: proc() {
 			}
 		}
 
+		// This thread polls forever: os.stat and regeneration allocate from
+		// the (thread-local) temp allocator, which nothing else frees here.
+		free_all(context.temp_allocator)
+
 		// Sleep to avoid busy-waiting
 		time.sleep(100 * time.Millisecond)
+	}
+}
+
+// ============================================================================
+// Signal handling
+// ============================================================================
+
+// PID file path as a C string, set before the handlers are installed so the
+// handler only does async-signal-safe work (unlink + re-raise).
+@(private="file")
+g_watcher_pid_cpath: cstring
+
+@(private="file")
+WATCHER_SIGNALS :: [?]posix.Signal{.SIGINT, .SIGTERM, .SIGHUP}
+
+@(private="file")
+watcher_signal_handler :: proc "c" (sig: posix.Signal) {
+	if g_watcher_pid_cpath != nil {
+		posix.unlink(g_watcher_pid_cpath)
+	}
+	// Default disposition so the exit status still reflects the signal.
+	posix.signal(sig, auto_cast posix.SIG_DFL)
+	posix.raise(sig)
+}
+
+watcher_install_signal_handlers :: proc() {
+	if g_watcher.pid_file == "" { return }
+	if g_watcher_pid_cpath != nil { delete(g_watcher_pid_cpath) }
+	g_watcher_pid_cpath = strings.clone_to_cstring(g_watcher.pid_file)
+	for sig in WATCHER_SIGNALS {
+		posix.signal(sig, watcher_signal_handler)
+	}
+}
+
+watcher_uninstall_signal_handlers :: proc() {
+	for sig in WATCHER_SIGNALS {
+		posix.signal(sig, auto_cast posix.SIG_DFL)
+	}
+	if g_watcher_pid_cpath != nil {
+		delete(g_watcher_pid_cpath)
+		g_watcher_pid_cpath = nil
 	}
 }
 
