@@ -949,6 +949,14 @@ read_wayu_toml_paths :: proc() -> [dynamic]string {
 	for kv in kvs {
 		if len(kv.value) == 0 { continue }
 		expanded := expand_toml_path_value(kv.value)
+		// Hand-edited wayu.toml bypasses validate_path: a ':' would split
+		// into extra (possibly relative) PATH entries.
+		if !is_path_entry_safe(expanded) {
+			// stderr: stdout of `wayu build eval` is eval'd by the shell.
+			fmt.eprintfln("[wayu] [paths] %s contains ':' or a newline - skipping", kv.key)
+			delete(expanded)
+			continue
+		}
 		duplicate := false
 		for p in paths {
 			if p == expanded { duplicate = true; break }
