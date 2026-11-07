@@ -1574,18 +1574,31 @@ tui_disable_plugin :: proc(name: string) -> bool {
 
 @(private="file")
 _tui_set_plugin_enabled :: proc(name: string, enabled: bool) -> bool {
+	if !config_lock_acquire() { return false }
+	defer config_lock_release()
+
 	config, ok := read_plugin_config_json()
-	if !ok { return false }
 	defer cleanup_plugin_config_json(&config)
+	if !ok { return false }
 
 	for &plugin in config.plugins {
 		if plugin.name == name {
 			plugin.enabled = enabled
-			if !write_plugin_config_json(&config) { return false }
+			if !tui_commit_plugin_config(&config) { return false }
 			return generate_plugins_file(wayu.shell)
 		}
 	}
 	return false
+}
+
+// Back up plugins.json, then write `config`. A TUI mutation must never
+// replace the file without a restorable copy.
+@(private="file")
+tui_commit_plugin_config :: proc(config: ^PluginConfigJSON) -> bool {
+	config_file := get_plugins_json_config_file()
+	defer delete(config_file)
+	if !create_backup_tui(config_file) { return false }
+	return write_plugin_config_json(config)
 }
 
 tui_install_plugin :: proc(key: string) -> bool {
@@ -1604,12 +1617,19 @@ tui_install_plugin :: proc(key: string) -> bool {
 	dest := fmt.aprintf("%s/%s", plugins_dir, info.name)
 	defer delete(dest)
 
+	if !config_lock_acquire() { return false }
+	defer config_lock_release()
+
+	// Read (and validate) plugins.json BEFORE touching anything: if it can't
+	// be parsed, writing our in-memory copy back would replace every other
+	// plugin entry with just this one.
+	config, cfg_ok := read_plugin_config_json()
+	defer cleanup_plugin_config_json(&config)
+	if !cfg_ok { return false }
+
 	hook_pre_plugin_install(info.name)
 
 	if !git_clone(info.url, dest) { return false }
-
-	config, _ := read_plugin_config_json()
-	defer cleanup_plugin_config_json(&config)
 
 	_, already_found := find_plugin_json(&config, info.name)
 	if !already_found {
@@ -1634,7 +1654,7 @@ tui_install_plugin :: proc(key: string) -> bool {
 		append(&config.plugins, new_plugin)
 	}
 
-	if !write_plugin_config_json(&config) { return false }
+	if !tui_commit_plugin_config(&config) { return false }
 	if !generate_plugins_file(wayu.shell) { return false }
 
 	hook_post_plugin_install(info.name)

@@ -7,6 +7,11 @@ import "core:sync"
 import "core:strconv"
 import "core:encoding/json"
 handle_plugin_check :: proc(args: []string) {
+	// Hold the config lock across read-modify-write of plugins.json so
+	// concurrent wayu runs cannot drop each other's changes.
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
+
 	// Read plugin configuration
 	config, ok := read_plugin_config_json()
 	if !ok {
@@ -125,6 +130,11 @@ handle_plugin_update :: proc(args: []string) {
 	}
 
 	update_all := args[0] == "--all" || args[0] == "-a"
+
+	// Hold the config lock across read-modify-write of plugins.json so
+	// concurrent wayu runs cannot drop each other's changes.
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
 
 	// Read plugin configuration
 	config, ok := read_plugin_config_json()
@@ -356,6 +366,11 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 
 	plugin_name := args[0]
 
+	// Hold the config lock across read-modify-write of plugins.json so
+	// concurrent wayu runs cannot drop each other's changes. Every path out
+	// of this proc is os.exit, which drops the lock with the process.
+	config_lock_acquire_or_exit()
+
 	// 2. Read plugin configuration
 	config, ok := read_plugin_config_json()
 	if !ok {
@@ -494,6 +509,11 @@ handle_plugin_priority :: proc(args: []string) {
 		os.exit(EXIT_USAGE)
 	}
 
+	// Hold the config lock across read-modify-write of plugins.json so
+	// concurrent wayu runs cannot drop each other's changes.
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
+
 	// 3. Read config
 	config, read_ok := read_plugin_config_json()
 	if !read_ok {
@@ -578,6 +598,11 @@ handle_plugin_add :: proc(args: []string) {
 		os.exit(EXIT_DATAERR)
 	}
 	defer plugin_info_destroy(&info)
+
+	// Hold the config lock across read-modify-write of plugins.json so
+	// concurrent wayu runs cannot drop each other's changes.
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
 
 	// Read current config
 	config, ok := read_plugin_config_json()
@@ -911,6 +936,11 @@ handle_plugin_list :: proc(args: []string) {
 
 // Handle plugin remove command
 handle_plugin_remove :: proc(args: []string) {
+	// Hold the config lock across read-modify-write of plugins.json so
+	// concurrent wayu runs cannot drop each other's changes.
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
+
 	// Read plugin configuration
 	config, ok := read_plugin_config_json()
 	if !ok {
