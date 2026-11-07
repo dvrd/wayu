@@ -115,6 +115,7 @@ generate_turbo_export :: proc(dry_run: bool) {
 		print_error("Failed to write turbo export file")
 		os.exit(EXIT_IOERR)
 	}
+	restrict_file_mode(output_path) // embeds [env] values (OKAMI-206)
 
 	print_success("Turbo export generated: %s", output_path)
 	fmt.println()

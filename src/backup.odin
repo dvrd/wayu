@@ -49,13 +49,17 @@ create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 	backup_dir := fmt.aprintf("%s/backup", wayu.data)
 	defer delete(backup_dir)
 
+	// Backups hold full wayu.toml copies, [env] secrets included: the
+	// directory is 0700 and every backup 0600 (OKAMI-206).
 	if !os.exists(backup_dir) {
-		err := os.make_directory(backup_dir)
+		err := os.make_directory(backup_dir, SECRET_DIR_PERMS)
 		if err != nil {
 			debug("Failed to create backup directory: %s", backup_dir)
 			return "", false
 		}
 		debug("Created backup directory: %s", backup_dir)
+	} else {
+		tighten_backup_dir_modes(backup_dir)
 	}
 
 	// Extract base filename from path
@@ -81,7 +85,7 @@ create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 	for seq in 0..<MAX_BACKUP_SEQ {
 		candidate := seq == 0 ? strings.clone(stem) : fmt.aprintf("%s-%d", stem, seq)
 
-		f, open_err := os.open(candidate, {.Write, .Create, .Excl}, os.Permissions_Read_All + {.Write_User})
+		f, open_err := os.open(candidate, {.Write, .Create, .Excl}, SECRET_FILE_PERMS)
 		if open_err != nil {
 			delete(candidate)
 			if open_err == os.General_Error.Exist { continue }
@@ -105,6 +109,33 @@ create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 
 	debug("Could not find a free backup filename for %s", base_name)
 	return "", false
+}
+
+// Repair modes left by older wayu versions (backup dir 0755, backups 0644):
+// chmod the dir to 0700 and any group/other-accessible entry to 0600.
+// Best-effort and cheap — the dir holds at most a few files per config.
+@(private = "file")
+tighten_backup_dir_modes :: proc(backup_dir: string) {
+	OPEN_BITS :: os.Permissions{.Read_Group, .Write_Group, .Execute_Group, .Read_Other, .Write_Other, .Execute_Other}
+
+	if info, err := os.stat(backup_dir, context.temp_allocator); err == nil && info.mode & OPEN_BITS != {} {
+		if os.chmod(backup_dir, SECRET_DIR_PERMS) != nil {
+			debug("Could not chmod backup dir %s", backup_dir)
+		}
+	}
+
+	dir_handle, open_err := os.open(backup_dir)
+	if open_err != nil { return }
+	defer os.close(dir_handle)
+
+	infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
+	if read_err != nil { return }
+	defer os.file_info_slice_delete(infos, context.allocator)
+
+	for info in infos {
+		if info.type != .Regular || info.mode & OPEN_BITS == {} { continue }
+		restrict_file_mode(info.fullpath)
+	}
 }
 
 // CLI version - fails immediately without prompt

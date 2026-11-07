@@ -8,12 +8,20 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 // Best-effort write for generated init files. Logs a warning on failure
-// instead of silently swallowing the error.
+// instead of silently swallowing the error. Generated core/lazy/login files
+// embed [env] values, so they are owner-only (0600); the chmod also repairs
+// files created 0644 by older versions (OKAMI-206). If this moves to an
+// atomic tmp+rename writer, the tmp file must be created 0600 too.
 @(private = "file")
 write_init_file :: proc(path, content: string) {
-	if os.write_entire_file(path, transmute([]byte)content) != nil {
+	if os.write_entire_file(path, transmute([]byte)content, SECRET_FILE_PERMS) != nil {
 		print_warning("Failed to write %s", path)
+		return
 	}
+	restrict_file_mode(path)
+	// Stale bytecode from a previous zcompile holds the same exports.
+	zwc := fmt.tprintf("%s.zwc", path)
+	if os.exists(zwc) { restrict_file_mode(zwc) }
 }
 
 // Technique 1: built-in zsh-defer (no external plugin required)
@@ -98,7 +106,7 @@ flush_zcompile_batch :: proc() {
 
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
-	strings.write_string(&builder, `zsh -fc 'for f; do zcompile -- "$f"; done' zsh`)
+	strings.write_string(&builder, `zsh -fc 'umask 077; for f; do zcompile -- "$f"; done' zsh`)
 	for p in ZCOMPILE_BATCH {
 		strings.write_byte(&builder, ' ')
 		strings.write_string(&builder, shell_single_quote(p, context.temp_allocator))
