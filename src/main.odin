@@ -880,12 +880,18 @@ handle_build_command :: proc(action: Action) {
 		return
 	}
 	
-	// For now, delegate to the export/turbo system
-	// In the future, this will use the adaptive optimizer
-	fmt.println("Compiling configuration...")
+	// Regenerate the files init.<ext> sources (core/path_sync/lazy/...) for
+	// every initialized shell, so hand edits of wayu.toml take effect (open
+	// shells pick up [paths] at their next prompt via path_sync).
+	generate_optimized_init_all()
 	fmt.println()
-	fmt.println("For now, using turbo export:")
-	handle_export_command(.TURBO, {})
+
+	// Keep an existing turbo export in step; `wayu build turbo` creates it.
+	turbo_path := fmt.aprintf("%s/%s", wayu.data, turbo_export_file_name())
+	defer delete(turbo_path)
+	if os.exists(turbo_path) {
+		handle_export_command(.TURBO, {})
+	}
 }
 // Golden file directory
 GOLDEN_DIR :: "tests/golden"

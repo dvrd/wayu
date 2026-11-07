@@ -30,6 +30,9 @@ handle_config_extra_command :: proc(action: Action, args: []string) {
 		toml_file := fmt.aprintf("%s/wayu.toml", wayu.config)
 		defer delete(toml_file)
 		edit_toml_config(toml_file)
+		// Apply the edit: regenerate init files for every initialized shell
+		// (open shells pick up [paths] at their next prompt via path_sync).
+		regenerate_init_core_silently()
 	case .CHECK: // scan/detect
 		has_fix, has_dry_run, has_yes := extract_scan_flags(args)
 		if has_fix {

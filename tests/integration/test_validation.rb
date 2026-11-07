@@ -25,6 +25,7 @@ class ValidationIntegrationTest
       test_constant_shell_reserved
       test_constant_lowercase_warning
       test_path_dangerous_chars
+      test_path_rejects_separator
       test_alias_valid_input
       test_constant_valid_input
       test_path_valid_input
@@ -94,6 +95,36 @@ class ValidationIntegrationTest
       puts "✗"
       puts "  Expected lowercase warning"
       puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  # OKAMI-214: ':' splits into extra (even relative '.') PATH entries; a
+  # newline breaks generated files. Both must be rejected by `path add`, and
+  # a hand-edited [paths] value with ':' must never reach PATH.
+  def test_path_rejects_separator
+    print "Test: Reject ':' and newline in PATH entries (CLI + hand-edited TOML)... "
+    colon = "#{@tmp_home}/co:lon"
+    dot = "#{@tmp_home}/a:."
+    nl = "#{@tmp_home}/new\nline"
+    [colon, dot, nl].each { |d| FileUtils.mkdir_p(d) }
+    env = ENV.to_h.merge('HOME' => @tmp_home)
+    codes = [colon, dot, nl].map { |d| Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'add', d)[2].exitstatus }
+    toml_file = "#{@config_dir}/wayu.toml"
+    toml = File.read(toml_file)
+    stored = toml.include?('co:lon') || toml.include?('a:.')
+    toml = toml.include?('[paths]') ? toml.sub('[paths]', "[paths]\nhand = \"#{dot}\"") : toml + "\n[paths]\nhand = \"#{dot}\"\n"
+    File.write(toml_file, toml)
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'build', 'eval')
+    sync = File.exist?("#{@data_dir}/path_sync.zsh") ? File.read("#{@data_dir}/path_sync.zsh") : ''
+    out, = Open3.capture3(env, 'zsh', '-fc', ". '#{@data_dir}/core.zsh' >/dev/null 2>&1; print -rl -- $path")
+    bad_entry = out.lines.map(&:chomp).any? { |l| ['.', "#{@tmp_home}/a", "#{@tmp_home}/co"].include?(l) }
+    if codes.all? { |c| c == 65 } && !stored && !sync.include?('a:.') && !bad_entry
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  codes=#{codes} stored=#{stored} sync_has=#{sync.include?('a:.')} bad_entry=#{bad_entry}"
       @failed += 1
     end
   end

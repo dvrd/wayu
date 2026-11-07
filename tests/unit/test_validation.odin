@@ -124,6 +124,19 @@ test_validate_path :: proc(t: ^testing.T) {
 	testing.expect(t, !result3.valid, "Whitespace-only path should fail")
 }
 
+// OKAMI-214: ':' would split into extra (even relative) PATH entries and a
+// newline breaks the generated line-oriented files.
+@(test)
+test_validate_path_rejects_separator_and_newline :: proc(t: ^testing.T) {
+	for bad in ([]string{"/x/a:.", "/x/co:lon", ":", "/x/a\nb", "/x/a\rb"}) {
+		r := wayu.validate_path(bad)
+		defer delete(r.error_message)
+		testing.expectf(t, !r.valid, "%q should be rejected", bad)
+	}
+	ok := wayu.validate_path("/x/with space/and-$VAR")
+	testing.expect(t, ok.valid, "spaces and $VAR stay allowed")
+}
+
 @(test)
 test_validate_identifier_long_name :: proc(t: ^testing.T) {
 	// Create a name that's exactly 255 characters (should pass)

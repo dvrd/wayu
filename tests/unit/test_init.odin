@@ -5,6 +5,36 @@ import "core:strings"
 import "core:os"
 import wayu "../../src"
 
+// OKAMI-213: [paths] values become shell words expanded at source time;
+// each referenced var guards the entry so an unset var drops it.
+@(test)
+test_path_value_shell_word :: proc(t: ^testing.T) {
+	cases := [][2]string{
+		{"/opt/bin", "'/opt/bin'"},
+		{"$HOME/bin", `${HOME:+"${HOME}"'/bin'}`},
+		{"${GOPATH}/bin", `${GOPATH:+"${GOPATH}"'/bin'}`},
+		{"$A/x/$B", `${A:+${B:+"${A}"'/x/'"${B}"}}`},
+		{"/a$/b", "'/a$/b'"},           // bare '$' stays literal
+		{"/x/${A:-y}", "'/x/${A:-y}'"}, // non-simple ${...} stays literal
+		{"/it's", `'/it'\''s'`},
+	}
+	for c in cases {
+		got := wayu.path_value_shell_word(c[0], context.allocator)
+		defer delete(got)
+		testing.expectf(t, got == c[1], "%q -> %q, want %q", c[0], got, c[1])
+	}
+}
+
+@(test)
+test_path_value_fish_word :: proc(t: ^testing.T) {
+	word, guard := wayu.path_value_fish_word("$GOPATH/bin", context.temp_allocator)
+	testing.expect_value(t, word, `"$GOPATH"'/bin'`)
+	testing.expect_value(t, guard, `test -n "$GOPATH"; and `)
+	word2, guard2 := wayu.path_value_fish_word("/opt/bin", context.temp_allocator)
+	testing.expect_value(t, word2, "'/opt/bin'")
+	testing.expect_value(t, guard2, "")
+}
+
 @(test)
 test_parse_args_init :: proc(t: ^testing.T) {
 	args := []string{"init"}

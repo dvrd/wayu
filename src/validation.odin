@@ -281,6 +281,12 @@ is_safe_shell_arg :: proc(arg: string) -> bool {
 	return true
 }
 
+// A PATH entry must not contain the PATH separator or line breaks. Shared by
+// validate_path (CLI/TUI input) and the [paths] readers (hand-edited TOML).
+is_path_entry_safe :: proc(path: string) -> bool {
+	return strings.index_any(path, ":\n\r") < 0
+}
+
 // Validate path
 validate_path :: proc(path: string) -> ValidationResult {
 	if len(strings.trim_space(path)) == 0 {
@@ -290,6 +296,12 @@ validate_path :: proc(path: string) -> ValidationResult {
 	// Check for null bytes (security)
 	if strings.contains(path, "\x00") {
 		return ValidationResult{valid = false, error_message = fmt.aprintf("Path contains null bytes")}
+	}
+
+	// ':' is the PATH separator: "/x/a:." would put "/x/a" AND "." (the CWD)
+	// on PATH. Newlines break the line-oriented generated files.
+	if !is_path_entry_safe(path) {
+		return ValidationResult{valid = false, error_message = fmt.aprintf("Path cannot contain ':' or newlines (PATH separator)")}
 	}
 
 	return ValidationResult{valid = true, error_message = ""}
