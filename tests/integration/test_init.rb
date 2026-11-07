@@ -31,6 +31,7 @@ class InitIntegrationTest
       test_help_command
       %w[zsh bash].each { |sh| test_generated_files_valid_syntax(sh); test_core_wiring(sh) }
       test_stale_init_is_resynced
+      test_edited_init_is_preserved
       test_build_eval_dry_run_writes_nothing
       test_large_toml_regenerates
       test_live_path_sync
@@ -392,18 +393,40 @@ class InitIntegrationTest
     end
   end
 
-  # Existing users: a stale wayu-generated init.zsh is rewritten on regen.
+  # Existing users: an untouched init.zsh written by an older wayu (4.4.5
+  # template) is rewritten on regen, after a backup of the old file.
   def test_stale_init_is_resynced
-    print "Test: stale init.zsh is rewritten on regeneration... "
+    print "Test: stale init.zsh is rewritten on regeneration (with backup)... "
     _, cfg, env = generate_tricky('zsh')
     init = "#{cfg}/init.zsh"
-    File.write(init, "#!/usr/bin/env zsh\n# Wayu Shell Initialization - Main Orchestrator\nsource old\n")
-    Open3.capture3(env, "#{@wayu_bin} alias add zz 'echo hi'")
+    old = File.read(File.join(__dir__, 'fixtures', 'init-4.4.5.zsh'))
+    File.write(init, old)
+    _, err, = Open3.capture3(env, "#{@wayu_bin} alias add zz 'echo hi'")
     body = File.read(init)
-    if body.include?('source "$WAYU_DATA_DIR/core.zsh"') && !body.include?('source old')
+    backups = Dir.glob("#{cfg}/backup/init.zsh.backup.*")
+    if body != old && body.include?('source "$WAYU_DATA_DIR/core.zsh"') &&
+       backups.any? { |b| File.read(b) == old } && !err.include?('local edits')
       puts "✓"; @passed += 1
     else
-      puts "✗"; puts "  init.zsh not resynced"; @failed += 1
+      puts "✗"; puts "  resynced=#{body != old} backups=#{backups.size} err=#{err.strip[0, 200]}"; @failed += 1
+    end
+  end
+
+  # OKAMI-235: an init.zsh the user edited is never rewritten; wayu warns on
+  # stderr instead (stdout of `build eval` stays clean for eval).
+  def test_edited_init_is_preserved
+    print "Test: user-edited init.zsh is kept, with a warning... "
+    _, cfg, env = generate_tricky('zsh')
+    init = "#{cfg}/init.zsh"
+    edited = File.read(init) + "export MY_CUSTOM=1\n"
+    File.write(init, edited)
+    _, err1, st1 = Open3.capture3(env, "#{@wayu_bin} alias add qq 'echo q'")
+    out2, err2, = Open3.capture3(env, "#{@wayu_bin} build eval")
+    if st1.success? && File.read(init) == edited && err1.include?('local edits') &&
+       err2.include?('local edits') && !out2.include?('local edits')
+      puts "✓"; @passed += 1
+    else
+      puts "✗"; puts "  kept=#{File.read(init) == edited} err1=#{err1.strip[0, 200]}"; @failed += 1
     end
   end
 
