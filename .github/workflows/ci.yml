@@ -1,11 +1,17 @@
 name: CI
 
+# Pushes to main do not trigger this workflow directly: bump.yml calls it
+# (workflow_call) and releases only if every job here passes.
 on:
   push:
-    branches: [main, develop]
-    tags-ignore: ['v*.*.*']   # release.yml handles tag pushes
+    branches: [develop]
   pull_request:
     branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -21,23 +27,46 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Setup Odin
-      uses: laytan/setup-odin@v2
+      uses: ./.github/actions/setup-odin
+
+    - name: Setup Ruby
+      uses: ruby/setup-ruby@v1
       with:
-        release: latest
+        ruby-version: '3.3'
+
+    # Integration tests syntax-check and source the generated init files with
+    # real shells. macOS ships zsh + bash; fish is needed everywhere.
+    - name: Install shells (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq zsh fish
+
+    - name: Install shells (macOS)
+      if: runner.os == 'macOS'
+      run: brew install fish
+
+    - name: Show shells
+      run: |
+        zsh --version
+        bash --version | head -1
+        fish --version
+
+    - name: Bootstrap build script
+      run: odin build build -out:build_it
 
     - name: Build wayu
-      run: |
-        mkdir -p bin
-        odin build src -out:bin/wayu -o:speed
+      run: ./build_it build
 
     - name: Verify build
-      run: ./bin/wayu version
+      run: ./bin/wayu --version
 
-    - name: Setup test environment
-      run: mkdir -p ~/.config/wayu/backup
-
+    # ./build_it test sandboxes HOME, same as local runs.
     - name: Run unit tests
-      run: odin test tests/unit -file -o:speed -define:ODIN_TEST_THREADS=1 -ignore-unused-defineables
+      run: ./build_it test
+
+    - name: Run integration tests (incl. golden)
+      run: ruby tests/integration/run_all.rb
 
     - name: Test CLI exit codes
       run: |
@@ -59,9 +88,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Setup Odin
-      uses: laytan/setup-odin@v2
-      with:
-        release: latest
+      uses: ./.github/actions/setup-odin
 
     - name: Build with warnings as errors
       run: |
@@ -71,7 +98,6 @@ jobs:
   release-check:
     name: Release Readiness
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
 
     steps:
     - name: Checkout code
@@ -88,7 +114,13 @@ jobs:
 
     - name: Check required files exist
       run: |
-        for f in README.md docs/index.html .github/workflows/release.yml; do
+        for f in README.md docs/index.html .github/workflows/bump.yml .github/scripts/homebrew-formula.sh; do
           [ -f "$f" ] || { echo "Missing: $f"; exit 1; }
         done
         echo "All required files present"
+
+    - name: Check formula generator
+      run: |
+        A=$(printf 'a%.0s' {1..64}); B=$(printf 'b%.0s' {1..64})
+        .github/scripts/homebrew-formula.sh v0.0.0 "$A" "$B" > /tmp/wayu.rb
+        ruby -c /tmp/wayu.rb

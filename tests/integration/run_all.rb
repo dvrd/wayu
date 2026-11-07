@@ -5,7 +5,7 @@ require 'open3'
 
 class IntegrationTestRunner
   def initialize
-    @test_files = Dir.glob(File.join(__dir__, 'test_*.rb'))
+    @test_files = Dir.glob(File.join(__dir__, 'test_*.rb')).reject { |f| File.basename(f) == 'test_helper.rb' }
     @results = {}
   end
 
