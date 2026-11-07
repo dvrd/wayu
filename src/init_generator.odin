@@ -110,9 +110,13 @@ flush_zcompile_batch :: proc() {
 	defer strings.builder_destroy(&builder)
 	// Compile to a temp digest then rename: zcompile writes in place, and a
 	// shell starting meanwhile would source a half-written .zwc
-	// ("invalid zwc file"). The digest entry is named after $f's basename,
-	// same as `zcompile $f`.
-	strings.write_string(&builder, `zsh -fc 'umask 077; for f; do t="$f.$$.tmp.zwc"; zcompile -- "$t" "$f" && mv -f -- "$t" "$f.zwc" || rm -f -- "$t"; done' zsh`)
+	// ("invalid zwc file"). The digest is installed only if $f is unchanged
+	// since the compile started: zsh prefers a .zwc newer than its source, so
+	// a slow background compile finishing after a later regeneration would
+	// otherwise shadow the fresh file with stale code. (If $f changes after
+	// the check, the renamed digest keeps the temp file's older mtime and
+	// zsh ignores it.)
+	strings.write_string(&builder, `zsh -fc 'umask 077; for f; do t="$f.$$.tmp.zwc"; c="$(<$f)"; if zcompile -- "$t" "$f" && [[ "$(<$f)" == "$c" && ! $f -nt $t ]]; then mv -f -- "$t" "$f.zwc"; else rm -f -- "$t"; fi; done' zsh`)
 	for p in ZCOMPILE_BATCH {
 		strings.write_byte(&builder, ' ')
 		strings.write_string(&builder, shell_single_quote(p, context.temp_allocator))
