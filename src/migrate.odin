@@ -5,11 +5,12 @@
 //
 //   1. Legacy-to-TOML migration (`wayu migrate`, `wayu migrate --dry-run`)
 //      converts old aliases.zsh/path.zsh/constants.zsh files into a single
-//      wayu.toml and archives the originals as *.zsh.migrated.
+//      wayu.toml and archives the originals as *.zsh.migrated. Parsing lives
+//      in migrate_parse.odin (on top of the shell_words.odin tokenizer).
 //
 //   2. Cross-shell migration (`wayu migrate --from <shell> --to <shell>`)
-//      rewrites alias/export/set syntax between POSIX shells and Fish while
-//      regenerating per-shell init files.
+//      switches [shell].type and regenerates the target shell's files from
+//      wayu.toml.
 //
 // The dispatcher (`handle_migrate_command`) picks between the two based on
 // whether --from/--to are present.
@@ -111,641 +112,308 @@ handle_migrate_command :: proc(args: []string) {
 	migrate_shell_config(from_shell, to_shell)
 }
 
+// Cross-shell migration. wayu.toml is the source of truth, so switching
+// shells means: record the new shell in [shell].type, make sure the target's
+// init.<ext> orchestrator exists, and regenerate core/lazy/login/helpers for
+// the target from wayu.toml. Generated files are never line-translated
+// (their syntax is shell-specific: zsh globs, arrays, ...). Hand-written
+// escape hatches (tools.<ext>, extra.<ext>) can't be translated either; they
+// are reported so the user can port them.
 migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 	from_ext := get_shell_extension(from_shell)
 	to_ext := get_shell_extension(to_shell)
+	to_name := get_shell_name(to_shell)
+
+	toml_path := fmt.tprintf("%s/%s", wayu.config, WAYU_TOML)
+	if !os.exists(toml_path) {
+		print_error("Cross-shell migration rebuilds the %s files from wayu.toml, which does not exist", to_name)
+		fmt.eprintfln("Import your legacy %s files first: %swayu --shell %s migrate%s", from_ext, get_primary(), from_ext, RESET)
+		os.exit(EXIT_CONFIG)
+	}
 
 	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 	}
-	fmt.printfln("Migrating from %s to %s...", get_shell_name(from_shell), get_shell_name(to_shell))
+	fmt.printfln("Migrating from %s to %s...", get_shell_name(from_shell), to_name)
 
-	config_types := []string{"path", "aliases", "constants", "init", "tools"}
-	migrated_count := 0
-	failed_count := 0
-
-	for config_type in config_types {
-		from_file := fmt.aprintf("%s/%s.%s", wayu.data, config_type, from_ext)
-		to_file := fmt.aprintf("%s/%s.%s", wayu.data, config_type, to_ext)
-		defer delete(from_file)
-		defer delete(to_file)
-
-		// Check if source file exists
-		if !os.exists(from_file) {
-			fmt.printfln("  Skipping %s.%s (file not found)", config_type, from_ext)
-			continue
+	// Legacy definitions that never made it into wayu.toml would not follow
+	// the user to the new shell.
+	from_dialect := from_shell == .FISH ? ShellDialect.FISH : ShellDialect.POSIX
+	for base in ([]string{"aliases", "constants", "path"}) {
+		file := fmt.tprintf("%s/%s.%s", wayu.data, base, from_ext)
+		if !os.exists(file) { continue }
+		content, ok := safe_read_file(file)
+		if !ok { continue }
+		a := legacy_analyze(string(content), from_dialect)
+		pending := len(a.entries) + len(a.issues)
+		legacy_analysis_destroy(&a)
+		delete(content)
+		if pending > 0 {
+			print_warning("%s.%s holds definitions that are not in wayu.toml; they will not carry over (import them with `wayu --shell %s migrate`)",
+				base, from_ext, from_ext)
 		}
-
-		// Check if target file already exists
-		if os.exists(to_file) {
-			fmt.printfln("  Warning: %s.%s already exists, skipping migration", config_type, to_ext)
-			continue
-		}
-
-		// Read source file
-		data, read_err := os.read_entire_file(from_file, context.allocator)
-		if read_err != nil {
-			fmt.eprintfln("  Error: Failed to read %s", from_file)
-			failed_count += 1
-			continue
-		}
-		defer delete(data)
-
-		content := string(data)
-
-		// Convert shell-specific content
-		migrated_content := convert_shell_content(content, from_shell, to_shell, config_type)
-		defer delete(migrated_content)
-
-		if wayu.dry_run {
-			fmt.printfln("  Would migrate %s.%s → %s.%s", config_type, from_ext, config_type, to_ext)
-			migrated_count += 1
-			continue
-		}
-
-		// Write to target file
-		write_err := write_file_atomic(to_file, transmute([]byte)migrated_content)
-		if write_err != nil {
-			fmt.eprintfln("  Error: Failed to write %s", to_file)
-			failed_count += 1
-			continue
-		}
-
-		fmt.printfln("  ✓ Migrated %s.%s → %s.%s", config_type, from_ext, config_type, to_ext)
-		migrated_count += 1
 	}
 
+	// tools/extra are user shell code in the source dialect.
+	for base in ([]string{"tools", "extra"}) {
+		file := fmt.tprintf("%s/%s.%s", wayu.config, base, from_ext)
+		if !os.exists(file) { continue }
+		content, ok := safe_read_file(file)
+		if !ok { continue }
+		template := base == "tools" ? get_tools_template(from_shell) : get_extra_template(from_shell)
+		if string(content) != template {
+			print_warning("%s/%s.%s is hand-written %s code and is not translated; port it to %s.%s",
+				wayu.config, base, from_ext, get_shell_name(from_shell), base, to_ext)
+		}
+		delete(content)
+	}
+
+	init_file := fmt.tprintf("%s/init.%s", wayu.data, to_ext)
+	init_exists := os.exists(init_file)
+
 	if wayu.dry_run {
+		fmt.printfln("  Would set [shell] type = \"%s\" in wayu.toml", to_name)
+		if !init_exists {
+			fmt.printfln("  Would create %s", init_file)
+		}
+		fmt.printfln("  Would generate %s/core.%s (and its companions) from wayu.toml", wayu.data, to_ext)
 		fmt.println()
-		fmt.printfln("Would migrate %d configuration file(s).", migrated_count)
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
 		return
 	}
 
-	if migrated_count > 0 {
-		fmt.printfln("\nMigration completed! Migrated %d configuration file(s).", migrated_count)
-		fmt.printfln("To use the new configuration:")
-		#partial switch to_shell {
-		case .BASH:
-			fmt.printfln("  1. Add this line to your ~/.bashrc or ~/.bash_profile:")
-			fmt.printfln("     source \"%s/init.bash\"", wayu.data)
-		case .FISH:
-			fmt.printfln("  1. Add this line to your ~/.config/fish/config.fish:")
-			fmt.printfln("     source \"%s/init.fish\"", wayu.data)
-		case:
-			fmt.printfln("  1. Add this line to your ~/.zshrc:")
-			fmt.printfln("     source \"%s/init.zsh\"", wayu.data)
-		}
-		fmt.printfln("  2. Restart your shell or source the RC file")
-	} else {
-		fmt.printfln("\nNo files were migrated. Check that source files exist and target files don't already exist.")
-	}
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
 
-	if failed_count > 0 {
-		print_error("%d file(s) failed to migrate", failed_count)
+	res, _ := toml_kv_upsert("shell", "shell", "type", to_name)
+	switch res {
+	case .OK:
+	case .MALFORMED:
+		os.exit(EXIT_CONFIG)
+	case .IO_ERROR, .NOT_FOUND:
+		print_error("Could not update [shell] type in %s", toml_path)
 		os.exit(EXIT_IOERR)
 	}
-}
+	fmt.printfln("  ✓ wayu.toml [shell] type = \"%s\"", to_name)
 
-// ---------------------------------------------------------------------------
-// Cross-shell quoting helpers. Local to migrate so the conversion doesn't
-// depend on shell.odin's generators. All return heap strings (caller frees).
-// ---------------------------------------------------------------------------
-
-// Which quote style a fish value was written in (fish keeps the quotes in
-// the source line; parse_*_line strips them).
-MigrateQuote :: enum { None, Single, Double }
-
-// Detect the quote style of the value at the end of a fish line.
-migrate_fish_value_quote :: proc(line: string) -> MigrateQuote {
-	trimmed := strings.trim_space(line)
-	if len(trimmed) == 0 { return .None }
-	switch trimmed[len(trimmed) - 1] {
-	case '\'': return .Single
-	case '"':  return .Double
-	}
-	return .None
-}
-
-// Decode a fish single-quoted body: only `\\` and `\'` are escapes.
-migrate_fish_sq_decode :: proc(raw: string) -> string {
-	b := strings.builder_make()
-	defer strings.builder_destroy(&b)
-	i := 0
-	for i < len(raw) {
-		if raw[i] == '\\' && i + 1 < len(raw) && (raw[i+1] == '\\' || raw[i+1] == '\'') {
-			strings.write_byte(&b, raw[i+1])
-			i += 2
-			continue
+	if !init_exists {
+		template := get_init_template(to_shell)
+		if write_file_atomic(init_file, transmute([]byte)template) != nil {
+			print_error("Could not write %s", init_file)
+			os.exit(EXIT_CANTCREAT)
 		}
-		strings.write_byte(&b, raw[i])
-		i += 1
-	}
-	return strings.clone(strings.to_string(b))
-}
-
-// Decode a POSIX double-quoted body into the literal text it denotes,
-// ignoring expansions (used for alias bodies, which are re-evaluated when
-// the alias runs).
-migrate_posix_dq_decode :: proc(raw: string) -> string {
-	b := strings.builder_make()
-	defer strings.builder_destroy(&b)
-	i := 0
-	for i < len(raw) {
-		if raw[i] == '\\' && i + 1 < len(raw) {
-			switch raw[i+1] {
-			case '\\', '"', '$', '`':
-				strings.write_byte(&b, raw[i+1])
-				i += 2
-				continue
+		fmt.printfln("  ✓ Created %s", init_file)
+	} else {
+		data, ok := safe_read_file(init_file)
+		if ok {
+			if !strings.contains(string(data), "Wayu Shell Initialization") {
+				print_warning("%s is not a wayu orchestrator; left untouched (it must source core.%s)", init_file, to_ext)
 			}
+			delete(data)
 		}
-		strings.write_byte(&b, raw[i])
-		i += 1
 	}
-	return strings.clone(strings.to_string(b))
+
+	for base in ([]string{"tools", "extra"}) {
+		file := fmt.tprintf("%s/%s.%s", wayu.config, base, to_ext)
+		if os.exists(file) { continue }
+		template := base == "tools" ? get_tools_template(to_shell) : get_extra_template(to_shell)
+		init_config_file(file, template)
+	}
+
+	// Regenerate for the target shell (plus every other initialized shell).
+	set_active_shell(to_shell)
+	regenerate_init_core_silently()
+
+	core_file := fmt.tprintf("%s/core.%s", wayu.data, to_ext)
+	if !os.exists(core_file) {
+		print_error("Failed to generate %s", core_file)
+		os.exit(EXIT_IOERR)
+	}
+	fmt.printfln("  ✓ Generated %s from wayu.toml", core_file)
+
+	fmt.printfln("\nMigration complete. Your %s files were left in place.", get_shell_name(from_shell))
+	fmt.printfln("To use the new configuration:")
+	#partial switch to_shell {
+	case .BASH:
+		fmt.printfln("  1. Add this line to your ~/.bashrc or ~/.bash_profile:")
+	case .FISH:
+		fmt.printfln("  1. Add this line to your ~/.config/fish/config.fish:")
+	case:
+		fmt.printfln("  1. Add this line to your ~/.zshrc:")
+	}
+	fmt.printfln("     source \"%s\"", init_file)
+	fmt.printfln("  2. Restart your shell or source the RC file")
 }
 
-// Literal text → fish single-quoted word (no expansion).
-migrate_fish_sq_quote :: proc(s: string) -> string {
-	b := strings.builder_make()
-	defer strings.builder_destroy(&b)
-	strings.write_byte(&b, '\'')
-	for i in 0..<len(s) {
-		if s[i] == '\\' || s[i] == '\'' { strings.write_byte(&b, '\\') }
-		strings.write_byte(&b, s[i])
-	}
-	strings.write_byte(&b, '\'')
-	return strings.clone(strings.to_string(b))
+// One legacy file considered by `wayu migrate`.
+@(private = "file")
+LegacySource :: struct {
+	base:     string, // "aliases" | "constants" | "path"
+	path:     string, // heap
+	label:    string, // heap: "<base>.<ext>"
+	content:  string, // heap
+	analysis: LegacyAnalysis,
 }
 
-// Literal text → POSIX double-quoted word (no expansion).
-migrate_posix_dq_quote :: proc(s: string) -> string {
-	b := strings.builder_make()
-	defer strings.builder_destroy(&b)
-	strings.write_byte(&b, '"')
-	for i in 0..<len(s) {
-		switch s[i] {
-		case '\\', '"', '$', '`': strings.write_byte(&b, '\\')
-		}
-		strings.write_byte(&b, s[i])
+// Pre-validate entries so a migration never stops half-way on a bad name.
+// Returns the reason (heap) or "".
+@(private = "file")
+legacy_entry_validate :: proc(e: LegacyEntry) -> string {
+	r: ValidationResult
+	switch e.kind {
+	case .Path:     r = validate_path(e.value)
+	case .Alias:    r = validate_alias(e.name, e.value)
+	case .Constant: r = validate_constant(e.name, e.value)
 	}
-	strings.write_byte(&b, '"')
-	return strings.clone(strings.to_string(b))
+	if len(r.warning) > 0 { delete(r.warning) }
+	if r.valid { return "" }
+	return r.error_message
 }
 
-// POSIX double-quoted body → fish double-quoted word, preserving `$VAR`
-// expansion. `${NAME}` (invalid in fish) becomes `{$NAME}`; `\`` becomes a
-// plain backtick (literal in fish). `\"`, `\\`, `\$` mean the same in both.
-migrate_posix_dq_to_fish_dq :: proc(raw: string) -> string {
-	b := strings.builder_make()
-	defer strings.builder_destroy(&b)
-	strings.write_byte(&b, '"')
-	i := 0
-	for i < len(raw) {
-		c := raw[i]
-		if c == '\\' && i + 1 < len(raw) {
-			if raw[i+1] == '`' {
-				strings.write_byte(&b, '`')
-			} else {
-				strings.write_byte(&b, c)
-				strings.write_byte(&b, raw[i+1])
-			}
-			i += 2
-			continue
-		}
-		if c == '$' && i + 1 < len(raw) && raw[i+1] == '{' {
-			if close := strings.index_byte(raw[i+2:], '}'); close > 0 {
-				strings.write_string(&b, "{$"); strings.write_string(&b, raw[i+2:i+2+close]); strings.write_byte(&b, '}')
-				i += 2 + close + 1
-				continue
-			}
-		}
-		if c == '"' {
-			// Unbalanced quote that slipped through the parser — escape it.
-			strings.write_byte(&b, '\\')
-		}
-		strings.write_byte(&b, c)
-		i += 1
-	}
-	strings.write_byte(&b, '"')
-	return strings.clone(strings.to_string(b))
-}
-
-// fish double-quoted (or bare) body → POSIX double-quoted word, preserving
-// `$VAR` expansion. `{$NAME}` becomes `${NAME}`; backticks (literal in fish)
-// are escaped; a bare `"` is escaped.
-migrate_fish_dq_to_posix_dq :: proc(raw: string) -> string {
-	b := strings.builder_make()
-	defer strings.builder_destroy(&b)
-	strings.write_byte(&b, '"')
-	i := 0
-	for i < len(raw) {
-		c := raw[i]
-		if c == '\\' && i + 1 < len(raw) {
-			strings.write_byte(&b, c)
-			strings.write_byte(&b, raw[i+1])
-			i += 2
-			continue
-		}
-		if c == '{' && i + 1 < len(raw) && raw[i+1] == '$' {
-			if close := strings.index_byte(raw[i+2:], '}'); close > 0 {
-				strings.write_string(&b, "${"); strings.write_string(&b, raw[i+2:i+2+close]); strings.write_byte(&b, '}')
-				i += 2 + close + 1
-				continue
-			}
-		}
-		if c == '`' || c == '"' {
-			strings.write_byte(&b, '\\')
-		}
-		strings.write_byte(&b, c)
-		i += 1
-	}
-	strings.write_byte(&b, '"')
-	return strings.clone(strings.to_string(b))
-}
-
-// Convert a fish value (as captured by parse_*_line, quotes stripped) to a
-// POSIX double-quoted word, honouring the original quote style.
-migrate_fish_value_to_posix :: proc(raw: string, quote: MigrateQuote) -> string {
-	if quote == .Single {
-		lit := migrate_fish_sq_decode(raw)
-		defer delete(lit)
-		return migrate_posix_dq_quote(lit)
-	}
-	return migrate_fish_dq_to_posix_dq(raw)
-}
-
-// Extract PATH entries from a path.<ext> file in either dialect. Returns
-// already-target-quoted words for `to_shell`. Caller frees each + slice.
-migrate_collect_path_words :: proc(content: string, from_shell, to_shell: ShellType) -> [dynamic]string {
-	out := make([dynamic]string)
-	lines := strings.split_lines(content)
-	defer delete(lines)
-
-	for line in lines {
-		trimmed := strings.trim_space(line)
-		raw: string
-		quote := MigrateQuote.Double
-		found := false
-
-		if from_shell == .FISH {
-			rest := ""
-			if strings.has_prefix(trimmed, "set -a WAYU_PATHS ") {
-				rest = strings.trim_space(trimmed[len("set -a WAYU_PATHS "):])
-			} else if strings.has_prefix(trimmed, "fish_add_path ") {
-				rest = strings.trim_space(trimmed[len("fish_add_path "):])
-				for strings.has_prefix(rest, "-") {
-					sp := strings.index_byte(rest, ' ')
-					if sp == -1 { rest = ""; break }
-					rest = strings.trim_space(rest[sp+1:])
-				}
-			}
-			if len(rest) == 0 { continue }
-			quote = .None
-			if len(rest) >= 2 && (rest[0] == '\'' || rest[0] == '"') && rest[0] == rest[len(rest)-1] {
-				quote = rest[0] == '\'' ? .Single : .Double
-				rest = rest[1:len(rest)-1]
-			}
-			raw = rest
-			found = true
-		} else {
-			// POSIX: array element lines `"dir"` inside WAYU_PATHS=( ... ).
-			if len(trimmed) >= 2 && trimmed[0] == '"' && trimmed[len(trimmed)-1] == '"' {
-				raw = trimmed[1:len(trimmed)-1]
-				found = true
-			}
-		}
-		if !found { continue }
-
-		word: string
-		if to_shell == .FISH {
-			word = migrate_posix_dq_to_fish_dq(raw)
-		} else if from_shell == .FISH {
-			word = migrate_fish_value_to_posix(raw, quote)
-		} else {
-			word = fmt.aprintf(`"%s"`, raw) // POSIX → POSIX: same syntax
-		}
-		append(&out, word)
-	}
-	return out
-}
-
-// Render a complete path.<ext> for `to_shell` from the shell's template,
-// inserting `words` into the WAYU_PATHS registry.
-migrate_render_path_file :: proc(words: []string, to_shell: ShellType) -> string {
-	template := get_path_template(to_shell)
-	lines := strings.split_lines(template)
-	defer delete(lines)
-
-	b := strings.builder_make()
-	defer strings.builder_destroy(&b)
-	for line, i in lines {
-		strings.write_string(&b, line)
-		if i < len(lines) - 1 { strings.write_byte(&b, '\n') }
-		trimmed := strings.trim_space(line)
-		if to_shell == .FISH && trimmed == "set -gx WAYU_PATHS" {
-			for w in words { fmt.sbprintf(&b, "set -a WAYU_PATHS %s\n", w) }
-		} else if to_shell != .FISH && trimmed == "WAYU_PATHS=(" {
-			for w in words { fmt.sbprintf(&b, "  %s\n", w) }
-		}
-	}
-	return strings.clone(strings.to_string(b))
-}
-
-convert_shell_content :: proc(content: string, from_shell: ShellType, to_shell: ShellType, config_type: string) -> string {
-	// path.<ext> is a wayu-managed registry: its loop/dedup code is
-	// dialect-specific (zsh array syntax is invalid in fish, the zsh
-	// `${(s/:/)PATH}` split is invalid in bash), so rebuild it from the
-	// target template instead of translating line by line.
-	if config_type == "path" {
-		words := migrate_collect_path_words(content, from_shell, to_shell)
-		defer {
-			for w in words { delete(w) }
-			delete(words)
-		}
-		return migrate_render_path_file(words[:], to_shell)
-	}
-
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-
-	lines := strings.split_lines(content)
-	defer delete(lines)
-
-	for line, i in lines {
-		converted_line := line
-		owned := ""
-
-		// Convert shebang
-		if strings.has_prefix(line, "#!/usr/bin/env") {
-			#partial switch to_shell {
-			case .BASH: converted_line = "#!/usr/bin/env bash"
-			case .FISH: converted_line = "#!/usr/bin/env fish"
-			case: converted_line = "#!/usr/bin/env zsh"
-			}
-		} else if to_shell == .FISH && (from_shell == .BASH || from_shell == .ZSH) {
-			// POSIX → fish. Alias bodies are literal command text, so decode
-			// and re-quote for fish single quotes; constants keep $VAR
-			// expansion via fish double quotes.
-			if entry, ok := parse_alias_line(line); ok {
-				lit := migrate_posix_dq_decode(entry.value)
-				q := migrate_fish_sq_quote(lit)
-				owned = fmt.aprintf("alias %s %s", entry.name, q)
-				delete(q); delete(lit)
-				cleanup_entry(&entry)
-			} else if entry, ok := parse_constant_line(line); ok {
-				q := migrate_posix_dq_to_fish_dq(entry.value)
-				owned = fmt.aprintf("set -gx %s %s", entry.name, q)
-				delete(q)
-				cleanup_entry(&entry)
-			}
-		} else if from_shell == .FISH && (to_shell == .BASH || to_shell == .ZSH) {
-			// fish → POSIX, honouring the fish quote style.
-			if entry, ok := parse_alias_line(line); ok {
-				quote := migrate_fish_value_quote(line)
-				lit := quote == .Single ? migrate_fish_sq_decode(entry.value) : strings.clone(entry.value)
-				q := migrate_posix_dq_quote(lit)
-				owned = fmt.aprintf("alias %s=%s", entry.name, q)
-				delete(q); delete(lit)
-				cleanup_entry(&entry)
-			} else if entry, ok := parse_constant_line(line); ok {
-				q := migrate_fish_value_to_posix(entry.value, migrate_fish_value_quote(line))
-				owned = fmt.aprintf("export %s=%s", entry.name, q)
-				delete(q)
-				cleanup_entry(&entry)
-			}
-		}
-		if len(owned) > 0 { converted_line = owned }
-
-		strings.write_string(&builder, converted_line)
-		if i < len(lines) - 1 {
-			strings.write_string(&builder, "\n")
-		}
-		if len(owned) > 0 { delete(owned) }
-	}
-
-	return strings.clone(strings.to_string(builder))
-}
-
-// Migrate legacy shell configs to TOML format
+// Migrate legacy shell configs to TOML format.
+//
+// All or nothing: every legacy file is analyzed first, and if any line can't
+// be converted exactly (single-quoted/bare values are fine; functions,
+// conditionals, command substitution, ... are not) the lines are listed and
+// nothing is written. Once wayu.toml drives the shell (core.<ext>), legacy
+// files are no longer sourced, so a partial import would drop them.
 migrate_legacy_to_toml :: proc(dry_run: bool) {
 	print_header("Legacy Config Migration", "🔄")
 	fmt.println()
 
-	// Check which legacy files exist
-	legacy_files := []string{"aliases", "constants", "path"}
-	found_files := make([dynamic]string)
-	defer delete(found_files)
+	dialect := wayu.shell == .FISH ? ShellDialect.FISH : ShellDialect.POSIX
 
-	// Only consider a legacy file "found" when it contains at least one line
-	// that parses as real legacy content (a path entry, an alias definition,
-	// or an export). wayu's setup pass scaffolds path.zsh with helper shell
-	// code (WAYU_PATHS=(), dedup loop, …) and touches empty constants.zsh
-	// files on every CLI invocation, so a plain non-comment line counter
-	// would report every install as "has legacy content to migrate".
-	has_parseable_legacy :: proc(path: string, kind: string) -> bool {
-		content, ok := safe_read_file(path)
-		if !ok { return false }
-		defer delete(content)
-		lines := strings.split(string(content), "\n")
-		defer delete(lines)
-		for line in lines {
-			switch kind {
-			case "path":
-				entry, p_ok := parse_path_line(line)
-				if p_ok { cleanup_entry(&entry); return true }
-			case "aliases":
-				entry, p_ok := parse_alias_line(line)
-				if p_ok { cleanup_entry(&entry); return true }
-			case "constants":
-				entry, p_ok := parse_constant_line(line)
-				if p_ok { cleanup_entry(&entry); return true }
-			}
+	sources := make([dynamic]LegacySource)
+	defer {
+		for &s in sources {
+			delete(s.path); delete(s.label); delete(s.content)
+			legacy_analysis_destroy(&s.analysis)
 		}
-		return false
+		delete(sources)
 	}
 
-	for file in legacy_files {
-		config_file := fmt.aprintf("%s/%s.%s", wayu.data, file, wayu.shell_ext)
-		defer delete(config_file)
-
-		if os.exists(config_file) && has_parseable_legacy(config_file, file) {
-			append(&found_files, file)
+	for base in ([]string{"aliases", "constants", "path"}) {
+		path := fmt.aprintf("%s/%s.%s", wayu.data, base, wayu.shell_ext)
+		if !os.exists(path) { delete(path); continue }
+		data, ok := safe_read_file(path)
+		if !ok {
+			// Unreadable: never report "nothing to migrate" for it.
+			print_error("Could not read %s", path)
+			delete(path)
+			os.exit(EXIT_NOINPUT)
 		}
+		a := legacy_analyze(string(data), dialect)
+		if len(a.entries) == 0 && len(a.issues) == 0 {
+			// Missing, empty or wayu scaffolding only.
+			legacy_analysis_destroy(&a)
+			delete(data); delete(path)
+			continue
+		}
+		append(&sources, LegacySource{
+			base = base, path = path, content = string(data), analysis = a,
+			label = fmt.aprintf("%s.%s", base, wayu.shell_ext),
+		})
 	}
 
-	if len(found_files) == 0 {
+	if len(sources) == 0 {
 		print_success("No legacy shell config files found")
 		fmt.println("Your configuration is already organized or empty.")
 		return
 	}
 
+	// Entries the validators would reject are issues too.
+	for &s in sources {
+		for e in s.analysis.entries {
+			if msg := legacy_entry_validate(e); len(msg) > 0 {
+				append(&s.analysis.issues, LegacyIssue{first_line = e.line, last_line = e.line, reason = msg})
+			}
+		}
+	}
+
 	print_header("Found Legacy Files", "📋")
-	for file in found_files {
-		fmt.printfln("  • %s.%s", file, wayu.shell_ext)
+	total_issues := 0
+	for s in sources {
+		fmt.printfln("  • %s (%d entr%s)", s.label, len(s.analysis.entries), len(s.analysis.entries) == 1 ? "y" : "ies")
+		total_issues += len(s.analysis.issues)
 	}
 	fmt.println()
 
-	// Show what would be imported
-	fmt.printfln("These files contain shell-specific syntax. Converting to TOML requires:")
-	fmt.println("  • Parsing alias definitions (name=value)")
-	fmt.println("  • Parsing export statements (name=value)")
-	fmt.println("  • Normalizing PATH entries")
-	fmt.println()
+	if total_issues > 0 {
+		print_error("%d line(s) can't be migrated to wayu.toml exactly — nothing was changed", total_issues)
+		fmt.eprintln()
+		for s in sources {
+			for is in s.analysis.issues { legacy_print_issue(s.label, s.content, is) }
+		}
+		fmt.eprintln()
+		fmt.eprintfln("Move shell code you want to keep (functions, conditionals, ...) to %s/extra.%s,", wayu.config, wayu.shell_ext)
+		fmt.eprintln("which wayu keeps sourcing, or rewrite it as plain `alias name='cmd'` /")
+		fmt.eprintfln("`export NAME=value` lines, then re-run %swayu migrate%s.", get_primary(), RESET)
+		os.exit(EXIT_DATAERR)
+	}
 
 	if dry_run {
-		print_info("Dry-run mode: would parse %d legacy files", len(found_files))
-		fmt.println()
-		fmt.printfln("Sample extraction plan:")
-
-		// Show sample of what would be extracted from aliases
-		has_aliases := false
-		for f in found_files {
-			if f == "aliases" {
-				has_aliases = true
-				break
-			}
-		}
-		if has_aliases {
-			aliases_file := fmt.aprintf("%s/aliases.%s", wayu.data, wayu.shell_ext)
-			defer delete(aliases_file)
-
-			content, ok := safe_read_file(aliases_file)
-			if ok {
-				lines := strings.split(string(content), "\n")
-				defer delete(lines)
-
-				fmt.println()
-				fmt.println("  [aliases]")
-				count := 0
-				for line in lines {
-					trimmed := strings.trim_space(line)
-					if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
-						continue
-					}
-
-					if strings.contains(trimmed, "alias ") {
-						// Simple parsing: alias name='value'
-						rest := strings.trim_prefix(trimmed, "alias ")
-						if pos := strings.index(rest, "="); pos > 0 {
-							name := rest[:pos]
-							fmt.printfln("    # %s = ...", name)
-							count += 1
-							if count >= 3 {
-								break
-							}
-						}
-					}
-				}
-				delete(content)
-				if count == 0 {
-					fmt.println("    # (no parseable aliases found)")
+		print_info("Dry-run mode: would import %d legacy file(s)", len(sources))
+		for s in sources {
+			fmt.println()
+			fmt.printfln("  [%s]", s.label)
+			for e in s.analysis.entries {
+				switch e.kind {
+				case .Path:     fmt.printfln("    path %s", e.value)
+				case .Alias:    fmt.printfln("    %s = ...", e.name)
+				case .Constant: fmt.printfln("    %s = ...", e.name)
 				}
 			}
 		}
-
 		fmt.println()
 		fmt.printfln("Run %swayu migrate%s (without --dry-run) for actual migration", get_primary(), RESET)
 		return
 	}
 
 	// ===== Real migration =====
-	// Strategy: parse each legacy file line-by-line using the per-type spec
-	// parser, then call the toml_*_add helpers so wayu.toml stays in its
-	// canonical format. toml_*_add already creates timestamped backups of
-	// wayu.toml on each write, so the user can always roll back.
-	// Legacy files are renamed to .migrated so a subsequent run is a no-op
-	// and the original content stays on disk for inspection.
-
-	// Ensure wayu.toml exists — toml_*_add expects it to be readable.
+	// toml_*_add keep wayu.toml canonical and back it up on each write.
+	// Legacy files are renamed to .migrated so a re-run is a no-op and the
+	// original content stays on disk for inspection.
 	toml_path := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(toml_path)
 	if !os.exists(toml_path) {
-		// Seed a minimal scaffold so toml_*_add has a file to append to.
 		scaffold := "# wayu configuration (auto-generated by migrate)\n"
 		if os.write_entire_file(toml_path, transmute([]byte)scaffold, SECRET_FILE_PERMS) != nil {
 			print_error("Failed to create %s before migration", toml_path)
-			return
+			os.exit(EXIT_CANTCREAT)
 		}
 	}
 
-	migrated_paths     := 0
-	migrated_aliases   := 0
-	migrated_constants := 0
-	total_failed       := 0
-	kept_files         := 0
+	migrated: [LegacyKind]int
+	total_failed := 0
+	kept_files := 0
 
-	for file in found_files {
-		legacy_file := fmt.aprintf("%s/%s.%s", wayu.data, file, wayu.shell_ext)
-		defer delete(legacy_file)
-
-		content, ok := safe_read_file(legacy_file)
-		if !ok {
-			print_warning("Could not read %s — skipping", legacy_file)
-			total_failed += 1
-			kept_files += 1
-			continue
-		}
-
-		lines := strings.split(string(content), "\n")
+	for s in sources {
 		failed := 0
-
-		switch file {
-		case "path":
-			for line in lines {
-				entry, parsed := parse_path_line(line)
-				if !parsed { continue }
-				if toml_path_add(entry.name) {
-					migrated_paths += 1
-				} else {
-					print_warning("Failed to migrate path %s", entry.name)
-					failed += 1
-				}
-				cleanup_entry(&entry)
+		for e in s.analysis.entries {
+			ok_add := false
+			err_msg := ""
+			switch e.kind {
+			case .Path:
+				ok_add = toml_path_add(e.value)
+			case .Alias:
+				ok_add, err_msg = toml_alias_add(ConfigEntry{type = .ALIAS, name = e.name, value = e.value})
+			case .Constant:
+				ok_add, err_msg = toml_constant_add(ConfigEntry{type = .CONSTANT, name = e.name, value = e.value})
 			}
-		case "aliases":
-			for line in lines {
-				entry, parsed := parse_alias_line(line)
-				if !parsed { continue }
-				ok_add, err_msg := toml_alias_add(entry)
-				if ok_add {
-					migrated_aliases += 1
-				} else {
-					failed += 1
-					if len(err_msg) > 0 {
-						print_warning("Failed to migrate alias %s: %s", entry.name, err_msg)
-						delete(err_msg)
-					} else {
-						print_warning("Failed to migrate alias %s", entry.name)
-					}
-				}
-				cleanup_entry(&entry)
+			if ok_add {
+				migrated[e.kind] += 1
+				continue
 			}
-		case "constants":
-			for line in lines {
-				entry, parsed := parse_constant_line(line)
-				if !parsed { continue }
-				ok_add, err_msg := toml_constant_add(entry)
-				if ok_add {
-					migrated_constants += 1
-				} else {
-					failed += 1
-					if len(err_msg) > 0 {
-						print_warning("Failed to migrate constant %s: %s", entry.name, err_msg)
-						delete(err_msg)
-					} else {
-						print_warning("Failed to migrate constant %s", entry.name)
-					}
-				}
-				cleanup_entry(&entry)
+			failed += 1
+			label := e.kind == .Path ? e.value : e.name
+			if len(err_msg) > 0 {
+				print_warning("Failed to migrate %s (line %d): %s", label, e.line, err_msg)
+				delete(err_msg)
+			} else {
+				print_warning("Failed to migrate %s (line %d)", label, e.line)
 			}
 		}
-
-		delete(lines)
-		delete(content)
 
 		// Only archive when every entry made it into wayu.toml — otherwise
 		// the legacy file is the only remaining copy of the failed entries.
@@ -753,29 +421,27 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 			total_failed += failed
 			kept_files += 1
 			print_warning("%d entr%s from %s failed — left it in place (not archived)",
-				failed, failed == 1 ? "y" : "ies", legacy_file)
+				failed, failed == 1 ? "y" : "ies", s.path)
 			continue
 		}
 
-		// Rename legacy file to `.migrated` so a re-run is a clean no-op.
-		archived := fmt.aprintf("%s.migrated", legacy_file)
-		defer delete(archived)
-		if rename_err := os.rename(legacy_file, archived); rename_err != nil {
-			print_warning("Could not archive %s (error %v) — delete manually after reviewing", legacy_file, rename_err)
+		archived := fmt.tprintf("%s.migrated", s.path)
+		if rename_err := os.rename(s.path, archived); rename_err != nil {
+			print_warning("Could not archive %s (error %v) — delete manually after reviewing", s.path, rename_err)
 		} else {
-			print_info("Archived %s → %s.migrated", legacy_file, file)
+			print_info("Archived %s → %s.migrated", s.path, s.label)
 		}
 	}
 
 	fmt.println()
 	if total_failed > 0 {
 		print_error("Migration incomplete: %d paths, %d aliases, %d constants migrated; %d entr%s failed",
-			migrated_paths, migrated_aliases, migrated_constants, total_failed, total_failed == 1 ? "y" : "ies")
+			migrated[.Path], migrated[.Alias], migrated[.Constant], total_failed, total_failed == 1 ? "y" : "ies")
 		fmt.printfln("%d legacy file(s) were left in place. Fix the entries above and re-run %swayu migrate%s.",
 			kept_files, get_primary(), RESET)
 		os.exit(EXIT_DATAERR)
 	}
-	print_success("Migration complete: %d paths, %d aliases, %d constants", migrated_paths, migrated_aliases, migrated_constants)
+	print_success("Migration complete: %d paths, %d aliases, %d constants", migrated[.Path], migrated[.Alias], migrated[.Constant])
 	fmt.println()
 	fmt.printfln("Review the result with %swayu toml show%s", get_primary(), RESET)
 	fmt.printfln("Legacy files preserved as *.%s.migrated (safe to delete once verified)", wayu.shell_ext)
@@ -814,9 +480,9 @@ print_migrate_help :: proc() {
 	// Notes section
 	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
 	fmt.printf("  %s• Legacy migration archives source files as *.%s.migrated%s\n", get_muted(), wayu.shell_ext, RESET)
-	fmt.printf("  %s• Legacy files are only archived when every entry migrated successfully%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Nothing is changed if any line can't be converted exactly; those lines are listed%s\n", get_muted(), RESET)
 	fmt.printf("  %s• wayu.toml is backed up before every write (~/.config/wayu/backup/)%s\n", get_muted(), RESET)
-	fmt.printf("  %s• Cross-shell mode creates new shell-specific config files%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Cross-shell mode sets [shell] type and regenerates the target's files from wayu.toml%s\n", get_muted(), RESET)
 	fmt.printf("  %s• You may need to update your shell RC file after cross-shell migration%s\n", get_muted(), RESET)
 	fmt.println()
 }
