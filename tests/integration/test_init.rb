@@ -663,14 +663,17 @@ class InitIntegrationTest
     home, env = sync_home('legacy', ['zsh'], %w[old new])
     cfg = "#{home}/.config/wayu"
     File.write("#{cfg}/path.zsh", "export PATH=\"$HOME/old:$PATH\"\n")
-    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'add', "#{home}/new")
-    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'rm', "#{home}/new", '--yes')
+    add = Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'add', "#{home}/new")
+    rm = Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'rm', "#{home}/new", '--yes')
     out, = Open3.capture3(env, '/bin/zsh', '-fc', ". '#{cfg}/core.zsh' >/dev/null 2>&1; echo \"$PATH\"")
     entries = out.strip.split(':')
     if !entries.include?("#{home}/old") && !entries.include?("#{home}/new")
       puts "✓"; @passed += 1
     else
       puts "✗"; puts "  PATH=#{out.strip}"; @failed += 1
+      [['add', add], ['rm', rm]].each { |n, (o, e, st)| puts "  #{n}: exit=#{st.exitstatus} out=#{o.strip[0, 300]} err=#{e.strip[0, 300]}" }
+      puts "  wayu.toml=#{File.read("#{cfg}/wayu.toml").inspect rescue 'missing'}"
+      puts "  core path lines=#{File.read("#{cfg}/core.zsh").lines.grep(/path/i).first(8).map(&:strip)}"
     end
   end
 
