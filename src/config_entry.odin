@@ -283,7 +283,9 @@ add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (ok: boo
 	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
-		line := spec.format_line(entry_to_save)
+		preview_entry := entry_to_save
+		preview_entry.value = mask_secret_value(entry_to_save.name, entry_to_save.value)
+		line := spec.format_line(preview_entry)
 		defer delete(line)
 
 		fmt.printfln("%sWould add to %s.%s:%s", BRIGHT_CYAN, spec.file_name, wayu.shell_ext, RESET)

@@ -949,7 +949,8 @@ migrate_toml_schema :: proc(dry_run: bool) {
 		fmt.println()
 		fmt.printfln("%sWould rewrite %s with:%s", BRIGHT_CYAN, toml_path, RESET)
 		fmt.println()
-		fmt.println(new_content)
+		preview := mask_toml_env_section(new_content, context.temp_allocator)
+		fmt.println(preview)
 		return
 	}
 

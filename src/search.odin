@@ -135,7 +135,9 @@ handle_search_command :: proc(args: []string) {
 		}
 		delete(const_entries_toml)
 	}
-	const_search_results := search_toml_entries_by_name(const_entries_toml[:], query)
+	// Names only: matching inside constant values turns search into a
+	// secret oracle (`wayu f sk-` finding API keys). (OKAMI-208)
+	const_search_results := search_toml_entries_by_name(const_entries_toml[:], query, match_values = false)
 	defer {
 		for se in const_search_results {
 			cleanup_clone(se.entry)
@@ -164,8 +166,9 @@ handle_search_command :: proc(args: []string) {
 }
 
 // search_toml_entries_by_name - Fuzzy search through TOML config entries
-// Matches on both name and value fields. Returns scored entries for sorting and display.
-search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string) -> [dynamic]SearchEntry {
+// Matches on the name and, when `match_values`, the value field. Returns
+// scored entries for sorting and display.
+search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string, match_values := true) -> [dynamic]SearchEntry {
 	results := make([dynamic]SearchEntry)
 
 	if len(query) == 0 {
@@ -212,7 +215,7 @@ search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string) -> [d
 		}
 
 		// Score value field (only if value is not empty)
-		if entry.value != "" {
+		if match_values && entry.value != "" {
 			if strings.equal_fold(entry.value, query) {
 				value_score = 10000
 				value_match_type = .Exact
@@ -388,9 +391,11 @@ print_search_result_line :: proc(result: SearchResult, cmd_type: string) {
 		score_indicator)
 
 	// Print value (truncated on a rune boundary so multi-byte UTF-8 is never
-	// split; long values used to be hidden entirely).
+	// split; long values used to be hidden entirely). Secret-looking values
+	// are masked (OKAMI-208); `wayu const get NAME` prints the real one.
 	if result.value != "" {
-		fmt.printfln("      %s%s%s", get_muted(), truncate_display(result.value, 50), RESET)
+		shown := mask_secret_value(result.name, result.value)
+		fmt.printfln("      %s%s%s", get_muted(), truncate_display(shown, 50), RESET)
 	}
 }
 
@@ -418,7 +423,8 @@ print_search_usage :: proc() {
 	fmt.println()
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
 	fmt.println("  Searches across PATH entries, aliases, and environment constants")
-	fmt.println("  simultaneously using fuzzy matching.")
+	fmt.println("  simultaneously using fuzzy matching. Constants match by name only;")
+	fmt.println("  secret-looking values are shown as ********.")
 	fmt.println()
 	fmt.printfln("%sMATCH TYPES:%s", get_primary(), RESET)
 	fmt.println("  exact     - Exact name match")

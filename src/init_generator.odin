@@ -281,7 +281,8 @@ generate_optimized_init_all :: proc() {
 // Emit `export NAME="value"` lines for [env]. Values keep $VAR expansion,
 // a leading `~/` becomes `$HOME/`, and `"`, `\`, backtick and `$(` are
 // escaped (see shell_double_quote_env). Invalid names are skipped.
-emit_env_exports :: proc(b: ^strings.Builder, sep: string = "\n") {
+// `mask` replaces secret-looking values with SECRET_MASK (dry-run previews).
+emit_env_exports :: proc(b: ^strings.Builder, sep: string = "\n", mask := false) {
 	toml_env := read_wayu_toml_env()
 	defer {
 		for e in toml_env { delete(e.name); delete(e.value) }
@@ -293,6 +294,7 @@ emit_env_exports :: proc(b: ^strings.Builder, sep: string = "\n") {
 			continue
 		}
 		v := expand_leading_tilde_to_home_var(e.value, context.temp_allocator)
+		if mask { v = mask_secret_value(e.name, e.value) }
 		fmt.sbprintf(b, "export %s=%s%s", e.name, shell_double_quote_env(v, context.temp_allocator), sep)
 	}
 }

@@ -383,8 +383,8 @@ write_toml_kv_section :: proc(section, dry_label: string, entries: []ConfigEntry
 	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
-		fmt.printfln("%sWould update wayu.toml %s:%s", BRIGHT_CYAN, dry_label, RESET)
-		fmt.print(new_content)
+		fmt.printfln("%sWould update wayu.toml [%s] (%s):%s", BRIGHT_CYAN, section, dry_label, RESET)
+		print_toml_kv_section_diff(string(content), section, sorted)
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
 		return true
@@ -394,6 +394,48 @@ write_toml_kv_section :: proc(section, dry_label: string, entries: []ConfigEntry
 	wrote := safe_write_file(config_path, transmute([]byte)new_content)
 	if wrote { clear_toml_content_cache() }
 	return wrote
+}
+
+// Dry-run preview for write_toml_kv_section: only the keys that change
+// (`+` added, `~` changed, `-` removed), with secret-looking values masked.
+// Never dumps the whole file — it holds every [env] secret (OKAMI-208).
+print_toml_kv_section_diff :: proc(content: string, section: string, new_entries: []ConfigEntry) {
+	old := make(map[string]string, allocator = context.temp_allocator)
+	it := make_line_iter(content)
+	in_section := false
+	for line in line_iter_next(&it) {
+		trimmed := strings.trim_space(line)
+		if toml_line_is_section(trimmed, section) { in_section = true; continue }
+		if strings.has_prefix(trimmed, "[") { in_section = false; continue }
+		if !in_section { continue }
+		key, value, ok := toml_parse_kv_line(trimmed)
+		if !ok { continue }
+		old[strings.clone(key, context.temp_allocator)] = strings.clone(value, context.temp_allocator)
+		delete(value)
+	}
+
+	changes := 0
+	seen := make(map[string]bool, allocator = context.temp_allocator)
+	for e in new_entries {
+		seen[e.name] = true
+		prev, existed := old[e.name]
+		if existed && prev == e.value { continue }
+		fmt.printfln("  %s%c %s = \"%s\"%s", existed ? get_warning() : get_success(),
+			existed ? '~' : '+', e.name, mask_secret_value(e.name, e.value), RESET)
+		changes += 1
+	}
+	removed := make([dynamic]string, 0, len(old), context.temp_allocator)
+	for name in old {
+		if !seen[name] { append(&removed, name) }
+	}
+	slice.sort(removed[:])
+	for name in removed {
+		fmt.printfln("  %s- %s%s", get_error(), name, RESET)
+		changes += 1
+	}
+	if changes == 0 {
+		fmt.printfln("  %s(no changes)%s", MUTED, RESET)
+	}
 }
 
 // Remove the entry named `name` from a TOML-backed config, persist, and

@@ -70,10 +70,9 @@ wayu search api                # search across all configs
 wayu find frwrks               # finds FIREWORKS_AI_API_KEY by acronym
 wayu f git                     # short alias for search
 
-# Fuzzy GET - get values even with partial matches
-wayu const get frwrks          # gets FIREWORKS_AI_API_KEY (fuzzy match)
-wayu const get ai_key          # gets any constant containing "ai_key"
-wayu alias get gcm             # gets "git commit -m" (fuzzy match)
+# GET is exact-match only (safe for X=$(wayu const get NAME))
+wayu const get FIREWORKS_AI_API_KEY   # prints the value
+wayu const get FIRE                   # exit 65, suggests names on stderr
 
 # Completions
 wayu completions add jj /path/to/_jj
@@ -176,7 +175,7 @@ wayu <command> <action> [arguments] [flags]
 | `add` | Add a new entry |
 | `remove`, `rm` | Remove an entry |
 | `list`, `ls` | List all entries |
-| `get` | Get value by name (with fuzzy fallback) |
+| `get` | Get value by exact name (miss: exit 65 + name suggestions on stderr) |
 | `restore` | Restore from backup |
 | `clean` | Remove PATH entries pointing to missing directories |
 | `dedup` | Remove duplicate PATH entries |
@@ -228,35 +227,39 @@ wayu search git
 # Shows aliases, constants, and paths related to "git"
 ```
 
-### Fuzzy GET Fallback
+### GET is exact
 
-When using `get` with an inexact name, wayu automatically tries fuzzy matching:
+`get` never guesses: it prints the value of the entry with exactly that name.
+On a miss it exits 65 (`EXIT_DATAERR`) and lists similar **names** (never
+values) on stderr, so `X=$(wayu const get NAME)` can't silently receive a
+different secret.
 
 ```bash
-# Exact match works as expected
-wayu const get FIREWORKS_AI_API_KEY
-# sk-abc123...
-
-# Fuzzy match finds it by acronym
-wayu const get frwrks
-# Note: Using acronym match 'FIREWORKS_AI_API_KEY' for 'frwrks'
-# sk-abc123...
-
-# Partial matches work too
-wayu const get fireworks          # prefix match
-wayu const get api_key            # substring match
-wayu const get fwks               # fuzzy/acronym match
+wayu const get FIREWORKS_AI_API_KEY   # prints the value
+wayu const get FIRE
+# ERROR: Constant not found: FIRE
+# Did you mean:
+#   FIREWORKS_AI_API_KEY
 ```
 
 ### Match Types
 
 | Type | Description | Example |
 |------|-------------|---------|
-| `exact` | Exact match | `get API_KEY` → `API_KEY` |
-| `prefix` | Starts with query | `get FIRE` → `FIREWORKS...` |
-| `substring` | Contains query | `get WORKS` → `FIREWORKS...` |
-| `acronym` | Matches uppercase letters | `get frwrks` → `FIREWORKS...` |
-| `fuzzy` | General fuzzy match | `get frwrx` → `FIREWORKS...` |
+| `exact` | Exact match | `search API_KEY` → `API_KEY` |
+| `prefix` | Starts with query | `search FIRE` → `FIREWORKS...` |
+| `substring` | Contains query | `search WORKS` → `FIREWORKS...` |
+| `acronym` | Matches uppercase letters | `search frwrks` → `FIREWORKS...` |
+| `fuzzy` | General fuzzy match | `search frwrx` → `FIREWORKS...` |
+
+### Secret values
+
+Constants whose name looks like a credential (contains `KEY`, `TOKEN`,
+`SECRET`, `PASS`, `API`, `AUTH`, `CREDENTIAL`, `PRIVATE`, ...) or whose value
+looks like one (`sk-...`, `ghp_...`, `scheme://user:pass@host`, ...) are shown
+as `********` in `search` results and `--dry-run` previews. `search` matches
+constant names only, never their values. `const get NAME` and `const list`
+still print real values.
 
 ### Score Indicators
 
@@ -269,11 +272,7 @@ Control fuzzy matching behavior:
 
 ```bash
 export WAYU_FFF_ENABLED=0        # Disable fuzzy features
-export WAYU_FFF_AUTO_FALLBACK=0  # Disable auto fuzzy fallback on GET
-export WAYU_FFF_INTERACTIVE=0    # Disable interactive selector
 ```
-
-> **Note:** These toggles are only partially honored in the current codebase. The TOML-native `get` and `search` code paths always use fuzzy matching regardless of these variables. The toggles affect the legacy generic config entry path only.
 
 ## Exit Codes
 
