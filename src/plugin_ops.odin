@@ -7,23 +7,146 @@ import "core:sync"
 import "core:strconv"
 import "core:encoding/json"
 import "core:path/filepath"
+// Clone a plugin repository (shallow). `--` ends option parsing so a URL or
+// destination starting with '-' can never be read as a git option.
 git_clone :: proc(url: string, dest: string) -> bool {
 	if wayu.dry_run {
-		print_info("[DRY RUN] Would execute: git clone --depth=1 --quiet %s %s", url, dest)
+		print_info("[DRY RUN] Would execute: git clone --depth=1 --quiet -- %s %s", url, dest)
 		return true
 	}
 
-	return run_command([]string{"git", "clone", "--depth=1", "--quiet", url, dest})
+	return run_command([]string{"git", "clone", "--depth=1", "--quiet", "--", url, dest})
 }
 
-// Update plugin (git pull)
-git_update :: proc(plugin_dir: string) -> bool {
+// Clone a plugin repository and check out `commit` (detached). Full clone:
+// an arbitrary commit cannot be fetched shallowly from every server. After
+// checkout HEAD must start with `commit`, otherwise the clone is rejected.
+// `commit` must already have passed is_valid_commit_sha.
+// err_text is ALLOCATED (possibly empty) — caller must delete.
+git_clone_at_commit :: proc(url: string, dest: string, commit: string) -> (ok: bool, err_text: string) {
 	if wayu.dry_run {
-		print_info("[DRY RUN] Would execute: git -C %s pull --quiet", plugin_dir)
-		return true
+		print_info("[DRY RUN] Would execute: git clone --no-checkout --quiet -- %s %s", url, dest)
+		print_info("[DRY RUN] Would execute: git -C %s checkout --quiet --detach %s", dest, commit)
+		return true, strings.clone("")
+	}
+	if !is_valid_commit_sha(commit) {
+		return false, fmt.aprintf("invalid commit '%s'", commit)
 	}
 
-	return run_command([]string{"git", "-C", plugin_dir, "pull", "--quiet"})
+	cloned, clone_err := run_command_capture_stderr([]string{"git", "clone", "--no-checkout", "--quiet", "--", url, dest})
+	if !cloned {
+		return false, clone_err
+	}
+	delete(clone_err)
+
+	checked_out, co_err := run_command_capture_stderr([]string{"git", "-C", dest, "checkout", "--quiet", "--detach", commit})
+	if !checked_out {
+		return false, co_err
+	}
+	delete(co_err)
+
+	head := capture_command([]string{"git", "-C", dest, "rev-parse", "HEAD"})
+	defer delete(head)
+	if !strings.has_prefix(head, strings.to_lower(commit, context.temp_allocator)) {
+		return false, fmt.aprintf("checked out %s, expected %s", head, commit)
+	}
+	return true, strings.clone("")
+}
+
+// A commit SHA as accepted by `plugin add <url>@<sha>`: 7-40 hex digits.
+is_valid_commit_sha :: proc(s: string) -> bool {
+	if len(s) < 7 || len(s) > 40 {
+		return false
+	}
+	for c in s {
+		is_hex := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+		if !is_hex {
+			return false
+		}
+	}
+	return true
+}
+
+// Split "<url>@<sha>" into url + commit. Only a trailing '@' followed by a
+// valid SHA (and after the last '/' or ':') counts, so scp-style URLs like
+// "git@host:user/repo" are left intact. commit is "" when there is no pin.
+// Both results are slices of `arg`.
+split_plugin_commit_pin :: proc(arg: string) -> (url: string, commit: string) {
+	at := strings.last_index_byte(arg, '@')
+	if at <= 0 {
+		return arg, ""
+	}
+	sep := max(strings.last_index_byte(arg, '/'), strings.last_index_byte(arg, ':'))
+	if at < sep {
+		return arg, ""
+	}
+	if !is_valid_commit_sha(arg[at + 1:]) {
+		return arg, ""
+	}
+	return arg[:at], arg[at + 1:]
+}
+
+GitUpdateResult :: enum {
+	Failed,
+	Updated,       // fast-forward (or already up to date)
+	Reset,         // upstream rewrote history; checkout reset to the remote
+}
+
+// Update a managed plugin checkout to the tip of `branch` on origin
+// ("" / "HEAD" = the remote's default branch).
+//
+// 1. git fetch origin <ref>
+// 2. git merge --ff-only FETCH_HEAD          — the normal case
+// 3. ff impossible (upstream force-pushed / rewrote history): reset --hard to
+//    FETCH_HEAD, but ONLY for a clean checkout that wayu owns. A symlinked
+//    plugin dir (a user's working copy) or one with local modifications is
+//    never reset — the update fails with an explanation instead.
+//
+// Git's stderr is returned on failure. err_text is ALLOCATED (possibly
+// empty) — caller must delete. Not called in dry-run.
+git_update :: proc(plugin_dir: string, branch: string) -> (result: GitUpdateResult, err_text: string) {
+	ref := (branch == "" || branch == "HEAD") ? "HEAD" : branch
+	if strings.has_prefix(ref, "-") {
+		return .Failed, fmt.aprintf("invalid branch name '%s'", branch)
+	}
+
+	fetched, fetch_err := run_command_capture_stderr([]string{"git", "-C", plugin_dir, "fetch", "--quiet", "origin", ref})
+	if !fetched {
+		return .Failed, fetch_err
+	}
+	delete(fetch_err)
+
+	merged, merge_err := run_command_capture_stderr([]string{"git", "-C", plugin_dir, "merge", "--ff-only", "--quiet", "FETCH_HEAD"})
+	if merged {
+		delete(merge_err)
+		return .Updated, strings.clone("")
+	}
+	delete(merge_err)
+
+	if is_symlink(plugin_dir) {
+		return .Failed, strings.clone("upstream history diverged from this symlinked checkout; update it manually")
+	}
+	dirty := capture_command([]string{"git", "-C", plugin_dir, "status", "--porcelain", "--untracked-files=no"})
+	defer delete(dirty)
+	if len(dirty) > 0 {
+		return .Failed, strings.clone("checkout has local modifications and cannot be fast-forwarded; commit/discard them or reinstall the plugin")
+	}
+
+	reset, reset_err := run_command_capture_stderr([]string{"git", "-C", plugin_dir, "reset", "--hard", "--quiet", "FETCH_HEAD"})
+	if !reset {
+		return .Failed, reset_err
+	}
+	delete(reset_err)
+	return .Reset, strings.clone("")
+}
+
+// True when `path` itself is a symbolic link (not followed).
+is_symlink :: proc(path: string) -> bool {
+	fi, err := os.lstat(path, context.temp_allocator)
+	if err != nil {
+		return false
+	}
+	return fi.type == .Symlink
 }
 
 // Check if directory is git repo
@@ -82,14 +205,62 @@ detect_plugin_file :: proc(plugin_dir: string, plugin_name: string, shell: Shell
 }
 
 // URL validation
+// Plugin code is sourced into every shell, so it may only be fetched over an
+// authenticated/encrypted transport (https, ssh, scp-style git@) or from the
+// local filesystem (file://). Plaintext http:// and git:// are refused.
 is_valid_git_url :: proc(url: string) -> bool {
-	// Basic validation - check if it looks like a git URL
-	if strings.has_prefix(url, "http://") ||
-	   strings.has_prefix(url, "https://") ||
-	   strings.has_prefix(url, "git@") {
-		return is_safe_shell_arg(url)
+	return plugin_url_problem(url) == ""
+}
+
+// True for URLs that look like git remotes but use a plaintext transport.
+is_insecure_git_url :: proc(url: string) -> bool {
+	return strings.has_prefix(url, "http://") || strings.has_prefix(url, "git://")
+}
+
+// Why `url` is not an acceptable plugin URL, or "" when it is. The result is
+// a static string. Also used to validate plugins.json on load.
+plugin_url_problem :: proc(url: string) -> string {
+	if len(url) == 0 {
+		return "URL is empty"
 	}
-	return false
+	if strings.has_prefix(url, "-") {
+		return "URL must not start with '-'"
+	}
+	for c in url {
+		if c < 0x20 || c == 0x7f || c == ' ' {
+			return "URL contains whitespace or control characters"
+		}
+	}
+	if is_insecure_git_url(url) {
+		return "plaintext http:// and git:// URLs are refused (use https:// or ssh)"
+	}
+	if !(strings.has_prefix(url, "https://") ||
+	     strings.has_prefix(url, "ssh://") ||
+	     strings.has_prefix(url, "git@") ||
+	     strings.has_prefix(url, "file://")) {
+		return "URL must start with https://, ssh://, git@ or file://"
+	}
+	if !is_safe_shell_arg(url) {
+		return "URL contains shell metacharacters"
+	}
+	return ""
+}
+
+// Why a git ref-like field (branch/tag/commit) from plugins.json is unsafe to
+// hand to git, or "" when it is fine. Empty values are allowed.
+plugin_ref_problem :: proc(ref: string) -> string {
+	if len(ref) == 0 {
+		return ""
+	}
+	if strings.has_prefix(ref, "-") {
+		return "must not start with '-'"
+	}
+	for c in ref {
+		if c < 0x20 || c == 0x7f || c == ' ' {
+			return "contains whitespace or control characters"
+		}
+	}
+	return ""
 }
 
 // Extract plugin name from URL.
@@ -140,6 +311,52 @@ is_path_inside_dir :: proc(path: string, root: string) -> bool {
 	clean_root, _ := filepath.clean(root, context.temp_allocator)
 	prefix := strings.concatenate({clean_root, "/"}, context.temp_allocator)
 	return strings.has_prefix(clean_path, prefix) && len(clean_path) > len(prefix)
+}
+
+PluginDirRemoval :: enum {
+	Removed,  // directory deleted, or symlink unlinked (target untouched)
+	Missing,  // nothing at that path
+	Outside,  // refused: not strictly inside the plugins root
+	Failed,
+}
+
+// Delete an installed plugin's directory without ever following a symlink.
+//
+// os.remove_all opendir()s its argument, which follows a symlink, so on a
+// symlinked plugin dir (a user's working copy linked into plugins/) it would
+// empty the link TARGET. Here a symlink is only unlinked. A real directory is
+// removed only if its fully resolved path is still inside the resolved
+// plugins root (catches symlinked parent components and "..").
+remove_plugin_dir_safely :: proc(path: string, plugins_dir: string) -> PluginDirRemoval {
+	if !is_path_inside_dir(path, plugins_dir) {
+		return .Outside
+	}
+
+	fi, lerr := os.lstat(path, context.temp_allocator)
+	if lerr != nil {
+		if lerr == os.General_Error.Not_Exist {
+			return .Missing
+		}
+		return .Failed
+	}
+
+	if fi.type == .Symlink {
+		return os.remove(path) == nil ? .Removed : .Failed
+	}
+
+	real_path, perr := os.get_absolute_path(path, context.temp_allocator)
+	real_root, rerr := os.get_absolute_path(plugins_dir, context.temp_allocator)
+	if perr != nil || rerr != nil {
+		return .Failed
+	}
+	if !is_path_inside_dir(real_path, real_root) {
+		return .Outside
+	}
+
+	if fi.type != .Directory {
+		return os.remove(path) == nil ? .Removed : .Failed
+	}
+	return os.remove_all(path) == nil ? .Removed : .Failed
 }
 
 // Free a PluginInfo returned by resolve_plugin (all fields are owned).
@@ -1079,37 +1296,35 @@ git_commits_match :: proc(a: string, b: string) -> bool {
 // Returns full SHA or empty string on failure
 // CRITICAL: Returned string is ALLOCATED - caller must delete()
 get_remote_commit :: proc(url: string, branch: string) -> string {
-	// Use HEAD if no branch specified
-	branch_ref := branch != "" ? branch : "HEAD"
+	// Never hand git a value it could parse as an option (plugins.json is
+	// validated on load; this is the last line of defence).
+	if plugin_url_problem(url) != "" || plugin_ref_problem(branch) != "" {
+		return ""
+	}
 
-	// Run: git ls-remote <url> <branch_ref>
-	// Output format: "<40-char-SHA>\t<ref-name>\n"
-	// No shell needed — parse the first field in Odin
-	output := capture_command([]string{"git", "ls-remote", url, branch_ref})
+	// Query the EXACT ref: ls-remote patterns match by tail, so a bare
+	// "main" also matches refs/heads/aaa/main or refs/tags/main, which sort
+	// first. HEAD (remote default branch) when no branch is recorded.
+	ref := (branch == "" || branch == "HEAD") ? "HEAD" : fmt.tprintf("refs/heads/%s", branch)
+
+	// Output format: "<40-char-SHA>\t<ref-name>\n" per matching ref.
+	// `--` ends option parsing so the URL can never be read as an option.
+	output := capture_command([]string{"git", "ls-remote", "--", url, ref})
 	defer delete(output)
 
-	if output == "" {
-		return ""
-	}
-
-	// Parse: first field before any whitespace is the full SHA
-	// git ls-remote output: "abc123def456...\trefs/heads/main"
-	// NOTE: Odin for-string syntax is "for value, index in str" — r=rune, i=byte_offset
-	full_sha := output
-	for r, i in output {
-		if r == '\t' || r == ' ' || r == '\n' || r == '\r' {
-			full_sha = output[:i]
-			break
+	for line in strings.split_lines(output, context.temp_allocator) {
+		tab := strings.index_byte(line, '\t')
+		if tab <= 0 {
+			continue
 		}
+		if strings.trim_space(line[tab + 1:]) != ref {
+			continue
+		}
+		// Return the full SHA — ALLOCATED, caller must delete. Comparison
+		// against the (abbreviated) local commit uses git_commits_match.
+		return strings.clone(line[:tab])
 	}
-
-	if len(full_sha) == 0 {
-		return ""
-	}
-
-	// Return the full SHA — ALLOCATED, caller must delete. Comparison against
-	// the (abbreviated) local commit uses git_commits_match.
-	return strings.clone(full_sha)
+	return ""
 }
 
 

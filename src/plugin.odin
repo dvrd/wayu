@@ -770,9 +770,14 @@ print_plugin_help :: proc() {
 print_plugin_add_help :: proc() {
 	fmt.printf("\n%s%swayu plugin add - Install plugin%s\n\n", BOLD, get_primary(), RESET)
 	fmt.printf("%s%sUSAGE:%s\n", BOLD, get_secondary(), RESET)
-	fmt.println("  wayu plugin add <name-or-url>")
+	fmt.println("  wayu plugin add <name-or-url>[@<commit>]")
+	fmt.println()
+	fmt.println("  URLs must use https://, ssh://, git@host: or file:// (http:// is refused).")
+	fmt.println("  Appending @<commit> (7-40 hex digits) pins the plugin to that commit;")
+	fmt.println("  pinned plugins are skipped by 'plugin update' and verified by 'plugin check'.")
 	fmt.printf("\n%s%sEXAMPLES:%s\n", BOLD, get_secondary(), RESET)
 	fmt.printf("  %swayu plugin add syntax-highlighting%s\n", get_muted(), RESET)
 	fmt.printf("  %swayu plugin add https://github.com/user/plugin.git%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin add https://github.com/user/plugin.git@1a2b3c4%s\n", get_muted(), RESET)
 	fmt.println()
 }
