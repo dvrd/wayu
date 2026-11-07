@@ -8,6 +8,7 @@ import "core:time"
 import "core:strings"
 import "core:slice"
 import "core:strconv"
+import "base:runtime"
 
 // Backup metadata
 BackupInfo :: struct {
@@ -16,10 +17,25 @@ BackupInfo :: struct {
 	timestamp:     time.Time,
 	size:          i64,
 	seq:           int, // collision suffix (-N) for same-microsecond backups
+	pre_restore:   bool, // taken by `backup restore` of the state it replaced
 }
 
+// Backups kept per file after every CLI/TUI write (create_backup_cli/_tui).
+BACKUP_KEEP_COUNT :: 5
+
+// Filename suffix of the snapshot `backup restore` takes before restoring.
+// A default restore skips these, so repeated restores don't ping-pong.
+BACKUP_PRE_RESTORE_TAG :: ".pre-restore"
+
+// Files already backed up by create_backup_cli in this (non-TUI) process.
+// A command that writes the same file many times (migrate, template apply,
+// doctor --fix) keeps ONE backup: the state before the command ran.
+// Allocated on the raw heap: lives for the whole process.
+@(private = "file")
+_backed_up_this_run: [dynamic]string
+
 // Create backup of file with timestamp in backup/ directory
-create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
+create_backup :: proc(file_path: string, tag := "") -> (backup_path: string, ok: bool) {
 	// Ensure global config paths are initialized (idempotent — safe to call multiple times)
 	init_shell_globals()
 	debug("Creating backup for: %s", file_path)
@@ -83,7 +99,7 @@ create_backup :: proc(file_path: string) -> (backup_path: string, ok: bool) {
 
 	MAX_BACKUP_SEQ :: 1000
 	for seq in 0..<MAX_BACKUP_SEQ {
-		candidate := seq == 0 ? strings.clone(stem) : fmt.aprintf("%s-%d", stem, seq)
+		candidate := seq == 0 ? fmt.aprintf("%s%s", stem, tag) : fmt.aprintf("%s-%d%s", stem, seq, tag)
 
 		f, open_err := os.open(candidate, {.Write, .Create, .Excl}, SECRET_FILE_PERMS)
 		if open_err != nil {
@@ -142,7 +158,15 @@ tighten_backup_dir_modes :: proc(backup_dir: string) {
 // Used by all CLI commands to ensure non-interactive behavior.
 // Returns true when the backup was created or the file didn't exist yet (no-op).
 // Returns false only when the file existed but the backup failed.
+//
+// Retention: after a new backup, only the newest BACKUP_KEEP_COUNT are kept.
+// Outside the TUI a file is backed up once per process (see
+// _backed_up_this_run), so bulk commands can't flood the backup dir or
+// prune away their own pre-command snapshot.
 create_backup_cli :: proc(file_path: string) -> bool {
+	if !wayu.tui_mode {
+		for f in _backed_up_this_run { if f == file_path { return true } }
+	}
 	file_existed := os.exists(file_path)
 
 	backup_path, ok := create_backup(file_path)
@@ -157,7 +181,43 @@ create_backup_cli :: proc(file_path: string) -> bool {
 		return false
 	}
 
+	if ok {
+		if !wayu.tui_mode {
+			if _backed_up_this_run.allocator.procedure == nil {
+				_backed_up_this_run.allocator = runtime.heap_allocator()
+			}
+			append(&_backed_up_this_run, strings.clone(file_path, runtime.heap_allocator()))
+		}
+		prune_backups(file_path, BACKUP_KEEP_COUNT)
+	}
 	return true
+}
+
+// Forget which files were backed up in this process (tests that simulate
+// several separate CLI invocations in one process).
+backup_run_reset :: proc() {
+	for f in _backed_up_this_run { delete(f, runtime.heap_allocator()) }
+	clear(&_backed_up_this_run)
+}
+
+// Remove all but the newest `keep` backups of `file_path`, silently and
+// regardless of --dry-run (callers only reach here after a real backup).
+@(private = "file")
+prune_backups :: proc(file_path: string, keep: int) {
+	backups := list_backups_for_file(file_path)
+	defer free_backup_infos(backups)
+	for i in keep..<len(backups) {
+		debug("Pruning old backup: %s", backups[i].backup_file)
+		_ = os.remove(backups[i].backup_file)
+	}
+}
+
+free_backup_infos :: proc(backups: []BackupInfo) {
+	for b in backups {
+		delete(b.original_file)
+		delete(b.backup_file)
+	}
+	delete(backups)
 }
 
 // TUI version — returns false on backup failure without blocking on stdin.
@@ -180,59 +240,78 @@ create_backup_tui :: proc(file_path: string, auto_backup := true) -> bool {
 		}
 		return false
 	}
+	if ok { prune_backups(file_path, BACKUP_KEEP_COUNT) }
 
 	return true
 }
 
-// Restore `file_path` from its most recent backup.
+// Pick the backup a restore uses. `selector` is "" (newest backup that is
+// not a pre-restore snapshot, so repeated restores don't ping-pong), a
+// 1-based index as printed by `wayu backup list`, or a backup file name /
+// path from that list. Prints the reason and returns -1 when nothing fits.
+select_backup :: proc(backups: []BackupInfo, selector: string) -> int {
+	if len(selector) == 0 {
+		for b, i in backups { if !b.pre_restore { return i } }
+		if len(backups) > 0 { return 0 }
+		return -1
+	}
+	if n, ok := strconv.parse_int(selector); ok {
+		if n >= 1 && n <= len(backups) { return n - 1 }
+		print_error_simple("No backup #%s (there are %d; see 'wayu backup list')", selector, len(backups))
+		return -1
+	}
+	for b, i in backups {
+		if b.backup_file == selector || get_base_name(b.backup_file) == selector { return i }
+	}
+	print_error_simple("Not a backup of this file: %s (see 'wayu backup list')", selector)
+	return -1
+}
+
+// Restore `file_path` from a backup (see select_backup for `selector`).
 //
 // Safety contract:
 //   * the backup content is validated before anything is written (for
 //     wayu.toml: toml_content_is_sane), so a corrupt backup can't replace a
 //     working config;
-//   * the CURRENT file is backed up first, so a restore is itself undoable;
+//   * the CURRENT file is backed up first (tagged pre-restore), so a restore
+//     is itself undoable (`wayu backup restore <type> 1`);
 //   * after restoring wayu.toml the generated shell init is regenerated so
 //     the shell actually sees the restored state.
 // The --yes confirmation gate lives in the CLI handler (restore_config_backup).
-restore_from_backup :: proc(file_path: string) -> bool {
+restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 	debug("Attempting to restore from backup: %s", file_path)
 
 	backups := list_backups_for_file(file_path)
-	defer {
-		for backup in backups {
-			delete(backup.original_file)
-			delete(backup.backup_file)
+	defer free_backup_infos(backups)
+
+	if len(backups) == 0 {
+		if wayu.dry_run {
+			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+			fmt.printfln("  Backup: (none found — restore would fail)")
+			return true
 		}
-		delete(backups)
+		print_error_simple("No backups found for: %s", file_path)
+		return false
 	}
 
-	// Dry-run mode check
+	// Choose BEFORE backing up the current file (which becomes the newest).
+	idx := select_backup(backups, selector)
+	if idx < 0 { return false }
+	chosen := backups[idx]
+
 	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		fmt.printfln("%sWould restore from backup:%s", BRIGHT_CYAN, RESET)
 		fmt.printfln("  File:   %s", file_path)
-		if len(backups) > 0 {
-			fmt.printfln("  Backup: %s", backups[0].backup_file)
-		} else {
-			fmt.printfln("  Backup: (none found — restore would fail)")
-		}
+		fmt.printfln("  Backup: %s", chosen.backup_file)
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
 		return true
 	}
 
-	if len(backups) == 0 {
-		print_error_simple("No backups found for: %s", file_path)
-		return false
-	}
-
-	// Get most recent backup BEFORE we back up the current file (which
-	// would otherwise become the newest backup).
-	latest := backups[0]
-	debug("Restoring from: %s", latest.backup_file)
-
-	content, read_ok := safe_read_file(latest.backup_file)
+	debug("Restoring from: %s", chosen.backup_file)
+	content, read_ok := safe_read_file(chosen.backup_file)
 	if !read_ok {
 		return false
 	}
@@ -240,13 +319,13 @@ restore_from_backup :: proc(file_path: string) -> bool {
 
 	is_wayu_toml := get_base_name(file_path) == WAYU_TOML
 	if is_wayu_toml && !toml_content_is_sane(string(content)) {
-		print_error_simple("Backup %s is not valid TOML — refusing to restore it", latest.backup_file)
+		print_error_simple("Backup %s is not valid TOML — refusing to restore it", chosen.backup_file)
 		return false
 	}
 
 	// Back up the current state so the restore can be undone.
 	if os.exists(file_path) {
-		pre_path, pre_ok := create_backup(file_path)
+		pre_path, pre_ok := create_backup(file_path, BACKUP_PRE_RESTORE_TAG)
 		if !pre_ok {
 			print_error_simple("Could not back up current %s — aborting restore", file_path)
 			return false
@@ -267,7 +346,7 @@ restore_from_backup :: proc(file_path: string) -> bool {
 		regenerate_init_core_silently()
 	}
 
-	print_success("Restored from backup: %s", latest.backup_file)
+	print_success("Restored from backup: %s", chosen.backup_file)
 	return true
 }
 
@@ -301,7 +380,10 @@ list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 			full_path := fmt.aprintf("%s/%s", dir, info.name)
 
 			// Extract timestamp (+ collision sequence) from filename
-			timestamp, seq := parse_backup_suffix(info.name[len(pattern):])
+			suffix := info.name[len(pattern):]
+			pre_restore := strings.has_suffix(suffix, BACKUP_PRE_RESTORE_TAG)
+			if pre_restore { suffix = suffix[:len(suffix) - len(BACKUP_PRE_RESTORE_TAG)] }
+			timestamp, seq := parse_backup_suffix(suffix)
 
 			backup := BackupInfo{
 				original_file = strings.clone(file_path),
@@ -309,6 +391,7 @@ list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 				timestamp     = timestamp,
 				size          = info.size,
 				seq           = seq,
+				pre_restore   = pre_restore,
 			}
 			append(&backups, backup)
 		}
@@ -473,6 +556,7 @@ print_backup_list :: proc(file_path: string) {
 		backup_name := get_base_name(backup.backup_file)
 		fmt.printf("%s%s%s ", PRIMARY, backup_name, RESET)
 		fmt.printf("%s(%.1f KB)%s", MUTED, size_kb, RESET)
+		if backup.pre_restore { fmt.printf(" %s[pre-restore]%s", MUTED, RESET) }
 		fmt.println()
 		fmt.printf("     %s%s%s\n", MUTED, time_str, RESET)
 	}
@@ -521,12 +605,13 @@ handle_backup_command :: proc(action: Action, args: []string) {
 			list_backups_for_config(args[0])
 		}
 	case .RESTORE:
-		if len(args) == 0 {
-			print_error_simple("Usage: wayu backup restore <config-type>")
-			fmt.println("Example: wayu backup restore path")
+		if len(args) == 0 || len(args) > 2 {
+			print_error_simple("Usage: wayu backup restore <config-type> [N|backup-file]")
+			fmt.println("Example: wayu backup restore path        # newest backup")
+			fmt.println("         wayu backup restore path 3      # #3 in 'wayu backup list'")
 			os.exit(EXIT_USAGE)
 		}
-		restore_config_backup(args[0])
+		restore_config_backup(args[0], args[1] if len(args) == 2 else "")
 	case .REMOVE:
 		if len(args) == 0 {
 			cleanup_all_old_backups()
@@ -605,8 +690,8 @@ print_all_backups_json :: proc() {
 			// characters — escape so the document stays valid JSON.
 			path_j := json_escape(backup.backup_file)
 			defer delete(path_j)
-			fmt.printf("      %c\"timestamp\": \"%s\", \"size_bytes\": %d, \"path\": \"%s\"%c",
-				'{', time_str, backup.size, path_j, '}')
+			fmt.printf("      %c\"index\": %d, \"timestamp\": \"%s\", \"size_bytes\": %d, \"path\": \"%s\", \"pre_restore\": %v%c",
+				'{', i + 1, time_str, backup.size, path_j, backup.pre_restore, '}')
 		}
 		fmt.println()
 		fmt.print("    ]")
@@ -646,7 +731,7 @@ list_all_backups :: proc() {
 
 				fmt.printf("  %s%d.%s ", MUTED, i+1, RESET)
 				fmt.printf("%s(%.1f KB)%s ", MUTED, size_kb, RESET)
-				fmt.printf("%s%s%s\n", MUTED, time_str, RESET)
+				fmt.printf("%s%s%s%s\n", MUTED, time_str, " [pre-restore]" if backup.pre_restore else "", RESET)
 			}
 			fmt.println()
 			total_backups += len(backups)
@@ -682,7 +767,7 @@ list_backups_for_config :: proc(config_type: string) {
 }
 
 // Restore backup for specific config type
-restore_config_backup :: proc(config_type: string) {
+restore_config_backup :: proc(config_type: string, selector := "") {
 	config_file := get_config_file_path(config_type)
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
@@ -695,36 +780,44 @@ restore_config_backup :: proc(config_type: string) {
 	// any of them reverts the WHOLE file. Make that explicit.
 	shared_note :: "wayu.toml holds paths, aliases AND constants — restoring reverts the entire file, not just %s entries."
 
+	// Resolve an explicit selector up front: a bad index/name is a data
+	// error (65), not an I/O failure.
+	backups := list_backups_for_file(config_file)
+	defer free_backup_infos(backups)
+	idx := -1
+	if len(backups) > 0 {
+		idx = select_backup(backups, selector)
+		if idx < 0 { os.exit(EXIT_DATAERR) }
+	}
+
 	if wayu.dry_run {
 		fmt.printfln("%sNote:%s " + shared_note, BRIGHT_YELLOW, RESET, config_type)
-		restore_from_backup(config_file)
+		restore_from_backup(config_file, selector)
 		return
 	}
 
 	if !wayu.yes_flag {
-		backups := list_backups_for_file(config_file)
 		print_error("This operation requires confirmation.")
 		fmt.println()
 		fmt.printfln(shared_note, config_type)
-		if len(backups) > 0 {
-			fmt.printfln("Would restore %s from: %s", get_base_name(config_file), backups[0].backup_file)
+		if idx >= 0 {
+			fmt.printfln("Would restore %s from: %s", get_base_name(config_file), backups[idx].backup_file)
 			fmt.println("The current wayu.toml will be backed up first.")
 		} else {
 			fmt.printfln("No backups found for %s.", get_base_name(config_file))
 		}
-		for b in backups {
-			delete(b.original_file)
-			delete(b.backup_file)
-		}
-		delete(backups)
 		fmt.println()
 		fmt.printfln("Add --yes flag to proceed:")
-		fmt.printfln("  wayu backup restore %s --yes", config_type)
+		if len(selector) > 0 {
+			fmt.printfln("  wayu backup restore %s %s --yes", config_type, selector)
+		} else {
+			fmt.printfln("  wayu backup restore %s --yes", config_type)
+		}
 		os.exit(EXIT_USAGE)
 	}
 
 	fmt.printfln("%sNote:%s " + shared_note, BRIGHT_YELLOW, RESET, config_type)
-	if !restore_from_backup(config_file) {
+	if !restore_from_backup(config_file, selector) {
 		os.exit(EXIT_IOERR)
 	}
 }
@@ -908,7 +1001,9 @@ print_backup_help :: proc() {
 	// Usage section
 	fmt.printf("%s%sUSAGE:%s\n", BOLD, get_secondary(), RESET)
 	fmt.println("  wayu backup list [config-type]     List all backups (or for specific config)")
-	fmt.println("  wayu backup restore <config-type> --yes  Restore from most recent backup")
+	fmt.println("  wayu backup restore <config-type> [N|file] --yes")
+	fmt.println("                                     Restore the newest backup, or #N /")
+	fmt.println("                                     a file from 'wayu backup list'")
 	fmt.println("  wayu backup remove [config-type]   Clean up old backups (alias: rm)")
 	fmt.println("  wayu backup help                   Show this help")
 
@@ -928,6 +1023,7 @@ print_backup_help :: proc() {
 	fmt.println()
 	fmt.printf("  %s# Restore path configuration from backup%s\n", get_muted(), RESET)
 	fmt.printf("  %swayu backup restore path --yes%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu backup restore path 3 --yes   # #3 from 'wayu backup list'%s\n", get_muted(), RESET)
 	fmt.println()
 	fmt.printf("  %s# Clean up old backups%s\n", get_muted(), RESET)
 	fmt.printf("  %swayu backup rm%s\n", get_muted(), RESET)
@@ -935,8 +1031,9 @@ print_backup_help :: proc() {
 	// Notes section
 	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
 	fmt.printf("  %s• Backups are created automatically before modifications%s\n", get_muted(), RESET)
-	fmt.printf("  %s• Only the last 5 backups are kept per file%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Only the last 5 backups are kept per file; one backup per command%s\n", get_muted(), RESET)
 	fmt.printf("  %s• Backup files are stored in ~/.config/wayu/backup/%s\n", get_muted(), RESET)
-	fmt.printf("  %s• Restore uses the most recent backup and backs up the current file first%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Restore backs up the current file first ([pre-restore]); without N it%s\n", get_muted(), RESET)
+	fmt.printf("  %s  uses the newest backup that is not a [pre-restore] one%s\n", get_muted(), RESET)
 	fmt.println()
 }

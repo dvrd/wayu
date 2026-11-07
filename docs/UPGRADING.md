@@ -32,6 +32,19 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - `pre_*` hooks run only when the operation will really write: not for
   invalid names, missing entries on remove, or duplicate path adds.
 
+**Backups**
+- Every write now keeps only the newest 5 backups per file (previously only
+  `path clean/dedup` pruned, so the backup dir grew without bound).
+- A command takes at most one backup per file (the state before it ran):
+  `migrate`, `template apply`, `doctor --fix` no longer leave one backup per
+  entry. The TUI still backs up every change.
+- `wayu backup restore <type> [N|file] --yes` restores backup `#N` from
+  `wayu backup list` (or that file). The snapshot taken before a restore is
+  marked `[pre-restore]`, and a restore without `N` skips those, so repeating
+  it no longer flips between the last two states; undo a restore with
+  `wayu backup restore <type> 1 --yes`. `backup list --json` entries gain
+  `index` and `pre_restore`.
+
 ## 4.4.4
 
 **Lookups and output**

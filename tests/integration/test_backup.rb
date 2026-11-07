@@ -32,6 +32,8 @@ class BackupIntegrationTest
       test_backup_cleanup
       test_backup_help
       test_backup_error_handling
+      test_retention_after_many_writes
+      test_restore_chosen_backup
     ensure
       cleanup
       teardown_test_env
@@ -42,6 +44,52 @@ class BackupIntegrationTest
   end
 
   private
+
+  def report(label, ok, detail)
+    print "#{label}... "
+    if ok
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  #{detail}"
+      @failed += 1
+    end
+  end
+
+  # OKAMI-232: every alias/const/path write prunes to the last 5 backups.
+  def test_retention_after_many_writes
+    12.times { |i| run_wayu("alias add ret#{i} 'echo #{i}'") }
+    5.times { |i| run_wayu("const add RET_#{i} v#{i}") }
+    n = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*").size
+    report("Test 9: 17 writes keep exactly 5 backups", n == 5, "found #{n}")
+    12.times { |i| run_wayu("alias rm ret#{i}") }
+    5.times { |i| run_wayu("const rm RET_#{i}") }
+  end
+
+  # OKAMI-232: `backup restore <type> N` picks a backup; the default restore
+  # is idempotent (no ping-pong between the last two states).
+  def test_restore_chosen_backup
+    toml = "#{@config_dir}/wayu.toml"
+    run_wayu("alias add pick1 one")
+    run_wayu("alias add pick2 two")
+    run_wayu("alias add pick3 three")   # newest backup: pick1+pick2
+    run_wayu("backup restore alias --yes")
+    first = File.read(toml)
+    run_wayu("backup restore alias --yes")
+    second = File.read(toml)
+    no_ping_pong = first.include?("pick2") && !first.include?("pick3") && first == second
+
+    # list: [pre-restore], [pre-restore], pick1+pick2, pick1, (older)
+    out, st = run_wayu("backup restore alias 4 --yes")
+    chose_older = st.success? && File.read(toml).include?("pick1") && !File.read(toml).include?("pick2")
+    _o2, bad = run_wayu("backup restore alias 99 --yes")
+    listed = run_wayu("backup list alias")[0].include?("pre-restore")
+    report("Test 10: restore picks a backup by index, default does not ping-pong",
+           no_ping_pong && chose_older && bad.exitstatus == 65 && listed,
+           "no_ping_pong=#{no_ping_pong} chose_older=#{chose_older} bad=#{bad.exitstatus} listed=#{listed} out=#{out[0, 300]}")
+    %w[pick1 pick2 pick3].each { |a| run_wayu("alias rm #{a}") }
+  end
 
   def test_automatic_backup_creation
     print "Test 1: Automatic backup creation... "
@@ -235,7 +283,8 @@ class BackupIntegrationTest
     run_wayu("path add /tmp/wayu_rapid_c")
     files = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*")
     pristine_kept = files.any? { |f| File.read(f) == pristine }
-    if files.size == before + 3 && pristine_kept
+    # Retention caps the count at 5 (OKAMI-232).
+    if files.size == [before + 3, 5].min && pristine_kept
       puts "✓"
       @passed += 1
     else
