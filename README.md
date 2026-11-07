@@ -398,13 +398,21 @@ ruby tests/integration/run_all.rb
 Releases are **automatic**. Every push to `main` runs
 [`.github/workflows/bump.yml`](.github/workflows/bump.yml), which:
 
-1. Derives the next version from [Conventional Commits](https://www.conventionalcommits.org/)
+1. Runs the full CI workflow (unit, integration, golden, lint); nothing is
+   released unless it passes.
+2. Derives the next version from [Conventional Commits](https://www.conventionalcommits.org/)
    since the last tag via [`git-cliff`](https://github.com/orhun/git-cliff)
    (`feat` → minor, `fix`/`refactor`/etc. → patch, `!`/`BREAKING CHANGE` → major).
-2. Bumps `VERSION` in `src/main.odin`, regenerates `CHANGELOG.md`, commits
+3. Bumps `VERSION` in `src/main.odin`, regenerates `CHANGELOG.md`, commits
    `chore: release vX.Y.Z`, and tags it.
-3. Builds the release binaries, publishes the GitHub release, and regenerates
-   the Homebrew tap formula (`dvrd/homebrew-wayu`).
+4. Builds the release binaries (macOS arm64, Linux x86_64), publishes the
+   GitHub release, and regenerates the Homebrew tap formula
+   (`dvrd/homebrew-wayu`). Other platforms (macOS Intel, Linux arm64) have no
+   prebuilt binary; brew refuses them with an architecture error.
+
+The workflow never deletes or moves an existing tag or release: if the target
+version's tag already exists elsewhere it fails and prints the manual fix.
+CI uses the Odin release pinned in `.github/odin-release`.
 
 So you do **not** bump the version by hand — just land your Conventional Commits
 on `main`. `./build_it release [vX.Y.Z]` exists as a manual override (it also

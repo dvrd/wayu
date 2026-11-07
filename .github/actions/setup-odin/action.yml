@@ -1,0 +1,30 @@
+name: Setup pinned Odin
+description: >
+  Install the Odin release pinned in .github/odin-release. Pinned on purpose:
+  `release: latest` drifts every month, and without a token laytan/setup-odin
+  silently falls back to cloning and compiling Odin master.
+
+runs:
+  using: composite
+  steps:
+    - name: Read pinned Odin release
+      id: pin
+      shell: bash
+      run: |
+        release=$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/.github/odin-release")
+        if [ -z "$release" ]; then
+          echo "::error::.github/odin-release is empty"
+          exit 1
+        fi
+        echo "release=$release" >> "$GITHUB_OUTPUT"
+
+    - name: Setup Odin ${{ steps.pin.outputs.release }}
+      uses: laytan/setup-odin@v2
+      with:
+        release: ${{ steps.pin.outputs.release }}
+        # Required for the release download; without it setup-odin builds master.
+        token: ${{ github.token }}
+
+    - name: Show Odin version
+      shell: bash
+      run: odin version

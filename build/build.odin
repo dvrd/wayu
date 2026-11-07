@@ -11,7 +11,8 @@
 //   clean     — remove build artifacts
 //   install   — build + copy to /usr/local/bin + wayu init
 //   dev       — debug build + run with remaining args
-//   release   — test + tag + push (triggers GitHub Actions → Homebrew)
+//   release   — test + commit + tag + atomic push of main and the tag
+//               (the push to main runs bump.yml: CI, then publish + Homebrew)
 //   docs      — sync docs/index.html + README.md version from src/main.odin
 //   help      — show available targets
 
@@ -103,6 +104,18 @@ do_debug :: proc() {
 }
 
 do_test :: proc() {
+	if !run_unit_tests() {
+		bld.log_error("Tests failed")
+		os.exit(1)
+	}
+	bld.log_info("All tests passed")
+}
+
+// Run the unit tests with HOME sandboxed, then restore HOME and remove the
+// sandbox before returning. Returns instead of exiting so the restore and
+// cleanup always run; do_release runs git afterwards and needs the real HOME
+// for ~/.gitconfig (identity, commit signing, credential helper).
+run_unit_tests :: proc() -> bool {
 	bld.log_info("Running unit tests...")
 	bld.mkdir_if_not_exists(BIN_DIR)
 	// Sandbox HOME so no test can ever write into the real ~/.config/wayu
@@ -111,9 +124,17 @@ do_test :: proc() {
 	test_home := fmt.tprintf("/tmp/wayu_unit_home_%d", os.get_pid())
 	os.remove_all(test_home)
 	os.make_directory_all(test_home)
+	real_home, had_home := os.lookup_env("HOME", context.temp_allocator)
 	os.set_env("HOME", test_home)
-	defer os.remove_all(test_home)
-	ok := bld.test({
+	defer {
+		if had_home {
+			os.set_env("HOME", real_home)
+		} else {
+			os.unset_env("HOME")
+		}
+		os.remove_all(test_home)
+	}
+	return bld.test({
 		package_path = TEST_DIR,
 		file_mode    = true,
 		opt          = .Speed,
@@ -122,11 +143,39 @@ do_test :: proc() {
 		},
 		ignore_unused_defineables = true,
 	})
-	if !ok {
-		bld.log_error("Tests failed")
+}
+
+// Run `git <args>`; true on exit status 0.
+git_ok :: proc(args: ..string) -> bool {
+	cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&cmd, "git")
+	bld.cmd_append(&cmd, ..args)
+	return bld.cmd_run(&cmd)
+}
+
+// Run `git <args>`; abort the release naming `what` on failure.
+git_must :: proc(what: string, args: ..string) {
+	if !git_ok(..args) {
+		bld.log_error("%s failed — aborting release", what)
 		os.exit(1)
 	}
-	bld.log_info("All tests passed")
+}
+
+// Run `git <args>` and return its trimmed stdout.
+git_output :: proc(args: ..string) -> (out: string, ok: bool) {
+	tmp := fmt.tprintf("/tmp/wayu_build_git_%d", os.get_pid())
+	defer os.remove(tmp)
+	cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&cmd, "git")
+	bld.cmd_append(&cmd, ..args)
+	if !bld.cmd_run(&cmd, {stdout_path = tmp}) {
+		return "", false
+	}
+	data, err := os.read_entire_file_from_path(tmp, context.temp_allocator)
+	if err != nil {
+		return "", false
+	}
+	return strings.trim_space(string(data)), true
 }
 
 do_check :: proc() {
@@ -237,22 +286,41 @@ do_release :: proc() {
 
 	bld.log_info("Releasing %s...", version)
 
-	// 1. Run tests first — abort if any fail
-	bld.log_info("Running tests...")
-	do_test()
-
-	// 2. Verify clean working tree
+	// 1. Preflight — everything checkable before touching any file.
 	bld.log_info("Checking working tree is clean...")
-	status_cmd := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&status_cmd, "git", "diff", "--exit-code")
-	if !bld.cmd_run(&status_cmd) {
+	if !git_ok("diff", "--exit-code") {
 		bld.log_error("Working tree has unstaged changes — commit or stash before releasing")
 		os.exit(1)
 	}
-	staged_cmd := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&staged_cmd, "git", "diff", "--cached", "--exit-code")
-	if !bld.cmd_run(&staged_cmd) {
+	if !git_ok("diff", "--cached", "--exit-code") {
 		bld.log_error("Working tree has staged changes — commit before releasing")
+		os.exit(1)
+	}
+	branch, branch_ok := git_output("rev-parse", "--abbrev-ref", "HEAD")
+	if !branch_ok || branch != "main" {
+		bld.log_error("Releases are cut from main (current branch: %s)", branch)
+		os.exit(1)
+	}
+	git_must("git fetch origin", "fetch", "--tags", "origin", "main")
+	if !git_ok("merge-base", "--is-ancestor", "origin/main", "HEAD") {
+		bld.log_error("Local main is behind or diverged from origin/main — pull/rebase first")
+		os.exit(1)
+	}
+	if git_ok("rev-parse", "-q", "--verify", fmt.tprintf("refs/tags/%s", version)) {
+		bld.log_error("Tag %s already exists", version)
+		os.exit(1)
+	}
+
+	// 2. Run tests — abort if any fail.
+	home_before, _ := os.lookup_env("HOME", context.temp_allocator)
+	if !run_unit_tests() {
+		bld.log_error("Tests failed — aborting release")
+		os.exit(1)
+	}
+	// The git commands below must see the real HOME (identity, signing, credentials).
+	home_after, _ := os.lookup_env("HOME", context.temp_allocator)
+	if home_after != home_before {
+		bld.log_error("HOME not restored after tests (%s, expected %s) — aborting release", home_after, home_before)
 		os.exit(1)
 	}
 
@@ -314,39 +382,25 @@ do_release :: proc() {
 	sync_docs_version_str(version_bare)
 
 	// 3d. Commit CHANGELOG.md, src/main.odin, docs, and README together
-	add_cmd := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&add_cmd, "git", "add", "CHANGELOG.md", "src/main.odin", "docs/index.html", "README.md")
-	bld.cmd_run(&add_cmd)
-	commit_msg := fmt.tprintf("chore: release %s", version)
-	commit_cmd := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&commit_cmd, "git", "commit", "-m", commit_msg)
-	bld.cmd_run(&commit_cmd)
-	push_main := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&push_main, "git", "push", "origin", "main")
-	bld.cmd_run(&push_main)
+	git_must("git add", "add", "CHANGELOG.md", "src/main.odin", "docs/index.html", "README.md")
+	git_must("git commit", "commit", "-m", fmt.tprintf("chore: release %s", version))
 
-	// 4. Create git tag
+	// 4. Tag the release commit.
 	bld.log_info("Creating tag %s...", version)
-	tag_cmd := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&tag_cmd, "git", "tag", version)
-	if !bld.cmd_run(&tag_cmd) {
-		bld.log_error("Failed to create tag %s (already exists?)", version)
+	git_must(fmt.tprintf("git tag %s", version), "tag", version)
+
+	// 5. Push main and the tag atomically: both land or neither does, so
+	//    origin never has a tag without its release commit (or vice versa).
+	//    The push to main runs bump.yml (CI gate, then publish + Homebrew).
+	bld.log_info("Pushing main + %s to origin...", version)
+	if !git_ok("push", "--atomic", "origin", "main", fmt.tprintf("refs/tags/%s", version)) {
+		bld.log_error("Push failed — nothing was pushed. Deleting local tag %s.", version)
+		git_ok("tag", "-d", version)
+		bld.log_error("The release commit is still local; undo with: git reset --hard HEAD~1")
 		os.exit(1)
 	}
 
-	// 5. Push tag — this triggers the GitHub Actions release workflow
-	bld.log_info("Pushing tag %s to origin...", version)
-	push_cmd := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&push_cmd, "git", "push", "origin", version)
-	if !bld.cmd_run(&push_cmd) {
-		bld.log_error("Failed to push tag — rolling back local tag")
-		rollback := bld.cmd_create(context.temp_allocator)
-		bld.cmd_append(&rollback, "git", "tag", "-d", version)
-		bld.cmd_run(&rollback)
-		os.exit(1)
-	}
-
-	bld.log_info("Release %s triggered — GitHub Actions will build, publish, and update Homebrew tap", version)
+	bld.log_info("Release %s pushed — bump.yml will run CI, then build, publish, and update the Homebrew tap", version)
 	bld.log_info("Track progress at: https://github.com/dvrd/wayu/actions")
 }
 
@@ -451,7 +505,7 @@ do_help :: proc() {
 	fmt.println("  clean     Remove build artifacts")
 	fmt.println("  install   Build + install to /usr/local/bin + wayu init")
 	fmt.println("  dev       Debug build + run (extra args passed through)")
-	fmt.println("  release   Run tests, tag, and push to trigger GitHub release + Homebrew update")
+	fmt.println("  release   Run tests, commit + tag, push to main (bump.yml publishes after CI)")
 	fmt.println("  docs      Sync docs/index.html + README.md version from src/main.odin")
 	fmt.println("  help      Show this help")
 	fmt.println("")

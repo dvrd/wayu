@@ -6,32 +6,43 @@ on:
   workflow_dispatch:
     inputs:
       bump_type:
-        description: 'Version bump type (leave empty for auto-detect from commits)'
+        description: 'Version bump type (auto = detect from commits)'
         required: false
-        default: ''
+        default: auto
         type: choice
         options:
-          - ''
+          - auto
           - patch
           - minor
           - major
 
-# Serialize all runs of this workflow. The bump step pushes a `chore: release`
-# commit which itself triggers a second run; concurrency makes the second run
-# wait until the first finishes publishing, at which point its republish path
-# detects "tag + release already at HEAD" and short-circuits.
+# Serialize all runs of this workflow so two releases never race on tags or
+# on the tap push. Note: the bot's `chore: release` commit is pushed with
+# GITHUB_TOKEN, which does NOT trigger another run. Republish mode only
+# happens when a human pushes a `chore: release vX.Y.Z` commit
+# (./build_it release) or a run is re-run.
 concurrency:
   group: release
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  actions: read
+  contents: read
 
 jobs:
+  # Full CI (unit + integration + golden + lint) gates every release.
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   bump:
     name: Bump version
+    needs: ci
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
@@ -49,147 +60,164 @@ jobs:
     - name: Install git-cliff
       run: cargo install git-cliff --locked
 
+    # Decides what to do and refuses anything unsafe. This step never deletes
+    # or moves a tag or release; on any inconsistency it fails with a
+    # message describing the manual fix.
     - name: Determine action
       id: version
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        BUMP_TYPE: ${{ inputs.bump_type }}
       run: |
-        # Refresh tag state from origin (catches orphan tags whose target
-        # commits are not reachable from main).
-        git fetch --tags --prune --prune-tags origin
+        set -euo pipefail
+        git fetch --tags --force origin
+        git fetch origin main
+
+        emit() {
+          {
+            echo "VERSION=$1"
+            echo "MODE=$2"
+            if [ "$2" = "skip" ]; then echo "SKIP=true"; else echo "SKIP=false"; fi
+          } >> "$GITHUB_OUTPUT"
+        }
+
+        HEAD_OID=$(git rev-parse HEAD)
+        MAIN_OID=$(git rev-parse origin/main)
+
+        # A re-run of an old run (or a run queued behind a newer push) must not
+        # compute a version from a stale HEAD. The run for the current tip
+        # releases everything since the last tag.
+        if [ "$HEAD_OID" != "$MAIN_OID" ]; then
+          echo "::notice::$HEAD_OID is no longer the tip of main ($MAIN_OID) — skipping; the run for the tip will release."
+          emit "" skip
+          exit 0
+        fi
 
         HEAD_MSG=$(git log -1 --format=%s)
         HEAD_VERSION=$(echo "$HEAD_MSG" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' || true)
 
-        # Three operating modes:
-        #   bump      — fresh feature/fix commits since last tag.
-        #               Edit VERSION + CHANGELOG, commit, tag, atomic push.
-        #   republish — HEAD is already "chore: release vX.Y.Z" (a prior run
-        #               committed the bump but didn't finish tagging/publishing).
-        #               Skip the bump; just (re)point tag and publish.
-        #   skip      — nothing to release; tag and release already at HEAD.
-        if [[ "$HEAD_MSG" == "chore: release $HEAD_VERSION" ]] && [ -n "$HEAD_VERSION" ]; then
+        # Modes:
+        #   bump      — fresh commits since last tag. Edit VERSION + CHANGELOG,
+        #               commit, tag, atomic push.
+        #   republish — HEAD is "chore: release vX.Y.Z" (./build_it release, or
+        #               a prior run that committed but didn't finish). Tag HEAD
+        #               if needed and (re)publish.
+        #   skip      — nothing to release.
+        if [ -n "$HEAD_VERSION" ] && [ "$HEAD_MSG" = "chore: release $HEAD_VERSION" ]; then
           VERSION="$HEAD_VERSION"
           MODE="republish"
         else
-          BUMP_TYPE="${{ inputs.bump_type || '' }}"
-          if [ -n "$BUMP_TYPE" ]; then
+          if [ -n "$BUMP_TYPE" ] && [ "$BUMP_TYPE" != "auto" ]; then
             VERSION=$(git cliff --bumped-version --bump "$BUMP_TYPE")
           else
             VERSION=$(git cliff --bumped-version)
           fi
           CURRENT=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           if [ "$VERSION" = "$CURRENT" ]; then
-            MODE="skip"
-          else
-            MODE="bump"
+            echo "::notice::No releasable commits since $CURRENT."
+            emit "$VERSION" skip
+            exit 0
           fi
+          MODE="bump"
         fi
 
-        # In republish mode, short-circuit if the tag is already at HEAD AND
-        # the GitHub release exists — i.e. a prior run actually finished and
-        # this run was just triggered by the bot's own release commit.
-        if [ "$MODE" = "republish" ]; then
-          TAG_OID=$(git rev-parse "refs/tags/$VERSION" 2>/dev/null || echo "")
-          HEAD_OID=$(git rev-parse HEAD)
-          if [ "$TAG_OID" = "$HEAD_OID" ] && gh release view "$VERSION" >/dev/null 2>&1; then
-            echo "Tag and release for $VERSION are already at HEAD — nothing to do."
-            MODE="skip"
+        if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::Computed version '$VERSION' is not vX.Y.Z"
+          exit 1
+        fi
+
+        # Never go backwards: the new version must be >= the highest tag.
+        HIGHEST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)
+        if [ -n "$HIGHEST" ] && [ "$VERSION" != "$HIGHEST" ] \
+          && [ "$(printf '%s\n%s\n' "$VERSION" "$HIGHEST" | sort -V | tail -1)" != "$VERSION" ]; then
+          echo "::error::Refusing to release $VERSION: it is lower than existing tag $HIGHEST."
+          exit 1
+        fi
+
+        # Existing tag for this version: fine only if it already points at HEAD.
+        # Anything else needs a human — never delete a tag or release here.
+        if TAG_OID=$(git rev-parse -q --verify "refs/tags/$VERSION^{commit}"); then
+          if [ "$MODE" = "republish" ] && [ "$TAG_OID" = "$HEAD_OID" ]; then
+            if gh release view "$VERSION" >/dev/null 2>&1; then
+              echo "::notice::Tag and release for $VERSION already at HEAD — nothing to do."
+              emit "$VERSION" skip
+              exit 0
+            fi
+            echo "Tag $VERSION already at HEAD; release missing — will publish."
+          else
+            if gh release view "$VERSION" >/dev/null 2>&1; then
+              RELEASE_NOTE="A published GitHub release exists for $VERSION."
+            else
+              RELEASE_NOTE="No GitHub release exists for $VERSION."
+            fi
+            echo "::error::Tag $VERSION already exists at $TAG_OID but HEAD is $HEAD_OID (mode=$MODE). $RELEASE_NOTE Not touching it."
+            echo "If the tag is an orphan from an aborted run and has NO release, delete it manually:"
+            echo "  git push origin :refs/tags/$VERSION"
+            echo "Otherwise bump past it (workflow_dispatch with a bump_type, or ./build_it release <next>)."
+            exit 1
           fi
         fi
 
         echo "::notice::Mode=$MODE  Version=$VERSION  HEAD=$(git rev-parse --short HEAD)"
-        {
-          echo "VERSION=$VERSION"
-          echo "MODE=$MODE"
-          if [ "$MODE" = "skip" ]; then
-            echo "SKIP=true"
-          else
-            echo "SKIP=false"
-          fi
-        } >> $GITHUB_OUTPUT
-
-    - name: Auto-reconcile stale tag
-      # If a tag for the target version already exists at a commit that is
-      # not HEAD, it's an orphan from a prior aborted run. Auto-delete it
-      # (and its release if any) so the bump/republish step can recreate
-      # it cleanly. This is what makes the workflow self-healing — without
-      # it, a stale tag would force `git tag` to fail and require manual
-      # cleanup.
-      if: steps.version.outputs.SKIP != 'true'
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        VERSION="${{ steps.version.outputs.VERSION }}"
-        if ! git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
-          echo "Tag $VERSION does not exist — nothing to reconcile."
-          exit 0
-        fi
-        EXISTING=$(git rev-parse "refs/tags/$VERSION")
-        HEAD_OID=$(git rev-parse HEAD)
-        if [ "$EXISTING" = "$HEAD_OID" ]; then
-          echo "Tag $VERSION already at HEAD — nothing to reconcile."
-          exit 0
-        fi
-        echo "::warning::Stale $VERSION tag at $EXISTING (HEAD is $HEAD_OID) — auto-cleaning."
-        # `gh release delete --cleanup-tag` removes the GitHub release AND
-        # the underlying tag in one shot; if the release doesn't exist,
-        # fall back to deleting the remote tag directly.
-        gh release delete "$VERSION" --cleanup-tag --yes 2>/dev/null \
-          || git push origin ":refs/tags/$VERSION" 2>/dev/null \
-          || true
-        git tag -d "$VERSION" 2>/dev/null || true
+        emit "$VERSION" "$MODE"
 
     - name: Update VERSION in src/main.odin
       if: steps.version.outputs.MODE == 'bump'
+      env:
+        VERSION: ${{ steps.version.outputs.VERSION }}
       run: |
-        VERSION="${{ steps.version.outputs.VERSION }}"
         VERSION_BARE="${VERSION#v}"
         sed -i "s/VERSION :: \"[^\"]*\"/VERSION :: \"${VERSION_BARE}\"/" src/main.odin
-        grep 'VERSION ::' src/main.odin
+        grep -q "VERSION :: \"${VERSION_BARE}\"" src/main.odin || { echo "::error::VERSION not updated"; exit 1; }
 
     - name: Generate CHANGELOG
       if: steps.version.outputs.MODE == 'bump'
-      run: git cliff --tag ${{ steps.version.outputs.VERSION }} -o CHANGELOG.md
+      env:
+        VERSION: ${{ steps.version.outputs.VERSION }}
+      run: git cliff --tag "$VERSION" -o CHANGELOG.md
 
     - name: Commit and tag
-      if: steps.version.outputs.SKIP != 'true'
+      if: steps.version.outputs.SKIP == 'false'
+      env:
+        VERSION: ${{ steps.version.outputs.VERSION }}
+        MODE: ${{ steps.version.outputs.MODE }}
       run: |
+        set -euo pipefail
         git config user.name  "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        VERSION="${{ steps.version.outputs.VERSION }}"
-        MODE="${{ steps.version.outputs.MODE }}"
 
         if [ "$MODE" = "republish" ]; then
-          # Bump commit already exists at HEAD — only (re)point the tag.
-          # Idempotent: if the tag is already at HEAD this is a no-op net change.
-          git tag -d "$VERSION" 2>/dev/null || true
-          git push origin ":refs/tags/$VERSION" 2>/dev/null || true
-          git tag "$VERSION"
-          git push origin "$VERSION"
+          # Determine action verified the tag is either absent or already at HEAD.
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "Tag $VERSION already at HEAD."
+          else
+            git tag "$VERSION"
+            git push origin "refs/tags/$VERSION"
+          fi
         else
-          # bump: ship commit + tag atomically. If either ref refuses to
-          # update (race with another push, etc.) NEITHER updates, leaving
-          # main consistent and the next push to retry from a clean state.
+          # bump: ship commit + tag atomically. If main moved meanwhile the push
+          # is rejected and NEITHER ref updates; the run for the new tip retries.
           git add src/main.odin CHANGELOG.md
           git commit -m "chore: release $VERSION"
           git tag "$VERSION"
-          git push --atomic origin main "$VERSION"
+          git push --atomic origin main "refs/tags/$VERSION"
         fi
 
   build-release:
     name: Build ${{ matrix.artifact }}
     needs: bump
-    if: needs.bump.outputs.skip != 'true'
+    if: needs.bump.outputs.skip == 'false'
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
-            target: linux-amd64
+            arch: x86_64
             artifact: wayu-linux-amd64
           - os: macos-latest
-            target: macos-arm64
+            arch: arm64
             artifact: wayu-macos-arm64
 
     steps:
@@ -198,10 +226,19 @@ jobs:
       with:
         ref: ${{ needs.bump.outputs.version }}
 
+    # The formula maps each asset to a CPU; fail if a runner image changes arch.
+    - name: Check runner architecture
+      env:
+        EXPECTED: ${{ matrix.arch }}
+      run: |
+        ACTUAL=$(uname -m)
+        if [ "$ACTUAL" != "$EXPECTED" ]; then
+          echo "::error::Runner is $ACTUAL, expected $EXPECTED for ${{ matrix.artifact }}"
+          exit 1
+        fi
+
     - name: Setup Odin
-      uses: laytan/setup-odin@v2
-      with:
-        release: latest
+      uses: ./.github/actions/setup-odin
 
     - name: Build optimized release
       run: |
@@ -209,18 +246,28 @@ jobs:
         odin build src -out:bin/wayu -o:speed
         chmod +x bin/wayu
 
-    - name: Verify build
-      run: ./bin/wayu version
+    - name: Verify build matches release version
+      env:
+        VERSION: ${{ needs.bump.outputs.version }}
+      run: |
+        OUT=$(./bin/wayu --version)
+        echo "$OUT"
+        case "$OUT" in
+          *"${VERSION#v}"*) ;;
+          *) echo "::error::binary reports '$OUT', expected $VERSION"; exit 1 ;;
+        esac
 
     - name: Package and compute SHA256
+      env:
+        ARTIFACT: ${{ matrix.artifact }}
       run: |
-        tar -czf ${{ matrix.artifact }}.tar.gz -C bin wayu
+        tar -czf "$ARTIFACT.tar.gz" -C bin wayu
         if [[ "$RUNNER_OS" == "macOS" ]]; then
-          shasum -a 256 ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.sha256
+          shasum -a 256 "$ARTIFACT.tar.gz" | awk '{print $1}' > "$ARTIFACT.sha256"
         else
-          sha256sum ${{ matrix.artifact }}.tar.gz | awk '{print $1}' > ${{ matrix.artifact }}.sha256
+          sha256sum "$ARTIFACT.tar.gz" | awk '{print $1}' > "$ARTIFACT.sha256"
         fi
-        echo "SHA256=$(cat ${{ matrix.artifact }}.sha256)"
+        echo "SHA256=$(cat "$ARTIFACT.sha256")"
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -233,8 +280,10 @@ jobs:
   create-release:
     name: Create GitHub Release
     needs: [bump, build-release]
-    if: needs.bump.outputs.skip != 'true'
+    if: needs.bump.outputs.skip == 'false'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout code
@@ -256,15 +305,15 @@ jobs:
       run: git cliff --latest --strip header > release_notes.md
 
     - name: Create Release
-      # softprops/action-gh-release updates an existing release at the same
-      # tag, so this step is idempotent — safe to re-run in republish mode.
-      uses: softprops/action-gh-release@v1
+      # Updates an existing release at the same tag, so re-runs are idempotent.
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ needs.bump.outputs.version }}
         name: wayu ${{ needs.bump.outputs.version }}
         body_path: release_notes.md
         draft: false
         prerelease: false
+        fail_on_unmatched_files: true
         files: |
           artifacts/wayu-linux-amd64/wayu-linux-amd64.tar.gz
           artifacts/wayu-linux-amd64/wayu-linux-amd64.sha256
@@ -276,22 +325,22 @@ jobs:
   update-homebrew-tap:
     name: Update Homebrew tap
     needs: [bump, create-release]
-    if: needs.bump.outputs.skip != 'true'
+    if: needs.bump.outputs.skip == 'false'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
-    - name: Download macOS artifacts
+    - name: Checkout wayu (formula generator)
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.bump.outputs.version }}
+        path: wayu
+
+    - name: Download release artifacts
       uses: actions/download-artifact@v4
       with:
         path: artifacts
-
-    - name: Extract version and SHAs
-      id: vars
-      run: |
-        VERSION="${{ needs.bump.outputs.version }}"
-        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-        echo "VERSION_BARE=${VERSION#v}" >> $GITHUB_OUTPUT
-        echo "ARM64_SHA=$(cat artifacts/wayu-macos-arm64/wayu-macos-arm64.sha256)" >> $GITHUB_OUTPUT
 
     - name: Checkout tap repo
       uses: actions/checkout@v4
@@ -302,52 +351,43 @@ jobs:
 
     - name: Update formula
       env:
-        VERSION:      ${{ steps.vars.outputs.VERSION }}
-        VERSION_BARE: ${{ steps.vars.outputs.VERSION_BARE }}
-        ARM64_SHA:    ${{ steps.vars.outputs.ARM64_SHA }}
+        VERSION: ${{ needs.bump.outputs.version }}
       run: |
+        set -euo pipefail
+        MACOS_ARM64_SHA=$(cat artifacts/wayu-macos-arm64/wayu-macos-arm64.sha256)
+        LINUX_AMD64_SHA=$(cat artifacts/wayu-linux-amd64/wayu-linux-amd64.sha256)
+
+        # Never downgrade brew users (e.g. a re-run of an old release).
+        FORMULA=tap/Formula/wayu.rb
+        if [ -f "$FORMULA" ]; then
+          OLD=$(sed -n 's/^  version "\(.*\)"/\1/p' "$FORMULA" | head -1)
+          NEW="${VERSION#v}"
+          if [ -n "$OLD" ] && [ "$OLD" != "$NEW" ] \
+            && [ "$(printf '%s\n%s\n' "$OLD" "$NEW" | sort -V | tail -1)" != "$NEW" ]; then
+            echo "::error::Tap formula is at $OLD; refusing to downgrade to $NEW."
+            exit 1
+          fi
+        fi
+
         mkdir -p tap/Formula
-        cat > tap/Formula/wayu.rb << FORMULA
-        class Wayu < Formula
-          desc "Shell configuration management CLI — PATH, aliases, env vars, plugins"
-          homepage "https://github.com/dvrd/wayu"
-          url "https://github.com/dvrd/wayu/releases/download/${VERSION}/wayu-macos-arm64.tar.gz"
-          version "${VERSION_BARE}"
-          sha256 "${ARM64_SHA}"
-          license "MIT"
-
-          def install
-            bin.install "wayu"
-          end
-
-          def caveats
-            <<~EOS
-              Initialize wayu config files by running:
-                wayu init
-
-              Then add this line to your shell RC file:
-                source ~/.config/wayu/init.zsh   # zsh
-                source ~/.config/wayu/init.bash  # bash
-            EOS
-          end
-
-          test do
-            assert_match version.to_s, shell_output("#{bin}/wayu version")
-          end
-        end
-        FORMULA
+        wayu/.github/scripts/homebrew-formula.sh "$VERSION" "$MACOS_ARM64_SHA" "$LINUX_AMD64_SHA" > "$FORMULA.new"
+        ruby -c "$FORMULA.new"
+        mv "$FORMULA.new" "$FORMULA"
+        cat "$FORMULA"
 
     - name: Commit and push formula
       working-directory: tap
+      env:
+        VERSION: ${{ needs.bump.outputs.version }}
       run: |
         git config user.name  "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         git add Formula/wayu.rb
-        # Tolerate "nothing to commit" so re-runs (republish path) don't fail
-        # when the formula already has the right version + SHA.
+        # Tolerate "nothing to commit" so re-runs don't fail when the formula
+        # already has the right version + SHAs.
         if git diff --cached --quiet; then
-          echo "Formula already up-to-date for ${{ steps.vars.outputs.VERSION }} — nothing to push."
+          echo "Formula already up-to-date for $VERSION — nothing to push."
         else
-          git commit -m "wayu ${{ steps.vars.outputs.VERSION }}"
+          git commit -m "wayu $VERSION"
           git push
         fi
