@@ -244,11 +244,37 @@ regenerate_init_core_silently :: proc() {
 	discard_zcompile_batch()
 }
 
-// Rewrite init.{ext} with the current template when it is a wayu-generated
-// orchestrator that has drifted from the template. `wayu init` only creates
-// init.{ext} when missing, so without this existing users never receive
-// orchestrator fixes (e.g. the fast path that double-sourced extra/tools).
-// Files that don't carry the wayu header (hand-written) are left alone.
+// fnv64a of every init.{zsh,bash,fish} template wayu has shipped (from the
+// git history of INIT_TEMPLATE_* in src/preload.odin). Only a file that is
+// byte-identical to one of them is an untouched wayu orchestrator.
+// When INIT_TEMPLATE_* changes, add the new template's hash here.
+// Every template currently shipped must be listed too (unit-tested), so the
+// next change only needs the new hash added.
+KNOWN_INIT_TEMPLATE_HASHES :: [?]u64{
+	// zsh
+	0x20e135c4c9aacd58, 0x7e48fffaa40fd9cd, 0xfff333ca896c0bd4, 0xf47f9eb2ad3f7a2e,
+	0xc21f6b2d093d821d, 0x1039f30345ae10c2, 0x6d16cfee3fafd79a, 0xd4268444521bc452,
+	// bash
+	0x0bc23094b9dcc819, 0x345463d2228a44de, 0x543c0b71a5b798a0, 0x548df0bd4c4ddc00,
+	0x75a7bff5ff0d78d8, 0xb3ea0c621ce39dca, 0xbc078574f43e51c3, 0xcd692c96fb307bc6,
+	0xeda95b039229221f, 0xf6f35b1b81a854eb, 0xfe701bb066ded146, 0x1f4103ef74c755c5,
+	// fish
+	0x369d4d3c4c55995b, 0x3b71cd7d4b1f4c4b, 0x81f2ef4bb8cf4a9b, 0x8d915b6ee6512f58,
+	0x95f11f05208fadde, 0xc57f0c8b32f09433,
+}
+
+is_known_init_template :: proc(content: string) -> bool {
+	h := hash.fnv64a(transmute([]byte)content)
+	known := KNOWN_INIT_TEMPLATE_HASHES
+	return slice.contains(known[:], h)
+}
+
+// Rewrite init.{ext} with the current template when it is an unmodified copy
+// of a template an earlier wayu wrote. `wayu init` only creates init.{ext}
+// when missing, so without this existing users never receive orchestrator
+// fixes (e.g. the fast path that double-sourced extra/tools). The old file is
+// backed up first. A file the user edited is never rewritten (OKAMI-235): a
+// warning on stderr says how to adopt the new template.
 sync_init_orchestrator :: proc() {
 	if wayu.dry_run do return
 	path := fmt.aprintf("%s/init.%s", wayu.data, get_shell_extension(wayu.shell))
@@ -263,7 +289,38 @@ sync_init_orchestrator :: proc() {
 	if current == template do return
 	if !strings.contains(current, "Wayu Shell Initialization") do return
 
+	if !is_known_init_template(current) {
+		warn_customized_init(path, current)
+		return
+	}
+	backup_path, backed_up := create_backup(path)
+	if !backed_up {
+		fmt.eprintfln("wayu: warning: could not back up %s; leaving it unchanged", path)
+		return
+	}
+	delete(backup_path)
+	cleanup_old_backups(path, 5)
 	write_init_file(path, template)
+}
+
+// Tell the user once per distinct edited content that their init.{ext} is
+// kept as-is. Goes to stderr (stdout of `wayu build eval` is eval'd). The
+// "already warned" marker is only recorded when stderr is a terminal, so a
+// warning swallowed by the prompt hook's background `wayu build` (output
+// discarded) is repeated where a human can see it.
+@(private = "file")
+warn_customized_init :: proc(path, current: string) {
+	if wayu.tui_mode do return
+	marker := fmt.tprintf("%s/.%s.customized", wayu.data, filepath.base(path))
+	sig := fmt.tprintf("%x\n", hash.fnv64a(transmute([]byte)current))
+	if old, err := os.read_entire_file(marker, context.temp_allocator); err == nil && string(old) == sig {
+		return
+	}
+	fmt.eprintfln("wayu: %s has local edits; not updating it to the current template.", path)
+	fmt.eprintfln("wayu:   to adopt the new template: move it aside, then run `wayu init`.")
+	if is_tty(2) {
+		_ = write_file_atomic(marker, transmute([]byte)sig)
+	}
 }
 
 // Generate all optimized init files (v2 with all optimizations) for every
@@ -381,10 +438,15 @@ emit_path_export :: proc(b: ^strings.Builder, sep: string = "\n") -> bool {
 }
 
 // Source every user function file (zsh null-glob vs bash nullglob-free loop).
+// zsh: the glob runs in an anonymous function under `emulate -L zsh` so the
+// user's NO_BARE_GLOB_QUAL / NO_GLOB / KSH_ARRAYS can't break it (OKAMI-224);
+// the files are sourced outside it so they run with the user's own options.
 emit_functions_loader :: proc(b: ^strings.Builder) {
 	dir := shell_double_quote_literal(fmt.tprintf("%s/functions", wayu.config), context.temp_allocator)
 	if wayu.shell == .ZSH {
-		fmt.sbprintfln(b, `for f in %s/*(N); do if [[ -f "$f" ]]; then source "$f"; fi; done`, dir)
+		fmt.sbprintfln(b, `() {{ emulate -L zsh; typeset -ga _wayu_fn_files; _wayu_fn_files=( %s/*(N-.) ) }}`, dir)
+		fmt.sbprintln(b, `for _wayu_f in "${_wayu_fn_files[@]}"; do source "$_wayu_f"; done`)
+		fmt.sbprintln(b, `unset _wayu_f _wayu_fn_files`)
 	} else {
 		fmt.sbprintfln(b, `if [ -d %s ]; then for f in %s/*; do if [ -f "$f" ]; then source "$f"; fi; done; fi`, dir, dir)
 	}
@@ -788,19 +850,32 @@ generate_core_init_v2 :: proc() {
 	}
 	fmt.sbprintln(&builder)
 
-	fmt.sbprintln(&builder, "# === Aliases (from wayu.toml [aliases]) ===")
-	emit_alias_definitions(&builder)
-	fmt.sbprintln(&builder)
-
-
 	completions_dir := fmt.tprintf("%s/completions", wayu.data)
 	fmt.sbprintln(&builder, "# === Completions ===")
 	if is_zsh {
-		fmt.sbprintfln(&builder, "fpath=(%s $fpath)", shell_double_quote_literal(completions_dir, context.temp_allocator))
-		fmt.sbprintln(&builder, "autoload -Uz compinit && compinit -C")
-	} else {
+		// "${fpath[@]}" keeps every entry under KSH_ARRAYS (`$fpath` is only
+		// fpath[0] there). `compinit -C` reuses the dump without scanning
+		// fpath, so completions wayu adds/removes would never show up: when
+		// the completions dir changed after the dump was written, rebuild it
+		// (`-u`: no interactive compaudit prompt, as -C never audited).
 		q := shell_double_quote_literal(completions_dir, context.temp_allocator)
-		fmt.sbprintfln(&builder, `if [ -d %s ]; then for f in %s/*.bash-completion; do if [ -f "$f" ]; then source "$f"; fi; done; fi`, q, q)
+		fmt.sbprintfln(&builder, `fpath=(%s "${{fpath[@]}}")`, q)
+		fmt.sbprintln(&builder, `() {`)
+		fmt.sbprintln(&builder, `  emulate -L zsh`)
+		fmt.sbprintln(&builder, `  local dump="${ZDOTDIR:-$HOME}/.zcompdump"`)
+		fmt.sbprintln(&builder, `  autoload -Uz compinit`)
+		fmt.sbprintfln(&builder, `  if [[ ! -s $dump || %s -nt $dump ]]; then`, q)
+		fmt.sbprintln(&builder, `    command rm -f -- "$dump" "$dump.zwc"`)
+		fmt.sbprintln(&builder, `    compinit -u -d "$dump"`)
+		fmt.sbprintln(&builder, `  else`)
+		fmt.sbprintln(&builder, `    compinit -C -d "$dump"`)
+		fmt.sbprintln(&builder, `  fi`)
+		fmt.sbprintln(&builder, `}`)
+	} else {
+		// `wayu completions generate` writes wayu.bash; `completions add`
+		// writes name.bash-completion (or keeps a given .bash name).
+		q := shell_double_quote_literal(completions_dir, context.temp_allocator)
+		fmt.sbprintfln(&builder, `if [ -d %s ]; then for f in %s/*.bash-completion %s/*.bash; do if [ -f "$f" ]; then source "$f"; fi; done; fi`, q, q, q)
 	}
 	fmt.sbprintln(&builder)
 
@@ -912,6 +987,14 @@ generate_core_init_v2 :: proc() {
 		}
 		fmt.sbprintln(&builder)
 	}
+
+	// Aliases last (OKAMI-224): zsh and bash expand aliases while parsing, so
+	// an [aliases] entry named like a wrapper wayu defines later (npm, conda,
+	// a lazy hook command) broke the definition — and with it the rest of
+	// lazy (tools/extra). Defined here they only affect what the user types.
+	fmt.sbprintln(&builder, "# === Aliases (from wayu.toml [aliases]) ===")
+	emit_alias_definitions(&builder)
+	fmt.sbprintln(&builder)
 
 	content := strings.to_string(builder)
 	write_init_file(path, content)
@@ -1043,16 +1126,16 @@ _wayu_evalcache() {
   # Skip silently if the tool isn't installed
   [ -z "$bin_path" ] && return 0
 
-  [ -d "$cache_dir" ] || mkdir -p "$cache_dir"
+  [ -d "$cache_dir" ] || command mkdir -p "$cache_dir"
 
   # Regenerate if: cache doesn't exist, is empty, or binary is newer than cache
   if [ ! -s "$cache_file" ] || [ "$bin_path" -nt "$cache_file" ]; then
     local tmp_file="${cache_file}.tmp.$$"
     if "$cmd" "$@" > "$tmp_file" 2>/dev/null && [ -s "$tmp_file" ]; then
-      mv -f "$tmp_file" "$cache_file"
+      command mv -f "$tmp_file" "$cache_file"
     else
       # Failed or empty output - drop the tmpfile, leave any prior good cache alone
-      rm -f "$tmp_file"
+      command rm -f "$tmp_file"
       [ -s "$cache_file" ] || return 1
     fi
   fi
@@ -1090,7 +1173,7 @@ zsh-defer() {
 # Process one deferred command
 _wayu_defer_process_one() {
   (( ${#_wayu_defer_queue} )) || return 0
-  local item="${_wayu_defer_queue[1]}"
+  local item="${_wayu_defer_queue[@]:0:1}"  # first item, with or without KSH_ARRAYS
   local cmd="${item%:*}"
   local delay="${item##*:}"
   shift _wayu_defer_queue
@@ -1460,11 +1543,15 @@ emit_lazy_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 	fmt.sbprintln(b, " 2>/dev/null")
 	fmt.sbprintfln(b, "  [ -s %s ] && \\. %s", script, script)
 	fmt.sbprintln(b, "}")
+	// `function name {` and `\name`: an alias named like the hook command
+	// (defined before wayu is sourced) must not hijack the definition or the
+	// re-invocation — `name() {` is alias-expanded while parsing.
 	for cmd in cmds {
+		fmt.sbprint(b, "function ")
 		fmt.sbprint(b, cmd)
-		fmt.sbprint(b, "() { ")
+		fmt.sbprint(b, " { ")
 		fmt.sbprint(b, loader)
-		fmt.sbprint(b, "; ")
+		fmt.sbprint(b, "; \\")
 		fmt.sbprint(b, cmd)
 		fmt.sbprintln(b, " \"$@\"; }")
 	}
@@ -1496,28 +1583,45 @@ sanitize_ident :: proc(s: string) -> string {
 // with a .nvmrc / .node-version file via a pure-zsh PATH swap. The chpwd
 // hook stays _wayu_chpwd_nvmrc after nvm loads (it used to be swapped to an
 // undefined `load-nvmrc`).
-RECIPE_NVM_ZSH :: `_wayu_setup_nvm_lazy() {
-  # Point PATH to NVM's default node (instant, no subprocess).
-  local nvm_default_path="$NVM_DIR/alias/default"
-  if [[ -f "$nvm_default_path" ]]; then
-    local default_version
-    default_version="$(<"$nvm_default_path")"
-    while [[ -f "$NVM_DIR/alias/$default_version" ]]; do
-      default_version="$(<"$NVM_DIR/alias/$default_version")"
-    done
-    if [[ "$default_version" == "node" ]]; then
-      local latest_dir
-      latest_dir="$(ls -d "$NVM_DIR/versions/node/"v* 2>/dev/null | sort -V | tail -1)"
-      [[ -d "$latest_dir/bin" ]] && export PATH="$latest_dir/bin:$PATH"
-    else
-      local node_dir
-      for node_dir in "$NVM_DIR/versions/node/v${default_version}"*(N); do
-        [[ -d "$node_dir/bin" ]] && export PATH="$node_dir/bin:$PATH" && break
-      done
-    fi
-  fi
+//
+// _wayu_nvm_resolve <spec> sets REPLY to the bin dir nvm itself would pick
+// (OKAMI-222): alias files are followed (default -> lts/iron -> v20.18.0,
+// lts/* included), a leading `v` is optional, `node`/`stable` mean the newest
+// install, and a partial version matches whole components only (`20.1` is
+// 20.1.x, never 20.18.0) with the highest match winning — candidates are
+// sorted numerically (`nOn`), not lexicographically.
+//
+// Option/alias hardening (OKAMI-224): option-sensitive code runs under
+// `emulate -L zsh`; wrappers are declared `function name {` and re-invoke
+// `\name`, so an alias named node/npm/nvm defined before wayu can't hijack
+// them; no external commands (ls/sort/tail) are used.
+RECIPE_NVM_ZSH :: `_wayu_nvm_resolve() {
+  emulate -L zsh -o extended_glob
+  REPLY=""
+  local spec="${1//[[:space:]]/}" d v
+  integer hops=0 any=0
+  while [[ -n $spec && -f "$NVM_DIR/alias/$spec" ]] && (( hops++ < 10 )); do
+    spec="$(<"$NVM_DIR/alias/$spec")"
+    spec="${spec//[[:space:]]/}"
+  done
+  [[ $spec == (node|stable) ]] && any=1
+  spec="${spec#v}"
+  (( any )) || [[ $spec == <->(.<->)# ]] || return 1
+  for d in "$NVM_DIR"/versions/node/v*(N/nOn); do
+    v="${d:t}"
+    v="${v#v}"
+    (( any )) || [[ $v == $spec || $v == $spec.* ]] || continue
+    [[ -d $d/bin ]] && { REPLY="$d/bin"; return 0 }
+  done
+  return 1
+}
 
-  _wayu_load_nvm() {
+_wayu_setup_nvm_lazy() {
+  # Point PATH to NVM's default node (instant, no subprocess).
+  local REPLY
+  _wayu_nvm_resolve default && export PATH="$REPLY:$PATH"
+
+  function _wayu_load_nvm {
     if (( ${_WAYU_NVM_LOADED:-0} )); then return; fi
     _WAYU_NVM_LOADED=1
     unset -f nvm node npm npx corepack 2>/dev/null
@@ -1532,7 +1636,7 @@ RECIPE_NVM_ZSH :: `_wayu_setup_nvm_lazy() {
     [ -n "$nvm_completion" ] && \. "$nvm_completion"
   }
 
-  _wayu_run_node_bin() {
+  function _wayu_run_node_bin {
     local cmd="$1"; shift
     unset -f "$cmd" 2>/dev/null
     local bin_path="$(command -v "$cmd" 2>/dev/null)"
@@ -1545,47 +1649,36 @@ RECIPE_NVM_ZSH :: `_wayu_setup_nvm_lazy() {
       "$cmd" "$@"
       _exit_code=$?
     fi
-    eval "$cmd() { _wayu_run_node_bin $cmd \"\$@\" }"
+    eval "function $cmd { _wayu_run_node_bin $cmd \"\$@\" }"
     return $_exit_code
   }
 
-  nvm()      { _wayu_load_nvm; nvm "$@" }
-  node()     { _wayu_run_node_bin node "$@" }
-  npm()      { _wayu_run_node_bin npm "$@" }
-  npx()      { _wayu_run_node_bin npx "$@" }
-  corepack() { _wayu_run_node_bin corepack "$@" }
+  function nvm      { _wayu_load_nvm; \nvm "$@" }
+  function node     { _wayu_run_node_bin node "$@" }
+  function npm      { _wayu_run_node_bin npm "$@" }
+  function npx      { _wayu_run_node_bin npx "$@" }
+  function corepack { _wayu_run_node_bin corepack "$@" }
 
-  _wayu_fast_nvmrc() {
+  function _wayu_fast_nvmrc {
+    emulate -L zsh
     local nvmrc_file=""
     [[ -f ".nvmrc" ]]        && nvmrc_file=".nvmrc"
     [[ -f ".node-version" ]] && nvmrc_file=".node-version"
     [[ -z "$nvmrc_file" ]] && return 1
-    local requested
-    requested="$(<"$nvmrc_file")"
-    requested="${requested#v}"
-    requested="${requested## }"
-    requested="${requested%% }"
-    local match_dir="" node_dir
-    for node_dir in "$NVM_DIR/versions/node/"v${requested}*(N); do
-      [[ -d "$node_dir/bin" ]] && match_dir="$node_dir"
+    local REPLY p nvm_prefix="$NVM_DIR/versions/node/"
+    _wayu_nvm_resolve "$(<"$nvmrc_file")" || return 1
+    local -a new_parts
+    for p in "${(@s/:/)PATH}"; do
+      [[ "$p" == ${nvm_prefix}* ]] && continue
+      new_parts+=("$p")
     done
-    if [[ -n "$match_dir" ]]; then
-      local -a path_parts new_parts
-      path_parts=("${(@s/:/)PATH}")
-      local nvm_prefix="$NVM_DIR/versions/node/" p
-      for p in "${path_parts[@]}"; do
-        [[ "$p" == ${nvm_prefix}* ]] && continue
-        new_parts+=("$p")
-      done
-      export PATH="$match_dir/bin:${(j/:/)new_parts}"
-      return 0
-    fi
-    return 1
+    export PATH="$REPLY:${(j/:/)new_parts}"
+    return 0
   }
 
-  _wayu_chpwd_nvmrc() {
+  function _wayu_chpwd_nvmrc {
     if [[ -f ".nvmrc" ]] || [[ -f ".node-version" ]]; then
-      _wayu_fast_nvmrc || { _wayu_load_nvm; nvm use --silent >/dev/null 2>&1 }
+      _wayu_fast_nvmrc || { _wayu_load_nvm; \nvm use --silent >/dev/null 2>&1 }
     fi
   }
   autoload -Uz add-zsh-hook 2>/dev/null
@@ -1596,22 +1689,52 @@ if [ -d "${NVM_DIR:=$HOME/.nvm}" ]; then export NVM_DIR; _wayu_setup_nvm_lazy; f
 
 // Lazy NVM recipe (bash). Same idea, bash syntax: default node goes on PATH
 // immediately; only `nvm` itself is wrapped (node/npm resolve via PATH).
-RECIPE_NVM_BASH :: `_wayu_setup_nvm_lazy() {
-  local nvm_default_path="$NVM_DIR/alias/default" default_version node_dir
-  if [ -f "$nvm_default_path" ]; then
-    default_version="$(<"$nvm_default_path")"
-    while [ -f "$NVM_DIR/alias/$default_version" ]; do
-      default_version="$(<"$NVM_DIR/alias/$default_version")"
-    done
-    if [ "$default_version" = "node" ]; then
-      node_dir="$(ls -d "$NVM_DIR/versions/node/"v* 2>/dev/null | sort -V | tail -1)"
-      [ -d "$node_dir/bin" ] && export PATH="$node_dir/bin:$PATH"
-    else
-      for node_dir in "$NVM_DIR/versions/node/v${default_version}"*; do
-        [ -d "$node_dir/bin" ] && export PATH="$node_dir/bin:$PATH" && break
-      done
-    fi
+// _wayu_nvm_resolve mirrors the zsh one (see RECIPE_NVM_ZSH) in bash 3.2:
+// no numeric glob sort, so versions are compared component-wise.
+RECIPE_NVM_BASH :: `_wayu_nvm_ver_gt() {
+  local IFS=. i
+  local -a x y
+  read -r -a x <<< "$1"
+  read -r -a y <<< "$2"
+  for i in 0 1 2; do
+    [ "$((10#${x[i]:-0}))" -gt "$((10#${y[i]:-0}))" ] && return 0
+    [ "$((10#${x[i]:-0}))" -lt "$((10#${y[i]:-0}))" ] && return 1
+  done
+  return 1
+}
+_wayu_nvm_resolve() {
+  local spec="${1//[[:space:]]/}" hops=0 any=0 d v best="" best_v=""
+  REPLY=""
+  while [ -n "$spec" ] && [ -f "$NVM_DIR/alias/$spec" ] && [ "$hops" -lt 10 ]; do
+    spec="$(<"$NVM_DIR/alias/$spec")"
+    spec="${spec//[[:space:]]/}"
+    hops=$((hops + 1))
+  done
+  case "$spec" in node|stable) any=1 ;; esac
+  spec="${spec#v}"
+  if [ "$any" = 0 ]; then
+    case "$spec" in ""|.*|*.|*..*|*[!0-9.]*) return 1 ;; esac
   fi
+  for d in "$NVM_DIR"/versions/node/v*; do
+    [ -d "$d/bin" ] || continue
+    v="${d##*/}"
+    v="${v#v}"
+    case "$v" in ""|*[!0-9.]*) continue ;; esac
+    if [ "$any" = 0 ] && [ "$v" != "$spec" ]; then
+      case "$v" in "$spec".*) ;; *) continue ;; esac
+    fi
+    if [ -z "$best_v" ] || _wayu_nvm_ver_gt "$v" "$best_v"; then
+      best_v="$v"
+      best="$d/bin"
+    fi
+  done
+  [ -n "$best" ] || return 1
+  REPLY="$best"
+}
+_wayu_setup_nvm_lazy() {
+  local REPLY
+  _wayu_nvm_resolve default && export PATH="$REPLY:$PATH"
+  return 0
 }
 _wayu_load_nvm() {
   [ -n "${_WAYU_NVM_LOADED-}" ] && return 0
@@ -1625,7 +1748,7 @@ _wayu_load_nvm() {
   [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
   return 0
 }
-nvm() { _wayu_load_nvm; nvm "$@"; }
+function nvm { _wayu_load_nvm; \nvm "$@"; }
 if [ -d "${NVM_DIR:=$HOME/.nvm}" ]; then export NVM_DIR; _wayu_setup_nvm_lazy; fi`
 
 // Lazy Conda recipe (zsh). Conda's own `conda init` block spawns Python at every
@@ -1669,8 +1792,8 @@ RECIPE_CONDA_ZSH :: `_wayu_setup_conda_lazy() {
     fi
   }
 
-  conda()  { _wayu_load_conda; conda "$@" }
-  mamba()  { _wayu_load_conda; mamba "$@" }
+  function conda { _wayu_load_conda; \conda "$@" }
+  function mamba { _wayu_load_conda; \mamba "$@" }
 }
 _wayu_setup_conda_lazy`
 
@@ -1702,8 +1825,8 @@ RECIPE_CONDA_BASH :: `_wayu_setup_conda_lazy() {
     return 0
   }
 
-  conda()  { _wayu_load_conda; conda "$@"; }
-  mamba()  { _wayu_load_conda; mamba "$@"; }
+  function conda { _wayu_load_conda; \conda "$@"; }
+  function mamba { _wayu_load_conda; \mamba "$@"; }
 }
 _wayu_setup_conda_lazy`
 

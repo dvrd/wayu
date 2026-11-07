@@ -66,6 +66,41 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - `--dry-run plugin update` prints "Would update …" and no longer claims
   plugins were updated.
 
+**Generated shell code**
+- `[aliases]` are defined at the end of `core.<ext>`, after plugins, lazy
+  tools, `tools.<ext>` and `extra.<ext>`. Functions in those files can no
+  longer rely on wayu aliases being expanded inside their bodies; an alias
+  named like a wrapper (`npm`, `conda`, a `lazy` hook command) no longer
+  breaks the tool loaders.
+- zsh init works under `NO_BARE_GLOB_QUAL`, `KSH_ARRAYS` and `NO_GLOB`, and
+  with aliases for `ls`/`rm`/`node`/… defined before wayu is sourced.
+- The user-function loop variable `f` is no longer left set in the shell.
+
+**nvm (`[tools] nvm = { kind = "nvm" }`)**
+- The default node is resolved like nvm does: aliases are followed
+  (`lts/iron`, `lts/*`, `v20.18.0` with a leading `v`), the highest matching
+  install wins (`20` → newest 20.x, not the lexicographically last), and a
+  partial version matches whole components (`20.1` → 20.1.x only). Defaults
+  that previously put no node (or an older one) on PATH now pick a different
+  version. `.nvmrc` / `.node-version` (zsh) use the same rules.
+
+**Completions**
+- zsh: when `~/.config/wayu/completions` changed after `~/.zcompdump` was
+  written (e.g. `wayu completions add`), the dump (and its `.zwc`) is
+  deleted and rebuilt with `compinit -u`; otherwise `compinit -C` as before.
+- bash: `completions/*.bash` is sourced too, so `wayu completions generate`
+  (which writes `wayu.bash`) enables wayu's own bash completion.
+- wayu's own zsh/bash/fish completions cover every command (`doctor`,
+  `template`, `hooks`, `reload`, `build`, `function`, aliases like `const`,
+  `fn`, `watch`) and are generated from one table.
+
+**init.<ext>**
+- `init.<ext>` is only updated when it is an unmodified copy of a template an
+  earlier wayu wrote; the old file is backed up first. A file you edited is
+  left alone and wayu prints a warning on stderr (once per edit when stderr
+  is a terminal). To adopt the new template, move it aside and run
+  `wayu init`.
+
 ## 4.4.4
 
 **Lookups and output**

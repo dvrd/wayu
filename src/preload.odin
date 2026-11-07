@@ -112,13 +112,13 @@ source "$WAYU_DATA_DIR/path.zsh"
 
 # === 3. Functions Loading ===
 # Load custom shell functions from the functions directory
-for f in "$WAYU_CONFIG_DIR/functions"/*(N); do
-    if [[ -f "$f" ]]; then source "$f"; fi
-done
+() { emulate -L zsh; typeset -ga _wayu_fn_files; _wayu_fn_files=( "$WAYU_CONFIG_DIR/functions"/*(N-.) ) }
+for _wayu_f in "${_wayu_fn_files[@]}"; do source "$_wayu_f"; done
+unset _wayu_f _wayu_fn_files
 
 # === 4. Completions Setup ===
 # Add custom completions directory to fpath
-fpath=("$WAYU_DATA_DIR/completions" $fpath)
+fpath=("$WAYU_DATA_DIR/completions" "${fpath[@]}")
 
 # Initialize completion system
 autoload -U add-zsh-hook compinit

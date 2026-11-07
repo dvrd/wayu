@@ -152,3 +152,15 @@ test_tools_template_has_examples :: proc(t: ^testing.T) {
 	               strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "NVM"),
 		"TOOLS_TEMPLATE_ZSH should still show an example referencing nvm")
 }
+
+// OKAMI-235: init.<ext> is only rewritten when it matches a template wayu
+// shipped. The templates shipped now must be in that list, so the next
+// template change keeps recognising (and upgrading) today's files.
+@(test)
+test_current_init_templates_are_known :: proc(t: ^testing.T) {
+	for s in ([]wayu.ShellType{.ZSH, .BASH, .FISH}) {
+		testing.expectf(t, wayu.is_known_init_template(wayu.get_init_template(s)),
+			"init template for %v: add its fnv64a hash to KNOWN_INIT_TEMPLATE_HASHES", s)
+	}
+	testing.expect(t, !wayu.is_known_init_template("# Wayu Shell Initialization\nexport MY_CUSTOM=1\n"))
+}

@@ -242,3 +242,71 @@ test_completion_file_operations :: proc(t: ^testing.T) {
 	testing.expect(t, size > 0, "Completion content should not be empty")
 	testing.expect(t, size < 10000, "Completion content should be reasonable size")
 }
+
+// OKAMI-234: wayu's completions are generated from WAYU_COMMAND_SPECS; every
+// dispatchable command must have a row, and every row name must parse to
+// the command it claims (so the table can't drift from the parser).
+@(test)
+test_wayu_command_table_covers_dispatch :: proc(t: ^testing.T) {
+	for c in wayu.Command {
+		if c == .UNKNOWN do continue
+		found := false
+		for spec in wayu.WAYU_COMMAND_SPECS {
+			if spec.command == c { found = true; break }
+		}
+		testing.expectf(t, found, "Command .%v has no row in WAYU_COMMAND_SPECS (no completion)", c)
+	}
+	for spec in wayu.WAYU_COMMAND_SPECS {
+		testing.expect(t, len(spec.names) > 0, "row without names")
+		for name in spec.names {
+			parsed := wayu.parse_args([]string{name})
+			delete(parsed.args)
+			testing.expectf(t, parsed.command == spec.command, "%q parses to %v, table says %v", name, parsed.command, spec.command)
+		}
+	}
+}
+
+// Every command name and action word appears in all three generated scripts.
+@(test)
+test_wayu_completions_list_every_command :: proc(t: ^testing.T) {
+	zsh := wayu.generate_wayu_completion_zsh()
+	defer delete(zsh)
+	bash := wayu.generate_wayu_completion_bash()
+	defer delete(bash)
+	fish := wayu.generate_wayu_completion_fish()
+	defer delete(fish)
+
+	bash_lines := strings.split_lines(bash, context.temp_allocator)
+	bash_top: []string
+	for l in bash_lines {
+		if strings.has_prefix(strings.trim_space(l), `words="path `) {
+			bash_top = strings.fields(strings.trim(strings.trim_space(l)[len(`words=`):], `"`), context.temp_allocator)
+			break
+		}
+	}
+
+	for spec in wayu.WAYU_COMMAND_SPECS {
+		for name in spec.names {
+			testing.expectf(t, strings.contains(zsh, fmt.tprintf("'%s:", name)), "zsh completion misses %q", name)
+			in_bash := false
+			for w in bash_top { if w == name { in_bash = true } }
+			testing.expectf(t, in_bash, "bash completion misses %q", name)
+			testing.expectf(t, strings.contains(fish, fmt.tprintf("-a %s -d", name)), "fish completion misses %q", name)
+		}
+		if len(spec.actions) == 0 do continue
+		case_label := fmt.tprintf("%s) ", strings.join(spec.names, "|", context.temp_allocator))
+		bash_case := ""
+		for l in bash_lines {
+			if strings.has_prefix(strings.trim_space(l), case_label) { bash_case = l; break }
+		}
+		for a in spec.actions {
+			colon := strings.index_byte(a, ':')
+			testing.expectf(t, colon > 0, "action %q of %s needs 'word:description'", a, spec.names[0])
+			if colon <= 0 do continue
+			word := a[:colon]
+			testing.expectf(t, strings.contains(zsh, fmt.tprintf("'%s:", word)), "zsh: %s misses action %q", spec.names[0], word)
+			testing.expectf(t, strings.contains(bash_case, word), "bash: %s misses action %q", spec.names[0], word)
+			testing.expectf(t, strings.contains(fish, fmt.tprintf("-a '%s' -d", word)), "fish: %s misses action %q", spec.names[0], word)
+		}
+	}
+}

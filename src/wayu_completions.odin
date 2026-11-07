@@ -1,6 +1,6 @@
 // wayu_completions.odin - Auto-generate completions for wayu itself
 //
-// This module generates Zsh completion scripts for wayu commands,
+// This module generates zsh, bash and fish completion scripts for wayu,
 // enabling tab-completion for the CLI.
 
 package wayu
@@ -10,154 +10,121 @@ import "core:os"
 import "core:strings"
 import "core:path/filepath"
 
-// Completion script template for Zsh
-WAYU_COMPLETION_TEMPLATE :: `#compdef wayu
-
-# wayu completion script - Auto-generated
-# Regenerate with: wayu completions generate
-
-_wayu_commands() {
-    local commands
-    commands=(
-        'path:Manage PATH entries'
-        'alias:Manage shell aliases'
-        'constants:Manage environment constants'
-        'search:Fuzzy search across all configs'
-        'find:Fuzzy search alias'
-        'f:Fuzzy search short alias'
-        'completions:Manage Zsh completion scripts'
-        'backup:Manage configuration backups'
-        'plugin:Manage shell plugins'
-        'init:Initialize wayu configuration'
-        'migrate:Migrate between shells'
-        'config:Open extra config in EDITOR'
-        'function:Manage custom shell functions'
-        'export:Generate turbo export file'
-        'toml:TOML configuration management'
-        'version:Show version'
-        'help:Show help'
-    )
-    _describe -t commands 'wayu command' commands
+// One row per top-level command. wayu's own zsh, bash and fish completions
+// are all generated from this table, so they can't drift apart (OKAMI-234:
+// the three hand-written scripts each missed different commands).
+// `names[0]` is the canonical name; the rest are parser aliases. `actions`
+// are "word:description" (doctor lists its flags). tests/unit/
+// test_completions.odin checks every dispatchable Command has a row, every
+// name parses to that Command, and every name appears in all three scripts.
+WayuCommandSpec :: struct {
+	command: Command,
+	names:   []string,
+	desc:    string,
+	actions: []string,
 }
 
-_wayu_function_actions() {
-    local actions
-    actions=(
-        'add:Create/edit a function in $EDITOR'
-        'edit:Edit an existing function'
-        'list:List functions'
-        'ls:List functions'
-        'remove:Delete a function'
-        'rm:Delete a function'
-        'help:Show help'
-    )
-    _describe -t actions 'function action' actions
+WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
+	{.PATH, {"path"}, "Manage PATH entries", {
+		"add:Add a PATH entry", "remove:Remove a PATH entry", "rm:Remove a PATH entry",
+		"list:List PATH entries", "ls:List PATH entries", "get:Get a PATH entry",
+		"clean:Remove missing directories", "dedup:Remove duplicates", "help:Show help"}},
+	{.ALIAS, {"alias"}, "Manage shell aliases", {
+		"add:Add an alias", "remove:Remove an alias", "rm:Remove an alias",
+		"list:List aliases", "ls:List aliases", "get:Get alias value", "help:Show help"}},
+	{.CONSTANTS, {"constants", "const", "env"}, "Manage environment constants", {
+		"add:Add a constant", "remove:Remove a constant", "rm:Remove a constant",
+		"list:List constants", "ls:List constants", "get:Get constant value", "help:Show help"}},
+	{.SEARCH, {"search", "find", "f"}, "Fuzzy search across all configs", {}},
+	{.COMPLETIONS, {"completions"}, "Manage shell completion scripts", {
+		"add:Add a completion script", "remove:Remove a completion", "rm:Remove a completion",
+		"list:List completions", "ls:List completions", "generate:Generate wayu's own completions",
+		"bash:Print bash completion for wayu", "fish:Print fish completion for wayu",
+		"zsh:Print zsh completion for wayu", "help:Show help"}},
+	{.BACKUP, {"backup"}, "Manage configuration backups", {
+		"list:List backups", "ls:List backups", "restore:Restore from backup",
+		"remove:Clean up old backups", "rm:Clean up old backups", "help:Show help"}},
+	{.PLUGIN, {"plugin"}, "Manage shell plugins", {
+		"add:Install a plugin", "remove:Remove a plugin", "rm:Remove a plugin",
+		"list:List installed plugins", "ls:List installed plugins", "get:Show plugin info",
+		"search:Browse popular plugins", "enable:Enable a plugin", "disable:Disable a plugin",
+		"priority:Set plugin load priority", "check:Check for updates", "update:Update plugins",
+		"help:Show help"}},
+	{.INIT, {"init"}, "Initialize wayu configuration", {"help:Show help"}},
+	{.MIGRATE, {"migrate"}, "Migrate shell config to wayu.toml", {"help:Show help"}},
+	{.CONFIG, {"config"}, "Manage configuration files", {
+		"edit:Open extra config in $EDITOR", "extend:Append to extra config",
+		"scan:Detect shell config", "help:Show help"}},
+	{.BUILD, {"build"}, "Compile wayu.toml into shell init files", {
+		"eval:Regenerate and print shell code", "turbo:Generate turbo file",
+		"profile:Profile startup", "help:Show help"}},
+	{.EXPORT, {"export"}, "Generate turbo export file", {
+		"turbo:Generate turbo file", "eval:Output for eval", "list:Show formats",
+		"ls:Show formats", "help:Show help"}},
+	{.TOML, {"toml"}, "TOML configuration management", {
+		"validate:Validate wayu.toml", "convert:Convert to TOML", "show:Show config",
+		"keys:List keys", "help:Show help"}},
+	{.DOCTOR, {"doctor"}, "Health check and diagnostics", {
+		"--fix:Repair what can be repaired", "--json:Machine-readable output",
+		"--profile:Profile shell startup", "--optimize:Suggest optimizations", "--help:Show help"}},
+	{.TEMPLATE, {"template"}, "Configuration presets", {
+		"list:List templates", "ls:List templates", "apply:Apply a template", "help:Show help"}},
+	{.HOOKS, {"hooks"}, "Pre/post action hooks", {
+		"list:List hooks", "ls:List hooks", "edit:Edit hooks", "help:Show help"}},
+	{.FUNCTION, {"function", "functions", "func", "fn"}, "Manage custom shell functions", {
+		"add:Create a function in $EDITOR", "edit:Edit a function", "new:Create a function",
+		"list:List functions", "ls:List functions", "remove:Delete a function",
+		"rm:Delete a function", "delete:Delete a function", "help:Show help"}},
+	{.RELOAD, {"reload", "watch", "hot-reload"}, "Watch config files and regenerate init files", {}},
+	{.VERSION, {"version"}, "Show version", {}},
+	{.HELP, {"help"}, "Show help", {}},
 }
 
-_wayu_path_actions() {
-    local actions
-    actions=(
-        'add:Add a PATH entry'
-        'remove:Remove a PATH entry'
-        'rm:Remove path entry'
-        'list:List PATH entries'
-        'ls:List path entries'
-        'get:Get PATH by name'
-        'clean:Remove missing directories'
-        'dedup:Remove duplicates'
-        'help:Show help'
-    )
-    _describe -t actions 'path action' actions
+// Word before the first ':' of an "action:description" entry.
+@(private = "file")
+completion_word :: proc(entry: string) -> string {
+	if i := strings.index_byte(entry, ':'); i >= 0 { return entry[:i] }
+	return entry
 }
 
-_wayu_alias_actions() {
-    local actions
-    actions=(
-        'add:Add an alias'
-        'remove:Remove an alias'
-        'rm:Remove alias'
-        'list:List aliases'
-        'ls:List alias'
-        'get:Get alias value'
-        'help:Show help'
-    )
-    _describe -t actions 'alias action' actions
+@(private = "file")
+completion_desc :: proc(entry: string) -> string {
+	if i := strings.index_byte(entry, ':'); i >= 0 { return entry[i+1:] }
+	return ""
 }
 
-_wayu_constants_actions() {
-    local actions
-    actions=(
-        'add:Add a constant'
-        'remove:Remove a constant'
-        'rm:Remove constant'
-        'list:List constants'
-        'ls:List constants'
-        'get:Get constant value'
-        'help:Show help'
-    )
-    _describe -t actions 'constants action' actions
-}
+// zsh completion for wayu (an fpath `_wayu` file). Allocated; caller deletes.
+generate_wayu_completion_zsh :: proc(allocator := context.allocator) -> string {
+	b := strings.builder_make(allocator)
+	q :: proc(s: string) -> string { return shell_single_quote(s, context.temp_allocator) }
 
-_wayu_plugin_actions() {
-    local actions
-    actions=(
-        'add:Install a plugin'
-        'remove:Remove a plugin'
-        'list:List installed plugins'
-        'search:Search registry'
-        'enable:Enable plugin'
-        'disable:Disable plugin'
-        'priority:Set plugin priority'
-        'check:Check for updates'
-        'update:Update plugins'
-        'help:Show help'
-    )
-    _describe -t actions 'plugin action' actions
-}
+	strings.write_string(&b, "#compdef wayu\n\n")
+	strings.write_string(&b, "# wayu completion script - Auto-generated\n")
+	strings.write_string(&b, "# Regenerate with: wayu completions generate\n\n")
 
-_wayu_backup_actions() {
-    local actions
-    actions=(
-        'list:List backups'
-        'restore:Restore from backup'
-        'help:Show help'
-    )
-    _describe -t actions 'backup action' actions
-}
+	strings.write_string(&b, "_wayu_commands() {\n    local -a commands\n    commands=(\n")
+	for spec in WAYU_COMMAND_SPECS {
+		for name in spec.names {
+			fmt.sbprintf(&b, "        %s\n", q(fmt.tprintf("%s:%s", name, spec.desc)))
+		}
+	}
+	strings.write_string(&b, "    )\n    _describe -t commands 'wayu command' commands\n}\n\n")
 
-_wayu_completions_actions() {
-    local actions
-    actions=(
-        'add:Add completion script'
-        'list:List completions'
-        'help:Show help'
-    )
-    _describe -t actions 'completions action' actions
-}
+	strings.write_string(&b, "_wayu_actions() {\n    local -a actions\n    case \"$1\" in\n")
+	for spec in WAYU_COMMAND_SPECS {
+		if len(spec.actions) == 0 { continue }
+		strings.write_string(&b, "        ")
+		strings.write_string(&b, strings.join(spec.names, "|", context.temp_allocator))
+		strings.write_string(&b, ") actions=(")
+		for a in spec.actions {
+			strings.write_byte(&b, ' ')
+			strings.write_string(&b, q(a))
+		}
+		strings.write_string(&b, " ) ;;\n")
+	}
+	strings.write_string(&b, "    esac\n    (( ${#actions} )) && _describe -t actions \"$1 action\" actions\n}\n\n")
 
-_wayu_export_actions() {
-    local actions
-    actions=(
-        'turbo:Generate turbo file'
-        'eval:Output for eval'
-        'list:Show formats'
-        'help:Show help'
-    )
-    _describe -t actions 'export action' actions
-}
-
-_wayu_toml_actions() {
-    local actions
-    actions=(
-        'validate:Validate TOML config'
-        'convert:Convert to TOML'
-        'apply:Apply TOML config'
-        'help:Show help'
-    )
-    _describe -t actions 'toml action' actions
-}
-
-# Main completion function
+	strings.write_string(&b, `# Main completion function
 _wayu() {
     local curcontext="$curcontext" state line
     typeset -A opt_args
@@ -167,25 +134,16 @@ _wayu() {
         '(-v --version)'{-v,--version}'[Show version]' \
         '(-n --dry-run)'{-n,--dry-run}'[Preview changes]' \
         '(-y --yes)'{-y,--yes}'[Skip confirmation]' \
+        '--no-color[Disable colored output]' \
         '--tui[Launch TUI mode]' \
-        '--shell[Specify shell]:shell:(zsh bash)' \
+        '--shell[Specify shell]:shell:(zsh bash fish)' \
         '1: :_wayu_commands' \
         '2: :->action' \
         '*:: :->args'
 
     case "$state" in
         action)
-            case "$line[1]" in
-                path) _wayu_path_actions ;;
-                alias) _wayu_alias_actions ;;
-                constants|const) _wayu_constants_actions ;;
-                plugin) _wayu_plugin_actions ;;
-                backup) _wayu_backup_actions ;;
-                completions) _wayu_completions_actions ;;
-                export) _wayu_export_actions ;;
-                toml) _wayu_toml_actions ;;
-                function|func|fn) _wayu_function_actions ;;
-            esac
+            _wayu_actions "$line[1]"
             ;;
         args)
             case "$line[1]" in
@@ -213,129 +171,98 @@ if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
 else
     compdef _wayu wayu
 fi
-`
+`)
+	return strings.to_string(b)
+}
 
-// Fish completion template
-WAYU_COMPLETION_FISH :: `#!/usr/bin/env fish
+// bash completion for wayu (sourced by core.bash from completions/wayu.bash).
+generate_wayu_completion_bash :: proc(allocator := context.allocator) -> string {
+	b := strings.builder_make(allocator)
+	strings.write_string(&b, "#!/usr/bin/env bash\n\n")
+	strings.write_string(&b, "# wayu bash completion script - Auto-generated\n")
+	strings.write_string(&b, "# Regenerate with: wayu completions generate\n\n")
+	strings.write_string(&b, "_wayu_completion() {\n")
+	strings.write_string(&b, "    local cur=\"${COMP_WORDS[COMP_CWORD]}\" words=\"\"\n")
+	strings.write_string(&b, "    COMPREPLY=()\n")
+	strings.write_string(&b, "    if [ \"$COMP_CWORD\" -eq 1 ]; then\n        words=\"")
+	first := true
+	for spec in WAYU_COMMAND_SPECS {
+		for name in spec.names {
+			if !first { strings.write_byte(&b, ' ') }
+			strings.write_string(&b, name)
+			first = false
+		}
+	}
+	strings.write_string(&b, " --help --version --dry-run --yes --no-color --tui --shell\"\n")
+	strings.write_string(&b, "    elif [ \"$COMP_CWORD\" -eq 2 ]; then\n        case \"${COMP_WORDS[1]}\" in\n")
+	for spec in WAYU_COMMAND_SPECS {
+		if len(spec.actions) == 0 { continue }
+		strings.write_string(&b, "            ")
+		strings.write_string(&b, strings.join(spec.names, "|", context.temp_allocator))
+		strings.write_string(&b, ") words=\"")
+		for a, i in spec.actions {
+			if i > 0 { strings.write_byte(&b, ' ') }
+			strings.write_string(&b, completion_word(a))
+		}
+		strings.write_string(&b, "\" ;;\n")
+	}
+	strings.write_string(&b, `        esac
+    else
+        case "${COMP_WORDS[1]} ${COMP_WORDS[2]}" in
+            "path add") COMPREPLY=($(compgen -d -- "$cur")); return 0 ;;
+            "completions add") COMPREPLY=($(compgen -f -- "$cur")); return 0 ;;
+        esac
+    fi
+    COMPREPLY=($(compgen -W "$words" -- "$cur"))
+}
 
-# wayu fish completion script - Auto-generated
-# Regenerate with: wayu completions fish
+complete -F _wayu_completion wayu
+`)
+	return strings.to_string(b)
+}
 
-# Main commands
-set -l commands path alias constants search find f completions backup plugin init migrate config export toml version help build scan function
+// fish completion for wayu (completions/wayu.fish).
+generate_wayu_completion_fish :: proc(allocator := context.allocator) -> string {
+	b := strings.builder_make(allocator)
+	strings.write_string(&b, "#!/usr/bin/env fish\n\n")
+	strings.write_string(&b, "# wayu fish completion script - Auto-generated\n")
+	strings.write_string(&b, "# Regenerate with: wayu completions generate\n\n")
 
-# Top-level completion (only when no subcommand has been entered yet)
-complete -c wayu -f
-complete -c wayu -n "not __fish_seen_subcommand_from $commands" -a "$commands" -d "Commands"
-
-# Path command completions
-complete -c wayu -n "__fish_seen_subcommand_from path" -f
-complete -c wayu -n "__fish_seen_subcommand_from path" -a "add remove rm list ls get clean dedup help"
-
-# Alias command completions
-complete -c wayu -n "__fish_seen_subcommand_from alias" -f
-complete -c wayu -n "__fish_seen_subcommand_from alias" -a "add remove rm list ls get help"
-
-# Constants command completions
-complete -c wayu -n "__fish_seen_subcommand_from constants" -f
-complete -c wayu -n "__fish_seen_subcommand_from constants" -a "add remove rm list ls get help"
-
-# Completions command
-complete -c wayu -n "__fish_seen_subcommand_from completions" -f
-complete -c wayu -n "__fish_seen_subcommand_from completions" -a "list ls add bash fish zsh help"
-
-# Plugin command completions
-complete -c wayu -n "__fish_seen_subcommand_from plugin" -f
-complete -c wayu -n "__fish_seen_subcommand_from plugin" -a "add remove list search enable disable priority check update help"
-
-# Build command completions
-complete -c wayu -n "__fish_seen_subcommand_from build" -f
-complete -c wayu -n "__fish_seen_subcommand_from build" -a "profile turbo eval help"
-
-# Config command completions
-complete -c wayu -n "__fish_seen_subcommand_from config" -f
-complete -c wayu -n "__fish_seen_subcommand_from config" -a "scan edit extend help"
-
-# Export command completions
-complete -c wayu -n "__fish_seen_subcommand_from export" -f
-complete -c wayu -n "__fish_seen_subcommand_from export" -a "turbo eval list help"
-
-# Backup command completions
-complete -c wayu -n "__fish_seen_subcommand_from backup" -f
-complete -c wayu -n "__fish_seen_subcommand_from backup" -a "list restore help"
-
-# Toml command completions
-complete -c wayu -n "__fish_seen_subcommand_from toml" -f
-complete -c wayu -n "__fish_seen_subcommand_from toml" -a "validate help"
-
-# Migrate command completions
-complete -c wayu -n "__fish_seen_subcommand_from migrate" -f
-complete -c wayu -n "__fish_seen_subcommand_from migrate" -a "help"
-
+	strings.write_string(&b, "set -l commands")
+	for spec in WAYU_COMMAND_SPECS {
+		for name in spec.names { fmt.sbprintf(&b, " %s", name) }
+	}
+	strings.write_string(&b, "\n\n# Top-level completion (only when no subcommand has been entered yet)\n")
+	strings.write_string(&b, "complete -c wayu -f\n")
+	for spec in WAYU_COMMAND_SPECS {
+		for name in spec.names {
+			fmt.sbprintf(&b, "complete -c wayu -n \"not __fish_seen_subcommand_from $commands\" -a %s -d %s\n",
+				name, escape_fish_string(spec.desc, context.temp_allocator))
+		}
+	}
+	for spec in WAYU_COMMAND_SPECS {
+		if len(spec.actions) == 0 { continue }
+		cond := fmt.tprintf("__fish_seen_subcommand_from %s", strings.join(spec.names, " ", context.temp_allocator))
+		fmt.sbprintf(&b, "\n# %s\n", spec.names[0])
+		for a in spec.actions {
+			fmt.sbprintf(&b, "complete -c wayu -n %s -a %s -d %s\n",
+				escape_fish_string(cond, context.temp_allocator),
+				escape_fish_string(completion_word(a), context.temp_allocator),
+				escape_fish_string(completion_desc(a), context.temp_allocator))
+		}
+	}
+	strings.write_string(&b, `
 # Global flags
 complete -c wayu -s h -l help -d "Show help"
 complete -c wayu -s v -l version -d "Show version"
-complete -c wayu -l dry-run -d "Preview changes without writing"
+complete -c wayu -s n -l dry-run -d "Preview changes without writing"
 complete -c wayu -s y -l yes -d "Skip confirmation prompts"
 complete -c wayu -l tui -d "Launch interactive TUI mode"
 complete -c wayu -l shell -x -a "zsh bash fish" -d "Specify shell type"
 complete -c wayu -l no-color -d "Disable colored output"
-`
-
-// Bash completion template
-WAYU_COMPLETION_BASH :: `#!/usr/bin/env bash
-
-# wayu bash completion script - Auto-generated
-# Regenerate with: wayu completions bash
-
-_wayu_completion() {
-    local cur prev words cword
-    COMPREPLY=()
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    prev="${COMP_WORDS[COMP_CWORD-1]}"
-
-    # Main commands
-    local commands="path alias constants search find f completions backup plugin init migrate config export toml version help build scan"
-
-    # If we are completing the first word, list main commands
-    if [[ $COMP_CWORD -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "${commands}" -- "${cur}"))
-        return
-    fi
-
-    # Handle subcommands based on the main command
-    case "${COMP_WORDS[1]}" in
-        path|alias|constants|plugin|backup)
-            local actions="add remove rm list ls get help"
-            COMPREPLY=($(compgen -W "${actions}" -- "${cur}"))
-            ;;
-        completions)
-            local actions="list ls add bash fish zsh help"
-            COMPREPLY=($(compgen -W "${actions}" -- "${cur}"))
-            ;;
-        export)
-            local actions="turbo eval list help"
-            COMPREPLY=($(compgen -W "${actions}" -- "${cur}"))
-            ;;
-        toml)
-            local actions="validate help"
-            COMPREPLY=($(compgen -W "${actions}" -- "${cur}"))
-            ;;
-        build)
-            local actions="profile turbo eval help"
-            COMPREPLY=($(compgen -W "${actions}" -- "${cur}"))
-            ;;
-        config|scan)
-            local actions="fix edit extend help"
-            COMPREPLY=($(compgen -W "${actions}" -- "${cur}"))
-            ;;
-        *)
-            ;;
-    esac
+`)
+	return strings.to_string(b)
 }
-
-complete -F _wayu_completion wayu
-`
 
 // Generate completions for wayu itself
 handle_completions_generate :: proc() {
@@ -359,7 +286,9 @@ handle_completions_generate :: proc() {
 	completion_path := fmt.aprintf("%s/_wayu", completions_dir)
 	defer delete(completion_path)
 
-	write_ok := safe_write_file(completion_path, transmute([]byte)(string(WAYU_COMPLETION_TEMPLATE)))
+	zsh_script := generate_wayu_completion_zsh()
+	defer delete(zsh_script)
+	write_ok := safe_write_file(completion_path, transmute([]byte)zsh_script)
 	if !write_ok {
 		print_error("Failed to write completion file")
 		os.exit(EXIT_IOERR)
@@ -371,7 +300,9 @@ handle_completions_generate :: proc() {
 	bash_completion_path := fmt.aprintf("%s/wayu.bash", completions_dir)
 	defer delete(bash_completion_path)
 
-	write_ok = safe_write_file(bash_completion_path, transmute([]byte)(string(WAYU_COMPLETION_BASH)))
+	bash_script := generate_wayu_completion_bash()
+	defer delete(bash_script)
+	write_ok = safe_write_file(bash_completion_path, transmute([]byte)bash_script)
 	if !write_ok {
 		print_error("Failed to write bash completion file")
 		os.exit(EXIT_IOERR)
@@ -383,7 +314,9 @@ handle_completions_generate :: proc() {
 	fish_completion_path := fmt.aprintf("%s/wayu.fish", completions_dir)
 	defer delete(fish_completion_path)
 
-	write_ok = safe_write_file(fish_completion_path, transmute([]byte)(string(WAYU_COMPLETION_FISH)))
+	fish_script := generate_wayu_completion_fish()
+	defer delete(fish_script)
+	write_ok = safe_write_file(fish_completion_path, transmute([]byte)fish_script)
 	if !write_ok {
 		print_error("Failed to write fish completion file")
 		os.exit(EXIT_IOERR)
@@ -417,17 +350,23 @@ handle_completions_generate :: proc() {
 
 // Generate bash completions for wayu
 handle_completions_bash :: proc() {
-	fmt.println(WAYU_COMPLETION_BASH)
+	s := generate_wayu_completion_bash()
+	defer delete(s)
+	fmt.print(s)
 }
 
 // Generate fish completions for wayu
 handle_completions_fish :: proc() {
-	fmt.println(WAYU_COMPLETION_FISH)
+	s := generate_wayu_completion_fish()
+	defer delete(s)
+	fmt.print(s)
 }
 
 // Generate zsh completions for wayu
 handle_completions_zsh :: proc() {
-	fmt.println(WAYU_COMPLETION_TEMPLATE)
+	s := generate_wayu_completion_zsh()
+	defer delete(s)
+	fmt.print(s)
 }
 
 // Extended completions handler with generate action.
