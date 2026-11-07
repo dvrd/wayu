@@ -37,6 +37,10 @@ class InitIntegrationTest
       test_path_sync_status_and_nounset
       test_path_sync_managed_dirs
       test_regen_covers_all_initialized_shells
+      test_paths_expanded_in_shell
+      test_fish_paths_expanded_in_shell
+      test_hand_edits_reach_open_shells
+      test_legacy_path_file_not_resurrected
     ensure
       teardown_test_env
     end
@@ -358,7 +362,7 @@ class InitIntegrationTest
   # init + core + lazy; [paths] keep file order (not alphabetical).
   def test_core_wiring(shell)
     print "Test: #{shell} core sources plugins, tools/extra once, PATH in file order... "
-    home, cfg, _ = generate_tricky(shell)
+    home, cfg, env = generate_tricky(shell)
     core = File.read("#{cfg}/core.#{shell}")
     all = %w[init core lazy].map { |b| File.exist?("#{cfg}/#{b}.#{shell}") ? File.read("#{cfg}/#{b}.#{shell}") : '' }.join("\n")
     plugins_ok = core.include?("#{cfg}/plugins.#{shell}\" ] && source")
@@ -368,11 +372,13 @@ class InitIntegrationTest
     # fast path; count only the fast path + core + lazy.
     init_fast = File.read("#{cfg}/init.#{shell}").split('# === Legacy fallback').first
     fast_extra = init_fast.scan(/source "[^"]*(extra|tools)\.#{shell}"/).size
-    sync = File.exist?("#{cfg}/path_sync.#{shell}") ? File.read("#{cfg}/path_sync.#{shell}") : ''
-    path_line = sync.lines.find { |l| l.start_with?('_wayu_paths_apply ') }.to_s
-    order_ok = path_line.index("#{home}/pz").to_i < path_line.index("#{home}/pa").to_i &&
-               path_line.index("#{home}/pa").to_i < path_line.index("#{home}/p m").to_i &&
-               !path_line.include?('nonexistent')
+    # [paths] values are expanded by the shell: check the resulting PATH.
+    out, = Open3.capture3(env.merge('PATH' => '/usr/bin:/bin'), shell, '-c',
+                          ". '#{cfg}/core.#{shell}' >/dev/null 2>&1; echo \"$PATH\"")
+    entries = out.strip.split(":").select { |e| e.start_with?(home) || e.include?("nonexistent") }
+    path_line = entries.join(':')
+    order_ok = entries[0, 3] == ["#{home}/pz", "#{home}/pa", "#{home}/p m"] &&
+               entries.none? { |e| e.include?('nonexistent') }
     zsh_only_leak = shell == 'bash' && (core.include?('compinit') || core.include?('add-zsh-hook') || core.include?('helpers.zsh') || core.include?('lazy.zsh'))
     if plugins_ok && fast_extra == 0 && extra_count == 2 && tools_count == 2 && order_ok && !zsh_only_leak
       puts "✓"; @passed += 1
@@ -448,7 +454,7 @@ class InitIntegrationTest
   # commands that run after it (git-prompt, starship, custom PS1 functions).
   # OKAMI-210: init + hook must work under `set -u` / `setopt nounset`.
   def test_path_sync_status_and_nounset
-    { '/bin/bash' => 'bash', 'zsh' => 'zsh' }.each do |bin, sh|
+    { '/bin/bash' => 'bash', '/bin/zsh' => 'zsh' }.each do |bin, sh|
       print "Test: path sync keeps $? and works under nounset (#{bin})... "
       home, env = sync_home("nounset_#{sh}", [sh], %w[d1 d2])
       Open3.capture3(env, @wayu_bin, '--shell', sh, 'path', 'add', "#{home}/d1")
@@ -481,7 +487,7 @@ class InitIntegrationTest
   # open shell lands where a new shell would put it (after the previous
   # [paths] entry), not in front of higher-priority entries.
   def test_path_sync_managed_dirs
-    { '/bin/bash' => 'bash', 'zsh' => 'zsh' }.each do |bin, sh|
+    { '/bin/bash' => 'bash', '/bin/zsh' => 'zsh' }.each do |bin, sh|
       print "Test: path sync keeps system dirs + [paths] order (#{bin})... "
       home, env = sync_home("managed_#{sh}", [sh], %w[a b c s])
       File.write("#{home}/.config/wayu/wayu.toml",
@@ -530,6 +536,113 @@ class InitIntegrationTest
       puts "✓"; @passed += 1
     else
       puts "✗"; puts "  out=#{out.strip} err=#{err.strip[0, 300]} bash_alias=#{core_bash.include?('alias zzq=')} fish=#{core_fish.include?('zzq')}/#{core_fish.include?('d2')}"; @failed += 1
+    end
+  end
+
+  # OKAMI-213 (GEN-18): [paths] values are expanded by the shell, after [env]:
+  # `$GOPATH/bin` uses [env] GOPATH, an unset var drops the entry (no bare
+  # "/bin"), and a dir created after `wayu build` shows up in new shells.
+  def test_paths_expanded_in_shell
+    { '/bin/bash' => 'bash', '/bin/zsh' => 'zsh' }.each do |bin, sh|
+      print "Test: [paths] expanded in-shell after [env] (#{bin})... "
+      home, env = sync_home("inshell_#{sh}", [sh], %w[go/bin])
+      File.write("#{home}/.config/wayu/wayu.toml", <<~TOML)
+        [env]
+        GOPATH = "$HOME/go"
+
+        [paths]
+        gobin = "$GOPATH/bin"
+        cargo = "${NO_SUCH_WAYU_VAR}/bin"
+        later = "~/later"
+      TOML
+      _, _, st = Open3.capture3(env, @wayu_bin, '--shell', sh, 'build')
+      probe = %(. "$HOME/.config/wayu/core.#{sh}" >/dev/null 2>&1; echo "$PATH")
+      first, = Open3.capture3(env.merge('PATH' => '/usr/bin'), bin, '-c', probe)
+      FileUtils.mkdir_p("#{home}/later")
+      second, = Open3.capture3(env.merge('PATH' => '/usr/bin'), bin, '-c', probe)
+      a = first.strip.split(':')
+      b = second.strip.split(':')
+      if st.success? && a == ["#{home}/go/bin", '/usr/bin'] && b == ["#{home}/go/bin", "#{home}/later", '/usr/bin']
+        puts "✓"; @passed += 1
+      else
+        puts "✗"; puts "  exit=#{st.exitstatus} first=#{a.inspect} second=#{b.inspect}"; @failed += 1
+      end
+    end
+  end
+
+  # Same contract for core.fish (expanded by fish, guarded per variable).
+  def test_fish_paths_expanded_in_shell
+    print "Test: [paths] expanded in-shell after [env] (fish)... "
+    fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
+    unless fish
+      puts "skipped (fish not installed)"; return
+    end
+    home, env = sync_home('inshell_fish', ['fish'], %w[go/bin it's])
+    File.write("#{home}/.config/wayu/wayu.toml", <<~TOML)
+      [env]
+      GOPATH = "$HOME/go"
+
+      [paths]
+      gobin = "$GOPATH/bin"
+      cargo = "${NO_SUCH_WAYU_VAR}/bin"
+      quote = "~/it's"
+    TOML
+    Open3.capture3(env, @wayu_bin, '--shell', 'fish', 'build')
+    out, err, = Open3.capture3(env.merge('PATH' => '/usr/bin'), fish, '--no-config', '-c',
+                               "source $HOME/.config/wayu/core.fish; string join : $PATH")
+    if out.strip.split(':') == ["#{home}/go/bin", "#{home}/it's", '/usr/bin']
+      puts "✓"; @passed += 1
+    else
+      puts "✗"; puts "  PATH=#{out.strip} err=#{err.strip[0, 300]}"; @failed += 1
+    end
+  end
+
+  # OKAMI-213 (CFG-13): hand edits of [paths] reach path_sync via `wayu build`
+  # and `wayu config edit`, and reach an open shell at its next prompt even
+  # without either (the hook regenerates when wayu.toml is newer).
+  def test_hand_edits_reach_open_shells
+    { '/bin/bash' => 'bash', '/bin/zsh' => 'zsh' }.each do |bin, sh|
+      print "Test: hand edits of [paths] reach open shells (#{bin})... "
+      home, env = sync_home("hand_#{sh}", [sh], %w[d1 d2 d3 d4])
+      Open3.capture3(env, @wayu_bin, '--shell', sh, 'path', 'add', "#{home}/d1")
+      toml = "#{home}/.config/wayu/wayu.toml"
+      editor = "#{home}/editor.sh"
+      File.write(editor, "#!/bin/sh\nprintf 'd3 = \"%s/d3\"\\n' \"$HOME\" >> \"$1\"\n")
+      File.chmod(0o755, editor)
+      script = <<~SH
+        . "$HOME/.config/wayu/core.#{sh}"
+        has() { case ":$PATH:" in *":$HOME/$1:"*) echo y ;; *) echo n ;; esac; }
+        sleep 1; printf 'd2 = "%s/d2"\\n' "$HOME" >> "$TOML"
+        "$W" --shell #{sh} build >/dev/null 2>&1; _wayu_paths_sync; echo "build=$(has d2)"
+        sleep 1; EDITOR="$ED" "$W" --shell #{sh} config edit >/dev/null 2>&1; _wayu_paths_sync; echo "edit=$(has d3)"
+        sleep 1; printf 'd4 = "%s/d4"\\n' "$HOME" >> "$TOML"
+        PATH="$WDIR:$PATH"; _wayu_paths_sync; echo "hook=$(has d4)"
+      SH
+      extra = { 'TOML' => toml, 'ED' => editor, 'WDIR' => File.dirname(@wayu_bin) }
+      out, err, = Open3.capture3(env.merge(extra), bin, '-c', script)
+      if out.lines.map(&:strip) == %w[build=y edit=y hook=y]
+        puts "✓"; @passed += 1
+      else
+        puts "✗"; puts "  out=#{out.lines.map(&:strip).inspect} err=#{err.strip[0, 300]}"; @failed += 1
+      end
+    end
+  end
+
+  # OKAMI-213 (GEN-20): once wayu.toml has a [paths] table, removing its last
+  # entry must not resurrect the legacy path.<ext> entries.
+  def test_legacy_path_file_not_resurrected
+    print "Test: removing last [paths] entry doesn't resurrect legacy path.zsh... "
+    home, env = sync_home('legacy', ['zsh'], %w[old new])
+    cfg = "#{home}/.config/wayu"
+    File.write("#{cfg}/path.zsh", "export PATH=\"$HOME/old:$PATH\"\n")
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'add', "#{home}/new")
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'rm', "#{home}/new", '--yes')
+    out, = Open3.capture3(env, '/bin/zsh', '-fc', ". '#{cfg}/core.zsh' >/dev/null 2>&1; echo \"$PATH\"")
+    entries = out.strip.split(':')
+    if !entries.include?("#{home}/old") && !entries.include?("#{home}/new")
+      puts "✓"; @passed += 1
+    else
+      puts "✗"; puts "  PATH=#{out.strip}"; @failed += 1
     end
   end
 

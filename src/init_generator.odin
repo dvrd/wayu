@@ -3,6 +3,7 @@ package wayu
 import "core:c/libc"
 import "core:fmt"
 import "core:hash"
+import "core:mem"
 import "core:mem/virtual"
 import "core:os"
 import "core:slice"
@@ -11,7 +12,8 @@ import "core:strings"
 // instead of silently swallowing the error.
 @(private = "file")
 write_init_file :: proc(path, content: string) {
-	if os.write_entire_file(path, transmute([]byte)content) != nil {
+	// Atomic: a prompt hook may regenerate while another shell sources it.
+	if !write_file_atomic(path, content) {
 		print_warning("Failed to write %s", path)
 	}
 }
@@ -151,6 +153,12 @@ shells_to_generate :: proc() -> (out: [4]ShellType, n: int) {
 // single native core.fish; the core/lazy/login/helpers split is zsh/bash only.
 @(private = "file")
 generate_runtime_files_for_active_shell :: proc() -> (plugins_ok: bool) {
+	// Generators use the temp arena for quoting; roll it back per shell so
+	// regenerating several shells doesn't multiply temp usage.
+	has_arena := wayu.temp_arena != nil
+	arena_mark: mem.Arena_Temp_Memory
+	if has_arena { arena_mark = mem.begin_arena_temp_memory(wayu.temp_arena) }
+	defer if has_arena { mem.end_arena_temp_memory(arena_mark) }
 	if wayu.shell == .FISH {
 		generate_core_init_fish()
 	} else {
@@ -358,6 +366,15 @@ emit_functions_loader :: proc(b: ^strings.Builder) {
 // fork) and re-sources the file only when it changed, so `wayu path add/rm`
 // and TUI edits reach already-open shells at the next prompt.
 //
+// Hand edits of wayu.toml: the hook also compares mtimes (`-nt`, a builtin
+// test, no fork). When wayu.toml is newer than path_sync it runs
+// `command wayu build` once (regenerating every initialized shell's files),
+// so a hand-edited [paths] reaches open shells at their next prompt too.
+// If that regeneration does not refresh path_sync (wayu not on PATH, write
+// error) the hook stops retrying for that shell (_WAYU_PATHS_REGEN=0).
+// Only [paths] is live-synced; [env]/[aliases]/[tools] changes apply to new
+// shells (or `source` init again).
+//
 // _wayu_paths_apply <sig> <dir>...:
 //   dirs that are empty, contain ':' / a newline, or are not directories are
 //   ignored; the rest is the wanted list (file order = priority).
@@ -415,6 +432,10 @@ WAYU_PATH_SYNC_ZSH :: `_wayu_paths_apply() {
 }
 _wayu_paths_sync() {
   local s=$? l
+  if [[ ${_WAYU_PATHS_REGEN-1} == 1 && -n ${_WAYU_TOML_FILE-} && $_WAYU_TOML_FILE -nt $_WAYU_PATHS_FILE ]]; then
+    command wayu build </dev/null >/dev/null 2>&1
+    [[ $_WAYU_TOML_FILE -nt $_WAYU_PATHS_FILE ]] && typeset -g _WAYU_PATHS_REGEN=0
+  fi
   { read -r l < "$_WAYU_PATHS_FILE" } 2>/dev/null || return $s
   [[ "$l" == "${_WAYU_PATHS_SIG-}" ]] || source "$_WAYU_PATHS_FILE"
   return $s
@@ -483,6 +504,10 @@ WAYU_PATH_SYNC_BASH :: `_wayu_paths_apply() {
 }
 _wayu_paths_sync() {
   local s=$? l
+  if [ "${_WAYU_PATHS_REGEN-1}" = 1 ] && [ -n "${_WAYU_TOML_FILE-}" ] && [ "$_WAYU_TOML_FILE" -nt "$_WAYU_PATHS_FILE" ]; then
+    command wayu build </dev/null >/dev/null 2>&1
+    [ "$_WAYU_TOML_FILE" -nt "$_WAYU_PATHS_FILE" ] && _WAYU_PATHS_REGEN=0
+  fi
   { read -r l < "$_WAYU_PATHS_FILE"; } 2>/dev/null || return $s
   [ "$l" = "${_WAYU_PATHS_SIG-}" ] || . "$_WAYU_PATHS_FILE"
   return $s
@@ -493,39 +518,182 @@ case ";${PROMPT_COMMAND-};" in
 esac
 `
 
-// Write $data/path_sync.<ext>: line 1 is the signature (FNV-1a of the
-// [paths] list, so an unchanged list never triggers a resync), line 2 applies
-// the list. Returns the file path (caller deletes) and whether [paths] had
-// any usable entries (when not, core falls back to the legacy path file).
-write_path_sync_file :: proc() -> (file: string, has_paths: bool) {
-	toml_paths := read_wayu_toml_paths()
+// One piece of a [paths] value: literal text or a simple variable reference
+// ($NAME / ${NAME}). Anything else (`${X:-y}`, `$(`, a bare `$`) is literal.
+PathValueSegment :: struct {
+	text:   string, // literal text, or the variable NAME
+	is_var: bool,
+}
+
+// Split a [paths] value (after `~` → `$HOME`) into literal / variable
+// segments. Segments slice `v`; the array uses `allocator`.
+split_path_value :: proc(v: string, allocator := context.temp_allocator) -> [dynamic]PathValueSegment {
+	segs := make([dynamic]PathValueSegment, allocator)
+	lit_start := 0
+	i := 0
+	for i < len(v) {
+		if v[i] != '$' { i += 1; continue }
+		j := i + 1
+		braced := j < len(v) && v[j] == '{'
+		if braced { j += 1 }
+		name_start := j
+		for j < len(v) {
+			c := v[j]
+			if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') { break }
+			j += 1
+		}
+		name := v[name_start:j]
+		ok := is_shell_var_name(name) && (!braced || (j < len(v) && v[j] == '}'))
+		if !ok { i += 1; continue }
+		if braced { j += 1 }
+		if i > lit_start { append(&segs, PathValueSegment{text = v[lit_start:i]}) }
+		append(&segs, PathValueSegment{text = name, is_var = true})
+		i = j
+		lit_start = j
+	}
+	if lit_start < len(v) { append(&segs, PathValueSegment{text = v[lit_start:]}) }
+	return segs
+}
+
+// zsh/bash word for a [paths] value, expanded by the SHELL at source time
+// (so `$GOPATH/bin` uses the shell's GOPATH, including one exported from
+// [env] earlier in core). Literal parts are single-quoted; each variable is
+// "${NAME}". The word is wrapped in ${NAME:+...} per variable, so an unset
+// or empty variable drops the entry instead of turning `$X/bin` into `/bin`.
+path_value_shell_word :: proc(v: string, allocator := context.temp_allocator) -> string {
+	segs := split_path_value(v)
+	names := make([dynamic]string, context.temp_allocator)
+	for s in segs {
+		if s.is_var && !slice.contains(names[:], s.text) { append(&names, s.text) }
+	}
+	sb := strings.builder_make(allocator)
+	for n in names {
+		strings.write_string(&sb, "${")
+		strings.write_string(&sb, n)
+		strings.write_string(&sb, ":+")
+	}
+	for s in segs {
+		if s.is_var {
+			strings.write_string(&sb, `"${`)
+			strings.write_string(&sb, s.text)
+			strings.write_string(&sb, `}"`)
+		} else {
+			strings.write_string(&sb, shell_single_quote(s.text, context.temp_allocator))
+		}
+	}
+	for _ in names { strings.write_byte(&sb, '}') }
+	return strings.to_string(sb)
+}
+
+// fish counterpart of path_value_shell_word: literal parts via
+// escape_fish_string, variables as "$NAME" (adjacent quoted strings
+// concatenate). Returns the word and a `test -n "$A"; and ...` guard prefix
+// ("" when the value has no variables).
+path_value_fish_word :: proc(v: string, allocator := context.temp_allocator) -> (word: string, guard: string) {
+	segs := split_path_value(v)
+	w := strings.builder_make(allocator)
+	g := strings.builder_make(allocator)
+	seen := make([dynamic]string, context.temp_allocator)
+	for s in segs {
+		if !s.is_var {
+			strings.write_string(&w, escape_fish_string(s.text, context.temp_allocator))
+			continue
+		}
+		strings.write_string(&w, `"$`)
+		strings.write_string(&w, s.text)
+		strings.write_byte(&w, '"')
+		if !slice.contains(seen[:], s.text) {
+			append(&seen, s.text)
+			fmt.sbprintf(&g, `test -n "$%s"; and `, s.text)
+		}
+	}
+	return strings.to_string(w), strings.to_string(g)
+}
+
+// [paths] values exactly as written (leading `~` → `$HOME`), in FILE ORDER
+// (= PATH priority), without duplicates and without values containing ':'
+// or newlines. Variables are NOT expanded and existence is NOT checked here:
+// path_sync / core.fish expand them in the shell and skip missing dirs at
+// runtime, so a dir created later (tool installed after `wayu build`) and
+// vars the wayu process doesn't have (e.g. [env] GOPATH) still work.
+read_wayu_toml_path_values :: proc() -> [dynamic]string {
+	kvs := read_toml_section_kvs("paths")
+	defer destroy_toml_kvs(&kvs)
+
+	values := make([dynamic]string)
+	for kv in kvs {
+		if len(strings.trim_space(kv.value)) == 0 { continue }
+		if !is_path_entry_safe(kv.value) {
+			// stderr: stdout of `wayu build eval` is eval'd by the shell.
+			fmt.eprintfln("[wayu] [paths] %s contains ':' or a newline - skipping", kv.key)
+			continue
+		}
+		v := expand_leading_tilde_to_home_var(kv.value)
+		if slice.contains(values[:], v) {
+			delete(v)
+			continue
+		}
+		append(&values, v)
+	}
+	return values
+}
+
+// True when wayu.toml has a `[name]` table header (even an empty table).
+toml_has_table :: proc(name: string) -> bool {
+	content, ok := get_cached_toml_content()
+	if !ok { return false }
+	it := make_line_iter(content)
+	for line in line_iter_next(&it) {
+		trimmed := strings.trim_space(line)
+		if strings.has_prefix(trimmed, "[") && toml_line_is_section(trimmed, name) { return true }
+	}
+	return false
+}
+
+// Write `content` to `path` via a per-process temp file + rename, so a shell
+// sourcing the file (or another wayu process regenerating it, e.g. two
+// prompt hooks after a hand edit) never sees a half-written file.
+// Local helper; config-file writes have their own (toml.odin).
+write_file_atomic :: proc(path, content: string) -> bool {
+	// Heap, not temp: big configs can exhaust the CLI temp arena mid-generation.
+	tmp := fmt.aprintf("%s.tmp.%d", path, os.get_pid())
+	defer delete(tmp)
+	if os.write_entire_file(tmp, transmute([]byte)content) != nil || os.rename(tmp, path) != nil {
+		os.remove(tmp)
+		return false
+	}
+	return true
+}
+
+// Write $data/path_sync.<ext>: line 1 is the signature (FNV-1a of the raw
+// [paths] values, so an unchanged list never triggers a resync), line 2
+// applies the list (values expanded by the shell, see
+// path_value_shell_word). Returns the file path; the caller deletes it.
+write_path_sync_file :: proc() -> (file: string) {
+	values := read_wayu_toml_path_values()
 	defer {
-		for p in toml_paths { delete(p) }
-		delete(toml_paths)
+		for v in values { delete(v) }
+		delete(values)
 	}
 	file = fmt.aprintf("%s/path_sync.%s", wayu.data, get_shell_extension(wayu.shell))
-	has_paths = len(toml_paths) > 0
 
-	joined := strings.join(toml_paths[:], ":", context.temp_allocator)
+	joined := strings.join(values[:], "\n", context.temp_allocator)
 	sig := hash.fnv64a(transmute([]byte)joined)
 
 	b: strings.Builder
 	strings.builder_init(&b)
 	defer strings.builder_destroy(&b)
 	fmt.sbprintfln(&b, "# wayu-paths %x", sig)
-	fmt.sbprint(&b, "_wayu_paths_apply ")
-	fmt.sbprintf(&b, "%x", sig)
-	for p in toml_paths {
+	fmt.sbprintf(&b, "_wayu_paths_apply %x", sig)
+	for v in values {
 		fmt.sbprint(&b, " ")
-		fmt.sbprint(&b, shell_single_quote(p, context.temp_allocator))
+		fmt.sbprint(&b, path_value_shell_word(v))
 	}
 	fmt.sbprintln(&b)
 	// Atomic replace: open shells read this file from a prompt hook, and a
 	// half-written list would make them drop PATH entries.
-	tmp := fmt.tprintf("%s.tmp", file)
-	if os.write_entire_file(tmp, transmute([]byte)strings.to_string(b)) != nil || os.rename(tmp, file) != nil {
-		os.remove(tmp)
-		print_warning("Failed to write %s", file)
+	if !write_file_atomic(file, strings.to_string(b)) {
+		fmt.eprintfln("[wayu] Failed to write %s", file)
 	}
 	return
 }
@@ -549,17 +717,27 @@ generate_core_init_v2 :: proc() {
 	fmt.sbprintln(&builder, "# Auto-generated by wayu build")
 	fmt.sbprintln(&builder)
 
-	// PATH read dynamically from [paths] in wayu.toml (file order = priority)
-	fmt.sbprintln(&builder, "# === PATH (live-synced at each prompt from path_sync) ===")
+	// [env] first: [paths] values are expanded by the shell, so `$GOPATH/bin`
+	// needs an [env] GOPATH exported before path_sync is sourced.
+	fmt.sbprintln(&builder, "# === Environment (from wayu.toml [env]) ===")
+	emit_env_exports(&builder)
+	fmt.sbprintln(&builder)
+
+	// PATH from [paths] in wayu.toml (file order = priority), live-synced at
+	// each prompt from path_sync.<ext> (see WAYU_PATH_SYNC_ZSH).
+	fmt.sbprintln(&builder, "# === PATH (from wayu.toml [paths], live-synced at each prompt) ===")
 	fmt.sbprint(&builder, WAYU_PATH_SYNC_ZSH if is_zsh else WAYU_PATH_SYNC_BASH)
-	sync_file, has_toml_paths := write_path_sync_file()
+	sync_file := write_path_sync_file()
 	defer delete(sync_file)
 	fmt.sbprintfln(&builder, "_WAYU_PATHS_FILE=%s", shell_double_quote_literal(sync_file, context.temp_allocator))
-	if has_toml_paths {
-		fmt.sbprintln(&builder, `[ -f "$_WAYU_PATHS_FILE" ] && . "$_WAYU_PATHS_FILE"`)
-	} else {
+	fmt.sbprintfln(&builder, "_WAYU_TOML_FILE=%s", shell_double_quote_literal(fmt.tprintf("%s/wayu.toml", wayu.config), context.temp_allocator))
+	// Legacy path.<ext> only for configs that never had a [paths] table:
+	// once [paths] exists (even emptied by `path rm`), old entries must not
+	// come back.
+	if !toml_has_table("paths") {
 		emit_source_if_exists(&builder, fmt.tprintf("%s/path.%s", wayu.data, shell_ext))
 	}
+	fmt.sbprintln(&builder, `[ -f "$_WAYU_PATHS_FILE" ] && . "$_WAYU_PATHS_FILE"`)
 
 	fmt.sbprintln(&builder, "# Deduplicate PATH (preserve order, remove duplicates)")
 	if is_zsh {
@@ -576,10 +754,6 @@ generate_core_init_v2 :: proc() {
 		fmt.sbprintln(&builder, `_wayu_dedup_path`)
 		fmt.sbprintln(&builder, `unset -f _wayu_dedup_path`)
 	}
-	fmt.sbprintln(&builder)
-
-	fmt.sbprintln(&builder, "# === Environment (from wayu.toml [env]) ===")
-	emit_env_exports(&builder)
 	fmt.sbprintln(&builder)
 
 	fmt.sbprintln(&builder, "# === Aliases (from wayu.toml [aliases]) ===")
@@ -1553,23 +1727,8 @@ generate_core_init_fish :: proc() {
 	fmt.sbprintln(&builder, "# core.fish - generated by wayu")
 	fmt.sbprintln(&builder)
 
-	// PATH from [paths] (already expanded to absolute literals). Iterate in
-	// reverse so the first [paths] entry ends up first on PATH.
-	fmt.sbprintln(&builder, "# === PATH ===")
-	toml_paths := read_wayu_toml_paths()
-	defer {
-		for p in toml_paths { delete(p) }
-		delete(toml_paths)
-	}
-	#reverse for p in toml_paths {
-		q := escape_fish_string(p, context.temp_allocator)
-		fmt.sbprintfln(&builder, `if test -d %s; and not contains -- %s $PATH`, q, q)
-		fmt.sbprintfln(&builder, `    set -gx PATH %s $PATH`, q)
-		fmt.sbprintln(&builder, "end")
-	}
-	fmt.sbprintln(&builder)
-
-	// Env from [env]: double-quoted so $VAR expands, `~/` → $HOME/.
+	// Env from [env] FIRST: double-quoted so $VAR expands, `~/` → $HOME/.
+	// [paths] below may reference these (e.g. `$GOPATH/bin`).
 	fmt.sbprintln(&builder, "# === Environment (from wayu.toml [env]) ===")
 	toml_env := read_wayu_toml_env()
 	defer {
@@ -1583,6 +1742,24 @@ generate_core_init_fish :: proc() {
 		}
 		v := expand_leading_tilde_to_home_var(e.value, context.temp_allocator)
 		fmt.sbprintfln(&builder, `set -gx %s %s`, e.name, fish_double_quote_env(v, context.temp_allocator))
+	}
+	fmt.sbprintln(&builder)
+
+	// PATH from [paths], expanded by fish at startup ($VAR from the shell,
+	// skipped when a referenced var is empty, the dir is missing or the
+	// result contains ':'). Iterate in reverse so the first [paths] entry
+	// ends up first on PATH.
+	fmt.sbprintln(&builder, "# === PATH ===")
+	toml_paths := read_wayu_toml_path_values()
+	defer {
+		for p in toml_paths { delete(p) }
+		delete(toml_paths)
+	}
+	#reverse for p in toml_paths {
+		q, guard := path_value_fish_word(p)
+		fmt.sbprintfln(&builder, `if %stest -d %s; and not string match -q -- '*:*' %s; and not contains -- %s $PATH`, guard, q, q, q)
+		fmt.sbprintfln(&builder, `    set -gx PATH %s $PATH`, q)
+		fmt.sbprintln(&builder, "end")
 	}
 	fmt.sbprintln(&builder)
 

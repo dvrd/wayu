@@ -72,7 +72,7 @@ handle_path_command :: proc(action: Action, args: []string) {
 		if res == .NOOP || wayu.dry_run { return }
 		regenerate_init_core_silently()
 		print_success("✅ Added to wayu.toml: %s", expanded)
-		fmt.printfln("   Reload your shell (or 'source ~/.config/wayu/init.%s') to apply.", wayu.shell_ext)
+		print_path_applied_hint()
 		hook_post_path_add(expanded)
 	case .REMOVE:
 		if len(args) == 0 {
@@ -85,13 +85,24 @@ handle_path_command :: proc(action: Action, args: []string) {
 		if wayu.dry_run { return }
 		regenerate_init_core_silently()
 		print_success("✅ Removed from wayu.toml: %s", args[0])
-		fmt.printfln("   Reload your shell (or 'source ~/.config/wayu/init.%s') to apply.", wayu.shell_ext)
+		print_path_applied_hint()
 		hook_post_path_remove(args[0])
 	case .LIST:
 		toml_path_list()
 	case:
 		handle_config_command(&PATH_SPEC, action, args)
 	}
+}
+
+// zsh/bash shells apply [paths] changes at their next prompt (path_sync
+// hook); fish has no live sync yet, so it still needs a reload.
+@(private = "file")
+print_path_applied_hint :: proc() {
+	if wayu.shell == .FISH {
+		fmt.printfln("   Reload your shell (or 'source ~/.config/wayu/init.%s') to apply.", wayu.shell_ext)
+		return
+	}
+	fmt.println("   Open shells apply it at their next prompt; new shells pick it up automatically.")
 }
 
 // Exit with the code matching a failed PathOpResult; returns for OK/NOOP.
