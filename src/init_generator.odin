@@ -8,10 +8,11 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 // Best-effort write for generated init files. Logs a warning on failure
-// instead of silently swallowing the error.
+// instead of silently swallowing the error. Atomic, so a shell starting
+// mid-regeneration never sources a truncated file.
 @(private = "file")
 write_init_file :: proc(path, content: string) {
-	if os.write_entire_file(path, transmute([]byte)content) != nil {
+	if write_file_atomic(path, transmute([]byte)content) != nil {
 		print_warning("Failed to write %s", path)
 	}
 }
@@ -442,9 +443,7 @@ write_path_sync_file :: proc() -> (file: string, has_paths: bool) {
 	fmt.sbprintln(&b)
 	// Atomic replace: open shells read this file from a prompt hook, and a
 	// half-written list would make them drop PATH entries.
-	tmp := fmt.tprintf("%s.tmp", file)
-	if os.write_entire_file(tmp, transmute([]byte)strings.to_string(b)) != nil || os.rename(tmp, file) != nil {
-		os.remove(tmp)
+	if write_file_atomic(file, transmute([]byte)strings.to_string(b)) != nil {
 		print_warning("Failed to write %s", file)
 	}
 	return

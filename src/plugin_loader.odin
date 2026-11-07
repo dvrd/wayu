@@ -140,7 +140,7 @@ generate_plugins_runtime_config :: proc(shell: ShellType) -> bool {
 		print_info("[DRY RUN] Would write plugin runtime config: %s", config_path)
 		return true
 	}
-	return os.write_entire_file(config_path, transmute([]byte)content) == nil
+	return write_file_atomic(config_path, transmute([]byte)content) == nil
 }
 
 // Generate plugins.{zsh,bash} loader file
@@ -350,7 +350,7 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 		return generate_plugins_runtime_config(shell)
 	}
 
-	if os.write_entire_file(plugins_file, transmute([]byte)content) != nil {
+	if write_file_atomic(plugins_file, transmute([]byte)content) != nil {
 		return false
 	}
 	// Compile to bytecode for faster loading (zsh only)

@@ -165,7 +165,7 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 		}
 
 		// Write to target file
-		write_err := os.write_entire_file(to_file, transmute([]byte)migrated_content)
+		write_err := write_file_atomic(to_file, transmute([]byte)migrated_content)
 		if write_err != nil {
 			fmt.eprintfln("  Error: Failed to write %s", to_file)
 			failed_count += 1
