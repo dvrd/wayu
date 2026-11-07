@@ -1,10 +1,23 @@
 package test_wayu
 
-// Tests for the native zsh prompt generator (prompt.odin): escaping of [prompt] config text, and the async temp-file handling.
+// Tests for the native zsh prompt generator (prompt.odin): opt-in gate,
+// escaping of [prompt] config text, and the async temp-file handling.
 
 import "core:testing"
 import "core:strings"
 import wayu "../../src"
+
+@(test)
+test_prompt_is_enabled_opt_in :: proc(t: ^testing.T) {
+	testing.expect(t, !wayu.prompt_is_enabled(""), "no config -> off")
+	testing.expect(t, !wayu.prompt_is_enabled("[aliases]\nll = \"ls\"\n"), "no [prompt] -> off")
+	testing.expect(t, !wayu.prompt_is_enabled("[prompt]\nformat = \"{dir}\"\n"), "[prompt] without enabled -> off")
+	testing.expect(t, !wayu.prompt_is_enabled("[prompt]\nenabled = false\n"), "enabled = false -> off")
+	testing.expect(t, !wayu.prompt_is_enabled("[prompt.interactive]\nenabled = true\n"), "enabled in a subtable doesn't count")
+	testing.expect(t, !wayu.prompt_is_enabled("[settings]\nenabled = true\n[prompt]\n"), "enabled in another table doesn't count")
+	testing.expect(t, wayu.prompt_is_enabled("[prompt]\nformat = \"x\"\nenabled = true\n"), "enabled = true -> on")
+	testing.expect(t, wayu.prompt_is_enabled("[prompt]\n  enabled=true # opt in\n"), "comment and spacing tolerated")
+}
 
 @(test)
 test_prompt_dq_escape :: proc(t: ^testing.T) {

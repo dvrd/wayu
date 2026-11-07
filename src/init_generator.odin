@@ -852,10 +852,11 @@ generate_core_init_v2 :: proc() {
 		fmt.sbprintln(&builder)
 	}
 
-	// Prompt: native wayu prompt is zsh-only (prompt escapes, zle, hooks).
+	// Prompt: native wayu prompt is zsh-only (prompt escapes, zle, hooks) and
+	// opt-in via `[prompt] enabled = true` (see prompt_is_enabled).
 	if is_zsh {
 		toml_data, toml_ok := get_cached_toml_content()
-		if toml_ok {
+		if toml_ok && prompt_is_enabled(toml_data) {
 			fmt.sbprintln(&builder, "# === Prompt (wayu native, interactive) ===")
 			prompt_cfg := parse_full_prompt_config(toml_data)
 			defer destroy_full_prompt_config(&prompt_cfg)

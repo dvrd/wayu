@@ -361,6 +361,30 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 	return cfg
 }
 
+// The native prompt is opt-in: it (and its vi keymap, zle widgets and precmd
+// hooks) is generated only when wayu.toml has `enabled = true` under [prompt].
+// Without it wayu leaves PROMPT, keymaps and zle widgets alone.
+prompt_is_enabled :: proc(toml: string) -> bool {
+	it := make_line_iter(toml)
+	in_prompt := false
+	for line in line_iter_next(&it) {
+		trimmed := strings.trim_space(line)
+		if strings.has_prefix(trimmed, "[") {
+			in_prompt = trimmed == "[prompt]"
+			continue
+		}
+		if !in_prompt { continue }
+		eq := strings.index_byte(trimmed, '=')
+		if eq <= 0 || strings.trim_space(trimmed[:eq]) != "enabled" { continue }
+		value := strings.trim_space(trimmed[eq+1:])
+		if hash := strings.index_byte(value, '#'); hash >= 0 {
+			value = strings.trim_space(value[:hash])
+		}
+		return value == "true"
+	}
+	return false
+}
+
 // Escape `s` for splicing inside a zsh double-quoted string: backslash, `"`,
 // `$` and backtick are backslash-escaped so config text is always literal (no `$(...)` execution,
 // no broken quoting). Prompt `%` escapes are left for prompt expansion.
