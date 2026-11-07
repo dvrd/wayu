@@ -33,6 +33,7 @@ class InitIntegrationTest
       test_stale_init_is_resynced
       test_build_eval_dry_run_writes_nothing
       test_large_toml_regenerates
+      test_live_path_sync
     ensure
       teardown_test_env
     end
@@ -364,7 +365,8 @@ class InitIntegrationTest
     # fast path; count only the fast path + core + lazy.
     init_fast = File.read("#{cfg}/init.#{shell}").split('# === Legacy fallback').first
     fast_extra = init_fast.scan(/source "[^"]*(extra|tools)\.#{shell}"/).size
-    path_line = core.lines.find { |l| l.start_with?('export PATH=') }.to_s
+    sync = File.exist?("#{cfg}/path_sync.#{shell}") ? File.read("#{cfg}/path_sync.#{shell}") : ''
+    path_line = sync.lines.find { |l| l.start_with?('_wayu_paths_apply ') }.to_s
     order_ok = path_line.index("#{home}/pz").to_i < path_line.index("#{home}/pa").to_i &&
                path_line.index("#{home}/pa").to_i < path_line.index("#{home}/p m").to_i &&
                !path_line.include?('nonexistent')
@@ -391,6 +393,41 @@ class InitIntegrationTest
       puts "✓"; @passed += 1
     else
       puts "✗"; puts "  init.zsh not resynced"; @failed += 1
+    end
+  end
+
+  # `wayu path add/rm` must reach an already-open shell at its next prompt via
+  # the path_sync prompt hook, and `wayu` must NOT be shadowed by a shell
+  # function (the old wrapper showed up first in `where`/`type`).
+  def test_live_path_sync
+    %w[zsh bash].each do |sh|
+      print "Test: live PATH sync via prompt hook (#{sh})... "
+      home = "#{@tmp_home}/sync_#{sh}"
+      d1 = "#{home}/d1"
+      d2 = "#{home}/my dir"
+      FileUtils.mkdir_p([d1, d2, "#{home}/.config/wayu"])
+      env = { 'HOME' => home }
+      Open3.capture3(env, @wayu_bin, 'init', '--shell', sh)
+      Open3.capture3(env, @wayu_bin, '--shell', sh, 'path', 'add', d1)
+      script = <<~SH
+        . "$HOME/.config/wayu/core.#{sh}"
+        has() { case ":$PATH:" in *":$1:"*) echo y ;; *) echo n ;; esac; }
+        r="$(has "$D1")"
+        "$W" --shell #{sh} path add "$D2" >/dev/null 2>&1; _wayu_paths_sync
+        r="$r$(has "$D2")"
+        "$W" --shell #{sh} path rm "$D1" --yes >/dev/null 2>&1; _wayu_paths_sync
+        r="$r$(has "$D1")$(has "$D2")"
+        before="$PATH"; _wayu_paths_sync; [ "$before" = "$PATH" ] && r="${r}s"
+        type wayu 2>/dev/null | grep -q function && r="${r}F"
+        echo "$r"
+      SH
+      out, err, st = Open3.capture3(env.merge('W' => @wayu_bin, 'D1' => d1, 'D2' => d2), sh, '-c', script)
+      # expected: d1 on start (y), d2 after add (y), d1 gone + d2 kept (ny), idle no-op (s), no function
+      if st.success? && out.strip == 'yynys' && err.strip.empty?
+        puts "✓"; @passed += 1
+      else
+        puts "✗"; puts "  out=#{out.strip.inspect} err=#{err.strip[0, 300]}"; @failed += 1
+      end
     end
   end
 
