@@ -35,6 +35,7 @@ class InitIntegrationTest
       test_large_toml_regenerates
       test_live_path_sync
       test_path_sync_status_and_nounset
+      test_path_sync_managed_dirs
     ensure
       teardown_test_env
     end
@@ -467,6 +468,35 @@ class InitIntegrationTest
       want = %w[start=y sync_rc=1 added=y]
       want += %w[LAST=1 LAST=7] if sh == 'bash'
       if st.success? && err.strip.empty? && out.lines.map(&:strip) == want
+        puts "✓"; @passed += 1
+      else
+        puts "✗"; puts "  out=#{out.lines.map(&:strip).inspect} err=#{err.strip[0, 300]}"; @failed += 1
+      end
+    end
+  end
+
+  # OKAMI-211: removing a wayu entry must not strip a dir that was already on
+  # PATH before wayu (system / path_helper provided), and a dir added in an
+  # open shell lands where a new shell would put it (after the previous
+  # [paths] entry), not in front of higher-priority entries.
+  def test_path_sync_managed_dirs
+    { '/bin/bash' => 'bash', 'zsh' => 'zsh' }.each do |bin, sh|
+      print "Test: path sync keeps system dirs + [paths] order (#{bin})... "
+      home, env = sync_home("managed_#{sh}", [sh], %w[a b c s])
+      File.write("#{home}/.config/wayu/wayu.toml",
+                 "[paths]\na = \"#{home}/a\"\nb = \"#{home}/b\"\ns = \"#{home}/s\"\n")
+      Open3.capture3(env, @wayu_bin, '--shell', sh, 'build', 'eval')
+      script = <<~SH
+        . "$HOME/.config/wayu/core.#{sh}"
+        show() { echo "$PATH" | sed "s|$HOME/||g"; }
+        show
+        "$W" --shell #{sh} path rm "$HOME/s" --yes >/dev/null 2>&1; _wayu_paths_sync; show
+        "$W" --shell #{sh} path rm "$HOME/a" --yes >/dev/null 2>&1; _wayu_paths_sync; show
+        "$W" --shell #{sh} path add "$HOME/c" >/dev/null 2>&1; _wayu_paths_sync; show
+      SH
+      out, err, st = Open3.capture3(env.merge('PATH' => "/usr/bin:#{home}/s:/bin"), bin, '-c', script)
+      want = ['a:b:s:/usr/bin:/bin', 'a:b:s:/usr/bin:/bin', 'b:s:/usr/bin:/bin', 'b:c:s:/usr/bin:/bin']
+      if st.success? && out.lines.map(&:strip) == want
         puts "✓"; @passed += 1
       else
         puts "✗"; puts "  out=#{out.lines.map(&:strip).inspect} err=#{err.strip[0, 300]}"; @failed += 1

@@ -337,35 +337,62 @@ emit_functions_loader :: proc(b: ^strings.Builder) {
 //
 // core sources $data/path_sync.<ext>, whose FIRST LINE is a signature of the
 // [paths] list. A prompt hook reads just that line with the `read` builtin (no
-// fork) and re-sources the file only when it changed, so `wayu path add/rm`,
-// TUI edits and hand edits of wayu.toml reach already-open shells at the next
-// prompt.
+// fork) and re-sources the file only when it changed, so `wayu path add/rm`
+// and TUI edits reach already-open shells at the next prompt.
 //
 // _wayu_paths_apply <sig> <dir>...:
-//   first call (shell startup): prepend all dirs (wayu order wins, dedup keeps
-//   first occurrence) — same as the old `export PATH="a:b:$PATH"`.
-//   later calls: drop dirs wayu managed before but no longer lists, prepend
-//   dirs not already on PATH, and leave everything else where it is (so tools
-//   that prepended after startup, e.g. nvm, keep their position).
+//   dirs that are empty, contain ':' / a newline, or are not directories are
+//   ignored; the rest is the wanted list (file order = priority).
+//   _WAYU_PATHS_MANAGED (exported, so nested shells inherit it) holds only
+//   the dirs wayu itself put on PATH: wanted dirs that were NOT already on
+//   PATH (system / parent-provided dirs are never "managed"), plus dirs that
+//   were already managed. Only managed dirs are ever removed, so dropping a
+//   wayu entry never strips a dir the system also provides.
+//   first call (shell startup): drop stale managed dirs, then put the wanted
+//   dirs first in order (wayu order wins) — same as `PATH="a:b:$PATH"`.
+//   later calls: drop managed dirs no longer wanted; insert each missing
+//   wanted dir right after the previous wanted dir (front if it is the
+//   first), i.e. the position a new shell would give it relative to the
+//   other wayu dirs; leave everything else in place (so tools that
+//   prepended after startup, e.g. nvm, keep their position).
+// Both hooks preserve $? (prompt commands after them read it) and are
+// `set -u` / nounset safe.
 WAYU_PATH_SYNC_ZSH :: `_wayu_paths_apply() {
   emulate -L zsh
-  local first=0
-  [[ -z "${_WAYU_PATHS_SIG-}" ]] && first=1
+  local first=0 d prev="" i
+  [[ -n "${_WAYU_PATHS_SIG-}" ]] || first=1
   typeset -g _WAYU_PATHS_SIG="# wayu-paths $1"
   shift
-  local -a old=( ${(s.:.)${_WAYU_PATHS_MANAGED-}} ) keep add
-  local d
+  local -a want keep managed old=( ${(s.:.)${_WAYU_PATHS_MANAGED-}} )
+  for d in "$@"; do
+    [[ -n $d && $d != *:* && $d != *$'\n'* && -d $d ]] || continue
+    (( ${want[(Ie)$d]} )) || want+=( "$d" )
+  done
+  for d in $want; do
+    (( ${old[(Ie)$d]} || ! ${path[(Ie)$d]} )) && managed+=( "$d" )
+  done
+  for d in $path; do
+    (( ${old[(Ie)$d]} && ! ${want[(Ie)$d]} )) && continue
+    (( first && ${want[(Ie)$d]} )) && continue
+    (( ${keep[(Ie)$d]} )) || keep+=( "$d" )
+  done
   if (( first )); then
-    path=( "$@" $path )
+    keep=( $want $keep )
   else
-    for d in $path; do
-      (( ${old[(Ie)$d]} && ! ${argv[(Ie)$d]} )) && continue
-      keep+=( "$d" )
+    for d in $want; do
+      if (( ! ${keep[(Ie)$d]} )); then
+        if [[ -z $prev ]]; then
+          keep=( "$d" $keep )
+        else
+          i=${keep[(Ie)$prev]}
+          keep=( "${(@)keep[1,i]}" "$d" "${(@)keep[i+1,-1]}" )
+        fi
+      fi
+      prev=$d
     done
-    for d in "$@"; do (( ${keep[(Ie)$d]} )) || add+=( "$d" ); done
-    path=( $add $keep )
   fi
-  typeset -g _WAYU_PATHS_MANAGED="${(j.:.)argv}"
+  path=( $keep )
+  typeset -gx _WAYU_PATHS_MANAGED="${(j.:.)managed}"
   export PATH
 }
 _wayu_paths_sync() {
@@ -378,30 +405,63 @@ autoload -Uz add-zsh-hook
 add-zsh-hook precmd _wayu_paths_sync
 `
 
+// bash 3.2 compatible: no associative arrays, so membership tests use
+// ":a:b:" strings (safe because entries never contain ':'), and empty
+// arrays are expanded as ${a[@]+"${a[@]}"} for `set -u`.
 WAYU_PATH_SYNC_BASH :: `_wayu_paths_apply() {
-  local first=0
-  [ -z "${_WAYU_PATHS_SIG-}" ] && first=1
+  local first=0 d e prev="" IFS=':' nl='
+'
+  [ -n "${_WAYU_PATHS_SIG-}" ] || first=1
   _WAYU_PATHS_SIG="# wayu-paths $1"
   shift
-  local d want=":" old=":${_WAYU_PATHS_MANAGED-}:" keep="" add="" IFS=':'
-  local -a cur
-  for d in "$@"; do want="$want$d:"; done
+  local want=":" old=":${_WAYU_PATHS_MANAGED-}:" now=":$PATH:" managed=":" keep=":" out
+  local -a cur ks
+  for d in "$@"; do
+    case "$d" in ""|*:*|*"$nl"*) continue ;; esac
+    [ -d "$d" ] || continue
+    case "$want" in *":$d:"*) continue ;; esac
+    want="$want$d:"
+    case "$old" in
+      *":$d:"*) managed="$managed$d:" ;;
+      *) case "$now" in *":$d:"*) ;; *) managed="$managed$d:" ;; esac ;;
+    esac
+  done
   read -r -a cur <<< "$PATH"
+  for d in ${cur[@]+"${cur[@]}"}; do
+    [ -n "$d" ] || continue
+    case "$old" in *":$d:"*) case "$want" in *":$d:"*) ;; *) continue ;; esac ;; esac
+    if [ "$first" -eq 1 ]; then case "$want" in *":$d:"*) continue ;; esac; fi
+    case "$keep" in *":$d:"*) continue ;; esac
+    keep="$keep$d:"
+  done
   if [ "$first" -eq 1 ]; then
-    keep="$PATH"
-    for d in "$@"; do add="${add:+$add:}$d"; done
+    keep="$want${keep#:}"
   else
+    read -r -a cur <<< "${want#:}"
     for d in ${cur[@]+"${cur[@]}"}; do
-      [ -n "$d" ] || continue
-      case "$old" in *":$d:"*) case "$want" in *":$d:"*) ;; *) continue ;; esac ;; esac
-      keep="${keep:+$keep:}$d"
+      case "$keep" in
+        *":$d:"*) ;;
+        *)
+          if [ -z "$prev" ]; then
+            keep=":$d$keep"
+          else
+            out=":"
+            read -r -a ks <<< "${keep#:}"
+            for e in ${ks[@]+"${ks[@]}"}; do
+              out="$out$e:"
+              [ "$e" = "$prev" ] && out="$out$d:"
+            done
+            keep="$out"
+          fi ;;
+      esac
+      prev="$d"
     done
-    for d in "$@"; do case ":$keep:" in *":$d:"*) ;; *) add="${add:+$add:}$d" ;; esac; done
   fi
-  PATH="$add${add:+${keep:+:}}$keep"
-  want="${want#:}"
-  _WAYU_PATHS_MANAGED="${want%:}"
-  export PATH
+  keep="${keep#:}"
+  managed="${managed#:}"
+  PATH="${keep%:}"
+  _WAYU_PATHS_MANAGED="${managed%:}"
+  export PATH _WAYU_PATHS_MANAGED
 }
 _wayu_paths_sync() {
   local s=$? l
