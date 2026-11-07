@@ -4,6 +4,36 @@ User-visible behavior changes per release. From 4.4.5 on, these are generated
 automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 4.4.3 and 4.4.4 shipped them as patch releases, so they are listed here.
 
+## Unreleased
+
+**Prompt (zsh)**
+- The native wayu prompt is now opt-in. It is generated only when
+  `wayu.toml` has `enabled = true` under `[prompt]`; without it wayu no longer
+  sets `PROMPT`/`RPROMPT`, `setopt promptsubst`, the vi keymap
+  (`bindkey -v`), `KEYTIMEOUT=1`, the `zle-line-init`/`zle-keymap-select`
+  widgets or its git/async precmd hooks. To keep the previous prompt, add:
+
+  ```toml
+  [prompt]
+  enabled = true
+  ```
+
+- `[prompt]` text (format, character symbols, `[prompt.contexts]` formats,
+  `rprompt_format`) is literal: `$(...)`, backticks, `$VAR` and quotes are
+  printed as typed instead of being executed or breaking `core.zsh`. Prompt
+  `%` escapes (`%n`, `%~`, …) and the module variables (`$dir`, `$user`,
+  `$branch`, `$version`, `{git_pending}`, …) still work.
+- `toggle_key` and `[settings] autosuggestions_accept_keys` are emitted as
+  single-quoted `bindkey` arguments; a key containing `'` no longer breaks
+  (or injects code into) the generated file.
+- The async right prompt keeps its data in a private `mktemp -d` directory
+  (mode `0700`, removed when the shell exits) instead of
+  `${TMPDIR:-/tmp}/.wayu_async_<pid>`.
+
+**Watcher**
+- `wayu watch` no longer grows in memory while idle, and removes its
+  `watcher.pid` when stopped with Ctrl+C / `SIGTERM` / `SIGHUP`.
+
 ## 4.4.4
 
 **Lookups and output**

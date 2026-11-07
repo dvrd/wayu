@@ -43,6 +43,7 @@ class InitIntegrationTest
       test_build_eval_uses_evaluating_shell
       test_rewrite_drops_stale_zwc
       test_legacy_path_file_not_resurrected
+      test_prompt_opt_in_and_escaping
     ensure
       teardown_test_env
     end
@@ -651,6 +652,50 @@ class InitIntegrationTest
       puts "✓"; @passed += 1
     else
       puts "✗"; puts "  WAYU_ZWC_PROBE=#{out.strip} zwc_exists=#{File.exist?("#{cfg}/core.zsh.zwc")}"; @failed += 1
+    end
+  end
+
+  # OKAMI-221: the native prompt (vi keymap, zle widgets, precmd hooks) is
+  # opt-in via `[prompt] enabled = true`. OKAMI-223: [prompt] text and
+  # keybindings are literal in generated code — `$(...)` never runs.
+  def test_prompt_opt_in_and_escaping
+    print "Test: native prompt is opt-in; [prompt]/keybinding values stay literal... "
+    home, env = sync_home('prompt_optin', ['zsh'])
+    cfg = "#{home}/.config/wayu"
+    pwn = "#{home}/PWNED"
+    base = File.exist?("#{cfg}/wayu.toml") ? File.read("#{cfg}/wayu.toml") : ''
+    File.write("#{cfg}/wayu.toml", base + "\n[prompt]\nformat = \"{dir} {character}\"\n")
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_PROMPT_PROBE', '1')
+    off_ok = File.exist?("#{cfg}/core.zsh") && !File.read("#{cfg}/core.zsh").include?('_wayu_prompt_master')
+
+    File.write("#{cfg}/wayu.toml", base + <<~TOML)
+
+      [prompt]
+      enabled = true
+      format = 'it"s $(touch #{pwn}) `touch #{pwn}` {character}'
+
+      [prompt.interactive]
+      toggle_key = "^X'; touch #{pwn}; '"
+
+      [settings]
+      autosuggestions_accept_keys = ["^Y'; touch #{pwn}; '"]
+    TOML
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_PROMPT_PROBE', '2')
+    core = File.read("#{cfg}/core.zsh")
+    on_ok = core.include?('_wayu_prompt_master') && !core.include?('.wayu_async_$$')
+    files = ["#{cfg}/core.zsh", "#{cfg}/plugins/config.zsh"].select { |f| File.exist?(f) }
+    syntax_ok = files.size == 2 && files.all? { |f| system('zsh', '-n', f, out: File::NULL, err: File::NULL) }
+    keys_ok = files.size == 2 && File.read(files[1]).include?(%q{bindkey '^Y'\''; touch})
+    out, = Open3.capture3(env, '/bin/zsh', '-fc',
+      "source '#{cfg}/core.zsh' >/dev/null 2>&1; source '#{cfg}/plugins/config.zsh' >/dev/null 2>&1; _wayu_prompt_full")
+    literal_ok = out.include?("it\"s $(touch #{pwn}) `touch #{pwn}`")
+    if off_ok && on_ok && syntax_ok && keys_ok && literal_ok && !File.exist?(pwn)
+      puts "✓"; @passed += 1
+    else
+      puts "✗"
+      puts "  off=#{off_ok} on=#{on_ok} syntax=#{syntax_ok} keys=#{keys_ok} literal=#{literal_ok} pwned=#{File.exist?(pwn)}"
+      puts "  out=#{out.inspect}"
+      @failed += 1
     end
   end
 
