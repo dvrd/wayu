@@ -402,7 +402,7 @@ shell_fish_write_config :: proc(file_path: string, content: string) -> bool {
     backup_path, ok := create_backup(file_path)
     defer if ok do delete(backup_path)
 
-    err := os.write_entire_file(file_path, transmute([]byte)content)
+    err := write_file_atomic(file_path, transmute([]byte)content)
     return err == nil
 }
 

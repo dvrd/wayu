@@ -429,9 +429,10 @@ safe_read_file :: proc(file_path: string) -> (content: []byte, ok: bool) {
 	return data, true
 }
 
-// Safe file write with detailed error reporting
+// Safe file write with detailed error reporting. Atomic (temp + fsync +
+// rename, see write_file_atomic): a crash never leaves a truncated file.
 safe_write_file :: proc(file_path: string, content: []byte) -> bool {
-	write_err := os.write_entire_file(file_path, content)
+	write_err := write_file_atomic(file_path, content)
 	if write_err != nil {
 		// Check specific failure reason
 		dir_path := get_directory(file_path)

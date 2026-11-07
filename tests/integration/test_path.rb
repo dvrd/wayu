@@ -216,8 +216,9 @@ class PathIntegrationTest
   def test_path_order_preservation
     print "Test 6: Path order preservation... "
 
-    # Clean up and add paths in specific order
-    test_dirs = ["/tmp/wayu_order1", "/tmp/wayu_order2", "/tmp/wayu_order3"]
+    # Insertion order deliberately differs from alphabetical order: [paths]
+    # order is PATH precedence, so wayu must never re-sort it (OKAMI-201).
+    test_dirs = ["/tmp/wayu_order_zeta", "/tmp/wayu_order_alpha", "/tmp/wayu_order_mid"]
     test_dirs.each { |dir| Dir.mkdir(dir) unless Dir.exist?(dir) }
 
     # Remove all test paths first
@@ -227,9 +228,9 @@ class PathIntegrationTest
     test_dirs.each { |dir| run_wayu("path add #{dir}") }
 
     path_content = File.read(@toml_file)
-    order1_pos = path_content.index("wayu_order1")
-    order2_pos = path_content.index("wayu_order2")
-    order3_pos = path_content.index("wayu_order3")
+    order1_pos = path_content.index("wayu_order_zeta")
+    order2_pos = path_content.index("wayu_order_alpha")
+    order3_pos = path_content.index("wayu_order_mid")
 
     if order1_pos && order2_pos && order3_pos &&
        order1_pos < order2_pos && order2_pos < order3_pos

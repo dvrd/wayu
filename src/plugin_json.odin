@@ -105,7 +105,7 @@ write_plugin_config :: proc(config: ^PluginConfig) -> bool {
 	}
 
 	content := strings.to_string(sb)
-	return os.write_entire_file(config_file, transmute([]byte)content) == nil
+	return write_file_atomic(config_file, transmute([]byte)content) == nil
 }
 
 // Read JSON5 configuration file
@@ -175,7 +175,7 @@ write_plugin_config_json :: proc(config: ^PluginConfigJSON) -> bool {
 	config_file := get_plugins_json_config_file()
 	defer delete(config_file)
 
-	write_err := os.write_entire_file(config_file, data)
+	write_err := write_file_atomic(config_file, data)
 	if write_err != nil {
 		fmt.eprintln("Error: Failed to write plugins.json")
 		return false

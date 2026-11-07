@@ -1068,49 +1068,43 @@ doctor_scan_toml_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPa
 doctor_fix_toml_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, message: string) {
 	context.allocator = alloc
 
+	// Scan and rewrite under one lock so the fix acts on what is on disk.
+	if !config_lock_acquire() {
+		return 0, false, "Could not lock wayu config — nothing changed"
+	}
+	defer config_lock_release()
+
 	scan, scan_ok, reason := doctor_scan_toml_paths(alloc)
 	if !scan_ok {
 		return 0, false, reason
 	}
 
-	kept := make([dynamic]TomlPathEntry)
+	drop_keys := make([dynamic]string)
 	for s in scan {
 		if s.missing || s.duplicate {
 			removed += 1
 			reason_word := s.missing ? "missing" : "duplicate"
 			fmt.printfln("    - %s = %q (%s)", s.entry.key, s.entry.path, reason_word)
-			continue
+			append(&drop_keys, s.entry.key)
 		}
-		append(&kept, s.entry)
 	}
 	if removed == 0 {
 		return 0, true, "Nothing to remove"
 	}
-
-	toml_path := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 
 	if wayu.dry_run {
 		return removed, true, fmt.aprintf("DRY RUN: would remove %d entr%s from wayu.toml [paths]",
 			removed, removed == 1 ? "y" : "ies")
 	}
 
-	content, read_ok := safe_read_file(toml_path)
-	if !read_ok {
-		return 0, false, "Cannot read wayu.toml"
+	// One backup, one in-place deletion of just the dropped lines: the
+	// survivors keep their order (PATH precedence) and comments.
+	switch toml_kv_delete("paths", "paths", drop_keys[:]) {
+	case .OK:
+	case .MALFORMED: return 0, false, "wayu.toml [paths] is malformed — nothing changed"
+	case .NOT_FOUND: return 0, false, "PATH entries changed during the fix — nothing changed"
+	case .IO_ERROR:  return 0, false, "Could not back up or write wayu.toml"
 	}
-
-	slice_sort_path_entries(kept[:])
-	body := render_keyed_body(kept[:])
-	new_content := replace_toml_table_section(string(content), "paths", body)
-
-	// One backup for the whole fix, taken before the single rewrite.
-	if !create_backup_cli(toml_path) {
-		return 0, false, "Backup of wayu.toml failed — nothing changed"
-	}
-	if !safe_write_file(toml_path, transmute([]byte)new_content) {
-		return 0, false, "Could not write wayu.toml"
-	}
-	clear_toml_content_cache()
 	regenerate_init_core_silently()
 
 	return removed, true, fmt.aprintf("Removed %d missing/duplicate entr%s from wayu.toml",

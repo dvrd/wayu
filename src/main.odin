@@ -679,7 +679,7 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 			return
 		}
 
-		write_err := os.write_entire_file(rc_file_path, transmute([]byte)new_content)
+		write_err := write_file_atomic(rc_file_path, transmute([]byte)new_content)
 		if write_err != nil {
 			fmt.eprintfln("Error: Failed to write to %s", rc_file_path)
 			return

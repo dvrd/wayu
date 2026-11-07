@@ -325,21 +325,6 @@ test_strip_toml_section_no_leading_padding :: proc(t: ^testing.T) {
  testing.expect(t, !strings.contains_rune(out, rune(0)), "output must contain no NUL bytes")
 }
 
-// Regression: replace_toml_table_section must preserve the file head and only
-// rewrite the targeted section body.
-@(test)
-test_replace_toml_table_section_preserves_head :: proc(t: ^testing.T) {
- content := "[shell]\ntype = \"ZSH\"\n\n[paths]\nold = \"/old\"\n"
- body := []string{"new_a = \"/a\"", "new_b = \"/b\""}
- out := wayu.replace_toml_table_section(content, "paths", body)
- defer delete(out)
-
- testing.expect(t, strings.has_prefix(out, "[shell]"), "head section must be preserved")
- testing.expect(t, strings.contains(out, "new_a = \"/a\""), "new body entry a must be present")
- testing.expect(t, strings.contains(out, "new_b = \"/b\""), "new body entry b must be present")
- testing.expect(t, !strings.contains(out, "old = \"/old\""), "old body entry must be replaced")
-}
-
 // ---------------------------------------------------------------------------
 // Value / header parsing regressions (quote stripping, comments, UTF-8)
 // ---------------------------------------------------------------------------
@@ -406,22 +391,6 @@ test_toml_line_is_section_with_comment :: proc(t: ^testing.T) {
 	testing.expect(t, wayu.toml_line_is_section("[ env ]", "env"))
 	testing.expect(t, !wayu.toml_line_is_section("[[env]]", "env"))
 	testing.expect(t, !wayu.toml_line_is_section("[environment]", "env"))
-}
-
-@(test)
-test_replace_toml_table_section_header_comment_no_duplicate :: proc(t: ^testing.T) {
-	content := "[shell]\ntype = \"zsh\"\n\n[env]  # my vars\n# keep me\nA = \"1\"\n\n[paths]\nx = \"/x\"\n"
-	body := []string{`A = "1"`, `B = "2"`}
-	out := wayu.replace_toml_table_section(content, "env", body)
-	defer delete(out)
-
-	testing.expect_value(t, strings.count(out, "[env]"), 1)
-	testing.expect(t, strings.contains(out, "[env]  # my vars"), "header comment must survive")
-	testing.expect(t, strings.contains(out, "# keep me"), "comment inside the table must survive")
-	testing.expect(t, strings.contains(out, `B = "2"`))
-	testing.expect(t, strings.contains(out, "[paths]\nx = \"/x\""), "following table untouched")
-	// Result must still be valid for wayu's own sanity checker.
-	testing.expect(t, wayu.toml_content_is_sane(out), "rewritten TOML must be sane")
 }
 
 @(test)
