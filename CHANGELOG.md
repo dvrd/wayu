@@ -5,6 +5,43 @@ All notable changes to wayu will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.3] - 2026-11-07
+
+### Changed
+
+- **init**: Use shared toml line helpers and growing arena
+- Remove dead form/input widgets; fix TUI test binary
+
+### Fixed
+
+- **path**: Resolve relative/~/$VAR paths in add and rm
+- **conda**: Lazy-load only on conda/mamba, keep root global
+- **prompt**: Reset zsh options in context detection
+- **lock**: Own all parsed lock file strings
+- **plugin**: Single-quote paths in generated loader
+- **plugin**: Honor dry-run and own version in migration
+- **plugin**: Exact lookups, safe names, owned resolver output
+- **plugin**: Safe rm/add/update/check command handlers
+- **backup**: Unique sub-second backups, safe restore, JSON escaping
+- **migrate**: Strict args, dry-run, safe archiving and real TOML parsing
+- **doctor**: Check/fix wayu.toml paths, growable arena, real TOML check
+- **fuzzy,search**: Safe raw mode, UTF-8 matching, allocator misuse
+- **tui**: Always restore terminal on exit, signals and panics
+- **style**: Unify display width, fix dangling returns and leaks
+- **form**: Q no longer cancels, EOF exits, keep scrollback
+- **tui**: Act on the right row, decode input fully, wide chars, NO_COLOR
+- **config**: Parse TOML values and headers correctly
+- **path,hooks**: Toml-native clean/dedup, safe hooks, honest dry-run
+- **cli**: Flag positions, init/function safety, export hooks
+- **toml**: Growable parse arena; entries read from wayu.toml
+- **tui**: Parse [env] values with shared TOML kv parser
+- **init**: Generate bash-valid, safely quoted init files
+- **export**: Build turbo/eval from wayu.toml and honor --dry-run
+- **env_snapshot**: Per-cache init flags, piped alias capture
+- **completions**: Run _wayu on first autoload
+- **init**: Parse [tools] without fixed 512KB arena
+- **prompt**: Strip only a matching quote pair from config values
+- **doctor**: Recognize eval "$(wayu build eval)" as sourcing wayu
 ## [4.4.2] - 2026-08-03
 
 ### Fixed
@@ -492,6 +529,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Correct termios struct for macOS compatibility
 - Resolve unit test failures and improve test robustness
 - Rename run_component_test to run_component_testing
+[4.4.3]: https://github.com/dvrd/wayu/releases/tag/v4.4.3
 [4.4.2]: https://github.com/dvrd/wayu/releases/tag/v4.4.2
 [4.4.1]: https://github.com/dvrd/wayu/releases/tag/v4.4.1
 [4.4.0]: https://github.com/dvrd/wayu/releases/tag/v4.4.0
