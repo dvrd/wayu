@@ -361,7 +361,35 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 	return cfg
 }
 
-// Genera prompt nativo simplificado pero completo
+// Escape `s` for splicing inside a zsh double-quoted string: backslash, `"`,
+// `$` and backtick are backslash-escaped so config text is always literal (no `$(...)` execution,
+// no broken quoting). Prompt `%` escapes are left for prompt expansion.
+// Returns a temp-allocated string.
+prompt_dq_escape :: proc(s: string) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	for i in 0..<len(s) {
+		c := s[i]
+		switch c {
+		case '\\', '"', '$', '`':
+			strings.write_byte(&sb, '\\')
+		}
+		strings.write_byte(&sb, c)
+	}
+	return strings.to_string(sb)
+}
+
+// Render a module format (DSL) to an escaped double-quote body, then swap the
+// escaped module variables (`\$user`, ...) for generated zsh code. vars are
+// {escaped_name, replacement}. Temp-allocated.
+prompt_render_module :: proc(dsl_format: string, vars: [][2]string) -> string {
+	rendered := dsl_to_zsh_format(dsl_format)
+	defer delete(rendered)
+	out := prompt_dq_escape(rendered)
+	for v in vars {
+		out, _ = strings.replace_all(out, v[0], v[1], context.temp_allocator)
+	}
+	return out
+}
 
 // Generate shell code for a single prompt token (content only, no styling).
 // Called by the format walker for both bare {token} and styled [{token}](style).
@@ -371,45 +399,35 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 	// ($user, $hostname, $localip, $dir, $branch) that get replaced with
 	// zsh escapes or shell commands.
 
+	// Config text is escaped (prompt_render_module) so only the generated
+	// replacements below can expand; `$(...)` typed in wayu.toml stays literal.
 	if name == "username" {
-		rendered := dsl_to_zsh_format(cfg.username_format)
-		defer delete(rendered)
-		rendered, _ = strings.replace_all(rendered, "$user", "%n")
+		rendered := prompt_render_module(cfg.username_format, {{`\$user`, "%n"}})
 		strings.write_string(builder, `  result+="`)
 		strings.write_string(builder, rendered)
 		strings.write_string(builder, `"`)
 		fmt.sbprintln(builder)
 	} else if name == "hostname" {
-		rendered := dsl_to_zsh_format(cfg.hostname_format)
-		defer delete(rendered)
-		rendered, _ = strings.replace_all(rendered, "$hostname", "%m")
+		rendered := prompt_render_module(cfg.hostname_format, {{`\$hostname`, "%m"}})
 		strings.write_string(builder, `  result+="`)
 		strings.write_string(builder, rendered)
 		strings.write_string(builder, `"`)
 		fmt.sbprintln(builder)
 	} else if name == "localip" {
-		rendered := dsl_to_zsh_format(cfg.localip_format)
-		defer delete(rendered)
 		// $localip gets replaced with a shell subshell that fetches the IP
-		rendered, _ = strings.replace_all(rendered, "$localip", `$(ipconfig getifaddr en0 2>/dev/null || ip -4 route get 1 2>/dev/null | awk '{print $7; exit}')`)
+		rendered := prompt_render_module(cfg.localip_format, {{`\$localip`, `$(ipconfig getifaddr en0 2>/dev/null || ip -4 route get 1 2>/dev/null | awk '{print $7; exit}')`}})
 		strings.write_string(builder, `  result+="`)
 		strings.write_string(builder, rendered)
 		strings.write_string(builder, `"`)
 		fmt.sbprintln(builder)
 	} else if name == "dir" {
-		rendered := dsl_to_zsh_format(cfg.dir_format)
-		defer delete(rendered)
-		rendered, _ = strings.replace_all(rendered, "$basename", "%1~")
-		rendered, _ = strings.replace_all(rendered, "$pwd", "%/")
-		rendered, _ = strings.replace_all(rendered, "$dir", "%~")
+		rendered := prompt_render_module(cfg.dir_format, {{`\$basename`, "%1~"}, {`\$pwd`, "%/"}, {`\$dir`, "%~"}})
 		strings.write_string(builder, `  result+="`)
 		strings.write_string(builder, rendered)
 		strings.write_string(builder, `"`)
 		fmt.sbprintln(builder)
 	} else if name == "git_branch" {
-		rendered := dsl_to_zsh_format(cfg.git_branch_format)
-		defer delete(rendered)
-		rendered, _ = strings.replace_all(rendered, "$branch", "${_WAYU_GIT_BRANCH}")
+		rendered := prompt_render_module(cfg.git_branch_format, {{`\$branch`, "${_WAYU_GIT_BRANCH}"}})
 		fmt.sbprintln(builder, `  if [[ -n "$_WAYU_GIT_BRANCH" ]]; then`)
 		strings.write_string(builder, `    result+="`)
 		strings.write_string(builder, rendered)
@@ -420,12 +438,11 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 		// Render per-language format from [prompt.contexts], fallback to shell name
 		fmt.sbprintln(builder, `  case "$_WAYU_CONTEXT" in`)
 		for lang, fmt_str in cfg.context_formats {
-			rendered := dsl_to_zsh_format(fmt_str)
-			defer delete(rendered)
 			// $version -> async-fetched version string
-			rendered, _ = strings.replace_all(rendered, "$version", "${_WAYU_CONTEXT_VER}")
+			rendered := prompt_render_module(fmt_str, {{`\$version`, "${_WAYU_CONTEXT_VER}"}})
 			strings.write_string(builder, `    `)
-			strings.write_string(builder, lang)
+			// Same sanitizing as _wayu_detect_context's _WAYU_CONTEXT values.
+			strings.write_string(builder, sanitize_ident(lang))
 			strings.write_string(builder, `) result+="`)
 			strings.write_string(builder, rendered)
 			strings.write_string(builder, `" ;;`)
@@ -438,25 +455,25 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 		fmt.sbprintln(builder, "  local char_symbol char_color")
 		fmt.sbprintln(builder, `  case "$_WAYU_VI_MODE" in`)
 		fmt.sbprint(builder, `    INSERT) char_symbol="`)
-		fmt.sbprint(builder, cfg.character_success)
+		fmt.sbprint(builder, prompt_dq_escape(cfg.character_success))
 		fmt.sbprintln(builder, `" ;;`)
 		fmt.sbprint(builder, `    NORMAL) char_symbol="`)
-		fmt.sbprint(builder, cfg.vimcmd_symbol)
+		fmt.sbprint(builder, prompt_dq_escape(cfg.vimcmd_symbol))
 		fmt.sbprintln(builder, `" ;;`)
 		fmt.sbprint(builder, `    VISUAL) char_symbol="`)
-		fmt.sbprint(builder, cfg.vimcmd_visual_symbol)
+		fmt.sbprint(builder, prompt_dq_escape(cfg.vimcmd_visual_symbol))
 		fmt.sbprintln(builder, `" ;;`)
 		fmt.sbprint(builder, `    REPLACE|REPLACE_ONE) char_symbol="`)
-		fmt.sbprint(builder, cfg.vimcmd_replace_symbol)
+		fmt.sbprint(builder, prompt_dq_escape(cfg.vimcmd_replace_symbol))
 		fmt.sbprintln(builder, `" ;;`)
 		fmt.sbprintln(builder, "    *)")
 		fmt.sbprintln(builder, "      if [[ ${_WAYU_LAST_EXIT:-0} -eq 0 ]]; then")
 		fmt.sbprint(builder, `        char_symbol="`)
-		fmt.sbprint(builder, cfg.character_success)
+		fmt.sbprint(builder, prompt_dq_escape(cfg.character_success))
 		fmt.sbprintln(builder, `"`)
 		fmt.sbprintln(builder, "      else")
 		fmt.sbprint(builder, `        char_symbol="`)
-		fmt.sbprint(builder, cfg.character_error)
+		fmt.sbprint(builder, prompt_dq_escape(cfg.character_error))
 		fmt.sbprintln(builder, `"`)
 		fmt.sbprintln(builder, "      fi")
 		fmt.sbprintln(builder, `    ;;`)
@@ -546,7 +563,7 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 				if open_bracket > pos {
 					literal := part[pos:open_bracket]
 					fmt.sbprint(&builder, `  result+="`)
-					fmt.sbprint(&builder, literal)
+					fmt.sbprint(&builder, prompt_dq_escape(literal))
 					fmt.sbprintln(&builder, `"`)
 				}
 				
@@ -594,7 +611,7 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 				remaining := part[pos:]
 				if len(remaining) > 0 {
 					fmt.sbprint(&builder, `  result+="`)
-					fmt.sbprint(&builder, remaining)
+					fmt.sbprint(&builder, prompt_dq_escape(remaining))
 					fmt.sbprintln(&builder, `"`)
 				}
 				break
@@ -605,7 +622,7 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 			if open_brace > pos {
 				literal := part[pos:open_brace]
 				fmt.sbprint(&builder, `  result+="`)
-				fmt.sbprint(&builder, literal)
+				fmt.sbprint(&builder, prompt_dq_escape(literal))
 				fmt.sbprintln(&builder, `"`)
 			}
 
@@ -613,7 +630,7 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 			if close_brace == -1 {
 				// Unclosed — emit as literal
 				fmt.sbprint(&builder, `  result+="`)
-				fmt.sbprint(&builder, part[open_brace:])
+				fmt.sbprint(&builder, prompt_dq_escape(part[open_brace:]))
 				fmt.sbprintln(&builder, `"`)
 				break
 			}
@@ -627,7 +644,7 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	}  // Cierre del for loop
 	
 	// Output final
-	fmt.sbprintln(&builder, `  echo "$result"`)
+	fmt.sbprintln(&builder, `  print -r -- "$result"`)
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
 	
@@ -779,7 +796,7 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	}
 
 	fmt.sbprintln(&builder)
-	fmt.sbprintln(&builder, `  echo "$result"`)
+	fmt.sbprintln(&builder, `  print -r -- "$result"`)
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
 
@@ -810,7 +827,7 @@ generate_toggle_feature :: proc(b: ^strings.Builder, key: string) {
 	fmt.sbprintln(b, "  zle reset-prompt")
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b, "zle -N _wayu_toggle_prompt")
-	fmt.sbprintfln(b, "bindkey '%s' _wayu_toggle_prompt", key)
+	fmt.sbprintfln(b, "bindkey %s _wayu_toggle_prompt", shell_single_quote(key, context.temp_allocator))
 	fmt.sbprintln(b)
 }
 
@@ -1029,12 +1046,12 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 	fmt.sbprintln(b, "  if [[ -n \"$_WAYU_GIT_BRANCH\" ]]; then")
 	fmt.sbprintln(b, `    git_pending="$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"`) 
 	fmt.sbprintln(b, "    if [[ \"$git_pending\" -gt 0 ]]; then")
-	// Apply rprompt_format: DSL conversion + token substitution
+	// Apply rprompt_format: DSL conversion + escaping + token substitution
 	{
-		rpfmt := dsl_to_zsh_format(rprompt_format)
-		defer delete(rpfmt)
-		rpfmt, _ = strings.replace_all(rpfmt, "{git_pending}", "${git_pending}")
-		rpfmt, _ = strings.replace_all(rpfmt, "{git_branch}", "${_WAYU_GIT_BRANCH}")
+		rpfmt := prompt_render_module(rprompt_format, {
+			{"{git_pending}", "${git_pending}"},
+			{"{git_branch}", "${_WAYU_GIT_BRANCH}"},
+		})
 		fmt.sbprint(b, "      git_pending=\"")
 		fmt.sbprint(b, rpfmt)
 		fmt.sbprint(b, "\"")
@@ -1048,10 +1065,19 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 	fmt.sbprintln(b, "  # Fetch version string for current context (async — never blocks prompt)")
 	fmt.sbprintln(b, `  local ver="$(_wayu_version_cmd "$_WAYU_CONTEXT")"`)
 	fmt.sbprintln(b)
-	fmt.sbprintln(b, "  # Write results to temp file and signal parent")
-	fmt.sbprintln(b, `  local tmpf="${TMPDIR:-/tmp}/.wayu_async_$$"`)
-	fmt.sbprintln(b, `  printf '%s\n%s' "$git_pending" "$ver" > "$tmpf"`)
-	fmt.sbprintln(b, "  kill -USR1 $$ 2>/dev/null || true")
+	// Results go through the shell's private 0700 dir (mktemp -d in
+	// _wayu_start_async): written to a fresh mktemp file, then renamed over
+	// `data` so the reader never sees a torn write and nothing in a shared
+	// /tmp has a guessable name.
+	fmt.sbprintln(b, "  # Write results atomically into the private dir and signal parent")
+	fmt.sbprintln(b, `  local dir="$_WAYU_ASYNC_DIR" tmpf`)
+	fmt.sbprintln(b, `  [[ -n "$dir" && -d "$dir" ]] || return 0`)
+	fmt.sbprintln(b, `  tmpf="$(mktemp "$dir/.w.XXXXXX" 2>/dev/null)" || return 0`)
+	fmt.sbprintln(b, `  if printf '%s\n%s' "$git_pending" "$ver" > "$tmpf" && mv -f "$tmpf" "$dir/data" 2>/dev/null; then`)
+	fmt.sbprintln(b, "    kill -USR1 $$ 2>/dev/null || true")
+	fmt.sbprintln(b, "  else")
+	fmt.sbprintln(b, `    rm -f "$tmpf"`)
+	fmt.sbprintln(b, "  fi")
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
 
@@ -1059,12 +1085,12 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 	// zsh-defer) and forwards here; defining TRAPUSR1 in the prompt used to
 	// clobber the zsh-defer trap. Fallback TRAPUSR1 only if none exists.
 	fmt.sbprintln(b, "_wayu_async_on_usr1() {")
-	fmt.sbprintln(b, `  local tmpf="${TMPDIR:-/tmp}/.wayu_async_$$"`)
-	fmt.sbprintln(b, "  if [[ -f \"$tmpf\" ]]; then")
-	fmt.sbprintln(b, `    local lines=("${(@f)$(< "$tmpf")}")`)
+	fmt.sbprintln(b, `  local f="$_WAYU_ASYNC_DIR/data"`)
+	fmt.sbprintln(b, "  if [[ -n \"$_WAYU_ASYNC_DIR\" && -f \"$f\" ]]; then")
+	fmt.sbprintln(b, `    local lines=("${(@f)$(< "$f")}")`)
 	fmt.sbprintln(b, `    _WAYU_ASYNC_DATA="${lines[1]-}"`)
 	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="${lines[2]-}"`)
-	fmt.sbprintln(b, `    rm -f "$tmpf"`)
+	fmt.sbprintln(b, `    rm -f "$f"`)
 	fmt.sbprintln(b, "  fi")
 	fmt.sbprintln(b, "  zle && zle reset-prompt")
 	fmt.sbprintln(b, "  return 0")
@@ -1074,11 +1100,25 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 	fmt.sbprintln(b, "fi")
 	fmt.sbprintln(b)
 
+	// The private dir is created lazily on the first prompt (one mktemp per
+	// shell, nothing at startup) and removed when the shell exits.
+	// Re-sourcing core keeps the existing dir (no orphaned dirs).
+	fmt.sbprintln(b, `typeset -g _WAYU_ASYNC_DIR="${_WAYU_ASYNC_DIR-}"`)
 	fmt.sbprintln(b, "_wayu_start_async() {")
-	fmt.sbprintln(b, "  (_wayu_async_worker &)")
+	fmt.sbprintln(b, "  local ret=$?")
+	fmt.sbprintln(b, `  if [[ -z "$_WAYU_ASYNC_DIR" || ! -d "$_WAYU_ASYNC_DIR" ]]; then`)
+	fmt.sbprintln(b, `    _WAYU_ASYNC_DIR="$(mktemp -d "${TMPDIR:-/tmp}/wayu-async.XXXXXX" 2>/dev/null)" || _WAYU_ASYNC_DIR=""`)
+	fmt.sbprintln(b, "  fi")
+	fmt.sbprintln(b, `  [[ -n "$_WAYU_ASYNC_DIR" ]] && (_wayu_async_worker &)`)
+	fmt.sbprintln(b, "  return $ret")
+	fmt.sbprintln(b, "}")
+	fmt.sbprintln(b, "_wayu_async_cleanup() {")
+	fmt.sbprintln(b, `  [[ -n "$_WAYU_ASYNC_DIR" && -d "$_WAYU_ASYNC_DIR" ]] && rm -rf -- "$_WAYU_ASYNC_DIR"`)
+	fmt.sbprintln(b, "  return 0")
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
 	fmt.sbprintln(b, "add-zsh-hook precmd _wayu_start_async")
+	fmt.sbprintln(b, "add-zsh-hook zshexit _wayu_async_cleanup")
 	fmt.sbprintln(b)
 }
 
@@ -1102,7 +1142,7 @@ generate_transient_feature :: proc(b: ^strings.Builder, format: string) {
 		fmt.sbprintln(b, "  fi")
 	}
 
-	fmt.sbprintln(b, `  echo "$result"`)
+	fmt.sbprintln(b, `  print -r -- "$result"`)
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
 }
@@ -1171,9 +1211,7 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 		if strings.contains(trimmed, "rprompt_format") && strings.contains(trimmed, "=") {
 			eq_idx := strings.index(trimmed, "=")
 			if eq_idx > 0 {
-				value := strings.trim_space(trimmed[eq_idx+1:])
-				value = strings.trim_prefix(value, `"`)
-				value = strings.trim_suffix(value, `"`)
+				value := prompt_strip_matching_quotes(strings.trim_space(trimmed[eq_idx+1:]))
 				if len(value) > 0 { cfg.rprompt_format = value }
 			}
 		}

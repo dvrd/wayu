@@ -128,10 +128,11 @@ generate_plugins_runtime_config :: proc(shell: ShellType) -> bool {
 		if !strings.has_prefix(key, "^") && !strings.contains(key, "[") {
 			continue
 		}
-		fmt.sbprintf(&sb, "  bindkey '%s' autosuggest-accept\n", key)
-		fmt.sbprintf(&sb, "  bindkey -M emacs '%s' autosuggest-accept\n", key)
-		fmt.sbprintf(&sb, "  bindkey -M main '%s' autosuggest-accept\n", key)
-		fmt.sbprintf(&sb, "  bindkey -M viins '%s' autosuggest-accept\n", key)
+		qkey := shell_quote(key, .ZSH)
+		fmt.sbprintf(&sb, "  bindkey %s autosuggest-accept\n", qkey)
+		fmt.sbprintf(&sb, "  bindkey -M emacs %s autosuggest-accept\n", qkey)
+		fmt.sbprintf(&sb, "  bindkey -M main %s autosuggest-accept\n", qkey)
+		fmt.sbprintf(&sb, "  bindkey -M viins %s autosuggest-accept\n", qkey)
 	}
 	strings.write_string(&sb, "fi\n")
 
