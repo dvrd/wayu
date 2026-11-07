@@ -9,12 +9,19 @@ import "core:slice"
 import "core:strings"
 // Best-effort write for generated init files. Logs a warning on failure
 // instead of silently swallowing the error. Atomic, so a shell starting
-// mid-regeneration never sources a truncated file.
+// mid-regeneration never sources a truncated file. Generated core/lazy/login
+// files embed [env] values, so they are owner-only (0600); the chmod also
+// repairs files created 0644 by older versions (OKAMI-206).
 @(private = "file")
 write_init_file :: proc(path, content: string) {
 	if write_file_atomic(path, transmute([]byte)content) != nil {
 		print_warning("Failed to write %s", path)
+		return
 	}
+	restrict_file_mode(path)
+	// Stale bytecode from a previous zcompile holds the same exports.
+	zwc := fmt.tprintf("%s.zwc", path)
+	if os.exists(zwc) { restrict_file_mode(zwc) }
 }
 
 // Technique 1: built-in zsh-defer (no external plugin required)
@@ -99,7 +106,7 @@ flush_zcompile_batch :: proc() {
 
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
-	strings.write_string(&builder, `zsh -fc 'for f; do zcompile -- "$f"; done' zsh`)
+	strings.write_string(&builder, `zsh -fc 'umask 077; for f; do zcompile -- "$f"; done' zsh`)
 	for p in ZCOMPILE_BATCH {
 		strings.write_byte(&builder, ' ')
 		strings.write_string(&builder, shell_single_quote(p, context.temp_allocator))
@@ -274,7 +281,8 @@ generate_optimized_init_all :: proc() {
 // Emit `export NAME="value"` lines for [env]. Values keep $VAR expansion,
 // a leading `~/` becomes `$HOME/`, and `"`, `\`, backtick and `$(` are
 // escaped (see shell_double_quote_env). Invalid names are skipped.
-emit_env_exports :: proc(b: ^strings.Builder, sep: string = "\n") {
+// `mask` replaces secret-looking values with SECRET_MASK (dry-run previews).
+emit_env_exports :: proc(b: ^strings.Builder, sep: string = "\n", mask := false) {
 	toml_env := read_wayu_toml_env()
 	defer {
 		for e in toml_env { delete(e.name); delete(e.value) }
@@ -286,6 +294,7 @@ emit_env_exports :: proc(b: ^strings.Builder, sep: string = "\n") {
 			continue
 		}
 		v := expand_leading_tilde_to_home_var(e.value, context.temp_allocator)
+		if mask { v = mask_secret_value(e.name, e.value) }
 		fmt.sbprintf(b, "export %s=%s%s", e.name, shell_double_quote_env(v, context.temp_allocator), sep)
 	}
 }

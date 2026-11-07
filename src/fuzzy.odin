@@ -407,8 +407,6 @@ extract_completion_items :: proc() -> []string {
 // ============================================================================
 
 FFF_INTEGRATION_ENABLED := true  // Can be disabled via env var
-FFF_AUTO_FALLBACK := true       // Auto use fuzzy when exact match fails
-FFF_INTERACTIVE_SELECT := true  // Show interactive selector for multiple matches
 
 // Check if fff integration is enabled
 fff_is_enabled :: proc() -> bool {
@@ -654,148 +652,56 @@ free_fuzzy_matches :: proc(matches: []FuzzyMatch) {
 }
 
 // ============================================================================
-// Enhanced GET with Fuzzy Fallback
+// GET miss reporting
 // ============================================================================
 
-// Get entry with fuzzy fallback - main function for CLI GET
-get_config_entry_fuzzy :: proc(spec: ^ConfigEntrySpec, query: string) -> (ConfigEntry, bool) {
-    // First try exact match
-    entries := read_config_entries(spec)
-    defer cleanup_entries(&entries)
-    
-    for entry in entries {
-        if entry.name == query {
-            // Exact match found - return it
-            return clone_entry(entry), true
-        }
-    }
-    
-    // No exact match - try fuzzy if enabled
-    if !fff_is_enabled() || !FFF_AUTO_FALLBACK {
-        return ConfigEntry{}, false
-    }
-    
-    // Do fuzzy search
-    matches := fuzzy_find_entries(spec, query, max_results = 10)
-    if matches == nil || len(matches) == 0 {
-        return ConfigEntry{}, false
-    }
-    defer free_fuzzy_matches(matches)
-    
-    // If we have a very strong match (exact, prefix, or acronym with high score), use it
-    best_match := matches[0]
-    if best_match.match_type == .Exact || 
-       best_match.match_type == .Prefix ||
-       (best_match.match_type == .Acronym && best_match.score > 1000) {
-        return clone_entry(best_match.entry), true
-    }
-    
-    // Multiple matches - if interactive, let user choose
-    if FFF_INTERACTIVE_SELECT && is_stdin_tty() && len(matches) > 1 {
-        selected := interactive_select_match(spec, matches, query)
-        if selected.name != "" {
-            return selected, true
-        }
-    }
-    
-    // Return best match if score is good enough
-    if best_match.score >= 50 {
-        return clone_entry(best_match.entry), true
-    }
-    
-    return ConfigEntry{}, false
+// `get` is exact-match only: scripts run X=$(wayu const get NAME) and must
+// never receive another entry's value (FIRE used to return
+// FIREWORKS_AI_API_KEY). On a miss, print the error plus up to
+// GET_SUGGESTION_LIMIT similar NAMES (never values) to stderr and exit
+// EXIT_DATAERR. `names` holds every name of the entry type. (OKAMI-207)
+GET_SUGGESTION_LIMIT :: 5
+
+exit_get_not_found :: proc(spec: ^ConfigEntrySpec, query: string, names: []string) -> ! {
+	print_error_simple("%s not found: %s", spec.display_name, query)
+	suggestions := suggest_similar_names(query, names, GET_SUGGESTION_LIMIT, context.temp_allocator)
+	if len(suggestions) > 0 {
+		fmt.eprintln("Did you mean:")
+		for name in suggestions { fmt.eprintfln("  %s", name) }
+	}
+	os.exit(EXIT_DATAERR)
 }
 
-// Print fuzzy match suggestions for CLI
-print_fuzzy_suggestions :: proc(spec: ^ConfigEntrySpec, query: string, matches: []FuzzyMatch) {
-    fmt.printf("\n%s%s '%s' not found. Did you mean:%s\n", 
-        YELLOW, spec.display_name, query, RESET)
-    fmt.println()
-    
-    for match, i in matches {
-        type_str := ""
-        switch match.match_type {
-        case .Exact: type_str = "exact"
-        case .Prefix: type_str = "prefix"
-        case .Substring: type_str = "substring"
-        case .Fuzzy: type_str = "fuzzy"
-        case .Acronym: type_str = "acronym"
-        }
-        
-        score_indicator := ""
-        if match.score > 1000 {
-            score_indicator = fmt.tprintf(" %s★%s", GREEN, RESET)
-        } else if match.score > 500 {
-            score_indicator = fmt.tprintf(" %s◆%s", YELLOW, RESET)
-        }
-        
-        fmt.printf("  %s%d.%s %s%s%s (%s)%s\n", 
-            get_secondary(), i + 1, RESET,
-            get_primary(), match.entry.name, RESET,
-            type_str, score_indicator)
-        
-        if spec.fields_count > 1 && match.entry.value != "" {
-            truncated := truncate_display(match.entry.value, 50)
-            fmt.printf("      %s%s%s\n", get_muted(), truncated, RESET)
-        }
-    }
-    
-    fmt.println()
-    fmt.printf("%sUse: wayu %s get <name>%s\n", get_muted(), spec.file_name, RESET)
-}
+// Rank `names` against `query` (exact-fold > prefix > substring > acronym >
+// fuzzy) and return the best `limit`. The result slice is allocated with
+// `allocator`; its strings are views into `names`.
+suggest_similar_names :: proc(query: string, names: []string, limit: int, allocator := context.allocator) -> []string {
+	Scored :: struct { name: string, score: int }
+	scored := make([dynamic]Scored, 0, len(names), context.temp_allocator)
 
-// Interactive selector for fuzzy matches using wayu's existing fuzzy finder
-interactive_select_match :: proc(spec: ^ConfigEntrySpec, matches: []FuzzyMatch, query: string) -> ConfigEntry {
-    // Convert items to simple strings for interactive_fuzzy_select
-    item_strings := make([]string, len(matches))
-    defer {
-        for s in item_strings {
-            delete(s)
-        }
-        delete(item_strings)
-    }
-    
-    // Build display strings with match type indicators
-    for match, i in matches {
-        type_indicator := ""
-        switch match.match_type {
-        case .Exact: type_indicator = " [=]"
-        case .Prefix: type_indicator = " [^]"
-        case .Substring: type_indicator = " [~]"
-        case .Acronym: type_indicator = " [@]"
-        case .Fuzzy: type_indicator = " [*]"
-        }
-        
-        // Heap-allocated: the deferred cleanup above deletes these with the
-        // heap allocator (tprintf strings must never be freed that way).
-        item_strings[i] = fmt.aprintf("%s%s", match.entry.name, type_indicator)
-    }
+	query_lower := strings.to_lower(query, context.temp_allocator)
+	for name in names {
+		name_lower := strings.to_lower(name, context.temp_allocator)
+		score: int
+		switch {
+		case name_lower == query_lower:                   score = 10000
+		case strings.has_prefix(name_lower, query_lower): score = 5000 + fuzzy_score(name, query)
+		case strings.contains(name_lower, query_lower):   score = 3000 + fuzzy_score(name, query)
+		case is_acronym_match(name, query):               score = 2000 + fuzzy_score(name, query)
+		case:                                             score = fuzzy_score(name, query)
+		}
+		if score > 0 { append(&scored, Scored{name, score}) }
+	}
 
-    // Use wayu's built-in fuzzy picker
-    selected_display, ok := interactive_fuzzy_select(item_strings,
-        fmt.tprintf("Select %s matching '%s'", spec.display_name, query))
-    // interactive_select always returns a heap string (even on cancel).
-    defer delete(selected_display)
+	slice.sort_by(scored[:], proc(a, b: Scored) -> bool {
+		if a.score != b.score { return a.score > b.score }
+		return a.name < b.name
+	})
 
-    if !ok || selected_display == "" {
-        return ConfigEntry{}
-    }
-
-    // Extract just the name (remove type indicator); a view into
-    // selected_display, freed with it.
-    selected_name := selected_display
-    if idx := strings.last_index(selected_display, " ["); idx != -1 {
-        selected_name = selected_display[:idx]
-    }
-    
-    // Find the matching entry
-    for match in matches {
-        if match.entry.name == selected_name {
-            return clone_entry(match.entry)
-        }
-    }
-    
-    return ConfigEntry{}
+	n := min(limit, len(scored))
+	result := make([]string, n, allocator)
+	for i in 0..<n { result[i] = scored[i].name }
+	return result
 }
 
 // ============================================================================
@@ -965,19 +871,6 @@ fuzzy_find_command :: proc(query: string) -> (string, bool) {
 fff_integration_init :: proc() -> bool {
     if !fff_is_enabled() {
         return false
-    }
-    
-    // Check for environment overrides
-    auto_fb := os.get_env_alloc("WAYU_FFF_AUTO_FALLBACK", context.allocator)
-    defer delete(auto_fb)
-    if auto_fb == "0" || auto_fb == "false" {
-        FFF_AUTO_FALLBACK = false
-    }
-    
-    interactive := os.get_env_alloc("WAYU_FFF_INTERACTIVE", context.allocator)
-    defer delete(interactive)
-    if interactive == "0" || interactive == "false" {
-        FFF_INTERACTIVE_SELECT = false
     }
     
     return true

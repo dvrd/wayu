@@ -138,7 +138,7 @@ shell = "zsh"
 # EDITOR = "nvim"
 # LANG   = "en_US.UTF-8"
 `
-		if write_ok := os.write_entire_file_from_string(toml_file, default_content); write_ok != nil {
+		if write_ok := os.write_entire_file_from_string(toml_file, default_content, SECRET_FILE_PERMS); write_ok != nil {
 			print_error_simple("Failed to create wayu.toml: %s", toml_file)
 			os.exit(EXIT_CANTCREAT)
 		}

@@ -95,7 +95,7 @@ generate_turbo_export :: proc(dry_run: bool) {
 		fmt.println()
 	}
 
-	content := build_turbo_content()
+	content := build_turbo_content(mask_secrets = dry_run)
 	defer delete(content)
 
 	if dry_run {
@@ -115,6 +115,7 @@ generate_turbo_export :: proc(dry_run: bool) {
 		print_error("Failed to write turbo export file")
 		os.exit(EXIT_IOERR)
 	}
+	restrict_file_mode(output_path) // embeds [env] values (OKAMI-206)
 
 	print_success("Turbo export generated: %s", output_path)
 	fmt.println()
@@ -134,7 +135,8 @@ generate_turbo_export :: proc(dry_run: bool) {
 }
 
 // Build the complete turbo content
-build_turbo_content :: proc() -> string {
+// `mask_secrets` is set for the --dry-run preview (OKAMI-208).
+build_turbo_content :: proc(mask_secrets := false) -> string {
 	clear_toml_content_cache()
 	defer clear_toml_content_cache()
 
@@ -154,7 +156,7 @@ build_turbo_content :: proc() -> string {
 
 	// 1. Constants (environment variables) - direct exports, file order
 	fmt.sbprintln(&builder, "# === CONSTANTS ===")
-	emit_env_exports(&builder)
+	emit_env_exports(&builder, mask = mask_secrets)
 	fmt.sbprintln(&builder)
 
 	// 2. PATH - pre-computed, single export

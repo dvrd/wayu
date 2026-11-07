@@ -527,7 +527,8 @@ init_config_file :: proc(file_path: string, template: string) -> bool {
 
 	debug("Creating config file: %s", file_path)
 
-	write_err := os.write_entire_file(file_path, transmute([]byte)template)
+	// Owner-only: wayu.toml and the legacy constants file hold [env] secrets.
+	write_err := os.write_entire_file(file_path, transmute([]byte)template, SECRET_FILE_PERMS)
 	if write_err != nil {
 		debug("Failed to create config file: %s", file_path)
 		return false

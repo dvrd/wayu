@@ -1,0 +1,191 @@
+#!/usr/bin/env ruby
+# Integration tests for secret handling (OKAMI-206/207/208):
+#   * wayu.toml, backups and generated core files are owner-only;
+#   * `get` is exact-match only and never prints another entry's value;
+#   * dry-run / search / export previews mask secret-looking values.
+# All values below are fake. Runs in a temporary HOME.
+
+require 'open3'
+require 'fileutils'
+require_relative 'test_helper'
+
+class SecretsIntegrationTest
+  include WayuTestHelper
+
+  SECRET = 'fake-secret-value-0001'.freeze
+  DB_PW  = 'fakepw0002'.freeze
+
+  def initialize
+    setup_test_env
+  end
+
+  def run
+    puts '🔒 Testing secret handling...'
+    puts
+
+    begin
+      build_project
+      initialize_wayu
+      seed
+
+      test_toml_and_generated_files_owner_only
+      test_backups_owner_only
+      test_legacy_backup_modes_repaired
+      test_const_get_exact_prints_value
+      test_const_get_prefix_miss
+      test_const_get_case_mismatch_miss
+      test_alias_get_prefix_miss
+      test_path_get_prefix_miss
+      test_dry_run_const_add_masks
+      test_dry_run_alias_add_hides_env
+      test_dry_run_const_rm_shows_name_only
+      test_search_masks_and_skips_values
+      test_export_dry_run_masks
+    ensure
+      teardown_test_env
+    end
+
+    print_summary('secrets')
+    exit(@failed > 0 ? 1 : 0)
+  end
+
+  private
+
+  def run_split(args)
+    env = ENV.to_h.merge('HOME' => @tmp_home, 'NO_COLOR' => '1')
+    project_root = File.expand_path('../..', __dir__)
+    out, err, status = Open3.capture3(env, "#{@wayu_bin} #{args}", chdir: project_root)
+    [out.force_encoding('UTF-8'), err.force_encoding('UTF-8'), status]
+  end
+
+  def check(label, ok, detail = '')
+    if ok
+      puts '✓'
+      @passed += 1
+    else
+      puts '✗'
+      puts "  #{label}"
+      puts "  #{detail}" unless detail.empty?
+      @failed += 1
+    end
+  end
+
+  def mode(path)
+    File.stat(path).mode & 0o777
+  end
+
+  def seed
+    run_split("const add FIREWORKS_AI_API_KEY #{SECRET}")
+    run_split("const add DATABASE_URL 'postgres://app:#{DB_PW}@localhost/app'")
+    run_split('const add EDITOR nvim')
+    run_split("alias add gst 'git status'")
+    FileUtils.mkdir_p("#{@tmp_home}/secret_bin_dir")
+    run_split("path add #{@tmp_home}/secret_bin_dir")
+  end
+
+  def test_toml_and_generated_files_owner_only
+    print 'Test 1: wayu.toml and generated core files are 0600... '
+    files = ["#{@config_dir}/wayu.toml"] + Dir.glob("#{@data_dir}/{core,lazy,login,helpers}.zsh")
+    bad = files.reject { |f| mode(f) == 0o600 }.map { |f| "#{File.basename(f)}=#{format('%o', mode(f))}" }
+    check('files wider than 0600', bad.empty? && files.size >= 2, bad.join(' '))
+  end
+
+  def test_backups_owner_only
+    print 'Test 2: backup dir 0700, backups 0600... '
+    dir = "#{@data_dir}/backup"
+    backups = Dir.glob("#{dir}/*")
+    bad = backups.reject { |f| mode(f) == 0o600 }
+    check("dir=#{format('%o', mode(dir))} bad=#{bad}",
+          mode(dir) == 0o700 && !backups.empty? && bad.empty?)
+  end
+
+  def test_legacy_backup_modes_repaired
+    print 'Test 3: next backup tightens legacy 0755/0644 modes... '
+    dir = "#{@data_dir}/backup"
+    File.chmod(0o755, dir)
+    Dir.glob("#{dir}/*").each { |f| File.chmod(0o644, f) }
+    File.chmod(0o644, "#{@data_dir}/core.zsh")
+    run_split('const add REPAIR_TRIGGER 1')
+    bad = Dir.glob("#{dir}/*").reject { |f| mode(f) == 0o600 }
+    check("dir=#{format('%o', mode(dir))} core=#{format('%o', mode("#{@data_dir}/core.zsh"))} bad=#{bad.size}",
+          mode(dir) == 0o700 && bad.empty? && mode("#{@data_dir}/core.zsh") == 0o600)
+  end
+
+  def test_const_get_exact_prints_value
+    print 'Test 4: const get EXACT prints value, exit 0... '
+    out, _err, status = run_split('const get FIREWORKS_AI_API_KEY')
+    check("exit=#{status.exitstatus} out=#{out.inspect}", status.success? && out.strip == SECRET)
+  end
+
+  def test_const_get_prefix_miss
+    print 'Test 5: const get FIRE misses (exit 65), no value anywhere, names on stderr... '
+    out, err, status = run_split('const get FIRE')
+    ok = status.exitstatus == 65 && out.strip.empty? &&
+         !(out + err).include?(SECRET) && err.include?('FIREWORKS_AI_API_KEY')
+    check("exit=#{status.exitstatus} out=#{out.inspect} err=#{err.inspect}", ok)
+  end
+
+  def test_const_get_case_mismatch_miss
+    print 'Test 6: const get with wrong case is a miss... '
+    out, err, status = run_split('const get fireworks_ai_api_key')
+    check("exit=#{status.exitstatus}", status.exitstatus == 65 && out.strip.empty? && !(out + err).include?(SECRET))
+  end
+
+  def test_alias_get_prefix_miss
+    print 'Test 7: alias get prefix misses (exit 65)... '
+    out, err, status = run_split('alias get gs')
+    check("exit=#{status.exitstatus} out=#{out.inspect}",
+          status.exitstatus == 65 && out.strip.empty? && !err.include?('git status') && err.include?('gst'))
+  end
+
+  def test_path_get_prefix_miss
+    print 'Test 8: path get prefix misses (exit 65)... '
+    out, _err, status = run_split("path get #{@tmp_home}/secret_bin")
+    check("exit=#{status.exitstatus} out=#{out.inspect}", status.exitstatus == 65 && out.strip.empty?)
+  end
+
+  def test_dry_run_const_add_masks
+    print 'Test 9: --dry-run const add masks secret value, shows only changed key... '
+    out, err, status = run_split('--dry-run const add NEW_API_TOKEN fake-new-token-0003')
+    all = out + err
+    ok = status.success? && all.include?('NEW_API_TOKEN') && all.include?('********') &&
+         !all.include?('fake-new-token-0003') && !all.include?(SECRET) && !all.include?(DB_PW) &&
+         !all.include?('EDITOR')
+    check(all, ok)
+  end
+
+  def test_dry_run_alias_add_hides_env
+    print 'Test 10: --dry-run alias add does not print [env]... '
+    out, err, status = run_split("--dry-run alias add zz 'echo hi'")
+    all = out + err
+    ok = status.success? && all.include?('zz') && !all.include?(SECRET) && !all.include?(DB_PW) &&
+         !all.include?('gst')
+    check(all, ok)
+  end
+
+  def test_dry_run_const_rm_shows_name_only
+    print 'Test 11: --dry-run const rm shows the name, not the value... '
+    out, err, status = run_split('--dry-run const rm FIREWORKS_AI_API_KEY')
+    all = out + err
+    check(all, status.success? && all.include?('FIREWORKS_AI_API_KEY') && !all.include?(SECRET))
+  end
+
+  def test_search_masks_and_skips_values
+    print 'Test 12: search masks secret values and never matches inside constant values... '
+    out_name, err_name, = run_split('search FIREWORKS')
+    out_val, err_val, = run_split("search #{DB_PW}")
+    ok = (out_name + err_name).include?('FIREWORKS_AI_API_KEY') && !(out_name + err_name).include?(SECRET) &&
+         !(out_val + err_val).include?('DATABASE_URL') && !(out_val + err_val).include?(DB_PW + '@')
+    check("name=#{out_name} value=#{out_val}", ok)
+  end
+
+  def test_export_dry_run_masks
+    print 'Test 13: export --dry-run preview masks secrets... '
+    out, err, status = run_split('export --dry-run')
+    all = out + err
+    ok = status.success? && all.include?('FIREWORKS_AI_API_KEY') && !all.include?(SECRET) && !all.include?(DB_PW)
+    check(all, ok)
+  end
+end
+
+SecretsIntegrationTest.new.run if __FILE__ == $PROGRAM_NAME

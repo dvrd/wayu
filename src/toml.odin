@@ -363,11 +363,19 @@ commit_wayu_toml :: proc(new_content: string) -> bool {
 }
 
 @(private = "file")
-print_toml_dry_run :: proc(dry_label, new_content: string) {
+print_toml_dry_run :: proc(section, dry_label: string, removed: []string, name := "", value := "", existed := false) {
+	// Only the changed keys, values masked if secret-looking. Never dump the
+	// whole file: it holds every [env] secret (OKAMI-208).
 	print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 	fmt.println()
-	fmt.printfln("%sWould update wayu.toml %s:%s", BRIGHT_CYAN, dry_label, RESET)
-	fmt.print(new_content)
+	fmt.printfln("%sWould update wayu.toml [%s] (%s):%s", BRIGHT_CYAN, section, dry_label, RESET)
+	for n in removed {
+		fmt.printfln("  %s- %s%s", get_error(), n, RESET)
+	}
+	if len(removed) == 0 {
+		fmt.printfln("  %s%c %s = \"%s\"%s", existed ? get_warning() : get_success(),
+			existed ? '~' : '+', name, mask_secret_value(name, value), RESET)
+	}
 	fmt.println()
 	fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
 }
@@ -400,7 +408,7 @@ toml_kv_upsert :: proc(section, dry_label, name, value: string) -> (res: TomlEdi
 	defer delete(new_content)
 
 	if wayu.dry_run {
-		print_toml_dry_run(dry_label, new_content)
+		print_toml_dry_run(section, dry_label, nil, name, value, had)
 		return .OK, had
 	}
 	if !commit_wayu_toml(new_content) { return .IO_ERROR, had }
@@ -423,7 +431,7 @@ toml_kv_delete :: proc(section, dry_label: string, names: []string) -> TomlEditR
 	if removed == 0 { return .NOT_FOUND }
 
 	if wayu.dry_run {
-		print_toml_dry_run(dry_label, new_content)
+		print_toml_dry_run(section, dry_label, names)
 		return .OK
 	}
 	if !commit_wayu_toml(new_content) { return .IO_ERROR }
