@@ -131,6 +131,11 @@ capture_command :: proc(args: []string) -> string {
 			posix.close(stdin_null)
 		}
 		posix.setenv("GIT_TERMINAL_PROMPT", "0", true)
+		// New session = no controlling terminal: /dev/tty can't be opened, so
+		// a command that bypasses stdin (e.g. `zsh -i` running an rc file or
+		// zsh-newuser-install that reads keys from /dev/tty) can't block on —
+		// or steal input from — the TUI's terminal.
+		posix.setsid()
 		posix.execvp(argv[0], raw_data(argv[:]))
 		posix._exit(1)
 	}

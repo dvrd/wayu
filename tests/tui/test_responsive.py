@@ -308,6 +308,21 @@ def test_alias_view(size_name, cols, rows):
         s.kill()
 
 
+# ── Test: alias view with an rc file that reads the terminal ────────────────
+
+def test_alias_view_tty_reading_rc():
+    """The alias view runs `$SHELL -i -c alias`. An rc file (or Ubuntu's
+    zsh-newuser-install, when there is no ~/.zshrc) that reads keys from
+    /dev/tty must not hang the view or eat TUI input."""
+    rc = os.path.join(os.environ["HOME"], ".zshrc")
+    with open(rc, "w") as f:
+        f.write("read -k 1 _ans </dev/tty\n")
+    try:
+        test_alias_view("tty_rc", 80, 24)
+    finally:
+        os.remove(rc)
+
+
 # ── Test: Settings View at each size ────────────────────────────────────────
 
 def test_settings_view(size_name, cols, rows):
@@ -419,6 +434,9 @@ def run_all():
 
     # Live resize
     test_live_resize()
+
+    # Subprocesses must not read the TUI's terminal
+    test_alias_view_tty_reading_rc()
 
     # Summary
     passed = sum(1 for r in results if r.passed)

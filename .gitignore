@@ -19,3 +19,4 @@ thoughts/
 HANDOFF.md
 
 *.dSYM/
+__pycache__/
