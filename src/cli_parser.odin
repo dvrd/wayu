@@ -400,6 +400,10 @@ parse_build_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 		case "help", "-h", "--help": parsed.action = .HELP
 		case:                   parsed.action = .UNKNOWN
 		}
+		if len(filtered_args) > 2 {
+			parsed.args = make([]string, len(filtered_args) - 2)
+			copy(parsed.args, filtered_args[2:])
+		}
 	} else {
 		parsed.action = .LIST
 	}
@@ -428,16 +432,20 @@ parse_completions_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) 
 	}
 }
 
+// `wayu export [turbo|eval|check|list|help]`; the documented flag forms
+// (--turbo/--eval/--check) are the same modes (OKAMI-233). No mode = turbo.
+// An unrecognised word is .UNKNOWN (usage error), never a silent turbo write.
 @(private = "file")
 parse_export_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 	parsed.action = .TURBO
 	if len(filtered_args) > 1 {
 		switch filtered_args[1] {
-		case "turbo":           parsed.action = .TURBO
-		case "eval":            parsed.action = .EVAL
-		case "list", "ls":      parsed.action = .LIST
+		case "turbo", "--turbo":     parsed.action = .TURBO
+		case "eval", "--eval":       parsed.action = .EVAL
+		case "check", "--check":     parsed.action = .CHECK
+		case "list", "ls":           parsed.action = .LIST
 		case "help", "-h", "--help": parsed.action = .HELP
-		case:                   parsed.action = .TURBO
+		case:                        parsed.action = .UNKNOWN
 		}
 		if len(filtered_args) > 2 {
 			parsed.args = make([]string, len(filtered_args) - 2)

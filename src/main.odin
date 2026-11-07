@@ -323,12 +323,17 @@ main :: proc() {
 	case .CONFIG:
 		handle_config_extra_command(parsed.action, parsed.args)
 	case .BUILD:
+		if parsed.action == .UNKNOWN || len(parsed.args) > 0 {
+			print_error_simple("Unknown build target (expected: turbo, eval, profile, help)")
+			print_build_help()
+			os.exit(EXIT_USAGE)
+		}
 		handle_build_command(parsed.action)
 	case .EXPORT:
 		// pre/post_export hooks wrap the actions that generate the turbo
 		// file (default/turbo); help/eval/check produce no export artifact.
 		// post_export only runs if generation didn't exit with an error.
-		generates := parsed.action == .TURBO || parsed.action == .LIST || parsed.action == .UNKNOWN
+		generates := parsed.action == .TURBO
 		if generates do hook_pre_export()
 		handle_export_command(parsed.action, parsed.args)
 		if generates do hook_post_export()
@@ -854,7 +859,7 @@ print_help :: proc() {
 
 // handle_build_command - Compile wayu.toml to optimized shell config
 handle_build_command :: proc(action: Action) {
-	// Show help for unknown actions or explicit help request
+	// Explicit help (unknown targets are rejected by main with exit 64)
 	if action == .HELP || action == .UNKNOWN {
 		print_build_help()
 		return
@@ -914,7 +919,7 @@ handle_build_command :: proc(action: Action) {
 	// Keep an existing turbo export in step; `wayu build turbo` creates it.
 	turbo_path := fmt.aprintf("%s/%s", wayu.data, turbo_export_file_name())
 	defer delete(turbo_path)
-	if os.exists(turbo_path) {
+	if os.exists(turbo_path) && wayu.shell != .FISH {
 		handle_export_command(.TURBO, {})
 	}
 }

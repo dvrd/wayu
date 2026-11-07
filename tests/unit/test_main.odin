@@ -245,6 +245,27 @@ test_parse_args_unknown_flag_rejected :: proc(t: ^testing.T) {
 	testing.expect(t, !wayu.wayu.dry_run, "--dryrun typo must not enable anything")
 }
 
+// OKAMI-233: export's documented flag forms select the mode.
+@(test)
+test_parse_args_export_modes :: proc(t: ^testing.T) {
+	Case :: struct { args: []string, action: wayu.Action }
+	cases := []Case{
+		{{"export"}, .TURBO},
+		{{"export", "--turbo"}, .TURBO},
+		{{"export", "--eval"}, .EVAL},
+		{{"export", "eval"}, .EVAL},
+		{{"export", "--check"}, .CHECK},
+		{{"export", "check"}, .CHECK},
+		{{"export", "list"}, .LIST},
+		{{"export", "bogus"}, .UNKNOWN},
+	}
+	for c in cases {
+		parsed := wayu.parse_args(c.args)
+		testing.expectf(t, parsed.action == c.action, "%v: got %v want %v", c.args, parsed.action, c.action)
+		if len(parsed.args) > 0 do delete(parsed.args)
+	}
+}
+
 // OKAMI-231: a global long flag ending argv is a flag even in the add value.
 @(test)
 test_parse_args_trailing_long_flag_in_value :: proc(t: ^testing.T) {

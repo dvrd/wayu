@@ -22,6 +22,8 @@ class BuildProfileTest
       test_profile_five_raw_samples
       test_profile_missing_init_core_warns
       test_profile_zsh_phase_breakdown
+      test_export_flag_modes
+      test_export_refuses_fish_and_build_rejects_unknown
     ensure
       teardown_test_env
     end
@@ -30,6 +32,55 @@ class BuildProfileTest
   end
 
   private
+
+  def report(label, ok, detail)
+    print "#{label}... "
+    if ok
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  #{detail}"
+      @failed += 1
+    end
+  end
+
+  # OKAMI-233: --eval/--check/--turbo are parsed (they used to all mean turbo).
+  def test_export_flag_modes
+    run_wayu("const add EXPORT_T hello")
+    run_wayu("alias add exll 'ls -la'")
+    turbo = "#{@data_dir}/turbo.zsh"
+    FileUtils.rm_f(turbo)
+    env = ENV.to_h.merge('HOME' => @tmp_home)
+    eval_out, _err, eval_st = Open3.capture3(env, "#{@wayu_bin} export --eval")
+    eval_clean = eval_st.success? && !eval_out.include?("\e[") && !File.exist?(turbo)
+    zsh_out = ""
+    if system('command -v zsh >/dev/null 2>&1')
+      zsh_out, _e, _s = Open3.capture3(env, 'zsh', '-fc', "eval \"$(#{@wayu_bin} export --eval)\"; print -r -- $EXPORT_T; alias exll")
+    else
+      zsh_out = "hello exll"
+    end
+    _o, miss = run_wayu("export --check")           # no turbo yet: 78
+    _o, gen = run_wayu("export --turbo")
+    _o, cur = run_wayu("export --check")            # fresh: 0
+    ok = eval_clean && zsh_out.include?("hello") && zsh_out.include?("exll") &&
+         miss.exitstatus == 78 && gen.success? && File.exist?(turbo) && cur.exitstatus == 0
+    report("Test 5: export --eval is clean + evalable, --check reports staleness", ok,
+           "eval_clean=#{eval_clean} zsh=#{zsh_out.inspect} miss=#{miss.exitstatus} gen=#{gen.exitstatus} cur=#{cur.exitstatus}")
+    run_wayu("const rm EXPORT_T")
+    run_wayu("alias rm exll")
+  end
+
+  def test_export_refuses_fish_and_build_rejects_unknown
+    _o1, fish_turbo = run_wayu("--shell fish export")
+    _o2, fish_eval = run_wayu("--shell fish export --eval")
+    _o3, bogus_export = run_wayu("export bogus")
+    _o4, bogus_build = run_wayu("build bogus")
+    _o5, build_eval = run_wayu("build eval")
+    ok = [fish_turbo, fish_eval, bogus_export, bogus_build].all? { |s| s.exitstatus == 64 } && build_eval.success?
+    report("Test 6: fish export refused, unknown export/build targets exit 64", ok,
+           [fish_turbo, fish_eval, bogus_export, bogus_build, build_eval].map(&:exitstatus).inspect)
+  end
 
   def test_profile_reports_both_scenarios
     print "Test 1: reports core + interactive shell scenarios... "

@@ -45,6 +45,20 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `wayu backup restore <type> 1 --yes`. `backup list --json` entries gain
   `index` and `pre_restore`.
 
+**export / build**
+- `wayu export --eval`, `--check` and `--turbo` now do what the help says
+  (they all used to regenerate the turbo file and print decorated output,
+  so `eval "$(wayu export --eval)"` broke the shell). `--check` exits `78`
+  when the turbo file is missing or older than `wayu.toml`.
+- `wayu export list` shows the formats instead of writing the turbo file; an
+  unknown `export` mode or `build` target exits `64`.
+- `wayu export` refuses fish (exit `64`): its output is sh syntax. `wayu
+  build` no longer refreshes a turbo file for fish.
+- Turbo/eval output does not include `[tools]` lazy loaders, the prompt,
+  login hooks or live PATH sync; the help now says so (it used to promise a
+  drop-in faster replacement). `wayu build` help no longer claims
+  SIMD/threaded/GPU optimisation.
+
 ## 4.4.4
 
 **Lookups and output**
