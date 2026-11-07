@@ -160,7 +160,7 @@ TOOLS_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 #   atuin  = { kind = "evalcache", args = "init zsh --disable-up-arrow", eager = true }
 #   sdk    = { kind = "lazy", init_script = "$HOME/.sdkman/bin/sdkman-init.sh", hook_commands = ["sdk"] }
 #
-# Run 'wayu build eval' after editing wayu.toml. The corresponding lazy loaders
+# Run 'wayu build' after editing wayu.toml. The corresponding lazy loaders
 # are emitted into lazy.zsh so they work in every interactive shell
 # (login, non-login, Ghostty/Zellij/tmux panes).
 #

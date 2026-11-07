@@ -6,6 +6,28 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**doctor**
+- `doctor --json` (and `--json doctor`) prints JSON; `--json --fix` exits `64`.
+- `doctor` exits `78` when any check reports an error (also with `--json`).
+- `doctor --fix` requires `--yes` (exit `64` otherwise); `--dry-run --fix`
+  previews. It no longer symlinks `./wayu` into `/usr/local/bin` or generates
+  turbo files, and never removes a `[paths]` entry that uses an unset variable.
+- `doctor --optimize` is removed (exit `64`); use `wayu build` / `wayu export`.
+- Startup detection covers `~/.zshenv`, `$ZDOTDIR`, `.zprofile`, `.zlogin`,
+  `.bash_profile`, `.bash_login`, `.profile`, fish `conf.d/` and
+  `eval "$(wayu build eval)"`. `wayu init` writes `$ZDOTDIR/.zshrc` when
+  `ZDOTDIR` is set.
+
+**migrate**
+- Legacy import parses shell quoting exactly (single/double quotes, `$'..'`,
+  escapes, `export A=1 B=2`, `typeset -x`, fish `set -gx`/`alias`). Lines it
+  can't convert exactly (functions, conditionals, multi-line values, command
+  substitution, …) are listed with `file:line`; then nothing is imported or
+  archived and it exits `65`. Files are archived only after a full import.
+- `migrate --from X --to Y` no longer translates generated files line by
+  line: it requires `wayu.toml` (exit `78` otherwise), sets `[shell] type` and
+  regenerates the target shell's files from `wayu.toml`.
+
 **Prompt (zsh)**
 - The native wayu prompt is now opt-in. It is generated only when
   `wayu.toml` has `enabled = true` under `[prompt]`; without it wayu no longer

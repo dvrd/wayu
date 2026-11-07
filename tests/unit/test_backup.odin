@@ -7,6 +7,7 @@ import "core:os"
 import "core:fmt"
 import "core:strings"
 import "core:time"
+import "core:sys/posix"
 import wayu "../../src"
 
 @(test)
@@ -259,13 +260,15 @@ test_backup_workflow :: proc(t: ^testing.T) {
 test_cleanup_old_backups :: proc(t: ^testing.T) {
 	// Test backup cleanup functionality
 	original_data := wayu.wayu.data
-	wayu.wayu.data = "/tmp/wayu-test-backup-cleanup"
-	os.make_directory("/tmp/wayu-test-backup-cleanup")
-	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-backup-cleanup") }
+	// Per-process paths: parallel test runs (e.g. several worktrees) must not collide.
+	data_dir := fmt.tprintf("/tmp/wayu-test-backup-cleanup-%d", posix.getpid())
+	wayu.wayu.data = data_dir
+	os.make_directory(data_dir)
+	defer { wayu.wayu.data = original_data; os.remove_all(data_dir) }
 
 	// Create test file
 	test_content := "content for cleanup test\n"
-	test_file := "/tmp/wayu-test-cleanup"
+	test_file := fmt.tprintf("/tmp/wayu-test-cleanup-%d", posix.getpid())
 
 	_ = os.write_entire_file(test_file, transmute([]byte)test_content)
 	defer os.remove(test_file)
