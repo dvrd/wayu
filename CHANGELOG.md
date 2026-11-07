@@ -5,6 +5,27 @@ All notable changes to wayu will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.4] - 2026-11-07
+
+### Fixed
+
+- **init**: Replace wayu() shell wrapper with prompt-hook PATH sync
+- **build**: Restore HOME after unit tests; check git results in release
+- **io**: Atomic writes for wayu.toml, plugins.json and generated files
+- **plugin**: Lock plugins.json writes; TUI install aborts on bad read
+- **toml**: Edit wayu.toml entries in place, keep order, lock writers
+- **security**: Owner-only modes for backups and secret-bearing files
+- **get**: Exact-match only; misses exit 65 with name-only suggestions
+- **security**: Mask secret values in dry-run, search and export previews
+- **validation**: Reject ':' and newlines in PATH entries (OKAMI-214)
+- **path-sync**: Preserve $? in prompt hooks and support nounset (OKAMI-209, OKAMI-210)
+- **path-sync**: Only remove dirs wayu added; keep [paths] order on add (OKAMI-211)
+- **init**: Regenerate every initialized shell's files (OKAMI-212)
+- **path-sync**: Expand [paths] in-shell; build/config edit/hand edits reach path_sync (OKAMI-213)
+- **path-sync**: Hook regenerates with the binary that generated core
+- **init**: Build eval targets the evaluating shell; never write as root
+- **init**: Never install a .zwc compiled from a superseded source
+- **init**: A rewritten init file always wins over its .zwc
 ## [4.4.3] - 2026-11-07
 
 ### Changed
@@ -529,6 +550,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Correct termios struct for macOS compatibility
 - Resolve unit test failures and improve test robustness
 - Rename run_component_test to run_component_testing
+[4.4.4]: https://github.com/dvrd/wayu/releases/tag/v4.4.4
 [4.4.3]: https://github.com/dvrd/wayu/releases/tag/v4.4.3
 [4.4.2]: https://github.com/dvrd/wayu/releases/tag/v4.4.2
 [4.4.1]: https://github.com/dvrd/wayu/releases/tag/v4.4.1
