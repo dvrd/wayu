@@ -566,87 +566,24 @@ get_config_entry_value :: proc(spec: ^ConfigEntrySpec, name: string) {
 		}
 	}
 
+	if !found {
+		// Exact match only (OKAMI-207): suggest names, never another value.
+		debug("get: '%s' not found in %s", name, spec.file_name)
+		names := make([]string, len(entries), context.temp_allocator)
+		for entry, i in entries { names[i] = entry.name }
+		exit_get_not_found(spec, name, names)
+	}
 	cleanup_entries(&entries)
 
-	// If exact match not found, try fuzzy fallback
-	if !found && fff_is_enabled() && FFF_AUTO_FALLBACK {
-		debug("get: exact match not found, trying fuzzy fallback for '%s'", name)
-		
-		matches := fuzzy_find_entries(spec, name, max_results = 10)
-		
-		if matches != nil && len(matches) > 0 {
-			// Check if best match is good enough
-			best := matches[0]
-			
-			// Use strong matches directly
-			if best.match_type == .Exact || best.match_type == .Prefix || 
-			   (best.match_type == .Acronym && best.score > 500) {
-				debug("get: using fuzzy match '%s' (type: %v, score: %d)", 
-					best.entry.name, best.match_type, best.score)
-				found_entry = clone_entry(best.entry)
-				found = true
-				
-				// Print suggestion notice
-				type_str := match_type_to_string(best.match_type)
-				fmt.eprintf("%sNote:%s Using %s match '%s' for '%s'\n", 
-					get_secondary(), RESET, type_str, best.entry.name, name)
-			} else if len(matches) > 1 && FFF_INTERACTIVE_SELECT && is_stdin_tty() {
-				// Multiple matches - show interactive selector
-				print_fuzzy_suggestions(spec, name, matches)
-				
-				selected := interactive_select_match(spec, matches, name)
-				if selected.name != "" {
-					found_entry = selected
-					found = true
-					debug("get: user selected '%s' from fuzzy matches", selected.name)
-				}
-			} else if best.score >= 50 {
-				// Single reasonable match - use it with notice
-				debug("get: using best fuzzy match '%s' (score: %d)", 
-					best.entry.name, best.score)
-				found_entry = clone_entry(best.entry)
-				found = true
-				
-				type_str := match_type_to_string(best.match_type)
-				fmt.eprintf("%sNote:%s Using %s match '%s' for '%s'\n", 
-					get_secondary(), RESET, type_str, best.entry.name, name)
-			} else {
-				// Show suggestions but don't auto-select
-				print_fuzzy_suggestions(spec, name, matches)
-			}
-			
-			free_fuzzy_matches(matches)
-		}
-	}
-
-	if found {
-		// Print the value
-		if spec.fields_count == 1 {
-			fmt.println(found_entry.name)
-		} else {
-			// Unescape stored shell escapes so the output is the original user value
-			unescaped := unescape_shell_value(found_entry.value)
-			defer delete(unescaped)
-			fmt.println(unescaped)
-		}
-		cleanup_entry(&found_entry)
+	if spec.fields_count == 1 {
+		fmt.println(found_entry.name)
 	} else {
-		debug("get: '%s' not found in %s", name, spec.file_name)
-		print_error("%s not found: %s", spec.display_name, name)
-		os.exit(EXIT_DATAERR)
+		// Unescape stored shell escapes so the output is the original user value
+		unescaped := unescape_shell_value(found_entry.value)
+		defer delete(unescaped)
+		fmt.println(unescaped)
 	}
-}
-
-// Helper to convert match type to string
-match_type_to_string :: proc(mt: MatchType) -> string {
-	switch mt {
-	case .Exact: return "exact"
-	case .Prefix: return "prefix"
-	case .Substring: return "substring"
-	case .Fuzzy: return "fuzzy"
-	case .Acronym: return "acronym"
-	}
-	return "unknown"
+	cleanup_entry(&found_entry)
 }
 
 // Generic static list (table view)

@@ -438,7 +438,6 @@ print_search_usage :: proc() {
 	fmt.println()
 	fmt.printfln("%sENVIRONMENT VARIABLES:%s", get_primary(), RESET)
 	fmt.println("  WAYU_FFF_ENABLED=0        - Disable fuzzy features")
-	fmt.println("  WAYU_FFF_AUTO_FALLBACK=0  - Disable auto fuzzy fallback")
 	fmt.println()
 	fmt.printfln("%sSee also:%s wayu <command> get <name> for specific value lookup",
 		get_muted(), RESET)
