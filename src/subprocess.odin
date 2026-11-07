@@ -277,3 +277,80 @@ run_background_shell :: proc(cmd: string) {
 	posix.execvp("sh", raw_data(argv[:]))
 	posix._exit(1)
 }
+
+// run_command_capture_stderr runs a subprocess like run_command but returns
+// its stderr (trimmed, ALLOCATED — caller must delete) so a failure can be
+// explained to the user. Stdout goes to /dev/null; stdin is /dev/null and the
+// child gets a new session, so git can never prompt on (or read from) the
+// controlling terminal. At most 64 KiB of stderr is kept.
+run_command_capture_stderr :: proc(args: []string) -> (ok: bool, stderr_text: string) {
+	if len(args) == 0 {
+		return false, strings.clone("")
+	}
+
+	argv := make([dynamic]cstring, len(args) + 1)
+	defer {
+		for i in 0..<len(args) {
+			delete(argv[i])
+		}
+		delete(argv)
+	}
+	for arg, i in args {
+		argv[i] = strings.clone_to_cstring(arg)
+	}
+	argv[len(args)] = nil
+
+	pipefd: [2]posix.FD
+	if posix.pipe(&pipefd) != .OK {
+		return false, strings.clone("")
+	}
+
+	pid := posix.fork()
+	if pid < 0 {
+		posix.close(pipefd[0])
+		posix.close(pipefd[1])
+		return false, strings.clone("")
+	}
+
+	if pid == 0 {
+		posix.close(pipefd[0])
+		posix.dup2(pipefd[1], posix.FD(2))        // stderr → pipe write end
+		posix.close(pipefd[1])
+		devnull := posix.open("/dev/null", {.RDWR})
+		if devnull >= 0 {
+			posix.dup2(devnull, posix.FD(0))
+			posix.dup2(devnull, posix.FD(1))
+			posix.close(devnull)
+		}
+		posix.setenv("GIT_TERMINAL_PROMPT", "0", true)
+		posix.setsid()
+		posix.execvp(argv[0], raw_data(argv[:]))
+		posix._exit(127)
+	}
+
+	posix.close(pipefd[1])
+
+	MAX_STDERR :: 64 * 1024
+	sb := strings.builder_make()
+	defer strings.builder_destroy(&sb)
+
+	buf: [4096]byte
+	for {
+		n := posix.read(pipefd[0], raw_data(buf[:]), len(buf))
+		if n <= 0 {
+			break
+		}
+		// Keep draining past the cap so the child never blocks on a full pipe.
+		if strings.builder_len(sb) < MAX_STDERR {
+			strings.write_bytes(&sb, buf[:n])
+		}
+	}
+	posix.close(pipefd[0])
+
+	status: c.int = 0
+	posix.waitpid(pid, &status, {})
+
+	ok = posix.WIFEXITED(status) && posix.WEXITSTATUS(status) == 0
+	stderr_text = strings.clone(strings.trim_space(strings.to_string(sb)))
+	return
+}

@@ -4,6 +4,40 @@ User-visible behavior changes per release. From 4.4.5 on, these are generated
 automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 4.4.3 and 4.4.4 shipped them as patch releases, so they are listed here.
 
+## Unreleased
+
+**Plugins**
+- `plugin rm` on a plugin dir that is a symlink removes only the link; the
+  link target (e.g. your working copy) is never touched. A plugin dir that
+  resolves outside `plugins/` is not deleted (warning; the entry is still
+  removed from `plugins.json`).
+- `plugins.json` is validated on load. Any command that reads it exits `78`
+  naming the bad entry when a `url` is not https://, ssh://, `git@host:` or
+  file://, starts with `-` or contains whitespace/control characters; when a
+  `name`, `git.branch`/`tag`/`commit`/`pinned_ref` or `installed_path` starts
+  with `-` (or has control characters); or when `shell`, `template`,
+  `source_type` or `git.ref_type` holds an unknown value. Enum values are
+  matched case-insensitively (`"shell": "bash"` used to load as zsh) and
+  `plugins.json` now stores them as names (`"shell": "ZSH"`) instead of numbers;
+  old files still load and older wayu versions read the new ones.
+- Plaintext `http://` and `git://` plugin URLs are refused (`plugin add` exits
+  `65`). `ssh://` and `file://` URLs are now accepted by `plugin add`.
+- `plugin add <name-or-url>@<commit>` (7–40 hex digits) installs at that commit
+  and pins it; pinned plugins are skipped by `plugin update`, and `plugin
+  check` fails if the checkout has moved off the pinned commit.
+- `plugin check` exits `74` and prints "N plugin(s) could not be checked"
+  instead of "All plugins are up to date!" when any remote could not be read.
+  It compares against `refs/heads/<branch>` exactly, so branches like
+  `release/main` or a tag named `main` no longer cause false "update
+  available" reports.
+- `plugin update` fetches and fast-forwards; when upstream rewrote history
+  (force-push) a clean checkout is reset to the remote branch. A checkout with
+  local modifications, or a symlinked plugin dir, is never reset — the update
+  fails with git's error message, which is now shown. Output shows the
+  `old → new` commit for each plugin.
+- `--dry-run plugin update` prints "Would update …" and no longer claims
+  plugins were updated.
+
 ## 4.4.4
 
 **Lookups and output**

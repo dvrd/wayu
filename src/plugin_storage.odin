@@ -33,6 +33,7 @@ handle_plugin_check :: proc(args: []string) {
 
 	updates_available := false
 	check_count := 0
+	failed_count := 0
 
 	// Check each enabled plugin
 	for &plugin in config.plugins {
@@ -45,6 +46,13 @@ handle_plugin_check :: proc(args: []string) {
 		fmt.printfln("Checking %s...", plugin.name)
 
 		if pinned, ref := plugin_pinned_ref(&plugin); pinned {
+			// A commit pin is an integrity claim: verify the checkout still
+			// sits on it (someone may have pulled/checked out by hand).
+			if problem := plugin_pinned_commit_problem(&plugin); problem != "" {
+				print_warning("  ⚠ %s", problem)
+				failed_count += 1
+				continue
+			}
 			print_info("  ⚓ Pinned to %s (skipped)", ref)
 			continue
 		}
@@ -55,7 +63,8 @@ handle_plugin_check :: proc(args: []string) {
 		// a plain delete at the bottom of the loop body instead.
 		remote_commit := get_remote_commit(plugin.url, plugin.git.branch)
 		if remote_commit == "" {
-			print_warning("  ⚠ Failed to check remote (network error or invalid URL)")
+			print_warning("  ⚠ Failed to check remote (network error, invalid URL or missing branch)")
+			failed_count += 1
 			continue
 		}
 
@@ -107,9 +116,74 @@ handle_plugin_check :: proc(args: []string) {
 		print_info("Updates available! Run one of:")
 		fmt.println("  wayu plugin update <name>      # Update specific plugin")
 		fmt.println("  wayu plugin update --all       # Update all plugins")
-	} else {
+	}
+
+	// Never print the all-clear when some plugins could not be checked:
+	// scripts rely on the exit code to tell "up to date" from "offline".
+	if failed_count > 0 {
+		fmt.println()
+		print_error_simple("%d plugin(s) could not be checked", failed_count)
+		os.exit(EXIT_IOERR)
+	}
+
+	if !updates_available {
 		print_success("All plugins are up to date!")
 	}
+}
+
+// For a plugin pinned to a commit, report (temp string) when its checkout
+// is not on that commit; "" when it is, or when it is not commit-pinned.
+plugin_pinned_commit_problem :: proc(plugin: ^PluginMetadata) -> string {
+	if plugin.git.ref_type != .Commit {
+		return ""
+	}
+	want := len(plugin.git.pinned_ref) > 0 ? plugin.git.pinned_ref : plugin.git.commit
+	if len(want) == 0 || len(plugin.installed_path) == 0 {
+		return ""
+	}
+	head := capture_command([]string{"git", "-C", plugin.installed_path, "rev-parse", "HEAD"})
+	defer delete(head)
+	if len(head) == 0 {
+		return fmt.tprintf("Cannot read the checkout of pinned plugin at %s", plugin.installed_path)
+	}
+	if !git_commits_match(head, want) {
+		return fmt.tprintf("Checkout is at %s but the plugin is pinned to %s", head[:min(12, len(head))], want)
+	}
+	return ""
+}
+
+// Update one plugin checkout and refresh its metadata. Prints progress with
+// `indent`; returns false on failure (git's stderr is shown). In dry-run
+// nothing is executed and the caller must not count it as updated.
+plugin_update_one :: proc(plugin: ^PluginMetadata, indent: string) -> bool {
+	old_commit := strings.clone(plugin.git.commit)
+	defer delete(old_commit)
+
+	result, err_text := git_update(plugin.installed_path, plugin.git.branch)
+	defer delete(err_text)
+
+	if result == .Failed {
+		print_warning("%s⚠ Failed to update %s", indent, plugin.name)
+		for line in strings.split_lines(err_text, context.temp_allocator) {
+			if len(strings.trim_space(line)) > 0 {
+				fmt.eprintfln("%s  %s", indent, line)
+			}
+		}
+		return false
+	}
+
+	plugin_refresh_git_metadata(plugin)
+
+	old_short := old_commit[:min(7, len(old_commit))]
+	new_short := plugin.git.commit[:min(7, len(plugin.git.commit))]
+	if git_commits_match(old_commit, plugin.git.commit) {
+		print_success("%s✓ Already up to date (%s)", indent, new_short)
+	} else if result == .Reset {
+		print_success("%s✓ Updated %s → %s (upstream history was rewritten; reset to remote)", indent, old_short, new_short)
+	} else {
+		print_success("%s✓ Updated %s → %s", indent, old_short, new_short)
+	}
+	return true
 }
 
 // Handle plugin update command - update plugins
@@ -182,29 +256,20 @@ handle_plugin_update :: proc(args: []string) {
 			return
 		}
 
-		// Perform update
-		print_info("Updating %s...", plugin_ptr.name)
-
-		// Show spinner for long operation
-		spinner := new_spinner(.Dots)
-		spinner_text(&spinner, fmt.tprintf("Updating %s", plugin_ptr.name))
-		spinner_start(&spinner)
-
-		success := git_update(plugin_ptr.installed_path)
-
-		spinner_stop(&spinner)
-		delete(spinner.text)
-
-		if !success {
-			print_error_simple("Failed to update plugin")
-			os.exit(EXIT_IOERR)
+		if wayu.dry_run {
+			print_info("[DRY RUN] Would update %s (%s)", plugin_ptr.name, plugin_ptr.installed_path)
+			return
 		}
 
-		plugin_refresh_git_metadata(plugin_ptr)
-
-		print_success("Plugin '%s' updated successfully", plugin_ptr.name)
+		print_info("Updating %s...", plugin_ptr.name)
+		if !plugin_update_one(plugin_ptr, "  ") {
+			print_error_simple("Failed to update plugin '%s'", plugin_ptr.name)
+			os.exit(EXIT_IOERR)
+		}
 		updated_count = 1
 	} else {
+		would_update := 0
+
 		// Update all plugins
 		for &plugin in config.plugins {
 			// Skip disabled plugins
@@ -212,26 +277,29 @@ handle_plugin_update :: proc(args: []string) {
 				continue
 			}
 
-			print_info("Updating %s...", plugin.name)
-
 			if pinned, ref := plugin_pinned_ref(&plugin); pinned {
-				print_info("  ⚓ Pinned to %s (skipped)", ref)
+				print_info("%s: ⚓ pinned to %s (skipped)", plugin.name, ref)
 				continue
 			}
 
-			// Perform update
-			success := git_update(plugin.installed_path)
+			if wayu.dry_run {
+				print_info("[DRY RUN] Would update %s", plugin.name)
+				would_update += 1
+				continue
+			}
 
-			if !success {
-				print_warning("  ⚠ Failed to update plugin")
+			print_info("Updating %s...", plugin.name)
+			if !plugin_update_one(&plugin, "  ") {
 				failed_count += 1
 				continue
 			}
-
-			plugin_refresh_git_metadata(&plugin)
-
-			print_success("  ✓ Updated")
 			updated_count += 1
+		}
+
+		if wayu.dry_run {
+			fmt.println()
+			print_info("[DRY RUN] Would update %d plugin(s); nothing was changed", would_update)
+			return
 		}
 	}
 
@@ -584,7 +652,15 @@ handle_plugin_add :: proc(args: []string) {
 		os.exit(EXIT_USAGE)
 	}
 
-	name_or_url := args[0]
+	// "<name-or-url>@<sha>" pins the plugin to that commit.
+	name_or_url, pin_commit := split_plugin_commit_pin(args[0])
+
+	// Plugin code is sourced into every shell: never fetch it in plaintext.
+	if is_insecure_git_url(name_or_url) {
+		print_error_simple("Refusing insecure plugin URL '%s'", name_or_url)
+		fmt.println("Plaintext http:// and git:// can be tampered with in transit; use https:// or ssh instead.")
+		os.exit(EXIT_DATAERR)
+	}
 
 	// Resolve plugin (all fields of `info` are owned)
 	info, resolved := resolve_plugin(name_or_url)
@@ -625,6 +701,9 @@ handle_plugin_add :: proc(args: []string) {
 	print_info("Name: %s", info.name)
 	print_info("URL: %s", info.url)
 	print_info("Shell: %s", shell_compat_to_string(info.shell))
+	if pin_commit != "" {
+		print_info("Pinned commit: %s", pin_commit)
+	}
 	fmt.println()
 
 	// Create plugins directory if it doesn't exist
@@ -650,7 +729,14 @@ handle_plugin_add :: proc(args: []string) {
 	spinner_text(&spinner, "Cloning repository")
 	spinner_start(&spinner)
 
-	success := git_clone(info.url, plugin_path)
+	success: bool
+	clone_err: string
+	if pin_commit != "" {
+		success, clone_err = git_clone_at_commit(info.url, plugin_path, pin_commit)
+	} else {
+		success = git_clone(info.url, plugin_path)
+	}
+	defer delete(clone_err)
 
 	spinner_stop(&spinner)
 	delete(spinner.text)
@@ -660,6 +746,9 @@ handle_plugin_add :: proc(args: []string) {
 			remove_cloned_plugin_dir(plugin_path, plugins_dir)
 		}
 		print_error_simple("Failed to clone plugin repository")
+		if len(clone_err) > 0 {
+			fmt.eprintln(clone_err)
+		}
 		os.exit(EXIT_IOERR)
 	}
 
@@ -669,6 +758,18 @@ handle_plugin_add :: proc(args: []string) {
 
 	// Add to config
 	git_info := get_git_info(plugin_path)
+	if pin_commit != "" {
+		// Record the pin: check/update skip the plugin and `plugin check`
+		// verifies the checkout is still on this exact commit.
+		git_info.ref_type = .Commit
+		full_sha := capture_command([]string{"git", "-C", plugin_path, "rev-parse", "HEAD"})
+		if len(full_sha) > 0 {
+			git_info.pinned_ref = full_sha
+		} else {
+			delete(full_sha)
+			git_info.pinned_ref = strings.clone(pin_commit)
+		}
+	}
 
 	new_plugin := PluginMetadata{
 		name = strings.clone(info.name),
@@ -752,13 +853,11 @@ remove_cloned_plugin_dir :: proc(plugin_path: string, plugins_dir: string) -> bo
 	if wayu.dry_run {
 		return true
 	}
-	if !is_path_inside_dir(plugin_path, plugins_dir) {
-		return false
-	}
-	if !os.exists(plugin_path) {
+	#partial switch remove_plugin_dir_safely(plugin_path, plugins_dir) {
+	case .Removed, .Missing:
 		return true
 	}
-	return os.remove_all(plugin_path) == nil
+	return false
 }
 
 // Emit the plugin list as structured JSON. Shape:
@@ -1051,13 +1150,28 @@ handle_plugin_remove :: proc(args: []string) {
 	} else if !is_path_inside_dir(installed_path, plugins_dir) {
 		print_warning("Not deleting '%s': outside the plugins directory", installed_path)
 	} else if wayu.dry_run {
-		print_info("[DRY RUN] Would remove directory: %s", installed_path)
-	} else if os.exists(installed_path) {
-		if os.remove_all(installed_path) != nil {
+		if is_symlink(installed_path) {
+			print_info("[DRY RUN] Would remove symlink (target kept): %s", installed_path)
+		} else {
+			print_info("[DRY RUN] Would remove directory: %s", installed_path)
+		}
+	} else {
+		was_symlink := is_symlink(installed_path)
+		switch remove_plugin_dir_safely(installed_path, plugins_dir) {
+		case .Removed:
+			if was_symlink {
+				print_success("Removed plugin symlink (its target was left untouched)")
+			} else {
+				print_success("Removed plugin directory")
+			}
+		case .Missing:
+			// Nothing on disk; just drop the config entry.
+		case .Outside:
+			print_warning("Not deleting '%s': it resolves outside the plugins directory", installed_path)
+		case .Failed:
 			print_error_simple("Failed to remove plugin directory")
 			os.exit(EXIT_IOERR)
 		}
-		print_success("Removed plugin directory")
 	}
 
 	if wayu.dry_run {

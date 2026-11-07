@@ -219,7 +219,7 @@ test_is_valid_git_url :: proc(t: ^testing.T) {
 		expected: bool,
 	}{
 		{"https://github.com/user/repo.git", true},
-		{"http://github.com/user/repo.git", true},
+		{"http://github.com/user/repo.git", false}, // plaintext refused (OKAMI-229)
 		{"git@github.com:user/repo.git", true},
 		{"https://gitlab.com/user/repo", true},
 		{"not-a-url", false},
