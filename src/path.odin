@@ -25,6 +25,12 @@ PathOpResult :: enum {
 // Main handler for PATH commands.
 // wayu.toml is the single source of truth for PATH; we create it if missing.
 handle_path_command :: proc(action: Action, args: []string) {
+	// Mutations hold the config lock across read → write → regenerate so
+	// concurrent wayu runs neither lose entries nor publish stale init files.
+	mutating := action == .ADD || action == .REMOVE || action == .CLEAN || action == .DEDUP
+	if mutating { config_lock_acquire_or_exit() }
+	defer if mutating { config_lock_release() }
+
 	if !ensure_wayu_toml_exists() {
 		print_error_simple("Failed to create wayu.toml")
 		os.exit(EXIT_IOERR)
@@ -109,8 +115,8 @@ exit_on_path_failure :: proc(res: PathOpResult) {
 //
 // Both operate on wayu.toml's [paths] table (the single source of truth):
 // compute the set of entries to drop, then share one mutation tail —
-// empty-set early return, --dry-run preview, --yes gate, backup + rewrite of
-// [paths] via replace_toml_table_section, init regeneration.
+// empty-set early return, --dry-run preview, --yes gate, backup + in-place
+// deletion of the dropped [paths] lines (toml_kv_delete), init regeneration.
 
 PathMutationSpec :: struct {
 	label:             string, // Human-readable "duplicate entries" / "missing directories"
@@ -169,28 +175,21 @@ mutate_path_entries :: proc(spec: PathMutationSpec, entries: []TomlPathEntry, dr
 	print_targets(entries, drop)
 	fmt.println()
 
-	kept := make([dynamic]TomlPathEntry, 0, len(entries))
-	defer delete(kept)
+	// Delete only the dropped lines: the survivors keep their order (PATH
+	// precedence), comments and formatting.
+	keys := make([dynamic]string, 0, count)
+	defer delete(keys)
 	for e, i in entries {
-		if !drop[i] { append(&kept, e) }
+		if drop[i] { append(&keys, e.key) }
 	}
-	slice_sort_path_entries(kept[:])
-	body := render_keyed_body(kept[:])
-	defer { for s in body { delete(s) }; delete(body) }
+	#partial switch toml_kv_delete("paths", "paths", keys[:]) {
+	case .OK:
+	case .MALFORMED: os.exit(EXIT_DATAERR)
+	case:            os.exit(EXIT_IOERR)
+	}
 
 	config_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(config_file)
-
-	content, read_ok := safe_read_file(config_file)
-	if !read_ok { os.exit(EXIT_IOERR) }
-	defer delete(content)
-
-	new_content := replace_toml_table_section(string(content), "paths", body)
-	defer delete(new_content)
-
-	if !create_backup_cli(config_file) { os.exit(EXIT_IOERR) }
-	if !safe_write_file(config_file, transmute([]byte)new_content) { os.exit(EXIT_IOERR) }
-	clear_toml_content_cache()
 	cleanup_old_backups(config_file, 5)
 
 	regenerate_init_core_silently()
@@ -209,6 +208,9 @@ clean_missing_paths :: proc() {
 	if !check_wayu_initialized() {
 		os.exit(EXIT_CONFIG)
 	}
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
+	clear_toml_content_cache() // decide on what is on disk now, not the startup cache
 
 	entries := toml_path_read_keyed()
 	defer free_toml_path_entries(&entries)
@@ -238,6 +240,9 @@ remove_duplicate_paths :: proc() {
 	if !check_wayu_initialized() {
 		os.exit(EXIT_CONFIG)
 	}
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
+	clear_toml_content_cache() // decide on what is on disk now, not the startup cache
 
 	entries := toml_path_read_keyed()
 	defer free_toml_path_entries(&entries)
@@ -828,8 +833,9 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 
 // Add a path to wayu.toml's [paths] table. `name_hint` is optional; when
 // empty we derive a key from the basename (`/usr/local/bin` → `local_bin`).
-// Existing path values are preserved; the [paths] table is rewritten
-// alphabetically by key.
+// The new entry is appended after the last [paths] entry: declaration order
+// is PATH precedence (first wins), so existing entries never move and a new
+// directory never shadows one the user already has.
 //
 // Compatibility wrapper: true when the path is (or would be, under
 // --dry-run) present afterwards. Use toml_path_add_result to distinguish a
@@ -849,8 +855,9 @@ toml_path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOp
 		return .INVALID
 	}
 
-	config_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
-	defer delete(config_file)
+	if !config_lock_acquire() { return .IO_ERROR }
+	defer config_lock_release()
+	clear_toml_content_cache() // decide on what is on disk now
 
 	existing := toml_path_read_keyed()
 	defer {
@@ -888,16 +895,6 @@ toml_path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOp
 	}
 	defer delete(new_key)
 
-	// Build sorted body (existing entries + the new one).
-	combined := make([dynamic]TomlPathEntry, 0, len(existing) + 1)
-	defer delete(combined)
-	for e in existing { append(&combined, e) }
-	append(&combined, TomlPathEntry{key = new_key, path = path})
-
-	slice_sort_path_entries(combined[:])
-	body := render_keyed_body(combined[:])
-	defer { for s in body { delete(s) }; delete(body) }
-
 	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
@@ -905,24 +902,19 @@ toml_path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOp
 		return .OK
 	}
 
-	return write_paths_body(config_file, body)
+	res, _ := toml_kv_upsert("paths", "paths", new_key, path)
+	return path_op_result(res)
 }
 
-// Splice `body` into [paths], back up and write. Invalidates the shared TOML
-// cache so subsequent in-process reads see the new content.
 @(private = "file")
-write_paths_body :: proc(config_file: string, body: []string) -> PathOpResult {
-	content, ok := safe_read_file(config_file)
-	if !ok { return .IO_ERROR }
-	defer delete(content)
-
-	new_content := replace_toml_table_section(string(content), "paths", body)
-	defer delete(new_content)
-
-	if !create_backup_cli(config_file) { return .IO_ERROR }
-	if !safe_write_file(config_file, transmute([]byte)new_content) { return .IO_ERROR }
-	clear_toml_content_cache()
-	return .OK
+path_op_result :: proc(res: TomlEditResult) -> PathOpResult {
+	switch res {
+	case .OK:        return .OK
+	case .NOT_FOUND: return .NOT_FOUND
+	case .MALFORMED: return .INVALID
+	case .IO_ERROR:  return .IO_ERROR
+	}
+	return .IO_ERROR
 }
 
 // Remove a path. `target` matches against either a key (`local_bin`) or a
@@ -936,8 +928,9 @@ toml_path_remove :: proc(target: string) -> bool {
 }
 
 toml_path_remove_result :: proc(target: string) -> PathOpResult {
-	config_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
-	defer delete(config_file)
+	if !config_lock_acquire() { return .IO_ERROR }
+	defer config_lock_release()
+	clear_toml_content_cache() // decide on what is on disk now
 
 	existing := toml_path_read_keyed()
 	defer {
@@ -969,15 +962,6 @@ toml_path_remove_result :: proc(target: string) -> PathOpResult {
 	}
 
 	removed := existing[match_idx]
-	kept := make([dynamic]TomlPathEntry, 0, len(existing) - 1)
-	defer delete(kept)
-	for e, i in existing {
-		if i == match_idx { continue }
-		append(&kept, e)
-	}
-	slice_sort_path_entries(kept[:])
-	body := render_keyed_body(kept[:])
-	defer { for s in body { delete(s) }; delete(body) }
 
 	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
@@ -985,18 +969,7 @@ toml_path_remove_result :: proc(target: string) -> PathOpResult {
 		return .OK
 	}
 
-	return write_paths_body(config_file, body)
-}
-
-// Insertion-sort a small slice of TomlPathEntry by key. We want stable, no deps.
-slice_sort_path_entries :: proc(s: []TomlPathEntry) {
-	for i := 1; i < len(s); i += 1 {
-		j := i
-		for j > 0 && s[j-1].key > s[j].key {
-			s[j-1], s[j] = s[j], s[j-1]
-			j -= 1
-		}
-	}
+	return path_op_result(toml_kv_delete("paths", "paths", {removed.key}))
 }
 
 // Render `entries` as `key = "value"` lines. The path value is escaped so

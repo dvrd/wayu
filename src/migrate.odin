@@ -885,11 +885,8 @@ migrate_toml_schema :: proc(dry_run: bool) {
 	if len(paths) > 0 {
 		fmt.sbprintln(&builder, "")
 		fmt.sbprintln(&builder, "[paths]")
-		sorted := make([dynamic]TomlPathEntry, 0, len(paths))
-		defer delete(sorted)
-		for p in paths { append(&sorted, p) }
-		slice_sort_path_entries(sorted[:])
-		body := render_keyed_body(sorted[:])
+		// Keep legacy declaration order: it is PATH precedence (first wins).
+		body := render_keyed_body(paths[:])
 		defer { for l in body { delete(l) }; delete(body) }
 		for l in body { fmt.sbprintln(&builder, l) }
 	}

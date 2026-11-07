@@ -66,12 +66,6 @@ read_toml_alias_entries :: proc() -> []ConfigEntry {
 	return entries[:]
 }
 
-// Thin wrapper over the generic TOML section writer (toml.odin). Aliases live
-// in the `[aliases]` table; all rewrite logic is shared with constants.
-write_wayu_toml_aliases :: proc(entries: []ConfigEntry) -> bool {
-	return write_toml_kv_section("aliases", "aliases", entries)
-}
-
 toml_alias_add :: proc(entry: ConfigEntry) -> (bool, string) {
 	validation := validate_alias(entry.name, entry.value)
 	if !validation.valid {
@@ -79,62 +73,12 @@ toml_alias_add :: proc(entry: ConfigEntry) -> (bool, string) {
 		delete(validation.error_message)
 		return false, err
 	}
-
-	existing := read_toml_alias_entries()
-	defer cleanup_entries(&existing)
-
-	updated := make([dynamic]ConfigEntry)
-	defer {
-		for &e in updated { cleanup_entry(&e) }
-		delete(updated)
-	}
-	for e in existing {
-		append(&updated, ConfigEntry{
-			type = e.type,
-			name = strings.clone(e.name),
-			value = strings.clone(e.value),
-			line = strings.clone(e.line),
-		})
-	}
-
-	// Upsert: update in place when the alias exists, append otherwise. Both
-	// paths share the write → regenerate → report tail below.
-	had_existing := false
-	for &e in updated {
-		if e.name == entry.name {
-			delete(e.value)
-			e.value = strings.clone(entry.value)
-			had_existing = true
-			break
-		}
-	}
-	if !had_existing {
-		append(&updated, ConfigEntry{
-			type = .ALIAS,
-			name = strings.clone(entry.name),
-			value = strings.clone(entry.value),
-			line = "",
-		})
-	}
-
-	if !write_wayu_toml_aliases(updated[:]) {
-		return false, strings.clone("I/O error: could not update wayu.toml")
-	}
-	// Dry-run: the preview was printed by the writer; nothing changed on disk.
-	if wayu.dry_run { return true, "" }
-
-	regenerate_init_core_silently()
-
-	if had_existing {
-		print_success("Alias updated successfully in wayu.toml: %s", entry.name)
-	} else {
-		print_success("Alias added successfully to wayu.toml: %s", entry.name)
-	}
-	return true, ""
+	// Edits only this alias's line in [aliases] (see toml_kv_upsert).
+	return toml_entry_upsert(entry.name, entry.value, "Alias", "aliases", "aliases")
 }
 
 toml_alias_remove :: proc(name: string) -> (bool, string) {
-	return toml_entry_remove(name, "Alias", read_toml_alias_entries, write_wayu_toml_aliases)
+	return toml_entry_remove(name, "Alias", "aliases", "aliases")
 }
 
 list_toml_aliases :: proc() {

@@ -11,7 +11,7 @@
 //   3. Accessors                - TomlValue -> typed primitives
 //   4. Mapping                  - TomlDoc -> TomlConfig (typed config)
 //   5. File I/O                 - read_file / write_file + ensure_exists
-//   6. Section writer           - replace one [section] in-place
+//   6. Table editor             - line-level edits of one [section] entry
 //   7. Serialization            - TomlConfig -> canonical TOML text
 //   8. Profile merging          - pick + merge active profile
 //   9. CLI handlers             - wayu toml init/show/keys/...
@@ -345,102 +345,140 @@ strip_toml_section :: proc(content: string, section: string) -> string {
 	return strings.clone(strings.to_string(builder))
 }
 
-// Rewrite a single `[section]` key/value table in wayu.toml from `entries`,
-// preserving all other content. Entries are emitted sorted by name with TOML
-// string escaping. Honors --dry-run and creates a backup before writing.
-// `dry_label` is the human word shown in dry-run output (e.g. "aliases").
-// Single source of truth shared by alias + constant writers.
-write_toml_kv_section :: proc(section, dry_label: string, entries: []ConfigEntry) -> bool {
-	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	defer delete(config_path)
+// Read wayu.toml straight from disk (never the startup cache: a writer must
+// see what concurrent processes committed). Caller deletes.
+read_wayu_toml_fresh :: proc() -> (content: []byte, ok: bool) {
+	config_path := fmt.tprintf("%s/%s", wayu.config, TOML_CONFIG_FILE)
+	return safe_read_file(config_path)
+}
 
-	content, ok := safe_read_file(config_path)
-	if !ok { return false }
+// Persist a new wayu.toml: backup, atomic replace, invalidate the cache.
+// Caller holds the config lock and has already handled --dry-run.
+commit_wayu_toml :: proc(new_content: string) -> bool {
+	config_path := fmt.tprintf("%s/%s", wayu.config, TOML_CONFIG_FILE)
+	if !create_backup_cli(config_path) { return false }
+	if !safe_write_file(config_path, transmute([]byte)new_content) { return false }
+	clear_toml_content_cache()
+	return true
+}
+
+@(private = "file")
+print_toml_dry_run :: proc(dry_label, new_content: string) {
+	print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+	fmt.println()
+	fmt.printfln("%sWould update wayu.toml %s:%s", BRIGHT_CYAN, dry_label, RESET)
+	fmt.print(new_content)
+	fmt.println()
+	fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
+}
+
+TomlEditResult :: enum {
+	OK,
+	NOT_FOUND, // delete: no such key
+	MALFORMED, // table holds an unterminated value; nothing written
+	IO_ERROR,
+}
+
+// Upsert `name = "value"` into `[section]` of wayu.toml, editing only that
+// entry's line(s). Honors --dry-run. Caller holds the config lock.
+// `dry_label` is the human word shown in dry-run output (e.g. "aliases").
+toml_kv_upsert :: proc(section, dry_label, name, value: string) -> (res: TomlEditResult, existed: bool) {
+	content, ok := read_wayu_toml_fresh()
+	if !ok { return .IO_ERROR, false }
 	defer delete(content)
 
-	// Sort alphabetically by name for stable output.
-	sorted := make([]ConfigEntry, len(entries))
-	defer delete(sorted)
-	copy(sorted, entries)
-	slice.sort_by(sorted, proc(a, b: ConfigEntry) -> bool { return a.name < b.name })
+	escaped := escape_toml_string(value)
+	defer delete(escaped)
+	line := fmt.aprintf(`%s = "%s"`, name, escaped)
+	defer delete(line)
 
-	body := make([]string, len(sorted))
-	defer {
-		for line in body { delete(line) }
-		delete(body)
+	new_content, had, bad := toml_table_set(string(content), section, name, line)
+	if bad > 0 {
+		toml_print_bad_line(section, bad)
+		return .MALFORMED, false
 	}
-	for entry, i in sorted {
-		escaped := escape_toml_string(entry.value)
-		body[i] = fmt.aprintf("%s = \"%s\"", entry.name, escaped)
-		delete(escaped)
-	}
-
-	// Splice in place: keeps the table's position, its header comment and any
-	// comment lines inside it (see replace_toml_table_section).
-	new_content := replace_toml_table_section(string(content), section, body)
 	defer delete(new_content)
 
 	if wayu.dry_run {
-		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-		fmt.println()
-		fmt.printfln("%sWould update wayu.toml %s:%s", BRIGHT_CYAN, dry_label, RESET)
-		fmt.print(new_content)
-		fmt.println()
-		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
-		return true
+		print_toml_dry_run(dry_label, new_content)
+		return .OK, had
 	}
-
-	if !create_backup_cli(config_path) { return false }
-	wrote := safe_write_file(config_path, transmute([]byte)new_content)
-	if wrote { clear_toml_content_cache() }
-	return wrote
+	if !commit_wayu_toml(new_content) { return .IO_ERROR, had }
+	return .OK, had
 }
 
-// Remove the entry named `name` from a TOML-backed config, persist, and
-// regenerate the shell core. `noun` is the display word ("Alias"/"Constant").
-// `read_fn`/`write_fn` are the per-type accessors. Single source of truth
-// shared by alias + constant removal.
-toml_entry_remove :: proc(
-	name, noun: string,
-	read_fn: proc() -> []ConfigEntry,
-	write_fn: proc([]ConfigEntry) -> bool,
-) -> (bool, string) {
-	existing := read_fn()
-	defer cleanup_entries(&existing)
+// Delete the entries named in `names` from `[section]` of wayu.toml (all
+// lines of each, nothing else). Honors --dry-run. Caller holds the lock.
+toml_kv_delete :: proc(section, dry_label: string, names: []string) -> TomlEditResult {
+	content, ok := read_wayu_toml_fresh()
+	if !ok { return .IO_ERROR }
+	defer delete(content)
 
-	updated := make([dynamic]ConfigEntry)
-	defer {
-		for &e in updated { cleanup_entry(&e) }
-		delete(updated)
+	new_content, removed, bad := toml_table_delete(string(content), section, names)
+	if bad > 0 {
+		toml_print_bad_line(section, bad)
+		return .MALFORMED
 	}
+	defer delete(new_content)
+	if removed == 0 { return .NOT_FOUND }
 
-	found := false
-	for e in existing {
-		if e.name == name {
-			found = true
-			continue
-		}
-		append(&updated, ConfigEntry{
-			type = e.type,
-			name = strings.clone(e.name),
-			value = strings.clone(e.value),
-			line = strings.clone(e.line),
-		})
+	if wayu.dry_run {
+		print_toml_dry_run(dry_label, new_content)
+		return .OK
 	}
+	if !commit_wayu_toml(new_content) { return .IO_ERROR }
+	return .OK
+}
 
-	if !found {
-		return false, fmt.aprintf("%s not found: %s", noun, name)
+// Remove the entry named `name` from a TOML-backed key/value table, persist,
+// and regenerate the shell core. `noun` is the display word
+// ("Alias"/"Constant"). Single source of truth shared by alias + constant
+// removal. Holds the config lock across write + regeneration.
+toml_entry_remove :: proc(name, noun, section, dry_label: string) -> (bool, string) {
+	if !config_lock_acquire() {
+		return false, strings.clone("could not lock wayu config")
 	}
-	if !write_fn(updated[:]) {
-		return false, strings.clone("I/O error: could not update wayu.toml")
+	defer config_lock_release()
+
+	switch toml_kv_delete(section, dry_label, {name}) {
+	case .NOT_FOUND: return false, fmt.aprintf("%s not found: %s", noun, name)
+	case .MALFORMED: return false, strings.clone("wayu.toml is malformed: nothing was written")
+	case .IO_ERROR:  return false, strings.clone("I/O error: could not update wayu.toml")
+	case .OK:
 	}
-	// Dry-run: write_fn already printed the preview; nothing was written so
-	// there is nothing to regenerate and no success to report.
+	// Dry-run: the preview was printed; nothing was written so there is
+	// nothing to regenerate and no success to report.
 	if wayu.dry_run { return true, "" }
 
 	regenerate_init_core_silently()
 
 	print_success("%s removed successfully from wayu.toml: %s", noun, name)
+	return true, ""
+}
+
+// Upsert one alias/constant under the config lock, then regenerate. Shared
+// tail of toml_alias_add + toml_constant_add.
+toml_entry_upsert :: proc(name, value, noun, section, dry_label: string) -> (bool, string) {
+	if !config_lock_acquire() {
+		return false, strings.clone("could not lock wayu config")
+	}
+	defer config_lock_release()
+
+	res, existed := toml_kv_upsert(section, dry_label, name, value)
+	switch res {
+	case .MALFORMED: return false, strings.clone("wayu.toml is malformed: nothing was written")
+	case .IO_ERROR, .NOT_FOUND: return false, strings.clone("I/O error: could not update wayu.toml")
+	case .OK:
+	}
+	if wayu.dry_run { return true, "" }
+
+	regenerate_init_core_silently()
+
+	if existed {
+		print_success("%s updated successfully in wayu.toml: %s", noun, name)
+	} else {
+		print_success("%s added successfully to wayu.toml: %s", noun, name)
+	}
 	return true, ""
 }
 
@@ -1502,120 +1540,232 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
 	return config, true
 }
 
-
 // ============================================================================
-// Merged from: toml_section_writer.odin
+// Table editor - line-level, in-place edits of one `[section]` table
 // ============================================================================
-
-// toml_section_writer.odin - Replace a single `[section]` table in a TOML
-// file in place. Used by path/alias/env writers so each mutation rewrites
-// only its own section and leaves the rest of wayu.toml byte-identical.
-
-
-
-// Replace the existing `[<section>]` table (header + body up to the next
-// section header) with the supplied body. When `body` is empty, the
-// section is removed entirely. When the section doesn't exist yet, it's
-// appended at the end. Caller owns the returned string.
 //
-// `body_lines` is rendered verbatim under a freshly emitted `[<section>]`
-// header. Caller is responsible for ordering and formatting; this proc
-// just splices.
-//
-// The existing header line is kept verbatim (so `[env]  # note` survives) and
-// full-line comments inside the old table are re-emitted right after the
-// header, ahead of the new body. A header carrying an inline comment is
-// recognised via toml_line_is_section, so it is never duplicated. When the
-// body is empty and the old table held no comments the table is dropped.
-replace_toml_table_section :: proc(content: string, section: string, body_lines: []string) -> string {
+// Mutations never re-serialise a table. They locate the physical lines of the
+// one entry being changed and splice only those, so everything else —
+// declaration order (PATH precedence!), comments, blank lines, multi-line
+// strings, arrays, ints, keys wayu doesn't understand — stays byte-identical.
+
+// Physical line range [first, last] (0-based, inclusive) of one
+// `key = value` entry. A multi-line string or array spans several lines.
+// `key` is unquoted and aliases the scanned content.
+TomlEntrySpan :: struct {
+	key:   string,
+	first: int,
+	last:  int,
+}
+
+TomlTableScan :: struct {
+	header:   int, // line index of the `[section]` header, -1 when absent
+	end:      int, // exclusive line index where the table ends
+	entries:  [dynamic]TomlEntrySpan,
+	bad_line: int, // 1-based line of a value that never terminates, 0 when ok
+}
+
+// Multi-line value tracking across physical lines.
+@(private = "file")
+TomlValueScan :: struct {
+	depth: int,  // open `[` / `{` outside strings
+	ml:    byte, // 0, or the quote char of an open `"""` / `'''` string
+}
+
+// Advance `st` over one physical line of a value. Single-line strings cannot
+// span lines, so they are skipped within the line; `#` outside a string ends
+// the line.
+@(private = "file")
+toml_value_scan_line :: proc(s: string, st: ^TomlValueScan) {
+	i := 0
+	for i < len(s) {
+		c := s[i]
+		if st.ml != 0 {
+			if c == '\\' && st.ml == '"' { i += 2; continue }
+			if c == st.ml && i + 2 < len(s) && s[i+1] == c && s[i+2] == c {
+				st.ml = 0
+				i += 3
+				// Up to two quotes may directly precede the closing delimiter.
+				for i < len(s) && s[i] == c { i += 1 }
+				continue
+			}
+			i += 1
+			continue
+		}
+		switch c {
+		case '#':
+			return
+		case '"', '\'':
+			if i + 2 < len(s) && s[i+1] == c && s[i+2] == c {
+				st.ml = c
+				i += 3
+				continue
+			}
+			j := i + 1
+			for j < len(s) && s[j] != c {
+				if c == '"' && s[j] == '\\' { j += 1 }
+				j += 1
+			}
+			i = j + 1
+			continue
+		case '[', '{':
+			st.depth += 1
+		case ']', '}':
+			if st.depth > 0 { st.depth -= 1 }
+		}
+		i += 1
+	}
+}
+
+// `"my key"` → `my key`; bare keys are returned as-is.
+@(private = "file")
+toml_unquote_key :: proc(key: string) -> string {
+	n := len(key)
+	if n >= 2 && (key[0] == '"' || key[0] == '\'') && key[n-1] == key[0] {
+		return key[1:n-1]
+	}
+	return key
+}
+
+// Locate `[section]` in `lines` and every entry inside it. Lines that are not
+// `key = value` (comments, blanks, junk) are not entries and are never
+// touched by the editors below. Caller deletes `entries`.
+toml_scan_table :: proc(lines: []string, section: string, allocator := context.allocator) -> TomlTableScan {
+	scan := TomlTableScan{header = -1, end = len(lines)}
+	scan.entries = make([dynamic]TomlEntrySpan, allocator)
+
+	for line, i in lines {
+		if toml_line_is_section(strings.trim_space(line), section) {
+			scan.header = i
+			break
+		}
+	}
+	if scan.header < 0 { return scan }
+
+	for i := scan.header + 1; i < len(lines); i += 1 {
+		trimmed := strings.trim_space(lines[i])
+		if strings.has_prefix(trimmed, "[") {
+			scan.end = i
+			return scan
+		}
+		if len(trimmed) == 0 || trimmed[0] == '#' { continue }
+		eq := strings.index_byte(trimmed, '=')
+		if eq < 1 { continue }
+
+		first := i
+		st: TomlValueScan
+		toml_value_scan_line(trimmed[eq+1:], &st)
+		for st.ml != 0 || st.depth > 0 {
+			i += 1
+			if i >= len(lines) {
+				// Unterminated value: refuse to guess where it ends.
+				scan.bad_line = first + 1
+				scan.end = len(lines)
+				return scan
+			}
+			toml_value_scan_line(lines[i], &st)
+		}
+		append(&scan.entries, TomlEntrySpan{
+			key   = toml_unquote_key(strings.trim_space(trimmed[:eq])),
+			first = first,
+			last  = i,
+		})
+	}
+	return scan
+}
+
+// Set `key` in `[section]` to `entry_line` (a full `key = value` line).
+// An existing entry is replaced where it stands, keeping its indentation and,
+// for a single-line entry, its inline comment. A new key is appended after
+// the table's last entry; a missing table is appended at the end of the file.
+// Returns bad_line > 0 (and no output) when the table holds an unterminated
+// value. Caller deletes `out`.
+toml_table_set :: proc(content, section, key, entry_line: string) -> (out: string, existed: bool, bad_line: int) {
 	lines := strings.split(content, "\n")
 	defer delete(lines)
+	scan := toml_scan_table(lines, section)
+	defer delete(scan.entries)
+	if scan.bad_line > 0 { return "", false, scan.bad_line }
 
-	out := strings.builder_make()
-	defer strings.builder_destroy(&out)
+	if scan.header < 0 {
+		b := strings.builder_make()
+		defer strings.builder_destroy(&b)
+		strings.write_string(&b, content)
+		if len(content) > 0 {
+			if !strings.has_suffix(content, "\n") { strings.write_byte(&b, '\n') }
+			if !strings.has_suffix(content, "\n\n") { strings.write_byte(&b, '\n') }
+		}
+		fmt.sbprintfln(&b, "[%s]", section)
+		fmt.sbprintln(&b, entry_line)
+		return strings.clone(strings.to_string(b)), false, 0
+	}
 
-	emit_new_section :: proc(b: ^strings.Builder, section: string, body_lines: []string) {
-		fmt.sbprintfln(b, "[%s]", section)
-		for line in body_lines {
-			fmt.sbprintln(b, line)
+	out_lines := make([dynamic]string, 0, len(lines) + 1)
+	defer delete(out_lines)
+
+	for e in scan.entries {
+		if e.key != key { continue }
+		old := lines[e.first]
+		indent := old[:len(old) - len(strings.trim_left_space(old))]
+		comment := ""
+		if e.first == e.last {
+			if code, balanced := toml_strip_inline_comment_strict(old); balanced && len(code) < len(old) {
+				comment = old[len(strings.trim_right_space(code)):]
+			}
+		}
+		replacement := strings.concatenate({indent, entry_line, comment})
+		defer delete(replacement)
+
+		append(&out_lines, ..lines[:e.first])
+		append(&out_lines, replacement)
+		append(&out_lines, ..lines[e.last+1:])
+		return strings.join(out_lines[:], "\n"), true, 0
+	}
+
+	insert_at := scan.header + 1
+	if n := len(scan.entries); n > 0 {
+		insert_at = scan.entries[n-1].last + 1
+	} else {
+		// Empty table: keep documentation comments right under the header.
+		for insert_at < scan.end && strings.has_prefix(strings.trim_space(lines[insert_at]), "#") {
+			insert_at += 1
 		}
 	}
-
-	// Pending state for the target table: emitted once the table closes.
-	target_header := ""
-	target_comments := make([dynamic]string)
-	defer delete(target_comments)
-	flush_target :: proc(b: ^strings.Builder, header: string, comments: []string, body_lines: []string) {
-		if len(body_lines) == 0 && len(comments) == 0 { return }
-		fmt.sbprintln(b, header)
-		for c in comments { fmt.sbprintln(b, c) }
-		for line in body_lines { fmt.sbprintln(b, line) }
-	}
-
-	in_target := false
-	replaced := false
-	for i := 0; i < len(lines); i += 1 {
-		trimmed := strings.trim_space(lines[i])
-
-		if !replaced && toml_line_is_section(trimmed, section) {
-			in_target = true
-			replaced = true
-			target_header = lines[i]
-			continue
-		}
-
-		// Closing the target on the next section header (any `[...]`).
-		if in_target && strings.has_prefix(trimmed, "[") {
-			in_target = false
-			flush_target(&out, target_header, target_comments[:], body_lines)
-			if len(body_lines) > 0 || len(target_comments) > 0 { fmt.sbprintln(&out, "") }
-		}
-
-		if in_target {
-			if strings.has_prefix(trimmed, "#") { append(&target_comments, lines[i]) }
-			continue
-		}
-		fmt.sbprintln(&out, lines[i])
-	}
-	if in_target {
-		flush_target(&out, target_header, target_comments[:], body_lines)
-	}
-
-	result := strings.to_string(out)
-
-	if !replaced && len(body_lines) > 0 {
-		// Section didn't exist - append at end with a separator blank line.
-		needs_nl := !strings.has_suffix(result, "\n")
-		appended := strings.builder_make()
-		defer strings.builder_destroy(&appended)
-		fmt.sbprint(&appended, result)
-		if needs_nl { fmt.sbprint(&appended, "\n") }
-		fmt.sbprintln(&appended, "")
-		emit_new_section(&appended, section, body_lines)
-		return strings.clone(strings.to_string(appended))
-	}
-
-	// Tidy: collapse three+ consecutive blank lines into two and trim
-	// trailing whitespace so repeated edits don't grow the file.
-	return tidy_blank_runs(result)
+	append(&out_lines, ..lines[:insert_at])
+	append(&out_lines, entry_line)
+	append(&out_lines, ..lines[insert_at:])
+	return strings.join(out_lines[:], "\n"), false, 0
 }
 
-// Collapse runs of 3+ consecutive blank lines into two. Caller owns return.
-tidy_blank_runs :: proc(s: string) -> string {
-	lines := strings.split(s, "\n")
+// Delete every entry of `[section]` whose key is in `keys`, including all
+// continuation lines of multi-line values. Everything else is untouched.
+// Returns bad_line > 0 (and no output) when the table holds an unterminated
+// value. Caller deletes `out` (also when removed == 0).
+toml_table_delete :: proc(content, section: string, keys: []string) -> (out: string, removed: int, bad_line: int) {
+	lines := strings.split(content, "\n")
 	defer delete(lines)
-	out := strings.builder_make()
-	defer strings.builder_destroy(&out)
-	blanks := 0
-	for line in lines {
-		if len(strings.trim_space(line)) == 0 {
-			blanks += 1
-			if blanks > 2 { continue }
-		} else {
-			blanks = 0
-		}
-		fmt.sbprintln(&out, line)
+	scan := toml_scan_table(lines, section)
+	defer delete(scan.entries)
+	if scan.bad_line > 0 { return "", 0, scan.bad_line }
+
+	drop := make([]bool, len(lines))
+	defer delete(drop)
+	for e in scan.entries {
+		if !slice.contains(keys, e.key) { continue }
+		for i in e.first..=e.last { drop[i] = true }
+		removed += 1
 	}
-	return strings.clone(strings.to_string(out))
+
+	out_lines := make([dynamic]string, 0, len(lines))
+	defer delete(out_lines)
+	for line, i in lines {
+		if !drop[i] { append(&out_lines, line) }
+	}
+	return strings.join(out_lines[:], "\n"), removed, 0
 }
 
+// Explain an unterminated value and that nothing was written.
+toml_print_bad_line :: proc(section: string, bad_line: int) {
+	print_error("wayu.toml line %d: unterminated multi-line value in [%s] — fix it by hand; nothing was written",
+		bad_line, section)
+}

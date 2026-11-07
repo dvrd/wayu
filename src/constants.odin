@@ -154,12 +154,6 @@ parse_hex_codepoint :: proc(value: string, start, width: int) -> (rune, bool) {
 	return rune(cp), true
 }
 
-// Thin wrapper over the generic TOML section writer (toml.odin). Constants
-// live in the `[env]` table; all rewrite logic is shared with aliases.
-write_wayu_toml_constants :: proc(entries: []ConfigEntry) -> bool {
-	return write_toml_kv_section("env", "constants", entries)
-}
-
 toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
 	validation := validate_constant(entry.name, entry.value)
 	if !validation.valid {
@@ -171,51 +165,12 @@ toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
 		print_warning("%s", validation.warning)
 		delete(validation.warning)
 	}
-
-	existing := read_wayu_toml_constants()
-	defer cleanup_entries(&existing)
-
-	updated := make([dynamic]ConfigEntry)
-	defer {
-		for &e in updated { cleanup_entry(&e) }
-		delete(updated)
-	}
-	for e in existing {
-		append(&updated, ConfigEntry{
-			type = e.type,
-			name = strings.clone(e.name),
-			value = strings.clone(e.value),
-			line = strings.clone(e.line),
-		})
-	}
-
-	had_existing := false
-	for e in updated {
-		if e.name == entry.name {
-			had_existing = true
-			break
-		}
-	}
-	upsert_toml_constant(&updated, entry.name, entry.value)
-
-	if !write_wayu_toml_constants(updated[:]) {
-		return false, strings.clone("I/O error: could not update wayu.toml")
-	}
-	// Dry-run: the preview was printed by the writer; nothing changed on disk.
-	if wayu.dry_run { return true, "" }
-
-	regenerate_init_core_silently()
-
-	if had_existing {
-		print_success("Constant updated successfully in wayu.toml: %s", entry.name)
-	} else {
-		print_success("Constant added successfully to wayu.toml: %s", entry.name)
-	}
-	return true, ""
+	// Edits only this constant's line in [env] (see toml_kv_upsert).
+	return toml_entry_upsert(entry.name, entry.value, "Constant", "env", "constants")
 }
 
 toml_constant_remove :: proc(name: string) -> (bool, string) {
-	return toml_entry_remove(name, "Constant", read_wayu_toml_constants, write_wayu_toml_constants)
+	return toml_entry_remove(name, "Constant", "env", "constants")
 }
 
 list_toml_constants :: proc() {
