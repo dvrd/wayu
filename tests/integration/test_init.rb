@@ -36,6 +36,7 @@ class InitIntegrationTest
       test_live_path_sync
       test_path_sync_status_and_nounset
       test_path_sync_managed_dirs
+      test_regen_covers_all_initialized_shells
     ensure
       teardown_test_env
     end
@@ -501,6 +502,34 @@ class InitIntegrationTest
       else
         puts "✗"; puts "  out=#{out.lines.map(&:strip).inspect} err=#{err.strip[0, 300]}"; @failed += 1
       end
+    end
+  end
+
+  # OKAMI-212: a write from a process whose $SHELL is another shell must still
+  # regenerate every initialized shell's files (bash + fish here), so open
+  # and new shells of every kind see the change.
+  def test_regen_covers_all_initialized_shells
+    print "Test: regen refreshes every initialized shell (SHELL=zsh, bash+fish set up)... "
+    home, env = sync_home('allshells', %w[bash fish], %w[d1 d2])
+    Open3.capture3(env, @wayu_bin, '--shell', 'bash', 'path', 'add', "#{home}/d1")
+    script = <<~SH
+      . "$HOME/.config/wayu/core.bash"
+      SHELL=/bin/zsh "$W" path add "$HOME/d2" >/dev/null 2>&1
+      SHELL=/bin/zsh "$W" alias add zzq 'echo hi' >/dev/null 2>&1
+      _wayu_paths_sync
+      case ":$PATH:" in *":$HOME/d2:"*) echo open=y ;; *) echo open=n ;; esac
+    SH
+    out, err, = Open3.capture3(env, '/bin/bash', '-c', script)
+    cfg = "#{home}/.config/wayu"
+    core_bash = File.read("#{cfg}/core.bash")
+    core_fish = File.read("#{cfg}/core.fish")
+    ok = out.strip == 'open=y' && core_bash.include?('alias zzq=') &&
+         File.read("#{cfg}/path_sync.bash").include?("#{home}/d2") &&
+         core_fish.include?('zzq') && core_fish.include?('d2')
+    if ok
+      puts "✓"; @passed += 1
+    else
+      puts "✗"; puts "  out=#{out.strip} err=#{err.strip[0, 300]} bash_alias=#{core_bash.include?('alias zzq=')} fish=#{core_fish.include?('zzq')}/#{core_fish.include?('d2')}"; @failed += 1
     end
   end
 

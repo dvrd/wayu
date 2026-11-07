@@ -88,11 +88,11 @@ discard_zcompile_batch :: proc() {
 // Paths are passed as positional arguments to `zsh -fc` (each one
 // single-quoted for the outer `sh -c`), so spaces, quotes or `$` in
 // $HOME / XDG paths can neither break the command nor inject code.
+// Only zsh files are ever queued (zcompile_file checks the shell at queue
+// time), so the batch is flushed whatever shell is active afterwards.
 @(private = "file")
 flush_zcompile_batch :: proc() {
-	if wayu.shell != .ZSH || len(ZCOMPILE_BATCH) == 0 {
-		for p in ZCOMPILE_BATCH { delete(p) }
-		clear(&ZCOMPILE_BATCH)
+	if len(ZCOMPILE_BATCH) == 0 {
 		return
 	}
 
@@ -128,8 +128,48 @@ emit_source_if_exists :: proc(b: ^strings.Builder, file: string) {
 	fmt.sbprintfln(b, "[ -f %s ] && source %s", q, q)
 }
 
+// Shells whose generated files are refreshed on every (re)generation: the
+// active shell first, then every other shell already set up in the data dir
+// (init.<ext> or core.<ext> exists). Regenerating only $SHELL's files left a
+// bash setup stale when wayu ran with SHELL=zsh (and vice versa), so open and
+// new shells of the other kind never saw path/alias/env changes.
+shells_to_generate :: proc() -> (out: [4]ShellType, n: int) {
+	out[0] = wayu.shell
+	n = 1
+	for s in ([]ShellType{.ZSH, .BASH, .FISH}) {
+		if s == wayu.shell { continue }
+		ext := get_shell_extension(s)
+		if os.exists(fmt.tprintf("%s/init.%s", wayu.data, ext)) || os.exists(fmt.tprintf("%s/core.%s", wayu.data, ext)) {
+			out[n] = s
+			n += 1
+		}
+	}
+	return
+}
+
+// Generate every runtime file for the ACTIVE shell (wayu.shell). Fish uses a
+// single native core.fish; the core/lazy/login/helpers split is zsh/bash only.
+@(private = "file")
+generate_runtime_files_for_active_shell :: proc() -> (plugins_ok: bool) {
+	if wayu.shell == .FISH {
+		generate_core_init_fish()
+	} else {
+		generate_core_init_v2()
+		generate_lazy_init_v2()
+		// core sources login.{ext} for login shells, so it must be refreshed
+		// together with core or login-only tools go stale / missing.
+		generate_login_init_v2()
+		generate_helpers_init_v2()
+	}
+	plugins_ok = generate_plugins_runtime_config(wayu.shell)
+	// Keep init.{ext} in sync with the current orchestrator template.
+	sync_init_orchestrator()
+	return
+}
+
 // Silently regenerate every runtime file sourced by init.{ext} after any
-// mutation (path/alias/constants add/remove, template apply, hot reload).
+// mutation (path/alias/constants add/remove, template apply, hot reload),
+// for every initialized shell (see shells_to_generate).
 //
 // Unlike generate_optimized_init_all this version emits no log output so it
 // can be called on every CLI write without adding noise. Missing wayu.toml
@@ -149,30 +189,20 @@ regenerate_init_core_silently :: proc() {
 	// freshly written wayu.toml (callers modify the file before calling us).
 	clear_toml_content_cache()
 
-	if wayu.shell == .FISH {
-		generate_core_init_fish()
-		_ = generate_plugins_runtime_config(wayu.shell)
-		sync_init_orchestrator()
-		clear_toml_content_cache()
-		// Skip zcompile on mutations — only zcompile during explicit `wayu init`.
-		// The text files work fine without bytecode; zcompile is a
-		// startup-time micro-optimization that isn't worth ~10ms per CLI write.
-		discard_zcompile_batch()
-		return
+	shells, n := shells_to_generate()
+	saved_shell, saved_ext := wayu.shell, wayu.shell_ext
+	for s in shells[:n] {
+		wayu.shell = s
+		wayu.shell_ext = get_shell_extension(s)
+		_ = generate_runtime_files_for_active_shell()
 	}
-
-	generate_core_init_v2()
-	generate_lazy_init_v2()
-	// core sources login.{ext} for login shells, so it must be refreshed
-	// together with core or login-only tools go stale / missing.
-	generate_login_init_v2()
-	generate_helpers_init_v2()
-	_ = generate_plugins_runtime_config(wayu.shell)
-	sync_init_orchestrator()
+	wayu.shell, wayu.shell_ext = saved_shell, saved_ext
 
 	// Flush cached resources after all generators have run.
 	clear_toml_content_cache()
-	// Skip zcompile on mutations (see comment above).
+	// Skip zcompile on mutations — only zcompile during explicit `wayu init`
+	// / `build`. The text files work fine without bytecode; zcompile is a
+	// startup-time micro-optimization that isn't worth ~10ms per CLI write.
 	discard_zcompile_batch()
 }
 
@@ -198,69 +228,57 @@ sync_init_orchestrator :: proc() {
 	write_init_file(path, template)
 }
 
-// Generate all optimized init files (v2 with all optimizations)
+// Generate all optimized init files (v2 with all optimizations) for every
+// initialized shell (see shells_to_generate), printing what was written as
+// `#` comments (stdout of `wayu build eval` is eval'd by the shell).
 generate_optimized_init_all :: proc() {
-	ext := get_shell_extension(wayu.shell)
+	shells, n := shells_to_generate()
 
 	if wayu.dry_run {
 		fmt.println("# [DRY RUN] No files written. Would generate:")
-		if wayu.shell == .FISH {
-			fmt.printfln("#   %s/core.fish", wayu.data)
-		} else {
-			for base in ([]string{"core", "lazy", "login", "helpers"}) {
-				fmt.printfln("#   %s/%s.%s", wayu.data, base, ext)
+		for s in shells[:n] {
+			if s == .FISH {
+				fmt.printfln("#   %s/core.fish", wayu.data)
+				continue
+			}
+			for base in ([]string{"core", "path_sync", "lazy", "login", "helpers"}) {
+				fmt.printfln("#   %s/%s.%s", wayu.data, base, get_shell_extension(s))
 			}
 		}
 		return
 	}
 
-	// Fish uses a single native core.fish; zsh-defer / lazy split is
-	// zsh/bash-specific and irrelevant under fish.
-	if wayu.shell == .FISH {
-		generate_core_init_fish()
-		if !generate_plugins_runtime_config(wayu.shell) {
+	saved_shell, saved_ext := wayu.shell, wayu.shell_ext
+	any_zsh := false
+	for s in shells[:n] {
+		wayu.shell = s
+		wayu.shell_ext = get_shell_extension(s)
+		if !generate_runtime_files_for_active_shell() {
 			print_warning("Failed to generate plugin runtime config")
 		}
-		sync_init_orchestrator()
-		clear_toml_content_cache()
-		fmt.printfln("# Init file generated: %s/core.fish", wayu.data)
-		return
 	}
-
-	// 1. Core - Only what's needed for the prompt (PATH, basic prompt)
-	generate_core_init_v2()
-
-	// 2. Lazy - tools, user escape hatches
-	generate_lazy_init_v2()
-
-	// 3. Login - Login-shell-only tools (only if configured)
-	generate_login_init_v2()
-
-	// 4. Helper functions (evalcache, zsh-defer, etc.)
-	generate_helpers_init_v2()
-
-	// 5. Runtime plugin config generated from wayu.toml
-	if !generate_plugins_runtime_config(wayu.shell) {
-		print_warning("Failed to generate plugin runtime config")
-	}
-
-	// 6. Keep init.{ext} in sync with the current orchestrator template
-	sync_init_orchestrator()
+	wayu.shell, wayu.shell_ext = saved_shell, saved_ext
 
 	// Flush cached resources after all generators have run.
 	clear_toml_content_cache()
 	flush_zcompile_batch()
 
-	fmt.println("# Init files generated:")
-	fmt.printfln("#   %s/core.%s     (< 10ms)", wayu.data, ext)
-	fmt.printfln("#   %s/lazy.%s     (tools, extra config)", wayu.data, ext)
-	login_path := fmt.aprintf("%s/login.%s", wayu.data, ext)
-	defer delete(login_path)
-	if os.exists(login_path) {
-		fmt.printfln("#   %s/login.%s    (login only)", wayu.data, ext)
+	for s in shells[:n] {
+		ext := get_shell_extension(s)
+		if s == .FISH {
+			fmt.printfln("# Init file generated: %s/core.fish", wayu.data)
+			continue
+		}
+		any_zsh = any_zsh || s == .ZSH
+		fmt.println("# Init files generated:")
+		fmt.printfln("#   %s/core.%s     (< 10ms)", wayu.data, ext)
+		fmt.printfln("#   %s/lazy.%s     (tools, extra config)", wayu.data, ext)
+		if os.exists(fmt.tprintf("%s/login.%s", wayu.data, ext)) {
+			fmt.printfln("#   %s/login.%s    (login only)", wayu.data, ext)
+		}
+		fmt.printfln("#   %s/helpers.%s  (evalcache%s)", wayu.data, ext, ", built-in zsh-defer" if s == .ZSH else "")
 	}
-	fmt.printfln("#   %s/helpers.%s  (evalcache%s)", wayu.data, ext, ", built-in zsh-defer" if wayu.shell == .ZSH else "")
-	if wayu.shell == .ZSH {
+	if any_zsh {
 		fmt.println("#")
 		fmt.println("# To compile to bytecode (2-3x faster):")
 		fmt.printfln("#   zcompile %s/core.zsh", wayu.data)
