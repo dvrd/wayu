@@ -14,16 +14,29 @@ import "core:strings"
 // mid-regeneration never sources a truncated file. Generated core/lazy/login
 // files embed [env] values, so they are owner-only (0600); the chmod also
 // repairs files created 0644 by older versions (OKAMI-206).
+//
+// zsh uses <file>.zwc when its mtime is >= the source's, compared in whole
+// seconds. So: unchanged content is not rewritten (a valid .zwc stays
+// usable), and a rewrite deletes the .zwc — otherwise a digest compiled in
+// the same second from the previous content would shadow the new file.
 @(private = "file")
 write_init_file :: proc(path, content: string) {
+	zwc := fmt.tprintf("%s.zwc", path)
+	if old, err := os.read_entire_file(path, context.allocator); err == nil {
+		same := string(old) == content
+		delete(old)
+		if same {
+			restrict_file_mode(path)
+			if os.exists(zwc) { restrict_file_mode(zwc) }
+			return
+		}
+	}
 	if write_file_atomic(path, transmute([]byte)content) != nil {
 		print_warning("Failed to write %s", path)
 		return
 	}
 	restrict_file_mode(path)
-	// Stale bytecode from a previous zcompile holds the same exports.
-	zwc := fmt.tprintf("%s.zwc", path)
-	if os.exists(zwc) { restrict_file_mode(zwc) }
+	os.remove(zwc)
 }
 
 // Technique 1: built-in zsh-defer (no external plugin required)
@@ -114,9 +127,10 @@ flush_zcompile_batch :: proc() {
 	// since the compile started: zsh prefers a .zwc newer than its source, so
 	// a slow background compile finishing after a later regeneration would
 	// otherwise shadow the fresh file with stale code. (If $f changes after
-	// the check, the renamed digest keeps the temp file's older mtime and
-	// zsh ignores it.)
-	strings.write_string(&builder, `zsh -fc 'umask 077; for f; do t="$f.$$.tmp.zwc"; c="$(<$f)"; if zcompile -- "$t" "$f" && [[ "$(<$f)" == "$c" && ! $f -nt $t ]]; then mv -f -- "$t" "$f.zwc"; else rm -f -- "$t"; fi; done' zsh`)
+	// the check, the writer deletes the .zwc after writing, and the re-check
+	// after mv removes a digest installed after that delete — zsh compares
+	// mtimes in whole seconds, so mtime alone can't tell them apart.)
+	strings.write_string(&builder, `zsh -fc 'umask 077; for f; do t="$f.$$.tmp.zwc"; c="$(<$f)"; if zcompile -- "$t" "$f" && [[ "$(<$f)" == "$c" ]]; then mv -f -- "$t" "$f.zwc"; [[ "$(<$f)" == "$c" ]] || rm -f -- "$f.zwc"; else rm -f -- "$t"; fi; done' zsh`)
 	for p in ZCOMPILE_BATCH {
 		strings.write_byte(&builder, ' ')
 		strings.write_string(&builder, shell_single_quote(p, context.temp_allocator))

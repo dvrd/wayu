@@ -41,6 +41,7 @@ class InitIntegrationTest
       test_fish_paths_expanded_in_shell
       test_hand_edits_reach_open_shells
       test_build_eval_uses_evaluating_shell
+      test_rewrite_drops_stale_zwc
       test_legacy_path_file_not_resurrected
     ensure
       teardown_test_env
@@ -632,6 +633,24 @@ class InitIntegrationTest
       else
         puts "✗"; puts "  out=#{out.lines.map(&:strip).inspect} err=#{err.strip[0, 300]}"; @failed += 1
       end
+    end
+  end
+
+  # zsh prefers <file>.zwc when it is at least as new as the source (whole
+  # seconds), so a digest compiled from old content must not survive a
+  # rewrite. A future-dated .zwc makes the race deterministic.
+  def test_rewrite_drops_stale_zwc
+    print "Test: rewriting core.zsh drops a stale .zwc... "
+    home, env = sync_home('stalezwc', ['zsh'])
+    cfg = "#{home}/.config/wayu"
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_ZWC_PROBE', 'old')
+    Open3.capture3(env, '/bin/zsh', '-fc', "zcompile '#{cfg}/core.zsh' && touch -t 203001010000 '#{cfg}/core.zsh.zwc'")
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_ZWC_PROBE', 'new')
+    out, = Open3.capture3(env, '/bin/zsh', '-fc', ". '#{cfg}/core.zsh' >/dev/null 2>&1; echo \"$WAYU_ZWC_PROBE\"")
+    if out.strip == 'new'
+      puts "✓"; @passed += 1
+    else
+      puts "✗"; puts "  WAYU_ZWC_PROBE=#{out.strip} zwc_exists=#{File.exist?("#{cfg}/core.zsh.zwc")}"; @failed += 1
     end
   end
 
