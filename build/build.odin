@@ -46,6 +46,11 @@ main :: proc() {
 	}
 
 	switch target {
+	case "build", "debug", "test", "check", "install", "dev", "release":
+		warn_if_odin_unpinned()
+	}
+
+	switch target {
 	case "build":
 		do_build()
 	case "debug":
@@ -71,6 +76,29 @@ main :: proc() {
 		do_help()
 		os.exit(1)
 	}
+}
+
+// The Odin release wayu is built and released with (CI + release builds).
+ODIN_PIN_FILE :: ".github/odin-release"
+
+// Warn (never fail) when the local `odin` isn't the pinned release series.
+// Release tags look like dev-2026-11a while `odin version` prints
+// dev-2026-11:<hash>, so the comparison is on the dev-YYYY-MM series.
+warn_if_odin_unpinned :: proc() {
+	data, err := os.read_entire_file_from_path(ODIN_PIN_FILE, context.temp_allocator)
+	if err != nil { return }
+	pin := strings.trim_space(string(data))
+	series := strings.trim_right(pin, "abcdefghijklmnopqrstuvwxyz")
+	if series == "" { return }
+
+	cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&cmd, "odin", "version")
+	out, ok := bld.cmd_run_capture(&cmd, context.temp_allocator)
+	if !ok { return }
+	have := strings.trim_space(string(out))
+	if strings.contains(have, series) { return }
+	bld.log_warn("Odin is '%s' but wayu pins %s (see %s).", have, pin, ODIN_PIN_FILE)
+	bld.log_warn("Install it from https://github.com/odin-lang/Odin/releases/tag/%s", pin)
 }
 
 do_build :: proc() {
