@@ -1882,13 +1882,10 @@
 <span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span>
 
 <span class="cmd-c"># Auto-fix issues marked 🔧</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span> --fix
+<span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span> --fix --yes
 
 <span class="cmd-c"># Machine-readable output (CI-friendly)</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span> --json
-
-<span class="cmd-c"># Generate optimized init for faster startup</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span> --optimize</code></pre>
+<span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span> --json</code></pre>
           </div>
 
           <div class="cmd-block" id="tab-config" role="tabpanel" aria-labelledby="btn-config">
@@ -2135,9 +2132,8 @@
           </p>
           <ul class="doctor-bullets reveal-delay-3">
             <li><code>wayu doctor</code> — interactive run with status, summary, and fix suggestions</li>
-            <li><code>wayu doctor --fix</code> — auto-repair issues marked 🔧</li>
-            <li><code>wayu doctor --json</code> — structured output for CI / monitoring</li>
-            <li><code>wayu doctor --optimize</code> — generate optimized init for faster shell startup</li>
+            <li><code>wayu doctor --fix --yes</code> — auto-repair issues marked 🔧 (preview with <code>--dry-run</code>)</li>
+            <li><code>wayu doctor --json</code> — structured output for CI / monitoring; exits 78 when any check errors</li>
           </ul>
         </div>
 

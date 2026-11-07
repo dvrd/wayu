@@ -110,7 +110,7 @@ wayu export                      # Generate turbo.zsh
 
 # Diagnostics
 wayu doctor                      # Health check all configs
-wayu doctor --fix                # Auto-fix issues
+wayu doctor --fix --yes          # Auto-fix issues (--dry-run to preview)
 
 # TOML configuration (declarative mode)
 wayu toml validate               # Check wayu.toml syntax

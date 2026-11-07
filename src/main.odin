@@ -323,7 +323,7 @@ main :: proc() {
 	case .TOML:
 		handle_toml_command(parsed.action)
 	case .DOCTOR:
-		handle_doctor_command(parsed.doctor_fix, parsed.doctor_json, parsed.doctor_profile, parsed.doctor_optimize)
+		handle_doctor_command(parsed.doctor_fix, parsed.doctor_json || wayu.json_output, parsed.doctor_profile, parsed.doctor_optimize)
 	case .TEMPLATE:
 		handle_template_command(parsed.action, parsed.args)
 	case .HOOKS:
@@ -790,7 +790,7 @@ print_help :: proc() {
 	fmt.println()
 	fmt.printf("  # Diagnostics:\n")
 	fmt.printf("  wayu doctor                      # Health check all configs\n")
-	fmt.printf("  wayu doctor --fix                # Auto-fix issues\n")
+	fmt.printf("  wayu doctor --fix --yes          # Auto-fix issues\n")
 	fmt.println()
 	fmt.printf("  # Templates:\n")
 	fmt.printf("  wayu template list               # List config presets\n")
