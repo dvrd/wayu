@@ -118,10 +118,21 @@ HOOK_ENV_VALUE :: "WAYU_HOOK_VALUE"
 // context the placeholder appears in:
 //   unquoted       {name}  →  "${WAYU_HOOK_NAME}"
 //   inside "..."   {name}  →  ${WAYU_HOOK_NAME}        (no word splitting in "")
-//   inside '...'   {name}  →  '"${WAYU_HOOK_NAME}"'    (close, expand, reopen)
+//   inside '...'   {name}  →  "${WAYU_HOOK_NAME}"      (left for an inner shell)
 // Expansion results are never re-parsed by the shell, so values cannot inject
-// syntax. Caller owns the returned string.
+// syntax. Single-quoted text is usually a script for a nested shell
+// (`sh -c '... {path}'`, ssh, eval): splicing the value there (the old
+// close-expand-reopen form) let the inner shell execute it (OKAMI-230). The
+// reference is instead passed through unexpanded, and the inner shell, which
+// inherits WAYU_HOOK_*, expands it quoted. Caller owns the returned string.
 hook_render_command :: proc(cmd: string) -> string {
+	out, _ := hook_render_command_ex(cmd)
+	return out
+}
+
+// hook_render_command plus whether any placeholder sat inside '...' (shown
+// as a hint by `wayu hooks`: there it is NOT substituted by wayu's shell).
+hook_render_command_ex :: proc(cmd: string) -> (out: string, single_quoted: bool) {
 	Placeholder :: struct { token, env: string }
 	placeholders := [3]Placeholder{
 		{"{path}", HOOK_ENV_PATH},
@@ -139,7 +150,9 @@ hook_render_command :: proc(cmd: string) -> string {
 				if !strings.has_prefix(cmd[i:], p.token) { continue }
 				ref := strings.concatenate({"${", p.env, "}"}, context.temp_allocator)
 				switch {
-				case in_single: strings.write_string(&b, strings.concatenate({`'"`, ref, `"'`}, context.temp_allocator))
+				case in_single:
+					single_quoted = true
+					strings.write_string(&b, strings.concatenate({`"`, ref, `"`}, context.temp_allocator))
 				case in_double: strings.write_string(&b, ref)
 				case:           strings.write_string(&b, strings.concatenate({`"`, ref, `"`}, context.temp_allocator))
 				}
@@ -166,7 +179,7 @@ hook_render_command :: proc(cmd: string) -> string {
 		strings.write_byte(&b, c)
 		i += 1
 	}
-	return strings.to_string(b)
+	return strings.to_string(b), single_quoted
 }
 
 // Legacy single-string entry point. Routes to execute_hook_ctx by picking the
@@ -360,6 +373,12 @@ show_hooks_status :: proc() {
 		if len(cmd) > 0 {
 			fmt.printfln("  %s%s%s: %s", get_primary(), name, RESET, cmd)
 			has_hooks^ = true
+			rendered, single := hook_render_command_ex(cmd)
+			delete(rendered)
+			if single {
+				fmt.printfln("    %s⚠ placeholder inside '...' is passed to an inner shell as \"$WAYU_HOOK_*\", not substituted here; use \"...\" for direct substitution%s",
+					get_warning(), RESET)
+			}
 		}
 	}
 
@@ -396,6 +415,9 @@ show_hooks_status :: proc() {
 	fmt.println()
 	fmt.println("  Values are passed via $WAYU_HOOK_PATH / $WAYU_HOOK_NAME /")
 	fmt.println("  $WAYU_HOOK_VALUE and substituted quoted, never as shell code.")
+	fmt.println("  Unquoted or inside \"...\": substituted. Inside '...' (e.g. a")
+	fmt.println("  `sh -c '...'` script) wayu leaves \"$WAYU_HOOK_*\" for the inner")
+	fmt.println("  shell to expand, so values never become code there either.")
 	fmt.println("  Hooks are skipped under --dry-run.")
 }
 
@@ -410,7 +432,7 @@ edit_hooks_config :: proc() {
 # Uncomment and modify lines to enable hooks
 
 # Path hooks
-# pre_path_add = "echo 'Adding {path}' >> ~/wayu.log"
+# pre_path_add = echo "Adding {path}" >> ~/wayu.log
 # post_path_add = "hash -r"
 
 # Alias hooks  
@@ -418,7 +440,7 @@ edit_hooks_config :: proc() {
 # post_alias_add = "source ~/.zshrc"
 
 # Plugin hooks
-# post_plugin_install = "echo 'Installed {name}' >> ~/plugins.log"
+# post_plugin_install = echo "Installed {name}" >> ~/plugins.log
 
 # Export hooks
 # pre_export = "echo 'Generating turbo export...'"
@@ -499,13 +521,13 @@ print_hooks_usage :: proc() {
 	fmt.printfln("%sEXAMPLE HOOKS:%s", get_primary(), RESET)
 	fmt.println()
 	fmt.println("  # Log PATH changes")
-	fmt.println(`  pre_path_add = "echo 'Adding {path}' >> ~/wayu.log"`)
+	fmt.println(`  pre_path_add = echo "Adding {path}" >> ~/wayu.log`)
 	fmt.println()
 	fmt.println("  # Reload shell after alias changes")
 	fmt.println(`  post_alias_add = "source ~/.zshrc"`)
 	fmt.println()
 	fmt.println("  # Notify when plugins are installed")
-	fmt.println(`  post_plugin_install = "terminal-notifier -title 'wayu' -message 'Installed {name}'"`)
+	fmt.println(`  post_plugin_install = terminal-notifier -title 'wayu' -message "Installed {name}"`)
 }
 
 // Integration with existing commands - call hooks

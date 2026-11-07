@@ -21,6 +21,17 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `wayu alias add hd -- helm install --dry-run`. A trailing `-n` / `-y`
   still belongs to the value (`grep -n`) but prints a warning on stderr.
 
+**Hooks**
+- A `{path}` / `{name}` / `{value}` placeholder inside single quotes in
+  `hooks.conf` is no longer substituted by wayu: it becomes
+  `"$WAYU_HOOK_PATH"` (etc.) for an inner shell to expand. This closes a
+  command injection through `sh -c '... {path}'`, `ssh`, `eval`. A plain
+  `echo 'Adding {path}'` now logs the literal reference — use double quotes
+  (`echo "Adding {path}"`) for direct substitution. `wayu hooks` flags such
+  placeholders.
+- `pre_*` hooks run only when the operation will really write: not for
+  invalid names, missing entries on remove, or duplicate path adds.
+
 ## 4.4.4
 
 **Lookups and output**

@@ -84,9 +84,38 @@ test_hook_render_command_quotes_per_context :: proc(t: ^testing.T) {
 	defer delete(r2)
 	testing.expect_value(t, r2, `echo "n=${WAYU_HOOK_NAME} v=${WAYU_HOOK_VALUE}"`)
 
-	r3 := wayu.hook_render_command(`echo 'Adding {path}' >> log`)
+	// Inside '...' the reference is left for an inner shell (OKAMI-230).
+	r3, single := wayu.hook_render_command_ex(`sh -c 'echo {path} >> log'`)
 	defer delete(r3)
-	testing.expect_value(t, r3, `echo 'Adding '"${WAYU_HOOK_PATH}"'' >> log`)
+	testing.expect_value(t, r3, `sh -c 'echo "${WAYU_HOOK_PATH}" >> log'`)
+	testing.expect(t, single, "single-quoted placeholder reported")
+}
+
+// OKAMI-230: values reaching a nested shell (`sh -c '... {path}'`) stay data.
+@(test)
+test_hook_nested_shell_cannot_inject :: proc(t: ^testing.T) {
+	tmp := "/tmp/wayu_test_hooks_nested"
+	os.remove_all(tmp)
+	testing.expect(t, os.make_directory(tmp) == nil)
+	defer os.remove_all(tmp)
+
+	saved_config := wayu.wayu.config
+	wayu.wayu.config = tmp
+	defer wayu.wayu.config = saved_config
+
+	log_path := fmt.tprintf("%s/hook.log", tmp)
+	pwned := fmt.tprintf("%s/PWNED", tmp)
+	conf := fmt.tprintf("post_path_remove = sh -c 'echo rm {{path}} >> %s'\n", log_path)
+	testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/hooks.conf", tmp), transmute([]byte)conf))
+
+	evil := fmt.tprintf("x$(touch %s)`touch %s`;touch %s", pwned, pwned, pwned)
+	wayu.hook_post_path_remove(evil)
+
+	content, ok := wayu.safe_read_file(log_path)
+	testing.expect(t, ok, "hook should have run")
+	defer delete(content)
+	testing.expect(t, !os.exists(pwned), "value must not execute inside a nested shell")
+	testing.expect(t, strings.contains(string(content), evil), "value passed literally")
 }
 
 // Placeholder values are data: shell metacharacters in a name/value must not
@@ -116,7 +145,8 @@ test_hook_values_cannot_inject :: proc(t: ^testing.T) {
 	testing.expect(t, !os.exists(pwned), "name must not be executed as shell code")
 	testing.expect(t, strings.contains(string(content), evil), "name passed through literally")
 	testing.expect(t, strings.contains(string(content), "$(touch PWNED2) v"), "{value} filled literally")
-	testing.expect(t, strings.contains(string(content), fmt.tprintf("q:%s", evil)), "single-quoted placeholder filled")
+	// Top-level '...' is not substituted (left for an inner shell).
+	testing.expect(t, strings.contains(string(content), `q:"${WAYU_HOOK_NAME}"`), "single-quoted placeholder left as reference")
 }
 
 @(test)

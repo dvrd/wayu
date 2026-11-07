@@ -32,6 +32,8 @@ class DryRunIntegrationTest
       test_unknown_flag_rejected
       test_trailing_dry_run_on_value_add
       test_literal_values_after_double_dash
+      test_pre_hooks_skip_failed_ops
+      test_hook_nested_shell_no_injection
     ensure
       teardown_test_env
     end
@@ -163,6 +165,53 @@ class DryRunIntegrationTest
 
   # Regression: dry-run printed ✅ success, regenerated init files and ran
   # post-hooks even though nothing was written.
+  # OKAMI-230: pre-hooks fire only for operations that will really write.
+  def test_pre_hooks_skip_failed_ops
+    log = "#{@tmp_home}/prehook.log"
+    hooks = "#{@config_dir}/hooks.conf"
+    File.write(hooks, %(pre_alias_add = echo "add {name}" >> #{log}\n) +
+                      %(pre_alias_remove = echo "rm {name}" >> #{log}\n) +
+                      %(pre_constant_add = echo "cadd {name}" >> #{log}\n) +
+                      %(pre_path_add = echo "padd {path}" >> #{log}\n) +
+                      %(pre_path_remove = echo "prm {path}" >> #{log}\n))
+    run_wayu("path add /tmp")
+    File.delete(log) if File.exist?(log)
+    run_wayu("alias add bad-name! x")   # invalid name
+    run_wayu("alias add if x")          # reserved word
+    run_wayu("alias rm NOPE_MISSING")   # not found
+    run_wayu("const add 1BAD v")        # invalid name
+    run_wayu("path add /tmp")           # duplicate (NOOP)
+    run_wayu("path rm /nonexistent/nope") # not found
+    phantom = File.exist?(log) ? File.read(log) : ""
+    run_wayu("alias add realal x")      # real change: hook fires
+    real = File.exist?(log) ? File.read(log) : ""
+    run_wayu("alias rm realal")
+    run_wayu("path rm /tmp")
+    File.delete(hooks)
+    check("Test 10: pre-hooks skip invalid / missing / no-op operations",
+          phantom.empty? && real.include?("add realal"),
+          "phantom=#{phantom.inspect} real=#{real.inspect}")
+  end
+
+  # OKAMI-230: a placeholder inside a nested `sh -c '...'` must not execute
+  # the value.
+  def test_hook_nested_shell_no_injection
+    log = "#{@tmp_home}/nested.log"
+    hooks = "#{@config_dir}/hooks.conf"
+    File.write(hooks, %(post_alias_add = sh -c 'echo "a {name}={value}" >> #{log}'\n) +
+                      %(post_alias_remove = bash -c 'echo r {name} >> #{log}'\n))
+    pwn = "#{@tmp_home}/PWNED"
+    pwn2 = "#{@tmp_home}/PWNED2"
+    _o, st = run_wayu(%(alias add nest 'echo $(touch #{pwn}) `touch #{pwn2}`; touch #{pwn}'))
+    run_wayu("alias rm nest")
+    content = File.exist?(log) ? File.read(log) : ""
+    File.delete(hooks)
+    check("Test 11: nested-shell hook placeholders never execute values",
+          st.success? && !File.exist?(pwn) && !File.exist?(pwn2) &&
+            content.include?("$(touch #{pwn})") && content.include?("r nest"),
+          "pwned=#{File.exist?(pwn)}/#{File.exist?(pwn2)} log=#{content.inspect}")
+  end
+
   def test_dry_run_no_success_no_hooks
     print "Test 2c: Dry-run prints no success and runs no hooks... "
 
