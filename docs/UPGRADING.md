@@ -172,6 +172,37 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - `wayu backup restore` waits for other wayu commands (config lock) instead
   of racing them; a concurrent edit can no longer overwrite the restore.
 
+**wayu.toml parsing (one parser for every command)**
+- `toml validate`, `doctor`, `backup restore`, `migrate --schema`, the TUI,
+  `alias/const/path list`, the shell generator and the in-place editor now
+  share one TOML parser, so they agree on every file.
+- Now accepted as valid (were "Failed to parse" for `toml validate`, the TUI
+  and doctor): a UTF-8 BOM, arrays spanning several lines (e.g. `[settings]
+  autosuggestions_accept_keys`), quoted keys (`".." = "cd .."`), dotted keys,
+  floats and dates.
+- Now rejected by `toml validate` / doctor / `backup restore`: a key defined
+  twice in one table, a table defined twice, integers with leading zeros.
+  Other commands keep working on such a file as before.
+- `toml validate` and doctor name the offending line: `Failed to parse
+  <file>: line 5: invalid value "ls" (strings must be quoted)`.
+- Quoted keys are decoded everywhere: `"q\"k" = …` is the alias `q"k` in
+  `alias list` (was listed with its quotes) and `alias rm ..` finds
+  `".." = …` (said "not found").
+- TUI: [paths] are shown in file order (= PATH priority; were sorted by key),
+  and entries of a file with a syntax error are shown like `alias list`
+  shows them (the view was empty).
+- [paths]/[aliases]/[env]: arrays and inline tables are skipped (the raw
+  text, e.g. `["a"]`, used to be exported). Integers are read as their value
+  (`N = 1_000` → `1000`). A key containing a dot written bare (`g.st = …`,
+  which wayu itself wrote for such alias names) is still the name `g.st`.
+- wayu writes keys that need it quoted (`"g.st" = "git status"`) and
+  escapes control characters in values (`\u001B`), so everything it writes is
+  valid TOML.
+- `migrate --schema` lists (instead of copying verbatim) lines that are not
+  valid TOML, such as an unquoted value.
+- An edit refused because a table holds a broken multi-line value now says
+  why (`wayu.toml line N: unterminated array (missing ']') in [env] …`).
+
 ## 5.0.0
 
 **doctor**

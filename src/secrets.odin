@@ -11,6 +11,8 @@
 
 package wayu
 
+import "core:mem"
+import "core:mem/virtual"
 import "core:os"
 import "core:strings"
 
@@ -97,55 +99,67 @@ restrict_file_mode :: proc(path: string) {
 // SECRET_MASK, for previews that show a whole rewritten file (e.g. schema
 // migration --dry-run). Other lines are kept verbatim. Caller deletes.
 mask_toml_env_section :: proc(content: string, allocator := context.allocator) -> string {
-	b := strings.builder_make(0, len(content), allocator)
-	it := make_line_iter(content)
-	in_env := false
-	first := true
-	open_multiline := "" // closing delimiter of a masked multi-line string
-	for line in line_iter_next(&it) {
-		if len(open_multiline) > 0 {
-			// Body of a masked multi-line value: drop it entirely.
-			if strings.contains(line, open_multiline) { open_multiline = "" }
-			continue
+	// Same parser as every reader, so the preview masks exactly the entries
+	// `const list` would show (quoted keys, multi-line values, CRLF, BOM).
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil { return strings.clone(SECRET_MASK, allocator) }
+	defer virtual.arena_destroy(&arena)
+	scratch := virtual.arena_allocator(&arena)
+
+	doc, _ := toml_doc_parse_alloc(content, scratch)
+	lines := strings.split(content, "\n", scratch)
+	replace := make([]string, len(lines), scratch) // "" = keep the line
+	drop := make([]bool, len(lines), scratch)
+
+	mask_lines :: proc(replace: []string, drop: []bool, key: string, first, last: int, alloc: mem.Allocator) {
+		replace[first] = strings.concatenate({key, ` = "`, SECRET_MASK, `"`}, alloc)
+		for i in first + 1 ..= last { drop[i] = true }
+	}
+
+	for e in doc.entries {
+		if !toml_entry_in_section(&doc, e, "env") { continue }
+		name := toml_entry_name(e, scratch)
+		secret := false
+		if text, ok := toml_value_text(e.value); ok {
+			// Multi-line strings ("""…""" / '''…''') can't be judged from
+			// one line (PEM blocks, certs): always mask them in previews.
+			multiline := e.vstart >= 0 && (strings.has_prefix(content[e.vstart:], `"""`) || strings.has_prefix(content[e.vstart:], "'''"))
+			secret = multiline || (len(text) > 0 && looks_secret(name, text))
+		} else {
+			secret = looks_secret_name(name) // arrays / inline tables: by name
 		}
+		if secret {
+			mask_lines(replace, drop, toml_format_key(name, scratch), e.first, e.last, scratch)
+		}
+	}
+
+	// A broken multi-line value in [env] has no known end: mask its line and
+	// drop everything up to the next table header.
+	for err in doc.errors {
+		if !err.multiline { continue }
+		in_env := false
+		next := len(lines)
+		for h in doc.headers {
+			if h.line < err.stmt_line {
+				in_env = !h.invalid && !h.array && len(h.path) == 1 && h.path[0] == "env"
+			} else if h.line > err.stmt_line {
+				next = h.line
+				break
+			}
+		}
+		if !in_env { continue }
+		line := lines[err.stmt_line]
+		key := strings.trim_space(line[:max(strings.index_byte(line, '='), 0)])
+		mask_lines(replace, drop, key, err.stmt_line, next - 1, scratch)
+	}
+
+	b := strings.builder_make(0, len(content), allocator)
+	first := true
+	for line, i in lines {
+		if drop[i] { continue }
 		if !first { strings.write_byte(&b, '\n') }
 		first = false
-
-		trimmed := strings.trim_space(line)
-		if strings.has_prefix(trimmed, "[") { in_env = toml_line_is_section(trimmed, "env") }
-		if in_env {
-			// Multi-line strings ("""…""" / '''…''') can't be judged from one
-			// line (PEM blocks, certs): always mask them in previews.
-			if eq := strings.index_byte(trimmed, '='); eq > 0 {
-				raw := strings.trim_space(trimmed[eq + 1:])
-				for delim in ([]string{`"""`, `'''`}) {
-					if strings.has_prefix(raw, delim) && !strings.contains(raw[3:], delim) {
-						open_multiline = delim
-						break
-					}
-				}
-				if len(open_multiline) > 0 {
-					strings.write_string(&b, strings.trim_space(trimmed[:eq]))
-					strings.write_string(&b, " = \"" + SECRET_MASK + "\"")
-					continue
-				}
-			}
-			key, value, ok := toml_parse_kv_line(trimmed)
-			if ok {
-				secret := len(value) > 0 && looks_secret(key, value)
-				delete(value)
-				if secret {
-					strings.write_string(&b, key)
-					strings.write_string(&b, " = \"" + SECRET_MASK + "\"")
-					continue
-				}
-			}
-		}
-		strings.write_string(&b, line)
-	}
-	// The line iterator drops the final empty segment: keep a trailing newline.
-	if strings.has_suffix(content, "\n") && !strings.has_suffix(strings.to_string(b), "\n") {
-		strings.write_byte(&b, '\n')
+		strings.write_string(&b, replace[i] if len(replace[i]) > 0 else line)
 	}
 	return strings.to_string(b)
 }

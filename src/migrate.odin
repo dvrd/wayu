@@ -17,6 +17,7 @@
 
 package wayu
 import "core:fmt"
+import "core:mem/virtual"
 import "core:os"
 import "core:strings"
 import "core:strconv"
@@ -652,120 +653,29 @@ migrate_toml_schema :: proc(dry_run: bool) {
 }
 
 // ---------------------------------------------------------------------------
-// Minimal TOML key/value line parser (used only by `wayu migrate --schema`)
+// One-line TOML key/value reader (used only by `wayu migrate --schema`)
 // ---------------------------------------------------------------------------
 
-// Parse one `key = value` line. Handles bare and quoted keys, basic strings
-// ("..." with escapes), literal strings ('...', no escapes), bare scalars
-// (numbers/booleans, kept verbatim) and trailing `# comments`. Returns the
+// Parse one `key = value` line with the shared TOML parser. Returns the
 // DECODED key and value (heap, caller frees) so re-serialising with
-// escape_toml_string never double-escapes. Multi-line strings and inline
-// tables/arrays are not supported (ok=false).
+// escape_toml_string never double-escapes. Only single-line scalars are
+// accepted (ok=false for multi-line strings, arrays, inline tables and
+// anything that is not valid TOML): migrate re-emits each entry as one
+// `key = "value"` line and lists every line it cannot.
 migrate_parse_toml_kv :: proc(line: string) -> (key: string, value: string, ok: bool) {
 	s := strings.trim_space(line)
 	if len(s) == 0 || s[0] == '#' || s[0] == '[' { return }
 
-	rest: string
-	if s[0] == '"' || s[0] == '\'' {
-		k, after, k_ok := migrate_parse_toml_string(s)
-		if !k_ok { return }
-		rest = strings.trim_left_space(after)
-		if len(rest) == 0 || rest[0] != '=' { delete(k); return }
-		key = k
-		rest = rest[1:]
-	} else {
-		eq := strings.index_byte(s, '=')
-		if eq < 1 { return }
-		key = strings.clone(strings.trim_space(s[:eq]))
-		rest = s[eq+1:]
-	}
-
-	rest = strings.trim_left_space(rest)
-	if len(rest) == 0 { delete(key); key = ""; return }
-
-	tail: string
-	switch rest[0] {
-	case '"', '\'':
-		if strings.has_prefix(rest, `"""`) || strings.has_prefix(rest, "'''") {
-			delete(key); key = ""; return
-		}
-		v, after, v_ok := migrate_parse_toml_string(rest)
-		if !v_ok { delete(key); key = ""; return }
-		value = v
-		tail = after
-	case '[', '{':
-		delete(key); key = ""; return
-	case:
-		// Bare scalar: runs up to an inline comment.
-		end := strings.index_byte(rest, '#')
-		if end < 0 { end = len(rest) }
-		value = strings.clone(strings.trim_space(rest[:end]))
-		tail = rest[end:]
-	}
-
-	tail = strings.trim_space(tail)
-	if len(tail) > 0 && tail[0] != '#' {
-		delete(key); delete(value); key = ""; value = ""
-		return
-	}
-	return key, value, true
-}
-
-// Parse a TOML basic ("...") or literal ('...') string at the start of `s`.
-// Returns the decoded string (heap) and the remainder after the closing
-// quote. Byte-oriented so multi-byte UTF-8 passes through untouched.
-migrate_parse_toml_string :: proc(s: string) -> (decoded: string, rest: string, ok: bool) {
-	if len(s) == 0 { return }
-	q := s[0]
-	b := strings.builder_make()
-	defer strings.builder_destroy(&b)
-
-	i := 1
-	if q == '\'' {
-		for i < len(s) {
-			if s[i] == '\'' {
-				return strings.clone(strings.to_string(b)), s[i+1:], true
-			}
-			strings.write_byte(&b, s[i])
-			i += 1
-		}
-		return
-	}
-
-	for i < len(s) {
-		c := s[i]
-		if c == '"' {
-			return strings.clone(strings.to_string(b)), s[i+1:], true
-		}
-		if c == '\\' && i + 1 < len(s) {
-			switch s[i+1] {
-			case '\\': strings.write_byte(&b, '\\')
-			case '"':  strings.write_byte(&b, '"')
-			case 'n':  strings.write_byte(&b, '\n')
-			case 'r':  strings.write_byte(&b, '\r')
-			case 't':  strings.write_byte(&b, '\t')
-			case 'b':  strings.write_byte(&b, '\b')
-			case 'f':  strings.write_byte(&b, '\f')
-			case 'u', 'U':
-				width := s[i+1] == 'u' ? 4 : 8
-				if i + 2 + width > len(s) { return }
-				cp, cp_ok := strconv.parse_u64_of_base(s[i+2:i+2+width], 16)
-				if !cp_ok { return }
-				strings.write_rune(&b, rune(cp))
-				i += 2 + width
-				continue
-			case:
-				// Invalid escape in TOML; keep it verbatim rather than lose data.
-				strings.write_byte(&b, '\\')
-				strings.write_byte(&b, s[i+1])
-			}
-			i += 2
-			continue
-		}
-		strings.write_byte(&b, c)
-		i += 1
-	}
-	return
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil { return }
+	defer virtual.arena_destroy(&arena)
+	doc, valid := toml_doc_parse_alloc(s, virtual.arena_allocator(&arena))
+	if !valid || len(doc.entries) != 1 { return }
+	e := doc.entries[0]
+	if strings.has_prefix(s[e.vstart:], `"""`) || strings.has_prefix(s[e.vstart:], "'''") { return }
+	text, scalar := toml_value_text(e.value)
+	if !scalar { return }
+	return toml_entry_name(e, context.allocator), strings.clone(text), true
 }
 
 // Collect path entries from BOTH the legacy [[paths]] array-of-tables and any

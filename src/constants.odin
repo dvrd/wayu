@@ -33,22 +33,13 @@ read_wayu_toml_constants :: proc() -> []ConfigEntry {
 	}
 	defer if len(uncached_raw) > 0 { delete(uncached_raw) }
 
+	// Shared parser (toml_read_section). Empty values (`FOO = ""`) are kept
+	// so a later rewrite of [env] doesn't silently drop them.
+	kvs := toml_read_section(content_str, "env")
+	defer destroy_toml_kvs(&kvs)
 	entries := make([dynamic]ConfigEntry)
-
-	it := make_line_iter(content_str)
-	in_env := false
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-		if toml_line_is_section(trimmed, "env") { in_env = true; continue }
-		if strings.has_prefix(trimmed, "[") { in_env = false; continue }
-		if !in_env { continue }
-
-		// Empty values (`FOO = ""`) are kept so a later rewrite of [env]
-		// doesn't silently drop them.
-		name, value, ok := toml_parse_kv_line(trimmed)
-		if !ok { continue }
-		defer delete(value) // upsert clones into the entry; this temporary is ours
-		upsert_toml_constant(&entries, name, value)
+	for kv in kvs {
+		upsert_toml_constant(&entries, kv.key, kv.value)
 	}
 	return entries[:]
 }
@@ -76,14 +67,18 @@ escape_toml_string :: proc(value: string) -> string {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 
-	for c in value {
+	// Byte-wise: UTF-8 (even invalid UTF-8) is copied verbatim. Other
+	// control characters are not allowed raw in a TOML basic string.
+	for i in 0..<len(value) {
+		c := value[i]
 		switch c {
 		case '\\': strings.write_string(&builder, "\\\\")
 		case '"': strings.write_string(&builder, `\"`)
 		case '\n': strings.write_string(&builder, `\n`)
 		case '\r': strings.write_string(&builder, `\r`)
 		case '\t': strings.write_string(&builder, `\t`)
-		case: strings.write_rune(&builder, c)
+		case 0x00..=0x1f, 0x7f: fmt.sbprintf(&builder, `\u%04X`, c)
+		case: strings.write_byte(&builder, c)
 		}
 	}
 

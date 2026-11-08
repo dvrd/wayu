@@ -510,26 +510,17 @@ toml_path_read_keyed :: proc() -> [dynamic]TomlPathEntry {
 	}
 	defer if len(uncached_content) > 0 { delete(uncached_content) }
 
+	// Shared parser (toml_read_section): declaration order, duplicates kept
+	// (path clean/dedup detect hand-edited duplicate keys).
+	kvs := toml_read_section(content_str, "paths")
+	defer delete(kvs)
 	entries := make([dynamic]TomlPathEntry)
-
-	it := make_line_iter(content_str)
-	in_paths := false
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-		if toml_line_is_section(trimmed, "paths") {
-			in_paths = true
+	for kv in kvs {
+		if len(kv.value) == 0 { // an empty PATH entry is meaningless
+			delete(kv.key); delete(kv.value)
 			continue
 		}
-		if strings.has_prefix(trimmed, "[") {
-			in_paths = false
-			continue
-		}
-		if !in_paths { continue }
-
-		key, val, ok := toml_parse_kv_line(trimmed)
-		if !ok { continue }
-		if len(val) == 0 { delete(val); continue } // an empty PATH entry is meaningless
-		append(&entries, TomlPathEntry{key = strings.clone(key), path = val})
+		append(&entries, TomlPathEntry{key = kv.key, path = kv.value}) // ownership moves
 	}
 	return entries
 }
@@ -997,8 +988,10 @@ render_keyed_body :: proc(entries: []TomlPathEntry) -> []string {
 	out := make([]string, len(entries))
 	for e, i in entries {
 		escaped := escape_toml_string(e.path)
-		out[i] = fmt.aprintf(`%s = "%s"`, e.key, escaped)
+		key := toml_format_key(e.key)
+		out[i] = fmt.aprintf(`%s = "%s"`, key, escaped)
 		delete(escaped)
+		delete(key)
 	}
 	return out
 }

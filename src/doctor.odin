@@ -1156,22 +1156,13 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 		return
 	}
 
-	// Actually validate: syntax sanity + full parse. Previously any readable
-	// file was reported OK, so a corrupt wayu.toml passed the health check.
-	if !toml_content_is_sane(string(content)) {
+	// Same parser as `wayu toml validate` and every reader; name the line.
+	if valid, perr := toml_check(string(content)); !valid {
+		defer delete(perr.msg)
 		append(results, CheckResult{
 			name    = clone_arena("TOML config"),
 			status  = .ERROR,
-			message = clone_arena("wayu.toml is malformed (invalid TOML syntax) — run `wayu validate` or restore with `wayu backup restore toml --yes`"),
-			fixable = false,
-		})
-		return
-	}
-	if _, parse_ok := toml_parse(string(content)); !parse_ok {
-		append(results, CheckResult{
-			name    = clone_arena("TOML config"),
-			status  = .ERROR,
-			message = clone_arena("wayu.toml could not be parsed — run `wayu validate`"),
+			message = clone_arena(fmt.tprintf("wayu.toml is malformed (line %d: %s) — run `wayu validate` or restore with `wayu backup restore toml --yes`", perr.line, perr.msg)),
 			fixable = false,
 		})
 		return
