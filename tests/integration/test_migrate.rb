@@ -39,6 +39,8 @@ class MigrateIntegrationTest
       test_cross_shell_to_fish
       test_cross_shell_requires_toml
       test_schema_preserves_values_and_keys
+      test_schema_refuses_unconvertible_values
+      test_schema_waits_for_config_lock
     ensure
       teardown_test_env
     end
@@ -454,6 +456,48 @@ class MigrateIntegrationTest
          toml.include?('GREETING = "a \\\\ b"') &&
          !toml.include?('[[')
     check('schema', status.success? && ok, "exit=#{status.exitstatus}\n#{toml}")
+  end
+
+  # Values the one-line schema parser can't read (multi-line strings, arrays)
+  # used to vanish: `ll` became "" and MULTI/LIST were dropped, exit 0.
+  def test_schema_refuses_unconvertible_values
+    print "Test 14: migrate --schema refuses multi-line/array values, writes nothing... "
+    FileUtils.rm_rf("#{@tmp_home}/.config")
+    FileUtils.mkdir_p(@config_dir)
+    original = <<~'TOML'
+      [[aliases]]
+      name = "ll"
+      command = """ls -la"""
+
+      [env] # mine
+      EDITOR = "vim"
+      MULTI = """
+      line1"""
+      LIST = ["a", "b"]
+    TOML
+    File.write("#{@config_dir}/wayu.toml", original)
+    out, status = run_wayu('migrate --schema')
+    unchanged = File.read("#{@config_dir}/wayu.toml") == original
+    ok = status.exitstatus == 65 && unchanged &&
+         out.include?('wayu.toml:3:') && out.include?('wayu.toml:7:') &&
+         out.include?('wayu.toml:8:') && out.include?('wayu.toml:9:') &&
+         !out.include?('wayu.toml:6:')
+    check('schema-refuse', ok, "exit=#{status.exitstatus} unchanged=#{unchanged}\n#{out}")
+  end
+
+  # migrate --schema rewrites wayu.toml: it must hold the config lock.
+  def test_schema_waits_for_config_lock
+    print "Test 15: migrate --schema waits for the config lock... "
+    FileUtils.rm_rf("#{@tmp_home}/.config")
+    FileUtils.mkdir_p(@config_dir)
+    File.write("#{@config_dir}/wayu.toml", "[[aliases]]\nname = \"gs\"\ncommand = \"git status\"\n")
+    out, status, waited = run_wayu_with_config_lock_held('migrate --schema', hold: 2)
+    if waited.nil?
+      check('schema-lock', true) # no python3: skipped
+    else
+      check('schema-lock', status.success? && waited >= 1.5,
+            "waited=#{waited.round(2)}s exit=#{status.exitstatus}\n#{out}")
+    end
   end
 end
 

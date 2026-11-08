@@ -80,6 +80,25 @@ module WayuTestHelper
     [stdout + stderr, status]
   end
 
+  # Run `wayu args` while another process holds the config lock
+  # (<config>/.wayu.lock, POSIX record lock) for `hold` seconds. Returns
+  # [output, status, seconds_waited], or nil when python3 is unavailable
+  # (Ruby's File#flock is a different lock on macOS).
+  def run_wayu_with_config_lock_held(args, hold: 2)
+    py = `command -v python3 2>/dev/null`.strip
+    return nil if py.empty?
+    holder = IO.popen([py, '-I', '-c',
+      'import fcntl, sys, time; f = open(sys.argv[1], "a+"); fcntl.lockf(f, fcntl.LOCK_EX); ' \
+      'print("locked", flush=True); time.sleep(float(sys.argv[2]))',
+      "#{@config_dir}/.wayu.lock", hold.to_s])
+    holder.gets # returns once the lock is held
+    t0 = Time.now
+    out, status = run_wayu(args)
+    waited = Time.now - t0
+    holder.close
+    [out, status, waited]
+  end
+
   def print_summary(label)
     puts
     puts "━" * 50

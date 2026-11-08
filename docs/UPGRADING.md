@@ -46,6 +46,26 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   were parse errors at every startup). Files without those extensions are
   still sourced by zsh and bash.
 
+**migrate --schema**
+- Values it can't convert exactly (multi-line `"""` strings, arrays, inline
+  tables) in the rewritten sections are listed as `wayu.toml:N`; nothing is
+  written and it exits `65`. They used to be dropped silently (an alias with
+  a `"""` command became `""`). A section header with a trailing comment
+  (`[aliases] # mine`) is now recognised.
+- Waits for other wayu commands (config lock) before rewriting wayu.toml.
+
+**doctor**
+- A relative `[paths]` entry (`./node_modules/.bin`) is no longer reported
+  as missing or removed by `doctor --fix`: it is counted with the entries
+  that "use unset variables or relative paths (left alone)".
+- `doctor --fix` exits `78` and changes nothing when a key it would drop is
+  repeated in `[paths]` (`a = "/x"` twice); it used to delete every line of
+  that key, the kept entry included.
+
+**Backups**
+- `wayu backup restore` waits for other wayu commands (config lock) instead
+  of racing them; a concurrent edit can no longer overwrite the restore.
+
 ## 5.0.0
 
 **doctor**

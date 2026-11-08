@@ -495,6 +495,11 @@ migrate_toml_schema :: proc(dry_run: bool) {
 		os.exit(EXIT_NOINPUT)
 	}
 
+	// Read-modify-write of wayu.toml: hold the config lock like every other
+	// writer, or a concurrent edit is lost (no-op under --dry-run).
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
+
 	content_bytes, ok := safe_read_file(toml_path)
 	if !ok {
 		print_error("Could not read %s", toml_path)
@@ -534,6 +539,21 @@ migrate_toml_schema :: proc(dry_run: bool) {
 		print_error("Cannot migrate entries whose names are not plain TOML keys (A-Z a-z 0-9 _ -):")
 		for k in bad_keys { fmt.eprintfln("  • %s", k) }
 		fmt.eprintln("Rename them in wayu.toml and re-run `wayu migrate --schema`.")
+		os.exit(EXIT_DATAERR)
+	}
+
+	// The sections below are dropped and re-emitted from what the one-line
+	// parser read: a value it can't read (multi-line string, array, ...)
+	// would silently disappear. Refuse and name the lines instead.
+	unconvertible := migrate_schema_unconvertible(content)
+	defer delete(unconvertible)
+	if len(unconvertible) > 0 {
+		print_error("%d line(s) in wayu.toml can't be migrated exactly — nothing was changed", len(unconvertible))
+		src_lines := strings.split(content, "\n", context.temp_allocator)
+		for n in unconvertible {
+			fmt.eprintfln("  wayu.toml:%d: %s", n, strings.trim_space(src_lines[n - 1]))
+		}
+		fmt.eprintln("Rewrite them as single-line `key = \"value\"` entries and re-run `wayu migrate --schema`.")
 		os.exit(EXIT_DATAERR)
 	}
 
@@ -771,7 +791,7 @@ parse_legacy_paths :: proc(content: string) -> [dynamic]TomlPathEntry {
 		in_block := false
 		for line in lines {
 			trimmed := strings.trim_space(line)
-			if trimmed == "[paths]" { in_block = true; continue }
+			if migrate_section_header(trimmed) == "[paths]" { in_block = true; continue }
 			if strings.has_prefix(trimmed, "[") { in_block = false; continue }
 			if !in_block { continue }
 			k, v, ok := migrate_parse_toml_kv(trimmed)
@@ -802,7 +822,7 @@ parse_legacy_paths :: proc(content: string) -> [dynamic]TomlPathEntry {
 		}
 		for line in lines {
 			trimmed := strings.trim_space(line)
-			if trimmed == "[[paths]]" {
+			if migrate_section_header(trimmed) == "[[paths]]" {
 				if in_block { flush(&pending, &cur) }
 				in_block = true
 				continue
@@ -879,7 +899,7 @@ parse_legacy_aliases :: proc(content: string) -> [dynamic]AliasEntry {
 		}
 		for line in lines {
 			trimmed := strings.trim_space(line)
-			if trimmed == "[[aliases]]" {
+			if migrate_section_header(trimmed) == "[[aliases]]" {
 				if in_block { flush(&out, &cur_name, &cur_cmd) }
 				in_block = true
 				continue
@@ -907,7 +927,7 @@ parse_legacy_aliases :: proc(content: string) -> [dynamic]AliasEntry {
 		in_block := false
 		for line in lines {
 			trimmed := strings.trim_space(line)
-			if trimmed == "[aliases]" { in_block = true; continue }
+			if migrate_section_header(trimmed) == "[aliases]" { in_block = true; continue }
 			if strings.has_prefix(trimmed, "[") { in_block = false; continue }
 			if !in_block { continue }
 			name, val, ok := migrate_parse_toml_kv(trimmed)
@@ -949,7 +969,7 @@ parse_legacy_constants :: proc(content: string) -> [dynamic]EnvEntry {
 		}
 		for line in lines {
 			trimmed := strings.trim_space(line)
-			if trimmed == "[[constants]]" {
+			if migrate_section_header(trimmed) == "[[constants]]" {
 				if in_block { flush(&out, &cur_name, &cur_val) }
 				in_block = true
 				continue
@@ -978,7 +998,7 @@ parse_legacy_constants :: proc(content: string) -> [dynamic]EnvEntry {
 		in_block := false
 		for line in lines {
 			trimmed := strings.trim_space(line)
-			if trimmed == section { in_block = true; continue }
+			if migrate_section_header(trimmed) == section { in_block = true; continue }
 			if strings.has_prefix(trimmed, "[") { in_block = false; continue }
 			if !in_block { continue }
 			name, v, ok := migrate_parse_toml_kv(trimmed)
@@ -1011,24 +1031,65 @@ strip_legacy_sections :: proc(content: string) -> string {
 	defer strings.builder_destroy(&builder)
 
 	in_strip := false
-	is_strip_header :: proc(trimmed: string) -> bool {
-		for h in MIGRATE_STRIP_HEADERS {
-			if trimmed == h { return true }
-		}
-		return false
-	}
-
 	for line in lines {
 		trimmed := strings.trim_space(line)
-		if is_strip_header(trimmed) {
+		if migrate_is_strip_header(trimmed) {
 			in_strip = true
 			continue
 		}
-		if strings.has_prefix(trimmed, "[") && !is_strip_header(trimmed) {
+		if strings.has_prefix(trimmed, "[") {
 			in_strip = false
 		}
 		if in_strip { continue }
 		fmt.sbprintln(&builder, line)
 	}
 	return strings.clone(strings.to_string(builder))
+}
+
+// `trimmed` header line without a trailing `# comment` (`[paths] # mine` ->
+// `[paths]`), so the schema migration recognises the same headers the TOML
+// reader does. Non-header lines are returned unchanged. Never allocates.
+migrate_section_header :: proc(trimmed: string) -> string {
+	if !strings.has_prefix(trimmed, "[") { return trimmed }
+	if hash := strings.index_byte(trimmed, '#'); hash >= 0 {
+		return strings.trim_space(trimmed[:hash])
+	}
+	return trimmed
+}
+
+@(private = "file")
+migrate_is_strip_header :: proc(trimmed: string) -> bool {
+	h := migrate_section_header(trimmed)
+	for s in MIGRATE_STRIP_HEADERS {
+		if h == s { return true }
+	}
+	return false
+}
+
+// 1-based numbers of the lines inside the sections `migrate --schema`
+// rewrites that its one-line parser can't read exactly: multi-line strings
+// (and their continuation lines), arrays, inline tables, malformed lines.
+// Those sections are dropped and re-emitted from the parsed entries, so such
+// a line would vanish (or an alias would lose its command).
+migrate_schema_unconvertible :: proc(content: string) -> [dynamic]int {
+	out := make([dynamic]int)
+	lines := strings.split(content, "\n")
+	defer delete(lines)
+
+	in_section := false
+	for line, i in lines {
+		trimmed := strings.trim_space(line)
+		if strings.has_prefix(trimmed, "[") && strings.has_suffix(migrate_section_header(trimmed), "]") {
+			in_section = migrate_is_strip_header(trimmed)
+			continue
+		}
+		if !in_section || len(trimmed) == 0 || trimmed[0] == '#' { continue }
+		k, v, ok := migrate_parse_toml_kv(trimmed)
+		if ok {
+			delete(k); delete(v)
+			continue
+		}
+		append(&out, i + 1)
+	}
+	return out
 }

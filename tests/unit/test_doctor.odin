@@ -26,3 +26,15 @@ test_doctor_expand_path_uses_toml_env :: proc(t: ^testing.T) {
 	// An unresolved variable yields "" (existence unknown, never "missing").
 	testing.expect_value(t, wayu.doctor_expand_path("$WAYU_DOC_SURELY_UNSET_VAR/bin", consts), "")
 }
+
+// A relative entry resolves against the shell's cwd, so doctor (whose cwd is
+// arbitrary) must not call it missing — --fix used to delete it.
+@(test)
+test_doctor_expand_path_relative_is_unresolved :: proc(t: ^testing.T) {
+	consts := []wayu.ConfigEntry{{type = .CONSTANT, name = "WAYU_DOC_REL", value = "rel/dir"}}
+	testing.expect_value(t, wayu.doctor_expand_path("./node_modules/.bin", consts), "")
+	testing.expect_value(t, wayu.doctor_expand_path("bin", consts), "")
+	testing.expect_value(t, wayu.doctor_expand_path(".", consts), "")
+	// A wayu.toml constant that expands to a relative path is relative too.
+	testing.expect_value(t, wayu.doctor_expand_path("$WAYU_DOC_REL/bin", consts), "")
+}
