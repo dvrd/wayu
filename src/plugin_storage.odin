@@ -630,6 +630,10 @@ handle_plugin_add :: proc(args: []string) {
 		print_plugin_add_help()
 		os.exit(EXIT_USAGE)
 	}
+	if args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
+		print_plugin_add_help()
+		return
+	}
 
 	// "<name-or-url>@<sha>" pins the plugin to that commit.
 	name_or_url, pin_commit := split_plugin_commit_pin(args[0])

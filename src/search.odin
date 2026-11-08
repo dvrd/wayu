@@ -324,11 +324,6 @@ search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string, match
 	return results
 }
 
-// search_config_entries - Search entries in a specific config spec (legacy, unused)
-search_config_entries :: proc(spec: ^ConfigEntrySpec, query: string) -> []FuzzyMatch {
-	return fuzzy_find_entries(spec, query, max_results = 20)
-}
-
 // print_search_results - Display formatted search results
 print_search_results :: proc(query: string, results: []SearchResult) {
 	if len(results) == 0 {
@@ -466,7 +461,7 @@ print_search_usage :: proc() {
 	fmt.println("  exact     - Exact name match")
 	fmt.println("  prefix    - Name starts with query")
 	fmt.println("  substring - Name contains query")
-	fmt.println("  acronym   - Query matches uppercase letters (e.g., 'frwrks' → 'FIREWORKS_AI_API_KEY')")
+	fmt.println("  acronym   - Query is in the first letters of the name's words (e.g., 'faak' → 'FIREWORKS_AI_API_KEY')")
 	fmt.println("  fuzzy     - General fuzzy character matching")
 	fmt.println()
 	fmt.printfln("%sSCORE INDICATORS:%s", get_primary(), RESET)
@@ -475,11 +470,8 @@ print_search_usage :: proc() {
 	fmt.println()
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
 	fmt.println("  wayu search git          # Find all entries containing 'git'")
-	fmt.println("  wayu find frwrks         # Find FIREWORKS_AI_API_KEY by acronym")
+	fmt.println("  wayu find faak           # Find FIREWORKS_AI_API_KEY by acronym")
 	fmt.println("  wayu f api               # Short alias for search")
-	fmt.println()
-	fmt.printfln("%sENVIRONMENT VARIABLES:%s", get_primary(), RESET)
-	fmt.println("  WAYU_FFF_ENABLED=0        - Disable fuzzy features")
 	fmt.println()
 	fmt.printfln("%sSee also:%s wayu <command> get <name> for specific value lookup",
 		get_muted(), RESET)

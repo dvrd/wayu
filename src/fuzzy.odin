@@ -3,7 +3,7 @@
 // Provides:
 //   1. Terminal raw mode management (enable_raw_mode, disable_raw_mode, is_tty)
 //   2. calculate_fuzzy_score — subsequence-aware scoring used by search/suggestion
-//   3. interactive_select / interactive_fuzzy_select — CLI interactive picker
+//   3. interactive_select — CLI interactive picker
 //   4. extract_completion_items — reads completions directory
 //
 // The full-screen FuzzyView-based interactive finder was removed as dead code
@@ -403,16 +403,6 @@ picker_decode_input :: proc(buf: []byte, filter: ^[dynamic]u8) -> (ev: PickerInp
 	return
 }
 
-// interactive_fuzzy_select delegates to interactive_select.
-// Kept as a separate entry point in case TUI mode wants different behavior later.
-interactive_fuzzy_select :: proc(items: []string, prompt: string) -> (selected: string, ok: bool) {
-	if len(items) == 0 {
-		fmt.println("No items to select from")
-		return strings.clone(""), false
-	}
-	return interactive_select(items, prompt)
-}
-
 // ============================================================================
 // Completions Helpers
 // ============================================================================
@@ -527,7 +517,7 @@ fuzzy_score :: proc(text: string, query: string) -> int {
 }
 
 // Check if query matches acronym of text
-// e.g., text="FIREWORKS_AI_API_KEY", query="frwrks" → true
+// (first letter of each word), e.g. text="FIREWORKS_AI_API_KEY", query="faak" → true
 is_acronym_match :: proc(text: string, query: string) -> bool {
     // Build acronym from the first rune of each separator-delimited word,
     // lower-cased as a full rune (u8 truncation corrupted non-ASCII).
@@ -557,103 +547,13 @@ is_acronym_match :: proc(text: string, query: string) -> bool {
     return strings.contains(acronym_str, query_lower)
 }
 
-// ============================================================================
-// Fuzzy Match Result
-// ============================================================================
-
-FuzzyMatch :: struct {
-    entry: ConfigEntry,
-    score: int,
-    match_type: MatchType,
-}
-
+// How a search result matched (search.odin).
 MatchType :: enum {
     Exact,           // Match exacto
     Prefix,          // Prefijo exacto
     Substring,       // Substring
     Fuzzy,           // Fuzzy match general
     Acronym,         // Match por acrónimo
-}
-
-// ============================================================================
-// Fuzzy Search Functions
-// ============================================================================
-
-// Find fuzzy matches across all entries of a spec
-fuzzy_find_entries :: proc(spec: ^ConfigEntrySpec, query: string, max_results := 10) -> []FuzzyMatch {
-    if len(query) == 0 {
-        return nil
-    }
-    
-    entries := read_config_entries(spec)
-    defer cleanup_entries(&entries)
-    
-    matches := make([dynamic]FuzzyMatch)
-    defer if len(matches) == 0 {
-        delete(matches)
-    }
-    
-    query_lower := strings.to_lower(query)
-    defer delete(query_lower)
-    
-    for entry in entries {
-        score := 0
-        match_type := MatchType.Fuzzy
-        
-        // Check for exact match
-        if strings.equal_fold(entry.name, query) {
-            score = 10000
-            match_type = .Exact
-        } else if strings.has_prefix(strings.to_lower(entry.name), query_lower) {
-            // Prefix match
-            score = 5000 + fuzzy_score(entry.name, query)
-            match_type = .Prefix
-        } else if strings.contains(strings.to_lower(entry.name), query_lower) {
-            // Substring match
-            score = 3000 + fuzzy_score(entry.name, query)
-            match_type = .Substring
-        } else if is_acronym_match(entry.name, query) {
-            // Acronym match (e.g., frwrks → FIREWORKS)
-            score = 2000 + fuzzy_score(entry.name, query)
-            match_type = .Acronym
-        } else {
-            // General fuzzy match
-            score = fuzzy_score(entry.name, query)
-            match_type = .Fuzzy
-        }
-        
-        if score > 0 {
-            append(&matches, FuzzyMatch{
-                entry = clone_entry(entry),
-                score = score,
-                match_type = match_type,
-            })
-        }
-    }
-    
-    if len(matches) == 0 {
-        return nil
-    }
-    
-    // Sort by score descending
-    slice.sort_by(matches[:], proc(a, b: FuzzyMatch) -> bool {
-        return a.score > b.score
-    })
-    
-    // Return top results
-    result_count := min(max_results, len(matches))
-    result := make([]FuzzyMatch, result_count)
-    for i in 0..<result_count {
-        result[i] = matches[i]
-    }
-    
-    // Clean up remaining matches
-    for i in result_count..<len(matches) {
-        cleanup_clone(matches[i].entry)
-    }
-    delete(matches)
-    
-    return result
 }
 
 // Clone a config entry

@@ -501,7 +501,7 @@ handle_validate :: proc() -> bool {
 
 	if !os.exists(config_path) {
 		fmt.eprintfln("Error: No TOML config found at %s", config_path)
-		fmt.println("Run 'wayu init --toml' to create one")
+		fmt.eprintln("Run 'wayu init' to create one")
 		return false
 	}
 
@@ -566,22 +566,49 @@ handle_toml_show :: proc() {
 	fmt.print(masked)
 }
 
-// Handle 'wayu toml keys' - display TOML keys
+// Handle 'wayu toml keys': the top-level keys and tables of wayu.toml, in
+// file order, one per line. A file that doesn't parse exits 65 (like
+// `toml validate`).
 handle_toml_keys :: proc() {
 	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(toml_file)
 
-	// Parse TOML to check it's valid
-	config, ok := toml_read_file(toml_file)
-	defer if ok do cleanup_toml_config(&config)
+	content, err := os.read_entire_file_from_path(toml_file, context.allocator)
+	if err != nil {
+		print_error_simple("Failed to read TOML file: %s", toml_file)
+		os.exit(EXIT_IOERR)
+	}
+	defer delete(content)
+
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil { os.exit(EXIT_IOERR) }
+	defer virtual.arena_destroy(&arena)
+	doc, ok := toml_doc_parse_alloc(string(content), virtual.arena_allocator(&arena))
 	if !ok {
-		fmt.eprintfln("Failed to parse TOML file: %s", toml_file)
+		e := doc.errors[0]
+		print_error_simple("Failed to parse TOML file: %s (line %d: %s)", toml_file, e.line, e.msg)
 		os.exit(EXIT_DATAERR)
 	}
 
-	// Print all top-level keys in sorted order
-	keys := []string{"shell", "path", "aliases", "constants", "plugins", "hooks"}
-	for key in keys {
+	// Root `key = value` statements and table headers interleave in file
+	// order; a key is printed once however many headers name it.
+	seen := make(map[string]bool, context.temp_allocator)
+	h, i := 0, 0
+	for h < len(doc.headers) || i < len(doc.entries) {
+		key: string
+		if i < len(doc.entries) && (h >= len(doc.headers) || doc.entries[i].first < doc.headers[h].line) {
+			e := doc.entries[i]
+			i += 1
+			if e.header != -1 || len(e.key) == 0 { continue }
+			key = e.key[0]
+		} else {
+			hd := doc.headers[h]
+			h += 1
+			if len(hd.path) == 0 { continue }
+			key = hd.path[0]
+		}
+		if key in seen { continue }
+		seen[key] = true
 		fmt.println(key)
 	}
 }
@@ -617,10 +644,12 @@ handle_toml_command :: proc(action: Action) {
 		if !handle_convert_to_toml() {
 			os.exit(EXIT_CANTCREAT)
 		}
-	case .HELP, .UNKNOWN:
+	case .HELP:
 		print_toml_usage()
 	case:
+		fmt.eprintln("Unknown toml action")
 		print_toml_usage()
+		os.exit(EXIT_USAGE)
 	}
 }
 
@@ -634,7 +663,7 @@ print_toml_usage :: proc() {
 	fmt.printfln("  wayu toml validate           Validate wayu.toml syntax")
 	fmt.printfln("  wayu toml show               Display TOML content (secrets masked)")
 	fmt.printfln("  wayu toml show --reveal      Display TOML content with real [env] values")
-	fmt.printfln("  wayu toml keys               List TOML keys")
+	fmt.printfln("  wayu toml keys               List wayu.toml's top-level keys and tables")
 	fmt.printfln("  wayu toml convert            Convert legacy shell configs → wayu.toml (alias of `wayu migrate`)")
 	fmt.printfln("  wayu toml help               Show this help")
 	fmt.println()
@@ -643,8 +672,7 @@ print_toml_usage :: proc() {
 	fmt.println("  TOML enables declarative, version-controlled configs.")
 	fmt.println()
 	fmt.printfln("%sFILE LOCATIONS:%s", get_primary(), RESET)
-	fmt.printfln("  ~/.config/wayu/wayu.toml         Main config (check into git)")
-	fmt.printfln("  ~/.config/wayu/wayu.local.toml   Local overrides (gitignored)")
+	fmt.printfln("  ~/.config/wayu/wayu.toml         The config (safe to check into git)")
 	fmt.println()
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
 	fmt.println("  # Validate your TOML config")

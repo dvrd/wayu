@@ -26,7 +26,9 @@ handle_template_command :: proc(action: Action, args: []string) {
 	case .HELP:
 		print_template_usage()
 	case:
+		fmt.eprintln("Unknown template action")
 		print_template_usage()
+		os.exit(EXIT_USAGE)
 	}
 }
 

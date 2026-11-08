@@ -141,7 +141,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 		{"--schema", "Upgrade a pre-3.x wayu.toml in place"}}},
 	{command = .CONFIG, names = {"config"}, desc = "Manage configuration files", default_action = .HELP,
 	 actions = {
-		{"edit", .UPDATE, "Open extra config in $EDITOR"}, {"extend", .ADD, "Append to extra config"},
+		{"edit", .UPDATE, "Edit wayu.toml in $EDITOR"}, {"extend", .ADD, "Edit extra config in $EDITOR"},
 		{"e", .ADD, ""}, {"scan", .CHECK, "Detect shell config"}, {"s", .CHECK, ""},
 		{"detect", .CHECK, ""}, {"help", .HELP, "Show help"}},
 	 flags = {{"--fix", "Repair what 'config scan' found"}}},
@@ -157,7 +157,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 		{"check", .CHECK, "Check the turbo file is current"}, {"--check", .CHECK, ""},
 		{"list", .LIST, "Show formats"}, {"ls", .LIST, "Show formats"}, {"help", .HELP, "Show help"}},
 	 flags = {{"--turbo", ""}, {"--eval", ""}, {"--check", ""}}},
-	{command = .TOML, names = {"toml"}, desc = "TOML configuration management", default_action = .LIST,
+	{command = .TOML, names = {"toml"}, desc = "TOML configuration management", default_action = .CHECK,
 	 actions = {
 		{"validate", .CHECK, "Validate wayu.toml"}, {"convert", .UPDATE, "Convert to TOML"},
 		{"show", .GET, "Show config"}, {"keys", .LIST, "List keys"}, {"help", .HELP, "Show help"}},
@@ -666,7 +666,7 @@ handle_completions_command_extended :: proc(action: Action, args: []string) {
 		}
 		handle_completions_command(.LIST, args)
 	case .HELP:
-		print_completions_help_extended()
+		print_completions_help()
 	case .UPDATE:
 		handle_completions_generate()
 	case .CHECK:  // bash
@@ -774,28 +774,6 @@ collect_completion_names :: proc(kind: CompletionNames) -> [dynamic]string {
 	return out
 }
 
-// Print extended completions help with generate option
-print_completions_help_extended :: proc() {
-	fmt.println()
-	fmt.printfln("%swayu completions - Manage shell completions%s", BOLD, RESET)
-	fmt.println()
-	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
-	fmt.printfln("  wayu completions list              List installed completions")
-	fmt.printfln("  wayu completions generate          Generate wayu self-completions")
-	fmt.printfln("  wayu completions add <name> <path> Add completion script")
-	fmt.println()
-	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
-	fmt.println("  Manage Zsh completion scripts for enhanced tab-completion.")
-	fmt.println()
-	fmt.printfln("%sSELF-COMPLETIONS:%s", get_primary(), RESET)
-	fmt.println("  wayu can generate its own completion script for tab completion.")
-	fmt.println("  Run 'wayu completions generate' and follow the setup instructions.")
-	fmt.println()
-	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
-	fmt.println("  wayu completions generate")
-	fmt.println("  # Then add to .zshrc: fpath=(~/.config/wayu/completions $fpath)")
-	fmt.println("  wayu completions add jj /path/to/_jj")
-}
 
 // Returns the on-disk filename a completion should have for the current shell.
 //
@@ -1133,8 +1111,10 @@ print_completions_help :: proc() {
 	// Usage section
 	fmt.printf("%s%sUSAGE:%s\n", BOLD, get_secondary(), RESET)
 	fmt.println("  wayu completions add <name> <source-file>    Add completion")
-	fmt.println("  wayu completions remove [name]               Remove completion (alias: rm)")
+	fmt.println("  wayu completions remove <name>               Remove completion (alias: rm)")
 	fmt.println("  wayu completions list                        List all completions (alias: ls)")
+	fmt.println("  wayu completions generate                    Write wayu's own completions (zsh, bash, fish)")
+	fmt.println("  wayu completions zsh|bash|fish               Print wayu's completion script")
 	fmt.println("  wayu completions help                        Show this help")
 
 	// Examples section
@@ -1145,11 +1125,11 @@ print_completions_help :: proc() {
 	fmt.printf("  %s# List all completions%s\n", get_muted(), RESET)
 	fmt.printf("  %swayu completions list%s\n", get_muted(), RESET)
 	fmt.println()
-	fmt.printf("  %s# Remove completion interactively%s\n", get_muted(), RESET)
-	fmt.printf("  %swayu completions rm%s\n", get_muted(), RESET)
-	fmt.println()
-	fmt.printf("  %s# Remove specific completion%s\n", get_muted(), RESET)
+	fmt.printf("  %s# Remove a completion%s\n", get_muted(), RESET)
 	fmt.printf("  %swayu completions rm jj%s\n", get_muted(), RESET)
+	fmt.println()
+	fmt.printf("  %s# Generate _wayu, wayu.bash and wayu.fish, then follow the printed setup%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu completions generate%s\n", get_muted(), RESET)
 
 	// Notes section
 	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)

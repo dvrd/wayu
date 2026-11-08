@@ -131,7 +131,7 @@ variable's value or fails with exit `65`.
 
 `wayu search <query>`: fuzzy search over PATH entries, alias names and
 constant names (never values). Match types: exact, prefix, substring,
-acronym (`frwrks` → `FIREWORKS_AI_API_KEY`), fuzzy. Supports `--json`.
+acronym (first letters of the words: `faak` → `FIREWORKS_AI_API_KEY`), fuzzy. Supports `--json`.
 Without a query it prints its help and exits `64`.
 
 ### `wayu completions`
@@ -255,7 +255,7 @@ Default action: `turbo`. Each action may also be written as a flag
 |---|---|
 | `validate` | Strict check of wayu.toml (syntax, duplicate keys, names, `[shell] type`); exit `65` on error |
 | `show` | Print wayu.toml with secret-looking `[env]` values masked |
-| `keys` | List the top-level keys |
+| `keys` | List wayu.toml's top-level keys and tables, in file order; exit `65` if it does not parse |
 | `convert` | Same as `wayu migrate` |
 | `help` | |
 
@@ -263,7 +263,7 @@ Default action: `turbo`. Each action may also be written as a flag
 |---|---|
 | `--reveal` | `show`: print the file verbatim |
 
-Without an action, `wayu toml` behaves like `wayu toml keys`.
+Without an action, `wayu toml` behaves like `wayu toml validate`.
 
 ### `wayu doctor`
 
@@ -379,12 +379,19 @@ Run against a freshly initialized config (`wayu init`) by
 |---|---|
 | `wayu --version` | 0 |
 | `wayu toml validate` | 0 |
+| `wayu toml` | 0 |
 | `wayu path list --json` | 0 |
 | `wayu alias add gpf git push -f --dry-run` | 0 |
 | `wayu bogus` | 64 |
 | `wayu path list --dryrun` | 64 |
 | `wayu path add /tmp --json` | 64 |
 | `wayu alias check` | 64 |
+| `wayu toml bogus` | 64 |
+| `wayu hooks bogus` | 64 |
+| `wayu config bogus` | 64 |
+| `wayu doctor bogus` | 64 |
+| `wayu path list --source bogus` | 64 |
+| `wayu --shell bogus path list` | 64 |
 | `wayu init extra` | 64 |
 | `wayu init --template` | 64 |
 | `wayu search` | 64 |

@@ -8,7 +8,7 @@
 - **Dual mode** -- Non-interactive CLI for scripting + interactive TUI (default when run with no args)
 - **PATH management** -- TOML-based keyed entries with deduplication and validation
 - **Alias & constants** -- Add, remove, list with input validation and reserved word checking
-- **Fuzzy matching** -- Smart search with acronym support (e.g., `frwrks` → `FIREWORKS_AI_API_KEY`)
+- **Fuzzy matching** -- Smart search with acronym support (e.g., `faak` → `FIREWORKS_AI_API_KEY`)
 - **Completions** -- Manage shell completion scripts (Zsh, Bash, Fish)
 - **Plugin management** -- Install, enable/disable, and prioritize shell plugins with dependency resolution
 - **Custom functions** -- `wayu function add` seeds a skeleton in `~/.config/wayu/functions/`, opens `$EDITOR`, and sources it on startup
@@ -137,7 +137,7 @@ wayu constants rm EDITOR
 
 # Fuzzy matching - smart search with acronym support
 wayu search api                # search across all configs
-wayu find frwrks               # finds FIREWORKS_AI_API_KEY by acronym
+wayu find faak                 # finds FIREWORKS_AI_API_KEY by acronym
 wayu f git                     # short alias for search
 
 # GET is exact-match only (safe for X=$(wayu const get NAME))
@@ -151,7 +151,7 @@ wayu completions generate          # generate wayu self-completions (zsh + bash 
 
 # Backups
 wayu backup list
-wayu backup restore path
+wayu backup restore path --yes   # restore the latest wayu.toml backup
 
 # Plugins
 wayu plugin search                          # browse popular plugins
@@ -255,12 +255,12 @@ Search across all your configurations simultaneously:
 wayu search api
 # Constants (2 found)
 # ────────────────────────────────────
-#   OPENAI_API_KEY [substring] ◆
-#   FIREWORKS_AI_API_KEY [acronym] ★
+#   OPENAI_API_KEY [substring] ★
+#   FIREWORKS_AI_API_KEY [substring] ★
 
-# Search by acronym (each uppercase letter)
-wayu find frwrks          # matches FIREWORKS_AI_API_KEY
-wayu f oapi               # matches OPENAI_API_KEY
+# Search by acronym (first letter of each word)
+wayu find faak            # matches FIREWORKS_AI_API_KEY
+wayu f oak                # matches OPENAI_API_KEY
 wayu f gcm                # matches git commit aliases
 
 # Search all configs at once
@@ -290,8 +290,8 @@ wayu const get FIRE
 | `exact` | Exact match | `search API_KEY` → `API_KEY` |
 | `prefix` | Starts with query | `search FIRE` → `FIREWORKS...` |
 | `substring` | Contains query | `search WORKS` → `FIREWORKS...` |
-| `acronym` | Matches uppercase letters | `search frwrks` → `FIREWORKS...` |
-| `fuzzy` | General fuzzy match | `search frwrx` → `FIREWORKS...` |
+| `acronym` | First letters of the words | `search faak` → `FIREWORKS_AI_API_KEY` |
+| `fuzzy` | General fuzzy match | `search frwrks` → `FIREWORKS...` |
 
 ### Secret values
 
@@ -309,14 +309,6 @@ always prints the real value.
 
 - `★` - High confidence match (score > 1000)
 - `◆` - Medium confidence match (score > 500)
-
-### Environment Variables
-
-Control fuzzy matching behavior:
-
-```bash
-export WAYU_FFF_ENABLED=0        # Disable fuzzy features
-```
 
 ## Exit Codes
 

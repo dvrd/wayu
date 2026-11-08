@@ -12,6 +12,7 @@ import "core:strings"
 PATH_SPEC := ConfigEntrySpec{
 	type = .PATH,
 	file_name = "path",
+	cli_name = "path",
 	display_name = "PATH",
 	icon = "📂",
 
@@ -29,6 +30,7 @@ PATH_SPEC := ConfigEntrySpec{
 ALIAS_SPEC := ConfigEntrySpec{
 	type = .ALIAS,
 	file_name = "aliases",
+	cli_name = "alias",
 	display_name = "Alias",
 	icon = "🔑",
 
@@ -61,6 +63,7 @@ ALIAS_SPEC := ConfigEntrySpec{
 CONSTANTS_SPEC := ConfigEntrySpec{
 	type = .CONSTANT,
 	file_name = "constants",
+	cli_name = "const",
 	display_name = "Constant",
 	icon = "💾",
 
