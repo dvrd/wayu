@@ -2160,6 +2160,7 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 			ch := curr.char
 			if ch < 0x20 do ch = ' '
 			strings.write_rune(&builder, ch)
+			if curr.comb != 0 do strings.write_rune(&builder, curr.comb)  // zero columns
 			screen.cursor_x += max(1, get_rune_width(ch))
 		}
 	}
@@ -2185,7 +2186,8 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 // Render text at position.
 // ANSI escape bytes (0x1b) are silently skipped — color belongs in Cell.fg,
 // not the char stream. See thoughts/scroll_bug_spec.md for why this matters.
-// Wide runes (CJK, emoji) occupy two cells; zero-width runes are dropped.
+// Wide runes (CJK, emoji) occupy two cells; a combining mark joins the
+// previous cell; other zero-width runes (VS16, ZWJ) are dropped.
 render_text :: proc(screen: ^Screen, x, y: int, text: string) {
 	render_text_styled(screen, x, y, text)
 }
@@ -2225,16 +2227,21 @@ tui_render_box :: proc(screen: ^Screen, x, y, width, height: int) {
 // bold: Apply bold formatting
 render_text_styled :: proc(screen: ^Screen, x, y: int, text: string, fg: string = "", bg: string = "", bold := false) {
 	current_x := x
+	last_x := -1  // lead cell of the last glyph written (for combining marks)
 	style := Cell{fg = fg, bg = bg, bold = bold}
 	for ch in text {
 		if current_x >= screen.width do break
 		// ESC bytes must never reach Cell.char — they inflate logical cursor_x
 		// and drift the diff renderer. See thoughts/scroll_bug_spec.md.
 		if ch == 0x1b do continue
-		if get_rune_width(ch) == 0 do continue
+		if get_rune_width(ch) == 0 {
+			screen_attach_combining(screen, last_x, y, ch)
+			continue
+		}
 
 		w := screen_put_rune(screen, current_x, y, ch, style)
 		if w == 0 do break  // wide rune doesn't fit before the right edge
+		last_x = current_x
 		current_x += w
 	}
 }

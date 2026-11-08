@@ -290,10 +290,13 @@ fd_set_bit :: proc(set: ^fd_set, fd: c.int) {
 // packs Cell into 40 bytes instead of 48 (rune no longer forces 4 bytes of
 // padding before `fg`). Cells are bulk-allocated as a width*height grid and
 // touched every frame, so the 17% shrink improves render-loop cache density.
+// `comb` holds one combining mark (U+0301 in a decomposed "é") written right
+// after `char`: zero columns, so the cell grid stays aligned (OKAMI-258).
 Cell :: struct {
 	fg:    string,
 	bg:    string,
 	char:  rune,
+	comb:  rune,
 	bold:  bool,
 	dim:   bool,
 }
@@ -419,6 +422,18 @@ screen_put_rune :: proc(screen: ^Screen, x, y: int, r: rune, cell: Cell, limit :
 	return w
 }
 
+// Attach zero-width rune `r` to the glyph whose lead cell is (x, y). Only a
+// combining mark is kept (first one wins); presentation selectors (VS16,
+// ZWJ, …) and marks with no glyph to attach to are dropped, so what reaches
+// the terminal always has exactly the width the cell grid assumes.
+screen_attach_combining :: proc(screen: ^Screen, x, y: int, r: rune) {
+	if is_presentation_selector(r) do return
+	if x < 0 || x >= screen.width || y < 0 || y >= screen.height do return
+	cell := &screen.buffer[y][x]
+	if cell.char == CELL_CONTINUATION || cell.char == ' ' || cell.comb != 0 do return
+	cell.comb = r
+}
+
 // Clear screen (fill with spaces, reset all formatting)
 screen_clear :: proc(screen: ^Screen) {
 	for y in 0..<screen.height {
@@ -441,6 +456,7 @@ screen_to_string :: proc(screen: ^Screen) -> string {
 			cell := screen.buffer[y][x]
 			if cell.char == CELL_CONTINUATION do continue
 			strings.write_rune(&builder, cell.char)
+			if cell.comb != 0 do strings.write_rune(&builder, cell.comb)
 		}
 		// Add newline after each row except the last
 		if y < screen.height - 1 {
