@@ -343,6 +343,23 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   escape sequences instead of filtering on their bytes, and a lone `Esc`
   cancels like `Ctrl+C`. `kill -INT` / `kill -QUIT` restore the terminal.
 
+**Editor (`function add/edit`, `config edit|extend`, `hooks edit`)**
+- `$EDITOR` / `$VISUAL` may carry arguments (`code --wait`, `subl -w`): it
+  runs as `sh -c '$EDITOR "$1"'`. It used to be looked up as one program
+  name and silently fail.
+- An editor that can't start or exits non-zero makes wayu exit `1` with
+  `ERROR: Editor '…' exited with status N` (it exited `0` and printed
+  "Reload your shell…"); `config edit` then skips regenerating the init.
+- With neither variable set, every command opens `vi` (`function` and
+  `config` used `nvim`).
+
+**config scan --fix**
+- Aborts (exit `74`) when extra.<ext> exists but can't be backed up or
+  read; it used to write anyway.
+- Blocks already in extra.<ext> are not appended again, so re-running it no
+  longer duplicates PATH prepends and evals; with nothing new it prints
+  "All N blocks are already in …" and writes nothing.
+
 ## 5.0.0
 
 **doctor**

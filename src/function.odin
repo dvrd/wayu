@@ -146,7 +146,7 @@ add_function :: proc(name: string) {
 		print_success("Created function: %s", func_file)
 	}
 
-	launch_editor(func_file)
+	if !launch_editor(func_file) { os.exit(EXIT_FAILURE) }
 	print_info("Reload your shell to load '%s'", name)
 }
 
@@ -256,45 +256,52 @@ list_functions :: proc() {
 	}
 }
 
-// Launch $EDITOR (falling back to $VISUAL, then nvim) on the given file and
-// wait for it to exit. Mirrors the fork/execvp pattern in config_command.odin.
-launch_editor :: proc(file: string) {
-	editor: string
-	if e := os.get_env("EDITOR", context.temp_allocator); len(e) > 0 {
-		editor = e
-	} else if v := os.get_env("VISUAL", context.temp_allocator); len(v) > 0 {
-		editor = v
-	} else {
-		editor = "nvim"
-	}
+// The editor wayu opens files in: $EDITOR, else $VISUAL, else vi.
+editor_command :: proc() -> string {
+	if e := os.get_env("EDITOR", context.temp_allocator); len(strings.trim_space(e)) > 0 { return e }
+	if v := os.get_env("VISUAL", context.temp_allocator); len(strings.trim_space(v)) > 0 { return v }
+	return "vi"
+}
 
-	editor_args := []string{editor, file}
-
-	argv := make([dynamic]cstring, len(editor_args) + 1)
-	defer {
-		for i in 0 ..< len(editor_args) {
-			delete(argv[i])
-		}
-		delete(argv)
-	}
-	for arg, i in editor_args {
-		argv[i] = strings.clone_to_cstring(arg)
-	}
-	argv[len(editor_args)] = nil
+// Open `file` in editor_command() and wait for it. The editor string runs
+// through `sh -c '<editor> "$1"'` (like git), so a command with arguments
+// (`code --wait`, `subl -w`) works; the file name is passed as "$1", never
+// re-parsed. The editor inherits our stdin/stdout/stderr (a TUI editor
+// needs the terminal; don't route this through run_command*). Returns
+// false, after printing why, when the editor can't start or exits non-zero:
+// callers exit EXIT_FAILURE instead of reporting success.
+launch_editor :: proc(file: string) -> bool {
+	editor := editor_command()
+	script := fmt.ctprintf(`%s "$1"`, editor)
+	cfile := strings.clone_to_cstring(file, context.temp_allocator)
+	argv := []cstring{"sh", "-c", script, "sh", cfile, nil}
 
 	pid := posix.fork()
 	if pid < 0 {
-		print_error_simple("Failed to fork process")
-		os.exit(EXIT_IOERR)
+		print_error_simple("Failed to start editor '%s'", editor)
+		return false
 	}
-
 	if pid == 0 {
-		posix.execvp(argv[0], raw_data(argv[:]))
-		posix._exit(1)
+		posix.execvp("sh", raw_data(argv))
+		posix._exit(127)
 	}
 
 	status: c.int = 0
-	posix.waitpid(pid, &status, {})
+	for posix.waitpid(pid, &status, {}) < 0 {
+		if posix.errno() != .EINTR {
+			print_error_simple("Lost track of editor '%s'", editor)
+			return false
+		}
+	}
+	if !posix.WIFEXITED(status) {
+		print_error_simple("Editor '%s' was killed by a signal - set EDITOR to a working editor", editor)
+		return false
+	}
+	if code := posix.WEXITSTATUS(status); code != 0 {
+		print_error_simple("Editor '%s' exited with status %d - set EDITOR to a working editor", editor, code)
+		return false
+	}
+	return true
 }
 
 print_function_usage :: proc() {

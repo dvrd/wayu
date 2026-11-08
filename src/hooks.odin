@@ -5,11 +5,9 @@
 
 package wayu
 
-import "core:c"
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:sys/posix"
 
 // Hook types
 HookType :: enum {
@@ -532,52 +530,9 @@ edit_hooks_config :: proc() {
 		}
 	}
 
-	// Open in editor.
-	//
-	// IMPORTANT: do NOT route this through run_command_with_stdin(): that helper
-	// redirects stdout+stderr to /dev/null and pipes an empty stdin, which means
-	// any TUI editor (vim/nano/helix) renders nothing and appears to hang.
-	// Use fork + execvp so the editor inherits our stdin/stdout/stderr directly,
-	// mirroring the pattern in edit_toml_config / edit_extra_config (main.odin).
-	editor: string
-	if e := os.get_env("EDITOR", context.temp_allocator); len(e) > 0 {
-		editor = e
-	} else if v := os.get_env("VISUAL", context.temp_allocator); len(v) > 0 {
-		editor = v
-	} else {
-		editor = "vi"
-	}
-
-	print_info("Opening hooks config in %s...", editor)
-
-	args := []string{editor, hook_path}
-	argv := make([dynamic]cstring, len(args) + 1)
-	defer {
-		for i in 0..<len(args) {
-			delete(argv[i])
-		}
-		delete(argv)
-	}
-	for arg, i in args {
-		argv[i] = strings.clone_to_cstring(arg)
-	}
-	argv[len(args)] = nil
-
-	pid := posix.fork()
-	if pid < 0 {
-		print_error("Failed to fork editor process")
-		os.exit(EXIT_IOERR)
-	}
-
-	if pid == 0 {
-		// Child: exec editor with inherited stdio.
-		posix.execvp(argv[0], raw_data(argv[:]))
-		posix._exit(1)
-	}
-
-	// Parent: wait for editor to finish.
-	status: c.int = 0
-	posix.waitpid(pid, &status, {})
+	// Open in editor (inherits the terminal; see launch_editor).
+	print_info("Opening hooks config in %s...", editor_command())
+	if !launch_editor(hook_path) { os.exit(EXIT_FAILURE) }
 }
 
 // Print hooks usage
