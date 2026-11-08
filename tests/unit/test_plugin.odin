@@ -388,7 +388,6 @@ test_plugin_update_write_and_cleanup :: proc(t: ^testing.T) {
 		enabled = true,
 		shell = wayu.ShellCompat.ZSH,
 		installed_path = strings.clone("/tmp/test"),
-		entry_file = strings.clone(""),
 		git = wayu.GitMetadata{
 			branch = strings.clone("master"),
 			commit = strings.clone("abc1234"),
@@ -399,7 +398,6 @@ test_plugin_update_write_and_cleanup :: proc(t: ^testing.T) {
 		priority = 100,
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -477,7 +475,6 @@ test_plugin_enable_idempotent :: proc(t: ^testing.T) {
 		enabled = true,  // Already enabled
 		shell = wayu.ShellCompat.ZSH,
 		installed_path = strings.clone("/tmp/test"),
-		entry_file = strings.clone("test.zsh"),
 		git = wayu.GitMetadata{
 			branch = strings.clone("main"),
 			commit = strings.clone("abc123"),
@@ -488,7 +485,6 @@ test_plugin_enable_idempotent :: proc(t: ^testing.T) {
 		priority = 100,
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -536,7 +532,6 @@ test_plugin_disable_idempotent :: proc(t: ^testing.T) {
 		enabled = false,  // Already disabled
 		shell = wayu.ShellCompat.ZSH,
 		installed_path = strings.clone("/tmp/test"),
-		entry_file = strings.clone("test.zsh"),
 		git = wayu.GitMetadata{
 			branch = strings.clone("main"),
 			commit = strings.clone("abc123"),
@@ -547,7 +542,6 @@ test_plugin_disable_idempotent :: proc(t: ^testing.T) {
 		priority = 100,
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -588,7 +582,6 @@ test_plugin_enable_toggles_state :: proc(t: ^testing.T) {
 		enabled = false,  // Start disabled
 		shell = wayu.ShellCompat.ZSH,
 		installed_path = strings.clone("/tmp/test"),
-		entry_file = strings.clone("test.zsh"),
 		git = wayu.GitMetadata{
 			branch = strings.clone("main"),
 			commit = strings.clone("abc123"),
@@ -599,7 +592,6 @@ test_plugin_enable_toggles_state :: proc(t: ^testing.T) {
 		priority = 100,
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -656,7 +648,6 @@ test_plugin_disable_toggles_state :: proc(t: ^testing.T) {
 		enabled = true,  // Start enabled
 		shell = wayu.ShellCompat.ZSH,
 		installed_path = strings.clone("/tmp/test"),
-		entry_file = strings.clone("test.zsh"),
 		git = wayu.GitMetadata{
 			branch = strings.clone("main"),
 			commit = strings.clone("abc123"),
@@ -667,7 +658,6 @@ test_plugin_disable_toggles_state :: proc(t: ^testing.T) {
 		priority = 100,
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -727,7 +717,6 @@ test_generate_plugins_file_skips_disabled :: proc(t: ^testing.T) {
 		enabled = true,
 		shell = wayu.ShellCompat.ZSH,
 		installed_path = strings.clone("/tmp/enabled"),
-		entry_file = strings.clone("enabled.zsh"),
 		git = wayu.GitMetadata{
 			branch = strings.clone("main"),
 			commit = strings.clone("abc123"),
@@ -738,7 +727,6 @@ test_generate_plugins_file_skips_disabled :: proc(t: ^testing.T) {
 		priority = 100,
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -756,7 +744,6 @@ test_generate_plugins_file_skips_disabled :: proc(t: ^testing.T) {
 		enabled = false,
 		shell = wayu.ShellCompat.ZSH,
 		installed_path = strings.clone("/tmp/disabled"),
-		entry_file = strings.clone("disabled.zsh"),
 		git = wayu.GitMetadata{
 			branch = strings.clone("main"),
 			commit = strings.clone("def456"),
@@ -767,7 +754,6 @@ test_generate_plugins_file_skips_disabled :: proc(t: ^testing.T) {
 		priority = 100,
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1574,7 +1560,6 @@ test_conflict_detection_env_vars :: proc(t: ^testing.T) {
 		dependencies = make([dynamic]string),
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1596,7 +1581,6 @@ test_conflict_detection_env_vars :: proc(t: ^testing.T) {
 		dependencies = make([dynamic]string),
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1650,7 +1634,6 @@ test_conflict_detection_functions :: proc(t: ^testing.T) {
 		dependencies = make([dynamic]string),
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1672,7 +1655,6 @@ test_conflict_detection_functions :: proc(t: ^testing.T) {
 		dependencies = make([dynamic]string),
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1726,7 +1708,6 @@ test_conflict_detection_aliases :: proc(t: ^testing.T) {
 		dependencies = make([dynamic]string),
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1748,7 +1729,6 @@ test_conflict_detection_aliases :: proc(t: ^testing.T) {
 		dependencies = make([dynamic]string),
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1802,7 +1782,6 @@ test_no_conflicts_when_no_overlap :: proc(t: ^testing.T) {
 		dependencies = make([dynamic]string),
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1825,7 +1804,6 @@ test_no_conflicts_when_no_overlap :: proc(t: ^testing.T) {
 		dependencies = make([dynamic]string),
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),
@@ -1848,7 +1826,6 @@ test_no_conflicts_when_no_overlap :: proc(t: ^testing.T) {
 		dependencies = make([dynamic]string),
 		use = make([dynamic]string),
 		template = .Source,
-		profiles = make([dynamic]string),
 		conflicts = wayu.ConflictInfo{
 			env_vars = make([dynamic]string),
 			functions = make([dynamic]string),

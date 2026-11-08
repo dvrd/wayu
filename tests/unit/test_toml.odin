@@ -148,7 +148,9 @@ Y = "2"
 test_toml_validate_valid_config :: proc(t: ^testing.T) {
  content := `
 version = "1.0"
-shell = "zsh"
+
+[shell]
+type = "zsh"
 
 [aliases]
 ll = "ls -la"
@@ -168,7 +170,9 @@ ll = "ls -la"
 test_toml_validate_invalid_shell :: proc(t: ^testing.T) {
  content := `
 version = "1.0"
-shell = "invalid_shell"
+
+[shell]
+type = "invalid_shell"
 `
  config, ok := wayu.toml_parse(content)
  defer wayu.cleanup_toml_config(&config)
@@ -259,7 +263,8 @@ test_toml_parse_comments :: proc(t: ^testing.T) {
 version = "1.0"  # inline comment
 
 # Another comment
-shell = "bash"
+[shell]
+type = "bash"  # inline comment
 `
  config, ok := wayu.toml_parse(content)
  defer wayu.cleanup_toml_config(&config)

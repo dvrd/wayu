@@ -2420,13 +2420,11 @@ tui_install_plugin :: proc(key: string) -> (ok: bool, err: string) {
 			enabled        = true,
 			shell          = info.shell,
 			installed_path = strings.clone(dest),
-			entry_file     = "",
 			use            = make([dynamic]string),
 			template       = .Source,
 			git            = git_info,
 			dependencies   = make([dynamic]string),
 			priority       = 100,
-			profiles       = make([dynamic]string),
 			conflicts      = ConflictInfo{},
 		}
 		append(&config.plugins, new_plugin)

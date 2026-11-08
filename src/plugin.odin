@@ -62,7 +62,6 @@ PluginMetadata :: struct {
 	enabled:        bool,
 	shell:          ShellCompat,
 	installed_path: string,
-	entry_file:     string,  // Deprecated: use 'use' globs instead
 	
 	// File selection (sheldon-inspired 'use' field)
 	use:            [dynamic]string,  // Globs: ["*.zsh", "*.plugin.zsh"]
@@ -76,10 +75,7 @@ PluginMetadata :: struct {
 	// Dependencies and conflicts
 	dependencies:   [dynamic]string,
 	priority:       int,  // Load order (lower = earlier)
-	
-	// Profile system (wayu-native, inspired by sheldon)
-	profiles:       [dynamic]string,  // Empty = all profiles
-	
+
 	// Conflict detection
 	conflicts:      ConflictInfo,
 }
@@ -487,7 +483,6 @@ cleanup_plugin_metadata :: proc(plugin: ^PluginMetadata) {
 	delete(plugin.display_name)
 	delete(plugin.url)
 	delete(plugin.installed_path)
-	delete(plugin.entry_file)
 	delete(plugin.git.branch)
 	delete(plugin.git.tag)
 	delete(plugin.git.commit)
@@ -502,10 +497,6 @@ cleanup_plugin_metadata :: proc(plugin: ^PluginMetadata) {
 		delete(u)
 	}
 	delete(plugin.use)
-	for p in plugin.profiles {
-		delete(p)
-	}
-	delete(plugin.profiles)
 	for ev in plugin.conflicts.env_vars {
 		delete(ev)
 	}

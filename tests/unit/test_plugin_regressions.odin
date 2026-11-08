@@ -45,7 +45,6 @@ make_owned_plugin :: proc(name: string, installed_path: string, deps: []string =
 		template       = .Source,
 		dependencies   = make([dynamic]string),
 		priority       = 100,
-		profiles       = make([dynamic]string),
 		git = wayu.GitMetadata{
 			branch = strings.clone("main"),
 			commit = strings.clone("abc1234"),

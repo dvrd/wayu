@@ -241,7 +241,7 @@ status: `0` valid, `65` invalid, `78` before `wayu init`.
 `toml validate`; it does not choose the shell. wayu acts for the shell named
 by `--shell`, else `$SHELL`, and regenerates the files of every other shell
 already initialized in the data dir (`init.<ext>` or `core.<ext>` exists). A
-top-level `shell = "..."` string is still read in place of `[shell] type`.
+top-level `shell = "..."` string is not read (`toml validate` rejects it).
 
 ### `[paths]`
 
@@ -663,10 +663,9 @@ cloned to `$WAYU_DATA_DIR/plugins/<name>`.
 | `plugins[].dependencies` | array of strings | Plugin names loaded before this one. Must be valid plugin names; a cycle is an error. A missing or disabled dependency is noted as a comment in `plugins.<ext>`. |
 | `plugins[].priority` | integer | Load order among plugins whose dependencies are met; lower loads earlier (default 100). Ties keep file order. |
 | `plugins[].conflicts` | object | Written by wayu's conflict detection. |
-| `plugins[].entry_file`, `plugins[].profiles` | | Not used. |
 
-Enum values are matched case-insensitively; integers (the format up to
-4.4.5) are accepted too. Any invalid value makes every command that reads
+Enum values are strings, matched case-insensitively; numbers are rejected.
+Unknown keys are ignored (and dropped on the next write). Any invalid value makes every command that reads
 `plugins.json` exit `78` with the plugin and field named.
 
 Auto-detected entry file (no `use`): the first that exists of
@@ -704,8 +703,8 @@ startup:
 
 | Shell | Sources |
 |---|---|
-| zsh | Every regular file except `*.bash` and `*.fish` |
-| bash | Every regular file except `*.zsh` and `*.fish` |
+| zsh | `*.zsh` only |
+| bash | `*.bash` only |
 | fish | `*.fish` only |
 
 ### completions/

@@ -479,7 +479,7 @@ run_step "core.zsh" source "$HOME/.config/wayu/core.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 2: Functions ==="
-run_step "functions (glob)" zsh -c 'for f in "$HOME/.config/wayu/functions"/*(N); do [[ -f "$f" ]] && source "$f"; done'
+run_step "functions (glob)" zsh -c 'for f in "$HOME/.config/wayu/functions"/*.zsh(N); do [[ -f "$f" ]] && source "$f"; done'
 
 echo ""
 echo "=== Phase 3: Completions Setup ==="

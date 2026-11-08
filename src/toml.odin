@@ -947,12 +947,7 @@ get_bool :: proc(val: ^TomlValue, default: bool = false) -> bool {
 @(private = "file")
 doc_parse_base_fields :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
 	config.version = get_string(get_toml_value(doc, "version"), "1.0")
-	// `[shell] type`; a top-level `shell = "..."` string is still honored.
-	shell_val := get_toml_value(doc, "shell")
-	if shell_val == nil || shell_val.type != .STRING {
-		shell_val = get_toml_value(doc, "shell.type")
-	}
-	raw_shell := get_string(shell_val, "zsh")
+	raw_shell := get_string(get_toml_value(doc, "shell.type"), "zsh")
 	config.shell = strings.to_lower(raw_shell)
 	delete(raw_shell)
 }

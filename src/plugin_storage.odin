@@ -741,10 +741,6 @@ handle_plugin_add :: proc(args: []string) {
 	// Never clean up a directory we did not create.
 	existed_before := os.exists(plugin_path)
 
-	spinner := new_spinner(.Dots)
-	spinner_text(&spinner, "Cloning repository")
-	spinner_start(&spinner)
-
 	success: bool
 	clone_err: string
 	if pin_commit != "" {
@@ -753,9 +749,6 @@ handle_plugin_add :: proc(args: []string) {
 		success, clone_err = git_clone(info.url, plugin_path)
 	}
 	defer delete(clone_err)
-
-	spinner_stop(&spinner)
-	delete(spinner.text)
 
 	if !success {
 		if !existed_before {
@@ -821,13 +814,11 @@ handle_plugin_add :: proc(args: []string) {
 		enabled = true,
 		shell = info.shell,
 		installed_path = strings.clone(plugin_path),
-		entry_file = "",  // Will be detected by generate_plugins_file
 		use = make([dynamic]string),  // Empty = auto-detect (filled below)
 		template = .Source,  // Default loading template
 		git = git_info,
 		dependencies = make([dynamic]string),  // Phase 4: Initialize empty
 		priority = 100,  // Phase 5: Default priority
-		profiles = make([dynamic]string),  // Empty = all profiles
 		conflicts = ConflictInfo{},  // Phase 6: No conflicts yet
 	}
 
@@ -1389,5 +1380,4 @@ handle_plugin_search :: proc(args: []string) {
 	fmt.printfln("%sTo install:%s wayu plugin add <key>", get_muted(), RESET)
 	fmt.printfln("%sFilter by category:%s wayu plugin search --category <cat>", get_muted(), RESET)
 }
-
 

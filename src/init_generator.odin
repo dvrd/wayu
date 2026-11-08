@@ -427,18 +427,16 @@ emit_path_eval :: proc(b: ^strings.Builder, sep: string = "\n") -> bool {
 // zsh: the glob runs in an anonymous function under `emulate -L zsh` so the
 // user's NO_BARE_GLOB_QUAL / NO_GLOB / KSH_ARRAYS can't break it (OKAMI-224);
 // the files are sourced outside it so they run with the user's own options.
-// `wayu function add` writes functions/<name>.<ext> per shell, so files of
-// the other shells (*.zsh / *.bash / *.fish) are skipped: zsh sourcing a
-// .fish function was a parse error at every startup. Other files (no
-// extension, .sh) are still sourced by zsh and bash.
+// `wayu function add` writes functions/<name>.<ext> per shell; each shell
+// sources only its own extension (*.zsh / *.bash).
 emit_functions_loader :: proc(b: ^strings.Builder) {
 	dir := shell_double_quote_literal(fmt.tprintf("%s/functions", wayu.config), context.temp_allocator)
 	if wayu.shell == .ZSH {
-		fmt.sbprintfln(b, `() {{ emulate -L zsh -o extended_glob; typeset -ga _wayu_fn_files; _wayu_fn_files=( %s/^*.(bash|fish)(N-.) ) }}`, dir)
+		fmt.sbprintfln(b, `() {{ emulate -L zsh; typeset -ga _wayu_fn_files; _wayu_fn_files=( %s/*.zsh(N-.) ) }}`, dir)
 		fmt.sbprintln(b, `for _wayu_f in "${_wayu_fn_files[@]}"; do source "$_wayu_f"; done`)
 		fmt.sbprintln(b, `unset _wayu_f _wayu_fn_files`)
 	} else {
-		fmt.sbprintfln(b, `if [ -d %s ]; then for f in %s/*; do case "$f" in *.zsh|*.fish) ;; *) if [ -f "$f" ]; then source "$f"; fi ;; esac; done; fi`, dir, dir)
+		fmt.sbprintfln(b, `if [ -d %s ]; then for f in %s/*.bash; do if [ -f "$f" ]; then source "$f"; fi; done; fi`, dir, dir)
 	}
 }
 

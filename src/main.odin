@@ -305,8 +305,6 @@ main :: proc() {
 	}
 }
 
-
-
 handle_init_command :: proc() {
 	print_header("Initializing Wayu Configuration", "🚀")
 	fmt.println()
@@ -338,13 +336,7 @@ handle_init_command :: proc() {
 
 	// Create config directory (~/.config/wayu)
 	if !os.exists(config_dir) {
-		spinner := new_spinner(.Dots)
-		spinner_text(&spinner, "Creating config directory")
-		spinner_start(&spinner)
-
 		err := make_directory_all(config_dir) // ~/.config may not exist yet
-
-		spinner_stop(&spinner)
 
 		if err != nil {
 			print_error_simple("Error creating config directory: %v", err)
@@ -357,14 +349,8 @@ handle_init_command :: proc() {
 
 	// Create data directory (defaults to ~/.config/wayu)
 	if !os.exists(data_dir) {
-		spinner := new_spinner(.Dots)
-		spinner_text(&spinner, "Creating data directory")
-		spinner_start(&spinner)
-
 		// Create parent directories if needed (may not exist in test envs)
 		err := make_directory_all(data_dir)
-
-		spinner_stop(&spinner)
 
 		if err != nil {
 			print_error_simple("Error creating data directory: %v", err)
@@ -390,15 +376,7 @@ handle_init_command :: proc() {
 		defer delete(subdir_path)
 
 		if !os.exists(subdir_path) {
-			spinner := new_spinner(.Arc)
-			spinner_text_str := fmt.aprintf("Creating %s directory", subdir)
-			defer delete(spinner_text_str)
-			spinner_text(&spinner, spinner_text_str)
-			spinner_start(&spinner)
-
 			err := make_directory_all(subdir_path)
-
-			spinner_stop(&spinner)
 
 			if err != nil {
 				print_error_simple("Error creating directory %s: %v", subdir, err)
@@ -412,10 +390,6 @@ handle_init_command :: proc() {
 	if created_subdirs == 0 {
 		print_info("All subdirectories already exist")
 	}
-
-	// Migrate any functions left at the legacy data-dir location into the
-	// config-dir location that the loader now sources.
-	migrate_legacy_functions()
 
 	fmt.println()
 
@@ -485,15 +459,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		defer delete(config_file)
 
 		if !os.exists(config_file) {
-			spinner := new_spinner(.Line)
-			spinner_text_str := fmt.aprintf("Creating %s.%s", config.name, ext)
-			defer delete(spinner_text_str)
-			spinner_text(&spinner, spinner_text_str)
-			spinner_start(&spinner)
-
 			success := init_config_file(config_file, config.template(shell))
-
-			spinner_stop(&spinner)
 
 			if success {
 				print_success("Created config file: %s", config_file)
@@ -517,11 +483,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	defer delete(alias_sources_file)
 
 	if !os.exists(alias_sources_file) {
-		spinner := new_spinner(.Line)
-		spinner_text(&spinner, "Creating alias-sources.conf")
-		spinner_start(&spinner)
 		success := init_config_file(alias_sources_file, ALIAS_SOURCES_TEMPLATE)
-		spinner_stop(&spinner)
 		if success {
 			print_success("Created config file: %s", alias_sources_file)
 		} else {
@@ -536,15 +498,10 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	defer delete(toml_file)
 
 	if !os.exists(toml_file) {
-		spinner := new_spinner(.Line)
-		spinner_text(&spinner, "Creating wayu.toml scaffold")
-		spinner_start(&spinner)
-
 		toml_scaffold := wayu_toml_scaffold(shell)
 		defer delete(toml_scaffold)
 
 		success := init_config_file(toml_file, toml_scaffold)
-		spinner_stop(&spinner)
 		if success {
 			print_success("Created config file: %s", toml_file)
 		} else {
