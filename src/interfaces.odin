@@ -6,6 +6,7 @@
 
 package wayu
 import "core:strings"
+@(require) import "core:log" // used by debug() under ODIN_DEBUG only
 // ============================================================================
 // VERSION
 // ============================================================================
