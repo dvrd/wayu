@@ -397,6 +397,8 @@ apply_text_only_style :: proc(s: Style, text: string) -> string {
 
 // Apply color (foreground or background)
 apply_color :: proc(builder: ^strings.Builder, color: string, is_foreground: bool) {
+	// NO_COLOR / --no-color / non-TTY: styles keep their text, drop colors.
+	if CURRENT_COLOR_PROFILE == .ASCII { return }
 	// Check if it's already a full ANSI code
 	if strings.has_prefix(color, "\x1b[") {
 		strings.write_string(builder, color)

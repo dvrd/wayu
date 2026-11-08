@@ -1121,7 +1121,7 @@ tui_state_destroy :: proc(state: ^TUIState) {
 	delete(state.saved_cursors)
 
 	// Free cached data properly - must free strings, dynamic arrays, then pointers
-	for key, value in state.data_cache {
+	for _, value in state.data_cache {
 		if value != nil {
 			// Cast to actual type
 			items := cast(^[dynamic]string)value

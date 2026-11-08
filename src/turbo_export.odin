@@ -33,10 +33,7 @@ turbo_export_file_name :: proc() -> string {
 
 // Entry point for turbo export command
 handle_export_command :: proc(action: Action, args: []string) {
-	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
-	}
-
+	// help/list/usage errors need no config (OKAMI-237): check init after.
 	#partial switch action {
 	case .HELP:
 		print_export_usage()
@@ -48,6 +45,10 @@ handle_export_command :: proc(action: Action, args: []string) {
 		print_error_simple("Unknown export mode")
 		print_export_usage()
 		os.exit(EXIT_USAGE)
+	}
+
+	if !check_wayu_initialized() {
+		os.exit(EXIT_CONFIG)
 	}
 
 	// Turbo/eval emit sh syntax (`if [ ... ]; then`, `export`): never hand

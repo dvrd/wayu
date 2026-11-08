@@ -345,7 +345,7 @@ render_border_line :: proc(table: Table, fill: rune, left: rune, right: rune, se
 
 	for i in 0..<len(table.column_widths) {
 		// Add padding characters for each column
-		for j in 0..<table.column_widths[i] + 2 { // +2 for padding spaces
+		for _ in 0..<table.column_widths[i] + 2 { // +2 for padding spaces
 			strings.write_rune(&result, fill)
 		}
 

@@ -85,8 +85,8 @@ edit_extra_config :: proc(extra_file: string) {
 	editor: string
 	if e := os.get_env("EDITOR", context.temp_allocator); len(e) > 0 {
 		editor = e
-	} else if e := os.get_env("VISUAL", context.temp_allocator); len(e) > 0 {
-		editor = e
+	} else if v := os.get_env("VISUAL", context.temp_allocator); len(v) > 0 {
+		editor = v
 	} else {
 		editor = "nvim"
 	}
@@ -151,8 +151,8 @@ shell = "zsh"
 	editor: string
 	if e := os.get_env("EDITOR", context.temp_allocator); len(e) > 0 {
 		editor = e
-	} else if e := os.get_env("VISUAL", context.temp_allocator); len(e) > 0 {
-		editor = e
+	} else if v := os.get_env("VISUAL", context.temp_allocator); len(v) > 0 {
+		editor = v
 	} else {
 		editor = "nvim"
 	}
@@ -220,7 +220,7 @@ detect_zshrc_script_blocks :: proc(zshrc_path: string) -> (blocks: [dynamic][dyn
 
 	content, read_ok := safe_read_file(zshrc_path)
 	if !read_ok {
-		print_error_simple("Failed to read .zshrc")
+		// safe_read_file already printed why (one error per failure).
 		os.exit(EXIT_IOERR)
 	}
 

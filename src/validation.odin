@@ -323,11 +323,11 @@ print_error_with_context :: proc(
 	resource: string,
 	context_msg: string = "",
 ) {
-	fmt.eprintf("%s%sERROR:%s ", BOLD, ERROR, RESET)
+	eprintf_color("%s%sERROR:%s ", BOLD, ERROR, RESET)
 
 	switch error_type {
 	case .FILE_NOT_FOUND:
-		fmt.eprintfln("File not found: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		eprintfln_color("File not found: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 
 		if strings.contains(resource, ".config/wayu") {
 			fmt.eprintfln("\n%sSuggestion:%s Run %swayu init%s to create configuration files",
@@ -339,14 +339,14 @@ print_error_with_context :: proc(
 		}
 
 	case .PERMISSION_DENIED:
-		fmt.eprintfln("Permission denied: %s%s%s", BRIGHT_YELLOW, resource, RESET)
-		fmt.eprintfln("\n%sSuggestion:%s Check file permissions with:", BRIGHT_CYAN, RESET)
-		fmt.eprintfln("            %sls -la %s%s", MUTED, resource, RESET)
+		eprintfln_color("Permission denied: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		eprintfln_color("\n%sSuggestion:%s Check file permissions with:", BRIGHT_CYAN, RESET)
+		eprintfln_color("            %sls -la %s%s", MUTED, resource, RESET)
 		fmt.eprintfln("            You may need to run:")
-		fmt.eprintfln("            %schmod 644 %s%s", MUTED, resource, RESET)
+		eprintfln_color("            %schmod 644 %s%s", MUTED, resource, RESET)
 
 	case .FILE_READ_ERROR:
-		fmt.eprintfln("Failed to read file: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		eprintfln_color("Failed to read file: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Details: %s", context_msg)
 		}
@@ -355,16 +355,16 @@ print_error_with_context :: proc(
 		fmt.eprintfln("            Try closing other applications that may be using this file")
 
 	case .FILE_WRITE_ERROR:
-		fmt.eprintfln("Failed to write file: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		eprintfln_color("Failed to write file: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Details: %s", context_msg)
 		}
-		fmt.eprintfln("\n%sSuggestion:%s Check disk space and file permissions:", BRIGHT_CYAN, RESET)
-		fmt.eprintfln("            %sdf -h%s  # Check disk space", MUTED, RESET)
-		fmt.eprintfln("            %sls -la %s%s  # Check permissions", MUTED, resource, RESET)
+		eprintfln_color("\n%sSuggestion:%s Check disk space and file permissions:", BRIGHT_CYAN, RESET)
+		eprintfln_color("            %sdf -h%s  # Check disk space", MUTED, RESET)
+		eprintfln_color("            %sls -la %s%s  # Check permissions", MUTED, resource, RESET)
 
 	case .INVALID_INPUT:
-		fmt.eprintfln("Invalid input: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		eprintfln_color("Invalid input: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Reason: %s", context_msg)
 		}
@@ -388,19 +388,19 @@ print_error_with_context :: proc(
 			BRIGHT_YELLOW, resource, RESET)
 		fmt.eprintfln("\n%sFirst time using wayu?%s Run the following command:",
 			BRIGHT_CYAN, RESET)
-		fmt.eprintfln("  %swayu init%s", BOLD, RESET)
+		eprintfln_color("  %swayu init%s", BOLD, RESET)
 		fmt.eprintfln("\nThis will:")
 		fmt.eprintfln("  • Create ~/.config/wayu/ directory")
 		fmt.eprintfln("  • Initialize all configuration files")
 		fmt.eprintfln("  • Set up shell integration")
 
 	case .DIRECTORY_NOT_FOUND:
-		fmt.eprintfln("Directory not found: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		eprintfln_color("Directory not found: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Details: %s", context_msg)
 		}
-		fmt.eprintfln("\n%sSuggestion:%s Verify the directory exists or create it:", BRIGHT_CYAN, RESET)
-		fmt.eprintfln("            %smkdir -p %s%s", MUTED, resource, RESET)
+		eprintfln_color("\n%sSuggestion:%s Verify the directory exists or create it:", BRIGHT_CYAN, RESET)
+		eprintfln_color("            %smkdir -p %s%s", MUTED, resource, RESET)
 	}
 
 	fmt.eprintln()
@@ -480,7 +480,7 @@ get_directory :: proc(file_path: string) -> string {
 
 // Print formatted error (simple version for backwards compatibility)
 print_error_simple :: proc(format: string, args: ..any) {
-	fmt.eprintf("%s%sERROR:%s ", BOLD, ERROR, RESET)
+	eprintf_color("%s%sERROR:%s ", BOLD, ERROR, RESET)
 	fmt.eprintfln(format, ..args)
 }
 

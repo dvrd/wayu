@@ -6,7 +6,6 @@ package wayu
 
 import "core:fmt"
 import "core:os"
-import "core:slice"
 import "core:strings"
 
 // Main handler for CONSTANTS commands.
@@ -205,13 +204,14 @@ list_toml_constants :: proc() {
 		}
 	}
 
-	if len(entries) == 0 && len(external_constants) == 0 {
-		print_info("No Constants found")
+	// JSON first: an empty list is still a JSON document (OKAMI-239).
+	if wayu.json_output {
+		print_constants_json(entries[:], external_constants[:])
 		return
 	}
 
-	if wayu.json_output {
-		print_constants_json(entries[:], external_constants[:])
+	if len(entries) == 0 && len(external_constants) == 0 {
+		print_info("No Constants found")
 		return
 	}
 
@@ -340,7 +340,7 @@ print_constants_json :: proc(entries: []ConfigEntry, external_constants: []strin
 
 	// Output wayu entries
 	if show_wayu || show_inactive {
-		for entry, i in entries {
+		for entry in entries {
 			is_active := false
 			env_val := snapshot_env_var(entry.name)
 			if env_val != nil {

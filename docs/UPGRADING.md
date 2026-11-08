@@ -256,6 +256,52 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - `wayu_compile` (helpers.zsh) uses the data dir the file was generated for.
 - `wayu build profile` works when the data dir path contains spaces.
 
+**Colors**
+- Output is plain (no ANSI escape codes) when stdout is not a terminal:
+  `wayu path list | grep x`, `$(wayu ...)`, logs and CI get plain text.
+  Set `FORCE_COLOR=1` (or `CLICOLOR_FORCE=1`) to keep colors in a pipe.
+  Errors/warnings on stderr are colored only when stderr is a terminal.
+- `NO_COLOR=1` and `--no-color` now remove every escape code (tables,
+  help, errors, doctor, backup list, …); some used to remain. They win over
+  `FORCE_COLOR`.
+
+**Errors and warnings**
+- `ERROR: …` and `⚠ …` messages go to stderr (they were on stdout), so
+  `2>/dev/null` silences them and `wayu … --json | jq` never sees them.
+- A failed read of a file reports one error, not two (the extra
+  `ERROR: Could not read …` line is gone).
+- Before `wayu init`, `path list|get|rm|clean|dedup` and `path add` of an
+  existing directory exit `78` with the "not initialized" message, like
+  `alias`/`const` (they exited `66` with "File not found").
+- `wayu export help` / `export list` work without a wayu config.
+
+**--json**
+- `alias list --json`, `const list --json` and `plugin list --json` print
+  an empty JSON list (`{"aliases": []}`, …) when there is nothing to list;
+  they printed `ℹ No … found`.
+- `plugin list --json` escapes every string (a quote or backslash in a
+  path broke the document).
+- `path list --json --source external` (and `--full`) include the external
+  `$PATH` entries the table shows (`"source": "external"`); they were
+  dropped.
+- `search QUERY --json` prints `{"query": …, "results": [{"type", "name",
+  "value", "match", "field", "score"}], "count": N}`; it ignored `--json`.
+- `--json` on a command/action without JSON output (`path add`,
+  `const get`, `hooks`, `toml show`, …) exits `64` and names the commands
+  that support it; it used to be ignored. Supported: `path|alias|const|
+  backup|plugin list`, `search`, `doctor` (and any `help`).
+
+**Commands and actions**
+- Command names, action words, per-command flags and `--json` support
+  come from one table (also used by completions and `wayu help`). An
+  action word a command doesn't have exits `64` with that command's help:
+  e.g. `alias check` (silently did nothing, exit `0`), `alias clean`
+  (exit `1`), `backup clean|add|get`, `path enable`.
+- `wayu help` lists every command (it missed `build` and `export`) and a
+  COMMAND FLAGS section; `--json` and `--no-color` are listed under FLAGS.
+- Completions offer each command's flags and `--json` where supported, and
+  `export check`.
+
 ## 5.0.0
 
 **doctor**

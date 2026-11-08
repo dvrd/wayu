@@ -1248,7 +1248,6 @@ check_command_exists :: proc(cmd: string) -> bool {
 // Check 9: sync status — wayu entries vs environment
 check_sync_status :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	arena_alloc := get_doctor_allocator()
 
 	// Only run this check if wayu is initialized
 	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)

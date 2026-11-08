@@ -87,8 +87,8 @@ migrate_legacy_functions :: proc() {
 		src := fmt.aprintf("%s/%s", old_dir, entry.name)
 		defer delete(src)
 
-		data, read_err := os.read_entire_file(src, context.allocator)
-		if read_err != nil do continue
+		data, data_err := os.read_entire_file(src, context.allocator)
+		if data_err != nil do continue
 		defer delete(data)
 
 		// Make sure the destination directory exists before writing.
@@ -262,8 +262,8 @@ launch_editor :: proc(file: string) {
 	editor: string
 	if e := os.get_env("EDITOR", context.temp_allocator); len(e) > 0 {
 		editor = e
-	} else if e := os.get_env("VISUAL", context.temp_allocator); len(e) > 0 {
-		editor = e
+	} else if v := os.get_env("VISUAL", context.temp_allocator); len(v) > 0 {
+		editor = v
 	} else {
 		editor = "nvim"
 	}

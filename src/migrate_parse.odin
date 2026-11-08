@@ -467,5 +467,5 @@ legacy_print_issue :: proc(file_label: string, content: string, is: LegacyIssue)
 		fmt.eprintfln("  %s:%d: %s", file_label, n, lines[n-1])
 		shown += 1
 	}
-	fmt.eprintfln("      %s↳ %s%s", get_muted(), is.reason, RESET)
+	eprintfln_color("      %s↳ %s%s", get_muted(), is.reason, RESET)
 }

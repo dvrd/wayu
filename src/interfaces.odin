@@ -5,7 +5,6 @@
 // are in other files to avoid redeclaration errors.
 
 package wayu
-import "core:log"
 import "core:strings"
 // ============================================================================
 // VERSION

@@ -9,7 +9,6 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
-import "core:slice"
 import "core:strings"
 
 // Outcome of a [paths] mutation. Lets the CLI handler tell a real change
@@ -34,6 +33,12 @@ handle_path_command :: proc(action: Action, args: []string) {
 	if !ensure_wayu_toml_exists() {
 		print_error_simple("Failed to create wayu.toml")
 		os.exit(EXIT_IOERR)
+	}
+	// Before `wayu init`: one "not initialized" error (exit 78) like alias/
+	// const, not a file-not-found plus a read error (OKAMI-237). `add`
+	// checks after validating its argument (bad input is reported first).
+	if action != .HELP && action != .UNKNOWN && action != .ADD && !check_wayu_initialized() {
+		os.exit(EXIT_CONFIG)
 	}
 
 	#partial switch action {
@@ -69,6 +74,9 @@ handle_path_command :: proc(action: Action, args: []string) {
 		if !os.exists(expanded) {
 			print_error("Path does not exist: %s", raw_path)
 			os.exit(EXIT_NOINPUT)
+		}
+		if !check_wayu_initialized() {
+			os.exit(EXIT_CONFIG)
 		}
 		// pre-hook only for an add that will really change wayu.toml
 		// (duplicates / bad names are reported by the write below).
@@ -783,7 +791,22 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 		}
 	}
 
-	fmt.println()
+	// External entries (in $PATH, not from wayu.toml): same rows as the
+	// table view, so --source external / --full agree with it (OKAMI-239).
+	if show_external {
+		for env_path in path_entries {
+			if _, is_wayu := wayu_set[env_path]; is_wayu { continue }
+			if !first_entry {
+				fmt.println(",")
+			}
+			exists_str := os.exists(env_path) ? "true" : "false"
+			path_j := json_escape(env_path); defer delete(path_j)
+			fmt.printf("    %c\"path\": \"%s\", \"source\": \"external\", \"exists\": %s%c", '{', path_j, exists_str, '}')
+			first_entry = false
+		}
+	}
+
+	if !first_entry { fmt.println() }
 	fmt.println("  ]")
 	fmt.println("}")
 }

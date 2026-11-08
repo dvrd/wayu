@@ -17,12 +17,12 @@ import "core:slice"
 import "core:c"
 import "core:c/libc"
 import "core:sys/posix"
-import "core:path/filepath"
 import "core:unicode"
 import "core:unicode/utf8"
 
 STDIN_FILENO :: 0
 STDOUT_FILENO :: 1
+STDERR_FILENO :: 2
 
 // ============================================================================
 // Terminal State Management

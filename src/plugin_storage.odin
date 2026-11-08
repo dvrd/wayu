@@ -918,28 +918,37 @@ print_plugins_json :: proc(config: ^PluginConfigJSON) {
 
 	fmt.println("{")
 	fmt.println(`  "plugins": [`)
-
 	for plugin, i in config.plugins {
-		if i > 0 { fmt.println(",") }
-		enabled_str := plugin.enabled ? "true" : "false"
-		// `{` is a struct-verb opener in Odin's fmt — emit via %c.
-		fmt.printf(
-			"    %c\"name\": \"%s\", \"enabled\": %s, \"priority\": %d, \"shell\": \"%s\", \"url\": \"%s\", \"commit\": \"%s\", \"installed_path\": \"%s\"%c",
-			'{',
-			plugin.name,
-			enabled_str,
-			plugin.priority,
-			shell_compat_to_string(plugin.shell),
-			plugin.url,
-			plugin.git.commit,
-			plugin.installed_path,
-			'}',
-		)
+		print_plugin_json_row(i, plugin.name, plugin.enabled, plugin.priority,
+			shell_compat_to_string(plugin.shell), plugin.url, plugin.git.commit, plugin.installed_path)
 	}
+	print_plugins_json_tail(len(config.plugins), enabled_count)
+}
 
-	fmt.println()
+// One element of the "plugins" array. Every string is JSON-escaped so a
+// quote/backslash/control char in a URL or path can't break the document
+// (OKAMI-239).
+@(private = "file")
+print_plugin_json_row :: proc(index: int, name: string, enabled: bool, priority: int,
+	shell, url, commit, installed_path: string) {
+	if index > 0 { fmt.println(",") }
+	name_j   := json_escape(name);           defer delete(name_j)
+	shell_j  := json_escape(shell);          defer delete(shell_j)
+	url_j    := json_escape(url);            defer delete(url_j)
+	commit_j := json_escape(commit);         defer delete(commit_j)
+	path_j   := json_escape(installed_path); defer delete(path_j)
+	// `{` is a struct-verb opener in Odin's fmt — emit via %c.
+	fmt.printf(
+		"    %c\"name\": \"%s\", \"enabled\": %s, \"priority\": %d, \"shell\": \"%s\", \"url\": \"%s\", \"commit\": \"%s\", \"installed_path\": \"%s\"%c",
+		'{', name_j, enabled ? "true" : "false", priority, shell_j, url_j, commit_j, path_j, '}',
+	)
+}
+
+@(private = "file")
+print_plugins_json_tail :: proc(count, enabled_count: int) {
+	if count > 0 { fmt.println() }
 	fmt.println("  ],")
-	fmt.printfln("  \"count\": %d,", len(config.plugins))
+	fmt.printfln("  \"count\": %d,", count)
 	fmt.printfln("  \"enabled\": %d", enabled_count)
 	fmt.println("}")
 }
@@ -1027,6 +1036,21 @@ handle_plugin_list :: proc(args: []string) {
 				delete(plugin.entry_file)
 			}
 			delete(config.plugins)
+		}
+
+		if wayu.json_output {
+			// Same shape as print_plugins_json; the legacy format has no
+			// priority (100) or commit.
+			fmt.println("{")
+			fmt.println(`  "plugins": [`)
+			enabled_count := 0
+			for plugin, i in config.plugins {
+				if plugin.enabled { enabled_count += 1 }
+				print_plugin_json_row(i, plugin.name, plugin.enabled, 100,
+					shell_compat_to_string(plugin.shell), plugin.url, "", plugin.installed_path)
+			}
+			print_plugins_json_tail(len(config.plugins), enabled_count)
+			return
 		}
 
 		if len(config.plugins) == 0 {

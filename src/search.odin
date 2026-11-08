@@ -161,8 +161,44 @@ handle_search_command :: proc(args: []string) {
 		return a.score > b.score
 	})
 
+	if wayu.json_output {
+		print_search_results_json(query, all_results[:])
+		return
+	}
+
 	// Display results grouped by type
 	print_search_results(query, all_results[:])
+}
+
+// print_search_results_json - `wayu search QUERY --json` (OKAMI-239).
+// Shape: {"query": "...", "results": [{"type": "path|alias|constant",
+// "name": ..., "value": ..., "match": "exact|prefix|...", "field":
+// "name|value", "score": N}, ...], "count": N}. Results are in score
+// order; constant values are masked like the text view.
+print_search_results_json :: proc(query: string, results: []SearchResult) {
+	query_j := json_escape(query); defer delete(query_j)
+	fmt.println("{")
+	fmt.printfln("  \"query\": \"%s\",", query_j)
+	fmt.println(`  "results": [`)
+	for r, i in results {
+		if i > 0 { fmt.println(",") }
+		type_str := "path"
+		switch r.spec_type {
+		case .PATH:     type_str = "path"
+		case .ALIAS:    type_str = "alias"
+		case .CONSTANT: type_str = "constant"
+		}
+		name_j  := json_escape(r.name);                           defer delete(name_j)
+		value_j := json_escape(mask_secret_value(r.name, r.value)); defer delete(value_j)
+		field   := "value" if r.matched_field == .VALUE else "name"
+		// `{` is a struct-verb opener in Odin's fmt — emit via %c.
+		fmt.printf("    %c\"type\": \"%s\", \"name\": \"%s\", \"value\": \"%s\", \"match\": \"%s\", \"field\": \"%s\", \"score\": %d%c",
+			'{', type_str, name_j, value_j, match_type_to_string_short(r.match_type), field, r.score, '}')
+	}
+	if len(results) > 0 { fmt.println() }
+	fmt.println("  ],")
+	fmt.printfln("  \"count\": %d", len(results))
+	fmt.println("}")
 }
 
 // search_toml_entries_by_name - Fuzzy search through TOML config entries

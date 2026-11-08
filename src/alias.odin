@@ -5,7 +5,6 @@
 package wayu
 import "core:fmt"
 import "core:os"
-import "core:slice"
 import "core:strings"
 import "core:sort"
 // Main handler for ALIAS commands.
@@ -111,13 +110,14 @@ list_toml_aliases :: proc() {
 		}
 	}
 
-	if len(entries) == 0 && len(external_aliases) == 0 {
-		print_info("No Aliases found")
+	// JSON first: an empty list is still a JSON document (OKAMI-239).
+	if wayu.json_output {
+		print_aliases_json(entries[:], external_aliases[:])
 		return
 	}
 
-	if wayu.json_output {
-		print_aliases_json(entries[:], external_aliases[:])
+	if len(entries) == 0 && len(external_aliases) == 0 {
+		print_info("No Aliases found")
 		return
 	}
 
@@ -248,7 +248,7 @@ print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
 
 	// Output wayu entries
 	if show_wayu || show_inactive {
-		for entry, i in entries {
+		for entry in entries {
 			is_active := true
 			if needs_env {
 				is_active = false

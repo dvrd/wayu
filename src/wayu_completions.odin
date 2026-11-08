@@ -8,90 +8,249 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:path/filepath"
 
-// One row per top-level command. wayu's own zsh, bash and fish completions
-// are all generated from this table, so they can't drift apart (OKAMI-234:
-// the three hand-written scripts each missed different commands).
-// `names[0]` is the canonical name; the rest are parser aliases. `actions`
-// are "word:description" (doctor lists its flags). tests/unit/
-// test_completions.odin checks every dispatchable Command has a row, every
-// name parses to that Command, and every name appears in all three scripts.
+// One row per top-level command: the single source for command dispatch
+// (cli_parser: name → Command, action word → Action), the per-command flag
+// allow-list (command_accepts_flag), --json support, the COMMANDS / FLAGS
+// sections of `wayu help`, and wayu's own zsh/bash/fish completions
+// (OKAMI-234, OKAMI-282). `names[0]` is the canonical name; the rest are
+// parser aliases. tests/unit/test_completions.odin checks every dispatchable
+// Command has a row, every name and action word parses as the row says, and
+// every offered word appears in all three completion scripts.
 WayuCommandSpec :: struct {
 	command: Command,
 	names:   []string,
 	desc:    string,
-	actions: []string,
+	// Action words (the word after the command). Empty: the command takes
+	// no action word and every later word is an argument. `-h`/`--help`
+	// always mean .HELP.
+	actions: []WayuActionSpec,
+	// Action when no action word is given.
+	default_action: Action,
+	// Flags the command's handler parses itself, beyond the global flags.
+	flags: []WayuFlagSpec,
+	// Actions whose output honors --json (OKAMI-239); --json anywhere else
+	// is a usage error.
+	json: bit_set[Action],
+	// Accept any dash token (version/help never write).
+	any_flag: bool,
+}
+
+// An action word. `desc == ""` marks a parser-only synonym (`config e`)
+// that help and completions don't offer.
+WayuActionSpec :: struct {
+	word:   string,
+	action: Action,
+	desc:   string,
+}
+
+// A command-specific flag. A `flag` ending in '=' matches as a prefix
+// (`--category=dev`). `desc == ""` hides it from help and completions.
+WayuFlagSpec :: struct {
+	flag: string,
+	desc: string,
 }
 
 WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
-	{.PATH, {"path"}, "Manage PATH entries", {
-		"add:Add a PATH entry", "remove:Remove a PATH entry", "rm:Remove a PATH entry",
-		"list:List PATH entries", "ls:List PATH entries", "get:Get a PATH entry",
-		"clean:Remove missing directories", "dedup:Remove duplicates", "help:Show help"}},
-	{.ALIAS, {"alias"}, "Manage shell aliases", {
-		"add:Add an alias", "remove:Remove an alias", "rm:Remove an alias",
-		"list:List aliases", "ls:List aliases", "get:Get alias value", "help:Show help"}},
-	{.CONSTANTS, {"constants", "const", "env"}, "Manage environment constants", {
-		"add:Add a constant", "remove:Remove a constant", "rm:Remove a constant",
-		"list:List constants", "ls:List constants", "get:Get constant value", "help:Show help",
-		"--reveal:Show secret values unmasked in list"}},
-	{.SEARCH, {"search", "find", "f"}, "Fuzzy search across all configs", {}},
-	{.COMPLETIONS, {"completions"}, "Manage shell completion scripts", {
-		"add:Add a completion script", "remove:Remove a completion", "rm:Remove a completion",
-		"list:List completions", "ls:List completions", "generate:Generate wayu's own completions",
-		"bash:Print bash completion for wayu", "fish:Print fish completion for wayu",
-		"zsh:Print zsh completion for wayu", "help:Show help"}},
-	{.BACKUP, {"backup"}, "Manage configuration backups", {
-		"list:List backups", "ls:List backups", "restore:Restore from backup",
-		"remove:Clean up old backups", "rm:Clean up old backups", "help:Show help"}},
-	{.PLUGIN, {"plugin"}, "Manage shell plugins", {
-		"add:Install a plugin", "remove:Remove a plugin", "rm:Remove a plugin",
-		"list:List installed plugins", "ls:List installed plugins", "get:Show plugin info",
-		"search:Browse popular plugins", "enable:Enable a plugin", "disable:Disable a plugin",
-		"priority:Set plugin load priority", "check:Check for updates", "update:Update plugins",
-		"help:Show help"}},
-	{.INIT, {"init"}, "Initialize wayu configuration", {"help:Show help"}},
-	{.MIGRATE, {"migrate"}, "Migrate shell config to wayu.toml", {"help:Show help"}},
-	{.CONFIG, {"config"}, "Manage configuration files", {
-		"edit:Open extra config in $EDITOR", "extend:Append to extra config",
-		"scan:Detect shell config", "help:Show help"}},
-	{.BUILD, {"build"}, "Compile wayu.toml into shell init files", {
-		"eval:Regenerate and print shell code", "turbo:Generate turbo file",
-		"profile:Profile startup", "clean:Clear the [tools] evalcache", "help:Show help"}},
-	{.EXPORT, {"export"}, "Generate turbo export file", {
-		"turbo:Generate turbo file", "eval:Output for eval", "list:Show formats",
-		"ls:Show formats", "help:Show help"}},
-	{.TOML, {"toml"}, "TOML configuration management", {
-		"validate:Validate wayu.toml", "convert:Convert to TOML", "show:Show config",
-		"keys:List keys", "help:Show help", "--reveal:Show secret values unmasked in show"}},
-	{.DOCTOR, {"doctor"}, "Health check and diagnostics", {
-		"--fix:Repair what can be repaired", "--json:Machine-readable output",
-		"--profile:Profile shell startup", "--optimize:Suggest optimizations", "--help:Show help"}},
-	{.TEMPLATE, {"template"}, "Configuration presets", {
-		"list:List templates", "ls:List templates", "apply:Apply a template", "help:Show help"}},
-	{.HOOKS, {"hooks"}, "Pre/post action hooks", {
-		"list:List hooks", "ls:List hooks", "edit:Edit hooks", "help:Show help"}},
-	{.FUNCTION, {"function", "functions", "func", "fn"}, "Manage custom shell functions", {
-		"add:Create a function in $EDITOR", "edit:Edit a function", "new:Create a function",
-		"list:List functions", "ls:List functions", "remove:Delete a function",
-		"rm:Delete a function", "delete:Delete a function", "help:Show help"}},
-	{.RELOAD, {"reload", "watch", "hot-reload"}, "Watch config files and regenerate init files", {}},
-	{.VERSION, {"version"}, "Show version", {}},
-	{.HELP, {"help"}, "Show help", {}},
+	{command = .PATH, names = {"path"}, desc = "Manage PATH entries", default_action = .LIST, json = {.LIST},
+	 actions = {
+		{"add", .ADD, "Add a PATH entry"}, {"remove", .REMOVE, "Remove a PATH entry"},
+		{"rm", .REMOVE, "Remove a PATH entry"}, {"list", .LIST, "List PATH entries"},
+		{"ls", .LIST, "List PATH entries"}, {"get", .GET, "Get a PATH entry"},
+		{"clean", .CLEAN, "Remove missing directories"}, {"dedup", .DEDUP, "Remove duplicates"},
+		{"help", .HELP, "Show help"}}},
+	{command = .ALIAS, names = {"alias"}, desc = "Manage shell aliases", default_action = .LIST, json = {.LIST},
+	 actions = {
+		{"add", .ADD, "Add an alias"}, {"remove", .REMOVE, "Remove an alias"},
+		{"rm", .REMOVE, "Remove an alias"}, {"list", .LIST, "List aliases"},
+		{"ls", .LIST, "List aliases"}, {"get", .GET, "Get alias value"}, {"help", .HELP, "Show help"}}},
+	{command = .CONSTANTS, names = {"constants", "const", "env"}, desc = "Manage environment constants",
+	 default_action = .LIST, json = {.LIST},
+	 actions = {
+		{"add", .ADD, "Add a constant"}, {"remove", .REMOVE, "Remove a constant"},
+		{"rm", .REMOVE, "Remove a constant"}, {"list", .LIST, "List constants"},
+		{"ls", .LIST, "List constants"}, {"get", .GET, "Get constant value"}, {"help", .HELP, "Show help"}},
+	 flags = {{"--reveal", "Show secret values unmasked in list"}}},
+	{command = .SEARCH, names = {"search", "find", "f"}, desc = "Fuzzy search across all configs",
+	 default_action = .LIST, json = {.LIST}},
+	{command = .COMPLETIONS, names = {"completions"}, desc = "Manage shell completion scripts", default_action = .LIST,
+	 actions = {
+		{"add", .ADD, "Add a completion script"}, {"remove", .REMOVE, "Remove a completion"},
+		{"rm", .REMOVE, "Remove a completion"}, {"list", .LIST, "List completions"},
+		{"ls", .LIST, "List completions"}, {"generate", .UPDATE, "Generate wayu's own completions"},
+		{"gen", .UPDATE, ""}, {"bash", .CHECK, "Print bash completion for wayu"},
+		{"fish", .GET, "Print fish completion for wayu"}, {"zsh", .TURBO, "Print zsh completion for wayu"},
+		{"help", .HELP, "Show help"}},
+	 flags = {{"--generate", ""}, {"-g", ""}}},
+	{command = .BACKUP, names = {"backup"}, desc = "Manage configuration backups", default_action = .LIST, json = {.LIST},
+	 actions = {
+		{"list", .LIST, "List backups"}, {"ls", .LIST, "List backups"},
+		{"restore", .RESTORE, "Restore from backup"}, {"remove", .REMOVE, "Clean up old backups"},
+		{"rm", .REMOVE, "Clean up old backups"}, {"help", .HELP, "Show help"}}},
+	{command = .PLUGIN, names = {"plugin"}, desc = "Manage shell plugins", default_action = .LIST, json = {.LIST},
+	 actions = {
+		{"add", .ADD, "Install a plugin"}, {"remove", .REMOVE, "Remove a plugin"},
+		{"rm", .REMOVE, "Remove a plugin"}, {"list", .LIST, "List installed plugins"},
+		{"ls", .LIST, "List installed plugins"}, {"get", .GET, "Show plugin info"},
+		{"search", .SEARCH, "Browse popular plugins"}, {"enable", .ENABLE, "Enable a plugin"},
+		{"disable", .DISABLE, "Disable a plugin"}, {"priority", .PRIORITY, "Set plugin load priority"},
+		{"check", .CHECK, "Check for updates"}, {"update", .UPDATE, "Update plugins"},
+		{"help", .HELP, "Show help"}},
+	 flags = {
+		{"--all", "Update all plugins"}, {"-a", ""},
+		{"--category", "Filter 'plugin search' by category"}, {"-c", ""}, {"--category=", ""},
+		{"--use", "Glob of files to load (plugin add)"}, {"--use=", ""}}},
+	{command = .INIT, names = {"init"}, desc = "Initialize wayu configuration"},
+	{command = .MIGRATE, names = {"migrate"}, desc = "Migrate shell config to wayu.toml",
+	 flags = {
+		{"--from", "Source shell (with --to)"}, {"--to", "Target shell (with --from)"},
+		{"--schema", "Upgrade a pre-3.x wayu.toml in place"}}},
+	{command = .CONFIG, names = {"config"}, desc = "Manage configuration files", default_action = .HELP,
+	 actions = {
+		{"edit", .UPDATE, "Open extra config in $EDITOR"}, {"extend", .ADD, "Append to extra config"},
+		{"e", .ADD, ""}, {"scan", .CHECK, "Detect shell config"}, {"s", .CHECK, ""},
+		{"detect", .CHECK, ""}, {"help", .HELP, "Show help"}},
+	 flags = {{"--fix", "Repair what 'config scan' found"}}},
+	{command = .BUILD, names = {"build"}, desc = "Compile wayu.toml into shell init files", default_action = .LIST,
+	 actions = {
+		{"eval", .EVAL, "Regenerate and print shell code"}, {"turbo", .TURBO, "Generate turbo file"},
+		{"profile", .CHECK, "Profile startup"}, {"clean", .CLEAN, "Clear the [tools] evalcache"},
+		{"help", .HELP, "Show help"}}},
+	{command = .EXPORT, names = {"export"}, desc = "Generate turbo export file", default_action = .TURBO,
+	 actions = {
+		{"turbo", .TURBO, "Generate turbo file"}, {"--turbo", .TURBO, ""},
+		{"eval", .EVAL, "Output for eval"}, {"--eval", .EVAL, ""},
+		{"check", .CHECK, "Check the turbo file is current"}, {"--check", .CHECK, ""},
+		{"list", .LIST, "Show formats"}, {"ls", .LIST, "Show formats"}, {"help", .HELP, "Show help"}},
+	 flags = {{"--turbo", ""}, {"--eval", ""}, {"--check", ""}}},
+	{command = .TOML, names = {"toml"}, desc = "TOML configuration management", default_action = .LIST,
+	 actions = {
+		{"validate", .CHECK, "Validate wayu.toml"}, {"convert", .UPDATE, "Convert to TOML"},
+		{"show", .GET, "Show config"}, {"keys", .LIST, "List keys"}, {"help", .HELP, "Show help"}},
+	 flags = {{"--reveal", "Show secret values unmasked in show"}}},
+	{command = .DOCTOR, names = {"doctor"}, desc = "Health check and diagnostics", default_action = .LIST, json = {.LIST},
+	 flags = {
+		{"--fix", "Repair what can be repaired"}, {"--profile", "Profile shell startup"},
+		{"--optimize", "Suggest optimizations"}}},
+	{command = .TEMPLATE, names = {"template"}, desc = "Configuration presets", default_action = .LIST,
+	 actions = {
+		{"list", .LIST, "List templates"}, {"ls", .LIST, "List templates"},
+		{"apply", .ADD, "Apply a template"}, {"help", .HELP, "Show help"}}},
+	{command = .HOOKS, names = {"hooks"}, desc = "Pre/post action hooks", default_action = .LIST,
+	 actions = {
+		{"list", .LIST, "List hooks"}, {"ls", .LIST, "List hooks"}, {"edit", .ADD, "Edit hooks"},
+		{"help", .HELP, "Show help"}}},
+	{command = .FUNCTION, names = {"function", "functions", "func", "fn"}, desc = "Manage custom shell functions",
+	 default_action = .LIST,
+	 actions = {
+		{"add", .ADD, "Create a function in $EDITOR"}, {"edit", .ADD, "Edit a function"},
+		{"new", .ADD, "Create a function"}, {"list", .LIST, "List functions"}, {"ls", .LIST, "List functions"},
+		{"remove", .REMOVE, "Delete a function"}, {"rm", .REMOVE, "Delete a function"},
+		{"delete", .REMOVE, "Delete a function"}, {"help", .HELP, "Show help"}}},
+	{command = .RELOAD, names = {"reload", "watch", "hot-reload"}, desc = "Watch config files and regenerate init files"},
+	{command = .VERSION, names = {"version"}, desc = "Show version", any_flag = true},
+	{command = .HELP, names = {"help"}, desc = "Show help", any_flag = true},
 }
 
-// Word before the first ':' of an "action:description" entry.
-@(private = "file")
-completion_word :: proc(entry: string) -> string {
-	if i := strings.index_byte(entry, ':'); i >= 0 { return entry[:i] }
-	return entry
+// Row for a command word (a name or alias), nil when there is none.
+find_command_spec_by_name :: proc(name: string) -> ^WayuCommandSpec {
+	for &spec in WAYU_COMMAND_SPECS {
+		for n in spec.names {
+			if n == name { return &spec }
+		}
+	}
+	return nil
 }
 
+// Row for a Command, nil for .UNKNOWN.
+find_command_spec :: proc(command: Command) -> ^WayuCommandSpec {
+	for &spec in WAYU_COMMAND_SPECS {
+		if spec.command == command { return &spec }
+	}
+	return nil
+}
+
+// Action for an action word of `spec` (`-h`/`--help` always .HELP);
+// .UNKNOWN when the command has no such word.
+find_spec_action :: proc(spec: ^WayuCommandSpec, word: string) -> Action {
+	if word == "-h" || word == "--help" { return .HELP }
+	for a in spec.actions {
+		if a.word == word { return a.action }
+	}
+	return .UNKNOWN
+}
+
+// Flags a command's handler parses itself (beyond the global flags in
+// cli_parser). `-h`/`--help` are accepted everywhere; version/help (and an
+// unknown command, reported as such) accept anything.
+command_accepts_flag :: proc(command: Command, arg: string) -> bool {
+	if arg == "-h" || arg == "--help" { return true }
+	spec := find_command_spec(command)
+	if spec == nil { return true }
+	if spec.any_flag { return true }
+	for f in spec.flags {
+		if f.flag == arg { return true }
+		if strings.has_suffix(f.flag, "=") && strings.has_prefix(arg, f.flag) { return true }
+	}
+	return false
+}
+
+// Whether `--json` means something for this command/action. Help and
+// unknown actions/commands report their own outcome, so they don't
+// reject it.
+command_supports_json :: proc(command: Command, action: Action) -> bool {
+	if action == .HELP || action == .UNKNOWN { return true }
+	spec := find_command_spec(command)
+	if spec == nil || spec.any_flag { return true }
+	return action in spec.json
+}
+
+// "path list, alias list, …": the commands that honor --json, for help.
+json_commands_summary :: proc(allocator := context.temp_allocator) -> string {
+	b := strings.builder_make(allocator)
+	for spec in WAYU_COMMAND_SPECS {
+		if spec.json == {} { continue }
+		if len(spec.actions) == 0 {
+			if strings.builder_len(b) > 0 { strings.write_string(&b, ", ") }
+			strings.write_string(&b, spec.names[0])
+			continue
+		}
+		for act in Action {
+			if act not_in spec.json { continue }
+			for a in spec.actions {
+				if a.action != act || len(a.desc) == 0 { continue }
+				if strings.builder_len(b) > 0 { strings.write_string(&b, ", ") }
+				fmt.sbprintf(&b, "%s %s", spec.names[0], a.word)
+				break
+			}
+		}
+	}
+	return strings.to_string(b)
+}
+
+// A word completions offer after a command: an action, a command flag, or
+// --json.
 @(private = "file")
-completion_desc :: proc(entry: string) -> string {
-	if i := strings.index_byte(entry, ':'); i >= 0 { return entry[i+1:] }
-	return ""
+CompletionWord :: struct {
+	word: string,
+	desc: string,
+}
+
+// Words offered after `spec`'s command (hidden synonyms left out).
+// Temp-allocated.
+@(private = "file")
+completion_words :: proc(spec: WayuCommandSpec) -> []CompletionWord {
+	words := make([dynamic]CompletionWord, context.temp_allocator)
+	for a in spec.actions {
+		if len(a.desc) > 0 { append(&words, CompletionWord{a.word, a.desc}) }
+	}
+	for f in spec.flags {
+		if len(f.desc) > 0 { append(&words, CompletionWord{f.flag, f.desc}) }
+	}
+	if spec.json != {} {
+		append(&words, CompletionWord{"--json", "Machine-readable output"})
+	}
+	return words[:]
 }
 
 // zsh completion for wayu (an fpath `_wayu` file). Allocated; caller deletes.
@@ -113,13 +272,14 @@ generate_wayu_completion_zsh :: proc(allocator := context.allocator) -> string {
 
 	strings.write_string(&b, "_wayu_actions() {\n    local -a actions\n    case \"$1\" in\n")
 	for spec in WAYU_COMMAND_SPECS {
-		if len(spec.actions) == 0 { continue }
+		words := completion_words(spec)
+		if len(words) == 0 { continue }
 		strings.write_string(&b, "        ")
 		strings.write_string(&b, strings.join(spec.names, "|", context.temp_allocator))
 		strings.write_string(&b, ") actions=(")
-		for a in spec.actions {
+		for w in words {
 			strings.write_byte(&b, ' ')
-			strings.write_string(&b, q(a))
+			strings.write_string(&b, q(fmt.tprintf("%s:%s", w.word, w.desc)))
 		}
 		strings.write_string(&b, " ) ;;\n")
 	}
@@ -197,13 +357,14 @@ generate_wayu_completion_bash :: proc(allocator := context.allocator) -> string 
 	strings.write_string(&b, " --help --version --dry-run --yes --no-color --tui --shell\"\n")
 	strings.write_string(&b, "    elif [ \"$COMP_CWORD\" -eq 2 ]; then\n        case \"${COMP_WORDS[1]}\" in\n")
 	for spec in WAYU_COMMAND_SPECS {
-		if len(spec.actions) == 0 { continue }
+		words := completion_words(spec)
+		if len(words) == 0 { continue }
 		strings.write_string(&b, "            ")
 		strings.write_string(&b, strings.join(spec.names, "|", context.temp_allocator))
 		strings.write_string(&b, ") words=\"")
-		for a, i in spec.actions {
+		for w, i in words {
 			if i > 0 { strings.write_byte(&b, ' ') }
-			strings.write_string(&b, completion_word(a))
+			strings.write_string(&b, w.word)
 		}
 		strings.write_string(&b, "\" ;;\n")
 	}
@@ -242,14 +403,15 @@ generate_wayu_completion_fish :: proc(allocator := context.allocator) -> string 
 		}
 	}
 	for spec in WAYU_COMMAND_SPECS {
-		if len(spec.actions) == 0 { continue }
+		words := completion_words(spec)
+		if len(words) == 0 { continue }
 		cond := fmt.tprintf("__fish_seen_subcommand_from %s", strings.join(spec.names, " ", context.temp_allocator))
 		fmt.sbprintf(&b, "\n# %s\n", spec.names[0])
-		for a in spec.actions {
+		for w in words {
 			fmt.sbprintf(&b, "complete -c wayu -n %s -a %s -d %s\n",
 				escape_fish_string(cond, context.temp_allocator),
-				escape_fish_string(completion_word(a), context.temp_allocator),
-				escape_fish_string(completion_desc(a), context.temp_allocator))
+				escape_fish_string(w.word, context.temp_allocator),
+				escape_fish_string(w.desc, context.temp_allocator))
 		}
 	}
 	strings.write_string(&b, `
@@ -762,8 +924,8 @@ list_completions :: proc() {
 		defer delete(file_path)
 
 		first_line := ""
-		content, read_err := os.read_entire_file(file_path, context.allocator)
-		if read_err == nil {
+		content, content_err := os.read_entire_file(file_path, context.allocator)
+		if content_err == nil {
 			defer delete(content)
 			// Use temp allocator for lines array since it's only needed during this iteration
 			lines := strings.split(string(content), "\n", context.temp_allocator)
