@@ -123,6 +123,15 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - fish: `${NAME}`, a bare `$` or `$$` no longer make core.fish fail to parse
   (fish then loaded none of wayu's env, PATH or aliases). `${NAME:-x}` has no
   fish equivalent and is kept literal in fish.
+- zsh/bash: `${NAME<op>...}` expands only with `-` `=` `+` `?` (each also
+  with a leading `:`), `#`, `%` or `/` (e.g. `${X:-d}`, `${X#pre}`,
+  `${X/a/b}`); `${#NAME}` only without an operator. Everything else is now
+  literal, e.g. `${X@P}` (bash ≥ 4.4 ran a `$(...)` stored in X),
+  `${X[Y]}` / `${X:Y}` (bash evaluated Y arithmetically, running a
+  `$(...)` hidden in Y's value), `${X: -2}`, `${X^}` and zsh modifiers such
+  as `${HOME:h}` (zsh aborted core.zsh on an unknown modifier).
+- fish: `$NAME` followed by a non-ASCII letter (`$HOMEé`) no longer reads as
+  the longer variable name `HOMEé`.
 
 **functions/**
 - fish now sources `functions/*.fish` (core.fish never loaded them).
@@ -130,6 +139,13 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `functions/*.zsh` / `*.fish` (other shells' files from `wayu function add`
   were parse errors at every startup). Files without those extensions are
   still sourced by zsh and bash.
+
+**Completions (zsh)**
+- core.zsh also rebuilds `.zcompdump` when the list of files in the
+  completions dir changed, so a completion added in the same second as the
+  dump is no longer missed. The list seen at the last rebuild is kept in
+  `${ZDOTDIR:-$HOME}/.zcompdump.wayu`; the first shell after upgrading
+  rebuilds the dump once.
 
 **migrate --schema**
 - Values it can't convert exactly (multi-line `"""` strings, arrays, inline
@@ -146,6 +162,11 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - `doctor --fix` exits `78` and changes nothing when a key it would drop is
   repeated in `[paths]` (`a = "/x"` twice); it used to delete every line of
   that key, the kept entry included.
+- bash: new warning `bash PROMPT_COMMAND` when a bash startup file replaces
+  `PROMPT_COMMAND` after the line that loads wayu (it dropped the
+  `_wayu_paths_sync` hook, so open shells missed `wayu path add/rm`). Shown
+  only when such a line exists; exit status unchanged (warnings never exit
+  `78`).
 
 **Backups**
 - `wayu backup restore` waits for other wayu commands (config lock) instead

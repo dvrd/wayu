@@ -39,6 +39,16 @@ test_shell_double_quote_env_dollar_forms :: proc(t: ^testing.T) {
 		{`${A:-${B}}/x`, `"${A:-${B}}/x"`},                // nested
 		{`${#HOME}`, `"${#HOME}"`},
 		{`a$%b`, `"a\$%b"`},
+		// Operators that evaluate text stay literal (OKAMI-174).
+		{`${X@P}`, `"\${X@P}"`},                           // bash 4.4+: prompt-expands X, runs $(...)
+		{`${X[Y]}`, `"\${X[Y]}"`},                         // subscript: arithmetic on Y's value
+		{`${X:Y}`, `"\${X:Y}"`},                           // substring: arithmetic; zsh modifier error
+		{`${X: -1}`, `"\${X: -1}"`},
+		{`${X^}`, `"\${X^}"`},                             // bash 4 only; zsh bad substitution
+		{`${#X:-a}`, `"\${#X:-a}"`},
+		{`${A:-${B@P}}`, `"${A:-\${B@P}}"`},               // nested body checked too
+		{`${X=a}${X:=a}${X+a}${X:+a}${X?a}${X:?a}`, `"${X=a}${X:=a}${X+a}${X:+a}${X?a}${X:?a}"`},
+		{`${X#a}${X##a}${X%a}${X%%a}${X/a/b}${X//a/b}`, `"${X#a}${X##a}${X%a}${X%%a}${X/a/b}${X//a/b}"`},
 	}
 	for c in cases {
 		got := wayu.shell_double_quote_env(c.src, context.temp_allocator)
@@ -53,6 +63,7 @@ test_fish_double_quote_env_dollar_forms :: proc(t: ^testing.T) {
 		{`${HOME}/go`, `"$HOME/go"`},          // fish rejects ${ at parse time
 		{`$HOME[1]x`, `"$HOME""[1]x"`},        // no fish index
 		{`${HOME}bin`, `"$HOME""bin"`},        // no longer name
+		{`$HOMEé/${HOME}本`, `"$HOME""é/$HOME""本"`}, // fish names take non-ASCII letters
 		{`pa${ss`, `"pa\${ss"`},
 		{`a$`, `"a\$"`},
 		{`$$x$1`, `"\$$x\$1"`},

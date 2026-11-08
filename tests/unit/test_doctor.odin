@@ -17,6 +17,32 @@ test_doctor_rc_loads_wayu :: proc(t: ^testing.T) {
 	testing.expect(t, wayu.rc_loads_wayu(`source ~/.config/wayu/turbo.zsh`, turbo_only = true))
 }
 
+// OKAMI-176: a later rc line replacing PROMPT_COMMAND drops _wayu_paths_sync.
+@(test)
+test_doctor_rc_prompt_command_overwrites :: proc(t: ^testing.T) {
+	rc := `PROMPT_COMMAND="before"
+source "$HOME/.config/wayu/init.bash"
+PROMPT_COMMAND="history -a"
+export PROMPT_COMMAND='x'
+PROMPT_COMMAND="x;$PROMPT_COMMAND"
+PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND;}y"
+PROMPT_COMMAND+=";z"
+# PROMPT_COMMAND=commented
+MY_PROMPT_COMMAND=other
+echo "$PROMPT_COMMAND=shown"
+unset PROMPT_COMMAND
+declare -a PROMPT_COMMAND=(a b)
+`
+	got := wayu.rc_prompt_command_overwrites(rc, context.temp_allocator)
+	want := []int{3, 4, 11, 12}
+	testing.expectf(t, len(got) == len(want), "got %v, want %v", got, want)
+	for n, i in want {
+		if i < len(got) { testing.expect_value(t, got[i], n) }
+	}
+	// No wayu line: nothing to drop.
+	testing.expect_value(t, len(wayu.rc_prompt_command_overwrites("PROMPT_COMMAND=x\n", context.temp_allocator)), 0)
+}
+
 @(test)
 test_doctor_expand_path_uses_toml_env :: proc(t: ^testing.T) {
 	consts := []wayu.ConfigEntry{{type = .CONSTANT, name = "WAYU_DOC_TOOLS", value = "/opt/tools"}}

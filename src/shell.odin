@@ -367,7 +367,7 @@ write_env_dq_body :: proc(sb: ^strings.Builder, s: string) {
                 lead := 1 if len(inner) > 0 && inner[0] == '#' else 0
                 n := var_name_prefix_len(inner[lead:])
                 close := matching_brace(inner)
-                if n > 0 && close >= lead + n {
+                if n > 0 && close >= lead + n && env_brace_op_is_safe(inner[lead+n:close], lead == 1) {
                     strings.write_string(sb, "${")
                     strings.write_string(sb, inner[:lead+n])
                     write_env_dq_body(sb, inner[lead+n:close])
@@ -383,6 +383,31 @@ write_env_dq_body :: proc(sb: ^strings.Builder, s: string) {
         strings.write_byte(sb, c)
         i += 1
     }
+}
+
+// The text after NAME inside `${NAME...}` may expand only when it starts
+// with an operator that is valid in both zsh and bash and never evaluates
+// text: default/assign/alternate/error (`-` `=` `+` `?`, with or without a
+// leading `:`), prefix/suffix removal (`#` `%`) and substitution (`/`).
+// Everything else stays literal: bash `${X@P}` (4.4+) prompt-expands X's
+// value and runs a `$(...)` stored in it; `${X[Y]}` and `${X:Y}` evaluate Y
+// arithmetically, which runs `$(...)` hidden in Y's value (bash), and
+// `${X:Y}` / `${X^}` abort sourcing in zsh (unknown modifier / bad
+// substitution). `${#NAME}` takes no operator.
+env_brace_op_is_safe :: proc(body: string, is_length: bool) -> bool {
+    if len(body) == 0 { return true }
+    if is_length { return false }
+    op := body[0]
+    if op == ':' {
+        if len(body) < 2 { return false }
+        op = body[1]
+        return op == '-' || op == '=' || op == '+' || op == '?'
+    }
+    switch op {
+    case '-', '=', '+', '?', '#', '%', '/':
+        return true
+    }
+    return false
 }
 
 // Length of the variable name ([A-Za-z_][A-Za-z0-9_]*) at the start of s, or 0.
@@ -438,11 +463,12 @@ shell_double_quote_literal :: proc(s: string, allocator := context.allocator) ->
 
 // Double-quote an env value for fish keeping `$VAR` expansion. Inside fish
 // double quotes only `\"`, `\$`, `\\` are escapes. `$NAME` and `${NAME}`
-// expand (as `$NAME`, followed by `""` when a name character or `[` comes
-// next, so fish doesn't read a longer name or an index). Every other `$` is
-// literal: fish rejects `${`, `$$`, `$1`, a trailing `$` … at parse time,
-// which used to make the whole core.fish fail to load, and `$(` is command
-// substitution since fish 3.4. `${NAME:-x}` has no fish equivalent: literal.
+// expand (as `$NAME`, followed by `""` when a name character, a non-ASCII
+// byte or `[` comes next, so fish doesn't read a longer name or an index).
+// Every other `$` is literal: fish rejects `${`, `$$`, `$1`, a trailing `$`
+// … at parse time, which used to make the whole core.fish fail to load, and
+// `$(` is command substitution since fish 3.4. `${NAME:-x}` has no fish
+// equivalent: literal.
 fish_double_quote_env :: proc(s: string, allocator := context.allocator) -> string {
     sb := strings.builder_make(allocator)
     strings.write_byte(&sb, '"')
@@ -469,7 +495,8 @@ fish_double_quote_env :: proc(s: string, allocator := context.allocator) -> stri
             }
             strings.write_byte(&sb, '$')
             strings.write_string(&sb, s[start:start+n])
-            if end < len(s) && (var_name_prefix_len(s[end:end+1]) > 0 || (s[end] >= '0' && s[end] <= '9') || s[end] == '[') {
+            // fish names also take non-ASCII letters (`$Xé` reads `Xé`).
+            if end < len(s) && (var_name_prefix_len(s[end:end+1]) > 0 || (s[end] >= '0' && s[end] <= '9') || s[end] == '[' || s[end] >= 0x80) {
                 strings.write_string(&sb, `""`)
             }
             i = end
