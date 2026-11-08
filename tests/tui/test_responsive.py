@@ -22,6 +22,8 @@ import fcntl
 import termios
 import shutil
 import tempfile
+import codecs
+import signal
 
 import pyte
 
@@ -76,6 +78,10 @@ class TUISession:
         self.pid = pid
         self.screen = pyte.Screen(cols, rows)
         self.stream = pyte.Stream(self.screen)
+        # Incremental decoder: a read() can end mid UTF-8 sequence (box
+        # glyphs are 3 bytes); decoding chunks separately corrupts the screen.
+        self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        self.raw = bytearray()
         # Pre-send DSR response for the initial size probe
         self._send_dsr_response()
 
@@ -102,7 +108,8 @@ class TUISession:
                         if b"\x1b[6n" in data:
                             dsr = f"\x1b[{self.rows};{self.cols}R".encode()
                             os.write(self.master_fd, dsr)
-                        self.stream.feed(data.decode("utf-8", errors="replace"))
+                        self.raw += data
+                        self.stream.feed(self.decoder.decode(data))
                         total += len(data)
                 except OSError:
                     break
@@ -198,6 +205,28 @@ def assert_box_aligned(session, context=""):
     )
 
 
+def assert_box_sides(session, context=""):
+    """Assert every row between the box's top and bottom edges keeps both
+    side borders in the corner columns (list/table rows must not paint over
+    the right border)."""
+    lines = session.screen.display
+    top = next((i for i, l in enumerate(lines) if "╭" in l), None)
+    bottom = next((i for i, l in enumerate(lines) if "╰" in l), None)
+    if top is None or bottom is None:
+        return AssertResult(False, f"No box found{context}")
+    left = lines[top].index("╭")
+    right = lines[top].index("╮") if "╮" in lines[top] else None
+    if right is None:
+        return AssertResult(False, f"No top-right corner{context}")
+    bad = [i for i in range(top + 1, bottom)
+           if len(lines[i]) <= right or lines[i][left] != "│" or lines[i][right] != "│"]
+    if not bad:
+        return AssertResult(True)
+    return AssertResult(False,
+        f"Side border missing on rows {bad}{context}\n" +
+        "\n".join(f"  {i:2}: '{lines[i].rstrip()}'" for i in bad[:5]))
+
+
 # ── Test Runner ─────────────────────────────────────────────────────────────
 
 results = []
@@ -271,6 +300,8 @@ def test_path_view(size_name, cols, rows):
 
         test(f"{size_name}/path_view/box_aligned",
              assert_box_aligned(s, f" PATH view {cols}x{rows}"))
+        test(f"{size_name}/path_view/box_sides",
+             assert_box_sides(s, f" PATH view {cols}x{rows}"))
 
         # Footer should have Filter/Add/Back keywords
         has_footer = any(kw in snap for kw in ["Filter", "Add", "Back"])
@@ -304,6 +335,10 @@ def test_alias_view(size_name, cols, rows):
 
         test(f"{size_name}/alias_view/box_aligned",
              assert_box_aligned(s, f" Alias view {cols}x{rows}"))
+        # Let the alias rows (loaded via `$SHELL -i -c alias`) arrive.
+        s.wait_for(lambda snap: "ll" in snap and "gs" in snap, timeout=TIMEOUT_KEY)
+        test(f"{size_name}/alias_view/box_sides",
+             assert_box_sides(s, f" Alias view {cols}x{rows}"))
     finally:
         s.kill()
 
@@ -379,6 +414,58 @@ def test_live_resize():
         s.kill()
 
 
+# ── Test: delete through a filtered selection ──────────────────────────────
+
+def test_filtered_delete():
+    """Selection maps through the filter's index list: deleting the only
+    match of `/gs` removes `gs`, never the unfiltered row 0 (`ll`)."""
+    print(f"\n── Filtered delete ──")
+    toml_path = os.path.join(os.environ["HOME"], ".config", "wayu", "wayu.toml")
+    s = TUISession(80, 24)
+    try:
+        s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+        s.send(b"j"); s.read(timeout=0.2)
+        s.send(b"l")
+        s.wait_for(lambda snap: "ALIASES" in snap and "gs" in snap, timeout=TIMEOUT_KEY)
+        s.send(b"/"); s.read(timeout=0.2)
+        s.send(b"gs")
+        s.wait_for(lambda snap: "(1/" in snap, timeout=TIMEOUT_KEY)
+        s.send(b"\r"); s.read(timeout=0.2)
+        s.send(b"d")
+        ok = s.wait_for(lambda snap: "DELETE CONFIRMATION" in snap, timeout=TIMEOUT_KEY)
+        test("filtered_delete/confirm_names_match",
+             AssertResult(ok and "Alias: gs" in s.snapshot(), f"confirm dialog not for gs\n{s.snapshot()}"))
+        s.send(b"y")
+        s.wait_for(lambda snap: "Removed" in snap, timeout=TIMEOUT_KEY)
+        content = open(toml_path).read()
+        test("filtered_delete/removed_match",
+             AssertResult("gs =" not in content and "ll =" in content, f"wayu.toml after delete:\n{content}"))
+    finally:
+        s.kill()
+        with open(toml_path, "w") as f:
+            f.write(FIXTURE_TOML)
+
+
+# ── Test: terminal restored when killed ────────────────────────────────────
+
+def test_sigterm_restores_terminal():
+    print(f"\n── SIGTERM restore ──")
+    s = TUISession(80, 24)
+    try:
+        s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+        os.kill(s.pid, signal.SIGTERM)
+        s.read(timeout=0.5)
+        tail = bytes(s.raw[-64:])
+        test("sigterm/leaves_alt_screen",
+             AssertResult(tail.endswith(b"\x1b[?25h\x1b[?1049l"), f"output tail: {tail!r}"))
+        _, status = os.waitpid(s.pid, 0)
+        test("sigterm/dies_by_signal",
+             AssertResult(os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGTERM,
+                          f"wait status {status}"))
+    finally:
+        s.kill()
+
+
 # ── Main ────────────────────────────────────────────────────────────────────
 
 FIXTURE_TOML = """[paths]
@@ -437,6 +524,10 @@ def run_all():
 
     # Subprocesses must not read the TUI's terminal
     test_alias_view_tty_reading_rc()
+
+    # Filter index mapping + terminal restore
+    test_filtered_delete()
+    test_sigterm_restores_terminal()
 
     # Summary
     passed = sum(1 for r in results if r.passed)

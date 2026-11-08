@@ -158,8 +158,9 @@ render_list_item :: proc(
 ) {
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
-	// Clear row
-	right_edge := screen.width - BORDER_RIGHT_WIDTH
+	// Clear the row inside the box only: the box's right border sits at
+	// column screen.width - BORDER_HORIZONTAL_TOTAL and must survive.
+	right_edge := screen.width - BORDER_HORIZONTAL_TOTAL
 	for clear_x in header_x..<right_edge {
 		screen_set_cell(screen, clear_x, y, Cell{char = ' '})
 	}
@@ -168,7 +169,7 @@ render_list_item :: proc(
 	glyph_w := visual_width(glyph)
 	text_offset := glyph_w + 1 if glyph_w > 0 else 0
 
-	available_width := screen.width - text_x - BORDER_RIGHT_WIDTH - text_offset
+	available_width := min(max_width, right_edge - text_x) - text_offset
 	display := truncate_text(text, max(0, available_width))
 
 	if is_separator {
@@ -273,11 +274,10 @@ render_table_row :: proc(
 	text_x := x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 	value_x := text_x + key_col_width + COLUMN_GAP
 
-	// Clear the entire line width to prevent scroll overlap artifacts
-	// Clear from just after the left border to the screen right edge
-	// Start at position 2 to preserve the left border at position 1
-	// Use a distinct cell state (empty colors) to ensure diff detection
-	for clear_x in 2..<screen.width {
+	// Clear the row between the box borders to prevent scroll overlap
+	// artifacts. Start at position 2 to preserve the left border at position 1
+	// and stop before the right border at screen.width - BORDER_HORIZONTAL_TOTAL.
+	for clear_x in 2..<screen.width - BORDER_HORIZONTAL_TOTAL {
 		screen_set_cell(screen, clear_x, y, Cell{char = ' ', fg = "", bg = "", bold = false, dim = false})
 	}
 
