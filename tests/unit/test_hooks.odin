@@ -223,3 +223,47 @@ test_hooks_skipped_in_dry_run :: proc(t: ^testing.T) {
 	wayu.hook_pre_path_add("/x")
 	testing.expect(t, !os.exists(log_path), "hooks must not run under --dry-run")
 }
+
+// OKAMI-186: the alias/constant hook procs are live — wired into the specs
+// the generic entry handlers call. Every spec hook must be set and fire its
+// hooks.conf key with {name}/{value} filled in.
+@(test)
+test_spec_hooks_are_wired_and_fire :: proc(t: ^testing.T) {
+	tmp := test_tmp("wayu_test_hooks_specs")
+	os.remove_all(tmp)
+	testing.expect(t, os.make_directory(tmp) == nil)
+	defer os.remove_all(tmp)
+
+	saved_config := wayu.wayu.config
+	wayu.wayu.config = tmp
+	defer wayu.wayu.config = saved_config
+
+	log_path := fmt.tprintf("%s/hook.log", tmp)
+	keys := [?]string{
+		"pre_alias_add", "post_alias_add", "pre_alias_remove", "post_alias_remove",
+		"pre_constant_add", "post_constant_add", "pre_constant_remove", "post_constant_remove",
+	}
+	b := strings.builder_make(context.temp_allocator)
+	for k in keys {
+		fmt.sbprintf(&b, "%s = echo %s:{{name}}={{value}} >> %s\n", k, k, log_path)
+	}
+	testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/hooks.conf", tmp), transmute([]byte)strings.to_string(b)))
+
+	specs := [?]^wayu.ConfigEntrySpec{&wayu.ALIAS_SPEC, &wayu.CONSTANTS_SPEC}
+	for s in specs {
+		testing.expect(t, s.hook_pre_add != nil && s.hook_post_add != nil &&
+			s.hook_pre_remove != nil && s.hook_post_remove != nil, "spec hooks must be wired")
+		s.hook_pre_add("n", "v")
+		s.hook_post_add("n", "v")
+		s.hook_pre_remove("n", "")
+		s.hook_post_remove("n", "")
+	}
+
+	content, ok := wayu.safe_read_file(log_path)
+	testing.expect(t, ok, "hooks should have written the log")
+	defer if ok { delete(content) }
+	for k in keys {
+		testing.expectf(t, strings.contains(string(content), fmt.tprintf("%s:n=", k)), "%s should fire", k)
+	}
+	testing.expect(t, strings.contains(string(content), "pre_alias_add:n=v"), "{value} filled on add")
+}

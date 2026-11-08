@@ -128,7 +128,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/migrate_parse.odin` | Legacy file parser: each line → entry or listed `file:line` + reason |
 | `src/shell_words.odin` | Exact POSIX/fish shell-word tokenizer (quotes, escapes, expandability) |
 | `src/validation.odin` | Input validation + error handling |
-| `src/hooks.odin` | Pre/post operation hook procs (stubs assigned to ConfigEntrySpec) |
+| `src/hooks.odin` | hooks.conf loading + execution; live pre/post hook procs (ConfigEntrySpec, path, plugin add, export) |
 | `src/hot_reload.odin` | `wayu reload`/`watch`: file watcher, debounced core regeneration |
 | `src/tui_core.odin` | TUI main loop, state machine, data loading, render orchestrator |
 | `src/tui_views.odin` | TUI view renderers (list, overlays, cache, handlers, hooks, plugins, settings) |
@@ -230,5 +230,4 @@ These are acknowledged incomplete features — do not add workarounds, implement
 - `wayu build profile`: profiling not yet implemented
 - `src/fuzzy.odin`: interactive_select is alive; FuzzyView-based full-screen finder removed as dead code
 - Fish shell: completions and templates wired; `--shell fish` flag fixed in init command
-- `src/hooks.odin`: hook procs are no-op stubs assigned to ConfigEntrySpec function pointers
 - `src/tui_views.odin`: hooks and settings views render minimal placeholder content
