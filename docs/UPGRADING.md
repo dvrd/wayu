@@ -167,6 +167,19 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `_wayu_paths_sync` hook, so open shells missed `wayu path add/rm`). Shown
   only when such a line exists; exit status unchanged (warnings never exit
   `78`).
+- `shell configuration` / `Sync status`: only a line that runs `source`,
+  `.` or `eval` counts as loading wayu; a line that just mentions the file
+  (`alias e='vim ~/.config/wayu/init.zsh'`) no longer passes.
+- `Sync status` now compares the `[paths]` entries with the `$PATH` doctor
+  runs in: OK when all are present, INFO "N of M PATH entries not in this
+  shell's $PATH" otherwise (it used to claim "All wayu entries are loaded"
+  from the rc text alone).
+- A `[paths]` entry using an environment variable whose value is relative
+  (`$FOO/bin` with `FOO=rel`) counts as unresolved, never missing.
+- `backups`: a missing backup directory (fresh install) is INFO "No backups
+  yet", not a warning.
+- Dependencies: checks `git` plus the configured shell (`zsh`, `bash` or
+  `fish`) instead of always `zsh`.
 
 **Backups**
 - `wayu backup restore` waits for other wayu commands (config lock) instead

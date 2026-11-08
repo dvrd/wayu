@@ -621,20 +621,42 @@ rc_active_code :: proc(line: string) -> string {
 	return trimmed
 }
 
-// True when an active (non-comment) line of `content` loads wayu: it names
-// wayu (any case, so `$WAYU/init.zsh` counts) and sources an init/turbo file
-// or evals wayu output (`eval "$(wayu build eval)"`). With `turbo_only`,
-// only a turbo.zsh / wayu-turbo reference counts.
+// True when an active (non-comment) line of `content` loads wayu: it runs
+// `source` / `.` / `eval` as a command, names wayu (any case, so
+// `$WAYU/init.zsh` counts) and sources an init/turbo file or evals wayu
+// output (`eval "$(wayu build eval)"`). A line that merely mentions the file
+// (`alias e='vim ~/.config/wayu/init.zsh'`) does not count. With
+// `turbo_only`, only a turbo.zsh / wayu-turbo reference counts.
 rc_loads_wayu :: proc(content: string, turbo_only := false) -> bool {
 	it := make_line_iter(content)
 	for line in line_iter_next(&it) {
 		code := rc_active_code(line)
-		if len(code) == 0 { continue }
+		if len(code) == 0 || !rc_runs_loader(code) { continue }
 		lower := strings.to_lower(code, context.temp_allocator)
 		if !strings.contains(lower, "wayu") { continue }
 		if strings.contains(lower, "turbo") { return true }
 		if turbo_only { continue }
 		if strings.contains(lower, "init.") || strings.contains(lower, "eval") { return true }
+	}
+	return false
+}
+
+// True when `code` runs `source`, `.` or `eval` as a command word: first on
+// the line or after `;`, `&&`, `||`, `then`, `do`, `else`, `{` (so
+// `[ -f x ] && source x` counts; `alias s='source x'` does not).
+@(private = "file")
+rc_runs_loader :: proc(code: string) -> bool {
+	at_command := true
+	for w in strings.fields(code, context.temp_allocator) {
+		if at_command && (w == "source" || w == "." || w == "eval" || strings.has_prefix(w, "eval\"") || strings.has_prefix(w, "eval'")) {
+			return true
+		}
+		switch w {
+		case ";", "&&", "||", "then", "do", "else", "{":
+			at_command = true
+		case:
+			at_command = strings.has_suffix(w, ";") || strings.has_suffix(w, "&&") || strings.has_suffix(w, "||")
+		}
 	}
 	return false
 }
@@ -880,6 +902,7 @@ DoctorPathScan :: struct {
 	missing:    bool, // directory doesn't exist (after $VAR / ~ expansion)
 	duplicate:  bool, // expands to the same dir as an earlier entry
 	unresolved: bool, // uses a variable set neither in wayu.toml [env] nor the environment, or is relative (cwd-dependent)
+	expanded:   string, // the directory the shell would add ("" when unresolved)
 }
 
 @(private = "file")
@@ -924,6 +947,14 @@ doctor_expand_path :: proc(path: string, consts: []ConfigEntry) -> string {
 				strings.write_string(&b, c.value)
 				replaced = true
 				break
+			}
+		}
+		if !replaced && len(name) > 0 {
+			// Substitute environment variables here too, so the relative
+			// check below sees their values (`FOO=rel` for `$FOO/bin`).
+			if v, found := os.lookup_env(name, context.temp_allocator); found && len(v) > 0 {
+				strings.write_string(&b, v)
+				replaced = true
 			}
 		}
 		if !replaced { strings.write_string(&b, path[start:i]) }
@@ -972,6 +1003,7 @@ doctor_scan_toml_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPa
 			append(&scan, s)
 			continue
 		}
+		s.expanded = expanded
 		s.missing = !os.exists(expanded)
 		if expanded in seen {
 			s.duplicate = true
@@ -1097,10 +1129,11 @@ check_backups :: proc(results: ^[dynamic]CheckResult) {
 	backup_dir := fmt.aprintf("%s/backup", wayu.data, allocator = get_doctor_allocator())
 
 	if !os.exists(backup_dir) {
+		// Normal on a fresh install: the directory appears with the first write.
 		append(results, CheckResult{
 			name    = clone_arena("backups"),
-			status  = .WARNING,
-			message = clone_arena("Backup directory not found"),
+			status  = .INFO,
+			message = clone_arena("No backups yet (one is made before the first change)"),
 			fixable = false,
 		})
 		return
@@ -1209,8 +1242,16 @@ check_turbo_export :: proc(results: ^[dynamic]CheckResult) {
 // Check 8: dependencies
 check_dependencies :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	deps := []string{"git", "zsh"}
 	arena_alloc := get_doctor_allocator()
+	// git (plugins) plus the shell wayu generates init code for.
+	deps := make([dynamic]string, allocator = arena_alloc)
+	append(&deps, "git")
+	switch wayu.shell {
+	case .ZSH:     append(&deps, "zsh")
+	case .BASH:    append(&deps, "bash")
+	case .FISH:    append(&deps, "fish")
+	case .UNKNOWN:
+	}
 
 	for dep in deps {
 		found := check_command_exists(dep)
@@ -1259,14 +1300,38 @@ check_sync_status :: proc(results: ^[dynamic]CheckResult) {
 	}
 
 	found_in, _ := doctor_find_wayu_source()
+	alloc := get_doctor_allocator()
 
 	sync_msg := ""
 	sync_status := CheckStatus.OK
-	if len(found_in) > 0 {
-		sync_msg = clone_arena("All wayu entries are loaded in current shell")
-	} else {
+	if len(found_in) == 0 {
 		sync_msg = clone_arena("wayu is not loaded by any startup file - see 'shell configuration' above")
 		sync_status = .WARNING
+	} else {
+		// Compare wayu.toml [paths] (existing, resolvable dirs) with the
+		// $PATH doctor was started with.
+		scan, scan_ok, _ := doctor_scan_toml_paths(alloc)
+		env_path := os.get_env("PATH", alloc)
+		active := make(map[string]bool, allocator = alloc)
+		for dir in strings.split(env_path, ":", alloc) { active[dir] = true }
+		total, missing := 0, 0
+		for s in scan {
+			if s.missing || s.unresolved || s.duplicate { continue }
+			total += 1
+			if s.expanded not_in active { missing += 1 }
+		}
+		switch {
+		case !scan_ok || total == 0:
+			sync_msg = clone_arena("No PATH entries to compare with the current shell")
+			sync_status = .INFO
+		case missing == 0:
+			sync_msg = fmt.aprintf("All %d PATH entr%s present in this shell's $PATH",
+				total, total == 1 ? "y" : "ies", allocator = alloc)
+		case:
+			sync_msg = fmt.aprintf("%d of %d PATH entr%s not in this shell's $PATH - open a new shell to load them",
+				missing, total, total == 1 ? "y" : "ies", allocator = alloc)
+			sync_status = .INFO
+		}
 	}
 
 	append(results, CheckResult{
