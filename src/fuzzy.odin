@@ -608,7 +608,12 @@ suggest_similar_names :: proc(query: string, names: []string, limit: int, alloca
 	scored := make([dynamic]Scored, 0, len(names), context.temp_allocator)
 
 	query_lower := strings.to_lower(query, context.temp_allocator)
+	seen := make(map[string]struct{}, len(names), context.temp_allocator)
 	for name in names {
+		// A name can come from two sources (a secret constant is in both
+		// entries.json and secrets.json); suggest it once.
+		if name in seen { continue }
+		seen[name] = {}
 		name_lower := strings.to_lower(name, context.temp_allocator)
 		score: int
 		switch {

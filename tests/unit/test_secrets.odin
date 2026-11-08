@@ -182,3 +182,17 @@ test_tui_constants_view_masks_until_reveal_key :: proc(t: ^testing.T) {
 	wayu.handle_data_view_event(&state, wayu.KeyEvent{key = .Char, char = 'v'})
 	testing.expect(t, !state.reveal_secrets, "`v` must be a no-op outside the constants view")
 }
+
+// A secret constant's name comes from entries.json and secrets.json; the
+// "Did you mean" list shows it once.
+@(test)
+test_suggest_similar_names_dedupes :: proc(t: ^testing.T) {
+	names := []string{"LINEAR_API", "GMKR_LINEAR_API", "LINEAR_API", "GMKR_LINEAR_API"}
+	got := wayu.suggest_similar_names("linear", names, 5)
+	defer delete(got)
+	testing.expect_value(t, len(got), 2)
+	if len(got) == 2 {
+		testing.expect_value(t, got[0], "LINEAR_API")
+		testing.expect_value(t, got[1], "GMKR_LINEAR_API")
+	}
+}
