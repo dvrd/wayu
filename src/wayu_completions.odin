@@ -100,7 +100,8 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 		{"--all", "Update all plugins"}, {"-a", ""},
 		{"--category", "Filter 'plugin search' by category"}, {"-c", ""}, {"--category=", ""},
 		{"--use", "Glob of files to load (plugin add)"}, {"--use=", ""}}},
-	{command = .INIT, names = {"init"}, desc = "Initialize wayu configuration"},
+	{command = .INIT, names = {"init"}, desc = "Initialize wayu configuration",
+	 flags = {{"--template", "Apply a template after init"}, {"--template=", ""}}},
 	{command = .MIGRATE, names = {"migrate"}, desc = "Migrate shell config to wayu.toml",
 	 flags = {
 		{"--from", "Source shell (with --to)"}, {"--to", "Target shell (with --from)"},

@@ -357,6 +357,20 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - With neither variable set, every command opens `vi` (`function` and
   `config` used `nvim`).
 
+**Templates**
+- `template apply` never overwrites what you have: a `[paths]` directory
+  already listed, an alias or `[env]` name already in wayu.toml, or a
+  constant already set in the environment wayu runs in is kept and shown as
+  `Keeping …`. (It used to replace e.g. `EDITOR = "nvim"` with
+  `code --wait`.) The summary reads "N added, M kept".
+- `--dry-run template apply …` prints `Would add …` / `Keeping …` and
+  "Nothing was written"; it used to print "… template applied!".
+- The `developer` template no longer adds `code = "code ."` (it shadowed
+  the `code` binary).
+- `wayu init --template <name>` (or `--template=<name>`) works: init, then
+  apply the template. An unknown name exits `65` and a missing one `64`,
+  before anything is written; any other argument to `init` exits `64`.
+
 **config scan --fix**
 - Aborts (exit `74`) when extra.<ext> exists but can't be backed up or
   read; it used to write anyway.

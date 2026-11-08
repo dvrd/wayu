@@ -319,7 +319,12 @@ main :: proc() {
 		if parsed.action == .HELP {
 			print_init_help()
 		} else {
+			template := init_template_arg(parsed.args) // validated before any write
 			handle_init_command()
+			if len(template) > 0 {
+				fmt.println()
+				apply_template(template)
+			}
 		}
 	case .MIGRATE:
 		handle_migrate_command(parsed.args)
@@ -720,13 +725,16 @@ print_init_help :: proc() {
 	fmt.println("wayu init - Initialize wayu configuration directory")
 	fmt.println()
 	fmt.println("USAGE:")
-	fmt.println("  wayu init")
+	fmt.println("  wayu init [--template <name>]")
 	fmt.println()
 	fmt.println("DESCRIPTION:")
 	fmt.println("  Creates ~/.config/wayu with shell-specific config files (path, aliases,")
 	fmt.println("  constants, init, tools, extra) and subdirectories (functions, completions,")
 	fmt.println("  plugins). Detects the current shell and generates wayu.toml scaffolding.")
 	fmt.println("  Safe to re-run — existing files are preserved.")
+	fmt.println()
+	fmt.println("  --template <name>  Then apply a template (see 'wayu template list');")
+	fmt.println("                     entries you already have are kept.")
 }
 
 print_help :: proc() {
