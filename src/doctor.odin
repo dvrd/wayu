@@ -432,6 +432,7 @@ print_doctor_usage :: proc() {
 	fmt.printfln("%sCHECKS PERFORMED:%s", get_primary(), RESET)
 	fmt.println("  • wayu installation and version")
 	fmt.println("  • Shell RC file configuration")
+	fmt.println("  • bash: PROMPT_COMMAND not replaced after wayu is loaded")
 	fmt.println("  • PATH entries (missing directories, duplicates)")
 	fmt.println("  • Plugin status")
 	fmt.println("  • Backup system")
@@ -573,6 +574,7 @@ CheckEntry :: struct {
 CHECKS := []CheckEntry{
 	{"installation", check_wayu_installation},
 	{"shell",        check_shell_config},
+	{"promptcmd",    check_bash_prompt_command},
 	{"path",         check_path_entries},
 	{"plugins",      check_plugins},
 	{"backups",      check_backups},
@@ -635,6 +637,54 @@ rc_loads_wayu :: proc(content: string, turbo_only := false) -> bool {
 		if strings.contains(lower, "init.") || strings.contains(lower, "eval") { return true }
 	}
 	return false
+}
+
+// 1-based numbers of the active lines AFTER the first line that loads wayu
+// which overwrite bash's PROMPT_COMMAND without keeping its old value
+// (`PROMPT_COMMAND=...` / `export PROMPT_COMMAND=...` / `declare ...` whose
+// right-hand side doesn't mention PROMPT_COMMAND, or `unset PROMPT_COMMAND`).
+// Such a line silently drops the `_wayu_paths_sync` prompt hook core.bash
+// installs, so open shells stop picking up `wayu path add/rm`. `+=` appends
+// and `PROMPT_COMMAND="x;$PROMPT_COMMAND"` keep it.
+rc_prompt_command_overwrites :: proc(content: string, allocator := context.allocator) -> []int {
+	out := make([dynamic]int, allocator)
+	loaded := false
+	n := 0
+	it := make_line_iter(content)
+	for line in line_iter_next(&it) {
+		n += 1
+		code := rc_active_code(line)
+		if len(code) == 0 { continue }
+		if !loaded {
+			loaded = rc_loads_wayu(code)
+			continue
+		}
+		if prompt_command_overwritten(code) { append(&out, n) }
+	}
+	return out[:]
+}
+
+@(private = "file")
+prompt_command_overwritten :: proc(code: string) -> bool {
+	NAME :: "PROMPT_COMMAND"
+	rest := code
+	for {
+		i := strings.index(rest, NAME)
+		if i < 0 { return false }
+		before := rest[:i]
+		after := rest[i+len(NAME):]
+		rest = after
+		// Must be a whole word (not MY_PROMPT_COMMAND / PROMPT_COMMANDS).
+		if len(before) > 0 && doctor_is_ident_byte(before[len(before)-1]) { continue }
+		if len(after) > 0 && doctor_is_ident_byte(after[0]) { continue }
+		prev := strings.trim_right_space(before)
+		if strings.has_suffix(prev, "unset") || strings.has_suffix(prev, "unset -v") { return true }
+		if len(after) == 0 || after[0] != '=' { continue }
+		// `NAME=` must start a word (assignment), not sit inside `$NAME=`.
+		if len(before) > 0 && before[len(before)-1] == '$' { continue }
+		if len(before) > 0 && before[len(before)-1] == '{' { continue }
+		return !strings.contains(after[1:], NAME)
+	}
 }
 
 // Startup files of the current shell (see shell_startup_files) that exist,
@@ -716,6 +766,33 @@ check_shell_config :: proc(results: ^[dynamic]CheckResult) {
 		message = fmt.aprintf("wayu not sourced in %s - add 'source \"%s/init.%s\"' to %s",
 			strings.join(shown[:], ", ", allocator = alloc), doctor_tilde(wayu.data, home_var = true),
 			get_shell_extension(wayu.shell), rc, allocator = alloc),
+		fixable = false,
+	})
+}
+
+// bash only: warn when a startup file overwrites PROMPT_COMMAND after the
+// line that loads wayu (see rc_prompt_command_overwrites). Silent when
+// nothing is found, so other shells' output is unchanged.
+check_bash_prompt_command :: proc(results: ^[dynamic]CheckResult) {
+	if wayu.shell != .BASH { return }
+	ensure_arena_initialized()
+	alloc := get_doctor_allocator()
+	hits := make([dynamic]string, allocator = alloc)
+	for f in shell_startup_files(.BASH, alloc) {
+		if !os.exists(f) { continue }
+		content, ok := safe_read_file(f)
+		if !ok { continue }
+		for n in rc_prompt_command_overwrites(string(content), context.temp_allocator) {
+			append(&hits, fmt.aprintf("%s:%d", doctor_tilde(f), n, allocator = alloc))
+		}
+		delete(content)
+	}
+	if len(hits) == 0 { return }
+	append(results, CheckResult{
+		name    = clone_arena("bash PROMPT_COMMAND"),
+		status  = .WARNING,
+		message = fmt.aprintf("%s replaces PROMPT_COMMAND after wayu is loaded, dropping the _wayu_paths_sync hook (open shells miss 'wayu path add/rm') - append instead: PROMPT_COMMAND=\"${{PROMPT_COMMAND:+$PROMPT_COMMAND;}}...\", or load wayu after it",
+			strings.join(hits[:], ", ", allocator = alloc), allocator = alloc),
 		fixable = false,
 	})
 }

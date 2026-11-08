@@ -40,6 +40,7 @@ class DoctorIntegrationTest
       test_exit_zero_when_healthy
       test_exit_nonzero_on_error
       test_bash_profile_recognized
+      test_bash_prompt_command_overwrite
       test_zdotdir_recognized
       test_zshenv_recognized
       test_variable_source_recognized
@@ -270,6 +271,24 @@ class DoctorIntegrationTest
     out, _ = run_wayu('--shell bash doctor --no-color')
     ok = shell_line(out).include?('wayu sourced in ~/.bash_profile') && !out.include?('.zshrc')
     check(ok, shell_line(out))
+  end
+
+  # OKAMI-176: a later rc line replacing PROMPT_COMMAND drops wayu's
+  # _wayu_paths_sync hook; appending keeps it and is not reported.
+  def test_bash_prompt_command_overwrite
+    print "Test 13b: bash rc replacing PROMPT_COMMAND after wayu is a warning... "
+    reset_rc_files
+    File.write("#{@tmp_home}/.bashrc", "source \"$HOME/.config/wayu/init.bash\"\n" \
+                                       "PROMPT_COMMAND='history -a'\n" \
+                                       "PROMPT_COMMAND=\"${PROMPT_COMMAND:+$PROMPT_COMMAND;}x\"\n")
+    out, status = run_wayu('--shell bash doctor --no-color')
+    warn = out.lines.each_cons(2).find { |a, _| a.include?('PROMPT_COMMAND') }&.join.to_s
+    File.write("#{@tmp_home}/.bashrc", "source \"$HOME/.config/wayu/init.bash\"\nPROMPT_COMMAND+=';x'\n")
+    clean, = run_wayu('--shell bash doctor --no-color')
+    zsh, = run_wayu('--shell zsh doctor --no-color')
+    ok = warn.include?('~/.bashrc:2') && !warn.include?('~/.bashrc:3') &&
+         !clean.include?('PROMPT_COMMAND') && !zsh.include?('PROMPT_COMMAND')
+    check(ok, "warn=#{warn.inspect} status=#{status.exitstatus}")
   end
 
   def test_zdotdir_recognized

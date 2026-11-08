@@ -113,6 +113,11 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - `doctor --fix` exits `78` and changes nothing when a key it would drop is
   repeated in `[paths]` (`a = "/x"` twice); it used to delete every line of
   that key, the kept entry included.
+- bash: new warning `bash PROMPT_COMMAND` when a bash startup file replaces
+  `PROMPT_COMMAND` after the line that loads wayu (it dropped the
+  `_wayu_paths_sync` hook, so open shells missed `wayu path add/rm`). Shown
+  only when such a line exists; exit status unchanged (warnings never exit
+  `78`).
 
 **Backups**
 - `wayu backup restore` waits for other wayu commands (config lock) instead
