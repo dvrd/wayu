@@ -2,10 +2,12 @@
 //   * file modes for files that may contain [env] values (wayu.toml,
 //     backups, generated core/lazy/login/helpers scripts);
 //   * the "looks secret" heuristic and value masking used by every preview
-//     output (dry-run, search, export --dry-run).
+//     and list output (dry-run, search, export --dry-run, `const list`,
+//     `toml show`, the TUI constants view).
 //
-// `wayu const get NAME` (exact) and `wayu const list` deliberately print
-// values — that is their purpose — and do not go through masking.
+// `wayu const get NAME` (exact) deliberately prints the real value — that is
+// its purpose. List views mask unless the user asks with `--reveal` (CLI) or
+// the reveal key (TUI).
 
 package wayu
 
@@ -75,6 +77,13 @@ mask_secret_value :: proc(name, value: string) -> string {
 	return value
 }
 
+// Value to show in a list view: the real value when `reveal` (`--reveal`,
+// TUI reveal key), else masked like a preview. Never allocates.
+list_display_value :: proc(name, value: string, reveal: bool) -> string {
+	if reveal { return value }
+	return mask_secret_value(name, value)
+}
+
 // Best-effort: tighten an existing file to 0600. Used for generated files
 // whose pre-existing mode may predate this policy (O_CREAT ignores the
 // mode argument for files that already exist).
@@ -133,6 +142,10 @@ mask_toml_env_section :: proc(content: string, allocator := context.allocator) -
 			}
 		}
 		strings.write_string(&b, line)
+	}
+	// The line iterator drops the final empty segment: keep a trailing newline.
+	if strings.has_suffix(content, "\n") && !strings.has_suffix(strings.to_string(b), "\n") {
+		strings.write_byte(&b, '\n')
 	}
 	return strings.to_string(b)
 }

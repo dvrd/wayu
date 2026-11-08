@@ -34,7 +34,8 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 		"list:List aliases", "ls:List aliases", "get:Get alias value", "help:Show help"}},
 	{.CONSTANTS, {"constants", "const", "env"}, "Manage environment constants", {
 		"add:Add a constant", "remove:Remove a constant", "rm:Remove a constant",
-		"list:List constants", "ls:List constants", "get:Get constant value", "help:Show help"}},
+		"list:List constants", "ls:List constants", "get:Get constant value", "help:Show help",
+		"--reveal:Show secret values unmasked in list"}},
 	{.SEARCH, {"search", "find", "f"}, "Fuzzy search across all configs", {}},
 	{.COMPLETIONS, {"completions"}, "Manage shell completion scripts", {
 		"add:Add a completion script", "remove:Remove a completion", "rm:Remove a completion",
@@ -63,7 +64,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 		"ls:Show formats", "help:Show help"}},
 	{.TOML, {"toml"}, "TOML configuration management", {
 		"validate:Validate wayu.toml", "convert:Convert to TOML", "show:Show config",
-		"keys:List keys", "help:Show help"}},
+		"keys:List keys", "help:Show help", "--reveal:Show secret values unmasked in show"}},
 	{.DOCTOR, {"doctor"}, "Health check and diagnostics", {
 		"--fix:Repair what can be repaired", "--json:Machine-readable output",
 		"--profile:Profile shell startup", "--optimize:Suggest optimizations", "--help:Show help"}},

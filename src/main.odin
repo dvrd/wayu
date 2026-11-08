@@ -28,6 +28,7 @@ AppContext :: struct {
 	dry_run:        bool,
 	yes_flag:       bool,
 	json_output:    bool,
+	reveal_secrets: bool,    // --reveal: list views print secret-looking values unmasked
 	source_filter:  string,
 	tui_mode:       bool,
 	temp_arena:     ^mem.Arena,
@@ -772,6 +773,7 @@ print_help :: proc() {
 	print_item("", "--dry-run, -n", "Preview changes without modifying files", EMOJI_INFO)
 	print_item("", "--yes, -y", "Skip confirmation prompts (for clean/dedup)", EMOJI_INFO)
 	print_item("", "--full, -f", "Show all entries including external", EMOJI_INFO)
+	print_item("", "--reveal", "Show secret values unmasked (const list, toml show)", EMOJI_INFO)
 	print_item("", "--", "End of flags: everything after is a literal argument", EMOJI_INFO)
 	print_item("", "--tui", "Launch interactive Terminal UI mode (same as no args)", EMOJI_INFO)
 	print_item("", "-c=<component>", "Test TUI component rendering (dev mode)", EMOJI_INFO)

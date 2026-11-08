@@ -822,6 +822,9 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 	fmt.printfln("  wayu %s rm [%s]", spec.file_name, strings.to_lower(spec.display_name))
 	fmt.printfln("  wayu %s get <%s>", spec.file_name, strings.to_lower(spec.display_name))
 	fmt.printfln("  wayu %s list", spec.file_name)
+	if spec.type == .CONSTANT {
+		fmt.printfln("  wayu %s list --reveal    %s# show secret-looking values unmasked%s", spec.file_name, get_muted(), RESET)
+	}
 
 	if spec.has_clean {
 		fmt.printfln("  wayu %s clean", spec.file_name)
@@ -883,8 +886,9 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 		fmt.printfln("  %s# Add a variable with spaces (use quotes)%s", get_muted(), RESET)
 		fmt.printfln("  wayu const add GREETING 'Hello World'")
 		fmt.println()
-		fmt.printfln("  %s# List all constants%s", get_muted(), RESET)
+		fmt.printfln("  %s# List all constants (secret-looking values shown as ********)%s", get_muted(), RESET)
 		fmt.printfln("  wayu const list")
+		fmt.printfln("  wayu const list --full --reveal")
 		fmt.println()
 		fmt.printfln("  %s# Get a variable value%s", get_muted(), RESET)
 		fmt.printfln("  wayu const get API_KEY")

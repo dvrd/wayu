@@ -550,7 +550,15 @@ handle_toml_show :: proc() {
 	}
 	defer delete(content)
 
-	fmt.print(string(content))
+	// Same policy as `const list`: secret-looking [env] values are masked
+	// unless --reveal.
+	if wayu.reveal_secrets {
+		fmt.print(string(content))
+		return
+	}
+	masked := mask_toml_env_section(string(content))
+	defer delete(masked)
+	fmt.print(masked)
 }
 
 // Handle 'wayu toml keys' - display TOML keys
@@ -618,7 +626,8 @@ print_toml_usage :: proc() {
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
 	fmt.printfln("  wayu toml                    Validate TOML config (default)")
 	fmt.printfln("  wayu toml validate           Validate wayu.toml syntax")
-	fmt.printfln("  wayu toml show               Display TOML content")
+	fmt.printfln("  wayu toml show               Display TOML content (secrets masked)")
+	fmt.printfln("  wayu toml show --reveal      Display TOML content with real [env] values")
 	fmt.printfln("  wayu toml keys               List TOML keys")
 	fmt.printfln("  wayu toml convert            Convert legacy shell configs → wayu.toml (alias of `wayu migrate`)")
 	fmt.printfln("  wayu toml help               Show this help")

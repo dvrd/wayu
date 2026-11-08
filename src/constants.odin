@@ -259,6 +259,9 @@ list_toml_constants :: proc() {
 	table_header_style(&table, style_bold(style_foreground(new_style(), "cyan"), true))
 	table_border(&table, .Normal)
 
+	// Secret-looking values shown as SECRET_MASK (hint printed below).
+	masked_count := 0
+
 	// Collect stripped values to defer freeing until after table_render
 	stripped_values := make([dynamic]string)
 	defer {
@@ -279,8 +282,9 @@ list_toml_constants :: proc() {
 			if is_active && !show_wayu { continue }
 			if !is_active && !show_inactive { continue }
 
-			value := strip_ansi_codes(entry.value, true)
+			value := strip_ansi_codes(list_display_value(entry.name, entry.value, wayu.reveal_secrets), true)
 			append(&stripped_values, value)
+			if value == SECRET_MASK && entry.value != SECRET_MASK { masked_count += 1 }
 			if has_multiple_sources {
 				source := "wayu"
 				if !is_active { source = "wayu (inactive)" }
@@ -297,8 +301,10 @@ list_toml_constants :: proc() {
 	if show_external {
 		for ext_const_name in external_constants {
 			if env_val := snapshot_env_var(ext_const_name); env_val != nil {
-				value := strip_ansi_codes(env_val.(string), true)
+				real := env_val.(string)
+				value := strip_ansi_codes(list_display_value(ext_const_name, real, wayu.reveal_secrets), true)
 				append(&stripped_values, value)
+				if value == SECRET_MASK && real != SECRET_MASK { masked_count += 1 }
 				row := []string{ext_const_name, value, "external"}
 				table_add_row(&table, row)
 			}
@@ -311,6 +317,11 @@ list_toml_constants :: proc() {
 
 	if !show_external && len(external_constants) > 0 {
 		fmt.printfln("%sPass --full to show %d external entries%s", get_muted(), len(external_constants), RESET)
+	}
+	if masked_count > 0 {
+		noun := "value" if masked_count == 1 else "values"
+		fmt.printfln("%s%d secret-looking %s masked; pass --reveal to show (or wayu const get NAME)%s",
+			get_muted(), masked_count, noun, RESET)
 	}
 }
 
@@ -358,7 +369,7 @@ print_constants_json :: proc(entries: []ConfigEntry, external_constants: []strin
 				fmt.println(",")
 			}
 			name_j := json_escape(entry.name);  defer delete(name_j)
-			val_j  := json_escape(entry.value); defer delete(val_j)
+			val_j  := json_escape(list_display_value(entry.name, entry.value, wayu.reveal_secrets)); defer delete(val_j)
 			src_j  := json_escape(source);      defer delete(src_j)
 			// `{` is a struct-verb opener in Odin's fmt — emit via %c.
 			fmt.printf("    %c\"constant\": \"%s\", \"value\": \"%s\", \"source\": \"%s\"%c", '{', name_j, val_j, src_j, '}')
@@ -371,7 +382,7 @@ print_constants_json :: proc(entries: []ConfigEntry, external_constants: []strin
 		for ext_const_name in external_constants {
 			if env_val := snapshot_env_var(ext_const_name); env_val != nil {
 				name_j := json_escape(ext_const_name);       defer delete(name_j)
-				val_j  := json_escape(env_val.(string));     defer delete(val_j)
+				val_j  := json_escape(list_display_value(ext_const_name, env_val.(string), wayu.reveal_secrets)); defer delete(val_j)
 				if !first_entry {
 					fmt.println(",")
 				}

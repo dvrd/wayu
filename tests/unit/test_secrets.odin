@@ -135,3 +135,109 @@ test_backup_tightens_legacy_modes :: proc(t: ^testing.T) {
 	dir_info, _ := os.stat(backup_dir, context.temp_allocator)
 	testing.expectf(t, dir_info.mode & GROUP_OTHER_BITS == {}, "legacy backup dir should be tightened, got %v", dir_info.mode)
 }
+
+// ---------------------------------------------------------------------------
+// List views mask secret-looking values unless revealed (`const list`,
+// `toml show`, TUI constants view). Values below are fake.
+// ---------------------------------------------------------------------------
+
+@(test)
+test_list_display_value_masks_unless_revealed :: proc(t: ^testing.T) {
+	testing.expect_value(t, wayu.list_display_value("FAKE_API_KEY", "fake-key-0001", false), wayu.SECRET_MASK)
+	testing.expect_value(t, wayu.list_display_value("FAKE_API_KEY", "fake-key-0001", true), "fake-key-0001")
+	testing.expect_value(t, wayu.list_display_value("SOME_URL", "postgres://u:fakepw@h/db", false), wayu.SECRET_MASK)
+	testing.expect_value(t, wayu.list_display_value("EDITOR", "vim", false), "vim")
+	// Empty values stay empty: nothing to hide, and `********` would lie.
+	testing.expect_value(t, wayu.list_display_value("FAKE_TOKEN", "", false), "")
+}
+
+@(test)
+test_parse_args_reveal_flag :: proc(t: ^testing.T) {
+	saved := wayu.wayu.reveal_secrets
+	defer wayu.wayu.reveal_secrets = saved
+
+	Case :: struct { args: []string, unknown: string, reveal: bool, action: wayu.Action }
+	cases := []Case{
+		{{"const", "list", "--reveal"}, "", true, .LIST},
+		{{"--reveal", "const", "list", "--full"}, "", true, .LIST},
+		{{"const", "--reveal", "list"}, "", true, .LIST},
+		{{"toml", "show", "--reveal"}, "", true, .GET},
+		{{"const", "list"}, "", false, .LIST},
+		{{"path", "list", "--reveal"}, "--reveal", false, .LIST},
+		{{"alias", "list", "--reveal"}, "--reveal", false, .LIST},
+	}
+	for c in cases {
+		parsed := wayu.parse_args(c.args)
+		testing.expectf(t, parsed.unknown_flag == c.unknown, "%v: unknown %q want %q", c.args, parsed.unknown_flag, c.unknown)
+		testing.expectf(t, wayu.wayu.reveal_secrets == c.reveal, "%v: reveal %v want %v", c.args, wayu.wayu.reveal_secrets, c.reveal)
+		testing.expectf(t, parsed.action == c.action, "%v: action %v want %v", c.args, parsed.action, c.action)
+		for a in parsed.args {
+			testing.expectf(t, a != "--reveal", "%v: --reveal leaked into args", c.args)
+		}
+		if len(parsed.args) > 0 do delete(parsed.args)
+	}
+}
+
+@(test)
+test_mask_toml_env_section_for_toml_show :: proc(t: ^testing.T) {
+	doc := "[aliases]\nll = \"ls -la\"\n\n[env]\nEDITOR = \"vim\"\nFAKE_API_KEY = \"fake-key-0001\"\n"
+	out := wayu.mask_toml_env_section(doc)
+	defer delete(out)
+	testing.expect(t, !strings.contains(out, "fake-key-0001"), "secret value must be masked")
+	testing.expect(t, strings.contains(out, `FAKE_API_KEY = "********"`), out)
+	testing.expect(t, strings.contains(out, `EDITOR = "vim"`), out)
+	testing.expect(t, strings.contains(out, `ll = "ls -la"`), out)
+	testing.expect(t, strings.has_suffix(out, "\"vim\"\n") || strings.has_suffix(out, "\"********\"\n"), "trailing newline kept")
+}
+
+// Render the current view into a screen and return its text (caller deletes).
+@(private = "file")
+render_view_text :: proc(state: ^wayu.TUIState) -> string {
+	screen := wayu.screen_create(state.terminal_width, state.terminal_height)
+	defer wayu.screen_destroy(&screen)
+	wayu.tui_render(state, &screen)
+	return wayu.screen_to_string(&screen)
+}
+
+@(test)
+test_tui_constants_view_masks_until_reveal_key :: proc(t: ^testing.T) {
+	state := wayu.tui_state_init()
+	defer wayu.tui_state_destroy(&state)
+	state.terminal_width = 120
+	state.terminal_height = 30
+
+	items := make([dynamic]string)
+	meta := make([dynamic]wayu.RowMeta)
+	wayu.cache_push(&items, &meta, strings.clone("EDITOR=vim"), "EDITOR", "vim", .WAYU_ACTIVE)
+	wayu.cache_push(&items, &meta, strings.clone("FAKE_API_KEY=********"), "FAKE_API_KEY", "fake-key-0001", .WAYU_ACTIVE)
+	wayu.tui_store_cache(&state, .CONSTANTS_VIEW, items, meta)
+	state.current_view = .CONSTANTS_VIEW
+
+	masked := render_view_text(&state)
+	defer delete(masked)
+	testing.expect(t, !strings.contains(masked, "fake-key-0001"), "secret must be masked by default")
+	testing.expect(t, strings.contains(masked, wayu.SECRET_MASK), "mask must be shown")
+	testing.expect(t, strings.contains(masked, "vim"), "non-secret values stay visible")
+	testing.expect(t, strings.contains(masked, "v Reveal"), "footer must advertise the reveal key")
+
+	wayu.handle_data_view_event(&state, wayu.KeyEvent{key = .Char, char = 'v'})
+	revealed := render_view_text(&state)
+	defer delete(revealed)
+	testing.expect(t, strings.contains(revealed, "fake-key-0001"), "`v` must reveal the value")
+	testing.expect(t, strings.contains(revealed, "v Hide"), "footer must offer to hide again")
+
+	wayu.handle_data_view_event(&state, wayu.KeyEvent{key = .Char, char = 'v'})
+	hidden := render_view_text(&state)
+	defer delete(hidden)
+	testing.expect(t, !strings.contains(hidden, "fake-key-0001"), "second `v` must mask again")
+
+	// Reveal never outlives the view.
+	wayu.handle_data_view_event(&state, wayu.KeyEvent{key = .Char, char = 'v'})
+	wayu.tui_state_goto_view(&state, .MAIN_MENU)
+	testing.expect(t, !state.reveal_secrets, "leaving the view must reset reveal")
+
+	// `v` is constants-only: other data views ignore it.
+	state.current_view = .ALIAS_VIEW
+	wayu.handle_data_view_event(&state, wayu.KeyEvent{key = .Char, char = 'v'})
+	testing.expect(t, !state.reveal_secrets, "`v` must be a no-op outside the constants view")
+}
