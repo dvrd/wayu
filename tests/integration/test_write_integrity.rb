@@ -4,6 +4,8 @@
 #   OKAMI-202  multi-line strings, arrays, ints and comments survive edits
 #   OKAMI-203  atomic writes keep file mode + symlinks, leave no temp files
 #   OKAMI-204  concurrent adds (alias, const, path, plugin) all land
+#   OKAMI-240  one TOML parser: every command agrees on the same file
+#   OKAMI-247  symlinked init.<ext> stays a symlink when wayu rewrites it
 
 require 'open3'
 require 'fileutils'
@@ -36,6 +38,10 @@ class WriteIntegrityIntegrationTest
       test_concurrent_const_adds
       test_concurrent_path_adds
       test_concurrent_plugin_adds
+      test_reader_parity_across_commands
+      test_quoted_keys_listed_and_removed
+      test_validate_names_the_line
+      test_symlinked_init_stays_symlink
     ensure
       teardown_test_env
     end
@@ -235,6 +241,104 @@ class WriteIntegrityIntegrationTest
     check("Test 10: #{n} concurrent plugin adds all land in plugins.json",
           results.all? { |_, rc| rc.zero? } && landed == n,
           "landed=#{landed}/#{n}\n#{results.reject { |_, rc| rc.zero? }.map(&:first).join}")
+  end
+  # OKAMI-240 / CFG-14: valid TOML the old strict reader rejected (BOM,
+  # multi-line array in [settings], quoted keys, int and multi-line [env]
+  # values). validate, lists, TUI-facing parse and the generator agree, and
+  # [paths] keep DECLARATION order (reverse-alphabetical here).
+  def test_reader_parity_across_commands
+    dirs = %w[zz mm aa].map { |d| "#{@tmp_home}/parity/#{d}" }
+    dirs.each { |d| FileUtils.mkdir_p(d) }
+    write_toml("\xEF\xBB\xBF" + <<~TOML)
+      [shell]
+      type = "zsh"
+
+      [settings]
+      autosuggestions_accept_keys = [
+        "^Y", # ctrl-y
+        "^E",
+      ]
+
+      [paths]
+      zz = "#{dirs[0]}"
+      mm = '#{dirs[1]}' # literal
+      "aa" = "#{dirs[2]}"
+
+      [aliases]
+      "ll" = 'ls -la'
+      glf = "git log --format='%h'"
+
+      [env]
+      N = 42
+      CERT = """
+      line1
+      line2"""
+    TOML
+    out_v, s_v = run_wayu('toml validate')
+    out_a, s_a = run_wayu('alias list --json')
+    out_c, s_c = run_wayu('const list --json --reveal')
+    _, s_b = run_wayu('build')
+    sync = Dir.glob("#{@data_dir}/path_sync.zsh").map { |f| File.read(f) }.join
+    core = File.read("#{@data_dir}/core.zsh") rescue ''
+    order = dirs.map { |d| sync.index(d) || -1 }
+    check("Test 11: one parser - validate, lists and generator agree (BOM, multi-line array, quoted keys)",
+          s_v.success? && s_a.success? && s_c.success? && s_b.success? &&
+            out_a.include?('"ll"') && out_a.include?("git log --format='%h'") &&
+            out_c.include?('"N"') && out_c.include?('42') && out_c.include?('line1\nline2') &&
+            core.include?('ll=') && order.all? { |i| i >= 0 } && order == order.sort,
+          "validate=#{out_v.strip} order=#{order}\n#{out_a}\n#{out_c}")
+  end
+
+  # CFG-14: `"..` was emitted by the generator but `alias rm ..` said not
+  # found; X-19: an escaped quote in a key is decoded everywhere.
+  def test_quoted_keys_listed_and_removed
+    write_toml(<<~'TOML')
+      [shell]
+      type = "zsh"
+
+      [aliases]
+      ".." = "cd .."
+      "q\"k" = "echo quoted"
+      ll = "ls"
+    TOML
+    out_l, _ = run_wayu('alias list --json')
+    out_v, s_v = run_wayu('toml validate')
+    _, s_r = run_wayu('alias rm ..')
+    after = File.read(@toml_file)
+    check("Test 12: quoted alias keys are listed decoded and removable",
+          out_l.include?('".."') && out_l.include?('q\\"k') && !out_l.include?('\\"q') &&
+            s_r.success? && !after.include?('".."') && after.include?('ll = "ls"') &&
+            !s_v.success? && out_v.include?('Invalid alias'),
+          "list=#{out_l}\nvalidate=#{out_v}\nafter=#{after}")
+  end
+
+  # X-19: `toml validate` used to exit 65 with no reason.
+  def test_validate_names_the_line
+    write_toml("[shell]\ntype = \"zsh\"\n\n[aliases]\nll = ls -la\n")
+    out_v, s_v = run_wayu('toml validate')
+    out_l, s_l = run_wayu('alias list --json')
+    check("Test 13: validate names the bad line; lists keep the lenient reading",
+          s_v.exitstatus == 65 && out_v.include?('line 5') && s_l.success? && out_l.include?('ls -la'),
+          "validate=#{out_v}\nlist=#{out_l}")
+  end
+
+  # OKAMI-247 follow-up: a stow-style symlinked init.zsh that wayu upgrades
+  # (temp file + rename) must keep its link; the target is rewritten.
+  def test_symlinked_init_stays_symlink
+    write_toml("[shell]\ntype = \"zsh\"\n\n[aliases]\n")
+    init = "#{@data_dir}/init.zsh"
+    real = "#{@tmp_home}/dotfiles/init.zsh"
+    FileUtils.mkdir_p(File.dirname(real))
+    old = File.read(File.join(__dir__, 'fixtures', 'init-4.4.5.zsh'))
+    File.write(real, old)
+    FileUtils.rm_f(init)
+    File.symlink(real, init)
+    _, status = run_wayu("alias add symt 'echo hi'")
+    body = File.read(real)
+    check("Test 14: symlinked init.zsh stays a symlink; its target is upgraded",
+          status.success? && File.symlink?(init) && body != old &&
+            body.include?('source "$WAYU_DATA_DIR/core.zsh"'),
+          "symlink=#{File.symlink?(init)} upgraded=#{body != old}")
   end
 end
 
