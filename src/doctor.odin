@@ -1162,7 +1162,7 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 		append(results, CheckResult{
 			name    = clone_arena("TOML config"),
 			status  = .ERROR,
-			message = clone_arena(fmt.tprintf("wayu.toml is malformed (line %d: %s) — run `wayu validate` or restore with `wayu backup restore toml --yes`", perr.line, perr.msg)),
+			message = clone_arena(fmt.tprintf("wayu.toml is malformed (line %d: %s) — run `wayu toml validate` or restore with `wayu backup restore toml --yes`", perr.line, perr.msg)),
 			fixable = false,
 		})
 		return
