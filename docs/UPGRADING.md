@@ -4,7 +4,7 @@ User-visible behavior changes per release. From 4.4.5 on, these are generated
 automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 4.4.3 and 4.4.4 shipped them as patch releases, so they are listed here.
 
-## Unreleased
+## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is
 `~/.local/share/wayu`**
