@@ -1083,18 +1083,26 @@ def test_alt_keys_and_esc_delay():
              AssertResult("DELETE CONFIRMATION" not in snap and "ADD ALIAS" in snap, snap))
         s.send(b"\x1b"); wait_quiet(s, 0.3)
 
-        # Split arrow: ESC, 40ms gap, "[B". First make sure the form-cancel
-        # ESC above was processed (it fires after the ESC window), or on a
-        # slow runner the two ESCs read as two cancels and leave the view.
-        s.wait_for(lambda snap: "ALIASES" in snap and "ADD ALIAS" not in snap, timeout=TIMEOUT_KEY)
+        test("alt/nothing_written", AssertResult(read_toml() == before, read_toml()))
+        s.send(b"\x03")
+        check_clean_exit(s, "alt", want_code=0)
+    finally:
+        s.kill()
+
+    # Split arrow: ESC, 40ms gap, "[B" must still decode as one arrow key.
+    # ESCDELAY=1000 so a slow CI runner (macOS) stretching the 40ms gap
+    # past the 100ms default can't split it; this checks the decoder joins
+    # an escape sequence across reads, not the runner's scheduling.
+    s = TUISession(80, 24, env={**constants_env(), "ESCDELAY": "1000"})
+    try:
+        open_view(s, "alias", lambda snap: "ALIASES" in snap and "gs" in snap)
         wait_quiet(s, 0.3)
         s.send(b"\x1b"); time.sleep(0.04); s.send(b"[B")
         wait_quiet(s, 0.5)
         snap = s.snapshot()
         test("esc_delay/split_arrow_stays_in_view", AssertResult("ALIASES" in snap, snap))
-        test("alt/nothing_written", AssertResult(read_toml() == before, read_toml()))
         s.send(b"\x03")
-        check_clean_exit(s, "alt", want_code=0)
+        check_clean_exit(s, "esc_delay", want_code=0)
     finally:
         s.kill()
         reset_config()
