@@ -120,12 +120,15 @@ tui_init :: proc() {
 		os.exit(EXIT_OSERR)
 	}
 	tui_install_signal_handlers()
+	tui_load_esc_delay()
+	tui_stderr_capture_begin()  // replayed if the TUI dies (OKAMI-262)
 	tui_lifecycle_init()  // Enter alt screen, hide cursor, SIGWINCH handler
 	tui_set_screen_active(true)
 }
 
 // Cleanup TUI subsystems
 tui_cleanup :: proc() {
+	tui_stderr_capture_end(replay = false)
 	tui_lifecycle_cleanup()    // Exit alt screen, show cursor
 	tui_set_screen_active(false)
 	tui_disable_raw_mode()     // Restore cooked mode
@@ -150,6 +153,17 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 	if .Ctrl in key.modifiers && key.char == 'c' {
 		state.running = false
 		return
+	}
+	// Ctrl+Z: suspend like any terminal program; `fg` resumes and repaints.
+	if key.key == .Char && key.modifiers == {.Ctrl} && key.char == 'z' {
+		tui_suspend_self()
+		return
+	}
+	// Alt chords (ESC+key) have no bindings: Alt+d must not act as `d`.
+	if .Alt in key.modifiers {
+		#partial switch key.key {
+		case .Char, .Enter, .Tab, .Backspace, .Escape: return
+		}
 	}
 
 	// When add form is active, route ALL input to add form handler

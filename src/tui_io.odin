@@ -163,12 +163,24 @@ tui_lifecycle_cleanup :: proc() {
 // mode) because it needs a stricter mode: ISIG/IEXTEN off so Ctrl+C/Ctrl+Z/
 // Ctrl+V arrive in-band as bytes, and ICRNL off so Enter (CR) and Ctrl+J (LF)
 // stay distinguishable. Every exit path — normal return, SIGTERM/SIGHUP,
-// fatal signals from bounds traps, and assert/panic — funnels through
-// tui_emergency_restore so the user's shell is never left in raw mode on the
-// alternate screen with a hidden cursor.
+// fatal signals from bounds traps, assert/panic, and os.exit from shared CLI
+// code (atexit / wayu_exit) — funnels through tui_emergency_restore so the
+// user's shell is never left in raw mode on the alternate screen with a
+// hidden cursor.
+//
+// While the TUI runs, stderr (fd 2) is redirected to an unlinked temp file
+// (OKAMI-262): anything written there would land on the alternate screen and
+// be wiped by the restore. tui_emergency_restore replays it onto the real
+// stderr after the terminal is back, so a runtime bounds-check message or a
+// fatal error printed before os.exit stays readable. A normal quit discards
+// it, as before.
 
 @(private="file")
 tui_saved_termios: posix.termios
+
+// The raw-mode settings, re-applied after a suspend (Ctrl+Z / SIGTSTP).
+@(private="file")
+tui_raw_termios: posix.termios
 
 // Set once raw mode is active; read from signal handlers (async-signal-safe).
 @(private="file")
@@ -178,9 +190,24 @@ tui_termios_saved: bool
 @(private="file")
 tui_screen_active: bool
 
-// Bytes written on emergency exit: reset SGR, clear, show cursor, leave alt screen.
+// stderr capture: the temp file fd 2 points at, and the real stderr (-1 = off).
 @(private="file")
-TUI_RESTORE_SEQ :: "\x1b[0m\x1b[2J\x1b[H\x1b[?25h\x1b[?1049l"
+tui_stderr_file: posix.FD = -1
+@(private="file")
+tui_stderr_real: posix.FD = -1
+
+@(private="file")
+tui_atexit_registered: bool
+
+// Bytes written on emergency exit: reset SGR, clear, disable bracketed paste,
+// show cursor, leave alt screen.
+@(private="file")
+TUI_RESTORE_SEQ :: "\x1b[0m\x1b[2J\x1b[H\x1b[?2004l\x1b[?25h\x1b[?1049l"
+
+// Bytes written when resuming after a suspend: back to the alt screen, cursor
+// hidden, bracketed paste on. The main loop then repaints everything.
+@(private="file")
+TUI_RESUME_SEQ :: "\x1b[?1049h\x1b[?25l\x1b[?2004h"
 
 // Enable the TUI's raw mode. Returns false (terminal untouched) on failure.
 tui_enable_raw_mode :: proc() -> bool {
@@ -199,7 +226,15 @@ tui_enable_raw_mode :: proc() -> bool {
         return false
     }
     tui_saved_termios = saved
+    tui_raw_termios = raw
     intrinsics.volatile_store(&tui_termios_saved, true)
+    if !tui_atexit_registered {
+        // os.exit from shared CLI code (config readers, locks, …) skips our
+        // defers; libc runs atexit handlers on the way out (macOS). On other
+        // platforms the runtime exits directly — callers use wayu_exit.
+        posix.atexit(tui_atexit_handler)
+        tui_atexit_registered = true
+    }
     return true
 }
 
@@ -216,18 +251,162 @@ tui_set_screen_active :: proc(active: bool) {
     intrinsics.volatile_store(&tui_screen_active, active)
 }
 
-// Async-signal-safe restore: only tcsetattr + write. Safe to call from a
-// signal handler, an assertion-failure proc, or normal cleanup.
+// True while the TUI owns the terminal (raw mode or alternate screen).
+tui_terminal_active :: proc "contextless" () -> bool {
+    return intrinsics.volatile_load(&tui_termios_saved) || intrinsics.volatile_load(&tui_screen_active)
+}
+
+// Async-signal-safe restore: only tcsetattr, write, dup2, lseek, read and
+// close. Safe to call from a signal handler, an assertion-failure proc, an
+// atexit handler, or normal cleanup. Replays captured stderr afterwards.
 tui_emergency_restore :: proc "contextless" () {
     if intrinsics.volatile_load(&tui_termios_saved) {
         posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &tui_saved_termios)
         intrinsics.volatile_store(&tui_termios_saved, false)
     }
     if intrinsics.volatile_load(&tui_screen_active) {
-        seq := TUI_RESTORE_SEQ
-        posix.write(posix.FD(STDOUT_FILENO), raw_data(seq), uint(len(seq)))
+        write_all_fd(posix.FD(STDOUT_FILENO), TUI_RESTORE_SEQ)
         intrinsics.volatile_store(&tui_screen_active, false)
     }
+    tui_stderr_capture_end(replay = true)
+}
+
+// Exit the process, restoring the terminal first when the TUI owns it.
+// Use instead of os.exit in code the TUI can reach (config readers, locks):
+// os.exit skips deferred cleanup, and on Linux the Odin runtime exits
+// without running atexit handlers (OKAMI-251).
+wayu_exit :: proc "contextless" (code: int) -> ! {
+    tui_emergency_restore()
+    os.exit(code)
+}
+
+@(private="file")
+tui_atexit_handler :: proc "c" () {
+    tui_emergency_restore()
+}
+
+@(private="file")
+write_all_fd :: proc "contextless" (fd: posix.FD, data: string) {
+    rest := data
+    for len(rest) > 0 {
+        n := posix.write(fd, raw_data(rest), uint(len(rest)))
+        if n <= 0 do return
+        rest = rest[n:]
+    }
+}
+
+// Redirect stderr to an unlinked temp file while the TUI owns the terminal.
+// Returns false (stderr untouched) when the file can't be created.
+tui_stderr_capture_begin :: proc() -> bool {
+    if intrinsics.volatile_load(&tui_stderr_file) >= 0 do return true
+    dir_buf: [512]u8
+    dir, dir_err := os.lookup_env_buf(dir_buf[:], "TMPDIR")
+    if dir_err != nil || len(dir) == 0 do dir = "/tmp"
+    dir = strings.trim_right(dir, "/")
+    // mkstemp rewrites the XXXXXX in place: build a writable C string.
+    tmpl_buf: [600]u8
+    tmpl := fmt.bprintf(tmpl_buf[:len(tmpl_buf) - 1], "%s/wayu-tui-stderr.XXXXXX", dir)
+    if len(tmpl) == 0 || len(tmpl) >= len(tmpl_buf) - 1 do return false
+    tmpl_buf[len(tmpl)] = 0
+    path := cstring(raw_data(tmpl_buf[:]))
+    file := posix.mkstemp(path)
+    if file < 0 do return false
+    posix.unlink(path)
+    real := posix.dup(posix.FD(STDERR_FILENO))
+    if real < 0 {
+        posix.close(file)
+        return false
+    }
+    if posix.dup2(file, posix.FD(STDERR_FILENO)) < 0 {
+        posix.close(file)
+        posix.close(real)
+        return false
+    }
+    intrinsics.volatile_store(&tui_stderr_real, real)
+    intrinsics.volatile_store(&tui_stderr_file, file)
+    return true
+}
+
+// Point stderr back at the terminal; with `replay`, copy what was captured
+// onto it first. Async-signal-safe and idempotent.
+tui_stderr_capture_end :: proc "contextless" (replay: bool) {
+    file := intrinsics.volatile_load(&tui_stderr_file)
+    real := intrinsics.volatile_load(&tui_stderr_real)
+    if file < 0 || real < 0 do return
+    intrinsics.volatile_store(&tui_stderr_file, -1)
+    intrinsics.volatile_store(&tui_stderr_real, -1)
+    posix.dup2(real, posix.FD(STDERR_FILENO))
+    posix.close(real)
+    if replay && posix.lseek(file, 0, .SET) == 0 {
+        buf: [4096]u8
+        for {
+            n := posix.read(file, raw_data(buf[:]), len(buf))
+            if n <= 0 do break
+            write_all_fd(posix.FD(STDERR_FILENO), string(buf[:n]))
+        }
+    }
+    posix.close(file)
+}
+
+// True while stderr is redirected to the capture file.
+tui_stderr_capturing :: proc "contextless" () -> bool {
+    return intrinsics.volatile_load(&tui_stderr_file) >= 0
+}
+
+// Hand the terminal back to the shell without forgetting the TUI's state:
+// cooked mode, main screen, cursor shown, stderr on the terminal. Used for
+// suspend (Ctrl+Z) and by anything that runs an interactive child (editor).
+// Async-signal-safe. Undo with tui_resume_terminal.
+tui_suspend_terminal :: proc "contextless" () {
+    if intrinsics.volatile_load(&tui_termios_saved) {
+        posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &tui_saved_termios)
+    }
+    if intrinsics.volatile_load(&tui_screen_active) {
+        write_all_fd(posix.FD(STDOUT_FILENO), TUI_RESTORE_SEQ)
+    }
+    if real := intrinsics.volatile_load(&tui_stderr_real); real >= 0 {
+        posix.dup2(real, posix.FD(STDERR_FILENO))
+    }
+}
+
+// Re-enter the TUI's terminal state after tui_suspend_terminal. Sets
+// terminal_resized so the main loop re-reads the size and repaints every cell.
+tui_resume_terminal :: proc "contextless" () {
+    if file := intrinsics.volatile_load(&tui_stderr_file); file >= 0 {
+        posix.dup2(file, posix.FD(STDERR_FILENO))
+    }
+    if intrinsics.volatile_load(&tui_termios_saved) {
+        posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &tui_raw_termios)
+    }
+    if intrinsics.volatile_load(&tui_screen_active) {
+        write_all_fd(posix.FD(STDOUT_FILENO), TUI_RESUME_SEQ)
+    }
+    intrinsics.volatile_store(&terminal_resized, true)
+}
+
+// SIGTSTP (Ctrl+Z, `kill -TSTP`): restore the terminal, stop with the default
+// action, and on SIGCONT re-enter raw mode + the alternate screen (OKAMI-265).
+// SIGTSTP is blocked while its handler runs, so unblock it before re-raising
+// or the stop would only happen after the handler returned.
+@(private="file")
+tui_sigtstp_handler :: proc "c" (sig: posix.Signal) {
+    saved_errno := posix.get_errno()
+    tui_suspend_terminal()
+    posix.signal(.SIGTSTP, auto_cast posix.SIG_DFL)
+    set: posix.sigset_t
+    posix.sigemptyset(&set)
+    posix.sigaddset(&set, .SIGTSTP)
+    posix.sigprocmask(.UNBLOCK, &set, nil)
+    posix.raise(.SIGTSTP)  // stopped here until SIGCONT
+    posix.signal(.SIGTSTP, tui_sigtstp_handler)
+    tui_resume_terminal()
+    posix.set_errno(saved_errno)
+}
+
+// Suspend the TUI like any terminal program (Ctrl+Z arrives in-band because
+// ISIG is off). Returns once the process is continued.
+tui_suspend_self :: proc() {
+    posix.raise(.SIGTSTP)
 }
 
 // Termination + fatal signals that must restore the terminal before dying.
@@ -247,11 +426,12 @@ tui_signal_handler :: proc "c" (sig: posix.Signal) {
     posix.raise(sig)
 }
 
-// Install handlers for TUI_RESTORE_SIGNALS.
+// Install handlers for TUI_RESTORE_SIGNALS and suspend/resume.
 tui_install_signal_handlers :: proc() {
     for sig in TUI_RESTORE_SIGNALS {
         posix.signal(sig, tui_signal_handler)
     }
+    posix.signal(.SIGTSTP, tui_sigtstp_handler)
 }
 
 // Reset handlers installed by tui_install_signal_handlers to SIG_DFL.
@@ -259,6 +439,7 @@ tui_uninstall_signal_handlers :: proc() {
     for sig in TUI_RESTORE_SIGNALS {
         posix.signal(sig, auto_cast posix.SIG_DFL)
     }
+    posix.signal(.SIGTSTP, auto_cast posix.SIG_DFL)
 }
 
 // Assertion-failure proc installed into the TUI's context: restore the
