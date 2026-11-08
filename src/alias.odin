@@ -5,7 +5,6 @@
 package wayu
 import "core:fmt"
 import "core:os"
-import "core:slice"
 import "core:strings"
 import "core:sort"
 // Main handler for ALIAS commands.
@@ -256,7 +255,7 @@ print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
 
 	// Output wayu entries
 	if show_wayu || show_inactive {
-		for entry, i in entries {
+		for entry in entries {
 			is_active := true
 			if needs_env {
 				is_active = false

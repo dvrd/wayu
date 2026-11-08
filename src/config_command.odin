@@ -85,8 +85,8 @@ edit_extra_config :: proc(extra_file: string) {
 	editor: string
 	if e := os.get_env("EDITOR", context.temp_allocator); len(e) > 0 {
 		editor = e
-	} else if e := os.get_env("VISUAL", context.temp_allocator); len(e) > 0 {
-		editor = e
+	} else if v := os.get_env("VISUAL", context.temp_allocator); len(v) > 0 {
+		editor = v
 	} else {
 		editor = "nvim"
 	}
@@ -151,8 +151,8 @@ shell = "zsh"
 	editor: string
 	if e := os.get_env("EDITOR", context.temp_allocator); len(e) > 0 {
 		editor = e
-	} else if e := os.get_env("VISUAL", context.temp_allocator); len(e) > 0 {
-		editor = e
+	} else if v := os.get_env("VISUAL", context.temp_allocator); len(v) > 0 {
+		editor = v
 	} else {
 		editor = "nvim"
 	}

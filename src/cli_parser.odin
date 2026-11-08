@@ -11,12 +11,8 @@
 
 package wayu
 
-import "core:fmt"
-import "core:log"
-import "core:mem"
 import "core:os"
 import "core:strings"
-import "base:runtime"
 
 ParsedArgs :: struct {
 	command: Command,

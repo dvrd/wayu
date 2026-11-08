@@ -6,7 +6,6 @@ package wayu
 
 import "core:fmt"
 import "core:os"
-import "core:slice"
 import "core:strings"
 
 // Main handler for CONSTANTS commands.
@@ -346,7 +345,7 @@ print_constants_json :: proc(entries: []ConfigEntry, external_constants: []strin
 
 	// Output wayu entries
 	if show_wayu || show_inactive {
-		for entry, i in entries {
+		for entry in entries {
 			is_active := false
 			env_val := snapshot_env_var(entry.name)
 			if env_val != nil {

@@ -637,7 +637,6 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 
 	// Check if RC file exists
 	if !os.exists(rc_file_path) {
-		shell_name := get_shell_name(shell)
 		fmt.printfln("\nNo %s found. Create one and add the following line:", rc_file_path)
 		fmt.printfln("  source %s", init_file)
 		return
@@ -660,7 +659,6 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 	}
 
 	// Ask user if they want to update (only if stdin is a TTY)
-	shell_name := get_shell_name(shell)
 	fmt.printfln("\nWayu setup is complete!")
 
 	// Only prompt if stdin is a TTY (interactive mode)

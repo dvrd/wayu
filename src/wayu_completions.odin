@@ -8,7 +8,6 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:path/filepath"
 
 // One row per top-level command: the single source for command dispatch
 // (cli_parser: name → Command, action word → Action), the per-command flag
@@ -923,8 +922,8 @@ list_completions :: proc() {
 		defer delete(file_path)
 
 		first_line := ""
-		content, read_err := os.read_entire_file(file_path, context.allocator)
-		if read_err == nil {
+		content, content_err := os.read_entire_file(file_path, context.allocator)
+		if content_err == nil {
 			defer delete(content)
 			// Use temp allocator for lines array since it's only needed during this iteration
 			lines := strings.split(string(content), "\n", context.temp_allocator)

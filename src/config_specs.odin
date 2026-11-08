@@ -7,7 +7,6 @@
 package wayu
 
 import "core:fmt"
-import "core:os"
 import "core:strings"
 
 // PATH entry specification (global variable, not constant - can't be constant with function pointers)

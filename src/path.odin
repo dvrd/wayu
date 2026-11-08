@@ -9,7 +9,6 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
-import "core:slice"
 import "core:strings"
 
 // Outcome of a [paths] mutation. Lets the CLI handler tell a real change

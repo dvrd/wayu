@@ -17,7 +17,6 @@ import "core:slice"
 import "core:c"
 import "core:c/libc"
 import "core:sys/posix"
-import "core:path/filepath"
 import "core:unicode"
 import "core:unicode/utf8"
 

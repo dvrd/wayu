@@ -8,7 +8,6 @@ package wayu
 
 import "core:fmt"
 import "core:os"
-import "core:strings"
 
 // Template definition
 ConfigTemplate :: struct {
