@@ -12,7 +12,10 @@ import "core:unicode/utf8"
 foreign import libc "system:c"
 
 foreign libc {
-    ioctl :: proc(fd: c.int, request: c.ulong, arg: rawptr) -> c.int ---
+    // ioctl is variadic in C. On Apple arm64 variadic arguments go on the
+    // stack, so a fixed `arg: rawptr` parameter hands ioctl a garbage pointer
+    // and TIOCGWINSZ writes through it (crash depends on codegen; OKAMI-252).
+    ioctl :: proc(fd: c.int, request: c.ulong, #c_vararg args: ..any) -> c.int ---
     signal :: proc(sig: c.int, handler: proc "c" (i32)) -> proc "c" (i32) ---
     select :: proc(nfds: c.int, readfds: rawptr, writefds: rawptr, errorfds: rawptr, timeout: rawptr) -> c.int ---
 }
