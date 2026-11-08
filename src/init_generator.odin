@@ -1298,7 +1298,7 @@ _wayu_defer_process_one() {
   local delay="${item##*:}"
   shift _wayu_defer_queue
   if [[ "$delay" != "0" && -n "$delay" ]]; then
-    (sleep "$delay" && eval "$cmd") &!
+    (command sleep "$delay" && eval "$cmd") &!
   else
     eval "$cmd" 2>/dev/null
   fi
@@ -1307,7 +1307,7 @@ _wayu_defer_process_one() {
 
 # Ask ourselves (via USR1) to continue draining the queue shortly.
 _wayu_defer_kick() {
-  ( sleep 0.1 && kill -USR1 $$ 2>/dev/null ) &!
+  ( command sleep 0.1 && builtin kill -USR1 $$ 2>/dev/null ) &!
 }
 
 # precmd hook - runs deferred commands after the first prompt

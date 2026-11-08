@@ -137,7 +137,8 @@ destroy_full_prompt_config :: proc(cfg: ^PromptConfigFull) {
 // Parse config simple desde TOML
 parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 	cfg := PromptConfigFull{
-		format = "{username}{dir}{git_branch}{character}",
+		// Modules carry their own trailing separators (starship defaults).
+		format = "{username}{dir}{git_branch}{character} ",
 		character_success = "➜",
 		character_error = "✗",
 		vimcmd_symbol = "❮",
@@ -145,11 +146,11 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 		vimcmd_replace_symbol = "❮",
 		username_show_always = false,
 		username_style_user  = "white bold",
-		username_format  = "[$user](white bold)",
+		username_format  = "[$user](white bold) in ",
 		hostname_format  = "$hostname",
 		localip_format   = "$localip",
-		dir_format       = "[$dir](cyan bold)",
-		git_branch_format = "[$branch](magenta bold)",
+		dir_format       = "[$dir](cyan bold) ",
+		git_branch_format = "on [$branch](magenta bold) ",
 		context_formats = make(map[string]string),
 		context_detects = make(map[string][dynamic]string),
 		context_order   = make([dynamic]string),
@@ -426,11 +427,19 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 	// Config text is escaped (prompt_render_module) so only the generated
 	// replacements below can expand; `$(...)` typed in wayu.toml stays literal.
 	if name == "username" {
+		// Like starship: only over SSH or as root unless show_always = true.
 		rendered := prompt_render_module(cfg.username_format, {{`\$user`, "%n"}})
-		strings.write_string(builder, `  result+="`)
+		indent := "  "
+		if !cfg.username_show_always {
+			fmt.sbprintln(builder, `  if [[ -n "${SSH_CONNECTION-}${SSH_CLIENT-}${SSH_TTY-}" ]] || (( EUID == 0 )); then`)
+			indent = "    "
+		}
+		strings.write_string(builder, indent)
+		strings.write_string(builder, `result+="`)
 		strings.write_string(builder, rendered)
 		strings.write_string(builder, `"`)
 		fmt.sbprintln(builder)
+		if !cfg.username_show_always { fmt.sbprintln(builder, "  fi") }
 	} else if name == "hostname" {
 		rendered := prompt_render_module(cfg.hostname_format, {{`\$hostname`, "%m"}})
 		strings.write_string(builder, `  result+="`)
@@ -439,7 +448,7 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 		fmt.sbprintln(builder)
 	} else if name == "localip" {
 		// $localip gets replaced with a shell subshell that fetches the IP
-		rendered := prompt_render_module(cfg.localip_format, {{`\$localip`, `$(ipconfig getifaddr en0 2>/dev/null || ip -4 route get 1 2>/dev/null | awk '{print $7; exit}')`}})
+		rendered := prompt_render_module(cfg.localip_format, {{`\$localip`, `$(command ipconfig getifaddr en0 2>/dev/null || command ip -4 route get 1 2>/dev/null | command awk '{print $7; exit}')`}})
 		strings.write_string(builder, `  result+="`)
 		strings.write_string(builder, rendered)
 		strings.write_string(builder, `"`)
@@ -537,10 +546,10 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	// Uses one `git` invocation instead of three.
 	fmt.sbprintln(&builder, "_wayu_update_git_info() {")
 	fmt.sbprintln(&builder, "  local git_info")
-	fmt.sbprintln(&builder, `  git_info="$(git rev-parse --short HEAD --show-toplevel 2>/dev/null)"`) 
+	fmt.sbprintln(&builder, `  git_info="$(command git rev-parse --short HEAD --show-toplevel 2>/dev/null)"`) 
 	fmt.sbprintln(&builder, "  if [[ -n \"$git_info\" ]]; then")
 	fmt.sbprintln(&builder, `    _WAYU_GIT_DIR="${git_info##*$'\n'}"`)  // last line = toplevel
-	fmt.sbprintln(&builder, `    _WAYU_GIT_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || echo "${git_info%%$'\n'*}")"`)  // branch or short hash
+	fmt.sbprintln(&builder, `    _WAYU_GIT_BRANCH="$(command git symbolic-ref --short HEAD 2>/dev/null || builtin echo "${git_info%%$'\n'*}")"`)  // branch or short hash
 	fmt.sbprintln(&builder, "  else")
 	fmt.sbprintln(&builder, `    _WAYU_GIT_BRANCH=""`)
 	fmt.sbprintln(&builder, `    _WAYU_GIT_DIR=""`)
@@ -762,14 +771,15 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	fmt.sbprintln(&builder, "typeset -g _WAYU_ASYNC_DATA=\"\"")
 	fmt.sbprintln(&builder)
 
-	// 1. TOGGLE FEATURE
-	if cfg.toggle_enabled {
-		generate_toggle_feature(&builder, cfg.toggle_key)
-	}
-
-	// 2. VI MODE INDICATOR
+	// 1. VI MODE INDICATOR (first: `bindkey -v` resets the main keymap, so
+	// any binding made before it would land in the wrong keymap)
 	if cfg.vi_mode_indicator {
 		generate_vi_mode_feature(&builder, cfg)
+	}
+
+	// 2. TOGGLE FEATURE (opt-in)
+	if cfg.toggle_enabled {
+		generate_toggle_feature(&builder, cfg.toggle_key, cfg.vi_mode_indicator)
 	}
 
 	// 3. CONTEXT AWARE
@@ -839,8 +849,9 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	return strings.clone(strings.to_string(builder))
 }
 
-// 1. TOGGLE FEATURE
-generate_toggle_feature :: proc(b: ^strings.Builder, key: string) {
+// TOGGLE FEATURE. Bound in explicit keymaps: viins + vicmd with the vi
+// keymap wayu sets up, emacs otherwise.
+generate_toggle_feature :: proc(b: ^strings.Builder, key: string, vi: bool) {
 	fmt.sbprintln(b, "# === Feature: Toggle Prompt (Minimal/Full) ===")
 	fmt.sbprintln(b, "_wayu_toggle_prompt() {")
 	fmt.sbprintln(b, "  if [[ \"$_WAYU_PROMPT_MODE\" == \"full\" ]]; then")
@@ -851,11 +862,14 @@ generate_toggle_feature :: proc(b: ^strings.Builder, key: string) {
 	fmt.sbprintln(b, "  zle reset-prompt")
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b, "zle -N _wayu_toggle_prompt")
-	fmt.sbprintfln(b, "bindkey %s _wayu_toggle_prompt", shell_single_quote(key, context.temp_allocator))
+	key_q := shell_single_quote(key, context.temp_allocator)
+	for keymap in ([]string{"viins", "vicmd"} if vi else []string{"emacs"}) {
+		fmt.sbprintfln(b, "bindkey -M %s %s _wayu_toggle_prompt", keymap, key_q)
+	}
 	fmt.sbprintln(b)
 }
 
-// 2. VI MODE FEATURE
+// VI MODE FEATURE
 generate_vi_mode_feature :: proc(b: ^strings.Builder, cfg: InteractiveConfig) {
 	fmt.sbprintln(b, "# === Feature: VI Mode Indicator ===")
 	fmt.sbprintln(b, "# Activar modo VI para selección visual")
@@ -1048,17 +1062,17 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 	// Runs in the background worker so it never blocks the prompt.
 	fmt.sbprintln(b, "_wayu_version_cmd() {")
 	fmt.sbprintln(b, `  case "$1" in`)
-	fmt.sbprintln(b, `    rust)    rustc --version 2>/dev/null | awk '{print $2}' ;;`)
-	fmt.sbprintln(b, `    bun)     bun --version 2>/dev/null ;;`)
-	fmt.sbprintln(b, `    dart)    dart --version 2>/dev/null | awk '{print $4}' ;;`)
-	fmt.sbprintln(b, `    ruby)    ruby --version 2>/dev/null | awk '{print $2}' ;;`)
-	fmt.sbprintln(b, `    elixir)  elixir --version 2>/dev/null | awk 'NR==1{print $2}' ;;`)
-	fmt.sbprintln(b, `    odin)    odin version 2>/dev/null | awk '{print $3}' ;;`)
-	fmt.sbprintln(b, `    golang)  go version 2>/dev/null | awk '{print $3}' | sed 's/go//' ;;`)
-	fmt.sbprintln(b, `    deno)    deno --version 2>/dev/null | head -1 | awk '{print $2}' ;;`)
-	fmt.sbprintln(b, `    nodejs)  node --version 2>/dev/null | sed 's/v//' ;;`)
-	fmt.sbprintln(b, `    python)  python3 --version 2>/dev/null | awk '{print $2}' ;;`)
-	fmt.sbprintln(b, `    zig)     zig version 2>/dev/null ;;`)
+	fmt.sbprintln(b, `    rust)    command rustc --version 2>/dev/null | command awk '{print $2}' ;;`)
+	fmt.sbprintln(b, `    bun)     command bun --version 2>/dev/null ;;`)
+	fmt.sbprintln(b, `    dart)    command dart --version 2>/dev/null | command awk '{print $4}' ;;`)
+	fmt.sbprintln(b, `    ruby)    command ruby --version 2>/dev/null | command awk '{print $2}' ;;`)
+	fmt.sbprintln(b, `    elixir)  command elixir --version 2>/dev/null | command awk 'NR==1{print $2}' ;;`)
+	fmt.sbprintln(b, `    odin)    command odin version 2>/dev/null | command awk '{print $3}' ;;`)
+	fmt.sbprintln(b, `    golang)  command go version 2>/dev/null | command awk '{print $3}' | command sed 's/go//' ;;`)
+	fmt.sbprintln(b, `    deno)    command deno --version 2>/dev/null | command head -1 | command awk '{print $2}' ;;`)
+	fmt.sbprintln(b, `    nodejs)  command node --version 2>/dev/null | command sed 's/v//' ;;`)
+	fmt.sbprintln(b, `    python)  command python3 --version 2>/dev/null | command awk '{print $2}' ;;`)
+	fmt.sbprintln(b, `    zig)     command zig version 2>/dev/null ;;`)
 	fmt.sbprintln(b, `    *)       ;;`)
 	fmt.sbprintln(b, "  esac")
 	fmt.sbprintln(b, "}")
@@ -1068,7 +1082,7 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 	fmt.sbprintln(b, "_wayu_async_worker() {")
 	fmt.sbprintln(b, "  local git_pending=\"\"")
 	fmt.sbprintln(b, "  if [[ -n \"$_WAYU_GIT_BRANCH\" ]]; then")
-	fmt.sbprintln(b, `    git_pending="$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"`) 
+	fmt.sbprintln(b, `    git_pending="$(command git status --porcelain 2>/dev/null | command wc -l | command tr -d ' ')"`) 
 	fmt.sbprintln(b, "    if [[ \"$git_pending\" -gt 0 ]]; then")
 	// Apply rprompt_format: DSL conversion + escaping + token substitution
 	{
@@ -1096,11 +1110,11 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 	fmt.sbprintln(b, "  # Write results atomically into the private dir and signal parent")
 	fmt.sbprintln(b, `  local dir="$_WAYU_ASYNC_DIR" tmpf`)
 	fmt.sbprintln(b, `  [[ -n "$dir" && -d "$dir" ]] || return 0`)
-	fmt.sbprintln(b, `  tmpf="$(mktemp "$dir/.w.XXXXXX" 2>/dev/null)" || return 0`)
-	fmt.sbprintln(b, `  if printf '%s\n%s' "$git_pending" "$ver" > "$tmpf" && mv -f "$tmpf" "$dir/data" 2>/dev/null; then`)
-	fmt.sbprintln(b, "    kill -USR1 $$ 2>/dev/null || true")
+	fmt.sbprintln(b, `  tmpf="$(command mktemp "$dir/.w.XXXXXX" 2>/dev/null)" || return 0`)
+	fmt.sbprintln(b, `  if builtin printf '%s\n%s' "$git_pending" "$ver" > "$tmpf" && command mv -f -- "$tmpf" "$dir/data" 2>/dev/null; then`)
+	fmt.sbprintln(b, "    builtin kill -USR1 $$ 2>/dev/null || true")
 	fmt.sbprintln(b, "  else")
-	fmt.sbprintln(b, `    rm -f "$tmpf"`)
+	fmt.sbprintln(b, `    command rm -f -- "$tmpf"`)
 	fmt.sbprintln(b, "  fi")
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
@@ -1114,7 +1128,7 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 	fmt.sbprintln(b, `    local lines=("${(@f)$(< "$f")}")`)
 	fmt.sbprintln(b, `    _WAYU_ASYNC_DATA="${lines[1]-}"`)
 	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="${lines[2]-}"`)
-	fmt.sbprintln(b, `    rm -f "$f"`)
+	fmt.sbprintln(b, `    command rm -f -- "$f"`)
 	fmt.sbprintln(b, "  fi")
 	fmt.sbprintln(b, "  zle && zle reset-prompt")
 	fmt.sbprintln(b, "  return 0")
@@ -1131,13 +1145,13 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 	fmt.sbprintln(b, "_wayu_start_async() {")
 	fmt.sbprintln(b, "  local ret=$?")
 	fmt.sbprintln(b, `  if [[ -z "$_WAYU_ASYNC_DIR" || ! -d "$_WAYU_ASYNC_DIR" ]]; then`)
-	fmt.sbprintln(b, `    _WAYU_ASYNC_DIR="$(mktemp -d "${TMPDIR:-/tmp}/wayu-async.XXXXXX" 2>/dev/null)" || _WAYU_ASYNC_DIR=""`)
+	fmt.sbprintln(b, `    _WAYU_ASYNC_DIR="$(command mktemp -d "${TMPDIR:-/tmp}/wayu-async.XXXXXX" 2>/dev/null)" || _WAYU_ASYNC_DIR=""`)
 	fmt.sbprintln(b, "  fi")
 	fmt.sbprintln(b, `  [[ -n "$_WAYU_ASYNC_DIR" ]] && (_wayu_async_worker &)`)
 	fmt.sbprintln(b, "  return $ret")
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b, "_wayu_async_cleanup() {")
-	fmt.sbprintln(b, `  [[ -n "$_WAYU_ASYNC_DIR" && -d "$_WAYU_ASYNC_DIR" ]] && rm -rf -- "$_WAYU_ASYNC_DIR"`)
+	fmt.sbprintln(b, `  [[ -n "$_WAYU_ASYNC_DIR" && -d "$_WAYU_ASYNC_DIR" ]] && command rm -rf -- "$_WAYU_ASYNC_DIR"`)
 	fmt.sbprintln(b, "  return 0")
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
@@ -1180,7 +1194,7 @@ generate_separator_feature :: proc(b: ^strings.Builder) {
 parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 	cfg := InteractiveConfig{
 		toggle_key = "^P",
-		toggle_enabled = true,
+		toggle_enabled = false, // opt-in: ^P is history navigation
 		vi_mode_indicator = true,
 		vi_insert_symbol = "[I]",
 		vi_normal_symbol = "[N]",
@@ -1217,8 +1231,9 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 				cfg.toggle_key = trimmed[start+1:end]
 			}
 		}
-		if strings.contains(trimmed, "toggle_enabled") && strings.contains(trimmed, "false") {
-			cfg.toggle_enabled = false
+		if strings.contains(trimmed, "toggle_enabled") {
+			if strings.contains(trimmed, "true") { cfg.toggle_enabled = true }
+			if strings.contains(trimmed, "false") { cfg.toggle_enabled = false }
 		}
 		if strings.contains(trimmed, "vi_mode_indicator") && strings.contains(trimmed, "false") {
 			cfg.vi_mode_indicator = false

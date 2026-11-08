@@ -134,6 +134,20 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   characters (`*` `?` `[`) are refused: `wayu build` exits `78` naming the
   tool, other regenerations skip the tool with a warning on stderr.
 
+**Prompt (zsh, `[prompt] enabled = true`)**
+- Default modules have separators like starship:
+  `{username}{dir}{git_branch}{character} ` with `[$user](white bold) in `,
+  `[$dir](cyan bold) ` and `on [$branch](magenta bold) `. Custom `format` /
+  module formats are unchanged.
+- The user name shows only over SSH or as root unless `[prompt.username]
+  show_always = true` (the setting was ignored).
+- The prompt toggle is off by default; enable it with `[prompt.interactive]
+  toggle_enabled = true`. It is bound after the vi keymap is set up, in
+  `viins` + `vicmd` (or `emacs` with `vi_mode_indicator = false`); it used to
+  land in a keymap that `bindkey -v` then replaced, or steal emacs `^P`.
+- Prompt code runs `command git` / `awk` / `sed` / …, so user aliases or
+  functions with those names no longer change or break it.
+
 ## 5.0.0
 
 **doctor**
