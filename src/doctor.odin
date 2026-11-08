@@ -971,7 +971,7 @@ doctor_scan_toml_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPa
 	if !os.exists(toml_path) {
 		return nil, false, "No wayu.toml — PATH check skipped"
 	}
-	content, read_ok := safe_read_file(toml_path)
+	_, read_ok := safe_read_file(toml_path)
 	if !read_ok {
 		return nil, false, "Cannot read wayu.toml — PATH check skipped"
 	}

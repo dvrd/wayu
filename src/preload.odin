@@ -1,7 +1,6 @@
 package wayu
 
 import "core:os"
-import "core:fmt"
 
 // Preload configuration templates for faster startup
 // This reduces filesystem I/O by embedding common configuration templates
