@@ -93,14 +93,17 @@ test_input_page_keys_not_function_keys :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_input_esc_then_key_is_two_events :: proc(t: ^testing.T) {
-	// "Esc, q" typed quickly lands in one read: Escape followed by 'q'.
+test_input_esc_then_key_is_alt_chord :: proc(t: ^testing.T) {
+	// ESC + key within the ESC delay is what terminals send for Alt+key
+	// (OKAMI-257): one Alt-modified event, which the TUI ignores, not
+	// "Escape, then q".
 	events := decode_all("\x1bq")
 	defer delete(events)
-	testing.expect_value(t, len(events), 2)
-	if len(events) == 2 {
-		testing.expect_value(t, events[0].key, wayu.Key.Escape)
-		testing.expect_value(t, events[1].char, 'q')
+	testing.expect_value(t, len(events), 1)
+	if len(events) == 1 {
+		testing.expect_value(t, events[0].key, wayu.Key.Char)
+		testing.expect_value(t, events[0].char, 'q')
+		testing.expect(t, .Alt in events[0].modifiers, "ESC q = Alt+q")
 	}
 }
 

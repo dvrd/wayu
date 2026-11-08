@@ -131,10 +131,16 @@ exit_alt_screen :: proc() {
     fmt.print(EXIT_ALT_SCREEN)
 }
 
+// Bracketed paste (OKAMI-253): the terminal wraps pasted text in
+// ESC[200~ … ESC[201~ so a pasted newline or letter is never a keypress.
+ENABLE_BRACKETED_PASTE  :: "\x1b[?2004h"
+DISABLE_BRACKETED_PASTE :: "\x1b[?2004l"
+
 // TUI lifecycle initialization
 tui_lifecycle_init :: proc() {
     enter_alt_screen()
     fmt.print(HIDE_CURSOR)
+    fmt.print(ENABLE_BRACKETED_PASTE)
     setup_resize_handler()
 }
 
@@ -143,8 +149,10 @@ tui_lifecycle_cleanup :: proc() {
     // Clear the alt screen before exiting so no TUI content bleeds through
     fmt.print(CLEAR_SCREEN)
     fmt.print(CURSOR_HOME)
+    fmt.print(DISABLE_BRACKETED_PASTE)
     fmt.print(SHOW_CURSOR)
     exit_alt_screen()
+    tui_input_reset()
 }
 
 // ============================================================================
@@ -472,6 +480,18 @@ Event :: union {
     KeyEvent,
     MouseEvent,
     ResizeEvent,
+    PasteEvent,
+}
+
+// Text the terminal delivered as one bracketed paste. `text` is heap-owned:
+// the event loop frees it after handling (destroy_event).
+PasteEvent :: struct {
+    text: string,
+}
+
+// Free what an event owns (only PasteEvent owns memory).
+destroy_event :: proc(event: Event) {
+    if p, ok := event.(PasteEvent); ok do delete(p.text)
 }
 
 KeyEvent :: struct {
@@ -521,25 +541,75 @@ KeyModifier :: enum {
 // ============================================================================
 //
 // Raw bytes from stdin are accumulated in input_pending and decoded one event
-// at a time, so a single read() containing several keys (paste, key repeat,
-// fast typing) yields several events instead of only the first byte.
-// Sequences split across reads are completed by the next read; a lone ESC is
-// disambiguated from the start of an escape sequence by waiting
-// ESC_SEQUENCE_TIMEOUT_US for more bytes.
+// at a time, so a single read() containing several keys (key repeat, fast
+// typing, a paste in a terminal without bracketed paste) yields several
+// events instead of only the first byte. Sequences split across reads are
+// completed by the next read; a lone ESC is told apart from the start of an
+// escape sequence (or an Alt chord) by waiting tui_esc_delay_us for more
+// bytes — 100ms by default like ncurses' ESCDELAY, which overrides it (in
+// milliseconds), so arrow keys split by a slow ssh link stay arrow keys.
+//
+// A bracketed paste (ESC[200~ … ESC[201~) becomes one PasteEvent, however
+// many reads it spans, so pasted newlines and letters never act as keys.
 
-INPUT_BUFFER_SIZE       :: 512
-POLL_TIMEOUT_US         :: 50_000  // main-loop tick (resize checks, notifications)
-ESC_SEQUENCE_TIMEOUT_US :: 25_000  // lone ESC vs. start of a CSI/SS3 sequence
+INPUT_BUFFER_SIZE        :: 512
+POLL_TIMEOUT_US          :: 50_000   // main-loop tick (resize checks, notifications)
+ESC_DELAY_DEFAULT_US     :: 100_000  // lone ESC vs. start of a CSI/SS3 sequence / Alt chord
+PASTE_START              :: "\x1b[200~"
+PASTE_END                :: "\x1b[201~"
+PASTE_MAX_BYTES          :: 1 << 20  // larger pastes are truncated
+PASTE_IDLE_LIMIT         :: 10       // idle polls (~0.5s) before an unterminated paste is delivered
+
+// Current ESC disambiguation window (tui_load_esc_delay reads ESCDELAY).
+tui_esc_delay_us := ESC_DELAY_DEFAULT_US
 
 @(private="file")
 input_pending: [INPUT_BUFFER_SIZE]u8
 @(private="file")
 input_pending_len: int
 
+// Bracketed-paste state: inside ESC[200~ … ESC[201~, bytes go to paste_buf.
+@(private="file")
+paste_active: bool
+@(private="file")
+paste_buf: [dynamic]u8
+@(private="file")
+paste_idle_polls: int
+
 ParseStatus :: enum {
 	Ok,          // event decoded, `consumed` bytes used
 	Incomplete,  // need more bytes to decide
 	Invalid,     // unrecognised input; skip `consumed` bytes
+}
+
+// Read ESCDELAY (milliseconds, as in ncurses) into tui_esc_delay_us.
+tui_load_esc_delay :: proc() {
+	tui_esc_delay_us = ESC_DELAY_DEFAULT_US
+	buf: [16]u8
+	if s, err := os.lookup_env_buf(buf[:], "ESCDELAY"); err == nil {
+		if ms, ok := strconv.parse_int(s); ok && ms >= 0 {
+			tui_esc_delay_us = clamp(ms, 0, 2000) * 1000
+		}
+	}
+}
+
+// Drop decoder state between TUI sessions (frees the paste buffer).
+tui_input_reset :: proc() {
+	input_pending_len = 0
+	paste_active = false
+	paste_idle_polls = 0
+	delete(paste_buf)
+	paste_buf = nil
+}
+
+// Discard typed-ahead input: bytes already decoded into input_pending and
+// whatever the terminal has queued. Called when a confirmation dialog opens
+// or a form is submitted, so the rest of an unbracketed paste ("…\rdy") can't
+// answer the dialog (OKAMI-253). A bracketed paste in progress is kept.
+tui_discard_typeahead :: proc() {
+	if paste_active do return
+	input_pending_len = 0
+	posix.tcflush(posix.FD(STDIN_FILENO), .TCIFLUSH)
 }
 
 // Wait up to timeout_us for stdin to become readable.
@@ -573,15 +643,80 @@ consume_input :: proc(count: int) {
 	input_pending_len -= n
 }
 
+// Split the start of `buf` (bytes inside a bracketed paste) into paste text
+// and the end marker. `done`: the end marker was found and is included in
+// `consumed`. Otherwise `consumed` stops before a trailing partial marker
+// ("\x1b[20"), which may complete with the next read.
+scan_paste_chunk :: proc(buf: []u8) -> (body: []u8, consumed: int, done: bool) {
+	if i := strings.index(string(buf), PASTE_END); i >= 0 {
+		return buf[:i], i + len(PASTE_END), true
+	}
+	keep := 0
+	for k := min(len(PASTE_END) - 1, len(buf)); k > 0; k -= 1 {
+		if strings.has_prefix(PASTE_END, string(buf[len(buf) - k:])) {
+			keep = k
+			break
+		}
+	}
+	return buf[:len(buf) - keep], len(buf) - keep, false
+}
+
+@(private="file")
+paste_append :: proc(bytes: []u8) {
+	if paste_buf == nil {
+		// Lives across poll_event calls: keep it off the per-test tracker.
+		paste_buf = make([dynamic]u8, runtime.heap_allocator())
+	}
+	room := PASTE_MAX_BYTES - len(paste_buf)
+	if room > 0 do append(&paste_buf, ..bytes[:min(len(bytes), room)])
+}
+
+@(private="file")
+paste_finish :: proc() -> Event {
+	text := strings.clone(string(paste_buf[:]))
+	clear(&paste_buf)
+	paste_active = false
+	paste_idle_polls = 0
+	return PasteEvent{text = text}
+}
+
 // Poll for events with timeout (non-blocking).
 // Returns: Event if available, nil if timeout or no decodable data.
 poll_event :: proc() -> Event {
 	if input_pending_len == 0 {
-		if !stdin_ready(POLL_TIMEOUT_US) do return nil
-		if !fill_input() do return nil
+		if !stdin_ready(POLL_TIMEOUT_US) || !fill_input() {
+			// A terminal that never sends the end marker must not swallow
+			// every later key: deliver the paste after a quiet period.
+			if paste_active {
+				paste_idle_polls += 1
+				if paste_idle_polls >= PASTE_IDLE_LIMIT do return paste_finish()
+			}
+			return nil
+		}
 	}
 
 	for input_pending_len > 0 {
+		if paste_active {
+			paste_idle_polls = 0
+			body, consumed, done := scan_paste_chunk(input_pending[:input_pending_len])
+			paste_append(body)
+			consume_input(consumed)
+			if done do return paste_finish()
+			if input_pending_len > 0 && !(stdin_ready(tui_esc_delay_us) && fill_input()) {
+				// The partial end marker never completed: it was paste text.
+				paste_append(input_pending[:input_pending_len])
+				consume_input(input_pending_len)
+			}
+			continue
+		}
+		if strings.has_prefix(string(input_pending[:input_pending_len]), PASTE_START) {
+			consume_input(len(PASTE_START))
+			paste_active = true
+			paste_idle_polls = 0
+			if paste_buf != nil do clear(&paste_buf)
+			continue
+		}
+
 		key, consumed, status := parse_input_event(input_pending[:input_pending_len], false)
 		switch status {
 		case .Ok:
@@ -591,7 +726,7 @@ poll_event :: proc() -> Event {
 			consume_input(max(1, consumed))
 		case .Incomplete:
 			// More bytes may be in flight (split escape sequence / UTF-8 rune).
-			if input_pending_len < INPUT_BUFFER_SIZE && stdin_ready(ESC_SEQUENCE_TIMEOUT_US) && fill_input() {
+			if input_pending_len < INPUT_BUFFER_SIZE && stdin_ready(tui_esc_delay_us) && fill_input() {
 				continue
 			}
 			// Nothing more arrived: decode what we have as final input
@@ -752,11 +887,45 @@ parse_escape_sequence :: proc(buf: []u8, final: bool) -> (key: KeyEvent, consume
 	case 27:
 		// ESC ESC: first one is a plain Escape.
 		return KeyEvent{key = .Escape}, 1, .Ok
+
+	case ']':
+		// OSC reply (e.g. a late answer to the OSC 11 background query):
+		// swallow it through its BEL or ESC \ terminator.
+		for i in 2..<len(buf) {
+			if buf[i] == 0x07 do return {}, i + 1, .Invalid
+			if buf[i] == 0x1b {
+				if i + 1 >= len(buf) do break
+				if buf[i + 1] == '\\' do return {}, i + 2, .Invalid
+			}
+		}
+		return {}, (len(buf) if final else 0), (.Invalid if final else .Incomplete)
 	}
 
-	// ESC followed by anything else: a plain Escape keypress (the next byte is
-	// decoded as its own key). wayu has no Alt bindings, and treating it as
-	// Alt+key would turn a quick "Esc, d" into a stray 'd' action.
+	// ESC + key within the ESC delay = Alt+key (what terminals send for Meta
+	// chords). Decoding it as Escape followed by the key turned Alt+d into
+	// "cancel filter, then delete" (OKAMI-257); the event loop ignores Alt
+	// chords instead.
+	alt := KeyModifiers{.Alt}
+	switch b := buf[1]; {
+	case b == 13:               return KeyEvent{key = .Enter, modifiers = alt}, 2, .Ok
+	case b == 9:                return KeyEvent{key = .Tab, modifiers = alt}, 2, .Ok
+	case b == 127 || b == 8:    return KeyEvent{key = .Backspace, modifiers = alt}, 2, .Ok
+	case b >= 1 && b <= 26:     return KeyEvent{key = .Char, char = rune('a' + b - 1), modifiers = {.Alt, .Ctrl}}, 2, .Ok
+	case b >= 0x20 && b < 0x7F: return KeyEvent{key = .Char, char = rune(b), modifiers = alt}, 2, .Ok
+	case b >= 0xC0:
+		// Alt + a UTF-8 rune (Option+key on some layouts).
+		k, n, st := parse_input_event(buf[1:], final)
+		switch st {
+		case .Ok:
+			k.modifiers += {.Alt}
+			return k, n + 1, .Ok
+		case .Incomplete:
+			return {}, 0, .Incomplete
+		case .Invalid:
+		}
+	}
+	// ESC followed by anything else: a plain Escape keypress (the next byte
+	// is decoded as its own key).
 	return KeyEvent{key = .Escape}, 1, .Ok
 }
 

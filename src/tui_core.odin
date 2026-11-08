@@ -99,7 +99,15 @@ tui_run :: proc() {
 		}
 
 		// Update state based on event
+		confirm_was_open := state.delete_confirm.pending
+		form_was_open := state.add_form.active
 		tui_handle_event(&state, event)
+		destroy_event(event)
+		// Keys typed ahead of a delete confirmation or past a submitted form
+		// (an unbracketed paste "name\rdy") must not answer the dialog.
+		if (!confirm_was_open && state.delete_confirm.pending) || (form_was_open && !state.add_form.active) {
+			tui_discard_typeahead()
+		}
 	}
 }
 
@@ -129,6 +137,8 @@ tui_handle_event :: proc(state: ^TUIState, event: Event) {
 	#partial switch e in event {
 	case KeyEvent:
 		handle_key_event(state, e)
+	case PasteEvent:
+		handle_paste(state, e.text)
 	case ResizeEvent:
 		// Already handled in main loop via terminal_resized flag
 	}
@@ -248,6 +258,30 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 	case .Escape:
 		if state.current_view != .MAIN_MENU {
 			tui_state_go_back(state)
+		}
+	}
+}
+
+// Bracketed paste: insert the text into the focused text field (the add
+// form's input or the filter) as typed characters, with CR/LF dropped and
+// tabs as spaces. Anywhere else a paste does nothing — pasted letters and
+// newlines are never commands (OKAMI-253).
+handle_paste :: proc(state: ^TUIState, text: string) {
+	in_field := state.add_form.active && state.add_form.field_index < state.add_form.field_count
+	in_filter := !state.add_form.active && !state.detail.shown && state.filter.active
+	if !in_field && !in_filter do return
+	for r in text {
+		ch := r
+		switch {
+		case ch == '\t':                                 ch = ' '
+		case ch < 0x20 || ch == 0x7F || ch == utf8.RUNE_ERROR: continue
+		case ch >= 0x80 && ch < 0xA0:                    continue
+		}
+		key := KeyEvent{key = .Char, char = ch}
+		if in_field {
+			handle_add_form_input(state, key)
+		} else {
+			handle_filter_input(state, key)
 		}
 	}
 }
