@@ -1,5 +1,6 @@
 package wayu
 import "core:fmt"
+import "core:mem"
 import "core:os"
 import "core:strings"
 import "core:slice"
@@ -1059,50 +1060,99 @@ scan_conflicts_in_file :: proc(plugin: ^PluginMetadata, path: string) -> bool {
 			continue
 		}
 
-		// export VAR=value / export VAR
-		if strings.has_prefix(trimmed, "export ") {
-			after_export := strings.trim_left_space(trimmed[len("export "):])
-			end := len(after_export)
-			for c, i in after_export {
-				if c == '=' || c == ' ' || c == '\t' || c == ';' {
-					end = i
-					break
-				}
-			}
-			var_name := after_export[:end]
-			if is_shell_identifier(var_name) && !strings.has_prefix(var_name, "-") && !is_shared_env_var(var_name) {
-				append_unique(&plugin.conflicts.env_vars, var_name)
-			}
-			continue
-		}
-
-		// alias [-flags] name=value
-		if strings.has_prefix(trimmed, "alias ") {
-			rest := strings.trim_left_space(trimmed[len("alias "):])
-			for strings.has_prefix(rest, "-") {
-				sp := strings.index_any(rest, " \t")
-				if sp < 0 {
-					rest = ""
-					break
-				}
-				rest = strings.trim_left_space(rest[sp:])
-			}
-			eq := strings.index_byte(rest, '=')
-			if eq > 0 {
-				alias_name := rest[:eq]
-				if is_shell_identifier(alias_name) {
-					append_unique(&plugin.conflicts.aliases_, alias_name)
-				}
-			}
-			continue
-		}
-
-		if func_name, ok := parse_function_definition(trimmed); ok {
-			append_unique(&plugin.conflicts.functions, func_name)
+		// `export A=1; alias gs=...` — every statement on the line counts
+		// (OKAMI-276: definitions after `export X=..;` were skipped).
+		for stmt in split_shell_statements(trimmed, context.temp_allocator) {
+			scan_conflicts_in_statement(plugin, stmt)
 		}
 	}
 
 	return true
+}
+
+// Split a line into statements at `;`, `&&` and `||` outside quotes (and
+// outside backslash escapes). Trimmed, empty statements dropped; the
+// slices point into `line`.
+split_shell_statements :: proc(line: string, allocator := context.allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	start := 0
+	quote: byte = 0
+	i := 0
+	for i < len(line) {
+		c := line[i]
+		if quote != 0 {
+			if c == '\\' && quote == '"' && i + 1 < len(line) { i += 2; continue }
+			if c == quote { quote = 0 }
+			i += 1
+			continue
+		}
+		switch {
+		case c == '\\' && i + 1 < len(line):
+			i += 2
+			continue
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '#' && (i == 0 || line[i - 1] == ' ' || line[i - 1] == '\t'):
+			// Trailing comment: the rest of the line is not code.
+			if s := strings.trim_space(line[start:i]); len(s) > 0 { append(&out, s) }
+			return out[:]
+		case c == ';' || (i + 1 < len(line) && ((c == '&' && line[i + 1] == '&') || (c == '|' && line[i + 1] == '|'))):
+			if s := strings.trim_space(line[start:i]); len(s) > 0 { append(&out, s) }
+			if c != ';' { i += 1 }
+			start = i + 1
+		}
+		i += 1
+	}
+	if start < len(line) {
+		if s := strings.trim_space(line[start:]); len(s) > 0 { append(&out, s) }
+	}
+	return out[:]
+}
+
+// Record what one statement defines (export / alias / function).
+@(private="file")
+scan_conflicts_in_statement :: proc(plugin: ^PluginMetadata, trimmed: string) {
+	// export VAR=value / export VAR
+	if strings.has_prefix(trimmed, "export ") {
+		after_export := strings.trim_left_space(trimmed[len("export "):])
+		end := len(after_export)
+		for c, i in after_export {
+			if c == '=' || c == ' ' || c == '\t' || c == ';' {
+				end = i
+				break
+			}
+		}
+		var_name := after_export[:end]
+		if is_shell_identifier(var_name) && !strings.has_prefix(var_name, "-") && !is_shared_env_var(var_name) {
+			append_unique(&plugin.conflicts.env_vars, var_name)
+		}
+		return
+	}
+
+	// alias [-flags] name=value
+	if strings.has_prefix(trimmed, "alias ") {
+		rest := strings.trim_left_space(trimmed[len("alias "):])
+		for strings.has_prefix(rest, "-") {
+			sp := strings.index_any(rest, " \t")
+			if sp < 0 {
+				rest = ""
+				break
+			}
+			rest = strings.trim_left_space(rest[sp:])
+		}
+		eq := strings.index_byte(rest, '=')
+		if eq > 0 {
+			alias_name := rest[:eq]
+			if is_shell_identifier(alias_name) {
+				append_unique(&plugin.conflicts.aliases_, alias_name)
+			}
+		}
+		return
+	}
+
+	if func_name, ok := parse_function_definition(trimmed); ok {
+		append_unique(&plugin.conflicts.functions, func_name)
+	}
 }
 
 // Scan plugin for potential conflicts (exports, functions, aliases).
@@ -1247,6 +1297,98 @@ detect_conflicts :: proc(config: ^PluginConfigJSON) {
 			}
 		}
 	}
+}
+
+// One name two definitions share (OKAMI-276). `other` is another enabled
+// plugin, or PLUGIN_CONFLICT_WAYU_TOML for the user's own [aliases]/[env].
+// `kind`: "function", "alias" or "env".
+PluginConflict :: struct {
+	plugin: string,
+	other:  string,
+	kind:   string,
+	name:   string,
+}
+
+PLUGIN_CONFLICT_WAYU_TOML :: "wayu.toml"
+
+// Every conflict between enabled plugins (same function, alias or exported
+// variable) and between an enabled plugin and wayu.toml (a plugin alias or
+// function named like an [aliases] entry — wayu's alias wins; a plugin
+// export named like an [env] entry — the plugin, sourced later, wins).
+// Runs detect_conflicts (scans the plugins' files). Results and their
+// strings are allocated with `allocator`; pairs are listed once, in
+// config order.
+collect_plugin_conflicts :: proc(config: ^PluginConfigJSON, allocator := context.temp_allocator) -> [dynamic]PluginConflict {
+	detect_conflicts(config)
+	out := make([dynamic]PluginConflict, allocator)
+	add :: proc(out: ^[dynamic]PluginConflict, plugin, other, kind, name: string, allocator: mem.Allocator) {
+		append(out, PluginConflict{
+			plugin = strings.clone(plugin, allocator), other = strings.clone(other, allocator),
+			kind = kind, name = strings.clone(name, allocator),
+		})
+	}
+	shared :: proc(out: ^[dynamic]PluginConflict, a, b: ^PluginMetadata, kind: string, la, lb: []string, allocator: mem.Allocator) {
+		for x in la {
+			for y in lb {
+				if x == y { add(out, a.name, b.name, kind, x, allocator) }
+			}
+		}
+	}
+
+	for i in 0..<len(config.plugins) {
+		a := &config.plugins[i]
+		if !a.enabled { continue }
+		for j in i + 1..<len(config.plugins) {
+			b := &config.plugins[j]
+			if !b.enabled { continue }
+			shared(&out, a, b, "function", a.conflicts.functions[:], b.conflicts.functions[:], allocator)
+			shared(&out, a, b, "alias", a.conflicts.aliases_[:], b.conflicts.aliases_[:], allocator)
+			shared(&out, a, b, "env", a.conflicts.env_vars[:], b.conflicts.env_vars[:], allocator)
+		}
+	}
+
+	aliases := read_toml_section_kvs("aliases")
+	defer destroy_toml_kvs(&aliases)
+	env := read_toml_section_kvs("env")
+	defer destroy_toml_kvs(&env)
+	for &p in config.plugins {
+		if !p.enabled { continue }
+		for kv in aliases {
+			for f in p.conflicts.functions { if f == kv.key { add(&out, p.name, PLUGIN_CONFLICT_WAYU_TOML, "function", f, allocator) } }
+			for al in p.conflicts.aliases_ { if al == kv.key { add(&out, p.name, PLUGIN_CONFLICT_WAYU_TOML, "alias", al, allocator) } }
+		}
+		for kv in env {
+			for v in p.conflicts.env_vars { if v == kv.key { add(&out, p.name, PLUGIN_CONFLICT_WAYU_TOML, "env", v, allocator) } }
+		}
+	}
+	return out
+}
+
+// "function dup (also in d2)" / "alias gs (also in wayu.toml)": one line
+// per conflict that involves `plugin`, from that plugin's point of view.
+// Temp-allocated.
+plugin_conflict_lines :: proc(conflicts: []PluginConflict, plugin: string) -> []string {
+	lines := make([dynamic]string, context.temp_allocator)
+	for c in conflicts {
+		other := ""
+		if c.plugin == plugin { other = c.other } else if c.other == plugin { other = c.plugin } else { continue }
+		append(&lines, fmt.tprintf("%s %s (also defined by %s)", c.kind, c.name, other))
+	}
+	return lines[:]
+}
+
+// Warn (stderr) about every conflict involving `plugin` after it was added
+// or enabled. Reads plugins.json itself; silent when it can't.
+warn_plugin_conflicts :: proc(plugin: string) {
+	config, ok := read_plugin_config_json()
+	defer cleanup_plugin_config_json(&config)
+	if !ok { return }
+	conflicts := collect_plugin_conflicts(&config)
+	lines := plugin_conflict_lines(conflicts[:], plugin)
+	if len(lines) == 0 { return }
+	print_warning("Plugin '%s' has %d conflict(s); the definition loaded last wins:", plugin, len(lines))
+	for l in lines { fmt.eprintfln("    %s", l) }
+	fmt.eprintln("    See 'wayu plugin list' or 'wayu doctor'.")
 }
 
 // Resolve plugin name or URL to PluginInfo.

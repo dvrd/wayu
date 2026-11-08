@@ -507,6 +507,8 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	if !enable {
 		fmt.println()
 		fmt.printfln("%sTo re-enable:%s wayu plugin enable %s", get_muted(), RESET, plugin_name)
+	} else if !wayu.dry_run {
+		warn_plugin_conflicts(plugin_name)
 	}
 
 	os.exit(EXIT_SUCCESS)
@@ -881,6 +883,7 @@ handle_plugin_add :: proc(args: []string) {
 	print_success("Plugin '%s' installed successfully", info.name)
 	fmt.println()
 	print_info("Restart your shell or run 'source ~/.%src' to load the plugin", wayu.shell_ext)
+	warn_plugin_conflicts(info.name)
 
 	hook_post_plugin_install(info.name)
 }
@@ -903,19 +906,24 @@ remove_cloned_plugin_dir :: proc(plugin_path: string, plugins_dir: string) -> bo
 // Emit the plugin list as structured JSON. Shape:
 //   { "plugins": [ {"name": ..., "enabled": bool, "priority": N,
 //                   "shell": "zsh|bash|both|fish|any", "url": ...,
-//                   "commit": ..., "installed_path": ...}, ... ],
+//                   "commit": ..., "installed_path": ...,
+//                   "conflicts": [{"kind": "function|alias|env",
+//                                  "name": ..., "with": ...}]}, ... ],
 //     "count": N, "enabled": M }
+// "with" is another plugin or "wayu.toml" (OKAMI-276).
 print_plugins_json :: proc(config: ^PluginConfigJSON) {
 	enabled_count := 0
 	for plugin in config.plugins {
 		if plugin.enabled { enabled_count += 1 }
 	}
+	conflicts := collect_plugin_conflicts(config)
 
 	fmt.println("{")
 	fmt.println(`  "plugins": [`)
 	for plugin, i in config.plugins {
 		print_plugin_json_row(i, plugin.name, plugin.enabled, plugin.priority,
-			shell_compat_to_string(plugin.shell), plugin.url, plugin.git.commit, plugin.installed_path)
+			shell_compat_to_string(plugin.shell), plugin.url, plugin.git.commit, plugin.installed_path,
+			conflicts[:])
 	}
 	print_plugins_json_tail(len(config.plugins), enabled_count)
 }
@@ -925,7 +933,7 @@ print_plugins_json :: proc(config: ^PluginConfigJSON) {
 // (OKAMI-239).
 @(private = "file")
 print_plugin_json_row :: proc(index: int, name: string, enabled: bool, priority: int,
-	shell, url, commit, installed_path: string) {
+	shell, url, commit, installed_path: string, conflicts: []PluginConflict = {}) {
 	if index > 0 { fmt.println(",") }
 	name_j   := json_escape(name);           defer delete(name_j)
 	shell_j  := json_escape(shell);          defer delete(shell_j)
@@ -934,9 +942,20 @@ print_plugin_json_row :: proc(index: int, name: string, enabled: bool, priority:
 	path_j   := json_escape(installed_path); defer delete(path_j)
 	// `{` is a struct-verb opener in Odin's fmt — emit via %c.
 	fmt.printf(
-		"    %c\"name\": \"%s\", \"enabled\": %s, \"priority\": %d, \"shell\": \"%s\", \"url\": \"%s\", \"commit\": \"%s\", \"installed_path\": \"%s\"%c",
-		'{', name_j, enabled ? "true" : "false", priority, shell_j, url_j, commit_j, path_j, '}',
+		"    %c\"name\": \"%s\", \"enabled\": %s, \"priority\": %d, \"shell\": \"%s\", \"url\": \"%s\", \"commit\": \"%s\", \"installed_path\": \"%s\", \"conflicts\": [",
+		'{', name_j, enabled ? "true" : "false", priority, shell_j, url_j, commit_j, path_j,
 	)
+	n := 0
+	for c in conflicts {
+		other := ""
+		if c.plugin == name { other = c.other } else if c.other == name { other = c.plugin } else { continue }
+		cname_j := json_escape(c.name); defer delete(cname_j)
+		with_j  := json_escape(other);  defer delete(with_j)
+		fmt.printf("%s%c\"kind\": \"%s\", \"name\": \"%s\", \"with\": \"%s\"%c",
+			n > 0 ? ", " : "", '{', c.kind, cname_j, with_j, '}')
+		n += 1
+	}
+	fmt.printf("]%c", '}')
 }
 
 @(private = "file")
@@ -1020,6 +1039,16 @@ handle_plugin_list :: proc(args: []string) {
 		}
 
 		print_info("%d plugins installed (%d enabled)", len(config.plugins), enabled_count)
+
+		// Conflicts between enabled plugins / with wayu.toml (OKAMI-276).
+		conflicts := collect_plugin_conflicts(&config)
+		if len(conflicts) > 0 {
+			fmt.println()
+			print_warning("%d conflict(s); the definition loaded last wins:", len(conflicts))
+			for c in conflicts {
+				fmt.eprintfln("    %s: %s %s (also defined by %s)", c.plugin, c.kind, c.name, c.other)
+			}
+		}
 	} else {
 		// Fall back to old format (for backward compatibility during transition)
 		config := read_plugin_config()

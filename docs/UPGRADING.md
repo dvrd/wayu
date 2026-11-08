@@ -52,6 +52,17 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   reads it exits `78`. A newline in one used to inject shell code into the
   generated `plugins.<ext>`.
 
+**Plugin conflicts**
+- A function, alias or exported variable defined by two enabled plugins,
+  or by a plugin and your `wayu.toml` (`[aliases]` / `[env]`), is now
+  reported: `plugin add` and `plugin enable` print a warning (stderr)
+  naming each one, `plugin list` ends with a conflicts section (stderr),
+  `plugin list --json` has a `"conflicts": [{"kind", "name", "with"}]`
+  array per plugin (`with` is a plugin name or `"wayu.toml"`), and
+  `wayu doctor` adds a `plugin conflicts` warning (exit code unchanged).
+  Several statements on one line (`export X=1; alias gs=...`) are all
+  scanned; the ones after the first were ignored.
+
 **Plugins: installing and loading**
 - `plugin add` (and TUI install) refuses a repository with nothing to load
   for the plugin's shell(s): it exits `65`, removes the fresh clone and
