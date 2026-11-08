@@ -116,7 +116,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/toml.odin` | TOML config mapping, line-level table editor, `wayu toml` commands |
 | `src/toml_parse.odin` | The one TOML parser (error recovery, file order, line spans) — every wayu.toml reader uses it |
 | `src/preload.odin` | Shell script templates for init (zsh/bash/fish) |
-| `src/init_generator.odin` | Generates core, lazy, login, helpers shell scripts |
+| `src/init_generator.odin` | Generates core.<ext> (the one file init.<ext> loads) + path_sync.<ext> |
 | `src/plugin.odin` | Plugin command dispatch + builtin plugin catalog |
 | `src/plugin_json.odin` | Plugin JSON config read/write + migration |
 | `src/plugin_ops.odin` | Git ops, dependency resolution, conflict detection |

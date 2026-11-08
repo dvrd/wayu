@@ -52,6 +52,7 @@ class GeneratedShellTest
       test_evalcache_binary_identity
       test_tools_args_never_run_code
       test_prompt_survives_hostile_commands
+      test_init_and_turbo_define_the_same
       test_prompt_vi_mode_and_widgets
       test_prompt_git_branch_without_git
     ensure
@@ -534,6 +535,45 @@ class GeneratedShellTest
     want = "[main-br|repo][wt-br|wt][|][#{sha.strip[0, 7]}]"
     check('git branch', out.strip == want && !err.include?('GIT-RAN'),
           "out=#{out.strip.inspect} want=#{want.inspect} err=#{err.strip[0, 300]}")
+  end
+
+  # OKAMI-284: turbo.<ext> is the same generated output as core.<ext>, so a
+  # shell that sources turbo ends up exactly like one that sources init:
+  # same PATH, aliases, [env], functions (user + [tools] lazy wrappers),
+  # completions and prompt hooks. A mutation keeps turbo in step.
+  def test_init_and_turbo_define_the_same
+    %w[zsh bash].each do |sh|
+      print "Test: #{sh} init.#{sh} and turbo.#{sh} define the same things... "
+      home, cfg, env = setup_home("turbo_#{sh}", sh)
+      FileUtils.mkdir_p("#{home}/pbin")
+      File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") +
+                 "\n[paths]\npbin = \"~/pbin\"\n\n[env]\nPARITY = \"$HOME/x\"\n" +
+                 (sh == 'zsh' ? "\n[prompt]\nenabled = true\n" : ''))
+      Open3.capture3(env, @wayu_bin, '--shell', sh, 'build')
+      _, terr, tst = Open3.capture3(env, @wayu_bin, '--shell', sh, 'export', '--turbo')
+      Open3.capture3(env, @wayu_bin, '--shell', sh, 'alias', 'add', 'parity_late', 'echo late')
+      probe = if sh == 'zsh'
+                'print -r -- "PATH=$PATH"; alias; print -l ${(ok)functions}; print -r -- "precmd=$precmd_functions chpwd=$chpwd_functions"; ' \
+                  'print -r -- "comp=${_comps[wayu]-none} PARITY=$PARITY prompt=${PROMPT:+set}"'
+              else
+                'echo "PATH=$PATH"; alias; declare -F; complete -p wayu; echo "PARITY=$PARITY PC=$PROMPT_COMMAND"'
+              end
+      run = lambda do |file|
+        args = sh == 'zsh' ? ['zsh', '-f', '-i', '-c'] : ['bash', '--norc', '-c']
+        Open3.capture3(env, *args, "source '#{cfg}/#{file}' >/dev/null 2>&1; #{probe}")
+      end
+      run.call("init.#{sh}") # warm-up: first zsh rebuilds the completion dump
+      init_out, init_err, = run.call("init.#{sh}")
+      turbo_out, turbo_err, = run.call("turbo.#{sh}")
+      same_file = File.read("#{cfg}/turbo.#{sh}") == File.read("#{cfg}/core.#{sh}")
+      ok = tst.success? && same_file && init_out == turbo_out && init_out.include?("#{home}/pbin") &&
+           init_out.include?('parity_late') && init_out.include?('myfn') && init_out.include?("PARITY=#{home}/x") &&
+           init_err.strip.empty? && turbo_err.strip.empty?
+      check("#{sh} turbo parity", ok,
+            "turbo=#{tst.exitstatus} #{terr.strip[0, 200]} same_file=#{same_file} " \
+            "diff=#{(init_out.lines - turbo_out.lines).first(3).inspect}/#{(turbo_out.lines - init_out.lines).first(3).inspect} " \
+            "err=#{(init_err + turbo_err).strip[0, 300]}")
+    end
   end
 
   # `wayu init` on a fresh HOME used to print "ERROR: File not found:

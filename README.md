@@ -105,9 +105,9 @@ wayu config edit                 # Edit wayu.toml (declarative config)
 wayu config extend               # Edit extra.<shell> (custom scripts)
 wayu config scan                 # Detect scripts in .zshrc to migrate
 
-# Turbo export (fast shell startup)
-wayu export                      # Generate turbo.zsh
-# Then in .zshrc: source "$HOME/.config/wayu/turbo.zsh"
+# Startup time (init.<shell> is already a single precomputed file)
+wayu build profile               # time each section of the generated init
+wayu export                      # turbo.zsh: same content as core.zsh (kept for old rc files)
 
 # Diagnostics
 wayu doctor                      # Health check all configs
@@ -160,7 +160,7 @@ wayu <command> <action> [arguments] [flags]
 | `completions` | Manage shell completion scripts |
 | `plugin` | Install and manage shell plugins |
 | `config` | Manage extra config and TOML files |
-| `export` | Generate turbo export for fast startup |
+| `export` | Write turbo.<shell> (same as the generated init) or print env/PATH/aliases for eval |
 | `doctor` | Health check and diagnostics |
 | `toml` | TOML configuration management |
 | `template` | Apply config presets (developer / minimal / data-science / full) |
@@ -374,13 +374,12 @@ wayu stores everything under `~/.config/wayu/` — the files you edit and the fi
 
   # --- wayu generates these (safe to delete; regenerated on change) ---
   init.{zsh,bash,fish}      # entry point — source THIS in your RC file
-  core.{zsh,bash}           # generated optimized init loaded by init.<shell>
-  lazy.{zsh,bash}           # deferred plugin/tool loading (zsh/bash only)
-  helpers.{zsh,bash}        # utility functions, evalcache, built-in zsh-defer (zsh/bash only)
+  core.{zsh,bash,fish}      # the generated init loaded by init.<shell> (one precomputed file)
+  path_sync.{zsh,bash}      # [paths] list re-read by the live PATH sync prompt hook
   plugins.json              # installed plugin metadata (JSON5)
   plugins.{zsh,bash,fish}   # generated plugin loader
   plugins/                  # cloned plugin repos + runtime config
-  turbo.{zsh,bash}          # pre-computed fast startup via `wayu export` (zsh/bash only)
+  turbo.{zsh,bash}          # optional copy of core via `wayu export` (zsh/bash only)
   completions/              # shell completion scripts
   backup/                   # timestamped backups (last 5 per file)
   path.{zsh,bash}           # legacy PATH entries (bootstrap/back-compat)
@@ -417,6 +416,33 @@ it (`PROMPT_COMMAND='history -a'`) silently drops the hook. Append instead
 (`PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND;}history -a"` or, in
 bash ≥ 5.1, `PROMPT_COMMAND+=(...)`), or source `init.bash` after it.
 `wayu doctor` warns about such lines in your bash startup files.
+
+### Startup time
+
+`init.<shell>` loads one generated file, `core.<shell>`: everything from
+`wayu.toml` is precomputed into straight-line code (zcompiled for zsh), and
+the dynamic parts — `[tools]` lazy loaders, the native prompt, live PATH
+sync — are function definitions and hooks, not work done at startup. zsh
+runs `compinit` (with a cached, zcompiled `.zcompdump`) and sets up the
+prompt in interactive shells only.
+
+Measured with `tests/benchmark/startup.sh` (20 `[paths]`, 60 `[aliases]`,
+20 `[env]`; macOS, hyperfine, empty zsh ≈ 3.5 ms, empty bash ≈ 2–3 ms):
+
+| | before (5.0) | now |
+|---|---|---|
+| `zsh -f -c 'source init.zsh'` | 22.8 ms | 9.3 ms |
+| `zsh -f -i -c 'source init.zsh'` (compinit) | 22.3 ms | 16.0 ms |
+| same + `[tools]` + native prompt, `zsh -f -c` / `-i` | 23.4 / 23.4 ms | 8.8 / 14.9 ms |
+| `bash --norc -c 'source init.bash'` | 9.3 ms | ≈ 5 ms |
+
+Where the old time went (zsh): `compinit` ~14 ms (8 ms of it remains in
+interactive shells, with the zcompiled dump), the `[tools]` evalcache lookup
+`${commands[...]}` hashing every PATH dir ~2 ms, the PATH apply ~0.8 ms,
+four extra files sourced (path_sync, helpers, lazy, login) ~0.3 ms. bash:
+the PATH apply ~2 ms (here-strings write a temp file each in bash 3.2;
+multibyte pattern matching). `wayu build profile` times each `# === ... ===`
+section of your own core file.
 
 ### External Alias Sources
 

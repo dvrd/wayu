@@ -168,7 +168,7 @@ TOOLS_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 #   sdk    = { kind = "lazy", init_script = "$HOME/.sdkman/bin/sdkman-init.sh", hook_commands = ["sdk"] }
 #
 # Run 'wayu build' after editing wayu.toml. The corresponding lazy loaders
-# are emitted into lazy.zsh so they work in every interactive shell
+# are emitted into core.zsh so they work in every interactive shell
 # (login, non-login, Ghostty/Zellij/tmux panes).
 #
 # Use this file ONLY for one-off, machine-specific tool setup that doesn't fit

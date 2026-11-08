@@ -402,7 +402,7 @@ check_file_changes :: proc() -> []string {
 // Regeneration
 // ============================================================================
 
-// Regenerate the shell init files (core/lazy/login/helpers + plugin runtime)
+// Regenerate the shell init files (core + path_sync + plugin runtime)
 // from wayu.toml. These are the files init.<ext> actually sources, so a hot
 // reload is picked up by the next shell (or `source ~/.config/wayu/init.<ext>`).
 // The old implementation wrote an orphaned wayu_static.<ext> that nothing

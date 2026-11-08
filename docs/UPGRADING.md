@@ -406,11 +406,60 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - Prompt code runs `command git` / `awk` / `sed` / …, so user aliases or
   functions with those names no longer change or break it.
 
+**Generated init: one fast file (zsh/bash)**
+- `core.<ext>` is now the only generated file `init.<ext>` loads: what used
+  to be `lazy.<ext>` ([tools] lazy loaders, `tools.<ext>`, `extra.<ext>`),
+  `login.<ext>` (login-only tools, now inside `if [[ -o login ]]` /
+  `shopt -q login_shell`) and `helpers.<ext>` (evalcache, zsh-defer) is
+  inlined, and the startup PATH apply no longer reads `path_sync.<ext>`
+  (the prompt hook still does). wayu deletes old `lazy` / `login` /
+  `helpers.<ext>` files (and their `.zwc`) when it regenerates; anything
+  that sourced them directly should source `init.<ext>` instead. Load order
+  is unchanged.
+- zsh: `compinit` runs only in interactive shells (completion is a
+  line-editor feature, and compinit was most of the cost of sourcing init in
+  scripts and `zsh -c`); in other shells a no-op `compdef` is defined if
+  none exists, so plugins calling it stay quiet. `.zcompdump` is also
+  zcompiled (`.zcompdump.zwc`, in the background) — compinit loads it
+  ~40% faster.
+- zsh: the native prompt is set up in interactive shells only.
+- bash: the PATH apply no longer uses here-strings (a temp file each in
+  bash 3.2) and compares in the C locale; the separate dedup pass is gone
+  (the apply already leaves PATH without duplicates).
+- [tools] evalcache (zsh) finds the tool by walking `$path` instead of
+  `${commands[...]}`, which hashed every PATH directory (~2 ms).
+- Startup, 20 [paths] / 60 [aliases] / 20 [env] (`tests/benchmark/startup.sh`,
+  macOS, hyperfine): `zsh -f -c 'source init.zsh'` 22.8 → 9.3 ms (empty zsh
+  ~3.5 ms; turbo.zsh was 8.4 ms), interactive (`zsh -fi`, with compinit)
+  22.3 → 16.0 ms; bash 9.3 → ~5 ms (turbo.bash was 3.1 ms).
+- `wayu build` / `build eval` list `core.<ext>` and `path_sync.<ext>` only.
+
+**wayu export**
+- `turbo.<ext>` now has exactly `core.<ext>`'s content — every feature
+  ([tools] loaders, prompt, login tools, live PATH sync, completions with
+  compinit) at the same speed — and wayu rewrites it whenever it regenerates
+  core (any `path/alias/const` change, TUI edit, `wayu build`), so it no
+  longer goes stale. Sourcing `init.<ext>` is equivalent; turbo stays for rc
+  files that already use it. `wayu export --turbo` output text changed.
+- `wayu export --eval` expands `[paths]` values in the shell (like core):
+  `[paths] b = "$FZG/bin"` with `[env] FZG = "~/g"` now works (it was
+  dropped), an entry whose variable is unset is skipped, and entries are
+  checked with `[ -d ]` when eval'd (not when wayu runs). Duplicates are
+  dropped. The PATH part is now a short loop instead of one `export PATH=`.
+- `wayu build` no longer prints the turbo export report when turbo.<ext>
+  exists (it is refreshed silently with core).
+
 **zcompile**
+- A background compile interrupted by a signal removes its temp digest, and
+  temp digests (`<file>.<pid>.tmp.zwc`) older than a minute are swept before
+  compiling; the compile also runs in its own session, so closing the
+  terminal no longer kills it halfway (stray `core.zsh.<pid>.tmp.zwc` files
+  were left in the data dir).
 - Generated zsh files are recompiled in the background after every change
   (`wayu path/alias/const add`, TUI, …), not only by `wayu init` / `build`,
   so the bytecode speedup no longer disappears after the first edit.
-- `wayu_compile` (helpers.zsh) uses the data dir the file was generated for.
+- `wayu_compile` (now defined in core.zsh) uses the data dir the file was
+  generated for, and compiles core, plugins and turbo.
 - `wayu build profile` works when the data dir path contains spaces.
 
 **Colors**
