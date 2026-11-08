@@ -201,8 +201,7 @@ tests/
 ├── unit/          # Odin unit tests, one file per module
 ├── golden/        # Component goldens + cases.txt (checked by integration/test_golden.rb)
 ├── integration/   # Integration tests (Ruby) — test end-to-end CLI behavior
-├── tui/           # TUI responsive tests (Python/pyte)
-└── benchmark/     # Performance benchmarks
+└── tui/           # TUI responsive tests (Python/pyte)
 ```
 
 Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_tmp(name)` (`tests/unit/test_tmp.odin`, per-process root) — never a fixed `/tmp/...` path: other worktrees run the suite concurrently. Process-lifetime caches in `src/` allocate from `runtime.heap_allocator()`, or the first test to fill them reports a leak. Integration tests spawn the compiled binary and check stdout/stderr/exit codes.
