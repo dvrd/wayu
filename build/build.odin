@@ -9,7 +9,8 @@
 //   test      — run unit tests
 //   check     — type-check only
 //   clean     — remove build artifacts
-//   install   — build + copy to /usr/local/bin + wayu init
+//   install   — build + copy to $PREFIX/bin (default ~/.local/bin) + wayu init;
+//               refuses while Homebrew manages wayu unless --force
 //   dev       — debug build + run with remaining args
 //   release   — test + commit + tag + atomic push of main and the tag
 //               (the push to main runs bump.yml: CI, then publish + Homebrew)
@@ -38,7 +39,7 @@ debug_path :: proc() -> string {
 }
 
 main :: proc() {
-	bld.go_rebuild_urself("build")
+	bld.go_rebuild_urself("build", "bld")
 
 	target := "build"
 	if len(os.args) > 1 {
@@ -223,22 +224,112 @@ do_clean :: proc() {
 	bld.log_info("Clean complete")
 }
 
+// Install directory: $PREFIX/bin when PREFIX is set, else ~/.local/bin.
+// Never /usr/local/bin by default: it is root-owned on many Macs (and
+// `sudo ./build_it install` would then run `wayu init` as root), and on
+// Apple Silicon Homebrew's /opt/homebrew/bin precedes it on PATH.
+install_dir :: proc() -> (dir: string, ok: bool) {
+	if prefix, found := os.lookup_env("PREFIX", context.temp_allocator); found && len(prefix) > 0 {
+		return fmt.tprintf("%s/bin", strings.trim_right(prefix, "/")), true
+	}
+	home, found := os.lookup_env("HOME", context.temp_allocator)
+	if !found || len(home) == 0 {
+		return "", false
+	}
+	return fmt.tprintf("%s/.local/bin", home), true
+}
+
+// A wayu installed by Homebrew: <prefix>/bin/wayu is a symlink into
+// <prefix>/Cellar/wayu/. Returns the link path, "" when there is none.
+homebrew_wayu :: proc() -> string {
+	prefixes := make([dynamic]string, context.temp_allocator)
+	if p, found := os.lookup_env("HOMEBREW_PREFIX", context.temp_allocator); found && len(p) > 0 {
+		append(&prefixes, p)
+	}
+	append(&prefixes, "/opt/homebrew", "/usr/local", "/home/linuxbrew/.linuxbrew")
+	for prefix in prefixes {
+		link := fmt.tprintf("%s/bin/%s", prefix, BINARY_NAME)
+		target, err := os.read_link(link, context.temp_allocator)
+		if err == nil && strings.contains(target, "Cellar/wayu/") {
+			return link
+		}
+	}
+	return ""
+}
+
+// The first executable `wayu` on $PATH ("" when none).
+wayu_on_path :: proc() -> string {
+	path_env, _ := os.lookup_env("PATH", context.temp_allocator)
+	for dir in strings.split(path_env, ":", context.temp_allocator) {
+		if len(dir) == 0 { continue }
+		candidate := fmt.tprintf("%s/%s", strings.trim_right(dir, "/"), BINARY_NAME)
+		if fi, err := os.stat(candidate, context.temp_allocator); err == nil && fi.type != .Directory {
+			return candidate
+		}
+	}
+	return ""
+}
+
+// install [--force]: build, copy to install_dir() via temp file + rename
+// (never rewrite a signed binary in place: macOS kills it on next exec),
+// then `wayu init`. Refuses while Homebrew manages a wayu unless --force.
 do_install :: proc() {
-	do_build()
+	force := false
+	for i := 2; i < len(os.args); i += 1 {
+		switch os.args[i] {
+		case "--force":
+			force = true
+		case:
+			bld.log_error("Unknown install option '%s' (usage: ./build_it install [--force])", os.args[i])
+			os.exit(1)
+		}
+	}
 
-	install_path := fmt.tprintf("/usr/local/bin/%s", BINARY_NAME)
-	bld.log_info("Installing to %s...", install_path)
+	dir, dir_ok := install_dir()
+	if !dir_ok {
+		bld.log_error("Neither PREFIX nor HOME is set; cannot choose an install directory")
+		os.exit(1)
+	}
+	install_path := fmt.tprintf("%s/%s", dir, BINARY_NAME)
 
-	ok := bld.copy_file(bin_path(), install_path)
-	if !ok {
-		bld.log_error("Failed to copy binary to /usr/local/bin/")
+	if brew := homebrew_wayu(); len(brew) > 0 && !force {
+		bld.log_error("wayu is installed by Homebrew (%s).", brew)
+		bld.log_error("A second, dev-built wayu would fight it for PATH precedence and")
+		bld.log_error("Homebrew upgrades would not touch it. Either:")
+		bld.log_error("  brew uninstall wayu && ./build_it install")
+		bld.log_error("  ./build_it install --force     # install to %s anyway", install_path)
+		bld.log_error("  ./build_it && ./bin/wayu ...   # or just run the build in place")
 		os.exit(1)
 	}
 
-	// copy_file doesn't preserve permissions — make executable.
-	chmod := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&chmod, "chmod", "+x", install_path)
-	bld.cmd_run(&chmod)
+	do_build()
+
+	if !os.is_dir(dir) {
+		if err := os.make_directory_all(dir); err != nil {
+			bld.log_error("Cannot create %s: %v", dir, err)
+			os.exit(1)
+		}
+	}
+
+	bld.log_info("Installing to %s...", install_path)
+	tmp_path := fmt.tprintf("%s/.%s.install-%d", dir, BINARY_NAME, os.get_pid())
+	if !bld.copy_file(bin_path(), tmp_path) {
+		os.remove(tmp_path)
+		bld.log_error("Failed to copy the binary into %s (permissions? set PREFIX to another directory)", dir)
+		os.exit(1)
+	}
+	// copy_file doesn't preserve permissions; 0755 before it becomes visible.
+	if err := os.chmod(tmp_path, os.perm_number(0o755)); err != nil {
+		os.remove(tmp_path)
+		bld.log_error("Failed to make %s executable: %v", tmp_path, err)
+		os.exit(1)
+	}
+	// rename() replaces the old binary atomically (new inode).
+	if err := os.rename(tmp_path, install_path); err != nil {
+		os.remove(tmp_path)
+		bld.log_error("Failed to install %s: %v", install_path, err)
+		os.exit(1)
+	}
 
 	// Run the already-built binary instead of recompiling from source.
 	bld.log_info("Running %s init...", BINARY_NAME)
@@ -249,7 +340,13 @@ do_install :: proc() {
 		os.exit(1)
 	}
 
-	bld.log_info("Installed successfully")
+	bld.log_info("Installed %s", install_path)
+	// Say so when a shell would not run what was just installed.
+	if found := wayu_on_path(); found == "" {
+		bld.log_warn("%s is not on your PATH; add it to use the installed wayu", dir)
+	} else if found != install_path {
+		bld.log_warn("`wayu` on your PATH is %s, which shadows %s; put %s earlier in PATH", found, install_path, dir)
+	}
 }
 
 do_dev :: proc() {
@@ -531,7 +628,7 @@ do_help :: proc() {
 	fmt.println("  test      Run unit tests")
 	fmt.println("  check     Type-check only")
 	fmt.println("  clean     Remove build artifacts")
-	fmt.println("  install   Build + install to /usr/local/bin + wayu init")
+	fmt.println("  install   Build + install to $PREFIX/bin (default ~/.local/bin) + wayu init [--force]")
 	fmt.println("  dev       Debug build + run (extra args passed through)")
 	fmt.println("  release   Run tests, commit + tag, push to main (bump.yml publishes after CI)")
 	fmt.println("  docs      Sync docs/index.html + README.md version from src/main.odin")

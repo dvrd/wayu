@@ -95,6 +95,12 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   check`); `WAYU_GIT_TIMEOUT=<seconds>` changes both.
 - A failed `plugin add` clone now prints git's error.
 
+**Building from source**
+- `./build_it install` installs to `$PREFIX/bin` (default `~/.local/bin`,
+  was `/usr/local/bin`), replaces the binary atomically (temp file +
+  rename), refuses while Homebrew manages wayu (`--force` to override),
+  and warns when another `wayu` shadows the installed one on `PATH`.
+
 **path**
 - `path clean` resolves `$VAR`/`${VAR}` from `wayu.toml` `[env]` first, then
   the environment (as the generated init does), and never removes an entry
