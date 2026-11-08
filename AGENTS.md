@@ -14,7 +14,7 @@ User docs: [README.md](README.md) (install, shell setup, upgrade), [docs/cli.md]
 ## Build & Development Commands
 
 > Build system is `./build_it` (an Odin binary at repo root, source in `build/build.odin`). There is no Taskfile.
-> Odin version is pinned in `.github/odin-release` (used by CI/releases); `./build_it` warns on a mismatch. Bump it there + README when upgrading.
+> Odin version is pinned in `.github/odin-release` (used by CI/releases); `./build_it` warns on a mismatch. Bump it there when upgrading.
 
 ```bash
 # Build

@@ -469,6 +469,8 @@ dir ~/.config/fabric/patterns fabric --pattern {name}
 ## Development
 
 Uses [bld](https://github.com/dvrd/bld), an Odin build system library. No external tools required.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and [SECURITY.md](SECURITY.md)
+to report a vulnerability; contributor notes on the code are in [AGENTS.md](AGENTS.md).
 
 ```bash
 # Bootstrap (once)
