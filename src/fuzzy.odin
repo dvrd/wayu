@@ -35,19 +35,22 @@ STDERR_FILENO :: 2
 // is then delivered in-band to the pickers/TUI instead of raising SIGINT and
 // killing the process with the terminal left raw + cursor hidden, and
 // Ctrl+Y no longer triggers macOS's VDSUSP (delayed suspend). SIGTERM /
-// SIGHUP still arrive as signals, so a handler restores the terminal before
-// re-raising them with the default disposition.
+// SIGHUP (and SIGINT / SIGQUIT sent with kill) still arrive as signals, so a
+// handler restores the terminal before re-raising them with the default
+// disposition.
 
 // Saved terminal state for restore.
 saved_termios: posix.termios
 raw_mode_active: bool
 
+// Signals that restore the terminal before the default action. SIGINT /
+// SIGQUIT only come from outside (`kill -INT`) while ISIG is off.
+SIGHUP_NUM  :: 1 // POSIX values on macOS/Linux/BSD
+SIGQUIT_NUM :: 3
 @(private = "file")
-prev_sigterm_handler: proc "c" (libc.int)
+RAW_RESTORE_SIGNALS :: [4]libc.int{libc.SIGTERM, SIGHUP_NUM, libc.SIGINT, SIGQUIT_NUM}
 @(private = "file")
-prev_sighup_handler: proc "c" (libc.int)
-
-SIGHUP_NUM :: 1 // POSIX value on macOS/Linux/BSD
+prev_signal_handlers: [len(RAW_RESTORE_SIGNALS)]proc "c" (libc.int)
 
 // Async-signal-safe: only tcsetattr, write, signal, raise.
 terminal_restore_signal_handler :: proc "c" (sig: libc.int) {
@@ -81,8 +84,9 @@ enable_raw_mode :: proc() -> bool {
 	}
 	raw_mode_active = true
 
-	prev_sigterm_handler = libc.signal(libc.SIGTERM, terminal_restore_signal_handler)
-	prev_sighup_handler  = libc.signal(SIGHUP_NUM, terminal_restore_signal_handler)
+	for sig, i in RAW_RESTORE_SIGNALS {
+		prev_signal_handlers[i] = libc.signal(sig, terminal_restore_signal_handler)
+	}
 
 	debug("Terminal set to raw mode")
 	return true
@@ -106,8 +110,9 @@ disable_raw_mode :: proc() {
 	raw_mode_active = false
 
 	// Put back whatever handlers were installed before raw mode.
-	libc.signal(libc.SIGTERM, prev_sigterm_handler)
-	libc.signal(SIGHUP_NUM, prev_sighup_handler)
+	for sig, i in RAW_RESTORE_SIGNALS {
+		libc.signal(sig, prev_signal_handlers[i])
+	}
 	debug("Terminal restored to original state")
 }
 
@@ -261,90 +266,141 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 
 	render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
 
+	// One read can hold several keys (a paste, fast typing, an escape
+	// sequence): every byte is decoded. A UTF-8 character split across reads
+	// is carried over to the next one.
+	input_buf: [256]byte
+	carry := 0
 	for {
-		input_buf: [8]byte
-		n, err := os.read(os.stdin, input_buf[:])
+		n, err := os.read(os.stdin, input_buf[carry:])
 		if err != nil {
 			debug("Error reading input: %v", err)
 			break
 		}
 		if n == 0 do continue
+		n += carry
+		carry = 0
 
-		ch := input_buf[0]
-
-		if ch == 3 { // Ctrl+C
-			fmt.print(CLEAR_SCREEN)
+		ev := picker_decode_input(input_buf[:n], &filter_text)
+		switch ev.action {
+		case .CANCEL:
 			return strings.clone(""), false
-		} else if ch == 25 { // Ctrl+Y
-			debug("User pressed Ctrl+Y - selecting item")
+		case .SELECT:
 			if len(filtered_items) > 0 && selected_index < len(filtered_items) {
 				result := strings.clone(filtered_items[selected_index])
 				debug("Selected: %s", result)
 				return result, true
 			}
-		} else if ch == 14 { // Ctrl+N
-			debug("User pressed Ctrl+N - move down")
-			if len(filtered_items) > 0 {
-				selected_index = (selected_index + 1) % len(filtered_items)
-			}
-			render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
-		} else if ch == 16 { // Ctrl+P
-			debug("User pressed Ctrl+P - move up")
-			if len(filtered_items) > 0 {
-				selected_index = (selected_index - 1 + len(filtered_items)) % len(filtered_items)
-			}
-			render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
-		} else if ch == 127 || ch == 8 { // Backspace/Delete
-			debug("User pressed backspace")
-			if len(filter_text) > 0 {
-				// Drop the whole last rune, not just its final byte.
-				_, w := utf8.decode_last_rune(filter_text[:])
-				resize(&filter_text, len(filter_text) - max(w, 1))
-				update_filter(items, filter_text[:], &filtered_items)
-				selected_index = 0
-				render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
-			}
-		} else if (ch >= 32 && ch <= 126) || (ch >= 0xC2 && ch <= 0xF4 && utf8.valid_string(string(input_buf[:n]))) {
-			// Printable ASCII, or one complete UTF-8 encoded character.
-			debug("User typed character: %s", string(input_buf[:n]))
-			if ch < 0x80 {
-				append(&filter_text, ch)
-			} else {
-				append(&filter_text, ..input_buf[:n])
-			}
+		case .NONE:
+		}
+		if ev.filter_changed {
 			update_filter(items, filter_text[:], &filtered_items)
 			selected_index = 0
-			render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
-		} else if ch == 13 || ch == 10 { // Enter
-			debug("User pressed Enter - selecting item")
-			if len(filtered_items) > 0 && selected_index < len(filtered_items) {
-				result := strings.clone(filtered_items[selected_index])
-				debug("Selected: %s", result)
-				return result, true
-			}
 		}
-
-		if ch == 27 && n >= 3 { // ESC sequence
-			if input_buf[1] == '[' {
-				switch input_buf[2] {
-				case 'A': // Up arrow
-					debug("User pressed up arrow")
-					if len(filtered_items) > 0 {
-						selected_index = (selected_index - 1 + len(filtered_items)) % len(filtered_items)
-					}
-					render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
-				case 'B': // Down arrow
-					debug("User pressed down arrow")
-					if len(filtered_items) > 0 {
-						selected_index = (selected_index + 1) % len(filtered_items)
-					}
-					render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
-				}
-			}
+		if len(filtered_items) > 0 && ev.move != 0 {
+			m := len(filtered_items)
+			selected_index = ((selected_index + ev.move) % m + m) % m
+		}
+		if ev.filter_changed || ev.move != 0 {
+			render_ui(prompt, filter_text[:], filtered_items[:], selected_index)
+		}
+		// Keep an incomplete trailing UTF-8 sequence for the next read.
+		if ev.incomplete > 0 {
+			copy(input_buf[:], input_buf[n - ev.incomplete:n])
+			carry = ev.incomplete
 		}
 	}
 
 	return strings.clone(""), false
+}
+
+PickerAction :: enum { NONE, SELECT, CANCEL }
+
+// What one batch of picker input does.
+PickerInput :: struct {
+	action:         PickerAction, // the first select/cancel key wins; later bytes are ignored
+	move:           int,          // net selection movement (+down / -up)
+	filter_changed: bool,
+	incomplete:     int,          // trailing bytes of a UTF-8 character not yet complete
+}
+
+// Decode every key in `buf` (one read from the terminal), applying typed
+// characters / backspace to `filter`. Keys: printable text and UTF-8
+// characters filter; Backspace/^H delete a character; Ctrl+N / Down and
+// Ctrl+P / Up move; Enter / Ctrl+Y select; Ctrl+C or a lone ESC cancel.
+// Other escape sequences (CSI `ESC [ ... final`, SS3 `ESC O x`, Alt+key)
+// are skipped whole, so their bytes never reach the filter.
+picker_decode_input :: proc(buf: []byte, filter: ^[dynamic]u8) -> (ev: PickerInput) {
+	i := 0
+	for i < len(buf) {
+		ch := buf[i]
+		switch {
+		case ch == 3: // Ctrl+C
+			ev.action = .CANCEL
+			return
+		case ch == 13 || ch == 10 || ch == 25: // Enter / Ctrl+Y
+			ev.action = .SELECT
+			return
+		case ch == 27:
+			if i + 1 >= len(buf) { // ESC on its own
+				ev.action = .CANCEL
+				return
+			}
+			switch buf[i + 1] {
+			case '[':
+				j := i + 2
+				for j < len(buf) && !(buf[j] >= 0x40 && buf[j] <= 0x7E) { j += 1 }
+				if j < len(buf) {
+					switch buf[j] {
+					case 'A': ev.move -= 1
+					case 'B': ev.move += 1
+					}
+				}
+				i = j + 1
+			case 'O':
+				if i + 2 < len(buf) {
+					switch buf[i + 2] {
+					case 'A': ev.move -= 1
+					case 'B': ev.move += 1
+					}
+				}
+				i += 3
+			case:
+				i += 2 // Alt+key
+			}
+			continue
+		case ch == 14: ev.move += 1 // Ctrl+N
+		case ch == 16: ev.move -= 1 // Ctrl+P
+		case ch == 127 || ch == 8:
+			if len(filter) > 0 {
+				// Drop the whole last rune, not just its final byte.
+				_, w := utf8.decode_last_rune(filter[:])
+				resize(filter, len(filter) - max(w, 1))
+				ev.filter_changed = true
+			}
+		case ch >= 32 && ch <= 126:
+			append(filter, ch)
+			ev.filter_changed = true
+		case ch >= 0xC2 && ch <= 0xF4:
+			want := ch >= 0xF0 ? 4 : ch >= 0xE0 ? 3 : 2
+			if i + want > len(buf) {
+				// Only continuation bytes may follow; keep them for the next read.
+				ok := true
+				for b in buf[i + 1:] { if b & 0xC0 != 0x80 { ok = false } }
+				if ok { ev.incomplete = len(buf) - i; return }
+				i += 1
+				continue
+			}
+			if r, w := utf8.decode_rune(buf[i:i + want]); r != utf8.RUNE_ERROR && w == want {
+				append(filter, ..buf[i:i + want])
+				ev.filter_changed = true
+				i += want
+				continue
+			}
+		}
+		i += 1
+	}
+	return
 }
 
 // interactive_fuzzy_select delegates to interactive_select.
