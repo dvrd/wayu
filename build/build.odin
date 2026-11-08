@@ -15,6 +15,7 @@
 //   release   — test + commit + tag + atomic push of main and the tag
 //               (the push to main runs bump.yml: CI, then publish + Homebrew)
 //   docs      — sync docs/index.html + README.md version from src/main.odin
+//               (--check: verify only, exit 1 on drift)
 //   help      — show available targets
 
 package main
@@ -601,65 +602,122 @@ read_source_version :: proc() -> string {
 	return after[:end]
 }
 
-// Generic version sync: find old_ver via marker string, replace all old→new.
-sync_file_version :: proc(path: string, marker: string, new_ver: string) {
-	data, err := os.read_entire_file_from_path(path, context.allocator)
-	if err != nil {
-		bld.log_error("Failed to read %s", path)
-		os.exit(1)
-	}
-	content := string(data)
+// Where the release version appears outside src/main.odin. Only an X.Y.Z
+// directly after one of these prefixes is rewritten or checked, so other
+// version numbers in prose ("upgrading from 4.3.4") are never touched.
+// A `required` anchor must be present, or the file's layout changed and the
+// table needs updating.
+Version_Anchor :: struct {
+	path:     string,
+	prefix:   string,
+	required: bool,
+}
 
-	idx := strings.index(content, marker)
-	if idx == -1 {
-		bld.log_error("Could not find version marker in %s", path)
-		os.exit(1)
-	}
-	old_start := idx + len(marker)
-	// Find the end delimiter: first char that isn't part of a semver
-	old_end := 0
-	for old_end < len(content[old_start:]) {
-		c := content[old_start + old_end]
-		if c >= '0' && c <= '9' || c == '.' {
-			old_end += 1
-		} else {
-			break
+VERSION_ANCHORS :: [?]Version_Anchor{
+	{"README.md",       "**v",                  true},  // **vX.Y.Z** under the title
+	{"docs/index.html", `aria-label="Version `, true},  // nav badge label
+	{"docs/index.html", `">v`,                  false}, // nav badge + footer text
+	{"docs/index.html", "wayu ",                false}, // terminal demo "wayu X.Y.Z installed"
+}
+
+VERSION_FILES :: [?]string{"README.md", "docs/index.html"}
+
+// Length of the X.Y.Z at the start of s, or 0 when s doesn't start with one.
+semver_len :: proc(s: string) -> int {
+	i := 0
+	for part in 0 ..< 3 {
+		start := i
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i += 1
+		}
+		if i == start { return 0 }
+		if part < 2 {
+			if i >= len(s) || s[i] != '.' { return 0 }
+			i += 1
 		}
 	}
-	if old_end == 0 {
-		bld.log_error("Malformed version after marker in %s", path)
-		os.exit(1)
-	}
-	old_ver := content[old_start : old_start + old_end]
-
-	if old_ver == new_ver {
-		bld.log_info("%s already at v%s", path, new_ver)
-		return
-	}
-
-	updated, _ := strings.replace_all(content, old_ver, new_ver)
-	werr := os.write_entire_file(path, transmute([]byte)updated)
-	if werr != nil {
-		bld.log_error("Failed to write %s", path)
-		os.exit(1)
-	}
-
-	count := strings.count(content, old_ver)
-	bld.log_info("%s: %s → %s (%d replacements)", path, old_ver, new_ver, count)
+	return i
 }
 
-// Sync version into docs/index.html and README.md.
-sync_docs_version_str :: proc(new_ver: string) {
-	// docs/index.html — anchor on the nav badge aria-label
-	sync_file_version("docs/index.html", `aria-label="Version `, new_ver)
-	// README.md — anchor on the bold version tag at the top
-	sync_file_version("README.md", "**v", new_ver)
+// Replace the X.Y.Z after every occurrence of prefix with new_ver. Returns the
+// rewritten content and how many anchored versions were found; versions that
+// differed from new_ver are appended to stale.
+rewrite_anchored_versions :: proc(content, prefix, new_ver: string, stale: ^[dynamic]string) -> (out: string, found: int) {
+	b := strings.builder_make(context.temp_allocator)
+	rest := content
+	for {
+		idx := strings.index(rest, prefix)
+		if idx == -1 { break }
+		after := idx + len(prefix)
+		strings.write_string(&b, rest[:after])
+		rest = rest[after:]
+		n := semver_len(rest)
+		if n == 0 { continue }
+		found += 1
+		if rest[:n] != new_ver { append(stale, rest[:n]) }
+		strings.write_string(&b, new_ver)
+		rest = rest[n:]
+	}
+	strings.write_string(&b, rest)
+	return strings.to_string(b), found
 }
 
-// Standalone entry point: read VERSION from source, patch docs + README.
+// Sync README.md + docs/index.html to new_ver, or with check only report
+// drift. Returns false when check finds a stale version.
+sync_docs_version_str :: proc(new_ver: string, check := false) -> bool {
+	ok := true
+	for path in VERSION_FILES {
+		data, err := os.read_entire_file_from_path(path, context.temp_allocator)
+		if err != nil {
+			bld.log_error("Failed to read %s", path)
+			os.exit(1)
+		}
+		content := string(data)
+		stale := make([dynamic]string, context.temp_allocator)
+		for anchor in VERSION_ANCHORS {
+			if anchor.path != path { continue }
+			found: int
+			content, found = rewrite_anchored_versions(content, anchor.prefix, new_ver, &stale)
+			if anchor.required && found == 0 {
+				bld.log_error("%s: version marker '%sX.Y.Z' not found (update VERSION_ANCHORS in build/build.odin)", path, anchor.prefix)
+				os.exit(1)
+			}
+		}
+
+		switch {
+		case len(stale) == 0:
+			bld.log_info("%s at v%s", path, new_ver)
+		case check:
+			bld.log_error("%s says v%s but src/main.odin VERSION is %s — run ./build_it docs", path, stale[0], new_ver)
+			ok = false
+		case:
+			if os.write_entire_file(path, transmute([]byte)content) != nil {
+				bld.log_error("Failed to write %s", path)
+				os.exit(1)
+			}
+			bld.log_info("%s: v%s → v%s (%d replacements)", path, stale[0], new_ver, len(stale))
+		}
+	}
+	return ok
+}
+
+// `./build_it docs [--check]`: sync README + docs to VERSION in src/main.odin.
+// --check writes nothing and exits 1 on drift (CI "Release Readiness");
+// bump.yml runs the plain form before committing a release.
 sync_docs_version :: proc() {
-	ver := read_source_version()
-	sync_docs_version_str(ver)
+	check := false
+	for i := 2; i < len(os.args); i += 1 {
+		switch os.args[i] {
+		case "--check":
+			check = true
+		case:
+			bld.log_error("Unknown docs option '%s' (usage: ./build_it docs [--check])", os.args[i])
+			os.exit(1)
+		}
+	}
+	if !sync_docs_version_str(read_source_version(), check) {
+		os.exit(1)
+	}
 }
 
 do_help :: proc() {
@@ -676,7 +734,7 @@ do_help :: proc() {
 	fmt.println("  install   Build + install to $PREFIX/bin (default ~/.local/bin) + wayu init [--force]")
 	fmt.println("  dev       Debug build + run (extra args passed through)")
 	fmt.println("  release   Run tests, commit + tag, push to main (bump.yml publishes after CI)")
-	fmt.println("  docs      Sync docs/index.html + README.md version from src/main.odin")
+	fmt.println("  docs      Sync docs/index.html + README.md version from src/main.odin [--check]")
 	fmt.println("  help      Show this help")
 	fmt.println("")
 	fmt.println("Bootstrap:")

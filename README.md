@@ -1,6 +1,6 @@
 # wayu
 
-**v4.3.4** · A shell configuration management CLI written in [Odin](https://odin-lang.org/) with zero external dependencies. Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
+**v5.0.0** · A shell configuration management CLI written in [Odin](https://odin-lang.org/) with zero external dependencies. Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
 
 ## Features
 
@@ -30,11 +30,11 @@ wayu init
 
 ### From source
 
-Requires the [Odin compiler](https://odin-lang.org/docs/install/), release
-**`dev-2026-11a`** — the version CI and releases are built with (pinned in
-`.github/odin-release`). Grab it from
-[Odin releases](https://github.com/odin-lang/Odin/releases/tag/dev-2026-11a);
-`./build_it` warns when your `odin` is a different release.
+Requires the [Odin compiler](https://odin-lang.org/docs/install/) at the
+release named in [`.github/odin-release`](.github/odin-release) — the one CI
+and releases are built with (download it from
+[Odin releases](https://github.com/odin-lang/Odin/releases)); `./build_it`
+warns when your `odin` is a different release.
 
 ```bash
 # Bootstrap the build system, then build + install
