@@ -454,6 +454,44 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   escape sequences instead of filtering on their bytes, and a lone `Esc`
   cancels like `Ctrl+C`. `kill -INT` / `kill -QUIT` restore the terminal.
 
+**TUI terminal handling**
+- Keys: `Esc` followed by a key within 100ms is now Alt+key (what
+  terminals send for Meta/Option chords) and does nothing; it used to be
+  "Escape, then the key", so Alt+d in the filter cancelled it and opened a
+  delete confirmation. A lone `Esc` therefore takes effect after 100ms
+  (was 25ms), which also keeps arrow keys split by a slow ssh link from
+  acting as `Esc`. `ESCDELAY` (milliseconds, as in ncurses) changes the
+  window.
+- Paste: bracketed paste is enabled while the TUI runs. A paste goes into
+  the focused text field (add form, filter) as text — newlines dropped,
+  tabs as spaces — and is ignored anywhere else; pasted newlines and
+  letters no longer submit forms or run actions. In terminals without
+  bracketed paste, keys typed ahead of a delete confirmation or after a
+  submitted form are discarded, so the rest of a pasted line can't answer
+  the dialog.
+- `Ctrl+Z` suspends the TUI (and `kill -TSTP` restores the terminal before
+  stopping); `fg` resumes and repaints. `Ctrl+Z` used to be ignored.
+- Colors: list text uses the terminal's default foreground instead of a
+  fixed light gray. On a light background — `WAYU_THEME=light`, a light
+  `COLORFGBG`, or the terminal's answer to an OSC 11 query at startup
+  (`WAYU_THEME=dark` skips the query) — dividers, orange/amber, green and
+  blue accents use darker variants. In 16-color terminals the accent is
+  bright magenta (was red, like errors) and dividers gray (were black). The
+  hidden cursor is parked on the selected row for screen readers.
+- Width: combining accents, emoji variation selectors (VS16) and ZWJ
+  sequences take no column of their own, and text-style symbols such as
+  `➜ ✔ ★ ❤ ⛰` count as one column (they counted two), using the same
+  Unicode tables as terminals. Rows with such characters no longer shift or
+  leave stray glyphs in the TUI, and CLI tables containing them line up
+  differently. In the TUI a VS16 or ZWJ is dropped, so `❤️` is drawn as `❤`
+  and a ZWJ family emoji as its separate emoji.
+- If the TUI dies (a crash or a fatal error in shared code), what it wrote
+  to stderr — the runtime's bounds-check location, the error before the
+  exit — is printed after the terminal is restored; it used to be wiped
+  with the alternate screen. An unreadable `wayu.toml` while adding or
+  removing an entry is reported in the TUI instead of exiting with the
+  terminal left raw.
+
 **Editor (`function add/edit`, `config edit|extend`, `hooks edit`)**
 - `$EDITOR` / `$VISUAL` may carry arguments (`code --wait`, `subl -w`): it
   runs as `sh -c '$EDITOR "$1"'`. It used to be looked up as one program

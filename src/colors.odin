@@ -399,6 +399,9 @@ print_error :: proc(msg: string, args: ..any) {
 	if print_quiet {
 		clear_print_capture()
 		print_captured_error = fmt.aprintf(msg, ..args)
+		// The TUI redirects stderr to a file it replays only if it dies
+		// (os.exit from shared code, crash): keep the reason there too.
+		if tui_stderr_capturing() do fmt.eprintfln("ERROR: %s", print_captured_error)
 		return
 	}
 	eprintf_color("%s%sERROR:%s ", BOLD, get_error(), RESET)

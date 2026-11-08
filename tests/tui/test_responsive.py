@@ -55,17 +55,21 @@ def open_pty_with_size(cols, rows):
 
 class TUISession:
     """Manages a PTY session with the wayu TUI, auto-responding to DSR queries."""
-    def __init__(self, cols, rows, env=None, args=None, pty_size=None, size_env=True):
+    def __init__(self, cols, rows, env=None, args=None, pty_size=None, size_env=True,
+                 argv=None, osc11_reply=None):
         """`env`: when given, the child gets exactly this environment (plus
         COLUMNS/LINES) instead of inheriting ours — used by views that list
         environment variables, so real secrets never reach the screen.
         `args`: extra wayu arguments (e.g. --dry-run). `pty_size`: (cols,
         rows) reported by TIOCGWINSZ when it should differ from the size the
         harness answers DSR with ((0, 0) = ioctl gives no size).
-        `size_env=False`: no COLUMNS/LINES in the child's environment."""
+        `size_env=False`: no COLUMNS/LINES in the child's environment.
+        `argv`: run this program instead of wayu (e.g. a job-control shell).
+        `osc11_reply`: bytes answered to an OSC 11 background-color query."""
         self.cols = cols
         self.rows = rows
         self.args = TUI_ARGS + list(args or [])
+        self.osc11_reply = osc11_reply
         pcols, prows = pty_size if pty_size is not None else (cols, rows)
         self.master_fd, slave_fd = open_pty_with_size(pcols, prows)
         # The terminal settings the user's shell would get back. Read via
@@ -89,6 +93,8 @@ class TUISession:
             os.dup2(slave_fd, 2)
             if slave_fd > 2:
                 os.close(slave_fd)
+            if argv:
+                os.execve(argv[0], argv, env)
             os.execve(WAYU_BIN, [WAYU_BIN] + self.args, env)
 
         os.close(slave_fd)
@@ -100,8 +106,11 @@ class TUISession:
         # glyphs are 3 bytes); decoding chunks separately corrupts the screen.
         self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
         self.raw = bytearray()
-        # Pre-send DSR response for the initial size probe
-        self._send_dsr_response()
+        # Pre-send DSR response for the initial size probe (not to a shell:
+        # it would read the reply as typed input; not with an OSC 11 reply:
+        # an unsolicited DSR reply first means "no OSC 11 support").
+        if not argv and osc11_reply is None:
+            self._send_dsr_response()
 
     def _send_dsr_response(self):
         time.sleep(0.15)
@@ -123,6 +132,9 @@ class TUISession:
                 try:
                     data = os.read(self.master_fd, 65536)
                     if data:
+                        # Answer in order, like a terminal: OSC 11 first.
+                        if self.osc11_reply and b"\x1b]11;?" in data:
+                            os.write(self.master_fd, self.osc11_reply)
                         if b"\x1b[6n" in data:
                             dsr = f"\x1b[{self.rows};{self.cols}R".encode()
                             os.write(self.master_fd, dsr)
@@ -982,6 +994,288 @@ def test_size_detection():
             s.kill()
 
 
+# ── Terminal layer (Phase 3: OKAMI-251/253/257/258/262/263/265) ────────────
+
+def wait_quiet(s, t=0.3):
+    s.read(timeout=t)
+
+
+def test_bracketed_paste():
+    """Bracketed paste is enabled while the TUI runs; a paste lands verbatim
+    in the focused field (newline/tab can't submit or move focus) and does
+    nothing outside a text field (OKAMI-253)."""
+    print(f"\n── Bracketed paste ──")
+    reset_config()
+    before = read_toml()
+    s = TUISession(80, 24, env=constants_env())
+    try:
+        open_view(s, "alias", lambda snap: "ALIASES" in snap and "gs" in snap)
+        test("paste/enabled", AssertResult(b"\x1b[?2004h" in bytes(s.raw), "no \\x1b[?2004h"))
+        s.send(b"a"); wait_quiet(s, 0.2)
+        s.send(b"\x1b[200~zz\techo z\rdy\x1b[201~")
+        ok = s.wait_for(lambda snap: "zz echo zdy" in snap, timeout=TIMEOUT_KEY)
+        test("paste/inserted_into_field", AssertResult(ok, s.snapshot()))
+        test("paste/nothing_submitted", AssertResult(read_toml() == before, read_toml()))
+        s.send(b"\x1b"); wait_quiet(s, 0.3)  # close the form
+        # Outside a text field a paste is ignored: "dy" must not delete.
+        s.send(b"\x1b[200~dy\x1b[201~"); wait_quiet(s, 0.5)
+        snap = s.snapshot()
+        test("paste/ignored_in_list",
+             AssertResult("DELETE CONFIRMATION" not in snap and read_toml() == before, snap))
+        s.send(b"\x03")
+        check_clean_exit(s, "paste_bracketed", want_code=0)
+        tail = bytes(s.raw)
+        test("paste/disabled_on_exit",
+             AssertResult(tail.rfind(b"\x1b[?2004l") > tail.rfind(b"\x1b[?2004h"), repr(tail[-80:])))
+    finally:
+        s.kill()
+        reset_config()
+
+
+def test_unbracketed_paste_cannot_confirm():
+    """Without bracketed paste a burst "zz\\techo z\\rdy" submits the form
+    (Enter is in it), but the rest of the burst is dropped: it can't open a
+    delete confirmation and answer it (OKAMI-253)."""
+    print(f"\n── Unbracketed paste burst ──")
+    reset_config()
+    s = TUISession(80, 24, env=constants_env())
+    try:
+        open_view(s, "alias", lambda snap: "ALIASES" in snap and "gs" in snap)
+        s.send(b"a"); wait_quiet(s, 0.2)
+        s.send(b"zz\techo z\rdy")
+        s.wait_for(lambda snap: "Added alias: zz" in snap, timeout=TIMEOUT_KEY)
+        wait_quiet(s, 0.5)
+        content = read_toml()
+        test("burst/added", AssertResult('zz = "echo z"' in content, content))
+        test("burst/no_delete",
+             AssertResult("ll =" in content and "gs =" in content
+                          and "DELETE CONFIRMATION" not in s.snapshot(), content + s.snapshot()))
+        s.send(b"\x03")
+        check_clean_exit(s, "burst", want_code=0)
+    finally:
+        s.kill()
+        reset_config()
+
+
+def test_alt_keys_and_esc_delay():
+    """Alt+d (ESC d) in the filter or the add form is ignored instead of
+    "Escape, then d = delete"; an arrow key whose bytes arrive 40ms apart is
+    still an arrow key, not Escape (OKAMI-257)."""
+    print(f"\n── Alt keys / ESC delay ──")
+    reset_config()
+    before = read_toml()
+    s = TUISession(80, 24, env=constants_env())
+    try:
+        open_view(s, "alias", lambda snap: "ALIASES" in snap and "gs" in snap)
+        s.send(b"/"); wait_quiet(s, 0.2)
+        s.send(b"g")
+        s.wait_for(lambda snap: "/ g" in snap, timeout=TIMEOUT_KEY)
+        s.send(b"\x1bd"); wait_quiet(s, 0.5)
+        snap = s.snapshot()
+        test("alt/filter_kept", AssertResult("/ g" in snap, snap))
+        test("alt/no_delete_dialog", AssertResult("DELETE CONFIRMATION" not in snap, snap))
+        s.send(b"\x1b"); wait_quiet(s, 0.3)  # cancel the filter
+
+        s.send(b"a"); wait_quiet(s, 0.2)
+        s.send(b"\x1bx"); wait_quiet(s, 0.5)
+        snap = s.snapshot()
+        test("alt/form_stays_open",
+             AssertResult("DELETE CONFIRMATION" not in snap and "ADD ALIAS" in snap, snap))
+        s.send(b"\x1b"); wait_quiet(s, 0.3)
+
+        # Split arrow: ESC, 40ms gap, "[B".
+        s.send(b"\x1b"); time.sleep(0.04); s.send(b"[B")
+        wait_quiet(s, 0.5)
+        snap = s.snapshot()
+        test("esc_delay/split_arrow_stays_in_view", AssertResult("ALIASES" in snap, snap))
+        test("alt/nothing_written", AssertResult(read_toml() == before, read_toml()))
+        s.send(b"\x03")
+        check_clean_exit(s, "alt", want_code=0)
+    finally:
+        s.kill()
+        reset_config()
+
+
+UNICODE_TOML = """[aliases]
+acute = "echo café end"
+arrows = "echo ➜ ✔ ★ end"
+heart = "echo ❤️ in end"
+family = "echo \U0001F468‍\U0001F469‍\U0001F467 plain end"
+cjk = "echo 日本 end"
+"""
+
+
+def cells(s, row):
+    """Row `row` as pyte cell data, one entry per column ('' = right half of
+    a wide glyph; a combining mark stays with its base)."""
+    line = s.screen.buffer[row]
+    return [line[x].data for x in range(s.cols)]
+
+
+def assert_box_sides_cells(s, context=""):
+    """assert_box_sides on pyte cells (column-exact with wide glyphs and
+    combining marks, unlike the display strings)."""
+    rows = [cells(s, r) for r in range(s.rows)]
+    top = next((r for r in range(s.rows) if "╭" in rows[r]), None)
+    bottom = next((r for r in range(s.rows) if "╰" in rows[r]), None)
+    if top is None or bottom is None or "╮" not in rows[top]:
+        return AssertResult(False, f"No box found{context}")
+    left, right = rows[top].index("╭"), rows[top].index("╮")
+    bad = [r for r in range(top + 1, bottom) if rows[r][left] != "│" or rows[r][right] != "│"]
+    return AssertResult(not bad, f"Side border missing on rows {bad}{context}\n" +
+                        "\n".join(f"  {r:2}: {''.join(rows[r])!r}" for r in bad[:5]))
+
+
+def assert_cells_match_full_redraw(s, context):
+    """The diff renderer's screen equals a full repaint of the same state.
+    Ctrl+Z suspends and resumes (the harness' process group is orphaned, so
+    the stop itself is skipped or we continue it), which repaints every cell
+    into a fresh screen: any width drift shows up as a difference."""
+    s.read(timeout=0.3)
+    incremental = [cells(s, r) for r in range(s.rows)]
+    s.screen = pyte.Screen(s.cols, s.rows)
+    s.stream = pyte.Stream(s.screen)
+    s.send(b"\x1a")
+    time.sleep(0.2)
+    try:
+        pid, status = os.waitpid(s.pid, os.WNOHANG | os.WUNTRACED)
+        if pid == s.pid and os.WIFSTOPPED(status):
+            os.kill(s.pid, signal.SIGCONT)
+    except ChildProcessError:
+        pass
+    s.read(timeout=0.8)
+    full = [cells(s, r) for r in range(s.rows)]
+    bad = [r for r in range(s.rows) if incremental[r] != full[r]]
+    return AssertResult(not bad,
+        f"diff render differs from full repaint on rows {bad}{context}\n" +
+        "\n".join(f"  {r:2} inc: {''.join(incremental[r])!r}\n     full: {''.join(full[r])!r}" for r in bad[:4]))
+
+
+def test_unicode_widths():
+    """Combining marks, VS16, ZWJ sequences and text-default symbols
+    (➜ ✔ ★ ❤) keep the cell grid aligned: borders stay put and the
+    incremental screen equals a full repaint after opening and closing the
+    detail overlay on every row (OKAMI-258)."""
+    print(f"\n── Unicode widths ──")
+    toml_path = os.path.join(os.environ["HOME"], ".config", "wayu", "wayu.toml")
+    with open(toml_path, "w") as f:
+        f.write(UNICODE_TOML)
+    s = TUISession(80, 24, env=constants_env())
+    try:
+        ok = open_view(s, "alias", lambda snap: "acute" in snap and "family" in snap)
+        test("unicode/renders", AssertResult(ok, s.snapshot()))
+        test("unicode/box_sides", assert_box_sides_cells(s, " (unicode aliases)"))
+        for i in range(5):
+            s.send(b"\r"); s.read(timeout=0.3)
+            s.send(b"\x1b"); s.read(timeout=0.3)
+            s.send(b"j"); s.read(timeout=0.2)
+        test("unicode/no_residue", assert_cells_match_full_redraw(s, " after detail overlays"))
+        test("unicode/still_running", AssertResult(s.alive(), "TUI exited"))
+        s.send(b"\x03")
+        check_clean_exit(s, "unicode", want_code=0)
+    finally:
+        s.kill()
+        reset_config()
+
+
+def test_theme():
+    """Normal text uses the terminal's default foreground; WAYU_THEME=light
+    (or an OSC 11 reply with a light background) switches dividers to a
+    light gray (OKAMI-263)."""
+    print(f"\n── Theme ──")
+    cases = [
+        # name, extra env, osc11 reply, want light
+        ("dark_env", {"WAYU_THEME": "dark"}, None, False),
+        ("light_env", {"WAYU_THEME": "light"}, None, True),
+        ("osc11_light", {}, b"\x1b]11;rgb:ffff/ffff/ffff\x1b\\", True),
+        ("osc11_dark", {}, b"\x1b]11;rgb:1e1e/1e1e/2e2e\x07", False),
+        ("no_reply", {}, None, False),
+    ]
+    for name, extra, reply, want_light in cases:
+        env = dict(constants_env(), COLORTERM="truecolor", **extra)
+        s = TUISession(80, 24, env=env, osc11_reply=reply)
+        try:
+            ok = s.wait_for(lambda snap: "WAYU" in snap and "Aliases" in snap, timeout=TIMEOUT_STARTUP)
+            raw = bytes(s.raw)
+            light_div = b"38;2;200;200;200m" in raw
+            dark_div = b"38;2;51;51;51m" in raw
+            test(f"theme/{name}/renders", AssertResult(ok, s.snapshot()))
+            test(f"theme/{name}/divider",
+                 AssertResult(light_div == want_light and dark_div != want_light,
+                              f"light divider {light_div}, dark divider {dark_div}"))
+            test(f"theme/{name}/default_fg_text",
+                 AssertResult(b"38;2;208;208;208m" not in raw, "muted #D0D0D0 still emitted"))
+            if not extra:
+                test(f"theme/{name}/queried", AssertResult(b"\x1b]11;?" in raw, "no OSC 11 query"))
+        finally:
+            s.kill()
+
+
+def test_suspend_resume():
+    """Ctrl+Z under a job-control shell stops the TUI with the terminal
+    restored (shell prompt usable); `fg` brings it back in raw mode on the
+    alternate screen, fully repainted (OKAMI-265)."""
+    print(f"\n── Suspend / resume ──")
+    bash = shutil.which("bash")
+    if not bash:
+        test("suspend/skipped", AssertResult(True, "no bash"))
+        return
+    env = dict(constants_env(), PS1="SHELL$ ", WAYU=WAYU_BIN)
+    env.pop("FAKE_EXT_API_KEY", None)
+    s = TUISession(80, 24, env=env, argv=[bash, "--norc", "--noprofile", "-i"])
+    try:
+        s.wait_for(lambda snap: "SHELL$" in snap, timeout=TIMEOUT_STARTUP)
+        s.send(b'"$WAYU" --tui\r')
+        ok = s.wait_for(lambda snap: "WAYU" in snap and "Aliases" in snap, timeout=TIMEOUT_STARTUP)
+        test("suspend/tui_started", AssertResult(ok and s.raw_mode_active(), s.snapshot()))
+        mark = len(s.raw)
+        s.send(b"\x1a")
+        ok = s.wait_for(lambda snap: "Stopped" in snap or snap.rstrip().endswith("SHELL$"), timeout=TIMEOUT_KEY)
+        after = bytes(s.raw[mark:])
+        test("suspend/stopped_to_shell", AssertResult(ok, s.snapshot()))
+        test("suspend/left_alt_screen",
+             AssertResult(b"\x1b[?1049l" in after and b"\x1b[?25h" in after, repr(after[:200])))
+        isig = termios.tcgetattr(s.master_fd)[3] & termios.ISIG
+        test("suspend/shell_owns_tty", AssertResult(bool(isig), "ISIG still off: TUI raw mode left on"))
+        s.send(b"fg\r")
+        ok = s.wait_for(lambda snap: "WAYU" in snap and "Aliases" in snap, timeout=TIMEOUT_KEY)
+        test("suspend/resumed_repainted", AssertResult(ok, s.snapshot()))
+        test("suspend/raw_again", AssertResult(s.raw_mode_active(), "not in raw mode after fg"))
+        s.send(b"j"); s.read(timeout=0.3)
+        s.send(b"q")
+        ok = s.wait_for(lambda snap: "SHELL$" in snap and "WAYU" not in snap, timeout=TIMEOUT_KEY)
+        test("suspend/quit_after_resume", AssertResult(ok, s.snapshot()))
+        s.send(b"exit\r")
+        s.wait_exit()
+    finally:
+        s.kill()
+
+
+def test_unreadable_toml_mid_session():
+    """wayu.toml made unreadable while the TUI runs: adding a PATH entry
+    reports the error in the form instead of os.exit()ing on the alternate
+    screen with the terminal raw (OKAMI-251)."""
+    print(f"\n── Unreadable wayu.toml while running ──")
+    reset_config()
+    toml_path = os.path.join(os.environ["HOME"], ".config", "wayu", "wayu.toml")
+    s = TUISession(80, 24, env=constants_env())
+    try:
+        open_view(s, "path", lambda snap: "CONFIGURATION" in snap)
+        os.chmod(toml_path, 0)
+        fill_add_form(s, ["/tmp"])
+        ok = s.wait_for(lambda snap: "cannot read" in snap, timeout=TIMEOUT_KEY)
+        test("unreadable/reported", AssertResult(ok and s.alive(), s.snapshot()))
+        os.chmod(toml_path, 0o644)
+        test("unreadable/untouched", AssertResult(read_toml() == FIXTURE_TOML, read_toml()))
+        if s.alive():
+            s.send(b"\x03")
+        check_clean_exit(s, "unreadable", want_code=0)
+    finally:
+        os.chmod(toml_path, 0o644)
+        s.kill()
+        reset_config()
+
+
 # ── Main ────────────────────────────────────────────────────────────────────
 
 FIXTURE_TOML = """[paths]
@@ -1115,6 +1409,14 @@ def run_all():
     test_tiny_terminal_notice()
     test_add_form_editing_and_semantics()
     test_hooks_and_settings_views()
+    # Terminal layer: paste, Alt/ESC, widths, theme, suspend, os.exit paths
+    test_bracketed_paste()
+    test_unbracketed_paste_cannot_confirm()
+    test_alt_keys_and_esc_delay()
+    test_unicode_widths()
+    test_theme()
+    test_suspend_resume()
+    test_unreadable_toml_mid_session()
 
     # Summary
     passed = sum(1 for r in results if r.passed)

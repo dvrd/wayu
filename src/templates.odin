@@ -179,7 +179,7 @@ template_add_paths :: proc(paths: []string) {
 		switch toml_path_add_result(p) {
 		case .OK:   template_report("path", what)
 		case .NOOP: template_report("path", what, "already in wayu.toml")
-		case .INVALID, .NOT_FOUND, .IO_ERROR:
+		case .INVALID, .NOT_FOUND, .IO_ERROR, .UNREADABLE, .OBSOLETE_SCHEMA:
 			print_warning("  skipped (could not write): %s", p)
 		}
 	}

@@ -75,7 +75,7 @@ ConfigEntrySpec :: struct {
 handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []string) {
 	if !ensure_wayu_toml_exists() {
 		print_error_simple("Failed to create wayu.toml")
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	if spec.toml_add != nil {
@@ -83,13 +83,13 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 		case .ADD:
 			if len(args) == 0 {
 				print_cli_usage_error(spec, "add")
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 			entry := parse_args_to_entry(spec, args)
 			defer cleanup_entry(&entry)
 			if !is_entry_complete(entry) {
 				print_cli_usage_error(spec, "add")
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 			if spec.hook_pre_add != nil && entry_add_is_valid(spec, entry) do spec.hook_pre_add(entry.name, entry.value)
 			ok, err := spec.toml_add(entry)
@@ -101,7 +101,7 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 		case .REMOVE:
 			if len(args) == 0 {
 				print_cli_usage_error(spec, "remove")
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 			if spec.hook_pre_remove != nil && entry_exists_in_toml(spec, args[0]) do spec.hook_pre_remove(args[0], "")
 			ok, err := spec.toml_remove(args[0])
@@ -117,7 +117,7 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 		case .GET:
 			if len(args) == 0 {
 				print_cli_usage_error(spec, "get")
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 			spec.toml_get(args[0])
 			return
@@ -176,7 +176,7 @@ exit_with_entry_error :: proc(err: string) -> ! {
 		exit_code = EXIT_IOERR
 	}
 	delete(err)
-	os.exit(exit_code)
+	wayu_exit(exit_code)
 }
 
 // Print usage error with hint to TUI mode (CLI-specific error handling)
@@ -224,14 +224,14 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 	case .CLEAN:
 		if !spec.has_clean {
 			print_error("%s command does not support clean action", spec.display_name)
-			os.exit(EXIT_GENERAL)
+			wayu_exit(EXIT_GENERAL)
 		}
 		// Command-specific clean implementation
 		// This will be called from command files (e.g., clean_missing_paths)
 	case .DEDUP:
 		if !spec.has_dedup {
 			print_error("%s command does not support dedup action", spec.display_name)
-			os.exit(EXIT_GENERAL)
+			wayu_exit(EXIT_GENERAL)
 		}
 		// Command-specific dedup implementation
 		// This will be called from command files (e.g., remove_duplicate_paths)
@@ -240,7 +240,7 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 	case .UNKNOWN:
 		fmt.eprintfln("Unknown %s action", spec.display_name)
 		print_config_help(spec)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
@@ -516,6 +516,7 @@ EntryOutcome :: enum {
 entry_add :: proc(entry: Entry) -> (EntryOutcome, string) {
 	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
 	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := wayu_toml_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
 	if msg, bad := legacy_schema_error(); bad { return .FAILED, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
@@ -533,6 +534,10 @@ entry_add :: proc(entry: Entry) -> (EntryOutcome, string) {
 			return .UNCHANGED, ""
 		case .IO_ERROR:
 			return .FAILED, strings.clone("I/O error: failed to write path to wayu.toml")
+		case .UNREADABLE:
+			return .FAILED, strings.clone("I/O error: cannot read wayu.toml")
+		case .OBSOLETE_SCHEMA:
+			return .FAILED, strings.clone("wayu.toml uses the obsolete [[paths]] schema; run `wayu migrate --schema`")
 		case:
 			// The writer reported the reason (bad/taken name) via print_error.
 			if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
@@ -563,6 +568,7 @@ entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (Ent
 entry_remove :: proc(entry: Entry) -> (EntryOutcome, string) {
 	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
 	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := wayu_toml_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
 	if msg, bad := legacy_schema_error(); bad { return .FAILED, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
@@ -578,6 +584,10 @@ entry_remove :: proc(entry: Entry) -> (EntryOutcome, string) {
 			return .REMOVED, ""
 		case .IO_ERROR:
 			return .FAILED, strings.clone("I/O error: failed to remove path from wayu.toml")
+		case .UNREADABLE:
+			return .FAILED, strings.clone("I/O error: cannot read wayu.toml")
+		case .OBSOLETE_SCHEMA:
+			return .FAILED, strings.clone("wayu.toml uses the obsolete [[paths]] schema; run `wayu migrate --schema`")
 		case:
 			if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
 			return .FAILED, strings.clone("failed to remove path from wayu.toml")
@@ -856,21 +866,49 @@ print_legacy_schema_hint :: proc(header: string) {
 	fmt.eprintln()
 }
 
-// Read wayu.toml and abort with a structured error if the schema is stale.
-// Returns the file content (caller frees) on success. On legacy schema or
-// I/O error, prints a message and exits — never returns.
-must_read_modern_wayu_toml :: proc(path: string) -> []byte {
-	content, ok := safe_read_file(path)
-	if !ok {
+// Read wayu.toml, refusing the obsolete schema. Returns the content (caller
+// frees) and exit_code 0, or nil and the code the CLI exits with after the
+// reason was printed (unless `quiet`): EXIT_NOINPUT when the file can't be
+// read, EXIT_CONFIG for the obsolete schema. Never exits, so the TUI can
+// report the failure instead of dying on the alternate screen (OKAMI-251).
+read_modern_wayu_toml :: proc(path: string, quiet := false) -> (content: []byte, exit_code: int) {
+	if quiet {
+		data, err := os.read_entire_file(path, context.allocator)
+		if err != nil do return nil, EXIT_NOINPUT
+		content = data
+	} else {
+		ok: bool
+		content, ok = safe_read_file(path)
 		// safe_read_file already printed why (one error per failure).
-		os.exit(EXIT_NOINPUT)
+		if !ok do return nil, EXIT_NOINPUT
 	}
 	if header := detect_legacy_schema(string(content)); len(header) > 0 {
-		print_legacy_schema_hint(header)
+		if !quiet do print_legacy_schema_hint(header)
 		delete(content)
-		os.exit(EXIT_CONFIG)
+		return nil, EXIT_CONFIG
 	}
+	return content, 0
+}
+
+// CLI form of read_modern_wayu_toml: prints why and exits on failure.
+must_read_modern_wayu_toml :: proc(path: string) -> []byte {
+	content, code := read_modern_wayu_toml(path)
+	if code != 0 do wayu_exit(code)
 	return content
+}
+
+// Reason (temp allocator) not to edit wayu.toml now: it exists but can't
+// be read (permissions changed while the TUI runs). The writers would
+// otherwise fail deep inside, where the CLI exits.
+wayu_toml_unreadable_error :: proc() -> (msg: string, bad: bool) {
+	toml_path := fmt.tprintf("%s/%s", wayu.config, WAYU_TOML)
+	if !os.exists(toml_path) do return "", false
+	f, err := os.open(toml_path)
+	if err != nil {
+		return fmt.tprintf("cannot read %s: %v", toml_path, err), true
+	}
+	os.close(f)
+	return "", false
 }
 
 // Pre-dispatch global guard. Aborts with the migration hint for any command
@@ -884,6 +922,6 @@ enforce_modern_wayu_toml_or_exit :: proc(toml_path: string) {
 	defer delete(content)
 	if header := detect_legacy_schema(string(content)); len(header) > 0 {
 		print_legacy_schema_hint(header)
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 }

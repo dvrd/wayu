@@ -46,9 +46,11 @@ tui_run :: proc() {
 	// NO_COLOR / --no-color: drop color escapes and use ASCII source tags.
 	tui_color_mode = CURRENT_COLOR_PROFILE
 	tui_plain_glyphs = CURRENT_COLOR_PROFILE == .ASCII
+	tui_theme = tui_detect_theme()  // light/dark background (after the size probe)
 	defer {
 		tui_color_mode = .TRUECOLOR
 		tui_plain_glyphs = false
+		tui_theme = .Dark
 	}
 
 	// CLI print helpers (print_success/print_error/...) would scribble over
@@ -115,7 +117,15 @@ tui_run :: proc() {
 		}
 
 		// Update state based on event
+		confirm_was_open := state.delete_confirm.pending
+		form_was_open := state.add_form.active
 		tui_handle_event(&state, event)
+		destroy_event(event)
+		// Keys typed ahead of a delete confirmation or past a submitted form
+		// (an unbracketed paste "name\rdy") must not answer the dialog.
+		if (!confirm_was_open && state.delete_confirm.pending) || (form_was_open && !state.add_form.active) {
+			tui_discard_typeahead()
+		}
 	}
 }
 
@@ -128,12 +138,15 @@ tui_init :: proc() {
 		os.exit(EXIT_OSERR)
 	}
 	tui_install_signal_handlers()
+	tui_load_esc_delay()
+	tui_stderr_capture_begin()  // replayed if the TUI dies (OKAMI-262)
 	tui_lifecycle_init()  // Enter alt screen, hide cursor, SIGWINCH handler
 	tui_set_screen_active(true)
 }
 
 // Cleanup TUI subsystems
 tui_cleanup :: proc() {
+	tui_stderr_capture_end(replay = false)
 	tui_lifecycle_cleanup()    // Exit alt screen, show cursor
 	tui_set_screen_active(false)
 	tui_disable_raw_mode()     // Restore cooked mode
@@ -145,6 +158,8 @@ tui_handle_event :: proc(state: ^TUIState, event: Event) {
 	#partial switch e in event {
 	case KeyEvent:
 		handle_key_event(state, e)
+	case PasteEvent:
+		handle_paste(state, e.text)
 	case ResizeEvent:
 		// Already handled in main loop via terminal_resized flag
 	}
@@ -156,6 +171,17 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 	if .Ctrl in key.modifiers && key.char == 'c' {
 		state.running = false
 		return
+	}
+	// Ctrl+Z: suspend like any terminal program; `fg` resumes and repaints.
+	if key.key == .Char && key.modifiers == {.Ctrl} && key.char == 'z' {
+		tui_suspend_self()
+		return
+	}
+	// Alt chords (ESC+key) have no bindings: Alt+d must not act as `d`.
+	if .Alt in key.modifiers {
+		#partial switch key.key {
+		case .Char, .Enter, .Tab, .Backspace, .Escape: return
+		}
 	}
 
 	// Below the minimum size only a "too small" notice is drawn: allow
@@ -285,6 +311,30 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 	case .Escape:
 		if state.current_view != .MAIN_MENU {
 			tui_state_go_back(state)
+		}
+	}
+}
+
+// Bracketed paste: insert the text into the focused text field (the add
+// form's input or the filter) as typed characters, with CR/LF dropped and
+// tabs as spaces. Anywhere else a paste does nothing — pasted letters and
+// newlines are never commands (OKAMI-253).
+handle_paste :: proc(state: ^TUIState, text: string) {
+	in_field := state.add_form.active && state.add_form.field_index < state.add_form.field_count
+	in_filter := !state.add_form.active && !state.detail.shown && state.filter.active
+	if !in_field && !in_filter do return
+	for r in text {
+		ch := r
+		switch {
+		case ch == '\t':                                 ch = ' '
+		case ch < 0x20 || ch == 0x7F || ch == utf8.RUNE_ERROR: continue
+		case ch >= 0x80 && ch < 0xA0:                    continue
+		}
+		key := KeyEvent{key = .Char, char = ch}
+		if in_field {
+			handle_add_form_input(state, key)
+		} else {
+			handle_filter_input(state, key)
 		}
 	}
 }
@@ -632,6 +682,7 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 		if i == state.selected_index {
 			// Selected: accent bar ┃ + bold primary text
 			screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+			screen_mark_focus(screen, text_x, y)
 			render_text_styled(screen, text_x, y, display, TUI_PRIMARY, "", true)
 		} else {
 			// Normal: no accent bar, muted text at same x
@@ -2899,8 +2950,8 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 				assert(curr.char != 0x1b, "ANSI escape in screen cell — see thoughts/scroll_bug_spec.md")
 			}
 
-			fg := curr.fg if use_color else ""
-			bg := curr.bg if use_color else ""
+			fg := tui_theme_color(curr.fg) if use_color else ""
+			bg := tui_theme_color(curr.bg) if use_color else ""
 
 			// Move cursor if needed (minimize cursor movement)
 			if x != screen.cursor_x || y != screen.cursor_y {
@@ -2958,6 +3009,7 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 			ch := curr.char
 			if ch < 0x20 do ch = ' '
 			strings.write_rune(&builder, ch)
+			if curr.comb != 0 do strings.write_rune(&builder, curr.comb)  // zero columns
 			screen.cursor_x += max(1, get_rune_width(ch))
 		}
 	}
@@ -2965,6 +3017,12 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 	// Reset attributes at end of frame
 	if active_fg != "" || active_bg != "" || active_bold || active_dim {
 		strings.write_string(&builder, "\x1b[0m")
+	}
+
+	// Park the hidden cursor on the selected row (screen readers track it).
+	if screen.has_focus && (screen.cursor_x != screen.focus_x || screen.cursor_y != screen.focus_y) {
+		fmt.sbprintf(&builder, "\x1b[%d;%dH", screen.focus_y + 1, screen.focus_x + 1)
+		screen.cursor_x, screen.cursor_y = screen.focus_x, screen.focus_y
 	}
 
 	// Single write to terminal (batch for performance)
@@ -2983,7 +3041,8 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 // Render text at position.
 // ANSI escape bytes (0x1b) are silently skipped — color belongs in Cell.fg,
 // not the char stream. See thoughts/scroll_bug_spec.md for why this matters.
-// Wide runes (CJK, emoji) occupy two cells; zero-width runes are dropped.
+// Wide runes (CJK, emoji) occupy two cells; a combining mark joins the
+// previous cell; other zero-width runes (VS16, ZWJ) are dropped.
 render_text :: proc(screen: ^Screen, x, y: int, text: string) {
 	render_text_styled(screen, x, y, text)
 }
@@ -3023,16 +3082,21 @@ tui_render_box :: proc(screen: ^Screen, x, y, width, height: int) {
 // bold: Apply bold formatting
 render_text_styled :: proc(screen: ^Screen, x, y: int, text: string, fg: string = "", bg: string = "", bold := false) {
 	current_x := x
+	last_x := -1  // lead cell of the last glyph written (for combining marks)
 	style := Cell{fg = fg, bg = bg, bold = bold}
 	for ch in text {
 		if current_x >= screen.width do break
 		// ESC bytes must never reach Cell.char — they inflate logical cursor_x
 		// and drift the diff renderer. See thoughts/scroll_bug_spec.md.
 		if ch == 0x1b do continue
-		if get_rune_width(ch) == 0 do continue
+		if get_rune_width(ch) == 0 {
+			screen_attach_combining(screen, last_x, y, ch)
+			continue
+		}
 
 		w := screen_put_rune(screen, current_x, y, ch, style)
 		if w == 0 do break  // wide rune doesn't fit before the right edge
+		last_x = current_x
 		current_x += w
 	}
 }

@@ -19,6 +19,8 @@ PathOpResult :: enum {
 	NOT_FOUND, // remove target not in [paths]           → EXIT_DATAERR
 	INVALID,   // bad input (name hint, ...)             → EXIT_DATAERR
 	IO_ERROR,  // read/backup/write failure              → EXIT_IOERR
+	UNREADABLE,      // wayu.toml can't be read           → EXIT_NOINPUT
+	OBSOLETE_SCHEMA, // wayu.toml on the [[paths]] schema → EXIT_CONFIG
 }
 
 // Main handler for PATH commands.
@@ -144,6 +146,8 @@ exit_on_path_failure :: proc(res: PathOpResult) {
 	#partial switch res {
 	case .NOT_FOUND, .INVALID: os.exit(EXIT_DATAERR)
 	case .IO_ERROR:            os.exit(EXIT_IOERR)
+	case .UNREADABLE:          os.exit(EXIT_NOINPUT)
+	case .OBSOLETE_SCHEMA:     os.exit(EXIT_CONFIG)
 	}
 }
 
@@ -507,6 +511,15 @@ TomlPathEntry :: struct {
 // Read [paths] table. Aborts (with a migrate-hint) if the file uses the
 // obsolete [[paths]] schema. Caller frees each entry's strings + the slice.
 toml_path_read_keyed :: proc() -> [dynamic]TomlPathEntry {
+	entries, code := toml_path_read_keyed_checked()
+	if code != 0 do wayu_exit(code)
+	return entries
+}
+
+// toml_path_read_keyed without exiting: exit_code is 0, or the code the CLI
+// exits with (EXIT_NOINPUT / EXIT_CONFIG; the reason was printed unless
+// `quiet`) and no entries. Code the TUI reaches uses this (OKAMI-251).
+toml_path_read_keyed_checked :: proc(quiet := false) -> (entries: [dynamic]TomlPathEntry, exit_code: int) {
 	// Use the shared TOML content cache when available (avoids re-reading
 	// the file that enforce_modern_wayu_toml_or_exit already read).
 	content_str, cached := get_cached_toml_content()
@@ -514,7 +527,9 @@ toml_path_read_keyed :: proc() -> [dynamic]TomlPathEntry {
 	if !cached {
 		config_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 		defer delete(config_file)
-		uncached_content = must_read_modern_wayu_toml(config_file)
+		code: int
+		uncached_content, code = read_modern_wayu_toml(config_file, quiet)
+		if code != 0 do return nil, code
 		content_str = string(uncached_content)
 	}
 	defer if len(uncached_content) > 0 { delete(uncached_content) }
@@ -523,7 +538,7 @@ toml_path_read_keyed :: proc() -> [dynamic]TomlPathEntry {
 	// (path clean/dedup detect hand-edited duplicate keys).
 	kvs := toml_read_section(content_str, "paths")
 	defer delete(kvs)
-	entries := make([dynamic]TomlPathEntry)
+	entries = make([dynamic]TomlPathEntry)
 	for kv in kvs {
 		if len(kv.value) == 0 { // an empty PATH entry is meaningless
 			delete(kv.key); delete(kv.value)
@@ -531,7 +546,12 @@ toml_path_read_keyed :: proc() -> [dynamic]TomlPathEntry {
 		}
 		append(&entries, TomlPathEntry{key = kv.key, path = kv.value}) // ownership moves
 	}
-	return entries
+	return entries, 0
+}
+
+@(private = "file")
+path_read_failure :: proc(code: int) -> PathOpResult {
+	return .OBSOLETE_SCHEMA if code == EXIT_CONFIG else .UNREADABLE
 }
 
 // Convenience: returns just the path values, in declaration order. Free with
@@ -835,7 +855,8 @@ toml_path_add_would_change :: proc(raw_path: string, name_hint: string = "") -> 
 	if len(path) == 0 { return false }
 
 	clear_toml_content_cache()
-	existing := toml_path_read_keyed()
+	existing, read_code := toml_path_read_keyed_checked(quiet = true)
+	if read_code != 0 { return false } // the write reports why
 	defer {
 		for &e in existing { delete(e.key); delete(e.path) }
 		delete(existing)
@@ -867,7 +888,8 @@ toml_path_exists :: proc(target: string) -> bool {
 // Caller deletes `path` ("" when not found).
 toml_path_lookup :: proc(target: string) -> (path: string, found: bool) {
 	clear_toml_content_cache()
-	existing := toml_path_read_keyed()
+	existing, read_code := toml_path_read_keyed_checked(quiet = true)
+	if read_code != 0 { return "", false } // the remove reports why
 	defer {
 		for &e in existing { delete(e.key); delete(e.path) }
 		delete(existing)
@@ -892,7 +914,8 @@ toml_path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOp
 	defer config_lock_release()
 	clear_toml_content_cache() // decide on what is on disk now
 
-	existing := toml_path_read_keyed()
+	existing, read_code := toml_path_read_keyed_checked()
+	if read_code != 0 { return path_read_failure(read_code) }
 	defer {
 		for &e in existing { delete(e.key); delete(e.path) }
 		delete(existing)
@@ -1006,7 +1029,8 @@ toml_path_remove_result :: proc(target: string) -> PathOpResult {
 	defer config_lock_release()
 	clear_toml_content_cache() // decide on what is on disk now
 
-	existing := toml_path_read_keyed()
+	existing, read_code := toml_path_read_keyed_checked()
+	if read_code != 0 { return path_read_failure(read_code) }
 	defer {
 		for &e in existing { delete(e.key); delete(e.path) }
 		delete(existing)

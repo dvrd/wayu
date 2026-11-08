@@ -131,10 +131,16 @@ exit_alt_screen :: proc() {
     fmt.print(EXIT_ALT_SCREEN)
 }
 
+// Bracketed paste (OKAMI-253): the terminal wraps pasted text in
+// ESC[200~ … ESC[201~ so a pasted newline or letter is never a keypress.
+ENABLE_BRACKETED_PASTE  :: "\x1b[?2004h"
+DISABLE_BRACKETED_PASTE :: "\x1b[?2004l"
+
 // TUI lifecycle initialization
 tui_lifecycle_init :: proc() {
     enter_alt_screen()
     fmt.print(HIDE_CURSOR)
+    fmt.print(ENABLE_BRACKETED_PASTE)
     setup_resize_handler()
 }
 
@@ -143,8 +149,10 @@ tui_lifecycle_cleanup :: proc() {
     // Clear the alt screen before exiting so no TUI content bleeds through
     fmt.print(CLEAR_SCREEN)
     fmt.print(CURSOR_HOME)
+    fmt.print(DISABLE_BRACKETED_PASTE)
     fmt.print(SHOW_CURSOR)
     exit_alt_screen()
+    tui_input_reset()
 }
 
 // ============================================================================
@@ -155,12 +163,24 @@ tui_lifecycle_cleanup :: proc() {
 // mode) because it needs a stricter mode: ISIG/IEXTEN off so Ctrl+C/Ctrl+Z/
 // Ctrl+V arrive in-band as bytes, and ICRNL off so Enter (CR) and Ctrl+J (LF)
 // stay distinguishable. Every exit path — normal return, SIGTERM/SIGHUP,
-// fatal signals from bounds traps, and assert/panic — funnels through
-// tui_emergency_restore so the user's shell is never left in raw mode on the
-// alternate screen with a hidden cursor.
+// fatal signals from bounds traps, assert/panic, and os.exit from shared CLI
+// code (atexit / wayu_exit) — funnels through tui_emergency_restore so the
+// user's shell is never left in raw mode on the alternate screen with a
+// hidden cursor.
+//
+// While the TUI runs, stderr (fd 2) is redirected to an unlinked temp file
+// (OKAMI-262): anything written there would land on the alternate screen and
+// be wiped by the restore. tui_emergency_restore replays it onto the real
+// stderr after the terminal is back, so a runtime bounds-check message or a
+// fatal error printed before os.exit stays readable. A normal quit discards
+// it, as before.
 
 @(private="file")
 tui_saved_termios: posix.termios
+
+// The raw-mode settings, re-applied after a suspend (Ctrl+Z / SIGTSTP).
+@(private="file")
+tui_raw_termios: posix.termios
 
 // Set once raw mode is active; read from signal handlers (async-signal-safe).
 @(private="file")
@@ -170,9 +190,24 @@ tui_termios_saved: bool
 @(private="file")
 tui_screen_active: bool
 
-// Bytes written on emergency exit: reset SGR, clear, show cursor, leave alt screen.
+// stderr capture: the temp file fd 2 points at, and the real stderr (-1 = off).
 @(private="file")
-TUI_RESTORE_SEQ :: "\x1b[0m\x1b[2J\x1b[H\x1b[?25h\x1b[?1049l"
+tui_stderr_file: posix.FD = -1
+@(private="file")
+tui_stderr_real: posix.FD = -1
+
+@(private="file")
+tui_atexit_registered: bool
+
+// Bytes written on emergency exit: reset SGR, clear, disable bracketed paste,
+// show cursor, leave alt screen.
+@(private="file")
+TUI_RESTORE_SEQ :: "\x1b[0m\x1b[2J\x1b[H\x1b[?2004l\x1b[?25h\x1b[?1049l"
+
+// Bytes written when resuming after a suspend: back to the alt screen, cursor
+// hidden, bracketed paste on. The main loop then repaints everything.
+@(private="file")
+TUI_RESUME_SEQ :: "\x1b[?1049h\x1b[?25l\x1b[?2004h"
 
 // Enable the TUI's raw mode. Returns false (terminal untouched) on failure.
 tui_enable_raw_mode :: proc() -> bool {
@@ -191,7 +226,15 @@ tui_enable_raw_mode :: proc() -> bool {
         return false
     }
     tui_saved_termios = saved
+    tui_raw_termios = raw
     intrinsics.volatile_store(&tui_termios_saved, true)
+    if !tui_atexit_registered {
+        // os.exit from shared CLI code (config readers, locks, …) skips our
+        // defers; libc runs atexit handlers on the way out (macOS). On other
+        // platforms the runtime exits directly — callers use wayu_exit.
+        posix.atexit(tui_atexit_handler)
+        tui_atexit_registered = true
+    }
     return true
 }
 
@@ -208,18 +251,162 @@ tui_set_screen_active :: proc(active: bool) {
     intrinsics.volatile_store(&tui_screen_active, active)
 }
 
-// Async-signal-safe restore: only tcsetattr + write. Safe to call from a
-// signal handler, an assertion-failure proc, or normal cleanup.
+// True while the TUI owns the terminal (raw mode or alternate screen).
+tui_terminal_active :: proc "contextless" () -> bool {
+    return intrinsics.volatile_load(&tui_termios_saved) || intrinsics.volatile_load(&tui_screen_active)
+}
+
+// Async-signal-safe restore: only tcsetattr, write, dup2, lseek, read and
+// close. Safe to call from a signal handler, an assertion-failure proc, an
+// atexit handler, or normal cleanup. Replays captured stderr afterwards.
 tui_emergency_restore :: proc "contextless" () {
     if intrinsics.volatile_load(&tui_termios_saved) {
         posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &tui_saved_termios)
         intrinsics.volatile_store(&tui_termios_saved, false)
     }
     if intrinsics.volatile_load(&tui_screen_active) {
-        seq := TUI_RESTORE_SEQ
-        posix.write(posix.FD(STDOUT_FILENO), raw_data(seq), uint(len(seq)))
+        write_all_fd(posix.FD(STDOUT_FILENO), TUI_RESTORE_SEQ)
         intrinsics.volatile_store(&tui_screen_active, false)
     }
+    tui_stderr_capture_end(replay = true)
+}
+
+// Exit the process, restoring the terminal first when the TUI owns it.
+// Use instead of os.exit in code the TUI can reach (config readers, locks):
+// os.exit skips deferred cleanup, and on Linux the Odin runtime exits
+// without running atexit handlers (OKAMI-251).
+wayu_exit :: proc "contextless" (code: int) -> ! {
+    tui_emergency_restore()
+    os.exit(code)
+}
+
+@(private="file")
+tui_atexit_handler :: proc "c" () {
+    tui_emergency_restore()
+}
+
+@(private="file")
+write_all_fd :: proc "contextless" (fd: posix.FD, data: string) {
+    rest := data
+    for len(rest) > 0 {
+        n := posix.write(fd, raw_data(rest), uint(len(rest)))
+        if n <= 0 do return
+        rest = rest[n:]
+    }
+}
+
+// Redirect stderr to an unlinked temp file while the TUI owns the terminal.
+// Returns false (stderr untouched) when the file can't be created.
+tui_stderr_capture_begin :: proc() -> bool {
+    if intrinsics.volatile_load(&tui_stderr_file) >= 0 do return true
+    dir_buf: [512]u8
+    dir, dir_err := os.lookup_env_buf(dir_buf[:], "TMPDIR")
+    if dir_err != nil || len(dir) == 0 do dir = "/tmp"
+    dir = strings.trim_right(dir, "/")
+    // mkstemp rewrites the XXXXXX in place: build a writable C string.
+    tmpl_buf: [600]u8
+    tmpl := fmt.bprintf(tmpl_buf[:len(tmpl_buf) - 1], "%s/wayu-tui-stderr.XXXXXX", dir)
+    if len(tmpl) == 0 || len(tmpl) >= len(tmpl_buf) - 1 do return false
+    tmpl_buf[len(tmpl)] = 0
+    path := cstring(raw_data(tmpl_buf[:]))
+    file := posix.mkstemp(path)
+    if file < 0 do return false
+    posix.unlink(path)
+    real := posix.dup(posix.FD(STDERR_FILENO))
+    if real < 0 {
+        posix.close(file)
+        return false
+    }
+    if posix.dup2(file, posix.FD(STDERR_FILENO)) < 0 {
+        posix.close(file)
+        posix.close(real)
+        return false
+    }
+    intrinsics.volatile_store(&tui_stderr_real, real)
+    intrinsics.volatile_store(&tui_stderr_file, file)
+    return true
+}
+
+// Point stderr back at the terminal; with `replay`, copy what was captured
+// onto it first. Async-signal-safe and idempotent.
+tui_stderr_capture_end :: proc "contextless" (replay: bool) {
+    file := intrinsics.volatile_load(&tui_stderr_file)
+    real := intrinsics.volatile_load(&tui_stderr_real)
+    if file < 0 || real < 0 do return
+    intrinsics.volatile_store(&tui_stderr_file, -1)
+    intrinsics.volatile_store(&tui_stderr_real, -1)
+    posix.dup2(real, posix.FD(STDERR_FILENO))
+    posix.close(real)
+    if replay && posix.lseek(file, 0, .SET) == 0 {
+        buf: [4096]u8
+        for {
+            n := posix.read(file, raw_data(buf[:]), len(buf))
+            if n <= 0 do break
+            write_all_fd(posix.FD(STDERR_FILENO), string(buf[:n]))
+        }
+    }
+    posix.close(file)
+}
+
+// True while stderr is redirected to the capture file.
+tui_stderr_capturing :: proc "contextless" () -> bool {
+    return intrinsics.volatile_load(&tui_stderr_file) >= 0
+}
+
+// Hand the terminal back to the shell without forgetting the TUI's state:
+// cooked mode, main screen, cursor shown, stderr on the terminal. Used for
+// suspend (Ctrl+Z) and by anything that runs an interactive child (editor).
+// Async-signal-safe. Undo with tui_resume_terminal.
+tui_suspend_terminal :: proc "contextless" () {
+    if intrinsics.volatile_load(&tui_termios_saved) {
+        posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &tui_saved_termios)
+    }
+    if intrinsics.volatile_load(&tui_screen_active) {
+        write_all_fd(posix.FD(STDOUT_FILENO), TUI_RESTORE_SEQ)
+    }
+    if real := intrinsics.volatile_load(&tui_stderr_real); real >= 0 {
+        posix.dup2(real, posix.FD(STDERR_FILENO))
+    }
+}
+
+// Re-enter the TUI's terminal state after tui_suspend_terminal. Sets
+// terminal_resized so the main loop re-reads the size and repaints every cell.
+tui_resume_terminal :: proc "contextless" () {
+    if file := intrinsics.volatile_load(&tui_stderr_file); file >= 0 {
+        posix.dup2(file, posix.FD(STDERR_FILENO))
+    }
+    if intrinsics.volatile_load(&tui_termios_saved) {
+        posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &tui_raw_termios)
+    }
+    if intrinsics.volatile_load(&tui_screen_active) {
+        write_all_fd(posix.FD(STDOUT_FILENO), TUI_RESUME_SEQ)
+    }
+    intrinsics.volatile_store(&terminal_resized, true)
+}
+
+// SIGTSTP (Ctrl+Z, `kill -TSTP`): restore the terminal, stop with the default
+// action, and on SIGCONT re-enter raw mode + the alternate screen (OKAMI-265).
+// SIGTSTP is blocked while its handler runs, so unblock it before re-raising
+// or the stop would only happen after the handler returned.
+@(private="file")
+tui_sigtstp_handler :: proc "c" (sig: posix.Signal) {
+    saved_errno := posix.get_errno()
+    tui_suspend_terminal()
+    posix.signal(.SIGTSTP, auto_cast posix.SIG_DFL)
+    set: posix.sigset_t
+    posix.sigemptyset(&set)
+    posix.sigaddset(&set, .SIGTSTP)
+    posix.sigprocmask(.UNBLOCK, &set, nil)
+    posix.raise(.SIGTSTP)  // stopped here until SIGCONT
+    posix.signal(.SIGTSTP, tui_sigtstp_handler)
+    tui_resume_terminal()
+    posix.set_errno(saved_errno)
+}
+
+// Suspend the TUI like any terminal program (Ctrl+Z arrives in-band because
+// ISIG is off). Returns once the process is continued.
+tui_suspend_self :: proc() {
+    posix.raise(.SIGTSTP)
 }
 
 // Termination + fatal signals that must restore the terminal before dying.
@@ -239,11 +426,12 @@ tui_signal_handler :: proc "c" (sig: posix.Signal) {
     posix.raise(sig)
 }
 
-// Install handlers for TUI_RESTORE_SIGNALS.
+// Install handlers for TUI_RESTORE_SIGNALS and suspend/resume.
 tui_install_signal_handlers :: proc() {
     for sig in TUI_RESTORE_SIGNALS {
         posix.signal(sig, tui_signal_handler)
     }
+    posix.signal(.SIGTSTP, tui_sigtstp_handler)
 }
 
 // Reset handlers installed by tui_install_signal_handlers to SIG_DFL.
@@ -251,6 +439,7 @@ tui_uninstall_signal_handlers :: proc() {
     for sig in TUI_RESTORE_SIGNALS {
         posix.signal(sig, auto_cast posix.SIG_DFL)
     }
+    posix.signal(.SIGTSTP, auto_cast posix.SIG_DFL)
 }
 
 // Assertion-failure proc installed into the TUI's context: restore the
@@ -290,10 +479,13 @@ fd_set_bit :: proc(set: ^fd_set, fd: c.int) {
 // packs Cell into 40 bytes instead of 48 (rune no longer forces 4 bytes of
 // padding before `fg`). Cells are bulk-allocated as a width*height grid and
 // touched every frame, so the 17% shrink improves render-loop cache density.
+// `comb` holds one combining mark (U+0301 in a decomposed "é") written right
+// after `char`: zero columns, so the cell grid stays aligned (OKAMI-258).
 Cell :: struct {
 	fg:    string,
 	bg:    string,
 	char:  rune,
+	comb:  rune,
 	bold:  bool,
 	dim:   bool,
 }
@@ -305,6 +497,17 @@ Screen :: struct {
 	height:      int,
 	cursor_x:    int,
 	cursor_y:    int,
+	// Selected row for this frame (screen_mark_focus): screen_flush parks the
+	// (hidden) hardware cursor there so screen readers follow the selection.
+	focus_x:     int,
+	focus_y:     int,
+	has_focus:   bool,
+}
+
+// Mark (x, y) as the focused (selected) row's start for this frame.
+screen_mark_focus :: proc(screen: ^Screen, x, y: int) {
+	if x < 0 || x >= screen.width || y < 0 || y >= screen.height do return
+	screen.focus_x, screen.focus_y, screen.has_focus = x, y, true
 }
 
 // Create screen with dimensions
@@ -419,8 +622,21 @@ screen_put_rune :: proc(screen: ^Screen, x, y: int, r: rune, cell: Cell, limit :
 	return w
 }
 
+// Attach zero-width rune `r` to the glyph whose lead cell is (x, y). Only a
+// combining mark is kept (first one wins); presentation selectors (VS16,
+// ZWJ, …) and marks with no glyph to attach to are dropped, so what reaches
+// the terminal always has exactly the width the cell grid assumes.
+screen_attach_combining :: proc(screen: ^Screen, x, y: int, r: rune) {
+	if is_presentation_selector(r) do return
+	if x < 0 || x >= screen.width || y < 0 || y >= screen.height do return
+	cell := &screen.buffer[y][x]
+	if cell.char == CELL_CONTINUATION || cell.char == ' ' || cell.comb != 0 do return
+	cell.comb = r
+}
+
 // Clear screen (fill with spaces, reset all formatting)
 screen_clear :: proc(screen: ^Screen) {
+	screen.has_focus = false
 	for y in 0..<screen.height {
 		for x in 0..<screen.width {
 			// Clear cell completely - char AND all formatting fields
@@ -441,6 +657,7 @@ screen_to_string :: proc(screen: ^Screen) -> string {
 			cell := screen.buffer[y][x]
 			if cell.char == CELL_CONTINUATION do continue
 			strings.write_rune(&builder, cell.char)
+			if cell.comb != 0 do strings.write_rune(&builder, cell.comb)
 		}
 		// Add newline after each row except the last
 		if y < screen.height - 1 {
@@ -456,6 +673,18 @@ Event :: union {
     KeyEvent,
     MouseEvent,
     ResizeEvent,
+    PasteEvent,
+}
+
+// Text the terminal delivered as one bracketed paste. `text` is heap-owned:
+// the event loop frees it after handling (destroy_event).
+PasteEvent :: struct {
+    text: string,
+}
+
+// Free what an event owns (only PasteEvent owns memory).
+destroy_event :: proc(event: Event) {
+    if p, ok := event.(PasteEvent); ok do delete(p.text)
 }
 
 KeyEvent :: struct {
@@ -505,25 +734,75 @@ KeyModifier :: enum {
 // ============================================================================
 //
 // Raw bytes from stdin are accumulated in input_pending and decoded one event
-// at a time, so a single read() containing several keys (paste, key repeat,
-// fast typing) yields several events instead of only the first byte.
-// Sequences split across reads are completed by the next read; a lone ESC is
-// disambiguated from the start of an escape sequence by waiting
-// ESC_SEQUENCE_TIMEOUT_US for more bytes.
+// at a time, so a single read() containing several keys (key repeat, fast
+// typing, a paste in a terminal without bracketed paste) yields several
+// events instead of only the first byte. Sequences split across reads are
+// completed by the next read; a lone ESC is told apart from the start of an
+// escape sequence (or an Alt chord) by waiting tui_esc_delay_us for more
+// bytes — 100ms by default like ncurses' ESCDELAY, which overrides it (in
+// milliseconds), so arrow keys split by a slow ssh link stay arrow keys.
+//
+// A bracketed paste (ESC[200~ … ESC[201~) becomes one PasteEvent, however
+// many reads it spans, so pasted newlines and letters never act as keys.
 
-INPUT_BUFFER_SIZE       :: 512
-POLL_TIMEOUT_US         :: 50_000  // main-loop tick (resize checks, notifications)
-ESC_SEQUENCE_TIMEOUT_US :: 25_000  // lone ESC vs. start of a CSI/SS3 sequence
+INPUT_BUFFER_SIZE        :: 512
+POLL_TIMEOUT_US          :: 50_000   // main-loop tick (resize checks, notifications)
+ESC_DELAY_DEFAULT_US     :: 100_000  // lone ESC vs. start of a CSI/SS3 sequence / Alt chord
+PASTE_START              :: "\x1b[200~"
+PASTE_END                :: "\x1b[201~"
+PASTE_MAX_BYTES          :: 1 << 20  // larger pastes are truncated
+PASTE_IDLE_LIMIT         :: 10       // idle polls (~0.5s) before an unterminated paste is delivered
+
+// Current ESC disambiguation window (tui_load_esc_delay reads ESCDELAY).
+tui_esc_delay_us := ESC_DELAY_DEFAULT_US
 
 @(private="file")
 input_pending: [INPUT_BUFFER_SIZE]u8
 @(private="file")
 input_pending_len: int
 
+// Bracketed-paste state: inside ESC[200~ … ESC[201~, bytes go to paste_buf.
+@(private="file")
+paste_active: bool
+@(private="file")
+paste_buf: [dynamic]u8
+@(private="file")
+paste_idle_polls: int
+
 ParseStatus :: enum {
 	Ok,          // event decoded, `consumed` bytes used
 	Incomplete,  // need more bytes to decide
 	Invalid,     // unrecognised input; skip `consumed` bytes
+}
+
+// Read ESCDELAY (milliseconds, as in ncurses) into tui_esc_delay_us.
+tui_load_esc_delay :: proc() {
+	tui_esc_delay_us = ESC_DELAY_DEFAULT_US
+	buf: [16]u8
+	if s, err := os.lookup_env_buf(buf[:], "ESCDELAY"); err == nil {
+		if ms, ok := strconv.parse_int(s); ok && ms >= 0 {
+			tui_esc_delay_us = clamp(ms, 0, 2000) * 1000
+		}
+	}
+}
+
+// Drop decoder state between TUI sessions (frees the paste buffer).
+tui_input_reset :: proc() {
+	input_pending_len = 0
+	paste_active = false
+	paste_idle_polls = 0
+	delete(paste_buf)
+	paste_buf = nil
+}
+
+// Discard typed-ahead input: bytes already decoded into input_pending and
+// whatever the terminal has queued. Called when a confirmation dialog opens
+// or a form is submitted, so the rest of an unbracketed paste ("…\rdy") can't
+// answer the dialog (OKAMI-253). A bracketed paste in progress is kept.
+tui_discard_typeahead :: proc() {
+	if paste_active do return
+	input_pending_len = 0
+	posix.tcflush(posix.FD(STDIN_FILENO), .TCIFLUSH)
 }
 
 // Wait up to timeout_us for stdin to become readable.
@@ -569,15 +848,80 @@ consume_input :: proc(count: int) {
 	input_pending_len -= n
 }
 
+// Split the start of `buf` (bytes inside a bracketed paste) into paste text
+// and the end marker. `done`: the end marker was found and is included in
+// `consumed`. Otherwise `consumed` stops before a trailing partial marker
+// ("\x1b[20"), which may complete with the next read.
+scan_paste_chunk :: proc(buf: []u8) -> (body: []u8, consumed: int, done: bool) {
+	if i := strings.index(string(buf), PASTE_END); i >= 0 {
+		return buf[:i], i + len(PASTE_END), true
+	}
+	keep := 0
+	for k := min(len(PASTE_END) - 1, len(buf)); k > 0; k -= 1 {
+		if strings.has_prefix(PASTE_END, string(buf[len(buf) - k:])) {
+			keep = k
+			break
+		}
+	}
+	return buf[:len(buf) - keep], len(buf) - keep, false
+}
+
+@(private="file")
+paste_append :: proc(bytes: []u8) {
+	if paste_buf == nil {
+		// Lives across poll_event calls: keep it off the per-test tracker.
+		paste_buf = make([dynamic]u8, runtime.heap_allocator())
+	}
+	room := PASTE_MAX_BYTES - len(paste_buf)
+	if room > 0 do append(&paste_buf, ..bytes[:min(len(bytes), room)])
+}
+
+@(private="file")
+paste_finish :: proc() -> Event {
+	text := strings.clone(string(paste_buf[:]))
+	clear(&paste_buf)
+	paste_active = false
+	paste_idle_polls = 0
+	return PasteEvent{text = text}
+}
+
 // Poll for events with timeout (non-blocking).
 // Returns: Event if available, nil if timeout or no decodable data.
 poll_event :: proc() -> Event {
 	if input_pending_len == 0 {
-		if !stdin_ready(POLL_TIMEOUT_US) do return nil
-		if !fill_input() do return nil
+		if !stdin_ready(POLL_TIMEOUT_US) || !fill_input() {
+			// A terminal that never sends the end marker must not swallow
+			// every later key: deliver the paste after a quiet period.
+			if paste_active {
+				paste_idle_polls += 1
+				if paste_idle_polls >= PASTE_IDLE_LIMIT do return paste_finish()
+			}
+			return nil
+		}
 	}
 
 	for input_pending_len > 0 {
+		if paste_active {
+			paste_idle_polls = 0
+			body, consumed, done := scan_paste_chunk(input_pending[:input_pending_len])
+			paste_append(body)
+			consume_input(consumed)
+			if done do return paste_finish()
+			if input_pending_len > 0 && !(stdin_ready(tui_esc_delay_us) && fill_input()) {
+				// The partial end marker never completed: it was paste text.
+				paste_append(input_pending[:input_pending_len])
+				consume_input(input_pending_len)
+			}
+			continue
+		}
+		if strings.has_prefix(string(input_pending[:input_pending_len]), PASTE_START) {
+			consume_input(len(PASTE_START))
+			paste_active = true
+			paste_idle_polls = 0
+			if paste_buf != nil do clear(&paste_buf)
+			continue
+		}
+
 		key, consumed, status := parse_input_event(input_pending[:input_pending_len], false)
 		switch status {
 		case .Ok:
@@ -587,7 +931,7 @@ poll_event :: proc() -> Event {
 			consume_input(max(1, consumed))
 		case .Incomplete:
 			// More bytes may be in flight (split escape sequence / UTF-8 rune).
-			if input_pending_len < INPUT_BUFFER_SIZE && stdin_ready(ESC_SEQUENCE_TIMEOUT_US) && fill_input() {
+			if input_pending_len < INPUT_BUFFER_SIZE && stdin_ready(tui_esc_delay_us) && fill_input() {
 				continue
 			}
 			// Nothing more arrived: decode what we have as final input
@@ -748,11 +1092,45 @@ parse_escape_sequence :: proc(buf: []u8, final: bool) -> (key: KeyEvent, consume
 	case 27:
 		// ESC ESC: first one is a plain Escape.
 		return KeyEvent{key = .Escape}, 1, .Ok
+
+	case ']':
+		// OSC reply (e.g. a late answer to the OSC 11 background query):
+		// swallow it through its BEL or ESC \ terminator.
+		for i in 2..<len(buf) {
+			if buf[i] == 0x07 do return {}, i + 1, .Invalid
+			if buf[i] == 0x1b {
+				if i + 1 >= len(buf) do break
+				if buf[i + 1] == '\\' do return {}, i + 2, .Invalid
+			}
+		}
+		return {}, (len(buf) if final else 0), (.Invalid if final else .Incomplete)
 	}
 
-	// ESC followed by anything else: a plain Escape keypress (the next byte is
-	// decoded as its own key). wayu has no Alt bindings, and treating it as
-	// Alt+key would turn a quick "Esc, d" into a stray 'd' action.
+	// ESC + key within the ESC delay = Alt+key (what terminals send for Meta
+	// chords). Decoding it as Escape followed by the key turned Alt+d into
+	// "cancel filter, then delete" (OKAMI-257); the event loop ignores Alt
+	// chords instead.
+	alt := KeyModifiers{.Alt}
+	switch b := buf[1]; {
+	case b == 13:               return KeyEvent{key = .Enter, modifiers = alt}, 2, .Ok
+	case b == 9:                return KeyEvent{key = .Tab, modifiers = alt}, 2, .Ok
+	case b == 127 || b == 8:    return KeyEvent{key = .Backspace, modifiers = alt}, 2, .Ok
+	case b >= 1 && b <= 26:     return KeyEvent{key = .Char, char = rune('a' + b - 1), modifiers = {.Alt, .Ctrl}}, 2, .Ok
+	case b >= 0x20 && b < 0x7F: return KeyEvent{key = .Char, char = rune(b), modifiers = alt}, 2, .Ok
+	case b >= 0xC0:
+		// Alt + a UTF-8 rune (Option+key on some layouts).
+		k, n, st := parse_input_event(buf[1:], final)
+		switch st {
+		case .Ok:
+			k.modifiers += {.Alt}
+			return k, n + 1, .Ok
+		case .Incomplete:
+			return {}, 0, .Incomplete
+		case .Invalid:
+		}
+	}
+	// ESC followed by anything else: a plain Escape keypress (the next byte
+	// is decoded as its own key).
 	return KeyEvent{key = .Escape}, 1, .Ok
 }
 
@@ -795,7 +1173,8 @@ write_tui_color :: proc(b: ^strings.Builder, code: string) {
 	if tui_color_mode == .ANSI256 {
 		fmt.sbprintf(b, "\x1b[%d;5;%dm", 48 if is_bg else 38, rgb_to_ansi256(r, g, bl))
 	} else {
-		idx := rgb_to_ansi16(r, g, bl)
+		idx, known := palette_ansi16(code)
+		if !known do idx = rgb_to_ansi16(r, g, bl)
 		base := 40 if is_bg else 30
 		if idx >= 8 {
 			base = 100 if is_bg else 90
@@ -865,6 +1244,164 @@ rgb_to_ansi16 :: proc(r, g, b: int) -> int {
 		}
 	}
 	return best
+}
+
+// ============================================================================
+// Theme (OKAMI-263)
+// ============================================================================
+//
+// The palette below is tuned for dark backgrounds. Instead of painting a
+// background of its own, the TUI adapts the foreground colors:
+//   - normal text (TUI_MUTED) uses the terminal's default foreground, which
+//     is readable on any background;
+//   - on a light background (WAYU_THEME=light, COLORFGBG, or the terminal's
+//     OSC 11 answer) dividers, orange/amber/green/blue get darker variants;
+//   - in 16-color mode each palette color has a fixed, distinct ANSI color
+//     (pink → bright magenta, dividers → gray) instead of the nearest match,
+//     which turned dividers black and pink/red into the same red.
+// Selection is shown by the ┃ bar + bold, not by color alone, and the
+// hardware cursor (hidden) sits on the selected row for screen readers.
+
+TuiTheme :: enum { Dark, Light }
+
+// Theme the TUI renders with (tui_run sets it from tui_detect_theme).
+tui_theme: TuiTheme = .Dark
+
+// Map a palette color to the escape drawn for the current theme ("" = the
+// terminal's default color).
+tui_theme_color :: proc(code: string) -> string {
+	return theme_color_for(code, tui_theme, tui_color_mode)
+}
+
+// tui_theme_color for an explicit theme and color mode.
+theme_color_for :: proc(code: string, theme: TuiTheme, mode: ColorProfile) -> string {
+	if code == TUI_MUTED do return ""
+	if theme != .Light || mode == .ANSI do return code
+	switch code {
+	case TUI_DIVIDER:              return "\x1b[38;2;200;200;200m"  // #C8C8C8
+	case TUI_ORANGE:               return "\x1b[38;2;194;65;12m"    // #C2410C
+	case TUI_WARNING:              return "\x1b[38;2;180;83;9m"     // #B45309 (also wayu-inactive)
+	case TUI_SOURCE_WAYU_ACTIVE:   return "\x1b[38;2;21;128;61m"    // #15803D
+	case TUI_SOURCE_EXTERNAL:      return "\x1b[38;2;29;78;216m"    // #1D4ED8
+	case TUI_SOURCE_SHADOWED:      return "\x1b[38;2;126;34;206m"   // #7E22CE
+	}
+	return code
+}
+
+// Fixed 16-color index for the palette colors (see the theme notes above).
+palette_ansi16 :: proc(code: string, theme := tui_theme) -> (idx: int, ok: bool) {
+	light := theme == .Light
+	switch code {
+	case TUI_PRIMARY:            return 13, true            // bright magenta
+	case TUI_ERROR:              return 1, true             // red
+	case TUI_SECONDARY:          return 6, true             // cyan
+	case TUI_WARNING:            return 3, true             // yellow
+	case TUI_ORANGE:             return (3 if light else 11), true
+	case TUI_SOURCE_WAYU_ACTIVE: return 2, true             // green
+	case TUI_SOURCE_EXTERNAL:    return 4, true             // blue
+	case TUI_SOURCE_SHADOWED:    return 5, true             // magenta
+	case TUI_DIM, TUI_DIVIDER:   return 8, true             // gray (bright black)
+	}
+	return 0, false
+}
+
+// Pick the theme: WAYU_THEME=light|dark wins; then COLORFGBG ("fg;bg", set
+// by rxvt, Konsole, iTerm2 …); then ask the terminal for its background
+// (OSC 11, only when colors are on). Defaults to dark.
+tui_detect_theme :: proc() -> TuiTheme {
+	buf: [32]u8
+	if s, err := os.lookup_env_buf(buf[:], "WAYU_THEME"); err == nil {
+		switch strings.to_lower(strings.trim_space(s), context.temp_allocator) {
+		case "light": return .Light
+		case "dark":  return .Dark
+		}
+	}
+	if s, err := os.lookup_env_buf(buf[:], "COLORFGBG"); err == nil {
+		if theme, ok := theme_from_colorfgbg(s); ok do return theme
+	}
+	if tui_color_mode != .ASCII {
+		if r, g, b, ok := query_terminal_background(); ok {
+			return theme_from_rgb(r, g, b)
+		}
+	}
+	return .Dark
+}
+
+// COLORFGBG "15;0" / "0;default;15": the last field is the background's
+// ANSI index; 7 and 9-15 are light.
+theme_from_colorfgbg :: proc(value: string) -> (TuiTheme, bool) {
+	field := value
+	if i := strings.last_index_byte(value, ';'); i >= 0 do field = value[i + 1:]
+	bg, ok := strconv.parse_int(field)
+	if !ok || bg < 0 || bg > 15 do return .Dark, false
+	return (.Light if bg == 7 || bg >= 9 else .Dark), true
+}
+
+// Relative luminance above one half = light background (components 0..1).
+theme_from_rgb :: proc(r, g, b: f64) -> TuiTheme {
+	return .Light if 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5 else .Dark
+}
+
+// Parse an OSC 11 reply ("ESC ] 11 ; rgb:RRRR/GGGG/BBBB" + BEL or ESC \)
+// found anywhere in `s`. Components may have 1-4 hex digits.
+parse_osc11_reply :: proc(s: string) -> (r, g, b: f64, ok: bool) {
+	start := strings.index(s, "\x1b]11;rgb:")
+	if start < 0 do return
+	rest := s[start + len("\x1b]11;rgb:"):]
+	end := strings.index_any(rest, "\x07\x1b")
+	if end < 0 do return
+	parts: [3]f64
+	body := rest[:end]
+	for i in 0..<3 {
+		slash := strings.index_byte(body, '/')
+		part := body if slash < 0 || i == 2 else body[:slash]
+		if len(part) == 0 || len(part) > 4 do return
+		v, v_ok := strconv.parse_int(part, 16)
+		if !v_ok do return
+		max_v := f64(int(1) << uint(4 * len(part))) - 1
+		parts[i] = f64(v) / max_v
+		if i < 2 {
+			if slash < 0 do return
+			body = body[slash + 1:]
+		}
+	}
+	return parts[0], parts[1], parts[2], true
+}
+
+// Ask the terminal for its background color (OSC 11) followed by a cursor
+// position request: every terminal answers the latter, and in order, so a
+// DSR reply without an OSC reply before it means "not supported" — no need
+// to wait out the timeout. Replies stay in input_pending; the decoder
+// skips them (OSC is swallowed, CSI … R is ignored), and keys typed
+// meanwhile are kept.
+@(private="file")
+query_terminal_background :: proc() -> (r, g, b: f64, ok: bool) {
+	QUERY :: "\x1b]11;?\x1b\\\x1b[6n"
+	write_all_fd(posix.FD(STDOUT_FILENO), QUERY)
+	BUDGET_US :: 300_000
+	SLICE_US  :: 20_000
+	for waited := 0; waited < BUDGET_US; waited += SLICE_US {
+		if stdin_ready(SLICE_US) && !fill_input() do break
+		pending := string(input_pending[:input_pending_len])
+		if r, g, b, ok = parse_osc11_reply(pending); ok do return
+		if has_cursor_position_reply(pending) do return
+		if input_pending_len >= INPUT_BUFFER_SIZE do return
+	}
+	return
+}
+
+// True when `s` holds a complete "ESC [ row ; col R" reply.
+@(private="file")
+has_cursor_position_reply :: proc(s: string) -> bool {
+	rest := s
+	for {
+		i := strings.index(rest, "\x1b[")
+		if i < 0 do return false
+		rest = rest[i + 2:]
+		j := 0
+		for j < len(rest) && ((rest[j] >= '0' && rest[j] <= '9') || rest[j] == ';') do j += 1
+		if j > 0 && j < len(rest) && rest[j] == 'R' do return true
+	}
 }
 
 // ============================================================================
