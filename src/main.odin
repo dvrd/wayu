@@ -274,6 +274,10 @@ main :: proc() {
 	case .VERSION, .HELP, .MIGRATE, .UNKNOWN:
 		// pure non-toml commands and the recovery path itself
 		needs_modern_toml = false
+	case .BACKUP:
+		// the recovery tool: list/rm never parse wayu.toml, and restore
+		// validates the backup it writes (refuses an obsolete-schema one)
+		needs_modern_toml = false
 	case .DOCTOR:
 		// doctor explicitly reports the legacy-schema issue itself
 		// (check_toml_config), and we want it to surface other findings too.

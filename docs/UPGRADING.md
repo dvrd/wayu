@@ -171,6 +171,13 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 **Backups**
 - `wayu backup restore` waits for other wayu commands (config lock) instead
   of racing them; a concurrent edit can no longer overwrite the restore.
+- `wayu backup list|restore|rm` work while `wayu.toml` still uses the
+  obsolete `[[paths]]` schema (they exited `78`).
+- `backup restore` refuses a `wayu.toml` backup that uses the obsolete
+  `[[paths]]` / `[[aliases]]` / `[[constants]]` schema (exit `74`, file
+  unchanged); restoring one made every other command exit `78`, including
+  the undo `backup restore <type> 1`. Copy such a backup over `wayu.toml`
+  by hand and run `wayu migrate --schema`.
 
 **wayu.toml parsing (one parser for every command)**
 - `toml validate`, `doctor`, `backup restore`, `migrate --schema`, the TUI,

@@ -322,6 +322,12 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 		print_error_simple("Backup %s is not valid TOML — refusing to restore it", chosen.backup_file)
 		return false
 	}
+	// A backup taken by wayu 3.x can hold the obsolete [[paths]] schema;
+	// restoring it would make every other command refuse to run.
+	if header := detect_legacy_schema(string(content)); is_wayu_toml && len(header) > 0 {
+		print_error_simple("Backup %s uses the obsolete %s schema — refusing to restore it. Copy it over wayu.toml and run `wayu migrate --schema` instead.", chosen.backup_file, header)
+		return false
+	}
 
 	// Back up the current state so the restore can be undone.
 	if os.exists(file_path) {
