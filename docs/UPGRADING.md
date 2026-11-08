@@ -448,6 +448,30 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - `wayu build` no longer prints the turbo export report when turbo.<ext>
   exists (it is refreshed silently with core).
 
+**fish (core.fish)**
+- `[tools]` now load in fish. evalcache entries run `<tool> <args> |
+  source`, cached under `~/.cache/wayu/evalcache/fish__*` (regenerated when
+  the binary's path or mtime changes; needs fish 3.5+, older fish runs the
+  tool uncached). Args are retargeted: a word `zsh` or `bash` becomes
+  `fish` and `--zsh` / `--bash` becomes `--fish`, so `args = "init zsh"`
+  runs `<tool> init fish`. `eager`, deferred (after plugins) and
+  `login_only` (`status is-login`) work as in zsh/bash. A `lazy` entry
+  needs a fish `init_script` (`*.fish`); `nvm` / `conda` recipes have no
+  fish version and are skipped with a comment.
+- `functions/*.fish` load (they did only on the legacy path).
+- `[paths]` dirs move to the front of PATH in `[paths]` order, like
+  `fish_add_path -gpm`: a dir already on PATH (e.g. `/usr/local/bin`) now
+  gets wayu's priority instead of keeping its old place. Dirs wayu did not
+  add are never removed.
+- Live PATH sync: `wayu path add/rm` and hand edits of `[paths]` reach open
+  fish shells at the next prompt (a `fish_prompt` event handler re-reads the
+  new `path_sync.fish` when the list changed), as in zsh/bash.
+- Re-sourcing `init.fish` no longer adds the completions dir to
+  `fish_complete_path` again.
+- `[aliases]` are defined last (after plugins and tools), as in zsh/bash.
+- `init.fish` sources `tools.fish` before `extra.fish` (was the reverse).
+  An untouched `init.fish` is updated automatically.
+
 **zcompile**
 - A background compile interrupted by a signal removes its temp digest, and
   temp digests (`<file>.<pid>.tmp.zwc`) older than a minute are swept before

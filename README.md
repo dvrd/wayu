@@ -375,7 +375,7 @@ wayu stores everything under `~/.config/wayu/` — the files you edit and the fi
   # --- wayu generates these (safe to delete; regenerated on change) ---
   init.{zsh,bash,fish}      # entry point — source THIS in your RC file
   core.{zsh,bash,fish}      # the generated init loaded by init.<shell> (one precomputed file)
-  path_sync.{zsh,bash}      # [paths] list re-read by the live PATH sync prompt hook
+  path_sync.{zsh,bash,fish} # [paths] list re-read by the live PATH sync prompt hook
   plugins.json              # installed plugin metadata (JSON5)
   plugins.{zsh,bash,fish}   # generated plugin loader
   plugins/                  # cloned plugin repos + runtime config
@@ -393,9 +393,9 @@ Shell is detected automatically from `$SHELL`. Override with `--shell bash`, `--
 
 `wayu path add/rm` (and edits to `[paths]` in `wayu.toml`) reach already-open
 zsh/bash shells at their next prompt: `core.<ext>` installs a prompt hook,
-`_wayu_paths_sync` (zsh `precmd`, bash `PROMPT_COMMAND`), that re-reads
-`path_sync.<ext>` only when the `[paths]` list changed. fish has no live sync
-yet: reload it or `source ~/.config/wayu/init.fish`.
+`_wayu_paths_sync` (zsh `precmd`, bash `PROMPT_COMMAND`, fish `fish_prompt`
+event), that re-reads `path_sync.<ext>` only when the `[paths]` list
+changed.
 
 **Scripts** never show a prompt, so the hook never runs. A script that sources
 `init.<ext>` and changes `[paths]` applies the change itself:

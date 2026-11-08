@@ -436,11 +436,11 @@ end
 # stay empty and would just be no-ops anyway.
 if test -f "$WAYU_DATA_DIR/core.fish"
     source "$WAYU_DATA_DIR/core.fish"
-    if test -f "$WAYU_CONFIG_DIR/extra.fish"
-        source "$WAYU_CONFIG_DIR/extra.fish"
-    end
     if test -f "$WAYU_CONFIG_DIR/tools.fish"
         source "$WAYU_CONFIG_DIR/tools.fish"
+    end
+    if test -f "$WAYU_CONFIG_DIR/extra.fish"
+        source "$WAYU_CONFIG_DIR/extra.fish"
     end
     return 0
 end
