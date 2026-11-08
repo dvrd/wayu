@@ -1,0 +1,14 @@
+[shell]
+type = "ZSH"
+
+[env]
+
+[[paths]]
+path = "@HOME@/tools"
+
+[[paths]]
+path = "@HOME@/bin dir"
+
+[aliases]
+ll = "ls -la"
+

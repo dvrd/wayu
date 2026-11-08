@@ -1938,7 +1938,8 @@ tui_load_backups :: proc(state: ^TUIState) {
 
 	load_dir_listing(state, .BACKUPS_VIEW, backups_dir, proc(name: string) -> bool {
 		if !strings.contains(name, ".backup.") { return false }
-		return strings.has_prefix(name, "path.") ||
+		return strings.has_prefix(name, "wayu.toml.") ||
+		       strings.has_prefix(name, "path.") ||
 		       strings.has_prefix(name, "aliases.") ||
 		       strings.has_prefix(name, "constants.")
 	})
@@ -1978,7 +1979,7 @@ tui_load_settings :: proc(state: ^TUIState) {
 	state.settings.toml_exists = os.exists(toml_full)
 
 	total_backups := 0
-	backup_targets := []string{wayu.path_file, wayu.alias_file, wayu.constants_file}
+	backup_targets := []string{WAYU_TOML, wayu.path_file, wayu.alias_file, wayu.constants_file}
 	for f in backup_targets {
 		full := fmt.aprintf("%s/%s", wayu.data, f)
 		defer delete(full)

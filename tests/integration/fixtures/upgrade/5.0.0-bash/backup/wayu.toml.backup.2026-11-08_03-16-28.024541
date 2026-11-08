@@ -1,0 +1,11 @@
+[shell]
+type = "Bash"
+
+[aliases]
+ll = "ls -la"
+
+[env]
+
+[paths]
+tools = "@HOME@/tools"
+bin_dir = "@HOME@/bin dir"

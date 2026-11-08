@@ -503,6 +503,7 @@ Entry :: union {
 entry_add :: proc(entry: Entry) -> (bool, string) {
 	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
 	if msg, bad := hook_config_error(); bad { return false, strings.clone(msg) }
+	if msg, bad := legacy_schema_error(); bad { return false, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
 		// Validate path format (no existence check — TUI lets you stage a
@@ -552,6 +553,7 @@ entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (boo
 entry_remove :: proc(entry: Entry) -> (bool, string) {
 	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
 	if msg, bad := hook_config_error(); bad { return false, strings.clone(msg) }
+	if msg, bad := legacy_schema_error(); bad { return false, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
 		if toml_path_exists(e.path) { hook_pre_path_remove(e.path) }
@@ -769,6 +771,19 @@ detect_legacy_schema :: proc(content: string) -> string {
 		}
 	}
 	return ""
+}
+
+// Reason (temp allocator) not to edit wayu.toml when it is on the obsolete
+// schema now. Reads the file itself: in the TUI, wayu.toml can be replaced
+// after the startup guard ran, and an edit would add a [paths] table next
+// to the [[paths]] ones.
+legacy_schema_error :: proc() -> (msg: string, bad: bool) {
+	toml_path := fmt.tprintf("%s/%s", wayu.config, WAYU_TOML)
+	content, err := os.read_entire_file(toml_path, context.temp_allocator)
+	if err != nil do return "", false
+	header := detect_legacy_schema(string(content))
+	if len(header) == 0 do return "", false
+	return fmt.tprintf("wayu.toml uses the obsolete %s schema; run `wayu migrate --schema`", header), true
 }
 
 // Print the user-visible "obsolete schema, run migrate" banner. Shared by

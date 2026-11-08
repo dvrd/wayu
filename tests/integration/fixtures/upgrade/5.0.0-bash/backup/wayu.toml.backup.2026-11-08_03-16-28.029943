@@ -1,0 +1,12 @@
+[shell]
+type = "Bash"
+
+[aliases]
+ll = "ls -la"
+gs = "git status --short"
+
+[env]
+
+[paths]
+tools = "@HOME@/tools"
+bin_dir = "@HOME@/bin dir"
