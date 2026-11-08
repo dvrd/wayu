@@ -8,7 +8,7 @@
 - **Dual mode** -- Non-interactive CLI for scripting + interactive TUI (default when run with no args)
 - **PATH management** -- TOML-based keyed entries with deduplication and validation
 - **Alias & constants** -- Add, remove, list with input validation and reserved word checking
-- **Fuzzy matching** -- Smart search with acronym support (e.g., `frwrks` → `FIREWORKS_AI_API_KEY`)
+- **Fuzzy matching** -- Smart search with acronym support (e.g., `faak` → `FIREWORKS_AI_API_KEY`)
 - **Completions** -- Manage shell completion scripts (Zsh, Bash, Fish)
 - **Plugin management** -- Install, enable/disable, and prioritize shell plugins with dependency resolution
 - **Custom functions** -- `wayu function add` seeds a skeleton in `~/.config/wayu/functions/`, opens `$EDITOR`, and sources it on startup
