@@ -14,6 +14,36 @@ class PluginIntegrationTest
   def initialize
     setup_test_env
     @plugins_dir = "#{@data_dir}/plugins"
+    setup_offline_git
+  end
+
+  # Offline, hermetic git for this suite (fixture commits and every git that
+  # wayu spawns): a private global config with no signing, plus insteadOf
+  # rewrites — https://example.test/<repo>.git clones the local fixture
+  # repo <fixtures>/<repo>.git, and https://github.com/ points at a missing
+  # local path, so no test ever reaches the network.
+  def setup_offline_git
+    @git_fixtures = "#{@tmp_home}/git-fixtures"
+    FileUtils.mkdir_p(@git_fixtures)
+    gitconfig = "#{@tmp_home}/.gitconfig"
+    File.write(gitconfig, <<~CFG)
+      [user]
+        name = wayu-test
+        email = wayu-test@example.test
+      [commit]
+        gpgsign = false
+      [tag]
+        gpgsign = false
+      [init]
+        defaultBranch = main
+      [url "file://#{@git_fixtures}/"]
+        insteadOf = https://example.test/
+      [url "file://#{@tmp_home}/no-network/"]
+        insteadOf = https://github.com/
+    CFG
+    ENV['GIT_CONFIG_GLOBAL'] = gitconfig
+    ENV['GIT_CONFIG_NOSYSTEM'] = '1'
+    %w[GIT_SSH GIT_SSH_COMMAND WAYU_GIT_TIMEOUT GIT_DIR GIT_WORK_TREE].each { |k| ENV.delete(k) }
   end
 
   def run
@@ -62,6 +92,20 @@ class PluginIntegrationTest
       test_update_respects_pinned_ref
       test_name_miss_never_acts_on_fuzzy_guess
       test_exact_name_still_works
+      # Offline real-git flows (https://example.test/ → local fixtures)
+      test_offline_add_clones_and_loads
+      test_offline_check_and_update
+      test_offline_check_exact_branch_ref
+      test_offline_check_unreachable_exits_74
+      test_offline_update_divergent_history
+      test_offline_symlink_rm_keeps_target
+      test_offline_add_nothing_to_load_rolls_back
+      test_offline_add_use_glob
+      test_offline_add_zsh_theme
+      test_offline_add_fish_url_records_fish
+      test_offline_concurrent_adds
+      test_offline_registry_pure_fish_name
+      test_ssh_batch_mode_and_timeout
     ensure
       teardown_test_env
     end
@@ -1522,6 +1566,274 @@ class PluginIntegrationTest
     out, st = run_wayu("plugin rm origin --yes")
     failures << "rm: #{out}" unless st.exitstatus == 0 && cfg.call.empty?
     check("exact name failed", failures.empty?, failures.join("\n  "), nil)
+  end
+
+  # ── Offline real-git fixtures (OKAMI-246) ──────────────────────────────
+
+  # Create (or reset) fixture repo <fixtures>/<name>.git with `files`
+  # committed on main; https://example.test/<name>.git clones it.
+  def fixture_repo(name, files = nil)
+    files ||= { "#{name}.plugin.zsh" => "# #{name} v1\n" }
+    repo = "#{@git_fixtures}/#{name}.git"
+    FileUtils.rm_rf(repo)
+    git!("init", "-q", "-b", "main", repo)
+    files.each do |path, content|
+      FileUtils.mkdir_p(File.dirname("#{repo}/#{path}"))
+      File.write("#{repo}/#{path}", content)
+    end
+    git!("-C", repo, "add", "-A")
+    git!("-C", repo, "commit", "-q", "-m", "init")
+    repo
+  end
+
+  def fixture_commit(repo, file, content, amend: false)
+    File.write("#{repo}/#{file}", content)
+    git!("-C", repo, "add", "-A")
+    if amend
+      git!("-C", repo, "commit", "-q", "--amend", "-m", "rewritten")
+    else
+      git!("-C", repo, "commit", "-q", "-m", "change #{file}")
+    end
+  end
+
+  def git!(*args)
+    out, status = Open3.capture2e("git", *args)
+    raise "git #{args.join(' ')} failed: #{out}" unless status.success?
+    out.strip
+  end
+
+  def fixture_url(name)
+    "https://example.test/#{name}.git"
+  end
+
+  def config_plugin(name)
+    JSON.parse(File.read("#{@data_dir}/plugins.json"))["plugins"].find { |p| p["name"] == name }
+  end
+
+  def plugins_loader
+    File.exist?("#{@data_dir}/plugins.zsh") ? File.read("#{@data_dir}/plugins.zsh") : ""
+  end
+
+  def reset_plugins
+    seed_plugins([])
+    FileUtils.rm_rf(Dir.glob("#{@plugins_dir}/*"))
+  end
+
+  def test_offline_add_clones_and_loads
+    print "Test 39: add <url> clones offline, records ZSH, loader sources the one entry file... "
+    reset_plugins
+    fixture_repo("alpha", { "alpha.plugin.zsh" => "source ${0:h}/alpha.zsh\n", "alpha.zsh" => "# alpha\n" })
+
+    output, status = run_wayu("plugin add #{fixture_url('alpha')}")
+    entry = config_plugin("alpha")
+    loader = plugins_loader
+    ok = status.exitstatus == 0 &&
+         File.exist?("#{@plugins_dir}/alpha/alpha.plugin.zsh") &&
+         entry && entry["shell"] == "ZSH" && entry["url"] == fixture_url("alpha") &&
+         loader.include?("#{@plugins_dir}/alpha/alpha.plugin.zsh") &&
+         !loader.include?("#{@plugins_dir}/alpha/alpha.zsh'")
+    check("offline add failed", ok, output + "\nloader:\n" + loader, status)
+  end
+
+  def test_offline_check_and_update
+    print "Test 40: check up to date → update available → update fast-forwards... "
+    reset_plugins
+    repo = fixture_repo("beta")
+    _, st_add = run_wayu("plugin add #{fixture_url('beta')}")
+    failures = []
+    failures << "add exit #{st_add.exitstatus}" unless st_add.exitstatus == 0
+
+    out, st = run_wayu("plugin check")
+    failures << "check1: #{out}" unless st.exitstatus == 0 && out.include?("Up to date")
+
+    fixture_commit(repo, "beta.plugin.zsh", "# beta v2\n")
+    out, st = run_wayu("plugin check")
+    failures << "check2: #{out}" unless st.exitstatus == 0 && out.include?("Update available")
+
+    out, st = run_wayu("plugin update beta")
+    content = File.read("#{@plugins_dir}/beta/beta.plugin.zsh") rescue ""
+    failures << "update: #{out}" unless st.exitstatus == 0 && content.include?("v2")
+
+    out, st = run_wayu("plugin check")
+    failures << "check3: #{out}" unless st.exitstatus == 0 && out.include?("Up to date")
+    check("check/update flow", failures.empty?, failures.join("\n  "), nil)
+  end
+
+  def test_offline_check_exact_branch_ref
+    print "Test 41: check ignores decoy refs ending in the branch name (aaa/main, tag main)... "
+    reset_plugins
+    repo = fixture_repo("gamma")
+    run_wayu("plugin add #{fixture_url('gamma')}")
+    git!("-C", repo, "checkout", "-q", "-b", "aaa/main")
+    fixture_commit(repo, "decoy.txt", "decoy\n")
+    git!("-C", repo, "tag", "main")
+    git!("-C", repo, "checkout", "-q", "main")
+
+    output, status = run_wayu("plugin check")
+    ok = status.exitstatus == 0 && output.include?("Up to date") && !output.include?("Update available")
+    check("decoy ref reported as update", ok, output, status)
+  end
+
+  def test_offline_check_unreachable_exits_74
+    print "Test 42: check exits 74 when a remote is gone... "
+    reset_plugins
+    fixture_repo("delta2")
+    run_wayu("plugin add #{fixture_url('delta2')}")
+    FileUtils.rm_rf("#{@git_fixtures}/delta2.git")
+
+    output, status = run_wayu("plugin check")
+    ok = status.exitstatus == 74 && output.include?("could not be checked") && !output.include?("All plugins are up to date")
+    check("unreachable remote not reported", ok, output, status)
+  end
+
+  def test_offline_update_divergent_history
+    print "Test 43: update resets a clean checkout after force-push; refuses local commits (74)... "
+    reset_plugins
+    repo = fixture_repo("eps")
+    run_wayu("plugin add #{fixture_url('eps')}")
+    failures = []
+
+    fixture_commit(repo, "eps.plugin.zsh", "# eps rewritten\n", amend: true)
+    out, st = run_wayu("plugin update eps")
+    content = File.read("#{@plugins_dir}/eps/eps.plugin.zsh") rescue ""
+    failures << "force-push: #{out}" unless st.exitstatus == 0 && out.include?("reset to remote") && content.include?("rewritten")
+
+    dir = "#{@plugins_dir}/eps"
+    File.write("#{dir}/local.txt", "mine\n")
+    git!("-C", dir, "add", "local.txt")
+    git!("-C", dir, "commit", "-q", "-m", "local")
+    fixture_commit(repo, "eps.plugin.zsh", "# eps upstream\n", amend: true)
+    out, st = run_wayu("plugin update eps")
+    failures << "local commit: #{out}" unless st.exitstatus == 74 && File.exist?("#{dir}/local.txt") && out.include?("local commits")
+    check("divergent update", failures.empty?, failures.join("\n  "), nil)
+  end
+
+  def test_offline_symlink_rm_keeps_target
+    print "Test 44: rm of a symlinked plugin removes the link, keeps the working copy... "
+    reset_plugins
+    work = "#{@tmp_home}/devplug"
+    FileUtils.rm_rf(work)
+    FileUtils.mkdir_p(work)
+    File.write("#{work}/devplug.plugin.zsh", "# dev\n")
+    link = "#{@plugins_dir}/devplug"
+    File.symlink(work, link)
+    seed_plugins([plugin_entry("devplug", link)])
+
+    output, status = run_wayu("plugin rm devplug --yes")
+    ok = status.exitstatus == 0 && !File.symlink?(link) && !File.exist?(link) &&
+         File.exist?("#{work}/devplug.plugin.zsh") && plugin_names_in_config.empty?
+    check("symlink rm touched the target", ok, output, status)
+  end
+
+  def test_offline_add_nothing_to_load_rolls_back
+    print "Test 45: add of a repo with nothing to load exits 65 and leaves nothing behind... "
+    reset_plugins
+    fixture_repo("binarytool", { "README.md" => "# tool\n", "install.sh" => "echo install\n", "src/main.rs" => "fn main(){}\n" })
+
+    out, err, status = run_wayu_split("plugin add #{fixture_url('binarytool')}")
+    ok = status.exitstatus == 65 && !Dir.exist?("#{@plugins_dir}/binarytool") &&
+         plugin_names_in_config.empty? && err.include?("nothing wayu can load") && err.include?("--use") &&
+         !out.include?("installed successfully")
+    check("nothing-to-load install not refused", ok, out + err, status)
+  end
+
+  def test_offline_add_use_glob
+    print "Test 46: add --use <file> installs a repo without a standard entry file... "
+    reset_plugins
+    fixture_repo("custom-entry", { "README.md" => "# x\n", "entry.sh" => "# entry\n" })
+
+    output, status = run_wayu("plugin add #{fixture_url('custom-entry')} --use entry.sh")
+    entry = config_plugin("custom-entry")
+    ok = status.exitstatus == 0 && entry && entry["use"] == ["entry.sh"] && entry["shell"] == "BOTH" &&
+         plugins_loader.include?("#{@plugins_dir}/custom-entry/entry.sh")
+
+    out2, st2 = run_wayu("plugin add #{fixture_url('custom-entry')}x --use lib/a.zsh")
+    out3, st3 = run_wayu("plugin add #{fixture_url('alpha')} --use")
+    ok &&= st2.exitstatus == 64 && st3.exitstatus == 64
+    check("--use install failed", ok, [output, out2, out3].join("\n"), status)
+  end
+
+  def test_offline_add_zsh_theme
+    print "Test 47: add of a prompt theme (only <name>.zsh-theme) loads it... "
+    reset_plugins
+    fixture_repo("mytheme", { "mytheme.zsh-theme" => "# theme\n", "README.md" => "x\n" })
+
+    output, status = run_wayu("plugin add #{fixture_url('mytheme')}")
+    ok = status.exitstatus == 0 && plugins_loader.include?("#{@plugins_dir}/mytheme/mytheme.zsh-theme") &&
+         config_plugin("mytheme")&.dig("shell") == "ZSH"
+    check("zsh-theme not loaded", ok, output, status)
+  end
+
+  def test_offline_add_fish_url_records_fish
+    print "Test 48: add <url> of a fish-only plugin records FISH (not zsh/bash)... "
+    reset_plugins
+    fixture_repo("fishy", { "conf.d/fishy.fish" => "# conf\n", "functions/fishy.fish" => "function fishy; end\n" })
+
+    output, status = run_wayu("plugin add #{fixture_url('fishy')}")
+    ok = status.exitstatus == 0 && config_plugin("fishy")&.dig("shell") == "FISH" &&
+         !plugins_loader.include?("fishy.fish")
+    check("fish URL compat", ok, output, status)
+  end
+
+  def test_offline_concurrent_adds
+    print "Test 49: two concurrent adds both land in plugins.json... "
+    reset_plugins
+    fixture_repo("conc-a")
+    fixture_repo("conc-b")
+    env = ENV.to_h.merge('HOME' => @tmp_home)
+    project_root = File.expand_path('../..', __dir__)
+    threads = %w[conc-a conc-b].map do |n|
+      Thread.new { Open3.capture2e(env, @wayu_bin, "plugin", "add", fixture_url(n), chdir: project_root) }
+    end
+    results = threads.map(&:value)
+    names = plugin_names_in_config.sort
+    ok = results.all? { |_, st| st.exitstatus == 0 } && names == %w[conc-a conc-b]
+    check("concurrent add lost an entry", ok, results.map(&:first).join("\n") + "\nnames=#{names}", nil)
+  end
+
+  def test_offline_registry_pure_fish_name
+    print "Test 50: registry pure-fish installs as 'pure-fish' (no clash with zsh pure)... "
+    out1, st1 = run_wayu("--dry-run plugin add pure-fish")
+    out2, st2 = run_wayu("--dry-run plugin add pure")
+    out3, st3 = run_wayu("--dry-run plugin add starship")
+    ok = st1.exitstatus == 0 && out1.include?("Name: pure-fish") &&
+         st2.exitstatus == 0 && out2.include?("Name: pure") && !out2.include?("pure-fish") &&
+         st3.exitstatus == 65
+    check("registry names", ok, [out1, out2, out3].join("\n"), st3)
+  end
+
+  # A fake `ssh` on PATH records its arguments and hangs: proves wayu runs
+  # ssh in batch mode with a connect timeout, and that WAYU_GIT_TIMEOUT
+  # kills the hung transfer (and its helpers) instead of waiting forever.
+  def test_ssh_batch_mode_and_timeout
+    print "Test 51: ssh runs with BatchMode=yes; a hung transfer is killed at WAYU_GIT_TIMEOUT... "
+    reset_plugins
+    fake_bin = "#{@tmp_home}/fake-bin"
+    args_file = "#{@tmp_home}/ssh-args"
+    FileUtils.mkdir_p(fake_bin)
+    FileUtils.rm_f(args_file)
+    File.write("#{fake_bin}/ssh", "#!/bin/sh\necho \"$@\" > '#{args_file}'\nexec sleep 60\n")
+    File.chmod(0o755, "#{fake_bin}/ssh")
+
+    old_path, old_timeout = ENV['PATH'], ENV['WAYU_GIT_TIMEOUT']
+    ENV['PATH'] = "#{fake_bin}:#{old_path}"
+    ENV['WAYU_GIT_TIMEOUT'] = '2'
+    t0 = Time.now
+    output, status = nil, nil
+    begin
+      Timeout.timeout(30) { output, status = run_wayu("plugin add ssh://git.example.test/user/hung.git") }
+    rescue Timeout::Error
+      output = "TIMEOUT: wayu never gave up"
+    ensure
+      ENV['PATH'] = old_path
+      old_timeout ? ENV['WAYU_GIT_TIMEOUT'] = old_timeout : ENV.delete('WAYU_GIT_TIMEOUT')
+    end
+    elapsed = Time.now - t0
+    ssh_args = File.exist?(args_file) ? File.read(args_file) : ""
+    ok = status && status.exitstatus == 74 && elapsed < 20 &&
+         output.include?("timed out") && ssh_args.include?("BatchMode=yes") &&
+         ssh_args.include?("ConnectTimeout=") && !Dir.exist?("#{@plugins_dir}/hung")
+    check("ssh batch/timeout", ok, "#{output}\nssh args: #{ssh_args.inspect}\nelapsed=#{elapsed.round(1)}s", status)
   end
 
 end
