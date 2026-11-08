@@ -461,7 +461,7 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu("constants help")
 
-    if output.include?("EXAMPLES") && output.include?("wayu constants")
+    if output.include?("EXAMPLES") && output.include?("wayu const add")
       puts "✓"
       @passed += 1
     else

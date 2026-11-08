@@ -11,6 +11,7 @@
 
 package wayu
 
+import "core:fmt"
 import "core:os"
 import "core:strings"
 
@@ -42,6 +43,7 @@ ParsedArgs :: struct {
 	unknown_flag:        string, // first `-x`/`--xyz` token no command accepts
 	json_unsupported:    bool,   // --json given to a command/action without JSON output
 	ambiguous_tail_flag: string, // trailing short global flag kept in an add value
+	bad_flag_value:      string, // "--shell bogus" style error (temp allocator); main exits EXIT_USAGE
 }
 
 // Flag parsing state returned by parse_global_flags.
@@ -157,6 +159,19 @@ global_flag_present :: proc(args: []string, flag: string) -> bool {
 	return false
 }
 
+// `--source` takes one of the list filters; anything else is a usage error
+// (it used to show nothing, silently).
+@(private = "file")
+check_source_value :: proc(parsed: ^ParsedArgs, value: string) {
+	switch value {
+	case "wayu", "external", "inactive", "all":
+	case:
+		if len(parsed.bad_flag_value) == 0 {
+			parsed.bad_flag_value = fmt.tprintf("Invalid --source value '%s' (expected wayu, external, inactive or all)", value)
+		}
+	}
+}
+
 // Parse global flags (--dry-run, --yes, --tui, --json, --no-color, --shell,
 // --source, etc.) from raw CLI args. Returns the remaining (non-flag)
 // arguments in `filtered_args`. Mutates `wayu` for side-effect flags.
@@ -209,15 +224,21 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 			flags.reveal = true
 		case strings.has_prefix(arg, "--source="):
 			flags.source_filter = strings.trim_prefix(arg, "--source=")
+			check_source_value(parsed, flags.source_filter)
 		case arg == "--source" && i + 1 < len(args):
 			flags.source_filter = args[i + 1]
+			check_source_value(parsed, flags.source_filter)
 			i += 1
 		case arg == "--no-color" || arg == "--no-colour":
 			set_plain_output()
 		case arg == "--shell" && i + 1 < len(args):
-			parsed.shell = parse_shell_type(args[i + 1])
-			set_active_shell(parsed.shell)
-			shell_flag_given = true
+			if sh := parse_shell_type(args[i + 1]); sh != .UNKNOWN {
+				parsed.shell = sh
+				set_active_shell(sh)
+				shell_flag_given = true
+			} else if len(parsed.bad_flag_value) == 0 {
+				parsed.bad_flag_value = fmt.tprintf("Invalid --shell value '%s' (expected zsh, bash or fish)", args[i + 1])
+			}
 			i += 1
 		case:
 			// `-5` is a number (plugin priority), not a flag.
@@ -293,9 +314,17 @@ parse_doctor_flags :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 		case "--json":     parsed.doctor_json = true
 		case "--profile":  parsed.doctor_profile = true
 		case "--optimize": parsed.doctor_optimize = true
-		case "--help", "-h":
+		case "--help", "-h", "help":
 			print_doctor_usage()
 			os.exit(0)
+		case:
+			// doctor takes no action words; dash tokens are checked by the
+			// flag allow-list (command_accepts_flag).
+			if !strings.has_prefix(filtered_args[i], "-") {
+				print_error_simple("Unknown doctor argument: %s", filtered_args[i])
+				print_doctor_usage()
+				os.exit(EXIT_USAGE)
+			}
 		}
 	}
 }

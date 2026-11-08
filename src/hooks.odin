@@ -442,7 +442,9 @@ handle_hooks_command :: proc(action: Action, args: []string) {
 	case .HELP:
 		print_hooks_usage()
 	case:
-		show_hooks_status()
+		fmt.eprintln("Unknown hooks action")
+		print_hooks_usage()
+		os.exit(EXIT_USAGE)
 	}
 }
 
@@ -580,8 +582,8 @@ print_hooks_usage :: proc() {
 	fmt.println("  # Log PATH changes")
 	fmt.println(`  pre_path_add = echo Adding {path} >> ~/wayu.log`)
 	fmt.println()
-	fmt.println("  # Reload shell after alias changes")
-	fmt.println(`  post_alias_add = "source ~/.zshrc"`)
+	fmt.println("  # Keep a log of new aliases")
+	fmt.println(`  post_alias_add = echo {name}={value} >> ~/wayu-aliases.log`)
 	fmt.println()
 	fmt.println("  # Notify when plugins are installed")
 	fmt.println(`  post_plugin_install = terminal-notifier -title wayu -message "Installed $WAYU_HOOK_NAME"`)

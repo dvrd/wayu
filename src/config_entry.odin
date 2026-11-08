@@ -27,7 +27,8 @@ ConfigEntry :: struct {
 // ConfigEntrySpec defines how to work with a specific entry type (Strategy Pattern)
 ConfigEntrySpec :: struct {
 	type:             ConfigEntryType,
-	file_name:        string,                // e.g., "path", "aliases", "constants"
+	file_name:        string,                // legacy shell file stem: "path", "aliases", "constants"
+	cli_name:         string,                // command word in help/usage text: "path", "alias", "const"
 	display_name:     string,                // e.g., "PATH", "Alias", "Constant"
 	icon:             string,                // e.g., "📂", "🔑", "💾"
 
@@ -181,35 +182,35 @@ exit_with_entry_error :: proc(err: string) -> ! {
 
 // Print usage error with hint to TUI mode (CLI-specific error handling)
 print_cli_usage_error :: proc(spec: ^ConfigEntrySpec, action: string) {
-	print_error("Missing required arguments for '%s %s'", spec.file_name, action)
+	print_error("Missing required arguments for '%s %s'", spec.cli_name, action)
 	fmt.println()
 
 	// Show usage based on action
 	switch action {
 	case "add":
 		if spec.fields_count == 1 {
-			fmt.printfln("Usage: wayu %s add <%s>", spec.file_name, spec.field_labels[0])
+			fmt.printfln("Usage: wayu %s add <%s>", spec.cli_name, spec.field_labels[0])
 			fmt.println()
 			fmt.printfln("Example:")
-			fmt.printfln("  wayu %s add %s", spec.file_name, spec.field_placeholders[0])
+			fmt.printfln("  wayu %s add %s", spec.cli_name, spec.field_placeholders[0])
 		} else {
 			fmt.printfln("Usage: wayu %s add <%s> <%s>",
-				spec.file_name, spec.field_labels[0], spec.field_labels[1])
+				spec.cli_name, spec.field_labels[0], spec.field_labels[1])
 			fmt.println()
 			fmt.printfln("Example:")
 			fmt.printfln("  wayu %s add %s %s",
-				spec.file_name, spec.field_placeholders[0], spec.field_placeholders[1])
+				spec.cli_name, spec.field_placeholders[0], spec.field_placeholders[1])
 		}
 	case "remove":
-		fmt.printfln("Usage: wayu %s rm <%s>", spec.file_name, spec.field_labels[0])
+		fmt.printfln("Usage: wayu %s rm <%s>", spec.cli_name, spec.field_labels[0])
 		fmt.println()
 		fmt.printfln("Example:")
-		fmt.printfln("  wayu %s rm %s", spec.file_name, spec.field_placeholders[0])
+		fmt.printfln("  wayu %s rm %s", spec.cli_name, spec.field_placeholders[0])
 	case "get":
-		fmt.printfln("Usage: wayu %s get <%s>", spec.file_name, spec.field_labels[0])
+		fmt.printfln("Usage: wayu %s get <%s>", spec.cli_name, spec.field_labels[0])
 		fmt.println()
 		fmt.printfln("Example:")
-		fmt.printfln("  wayu %s get %s", spec.file_name, spec.field_placeholders[0])
+		fmt.printfln("  wayu %s get %s", spec.cli_name, spec.field_placeholders[0])
 	}
 
 	fmt.println()
@@ -367,37 +368,37 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 	}
 	defer delete(plural)
 	title := fmt.aprintf("\n%s%swayu %s - Manage %s%s\n\n",
-		BOLD, get_primary(), spec.file_name, plural, RESET)
+		BOLD, get_primary(), spec.cli_name, plural, RESET)
 	defer delete(title)
 	fmt.print(title)
 
 	// Usage section
 	fmt.printf("%s%sUSAGE:%s\n", BOLD, get_secondary(), RESET)
 
-	// Generate usage based on fields count
+	// Every line is a complete command: the CLI never prompts, so an action
+	// without its arguments is a usage error (exit 64).
+	label := strings.to_lower(spec.display_name, context.temp_allocator)
 	if spec.fields_count == 1 {
-		fmt.printfln("  wayu %s add [%s]", spec.file_name, strings.to_lower(spec.display_name))
-		fmt.printfln("  wayu %s add", spec.file_name)
+		fmt.printfln("  wayu %s add [<name>=]<%s>", spec.cli_name, label)
 	} else {
-		fmt.printfln("  wayu %s add <%s> <value>", spec.file_name, strings.to_lower(spec.display_name))
-		fmt.printfln("  wayu %s add", spec.file_name)
+		fmt.printfln("  wayu %s add <%s> <value>", spec.cli_name, label)
 	}
 
-	fmt.printfln("  wayu %s rm [%s]", spec.file_name, strings.to_lower(spec.display_name))
-	fmt.printfln("  wayu %s get <%s>", spec.file_name, strings.to_lower(spec.display_name))
-	fmt.printfln("  wayu %s list", spec.file_name)
+	fmt.printfln("  wayu %s rm <%s>", spec.cli_name, label)
+	fmt.printfln("  wayu %s get <%s>", spec.cli_name, label)
+	fmt.printfln("  wayu %s list", spec.cli_name)
 	if spec.type == .CONSTANT {
-		fmt.printfln("  wayu %s list --reveal    %s# show secret-looking values unmasked%s", spec.file_name, get_muted(), RESET)
+		fmt.printfln("  wayu %s list --reveal    %s# show secret-looking values unmasked%s", spec.cli_name, get_muted(), RESET)
 	}
 
 	if spec.has_clean {
-		fmt.printfln("  wayu %s clean", spec.file_name)
+		fmt.printfln("  wayu %s clean", spec.cli_name)
 	}
 	if spec.has_dedup {
-		fmt.printfln("  wayu %s dedup", spec.file_name)
+		fmt.printfln("  wayu %s dedup", spec.cli_name)
 	}
 
-	fmt.printfln("  wayu %s help", spec.file_name)
+	fmt.printfln("  wayu %s help", spec.cli_name)
 
 	// Examples section - specific to each type
 	fmt.println()
@@ -438,8 +439,8 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 		fmt.printfln("  %s# Remove an alias%s", get_muted(), RESET)
 		fmt.printfln("  wayu alias rm ll")
 		fmt.println()
-		fmt.printfln("  %s# Use fuzzy matching to find aliases%s", get_muted(), RESET)
-		fmt.printfln("  wayu alias get git")
+		fmt.printfln("  %s# Print an alias's command (exact name)%s", get_muted(), RESET)
+		fmt.printfln("  wayu alias get gs")
 
 	case .CONSTANT:
 		// CONSTANT-specific examples
@@ -458,9 +459,6 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 		fmt.printfln("  wayu const get API_KEY")
 		fmt.printfln("  wayu const get FIREWORKS_AI_API_KEY")
 		fmt.println()
-		fmt.printfln("  %s# Use fuzzy matching (e.g., 'frwrks' finds 'FIREWORKS_AI_API_KEY')%s", get_muted(), RESET)
-		fmt.printfln("  wayu const get frwrks")
-		fmt.println()
 		fmt.printfln("  %s# Remove a constant%s", get_muted(), RESET)
 		fmt.printfln("  wayu const rm API_KEY")
 	}
@@ -468,7 +466,7 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 	// Tips section
 	fmt.println()
 	fmt.printf("%s%sTIPS:%s\n", BOLD, get_secondary(), RESET)
-	fmt.printfln("  %s• Use fuzzy matching: try partial names or acronyms%s", get_muted(), RESET)
+	fmt.printfln("  %s• get is exact; 'wayu search' matches partial names and acronyms%s", get_muted(), RESET)
 	fmt.printfln("  %s• Add --yes to skip confirmation on destructive operations%s", get_muted(), RESET)
 	fmt.printfln("  %s• Use --tui for interactive mode%s", get_muted(), RESET)
 

@@ -33,7 +33,9 @@ handle_function_command :: proc(action: Action, args: []string) {
 	case .HELP:
 		print_function_usage()
 	case:
+		fmt.eprintln("Unknown function action")
 		print_function_usage()
+		os.exit(EXIT_USAGE)
 	}
 }
 

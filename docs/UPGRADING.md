@@ -6,6 +6,27 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**Unknown actions, `wayu toml`**
+
+- `wayu toml` with no action validates wayu.toml (same as `toml validate`,
+  as its help always said); it printed a fixed key list.
+- `wayu toml keys` lists wayu.toml's real top-level keys and tables in file
+  order; it printed a fixed `shell path aliases constants plugins hooks`. A
+  file that doesn't parse exits `65`.
+- An action word a command doesn't have exits `64` with that command's help
+  for `toml`, `hooks`, `config`, `template` and `function` too (they showed
+  help or the hook list and exited `0`). `doctor` with a non-flag argument
+  exits `64`; `doctor help` shows its help.
+- `--source` other than `wayu|external|inactive|all` and `--shell` other
+  than `zsh|bash|fish` exit `64`; they were silently accepted (an unknown
+  `--source` listed nothing, an unknown `--shell` kept the detected shell).
+- `plugin add help` / `plugin add --help` show the add help instead of
+  looking up a plugin named `help` (exit `65`).
+- `alias` / `const` usage errors and help name the real command
+  (`wayu alias add`, `wayu const add`; alias said `wayu aliases`, which is
+  not a command), and no longer list argument-less forms such as
+  `wayu alias add` (the CLI never prompts).
+
 **Alias names may contain `-`**
 
 - `wayu alias add`, `toml validate` and the TUI now accept a hyphen in an alias
