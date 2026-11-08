@@ -52,6 +52,16 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   reads it exits `78`. A newline in one used to inject shell code into the
   generated `plugins.<ext>`.
 
+**build profile**
+- The phase breakdown inlines `lazy.<ext>` and `plugins.<ext>`: it has a
+  row per `[tools]` entry (`tool <name> (evalcache)`, `lazy › tool nvm
+  (lazy)`, `tool <name> (lazy)`) and per plugin (`plugin <name>`) instead
+  of one `Lazy init` / `Plugins` row; core sections keep their names, and
+  sections of `lazy.<ext>` are prefixed `lazy › `. Rows with no code are
+  left out.
+- bash: the breakdown now runs too when the shell has `$EPOCHREALTIME`
+  (bash 5+); with an older bash it prints a note instead.
+
 **Plugin conflicts**
 - A function, alias or exported variable defined by two enabled plugins,
   or by a plugin and your `wayu.toml` (`[aliases]` / `[env]`), is now

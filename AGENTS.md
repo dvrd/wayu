@@ -130,6 +130,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/validation.odin` | Input validation + error handling |
 | `src/hooks.odin` | hooks.conf loading + execution; live pre/post hook procs (ConfigEntrySpec, path, plugin add, export) |
 | `src/hot_reload.odin` | `wayu reload`/`watch`: file watcher, debounced core regeneration |
+| `src/profile.odin` | `wayu build profile`: startup timing + per-section/tool/plugin breakdown (zsh, bash 5+) |
 | `src/tui_core.odin` | TUI main loop, state machine, data loading, render orchestrator |
 | `src/tui_views.odin` | TUI view renderers (list, overlays, cache, handlers, hooks, plugins, settings) |
 | `src/tui_io.odin` | TUI terminal I/O: raw mode, input, screen buffer, events, colors, layout, components |
@@ -227,7 +228,6 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 
 These are acknowledged incomplete features — do not add workarounds, implement them properly:
 
-- `wayu build profile`: profiling not yet implemented
 - `src/fuzzy.odin`: interactive_select is alive; FuzzyView-based full-screen finder removed as dead code
 - Fish shell: completions and templates wired; `--shell fish` flag fixed in init command
 - `src/tui_views.odin`: hooks and settings views render minimal placeholder content
