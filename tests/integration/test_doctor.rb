@@ -30,6 +30,7 @@ class DoctorIntegrationTest
       test_fix_rewrites_wayu_toml_paths
       test_fix_dry_run_changes_nothing
       test_fix_keeps_variable_paths
+      test_fix_keeps_relative_paths
       test_toml_check_detects_malformed
       test_commented_source_not_counted
       test_json_output_parses
@@ -160,6 +161,23 @@ class DoctorIntegrationTest
     ok = toml.include?('mytools = "$MYTOOLS/bin"') && toml.include?('braced = ') &&
          toml.include?('later = ') && !toml.include?('gone =') &&
          out.include?('1 missing') && out.include?('unset variables')
+    check(ok, "#{out.lines.grep(/PATH|Removed|- /).join}\n#{toml}")
+  end
+
+  # A relative entry resolves against the shell's cwd; doctor's cwd says
+  # nothing about it, so --fix must not delete it as "missing".
+  def test_fix_keeps_relative_paths
+    print "Test 5b: --fix keeps relative entries (cwd-dependent)... "
+    File.write("#{@config_dir}/wayu.toml", <<~TOML)
+      [paths]
+      nm = "./wayu_doctor_rel_test/.bin"
+      bare = "wayu_doctor_rel_test/bin"
+      gone = "/nonexistent/wayu_doctor_test"
+    TOML
+    out, _ = run_wayu('doctor --fix --yes --no-color')
+    toml = File.read("#{@config_dir}/wayu.toml")
+    ok = toml.include?('nm = ') && toml.include?('bare = ') && !toml.include?('gone =') &&
+         out.include?('1 missing') && out.include?('relative paths')
     check(ok, "#{out.lines.grep(/PATH|Removed|- /).join}\n#{toml}")
   end
 

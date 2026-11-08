@@ -757,7 +757,7 @@ check_path_entries :: proc(results: ^[dynamic]CheckResult) {
 	}
 	unresolved_note := ""
 	if unresolved_count > 0 {
-		unresolved_note = fmt.aprintf("%d use%s unset variables (left alone)",
+		unresolved_note = fmt.aprintf("%d use%s unset variables or relative paths (left alone)",
 			unresolved_count, unresolved_count == 1 ? "s" : "", allocator = arena_alloc)
 	}
 
@@ -802,7 +802,7 @@ DoctorPathScan :: struct {
 	entry:      TomlPathEntry,
 	missing:    bool, // directory doesn't exist (after $VAR / ~ expansion)
 	duplicate:  bool, // expands to the same dir as an earlier entry
-	unresolved: bool, // uses a variable set neither in wayu.toml [env] nor the environment
+	unresolved: bool, // uses a variable set neither in wayu.toml [env] nor the environment, or is relative (cwd-dependent)
 }
 
 @(private = "file")
@@ -850,7 +850,13 @@ doctor_expand_path :: proc(path: string, consts: []ConfigEntry) -> string {
 		}
 		if !replaced { strings.write_string(&b, path[start:i]) }
 	}
-	return expand_env_vars(strings.to_string(b), require_resolved = true)
+	// A relative entry (`./node_modules/.bin`, `bin`) is resolved by the
+	// shell against whatever directory it is in, so its existence depends on
+	// doctor's cwd: treat it as unresolved, never as missing (--fix would
+	// delete it).
+	s := strings.to_string(b)
+	if len(s) == 0 || (s[0] != '/' && s[0] != '~' && s[0] != '$') { return "" }
+	return expand_env_vars(s, require_resolved = true)
 }
 
 // Read wayu.toml [paths] and classify each entry. Never exits: a missing or
