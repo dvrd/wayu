@@ -83,7 +83,7 @@ test_suggest_similar_names_names_only :: proc(t: ^testing.T) {
 
 @(test)
 test_backup_is_owner_only :: proc(t: ^testing.T) {
-	data_dir := fmt.tprintf("/tmp/wayu-test-secret-backup-%d", os.get_pid())
+	data_dir := test_tmp("wayu-test-secret-backup")
 	original_data := wayu.wayu.data
 	wayu.wayu.data = data_dir
 	os.remove_all(data_dir)
@@ -109,7 +109,7 @@ test_backup_is_owner_only :: proc(t: ^testing.T) {
 
 @(test)
 test_backup_tightens_legacy_modes :: proc(t: ^testing.T) {
-	data_dir := fmt.tprintf("/tmp/wayu-test-secret-legacy-%d", os.get_pid())
+	data_dir := test_tmp("wayu-test-secret-legacy")
 	original_data := wayu.wayu.data
 	wayu.wayu.data = data_dir
 	os.remove_all(data_dir)

@@ -183,11 +183,11 @@ count_tmp_leftovers :: proc(dir: string) -> int {
 
 @(test)
 test_write_file_atomic_creates_and_replaces :: proc(t: ^testing.T) {
-	dir :: "/tmp/wayu-test-atomic-basic"
+	dir := test_tmp("wayu-test-atomic-basic")
 	os.remove_all(dir)
 	os.make_directory(dir)
 	defer os.remove_all(dir)
-	path := dir + "/f.txt"
+	path := fmt.tprintf("%s/f.txt", dir)
 
 	testing.expect_value(t, wayu.write_file_atomic(path, transmute([]byte)string("one")), nil)
 	testing.expect_value(t, wayu.write_file_atomic(path, transmute([]byte)string("two")), nil)
@@ -199,11 +199,11 @@ test_write_file_atomic_creates_and_replaces :: proc(t: ^testing.T) {
 
 @(test)
 test_write_file_atomic_preserves_mode :: proc(t: ^testing.T) {
-	dir :: "/tmp/wayu-test-atomic-mode"
+	dir := test_tmp("wayu-test-atomic-mode")
 	os.remove_all(dir)
 	os.make_directory(dir)
 	defer os.remove_all(dir)
-	path := dir + "/secret.toml"
+	path := fmt.tprintf("%s/secret.toml", dir)
 
 	testing.expect_value(t, wayu.write_file_atomic(path, transmute([]byte)string("a")), nil)
 	testing.expect_value(t, os.chmod(path, os.perm_number(0o600)), nil)
@@ -223,11 +223,11 @@ test_write_file_atomic_preserves_mode :: proc(t: ^testing.T) {
 // New files default to 0600: wayu.toml / generated files may hold secrets.
 @(test)
 test_write_file_atomic_new_file_is_0600 :: proc(t: ^testing.T) {
-	dir :: "/tmp/wayu-test-atomic-newmode"
+	dir := test_tmp("wayu-test-atomic-newmode")
 	os.remove_all(dir)
 	os.make_directory(dir)
 	defer os.remove_all(dir)
-	path := dir + "/core.zsh"
+	path := fmt.tprintf("%s/core.zsh", dir)
 
 	testing.expect_value(t, wayu.write_file_atomic(path, transmute([]byte)string("x")), nil)
 	fi, err := os.stat(path, context.temp_allocator)
@@ -239,11 +239,11 @@ test_write_file_atomic_new_file_is_0600 :: proc(t: ^testing.T) {
 // the generators write (large configs); the helper must not depend on it.
 @(test)
 test_write_file_atomic_survives_exhausted_temp_allocator :: proc(t: ^testing.T) {
-	dir :: "/tmp/wayu-test-atomic-arena"
+	dir := test_tmp("wayu-test-atomic-arena")
 	os.remove_all(dir)
 	os.make_directory(dir)
 	defer os.remove_all(dir)
-	path := dir + "/core.zsh"
+	path := fmt.tprintf("%s/core.zsh", dir)
 
 	context.temp_allocator = mem.panic_allocator()
 	testing.expect_value(t, wayu.write_file_atomic(path, transmute([]byte)string("ok")), nil)
@@ -254,12 +254,12 @@ test_write_file_atomic_survives_exhausted_temp_allocator :: proc(t: ^testing.T) 
 
 @(test)
 test_write_file_atomic_follows_symlink :: proc(t: ^testing.T) {
-	dir :: "/tmp/wayu-test-atomic-link"
+	dir := test_tmp("wayu-test-atomic-link")
 	os.remove_all(dir)
 	os.make_directory(dir)
 	defer os.remove_all(dir)
-	real := dir + "/real.toml"
-	link := dir + "/wayu.toml"
+	real := fmt.tprintf("%s/real.toml", dir)
+	link := fmt.tprintf("%s/wayu.toml", dir)
 
 	testing.expect_value(t, wayu.write_file_atomic(real, transmute([]byte)string("old")), nil)
 	testing.expect_value(t, os.symlink("real.toml", link), nil) // relative target

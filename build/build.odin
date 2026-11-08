@@ -157,12 +157,16 @@ run_unit_tests :: proc(names := "") -> bool {
 	os.make_directory_all(test_home)
 	real_home, had_home := os.lookup_env("HOME", context.temp_allocator)
 	os.set_env("HOME", test_home)
+	// Tests put scratch files under this per-run root (tests/unit/test_tmp.odin),
+	// removed with the sandbox: concurrent runs never share a /tmp path.
+	os.set_env("WAYU_TEST_TMPDIR", fmt.tprintf("%s/tmp", test_home))
 	defer {
 		if had_home {
 			os.set_env("HOME", real_home)
 		} else {
 			os.unset_env("HOME")
 		}
+		os.unset_env("WAYU_TEST_TMPDIR")
 		os.remove_all(test_home)
 	}
 	// The test runner reports progress, per-test logs, leaks and the names of
@@ -177,6 +181,9 @@ run_unit_tests :: proc(names := "") -> bool {
 	}
 	ok := bld.test({
 		package_path = TEST_DIR,
+		// Per-run binary: odin test otherwise writes ./unit in the cwd, which
+		// concurrent runs in one checkout would overwrite mid-run.
+		out          = fmt.tprintf("%s/wayu_unit_tests", test_home),
 		file_mode    = true,
 		opt          = .Speed,
 		defines      = defines[:],

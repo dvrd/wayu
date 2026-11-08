@@ -133,7 +133,7 @@ class ValidationIntegrationTest
     print "Test 5: Sanitize dangerous characters in path... "
 
     # Create a test directory with spaces
-    test_dir = "/tmp/test dir #{Time.now.to_i}"
+    test_dir = "#{@scratch}/test dir"
     Dir.mkdir(test_dir)
 
     begin

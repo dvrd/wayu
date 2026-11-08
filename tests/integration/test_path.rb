@@ -55,7 +55,7 @@ class PathIntegrationTest
   def test_add_single_path
     print "Test 1: Add single path... "
 
-    test_dir = "/tmp/wayu_test_path1"
+    test_dir = "#{@scratch}/wayu_test_path1"
     Dir.mkdir(test_dir) unless Dir.exist?(test_dir)
 
     output, status = run_wayu("path add #{test_dir}")
@@ -74,7 +74,7 @@ class PathIntegrationTest
   def test_add_multiple_paths
     print "Test 2: Add multiple paths... "
 
-    test_dirs = ["/tmp/wayu_test_path2", "/tmp/wayu_test_path3", "/tmp/wayu_test_path4"]
+    test_dirs = ["#{@scratch}/wayu_test_path2", "#{@scratch}/wayu_test_path3", "#{@scratch}/wayu_test_path4"]
     test_dirs.each { |dir| Dir.mkdir(dir) unless Dir.exist?(dir) }
 
     test_dirs.each { |dir| run_wayu("path add #{dir}") }
@@ -98,7 +98,7 @@ class PathIntegrationTest
     output, status = run_wayu("path list")
 
     # Should show table and at least our test paths
-    if status.success? && output.include?("/tmp/wayu_test_path")
+    if status.success? && output.include?("#{@scratch}/wayu_test_path")
       puts "✓"
       @passed += 1
     else
@@ -112,7 +112,7 @@ class PathIntegrationTest
   def test_remove_path_by_name
     print "Test 4: Remove path by name... "
 
-    test_dir = "/tmp/wayu_test_path1"
+    test_dir = "#{@scratch}/wayu_test_path1"
     output, status = run_wayu("path rm #{test_dir}")
 
     path_content = File.read(@toml_file)
@@ -148,9 +148,9 @@ class PathIntegrationTest
   def test_clean_operates_on_wayu_toml
     print "Test 13: path clean removes missing entries from wayu.toml... "
 
-    keep = "/tmp/wayu_test_clean_keep"
+    keep = "#{@scratch}/wayu_test_clean_keep"
     FileUtils.mkdir_p(keep)
-    write_paths_table([%(keep = "#{keep}"), %(gone = "/tmp/wayu_test_clean_gone_#{$$}"), %(home_var = "$HOME")])
+    write_paths_table([%(keep = "#{keep}"), %(gone = "#{@scratch}/wayu_test_clean_gone_#{$$}"), %(home_var = "$HOME")])
 
     dry_out, dry_status = run_wayu("--dry-run path clean")
     after_dry = File.read(@toml_file)
@@ -201,7 +201,7 @@ class PathIntegrationTest
     run_wayu("const add OKAMI168_ROOT #{tools}")
     write_paths_table([%(unset_bin = "$WAYU_OKAMI168_SURELY_UNSET/bin"),
                        %(env_bin = "${OKAMI168_ROOT}/bin"),
-                       %(gone = "/tmp/wayu_test_clean168_gone_#{$$}")])
+                       %(gone = "#{@scratch}/wayu_test_clean168_gone_#{$$}")])
     output, status = run_wayu("path clean --yes")
     content = File.read(@toml_file)
 
@@ -245,7 +245,7 @@ class PathIntegrationTest
   def test_duplicate_path_handling
     print "Test 5: Duplicate path handling... "
 
-    test_dir = "/tmp/wayu_test_duplicate"
+    test_dir = "#{@scratch}/wayu_test_duplicate"
     Dir.mkdir(test_dir) unless Dir.exist?(test_dir)
 
     # Add path twice
@@ -272,11 +272,11 @@ class PathIntegrationTest
 
     # Insertion order deliberately differs from alphabetical order: [paths]
     # order is PATH precedence, so wayu must never re-sort it (OKAMI-201).
-    test_dirs = ["/tmp/wayu_order_zeta", "/tmp/wayu_order_alpha", "/tmp/wayu_order_mid"]
+    test_dirs = ["#{@scratch}/wayu_order_zeta", "#{@scratch}/wayu_order_alpha", "#{@scratch}/wayu_order_mid"]
     test_dirs.each { |dir| Dir.mkdir(dir) unless Dir.exist?(dir) }
 
     # Remove all test paths first
-    Dir.glob("/tmp/wayu_*").each { |dir| run_wayu("path rm #{dir}") }
+    Dir.glob("#{@scratch}/wayu_*").each { |dir| run_wayu("path rm #{dir}") }
 
     # Add in order
     test_dirs.each { |dir| run_wayu("path add #{dir}") }
@@ -408,7 +408,7 @@ class PathIntegrationTest
   def test_path_with_spaces
     print "Test 8: Path with spaces... "
 
-    test_dir = "/tmp/wayu test with spaces"
+    test_dir = "#{@scratch}/wayu test with spaces"
     Dir.mkdir(test_dir) unless Dir.exist?(test_dir)
 
     output, status = run_wayu("path add \"#{test_dir}\"")
@@ -437,8 +437,8 @@ class PathIntegrationTest
   def test_symlink_handling
     print "Test 9: Symlink handling... "
 
-    real_dir = "/tmp/wayu_real_dir"
-    link_dir = "/tmp/wayu_link_dir"
+    real_dir = "#{@scratch}/wayu_real_dir"
+    link_dir = "#{@scratch}/wayu_link_dir"
 
     Dir.mkdir(real_dir) unless Dir.exist?(real_dir)
     File.symlink(real_dir, link_dir) unless File.exist?(link_dir)
@@ -497,7 +497,7 @@ class PathIntegrationTest
     print "Test 12: Path persistence after modifications... "
 
     # Add a path
-    test_dir = "/tmp/wayu_persist_test"
+    test_dir = "#{@scratch}/wayu_persist_test"
     Dir.mkdir(test_dir) unless Dir.exist?(test_dir)
     run_wayu("path add #{test_dir}")
 
@@ -505,7 +505,7 @@ class PathIntegrationTest
     content_before = File.read(@toml_file)
 
     # Add another path (triggers file write)
-    test_dir2 = "/tmp/wayu_persist_test2"
+    test_dir2 = "#{@scratch}/wayu_persist_test2"
     Dir.mkdir(test_dir2) unless Dir.exist?(test_dir2)
     run_wayu("path add #{test_dir2}")
 

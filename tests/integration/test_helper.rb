@@ -19,15 +19,26 @@ module WayuTestHelper
   def setup_test_env
     @passed = 0
     @failed = 0
-    @wayu_bin = File.expand_path('../../bin/wayu', __dir__)
+    # WAYU_BIN runs the suite against another build (e.g. the CI
+    # AddressSanitizer job); build_project then leaves it alone.
+    @wayu_bin = File.expand_path(ENV['WAYU_BIN'] || '../../bin/wayu', ENV['WAYU_BIN'] ? Dir.pwd : __dir__)
     # Hermetic default shell: wayu picks file extensions from $SHELL, and CI
     # runners default to bash. Tests that need another shell pass SHELL or
     # --shell explicitly (those override this).
     ENV['SHELL'] = '/bin/zsh'
-    # Use /tmp directly (not Dir.mktmpdir which generates /var/folders paths on macOS)
-    # The wayu binary reads HOME to construct $HOME/.config/wayu, so a short
-    # predictable path avoids symlink resolution issues on macOS.
-    @tmp_home   = "/tmp/wayu_test_#{$$}_#{rand(9999)}"
+    # Under /tmp explicitly (mktmpdir's default is /var/folders/... on macOS):
+    # the binary builds $HOME/.config/wayu from HOME, and a short path avoids
+    # symlink-resolution surprises. Unique per run, so concurrent runs never
+    # share a HOME.
+    @tmp_home   = Dir.mktmpdir('wayu_test_', '/tmp')
+    # Scratch dirs a test creates on disk (e.g. directories to `path add`).
+    # Outside HOME, so wayu doesn't rewrite them to $HOME/...; per run, so
+    # concurrent runs never add/remove each other's directories. Short
+    # prefix: list tables truncate long paths.
+    @scratch    = Dir.mktmpdir('ws', '/tmp')
+    # Suites exit from the middle of a run (exit/abort on a failed setup);
+    # remove the temp dirs whatever path ends the process.
+    at_exit { teardown_test_env }
     @config_dir = "#{@tmp_home}/.config/wayu"
     @data_dir   = "#{@tmp_home}/.config/wayu"
     # Pre-create parent dirs so the binary can create config/data inside
@@ -38,9 +49,11 @@ module WayuTestHelper
   # Call at the end of run (in ensure block so it always fires)
   def teardown_test_env
     FileUtils.rm_rf(@tmp_home) if @tmp_home && Dir.exist?(@tmp_home)
+    FileUtils.rm_rf(@scratch) if @scratch && Dir.exist?(@scratch)
   end
 
   def build_project
+    return if ENV['WAYU_BIN']
     print "Building wayu..."
     project_root = File.expand_path('../..', __dir__)
     stdout, stderr, status = Open3.capture3('./build_it build', chdir: project_root)

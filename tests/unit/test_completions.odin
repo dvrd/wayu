@@ -14,8 +14,8 @@ test_extract_completion_items_empty :: proc(t: ^testing.T) {
 	original_config := wayu.wayu.config
 	defer { wayu.wayu.config = original_config; wayu.wayu.data = original_config }
 
-	wayu.wayu.config = "/tmp/wayu-test-nonexistent"
-	wayu.wayu.data = "/tmp/wayu-test-nonexistent"
+	wayu.wayu.config = test_tmp("wayu-test-nonexistent")
+	wayu.wayu.data = test_tmp("wayu-test-nonexistent")
 	items := wayu.extract_completion_items()
 	defer {
 		for item in items {
@@ -30,7 +30,7 @@ test_extract_completion_items_empty :: proc(t: ^testing.T) {
 @(test)
 test_extract_completion_items_single :: proc(t: ^testing.T) {
 	// Create temporary test directory
-	test_dir := "/tmp/wayu-test-completions"
+	test_dir := test_tmp("wayu-test-completions")
 	completions_dir := fmt.aprintf("%s/completions", test_dir)
 	defer delete(completions_dir)
 
@@ -64,7 +64,7 @@ test_extract_completion_items_single :: proc(t: ^testing.T) {
 @(test)
 test_extract_completion_items_multiple :: proc(t: ^testing.T) {
 	// Create temporary test directory
-	test_dir := "/tmp/wayu-test-completions-multi"
+	test_dir := test_tmp("wayu-test-completions-multi")
 	completions_dir := fmt.aprintf("%s/completions", test_dir)
 	defer delete(completions_dir)
 
@@ -115,7 +115,7 @@ test_extract_completion_items_multiple :: proc(t: ^testing.T) {
 @(test)
 test_extract_completion_items_filters :: proc(t: ^testing.T) {
 	// Create temporary test directory
-	test_dir := "/tmp/wayu-test-completions-filter"
+	test_dir := test_tmp("wayu-test-completions-filter")
 	completions_dir := fmt.aprintf("%s/completions", test_dir)
 	defer delete(completions_dir)
 

@@ -18,7 +18,7 @@ export QUOTED_CONST="value with spaces"
 `
 
 	// Write to a temporary file
-	temp_file := "/tmp/test_constants.zsh"
+	temp_file := test_tmp("test_constants.zsh")
 	_ = os.write_entire_file(temp_file, transmute([]byte)test_config)
 	defer os.remove(temp_file)
 

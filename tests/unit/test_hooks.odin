@@ -12,7 +12,7 @@ import wayu "../../src"
 // `wayu plugin add` flow (CLI + TUI).
 @(test)
 test_plugin_install_hooks_fire :: proc(t: ^testing.T) {
-	tmp := "/tmp/wayu_test_hooks_plugin"
+	tmp := test_tmp("wayu_test_hooks_plugin")
 	os.remove_all(tmp)
 	err := os.make_directory(tmp)
 	testing.expect(t, err == nil, "should create temp hook config dir")
@@ -57,7 +57,7 @@ test_plugin_install_hooks_fire :: proc(t: ^testing.T) {
 // or create files).
 @(test)
 test_plugin_install_hooks_absent_noop :: proc(t: ^testing.T) {
-	tmp := "/tmp/wayu_test_hooks_absent"
+	tmp := test_tmp("wayu_test_hooks_absent")
 	os.remove_all(tmp)
 	err := os.make_directory(tmp)
 	testing.expect(t, err == nil, "should create temp hook config dir")
@@ -117,7 +117,7 @@ test_hook_double_quoted_placeholder_detection :: proc(t: ^testing.T) {
 // Load-time validation names every invalid line; a valid file reports nothing.
 @(test)
 test_hook_config_error_reports_lines :: proc(t: ^testing.T) {
-	tmp := "/tmp/wayu_test_hooks_dquote"
+	tmp := test_tmp("wayu_test_hooks_dquote")
 	os.remove_all(tmp)
 	testing.expect(t, os.make_directory(tmp) == nil)
 	defer os.remove_all(tmp)
@@ -147,7 +147,7 @@ test_hook_config_error_reports_lines :: proc(t: ^testing.T) {
 // OKAMI-230: values reaching a nested shell (`sh -c '... {path}'`) stay data.
 @(test)
 test_hook_nested_shell_cannot_inject :: proc(t: ^testing.T) {
-	tmp := "/tmp/wayu_test_hooks_nested"
+	tmp := test_tmp("wayu_test_hooks_nested")
 	os.remove_all(tmp)
 	testing.expect(t, os.make_directory(tmp) == nil)
 	defer os.remove_all(tmp)
@@ -175,7 +175,7 @@ test_hook_nested_shell_cannot_inject :: proc(t: ^testing.T) {
 // execute, and {value} must be filled.
 @(test)
 test_hook_values_cannot_inject :: proc(t: ^testing.T) {
-	tmp := "/tmp/wayu_test_hooks_inject"
+	tmp := test_tmp("wayu_test_hooks_inject")
 	os.remove_all(tmp)
 	testing.expect(t, os.make_directory(tmp) == nil)
 	defer os.remove_all(tmp)
@@ -204,7 +204,7 @@ test_hook_values_cannot_inject :: proc(t: ^testing.T) {
 
 @(test)
 test_hooks_skipped_in_dry_run :: proc(t: ^testing.T) {
-	tmp := "/tmp/wayu_test_hooks_dryrun"
+	tmp := test_tmp("wayu_test_hooks_dryrun")
 	os.remove_all(tmp)
 	testing.expect(t, os.make_directory(tmp) == nil)
 	defer os.remove_all(tmp)

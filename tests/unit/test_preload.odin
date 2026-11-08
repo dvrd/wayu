@@ -8,7 +8,7 @@ import wayu "../../src"
 @(test)
 test_init_config_file_creates_file :: proc(t: ^testing.T) {
 	// Test creating a new config file
-	test_file := "/tmp/test_wayu_config.zsh"
+	test_file := test_tmp("test_wayu_config.zsh")
 	test_template := "#!/usr/bin/env zsh\n# Test template"
 
 	// Clean up first
@@ -30,7 +30,7 @@ test_init_config_file_creates_file :: proc(t: ^testing.T) {
 @(test)
 test_init_config_file_skips_existing :: proc(t: ^testing.T) {
 	// Test that init_config_file doesn't overwrite existing files
-	test_file := "/tmp/test_wayu_existing.zsh"
+	test_file := test_tmp("test_wayu_existing.zsh")
 	original_content := "original content"
 
 	// Create file with original content
