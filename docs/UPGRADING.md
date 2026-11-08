@@ -428,7 +428,9 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   scripts and `zsh -c`); in other shells a no-op `compdef` is defined if
   none exists, so plugins calling it stay quiet. `.zcompdump` is also
   zcompiled (`.zcompdump.zwc`, in the background) — compinit loads it
-  ~40% faster.
+  ~40% faster. The compiled file is installed only if the dump did not
+  change while compiling, so a shell rebuilding the dump at the same time
+  can't leave a stale `.zwc` that hides newly added completions.
 - zsh: the native prompt is set up in interactive shells only.
 - bash: the PATH apply no longer uses here-strings (a temp file each in
   bash 3.2) and compares in the C locale; the separate dedup pass is gone

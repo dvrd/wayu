@@ -1213,7 +1213,8 @@ build_core_content :: proc(mask := false) -> string {
 // one recorded in $dump.wayu when the dump was last rebuilt.
 // compinit sources the dump at every start; a zcompiled dump loads ~40%
 // faster, so it is compiled (in the background, temp file + rename) when
-// missing or older than the dump.
+// missing or older than the dump, and installed only if the dump did not
+// change while compiling.
 @(private = "file")
 emit_zsh_completions :: proc(b: ^strings.Builder, completions_dir: string) {
 	q := shell_double_quote_literal(completions_dir, context.temp_allocator)
@@ -1234,7 +1235,20 @@ emit_zsh_completions :: proc(b: ^strings.Builder, completions_dir: string) {
 	fmt.sbprintln(b, `      compinit -C -d "$dump"`)
 	fmt.sbprintln(b, `    fi`)
 	fmt.sbprintln(b, `    if [[ -s $dump && -w ${dump:h} && ( ! -s $dump.zwc || $dump -nt $dump.zwc ) ]]; then`)
-	fmt.sbprintln(b, `      { zcompile -R -- "$dump.$$.zwc" "$dump" && command mv -f -- "$dump.$$.zwc" "$dump.zwc" || command rm -f -- "$dump.$$.zwc" } >/dev/null 2>&1 &!`)
+	// Install the .zwc only if the dump is unchanged (device, inode, size,
+	// mtime, ctime; not atime, which zcompile itself updates) since compiling began:
+	// another shell may rebuild the dump meanwhile, and a .zwc of the old
+	// dump (newer mtime) would then shadow the new one.
+	fmt.sbprintln(b, `      {`)
+	fmt.sbprintln(b, `        zmodload -F zsh/stat b:zstat || exit`)
+	fmt.sbprintln(b, `        local -a s1 s2`)
+	fmt.sbprintln(b, `        zstat -A s1 -- "$dump" || exit`)
+	fmt.sbprintln(b, `        if zcompile -R -- "$dump.$$.zwc" "$dump" && zstat -A s2 -- "$dump" && [[ "${s1[1,2]} ${s1[8]} ${s1[10,11]}" == "${s2[1,2]} ${s2[8]} ${s2[10,11]}" ]]; then`)
+	fmt.sbprintln(b, `          command mv -f -- "$dump.$$.zwc" "$dump.zwc"`)
+	fmt.sbprintln(b, `        else`)
+	fmt.sbprintln(b, `          command rm -f -- "$dump.$$.zwc"`)
+	fmt.sbprintln(b, `        fi`)
+	fmt.sbprintln(b, `      } >/dev/null 2>&1 &!`)
 	fmt.sbprintln(b, `    fi`)
 	fmt.sbprintln(b, `  }`)
 	fmt.sbprintln(b, `else`)
