@@ -402,6 +402,7 @@ parse_build_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 		case "turbo":           parsed.action = .TURBO
 		case "eval":            parsed.action = .EVAL
 		case "profile":         parsed.action = .CHECK
+		case "clean":           parsed.action = .CLEAN
 		case "help", "-h", "--help": parsed.action = .HELP
 		case:                   parsed.action = .UNKNOWN
 		}

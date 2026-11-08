@@ -1147,15 +1147,90 @@ generate_login_init_v2 :: proc() {
 	zcompile_file(path)
 }
 
-// evalcache: shared by zsh and bash. The cache key includes the sanitised
-// args, so `zoxide init zsh` and `zoxide init zsh --cmd cd` don't share
-// (and serve) a stale cache when args change in wayu.toml.
-HELPER_EVALCACHE :: `# ============================================================================
-# EVALCACHE - Cache eval output, regenerate if binary changed or args differ
+// evalcache. The cache key includes the sanitised args, so `zoxide init zsh`
+// and `zoxide init zsh --cmd cd` don't share (and serve) a stale cache when
+// args change in wayu.toml. The first line of a cache file records the
+// binary it came from; the cache is regenerated when that binary changes.
+// Neither shell forks at startup on a cache hit (no `$(command -v ...)`).
+//
+// zsh: signature = resolved path + size + mtime + inode (zsh/stat zstat),
+// so a replaced binary with a preserved/fixed mtime (Nix store paths have
+// mtime 1, tarballs keep build mtimes) or a moved symlink target is
+// noticed. `wayu build clean` drops every cache (for output that depends
+// on config or environment).
+HELPER_EVALCACHE_ZSH :: `# ============================================================================
+# EVALCACHE - Cache eval output, regenerate if the binary changed or args differ
 # ============================================================================
 _wayu_evalcache() {
   local cmd="$1"
   shift
+  local bin_path="${commands[$cmd]-}"
+
+  # Skip silently if the tool isn't installed
+  [[ -n "$bin_path" && -x "$bin_path" ]] || return 0
+
+  local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/wayu/evalcache"
+  local key="${cmd//[^A-Za-z0-9._-]/_}"
+  if (( $# )); then
+    local args="$*"
+    key="${key}__${args//[^A-Za-z0-9._-]/_}"
+  fi
+  key="${key:0:200}"
+  local cache_file="$cache_dir/$key"
+
+  local real="${bin_path:A}" sig line=""
+  local -A st
+  zmodload -F zsh/stat b:zstat 2>/dev/null
+  if zstat -H st -- "$real" 2>/dev/null; then
+    sig="$real ${st[size]} ${st[mtime]} ${st[inode]}"
+  else
+    sig="$real"
+    [[ "$real" -nt "$cache_file" ]] && sig="$real (newer)"
+  fi
+  sig="# wayu-evalcache: ${sig//$'\n'/?}"
+  [[ -s "$cache_file" ]] && IFS= builtin read -r line < "$cache_file"
+
+  if [[ "$line" != "$sig" ]]; then
+    [[ -d "$cache_dir" ]] || command mkdir -p -- "$cache_dir"
+    local out tmp_file="${cache_file}.tmp.$$"
+    if out="$(command "$cmd" "$@" 2>/dev/null)" && [[ -n "$out" ]] &&
+       builtin print -r -- "$sig"$'\n'"$out" > "$tmp_file"; then
+      command mv -f -- "$tmp_file" "$cache_file"
+    else
+      # Failed or empty output - drop the tmpfile, leave any prior good cache alone
+      command rm -f -- "$tmp_file"
+      [[ -s "$cache_file" ]] || return 1
+    fi
+  fi
+
+  source "$cache_file"
+}
+`
+
+// bash has no stat builtin. Lookup goes through the hash table (BASH_CMDS,
+// bash 4+; `type -P` subshell on bash 3.2). The cache file gets the binary's
+// mtime (`touch -r`) and must still match it exactly (`-nt` / `-ot` both
+// false), and `<cache>.bin` pins the binary: a hard link to its resolved
+// path (same inode), or a symlink to it when a hard link isn't possible
+// (other filesystem, Linux protected_hardlinks). When the binary was
+// replaced, the PATH entry resolves elsewhere (a new Nix store path) or the
+// old target is gone, `-ef` fails and the cache is rebuilt.
+HELPER_EVALCACHE_BASH :: `# ============================================================================
+# EVALCACHE - Cache eval output, regenerate if the binary changed or args differ
+# ============================================================================
+_wayu_evalcache() {
+  local cmd="$1"
+  shift
+  local bin_path=""
+  if [ "${BASH_VERSINFO[0]:-0}" -ge 4 ] && [[ $- == *h* ]]; then
+    hash "$cmd" 2>/dev/null && bin_path="${BASH_CMDS[$cmd]-}"
+  else
+    bin_path="$(type -P "$cmd" 2>/dev/null)"
+  fi
+
+  # Skip silently if the tool isn't installed
+  [ -n "$bin_path" ] && [ -x "$bin_path" ] || return 0
+
   local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/wayu/evalcache"
   local key="${cmd//[^A-Za-z0-9._-]/_}"
   if [ "$#" -gt 0 ]; then
@@ -1164,22 +1239,23 @@ _wayu_evalcache() {
   fi
   key="${key:0:200}"
   local cache_file="$cache_dir/$key"
-  local bin_path
-  bin_path="$(command -v "$cmd" 2>/dev/null)"
+  local sig="# wayu-evalcache: ${bin_path//$'\n'/?}" line=""
+  [ -s "$cache_file" ] && IFS= builtin read -r line < "$cache_file"
 
-  # Skip silently if the tool isn't installed
-  [ -z "$bin_path" ] && return 0
-
-  [ -d "$cache_dir" ] || command mkdir -p "$cache_dir"
-
-  # Regenerate if: cache doesn't exist, is empty, or binary is newer than cache
-  if [ ! -s "$cache_file" ] || [ "$bin_path" -nt "$cache_file" ]; then
-    local tmp_file="${cache_file}.tmp.$$"
-    if "$cmd" "$@" > "$tmp_file" 2>/dev/null && [ -s "$tmp_file" ]; then
-      command mv -f "$tmp_file" "$cache_file"
+  if [ "$line" != "$sig" ] || [ "$bin_path" -nt "$cache_file" ] || [ "$bin_path" -ot "$cache_file" ] ||
+     ! [ "$bin_path" -ef "$cache_file.bin" ]; then
+    [ -d "$cache_dir" ] || command mkdir -p -- "$cache_dir"
+    local out real tmp_file="${cache_file}.tmp.$$"
+    if out="$(command "$cmd" "$@" 2>/dev/null)" && [ -n "$out" ] &&
+       builtin printf '%s\n%s\n' "$sig" "$out" > "$tmp_file" &&
+       command touch -r "$bin_path" -- "$tmp_file"; then
+      real="$(command realpath -- "$bin_path" 2>/dev/null || command readlink -f -- "$bin_path" 2>/dev/null)"
+      real="${real:-$bin_path}"
+      command ln -f -- "$real" "$cache_file.bin" 2>/dev/null || command ln -sfn -- "$real" "$cache_file.bin"
+      command mv -f -- "$tmp_file" "$cache_file"
     else
       # Failed or empty output - drop the tmpfile, leave any prior good cache alone
-      command rm -f "$tmp_file"
+      command rm -f -- "$tmp_file"
       [ -s "$cache_file" ] || return 1
     fi
   fi
@@ -1259,11 +1335,11 @@ add-zsh-hook precmd _wayu_defer_precmd
 # WAYU COMPILE - Compile init files to bytecode (manual command)
 # ============================================================================
 wayu_compile() {
-  local f
+  local f d=@WAYU_DATA_DIR@
   echo "Compiling init files to bytecode..."
   for f in core helpers lazy login plugins; do
-    [[ -f "${WAYU_DATA_DIR:-$HOME/.config/wayu}/$f.zsh" ]] || continue
-    zcompile "${WAYU_DATA_DIR:-$HOME/.config/wayu}/$f.zsh" 2>/dev/null && echo "✓ $f.zsh"
+    [[ -f "$d/$f.zsh" ]] || continue
+    zcompile "$d/$f.zsh" 2>/dev/null && echo "✓ $f.zsh"
   done
   echo "Done. Loading 2-3x faster."
 }
@@ -1281,9 +1357,14 @@ generate_helpers_init_v2 :: proc() {
 
 	fmt.sbprintfln(&builder, "# helpers.%s - Support functions for wayu", shell_ext)
 	fmt.sbprintln(&builder)
-	fmt.sbprint(&builder, HELPER_EVALCACHE)
 	if wayu.shell == .ZSH {
-		fmt.sbprint(&builder, HELPER_ZSH_DEFER)
+		fmt.sbprint(&builder, HELPER_EVALCACHE_ZSH)
+		// wayu_compile works on the data dir this file was generated for.
+		data_q := shell_double_quote_literal(wayu.data, context.temp_allocator)
+		defer_code, _ := strings.replace_all(HELPER_ZSH_DEFER, "@WAYU_DATA_DIR@", data_q, context.temp_allocator)
+		fmt.sbprint(&builder, defer_code)
+	} else {
+		fmt.sbprint(&builder, HELPER_EVALCACHE_BASH)
 	}
 
 	write_init_file(path, strings.to_string(builder))
@@ -2043,6 +2124,31 @@ generate_eval_output_optimized :: proc() {
 	}
 }
 
+// `wayu build clean`: delete the evalcache dir (see HELPER_EVALCACHE_ZSH).
+// Cached init code is regenerated by the next shell. Needed when a tool's
+// init output depends on its config or the environment, which the binary
+// signature can't see.
+clear_evalcache :: proc() {
+	base := os.get_env("XDG_CACHE_HOME", context.temp_allocator)
+	if len(base) == 0 {
+		base = fmt.tprintf("%s/.cache", wayu.home)
+	}
+	dir := fmt.tprintf("%s/wayu/evalcache", base)
+	if !os.exists(dir) {
+		print_info("No evalcache at %s", dir)
+		return
+	}
+	if wayu.dry_run {
+		fmt.printfln("[DRY RUN] Would remove %s", dir)
+		return
+	}
+	if err := os.remove_all(dir); err != nil {
+		print_error("Failed to remove %s: %v", dir, err)
+		os.exit(EXIT_IOERR)
+	}
+	print_success("Cleared evalcache (%s); new shells regenerate it", dir)
+}
+
 // Print build command help
 print_build_help :: proc() {
 	fmt.println()
@@ -2053,6 +2159,7 @@ print_build_help :: proc() {
 	fmt.printfln("  wayu build turbo        Write the turbo export (see wayu export help)")
 	fmt.printfln("  wayu build eval         Print the init line to eval in your rc file")
 	fmt.printfln("  wayu build profile      Measure shell startup time (5-iter mean)")
+	fmt.printfln("  wayu build clean        Clear cached [tools] init output (evalcache)")
 	fmt.printfln("  wayu build help         Show this help")
 	fmt.println()
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)

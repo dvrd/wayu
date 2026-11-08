@@ -327,7 +327,7 @@ main :: proc() {
 		handle_config_extra_command(parsed.action, parsed.args)
 	case .BUILD:
 		if parsed.action == .UNKNOWN || len(parsed.args) > 0 {
-			print_error_simple("Unknown build target (expected: turbo, eval, profile, help)")
+			print_error_simple("Unknown build target (expected: turbo, eval, profile, clean, help)")
 			print_build_help()
 			os.exit(EXIT_USAGE)
 		}
@@ -875,6 +875,11 @@ handle_build_command :: proc(action: Action) {
 	
 	if profile_mode {
 		profile_startup_performance()
+		return
+	}
+
+	if action == .CLEAN {
+		clear_evalcache()
 		return
 	}
 	

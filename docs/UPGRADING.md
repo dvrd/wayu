@@ -116,6 +116,18 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR`, so `wayu` commands typed in that shell
   (and the path-sync background `wayu build`) use the same dirs.
 
+**[tools] evalcache**
+- The cache is regenerated when the tool's binary changes, not only when it
+  gets newer: zsh compares resolved path + size + mtime + inode, bash the
+  path, the exact mtime and the inode/resolved target. Cache files now start
+  with a `# wayu-evalcache:` line; old caches are rebuilt once. bash also
+  keeps a `<cache>.bin` link next to each cache file.
+- The tool is looked up in `PATH` only and run as `command <tool>` (a
+  function or alias of that name is no longer called).
+- New `wayu build clean` deletes the cache
+  (`${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`), for init output that
+  depends on config or environment.
+
 ## 5.0.0
 
 **doctor**
