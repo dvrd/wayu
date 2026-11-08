@@ -164,3 +164,45 @@ test_current_init_templates_are_known :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, !wayu.is_known_init_template("# Wayu Shell Initialization\nexport MY_CUSTOM=1\n"))
 }
+
+// OKAMI-275: [tools] args become quoted argv words; anything that would run
+// code or expand at startup is refused with a reason.
+@(test)
+test_tool_args_to_shell :: proc(t: ^testing.T) {
+	good := [][2]string{
+		{"init zsh", "init zsh"},
+		{"init zsh --cmd cd", "init zsh --cmd cd"},
+		{"init  zsh\t--x=1", "init zsh --x=1"},
+		{`init --hook 'a b'`, `init --hook 'a b'`},
+		{`init "it's"`, `init 'it'\''s'`},
+		{`--opt {a,b}`, `--opt '{a,b}'`},
+		{`--config $HOME/x`, `--config "${HOME}/x"`},
+		{`--config ${XDG_CONFIG_HOME:-$HOME/.config}/t`, `--config "${XDG_CONFIG_HOME:-${HOME}/.config}/t"`},
+		{`--config ~/t`, `--config "${HOME}/t"`},
+		{`'$literal'`, `'$literal'`},
+		{"", ""},
+	}
+	for c in good {
+		out, reason, ok := wayu.tool_args_to_shell(c[0])
+		defer delete(out)
+		testing.expectf(t, ok && out == c[1], "%q -> %q (ok=%v %s), want %q", c[0], out, ok, reason, c[1])
+	}
+	bad := []string{
+		"init zsh\ntouch /tmp/pwn",
+		"init zsh; touch /tmp/pwn",
+		"init zsh && x",
+		"init | sh",
+		"init > /tmp/x",
+		"init $(id)",
+		"init `id`",
+		"init *",
+		"init ?",
+		"init [ab]",
+		`init "$HOME"'$x'`,
+		"init 'unterminated",
+	}
+	for b in bad {
+		_, reason, ok := wayu.tool_args_to_shell(b)
+		testing.expectf(t, !ok && len(reason) > 0, "%q must be refused", b)
+	}
+}

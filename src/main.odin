@@ -86,19 +86,21 @@ init_app_context :: proc(ctx: ^AppContext) {
 
 	ctx.home = os.get_env("HOME", heap)
 
+	// config: WAYU_CONFIG_DIR, else ~/.config/wayu.
+	// data:   WAYU_DATA_DIR, else the config dir. The generated init derives
+	// its data dir from its own location and core.<ext> exports both
+	// overrides, so a shell sourcing it runs `wayu` against the same dirs.
 	config_dir_override := os.get_env("WAYU_CONFIG_DIR", heap)
 	if config_dir_override != "" {
 		ctx.config = config_dir_override
-		// When overridden (e.g. tests), data lives alongside config
-		ctx.data = config_dir_override
 	} else {
 		ctx.config = fmt.aprintf("%s/.config/wayu", ctx.home, allocator = heap)
-		data_dir_override := os.get_env("WAYU_DATA_DIR", heap)
-		if data_dir_override != "" {
-			ctx.data = data_dir_override
-		} else {
-			ctx.data = fmt.aprintf("%s/.config/wayu", ctx.home, allocator = heap)
-		}
+	}
+	data_dir_override := os.get_env("WAYU_DATA_DIR", heap)
+	if data_dir_override != "" {
+		ctx.data = data_dir_override
+	} else {
+		ctx.data = ctx.config
 	}
 
 	ctx.shell = detect_shell()
@@ -325,7 +327,7 @@ main :: proc() {
 		handle_config_extra_command(parsed.action, parsed.args)
 	case .BUILD:
 		if parsed.action == .UNKNOWN || len(parsed.args) > 0 {
-			print_error_simple("Unknown build target (expected: turbo, eval, profile, help)")
+			print_error_simple("Unknown build target (expected: turbo, eval, profile, clean, help)")
 			print_build_help()
 			os.exit(EXIT_USAGE)
 		}
@@ -875,6 +877,11 @@ handle_build_command :: proc(action: Action) {
 		profile_startup_performance()
 		return
 	}
+
+	if action == .CLEAN {
+		clear_evalcache()
+		return
+	}
 	
 	if turbo_mode {
 		handle_export_command(.TURBO, {})
@@ -912,6 +919,10 @@ handle_build_command :: proc(action: Action) {
 		return
 	}
 	
+	if !validate_tools_args() {
+		os.exit(EXIT_CONFIG)
+	}
+
 	// Regenerate the files init.<ext> sources (core/path_sync/lazy/...) for
 	// every initialized shell, so hand edits of wayu.toml take effect (open
 	// shells pick up [paths] at their next prompt via path_sync).

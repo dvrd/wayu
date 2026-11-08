@@ -84,9 +84,16 @@ INIT_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 # Wayu Shell Initialization - Main Orchestrator
 # This file loads all configuration modules in the correct order
 
-# Determine directories (supports overrides for testing)
-: ${WAYU_CONFIG_DIR:=$HOME/.config/wayu}
+# Directories. wayu writes this file into its data dir, so that dir is this
+# file's own location (WAYU_DATA_DIR / WAYU_CONFIG_DIR given to wayu need not
+# be exported to the shell). The config dir holds wayu.toml.
+_wayu_d=${${(%):-%x}:a:h}
+if [ -f "$_wayu_d/init.zsh" ]; then WAYU_DATA_DIR=$_wayu_d; fi
+unset _wayu_d
 : ${WAYU_DATA_DIR:=$HOME/.config/wayu}
+if [ -z "${WAYU_CONFIG_DIR-}" ]; then
+    if [ -f "$WAYU_DATA_DIR/wayu.toml" ]; then WAYU_CONFIG_DIR=$WAYU_DATA_DIR; else WAYU_CONFIG_DIR=$HOME/.config/wayu; fi
+fi
 
 # === Fast path: compiled core from wayu.toml ===
 # After wayu v3.10 wayu.toml is the source of truth. 'wayu path/alias/
@@ -244,9 +251,18 @@ INIT_TEMPLATE_BASH :: `#!/usr/bin/env bash
 # Wayu Shell Initialization - Main Orchestrator (Bash)
 # This file loads all configuration modules in the correct order
 
-# Determine directories (supports overrides for testing)
-: ${WAYU_CONFIG_DIR:=$HOME/.config/wayu}
+# Directories. wayu writes this file into its data dir, so that dir is this
+# file's own location (WAYU_DATA_DIR / WAYU_CONFIG_DIR given to wayu need not
+# be exported to the shell). The config dir holds wayu.toml.
+_wayu_d=${BASH_SOURCE[0]-}
+case $_wayu_d in */*) _wayu_d=${_wayu_d%/*} ;; *) _wayu_d=. ;; esac
+case $_wayu_d in /*) ;; *) _wayu_d=$PWD/$_wayu_d ;; esac
+if [ -f "$_wayu_d/init.bash" ]; then WAYU_DATA_DIR=$_wayu_d; fi
+unset _wayu_d
 : ${WAYU_DATA_DIR:=$HOME/.config/wayu}
+if [ -z "${WAYU_CONFIG_DIR-}" ]; then
+    if [ -f "$WAYU_DATA_DIR/wayu.toml" ]; then WAYU_CONFIG_DIR=$WAYU_DATA_DIR; else WAYU_CONFIG_DIR=$HOME/.config/wayu; fi
+fi
 
 # === Fast path: compiled core from wayu.toml ===
 # See the zsh template comment for rationale (core.bash sources
@@ -397,9 +413,23 @@ INIT_TEMPLATE_FISH :: `#!/usr/bin/env fish
 # Wayu Shell Initialization - Main Orchestrator (Fish)
 # This file loads all configuration modules in the correct order
 
-# Determine config directory (supports WAYU_CONFIG_DIR override for testing)
-set -gx WAYU_CONFIG_DIR (test -n "$WAYU_CONFIG_DIR"; and echo "$WAYU_CONFIG_DIR"; or echo "$HOME/.config/wayu")
-set -gx WAYU_DATA_DIR (test -n "$WAYU_DATA_DIR"; and echo "$WAYU_DATA_DIR"; or echo "$HOME/.config/wayu")
+# Directories. wayu writes this file into its data dir, so that dir is this
+# file's own location (WAYU_DATA_DIR / WAYU_CONFIG_DIR given to wayu need not
+# be exported to the shell). The config dir holds wayu.toml.
+set -l _wayu_d (status dirname)
+string match -q -- '/*' $_wayu_d; or set _wayu_d $PWD/$_wayu_d
+if test -f "$_wayu_d/init.fish"
+    set -gx WAYU_DATA_DIR $_wayu_d
+else if test -z "$WAYU_DATA_DIR"
+    set -gx WAYU_DATA_DIR $HOME/.config/wayu
+end
+if test -z "$WAYU_CONFIG_DIR"
+    if test -f "$WAYU_DATA_DIR/wayu.toml"
+        set -gx WAYU_CONFIG_DIR $WAYU_DATA_DIR
+    else
+        set -gx WAYU_CONFIG_DIR $HOME/.config/wayu
+    end
+end
 # === Fast path: compiled core from wayu.toml ===
 # After wayu v3.10 wayu.toml is the source of truth. When core.fish
 # exists we source it exclusively — the legacy individual files below

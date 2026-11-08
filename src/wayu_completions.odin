@@ -58,7 +58,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 		"scan:Detect shell config", "help:Show help"}},
 	{.BUILD, {"build"}, "Compile wayu.toml into shell init files", {
 		"eval:Regenerate and print shell code", "turbo:Generate turbo file",
-		"profile:Profile startup", "help:Show help"}},
+		"profile:Profile startup", "clean:Clear the [tools] evalcache", "help:Show help"}},
 	{.EXPORT, {"export"}, "Generate turbo export file", {
 		"turbo:Generate turbo file", "eval:Output for eval", "list:Show formats",
 		"ls:Show formats", "help:Show help"}},

@@ -70,7 +70,7 @@ profile_startup_performance :: proc() {
 	}
 
 	// Build the two scenarios. Keep command slices alive until after rendering.
-	source_cmd := fmt.aprintf("source %s", core_file)
+	source_cmd := fmt.aprintf("source %s", shell_single_quote(core_file, context.temp_allocator))
 	defer delete(source_cmd)
 
 	scenarios := []ProfileSample{

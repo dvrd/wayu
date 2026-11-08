@@ -203,6 +203,59 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - An edit refused because a table holds a broken multi-line value now says
   why (`wayu.toml line N: unterminated array (missing ']') in [env] …`).
 
+**WAYU_CONFIG_DIR / WAYU_DATA_DIR**
+- `WAYU_DATA_DIR` is honoured when `WAYU_CONFIG_DIR` is also set (it was
+  ignored: data always went to the config dir). Data dir = `WAYU_DATA_DIR`,
+  else the config dir.
+- `init.zsh` / `init.bash` / `init.fish` find their files next to
+  themselves instead of in `~/.config/wayu`, so the rc line works without
+  exporting the overrides to the shell (it used to fail with "no such file"
+  and load no PATH/aliases). The config dir falls back to the init file's dir
+  when that holds `wayu.toml`. An unmodified init file is updated on the next
+  regeneration (backup first).
+- When the dirs differ from the defaults, `core.<ext>` exports
+  `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR`, so `wayu` commands typed in that shell
+  (and the path-sync background `wayu build`) use the same dirs.
+
+**[tools] evalcache**
+- The cache is regenerated when the tool's binary changes, not only when it
+  gets newer: zsh compares resolved path + size + mtime + inode, bash the
+  path, the exact mtime and the inode/resolved target. Cache files now start
+  with a `# wayu-evalcache:` line; old caches are rebuilt once. bash also
+  keeps a `<cache>.bin` link next to each cache file.
+- The tool is looked up in `PATH` only and run as `command <tool>` (a
+  function or alias of that name is no longer called).
+- New `wayu build clean` deletes the cache
+  (`${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`), for init output that
+  depends on config or environment.
+- `args` is split into words like the shell does (quotes honoured) and each
+  word is quoted in the generated call; `$NAME` / `${NAME...}` and a leading
+  `~/` still expand, `{a,b}` no longer brace-expands. Args containing a
+  newline, `;` `&` `|` `<` `>` `(` `)`, `$(...)` / backticks or glob
+  characters (`*` `?` `[`) are refused: `wayu build` exits `78` naming the
+  tool, other regenerations skip the tool with a warning on stderr.
+
+**Prompt (zsh, `[prompt] enabled = true`)**
+- Default modules have separators like starship:
+  `{username}{dir}{git_branch}{character} ` with `[$user](white bold) in `,
+  `[$dir](cyan bold) ` and `on [$branch](magenta bold) `. Custom `format` /
+  module formats are unchanged.
+- The user name shows only over SSH or as root unless `[prompt.username]
+  show_always = true` (the setting was ignored).
+- The prompt toggle is off by default; enable it with `[prompt.interactive]
+  toggle_enabled = true`. It is bound after the vi keymap is set up, in
+  `viins` + `vicmd` (or `emacs` with `vi_mode_indicator = false`); it used to
+  land in a keymap that `bindkey -v` then replaced, or steal emacs `^P`.
+- Prompt code runs `command git` / `awk` / `sed` / …, so user aliases or
+  functions with those names no longer change or break it.
+
+**zcompile**
+- Generated zsh files are recompiled in the background after every change
+  (`wayu path/alias/const add`, TUI, …), not only by `wayu init` / `build`,
+  so the bytecode speedup no longer disappears after the first edit.
+- `wayu_compile` (helpers.zsh) uses the data dir the file was generated for.
+- `wayu build profile` works when the data dir path contains spaces.
+
 ## 5.0.0
 
 **doctor**

@@ -48,6 +48,10 @@ class GeneratedShellTest
       test_env_values_and_functions_all_shells
       test_fresh_init_has_no_error_output
       test_script_path_sync_after_path_add
+      test_dir_overrides_produce_working_init
+      test_evalcache_binary_identity
+      test_tools_args_never_run_code
+      test_prompt_survives_hostile_commands
     ensure
       teardown_test_env
     end
@@ -282,6 +286,178 @@ class GeneratedShellTest
       check("script sync #{sh}", out.strip == 'synced' && err.strip.empty?,
             "out=#{out.strip.inspect} err=#{err.strip[0, 300]}")
     end
+  end
+
+  FISH_BIN = %w[/opt/homebrew/bin/fish /usr/local/bin/fish /usr/bin/fish].find { |f| File.executable?(f) }
+  SHELL_ARGS = { 'zsh' => ['-f', '-c'], 'bash' => ['--norc', '-c'], 'fish' => ['--no-config', '-c'] }.freeze
+
+  def clean_env(home, extra = {})
+    { 'HOME' => home, 'SHELL' => '/bin/zsh', 'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin', 'ZDOTDIR' => nil,
+      'WAYU_CONFIG' => nil, 'WAYU_CONFIG_DIR' => nil, 'WAYU_DATA_DIR' => nil, 'XDG_CONFIG_HOME' => nil,
+      'XDG_DATA_HOME' => nil, 'XDG_CACHE_HOME' => nil }.merge(extra)
+  end
+
+  # OKAMI-243: with WAYU_CONFIG_DIR and/or WAYU_DATA_DIR given to wayu but NOT
+  # exported in the shell, sourcing the generated init (by its absolute path,
+  # as the rc line does) loads the right files without errors, and `wayu` run
+  # from that shell targets the same dirs (core exports non-default dirs).
+  def test_dir_overrides_produce_working_init
+    shells = %w[zsh bash] + (FISH_BIN ? ['fish'] : [])
+    layouts = {
+      'config' => ->(h) { { 'WAYU_CONFIG_DIR' => "#{h}/cfg dir" } },
+      'data' => ->(h) { { 'WAYU_DATA_DIR' => "#{h}/data" } },
+      'both' => ->(h) { { 'WAYU_CONFIG_DIR' => "#{h}/cfg", 'WAYU_DATA_DIR' => "#{h}/data" } },
+    }
+    layouts.each do |name, mk|
+      home = "#{@tmp_home}/dirs_#{name}"
+      FileUtils.rm_rf(home)
+      FileUtils.mkdir_p(["#{home}/.config", "#{home}/mybin"])
+      over = mk.call(home)
+      wenv = clean_env(home, over)
+      shells.each { |s| Open3.capture3(wenv, @wayu_bin, 'init', '--shell', s) }
+      Open3.capture3(wenv, @wayu_bin, 'path', 'add', "#{home}/mybin")
+      Open3.capture3(wenv, @wayu_bin, 'const', 'add', 'DIRS_PROBE', name)
+      data = over['WAYU_DATA_DIR'] || over['WAYU_CONFIG_DIR']
+      shells.each do |sh|
+        print "Test: init.#{sh} works with #{over.keys.join('+')} not exported... "
+        exe = sh == 'fish' ? FISH_BIN : sh
+        init = "#{data}/init.#{sh}"
+        probe = if sh == 'fish'
+                  "source '#{init}'; echo \"$DIRS_PROBE\"; contains -- '#{home}/mybin' $PATH; and echo path-ok; " \
+                  "echo \"cfg=$WAYU_CONFIG_DIR data=$WAYU_DATA_DIR\""
+                else
+                  "source '#{init}'; echo \"$DIRS_PROBE\"; case \":$PATH:\" in *':#{home}/mybin:'*) echo path-ok ;; esac; " \
+                  "echo \"cfg=${WAYU_CONFIG_DIR-} data=${WAYU_DATA_DIR-}\""
+                end
+        out, err, st = Open3.capture3(clean_env(home), exe, *SHELL_ARGS[sh], probe)
+        lines = out.lines.map(&:strip)
+        cfg = over['WAYU_CONFIG_DIR'] || "#{home}/.config/wayu"
+        ok = File.exist?(init) && st.success? && err.strip.empty? && lines[0] == name && lines[1] == 'path-ok' &&
+             lines[2] == "cfg=#{cfg} data=#{data}"
+        check("dirs #{name} #{sh}", ok, "exists=#{File.exist?(init)} out=#{out.inspect} err=#{err.strip[0, 400]}")
+      end
+      print "Test: default ~/.config/wayu untouched with #{over.keys.join('+')}... "
+      stray = Dir.glob("#{home}/.config/wayu/{core,init,path_sync}.*")
+      check("dirs #{name} stray", stray.empty?, "stray=#{stray}")
+    end
+  end
+
+  # OKAMI-242: the evalcache is keyed on the binary's identity, not on its
+  # mtime alone: a replacement with an identical (old) mtime, or a PATH
+  # symlink moved to another target with the same mtime (Nix store), must
+  # regenerate the cached init code. `wayu build clean` drops the cache.
+  def test_evalcache_binary_identity
+    %w[zsh bash].each do |sh|
+      print "Test: evalcache regenerates when the #{sh} tool binary changes (same mtime)... "
+      home = "#{@tmp_home}/evalcache_#{sh}"
+      FileUtils.rm_rf(home)
+      FileUtils.mkdir_p(["#{home}/.config", "#{home}/bin", "#{home}/s1", "#{home}/s2"])
+      env = clean_env(home, 'SHELL' => "/bin/#{sh}")
+      Open3.capture3(env, @wayu_bin, 'init', '--shell', sh)
+      cfg = "#{home}/.config/wayu"
+      File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[tools]\nfaketool = { args = \"init #{sh}\" }\n")
+      Open3.capture3(env, @wayu_bin, 'build')
+      tool = "#{home}/bin/faketool"
+      stamp = Time.at(1_577_836_800)
+      put = lambda do |path, v|
+        FileUtils.rm_f(path)
+        File.write(path, "#!/bin/sh\necho 'export TOOLV=#{v}'\n")
+        File.chmod(0o755, path)
+        File.utime(stamp, stamp, path)
+      end
+      run = lambda do
+        out, err, = Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), sh, *SHELL_ARGS[sh],
+                                   "source '#{cfg}/init.#{sh}'; echo \"$TOOLV\"")
+        [out.strip, err.strip]
+      end
+      put.call(tool, '1')
+      seen = [run.call]
+      put.call(tool, '2') # new inode, same size and mtime
+      seen << run.call
+      put.call("#{home}/s1/faketool", 'A')
+      put.call("#{home}/s2/faketool", 'B')
+      FileUtils.rm_f(tool)
+      File.symlink("#{home}/s1/faketool", tool)
+      seen << run.call
+      FileUtils.rm_f(tool)
+      File.symlink("#{home}/s2/faketool", tool)
+      seen << run.call
+      seen << run.call # cache hit
+      _, _, clean_st = Open3.capture3(env, @wayu_bin, 'build', 'clean')
+      gone = !Dir.exist?("#{home}/.cache/wayu/evalcache")
+      want = %w[1 2 A B B]
+      check("evalcache #{sh}", seen.map(&:first) == want && seen.all? { |s| s[1].empty? } && clean_st.success? && gone,
+            "seen=#{seen.inspect} clean=#{clean_st.exitstatus} gone=#{gone}")
+    end
+  end
+
+  # OKAMI-275: [tools] args are split into argv words and re-quoted; values
+  # that would run code at startup are refused (`wayu build` exits 78 naming
+  # the tool; other regenerations skip the tool).
+  def test_tools_args_never_run_code
+    home = "#{@tmp_home}/tool_args"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/bin"])
+    env = clean_env(home)
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    cfg = "#{home}/.config/wayu"
+    base = File.read("#{cfg}/wayu.toml")
+    File.write("#{home}/bin/argtool", "#!/bin/sh\nprintf 'export ARGS=\"'; printf '<%s>' \"$@\"; printf '\"\\n'\n")
+    File.chmod(0o755, "#{home}/bin/argtool")
+    pwn = "#{home}/PWNED"
+
+    print "Test: [tools] args with quotes reach the tool as argv words... "
+    File.write("#{cfg}/wayu.toml", base + "\n[tools]\nargtool = { args = \"init 'a b' --x=$HOME\" }\n")
+    _, berr, bst = Open3.capture3(env, @wayu_bin, 'build')
+    out, err, = Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-c',
+                               "source '#{cfg}/init.zsh'; echo \"$ARGS\"")
+    check('args quoted', bst.success? && berr.strip.empty? && out.strip == "<init><a b><--x=#{home}>" && err.strip.empty?,
+          "build=#{bst.exitstatus} berr=#{berr.strip} out=#{out.inspect} err=#{err.strip[0, 300]}")
+
+    ["init; touch #{pwn}", "init\ntouch #{pwn}", "init $(touch #{pwn})", 'init *'].each do |args|
+      print "Test: [tools] args #{args.inspect} refused... "
+      File.write("#{cfg}/wayu.toml", base + "\n[tools]\nargtool = { args = #{args.inspect} }\n")
+      bout, berr, bst = Open3.capture3(env, @wayu_bin, 'build')
+      bout += berr
+      Open3.capture3(env, @wayu_bin, 'const', 'add', 'ARGS_PROBE', '1') # silent regeneration
+      lazy = File.read("#{cfg}/lazy.zsh")
+      Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-c', "source '#{cfg}/init.zsh'")
+      ok = bst.exitstatus == 78 && bout.include?('argtool') && !lazy.include?('_wayu_evalcache argtool') && !File.exist?(pwn)
+      check("args refused #{args.inspect}", ok,
+            "exit=#{bst.exitstatus} out=#{bout.strip[0, 200]} lazy_call=#{lazy.include?('_wayu_evalcache argtool')} pwned=#{File.exist?(pwn)}")
+      Open3.capture3(env, @wayu_bin, 'const', 'rm', 'ARGS_PROBE')
+    end
+  end
+
+  # OKAMI-279: with `[prompt] enabled = true`, aliases and functions named
+  # git/awk/sed/... (defined before or after wayu is sourced) must not change
+  # or break the native prompt.
+  def test_prompt_survives_hostile_commands
+    print "Test: native prompt ignores user git/awk/sed aliases and functions... "
+    home = "#{@tmp_home}/prompt_hostile"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/repo", "#{home}/bin"])
+    env = clean_env(home)
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    cfg = "#{home}/.config/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") +
+               "\n[prompt]\nenabled = true\nformat = \"{dir}{git_branch}\"\n")
+    Open3.capture3(env, @wayu_bin, 'build')
+    git_env = clean_env(home, 'GIT_CONFIG_NOSYSTEM' => '1')
+    Open3.capture3(git_env, 'git', 'init', '-q', '-b', 'hostile-br', "#{home}/repo")
+    Open3.capture3(git_env, 'git', '-C', "#{home}/repo", '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false',
+                   'commit', '-q', '--allow-empty', '-m', 'init')
+    File.write("#{home}/bin/go", "#!/bin/sh\necho 'go version go1.23.4 darwin/arm64'\n")
+    File.chmod(0o755, "#{home}/bin/go")
+    hostile = 'alias git=false awk=false sed=false head=false wc=false tr=false mktemp=false rm=false mv=false'
+    funcs = 'git() { echo HIJACK; }; awk() { echo HIJACK; }; sed() { echo HIJACK; }'
+    script = "#{hostile}\nsource '#{cfg}/init.zsh'\n#{funcs}\ncd '#{home}/repo'\n_wayu_update_git_info\n" \
+             "print -r -- \"$(_wayu_prompt_full)\"\nprint -r -- \"ver=$(_wayu_version_cmd golang)\""
+    out, err, st = Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-c', script)
+    lines = out.lines.map(&:strip)
+    ok = st.success? && err.strip.empty? && lines[0].to_s.include?('hostile-br') && !out.include?('HIJACK') &&
+         lines[1] == 'ver=1.23.4'
+    check('prompt hostile', ok, "out=#{out.inspect} err=#{err.strip[0, 400]}")
   end
 
   # `wayu init` on a fresh HOME used to print "ERROR: File not found:
