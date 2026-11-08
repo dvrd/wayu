@@ -56,6 +56,7 @@ class GeneratedShellTest
       test_prompt_vi_mode_and_widgets
       test_prompt_git_branch_without_git
       test_login_reorder_restored_at_first_prompt
+      test_prompt_survives_later_ps1_reset
     ensure
       teardown_test_env
     end
@@ -187,6 +188,29 @@ class GeneratedShellTest
     out, err, = Open3.capture3(env, 'zsh', '-f', '-c', script)
     check('nvmrc', out.strip == 'v20.18.0 v20.1.0 v20.18.0 v18.2.0' && err.strip.empty?,
           "out=#{out.strip.inspect} err=#{err.strip[0, 300]}")
+  end
+
+  # Loaded from .zshenv, the native prompt is set before /etc/zshrc (macOS:
+  # `PS1="%n@%m %1~ %# "`) and .zshrc run; it must be in place again at the
+  # first prompt, and the one-shot hook must remove itself.
+  def test_prompt_survives_later_ps1_reset
+    print "Test: native prompt survives a PS1 reset after .zshenv... "
+    home = "#{@tmp_home}/prompt_reset"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p("#{home}/.config")
+    env = { 'HOME' => home, 'SHELL' => '/bin/zsh', 'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin', 'ZDOTDIR' => home,
+            'WAYU_CONFIG' => nil, 'WAYU_DATA_DIR' => nil, 'WAYU_CONFIG_DIR' => nil, 'XDG_CONFIG_HOME' => nil }
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh', stdin_data: '')
+    File.write("#{home}/.config/wayu/wayu.toml", "[prompt]\nenabled = true\n")
+    Open3.capture3(env, @wayu_bin, 'build')
+    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-$HOME/.config/wayu}/init.zsh\"\n")
+    File.write("#{home}/.zshrc", "PS1=\"%n@%m %1~ %# \"\n")
+    probe = 'for f in $precmd_functions; do $f; done; print -r -- "$PROMPT"; print -r -- "${(j: :)precmd_functions}"'
+    out, err, = Open3.capture3(env, 'zsh', '-i', '-c', probe)
+    lines = out.lines.map(&:chomp)
+    hooks = lines.last.to_s
+    check('prompt_reset', out.include?('$(_wayu_prompt_master)') && !hooks.include?('_wayu_prompt_reassert'),
+          "out=#{out.inspect[0, 300]} err=#{err.strip[0, 200]}")
   end
 
   # A login shell runs .zprofile (macOS: /etc/zprofile's path_helper) after

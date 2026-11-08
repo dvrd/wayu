@@ -809,17 +809,29 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
 
-	// Configurar PROMPT final
-	fmt.sbprintln(&builder, "setopt promptsubst")
+	// PROMPT/RPROMPT are set now and set again at the first prompt (a
+	// one-shot precmd hook): wayu may be loaded from .zshenv, and a login
+	// shell then runs /etc/zshrc (macOS: `PS1="%n@%m %1~ %# "`) and other
+	// startup files afterwards, which would replace the prompt.
+	fmt.sbprintln(&builder, "_wayu_prompt_set() {")
+	fmt.sbprintln(&builder, "  setopt promptsubst")
 	// PROMPT: newline + $() in single quotes → promptsubst re-evaluates each render
-	fmt.sbprintln(&builder, `PROMPT=$'\n''$(_wayu_prompt_master)'`)
-
-	// RPROMPT async si está habilitado
+	fmt.sbprintln(&builder, `  PROMPT=$'\n''$(_wayu_prompt_master)'`)
 	if cfg.async_rprompt {
-		fmt.sbprintln(&builder, `RPROMPT='${_WAYU_ASYNC_DATA}'`)
+		fmt.sbprintln(&builder, `  RPROMPT='${_WAYU_ASYNC_DATA}'`)
 	} else {
-		fmt.sbprintln(&builder, "unset RPROMPT")
+		fmt.sbprintln(&builder, "  unset RPROMPT")
 	}
+	fmt.sbprintln(&builder, "}")
+	fmt.sbprintln(&builder, "_wayu_prompt_set")
+	fmt.sbprintln(&builder, "_wayu_prompt_reassert() {")
+	fmt.sbprintln(&builder, "  local s=$?")
+	fmt.sbprintln(&builder, "  _wayu_prompt_set")
+	fmt.sbprintln(&builder, "  add-zsh-hook -d precmd _wayu_prompt_reassert")
+	fmt.sbprintln(&builder, "  return $s")
+	fmt.sbprintln(&builder, "}")
+	fmt.sbprintln(&builder, "autoload -Uz add-zsh-hook")
+	fmt.sbprintln(&builder, "add-zsh-hook precmd _wayu_prompt_reassert")
 
 	return strings.clone(strings.to_string(builder))
 }
