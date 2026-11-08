@@ -206,122 +206,25 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 			}
 		}
 		
-		if strings.contains(trimmed, "success_symbol") && strings.contains(trimmed, "=") {
-			eq_idx := strings.index(trimmed, "=")
-			if eq_idx > 0 {
-				value := strings.trim_space(trimmed[eq_idx+1:])
-				// Extraer emoji/caracter del formato [icon ](style)
-				start := strings.index(value, "[")
-				end := strings.index(value, "]")
-				if start >= 0 && end > start {
-					cfg.character_success = strings.trim_space(value[start+1:end])
-				}
-			}
+		if strings.contains(trimmed, "success_symbol") {
+			if v, ok := prompt_bracket_symbol(trimmed); ok { cfg.character_success = v }
 		}
-		
-		if strings.contains(trimmed, "error_symbol") && strings.contains(trimmed, "=") {
-			eq_idx := strings.index(trimmed, "=")
-			if eq_idx > 0 {
-				value := strings.trim_space(trimmed[eq_idx+1:])
-				start := strings.index(value, "[")
-				end := strings.index(value, "]")
-				if start >= 0 && end > start {
-					cfg.character_error = strings.trim_space(value[start+1:end])
-				}
-			}
+		if strings.contains(trimmed, "error_symbol") {
+			if v, ok := prompt_bracket_symbol(trimmed); ok { cfg.character_error = v }
 		}
-		
 		// VI mode symbols - procesar específicos primero para evitar substring matches
-		if strings.contains(trimmed, "vimcmd_visual_symbol") && strings.contains(trimmed, "=") {
-			eq_idx := strings.index(trimmed, "=")
-			if eq_idx > 0 {
-				value := strings.trim_space(trimmed[eq_idx+1:])
-				start := strings.index(value, "[")
-				end := strings.index(value, "]")
-				if start >= 0 && end > start {
-					cfg.vimcmd_visual_symbol = strings.trim_space(value[start+1:end])
-				}
-			}
+		if strings.contains(trimmed, "vimcmd_visual_symbol") {
+			if v, ok := prompt_bracket_symbol(trimmed); ok { cfg.vimcmd_visual_symbol = v }
 		}
-		
-		if strings.contains(trimmed, "vimcmd_replace_symbol") && strings.contains(trimmed, "=") {
-			eq_idx := strings.index(trimmed, "=")
-			if eq_idx > 0 {
-				value := strings.trim_space(trimmed[eq_idx+1:])
-				start := strings.index(value, "[")
-				end := strings.index(value, "]")
-				if start >= 0 && end > start {
-					cfg.vimcmd_replace_symbol = strings.trim_space(value[start+1:end])
-				}
-			}
+		if strings.contains(trimmed, "vimcmd_replace_symbol") {
+			if v, ok := prompt_bracket_symbol(trimmed); ok { cfg.vimcmd_replace_symbol = v }
 		}
-		
-		if strings.contains(trimmed, "vimcmd_symbol") && strings.contains(trimmed, "=") {
-			eq_idx := strings.index(trimmed, "=")
-			if eq_idx > 0 {
-				value := strings.trim_space(trimmed[eq_idx+1:])
-				start := strings.index(value, "[")
-				end := strings.index(value, "]")
-				if start >= 0 && end > start {
-					cfg.vimcmd_symbol = strings.trim_space(value[start+1:end])
-				}
-			}
+		if strings.contains(trimmed, "vimcmd_symbol") {
+			if v, ok := prompt_bracket_symbol(trimmed); ok { cfg.vimcmd_symbol = v }
 		}
-		// Parse [prompt.contexts] entries: name = { format = "...", detect = [...] }
+		// [prompt.contexts] entries: name = { format = "...", detect = [...] }
 		if current_section == "contexts" && strings.contains(trimmed, "=") && strings.contains(trimmed, "format") {
-			// Extract language name (before first =)
-			first_eq := strings.index(trimmed, "=")
-			if first_eq > 0 {
-				lang_name := strings.trim_space(trimmed[:first_eq])
-				seen := false
-				for n in cfg.context_order {
-					if n == lang_name { seen = true; break }
-				}
-				if !seen { append(&cfg.context_order, lang_name) }
-				// Extract format value between quotes after "format"
-				fmt_idx := strings.index(trimmed, "format")
-				if fmt_idx > 0 {
-					// Find the value after format =
-					fmt_eq := strings.index(trimmed[fmt_idx:], "=")
-					if fmt_eq > 0 {
-						rest := strings.trim_space(trimmed[fmt_idx + fmt_eq + 1:])
-						// Strip quotes and trailing content
-						rest = strings.trim_prefix(rest, `"`)
-						// Find closing quote
-						end_quote := strings.index(rest, `"`)
-						if end_quote > 0 {
-							format_val := rest[:end_quote]
-							cfg.context_formats[lang_name] = format_val
-						}
-					}
-				}
-				// Extract detect array
-				det_idx := strings.index(trimmed, "detect")
-				if det_idx > 0 {
-					bracket_start := strings.index(trimmed[det_idx:], "[")
-					bracket_end := strings.index(trimmed[det_idx:], "]")
-					if bracket_start >= 0 && bracket_end > bracket_start {
-						arr_content := trimmed[det_idx + bracket_start + 1 : det_idx + bracket_end]
-						// Split by comma, strip quotes
-						items := strings.split(arr_content, ",")
-						defer delete(items)
-						detect_list := make([dynamic]string)
-						for item in items {
-							val := strings.trim_space(item)
-							val = strings.trim_prefix(val, `"`)
-							val = strings.trim_suffix(val, `"`)
-							if len(val) > 0 {
-								append(&detect_list, strings.clone(val))
-							}
-						}
-						if old, exists := cfg.context_detects[lang_name]; exists {
-							for item in old { delete(item) }
-							delete(old)
-						}
-						cfg.context_detects[lang_name] = detect_list
-					}
-				}
-			}
+			prompt_parse_context_line(&cfg, trimmed)
 		}
 
 		// Per-section format parsing
@@ -360,6 +263,78 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 	}
 	
 	return cfg
+}
+
+// Symbol inside the brackets of `key = "[sym](style)"`, trimmed.
+@(private = "file")
+prompt_bracket_symbol :: proc(trimmed: string) -> (string, bool) {
+	eq_idx := strings.index(trimmed, "=")
+	if eq_idx <= 0 { return "", false }
+	value := strings.trim_space(trimmed[eq_idx+1:])
+	start := strings.index(value, "[")
+	end := strings.index(value, "]")
+	if start >= 0 && end > start {
+		return strings.trim_space(value[start+1:end]), true
+	}
+	return "", false
+}
+
+// One [prompt.contexts] line: name = { format = "...", detect = [...] }.
+// A repeated name keeps its first position and takes the new values.
+@(private = "file")
+prompt_parse_context_line :: proc(cfg: ^PromptConfigFull, trimmed: string) {
+	// Extract language name (before first =)
+	first_eq := strings.index(trimmed, "=")
+	if first_eq <= 0 { return }
+	lang_name := strings.trim_space(trimmed[:first_eq])
+	seen := false
+	for n in cfg.context_order {
+		if n == lang_name { seen = true; break }
+	}
+	if !seen { append(&cfg.context_order, lang_name) }
+	// Extract format value between quotes after "format"
+	fmt_idx := strings.index(trimmed, "format")
+	if fmt_idx > 0 {
+		// Find the value after format =
+		fmt_eq := strings.index(trimmed[fmt_idx:], "=")
+		if fmt_eq > 0 {
+			rest := strings.trim_space(trimmed[fmt_idx + fmt_eq + 1:])
+			// Strip quotes and trailing content
+			rest = strings.trim_prefix(rest, `"`)
+			// Find closing quote
+			end_quote := strings.index(rest, `"`)
+			if end_quote > 0 {
+				format_val := rest[:end_quote]
+				cfg.context_formats[lang_name] = format_val
+			}
+		}
+	}
+	// Extract detect array
+	det_idx := strings.index(trimmed, "detect")
+	if det_idx > 0 {
+		bracket_start := strings.index(trimmed[det_idx:], "[")
+		bracket_end := strings.index(trimmed[det_idx:], "]")
+		if bracket_start >= 0 && bracket_end > bracket_start {
+			arr_content := trimmed[det_idx + bracket_start + 1 : det_idx + bracket_end]
+			// Split by comma, strip quotes
+			items := strings.split(arr_content, ",")
+			defer delete(items)
+			detect_list := make([dynamic]string)
+			for item in items {
+				val := strings.trim_space(item)
+				val = strings.trim_prefix(val, `"`)
+				val = strings.trim_suffix(val, `"`)
+				if len(val) > 0 {
+					append(&detect_list, strings.clone(val))
+				}
+			}
+			if old, exists := cfg.context_detects[lang_name]; exists {
+				for item in old { delete(item) }
+				delete(old)
+			}
+			cfg.context_detects[lang_name] = detect_list
+		}
+	}
 }
 
 // The native prompt is opt-in: it (and its vi keymap, zle widgets and precmd
@@ -687,39 +662,6 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	return strings.clone(strings.to_string(builder))
 }
 
-// Para backward compatibility
-PromptConfig :: struct {
-	format:           string,
-	symbols_success:  string,
-	symbols_error:    string,
-	colors_directory: string,
-	colors_git_branch: string,
-	colors_symbol_success: string,
-	colors_symbol_error: string,
-}
-
-parse_prompt_config :: proc(toml_data: string) -> PromptConfig {
-	full := parse_full_prompt_config(toml_data)
-	
-	return PromptConfig{
-		format = full.format,
-		symbols_success = "➜",
-		symbols_error = "✗",
-		colors_directory = "cyan",
-		colors_git_branch = "magenta",
-		colors_symbol_success = "green",
-		colors_symbol_error = "red",
-	}
-}
-
-generate_native_prompt :: proc(config: PromptConfig) -> string {
-	full := PromptConfigFull{
-		format = config.format,
-		character_success = config.symbols_success,
-		character_error = config.symbols_error,
-	}
-	return generate_full_prompt(full)
-}
 InteractiveConfig :: struct {
 	// Toggle
 	toggle_key: string,

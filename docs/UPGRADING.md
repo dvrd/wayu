@@ -202,6 +202,16 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   valid TOML, such as an unquoted value.
 - An edit refused because a table holds a broken multi-line value now says
   why (`wayu.toml line N: unterminated array (missing ']') in [env] …`).
+- `[shell] type` is written lowercase (`"zsh"`, `"bash"`, `"fish"`; was
+  `"ZSH"`, `"Bash"`, `"Fish"`, `"Unknown"`) by `wayu init`, `migrate --from
+  X --to Y` and any command that creates a missing `wayu.toml`.
+  `wayu config edit` on a missing file creates the same scaffold (it wrote
+  `[settings] shell = "zsh"` plus commented examples), and so does legacy
+  `wayu migrate` (it started the file with a comment line and no `[shell]`).
+- `toml validate` now checks `[shell] type` (case-insensitive); it only saw
+  a top-level `shell = …` key before. A value other than zsh/bash/fish
+  — including `"Unknown"`, written when no shell was detected — fails with
+  `Invalid shell: unknown (must be zsh, bash, or fish)`.
 
 **WAYU_CONFIG_DIR / WAYU_DATA_DIR**
 - `WAYU_DATA_DIR` is honoured when `WAYU_CONFIG_DIR` is also set (it was

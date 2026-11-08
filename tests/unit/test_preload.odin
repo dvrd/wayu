@@ -49,17 +49,6 @@ test_init_config_file_skips_existing :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_is_common_path :: proc(t: ^testing.T) {
-	// Test common path detection
-	testing.expect(t, wayu.is_common_path("/usr/local/bin"), "/usr/local/bin should be common")
-	testing.expect(t, wayu.is_common_path("/usr/bin"), "/usr/bin should be common")
-	testing.expect(t, wayu.is_common_path("/opt/homebrew/bin"), "/opt/homebrew/bin should be common")
-
-	testing.expect(t, !wayu.is_common_path("/random/path"), "/random/path should not be common")
-	testing.expect(t, !wayu.is_common_path("/tmp"), "/tmp should not be common")
-}
-
-@(test)
 test_preload_path_template_exists :: proc(t: ^testing.T) {
 	// Test that PATH_TEMPLATE_ZSH constant exists and is not empty
 	testing.expect(t, len(wayu.PATH_TEMPLATE_ZSH) > 0, "PATH_TEMPLATE_ZSH should not be empty")

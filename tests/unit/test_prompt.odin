@@ -148,3 +148,72 @@ test_prompt_external_commands_use_command :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(code, "$(command git rev-parse"), "git via command")
 	testing.expect(t, strings.contains(code, "command go version 2>/dev/null | command awk '{print $3}' | command sed 's/go//'"), "version pipeline via command")
 }
+
+// Field-by-field coverage of parse_full_prompt_config (OKAMI-277 split).
+@(test)
+test_prompt_parse_full_config_fields :: proc(t: ^testing.T) {
+	toml := `[prompt]
+enabled = true
+format = "{dir}{character}"
+
+[prompt.character]
+success_symbol = "[> ](green)"
+error_symbol = "[x](red)"
+vimcmd_symbol = "[N](blue)"
+vimcmd_visual_symbol = "[V](blue)"
+vimcmd_replace_symbol = "[R](blue)"
+
+[prompt.username]
+show_always = true
+style_user = "red bold"
+format = "[$user](red) @ "
+
+[prompt.hostname]
+format = "<$hostname>"
+
+[prompt.localip]
+format = '($localip)'
+
+[prompt.dir]
+format = "[$dir](blue) "
+
+[prompt.git_branch]
+format = "br:$branch "
+
+[prompt.contexts]
+go = { format = "go $version", detect = ["go.mod", "*.go"] }
+rust = { format = "rs", detect = ["Cargo.toml"] }
+go = { format = "go2", detect = ["go.work"] }
+
+[other]
+format = "ignored"
+`
+	cfg := wayu.parse_full_prompt_config(toml)
+	defer wayu.destroy_full_prompt_config(&cfg)
+
+	testing.expect_value(t, cfg.format, "{dir}{character}")
+	testing.expect_value(t, cfg.character_success, ">")
+	testing.expect_value(t, cfg.character_error, "x")
+	testing.expect_value(t, cfg.vimcmd_symbol, "N")
+	testing.expect_value(t, cfg.vimcmd_visual_symbol, "V")
+	testing.expect_value(t, cfg.vimcmd_replace_symbol, "R")
+	testing.expect_value(t, cfg.username_show_always, true)
+	testing.expect_value(t, cfg.username_style_user, "red bold")
+	testing.expect_value(t, cfg.username_format, "[$user](red) @ ")
+	testing.expect_value(t, cfg.hostname_format, "<$hostname>")
+	testing.expect_value(t, cfg.localip_format, "($localip)")
+	testing.expect_value(t, cfg.dir_format, "[$dir](blue) ")
+	testing.expect_value(t, cfg.git_branch_format, "br:$branch ")
+
+	testing.expect_value(t, len(cfg.context_order), 2)
+	if len(cfg.context_order) == 2 {
+		testing.expect_value(t, cfg.context_order[0], "go")
+		testing.expect_value(t, cfg.context_order[1], "rust")
+	}
+	testing.expect_value(t, cfg.context_formats["go"], "go2")
+	testing.expect_value(t, cfg.context_formats["rust"], "rs")
+	go_detect := cfg.context_detects["go"]
+	testing.expect_value(t, len(go_detect), 1)
+	if len(go_detect) == 1 { testing.expect_value(t, go_detect[0], "go.work") }
+	testing.expect_value(t, len(cfg.context_detects["rust"]), 1)
+}

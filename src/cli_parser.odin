@@ -300,58 +300,6 @@ parse_doctor_flags :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 	}
 }
 
-@(private = "file")
-parse_template_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
-	if len(filtered_args) > 1 {
-		switch filtered_args[1] {
-		case "list", "ls":      parsed.action = .LIST
-		case "apply":
-			parsed.action = .ADD
-			if len(filtered_args) > 2 {
-				parsed.args = make([]string, len(filtered_args) - 2)
-				copy(parsed.args, filtered_args[2:])
-			}
-		case "help", "-h", "--help": parsed.action = .HELP
-		case:                   parsed.action = .UNKNOWN
-		}
-	} else {
-		parsed.action = .LIST
-	}
-}
-
-@(private = "file")
-parse_hooks_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
-	if len(filtered_args) > 1 {
-		switch filtered_args[1] {
-		case "list", "ls":      parsed.action = .LIST
-		case "edit":            parsed.action = .ADD
-		case "help", "-h", "--help": parsed.action = .HELP
-		case:                   parsed.action = .UNKNOWN
-		}
-	} else {
-		parsed.action = .LIST
-	}
-}
-
-@(private = "file")
-parse_function_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
-	if len(filtered_args) > 1 {
-		switch filtered_args[1] {
-		case "add", "edit", "new":     parsed.action = .ADD
-		case "remove", "rm", "delete": parsed.action = .REMOVE
-		case "list", "ls":            parsed.action = .LIST
-		case "help", "-h", "--help":   parsed.action = .HELP
-		case:                         parsed.action = .UNKNOWN
-		}
-		if len(filtered_args) > 2 {
-			parsed.args = make([]string, len(filtered_args) - 2)
-			copy(parsed.args, filtered_args[2:])
-		}
-	} else {
-		parsed.action = .LIST
-	}
-}
-
 parse_args :: proc(args: []string) -> ParsedArgs {
 	parsed := ParsedArgs{
 		shell = wayu.shell,

@@ -158,18 +158,16 @@ get_shell_name :: proc(shell: ShellType) -> string {
     return "Unknown"
 }
 
-// Check if shell supports specific features
-shell_supports_arrays :: proc(shell: ShellType) -> bool {
-    return shell == .BASH || shell == .ZSH || shell == .FISH
-}
-
-shell_supports_completion :: proc(shell: ShellType) -> bool {
-    return shell == .BASH || shell == .ZSH || shell == .FISH
-}
-
-shell_supports_functions :: proc(shell: ShellType) -> bool {
-    // All shells support functions, but with different syntax
-    return true
+// Value stored in wayu.toml `[shell] type` (lowercase, as parse_shell_type
+// and toml_validate expect). UNKNOWN maps to zsh, the default wayu falls
+// back to everywhere else.
+shell_config_name :: proc(shell: ShellType) -> string {
+    switch shell {
+    case .BASH:            return "bash"
+    case .FISH:            return "fish"
+    case .ZSH, .UNKNOWN:   return "zsh"
+    }
+    return "zsh"
 }
 
 // Parse shell type from string (for CLI flags)
@@ -242,24 +240,6 @@ get_cli_terminal_width :: proc() -> int {
     }
 
     return 80
-}
-// ============================================================================
-// Fish Shell Support for wayu
-// ============================================================================
-
-// Detect if Fish shell is installed and available
-shell_fish_detect :: proc() -> bool {
-    // Check if fish is in PATH
-    return command_exists("fish")
-}
-
-// Get Fish shell version
-shell_fish_get_version :: proc() -> string {
-    version_output := capture_command([]string{"fish", "--version"})
-    if len(version_output) > 0 {
-        return version_output
-    }
-    return "unknown"
 }
 
 // ============================================================================
@@ -560,122 +540,6 @@ command_exists :: proc(cmd: string) -> bool {
 // ============================================================================
 // Fish Config File Operations
 // ============================================================================
-
-// Write Fish config to file
-shell_fish_write_config :: proc(file_path: string, content: string) -> bool {
-    if wayu.dry_run {
-        fmt.printfln("[DRY-RUN] Would write Fish config to: %s", file_path)
-        return true
-    }
-
-    // Create backup before writing
-    backup_path, ok := create_backup(file_path)
-    defer if ok do delete(backup_path)
-
-    err := write_file_atomic(file_path, transmute([]byte)content)
-    return err == nil
-}
-
-// Read and parse Fish config file
-shell_fish_read_config :: proc(file_path: string) -> (TomlConfig, bool) {
-    config := TomlConfig{}
-
-    if !os.exists(file_path) {
-        return config, false
-    }
-
-    content_bytes, err := os.read_entire_file_from_path(file_path, context.allocator)
-    if err != nil {
-        return config, false
-    }
-    defer delete(content_bytes)
-
-    content := string(content_bytes)
-
-    // Use temp dynamic arrays for building up the config
-    constants_dyn := make([dynamic]TomlConstant)
-    aliases_dyn := make([dynamic]TomlAlias)
-    path_entries_dyn := make([dynamic]string)
-
-    // Parse Fish set statements for constants
-    lines := strings.split(content, "\n")
-    defer delete(lines)
-
-    for line in lines {
-        line_trimmed := strings.trim_space(line)
-
-        // Parse: set -gx NAME value
-        if strings.has_prefix(line_trimmed, "set -gx ") {
-            parts := strings.split(line_trimmed, " ")
-            defer delete(parts)
-            if len(parts) >= 4 {
-                name := parts[2]
-                value := strings.join(parts[3:], " ")
-                defer delete(value)
-
-                // Remove quotes if present
-                if strings.has_prefix(value, "'") && strings.has_suffix(value, "'") {
-                    value = value[1:len(value)-1]
-                } else if strings.has_prefix(value, "\"") && strings.has_suffix(value, "\"") {
-                    value = value[1:len(value)-1]
-                }
-
-                append(&constants_dyn, TomlConstant{
-                    name = strings.clone(name),
-                    value = strings.clone(value),
-                    export = true,
-                })
-            }
-        }
-
-        // Parse: alias name 'command'
-        if strings.has_prefix(line_trimmed, "alias ") {
-            // Extract alias name and command
-            // Format: alias name 'command' or alias name "command"
-            alias_rest := strings.trim_prefix(line_trimmed, "alias ")
-
-            // Find first space or quote
-            space_idx := strings.index_byte(alias_rest, ' ')
-            if space_idx > 0 {
-                name := alias_rest[:space_idx]
-                command := strings.trim_space(alias_rest[space_idx:])
-
-                // Remove surrounding quotes
-                if (strings.has_prefix(command, "'") && strings.has_suffix(command, "'")) ||
-                   (strings.has_prefix(command, "\"") && strings.has_suffix(command, "\"")) {
-                    command = command[1:len(command)-1]
-                }
-
-                append(&aliases_dyn, TomlAlias{
-                    name = strings.clone(name),
-                    command = strings.clone(command),
-                })
-            }
-        }
-
-        // Parse: set -a WAYU_PATHS value (or set -gx WAYU_PATHS entries)
-        if strings.contains(line_trimmed, "WAYU_PATHS") {
-            // Extract PATH entries
-            if strings.has_prefix(line_trimmed, "set -a WAYU_PATHS ") {
-                entry := strings.trim_prefix(line_trimmed, "set -a WAYU_PATHS ")
-                entry = strings.trim_space(entry)
-                // Remove quotes
-                if (strings.has_prefix(entry, "'") && strings.has_suffix(entry, "'")) ||
-                   (strings.has_prefix(entry, "\"") && strings.has_suffix(entry, "\"")) {
-                    entry = entry[1:len(entry)-1]
-                }
-                append(&path_entries_dyn, strings.clone(entry))
-            }
-        }
-    }
-
-    // Convert dynamic arrays to slices for the config struct
-    config.constants = constants_dyn[:]
-    config.aliases = aliases_dyn[:]
-    config.path.entries = path_entries_dyn[:]
-
-    return config, true
-}
 
 // Shell of the parent process. `build eval` output is eval'd by its parent
 // (the command-substitution subshell), so this is the shell that will run the

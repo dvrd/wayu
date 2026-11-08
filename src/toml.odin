@@ -59,17 +59,22 @@ ensure_wayu_toml_exists :: proc() -> bool {
 		return true
 	}
 
-	shell_name := get_shell_name(wayu.shell)
-	scaffold := fmt.aprintf(`[shell]
+	scaffold := wayu_toml_scaffold(wayu.shell)
+	defer delete(scaffold)
+
+	return init_config_file(toml_file, scaffold)
+}
+
+// The one wayu.toml scaffold (ensure_wayu_toml_exists, `wayu init`,
+// `wayu config edit`). Caller owns the returned string.
+wayu_toml_scaffold :: proc(shell: ShellType) -> string {
+	return fmt.aprintf(`[shell]
 type = "%s"
 
 [aliases]
 
 [env]
-`, shell_name)
-	defer delete(scaffold)
-
-	return init_config_file(toml_file, scaffold)
+`, shell_config_name(shell))
 }
 
 // Default autosuggest accept keys shared by toml_create_default and doc_to_config.
@@ -334,40 +339,6 @@ toml_parse_kv_line :: proc(line: string) -> (key: string, value: string, ok: boo
 		value = strings.clone(raw)
 	}
 	return key, value, true
-}
-
-// Return `content` with the entire `[section]` table removed (header + body),
-// preserving every other line verbatim. Single source of truth for the
-// section-rewrite used by alias + constant management.
-strip_toml_section :: proc(content: string, section: string) -> string {
-	builder := strings.builder_make(0, len(content))
-	defer strings.builder_destroy(&builder)
-
-	it := make_line_iter(content)
-	skip_section := false
-	first := true
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-
-		if toml_line_is_section(trimmed, section) {
-			skip_section = true
-			continue
-		}
-
-		if skip_section && strings.has_prefix(trimmed, "[") {
-			skip_section = false
-		}
-
-		if skip_section {
-			continue
-		}
-
-		if !first { strings.write_byte(&builder, '\n') }
-		strings.write_string(&builder, line)
-		first = false
-	}
-
-	return strings.clone(strings.to_string(builder))
 }
 
 // Read wayu.toml straight from disk (never the startup cache: a writer must
@@ -880,7 +851,14 @@ get_bool :: proc(val: ^TomlValue, default: bool = false) -> bool {
 @(private = "file")
 doc_parse_base_fields :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
 	config.version = get_string(get_toml_value(doc, "version"), "1.0")
-	config.shell = get_string(get_toml_value(doc, "shell"), "zsh")
+	// `[shell] type`; a top-level `shell = "..."` string is still honored.
+	shell_val := get_toml_value(doc, "shell")
+	if shell_val == nil || shell_val.type != .STRING {
+		shell_val = get_toml_value(doc, "shell.type")
+	}
+	raw_shell := get_string(shell_val, "zsh")
+	config.shell = strings.to_lower(raw_shell)
+	delete(raw_shell)
 	config.wayu_version = get_string(get_toml_value(doc, "wayu_version"), VERSION)
 }
 

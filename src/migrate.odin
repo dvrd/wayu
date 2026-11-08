@@ -174,7 +174,7 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 	init_exists := os.exists(init_file)
 
 	if wayu.dry_run {
-		fmt.printfln("  Would set [shell] type = \"%s\" in wayu.toml", to_name)
+		fmt.printfln("  Would set [shell] type = \"%s\" in wayu.toml", shell_config_name(to_shell))
 		if !init_exists {
 			fmt.printfln("  Would create %s", init_file)
 		}
@@ -187,7 +187,7 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
 
-	res, _ := toml_kv_upsert("shell", "shell", "type", to_name)
+	res, _ := toml_kv_upsert("shell", "shell", "type", shell_config_name(to_shell))
 	switch res {
 	case .OK:
 	case .MALFORMED:
@@ -196,7 +196,7 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 		print_error("Could not update [shell] type in %s", toml_path)
 		os.exit(EXIT_IOERR)
 	}
-	fmt.printfln("  ✓ wayu.toml [shell] type = \"%s\"", to_name)
+	fmt.printfln("  ✓ wayu.toml [shell] type = \"%s\"", shell_config_name(to_shell))
 
 	if !init_exists {
 		template := get_init_template(to_shell)
@@ -272,6 +272,96 @@ legacy_entry_validate :: proc(e: LegacyEntry) -> string {
 	return r.error_message
 }
 
+// Collect phase of migrate_legacy_to_toml: analyze every legacy file of the
+// active shell that holds something to import. Entries the validators
+// would reject are recorded as issues too. Exits 66 on an unreadable file.
+@(private = "file")
+migrate_collect_legacy_sources :: proc(sources: ^[dynamic]LegacySource, dialect: ShellDialect) {
+	for base in ([]string{"aliases", "constants", "path"}) {
+		path := fmt.aprintf("%s/%s.%s", wayu.data, base, wayu.shell_ext)
+		if !os.exists(path) { delete(path); continue }
+		data, ok := safe_read_file(path)
+		if !ok {
+			// Unreadable: never report "nothing to migrate" for it.
+			// (safe_read_file already printed why.)
+			delete(path)
+			os.exit(EXIT_NOINPUT)
+		}
+		a := legacy_analyze(string(data), dialect)
+		if len(a.entries) == 0 && len(a.issues) == 0 {
+			// Missing, empty or wayu scaffolding only.
+			legacy_analysis_destroy(&a)
+			delete(data); delete(path)
+			continue
+		}
+		append(sources, LegacySource{
+			base = base, path = path, content = string(data), analysis = a,
+			label = fmt.aprintf("%s.%s", base, wayu.shell_ext),
+		})
+	}
+
+	// Entries the validators would reject are issues too.
+	for &s in sources^ {
+		for e in s.analysis.entries {
+			if msg := legacy_entry_validate(e); len(msg) > 0 {
+				append(&s.analysis.issues, LegacyIssue{first_line = e.line, last_line = e.line, reason = msg})
+			}
+		}
+	}
+}
+
+// Import phase of migrate_legacy_to_toml: add every entry to wayu.toml and
+// archive each legacy file whose entries all made it (renamed to
+// .migrated); a file with a failed entry is left in place.
+@(private = "file")
+migrate_import_legacy_sources :: proc(sources: []LegacySource) -> (migrated: [LegacyKind]int, total_failed: int, kept_files: int) {
+	for s in sources {
+		failed := 0
+		for e in s.analysis.entries {
+			ok_add := false
+			err_msg := ""
+			switch e.kind {
+			case .Path:
+				ok_add = toml_path_add(e.value)
+			case .Alias:
+				ok_add, err_msg = toml_alias_add(ConfigEntry{type = .ALIAS, name = e.name, value = e.value})
+			case .Constant:
+				ok_add, err_msg = toml_constant_add(ConfigEntry{type = .CONSTANT, name = e.name, value = e.value})
+			}
+			if ok_add {
+				migrated[e.kind] += 1
+				continue
+			}
+			failed += 1
+			label := e.kind == .Path ? e.value : e.name
+			if len(err_msg) > 0 {
+				print_warning("Failed to migrate %s (line %d): %s", label, e.line, err_msg)
+				delete(err_msg)
+			} else {
+				print_warning("Failed to migrate %s (line %d)", label, e.line)
+			}
+		}
+
+		// Only archive when every entry made it into wayu.toml — otherwise
+		// the legacy file is the only remaining copy of the failed entries.
+		if failed > 0 {
+			total_failed += failed
+			kept_files += 1
+			print_warning("%d entr%s from %s failed — left it in place (not archived)",
+				failed, failed == 1 ? "y" : "ies", s.path)
+			continue
+		}
+
+		archived := fmt.tprintf("%s.migrated", s.path)
+		if rename_err := os.rename(s.path, archived); rename_err != nil {
+			print_warning("Could not archive %s (error %v) — delete manually after reviewing", s.path, rename_err)
+		} else {
+			print_info("Archived %s → %s.migrated", s.path, s.label)
+		}
+	}
+	return
+}
+
 // Migrate legacy shell configs to TOML format.
 //
 // All or nothing: every legacy file is analyzed first, and if any line can't
@@ -294,42 +384,12 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 		delete(sources)
 	}
 
-	for base in ([]string{"aliases", "constants", "path"}) {
-		path := fmt.aprintf("%s/%s.%s", wayu.data, base, wayu.shell_ext)
-		if !os.exists(path) { delete(path); continue }
-		data, ok := safe_read_file(path)
-		if !ok {
-			// Unreadable: never report "nothing to migrate" for it.
-			// (safe_read_file already printed why.)
-			delete(path)
-			os.exit(EXIT_NOINPUT)
-		}
-		a := legacy_analyze(string(data), dialect)
-		if len(a.entries) == 0 && len(a.issues) == 0 {
-			// Missing, empty or wayu scaffolding only.
-			legacy_analysis_destroy(&a)
-			delete(data); delete(path)
-			continue
-		}
-		append(&sources, LegacySource{
-			base = base, path = path, content = string(data), analysis = a,
-			label = fmt.aprintf("%s.%s", base, wayu.shell_ext),
-		})
-	}
+	migrate_collect_legacy_sources(&sources, dialect)
 
 	if len(sources) == 0 {
 		print_success("No legacy shell config files found")
 		fmt.println("Your configuration is already organized or empty.")
 		return
-	}
-
-	// Entries the validators would reject are issues too.
-	for &s in sources {
-		for e in s.analysis.entries {
-			if msg := legacy_entry_validate(e); len(msg) > 0 {
-				append(&s.analysis.issues, LegacyIssue{first_line = e.line, last_line = e.line, reason = msg})
-			}
-		}
 	}
 
 	print_header("Found Legacy Files", "📋")
@@ -378,61 +438,15 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 	toml_path := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(toml_path)
 	if !os.exists(toml_path) {
-		scaffold := "# wayu configuration (auto-generated by migrate)\n"
+		scaffold := wayu_toml_scaffold(wayu.shell)
+		defer delete(scaffold)
 		if os.write_entire_file(toml_path, transmute([]byte)scaffold, SECRET_FILE_PERMS) != nil {
 			print_error("Failed to create %s before migration", toml_path)
 			os.exit(EXIT_CANTCREAT)
 		}
 	}
 
-	migrated: [LegacyKind]int
-	total_failed := 0
-	kept_files := 0
-
-	for s in sources {
-		failed := 0
-		for e in s.analysis.entries {
-			ok_add := false
-			err_msg := ""
-			switch e.kind {
-			case .Path:
-				ok_add = toml_path_add(e.value)
-			case .Alias:
-				ok_add, err_msg = toml_alias_add(ConfigEntry{type = .ALIAS, name = e.name, value = e.value})
-			case .Constant:
-				ok_add, err_msg = toml_constant_add(ConfigEntry{type = .CONSTANT, name = e.name, value = e.value})
-			}
-			if ok_add {
-				migrated[e.kind] += 1
-				continue
-			}
-			failed += 1
-			label := e.kind == .Path ? e.value : e.name
-			if len(err_msg) > 0 {
-				print_warning("Failed to migrate %s (line %d): %s", label, e.line, err_msg)
-				delete(err_msg)
-			} else {
-				print_warning("Failed to migrate %s (line %d)", label, e.line)
-			}
-		}
-
-		// Only archive when every entry made it into wayu.toml — otherwise
-		// the legacy file is the only remaining copy of the failed entries.
-		if failed > 0 {
-			total_failed += failed
-			kept_files += 1
-			print_warning("%d entr%s from %s failed — left it in place (not archived)",
-				failed, failed == 1 ? "y" : "ies", s.path)
-			continue
-		}
-
-		archived := fmt.tprintf("%s.migrated", s.path)
-		if rename_err := os.rename(s.path, archived); rename_err != nil {
-			print_warning("Could not archive %s (error %v) — delete manually after reviewing", s.path, rename_err)
-		} else {
-			print_info("Archived %s → %s.migrated", s.path, s.label)
-		}
-	}
+	migrated, total_failed, kept_files := migrate_import_legacy_sources(sources[:])
 
 	fmt.println()
 	if total_failed > 0 {

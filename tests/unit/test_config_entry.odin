@@ -5,11 +5,11 @@ import "core:strings"
 import wayu "../../src"
 
 // ============================================================================
-// parse_line -> format_line round-trip tests (Strategy Pattern contract)
+// parse_line tests (legacy shell-file readers used by read_config_entries)
 // ============================================================================
 
 @(test)
-test_path_parse_format_roundtrip :: proc(t: ^testing.T) {
+test_path_parse_line :: proc(t: ^testing.T) {
 	original := `  "/usr/local/bin"`
 	entry, ok := wayu.parse_path_line(original)
 	testing.expect(t, ok, "Should parse valid PATH line")
@@ -18,14 +18,10 @@ test_path_parse_format_roundtrip :: proc(t: ^testing.T) {
 	testing.expect_value(t, entry.type, wayu.ConfigEntryType.PATH)
 	testing.expect_value(t, entry.name, "/usr/local/bin")
 	testing.expect_value(t, entry.value, "")
-
-	formatted := wayu.format_path_line(entry)
-	defer delete(formatted)
-	testing.expect_value(t, formatted, `  "/usr/local/bin"`)
 }
 
 @(test)
-test_alias_parse_format_roundtrip :: proc(t: ^testing.T) {
+test_alias_parse_line :: proc(t: ^testing.T) {
 	original := `alias ll="ls -la"`
 	entry, ok := wayu.parse_alias_line(original)
 	testing.expect(t, ok, "Should parse valid alias line")
@@ -34,14 +30,10 @@ test_alias_parse_format_roundtrip :: proc(t: ^testing.T) {
 	testing.expect_value(t, entry.type, wayu.ConfigEntryType.ALIAS)
 	testing.expect_value(t, entry.name, "ll")
 	testing.expect_value(t, entry.value, "ls -la")
-
-	formatted := wayu.format_alias_line(entry)
-	defer delete(formatted)
-	testing.expect_value(t, formatted, `alias ll="ls -la"`)
 }
 
 @(test)
-test_constant_parse_format_roundtrip :: proc(t: ^testing.T) {
+test_constant_parse_line :: proc(t: ^testing.T) {
 	original := `export MY_VAR="hello world"`
 	entry, ok := wayu.parse_constant_line(original)
 	testing.expect(t, ok, "Should parse valid constant line")
@@ -50,10 +42,6 @@ test_constant_parse_format_roundtrip :: proc(t: ^testing.T) {
 	testing.expect_value(t, entry.type, wayu.ConfigEntryType.CONSTANT)
 	testing.expect_value(t, entry.name, "MY_VAR")
 	testing.expect_value(t, entry.value, "hello world")
-
-	formatted := wayu.format_constant_line(entry)
-	defer delete(formatted)
-	testing.expect_value(t, formatted, `export MY_VAR="hello world"`)
 }
 
 // ============================================================================
@@ -262,8 +250,6 @@ test_path_spec_fields :: proc(t: ^testing.T) {
 	testing.expect(t, spec.has_clean, "PATH should support clean")
 	testing.expect(t, spec.has_dedup, "PATH should support dedup")
 	testing.expect(t, spec.parse_line != nil, "parse_line should be set")
-	testing.expect(t, spec.format_line != nil, "format_line should be set")
-	testing.expect(t, spec.validator != nil, "validator should be set")
 }
 
 @(test)
@@ -286,53 +272,6 @@ test_constants_spec_fields :: proc(t: ^testing.T) {
 	testing.expect_value(t, spec.fields_count, 2)
 	testing.expect(t, !spec.has_clean, "Constants should not support clean")
 	testing.expect(t, !spec.has_dedup, "Constants should not support dedup")
-}
-
-// ============================================================================
-// format_line with special characters
-// ============================================================================
-
-@(test)
-test_alias_format_escapes_quotes :: proc(t: ^testing.T) {
-	entry := wayu.ConfigEntry{
-		type = .ALIAS,
-		name = "greet",
-		value = `echo "hello"`,
-	}
-
-	formatted := wayu.format_alias_line(entry)
-	defer delete(formatted)
-
-	testing.expect(t, strings.contains(formatted, `\"`), "Should escape quotes in alias command")
-	testing.expect(t, strings.has_prefix(formatted, "alias greet="), "Should start with alias name=")
-}
-
-@(test)
-test_constant_format_escapes_quotes :: proc(t: ^testing.T) {
-	entry := wayu.ConfigEntry{
-		type = .CONSTANT,
-		name = "MSG",
-		value = `say "hi"`,
-	}
-
-	formatted := wayu.format_constant_line(entry)
-	defer delete(formatted)
-
-	testing.expect(t, strings.contains(formatted, `\"`), "Should escape quotes in constant value")
-	testing.expect(t, strings.has_prefix(formatted, "export MSG="), "Should start with export NAME=")
-}
-
-@(test)
-test_path_format_with_spaces :: proc(t: ^testing.T) {
-	entry := wayu.ConfigEntry{
-		type = .PATH,
-		name = "/path/with spaces/bin",
-	}
-
-	formatted := wayu.format_path_line(entry)
-	defer delete(formatted)
-
-	testing.expect_value(t, formatted, `  "/path/with spaces/bin"`)
 }
 
 // ============================================================================

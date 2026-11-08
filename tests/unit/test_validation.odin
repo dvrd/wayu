@@ -63,27 +63,6 @@ test_validate_identifier_reserved :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_sanitize_shell_value :: proc(t: ^testing.T) {
-	// Test double quote escaping
-	result := wayu.sanitize_shell_value("echo \"hello\"")
-	expected := "echo \\\"hello\\\""
-	testing.expect_value(t, result, expected)
-	defer delete(result)
-
-	// Test backtick escaping
-	result2 := wayu.sanitize_shell_value("echo `date`")
-	expected2 := "echo \\`date\\`"
-	testing.expect_value(t, result2, expected2)
-	defer delete(result2)
-
-	// Test dollar sign (NOT escaped - allows $1 in aliases)
-	result3 := wayu.sanitize_shell_value("echo $HOME")
-	expected3 := "echo $HOME"
-	testing.expect_value(t, result3, expected3)
-	defer delete(result3)
-}
-
-@(test)
 test_validate_alias :: proc(t: ^testing.T) {
 	result := wayu.validate_alias("ll", "ls -la")
 	testing.expect(t, result.valid, "Valid alias should pass")
@@ -168,27 +147,4 @@ test_validate_identifier_rejects_non_ascii :: proc(t: ^testing.T) {
 	}
 	ok := wayu.validate_identifier("Ok_Name_9", "Alias")
 	testing.expect(t, ok.valid)
-}
-
-@(test)
-test_sanitize_shell_value_user_escapes_cannot_break_out :: proc(t: ^testing.T) {
-	// `\"` used to become `\\"` → literal backslash + string-closing quote.
-	r1 := wayu.sanitize_shell_value(`a\"; rm -rf ~; echo \"b`)
-	defer delete(r1)
-	testing.expect_value(t, r1, `a\"; rm -rf ~; echo \"b`)
-
-	// `\$(` used to become `\\$(` → command substitution.
-	r2 := wayu.sanitize_shell_value(`x \$(id)`)
-	defer delete(r2)
-	testing.expect_value(t, r2, `x \$(id)`)
-
-	// A trailing backslash would escape our closing quote.
-	r3 := wayu.sanitize_shell_value(`dir\`)
-	defer delete(r3)
-	testing.expect_value(t, r3, `dir\\`)
-
-	// UTF-8 passes through intact.
-	r4 := wayu.sanitize_shell_value("café")
-	defer delete(r4)
-	testing.expect_value(t, r4, "café")
 }

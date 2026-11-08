@@ -608,14 +608,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		spinner_text(&spinner, "Creating wayu.toml scaffold")
 		spinner_start(&spinner)
 
-		shell_name := get_shell_name(shell)
-		toml_scaffold := fmt.aprintf(`[shell]
-type = "%s"
-
-[aliases]
-
-[env]
-`, shell_name)
+		toml_scaffold := wayu_toml_scaffold(shell)
 		defer delete(toml_scaffold)
 
 		success := init_config_file(toml_file, toml_scaffold)

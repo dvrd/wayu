@@ -2,7 +2,7 @@
 //
 // This module defines the ConfigEntrySpec instances for each config type
 // (PATH, ALIAS, CONSTANTS). Each spec configures how that entry type should
-// be validated, formatted, parsed, and displayed.
+// be parsed (legacy shell files), dispatched and displayed.
 
 package wayu
 
@@ -13,12 +13,9 @@ import "core:strings"
 PATH_SPEC := ConfigEntrySpec{
 	type = .PATH,
 	file_name = "path",
-	line_prefix = `  "`,  // Array elements start with indent + quote
 	display_name = "PATH",
 	icon = "📂",
 
-	validator = validate_path_entry,
-	format_line = format_path_line,
 	parse_line = parse_path_line,
 
 	has_clean = true,
@@ -27,19 +24,15 @@ PATH_SPEC := ConfigEntrySpec{
 
 	field_labels = []string{"Path"},
 	field_placeholders = []string{"/usr/local/bin"},
-	field_validators = []proc(string) -> InputValidation{validate_path_input},
 }
 
 // ALIAS entry specification (global variable, not constant)
 ALIAS_SPEC := ConfigEntrySpec{
 	type = .ALIAS,
 	file_name = "aliases",
-	line_prefix = "alias",
 	display_name = "Alias",
 	icon = "🔑",
 
-	validator = validate_alias_entry,
-	format_line = format_alias_line,
 	parse_line = parse_alias_line,
 
 	has_clean = false,
@@ -48,10 +41,6 @@ ALIAS_SPEC := ConfigEntrySpec{
 
 	field_labels = []string{"Alias Name", "Command"},
 	field_placeholders = []string{"ll", "ls -lah"},
-	field_validators = []proc(string) -> InputValidation{
-		validate_alias_name_input,
-		validate_alias_command_input,
-	},
 
 	// TOML-first ops wired for the generic handle_toml_entry_command dispatcher.
 	toml_add    = toml_alias_add,
@@ -73,12 +62,9 @@ ALIAS_SPEC := ConfigEntrySpec{
 CONSTANTS_SPEC := ConfigEntrySpec{
 	type = .CONSTANT,
 	file_name = "constants",
-	line_prefix = "export",
 	display_name = "Constant",
 	icon = "💾",
 
-	validator = validate_constant_entry,
-	format_line = format_constant_line,
 	parse_line = parse_constant_line,
 
 	has_clean = false,
@@ -87,10 +73,6 @@ CONSTANTS_SPEC := ConfigEntrySpec{
 
 	field_labels = []string{"Variable Name", "Value"},
 	field_placeholders = []string{"MY_VAR", "my_value"},
-	field_validators = []proc(string) -> InputValidation{
-		validate_constant_name_input,
-		validate_constant_value_input,
-	},
 
 	// TOML-first ops wired for the generic handle_toml_entry_command dispatcher.
 	toml_add    = toml_constant_add,
@@ -114,11 +96,6 @@ validate_path_entry :: proc(entry: ConfigEntry) -> ValidationResult {
 	// NOTE: This only validates format (not empty, no invalid chars)
 	// Disk existence checks are intentionally NOT performed here
 	return validate_path(entry.name)
-}
-
-// Format PATH line: array element with indent
-format_path_line :: proc(entry: ConfigEntry) -> string {
-	return fmt.aprintf(`  "%s"`, entry.name)
 }
 
 // Parse PATH line: extract path from array element "..."
@@ -164,41 +141,9 @@ parse_path_line :: proc(line: string) -> (ConfigEntry, bool) {
 	return {}, false
 }
 
-// Validate path input for interactive mode
-validate_path_input :: proc(value: string) -> InputValidation {
-	if len(value) == 0 {
-		return input_validation_empty()
-	}
-
-	result := validate_path(value)
-
-	if !result.valid {
-		// result.error_message is already heap-allocated by validate_path (via fmt.aprintf).
-		// Move ownership directly — no clone needed, avoids a redundant allocation.
-		return input_validation_error(result.error_message)
-	}
-
-	return input_validation_ok()
-}
-
 // ============================================================================
 // ALIAS Validators, Formatters, and Parsers
 // ============================================================================
-
-// Validate ALIAS entry
-validate_alias_entry :: proc(entry: ConfigEntry) -> ValidationResult {
-	// Use existing validate_alias function which takes both name and command
-	return validate_alias(entry.name, entry.value)
-}
-
-// Format ALIAS line: alias name="command"
-format_alias_line :: proc(entry: ConfigEntry) -> string {
-	// Sanitize value for safe shell embedding
-	escaped_cmd := sanitize_shell_value(entry.value)
-	defer delete(escaped_cmd)
-
-	return fmt.aprintf(`alias %s="%s"`, entry.name, escaped_cmd)
-}
 
 // Parse ALIAS line: extract name and command from alias name="..."
 parse_alias_line :: proc(line: string) -> (ConfigEntry, bool) {
@@ -247,57 +192,9 @@ parse_alias_line :: proc(line: string) -> (ConfigEntry, bool) {
 	}, true
 }
 
-// Validate alias name input
-validate_alias_name_input :: proc(value: string) -> InputValidation {
-	if len(value) == 0 {
-		return input_validation_empty()
-	}
-
-	// Use existing validate_identifier function
-	result := validate_identifier(value, "Alias")
-
-	if !result.valid {
-		// result.error_message is already heap-allocated by validate_identifier (via fmt.aprintf).
-		// Move ownership directly — no clone needed.
-		return input_validation_error(result.error_message)
-	}
-
-	return input_validation_ok()
-}
-
-// Validate alias command input
-validate_alias_command_input :: proc(value: string) -> InputValidation {
-	if len(value) == 0 {
-		return input_validation_empty()
-	}
-
-	// Command just needs to be non-empty (trimmed)
-	trimmed := strings.trim_space(value)
-	if len(trimmed) == 0 {
-		return input_validation_empty()
-	}
-
-	return input_validation_ok()
-}
-
 // ============================================================================
 // CONSTANTS Validators, Formatters, and Parsers
 // ============================================================================
-
-// Validate CONSTANT entry
-validate_constant_entry :: proc(entry: ConfigEntry) -> ValidationResult {
-	// Use existing validate_constant function which takes both name and value
-	return validate_constant(entry.name, entry.value)
-}
-
-// Format CONSTANT line: export NAME="value"
-format_constant_line :: proc(entry: ConfigEntry) -> string {
-	// Sanitize value for safe shell embedding
-	escaped_value := sanitize_shell_value(entry.value)
-	defer delete(escaped_value)
-
-	return fmt.aprintf(`export %s="%s"`, entry.name, escaped_value)
-}
 
 // Parse CONSTANT line: extract name and value from export NAME="..."
 parse_constant_line :: proc(line: string) -> (ConfigEntry, bool) {
@@ -353,83 +250,4 @@ parse_constant_line :: proc(line: string) -> (ConfigEntry, bool) {
 	}
 
 	return {}, false
-}
-
-// Validate constant name input
-validate_constant_name_input :: proc(value: string) -> InputValidation {
-	if len(value) == 0 {
-		return input_validation_empty()
-	}
-
-	// Use existing validate_identifier function
-	result := validate_identifier(value, "Constant")
-
-	if !result.valid {
-		// result.error_message is already heap-allocated by validate_identifier (via fmt.aprintf).
-		// Move ownership directly — no clone needed.
-		return input_validation_error(result.error_message)
-	}
-
-	// Check for lowercase warning
-	has_lower := false
-	for c in value {
-		if c >= 'a' && c <= 'z' {
-			has_lower = true
-			break
-		}
-	}
-
-	if has_lower {
-		return input_validation_warn(strings.clone("Convention: use UPPER_CASE for constants"))
-	}
-
-	return input_validation_ok()
-}
-
-// Validate constant value input
-validate_constant_value_input :: proc(value: string) -> InputValidation {
-	if len(value) == 0 {
-		return input_validation_empty()
-	}
-
-	// Value just needs to be non-empty for interactive input
-	// Full validation happens during submit
-	return input_validation_ok()
-}
-
-// ============================================================================
-// Field validation result (moved from the removed input.odin)
-// ============================================================================
-
-// InputValidation extends ValidationResult with additional UI feedback
-InputValidation :: struct {
-	valid:         bool,
-	error_message: string,
-	warning:       string,
-	info:          string,
-}
-
-// Builders for InputValidation. They replace the repeated explicit
-// empty-field initializers in the validate_*_input helpers (config_specs.odin),
-// keeping each construction to one self-documenting call.
-
-// input_validation_ok marks input as valid with no feedback.
-input_validation_ok :: proc() -> InputValidation {
-	return InputValidation{valid = true}
-}
-
-// input_validation_empty marks input as not-yet-valid with no error message —
-// used for empty interactive input (blocks submit but shows nothing to display).
-input_validation_empty :: proc() -> InputValidation {
-	return InputValidation{valid = false}
-}
-
-// input_validation_error wraps a failed validation; msg ownership is transferred.
-input_validation_error :: proc(msg: string) -> InputValidation {
-	return InputValidation{valid = false, error_message = msg}
-}
-
-// input_validation_warn marks input valid but attaches a non-blocking warning.
-input_validation_warn :: proc(warning: string) -> InputValidation {
-	return InputValidation{valid = true, warning = warning}
 }

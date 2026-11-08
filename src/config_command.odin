@@ -123,24 +123,8 @@ edit_extra_config :: proc(extra_file: string) {
 edit_toml_config :: proc(toml_file: string) {
 	// Create file with default content if doesn't exist
 	if !os.exists(toml_file) {
-		default_content := `# Wayu TOML Configuration
-# Declarative shell configuration. See https://github.com/kakurega/wayu
-
-[settings]
-shell = "zsh"
-
-# [paths]
-# odin     = "/Users/you/dev/oss/Odin"
-# local_bin = "/usr/local/bin"
-
-# [aliases]
-# ll = "ls -la"
-# gs = "git status"
-
-# [env]
-# EDITOR = "nvim"
-# LANG   = "en_US.UTF-8"
-`
+		default_content := wayu_toml_scaffold(wayu.shell)
+		defer delete(default_content)
 		if write_ok := os.write_entire_file_from_string(toml_file, default_content, SECRET_FILE_PERMS); write_ok != nil {
 			print_error_simple("Failed to create wayu.toml: %s", toml_file)
 			os.exit(EXIT_CANTCREAT)

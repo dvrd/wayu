@@ -130,7 +130,7 @@ test_expand_env_vars_no_vars :: proc(t: ^testing.T) {
 //
 // The PATH functionality is fully tested through:
 // - Integration tests: Full add/remove/list workflow with duplicate detection and missing path handling
-// - Unit tests above: expand_env_vars(), extract_path_items(), parsing logic
+// - Unit tests above: expand_env_vars(), parsing logic
 
 @(test)
 test_expand_env_vars_gopath :: proc(t: ^testing.T) {

@@ -69,9 +69,9 @@ class FishIntegrationTest
   end
 
   def test_toml_shell_type_is_fish
-    print "Test 1: wayu.toml records type=\"Fish\"... "
+    print "Test 1: wayu.toml records type=\"fish\"... "
     content = File.read(@toml_file)
-    if content.include?('type = "Fish"')
+    if content.include?(%q{type = "fish"})
       puts "✓"; @passed += 1
     else
       puts "✗"; puts "  TOML did not record Fish shell type"
