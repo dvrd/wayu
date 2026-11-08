@@ -2183,7 +2183,7 @@ tui_after_write :: proc(state: ^TUIState, view: TUIView) {
 // ============================================================================
 
 // Restore wayu.toml from `backup_path` (the CLI's restore_from_backup: the
-// current file is backed up first, obsolete-schema / invalid backups are
+// current file is backed up first, invalid backups are
 // refused, init files regenerated).
 tui_restore_backup :: proc(state: ^TUIState, backup_path: string) {
 	name := get_base_name(backup_path)

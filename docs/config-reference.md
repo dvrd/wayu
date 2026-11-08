@@ -571,9 +571,7 @@ These parse without error but have no effect: `wayu_version`; `[settings]`
 `auto_backup`, `fuzzy_fallback`, `dry_run_default`; `[path] dedup` /
 `[path] clean`; `[[plugins]]` (plugins live in `plugins.json`); `[profile.*]`;
 `[prompt.username] style_user`; `[prompt.interactive]` `async_interval`,
-`transient_format`; any table not listed above. The obsolete
-`[[paths]]` / `[[aliases]]` / `[[constants]]` schema makes most commands exit
-`78`; convert it with `wayu migrate --schema`.
+`transient_format`; any table not listed above.
 
 ## Other files you edit
 

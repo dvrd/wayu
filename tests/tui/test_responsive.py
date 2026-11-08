@@ -582,42 +582,6 @@ def test_exit_paths_restore_terminal():
             s.kill()
 
 
-def test_obsolete_schema_mid_session():
-    """wayu.toml rewritten to the obsolete [[paths]] schema while the TUI
-    runs (another terminal, an old wayu): adding an entry is refused with
-    the reason (the CLI exits 78) instead of appending a [paths] table to
-    the [[paths]] file, and the terminal is restored afterwards."""
-    print(f"\n── Obsolete schema while running ──")
-    toml_path = os.path.join(os.environ["HOME"], ".config", "wayu", "wayu.toml")
-    obsolete = '[[paths]]\npath = "/usr/bin"\n'
-    s = TUISession(80, 24, env=constants_env())
-    try:
-        s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
-        with open(toml_path, "w") as f:
-            f.write(obsolete)
-        s.send(b"l")
-        s.read(timeout=1.0)
-        refused = False
-        if s.alive():
-            fill_add_form(s, ["/tmp"])
-            refused = s.wait_for(lambda snap: "obsolete" in snap, timeout=TIMEOUT_KEY)
-        test("obsolete_schema/add_refused", AssertResult(refused, s.snapshot()))
-        test("obsolete_schema/file_untouched",
-             AssertResult(open(toml_path).read() == obsolete, repr(open(toml_path).read())))
-        if s.alive():
-            s.send(b"\x03")
-        status = s.wait_exit()
-        test("obsolete_schema/exits", AssertResult(status is not None, "TUI still running"))
-        ok, diff = s.termios_restored()
-        test("obsolete_schema/termios_restored", AssertResult(ok, diff))
-        test("obsolete_schema/leaves_alt_screen",
-             AssertResult(leaves_alt_screen(s.raw), f"output tail: {bytes(s.raw[-80:])!r}"))
-    finally:
-        s.kill()
-        with open(toml_path, "w") as f:
-            f.write(FIXTURE_TOML)
-
-
 # ── Mutations through the TUI (OKAMI-248) ──────────────────────────────────
 
 MENU_INDEX = {"path": 0, "alias": 1, "constants": 2}
@@ -1402,7 +1366,6 @@ def run_all():
     test_filtered_delete()
     test_sigterm_restores_terminal()
     test_exit_paths_restore_terminal()
-    test_obsolete_schema_mid_session()
 
     # Secret masking + reveal key
     test_constants_view_masks_secrets()

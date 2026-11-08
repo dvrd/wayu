@@ -968,7 +968,7 @@ doctor_expand_path :: proc(path: string, consts: []ConfigEntry) -> string {
 }
 
 // Read wayu.toml [paths] and classify each entry. Never exits: a missing or
-// legacy-schema wayu.toml is reported via ok=false + reason (the TOML check
+// unreadable wayu.toml is reported via ok=false + reason (the TOML check
 // surfaces the actual problem). All memory comes from `alloc`.
 doctor_scan_toml_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPathScan, ok: bool, reason: string) {
 	context.allocator = alloc
@@ -980,9 +980,6 @@ doctor_scan_toml_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPa
 	content, read_ok := safe_read_file(toml_path)
 	if !read_ok {
 		return nil, false, "Cannot read wayu.toml — PATH check skipped"
-	}
-	if len(detect_legacy_schema(string(content))) > 0 {
-		return nil, false, "wayu.toml uses the obsolete schema — PATH check skipped"
 	}
 
 	// toml_path_read_keyed may serve a cached copy; make sure it's fresh.
@@ -1196,20 +1193,6 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 		return
 	}
 	defer delete(content)
-
-	// Schema sanity — if the file still uses [[paths]]/[[aliases]]/[[constants]],
-	// every other wayu command will refuse to run. Surface that here.
-	if header := detect_legacy_schema(string(content)); len(header) > 0 {
-		msg := fmt.aprintf("wayu.toml uses obsolete %s schema — run `wayu migrate --schema`", header)
-		defer delete(msg)
-		append(results, CheckResult{
-			name    = clone_arena("TOML config"),
-			status  = .ERROR,
-			message = clone_arena(msg),
-			fixable = false,
-		})
-		return
-	}
 
 	// Same parser as `wayu toml validate` and every reader; name the line.
 	if valid, perr := toml_check(string(content)); !valid {

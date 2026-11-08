@@ -253,7 +253,7 @@ read_config_entries :: proc(spec: ^ConfigEntrySpec) -> []ConfigEntry {
 	has_toml := os.exists(toml_path)
 	delete(toml_path)
 	if has_toml {
-		if content, ok := get_cached_toml_content(); ok && len(detect_legacy_schema(content)) == 0 {
+		if _, ok := get_cached_toml_content(); ok {
 			switch spec.type {
 			case .PATH:
 				entries := read_toml_path_entries()
@@ -515,7 +515,6 @@ entry_add :: proc(entry: Entry) -> (EntryOutcome, string) {
 	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
 	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
 	if msg, bad := wayu_toml_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
-	if msg, bad := legacy_schema_error(); bad { return .FAILED, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
 		expanded, check_err, code := path_add_check(e.path)
@@ -534,8 +533,6 @@ entry_add :: proc(entry: Entry) -> (EntryOutcome, string) {
 			return .FAILED, strings.clone("I/O error: failed to write path to wayu.toml")
 		case .UNREADABLE:
 			return .FAILED, strings.clone("I/O error: cannot read wayu.toml")
-		case .OBSOLETE_SCHEMA:
-			return .FAILED, strings.clone("wayu.toml uses the obsolete [[paths]] schema; run `wayu migrate --schema`")
 		case:
 			// The writer reported the reason (bad/taken name) via print_error.
 			if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
@@ -567,7 +564,6 @@ entry_remove :: proc(entry: Entry) -> (EntryOutcome, string) {
 	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
 	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
 	if msg, bad := wayu_toml_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
-	if msg, bad := legacy_schema_error(); bad { return .FAILED, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
 		// Hooks get the stored directory, also when the target is a key (as the CLI).
@@ -584,8 +580,6 @@ entry_remove :: proc(entry: Entry) -> (EntryOutcome, string) {
 			return .FAILED, strings.clone("I/O error: failed to remove path from wayu.toml")
 		case .UNREADABLE:
 			return .FAILED, strings.clone("I/O error: cannot read wayu.toml")
-		case .OBSOLETE_SCHEMA:
-			return .FAILED, strings.clone("wayu.toml uses the obsolete [[paths]] schema; run `wayu migrate --schema`")
 		case:
 			if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
 			return .FAILED, strings.clone("failed to remove path from wayu.toml")
@@ -603,7 +597,6 @@ entry_remove :: proc(entry: Entry) -> (EntryOutcome, string) {
 // runs the remove hooks for the old directory and the add hooks for the new.
 entry_replace_path :: proc(target, raw_path: string) -> (EntryOutcome, string) {
 	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
-	if msg, bad := legacy_schema_error(); bad { return .FAILED, strings.clone(msg) }
 	expanded, check_err, code := path_add_check(raw_path)
 	defer delete(expanded)
 	if code != EXIT_SUCCESS { return .FAILED, check_err }
@@ -796,104 +789,6 @@ parse_path_arg :: proc(arg: string) -> (name, path: string, explicit: bool) {
 	}
 	return lhs, rhs, true
 }
-// Section header tokens that no longer exist in the modern schema.
-LEGACY_SECTION_HEADERS :: []string{
-	"[[paths]]",
-	"[[aliases]]",
-	"[[constants]]",
-	"[constants]",
-}
-
-// Returns the first legacy header found in `content`, or "" when the file
-// is clean. Cheap line-by-line scan; we only need to detect, not parse.
-detect_legacy_schema :: proc(content: string) -> string {
-	for header in LEGACY_SECTION_HEADERS {
-		if !strings.contains(content, header) { continue }
-		// Confirm it's an actual section header (line-equal after trim),
-		// not a substring inside a value. Scan line-by-line without
-		// allocating a split array.
-		remaining := content
-		for len(remaining) > 0 {
-			nl := strings.index_byte(remaining, '\n')
-			line: string
-			if nl < 0 {
-				line = remaining
-				remaining = ""
-			} else {
-				line = remaining[:nl]
-				remaining = remaining[nl + 1:]
-			}
-			if strings.trim_space(line) == header { return header }
-		}
-	}
-	return ""
-}
-
-// Reason (temp allocator) not to edit wayu.toml when it is on the obsolete
-// schema now. Reads the file itself: in the TUI, wayu.toml can be replaced
-// after the startup guard ran, and an edit would add a [paths] table next
-// to the [[paths]] ones.
-legacy_schema_error :: proc() -> (msg: string, bad: bool) {
-	toml_path := fmt.tprintf("%s/%s", wayu.config, WAYU_TOML)
-	content, err := os.read_entire_file(toml_path, context.temp_allocator)
-	if err != nil do return "", false
-	header := detect_legacy_schema(string(content))
-	if len(header) == 0 do return "", false
-	return fmt.tprintf("wayu.toml uses the obsolete %s schema; run `wayu migrate --schema`", header), true
-}
-
-// Print the user-visible "obsolete schema, run migrate" banner. Shared by
-// the per-read guard and the global pre-dispatch guard.
-print_legacy_schema_hint :: proc(header: string) {
-	fmt.eprintln()
-	fmt.eprintf("%sError:%s wayu.toml uses the obsolete %s%s%s schema.\n",
-		BRIGHT_RED, RESET, BRIGHT_CYAN, header, RESET)
-	fmt.eprintln()
-	fmt.eprintln("v3.x replaced the array-of-tables forms with single inline tables:")
-	fmt.eprintln()
-	fmt.eprintln("  [paths]")
-	fmt.eprintln("  odin = \"/Users/you/dev/Odin\"")
-	fmt.eprintln()
-	fmt.eprintln("  [aliases]")
-	fmt.eprintln("  ll = \"ls -la\"")
-	fmt.eprintln()
-	fmt.eprintln("  [env]")
-	fmt.eprintln("  EDITOR = \"nvim\"")
-	fmt.eprintln()
-	eprintf_color("Run %swayu migrate --schema%s to upgrade in place.\n", BRIGHT_CYAN, RESET)
-	fmt.eprintln()
-}
-
-// Read wayu.toml, refusing the obsolete schema. Returns the content (caller
-// frees) and exit_code 0, or nil and the code the CLI exits with after the
-// reason was printed (unless `quiet`): EXIT_NOINPUT when the file can't be
-// read, EXIT_CONFIG for the obsolete schema. Never exits, so the TUI can
-// report the failure instead of dying on the alternate screen (OKAMI-251).
-read_modern_wayu_toml :: proc(path: string, quiet := false) -> (content: []byte, exit_code: int) {
-	if quiet {
-		data, err := os.read_entire_file(path, context.allocator)
-		if err != nil do return nil, EXIT_NOINPUT
-		content = data
-	} else {
-		ok: bool
-		content, ok = safe_read_file(path)
-		// safe_read_file already printed why (one error per failure).
-		if !ok do return nil, EXIT_NOINPUT
-	}
-	if header := detect_legacy_schema(string(content)); len(header) > 0 {
-		if !quiet do print_legacy_schema_hint(header)
-		delete(content)
-		return nil, EXIT_CONFIG
-	}
-	return content, 0
-}
-
-// CLI form of read_modern_wayu_toml: prints why and exits on failure.
-must_read_modern_wayu_toml :: proc(path: string) -> []byte {
-	content, code := read_modern_wayu_toml(path)
-	if code != 0 do wayu_exit(code)
-	return content
-}
 
 // Reason (temp allocator) not to edit wayu.toml now: it exists but can't
 // be read (permissions changed while the TUI runs). The writers would
@@ -907,19 +802,4 @@ wayu_toml_unreadable_error :: proc() -> (msg: string, bad: bool) {
 	}
 	os.close(f)
 	return "", false
-}
-
-// Pre-dispatch global guard. Aborts with the migration hint for any command
-// that would touch wayu.toml while it's still on the obsolete schema. Safe
-// commands (the ones that don't read the toml at all, plus the migration
-// command itself) bypass the check.
-enforce_modern_wayu_toml_or_exit :: proc(toml_path: string) {
-	if !os.exists(toml_path) { return }
-	content, ok := safe_read_file(toml_path)
-	if !ok { return } // I/O failures bubble up at the actual call site
-	defer delete(content)
-	if header := detect_legacy_schema(string(content)); len(header) > 0 {
-		print_legacy_schema_hint(header)
-		wayu_exit(EXIT_CONFIG)
-	}
 }

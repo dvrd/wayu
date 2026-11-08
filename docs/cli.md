@@ -353,7 +353,7 @@ BSD `sysexits.h` values (`EXIT_*` in `src/interfaces.odin`):
 | 73 | `EXIT_CANTCREAT` | Cannot create an output file or directory |
 | 74 | `EXIT_IOERR` | Read/write failure, failed git operation |
 | 77 | `EXIT_NOPERM` | Permission denied |
-| 78 | `EXIT_CONFIG` | Configuration problem: not initialized, obsolete wayu.toml schema, invalid `hooks.conf`, `doctor` found an error, `export check` found no current turbo file |
+| 78 | `EXIT_CONFIG` | Configuration problem: not initialized, invalid `hooks.conf`, `doctor` found an error, `export check` found no current turbo file |
 
 ### Exit code examples
 

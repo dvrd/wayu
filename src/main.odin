@@ -270,41 +270,6 @@ main :: proc() {
 		return
 	}
 
-	// Hard-break guard: any command that touches wayu.toml refuses to run
-	// while the file still uses the obsolete [[paths]]/[[aliases]]/[[constants]]
-	// schema. The few commands that either don't read the toml (VERSION/HELP)
-	// skip this check.
-	needs_modern_toml := true
-	#partial switch parsed.command {
-	case .VERSION, .HELP, .UNKNOWN:
-		// pure non-toml commands and the recovery path itself
-		needs_modern_toml = false
-	case .BACKUP:
-		// the recovery tool: list/rm never parse wayu.toml, and restore
-		// validates the backup it writes (refuses an obsolete-schema one)
-		needs_modern_toml = false
-	case .DOCTOR:
-		// doctor explicitly reports the legacy-schema issue itself
-		// (check_toml_config), and we want it to surface other findings too.
-		needs_modern_toml = false
-	}
-	// Pre-warm the TOML content cache and run the legacy-schema guard in
-	// one pass (avoids reading wayu.toml twice at startup). Skip for
-	// commands that never touch wayu.toml (--version, --help, etc.).
-	needs_toml := true
-	#partial switch parsed.command {
-	case .VERSION, .HELP, .UNKNOWN:
-		needs_toml = false
-	}
-	if needs_toml {
-		if toml_str, toml_ok := get_cached_toml_content(); toml_ok && needs_modern_toml {
-			if header := detect_legacy_schema(toml_str); len(header) > 0 {
-				print_legacy_schema_hint(header)
-				os.exit(EXIT_CONFIG)
-			}
-		}
-	}
-
 	switch parsed.command {
 	case .PATH:
 		handle_path_command(parsed.action, parsed.args)
