@@ -191,7 +191,7 @@ Default action: `list`. `<name>` must match an installed plugin exactly.
 `wayu.toml` scaffold and `init.<ext>`, generate the init files, and offer to
 add `source …/init.<ext>` to your rc file (only when stdin is a terminal;
 otherwise it prints the line). Safe to re-run: existing files are kept and an
-unmodified old `init.<ext>` is updated. `--shell` picks the shell.
+unmodified `init.<ext>` from the previous release is updated. `--shell` picks the shell.
 
 | Flag | |
 |---|---|

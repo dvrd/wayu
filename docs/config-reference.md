@@ -735,7 +735,7 @@ every shell initialized in the data dir.
 
 | File (data dir) | Content |
 |---|---|
-| `init.<ext>` | Entry point your rc file sources: loads `core.<ext>` (prints a hint to run `wayu build` when it is missing). Written by `wayu init`. An unmodified copy is replaced when the template changes (backup first); an edited one is kept, with a warning. |
+| `init.<ext>` | Entry point your rc file sources: loads `core.<ext>` (prints a hint to run `wayu build` when it is missing). Written by `wayu init`. An unmodified copy of the current or previous template is replaced when the template changes (backup first); an edited one is kept, with a warning. |
 | `core.<ext>` | Everything `init.<ext>` loads, precomputed from `wayu.toml` (zsh also `core.zsh.zwc`, compiled in the background). |
 | `path_sync.<ext>` | The `[paths]` list; line 1 is its signature. The prompt hook re-sources it when the signature changes. |
 | `turbo.<ext>` | zsh/bash. Same content as `core.<ext>`, refreshed with it, only if it exists (created by `wayu export`). |
@@ -744,9 +744,7 @@ every shell initialized in the data dir.
 | `backup/` | Timestamped backups, 5 newest per file (see `wayu backup`). |
 
 Also `$WAYU_CONFIG_DIR/.wayu.lock` (lock shared by concurrent wayu commands)
-and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`. Older
-versions' `lazy.<ext>`, `login.<ext>` and `helpers.<ext>` are deleted on
-regeneration.
+and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 
 ## Load order
 

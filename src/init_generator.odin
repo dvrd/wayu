@@ -242,30 +242,19 @@ regenerate_init_core_silently :: proc() {
 	flush_zcompile_batch()
 }
 
-// fnv64a of every init.{zsh,bash,fish} template wayu has shipped (from the
-// git history of INIT_TEMPLATE* in src/preload.odin — the zsh one was plain
-// INIT_TEMPLATE until 3.9.x). Only a file that is
-// byte-identical to one of them is an untouched wayu orchestrator.
-// When INIT_TEMPLATE_* changes, add the new template's hash here.
-// Every template currently shipped must be listed too (unit-tested), so the
-// next change only needs the new hash added.
+// fnv64a of the init.{zsh,bash,fish} templates this wayu writes and of the
+// ones the previous develop build wrote. Only a file byte-identical to one
+// of them is an untouched wayu orchestrator, which sync_init_orchestrator
+// refreshes. When INIT_TEMPLATE_* changes, replace the "previous" hashes
+// with the current ones and add the new template's hash (unit-tested: every
+// template currently shipped must be listed).
 KNOWN_INIT_TEMPLATE_HASHES :: [?]u64{
-	// zsh
-	0x20e135c4c9aacd58, 0x7e48fffaa40fd9cd, 0xfff333ca896c0bd4, 0xf47f9eb2ad3f7a2e,
-	0xc21f6b2d093d821d, 0x1039f30345ae10c2, 0x6d16cfee3fafd79a, 0xd4268444521bc452,
-	0x6fdcb522c8338802, 0x100ab1dc1aaa0359, 0x96ea40ba08bbab77,
-	// zsh, up to 3.9.x (constant named INIT_TEMPLATE)
-	0x7cb798f31c5e9bf3, 0xf589a7f2a854c4f8, 0x0ed9ea7c3d50f1f7, 0x7e06c7c4e44fb51a,
-	0xb8566ffbbe52f44a, 0xe6fd0cd064d1544d,
-	// bash
-	0x0bc23094b9dcc819, 0x345463d2228a44de, 0x543c0b71a5b798a0, 0x548df0bd4c4ddc00,
-	0x75a7bff5ff0d78d8, 0xb3ea0c621ce39dca, 0xbc078574f43e51c3, 0xcd692c96fb307bc6,
-	0xeda95b039229221f, 0xf6f35b1b81a854eb, 0xfe701bb066ded146, 0x1f4103ef74c755c5,
-	0x88d743add8a2bfc1, 0xa1414d3a52e03f37, 0xb2b8327b7b68ed26,
-	// fish
-	0x369d4d3c4c55995b, 0x3b71cd7d4b1f4c4b, 0x81f2ef4bb8cf4a9b, 0x8d915b6ee6512f58,
-	0x95f11f05208fadde, 0xc57f0c8b32f09433, 0x8d68552f17d12e1f, 0x720d83a5f623cf53,
-	0xfda840b65f7815f1,
+	// zsh: previous, current
+	0x100ab1dc1aaa0359, 0x96ea40ba08bbab77,
+	// bash: previous, current
+	0xa1414d3a52e03f37, 0xb2b8327b7b68ed26,
+	// fish: previous, current
+	0x720d83a5f623cf53, 0xfda840b65f7815f1,
 }
 
 is_known_init_template :: proc(content: string) -> bool {
@@ -275,7 +264,7 @@ is_known_init_template :: proc(content: string) -> bool {
 }
 
 // Rewrite init.{ext} with the current template when it is an unmodified copy
-// of a template an earlier wayu wrote. `wayu init` only creates init.{ext}
+// of a known template (KNOWN_INIT_TEMPLATE_HASHES). `wayu init` only creates init.{ext}
 // when missing, so without this existing users never receive orchestrator
 // fixes (e.g. the fast path that double-sourced extra/tools). The old file is
 // backed up first. A file the user edited is never rewritten (OKAMI-235): a
@@ -946,11 +935,6 @@ emit_dir_overrides :: proc(b: ^strings.Builder, fish: bool) {
 	if header { fmt.sbprintln(b) }
 }
 
-// Generated files of the old split layout whose content core.<ext> now holds
-// (lazy: deferred [tools] + tools/extra.<ext>; login: login-only tools;
-// helpers: evalcache/zsh-defer). Removed on regeneration (OKAMI-284).
-OBSOLETE_SPLIT_FILES :: [?]string{"lazy", "login", "helpers"}
-
 // zsh/bash: write core.<ext> — the ONE generated file init.<ext> sources —
 // and path_sync.<ext> (re-read by the live PATH sync prompt hook). An
 // existing turbo.<ext> gets the same content (`wayu export --turbo`).
@@ -967,13 +951,6 @@ generate_core_init_v2 :: proc() {
 
 	turbo := fmt.tprintf("%s/turbo.%s", wayu.data, shell_ext)
 	if os.exists(turbo) { write_turbo_file(turbo, content) }
-
-	for base in OBSOLETE_SPLIT_FILES {
-		f := fmt.tprintf("%s/%s.%s", wayu.data, base, shell_ext)
-		if os.exists(f) { os.remove(f) }
-		zwc := fmt.tprintf("%s.zwc", f)
-		if os.exists(zwc) { os.remove(zwc) }
-	}
 }
 
 // core.<ext> for zsh/bash (OKAMI-284). Everything is precomputed at build

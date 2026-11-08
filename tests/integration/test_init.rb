@@ -366,7 +366,7 @@ class InitIntegrationTest
     home, cfg, env = generate_tricky(shell)
     core = File.read("#{cfg}/core.#{shell}")
     all = %w[init core].map { |b| File.exist?("#{cfg}/#{b}.#{shell}") ? File.read("#{cfg}/#{b}.#{shell}") : '' }.join("\n")
-    # OKAMI-284: the old split files are gone (their content is in core).
+    # OKAMI-284: core holds everything; no split files are generated.
     split_left = %w[lazy helpers login].select { |b| File.exist?("#{cfg}/#{b}.#{shell}") }
     plugins_ok = core.include?("#{cfg}/plugins.#{shell}\" ]; then source")
     extra_count = all.scan(/source "[^"]*extra\.#{shell}"/).size
@@ -391,13 +391,13 @@ class InitIntegrationTest
     end
   end
 
-  # Existing users: an untouched init.zsh written by an older wayu (4.4.5
-  # template) is rewritten on regen, after a backup of the old file.
+  # An untouched init.zsh written from the previous template
+  # (fixtures/init-prev.zsh) is rewritten on regen, after a backup of it.
   def test_stale_init_is_resynced
     print "Test: stale init.zsh is rewritten on regeneration (with backup)... "
     _, cfg, env = generate_tricky('zsh')
     init = "#{cfg}/init.zsh"
-    old = File.read(File.join(__dir__, 'fixtures', 'init-4.4.5.zsh'))
+    old = File.read(File.join(__dir__, 'fixtures', 'init-prev.zsh'))
     File.write(init, old)
     _, err, = Open3.capture3(env, "#{@wayu_bin} alias add zz 'echo hi'")
     body = File.read(init)

@@ -331,7 +331,7 @@ class WriteIntegrityIntegrationTest
     init = "#{@data_dir}/init.zsh"
     real = "#{@tmp_home}/dotfiles/init.zsh"
     FileUtils.mkdir_p(File.dirname(real))
-    old = File.read(File.join(__dir__, 'fixtures', 'init-4.4.5.zsh'))
+    old = File.read(File.join(__dir__, 'fixtures', 'init-prev.zsh'))
     File.write(real, old)
     FileUtils.rm_f(init)
     File.symlink(real, init)
