@@ -149,6 +149,9 @@ test_plugins_json_rejects_bad_fields :: proc(t: ^testing.T) {
 		`{"plugins":[{"name":"p","url":"https://h/p.git","shell":9}]}`,
 		`{"plugins":[{"name":"p","url":"https://h/p.git","template":"Run"}]}`,
 		`{"plugins":[{"name":"p","url":"https://h/p.git","installed_path":"-rf"}]}`,
+		// A newline would break out of the loader's "# missing deps" comment.
+		`{"plugins":[{"name":"p","url":"https://h/p.git","dependencies":["x\necho PWNED"]}]}`,
+		`{"plugins":[{"name":"p","url":"https://h/p.git","dependencies":["../x"]}]}`,
 	}
 	for doc in bad {
 		write_plugins_json(doc)
@@ -281,6 +284,30 @@ test_update_never_resets_dirty_checkout :: proc(t: ^testing.T) {
 
 	data, rerr := os.read_entire_file(fmt.tprintf("%s/p.plugin.zsh", dest), context.temp_allocator)
 	testing.expect(t, rerr == nil && strings.contains(string(data), "local"), "local edit must survive")
+}
+
+// A clean checkout with a local commit cannot be fast-forwarded either, but
+// resetting it would silently drop that commit.
+@(test)
+test_update_never_resets_local_commits :: proc(t: ^testing.T) {
+	root, origin, oc, od := setup_sandbox()
+	defer teardown_sandbox(root, oc, od)
+
+	dest := fmt.tprintf("%s/wayu/plugins/p", root)
+	testing.expect(t, wayu.git_clone(fmt.tprintf("file://%s", origin), dest), "clone")
+	testing.expect(t, sh("echo local >> %s/p.plugin.zsh && git -C %s commit -q -am local", dest, dest), "local commit")
+	testing.expect(t, sh("echo two >> %s/p.plugin.zsh && git -C %s commit -q -am two", origin, origin), "upstream commit")
+
+	before := git_head(dest)
+	defer delete(before)
+	result, err := wayu.git_update(dest, "master")
+	defer delete(err)
+	testing.expect_value(t, result, wayu.GitUpdateResult.Failed)
+	testing.expect(t, strings.contains(err, "local commits"), "failure must explain why")
+
+	after := git_head(dest)
+	defer delete(after)
+	testing.expect_value(t, after, before)
 }
 
 @(test)

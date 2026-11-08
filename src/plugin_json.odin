@@ -423,6 +423,13 @@ validate_plugin_config_entries :: proc(config: ^PluginConfigJSON) -> string {
 				return fmt.tprintf("%s: installed_path contains control characters", label)
 			}
 		}
+		// Dependency names are written into comments of the generated loader;
+		// a newline in one would turn the rest of it into shell code.
+		for dep in p.dependencies {
+			if !is_valid_plugin_name(dep) {
+				return fmt.tprintf("%s: invalid dependency name %q", label, dep)
+			}
+		}
 		refs := [?]struct{field: string, value: string}{
 			{"git.branch", p.git.branch},
 			{"git.tag", p.git.tag},

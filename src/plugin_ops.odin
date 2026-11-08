@@ -99,8 +99,9 @@ GitUpdateResult :: enum {
 // 2. git merge --ff-only FETCH_HEAD          — the normal case
 // 3. ff impossible (upstream force-pushed / rewrote history): reset --hard to
 //    FETCH_HEAD, but ONLY for a clean checkout that wayu owns. A symlinked
-//    plugin dir (a user's working copy) or one with local modifications is
-//    never reset — the update fails with an explanation instead.
+//    plugin dir (a user's working copy), one with local modifications, or one
+//    whose HEAD has commits that were never on the remote is never reset —
+//    the update fails with an explanation instead.
 //
 // Git's stderr is returned on failure. err_text is ALLOCATED (possibly
 // empty) — caller must delete. Not called in dry-run.
@@ -109,6 +110,12 @@ git_update :: proc(plugin_dir: string, branch: string) -> (result: GitUpdateResu
 	if strings.has_prefix(ref, "-") {
 		return .Failed, fmt.aprintf("invalid branch name '%s'", branch)
 	}
+
+	// Before the fetch moves the remote-tracking ref: is every commit of HEAD
+	// already on the remote? If not, the checkout has local commits and a
+	// reset would discard them. Any git error also counts as "not safe".
+	tracking := ref == "HEAD" ? "refs/remotes/origin/HEAD" : fmt.tprintf("refs/remotes/origin/%s", ref)
+	head_on_remote := run_command([]string{"git", "-C", plugin_dir, "merge-base", "--is-ancestor", "HEAD", tracking})
 
 	fetched, fetch_err := run_command_capture_stderr([]string{"git", "-C", plugin_dir, "fetch", "--quiet", "origin", ref})
 	if !fetched {
@@ -130,6 +137,9 @@ git_update :: proc(plugin_dir: string, branch: string) -> (result: GitUpdateResu
 	defer delete(dirty)
 	if len(dirty) > 0 {
 		return .Failed, strings.clone("checkout has local modifications and cannot be fast-forwarded; commit/discard them or reinstall the plugin")
+	}
+	if !head_on_remote {
+		return .Failed, strings.clone("checkout has local commits that are not on the remote and cannot be fast-forwarded; push/rebase them or reinstall the plugin")
 	}
 
 	reset, reset_err := run_command_capture_stderr([]string{"git", "-C", plugin_dir, "reset", "--hard", "--quiet", "FETCH_HEAD"})
