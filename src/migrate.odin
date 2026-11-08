@@ -21,7 +21,6 @@ import "core:mem/virtual"
 import "core:os"
 import "core:slice"
 import "core:strings"
-import "core:strconv"
 handle_migrate_command :: proc(args: []string) {
 	// Three flows: --schema (toml schema upgrade), --from/--to (shell
 	// migration), or no flag (legacy shell-files → wayu.toml). Global flags

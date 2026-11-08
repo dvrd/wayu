@@ -1,7 +1,6 @@
 // init_generator.odin - Optimized shell init file generation
 package wayu
 import "base:runtime"
-import "core:c/libc"
 import "core:fmt"
 import "core:hash"
 import "core:mem/virtual"

@@ -1,6 +1,5 @@
 package wayu
 
-import "core:fmt"
 import "core:time"
 import "core:strings"
 

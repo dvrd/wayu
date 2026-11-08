@@ -4,8 +4,6 @@ import "core:os"
 import "core:strings"
 import "core:slice"
 import "core:strconv"
-import "core:sync"
-import "core:encoding/json"
 import "core:path/filepath"
 // ── Network git ─────────────────────────────────────────────────────────
 // Every git command that talks to a remote (clone, fetch, ls-remote) goes

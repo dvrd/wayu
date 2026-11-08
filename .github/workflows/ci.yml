@@ -148,7 +148,7 @@ jobs:
     - name: Build with warnings as errors
       run: |
         mkdir -p bin
-        odin build src -out:bin/wayu -warnings-as-errors -o:speed
+        odin build src -out:bin/wayu -vet -warnings-as-errors -o:speed
 
   release-check:
     name: Release Readiness

@@ -331,8 +331,8 @@ tp_statement_failed :: proc(p: ^TomlParser, sline: int, msg: string, multiline: 
 
 	// Rewind to the start of the statement's line, then skip that line.
 	pos := 0
-	for l := 0; l < sline && pos < len(p.src); pos += 1 {
-		if p.src[pos] == '\n' { l += 1 }
+	for row := 0; row < sline && pos < len(p.src); pos += 1 {
+		if p.src[pos] == '\n' { row += 1 }
 	}
 	if nl := strings.index_byte(p.src[pos:], '\n'); nl >= 0 {
 		p.pos = pos + nl + 1

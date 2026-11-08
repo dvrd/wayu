@@ -573,6 +573,7 @@ handle_toml_keys :: proc() {
 
 	// Parse TOML to check it's valid
 	config, ok := toml_read_file(toml_file)
+	defer if ok do cleanup_toml_config(&config)
 	if !ok {
 		fmt.eprintfln("Failed to parse TOML file: %s", toml_file)
 		os.exit(EXIT_DATAERR)

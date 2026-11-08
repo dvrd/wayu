@@ -2,10 +2,7 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:slice"
-import "core:sync"
 import "core:strconv"
-import "core:encoding/json"
 handle_plugin_check :: proc(args: []string) {
 	// Hold the config lock across read-modify-write of plugins.json so
 	// concurrent wayu runs cannot drop each other's changes.
@@ -407,8 +404,6 @@ PLUGIN_VERBS := [2]PluginVerbForms{
 handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	v := PLUGIN_VERBS[enable ? 1 : 0]
 	action_word     := v.word
-	action_word_cap := v.Word
-	action_ing      := v.ing
 	action_past     := v.past
 	header_text     := v.header
 
