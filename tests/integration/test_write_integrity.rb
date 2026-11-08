@@ -169,7 +169,9 @@ class WriteIntegrityIntegrationTest
     File.chmod(0o600, real)
 
     _, status = run_wayu("const add MODE_TEST 1")
-    leftovers = Dir.children(@config_dir).select { |f| f.include?('.tmp.') } +
+    # `*.<pid>.tmp.zwc` is the background zcompile's digest, renamed into
+    # place when it finishes (not a write left behind by this command).
+    leftovers = Dir.children(@config_dir).select { |f| f.include?('.tmp.') && !f.end_with?('.tmp.zwc') } +
                 Dir.children(File.dirname(real)).select { |f| f.include?('.tmp.') }
     check("Test 6: symlinked wayu.toml stays a symlink, mode kept, no temp files",
           status.success? && File.symlink?(@toml_file) &&
