@@ -6,6 +6,81 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 
+## [5.0.0] - 2026-11-08
+
+### ⚠ Upgrade notes
+
+- **doctor**: `wayu doctor` now exits 78 when any check reports an
+error (was always 0). `wayu doctor --fix` requires --yes (or --dry-run)
+and exits 64 without it. `doctor --fix` no longer installs wayu into
+/usr/local/bin or generates turbo.zsh; a missing turbo.zsh is no longer
+reported unless a startup file sources it. `doctor --json` now prints
+JSON (combining it with --fix exits 64). `doctor --optimize` was
+removed (exits 64); use `wayu export` for a single-file init. With
+ZDOTDIR set, `wayu init` writes to $ZDOTDIR/.zshrc.
+- **prompt**: `$(...)`, backticks, `$VAR` and quotes in [prompt]
+values (format, symbols, contexts, rprompt_format) are printed as typed
+instead of being executed/expanded. Prompt `%` escapes and wayu's module
+variables still work. Keybinding values containing `'` are now quoted
+literally.
+- **prompt**: The native wayu prompt, its vi keymap/KEYTIMEOUT,
+zle widgets and precmd hooks are off by default. To keep them, add to
+- **plugin**: Plugin rm on a symlinked plugin removes only the link.
+Invalid plugins.json entries make plugin commands exit 78; enums are
+stored as names ("shell": "ZSH"). http:// and git:// plugin URLs are
+refused (exit 65). plugin check exits 74 when any remote cannot be read.
+plugin update resets clean checkouts after upstream force-pushes and
+refuses dirty/symlinked ones. See docs/UPGRADING.md "Unreleased".
+- **migrate**: `wayu migrate` is now all-or-nothing. If any legacy line
+cannot be converted exactly, or an entry fails validation, it lists the
+lines and exits 65 without writing wayu.toml or archiving anything
+(including with --dry-run). Previously such lines were silently dropped
+and the files archived. Move kept shell code to extra.<ext> or rewrite
+it, then re-run. `wayu migrate --from X --to Y` now requires wayu.toml
+(exit 78 otherwise; run `wayu --shell X migrate` first), updates
+[shell] type, and generates init/core files for the target shell instead
+of writing translated aliases/constants/path/init/tools.<ext> copies.
+- **completions**: `wayu completions generate|zsh|bash|fish` output changed:
+all commands and parser aliases are completed; bash no longer offers the
+same action list for every command.
+- **init**: [aliases] are defined after plugins/lazy/tools/extra, so
+functions there no longer expand wayu aliases in their bodies. nvm's
+default node may change (highest matching version, aliases followed).
+zsh may delete and rebuild ~/.zcompdump when wayu's completions change.
+An edited init.<ext> is no longer replaced; move it aside and run
+`wayu init` to adopt a new template. See docs/UPGRADING.md.
+- **cli**: Unknown options now exit 64 instead of being ignored.
+A trailing --dry-run/--yes/--json/--no-color on `alias add`/`const add`
+is a flag; put `--` before the value to keep it (`wayu alias add hd --
+helm install --dry-run`).
+- **hooks**: A placeholder inside single quotes in hooks.conf is no
+longer substituted by wayu; it is passed to an inner shell as
+"$WAYU_HOOK_*". Use double quotes for direct substitution. pre_* hooks
+no longer run for invalid, missing or no-op operations.
+- **backup**: Only the newest 5 backups per file survive any write;
+a command makes one backup per file; a default `backup restore` skips
+[pre-restore] snapshots (undo a restore with `backup restore <type> 1`).
+- **export**: `export --eval/--check` no longer write the turbo file;
+`export --check` exits 78 when stale; `export list` no longer generates;
+unknown export modes / build targets and fish exports exit 64.
+
+### Added
+
+- **prompt**: Make the native zsh prompt opt-in via [prompt] enabled
+
+### Fixed
+
+- **doctor**: Real --json, safe --fix, exit status, startup-file detection
+- **watch**: Free watcher temp allocator each poll; drop pid file on signal
+- **prompt**: Keep [prompt] text literal; private async temp dir
+- **plugin**: Harden plugin rm, plugins.json, check/update, URLs
+- **migrate**: Exact shell parsing, all-or-nothing import, rebuild on shell switch
+- **completions**: Generate wayu's completions from one command table
+- **init**: Robust generated shell, nvm resolution, compdump refresh, keep edited init
+- **cli**: Reject unknown flags; trailing --dry-run on add is a flag
+- **hooks**: No value splicing into nested shells; no phantom pre-hooks
+- **backup**: Prune to 5 on every write; restore can pick a backup
+- **export**: Parse --eval/--check/--turbo; refuse fish; honest help
 ## [4.4.5] - 2026-11-07
 
 ### Fixed
@@ -647,6 +722,7 @@ Major version bump to 2.0.0 due to multi-shell architecture changes.
 ### Changed
 
 - Clean up code and improve error handling
+[5.0.0]: https://github.com/dvrd/wayu/releases/tag/v5.0.0
 [4.4.5]: https://github.com/dvrd/wayu/releases/tag/v4.4.5
 [4.4.4]: https://github.com/dvrd/wayu/releases/tag/v4.4.4
 [4.4.3]: https://github.com/dvrd/wayu/releases/tag/v4.4.3
