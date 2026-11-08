@@ -60,6 +60,8 @@ class PluginIntegrationTest
       test_rm_empty_name_never_wipes_root
       test_update_all_failure_exit_code
       test_update_respects_pinned_ref
+      test_name_miss_never_acts_on_fuzzy_guess
+      test_exact_name_still_works
     ensure
       teardown_test_env
     end
@@ -1382,7 +1384,7 @@ class PluginIntegrationTest
   end
 
   def test_ambiguous_fuzzy_does_not_block
-    print "Test 32: ambiguous fuzzy name with non-TTY stdin fails fast (exit 65)... "
+    print "Test 32: non-exact name with non-TTY stdin fails fast (exit 65)... "
     a = "#{@plugins_dir}/zsh-autosuggestions"; b = "#{@plugins_dir}/zsh-autocomplete"
     FileUtils.mkdir_p(a); FileUtils.mkdir_p(b)
     seed_plugins([plugin_entry("zsh-autosuggestions", a, enabled: false),
@@ -1448,6 +1450,78 @@ class PluginIntegrationTest
     git = JSON.parse(File.read("#{@data_dir}/plugins.json"))["plugins"][0]["git"]
     ok = status.exitstatus == 0 && git["tag"] == "v1.0.0" && git["pinned_ref"] == "v1.0.0"
     check("pinned plugin was updated or lost its pin", ok, output, status)
+  end
+
+  # stdout and stderr kept apart (run_wayu merges them).
+  def run_wayu_split(args)
+    env = ENV.to_h.merge('HOME' => @tmp_home)
+    project_root = File.expand_path('../..', __dir__)
+    out, err, status = Open3.capture3(env, "#{@wayu_bin} #{args}", chdir: project_root)
+    [out.force_encoding('UTF-8'), err.force_encoding('UTF-8'), status]
+  end
+
+  # Seeds one plugin "origin" backed by a real clone of a local repo, so
+  # `plugin update origin` works offline.
+  def seed_origin_plugin
+    remote = "#{@tmp_home}/origin-remote"
+    dir = "#{@plugins_dir}/origin"
+    FileUtils.rm_rf([remote, dir])
+    git_env = { "GIT_AUTHOR_NAME" => "t", "GIT_AUTHOR_EMAIL" => "t@t", "GIT_COMMITTER_NAME" => "t", "GIT_COMMITTER_EMAIL" => "t@t" }
+    system(git_env, "git", "init", "-q", "-b", "main", remote)
+    File.write("#{remote}/origin.plugin.zsh", "# origin\n")
+    system(git_env, "git", "-C", remote, "add", ".")
+    system(git_env, "git", "-C", remote, "commit", "-q", "-m", "init")
+    system(git_env, "git", "clone", "-q", "file://#{remote}", dir)
+    entry = plugin_entry("origin", dir)
+    entry["url"] = "file://#{remote}"
+    seed_plugins([entry])
+  end
+
+  def test_name_miss_never_acts_on_fuzzy_guess
+    print "Test 37: 'rig' with only 'origin' installed: every name subcommand exits 65, suggests, changes nothing... "
+    seed_origin_plugin
+    before = File.read("#{@data_dir}/plugins.json")
+    FileUtils.rm_rf("#{@data_dir}/backup")
+
+    failures = []
+    ["disable rig", "enable rig", "priority rig 5", "update rig", "get rig", "rm rig --yes"].each do |cmd|
+      out, err, status = run_wayu_split("plugin #{cmd}")
+      ok = status.exitstatus == 65 && out.empty? &&
+           err.include?("Plugin not found: rig") && err.include?("Did you mean") && err.include?("origin")
+      failures << "#{cmd}: exit=#{status.exitstatus} stdout=#{out.inspect} stderr=#{err.inspect}" unless ok
+    end
+    unchanged = File.read("#{@data_dir}/plugins.json") == before && backup_files.empty? &&
+                Dir.exist?("#{@plugins_dir}/origin")
+    failures << "plugins.json/backup/dir changed" unless unchanged
+
+    # No plugins at all: a named update/rm is still a miss, not "nothing to do".
+    seed_plugins([])
+    ["update rig", "rm rig --yes"].each do |cmd|
+      out, err, status = run_wayu_split("plugin #{cmd}")
+      failures << "empty #{cmd}: exit=#{status.exitstatus} stdout=#{out.inspect}" unless status.exitstatus == 65 && out.empty?
+    end
+    check("fuzzy miss acted or wrong report", failures.empty?, failures.join("\n  "), nil)
+  end
+
+  def test_exact_name_still_works
+    print "Test 38: exact name works for disable/enable/priority/get/update/rm... "
+    seed_origin_plugin
+    cfg = -> { JSON.parse(File.read("#{@data_dir}/plugins.json"))["plugins"] }
+    failures = []
+
+    out, st = run_wayu("plugin disable origin")
+    failures << "disable: #{out}" unless st.exitstatus == 0 && out.include?("origin") && cfg.call[0]["enabled"] == false
+    out, st = run_wayu("plugin enable origin")
+    failures << "enable: #{out}" unless st.exitstatus == 0 && cfg.call[0]["enabled"] == true
+    out, st = run_wayu("plugin priority origin 5")
+    failures << "priority: #{out}" unless st.exitstatus == 0 && out.include?("'origin'") && cfg.call[0]["priority"] == 5
+    out, st = run_wayu("--dry-run plugin get origin") # dry-run: no clipboard write
+    failures << "get: #{out}" unless st.exitstatus == 0 && out.include?("origin")
+    out, st = run_wayu("plugin update origin")
+    failures << "update: #{out}" unless st.exitstatus == 0
+    out, st = run_wayu("plugin rm origin --yes")
+    failures << "rm: #{out}" unless st.exitstatus == 0 && cfg.call.empty?
+    check("exact name failed", failures.empty?, failures.join("\n  "), nil)
   end
 
 end
