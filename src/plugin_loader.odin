@@ -381,18 +381,18 @@ get_plugin_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> 
 		defer delete(conf_d)
 		if os.is_dir(conf_d) {
 			glob := []string{"*.fish"}
-			for f in match_files_with_globs(conf_d, glob) {
-				append(&auto_files, f)
-			}
+			found := match_files_with_globs(conf_d, glob)
+			defer delete(found) // strings move into auto_files
+			append(&auto_files, ..found)
 		}
 
 		funcs := fmt.aprintf("%s/functions", plugin.installed_path)
 		defer delete(funcs)
 		if os.is_dir(funcs) {
 			glob := []string{"*.fish"}
-			for f in match_files_with_globs(funcs, glob) {
-				append(&auto_files, f)
-			}
+			found := match_files_with_globs(funcs, glob)
+			defer delete(found) // strings move into auto_files
+			append(&auto_files, ..found)
 		}
 	}
 
