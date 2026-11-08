@@ -52,6 +52,8 @@ class GeneratedShellTest
       test_evalcache_binary_identity
       test_tools_args_never_run_code
       test_prompt_survives_hostile_commands
+      test_prompt_vi_mode_and_widgets
+      test_prompt_git_branch_without_git
     ensure
       teardown_test_env
     end
@@ -102,7 +104,8 @@ class GeneratedShellTest
     print -r -- "node=$(node 2>&1) myfn=$(myfn 2>&1) extra=${EXTRA_LOADED-} nvm=${+functions[nvm]} sdk=${+functions[sdk]} conda=${+functions[conda]} comp=${_comps[wayu]-none}"
   SH
 
-  # Every option/alias combination must source init.zsh without a single
+  # error line and leave functions/, extra, lazy wrappers and completions set up
+  # (interactive: compinit runs in interactive shells only, OKAMI-284).
   # error line and leave functions/, extra, lazy wrappers and completions set up.
   def test_zsh_hostile_environments
     _, cfg, env = setup_home('zsh_hostile', 'zsh')
@@ -117,7 +120,7 @@ class GeneratedShellTest
     pres.each do |name, pre|
       print "Test: zsh init sources cleanly under #{name}... "
       script = "#{pre}\nsource '#{cfg}/init.zsh'\n#{ZSH_PROBE}"
-      out, err, st = Open3.capture3(env, 'zsh', '-f', '-c', script)
+      out, err, st = Open3.capture3(env, 'zsh', '-f', '-i', '-c', script)
       want_node = pre.include?('node=false') ? '' : 'v20.18.0'
       want = "node=#{want_node} myfn=myfn-ok extra=1 nvm=1 sdk=1 conda=1 comp=_wayu"
       check(name, bad.empty? && st.success? && err.strip.empty? && out.strip == want,
@@ -184,13 +187,13 @@ class GeneratedShellTest
           "out=#{out.strip.inspect} err=#{err.strip[0, 300]}")
   end
 
-  # `compinit -C` used to keep a stale .zcompdump forever: a completion added
+  # with `wayu completions add` must be active in the next (interactive) shell.
   # with `wayu completions add` must be active in the next shell.
   def test_compinit_picks_up_new_completions
     print "Test: completions added by wayu reach the next zsh (dump refreshed)... "
     home, cfg, env = setup_home('compdump', 'zsh')
     probe = "source '#{cfg}/init.zsh'; print -r -- \"${_comps[foocmd]-none}\""
-    first, = Open3.capture3(env, 'zsh', '-f', '-c', probe)
+    first, = Open3.capture3(env, 'zsh', '-f', '-i', '-c', probe)
     dump_ok = File.exist?("#{home}/.zcompdump")
     src = "#{home}/_foocmd"
     File.write(src, "#compdef foocmd\n_foocmd() { _files }\n")
@@ -199,8 +202,8 @@ class GeneratedShellTest
     # seconds, so pin both mtimes to one second; the listing must still win.
     t = File.mtime("#{home}/.zcompdump")
     File.utime(t, t, "#{cfg}/completions")
-    second, err, = Open3.capture3(env, 'zsh', '-f', '-c', probe)
-    third, = Open3.capture3(env, 'zsh', '-f', '-c', probe)
+    second, err, = Open3.capture3(env, 'zsh', '-f', '-i', '-c', probe)
+    third, = Open3.capture3(env, 'zsh', '-f', '-i', '-c', probe)
     check('compdump', dump_ok && first.strip == 'none' && second.strip == '_foocmd' && third.strip == '_foocmd',
           "dump=#{dump_ok} first=#{first.strip} second=#{second.strip} third=#{third.strip} err=#{err.strip[0, 200]}")
   end
@@ -424,7 +427,7 @@ class GeneratedShellTest
       bout, berr, bst = Open3.capture3(env, @wayu_bin, 'build')
       bout += berr
       Open3.capture3(env, @wayu_bin, 'const', 'add', 'ARGS_PROBE', '1') # silent regeneration
-      lazy = File.read("#{cfg}/lazy.zsh")
+      lazy = File.read("#{cfg}/core.zsh")
       Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-c', "source '#{cfg}/init.zsh'")
       ok = bst.exitstatus == 78 && bout.include?('argtool') && !lazy.include?('_wayu_evalcache argtool') && !File.exist?(pwn)
       check("args refused #{args.inspect}", ok,
@@ -457,11 +460,80 @@ class GeneratedShellTest
     funcs = 'git() { echo HIJACK; }; awk() { echo HIJACK; }; sed() { echo HIJACK; }'
     script = "#{hostile}\nsource '#{cfg}/init.zsh'\n#{funcs}\ncd '#{home}/repo'\n_wayu_update_git_info\n" \
              "print -r -- \"$(_wayu_prompt_full)\"\nprint -r -- \"ver=$(_wayu_version_cmd golang)\""
-    out, err, st = Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-c', script)
+    out, err, st = Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-i', '-c', script)
     lines = out.lines.map(&:strip)
     ok = st.success? && err.strip.empty? && lines[0].to_s.include?('hostile-br') && !out.include?('HIJACK') &&
          lines[1] == 'ver=1.23.4'
     check('prompt hostile', ok, "out=#{out.inspect} err=#{err.strip[0, 400]}")
+  end
+
+  # OKAMI-285: the native prompt leaves the keymap alone unless
+  # `[prompt] vi_mode = true`; then zle-line-init / zle-keymap-select are
+  # chained to widgets that already exist (not replaced), KEYTIMEOUT is not
+  # exported, and re-sourcing doesn't chain wayu's widget to itself.
+  def test_prompt_vi_mode_and_widgets
+    [[false, 'emacs'], [true, 'viins']].each do |vi, keymap|
+      print "Test: native prompt with vi_mode=#{vi}: keymap #{keymap}, widgets chained... "
+      home = "#{@tmp_home}/prompt_vi_#{vi}"
+      FileUtils.rm_rf(home)
+      FileUtils.mkdir_p("#{home}/.config")
+      # zsh picks the vi keymap itself when $EDITOR/$VISUAL mention vi.
+      env = clean_env(home, 'EDITOR' => nil, 'VISUAL' => nil, 'KEYTIMEOUT' => nil)
+      Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+      cfg = "#{home}/.config/wayu"
+      File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") +
+                 "\n[prompt]\nenabled = true\n#{vi ? "vi_mode = true\n" : ''}")
+      Open3.capture3(env, @wayu_bin, 'build')
+      script = <<~SH
+        my_line_init() { MY_INIT=1; }
+        zle -N zle-line-init my_line_init
+        source '#{cfg}/init.zsh'
+        source '#{cfg}/init.zsh'
+        print -r -- "map=$(bindkey -lL main) kt=${(t)KEYTIMEOUT}:$KEYTIMEOUT li=${widgets[zle-line-init]} prev=${widgets[_wayu_prev_zle-line-init]-none} prevprev=${widgets[_wayu_prev__wayu_prev_zle-line-init]-none}"
+      SH
+      out, err, st = Open3.capture3(env, 'zsh', '-f', '-i', '-c', script)
+      want = if vi
+               "map=bindkey -A viins main kt=integer:1 li=user:_wayu_zle_line_init prev=user:my_line_init prevprev=none"
+             else
+               "map=bindkey -A emacs main kt=integer:40 li=user:my_line_init prev=none prevprev=none"
+             end
+      check("vi_mode=#{vi}", st.success? && err.strip.empty? && out.strip == want,
+            "out=#{out.strip.inspect} want=#{want.inspect} err=#{err.strip[0, 300]}")
+    end
+  end
+
+  # OKAMI-285: the git segment reads the branch without running git (a
+  # `git` that fails proves it): subdirectories, detached HEAD (short id),
+  # `git worktree` checkouts (.git file) and leaving the repo.
+  def test_prompt_git_branch_without_git
+    print "Test: native prompt git branch is read without forking git... "
+    home = "#{@tmp_home}/prompt_git"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/bin"])
+    env = clean_env(home)
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    cfg = "#{home}/.config/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[prompt]\nenabled = true\n")
+    Open3.capture3(env, @wayu_bin, 'build')
+    git_env = clean_env(home, 'GIT_CONFIG_NOSYSTEM' => '1')
+    g = ->(*a) { Open3.capture3(git_env, 'git', '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', *a) }
+    g.call('init', '-q', '-b', 'main-br', "#{home}/repo")
+    g.call('-C', "#{home}/repo", 'commit', '-q', '--allow-empty', '-m', 'one')
+    FileUtils.mkdir_p("#{home}/repo/sub/deep")
+    g.call('-C', "#{home}/repo", 'worktree', 'add', '-q', '-b', 'wt-br', "#{home}/wt")
+    sha, = g.call('-C', "#{home}/repo", 'rev-parse', 'HEAD')
+    File.write("#{home}/bin/git", "#!/bin/sh\necho GIT-RAN >&2\nexit 1\n")
+    File.chmod(0o755, "#{home}/bin/git")
+    script = <<~SH
+      source '#{cfg}/init.zsh'
+      for d in repo/sub/deep wt . ; do cd "$HOME/$d"; _wayu_update_git_info; print -rn -- "[$_WAYU_GIT_BRANCH|${_WAYU_GIT_DIR:t}]"; done
+      print -r -- '#{sha.strip}' > "$HOME/repo/.git/HEAD"
+      cd "$HOME/repo"; _wayu_update_git_info; print -r -- "[$_WAYU_GIT_BRANCH]"
+    SH
+    out, err, = Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-i', '-c', script)
+    want = "[main-br|repo][wt-br|wt][|][#{sha.strip[0, 7]}]"
+    check('git branch', out.strip == want && !err.include?('GIT-RAN'),
+          "out=#{out.strip.inspect} want=#{want.inspect} err=#{err.strip[0, 300]}")
   end
 
   # `wayu init` on a fresh HOME used to print "ERROR: File not found:

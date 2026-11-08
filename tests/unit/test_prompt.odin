@@ -60,7 +60,7 @@ rprompt_format = '[{git_pending} $(id)](242)'
 	code := wayu.generate_interactive_prompt("", icfg)
 	defer delete(code)
 
-	testing.expect(t, strings.contains(code, `bindkey -M viins '^X'\''; touch pwn; '\''' _wayu_toggle_prompt`), "toggle key single-quoted")
+	testing.expect(t, strings.contains(code, `bindkey -M emacs '^X'\''; touch pwn; '\''' _wayu_toggle_prompt`), "toggle key single-quoted")
 	testing.expect(t, strings.contains(code, `git_pending="%F{242}${git_pending} \$(id)%f"`), "rprompt text escaped, token kept")
 }
 
@@ -89,7 +89,7 @@ test_prompt_toggle_keymap :: proc(t: ^testing.T) {
 		testing.expect(t, !strings.contains(code, "_wayu_toggle_prompt"), "toggle disabled by default")
 	}
 	{
-		icfg := wayu.parse_interactive_config("[prompt.interactive]\ntoggle_enabled = true\n")
+		icfg := wayu.parse_interactive_config("[prompt]\nvi_mode = true\n\n[prompt.interactive]\ntoggle_enabled = true\n")
 		code := wayu.generate_interactive_prompt("", icfg)
 		defer delete(code)
 		vi := strings.index(code, "bindkey -v")
@@ -145,7 +145,7 @@ test_prompt_external_commands_use_command :: proc(t: ^testing.T) {
 	for bad in ([]string{"(git ", "| awk ", "| sed ", "| head ", "| wc ", "| tr ", "$(mktemp ", "    rm -", "&& rm ", "|| ip ", "$(ipconfig "}) {
 		testing.expectf(t, !strings.contains(code, bad), "bare external command %q in prompt code", bad)
 	}
-	testing.expect(t, strings.contains(code, "$(command git rev-parse"), "git via command")
+	testing.expect(t, !strings.contains(code, "git rev-parse"), "branch read without forking git (OKAMI-285)")
 	testing.expect(t, strings.contains(code, "command go version 2>/dev/null | command awk '{print $3}' | command sed 's/go//'"), "version pipeline via command")
 }
 
@@ -216,4 +216,45 @@ format = "ignored"
 	testing.expect_value(t, len(go_detect), 1)
 	if len(go_detect) == 1 { testing.expect_value(t, go_detect[0], "go.work") }
 	testing.expect_value(t, len(cfg.context_detects["rust"]), 1)
+}
+
+// OKAMI-285: vi mode is opt-in ([prompt] vi_mode = true); without it the
+// prompt never touches the keymap or KEYTIMEOUT. With it, zle-line-init and
+// zle-keymap-select are chained to existing widgets, not replaced.
+@(test)
+test_prompt_vi_mode_opt_in_and_chained :: proc(t: ^testing.T) {
+	{
+		icfg := wayu.parse_interactive_config("[prompt]\nenabled = true\n")
+		code := wayu.generate_interactive_prompt("", icfg)
+		defer delete(code)
+		testing.expect(t, !icfg.vi_mode, "vi_mode defaults to false")
+		testing.expect(t, !strings.contains(code, "bindkey -v"), "keymap untouched by default")
+		testing.expect(t, !strings.contains(code, "KEYTIMEOUT"), "KEYTIMEOUT untouched by default")
+		testing.expect(t, !strings.contains(code, "zle-keymap-select"), "no keymap widget by default")
+		testing.expect(t, strings.contains(code, `typeset -g _WAYU_VI_MODE=""`), "character module follows exit status")
+	}
+	{
+		icfg := wayu.parse_interactive_config("[prompt]\nenabled = true\nvi_mode = true # vi\n")
+		code := wayu.generate_interactive_prompt("", icfg)
+		defer delete(code)
+		testing.expect(t, icfg.vi_mode, "vi_mode = true parsed (inline comment ok)")
+		testing.expect(t, strings.contains(code, "bindkey -v"), "vi keymap")
+		testing.expect(t, strings.contains(code, "KEYTIMEOUT=1") && !strings.contains(code, "export KEYTIMEOUT"), "KEYTIMEOUT set, not exported")
+		testing.expect(t, strings.contains(code, `zle -A "$1" "_wayu_prev_$1"`), "existing widget kept")
+		testing.expect(t, strings.contains(code, "_wayu_zle_chain zle-keymap-select _wayu_zle_keymap_select"), "keymap-select chained")
+		testing.expect(t, strings.contains(code, "_wayu_zle_chain zle-line-init _wayu_zle_line_init"), "line-init chained")
+		testing.expect(t, !strings.contains(code, "zle -N zle-line-init zle-keymap-select"), "no plain replacement")
+	}
+	{
+		icfg := wayu.parse_interactive_config("[prompt]\nvi_mode = true\n\n[prompt.interactive]\nvi_mode_indicator = false\n")
+		code := wayu.generate_interactive_prompt("", icfg)
+		defer delete(code)
+		testing.expect(t, strings.contains(code, "bindkey -v"), "vi keymap without the indicator")
+		testing.expect(t, !strings.contains(code, "_wayu_zle_chain"), "no indicator widgets")
+	}
+	{
+		// sub-table keys don't count as [prompt] keys
+		v, found := wayu.prompt_table_bool("[prompt.interactive]\nvi_mode = true\n", "vi_mode")
+		testing.expect(t, !v && !found, "only keys directly under [prompt]")
+	}
 }

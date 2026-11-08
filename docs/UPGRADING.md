@@ -385,10 +385,24 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   module formats are unchanged.
 - The user name shows only over SSH or as root unless `[prompt.username]
   show_always = true` (the setting was ignored).
+- vi mode is opt-in: the prompt no longer switches the line editor to the
+  vi keymap or sets `KEYTIMEOUT`. **vi users: add `vi_mode = true` under
+  `[prompt]`** to get `bindkey -v`, `KEYTIMEOUT=1` (no longer exported to
+  child processes) and the mode indicator (`[prompt.interactive]
+  vi_mode_indicator = false` keeps the keymap without the indicator).
+  Without vi mode the `{character}` module shows success/error by exit
+  status.
+- `zle-line-init` / `zle-keymap-select` are chained: a widget already
+  installed under that name (yours, a plugin's, another prompt's) is kept as
+  `_wayu_prev_<name>` and runs first; it used to be replaced.
+- The git branch is read without running git (walks up to `.git`, reads
+  `HEAD`; worktrees/submodules and `$GIT_DIR` included; detached HEAD shows
+  the first 7 characters of the commit id) — two `git` processes per prompt
+  are gone. The dirty count is still fetched asynchronously.
 - The prompt toggle is off by default; enable it with `[prompt.interactive]
   toggle_enabled = true`. It is bound after the vi keymap is set up, in
-  `viins` + `vicmd` (or `emacs` with `vi_mode_indicator = false`); it used to
-  land in a keymap that `bindkey -v` then replaced, or steal emacs `^P`.
+  `viins` + `vicmd` with `vi_mode = true`, else in `emacs`; it used to land
+  in a keymap that `bindkey -v` then replaced, or steal emacs `^P`.
 - Prompt code runs `command git` / `awk` / `sed` / …, so user aliases or
   functions with those names no longer change or break it.
 
