@@ -158,14 +158,15 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Setup Odin
+      uses: ./.github/actions/setup-odin
+
+    # README.md + docs/index.html must advertise VERSION from src/main.odin.
+    # bump.yml and ./build_it release run `./build_it docs` to keep them in sync.
     - name: Check version consistency
       run: |
-        VERSION=$(grep '^VERSION ::' src/main.odin | sed 's/VERSION :: "\(.*\)"/\1/')
-        if [ -z "$VERSION" ]; then
-          echo "Could not extract version from src/main.odin"
-          exit 1
-        fi
-        echo "Version: $VERSION"
+        odin build build -out:build_it
+        ./build_it docs --check
 
     - name: Check required files exist
       run: |

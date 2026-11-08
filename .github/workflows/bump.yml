@@ -170,6 +170,18 @@ jobs:
         sed -i "s/VERSION :: \"[^\"]*\"/VERSION :: \"${VERSION_BARE}\"/" src/main.odin
         grep -q "VERSION :: \"${VERSION_BARE}\"" src/main.odin || { echo "::error::VERSION not updated"; exit 1; }
 
+    - name: Setup Odin
+      if: steps.version.outputs.MODE == 'bump'
+      uses: ./.github/actions/setup-odin
+
+    # Same sync ./build_it release does; CI's Release Readiness job fails on drift.
+    - name: Sync README + docs version
+      if: steps.version.outputs.MODE == 'bump'
+      run: |
+        odin build build -out:build_it
+        ./build_it docs
+        ./build_it docs --check
+
     - name: Generate CHANGELOG
       if: steps.version.outputs.MODE == 'bump'
       env:
@@ -197,7 +209,7 @@ jobs:
         else
           # bump: ship commit + tag atomically. If main moved meanwhile the push
           # is rejected and NEITHER ref updates; the run for the new tip retries.
-          git add src/main.odin CHANGELOG.md
+          git add src/main.odin CHANGELOG.md README.md docs/index.html
           git commit -m "chore: release $VERSION"
           git tag "$VERSION"
           git push --atomic origin main "refs/tags/$VERSION"
