@@ -929,15 +929,9 @@ handle_build_command :: proc(action: Action) {
 	// Regenerate the files init.<ext> sources (core/path_sync/lazy/...) for
 	// every initialized shell, so hand edits of wayu.toml take effect (open
 	// shells pick up [paths] at their next prompt via path_sync).
+	// An existing turbo.<ext> is rewritten with core's content along the way.
 	generate_optimized_init_all()
 	fmt.println()
-
-	// Keep an existing turbo export in step; `wayu build turbo` creates it.
-	turbo_path := fmt.aprintf("%s/%s", wayu.data, turbo_export_file_name())
-	defer delete(turbo_path)
-	if os.exists(turbo_path) && wayu.shell != .FISH {
-		handle_export_command(.TURBO, {})
-	}
 }
 // Golden file directory
 GOLDEN_DIR :: "tests/golden"

@@ -206,3 +206,23 @@ test_tool_args_to_shell :: proc(t: ^testing.T) {
 		testing.expectf(t, !ok && len(reason) > 0, "%q must be refused", b)
 	}
 }
+
+// OKAMI-268: fish args are fish-quoted and retargeted to fish.
+@(test)
+test_tool_args_to_fish :: proc(t: ^testing.T) {
+	good := [][2]string{
+		{"init zsh", "'init' 'fish'"},
+		{"--bash", "'--fish'"},
+		{`init bash --cmd 'a b'`, `'init' 'fish' '--cmd' 'a b'`},
+		{`init "it's"`, `'init' 'it\'s'`},
+		{`--config $HOME/x`, `'--config' "$HOME/x"`},
+		{`--config ~/t`, `'--config' "$HOME/t"`},
+		{"", ""},
+	}
+	for c in good {
+		out, reason, ok := wayu.tool_args_to_fish(c[0])
+		testing.expectf(t, ok && out == c[1], "%q -> %q (ok=%v %s), want %q", c[0], out, ok, reason, c[1])
+	}
+	_, reason, ok := wayu.tool_args_to_fish("init $(id)")
+	testing.expectf(t, !ok && len(reason) > 0, "command substitution must be refused")
+}

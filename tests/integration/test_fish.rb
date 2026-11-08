@@ -35,6 +35,7 @@ class FishIntegrationTest
       test_init_fish_prefers_init_core
       test_fish_escaping
       test_all_generated_fish_files_parse
+      test_fish_parity_tools_functions_path_sync
     ensure
       teardown_test_env
     end
@@ -294,6 +295,68 @@ class FishIntegrationTest
       puts "✗"
       puts "  files=#{files.size} bad=#{bad} source_ok=#{st.success?} stderr=#{err.strip[0, 300]}"
       @failed += 1
+    end
+  end
+
+  # OKAMI-268: fish gets what zsh/bash get — [tools] (`<tool> init fish |
+  # source`, cached), functions/, tools.fish before extra.fish, [paths] moved
+  # to the front in order (fish_add_path -gpm), live PATH sync at the next
+  # prompt, and no duplicate fish_complete_path entry on re-source.
+  def test_fish_parity_tools_functions_path_sync
+    print "Test 13: fish [tools], functions/, PATH order + live sync, re-source... "
+    fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
+    unless fish
+      puts "SKIP (fish not installed)"
+      return
+    end
+    home = Dir.mktmpdir('wayu_fish_parity')
+    begin
+      fb = "#{home}/fb"
+      %w[fb p1 p2 p3].each { |d| FileUtils.mkdir_p("#{home}/#{d}") }
+      File.write("#{fb}/faketool", "#!/bin/sh\necho \"set -g FAKE_ARGS '$*'\"\n")
+      File.chmod(0o755, "#{fb}/faketool")
+      env = { 'HOME' => home, 'SHELL' => '/usr/bin/fish', 'XDG_CACHE_HOME' => nil,
+              'PATH' => "#{fb}:/usr/bin:/bin:/usr/sbin:/sbin" }
+      Open3.capture3(env, @wayu_bin, 'init', '--shell', 'fish')
+      cfg = "#{home}/.config/wayu"
+      File.open("#{cfg}/wayu.toml", 'a') do |f|
+        f.puts "\n[paths]\np1 = \"#{home}/p1\"\np2 = \"$HOME/p2\"\nsys = \"/bin\""
+        f.puts "\n[tools]\nfaketool = { args = \"init zsh\" }"
+      end
+      FileUtils.mkdir_p("#{cfg}/functions")
+      File.write("#{cfg}/functions/myfn.fish", "function myfn; echo myfn; end\n")
+      File.write("#{cfg}/tools.fish", "set -g ORDER tools\n")
+      File.write("#{cfg}/extra.fish", "set -a ORDER extra\n")
+      _, berr, bst = Open3.capture3(env, @wayu_bin, 'build')
+      script = <<~FISH
+        source #{cfg}/init.fish
+        source #{cfg}/init.fish
+        echo "path=$PATH[1..3]"
+        echo "args=$FAKE_ARGS"
+        functions -q myfn; and echo myfn-ok
+        echo "order=$ORDER[-2..-1]"
+        echo "compl="(count (string match -- '*/wayu/completions' $fish_complete_path))
+        #{@wayu_bin} path add #{home}/p3 >/dev/null 2>&1
+        emit fish_prompt
+        echo "synced="(contains -i -- #{home}/p3 $PATH)
+      FISH
+      out, err, st = Open3.capture3(env, fish, '--no-config', '-c', script)
+      cache = Dir.glob("#{home}/.cache/wayu/evalcache/fish__faketool*")
+      ok = bst.success? && st.success? && err.strip.empty? &&
+           out.include?("path=#{home}/p1:#{home}/p2:/bin\n") &&
+           out.include?("args=init fish\n") && out.include?("myfn-ok\n") &&
+           out.include?("order=tools extra\n") && out.include?("compl=1\n") &&
+           out.include?("synced=4\n") && cache.size == 1
+      if ok
+        puts "✓"; @passed += 1
+      else
+        puts "✗"
+        puts "  build=#{bst.success?} #{berr.strip[0, 200]} cache=#{cache}"
+        puts "  out=#{out} err=#{err.strip[0, 300]}"
+        @failed += 1
+      end
+    ensure
+      FileUtils.rm_rf(home)
     end
   end
 end

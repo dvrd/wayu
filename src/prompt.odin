@@ -337,10 +337,17 @@ prompt_parse_context_line :: proc(cfg: ^PromptConfigFull, trimmed: string) {
 	}
 }
 
-// The native prompt is opt-in: it (and its vi keymap, zle widgets and precmd
-// hooks) is generated only when wayu.toml has `enabled = true` under [prompt].
+// The native prompt is opt-in: it (and its zle widgets and precmd hooks) is
+// generated only when wayu.toml has `enabled = true` under [prompt].
 // Without it wayu leaves PROMPT, keymaps and zle widgets alone.
 prompt_is_enabled :: proc(toml: string) -> bool {
+	v, _ := prompt_table_bool(toml, "enabled")
+	return v
+}
+
+// `key = true|false` directly under [prompt] (not its sub-tables);
+// found = false when the key is absent.
+prompt_table_bool :: proc(toml: string, key: string) -> (value: bool, found: bool) {
 	it := make_line_iter(toml)
 	in_prompt := false
 	for line in line_iter_next(&it) {
@@ -351,14 +358,14 @@ prompt_is_enabled :: proc(toml: string) -> bool {
 		}
 		if !in_prompt { continue }
 		eq := strings.index_byte(trimmed, '=')
-		if eq <= 0 || strings.trim_space(trimmed[:eq]) != "enabled" { continue }
-		value := strings.trim_space(trimmed[eq+1:])
-		if hash := strings.index_byte(value, '#'); hash >= 0 {
-			value = strings.trim_space(value[:hash])
+		if eq <= 0 || strings.trim_space(trimmed[:eq]) != key { continue }
+		v := strings.trim_space(trimmed[eq+1:])
+		if hash := strings.index_byte(v, '#'); hash >= 0 {
+			v = strings.trim_space(v[:hash])
 		}
-		return value == "true"
+		return v == "true", true
 	}
-	return false
+	return false, false
 }
 
 // Escape `s` for splicing inside a zsh double-quoted string: backslash, `"`,
@@ -503,40 +510,73 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 	}
 }
 
+// _wayu_update_git_info (precmd): sets _WAYU_GIT_BRANCH and _WAYU_GIT_DIR
+// (work tree top, "" when unknown) without forking (OKAMI-285). The git dir
+// is found by walking up from $PWD — a `.git` dir, or a `.git` file
+// "gitdir: ..." (worktrees, submodules); $GIT_DIR wins — and HEAD is read
+// with the `read` builtin: "ref: refs/heads/<branch>", or a commit id when
+// detached (first 7 characters). Only the reftable placeholder HEAD
+// (refs/heads/.invalid) asks git itself. A checkout shows at the next prompt.
+PROMPT_GIT_INFO_ZSH :: `_wayu_update_git_info() {
+  emulate -L zsh
+  local d=$PWD g="" top="" l=""
+  if [[ -n ${GIT_DIR-} ]]; then
+    g=${GIT_DIR:a}
+  else
+    while true; do
+      if [[ -d $d/.git ]]; then
+        g=$d/.git top=$d
+        break
+      elif [[ -f $d/.git ]]; then
+        { read -r l < $d/.git } 2>/dev/null
+        if [[ $l == 'gitdir: '* ]]; then
+          g=${l#gitdir: } top=$d
+          [[ $g == /* ]] || g=$d/$g
+        fi
+        break
+      fi
+      [[ $d == / || -z $d ]] && break
+      d=${d:h}
+    done
+  fi
+  _WAYU_GIT_BRANCH="" _WAYU_GIT_DIR=$top
+  [[ -n $g ]] || return 0
+  l=""
+  { read -r l < $g/HEAD } 2>/dev/null || return 0
+  if [[ $l == 'ref: refs/heads/.invalid' ]]; then
+    _WAYU_GIT_BRANCH="$(command git symbolic-ref --short HEAD 2>/dev/null)"
+  elif [[ $l == 'ref: refs/heads/'* ]]; then
+    _WAYU_GIT_BRANCH=${l#ref: refs/heads/}
+  elif [[ $l == 'ref: '* ]]; then
+    _WAYU_GIT_BRANCH=${l#ref: }
+  else
+    _WAYU_GIT_BRANCH=${l[1,7]}
+  fi
+  return 0
+}
+`
+
 generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
 	
-	fmt.sbprintln(&builder, "# === Wayu Native Prompt (from starship.toml) ===")
+	fmt.sbprintln(&builder, "# --- Wayu Native Prompt (from starship.toml) ---")
 	fmt.sbprintln(&builder)
 	
-	// Variables globales para cachear git info
+	// Git branch for the prompt, without forking (OKAMI-285): see
+	// PROMPT_GIT_INFO_ZSH. The dirty count stays in the async worker.
 	fmt.sbprintln(&builder, "typeset -g _WAYU_GIT_BRANCH=\"\"")
 	fmt.sbprintln(&builder, "typeset -g _WAYU_GIT_DIR=\"\"")
 	fmt.sbprintln(&builder)
-	
-	// Git info — single rev-parse call, runs synchronously on precmd
-	// because the prompt needs _WAYU_GIT_BRANCH immediately.
-	// Uses one `git` invocation instead of three.
-	fmt.sbprintln(&builder, "_wayu_update_git_info() {")
-	fmt.sbprintln(&builder, "  local git_info")
-	fmt.sbprintln(&builder, `  git_info="$(command git rev-parse --short HEAD --show-toplevel 2>/dev/null)"`) 
-	fmt.sbprintln(&builder, "  if [[ -n \"$git_info\" ]]; then")
-	fmt.sbprintln(&builder, `    _WAYU_GIT_DIR="${git_info##*$'\n'}"`)  // last line = toplevel
-	fmt.sbprintln(&builder, `    _WAYU_GIT_BRANCH="$(command git symbolic-ref --short HEAD 2>/dev/null || builtin echo "${git_info%%$'\n'*}")"`)  // branch or short hash
-	fmt.sbprintln(&builder, "  else")
-	fmt.sbprintln(&builder, `    _WAYU_GIT_BRANCH=""`)
-	fmt.sbprintln(&builder, `    _WAYU_GIT_DIR=""`)
-	fmt.sbprintln(&builder, "  fi")
-	fmt.sbprintln(&builder, "}")
+	fmt.sbprint(&builder, PROMPT_GIT_INFO_ZSH)
 	fmt.sbprintln(&builder)
-	
+
 	// Hook precmd
 	fmt.sbprintln(&builder, "autoload -Uz add-zsh-hook")
 	fmt.sbprintln(&builder, "add-zsh-hook precmd _wayu_update_git_info")
 	fmt.sbprintln(&builder)
-	
+
 	// Función principal de prompt (full version)
 	fmt.sbprintln(&builder, "_wayu_prompt_full() {")
 	fmt.sbprintln(&builder, `  local result=""`)
@@ -667,7 +707,10 @@ InteractiveConfig :: struct {
 	toggle_key: string,
 	toggle_enabled: bool,
 
-	// VI Mode
+	// VI Mode: `[prompt] vi_mode = true` switches the line editor to the vi
+	// keymap (default false: the keymap is left alone, OKAMI-285);
+	// vi_mode_indicator ([prompt.interactive]) adds the mode indicator.
+	vi_mode: bool,
 	vi_mode_indicator: bool,
 	vi_insert_symbol: string,
 	vi_normal_symbol: string,
@@ -696,32 +739,33 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
 
-	fmt.sbprintln(&builder, "# === Interactive Prompt Features ===")
+	fmt.sbprintln(&builder, "# --- Interactive Prompt Features ---")
 	fmt.sbprintln(&builder)
 
 	// Include base prompt function
-	fmt.sbprintln(&builder, "# === Base Prompt (from starship.toml) ===")
+	fmt.sbprintln(&builder, "# --- Base Prompt (from starship.toml) ---")
 	fmt.sbprint(&builder, base_prompt)
 	fmt.sbprintln(&builder)
 
 	// Variables de estado
 	fmt.sbprintln(&builder, "# State variables")
 	fmt.sbprintln(&builder, "typeset -g _WAYU_PROMPT_MODE=\"full\"")
-	fmt.sbprintln(&builder, "typeset -g _WAYU_VI_MODE=\"INSERT\"")
+	// "" = no vi mode: the character module then reflects the exit status.
+	fmt.sbprintfln(&builder, "typeset -g _WAYU_VI_MODE=\"%s\"", "INSERT" if cfg.vi_mode && cfg.vi_mode_indicator else "")
 	fmt.sbprintln(&builder, "typeset -g _WAYU_CONTEXT=\"default\"")
 	fmt.sbprintln(&builder, "typeset -g _WAYU_CONTEXT_VER=\"\"")
 	fmt.sbprintln(&builder, "typeset -g _WAYU_ASYNC_DATA=\"\"")
 	fmt.sbprintln(&builder)
 
-	// 1. VI MODE INDICATOR (first: `bindkey -v` resets the main keymap, so
-	// any binding made before it would land in the wrong keymap)
-	if cfg.vi_mode_indicator {
+	// 1. VI MODE (first: `bindkey -v` resets the main keymap, so any
+	// binding made before it would land in the wrong keymap)
+	if cfg.vi_mode {
 		generate_vi_mode_feature(&builder, cfg)
 	}
 
 	// 2. TOGGLE FEATURE (opt-in)
 	if cfg.toggle_enabled {
-		generate_toggle_feature(&builder, cfg.toggle_key, cfg.vi_mode_indicator)
+		generate_toggle_feature(&builder, cfg.toggle_key, cfg.vi_mode)
 	}
 
 	// 3. CONTEXT AWARE
@@ -743,7 +787,7 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	generate_separator_feature(&builder)
 
 	// Función de prompt maestra que combina todo
-	fmt.sbprintln(&builder, "# === Master Prompt Function ===")
+	fmt.sbprintln(&builder, "# --- Master Prompt Function ---")
 	fmt.sbprintln(&builder, "_wayu_prompt_master() {")
 	fmt.sbprintln(&builder, "  local exit_code=$?")
 	fmt.sbprintln(&builder, "  local result=\"\"")
@@ -794,7 +838,7 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 // TOGGLE FEATURE. Bound in explicit keymaps: viins + vicmd with the vi
 // keymap wayu sets up, emacs otherwise.
 generate_toggle_feature :: proc(b: ^strings.Builder, key: string, vi: bool) {
-	fmt.sbprintln(b, "# === Feature: Toggle Prompt (Minimal/Full) ===")
+	fmt.sbprintln(b, "# --- Feature: Toggle Prompt (Minimal/Full) ---")
 	fmt.sbprintln(b, "_wayu_toggle_prompt() {")
 	fmt.sbprintln(b, "  if [[ \"$_WAYU_PROMPT_MODE\" == \"full\" ]]; then")
 	fmt.sbprintln(b, `    _WAYU_PROMPT_MODE="minimal"`)
@@ -811,62 +855,85 @@ generate_toggle_feature :: proc(b: ^strings.Builder, key: string, vi: bool) {
 	fmt.sbprintln(b)
 }
 
-// VI MODE FEATURE
+// VI MODE FEATURE (`[prompt] vi_mode = true`): vi keymap, then — unless
+// vi_mode_indicator = false — the mode indicator. zle-line-init and
+// zle-keymap-select are CHAINED (OKAMI-285): a widget already installed
+// under that name (by the user, a plugin or another prompt) is kept as
+// _wayu_prev_<name> and called first. Re-sourcing core doesn't chain wayu's
+// widget to itself.
 generate_vi_mode_feature :: proc(b: ^strings.Builder, cfg: InteractiveConfig) {
-	fmt.sbprintln(b, "# === Feature: VI Mode Indicator ===")
-	fmt.sbprintln(b, "# Activar modo VI para selección visual")
+	fmt.sbprintln(b, "# --- Feature: VI Mode ---")
 	fmt.sbprintln(b, "bindkey -v")
-	fmt.sbprintln(b, "export KEYTIMEOUT=1  # Reducir delay al cambiar modos")
+	fmt.sbprintln(b, "KEYTIMEOUT=1  # shorter delay when switching modes")
 	fmt.sbprintln(b, "bindkey -M viins '^?' backward-delete-char")
 	fmt.sbprintln(b, "bindkey -M viins '^H' backward-delete-char")
 	fmt.sbprintln(b)
-	fmt.sbprintln(b, "# Variables para tracking de modo")
-	fmt.sbprintln(b, "typeset -g _WAYU_VI_MODE=\"INSERT\"")
-	fmt.sbprintln(b)
-	fmt.sbprintln(b, "function zle-keymap-select {")
-	fmt.sbprintln(b, "  case $KEYMAP in")
-	fmt.sbprintln(b, `    vicmd) _WAYU_VI_MODE="NORMAL" ;;`)
-	fmt.sbprintln(b, `    main|viins) _WAYU_VI_MODE="INSERT" ;;`)
-	fmt.sbprintln(b, `    visual|vivis) _WAYU_VI_MODE="VISUAL" ;;`)
-	fmt.sbprintln(b, "  esac")
-	fmt.sbprintln(b, "  zle reset-prompt")
-	fmt.sbprintln(b, "}")
-	fmt.sbprintln(b, "zle -N zle-keymap-select")
-	fmt.sbprintln(b, "zle -N zle-line-init zle-keymap-select")
-	fmt.sbprintln(b)
-	// Wrappers para visual mode: zle-keymap-select no se dispara al entrar a visual
-	fmt.sbprintln(b, "# Wrappers para visual mode (zle-keymap-select no lo detecta solo)")
-	fmt.sbprintln(b, "_wayu_visual_mode() {")
-	fmt.sbprintln(b, "  zle visual-mode")
-	fmt.sbprintln(b, `  _WAYU_VI_MODE="VISUAL"`)
-	fmt.sbprintln(b, "  zle reset-prompt")
-	fmt.sbprintln(b, "}")
-	fmt.sbprintln(b, "_wayu_visual_line_mode() {")
-	fmt.sbprintln(b, "  zle visual-line-mode")
-	fmt.sbprintln(b, `  _WAYU_VI_MODE="VISUAL"`)
-	fmt.sbprintln(b, "  zle reset-prompt")
-	fmt.sbprintln(b, "}")
-	fmt.sbprintln(b, "zle -N _wayu_visual_mode")
-	fmt.sbprintln(b, "zle -N _wayu_visual_line_mode")
-	fmt.sbprintln(b, "bindkey -M vicmd 'v' _wayu_visual_mode")
-	fmt.sbprintln(b, "bindkey -M vicmd 'V' _wayu_visual_line_mode")
-	fmt.sbprintln(b)
-	fmt.sbprintln(b, "# Salir de visual mode: 'i' → INSERT, Esc → NORMAL (cancelando selección)")
-	fmt.sbprintln(b, "bindkey -M visual 'i' vi-insert")
-	fmt.sbprintln(b, "_wayu_visual_exit() {")
-	fmt.sbprintln(b, "  zle deactivate-region")
-	fmt.sbprintln(b, "  zle vi-cmd-mode")
-	fmt.sbprintln(b, "}")
-	fmt.sbprintln(b, "zle -N _wayu_visual_exit")
-	fmt.sbprintln(b, "bindkey -M visual $'\\e' _wayu_visual_exit")
+	if !cfg.vi_mode_indicator { return }
+	fmt.sbprint(b, PROMPT_VI_INDICATOR_ZSH)
 	fmt.sbprintln(b)
 }
+
+PROMPT_VI_INDICATOR_ZSH :: `_wayu_vi_mode_from_keymap() {
+  local m
+  case $KEYMAP in
+    vicmd) m=NORMAL ;;
+    visual|vivis) m=VISUAL ;;
+    *) m=INSERT ;;
+  esac
+  [[ $m == "$_WAYU_VI_MODE" ]] && return 0
+  _WAYU_VI_MODE=$m
+  zle reset-prompt
+}
+_wayu_zle_keymap_select() {
+  (( ${+widgets[_wayu_prev_zle-keymap-select]} )) && zle _wayu_prev_zle-keymap-select -- "$@"
+  _wayu_vi_mode_from_keymap
+}
+_wayu_zle_line_init() {
+  (( ${+widgets[_wayu_prev_zle-line-init]} )) && zle _wayu_prev_zle-line-init -- "$@"
+  _wayu_vi_mode_from_keymap
+}
+# Install $2 as special widget $1, keeping an existing $1 as _wayu_prev_$1.
+_wayu_zle_chain() {
+  [[ ${widgets[$1]-} == "user:$2" ]] && return 0
+  if (( ${+widgets[$1]} )); then
+    zle -A "$1" "_wayu_prev_$1"
+  fi
+  zle -N "$1" "$2"
+}
+_wayu_zle_chain zle-keymap-select _wayu_zle_keymap_select
+_wayu_zle_chain zle-line-init _wayu_zle_line_init
+
+# Visual mode (zle-keymap-select doesn't fire for it)
+_wayu_visual_mode() {
+  zle visual-mode
+  _WAYU_VI_MODE="VISUAL"
+  zle reset-prompt
+}
+_wayu_visual_line_mode() {
+  zle visual-line-mode
+  _WAYU_VI_MODE="VISUAL"
+  zle reset-prompt
+}
+zle -N _wayu_visual_mode
+zle -N _wayu_visual_line_mode
+bindkey -M vicmd 'v' _wayu_visual_mode
+bindkey -M vicmd 'V' _wayu_visual_line_mode
+
+# Leave visual mode: 'i' -> INSERT, Esc -> NORMAL (cancelling the selection)
+bindkey -M visual 'i' vi-insert
+_wayu_visual_exit() {
+  zle deactivate-region
+  zle vi-cmd-mode
+}
+zle -N _wayu_visual_exit
+bindkey -M visual $'\e' _wayu_visual_exit
+`
 
 // 3. CONTEXT AWARE
 // File-existence only detection (instant, no subprocesses).
 // Version string is fetched asynchronously by the async worker.
 generate_context_feature :: proc(b: ^strings.Builder, contexts: ^PromptConfigFull = nil) {
-	fmt.sbprintln(b, "# === Feature: Context-Aware Prompt ===")
+	fmt.sbprintln(b, "# --- Feature: Context-Aware Prompt ---")
 	fmt.sbprintln(b, "# File-only detection (instant). Version fetched async.")
 	fmt.sbprintln(b, "_wayu_detect_context() {")
 	// Reset options locally: the *.odin(NY1) tests below use bare glob
@@ -996,7 +1063,7 @@ context_detect_condition :: proc(detects: []string) -> string {
 // Fetches: git pending count + context version string.
 // Writes results to a temp file and signals the parent to re-render.
 generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_format: string) {
-	fmt.sbprintln(b, "# === Feature: Async RPROMPT ===")
+	fmt.sbprintln(b, "# --- Feature: Async RPROMPT ---")
 	fmt.sbprintln(b, "typeset -g _WAYU_ASYNC_FD=")
 	fmt.sbprintln(b)
 
@@ -1061,7 +1128,7 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
 
-	// USR1 handler body. helpers.zsh owns the single TRAPUSR1 (shared with
+	// USR1 handler body. core.zsh (helpers section) owns the single TRAPUSR1 (shared with
 	// zsh-defer) and forwards here; defining TRAPUSR1 in the prompt used to
 	// clobber the zsh-defer trap. Fallback TRAPUSR1 only if none exists.
 	fmt.sbprintln(b, "_wayu_async_on_usr1() {")
@@ -1104,7 +1171,7 @@ generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_forma
 
 // 5. TRANSIENT FEATURE
 generate_transient_feature :: proc(b: ^strings.Builder, format: string) {
-	fmt.sbprintln(b, "# === Feature: Transient Prompt ===")
+	fmt.sbprintln(b, "# --- Feature: Transient Prompt ---")
 	fmt.sbprintln(b, "_wayu_prompt_transient() {")
 	fmt.sbprintln(b, "  local result=\"\"")
 
@@ -1137,6 +1204,7 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 	cfg := InteractiveConfig{
 		toggle_key = "^P",
 		toggle_enabled = false, // opt-in: ^P is history navigation
+		vi_mode = false,        // opt-in via [prompt] vi_mode = true (OKAMI-285)
 		vi_mode_indicator = true,
 		vi_insert_symbol = "[I]",
 		vi_normal_symbol = "[N]",
@@ -1148,6 +1216,8 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 		transient_enabled = true,
 		transient_format = "{dir} {character}",
 	}
+
+	cfg.vi_mode, _ = prompt_table_bool(toml, "vi_mode")
 
 	it := make_line_iter(toml)
 	in_interactive := false

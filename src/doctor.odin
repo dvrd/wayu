@@ -531,7 +531,6 @@ fi
 if (( ${times[(I)syntax-highlighting]} > 0.1 )); then
   echo "  • syntax-highlighting adds latency. Consider deferring it."
 fi
-echo "  • Use 'wayu export' for turbo mode (~2-4x faster)"
 `
 
 	script_path := fmt.aprintf("%s/startup_profile.zsh", wayu.data)
@@ -555,7 +554,7 @@ echo "  • Use 'wayu export' for turbo mode (~2-4x faster)"
 	fmt.println()
 	fmt.println()
 	fmt.println("🚀 Optimization options:")
-	fmt.println(`  wayu export              Generate turbo.zsh (2-4x faster)`)
+	fmt.println(`  wayu build profile       Time each section of the generated init`)
 }
 
 // Signature every doctor check must implement.

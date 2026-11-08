@@ -363,17 +363,19 @@ class InitIntegrationTest
   end
 
   # core sources plugins.<ext>; tools/extra are sourced exactly once across
-  # init + core + lazy; [paths] keep file order (not alphabetical).
+  # core.<ext> (the one generated file); [paths] keep file order (not alphabetical).
   def test_core_wiring(shell)
     print "Test: #{shell} core sources plugins, tools/extra once, PATH in file order... "
     home, cfg, env = generate_tricky(shell)
     core = File.read("#{cfg}/core.#{shell}")
-    all = %w[init core lazy].map { |b| File.exist?("#{cfg}/#{b}.#{shell}") ? File.read("#{cfg}/#{b}.#{shell}") : '' }.join("\n")
+    all = %w[init core].map { |b| File.exist?("#{cfg}/#{b}.#{shell}") ? File.read("#{cfg}/#{b}.#{shell}") : '' }.join("\n")
+    # OKAMI-284: the old split files are gone (their content is in core).
+    split_left = %w[lazy helpers login].select { |b| File.exist?("#{cfg}/#{b}.#{shell}") }
     plugins_ok = core.include?("#{cfg}/plugins.#{shell}\" ]; then source")
     extra_count = all.scan(/source "[^"]*extra\.#{shell}"/).size
     tools_count = all.scan(/source "[^"]*tools\.#{shell}"/).size
     # init.<ext> legacy fallback also sources them, but after `return` on the
-    # fast path; count only the fast path + core + lazy.
+    # fast path; count only the fast path + core.
     init_fast = File.read("#{cfg}/init.#{shell}").split('# === Legacy fallback').first
     fast_extra = init_fast.scan(/source "[^"]*(extra|tools)\.#{shell}"/).size
     # [paths] values are expanded by the shell: check the resulting PATH.
@@ -384,11 +386,11 @@ class InitIntegrationTest
     order_ok = entries[0, 3] == ["#{home}/pz", "#{home}/pa", "#{home}/p m"] &&
                entries.none? { |e| e.include?('nonexistent') }
     zsh_only_leak = shell == 'bash' && (core.include?('compinit') || core.include?('add-zsh-hook') || core.include?('helpers.zsh') || core.include?('lazy.zsh'))
-    if plugins_ok && fast_extra == 0 && extra_count == 2 && tools_count == 2 && order_ok && !zsh_only_leak
+    if plugins_ok && fast_extra == 0 && extra_count == 2 && tools_count == 2 && order_ok && !zsh_only_leak && split_left.empty?
       puts "✓"; @passed += 1
     else
       puts "✗"
-      puts "  plugins_ok=#{plugins_ok} fast_extra=#{fast_extra} extra=#{extra_count} tools=#{tools_count} order_ok=#{order_ok} zsh_leak=#{zsh_only_leak}"
+      puts "  plugins_ok=#{plugins_ok} fast_extra=#{fast_extra} extra=#{extra_count} tools=#{tools_count} order_ok=#{order_ok} zsh_leak=#{zsh_only_leak} split_left=#{split_left}"
       puts "  #{path_line}"
       @failed += 1
     end
@@ -709,7 +711,7 @@ class InitIntegrationTest
     files = ["#{cfg}/core.zsh", "#{cfg}/plugins/config.zsh"].select { |f| File.exist?(f) }
     syntax_ok = files.size == 2 && files.all? { |f| system('zsh', '-n', f, out: File::NULL, err: File::NULL) }
     keys_ok = files.size == 2 && File.read(files[1]).include?(%q{bindkey '^Y'\''; touch})
-    out, = Open3.capture3(env, '/bin/zsh', '-fc',
+    out, = Open3.capture3(env, '/bin/zsh', '-fic',
       "source '#{cfg}/core.zsh' >/dev/null 2>&1; source '#{cfg}/plugins/config.zsh' >/dev/null 2>&1; _wayu_prompt_full")
     literal_ok = out.include?("it\"s $(touch #{pwn}) `touch #{pwn}`")
     if off_ok && on_ok && syntax_ok && keys_ok && literal_ok && !File.exist?(pwn)
@@ -775,7 +777,7 @@ class InitIntegrationTest
                "[tools]\nnosuchtoolxyz = { kind = \"evalcache\", args = \"init zsh\" }\n\n[aliases]\n#{aliases}\n")
     _, _, st = Open3.capture3(env, "#{@wayu_bin} build eval")
     core = "#{home}/.config/wayu/core.zsh"
-    lazy = "#{home}/.config/wayu/lazy.zsh"
+    lazy = "#{home}/.config/wayu/core.zsh"
     if st.success? && File.read(core).include?("alias a4000=") && File.read(lazy).include?('_wayu_evalcache nosuchtoolxyz init zsh')
       puts "✓"; @passed += 1
     else

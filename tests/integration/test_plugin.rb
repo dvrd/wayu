@@ -1807,8 +1807,13 @@ class PluginIntegrationTest
     fixture_repo("fishy", { "conf.d/fishy.fish" => "# conf\n", "functions/fishy.fish" => "function fishy; end\n" })
 
     output, status = run_wayu("plugin add #{fixture_url('fishy')}")
-    ok = status.exitstatus == 0 && config_plugin("fishy")&.dig("shell") == "FISH" &&
-         !plugins_loader.include?("fishy.fish")
+    # PLG-08 / OKAMI-268: added from fish, the fish loader sources it.
+    fixture_repo("fishy2", { "conf.d/fishy2.fish" => "# conf\n" })
+    env = ENV.to_h.merge('HOME' => @tmp_home, 'SHELL' => '/usr/bin/fish')
+    _, _, st2 = Open3.capture3(env, @wayu_bin, '--shell', 'fish', 'plugin', 'add', fixture_url('fishy2'))
+    fish_loader = File.read("#{@data_dir}/plugins.fish") rescue ""
+    ok = status.exitstatus == 0 && st2.success? && fish_loader.include?("conf.d/fishy2.fish") && config_plugin("fishy")&.dig("shell") == "FISH" &&
+         !plugins_loader.include?("fishy.fish") && config_plugin("fishy2")&.dig("shell") == "FISH"
     check("fish URL compat", ok, output, status)
   end
 

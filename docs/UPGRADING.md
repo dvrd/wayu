@@ -53,11 +53,10 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   generated `plugins.<ext>`.
 
 **build profile**
-- The phase breakdown inlines `lazy.<ext>` and `plugins.<ext>`: it has a
-  row per `[tools]` entry (`tool <name> (evalcache)`, `lazy › tool nvm
-  (lazy)`, `tool <name> (lazy)`) and per plugin (`plugin <name>`) instead
-  of one `Lazy init` / `Plugins` row; core sections keep their names, and
-  sections of `lazy.<ext>` are prefixed `lazy › `. Rows with no code are
+- The phase breakdown inlines `plugins.<ext>`: it has a row per `[tools]`
+  entry (`tool <name> (evalcache)`, `tool nvm (lazy)`, `tool <name>
+  (lazy)`) and per plugin (`plugin <name>`) instead of one `Tools` /
+  `Plugins` row; core sections keep their names. Rows with no code are
   left out.
 - bash: the breakdown now runs too when the shell has `$EPOCHREALTIME`
   (bash 5+); with an older bash it prints a note instead.
@@ -385,18 +384,105 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   module formats are unchanged.
 - The user name shows only over SSH or as root unless `[prompt.username]
   show_always = true` (the setting was ignored).
+- vi mode is opt-in: the prompt no longer switches the line editor to the
+  vi keymap or sets `KEYTIMEOUT`. **vi users: add `vi_mode = true` under
+  `[prompt]`** to get `bindkey -v`, `KEYTIMEOUT=1` (no longer exported to
+  child processes) and the mode indicator (`[prompt.interactive]
+  vi_mode_indicator = false` keeps the keymap without the indicator).
+  Without vi mode the `{character}` module shows success/error by exit
+  status.
+- `zle-line-init` / `zle-keymap-select` are chained: a widget already
+  installed under that name (yours, a plugin's, another prompt's) is kept as
+  `_wayu_prev_<name>` and runs first; it used to be replaced.
+- The git branch is read without running git (walks up to `.git`, reads
+  `HEAD`; worktrees/submodules and `$GIT_DIR` included; detached HEAD shows
+  the first 7 characters of the commit id) — two `git` processes per prompt
+  are gone. The dirty count is still fetched asynchronously.
 - The prompt toggle is off by default; enable it with `[prompt.interactive]
   toggle_enabled = true`. It is bound after the vi keymap is set up, in
-  `viins` + `vicmd` (or `emacs` with `vi_mode_indicator = false`); it used to
-  land in a keymap that `bindkey -v` then replaced, or steal emacs `^P`.
+  `viins` + `vicmd` with `vi_mode = true`, else in `emacs`; it used to land
+  in a keymap that `bindkey -v` then replaced, or steal emacs `^P`.
 - Prompt code runs `command git` / `awk` / `sed` / …, so user aliases or
   functions with those names no longer change or break it.
 
+**Generated init: one fast file (zsh/bash)**
+- `core.<ext>` is now the only generated file `init.<ext>` loads: what used
+  to be `lazy.<ext>` ([tools] lazy loaders, `tools.<ext>`, `extra.<ext>`),
+  `login.<ext>` (login-only tools, now inside `if [[ -o login ]]` /
+  `shopt -q login_shell`) and `helpers.<ext>` (evalcache, zsh-defer) is
+  inlined, and the startup PATH apply no longer reads `path_sync.<ext>`
+  (the prompt hook still does). wayu deletes old `lazy` / `login` /
+  `helpers.<ext>` files (and their `.zwc`) when it regenerates; anything
+  that sourced them directly should source `init.<ext>` instead. Load order
+  is unchanged.
+- zsh: `compinit` runs only in interactive shells (completion is a
+  line-editor feature, and compinit was most of the cost of sourcing init in
+  scripts and `zsh -c`); in other shells a no-op `compdef` is defined if
+  none exists, so plugins calling it stay quiet. `.zcompdump` is also
+  zcompiled (`.zcompdump.zwc`, in the background) — compinit loads it
+  ~40% faster.
+- zsh: the native prompt is set up in interactive shells only.
+- bash: the PATH apply no longer uses here-strings (a temp file each in
+  bash 3.2) and compares in the C locale; the separate dedup pass is gone
+  (the apply already leaves PATH without duplicates).
+- [tools] evalcache (zsh) finds the tool by walking `$path` instead of
+  `${commands[...]}`, which hashed every PATH directory (~2 ms).
+- Startup, 20 [paths] / 60 [aliases] / 20 [env] (`tests/benchmark/startup.sh`,
+  macOS, hyperfine): `zsh -f -c 'source init.zsh'` 22.8 → 9.3 ms (empty zsh
+  ~3.5 ms; turbo.zsh was 8.4 ms), interactive (`zsh -fi`, with compinit)
+  22.3 → 16.0 ms; bash 9.3 → ~5 ms (turbo.bash was 3.1 ms).
+- `wayu build` / `build eval` list `core.<ext>` and `path_sync.<ext>` only.
+
+**wayu export**
+- `turbo.<ext>` now has exactly `core.<ext>`'s content — every feature
+  ([tools] loaders, prompt, login tools, live PATH sync, completions with
+  compinit) at the same speed — and wayu rewrites it whenever it regenerates
+  core (any `path/alias/const` change, TUI edit, `wayu build`), so it no
+  longer goes stale. Sourcing `init.<ext>` is equivalent; turbo stays for rc
+  files that already use it. `wayu export --turbo` output text changed.
+- `wayu export --eval` expands `[paths]` values in the shell (like core):
+  `[paths] b = "$FZG/bin"` with `[env] FZG = "~/g"` now works (it was
+  dropped), an entry whose variable is unset is skipped, and entries are
+  checked with `[ -d ]` when eval'd (not when wayu runs). Duplicates are
+  dropped. The PATH part is now a short loop instead of one `export PATH=`.
+- `wayu build` no longer prints the turbo export report when turbo.<ext>
+  exists (it is refreshed silently with core).
+
+**fish (core.fish)**
+- `[tools]` now load in fish. evalcache entries run `<tool> <args> |
+  source`, cached under `~/.cache/wayu/evalcache/fish__*` (regenerated when
+  the binary's path or mtime changes; needs fish 3.5+, older fish runs the
+  tool uncached). Args are retargeted: a word `zsh` or `bash` becomes
+  `fish` and `--zsh` / `--bash` becomes `--fish`, so `args = "init zsh"`
+  runs `<tool> init fish`. `eager`, deferred (after plugins) and
+  `login_only` (`status is-login`) work as in zsh/bash. A `lazy` entry
+  needs a fish `init_script` (`*.fish`); `nvm` / `conda` recipes have no
+  fish version and are skipped with a comment.
+- `functions/*.fish` load (they did only on the legacy path).
+- `[paths]` dirs move to the front of PATH in `[paths]` order, like
+  `fish_add_path -gpm`: a dir already on PATH (e.g. `/usr/local/bin`) now
+  gets wayu's priority instead of keeping its old place. Dirs wayu did not
+  add are never removed.
+- Live PATH sync: `wayu path add/rm` and hand edits of `[paths]` reach open
+  fish shells at the next prompt (a `fish_prompt` event handler re-reads the
+  new `path_sync.fish` when the list changed), as in zsh/bash.
+- Re-sourcing `init.fish` no longer adds the completions dir to
+  `fish_complete_path` again.
+- `[aliases]` are defined last (after plugins and tools), as in zsh/bash.
+- `init.fish` sources `tools.fish` before `extra.fish` (was the reverse).
+  An untouched `init.fish` is updated automatically.
+
 **zcompile**
+- A background compile interrupted by a signal removes its temp digest, and
+  temp digests (`<file>.<pid>.tmp.zwc`) older than a minute are swept before
+  compiling; the compile also runs in its own session, so closing the
+  terminal no longer kills it halfway (stray `core.zsh.<pid>.tmp.zwc` files
+  were left in the data dir).
 - Generated zsh files are recompiled in the background after every change
   (`wayu path/alias/const add`, TUI, …), not only by `wayu init` / `build`,
   so the bytecode speedup no longer disappears after the first edit.
-- `wayu_compile` (helpers.zsh) uses the data dir the file was generated for.
+- `wayu_compile` (now defined in core.zsh) uses the data dir the file was
+  generated for, and compiles core, plugins and turbo.
 - `wayu build profile` works when the data dir path contains spaces.
 
 **Colors**

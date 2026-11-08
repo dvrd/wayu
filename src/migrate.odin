@@ -115,7 +115,7 @@ handle_migrate_command :: proc(args: []string) {
 
 // Cross-shell migration. wayu.toml is the source of truth, so switching
 // shells means: record the new shell in [shell].type, make sure the target's
-// init.<ext> orchestrator exists, and regenerate core/lazy/login/helpers for
+// init.<ext> orchestrator exists, and regenerate core/path_sync for
 // the target from wayu.toml. Generated files are never line-translated
 // (their syntax is shell-specific: zsh globs, arrays, ...). Hand-written
 // escape hatches (tools.<ext>, extra.<ext>) can't be translated either; they

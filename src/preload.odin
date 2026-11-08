@@ -168,7 +168,7 @@ TOOLS_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 #   sdk    = { kind = "lazy", init_script = "$HOME/.sdkman/bin/sdkman-init.sh", hook_commands = ["sdk"] }
 #
 # Run 'wayu build' after editing wayu.toml. The corresponding lazy loaders
-# are emitted into lazy.zsh so they work in every interactive shell
+# are emitted into core.zsh so they work in every interactive shell
 # (login, non-login, Ghostty/Zellij/tmux panes).
 #
 # Use this file ONLY for one-off, machine-specific tool setup that doesn't fit
@@ -436,11 +436,11 @@ end
 # stay empty and would just be no-ops anyway.
 if test -f "$WAYU_DATA_DIR/core.fish"
     source "$WAYU_DATA_DIR/core.fish"
-    if test -f "$WAYU_CONFIG_DIR/extra.fish"
-        source "$WAYU_CONFIG_DIR/extra.fish"
-    end
     if test -f "$WAYU_CONFIG_DIR/tools.fish"
         source "$WAYU_CONFIG_DIR/tools.fish"
+    end
+    if test -f "$WAYU_CONFIG_DIR/extra.fish"
+        source "$WAYU_CONFIG_DIR/extra.fish"
     end
     return 0
 end

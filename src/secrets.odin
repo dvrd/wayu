@@ -1,6 +1,6 @@
 // secrets.odin - Single source of truth for secret handling:
 //   * file modes for files that may contain [env] values (wayu.toml,
-//     backups, generated core/lazy/login/helpers scripts);
+//     backups, generated core/path_sync scripts);
 //   * the "looks secret" heuristic and value masking used by every preview
 //     and list output (dry-run, search, export --dry-run, `const list`,
 //     `toml show`, the TUI constants view).

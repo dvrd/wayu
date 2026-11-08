@@ -264,7 +264,10 @@ run_background_shell :: proc(cmd: string) {
 	if gpid < 0 { posix._exit(1) }
 	if gpid > 0 { posix._exit(0) } // intermediate exits, grandchild reparents to init
 
-	// Grandchild: redirect I/O and exec
+	// Grandchild: own session, so closing the terminal (SIGHUP to its
+	// session) doesn't kill a background zcompile halfway; then redirect I/O
+	// and exec.
+	posix.setsid()
 	devnull := posix.open("/dev/null", {.WRONLY})
 	if devnull >= 0 {
 		posix.dup2(devnull, posix.FD(0))
