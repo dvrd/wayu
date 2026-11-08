@@ -77,6 +77,8 @@ the same entries in `entries.json`, or no longer apply.
   decrypts, `const rm` removes, `const list` shows `********` with source
   `wayu (secret)`; in `--json` such a row is
   `{"constant", "secret": true, "source"}` with no `value`.
+- Converting a plain constant with `--secret` deletes the entries.json
+  backups that still hold its plaintext value.
 - A `--secret` at the end of a `const add` line is now a flag, not part of
   the value (like `--dry-run`). To store the literal text, put `--` before
   the value. `--secret` anywhere else exits `64`.
