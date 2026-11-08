@@ -186,6 +186,12 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `wayu migrate` it still sourced the emptied legacy files and the shell
   got no PATH, aliases or constants.
 
+**TUI**
+- Adding or deleting an entry while `wayu.toml` uses the obsolete
+  `[[paths]]` schema (e.g. replaced by an old wayu after the TUI started)
+  is refused with "run `wayu migrate --schema`"; it used to append a
+  `[paths]` table to the old-schema file.
+
 **wayu.toml parsing (one parser for every command)**
 - `toml validate`, `doctor`, `backup restore`, `migrate --schema`, the TUI,
   `alias/const/path list`, the shell generator and the in-place editor now
