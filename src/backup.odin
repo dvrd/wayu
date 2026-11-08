@@ -28,7 +28,7 @@ BACKUP_KEEP_COUNT :: 5
 BACKUP_PRE_RESTORE_TAG :: ".pre-restore"
 
 // Files already backed up by create_backup_cli in this (non-TUI) process.
-// A command that writes the same file many times (migrate, template apply,
+// A command that writes the same file many times (template apply,
 // doctor --fix) keeps ONE backup: the state before the command ran.
 // Allocated on the raw heap: lives for the whole process.
 @(private = "file")
@@ -40,8 +40,9 @@ create_backup :: proc(file_path: string, tag := "") -> (backup_path: string, ok:
 	init_shell_globals()
 	debug("Creating backup for: %s", file_path)
 
-	// Don't create backup of backup files
-	if strings.contains(file_path, ".backup.") {
+	// Don't create backup of backup files. Only the file name counts: a
+	// directory like ~/my.backup.d must not disable backups.
+	if strings.contains(get_base_name(file_path), ".backup.") {
 		debug("File is already a backup, skipping: %s", file_path)
 		return "", true
 	}
@@ -74,21 +75,19 @@ create_backup :: proc(file_path: string, tag := "") -> (backup_path: string, ok:
 			return "", false
 		}
 		debug("Created backup directory: %s", backup_dir)
-	} else {
-		tighten_backup_dir_modes(backup_dir)
 	}
 
-	// Extract base filename from path
-	base_name := get_base_name(file_path)
+	base_name := backup_key(file_path)
+	defer delete(base_name)
 
 	// Generate backup filename with human-readable date format plus
 	// microseconds. Second resolution alone let two backups taken within the
-	// same second (migrate / doctor --fix write once per entry) overwrite
+	// same second (doctor --fix write once per entry) overwrite
 	// each other, losing the pristine pre-operation copy. The file is also
 	// created exclusively (O_EXCL) with a `-N` suffix on collision, so an
 	// existing backup is never clobbered.
 	//
-	// Format: basename.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]
+	// Format: <key>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N] (UTC; see backup_key)
 	now := time.now()
 	year, month, day := time.date(now)
 	hour, min, sec, nanos := time.precise_clock_from_time(now)
@@ -127,31 +126,75 @@ create_backup :: proc(file_path: string, tag := "") -> (backup_path: string, ok:
 	return "", false
 }
 
-// Repair modes left by older wayu versions (backup dir 0755, backups 0644):
-// chmod the dir to 0700 and any group/other-accessible entry to 0600.
-// Best-effort and cheap — the dir holds at most a few files per config.
-@(private = "file")
-tighten_backup_dir_modes :: proc(backup_dir: string) {
-	OPEN_BITS :: os.Permissions{.Read_Group, .Write_Group, .Execute_Group, .Read_Other, .Write_Other, .Execute_Other}
-
-	if info, err := os.stat(backup_dir, context.temp_allocator); err == nil && info.mode & OPEN_BITS != {} {
-		if os.chmod(backup_dir, SECRET_DIR_PERMS) != nil {
-			debug("Could not chmod backup dir %s", backup_dir)
-		}
+// Name a file's backups are stored under: "<key>.backup.<stamp>". Files wayu
+// owns (under wayu.config / wayu.data: wayu.toml, init.zsh, plugins.json,
+// extra.zsh ...) keep their base name. Any other file (the user's rc file)
+// is keyed by its path with '/' as '%': relative to $HOME (~/.zshrc ->
+// ".zshrc", $ZDOTDIR=~/.config/zsh -> ".config%zsh%.zshrc"), or absolute
+// with a leading '%'. So two rc files with the same name keep separate
+// histories.
+backup_key :: proc(file_path: string, allocator := context.allocator) -> string {
+	under :: proc(path, root: string) -> bool {
+		return len(root) > 0 && len(path) > len(root) && strings.has_prefix(path, root) && path[len(root)] == '/'
 	}
+	if under(file_path, wayu.config) || under(file_path, wayu.data) {
+		return strings.clone(get_base_name(file_path), allocator)
+	}
+	rel := file_path
+	home := os.get_env("HOME", context.temp_allocator)
+	if under(file_path, home) { rel = file_path[len(home) + 1:] }
+	key, allocated := strings.replace_all(rel, "/", "%", allocator)
+	if !allocated { key = strings.clone(rel, allocator) }
+	return key
+}
 
-	dir_handle, open_err := os.open(backup_dir)
-	if open_err != nil { return }
+// The file a backup key stands for, for display: "~/.config/zsh/.zshrc",
+// "/etc/x", or the bare name for wayu's own files and top-level ~ files.
+backup_key_display :: proc(key: string, allocator := context.allocator) -> string {
+	if !strings.contains(key, "%") { return strings.clone(key, allocator) }
+	decoded, _ := strings.replace_all(key, "%", "/", context.temp_allocator)
+	if strings.has_prefix(decoded, "/") { return strings.clone(decoded, allocator) }
+	return strings.concatenate({"~/", decoded}, allocator)
+}
+
+// Every backup group in the backup dir (the <key> of "<key>.backup.*"),
+// wayu.toml first, entries.json second, then by name. Free with
+// delete_backup_keys.
+list_backup_keys :: proc(allocator := context.allocator) -> []string {
+	dir := fmt.tprintf("%s/backup", wayu.data)
+	dir_handle, err := os.open(dir)
+	if err != nil { return {} }
 	defer os.close(dir_handle)
-
 	infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
-	if read_err != nil { return }
+	if read_err != nil { return {} }
 	defer os.file_info_slice_delete(infos, context.allocator)
 
+	keys := make([dynamic]string, allocator)
 	for info in infos {
-		if info.type != .Regular || info.mode & OPEN_BITS == {} { continue }
-		restrict_file_mode(info.fullpath)
+		if info.type == .Directory { continue }
+		i := strings.index(info.name, ".backup.")
+		if i <= 0 { continue }
+		key := info.name[:i]
+		if slice.contains(keys[:], key) { continue }
+		append(&keys, strings.clone(key, allocator))
 	}
+	slice.sort_by(keys[:], proc(a, b: string) -> bool {
+		rank :: proc(k: string) -> int {
+			switch k {
+			case WAYU_TOML:    return 0
+			case ENTRIES_FILE: return 1
+			}
+			return 2
+		}
+		if rank(a) != rank(b) { return rank(a) < rank(b) }
+		return a < b
+	})
+	return keys[:]
+}
+
+delete_backup_keys :: proc(keys: []string, allocator := context.allocator) {
+	for k in keys { delete(k, allocator) }
+	delete(keys, allocator)
 }
 
 // CLI version - fails immediately without prompt
@@ -202,13 +245,21 @@ backup_run_reset :: proc() {
 
 // Remove all but the newest `keep` backups of `file_path`, silently and
 // regardless of --dry-run (callers only reach here after a real backup).
+// `protect` (a backup path) is never removed and counts toward `keep`.
 @(private = "file")
-prune_backups :: proc(file_path: string, keep: int) {
+prune_backups :: proc(file_path: string, keep: int, protect := "") {
 	backups := list_backups_for_file(file_path)
 	defer free_backup_infos(backups)
-	for i in keep..<len(backups) {
-		debug("Pruning old backup: %s", backups[i].backup_file)
-		_ = os.remove(backups[i].backup_file)
+	kept := 0
+	for b in backups { if b.backup_file == protect { kept += 1 } }
+	for b in backups {
+		if b.backup_file == protect { continue }
+		if kept < keep {
+			kept += 1
+			continue
+		}
+		debug("Pruning old backup: %s", b.backup_file)
+		_ = os.remove(b.backup_file)
 	}
 }
 
@@ -255,7 +306,10 @@ select_backup :: proc(backups: []BackupInfo, selector: string) -> int {
 		if len(backups) > 0 { return 0 }
 		return -1
 	}
-	if n, ok := strconv.parse_int(selector); ok {
+	all_digits := true
+	for c in selector { if c < '0' || c > '9' { all_digits = false; break } }
+	// Decimal digits only: parse_int also takes "0x1", "+1", "1_0".
+	if n, ok := strconv.parse_int(selector, 10); all_digits && ok {
 		if n >= 1 && n <= len(backups) { return n - 1 }
 		print_error_simple("No backup #%s (there are %d; see 'wayu backup list')", selector, len(backups))
 		return -1
@@ -270,13 +324,13 @@ select_backup :: proc(backups: []BackupInfo, selector: string) -> int {
 // Restore `file_path` from a backup (see select_backup for `selector`).
 //
 // Safety contract:
-//   * the backup content is validated before anything is written (for
-//     wayu.toml: toml_content_is_sane), so a corrupt backup can't replace a
-//     working config;
+//   * the backup content is validated before anything is written (wayu.toml:
+//     toml_content_is_sane, entries.json: entries_parse), so a corrupt
+//     backup can't replace a working config;
 //   * the CURRENT file is backed up first (tagged pre-restore), so a restore
 //     is itself undoable (`wayu backup restore <type> 1`);
-//   * after restoring wayu.toml the generated shell init is regenerated so
-//     the shell actually sees the restored state.
+//   * after restoring wayu.toml or entries.json the generated shell init is
+//     regenerated so the shell actually sees the restored state.
 // The --yes confirmation gate lives in the CLI handler (restore_config_backup).
 restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 	debug("Attempting to restore from backup: %s", file_path)
@@ -317,10 +371,19 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 	}
 	defer delete(content)
 
-	is_wayu_toml := get_base_name(file_path) == WAYU_TOML
-	if is_wayu_toml && !toml_content_is_sane(string(content)) {
-		print_error_simple("Backup %s is not valid TOML — refusing to restore it", chosen.backup_file)
-		return false
+	switch get_base_name(file_path) {
+	case WAYU_TOML:
+		if !toml_content_is_sane(string(content)) {
+			print_error_simple("Backup %s is not valid TOML — refusing to restore it", chosen.backup_file)
+			return false
+		}
+	case ENTRIES_FILE:
+		store, perr, ok := entries_parse(string(content))
+		if !ok {
+			print_error_simple("Backup %s is not a valid entry store (%s) — refusing to restore it", chosen.backup_file, perr)
+			return false
+		}
+		entries_store_destroy(&store)
 	}
 
 	// Back up the current state so the restore can be undone.
@@ -337,12 +400,18 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 	if !safe_write_file(file_path, content) {
 		return false
 	}
+	// Keep the retention cap across repeated restores. The newest entry is the
+	// snapshot just taken; the chosen backup is protected explicitly.
+	prune_backups(file_path, BACKUP_KEEP_COUNT, chosen.backup_file)
+
+	// entries.json holds secrets: keep it owner-only whatever the backup's mode.
+	if get_base_name(file_path) == ENTRIES_FILE { restrict_file_mode(file_path) }
 
 	// Only regenerate when restoring the live config (not an arbitrary
 	// file that happens to be named wayu.toml).
 	live_toml := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(live_toml)
-	if file_path == live_toml {
+	if file_path == live_toml || file_path == entries_file_path() {
 		regenerate_init_core_silently()
 	}
 
@@ -352,12 +421,20 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 
 // List all backups for a file from backup/ directory
 list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
+	key := backup_key(file_path)
+	defer delete(key)
+	return list_backups_for_key(key, file_path)
+}
+
+// Backups stored under `key` (see backup_key), newest first; each
+// original_file is a clone of `original`.
+list_backups_for_key :: proc(key: string, original: string) -> []BackupInfo {
+	file_path := original
 	// Search in backup/ directory instead of alongside original file
 	dir := fmt.aprintf("%s/backup", wayu.data)
 	defer delete(dir)
 
-	base := get_base_name(file_path)
-	pattern := fmt.aprintf("%s.backup.", base)
+	pattern := fmt.aprintf("%s.backup.", key)
 	defer delete(pattern)
 
 	dir_handle, err := os.open(dir)
@@ -383,7 +460,11 @@ list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 			suffix := info.name[len(pattern):]
 			pre_restore := strings.has_suffix(suffix, BACKUP_PRE_RESTORE_TAG)
 			if pre_restore { suffix = suffix[:len(suffix) - len(BACKUP_PRE_RESTORE_TAG)] }
-			timestamp, seq := parse_backup_suffix(suffix)
+			timestamp, seq, stamp_ok := parse_backup_suffix(suffix)
+			if !stamp_ok {
+				delete(full_path)
+				continue
+			}
 
 			backup := BackupInfo{
 				original_file = strings.clone(file_path),
@@ -413,97 +494,59 @@ list_backups_for_file :: proc(file_path: string) -> []BackupInfo {
 	return result
 }
 
-// Parse timestamp from backup filename suffix.
-// Accepts (newest first):
-//   YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]   (sub-second + collision sequence)
-//   YYYY-MM-DD_HH-MM-SS              (pre-4.5 second resolution)
-//   <unix seconds>[...]              (legacy)
-parse_timestamp :: proc(timestamp_str: string) -> time.Time {
-	t, _ := parse_backup_suffix(timestamp_str)
-	return t
-}
-
-parse_backup_suffix :: proc(timestamp_str: string) -> (t: time.Time, seq: int) {
-	if len(timestamp_str) >= 19 && timestamp_str[4] == '-' && timestamp_str[7] == '-' && timestamp_str[10] == '_' {
-		// Timestamp components are all ASCII digits by construction; if
-		// parse fails (corrupted filename) we fall through to the legacy
-		// Unix-timestamp path below — not the component-zero path — so
-		// parse errors can't silently produce a "year 0" timestamp.
-		year,  year_ok  := strconv.parse_int(timestamp_str[0:4])
-		month, month_ok := strconv.parse_int(timestamp_str[5:7])
-		day,   day_ok   := strconv.parse_int(timestamp_str[8:10])
-		hour,  hour_ok  := strconv.parse_int(timestamp_str[11:13])
-		min,   min_ok   := strconv.parse_int(timestamp_str[14:16])
-		sec,   sec_ok   := strconv.parse_int(timestamp_str[17:19])
-
-		if year_ok && month_ok && day_ok && hour_ok && min_ok && sec_ok {
-			rest := timestamp_str[19:]
-			nanos := 0
-			if len(rest) > 0 && rest[0] == '.' {
-				// Fractional seconds: up to 9 digits, scaled to nanoseconds.
-				i := 1
-				digits := 0
-				for i < len(rest) && rest[i] >= '0' && rest[i] <= '9' {
-					if digits < 9 {
-						nanos = nanos * 10 + int(rest[i] - '0')
-						digits += 1
-					}
-					i += 1
-				}
-				for _ in digits..<9 { nanos *= 10 }
-				rest = rest[i:]
-			}
-			if len(rest) > 1 && rest[0] == '-' {
-				if n, n_ok := strconv.parse_int(rest[1:]); n_ok { seq = n }
-			}
-			parsed, ok := time.datetime_to_time(year, month, day, hour, min, sec, nanos)
-			if ok { return parsed, seq }
+// Parse the stamp of a backup file name, the part after "<key>.backup."
+// (BACKUP_PRE_RESTORE_TAG already stripped):
+//   YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]   (UTC, microseconds, collision sequence)
+// ok=false for anything else: such a file is not a wayu backup.
+parse_backup_suffix :: proc(s: string) -> (t: time.Time, seq: int, ok: bool) {
+	// Layout of the fixed part; 'd' = ASCII digit.
+	LAYOUT :: "dddd-dd-dd_dd-dd-dd.dddddd"
+	if len(s) < len(LAYOUT) { return }
+	for c, i in transmute([]u8)string(LAYOUT) {
+		if c == 'd' {
+			if s[i] < '0' || s[i] > '9' { return }
+		} else if s[i] != c {
+			return
 		}
-		// fall through on parse failure
 	}
-
-	// Fallback: parse old Unix timestamp format for backwards compatibility.
-	// Accepts a leading run of digits; stops at the first non-digit so the
-	// ".bak" suffix and extension are tolerated.
-	end := 0
-	for end < len(timestamp_str) && timestamp_str[end] >= '0' && timestamp_str[end] <= '9' {
-		end += 1
+	num :: proc(s: string) -> int {
+		n := 0
+		for c in transmute([]u8)s { n = n * 10 + int(c - '0') }
+		return n
 	}
-	if end == 0 {
-		return time.unix(0, 0), 0
+	rest := s[len(LAYOUT):]
+	if len(rest) > 0 {
+		if len(rest) < 2 || rest[0] != '-' { return }
+		for c in transmute([]u8)rest[1:] {
+			if c < '0' || c > '9' { return }
+		}
+		seq = num(rest[1:])
 	}
-	timestamp_int, _ := strconv.parse_i64(timestamp_str[:end])
-	return time.unix(timestamp_int, 0), 0
+	parsed, valid := time.datetime_to_time(num(s[0:4]), num(s[5:7]), num(s[8:10]),
+		num(s[11:13]), num(s[14:16]), num(s[17:19]), num(s[20:26]) * 1000)
+	if !valid { return }
+	return parsed, seq, true
 }
 
 // Clean up old backups (keep last N)
 cleanup_old_backups :: proc(file_path: string, keep_count: int = 5) -> int {
-	debug("Cleaning up old backups for: %s (keep %d)", file_path, keep_count)
+	key := backup_key(file_path)
+	defer delete(key)
+	return cleanup_old_backups_key(key, keep_count)
+}
+
+cleanup_old_backups_key :: proc(key: string, keep_count: int = 5) -> int {
+	debug("Cleaning up old backups for: %s (keep %d)", key, keep_count)
+
+	backups := list_backups_for_key(key, key)
+	defer free_backup_infos(backups)
 
 	// Dry-run mode check
 	if wayu.dry_run {
-		backups := list_backups_for_file(file_path)
-		defer {
-			for backup in backups {
-				delete(backup.original_file)
-				delete(backup.backup_file)
-			}
-			delete(backups)
-		}
-
 		if len(backups) > keep_count {
 			print_info("DRY RUN: Would remove %d old backup(s)", len(backups) - keep_count)
 		}
 		return 0
-	}
-
-	backups := list_backups_for_file(file_path)
-	defer {
-		for backup in backups {
-			delete(backup.original_file)
-			delete(backup.backup_file)
-		}
-		delete(backups)
 	}
 
 	if len(backups) <= keep_count {
@@ -542,12 +585,13 @@ print_backup_list :: proc(file_path: string) {
 	}
 
 	file_name := get_base_name(file_path)
-	print_header(fmt.aprintf("Backups for %s", file_name))
+	print_header(fmt.tprintf("Backups for %s", file_name))
 	fmt.println()
 
 	for backup, i in backups {
 		// Format time in readable format
 		time_str := format_backup_time(backup.timestamp)
+		defer delete(time_str)
 
 		// Format size
 		size_kb := f32(backup.size) / 1024.0
@@ -581,13 +625,16 @@ get_base_name :: proc(file_path: string) -> string {
 	return file_path[last_slash + 1:]
 }
 
-// Format backup timestamp for display
-format_backup_time :: proc(timestamp: time.Time) -> string {
-	// Simple format: YYYY-MM-DD HH:MM:SS
+// Format backup timestamp (UTC, as in the file name) for display:
+// "YYYY-MM-DD HH:MM:SS UTC", or ISO-8601 "YYYY-MM-DDTHH:MM:SSZ" with `iso`.
+format_backup_time :: proc(timestamp: time.Time, iso := false) -> string {
 	year, month, day := time.date(timestamp)
 	hour, min, sec := time.clock(timestamp)
 
-	return fmt.aprintf("%04d-%02d-%02d %02d:%02d:%02d",
+	if iso {
+		return fmt.aprintf("%04d-%02d-%02dT%02d:%02d:%02dZ", year, int(month), day, hour, min, sec)
+	}
+	return fmt.aprintf("%04d-%02d-%02d %02d:%02d:%02d UTC",
 		year, int(month), day, hour, min, sec)
 }
 
@@ -643,30 +690,48 @@ handle_backup_command :: proc(action: Action, args: []string) {
 	}
 }
 
+// The groups `backup list` / `backup rm` act on: wayu.toml and entries.json
+// always (so they are shown even with no backups), then every other group in
+// the backup dir (the rc file from init, plugins.json, ...). Also the TUI
+// Backups view and its cleanup. Free with delete_backup_keys.
+backup_list_groups :: proc() -> []string {
+	keys := list_backup_keys()
+	out := make([dynamic]string, 0, len(keys) + 2)
+	for k in ([]string{WAYU_TOML, ENTRIES_FILE}) {
+		if !slice.contains(keys, k) { append(&out, strings.clone(k)) }
+	}
+	append(&out, ..keys)
+	delete(keys)
+	slice.sort_by(out[:], proc(a, b: string) -> bool {
+		rank :: proc(k: string) -> int {
+			switch k {
+			case WAYU_TOML:    return 0
+			case ENTRIES_FILE: return 1
+			}
+			return 2
+		}
+		if rank(a) != rank(b) { return rank(a) < rank(b) }
+		return a < b
+	})
+	return out[:]
+}
+
 // Emit the same data as list_all_backups as a JSON document.
-// Shape: { "backups": [ {"file": "<config>", "count": N, "entries": [ ... ]}, ... ] }
+// Shape: { "backups": [ {"file": "<config>", "count": N, "entries": [ ... ]}, ... ]
+// "file" is wayu.toml, another wayu file name, or the rc file's path
+// (~/.config/zsh/.zshrc); "timestamp" is ISO-8601 UTC.
 print_all_backups_json :: proc() {
-	config_files := []string{
-		fmt.aprintf("%s/%s", wayu.config, WAYU_TOML),
-	}
-	defer {
-		for f in config_files { delete(f) }
-	}
+	keys := backup_list_groups()
+	defer delete_backup_keys(keys)
 
 	fmt.println("{")
 	fmt.println(`  "backups": [`)
 
 	first_file := true
-	for config_file in config_files {
-		file_name := get_base_name(config_file)
-		backups := list_backups_for_file(config_file)
-		defer {
-			for b in backups {
-				delete(b.original_file)
-				delete(b.backup_file)
-			}
-			delete(backups)
-		}
+	for key in keys {
+		file_name := backup_key_display(key, context.temp_allocator)
+		backups := list_backups_for_key(key, key)
+		defer free_backup_infos(backups)
 
 		if !first_file { fmt.println(",") }
 		first_file = false
@@ -683,7 +748,7 @@ print_all_backups_json :: proc() {
 		fmt.println()
 
 		for backup, i in backups {
-			time_str := format_backup_time(backup.timestamp)
+			time_str := format_backup_time(backup.timestamp, iso = true)
 			defer delete(time_str)
 			if i > 0 { fmt.println(",") }
 			// Paths come from $HOME and may contain `"`, `\` or control
@@ -705,44 +770,33 @@ print_all_backups_json :: proc() {
 
 // List backups for all config files
 list_all_backups :: proc() {
-	config_files := []string{
-		fmt.aprintf("%s/%s", wayu.config, WAYU_TOML),
-	}
-	defer {
-		for file in config_files {
-			delete(file)
-		}
-	}
+	keys := backup_list_groups()
+	defer delete_backup_keys(keys)
 
 	print_header("All Configuration Backups")
 	fmt.println()
 
 	total_backups := 0
-	for config_file in config_files {
-		file_name := get_base_name(config_file)
-		backups := list_backups_for_file(config_file)
+	other_files := false
+	for key in keys {
+		file_name := backup_key_display(key, context.temp_allocator)
+		backups := list_backups_for_key(key, key)
+		defer free_backup_infos(backups)
+		if len(backups) == 0 { continue }
+		if key != WAYU_TOML && key != ENTRIES_FILE { other_files = true }
 
-		if len(backups) > 0 {
-			fmt.printfln("%s%s%s (%d backup(s)):", BRIGHT_CYAN, file_name, RESET, len(backups))
+		fmt.printfln("%s%s%s (%d backup(s)):", BRIGHT_CYAN, file_name, RESET, len(backups))
+		for backup, i in backups {
+			time_str := format_backup_time(backup.timestamp)
+			defer delete(time_str)
+			size_kb := f32(backup.size) / 1024.0
 
-			for backup, i in backups {
-				time_str := format_backup_time(backup.timestamp)
-				size_kb := f32(backup.size) / 1024.0
-
-				fmt.printf("  %s%d.%s ", MUTED, i+1, RESET)
-				fmt.printf("%s(%.1f KB)%s ", MUTED, size_kb, RESET)
-				fmt.printf("%s%s%s%s\n", MUTED, time_str, " [pre-restore]" if backup.pre_restore else "", RESET)
-			}
-			fmt.println()
-			total_backups += len(backups)
+			fmt.printf("  %s%d.%s ", MUTED, i+1, RESET)
+			fmt.printf("%s(%.1f KB)%s ", MUTED, size_kb, RESET)
+			fmt.printf("%s%s%s%s\n", MUTED, time_str, " [pre-restore]" if backup.pre_restore else "", RESET)
 		}
-
-		// Clean up backup info
-		for backup in backups {
-			delete(backup.original_file)
-			delete(backup.backup_file)
-		}
-		delete(backups)
+		fmt.println()
+		total_backups += len(backups)
 	}
 
 	if total_backups == 0 {
@@ -750,6 +804,11 @@ list_all_backups :: proc() {
 		fmt.println("Backups are created automatically when you modify configuration files.")
 	} else {
 		fmt.printfln("%sTotal:%s %d backup(s) across all files", BRIGHT_CYAN, RESET, total_backups)
+		if other_files {
+			// Only wayu.toml and entries.json have `backup restore`; the others are plain copies.
+			fmt.printfln("%sFiles other than wayu.toml and entries.json: copy a backup back by hand from %s/backup (see 'wayu backup list --json' for paths)%s",
+				MUTED, wayu.data, RESET)
+		}
 	}
 }
 
@@ -758,7 +817,7 @@ list_backups_for_config :: proc(config_type: string) {
 	config_file := get_config_file_path(config_type)
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
-		fmt.println("Valid types: path, alias, constants")
+		fmt.println("Valid types: toml, entries (or path, alias, constants)")
 		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
@@ -771,14 +830,15 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 	config_file := get_config_file_path(config_type)
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
-		fmt.println("Valid types: path, alias, constants")
+		fmt.println("Valid types: toml, entries (or path, alias, constants)")
 		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
 
-	// path/alias/constants all live in the single wayu.toml, so restoring
+	// path/alias/constants all live in the single entries.json, so restoring
 	// any of them reverts the WHOLE file. Make that explicit.
-	shared_note :: "wayu.toml holds paths, aliases AND constants — restoring reverts the entire file, not just %s entries."
+	is_entries := get_base_name(config_file) == ENTRIES_FILE
+	shared_note := "entries.json holds PATH entries, aliases AND constants — restoring reverts all of them." if is_entries else "Restoring reverts the entire wayu.toml."
 
 	// Resolve an explicit selector up front: a bad index/name is a data
 	// error (65), not an I/O failure.
@@ -791,7 +851,7 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 	}
 
 	if wayu.dry_run {
-		fmt.printfln("%sNote:%s " + shared_note, BRIGHT_YELLOW, RESET, config_type)
+		fmt.printfln("%sNote:%s %s", BRIGHT_YELLOW, RESET, shared_note)
 		restore_from_backup(config_file, selector)
 		return
 	}
@@ -799,10 +859,10 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 	if !wayu.yes_flag {
 		print_error("This operation requires confirmation.")
 		fmt.println()
-		fmt.printfln(shared_note, config_type)
+		fmt.println(shared_note)
 		if idx >= 0 {
 			fmt.printfln("Would restore %s from: %s", get_base_name(config_file), backups[idx].backup_file)
-			fmt.println("The current wayu.toml will be backed up first.")
+			fmt.printfln("The current %s will be backed up first.", get_base_name(config_file))
 		} else {
 			fmt.printfln("No backups found for %s.", get_base_name(config_file))
 		}
@@ -816,7 +876,14 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 		os.exit(EXIT_USAGE)
 	}
 
-	fmt.printfln("%sNote:%s " + shared_note, BRIGHT_YELLOW, RESET, config_type)
+	// Serialize with every other writer: without the lock a
+	// concurrent `wayu const add` that read the file before the restore
+	// overwrites it afterwards and the restore is silently lost. The backup
+	// is re-selected under the lock (restore_from_backup).
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
+
+	fmt.printfln("%sNote:%s %s", BRIGHT_YELLOW, RESET, shared_note)
 	if !restore_from_backup(config_file, selector) {
 		os.exit(EXIT_IOERR)
 	}
@@ -824,28 +891,18 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 
 // Clean up old backups for all config files
 cleanup_all_old_backups :: proc() {
-	config_files := []string{
-		fmt.aprintf("%s/%s", wayu.config, WAYU_TOML),
-	}
-	defer {
-		for file in config_files {
-			delete(file)
-		}
-	}
+	keys := backup_list_groups()
+	defer delete_backup_keys(keys)
 
-	// First, count how many backups will be removed
+	// Old backups per group (beyond the newest BACKUP_KEEP_COUNT).
+	excess := make([]int, len(keys))
+	defer delete(excess)
 	total_to_remove := 0
-	for config_file in config_files {
-		backups := list_backups_for_file(config_file)
-		if len(backups) > 5 {
-			total_to_remove += len(backups) - 5
-		}
-		// Cleanup backup info
-		for backup in backups {
-			delete(backup.original_file)
-			delete(backup.backup_file)
-		}
-		delete(backups)
+	for key, i in keys {
+		backups := list_backups_for_key(key, key)
+		excess[i] = max(len(backups) - BACKUP_KEEP_COUNT, 0)
+		total_to_remove += excess[i]
+		free_backup_infos(backups)
 	}
 
 	if total_to_remove == 0 {
@@ -853,25 +910,19 @@ cleanup_all_old_backups :: proc() {
 		return
 	}
 
+	print_excess :: proc(keys: []string, excess: []int, bullet: string) {
+		for key, i in keys {
+			if excess[i] == 0 { continue }
+			fmt.printfln("  %s%s: %d backup(s)", bullet, backup_key_display(key, context.temp_allocator), excess[i])
+		}
+	}
+
 	// Dry-run mode check
 	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		fmt.println()
 		print_warning("Would remove %d old backup(s):", total_to_remove)
-		for config_file in config_files {
-			backups := list_backups_for_file(config_file)
-			defer {
-				for backup in backups {
-					delete(backup.original_file)
-					delete(backup.backup_file)
-				}
-				delete(backups)
-			}
-			if len(backups) > 5 {
-				file_name := get_base_name(config_file)
-				fmt.printfln("  %s: %d backup(s)", file_name, len(backups) - 5)
-			}
-		}
+		print_excess(keys, excess, "")
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
 		return
@@ -882,20 +933,7 @@ cleanup_all_old_backups :: proc() {
 		print_error("This operation requires confirmation.")
 		fmt.println()
 		fmt.printfln("Found %d old backup(s) to remove:", total_to_remove)
-		for config_file in config_files {
-			backups := list_backups_for_file(config_file)
-			defer {
-				for backup in backups {
-					delete(backup.original_file)
-					delete(backup.backup_file)
-				}
-				delete(backups)
-			}
-			if len(backups) > 5 {
-				file_name := get_base_name(config_file)
-				fmt.printfln("  - %s: %d backup(s)", file_name, len(backups) - 5)
-			}
-		}
+		print_excess(keys, excess, "- ")
 		fmt.println()
 		fmt.printfln("Add --yes flag to proceed:")
 		fmt.printfln("  wayu backup rm --yes")
@@ -904,9 +942,8 @@ cleanup_all_old_backups :: proc() {
 
 	// Proceed with removal
 	total_removed := 0
-	for config_file in config_files {
-		removed := cleanup_old_backups(config_file, 5)
-		total_removed += removed
+	for key in keys {
+		total_removed += cleanup_old_backups_key(key, BACKUP_KEEP_COUNT)
 	}
 
 	if total_removed > 0 {
@@ -921,7 +958,7 @@ cleanup_config_backups :: proc(config_type: string) {
 	config_file := get_config_file_path(config_type)
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
-		fmt.println("Valid types: path, alias, constants")
+		fmt.println("Valid types: toml, entries (or path, alias, constants)")
 		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
@@ -982,11 +1019,12 @@ cleanup_config_backups :: proc(config_type: string) {
 
 // Get config file path for backup operations
 get_config_file_path :: proc(config_type: string) -> string {
-	// wayu.toml is now the single source of truth for path/alias/constants,
-	// so every config-type argument resolves to it. The distinction survives
-	// only for CLI compatibility.
+	// PATH entries, aliases and constants share entries.json, so those
+	// types (and "entries") resolve to it; "toml" is wayu.toml.
 	switch config_type {
-	case "path", "alias", "constants", "toml":
+	case "entries", "path", "alias", "constants":
+		return entries_file_path(context.allocator)
+	case "toml":
 		return fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	case:
 		return ""
@@ -1009,9 +1047,9 @@ print_backup_help :: proc() {
 
 	// Config types section
 	fmt.printf("\n%s%sCONFIG TYPES:%s\n", BOLD, get_secondary(), RESET)
-	fmt.println("  path, alias, constants, toml")
-	fmt.println("             All map to the single wayu.toml file — a restore")
-	fmt.println("             reverts the WHOLE wayu.toml, not just one section")
+	fmt.println("  toml       wayu.toml")
+	fmt.println("  entries    entries.json (path, alias and constants are the same file —")
+	fmt.println("             a restore reverts all PATH entries, aliases and constants)")
 
 	// Examples section
 	fmt.printf("\n%s%sEXAMPLES:%s\n", BOLD, get_secondary(), RESET)
@@ -1032,7 +1070,7 @@ print_backup_help :: proc() {
 	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
 	fmt.printf("  %s• Backups are created automatically before modifications%s\n", get_muted(), RESET)
 	fmt.printf("  %s• Only the last 5 backups are kept per file; one backup per command%s\n", get_muted(), RESET)
-	fmt.printf("  %s• Backup files are stored in ~/.config/wayu/backup/%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Backup files are stored in %s/backup/%s\n", get_muted(), wayu.data, RESET)
 	fmt.printf("  %s• Restore backs up the current file first ([pre-restore]); without N it%s\n", get_muted(), RESET)
 	fmt.printf("  %s  uses the newest backup that is not a [pre-restore] one%s\n", get_muted(), RESET)
 	fmt.println()

@@ -12,11 +12,8 @@
 package wayu
 
 import "core:fmt"
-import "core:log"
-import "core:mem"
 import "core:os"
 import "core:strings"
-import "base:runtime"
 
 ParsedArgs :: struct {
 	command: Command,
@@ -44,7 +41,9 @@ ParsedArgs :: struct {
 	// Flag validation (see check_unknown_flags). main() exits EXIT_USAGE
 	// when `unknown_flag` is set and warns about `ambiguous_tail_flag`.
 	unknown_flag:        string, // first `-x`/`--xyz` token no command accepts
+	json_unsupported:    bool,   // --json given to a command/action without JSON output
 	ambiguous_tail_flag: string, // trailing short global flag kept in an add value
+	bad_flag_value:      string, // "--shell bogus" style error (temp allocator); main exits EXIT_USAGE
 }
 
 // Flag parsing state returned by parse_global_flags.
@@ -55,6 +54,13 @@ GlobalFlags :: struct {
 	component_snapshot: bool,
 	component_verify: bool,
 	json:             bool,
+	// --reveal: position-independent like --full, but only commands whose
+	// command_accepts_flag lists it (list views that mask secrets) take it.
+	reveal:           bool,
+	// --secret: `const add` only; like the trailing global long flags it
+	// stays a flag at the end of an add value (`const add K v --secret`).
+	secret:           bool,
+	run_only:         bool, // --run-only (implies --secret)
 	source_filter:    string,
 	// Indexes into filtered_args of dash tokens that were not consumed as
 	// global flags and are not literal (after `--`, add value). Validated
@@ -106,11 +112,12 @@ at_add_value_head :: proc(positional: []string) -> bool {
 }
 
 // Global long flags that are still flags when they end argv, even inside an
-// add value tail (rule 2 exception).
+// add value tail (rule 2 exception). `--secret` too, for `const` commands.
 @(private = "file")
-is_trailing_global_flag :: proc(arg: string) -> bool {
+is_trailing_global_flag :: proc(arg: string, const_cmd := false) -> bool {
 	switch arg {
 	case "--dry-run", "--yes", "--json", "--no-color", "--no-colour": return true
+	case "--secret", "--run-only": return const_cmd
 	}
 	return false
 }
@@ -119,9 +126,32 @@ is_trailing_global_flag :: proc(arg: string) -> bool {
 // starts (len(args) when there is none).
 @(private = "file")
 trailing_flags_start :: proc(args: []string) -> int {
+	const_cmd := is_const_command(args)
 	j := len(args)
-	for j > 0 && is_trailing_global_flag(args[j-1]) { j -= 1 }
+	for j > 0 && is_trailing_global_flag(args[j-1], const_cmd) { j -= 1 }
 	return j
+}
+
+// Is the command word (first non-flag token) `const` / `constants` / `env`?
+@(private = "file")
+is_const_command :: proc(args: []string) -> bool {
+	switch first_command_word(args) {
+	case "constants", "const", "env": return true
+	}
+	return false
+}
+
+// The first non-flag token ("" when there is none or `--` comes first).
+@(private = "file")
+first_command_word :: proc(args: []string) -> string {
+	for i := 0; i < len(args); i += 1 {
+		a := args[i]
+		if a == "--" { return "" }
+		if (a == "--shell" || a == "--source") && i + 1 < len(args) { i += 1; continue }
+		if is_simple_global_flag(a) { continue }
+		return a
+	}
+	return ""
 }
 
 // Global flags that take no value (or carry it inline, `--source=x`/`-c=x`).
@@ -129,7 +159,7 @@ trailing_flags_start :: proc(args: []string) -> int {
 is_simple_global_flag :: proc(arg: string) -> bool {
 	switch arg {
 	case "--full", "-f", "--dry-run", "-n", "--yes", "-y", "--tui",
-	     "--snapshot", "--test", "--json", "--no-color", "--no-colour":
+	     "--snapshot", "--test", "--json", "--no-color", "--no-colour", "--reveal":
 		return true
 	}
 	return strings.has_prefix(arg, "-c=") || strings.has_prefix(arg, "--source=")
@@ -157,6 +187,19 @@ global_flag_present :: proc(args: []string, flag: string) -> bool {
 	return false
 }
 
+// `--source` takes one of the list filters; anything else is a usage error
+// (it used to show nothing, silently).
+@(private = "file")
+check_source_value :: proc(parsed: ^ParsedArgs, value: string) {
+	switch value {
+	case "wayu", "external", "inactive", "all":
+	case:
+		if len(parsed.bad_flag_value) == 0 {
+			parsed.bad_flag_value = fmt.tprintf("Invalid --source value '%s' (expected wayu, external, inactive or all)", value)
+		}
+	}
+}
+
 // Parse global flags (--dry-run, --yes, --tui, --json, --no-color, --shell,
 // --source, etc.) from raw CLI args. Returns the remaining (non-flag)
 // arguments in `filtered_args`. Mutates `wayu` for side-effect flags.
@@ -167,6 +210,8 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 
 	literal := false
 	tail_start := trailing_flags_start(args)
+	const_cmd := is_const_command(args)
+	secrets_cmd := first_command_word(args) == "secrets" || first_command_word(args) == "secret"
 	i := 0
 	for i < len(args) {
 		arg := args[i]
@@ -183,6 +228,8 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 		}
 		if arg == "--" {
 			literal = true
+			// `secrets run NAME... -- CMD`: the handler needs the split.
+			if secrets_cmd { append(filtered_args, arg) }
 			i += 1
 			continue
 		}
@@ -205,22 +252,30 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 		case arg == "--json":
 			flags.json = true
 			wayu.json_output = true
+		case arg == "--reveal":
+			flags.reveal = true
+		case arg == "--secret" && const_cmd:
+			flags.secret = true
+		case arg == "--run-only" && const_cmd:
+			flags.secret = true
+			flags.run_only = true
 		case strings.has_prefix(arg, "--source="):
 			flags.source_filter = strings.trim_prefix(arg, "--source=")
+			check_source_value(parsed, flags.source_filter)
 		case arg == "--source" && i + 1 < len(args):
 			flags.source_filter = args[i + 1]
+			check_source_value(parsed, flags.source_filter)
 			i += 1
 		case arg == "--no-color" || arg == "--no-colour":
-			CURRENT_COLOR_PROFILE = .ASCII
-			RESET = ""
-			BOLD = ""
-			DIM = ""
-			ITALIC = ""
-			UNDERLINE = ""
+			set_plain_output()
 		case arg == "--shell" && i + 1 < len(args):
-			parsed.shell = parse_shell_type(args[i + 1])
-			set_active_shell(parsed.shell)
-			shell_flag_given = true
+			if sh := parse_shell_type(args[i + 1]); sh != .UNKNOWN {
+				parsed.shell = sh
+				set_active_shell(sh)
+				shell_flag_given = true
+			} else if len(parsed.bad_flag_value) == 0 {
+				parsed.bad_flag_value = fmt.tprintf("Invalid --shell value '%s' (expected zsh, bash or fish)", args[i + 1])
+			}
 			i += 1
 		case:
 			// `-5` is a number (plugin priority), not a flag.
@@ -236,7 +291,8 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 }
 
 // Resolve command + action from filtered positional args. Populates
-// `parsed.command`, `parsed.action`, and `parsed.args`.
+// `parsed.command`, `parsed.action`, and `parsed.args`. Command names and
+// action words come from WAYU_COMMAND_SPECS (OKAMI-282).
 @(private = "file")
 parse_command_and_action :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 	if len(filtered_args) == 0 {
@@ -244,230 +300,47 @@ parse_command_and_action :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 		return
 	}
 
-	cmd := filtered_args[0]
+	spec := find_command_spec_by_name(filtered_args[0])
+	if spec == nil {
+		switch filtered_args[0] {
+		case "-v", "--version": parsed.command = .VERSION
+		case "-h", "--help":    parsed.command = .HELP
+		case:                   parsed.command = .UNKNOWN
+		}
+		return
+	}
+	parsed.command = spec.command
+	parsed.action = spec.default_action
 
-	// Commands with complex subcommand / action parsing.
-	switch cmd {
-	case "path":       parsed.command = .PATH
-	case "alias":      parsed.command = .ALIAS
-	case "constants", "const", "env": parsed.command = .CONSTANTS
-	case "backup":     parsed.command = .BACKUP
-	case "plugin":     parsed.command = .PLUGIN
-	case "init":
-		parsed.command = .INIT
-		if len(filtered_args) > 1 {
-			if filtered_args[1] == "help" || filtered_args[1] == "-h" || filtered_args[1] == "--help" {
-				parsed.action = .HELP
-			}
-			parsed.args = make([]string, len(filtered_args) - 1)
-			copy(parsed.args, filtered_args[1:])
-		}
-		return
-	case "migrate":
-		parsed.command = .MIGRATE
-		if len(filtered_args) > 1 {
-			parsed.args = make([]string, len(filtered_args) - 1)
-			copy(parsed.args, filtered_args[1:])
-		}
-		return
-	case "config":
-		parsed.command = .CONFIG
-		parse_config_command(filtered_args, parsed)
-		return
-	case "build":
-		parsed.command = .BUILD
-		parse_build_command(filtered_args, parsed)
-		return
-	case "completions":
-		parsed.command = .COMPLETIONS
-		parse_completions_command(filtered_args, parsed)
-		return
-	case "export":
-		parsed.command = .EXPORT
-		parse_export_command(filtered_args, parsed)
-		return
-	case "toml":
-		parsed.command = .TOML
-		parse_toml_command(filtered_args, parsed)
-		return
-	case "version", "-v", "--version":
-		parsed.command = .VERSION
-		return
-	case "help", "-h", "--help":
-		parsed.command = .HELP
-		return
-	case "doctor":
-		parsed.command = .DOCTOR
+	if spec.command == .DOCTOR {
 		parse_doctor_flags(filtered_args, parsed)
 		return
-	case "template":
-		parsed.command = .TEMPLATE
-		parse_template_command(filtered_args, parsed)
-		return
-	case "hooks":
-		parsed.command = .HOOKS
-		parse_hooks_command(filtered_args, parsed)
-		return
-	case "function", "func", "fn", "functions":
-		parsed.command = .FUNCTION
-		parse_function_command(filtered_args, parsed)
-		return
-	case "reload", "hot-reload", "watch":
-		parsed.command = .RELOAD
-		if len(filtered_args) > 1 {
-			parsed.args = make([]string, len(filtered_args) - 1)
-			copy(parsed.args, filtered_args[1:])
-		}
-		return
-	case "search", "find", "f":
-		parsed.command = .SEARCH
-		if len(filtered_args) > 1 {
-			parsed.args = make([]string, len(filtered_args) - 1)
-			copy(parsed.args, filtered_args[1:])
-		}
-		return
-	case:
-		parsed.command = .UNKNOWN
-		return
 	}
 
-	// Commands that reach here use a simple action as the second arg.
-	if len(filtered_args) < 2 {
-		parsed.action = .LIST
-		return
-	}
-
-	action_str := filtered_args[1]
-	switch action_str {
-	case "add":              parsed.action = .ADD
-	case "remove", "rm":    parsed.action = .REMOVE
-	case "list", "ls":      parsed.action = .LIST
-	case "get":             parsed.action = .GET
-	case "check":           parsed.action = .CHECK
-	case "update":          parsed.action = .UPDATE
-	case "enable":          parsed.action = .ENABLE
-	case "disable":         parsed.action = .DISABLE
-	case "priority":        parsed.action = .PRIORITY
-	case "search":          parsed.action = .SEARCH
-	case "restore":         parsed.action = .RESTORE
-	case "clean":           parsed.action = .CLEAN
-	case "dedup":           parsed.action = .DEDUP
-	case "turbo":           parsed.action = .TURBO
-	case "eval":            parsed.action = .EVAL
-	case "help", "-h", "--help":
-		parsed.action = .HELP
-	case:
-		if action_str == "--help" || action_str == "-h" {
+	// The word after the command is its action. Commands without action
+	// words (init, search, reload) get every word as an argument;
+	// a leading help word still sets .HELP but stays in args for their
+	// handlers.
+	rest := filtered_args[1:]
+	if len(rest) > 0 {
+		has_actions := len(spec.actions) > 0
+		if is_help_word(rest[0]) {
 			parsed.action = .HELP
-		} else {
-			parsed.action = .UNKNOWN
-			return
+			if has_actions { rest = rest[1:] }
+		} else if has_actions {
+			parsed.action = find_spec_action(spec, rest[0])
+			rest = rest[1:]
 		}
 	}
-
-	if len(filtered_args) > 2 {
-		parsed.args = make([]string, len(filtered_args) - 2)
-		copy(parsed.args, filtered_args[2:])
-	}
-}
-
-@(private = "file")
-parse_config_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
-	if len(filtered_args) > 1 {
-		switch filtered_args[1] {
-		case "extend", "e":     parsed.action = .ADD
-		case "edit":            parsed.action = .UPDATE
-		case "scan", "s", "detect": parsed.action = .CHECK
-		case "help", "-h", "--help": parsed.action = .HELP
-		case:                   parsed.action = .UNKNOWN
-		}
-		if len(filtered_args) > 2 {
-			parsed.args = make([]string, len(filtered_args) - 2)
-			copy(parsed.args, filtered_args[2:])
-		}
-	} else {
-		parsed.action = .HELP
+	if len(rest) > 0 {
+		parsed.args = make([]string, len(rest))
+		copy(parsed.args, rest)
 	}
 }
 
 @(private = "file")
-parse_build_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
-	if len(filtered_args) > 1 {
-		switch filtered_args[1] {
-		case "turbo":           parsed.action = .TURBO
-		case "eval":            parsed.action = .EVAL
-		case "profile":         parsed.action = .CHECK
-		case "help", "-h", "--help": parsed.action = .HELP
-		case:                   parsed.action = .UNKNOWN
-		}
-		if len(filtered_args) > 2 {
-			parsed.args = make([]string, len(filtered_args) - 2)
-			copy(parsed.args, filtered_args[2:])
-		}
-	} else {
-		parsed.action = .LIST
-	}
-}
-
-@(private = "file")
-parse_completions_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
-	if len(filtered_args) > 1 {
-		switch filtered_args[1] {
-		case "add":             parsed.action = .ADD
-		case "remove", "rm":    parsed.action = .REMOVE
-		case "list", "ls":      parsed.action = .LIST
-		case "generate", "gen": parsed.action = .UPDATE
-		case "bash":            parsed.action = .CHECK
-		case "fish":            parsed.action = .GET
-		case "zsh":             parsed.action = .TURBO
-		case "help", "-h", "--help": parsed.action = .HELP
-		case:                   parsed.action = .UNKNOWN
-		}
-		if len(filtered_args) > 2 {
-			parsed.args = make([]string, len(filtered_args) - 2)
-			copy(parsed.args, filtered_args[2:])
-		}
-	} else {
-		parsed.action = .LIST
-	}
-}
-
-// `wayu export [turbo|eval|check|list|help]`; the documented flag forms
-// (--turbo/--eval/--check) are the same modes (OKAMI-233). No mode = turbo.
-// An unrecognised word is .UNKNOWN (usage error), never a silent turbo write.
-@(private = "file")
-parse_export_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
-	parsed.action = .TURBO
-	if len(filtered_args) > 1 {
-		switch filtered_args[1] {
-		case "turbo", "--turbo":     parsed.action = .TURBO
-		case "eval", "--eval":       parsed.action = .EVAL
-		case "check", "--check":     parsed.action = .CHECK
-		case "list", "ls":           parsed.action = .LIST
-		case "help", "-h", "--help": parsed.action = .HELP
-		case:                        parsed.action = .UNKNOWN
-		}
-		if len(filtered_args) > 2 {
-			parsed.args = make([]string, len(filtered_args) - 2)
-			copy(parsed.args, filtered_args[2:])
-		}
-	}
-}
-
-@(private = "file")
-parse_toml_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
-	if len(filtered_args) > 1 {
-		switch filtered_args[1] {
-		case "validate":        parsed.action = .CHECK
-		case "convert":         parsed.action = .UPDATE
-		case "show":            parsed.action = .GET
-		case "keys":            parsed.action = .LIST
-		case "help", "-h", "--help": parsed.action = .HELP
-		case:                   parsed.action = .UNKNOWN
-		}
-	} else {
-		parsed.action = .LIST
-	}
+is_help_word :: proc(word: string) -> bool {
+	return word == "help" || word == "-h" || word == "--help"
 }
 
 @(private = "file")
@@ -478,62 +351,18 @@ parse_doctor_flags :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 		case "--json":     parsed.doctor_json = true
 		case "--profile":  parsed.doctor_profile = true
 		case "--optimize": parsed.doctor_optimize = true
-		case "--help", "-h":
+		case "--help", "-h", "help":
 			print_doctor_usage()
 			os.exit(0)
-		}
-	}
-}
-
-@(private = "file")
-parse_template_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
-	if len(filtered_args) > 1 {
-		switch filtered_args[1] {
-		case "list", "ls":      parsed.action = .LIST
-		case "apply":
-			parsed.action = .ADD
-			if len(filtered_args) > 2 {
-				parsed.args = make([]string, len(filtered_args) - 2)
-				copy(parsed.args, filtered_args[2:])
+		case:
+			// doctor takes no action words; dash tokens are checked by the
+			// flag allow-list (command_accepts_flag).
+			if !strings.has_prefix(filtered_args[i], "-") {
+				print_error_simple("Unknown doctor argument: %s", filtered_args[i])
+				print_doctor_usage()
+				os.exit(EXIT_USAGE)
 			}
-		case "help", "-h", "--help": parsed.action = .HELP
-		case:                   parsed.action = .UNKNOWN
 		}
-	} else {
-		parsed.action = .LIST
-	}
-}
-
-@(private = "file")
-parse_hooks_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
-	if len(filtered_args) > 1 {
-		switch filtered_args[1] {
-		case "list", "ls":      parsed.action = .LIST
-		case "edit":            parsed.action = .ADD
-		case "help", "-h", "--help": parsed.action = .HELP
-		case:                   parsed.action = .UNKNOWN
-		}
-	} else {
-		parsed.action = .LIST
-	}
-}
-
-@(private = "file")
-parse_function_command :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
-	if len(filtered_args) > 1 {
-		switch filtered_args[1] {
-		case "add", "edit", "new":     parsed.action = .ADD
-		case "remove", "rm", "delete": parsed.action = .REMOVE
-		case "list", "ls":            parsed.action = .LIST
-		case "help", "-h", "--help":   parsed.action = .HELP
-		case:                         parsed.action = .UNKNOWN
-		}
-		if len(filtered_args) > 2 {
-			parsed.args = make([]string, len(filtered_args) - 2)
-			copy(parsed.args, filtered_args[2:])
-		}
-	} else {
-		parsed.action = .LIST
 	}
 }
 
@@ -576,32 +405,27 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			break
 		}
 	}
-	return parsed
-}
-
-// Flags a command's handler parses itself (beyond the global flags in
-// parse_global_flags). `-h`/`--help` are accepted everywhere.
-command_accepts_flag :: proc(command: Command, arg: string) -> bool {
-	if arg == "-h" || arg == "--help" { return true }
-	#partial switch command {
-	case .DOCTOR:
-		switch arg { case "--fix", "--profile", "--optimize": return true }
-	case .MIGRATE:
-		switch arg { case "--from", "--to", "--schema": return true }
-	case .CONFIG:
-		return arg == "--fix"
-	case .COMPLETIONS:
-		return arg == "--generate" || arg == "-g"
-	case .PLUGIN:
-		switch arg { case "--all", "-a", "--category", "-c": return true }
-		return strings.has_prefix(arg, "--category=")
-	case .EXPORT:
-		switch arg { case "--eval", "--turbo", "--check": return true }
-	case .VERSION, .HELP, .UNKNOWN:
-		// Nothing to protect: these never write.
-		return true
+	// --json where it means nothing is a usage error, not silently text.
+	parsed.json_unsupported = flags.json && !command_supports_json(parsed.command, parsed.action)
+	wayu.secret_flag = false
+	wayu.run_only_flag = false
+	if flags.secret {
+		if parsed.command == .CONSTANTS && parsed.action == .ADD {
+			wayu.secret_flag = true
+			wayu.run_only_flag = flags.run_only
+		} else if len(parsed.unknown_flag) == 0 {
+			parsed.unknown_flag = "--run-only" if flags.run_only else "--secret"
+		}
 	}
-	return false
+	wayu.reveal_secrets = false
+	if flags.reveal {
+		if command_accepts_flag(parsed.command, "--reveal") {
+			wayu.reveal_secrets = true
+		} else if len(parsed.unknown_flag) == 0 {
+			parsed.unknown_flag = "--reveal"
+		}
+	}
+	return parsed
 }
 
 @(private = "file")

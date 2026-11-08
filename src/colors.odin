@@ -24,44 +24,48 @@ ColorProfile :: enum {
 	TRUECOLOR,  // 24-bit RGB (modern terminals)
 }
 
+// Palette tokens are runtime vars, not constants: set_plain_output blanks
+// every one of them under the ASCII profile (NO_COLOR, --no-color, output
+// not a terminal), so no call site can leak an escape code (OKAMI-238).
+
 // Foreground colors
-BLACK   :: "\x1b[30m"
-RED     :: "\x1b[31m"
-GREEN   :: "\x1b[32m"
-YELLOW  :: "\x1b[33m"
-BLUE    :: "\x1b[34m"
-MAGENTA :: "\x1b[35m"
-CYAN    :: "\x1b[36m"
-WHITE   :: "\x1b[37m"
+BLACK:   string = "\x1b[30m"
+RED:     string = "\x1b[31m"
+GREEN:   string = "\x1b[32m"
+YELLOW:  string = "\x1b[33m"
+BLUE:    string = "\x1b[34m"
+MAGENTA: string = "\x1b[35m"
+CYAN:    string = "\x1b[36m"
+WHITE:   string = "\x1b[37m"
 
 // Bright colors
-BRIGHT_BLACK   :: "\x1b[90m"
-BRIGHT_RED     :: "\x1b[91m"
-BRIGHT_GREEN   :: "\x1b[92m"
-BRIGHT_YELLOW  :: "\x1b[93m"
-BRIGHT_BLUE    :: "\x1b[94m"
-BRIGHT_MAGENTA :: "\x1b[95m"
-BRIGHT_CYAN    :: "\x1b[96m"
-BRIGHT_WHITE   :: "\x1b[97m"
+BRIGHT_BLACK:   string = "\x1b[90m"
+BRIGHT_RED:     string = "\x1b[91m"
+BRIGHT_GREEN:   string = "\x1b[92m"
+BRIGHT_YELLOW:  string = "\x1b[93m"
+BRIGHT_BLUE:    string = "\x1b[94m"
+BRIGHT_MAGENTA: string = "\x1b[95m"
+BRIGHT_CYAN:    string = "\x1b[96m"
+BRIGHT_WHITE:   string = "\x1b[97m"
 
 // Background colors
-BG_BLACK   :: "\x1b[40m"
-BG_RED     :: "\x1b[41m"
-BG_GREEN   :: "\x1b[42m"
-BG_YELLOW  :: "\x1b[43m"
-BG_BLUE    :: "\x1b[44m"
-BG_MAGENTA :: "\x1b[45m"
-BG_CYAN    :: "\x1b[46m"
-BG_WHITE   :: "\x1b[47m"
+BG_BLACK:   string = "\x1b[40m"
+BG_RED:     string = "\x1b[41m"
+BG_GREEN:   string = "\x1b[42m"
+BG_YELLOW:  string = "\x1b[43m"
+BG_BLUE:    string = "\x1b[44m"
+BG_MAGENTA: string = "\x1b[45m"
+BG_CYAN:    string = "\x1b[46m"
+BG_WHITE:   string = "\x1b[47m"
 
 // Common gum-style colors (LEGACY - for backward compatibility)
-PRIMARY    :: BRIGHT_CYAN
-SECONDARY  :: BRIGHT_MAGENTA
-SUCCESS    :: BRIGHT_GREEN
-WARNING    :: BRIGHT_YELLOW
-ERROR      :: BRIGHT_RED
-MUTED      :: BRIGHT_BLACK
-ACCENT     :: MAGENTA
+PRIMARY:    string = "\x1b[96m"  // BRIGHT_CYAN
+SECONDARY:  string = "\x1b[95m"  // BRIGHT_MAGENTA
+SUCCESS:    string = "\x1b[92m"  // BRIGHT_GREEN
+WARNING:    string = "\x1b[93m"  // BRIGHT_YELLOW
+ERROR:      string = "\x1b[91m"  // BRIGHT_RED
+MUTED:      string = "\x1b[90m"  // BRIGHT_BLACK
+ACCENT:     string = "\x1b[35m"  // MAGENTA
 
 // ============================================================================
 // VIBRANT COLOR PALETTE (Phase 1 - PRP-09)
@@ -69,29 +73,29 @@ ACCENT     :: MAGENTA
 // ============================================================================
 
 // Primary Colors (From Zellij dvrd theme)
-VIBRANT_PRIMARY   :: "\x1b[38;2;228;0;80m"     // Hot pink #E40050 (emphasis_2)
-VIBRANT_SECONDARY :: "\x1b[38;2;14;116;144m"   // Teal-cyan #0E7490 (emphasis_1)
-VIBRANT_ACCENT    :: "\x1b[38;2;194;65;12m"    // Orange-red #C2410C (emphasis_0)
+VIBRANT_PRIMARY:   string = "\x1b[38;2;228;0;80m"     // Hot pink #E40050 (emphasis_2)
+VIBRANT_SECONDARY: string = "\x1b[38;2;14;116;144m"   // Teal-cyan #0E7490 (emphasis_1)
+VIBRANT_ACCENT:    string = "\x1b[38;2;194;65;12m"    // Orange-red #C2410C (emphasis_0)
 
 // Semantic Colors (Zellij-inspired)
-VIBRANT_SUCCESS   :: "\x1b[38;2;14;116;144m"   // Teal (reusing emphasis_1)
-VIBRANT_ERROR     :: "\x1b[38;2;153;27;27m"    // Dark red #991B1B
-VIBRANT_WARNING   :: "\x1b[38;2;217;119;6m"    // Orange #D97706
-VIBRANT_INFO      :: "\x1b[38;2;14;116;144m"   // Teal-cyan #0E7490
+VIBRANT_SUCCESS:   string = "\x1b[38;2;14;116;144m"   // Teal (reusing emphasis_1)
+VIBRANT_ERROR:     string = "\x1b[38;2;153;27;27m"    // Dark red #991B1B
+VIBRANT_WARNING:   string = "\x1b[38;2;217;119;6m"    // Orange #D97706
+VIBRANT_INFO:      string = "\x1b[38;2;14;116;144m"   // Teal-cyan #0E7490
 
 // UI Elements
-VIBRANT_HIGHLIGHT   :: "\x1b[38;2;228;0;80m"     // Hot pink (primary)
-VIBRANT_SELECTED_BG :: "\x1b[48;2;9;9;11m"       // Almost black background
-VIBRANT_MUTED       :: "\x1b[38;2;208;208;208m"  // Light gray (base text)
-VIBRANT_DIM         :: "\x1b[38;2;100;100;100m"  // Dimmer gray
+VIBRANT_HIGHLIGHT:   string = "\x1b[38;2;228;0;80m"     // Hot pink (primary)
+VIBRANT_SELECTED_BG: string = "\x1b[48;2;9;9;11m"       // Almost black background
+VIBRANT_MUTED:       string = "\x1b[38;2;208;208;208m"  // Light gray (base text)
+VIBRANT_DIM:         string = "\x1b[38;2;100;100;100m"  // Dimmer gray
 
 // Background colors (Zellij backgrounds)
-BG_DARK   :: "\x1b[48;2;24;24;37m"   // Dark purple-blue
-BG_DARKER :: "\x1b[48;2;9;9;11m"     // Almost black
+BG_DARK:   string = "\x1b[48;2;24;24;37m"   // Dark purple-blue
+BG_DARKER: string = "\x1b[48;2;9;9;11m"     // Almost black
 
 // Gradient colors (using Zellij theme colors)
-GRADIENT_START :: "\x1b[38;2;194;65;12m"   // Orange-red
-GRADIENT_END   :: "\x1b[38;2;228;0;80m"    // Hot pink
+GRADIENT_START: string = "\x1b[38;2;194;65;12m"   // Orange-red
+GRADIENT_END:   string = "\x1b[38;2;228;0;80m"    // Hot pink
 
 // ANSI 256 fallback colors (closest matches to Zellij theme)
 ANSI256_PRIMARY   :: "\x1b[38;5;197m"  // Hot pink
@@ -106,8 +110,22 @@ ANSI256_INFO      :: "\x1b[38;5;31m"   // Teal
 // TERMINAL CAPABILITY DETECTION
 // ============================================================================
 
-// Global color profile (initialized once)
-CURRENT_COLOR_PROFILE: ColorProfile
+// Global color profile (initialized once by init_colors). Defaults to ANSI
+// so it agrees with the palette tokens' initial (colored) values.
+CURRENT_COLOR_PROFILE: ColorProfile = .ANSI
+
+// True when env var `name` is set to something other than "" or "0".
+@(private = "file")
+env_flag_set :: proc(name: string) -> bool {
+	v := os.get_env(name, context.temp_allocator)
+	return len(v) > 0 && v != "0"
+}
+
+// FORCE_COLOR / CLICOLOR_FORCE keep colors on when output is not a terminal.
+@(private = "file")
+color_forced :: proc() -> bool {
+	return env_flag_set("FORCE_COLOR") || env_flag_set("CLICOLOR_FORCE")
+}
 
 // Detect terminal color capabilities
 detect_color_profile :: proc() -> ColorProfile {
@@ -120,6 +138,11 @@ detect_color_profile :: proc() -> ColorProfile {
 	// Check WAYU_PLAIN for explicit plain output
 	wayu_plain := os.get_env("WAYU_PLAIN", context.temp_allocator)
 	if len(wayu_plain) > 0 {
+		return .ASCII
+	}
+
+	// Piped/redirected stdout gets plain text unless colors are forced.
+	if !color_forced() && !is_stdout_tty() {
 		return .ASCII
 	}
 
@@ -150,24 +173,60 @@ detect_color_profile :: proc() -> ColorProfile {
 	return .ANSI
 }
 
+// Whether stderr output (errors, warnings) may carry escape codes. Decided
+// separately from stdout: `wayu path list 2>log` keeps a colored table but
+// writes a plain log. eprintf_color/eprintfln_color honor it.
+stderr_color: bool
+
 // Initialize color profile (call once at startup)
 init_colors :: proc() {
 	CURRENT_COLOR_PROFILE = detect_color_profile()
-
-	// Set ANSI codes based on color profile
 	if CURRENT_COLOR_PROFILE == .ASCII {
-		RESET     = ""
-		BOLD      = ""
-		DIM       = ""
-		ITALIC    = ""
-		UNDERLINE = ""
-	} else {
-		RESET     = RESET_CODE
-		BOLD      = BOLD_CODE
-		DIM       = DIM_CODE
-		ITALIC    = ITALIC_CODE
-		UNDERLINE = UNDERLINE_CODE
+		set_plain_output()
+		return
 	}
+	stderr_color = color_forced() || is_tty(STDERR_FILENO)
+}
+
+// Switch to plain output for the rest of the run: ASCII profile and every
+// palette token blanked (used by NO_COLOR, --no-color, non-TTY stdout).
+set_plain_output :: proc() {
+	CURRENT_COLOR_PROFILE = .ASCII
+	stderr_color = false
+	tokens := [?]^string{
+		&RESET, &BOLD, &DIM, &ITALIC, &UNDERLINE,
+		&BLACK, &RED, &GREEN, &YELLOW, &BLUE, &MAGENTA, &CYAN, &WHITE,
+		&BRIGHT_BLACK, &BRIGHT_RED, &BRIGHT_GREEN, &BRIGHT_YELLOW,
+		&BRIGHT_BLUE, &BRIGHT_MAGENTA, &BRIGHT_CYAN, &BRIGHT_WHITE,
+		&BG_BLACK, &BG_RED, &BG_GREEN, &BG_YELLOW, &BG_BLUE, &BG_MAGENTA, &BG_CYAN, &BG_WHITE,
+		&PRIMARY, &SECONDARY, &SUCCESS, &WARNING, &ERROR, &MUTED, &ACCENT,
+		&VIBRANT_PRIMARY, &VIBRANT_SECONDARY, &VIBRANT_ACCENT, &VIBRANT_SUCCESS,
+		&VIBRANT_ERROR, &VIBRANT_WARNING, &VIBRANT_INFO, &VIBRANT_HIGHLIGHT,
+		&VIBRANT_SELECTED_BG, &VIBRANT_MUTED, &VIBRANT_DIM,
+		&BG_DARK, &BG_DARKER, &GRADIENT_START, &GRADIENT_END,
+	}
+	for t in tokens { t^ = "" }
+	SYMBOL_CHECK_SUCCESS = "✓"
+	SYMBOL_CHECK_ERROR   = "✗"
+	SYMBOL_CHECK_MISSING = "○"
+	SYMBOL_CHECK_WARN    = "⚠"
+}
+
+// fmt.eprintf that strips escape codes unless stderr_color is set.
+eprintf_color :: proc(format: string, args: ..any) {
+	text := fmt.tprintf(format, ..args)
+	if stderr_color {
+		fmt.eprint(text)
+		return
+	}
+	plain := strip_ansi_codes(text, allocator = context.temp_allocator)
+	fmt.eprint(plain)
+}
+
+// fmt.eprintfln that strips escape codes unless stderr_color is set.
+eprintfln_color :: proc(format: string, args: ..any) {
+	eprintf_color(format, ..args)
+	fmt.eprintln()
 }
 
 // Get adaptive color based on terminal capabilities
@@ -270,50 +329,6 @@ strip_ansi_codes :: proc(text: string, newlines_to_space := false, allocator := 
 	return strings.clone(string(buf[:]), allocator)
 }
 
-// Strip ANSI codes from a string if in ASCII mode
-maybe_strip_ansi :: proc(text: string) -> string {
-	if CURRENT_COLOR_PROFILE != .ASCII {
-		return text
-	}
-	return strip_ansi_codes(text)
-}
-
-// Wrapper for fmt.printf that strips ANSI codes in ASCII mode
-fmt_printf :: proc(format: string, args: ..any) {
-	if CURRENT_COLOR_PROFILE == .ASCII {
-		text := fmt.tprintf(format, ..args)
-		stripped := maybe_strip_ansi(text)
-		defer delete(stripped)
-		fmt.printf(stripped)
-	} else {
-		fmt.printf(format, ..args)
-	}
-}
-
-// Wrapper for fmt.println that strips ANSI codes in ASCII mode
-fmt_println :: proc(args: ..any) {
-	if CURRENT_COLOR_PROFILE == .ASCII {
-		text := fmt.tprint(..args)
-		stripped := maybe_strip_ansi(text)
-		defer delete(stripped)
-		fmt.println(stripped)
-	} else {
-		fmt.println(..args)
-	}
-}
-
-// Wrapper for fmt.printfln that strips ANSI codes in ASCII mode
-fmt_printfln :: proc(format: string, args: ..any) {
-	if CURRENT_COLOR_PROFILE == .ASCII {
-		text := fmt.tprintf(format, ..args)
-		stripped := maybe_strip_ansi(text)
-		defer delete(stripped)
-		fmt.println(stripped)
-	} else {
-		fmt.printfln(format, ..args)
-	}
-}
-
 // Emojis
 EMOJI_SUCCESS   :: "✅"
 EMOJI_ERROR     :: "❌"
@@ -335,10 +350,10 @@ EMOJI_ADD       :: "➕"
 EMOJI_LIST      :: " "
 
 // Colored Status Symbols (using Zellij theme colors)
-SYMBOL_CHECK_SUCCESS :: "\x1b[38;2;14;116;144m✓\x1b[0m"   // Teal checkmark
-SYMBOL_CHECK_ERROR   :: "\x1b[38;2;153;27;27m✗\x1b[0m"    // Red X
-SYMBOL_CHECK_MISSING :: "\x1b[38;2;217;119;6m○\x1b[0m"    // Orange circle
-SYMBOL_CHECK_WARN    :: "\x1b[38;2;217;119;6m⚠\x1b[0m"    // Orange warning
+SYMBOL_CHECK_SUCCESS: string = "\x1b[38;2;14;116;144m✓\x1b[0m"   // Teal checkmark
+SYMBOL_CHECK_ERROR:   string = "\x1b[38;2;153;27;27m✗\x1b[0m"    // Red X
+SYMBOL_CHECK_MISSING: string = "\x1b[38;2;217;119;6m○\x1b[0m"    // Orange circle
+SYMBOL_CHECK_WARN:    string = "\x1b[38;2;217;119;6m⚠\x1b[0m"    // Orange warning
 
 // ============================================================================
 // ENHANCED PRINT FUNCTIONS (PRP-09 Phase 1)
@@ -371,7 +386,8 @@ clear_print_capture :: proc() {
 	print_captured_error = ""
 }
 
-// Styled print functions
+// Styled print functions. Success/info go to stdout; errors and warnings go
+// to stderr so `wayu ... --json | jq` and captured output stay clean.
 print_success :: proc(msg: string, args: ..any) {
 	if print_quiet do return
 	fmt.printf("%s✓ ", get_success())
@@ -383,18 +399,21 @@ print_error :: proc(msg: string, args: ..any) {
 	if print_quiet {
 		clear_print_capture()
 		print_captured_error = fmt.aprintf(msg, ..args)
+		// The TUI redirects stderr to a file it replays only if it dies
+		// (os.exit from shared code, crash): keep the reason there too.
+		if tui_stderr_capturing() do fmt.eprintfln("ERROR: %s", print_captured_error)
 		return
 	}
-	fmt.printf("%s%sERROR:%s ", BOLD, get_error(), RESET)
-	fmt.printf(msg, ..args)
-	fmt.println()
+	eprintf_color("%s%sERROR:%s ", BOLD, get_error(), RESET)
+	eprintf_color(msg, ..args)
+	fmt.eprintln()
 }
 
 print_warning :: proc(msg: string, args: ..any) {
 	if print_quiet do return
-	fmt.printf("%s⚠ ", get_warning())
-	fmt.printf(msg, ..args)
-	fmt.printf("%s\n", RESET)
+	eprintf_color("%s⚠ ", get_warning())
+	eprintf_color(msg, ..args)
+	eprintf_color("%s\n", RESET)
 }
 
 print_info :: proc(msg: string, args: ..any) {
@@ -462,7 +481,7 @@ json_escape :: proc(str: string) -> string {
 	return strings.clone(strings.to_string(builder))
 }
 
-// AliasEntry represents a single alias (used by init_generator and migrate_schema)
+// AliasEntry represents a single alias (used by init_generator)
 AliasEntry :: struct {
 	name:    string,
 	command: string,

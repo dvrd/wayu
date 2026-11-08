@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:log"
-import "core:mem"
+import "core:mem/virtual"
 // Semantic versioning - update with each release.
 // VERSION here is the single source of truth; docs (AGENTS.md, README)
 // should not hardcode a version number that can drift.
@@ -12,25 +12,24 @@ VERSION :: "5.0.0"
 
 // AppContext bundles all mutable program state.
 // Created once in main() and referenced as `wayu.*` throughout the codebase.
-// XDG layout: config (~/.config/wayu) for user-edited files,
-//             data (~/.config/wayu by default; WAYU_DATA_DIR to override) for generated/runtime files.
+// XDG layout: config (~/.config/wayu; WAYU_CONFIG_DIR) for files the user edits,
+//             data (${XDG_DATA_HOME:-~/.local/share}/wayu; WAYU_DATA_DIR) for
+//             everything wayu manages: entries.json, generated/runtime files.
 AppContext :: struct {
 	home:           string,
 	config:         string,  // ~/.config/wayu (user-edited files)
-	data:           string,  // generated/runtime files (defaults to ~/.config/wayu; WAYU_DATA_DIR override)
+	data:           string,  // managed + generated files (${XDG_DATA_HOME:-~/.local/share}/wayu; WAYU_DATA_DIR)
 	shell:          ShellType,
 	shell_ext:      string,
-	path_file:      string,
-	alias_file:     string,
-	constants_file: string,
-	init_file:      string,
-	tools_file:     string,
 	dry_run:        bool,
 	yes_flag:       bool,
 	json_output:    bool,
+	reveal_secrets: bool,    // --reveal: list views print secret-looking values unmasked
+	secret_flag:    bool,    // --secret: `const add` stores the value encrypted (secrets_store.odin)
+	run_only_flag:  bool,    // --run-only: that secret is only injected by `wayu secrets run`
 	source_filter:  string,
 	tui_mode:       bool,
-	temp_arena:     ^mem.Arena,
+	temp_arena:     ^virtual.Arena,
 }
 
 // Global context — populated once by init_app_context().
@@ -44,7 +43,6 @@ Command :: enum {
 	BACKUP,
 	PLUGIN,
 	INIT,
-	MIGRATE,
 	CONFIG,
 	BUILD,      // Compile wayu.toml to optimized shell config
 	EXPORT,     // High-performance turbo export
@@ -53,10 +51,12 @@ Command :: enum {
 	TEMPLATE,   // Configuration presets
 	HOOKS,      // Pre/post action hooks
 	FUNCTION,   // Manage custom shell functions (functions/ dir)
+	SCRIPT,     // Manage standalone scripts (scripts/ + bin/ in the data dir)
 	RELOAD,     // File watcher for hot reload
 	VERSION,
 	HELP,
 	SEARCH,     // Global fuzzy search across all configs
+	SECRETS,    // Encrypted secret constants (secrets_store.odin)
 	UNKNOWN,
 }
 
@@ -76,6 +76,9 @@ Action :: enum {
 	TURBO,    // Export turbo mode
 	EVAL,     // Export eval mode
 	DEDUP,
+	IMPORT,   // script import
+	BUILD,    // script build
+	RUN,      // secrets run
 	HELP,
 	UNKNOWN,
 }
@@ -85,54 +88,49 @@ init_app_context :: proc(ctx: ^AppContext) {
 
 	ctx.home = os.get_env("HOME", heap)
 
+	// config: WAYU_CONFIG_DIR, else ~/.config/wayu.
+	// data:   WAYU_DATA_DIR, else ${XDG_DATA_HOME:-~/.local/share}/wayu. The
+	// generated init derives its data dir from its own location and
+	// core.<ext> exports both overrides, so a shell sourcing it runs `wayu`
+	// against the same dirs.
 	config_dir_override := os.get_env("WAYU_CONFIG_DIR", heap)
 	if config_dir_override != "" {
 		ctx.config = config_dir_override
-		// When overridden (e.g. tests), data lives alongside config
-		ctx.data = config_dir_override
 	} else {
 		ctx.config = fmt.aprintf("%s/.config/wayu", ctx.home, allocator = heap)
-		data_dir_override := os.get_env("WAYU_DATA_DIR", heap)
-		if data_dir_override != "" {
-			ctx.data = data_dir_override
-		} else {
-			ctx.data = fmt.aprintf("%s/.config/wayu", ctx.home, allocator = heap)
-		}
+	}
+	data_dir_override := os.get_env("WAYU_DATA_DIR", heap)
+	if data_dir_override != "" {
+		ctx.data = data_dir_override
+	} else {
+		ctx.data = default_data_dir(ctx.home, heap)
 	}
 
 	ctx.shell = detect_shell()
 	ctx.shell_ext = get_shell_extension(ctx.shell)
-
-	// Use static strings for per-shell filenames (avoids 5 heap allocations)
-	switch ctx.shell {
-	case .ZSH:
-		ctx.path_file      = "path.zsh"
-		ctx.alias_file     = "aliases.zsh"
-		ctx.constants_file = "constants.zsh"
-		ctx.init_file      = "init.zsh"
-		ctx.tools_file     = "tools.zsh"
-	case .BASH:
-		ctx.path_file      = "path.bash"
-		ctx.alias_file     = "aliases.bash"
-		ctx.constants_file = "constants.bash"
-		ctx.init_file      = "init.bash"
-		ctx.tools_file     = "tools.bash"
-	case .FISH:
-		ctx.path_file      = "path.fish"
-		ctx.alias_file     = "aliases.fish"
-		ctx.constants_file = "constants.fish"
-		ctx.init_file      = "init.fish"
-		ctx.tools_file     = "tools.fish"
-	case .UNKNOWN:
-		ctx.path_file      = "path.zsh"
-		ctx.alias_file     = "aliases.zsh"
-		ctx.constants_file = "constants.zsh"
-		ctx.init_file      = "init.zsh"
-		ctx.tools_file     = "tools.zsh"
-	}
 }
 
-// Legacy shim — tests call this, so keep the name but populate wayu.
+// The data dir without WAYU_DATA_DIR: $XDG_DATA_HOME/wayu when that is an
+// absolute path (the XDG spec ignores relative ones), else
+// ~/.local/share/wayu.
+default_data_dir :: proc(home: string, allocator := context.allocator) -> string {
+	xdg := os.get_env("XDG_DATA_HOME", context.temp_allocator)
+	if strings.has_prefix(xdg, "/") {
+		return fmt.aprintf("%s/wayu", strings.trim_right(xdg, "/"), allocator = allocator)
+	}
+	return fmt.aprintf("%s/.local/share/wayu", home, allocator = allocator)
+}
+
+// The line rc files use to load wayu (README, `wayu init`): finds init.<ext>
+// in the data dir however it was chosen. fish has no ${X:-y}.
+bootstrap_source_line :: proc(ext: string, allocator := context.temp_allocator) -> string {
+	if ext == "fish" {
+		return strings.clone(`if test -n "$WAYU_DATA_DIR"; source $WAYU_DATA_DIR/init.fish; else if test -n "$XDG_DATA_HOME"; source $XDG_DATA_HOME/wayu/init.fish; else; source ~/.local/share/wayu/init.fish; end`, allocator)
+	}
+	return fmt.aprintf(`source "${{WAYU_DATA_DIR:-${{XDG_DATA_HOME:-$HOME/.local/share}}/wayu}}/init.%s"`, ext, allocator = allocator)
+}
+
+// Populate `wayu` once (tests call it too).
 // Idempotent: skips if config or data are already set (avoids overwriting test overrides).
 init_shell_globals :: proc() {
 	if len(wayu.config) > 0 || len(wayu.data) > 0 do return
@@ -165,30 +163,32 @@ tui_launch :: proc() {
 	tui_run()
 }
 
+// Process-wide temp arena (context.temp_allocator). A package global, not a
+// local of main, so wayu.temp_arena never points into a stack frame.
+@(private = "file")
+main_temp_arena: virtual.Arena
+
 main :: proc() {
-  // Set up temp arena for transient allocations (string building, intermediate operations, etc.)
-  // This arena is automatically cleared, reducing memory fragmentation
-  // Keep context.allocator as heap for now to maintain compatibility with existing delete() calls
-  // TUI needs more arena space for rendering; CLI is lightweight.
-  // Same flag-position rules as parse_args (`--` / add-value tail), so
-  // `wayu alias add x echo --tui` doesn't size the arena for the TUI.
-  is_tui := len(os.args) < 2 || global_flag_present(os.args[1:], "--tui")
-  temp_arena_size := 2 * 1024 * 1024 if is_tui else 256 * 1024  // 2MB TUI, 256KB CLI
-  temp_arena_backing := make([]byte, temp_arena_size)
-  defer delete(temp_arena_backing)
+  // Temp arena for transient allocations (string building, quoting, etc.).
+  // Growing (virtual memory, new blocks on demand): the old fixed 256 KB
+  // buffer ran out on large configs and tprintf/join then returned empty
+  // strings, silently skipping writes such as path_sync. The TUI frame loop
+  // and the watcher free_all it per iteration; the CLI frees it at exit.
+  // context.allocator stays the heap (existing delete() calls).
+  if err := virtual.arena_init_growing(&main_temp_arena); err != nil {
+    fmt.eprintln("wayu: cannot reserve memory for the temp arena")
+    os.exit(EXIT_FAILURE)
+  }
+  defer virtual.arena_destroy(&main_temp_arena)
 
-  temp_arena: mem.Arena
-  mem.arena_init(&temp_arena, temp_arena_backing)
-  // No need to explicitly destroy arena - just free the backing buffer
+  wayu.temp_arena = &main_temp_arena
 
-  wayu.temp_arena = &temp_arena
-
-  context.temp_allocator = mem.arena_allocator(&temp_arena)
+  context.temp_allocator = virtual.arena_allocator(&main_temp_arena)
 
   context.logger = log.create_console_logger(.Debug, { .Level, .Terminal_Color })
   defer log.destroy_console_logger(context.logger)
 
-	// Clean up temp arena at the very end (before arena backing is freed)
+	// Clean up temp arena at the very end (before the arena is destroyed)
 	// This defer executes after all other defers in this scope
 	defer if wayu.temp_arena != nil do free_all(context.temp_allocator)
 
@@ -212,23 +212,10 @@ main :: proc() {
 
 	// Override with --no-color if present (takes precedence over NO_COLOR env)
 	if no_color_flag {
-		CURRENT_COLOR_PROFILE = .ASCII
-		// Reinitialize ANSI codes for ASCII mode
-		RESET = ""
-		BOLD = ""
-		DIM = ""
-		ITALIC = ""
-		UNDERLINE = ""
+		set_plain_output()
 	}
 
 	init_shell_globals()
-	// Note: the legacy `init_config_files()` startup call was removed on
-	// 2026-04-24 (code review L4). It did 4 `os.exists` syscalls on every CLI
-	// invocation to auto-create empty path/aliases/constants/extra legacy
-	// shell files, which are shadowed by wayu.toml anyway. Use explicit
-	// `wayu init` (which still calls init_shell_configs) for first-time
-	// bootstrap. The main TOML flow calls `ensure_wayu_toml_exists()` on
-	// demand, so `wayu path add /foo` on a fresh install still works.
 
 	// No arguments → launch TUI (the primary interface)
 	if len(os.args) < 2 {
@@ -243,6 +230,14 @@ main :: proc() {
 		print_error_simple("Unknown option: %s", parsed.unknown_flag)
 		fmt.eprintln("Run 'wayu help' (or 'wayu <command> --help') for the accepted options.")
 		fmt.eprintln("To pass a value that starts with '-', put it after '--'.")
+		os.exit(EXIT_USAGE)
+	}
+	if len(parsed.bad_flag_value) > 0 {
+		print_error_simple("%s", parsed.bad_flag_value)
+		os.exit(EXIT_USAGE)
+	}
+	if parsed.json_unsupported {
+		print_error_simple("--json is not supported here; it works with: %s", json_commands_summary())
 		os.exit(EXIT_USAGE)
 	}
 	if f := parsed.ambiguous_tail_flag; len(f) > 0 {
@@ -262,37 +257,6 @@ main :: proc() {
 		run_component_testing(parsed.component_name, parsed.args,
 			parsed.component_snapshot, parsed.component_verify)
 		return
-	}
-
-	// Hard-break guard: any command that touches wayu.toml refuses to run
-	// while the file still uses the obsolete [[paths]]/[[aliases]]/[[constants]]
-	// schema. The few commands that either don't read the toml (VERSION/HELP)
-	// or are the recovery path itself (MIGRATE) skip this check.
-	needs_modern_toml := true
-	#partial switch parsed.command {
-	case .VERSION, .HELP, .MIGRATE, .UNKNOWN:
-		// pure non-toml commands and the recovery path itself
-		needs_modern_toml = false
-	case .DOCTOR:
-		// doctor explicitly reports the legacy-schema issue itself
-		// (check_toml_config), and we want it to surface other findings too.
-		needs_modern_toml = false
-	}
-	// Pre-warm the TOML content cache and run the legacy-schema guard in
-	// one pass (avoids reading wayu.toml twice at startup). Skip for
-	// commands that never touch wayu.toml (--version, --help, etc.).
-	needs_toml := true
-	#partial switch parsed.command {
-	case .VERSION, .HELP, .UNKNOWN:
-		needs_toml = false
-	}
-	if needs_toml {
-		if toml_str, toml_ok := get_cached_toml_content(); toml_ok && needs_modern_toml {
-			if header := detect_legacy_schema(toml_str); len(header) > 0 {
-				print_legacy_schema_hint(header)
-				os.exit(EXIT_CONFIG)
-			}
-		}
 	}
 
 	switch parsed.command {
@@ -316,15 +280,18 @@ main :: proc() {
 		if parsed.action == .HELP {
 			print_init_help()
 		} else {
+			template := init_template_arg(parsed.args) // validated before any write
 			handle_init_command()
+			if len(template) > 0 {
+				fmt.println()
+				apply_template(template)
+			}
 		}
-	case .MIGRATE:
-		handle_migrate_command(parsed.args)
 	case .CONFIG:
 		handle_config_extra_command(parsed.action, parsed.args)
 	case .BUILD:
 		if parsed.action == .UNKNOWN || len(parsed.args) > 0 {
-			print_error_simple("Unknown build target (expected: turbo, eval, profile, help)")
+			print_error_simple("Unknown build target (expected: turbo, eval, profile, clean, help)")
 			print_build_help()
 			os.exit(EXIT_USAGE)
 		}
@@ -347,6 +314,8 @@ main :: proc() {
 		handle_hooks_command(parsed.action, parsed.args)
 	case .FUNCTION:
 		handle_function_command(parsed.action, parsed.args)
+	case .SCRIPT:
+		handle_script_command(parsed.action, parsed.args)
 	case .RELOAD:
 		// Parse reload action from args
 		action := "start"
@@ -360,6 +329,8 @@ main :: proc() {
 		print_help()
 	case .SEARCH:
 		handle_search_command(parsed.args)
+	case .SECRETS:
+		handle_secrets_command(parsed.action, parsed.args)
 	case .UNKNOWN:
 		fmt.eprintfln("Unknown command: %s", os.args[1])
 		print_help()
@@ -367,7 +338,8 @@ main :: proc() {
 	}
 }
 
-
+// Subdirectories of the data dir `wayu init` creates.
+DATA_SUBDIRS :: []string{"functions", "scripts", "bin", "completions", "plugins"}
 
 handle_init_command :: proc() {
 	print_header("Initializing Wayu Configuration", "🚀")
@@ -400,13 +372,7 @@ handle_init_command :: proc() {
 
 	// Create config directory (~/.config/wayu)
 	if !os.exists(config_dir) {
-		spinner := new_spinner(.Dots)
-		spinner_text(&spinner, "Creating config directory")
-		spinner_start(&spinner)
-
 		err := make_directory_all(config_dir) // ~/.config may not exist yet
-
-		spinner_stop(&spinner)
 
 		if err != nil {
 			print_error_simple("Error creating config directory: %v", err)
@@ -417,16 +383,10 @@ handle_init_command :: proc() {
 		print_info("Directory already exists: %s", config_dir)
 	}
 
-	// Create data directory (defaults to ~/.config/wayu)
+	// Create data directory (defaults to ~/.local/share/wayu)
 	if !os.exists(data_dir) {
-		spinner := new_spinner(.Dots)
-		spinner_text(&spinner, "Creating data directory")
-		spinner_start(&spinner)
-
 		// Create parent directories if needed (may not exist in test envs)
 		err := make_directory_all(data_dir)
-
-		spinner_stop(&spinner)
 
 		if err != nil {
 			print_error_simple("Error creating data directory: %v", err)
@@ -437,30 +397,17 @@ handle_init_command :: proc() {
 		print_info("Directory already exists: %s", data_dir)
 	}
 
-	// Create subdirectories. functions/ lives in the config dir (user-authored,
-	// editable via `wayu function`); completions/ and plugins/ are generated
-	// runtime files in the data dir.
-	subdirs := []string{"functions", "completions", "plugins"}
+	// Create subdirectories, all in the data dir: wayu manages functions/
+	// (`wayu function`), scripts/ + bin/ (`wayu script`), completions/ and
+	// plugins/.
 	created_subdirs := 0
 
-	for subdir in subdirs {
-		base_dir := wayu.data
-		if subdir == "functions" {
-			base_dir = wayu.config
-		}
-		subdir_path := fmt.aprintf("%s/%s", base_dir, subdir)
+	for subdir in DATA_SUBDIRS {
+		subdir_path := fmt.aprintf("%s/%s", wayu.data, subdir)
 		defer delete(subdir_path)
 
 		if !os.exists(subdir_path) {
-			spinner := new_spinner(.Arc)
-			spinner_text_str := fmt.aprintf("Creating %s directory", subdir)
-			defer delete(spinner_text_str)
-			spinner_text(&spinner, spinner_text_str)
-			spinner_start(&spinner)
-
 			err := make_directory_all(subdir_path)
-
-			spinner_stop(&spinner)
 
 			if err != nil {
 				print_error_simple("Error creating directory %s: %v", subdir, err)
@@ -474,10 +421,6 @@ handle_init_command :: proc() {
 	if created_subdirs == 0 {
 		print_info("All subdirectories already exist")
 	}
-
-	// Migrate any functions left at the legacy data-dir location into the
-	// config-dir location that the loader now sources.
-	migrate_legacy_functions()
 
 	fmt.println()
 
@@ -505,13 +448,10 @@ print_init_dry_run :: proc(shell: ShellType, ext: string) {
 	}
 	would(wayu.config, "directory")
 	would(wayu.data, "directory")
-	for sub in ([]string{"functions", "completions", "plugins"}) {
-		base := wayu.config if sub == "functions" else wayu.data
-		would(fmt.tprintf("%s/%s", base, sub), "directory")
+	for sub in DATA_SUBDIRS {
+		would(fmt.tprintf("%s/%s", wayu.data, sub), "directory")
 	}
-	for name in ([]string{"path", "aliases", "constants", "init"}) {
-		would(fmt.tprintf("%s/%s.%s", wayu.data, name, ext), "file")
-	}
+	would(fmt.tprintf("%s/init.%s", wayu.data, ext), "file")
 	for name in ([]string{"tools", "extra"}) {
 		would(fmt.tprintf("%s/%s.%s", wayu.config, name, ext), "file")
 	}
@@ -524,7 +464,7 @@ print_init_dry_run :: proc(shell: ShellType, ext: string) {
 	if data, err := os.read_entire_file(rc_file_path, context.allocator); err == nil {
 		defer delete(data)
 		if !strings.contains(string(data), "wayu/init") {
-			fmt.printfln("  Would offer to append 'source %s/init.%s' to %s (backup first)", wayu.data, ext, rc_file_path)
+			fmt.printfln("  Would offer to append '%s' to %s (backup first)", bootstrap_source_line(ext), rc_file_path)
 		}
 	}
 	fmt.println()
@@ -539,9 +479,6 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		template: proc(ShellType) -> string,
 		dir:      string,  // which base directory to use
 	}{
-		{"path", get_path_template, wayu.data},
-		{"aliases", get_aliases_template, wayu.data},
-		{"constants", get_constants_template, wayu.data},
 		{"init", get_init_template, wayu.data},
 		{"tools", get_tools_template, wayu.config},
 		{"extra", get_extra_template, wayu.config},
@@ -552,15 +489,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		defer delete(config_file)
 
 		if !os.exists(config_file) {
-			spinner := new_spinner(.Line)
-			spinner_text_str := fmt.aprintf("Creating %s.%s", config.name, ext)
-			defer delete(spinner_text_str)
-			spinner_text(&spinner, spinner_text_str)
-			spinner_start(&spinner)
-
 			success := init_config_file(config_file, config.template(shell))
-
-			spinner_stop(&spinner)
 
 			if success {
 				print_success("Created config file: %s", config_file)
@@ -584,11 +513,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	defer delete(alias_sources_file)
 
 	if !os.exists(alias_sources_file) {
-		spinner := new_spinner(.Line)
-		spinner_text(&spinner, "Creating alias-sources.conf")
-		spinner_start(&spinner)
 		success := init_config_file(alias_sources_file, ALIAS_SOURCES_TEMPLATE)
-		spinner_stop(&spinner)
 		if success {
 			print_success("Created config file: %s", alias_sources_file)
 		} else {
@@ -603,22 +528,10 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	defer delete(toml_file)
 
 	if !os.exists(toml_file) {
-		spinner := new_spinner(.Line)
-		spinner_text(&spinner, "Creating wayu.toml scaffold")
-		spinner_start(&spinner)
-
-		shell_name := get_shell_name(shell)
-		toml_scaffold := fmt.aprintf(`[shell]
-type = "%s"
-
-[aliases]
-
-[env]
-`, shell_name)
+		toml_scaffold := wayu_toml_scaffold(shell)
 		defer delete(toml_scaffold)
 
 		success := init_config_file(toml_file, toml_scaffold)
-		spinner_stop(&spinner)
 		if success {
 			print_success("Created config file: %s", toml_file)
 		} else {
@@ -633,14 +546,12 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 	rc_file_path := get_rc_file_path(shell)
 	defer delete(rc_file_path)
 
-	init_file := fmt.aprintf("%s/init.%s", wayu.data, ext)
-	defer delete(init_file)
+	source_line := bootstrap_source_line(ext)
 
 	// Check if RC file exists
 	if !os.exists(rc_file_path) {
-		shell_name := get_shell_name(shell)
 		fmt.printfln("\nNo %s found. Create one and add the following line:", rc_file_path)
-		fmt.printfln("  source %s", init_file)
+		fmt.printfln("  %s", source_line)
 		return
 	}
 
@@ -661,13 +572,12 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 	}
 
 	// Ask user if they want to update (only if stdin is a TTY)
-	shell_name := get_shell_name(shell)
 	fmt.printfln("\nWayu setup is complete!")
 
 	// Only prompt if stdin is a TTY (interactive mode)
 	if !os.is_tty(os.stdin) {
 		fmt.printfln("\nTo manually initialize wayu, add this line to your %s:", rc_file_path)
-		fmt.printfln("  source %s", init_file)
+		fmt.printfln("  %s", source_line)
 		return
 	}
 
@@ -677,7 +587,7 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 	n, err := os.read(os.stdin, input_buf[:])
 	if err != nil {
 		fmt.printfln("\nTo manually initialize wayu, add this line to your %s:", rc_file_path)
-		fmt.printfln("  source %s", init_file)
+		fmt.printfln("  %s", source_line)
 		return
 	}
 
@@ -685,14 +595,14 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 
 	if response == "" || response == "y" || response == "Y" {
 		// Append to RC file
-		new_content := fmt.aprintf("%s\n# Wayu shell configuration\nsource \"%s\"\n", content, init_file)
+		new_content := fmt.aprintf("%s\n# Wayu shell configuration\n%s\n", content, source_line)
 		defer delete(new_content)
 
 		// The RC file is the user's, not ours: never modify it without a
 		// restorable copy.
 		if !create_backup_cli(rc_file_path) {
 			fmt.printfln("\nTo manually initialize wayu, add this line to your %s:", rc_file_path)
-			fmt.printfln("  source %s", init_file)
+			fmt.printfln("  %s", source_line)
 			return
 		}
 
@@ -706,7 +616,7 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 		fmt.printfln("Run 'source %s' or restart your shell to apply changes", rc_file_path)
 	} else {
 		fmt.printfln("\nTo manually initialize wayu, add this line to your %s:", rc_file_path)
-		fmt.printfln("  source %s", init_file)
+		fmt.printfln("  %s", source_line)
 	}
 }
 
@@ -719,13 +629,19 @@ print_init_help :: proc() {
 	fmt.println("wayu init - Initialize wayu configuration directory")
 	fmt.println()
 	fmt.println("USAGE:")
-	fmt.println("  wayu init")
+	fmt.println("  wayu init [--template <name>]")
 	fmt.println()
 	fmt.println("DESCRIPTION:")
-	fmt.println("  Creates ~/.config/wayu with shell-specific config files (path, aliases,")
-	fmt.println("  constants, init, tools, extra) and subdirectories (functions, completions,")
-	fmt.println("  plugins). Detects the current shell and generates wayu.toml scaffolding.")
+	fmt.println("  Sets wayu up for the detected shell (or --shell zsh|bash|fish).")
+	fmt.println("  Config dir (~/.config/wayu, files you edit): wayu.toml, extra.<ext>,")
+	fmt.println("  tools.<ext>, alias-sources.conf.")
+	fmt.println("  Data dir (~/.local/share/wayu, managed by wayu): init.<ext> (source it")
+	fmt.println("  from your rc file), the PATH/alias/constant entries, functions/, scripts/,")
+	fmt.println("  bin/, completions/, plugins/, and the generated core.<ext>.")
 	fmt.println("  Safe to re-run — existing files are preserved.")
+	fmt.println()
+	fmt.println("  --template <name>  Then apply a template (see 'wayu template list');")
+	fmt.println("                     entries you already have are kept.")
 }
 
 print_help :: proc() {
@@ -739,44 +655,49 @@ print_help :: proc() {
 	fmt.println()
 
 	print_section("COMMANDS:", EMOJI_COMMAND)
-	print_item("", "path", "Manage PATH entries", EMOJI_PATH)
-	print_item("", "alias", "Manage shell aliases", EMOJI_ALIAS)
-	print_item("", "constants", "Manage environment constants (aliases: const, env)", EMOJI_CONSTANT)
-	print_item("", "search, find, f", "Fuzzy search across all configurations", "🔍")
-	print_item("", "toml", "TOML configuration management", "⚙️ ")
-	print_item("", "doctor", "Health check and diagnostics", "🔬")
-	print_item("", "template", "Configuration presets", "📋")
-	print_item("", "hooks", "Pre/post action hooks", "🪝")
-	print_item("", "function", "Manage custom shell functions (add, list, remove)", "🔧")
-	print_item("", "completions", "Manage Zsh completion scripts", EMOJI_COMMAND)
-	print_item("", "backup", "Manage configuration backups", EMOJI_INFO)
-	print_item("", "plugin", "Manage shell plugins", EMOJI_COMMAND)
-	print_item("", "init", "Initialize wayu configuration directory", EMOJI_INFO)
-	print_item("", "migrate", "Migrate configuration between shells", EMOJI_INFO)
-	print_item("", "config", "Manage configuration files (edit, extend, scan)", EMOJI_INFO)
-	print_item("", "reload", "Watch config files and regenerate init files (aliases: watch, hot-reload)", "\U0001F440")
-	print_item("", "version", "Show version information", EMOJI_INFO)
-	print_item("", "help", "Show this help message", EMOJI_INFO)
+	// Generated from WAYU_COMMAND_SPECS so help, dispatch and completions
+	// list the same commands (OKAMI-282).
+	name_width := 0
+	for spec in WAYU_COMMAND_SPECS {
+		name_width = max(name_width, len(strings.join(spec.names, ", ", context.temp_allocator)))
+	}
+	for spec in WAYU_COMMAND_SPECS {
+		names := strings.join(spec.names, ", ", context.temp_allocator)
+		fmt.printf("  %s%s  %s\n", names, strings.repeat(" ", name_width - len(names), context.temp_allocator), spec.desc)
+	}
 	fmt.println()
 
 	print_section("ACTIONS:", EMOJI_ACTION)
 	print_item("", "add", "Add a new entry", EMOJI_ADD)
-	print_item("", "remove, rm", "Remove an entry (interactive if no args)", EMOJI_REMOVE)
+	print_item("", "remove, rm", "Remove an entry", EMOJI_REMOVE)
 	print_item("", "list, ls", "List all entries", EMOJI_LIST)
-	print_item("", "check", "Check for updates (plugins only)", EMOJI_INFO)
-	print_item("", "update", "Update entry (plugins only)", EMOJI_INFO)
-	print_item("", "help", "Show command-specific help", EMOJI_INFO)
+	print_item("", "help", "Show command-specific help ('wayu <command> help')", EMOJI_INFO)
 	fmt.println()
 
 	print_section("FLAGS:", EMOJI_ACTION)
 	print_item("", "--dry-run, -n", "Preview changes without modifying files", EMOJI_INFO)
-	print_item("", "--yes, -y", "Skip confirmation prompts (for clean/dedup)", EMOJI_INFO)
-	print_item("", "--full, -f", "Show all entries including external", EMOJI_INFO)
+	print_item("", "--yes, -y", "Confirm destructive operations (path clean/dedup, backup restore/rm, plugin rm, ...)", EMOJI_INFO)
+	print_item("", "--full, -f", "Show all entries including external (same as --source all)", EMOJI_INFO)
+	print_item("", "--source <src>", "List filter: wayu (default), external, inactive, all", EMOJI_INFO)
+	print_item("", "--shell <sh>", "Use zsh, bash or fish instead of the detected shell", EMOJI_INFO)
+	print_item("", "--json", fmt.tprintf("Machine-readable output (%s)", json_commands_summary()), EMOJI_INFO)
+	print_item("", "--no-color", "No colors (also NO_COLOR=1; off when output is not a terminal)", EMOJI_INFO)
 	print_item("", "--", "End of flags: everything after is a literal argument", EMOJI_INFO)
 	print_item("", "--tui", "Launch interactive Terminal UI mode (same as no args)", EMOJI_INFO)
+	print_item("", "--version, -v", "Print the version", EMOJI_INFO)
+	print_item("", "--help, -h", "Show help (global or per command)", EMOJI_INFO)
 	print_item("", "-c=<component>", "Test TUI component rendering (dev mode)", EMOJI_INFO)
 	print_item("", "--snapshot", "Save component output as golden file", EMOJI_INFO)
 	print_item("", "--test", "Test component against golden file", EMOJI_INFO)
+	fmt.println()
+
+	print_section("COMMAND FLAGS:", EMOJI_ACTION)
+	for spec in WAYU_COMMAND_SPECS {
+		for f in spec.flags {
+			if len(f.desc) == 0 { continue }
+			print_item("", fmt.tprintf("%s %s", spec.names[0], f.flag), f.desc)
+		}
+	}
 	fmt.println()
 
 	print_section("EXAMPLES:", EMOJI_CYCLIST)
@@ -784,16 +705,15 @@ print_help :: proc() {
 	fmt.printf("  wayu alias add ll 'ls -la'\n")
 	fmt.printf("  wayu constants add MY_VAR value\n")
 	fmt.printf("  wayu search api                  # Search across all configs\n")
-	fmt.printf("  wayu find frwrks                 # Fuzzy find by acronym\n")
+	fmt.printf("  wayu find faak                   # Acronym: FIREWORKS_AI_API_KEY\n")
 	fmt.printf("  wayu f git                       # Short alias for search\n")
 	fmt.printf("  wayu completions add jj /path/to/_jj\n")
 	fmt.printf("  wayu backup list                 # Show all backups\n")
-	fmt.printf("  wayu backup restore path         # Restore path config\n")
+	fmt.printf("  wayu backup restore entries --yes  # Restore the latest entries.json backup\n")
 	fmt.printf("  wayu plugin add syntax-highlighting  # Install plugin\n")
 	fmt.printf("  wayu plugin check                # Check plugins for updates\n")
 	fmt.printf("  wayu plugin update plugin-name   # Update specific plugin\n")
 	fmt.printf("  wayu plugin update --all         # Update all plugins\n")
-	fmt.printf("  wayu migrate --from zsh --to bash # Migrate between shells\n")
 	fmt.println()
 	fmt.printf("  # TOML configuration (declarative mode):\n")
 	fmt.printf("  wayu toml validate               # Check wayu.toml syntax\n")
@@ -803,7 +723,7 @@ print_help :: proc() {
 	fmt.printf("  wayu config edit                 # Edit wayu.toml (declarative)\n")
 	fmt.printf("  wayu config extend               # Edit extra.zsh (scripts)\n")
 	fmt.printf("  wayu config scan                 # Detect scripts in .zshrc\n")
-	fmt.printf("  wayu config                      # Same as 'config edit'\n")
+	fmt.printf("  wayu config                      # Show config help\n")
 	fmt.println()
 	fmt.printf("  # Diagnostics:\n")
 	fmt.printf("  wayu doctor                      # Health check all configs\n")
@@ -812,6 +732,10 @@ print_help :: proc() {
 	fmt.printf("  # Templates:\n")
 	fmt.printf("  wayu template list               # List config presets\n")
 	fmt.printf("  wayu template apply developer    # Apply developer preset\n")
+	fmt.println()
+	fmt.printf("  # Scripts (any language, on PATH):\n")
+	fmt.printf("  wayu script new hello --lang python  # Create, edit, build\n")
+	fmt.printf("  wayu script import ~/bin/tool    # Adopt an existing script\n")
 	fmt.println()
 	fmt.printf("  # Hooks:\n")
 	fmt.printf("  wayu hooks                       # Show configured hooks\n")
@@ -847,6 +771,7 @@ print_help :: proc() {
 	fmt.printf("  64  Usage error (invalid arguments)\n")
 	fmt.printf("  65  Data format error (invalid input)\n")
 	fmt.printf("  66  Input file not found\n")
+	fmt.printf("  69  Required tool not installed (script interpreter/compiler)\n")
 	fmt.printf("  73  Cannot create output file\n")
 	fmt.printf("  74  I/O error (read/write failure)\n")
 	fmt.printf("  77  Permission denied\n")
@@ -866,11 +791,15 @@ handle_build_command :: proc(action: Action) {
 	}
 	
 	turbo_mode := action == .TURBO
-	eval_mode := action == .EVAL
 	profile_mode := action == .CHECK
 	
 	if profile_mode {
 		profile_startup_performance()
+		return
+	}
+
+	if action == .CLEAN {
+		clear_evalcache()
 		return
 	}
 	
@@ -879,20 +808,6 @@ handle_build_command :: proc(action: Action) {
 		return
 	}
 	
-	if eval_mode {
-		// The parent process is the shell that will eval our output; trust
-		// it over $SHELL (sudo resets SHELL to /bin/sh) unless --shell given.
-		if !shell_flag_given {
-			if ps := detect_parent_shell(); ps != .UNKNOWN { set_active_shell(ps) }
-		}
-		if wayu.shell == .UNKNOWN {
-			// Never emit bash/zsh code into an unknown shell.
-			fmt.eprintln("wayu: build eval: unknown shell; pass --shell zsh|bash|fish")
-			return
-		}
-		generate_eval_output_optimized()
-		return
-	}
 	
 	// Standard build - use the optimized code generator
 	print_header("Building Shell Configuration", "🔧")
@@ -903,25 +818,27 @@ handle_build_command :: proc(action: Action) {
 	defer delete(toml_path)
 	
 	if !os.exists(toml_path) {
-		print_info("No wayu.toml found. Using existing shell configs.")
-		fmt.println()
-		fmt.println("To create wayu.toml:")
-		fmt.printfln("  %swayu toml convert%s", get_primary(), RESET)
-		return
+		print_error_simple("No wayu.toml found at %s. Run 'wayu init' first.", toml_path)
+		os.exit(EXIT_CONFIG)
 	}
 	
+	if !validate_tools_args() {
+		os.exit(EXIT_CONFIG)
+	}
+
 	// Regenerate the files init.<ext> sources (core/path_sync/lazy/...) for
 	// every initialized shell, so hand edits of wayu.toml take effect (open
 	// shells pick up [paths] at their next prompt via path_sync).
+	// An existing turbo.<ext> is rewritten with core's content along the way.
+	// Scripts whose source changed since their last build (`wayu script`),
+	// first: a first built script puts <data>/bin on PATH.
+	config_lock_acquire_or_exit()
+	_, failed := scripts_build_stale(quiet = true)
+	config_lock_release()
+	if failed > 0 { print_warning("%d script(s) failed to build (run: wayu script build)", failed) }
+
 	generate_optimized_init_all()
 	fmt.println()
-
-	// Keep an existing turbo export in step; `wayu build turbo` creates it.
-	turbo_path := fmt.aprintf("%s/%s", wayu.data, turbo_export_file_name())
-	defer delete(turbo_path)
-	if os.exists(turbo_path) && wayu.shell != .FISH {
-		handle_export_command(.TURBO, {})
-	}
 }
 // Golden file directory
 GOLDEN_DIR :: "tests/golden"
@@ -931,7 +848,7 @@ run_component_testing :: proc(component_name: string, args: []string, snapshot: 
 	// Parse component type
 	component_type, ok := parse_component_type(component_name)
 	if !ok {
-		fmt.eprintfln("ERROR: Unknown component type: %s", component_name)
+		eprintfln_color("ERROR: Unknown component type: %s", component_name)
 		fmt.eprintln("\nAvailable components:")
 		fmt.eprintln("  - box")
 		fmt.eprintln("  - list-item")
@@ -982,7 +899,7 @@ save_golden :: proc(component: string, args: ComponentArgs, output: string) -> b
 	// Write golden file
 	write_err := os.write_entire_file(filename, transmute([]byte)output)
 	if write_err != nil {
-		fmt.eprintfln("ERROR: Failed to write golden file: %s", filename)
+		eprintfln_color("ERROR: Failed to write golden file: %s", filename)
 		return false
 	}
 
@@ -999,7 +916,7 @@ compare_golden :: proc(component: string, args: ComponentArgs, output: string) -
 
 	// Check if golden file exists
 	if !os.exists(filename) {
-		fmt.eprintfln("ERROR: Golden file not found: %s", filename)
+		eprintfln_color("ERROR: Golden file not found: %s", filename)
 		fmt.eprintfln("Create it with: wayu -c=%s width=%d height=%d --snapshot",
 			component, args.width, args.height)
 		return false
@@ -1008,7 +925,7 @@ compare_golden :: proc(component: string, args: ComponentArgs, output: string) -
 	// Read golden file
 	golden_data, read_err := os.read_entire_file(filename, context.allocator)
 	if read_err != nil {
-		fmt.eprintfln("ERROR: Failed to read golden file: %s", filename)
+		eprintfln_color("ERROR: Failed to read golden file: %s", filename)
 		return false
 	}
 	defer delete(golden_data)

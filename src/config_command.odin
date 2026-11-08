@@ -13,11 +13,9 @@
 
 package wayu
 
-import "core:c"
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:sys/posix"
 import "core:time"
 
 handle_config_extra_command :: proc(action: Action, args: []string) {
@@ -31,7 +29,7 @@ handle_config_extra_command :: proc(action: Action, args: []string) {
 		defer delete(toml_file)
 		edit_toml_config(toml_file)
 		// Apply the edit: regenerate init files for every initialized shell
-		// (open shells pick up [paths] at their next prompt via path_sync).
+		// (open shells pick up PATH changes at their next prompt via path_sync).
 		regenerate_init_core_silently()
 	case .CHECK: // scan/detect
 		has_fix, has_dry_run, has_yes := extract_scan_flags(args)
@@ -43,8 +41,9 @@ handle_config_extra_command :: proc(action: Action, args: []string) {
 	case .HELP:
 		print_config_usage()
 	case:
-		// Default: show help
+		fmt.eprintln("Unknown config action")
 		print_config_usage()
+		os.exit(EXIT_USAGE)
 	}
 }
 
@@ -82,65 +81,14 @@ edit_extra_config :: proc(extra_file: string) {
 		print_success("Created extra config: %s", extra_file)
 	}
 
-	editor: string
-	if e := os.get_env("EDITOR", context.temp_allocator); len(e) > 0 {
-		editor = e
-	} else if e := os.get_env("VISUAL", context.temp_allocator); len(e) > 0 {
-		editor = e
-	} else {
-		editor = "nvim"
-	}
-
-	args := []string{editor, extra_file}
-
-	argv := make([dynamic]cstring, len(args) + 1)
-	defer {
-		for i in 0..<len(args) {
-			delete(argv[i])
-		}
-		delete(argv)
-	}
-	for arg, i in args {
-		argv[i] = strings.clone_to_cstring(arg)
-	}
-	argv[len(args)] = nil
-
-	pid := posix.fork()
-	if pid < 0 {
-		print_error_simple("Failed to fork process")
-		os.exit(EXIT_IOERR)
-	}
-
-	if pid == 0 {
-		posix.execvp(argv[0], raw_data(argv[:]))
-		posix._exit(1)
-	}
-
-	status: c.int = 0
-	posix.waitpid(pid, &status, {})
+	if !launch_editor(extra_file) { os.exit(EXIT_FAILURE) }
 }
 
 edit_toml_config :: proc(toml_file: string) {
 	// Create file with default content if doesn't exist
 	if !os.exists(toml_file) {
-		default_content := `# Wayu TOML Configuration
-# Declarative shell configuration. See https://github.com/kakurega/wayu
-
-[settings]
-shell = "zsh"
-
-# [paths]
-# odin     = "/Users/you/dev/oss/Odin"
-# local_bin = "/usr/local/bin"
-
-# [aliases]
-# ll = "ls -la"
-# gs = "git status"
-
-# [env]
-# EDITOR = "nvim"
-# LANG   = "en_US.UTF-8"
-`
+		default_content := wayu_toml_scaffold(wayu.shell)
+		defer delete(default_content)
 		if write_ok := os.write_entire_file_from_string(toml_file, default_content, SECRET_FILE_PERMS); write_ok != nil {
 			print_error_simple("Failed to create wayu.toml: %s", toml_file)
 			os.exit(EXIT_CANTCREAT)
@@ -148,42 +96,7 @@ shell = "zsh"
 		print_success("Created wayu.toml: %s", toml_file)
 	}
 
-	editor: string
-	if e := os.get_env("EDITOR", context.temp_allocator); len(e) > 0 {
-		editor = e
-	} else if e := os.get_env("VISUAL", context.temp_allocator); len(e) > 0 {
-		editor = e
-	} else {
-		editor = "nvim"
-	}
-
-	args := []string{editor, toml_file}
-
-	argv := make([dynamic]cstring, len(args) + 1)
-	defer {
-		for i in 0..<len(args) {
-			delete(argv[i])
-		}
-		delete(argv)
-	}
-	for arg, i in args {
-		argv[i] = strings.clone_to_cstring(arg)
-	}
-	argv[len(args)] = nil
-
-	pid := posix.fork()
-	if pid < 0 {
-		print_error_simple("Failed to fork process")
-		os.exit(EXIT_IOERR)
-	}
-
-	if pid == 0 {
-		posix.execvp(argv[0], raw_data(argv[:]))
-		posix._exit(1)
-	}
-
-	status: c.int = 0
-	posix.waitpid(pid, &status, {})
+	if !launch_editor(toml_file) { os.exit(EXIT_FAILURE) }
 }
 
 // Patterns used by both scan procs. Lines that contain any of these substrings
@@ -220,7 +133,7 @@ detect_zshrc_script_blocks :: proc(zshrc_path: string) -> (blocks: [dynamic][dyn
 
 	content, read_ok := safe_read_file(zshrc_path)
 	if !read_ok {
-		print_error_simple("Failed to read .zshrc")
+		// safe_read_file already printed why (one error per failure).
 		os.exit(EXIT_IOERR)
 	}
 
@@ -359,41 +272,54 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 		os.exit(EXIT_USAGE)
 	}
 
-	// Create backup first
-	backup_path, ok := create_backup(extra_file)
-	defer if ok do delete(backup_path)
-
-	// Append to extra.zsh
-	extra_exists := os.exists(extra_file)
+	// Back up first; no backup, no write.
+	if !create_backup_cli(extra_file) {
+		os.exit(EXIT_IOERR)
+	}
 
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
 
-	// Read existing content if file exists
-	if extra_exists {
-		existing, read_ok := safe_read_file(extra_file)
-		if read_ok {
-			strings.write_string(&builder, string(existing))
-			if !strings.has_suffix(string(existing), "\n") {
-				strings.write_string(&builder, "\n")
-			}
-			delete(existing) // only after the last read (was use-after-free)
-		}
+	// Read existing content if file exists (a read failure must not turn
+	// into an overwrite with only the new blocks).
+	existing: []byte
+	if os.exists(extra_file) {
+		read_ok: bool
+		existing, read_ok = safe_read_file(extra_file)
+		if !read_ok { os.exit(EXIT_IOERR) }
+	}
+	defer delete(existing)
+	strings.write_string(&builder, string(existing))
+	if len(existing) > 0 && !strings.has_suffix(string(existing), "\n") {
+		strings.write_string(&builder, "\n")
 	}
 
-	// Append header
-	strings.write_string(&builder, "\n# === Scripts imported by 'wayu config scan --fix' ===\n")
-	strings.write_string(&builder, fmt.aprintf("# Imported on: %v\n", time.now()))
-	strings.write_string(&builder, "\n")
-
-	// Append all blocks
+	// Idempotent: a block already in extra.<ext> (an earlier --fix) is not
+	// appended again.
+	new_blocks := 0
+	block_text := strings.builder_make(context.temp_allocator)
 	for block in detected_blocks {
+		strings.builder_reset(&block_text)
 		for line in block {
-			strings.write_string(&builder, line)
+			strings.write_string(&block_text, line)
+			strings.write_string(&block_text, "\n")
+		}
+		if strings.contains(string(existing), strings.to_string(block_text)) { continue }
+		if new_blocks == 0 {
+			strings.write_string(&builder, "\n# === Scripts imported by 'wayu config scan --fix' ===\n")
+			strings.write_string(&builder, fmt.tprintf("# Imported on: %v\n", time.now()))
 			strings.write_string(&builder, "\n")
 		}
+		strings.write_string(&builder, strings.to_string(block_text))
 		strings.write_string(&builder, "\n")
+		new_blocks += 1
+	}
+
+	if new_blocks == 0 {
+		print_info("All %d blocks are already in %s - nothing to do", len(detected_blocks), extra_file)
+		print_info("Remove the originals from .zshrc once verified")
+		return
 	}
 
 	// Write file
@@ -401,7 +327,7 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 	write_ok := safe_write_file(extra_file, transmute([]byte)(migration_content))
 
 	if write_ok {
-		print_success("Migrated %d blocks to %s", len(detected_blocks), extra_file)
+		print_success("Migrated %d blocks to %s", new_blocks, extra_file)
 		print_info("Original scripts remain in .zshrc - review extra.%s and remove them manually", wayu.shell_ext)
 	} else {
 		print_error_simple("Failed to write %s", extra_file)
@@ -414,31 +340,32 @@ print_config_usage :: proc() {
 	fmt.printfln("%swayu config - Manage configuration files%s", BOLD, RESET)
 	fmt.println()
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
-	fmt.printfln("  wayu config              Default: Edit wayu.toml (declarative config)")
-	fmt.printfln("  wayu config extend       Edit extra.zsh (custom shell scripts)")
-	fmt.printfln("  wayu config edit         Edit wayu.toml (declarative config)")
+	fmt.printfln("  wayu config              Show this help")
+	fmt.printfln("  wayu config edit         Edit wayu.toml in $EDITOR, then rebuild")
+	fmt.printfln("  wayu config extend       Edit extra.<ext> (custom shell scripts)")
 	fmt.printfln("  wayu config scan         Scan .zshrc for inline scripts")
+	fmt.printfln("  wayu config scan --fix --yes  Copy them into extra.<ext> (--dry-run previews)")
 	fmt.println()
 	fmt.printfln("%sAVAILABLE ACTIONS:%s", get_primary(), RESET)
-	fmt.println("  extend                   Add/edit extra.zsh file")
 	fmt.println("  edit                     Edit wayu.toml file")
-	fmt.println("  scan                     Detect scripts in .zshrc for migration")
+	fmt.println("  extend, e                Add/edit extra.<ext> file")
+	fmt.println("  scan, s, detect          Detect scripts in .zshrc for migration")
 	fmt.println()
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
-	fmt.println("  wayu.toml: Declarative configuration (PATH, aliases, constants)")
-	fmt.println("  extra.zsh: Shell scripts that run at end of initialization")
-	fmt.println("             Use for conda init, tool evals, custom functions, etc.")
+	fmt.println("  wayu.toml: Settings ([shell], [settings], [tools], [prompt]); PATH entries,")
+	fmt.println("             aliases and constants are managed with wayu path/alias/const")
+	fmt.println("  extra.<ext>: Shell scripts that run at end of initialization")
+	fmt.println("               Use for conda init, tool evals, custom functions, etc.")
 	fmt.println()
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
-	fmt.println("  # Edit declarative config (default)")
-	fmt.println("  wayu config")
+	fmt.println("  # Edit declarative config")
 	fmt.println("  wayu config edit")
 	fmt.println()
 	fmt.println("  # Add conda initialization script")
 	fmt.println("  wayu config extend")
 	fmt.println("  # Then paste conda init block in the editor")
 	fmt.println()
-	fmt.println("  # Detect scripts that should move to extra.zsh")
+	fmt.println("  # Detect scripts that should move to extra.<ext>")
 	fmt.println("  wayu config scan")
 	fmt.println()
 }

@@ -6,7 +6,7 @@ on:
   push:
     branches: [develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   workflow_call:
   workflow_dispatch:
 
@@ -24,13 +24,13 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
     - name: Setup Odin
       uses: ./.github/actions/setup-odin
 
     - name: Setup Ruby
-      uses: ruby/setup-ruby@v1
+      uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
       with:
         ruby-version: '3.3'
 
@@ -61,9 +61,18 @@ jobs:
     - name: Verify build
       run: ./bin/wayu --version
 
-    # ./build_it test sandboxes HOME, same as local runs.
+    # ./build_it test sandboxes HOME and the tests' scratch dirs (per run),
+    # same as local runs. Leaks / bad frees (tracking allocator) fail it.
     - name: Run unit tests
       run: ./build_it test
+
+    - name: Upload unit-test stdout on failure
+      if: failure()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: unit-tests-stdout-${{ matrix.os }}
+        path: bin/unit-tests.stdout.log
+        if-no-files-found: ignore
 
     - name: Run integration tests (incl. golden)
       run: ruby tests/integration/run_all.rb
@@ -85,13 +94,53 @@ jobs:
           exit 1
         fi
 
+  # Integration suites against an AddressSanitizer build: catches
+  # use-after-free / out-of-bounds in the real CLI paths. Leak detection is
+  # off (a CLI process intentionally leaves memory to exit); unit tests cover
+  # leaks with the tracking allocator.
+  sanitize:
+    name: AddressSanitizer (integration)
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+    - name: Setup Odin
+      uses: ./.github/actions/setup-odin
+
+    - name: Setup Ruby
+      uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+      with:
+        ruby-version: '3.3'
+
+    - name: Install shells
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq zsh fish
+
+    - name: Bootstrap build script
+      run: odin build build -out:build_it
+
+    - name: Build wayu (regular + ASan)
+      run: |
+        ./build_it build
+        mkdir -p bin/asan
+        odin build src -out:bin/asan/wayu -sanitize:address -debug
+
+    - name: Run integration tests (ASan)
+      env:
+        WAYU_BIN: bin/asan/wayu
+        ASAN_OPTIONS: detect_leaks=0:halt_on_error=1:abort_on_error=0
+      run: ruby tests/integration/run_all.rb
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
     - name: Setup Odin
       uses: ./.github/actions/setup-odin
@@ -99,7 +148,7 @@ jobs:
     - name: Build with warnings as errors
       run: |
         mkdir -p bin
-        odin build src -out:bin/wayu -warnings-as-errors -o:speed
+        odin build src -out:bin/wayu -vet -warnings-as-errors -o:speed
 
   release-check:
     name: Release Readiness
@@ -107,16 +156,17 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+    - name: Setup Odin
+      uses: ./.github/actions/setup-odin
+
+    # README.md + docs/index.html must advertise VERSION from src/main.odin.
+    # bump.yml and ./build_it release run `./build_it docs` to keep them in sync.
     - name: Check version consistency
       run: |
-        VERSION=$(grep '^VERSION ::' src/main.odin | sed 's/VERSION :: "\(.*\)"/\1/')
-        if [ -z "$VERSION" ]; then
-          echo "Could not extract version from src/main.odin"
-          exit 1
-        fi
-        echo "Version: $VERSION"
+        odin build build -out:build_it
+        ./build_it docs --check
 
     - name: Check required files exist
       run: |

@@ -68,8 +68,8 @@ handle_search_command :: proc(args: []string) {
 		delete(all_results)
 	}
 
-	// Search PATH entries from TOML
-	path_entries_toml := read_toml_path_entries()
+	// Search PATH entries
+	path_entries_toml := read_path_config_entries()
 	defer {
 		for entry in path_entries_toml {
 			delete(entry.name)
@@ -96,8 +96,8 @@ handle_search_command :: proc(args: []string) {
 		})
 	}
 
-	// Search aliases from TOML
-	alias_entries_toml := read_toml_alias_entries()
+	// Search aliases
+	alias_entries_toml := read_alias_entries()
 	defer {
 		for entry in alias_entries_toml {
 			delete(entry.name)
@@ -125,8 +125,8 @@ handle_search_command :: proc(args: []string) {
 		})
 	}
 
-	// Search constants from TOML
-	const_entries_toml := read_wayu_toml_constants()
+	// Search constants
+	const_entries_toml := read_env_entries()
 	defer {
 		for entry in const_entries_toml {
 			delete(entry.name)
@@ -161,8 +161,44 @@ handle_search_command :: proc(args: []string) {
 		return a.score > b.score
 	})
 
+	if wayu.json_output {
+		print_search_results_json(query, all_results[:])
+		return
+	}
+
 	// Display results grouped by type
 	print_search_results(query, all_results[:])
+}
+
+// print_search_results_json - `wayu search QUERY --json` (OKAMI-239).
+// Shape: {"query": "...", "results": [{"type": "path|alias|constant",
+// "name": ..., "value": ..., "match": "exact|prefix|...", "field":
+// "name|value", "score": N}, ...], "count": N}. Results are in score
+// order; constant values are masked like the text view.
+print_search_results_json :: proc(query: string, results: []SearchResult) {
+	query_j := json_escape(query); defer delete(query_j)
+	fmt.println("{")
+	fmt.printfln("  \"query\": \"%s\",", query_j)
+	fmt.println(`  "results": [`)
+	for r, i in results {
+		if i > 0 { fmt.println(",") }
+		type_str := "path"
+		switch r.spec_type {
+		case .PATH:     type_str = "path"
+		case .ALIAS:    type_str = "alias"
+		case .CONSTANT: type_str = "constant"
+		}
+		name_j  := json_escape(r.name);                           defer delete(name_j)
+		value_j := json_escape(mask_secret_value(r.name, r.value)); defer delete(value_j)
+		field   := "value" if r.matched_field == .VALUE else "name"
+		// `{` is a struct-verb opener in Odin's fmt — emit via %c.
+		fmt.printf("    %c\"type\": \"%s\", \"name\": \"%s\", \"value\": \"%s\", \"match\": \"%s\", \"field\": \"%s\", \"score\": %d%c",
+			'{', type_str, name_j, value_j, match_type_to_string_short(r.match_type), field, r.score, '}')
+	}
+	if len(results) > 0 { fmt.println() }
+	fmt.println("  ],")
+	fmt.printfln("  \"count\": %d", len(results))
+	fmt.println("}")
 }
 
 // search_toml_entries_by_name - Fuzzy search through TOML config entries
@@ -286,11 +322,6 @@ search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string, match
 	}
 
 	return results
-}
-
-// search_config_entries - Search entries in a specific config spec (legacy, unused)
-search_config_entries :: proc(spec: ^ConfigEntrySpec, query: string) -> []FuzzyMatch {
-	return fuzzy_find_entries(spec, query, max_results = 20)
 }
 
 // print_search_results - Display formatted search results
@@ -430,7 +461,7 @@ print_search_usage :: proc() {
 	fmt.println("  exact     - Exact name match")
 	fmt.println("  prefix    - Name starts with query")
 	fmt.println("  substring - Name contains query")
-	fmt.println("  acronym   - Query matches uppercase letters (e.g., 'frwrks' → 'FIREWORKS_AI_API_KEY')")
+	fmt.println("  acronym   - Query is in the first letters of the name's words (e.g., 'faak' → 'FIREWORKS_AI_API_KEY')")
 	fmt.println("  fuzzy     - General fuzzy character matching")
 	fmt.println()
 	fmt.printfln("%sSCORE INDICATORS:%s", get_primary(), RESET)
@@ -439,11 +470,8 @@ print_search_usage :: proc() {
 	fmt.println()
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
 	fmt.println("  wayu search git          # Find all entries containing 'git'")
-	fmt.println("  wayu find frwrks         # Find FIREWORKS_AI_API_KEY by acronym")
+	fmt.println("  wayu find faak           # Find FIREWORKS_AI_API_KEY by acronym")
 	fmt.println("  wayu f api               # Short alias for search")
-	fmt.println()
-	fmt.printfln("%sENVIRONMENT VARIABLES:%s", get_primary(), RESET)
-	fmt.println("  WAYU_FFF_ENABLED=0        - Disable fuzzy features")
 	fmt.println()
 	fmt.printfln("%sSee also:%s wayu <command> get <name> for specific value lookup",
 		get_muted(), RESET)

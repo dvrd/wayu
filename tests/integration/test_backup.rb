@@ -34,6 +34,7 @@ class BackupIntegrationTest
       test_backup_error_handling
       test_retention_after_many_writes
       test_restore_chosen_backup
+      test_restore_waits_for_config_lock
     ensure
       cleanup
       teardown_test_env
@@ -61,7 +62,7 @@ class BackupIntegrationTest
   def test_retention_after_many_writes
     12.times { |i| run_wayu("alias add ret#{i} 'echo #{i}'") }
     5.times { |i| run_wayu("const add RET_#{i} v#{i}") }
-    n = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*").size
+    n = Dir.glob("#{@data_dir}/backup/entries.json.backup.*").size
     report("Test 9: 17 writes keep exactly 5 backups", n == 5, "found #{n}")
     12.times { |i| run_wayu("alias rm ret#{i}") }
     5.times { |i| run_wayu("const rm RET_#{i}") }
@@ -70,7 +71,7 @@ class BackupIntegrationTest
   # OKAMI-232: `backup restore <type> N` picks a backup; the default restore
   # is idempotent (no ping-pong between the last two states).
   def test_restore_chosen_backup
-    toml = "#{@config_dir}/wayu.toml"
+    toml = @entries_file
     run_wayu("alias add pick1 one")
     run_wayu("alias add pick2 two")
     run_wayu("alias add pick3 three")   # newest backup: pick1+pick2
@@ -91,6 +92,20 @@ class BackupIntegrationTest
     %w[pick1 pick2 pick3].each { |a| run_wayu("alias rm #{a}") }
   end
 
+  # A restore is an entries.json write: without the config lock a concurrent
+  # `alias add` that read the file earlier overwrote the restore.
+  def test_restore_waits_for_config_lock
+    run_wayu("alias add lockt one")
+    out, st, waited = run_wayu_with_config_lock_held("backup restore alias --yes", hold: 2)
+    if waited.nil?
+      report("Test 11: restore waits for the config lock (skipped: no python3)", true, "")
+    else
+      report("Test 11: restore waits for the config lock", st.success? && waited >= 1.5,
+             "waited=#{waited.round(2)}s exit=#{st.exitstatus} #{out[0, 200]}")
+    end
+    run_wayu("alias rm lockt")
+  end
+
   def test_automatic_backup_creation
     print "Test 1: Automatic backup creation... "
 
@@ -99,15 +114,17 @@ class BackupIntegrationTest
     backup_files.each { |f| File.delete(f) }
 
     # Create test directory
-    test_dir = "/tmp/test1"
+    test_dir = "#{@scratch}/test1"
     Dir.mkdir(test_dir) unless Dir.exist?(test_dir)
 
-    # Add a path which should create a backup
+    # The first write creates entries.json (nothing to back up yet); the
+    # second backs up the first.
+    run_wayu("alias add backup_seed ls")
     output, status = run_wayu("path add #{test_dir}")
 
     if status.success?
       # Check if backup was created
-      backup_files = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*")
+      backup_files = Dir.glob("#{@data_dir}/backup/entries.json.backup.*")
       if backup_files.length > 0
         puts "✓"
         @passed += 1
@@ -147,20 +164,20 @@ class BackupIntegrationTest
     print "Test 3: List backups when backups exist... "
 
     # Create test directories and backups by adding paths
-    ["/tmp/test2", "/tmp/test3"].each do |dir|
+    ["#{@scratch}/test2", "#{@scratch}/test3"].each do |dir|
       Dir.mkdir(dir) unless Dir.exist?(dir)
     end
-    run_wayu("path add /tmp/test2")
-    run_wayu("path add /tmp/test3")
+    run_wayu("path add #{@scratch}/test2")
+    run_wayu("path add #{@scratch}/test3")
 
     output, status = run_wayu("backup list")
 
-    if output.include?("Configuration Backups") && output.include?("wayu.toml")
+    if output.include?("Configuration Backups") && output.include?("entries.json")
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Expected backup list with wayu.toml"
+      puts "  Expected backup list with entries.json"
       puts "  Output: #{output}"
       @failed += 1
     end
@@ -171,7 +188,7 @@ class BackupIntegrationTest
 
     output, status = run_wayu("backup list path")
 
-    if output.include?("Backups for wayu.toml") || output.include?("backup")
+    if output.include?("Backups for entries.json")
       puts "✓"
       @passed += 1
     else
@@ -186,35 +203,35 @@ class BackupIntegrationTest
     print "Test 5: Backup restore functionality... "
 
     # Create test directories
-    ["/tmp/original", "/tmp/modified"].each do |dir|
+    ["#{@scratch}/original", "#{@scratch}/modified"].each do |dir|
       Dir.mkdir(dir) unless Dir.exist?(dir)
     end
 
     # Add initial path
-    run_wayu("path add /tmp/original")
+    run_wayu("path add #{@scratch}/original")
 
     # Modify by adding another path
-    run_wayu("path add /tmp/modified")
+    run_wayu("path add #{@scratch}/modified")
 
     # Verify the modification exists
-    toml_content = File.read("#{@config_dir}/wayu.toml") rescue ""
+    toml_content = File.read(@entries_file) rescue ""
 
-    if toml_content.include?("/tmp/modified")
-      backups_before = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*").size
+    if toml_content.include?("#{@scratch}/modified")
+      backups_before = Dir.glob("#{@data_dir}/backup/entries.json.backup.*").size
 
       # Restore from backup (destructive: requires --yes)
       output, status = run_wayu("backup restore path --yes")
 
-      restored_content = File.read("#{@config_dir}/wayu.toml") rescue ""
-      reverted = !restored_content.include?("/tmp/modified") &&
-                 restored_content.include?("/tmp/original")
+      restored_content = File.read(@entries_file) rescue ""
+      reverted = !restored_content.include?("#{@scratch}/modified") &&
+                 restored_content.include?("#{@scratch}/original")
       # The pre-restore state must itself have been backed up (undoable).
-      backups_after = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*").size
+      backups_after = Dir.glob("#{@data_dir}/backup/entries.json.backup.*").size
       pre_restore_backed_up = backups_after == backups_before + 1
-      whole_file_note = output.include?("entire file")
+      whole_file_note = output.include?("reverts all of them")
       # Generated shell init must reflect the restored config.
       core = File.read("#{@data_dir}/core.zsh") rescue ""
-      regenerated = !core.include?("/tmp/modified")
+      regenerated = !core.include?("#{@scratch}/modified")
 
       if status.success? && output.include?("Restored from backup") && reverted &&
          pre_restore_backed_up && whole_file_note && regenerated
@@ -236,9 +253,9 @@ class BackupIntegrationTest
   def test_backup_restore_requires_yes
     print "Test 5b: Backup restore without --yes is refused (exit 64)... "
     run_wayu("path add /tmp")
-    before = File.read("#{@config_dir}/wayu.toml")
+    before = File.read(@entries_file)
     output, status = run_wayu("backup restore path")
-    after = File.read("#{@config_dir}/wayu.toml")
+    after = File.read(@entries_file)
     if status.exitstatus == 64 && before == after && output.include?("--yes")
       puts "✓"
       @passed += 1
@@ -251,13 +268,13 @@ class BackupIntegrationTest
   end
 
   def test_backup_restore_rejects_corrupt_backup
-    print "Test 5c: Backup restore refuses an invalid TOML backup... "
-    before = File.read("#{@config_dir}/wayu.toml")
+    print "Test 5c: Backup restore refuses an invalid entries.json backup... "
+    before = File.read(@entries_file)
     # Plant a newest-looking corrupt backup.
-    corrupt = "#{@data_dir}/backup/wayu.toml.backup.2200-01-01_00-00-00.000000"
-    File.write(corrupt, "[paths\nthis is = = not toml\n")
+    corrupt = "#{@data_dir}/backup/entries.json.backup.2200-01-01_00-00-00.000000"
+    File.write(corrupt, %({"version": 1, "paths": [\n))
     output, status = run_wayu("backup restore path --yes")
-    after = File.read("#{@config_dir}/wayu.toml")
+    after = File.read(@entries_file)
     File.delete(corrupt) if File.exist?(corrupt)
     if !status.success? && before == after
       puts "✓"
@@ -272,16 +289,16 @@ class BackupIntegrationTest
 
   def test_rapid_backups_do_not_overwrite
     print "Test 5d: Back-to-back writes each keep their own backup... "
-    FileUtils.mkdir_p("/tmp/wayu_rapid_a")
-    FileUtils.mkdir_p("/tmp/wayu_rapid_b")
-    FileUtils.mkdir_p("/tmp/wayu_rapid_c")
-    pristine = File.read("#{@config_dir}/wayu.toml")
-    before = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*").size
+    FileUtils.mkdir_p("#{@scratch}/wayu_rapid_a")
+    FileUtils.mkdir_p("#{@scratch}/wayu_rapid_b")
+    FileUtils.mkdir_p("#{@scratch}/wayu_rapid_c")
+    pristine = File.read(@entries_file)
+    before = Dir.glob("#{@data_dir}/backup/entries.json.backup.*").size
     # Three writes well within one second.
-    run_wayu("path add /tmp/wayu_rapid_a")
-    run_wayu("path add /tmp/wayu_rapid_b")
-    run_wayu("path add /tmp/wayu_rapid_c")
-    files = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*")
+    run_wayu("path add #{@scratch}/wayu_rapid_a")
+    run_wayu("path add #{@scratch}/wayu_rapid_b")
+    run_wayu("path add #{@scratch}/wayu_rapid_c")
+    files = Dir.glob("#{@data_dir}/backup/entries.json.backup.*")
     pristine_kept = files.any? { |f| File.read(f) == pristine }
     # Retention caps the count at 5 (OKAMI-232).
     if files.size == [before + 3, 5].min && pristine_kept
@@ -293,7 +310,7 @@ class BackupIntegrationTest
       @failed += 1
     end
   ensure
-    %w[a b c].each { |s| FileUtils.rm_rf("/tmp/wayu_rapid_#{s}") }
+    %w[a b c].each { |s| FileUtils.rm_rf("#{@scratch}/wayu_rapid_#{s}") }
   end
 
   def test_backup_list_json_escapes_paths
@@ -316,20 +333,20 @@ class BackupIntegrationTest
 
     # Create multiple backups by making multiple changes
     5.times do |i|
-      test_dir = "/tmp/cleanup_test_#{i}"
+      test_dir = "#{@scratch}/cleanup_test_#{i}"
       Dir.mkdir(test_dir) unless Dir.exist?(test_dir)
       run_wayu("path add #{test_dir}")
       sleep(0.1) # Ensure different timestamps
     end
 
     # Count backups before cleanup
-    backup_files_before = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*")
+    backup_files_before = Dir.glob("#{@data_dir}/backup/entries.json.backup.*")
 
     # Run cleanup (destructive: requires --yes)
     output, status = run_wayu("backup rm --yes")
 
     if status.success?
-      backup_files_after = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*")
+      backup_files_after = Dir.glob("#{@data_dir}/backup/entries.json.backup.*")
 
       # Should have cleaned up some backups (keeping last 5)
       if backup_files_after.length <= 5
@@ -383,8 +400,8 @@ class BackupIntegrationTest
 
   def cleanup
     # Clean up test directories
-    test_dirs = ["/tmp/test1", "/tmp/test2", "/tmp/test3", "/tmp/original", "/tmp/modified"] +
-                (0..4).map { |i| "/tmp/cleanup_test_#{i}" }
+    test_dirs = ["#{@scratch}/test1", "#{@scratch}/test2", "#{@scratch}/test3", "#{@scratch}/original", "#{@scratch}/modified"] +
+                (0..4).map { |i| "#{@scratch}/cleanup_test_#{i}" }
 
     test_dirs.each do |dir|
       FileUtils.rm_rf(dir) if Dir.exist?(dir)

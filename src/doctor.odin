@@ -74,7 +74,7 @@ handle_doctor_command :: proc(fix_mode: bool, json_output: bool, profile_mode: b
 	// --fix rewrites wayu.toml (drops PATH entries), so it follows the same
 	// confirmation rule as `wayu path clean`.
 	if fix_mode && !wayu.dry_run && !wayu.yes_flag {
-		print_error("doctor --fix removes missing/duplicate PATH entries from wayu.toml. Pass --yes to confirm, or --dry-run to preview.")
+		print_error("doctor --fix removes missing/duplicate PATH entries. Pass --yes to confirm, or --dry-run to preview.")
 		os.exit(EXIT_USAGE)
 	}
 
@@ -322,9 +322,9 @@ attempt_auto_fixes :: proc(results: []CheckResult, arena_alloc: mem.Allocator) -
 
 		switch result.name {
 		case "PATH entries":
-			fmt.printfln("  %s• Cleaning wayu.toml [paths] (missing + duplicate entries)...%s", get_primary(), RESET)
+			fmt.printfln("  %s• Cleaning PATH entries (missing + duplicates)...%s", get_primary(), RESET)
 
-			_, fix_ok, fix_msg := doctor_fix_toml_paths(arena_alloc)
+			_, fix_ok, fix_msg := doctor_fix_paths(arena_alloc)
 			if fix_ok {
 				fmt.printfln("    %s✓ %s%s", get_success(), fix_msg, RESET)
 			} else {
@@ -417,7 +417,7 @@ print_doctor_usage :: proc() {
 	fmt.println()
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
 	fmt.printfln("  wayu doctor              Run all health checks")
-	fmt.printfln("  wayu doctor --fix --yes  Remove missing/duplicate PATH entries from wayu.toml")
+	fmt.printfln("  wayu doctor --fix --yes  Remove missing/duplicate PATH entries")
 	fmt.printfln("  wayu doctor --fix -n     Preview what --fix would change (dry run)")
 	fmt.printfln("  wayu doctor --json       Output results as JSON")
 	fmt.printfln("  wayu doctor --profile    Profile shell startup performance")
@@ -432,6 +432,7 @@ print_doctor_usage :: proc() {
 	fmt.printfln("%sCHECKS PERFORMED:%s", get_primary(), RESET)
 	fmt.println("  • wayu installation and version")
 	fmt.println("  • Shell RC file configuration")
+	fmt.println("  • bash: PROMPT_COMMAND not replaced after wayu is loaded")
 	fmt.println("  • PATH entries (missing directories, duplicates)")
 	fmt.println("  • Plugin status")
 	fmt.println("  • Backup system")
@@ -461,6 +462,8 @@ echo ""
 
 times=()
 labels=()
+# Generated files, plugins and completions live in the data dir.
+export WAYU_PROFILE_DATA=${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}
 
 run_step() {
   local label=$1
@@ -474,35 +477,30 @@ run_step() {
 }
 
 echo "=== Phase 1: Core Config ==="
-# Post-migration: core.zsh is the compiled source of truth.
-# Legacy per-type files are fallback-only.
-run_step "core.zsh" source "$HOME/.config/wayu/core.zsh" 2>/dev/null || true
-run_step "constants.zsh (legacy)" source "$HOME/.config/wayu/constants.zsh" 2>/dev/null || true
-run_step "path.zsh (legacy)" source "$HOME/.config/wayu/path.zsh" 2>/dev/null || true
+run_step "core.zsh" source "$WAYU_PROFILE_DATA/core.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 2: Functions ==="
-run_step "functions (glob)" zsh -c 'for f in "$HOME/.config/wayu/functions"/*(N); do [[ -f "$f" ]] && source "$f"; done'
+run_step "functions (glob)" zsh -c 'for f in "$WAYU_PROFILE_DATA/functions"/*.zsh(N); do [[ -f "$f" ]] && source "$f"; done'
 
 echo ""
 echo "=== Phase 3: Completions Setup ==="
-run_step "fpath setup" zsh -c 'fpath=("$HOME/.config/wayu/completions" $fpath)'
+run_step "fpath setup" zsh -c 'fpath=("$WAYU_PROFILE_DATA/completions" $fpath)'
 run_step "compinit" autoload -Uz compinit && compinit -C
 
 echo ""
 echo "=== Phase 4: Plugins ==="
-run_step "autosuggestions" source "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" 2>/dev/null || true
-run_step "syntax-highlighting" source "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" 2>/dev/null || true
-run_step "plugin config" source "$HOME/.config/wayu/plugins/config.zsh" 2>/dev/null || true
+run_step "autosuggestions" source "$WAYU_PROFILE_DATA/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" 2>/dev/null || true
+run_step "syntax-highlighting" source "$WAYU_PROFILE_DATA/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" 2>/dev/null || true
+run_step "plugin config" source "$WAYU_PROFILE_DATA/plugins/config.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 5: Aliases & Tools ==="
-run_step "aliases.zsh (legacy)" source "$HOME/.config/wayu/aliases.zsh" 2>/dev/null || true
-run_step "tools.zsh" source "$HOME/.config/wayu/tools.zsh" 2>/dev/null || true
+run_step "tools.zsh" source "${WAYU_CONFIG_DIR:-$HOME/.config/wayu}/tools.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 6: Extra Config ==="
-run_step "extra.zsh" source "$HOME/.config/wayu/extra.zsh" 2>/dev/null || true
+run_step "extra.zsh" source "${WAYU_CONFIG_DIR:-$HOME/.config/wayu}/extra.zsh" 2>/dev/null || true
 
 total=$(($EPOCHREALTIME - start_time))
 
@@ -530,7 +528,6 @@ fi
 if (( ${times[(I)syntax-highlighting]} > 0.1 )); then
   echo "  • syntax-highlighting adds latency. Consider deferring it."
 fi
-echo "  • Use 'wayu export' for turbo mode (~2-4x faster)"
 `
 
 	script_path := fmt.aprintf("%s/startup_profile.zsh", wayu.data)
@@ -554,7 +551,7 @@ echo "  • Use 'wayu export' for turbo mode (~2-4x faster)"
 	fmt.println()
 	fmt.println()
 	fmt.println("🚀 Optimization options:")
-	fmt.println(`  wayu export              Generate turbo.zsh (2-4x faster)`)
+	fmt.println(`  wayu build profile       Time each section of the generated init`)
 }
 
 // Signature every doctor check must implement.
@@ -573,13 +570,17 @@ CheckEntry :: struct {
 CHECKS := []CheckEntry{
 	{"installation", check_wayu_installation},
 	{"shell",        check_shell_config},
+	{"promptcmd",    check_bash_prompt_command},
 	{"path",         check_path_entries},
 	{"plugins",      check_plugins},
 	{"backups",      check_backups},
 	{"toml",         check_toml_config},
+	{"entries",      check_entries_store},
+	{"scripts",      check_scripts},
 	{"turbo",        check_turbo_export},
 	{"deps",         check_dependencies},
 	{"sync",         check_sync_status},
+	{"secrets",      check_secrets},
 }
 
 // Check 1: wayu installation. Report-only: doctor never installs a binary
@@ -619,15 +620,17 @@ rc_active_code :: proc(line: string) -> string {
 	return trimmed
 }
 
-// True when an active (non-comment) line of `content` loads wayu: it names
-// wayu (any case, so `$WAYU/init.zsh` counts) and sources an init/turbo file
-// or evals wayu output (`eval "$(wayu build eval)"`). With `turbo_only`,
-// only a turbo.zsh / wayu-turbo reference counts.
+// True when an active (non-comment) line of `content` loads wayu: it runs
+// `source` / `.` / `eval` as a command, names wayu (any case, so
+// `$WAYU/init.zsh` counts) and sources an init/turbo file or evals wayu
+// output (`eval "$(wayu export --eval)"`). A line that merely mentions the file
+// (`alias e='vim ~/.config/wayu/init.zsh'`) does not count. With
+// `turbo_only`, only a turbo.zsh / wayu-turbo reference counts.
 rc_loads_wayu :: proc(content: string, turbo_only := false) -> bool {
 	it := make_line_iter(content)
 	for line in line_iter_next(&it) {
 		code := rc_active_code(line)
-		if len(code) == 0 { continue }
+		if len(code) == 0 || !rc_runs_loader(code) { continue }
 		lower := strings.to_lower(code, context.temp_allocator)
 		if !strings.contains(lower, "wayu") { continue }
 		if strings.contains(lower, "turbo") { return true }
@@ -635,6 +638,74 @@ rc_loads_wayu :: proc(content: string, turbo_only := false) -> bool {
 		if strings.contains(lower, "init.") || strings.contains(lower, "eval") { return true }
 	}
 	return false
+}
+
+// True when `code` runs `source`, `.` or `eval` as a command word: first on
+// the line or after `;`, `&&`, `||`, `then`, `do`, `else`, `{` (so
+// `[ -f x ] && source x` counts; `alias s='source x'` does not).
+@(private = "file")
+rc_runs_loader :: proc(code: string) -> bool {
+	at_command := true
+	for w in strings.fields(code, context.temp_allocator) {
+		if at_command && (w == "source" || w == "." || w == "eval" || strings.has_prefix(w, "eval\"") || strings.has_prefix(w, "eval'")) {
+			return true
+		}
+		switch w {
+		case ";", "&&", "||", "then", "do", "else", "{":
+			at_command = true
+		case:
+			at_command = strings.has_suffix(w, ";") || strings.has_suffix(w, "&&") || strings.has_suffix(w, "||")
+		}
+	}
+	return false
+}
+
+// 1-based numbers of the active lines AFTER the first line that loads wayu
+// which overwrite bash's PROMPT_COMMAND without keeping its old value
+// (`PROMPT_COMMAND=...` / `export PROMPT_COMMAND=...` / `declare ...` whose
+// right-hand side doesn't mention PROMPT_COMMAND, or `unset PROMPT_COMMAND`).
+// Such a line silently drops the `_wayu_paths_sync` prompt hook core.bash
+// installs, so open shells stop picking up `wayu path add/rm`. `+=` appends
+// and `PROMPT_COMMAND="x;$PROMPT_COMMAND"` keep it.
+rc_prompt_command_overwrites :: proc(content: string, allocator := context.allocator) -> []int {
+	out := make([dynamic]int, allocator)
+	loaded := false
+	n := 0
+	it := make_line_iter(content)
+	for line in line_iter_next(&it) {
+		n += 1
+		code := rc_active_code(line)
+		if len(code) == 0 { continue }
+		if !loaded {
+			loaded = rc_loads_wayu(code)
+			continue
+		}
+		if prompt_command_overwritten(code) { append(&out, n) }
+	}
+	return out[:]
+}
+
+@(private = "file")
+prompt_command_overwritten :: proc(code: string) -> bool {
+	NAME :: "PROMPT_COMMAND"
+	rest := code
+	for {
+		i := strings.index(rest, NAME)
+		if i < 0 { return false }
+		before := rest[:i]
+		after := rest[i+len(NAME):]
+		rest = after
+		// Must be a whole word (not MY_PROMPT_COMMAND / PROMPT_COMMANDS).
+		if len(before) > 0 && doctor_is_ident_byte(before[len(before)-1]) { continue }
+		if len(after) > 0 && doctor_is_ident_byte(after[0]) { continue }
+		prev := strings.trim_right_space(before)
+		if strings.has_suffix(prev, "unset") || strings.has_suffix(prev, "unset -v") { return true }
+		if len(after) == 0 || after[0] != '=' { continue }
+		// `NAME=` must start a word (assignment), not sit inside `$NAME=`.
+		if len(before) > 0 && before[len(before)-1] == '$' { continue }
+		if len(before) > 0 && before[len(before)-1] == '{' { continue }
+		return !strings.contains(after[1:], NAME)
+	}
 }
 
 // Startup files of the current shell (see shell_startup_files) that exist,
@@ -720,13 +791,39 @@ check_shell_config :: proc(results: ^[dynamic]CheckResult) {
 	})
 }
 
-// Check 3: PATH entries — read from wayu.toml [paths] (the source of truth),
-// not the legacy path.<ext> file.
+// bash only: warn when a startup file overwrites PROMPT_COMMAND after the
+// line that loads wayu (see rc_prompt_command_overwrites). Silent when
+// nothing is found, so other shells' output is unchanged.
+check_bash_prompt_command :: proc(results: ^[dynamic]CheckResult) {
+	if wayu.shell != .BASH { return }
+	ensure_arena_initialized()
+	alloc := get_doctor_allocator()
+	hits := make([dynamic]string, allocator = alloc)
+	for f in shell_startup_files(.BASH, alloc) {
+		if !os.exists(f) { continue }
+		content, ok := safe_read_file(f)
+		if !ok { continue }
+		for n in rc_prompt_command_overwrites(string(content), context.temp_allocator) {
+			append(&hits, fmt.aprintf("%s:%d", doctor_tilde(f), n, allocator = alloc))
+		}
+		delete(content)
+	}
+	if len(hits) == 0 { return }
+	append(results, CheckResult{
+		name    = clone_arena("bash PROMPT_COMMAND"),
+		status  = .WARNING,
+		message = fmt.aprintf("%s replaces PROMPT_COMMAND after wayu is loaded, dropping the _wayu_paths_sync hook (open shells miss 'wayu path add/rm') - append instead: PROMPT_COMMAND=\"${{PROMPT_COMMAND:+$PROMPT_COMMAND;}}...\", or load wayu after it",
+			strings.join(hits[:], ", ", allocator = alloc), allocator = alloc),
+		fixable = false,
+	})
+}
+
+// Check 3: PATH entries (entry store).
 check_path_entries :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
 	arena_alloc := get_doctor_allocator()
 
-	scan, scan_ok, skip_reason := doctor_scan_toml_paths(arena_alloc)
+	scan, scan_ok, skip_reason := doctor_scan_paths(arena_alloc)
 	if !scan_ok {
 		append(results, CheckResult{
 			name    = clone_arena("PATH entries"),
@@ -757,7 +854,7 @@ check_path_entries :: proc(results: ^[dynamic]CheckResult) {
 	}
 	unresolved_note := ""
 	if unresolved_count > 0 {
-		unresolved_note = fmt.aprintf("%d use%s unset variables (left alone)",
+		unresolved_note = fmt.aprintf("%d use%s unset variables or relative paths (left alone)",
 			unresolved_count, unresolved_count == 1 ? "s" : "", allocator = arena_alloc)
 	}
 
@@ -797,12 +894,13 @@ check_path_entries :: proc(results: ^[dynamic]CheckResult) {
 	}
 }
 
-// One [paths] entry plus its health verdict.
+// One PATH entry plus its health verdict.
 DoctorPathScan :: struct {
-	entry:      TomlPathEntry,
+	entry:      StorePath,
 	missing:    bool, // directory doesn't exist (after $VAR / ~ expansion)
 	duplicate:  bool, // expands to the same dir as an earlier entry
-	unresolved: bool, // uses a variable set neither in wayu.toml [env] nor the environment
+	unresolved: bool, // uses a variable set neither as a constant nor in the environment, or is relative (cwd-dependent)
+	expanded:   string, // the directory the shell would add ("" when unresolved)
 }
 
 @(private = "file")
@@ -810,12 +908,13 @@ doctor_is_ident_byte :: proc(c: byte) -> bool {
 	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'
 }
 
-// Expand `path` the way the generated shell init does: wayu.toml [env]
-// constants first (core exports them before PATH), then the environment,
+// Expand `path` the way the generated shell init does: wayu's constants
+// first (core exports them before PATH), then the environment,
 // then a leading `~`. Returns "" when any variable stays unresolved — such an
 // entry's existence is unknown, so it must never be classed as missing.
 doctor_expand_path :: proc(path: string, consts: []ConfigEntry) -> string {
 	b := strings.builder_make()
+	defer strings.builder_destroy(&b) // expand_env_vars returns a fresh string
 	i := 0
 	for i < len(path) {
 		if path[i] != '$' {
@@ -848,46 +947,48 @@ doctor_expand_path :: proc(path: string, consts: []ConfigEntry) -> string {
 				break
 			}
 		}
+		if !replaced && len(name) > 0 {
+			// Substitute environment variables here too, so the relative
+			// check below sees their values (`FOO=rel` for `$FOO/bin`).
+			if v, found := os.lookup_env(name, context.temp_allocator); found && len(v) > 0 {
+				strings.write_string(&b, v)
+				replaced = true
+			}
+		}
 		if !replaced { strings.write_string(&b, path[start:i]) }
 	}
-	return expand_env_vars(strings.to_string(b), require_resolved = true)
+	// A relative entry (`./node_modules/.bin`, `bin`) is resolved by the
+	// shell against whatever directory it is in, so its existence depends on
+	// doctor's cwd: treat it as unresolved, never as missing (--fix would
+	// delete it).
+	s := strings.to_string(b)
+	if len(s) == 0 || (s[0] != '/' && s[0] != '~' && s[0] != '$') { return "" }
+	return expand_env_vars(s, require_resolved = true)
 }
 
-// Read wayu.toml [paths] and classify each entry. Never exits: a missing or
-// legacy-schema wayu.toml is reported via ok=false + reason (the TOML check
-// surfaces the actual problem). All memory comes from `alloc`.
-doctor_scan_toml_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPathScan, ok: bool, reason: string) {
+// Read the PATH entries and classify each one. Never exits: an unreadable or
+// malformed entries.json is reported via ok=false + reason (the entries
+// check surfaces the actual problem). All memory comes from `alloc`.
+doctor_scan_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPathScan, ok: bool, reason: string) {
 	context.allocator = alloc
 
-	toml_path := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
-	if !os.exists(toml_path) {
-		return nil, false, "No wayu.toml — PATH check skipped"
-	}
-	content, read_ok := safe_read_file(toml_path)
+	store, _, read_ok := entries_read()
 	if !read_ok {
-		return nil, false, "Cannot read wayu.toml — PATH check skipped"
+		return nil, false, fmt.aprintf("%s is unreadable or malformed — PATH check skipped", ENTRIES_FILE)
 	}
-	if len(detect_legacy_schema(string(content))) > 0 {
-		return nil, false, "wayu.toml uses the obsolete schema — PATH check skipped"
-	}
+	consts := entries_as_config_entries(&store, .ENV)
 
-	// toml_path_read_keyed may serve a cached copy; make sure it's fresh.
-	clear_toml_content_cache()
-	entries := toml_path_read_keyed()
-	consts := read_wayu_toml_constants()
-	// Don't leave arena-owned memory in the global cache once doctor returns.
-	defer clear_toml_content_cache()
-
-	scan = make([dynamic]DoctorPathScan, 0, len(entries))
+	scan = make([dynamic]DoctorPathScan, 0, len(store.paths))
 	seen := make(map[string]bool)
-	for e in entries {
+	for e in store.paths {
 		s := DoctorPathScan{entry = e}
-		expanded := doctor_expand_path(e.path, consts)
+		expanded := doctor_expand_path(e.dir, consts)
 		if len(expanded) == 0 {
 			s.unresolved = true
 			append(&scan, s)
 			continue
 		}
+		s.expanded = expanded
 		s.missing = !os.exists(expanded)
 		if expanded in seen {
 			s.duplicate = true
@@ -898,10 +999,10 @@ doctor_scan_toml_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPa
 	return scan, true, ""
 }
 
-// --fix for PATH: drop missing + duplicate entries from wayu.toml [paths]
-// with a single backup and a single rewrite, then regenerate the shell init.
+// --fix for PATH: drop missing + duplicate entries with a single backup and
+// a single rewrite, then regenerate the shell init.
 // Returns (removed_count, ok, message).
-doctor_fix_toml_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, message: string) {
+doctor_fix_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, message: string) {
 	context.allocator = alloc
 
 	// Scan and rewrite under one lock so the fix acts on what is on disk.
@@ -910,18 +1011,20 @@ doctor_fix_toml_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, 
 	}
 	defer config_lock_release()
 
-	scan, scan_ok, reason := doctor_scan_toml_paths(alloc)
+	scan, scan_ok, reason := doctor_scan_paths(alloc)
 	if !scan_ok {
 		return 0, false, reason
 	}
 
-	drop_keys := make([dynamic]string)
-	for s in scan {
+	entries := make([]StorePath, len(scan))
+	drop := make([]bool, len(scan))
+	for s, i in scan {
+		entries[i] = s.entry
 		if s.missing || s.duplicate {
 			removed += 1
+			drop[i] = true
 			reason_word := s.missing ? "missing" : "duplicate"
-			fmt.printfln("    - %s = %q (%s)", s.entry.key, s.entry.path, reason_word)
-			append(&drop_keys, s.entry.key)
+			fmt.printfln("    - %s = %q (%s)", s.entry.key, s.entry.dir, reason_word)
 		}
 	}
 	if removed == 0 {
@@ -929,21 +1032,19 @@ doctor_fix_toml_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, 
 	}
 
 	if wayu.dry_run {
-		return removed, true, fmt.aprintf("DRY RUN: would remove %d entr%s from wayu.toml [paths]",
+		return removed, true, fmt.aprintf("DRY RUN: would remove %d PATH entr%s",
 			removed, removed == 1 ? "y" : "ies")
 	}
 
-	// One backup, one in-place deletion of just the dropped lines: the
-	// survivors keep their order (PATH precedence) and comments.
-	switch toml_kv_delete("paths", "paths", drop_keys[:]) {
+	// One backup, one rewrite: the survivors keep their order (PATH precedence).
+	#partial switch path_store_drop(entries, drop) {
 	case .OK:
-	case .MALFORMED: return 0, false, "wayu.toml [paths] is malformed — nothing changed"
-	case .NOT_FOUND: return 0, false, "PATH entries changed during the fix — nothing changed"
-	case .IO_ERROR:  return 0, false, "Could not back up or write wayu.toml"
+	case .BAD_STORE: return 0, false, "entries.json is malformed — nothing changed"
+	case:            return 0, false, "Could not back up or write entries.json"
 	}
 	regenerate_init_core_silently()
 
-	return removed, true, fmt.aprintf("Removed %d missing/duplicate entr%s from wayu.toml",
+	return removed, true, fmt.aprintf("Removed %d missing/duplicate PATH entr%s",
 		removed, removed == 1 ? "y" : "ies")
 }
 
@@ -992,7 +1093,30 @@ check_plugins :: proc(results: ^[dynamic]CheckResult) {
 			message = msg,
 			fixable = false,
 		})
+		check_plugin_conflicts(results)
 	}
+}
+
+// Same function/alias/export in two enabled plugins, or in a plugin and
+// wayu.toml (OKAMI-276): a warning naming each conflict.
+check_plugin_conflicts :: proc(results: ^[dynamic]CheckResult) {
+	config, ok := read_plugin_config_json()
+	defer cleanup_plugin_config_json(&config)
+	if !ok { return }
+	conflicts := collect_plugin_conflicts(&config)
+	if len(conflicts) == 0 { return }
+	b := strings.builder_make(context.temp_allocator)
+	fmt.sbprintf(&b, "%d plugin conflict(s): ", len(conflicts))
+	for c, i in conflicts {
+		if i > 0 { strings.write_string(&b, "; ") }
+		fmt.sbprintf(&b, "%s %s in %s and %s", c.kind, c.name, c.plugin, c.other)
+	}
+	append(results, CheckResult{
+		name    = clone_arena("plugin conflicts"),
+		status  = .WARNING,
+		message = clone_arena(strings.to_string(b)),
+		fixable = false,
+	})
 }
 
 // Check 5: backups
@@ -1001,10 +1125,11 @@ check_backups :: proc(results: ^[dynamic]CheckResult) {
 	backup_dir := fmt.aprintf("%s/backup", wayu.data, allocator = get_doctor_allocator())
 
 	if !os.exists(backup_dir) {
+		// Normal on a fresh install: the directory appears with the first write.
 		append(results, CheckResult{
 			name    = clone_arena("backups"),
-			status  = .WARNING,
-			message = clone_arena("Backup directory not found"),
+			status  = .INFO,
+			message = clone_arena("No backups yet (one is made before the first change)"),
 			fixable = false,
 		})
 		return
@@ -1046,36 +1171,39 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 	}
 	defer delete(content)
 
-	// Schema sanity — if the file still uses [[paths]]/[[aliases]]/[[constants]],
-	// every other wayu command will refuse to run. Surface that here.
-	if header := detect_legacy_schema(string(content)); len(header) > 0 {
-		msg := fmt.aprintf("wayu.toml uses obsolete %s schema — run `wayu migrate --schema`", header)
-		defer delete(msg)
+	// Same parser as `wayu toml validate` and every reader; name the line.
+	if valid, perr := toml_check(string(content)); !valid {
+		defer delete(perr.msg)
 		append(results, CheckResult{
 			name    = clone_arena("TOML config"),
 			status  = .ERROR,
-			message = clone_arena(msg),
+			message = clone_arena(fmt.tprintf("wayu.toml is malformed (line %d: %s) — run `wayu toml validate` or restore with `wayu backup restore toml --yes`", perr.line, perr.msg)),
 			fixable = false,
 		})
 		return
 	}
 
-	// Actually validate: syntax sanity + full parse. Previously any readable
-	// file was reported OK, so a corrupt wayu.toml passed the health check.
-	if !toml_content_is_sane(string(content)) {
-		append(results, CheckResult{
-			name    = clone_arena("TOML config"),
-			status  = .ERROR,
-			message = clone_arena("wayu.toml is malformed (invalid TOML syntax) — run `wayu validate` or restore with `wayu backup restore toml --yes`"),
-			fixable = false,
-		})
-		return
+	// Wrong table shapes ([[paths]]) are errors; keys wayu does not read
+	// are a warning (`toml validate` lists them).
+	issues := toml_content_schema_issues(string(content))
+	unknown := 0
+	for is in issues {
+		if is.is_error {
+			append(results, CheckResult{
+				name    = clone_arena("TOML config"),
+				status  = .ERROR,
+				message = clone_arena(fmt.tprintf("wayu.toml line %d: %s", is.line, is.msg)),
+				fixable = false,
+			})
+			return
+		}
+		unknown += 1
 	}
-	if _, parse_ok := toml_parse(string(content)); !parse_ok {
+	if unknown > 0 {
 		append(results, CheckResult{
 			name    = clone_arena("TOML config"),
-			status  = .ERROR,
-			message = clone_arena("wayu.toml could not be parsed — run `wayu validate`"),
+			status  = .WARNING,
+			message = clone_arena(fmt.tprintf("wayu.toml has %d key(s)/table(s) wayu does not read — see `wayu toml validate`", unknown)),
 			fixable = false,
 		})
 		return
@@ -1085,6 +1213,50 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 		name    = clone_arena("TOML config"),
 		status  = .OK,
 		message = clone_arena("wayu.toml is valid"),
+		fixable = false,
+	})
+}
+
+// Check: the entry store (<data>/entries.json) parses and is private.
+check_entries_store :: proc(results: ^[dynamic]CheckResult) {
+	ensure_arena_initialized()
+	name :: "entries"
+	file := entries_file_path()
+	store, err, ok := entries_read()
+	if !ok {
+		append(results, CheckResult{
+			name    = clone_arena(name),
+			status  = .ERROR,
+			message = clone_arena(fmt.tprintf("%s — restore it with `wayu backup restore entries --yes`", err)),
+			fixable = false,
+		})
+		return
+	}
+	defer entries_store_destroy(&store)
+	if !os.exists(file) {
+		append(results, CheckResult{
+			name    = clone_arena(name),
+			status  = .INFO,
+			message = clone_arena("No PATH entries, aliases or constants yet"),
+			fixable = false,
+		})
+		return
+	}
+	if fi, serr := os.stat(file, context.temp_allocator); serr == nil {
+		if fi.mode & {.Read_Group, .Write_Group, .Execute_Group, .Read_Other, .Write_Other, .Execute_Other} != {} {
+			append(results, CheckResult{
+				name    = clone_arena(name),
+				status  = .WARNING,
+				message = clone_arena(fmt.tprintf("%s is readable by other users (constants may be secrets) — chmod 600 it", file)),
+				fixable = false,
+			})
+			return
+		}
+	}
+	append(results, CheckResult{
+		name    = clone_arena(name),
+		status  = .OK,
+		message = clone_arena(fmt.tprintf("%d PATH entries, %d aliases, %d constants", len(store.paths), len(store.aliases), len(store.env))),
 		fixable = false,
 	})
 }
@@ -1122,8 +1294,16 @@ check_turbo_export :: proc(results: ^[dynamic]CheckResult) {
 // Check 8: dependencies
 check_dependencies :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	deps := []string{"git", "zsh"}
 	arena_alloc := get_doctor_allocator()
+	// git (plugins) plus the shell wayu generates init code for.
+	deps := make([dynamic]string, allocator = arena_alloc)
+	append(&deps, "git")
+	switch wayu.shell {
+	case .ZSH:     append(&deps, "zsh")
+	case .BASH:    append(&deps, "bash")
+	case .FISH:    append(&deps, "fish")
+	case .UNKNOWN:
+	}
 
 	for dep in deps {
 		found := check_command_exists(dep)
@@ -1161,7 +1341,6 @@ check_command_exists :: proc(cmd: string) -> bool {
 // Check 9: sync status — wayu entries vs environment
 check_sync_status :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	arena_alloc := get_doctor_allocator()
 
 	// Only run this check if wayu is initialized
 	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
@@ -1173,14 +1352,38 @@ check_sync_status :: proc(results: ^[dynamic]CheckResult) {
 	}
 
 	found_in, _ := doctor_find_wayu_source()
+	alloc := get_doctor_allocator()
 
 	sync_msg := ""
 	sync_status := CheckStatus.OK
-	if len(found_in) > 0 {
-		sync_msg = clone_arena("All wayu entries are loaded in current shell")
-	} else {
+	if len(found_in) == 0 {
 		sync_msg = clone_arena("wayu is not loaded by any startup file - see 'shell configuration' above")
 		sync_status = .WARNING
+	} else {
+		// Compare the PATH entries (existing, resolvable dirs) with the
+		// $PATH doctor was started with.
+		scan, scan_ok, _ := doctor_scan_paths(alloc)
+		env_path := os.get_env("PATH", alloc)
+		active := make(map[string]bool, allocator = alloc)
+		for dir in strings.split(env_path, ":", alloc) { active[dir] = true }
+		total, missing := 0, 0
+		for s in scan {
+			if s.missing || s.unresolved || s.duplicate { continue }
+			total += 1
+			if s.expanded not_in active { missing += 1 }
+		}
+		switch {
+		case !scan_ok || total == 0:
+			sync_msg = clone_arena("No PATH entries to compare with the current shell")
+			sync_status = .INFO
+		case missing == 0:
+			sync_msg = fmt.aprintf("All %d PATH entr%s present in this shell's $PATH",
+				total, total == 1 ? "y" : "ies", allocator = alloc)
+		case:
+			sync_msg = fmt.aprintf("%d of %d PATH entr%s not in this shell's $PATH - open a new shell to load them",
+				missing, total, total == 1 ? "y" : "ies", allocator = alloc)
+			sync_status = .INFO
+		}
 	}
 
 	append(results, CheckResult{

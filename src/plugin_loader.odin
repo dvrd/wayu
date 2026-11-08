@@ -1,6 +1,7 @@
 package wayu
 
 import "core:fmt"
+import "core:mem/virtual"
 import "core:os"
 import "core:strings"
 import "core:time"
@@ -27,61 +28,23 @@ plugin_accept_keys_from_toml :: proc() -> []string {
 	}
 	defer if len(uncached_raw) > 0 { delete(uncached_raw) }
 
-	it := make_line_iter(content_str)
-	in_settings := false
+	// Shared TOML parser: the array may span lines and hold comments.
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil { return make_default_autosuggest_accept_keys() }
+	defer virtual.arena_destroy(&arena)
+	doc, _ := toml_doc_parse_alloc(content_str, virtual.arena_allocator(&arena))
+
 	keys := make([dynamic]string)
 	defer if len(keys) == 0 do delete(keys)
-
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
-			continue
-		}
-		if trimmed == "[settings]" {
-			in_settings = true
-			continue
-		}
-		if in_settings && strings.has_prefix(trimmed, "[") {
-			break
-		}
-		if !in_settings || !strings.has_prefix(trimmed, "autosuggestions_accept_keys") {
-			continue
-		}
-
-		eq_idx := strings.index(trimmed, "=")
-		if eq_idx < 0 {
-			break
-		}
-		raw := strings.trim_space(trimmed[eq_idx+1:])
-		in_quote := false
-		quote_char: byte = 0
-		start := 0
-		for i := 0; i < len(raw); i += 1 {
-			ch := raw[i]
-			if !in_quote && (ch == '"' || ch == '\'') {
-				in_quote = true
-				quote_char = ch
-				start = i + 1
-				continue
+	if val := get_toml_value(&doc, "settings.autosuggestions_accept_keys"); val != nil && val.type == .ARRAY {
+		for el in val.arr_val {
+			if el.type != .STRING || len(el.str_val) == 0 { continue }
+			duplicate := false
+			for existing in keys {
+				if existing == el.str_val { duplicate = true; break }
 			}
-			if in_quote && ch == quote_char {
-				key := raw[start:i]
-				if len(key) > 0 {
-					duplicate := false
-					for existing in keys {
-						if existing == key {
-							duplicate = true
-							break
-						}
-					}
-					if !duplicate {
-						append(&keys, strings.clone(key))
-					}
-				}
-				in_quote = false
-			}
+			if !duplicate { append(&keys, strings.clone(el.str_val)) }
 		}
-		break
 	}
 
 	if len(keys) == 0 {
@@ -381,47 +344,76 @@ get_plugin_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> 
 		defer delete(conf_d)
 		if os.is_dir(conf_d) {
 			glob := []string{"*.fish"}
-			for f in match_files_with_globs(conf_d, glob) {
-				append(&auto_files, f)
-			}
+			found := match_files_with_globs(conf_d, glob)
+			defer delete(found) // strings move into auto_files
+			append(&auto_files, ..found)
 		}
 
 		funcs := fmt.aprintf("%s/functions", plugin.installed_path)
 		defer delete(funcs)
 		if os.is_dir(funcs) {
 			glob := []string{"*.fish"}
-			for f in match_files_with_globs(funcs, glob) {
-				append(&auto_files, f)
-			}
+			found := match_files_with_globs(funcs, glob)
+			defer delete(found) // strings move into auto_files
+			append(&auto_files, ..found)
 		}
 	}
 
-	// Try common plugin entry points at the repo root.
-	candidates := []string{
+	// The repo-root entry file: the FIRST existing candidate. A plugin's
+	// `<name>.plugin.zsh` usually sources its `<name>.zsh` itself, so
+	// sourcing every candidate would load the plugin twice.
+	candidates := make([dynamic]string, context.temp_allocator)
+	append(&candidates,
 		fmt.tprintf("%s.plugin.%s", plugin.name, ext),
 		fmt.tprintf("%s.%s", plugin.name, ext),
 		fmt.tprintf("%s-init.%s", plugin.name, ext),
 		fmt.tprintf("init.%s", ext),
 		fmt.tprintf("plugin.%s", ext),
+	)
+	if shell == .ZSH {
+		// Prompt themes (powerlevel10k) ship only <name>.zsh-theme.
+		append(&candidates, fmt.tprintf("%s.zsh-theme", plugin.name))
+	}
+	if shell != .FISH {
+		// POSIX-sh plugins usable from zsh and bash (rupa/z: z.sh).
+		append(&candidates, fmt.tprintf("%s.plugin.sh", plugin.name), fmt.tprintf("%s.sh", plugin.name))
 	}
 
 	for candidate in candidates {
 		full_path := fmt.aprintf("%s/%s", plugin.installed_path, candidate)
 		if os.exists(full_path) {
 			append(&auto_files, full_path)
-		} else {
-			delete(full_path)
+			break
 		}
+		delete(full_path)
 	}
 
-	// If nothing discovered yet, include every top-level file of the right extension.
-	if len(auto_files) == 0 {
-		delete(auto_files)
-		glob := []string{fmt.tprintf("*.%s", ext)}
-		return match_files_with_globs(plugin.installed_path, glob)
+	if len(auto_files) > 0 {
+		return auto_files[:]
 	}
+	delete(auto_files)
 
-	return auto_files[:]
+	// No named entry file: every top-level file of the shell's extension
+	// (zsh: then every top-level *.zsh-theme).
+	files := match_files_with_globs(plugin.installed_path, []string{fmt.tprintf("*.%s", ext)})
+	if len(files) == 0 && shell == .ZSH {
+		delete(files)
+		files = match_files_with_globs(plugin.installed_path, []string{"*.zsh-theme"})
+	}
+	return files
+}
+
+// True when the loader would source at least one file of `plugin` in
+// `shell` (ignores enabled/compat; see get_plugin_files_to_source).
+plugin_has_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> bool {
+	files := get_plugin_files_to_source(plugin, shell)
+	defer {
+		for f in files {
+			delete(f)
+		}
+		delete(files)
+	}
+	return len(files) > 0
 }
 
 // Match files using glob patterns

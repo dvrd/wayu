@@ -9,6 +9,7 @@
 
 package wayu
 
+import "base:runtime"
 import "core:os"
 import "core:strings"
 
@@ -32,12 +33,14 @@ ENV_SNAPSHOT_CACHE: struct {
 	aliases: map[string]string,
 } = {}
 
-// snapshot_path_entries splits $PATH on `:` and returns a slice
-// Caches result on first call. All returned strings are cloned so caller owns them.
+// snapshot_path_entries splits $PATH on `:`. The result is cached on the
+// first call and OWNED BY THE CACHE (snapshot_allocator): callers must not
+// delete the array or its strings (that would double free on the next call).
 snapshot_path_entries :: proc() -> [dynamic]string {
 	if ENV_SNAPSHOT_CACHE.path_initialized {
 		return ENV_SNAPSHOT_CACHE.path_entries
 	}
+	context.allocator = snapshot_allocator()
 
 	path_str := os.get_env("PATH", context.allocator)
 	defer delete(path_str)
@@ -56,6 +59,7 @@ snapshot_path_entries :: proc() -> [dynamic]string {
 // Caches all env vars on first call.
 snapshot_env_var :: proc(name: string) -> Maybe(string) {
 	if !ENV_SNAPSHOT_CACHE.env_initialized {
+		context.allocator = snapshot_allocator()
 		env_list, err := os.environ(context.allocator)
 		if err == nil {
 			defer {
@@ -91,17 +95,34 @@ snapshot_aliases :: proc() -> map[string]string {
 		return ENV_SNAPSHOT_CACHE.aliases
 	}
 	ENV_SNAPSHOT_CACHE.aliases_initialized = true
+	context.allocator = snapshot_allocator()
 
 	shell := os.get_env("SHELL", context.allocator)
 	defer delete(shell)
 	shell_bin := shell if len(shell) > 0 else "zsh"
 
-	output := capture_command([]string{shell_bin, "-i", "-c", "alias"})
+	args := []string{shell_bin, "-i", "-c", "alias"}
+	output: string
+	if wayu.tui_mode {
+		// An rc file that sleeps, prompts or attaches tmux must not freeze
+		// the TUI: give up after a deadline (or on Esc), listing no
+		// external aliases.
+		r := run_command_timeout(args, ALIAS_SNAPSHOT_TUI_TIMEOUT_MS)
+		if r.ok {
+			output = r.stdout
+			r.stdout = ""
+		}
+		command_result_destroy(&r)
+	} else {
+		output = capture_command(args)
+	}
 	defer if len(output) > 0 { delete(output) }
 
 	parse_alias_listing(output, &ENV_SNAPSHOT_CACHE.aliases)
 	return ENV_SNAPSHOT_CACHE.aliases
 }
+
+ALIAS_SNAPSHOT_TUI_TIMEOUT_MS :: 3_000
 
 // Parse the output of the `alias` builtin into name -> command.
 // Handles both formats:
@@ -113,8 +134,22 @@ parse_alias_listing :: proc(text: string, out: ^map[string]string) {
 	it := text
 	for line in strings.split_lines_iterator(&it) {
 		l := strings.trim_right(line, "\r")
+		has_alias_kw := strings.has_prefix(l, "alias ")
 		l = strings.trim_prefix(l, "alias ")
 		eq := strings.index_byte(l, '=')
+		sp := strings.index_byte(l, ' ')
+		// fish: `alias name 'value'` (space-separated, fish quoting).
+		if has_alias_kw && sp > 0 && (eq < 0 || sp < eq) {
+			name := l[:sp]
+			value := fish_unquote_word(strings.trim_left_space(l[sp+1:]))
+			if old, exists := out[name]; exists {
+				delete(old)
+				out[name] = value
+			} else {
+				out[strings.clone(name)] = value
+			}
+			continue
+		}
 		if eq <= 0 { continue }
 		name := l[:eq]
 		// zsh quotes names containing special chars: 'a-b'=...
@@ -180,6 +215,36 @@ shell_unquote_word :: proc(s: string) -> string {
 	return strings.to_string(sb)
 }
 
+// Remove fish quoting from one word as printed by fish's `alias`: inside
+// '...' only `\'` and `\\` are escapes; inside "..." `\"`, `\$`, `\\`;
+// outside quotes a backslash escapes the next byte. Heap-allocated.
+fish_unquote_word :: proc(s: string) -> string {
+	sb := strings.builder_make()
+	quote: byte = 0
+	for i := 0; i < len(s); i += 1 {
+		c := s[i]
+		if quote == 0 && (c == '\'' || c == '"') {
+			quote = c
+			continue
+		}
+		if c == quote {
+			quote = 0
+			continue
+		}
+		if c == '\\' && i + 1 < len(s) {
+			n := s[i+1]
+			escapes := quote == 0 || n == '\\' || n == quote || (quote == '"' && n == '$')
+			if escapes {
+				strings.write_byte(&sb, n)
+				i += 1
+				continue
+			}
+		}
+		strings.write_byte(&sb, c)
+	}
+	return strings.to_string(sb)
+}
+
 // classify_entry determines the source of an entry
 // wayu_value is the value declared in wayu.toml (or empty string if not present)
 // env_value is the value from the shell environment (or nil if not present)
@@ -207,6 +272,7 @@ classify_entry :: proc(name: string, wayu_value: string, env_value: Maybe(string
 
 // cleanup_env_snapshot frees the cached snapshot (call at program end)
 cleanup_env_snapshot :: proc() {
+	context.allocator = snapshot_allocator()
 	for entry in ENV_SNAPSHOT_CACHE.path_entries {
 		delete(entry)
 	}
@@ -222,4 +288,12 @@ cleanup_env_snapshot :: proc() {
 	}
 	delete(ENV_SNAPSHOT_CACHE.aliases)
 	ENV_SNAPSHOT_CACHE = {}
+}
+
+// The snapshot is a process-lifetime cache, so it lives on the heap
+// allocator rather than whatever context.allocator the first caller had
+// (a unit test's tracking allocator reported it as that test's leak).
+@(private = "file")
+snapshot_allocator :: proc() -> runtime.Allocator {
+	return runtime.heap_allocator()
 }

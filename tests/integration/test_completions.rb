@@ -33,6 +33,8 @@ class CompletionsIntegrationTest
       test_help_command
       test_content_preservation
       test_empty_state
+      test_bash_completes_existing_entries
+      test_fish_completes_existing_entries
     ensure
       cleanup
       teardown_test_env
@@ -241,6 +243,66 @@ class CompletionsIntegrationTest
       puts "  Test completions should be removed"
       puts "  Has _testcomp: #{has_testcomp}, Has _mycomp: #{has_mycomp}"
       puts "  Output: #{output}"
+      @failed += 1
+    end
+  end
+
+  # OKAMI-181: `wayu <cmd> rm|get|… <TAB>` offers the existing entries
+  # (listed by the hidden `completions names <kind>`) in bash.
+  def test_bash_completes_existing_entries
+    print "Test 11: bash completes existing aliases/consts/paths... "
+    run_wayu("alias add gst 'git status'")
+    run_wayu("const add DYN_CONST 1")
+    script, = run_wayu("completions bash")
+    names, = run_wayu("completions names alias")
+    file = "#{@tmp_home}/wayu.bash"
+    File.write(file, script)
+    env = ENV.to_h.merge('HOME' => @tmp_home, '_WAYU_BIN' => @wayu_bin)
+    probe = <<~'SH'
+      source "$1"
+      t() { COMP_WORDS=("$@"); COMP_CWORD=$((${#COMP_WORDS[@]}-1)); COMPREPLY=(); _wayu_completion; echo "${COMPREPLY[*]}"; }
+      t wayu alias rm ""
+      t wayu const get DYN
+      t wayu alias rm gst ""
+      t wayu alias ""
+    SH
+    out, _err, st = Open3.capture3(env, 'bash', '--norc', '-c', probe, 'probe', file)
+    lines = out.lines.map(&:chomp)
+    ok = st.success? && names.lines.map(&:chomp).include?('gst') &&
+         lines[0].split.include?('gst') && lines[1] == 'DYN_CONST' && lines[2] == '' &&
+         lines[3].split.include?('add') && !lines[3].include?('gst')
+    if ok
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  names=#{names.inspect} out=#{out.inspect}"
+      @failed += 1
+    end
+  end
+
+  # OKAMI-182: same for fish (`complete -C`); skipped without fish.
+  def test_fish_completes_existing_entries
+    print "Test 12: fish completes existing aliases... "
+    unless system('command -v fish >/dev/null 2>&1')
+      puts "skipped (no fish)"
+      return
+    end
+    script, = run_wayu("completions fish")
+    file = "#{@tmp_home}/wayu.fish"
+    File.write(file, script)
+    env = ENV.to_h.merge('HOME' => @tmp_home, 'PATH' => "#{File.dirname(@wayu_bin)}:#{ENV['PATH']}")
+    probe = "source #{file}; complete -C 'wayu alias rm '; echo ---; complete -C 'wayu alias rm gst '"
+    out, _err, st = Open3.capture3(env, 'fish', '--no-config', '-c', probe)
+    first, second = out.split("---\n", 2)
+    ok = st.success? && first.lines.map { |l| l.split("\t").first.chomp }.include?('gst') &&
+         !first.include?('Add an alias') && !second.to_s.include?('gst')
+    if ok
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  out=#{out.inspect}"
       @failed += 1
     end
   end

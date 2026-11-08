@@ -1,69 +1,27 @@
 // alias.odin - ALIAS entry management
 //
-// Aliases are always TOML-native; if wayu.toml is absent we create it.
+// Aliases live in the entry store (<data>/entries.json, see entries.odin).
 
 package wayu
 import "core:fmt"
 import "core:os"
-import "core:slice"
 import "core:strings"
 import "core:sort"
 // Main handler for ALIAS commands.
 //
-// Thin delegation to the generic TOML-entry dispatcher. The spec wires up
+// Thin delegation to the generic entry dispatcher. The spec wires up
 // toml_alias_add/remove/list/get + per-action hooks + the external-sources
-// epilogue on LIST (see ALIAS_SPEC in config_specs.odin). All per-type
-// logic lives in toml_alias_* procs below.
+// epilogue on LIST (see ALIAS_SPEC in config_specs.odin).
 handle_alias_command :: proc(action: Action, args: []string) {
 	handle_toml_entry_command(&ALIAS_SPEC, action, args)
 }
 
-read_toml_alias_entries :: proc() -> []ConfigEntry {
-	// Parse [aliases] directly (rather than via init_generator's reader) so
-	// values round-trip exactly: inline comments are stripped and only ONE
-	// matching quote pair is removed (`"git log --format='%h'"` keeps its `'`).
-	content_str, cached := get_cached_toml_content()
-	uncached_raw: []byte
-	if !cached {
-		config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-		defer delete(config_path)
-		ok: bool
-		uncached_raw, ok = safe_read_file(config_path)
-		if !ok { return {} }
-		content_str = string(uncached_raw)
-	}
-	defer if len(uncached_raw) > 0 { delete(uncached_raw) }
-
-	entries := make([dynamic]ConfigEntry)
-	it := make_line_iter(content_str)
-	in_section := false
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-		if toml_line_is_section(trimmed, "aliases") { in_section = true; continue }
-		if strings.has_prefix(trimmed, "[") { in_section = false; continue }
-		if !in_section { continue }
-
-		name, value, ok := toml_parse_kv_line(trimmed)
-		if !ok { continue }
-		replaced := false
-		for &e in entries {
-			if e.name == name {
-				delete(e.value)
-				e.value = value
-				replaced = true
-				break
-			}
-		}
-		if replaced { continue }
-		append(&entries, ConfigEntry{
-			type  = .ALIAS,
-			name  = strings.clone(name),
-			value = value,
-			line  = "",  // Only populated on-demand by write paths
-		})
-	}
-
-	return entries[:]
+// The store's aliases in order. Exits EXIT_CONFIG when entries.json is
+// malformed. Free with cleanup_entries.
+read_alias_entries :: proc() -> []ConfigEntry {
+	store := entries_load()
+	defer entries_store_destroy(&store)
+	return entries_as_config_entries(&store, .ALIAS)
 }
 
 toml_alias_add :: proc(entry: ConfigEntry) -> (bool, string) {
@@ -73,12 +31,11 @@ toml_alias_add :: proc(entry: ConfigEntry) -> (bool, string) {
 		delete(validation.error_message)
 		return false, err
 	}
-	// Edits only this alias's line in [aliases] (see toml_kv_upsert).
-	return toml_entry_upsert(entry.name, entry.value, "Alias", "aliases", "aliases")
+	return entries_entry_upsert(.ALIAS, entry.name, entry.value, "Alias")
 }
 
 toml_alias_remove :: proc(name: string) -> (bool, string) {
-	return toml_entry_remove(name, "Alias", "aliases", "aliases")
+	return entries_entry_remove(.ALIAS, name, "Alias")
 }
 
 list_toml_aliases :: proc() {
@@ -86,7 +43,7 @@ list_toml_aliases :: proc() {
 		os.exit(EXIT_CONFIG)
 	}
 
-	entries := read_toml_alias_entries()
+	entries := read_alias_entries()
 	defer cleanup_entries(&entries)
 
 	// Determine if we need the expensive shell spawn.
@@ -107,7 +64,7 @@ list_toml_aliases :: proc() {
 		wayu_set[entry.name] = true
 	}
 
-	// Find external aliases (in env but not in wayu.toml)
+	// Find external aliases (in env but not managed by wayu)
 	external_aliases := make([dynamic]string)
 	defer delete(external_aliases)
 	if needs_env {
@@ -118,17 +75,18 @@ list_toml_aliases :: proc() {
 		}
 	}
 
-	if len(entries) == 0 && len(external_aliases) == 0 {
-		print_info("No Aliases found")
-		return
-	}
-
+	// JSON first: an empty list is still a JSON document (OKAMI-239).
 	if wayu.json_output {
 		print_aliases_json(entries[:], external_aliases[:])
 		return
 	}
 
-	print_header("Aliases (wayu.toml)", ALIAS_SPEC.icon)
+	if len(entries) == 0 && len(external_aliases) == 0 {
+		print_info("No Aliases found")
+		return
+	}
+
+	print_header("Aliases (wayu)", ALIAS_SPEC.icon)
 	fmt.println()
 
 	// Count sources — when env is available, cross-reference; otherwise
@@ -255,7 +213,7 @@ print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
 
 	// Output wayu entries
 	if show_wayu || show_inactive {
-		for entry, i in entries {
+		for entry in entries {
 			is_active := true
 			if needs_env {
 				is_active = false
@@ -320,7 +278,7 @@ get_toml_alias_value :: proc(name: string) {
 		os.exit(EXIT_CONFIG)
 	}
 
-	entries := read_toml_alias_entries()
+	entries := read_alias_entries()
 
 	// Try exact match first
 	for entry in entries {

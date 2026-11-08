@@ -12,9 +12,17 @@ import "core:strings"
 import "core:c/libc"
 import wayu "../../src"
 
+// git_clone, keeping only the success flag.
+@(private="file")
+clone_ok :: proc(url: string, dest: string) -> bool {
+	ok, err := wayu.git_clone(url, dest)
+	delete(err)
+	return ok
+}
+
 @(private="file")
 sec_dir :: proc() -> string {
-	return fmt.tprintf("/tmp/wayu_unit_plgsec_%d", os.get_pid())
+	return test_tmp("wayu_unit_plgsec")
 }
 
 // Run a shell command with a deterministic git identity and no signing.
@@ -147,8 +155,12 @@ test_plugins_json_rejects_bad_fields :: proc(t: ^testing.T) {
 		`{"plugins":[{"name":"p","url":"https://h/p.git","git":{"branch":"--evil"}}]}`,
 		`{"plugins":[{"name":"p","url":"https://h/p.git","shell":"nonsense"}]}`,
 		`{"plugins":[{"name":"p","url":"https://h/p.git","shell":9}]}`,
+		`{"plugins":[{"name":"p","url":"https://h/p.git","shell":3}]}`, // numbers are not enum names
 		`{"plugins":[{"name":"p","url":"https://h/p.git","template":"Run"}]}`,
 		`{"plugins":[{"name":"p","url":"https://h/p.git","installed_path":"-rf"}]}`,
+		// A newline would break out of the loader's "# missing deps" comment.
+		`{"plugins":[{"name":"p","url":"https://h/p.git","dependencies":["x\necho PWNED"]}]}`,
+		`{"plugins":[{"name":"p","url":"https://h/p.git","dependencies":["../x"]}]}`,
 	}
 	for doc in bad {
 		write_plugins_json(doc)
@@ -163,10 +175,10 @@ test_plugins_json_enum_values_resolved :: proc(t: ^testing.T) {
 	root, _, oc, od := setup_sandbox()
 	defer teardown_sandbox(root, oc, od)
 
-	// Lowercase (CLI vocabulary), legacy ints and Odin names all resolve.
+	// Lowercase (CLI vocabulary) and Odin names resolve, any case.
 	write_plugins_json(`{"plugins":[
 		{"name":"a","url":"https://h/a.git","shell":"bash","template":"fpath","git":{"ref_type":"commit"}},
-		{"name":"b","url":"https://h/b.git","shell":3,"template":1},
+		{"name":"b","url":"https://h/b.git","shell":"Fish","template":"PATH"},
 		{"name":"c","url":"https://h/c.git","shell":"ANY","source_type":"Local"},
 	]}`)
 	config, ok := wayu.read_plugin_config_json()
@@ -207,7 +219,7 @@ test_option_url_cannot_inject :: proc(t: ^testing.T) {
 
 	// A clone with a '-'-prefixed url fails instead of running the option.
 	dest := fmt.tprintf("%s/wayu/plugins/evil", root)
-	testing.expect(t, !wayu.git_clone(evil, dest), "clone of option-like url must fail")
+	testing.expect(t, !clone_ok(evil, dest), "clone of option-like url must fail")
 	testing.expect(t, !os.exists(marker), "git clone must not run an injected --upload-pack")
 
 	testing.expect(t, !wayu.is_valid_git_url(evil), "option-like url is not a valid plugin url")
@@ -244,7 +256,7 @@ test_update_after_force_push :: proc(t: ^testing.T) {
 
 	dest := fmt.tprintf("%s/wayu/plugins/p", root)
 	url := fmt.tprintf("file://%s", origin)
-	testing.expect(t, wayu.git_clone(url, dest), "clone")
+	testing.expect(t, clone_ok(url, dest), "clone")
 
 	// Normal fast-forward.
 	testing.expect(t, sh("echo two >> %s/p.plugin.zsh && git -C %s commit -q -am two", origin, origin), "commit two")
@@ -270,7 +282,7 @@ test_update_never_resets_dirty_checkout :: proc(t: ^testing.T) {
 	defer teardown_sandbox(root, oc, od)
 
 	dest := fmt.tprintf("%s/wayu/plugins/p", root)
-	testing.expect(t, wayu.git_clone(fmt.tprintf("file://%s", origin), dest), "clone")
+	testing.expect(t, clone_ok(fmt.tprintf("file://%s", origin), dest), "clone")
 	testing.expect(t, sh("git -C %s commit -q --amend -m rewritten", origin), "amend")
 	testing.expect(t, sh("echo local >> %s/p.plugin.zsh", dest), "local edit")
 
@@ -281,6 +293,30 @@ test_update_never_resets_dirty_checkout :: proc(t: ^testing.T) {
 
 	data, rerr := os.read_entire_file(fmt.tprintf("%s/p.plugin.zsh", dest), context.temp_allocator)
 	testing.expect(t, rerr == nil && strings.contains(string(data), "local"), "local edit must survive")
+}
+
+// A clean checkout with a local commit cannot be fast-forwarded either, but
+// resetting it would silently drop that commit.
+@(test)
+test_update_never_resets_local_commits :: proc(t: ^testing.T) {
+	root, origin, oc, od := setup_sandbox()
+	defer teardown_sandbox(root, oc, od)
+
+	dest := fmt.tprintf("%s/wayu/plugins/p", root)
+	testing.expect(t, clone_ok(fmt.tprintf("file://%s", origin), dest), "clone")
+	testing.expect(t, sh("echo local >> %s/p.plugin.zsh && git -C %s commit -q -am local", dest, dest), "local commit")
+	testing.expect(t, sh("echo two >> %s/p.plugin.zsh && git -C %s commit -q -am two", origin, origin), "upstream commit")
+
+	before := git_head(dest)
+	defer delete(before)
+	result, err := wayu.git_update(dest, "master")
+	defer delete(err)
+	testing.expect_value(t, result, wayu.GitUpdateResult.Failed)
+	testing.expect(t, strings.contains(err, "local commits"), "failure must explain why")
+
+	after := git_head(dest)
+	defer delete(after)
+	testing.expect_value(t, after, before)
 }
 
 @(test)
@@ -367,7 +403,7 @@ test_pinned_commit_drift_detected :: proc(t: ^testing.T) {
 	first := git_head(origin)
 	defer delete(first)
 	dest := fmt.tprintf("%s/wayu/plugins/p", root)
-	testing.expect(t, wayu.git_clone(fmt.tprintf("file://%s", origin), dest), "clone")
+	testing.expect(t, clone_ok(fmt.tprintf("file://%s", origin), dest), "clone")
 
 	plugin := wayu.PluginMetadata{installed_path = dest}
 	plugin.git.ref_type = .Commit

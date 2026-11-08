@@ -397,6 +397,8 @@ apply_text_only_style :: proc(s: Style, text: string) -> string {
 
 // Apply color (foreground or background)
 apply_color :: proc(builder: ^strings.Builder, color: string, is_foreground: bool) {
+	// NO_COLOR / --no-color / non-TTY: styles keep their text, drop colors.
+	if CURRENT_COLOR_PROFILE == .ASCII { return }
 	// Check if it's already a full ANSI code
 	if strings.has_prefix(color, "\x1b[") {
 		strings.write_string(builder, color)
@@ -676,175 +678,56 @@ visual_width :: proc(str: string) -> int {
 	return visible_chars
 }
 
-// get_rune_width returns the display width of a single Unicode rune.
-// Control characters return 0; wide characters (CJK, emoji) return 2;
-// all other printable characters return 1.
+
+// get_rune_width returns the number of terminal columns a single rune takes,
+// using the same Unicode data as terminals (wcwidth: EastAsianWidth +
+// Emoji_Presentation, see src/rune_width_table.odin):
+//   0 — C0/C1 controls, combining marks, variation selectors (VS16), ZWJ
+//       and other format characters;
+//   2 — East Asian Wide/Fullwidth and emoji with default emoji presentation
+//       (🚀 ✨ ✅ — not text-default symbols like ➜ ✔ ★ ❤ ⚠, which are 1);
+//   1 — everything else.
+// Grapheme clusters are not merged: an emoji ZWJ sequence counts (and the
+// TUI renders it) as its individual emoji, so every terminal agrees.
 get_rune_width :: proc(r: rune) -> int {
-	// Control characters have zero width
-	if r < 32 || (r >= 0x7F && r < 0xA0) {
-		return 0
-	}
-
-	// Authoritative per-glyph widths (Ghostty-tuned) for the specific symbols,
-	// box-drawing characters, and emoji used across the app. This table is the
-	// single source of truth shared with the form/TUI width path; it overrides
-	// the coarse range checks below for known characters (e.g. ⚠ is width 1).
-	if w, ok := special_char_width(r); ok {
-		return w
-	}
-
-	// Wide characters (CJK, emojis, etc.) take 2 columns
-	if is_wide_character(r) {
-		return 2
-	}
-
-	// Regular characters take 1 column
+	if r < 0x20 || (r >= 0x7F && r < 0xA0) do return 0
+	if r < 0x300 do return 1  // fast path: ASCII, Latin-1, Latin Extended
+	if rune_in_ranges(r, RUNE_WIDTH_ZERO[:]) do return 0
+	if rune_in_ranges(r, RUNE_WIDTH_WIDE[:]) do return 2
 	return 1
 }
 
 // is_wide_character reports whether a rune occupies two terminal columns.
-// Covers emoji, CJK unified ideographs, Hangul, Katakana, Hiragana, and
-// related Unicode blocks. Common single-width symbols (✓ ✗) are excluded.
 is_wide_character :: proc(r: rune) -> bool {
-	// Special handling for problematic characters that appear in our tables
-	// These specific characters are often rendered as single-width in modern terminals
-	if r == 0x2713 || r == 0x2717 { // ✓ ✗ - Check mark and X mark
-		return false // These are actually single-width in most terminals
-	}
+	return get_rune_width(r) == 2
+}
 
-	// Emoji ranges (simplified)
-	if (r >= 0x1F600 && r <= 0x1F64F) || // Emoticons
-	   (r >= 0x1F300 && r <= 0x1F5FF) || // Misc Symbols and Pictographs
-	   (r >= 0x1F680 && r <= 0x1F6FF) || // Transport and Map
-	   (r >= 0x1F700 && r <= 0x1F77F) || // Alchemical Symbols
-	   (r >= 0x1F780 && r <= 0x1F7FF) || // Geometric Shapes Extended
-	   (r >= 0x1F800 && r <= 0x1F8FF) || // Supplemental Arrows-C
-	   (r >= 0x1F900 && r <= 0x1F9FF) || // Supplemental Symbols and Pictographs
-	   (r >= 0x1FA00 && r <= 0x1FA6F) || // Chess Symbols
-	   (r >= 0x1FA70 && r <= 0x1FAFF) || // Symbols and Pictographs Extended-A
-	   (r >= 0x2600 && r <= 0x26FF) ||   // Miscellaneous Symbols
-	   (r >= 0x1F000 && r <= 0x1F02F) || // Mahjong Tiles
-	   (r >= 0x1F0A0 && r <= 0x1F0FF) {  // Playing Cards
+// True for zero-width runes that only change how the neighbouring glyphs are
+// presented or joined (variation selectors, ZWJ/ZWNJ, bidi marks, word
+// joiners, BOM, tag characters). The TUI drops these instead of attaching
+// them to a cell: a VS16 or ZWJ sequence widens the glyph in some terminals
+// and not in others, so emitting one would desync the cell grid.
+is_presentation_selector :: proc(r: rune) -> bool {
+	switch r {
+	case 0x200B..=0x200F, 0x2028..=0x202E, 0x2060..=0x206F, 0xFE00..=0xFE0F,
+	     0xFEFF, 0xE0000..=0xE007F, 0xE0100..=0xE01EF:
 		return true
 	}
-
-	// Dingbats range but excluding specific single-width characters
-	if r >= 0x2700 && r <= 0x27BF {
-		// Most dingbats are wide, but some common ones are single-width
-		if r == 0x2713 || r == 0x2717 || r == 0x2718 || r == 0x2719 ||
-		   r == 0x271A || r == 0x271B || r == 0x271C || r == 0x271D {
-			return false
-		}
-		return true
-	}
-
-	// CJK ranges
-	if (r >= 0x1100 && r <= 0x115F) ||   // Hangul Jamo
-	   (r >= 0x2E80 && r <= 0x2EFF) ||   // CJK Radicals Supplement
-	   (r >= 0x2F00 && r <= 0x2FDF) ||   // Kangxi Radicals
-	   (r >= 0x3000 && r <= 0x303F) ||   // CJK Symbols and Punctuation
-	   (r >= 0x3040 && r <= 0x309F) ||   // Hiragana
-	   (r >= 0x30A0 && r <= 0x30FF) ||   // Katakana
-	   (r >= 0x3100 && r <= 0x312F) ||   // Bopomofo
-	   (r >= 0x3130 && r <= 0x318F) ||   // Hangul Compatibility Jamo
-	   (r >= 0x3190 && r <= 0x319F) ||   // Kanbun
-	   (r >= 0x31A0 && r <= 0x31BF) ||   // Bopomofo Extended
-	   (r >= 0x31C0 && r <= 0x31EF) ||   // CJK Strokes
-	   (r >= 0x31F0 && r <= 0x31FF) ||   // Katakana Phonetic Extensions
-	   (r >= 0x3200 && r <= 0x32FF) ||   // Enclosed CJK Letters and Months
-	   (r >= 0x3300 && r <= 0x33FF) ||   // CJK Compatibility
-	   (r >= 0x3400 && r <= 0x4DBF) ||   // CJK Extension A
-	   (r >= 0x4E00 && r <= 0x9FFF) ||   // CJK Unified Ideographs
-	   (r >= 0xA000 && r <= 0xA48F) ||   // Yi Syllables
-	   (r >= 0xA490 && r <= 0xA4CF) ||   // Yi Radicals
-	   (r >= 0xAC00 && r <= 0xD7AF) ||   // Hangul Syllables
-	   (r >= 0xF900 && r <= 0xFAFF) ||   // CJK Compatibility Ideographs
-	   (r >= 0xFE10 && r <= 0xFE1F) ||   // Vertical Forms
-	   (r >= 0xFE30 && r <= 0xFE4F) ||   // CJK Compatibility Forms
-	   (r >= 0xFF00 && r <= 0xFFEF) ||   // Halfwidth and Fullwidth Forms
-	   (r >= 0x20000 && r <= 0x2A6DF) || // CJK Extension B
-	   (r >= 0x2A700 && r <= 0x2B73F) || // CJK Extension C
-	   (r >= 0x2B740 && r <= 0x2B81F) || // CJK Extension D
-	   (r >= 0x2B820 && r <= 0x2CEAF) || // CJK Extension E
-	   (r >= 0x2CEB0 && r <= 0x2EBEF) {  // CJK Extension F
-		return true
-	}
-
 	return false
 }
-// ============================================================================
-// Special-character widths (moved from the removed form.odin)
-// ============================================================================
 
-// SpecialChar represents a special character with its visual width
-SpecialChar :: struct {
-	char:         rune,
-	visual_width: int,
-	description:  string,
-}
-
-// All special characters used in wayu with their accurate visual widths
-// Width is determined by actual terminal rendering behavior
-// Note: Different terminals render these characters differently:
-// - Ghostty terminal: Width 1 for nerd font symbols, Width 2 for emojis
-// - Legacy terminals: May vary
-// These mappings are based on Ghostty terminal behavior
-SPECIAL_CHARS :: [?]SpecialChar{
-	// Status and UI symbols - Width 1 (nerd font icons in Ghostty)
-	{char = '⚠', visual_width = 1, description = "Warning Sign (U+26A0)"},
-	{char = '✓', visual_width = 1, description = "Check Mark (U+2713)"},
-	{char = '✗', visual_width = 1, description = "Ballot X (U+2717)"},
-	{char = '⌨', visual_width = 1, description = "Keyboard (U+2328)"},
-	{char = 'ℹ', visual_width = 1, description = "Information Source (U+2139)"},
-
-	// Emojis - Width 2 (true emojis in Ghostty)
-	{char = '✨', visual_width = 2, description = "Sparkles (U+2728)"},
-	{char = '📝', visual_width = 2, description = "Memo (U+1F4DD)"},
-	{char = '💾', visual_width = 2, description = "Floppy Disk (U+1F4BE)"},
-	{char = '🚀', visual_width = 2, description = "Rocket (U+1F680)"},
-	{char = '⛰', visual_width = 2, description = "Mountain (U+26F0)"},
-	{char = '🔧', visual_width = 2, description = "Wrench (U+1F527)"},
-	{char = '🎯', visual_width = 2, description = "Direct Hit (U+1F3AF)"},
-
-	// Box drawing characters (Width 1 - ASCII-like)
-	{char = '╭', visual_width = 1, description = "Box Drawings Light Arc Down and Right"},
-	{char = '╮', visual_width = 1, description = "Box Drawings Light Arc Down and Left"},
-	{char = '╰', visual_width = 1, description = "Box Drawings Light Arc Up and Right"},
-	{char = '╯', visual_width = 1, description = "Box Drawings Light Arc Up and Left"},
-	{char = '│', visual_width = 1, description = "Box Drawings Light Vertical"},
-	{char = '─', visual_width = 1, description = "Box Drawings Light Horizontal"},
-	{char = '┌', visual_width = 1, description = "Box Drawings Light Down and Right"},
-	{char = '┐', visual_width = 1, description = "Box Drawings Light Down and Left"},
-	{char = '└', visual_width = 1, description = "Box Drawings Light Up and Right"},
-	{char = '┘', visual_width = 1, description = "Box Drawings Light Up and Left"},
-	{char = '├', visual_width = 1, description = "Box Drawings Light Vertical and Right"},
-	{char = '┤', visual_width = 1, description = "Box Drawings Light Vertical and Left"},
-	{char = '┬', visual_width = 1, description = "Box Drawings Light Down and Horizontal"},
-	{char = '┴', visual_width = 1, description = "Box Drawings Light Up and Horizontal"},
-	{char = '┼', visual_width = 1, description = "Box Drawings Light Vertical and Horizontal"},
-
-	// Additional symbols used in the app
-	{char = '•', visual_width = 1, description = "Bullet (U+2022)"},
-	{char = '◦', visual_width = 1, description = "White Bullet (U+25E6)"},
-	{char = '→', visual_width = 1, description = "Rightwards Arrow (U+2192)"},
-	{char = '←', visual_width = 1, description = "Leftwards Arrow (U+2190)"},
-	{char = '↑', visual_width = 1, description = "Upwards Arrow (U+2191)"},
-	{char = '↓', visual_width = 1, description = "Downwards Arrow (U+2193)"},
-	{char = '█', visual_width = 1, description = "Full Block (U+2588)"},
-	{char = '▌', visual_width = 1, description = "Left Half Block (U+258C)"},
-	{char = '▐', visual_width = 1, description = "Right Half Block (U+2590)"},
-}
-
-// Zero-allocation lookup of a rune's explicit width from the static
-// SPECIAL_CHARS table. Used by the canonical get_rune_width (style.odin) so
-// the width path never has to allocate the special_char_widths map. The table
-// is tiny (~50 entries), so a linear scan is cheap and avoids global heap state
-// (which the unit-test leak tracker would otherwise flag).
-special_char_width :: proc(r: rune) -> (int, bool) {
-	for entry in SPECIAL_CHARS {
-		if entry.char == r {
-			return entry.visual_width, true
+// Binary search over sorted, non-overlapping inclusive [lo, hi] ranges.
+@(private = "file")
+rune_in_ranges :: proc(r: rune, ranges: [][2]rune) -> bool {
+	lo, hi := 0, len(ranges) - 1
+	if hi < 0 || r < ranges[0][0] || r > ranges[hi][1] do return false
+	for lo <= hi {
+		mid := (lo + hi) / 2
+		switch {
+		case r < ranges[mid][0]: hi = mid - 1
+		case r > ranges[mid][1]: lo = mid + 1
+		case:                    return true
 		}
 	}
-	return 0, false
+	return false
 }

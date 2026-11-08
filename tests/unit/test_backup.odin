@@ -7,14 +7,13 @@ import "core:os"
 import "core:fmt"
 import "core:strings"
 import "core:time"
-import "core:sys/posix"
 import wayu "../../src"
 
 @(test)
 test_create_backup_nonexistent_file :: proc(t: ^testing.T) {
 	// When the source file doesn't exist, create_backup returns ("", false).
 	// ok=false signals "no backup was made" — callers must treat this as a no-op, not an error.
-	fake_file := "/tmp/wayu-test-nonexistent-file"
+	fake_file := test_tmp("wayu-test-nonexistent-file")
 
 	backup_path, ok := wayu.create_backup(fake_file)
 	defer if len(backup_path) > 0 do delete(backup_path)
@@ -27,14 +26,14 @@ test_create_backup_nonexistent_file :: proc(t: ^testing.T) {
 test_create_backup_existing_file :: proc(t: ^testing.T) {
 	// Point wayu.data to a temp dir so backup/ can be created there
 	original_data := wayu.wayu.data
-	wayu.wayu.data = "/tmp/wayu-test-backup"
-	os.make_directory("/tmp/wayu-test-backup")
-	os.make_directory("/tmp/wayu-test-backup/backup")
-	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-backup") }
+	wayu.wayu.data = test_tmp("wayu-test-backup")
+	os.make_directory(test_tmp("wayu-test-backup"))
+	os.make_directory(test_tmp("wayu-test-backup/backup"))
+	defer { wayu.wayu.data = original_data; os.remove_all(test_tmp("wayu-test-backup")) }
 
 	// Create a temporary file
 	test_content := "test backup content\nline 2\n"
-	test_file := "/tmp/wayu-test-backup-source"
+	test_file := test_tmp("wayu-test-backup-source")
 
 	_ = os.write_entire_file(test_file, transmute([]byte)test_content)
 	defer os.remove(test_file)
@@ -56,23 +55,6 @@ test_create_backup_existing_file :: proc(t: ^testing.T) {
 			testing.expect(t, string(backup_content) == test_content, "Backup content should match original")
 		}
 	}
-}
-
-@(test)
-test_parse_timestamp :: proc(t: ^testing.T) {
-	// Test timestamp parsing
-	timestamp_str := "1640995200" // 2022-01-01 00:00:00 UTC
-	parsed_time := wayu.parse_timestamp(timestamp_str)
-
-	// Check that it parsed to a reasonable time
-	unix_time := parsed_time._nsec / 1_000_000_000
-	testing.expect(t, unix_time == 1640995200, "Should parse timestamp correctly")
-
-	// Test invalid timestamp
-	invalid_timestamp := "abc123"
-	parsed_invalid := wayu.parse_timestamp(invalid_timestamp)
-	unix_invalid := parsed_invalid._nsec / 1_000_000_000
-	testing.expect(t, unix_invalid == 0, "Should handle invalid timestamp")
 }
 
 @(test)
@@ -138,7 +120,7 @@ test_format_backup_time :: proc(t: ^testing.T) {
 @(test)
 test_list_backups_for_nonexistent_file :: proc(t: ^testing.T) {
 	// Test listing backups for non-existent file
-	fake_file := "/tmp/wayu-test-no-backups-file"
+	fake_file := test_tmp("wayu-test-no-backups-file")
 
 	backups := wayu.list_backups_for_file(fake_file)
 	defer {
@@ -192,13 +174,13 @@ test_get_config_file_path :: proc(t: ^testing.T) {
 test_backup_workflow :: proc(t: ^testing.T) {
 	// Test complete backup workflow: create -> list -> restore
 	original_data := wayu.wayu.data
-	wayu.wayu.data = "/tmp/wayu-test-backup-wf"
-	os.make_directory("/tmp/wayu-test-backup-wf")
-	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-backup-wf") }
+	wayu.wayu.data = test_tmp("wayu-test-backup-wf")
+	os.make_directory(test_tmp("wayu-test-backup-wf"))
+	defer { wayu.wayu.data = original_data; os.remove_all(test_tmp("wayu-test-backup-wf")) }
 
 	// Setup test file
 	test_content := "original content for backup test\n"
-	test_file := "/tmp/wayu-test-backup-workflow"
+	test_file := test_tmp("wayu-test-backup-workflow")
 
 	_ = os.write_entire_file(test_file, transmute([]byte)test_content)
 	defer os.remove(test_file)
@@ -261,14 +243,14 @@ test_cleanup_old_backups :: proc(t: ^testing.T) {
 	// Test backup cleanup functionality
 	original_data := wayu.wayu.data
 	// Per-process paths: parallel test runs (e.g. several worktrees) must not collide.
-	data_dir := fmt.tprintf("/tmp/wayu-test-backup-cleanup-%d", posix.getpid())
+	data_dir := test_tmp("wayu-test-backup-cleanup")
 	wayu.wayu.data = data_dir
 	os.make_directory(data_dir)
 	defer { wayu.wayu.data = original_data; os.remove_all(data_dir) }
 
 	// Create test file
 	test_content := "content for cleanup test\n"
-	test_file := fmt.tprintf("/tmp/wayu-test-cleanup-%d", posix.getpid())
+	test_file := test_tmp("wayu-test-cleanup")
 
 	_ = os.write_entire_file(test_file, transmute([]byte)test_content)
 	defer os.remove(test_file)
@@ -338,7 +320,7 @@ test_cleanup_old_backups :: proc(t: ^testing.T) {
 @(test)
 test_restore_nonexistent_backup :: proc(t: ^testing.T) {
 	// Test restore when no backups exist
-	fake_file := "/tmp/wayu-test-no-restore-file"
+	fake_file := test_tmp("wayu-test-no-restore-file")
 
 	result := wayu.restore_from_backup(fake_file)
 	testing.expect(t, !result, "Should fail when no backups exist")
@@ -349,11 +331,11 @@ test_restore_nonexistent_backup :: proc(t: ^testing.T) {
 @(test)
 test_rapid_backups_are_unique :: proc(t: ^testing.T) {
 	original_data := wayu.wayu.data
-	wayu.wayu.data = "/tmp/wayu-test-backup-rapid"
-	os.make_directory("/tmp/wayu-test-backup-rapid")
-	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-backup-rapid") }
+	wayu.wayu.data = test_tmp("wayu-test-backup-rapid")
+	os.make_directory(test_tmp("wayu-test-backup-rapid"))
+	defer { wayu.wayu.data = original_data; os.remove_all(test_tmp("wayu-test-backup-rapid")) }
 
-	test_file := "/tmp/wayu-test-backup-rapid-src"
+	test_file := test_tmp("wayu-test-backup-rapid-src")
 	defer os.remove(test_file)
 
 	contents := []string{"v0\n", "v1\n", "v2\n", "v3\n", "v4\n"}
@@ -402,20 +384,26 @@ test_rapid_backups_are_unique :: proc(t: ^testing.T) {
 
 @(test)
 test_parse_backup_suffix_formats :: proc(t: ^testing.T) {
-	// Old second-resolution format still parses.
-	old := wayu.parse_timestamp("2026-01-09_19-45-30")
-	y, m, d := time.date(old)
-	testing.expect(t, y == 2026 && int(m) == 1 && d == 9, "old format date")
-
-	// New microsecond format orders after the old same-second name.
-	newer, seq0 := wayu.parse_backup_suffix("2026-01-09_19-45-30.000250")
-	testing.expect(t, time.diff(old, newer) > 0, "fractional part must be honoured")
+	base, seq0, ok0 := wayu.parse_backup_suffix("2026-01-09_19-45-30.000250")
+	testing.expect(t, ok0, "current format parses")
+	y, m, d := time.date(base)
+	testing.expect(t, y == 2026 && int(m) == 1 && d == 9, "date")
 	testing.expect_value(t, seq0, 0)
+	earlier, _, _ := wayu.parse_backup_suffix("2026-01-09_19-45-30.000249")
+	testing.expect(t, time.diff(earlier, base) > 0, "fractional part must be honoured")
 
 	// Collision sequence suffix.
-	same, seq := wayu.parse_backup_suffix("2026-01-09_19-45-30.000250-3")
-	testing.expect(t, time.diff(newer, same) == 0, "seq does not change time")
+	same, seq, ok := wayu.parse_backup_suffix("2026-01-09_19-45-30.000250-3")
+	testing.expect(t, ok)
+	testing.expect(t, time.diff(base, same) == 0, "seq does not change time")
 	testing.expect_value(t, seq, 3)
+
+	// Anything else is not a wayu backup (second resolution, unix seconds,
+	// garbage, a bad sequence).
+	for bad in ([]string{"2026-01-09_19-45-30", "1640995200", "abc123", "2026-01-09_19-45-30.000250-", "2026-01-09_19-45-30.000250x"}) {
+		_, _, bad_ok := wayu.parse_backup_suffix(bad)
+		testing.expectf(t, !bad_ok, "%q must not parse", bad)
+	}
 }
 
 // Regression (#2): restore must refuse a corrupt wayu.toml backup and must
@@ -423,18 +411,18 @@ test_parse_backup_suffix_formats :: proc(t: ^testing.T) {
 @(test)
 test_restore_rejects_invalid_toml_backup :: proc(t: ^testing.T) {
 	original_data := wayu.wayu.data
-	wayu.wayu.data = "/tmp/wayu-test-restore-invalid"
-	os.make_directory("/tmp/wayu-test-restore-invalid")
-	os.make_directory("/tmp/wayu-test-restore-invalid/backup")
-	os.make_directory("/tmp/wayu-test-restore-invalid/cfg")
-	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-restore-invalid") }
+	wayu.wayu.data = test_tmp("wayu-test-restore-invalid")
+	os.make_directory(test_tmp("wayu-test-restore-invalid"))
+	os.make_directory(test_tmp("wayu-test-restore-invalid/backup"))
+	os.make_directory(test_tmp("wayu-test-restore-invalid/cfg"))
+	defer { wayu.wayu.data = original_data; os.remove_all(test_tmp("wayu-test-restore-invalid")) }
 
-	target := "/tmp/wayu-test-restore-invalid/cfg/wayu.toml"
+	target := test_tmp("wayu-test-restore-invalid/cfg/wayu.toml")
 	good := "[paths]\nbin = \"/usr/bin\"\n"
 	_ = os.write_entire_file(target, transmute([]byte)good)
 
 	bad := "[paths\nnot = = toml\n"
-	bad_backup := "/tmp/wayu-test-restore-invalid/backup/wayu.toml.backup.2030-01-01_00-00-00.000000"
+	bad_backup := test_tmp("wayu-test-restore-invalid/backup/wayu.toml.backup.2030-01-01_00-00-00.000000")
 	_ = os.write_entire_file(bad_backup, transmute([]byte)bad)
 
 	ok := wayu.restore_from_backup(target)
@@ -450,11 +438,11 @@ test_restore_rejects_invalid_toml_backup :: proc(t: ^testing.T) {
 @(test)
 test_restore_backs_up_current_first :: proc(t: ^testing.T) {
 	original_data := wayu.wayu.data
-	wayu.wayu.data = "/tmp/wayu-test-restore-pre"
-	os.make_directory("/tmp/wayu-test-restore-pre")
-	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-restore-pre") }
+	wayu.wayu.data = test_tmp("wayu-test-restore-pre")
+	os.make_directory(test_tmp("wayu-test-restore-pre"))
+	defer { wayu.wayu.data = original_data; os.remove_all(test_tmp("wayu-test-restore-pre")) }
 
-	target := "/tmp/wayu-test-restore-pre-src"
+	target := test_tmp("wayu-test-restore-pre-src")
 	defer os.remove(target)
 
 	_ = os.write_entire_file(target, transmute([]byte)string("old\n"))
@@ -491,13 +479,13 @@ test_restore_backs_up_current_first :: proc(t: ^testing.T) {
 // backs a file up only once (bulk commands keep their pre-command copy).
 @(test)
 test_backup_cli_retention_and_once_per_run :: proc(t: ^testing.T) {
-	dir := "/tmp/wayu-test-backup-retention"
+	dir := test_tmp("wayu-test-backup-retention")
 	original_data := wayu.wayu.data
 	wayu.wayu.data = dir
 	os.remove_all(dir)
 	os.make_directory(dir)
 	defer { wayu.wayu.data = original_data; os.remove_all(dir) }
-	target := "/tmp/wayu-test-backup-retention-src"
+	target := test_tmp("wayu-test-backup-retention-src")
 	defer os.remove(target)
 	defer wayu.backup_run_reset()
 
@@ -528,13 +516,13 @@ test_backup_cli_retention_and_once_per_run :: proc(t: ^testing.T) {
 // snapshots so repeated restores don't ping-pong.
 @(test)
 test_restore_selects_backup :: proc(t: ^testing.T) {
-	dir := "/tmp/wayu-test-restore-select"
+	dir := test_tmp("wayu-test-restore-select")
 	original_data := wayu.wayu.data
 	wayu.wayu.data = dir
 	os.remove_all(dir)
 	os.make_directory(dir)
 	defer { wayu.wayu.data = original_data; os.remove_all(dir) }
-	target := "/tmp/wayu-test-restore-select-src"
+	target := test_tmp("wayu-test-restore-select-src")
 	defer os.remove(target)
 
 	read :: proc(f: string) -> string {
@@ -564,13 +552,90 @@ test_restore_selects_backup :: proc(t: ^testing.T) {
 	testing.expect(t, wayu.restore_from_backup(target, "1"), "undo restore")
 	testing.expect_value(t, read(target), "c\n")
 
-	// By file name, and a bad selector fails without writing.
+	// Restores prune their own snapshots (OKAMI-273): still capped.
 	b := wayu.list_backups_for_file(target)
 	defer wayu.free_backup_infos(b)
+	testing.expect_value(t, len(b), wayu.BACKUP_KEEP_COUNT)
+
+	// By file name (the oldest kept: "c"), and a bad selector fails without writing.
 	last := b[len(b) - 1]
+	_ = os.write_entire_file(target, transmute([]byte)string("e\n"))
 	testing.expect(t, wayu.restore_from_backup(target, last.backup_file[strings.last_index(last.backup_file, "/") + 1:]))
-	testing.expect_value(t, read(target), "a\n")
+	testing.expect_value(t, read(target), "c\n")
 	testing.expect(t, !wayu.restore_from_backup(target, "99"), "out of range")
 	testing.expect(t, !wayu.restore_from_backup(target, "nope"), "unknown file")
-	testing.expect_value(t, read(target), "a\n")
+	// Decimal digits only: "0x1" / "+1" are not #1.
+	testing.expect(t, !wayu.restore_from_backup(target, "0x1"), "hex index")
+	testing.expect(t, !wayu.restore_from_backup(target, "+1"), "signed index")
+	testing.expect_value(t, read(target), "c\n")
+}
+
+// OKAMI-273: repeated restores never exceed BACKUP_KEEP_COUNT, and neither
+// the chosen backup nor the new pre-restore snapshot is pruned.
+@(test)
+test_restore_prunes_but_keeps_chosen :: proc(t: ^testing.T) {
+	dir := test_tmp("wayu-test-restore-prune")
+	original_data := wayu.wayu.data
+	wayu.wayu.data = dir
+	os.remove_all(dir)
+	os.make_directory(dir)
+	defer { wayu.wayu.data = original_data; os.remove_all(dir) }
+	target := test_tmp("wayu-test-restore-prune-src")
+	defer os.remove(target)
+
+	for v in ([]string{"a\n", "b\n", "c\n", "d\n", "e\n"}) {
+		_ = os.write_entire_file(target, transmute([]byte)v)
+		p, ok := wayu.create_backup(target)
+		if ok { delete(p) }
+	}
+	_ = os.write_entire_file(target, transmute([]byte)string("now\n"))
+
+	// #5 is the oldest ("a"); restoring it must keep it.
+	for _ in 0..<3 {
+		testing.expect(t, wayu.restore_from_backup(target, "5"))
+	}
+	b := wayu.list_backups_for_file(target)
+	defer wayu.free_backup_infos(b)
+	testing.expect_value(t, len(b), wayu.BACKUP_KEEP_COUNT)
+	if len(b) == wayu.BACKUP_KEEP_COUNT {
+		testing.expect(t, b[0].pre_restore, "newest is the snapshot just taken")
+		oldest, err := os.read_entire_file(b[len(b) - 1].backup_file, context.temp_allocator)
+		testing.expect(t, err == nil && string(oldest) == "a\n", "chosen backup kept")
+	}
+	d, err := os.read_entire_file(target, context.temp_allocator)
+	testing.expect(t, err == nil && string(d) == "a\n", "restored a")
+}
+
+// OKAMI-273: a '.backup.' in a directory name doesn't disable backups, and
+// files outside wayu's dirs keep separate histories per path.
+@(test)
+test_backup_key_and_backup_dir_names :: proc(t: ^testing.T) {
+	dir := test_tmp("wayu-test-backup-key")
+	original_data := wayu.wayu.data
+	wayu.wayu.data = dir
+	os.remove_all(dir)
+	os.make_directory(dir)
+	defer { wayu.wayu.data = original_data; os.remove_all(dir) }
+
+	sub := test_tmp("wayu-test-backup-key-my.backup.d")
+	os.make_directory(sub)
+	defer os.remove_all(sub)
+	f := fmt.tprintf("%s/.zshrc", sub)
+	_ = os.write_entire_file(f, transmute([]byte)string("x\n"))
+	p, ok := wayu.create_backup(f)
+	testing.expect(t, ok && len(p) > 0, "backup made despite .backup. in the directory")
+	if ok { delete(p) }
+
+	own := wayu.backup_key(fmt.tprintf("%s/init.zsh", dir), context.temp_allocator)
+	testing.expect_value(t, own, "init.zsh")
+	home := os.get_env("HOME", context.temp_allocator)
+	if len(home) > 0 {
+		testing.expect_value(t, wayu.backup_key(fmt.tprintf("%s/.zshrc", home), context.temp_allocator), ".zshrc")
+		k := wayu.backup_key(fmt.tprintf("%s/.config/zsh/.zshrc", home), context.temp_allocator)
+		testing.expect_value(t, k, ".config%zsh%.zshrc")
+		testing.expect_value(t, wayu.backup_key_display(k, context.temp_allocator), "~/.config/zsh/.zshrc")
+	}
+	abs := wayu.backup_key("/etc/zshrc", context.temp_allocator)
+	testing.expect_value(t, abs, "%etc%zshrc")
+	testing.expect_value(t, wayu.backup_key_display(abs, context.temp_allocator), "/etc/zshrc")
 }

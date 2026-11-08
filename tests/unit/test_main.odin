@@ -79,12 +79,14 @@ test_parse_args_backup_restore :: proc(t: ^testing.T) {
 
 @(test)
 test_parse_args_backup_clean :: proc(t: ^testing.T) {
+	// Action words come from WAYU_COMMAND_SPECS (OKAMI-282): backup has no
+	// `clean` (that is `path clean`), so it is an unknown action (exit 64).
 	args := []string{"backup", "clean"}
 	parsed := wayu.parse_args(args)
 	defer if len(parsed.args) > 0 do delete(parsed.args)
 
 	testing.expect_value(t, parsed.command, wayu.Command.BACKUP)
-	testing.expect_value(t, parsed.action, wayu.Action.CLEAN)
+	testing.expect_value(t, parsed.action, wayu.Action.UNKNOWN)
 }
 
 @(test)
@@ -140,12 +142,6 @@ test_print_help :: proc(t: ^testing.T) {
 	testing.expect(t, true, "print_help should not crash")
 }
 
-@(test)
-test_print_migrate_help :: proc(t: ^testing.T) {
-	// Test that migrate help printing doesn't crash
-	wayu.print_migrate_help()
-	testing.expect(t, true, "print_migrate_help should not crash")
-}
 // Global-flag position rules (see cli_parser.odin): flags inside the value
 // tail of `alias add` / `const add` belong to the value.
 @(test)
@@ -223,7 +219,8 @@ test_parse_args_unknown_flag_rejected :: proc(t: ^testing.T) {
 	cases := []Case{
 		{{"path", "add", "/tmp", "--dryrun"}, "--dryrun"},
 		{{"path", "list", "--bogus"}, "--bogus"},
-		{{"init", "--template", "x"}, "--template"},
+		{{"init", "--templat", "x"}, "--templat"},
+		{{"init", "--template", "x"}, ""}, // OKAMI-241: documented
 		{{"alias", "add", "--bogus", "x", "y"}, "--bogus"},
 		// accepted: command-local, help, literal, add value, negative number
 		{{"doctor", "--fix"}, ""},

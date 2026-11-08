@@ -7,7 +7,6 @@
 
 package wayu
 import "core:fmt"
-import "core:os"
 import "core:strings"
 // ConfigEntryType defines the type of configuration entry
 ConfigEntryType :: enum {
@@ -27,17 +26,9 @@ ConfigEntry :: struct {
 // ConfigEntrySpec defines how to work with a specific entry type (Strategy Pattern)
 ConfigEntrySpec :: struct {
 	type:             ConfigEntryType,
-	file_name:        string,                // e.g., "path", "aliases", "constants"
-	line_prefix:      string,                // e.g., "add_to_path", "alias", "export"
+	cli_name:         string,                // command word in help/usage text: "path", "alias", "const"
 	display_name:     string,                // e.g., "PATH", "Alias", "Constant"
 	icon:             string,                // e.g., "📂", "🔑", "💾"
-
-	// Validation
-	validator:        proc(ConfigEntry) -> ValidationResult,
-
-	// Formatting
-	format_line:      proc(ConfigEntry) -> string,
-	parse_line:       proc(string) -> (ConfigEntry, bool),
 
 	// Optional special actions
 	has_clean:        bool,                  // PATH has clean action
@@ -45,9 +36,8 @@ ConfigEntrySpec :: struct {
 	fields_count:     int,                   // 1 for path, 2 for alias/constants
 
 	// Form configuration
-	field_labels:     []string,              // Field labels for interactive mode
+	field_labels:     []string,              // Argument names for usage errors
 	field_placeholders: []string,            // Field placeholders
-	field_validators: []proc(string) -> InputValidation,
 
 	// --------------------------------------------------------------------
 	// TOML-first operations (code review D3, 2026-04-24).
@@ -74,14 +64,14 @@ ConfigEntrySpec :: struct {
 	list_epilogue:    proc(),
 }
 
-// Generic dispatcher for TOML-backed config entry commands. Used by
+// Generic dispatcher for the entry-store commands. Used by
 // `handle_alias_command` and `handle_constants_command`. Assumes the spec has
 // all four `toml_*` fields set; falls back to `handle_config_command` for
 // actions outside ADD/REMOVE/LIST/GET (e.g. HELP, UNKNOWN).
 handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []string) {
 	if !ensure_wayu_toml_exists() {
 		print_error_simple("Failed to create wayu.toml")
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	if spec.toml_add != nil {
@@ -89,13 +79,13 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 		case .ADD:
 			if len(args) == 0 {
 				print_cli_usage_error(spec, "add")
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 			entry := parse_args_to_entry(spec, args)
 			defer cleanup_entry(&entry)
 			if !is_entry_complete(entry) {
 				print_cli_usage_error(spec, "add")
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 			if spec.hook_pre_add != nil && entry_add_is_valid(spec, entry) do spec.hook_pre_add(entry.name, entry.value)
 			ok, err := spec.toml_add(entry)
@@ -107,9 +97,9 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 		case .REMOVE:
 			if len(args) == 0 {
 				print_cli_usage_error(spec, "remove")
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
-			if spec.hook_pre_remove != nil && entry_exists_in_toml(spec, args[0]) do spec.hook_pre_remove(args[0], "")
+			if spec.hook_pre_remove != nil && entry_exists_in_store(spec, args[0]) do spec.hook_pre_remove(args[0], "")
 			ok, err := spec.toml_remove(args[0])
 			if !ok {
 				exit_with_entry_error(err)
@@ -123,14 +113,14 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 		case .GET:
 			if len(args) == 0 {
 				print_cli_usage_error(spec, "get")
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 			spec.toml_get(args[0])
 			return
 		}
 	}
 
-	// Fall back to legacy handler for non-TOML actions (HELP/UNKNOWN/etc).
+	// HELP, UNKNOWN and unsupported actions (CLEAN/DEDUP).
 	handle_config_command(spec, action, args)
 
 	if action == .LIST && spec.list_epilogue != nil {
@@ -152,70 +142,74 @@ entry_add_is_valid :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> bool {
 	return v.valid
 }
 
-// True when `name` is a key of the spec's wayu.toml table (aliases / env),
-// so pre_*_remove hooks skip names that are not there. A malformed table
-// counts as present: the writer reports that error itself.
-entry_exists_in_toml :: proc(spec: ^ConfigEntrySpec, name: string) -> bool {
-	section: string
+// True when `name` is an alias / constant of the store, so pre_*_remove
+// hooks skip names that are not there. An unreadable store counts as
+// present: the writer reports that error itself.
+entry_exists_in_store :: proc(spec: ^ConfigEntrySpec, name: string) -> bool {
+	kind: EntryKind
 	#partial switch spec.type {
-	case .ALIAS:    section = "aliases"
-	case .CONSTANT: section = "env"
+	case .ALIAS:    kind = .ALIAS
+	case .CONSTANT: kind = .ENV
 	case:           return true
 	}
-	content, ok := read_wayu_toml_fresh()
-	if !ok { return false }
-	defer delete(content)
-	new_content, removed, bad := toml_table_delete(string(content), section, {name})
-	delete(new_content)
-	return removed > 0 || bad > 0
+	store, _, ok := entries_read()
+	if !ok { return true }
+	defer entries_store_destroy(&store)
+	return entries_find(&store, kind, name) >= 0
 }
 
 // Print an add/remove failure and exit with the code matching its kind:
-// messages starting with "I/O error" (the convention used by every
-// toml_* writer) are EXIT_IOERR, everything else (not found, invalid
-// input) is EXIT_DATAERR. The message is user-derived, so it is always
-// printed through "%s" and never used as a format string. Frees `err`.
+// "I/O error..." is EXIT_IOERR, ENTRY_ERROR_CONFIG_PREFIX (malformed
+// entries.json, reason already printed) is EXIT_CONFIG, everything else (not
+// found, invalid input) is EXIT_DATAERR. The message is user-derived, so it
+// is always printed through "%s" and never used as a format string. Frees
+// `err`.
 exit_with_entry_error :: proc(err: string) -> ! {
-	print_error_simple("%s", err)
 	exit_code := EXIT_DATAERR
-	if strings.has_prefix(err, "I/O error") {
+	switch {
+	case strings.has_prefix(err, "I/O error"):
 		exit_code = EXIT_IOERR
+		print_error_simple("%s", err)
+	case strings.has_prefix(err, ENTRY_ERROR_CONFIG_PREFIX):
+		exit_code = EXIT_CONFIG
+	case:
+		print_error_simple("%s", err)
 	}
 	delete(err)
-	os.exit(exit_code)
+	wayu_exit(exit_code)
 }
 
 // Print usage error with hint to TUI mode (CLI-specific error handling)
 print_cli_usage_error :: proc(spec: ^ConfigEntrySpec, action: string) {
-	print_error("Missing required arguments for '%s %s'", spec.file_name, action)
+	print_error("Missing required arguments for '%s %s'", spec.cli_name, action)
 	fmt.println()
 
 	// Show usage based on action
 	switch action {
 	case "add":
 		if spec.fields_count == 1 {
-			fmt.printfln("Usage: wayu %s add <%s>", spec.file_name, spec.field_labels[0])
+			fmt.printfln("Usage: wayu %s add <%s>", spec.cli_name, spec.field_labels[0])
 			fmt.println()
 			fmt.printfln("Example:")
-			fmt.printfln("  wayu %s add %s", spec.file_name, spec.field_placeholders[0])
+			fmt.printfln("  wayu %s add %s", spec.cli_name, spec.field_placeholders[0])
 		} else {
 			fmt.printfln("Usage: wayu %s add <%s> <%s>",
-				spec.file_name, spec.field_labels[0], spec.field_labels[1])
+				spec.cli_name, spec.field_labels[0], spec.field_labels[1])
 			fmt.println()
 			fmt.printfln("Example:")
 			fmt.printfln("  wayu %s add %s %s",
-				spec.file_name, spec.field_placeholders[0], spec.field_placeholders[1])
+				spec.cli_name, spec.field_placeholders[0], spec.field_placeholders[1])
 		}
 	case "remove":
-		fmt.printfln("Usage: wayu %s rm <%s>", spec.file_name, spec.field_labels[0])
+		fmt.printfln("Usage: wayu %s rm <%s>", spec.cli_name, spec.field_labels[0])
 		fmt.println()
 		fmt.printfln("Example:")
-		fmt.printfln("  wayu %s rm %s", spec.file_name, spec.field_placeholders[0])
+		fmt.printfln("  wayu %s rm %s", spec.cli_name, spec.field_placeholders[0])
 	case "get":
-		fmt.printfln("Usage: wayu %s get <%s>", spec.file_name, spec.field_labels[0])
+		fmt.printfln("Usage: wayu %s get <%s>", spec.cli_name, spec.field_labels[0])
 		fmt.println()
 		fmt.printfln("Example:")
-		fmt.printfln("  wayu %s get %s", spec.file_name, spec.field_placeholders[0])
+		fmt.printfln("  wayu %s get %s", spec.cli_name, spec.field_placeholders[0])
 	}
 
 	fmt.println()
@@ -223,56 +217,21 @@ print_cli_usage_error :: proc(spec: ^ConfigEntrySpec, action: string) {
 		get_muted(), RESET, get_primary(), RESET)
 }
 
-// Generic handler - Main dispatcher for all config commands
+// Actions the path/alias/const handlers leave to the shared code: HELP,
+// UNKNOWN, and CLEAN/DEDUP on a spec that has no such action.
 handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []string) {
 	#partial switch action {
-	case .ADD:
-		if len(args) == 0 {
-			print_cli_usage_error(spec, "add")
-			os.exit(EXIT_USAGE)
-		}
-
-		entry := parse_args_to_entry(spec, args)
-		defer cleanup_entry(&entry)
-
-		if !is_entry_complete(entry) {
-			print_cli_usage_error(spec, "add")
-			os.exit(EXIT_USAGE)
-		}
-
-		ok, err := add_config_entry(spec, entry)
-		if !ok {
-			exit_with_entry_error(err)
-		}
-	case .REMOVE:
-		if len(args) == 0 {
-			print_cli_usage_error(spec, "remove")
-			os.exit(EXIT_USAGE)
-		}
-		ok2, err2 := remove_config_entry(spec, args[0])
-		if !ok2 {
-			exit_with_entry_error(err2)
-		}
-	case .GET:
-		if len(args) == 0 {
-			print_cli_usage_error(spec, "get")
-			os.exit(EXIT_USAGE)
-		}
-		get_config_entry_value(spec, args[0])
-	case .LIST:
-		// CLI defaults to static (non-interactive)
-		list_config_static(spec)
 	case .CLEAN:
 		if !spec.has_clean {
 			print_error("%s command does not support clean action", spec.display_name)
-			os.exit(EXIT_GENERAL)
+			wayu_exit(EXIT_GENERAL)
 		}
 		// Command-specific clean implementation
 		// This will be called from command files (e.g., clean_missing_paths)
 	case .DEDUP:
 		if !spec.has_dedup {
 			print_error("%s command does not support dedup action", spec.display_name)
-			os.exit(EXIT_GENERAL)
+			wayu_exit(EXIT_GENERAL)
 		}
 		// Command-specific dedup implementation
 		// This will be called from command files (e.g., remove_duplicate_paths)
@@ -281,451 +240,19 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 	case .UNKNOWN:
 		fmt.eprintfln("Unknown %s action", spec.display_name)
 		print_config_help(spec)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
-// Generic add implementation
-add_config_entry :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (ok: bool, error: string) {
-	// For PATH entries, expand environment variables before saving
-	entry_to_save := entry
-	if spec.type == .PATH {
-		expanded_path := expand_env_vars(entry.name)
-		entry_to_save.name = expanded_path
-		// Note: expanded_path will be cleaned up at the end of this function
-	}
-	defer if spec.type == .PATH {
-		delete(entry_to_save.name)
-	}
-
-	// Validate (using original entry for validation to allow checking $HOME etc.)
-	validation_result := spec.validator(entry)
-	if !validation_result.valid {
-		err := strings.clone(validation_result.error_message)
-		delete(validation_result.error_message)
-		return false, err
-	}
-	// Print and free any convention warning (e.g. lowercase constant name)
-	if len(validation_result.warning) > 0 {
-		print_warning("%s", validation_result.warning)
-		delete(validation_result.warning)
-	}
-
-	// Dry-run check
-	if wayu.dry_run {
-		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-		fmt.println()
-		preview_entry := entry_to_save
-		preview_entry.value = mask_secret_value(entry_to_save.name, entry_to_save.value)
-		line := spec.format_line(preview_entry)
-		defer delete(line)
-
-		fmt.printfln("%sWould add to %s.%s:%s", BRIGHT_CYAN, spec.file_name, wayu.shell_ext, RESET)
-		fmt.printfln("  %s", line)
-		fmt.println()
-		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
-		return true, ""
-	}
-
-	// Get config file
-	config_file := get_config_file_with_fallback(spec.file_name, wayu.shell)
-	defer delete(config_file)
-
-	// Read current content
-	content, read_ok := safe_read_file(config_file)
-	if !read_ok { return false, "I/O error: could not read config file" }
-	defer delete(content)
-
-	content_str := string(content)
-	// Use temp allocator for the lines array since it's only needed during this function
-	lines := strings.split(content_str, "\n", context.temp_allocator)
-	// No need to defer delete - temp allocator manages this
-
-	// Check if entry exists and update or append
-	line_to_add := spec.format_line(entry_to_save)
-	defer delete(line_to_add)
-
-	exists := false
-	for line, i in lines {
-		parsed_entry, ok := spec.parse_line(line)
-		if ok {
-			defer cleanup_entry(&parsed_entry)
-			if parsed_entry.name == entry_to_save.name {
-				lines[i] = line_to_add
-				exists = true
-				break
-			}
-		}
-	}
-
-	final_content: string
-	if !exists {
-		// PATH entries: insert into WAYU_PATHS array before closing paren
-		// Other entries: append to end of file
-		if spec.type == .PATH {
-			// Find closing paren of WAYU_PATHS array by searching line by line
-			array_close_line_idx := -1
-			found_array_start := false
-
-			for line, i in lines {
-				trimmed := strings.trim_space(line)
-				// Look for array declaration
-				if strings.contains(line, "WAYU_PATHS=(") {
-					found_array_start = true
-					continue
-				}
-				// After finding array start, look for closing paren on its own line
-				if found_array_start && trimmed == ")" {
-					array_close_line_idx = i
-					break
-				}
-			}
-
-			if array_close_line_idx == -1 {
-				// Fallback to append if array not found (shouldn't happen with proper template)
-				final_content = fmt.aprintf("%s\n%s", content_str, line_to_add)
-			} else {
-				// Insert new line before closing paren line
-				// Allocate with heap since it will be used in strings.join()
-				new_line := fmt.aprintf("%s\n)", line_to_add)
-				lines[array_close_line_idx] = new_line
-				final_content = strings.join(lines, "\n")
-				delete(new_line)  // Free after strings.join() copies it
-			}
-		} else {
-			// Append new entry for non-PATH types
-			final_content = fmt.aprintf("%s\n%s", content_str, line_to_add)
-		}
-	} else {
-		// Rejoin modified lines
-		final_content = strings.join(lines, "\n")
-	}
-	defer delete(final_content)
-
-	// Create backup
-	if !create_backup_cli(config_file) {
-		return false, "I/O error: could not create backup"
-	}
-
-	// Write file
-	write_ok := safe_write_file(config_file, transmute([]byte)final_content)
-	if !write_ok { return false, "I/O error: could not write config file" }
-
-	// Cleanup old backups
-	cleanup_old_backups(config_file, 5)
-
-	// Success message
-	if exists {
-		print_success("%s updated successfully: %s", spec.display_name, entry_to_save.name)
-	} else {
-		print_success("%s added successfully: %s", spec.display_name, entry_to_save.name)
-	}
-	return true, ""
-}
-
-// Generic remove implementation
-remove_config_entry :: proc(spec: ^ConfigEntrySpec, name: string) -> (ok: bool, error: string) {
-	// For PATH entries, expand environment variables to support removing with $HOME, $OSS, etc.
-	name_to_remove := name
-	if spec.type == .PATH {
-		expanded_name := expand_env_vars(name)
-		name_to_remove = expanded_name
-	}
-	defer if spec.type == .PATH {
-		delete(name_to_remove)
-	}
-
-	// Dry-run check
-	if wayu.dry_run {
-		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-		fmt.println()
-
-		fmt.printfln("%sWould remove from %s.%s:%s", BRIGHT_CYAN, spec.file_name, wayu.shell_ext, RESET)
-		fmt.printfln("  %s: %s", spec.display_name, name_to_remove)
-		fmt.println()
-		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
-		return true, ""
-	}
-
-	// Get config file
-	config_file := get_config_file_with_fallback(spec.file_name, wayu.shell)
-	defer delete(config_file)
-
-	// Read current content
-	content, read_ok := safe_read_file(config_file)
-	if !read_ok {
-		return false, "I/O error: could not read config file"
-	}
-	defer delete(content)
-
-	content_str := string(content)
-	// Use temp allocator for the lines array since it's only needed during this function
-	lines := strings.split(content_str, "\n", context.temp_allocator)
-	// No need to defer delete - temp allocator manages this
-
-	// Filter out the entry
-	new_lines := make([dynamic]string)
-	defer {
-		for line in new_lines {
-			delete(line)
-		}
-		delete(new_lines)
-	}
-
-	removed := false
-	for line in lines {
-		entry, ok := spec.parse_line(line)
-		if ok {
-			defer cleanup_entry(&entry)
-			if entry.name == name_to_remove {
-				removed = true
-				continue
-			}
-		}
-		append(&new_lines, strings.clone(line))
-	}
-
-	if !removed {
-		// Clone into heap so caller owns the string past this stack frame.
-		// fmt.tprintf itself uses the temp allocator — no separate leak.
-		return false, strings.clone(fmt.tprintf("Error: %s not found: %s", spec.display_name, name_to_remove))
-	}
-
-	// Create backup
-	if !create_backup_cli(config_file) {
-		return false, "I/O error: could not create backup"
-	}
-
-	// Write back
-	new_content := strings.join(new_lines[:], "\n")
-	defer delete(new_content)
-
-	write_ok := safe_write_file(config_file, transmute([]byte)new_content)
-	if !write_ok {
-		return false, "I/O error: could not write config file"
-	}
-
-	// Cleanup old backups
-	cleanup_old_backups(config_file, 5)
-
-	print_success("%s removed successfully: %s", spec.display_name, name_to_remove)
-	return true, ""
-}
-
-// TUI-only: Interactive fuzzy finder for removing config entries
-// This function is ONLY called from TUI bridge, never from CLI
-remove_config_interactive :: proc(spec: ^ConfigEntrySpec) {
-	entries := read_config_entries(spec)
-	defer cleanup_entries(&entries)
-
-	if len(entries) == 0 {
-		print_warning("No %ss found to remove", spec.display_name)
-		return
-	}
-
-	// Convert to string list for selection
-	items := make([]string, len(entries))
-	defer {
-		for item in items {
-			delete(item)
-		}
-		delete(items)
-	}
-
-	for entry, i in entries {
-		items[i] = strings.clone(entry.name)
-	}
-
-	prompt := fmt.aprintf("Select %s to remove:", spec.display_name)
-	defer delete(prompt)
-	if wayu.dry_run {
-		prompt_dry := fmt.aprintf("%s (DRY RUN - no changes will be made)", prompt)
-		delete(prompt)
-		prompt = prompt_dry
-	}
-
-	selected, ok := interactive_fuzzy_select(items, prompt)
-	if !ok {
-		print_info("Operation cancelled")
-		return
-	}
-
-	selected_copy := strings.clone(selected)
-	defer delete(selected_copy)
-
-	remove_ok, remove_err := remove_config_entry(spec, selected_copy)
-	if !remove_ok {
-		print_error_simple("%s", remove_err)
-		delete(remove_err)
-	}
-}
-
-// Get a single entry value by name and print it
-// Enhanced with fuzzy fallback - if exact match not found, tries fuzzy matching
-get_config_entry_value :: proc(spec: ^ConfigEntrySpec, name: string) {
-	debug("get: looking up '%s' in %s", name, spec.file_name)
-
-	// Empty name should be a usage error, not a "not found"
-	if len(strings.trim_space(name)) == 0 {
-		print_cli_usage_error(spec, "get")
-		os.exit(EXIT_USAGE)
-	}
-
-	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
-	}
-
-	// Detect missing file separately from "entry not found" to avoid misleading errors
-	config_file := get_config_file_with_fallback(spec.file_name, wayu.shell)
-	defer delete(config_file)
-
-	debug("get: config file path: %s", config_file)
-
-	if !os.exists(config_file) {
-		print_error("I/O error: config file not found: %s", config_file)
-		os.exit(EXIT_IOERR)
-	}
-
-	entries := read_config_entries(spec)
-	debug("get: loaded %d entries", len(entries))
-
-	found := false
-	found_entry: ConfigEntry
-	for entry in entries {
-		if entry.name == name {
-			debug("get: found exact match '%s'", name)
-			found_entry = clone_entry(entry)
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		// Exact match only (OKAMI-207): suggest names, never another value.
-		debug("get: '%s' not found in %s", name, spec.file_name)
-		names := make([]string, len(entries), context.temp_allocator)
-		for entry, i in entries { names[i] = entry.name }
-		exit_get_not_found(spec, name, names)
-	}
-	cleanup_entries(&entries)
-
-	if spec.fields_count == 1 {
-		fmt.println(found_entry.name)
-	} else {
-		// Unescape stored shell escapes so the output is the original user value
-		unescaped := unescape_shell_value(found_entry.value)
-		defer delete(unescaped)
-		fmt.println(unescaped)
-	}
-	cleanup_entry(&found_entry)
-}
-
-// Generic static list (table view)
-list_config_static :: proc(spec: ^ConfigEntrySpec) {
-	// Check if wayu is initialized
-	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
-	}
-
-	entries := read_config_entries(spec)
-	defer cleanup_entries(&entries)
-
-	if len(entries) == 0 {
-		print_info("No %ss found", spec.display_name)
-		return
-	}
-
-	// Create table
-	headers := make([]string, spec.fields_count)
-	defer delete(headers)
-
-	// Build headers based on entry type
-	switch spec.type {
-	case .PATH:
-		headers[0] = "Entry"
-	case .ALIAS:
-		headers[0] = "Alias"
-		headers[1] = "Command"
-	case .CONSTANT:
-		headers[0] = "Constant"
-		headers[1] = "Value"
-	}
-
-	table := new_table(headers)
-	defer table_destroy(&table)
-
-	// Style the table
-	table_style(&table, style_foreground(new_style(), "white"))
-	table_header_style(&table, style_bold(style_foreground(new_style(), "cyan"), true))
-	table_border(&table, .Normal)
-
-	// Add rows
-	for entry in entries {
-		row := make([]string, spec.fields_count)
-		defer delete(row)
-
-		switch spec.type {
-		case .PATH:
-			row[0] = entry.name
-		case .ALIAS, .CONSTANT:
-			row[0] = entry.name
-			row[1] = entry.value
-		}
-
-		table_add_row(&table, row)
-	}
-
-	table_output := table_render(table, get_cli_terminal_width())
-	defer delete(table_output)
-	fmt.print(table_output)
-}
-
-// Helper: Read all entries of `spec`'s type. wayu.toml is the source of
-// truth, so when it exists (modern schema) entries come from its tables;
-// the legacy shell file is only consulted for pre-migration installs.
+// Helper: Read all entries of `spec`'s type from the entry store (exits
+// EXIT_CONFIG when entries.json is malformed). Free with cleanup_entries.
 read_config_entries :: proc(spec: ^ConfigEntrySpec) -> []ConfigEntry {
-	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	has_toml := os.exists(toml_path)
-	delete(toml_path)
-	if has_toml {
-		if content, ok := get_cached_toml_content(); ok && len(detect_legacy_schema(content)) == 0 {
-			switch spec.type {
-			case .PATH:
-				entries := read_toml_path_entries()
-				return entries[:]
-			case .ALIAS:
-				return read_toml_alias_entries()
-			case .CONSTANT:
-				return read_wayu_toml_constants()
-			}
-		}
+	switch spec.type {
+	case .PATH:     return read_path_config_entries()
+	case .ALIAS:    return read_alias_entries()
+	case .CONSTANT: return read_env_entries()
 	}
-
-	config_file := get_config_file_with_fallback(spec.file_name, wayu.shell)
-	defer delete(config_file)
-
-	content, read_ok := safe_read_file(config_file)
-	if !read_ok { return {} }
-	defer delete(content)
-
-	content_str := string(content)
-	// Use temp allocator for the lines array since it's only needed during this function
-	lines := strings.split(content_str, "\n", context.temp_allocator)
-	// No need to defer delete - temp allocator manages this
-
-	entries := make([dynamic]ConfigEntry)
-
-	for line in lines {
-		entry, ok := spec.parse_line(line)
-		if ok {
-			append(&entries, entry)
-		}
-	}
-
-	result := make([]ConfigEntry, len(entries))
-	copy(result, entries[:])
-	delete(entries)
-	return result
+	return {}
 }
 
 // Helper: Parse command line args to entry
@@ -803,34 +330,37 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 	}
 	defer delete(plural)
 	title := fmt.aprintf("\n%s%swayu %s - Manage %s%s\n\n",
-		BOLD, get_primary(), spec.file_name, plural, RESET)
+		BOLD, get_primary(), spec.cli_name, plural, RESET)
 	defer delete(title)
 	fmt.print(title)
 
 	// Usage section
 	fmt.printf("%s%sUSAGE:%s\n", BOLD, get_secondary(), RESET)
 
-	// Generate usage based on fields count
+	// Every line is a complete command: the CLI never prompts, so an action
+	// without its arguments is a usage error (exit 64).
+	label := strings.to_lower(spec.display_name, context.temp_allocator)
 	if spec.fields_count == 1 {
-		fmt.printfln("  wayu %s add [%s]", spec.file_name, strings.to_lower(spec.display_name))
-		fmt.printfln("  wayu %s add", spec.file_name)
+		fmt.printfln("  wayu %s add [<name>=]<%s>", spec.cli_name, label)
 	} else {
-		fmt.printfln("  wayu %s add <%s> <value>", spec.file_name, strings.to_lower(spec.display_name))
-		fmt.printfln("  wayu %s add", spec.file_name)
+		fmt.printfln("  wayu %s add <%s> <value>", spec.cli_name, label)
 	}
 
-	fmt.printfln("  wayu %s rm [%s]", spec.file_name, strings.to_lower(spec.display_name))
-	fmt.printfln("  wayu %s get <%s>", spec.file_name, strings.to_lower(spec.display_name))
-	fmt.printfln("  wayu %s list", spec.file_name)
+	fmt.printfln("  wayu %s rm <%s>", spec.cli_name, label)
+	fmt.printfln("  wayu %s get <%s>", spec.cli_name, label)
+	fmt.printfln("  wayu %s list", spec.cli_name)
+	if spec.type == .CONSTANT {
+		fmt.printfln("  wayu %s list --reveal    %s# show secret-looking values unmasked%s", spec.cli_name, get_muted(), RESET)
+	}
 
 	if spec.has_clean {
-		fmt.printfln("  wayu %s clean", spec.file_name)
+		fmt.printfln("  wayu %s clean", spec.cli_name)
 	}
 	if spec.has_dedup {
-		fmt.printfln("  wayu %s dedup", spec.file_name)
+		fmt.printfln("  wayu %s dedup", spec.cli_name)
 	}
 
-	fmt.printfln("  wayu %s help", spec.file_name)
+	fmt.printfln("  wayu %s help", spec.cli_name)
 
 	// Examples section - specific to each type
 	fmt.println()
@@ -871,8 +401,8 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 		fmt.printfln("  %s# Remove an alias%s", get_muted(), RESET)
 		fmt.printfln("  wayu alias rm ll")
 		fmt.println()
-		fmt.printfln("  %s# Use fuzzy matching to find aliases%s", get_muted(), RESET)
-		fmt.printfln("  wayu alias get git")
+		fmt.printfln("  %s# Print an alias's command (exact name)%s", get_muted(), RESET)
+		fmt.printfln("  wayu alias get gs")
 
 	case .CONSTANT:
 		// CONSTANT-specific examples
@@ -883,15 +413,13 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 		fmt.printfln("  %s# Add a variable with spaces (use quotes)%s", get_muted(), RESET)
 		fmt.printfln("  wayu const add GREETING 'Hello World'")
 		fmt.println()
-		fmt.printfln("  %s# List all constants%s", get_muted(), RESET)
+		fmt.printfln("  %s# List all constants (secret-looking values shown as ********)%s", get_muted(), RESET)
 		fmt.printfln("  wayu const list")
+		fmt.printfln("  wayu const list --full --reveal")
 		fmt.println()
 		fmt.printfln("  %s# Get a variable value%s", get_muted(), RESET)
 		fmt.printfln("  wayu const get API_KEY")
 		fmt.printfln("  wayu const get FIREWORKS_AI_API_KEY")
-		fmt.println()
-		fmt.printfln("  %s# Use fuzzy matching (e.g., 'frwrks' finds 'FIREWORKS_AI_API_KEY')%s", get_muted(), RESET)
-		fmt.printfln("  wayu const get frwrks")
 		fmt.println()
 		fmt.printfln("  %s# Remove a constant%s", get_muted(), RESET)
 		fmt.printfln("  wayu const rm API_KEY")
@@ -900,7 +428,7 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 	// Tips section
 	fmt.println()
 	fmt.printf("%s%sTIPS:%s\n", BOLD, get_secondary(), RESET)
-	fmt.printfln("  %s• Use fuzzy matching: try partial names or acronyms%s", get_muted(), RESET)
+	fmt.printfln("  %s• get is exact; 'wayu search' matches partial names and acronyms%s", get_muted(), RESET)
 	fmt.printfln("  %s• Add --yes to skip confirmation on destructive operations%s", get_muted(), RESET)
 	fmt.printfln("  %s• Use --tui for interactive mode%s", get_muted(), RESET)
 
@@ -908,6 +436,7 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 }
 EntryPath :: struct {
 	path: string,
+	name: string, // optional [paths] key (`name=path` form); "" derives one
 }
 
 EntryAlias :: struct {
@@ -926,88 +455,141 @@ Entry :: union {
 	EntryConst,
 }
 
-// Add an entry to wayu.toml. Both CLI and TUI use this for mutations from
+// What entry_add / entry_remove did, so callers can tell a real change from
+// an update, a no-op or a --dry-run preview.
+EntryOutcome :: enum {
+	FAILED,    // nothing written; the error string says why
+	ADDED,     // new entry written
+	UPDATED,   // existing alias/constant replaced
+	UNCHANGED, // PATH already present: nothing to do
+	REMOVED,   // entry removed
+	DRY_RUN,   // --dry-run: would change, nothing written
+}
+
+// Add an entry to the store. Both CLI and TUI use this for mutations from
 // outside the spec-driven dispatchers.
 //
-// Mirrors the CLI: runs the same pre/post hooks (post only after a real
-// change) and honors wayu.dry_run (the toml_* writers print a preview and
-// skip the write; hooks are skipped by execute_hook_ctx).
-entry_add :: proc(entry: Entry) -> (bool, string) {
+// Mirrors the CLI: the same validation (PATH: path_add_check, i.e. the path
+// must resolve and exist, like `wayu path add`), the same pre/post hooks
+// (post only after a real change) and wayu.dry_run (nothing written, hooks
+// skipped). Error strings are heap-owned (caller deletes when non-empty).
+entry_add :: proc(entry: Entry) -> (EntryOutcome, string) {
+	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
+	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := entries_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
-		// Validate path format (no existence check — TUI lets you stage a
-		// path that doesn't exist yet, matching pre-bug TUI behavior).
-		result := validate_path(e.path)
-		if !result.valid {
-			err := strings.clone(result.error_message)
-			delete(result.error_message)
-			return false, err
-		}
-		if len(result.warning) > 0 {
-			delete(result.warning)
-		}
-		if toml_path_add_would_change(e.path) { hook_pre_path_add(e.path) }
-		#partial switch toml_path_add_result(e.path, "") {
+		expanded, check_err, code := path_add_check(e.path)
+		defer delete(expanded)
+		if code != EXIT_SUCCESS { return .FAILED, check_err }
+		if path_add_would_change(e.path, e.name) { hook_pre_path_add(expanded) }
+		#partial switch path_add_result(e.path, e.name) {
 		case .OK:
-			if wayu.dry_run { return true, "" }
+			if wayu.dry_run { return .DRY_RUN, "" }
 			regenerate_init_core_silently()
-			hook_post_path_add(e.path)
-			return true, ""
+			hook_post_path_add(expanded)
+			return .ADDED, ""
 		case .NOOP:
-			return true, ""
+			return .UNCHANGED, ""
 		case .IO_ERROR:
-			return false, strings.clone("I/O error: failed to write path to wayu.toml")
+			return .FAILED, strings.clone("I/O error: failed to write the PATH entry")
 		case:
-			return false, strings.clone("failed to write path to wayu.toml")
+			// The writer reported the reason (bad/taken name) via print_error.
+			if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
+			return .FAILED, strings.clone("failed to write the PATH entry")
 		}
 	case EntryAlias:
 		return entry_add_with_hooks(&ALIAS_SPEC, ConfigEntry{type = .ALIAS, name = e.name, value = e.command})
 	case EntryConst:
 		return entry_add_with_hooks(&CONSTANTS_SPEC, ConfigEntry{type = .CONSTANT, name = e.name, value = e.value})
 	}
-	return false, strings.clone("unknown entry type")
+	return .FAILED, strings.clone("unknown entry type")
 }
 
 @(private = "file")
-entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (bool, string) {
+entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (EntryOutcome, string) {
+	existed := entry_exists_in_store(spec, entry.name)
 	if spec.hook_pre_add != nil && entry_add_is_valid(spec, entry) do spec.hook_pre_add(entry.name, entry.value)
 	ok, err := spec.toml_add(entry)
-	if ok && spec.hook_post_add != nil do spec.hook_post_add(entry.name, entry.value)
-	return ok, err
+	if !ok { return .FAILED, err }
+	if wayu.dry_run { return .DRY_RUN, err }
+	if spec.hook_post_add != nil do spec.hook_post_add(entry.name, entry.value)
+	return .UPDATED if existed else .ADDED, err
 }
 
-// Remove an entry by identity (path for EntryPath, name for the others).
-// The non-identity fields on the variant are ignored. Same hook / dry-run
-// semantics as entry_add.
-entry_remove :: proc(entry: Entry) -> (bool, string) {
+// Remove an entry by identity (dir or key for EntryPath, name for
+// the others). The non-identity fields on the variant are ignored. Same hook
+// / dry-run semantics as entry_add.
+entry_remove :: proc(entry: Entry) -> (EntryOutcome, string) {
+	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
+	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := entries_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
-		if toml_path_exists(e.path) { hook_pre_path_remove(e.path) }
-		#partial switch toml_path_remove_result(e.path) {
+		// Hooks get the stored directory, also when the target is a key (as the CLI).
+		hook_path, found := path_entry_lookup(e.path)
+		defer delete(hook_path)
+		if found { hook_pre_path_remove(hook_path) }
+		#partial switch path_remove_result(e.path) {
 		case .OK:
-			if wayu.dry_run { return true, "" }
+			if wayu.dry_run { return .DRY_RUN, "" }
 			regenerate_init_core_silently()
-			hook_post_path_remove(e.path)
-			return true, ""
+			hook_post_path_remove(hook_path)
+			return .REMOVED, ""
 		case .IO_ERROR:
-			return false, strings.clone("I/O error: failed to remove path from wayu.toml")
+			return .FAILED, strings.clone("I/O error: failed to remove the PATH entry")
 		case:
-			return false, strings.clone("failed to remove path from wayu.toml")
+			if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
+			return .FAILED, strings.clone("failed to remove the PATH entry")
 		}
 	case EntryAlias:
 		return entry_remove_with_hooks(&ALIAS_SPEC, e.name)
 	case EntryConst:
 		return entry_remove_with_hooks(&CONSTANTS_SPEC, e.name)
 	}
-	return false, strings.clone("unknown entry type")
+	return .FAILED, strings.clone("unknown entry type")
+}
+
+// Change the directory of the PATH entry `target` (key or path) to
+// `raw_path` in place (TUI edit): same checks as entry_add (path_add_check),
+// runs the remove hooks for the old directory and the add hooks for the new.
+entry_replace_path :: proc(target, raw_path: string) -> (EntryOutcome, string) {
+	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := entries_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
+	expanded, check_err, code := path_add_check(raw_path)
+	defer delete(expanded)
+	if code != EXIT_SUCCESS { return .FAILED, check_err }
+	old_path, found := path_entry_lookup(target)
+	defer delete(old_path)
+	if found && old_path != expanded {
+		hook_pre_path_remove(old_path)
+		hook_pre_path_add(expanded)
+	}
+	#partial switch path_replace_result(target, raw_path) {
+	case .OK:
+		if wayu.dry_run { return .DRY_RUN, "" }
+		regenerate_init_core_silently()
+		hook_post_path_remove(old_path)
+		hook_post_path_add(expanded)
+		return .UPDATED, ""
+	case .NOOP:
+		return .UNCHANGED, ""
+	case .IO_ERROR:
+		return .FAILED, strings.clone("I/O error: failed to write the PATH entry")
+	case:
+		if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
+		return .FAILED, strings.clone("failed to update the PATH entry")
+	}
 }
 
 @(private = "file")
-entry_remove_with_hooks :: proc(spec: ^ConfigEntrySpec, name: string) -> (bool, string) {
-	if spec.hook_pre_remove != nil && entry_exists_in_toml(spec, name) do spec.hook_pre_remove(name, "")
+entry_remove_with_hooks :: proc(spec: ^ConfigEntrySpec, name: string) -> (EntryOutcome, string) {
+	if spec.hook_pre_remove != nil && entry_exists_in_store(spec, name) do spec.hook_pre_remove(name, "")
 	ok, err := spec.toml_remove(name)
-	if ok && spec.hook_post_remove != nil do spec.hook_post_remove(name, "")
-	return ok, err
+	if !ok { return .FAILED, err }
+	if wayu.dry_run { return .DRY_RUN, err }
+	if spec.hook_post_remove != nil do spec.hook_post_remove(name, "")
+	return .REMOVED, err
 }
 // Basenames that almost never carry meaning on their own. When we see one,
 // we prefix with the parent directory to keep keys self-describing.
@@ -1166,89 +748,13 @@ parse_path_arg :: proc(arg: string) -> (name, path: string, explicit: bool) {
 	}
 	return lhs, rhs, true
 }
-// Section header tokens that no longer exist in the modern schema.
-LEGACY_SECTION_HEADERS :: []string{
-	"[[paths]]",
-	"[[aliases]]",
-	"[[constants]]",
-	"[constants]",
-}
 
-// Returns the first legacy header found in `content`, or "" when the file
-// is clean. Cheap line-by-line scan; we only need to detect, not parse.
-detect_legacy_schema :: proc(content: string) -> string {
-	for header in LEGACY_SECTION_HEADERS {
-		if !strings.contains(content, header) { continue }
-		// Confirm it's an actual section header (line-equal after trim),
-		// not a substring inside a value. Scan line-by-line without
-		// allocating a split array.
-		remaining := content
-		for len(remaining) > 0 {
-			nl := strings.index_byte(remaining, '\n')
-			line: string
-			if nl < 0 {
-				line = remaining
-				remaining = ""
-			} else {
-				line = remaining[:nl]
-				remaining = remaining[nl + 1:]
-			}
-			if strings.trim_space(line) == header { return header }
-		}
-	}
-	return ""
-}
-
-// Print the user-visible "obsolete schema, run migrate" banner. Shared by
-// the per-read guard and the global pre-dispatch guard.
-print_legacy_schema_hint :: proc(header: string) {
-	fmt.eprintln()
-	fmt.eprintf("%sError:%s wayu.toml uses the obsolete %s%s%s schema.\n",
-		BRIGHT_RED, RESET, BRIGHT_CYAN, header, RESET)
-	fmt.eprintln()
-	fmt.eprintln("v3.x replaced the array-of-tables forms with single inline tables:")
-	fmt.eprintln()
-	fmt.eprintln("  [paths]")
-	fmt.eprintln("  odin = \"/Users/you/dev/Odin\"")
-	fmt.eprintln()
-	fmt.eprintln("  [aliases]")
-	fmt.eprintln("  ll = \"ls -la\"")
-	fmt.eprintln()
-	fmt.eprintln("  [env]")
-	fmt.eprintln("  EDITOR = \"nvim\"")
-	fmt.eprintln()
-	fmt.eprintf("Run %swayu migrate --schema%s to upgrade in place.\n", BRIGHT_CYAN, RESET)
-	fmt.eprintln()
-}
-
-// Read wayu.toml and abort with a structured error if the schema is stale.
-// Returns the file content (caller frees) on success. On legacy schema or
-// I/O error, prints a message and exits — never returns.
-must_read_modern_wayu_toml :: proc(path: string) -> []byte {
-	content, ok := safe_read_file(path)
-	if !ok {
-		print_error("Could not read %s", path)
-		os.exit(EXIT_NOINPUT)
-	}
-	if header := detect_legacy_schema(string(content)); len(header) > 0 {
-		print_legacy_schema_hint(header)
-		delete(content)
-		os.exit(EXIT_CONFIG)
-	}
-	return content
-}
-
-// Pre-dispatch global guard. Aborts with the migration hint for any command
-// that would touch wayu.toml while it's still on the obsolete schema. Safe
-// commands (the ones that don't read the toml at all, plus the migration
-// command itself) bypass the check.
-enforce_modern_wayu_toml_or_exit :: proc(toml_path: string) {
-	if !os.exists(toml_path) { return }
-	content, ok := safe_read_file(toml_path)
-	if !ok { return } // I/O failures bubble up at the actual call site
-	defer delete(content)
-	if header := detect_legacy_schema(string(content)); len(header) > 0 {
-		print_legacy_schema_hint(header)
-		os.exit(EXIT_CONFIG)
-	}
+// Reason (temp allocator) not to edit the entries now: entries.json can't be
+// read or is malformed (the TUI shows it instead of exiting). The writers
+// would otherwise fail deep inside.
+entries_unreadable_error :: proc() -> (msg: string, bad: bool) {
+	store, err, ok := entries_read()
+	if !ok { return err, true }
+	entries_store_destroy(&store)
+	return "", false
 }

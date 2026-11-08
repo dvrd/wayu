@@ -8,7 +8,7 @@ import wayu "../../src"
 @(test)
 test_init_config_file_creates_file :: proc(t: ^testing.T) {
 	// Test creating a new config file
-	test_file := "/tmp/test_wayu_config.zsh"
+	test_file := test_tmp("test_wayu_config.zsh")
 	test_template := "#!/usr/bin/env zsh\n# Test template"
 
 	// Clean up first
@@ -30,7 +30,7 @@ test_init_config_file_creates_file :: proc(t: ^testing.T) {
 @(test)
 test_init_config_file_skips_existing :: proc(t: ^testing.T) {
 	// Test that init_config_file doesn't overwrite existing files
-	test_file := "/tmp/test_wayu_existing.zsh"
+	test_file := test_tmp("test_wayu_existing.zsh")
 	original_content := "original content"
 
 	// Create file with original content
@@ -46,38 +46,6 @@ test_init_config_file_skips_existing :: proc(t: ^testing.T) {
 	defer delete(content)
 	testing.expect(t, err == nil, "Should be able to read file")
 	testing.expect_value(t, string(content), original_content)
-}
-
-@(test)
-test_is_common_path :: proc(t: ^testing.T) {
-	// Test common path detection
-	testing.expect(t, wayu.is_common_path("/usr/local/bin"), "/usr/local/bin should be common")
-	testing.expect(t, wayu.is_common_path("/usr/bin"), "/usr/bin should be common")
-	testing.expect(t, wayu.is_common_path("/opt/homebrew/bin"), "/opt/homebrew/bin should be common")
-
-	testing.expect(t, !wayu.is_common_path("/random/path"), "/random/path should not be common")
-	testing.expect(t, !wayu.is_common_path("/tmp"), "/tmp should not be common")
-}
-
-@(test)
-test_preload_path_template_exists :: proc(t: ^testing.T) {
-	// Test that PATH_TEMPLATE_ZSH constant exists and is not empty
-	testing.expect(t, len(wayu.PATH_TEMPLATE_ZSH) > 0, "PATH_TEMPLATE_ZSH should not be empty")
-	testing.expect(t, strings.contains(wayu.PATH_TEMPLATE_ZSH, "add_to_path"), "Should contain add_to_path function")
-}
-
-@(test)
-test_preload_aliases_template_exists :: proc(t: ^testing.T) {
-	// Test that ALIASES_TEMPLATE_ZSH constant exists and is not empty
-	testing.expect(t, len(wayu.ALIASES_TEMPLATE_ZSH) > 0, "ALIASES_TEMPLATE_ZSH should not be empty")
-	testing.expect(t, len(wayu.ALIASES_TEMPLATE_BASH) > 0, "ALIASES_TEMPLATE_BASH should not be empty")
-}
-
-@(test)
-test_preload_constants_template_exists :: proc(t: ^testing.T) {
-	// Test that CONSTANTS_TEMPLATE_ZSH constant exists and is not empty
-	testing.expect(t, len(wayu.CONSTANTS_TEMPLATE_ZSH) > 0, "CONSTANTS_TEMPLATE_ZSH should not be empty")
-	testing.expect(t, len(wayu.CONSTANTS_TEMPLATE_BASH) > 0, "CONSTANTS_TEMPLATE_BASH should not be empty")
 }
 
 @(test)

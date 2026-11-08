@@ -1,19 +1,21 @@
 // secrets.odin - Single source of truth for secret handling:
-//   * file modes for files that may contain [env] values (wayu.toml,
-//     backups, generated core/lazy/login/helpers scripts);
+//   * file modes for files that may contain constant values (entries.json,
+//     backups, generated core/path_sync scripts);
 //   * the "looks secret" heuristic and value masking used by every preview
-//     output (dry-run, search, export --dry-run).
+//     and list output (dry-run, search, export --dry-run, `const list`,
+//     the TUI constants view).
 //
-// `wayu const get NAME` (exact) and `wayu const list` deliberately print
-// values — that is their purpose — and do not go through masking.
+// `wayu const get NAME` (exact) deliberately prints the real value — that is
+// its purpose. List views mask unless the user asks with `--reveal` (CLI) or
+// the reveal key (TUI).
 
 package wayu
 
 import "core:os"
 import "core:strings"
 
-// 0600 / 0700: owner-only. Anything holding [env] values is created with
-// these; never wider than what the user chose for wayu.toml.
+// 0600 / 0700: owner-only. Anything holding constant values is created with
+// these.
 SECRET_FILE_PERMS :: os.Permissions{.Read_User, .Write_User}
 SECRET_DIR_PERMS  :: os.Permissions{.Read_User, .Write_User, .Execute_User}
 
@@ -75,6 +77,13 @@ mask_secret_value :: proc(name, value: string) -> string {
 	return value
 }
 
+// Value to show in a list view: the real value when `reveal` (`--reveal`,
+// TUI reveal key), else masked like a preview. Never allocates.
+list_display_value :: proc(name, value: string, reveal: bool) -> string {
+	if reveal { return value }
+	return mask_secret_value(name, value)
+}
+
 // Best-effort: tighten an existing file to 0600. Used for generated files
 // whose pre-existing mode may predate this policy (O_CREAT ignores the
 // mode argument for files that already exist).
@@ -82,57 +91,4 @@ restrict_file_mode :: proc(path: string) {
 	if err := os.chmod(path, SECRET_FILE_PERMS); err != nil {
 		debug("chmod 0600 failed for %s: %v", path, err)
 	}
-}
-
-// Copy of a wayu.toml document with secret-looking [env] values replaced by
-// SECRET_MASK, for previews that show a whole rewritten file (e.g. schema
-// migration --dry-run). Other lines are kept verbatim. Caller deletes.
-mask_toml_env_section :: proc(content: string, allocator := context.allocator) -> string {
-	b := strings.builder_make(0, len(content), allocator)
-	it := make_line_iter(content)
-	in_env := false
-	first := true
-	open_multiline := "" // closing delimiter of a masked multi-line string
-	for line in line_iter_next(&it) {
-		if len(open_multiline) > 0 {
-			// Body of a masked multi-line value: drop it entirely.
-			if strings.contains(line, open_multiline) { open_multiline = "" }
-			continue
-		}
-		if !first { strings.write_byte(&b, '\n') }
-		first = false
-
-		trimmed := strings.trim_space(line)
-		if strings.has_prefix(trimmed, "[") { in_env = toml_line_is_section(trimmed, "env") }
-		if in_env {
-			// Multi-line strings ("""…""" / '''…''') can't be judged from one
-			// line (PEM blocks, certs): always mask them in previews.
-			if eq := strings.index_byte(trimmed, '='); eq > 0 {
-				raw := strings.trim_space(trimmed[eq + 1:])
-				for delim in ([]string{`"""`, `'''`}) {
-					if strings.has_prefix(raw, delim) && !strings.contains(raw[3:], delim) {
-						open_multiline = delim
-						break
-					}
-				}
-				if len(open_multiline) > 0 {
-					strings.write_string(&b, strings.trim_space(trimmed[:eq]))
-					strings.write_string(&b, " = \"" + SECRET_MASK + "\"")
-					continue
-				}
-			}
-			key, value, ok := toml_parse_kv_line(trimmed)
-			if ok {
-				secret := len(value) > 0 && looks_secret(key, value)
-				delete(value)
-				if secret {
-					strings.write_string(&b, key)
-					strings.write_string(&b, " = \"" + SECRET_MASK + "\"")
-					continue
-				}
-			}
-		}
-		strings.write_string(&b, line)
-	}
-	return strings.to_string(b)
 }

@@ -10,16 +10,6 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 
-// Template definition
-ConfigTemplate :: struct {
-	name:        string,
-	description: string,
-	apply:       proc(),
-}
-
-// Template names for reference
-template_names := []string{"developer", "minimal", "data-science", "full"}
-
 // Handle template command
 handle_template_command :: proc(action: Action, args: []string) {
 	#partial switch action {
@@ -27,7 +17,7 @@ handle_template_command :: proc(action: Action, args: []string) {
 		list_templates()
 	case .ADD:
 		if len(args) == 0 {
-			print_error("Usage: wayu init --template <name>")
+			print_error("Usage: wayu template apply <name>")
 			fmt.println()
 			list_templates()
 			os.exit(EXIT_USAGE)
@@ -36,7 +26,9 @@ handle_template_command :: proc(action: Action, args: []string) {
 	case .HELP:
 		print_template_usage()
 	case:
+		fmt.eprintln("Unknown template action")
 		print_template_usage()
+		os.exit(EXIT_USAGE)
 	}
 }
 
@@ -68,8 +60,59 @@ list_templates :: proc() {
 	fmt.println("  wayu template apply developer")
 }
 
-// Apply a template
+// True when `name` names a template apply_template knows.
+template_exists :: proc(name: string) -> bool {
+	switch name {
+	case "developer", "minimal", "data-science", "ds", "full": return true
+	}
+	return false
+}
+
+// `wayu init --template NAME` / `--template=NAME`: the template to apply
+// after init ("" when none). Exits 64 on a missing value and 65 on an
+// unknown template, before init writes anything.
+init_template_arg :: proc(args: []string) -> string {
+	name := ""
+	for i := 0; i < len(args); i += 1 {
+		a := args[i]
+		switch {
+		case a == "--template":
+			if i + 1 >= len(args) || strings.has_prefix(args[i + 1], "-") {
+				print_error_simple("--template requires a template name")
+				list_templates()
+				os.exit(EXIT_USAGE)
+			}
+			name = args[i + 1]
+			i += 1
+		case strings.has_prefix(a, "--template="):
+			name = a[len("--template="):]
+		case:
+			print_error_simple("Unexpected argument for init: %s", a)
+			fmt.eprintln("Usage: wayu init [--template <name>]")
+			os.exit(EXIT_USAGE)
+		}
+	}
+	if len(name) > 0 && !template_exists(name) {
+		print_error_simple("Unknown template: %s", name)
+		list_templates()
+		os.exit(EXIT_DATAERR)
+	}
+	return name
+}
+
+// What one template apply did (or, under --dry-run, would do).
+@(private = "file")
+template_added, template_skipped: int
+
+// Apply a template. Entries already present are kept (never overwritten):
+// a PATH directory already listed, an alias or constant name wayu already
+// has, or a constant already set in the environment wayu runs in.
+// --dry-run prints what would be added/skipped and writes nothing.
 apply_template :: proc(name: string) {
+	template_added, template_skipped = 0, 0
+	if wayu.dry_run {
+		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+	}
 	switch name {
 	case "developer":
 		apply_developer_template()
@@ -87,32 +130,66 @@ apply_template :: proc(name: string) {
 	}
 }
 
-// Shared helpers so each template routes through the TOML-first add paths
-// instead of the legacy shell-file writer (add_config_entry). Without this,
-// fish users ended up with aliases.fish/constants.fish that shipped bash
-// syntax (`alias g="git"`, `export EDITOR=...`) while wayu.toml stayed
-// empty.
+// Shared helpers: each template writes through the same add paths as the
+// CLI (entry store).
 
-template_add_paths :: proc(paths: []string) {
-	if !ensure_wayu_toml_exists() {
-		print_error_simple("Failed to create wayu.toml")
+// Alias / constant names the store has now (temp allocator). Exits
+// EXIT_CONFIG when entries.json is malformed.
+@(private = "file")
+template_existing_keys :: proc(kind: EntryKind) -> map[string]bool {
+	keys := make(map[string]bool, allocator = context.temp_allocator)
+	store := entries_load()
+	defer entries_store_destroy(&store)
+	switch kind {
+	case .ALIAS: for a in store.aliases { keys[strings.clone(a.name, context.temp_allocator)] = true }
+	case .ENV:   for e in store.env { keys[strings.clone(e.name, context.temp_allocator)] = true }
+	}
+	return keys
+}
+
+@(private = "file")
+template_report :: proc(verb, what: string, skipped_why := "") {
+	if len(skipped_why) > 0 {
+		template_skipped += 1
+		fmt.printfln("  %sKeeping%s %s %s(%s)%s", get_muted(), RESET, what, get_muted(), skipped_why, RESET)
 		return
 	}
+	template_added += 1
+	fmt.printfln("  %s %s %s", wayu.dry_run ? "Would add" : "Adding", verb, what)
+}
+
+template_add_paths :: proc(paths: []string) {
+	store := entries_load() // malformed entries.json: exit 78 before any write
+	entries_store_destroy(&store)
 	for p in paths {
-		fmt.printfln("  Adding: %s%s%s", get_muted(), p, RESET)
-		if !toml_path_add(p) {
+		what := fmt.tprintf("%s%s%s", get_muted(), p, RESET)
+		if !path_add_would_change(p) {
+			template_report("path", what, "already added")
+			continue
+		}
+		if wayu.dry_run {
+			template_report("path", what)
+			continue
+		}
+		switch path_add_result(p) {
+		case .OK:   template_report("path", what)
+		case .NOOP: template_report("path", what, "already added")
+		case .INVALID, .NOT_FOUND, .IO_ERROR, .BAD_STORE:
 			print_warning("  skipped (could not write): %s", p)
 		}
 	}
 }
 
 template_add_aliases :: proc(aliases: []struct{name, command: string}) {
-	if !ensure_wayu_toml_exists() {
-		print_error_simple("Failed to create wayu.toml")
-		return
-	}
+	existing := template_existing_keys(.ALIAS)
 	for a in aliases {
-		fmt.printfln("  Adding alias: %s%s%s = %s", get_primary(), a.name, RESET, a.command)
+		what := fmt.tprintf("%s%s%s = %s", get_primary(), a.name, RESET, a.command)
+		if a.name in existing {
+			template_report("alias", what, "your alias is kept")
+			continue
+		}
+		template_report("alias", what)
+		if wayu.dry_run { continue }
 		entry := ConfigEntry{type = .ALIAS, name = a.name, value = a.command}
 		if ok, err := toml_alias_add(entry); !ok {
 			print_warning("  skipped %s: %s", a.name, err)
@@ -122,18 +199,39 @@ template_add_aliases :: proc(aliases: []struct{name, command: string}) {
 }
 
 template_add_constants :: proc(consts: []struct{name, value: string}) {
-	if !ensure_wayu_toml_exists() {
-		print_error_simple("Failed to create wayu.toml")
-		return
-	}
+	existing := template_existing_keys(.ENV)
 	for c in consts {
-		fmt.printfln("  Adding constant: %s%s%s = %s", get_primary(), c.name, RESET, c.value)
+		what := fmt.tprintf("%s%s%s = %s", get_primary(), c.name, RESET, c.value)
+		if c.name in existing {
+			template_report("constant", what, "your value is kept")
+			continue
+		}
+		if v, set := os.lookup_env(c.name, context.temp_allocator); set && len(v) > 0 {
+			template_report("constant", what, fmt.tprintf("already set in your environment: %s", v))
+			continue
+		}
+		template_report("constant", what)
+		if wayu.dry_run { continue }
 		entry := ConfigEntry{type = .CONSTANT, name = c.name, value = c.value}
 		if ok, err := toml_constant_add(entry); !ok {
 			print_warning("  skipped %s: %s", c.name, err)
 			delete(err)
 		}
 	}
+}
+
+// Regenerate the shell init (unless --dry-run) and print the outcome.
+@(private = "file")
+template_finish :: proc(title: string) {
+	fmt.println()
+	if wayu.dry_run {
+		fmt.printfln("%s template: would add %d entr%s, keep %d existing. Nothing was written.",
+			title, template_added, template_added == 1 ? "y" : "ies", template_skipped)
+		return
+	}
+	regenerate_init_core_silently()
+	print_success("%s template applied: %d added, %d kept. Reload your shell to activate.",
+		title, template_added, template_skipped)
 }
 
 // Developer template
@@ -156,7 +254,8 @@ apply_developer_template :: proc() {
 		{"gs", "git status"},
 		{"gcm", "git commit -m"},
 		{"gp", "git push"},
-		{"code", "code ."},
+		// No `code = "code ."`: an alias named like the binary shadows it
+		// (`code file.txt` opened the cwd).
 	})
 
 	fmt.println()
@@ -165,9 +264,7 @@ apply_developer_template :: proc() {
 		{"GOPATH", "$HOME/go"},
 	})
 
-	fmt.println()
-	regenerate_init_core_silently()
-	print_success("Developer template applied! Reload your shell to activate.")
+	template_finish("Developer")
 }
 
 // Minimal template
@@ -178,7 +275,12 @@ apply_minimal_template :: proc() {
 	fmt.println("  Minimal template: Only essential system paths")
 	fmt.println("  No aliases or constants added")
 
-	print_success("Minimal template applied!")
+	fmt.println()
+	if wayu.dry_run {
+		fmt.println("Minimal template: nothing to add. Nothing was written.")
+		return
+	}
+	print_success("Minimal template applied (nothing to add)")
 }
 
 // Data science template
@@ -201,9 +303,7 @@ apply_datascience_template :: proc() {
 		{"pip", "pip3"},
 	})
 
-	fmt.println()
-	regenerate_init_core_silently()
-	print_success("Data Science template applied! Reload your shell to activate.")
+	template_finish("Data Science")
 }
 
 // Full template
@@ -223,9 +323,7 @@ apply_full_template :: proc() {
 		"$HOME/.bun/bin",
 	})
 
-	fmt.println()
-	regenerate_init_core_silently()
-	print_success("Full template applied! Reload your shell to activate.")
+	template_finish("Full")
 }
 
 // Print template usage
@@ -236,7 +334,10 @@ print_template_usage :: proc() {
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
 	fmt.printfln("  wayu template list           List available templates")
 	fmt.printfln("  wayu template apply <name>   Apply a template to current config")
-	fmt.printfln("  wayu init --template <name>   Initialize with template")
+	fmt.printfln("  wayu init --template <name>  Initialize, then apply a template")
+	fmt.println()
+	fmt.println("  Existing entries are kept: a template never overwrites an alias or")
+	fmt.println("  constant you already have. --dry-run shows what would be added.")
 	fmt.println()
 	fmt.printfln("%sAVAILABLE TEMPLATES:%s", get_primary(), RESET)
 	fmt.println("  developer     - Common dev tools (cargo, npm, go)")

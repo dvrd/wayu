@@ -158,18 +158,16 @@ get_shell_name :: proc(shell: ShellType) -> string {
     return "Unknown"
 }
 
-// Check if shell supports specific features
-shell_supports_arrays :: proc(shell: ShellType) -> bool {
-    return shell == .BASH || shell == .ZSH || shell == .FISH
-}
-
-shell_supports_completion :: proc(shell: ShellType) -> bool {
-    return shell == .BASH || shell == .ZSH || shell == .FISH
-}
-
-shell_supports_functions :: proc(shell: ShellType) -> bool {
-    // All shells support functions, but with different syntax
-    return true
+// Value stored in wayu.toml `[shell] type` (lowercase, as parse_shell_type
+// and toml_validate expect). UNKNOWN maps to zsh, the default wayu falls
+// back to everywhere else.
+shell_config_name :: proc(shell: ShellType) -> string {
+    switch shell {
+    case .BASH:            return "bash"
+    case .FISH:            return "fish"
+    case .ZSH, .UNKNOWN:   return "zsh"
+    }
+    return "zsh"
 }
 
 // Parse shell type from string (for CLI flags)
@@ -187,28 +185,6 @@ parse_shell_type :: proc(shell_str: string) -> ShellType {
     return .UNKNOWN
 }
 
-// Get config file path with fallback for backward compatibility
-get_config_file_with_fallback :: proc(base_name: string, shell: ShellType) -> string {
-	ext := get_shell_extension(shell)
-
-	// Try shell-specific extension first
-	preferred_file := fmt.aprintf("%s/%s.%s", wayu.data, base_name, ext)
-	if os.exists(preferred_file) {
-		return preferred_file
-	}
-
-	// Fall back to .zsh for backward compatibility
-	zsh_file := fmt.aprintf("%s/%s.zsh", wayu.data, base_name)
-	if os.exists(zsh_file) {
-		delete(preferred_file)
-		return zsh_file
-	}
-
-	// Return preferred even if it doesn't exist (for creation)
-	delete(zsh_file)
-	return preferred_file
-}
-
 // Validate shell compatibility
 validate_shell_compatibility :: proc(shell: ShellType) -> (valid: bool, message: string) {
     switch shell {
@@ -220,10 +196,11 @@ validate_shell_compatibility :: proc(shell: ShellType) -> (valid: bool, message:
     return false, "Unsupported shell type"
 }
 
-// Get the terminal width for CLI output.
-// Tries: COLUMNS env var → stty size → fallback of 80.
+// Width CLI tables are fitted to (table_render's max_width).
+// Tries: exported COLUMNS → 0 (no limit) when stdout is not a terminal, so
+// `wayu path list | cat` keeps whole values → ioctl size → 80.
 get_cli_terminal_width :: proc() -> int {
-    // Method 1: COLUMNS env var (set by most shells)
+    // Method 1: COLUMNS env var (an explicit export wins)
     cols_env := os.get_env("COLUMNS", context.temp_allocator)
     if len(cols_env) > 0 {
         cols, ok := strconv.parse_int(cols_env)
@@ -231,6 +208,9 @@ get_cli_terminal_width :: proc() -> int {
             return cols
         }
     }
+
+    // Piped / redirected: never truncate values with '…'.
+    if !is_stdout_tty() { return 0 }
 
     // Method 2: ioctl TIOCGWINSZ (direct syscall, no subprocess)
     ws: winsize
@@ -242,24 +222,6 @@ get_cli_terminal_width :: proc() -> int {
     }
 
     return 80
-}
-// ============================================================================
-// Fish Shell Support for wayu
-// ============================================================================
-
-// Detect if Fish shell is installed and available
-shell_fish_detect :: proc() -> bool {
-    // Check if fish is in PATH
-    return command_exists("fish")
-}
-
-// Get Fish shell version
-shell_fish_get_version :: proc() -> string {
-    version_output := capture_command([]string{"fish", "--version"})
-    if len(version_output) > 0 {
-        return version_output
-    }
-    return "unknown"
 }
 
 // ============================================================================
@@ -327,26 +289,122 @@ shell_single_quote :: proc(s: string, allocator := context.allocator) -> string 
 
 // Double-quote an env value for zsh/bash keeping `$VAR` / `${VAR}` expansion.
 // See the policy comment above for what gets escaped and why.
+//
+// Only references to named variables expand: `$NAME` (emitted as `${NAME}`
+// so zsh never reads a following `:x` / `[i]` as a modifier / subscript) and
+// `${NAME...}` / `${#NAME}` with a matching `}` (its body is escaped the same
+// way, so `${X:-$(cmd)}` stays inert). Every other `$` is literal: `$(`,
+// `$1`, `$$`, a trailing `$`, an unclosed `${` (a syntax error that used to
+// break the whole generated file) and zsh flags such as `${(e)...}` (which
+// would evaluate its text, running commands).
 shell_double_quote_env :: proc(s: string, allocator := context.allocator) -> string {
     sb := strings.builder_make(allocator)
     strings.write_byte(&sb, '"')
-    for i in 0..<len(s) {
+    write_env_dq_body(&sb, s)
+    strings.write_byte(&sb, '"')
+    return strings.to_string(sb)
+}
+
+@(private = "file")
+write_env_dq_body :: proc(sb: ^strings.Builder, s: string) {
+    i := 0
+    for i < len(s) {
         c := s[i]
         switch c {
         case '"', '\\', '`':
-            strings.write_byte(&sb, '\\')
-            strings.write_byte(&sb, c)
+            strings.write_byte(sb, '\\')
+            strings.write_byte(sb, c)
+            i += 1
+            continue
         case '$':
-            if i + 1 < len(s) && s[i+1] == '(' {
-                strings.write_byte(&sb, '\\')
+            if n := var_name_prefix_len(s[i+1:]); n > 0 {
+                strings.write_string(sb, "${")
+                strings.write_string(sb, s[i+1:i+1+n])
+                strings.write_byte(sb, '}')
+                i += 1 + n
+                continue
             }
-            strings.write_byte(&sb, c)
-        case:
-            strings.write_byte(&sb, c)
+            if i + 1 < len(s) && s[i+1] == '{' {
+                inner := s[i+2:]
+                lead := 1 if len(inner) > 0 && inner[0] == '#' else 0
+                n := var_name_prefix_len(inner[lead:])
+                close := matching_brace(inner)
+                if n > 0 && close >= lead + n && env_brace_op_is_safe(inner[lead+n:close], lead == 1) {
+                    strings.write_string(sb, "${")
+                    strings.write_string(sb, inner[:lead+n])
+                    write_env_dq_body(sb, inner[lead+n:close])
+                    strings.write_byte(sb, '}')
+                    i += 2 + close + 1
+                    continue
+                }
+            }
+            strings.write_string(sb, `\$`)
+            i += 1
+            continue
+        }
+        strings.write_byte(sb, c)
+        i += 1
+    }
+}
+
+// The text after NAME inside `${NAME...}` may expand only when it starts
+// with an operator that is valid in both zsh and bash and never evaluates
+// text: default/assign/alternate/error (`-` `=` `+` `?`, with or without a
+// leading `:`), prefix/suffix removal (`#` `%`) and substitution (`/`).
+// Everything else stays literal: bash `${X@P}` (4.4+) prompt-expands X's
+// value and runs a `$(...)` stored in it; `${X[Y]}` and `${X:Y}` evaluate Y
+// arithmetically, which runs `$(...)` hidden in Y's value (bash), and
+// `${X:Y}` / `${X^}` abort sourcing in zsh (unknown modifier / bad
+// substitution). `${#NAME}` takes no operator.
+env_brace_op_is_safe :: proc(body: string, is_length: bool) -> bool {
+    if len(body) == 0 { return true }
+    if is_length { return false }
+    op := body[0]
+    if op == ':' {
+        if len(body) < 2 { return false }
+        op = body[1]
+        return op == '-' || op == '=' || op == '+' || op == '?'
+    }
+    switch op {
+    case '-', '=', '+', '?', '#', '%', '/':
+        return true
+    }
+    return false
+}
+
+// Length of the variable name ([A-Za-z_][A-Za-z0-9_]*) at the start of s, or 0.
+var_name_prefix_len :: proc(s: string) -> int {
+    n := 0
+    for n < len(s) {
+        c := s[n]
+        alpha := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+        digit := c >= '0' && c <= '9'
+        if !alpha && !(digit && n > 0) { break }
+        n += 1
+    }
+    return n
+}
+
+// Index in s (the text after a `${`) of the `}` closing it, counting nested
+// `${`; a backslash skips the next byte. -1 when unbalanced.
+@(private = "file")
+matching_brace :: proc(s: string) -> int {
+    depth := 0
+    for j := 0; j < len(s); j += 1 {
+        switch s[j] {
+        case '\\':
+            j += 1
+        case '$':
+            if j + 1 < len(s) && s[j+1] == '{' {
+                depth += 1
+                j += 1
+            }
+        case '}':
+            if depth == 0 { return j }
+            depth -= 1
         }
     }
-    strings.write_byte(&sb, '"')
-    return strings.to_string(sb)
+    return -1
 }
 
 // Double-quote a fully literal value for zsh/bash (no expansion of any kind).
@@ -366,25 +424,48 @@ shell_double_quote_literal :: proc(s: string, allocator := context.allocator) ->
 }
 
 // Double-quote an env value for fish keeping `$VAR` expansion. Inside fish
-// double quotes only `\"`, `\$`, `\\` are escapes; `$(` is command
-// substitution since fish 3.4, so it is neutralised like in bash/zsh.
+// double quotes only `\"`, `\$`, `\\` are escapes. `$NAME` and `${NAME}`
+// expand (as `$NAME`, followed by `""` when a name character, a non-ASCII
+// byte or `[` comes next, so fish doesn't read a longer name or an index).
+// Every other `$` is literal: fish rejects `${`, `$$`, `$1`, a trailing `$`
+// … at parse time, which used to make the whole core.fish fail to load, and
+// `$(` is command substitution since fish 3.4. `${NAME:-x}` has no fish
+// equivalent: literal.
 fish_double_quote_env :: proc(s: string, allocator := context.allocator) -> string {
     sb := strings.builder_make(allocator)
     strings.write_byte(&sb, '"')
-    for i in 0..<len(s) {
+    i := 0
+    for i < len(s) {
         c := s[i]
         switch c {
         case '"', '\\':
             strings.write_byte(&sb, '\\')
-            strings.write_byte(&sb, c)
         case '$':
-            if i + 1 < len(s) && s[i+1] == '(' {
-                strings.write_byte(&sb, '\\')
+            // `$NAME` or `${NAME}`: name = s[start:start+n], next byte at `end`.
+            start := i + 1
+            braced := start < len(s) && s[start] == '{'
+            if braced { start += 1 }
+            n := var_name_prefix_len(s[start:])
+            end := start + n
+            if braced {
+                if end < len(s) && s[end] == '}' { end += 1 } else { n = 0 }
             }
-            strings.write_byte(&sb, c)
-        case:
-            strings.write_byte(&sb, c)
+            if n == 0 {
+                strings.write_string(&sb, `\$`)
+                i += 1
+                continue
+            }
+            strings.write_byte(&sb, '$')
+            strings.write_string(&sb, s[start:start+n])
+            // fish names also take non-ASCII letters (`$Xé` reads `Xé`).
+            if end < len(s) && (var_name_prefix_len(s[end:end+1]) > 0 || (s[end] >= '0' && s[end] <= '9') || s[end] == '[' || s[end] >= 0x80) {
+                strings.write_string(&sb, `""`)
+            }
+            i = end
+            continue
         }
+        strings.write_byte(&sb, c)
+        i += 1
     }
     strings.write_byte(&sb, '"')
     return strings.to_string(sb)
@@ -442,139 +523,6 @@ command_exists :: proc(cmd: string) -> bool {
 // Fish Config File Operations
 // ============================================================================
 
-// Write Fish config to file
-shell_fish_write_config :: proc(file_path: string, content: string) -> bool {
-    if wayu.dry_run {
-        fmt.printfln("[DRY-RUN] Would write Fish config to: %s", file_path)
-        return true
-    }
-
-    // Create backup before writing
-    backup_path, ok := create_backup(file_path)
-    defer if ok do delete(backup_path)
-
-    err := write_file_atomic(file_path, transmute([]byte)content)
-    return err == nil
-}
-
-// Read and parse Fish config file
-shell_fish_read_config :: proc(file_path: string) -> (TomlConfig, bool) {
-    config := TomlConfig{}
-
-    if !os.exists(file_path) {
-        return config, false
-    }
-
-    content_bytes, err := os.read_entire_file_from_path(file_path, context.allocator)
-    if err != nil {
-        return config, false
-    }
-    defer delete(content_bytes)
-
-    content := string(content_bytes)
-
-    // Use temp dynamic arrays for building up the config
-    constants_dyn := make([dynamic]TomlConstant)
-    aliases_dyn := make([dynamic]TomlAlias)
-    path_entries_dyn := make([dynamic]string)
-
-    // Parse Fish set statements for constants
-    lines := strings.split(content, "\n")
-    defer delete(lines)
-
-    for line in lines {
-        line_trimmed := strings.trim_space(line)
-
-        // Parse: set -gx NAME value
-        if strings.has_prefix(line_trimmed, "set -gx ") {
-            parts := strings.split(line_trimmed, " ")
-            defer delete(parts)
-            if len(parts) >= 4 {
-                name := parts[2]
-                value := strings.join(parts[3:], " ")
-                defer delete(value)
-
-                // Remove quotes if present
-                if strings.has_prefix(value, "'") && strings.has_suffix(value, "'") {
-                    value = value[1:len(value)-1]
-                } else if strings.has_prefix(value, "\"") && strings.has_suffix(value, "\"") {
-                    value = value[1:len(value)-1]
-                }
-
-                append(&constants_dyn, TomlConstant{
-                    name = strings.clone(name),
-                    value = strings.clone(value),
-                    export = true,
-                })
-            }
-        }
-
-        // Parse: alias name 'command'
-        if strings.has_prefix(line_trimmed, "alias ") {
-            // Extract alias name and command
-            // Format: alias name 'command' or alias name "command"
-            alias_rest := strings.trim_prefix(line_trimmed, "alias ")
-
-            // Find first space or quote
-            space_idx := strings.index_byte(alias_rest, ' ')
-            if space_idx > 0 {
-                name := alias_rest[:space_idx]
-                command := strings.trim_space(alias_rest[space_idx:])
-
-                // Remove surrounding quotes
-                if (strings.has_prefix(command, "'") && strings.has_suffix(command, "'")) ||
-                   (strings.has_prefix(command, "\"") && strings.has_suffix(command, "\"")) {
-                    command = command[1:len(command)-1]
-                }
-
-                append(&aliases_dyn, TomlAlias{
-                    name = strings.clone(name),
-                    command = strings.clone(command),
-                })
-            }
-        }
-
-        // Parse: set -a WAYU_PATHS value (or set -gx WAYU_PATHS entries)
-        if strings.contains(line_trimmed, "WAYU_PATHS") {
-            // Extract PATH entries
-            if strings.has_prefix(line_trimmed, "set -a WAYU_PATHS ") {
-                entry := strings.trim_prefix(line_trimmed, "set -a WAYU_PATHS ")
-                entry = strings.trim_space(entry)
-                // Remove quotes
-                if (strings.has_prefix(entry, "'") && strings.has_suffix(entry, "'")) ||
-                   (strings.has_prefix(entry, "\"") && strings.has_suffix(entry, "\"")) {
-                    entry = entry[1:len(entry)-1]
-                }
-                append(&path_entries_dyn, strings.clone(entry))
-            }
-        }
-    }
-
-    // Convert dynamic arrays to slices for the config struct
-    config.constants = constants_dyn[:]
-    config.aliases = aliases_dyn[:]
-    config.path.entries = path_entries_dyn[:]
-
-    return config, true
-}
-
-// Shell of the parent process. `build eval` output is eval'd by its parent
-// (the command-substitution subshell), so this is the shell that will run the
-// generated code — unlike $SHELL, which sudo resets to root's /bin/sh and a
-// bash started from zsh leaves as zsh. UNKNOWN when it can't be determined
-// or the parent isn't zsh/bash/fish (e.g. bash invoked as `sh`).
-detect_parent_shell :: proc() -> ShellType {
-    name := parent_process_name()
-    name = strings.trim_prefix(name, "-") // login shells report "-zsh"
-    if slash := strings.last_index_byte(name, '/'); slash >= 0 { name = name[slash + 1:] }
-    switch name {
-    case "zsh":  return .ZSH
-    case "bash": return .BASH
-    case "fish": return .FISH
-    }
-    return .UNKNOWN
-}
-
 when ODIN_OS == .Darwin {
     foreign import libsys "system:c"
     foreign libsys {
@@ -599,37 +547,11 @@ parent_process_name :: proc() -> string {
     }
 }
 
-// True when running as root on a config dir owned by another user (e.g. a
-// `sudo zsh` that still sources the user's .zshenv). Writing there would leave
-// root-owned generated files in the user's config.
-running_as_root_on_user_config :: proc(dir: string) -> bool {
-    if posix.geteuid() != 0 { return false }
-    st: posix.stat_t
-    cdir := strings.clone_to_cstring(dir, context.temp_allocator)
-    if posix.stat(cdir, &st) != .OK { return false }
-    return st.st_uid != 0
-}
-
 // Set by `--shell`: an explicit choice that auto-detection must not override.
 shell_flag_given := false
 
-// Switch the active shell and its per-shell filenames (static strings, no
-// allocation). UNKNOWN keeps zsh filenames, as at startup.
+// Switch the active shell.
 set_active_shell :: proc(s: ShellType) {
     wayu.shell = s
     wayu.shell_ext = get_shell_extension(s)
-    switch s {
-    case .BASH:
-        wayu.path_file = "path.bash"; wayu.alias_file = "aliases.bash"
-        wayu.constants_file = "constants.bash"; wayu.init_file = "init.bash"
-        wayu.tools_file = "tools.bash"
-    case .FISH:
-        wayu.path_file = "path.fish"; wayu.alias_file = "aliases.fish"
-        wayu.constants_file = "constants.fish"; wayu.init_file = "init.fish"
-        wayu.tools_file = "tools.fish"
-    case .ZSH, .UNKNOWN:
-        wayu.path_file = "path.zsh"; wayu.alias_file = "aliases.zsh"
-        wayu.constants_file = "constants.zsh"; wayu.init_file = "init.zsh"
-        wayu.tools_file = "tools.zsh"
-    }
 }

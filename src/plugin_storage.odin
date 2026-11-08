@@ -2,10 +2,7 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:slice"
-import "core:sync"
 import "core:strconv"
-import "core:encoding/json"
 handle_plugin_check :: proc(args: []string) {
 	// Hold the config lock across read-modify-write of plugins.json so
 	// concurrent wayu runs cannot drop each other's changes.
@@ -217,12 +214,18 @@ handle_plugin_update :: proc(args: []string) {
 	}
 	defer cleanup_plugin_config_json(&config)
 
-	// Handle empty plugin list
-	if len(config.plugins) == 0 {
+	// Handle empty plugin list (a named update falls through to the miss report)
+	if len(config.plugins) == 0 && update_all {
 		print_info("No plugins installed")
 		fmt.println()
 		fmt.println("Run 'wayu plugin add <name>' to install a plugin")
 		return
+	}
+
+	// Exact name only; a miss exits before anything is printed on stdout.
+	plugin_ptr: ^PluginMetadata
+	if !update_all {
+		plugin_ptr = find_plugin_or_exit(&config, args[0])
 	}
 
 	// Display header
@@ -238,18 +241,6 @@ handle_plugin_update :: proc(args: []string) {
 
 	// Update specific plugin
 	if !update_all {
-		plugin_name := args[0]
-
-		// Find plugin (with fuzzy fallback)
-		plugin_ptr, found := find_plugin_json_fuzzy(&config, plugin_name)
-		
-		if !found {
-			print_error_simple("Plugin '%s' not found", plugin_name)
-			fmt.println()
-			fmt.println("Run 'wayu plugin list' to see installed plugins")
-			os.exit(EXIT_DATAERR)
-		}
-
 		if pinned, ref := plugin_pinned_ref(plugin_ptr); pinned {
 			print_info("Plugin '%s' is pinned to %s — not updating", plugin_ptr.name, ref)
 			fmt.println("Unpin it in plugins.json to follow a branch again")
@@ -413,8 +404,6 @@ PLUGIN_VERBS := [2]PluginVerbForms{
 handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	v := PLUGIN_VERBS[enable ? 1 : 0]
 	action_word     := v.word
-	action_word_cap := v.Word
-	action_ing      := v.ing
 	action_past     := v.past
 	header_text     := v.header
 
@@ -445,18 +434,10 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		os.exit(EXIT_CONFIG)
 	}
 
-	// 3. Find plugin by name (with fuzzy fallback)
-	plugin_ptr, found := find_plugin_json_fuzzy(&config, plugin_name)
-	
-	if !found {
-		cleanup_plugin_config_json(&config)
-		print_error_simple("Plugin '%s' not found", plugin_name)
-		fmt.println()
-		fmt.println("Run 'wayu plugin list' to see installed plugins")
-		os.exit(EXIT_DATAERR)
-	}
+	// 3. Find plugin by exact name (miss: suggestions on stderr, exit 65)
+	plugin_ptr := find_plugin_or_exit(&config, plugin_name)
 
-	// Messages use the resolved name (the arg may have been a fuzzy query).
+	// Messages use the canonical name (the arg may have matched display_name).
 	// Cloned because config is freed before the final messages (proc always exits).
 	plugin_name = strings.clone(plugin_ptr.name)
 
@@ -526,6 +507,8 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	if !enable {
 		fmt.println()
 		fmt.printfln("%sTo re-enable:%s wayu plugin enable %s", get_muted(), RESET, plugin_name)
+	} else if !wayu.dry_run {
+		warn_plugin_conflicts(plugin_name)
 	}
 
 	os.exit(EXIT_SUCCESS)
@@ -589,14 +572,10 @@ handle_plugin_priority :: proc(args: []string) {
 	}
 	defer cleanup_plugin_config_json(&config)
 
-	// 4. Find plugin
-	plugin, found := find_plugin_json_fuzzy(&config, plugin_name)
-	if !found {
-		print_error_simple("Plugin '%s' not found", plugin_name)
-		fmt.println()
-		fmt.println("Use 'wayu plugin list' to see installed plugins")
-		os.exit(EXIT_DATAERR)
-	}
+	// 4. Find plugin by exact name (miss: suggestions on stderr, exit 65).
+	// Messages use the canonical name (the arg may have matched display_name).
+	plugin := find_plugin_or_exit(&config, plugin_name)
+	plugin_name = plugin.name
 
 	if wayu.dry_run {
 		print_info("[DRY RUN] Would set priority of '%s' to %d (current: %d)",
@@ -651,9 +630,41 @@ handle_plugin_add :: proc(args: []string) {
 		print_plugin_add_help()
 		os.exit(EXIT_USAGE)
 	}
+	if args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
+		print_plugin_add_help()
+		return
+	}
 
 	// "<name-or-url>@<sha>" pins the plugin to that commit.
 	name_or_url, pin_commit := split_plugin_commit_pin(args[0])
+
+	// --use GLOB / --use=GLOB (repeatable): the files to load, matched at
+	// the repository root, instead of auto-detection.
+	use_globs := make([dynamic]string, context.temp_allocator)
+	for i := 1; i < len(args); i += 1 {
+		arg := args[i]
+		glob: string
+		if strings.has_prefix(arg, "--use=") {
+			glob = arg[len("--use="):]
+		} else if arg == "--use" {
+			if i + 1 >= len(args) {
+				print_error_simple("--use requires a file name or glob (e.g. --use '*.zsh')")
+				os.exit(EXIT_USAGE)
+			}
+			i += 1
+			glob = args[i]
+		} else {
+			print_error_simple("Unexpected argument '%s'", arg)
+			print_plugin_add_help()
+			os.exit(EXIT_USAGE)
+		}
+		if !is_valid_use_glob(glob) {
+			print_error_simple("Invalid --use value '%s': give a file name or glob at the repository root (no '/')", glob)
+			os.exit(EXIT_USAGE)
+		}
+		append(&use_globs, glob)
+	}
+	from_url := is_valid_git_url(name_or_url)
 
 	// Plugin code is sourced into every shell: never fetch it in plaintext.
 	if is_insecure_git_url(name_or_url) {
@@ -700,9 +711,14 @@ handle_plugin_add :: proc(args: []string) {
 	print_header("Installing Plugin", EMOJI_COMMAND)
 	print_info("Name: %s", info.name)
 	print_info("URL: %s", info.url)
-	print_info("Shell: %s", shell_compat_to_string(info.shell))
+	if !from_url {
+		print_info("Shell: %s", shell_compat_to_string(info.shell))
+	}
 	if pin_commit != "" {
 		print_info("Pinned commit: %s", pin_commit)
+	}
+	if len(use_globs) > 0 {
+		print_info("Load: %s", strings.join(use_globs[:], " ", context.temp_allocator))
 	}
 	fmt.println()
 
@@ -725,21 +741,14 @@ handle_plugin_add :: proc(args: []string) {
 	// Never clean up a directory we did not create.
 	existed_before := os.exists(plugin_path)
 
-	spinner := new_spinner(.Dots)
-	spinner_text(&spinner, "Cloning repository")
-	spinner_start(&spinner)
-
 	success: bool
 	clone_err: string
 	if pin_commit != "" {
 		success, clone_err = git_clone_at_commit(info.url, plugin_path, pin_commit)
 	} else {
-		success = git_clone(info.url, plugin_path)
+		success, clone_err = git_clone(info.url, plugin_path)
 	}
 	defer delete(clone_err)
-
-	spinner_stop(&spinner)
-	delete(spinner.text)
 
 	if !success {
 		if !existed_before {
@@ -754,6 +763,32 @@ handle_plugin_add :: proc(args: []string) {
 
 	if !wayu.dry_run {
 		print_success("Cloned plugin repository")
+
+		// Refuse a plugin that would load nothing: the loader would only
+		// emit a comment while the install claimed success.
+		loadable := plugin_loadable_shells(info.name, plugin_path, use_globs[:])
+		loads := false
+		if from_url {
+			// Custom URL: record the shells it actually has files for, so a
+			// fish-only repo added from zsh (or vice versa) loads where it can.
+			compat, any_shell := shell_compat_from_loadable(loadable)
+			if any_shell {
+				info.shell = compat
+				loads = true
+			}
+			print_info("Shell: %s (detected)", shell_compat_to_string(info.shell))
+		} else {
+			loads = plugin_compat_loads_any(info.shell, loadable)
+		}
+		if !loads {
+			if !existed_before {
+				remove_cloned_plugin_dir(plugin_path, plugins_dir)
+			}
+			print_plugin_nothing_to_load(info, use_globs[:])
+			os.exit(EXIT_DATAERR)
+		}
+	} else if from_url {
+		print_info("Shell: detected after cloning")
 	}
 
 	// Add to config
@@ -779,14 +814,16 @@ handle_plugin_add :: proc(args: []string) {
 		enabled = true,
 		shell = info.shell,
 		installed_path = strings.clone(plugin_path),
-		entry_file = "",  // Will be detected by generate_plugins_file
-		use = make([dynamic]string),  // Empty = auto-detect
+		use = make([dynamic]string),  // Empty = auto-detect (filled below)
 		template = .Source,  // Default loading template
 		git = git_info,
 		dependencies = make([dynamic]string),  // Phase 4: Initialize empty
 		priority = 100,  // Phase 5: Default priority
-		profiles = make([dynamic]string),  // Empty = all profiles
 		conflicts = ConflictInfo{},  // Phase 6: No conflicts yet
+	}
+
+	for glob in use_globs {
+		append(&new_plugin.use, strings.clone(glob))
 	}
 
 	append(&config.plugins, new_plugin)
@@ -841,6 +878,7 @@ handle_plugin_add :: proc(args: []string) {
 	print_success("Plugin '%s' installed successfully", info.name)
 	fmt.println()
 	print_info("Restart your shell or run 'source ~/.%src' to load the plugin", wayu.shell_ext)
+	warn_plugin_conflicts(info.name)
 
 	hook_post_plugin_install(info.name)
 }
@@ -863,173 +901,136 @@ remove_cloned_plugin_dir :: proc(plugin_path: string, plugins_dir: string) -> bo
 // Emit the plugin list as structured JSON. Shape:
 //   { "plugins": [ {"name": ..., "enabled": bool, "priority": N,
 //                   "shell": "zsh|bash|both|fish|any", "url": ...,
-//                   "commit": ..., "installed_path": ...}, ... ],
+//                   "commit": ..., "installed_path": ...,
+//                   "conflicts": [{"kind": "function|alias|env",
+//                                  "name": ..., "with": ...}]}, ... ],
 //     "count": N, "enabled": M }
+// "with" is another plugin or "entries.json" (OKAMI-276).
 print_plugins_json :: proc(config: ^PluginConfigJSON) {
 	enabled_count := 0
 	for plugin in config.plugins {
 		if plugin.enabled { enabled_count += 1 }
 	}
+	conflicts := collect_plugin_conflicts(config)
 
 	fmt.println("{")
 	fmt.println(`  "plugins": [`)
-
 	for plugin, i in config.plugins {
-		if i > 0 { fmt.println(",") }
-		enabled_str := plugin.enabled ? "true" : "false"
-		// `{` is a struct-verb opener in Odin's fmt — emit via %c.
-		fmt.printf(
-			"    %c\"name\": \"%s\", \"enabled\": %s, \"priority\": %d, \"shell\": \"%s\", \"url\": \"%s\", \"commit\": \"%s\", \"installed_path\": \"%s\"%c",
-			'{',
-			plugin.name,
-			enabled_str,
-			plugin.priority,
-			shell_compat_to_string(plugin.shell),
-			plugin.url,
-			plugin.git.commit,
-			plugin.installed_path,
-			'}',
-		)
+		print_plugin_json_row(i, plugin.name, plugin.enabled, plugin.priority,
+			shell_compat_to_string(plugin.shell), plugin.url, plugin.git.commit, plugin.installed_path,
+			conflicts[:])
 	}
+	print_plugins_json_tail(len(config.plugins), enabled_count)
+}
 
-	fmt.println()
+// One element of the "plugins" array. Every string is JSON-escaped so a
+// quote/backslash/control char in a URL or path can't break the document
+// (OKAMI-239).
+@(private = "file")
+print_plugin_json_row :: proc(index: int, name: string, enabled: bool, priority: int,
+	shell, url, commit, installed_path: string, conflicts: []PluginConflict = {}) {
+	if index > 0 { fmt.println(",") }
+	name_j   := json_escape(name);           defer delete(name_j)
+	shell_j  := json_escape(shell);          defer delete(shell_j)
+	url_j    := json_escape(url);            defer delete(url_j)
+	commit_j := json_escape(commit);         defer delete(commit_j)
+	path_j   := json_escape(installed_path); defer delete(path_j)
+	// `{` is a struct-verb opener in Odin's fmt — emit via %c.
+	fmt.printf(
+		"    %c\"name\": \"%s\", \"enabled\": %s, \"priority\": %d, \"shell\": \"%s\", \"url\": \"%s\", \"commit\": \"%s\", \"installed_path\": \"%s\", \"conflicts\": [",
+		'{', name_j, enabled ? "true" : "false", priority, shell_j, url_j, commit_j, path_j,
+	)
+	n := 0
+	for c in conflicts {
+		other := ""
+		if c.plugin == name { other = c.other } else if c.other == name { other = c.plugin } else { continue }
+		cname_j := json_escape(c.name); defer delete(cname_j)
+		with_j  := json_escape(other);  defer delete(with_j)
+		fmt.printf("%s%c\"kind\": \"%s\", \"name\": \"%s\", \"with\": \"%s\"%c",
+			n > 0 ? ", " : "", '{', c.kind, cname_j, with_j, '}')
+		n += 1
+	}
+	fmt.printf("]%c", '}')
+}
+
+@(private = "file")
+print_plugins_json_tail :: proc(count, enabled_count: int) {
+	if count > 0 { fmt.println() }
 	fmt.println("  ],")
-	fmt.printfln("  \"count\": %d,", len(config.plugins))
+	fmt.printfln("  \"count\": %d,", count)
 	fmt.printfln("  \"enabled\": %d", enabled_count)
 	fmt.println("}")
 }
 
 // Handle plugin list command
 handle_plugin_list :: proc(args: []string) {
-	// Run migration if needed
-	if !migrate_plugin_config() {
+	// Read from JSON5 config
+	config, ok := read_plugin_config_json()
+	if !ok {
 		os.exit(EXIT_CONFIG)
 	}
+	defer cleanup_plugin_config_json(&config)
 
-	// Use JSON5 config if it exists, otherwise fall back to old format
-	json_file := get_plugins_json_config_file()
-	defer delete(json_file)
+	if wayu.json_output {
+		print_plugins_json(&config)
+		return
+	}
 
-	use_json := os.exists(json_file)
+	if len(config.plugins) == 0 {
+		print_info("No plugins installed")
+		fmt.println("\nRun 'wayu plugin add <name>' to install a plugin")
+		return
+	}
 
-	if use_json {
-		// Read from JSON5 config
-		config, ok := read_plugin_config_json()
-		if !ok {
-			os.exit(EXIT_CONFIG)
+	print_header("Installed Plugins", EMOJI_COMMAND)
+	fmt.println()
+
+	// Create table
+	table := new_table([]string{"Name", "Status", "Priority", "Shell", "URL"})
+	defer delete(table.rows)
+
+	for plugin in config.plugins {
+		status := plugin.enabled ? "✓ Active" : "○ Disabled"
+		priority_str := fmt.aprintf("%d", plugin.priority)
+		shell_str := shell_compat_to_string(plugin.shell)
+
+		// Truncate URL for display
+		url_display := plugin.url
+		if len(url_display) > 40 {
+			url_display = fmt.aprintf("%s...", plugin.url[:37])
 		}
-		defer cleanup_plugin_config_json(&config)
 
-		if wayu.json_output {
-			print_plugins_json(&config)
-			return
+		row := []string{plugin.name, status, priority_str, shell_str, url_display}
+		table_add_row(&table, row)
+		delete(priority_str)
+
+		if len(url_display) > 40 {
+			delete(url_display)
 		}
+	}
 
-		if len(config.plugins) == 0 {
-			print_info("No plugins installed")
-			fmt.println("\nRun 'wayu plugin add <name>' to install a plugin")
-			return
+	output := table_render(table, get_cli_terminal_width())
+	defer delete(output)
+	fmt.print(output)
+
+	fmt.println()
+	enabled_count := 0
+	for plugin in config.plugins {
+		if plugin.enabled {
+			enabled_count += 1
 		}
+	}
 
-		print_header("Installed Plugins", EMOJI_COMMAND)
+	print_info("%d plugins installed (%d enabled)", len(config.plugins), enabled_count)
+
+	// Conflicts between enabled plugins / with wayu.toml (OKAMI-276).
+	conflicts := collect_plugin_conflicts(&config)
+	if len(conflicts) > 0 {
 		fmt.println()
-
-		// Create table
-		table := new_table([]string{"Name", "Status", "Priority", "Shell", "URL"})
-		defer delete(table.rows)
-
-		for plugin in config.plugins {
-			status := plugin.enabled ? "✓ Active" : "○ Disabled"
-			priority_str := fmt.aprintf("%d", plugin.priority)
-			shell_str := shell_compat_to_string(plugin.shell)
-
-			// Truncate URL for display
-			url_display := plugin.url
-			if len(url_display) > 40 {
-				url_display = fmt.aprintf("%s...", plugin.url[:37])
-			}
-
-			row := []string{plugin.name, status, priority_str, shell_str, url_display}
-			table_add_row(&table, row)
-			delete(priority_str)
-
-			if len(url_display) > 40 {
-				delete(url_display)
-			}
+		print_warning("%d conflict(s); the definition loaded last wins:", len(conflicts))
+		for c in conflicts {
+			fmt.eprintfln("    %s: %s %s (also defined by %s)", c.plugin, c.kind, c.name, c.other)
 		}
-
-		output := table_render(table, get_cli_terminal_width())
-		defer delete(output)
-		fmt.print(output)
-
-		fmt.println()
-		enabled_count := 0
-		for plugin in config.plugins {
-			if plugin.enabled {
-				enabled_count += 1
-			}
-		}
-
-		print_info("%d plugins installed (%d enabled)", len(config.plugins), enabled_count)
-	} else {
-		// Fall back to old format (for backward compatibility during transition)
-		config := read_plugin_config()
-		defer {
-			for plugin in config.plugins {
-				delete(plugin.name)
-				delete(plugin.url)
-				delete(plugin.installed_path)
-				delete(plugin.entry_file)
-			}
-			delete(config.plugins)
-		}
-
-		if len(config.plugins) == 0 {
-			print_info("No plugins installed")
-			fmt.println("\nRun 'wayu plugin add <name>' to install a plugin")
-			return
-		}
-
-		print_header("Installed Plugins", EMOJI_COMMAND)
-		fmt.println()
-
-		// Create table (old format fallback - priority defaults to 100)
-		table := new_table([]string{"Name", "Status", "Priority", "Shell", "URL"})
-		defer delete(table.rows)
-
-		for plugin in config.plugins {
-			status := plugin.enabled ? "✓ Active" : "○ Disabled"
-			priority_str := fmt.aprintf("%d", 100)  // Old format doesn't have priority field
-			shell_str := shell_compat_to_string(plugin.shell)
-
-			// Truncate URL for display
-			url_display := plugin.url
-			if len(url_display) > 40 {
-				url_display = fmt.aprintf("%s...", plugin.url[:37])
-			}
-
-			row := []string{plugin.name, status, priority_str, shell_str, url_display}
-			table_add_row(&table, row)
-			delete(priority_str)
-
-			if len(url_display) > 40 {
-				delete(url_display)
-			}
-		}
-
-		output := table_render(table, get_cli_terminal_width())
-		defer delete(output)
-		fmt.print(output)
-
-		fmt.println()
-		enabled_count := 0
-		for plugin in config.plugins {
-			if plugin.enabled {
-				enabled_count += 1
-			}
-		}
-
-		print_info("%d plugins installed (%d enabled)", len(config.plugins), enabled_count)
 	}
 }
 
@@ -1048,7 +1049,8 @@ handle_plugin_remove :: proc(args: []string) {
 	}
 	defer cleanup_plugin_config_json(&config)
 
-	if len(config.plugins) == 0 {
+	// A named rm on an empty list falls through to the miss report (exit 65).
+	if len(config.plugins) == 0 && len(args) == 0 {
 		print_info("No plugins installed")
 		return
 	}
@@ -1070,16 +1072,8 @@ handle_plugin_remove :: proc(args: []string) {
 	arg_name := args[0]
 
 	// Exact match only: removal is destructive, so a fuzzy guess must never
-	// pick the target. Offer suggestions instead.
-	plugin_ptr, found := find_plugin_json(&config, arg_name)
-	if !found {
-		if print_plugin_suggestions(&config, arg_name) {
-			print_error_simple("Plugin '%s' not found", arg_name)
-			os.exit(EXIT_DATAERR)
-		}
-		print_info("Plugin '%s' not found (already removed)", arg_name)
-		os.exit(EXIT_SUCCESS)
-	}
+	// pick the target (miss: suggestions on stderr, exit 65).
+	plugin_ptr := find_plugin_or_exit(&config, arg_name)
 
 	// From here on use the canonical name (arg may have matched display_name).
 	// Cloned: the config entry is freed before the final message.
@@ -1233,13 +1227,8 @@ handle_plugin_get :: proc(args: []string) {
 	}
 	defer cleanup_plugin_config_json(&config)
 
-	// Find plugin
-	plugin_ptr, found := find_plugin_json_fuzzy(&config, plugin_name)
-	if !found {
-		print_error_simple("Plugin '%s' not found", plugin_name)
-		fmt.println("\nRun 'wayu plugin list' to see installed plugins")
-		os.exit(EXIT_DATAERR)
-	}
+	// Find plugin by exact name (miss: suggestions on stderr, exit 65)
+	plugin_ptr := find_plugin_or_exit(&config, plugin_name)
 
 	// Display plugin information
 	print_header("Plugin Information", EMOJI_COMMAND)
@@ -1391,5 +1380,4 @@ handle_plugin_search :: proc(args: []string) {
 	fmt.printfln("%sTo install:%s wayu plugin add <key>", get_muted(), RESET)
 	fmt.printfln("%sFilter by category:%s wayu plugin search --category <cat>", get_muted(), RESET)
 }
-
 

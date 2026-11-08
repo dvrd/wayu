@@ -29,6 +29,7 @@ class ValidationIntegrationTest
       test_alias_valid_input
       test_constant_valid_input
       test_path_valid_input
+      test_toml_validate_unknown_keys
     ensure
       teardown_test_env
     end
@@ -101,21 +102,18 @@ class ValidationIntegrationTest
 
   # OKAMI-214: ':' splits into extra (even relative '.') PATH entries; a
   # newline breaks generated files. Both must be rejected by `path add`, and
-  # a hand-edited [paths] value with ':' must never reach PATH.
+  # a hand-edited entries.json dir with ':' must never reach PATH.
   def test_path_rejects_separator
-    print "Test: Reject ':' and newline in PATH entries (CLI + hand-edited TOML)... "
+    print "Test: Reject ':' and newline in PATH entries (CLI + hand-edited store)... "
     colon = "#{@tmp_home}/co:lon"
     dot = "#{@tmp_home}/a:."
     nl = "#{@tmp_home}/new\nline"
     [colon, dot, nl].each { |d| FileUtils.mkdir_p(d) }
     env = ENV.to_h.merge('HOME' => @tmp_home)
     codes = [colon, dot, nl].map { |d| Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'add', d)[2].exitstatus }
-    toml_file = "#{@config_dir}/wayu.toml"
-    toml = File.read(toml_file)
-    stored = toml.include?('co:lon') || toml.include?('a:.')
-    toml = toml.include?('[paths]') ? toml.sub('[paths]', "[paths]\nhand = \"#{dot}\"") : toml + "\n[paths]\nhand = \"#{dot}\"\n"
-    File.write(toml_file, toml)
-    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'build', 'eval')
+    stored = store_map('paths').values.any? { |d| d.include?('co:lon') || d.include?('a:.') }
+    write_entries(paths: { 'hand' => dot }.merge(store_map('paths')), aliases: store_map('aliases'), env: store_map('env'))
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'build')
     sync = File.exist?("#{@data_dir}/path_sync.zsh") ? File.read("#{@data_dir}/path_sync.zsh") : ''
     out, = Open3.capture3(env, 'zsh', '-fc', ". '#{@data_dir}/core.zsh' >/dev/null 2>&1; print -rl -- $path")
     bad_entry = out.lines.map(&:chomp).any? { |l| ['.', "#{@tmp_home}/a", "#{@tmp_home}/co"].include?(l) }
@@ -129,11 +127,41 @@ class ValidationIntegrationTest
     end
   end
 
+  # Keys wayu does not read are warnings (exit 0); a table in the wrong
+  # shape ([[paths]], the 3.x schema) is an error (exit 65), no migration hint.
+  def test_toml_validate_unknown_keys
+    print "Test: toml validate warns on unknown keys, rejects [[paths]] / [paths]... "
+    toml_file = "#{@config_dir}/wayu.toml"
+    before = File.read(toml_file)
+    File.write(toml_file, "[shell]\ntype = \"zsh\"\n\n[settings]\nauto_backup = true\n\n[constants]\nX = \"1\"\n")
+    warn_out, warn_st = run_wayu('toml validate')
+    File.write(toml_file, "[[paths]]\npath = \"/usr/bin\"\n")
+    err_out, err_st = run_wayu('toml validate')
+    File.write(toml_file, "[shell]\ntype = \"zsh\"\n\n[env]\nX = \"1\"\n")
+    moved_out, moved_st = run_wayu('toml validate')
+    File.write(toml_file, before)
+    ok = warn_st.exitstatus == 0 && warn_out.include?('line 5: unknown key settings.auto_backup') &&
+         warn_out.include?('line 7: unknown table [constants]') &&
+         err_st.exitstatus == 65 && err_out.include?("'wayu path add'") && !err_out.include?('migrate') &&
+         moved_st.exitstatus == 65 && moved_out.include?('line 4') && moved_out.include?("'wayu const add'") &&
+         moved_out.include?(@entries_file)
+    if ok
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  warn exit=#{warn_st.exitstatus} out=#{warn_out.strip}"
+      puts "  err exit=#{err_st.exitstatus} out=#{err_out.strip}"
+      puts "  moved exit=#{moved_st.exitstatus} out=#{moved_out.strip}"
+      @failed += 1
+    end
+  end
+
   def test_path_dangerous_chars
     print "Test 5: Sanitize dangerous characters in path... "
 
     # Create a test directory with spaces
-    test_dir = "/tmp/test dir #{Time.now.to_i}"
+    test_dir = "#{@scratch}/test dir"
     Dir.mkdir(test_dir)
 
     begin
@@ -158,7 +186,7 @@ class ValidationIntegrationTest
     print "Test 6: Accept valid alias... "
     output, status = run_wayu('alias add myalias "echo hello"')
 
-    if status.success? && (output.include?("added successfully") || output.include?("Added to wayu.toml"))
+    if status.success? && output.include?("Alias added: myalias")
       puts "✓"
       @passed += 1
     else
@@ -173,7 +201,7 @@ class ValidationIntegrationTest
     print "Test 7: Accept valid constant... "
     output, status = run_wayu('constants add MY_CONSTANT "value123"')
 
-    if status.success? && (output.include?("added successfully") || output.include?("Added to wayu.toml"))
+    if status.success? && output.include?("Constant added: MY_CONSTANT")
       puts "✓"
       @passed += 1
     else
@@ -188,7 +216,7 @@ class ValidationIntegrationTest
     print "Test 8: Accept valid path... "
     output, status = run_wayu('path add /usr/local/bin')
 
-    if status.success? && (output.include?("added successfully") || output.include?("Added to wayu.toml"))
+    if status.success? && output.include?("Added to PATH: /usr/local/bin")
       puts "✓"
       @passed += 1
     else

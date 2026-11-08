@@ -38,9 +38,9 @@ test_validate_identifier_invalid_start :: proc(t: ^testing.T) {
 
 @(test)
 test_validate_identifier_invalid_chars :: proc(t: ^testing.T) {
-	result := wayu.validate_identifier("my-alias", "Alias")
+	result := wayu.validate_identifier("my-alias", "Constant")
 	defer delete(result.error_message)
-	testing.expect(t, !result.valid, "Name with dash should fail")
+	testing.expect(t, !result.valid, "Name with dash should fail unless allowed")
 
 	result2 := wayu.validate_identifier("my.alias", "Alias")
 	defer delete(result2.error_message)
@@ -60,27 +60,6 @@ test_validate_identifier_reserved :: proc(t: ^testing.T) {
 	result2 := wayu.validate_identifier("export", "Constant")
 	defer delete(result2.error_message)
 	testing.expect(t, !result2.valid, "Reserved word 'export' should fail")
-}
-
-@(test)
-test_sanitize_shell_value :: proc(t: ^testing.T) {
-	// Test double quote escaping
-	result := wayu.sanitize_shell_value("echo \"hello\"")
-	expected := "echo \\\"hello\\\""
-	testing.expect_value(t, result, expected)
-	defer delete(result)
-
-	// Test backtick escaping
-	result2 := wayu.sanitize_shell_value("echo `date`")
-	expected2 := "echo \\`date\\`"
-	testing.expect_value(t, result2, expected2)
-	defer delete(result2)
-
-	// Test dollar sign (NOT escaped - allows $1 in aliases)
-	result3 := wayu.sanitize_shell_value("echo $HOME")
-	expected3 := "echo $HOME"
-	testing.expect_value(t, result3, expected3)
-	defer delete(result3)
 }
 
 @(test)
@@ -171,24 +150,20 @@ test_validate_identifier_rejects_non_ascii :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_sanitize_shell_value_user_escapes_cannot_break_out :: proc(t: ^testing.T) {
-	// `\"` used to become `\\"` → literal backslash + string-closing quote.
-	r1 := wayu.sanitize_shell_value(`a\"; rm -rf ~; echo \"b`)
-	defer delete(r1)
-	testing.expect_value(t, r1, `a\"; rm -rf ~; echo \"b`)
+test_validate_alias_allows_inner_hyphen :: proc(t: ^testing.T) {
+	ok := wayu.validate_alias("onlead-logs", "echo hi")
+	defer delete(ok.error_message)
+	testing.expect(t, ok.valid, "alias name with an inner hyphen is valid")
 
-	// `\$(` used to become `\\$(` → command substitution.
-	r2 := wayu.sanitize_shell_value(`x \$(id)`)
-	defer delete(r2)
-	testing.expect_value(t, r2, `x \$(id)`)
+	lead := wayu.validate_alias("-x", "echo hi")
+	defer delete(lead.error_message)
+	testing.expect(t, !lead.valid, "alias name starting with '-' is rejected")
 
-	// A trailing backslash would escape our closing quote.
-	r3 := wayu.sanitize_shell_value(`dir\`)
-	defer delete(r3)
-	testing.expect_value(t, r3, `dir\\`)
+	c := wayu.validate_constant("MY-VAR", "v")
+	defer delete(c.error_message)
+	testing.expect(t, !c.valid, "constant names still reject hyphens")
 
-	// UTF-8 passes through intact.
-	r4 := wayu.sanitize_shell_value("café")
-	defer delete(r4)
-	testing.expect_value(t, r4, "café")
+	f := wayu.validate_identifier("my-fn", "Function")
+	defer delete(f.error_message)
+	testing.expect(t, !f.valid, "function names still reject hyphens")
 }

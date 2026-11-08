@@ -15,8 +15,9 @@ import wayu "../../src"
 test_toml_parse_basic :: proc(t: ^testing.T) {
  content := `
 version = "1.0"
-shell = "zsh"
-wayu_version = "3.4.0"
+
+[shell]
+type = "zsh"
 `
  config, ok := wayu.toml_parse(content)
  defer wayu.cleanup_toml_config(&config)
@@ -27,127 +28,83 @@ wayu_version = "3.4.0"
 }
 
 @(test)
-test_toml_parse_path_config :: proc(t: ^testing.T) {
- content := `
-[paths]
-local_bin = "/usr/local/bin"
-cargo_bin = "$HOME/.cargo/bin"
-`
- config, ok := wayu.toml_parse(content)
- defer wayu.cleanup_toml_config(&config)
-
- testing.expect(t, ok, "Path config parsing should succeed")
- testing.expect(t, len(config.path.entries) == 2, "Should have 2 path entries")
-}
-
-@(test)
-test_toml_parse_aliases :: proc(t: ^testing.T) {
- content := `
-[aliases]
-ll  = "ls -la"
-gcm = "git commit -m"
-`
- config, ok := wayu.toml_parse(content)
- defer wayu.cleanup_toml_config(&config)
-
- testing.expect(t, ok, "Alias parsing should succeed")
- testing.expect(t, len(config.aliases) == 2, "Should have 2 aliases")
- // Map iteration order isn't guaranteed; check by name search.
- found_ll := false
- for a in config.aliases {
-  if a.name == "ll" && a.command == "ls -la" { found_ll = true; break }
- }
- testing.expect(t, found_ll, `Should contain ll = "ls -la"`)
-}
-
-@(test)
-test_toml_parse_constants :: proc(t: ^testing.T) {
- content := `
-[env]
-EDITOR  = "nvim"
-API_KEY = "secret123"
-`
- config, ok := wayu.toml_parse(content)
- defer wayu.cleanup_toml_config(&config)
-
- testing.expect(t, ok, "Env parsing should succeed")
- testing.expect(t, len(config.constants) == 2, "Should have 2 env entries")
- found_editor := false
- for c in config.constants {
-  if c.name == "EDITOR" && c.value == "nvim" && c.export {
-   found_editor = true; break
-  }
- }
- testing.expect(t, found_editor, `Should contain EDITOR = "nvim" (exported)`)
-}
-
-@(test)
-test_toml_parse_plugins :: proc(t: ^testing.T) {
- content := `
-[[plugins]]
-name = "zsh-autosuggestions"
-source = "github:zsh-users/zsh-autosuggestions"
-version = "v0.7.0"
-defer = true
-priority = 50
-
-[[plugins]]
-name = "fast-syntax-highlighting"
-source = "github:zdharma-continuum/fast-syntax-highlighting"
-`
- config, ok := wayu.toml_parse(content)
- defer wayu.cleanup_toml_config(&config)
-
- testing.expect(t, ok, "Plugin parsing should succeed")
- testing.expect(t, len(config.plugins) == 2, "Should have 2 plugins")
- testing.expect(t, config.plugins[0].name == "zsh-autosuggestions", "First plugin name should match")
- testing.expect(t, config.plugins[0].defer_load == true, "First plugin should be deferred")
- testing.expect(t, config.plugins[0].priority == 50, "First plugin priority should be 50")
-}
-
-@(test)
-test_toml_parse_profile :: proc(t: ^testing.T) {
- content := `
-[profile.work]
-condition = "test $WORK_ENV = production"
-
-[profile.work.path]
-entries = ["/work/tools/bin"]
-
-[[profile.work.aliases]]
-name = "work"
-command = "cd /work"
-
-[[profile.work.constants]]
-name = "WORK_ENV"
-value = "production"
-`
- config, ok := wayu.toml_parse(content)
- defer wayu.cleanup_toml_config(&config)
-
- testing.expect(t, ok, "Profile parsing should succeed")
- testing.expect(t, len(config.profiles) == 1, "Should have 1 profile")
-
- profile, found := config.profiles["work"]
- testing.expect(t, found, "Should find 'work' profile")
- testing.expect(t, profile.condition == "test $WORK_ENV = production", "Profile condition should match")
-}
-
-@(test)
 test_toml_parse_settings :: proc(t: ^testing.T) {
  content := `
 [settings]
-auto_backup = true
-fuzzy_fallback = true
-dry_run_default = false
+autosuggestions_accept_keys = ["^Y", "^[[121;5u"]
 `
  config, ok := wayu.toml_parse(content)
  defer wayu.cleanup_toml_config(&config)
 
  testing.expect(t, ok, "Settings parsing should succeed")
- testing.expect(t, config.settings.auto_backup == true, "auto_backup should be true")
- testing.expect(t, config.settings.fuzzy_fallback == true, "fuzzy_fallback should be true")
- testing.expect(t, config.settings.dry_run_default == false, "dry_run_default should be false")
+ testing.expect_value(t, len(config.settings.autosuggestions_accept_keys), 2)
+}
+
+// Keys wayu does not read are reported (warnings) with their line; tables
+// of the wrong shape ([[paths]]) are errors.
+@(test)
+test_toml_schema_issues :: proc(t: ^testing.T) {
+ content := `wayu_version = "3.4.0"
+[shell]
+type = "zsh"
+[settings]
+auto_backup = true
+autosuggestions_accept_keys = ["^Y"]
+[tools]
+zoxide = { args = "init zsh", bogus = 1 }
+[prompt.username]
+style_user = "red"
+format = "x"
+[constants]
+X = "1"
+Y = "2"
+`
+ issues := wayu.toml_content_schema_issues(content)
+ want := []string{
+  "unknown key wayu_version (ignored)",
+  "unknown key settings.auto_backup (ignored)",
+  "unknown key tools.zoxide.bogus (ignored)",
+  "unknown key prompt.username.style_user (ignored)",
+  "unknown table [constants] (ignored)",
+ }
+ want_lines := []int{1, 5, 8, 10, 12}
+ testing.expect_value(t, len(issues), len(want))
+ if len(issues) != len(want) { return }
+ for is, i in issues {
+  testing.expect_value(t, is.msg, want[i])
+  testing.expect_value(t, is.line, want_lines[i])
+  testing.expect(t, !is.is_error)
+ }
+
+ for bad in ([]string{"[[paths]]\npath = \"/usr/bin\"\n", "paths = \"x\"\n", "[[aliases]]\nname = \"ll\"\n"}) {
+  errs := wayu.toml_content_schema_issues(bad)
+  testing.expectf(t, len(errs) > 0 && errs[0].is_error, "%q must be a schema error", bad)
+ }
+
+ clean := wayu.toml_content_schema_issues("version = \"1.0\"\n[tools.atuin]\nkind = \"evalcache\"\n[prompt]\nenabled = true\n[prompt.contexts]\ngo = { format = \"go\", detect = [\"go.mod\"] }\n[prompt.interactive]\nasync_rprompt = false\n")
+ testing.expectf(t, len(clean) == 0, "known keys must not be reported: %v", clean)
+}
+
+// [paths]/[aliases]/[env] live in entries.json: in wayu.toml they are schema
+// errors that name the command which manages them.
+@(test)
+test_toml_moved_tables_are_errors :: proc(t: ^testing.T) {
+ Case :: struct { src, cmd: string, line: int }
+ cases := []Case{
+  {"[shell]\ntype = \"zsh\"\n[paths]\nx = \"/x\"\n", "wayu path add", 3},
+  {"[aliases]\nll = \"ls -la\"\n", "wayu alias add", 1},
+  {"[env]\nEDITOR = \"vim\"\n", "wayu const add", 1},
+  {"env = { A = \"1\" }\n", "wayu const add", 1},
+ }
+ for c in cases {
+  issues := wayu.toml_content_schema_issues(c.src)
+  testing.expectf(t, len(issues) == 1, "%q: %v", c.src, issues)
+  if len(issues) != 1 { continue }
+  testing.expectf(t, issues[0].is_error, "%q must be an error", c.src)
+  testing.expect_value(t, issues[0].line, c.line)
+  testing.expectf(t, strings.contains(issues[0].msg, c.cmd), "%q: %s", c.src, issues[0].msg)
+  testing.expectf(t, strings.contains(issues[0].msg, "entries.json"), "%q: %s", c.src, issues[0].msg)
+ }
 }
 
 // ============================================================================
@@ -158,10 +115,9 @@ dry_run_default = false
 test_toml_validate_valid_config :: proc(t: ^testing.T) {
  content := `
 version = "1.0"
-shell = "zsh"
 
-[aliases]
-ll = "ls -la"
+[shell]
+type = "zsh"
 `
  config, ok := wayu.toml_parse(content)
  defer wayu.cleanup_toml_config(&config)
@@ -178,7 +134,9 @@ ll = "ls -la"
 test_toml_validate_invalid_shell :: proc(t: ^testing.T) {
  content := `
 version = "1.0"
-shell = "invalid_shell"
+
+[shell]
+type = "invalid_shell"
 `
  config, ok := wayu.toml_parse(content)
  defer wayu.cleanup_toml_config(&config)
@@ -191,23 +149,48 @@ shell = "invalid_shell"
  testing.expect(t, !result.valid, "Invalid shell should fail validation")
 }
 
+// OKAMI-277 (CFG-23): the scaffold's `[shell] type` is what gets validated,
+// case-insensitively (pre-6.0 scaffolds wrote "ZSH" / "Bash").
 @(test)
-test_toml_validate_invalid_alias :: proc(t: ^testing.T) {
- content := `
-version = "1.0"
+test_toml_shell_type_table_is_read_and_validated :: proc(t: ^testing.T) {
+ cases := []struct{ value, want: string, valid: bool }{
+  {"zsh", "zsh", true},
+  {"ZSH", "zsh", true},
+  {"Bash", "bash", true},
+  {"fish", "fish", true},
+  {"tcsh", "tcsh", false},
+ }
+ for c in cases {
+  content := fmt.aprintf("[shell]\ntype = \"%s\"\n", c.value)
+  defer delete(content)
+  config, ok := wayu.toml_parse(content)
+  defer wayu.cleanup_toml_config(&config)
+  testing.expect(t, ok, "Parsing should succeed")
+  testing.expect_value(t, config.shell, c.want)
 
-[aliases]
-if = "echo test"
-`
- config, ok := wayu.toml_parse(content)
- defer wayu.cleanup_toml_config(&config)
+  result := wayu.toml_validate(config)
+  defer if result.error_message != "" do delete(result.error_message)
+  testing.expectf(t, result.valid == c.valid, "[shell] type = %q: valid=%v", c.value, result.valid)
+ }
+}
 
- testing.expect(t, ok, "Parsing should succeed")
+@(test)
+test_wayu_toml_scaffold_uses_lowercase_shell_type :: proc(t: ^testing.T) {
+ shells := []wayu.ShellType{.ZSH, .BASH, .FISH, .UNKNOWN}
+ wants := []string{"zsh", "bash", "fish", "zsh"}
+ for s, i in shells {
+  scaffold := wayu.wayu_toml_scaffold(s)
+  defer delete(scaffold)
+  want := fmt.tprintf("[shell]\ntype = \"%s\"\n", wants[i])
+  testing.expectf(t, strings.has_prefix(scaffold, want), "scaffold for %v: %q", s, scaffold)
 
- result := wayu.toml_validate(config)
- defer if result.error_message != "" do delete(result.error_message)
-
- testing.expect(t, !result.valid, "Reserved word alias should fail validation")
+  config, ok := wayu.toml_parse(scaffold)
+  defer wayu.cleanup_toml_config(&config)
+  testing.expect(t, ok, "scaffold must parse")
+  result := wayu.toml_validate(config)
+  defer if result.error_message != "" do delete(result.error_message)
+  testing.expect(t, result.valid, "scaffold must validate")
+ }
 }
 
 @(test)
@@ -225,7 +208,8 @@ test_toml_parse_comments :: proc(t: ^testing.T) {
 version = "1.0"  # inline comment
 
 # Another comment
-shell = "bash"
+[shell]
+type = "bash"  # inline comment
 `
  config, ok := wayu.toml_parse(content)
  defer wayu.cleanup_toml_config(&config)
@@ -252,77 +236,6 @@ test_toml_parse_rejects_malformed_input :: proc(t: ^testing.T) {
   defer wayu.cleanup_toml_config(&config)
   testing.expect(t, !ok, fmt.tprintf("Malformed TOML should fail: %s", input))
  }
-}
-
-@(test)
-test_toml_parse_unescapes_basic_strings :: proc(t: ^testing.T) {
- content := "[aliases]\nq = \"echo \\\"hi\\\"\"\n[env]\nMULTI = \"a\\nb\"\nTAB = \"a\\tb\"\nLITERAL = 'a\\nb'\n"
- config, ok := wayu.toml_parse(content)
- defer wayu.cleanup_toml_config(&config)
-
- testing.expect(t, ok, "Escaped TOML strings should parse")
-
- found_alias := false
- for a in config.aliases {
-  if a.name == "q" && a.command == "echo \"hi\"" { found_alias = true; break }
- }
- testing.expect(t, found_alias, "Basic string escaped quotes should unescape")
-
- found_multi := false
- found_tab := false
- found_literal := false
- for c in config.constants {
-  if c.name == "MULTI" && c.value == "a\nb" { found_multi = true }
-  if c.name == "TAB" && c.value == "a\tb" { found_tab = true }
-  if c.name == "LITERAL" && c.value == `a\nb` { found_literal = true }
- }
- testing.expect(t, found_multi, "Basic string \\n should unescape to newline")
- testing.expect(t, found_tab, "Basic string \\t should unescape to tab")
- testing.expect(t, found_literal, "Literal single-quoted string should preserve backslash")
-}
-
-@(test)
-test_toml_parse_escaped_hash_is_not_comment :: proc(t: ^testing.T) {
- content := "[aliases]\nq = \"echo \\\"# not a comment\\\"\" # real comment\n"
- config, ok := wayu.toml_parse(content)
- defer wayu.cleanup_toml_config(&config)
-
- testing.expect(t, ok, "Escaped quote before hash should not break comment stripping")
- testing.expect(t, len(config.aliases) == 1, "Alias should be parsed")
- testing.expect(t, config.aliases[0].command == "echo \"# not a comment\"", "Hash inside escaped quotes should be preserved")
-}
-
-@(test)
-test_toml_profile_keys_survive_after_parse :: proc(t: ^testing.T) {
- config, ok := wayu.toml_parse("[profile.work]\ncondition = \"true\"\n")
- defer wayu.cleanup_toml_config(&config)
- testing.expect(t, ok, "Profile config should parse")
-
- noise := make([]string, 128)
- defer delete(noise)
- for i in 0..<len(noise) {
-  noise[i] = fmt.tprintf("allocation-noise-%d", i)
- }
-
- _, found := config.profiles["work"]
- testing.expect(t, found, "Profile map key should remain valid after parser arena is released")
-}
-
-// Regression: strip_toml_section must NOT prepend bytes to the output.
-// A prior bug used strings.builder_make(len(content)) which pre-filled the
-// builder with len(content) zero bytes, corrupting the head of wayu.toml on
-// every alias/constant write. Guard that the head byte stays '['.
-@(test)
-test_strip_toml_section_no_leading_padding :: proc(t: ^testing.T) {
- content := "[shell]\ntype = \"ZSH\"\n\n[env]\nFOO = \"bar\"\n"
- out := wayu.strip_toml_section(content, "env")
- defer delete(out)
-
- testing.expect(t, len(out) > 0, "stripped output should be non-empty")
- testing.expect(t, out[0] == '[', "stripped output must start with '[' (no padding)")
- testing.expect(t, strings.has_prefix(out, "[shell]"), "head section must be preserved verbatim")
- testing.expect(t, !strings.contains(out, "[env]"), "stripped section must be removed")
- testing.expect(t, !strings.contains_rune(out, rune(0)), "output must contain no NUL bytes")
 }
 
 // ---------------------------------------------------------------------------
@@ -384,31 +297,13 @@ test_unescape_toml_string_utf8 :: proc(t: ^testing.T) {
 	testing.expect_value(t, out3, `\u12`)
 }
 
-@(test)
-test_toml_line_is_section_with_comment :: proc(t: ^testing.T) {
-	testing.expect(t, wayu.toml_line_is_section("[env]", "env"))
-	testing.expect(t, wayu.toml_line_is_section("[env]  # vars", "env"))
-	testing.expect(t, wayu.toml_line_is_section("[ env ]", "env"))
-	testing.expect(t, !wayu.toml_line_is_section("[[env]]", "env"))
-	testing.expect(t, !wayu.toml_line_is_section("[environment]", "env"))
-}
-
-@(test)
-test_strip_toml_section_header_with_comment :: proc(t: ^testing.T) {
-	content := "[aliases]  # c\nll = \"ls\"\n[env]\nA = \"1\"\n"
-	out := wayu.strip_toml_section(content, "aliases")
-	defer delete(out)
-	testing.expect(t, !strings.contains(out, "ll ="), "commented header must be recognised")
-	testing.expect(t, strings.contains(out, "[env]"))
-}
-
 // Regression: toml_parse used a fixed arena capped at 1MB, so a large
-// wayu.toml (thousands of aliases) exhausted it and crashed.
+// wayu.toml exhausted it and crashed.
 @(test)
 test_toml_parse_large_config :: proc(t: ^testing.T) {
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
-	strings.write_string(&b, "[aliases]\n")
+	strings.write_string(&b, "[x]\n")
 	N :: 6000
 	for i in 0..<N {
 		fmt.sbprintf(&b, "a_%d = \"echo some fairly long command number %d with --flags here\"\n", i, i)
@@ -416,5 +311,4 @@ test_toml_parse_large_config :: proc(t: ^testing.T) {
 	config, ok := wayu.toml_parse(strings.to_string(b))
 	defer wayu.cleanup_toml_config(&config)
 	testing.expect(t, ok, "large config must parse")
-	testing.expect_value(t, len(config.aliases), N)
 }

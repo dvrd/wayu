@@ -13,208 +13,6 @@ import "core:strings"
 import wayu "../../src"
 
 // ============================================================================
-// parse_path_line tests (used by both clean and dedup to identify PATH entries)
-// ============================================================================
-
-@(test)
-test_ops_parse_path_line_valid_entry :: proc(t: ^testing.T) {
-	// parse_path_line extracts path from array element format: "  \"/usr/local/bin\""
-	entry, ok := wayu.parse_path_line(`  "/usr/local/bin"`)
-	defer if ok do wayu.cleanup_entry(&entry)
-
-	testing.expect(t, ok, "Should parse valid path line")
-	testing.expect_value(t, entry.name, "/usr/local/bin")
-	testing.expect_value(t, entry.type, wayu.ConfigEntryType.PATH)
-}
-
-@(test)
-test_ops_parse_path_line_with_env_var :: proc(t: ^testing.T) {
-	// Lines with $HOME should be parsed as-is (expansion happens later)
-	entry, ok := wayu.parse_path_line(`  "$HOME/go/bin"`)
-	defer if ok do wayu.cleanup_entry(&entry)
-
-	testing.expect(t, ok, "Should parse path with env var")
-	testing.expect_value(t, entry.name, "$HOME/go/bin")
-}
-
-@(test)
-test_ops_parse_path_line_rejects_comment :: proc(t: ^testing.T) {
-	// Comments should not be parsed as path entries
-	_, ok := wayu.parse_path_line("# This is a comment")
-	testing.expect(t, !ok, "Should reject comment lines")
-}
-
-@(test)
-test_ops_parse_path_line_rejects_array_declaration :: proc(t: ^testing.T) {
-	// The WAYU_PATHS=( line itself should not be parsed as a path
-	_, ok := wayu.parse_path_line("WAYU_PATHS=(")
-	testing.expect(t, !ok, "Should reject array declaration line")
-}
-
-@(test)
-test_ops_parse_path_line_rejects_closing_paren :: proc(t: ^testing.T) {
-	// The closing ) should not be parsed as a path
-	_, ok := wayu.parse_path_line(")")
-	testing.expect(t, !ok, "Should reject closing paren")
-}
-
-@(test)
-test_ops_parse_path_line_rejects_empty_line :: proc(t: ^testing.T) {
-	_, ok := wayu.parse_path_line("")
-	testing.expect(t, !ok, "Should reject empty line")
-}
-
-@(test)
-test_ops_parse_path_line_rejects_unquoted :: proc(t: ^testing.T) {
-	// Unquoted paths should not be parsed
-	_, ok := wayu.parse_path_line("  /usr/local/bin")
-	testing.expect(t, !ok, "Should reject unquoted path")
-}
-
-// ============================================================================
-// format_path_line tests (used when writing back cleaned/deduped entries)
-// ============================================================================
-
-@(test)
-test_ops_format_path_line_basic :: proc(t: ^testing.T) {
-	entry := wayu.ConfigEntry{
-		type = .PATH,
-		name = "/usr/local/bin",
-		value = "",
-		line = "",
-	}
-	result := wayu.format_path_line(entry)
-	defer delete(result)
-
-	testing.expect_value(t, result, `  "/usr/local/bin"`)
-}
-
-@(test)
-test_ops_format_path_line_with_spaces :: proc(t: ^testing.T) {
-	entry := wayu.ConfigEntry{
-		type = .PATH,
-		name = "/path/with spaces/bin",
-		value = "",
-		line = "",
-	}
-	result := wayu.format_path_line(entry)
-	defer delete(result)
-
-	testing.expect_value(t, result, `  "/path/with spaces/bin"`)
-}
-
-@(test)
-test_ops_format_path_line_roundtrip :: proc(t: ^testing.T) {
-	// Format a path, then parse it back - should get the same name
-	original_path := "/opt/homebrew/bin"
-	entry := wayu.ConfigEntry{
-		type = .PATH,
-		name = original_path,
-		value = "",
-		line = "",
-	}
-
-	formatted := wayu.format_path_line(entry)
-	defer delete(formatted)
-
-	parsed, ok := wayu.parse_path_line(formatted)
-	defer if ok do wayu.cleanup_entry(&parsed)
-
-	testing.expect(t, ok, "Should parse formatted line")
-	testing.expect_value(t, parsed.name, original_path)
-}
-
-// ============================================================================
-// PATH array format parsing (full config content)
-// ============================================================================
-
-@(test)
-test_ops_path_array_format_parsing :: proc(t: ^testing.T) {
-	// Test parsing a complete WAYU_PATHS array config
-	test_config := `#!/usr/bin/env zsh
-
-# Centralized PATH registry
-WAYU_PATHS=(
-  "/usr/local/bin"
-  "/opt/homebrew/bin"
-  "$HOME/go/bin"
-)
-
-# Export all paths
-for p in "${WAYU_PATHS[@]}"; do
-  export PATH="$p:$PATH"
-done`
-
-	lines := strings.split(test_config, "\n")
-	defer delete(lines)
-
-	parsed_paths := make([dynamic]string)
-	defer {
-		for p in parsed_paths {
-			delete(p)
-		}
-		delete(parsed_paths)
-	}
-
-	for line in lines {
-		entry, ok := wayu.parse_path_line(line)
-		if ok {
-			append(&parsed_paths, strings.clone(entry.name))
-			wayu.cleanup_entry(&entry)
-		}
-	}
-
-	testing.expect_value(t, len(parsed_paths), 3)
-	testing.expect_value(t, parsed_paths[0], "/usr/local/bin")
-	testing.expect_value(t, parsed_paths[1], "/opt/homebrew/bin")
-	testing.expect_value(t, parsed_paths[2], "$HOME/go/bin")
-}
-
-@(test)
-test_ops_path_array_format_empty :: proc(t: ^testing.T) {
-	// Test parsing an empty WAYU_PATHS array
-	test_config := `#!/usr/bin/env zsh
-WAYU_PATHS=(
-)
-`
-	lines := strings.split(test_config, "\n")
-	defer delete(lines)
-
-	count := 0
-	for line in lines {
-		entry, ok := wayu.parse_path_line(line)
-		if ok {
-			wayu.cleanup_entry(&entry)
-			count += 1
-		}
-	}
-
-	testing.expect_value(t, count, 0)
-}
-
-@(test)
-test_ops_path_array_format_single_entry :: proc(t: ^testing.T) {
-	test_config := `WAYU_PATHS=(
-  "/usr/local/bin"
-)`
-
-	lines := strings.split(test_config, "\n")
-	defer delete(lines)
-
-	count := 0
-	for line in lines {
-		entry, ok := wayu.parse_path_line(line)
-		if ok {
-			defer wayu.cleanup_entry(&entry)
-			testing.expect_value(t, entry.name, "/usr/local/bin")
-			count += 1
-		}
-	}
-
-	testing.expect_value(t, count, 1)
-}
-
-// ============================================================================
 // Duplicate detection logic (algorithm used by remove_duplicate_paths)
 // ============================================================================
 
@@ -314,115 +112,6 @@ test_ops_dedup_detection_all_same :: proc(t: ^testing.T) {
 
 	// 0 matches 1, 0 matches 2, 1 matches 2 => indices 1, 2, 2
 	testing.expect(t, len(duplicate_indices) >= 2, "Should find duplicates for all-same list")
-}
-
-// ============================================================================
-// Duplicate filtering logic (line-by-line filtering used by dedup)
-// ============================================================================
-
-@(test)
-test_ops_dedup_filtering_removes_correct_lines :: proc(t: ^testing.T) {
-	// Simulate the filtering logic from remove_duplicate_paths:
-	// Given a config with duplicates, filter out the duplicate lines
-	test_config := `WAYU_PATHS=(
-  "/usr/local/bin"
-  "/opt/homebrew/bin"
-  "/usr/local/bin"
-)`
-
-	lines := strings.split(test_config, "\n")
-	defer delete(lines)
-
-	// First pass: collect all paths and find duplicates
-	all_paths := make([dynamic]string)
-	defer {
-		for p in all_paths {
-			delete(p)
-		}
-		delete(all_paths)
-	}
-
-	for line in lines {
-		entry, ok := wayu.parse_path_line(line)
-		if ok {
-			append(&all_paths, strings.clone(entry.name))
-			wayu.cleanup_entry(&entry)
-		}
-	}
-
-	// Find duplicate indices
-	duplicate_names := make([dynamic]string)
-	defer {
-		for n in duplicate_names {
-			delete(n)
-		}
-		delete(duplicate_names)
-	}
-
-	for i in 0..<len(all_paths) {
-		for j in i + 1..<len(all_paths) {
-			if all_paths[i] == all_paths[j] {
-				append(&duplicate_names, strings.clone(all_paths[j]))
-			}
-		}
-	}
-
-	// Second pass: filter out duplicates (keep first occurrence)
-	new_lines := make([dynamic]string)
-	defer {
-		for l in new_lines {
-			delete(l)
-		}
-		delete(new_lines)
-	}
-
-	names_to_remove := make([dynamic]string)
-	defer {
-		for n in names_to_remove {
-			delete(n)
-		}
-		delete(names_to_remove)
-	}
-	for n in duplicate_names {
-		append(&names_to_remove, strings.clone(n))
-	}
-
-	for line in lines {
-		entry, ok := wayu.parse_path_line(line)
-		if ok {
-			is_dup := false
-			for name, idx in names_to_remove {
-				if entry.name == name {
-					is_dup = true
-					// Remove from list (only skip once)
-					last_idx := len(names_to_remove) - 1
-					if idx != last_idx {
-						delete(names_to_remove[idx])
-						names_to_remove[idx] = names_to_remove[last_idx]
-					} else {
-						delete(names_to_remove[idx])
-					}
-					resize(&names_to_remove, last_idx)
-					break
-				}
-			}
-			wayu.cleanup_entry(&entry)
-			if is_dup { continue }
-		}
-		append(&new_lines, strings.clone(line))
-	}
-
-	// Count remaining path entries
-	remaining_paths := 0
-	for line in new_lines {
-		entry, ok := wayu.parse_path_line(line)
-		if ok {
-			wayu.cleanup_entry(&entry)
-			remaining_paths += 1
-		}
-	}
-
-	testing.expect_value(t, remaining_paths, 2) // /usr/local/bin (first) + /opt/homebrew/bin
 }
 
 // ============================================================================
@@ -580,4 +269,45 @@ test_ops_alias_spec_no_clean :: proc(t: ^testing.T) {
 test_ops_alias_spec_no_dedup :: proc(t: ^testing.T) {
 	// Verify ALIAS_SPEC does NOT support dedup (only PATH does)
 	testing.expect(t, !wayu.ALIAS_SPEC.has_dedup, "ALIAS_SPEC should not support dedup")
+}
+
+// ============================================================================
+// clean / dedup decision masks (OKAMI-168)
+// ============================================================================
+
+@(test)
+test_ops_clean_mask_keeps_unresolved_and_env_paths :: proc(t: ^testing.T) {
+	existing := os.get_env("HOME", context.temp_allocator)
+	consts := []wayu.ConfigEntry{{type = .CONSTANT, name = "WAYU_OPS_ROOT", value = existing}}
+	entries := []wayu.StorePath{
+		{key = "unset", dir = "$WAYU_OPS_SURELY_UNSET_VAR/bin"}, // unknown → kept
+		{key = "toml_env", dir = "${WAYU_OPS_ROOT}"},           // [env] → exists → kept
+		{key = "gone", dir = "/nonexistent/wayu_ops_clean_gone"},
+		{key = "gone_env", dir = "$WAYU_OPS_ROOT/wayu_ops_clean_gone"},
+	}
+	drop := wayu.path_clean_drop_mask(entries, consts)
+	defer delete(drop)
+	testing.expect_value(t, drop[0], false)
+	testing.expect_value(t, drop[1], false)
+	testing.expect_value(t, drop[2], true)
+	testing.expect_value(t, drop[3], true)
+}
+
+@(test)
+test_ops_dedup_mask_uses_toml_env :: proc(t: ^testing.T) {
+	consts := []wayu.ConfigEntry{{type = .CONSTANT, name = "WAYU_OPS_TOOLS", value = "/opt/tools"}}
+	entries := []wayu.StorePath{
+		{key = "a", dir = "$WAYU_OPS_TOOLS/bin"},
+		{key = "b", dir = "/opt/tools/bin"},                 // same dir via [env]
+		{key = "c", dir = "$WAYU_OPS_SURELY_UNSET_VAR/bin"},
+		{key = "d", dir = "$WAYU_OPS_SURELY_UNSET_VAR/bin"}, // byte-identical unresolved
+		{key = "e", dir = "$WAYU_OPS_SURELY_UNSET_VAR/x"},
+	}
+	drop := wayu.path_dedup_drop_mask(entries, consts)
+	defer delete(drop)
+	testing.expect_value(t, drop[0], false)
+	testing.expect_value(t, drop[1], true)
+	testing.expect_value(t, drop[2], false)
+	testing.expect_value(t, drop[3], true)
+	testing.expect_value(t, drop[4], false)
 }

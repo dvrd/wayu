@@ -6,8 +6,10 @@
 // The current build has two entry points in common:
 //   - `profile_startup_performance()` — run N iterations per scenario,
 //     print a min/mean/max table across (no-rc, wayu-init, turbo, full).
-//   - `render_phase_breakdown_zsh()` — per-phase core.zsh timing,
-//     useful for finding which wayu section costs the most ms at launch.
+//   - `render_phase_breakdown()` — per-unit core.<ext> timing (zsh, bash 5+):
+//     each core section, each [tools] entry (evalcache call or lazy recipe,
+//     all inline in core since OKAMI-284) and each plugin
+//     (from the inlined plugins.<ext>), so the slow tool/plugin is named.
 //
 // Works for Bash/Zsh/Fish; resolves the shell binary via `which <shell>`
 // before falling back to $SHELL.
@@ -70,7 +72,7 @@ profile_startup_performance :: proc() {
 	}
 
 	// Build the two scenarios. Keep command slices alive until after rendering.
-	source_cmd := fmt.aprintf("source %s", core_file)
+	source_cmd := fmt.aprintf("source %s", shell_single_quote(core_file, context.temp_allocator))
 	defer delete(source_cmd)
 
 	scenarios := []ProfileSample{
@@ -99,12 +101,11 @@ profile_startup_performance :: proc() {
 		render_profile_sample(scenario)
 	}
 
-	// Per-phase breakdown — only implemented for zsh since it relies on
-	// $EPOCHREALTIME (microsecond-precision builtin). bash 5+ has it too but
-	// macOS ships bash 3.2; fish has no equivalent portable primitive. Users
-	// of those shells still get the two-scenario totals above.
-	if wayu.shell == .ZSH && os.exists(core_file) {
-		render_phase_breakdown_zsh(shell_bin, core_file)
+	// Per-unit breakdown — needs $EPOCHREALTIME (microsecond-precision):
+	// zsh (zsh/datetime) and bash 5+; macOS ships bash 3.2, and fish has no
+	// equivalent portable primitive. Those still get the totals above.
+	if (wayu.shell == .ZSH || wayu.shell == .BASH) && os.exists(core_file) {
+		render_phase_breakdown(shell_bin, core_file, wayu.shell)
 	}
 
 	fmt.println()
@@ -112,33 +113,33 @@ profile_startup_performance :: proc() {
 	fmt.println("  • 'core' is what wayu itself costs; aim for <10ms.")
 	fmt.println("  • 'interactive shell' includes wayu + shell rc + any user hooks.")
 	fmt.println("  • Difference ≈ shell/builtin overhead (compinit, rcfile, etc.).")
-	if wayu.shell == .ZSH {
-		fmt.println("  • Phase breakdown marks where the core time is spent.")
+	if wayu.shell == .ZSH || wayu.shell == .BASH {
+		fmt.println("  • Phase breakdown marks where the core time is spent: per section,")
+		fmt.println("    per [tools] entry ('tool …') and per plugin ('plugin …').")
 	}
 	fmt.println()
 	print_section("Next steps", EMOJI_ACTION)
-	fmt.println("  wayu export           Generate turbo.{ext} (compiled, 2-4x faster)")
+	fmt.println("  wayu export           Write turbo.{ext} (same as core, refreshed on build)")
 	fmt.println("  wayu doctor           Health check and optimization hints")
 	fmt.println()
 }
 
-// Render a per-phase timing breakdown of core.zsh.
+// Render a per-unit timing breakdown of core.<ext> (OKAMI-180).
 //
-// Strategy: split core by `# === <name> ===` markers into sections,
-// generate a profiling wrapper that records $EPOCHREALTIME before and
-// after each section, run it once under the user's zsh, parse `PHASE=...`
-// lines from stdout, and print a sorted table (slowest first).
+// Strategy: split core into units (profile_core_units: `# === <name> ===`
+// sections, with plugins.<ext> inlined, split per tool / plugin), generate a script that records $EPOCHREALTIME before and after
+// each unit, run it once under the user's shell, parse `PHASE=...` lines
+// from stdout, and print a sorted table (slowest first).
 //
-// $EPOCHREALTIME is a zsh builtin (with `zmodload zsh/datetime`) that
-// yields floating-point seconds since epoch with microsecond resolution,
-// so each phase timing is accurate enough to matter for anything over
-// ~10us.
-render_phase_breakdown_zsh :: proc(shell_bin, core_file: string) {
+// $EPOCHREALTIME (zsh with `zmodload zsh/datetime`, bash 5+) yields
+// floating-point seconds since epoch with microsecond resolution, so each
+// unit's timing is accurate enough to matter for anything over ~10us.
+render_phase_breakdown :: proc(shell_bin, core_file: string, shell: ShellType) {
 	content, ok := safe_read_file(core_file)
 	if !ok do return
 	defer delete(content)
 
-	phases := split_init_core_by_markers(string(content))
+	phases := profile_core_units(string(content), shell)
 	defer {
 		for p in phases {
 			delete(p.name)
@@ -148,12 +149,15 @@ render_phase_breakdown_zsh :: proc(shell_bin, core_file: string) {
 	}
 	if len(phases) == 0 do return
 
-	// Build the instrumented script in memory, then hand it to zsh via -c
-	// so we don't have to touch the filesystem.
+	// Build the instrumented script in memory, then hand it to the shell
+	// via -c so we don't have to touch the filesystem.
 	sb := strings.builder_make()
 	defer strings.builder_destroy(&sb)
 
-	fmt.sbprintln(&sb, "zmodload zsh/datetime 2>/dev/null || true")
+	if shell == .ZSH {
+		fmt.sbprintln(&sb, "zmodload zsh/datetime 2>/dev/null || true")
+	}
+	fmt.sbprintln(&sb, "[ -n \"${EPOCHREALTIME-}\" ] || { echo WAYU_NO_EPOCHREALTIME; exit 0; }")
 	for p, i in phases {
 		fmt.sbprintfln(&sb, "__wayu_t_%d_a=$EPOCHREALTIME", i)
 		fmt.sbprint(&sb, p.body)
@@ -161,25 +165,31 @@ render_phase_breakdown_zsh :: proc(shell_bin, core_file: string) {
 		fmt.sbprintfln(&sb, "__wayu_t_%d_b=$EPOCHREALTIME", i)
 		// printf with %s keeps the floats as the shell printed them (locale
 		// independent, no precision loss from another printf spec).
-		fmt.sbprintfln(&sb, "printf 'PHASE=%%s|%%s|%%s\\n' %q \"$__wayu_t_%d_a\" \"$__wayu_t_%d_b\"", p.name, i, i)
+		fmt.sbprintfln(&sb, "printf 'PHASE=%%s|%%s|%%s\\n' %s \"$__wayu_t_%d_a\" \"$__wayu_t_%d_b\"",
+			shell_single_quote(p.name, context.temp_allocator), i, i)
 	}
 
 	out := capture_command([]string{shell_bin, "-c", strings.to_string(sb)})
 	defer if len(out) > 0 do delete(out)
 	if len(out) == 0 do return
+	if strings.contains(out, "WAYU_NO_EPOCHREALTIME") {
+		fmt.println()
+		print_info("Phase breakdown needs $EPOCHREALTIME (zsh, or bash 5+); %s has none.", shell_bin)
+		return
+	}
 
 	// Parse `PHASE=name|start|end` lines. Anything else is output from the
 	// phase body itself (e.g. a plugin's banner) and is ignored here.
 	PhaseTiming :: struct { name: string, ms: f64 }
 	timings := make([dynamic]PhaseTiming, context.temp_allocator)
-	for line in strings.split_lines(out) {
+	for line in strings.split_lines(out, context.temp_allocator) {
 		if !strings.has_prefix(line, "PHASE=") do continue
 		rest := line[len("PHASE="):]
-		parts := strings.split(rest, "|")
-		defer delete(parts)
+		parts := strings.split(rest, "|", context.temp_allocator)
 		if len(parts) != 3 do continue
-		start_s, ok_a := strconv.parse_f64(parts[1])
-		end_s,   ok_b := strconv.parse_f64(parts[2])
+		// Some locales print the decimal separator as ','.
+		start_s, ok_a := strconv.parse_f64(epoch_decimal(parts[1]))
+		end_s,   ok_b := strconv.parse_f64(epoch_decimal(parts[2]))
 		if !ok_a || !ok_b do continue
 		append(&timings, PhaseTiming{
 			name = parts[0],
@@ -209,52 +219,119 @@ render_phase_breakdown_zsh :: proc(shell_bin, core_file: string) {
 	fmt.println()
 }
 
+@(private = "file")
+epoch_decimal :: proc(s: string) -> string {
+	i := strings.index_byte(s, ',')
+	if i < 0 do return s
+	return fmt.tprintf("%s.%s", s[:i], s[i + 1:])
+}
+
+// Units to time in core.<ext>: one per `# === <name> ===` section (text
+// before the first marker is "__prelude__"). The line that sources
+// plugins.<ext> is replaced by that file's contents. Split further:
+// `tool <name> (evalcache)` per `_wayu_evalcache` call, `tool <recipe>` per
+// `# --- recipe: … ---` block, and `plugin <name>` per plugin block of the
+// loader. Other `# --- … ---` markers (prompt features) name a sub-unit of
+// their section. Units whose body has no code are dropped.
+// Returned names/bodies are heap-allocated — caller owns them.
+profile_core_units :: proc(content: string, shell: ShellType) -> [dynamic]InitCorePhase {
+	ext := get_shell_extension(shell)
+	plugins_q := shell_double_quote_literal(fmt.tprintf("%s/plugins.%s", wayu.data, ext), context.temp_allocator)
+	ctx := ProfileSplit{
+		units        = make([dynamic]InitCorePhase),
+		plugins_line = fmt.tprintf("if [ -f %s ]; then source %s; fi", plugins_q, plugins_q),
+		plugins_file = fmt.tprintf("%s/plugins.%s", wayu.data, ext),
+		sb           = strings.builder_make(context.temp_allocator),
+	}
+	profile_split(&ctx, content, "", "__prelude__", 0)
+	return ctx.units
+}
+
+@(private = "file")
+ProfileSplit :: struct {
+	units:        [dynamic]InitCorePhase,
+	plugins_line: string,
+	plugins_file: string,
+	sb:           strings.Builder, // body of the current unit
+	name:         string,          // name of the current unit (temp)
+}
+
+// Close the current unit; keep it when its body has code.
+@(private = "file")
+profile_flush :: proc(ctx: ^ProfileSplit) {
+	body := strings.to_string(ctx.sb)
+	has_code := false
+	for l in strings.split_lines(body, context.temp_allocator) {
+		t := strings.trim_space(l)
+		if len(t) > 0 && !strings.has_prefix(t, "#") { has_code = true; break }
+	}
+	if has_code {
+		append(&ctx.units, InitCorePhase{name = strings.clone(ctx.name), body = strings.clone(body)})
+	}
+	strings.builder_reset(&ctx.sb)
+}
+
+@(private = "file")
+profile_split :: proc(ctx: ^ProfileSplit, content, prefix, first_name: string, depth: int) {
+	section := first_name
+	ctx.name = section
+	for line in strings.split_lines(content, context.temp_allocator) {
+		trimmed := strings.trim_space(line)
+		switch {
+		case strings.has_prefix(trimmed, "# === ") && strings.has_suffix(trimmed, " ==="):
+			profile_flush(ctx)
+			section = fmt.tprintf("%s%s", prefix, trimmed[len("# === "):len(trimmed) - len(" ===")])
+			ctx.name = section
+			continue
+		case strings.has_prefix(trimmed, "# --- ") && strings.has_suffix(trimmed, " ---"):
+			profile_flush(ctx)
+			// `recipe: nvm (lazy)` → `tool nvm (lazy)`; the generic
+			// `recipe: lazy (<name>)` → `tool <name> (lazy)`.
+			raw := trimmed[len("# --- "):len(trimmed) - len(" ---")]
+			if !strings.has_prefix(raw, "recipe: ") {
+				ctx.name = fmt.tprintf("%s › %s", section, raw)
+				continue
+			}
+			inner := raw[len("recipe: "):]
+			if strings.has_prefix(inner, "lazy (") && strings.has_suffix(inner, ")") {
+				inner = fmt.tprintf("%s (lazy)", inner[len("lazy ("):len(inner) - 1])
+			}
+			ctx.name = fmt.tprintf("%stool %s", prefix, inner)
+			continue
+		case strings.has_prefix(line, "_wayu_evalcache "):
+			profile_flush(ctx)
+			fields := strings.fields(line, context.temp_allocator)
+			ctx.name = fmt.tprintf("%stool %s (evalcache)", prefix, fields[1])
+			strings.write_string(&ctx.sb, line)
+			strings.write_byte(&ctx.sb, '\n')
+			profile_flush(ctx)
+			ctx.name = section
+			continue
+		case depth > 0 && strings.has_prefix(trimmed, "# ") && strings.contains(trimmed, " (priority: "):
+			profile_flush(ctx)
+			ctx.name = fmt.tprintf("plugin %s", trimmed[2:strings.index(trimmed, " (priority: ")])
+			continue
+		case depth == 0 && line == ctx.plugins_line:
+			data, ok := os.read_entire_file(ctx.plugins_file, context.temp_allocator)
+			if ok != nil do continue // `[ -f ]` guard — nothing to load
+			profile_flush(ctx)
+			profile_split(ctx, string(data), "", "plugins (loader)", depth + 1)
+			profile_flush(ctx)
+			ctx.name = section
+			continue
+		}
+		strings.write_string(&ctx.sb, line)
+		strings.write_byte(&ctx.sb, '\n')
+	}
+	profile_flush(ctx)
+}
+
 pad_left :: proc(s: string, width: int) -> string {
 	if len(s) >= width do return s
 	return fmt.tprintf("%s%s", strings.repeat(" ", width - len(s), context.temp_allocator), s)
 }
 
 InitCorePhase :: struct { name, body: string }
-
-// Split core by `# === <name> ===` markers. Everything before the
-// first marker (the shebang + comment header) becomes a synthetic
-// "__prelude__" phase so it still gets timed; after that each marker
-// starts a new phase whose body runs until the next marker or EOF.
-// Returned strings are heap-allocated — caller owns them.
-split_init_core_by_markers :: proc(content: string) -> []InitCorePhase {
-	lines := strings.split(content, "\n")
-	defer delete(lines)
-
-	phases := make([dynamic]InitCorePhase)
-	current_name := strings.clone("__prelude__")
-	sb := strings.builder_make()
-
-	flush :: proc(phases: ^[dynamic]InitCorePhase, name: ^string, sb: ^strings.Builder) {
-		body := strings.clone(strings.to_string(sb^))
-		append(phases, InitCorePhase{name = name^, body = body})
-		name^ = ""
-		strings.builder_reset(sb)
-	}
-
-	for line in lines {
-		trimmed := strings.trim_space(line)
-		if strings.has_prefix(trimmed, "# === ") && strings.has_suffix(trimmed, " ===") {
-			flush(&phases, &current_name, &sb)
-			name := trimmed[len("# === "):len(trimmed)-len(" ===")]
-			current_name = strings.clone(name)
-			continue
-		}
-		strings.write_string(&sb, line)
-		strings.write_byte(&sb, '\n')
-	}
-	flush(&phases, &current_name, &sb)
-	strings.builder_destroy(&sb)
-
-	result := make([]InitCorePhase, len(phases))
-	copy(result, phases[:])
-	delete(phases)
-	return result
-}
 
 // Compute min/mean/max from the populated times_ms and print a one-line
 // summary per scenario plus the raw samples.

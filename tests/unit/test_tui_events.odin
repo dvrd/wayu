@@ -374,6 +374,8 @@ test_event_union_key_event :: proc(t: ^testing.T) {
         testing.expect(t, false, "Should not be MouseEvent")
     case wayu.ResizeEvent:
         testing.expect(t, false, "Should not be ResizeEvent")
+    case wayu.PasteEvent:
+        testing.expect(t, false, "Should not be PasteEvent")
     }
 }
 
@@ -391,6 +393,8 @@ test_event_union_mouse_event :: proc(t: ^testing.T) {
         testing.expect(t, false, "Should not be KeyEvent")
     case wayu.ResizeEvent:
         testing.expect(t, false, "Should not be ResizeEvent")
+    case wayu.PasteEvent:
+        testing.expect(t, false, "Should not be PasteEvent")
     }
 }
 
@@ -407,5 +411,7 @@ test_event_union_resize_event :: proc(t: ^testing.T) {
         testing.expect(t, false, "Should not be KeyEvent")
     case wayu.MouseEvent:
         testing.expect(t, false, "Should not be MouseEvent")
+    case wayu.PasteEvent:
+        testing.expect(t, false, "Should not be PasteEvent")
     }
 }

@@ -19,7 +19,7 @@ runs:
         echo "release=$release" >> "$GITHUB_OUTPUT"
 
     - name: Setup Odin ${{ steps.pin.outputs.release }}
-      uses: laytan/setup-odin@v2
+      uses: laytan/setup-odin@8536d8fa450ec6f1bd9ddc84bbaaf16296c0051d # v2.12.2
       with:
         release: ${{ steps.pin.outputs.release }}
         # Required for the release download; without it setup-odin builds master.

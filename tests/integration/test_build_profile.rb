@@ -22,6 +22,7 @@ class BuildProfileTest
       test_profile_five_raw_samples
       test_profile_missing_init_core_warns
       test_profile_zsh_phase_breakdown
+      test_profile_breakdown_names_tools
       test_export_flag_modes
       test_export_refuses_fish_and_build_rejects_unknown
     ensure
@@ -77,8 +78,8 @@ class BuildProfileTest
     _o3, bogus_export = run_wayu("export bogus")
     _o4, bogus_build = run_wayu("build bogus")
     _o5, build_eval = run_wayu("build eval")
-    ok = [fish_turbo, fish_eval, bogus_export, bogus_build].all? { |s| s.exitstatus == 64 } && build_eval.success?
-    report("Test 6: fish export refused, unknown export/build targets exit 64", ok,
+    ok = [fish_turbo, fish_eval, bogus_export, bogus_build, build_eval].all? { |s| s.exitstatus == 64 }
+    report("Test 6: fish export refused, unknown export/build targets (incl. removed `build eval`) exit 64", ok,
            [fish_turbo, fish_eval, bogus_export, bogus_build, build_eval].map(&:exitstatus).inspect)
   end
 
@@ -128,7 +129,7 @@ class BuildProfileTest
     # Should pick up at least two of the standard core.zsh section
     # markers (PATH is always there, Aliases appears after our add above).
     has_path = out.include?('PATH')
-    has_aliases = out.match?(/Aliases \(from wayu\.toml/)
+    has_aliases = out.match?(/^\s*\S.*\bAliases\b/)
     if status.success? && has_heading && has_sum && has_path && has_aliases
       puts "✓"; @passed += 1
     else
@@ -136,6 +137,31 @@ class BuildProfileTest
       puts "  heading=#{has_heading} sum=#{has_sum} path=#{has_path} aliases=#{has_aliases}"
       @failed += 1
     end
+  end
+
+  # OKAMI-180: the breakdown times each [tools] entry, not only the
+  # "Lazy init" section that sources them all.
+  def test_profile_breakdown_names_tools
+    unless system('command -v zsh >/dev/null 2>&1')
+      puts "skipped (no zsh)"; return
+    end
+    bin = "#{@tmp_home}/fakebin"
+    FileUtils.mkdir_p(bin)
+    File.write("#{bin}/wayufaketool", "#!/bin/sh\necho 'export WAYU_FAKE=1'\n")
+    File.chmod(0o755, "#{bin}/wayufaketool")
+    File.write("#{@tmp_home}/lazyinit.sh", "true\n")
+    File.open("#{@config_dir}/wayu.toml", 'a') do |f|
+      f.puts "\n[tools]"
+      f.puts 'wayufaketool = { kind = "evalcache", args = "init zsh" }'
+      f.puts "fakelazy = { kind = \"lazy\", init_script = \"#{@tmp_home}/lazyinit.sh\", hook_commands = [\"fakelazy\"] }"
+    end
+    env = ENV.to_h.merge('HOME' => @tmp_home, 'PATH' => "#{bin}:#{ENV['PATH']}")
+    _o, _e0, st_build = Open3.capture3(env, "#{@wayu_bin} build")
+    out, _e, st = Open3.capture3(env, "#{@wayu_bin} build profile")
+    ok = st_build.success? && st.success? &&
+         out.match?(/ms\s+[\d.]+%\s+tool wayufaketool \(evalcache\)/) &&
+         out.include?('tool fakelazy (lazy)') && !out.include?('lazy ›')
+    report("Test 4b: per-tool rows", ok, out.lines.grep(/%/).join)
   end
 
   def test_profile_missing_init_core_warns

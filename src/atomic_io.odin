@@ -119,9 +119,10 @@ atomic_resolve_target :: proc(path: string, allocator: runtime.Allocator) -> (st
 // Inter-process config lock
 // ---------------------------------------------------------------------------
 //
-// One advisory lock file (`<config>/.wayu.lock`) guards every
-// read-modify-write of wayu.toml and plugins.json, plus the regeneration that
-// follows, so a single lock order exists and deadlock is impossible.
+// One advisory lock file (`<data>/.wayu.lock`) guards every
+// read-modify-write of entries.json and plugins.json (and wayu.toml restores),
+// plus the regeneration that follows, so a single lock order exists and
+// deadlock is impossible.
 //
 // POSIX record locks (lockf) are per process and are dropped when ANY
 // descriptor of the file is closed, so the lock is reference counted and the
@@ -146,8 +147,8 @@ config_lock_acquire :: proc() -> bool {
 		return true
 	}
 
-	dir := wayu.config
-	if !os.is_dir(dir) { dir = wayu.data }
+	dir := wayu.data
+	if !os.is_dir(dir) { dir = wayu.config }
 	if !os.is_dir(dir) {
 		// Nothing on disk to protect yet (first run before init).
 		_config_lock.depth += 1

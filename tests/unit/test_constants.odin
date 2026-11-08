@@ -18,7 +18,7 @@ export QUOTED_CONST="value with spaces"
 `
 
 	// Write to a temporary file
-	temp_file := "/tmp/test_constants.zsh"
+	temp_file := test_tmp("test_constants.zsh")
 	_ = os.write_entire_file(temp_file, transmute([]byte)test_config)
 	defer os.remove(temp_file)
 
@@ -105,12 +105,3 @@ test_constant_name_extraction :: proc(t: ^testing.T) {
 		}
 	}
 }
-
-// Note: The following helper functions were removed during PRP-11 refactoring:
-// - determine_constant_type: Was internal UI helper, now part of generic system
-// - is_numeric: Was internal UI helper, now part of generic system
-// - validate_constant_name_for_form: Renamed to validate_constant_name_input in config_specs.odin
-// - validate_constant_value_for_form: Renamed to validate_constant_value_input in config_specs.odin
-//
-// These functions are tested indirectly through integration tests which verify
-// the complete add/remove/list workflow works correctly.

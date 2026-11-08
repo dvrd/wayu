@@ -32,7 +32,7 @@ class InitIntegrationTest
       %w[zsh bash].each { |sh| test_generated_files_valid_syntax(sh); test_core_wiring(sh) }
       test_stale_init_is_resynced
       test_edited_init_is_preserved
-      test_build_eval_dry_run_writes_nothing
+      test_build_dry_run_writes_nothing
       test_large_toml_regenerates
       test_live_path_sync
       test_path_sync_status_and_nounset
@@ -41,9 +41,7 @@ class InitIntegrationTest
       test_paths_expanded_in_shell
       test_fish_paths_expanded_in_shell
       test_hand_edits_reach_open_shells
-      test_build_eval_uses_evaluating_shell
       test_rewrite_drops_stale_zwc
-      test_legacy_path_file_not_resurrected
       test_prompt_opt_in_and_escaping
     ensure
       teardown_test_env
@@ -69,6 +67,7 @@ class InitIntegrationTest
 
     # Clean up any existing config
     FileUtils.rm_rf(@config_dir) if Dir.exist?(@config_dir)
+    FileUtils.rm_rf(@data_dir) if Dir.exist?(@data_dir)
 
     output, status = run_wayu("init")
 
@@ -76,7 +75,9 @@ class InitIntegrationTest
     required_dirs = [
       @config_dir,
       @data_dir,
-      "#{@config_dir}/functions",
+      "#{@data_dir}/functions",
+      "#{@data_dir}/scripts",
+      "#{@data_dir}/bin",
       "#{@data_dir}/completions",
       "#{@data_dir}/plugins"
     ]
@@ -99,14 +100,22 @@ class InitIntegrationTest
     print "Test 2: Init creates config files... "
 
     required_files = [
-      "#{@data_dir}/path.zsh",
-      "#{@data_dir}/aliases.zsh",
-      "#{@data_dir}/constants.zsh",
       "#{@data_dir}/init.zsh",
+      "#{@data_dir}/core.zsh",
+      "#{@config_dir}/wayu.toml",
       "#{@config_dir}/tools.zsh"
     ]
+    # No per-type shell files: entries.json holds paths, aliases and env.
+    stale_files = %w[path aliases constants].map { |b| "#{@data_dir}/#{b}.zsh" }
+    # The rc line init offers is the portable bootstrap (finds the data dir
+    # itself); without a TTY it is printed.
+    File.write("#{@tmp_home}/.zshrc", "# rc\n") unless File.exist?("#{@tmp_home}/.zshrc")
+    rc, = run_wayu("init")
+    FileUtils.rm_f("#{@tmp_home}/.zshrc")
+    bootstrap = 'source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh"'
 
-    all_exist = required_files.all? { |file| File.exist?(file) }
+    all_exist = required_files.all? { |file| File.exist?(file) } && stale_files.none? { |f| File.exist?(f) } &&
+                rc.include?(bootstrap) && !File.read("#{@config_dir}/wayu.toml").include?('[paths]')
 
     if all_exist
       puts "✓"
@@ -114,7 +123,7 @@ class InitIntegrationTest
     else
       puts "✗"
       puts "  Failed to create config files"
-      puts "  Missing: #{required_files.reject { |f| File.exist?(f) }.join(', ')}"
+      puts "  Missing: #{required_files.reject { |f| File.exist?(f) }.join(', ')} rc_line=#{rc.include?(bootstrap)}"
       @failed += 1
     end
   end
@@ -124,6 +133,7 @@ class InitIntegrationTest
 
     # Re-init with ZSH
     FileUtils.rm_rf(@config_dir) if Dir.exist?(@config_dir)
+    FileUtils.rm_rf(@data_dir) if Dir.exist?(@data_dir)
     output, status = run_wayu_with_env("init", {"SHELL" => "/bin/zsh"})
 
     if status.success? && output.include?("zsh")
@@ -142,6 +152,7 @@ class InitIntegrationTest
 
     # Re-init with Bash
     FileUtils.rm_rf(@config_dir) if Dir.exist?(@config_dir)
+    FileUtils.rm_rf(@data_dir) if Dir.exist?(@data_dir)
     output, status = run_wayu_with_env("init", {"SHELL" => "/bin/bash"})
 
     if status.success? && output.include?("bash")
@@ -160,13 +171,11 @@ class InitIntegrationTest
 
     # Reinitialize
     FileUtils.rm_rf(@config_dir) if Dir.exist?(@config_dir)
+    FileUtils.rm_rf(@data_dir) if Dir.exist?(@data_dir)
     run_wayu("init")
 
     # Check that each file has proper shebang and structure (relaxed checks)
     files_to_check = {
-      "#{@data_dir}/path.zsh" => ["WAYU_PATHS"],
-      "#{@data_dir}/aliases.zsh" => ["alias"],
-      "#{@data_dir}/constants.zsh" => [],
       "#{@data_dir}/init.zsh" => ["source"],
       "#{@config_dir}/tools.zsh" => []  # May be empty
     }
@@ -192,17 +201,17 @@ class InitIntegrationTest
   end
 
   def test_init_file_orchestration
-    print "Test 6: Init file orchestrates all configs... "
+    print "Test 6: Init file sources the compiled core only... "
 
     init_content = File.read("#{@data_dir}/init.zsh")
+    core_content = File.read("#{@data_dir}/core.zsh")
 
-    # Should source all config files in correct order
-    sources_path = init_content.include?("path.zsh")
-    sources_aliases = init_content.include?("aliases.zsh")
-    sources_constants = init_content.include?("constants.zsh")
-    sources_tools = init_content.include?("tools.zsh")
+    # init.zsh loads core.zsh; core.zsh sources tools.zsh. No per-type files.
+    sources_core = init_content.include?("core.zsh")
+    no_legacy = %w[path.zsh aliases.zsh constants.zsh].none? { |f| init_content.include?(f) }
+    sources_tools = core_content.include?("tools.zsh")
 
-    if sources_path && sources_aliases && sources_constants && sources_tools
+    if sources_core && no_legacy && sources_tools
       puts "✓"
       @passed += 1
     else
@@ -259,11 +268,12 @@ class InitIntegrationTest
 
     # Clean up
     FileUtils.rm_rf(@config_dir) if Dir.exist?(@config_dir)
+    FileUtils.rm_rf(@data_dir) if Dir.exist?(@data_dir)
 
     output, status = run_wayu("--dry-run init")
 
     # In dry-run mode, should not create files or show preview
-    if !File.exist?("#{@data_dir}/path.zsh") || output.include?("DRY RUN") || output.include?("Would")
+    if !File.exist?("#{@data_dir}/init.zsh") || output.include?("DRY RUN") || output.include?("Would")
       puts "✓"
       @passed += 1
     else
@@ -289,29 +299,19 @@ class InitIntegrationTest
     end
   end
 
+  TRICKY_PATHS = { 'zz' => '$HOME/pz', 'aa' => '~/pa', 'mm' => '$HOME/p m', 'gone' => '/nonexistent/wayu/xyz' }.freeze
+  TRICKY_ENV = {
+    'GOPATH' => '$HOME/go', 'GOBIN' => '$GOPATH/bin', 'BREW' => '$HOMEBREW_PREFIX/x',
+    'LEDGER_FILE' => '~/ledger.journal', 'QUOTED' => 'he said "hi" `whoami` $(id) back\\slash',
+    'UNI' => 'héllo ✓', 'EMPTY' => ''
+  }.freeze
+  TRICKY_ALIASES = {
+    'gl' => "git log --format='%h %s'", 'q' => %q(echo "double" and 'single' `tick` $HOME), 'u' => 'echo ünï'
+  }.freeze
+
   TRICKY_TOML = <<~'TOML'
     [shell]
     type = "x"
-
-    [paths]
-    zz = "$HOME/pz"
-    aa = "~/pa"
-    mm = "$HOME/p m" # comment
-    gone = "/nonexistent/wayu/xyz"
-
-    [env]
-    GOPATH = "$HOME/go"
-    GOBIN = "$GOPATH/bin"
-    BREW = "$HOMEBREW_PREFIX/x"
-    LEDGER_FILE = "~/ledger.journal"
-    QUOTED = "he said \"hi\" `whoami` $(id) back\\slash"
-    UNI = "héllo ✓"
-    EMPTY = ""
-
-    [aliases]
-    gl = "git log --format='%h %s'"
-    q = "echo \"double\" and 'single' `tick` $HOME"
-    u = "echo ünï"
 
     [tools]
     nvm = { kind = "nvm" }
@@ -324,7 +324,8 @@ class InitIntegrationTest
     kotlin = { format = "[K $version](magenta)", detect = ["*.kt", "build.gradle.kts"] }
   TOML
 
-  # Build a fresh HOME for `shell`, write a tricky wayu.toml and regenerate.
+  # Build a fresh HOME for `shell`, write a tricky wayu.toml + entries and
+  # regenerate. Returns [home, data dir (generated files), env].
   def generate_tricky(shell)
     home = "#{@tmp_home}/tricky_#{shell}"
     FileUtils.rm_rf(home)
@@ -333,9 +334,11 @@ class InitIntegrationTest
     env = { 'HOME' => home, 'SHELL' => "/bin/#{shell}" }
     Open3.capture3(env, "#{@wayu_bin} init --shell #{shell}")
     cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
     File.write("#{cfg}/wayu.toml", TRICKY_TOML)
-    Open3.capture3(env, "#{@wayu_bin} build eval")
-    [home, cfg, env]
+    write_entries(paths: TRICKY_PATHS, env: TRICKY_ENV, aliases: TRICKY_ALIASES, data: data)
+    Open3.capture3(env, "#{@wayu_bin} build")
+    [home, data, env]
   end
 
   # Every generated runtime file must parse with `<shell> -n`, and sourcing
@@ -352,7 +355,7 @@ class InitIntegrationTest
             nil, '[]', '/hb/x']
     values_ok = lines[0] == want[0] && lines[1] == want[1] && lines[2] == want[2] &&
                 lines[4] == want[4] && lines[5] == want[5] && lines[6].to_s.include?("%h %s")
-    if files.size >= 4 && bad.empty? && values_ok
+    if files.size >= 3 && bad.empty? && values_ok
       puts "✓"; @passed += 1
     else
       puts "✗"
@@ -363,19 +366,19 @@ class InitIntegrationTest
   end
 
   # core sources plugins.<ext>; tools/extra are sourced exactly once across
-  # init + core + lazy; [paths] keep file order (not alphabetical).
+  # core.<ext> (the one generated file); [paths] keep file order (not alphabetical).
   def test_core_wiring(shell)
     print "Test: #{shell} core sources plugins, tools/extra once, PATH in file order... "
     home, cfg, env = generate_tricky(shell)
     core = File.read("#{cfg}/core.#{shell}")
-    all = %w[init core lazy].map { |b| File.exist?("#{cfg}/#{b}.#{shell}") ? File.read("#{cfg}/#{b}.#{shell}") : '' }.join("\n")
+    all = %w[init core].map { |b| File.exist?("#{cfg}/#{b}.#{shell}") ? File.read("#{cfg}/#{b}.#{shell}") : '' }.join("\n")
+    # OKAMI-284: core holds everything; no split files are generated.
+    split_left = %w[lazy helpers login].select { |b| File.exist?("#{cfg}/#{b}.#{shell}") }
     plugins_ok = core.include?("#{cfg}/plugins.#{shell}\" ]; then source")
     extra_count = all.scan(/source "[^"]*extra\.#{shell}"/).size
     tools_count = all.scan(/source "[^"]*tools\.#{shell}"/).size
-    # init.<ext> legacy fallback also sources them, but after `return` on the
-    # fast path; count only the fast path + core + lazy.
-    init_fast = File.read("#{cfg}/init.#{shell}").split('# === Legacy fallback').first
-    fast_extra = init_fast.scan(/source "[^"]*(extra|tools)\.#{shell}"/).size
+    # init.<ext> only sources core, which sources them (once each).
+    fast_extra = File.read("#{cfg}/init.#{shell}").scan(/source "[^"]*(extra|tools)\.#{shell}"/).size
     # [paths] values are expanded by the shell: check the resulting PATH.
     out, = Open3.capture3(env.merge('PATH' => '/usr/bin:/bin'), shell, '-c',
                           ". '#{cfg}/core.#{shell}' >/dev/null 2>&1; echo \"$PATH\"")
@@ -384,23 +387,23 @@ class InitIntegrationTest
     order_ok = entries[0, 3] == ["#{home}/pz", "#{home}/pa", "#{home}/p m"] &&
                entries.none? { |e| e.include?('nonexistent') }
     zsh_only_leak = shell == 'bash' && (core.include?('compinit') || core.include?('add-zsh-hook') || core.include?('helpers.zsh') || core.include?('lazy.zsh'))
-    if plugins_ok && fast_extra == 0 && extra_count == 2 && tools_count == 2 && order_ok && !zsh_only_leak
+    if plugins_ok && fast_extra == 0 && extra_count == 1 && tools_count == 1 && order_ok && !zsh_only_leak && split_left.empty?
       puts "✓"; @passed += 1
     else
       puts "✗"
-      puts "  plugins_ok=#{plugins_ok} fast_extra=#{fast_extra} extra=#{extra_count} tools=#{tools_count} order_ok=#{order_ok} zsh_leak=#{zsh_only_leak}"
+      puts "  plugins_ok=#{plugins_ok} fast_extra=#{fast_extra} extra=#{extra_count} tools=#{tools_count} order_ok=#{order_ok} zsh_leak=#{zsh_only_leak} split_left=#{split_left}"
       puts "  #{path_line}"
       @failed += 1
     end
   end
 
-  # Existing users: an untouched init.zsh written by an older wayu (4.4.5
-  # template) is rewritten on regen, after a backup of the old file.
+  # An untouched init.zsh written from the previous template
+  # (fixtures/init-prev.zsh) is rewritten on regen, after a backup of it.
   def test_stale_init_is_resynced
     print "Test: stale init.zsh is rewritten on regeneration (with backup)... "
     _, cfg, env = generate_tricky('zsh')
     init = "#{cfg}/init.zsh"
-    old = File.read(File.join(__dir__, 'fixtures', 'init-4.4.5.zsh'))
+    old = File.read(File.join(__dir__, 'fixtures', 'init-prev.zsh'))
     File.write(init, old)
     _, err, = Open3.capture3(env, "#{@wayu_bin} alias add zz 'echo hi'")
     body = File.read(init)
@@ -414,7 +417,7 @@ class InitIntegrationTest
   end
 
   # OKAMI-235: an init.zsh the user edited is never rewritten; wayu warns on
-  # stderr instead (stdout of `build eval` stays clean for eval).
+  # stderr instead (stdout stays clean).
   def test_edited_init_is_preserved
     print "Test: user-edited init.zsh is kept, with a warning... "
     _, cfg, env = generate_tricky('zsh')
@@ -422,7 +425,7 @@ class InitIntegrationTest
     edited = File.read(init) + "export MY_CUSTOM=1\n"
     File.write(init, edited)
     _, err1, st1 = Open3.capture3(env, "#{@wayu_bin} alias add qq 'echo q'")
-    out2, err2, = Open3.capture3(env, "#{@wayu_bin} build eval")
+    out2, err2, = Open3.capture3(env, "#{@wayu_bin} build")
     if st1.success? && File.read(init) == edited && err1.include?('local edits') &&
        err2.include?('local edits') && !out2.include?('local edits')
       puts "✓"; @passed += 1
@@ -440,12 +443,12 @@ class InitIntegrationTest
       home = "#{@tmp_home}/sync_#{sh}"
       d1 = "#{home}/d1"
       d2 = "#{home}/my dir"
-      FileUtils.mkdir_p([d1, d2, "#{home}/.config/wayu"])
+      FileUtils.mkdir_p([d1, d2, "#{home}/.config"])
       env = { 'HOME' => home }
       Open3.capture3(env, @wayu_bin, 'init', '--shell', sh)
       Open3.capture3(env, @wayu_bin, '--shell', sh, 'path', 'add', d1)
       script = <<~SH
-        . "$HOME/.config/wayu/core.#{sh}"
+        . "$HOME/.local/share/wayu/core.#{sh}"
         has() { case ":$PATH:" in *":$1:"*) echo y ;; *) echo n ;; esac; }
         r="$(has "$D1")"
         "$W" --shell #{sh} path add "$D2" >/dev/null 2>&1; _wayu_paths_sync
@@ -470,7 +473,7 @@ class InitIntegrationTest
   def sync_home(name, shells, dirs = [])
     home = "#{@tmp_home}/#{name}"
     FileUtils.rm_rf(home)
-    FileUtils.mkdir_p(["#{home}/.config/wayu"] + dirs.map { |d| "#{home}/#{d}" })
+    FileUtils.mkdir_p(["#{home}/.config"] + dirs.map { |d| "#{home}/#{d}" })
     env = { 'HOME' => home, 'PATH' => '/usr/bin:/bin', 'W' => @wayu_bin }
     shells.each { |sh| Open3.capture3(env, @wayu_bin, 'init', '--shell', sh) }
     [home, env]
@@ -489,7 +492,7 @@ class InitIntegrationTest
         #{strict}
         __p() { echo "LAST=$?"; }
         PROMPT_COMMAND=__p
-        . "$HOME/.config/wayu/init.#{sh}"
+        . "$HOME/.local/share/wayu/init.#{sh}"
         has() { case ":$PATH:" in *":$1:"*) echo y ;; *) echo n ;; esac; }
         echo "start=$(has "$HOME/d1")"
         "$W" --shell #{sh} path add "$HOME/d2" >/dev/null 2>&1
@@ -516,11 +519,11 @@ class InitIntegrationTest
     { '/bin/bash' => 'bash', '/bin/zsh' => 'zsh' }.each do |bin, sh|
       print "Test: path sync keeps system dirs + [paths] order (#{bin})... "
       home, env = sync_home("managed_#{sh}", [sh], %w[a b c s])
-      File.write("#{home}/.config/wayu/wayu.toml",
-                 "[paths]\na = \"#{home}/a\"\nb = \"#{home}/b\"\ns = \"#{home}/s\"\n")
-      Open3.capture3(env, @wayu_bin, '--shell', sh, 'build', 'eval')
+      write_entries(paths: { 'a' => "#{home}/a", 'b' => "#{home}/b", 's' => "#{home}/s" },
+                    data: "#{home}/.local/share/wayu")
+      Open3.capture3(env, @wayu_bin, '--shell', sh, 'build')
       script = <<~SH
-        . "$HOME/.config/wayu/core.#{sh}"
+        . "$HOME/.local/share/wayu/core.#{sh}"
         show() { echo "$PATH" | sed "s|$HOME/||g"; }
         show
         "$W" --shell #{sh} path rm "$HOME/s" --yes >/dev/null 2>&1; _wayu_paths_sync; show
@@ -545,14 +548,14 @@ class InitIntegrationTest
     home, env = sync_home('allshells', %w[bash fish], %w[d1 d2])
     Open3.capture3(env, @wayu_bin, '--shell', 'bash', 'path', 'add', "#{home}/d1")
     script = <<~SH
-      . "$HOME/.config/wayu/core.bash"
+      . "$HOME/.local/share/wayu/core.bash"
       SHELL=/bin/zsh "$W" path add "$HOME/d2" >/dev/null 2>&1
       SHELL=/bin/zsh "$W" alias add zzq 'echo hi' >/dev/null 2>&1
       _wayu_paths_sync
       case ":$PATH:" in *":$HOME/d2:"*) echo open=y ;; *) echo open=n ;; esac
     SH
     out, err, = Open3.capture3(env, '/bin/bash', '-c', script)
-    cfg = "#{home}/.config/wayu"
+    cfg = "#{home}/.local/share/wayu"
     core_bash = File.read("#{cfg}/core.bash")
     core_fish = File.read("#{cfg}/core.fish")
     ok = out.strip == 'open=y' && core_bash.include?('alias zzq=') &&
@@ -565,24 +568,19 @@ class InitIntegrationTest
     end
   end
 
-  # OKAMI-213 (GEN-18): [paths] values are expanded by the shell, after [env]:
-  # `$GOPATH/bin` uses [env] GOPATH, an unset var drops the entry (no bare
-  # "/bin"), and a dir created after `wayu build` shows up in new shells.
+  # OKAMI-213 (GEN-18): PATH entries are expanded by the shell, after the
+  # constants: `$GOPATH/bin` uses the GOPATH constant, an unset var drops the
+  # entry (no bare "/bin"), and a dir created after `wayu build` shows up in
+  # new shells.
   def test_paths_expanded_in_shell
     { '/bin/bash' => 'bash', '/bin/zsh' => 'zsh' }.each do |bin, sh|
-      print "Test: [paths] expanded in-shell after [env] (#{bin})... "
+      print "Test: PATH entries expanded in-shell after constants (#{bin})... "
       home, env = sync_home("inshell_#{sh}", [sh], %w[go/bin])
-      File.write("#{home}/.config/wayu/wayu.toml", <<~TOML)
-        [env]
-        GOPATH = "$HOME/go"
-
-        [paths]
-        gobin = "$GOPATH/bin"
-        cargo = "${NO_SUCH_WAYU_VAR}/bin"
-        later = "~/later"
-      TOML
+      write_entries(env: { 'GOPATH' => '$HOME/go' },
+                    paths: { 'gobin' => '$GOPATH/bin', 'cargo' => '${NO_SUCH_WAYU_VAR}/bin', 'later' => '~/later' },
+                    data: "#{home}/.local/share/wayu")
       _, _, st = Open3.capture3(env, @wayu_bin, '--shell', sh, 'build')
-      probe = %(. "$HOME/.config/wayu/core.#{sh}" >/dev/null 2>&1; echo "$PATH")
+      probe = %(. "$HOME/.local/share/wayu/core.#{sh}" >/dev/null 2>&1; echo "$PATH")
       first, = Open3.capture3(env.merge('PATH' => '/usr/bin'), bin, '-c', probe)
       FileUtils.mkdir_p("#{home}/later")
       second, = Open3.capture3(env.merge('PATH' => '/usr/bin'), bin, '-c', probe)
@@ -598,24 +596,18 @@ class InitIntegrationTest
 
   # Same contract for core.fish (expanded by fish, guarded per variable).
   def test_fish_paths_expanded_in_shell
-    print "Test: [paths] expanded in-shell after [env] (fish)... "
+    print "Test: PATH entries expanded in-shell after constants (fish)... "
     fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
     unless fish
       puts "skipped (fish not installed)"; return
     end
     home, env = sync_home('inshell_fish', ['fish'], %w[go/bin it's])
-    File.write("#{home}/.config/wayu/wayu.toml", <<~TOML)
-      [env]
-      GOPATH = "$HOME/go"
-
-      [paths]
-      gobin = "$GOPATH/bin"
-      cargo = "${NO_SUCH_WAYU_VAR}/bin"
-      quote = "~/it's"
-    TOML
+    write_entries(env: { 'GOPATH' => '$HOME/go' },
+                  paths: { 'gobin' => '$GOPATH/bin', 'cargo' => '${NO_SUCH_WAYU_VAR}/bin', 'quote' => "~/it's" },
+                  data: "#{home}/.local/share/wayu")
     Open3.capture3(env, @wayu_bin, '--shell', 'fish', 'build')
     out, err, = Open3.capture3(env.merge('PATH' => '/usr/bin'), fish, '--no-config', '-c',
-                               "source $HOME/.config/wayu/core.fish; string join : $PATH")
+                               "source $HOME/.local/share/wayu/core.fish; string join : $PATH")
     if out.strip.split(':') == ["#{home}/go/bin", "#{home}/it's", '/usr/bin']
       puts "✓"; @passed += 1
     else
@@ -623,25 +615,29 @@ class InitIntegrationTest
     end
   end
 
-  # OKAMI-213 (CFG-13): hand edits of [paths] reach path_sync via `wayu build`
-  # and `wayu config edit`, and reach an open shell at its next prompt even
-  # without either (the hook regenerates when wayu.toml is newer).
+  # OKAMI-213 (CFG-13): entries.json replaced outside the CLI (a restore
+  # by hand, a dotfiles sync) reaches path_sync via `wayu build`, and an open
+  # shell at its next prompt even without it (the hook regenerates when
+  # entries.json is newer).
   def test_hand_edits_reach_open_shells
     { '/bin/bash' => 'bash', '/bin/zsh' => 'zsh' }.each do |bin, sh|
-      print "Test: hand edits of [paths] reach open shells (#{bin})... "
+      print "Test: external entries.json changes reach open shells (#{bin})... "
       home, env = sync_home("hand_#{sh}", [sh], %w[d1 d2 d3 d4])
       Open3.capture3(env, @wayu_bin, '--shell', sh, 'path', 'add', "#{home}/d1")
-      toml = "#{home}/.config/wayu/wayu.toml"
-      editor = "#{home}/editor.sh"
-      File.write(editor, "#!/bin/sh\nprintf 'd3 = \"%s/d3\"\\n' \"$HOME\" >> \"$1\"\n")
-      File.chmod(0o755, editor)
+      store = "#{home}/.local/share/wayu/entries.json"
+      snap = lambda do |name, keys|
+        file = "#{home}/#{name}.json"
+        File.write(file, JSON.generate('version' => 1, 'paths' => keys.map { |k| { 'key' => k, 'dir' => "#{home}/#{k}" } }))
+        file
+      end
+      s2 = snap.call('s2', %w[d1 d2])
+      s4 = snap.call('s4', %w[d1 d2 d4])
       script = <<~SH
-        . "$HOME/.config/wayu/core.#{sh}"
+        . "$HOME/.local/share/wayu/core.#{sh}"
         has() { case ":$PATH:" in *":$HOME/$1:"*) echo y ;; *) echo n ;; esac; }
-        sleep 1; printf 'd2 = "%s/d2"\\n' "$HOME" >> "$TOML"
+        sleep 1; cp "$S2" "$STORE"
         "$W" --shell #{sh} build >/dev/null 2>&1; _wayu_paths_sync; echo "build=$(has d2)"
-        sleep 1; EDITOR="$ED" "$W" --shell #{sh} config edit >/dev/null 2>&1; _wayu_paths_sync; echo "edit=$(has d3)"
-        sleep 1; printf 'd4 = "%s/d4"\\n' "$HOME" >> "$TOML"
+        sleep 1; cp "$S4" "$STORE"
         PATH="$DECOY:$PATH"; _wayu_paths_sync; echo "hook=$(has d4)"
       SH
       # A stale wayu earlier on PATH (e.g. Homebrew while running a dev build)
@@ -650,9 +646,9 @@ class InitIntegrationTest
       FileUtils.mkdir_p(decoy)
       File.write("#{decoy}/wayu", "#!/bin/sh\nexit 0\n")
       File.chmod(0o755, "#{decoy}/wayu")
-      extra = { 'TOML' => toml, 'ED' => editor, 'DECOY' => decoy }
+      extra = { 'STORE' => store, 'S2' => s2, 'S4' => s4, 'DECOY' => decoy }
       out, err, = Open3.capture3(env.merge(extra), bin, '-c', script)
-      if out.lines.map(&:strip) == %w[build=y edit=y hook=y]
+      if out.lines.map(&:strip) == %w[build=y hook=y]
         puts "✓"; @passed += 1
       else
         puts "✗"; puts "  out=#{out.lines.map(&:strip).inspect} err=#{err.strip[0, 300]}"; @failed += 1
@@ -666,7 +662,7 @@ class InitIntegrationTest
   def test_rewrite_drops_stale_zwc
     print "Test: rewriting core.zsh drops a stale .zwc... "
     home, env = sync_home('stalezwc', ['zsh'])
-    cfg = "#{home}/.config/wayu"
+    cfg = "#{home}/.local/share/wayu"
     Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_ZWC_PROBE', 'old')
     Open3.capture3(env, '/bin/zsh', '-fc', "zcompile '#{cfg}/core.zsh' && touch -t 203001010000 '#{cfg}/core.zsh.zwc'")
     Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_ZWC_PROBE', 'new')
@@ -685,11 +681,12 @@ class InitIntegrationTest
     print "Test: native prompt is opt-in; [prompt]/keybinding values stay literal... "
     home, env = sync_home('prompt_optin', ['zsh'])
     cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
     pwn = "#{home}/PWNED"
     base = File.exist?("#{cfg}/wayu.toml") ? File.read("#{cfg}/wayu.toml") : ''
     File.write("#{cfg}/wayu.toml", base + "\n[prompt]\nformat = \"{dir} {character}\"\n")
     Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_PROMPT_PROBE', '1')
-    off_ok = File.exist?("#{cfg}/core.zsh") && !File.read("#{cfg}/core.zsh").include?('_wayu_prompt_master')
+    off_ok = File.exist?("#{data}/core.zsh") && !File.read("#{data}/core.zsh").include?('_wayu_prompt_master')
 
     File.write("#{cfg}/wayu.toml", base + <<~TOML)
 
@@ -704,13 +701,13 @@ class InitIntegrationTest
       autosuggestions_accept_keys = ["^Y'; touch #{pwn}; '"]
     TOML
     Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_PROMPT_PROBE', '2')
-    core = File.read("#{cfg}/core.zsh")
+    core = File.read("#{data}/core.zsh")
     on_ok = core.include?('_wayu_prompt_master') && !core.include?('.wayu_async_$$')
-    files = ["#{cfg}/core.zsh", "#{cfg}/plugins/config.zsh"].select { |f| File.exist?(f) }
+    files = ["#{data}/core.zsh", "#{data}/plugins/config.zsh"].select { |f| File.exist?(f) }
     syntax_ok = files.size == 2 && files.all? { |f| system('zsh', '-n', f, out: File::NULL, err: File::NULL) }
     keys_ok = files.size == 2 && File.read(files[1]).include?(%q{bindkey '^Y'\''; touch})
-    out, = Open3.capture3(env, '/bin/zsh', '-fc',
-      "source '#{cfg}/core.zsh' >/dev/null 2>&1; source '#{cfg}/plugins/config.zsh' >/dev/null 2>&1; _wayu_prompt_full")
+    out, = Open3.capture3(env, '/bin/zsh', '-fic',
+      "source '#{data}/core.zsh' >/dev/null 2>&1; source '#{data}/plugins/config.zsh' >/dev/null 2>&1; _wayu_prompt_full")
     literal_ok = out.include?("it\"s $(touch #{pwn}) `touch #{pwn}`")
     if off_ok && on_ok && syntax_ok && keys_ok && literal_ok && !File.exist?(pwn)
       puts "✓"; @passed += 1
@@ -722,60 +719,19 @@ class InitIntegrationTest
     end
   end
 
-  # `sudo zsh` resets SHELL to /bin/sh but still sources the user's .zshenv:
-  # `build eval` must emit code for the shell that evals it (its parent), not
-  # $SHELL, never create *.sh files, and startup must end with status 0.
-  def test_build_eval_uses_evaluating_shell
-    { '/bin/zsh' => ['zsh', '/bin/sh', '-fc'], '/bin/bash' => ['bash', '/bin/zsh', '-c'] }.each do |bin, (sh, shell_env, flag)|
-      print "Test: build eval follows the evaluating shell (#{bin}, SHELL=#{shell_env})... "
-      home = "#{@tmp_home}/evalshell_#{sh}"
-      cfg = "#{home}/.config/wayu"
-      FileUtils.mkdir_p(cfg)
-      File.write("#{cfg}/wayu.toml", "[paths]\nb = \"/usr/bin\"\n")
-      env = { 'HOME' => home, 'SHELL' => shell_env }
-      out, err, = Open3.capture3(env, bin, flag, "eval \"$(#{@wayu_bin} build eval)\"; echo rc=$?; type _wayu_paths_sync >/dev/null && echo hook")
-      sh_files = Dir.glob("#{cfg}/*.sh")
-      if out.lines.map(&:strip) == %w[rc=0 hook] && err.strip.empty? && sh_files.empty? && File.exist?("#{cfg}/core.#{sh}")
-        puts "✓"; @passed += 1
-      else
-        puts "✗"; puts "  out=#{out.inspect} err=#{err.strip[0, 300]} sh_files=#{sh_files}"; @failed += 1
-      end
-    end
-  end
-
-  # OKAMI-213 (GEN-20): once wayu.toml has a [paths] table, removing its last
-  # entry must not resurrect the legacy path.<ext> entries.
-  def test_legacy_path_file_not_resurrected
-    print "Test: removing last [paths] entry doesn't resurrect legacy path.zsh... "
-    home, env = sync_home('legacy', ['zsh'], %w[old new])
-    cfg = "#{home}/.config/wayu"
-    File.write("#{cfg}/path.zsh", "export PATH=\"$HOME/old:$PATH\"\n")
-    add = Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'add', "#{home}/new")
-    rm = Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'rm', "#{home}/new", '--yes')
-    out, = Open3.capture3(env, '/bin/zsh', '-fc', ". '#{cfg}/core.zsh' >/dev/null 2>&1; echo \"$PATH\"")
-    entries = out.strip.split(':')
-    if !entries.include?("#{home}/old") && !entries.include?("#{home}/new")
-      puts "✓"; @passed += 1
-    else
-      puts "✗"; puts "  PATH=#{out.strip}"; @failed += 1
-      [['add', add], ['rm', rm]].each { |n, (o, e, st)| puts "  #{n}: exit=#{st.exitstatus} out=#{o.strip[0, 300]} err=#{e.strip[0, 300]}" }
-      puts "  wayu.toml=#{File.read("#{cfg}/wayu.toml").inspect rescue 'missing'}"
-      puts "  core path lines=#{File.read("#{cfg}/core.zsh").lines.grep(/path/i).first(8).map(&:strip)}"
-    end
-  end
-
-  # Large configs (thousands of aliases) must not overflow the [tools] parser arena.
+  # Large stores (thousands of aliases) must not overflow the generator.
   def test_large_toml_regenerates
     print "Test: regenerate with 4000 aliases + [tools] succeeds... "
     home = "#{@tmp_home}/large"
     FileUtils.mkdir_p("#{home}/.config/wayu")
     env = { 'HOME' => home, 'SHELL' => '/bin/zsh' }
-    aliases = (1..4000).map { |i| "a#{i} = \"echo #{'x' * 120} #{i}\"" }.join("\n")
+    aliases = (1..4000).to_h { |i| ["a#{i}", "echo #{'x' * 120} #{i}"] }
     File.write("#{home}/.config/wayu/wayu.toml",
-               "[tools]\nnosuchtoolxyz = { kind = \"evalcache\", args = \"init zsh\" }\n\n[aliases]\n#{aliases}\n")
-    _, _, st = Open3.capture3(env, "#{@wayu_bin} build eval")
-    core = "#{home}/.config/wayu/core.zsh"
-    lazy = "#{home}/.config/wayu/lazy.zsh"
+               "[tools]\nnosuchtoolxyz = { kind = \"evalcache\", args = \"init zsh\" }\n")
+    write_entries(aliases: aliases, data: "#{home}/.local/share/wayu")
+    _, _, st = Open3.capture3(env, "#{@wayu_bin} build")
+    core = "#{home}/.local/share/wayu/core.zsh"
+    lazy = core
     if st.success? && File.read(core).include?("alias a4000=") && File.read(lazy).include?('_wayu_evalcache nosuchtoolxyz init zsh')
       puts "✓"; @passed += 1
     else
@@ -783,15 +739,16 @@ class InitIntegrationTest
     end
   end
 
-  # `build eval --dry-run` must not write anything.
-  def test_build_eval_dry_run_writes_nothing
-    print "Test: build eval --dry-run writes nothing... "
+  # `build --dry-run` must not write anything.
+  def test_build_dry_run_writes_nothing
+    print "Test: build --dry-run writes nothing... "
     home = "#{@tmp_home}/dry_eval"
     FileUtils.mkdir_p("#{home}/.config/wayu")
     env = { 'HOME' => home, 'SHELL' => '/bin/zsh' }
-    File.write("#{home}/.config/wayu/wayu.toml", "[aliases]\nx = \"y\"\n")
-    out, _, st = Open3.capture3(env, "#{@wayu_bin} --dry-run build eval")
-    if st.success? && !File.exist?("#{home}/.config/wayu/core.zsh")
+    File.write("#{home}/.config/wayu/wayu.toml", "[shell]\ntype = \"zsh\"\n")
+    write_entries(aliases: { 'x' => 'y' }, data: "#{home}/.local/share/wayu")
+    out, _, st = Open3.capture3(env, "#{@wayu_bin} --dry-run build")
+    if st.success? && !File.exist?("#{home}/.local/share/wayu/core.zsh")
       puts "✓"; @passed += 1
     else
       puts "✗"; puts "  core.zsh written under dry-run: #{out}"; @failed += 1

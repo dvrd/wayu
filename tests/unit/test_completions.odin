@@ -14,8 +14,8 @@ test_extract_completion_items_empty :: proc(t: ^testing.T) {
 	original_config := wayu.wayu.config
 	defer { wayu.wayu.config = original_config; wayu.wayu.data = original_config }
 
-	wayu.wayu.config = "/tmp/wayu-test-nonexistent"
-	wayu.wayu.data = "/tmp/wayu-test-nonexistent"
+	wayu.wayu.config = test_tmp("wayu-test-nonexistent")
+	wayu.wayu.data = test_tmp("wayu-test-nonexistent")
 	items := wayu.extract_completion_items()
 	defer {
 		for item in items {
@@ -30,7 +30,7 @@ test_extract_completion_items_empty :: proc(t: ^testing.T) {
 @(test)
 test_extract_completion_items_single :: proc(t: ^testing.T) {
 	// Create temporary test directory
-	test_dir := "/tmp/wayu-test-completions"
+	test_dir := test_tmp("wayu-test-completions")
 	completions_dir := fmt.aprintf("%s/completions", test_dir)
 	defer delete(completions_dir)
 
@@ -64,7 +64,7 @@ test_extract_completion_items_single :: proc(t: ^testing.T) {
 @(test)
 test_extract_completion_items_multiple :: proc(t: ^testing.T) {
 	// Create temporary test directory
-	test_dir := "/tmp/wayu-test-completions-multi"
+	test_dir := test_tmp("wayu-test-completions-multi")
 	completions_dir := fmt.aprintf("%s/completions", test_dir)
 	defer delete(completions_dir)
 
@@ -115,7 +115,7 @@ test_extract_completion_items_multiple :: proc(t: ^testing.T) {
 @(test)
 test_extract_completion_items_filters :: proc(t: ^testing.T) {
 	// Create temporary test directory
-	test_dir := "/tmp/wayu-test-completions-filter"
+	test_dir := test_tmp("wayu-test-completions-filter")
 	completions_dir := fmt.aprintf("%s/completions", test_dir)
 	defer delete(completions_dir)
 
@@ -293,20 +293,175 @@ test_wayu_completions_list_every_command :: proc(t: ^testing.T) {
 			testing.expectf(t, in_bash, "bash completion misses %q", name)
 			testing.expectf(t, strings.contains(fish, fmt.tprintf("-a %s -d", name)), "fish completion misses %q", name)
 		}
-		if len(spec.actions) == 0 do continue
 		case_label := fmt.tprintf("%s) ", strings.join(spec.names, "|", context.temp_allocator))
 		bash_case := ""
 		for l in bash_lines {
 			if strings.has_prefix(strings.trim_space(l), case_label) { bash_case = l; break }
 		}
-		for a in spec.actions {
-			colon := strings.index_byte(a, ':')
-			testing.expectf(t, colon > 0, "action %q of %s needs 'word:description'", a, spec.names[0])
-			if colon <= 0 do continue
-			word := a[:colon]
-			testing.expectf(t, strings.contains(zsh, fmt.tprintf("'%s:", word)), "zsh: %s misses action %q", spec.names[0], word)
-			testing.expectf(t, strings.contains(bash_case, word), "bash: %s misses action %q", spec.names[0], word)
-			testing.expectf(t, strings.contains(fish, fmt.tprintf("-a '%s' -d", word)), "fish: %s misses action %q", spec.names[0], word)
+		// Offered words: visible actions and flags (hidden synonyms have no desc).
+		offered := make([dynamic]string, context.temp_allocator)
+		for a in spec.actions { if len(a.desc) > 0 { append(&offered, a.word) } }
+		for f in spec.flags { if len(f.desc) > 0 { append(&offered, f.flag) } }
+		if spec.json != {} { append(&offered, "--json") }
+		for word in offered {
+			testing.expectf(t, strings.contains(zsh, fmt.tprintf("'%s:", word)), "zsh: %s misses %q", spec.names[0], word)
+			testing.expectf(t, strings.contains(bash_case, word), "bash: %s misses %q", spec.names[0], word)
+			testing.expectf(t, strings.contains(fish, fmt.tprintf("-a '%s' -d", word)) || strings.contains(fish, fmt.tprintf("-a %s -d", word)),
+				"fish: %s misses %q", spec.names[0], word)
 		}
 	}
+}
+
+// OKAMI-282: dispatch comes from WAYU_COMMAND_SPECS — every action word
+// (synonyms included) parses to the action its row declares, a missing
+// action word gives default_action, and an unlisted word is .UNKNOWN.
+@(test)
+test_wayu_command_table_drives_actions :: proc(t: ^testing.T) {
+	for spec in wayu.WAYU_COMMAND_SPECS {
+		if spec.command == .DOCTOR do continue // flags only
+		for a in spec.actions {
+			parsed := wayu.parse_args([]string{spec.names[0], a.word})
+			delete(parsed.args)
+			testing.expectf(t, parsed.command == spec.command && parsed.action == a.action,
+				"%s %s parses to %v/%v, table says %v/%v", spec.names[0], a.word,
+				parsed.command, parsed.action, spec.command, a.action)
+		}
+		bare := wayu.parse_args([]string{spec.names[0]})
+		delete(bare.args)
+		if spec.command != .HELP && spec.command != .VERSION {
+			testing.expectf(t, bare.action == spec.default_action, "%s: default %v, table says %v",
+				spec.names[0], bare.action, spec.default_action)
+		}
+		if len(spec.actions) > 0 {
+			unk := wayu.parse_args([]string{spec.names[0], "no-such-action"})
+			delete(unk.args)
+			testing.expectf(t, unk.action == .UNKNOWN, "%s no-such-action parses to %v", spec.names[0], unk.action)
+		}
+		for h in ([]string{"help", "-h", "--help"}) {
+			parsed := wayu.parse_args([]string{spec.names[0], h})
+			delete(parsed.args)
+			if spec.command != .HELP && spec.command != .VERSION {
+				testing.expectf(t, parsed.action == .HELP, "%s %s parses to %v", spec.names[0], h, parsed.action)
+			}
+		}
+	}
+}
+
+// The per-command flag allow-list is the table's `flags`.
+@(test)
+test_wayu_command_table_drives_flags :: proc(t: ^testing.T) {
+	for spec in wayu.WAYU_COMMAND_SPECS {
+		for f in spec.flags {
+			flag := f.flag
+			if strings.has_suffix(flag, "=") { flag = fmt.tprintf("%sx", flag) }
+			testing.expectf(t, wayu.command_accepts_flag(spec.command, flag), "%s rejects its own flag %q", spec.names[0], flag)
+		}
+		if !spec.any_flag {
+			testing.expectf(t, !wayu.command_accepts_flag(spec.command, "--definitely-not-a-flag"),
+				"%s accepts an unknown flag", spec.names[0])
+		}
+	}
+	testing.expect(t, wayu.command_accepts_flag(.DOCTOR, "--fix"), "doctor --fix")
+	testing.expect(t, !wayu.command_accepts_flag(.PATH, "--fix"), "path --fix")
+	testing.expect(t, wayu.command_accepts_flag(.PLUGIN, "--category=dev"), "plugin --category=dev")
+}
+
+// --json is accepted only where the table says the output is JSON.
+@(test)
+test_wayu_command_table_drives_json :: proc(t: ^testing.T) {
+	cases := []struct { args: []string, unsupported: bool }{
+		{{"path", "list", "--json"}, false},
+		{{"alias", "--json"}, false},
+		{{"const", "ls", "--json"}, false},
+		{{"backup", "list", "--json"}, false},
+		{{"plugin", "list", "--json"}, false},
+		{{"search", "x", "--json"}, false},
+		{{"doctor", "--json"}, false},
+		{{"path", "--help", "--json"}, false},
+		{{"path", "add", "/tmp", "--json"}, true},
+		{{"const", "get", "X", "--json"}, true},
+		{{"hooks", "--json"}, true},
+		{{"toml", "show", "--json"}, true},
+	}
+	for c in cases {
+		saved := wayu.wayu.json_output
+		parsed := wayu.parse_args(c.args)
+		delete(parsed.args)
+		wayu.wayu.json_output = saved
+		testing.expectf(t, parsed.json_unsupported == c.unsupported, "%v: json_unsupported=%v", c.args, parsed.json_unsupported)
+	}
+}
+
+// OKAMI-181/182: every row that completes existing entries hands every
+// CMD ACTION pair to `completions names <kind>` in all three scripts, and
+// the hidden `names` word parses but is never offered.
+@(test)
+test_wayu_completions_offer_existing_entries :: proc(t: ^testing.T) {
+	zsh := wayu.generate_wayu_completion_zsh()
+	defer delete(zsh)
+	bash := wayu.generate_wayu_completion_bash()
+	defer delete(bash)
+	fish := wayu.generate_wayu_completion_fish()
+	defer delete(fish)
+
+	rows := 0
+	for spec in wayu.WAYU_COMMAND_SPECS {
+		if spec.arg_names == .NONE { continue }
+		rows += 1
+		kind := wayu.COMPLETION_NAMES_KIND[spec.arg_names]
+		testing.expectf(t, strings.contains(zsh, fmt.tprintf("_wayu_names %s ;;", kind)), "zsh misses names %s", kind)
+		testing.expectf(t, strings.contains(bash, fmt.tprintf("_wayu_names %s;", kind)), "bash misses names %s", kind)
+		testing.expectf(t, strings.contains(fish, fmt.tprintf("completions names %s 2>/dev/null", kind)), "fish misses names %s", kind)
+		for name in spec.names {
+			for a in spec.actions {
+				if a.action not_in spec.arg_name_actions { continue }
+				pair := fmt.tprintf("\"%s %s\"", name, a.word)
+				testing.expectf(t, strings.contains(zsh, pair), "zsh misses %s", pair)
+				testing.expectf(t, strings.contains(bash, pair), "bash misses %s", pair)
+			}
+		}
+	}
+	testing.expect(t, rows >= 6, "path/alias/const/plugin/function/completions complete entries")
+
+	parsed := wayu.parse_args([]string{"completions", "names", "alias"})
+	defer delete(parsed.args)
+	testing.expect(t, parsed.command == .COMPLETIONS && parsed.action == .SEARCH, "completions names parses")
+	testing.expect(t, !strings.contains(zsh, "'names:"), "hidden names word not offered")
+}
+
+@(test)
+test_collect_completion_names :: proc(t: ^testing.T) {
+	tmp := test_tmp("wayu_test_completion_names")
+	os.remove_all(tmp)
+	testing.expect(t, os.make_directory(tmp) == nil)
+	defer os.remove_all(tmp)
+	testing.expect(t, os.make_directory(fmt.tprintf("%s/completions", tmp)) == nil)
+
+	saved_config, saved_data := wayu.wayu.config, wayu.wayu.data
+	wayu.wayu.config, wayu.wayu.data = tmp, tmp
+	defer { wayu.wayu.config, wayu.wayu.data = saved_config, saved_data }
+	wayu.clear_toml_content_cache()
+	defer wayu.clear_toml_content_cache()
+
+	write_entries_json(t, tmp, `{"version": 1, "paths": [{"key": "bin", "dir": "$HOME/bin"}], "aliases": [{"name": "zz", "value": "ls"}, {"name": "ll", "value": "ls -la"}], "env": [{"name": "FOO", "value": "1"}]}`)
+	for f in ([]string{"_jj", "gh.bash-completion", "notes.txt"}) {
+		testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/completions/%s", tmp, f), transmute([]byte)string("x")))
+	}
+
+	expect_names :: proc(t: ^testing.T, kind: wayu.CompletionNames, want: []string) {
+		got := wayu.collect_completion_names(kind)
+		defer {
+			for n in got { delete(n) }
+			delete(got)
+		}
+		testing.expectf(t, len(got) == len(want), "%v: got %v want %v", kind, got[:], want)
+		if len(got) != len(want) { return }
+		for w, i in want { testing.expectf(t, got[i] == w, "%v[%d]: got %s want %s", kind, i, got[i], w) }
+	}
+	expect_names(t, .PATH, {"$HOME/bin"})
+	expect_names(t, .ALIAS, {"ll", "zz"})
+	expect_names(t, .CONSTANT, {"FOO"})
+	expect_names(t, .COMPLETION, {"gh", "jj"})
+	expect_names(t, .PLUGIN, {})
+	expect_names(t, .NONE, {})
 }

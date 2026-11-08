@@ -140,13 +140,6 @@ hot_reload_stop :: proc() {
 	print_success("Hot reload watcher stopped")
 }
 
-// Check if watcher is currently running
-hot_reload_is_running :: proc() -> bool {
-	sync.mutex_lock(&g_watcher.mutex)
-	defer sync.mutex_unlock(&g_watcher.mutex)
-	return g_watcher.watching
-}
-
 // Trigger manual regeneration
 hot_reload_regenerate :: proc() {
 	regenerate_static()
@@ -249,7 +242,7 @@ handle_watch_command :: proc(action: string, args: []string) {
 print_watch_help :: proc() {
 	print_header("Watch Command Help", "👁")
 	fmt.println()
-	fmt.println("Usage: wayu watch [action] [options]")
+	fmt.println("Usage: wayu watch [start|stop|status|regenerate]   (alias: wayu reload)")
 	fmt.println()
 	fmt.println("Actions:")
 	fmt.println("  start           Start watching for changes (default)")
@@ -260,14 +253,12 @@ print_watch_help :: proc() {
 	fmt.println("Examples:")
 	fmt.println("  wayu watch              # Start watching")
 	fmt.println("  wayu watch start        # Start watching")
-	fmt.println("  wayu watch --stop       # Stop watching")
+	fmt.println("  wayu watch stop         # Stop a watcher running elsewhere")
 	fmt.println("  wayu watch status       # Check status")
 	fmt.println()
 	fmt.println("The watcher monitors:")
-	fmt.println("  • wayu.toml configuration file")
-	fmt.println("  • Path entries file")
-	fmt.println("  • Aliases file")
-	fmt.println("  • Constants file")
+	fmt.println("  • wayu.toml")
+	fmt.println("  • entries.json (PATH entries, aliases, constants)")
 	fmt.println()
 	fmt.println("Changes are debounced (500ms) before triggering regeneration.")
 }
@@ -409,9 +400,10 @@ check_file_changes :: proc() -> []string {
 // Regeneration
 // ============================================================================
 
-// Regenerate the shell init files (core/lazy/login/helpers + plugin runtime)
-// from wayu.toml. These are the files init.<ext> actually sources, so a hot
-// reload is picked up by the next shell (or `source ~/.config/wayu/init.<ext>`).
+// Regenerate the shell init files (core + path_sync + plugin runtime)
+// from wayu.toml and entries.json. These are the files init.<ext> actually
+// sources, so a hot reload is picked up by the next shell (or by sourcing
+// <data>/init.<ext> again).
 // The old implementation wrote an orphaned wayu_static.<ext> that nothing
 // sourced and crashed on missing/malformed TOML.
 regenerate_static :: proc() {
@@ -424,6 +416,10 @@ regenerate_static :: proc() {
 		return
 	}
 
+	// Scripts first: a first built script puts <data>/bin on PATH.
+	if built, failed := scripts_build_stale(quiet = true); built > 0 || failed > 0 {
+		print_info("Scripts rebuilt: %d, failed: %d", built, failed)
+	}
 	regenerate_init_core_silently()
 
 	core_path := fmt.aprintf("%s/core.%s", wayu.data, get_shell_extension(wayu.shell))
@@ -561,37 +557,17 @@ stop_existing_watcher :: proc(pid: int) {
 get_default_watch_paths :: proc() -> []string {
 	paths := make([dynamic]string)
 
-	// Main TOML config
-	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	if os.exists(toml_path) {
-		append(&paths, toml_path)
-	} else {
-		delete(toml_path)
+	// Main TOML config + the entry store
+	for p in ([]string{fmt.aprintf("%s/wayu.toml", wayu.config), entries_file_path(context.allocator)}) {
+		if os.exists(p) {
+			append(&paths, p)
+		} else {
+			delete(p)
+		}
 	}
 
-	// Individual config files. Important: delete the path string ONLY when we
-	// didn't hand it off to the paths array — otherwise the array ends up
-	// holding a dangling pointer and later clones emit garbage bytes.
-	path_file := get_config_file_with_fallback("path", wayu.shell)
-	if os.exists(path_file) {
-		append(&paths, path_file)
-	} else {
-		delete(path_file)
-	}
-
-	alias_file := get_config_file_with_fallback("aliases", wayu.shell)
-	if os.exists(alias_file) {
-		append(&paths, alias_file)
-	} else {
-		delete(alias_file)
-	}
-
-	constants_file := get_config_file_with_fallback("constants", wayu.shell)
-	if os.exists(constants_file) {
-		append(&paths, constants_file)
-	} else {
-		delete(constants_file)
-	}
+	// Script sources: an edit rebuilds the script (regenerate_static).
+	script_watch_paths(&paths)
 
 	result := make([]string, len(paths))
 	for i := 0; i < len(paths); i += 1 {

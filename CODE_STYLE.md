@@ -351,24 +351,8 @@ test_create_backup_existing_file :: proc(t: ^testing.T) {
 - `@(test)` annotation on every test proc
 - `testing.expect(t, condition, message)` for assertions
 - `testing.expect_value(t, got, expected)` for value comparisons
-- Test data in `/tmp/wayu-test-*` paths
+- Test data in per-process `/tmp/wayu-test-*-<pid>` paths (tests run concurrently across worktrees)
 - Cleanup with `defer os.remove()` or `defer delete()`
-
-### Integration tests (Odin standalone)
-
-Separate `main :: proc()` programs that exercise full command workflows:
-
-```odin
-// tests/integration/test_path_standalone.odin
-main :: proc() {
-    wayu.init_shell_globals()
-    // ... setup temp config dir ...
-    test_add_path()
-    test_list_paths()
-    test_remove_path()
-    // ... cleanup ...
-}
-```
 
 ### Integration tests (Ruby)
 
@@ -386,8 +370,8 @@ end
 ### Golden file testing
 
 ```bash
-task test:components:snapshot   # Generate golden files
-task test:components            # Compare against golden files
+./bin/wayu -c=header --snapshot width=40 height=3 title=PATH count=10  # regenerate one golden
+ruby tests/integration/test_golden.rb                                  # compare every golden
 ```
 
 Component rendering tested via `wayu -c=<component>` CLI flag.

@@ -10,7 +10,6 @@ class AliasIntegrationTest
 
   def initialize
     setup_test_env
-    @toml_file = "#{@config_dir}/wayu.toml"
   end
 
   def run
@@ -69,7 +68,7 @@ class AliasIntegrationTest
 
     run_wayu("alias add updme 'echo old_value'")
     output, status = run_wayu("alias add updme 'echo new_value'")
-    core = "#{@config_dir}/core.zsh"
+    core = "#{@data_dir}/core.zsh"
     content = File.exist?(core) ? File.read(core) : ""
 
     report(status.success? && content.include?("new_value") && !content.include?("old_value"),
@@ -106,7 +105,7 @@ class AliasIntegrationTest
 
     output, status = run_wayu('alias add ll "ls -la"')
 
-    if status.success? && File.read(@toml_file).include?('ll = "ls -la"')
+    if status.success? && store_map('aliases')['ll'] == 'ls -la'
       puts "✓"
       @passed += 1
     else
@@ -122,7 +121,7 @@ class AliasIntegrationTest
 
     output, status = run_wayu('alias add greet "echo \"Hello, World!\""')
 
-    if status.success? && File.read(@toml_file).include?('greet = ')
+    if status.success? && store_map('aliases')['greet'] == 'echo "Hello, World!"'
       puts "✓"
       @passed += 1
     else
@@ -138,8 +137,7 @@ class AliasIntegrationTest
 
     output, status = run_wayu('alias add gco "git checkout"')
 
-    alias_content = File.read(@toml_file)
-    if status.success? && alias_content.include?('gco = "git checkout"')
+    if status.success? && store_map('aliases')['gco'] == 'git checkout'
       puts "✓"
       @passed += 1
     else
@@ -172,8 +170,7 @@ class AliasIntegrationTest
 
     output, status = run_wayu("alias rm ll")
 
-    alias_content = File.read(@toml_file)
-    if status.success? && !alias_content.include?('ll = ')
+    if status.success? && !store_map('aliases').key?('ll')
       puts "✓"
       @passed += 1
     else
@@ -192,10 +189,10 @@ class AliasIntegrationTest
     output, status = run_wayu('alias add myalias "echo second"')
 
     # Should either prevent duplicate or overwrite
-    alias_content = File.read(@toml_file)
-    occurrences = alias_content.scan(/myalias = /).length
+    names = (read_entries['aliases'] || []).map { |a| a['name'] }
+    occurrences = names.count('myalias')
 
-    if occurrences == 1
+    if occurrences == 1 && store_map('aliases')['myalias'] == 'echo second'
       puts "✓"
       @passed += 1
     else
@@ -210,12 +207,15 @@ class AliasIntegrationTest
     print "Test 7: Alias name validation... "
 
     # Try invalid names
-    output1, status1 = run_wayu('alias add "bad-name" "echo test"')
+    # Inner hyphens are allowed (zsh/bash/fish accept them); a leading one is not.
+    output1, status1 = run_wayu('alias add -- "-bad" "echo test"')
     output2, status2 = run_wayu('alias add "123abc" "echo test"')
     output3, status3 = run_wayu('alias add "if" "echo test"')
 
     # All should fail with validation errors
-    invalid1 = !status1.success? && (output1.include?("invalid") || output1.include?("Invalid"))
+    invalid1 = !status1.success? && output1.include?("must start with")
+    ok_hyphen, ok_status = run_wayu('alias add "good-name" "echo test"')
+    invalid1 &&= ok_status.success?
     invalid2 = !status2.success? && output2.include?("must start with")
     invalid3 = !status3.success? && output3.include?("reserved")
 
@@ -252,7 +252,7 @@ class AliasIntegrationTest
 
     output, status = run_wayu('alias add findlarge "find . -type f -size +100M | sort -h"')
 
-    if status.success? && File.read(@toml_file).include?('findlarge = ')
+    if status.success? && store_map('aliases').key?('findlarge')
       puts "✓"
       @passed += 1
     else
@@ -268,7 +268,7 @@ class AliasIntegrationTest
 
     output, status = run_wayu('alias add multitest "cd /tmp; ls -la; pwd"')
 
-    if status.success? && File.read(@toml_file).include?('multitest = ')
+    if status.success? && store_map('aliases').key?('multitest')
       puts "✓"
       @passed += 1
     else
@@ -284,7 +284,7 @@ class AliasIntegrationTest
 
     output, status = run_wayu('alias add lsd "ls -la | grep ^d"')
 
-    if status.success? && File.read(@toml_file).include?('lsd = ')
+    if status.success? && store_map('aliases').key?('lsd')
       puts "✓"
       @passed += 1
     else
@@ -300,14 +300,13 @@ class AliasIntegrationTest
 
     # Add an alias
     run_wayu('alias add persistent1 "echo test1"')
-    content_before = File.read(@toml_file)
 
     # Add another alias
     run_wayu('alias add persistent2 "echo test2"')
-    content_after = File.read(@toml_file)
+    aliases = store_map('aliases')
 
     # Both should exist
-    if content_after.include?('persistent1 = ') && content_after.include?('persistent2 = ')
+    if aliases.key?('persistent1') && aliases.key?('persistent2')
       puts "✓"
       @passed += 1
     else
@@ -318,13 +317,9 @@ class AliasIntegrationTest
   end
 
   def test_list_aliases_from_wayu_toml
-    print "Test 13: List aliases from wayu.toml... "
+    print "Test 13: List aliases from entries.json... "
 
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [aliases]
-      gs = "git status"
-      gc = "git commit"
-    TOML
+    write_entries(aliases: { 'gs' => 'git status', 'gc' => 'git commit' })
 
     output, status = run_wayu("alias list")
 
@@ -333,19 +328,16 @@ class AliasIntegrationTest
       @passed += 1
     else
       puts "✗"
-      puts "  Expected alias list to read from wayu.toml"
+      puts "  Expected alias list to read from entries.json"
       puts "  Output: #{output}"
       @failed += 1
     end
   end
 
   def test_get_alias_from_wayu_toml
-    print "Test 14: Get alias from wayu.toml... "
+    print "Test 14: Get alias from entries.json... "
 
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [aliases]
-      ga = "git add"
-    TOML
+    write_entries(aliases: { 'ga' => 'git add' })
 
     output, status = run_wayu("alias get ga")
 
@@ -360,45 +352,40 @@ class AliasIntegrationTest
   end
 
   def test_add_alias_to_wayu_toml
-    print "Test 15: Add alias writes to wayu.toml... "
+    print "Test 15: Add alias writes to entries.json only... "
 
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [aliases]
-      ll = "ls -la"
-    TOML
+    write_entries(aliases: { 'll' => 'ls -la' })
+    toml_before = File.read("#{@config_dir}/wayu.toml")
 
     output, status = run_wayu('alias add gs "git status"')
-    toml = File.read("#{@config_dir}/wayu.toml")
+    aliases = (read_entries['aliases'] || []).map { |a| [a['name'], a['value']] }
 
-    if status.success? && toml.include?('gs = "git status"')
+    if status.success? && aliases == [['ll', 'ls -la'], ['gs', 'git status']] &&
+       File.read("#{@config_dir}/wayu.toml") == toml_before
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Expected alias add to update wayu.toml only"
+      puts "  Expected alias add to append to entries.json and leave wayu.toml alone"
       puts "  Output: #{output}"
       @failed += 1
     end
   end
 
   def test_remove_alias_from_wayu_toml
-    print "Test 16: Remove alias writes to wayu.toml... "
+    print "Test 16: Remove alias writes to entries.json... "
 
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [aliases]
-      rmme = "echo bye"
-      keepme = "echo stay"
-    TOML
+    write_entries(aliases: { 'rmme' => 'echo bye', 'keepme' => 'echo stay' })
 
     output, status = run_wayu('alias rm rmme')
-    toml = File.read("#{@config_dir}/wayu.toml")
+    aliases = store_map('aliases')
 
-    if status.success? && !toml.include?('rmme =') && toml.include?('keepme = "echo stay"')
+    if status.success? && !aliases.key?('rmme') && aliases['keepme'] == 'echo stay'
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Expected alias rm to update wayu.toml"
+      puts "  Expected alias rm to update entries.json"
       puts "  Output: #{output}"
       @failed += 1
     end

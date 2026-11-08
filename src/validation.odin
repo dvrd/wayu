@@ -52,7 +52,10 @@ SHELL_RESERVED_WORDS :: []string {
 }
 
 // Validate shell identifier (alias/constant name)
-validate_identifier :: proc(name: string, identifier_type: string) -> ValidationResult {
+// allow_hyphen: aliases may contain `-` after the first character (zsh, bash
+// and fish accept it, and TOML bare keys allow it); env var and function
+// names may not.
+validate_identifier :: proc(name: string, identifier_type: string, allow_hyphen := false) -> ValidationResult {
 	// Check for empty
 	if len(name) == 0 {
 		return ValidationResult {
@@ -84,14 +87,15 @@ validate_identifier :: proc(name: string, identifier_type: string) -> Validation
 	// POSIX identifier rules; hyphens are invalid in env var names and
 	// problematic for shell parsing).
 	for r, i in name {
-		if !is_ascii_alpha(r) && !is_ascii_digit(r) && r != '_' {
+		if !is_ascii_alpha(r) && !is_ascii_digit(r) && r != '_' && !(allow_hyphen && r == '-') {
 			return ValidationResult {
 				valid = false,
 				error_message = fmt.aprintf(
-					"%s name contains invalid character '%c' at position %d. Only ASCII letters, digits, and underscores allowed.",
+					"%s name contains invalid character '%c' at position %d. Only ASCII letters, digits, %sand underscores allowed.",
 					identifier_type,
 					r,
 					i,
+					"hyphens (not first), " if allow_hyphen else "",
 				),
 			}
 		}
@@ -126,105 +130,10 @@ validate_identifier :: proc(name: string, identifier_type: string) -> Validation
 	return ValidationResult{valid = true, error_message = ""}
 }
 
-// Sanitize shell command value for double-quoted emission (e.g., alias x="VALUE")
-// CRITICAL: This function MUST be idempotent and called exactly once per emission.
-// The input is the raw TOML-parsed value (already unescaped by TOML parser).
-// Emitted format: alias x="VALUE" where VALUE escapes only the minimal set needed to
-// prevent breakout and code injection inside the double-quoted string.
-//
-// Escape rules for double-quoted strings ("..."):
-// - " → \" (prevents breaking out of the double-quoted string)
-// - ` → \` (prevents command substitution)
-// - $(...) → \$(...) (prevents command substitution via $(...))
-// - \X → copied verbatim as a pair (keeps the user's escape; never re-escapes X)
-// - trailing \ → \\ (would otherwise escape the closing quote)
-// - $VAR → leave alone (allows variable expansion, e.g., $HOME, $HERMOD_TOKEN)
-// - ; & | < > ( ) { } newline → leave alone (literal inside "...", execute when alias is invoked)
-//
-// This preserves user intent: $HOME expands, but "foo"; evil_command; :" does NOT inject
-// because the inner " is escaped (it was the attacker's only lever).
-sanitize_shell_value :: proc(value: string) -> string {
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-
-	i := 0
-	for i < len(value) {
-		ch := value[i]
-		switch ch {
-		case '\\':
-			// A user escape is copied as a PAIR so the escaped char can't be
-			// re-processed: `\"` stays `\"` (literal quote) instead of becoming
-			// `\\"` (literal backslash + string-closing quote → breakout), and
-			// `\$(` stays `\$(` (literal) instead of `\\$(` (command
-			// substitution). A trailing lone `\` would escape our closing
-			// quote, so it is doubled.
-			if i + 1 < len(value) {
-				strings.write_byte(&builder, '\\')
-				strings.write_byte(&builder, value[i + 1])
-				i += 2
-			} else {
-				strings.write_string(&builder, "\\\\")
-				i += 1
-			}
-		case '"':
-			// Escape double quotes to prevent breakout
-			strings.write_string(&builder, "\\\"")
-			i += 1
-		case '`':
-			// Escape backticks (command substitution inside double quotes)
-			strings.write_string(&builder, "\\`")
-			i += 1
-		case '$':
-			// Check for $(...) pattern and escape it
-			if i + 1 < len(value) && value[i + 1] == '(' {
-				strings.write_string(&builder, "\\$(")
-				i += 2
-			} else {
-				// Plain $ or $VAR: allow expansion
-				strings.write_byte(&builder, ch)
-				i += 1
-			}
-		case:
-			// All other characters (including \, ;, &, |, etc.) are literal in double quotes
-			strings.write_byte(&builder, ch)
-			i += 1
-		}
-	}
-
-	return strings.clone(strings.to_string(builder))
-}
-
-// Reverse of sanitize_shell_value — used by `get` to return the original user value
-unescape_shell_value :: proc(value: string) -> string {
-	builder: strings.Builder
-	strings.builder_init(&builder)
-	defer strings.builder_destroy(&builder)
-
-	i := 0
-	for i < len(value) {
-		if value[i] == '\\' && i + 1 < len(value) {
-			switch value[i + 1] {
-			case '"':  strings.write_rune(&builder, '"');  i += 2
-			case '`':  strings.write_rune(&builder, '`');  i += 2
-			case '$':  strings.write_rune(&builder, '$');  i += 2
-			case '\\': strings.write_rune(&builder, '\\'); i += 2
-			case 'n':  strings.write_rune(&builder, '\n'); i += 2
-			case:      strings.write_byte(&builder, value[i]); i += 1
-			}
-		} else {
-			strings.write_byte(&builder, value[i])
-			i += 1
-		}
-	}
-
-	return strings.clone(strings.to_string(builder))
-}
-
 // Validate alias-specific rules
 validate_alias :: proc(name: string, command: string) -> ValidationResult {
 	// First validate the identifier
-	result := validate_identifier(name, "Alias")
+	result := validate_identifier(name, "Alias", allow_hyphen = true)
 	if !result.valid {
 		return result
 	}
@@ -323,30 +232,30 @@ print_error_with_context :: proc(
 	resource: string,
 	context_msg: string = "",
 ) {
-	fmt.eprintf("%s%sERROR:%s ", BOLD, ERROR, RESET)
+	eprintf_color("%s%sERROR:%s ", BOLD, ERROR, RESET)
 
 	switch error_type {
 	case .FILE_NOT_FOUND:
-		fmt.eprintfln("File not found: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		eprintfln_color("File not found: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 
-		if strings.contains(resource, ".config/wayu") {
+		if strings.contains(resource, "/wayu/") {
 			fmt.eprintfln("\n%sSuggestion:%s Run %swayu init%s to create configuration files",
 				BRIGHT_CYAN, RESET, BOLD, RESET)
-			fmt.eprintfln("            This will set up all required configuration files in ~/.config/wayu/")
+			fmt.eprintfln("            This sets up ~/.config/wayu/ (config) and ~/.local/share/wayu/ (data)")
 		} else {
 			fmt.eprintfln("\n%sSuggestion:%s Check the file path and try again",
 				BRIGHT_CYAN, RESET)
 		}
 
 	case .PERMISSION_DENIED:
-		fmt.eprintfln("Permission denied: %s%s%s", BRIGHT_YELLOW, resource, RESET)
-		fmt.eprintfln("\n%sSuggestion:%s Check file permissions with:", BRIGHT_CYAN, RESET)
-		fmt.eprintfln("            %sls -la %s%s", MUTED, resource, RESET)
+		eprintfln_color("Permission denied: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		eprintfln_color("\n%sSuggestion:%s Check file permissions with:", BRIGHT_CYAN, RESET)
+		eprintfln_color("            %sls -la %s%s", MUTED, resource, RESET)
 		fmt.eprintfln("            You may need to run:")
-		fmt.eprintfln("            %schmod 644 %s%s", MUTED, resource, RESET)
+		eprintfln_color("            %schmod 644 %s%s", MUTED, resource, RESET)
 
 	case .FILE_READ_ERROR:
-		fmt.eprintfln("Failed to read file: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		eprintfln_color("Failed to read file: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Details: %s", context_msg)
 		}
@@ -355,16 +264,16 @@ print_error_with_context :: proc(
 		fmt.eprintfln("            Try closing other applications that may be using this file")
 
 	case .FILE_WRITE_ERROR:
-		fmt.eprintfln("Failed to write file: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		eprintfln_color("Failed to write file: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Details: %s", context_msg)
 		}
-		fmt.eprintfln("\n%sSuggestion:%s Check disk space and file permissions:", BRIGHT_CYAN, RESET)
-		fmt.eprintfln("            %sdf -h%s  # Check disk space", MUTED, RESET)
-		fmt.eprintfln("            %sls -la %s%s  # Check permissions", MUTED, resource, RESET)
+		eprintfln_color("\n%sSuggestion:%s Check disk space and file permissions:", BRIGHT_CYAN, RESET)
+		eprintfln_color("            %sdf -h%s  # Check disk space", MUTED, RESET)
+		eprintfln_color("            %sls -la %s%s  # Check permissions", MUTED, resource, RESET)
 
 	case .INVALID_INPUT:
-		fmt.eprintfln("Invalid input: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		eprintfln_color("Invalid input: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Reason: %s", context_msg)
 		}
@@ -388,19 +297,19 @@ print_error_with_context :: proc(
 			BRIGHT_YELLOW, resource, RESET)
 		fmt.eprintfln("\n%sFirst time using wayu?%s Run the following command:",
 			BRIGHT_CYAN, RESET)
-		fmt.eprintfln("  %swayu init%s", BOLD, RESET)
+		eprintfln_color("  %swayu init%s", BOLD, RESET)
 		fmt.eprintfln("\nThis will:")
-		fmt.eprintfln("  • Create ~/.config/wayu/ directory")
+		fmt.eprintfln("  • Create ~/.config/wayu/ and ~/.local/share/wayu/")
 		fmt.eprintfln("  • Initialize all configuration files")
 		fmt.eprintfln("  • Set up shell integration")
 
 	case .DIRECTORY_NOT_FOUND:
-		fmt.eprintfln("Directory not found: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		eprintfln_color("Directory not found: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Details: %s", context_msg)
 		}
-		fmt.eprintfln("\n%sSuggestion:%s Verify the directory exists or create it:", BRIGHT_CYAN, RESET)
-		fmt.eprintfln("            %smkdir -p %s%s", MUTED, resource, RESET)
+		eprintfln_color("\n%sSuggestion:%s Verify the directory exists or create it:", BRIGHT_CYAN, RESET)
+		eprintfln_color("            %smkdir -p %s%s", MUTED, resource, RESET)
 	}
 
 	fmt.eprintln()
@@ -480,7 +389,13 @@ get_directory :: proc(file_path: string) -> string {
 
 // Print formatted error (simple version for backwards compatibility)
 print_error_simple :: proc(format: string, args: ..any) {
-	fmt.eprintf("%s%sERROR:%s ", BOLD, ERROR, RESET)
+	// The TUI (print_quiet) captures it for its notification instead of
+	// writing over the alternate screen.
+	if print_quiet {
+		print_error(format, ..args)
+		return
+	}
+	eprintf_color("%s%sERROR:%s ", BOLD, ERROR, RESET)
 	fmt.eprintfln(format, ..args)
 }
 

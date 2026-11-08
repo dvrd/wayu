@@ -9,11 +9,13 @@
 //   test      — run unit tests
 //   check     — type-check only
 //   clean     — remove build artifacts
-//   install   — build + copy to /usr/local/bin + wayu init
+//   install   — build + copy to $PREFIX/bin (default ~/.local/bin) + wayu init;
+//               refuses while Homebrew manages wayu unless --force
 //   dev       — debug build + run with remaining args
 //   release   — test + commit + tag + atomic push of main and the tag
 //               (the push to main runs bump.yml: CI, then publish + Homebrew)
 //   docs      — sync docs/index.html + README.md version from src/main.odin
+//               (--check: verify only, exit 1 on drift)
 //   help      — show available targets
 
 package main
@@ -38,7 +40,7 @@ debug_path :: proc() -> string {
 }
 
 main :: proc() {
-	bld.go_rebuild_urself("build")
+	bld.go_rebuild_urself("build", "bld")
 
 	target := "build"
 	if len(os.args) > 1 {
@@ -132,7 +134,10 @@ do_debug :: proc() {
 }
 
 do_test :: proc() {
-	if !run_unit_tests() {
+	// `./build_it test NAME[,NAME...]` runs only those tests
+	// (package-qualified names, e.g. test_wayu.test_path_add).
+	names := os.args[2] if len(os.args) > 2 else ""
+	if !run_unit_tests(names) {
 		bld.log_error("Tests failed")
 		os.exit(1)
 	}
@@ -143,7 +148,7 @@ do_test :: proc() {
 // sandbox before returning. Returns instead of exiting so the restore and
 // cleanup always run; do_release runs git afterwards and needs the real HOME
 // for ~/.gitconfig (identity, commit signing, credential helper).
-run_unit_tests :: proc() -> bool {
+run_unit_tests :: proc(names := "") -> bool {
 	bld.log_info("Running unit tests...")
 	bld.mkdir_if_not_exists(BIN_DIR)
 	// Sandbox HOME so no test can ever write into the real ~/.config/wayu
@@ -154,23 +159,65 @@ run_unit_tests :: proc() -> bool {
 	os.make_directory_all(test_home)
 	real_home, had_home := os.lookup_env("HOME", context.temp_allocator)
 	os.set_env("HOME", test_home)
+	// Tests put scratch files under this per-run root (tests/unit/test_tmp.odin),
+	// removed with the sandbox: concurrent runs never share a /tmp path.
+	os.set_env("WAYU_TEST_TMPDIR", fmt.tprintf("%s/tmp", test_home))
 	defer {
 		if had_home {
 			os.set_env("HOME", real_home)
 		} else {
 			os.unset_env("HOME")
 		}
+		os.unset_env("WAYU_TEST_TMPDIR")
 		os.remove_all(test_home)
 	}
-	return bld.test({
+	// The test runner reports progress, per-test logs, leaks and the names of
+	// failed tests on stderr, which is passed through. The tested code's own
+	// stdout (CLI output, TUI escape sequences — some query the terminal and
+	// would inject replies into its input) goes to a log, shown on failure.
+	stdout_log := fmt.tprintf("%s/unit-tests.stdout.log", test_home)
+	defines := make([dynamic]bld.Define, context.temp_allocator)
+	append(&defines, bld.Define{name = "ODIN_TEST_THREADS", value = "1"})
+	// A leak or bad free (tracking allocator, on by default) fails the
+	// test instead of only printing a warning.
+	append(&defines, bld.Define{name = "ODIN_TEST_FAIL_ON_BAD_MEMORY", value = "true"})
+	if len(names) > 0 {
+		append(&defines, bld.Define{name = "ODIN_TEST_NAMES", value = names})
+	}
+	ok := bld.test({
 		package_path = TEST_DIR,
+		// Per-run binary: odin test otherwise writes ./unit in the cwd, which
+		// concurrent runs in one checkout would overwrite mid-run.
+		out          = fmt.tprintf("%s/wayu_unit_tests", test_home),
 		file_mode    = true,
 		opt          = .Speed,
-		defines      = {
-			{name = "ODIN_TEST_THREADS", value = "1"},
-		},
+		defines      = defines[:],
 		ignore_unused_defineables = true,
-	})
+	}, {stdout_path = stdout_log})
+	if !ok {
+		show_test_stdout(stdout_log)
+	}
+	return ok
+}
+
+// On failure: keep the tested code's stdout as bin/unit-tests.stdout.log
+// (the sandbox is removed) and print its tail.
+show_test_stdout :: proc(stdout_log: string) {
+	TAIL_LINES :: 40
+	kept := fmt.tprintf("%s/unit-tests.stdout.log", BIN_DIR)
+	data, err := os.read_entire_file_from_path(stdout_log, context.temp_allocator)
+	if err != nil || len(data) == 0 { return }
+	_ = os.write_entire_file(kept, data)
+	lines := strings.split_lines(strings.trim_right(string(data), "\n"), context.temp_allocator)
+	from := max(0, len(lines) - TAIL_LINES)
+	fmt.eprintfln("---- last %d lines of test stdout (full log: %s) ----", len(lines) - from, kept)
+	for line in lines[from:] {
+		// Show escape sequences instead of sending them: some (cursor
+		// position queries) make the terminal type a reply into its input.
+		safe, _ := strings.replace_all(line, "\x1b", "^[", context.temp_allocator)
+		fmt.eprintln(safe)
+	}
+	fmt.eprintln("---- end of test stdout ----")
 }
 
 // Run `git <args>`; true on exit status 0.
@@ -223,22 +270,112 @@ do_clean :: proc() {
 	bld.log_info("Clean complete")
 }
 
+// Install directory: $PREFIX/bin when PREFIX is set, else ~/.local/bin.
+// Never /usr/local/bin by default: it is root-owned on many Macs (and
+// `sudo ./build_it install` would then run `wayu init` as root), and on
+// Apple Silicon Homebrew's /opt/homebrew/bin precedes it on PATH.
+install_dir :: proc() -> (dir: string, ok: bool) {
+	if prefix, found := os.lookup_env("PREFIX", context.temp_allocator); found && len(prefix) > 0 {
+		return fmt.tprintf("%s/bin", strings.trim_right(prefix, "/")), true
+	}
+	home, found := os.lookup_env("HOME", context.temp_allocator)
+	if !found || len(home) == 0 {
+		return "", false
+	}
+	return fmt.tprintf("%s/.local/bin", home), true
+}
+
+// A wayu installed by Homebrew: <prefix>/bin/wayu is a symlink into
+// <prefix>/Cellar/wayu/. Returns the link path, "" when there is none.
+homebrew_wayu :: proc() -> string {
+	prefixes := make([dynamic]string, context.temp_allocator)
+	if p, found := os.lookup_env("HOMEBREW_PREFIX", context.temp_allocator); found && len(p) > 0 {
+		append(&prefixes, p)
+	}
+	append(&prefixes, "/opt/homebrew", "/usr/local", "/home/linuxbrew/.linuxbrew")
+	for prefix in prefixes {
+		link := fmt.tprintf("%s/bin/%s", prefix, BINARY_NAME)
+		target, err := os.read_link(link, context.temp_allocator)
+		if err == nil && strings.contains(target, "Cellar/wayu/") {
+			return link
+		}
+	}
+	return ""
+}
+
+// The first executable `wayu` on $PATH ("" when none).
+wayu_on_path :: proc() -> string {
+	path_env, _ := os.lookup_env("PATH", context.temp_allocator)
+	for dir in strings.split(path_env, ":", context.temp_allocator) {
+		if len(dir) == 0 { continue }
+		candidate := fmt.tprintf("%s/%s", strings.trim_right(dir, "/"), BINARY_NAME)
+		if fi, err := os.stat(candidate, context.temp_allocator); err == nil && fi.type != .Directory {
+			return candidate
+		}
+	}
+	return ""
+}
+
+// install [--force]: build, copy to install_dir() via temp file + rename
+// (never rewrite a signed binary in place: macOS kills it on next exec),
+// then `wayu init`. Refuses while Homebrew manages a wayu unless --force.
 do_install :: proc() {
-	do_build()
+	force := false
+	for i := 2; i < len(os.args); i += 1 {
+		switch os.args[i] {
+		case "--force":
+			force = true
+		case:
+			bld.log_error("Unknown install option '%s' (usage: ./build_it install [--force])", os.args[i])
+			os.exit(1)
+		}
+	}
 
-	install_path := fmt.tprintf("/usr/local/bin/%s", BINARY_NAME)
-	bld.log_info("Installing to %s...", install_path)
+	dir, dir_ok := install_dir()
+	if !dir_ok {
+		bld.log_error("Neither PREFIX nor HOME is set; cannot choose an install directory")
+		os.exit(1)
+	}
+	install_path := fmt.tprintf("%s/%s", dir, BINARY_NAME)
 
-	ok := bld.copy_file(bin_path(), install_path)
-	if !ok {
-		bld.log_error("Failed to copy binary to /usr/local/bin/")
+	if brew := homebrew_wayu(); len(brew) > 0 && !force {
+		bld.log_error("wayu is installed by Homebrew (%s).", brew)
+		bld.log_error("A second, dev-built wayu would fight it for PATH precedence and")
+		bld.log_error("Homebrew upgrades would not touch it. Either:")
+		bld.log_error("  brew uninstall wayu && ./build_it install")
+		bld.log_error("  ./build_it install --force     # install to %s anyway", install_path)
+		bld.log_error("  ./build_it && ./bin/wayu ...   # or just run the build in place")
 		os.exit(1)
 	}
 
-	// copy_file doesn't preserve permissions — make executable.
-	chmod := bld.cmd_create(context.temp_allocator)
-	bld.cmd_append(&chmod, "chmod", "+x", install_path)
-	bld.cmd_run(&chmod)
+	do_build()
+
+	if !os.is_dir(dir) {
+		if err := os.make_directory_all(dir); err != nil {
+			bld.log_error("Cannot create %s: %v", dir, err)
+			os.exit(1)
+		}
+	}
+
+	bld.log_info("Installing to %s...", install_path)
+	tmp_path := fmt.tprintf("%s/.%s.install-%d", dir, BINARY_NAME, os.get_pid())
+	if !bld.copy_file(bin_path(), tmp_path) {
+		os.remove(tmp_path)
+		bld.log_error("Failed to copy the binary into %s (permissions? set PREFIX to another directory)", dir)
+		os.exit(1)
+	}
+	// copy_file doesn't preserve permissions; 0755 before it becomes visible.
+	if err := os.chmod(tmp_path, os.perm_number(0o755)); err != nil {
+		os.remove(tmp_path)
+		bld.log_error("Failed to make %s executable: %v", tmp_path, err)
+		os.exit(1)
+	}
+	// rename() replaces the old binary atomically (new inode).
+	if err := os.rename(tmp_path, install_path); err != nil {
+		os.remove(tmp_path)
+		bld.log_error("Failed to install %s: %v", install_path, err)
+		os.exit(1)
+	}
 
 	// Run the already-built binary instead of recompiling from source.
 	bld.log_info("Running %s init...", BINARY_NAME)
@@ -249,7 +386,13 @@ do_install :: proc() {
 		os.exit(1)
 	}
 
-	bld.log_info("Installed successfully")
+	bld.log_info("Installed %s", install_path)
+	// Say so when a shell would not run what was just installed.
+	if found := wayu_on_path(); found == "" {
+		bld.log_warn("%s is not on your PATH; add it to use the installed wayu", dir)
+	} else if found != install_path {
+		bld.log_warn("`wayu` on your PATH is %s, which shadows %s; put %s earlier in PATH", found, install_path, dir)
+	}
 }
 
 do_dev :: proc() {
@@ -459,65 +602,122 @@ read_source_version :: proc() -> string {
 	return after[:end]
 }
 
-// Generic version sync: find old_ver via marker string, replace all old→new.
-sync_file_version :: proc(path: string, marker: string, new_ver: string) {
-	data, err := os.read_entire_file_from_path(path, context.allocator)
-	if err != nil {
-		bld.log_error("Failed to read %s", path)
-		os.exit(1)
-	}
-	content := string(data)
+// Where the release version appears outside src/main.odin. Only an X.Y.Z
+// directly after one of these prefixes is rewritten or checked, so other
+// version numbers in prose ("upgrading from 4.3.4") are never touched.
+// A `required` anchor must be present, or the file's layout changed and the
+// table needs updating.
+Version_Anchor :: struct {
+	path:     string,
+	prefix:   string,
+	required: bool,
+}
 
-	idx := strings.index(content, marker)
-	if idx == -1 {
-		bld.log_error("Could not find version marker in %s", path)
-		os.exit(1)
-	}
-	old_start := idx + len(marker)
-	// Find the end delimiter: first char that isn't part of a semver
-	old_end := 0
-	for old_end < len(content[old_start:]) {
-		c := content[old_start + old_end]
-		if c >= '0' && c <= '9' || c == '.' {
-			old_end += 1
-		} else {
-			break
+VERSION_ANCHORS :: [?]Version_Anchor{
+	{"README.md",       "**v",                  true},  // **vX.Y.Z** under the title
+	{"docs/index.html", `aria-label="Version `, true},  // nav badge label
+	{"docs/index.html", `">v`,                  false}, // nav badge + footer text
+	{"docs/index.html", "wayu ",                false}, // terminal demo "wayu X.Y.Z installed"
+}
+
+VERSION_FILES :: [?]string{"README.md", "docs/index.html"}
+
+// Length of the X.Y.Z at the start of s, or 0 when s doesn't start with one.
+semver_len :: proc(s: string) -> int {
+	i := 0
+	for part in 0 ..< 3 {
+		start := i
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i += 1
+		}
+		if i == start { return 0 }
+		if part < 2 {
+			if i >= len(s) || s[i] != '.' { return 0 }
+			i += 1
 		}
 	}
-	if old_end == 0 {
-		bld.log_error("Malformed version after marker in %s", path)
-		os.exit(1)
-	}
-	old_ver := content[old_start : old_start + old_end]
-
-	if old_ver == new_ver {
-		bld.log_info("%s already at v%s", path, new_ver)
-		return
-	}
-
-	updated, _ := strings.replace_all(content, old_ver, new_ver)
-	werr := os.write_entire_file(path, transmute([]byte)updated)
-	if werr != nil {
-		bld.log_error("Failed to write %s", path)
-		os.exit(1)
-	}
-
-	count := strings.count(content, old_ver)
-	bld.log_info("%s: %s → %s (%d replacements)", path, old_ver, new_ver, count)
+	return i
 }
 
-// Sync version into docs/index.html and README.md.
-sync_docs_version_str :: proc(new_ver: string) {
-	// docs/index.html — anchor on the nav badge aria-label
-	sync_file_version("docs/index.html", `aria-label="Version `, new_ver)
-	// README.md — anchor on the bold version tag at the top
-	sync_file_version("README.md", "**v", new_ver)
+// Replace the X.Y.Z after every occurrence of prefix with new_ver. Returns the
+// rewritten content and how many anchored versions were found; versions that
+// differed from new_ver are appended to stale.
+rewrite_anchored_versions :: proc(content, prefix, new_ver: string, stale: ^[dynamic]string) -> (out: string, found: int) {
+	b := strings.builder_make(context.temp_allocator)
+	rest := content
+	for {
+		idx := strings.index(rest, prefix)
+		if idx == -1 { break }
+		after := idx + len(prefix)
+		strings.write_string(&b, rest[:after])
+		rest = rest[after:]
+		n := semver_len(rest)
+		if n == 0 { continue }
+		found += 1
+		if rest[:n] != new_ver { append(stale, rest[:n]) }
+		strings.write_string(&b, new_ver)
+		rest = rest[n:]
+	}
+	strings.write_string(&b, rest)
+	return strings.to_string(b), found
 }
 
-// Standalone entry point: read VERSION from source, patch docs + README.
+// Sync README.md + docs/index.html to new_ver, or with check only report
+// drift. Returns false when check finds a stale version.
+sync_docs_version_str :: proc(new_ver: string, check := false) -> bool {
+	ok := true
+	for path in VERSION_FILES {
+		data, err := os.read_entire_file_from_path(path, context.temp_allocator)
+		if err != nil {
+			bld.log_error("Failed to read %s", path)
+			os.exit(1)
+		}
+		content := string(data)
+		stale := make([dynamic]string, context.temp_allocator)
+		for anchor in VERSION_ANCHORS {
+			if anchor.path != path { continue }
+			found: int
+			content, found = rewrite_anchored_versions(content, anchor.prefix, new_ver, &stale)
+			if anchor.required && found == 0 {
+				bld.log_error("%s: version marker '%sX.Y.Z' not found (update VERSION_ANCHORS in build/build.odin)", path, anchor.prefix)
+				os.exit(1)
+			}
+		}
+
+		switch {
+		case len(stale) == 0:
+			bld.log_info("%s at v%s", path, new_ver)
+		case check:
+			bld.log_error("%s says v%s but src/main.odin VERSION is %s — run ./build_it docs", path, stale[0], new_ver)
+			ok = false
+		case:
+			if os.write_entire_file(path, transmute([]byte)content) != nil {
+				bld.log_error("Failed to write %s", path)
+				os.exit(1)
+			}
+			bld.log_info("%s: v%s → v%s (%d replacements)", path, stale[0], new_ver, len(stale))
+		}
+	}
+	return ok
+}
+
+// `./build_it docs [--check]`: sync README + docs to VERSION in src/main.odin.
+// --check writes nothing and exits 1 on drift (CI "Release Readiness");
+// bump.yml runs the plain form before committing a release.
 sync_docs_version :: proc() {
-	ver := read_source_version()
-	sync_docs_version_str(ver)
+	check := false
+	for i := 2; i < len(os.args); i += 1 {
+		switch os.args[i] {
+		case "--check":
+			check = true
+		case:
+			bld.log_error("Unknown docs option '%s' (usage: ./build_it docs [--check])", os.args[i])
+			os.exit(1)
+		}
+	}
+	if !sync_docs_version_str(read_source_version(), check) {
+		os.exit(1)
+	}
 }
 
 do_help :: proc() {
@@ -528,13 +728,13 @@ do_help :: proc() {
 	fmt.println("Targets:")
 	fmt.println("  build     Optimized release build (default)")
 	fmt.println("  debug     Debug build with symbols")
-	fmt.println("  test      Run unit tests")
+	fmt.println("  test      Run unit tests (optional: NAME[,NAME] to run only those)")
 	fmt.println("  check     Type-check only")
 	fmt.println("  clean     Remove build artifacts")
-	fmt.println("  install   Build + install to /usr/local/bin + wayu init")
+	fmt.println("  install   Build + install to $PREFIX/bin (default ~/.local/bin) + wayu init [--force]")
 	fmt.println("  dev       Debug build + run (extra args passed through)")
 	fmt.println("  release   Run tests, commit + tag, push to main (bump.yml publishes after CI)")
-	fmt.println("  docs      Sync docs/index.html + README.md version from src/main.odin")
+	fmt.println("  docs      Sync docs/index.html + README.md version from src/main.odin [--check]")
 	fmt.println("  help      Show this help")
 	fmt.println("")
 	fmt.println("Bootstrap:")
