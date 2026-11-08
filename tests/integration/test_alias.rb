@@ -210,12 +210,15 @@ class AliasIntegrationTest
     print "Test 7: Alias name validation... "
 
     # Try invalid names
-    output1, status1 = run_wayu('alias add "bad-name" "echo test"')
+    # Inner hyphens are allowed (zsh/bash/fish accept them); a leading one is not.
+    output1, status1 = run_wayu('alias add -- "-bad" "echo test"')
     output2, status2 = run_wayu('alias add "123abc" "echo test"')
     output3, status3 = run_wayu('alias add "if" "echo test"')
 
     # All should fail with validation errors
-    invalid1 = !status1.success? && (output1.include?("invalid") || output1.include?("Invalid"))
+    invalid1 = !status1.success? && output1.include?("must start with")
+    ok_hyphen, ok_status = run_wayu('alias add "good-name" "echo test"')
+    invalid1 &&= ok_status.success?
     invalid2 = !status2.success? && output2.include?("must start with")
     invalid3 = !status3.success? && output3.include?("reserved")
 

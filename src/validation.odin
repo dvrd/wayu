@@ -52,7 +52,10 @@ SHELL_RESERVED_WORDS :: []string {
 }
 
 // Validate shell identifier (alias/constant name)
-validate_identifier :: proc(name: string, identifier_type: string) -> ValidationResult {
+// allow_hyphen: aliases may contain `-` after the first character (zsh, bash
+// and fish accept it, and TOML bare keys allow it); env var and function
+// names may not.
+validate_identifier :: proc(name: string, identifier_type: string, allow_hyphen := false) -> ValidationResult {
 	// Check for empty
 	if len(name) == 0 {
 		return ValidationResult {
@@ -84,14 +87,15 @@ validate_identifier :: proc(name: string, identifier_type: string) -> Validation
 	// POSIX identifier rules; hyphens are invalid in env var names and
 	// problematic for shell parsing).
 	for r, i in name {
-		if !is_ascii_alpha(r) && !is_ascii_digit(r) && r != '_' {
+		if !is_ascii_alpha(r) && !is_ascii_digit(r) && r != '_' && !(allow_hyphen && r == '-') {
 			return ValidationResult {
 				valid = false,
 				error_message = fmt.aprintf(
-					"%s name contains invalid character '%c' at position %d. Only ASCII letters, digits, and underscores allowed.",
+					"%s name contains invalid character '%c' at position %d. Only ASCII letters, digits, %sand underscores allowed.",
 					identifier_type,
 					r,
 					i,
+					"hyphens (not first), " if allow_hyphen else "",
 				),
 			}
 		}
@@ -129,7 +133,7 @@ validate_identifier :: proc(name: string, identifier_type: string) -> Validation
 // Validate alias-specific rules
 validate_alias :: proc(name: string, command: string) -> ValidationResult {
 	// First validate the identifier
-	result := validate_identifier(name, "Alias")
+	result := validate_identifier(name, "Alias", allow_hyphen = true)
 	if !result.valid {
 		return result
 	}

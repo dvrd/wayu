@@ -6,6 +6,14 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**Alias names may contain `-`**
+
+- `wayu alias add`, `toml validate` and the TUI now accept a hyphen in an alias
+  name after the first character (`onlead-logs`). zsh, bash and fish all accept
+  these names and TOML writes them as bare keys. A leading `-` is still refused,
+  as are hyphens in constant and function names. Configs that `toml validate`
+  used to reject for this reason now pass.
+
 **Hooks**
 - A `{path}` / `{name}` / `{value}` placeholder inside double quotes in
   `hooks.conf` is now refused. The shell expanded the value before a nested

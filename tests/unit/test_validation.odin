@@ -38,9 +38,9 @@ test_validate_identifier_invalid_start :: proc(t: ^testing.T) {
 
 @(test)
 test_validate_identifier_invalid_chars :: proc(t: ^testing.T) {
-	result := wayu.validate_identifier("my-alias", "Alias")
+	result := wayu.validate_identifier("my-alias", "Constant")
 	defer delete(result.error_message)
-	testing.expect(t, !result.valid, "Name with dash should fail")
+	testing.expect(t, !result.valid, "Name with dash should fail unless allowed")
 
 	result2 := wayu.validate_identifier("my.alias", "Alias")
 	defer delete(result2.error_message)
@@ -147,4 +147,23 @@ test_validate_identifier_rejects_non_ascii :: proc(t: ^testing.T) {
 	}
 	ok := wayu.validate_identifier("Ok_Name_9", "Alias")
 	testing.expect(t, ok.valid)
+}
+
+@(test)
+test_validate_alias_allows_inner_hyphen :: proc(t: ^testing.T) {
+	ok := wayu.validate_alias("onlead-logs", "echo hi")
+	defer delete(ok.error_message)
+	testing.expect(t, ok.valid, "alias name with an inner hyphen is valid")
+
+	lead := wayu.validate_alias("-x", "echo hi")
+	defer delete(lead.error_message)
+	testing.expect(t, !lead.valid, "alias name starting with '-' is rejected")
+
+	c := wayu.validate_constant("MY-VAR", "v")
+	defer delete(c.error_message)
+	testing.expect(t, !c.valid, "constant names still reject hyphens")
+
+	f := wayu.validate_identifier("my-fn", "Function")
+	defer delete(f.error_message)
+	testing.expect(t, !f.valid, "function names still reject hyphens")
 }
