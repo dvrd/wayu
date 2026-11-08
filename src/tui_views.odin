@@ -1143,8 +1143,14 @@ render_hooks_view :: proc(state: ^TUIState, screen: ^Screen) {
 	for row in rows {
 		if len(row.cmd) == 0 do continue
 		if configured >= max_rows do break
-		line := fmt.tprintf("%s → %s", row.name, row.cmd)
-		render_text_styled(screen, text_x, y, truncate_text(line, avail), TUI_MUTED)
+		// A placeholder inside "..." makes the hook invalid (never runs).
+		if tok := hook_double_quoted_placeholder(row.cmd); len(tok) > 0 {
+			line := fmt.tprintf("✗ %s → %s  (INVALID: %s inside \"...\")", row.name, row.cmd, tok)
+			render_text_styled(screen, text_x, y, truncate_text(line, avail), TUI_ERROR)
+		} else {
+			line := fmt.tprintf("%s → %s", row.name, row.cmd)
+			render_text_styled(screen, text_x, y, truncate_text(line, avail), TUI_MUTED)
+		}
 		y += 1
 		configured += 1
 	}

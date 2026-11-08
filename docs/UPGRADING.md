@@ -6,6 +6,19 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**Hooks**
+- A `{path}` / `{name}` / `{value}` placeholder inside double quotes in
+  `hooks.conf` is now refused. The shell expanded the value before a nested
+  `sh -c "..."` / `eval "..."` re-parsed it, so
+  `pre_alias_add = sh -c "echo {value}"` ran code from an alias value. Such a
+  hook never runs: any wayu operation that would run hooks exits `78` before
+  writing anything and names the offending `hooks.conf` line; `wayu hooks`
+  marks it `INVALID`. Write the placeholder unquoted (`echo Adding {path}`,
+  wayu quotes the value), inside `'...'` for an inner shell
+  (`sh -c 'echo {path}'`), or use `"$WAYU_HOOK_PATH"` / `"$WAYU_HOOK_NAME"` /
+  `"$WAYU_HOOK_VALUE"` when you need double quotes. (This replaces the 4.4.x
+  advice to use double quotes for direct substitution.)
+
 **Plugins (review fixes)**
 - `plugin update` no longer resets a checkout whose HEAD has commits that
   were never on the remote: when it cannot fast-forward, the update fails

@@ -933,6 +933,8 @@ Entry :: union {
 // change) and honors wayu.dry_run (the toml_* writers print a preview and
 // skip the write; hooks are skipped by execute_hook_ctx).
 entry_add :: proc(entry: Entry) -> (bool, string) {
+	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
+	if msg, bad := hook_config_error(); bad { return false, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
 		// Validate path format (no existence check — TUI lets you stage a
@@ -980,6 +982,8 @@ entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (boo
 // The non-identity fields on the variant are ignored. Same hook / dry-run
 // semantics as entry_add.
 entry_remove :: proc(entry: Entry) -> (bool, string) {
+	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
+	if msg, bad := hook_config_error(); bad { return false, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
 		if toml_path_exists(e.path) { hook_pre_path_remove(e.path) }

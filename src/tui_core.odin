@@ -1626,6 +1626,8 @@ tui_install_plugin :: proc(key: string) -> bool {
 	config, cfg_ok := read_plugin_config_json()
 	defer cleanup_plugin_config_json(&config)
 	if !cfg_ok { return false }
+	// Invalid hooks.conf: refuse before cloning/writing (CLI exits 78).
+	if _, bad := hook_config_error(); bad { return false }
 
 	hook_pre_plugin_install(info.name)
 

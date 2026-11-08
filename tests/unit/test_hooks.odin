@@ -80,15 +80,68 @@ test_hook_render_command_quotes_per_context :: proc(t: ^testing.T) {
 	defer delete(r1)
 	testing.expect_value(t, r1, `echo "${WAYU_HOOK_NAME}"`)
 
-	r2 := wayu.hook_render_command(`echo "n={name} v={value}"`)
+	// Inside "..." a placeholder is reported (the hook is refused at load).
+	r2, _, dtok := wayu.hook_render_command_ex(`echo "n={name} v={value}"`)
 	defer delete(r2)
-	testing.expect_value(t, r2, `echo "n=${WAYU_HOOK_NAME} v=${WAYU_HOOK_VALUE}"`)
+	testing.expect_value(t, dtok, "{name}")
 
 	// Inside '...' the reference is left for an inner shell (OKAMI-230).
-	r3, single := wayu.hook_render_command_ex(`sh -c 'echo {path} >> log'`)
+	r3, single, dtok3 := wayu.hook_render_command_ex(`sh -c 'echo {path} >> log'`)
 	defer delete(r3)
 	testing.expect_value(t, r3, `sh -c 'echo "${WAYU_HOOK_PATH}" >> log'`)
 	testing.expect(t, single, "single-quoted placeholder reported")
+	testing.expect_value(t, dtok3, "")
+}
+
+// A placeholder inside "..." (outside any '...') makes the hook invalid;
+// unquoted, '...' and "$WAYU_HOOK_*" in double quotes stay valid.
+@(test)
+test_hook_double_quoted_placeholder_detection :: proc(t: ^testing.T) {
+	Case :: struct { cmd, want: string }
+	cases := []Case{
+		{`sh -c "echo {value}"`, "{value}"},
+		{`echo "Adding {path}" >> log`, "{path}"},
+		{`eval "x={name}"`, "{name}"},
+		{`echo a "b" {name}`, ""},
+		{`echo {path}`, ""},
+		{`sh -c 'echo {path}'`, ""},
+		{`sh -c 'echo "a {name}"'`, ""}, // "..." inside '...' is literal text
+		{`echo "$WAYU_HOOK_NAME"`, ""},
+		{`echo \"{name}\"`, ""}, // escaped quotes are not a quoted string
+	}
+	for c in cases {
+		testing.expectf(t, wayu.hook_double_quoted_placeholder(c.cmd) == c.want, "%q: want %q", c.cmd, c.want)
+	}
+}
+
+// Load-time validation names every invalid line; a valid file reports nothing.
+@(test)
+test_hook_config_error_reports_lines :: proc(t: ^testing.T) {
+	tmp := "/tmp/wayu_test_hooks_dquote"
+	os.remove_all(tmp)
+	testing.expect(t, os.make_directory(tmp) == nil)
+	defer os.remove_all(tmp)
+
+	saved_config := wayu.wayu.config
+	wayu.wayu.config = tmp
+	defer wayu.wayu.config = saved_config
+	conf_path := fmt.tprintf("%s/hooks.conf", tmp)
+
+	ok_conf := "# comment\npre_alias_add = echo {name}\npost_alias_add = sh -c 'echo {value}'\npre_path_add = echo \"$WAYU_HOOK_PATH\"\n"
+	testing.expect(t, wayu.safe_write_file(conf_path, transmute([]byte)ok_conf))
+	_, bad := wayu.hook_config_error()
+	testing.expect(t, !bad, "unquoted / single-quoted / env-var hooks are valid")
+
+	bad_conf := "# comment\npre_alias_add = echo {name}\npre_alias_add2 = x\npost_export = sh -c \"echo {value}\"\n"
+	testing.expect(t, wayu.safe_write_file(conf_path, transmute([]byte)bad_conf))
+	msg, bad2 := wayu.hook_config_error()
+	testing.expect(t, bad2, "double-quoted placeholder must be refused")
+	testing.expect(t, strings.contains(msg, "line 4: post_export"), msg)
+	testing.expect(t, strings.contains(msg, "WAYU_HOOK_"), "message points to the env vars")
+
+	config := wayu.load_hook_config()
+	defer wayu.free_hook_config(config)
+	testing.expect_value(t, len(config.invalid), 1)
 }
 
 // OKAMI-230: values reaching a nested shell (`sh -c '... {path}'`) stay data.
