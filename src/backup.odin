@@ -733,7 +733,7 @@ handle_backup_command :: proc(action: Action, args: []string) {
 // The groups `backup list` / `backup rm` act on: wayu.toml always (so it is
 // shown even with no backups), then every other group in the backup dir
 // (init.zsh from --optimize, the rc file from init, plugins.json, ...).
-@(private = "file")
+// Also the TUI Backups view and its cleanup. Free with delete_backup_keys.
 backup_list_groups :: proc() -> []string {
 	keys := list_backup_keys()
 	if slice.contains(keys, WAYU_TOML) { return keys }

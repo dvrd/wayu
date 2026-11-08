@@ -58,22 +58,12 @@ handle_path_command :: proc(action: Action, args: []string) {
 			os.exit(EXIT_USAGE)
 		}
 		name_hint, raw_path, _ := parse_path_arg(args[0])
-		entry := ConfigEntry{type = .PATH, name = raw_path, value = "", line = ""}
-		result := validate_path_entry(entry)
-		if !result.valid {
-			print_error("%s", result.error_message)
-			delete(result.error_message)
-			os.exit(EXIT_DATAERR)
-		}
-		expanded := expand_env_vars(raw_path, require_resolved = true)
+		expanded, check_err, check_code := path_add_check(raw_path)
 		defer delete(expanded)
-		if len(expanded) == 0 {
-			print_error("Could not resolve path to an absolute path: %s", raw_path)
-			os.exit(EXIT_DATAERR)
-		}
-		if !os.exists(expanded) {
-			print_error("Path does not exist: %s", raw_path)
-			os.exit(EXIT_NOINPUT)
+		if check_code != EXIT_SUCCESS {
+			print_error("%s", check_err)
+			delete(check_err)
+			os.exit(check_code)
 		}
 		if !check_wayu_initialized() {
 			os.exit(EXIT_CONFIG)
@@ -111,6 +101,30 @@ handle_path_command :: proc(action: Action, args: []string) {
 	case:
 		handle_config_command(&PATH_SPEC, action, args)
 	}
+}
+
+// The checks `wayu path add` applies to its path argument before writing,
+// shared with the TUI add form: valid format, resolvable to an absolute path
+// ($VAR set, relative paths against the working directory), and existing.
+// On success `expanded` is the resolved path (caller deletes) and code is
+// EXIT_SUCCESS; otherwise `err` (caller deletes) says why and `code` is the
+// CLI exit code (EXIT_DATAERR / EXIT_NOINPUT).
+path_add_check :: proc(raw_path: string) -> (expanded: string, err: string, code: int) {
+	result := validate_path_entry(ConfigEntry{type = .PATH, name = raw_path})
+	if len(result.warning) > 0 do delete(result.warning)
+	if !result.valid {
+		return "", result.error_message, EXIT_DATAERR
+	}
+	expanded = expand_env_vars(raw_path, require_resolved = true)
+	if len(expanded) == 0 {
+		delete(expanded)
+		return "", fmt.aprintf("Could not resolve path to an absolute path: %s", raw_path), EXIT_DATAERR
+	}
+	if !os.exists(expanded) {
+		delete(expanded)
+		return "", fmt.aprintf("Path does not exist: %s", raw_path), EXIT_NOINPUT
+	}
+	return expanded, "", EXIT_SUCCESS
 }
 
 // zsh/bash shells apply [paths] changes at their next prompt (path_sync
@@ -915,13 +929,64 @@ toml_path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOp
 	defer delete(new_key)
 
 	if wayu.dry_run {
-		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-		fmt.println()
-		fmt.printfln("%sWould add to wayu.toml: %s = %q%s", BRIGHT_CYAN, new_key, path, RESET)
+		// The TUI sets print_quiet and shows its own preview.
+		if !print_quiet {
+			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+			fmt.println()
+			fmt.printfln("%sWould add to wayu.toml: %s = %q%s", BRIGHT_CYAN, new_key, path, RESET)
+		}
 		return .OK
 	}
 
 	res, _ := toml_kv_upsert("paths", "paths", new_key, path)
+	return path_op_result(res)
+}
+
+// Point the [paths] entry matching `target` (key, stored path, or resolved
+// path — same match order as remove) at `raw_path`, in place: the entry
+// keeps its key and its position (= PATH precedence). Used by the TUI edit
+// action. NOOP when it already holds that path; INVALID when another entry
+// does. Honors --dry-run (preview silenced under print_quiet).
+toml_path_replace_result :: proc(target, raw_path: string) -> PathOpResult {
+	path := expand_env_vars(raw_path, require_resolved = true)
+	defer delete(path)
+	if len(path) == 0 {
+		print_error("Could not resolve path to an absolute path: %s", raw_path)
+		return .INVALID
+	}
+
+	if !config_lock_acquire() { return .IO_ERROR }
+	defer config_lock_release()
+	clear_toml_content_cache()
+
+	existing := toml_path_read_keyed()
+	defer {
+		for &e in existing { delete(e.key); delete(e.path) }
+		delete(existing)
+	}
+	idx := -1
+	for e, i in existing { if e.key == target { idx = i; break } }
+	if idx < 0 { for e, i in existing { if e.path == target { idx = i; break } } }
+	if idx < 0 { for e, i in existing { if path_values_equal(e.path, target) { idx = i; break } } }
+	if idx < 0 {
+		print_error("Not found in wayu.toml [paths]: %s", target)
+		return .NOT_FOUND
+	}
+	if existing[idx].path == path { return .NOOP }
+	for e, i in existing {
+		if i != idx && path_values_equal(e.path, path) {
+			print_error("Path already exists in wayu.toml: %s (key %q)", e.path, e.key)
+			return .INVALID
+		}
+	}
+	if wayu.dry_run {
+		if !print_quiet {
+			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+			fmt.printfln("%sWould set wayu.toml: %s = %q%s", BRIGHT_CYAN, existing[idx].key, path, RESET)
+		}
+		return .OK
+	}
+	res, _ := toml_kv_upsert("paths", "paths", existing[idx].key, path)
 	return path_op_result(res)
 }
 
@@ -973,8 +1038,10 @@ toml_path_remove_result :: proc(target: string) -> PathOpResult {
 	removed := existing[match_idx]
 
 	if wayu.dry_run {
-		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-		fmt.printfln("%sWould remove from wayu.toml: %s = %q%s", BRIGHT_CYAN, removed.key, removed.path, RESET)
+		if !print_quiet {
+			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
+			fmt.printfln("%sWould remove from wayu.toml: %s = %q%s", BRIGHT_CYAN, removed.key, removed.path, RESET)
+		}
 		return .OK
 	}
 

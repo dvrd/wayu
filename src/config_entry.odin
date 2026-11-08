@@ -476,6 +476,7 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 }
 EntryPath :: struct {
 	path: string,
+	name: string, // optional [paths] key (`name=path` form); "" derives one
 }
 
 EntryAlias :: struct {
@@ -494,94 +495,141 @@ Entry :: union {
 	EntryConst,
 }
 
+// What entry_add / entry_remove did, so callers can tell a real change from
+// an update, a no-op or a --dry-run preview.
+EntryOutcome :: enum {
+	FAILED,    // nothing written; the error string says why
+	ADDED,     // new entry written
+	UPDATED,   // existing alias/constant replaced
+	UNCHANGED, // PATH already present: nothing to do
+	REMOVED,   // entry removed
+	DRY_RUN,   // --dry-run: would change, nothing written
+}
+
 // Add an entry to wayu.toml. Both CLI and TUI use this for mutations from
 // outside the spec-driven dispatchers.
 //
-// Mirrors the CLI: runs the same pre/post hooks (post only after a real
-// change) and honors wayu.dry_run (the toml_* writers print a preview and
-// skip the write; hooks are skipped by execute_hook_ctx).
-entry_add :: proc(entry: Entry) -> (bool, string) {
+// Mirrors the CLI: the same validation (PATH: path_add_check, i.e. the path
+// must resolve and exist, like `wayu path add`), the same pre/post hooks
+// (post only after a real change) and wayu.dry_run (nothing written, hooks
+// skipped). Error strings are heap-owned (caller deletes when non-empty).
+entry_add :: proc(entry: Entry) -> (EntryOutcome, string) {
 	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
-	if msg, bad := hook_config_error(); bad { return false, strings.clone(msg) }
-	if msg, bad := legacy_schema_error(); bad { return false, strings.clone(msg) }
+	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := legacy_schema_error(); bad { return .FAILED, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
-		// Validate path format (no existence check — TUI lets you stage a
-		// path that doesn't exist yet, matching pre-bug TUI behavior).
-		result := validate_path(e.path)
-		if !result.valid {
-			err := strings.clone(result.error_message)
-			delete(result.error_message)
-			return false, err
-		}
-		if len(result.warning) > 0 {
-			delete(result.warning)
-		}
-		if toml_path_add_would_change(e.path) { hook_pre_path_add(e.path) }
-		#partial switch toml_path_add_result(e.path, "") {
+		expanded, check_err, code := path_add_check(e.path)
+		defer delete(expanded)
+		if code != EXIT_SUCCESS { return .FAILED, check_err }
+		if toml_path_add_would_change(e.path, e.name) { hook_pre_path_add(expanded) }
+		#partial switch toml_path_add_result(e.path, e.name) {
 		case .OK:
-			if wayu.dry_run { return true, "" }
+			if wayu.dry_run { return .DRY_RUN, "" }
 			regenerate_init_core_silently()
-			hook_post_path_add(e.path)
-			return true, ""
+			hook_post_path_add(expanded)
+			return .ADDED, ""
 		case .NOOP:
-			return true, ""
+			return .UNCHANGED, ""
 		case .IO_ERROR:
-			return false, strings.clone("I/O error: failed to write path to wayu.toml")
+			return .FAILED, strings.clone("I/O error: failed to write path to wayu.toml")
 		case:
-			return false, strings.clone("failed to write path to wayu.toml")
+			// The writer reported the reason (bad/taken name) via print_error.
+			if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
+			return .FAILED, strings.clone("failed to write path to wayu.toml")
 		}
 	case EntryAlias:
 		return entry_add_with_hooks(&ALIAS_SPEC, ConfigEntry{type = .ALIAS, name = e.name, value = e.command})
 	case EntryConst:
 		return entry_add_with_hooks(&CONSTANTS_SPEC, ConfigEntry{type = .CONSTANT, name = e.name, value = e.value})
 	}
-	return false, strings.clone("unknown entry type")
+	return .FAILED, strings.clone("unknown entry type")
 }
 
 @(private = "file")
-entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (bool, string) {
+entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (EntryOutcome, string) {
+	existed := entry_exists_in_toml(spec, entry.name)
 	if spec.hook_pre_add != nil && entry_add_is_valid(spec, entry) do spec.hook_pre_add(entry.name, entry.value)
 	ok, err := spec.toml_add(entry)
-	if ok && spec.hook_post_add != nil do spec.hook_post_add(entry.name, entry.value)
-	return ok, err
+	if !ok { return .FAILED, err }
+	if wayu.dry_run { return .DRY_RUN, err }
+	if spec.hook_post_add != nil do spec.hook_post_add(entry.name, entry.value)
+	return .UPDATED if existed else .ADDED, err
 }
 
-// Remove an entry by identity (path for EntryPath, name for the others).
-// The non-identity fields on the variant are ignored. Same hook / dry-run
-// semantics as entry_add.
-entry_remove :: proc(entry: Entry) -> (bool, string) {
+// Remove an entry by identity (path or [paths] key for EntryPath, name for
+// the others). The non-identity fields on the variant are ignored. Same hook
+// / dry-run semantics as entry_add.
+entry_remove :: proc(entry: Entry) -> (EntryOutcome, string) {
 	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
-	if msg, bad := hook_config_error(); bad { return false, strings.clone(msg) }
-	if msg, bad := legacy_schema_error(); bad { return false, strings.clone(msg) }
+	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := legacy_schema_error(); bad { return .FAILED, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
-		if toml_path_exists(e.path) { hook_pre_path_remove(e.path) }
+		// Hooks get the stored directory, also when the target is a key (as the CLI).
+		hook_path, found := toml_path_lookup(e.path)
+		defer delete(hook_path)
+		if found { hook_pre_path_remove(hook_path) }
 		#partial switch toml_path_remove_result(e.path) {
 		case .OK:
-			if wayu.dry_run { return true, "" }
+			if wayu.dry_run { return .DRY_RUN, "" }
 			regenerate_init_core_silently()
-			hook_post_path_remove(e.path)
-			return true, ""
+			hook_post_path_remove(hook_path)
+			return .REMOVED, ""
 		case .IO_ERROR:
-			return false, strings.clone("I/O error: failed to remove path from wayu.toml")
+			return .FAILED, strings.clone("I/O error: failed to remove path from wayu.toml")
 		case:
-			return false, strings.clone("failed to remove path from wayu.toml")
+			if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
+			return .FAILED, strings.clone("failed to remove path from wayu.toml")
 		}
 	case EntryAlias:
 		return entry_remove_with_hooks(&ALIAS_SPEC, e.name)
 	case EntryConst:
 		return entry_remove_with_hooks(&CONSTANTS_SPEC, e.name)
 	}
-	return false, strings.clone("unknown entry type")
+	return .FAILED, strings.clone("unknown entry type")
+}
+
+// Change the directory of the [paths] entry `target` (key or path) to
+// `raw_path` in place (TUI edit): same checks as entry_add (path_add_check),
+// runs the remove hooks for the old directory and the add hooks for the new.
+entry_replace_path :: proc(target, raw_path: string) -> (EntryOutcome, string) {
+	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := legacy_schema_error(); bad { return .FAILED, strings.clone(msg) }
+	expanded, check_err, code := path_add_check(raw_path)
+	defer delete(expanded)
+	if code != EXIT_SUCCESS { return .FAILED, check_err }
+	old_path, found := toml_path_lookup(target)
+	defer delete(old_path)
+	if found && old_path != expanded {
+		hook_pre_path_remove(old_path)
+		hook_pre_path_add(expanded)
+	}
+	#partial switch toml_path_replace_result(target, raw_path) {
+	case .OK:
+		if wayu.dry_run { return .DRY_RUN, "" }
+		regenerate_init_core_silently()
+		hook_post_path_remove(old_path)
+		hook_post_path_add(expanded)
+		return .UPDATED, ""
+	case .NOOP:
+		return .UNCHANGED, ""
+	case .IO_ERROR:
+		return .FAILED, strings.clone("I/O error: failed to write path to wayu.toml")
+	case:
+		if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
+		return .FAILED, strings.clone("failed to update path in wayu.toml")
+	}
 }
 
 @(private = "file")
-entry_remove_with_hooks :: proc(spec: ^ConfigEntrySpec, name: string) -> (bool, string) {
+entry_remove_with_hooks :: proc(spec: ^ConfigEntrySpec, name: string) -> (EntryOutcome, string) {
 	if spec.hook_pre_remove != nil && entry_exists_in_toml(spec, name) do spec.hook_pre_remove(name, "")
 	ok, err := spec.toml_remove(name)
-	if ok && spec.hook_post_remove != nil do spec.hook_post_remove(name, "")
-	return ok, err
+	if !ok { return .FAILED, err }
+	if wayu.dry_run { return .DRY_RUN, err }
+	if spec.hook_post_remove != nil do spec.hook_post_remove(name, "")
+	return .REMOVED, err
 }
 // Basenames that almost never carry meaning on their own. When we see one,
 // we prefix with the parent directory to keep keys self-describing.
