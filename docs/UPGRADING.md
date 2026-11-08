@@ -184,6 +184,25 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 **Backups**
 - `wayu backup restore` waits for other wayu commands (config lock) instead
   of racing them; a concurrent edit can no longer overwrite the restore.
+- Backup times are UTC and now say so: `backup list` prints
+  `2026-11-07 14:35:37 UTC`; `backup list --json` `timestamp` is ISO-8601
+  (`2026-11-07T14:35:37Z`, was `2026-11-07 14:35:37`).
+- `backup list` and `backup rm` (no type) cover every file in the backup
+  directory, not only wayu.toml: the rc file `wayu init` edits, `init.zsh`
+  (`--optimize`), `plugins.json`, ... Each `--json` group's `file` is the
+  wayu file name or the rc path (`~/.config/zsh/.zshrc`). `backup restore`
+  still restores wayu.toml only; copy other backups back by hand.
+- Backups of files outside wayu's directories are named after their path
+  relative to `$HOME` with `/` as `%` (`.config%zsh%.zshrc.backup.*`), so
+  `~/.zshrc` and `$ZDOTDIR/.zshrc` keep separate histories (`~/.zshrc`
+  keeps the old `.zshrc.backup.*` name).
+- Backups were silently skipped when the config path contained `.backup.`
+  (`HOME=/x/my.backup.d`); only the file name is checked now.
+- `backup restore` prunes to the 5 newest backups after its pre-restore
+  snapshot (never the backup it restored), so repeated restores no longer
+  grow the directory.
+- `backup restore <type> N`: N must be decimal digits; `0x1` / `+1` are
+  treated as file names (exit `65`), not #1.
 
 **wayu.toml parsing (one parser for every command)**
 - `toml validate`, `doctor`, `backup restore`, `migrate --schema`, the TUI,
