@@ -248,7 +248,8 @@ regenerate_init_core_silently :: proc() {
 }
 
 // fnv64a of every init.{zsh,bash,fish} template wayu has shipped (from the
-// git history of INIT_TEMPLATE_* in src/preload.odin). Only a file that is
+// git history of INIT_TEMPLATE* in src/preload.odin — the zsh one was plain
+// INIT_TEMPLATE until 3.9.x). Only a file that is
 // byte-identical to one of them is an untouched wayu orchestrator.
 // When INIT_TEMPLATE_* changes, add the new template's hash here.
 // Every template currently shipped must be listed too (unit-tested), so the
@@ -258,6 +259,9 @@ KNOWN_INIT_TEMPLATE_HASHES :: [?]u64{
 	0x20e135c4c9aacd58, 0x7e48fffaa40fd9cd, 0xfff333ca896c0bd4, 0xf47f9eb2ad3f7a2e,
 	0xc21f6b2d093d821d, 0x1039f30345ae10c2, 0x6d16cfee3fafd79a, 0xd4268444521bc452,
 	0x6fdcb522c8338802,
+	// zsh, up to 3.9.x (constant named INIT_TEMPLATE)
+	0x7cb798f31c5e9bf3, 0xf589a7f2a854c4f8, 0x0ed9ea7c3d50f1f7, 0x7e06c7c4e44fb51a,
+	0xb8566ffbbe52f44a, 0xe6fd0cd064d1544d,
 	// bash
 	0x0bc23094b9dcc819, 0x345463d2228a44de, 0x543c0b71a5b798a0, 0x548df0bd4c4ddc00,
 	0x75a7bff5ff0d78d8, 0xb3ea0c621ce39dca, 0xbc078574f43e51c3, 0xcd692c96fb307bc6,

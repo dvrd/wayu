@@ -179,6 +179,13 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   the undo `backup restore <type> 1`. Copy such a backup over `wayu.toml`
   by hand and run `wayu migrate --schema`.
 
+**init.<ext> from wayu ≤ 3.9**
+- An unmodified `init.zsh` written by wayu 3.9 or older is now recognised
+  and updated to the current template (old file backed up), like newer
+  ones. It used to be kept with a "has local edits" warning, so after
+  `wayu migrate` it still sourced the emptied legacy files and the shell
+  got no PATH, aliases or constants.
+
 **wayu.toml parsing (one parser for every command)**
 - `toml validate`, `doctor`, `backup restore`, `migrate --schema`, the TUI,
   `alias/const/path list`, the shell generator and the in-place editor now
