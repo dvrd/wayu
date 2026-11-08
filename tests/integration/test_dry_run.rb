@@ -26,6 +26,7 @@ class DryRunIntegrationTest
       test_dry_run_no_success_no_hooks
       test_init_dry_run_writes_nothing
       test_alias_dry_run_add
+      test_template_apply_keeps_and_dry_runs
       test_constants_dry_run_add
       test_backup_dry_run_restore
       test_dry_run_no_file_changes
@@ -66,7 +67,7 @@ class DryRunIntegrationTest
     results = [
       run_wayu("path add /tmp --dryrun"),
       run_wayu("path list --bogus"),
-      run_wayu("init --template nonexistent"),
+      run_wayu("init --templat developer"),
       run_wayu("alias rm x --yess"),
     ]
     after = File.read(toml)
@@ -317,6 +318,27 @@ class DryRunIntegrationTest
       puts "  Output: #{output}"
       @failed += 1
     end
+  end
+
+  # OKAMI-241: template apply keeps existing entries and honors --dry-run.
+  def test_template_apply_keeps_and_dry_runs
+    toml = "#{@config_dir}/wayu.toml"
+    run_wayu("const add EDITOR nvim")
+    run_wayu("alias add g 'git status'")
+    before = File.read(toml)
+    out, st = run_wayu("--dry-run template apply developer")
+    dry_ok = st.success? && out.include?("Would add") && out.include?("Nothing was written") &&
+             !out.include?("applied") && File.read(toml) == before
+    check("Test 3a: template apply --dry-run writes nothing", dry_ok, out[0, 400])
+
+    out, st = run_wayu("template apply developer")
+    after = File.read(toml)
+    kept = st.success? && after.include?('EDITOR = "nvim"') && after.include?('g = "git status"') &&
+           !after.include?('code = ') && after.include?('gs = "git status"')
+    check("Test 3b: template apply keeps existing alias/constant", kept, out[0, 400])
+
+    out, st = run_wayu("init --template nope")
+    check("Test 3c: init --template with an unknown name exits 65", st.exitstatus == 65, out[0, 200])
   end
 
   def test_alias_dry_run_add

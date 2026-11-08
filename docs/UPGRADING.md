@@ -154,6 +154,10 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   a `"""` command became `""`). A section header with a trailing comment
   (`[aliases] # mine`) is now recognised.
 - Waits for other wayu commands (config lock) before rewriting wayu.toml.
+- `[[paths]]` / `[[aliases]]` / `[[constants]]` fields the modern schema
+  has no place for (legacy `description`, `export`, `secret`, …) are listed
+  on stderr as `wayu.toml:N` warnings; they used to vanish silently. The
+  migration still runs (exit `0`).
 
 **doctor**
 - A relative `[paths]` entry (`./node_modules/.bin`) is no longer reported
@@ -167,10 +171,42 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `_wayu_paths_sync` hook, so open shells missed `wayu path add/rm`). Shown
   only when such a line exists; exit status unchanged (warnings never exit
   `78`).
+- `shell configuration` / `Sync status`: only a line that runs `source`,
+  `.` or `eval` counts as loading wayu; a line that just mentions the file
+  (`alias e='vim ~/.config/wayu/init.zsh'`) no longer passes.
+- `Sync status` now compares the `[paths]` entries with the `$PATH` doctor
+  runs in: OK when all are present, INFO "N of M PATH entries not in this
+  shell's $PATH" otherwise (it used to claim "All wayu entries are loaded"
+  from the rc text alone).
+- A `[paths]` entry using an environment variable whose value is relative
+  (`$FOO/bin` with `FOO=rel`) counts as unresolved, never missing.
+- `backups`: a missing backup directory (fresh install) is INFO "No backups
+  yet", not a warning.
+- Dependencies: checks `git` plus the configured shell (`zsh`, `bash` or
+  `fish`) instead of always `zsh`.
 
 **Backups**
 - `wayu backup restore` waits for other wayu commands (config lock) instead
   of racing them; a concurrent edit can no longer overwrite the restore.
+- Backup times are UTC and now say so: `backup list` prints
+  `2026-11-07 14:35:37 UTC`; `backup list --json` `timestamp` is ISO-8601
+  (`2026-11-07T14:35:37Z`, was `2026-11-07 14:35:37`).
+- `backup list` and `backup rm` (no type) cover every file in the backup
+  directory, not only wayu.toml: the rc file `wayu init` edits, `init.zsh`
+  (`--optimize`), `plugins.json`, ... Each `--json` group's `file` is the
+  wayu file name or the rc path (`~/.config/zsh/.zshrc`). `backup restore`
+  still restores wayu.toml only; copy other backups back by hand.
+- Backups of files outside wayu's directories are named after their path
+  relative to `$HOME` with `/` as `%` (`.config%zsh%.zshrc.backup.*`), so
+  `~/.zshrc` and `$ZDOTDIR/.zshrc` keep separate histories (`~/.zshrc`
+  keeps the old `.zshrc.backup.*` name).
+- Backups were silently skipped when the config path contained `.backup.`
+  (`HOME=/x/my.backup.d`); only the file name is checked now.
+- `backup restore` prunes to the 5 newest backups after its pre-restore
+  snapshot (never the backup it restored), so repeated restores no longer
+  grow the directory.
+- `backup restore <type> N`: N must be decimal digits; `0x1` / `+1` are
+  treated as file names (exit `65`), not #1.
 
 **wayu.toml parsing (one parser for every command)**
 - `toml validate`, `doctor`, `backup restore`, `migrate --schema`, the TUI,
@@ -311,6 +347,46 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   COMMAND FLAGS section; `--json` and `--no-color` are listed under FLAGS.
 - Completions offer each command's flags and `--json` where supported, and
   `export check`.
+
+**Tables and pickers**
+- List tables written to a pipe or file (`wayu path list | cat`) are no
+  longer fitted to 80 columns: values are printed whole. An exported
+  `COLUMNS` still sets the width.
+- The interactive picker (TUI remove, completions) keeps every character of
+  a paste or fast typing (only the first one was used), ignores unknown
+  escape sequences instead of filtering on their bytes, and a lone `Esc`
+  cancels like `Ctrl+C`. `kill -INT` / `kill -QUIT` restore the terminal.
+
+**Editor (`function add/edit`, `config edit|extend`, `hooks edit`)**
+- `$EDITOR` / `$VISUAL` may carry arguments (`code --wait`, `subl -w`): it
+  runs as `sh -c '$EDITOR "$1"'`. It used to be looked up as one program
+  name and silently fail.
+- An editor that can't start or exits non-zero makes wayu exit `1` with
+  `ERROR: Editor '…' exited with status N` (it exited `0` and printed
+  "Reload your shell…"); `config edit` then skips regenerating the init.
+- With neither variable set, every command opens `vi` (`function` and
+  `config` used `nvim`).
+
+**Templates**
+- `template apply` never overwrites what you have: a `[paths]` directory
+  already listed, an alias or `[env]` name already in wayu.toml, or a
+  constant already set in the environment wayu runs in is kept and shown as
+  `Keeping …`. (It used to replace e.g. `EDITOR = "nvim"` with
+  `code --wait`.) The summary reads "N added, M kept".
+- `--dry-run template apply …` prints `Would add …` / `Keeping …` and
+  "Nothing was written"; it used to print "… template applied!".
+- The `developer` template no longer adds `code = "code ."` (it shadowed
+  the `code` binary).
+- `wayu init --template <name>` (or `--template=<name>`) works: init, then
+  apply the template. An unknown name exits `65` and a missing one `64`,
+  before anything is written; any other argument to `init` exits `64`.
+
+**config scan --fix**
+- Aborts (exit `74`) when extra.<ext> exists but can't be backed up or
+  read; it used to write anyway.
+- Blocks already in extra.<ext> are not appended again, so re-running it no
+  longer duplicates PATH prepends and evals; with nothing new it prints
+  "All N blocks are already in …" and writes nothing.
 
 ## 5.0.0
 

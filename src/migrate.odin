@@ -19,6 +19,7 @@ package wayu
 import "core:fmt"
 import "core:mem/virtual"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:strconv"
 handle_migrate_command :: proc(args: []string) {
@@ -636,6 +637,17 @@ migrate_toml_schema :: proc(dry_run: bool) {
 
 	new_content := strings.to_string(builder)
 
+	// Fields with no modern equivalent are not migrated: say which.
+	dropped := migrate_schema_dropped_fields(content)
+	defer delete(dropped)
+	if len(dropped) > 0 {
+		print_warning("%d field(s) have no place in the modern schema and are not migrated:", len(dropped))
+		src_lines := strings.split(content, "\n", context.temp_allocator)
+		for n in dropped {
+			fmt.eprintfln("  wayu.toml:%d: %s", n, strings.trim_space(src_lines[n - 1]))
+		}
+	}
+
 	if !toml_content_is_sane(new_content) {
 		print_error("Schema migration produced invalid TOML — aborting without writing")
 		fmt.eprintln("Please report this with a copy of your wayu.toml.")
@@ -988,6 +1000,36 @@ migrate_is_strip_header :: proc(trimmed: string) -> bool {
 		if h == s { return true }
 	}
 	return false
+}
+
+// 1-based numbers of the `[[paths]]` / `[[aliases]]` / `[[constants]]`
+// fields the modern schema has no place for (anything but path/name/key,
+// name/command, name/value: e.g. legacy `description`, `export`, `secret`).
+// `migrate --schema` lists them instead of dropping them silently.
+migrate_schema_dropped_fields :: proc(content: string) -> [dynamic]int {
+	out := make([dynamic]int)
+	lines := strings.split(content, "\n")
+	defer delete(lines)
+
+	allowed: []string
+	for line, i in lines {
+		trimmed := strings.trim_space(line)
+		if strings.has_prefix(trimmed, "[") && strings.has_suffix(migrate_section_header(trimmed), "]") {
+			switch migrate_section_header(trimmed) {
+			case "[[paths]]":     allowed = {"path", "name", "key"}
+			case "[[aliases]]":   allowed = {"name", "command"}
+			case "[[constants]]": allowed = {"name", "value"}
+			case:                 allowed = nil
+			}
+			continue
+		}
+		if allowed == nil || len(trimmed) == 0 || trimmed[0] == '#' { continue }
+		k, v, ok := migrate_parse_toml_kv(trimmed)
+		if !ok { continue }
+		if !slice.contains(allowed, k) { append(&out, i + 1) }
+		delete(k); delete(v)
+	}
+	return out
 }
 
 // 1-based numbers of the lines inside the sections `migrate --schema`

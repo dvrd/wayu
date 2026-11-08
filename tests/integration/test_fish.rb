@@ -140,7 +140,9 @@ class FishIntegrationTest
     # Use a dedicated tmp home so previous tests don't influence content.
     scratch = "#{@tmp_home}/scratch_tpl"
     FileUtils.mkdir_p("#{scratch}/.config")
-    env = ENV.to_h.merge('HOME' => scratch, 'SHELL' => '/usr/bin/fish')
+    # A template never overrides a constant already set in the environment:
+    # unset the ones it adds (nil unsets in an Open3 env hash).
+    env = ENV.to_h.merge('HOME' => scratch, 'SHELL' => '/usr/bin/fish', 'EDITOR' => nil, 'GOPATH' => nil)
     Open3.capture3(env, "#{@wayu_bin} init --shell fish")
     Open3.capture3(env, "#{@wayu_bin} template apply developer")
     Open3.capture3(env, "#{@wayu_bin} build eval")

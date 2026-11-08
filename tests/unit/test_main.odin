@@ -225,7 +225,8 @@ test_parse_args_unknown_flag_rejected :: proc(t: ^testing.T) {
 	cases := []Case{
 		{{"path", "add", "/tmp", "--dryrun"}, "--dryrun"},
 		{{"path", "list", "--bogus"}, "--bogus"},
-		{{"init", "--template", "x"}, "--template"},
+		{{"init", "--templat", "x"}, "--templat"},
+		{{"init", "--template", "x"}, ""}, // OKAMI-241: documented
 		{{"alias", "add", "--bogus", "x", "y"}, "--bogus"},
 		// accepted: command-local, help, literal, add value, negative number
 		{{"doctor", "--fix"}, ""},

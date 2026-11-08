@@ -563,13 +563,90 @@ test_restore_selects_backup :: proc(t: ^testing.T) {
 	testing.expect(t, wayu.restore_from_backup(target, "1"), "undo restore")
 	testing.expect_value(t, read(target), "c\n")
 
-	// By file name, and a bad selector fails without writing.
+	// Restores prune their own snapshots (OKAMI-273): still capped.
 	b := wayu.list_backups_for_file(target)
 	defer wayu.free_backup_infos(b)
+	testing.expect_value(t, len(b), wayu.BACKUP_KEEP_COUNT)
+
+	// By file name (the oldest kept: "c"), and a bad selector fails without writing.
 	last := b[len(b) - 1]
+	_ = os.write_entire_file(target, transmute([]byte)string("e\n"))
 	testing.expect(t, wayu.restore_from_backup(target, last.backup_file[strings.last_index(last.backup_file, "/") + 1:]))
-	testing.expect_value(t, read(target), "a\n")
+	testing.expect_value(t, read(target), "c\n")
 	testing.expect(t, !wayu.restore_from_backup(target, "99"), "out of range")
 	testing.expect(t, !wayu.restore_from_backup(target, "nope"), "unknown file")
-	testing.expect_value(t, read(target), "a\n")
+	// Decimal digits only: "0x1" / "+1" are not #1.
+	testing.expect(t, !wayu.restore_from_backup(target, "0x1"), "hex index")
+	testing.expect(t, !wayu.restore_from_backup(target, "+1"), "signed index")
+	testing.expect_value(t, read(target), "c\n")
+}
+
+// OKAMI-273: repeated restores never exceed BACKUP_KEEP_COUNT, and neither
+// the chosen backup nor the new pre-restore snapshot is pruned.
+@(test)
+test_restore_prunes_but_keeps_chosen :: proc(t: ^testing.T) {
+	dir := test_tmp("wayu-test-restore-prune")
+	original_data := wayu.wayu.data
+	wayu.wayu.data = dir
+	os.remove_all(dir)
+	os.make_directory(dir)
+	defer { wayu.wayu.data = original_data; os.remove_all(dir) }
+	target := test_tmp("wayu-test-restore-prune-src")
+	defer os.remove(target)
+
+	for v in ([]string{"a\n", "b\n", "c\n", "d\n", "e\n"}) {
+		_ = os.write_entire_file(target, transmute([]byte)v)
+		p, ok := wayu.create_backup(target)
+		if ok { delete(p) }
+	}
+	_ = os.write_entire_file(target, transmute([]byte)string("now\n"))
+
+	// #5 is the oldest ("a"); restoring it must keep it.
+	for _ in 0..<3 {
+		testing.expect(t, wayu.restore_from_backup(target, "5"))
+	}
+	b := wayu.list_backups_for_file(target)
+	defer wayu.free_backup_infos(b)
+	testing.expect_value(t, len(b), wayu.BACKUP_KEEP_COUNT)
+	if len(b) == wayu.BACKUP_KEEP_COUNT {
+		testing.expect(t, b[0].pre_restore, "newest is the snapshot just taken")
+		oldest, err := os.read_entire_file(b[len(b) - 1].backup_file, context.temp_allocator)
+		testing.expect(t, err == nil && string(oldest) == "a\n", "chosen backup kept")
+	}
+	d, err := os.read_entire_file(target, context.temp_allocator)
+	testing.expect(t, err == nil && string(d) == "a\n", "restored a")
+}
+
+// OKAMI-273: a '.backup.' in a directory name doesn't disable backups, and
+// files outside wayu's dirs keep separate histories per path.
+@(test)
+test_backup_key_and_backup_dir_names :: proc(t: ^testing.T) {
+	dir := test_tmp("wayu-test-backup-key")
+	original_data := wayu.wayu.data
+	wayu.wayu.data = dir
+	os.remove_all(dir)
+	os.make_directory(dir)
+	defer { wayu.wayu.data = original_data; os.remove_all(dir) }
+
+	sub := test_tmp("wayu-test-backup-key-my.backup.d")
+	os.make_directory(sub)
+	defer os.remove_all(sub)
+	f := fmt.tprintf("%s/.zshrc", sub)
+	_ = os.write_entire_file(f, transmute([]byte)string("x\n"))
+	p, ok := wayu.create_backup(f)
+	testing.expect(t, ok && len(p) > 0, "backup made despite .backup. in the directory")
+	if ok { delete(p) }
+
+	own := wayu.backup_key(fmt.tprintf("%s/init.zsh", dir), context.temp_allocator)
+	testing.expect_value(t, own, "init.zsh")
+	home := os.get_env("HOME", context.temp_allocator)
+	if len(home) > 0 {
+		testing.expect_value(t, wayu.backup_key(fmt.tprintf("%s/.zshrc", home), context.temp_allocator), ".zshrc")
+		k := wayu.backup_key(fmt.tprintf("%s/.config/zsh/.zshrc", home), context.temp_allocator)
+		testing.expect_value(t, k, ".config%zsh%.zshrc")
+		testing.expect_value(t, wayu.backup_key_display(k, context.temp_allocator), "~/.config/zsh/.zshrc")
+	}
+	abs := wayu.backup_key("/etc/zshrc", context.temp_allocator)
+	testing.expect_value(t, abs, "%etc%zshrc")
+	testing.expect_value(t, wayu.backup_key_display(abs, context.temp_allocator), "/etc/zshrc")
 }

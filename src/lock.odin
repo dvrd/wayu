@@ -55,10 +55,14 @@ parse_lock_file :: proc(content: string) -> (LockFile, bool) {
 		}
 
 		if strings.has_prefix(trimmed, "[[entries]]") {
+			// Each [[entries]] starts a fresh entry. One without a name is
+			// dropped (freed), so its fields never bleed into the next.
 			if current_entry.name != "" {
 				append(&entries, current_entry)
-				current_entry = LockEntry{}
+			} else {
+				free_lock_entry(&current_entry)
 			}
+			current_entry = LockEntry{}
 			in_metadata = false
 			continue
 		}
@@ -121,6 +125,8 @@ parse_lock_file :: proc(content: string) -> (LockFile, bool) {
 
 	if current_entry.name != "" {
 		append(&entries, current_entry)
+	} else {
+		free_lock_entry(&current_entry)
 	}
 
 	if len(entries) > 0 {
@@ -169,18 +175,22 @@ free_lock_entries :: proc(lock: ^LockFile) {
 		lock.generated_at = ""
 	}
 
-	for &entry in lock.entries {
-		if entry.name != ""        do delete(entry.name)
-		if entry.value != ""       do delete(entry.value)
-		if entry.hash != ""        do delete(entry.hash)
-		if entry.source != ""      do delete(entry.source)
-		if entry.added_at != ""    do delete(entry.added_at)
-		if entry.modified_at != "" do delete(entry.modified_at)
-		for key, value in entry.metadata {
-			delete(key)
-			delete(value)
-		}
-		delete(entry.metadata)
-	}
+	for &entry in lock.entries { free_lock_entry(&entry) }
 	delete(lock.entries)
+}
+
+@(private="file")
+free_lock_entry :: proc(entry: ^LockEntry) {
+	if entry.name != ""        do delete(entry.name)
+	if entry.value != ""       do delete(entry.value)
+	if entry.hash != ""        do delete(entry.hash)
+	if entry.source != ""      do delete(entry.source)
+	if entry.added_at != ""    do delete(entry.added_at)
+	if entry.modified_at != "" do delete(entry.modified_at)
+	for key, value in entry.metadata {
+		delete(key)
+		delete(value)
+	}
+	delete(entry.metadata)
+	entry^ = {}
 }

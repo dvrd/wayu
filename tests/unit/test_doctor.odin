@@ -1,5 +1,6 @@
 package test_wayu
 
+import "core:os"
 import "core:testing"
 import wayu "../../src"
 
@@ -12,6 +13,12 @@ test_doctor_rc_loads_wayu :: proc(t: ^testing.T) {
 	testing.expect(t, !wayu.rc_loads_wayu(`# source "$HOME/.config/wayu/init.zsh"`))
 	testing.expect(t, !wayu.rc_loads_wayu(`alias w=wayu`))
 	testing.expect(t, !wayu.rc_loads_wayu(`source ~/.oh-my-zsh/init.zsh`))
+	// OKAMI-272: a line that only mentions the file doesn't load it.
+	testing.expect(t, !wayu.rc_loads_wayu(`alias e='vim ~/.config/wayu/init.zsh'`))
+	testing.expect(t, !wayu.rc_loads_wayu(`alias s='source ~/.config/wayu/init.zsh'`))
+	testing.expect(t, !wayu.rc_loads_wayu(`export WAYU_INIT=~/.config/wayu/init.zsh`))
+	testing.expect(t, wayu.rc_loads_wayu(`[ -f ~/.config/wayu/init.zsh ] && source ~/.config/wayu/init.zsh`))
+	testing.expect(t, wayu.rc_loads_wayu(`if [ -r "$W/wayu/init.bash" ]; then . "$W/wayu/init.bash"; fi`))
 	// turbo_only ignores plain init lines.
 	testing.expect(t, !wayu.rc_loads_wayu(`source ~/.config/wayu/init.zsh`, turbo_only = true))
 	testing.expect(t, wayu.rc_loads_wayu(`source ~/.config/wayu/turbo.zsh`, turbo_only = true))
@@ -68,4 +75,8 @@ test_doctor_expand_path_relative_is_unresolved :: proc(t: ^testing.T) {
 	testing.expect_value(t, wayu.doctor_expand_path(".", consts), "")
 	// A wayu.toml constant that expands to a relative path is relative too.
 	testing.expect_value(t, wayu.doctor_expand_path("$WAYU_DOC_REL/bin", consts), "")
+	// ...and so is a process environment variable with a relative value.
+	os.set_env("WAYU_DOC_ENV_REL", "rel/env")
+	defer os.unset_env("WAYU_DOC_ENV_REL")
+	testing.expect_value(t, wayu.doctor_expand_path("$WAYU_DOC_ENV_REL/bin", consts), "")
 }

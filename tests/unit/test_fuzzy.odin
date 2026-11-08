@@ -128,3 +128,43 @@ test_truncate_display_keeps_runes_whole :: proc(t: ^testing.T) {
 	testing.expect_value(t, out, "ééé...")
 	testing.expect_value(t, wayu.truncate_display("short", 50), "short")
 }
+
+// ============================================================================
+// picker_decode_input (OKAMI-274: one read may hold several keys)
+// ============================================================================
+
+@(test)
+test_picker_decode_paste_and_keys :: proc(t: ^testing.T) {
+	filter := make([dynamic]u8)
+	defer delete(filter)
+
+	// A paste arriving in one read keeps every character.
+	ev := wayu.picker_decode_input(transmute([]byte)string("abc"), &filter)
+	testing.expect_value(t, string(filter[:]), "abc")
+	testing.expect(t, ev.filter_changed)
+	testing.expect_value(t, ev.action, wayu.PickerAction.NONE)
+
+	// Multi-byte characters, backspace and arrows in one batch.
+	ev = wayu.picker_decode_input(transmute([]byte)string("é\x7f\x7fz\x1b[B\x1b[B\x1b[A"), &filter)
+	testing.expect_value(t, string(filter[:]), "abz")
+	testing.expect_value(t, ev.move, 1)
+
+	// Unknown escape sequences never reach the filter.
+	ev = wayu.picker_decode_input(transmute([]byte)string("\x1b[3~\x1bOP\x1bx"), &filter)
+	testing.expect_value(t, string(filter[:]), "abz")
+	testing.expect(t, !ev.filter_changed)
+
+	// A lone ESC cancels.
+	ev = wayu.picker_decode_input(transmute([]byte)string("\x1b"), &filter)
+	testing.expect_value(t, ev.action, wayu.PickerAction.CANCEL)
+
+	// Enter selects; text typed before it still filters.
+	ev = wayu.picker_decode_input(transmute([]byte)string("q\r"), &filter)
+	testing.expect_value(t, ev.action, wayu.PickerAction.SELECT)
+	testing.expect_value(t, string(filter[:]), "abzq")
+
+	// An incomplete UTF-8 character is reported for carry-over.
+	ev = wayu.picker_decode_input([]byte{'x', 0xC3}, &filter)
+	testing.expect_value(t, ev.incomplete, 1)
+	testing.expect_value(t, string(filter[:]), "abzqx")
+}
