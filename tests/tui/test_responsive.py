@@ -400,10 +400,12 @@ def test_alias_view(size_name, cols, rows):
             test(f"{size_name}/alias_view/box_aligned", AssertResult(False, "skipped"))
             return
 
+        # Let the alias rows (loaded via `$SHELL -i -c alias`) arrive and the
+        # frame settle before checking the box.
+        s.wait_for(lambda snap: "ll" in snap and "gs" in snap, timeout=TIMEOUT_KEY)
+        s.read(timeout=0.3)
         test(f"{size_name}/alias_view/box_aligned",
              assert_box_aligned(s, f" Alias view {cols}x{rows}"))
-        # Let the alias rows (loaded via `$SHELL -i -c alias`) arrive.
-        s.wait_for(lambda snap: "ll" in snap and "gs" in snap, timeout=TIMEOUT_KEY)
         test(f"{size_name}/alias_view/box_sides",
              assert_box_sides(s, f" Alias view {cols}x{rows}"))
     finally:
