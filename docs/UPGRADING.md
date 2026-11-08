@@ -231,6 +231,46 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - The Backups view lists `wayu.toml` backups and Settings counts them; both
   only looked at the pre-3.10 `path`/`aliases`/`constants` files, so they
   showed none.
+- Adding in the TUI follows `wayu path add` / `alias add` / `const add`:
+  PATH input `name=path` sets the `[paths]` key (it was stored as a path
+  relative to the TUI's directory), and the path must resolve and exist
+  (relative paths resolve against the directory wayu was started in);
+  otherwise the form shows the CLI's reason. Adding an alias or constant
+  that already exists asks "REPLACE …?" first. Notifications say
+  `Added` / `Updated` / `Already present, nothing changed` (a duplicate
+  PATH said `Added`).
+- `--dry-run`: a `DRY RUN` badge sits on the top border; previews read
+  `[dry-run] would add alias: x = "…"` / `[dry-run] would remove …` (were
+  `Dry run: would …`). Plugin enable/disable/install no longer write
+  `plugins.json` under `--dry-run` (install recorded a plugin that was never
+  cloned).
+- Keys: `r` / Ctrl+R / F5 reload every view; views also reload by
+  themselves when `wayu.toml`, `plugins.json`, `hooks.conf` or the backup
+  directory change on disk. `e` edits the selected entry (a PATH keeps its
+  key and position; a renamed alias/constant replaces the old name; secret
+  values must be revealed with `v` first). `u` restores the newest
+  `wayu.toml` backup after a confirmation. Text fields edit at a cursor
+  (←/→, Home/End, Ctrl+A/E/U/K/W, Delete) and show the end of long input.
+- Plugins: Enter shows details on both tabs (on Registry it used to install
+  at once); `i` installs after a confirmation; on Installed, space toggles
+  enabled, `e` enables, `x` disables, and `d` (which disabled) only shows
+  the `wayu plugin rm` command.
+- Backups view lists every backup group (`plugins.json`, the rc file, init
+  files…, newest first). Enter on a `wayu.toml` backup restores it after a
+  confirmation (like `wayu backup restore`); `c` asks, then prunes every
+  group to the newest 5 (it targeted pre-3.10 files and removed nothing).
+- Long operations show a progress frame and can be cancelled with Esc /
+  Ctrl+C: the alias view's `$SHELL -i -c alias` (now given up after 3 s,
+  listing no external aliases), plugin clones, and hooks (in the TUI a hook
+  is stopped after 30 s).
+- Hooks view lists every hook event with its command; space disables a hook
+  by commenting its `hooks.conf` line as `# disabled: <line>` (and enables
+  it again), `t` runs it once with sample values and shows its output.
+- Settings view: Enter toggles dry-run or colors for the session (nothing
+  is saved); also shows the editor and the backups kept per file.
+- Below 40x12 the TUI shows "Terminal too small" instead of an empty
+  layout. It quits when its terminal input is closed (EOF) instead of
+  spinning.
 
 **wayu.toml parsing (one parser for every command)**
 - `toml validate`, `doctor`, `backup restore`, `migrate --schema`, the TUI,

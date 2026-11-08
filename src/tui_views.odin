@@ -81,8 +81,9 @@ render_view_header :: proc(
 	screen_set_cell(screen, header_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
 	screen_set_cell(screen, header_x, title_y + 1, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
 
-	// Title (bold primary) — truncate if too wide for narrow terminals
-	max_title_width := border_width - (text_x - header_x) - BORDER_RIGHT_WIDTH - 1
+	// Title (bold primary) — truncate so it ends before the right border
+	// (at column BORDER_LEFT_WIDTH + border_width - 1), keeping one gap cell.
+	max_title_width := BORDER_LEFT_WIDTH + border_width - 1 - text_x - 1
 	title_display := truncate_text(title, max_title_width)
 	render_text_styled(screen, text_x, title_y, title_display, TUI_PRIMARY, "", true)
 
@@ -192,13 +193,16 @@ render_list_item :: proc(
 // ============================================================================
 
 // Standard footer for filterable data views
-FOOTER_FILTER_ACTIVE :: "Type to filter   Esc Cancel   Enter Accept   j/k Navigate"
-FOOTER_DATA_VIEW     :: "/ Filter   s Source   a Add   d Delete   h Back   l Enter   j/k"
-FOOTER_CONSTANTS_VIEW        :: "/ Filter   v Reveal   s Source   a Add   d Del   h Back   l Enter   j/k"
-FOOTER_CONSTANTS_VIEW_REVEAL :: "/ Filter   v Hide   s Source   a Add   d Del   h Back   l Enter   j/k"
-FOOTER_READONLY_VIEW :: "/ Filter   h Back   l Enter   j/k Navigate"
-FOOTER_BACKUP_VIEW   :: "/ Filter   c Cleanup   h Back   j/k Navigate"
+// j/k type into the filter, so filter mode advertises the arrows / ^J ^K.
+FOOTER_FILTER_ACTIVE :: "Type to filter   Esc Cancel   Enter Accept   ↑/↓ ^J/^K Navigate"
+FOOTER_DATA_VIEW     :: "/ Filter  s Source  a Add  e Edit  d Del  u Undo  r Reload  h Back"
+FOOTER_CONSTANTS_VIEW        :: "/ Filter  v Reveal  s Src  a Add  e Edit  d Del  u Undo  r Reload  h Back"
+FOOTER_CONSTANTS_VIEW_REVEAL :: "/ Filter  v Hide  s Src  a Add  e Edit  d Del  u Undo  r Reload  h Back"
+FOOTER_READONLY_VIEW :: "/ Filter   r Reload   h Back   l Enter   j/k Navigate"
+FOOTER_BACKUP_VIEW   :: "/ Filter  Enter Restore  c Cleanup  r Reload  h Back"
 FOOTER_STATIC_VIEW   :: "h Back"
+FOOTER_HOOKS_VIEW    :: "Enter Details  Space On/Off  t Test  r Reload  h Back"
+FOOTER_SETTINGS_VIEW :: "Enter Toggle  r Reload  h Back  j/k Navigate"
 
 render_data_footer :: proc(screen: ^Screen, state: ^TUIState, footer_text: string) {
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
@@ -561,7 +565,7 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .HOOKS_VIEW, .SETTINGS_VIEW:
 		view_name = "ENTRY"
 	}
-	title_text := fmt.tprintf("ADD %s", view_name)
+	title_text := fmt.tprintf("%s %s", "EDIT" if len(form.edit_key) > 0 else "ADD", view_name)
 	screen_set_cell(screen, content_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
 	render_text_styled(screen, content_x + MENU_ACCENT_BAR_WIDTH + 1, title_y, title_text, TUI_PRIMARY, "", true)
 
@@ -634,22 +638,15 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 			screen_set_cell(screen, box_x + dx, content_y, Cell{char = ' '})
 		}
 
-		// Text inside box: "text█" when focused, "text" when not
 		input_str := string(input_buf[:])
-		truncated := truncate_text(input_str, text_max - 1)  // -1 leaves room for cursor
-		text_display: string
 		if is_focused {
-			text_display = fmt.tprintf("%s\u2588", truncated)  // U+2588 FULL BLOCK cursor
+			// Window around the cursor: long input scrolls so the cursor
+			// (and the end while typing) stays visible; "…" marks hidden text.
+			cursor := clamp(form.cursor_0 if fi == 0 else form.cursor_1, 0, len(input_str))
+			render_input_with_cursor(screen, box_x + 1, content_y, input_str, cursor, text_max)
 		} else {
-			text_display = truncated
+			render_text_styled(screen, box_x + 1, content_y, truncate_text(input_str, text_max), TUI_DIM)
 		}
-		text_fg: string
-		if is_focused {
-			text_fg = TUI_ORANGE
-		} else {
-			text_fg = TUI_DIM
-		}
-		render_text_styled(screen, box_x + 1, content_y, text_display, text_fg, "", is_focused)
 	}
 
 	// Error line (always 1 row reserved; shown only when non-empty)
@@ -662,12 +659,12 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	// Button row — each button is orange+bold only when focused, dim otherwise
 	button_y     := error_y + 2
 	cancel_label := "Esc CANCEL"
-	add_label    := "Enter ADD"
+	add_label    := "Enter SAVE" if len(form.edit_key) > 0 else "Enter ADD"
 
 	// Responsive: shorter labels on narrow overlays
 	if is_compact(overlay_width) {
 		cancel_label = "Esc CAN"
-		add_label    = "\u23CE ADD"  // ⏎ ADD
+		add_label    = "\u23CE SAVE" if len(form.edit_key) > 0 else "\u23CE ADD"  // ⏎ ADD
 	}
 	button_gap   :: 2
 	right_edge   := overlay_x + overlay_width - 3
@@ -756,15 +753,9 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	if state.delete_confirm.pending {
 		// Bordered box buttons, right-aligned within the overlay
 		// Layout: ... [ Esc CANCEL ]  [ y DELETE ] |
-		cancel_label := "Esc CANCEL"   // 10 chars
-		delete_label := "y DELETE"     //  8 chars
-
-		// Responsive: use shorter labels on narrow terminals
 		compact := is_compact(overlay_width)
-		if compact {
-			cancel_label = "Esc CAN"
-			delete_label = "y DEL"
-		}
+		cancel_label := "Esc CAN" if compact else "Esc CANCEL"
+		delete_label := confirm_action_label(state.delete_confirm.kind, compact)
 
 		button_gap   :: 2              // spaces between buttons
 
@@ -894,10 +885,10 @@ get_view_item_count :: proc(state: ^TUIState) -> int {
 		return 0
 
 	case .HOOKS_VIEW:
-		return 0  // Read-only view
+		return len(state.hooks.rows)
 
 	case .SETTINGS_VIEW:
-		return 0  // Read-only view
+		return len(SETTING_ROWS)
 	}
 	return 0
 }
@@ -911,8 +902,16 @@ handle_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 		handle_data_view_event(state, key)
 	case .PLUGINS_VIEW:
 		handle_plugins_event(state, key)
-	case .HOOKS_VIEW, .SETTINGS_VIEW, .MAIN_MENU:
-		// Read-only or handled elsewhere — no per-view keys
+	case .HOOKS_VIEW:
+		if key.key != .Char do return
+		switch key.char {
+		case ' ': tui_toggle_hook(state)
+		case 't': tui_test_hook(state)
+		}
+	case .SETTINGS_VIEW:
+		if key.key == .Char && key.char == ' ' do toggle_selected_setting(state)
+	case .MAIN_MENU:
+		// handled elsewhere
 	}
 }
 
@@ -927,6 +926,7 @@ DataViewBehavior :: struct {
 	supports_cleanup:       bool,
 	supports_delete:        bool,
 	supports_reveal:        bool,          // `v` toggles masking of secret-looking values
+	supports_edit:          bool,          // `e` edits the selected entry, `u` restores the last backup
 	delete_label:           string,        // "" for raw display (PATH); "Alias"/"Constant" otherwise
 }
 
@@ -938,12 +938,14 @@ data_view_behavior :: proc(view: TUIView) -> DataViewBehavior {
 			supports_add           = true,
 			supports_source_filter = true,
 			supports_delete        = true,
+			supports_edit          = true,
 		}
 	case .ALIAS_VIEW:
 		return DataViewBehavior{
 			supports_add           = true,
 			supports_source_filter = true,
 			supports_delete        = true,
+			supports_edit          = true,
 			delete_label           = "Alias",
 		}
 	case .CONSTANTS_VIEW:
@@ -951,6 +953,7 @@ data_view_behavior :: proc(view: TUIView) -> DataViewBehavior {
 			supports_add           = true,
 			supports_source_filter = true,
 			supports_delete        = true,
+			supports_edit          = true,
 			supports_reveal        = true,
 			delete_label           = "Constant",
 		}
@@ -992,16 +995,28 @@ handle_data_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 			}
 			show_delete_confirmation(state, view, display, row.key)
 
+		case 'e':
+			if !b.supports_edit do return
+			_, row, ok := selected_row(state)
+			if !ok || row.kind == .Separator || len(row.key) == 0 do return
+			if row.source == .EXTERNAL {
+				set_notification(state, .ERROR, fmt.tprintf("%s is not managed by wayu (external)", row.key))
+				return
+			}
+			// Never put a masked secret on screen through the form.
+			if view == .CONSTANTS_VIEW && !state.reveal_secrets && looks_secret(row.key, row.value) {
+				set_notification(state, .INFO, "Secret value: press v to reveal it before editing")
+				return
+			}
+			show_edit_form(state, view, row.key, row.value)
+
+		case 'u':
+			if !b.supports_edit do return
+			tui_offer_undo(state)
+
 		case 'c':
 			if !b.supports_cleanup do return
-			if tui_cleanup_backups() {
-				set_notification(state, .SUCCESS, "Cleaned up old backups")
-				clear_view_cache(state, view)
-			} else {
-				set_notification(state, .ERROR, "Failed to cleanup backups")
-			}
-			state.full_redraw = true
-			state.needs_refresh = true
+			tui_offer_cleanup(state)
 
 		case '/':
 			activate_filter(state)
@@ -1026,17 +1041,15 @@ handle_data_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 // Plugins View Event Handler
 // ============================================================================
 
+// Plugins view keys. Enter shows details (handle_selection); installing
+// needs 'i' plus a confirmation (it clones from the network).
+//   Installed: space toggles enabled, e enables, x disables.
+//   Registry:  i installs.
 handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 	#partial switch key.key {
 	case .Tab:
 		// Switch between Installed and Registry tabs; reset cursor + filter
 		switch_plugin_tab(state)
-
-	case .Enter:
-		// Registry tab: install selected plugin
-		if state.plugin_tab == PLUGIN_TAB_REGISTRY {
-			install_selected_registry_plugin(state)
-		}
 
 	case .Char:
 		switch key.char {
@@ -1049,25 +1062,26 @@ handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 			// 't' also switches tabs (fallback for terminals where Tab is intercepted)
 			switch_plugin_tab(state)
 		case 'i':
-			// 'i' installs selected registry plugin (fallback for terminals where Enter is intercepted)
 			if state.plugin_tab == PLUGIN_TAB_REGISTRY {
 				install_selected_registry_plugin(state)
 			}
-		case 'e', 'd':
-			// Installed tab: enable/disable selected plugin
+		case ' ', 'e', 'x':
 			if state.plugin_tab != PLUGIN_TAB_INSTALLED do return
 			_, row, ok := selected_row(state)
 			if !ok || len(row.key) == 0 do return
-			enable := key.char == 'e'
-			done := tui_enable_plugin(row.key) if enable else tui_disable_plugin(row.key)
-			if done {
-				set_notification(state, .SUCCESS, fmt.tprintf("%s %s", "Enabled" if enable else "Disabled", row.key))
-				clear_view_cache(state, .PLUGINS_VIEW)
-			} else {
-				set_notification(state, .ERROR, fmt.tprintf("Failed to %s %s", "enable" if enable else "disable", row.key))
-			}
+			target: Maybe(bool)
+			if key.char == 'e' do target = true
+			if key.char == 'x' do target = false
+			tui_set_plugin_enabled(state, row.key, target)
 			state.full_redraw = true
 			state.needs_refresh = true
+		case 'd':
+			// 'd' deletes in every other view; removing a plugin (clone,
+			// dependents) is a CLI job for now — never disable silently.
+			if state.plugin_tab != PLUGIN_TAB_INSTALLED do return
+			_, row, ok := selected_row(state)
+			if !ok || len(row.key) == 0 do return
+			set_notification(state, .INFO, fmt.tprintf("Remove with: wayu plugin rm %s   (space disables)", row.key))
 		}
 	}
 }
@@ -1081,99 +1095,81 @@ switch_plugin_tab :: proc(state: ^TUIState) {
 	state.needs_refresh = true
 }
 
-// Install the registry row under the (filter-mapped) selection.
+// Ask to install the registry row under the (filter-mapped) selection.
 @(private="file")
 install_selected_registry_plugin :: proc(state: ^TUIState) {
 	display, _, ok := selected_row(state)
 	if !ok do return
-
 	// Extract key (first \x00-delimited field)
 	sep_idx := strings.index_byte(display, 0)
-	plugin_key := strings.clone(display[:sep_idx] if sep_idx >= 0 else display, context.temp_allocator)
-
-	ok = tui_install_plugin(plugin_key)
-	if ok {
-		// Reload installed list and invalidate registry so the
-		// installed plugin is filtered out on next registry load
-		clear_view_cache(state, .PLUGINS_VIEW)
-		clear_registry_cache(state)
-		set_notification(state, .SUCCESS, fmt.tprintf("Installed %s", plugin_key))
-	} else {
-		set_notification(state, .ERROR, fmt.tprintf("Failed to install %s", plugin_key))
-	}
-	state.full_redraw = true
-	state.needs_refresh = true
+	tui_offer_install(state, display[:sep_idx] if sep_idx >= 0 else display)
 }
 
 // ============================================================================
 // Hooks View
 // ============================================================================
 
+// Hooks view: one row per hook event (configured or not). Status glyph:
+// ● enabled, ○ disabled (by the TUI), ✗ invalid (never runs), · not set.
 render_hooks_view :: proc(state: ^TUIState, screen: ^Screen) {
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
-	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_NORMAL)
+	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
-	render_view_header(screen, state, "HOOKS", "Pre/post operation hooks configured", border_width)
+	if !state.hooks.loaded {
+		render_view_loading(screen, state, "HOOKS", border_width)
+		return
+	}
+	configured := 0
+	for r in state.hooks.rows do if len(r.command) > 0 && !r.disabled do configured += 1
+	render_view_header(screen, state, "HOOKS",
+		fmt.tprintf("%d of %d events have a hook  ·  %s/%s", configured, len(state.hooks.rows), wayu.config, HOOK_CONFIG_FILE),
+		border_width)
 
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+	max_text_width := tui_calculate_content_width(border_width)
 	content_start := LIST_ITEM_START_LINE + 1
-
-	// Read-only display of the hooks configured in ~/.config/wayu/hooks.conf.
-	// Mirrors the CLI `wayu hooks` status output: each configured hook is shown
-	// as "name → command"; an empty config shows guidance instead.
-	config := load_hook_config()
-	defer free_hook_config(config)
-
-	HookRow :: struct { name: string, cmd: string }
-	rows := []HookRow{
-		{"pre_path_add", config.pre_path_add},
-		{"post_path_add", config.post_path_add},
-		{"pre_path_remove", config.pre_path_remove},
-		{"post_path_remove", config.post_path_remove},
-		{"pre_alias_add", config.pre_alias_add},
-		{"post_alias_add", config.post_alias_add},
-		{"pre_alias_remove", config.pre_alias_remove},
-		{"post_alias_remove", config.post_alias_remove},
-		{"pre_constant_add", config.pre_constant_add},
-		{"post_constant_add", config.post_constant_add},
-		{"pre_constant_remove", config.pre_constant_remove},
-		{"post_constant_remove", config.post_constant_remove},
-		{"pre_plugin_install", config.pre_plugin_install},
-		{"post_plugin_install", config.post_plugin_install},
-		{"pre_export", config.pre_export},
-		{"post_export", config.post_export},
-	}
-
-	// Width budget for the "name → command" line inside the content box.
-	avail := max(0, border_width - CONTENT_PADDING_LEFT - 2)
-	max_rows := max(0, state.terminal_height - content_start - 2)
-
-	configured := 0
-	y := content_start
-	for row in rows {
-		if len(row.cmd) == 0 do continue
-		if configured >= max_rows do break
-		// A placeholder inside "..." makes the hook invalid (never runs).
-		if tok := hook_double_quoted_placeholder(row.cmd); len(tok) > 0 {
-			line := fmt.tprintf("✗ %s → %s  (INVALID: %s inside \"...\")", row.name, row.cmd, tok)
-			render_text_styled(screen, text_x, y, truncate_text(line, avail), TUI_ERROR)
-		} else {
-			line := fmt.tprintf("%s → %s", row.name, row.cmd)
-			render_text_styled(screen, text_x, y, truncate_text(line, avail), TUI_MUTED)
+	visible := max(1, get_view_visible_height(state))
+	start := clamp(state.scroll_offset, 0, len(state.hooks.rows))
+	end := min(start + visible, len(state.hooks.rows))
+	KEY_W :: 22
+	for i in start..<end {
+		r := state.hooks.rows[i]
+		glyph, color := "·", TUI_DIM
+		cmd := r.command
+		switch {
+		case len(r.invalid) > 0:
+			glyph, color = "✗", TUI_ERROR
+			cmd = fmt.tprintf("%s  (INVALID: %s inside \"...\")", r.command, r.invalid)
+		case r.disabled:
+			glyph, color = "○", TUI_WARNING
+			cmd = fmt.tprintf("%s  (disabled)", r.command)
+		case len(r.command) > 0:
+			glyph, color = "●", TUI_SUCCESS
+		case:
+			cmd = "—"
 		}
-		y += 1
-		configured += 1
+		if tui_plain_glyphs {
+			switch glyph {
+			case "✗": glyph = "x"
+			case "○": glyph = "o"
+			case "●": glyph = "*"
+			case "·": glyph = "-"
+			}
+		}
+		y := content_start + (i - start)
+		line := fmt.tprintf("%s %-*s %s", glyph, KEY_W, r.key, cmd)
+		render_list_item(screen, header_x, y, line, max_text_width, i == state.selected_index)
+		if i != state.selected_index {
+			text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+			render_text_styled(screen, text_x, y, glyph, color)
+		}
+	}
+	if len(state.hooks.rows) > visible {
+		render_text_styled(screen, header_x, content_start + visible,
+			fmt.tprintf("Showing %d-%d of %d", start + 1, end, len(state.hooks.rows)), TUI_DIM)
 	}
 
-	if configured == 0 {
-		render_text_styled(screen, text_x, content_start, "No hooks configured", TUI_PRIMARY, "", true)
-		render_text_styled(screen, text_x, content_start + 2, "Hooks run custom commands before/after wayu operations.", TUI_DIM)
-		render_text_styled(screen, text_x, content_start + 3, "Configure them by editing hooks.conf:", TUI_DIM)
-		render_text_styled(screen, text_x, content_start + 5, "  wayu hooks edit", TUI_DIM)
-	}
-
-	render_data_footer(screen, state, get_footer_static_view(state.terminal_width))
+	render_data_footer(screen, state, FOOTER_HOOKS_VIEW)
 }
 
 // Settings View
@@ -1186,8 +1182,8 @@ PLUGIN_TAB_INSTALLED :: 0
 PLUGIN_TAB_REGISTRY  :: 1
 
 // Footer strings for each tab
-FOOTER_PLUGINS_INSTALLED :: "Tab Switch tab   / Filter   e Enable   d Disable   h Back   j/k Navigate"
-FOOTER_PLUGINS_REGISTRY  :: "Tab Switch tab   / Filter   Enter Install   h Back   j/k Navigate"
+FOOTER_PLUGINS_INSTALLED :: "Tab Switch tab  / Filter  Space On/Off  Enter Details  r Reload  h Back"
+FOOTER_PLUGINS_REGISTRY  :: "Tab Switch tab  / Filter  Enter Details  i Install  h Back  j/k Navigate"
 
 // Render the two-tab header bar for the plugins view.
 @(private="file")
@@ -1422,42 +1418,87 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 }
 // ============================================================================
 
+// Settings view: what this session runs with. Enter (or space) toggles the
+// session-only rows (Colors, Dry run); the rest are read-only.
 render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
 	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
-	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_NORMAL)
+	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
 
-	render_view_header(screen, state, "SETTINGS", "wayu Configuration", border_width)
+	// Loaded by tui_ensure_data_loaded; idempotent here for direct renders.
+	tui_load_settings(state)
+	render_view_header(screen, state, "SETTINGS", "This session (Enter toggles marked rows)", border_width)
 
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
-
-	// Load settings from bridge (idempotent — only loads once).
-	tui_load_settings(state)
-
-	// Render lines live on context.temp_allocator — automatically freed at
-	// end of frame, so we don't need per-line defer delete churn.
-	dry_run_status := "off"
-	if state.settings.dry_run { dry_run_status = "on" }
-
-	toml_status := "missing"
-	if state.settings.toml_exists {
-		toml_status = state.settings.toml_path
+	max_text_width := tui_calculate_content_width(border_width)
+	content_start := LIST_ITEM_START_LINE + 1
+	rows := SETTING_ROWS
+	visible := max(1, get_view_visible_height(state))
+	start := clamp(state.scroll_offset, 0, len(rows))
+	end := min(start + visible, len(rows))
+	for i in start..<end {
+		label, value, toggles := setting_row(state, rows[i])
+		mark := "↵" if toggles && !tui_plain_glyphs else ("*" if toggles else " ")
+		line := fmt.tprintf("%-13s %s %s", label, mark, value)
+		render_list_item(screen, header_x, content_start + (i - start), line, max_text_width, i == state.selected_index)
+	}
+	if len(rows) > visible {
+		render_text_styled(screen, header_x, content_start + visible,
+			fmt.tprintf("Showing %d-%d of %d", start + 1, end, len(rows)), TUI_DIM)
 	}
 
-	settings := []string{
-		fmt.tprintf("Version:     %s",    state.settings.version),
-		fmt.tprintf("Shell:       %s",    state.settings.shell),
-		fmt.tprintf("Config Dir:  %s",    state.settings.config_dir),
-		fmt.tprintf("wayu.toml:   %s",    toml_status),
-		fmt.tprintf("Backups:     %d",    state.settings.backups),
-		fmt.tprintf("Plugins:     %d enabled", state.settings.plugins),
-		fmt.tprintf("Dry-run:     %s",    dry_run_status),
-	}
+	render_data_footer(screen, state, FOOTER_SETTINGS_VIEW)
+}
 
-	content_start := LIST_ITEM_START_LINE + 2
-	for setting, i in settings {
-		render_text_styled(screen, text_x, content_start + i, setting, TUI_MUTED)
-	}
+INPUT_CURSOR_FG :: "\x1b[38;2;0;0;0m"       // black on
+INPUT_CURSOR_BG :: "\x1b[48;2;255;140;0m"   // TUI_ORANGE
 
-	render_data_footer(screen, state, get_footer_static_view(state.terminal_width))
+// Draw a single-line input `text` with a block cursor at byte offset
+// `cursor`, within `width` columns starting at (x, y). Shows the tail when
+// the text before the cursor doesn't fit, with a leading "…".
+render_input_with_cursor :: proc(screen: ^Screen, x, y: int, text: string, cursor, width: int) {
+	if width < 2 do return
+	before := text[:cursor]
+	after := text[cursor:]
+	// Columns for the text before the cursor: leave the cursor cell.
+	budget := width - 1
+	start := 0
+	if visual_width(before) > budget {
+		budget -= 1  // room for "…"
+		used := 0
+		start = len(before)
+		for start > 0 {
+			r, size := utf8.decode_last_rune(before[:start])
+			w := get_rune_width(r)
+			if used + w > budget do break
+			used += w
+			start -= size
+		}
+	}
+	cx := x
+	if start > 0 {
+		render_text_styled(screen, cx, y, "…", TUI_DIM)
+		cx += 1
+	}
+	shown := before[start:]
+	render_text_styled(screen, cx, y, shown, TUI_ORANGE, "", true)
+	cx += visual_width(shown)
+	limit := x + width
+	if len(after) == 0 {
+		render_text_styled(screen, cx, y, "\u2588", TUI_ORANGE)  // FULL BLOCK cursor at the end
+		return
+	}
+	// Cursor on a character: draw it reversed (bright on the orange cell).
+	r, size := utf8.decode_rune(after)
+	if cx < limit {
+		if tui_color_mode == .ASCII {
+			screen_put_rune(screen, cx, y, '\u2588', Cell{})  // no colors: plain block
+		} else {
+			screen_put_rune(screen, cx, y, r, Cell{fg = INPUT_CURSOR_FG, bg = INPUT_CURSOR_BG, bold = true})
+		}
+	}
+	cx += max(1, get_rune_width(r))
+	rest := after[size:]
+	if cx >= limit do return
+	room := limit - cx
+	render_text_styled(screen, cx, y, truncate_text(rest, room), TUI_ORANGE, "", true)
 }

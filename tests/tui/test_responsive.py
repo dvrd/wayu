@@ -718,7 +718,7 @@ def test_add_and_delete_mutations():
 
 
 def test_dry_run_writes_nothing():
-    """`wayu --tui --dry-run`: add and delete report "Dry run: would …" and
+    """`wayu --tui --dry-run`: add and delete report "[dry-run] would …" and
     leave every file under ~/.config/wayu byte-identical."""
     print(f"\n── Dry run ──")
     reset_config()
@@ -727,12 +727,12 @@ def test_dry_run_writes_nothing():
     try:
         open_view(s, "alias", lambda snap: "ALIASES" in snap and "gs" in snap)
         fill_add_form(s, ["dz", "echo dry"])
-        ok = s.wait_for(lambda snap: "Dry run: would add alias: dz" in snap, timeout=TIMEOUT_KEY)
+        ok = s.wait_for(lambda snap: "[dry-run] would add alias: dz" in snap, timeout=TIMEOUT_KEY)
         test("dry_run/add_notified", AssertResult(ok, s.snapshot()))
         s.send(b"d")
         s.wait_for(lambda snap: "DELETE CONFIRMATION" in snap, timeout=TIMEOUT_KEY)
         s.send(b"y")
-        ok = s.wait_for(lambda snap: "Dry run: would remove alias" in snap, timeout=TIMEOUT_KEY)
+        ok = s.wait_for(lambda snap: "[dry-run] would remove alias" in snap, timeout=TIMEOUT_KEY)
         test("dry_run/delete_notified", AssertResult(ok, s.snapshot()))
         s.send(b"q")
         s.wait_exit()
@@ -766,6 +766,179 @@ def test_paste_burst():
              AssertResult(f'PASTED = "{value}"' in read_toml(), read_toml()[:300]))
         s.send(b"\x03")  # Ctrl+C quits from any view
         check_clean_exit(s, "paste", want_code=0)
+    finally:
+        s.kill()
+        reset_config()
+
+
+# ── Phase 3 TUI views (OKAMI-254/256/259/260/264/267/183/184) ──────────────
+
+def test_slow_rc_shows_progress_and_cancels():
+    """OKAMI-256: an rc file that sleeps must not freeze the alias view: a
+    progress frame shows at once and Esc cancels the shell snapshot."""
+    print(f"\n── Slow rc: progress + cancel ──")
+    reset_config()
+    rc = os.path.join(os.environ["HOME"], ".zshrc")
+    with open(rc, "w") as f:
+        f.write("sleep 8\n")
+    s = TUISession(80, 24)
+    try:
+        s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+        s.send(b"j"); s.read(timeout=0.15)
+        s.send(b"l")
+        ok = s.wait_for(lambda snap: "Reading aliases" in snap, timeout=1.0)
+        test("slow_rc/progress_shown", AssertResult(ok, s.snapshot()))
+        start = time.time()
+        s.send(b"\x1b")
+        ok = s.wait_for(lambda snap: "ALIASES" in snap and "gs" in snap and "Reading aliases" not in snap, timeout=3.0)
+        test("slow_rc/esc_cancels", AssertResult(ok and time.time() - start < 3.0, s.snapshot()))
+        s.send(b"\x03")
+        check_clean_exit(s, "slow_rc", want_code=0)
+    finally:
+        s.kill()
+        os.remove(rc)
+
+
+def test_external_edit_reloads():
+    """OKAMI-260: an alias added to wayu.toml by someone else shows up in
+    the open view without leaving it."""
+    print(f"\n── External edit reload ──")
+    reset_config()
+    s = TUISession(80, 24, env=constants_env())
+    try:
+        open_view(s, "alias", lambda snap: "ALIASES" in snap and "gs" in snap)
+        with open(os.path.join(os.environ["HOME"], ".config", "wayu", "wayu.toml"), "w") as f:
+            f.write(FIXTURE_TOML.replace('gs = "git status"', 'extadded = "echo ext"'))
+        ok = s.wait_for(lambda snap: "extadded" in snap, timeout=3.0)
+        test("external/reloaded", AssertResult(ok, s.snapshot()))
+        test("external/removed_row_gone", AssertResult("git status" not in s.snapshot(), s.snapshot()))
+        s.send(b"q")  # not the main menu: ignored; Ctrl+C quits
+        s.send(b"\x03")
+        check_clean_exit(s, "external", want_code=0)
+    finally:
+        s.kill()
+        reset_config()
+
+
+def test_dry_run_badge_and_plugin_install_confirm():
+    """OKAMI-254/267: --dry-run shows a DRY RUN badge; Enter on a registry
+    plugin shows details, i asks before installing, and under --dry-run
+    nothing is written."""
+    print(f"\n── Dry-run badge + plugin keys ──")
+    reset_config()
+    before = config_snapshot()
+    s = TUISession(80, 24, args=["--dry-run"])
+    try:
+        s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+        test("dry_run/badge", AssertResult("DRY RUN" in s.snapshot(), s.snapshot()))
+        for _ in range(5):
+            s.send(b"j"); s.read(timeout=0.1)
+        s.send(b"l")
+        s.wait_for(lambda snap: "PLUGINS" in snap, timeout=TIMEOUT_KEY)
+        s.send(b"\t")
+        s.wait_for(lambda snap: "KEY" in snap and "DESCRIPTION" in snap, timeout=TIMEOUT_KEY)
+        s.send(b"\r")
+        ok = s.wait_for(lambda snap: "Press i to install" in snap, timeout=TIMEOUT_KEY)
+        test("plugins/enter_shows_details", AssertResult(ok, s.snapshot()))
+        s.send(b"i")
+        ok = s.wait_for(lambda snap: "INSTALL PLUGIN" in snap, timeout=TIMEOUT_KEY)
+        test("plugins/install_confirms", AssertResult(ok, s.snapshot()))
+        s.send(b"y")
+        ok = s.wait_for(lambda snap: "[dry-run] would install" in snap, timeout=TIMEOUT_KEY)
+        test("plugins/dry_run_install_preview", AssertResult(ok, s.snapshot()))
+        s.send(b"\x03")
+        s.wait_exit()
+        after = config_snapshot()
+        changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+        test("plugins/dry_run_wrote_nothing", AssertResult(not changed, f"changed: {changed}"))
+    finally:
+        s.kill()
+        reset_config()
+
+
+def test_tiny_terminal_notice():
+    """OKAMI-267: below 40x12 a 'too small' notice replaces the layout."""
+    print(f"\n── Tiny terminal ──")
+    s = TUISession(36, 10)
+    try:
+        ok = s.wait_for(lambda snap: "too small" in snap, timeout=TIMEOUT_STARTUP)
+        test("tiny/notice", AssertResult(ok, s.snapshot()))
+        s.send(b"q")
+        check_clean_exit(s, "tiny", want_code=0)
+    finally:
+        s.kill()
+
+
+def test_add_form_editing_and_semantics():
+    """OKAMI-259/264: name=path keeps the key, a long input shows its tail,
+    the cursor edits in the middle, and an existing alias asks to replace."""
+    print(f"\n── Add form editing ──")
+    reset_config()
+    newdir = tempfile.mkdtemp(prefix="wayu_tui_long_directory_name_for_tail_check_")
+    try:
+        s = TUISession(80, 24, env=constants_env())
+        try:
+            open_view(s, "path", lambda snap: "PATH" in snap and "CONFIGURATION" in snap)
+            s.send(b"a"); s.read(timeout=0.2)
+            s.send(f"tailtest={newdir}".encode()); s.read(timeout=0.3)
+            tail = os.path.basename(newdir)[-12:]
+            test("form/shows_tail", AssertResult(tail in s.snapshot(), s.snapshot()))
+            s.send(b"\r")
+            ok = s.wait_for(lambda snap: "Added PATH entry" in snap, timeout=TIMEOUT_KEY)
+            test("form/name_eq_path", AssertResult(ok and f'tailtest = "{newdir}"' in read_toml(), read_toml()))
+
+            s.send(b"h"); s.read(timeout=0.2)
+            s.send(b"j"); s.read(timeout=0.15)
+            s.send(b"l")
+            s.wait_for(lambda snap: "ALIASES" in snap, timeout=TIMEOUT_KEY)
+            s.send(b"a"); s.read(timeout=0.2)
+            s.send(b"l"); s.read(timeout=0.1)
+            s.send(b"\x1b[D"); s.read(timeout=0.1)   # Left
+            s.send(b"l"); s.read(timeout=0.1)         # "ll"
+            s.send(b"\t"); s.read(timeout=0.1)
+            s.send(b"ls -lah"); s.read(timeout=0.2)
+            s.send(b"\r")
+            ok = s.wait_for(lambda snap: "REPLACE ALIAS" in snap, timeout=TIMEOUT_KEY)
+            test("form/replace_asks", AssertResult(ok, s.snapshot()))
+            s.send(b"y")
+            ok = s.wait_for(lambda snap: "Updated alias: ll" in snap, timeout=TIMEOUT_KEY)
+            test("form/replaced", AssertResult(ok and 'll = "ls -lah"' in read_toml(), read_toml()))
+            s.send(b"\x03")
+            check_clean_exit(s, "form", want_code=0)
+        finally:
+            s.kill()
+    finally:
+        shutil.rmtree(newdir, ignore_errors=True)
+        reset_config()
+
+
+def test_hooks_and_settings_views():
+    """OKAMI-183/184: the hooks view lists every hook event; settings
+    toggles dry-run for the session."""
+    print(f"\n── Hooks + settings views ──")
+    reset_config()
+    with open(os.path.join(os.environ["HOME"], ".config", "wayu", "hooks.conf"), "w") as f:
+        f.write("post_alias_add = echo done {name}\n")
+    s = TUISession(100, 30)
+    try:
+        s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+        for _ in range(6):
+            s.send(b"j"); s.read(timeout=0.1)
+        s.send(b"l")
+        ok = s.wait_for(lambda snap: "HOOKS" in snap and "pre_path_add" in snap and "echo done" in snap, timeout=TIMEOUT_KEY)
+        test("hooks/lists_events", AssertResult(ok, s.snapshot()))
+        test("hooks/box_sides", assert_box_sides(s, " hooks view"))
+        s.send(b"h"); s.read(timeout=0.2)
+        s.send(b"j"); s.read(timeout=0.1)
+        s.send(b"l")
+        s.wait_for(lambda snap: "SETTINGS" in snap and "Dry run" in snap, timeout=TIMEOUT_KEY)
+        for _ in range(9):
+            s.send(b"j"); s.read(timeout=0.05)
+        s.send(b"\r")
+        ok = s.wait_for(lambda snap: "DRY RUN" in snap, timeout=TIMEOUT_KEY)
+        test("settings/dry_run_toggle", AssertResult(ok, s.snapshot()))
+        s.send(b"\x03")
+        check_clean_exit(s, "settings", want_code=0)
     finally:
         s.kill()
         reset_config()
@@ -933,6 +1106,15 @@ def run_all():
     test_dry_run_writes_nothing()
     test_paste_burst()
     test_size_detection()
+
+    # Phase 3 views: progress/cancel, reload, dry-run badge, plugin keys,
+    # tiny terminals, form editing, hooks + settings
+    test_slow_rc_shows_progress_and_cancels()
+    test_external_edit_reloads()
+    test_dry_run_badge_and_plugin_install_confirm()
+    test_tiny_terminal_notice()
+    test_add_form_editing_and_semantics()
+    test_hooks_and_settings_views()
 
     # Summary
     passed = sum(1 for r in results if r.passed)

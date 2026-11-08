@@ -539,13 +539,25 @@ stdin_ready :: proc(timeout_us: int) -> bool {
 	return select(c.int(STDIN_FILENO) + 1, &readfds, nil, nil, &timeout) > 0
 }
 
+// Set once stdin keeps reporting readable but yields nothing (EOF, EIO):
+// the terminal is gone, so the main loop quits instead of spinning.
+tui_input_closed: bool
+@(private="file")
+input_read_failures: int
+INPUT_CLOSED_AFTER :: 3  // consecutive failed reads of a "ready" stdin
+
 // Append whatever stdin has to input_pending. Returns false on EOF/error.
 @(private="file")
 fill_input :: proc() -> bool {
 	space := input_pending[input_pending_len:]
 	if len(space) == 0 do return true
 	n, err := os.read(os.stdin, space)
-	if err != nil || n <= 0 do return false
+	if err != nil || n <= 0 {
+		input_read_failures += 1
+		if input_read_failures >= INPUT_CLOSED_AFTER do tui_input_closed = true
+		return false
+	}
+	input_read_failures = 0
 	input_pending_len += n
 	return true
 }
@@ -1223,7 +1235,7 @@ get_footer_plugins_installed :: proc(width: int) -> string {
 		return "Tab Switch   / Filter   h Back"
 	}
 	if width < BREAKPOINT_COMPACT {
-		return "Tab Switch   / Filter   e Ena   d Dis   h Back"
+		return "Tab Switch   / Filter   Space On/Off   h Back"
 	}
 	return FOOTER_PLUGINS_INSTALLED
 }
@@ -1233,7 +1245,7 @@ get_footer_plugins_registry :: proc(width: int) -> string {
 		return "Tab Switch   / Filter   h Back"
 	}
 	if width < BREAKPOINT_COMPACT {
-		return "Tab Switch   / Filter   Enter Install   h Back"
+		return "Tab Switch   / Filter   i Install   h Back"
 	}
 	return FOOTER_PLUGINS_REGISTRY
 }
