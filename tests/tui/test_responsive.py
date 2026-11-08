@@ -1083,7 +1083,11 @@ def test_alt_keys_and_esc_delay():
              AssertResult("DELETE CONFIRMATION" not in snap and "ADD ALIAS" in snap, snap))
         s.send(b"\x1b"); wait_quiet(s, 0.3)
 
-        # Split arrow: ESC, 40ms gap, "[B".
+        # Split arrow: ESC, 40ms gap, "[B". First make sure the form-cancel
+        # ESC above was processed (it fires after the ESC window), or on a
+        # slow runner the two ESCs read as two cancels and leave the view.
+        s.wait_for(lambda snap: "ALIASES" in snap and "ADD ALIAS" not in snap, timeout=TIMEOUT_KEY)
+        wait_quiet(s, 0.3)
         s.send(b"\x1b"); time.sleep(0.04); s.send(b"[B")
         wait_quiet(s, 0.5)
         snap = s.snapshot()
