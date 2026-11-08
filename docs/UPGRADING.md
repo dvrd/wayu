@@ -102,6 +102,15 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - `wayu backup restore` waits for other wayu commands (config lock) instead
   of racing them; a concurrent edit can no longer overwrite the restore.
 
+**Colors**
+- Output is plain (no ANSI escape codes) when stdout is not a terminal:
+  `wayu path list | grep x`, `$(wayu ...)`, logs and CI get plain text.
+  Set `FORCE_COLOR=1` (or `CLICOLOR_FORCE=1`) to keep colors in a pipe.
+  Errors/warnings on stderr are colored only when stderr is a terminal.
+- `NO_COLOR=1` and `--no-color` now remove every escape code (tables,
+  help, errors, doctor, backup list, …); some used to remain. They win over
+  `FORCE_COLOR`.
+
 ## 5.0.0
 
 **doctor**

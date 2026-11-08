@@ -213,13 +213,7 @@ main :: proc() {
 
 	// Override with --no-color if present (takes precedence over NO_COLOR env)
 	if no_color_flag {
-		CURRENT_COLOR_PROFILE = .ASCII
-		// Reinitialize ANSI codes for ASCII mode
-		RESET = ""
-		BOLD = ""
-		DIM = ""
-		ITALIC = ""
-		UNDERLINE = ""
+		set_plain_output()
 	}
 
 	init_shell_globals()
@@ -933,7 +927,7 @@ run_component_testing :: proc(component_name: string, args: []string, snapshot: 
 	// Parse component type
 	component_type, ok := parse_component_type(component_name)
 	if !ok {
-		fmt.eprintfln("ERROR: Unknown component type: %s", component_name)
+		eprintfln_color("ERROR: Unknown component type: %s", component_name)
 		fmt.eprintln("\nAvailable components:")
 		fmt.eprintln("  - box")
 		fmt.eprintln("  - list-item")
@@ -984,7 +978,7 @@ save_golden :: proc(component: string, args: ComponentArgs, output: string) -> b
 	// Write golden file
 	write_err := os.write_entire_file(filename, transmute([]byte)output)
 	if write_err != nil {
-		fmt.eprintfln("ERROR: Failed to write golden file: %s", filename)
+		eprintfln_color("ERROR: Failed to write golden file: %s", filename)
 		return false
 	}
 
@@ -1001,7 +995,7 @@ compare_golden :: proc(component: string, args: ComponentArgs, output: string) -
 
 	// Check if golden file exists
 	if !os.exists(filename) {
-		fmt.eprintfln("ERROR: Golden file not found: %s", filename)
+		eprintfln_color("ERROR: Golden file not found: %s", filename)
 		fmt.eprintfln("Create it with: wayu -c=%s width=%d height=%d --snapshot",
 			component, args.width, args.height)
 		return false
@@ -1010,7 +1004,7 @@ compare_golden :: proc(component: string, args: ComponentArgs, output: string) -
 	// Read golden file
 	golden_data, read_err := os.read_entire_file(filename, context.allocator)
 	if read_err != nil {
-		fmt.eprintfln("ERROR: Failed to read golden file: %s", filename)
+		eprintfln_color("ERROR: Failed to read golden file: %s", filename)
 		return false
 	}
 	defer delete(golden_data)

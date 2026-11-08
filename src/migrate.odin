@@ -127,7 +127,7 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 	toml_path := fmt.tprintf("%s/%s", wayu.config, WAYU_TOML)
 	if !os.exists(toml_path) {
 		print_error("Cross-shell migration rebuilds the %s files from wayu.toml, which does not exist", to_name)
-		fmt.eprintfln("Import your legacy %s files first: %swayu --shell %s migrate%s", from_ext, get_primary(), from_ext, RESET)
+		eprintfln_color("Import your legacy %s files first: %swayu --shell %s migrate%s", from_ext, get_primary(), from_ext, RESET)
 		os.exit(EXIT_CONFIG)
 	}
 
@@ -348,7 +348,7 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 		fmt.eprintln()
 		fmt.eprintfln("Move shell code you want to keep (functions, conditionals, ...) to %s/extra.%s,", wayu.config, wayu.shell_ext)
 		fmt.eprintln("which wayu keeps sourcing, or rewrite it as plain `alias name='cmd'` /")
-		fmt.eprintfln("`export NAME=value` lines, then re-run %swayu migrate%s.", get_primary(), RESET)
+		eprintfln_color("`export NAME=value` lines, then re-run %swayu migrate%s.", get_primary(), RESET)
 		os.exit(EXIT_DATAERR)
 	}
 

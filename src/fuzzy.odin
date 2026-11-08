@@ -23,6 +23,7 @@ import "core:unicode/utf8"
 
 STDIN_FILENO :: 0
 STDOUT_FILENO :: 1
+STDERR_FILENO :: 2
 
 // ============================================================================
 // Terminal State Management

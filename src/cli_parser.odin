@@ -216,12 +216,7 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 			flags.source_filter = args[i + 1]
 			i += 1
 		case arg == "--no-color" || arg == "--no-colour":
-			CURRENT_COLOR_PROFILE = .ASCII
-			RESET = ""
-			BOLD = ""
-			DIM = ""
-			ITALIC = ""
-			UNDERLINE = ""
+			set_plain_output()
 		case arg == "--shell" && i + 1 < len(args):
 			parsed.shell = parse_shell_type(args[i + 1])
 			set_active_shell(parsed.shell)

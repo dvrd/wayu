@@ -1225,7 +1225,7 @@ print_legacy_schema_hint :: proc(header: string) {
 	fmt.eprintln("  [env]")
 	fmt.eprintln("  EDITOR = \"nvim\"")
 	fmt.eprintln()
-	fmt.eprintf("Run %swayu migrate --schema%s to upgrade in place.\n", BRIGHT_CYAN, RESET)
+	eprintf_color("Run %swayu migrate --schema%s to upgrade in place.\n", BRIGHT_CYAN, RESET)
 	fmt.eprintln()
 }
 
