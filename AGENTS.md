@@ -230,4 +230,4 @@ These are acknowledged incomplete features — do not add workarounds, implement
 
 - `src/fuzzy.odin`: interactive_select is alive; FuzzyView-based full-screen finder removed as dead code
 - Fish shell: completions and templates wired; `--shell fish` flag fixed in init command
-- `src/tui_views.odin`: hooks and settings views render minimal placeholder content
+- TUI plugins view: remove/update not available (CLI handlers exit the process; needs a non-exiting core)
