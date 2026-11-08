@@ -390,7 +390,7 @@ odin build build -out:build_it
 # Build & test
 ./build_it build          # optimized release build
 ./build_it debug          # debug build with symbols
-./build_it test           # unit tests (473 tests)
+./build_it test           # unit tests; leaks fail them (NAME[,NAME] runs only those)
 ./build_it check          # type-check only
 ./build_it dev path list  # debug build + run
 ./build_it clean          # remove build artifacts

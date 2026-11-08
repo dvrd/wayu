@@ -1,5 +1,6 @@
 // init_generator.odin - Optimized shell init file generation
 package wayu
+import "base:runtime"
 import "core:c/libc"
 import "core:fmt"
 import "core:hash"
@@ -101,6 +102,9 @@ ZCOMPILE_BATCH: [dynamic]string
 // must ensure it lives until flush_zcompile_batch is called.
 zcompile_file :: proc(path: string) {
 	if wayu.shell != .ZSH { return }
+	// Process-lifetime queue: heap, not the caller's context.allocator (a
+	// unit test's tracking allocator reported unflushed entries as leaks).
+	context.allocator = runtime.heap_allocator()
 	append(&ZCOMPILE_BATCH, strings.clone(path))
 }
 
@@ -109,6 +113,7 @@ zcompile_file :: proc(path: string) {
 // on write operations where bytecode freshness is not critical.
 @(private = "file")
 discard_zcompile_batch :: proc() {
+	context.allocator = runtime.heap_allocator()
 	for p in ZCOMPILE_BATCH { delete(p) }
 	clear(&ZCOMPILE_BATCH)
 }
@@ -125,6 +130,7 @@ flush_zcompile_batch :: proc() {
 	if len(ZCOMPILE_BATCH) == 0 {
 		return
 	}
+	context.allocator = runtime.heap_allocator()
 
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)

@@ -9,6 +9,7 @@
 
 package wayu
 
+import "base:runtime"
 import "core:os"
 import "core:strings"
 
@@ -38,6 +39,7 @@ snapshot_path_entries :: proc() -> [dynamic]string {
 	if ENV_SNAPSHOT_CACHE.path_initialized {
 		return ENV_SNAPSHOT_CACHE.path_entries
 	}
+	context.allocator = snapshot_allocator()
 
 	path_str := os.get_env("PATH", context.allocator)
 	defer delete(path_str)
@@ -56,6 +58,7 @@ snapshot_path_entries :: proc() -> [dynamic]string {
 // Caches all env vars on first call.
 snapshot_env_var :: proc(name: string) -> Maybe(string) {
 	if !ENV_SNAPSHOT_CACHE.env_initialized {
+		context.allocator = snapshot_allocator()
 		env_list, err := os.environ(context.allocator)
 		if err == nil {
 			defer {
@@ -91,6 +94,7 @@ snapshot_aliases :: proc() -> map[string]string {
 		return ENV_SNAPSHOT_CACHE.aliases
 	}
 	ENV_SNAPSHOT_CACHE.aliases_initialized = true
+	context.allocator = snapshot_allocator()
 
 	shell := os.get_env("SHELL", context.allocator)
 	defer delete(shell)
@@ -251,6 +255,7 @@ classify_entry :: proc(name: string, wayu_value: string, env_value: Maybe(string
 
 // cleanup_env_snapshot frees the cached snapshot (call at program end)
 cleanup_env_snapshot :: proc() {
+	context.allocator = snapshot_allocator()
 	for entry in ENV_SNAPSHOT_CACHE.path_entries {
 		delete(entry)
 	}
@@ -266,4 +271,12 @@ cleanup_env_snapshot :: proc() {
 	}
 	delete(ENV_SNAPSHOT_CACHE.aliases)
 	ENV_SNAPSHOT_CACHE = {}
+}
+
+// The snapshot is a process-lifetime cache, so it lives on the heap
+// allocator rather than whatever context.allocator the first caller had
+// (a unit test's tracking allocator reported it as that test's leak).
+@(private = "file")
+snapshot_allocator :: proc() -> runtime.Allocator {
+	return runtime.heap_allocator()
 }

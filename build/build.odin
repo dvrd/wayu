@@ -176,6 +176,9 @@ run_unit_tests :: proc(names := "") -> bool {
 	stdout_log := fmt.tprintf("%s/unit-tests.stdout.log", test_home)
 	defines := make([dynamic]bld.Define, context.temp_allocator)
 	append(&defines, bld.Define{name = "ODIN_TEST_THREADS", value = "1"})
+	// A leak or bad free (tracking allocator, on by default) fails the
+	// test instead of only printing a warning.
+	append(&defines, bld.Define{name = "ODIN_TEST_FAIL_ON_BAD_MEMORY", value = "true"})
 	if len(names) > 0 {
 		append(&defines, bld.Define{name = "ODIN_TEST_NAMES", value = names})
 	}

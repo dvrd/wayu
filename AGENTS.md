@@ -22,7 +22,8 @@ wayu is a shell configuration management CLI written in Odin. It manages PATH en
 ./build_it install      # Install to /usr/local/bin
 
 # Test
-./build_it test         # Unit tests (runs tests/unit/)
+./build_it test         # Unit tests (runs tests/unit/; leaks/bad frees fail; output + failed names shown)
+./build_it test test_wayu.test_x,test_wayu.test_y   # run only these tests
 
 # Run with args during dev
 ./build_it && ./wayu path list
@@ -203,7 +204,7 @@ tests/
 └── benchmark/     # Performance benchmarks
 ```
 
-Unit tests: `tests/unit/test_<module>.odin`. Integration tests spawn the compiled binary and check stdout/stderr/exit codes.
+Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_tmp(name)` (`tests/unit/test_tmp.odin`, per-process root) — never a fixed `/tmp/...` path: other worktrees run the suite concurrently. Process-lifetime caches in `src/` allocate from `runtime.heap_allocator()`, or the first test to fill them reports a leak. Integration tests spawn the compiled binary and check stdout/stderr/exit codes.
 
 ## Shell-Specific Notes
 
