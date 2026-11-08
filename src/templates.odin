@@ -130,11 +130,7 @@ apply_template :: proc(name: string) {
 	}
 }
 
-// Shared helpers so each template routes through the TOML-first add paths
-// instead of the legacy shell-file writer (add_config_entry). Without this,
-// fish users ended up with aliases.fish/constants.fish that shipped bash
-// syntax (`alias g="git"`, `export EDITOR=...`) while wayu.toml stayed
-// empty.
+// Shared helpers: each template writes through the wayu.toml add paths.
 
 // Keys of wayu.toml [section] as they are on disk now (temp allocator).
 @(private = "file")
@@ -181,7 +177,7 @@ template_add_paths :: proc(paths: []string) {
 		switch toml_path_add_result(p) {
 		case .OK:   template_report("path", what)
 		case .NOOP: template_report("path", what, "already in wayu.toml")
-		case .INVALID, .NOT_FOUND, .IO_ERROR, .UNREADABLE, .OBSOLETE_SCHEMA:
+		case .INVALID, .NOT_FOUND, .IO_ERROR, .UNREADABLE:
 			print_warning("  skipped (could not write): %s", p)
 		}
 	}

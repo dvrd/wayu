@@ -333,17 +333,6 @@ test_toml_writer_quotes_keys :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_migrate_kv_uses_shared_parser :: proc(t: ^testing.T) {
-	k, v, ok := wayu.migrate_parse_toml_kv(`"q\"k" = "echo quoted" # c`)
-	testing.expect(t, ok)
-	testing.expect_value(t, k, `q"k`)
-	testing.expect_value(t, v, "echo quoted")
-	delete(k); delete(v)
-	_, _, ok2 := wayu.migrate_parse_toml_kv(`x = zsh`)
-	testing.expect(t, !ok2, "invalid TOML is reported, not migrated verbatim")
-}
-
-@(test)
 test_mask_toml_env_section_uses_parser :: proc(t: ^testing.T) {
 	content := "[env]\n\"API TOKEN\" = \"fake-quoted-key-secret\"\nKEY_LIST = [\n  \"fake-arr-1\",\n]\nX = 1\n[aliases]\nll = \"ls\"\n"
 	out := wayu.mask_toml_env_section(content)

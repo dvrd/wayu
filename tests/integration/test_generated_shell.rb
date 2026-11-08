@@ -213,8 +213,8 @@ class GeneratedShellTest
   # (zsh/bash syntax error), `${VAR}` / a bare `$` (fish parse error), zsh
   # `${(e)...}` (ran commands), `$X:h` (zsh modifier). Every shell must
   # source core cleanly, keep later entries and agree on the values.
-  # functions/<name>.<ext> is loaded by its own shell only (fish loads them
-  # too; zsh used to source .fish files and fail).
+  # functions/<name>.<ext> is loaded by its own shell only; a file without
+  # that extension is not loaded.
   ENV_TOML = <<~'TOML'
     [paths]
     gobin = "$FZ_GO/bin"
@@ -244,6 +244,7 @@ class GeneratedShellTest
     File.write("#{cfg}/functions/fzfn.zsh", "fzfn() { echo fn-zsh; }\n")
     File.write("#{cfg}/functions/fzfn.bash", "fzfn() { echo fn-bash; }\n")
     File.write("#{cfg}/functions/fzfn.fish", "function fzfn; echo fn-fish; end\n")
+    File.write("#{cfg}/functions/fzfn_noext", "fzfn() { echo fn-noext; }\n")
     Open3.capture3(env, @wayu_bin, 'build')
     want_env = "FZ_GO=#{home}/go FZ_PW=pa${ss FZ_EFLAG=${(e):-$(echo PWNED)} FZ_POS=a$1$ " \
                "FZ_MOD=#{home}:hello FZ_PCT=a$%b FZ_LAST=ok"

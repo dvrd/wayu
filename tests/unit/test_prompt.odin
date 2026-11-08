@@ -68,7 +68,7 @@ rprompt_format = '[{git_pending} $(id)](242)'
 test_prompt_async_private_tempdir :: proc(t: ^testing.T) {
 	sb := strings.builder_make()
 	defer strings.builder_destroy(&sb)
-	wayu.generate_async_feature(&sb, 2, "[{git_pending}](242)")
+	wayu.generate_async_feature(&sb, "[{git_pending}](242)")
 	code := strings.to_string(sb)
 
 	testing.expect(t, !strings.contains(code, ".wayu_async_$$"), "no predictable shared temp file")
@@ -165,7 +165,6 @@ vimcmd_replace_symbol = "[R](blue)"
 
 [prompt.username]
 show_always = true
-style_user = "red bold"
 format = "[$user](red) @ "
 
 [prompt.hostname]
@@ -198,7 +197,6 @@ format = "ignored"
 	testing.expect_value(t, cfg.vimcmd_visual_symbol, "V")
 	testing.expect_value(t, cfg.vimcmd_replace_symbol, "R")
 	testing.expect_value(t, cfg.username_show_always, true)
-	testing.expect_value(t, cfg.username_style_user, "red bold")
 	testing.expect_value(t, cfg.username_format, "[$user](red) @ ")
 	testing.expect_value(t, cfg.hostname_format, "<$hostname>")
 	testing.expect_value(t, cfg.localip_format, "($localip)")

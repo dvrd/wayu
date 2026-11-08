@@ -530,22 +530,6 @@ plugin_info_destroy :: proc(info: ^PluginInfo) {
 	info^ = PluginInfo{}
 }
 
-// Find plugin by name in config
-find_plugin :: proc(config: ^PluginConfig, name: string) -> (^InstalledPlugin, bool) {
-	for &plugin in config.plugins {
-		if plugin.name == name {
-			return &plugin, true
-		}
-	}
-	return nil, false
-}
-
-// Check if plugin is already installed
-is_plugin_installed :: proc(config: ^PluginConfig, name: string) -> bool {
-	_, found := find_plugin(config, name)
-	return found
-}
-
 // Find plugin in JSON config by EXACT name (or exact display name).
 // Never prompts and never fuzzy-matches. User-facing commands go through
 // find_plugin_or_exit, which adds the "did you mean" miss report.

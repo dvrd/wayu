@@ -15,8 +15,9 @@ import wayu "../../src"
 test_toml_parse_basic :: proc(t: ^testing.T) {
  content := `
 version = "1.0"
-shell = "zsh"
-wayu_version = "3.4.0"
+
+[shell]
+type = "zsh"
 `
  config, ok := wayu.toml_parse(content)
  defer wayu.cleanup_toml_config(&config)
@@ -74,80 +75,69 @@ API_KEY = "secret123"
  testing.expect(t, len(config.constants) == 2, "Should have 2 env entries")
  found_editor := false
  for c in config.constants {
-  if c.name == "EDITOR" && c.value == "nvim" && c.export {
+  if c.name == "EDITOR" && c.value == "nvim" {
    found_editor = true; break
   }
  }
- testing.expect(t, found_editor, `Should contain EDITOR = "nvim" (exported)`)
-}
-
-@(test)
-test_toml_parse_plugins :: proc(t: ^testing.T) {
- content := `
-[[plugins]]
-name = "zsh-autosuggestions"
-source = "github:zsh-users/zsh-autosuggestions"
-version = "v0.7.0"
-defer = true
-priority = 50
-
-[[plugins]]
-name = "fast-syntax-highlighting"
-source = "github:zdharma-continuum/fast-syntax-highlighting"
-`
- config, ok := wayu.toml_parse(content)
- defer wayu.cleanup_toml_config(&config)
-
- testing.expect(t, ok, "Plugin parsing should succeed")
- testing.expect(t, len(config.plugins) == 2, "Should have 2 plugins")
- testing.expect(t, config.plugins[0].name == "zsh-autosuggestions", "First plugin name should match")
- testing.expect(t, config.plugins[0].defer_load == true, "First plugin should be deferred")
- testing.expect(t, config.plugins[0].priority == 50, "First plugin priority should be 50")
-}
-
-@(test)
-test_toml_parse_profile :: proc(t: ^testing.T) {
- content := `
-[profile.work]
-condition = "test $WORK_ENV = production"
-
-[profile.work.path]
-entries = ["/work/tools/bin"]
-
-[[profile.work.aliases]]
-name = "work"
-command = "cd /work"
-
-[[profile.work.constants]]
-name = "WORK_ENV"
-value = "production"
-`
- config, ok := wayu.toml_parse(content)
- defer wayu.cleanup_toml_config(&config)
-
- testing.expect(t, ok, "Profile parsing should succeed")
- testing.expect(t, len(config.profiles) == 1, "Should have 1 profile")
-
- profile, found := config.profiles["work"]
- testing.expect(t, found, "Should find 'work' profile")
- testing.expect(t, profile.condition == "test $WORK_ENV = production", "Profile condition should match")
+ testing.expect(t, found_editor, `Should contain EDITOR = "nvim"`)
 }
 
 @(test)
 test_toml_parse_settings :: proc(t: ^testing.T) {
  content := `
 [settings]
-auto_backup = true
-fuzzy_fallback = true
-dry_run_default = false
+autosuggestions_accept_keys = ["^Y", "^[[121;5u"]
 `
  config, ok := wayu.toml_parse(content)
  defer wayu.cleanup_toml_config(&config)
 
  testing.expect(t, ok, "Settings parsing should succeed")
- testing.expect(t, config.settings.auto_backup == true, "auto_backup should be true")
- testing.expect(t, config.settings.fuzzy_fallback == true, "fuzzy_fallback should be true")
- testing.expect(t, config.settings.dry_run_default == false, "dry_run_default should be false")
+ testing.expect_value(t, len(config.settings.autosuggestions_accept_keys), 2)
+}
+
+// Keys wayu does not read are reported (warnings) with their line; tables
+// of the wrong shape ([[paths]]) are errors.
+@(test)
+test_toml_schema_issues :: proc(t: ^testing.T) {
+ content := `wayu_version = "3.4.0"
+[shell]
+type = "zsh"
+[settings]
+auto_backup = true
+autosuggestions_accept_keys = ["^Y"]
+[tools]
+zoxide = { args = "init zsh", bogus = 1 }
+[prompt.username]
+style_user = "red"
+format = "x"
+[constants]
+X = "1"
+Y = "2"
+`
+ issues := wayu.toml_content_schema_issues(content)
+ want := []string{
+  "unknown key wayu_version (ignored)",
+  "unknown key settings.auto_backup (ignored)",
+  "unknown key tools.zoxide.bogus (ignored)",
+  "unknown key prompt.username.style_user (ignored)",
+  "unknown table [constants] (ignored)",
+ }
+ want_lines := []int{1, 5, 8, 10, 12}
+ testing.expect_value(t, len(issues), len(want))
+ if len(issues) != len(want) { return }
+ for is, i in issues {
+  testing.expect_value(t, is.msg, want[i])
+  testing.expect_value(t, is.line, want_lines[i])
+  testing.expect(t, !is.is_error)
+ }
+
+ for bad in ([]string{"[[paths]]\npath = \"/usr/bin\"\n", "paths = \"x\"\n", "[[aliases]]\nname = \"ll\"\n"}) {
+  errs := wayu.toml_content_schema_issues(bad)
+  testing.expectf(t, len(errs) > 0 && errs[0].is_error, "%q must be a schema error", bad)
+ }
+
+ clean := wayu.toml_content_schema_issues("version = \"1.0\"\n[paths]\na = \"/a\"\n[aliases]\n\"g.st\" = \"git st\"\n[env]\nX = \"1\"\n[tools.atuin]\nkind = \"evalcache\"\n[prompt]\nenabled = true\n[prompt.contexts]\ngo = { format = \"go\", detect = [\"go.mod\"] }\n[prompt.interactive]\nasync_rprompt = false\n")
+ testing.expectf(t, len(clean) == 0, "known keys must not be reported: %v", clean)
 }
 
 // ============================================================================
@@ -158,7 +148,9 @@ dry_run_default = false
 test_toml_validate_valid_config :: proc(t: ^testing.T) {
  content := `
 version = "1.0"
-shell = "zsh"
+
+[shell]
+type = "zsh"
 
 [aliases]
 ll = "ls -la"
@@ -178,7 +170,9 @@ ll = "ls -la"
 test_toml_validate_invalid_shell :: proc(t: ^testing.T) {
  content := `
 version = "1.0"
-shell = "invalid_shell"
+
+[shell]
+type = "invalid_shell"
 `
  config, ok := wayu.toml_parse(content)
  defer wayu.cleanup_toml_config(&config)
@@ -269,7 +263,8 @@ test_toml_parse_comments :: proc(t: ^testing.T) {
 version = "1.0"  # inline comment
 
 # Another comment
-shell = "bash"
+[shell]
+type = "bash"  # inline comment
 `
  config, ok := wayu.toml_parse(content)
  defer wayu.cleanup_toml_config(&config)
@@ -334,22 +329,6 @@ test_toml_parse_escaped_hash_is_not_comment :: proc(t: ^testing.T) {
  testing.expect(t, ok, "Escaped quote before hash should not break comment stripping")
  testing.expect(t, len(config.aliases) == 1, "Alias should be parsed")
  testing.expect(t, config.aliases[0].command == "echo \"# not a comment\"", "Hash inside escaped quotes should be preserved")
-}
-
-@(test)
-test_toml_profile_keys_survive_after_parse :: proc(t: ^testing.T) {
- config, ok := wayu.toml_parse("[profile.work]\ncondition = \"true\"\n")
- defer wayu.cleanup_toml_config(&config)
- testing.expect(t, ok, "Profile config should parse")
-
- noise := make([]string, 128)
- defer delete(noise)
- for i in 0..<len(noise) {
-  noise[i] = fmt.tprintf("allocation-noise-%d", i)
- }
-
- _, found := config.profiles["work"]
- testing.expect(t, found, "Profile map key should remain valid after parser arena is released")
 }
 
 // ---------------------------------------------------------------------------

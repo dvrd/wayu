@@ -57,57 +57,6 @@ ensure_functions_dir :: proc() -> string {
 	return dir
 }
 
-// Copy any function files from the legacy data-dir location
-// (~/.local/share/wayu/functions) into the config-dir location
-// (~/.config/wayu/functions) that the loader now sources. Existing files in
-// the destination are never overwritten. Idempotent and safe to call often.
-migrate_legacy_functions :: proc() {
-	// When config and data resolve to the same directory (e.g. tests setting
-	// WAYU_CONFIG_DIR), there is nothing to migrate.
-	if wayu.config == wayu.data do return
-
-	old_dir := fmt.aprintf("%s/functions", wayu.data)
-	defer delete(old_dir)
-	if !os.exists(old_dir) do return
-
-	handle, open_err := os.open(old_dir)
-	if open_err != nil do return
-	defer os.close(handle)
-
-	entries, read_err := os.read_dir(handle, -1, context.allocator)
-	if read_err != nil do return
-	defer os.file_info_slice_delete(entries, context.allocator)
-
-	moved := 0
-	for entry in entries {
-		if entry.type == .Directory do continue
-
-		dest := fmt.aprintf("%s/functions/%s", wayu.config, entry.name)
-		defer delete(dest)
-		if os.exists(dest) do continue // never clobber the new location
-
-		src := fmt.aprintf("%s/%s", old_dir, entry.name)
-		defer delete(src)
-
-		data, data_err := os.read_entire_file(src, context.allocator)
-		if data_err != nil do continue
-		defer delete(data)
-
-		// Make sure the destination directory exists before writing.
-		new_dir := ensure_functions_dir()
-		delete(new_dir)
-
-		if os.write_entire_file(dest, data) == nil {
-			moved += 1
-		}
-	}
-
-	if moved > 0 {
-		print_success("Migrated %d function(s) to %s/functions", moved, wayu.config)
-		print_info("Originals left in %s for safety — remove them once verified", old_dir)
-	}
-}
-
 add_function :: proc(name: string) {
 	result := validate_identifier(name, "Function")
 	if !result.valid {
@@ -130,9 +79,6 @@ add_function :: proc(name: string) {
 
 	dir := ensure_functions_dir()
 	defer delete(dir)
-
-	// Pull any functions from the legacy data-dir location into the new one.
-	migrate_legacy_functions()
 
 	func_file := function_file_path(name)
 	defer delete(func_file)
@@ -216,9 +162,6 @@ remove_function :: proc(name: string) {
 }
 
 list_functions :: proc() {
-	// Pull any functions from the legacy data-dir location into the new one.
-	migrate_legacy_functions()
-
 	dir := fmt.aprintf("%s/functions", wayu.config)
 	defer delete(dir)
 

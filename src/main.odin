@@ -20,11 +20,6 @@ AppContext :: struct {
 	data:           string,  // generated/runtime files (defaults to ~/.config/wayu; WAYU_DATA_DIR override)
 	shell:          ShellType,
 	shell_ext:      string,
-	path_file:      string,
-	alias_file:     string,
-	constants_file: string,
-	init_file:      string,
-	tools_file:     string,
 	dry_run:        bool,
 	yes_flag:       bool,
 	json_output:    bool,
@@ -45,7 +40,6 @@ Command :: enum {
 	BACKUP,
 	PLUGIN,
 	INIT,
-	MIGRATE,
 	CONFIG,
 	BUILD,      // Compile wayu.toml to optimized shell config
 	EXPORT,     // High-performance turbo export
@@ -105,37 +99,9 @@ init_app_context :: proc(ctx: ^AppContext) {
 
 	ctx.shell = detect_shell()
 	ctx.shell_ext = get_shell_extension(ctx.shell)
-
-	// Use static strings for per-shell filenames (avoids 5 heap allocations)
-	switch ctx.shell {
-	case .ZSH:
-		ctx.path_file      = "path.zsh"
-		ctx.alias_file     = "aliases.zsh"
-		ctx.constants_file = "constants.zsh"
-		ctx.init_file      = "init.zsh"
-		ctx.tools_file     = "tools.zsh"
-	case .BASH:
-		ctx.path_file      = "path.bash"
-		ctx.alias_file     = "aliases.bash"
-		ctx.constants_file = "constants.bash"
-		ctx.init_file      = "init.bash"
-		ctx.tools_file     = "tools.bash"
-	case .FISH:
-		ctx.path_file      = "path.fish"
-		ctx.alias_file     = "aliases.fish"
-		ctx.constants_file = "constants.fish"
-		ctx.init_file      = "init.fish"
-		ctx.tools_file     = "tools.fish"
-	case .UNKNOWN:
-		ctx.path_file      = "path.zsh"
-		ctx.alias_file     = "aliases.zsh"
-		ctx.constants_file = "constants.zsh"
-		ctx.init_file      = "init.zsh"
-		ctx.tools_file     = "tools.zsh"
-	}
 }
 
-// Legacy shim — tests call this, so keep the name but populate wayu.
+// Populate `wayu` once (tests call it too).
 // Idempotent: skips if config or data are already set (avoids overwriting test overrides).
 init_shell_globals :: proc() {
 	if len(wayu.config) > 0 || len(wayu.data) > 0 do return
@@ -221,13 +187,6 @@ main :: proc() {
 	}
 
 	init_shell_globals()
-	// Note: the legacy `init_config_files()` startup call was removed on
-	// 2026-04-24 (code review L4). It did 4 `os.exists` syscalls on every CLI
-	// invocation to auto-create empty path/aliases/constants/extra legacy
-	// shell files, which are shadowed by wayu.toml anyway. Use explicit
-	// `wayu init` (which still calls init_shell_configs) for first-time
-	// bootstrap. The main TOML flow calls `ensure_wayu_toml_exists()` on
-	// demand, so `wayu path add /foo` on a fresh install still works.
 
 	// No arguments → launch TUI (the primary interface)
 	if len(os.args) < 2 {
@@ -271,41 +230,6 @@ main :: proc() {
 		return
 	}
 
-	// Hard-break guard: any command that touches wayu.toml refuses to run
-	// while the file still uses the obsolete [[paths]]/[[aliases]]/[[constants]]
-	// schema. The few commands that either don't read the toml (VERSION/HELP)
-	// or are the recovery path itself (MIGRATE) skip this check.
-	needs_modern_toml := true
-	#partial switch parsed.command {
-	case .VERSION, .HELP, .MIGRATE, .UNKNOWN:
-		// pure non-toml commands and the recovery path itself
-		needs_modern_toml = false
-	case .BACKUP:
-		// the recovery tool: list/rm never parse wayu.toml, and restore
-		// validates the backup it writes (refuses an obsolete-schema one)
-		needs_modern_toml = false
-	case .DOCTOR:
-		// doctor explicitly reports the legacy-schema issue itself
-		// (check_toml_config), and we want it to surface other findings too.
-		needs_modern_toml = false
-	}
-	// Pre-warm the TOML content cache and run the legacy-schema guard in
-	// one pass (avoids reading wayu.toml twice at startup). Skip for
-	// commands that never touch wayu.toml (--version, --help, etc.).
-	needs_toml := true
-	#partial switch parsed.command {
-	case .VERSION, .HELP, .UNKNOWN:
-		needs_toml = false
-	}
-	if needs_toml {
-		if toml_str, toml_ok := get_cached_toml_content(); toml_ok && needs_modern_toml {
-			if header := detect_legacy_schema(toml_str); len(header) > 0 {
-				print_legacy_schema_hint(header)
-				os.exit(EXIT_CONFIG)
-			}
-		}
-	}
-
 	switch parsed.command {
 	case .PATH:
 		handle_path_command(parsed.action, parsed.args)
@@ -334,8 +258,6 @@ main :: proc() {
 				apply_template(template)
 			}
 		}
-	case .MIGRATE:
-		handle_migrate_command(parsed.args)
 	case .CONFIG:
 		handle_config_extra_command(parsed.action, parsed.args)
 	case .BUILD:
@@ -383,8 +305,6 @@ main :: proc() {
 	}
 }
 
-
-
 handle_init_command :: proc() {
 	print_header("Initializing Wayu Configuration", "🚀")
 	fmt.println()
@@ -416,13 +336,7 @@ handle_init_command :: proc() {
 
 	// Create config directory (~/.config/wayu)
 	if !os.exists(config_dir) {
-		spinner := new_spinner(.Dots)
-		spinner_text(&spinner, "Creating config directory")
-		spinner_start(&spinner)
-
 		err := make_directory_all(config_dir) // ~/.config may not exist yet
-
-		spinner_stop(&spinner)
 
 		if err != nil {
 			print_error_simple("Error creating config directory: %v", err)
@@ -435,14 +349,8 @@ handle_init_command :: proc() {
 
 	// Create data directory (defaults to ~/.config/wayu)
 	if !os.exists(data_dir) {
-		spinner := new_spinner(.Dots)
-		spinner_text(&spinner, "Creating data directory")
-		spinner_start(&spinner)
-
 		// Create parent directories if needed (may not exist in test envs)
 		err := make_directory_all(data_dir)
-
-		spinner_stop(&spinner)
 
 		if err != nil {
 			print_error_simple("Error creating data directory: %v", err)
@@ -468,15 +376,7 @@ handle_init_command :: proc() {
 		defer delete(subdir_path)
 
 		if !os.exists(subdir_path) {
-			spinner := new_spinner(.Arc)
-			spinner_text_str := fmt.aprintf("Creating %s directory", subdir)
-			defer delete(spinner_text_str)
-			spinner_text(&spinner, spinner_text_str)
-			spinner_start(&spinner)
-
 			err := make_directory_all(subdir_path)
-
-			spinner_stop(&spinner)
 
 			if err != nil {
 				print_error_simple("Error creating directory %s: %v", subdir, err)
@@ -490,10 +390,6 @@ handle_init_command :: proc() {
 	if created_subdirs == 0 {
 		print_info("All subdirectories already exist")
 	}
-
-	// Migrate any functions left at the legacy data-dir location into the
-	// config-dir location that the loader now sources.
-	migrate_legacy_functions()
 
 	fmt.println()
 
@@ -525,9 +421,7 @@ print_init_dry_run :: proc(shell: ShellType, ext: string) {
 		base := wayu.config if sub == "functions" else wayu.data
 		would(fmt.tprintf("%s/%s", base, sub), "directory")
 	}
-	for name in ([]string{"path", "aliases", "constants", "init"}) {
-		would(fmt.tprintf("%s/%s.%s", wayu.data, name, ext), "file")
-	}
+	would(fmt.tprintf("%s/init.%s", wayu.data, ext), "file")
 	for name in ([]string{"tools", "extra"}) {
 		would(fmt.tprintf("%s/%s.%s", wayu.config, name, ext), "file")
 	}
@@ -555,9 +449,6 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		template: proc(ShellType) -> string,
 		dir:      string,  // which base directory to use
 	}{
-		{"path", get_path_template, wayu.data},
-		{"aliases", get_aliases_template, wayu.data},
-		{"constants", get_constants_template, wayu.data},
 		{"init", get_init_template, wayu.data},
 		{"tools", get_tools_template, wayu.config},
 		{"extra", get_extra_template, wayu.config},
@@ -568,15 +459,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		defer delete(config_file)
 
 		if !os.exists(config_file) {
-			spinner := new_spinner(.Line)
-			spinner_text_str := fmt.aprintf("Creating %s.%s", config.name, ext)
-			defer delete(spinner_text_str)
-			spinner_text(&spinner, spinner_text_str)
-			spinner_start(&spinner)
-
 			success := init_config_file(config_file, config.template(shell))
-
-			spinner_stop(&spinner)
 
 			if success {
 				print_success("Created config file: %s", config_file)
@@ -600,11 +483,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	defer delete(alias_sources_file)
 
 	if !os.exists(alias_sources_file) {
-		spinner := new_spinner(.Line)
-		spinner_text(&spinner, "Creating alias-sources.conf")
-		spinner_start(&spinner)
 		success := init_config_file(alias_sources_file, ALIAS_SOURCES_TEMPLATE)
-		spinner_stop(&spinner)
 		if success {
 			print_success("Created config file: %s", alias_sources_file)
 		} else {
@@ -619,15 +498,10 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 	defer delete(toml_file)
 
 	if !os.exists(toml_file) {
-		spinner := new_spinner(.Line)
-		spinner_text(&spinner, "Creating wayu.toml scaffold")
-		spinner_start(&spinner)
-
 		toml_scaffold := wayu_toml_scaffold(shell)
 		defer delete(toml_scaffold)
 
 		success := init_config_file(toml_file, toml_scaffold)
-		spinner_stop(&spinner)
 		if success {
 			print_success("Created config file: %s", toml_file)
 		} else {
@@ -733,8 +607,7 @@ print_init_help :: proc() {
 	fmt.println("  wayu.toml (the config every command edits), init.<ext> (source it from")
 	fmt.println("  your rc file), extra.<ext> and tools.<ext> (your own shell code),")
 	fmt.println("  alias-sources.conf, functions/, completions/ and plugins/, then generates")
-	fmt.println("  core.<ext>. The path/aliases/constants.<ext> files it writes are legacy")
-	fmt.println("  stubs: wayu.toml is the source of truth.")
+	fmt.println("  core.<ext>.")
 	fmt.println("  Safe to re-run — existing files are preserved.")
 	fmt.println()
 	fmt.println("  --template <name>  Then apply a template (see 'wayu template list');")
@@ -811,7 +684,6 @@ print_help :: proc() {
 	fmt.printf("  wayu plugin check                # Check plugins for updates\n")
 	fmt.printf("  wayu plugin update plugin-name   # Update specific plugin\n")
 	fmt.printf("  wayu plugin update --all         # Update all plugins\n")
-	fmt.printf("  wayu migrate --from zsh --to bash # Migrate between shells\n")
 	fmt.println()
 	fmt.printf("  # TOML configuration (declarative mode):\n")
 	fmt.printf("  wayu toml validate               # Check wayu.toml syntax\n")
@@ -926,11 +798,8 @@ handle_build_command :: proc(action: Action) {
 	defer delete(toml_path)
 	
 	if !os.exists(toml_path) {
-		print_info("No wayu.toml found. Using existing shell configs.")
-		fmt.println()
-		fmt.println("To create wayu.toml:")
-		fmt.printfln("  %swayu toml convert%s", get_primary(), RESET)
-		return
+		print_error_simple("No wayu.toml found at %s. Run 'wayu init' first.", toml_path)
+		os.exit(EXIT_CONFIG)
 	}
 	
 	if !validate_tools_args() {

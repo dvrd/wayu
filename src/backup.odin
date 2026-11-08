@@ -28,7 +28,7 @@ BACKUP_KEEP_COUNT :: 5
 BACKUP_PRE_RESTORE_TAG :: ".pre-restore"
 
 // Files already backed up by create_backup_cli in this (non-TUI) process.
-// A command that writes the same file many times (migrate, template apply,
+// A command that writes the same file many times (template apply,
 // doctor --fix) keeps ONE backup: the state before the command ran.
 // Allocated on the raw heap: lives for the whole process.
 @(private = "file")
@@ -75,8 +75,6 @@ create_backup :: proc(file_path: string, tag := "") -> (backup_path: string, ok:
 			return "", false
 		}
 		debug("Created backup directory: %s", backup_dir)
-	} else {
-		tighten_backup_dir_modes(backup_dir)
 	}
 
 	base_name := backup_key(file_path)
@@ -84,7 +82,7 @@ create_backup :: proc(file_path: string, tag := "") -> (backup_path: string, ok:
 
 	// Generate backup filename with human-readable date format plus
 	// microseconds. Second resolution alone let two backups taken within the
-	// same second (migrate / doctor --fix write once per entry) overwrite
+	// same second (doctor --fix write once per entry) overwrite
 	// each other, losing the pristine pre-operation copy. The file is also
 	// created exclusively (O_EXCL) with a `-N` suffix on collision, so an
 	// existing backup is never clobbered.
@@ -134,7 +132,7 @@ create_backup :: proc(file_path: string, tag := "") -> (backup_path: string, ok:
 // is keyed by its path with '/' as '%': relative to $HOME (~/.zshrc ->
 // ".zshrc", $ZDOTDIR=~/.config/zsh -> ".config%zsh%.zshrc"), or absolute
 // with a leading '%'. So two rc files with the same name keep separate
-// histories, and ~/.zshrc keeps the pre-5.1 name.
+// histories.
 backup_key :: proc(file_path: string, allocator := context.allocator) -> string {
 	under :: proc(path, root: string) -> bool {
 		return len(root) > 0 && len(path) > len(root) && strings.has_prefix(path, root) && path[len(root)] == '/'
@@ -189,33 +187,6 @@ list_backup_keys :: proc(allocator := context.allocator) -> []string {
 delete_backup_keys :: proc(keys: []string, allocator := context.allocator) {
 	for k in keys { delete(k, allocator) }
 	delete(keys, allocator)
-}
-
-// Repair modes left by older wayu versions (backup dir 0755, backups 0644):
-// chmod the dir to 0700 and any group/other-accessible entry to 0600.
-// Best-effort and cheap — the dir holds at most a few files per config.
-@(private = "file")
-tighten_backup_dir_modes :: proc(backup_dir: string) {
-	OPEN_BITS :: os.Permissions{.Read_Group, .Write_Group, .Execute_Group, .Read_Other, .Write_Other, .Execute_Other}
-
-	if info, err := os.stat(backup_dir, context.temp_allocator); err == nil && info.mode & OPEN_BITS != {} {
-		if os.chmod(backup_dir, SECRET_DIR_PERMS) != nil {
-			debug("Could not chmod backup dir %s", backup_dir)
-		}
-	}
-
-	dir_handle, open_err := os.open(backup_dir)
-	if open_err != nil { return }
-	defer os.close(dir_handle)
-
-	infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
-	if read_err != nil { return }
-	defer os.file_info_slice_delete(infos, context.allocator)
-
-	for info in infos {
-		if info.type != .Regular || info.mode & OPEN_BITS == {} { continue }
-		restrict_file_mode(info.fullpath)
-	}
 }
 
 // CLI version - fails immediately without prompt
@@ -397,12 +368,6 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 		print_error_simple("Backup %s is not valid TOML — refusing to restore it", chosen.backup_file)
 		return false
 	}
-	// A backup taken by wayu 3.x can hold the obsolete [[paths]] schema;
-	// restoring it would make every other command refuse to run.
-	if header := detect_legacy_schema(string(content)); is_wayu_toml && len(header) > 0 {
-		print_error_simple("Backup %s uses the obsolete %s schema — refusing to restore it. Copy it over wayu.toml and run `wayu migrate --schema` instead.", chosen.backup_file, header)
-		return false
-	}
 
 	// Back up the current state so the restore can be undone.
 	if os.exists(file_path) {
@@ -475,7 +440,11 @@ list_backups_for_key :: proc(key: string, original: string) -> []BackupInfo {
 			suffix := info.name[len(pattern):]
 			pre_restore := strings.has_suffix(suffix, BACKUP_PRE_RESTORE_TAG)
 			if pre_restore { suffix = suffix[:len(suffix) - len(BACKUP_PRE_RESTORE_TAG)] }
-			timestamp, seq := parse_backup_suffix(suffix)
+			timestamp, seq, stamp_ok := parse_backup_suffix(suffix)
+			if !stamp_ok {
+				delete(full_path)
+				continue
+			}
 
 			backup := BackupInfo{
 				original_file = strings.clone(file_path),
@@ -505,67 +474,38 @@ list_backups_for_key :: proc(key: string, original: string) -> []BackupInfo {
 	return result
 }
 
-// Parse timestamp from backup filename suffix.
-// Accepts (newest first):
-//   YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]   (sub-second + collision sequence)
-//   YYYY-MM-DD_HH-MM-SS              (pre-4.5 second resolution)
-//   <unix seconds>[...]              (legacy)
-parse_timestamp :: proc(timestamp_str: string) -> time.Time {
-	t, _ := parse_backup_suffix(timestamp_str)
-	return t
-}
-
-parse_backup_suffix :: proc(timestamp_str: string) -> (t: time.Time, seq: int) {
-	if len(timestamp_str) >= 19 && timestamp_str[4] == '-' && timestamp_str[7] == '-' && timestamp_str[10] == '_' {
-		// Timestamp components are all ASCII digits by construction; if
-		// parse fails (corrupted filename) we fall through to the legacy
-		// Unix-timestamp path below — not the component-zero path — so
-		// parse errors can't silently produce a "year 0" timestamp.
-		year,  year_ok  := strconv.parse_int(timestamp_str[0:4])
-		month, month_ok := strconv.parse_int(timestamp_str[5:7])
-		day,   day_ok   := strconv.parse_int(timestamp_str[8:10])
-		hour,  hour_ok  := strconv.parse_int(timestamp_str[11:13])
-		min,   min_ok   := strconv.parse_int(timestamp_str[14:16])
-		sec,   sec_ok   := strconv.parse_int(timestamp_str[17:19])
-
-		if year_ok && month_ok && day_ok && hour_ok && min_ok && sec_ok {
-			rest := timestamp_str[19:]
-			nanos := 0
-			if len(rest) > 0 && rest[0] == '.' {
-				// Fractional seconds: up to 9 digits, scaled to nanoseconds.
-				i := 1
-				digits := 0
-				for i < len(rest) && rest[i] >= '0' && rest[i] <= '9' {
-					if digits < 9 {
-						nanos = nanos * 10 + int(rest[i] - '0')
-						digits += 1
-					}
-					i += 1
-				}
-				for _ in digits..<9 { nanos *= 10 }
-				rest = rest[i:]
-			}
-			if len(rest) > 1 && rest[0] == '-' {
-				if n, n_ok := strconv.parse_int(rest[1:]); n_ok { seq = n }
-			}
-			parsed, ok := time.datetime_to_time(year, month, day, hour, min, sec, nanos)
-			if ok { return parsed, seq }
+// Parse the stamp of a backup file name, the part after "<key>.backup."
+// (BACKUP_PRE_RESTORE_TAG already stripped):
+//   YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]   (UTC, microseconds, collision sequence)
+// ok=false for anything else: such a file is not a wayu backup.
+parse_backup_suffix :: proc(s: string) -> (t: time.Time, seq: int, ok: bool) {
+	// Layout of the fixed part; 'd' = ASCII digit.
+	LAYOUT :: "dddd-dd-dd_dd-dd-dd.dddddd"
+	if len(s) < len(LAYOUT) { return }
+	for c, i in transmute([]u8)string(LAYOUT) {
+		if c == 'd' {
+			if s[i] < '0' || s[i] > '9' { return }
+		} else if s[i] != c {
+			return
 		}
-		// fall through on parse failure
 	}
-
-	// Fallback: parse old Unix timestamp format for backwards compatibility.
-	// Accepts a leading run of digits; stops at the first non-digit so the
-	// ".bak" suffix and extension are tolerated.
-	end := 0
-	for end < len(timestamp_str) && timestamp_str[end] >= '0' && timestamp_str[end] <= '9' {
-		end += 1
+	num :: proc(s: string) -> int {
+		n := 0
+		for c in transmute([]u8)s { n = n * 10 + int(c - '0') }
+		return n
 	}
-	if end == 0 {
-		return time.unix(0, 0), 0
+	rest := s[len(LAYOUT):]
+	if len(rest) > 0 {
+		if len(rest) < 2 || rest[0] != '-' { return }
+		for c in transmute([]u8)rest[1:] {
+			if c < '0' || c > '9' { return }
+		}
+		seq = num(rest[1:])
 	}
-	timestamp_int, _ := strconv.parse_i64(timestamp_str[:end])
-	return time.unix(timestamp_int, 0), 0
+	parsed, valid := time.datetime_to_time(num(s[0:4]), num(s[5:7]), num(s[8:10]),
+		num(s[11:13]), num(s[14:16]), num(s[17:19]), num(s[20:26]) * 1000)
+	if !valid { return }
+	return parsed, seq, true
 }
 
 // Clean up old backups (keep last N)

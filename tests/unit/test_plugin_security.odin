@@ -155,6 +155,7 @@ test_plugins_json_rejects_bad_fields :: proc(t: ^testing.T) {
 		`{"plugins":[{"name":"p","url":"https://h/p.git","git":{"branch":"--evil"}}]}`,
 		`{"plugins":[{"name":"p","url":"https://h/p.git","shell":"nonsense"}]}`,
 		`{"plugins":[{"name":"p","url":"https://h/p.git","shell":9}]}`,
+		`{"plugins":[{"name":"p","url":"https://h/p.git","shell":3}]}`, // numbers are not enum names
 		`{"plugins":[{"name":"p","url":"https://h/p.git","template":"Run"}]}`,
 		`{"plugins":[{"name":"p","url":"https://h/p.git","installed_path":"-rf"}]}`,
 		// A newline would break out of the loader's "# missing deps" comment.
@@ -174,10 +175,10 @@ test_plugins_json_enum_values_resolved :: proc(t: ^testing.T) {
 	root, _, oc, od := setup_sandbox()
 	defer teardown_sandbox(root, oc, od)
 
-	// Lowercase (CLI vocabulary), legacy ints and Odin names all resolve.
+	// Lowercase (CLI vocabulary) and Odin names resolve, any case.
 	write_plugins_json(`{"plugins":[
 		{"name":"a","url":"https://h/a.git","shell":"bash","template":"fpath","git":{"ref_type":"commit"}},
-		{"name":"b","url":"https://h/b.git","shell":3,"template":1},
+		{"name":"b","url":"https://h/b.git","shell":"Fish","template":"PATH"},
 		{"name":"c","url":"https://h/c.git","shell":"ANY","source_type":"Local"},
 	]}`)
 	config, ok := wayu.read_plugin_config_json()

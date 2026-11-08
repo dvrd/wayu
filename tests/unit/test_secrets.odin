@@ -107,35 +107,6 @@ test_backup_is_owner_only :: proc(t: ^testing.T) {
 	testing.expectf(t, dir_info.mode & GROUP_OTHER_BITS == {}, "backup dir must be 0700, got %v", dir_info.mode)
 }
 
-@(test)
-test_backup_tightens_legacy_modes :: proc(t: ^testing.T) {
-	data_dir := test_tmp("wayu-test-secret-legacy")
-	original_data := wayu.wayu.data
-	wayu.wayu.data = data_dir
-	os.remove_all(data_dir)
-	os.make_directory(data_dir)
-	defer { wayu.wayu.data = original_data; os.remove_all(data_dir) }
-
-	// Simulate a pre-fix install: world-readable dir + backup.
-	backup_dir := fmt.tprintf("%s/backup", data_dir)
-	os.make_directory(backup_dir, os.Permissions_Read_All + os.Permissions_Execute_All + {.Write_User})
-	os.chmod(backup_dir, os.Permissions_Read_All + os.Permissions_Execute_All + {.Write_User})
-	legacy := fmt.tprintf("%s/wayu.toml.backup.2020-01-01_00-00-00", backup_dir)
-	_ = os.write_entire_file(legacy, transmute([]byte)string("old"))
-	os.chmod(legacy, os.Permissions_Read_All + {.Write_User})
-
-	source := fmt.tprintf("%s/wayu.toml", data_dir)
-	_ = os.write_entire_file(source, transmute([]byte)string("[env]\n"))
-	backup_path, ok := wayu.create_backup(source)
-	defer if ok do delete(backup_path)
-	testing.expect(t, ok)
-
-	legacy_info, _ := os.stat(legacy, context.temp_allocator)
-	testing.expectf(t, legacy_info.mode & GROUP_OTHER_BITS == {}, "legacy backup should be tightened, got %v", legacy_info.mode)
-	dir_info, _ := os.stat(backup_dir, context.temp_allocator)
-	testing.expectf(t, dir_info.mode & GROUP_OTHER_BITS == {}, "legacy backup dir should be tightened, got %v", dir_info.mode)
-}
-
 // ---------------------------------------------------------------------------
 // List views mask secret-looking values unless revealed (`const list`,
 // `toml show`, TUI constants view). Values below are fake.

@@ -5,148 +5,6 @@ import "core:strings"
 import wayu "../../src"
 
 // ============================================================================
-// parse_line tests (legacy shell-file readers used by read_config_entries)
-// ============================================================================
-
-@(test)
-test_path_parse_line :: proc(t: ^testing.T) {
-	original := `  "/usr/local/bin"`
-	entry, ok := wayu.parse_path_line(original)
-	testing.expect(t, ok, "Should parse valid PATH line")
-	defer wayu.cleanup_entry(&entry)
-
-	testing.expect_value(t, entry.type, wayu.ConfigEntryType.PATH)
-	testing.expect_value(t, entry.name, "/usr/local/bin")
-	testing.expect_value(t, entry.value, "")
-}
-
-@(test)
-test_alias_parse_line :: proc(t: ^testing.T) {
-	original := `alias ll="ls -la"`
-	entry, ok := wayu.parse_alias_line(original)
-	testing.expect(t, ok, "Should parse valid alias line")
-	defer wayu.cleanup_entry(&entry)
-
-	testing.expect_value(t, entry.type, wayu.ConfigEntryType.ALIAS)
-	testing.expect_value(t, entry.name, "ll")
-	testing.expect_value(t, entry.value, "ls -la")
-}
-
-@(test)
-test_constant_parse_line :: proc(t: ^testing.T) {
-	original := `export MY_VAR="hello world"`
-	entry, ok := wayu.parse_constant_line(original)
-	testing.expect(t, ok, "Should parse valid constant line")
-	defer wayu.cleanup_entry(&entry)
-
-	testing.expect_value(t, entry.type, wayu.ConfigEntryType.CONSTANT)
-	testing.expect_value(t, entry.name, "MY_VAR")
-	testing.expect_value(t, entry.value, "hello world")
-}
-
-// ============================================================================
-// parse_line edge cases
-// ============================================================================
-
-@(test)
-test_path_parse_rejects_non_quoted :: proc(t: ^testing.T) {
-	invalid_lines := []string{
-		"# comment",
-		"WAYU_PATHS=(",
-		")",
-		"",
-		"  not-a-path",
-		"export PATH=something",
-	}
-
-	for line in invalid_lines {
-		_, ok := wayu.parse_path_line(line)
-		testing.expect(t, !ok, "Should reject non-PATH line")
-	}
-}
-
-@(test)
-test_alias_parse_rejects_invalid :: proc(t: ^testing.T) {
-	invalid_lines := []string{
-		`# alias commented="out"`,
-		`export VAR="value"`,
-		"alias",
-		"alias =value",
-		"",
-		"not an alias",
-	}
-
-	for line in invalid_lines {
-		_, ok := wayu.parse_alias_line(line)
-		testing.expect(t, !ok, "Should reject non-alias line")
-	}
-}
-
-@(test)
-test_constant_parse_rejects_invalid :: proc(t: ^testing.T) {
-	invalid_lines := []string{
-		`# export COMMENTED="out"`,
-		`alias ll="ls"`,
-		"export",
-		"export =value",
-		"",
-		"not an export",
-	}
-
-	for line in invalid_lines {
-		_, ok := wayu.parse_constant_line(line)
-		testing.expect(t, !ok, "Should reject non-constant line")
-	}
-}
-
-@(test)
-test_path_parse_with_env_vars :: proc(t: ^testing.T) {
-	line := `  "$HOME/go/bin"`
-	entry, ok := wayu.parse_path_line(line)
-	testing.expect(t, ok, "Should parse PATH with env var")
-	defer wayu.cleanup_entry(&entry)
-
-	testing.expect_value(t, entry.name, "$HOME/go/bin")
-}
-
-@(test)
-test_path_parse_empty_path :: proc(t: ^testing.T) {
-	line := `  ""`
-	entry, ok := wayu.parse_path_line(line)
-	testing.expect(t, ok, "Should parse empty PATH entry")
-	defer wayu.cleanup_entry(&entry)
-
-	testing.expect_value(t, entry.name, "")
-}
-
-@(test)
-test_alias_parse_with_complex_command :: proc(t: ^testing.T) {
-	line := `alias gc="git commit -m"`
-	entry, ok := wayu.parse_alias_line(line)
-	testing.expect(t, ok, "Should parse alias with complex command")
-	defer wayu.cleanup_entry(&entry)
-
-	testing.expect_value(t, entry.name, "gc")
-	testing.expect_value(t, entry.value, "git commit -m")
-}
-
-@(test)
-test_constant_parse_unquoted_value :: proc(t: ^testing.T) {
-	// parse_constant_line requires quoted values - unquoted should be rejected
-	line := `export FOO=bar`
-	_, ok := wayu.parse_constant_line(line)
-	testing.expect(t, !ok, "Should reject unquoted constant value")
-}
-
-@(test)
-test_constant_parse_empty_value :: proc(t: ^testing.T) {
-	// parse_constant_line requires quoted values - empty value should be rejected
-	line := `export EMPTY=`
-	_, ok := wayu.parse_constant_line(line)
-	testing.expect(t, !ok, "Should reject constant with empty/unquoted value")
-}
-
-// ============================================================================
 // parse_args_to_entry tests
 // ============================================================================
 
@@ -244,19 +102,16 @@ test_is_entry_complete_constant :: proc(t: ^testing.T) {
 test_path_spec_fields :: proc(t: ^testing.T) {
 	spec := &wayu.PATH_SPEC
 	testing.expect_value(t, spec.type, wayu.ConfigEntryType.PATH)
-	testing.expect_value(t, spec.file_name, "path")
 	testing.expect_value(t, spec.display_name, "PATH")
 	testing.expect_value(t, spec.fields_count, 1)
 	testing.expect(t, spec.has_clean, "PATH should support clean")
 	testing.expect(t, spec.has_dedup, "PATH should support dedup")
-	testing.expect(t, spec.parse_line != nil, "parse_line should be set")
 }
 
 @(test)
 test_alias_spec_fields :: proc(t: ^testing.T) {
 	spec := &wayu.ALIAS_SPEC
 	testing.expect_value(t, spec.type, wayu.ConfigEntryType.ALIAS)
-	testing.expect_value(t, spec.file_name, "aliases")
 	testing.expect_value(t, spec.display_name, "Alias")
 	testing.expect_value(t, spec.fields_count, 2)
 	testing.expect(t, !spec.has_clean, "Alias should not support clean")
@@ -267,7 +122,6 @@ test_alias_spec_fields :: proc(t: ^testing.T) {
 test_constants_spec_fields :: proc(t: ^testing.T) {
 	spec := &wayu.CONSTANTS_SPEC
 	testing.expect_value(t, spec.type, wayu.ConfigEntryType.CONSTANT)
-	testing.expect_value(t, spec.file_name, "constants")
 	testing.expect_value(t, spec.display_name, "Constant")
 	testing.expect_value(t, spec.fields_count, 2)
 	testing.expect(t, !spec.has_clean, "Constants should not support clean")

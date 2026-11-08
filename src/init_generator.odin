@@ -242,29 +242,19 @@ regenerate_init_core_silently :: proc() {
 	flush_zcompile_batch()
 }
 
-// fnv64a of every init.{zsh,bash,fish} template wayu has shipped (from the
-// git history of INIT_TEMPLATE* in src/preload.odin — the zsh one was plain
-// INIT_TEMPLATE until 3.9.x). Only a file that is
-// byte-identical to one of them is an untouched wayu orchestrator.
-// When INIT_TEMPLATE_* changes, add the new template's hash here.
-// Every template currently shipped must be listed too (unit-tested), so the
-// next change only needs the new hash added.
+// fnv64a of the init.{zsh,bash,fish} templates this wayu writes and of the
+// ones the previous develop build wrote. Only a file byte-identical to one
+// of them is an untouched wayu orchestrator, which sync_init_orchestrator
+// refreshes. When INIT_TEMPLATE_* changes, replace the "previous" hashes
+// with the current ones and add the new template's hash (unit-tested: every
+// template currently shipped must be listed).
 KNOWN_INIT_TEMPLATE_HASHES :: [?]u64{
-	// zsh
-	0x20e135c4c9aacd58, 0x7e48fffaa40fd9cd, 0xfff333ca896c0bd4, 0xf47f9eb2ad3f7a2e,
-	0xc21f6b2d093d821d, 0x1039f30345ae10c2, 0x6d16cfee3fafd79a, 0xd4268444521bc452,
-	0x6fdcb522c8338802, 0x100ab1dc1aaa0359,
-	// zsh, up to 3.9.x (constant named INIT_TEMPLATE)
-	0x7cb798f31c5e9bf3, 0xf589a7f2a854c4f8, 0x0ed9ea7c3d50f1f7, 0x7e06c7c4e44fb51a,
-	0xb8566ffbbe52f44a, 0xe6fd0cd064d1544d,
-	// bash
-	0x0bc23094b9dcc819, 0x345463d2228a44de, 0x543c0b71a5b798a0, 0x548df0bd4c4ddc00,
-	0x75a7bff5ff0d78d8, 0xb3ea0c621ce39dca, 0xbc078574f43e51c3, 0xcd692c96fb307bc6,
-	0xeda95b039229221f, 0xf6f35b1b81a854eb, 0xfe701bb066ded146, 0x1f4103ef74c755c5,
-	0x88d743add8a2bfc1, 0xa1414d3a52e03f37,
-	// fish
-	0x369d4d3c4c55995b, 0x3b71cd7d4b1f4c4b, 0x81f2ef4bb8cf4a9b, 0x8d915b6ee6512f58,
-	0x95f11f05208fadde, 0xc57f0c8b32f09433, 0x8d68552f17d12e1f, 0x720d83a5f623cf53,
+	// zsh: previous, current
+	0x100ab1dc1aaa0359, 0x96ea40ba08bbab77,
+	// bash: previous, current
+	0xa1414d3a52e03f37, 0xb2b8327b7b68ed26,
+	// fish: previous, current
+	0x720d83a5f623cf53, 0xfda840b65f7815f1,
 }
 
 is_known_init_template :: proc(content: string) -> bool {
@@ -274,7 +264,7 @@ is_known_init_template :: proc(content: string) -> bool {
 }
 
 // Rewrite init.{ext} with the current template when it is an unmodified copy
-// of a template an earlier wayu wrote. `wayu init` only creates init.{ext}
+// of a known template (KNOWN_INIT_TEMPLATE_HASHES). `wayu init` only creates init.{ext}
 // when missing, so without this existing users never receive orchestrator
 // fixes (e.g. the fast path that double-sourced extra/tools). The old file is
 // backed up first. A file the user edited is never rewritten (OKAMI-235): a
@@ -437,18 +427,16 @@ emit_path_eval :: proc(b: ^strings.Builder, sep: string = "\n") -> bool {
 // zsh: the glob runs in an anonymous function under `emulate -L zsh` so the
 // user's NO_BARE_GLOB_QUAL / NO_GLOB / KSH_ARRAYS can't break it (OKAMI-224);
 // the files are sourced outside it so they run with the user's own options.
-// `wayu function add` writes functions/<name>.<ext> per shell, so files of
-// the other shells (*.zsh / *.bash / *.fish) are skipped: zsh sourcing a
-// .fish function was a parse error at every startup. Other files (no
-// extension, .sh) are still sourced by zsh and bash.
+// `wayu function add` writes functions/<name>.<ext> per shell; each shell
+// sources only its own extension (*.zsh / *.bash).
 emit_functions_loader :: proc(b: ^strings.Builder) {
 	dir := shell_double_quote_literal(fmt.tprintf("%s/functions", wayu.config), context.temp_allocator)
 	if wayu.shell == .ZSH {
-		fmt.sbprintfln(b, `() {{ emulate -L zsh -o extended_glob; typeset -ga _wayu_fn_files; _wayu_fn_files=( %s/^*.(bash|fish)(N-.) ) }}`, dir)
+		fmt.sbprintfln(b, `() {{ emulate -L zsh; typeset -ga _wayu_fn_files; _wayu_fn_files=( %s/*.zsh(N-.) ) }}`, dir)
 		fmt.sbprintln(b, `for _wayu_f in "${_wayu_fn_files[@]}"; do source "$_wayu_f"; done`)
 		fmt.sbprintln(b, `unset _wayu_f _wayu_fn_files`)
 	} else {
-		fmt.sbprintfln(b, `if [ -d %s ]; then for f in %s/*; do case "$f" in *.zsh|*.fish) ;; *) if [ -f "$f" ]; then source "$f"; fi ;; esac; done; fi`, dir, dir)
+		fmt.sbprintfln(b, `if [ -d %s ]; then for f in %s/*.bash; do if [ -f "$f" ]; then source "$f"; fi; done; fi`, dir, dir)
 	}
 }
 
@@ -843,20 +831,6 @@ read_wayu_toml_path_values :: proc() -> [dynamic]string {
 	return values
 }
 
-// True when wayu.toml has a `[name]` table header (even an empty table).
-toml_has_table :: proc(name: string) -> bool {
-	content, ok := get_cached_toml_content()
-	if !ok { return false }
-	arena: virtual.Arena
-	if virtual.arena_init_growing(&arena) != nil { return false }
-	defer virtual.arena_destroy(&arena)
-	doc, _ := toml_doc_parse_alloc(content, virtual.arena_allocator(&arena))
-	for h in doc.headers {
-		if !h.invalid && !h.array && len(h.path) == 1 && h.path[0] == name { return true }
-	}
-	return false
-}
-
 // Absolute path of the running binary when it was invoked by path
 // (os.args[0] contains '/'), else "" so the hook falls back to PATH lookup.
 // Not symlink-resolved: /opt/homebrew/bin/wayu must survive `brew upgrade`.
@@ -959,11 +933,6 @@ emit_dir_overrides :: proc(b: ^strings.Builder, fish: bool) {
 	if header { fmt.sbprintln(b) }
 }
 
-// Generated files of the old split layout whose content core.<ext> now holds
-// (lazy: deferred [tools] + tools/extra.<ext>; login: login-only tools;
-// helpers: evalcache/zsh-defer). Removed on regeneration (OKAMI-284).
-OBSOLETE_SPLIT_FILES :: [?]string{"lazy", "login", "helpers"}
-
 // zsh/bash: write core.<ext> — the ONE generated file init.<ext> sources —
 // and path_sync.<ext> (re-read by the live PATH sync prompt hook). An
 // existing turbo.<ext> gets the same content (`wayu export --turbo`).
@@ -980,13 +949,6 @@ generate_core_init_v2 :: proc() {
 
 	turbo := fmt.tprintf("%s/turbo.%s", wayu.data, shell_ext)
 	if os.exists(turbo) { write_turbo_file(turbo, content) }
-
-	for base in OBSOLETE_SPLIT_FILES {
-		f := fmt.tprintf("%s/%s.%s", wayu.data, base, shell_ext)
-		if os.exists(f) { os.remove(f) }
-		zwc := fmt.tprintf("%s.zwc", f)
-		if os.exists(zwc) { os.remove(zwc) }
-	}
 }
 
 // core.<ext> for zsh/bash (OKAMI-284). Everything is precomputed at build
@@ -1029,12 +991,6 @@ build_core_content :: proc(mask := false) -> string {
 		fmt.sbprintfln(&b, "_WAYU_BIN=%s", shell_double_quote_literal(bin, context.temp_allocator))
 	}
 	fmt.sbprintfln(&b, "_WAYU_TOML_FILE=%s", shell_double_quote_literal(fmt.tprintf("%s/wayu.toml", wayu.config), context.temp_allocator))
-	// Legacy path.<ext> only for configs that never had a [paths] table:
-	// once [paths] exists (even emptied by `path rm`), old entries must not
-	// come back.
-	if !toml_has_table("paths") {
-		emit_source_if_exists(&b, fmt.tprintf("%s/path.%s", wayu.data, shell_ext))
-	}
 	{
 		values, sig := read_path_sync_values()
 		defer {

@@ -1,4 +1,0 @@
-#!/usr/bin/env zsh
-
-# Environment Constants and Configuration Variables
-# This file centralizes all constant definitions and environment variables

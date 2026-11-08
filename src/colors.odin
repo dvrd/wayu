@@ -481,7 +481,7 @@ json_escape :: proc(str: string) -> string {
 	return strings.clone(strings.to_string(builder))
 }
 
-// AliasEntry represents a single alias (used by init_generator and migrate_schema)
+// AliasEntry represents a single alias (used by init_generator)
 AliasEntry :: struct {
 	name:    string,
 	command: string,

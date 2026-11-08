@@ -2,14 +2,14 @@
 //
 // Every reader of wayu.toml goes through toml_doc_parse_alloc: `toml
 // validate`, doctor, the TUI, `alias/const/path list`, the shell generator,
-// the line-level table editor, secret masking and migrate. Before, six
+// the line-level table editor, and secret masking. Before, six
 // readers disagreed (quoted keys, escapes, multi-line arrays, a BOM, key
 // order), so a file could be "invalid" for one command and work for another.
 //
 // The parser is a real TOML 1.0 parser (plus the 1.1 conveniences \e, \xHH
 // and newlines/trailing commas in inline tables) with ERROR RECOVERY: a bad
 // statement is recorded in doc.errors and parsing resumes on the next line.
-//   - Strict consumers (toml validate, doctor, backup restore, migrate) treat
+//   - Strict consumers (toml validate, doctor, backup restore) treat
 //     any error as "invalid" and can print the line and reason.
 //   - Lenient consumers (lists, generator, TUI, editor) use whatever was
 //     recovered. A `key = value` line whose value is not valid TOML is
@@ -133,8 +133,7 @@ toml_check :: proc(content: string) -> (valid: bool, first: TomlParseError) {
 	return false, first
 }
 
-// True when `content` is valid TOML (kept for the strict callers: backup
-// restore, migrate).
+// True when `content` is valid TOML (strict callers: backup restore).
 toml_content_is_sane :: proc(content: string) -> bool {
 	ok, err := toml_check(content)
 	delete(err.msg)

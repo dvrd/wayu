@@ -135,10 +135,6 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 		{"--use", "Glob of files to load (plugin add)"}, {"--use=", ""}}},
 	{command = .INIT, names = {"init"}, desc = "Initialize wayu configuration",
 	 flags = {{"--template", "Apply a template after init"}, {"--template=", ""}}},
-	{command = .MIGRATE, names = {"migrate"}, desc = "Migrate shell config to wayu.toml",
-	 flags = {
-		{"--from", "Source shell (with --to)"}, {"--to", "Target shell (with --from)"},
-		{"--schema", "Upgrade a pre-3.x wayu.toml in place"}}},
 	{command = .CONFIG, names = {"config"}, desc = "Manage configuration files", default_action = .HELP,
 	 actions = {
 		{"edit", .UPDATE, "Edit wayu.toml in $EDITOR"}, {"extend", .ADD, "Edit extra config in $EDITOR"},
@@ -159,7 +155,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 	 flags = {{"--turbo", ""}, {"--eval", ""}, {"--check", ""}}},
 	{command = .TOML, names = {"toml"}, desc = "TOML configuration management", default_action = .CHECK,
 	 actions = {
-		{"validate", .CHECK, "Validate wayu.toml"}, {"convert", .UPDATE, "Convert to TOML"},
+		{"validate", .CHECK, "Validate wayu.toml"},
 		{"show", .GET, "Show config"}, {"keys", .LIST, "List keys"}, {"help", .HELP, "Show help"}},
 	 flags = {{"--reveal", "Show secret values unmasked in show"}}},
 	{command = .DOCTOR, names = {"doctor"}, desc = "Health check and diagnostics", default_action = .LIST, json = {.LIST},
@@ -952,8 +948,7 @@ add_completion :: proc(name: string, source_path: string) {
 	cleanup_old_backups(dest_path, 5)
 
 	print_success("Added completion: %s", completion_name)
-	init_file := get_config_file_with_fallback("init", wayu.shell)
-	defer delete(init_file)
+	init_file := fmt.tprintf("%s/init.%s", wayu.data, wayu.shell_ext)
 	fmt.printfln("\n%sNext steps:%s", BRIGHT_CYAN, RESET)
 	fmt.printfln("  source %s", init_file)
 	fmt.printfln("  or restart your shell")

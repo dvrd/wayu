@@ -475,15 +475,11 @@ run_step() {
 }
 
 echo "=== Phase 1: Core Config ==="
-# Post-migration: core.zsh is the compiled source of truth.
-# Legacy per-type files are fallback-only.
 run_step "core.zsh" source "$HOME/.config/wayu/core.zsh" 2>/dev/null || true
-run_step "constants.zsh (legacy)" source "$HOME/.config/wayu/constants.zsh" 2>/dev/null || true
-run_step "path.zsh (legacy)" source "$HOME/.config/wayu/path.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 2: Functions ==="
-run_step "functions (glob)" zsh -c 'for f in "$HOME/.config/wayu/functions"/*(N); do [[ -f "$f" ]] && source "$f"; done'
+run_step "functions (glob)" zsh -c 'for f in "$HOME/.config/wayu/functions"/*.zsh(N); do [[ -f "$f" ]] && source "$f"; done'
 
 echo ""
 echo "=== Phase 3: Completions Setup ==="
@@ -498,7 +494,6 @@ run_step "plugin config" source "$HOME/.config/wayu/plugins/config.zsh" 2>/dev/n
 
 echo ""
 echo "=== Phase 5: Aliases & Tools ==="
-run_step "aliases.zsh (legacy)" source "$HOME/.config/wayu/aliases.zsh" 2>/dev/null || true
 run_step "tools.zsh" source "$HOME/.config/wayu/tools.zsh" 2>/dev/null || true
 
 echo ""
@@ -818,8 +813,7 @@ check_bash_prompt_command :: proc(results: ^[dynamic]CheckResult) {
 	})
 }
 
-// Check 3: PATH entries — read from wayu.toml [paths] (the source of truth),
-// not the legacy path.<ext> file.
+// Check 3: PATH entries — read from wayu.toml [paths].
 check_path_entries :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
 	arena_alloc := get_doctor_allocator()
@@ -968,7 +962,7 @@ doctor_expand_path :: proc(path: string, consts: []ConfigEntry) -> string {
 }
 
 // Read wayu.toml [paths] and classify each entry. Never exits: a missing or
-// legacy-schema wayu.toml is reported via ok=false + reason (the TOML check
+// unreadable wayu.toml is reported via ok=false + reason (the TOML check
 // surfaces the actual problem). All memory comes from `alloc`.
 doctor_scan_toml_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPathScan, ok: bool, reason: string) {
 	context.allocator = alloc
@@ -977,12 +971,9 @@ doctor_scan_toml_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPa
 	if !os.exists(toml_path) {
 		return nil, false, "No wayu.toml — PATH check skipped"
 	}
-	content, read_ok := safe_read_file(toml_path)
+	_, read_ok := safe_read_file(toml_path)
 	if !read_ok {
 		return nil, false, "Cannot read wayu.toml — PATH check skipped"
-	}
-	if len(detect_legacy_schema(string(content))) > 0 {
-		return nil, false, "wayu.toml uses the obsolete schema — PATH check skipped"
 	}
 
 	// toml_path_read_keyed may serve a cached copy; make sure it's fresh.
@@ -1197,20 +1188,6 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 	}
 	defer delete(content)
 
-	// Schema sanity — if the file still uses [[paths]]/[[aliases]]/[[constants]],
-	// every other wayu command will refuse to run. Surface that here.
-	if header := detect_legacy_schema(string(content)); len(header) > 0 {
-		msg := fmt.aprintf("wayu.toml uses obsolete %s schema — run `wayu migrate --schema`", header)
-		defer delete(msg)
-		append(results, CheckResult{
-			name    = clone_arena("TOML config"),
-			status  = .ERROR,
-			message = clone_arena(msg),
-			fixable = false,
-		})
-		return
-	}
-
 	// Same parser as `wayu toml validate` and every reader; name the line.
 	if valid, perr := toml_check(string(content)); !valid {
 		defer delete(perr.msg)
@@ -1218,6 +1195,32 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 			name    = clone_arena("TOML config"),
 			status  = .ERROR,
 			message = clone_arena(fmt.tprintf("wayu.toml is malformed (line %d: %s) — run `wayu toml validate` or restore with `wayu backup restore toml --yes`", perr.line, perr.msg)),
+			fixable = false,
+		})
+		return
+	}
+
+	// Wrong table shapes ([[paths]]) are errors; keys wayu does not read
+	// are a warning (`toml validate` lists them).
+	issues := toml_content_schema_issues(string(content))
+	unknown := 0
+	for is in issues {
+		if is.is_error {
+			append(results, CheckResult{
+				name    = clone_arena("TOML config"),
+				status  = .ERROR,
+				message = clone_arena(fmt.tprintf("wayu.toml line %d: %s", is.line, is.msg)),
+				fixable = false,
+			})
+			return
+		}
+		unknown += 1
+	}
+	if unknown > 0 {
+		append(results, CheckResult{
+			name    = clone_arena("TOML config"),
+			status  = .WARNING,
+			message = clone_arena(fmt.tprintf("wayu.toml has %d key(s)/table(s) wayu does not read — see `wayu toml validate`", unknown)),
 			fixable = false,
 		})
 		return

@@ -185,28 +185,6 @@ parse_shell_type :: proc(shell_str: string) -> ShellType {
     return .UNKNOWN
 }
 
-// Get config file path with fallback for backward compatibility
-get_config_file_with_fallback :: proc(base_name: string, shell: ShellType) -> string {
-	ext := get_shell_extension(shell)
-
-	// Try shell-specific extension first
-	preferred_file := fmt.aprintf("%s/%s.%s", wayu.data, base_name, ext)
-	if os.exists(preferred_file) {
-		return preferred_file
-	}
-
-	// Fall back to .zsh for backward compatibility
-	zsh_file := fmt.aprintf("%s/%s.zsh", wayu.data, base_name)
-	if os.exists(zsh_file) {
-		delete(preferred_file)
-		return zsh_file
-	}
-
-	// Return preferred even if it doesn't exist (for creation)
-	delete(zsh_file)
-	return preferred_file
-}
-
 // Validate shell compatibility
 validate_shell_compatibility :: proc(shell: ShellType) -> (valid: bool, message: string) {
     switch shell {
@@ -600,23 +578,8 @@ running_as_root_on_user_config :: proc(dir: string) -> bool {
 // Set by `--shell`: an explicit choice that auto-detection must not override.
 shell_flag_given := false
 
-// Switch the active shell and its per-shell filenames (static strings, no
-// allocation). UNKNOWN keeps zsh filenames, as at startup.
+// Switch the active shell.
 set_active_shell :: proc(s: ShellType) {
     wayu.shell = s
     wayu.shell_ext = get_shell_extension(s)
-    switch s {
-    case .BASH:
-        wayu.path_file = "path.bash"; wayu.alias_file = "aliases.bash"
-        wayu.constants_file = "constants.bash"; wayu.init_file = "init.bash"
-        wayu.tools_file = "tools.bash"
-    case .FISH:
-        wayu.path_file = "path.fish"; wayu.alias_file = "aliases.fish"
-        wayu.constants_file = "constants.fish"; wayu.init_file = "init.fish"
-        wayu.tools_file = "tools.fish"
-    case .ZSH, .UNKNOWN:
-        wayu.path_file = "path.zsh"; wayu.alias_file = "aliases.zsh"
-        wayu.constants_file = "constants.zsh"; wayu.init_file = "init.zsh"
-        wayu.tools_file = "tools.zsh"
-    }
 }

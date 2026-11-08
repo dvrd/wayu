@@ -204,7 +204,7 @@ Keys:
 
 | Reader | On a syntax error |
 |---|---|
-| `wayu toml validate`, `wayu doctor`, `wayu backup restore`, `wayu migrate --schema` (strict) | Fail and name the line: `Failed to parse <file>: line 5: invalid value "ls" (strings must be quoted)` |
+| `wayu toml validate`, `wayu doctor`, `wayu backup restore` (strict) | Fail and name the line: `Failed to parse <file>: line 5: invalid value "ls" (strings must be quoted)` |
 | Everything else: `alias/const/path list`, the generator (`wayu build`, every write), the TUI, the in-place editor (lenient) | Use what was recovered. A `key = value` line whose value is not valid TOML is read the old one-line way: `ll = ls -la` is the alias `ls -la` |
 
 Strict-only failures: a key defined twice in one table, a table defined twice,
@@ -223,6 +223,10 @@ After parsing, `wayu toml validate` also checks:
 | `[aliases]` names and commands (rules in [`[aliases]`](#aliases)) | `Invalid alias 'cd': Cannot use shell reserved word 'cd' as Alias name` |
 | `[env]` names (rules in [`[env]`](#env)) | `Invalid constant 'MY-VAR': ...` |
 | `[paths]` values: no `:`, newline or NUL | `Invalid path entry '/a:/b': Path cannot contain ':' or newlines (PATH separator)` |
+| `shell`, `paths`, `aliases`, `env`, `settings`, `tools`, `prompt` are tables (`[paths]`, not `[[paths]]` or `paths = ...`) | `Validation failed: line 1: [[paths]]: paths must be a table ([paths]), not an array of tables` |
+
+Keys and tables wayu does not read are warnings, not errors (see [Keys wayu
+does not read](#keys-wayu-does-not-read)).
 
 It does not check `[tools]` args (`wayu build` does) or `[prompt]`. Exit
 status: `0` valid, `65` invalid, `78` before `wayu init`.
@@ -231,13 +235,13 @@ status: `0` valid, `65` invalid, `78` before `wayu init`.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `type` | string | `"zsh"` | `zsh`, `bash` or `fish` (case-insensitive). Written lowercase by `wayu init`, `wayu migrate --from X --to Y` and any command that creates a missing `wayu.toml`. |
+| `type` | string | `"zsh"` | `zsh`, `bash` or `fish` (case-insensitive). Written lowercase by `wayu init` and any command that creates a missing `wayu.toml`. |
 
 `type` is a record of the shell the config was set up for and is checked by
 `toml validate`; it does not choose the shell. wayu acts for the shell named
 by `--shell`, else `$SHELL`, and regenerates the files of every other shell
 already initialized in the data dir (`init.<ext>` or `core.<ext>` exists). A
-top-level `shell = "..."` string is still read in place of `[shell] type`.
+top-level `shell = "..."` string is not read (`toml validate` rejects it).
 
 ### `[paths]`
 
@@ -277,8 +281,6 @@ Each entry is `key = "directory"`.
   in `[paths]` is moved to wayu's position but never removed. In zsh the
   session also gets `typeset -U path`. In fish the dirs move to the front in
   `[paths]` order, like `fish_add_path -gpm`.
-- Without any `[paths]` table, `core.<ext>` still sources the legacy
-  `path.<ext>`; once the table exists (even empty) it never does.
 
 ### `[aliases]`
 
@@ -567,13 +569,13 @@ name. A built-in match without a user `format` shows the shell name.
 
 ### Keys wayu does not read
 
-These parse without error but have no effect: `wayu_version`; `[settings]`
-`auto_backup`, `fuzzy_fallback`, `dry_run_default`; `[path] dedup` /
-`[path] clean`; `[[plugins]]` (plugins live in `plugins.json`); `[profile.*]`;
-`[prompt.username] style_user`; `[prompt.interactive]` `async_interval`,
-`transient_format`; any table not listed above. The obsolete
-`[[paths]]` / `[[aliases]]` / `[[constants]]` schema makes most commands exit
-`78`; convert it with `wayu migrate --schema`.
+wayu reads only the keys and tables listed above. Anything else (for example
+`wayu_version`, `[settings] auto_backup`, `[path]`, `[[plugins]]` — plugins
+live in `plugins.json` —, `[profile.*]`, `[constants]`) has no effect:
+`wayu toml validate` prints a warning per unknown key or table, with its line
+(`⚠ line 5: unknown key settings.auto_backup (ignored)`), and still exits `0`;
+`wayu doctor` reports them as a warning. Keys inside an unknown table are not
+listed one by one.
 
 ## Other files you edit
 
@@ -661,10 +663,9 @@ cloned to `$WAYU_DATA_DIR/plugins/<name>`.
 | `plugins[].dependencies` | array of strings | Plugin names loaded before this one. Must be valid plugin names; a cycle is an error. A missing or disabled dependency is noted as a comment in `plugins.<ext>`. |
 | `plugins[].priority` | integer | Load order among plugins whose dependencies are met; lower loads earlier (default 100). Ties keep file order. |
 | `plugins[].conflicts` | object | Written by wayu's conflict detection. |
-| `plugins[].entry_file`, `plugins[].profiles` | | Not used. |
 
-Enum values are matched case-insensitively; integers (the format up to
-4.4.5) are accepted too. Any invalid value makes every command that reads
+Enum values are strings, matched case-insensitively; numbers are rejected.
+Unknown keys are ignored (and dropped on the next write). Any invalid value makes every command that reads
 `plugins.json` exit `78` with the plugin and field named.
 
 Auto-detected entry file (no `use`): the first that exists of
@@ -702,8 +703,8 @@ startup:
 
 | Shell | Sources |
 |---|---|
-| zsh | Every regular file except `*.bash` and `*.fish` |
-| bash | Every regular file except `*.zsh` and `*.fish` |
+| zsh | `*.zsh` only |
+| bash | `*.bash` only |
 | fish | `*.fish` only |
 
 ### completions/
@@ -739,19 +740,16 @@ every shell initialized in the data dir.
 
 | File (data dir) | Content |
 |---|---|
-| `init.<ext>` | Entry point your rc file sources. Written by `wayu init`. An unmodified copy is replaced when the template changes (backup first); an edited one is kept, with a warning. |
+| `init.<ext>` | Entry point your rc file sources: loads `core.<ext>` (prints a hint to run `wayu build` when it is missing). Written by `wayu init`. An unmodified copy of the current or previous template is replaced when the template changes (backup first); an edited one is kept, with a warning. |
 | `core.<ext>` | Everything `init.<ext>` loads, precomputed from `wayu.toml` (zsh also `core.zsh.zwc`, compiled in the background). |
 | `path_sync.<ext>` | The `[paths]` list; line 1 is its signature. The prompt hook re-sources it when the signature changes. |
 | `turbo.<ext>` | zsh/bash. Same content as `core.<ext>`, refreshed with it, only if it exists (created by `wayu export`). |
 | `plugins.<ext>` | Plugin loader, regenerated on any `plugin` change and by `wayu init`. |
 | `plugins/config.zsh` | `[settings] autosuggestions_accept_keys` bindings. |
-| `path.<ext>`, `aliases.<ext>`, `constants.<ext>` | Legacy files created by `wayu init`; read only by the fallback path of `init.<ext>` when `core.<ext>` is missing (and `path.<ext>` when `wayu.toml` has no `[paths]` table). |
-| `backup/` | Timestamped backups, 5 newest per file (see `wayu backup`). |
+| `backup/` | Timestamped backups `<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]` (UTC), 5 newest per file (see `wayu backup`). Files named otherwise are ignored. |
 
 Also `$WAYU_CONFIG_DIR/.wayu.lock` (lock shared by concurrent wayu commands)
-and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`. Older
-versions' `lazy.<ext>`, `login.<ext>` and `helpers.<ext>` are deleted on
-regeneration.
+and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 
 ## Load order
 

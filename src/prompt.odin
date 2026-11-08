@@ -105,7 +105,6 @@ PromptConfigFull :: struct {
 	vimcmd_visual_symbol: string,
 	vimcmd_replace_symbol: string,
 	username_show_always: bool,
-	username_style_user:  string,
 
 	// Per-module format strings (from each [prompt.*] section)
 	username_format:  string,
@@ -145,7 +144,6 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 		vimcmd_visual_symbol = "❮",
 		vimcmd_replace_symbol = "❮",
 		username_show_always = false,
-		username_style_user  = "white bold",
 		username_format  = "[$user](white bold) in ",
 		hostname_format  = "$hostname",
 		localip_format   = "$localip",
@@ -251,14 +249,6 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 		// [prompt.username] keys
 		if current_section == "username" && strings.contains(trimmed, "show_always") && strings.contains(trimmed, "true") {
 			cfg.username_show_always = true
-		}
-		if current_section == "username" && strings.contains(trimmed, "style_user") && strings.contains(trimmed, "=") {
-			eq_idx := strings.index(trimmed, "=")
-			if eq_idx > 0 {
-				value := strings.trim_space(trimmed[eq_idx+1:])
-				value = prompt_strip_matching_quotes(value)
-				if len(value) > 0 { cfg.username_style_user = value }
-			}
 		}
 	}
 	
@@ -721,7 +711,6 @@ InteractiveConfig :: struct {
 
 	// Async
 	async_rprompt: bool,
-	async_interval: int,
 	rprompt_format:  string,
 
 	// Transient
@@ -775,7 +764,7 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 
 	// 4. ASYNC RPROMPT
 	if cfg.async_rprompt {
-		generate_async_feature(&builder, cfg.async_interval, cfg.rprompt_format)
+		generate_async_feature(&builder, cfg.rprompt_format)
 	}
 
 	// 5. TRANSIENT PROMPT
@@ -1062,7 +1051,7 @@ context_detect_condition :: proc(detects: []string) -> string {
 // Async worker runs in background subshell after each command.
 // Fetches: git pending count + context version string.
 // Writes results to a temp file and signals the parent to re-render.
-generate_async_feature :: proc(b: ^strings.Builder, interval: int, rprompt_format: string) {
+generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	fmt.sbprintln(b, "# --- Feature: Async RPROMPT ---")
 	fmt.sbprintln(b, "typeset -g _WAYU_ASYNC_FD=")
 	fmt.sbprintln(b)
@@ -1211,7 +1200,6 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 		vi_visual_symbol = "[V]",
 		context_aware = true,
 		async_rprompt = true,
-		async_interval = 2,
 		rprompt_format = "[ {git_pending}](242)",
 		transient_enabled = true,
 		transient_format = "{dir} {character}",

@@ -191,24 +191,11 @@ Default action: `list`. `<name>` must match an installed plugin exactly.
 `wayu.toml` scaffold and `init.<ext>`, generate the init files, and offer to
 add `source …/init.<ext>` to your rc file (only when stdin is a terminal;
 otherwise it prints the line). Safe to re-run: existing files are kept and an
-unmodified old `init.<ext>` is updated. `--shell` picks the shell.
+unmodified `init.<ext>` from the previous release is updated. `--shell` picks the shell.
 
 | Flag | |
 |---|---|
 | `--template <name>`, `--template=<name>` | Then apply a template (see `wayu template list`) |
-
-### `wayu migrate`
-
-| Usage | |
-|---|---|
-| `wayu migrate` | Import legacy `path` / `aliases` / `constants.<ext>` into wayu.toml (all or nothing) |
-| `wayu migrate --schema` | Rewrite an obsolete `[[paths]]` / `[[aliases]]` / `[[constants]]` wayu.toml as tables |
-| `wayu migrate --from <shell> --to <shell>` | Switch `[shell] type` and generate the target shell's files |
-
-| Flag | |
-|---|---|
-| `--from`, `--to` | Source and target shell (`zsh`, `bash`, `fish`); both required |
-| `--schema` | Schema upgrade |
 
 ### `wayu config`
 
@@ -253,10 +240,9 @@ Default action: `turbo`. Each action may also be written as a flag
 
 | Action | |
 |---|---|
-| `validate` | Strict check of wayu.toml (syntax, duplicate keys, names, `[shell] type`); exit `65` on error |
+| `validate` | Strict check of wayu.toml (syntax, duplicate keys, names, `[shell] type`, table shapes); exit `65` on error. Keys wayu does not read are warnings (exit `0`) |
 | `show` | Print wayu.toml with secret-looking `[env]` values masked |
 | `keys` | List wayu.toml's top-level keys and tables, in file order; exit `65` if it does not parse |
-| `convert` | Same as `wayu migrate` |
 | `help` | |
 
 | Flag | |
@@ -367,7 +353,7 @@ BSD `sysexits.h` values (`EXIT_*` in `src/interfaces.odin`):
 | 73 | `EXIT_CANTCREAT` | Cannot create an output file or directory |
 | 74 | `EXIT_IOERR` | Read/write failure, failed git operation |
 | 77 | `EXIT_NOPERM` | Permission denied |
-| 78 | `EXIT_CONFIG` | Configuration problem: not initialized, obsolete wayu.toml schema, invalid `hooks.conf`, `doctor` found an error, `export check` found no current turbo file |
+| 78 | `EXIT_CONFIG` | Configuration problem: not initialized, invalid `hooks.conf`, `doctor` found an error, `export check` found no current turbo file |
 
 ### Exit code examples
 
@@ -397,7 +383,6 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu search` | 64 |
 | `wayu plugin priority` | 64 |
 | `wayu doctor --optimize` | 64 |
-| `wayu migrate --from zsh` | 64 |
 | `wayu doctor --fix` | 64 |
 | `wayu const get NO_SUCH_NAME` | 65 |
 | `wayu path rm /no/such/dir` | 65 |

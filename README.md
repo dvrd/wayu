@@ -99,13 +99,10 @@ wayu doctor              # check the result
 ```
 
 `wayu init` keeps `wayu.toml`, `extra.<ext>` and your other files; an
-unmodified `init.<ext>` from an older release is replaced (the old one is
-backed up). Any ordinary write (`wayu alias add …`) regenerates too.
-
-- `wayu.toml` from wayu 3.x (`[[paths]]` arrays of tables): every command
-  exits `78` until you run `wayu migrate --schema`.
-- wayu ≤ 3.9 (no `wayu.toml`, entries in `path.zsh` / `aliases.zsh` /
-  `constants.zsh`): run `wayu migrate`, then `wayu init`.
+unmodified `init.<ext>` from the previous release is replaced (the old one is
+backed up). Any ordinary write (`wayu alias add …`) regenerates too. wayu
+reads only the current config format and does not convert configs from
+older releases: upgrade one release at a time.
 
 What changed in each release, and what you may need to adapt, is in
 [docs/UPGRADING.md](docs/UPGRADING.md).
@@ -181,9 +178,6 @@ wayu doctor --fix --yes          # Auto-fix issues (--dry-run to preview)
 # TOML configuration (declarative mode)
 wayu toml validate               # Check wayu.toml syntax
 
-# Shell migration
-wayu migrate --from zsh --to bash
-
 # Hot reload (auto-regenerate static output on save)
 wayu reload start                # alias: wayu watch
 wayu reload status
@@ -229,7 +223,6 @@ rule), the `--json` document shapes and the exit codes.
 | `backup` | List, restore and prune backups |
 | `plugin` | Install and manage shell plugins |
 | `init` | Create the config and wire up your shell |
-| `migrate` | Import legacy files, upgrade an old wayu.toml, switch shells |
 | `config` | Edit wayu.toml / extra.<shell>, scan your rc file |
 | `build` | Regenerate the init files; `profile` startup; clear the evalcache |
 | `export` | Write turbo.<shell> or print env/PATH/aliases for eval |
@@ -375,9 +368,6 @@ wayu stores everything under `~/.config/wayu/` — the files you edit and the fi
   turbo.{zsh,bash}          # optional copy of core via `wayu export` (zsh/bash only)
   completions/              # shell completion scripts
   backup/                   # timestamped backups (last 5 per file)
-  path.{zsh,bash}           # legacy PATH entries (bootstrap/back-compat)
-  aliases.{zsh,bash}        # legacy alias definitions (bootstrap/back-compat)
-  constants.{zsh,bash}      # legacy env exports (bootstrap/back-compat)
 ```
 
 Shell is detected automatically from `$SHELL`. Override with `--shell bash`, `--shell zsh`, or `--shell fish`.
