@@ -100,8 +100,8 @@ fi
 # constants add', 'wayu template apply' and 'wayu build eval' all write
 # into core.zsh. When it exists we source it exclusively — the legacy
 # individual files below stay empty and would just be no-ops anyway.
-# core.zsh sources plugins.zsh and lazy.zsh (which sources tools.zsh and
-# extra.zsh exactly once), so nothing else is sourced here.
+# core.zsh itself sources plugins.zsh, tools.zsh and extra.zsh (once each),
+# so nothing else is sourced here.
 if [ -f "$WAYU_DATA_DIR/core.zsh" ]; then
     source "$WAYU_DATA_DIR/core.zsh"
     return 0 2>/dev/null || true
@@ -265,8 +265,8 @@ if [ -z "${WAYU_CONFIG_DIR-}" ]; then
 fi
 
 # === Fast path: compiled core from wayu.toml ===
-# See the zsh template comment for rationale (core.bash sources
-# plugins.bash and lazy.bash, which sources tools.bash/extra.bash once).
+# See the zsh template comment for rationale (core.bash itself sources
+# plugins.bash, tools.bash and extra.bash once each).
 if [ -f "$WAYU_DATA_DIR/core.bash" ]; then
     source "$WAYU_DATA_DIR/core.bash"
     return 0 2>/dev/null || true

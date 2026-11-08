@@ -33,8 +33,9 @@ ENV_SNAPSHOT_CACHE: struct {
 	aliases: map[string]string,
 } = {}
 
-// snapshot_path_entries splits $PATH on `:` and returns a slice
-// Caches result on first call. All returned strings are cloned so caller owns them.
+// snapshot_path_entries splits $PATH on `:`. The result is cached on the
+// first call and OWNED BY THE CACHE (snapshot_allocator): callers must not
+// delete the array or its strings (that would double free on the next call).
 snapshot_path_entries :: proc() -> [dynamic]string {
 	if ENV_SNAPSHOT_CACHE.path_initialized {
 		return ENV_SNAPSHOT_CACHE.path_entries
