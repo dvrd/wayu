@@ -52,6 +52,55 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   reads it exits `78`. A newline in one used to inject shell code into the
   generated `plugins.<ext>`.
 
+**Plugins: installing and loading**
+- `plugin add` (and TUI install) refuses a repository with nothing to load
+  for the plugin's shell(s): it exits `65`, removes the fresh clone and
+  writes nothing (it used to report success while the loader sourced
+  nothing). Name the entry file with the new repeatable
+  `plugin add <url> --use <file-or-glob>` (matched at the repository root;
+  stored as `use` in `plugins.json`). Any other extra argument to
+  `plugin add` is now an error (exit `64`).
+- `plugin add <url>` records the shells the repository actually has files
+  for (`ZSH`, `BASH`, `BOTH`, `FISH` or `ANY`) instead of always `BOTH`, so
+  a fish-only plugin added by URL now loads in fish, and a zsh-only one is
+  listed as zsh.
+- Generated `plugins.<ext>`: only the FIRST existing root entry file is
+  sourced (`<name>.plugin.<ext>`, `<name>.<ext>`, `<name>-init.<ext>`,
+  `init.<ext>`, `plugin.<ext>`); plugins that ship both
+  `<name>.plugin.zsh` and `<name>.zsh` were loaded twice. New entry files:
+  `<name>.zsh-theme` (zsh; e.g. powerlevel10k), `<name>.plugin.sh` /
+  `<name>.sh` (zsh and bash; e.g. rupa/z), and a top-level `*.zsh-theme`
+  when there is no `*.zsh`. Takes effect the next time the loader is
+  regenerated (any `plugin` change, `wayu init`).
+- Registry: entries whose repository has no shell entry file were removed —
+  binary tools (`starship`, `zoxide`, `atuin`, `fzf`, `ripgrep`, `bat`,
+  `eza`, `delta`, `direnv`, `mise`, `volta`, `rustup`, `oh-my-posh`,
+  `asdf`, `pyenv`, `rbenv`), `autojump`, `fasd`, `git-extras`, `git-flow`,
+  plus `zsh-history-enquirer` (pointed at zsh-command-time) and `zsh-dotenv`
+  (not a cloneable URL). `plugin add <key>` for them exits `65`; install
+  the tool with your package manager and load it from `wayu.toml`
+  `[tools]` (e.g. `zoxide = { kind = "evalcache", args = "init zsh" }`).
+  Already-installed plugins are unaffected.
+- `pure-fish` now installs as `pure-fish` (it shared the name `pure` with
+  the zsh prompt). An existing fish `pure` install keeps its name.
+
+**Plugins: network git**
+- Clone, fetch and `ls-remote` run without a terminal and with deadlines:
+  ssh runs as `ssh -o BatchMode=yes -o ConnectTimeout=10` (unless you set
+  `GIT_SSH_COMMAND`, `GIT_SSH` or `core.sshCommand`), so a host-key or
+  passphrase prompt fails instead of hanging or garbling the TUI — load the
+  key into ssh-agent / accept the host key first. https transfers below
+  1000 B/s for 30 s abort (`GIT_HTTP_LOW_SPEED_LIMIT`/`_TIME` override).
+  Each command is killed after 10 min (clone/fetch) or 60 s (`plugin
+  check`); `WAYU_GIT_TIMEOUT=<seconds>` changes both.
+- A failed `plugin add` clone now prints git's error.
+
+**Building from source**
+- `./build_it install` installs to `$PREFIX/bin` (default `~/.local/bin`,
+  was `/usr/local/bin`), replaces the binary atomically (temp file +
+  rename), refuses while Homebrew manages wayu (`--force` to override),
+  and warns when another `wayu` shadows the installed one on `PATH`.
+
 **path**
 - `path clean` resolves `$VAR`/`${VAR}` from `wayu.toml` `[env]` first, then
   the environment (as the generated init does), and never removes an entry

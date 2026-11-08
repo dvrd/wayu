@@ -1641,7 +1641,15 @@ tui_install_plugin :: proc(key: string) -> bool {
 
 	hook_pre_plugin_install(info.name)
 
-	if !git_clone(info.url, dest) { return false }
+	existed_before := os.exists(dest)
+	cloned, clone_err := git_clone(info.url, dest)
+	delete(clone_err)
+	if !cloned { return false }
+	// Same rule as `plugin add`: never install a plugin that loads nothing.
+	if !plugin_compat_loads_any(info.shell, plugin_loadable_shells(info.name, dest, nil)) {
+		if !existed_before { remove_cloned_plugin_dir(dest, plugins_dir) }
+		return false
+	}
 
 	_, already_found := find_plugin_json(&config, info.name)
 	if !already_found {

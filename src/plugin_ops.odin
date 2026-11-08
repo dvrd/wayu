@@ -3,18 +3,91 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:slice"
+import "core:strconv"
 import "core:sync"
 import "core:encoding/json"
 import "core:path/filepath"
+// ── Network git ─────────────────────────────────────────────────────────
+// Every git command that talks to a remote (clone, fetch, ls-remote) goes
+// through run_git_network: no terminal (new session, stdin /dev/null, no
+// prompts), ssh in batch mode with a connect timeout, https aborted when a
+// transfer stalls, and an overall deadline after which git and its helpers
+// are killed.
+
+GIT_CLONE_TIMEOUT_MS      :: 10 * 60 * 1000 // clone / fetch: repos can be large
+GIT_LS_REMOTE_TIMEOUT_MS  :: 60 * 1000      // `plugin check`: one small request
+GIT_SSH_BATCH_COMMAND     :: "ssh -o BatchMode=yes -o ConnectTimeout=10"
+// http.lowSpeedLimit/Time: abort an https transfer that stays below
+// 1000 bytes/s for 30 s.
+GIT_HTTP_LOW_SPEED_LIMIT  :: "1000"
+GIT_HTTP_LOW_SPEED_TIME   :: "30"
+
+// Overall deadline for a network git command: WAYU_GIT_TIMEOUT (whole
+// seconds, > 0) when set and valid, else `default_ms`.
+git_network_timeout_ms :: proc(default_ms: int) -> int {
+	raw := os.get_env("WAYU_GIT_TIMEOUT", context.temp_allocator)
+	if raw == "" {
+		return default_ms
+	}
+	secs, ok := strconv.parse_int(raw)
+	if !ok || secs <= 0 || secs > 24 * 60 * 60 {
+		return default_ms
+	}
+	return secs * 1000
+}
+
+// Child-env defaults for network git (each applied only when the user's
+// environment does not set it). GIT_SSH_COMMAND would also override a
+// configured core.sshCommand (or GIT_SSH), so it is only added when neither
+// is set — the user's ssh setup always wins; without a terminal it still
+// cannot prompt. `repo_dir` ("" = none) is where repo-local config is read.
+git_network_env :: proc(repo_dir: string) -> []Env_Default {
+	env := make([dynamic]Env_Default, context.temp_allocator)
+	append(&env, Env_Default{"GIT_HTTP_LOW_SPEED_LIMIT", GIT_HTTP_LOW_SPEED_LIMIT})
+	append(&env, Env_Default{"GIT_HTTP_LOW_SPEED_TIME", GIT_HTTP_LOW_SPEED_TIME})
+
+	if os.get_env("GIT_SSH", context.temp_allocator) == "" {
+		configured: string
+		if repo_dir == "" {
+			configured = capture_command([]string{"git", "config", "--get", "core.sshCommand"})
+		} else {
+			configured = capture_command([]string{"git", "-C", repo_dir, "config", "--get", "core.sshCommand"})
+		}
+		defer delete(configured)
+		if configured == "" {
+			append(&env, Env_Default{"GIT_SSH_COMMAND", GIT_SSH_BATCH_COMMAND})
+		}
+	}
+	return env[:]
+}
+
+// Run a git command that contacts a remote (see the section comment above).
+// On timeout, stderr explains it. Result strings are ALLOCATED — release
+// with command_result_destroy.
+run_git_network :: proc(args: []string, default_timeout_ms: int, repo_dir := "") -> Command_Result {
+	timeout_ms := git_network_timeout_ms(default_timeout_ms)
+	result := run_command_timeout(args, timeout_ms, git_network_env(repo_dir))
+	if result.timed_out {
+		delete(result.stderr)
+		result.stderr = fmt.aprintf(
+			"git timed out after %ds and was stopped (set WAYU_GIT_TIMEOUT=<seconds> to allow longer)",
+			timeout_ms / 1000)
+	}
+	return result
+}
+
 // Clone a plugin repository (shallow). `--` ends option parsing so a URL or
 // destination starting with '-' can never be read as a git option.
-git_clone :: proc(url: string, dest: string) -> bool {
+// err_text is ALLOCATED (git's stderr, possibly empty) — caller must delete.
+git_clone :: proc(url: string, dest: string) -> (ok: bool, err_text: string) {
 	if wayu.dry_run {
 		print_info("[DRY RUN] Would execute: git clone --depth=1 --quiet -- %s %s", url, dest)
-		return true
+		return true, strings.clone("")
 	}
 
-	return run_command([]string{"git", "clone", "--depth=1", "--quiet", "--", url, dest})
+	r := run_git_network([]string{"git", "clone", "--depth=1", "--quiet", "--", url, dest}, GIT_CLONE_TIMEOUT_MS)
+	delete(r.stdout)
+	return r.ok, r.stderr
 }
 
 // Clone a plugin repository and check out `commit` (detached). Full clone:
@@ -32,11 +105,12 @@ git_clone_at_commit :: proc(url: string, dest: string, commit: string) -> (ok: b
 		return false, fmt.aprintf("invalid commit '%s'", commit)
 	}
 
-	cloned, clone_err := run_command_capture_stderr([]string{"git", "clone", "--no-checkout", "--quiet", "--", url, dest})
-	if !cloned {
-		return false, clone_err
+	cloned := run_git_network([]string{"git", "clone", "--no-checkout", "--quiet", "--", url, dest}, GIT_CLONE_TIMEOUT_MS)
+	delete(cloned.stdout)
+	if !cloned.ok {
+		return false, cloned.stderr
 	}
-	delete(clone_err)
+	delete(cloned.stderr)
 
 	checked_out, co_err := run_command_capture_stderr([]string{"git", "-C", dest, "checkout", "--quiet", "--detach", commit})
 	if !checked_out {
@@ -116,11 +190,12 @@ git_update :: proc(plugin_dir: string, branch: string) -> (result: GitUpdateResu
 	tracking := ref == "HEAD" ? "refs/remotes/origin/HEAD" : fmt.tprintf("refs/remotes/origin/%s", ref)
 	head_on_remote := run_command([]string{"git", "-C", plugin_dir, "merge-base", "--is-ancestor", "HEAD", tracking})
 
-	fetched, fetch_err := run_command_capture_stderr([]string{"git", "-C", plugin_dir, "fetch", "--quiet", "origin", ref})
-	if !fetched {
-		return .Failed, fetch_err
+	fetched := run_git_network([]string{"git", "-C", plugin_dir, "fetch", "--quiet", "origin", ref}, GIT_CLONE_TIMEOUT_MS, plugin_dir)
+	delete(fetched.stdout)
+	if !fetched.ok {
+		return .Failed, fetched.stderr
 	}
-	delete(fetch_err)
+	delete(fetched.stderr)
 
 	merged, merge_err := run_command_capture_stderr([]string{"git", "-C", plugin_dir, "merge", "--ff-only", "--quiet", "FETCH_HEAD"})
 	if merged {
@@ -164,6 +239,83 @@ is_git_repo :: proc(dir: string) -> bool {
 	defer delete(git_dir)
 
 	return os.exists(git_dir)
+}
+
+// The shells whose plugin loader would source at least one file of the
+// checkout at `dir` (see get_plugin_files_to_source). With `use` globs the
+// matched files' extensions decide: .fish → fish, .zsh/.zsh-theme → zsh,
+// .bash → bash, anything else (.sh, no extension) → zsh and bash.
+plugin_loadable_shells :: proc(name: string, dir: string, use: []string) -> bit_set[ShellType] {
+	shells: bit_set[ShellType]
+	if len(use) > 0 {
+		files := match_files_with_globs(dir, use)
+		defer {
+			for f in files {
+				delete(f)
+			}
+			delete(files)
+		}
+		for f in files {
+			switch {
+			case strings.has_suffix(f, ".fish"):
+				shells += {.FISH}
+			case strings.has_suffix(f, ".zsh"), strings.has_suffix(f, ".zsh-theme"):
+				shells += {.ZSH}
+			case strings.has_suffix(f, ".bash"):
+				shells += {.BASH}
+			case:
+				shells += {.ZSH, .BASH}
+			}
+		}
+		return shells
+	}
+
+	probe := PluginMetadata{name = name, installed_path = dir}
+	for shell in ([]ShellType{.ZSH, .BASH, .FISH}) {
+		if plugin_has_files_to_source(probe, shell) {
+			shells += {shell}
+		}
+	}
+	return shells
+}
+
+// The ShellCompat recorded for a plugin added by URL: the shells it has
+// something to load for. ok = false when it has nothing for any shell.
+// zsh+fish or bash+fish have no exact value and become ANY (the loader
+// then simply finds nothing for the third shell).
+shell_compat_from_loadable :: proc(shells: bit_set[ShellType]) -> (compat: ShellCompat, ok: bool) {
+	s := shells & {.ZSH, .BASH, .FISH}
+	if s == {}            { return .BOTH, false }
+	if s == {.ZSH}        { return .ZSH, true }
+	if s == {.BASH}       { return .BASH, true }
+	if s == {.FISH}       { return .FISH, true }
+	if s == {.ZSH, .BASH} { return .BOTH, true }
+	return .ANY, true
+}
+
+// True when `compat` lets at least one shell in `shells` load the plugin.
+plugin_compat_loads_any :: proc(compat: ShellCompat, shells: bit_set[ShellType]) -> bool {
+	for shell in ([]ShellType{.ZSH, .BASH, .FISH}) {
+		if shell in shells && plugin_compat_matches(compat, shell) {
+			return true
+		}
+	}
+	return false
+}
+
+// A `plugin add --use` glob: matched against file names at the plugin's
+// repository root, so it must be a non-empty name pattern (no '/', no
+// control characters, not "." or "..").
+is_valid_use_glob :: proc(glob: string) -> bool {
+	if glob == "" || glob == "." || glob == ".." {
+		return false
+	}
+	for c in glob {
+		if c == '/' || c < 0x20 || c == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // Plugin file detection
@@ -1166,10 +1318,13 @@ get_remote_commit :: proc(url: string, branch: string) -> string {
 
 	// Output format: "<40-char-SHA>\t<ref-name>\n" per matching ref.
 	// `--` ends option parsing so the URL can never be read as an option.
-	output := capture_command([]string{"git", "ls-remote", "--", url, ref})
-	defer delete(output)
+	result := run_git_network([]string{"git", "ls-remote", "--", url, ref}, GIT_LS_REMOTE_TIMEOUT_MS)
+	defer command_result_destroy(&result)
+	if !result.ok {
+		return ""
+	}
 
-	for line in strings.split_lines(output, context.temp_allocator) {
+	for line in strings.split_lines(result.stdout, context.temp_allocator) {
 		tab := strings.index_byte(line, '\t')
 		if tab <= 0 {
 			continue

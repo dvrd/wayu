@@ -396,32 +396,61 @@ get_plugin_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> 
 		}
 	}
 
-	// Try common plugin entry points at the repo root.
-	candidates := []string{
+	// The repo-root entry file: the FIRST existing candidate. A plugin's
+	// `<name>.plugin.zsh` usually sources its `<name>.zsh` itself, so
+	// sourcing every candidate would load the plugin twice.
+	candidates := make([dynamic]string, context.temp_allocator)
+	append(&candidates,
 		fmt.tprintf("%s.plugin.%s", plugin.name, ext),
 		fmt.tprintf("%s.%s", plugin.name, ext),
 		fmt.tprintf("%s-init.%s", plugin.name, ext),
 		fmt.tprintf("init.%s", ext),
 		fmt.tprintf("plugin.%s", ext),
+	)
+	if shell == .ZSH {
+		// Prompt themes (powerlevel10k) ship only <name>.zsh-theme.
+		append(&candidates, fmt.tprintf("%s.zsh-theme", plugin.name))
+	}
+	if shell != .FISH {
+		// POSIX-sh plugins usable from zsh and bash (rupa/z: z.sh).
+		append(&candidates, fmt.tprintf("%s.plugin.sh", plugin.name), fmt.tprintf("%s.sh", plugin.name))
 	}
 
 	for candidate in candidates {
 		full_path := fmt.aprintf("%s/%s", plugin.installed_path, candidate)
 		if os.exists(full_path) {
 			append(&auto_files, full_path)
-		} else {
-			delete(full_path)
+			break
 		}
+		delete(full_path)
 	}
 
-	// If nothing discovered yet, include every top-level file of the right extension.
-	if len(auto_files) == 0 {
-		delete(auto_files)
-		glob := []string{fmt.tprintf("*.%s", ext)}
-		return match_files_with_globs(plugin.installed_path, glob)
+	if len(auto_files) > 0 {
+		return auto_files[:]
 	}
+	delete(auto_files)
 
-	return auto_files[:]
+	// No named entry file: every top-level file of the shell's extension
+	// (zsh: then every top-level *.zsh-theme).
+	files := match_files_with_globs(plugin.installed_path, []string{fmt.tprintf("*.%s", ext)})
+	if len(files) == 0 && shell == .ZSH {
+		delete(files)
+		files = match_files_with_globs(plugin.installed_path, []string{"*.zsh-theme"})
+	}
+	return files
+}
+
+// True when the loader would source at least one file of `plugin` in
+// `shell` (ignores enabled/compat; see get_plugin_files_to_source).
+plugin_has_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> bool {
+	files := get_plugin_files_to_source(plugin, shell)
+	defer {
+		for f in files {
+			delete(f)
+		}
+		delete(files)
+	}
+	return len(files) > 0
 }
 
 // Match files using glob patterns

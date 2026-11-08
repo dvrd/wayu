@@ -146,7 +146,14 @@ PluginEntry :: struct {
 // Popular plugins registry — compile-time constant, zero heap allocation.
 // Organized by category: syntax, completion, navigation, git, history,
 // prompt, productivity, tools, and utility.
-POPULAR_PLUGINS := [62]PluginEntry{
+//
+// Only real shell plugins belong here: each repo must have a file the loader
+// picks up (get_plugin_files_to_source) for its `shell` — otherwise
+// `plugin add` refuses it. Binary tools (starship, zoxide, fzf, direnv, …)
+// whose repos are sources, not shell code, are not listed. Names must be
+// unique (they are the install directory); a unit test checks names and
+// URLs (https://github.com/<owner>/<repo>.git).
+POPULAR_PLUGINS := [?]PluginEntry{
 
 	// ── Syntax & Colors ──────────────────────────────────────────────────
 	{"syntax-highlighting", "syntax", {
@@ -201,24 +208,6 @@ POPULAR_PLUGINS := [62]PluginEntry{
 		shell       = .BOTH,
 		description = "Jump to frecent directories",
 	}},
-	{"zoxide", "navigation", {
-		name        = "zoxide",
-		url         = "https://github.com/ajeetdsouza/zoxide.git",
-		shell       = .BOTH,
-		description = "Smarter cd command with learning and fzf integration",
-	}},
-	{"autojump", "navigation", {
-		name        = "autojump",
-		url         = "https://github.com/wting/autojump.git",
-		shell       = .BOTH,
-		description = "A cd command that learns your habits",
-	}},
-	{"fasd", "navigation", {
-		name        = "fasd",
-		url         = "https://github.com/clvv/fasd.git",
-		shell       = .BOTH,
-		description = "Quick access to files and directories by frecency",
-	}},
 	{"zsh-interactive-cd", "navigation", {
 		name        = "zsh-interactive-cd",
 		url         = "https://github.com/changyuheng/zsh-interactive-cd.git",
@@ -239,24 +228,6 @@ POPULAR_PLUGINS := [62]PluginEntry{
 		shell       = .BOTH,
 		description = "Interactive git commands using fzf",
 	}},
-	{"git-extras", "git", {
-		name        = "git-extras",
-		url         = "https://github.com/tj/git-extras.git",
-		shell       = .BOTH,
-		description = "Extra git commands: summary, changelog, effort, and more",
-	}},
-	{"git-flow", "git", {
-		name        = "gitflow-avh",
-		url         = "https://github.com/petervanderdoes/gitflow-avh.git",
-		shell       = .BOTH,
-		description = "Git extensions for the git-flow branching model",
-	}},
-	{"delta", "git", {
-		name        = "delta",
-		url         = "https://github.com/dandavison/delta.git",
-		shell       = .BOTH,
-		description = "Syntax-highlighting pager for git diff output",
-	}},
 
 	// ── History ──────────────────────────────────────────────────────────
 	{"history-substring-search", "history", {
@@ -264,18 +235,6 @@ POPULAR_PLUGINS := [62]PluginEntry{
 		url         = "https://github.com/zsh-users/zsh-history-substring-search.git",
 		shell       = .ZSH,
 		description = "Fish-like history search: type then press Up to filter",
-	}},
-	{"atuin", "history", {
-		name        = "atuin",
-		url         = "https://github.com/atuinsh/atuin.git",
-		shell       = .BOTH,
-		description = "Magical shell history with sync and statistics",
-	}},
-	{"zsh-history-enquirer", "history", {
-		name        = "zsh-history-enquirer",
-		url         = "https://github.com/popstas/zsh-command-time.git",
-		shell       = .ZSH,
-		description = "Show elapsed time for long-running commands",
 	}},
 
 	// ── Prompt ───────────────────────────────────────────────────────────
@@ -291,23 +250,11 @@ POPULAR_PLUGINS := [62]PluginEntry{
 		shell       = .ZSH,
 		description = "Minimal, fast, and pretty ZSH prompt",
 	}},
-	{"starship", "prompt", {
-		name        = "starship",
-		url         = "https://github.com/starship/starship.git",
-		shell       = .BOTH,
-		description = "Cross-shell minimal and fast prompt",
-	}},
 	{"spaceship-prompt", "prompt", {
 		name        = "spaceship-prompt",
 		url         = "https://github.com/spaceship-prompt/spaceship-prompt.git",
 		shell       = .ZSH,
 		description = "Astronaut-themed ZSH prompt with git, node, and more",
-	}},
-	{"oh-my-posh", "prompt", {
-		name        = "oh-my-posh",
-		url         = "https://github.com/JanDeDobbeleer/oh-my-posh.git",
-		shell       = .BOTH,
-		description = "A prompt theme engine for any shell",
 	}},
 
 	// ── Productivity ─────────────────────────────────────────────────────
@@ -361,48 +308,6 @@ POPULAR_PLUGINS := [62]PluginEntry{
 		shell       = .ZSH,
 		description = "ZSH plugin for installing and loading nvm",
 	}},
-	{"asdf", "tools", {
-		name        = "asdf-vm",
-		url         = "https://github.com/asdf-vm/asdf.git",
-		shell       = .BOTH,
-		description = "Manage multiple runtime versions with one tool",
-	}},
-	{"mise", "tools", {
-		name        = "mise",
-		url         = "https://github.com/jdx/mise.git",
-		shell       = .BOTH,
-		description = "Fast polyglot runtime manager (asdf-compatible)",
-	}},
-	{"pyenv", "tools", {
-		name        = "pyenv",
-		url         = "https://github.com/pyenv/pyenv.git",
-		shell       = .BOTH,
-		description = "Simple Python version management",
-	}},
-	{"rbenv", "tools", {
-		name        = "rbenv",
-		url         = "https://github.com/rbenv/rbenv.git",
-		shell       = .BOTH,
-		description = "Manage multiple Ruby versions",
-	}},
-	{"rustup", "tools", {
-		name        = "rustup",
-		url         = "https://github.com/rust-lang/rustup.git",
-		shell       = .BOTH,
-		description = "The Rust toolchain installer and version manager",
-	}},
-	{"volta", "tools", {
-		name        = "volta",
-		url         = "https://github.com/volta-cli/volta.git",
-		shell       = .BOTH,
-		description = "Hassle-free JavaScript tool manager",
-	}},
-	{"direnv", "tools", {
-		name        = "direnv",
-		url         = "https://github.com/direnv/direnv.git",
-		shell       = .BOTH,
-		description = "Load and unload env vars based on current directory",
-	}},
 	{"docker-zsh-completion", "tools", {
 		name        = "docker-zsh-completion",
 		url         = "https://github.com/greymd/docker-zsh-completion.git",
@@ -422,12 +327,6 @@ POPULAR_PLUGINS := [62]PluginEntry{
 		url         = "https://github.com/mattmc3/zsh-safe-rm.git",
 		shell       = .ZSH,
 		description = "Use trash instead of rm to prevent accidental deletion",
-	}},
-	{"zsh-dotenv", "utility", {
-		name        = "zsh-dotenv",
-		url         = "https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/dotenv",
-		shell       = .ZSH,
-		description = "Automatically load .env files when entering directories",
 	}},
 	{"zsh-bd", "utility", {
 		name        = "zsh-bd",
@@ -459,30 +358,6 @@ POPULAR_PLUGINS := [62]PluginEntry{
 		shell       = .ZSH,
 		description = "Manage GPG agent for signing and encryption",
 	}},
-	{"fzf", "utility", {
-		name        = "fzf",
-		url         = "https://github.com/junegunn/fzf.git",
-		shell       = .BOTH,
-		description = "General-purpose fuzzy finder with shell integration",
-	}},
-	{"ripgrep", "utility", {
-		name        = "ripgrep",
-		url         = "https://github.com/BurntSushi/ripgrep.git",
-		shell       = .BOTH,
-		description = "Fast recursive search tool, grep replacement",
-	}},
-	{"bat", "utility", {
-		name        = "bat",
-		url         = "https://github.com/sharkdp/bat.git",
-		shell       = .BOTH,
-		description = "A cat clone with syntax highlighting and git integration",
-	}},
-	{"eza", "utility", {
-		name        = "eza",
-		url         = "https://github.com/eza-community/eza.git",
-		shell       = .BOTH,
-		description = "Modern replacement for ls with colors and icons",
-	}},
 	{"zsh-thefuck", "utility", {
 		name        = "zsh-thefuck",
 		url         = "https://github.com/laggardkernel/zsh-thefuck.git",
@@ -498,7 +373,7 @@ POPULAR_PLUGINS := [62]PluginEntry{
 		description = "Fish port of rupa's z — jump to frecent directories",
 	}},
 	{"pure-fish", "prompt", {
-		name        = "pure",
+		name        = "pure-fish",
 		url         = "https://github.com/pure-fish/pure.git",
 		shell       = .FISH,
 		description = "Minimal, fast prompt for fish (port of sindresorhus/pure)",
@@ -543,7 +418,7 @@ POPULAR_PLUGINS := [62]PluginEntry{
 
 // popular_plugin_find does a linear scan of POPULAR_PLUGINS by key.
 // Returns (info, true) on match, (zero, false) otherwise.
-// O(n) over 9 entries — no hash overhead, no heap allocation.
+// O(n) over a few dozen entries — no hash overhead, no heap allocation.
 popular_plugin_find :: proc(key: string) -> (PluginInfo, bool) {
 	for entry in POPULAR_PLUGINS {
 		if entry.key == key {
@@ -778,9 +653,36 @@ print_plugin_add_help :: proc() {
 	fmt.println("  URLs must use https://, ssh://, git@host: or file:// (http:// is refused).")
 	fmt.println("  Appending @<commit> (7-40 hex digits) pins the plugin to that commit;")
 	fmt.println("  pinned plugins are skipped by 'plugin update' and verified by 'plugin check'.")
+	fmt.println()
+	fmt.println("  Without --use, wayu loads the first of <name>.plugin.<ext>, <name>.<ext>,")
+	fmt.println("  <name>-init.<ext>, init.<ext>, plugin.<ext> (zsh: <name>.zsh-theme;")
+	fmt.println("  zsh/bash: <name>.plugin.sh, <name>.sh) at the repository root, else every")
+	fmt.println("  top-level *.<ext> (zsh: else *.zsh-theme); fish also loads conf.d/*.fish and")
+	fmt.println("  functions/*.fish. A plugin with nothing to load is not installed.")
+	fmt.printf("\n%s%sOPTIONS:%s\n", BOLD, get_secondary(), RESET)
+	fmt.println("  --use <glob>   File(s) at the repository root to load instead (repeatable)")
 	fmt.printf("\n%s%sEXAMPLES:%s\n", BOLD, get_secondary(), RESET)
 	fmt.printf("  %swayu plugin add syntax-highlighting%s\n", get_muted(), RESET)
 	fmt.printf("  %swayu plugin add https://github.com/user/plugin.git%s\n", get_muted(), RESET)
 	fmt.printf("  %swayu plugin add https://github.com/user/plugin.git@1a2b3c4%s\n", get_muted(), RESET)
+	fmt.printf("  %swayu plugin add https://github.com/user/theme.git --use 'theme.zsh'%s\n", get_muted(), RESET)
 	fmt.println()
+}
+
+// Explain (stderr) why `plugin add` refused a checkout with nothing to load.
+print_plugin_nothing_to_load :: proc(info: PluginInfo, use_globs: []string) {
+	if len(use_globs) > 0 {
+		print_error_simple("Plugin '%s' not installed: --use %s matches no file at the repository root",
+			info.name, strings.join(use_globs, " ", context.temp_allocator))
+		return
+	}
+	print_error_simple("Plugin '%s' not installed: it has nothing wayu can load for %s",
+		info.name, shell_compat_to_string(info.shell))
+	fmt.eprintfln("  Looked for %s.plugin.<ext>, %s.<ext>, init.<ext>, *.<ext> and *.zsh-theme at the", info.name, info.name)
+	fmt.eprintln("  repository root (fish: also conf.d/*.fish, functions/*.fish).")
+	fmt.eprintln("  If it ships its shell code under another name, name it with --use:")
+	fmt.eprintfln("    wayu plugin add %s --use '<file-or-glob>'", info.url)
+	fmt.eprintln("  Tools installed as binaries (e.g. starship, zoxide, direnv) are not plugins:")
+	fmt.eprintln("  install them with your package manager and load them from wayu.toml [tools],")
+	fmt.eprintln("  e.g.  zoxide = { kind = \"evalcache\", args = \"init zsh\" }")
 }

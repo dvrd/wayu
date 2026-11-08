@@ -19,7 +19,7 @@ wayu is a shell configuration management CLI written in Odin. It manages PATH en
 ./build_it              # Production build (default)
 ./build_it debug        # Development build (debug symbols + ODIN_DEBUG)
 ./build_it check        # Type-check only — fastest way to verify compilation
-./build_it install      # Install to /usr/local/bin
+./build_it install      # Install to ~/.local/bin ($PREFIX/bin); refuses if Homebrew manages wayu (--force)
 
 # Test
 ./build_it test         # Unit tests (runs tests/unit/)

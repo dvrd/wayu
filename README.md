@@ -394,7 +394,7 @@ odin build build -out:build_it
 ./build_it check          # type-check only
 ./build_it dev path list  # debug build + run
 ./build_it clean          # remove build artifacts
-./build_it install        # build + install to /usr/local/bin + wayu init
+./build_it install        # build + install to ~/.local/bin ($PREFIX/bin) + wayu init
 ./build_it release [vX.Y.Z] # manual release override (version optional; see Releasing)
 ./build_it help           # show all targets
 
