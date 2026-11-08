@@ -23,6 +23,7 @@ they live, and which files are generated.
   - [`[tools]`](#tools)
   - [`[prompt]`](#prompt)
   - [`[scripts]`](#scripts)
+  - [`[secrets]`](#secrets)
   - [Keys wayu does not read](#keys-wayu-does-not-read)
 - [Managed data](#managed-data)
   - [entries.json](#entriesjson)
@@ -418,6 +419,58 @@ name. A built-in match without a user `format` shows the shell name.
 default_lang = "python"
 ```
 
+### `[secrets]`
+
+```toml
+[secrets]
+backend = "auto"
+```
+
+Encrypted constants (`wayu const add NAME [VALUE] --secret`) are kept in
+`<data>/secrets.json` (`0600`, managed by wayu, not for hand edits):
+
+```json
+{"version": 1, "cipher": "chacha20poly1305", "values": {"NAME": "<base64 nonce||ciphertext||tag>"}, "run_only": ["NAME"]}
+```
+
+Each value is encrypted with ChaCha20-Poly1305 under a 256-bit master key,
+with a random nonce and the variable name as associated data. In `entries.json` a
+secret is `{"name": "NAME", "secret": true}`, with no value, at its place
+in the constants' order. A run-only secret (`--run-only`) is also listed in
+`run_only` (written only when non-empty) and marked `"run_only": true` in
+`entries.json`; it is never written to the session cache, so shells never
+export it, and only `wayu secrets run` decrypts it. The mark is part of the
+associated data (`NAME` + `\0run-only`), so removing it from `secrets.json`
+makes the value fail to decrypt rather than get exported. `backend` says where the master key lives:
+
+| `backend` | Key storage |
+|---|---|
+| `"auto"` (default) | `keychain` on macOS; `secret-service` on Linux when `secret-tool` is on PATH; else `file` |
+| `"keychain"` | macOS login keychain: generic password, account `wayu`, service `wayu-master-key`, via `security`. Storing (first secret, `rekey`) passes the key on `security`'s command line for a moment, where other processes of the same user could see it. |
+| `"secret-service"` | freedesktop Secret Service via `secret-tool` (`service wayu account master`); the key goes over stdin |
+| `"file"` | `<config>/secret.key`: 64 hex characters, `0600`, created exclusively; refused when group/other can read it. Protects against reading the data dir alone, not against reading your whole home. |
+
+Any other value is an error (`toml validate` exits `65`; secret commands exit
+`78`). The key is created with the first secret; wayu never creates a new
+key while `secrets.json` holds values (it would make them undecryptable).
+`wayu secrets rekey` replaces it and re-encrypts everything.
+
+At shell start `core.<ext>` sources the session cache
+`${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/wayu-<uid>/secrets-<id>.<ext>` (single-
+quoted `export` / `set -gx` lines, `0600` in a `0700` dir you own) when it is
+newer than `secrets.json`, without forking. Otherwise it runs
+`wayu secrets cache` once to (re)write it. If the key is unavailable or a
+value does not decrypt, one `wayu: secrets not loaded: …` line goes to stderr
+and startup continues without the secrets. Every change to `secrets.json`
+deletes the cache; `wayu secrets lock` deletes it by hand. Secret values are
+literal: no `$VAR` or `~` expansion.
+
+Decrypted values are never written to `core.<ext>`, `path_sync.<ext>`,
+`turbo.<ext>`, backups or logs; only to the session cache and to the output
+of `wayu const get NAME` (and to the environment of `wayu secrets run`'s
+command). `wayu doctor` checks the backend, the key, the
+store's mode, that every secret decrypts, and the cache dir.
+
 ### Keys wayu does not read
 
 wayu reads only the keys and tables listed above. Anything else (for example
@@ -774,6 +827,7 @@ every shell initialized in the data dir.
 | `turbo.<ext>` | zsh/bash. Same content as `core.<ext>`, refreshed with it, only if it exists (created by `wayu export`). |
 | `plugins.<ext>` | Plugin loader, regenerated on any `plugin` change and by `wayu init`. |
 | `plugins/config.zsh` | `[settings] autosuggestions_accept_keys` bindings. |
+| `secrets.json` | Encrypted constants (see [`[secrets]`](#secrets)); written by `wayu const add --secret`, `const rm`, `secrets rekey`. Not generated from wayu.toml. |
 | `backup/` | Timestamped backups `<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]` (UTC), 5 newest per file (see `wayu backup`). Files named otherwise are ignored. |
 
 Also `$WAYU_DATA_DIR/.wayu.lock` (lock shared by concurrent wayu commands)
@@ -798,8 +852,22 @@ and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 13. `extra.<ext>`
 14. Login-only `[tools]`
 15. Aliases
+3. Secrets (session cache; only when `secrets.json` holds values)
+4. PATH entries (and the live PATH sync hook)
+5. Completions (zsh: `fpath`, `compinit` in interactive shells)
+6. `functions/`
+7. `config.<ext>` content
+8. Helpers (evalcache; zsh: zsh-defer, `wayu_compile`)
+9. Eager `[tools]`
+10. Native prompt (zsh, interactive, `[prompt] enabled = true`)
+11. Plugins (`plugins.<ext>`; zsh: `plugins/config.zsh`)
+12. Deferred `[tools]`
+13. `tools.<ext>`
+14. `extra.<ext>`
+15. Login-only `[tools]`
+16. Aliases
 
-`core.fish`: directory exports, constants, PATH entries, completions,
+`core.fish`: directory exports, constants, secrets, PATH entries, completions,
 `functions/*.fish`, `config.fish` content, evalcache helper, eager `[tools]`,
 `plugins.fish`, deferred `[tools]`, login-only `[tools]`, aliases. No
 native prompt. `init.fish` then sources `tools.fish` and `extra.fish`.

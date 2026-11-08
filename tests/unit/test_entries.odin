@@ -41,9 +41,9 @@ test_entries_round_trip_keeps_order :: proc(t: ^testing.T) {
 	for kv in ([][2]string{{"zz", "ls"}, {`q"k`, "echo \"hi\"\n\\x"}, {"g.st", "git log --format='%h'"}}) {
 		append(&store.aliases, wayu.StoreAlias{strings.clone(kv[0]), strings.clone(kv[1])})
 	}
-	append(&store.env, wayu.StoreEnv{strings.clone("EDITOR"), strings.clone("nvim"), false})
-	append(&store.env, wayu.StoreEnv{strings.clone("UNI"), strings.clone("café ☕ \x1b[1m"), false})
-	append(&store.env, wayu.StoreEnv{strings.clone("EMPTY"), strings.clone(""), false})
+	append(&store.env, wayu.StoreEnv{strings.clone("EDITOR"), strings.clone("nvim"), false, false})
+	append(&store.env, wayu.StoreEnv{strings.clone("UNI"), strings.clone("café ☕ \x1b[1m"), false, false})
+	append(&store.env, wayu.StoreEnv{strings.clone("EMPTY"), strings.clone(""), false, false})
 
 	testing.expect(t, wayu.entries_save(&store))
 
@@ -138,8 +138,8 @@ test_entries_malformed_is_an_error_naming_the_file :: proc(t: ^testing.T) {
 test_entries_secret_flag_serialized_only_when_true :: proc(t: ^testing.T) {
 	store := wayu.EntryStore{version = wayu.ENTRIES_FORMAT_VERSION}
 	defer wayu.entries_store_destroy(&store)
-	append(&store.env, wayu.StoreEnv{strings.clone("PLAIN"), strings.clone("v"), false})
-	append(&store.env, wayu.StoreEnv{strings.clone("TOKEN"), strings.clone("fake-not-written"), true})
+	append(&store.env, wayu.StoreEnv{strings.clone("PLAIN"), strings.clone("v"), false, false})
+	append(&store.env, wayu.StoreEnv{strings.clone("TOKEN"), strings.clone("fake-not-written"), true, false})
 	text := wayu.entries_serialize(&store)
 	defer delete(text)
 	testing.expect(t, strings.contains(text, `{"name": "PLAIN", "value": "v"}`), text)

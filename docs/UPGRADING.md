@@ -68,6 +68,40 @@ the same entries in `entries.json`, or no longer apply.
 - wayu.toml accepts `[scripts] default_lang`; an unknown language is a
   `toml validate` error (exit `65`).
 
+**Encrypted secrets (`const add --secret`, `wayu secrets`, `[secrets]`)**
+
+- `wayu const add NAME [VALUE] --secret` stores the value encrypted
+  (ChaCha20-Poly1305) in `<data>/secrets.json`; the master key lives in the
+  macOS keychain / Secret Service / `<config>/secret.key`
+  (`[secrets] backend`). Without VALUE it is read from stdin. `const get`
+  decrypts, `const rm` removes, `const list` shows `********` with source
+  `wayu (secret)`; in `--json` such a row is
+  `{"constant", "secret": true, "source"}` with no `value`.
+- A `--secret` at the end of a `const add` line is now a flag, not part of
+  the value (like `--dry-run`). To store the literal text, put `--` before
+  the value. `--secret` anywhere else exits `64`.
+- A plain `const add` of a name that is a secret exits `65`.
+- New `wayu secrets list|rekey|lock`. `[secrets]` is a known wayu.toml
+  table; an unknown `backend` makes `toml validate` exit `65`.
+- When secrets exist, `core.<ext>`, `turbo.<ext>` and `export --eval` get a
+  Secrets section after the constants that sources a per-session cache in
+  `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/wayu-<uid>/` (running
+  `wayu secrets cache` once when it is stale). Nothing changes for configs
+  without secrets.
+- `wayu doctor` has a `secrets` check (an `info` row when there are none);
+  its message counts run-only secrets.
+- Run-only secrets: `wayu const add NAME [VALUE] --run-only` (implies
+  `--secret`) stores a secret that is never exported to shells (not in the
+  session cache, core, turbo or `export --eval`). `const list` shows it with
+  source `wayu (run-only)`, `--json` adds `"run_only": true`. Re-adding with
+  `--secret` / `--run-only` switches the mode.
+- New `wayu secrets run NAME... -- CMD [ARGS...]`: execs CMD (PATH lookup,
+  no shell) with those secrets added to the environment. Exit `64` without
+  `--`/names/CMD, `65` for an unknown name, `127` / `126` when CMD is not
+  found / not executable; otherwise CMD's own status.
+- `wayu secrets list` prints a mode column (`session` / `run-only`) after
+  each name.
+
 **`wayu build eval` removed; zsh PATH order restored after login**
 
 - `wayu build eval` is gone (exit 64). It rebuilt every generated file at

@@ -306,7 +306,7 @@ handle_validate :: proc() -> bool {
 // Schema check: keys wayu reads (docs/config-reference.md)
 // ============================================================================
 
-TOML_TABLES :: []string{"shell", "settings", "tools", "prompt"}
+TOML_TABLES :: []string{"shell", "settings", "tools", "prompt", "secrets"}
 
 // Tables wayu.toml no longer holds: their entries are managed with
 // `wayu <cli> add` in the entry store. Strict validation reports them as
@@ -351,6 +351,8 @@ toml_key_known :: proc(p: []string) -> bool {
 		return len(p) == 2 && p[1] == "autosuggestions_accept_keys"
 	case "scripts":
 		return len(p) == 2 && p[1] == "default_lang"
+	case "secrets":
+		return len(p) == 2 && p[1] == "backend"
 	case "tools":
 		return len(p) == 2 || (len(p) == 3 && in_set(p[2], TOML_TOOL_KEYS))
 	case "prompt":
@@ -432,6 +434,13 @@ toml_schema_issues :: proc(doc: ^TomlDoc) -> [dynamic]TomlSchemaIssue {
 		}
 		if msg := script_default_lang_issue(p, e.value); len(msg) > 0 {
 			append(&issues, TomlSchemaIssue{line, msg, true})
+			continue
+		}
+		if len(p) == 2 && p[0] == "secrets" && p[1] == "backend" {
+			word := e.value.str_val if e.value != nil && e.value.type == .STRING else ""
+			if _, known := secrets_backend_parse(word); !known {
+				append(&issues, TomlSchemaIssue{line, "secrets.backend must be one of \"auto\", \"keychain\", \"secret-service\", \"file\"", true})
+			}
 			continue
 		}
 		// Inline tables of [tools] / [prompt.contexts]: check their keys.

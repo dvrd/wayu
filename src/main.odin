@@ -25,6 +25,8 @@ AppContext :: struct {
 	yes_flag:       bool,
 	json_output:    bool,
 	reveal_secrets: bool,    // --reveal: list views print secret-looking values unmasked
+	secret_flag:    bool,    // --secret: `const add` stores the value encrypted (secrets_store.odin)
+	run_only_flag:  bool,    // --run-only: that secret is only injected by `wayu secrets run`
 	source_filter:  string,
 	tui_mode:       bool,
 	temp_arena:     ^virtual.Arena,
@@ -54,6 +56,7 @@ Command :: enum {
 	VERSION,
 	HELP,
 	SEARCH,     // Global fuzzy search across all configs
+	SECRETS,    // Encrypted secret constants (secrets_store.odin)
 	UNKNOWN,
 }
 
@@ -75,6 +78,7 @@ Action :: enum {
 	DEDUP,
 	IMPORT,   // script import
 	BUILD,    // script build
+	RUN,      // secrets run
 	HELP,
 	UNKNOWN,
 }
@@ -325,6 +329,8 @@ main :: proc() {
 		print_help()
 	case .SEARCH:
 		handle_search_command(parsed.args)
+	case .SECRETS:
+		handle_secrets_command(parsed.action, parsed.args)
 	case .UNKNOWN:
 		fmt.eprintfln("Unknown command: %s", os.args[1])
 		print_help()

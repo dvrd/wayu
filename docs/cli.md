@@ -58,9 +58,9 @@ Developer flags (golden-file tests, see AGENTS.md): `-c=<component>`,
    Flags may still come before the first value word
    (`wayu alias add -n gc 'git commit'`). A dash word right where the value
    starts is the value: `wayu const add OFFSET -5`.
-   Exception: `--dry-run`, `--yes`, `--json` and `--no-color` at the very
-   end of the line are flags (`wayu alias add gpf git push -f --dry-run`
-   previews). To keep them in the value, put `--` before it:
+   Exception: `--dry-run`, `--yes`, `--json` and `--no-color` (and, for
+   `constants add`, `--secret`) at the very end of the line are flags
+   (`wayu alias add gpf git push -f --dry-run` previews). To keep them in the value, put `--` before it:
    `wayu alias add hd -- helm install --dry-run`. A trailing `-n` or `-y`
    stays in the value with a warning on stderr.
 3. Anywhere else a global flag may appear in any position.
@@ -118,17 +118,31 @@ Manage constants: exported environment variables (stored in
 | Action | Arguments | |
 |---|---|---|
 | `add` | `<NAME> <value...>` | Add or replace a variable |
-| `remove`, `rm` | `<NAME>` | |
+| `add` | `<NAME> [value...] --secret` | Store the value encrypted (see [`wayu secrets`](#wayu-secrets-secret)) |
+| `remove`, `rm` | `<NAME>` | Plain or encrypted |
 | `list`, `ls` | | `--json`, `--full`, `--source`, `--reveal` |
-| `get` | `<NAME>` | Print the real value (exact name only) |
+| `get` | `<NAME>` | Print the real value (exact name only; decrypts a secret) |
 | `help` | | |
 
 | Flag | |
 |---|---|
-| `--reveal` | `list`: show secret-looking values instead of `********` |
+| `--reveal` | `list`: show secret-looking values instead of `********` (never encrypted ones) |
+| `--secret` | `add`: encrypt the value into `secrets.json` instead of storing it in `entries.json` |
+| `--run-only` | `add`: like `--secret`, but the shell never exports it; only the `secrets run` action injects it |
 
 `get` is safe in scripts: `X=$(wayu const get NAME)` either gets that
 variable's value or fails with exit `65`.
+
+`add --secret`: without a value, it is read from stdin (hidden when stdin is
+a terminal; one trailing newline is dropped), so it stays out of argv and
+shell history: `wayu const get OLD | wayu const add NEW --secret`. Like
+`--dry-run`, a `--secret` at the end of the line is a flag, not part of the
+value. An existing plain constant is converted (its `entries.json` entry
+keeps its place, without the value). A plain `add` of a name that is a secret exits `65`; `--secret`
+on any other action exits `64` (`--run-only` likewise). Hooks receive an
+empty `{value}` for secrets. `list` shows secrets as `********` with source
+`wayu (secret)`, run-only ones with `wayu (run-only)`. Re-adding a secret
+with `--secret` or `--run-only` switches its mode.
 
 ### `wayu search` (`find`, `f`)
 
@@ -366,6 +380,51 @@ wayu script import ~/bin/* --dry-run
 wayu script list --json
 ```
 
+### `wayu secrets` (`secret`)
+
+Encrypted constants. `wayu const add NAME [VALUE] --secret` stores the value
+encrypted (ChaCha20-Poly1305, AAD = the name) in the data dir's
+`secrets.json` (`0600`); the 256-bit master key lives in the
+[`[secrets] backend`](config-reference.md#secrets) (macOS keychain, Secret
+Service, or `secret.key` in the config dir). `const get` decrypts,
+`const rm` removes. Default action: `list`.
+
+| Action | Arguments | |
+|---|---|---|
+| `list`, `ls` | | Secret names and mode (`session` or `run-only`), one per line (never values) |
+| `rekey` | | New master key, re-encrypt every secret, drop the session cache |
+| `lock` | | Delete the decrypted session cache (next shell decrypts again) |
+| `run` | `<NAME>... -- <cmd> [args...]` | Run `cmd` with these secrets in its environment |
+| `help` | | |
+
+**Run-only secrets.** `wayu const add NAME [VALUE] --run-only` stores a
+secret that shells never export: it is not in the session cache,
+`core.<ext>`, `turbo.<ext>` or `export --eval`. `wayu secrets run NAME... --
+CMD [ARGS...]` decrypts the named secrets (run-only or not) and replaces
+itself with `CMD` (looked up on `PATH`, no shell, no extra process), its
+environment being wayu's plus those variables, so the exit status and
+signals are `CMD`'s own. Values are never printed; `--dry-run` prints the
+names and the command. Exit `64` without `--`, names or a command; `65` for
+a name that is not a secret; `127` when `CMD` is not found; `126` when it
+cannot be executed. The run-only mark is bound into the encryption (AAD), so
+editing it out of `secrets.json` makes the value undecryptable instead of
+exporting it. Typical use, an alias that gives one tool its token:
+
+```bash
+wayu const add GH_TOKEN --run-only            # value from stdin
+wayu alias add gh 'wayu secrets run GH_TOKEN -- gh'
+```
+
+Shells never read plaintext from the data dir: `core.<ext>` sources a
+per-login-session cache, `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/wayu-<uid>/secrets-<id>.<ext>`
+(`0600` in a `0700` dir owned by you), when it is newer than
+`secrets.json`; otherwise it runs `wayu secrets cache` once (a hidden helper
+that decrypts into that file). When the key is unavailable or a value does
+not decrypt, the shell prints one `wayu: secrets not loaded: …` line on
+stderr and starts without the secrets. The first `add --secret` creates the
+key; wayu never creates a new key while `secrets.json` holds values (exit
+`78`). Errors reading the store or key exit `78`; write errors `74`.
+
 ### `wayu reload` (`watch`, `hot-reload`)
 
 `wayu reload [start|stop|status|regenerate]`. `start` (the default) watches
@@ -394,7 +453,7 @@ keys may be added, existing ones keep their meaning.
 |---------|----------|
 | `path list` | `{"paths": [{"path", "source", "exists": bool}]}` |
 | `alias list` | `{"aliases": [{"alias", "command", "source"}]}` |
-| `const list` | `{"constants": [{"constant", "value", "source"}]}` |
+| `const list` | `{"constants": [{"constant", "value", "source"}]}`; an encrypted constant is `{"constant", "secret": true, "source"}` (no `value`), plus `"run_only": true` and source `wayu (run-only)` for a run-only one |
 | `plugin list` | `{"plugins": [{"name", "enabled": bool, "priority": int, "shell", "url", "commit", "installed_path", "conflicts": [{"kind", "name", "with"}]}], "count": int, "enabled": int}` |
 | `backup list` | `{"backups": [{"file", "count": int, "entries": [{"index": int, "timestamp", "size_bytes": int, "path", "pre_restore": bool}]}]}` |
 | `script list` | `{"scripts": [{"name", "lang", "source", "bin", "compiled": bool, "stale": bool}], "count": int}` |
@@ -426,6 +485,8 @@ BSD `sysexits.h` values (`EXIT_*` in `src/interfaces.odin`):
 | 74 | `EXIT_IOERR` | Read/write failure, failed git operation |
 | 77 | `EXIT_NOPERM` | Permission denied |
 | 78 | `EXIT_CONFIG` | Configuration problem: not initialized, invalid `hooks.conf`, `doctor` found an error, `export check` found no current turbo file |
+| 126 | `EXIT_EXEC_NOT_RUNNABLE` | `secrets run`: the command was found but cannot be executed |
+| 127 | `EXIT_EXEC_NOT_FOUND` | `secrets run`: the command was not found |
 
 ### Exit code examples
 
@@ -456,7 +517,10 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu plugin priority` | 64 |
 | `wayu doctor --optimize` | 64 |
 | `wayu doctor --fix` | 64 |
+| `wayu secrets run` | 64 |
+| `wayu const add NAME --run-only --json` | 64 |
 | `wayu const get NO_SUCH_NAME` | 65 |
+| `wayu secrets run NO_SUCH_NAME -- true` | 65 |
 | `wayu path rm /no/such/dir` | 65 |
 | `wayu alias add 'a b' x` | 65 |
 | `wayu plugin rm no-such-plugin` | 65 |

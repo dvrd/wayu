@@ -307,6 +307,36 @@ names only, never their values. Pass `--reveal` to `const list` / `toml show`
 (or press `v` in the TUI constants view) to see real values; `const get NAME`
 always prints the real value.
 
+### Encrypted secrets
+
+`wayu const add NAME --secret` reads the value from stdin (hidden on a
+terminal) — or takes it as an argument — and stores it encrypted in
+`secrets.json`; nothing in the config or generated files holds it in
+plaintext. The master key lives in the macOS keychain (Secret Service on
+Linux, or a `0600` key file: `[secrets] backend = "file"`). Shells load
+secrets from a per-session cache in `$XDG_RUNTIME_DIR` / `$TMPDIR`
+(decrypted once, then sourced without forking).
+
+```bash
+wayu const add OPENAI_API_KEY --secret      # prompts, input hidden
+wayu const get OLD_TOKEN | wayu const add OLD_TOKEN --secret   # convert a plain one
+wayu const get OPENAI_API_KEY               # decrypts
+wayu secrets list                           # names and mode, never values
+wayu secrets rekey                          # new master key
+wayu secrets lock                           # drop the decrypted session cache
+```
+
+A **run-only** secret (`--run-only`) is never exported to your shells; only
+`wayu secrets run NAME... -- CMD` decrypts it, into that one command's
+environment (exec, no shell):
+
+```bash
+wayu const add GH_TOKEN --run-only
+wayu alias add gh 'wayu secrets run GH_TOKEN -- gh'
+```
+
+See [docs/config-reference.md](docs/config-reference.md#secrets).
+
 ### Score Indicators
 
 - `★` - High confidence match (score > 1000)

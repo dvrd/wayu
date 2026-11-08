@@ -14,6 +14,14 @@ import "core:strings"
 // toml_constant_add/remove/list/get + per-action hooks (see CONSTANTS_SPEC
 // in config_specs.odin).
 handle_constants_command :: proc(action: Action, args: []string) {
+	if action == .ADD && wayu.secret_flag {
+		if !ensure_wayu_toml_exists() {
+			print_error_simple("Failed to create wayu.toml")
+			wayu_exit(EXIT_IOERR)
+		}
+		const_add_secret(args) // secrets_store.odin
+		return
+	}
 	handle_toml_entry_command(&CONSTANTS_SPEC, action, args)
 }
 
@@ -90,6 +98,10 @@ parse_hex_codepoint :: proc(value: string, start, width: int) -> (rune, bool) {
 }
 
 toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
+	// A secret never silently becomes plaintext again.
+	if secrets_store_has_name_or_exit(entry.name) {
+		return false, fmt.aprintf("%s is an encrypted secret: change it with `wayu const add %s VALUE --secret`, or remove it first", entry.name, entry.name)
+	}
 	validation := validate_constant(entry.name, entry.value)
 	if !validation.valid {
 		err := strings.clone(validation.error_message)
@@ -104,7 +116,20 @@ toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
 }
 
 toml_constant_remove :: proc(name: string) -> (bool, string) {
-	return entries_entry_remove(.ENV, name, "Constant")
+	if !secrets_store_has_name_or_exit(name) {
+		return entries_entry_remove(.ENV, name, "Constant")
+	}
+	// Secret: drop the ciphertext (secrets.json) and the entries.json marker.
+	if wayu.dry_run {
+		print_info("[dry-run] Would remove secret %s from %s", name, secrets_store_path())
+		return true, ""
+	}
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
+	_ = const_remove_secret(name)
+	regenerate_init_core_silently()
+	print_success("Secret removed: %s", name)
+	return true, ""
 }
 
 list_toml_constants :: proc() {
@@ -112,8 +137,31 @@ list_toml_constants :: proc() {
 		os.exit(EXIT_CONFIG)
 	}
 
-	entries := read_env_entries()
-	defer cleanup_entries(&entries)
+	all_entries := read_env_entries()
+	defer cleanup_entries(&all_entries)
+	entries := all_entries
+
+	// Encrypted constants: listed by name, value never shown.
+	secret_store, _ := secrets_store_load_or_exit()
+	defer secrets_store_destroy(&secret_store)
+	secret_names := make([]string, len(secret_store.entries), context.temp_allocator)
+	for e, i in secret_store.entries { secret_names[i] = e.name }
+	run_only_set := make(map[string]bool, context.temp_allocator)
+	for e in secret_store.entries { if e.run_only { run_only_set[e.name] = true } }
+	// The entries.json markers of secrets carry no value: list them once,
+	// from secrets.json, below the plain constants.
+	{
+		secret_set := make(map[string]bool, context.temp_allocator)
+		for n in secret_names { secret_set[n] = true }
+		kept := 0
+		for &entry in all_entries {
+			if entry.name in secret_set { cleanup_entry(&entry); continue }
+			all_entries[kept] = entry
+			kept += 1
+		}
+		for i in kept..<len(all_entries) { all_entries[i] = {} }
+		entries = all_entries[:kept]
+	}
 
 	// Build set of wayu-managed constants for fast lookup
 	wayu_set := make(map[string]bool)
@@ -121,6 +169,7 @@ list_toml_constants :: proc() {
 	for entry in entries {
 		wayu_set[entry.name] = true
 	}
+	for name in secret_names { wayu_set[name] = true }
 
 	// Find external constants (in env but not managed by wayu)
 	external_constants := make([dynamic]string)
@@ -150,11 +199,11 @@ list_toml_constants :: proc() {
 
 	// JSON first: an empty list is still a JSON document (OKAMI-239).
 	if wayu.json_output {
-		print_constants_json(entries[:], external_constants[:])
+		print_constants_json(entries[:], external_constants[:], secret_names, run_only_set)
 		return
 	}
 
-	if len(entries) == 0 && len(external_constants) == 0 {
+	if len(entries) == 0 && len(external_constants) == 0 && len(secret_names) == 0 {
 		print_info("No Constants found")
 		return
 	}
@@ -172,6 +221,9 @@ list_toml_constants :: proc() {
 		} else {
 			inactive_count += 1
 		}
+	}
+	for name in secret_names {
+		if snapshot_env_var(name) != nil { active_count += 1 } else { inactive_count += 1 }
 	}
 
 	// Print summary
@@ -234,6 +286,19 @@ list_toml_constants :: proc() {
 				table_add_row(&table, row)
 			}
 		}
+		// Secrets: always masked (`wayu const get NAME` decrypts one).
+		for name in secret_names {
+			is_active := snapshot_env_var(name) != nil
+			if is_active && !show_wayu { continue }
+			if !is_active && !show_inactive { continue }
+			if has_multiple_sources {
+				source := "wayu (secret)" if is_active else "wayu (secret, inactive)"
+				if name in run_only_set { source = "wayu (run-only)" }
+				table_add_row(&table, []string{name, SECRET_MASK, source})
+			} else {
+				table_add_row(&table, []string{name, SECRET_MASK})
+			}
+		}
 	}
 
 	// Add external entries
@@ -264,7 +329,7 @@ list_toml_constants :: proc() {
 	}
 }
 
-print_constants_json :: proc(entries: []ConfigEntry, external_constants: []string) {
+print_constants_json :: proc(entries: []ConfigEntry, external_constants: []string, secret_names: []string = nil, run_only_set: map[string]bool = nil) {
 	// Build wayu set for fast lookup
 	wayu_set := make(map[string]bool)
 	defer delete(wayu_set)
@@ -314,6 +379,19 @@ print_constants_json :: proc(entries: []ConfigEntry, external_constants: []strin
 			fmt.printf("    %c\"constant\": \"%s\", \"value\": \"%s\", \"source\": \"%s\"%c", '{', name_j, val_j, src_j, '}')
 			first_entry = false
 		}
+		// Secrets: `"secret": true`, no value.
+		for name in secret_names {
+			is_active := snapshot_env_var(name) != nil
+			if is_active && !show_wayu { continue }
+			if !is_active && !show_inactive { continue }
+			source := "wayu" if is_active else "wayu (inactive)"
+			run_only := name in run_only_set
+			if run_only { source = "wayu (run-only)" }
+			if !first_entry { fmt.println(",") }
+			name_j := json_escape(name); defer delete(name_j)
+			fmt.printf("    %c\"constant\": \"%s\", \"secret\": true, %s\"source\": \"%s\"%c", '{', name_j, "\"run_only\": true, " if run_only else "", source, '}')
+			first_entry = false
+		}
 	}
 
 	// Output external entries
@@ -345,6 +423,8 @@ get_toml_constant_value :: proc(name: string) {
 		os.exit(EXIT_CONFIG)
 	}
 
+	if const_get_secret(name) { return } // decrypts (secrets_store.odin)
+
 	entries := read_env_entries()
 
 	// Try exact match first
@@ -357,7 +437,8 @@ get_toml_constant_value :: proc(name: string) {
 	}
 
 	// Exact match only (OKAMI-207): never hand back a different entry.
-	names := make([]string, len(entries), context.temp_allocator)
-	for entry, i in entries { names[i] = entry.name }
-	exit_get_not_found(&CONSTANTS_SPEC, name, names)
+	names := make([dynamic]string, 0, len(entries), context.temp_allocator)
+	for entry in entries { append(&names, entry.name) }
+	append(&names, ..secrets_names())
+	exit_get_not_found(&CONSTANTS_SPEC, name, names[:])
 }

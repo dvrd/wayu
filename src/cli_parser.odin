@@ -57,6 +57,10 @@ GlobalFlags :: struct {
 	// --reveal: position-independent like --full, but only commands whose
 	// command_accepts_flag lists it (list views that mask secrets) take it.
 	reveal:           bool,
+	// --secret: `const add` only; like the trailing global long flags it
+	// stays a flag at the end of an add value (`const add K v --secret`).
+	secret:           bool,
+	run_only:         bool, // --run-only (implies --secret)
 	source_filter:    string,
 	// Indexes into filtered_args of dash tokens that were not consumed as
 	// global flags and are not literal (after `--`, add value). Validated
@@ -108,11 +112,12 @@ at_add_value_head :: proc(positional: []string) -> bool {
 }
 
 // Global long flags that are still flags when they end argv, even inside an
-// add value tail (rule 2 exception).
+// add value tail (rule 2 exception). `--secret` too, for `const` commands.
 @(private = "file")
-is_trailing_global_flag :: proc(arg: string) -> bool {
+is_trailing_global_flag :: proc(arg: string, const_cmd := false) -> bool {
 	switch arg {
 	case "--dry-run", "--yes", "--json", "--no-color", "--no-colour": return true
+	case "--secret", "--run-only": return const_cmd
 	}
 	return false
 }
@@ -121,9 +126,32 @@ is_trailing_global_flag :: proc(arg: string) -> bool {
 // starts (len(args) when there is none).
 @(private = "file")
 trailing_flags_start :: proc(args: []string) -> int {
+	const_cmd := is_const_command(args)
 	j := len(args)
-	for j > 0 && is_trailing_global_flag(args[j-1]) { j -= 1 }
+	for j > 0 && is_trailing_global_flag(args[j-1], const_cmd) { j -= 1 }
 	return j
+}
+
+// Is the command word (first non-flag token) `const` / `constants` / `env`?
+@(private = "file")
+is_const_command :: proc(args: []string) -> bool {
+	switch first_command_word(args) {
+	case "constants", "const", "env": return true
+	}
+	return false
+}
+
+// The first non-flag token ("" when there is none or `--` comes first).
+@(private = "file")
+first_command_word :: proc(args: []string) -> string {
+	for i := 0; i < len(args); i += 1 {
+		a := args[i]
+		if a == "--" { return "" }
+		if (a == "--shell" || a == "--source") && i + 1 < len(args) { i += 1; continue }
+		if is_simple_global_flag(a) { continue }
+		return a
+	}
+	return ""
 }
 
 // Global flags that take no value (or carry it inline, `--source=x`/`-c=x`).
@@ -182,6 +210,8 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 
 	literal := false
 	tail_start := trailing_flags_start(args)
+	const_cmd := is_const_command(args)
+	secrets_cmd := first_command_word(args) == "secrets" || first_command_word(args) == "secret"
 	i := 0
 	for i < len(args) {
 		arg := args[i]
@@ -198,6 +228,8 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 		}
 		if arg == "--" {
 			literal = true
+			// `secrets run NAME... -- CMD`: the handler needs the split.
+			if secrets_cmd { append(filtered_args, arg) }
 			i += 1
 			continue
 		}
@@ -222,6 +254,11 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 			wayu.json_output = true
 		case arg == "--reveal":
 			flags.reveal = true
+		case arg == "--secret" && const_cmd:
+			flags.secret = true
+		case arg == "--run-only" && const_cmd:
+			flags.secret = true
+			flags.run_only = true
 		case strings.has_prefix(arg, "--source="):
 			flags.source_filter = strings.trim_prefix(arg, "--source=")
 			check_source_value(parsed, flags.source_filter)
@@ -370,6 +407,16 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	}
 	// --json where it means nothing is a usage error, not silently text.
 	parsed.json_unsupported = flags.json && !command_supports_json(parsed.command, parsed.action)
+	wayu.secret_flag = false
+	wayu.run_only_flag = false
+	if flags.secret {
+		if parsed.command == .CONSTANTS && parsed.action == .ADD {
+			wayu.secret_flag = true
+			wayu.run_only_flag = flags.run_only
+		} else if len(parsed.unknown_flag) == 0 {
+			parsed.unknown_flag = "--run-only" if flags.run_only else "--secret"
+		}
+	}
 	wayu.reveal_secrets = false
 	if flags.reveal {
 		if command_accepts_flag(parsed.command, "--reveal") {

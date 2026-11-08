@@ -580,6 +580,7 @@ CHECKS := []CheckEntry{
 	{"turbo",        check_turbo_export},
 	{"deps",         check_dependencies},
 	{"sync",         check_sync_status},
+	{"secrets",      check_secrets},
 }
 
 // Check 1: wayu installation. Report-only: doctor never installs a binary

@@ -57,6 +57,9 @@ EXIT_CANTCREAT    :: 73  // Can't create output file
 EXIT_IOERR        :: 74  // Input/output error
 EXIT_NOPERM       :: 77  // Permission denied
 EXIT_CONFIG       :: 78  // Configuration error
+// `wayu secrets run`: CMD could not be executed (shell convention).
+EXIT_EXEC_NOT_RUNNABLE :: 126 // found but not executable
+EXIT_EXEC_NOT_FOUND    :: 127 // not found on PATH
 // Debug logging that only activates when built with -define:DEBUG=true
 debug :: proc(msg: string, args: ..any) {
 	when ODIN_DEBUG {
