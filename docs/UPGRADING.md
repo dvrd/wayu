@@ -111,6 +111,16 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   help, errors, doctor, backup list, …); some used to remain. They win over
   `FORCE_COLOR`.
 
+**Errors and warnings**
+- `ERROR: …` and `⚠ …` messages go to stderr (they were on stdout), so
+  `2>/dev/null` silences them and `wayu … --json | jq` never sees them.
+- A failed read of a file reports one error, not two (the extra
+  `ERROR: Could not read …` line is gone).
+- Before `wayu init`, `path list|get|rm|clean|dedup` and `path add` of an
+  existing directory exit `78` with the "not initialized" message, like
+  `alias`/`const` (they exited `66` with "File not found").
+- `wayu export help` / `export list` work without a wayu config.
+
 ## 5.0.0
 
 **doctor**

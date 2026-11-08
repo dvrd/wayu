@@ -35,6 +35,12 @@ handle_path_command :: proc(action: Action, args: []string) {
 		print_error_simple("Failed to create wayu.toml")
 		os.exit(EXIT_IOERR)
 	}
+	// Before `wayu init`: one "not initialized" error (exit 78) like alias/
+	// const, not a file-not-found plus a read error (OKAMI-237). `add`
+	// checks after validating its argument (bad input is reported first).
+	if action != .HELP && action != .UNKNOWN && action != .ADD && !check_wayu_initialized() {
+		os.exit(EXIT_CONFIG)
+	}
 
 	#partial switch action {
 	case .CLEAN:
@@ -69,6 +75,9 @@ handle_path_command :: proc(action: Action, args: []string) {
 		if !os.exists(expanded) {
 			print_error("Path does not exist: %s", raw_path)
 			os.exit(EXIT_NOINPUT)
+		}
+		if !check_wayu_initialized() {
+			os.exit(EXIT_CONFIG)
 		}
 		// pre-hook only for an add that will really change wayu.toml
 		// (duplicates / bad names are reported by the write below).

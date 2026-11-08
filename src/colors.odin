@@ -430,7 +430,8 @@ clear_print_capture :: proc() {
 	print_captured_error = ""
 }
 
-// Styled print functions
+// Styled print functions. Success/info go to stdout; errors and warnings go
+// to stderr so `wayu ... --json | jq` and captured output stay clean.
 print_success :: proc(msg: string, args: ..any) {
 	if print_quiet do return
 	fmt.printf("%s✓ ", get_success())
@@ -444,16 +445,16 @@ print_error :: proc(msg: string, args: ..any) {
 		print_captured_error = fmt.aprintf(msg, ..args)
 		return
 	}
-	fmt.printf("%s%sERROR:%s ", BOLD, get_error(), RESET)
-	fmt.printf(msg, ..args)
-	fmt.println()
+	eprintf_color("%s%sERROR:%s ", BOLD, get_error(), RESET)
+	eprintf_color(msg, ..args)
+	fmt.eprintln()
 }
 
 print_warning :: proc(msg: string, args: ..any) {
 	if print_quiet do return
-	fmt.printf("%s⚠ ", get_warning())
-	fmt.printf(msg, ..args)
-	fmt.printf("%s\n", RESET)
+	eprintf_color("%s⚠ ", get_warning())
+	eprintf_color(msg, ..args)
+	eprintf_color("%s\n", RESET)
 }
 
 print_info :: proc(msg: string, args: ..any) {

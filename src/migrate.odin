@@ -299,7 +299,7 @@ migrate_legacy_to_toml :: proc(dry_run: bool) {
 		data, ok := safe_read_file(path)
 		if !ok {
 			// Unreadable: never report "nothing to migrate" for it.
-			print_error("Could not read %s", path)
+			// (safe_read_file already printed why.)
 			delete(path)
 			os.exit(EXIT_NOINPUT)
 		}
@@ -502,7 +502,7 @@ migrate_toml_schema :: proc(dry_run: bool) {
 
 	content_bytes, ok := safe_read_file(toml_path)
 	if !ok {
-		print_error("Could not read %s", toml_path)
+		// safe_read_file already printed why (one error per failure).
 		os.exit(EXIT_IOERR)
 	}
 	defer delete(content_bytes)

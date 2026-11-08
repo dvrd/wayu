@@ -1235,7 +1235,7 @@ print_legacy_schema_hint :: proc(header: string) {
 must_read_modern_wayu_toml :: proc(path: string) -> []byte {
 	content, ok := safe_read_file(path)
 	if !ok {
-		print_error("Could not read %s", path)
+		// safe_read_file already printed why (one error per failure).
 		os.exit(EXIT_NOINPUT)
 	}
 	if header := detect_legacy_schema(string(content)); len(header) > 0 {

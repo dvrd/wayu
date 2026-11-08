@@ -220,7 +220,7 @@ detect_zshrc_script_blocks :: proc(zshrc_path: string) -> (blocks: [dynamic][dyn
 
 	content, read_ok := safe_read_file(zshrc_path)
 	if !read_ok {
-		print_error_simple("Failed to read .zshrc")
+		// safe_read_file already printed why (one error per failure).
 		os.exit(EXIT_IOERR)
 	}
 
