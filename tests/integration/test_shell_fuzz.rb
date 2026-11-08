@@ -12,7 +12,7 @@
 # `${X[Y]}`, `${X:Y}`) must stay literal and never run a command — the
 # `${X@P}` case only bites on bash >= 4.4, so every bash found is used.
 #
-# Reproduce a failure with WAYU_FUZZ_SEED=<seed printed below>;
+# Default seed is fixed; WAYU_FUZZ_SEED=random explores, WAYU_FUZZ_SEED=<n> reproduces;
 # WAYU_FUZZ_ROUNDS sets the number of rounds (default 4).
 
 require 'open3'
@@ -46,7 +46,13 @@ class ShellFuzzTest
 
   def initialize
     setup_test_env
-    @seed = (ENV['WAYU_FUZZ_SEED'] || Random.new_seed % 1_000_000).to_i
+    # Fixed seed by default so CI is deterministic; WAYU_FUZZ_SEED=random
+    # explores new inputs (failures print the seed to reproduce).
+    seed_env = ENV['WAYU_FUZZ_SEED']
+    @seed = if seed_env == 'random' then Random.new_seed % 1_000_000
+            elsif seed_env then seed_env.to_i
+            else 20261108
+            end
     @rounds = (ENV['WAYU_FUZZ_ROUNDS'] || 4).to_i
     @rng = Random.new(@seed)
     @shells = detect_shells
