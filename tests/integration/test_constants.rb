@@ -506,7 +506,7 @@ class ConstantsIntegrationTest
   def test_full_list_names_each_env_var_once
     print "  Testing const list --full lists each env var once... "
     # Minimal, controlled environment: Odin's os.environ repeats environ[0].
-    env = { 'HOME' => @tmp_home, 'PATH' => ENV['PATH'], 'WAYU_FIRST_VAR' => 'x', 'NO_COLOR' => '1' }
+    env = { 'HOME' => @tmp_home, 'PATH' => ENV['PATH'], 'WAYU_FIRST_VAR' => 'x', 'NO_COLOR' => '1' }.merge(sanitizer_env)
     out, _err, status = Open3.capture3(env, "#{@wayu_bin} --json const list --full", unsetenv_others: true)
     names = out.scan(/"constant": "([^"]+)"/).flatten
     dups = names.select { |n| names.count(n) > 1 }.uniq

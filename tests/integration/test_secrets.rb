@@ -75,7 +75,7 @@ class SecretsIntegrationTest
 
   def run_clean(args)
     env = { 'HOME' => @tmp_home, 'PATH' => '/usr/bin:/bin', 'SHELL' => '/bin/zsh',
-            'NO_COLOR' => '1', 'FAKE_EXT_API_KEY' => EXT_SECRET }
+            'NO_COLOR' => '1', 'FAKE_EXT_API_KEY' => EXT_SECRET }.merge(sanitizer_env)
     project_root = File.expand_path('../..', __dir__)
     out, err, status = Open3.capture3(env, "#{@wayu_bin} #{args}", chdir: project_root, unsetenv_others: true)
     [out.force_encoding('UTF-8'), err.force_encoding('UTF-8'), status]

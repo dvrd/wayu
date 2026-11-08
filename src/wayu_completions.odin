@@ -925,17 +925,15 @@ list_completions :: proc() {
 
 		first_line := ""
 		content, content_err := os.read_entire_file(file_path, context.allocator)
+		// first_line points into content (or the temp allocator): both must
+		// outlive the print below, so free content at the end of the iteration.
+		defer if content_err == nil { delete(content) }
 		if content_err == nil {
-			defer delete(content)
-			// Use temp allocator for lines array since it's only needed during this iteration
 			lines := strings.split(string(content), "\n", context.temp_allocator)
-			// No need to defer delete - temp allocator manages this
 			if len(lines) > 0 {
 				first_line = strings.trim_space(lines[0])
 				if len(first_line) > 60 {
-					truncated := fmt.aprintf("%s...", first_line[:60])
-					defer delete(truncated)
-					first_line = truncated
+					first_line = fmt.tprintf("%s...", first_line[:60])
 				}
 			}
 		}

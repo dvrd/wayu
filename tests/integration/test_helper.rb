@@ -81,6 +81,12 @@ module WayuTestHelper
     puts
   end
 
+  # Sanitizer settings to keep when a test clears the environment
+  # (unsetenv_others), so an ASan build keeps the CI job's ASAN_OPTIONS.
+  def sanitizer_env
+    ENV.to_h.select { |k, _| %w[ASAN_OPTIONS LSAN_OPTIONS UBSAN_OPTIONS].include?(k) }
+  end
+
   def run_wayu(args)
     # Merge HOME override into the current environment so PATH and other
     # variables are preserved. Open3 with an env hash replaces the env

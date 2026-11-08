@@ -188,7 +188,11 @@ list_toml_constants :: proc() {
 
 	// Get all environment variables (zero-alloc name extraction)
 	env_list, env_err := os.environ(context.allocator)
-	defer delete(env_list)
+	// external_constants slice into these strings; both live until return.
+	defer {
+		if env_err == nil { for pair in env_list { delete(pair) } }
+		delete(env_list)
+	}
 	if env_err == nil {
 		for pair in env_list {
 			eq := strings.index_byte(pair, '=')

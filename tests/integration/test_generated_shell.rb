@@ -359,11 +359,15 @@ class GeneratedShellTest
       Open3.capture3(env, @wayu_bin, 'build')
       tool = "#{home}/bin/faketool"
       stamp = Time.at(1_577_836_800)
+      # Install like a package manager: write a new file, then rename it over
+      # the old one, so the replacement never reuses the old inode (a plain
+      # rm + write can on Linux, making the binaries indistinguishable).
       put = lambda do |path, v|
-        FileUtils.rm_f(path)
-        File.write(path, "#!/bin/sh\necho 'export TOOLV=#{v}'\n")
-        File.chmod(0o755, path)
-        File.utime(stamp, stamp, path)
+        tmp = "#{path}.new"
+        File.write(tmp, "#!/bin/sh\necho 'export TOOLV=#{v}'\n")
+        File.chmod(0o755, tmp)
+        File.utime(stamp, stamp, tmp)
+        File.rename(tmp, path)
       end
       run = lambda do
         out, err, = Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), sh, *SHELL_ARGS[sh],
