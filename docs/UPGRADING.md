@@ -27,6 +27,8 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - `pre_path_remove`/`post_path_remove` hooks get the entry's directory as
   `{path}` when `path rm` is given a key (they got the key).
 
+## 5.0.0
+
 **doctor**
 - `doctor --json` (and `--json doctor`) prints JSON; `--json --fix` exits `64`.
 - `doctor` exits `78` when any check reports an error (also with `--json`).
