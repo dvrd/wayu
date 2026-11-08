@@ -481,7 +481,7 @@ run_step "core.zsh" source "$WAYU_PROFILE_DATA/core.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 2: Functions ==="
-run_step "functions (glob)" zsh -c 'for f in "$HOME/.config/wayu/functions"/*.zsh(N); do [[ -f "$f" ]] && source "$f"; done'
+run_step "functions (glob)" zsh -c 'for f in "$WAYU_PROFILE_DATA/functions"/*.zsh(N); do [[ -f "$f" ]] && source "$f"; done'
 
 echo ""
 echo "=== Phase 3: Completions Setup ==="
@@ -496,11 +496,11 @@ run_step "plugin config" source "$WAYU_PROFILE_DATA/plugins/config.zsh" 2>/dev/n
 
 echo ""
 echo "=== Phase 5: Aliases & Tools ==="
-run_step "tools.zsh" source "$HOME/.config/wayu/tools.zsh" 2>/dev/null || true
+run_step "tools.zsh" source "${WAYU_CONFIG_DIR:-$HOME/.config/wayu}/tools.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 6: Extra Config ==="
-run_step "extra.zsh" source "$HOME/.config/wayu/extra.zsh" 2>/dev/null || true
+run_step "extra.zsh" source "${WAYU_CONFIG_DIR:-$HOME/.config/wayu}/extra.zsh" 2>/dev/null || true
 
 total=$(($EPOCHREALTIME - start_time))
 
@@ -576,6 +576,7 @@ CHECKS := []CheckEntry{
 	{"backups",      check_backups},
 	{"toml",         check_toml_config},
 	{"entries",      check_entries_store},
+	{"scripts",      check_scripts},
 	{"turbo",        check_turbo_export},
 	{"deps",         check_dependencies},
 	{"sync",         check_sync_status},

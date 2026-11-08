@@ -86,8 +86,8 @@ class GeneratedShellTest
     data = "#{home}/.local/share/wayu"
     File.write("#{cfg}/wayu.toml", TOML)
     write_entries(aliases: ALIASES, data: data)
-    FileUtils.mkdir_p("#{cfg}/functions")
-    File.write("#{cfg}/functions/myfn.#{shell}", "myfn() { echo myfn-ok; }\n")
+    FileUtils.mkdir_p("#{data}/functions")
+    File.write("#{data}/functions/myfn.#{shell}", "myfn() { echo myfn-ok; }\n")
     File.write("#{cfg}/extra.#{shell}", "EXTRA_LOADED=1\n")
     Open3.capture3(env, @wayu_bin, 'completions', 'generate')
     Open3.capture3(env, @wayu_bin, 'build')
@@ -283,11 +283,11 @@ class GeneratedShellTest
     cfg = "#{home}/.config/wayu"
     data = "#{home}/.local/share/wayu"
     write_entries(paths: ENV_PATHS, env: ENV_VALUES, data: data)
-    FileUtils.mkdir_p("#{cfg}/functions")
-    File.write("#{cfg}/functions/fzfn.zsh", "fzfn() { echo fn-zsh; }\n")
-    File.write("#{cfg}/functions/fzfn.bash", "fzfn() { echo fn-bash; }\n")
-    File.write("#{cfg}/functions/fzfn.fish", "function fzfn; echo fn-fish; end\n")
-    File.write("#{cfg}/functions/fzfn_noext", "fzfn() { echo fn-noext; }\n")
+    FileUtils.mkdir_p("#{data}/functions")
+    File.write("#{data}/functions/fzfn.zsh", "fzfn() { echo fn-zsh; }\n")
+    File.write("#{data}/functions/fzfn.bash", "fzfn() { echo fn-bash; }\n")
+    File.write("#{data}/functions/fzfn.fish", "function fzfn; echo fn-fish; end\n")
+    File.write("#{data}/functions/fzfn_noext", "fzfn() { echo fn-noext; }\n")
     Open3.capture3(env, @wayu_bin, 'build')
     want_env = "FZ_GO=#{home}/go FZ_PW=pa${ss FZ_EFLAG=${(e):-$(echo PWNED)} FZ_POS=a$1$ " \
                "FZ_MOD=#{home}:hello FZ_PCT=a$%b FZ_LAST=ok"

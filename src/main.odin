@@ -49,6 +49,7 @@ Command :: enum {
 	TEMPLATE,   // Configuration presets
 	HOOKS,      // Pre/post action hooks
 	FUNCTION,   // Manage custom shell functions (functions/ dir)
+	SCRIPT,     // Manage standalone scripts (scripts/ + bin/ in the data dir)
 	RELOAD,     // File watcher for hot reload
 	VERSION,
 	HELP,
@@ -72,6 +73,8 @@ Action :: enum {
 	TURBO,    // Export turbo mode
 	EVAL,     // Export eval mode
 	DEDUP,
+	IMPORT,   // script import
+	BUILD,    // script build
 	HELP,
 	UNKNOWN,
 }
@@ -307,6 +310,8 @@ main :: proc() {
 		handle_hooks_command(parsed.action, parsed.args)
 	case .FUNCTION:
 		handle_function_command(parsed.action, parsed.args)
+	case .SCRIPT:
+		handle_script_command(parsed.action, parsed.args)
 	case .RELOAD:
 		// Parse reload action from args
 		action := "start"
@@ -326,6 +331,9 @@ main :: proc() {
 		os.exit(EXIT_USAGE)
 	}
 }
+
+// Subdirectories of the data dir `wayu init` creates.
+DATA_SUBDIRS :: []string{"functions", "scripts", "bin", "completions", "plugins"}
 
 handle_init_command :: proc() {
 	print_header("Initializing Wayu Configuration", "🚀")
@@ -383,18 +391,13 @@ handle_init_command :: proc() {
 		print_info("Directory already exists: %s", data_dir)
 	}
 
-	// Create subdirectories. functions/ lives in the config dir (user-authored,
-	// editable via `wayu function`); completions/ and plugins/ are generated
-	// runtime files in the data dir.
-	subdirs := []string{"functions", "completions", "plugins"}
+	// Create subdirectories, all in the data dir: wayu manages functions/
+	// (`wayu function`), scripts/ + bin/ (`wayu script`), completions/ and
+	// plugins/.
 	created_subdirs := 0
 
-	for subdir in subdirs {
-		base_dir := wayu.data
-		if subdir == "functions" {
-			base_dir = wayu.config
-		}
-		subdir_path := fmt.aprintf("%s/%s", base_dir, subdir)
+	for subdir in DATA_SUBDIRS {
+		subdir_path := fmt.aprintf("%s/%s", wayu.data, subdir)
 		defer delete(subdir_path)
 
 		if !os.exists(subdir_path) {
@@ -439,9 +442,8 @@ print_init_dry_run :: proc(shell: ShellType, ext: string) {
 	}
 	would(wayu.config, "directory")
 	would(wayu.data, "directory")
-	for sub in ([]string{"functions", "completions", "plugins"}) {
-		base := wayu.config if sub == "functions" else wayu.data
-		would(fmt.tprintf("%s/%s", base, sub), "directory")
+	for sub in DATA_SUBDIRS {
+		would(fmt.tprintf("%s/%s", wayu.data, sub), "directory")
 	}
 	would(fmt.tprintf("%s/init.%s", wayu.data, ext), "file")
 	for name in ([]string{"tools", "extra"}) {
@@ -626,10 +628,10 @@ print_init_help :: proc() {
 	fmt.println("DESCRIPTION:")
 	fmt.println("  Sets wayu up for the detected shell (or --shell zsh|bash|fish).")
 	fmt.println("  Config dir (~/.config/wayu, files you edit): wayu.toml, extra.<ext>,")
-	fmt.println("  tools.<ext>, alias-sources.conf, functions/.")
+	fmt.println("  tools.<ext>, alias-sources.conf.")
 	fmt.println("  Data dir (~/.local/share/wayu, managed by wayu): init.<ext> (source it")
-	fmt.println("  from your rc file), the PATH/alias/constant entries, completions/,")
-	fmt.println("  plugins/, and the generated core.<ext>.")
+	fmt.println("  from your rc file), the PATH/alias/constant entries, functions/, scripts/,")
+	fmt.println("  bin/, completions/, plugins/, and the generated core.<ext>.")
 	fmt.println("  Safe to re-run — existing files are preserved.")
 	fmt.println()
 	fmt.println("  --template <name>  Then apply a template (see 'wayu template list');")
@@ -725,6 +727,10 @@ print_help :: proc() {
 	fmt.printf("  wayu template list               # List config presets\n")
 	fmt.printf("  wayu template apply developer    # Apply developer preset\n")
 	fmt.println()
+	fmt.printf("  # Scripts (any language, on PATH):\n")
+	fmt.printf("  wayu script new hello --lang python  # Create, edit, build\n")
+	fmt.printf("  wayu script import ~/bin/tool    # Adopt an existing script\n")
+	fmt.println()
 	fmt.printf("  # Hooks:\n")
 	fmt.printf("  wayu hooks                       # Show configured hooks\n")
 	fmt.printf("  wayu hooks edit                  # Edit hooks config\n")
@@ -759,6 +765,7 @@ print_help :: proc() {
 	fmt.printf("  64  Usage error (invalid arguments)\n")
 	fmt.printf("  65  Data format error (invalid input)\n")
 	fmt.printf("  66  Input file not found\n")
+	fmt.printf("  69  Required tool not installed (script interpreter/compiler)\n")
 	fmt.printf("  73  Cannot create output file\n")
 	fmt.printf("  74  I/O error (read/write failure)\n")
 	fmt.printf("  77  Permission denied\n")
@@ -817,6 +824,13 @@ handle_build_command :: proc(action: Action) {
 	// every initialized shell, so hand edits of wayu.toml take effect (open
 	// shells pick up [paths] at their next prompt via path_sync).
 	// An existing turbo.<ext> is rewritten with core's content along the way.
+	// Scripts whose source changed since their last build (`wayu script`),
+	// first: a first built script puts <data>/bin on PATH.
+	config_lock_acquire_or_exit()
+	_, failed := scripts_build_stale(quiet = true)
+	config_lock_release()
+	if failed > 0 { print_warning("%d script(s) failed to build (run: wayu script build)", failed) }
+
 	generate_optimized_init_all()
 	fmt.println()
 }

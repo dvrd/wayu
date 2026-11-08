@@ -1,10 +1,10 @@
 # wayu configuration reference
 
-Everything wayu reads: `wayu.toml` (every table and key), the entries wayu
-manages for you (`entries.json`: PATH entries, aliases, constants), the other
-files you may edit (`hooks.conf`, `plugins.json`, `extra.<ext>`,
-`tools.<ext>`, `functions/`, `alias-sources.conf`, `completions/`), where they
-live, and which files are generated.
+Everything wayu reads: `wayu.toml` (every table and key), what wayu manages
+for you (`entries.json`: PATH entries, aliases, constants; `functions/`,
+`scripts/`, `completions/`), the other files you may edit (`hooks.conf`,
+`plugins.json`, `extra.<ext>`, `tools.<ext>`, `alias-sources.conf`), where
+they live, and which files are generated.
 
 - Commands and flags: [cli.md](cli.md).
 - Behavior changes between versions: [UPGRADING.md](UPGRADING.md).
@@ -22,6 +22,7 @@ live, and which files are generated.
   - [`[settings]`](#settings)
   - [`[tools]`](#tools)
   - [`[prompt]`](#prompt)
+  - [`[scripts]`](#scripts)
   - [Keys wayu does not read](#keys-wayu-does-not-read)
 - [Managed data](#managed-data)
   - [entries.json](#entriesjson)
@@ -34,6 +35,7 @@ live, and which files are generated.
   - [extra.\<ext\> and tools.\<ext\>](#extraext-and-toolsext)
   - [config.\<ext\>](#configext)
   - [functions/](#functions)
+  - [scripts/ and bin/](#scripts-and-bin)
   - [completions/](#completions)
   - [alias-sources.conf](#alias-sourcesconf)
 - [Generated files](#generated-files)
@@ -43,8 +45,8 @@ live, and which files are generated.
 
 | Variable | Default | Holds |
 |---|---|---|
-| `WAYU_CONFIG_DIR` | `~/.config/wayu` | Files you edit: `wayu.toml`, `hooks.conf`, `alias-sources.conf`, `extra.<ext>`, `tools.<ext>`, `config.<ext>`, `functions/` |
-| `WAYU_DATA_DIR` | `${XDG_DATA_HOME:-~/.local/share}/wayu` | Data wayu manages: `entries.json`, `plugins.json`, and generated / runtime files: `init.<ext>`, `core.<ext>`, `path_sync.<ext>`, `turbo.<ext>`, `plugins.<ext>`, `plugins/`, `completions/`, `backup/`, `.wayu.lock` |
+| `WAYU_CONFIG_DIR` | `~/.config/wayu` | Files you edit: `wayu.toml`, `hooks.conf`, `alias-sources.conf`, `extra.<ext>`, `tools.<ext>`, `config.<ext>` |
+| `WAYU_DATA_DIR` | `${XDG_DATA_HOME:-~/.local/share}/wayu` | Data wayu manages: `entries.json`, `plugins.json`, `functions/` (`wayu function`), `scripts/` and `bin/` (`wayu script`), and generated / runtime files: `init.<ext>`, `core.<ext>`, `path_sync.<ext>`, `turbo.<ext>`, `plugins.<ext>`, `plugins/`, `completions/`, `backup/`, `.wayu.lock` |
 
 - Each variable is read independently: setting one never moves the other.
   `wayu init` creates both dirs.
@@ -405,6 +407,17 @@ name. A built-in match without a user `format` shows the shell name.
 | `async_rprompt` | boolean | `true` | Background job after each command: git changed-file count (right prompt) and context version. |
 | `rprompt_format` | string | `"[ {git_pending}](242)"` | Right prompt, shown when the work tree has changes. `{git_pending}` = number of changed files, `{git_branch}` = branch. |
 
+### `[scripts]`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `default_lang` | string | `"swift"` | Language of `wayu script new` without `--lang`: `swift`, `python`, `ruby`, `node`, `bun`, `bash`, `zsh`, `fish`, `perl`, `lua` or `sh`. Another value is an error for `toml validate` (exit `65`), `doctor` and `script new` (exit `78`). |
+
+```toml
+[scripts]
+default_lang = "python"
+```
+
 ### Keys wayu does not read
 
 wayu reads only the keys and tables listed above. Anything else (for example
@@ -701,7 +714,7 @@ editing it.
 
 ### functions/
 
-`$WAYU_CONFIG_DIR/functions/` holds one file per function
+`$WAYU_DATA_DIR/functions/` holds one file per function
 (`wayu function add <name>` writes `functions/<name>.<ext>`). Sourced at
 startup:
 
@@ -710,6 +723,17 @@ startup:
 | zsh | `*.zsh` only |
 | bash | `*.bash` only |
 | fish | `*.fish` only |
+
+### scripts/ and bin/
+
+`$WAYU_DATA_DIR/scripts/` holds the sources of `wayu script` (one
+`NAME.<ext>` per script; the directory is the list) and
+`$WAYU_DATA_DIR/bin/` what runs: a relative symlink to the source for
+interpreted languages, the compiled binary plus `.NAME.hash` (hash of the
+source it was built from) for swift. Use `wayu script` rather than editing
+`bin/`. Once `bin/` holds a script, `core.<ext>` and `path_sync.<ext>` put it
+first among wayu's PATH entries (zsh, bash, fish), so a script may shadow a
+tool of the same name.
 
 ### completions/
 
@@ -746,7 +770,7 @@ every shell initialized in the data dir.
 |---|---|
 | `init.<ext>` | Entry point your rc file sources: loads `core.<ext>` (prints a hint to run `wayu build` when it is missing). Written by `wayu init`. An unmodified copy of the current or previous template is replaced when the template changes (backup first); an edited one is kept, with a warning. |
 | `core.<ext>` | Everything `init.<ext>` loads, precomputed from `wayu.toml` and `entries.json` (zsh also `core.zsh.zwc`, compiled in the background). |
-| `path_sync.<ext>` | The PATH entry list; line 1 is its signature. The prompt hook re-sources it when the signature changes. |
+| `path_sync.<ext>` | The PATH entry list (after `bin/` when it holds a script); line 1 is its signature. The prompt hook re-sources it when the signature changes. |
 | `turbo.<ext>` | zsh/bash. Same content as `core.<ext>`, refreshed with it, only if it exists (created by `wayu export`). |
 | `plugins.<ext>` | Plugin loader, regenerated on any `plugin` change and by `wayu init`. |
 | `plugins/config.zsh` | `[settings] autosuggestions_accept_keys` bindings. |
@@ -761,7 +785,7 @@ and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 
 1. `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR` exports (only when not default)
 2. Constants
-3. PATH entries (and the live PATH sync hook)
+3. `bin/` (scripts) and PATH entries (and the live PATH sync hook)
 4. Completions (zsh: `fpath`, `compinit` in interactive shells)
 5. `functions/`
 6. `config.<ext>` content

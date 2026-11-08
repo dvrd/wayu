@@ -408,6 +408,7 @@ emit_alias_definitions :: proc(b: ^strings.Builder, sep: string = "\n") {
 // [paths] has no entries.
 emit_path_eval :: proc(b: ^strings.Builder, sep: string = "\n") -> bool {
 	values := read_path_values()
+	script_path_prepend(&values) // <data>/bin first (`wayu script`)
 	defer {
 		for v in values { delete(v) }
 		delete(values)
@@ -430,7 +431,7 @@ emit_path_eval :: proc(b: ^strings.Builder, sep: string = "\n") -> bool {
 // `wayu function add` writes functions/<name>.<ext> per shell; each shell
 // sources only its own extension (*.zsh / *.bash).
 emit_functions_loader :: proc(b: ^strings.Builder) {
-	dir := shell_double_quote_literal(fmt.tprintf("%s/functions", wayu.config), context.temp_allocator)
+	dir := shell_double_quote_literal(fmt.tprintf("%s/functions", wayu.data), context.temp_allocator)
 	if wayu.shell == .ZSH {
 		fmt.sbprintfln(b, `() {{ emulate -L zsh; typeset -ga _wayu_fn_files; _wayu_fn_files=( %s/*.zsh(N-.) ) }}`, dir)
 		fmt.sbprintln(b, `for _wayu_f in "${_wayu_fn_files[@]}"; do source "$_wayu_f"; done`)
@@ -875,6 +876,7 @@ wayu_self_path :: proc() -> string {
 // resync. Caller deletes each value and the array.
 read_path_sync_values :: proc() -> (values: [dynamic]string, sig: u64) {
 	values = read_path_values()
+	script_path_prepend(&values) // <data>/bin first (`wayu script`)
 	joined := strings.join(values[:], "\n", context.temp_allocator)
 	sig = hash.fnv64a(transmute([]byte)joined)
 	return
@@ -2184,7 +2186,7 @@ generate_core_init_fish :: proc() {
 	// User functions (`wayu function add` writes functions/<name>.fish),
 	// same as zsh/bash core. A glob with no match is not an error in `for`.
 	fmt.sbprintln(b, "# === Functions ===")
-	fmt.sbprintfln(b, `for _wayu_f in %s/*.fish`, escape_fish_string(fmt.tprintf("%s/functions", wayu.config), context.temp_allocator))
+	fmt.sbprintfln(b, `for _wayu_f in %s/*.fish`, escape_fish_string(fmt.tprintf("%s/functions", wayu.data), context.temp_allocator))
 	fmt.sbprintln(b, `    test -f $_wayu_f; and source $_wayu_f`)
 	fmt.sbprintln(b, "end")
 	fmt.sbprintln(b, "set -e _wayu_f")

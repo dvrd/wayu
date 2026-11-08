@@ -322,8 +322,8 @@ class FishIntegrationTest
         'paths' => [{ 'key' => 'p1', 'dir' => "#{home}/p1" }, { 'key' => 'p2', 'dir' => '$HOME/p2' },
                     { 'key' => 'sys', 'dir' => '/bin' }]
       ))
-      FileUtils.mkdir_p("#{cfg}/functions")
-      File.write("#{cfg}/functions/myfn.fish", "function myfn; echo myfn; end\n")
+      FileUtils.mkdir_p("#{data}/functions")
+      File.write("#{data}/functions/myfn.fish", "function myfn; echo myfn; end\n")
       File.write("#{cfg}/tools.fish", "set -g ORDER tools\n")
       File.write("#{cfg}/extra.fish", "set -a ORDER extra\n")
       _, berr, bst = Open3.capture3(env, @wayu_bin, 'build')
