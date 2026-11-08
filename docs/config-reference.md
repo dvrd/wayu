@@ -277,8 +277,6 @@ Each entry is `key = "directory"`.
   in `[paths]` is moved to wayu's position but never removed. In zsh the
   session also gets `typeset -U path`. In fish the dirs move to the front in
   `[paths]` order, like `fish_add_path -gpm`.
-- Without any `[paths]` table, `core.<ext>` still sources the legacy
-  `path.<ext>`; once the table exists (even empty) it never does.
 
 ### `[aliases]`
 
@@ -737,13 +735,12 @@ every shell initialized in the data dir.
 
 | File (data dir) | Content |
 |---|---|
-| `init.<ext>` | Entry point your rc file sources. Written by `wayu init`. An unmodified copy is replaced when the template changes (backup first); an edited one is kept, with a warning. |
+| `init.<ext>` | Entry point your rc file sources: loads `core.<ext>` (prints a hint to run `wayu build` when it is missing). Written by `wayu init`. An unmodified copy is replaced when the template changes (backup first); an edited one is kept, with a warning. |
 | `core.<ext>` | Everything `init.<ext>` loads, precomputed from `wayu.toml` (zsh also `core.zsh.zwc`, compiled in the background). |
 | `path_sync.<ext>` | The `[paths]` list; line 1 is its signature. The prompt hook re-sources it when the signature changes. |
 | `turbo.<ext>` | zsh/bash. Same content as `core.<ext>`, refreshed with it, only if it exists (created by `wayu export`). |
 | `plugins.<ext>` | Plugin loader, regenerated on any `plugin` change and by `wayu init`. |
 | `plugins/config.zsh` | `[settings] autosuggestions_accept_keys` bindings. |
-| `path.<ext>`, `aliases.<ext>`, `constants.<ext>` | Legacy files created by `wayu init`; read only by the fallback path of `init.<ext>` when `core.<ext>` is missing (and `path.<ext>` when `wayu.toml` has no `[paths]` table). |
 | `backup/` | Timestamped backups, 5 newest per file (see `wayu backup`). |
 
 Also `$WAYU_CONFIG_DIR/.wayu.lock` (lock shared by concurrent wayu commands)

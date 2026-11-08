@@ -27,13 +27,9 @@ ConfigEntry :: struct {
 // ConfigEntrySpec defines how to work with a specific entry type (Strategy Pattern)
 ConfigEntrySpec :: struct {
 	type:             ConfigEntryType,
-	file_name:        string,                // legacy shell file stem: "path", "aliases", "constants"
 	cli_name:         string,                // command word in help/usage text: "path", "alias", "const"
 	display_name:     string,                // e.g., "PATH", "Alias", "Constant"
 	icon:             string,                // e.g., "📂", "🔑", "💾"
-
-	// Reads one line of a legacy (pre-wayu.toml) shell config file
-	parse_line:       proc(string) -> (ConfigEntry, bool),
 
 	// Optional special actions
 	has_clean:        bool,                  // PATH has clean action
@@ -245,52 +241,24 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 	}
 }
 
-// Helper: Read all entries of `spec`'s type. wayu.toml is the source of
-// truth, so when it exists (modern schema) entries come from its tables;
-// the legacy shell file is only consulted for pre-migration installs.
+// Helper: Read all entries of `spec`'s type from wayu.toml (none when it
+// is missing or unreadable).
 read_config_entries :: proc(spec: ^ConfigEntrySpec) -> []ConfigEntry {
 	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	has_toml := os.exists(toml_path)
 	delete(toml_path)
-	if has_toml {
-		if _, ok := get_cached_toml_content(); ok {
-			switch spec.type {
-			case .PATH:
-				entries := read_toml_path_entries()
-				return entries[:]
-			case .ALIAS:
-				return read_toml_alias_entries()
-			case .CONSTANT:
-				return read_wayu_toml_constants()
-			}
-		}
+	if !has_toml { return {} }
+	if _, ok := get_cached_toml_content(); !ok { return {} }
+	switch spec.type {
+	case .PATH:
+		entries := read_toml_path_entries()
+		return entries[:]
+	case .ALIAS:
+		return read_toml_alias_entries()
+	case .CONSTANT:
+		return read_wayu_toml_constants()
 	}
-
-	config_file := get_config_file_with_fallback(spec.file_name, wayu.shell)
-	defer delete(config_file)
-
-	content, read_ok := safe_read_file(config_file)
-	if !read_ok { return {} }
-	defer delete(content)
-
-	content_str := string(content)
-	// Use temp allocator for the lines array since it's only needed during this function
-	lines := strings.split(content_str, "\n", context.temp_allocator)
-	// No need to defer delete - temp allocator manages this
-
-	entries := make([dynamic]ConfigEntry)
-
-	for line in lines {
-		entry, ok := spec.parse_line(line)
-		if ok {
-			append(&entries, entry)
-		}
-	}
-
-	result := make([]ConfigEntry, len(entries))
-	copy(result, entries[:])
-	delete(entries)
-	return result
+	return {}
 }
 
 // Helper: Parse command line args to entry

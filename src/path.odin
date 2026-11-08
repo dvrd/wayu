@@ -1047,7 +1047,7 @@ toml_path_remove_result :: proc(target: string) -> PathOpResult {
 	}
 	// Resolve the target the same way toml_path_add does (~, $VAR, relative →
 	// absolute) so `wayu path rm ./bin` matches what `wayu path add ./bin` stored.
-	// Stored values are expanded too, covering legacy unexpanded entries.
+	// Stored values are expanded too, covering hand-written unexpanded entries.
 	if match_idx < 0 {
 		for e, i in existing {
 			if path_values_equal(e.path, target) { match_idx = i; break }

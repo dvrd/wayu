@@ -366,9 +366,6 @@ wayu stores everything under `~/.config/wayu/` — the files you edit and the fi
   turbo.{zsh,bash}          # optional copy of core via `wayu export` (zsh/bash only)
   completions/              # shell completion scripts
   backup/                   # timestamped backups (last 5 per file)
-  path.{zsh,bash}           # legacy PATH entries (bootstrap/back-compat)
-  aliases.{zsh,bash}        # legacy alias definitions (bootstrap/back-compat)
-  constants.{zsh,bash}      # legacy env exports (bootstrap/back-compat)
 ```
 
 Shell is detected automatically from `$SHELL`. Override with `--shell bash`, `--shell zsh`, or `--shell fish`.

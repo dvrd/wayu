@@ -948,8 +948,7 @@ add_completion :: proc(name: string, source_path: string) {
 	cleanup_old_backups(dest_path, 5)
 
 	print_success("Added completion: %s", completion_name)
-	init_file := get_config_file_with_fallback("init", wayu.shell)
-	defer delete(init_file)
+	init_file := fmt.tprintf("%s/init.%s", wayu.data, wayu.shell_ext)
 	fmt.printfln("\n%sNext steps:%s", BRIGHT_CYAN, RESET)
 	fmt.printfln("  source %s", init_file)
 	fmt.printfln("  or restart your shell")

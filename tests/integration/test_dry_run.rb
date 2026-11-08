@@ -392,14 +392,9 @@ class DryRunIntegrationTest
   def test_dry_run_no_file_changes
     print "Test 6: Dry-run doesn't modify files... "
 
-    # Get initial file states
-    path_file = "#{@config_dir}/path.zsh"
-    aliases_file = "#{@config_dir}/aliases.zsh"
-    constants_file = "#{@config_dir}/constants.zsh"
-
-    path_mtime = File.exist?(path_file) ? File.mtime(path_file) : nil
-    aliases_mtime = File.exist?(aliases_file) ? File.mtime(aliases_file) : nil
-    constants_mtime = File.exist?(constants_file) ? File.mtime(constants_file) : nil
+    # Get initial file states (wayu.toml holds every entry; core is generated)
+    files = %w[wayu.toml core.zsh].map { |f| "#{@config_dir}/#{f}" }
+    before = files.map { |f| File.exist?(f) ? [File.mtime(f), File.read(f)] : nil }
 
     # Run dry-run commands
     run_wayu("--dry-run path add /tmp")
@@ -407,13 +402,9 @@ class DryRunIntegrationTest
     run_wayu("--dry-run constants add TEST_VAR value")
 
     # Check that files weren't modified
-    path_mtime_after = File.exist?(path_file) ? File.mtime(path_file) : nil
-    aliases_mtime_after = File.exist?(aliases_file) ? File.mtime(aliases_file) : nil
-    constants_mtime_after = File.exist?(constants_file) ? File.mtime(constants_file) : nil
+    after = files.map { |f| File.exist?(f) ? [File.mtime(f), File.read(f)] : nil }
 
-    if path_mtime == path_mtime_after &&
-       aliases_mtime == aliases_mtime_after &&
-       constants_mtime == constants_mtime_after
+    if before == after
       puts "✓"
       @passed += 1
     else

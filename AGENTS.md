@@ -154,7 +154,6 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 - Reading: always through `src/toml_parse.odin` (strict for validate/doctor/backup, lenient elsewhere).
 - Writing: the line-level editor in `src/toml.odin` (`toml_kv_upsert` / `toml_kv_delete`) keeps comments and order; writes go through `write_file_atomic` under the config lock.
 - Generated shell code: `src/init_generator.odin` compiles wayu.toml into `core.<ext>` (the one file `init.<ext>` sources) and `path_sync.<ext>`; never edit those by hand.
-- Legacy `path/aliases/constants.<ext>` files (pre-3.10 layout) are only read by `init.<ext>`'s fallback when `core.<ext>` is missing.
 
 ### TUI Architecture (src/tui_core.odin, tui_views.odin, tui_io.odin)
 

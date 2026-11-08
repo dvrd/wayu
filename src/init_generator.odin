@@ -253,7 +253,7 @@ KNOWN_INIT_TEMPLATE_HASHES :: [?]u64{
 	// zsh
 	0x20e135c4c9aacd58, 0x7e48fffaa40fd9cd, 0xfff333ca896c0bd4, 0xf47f9eb2ad3f7a2e,
 	0xc21f6b2d093d821d, 0x1039f30345ae10c2, 0x6d16cfee3fafd79a, 0xd4268444521bc452,
-	0x6fdcb522c8338802, 0x100ab1dc1aaa0359,
+	0x6fdcb522c8338802, 0x100ab1dc1aaa0359, 0x96ea40ba08bbab77,
 	// zsh, up to 3.9.x (constant named INIT_TEMPLATE)
 	0x7cb798f31c5e9bf3, 0xf589a7f2a854c4f8, 0x0ed9ea7c3d50f1f7, 0x7e06c7c4e44fb51a,
 	0xb8566ffbbe52f44a, 0xe6fd0cd064d1544d,
@@ -261,10 +261,11 @@ KNOWN_INIT_TEMPLATE_HASHES :: [?]u64{
 	0x0bc23094b9dcc819, 0x345463d2228a44de, 0x543c0b71a5b798a0, 0x548df0bd4c4ddc00,
 	0x75a7bff5ff0d78d8, 0xb3ea0c621ce39dca, 0xbc078574f43e51c3, 0xcd692c96fb307bc6,
 	0xeda95b039229221f, 0xf6f35b1b81a854eb, 0xfe701bb066ded146, 0x1f4103ef74c755c5,
-	0x88d743add8a2bfc1, 0xa1414d3a52e03f37,
+	0x88d743add8a2bfc1, 0xa1414d3a52e03f37, 0xb2b8327b7b68ed26,
 	// fish
 	0x369d4d3c4c55995b, 0x3b71cd7d4b1f4c4b, 0x81f2ef4bb8cf4a9b, 0x8d915b6ee6512f58,
 	0x95f11f05208fadde, 0xc57f0c8b32f09433, 0x8d68552f17d12e1f, 0x720d83a5f623cf53,
+	0xfda840b65f7815f1,
 }
 
 is_known_init_template :: proc(content: string) -> bool {
@@ -843,20 +844,6 @@ read_wayu_toml_path_values :: proc() -> [dynamic]string {
 	return values
 }
 
-// True when wayu.toml has a `[name]` table header (even an empty table).
-toml_has_table :: proc(name: string) -> bool {
-	content, ok := get_cached_toml_content()
-	if !ok { return false }
-	arena: virtual.Arena
-	if virtual.arena_init_growing(&arena) != nil { return false }
-	defer virtual.arena_destroy(&arena)
-	doc, _ := toml_doc_parse_alloc(content, virtual.arena_allocator(&arena))
-	for h in doc.headers {
-		if !h.invalid && !h.array && len(h.path) == 1 && h.path[0] == name { return true }
-	}
-	return false
-}
-
 // Absolute path of the running binary when it was invoked by path
 // (os.args[0] contains '/'), else "" so the hook falls back to PATH lookup.
 // Not symlink-resolved: /opt/homebrew/bin/wayu must survive `brew upgrade`.
@@ -1029,12 +1016,6 @@ build_core_content :: proc(mask := false) -> string {
 		fmt.sbprintfln(&b, "_WAYU_BIN=%s", shell_double_quote_literal(bin, context.temp_allocator))
 	}
 	fmt.sbprintfln(&b, "_WAYU_TOML_FILE=%s", shell_double_quote_literal(fmt.tprintf("%s/wayu.toml", wayu.config), context.temp_allocator))
-	// Legacy path.<ext> only for configs that never had a [paths] table:
-	// once [paths] exists (even emptied by `path rm`), old entries must not
-	// come back.
-	if !toml_has_table("paths") {
-		emit_source_if_exists(&b, fmt.tprintf("%s/path.%s", wayu.data, shell_ext))
-	}
 	{
 		values, sig := read_path_sync_values()
 		defer {

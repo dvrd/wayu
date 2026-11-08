@@ -44,7 +44,7 @@ import "core:strings"
 
 // ensure_wayu_toml_exists creates a minimal wayu.toml scaffold if the file is
 // absent. Used by alias/constants/path dispatchers so writes always land in
-// TOML instead of the legacy shell-file path. If the wayu config directory
+// wayu.toml. If the wayu config directory
 // itself doesn't exist we leave things untouched so downstream code can
 // report the standard "wayu not initialized" error.
 ensure_wayu_toml_exists :: proc() -> bool {

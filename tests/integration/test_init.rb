@@ -43,7 +43,6 @@ class InitIntegrationTest
       test_hand_edits_reach_open_shells
       test_build_eval_uses_evaluating_shell
       test_rewrite_drops_stale_zwc
-      test_legacy_path_file_not_resurrected
       test_prompt_opt_in_and_escaping
     ensure
       teardown_test_env
@@ -99,14 +98,15 @@ class InitIntegrationTest
     print "Test 2: Init creates config files... "
 
     required_files = [
-      "#{@data_dir}/path.zsh",
-      "#{@data_dir}/aliases.zsh",
-      "#{@data_dir}/constants.zsh",
       "#{@data_dir}/init.zsh",
+      "#{@data_dir}/core.zsh",
+      "#{@config_dir}/wayu.toml",
       "#{@config_dir}/tools.zsh"
     ]
+    # No per-type shell files: wayu.toml holds paths, aliases and env.
+    stale_files = %w[path aliases constants].map { |b| "#{@data_dir}/#{b}.zsh" }
 
-    all_exist = required_files.all? { |file| File.exist?(file) }
+    all_exist = required_files.all? { |file| File.exist?(file) } && stale_files.none? { |f| File.exist?(f) }
 
     if all_exist
       puts "✓"
@@ -164,9 +164,6 @@ class InitIntegrationTest
 
     # Check that each file has proper shebang and structure (relaxed checks)
     files_to_check = {
-      "#{@data_dir}/path.zsh" => ["WAYU_PATHS"],
-      "#{@data_dir}/aliases.zsh" => ["alias"],
-      "#{@data_dir}/constants.zsh" => [],
       "#{@data_dir}/init.zsh" => ["source"],
       "#{@config_dir}/tools.zsh" => []  # May be empty
     }
@@ -192,17 +189,17 @@ class InitIntegrationTest
   end
 
   def test_init_file_orchestration
-    print "Test 6: Init file orchestrates all configs... "
+    print "Test 6: Init file sources the compiled core only... "
 
     init_content = File.read("#{@data_dir}/init.zsh")
+    core_content = File.read("#{@data_dir}/core.zsh")
 
-    # Should source all config files in correct order
-    sources_path = init_content.include?("path.zsh")
-    sources_aliases = init_content.include?("aliases.zsh")
-    sources_constants = init_content.include?("constants.zsh")
-    sources_tools = init_content.include?("tools.zsh")
+    # init.zsh loads core.zsh; core.zsh sources tools.zsh. No per-type files.
+    sources_core = init_content.include?("core.zsh")
+    no_legacy = %w[path.zsh aliases.zsh constants.zsh].none? { |f| init_content.include?(f) }
+    sources_tools = core_content.include?("tools.zsh")
 
-    if sources_path && sources_aliases && sources_constants && sources_tools
+    if sources_core && no_legacy && sources_tools
       puts "✓"
       @passed += 1
     else
@@ -263,7 +260,7 @@ class InitIntegrationTest
     output, status = run_wayu("--dry-run init")
 
     # In dry-run mode, should not create files or show preview
-    if !File.exist?("#{@data_dir}/path.zsh") || output.include?("DRY RUN") || output.include?("Would")
+    if !File.exist?("#{@data_dir}/init.zsh") || output.include?("DRY RUN") || output.include?("Would")
       puts "✓"
       @passed += 1
     else
@@ -374,10 +371,8 @@ class InitIntegrationTest
     plugins_ok = core.include?("#{cfg}/plugins.#{shell}\" ]; then source")
     extra_count = all.scan(/source "[^"]*extra\.#{shell}"/).size
     tools_count = all.scan(/source "[^"]*tools\.#{shell}"/).size
-    # init.<ext> legacy fallback also sources them, but after `return` on the
-    # fast path; count only the fast path + core.
-    init_fast = File.read("#{cfg}/init.#{shell}").split('# === Legacy fallback').first
-    fast_extra = init_fast.scan(/source "[^"]*(extra|tools)\.#{shell}"/).size
+    # init.<ext> only sources core, which sources them (once each).
+    fast_extra = File.read("#{cfg}/init.#{shell}").scan(/source "[^"]*(extra|tools)\.#{shell}"/).size
     # [paths] values are expanded by the shell: check the resulting PATH.
     out, = Open3.capture3(env.merge('PATH' => '/usr/bin:/bin'), shell, '-c',
                           ". '#{cfg}/core.#{shell}' >/dev/null 2>&1; echo \"$PATH\"")
@@ -386,7 +381,7 @@ class InitIntegrationTest
     order_ok = entries[0, 3] == ["#{home}/pz", "#{home}/pa", "#{home}/p m"] &&
                entries.none? { |e| e.include?('nonexistent') }
     zsh_only_leak = shell == 'bash' && (core.include?('compinit') || core.include?('add-zsh-hook') || core.include?('helpers.zsh') || core.include?('lazy.zsh'))
-    if plugins_ok && fast_extra == 0 && extra_count == 2 && tools_count == 2 && order_ok && !zsh_only_leak && split_left.empty?
+    if plugins_ok && fast_extra == 0 && extra_count == 1 && tools_count == 1 && order_ok && !zsh_only_leak && split_left.empty?
       puts "✓"; @passed += 1
     else
       puts "✗"
@@ -742,27 +737,6 @@ class InitIntegrationTest
       else
         puts "✗"; puts "  out=#{out.inspect} err=#{err.strip[0, 300]} sh_files=#{sh_files}"; @failed += 1
       end
-    end
-  end
-
-  # OKAMI-213 (GEN-20): once wayu.toml has a [paths] table, removing its last
-  # entry must not resurrect the legacy path.<ext> entries.
-  def test_legacy_path_file_not_resurrected
-    print "Test: removing last [paths] entry doesn't resurrect legacy path.zsh... "
-    home, env = sync_home('legacy', ['zsh'], %w[old new])
-    cfg = "#{home}/.config/wayu"
-    File.write("#{cfg}/path.zsh", "export PATH=\"$HOME/old:$PATH\"\n")
-    add = Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'add', "#{home}/new")
-    rm = Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'rm', "#{home}/new", '--yes')
-    out, = Open3.capture3(env, '/bin/zsh', '-fc', ". '#{cfg}/core.zsh' >/dev/null 2>&1; echo \"$PATH\"")
-    entries = out.strip.split(':')
-    if !entries.include?("#{home}/old") && !entries.include?("#{home}/new")
-      puts "✓"; @passed += 1
-    else
-      puts "✗"; puts "  PATH=#{out.strip}"; @failed += 1
-      [['add', add], ['rm', rm]].each { |n, (o, e, st)| puts "  #{n}: exit=#{st.exitstatus} out=#{o.strip[0, 300]} err=#{e.strip[0, 300]}" }
-      puts "  wayu.toml=#{File.read("#{cfg}/wayu.toml").inspect rescue 'missing'}"
-      puts "  core path lines=#{File.read("#{cfg}/core.zsh").lines.grep(/path/i).first(8).map(&:strip)}"
     end
   end
 

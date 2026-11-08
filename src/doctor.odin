@@ -475,11 +475,7 @@ run_step() {
 }
 
 echo "=== Phase 1: Core Config ==="
-# Post-migration: core.zsh is the compiled source of truth.
-# Legacy per-type files are fallback-only.
 run_step "core.zsh" source "$HOME/.config/wayu/core.zsh" 2>/dev/null || true
-run_step "constants.zsh (legacy)" source "$HOME/.config/wayu/constants.zsh" 2>/dev/null || true
-run_step "path.zsh (legacy)" source "$HOME/.config/wayu/path.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 2: Functions ==="
@@ -498,7 +494,6 @@ run_step "plugin config" source "$HOME/.config/wayu/plugins/config.zsh" 2>/dev/n
 
 echo ""
 echo "=== Phase 5: Aliases & Tools ==="
-run_step "aliases.zsh (legacy)" source "$HOME/.config/wayu/aliases.zsh" 2>/dev/null || true
 run_step "tools.zsh" source "$HOME/.config/wayu/tools.zsh" 2>/dev/null || true
 
 echo ""
@@ -818,8 +813,7 @@ check_bash_prompt_command :: proc(results: ^[dynamic]CheckResult) {
 	})
 }
 
-// Check 3: PATH entries — read from wayu.toml [paths] (the source of truth),
-// not the legacy path.<ext> file.
+// Check 3: PATH entries — read from wayu.toml [paths].
 check_path_entries :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
 	arena_alloc := get_doctor_allocator()

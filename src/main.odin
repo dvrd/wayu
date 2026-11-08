@@ -20,11 +20,6 @@ AppContext :: struct {
 	data:           string,  // generated/runtime files (defaults to ~/.config/wayu; WAYU_DATA_DIR override)
 	shell:          ShellType,
 	shell_ext:      string,
-	path_file:      string,
-	alias_file:     string,
-	constants_file: string,
-	init_file:      string,
-	tools_file:     string,
 	dry_run:        bool,
 	yes_flag:       bool,
 	json_output:    bool,
@@ -104,37 +99,9 @@ init_app_context :: proc(ctx: ^AppContext) {
 
 	ctx.shell = detect_shell()
 	ctx.shell_ext = get_shell_extension(ctx.shell)
-
-	// Use static strings for per-shell filenames (avoids 5 heap allocations)
-	switch ctx.shell {
-	case .ZSH:
-		ctx.path_file      = "path.zsh"
-		ctx.alias_file     = "aliases.zsh"
-		ctx.constants_file = "constants.zsh"
-		ctx.init_file      = "init.zsh"
-		ctx.tools_file     = "tools.zsh"
-	case .BASH:
-		ctx.path_file      = "path.bash"
-		ctx.alias_file     = "aliases.bash"
-		ctx.constants_file = "constants.bash"
-		ctx.init_file      = "init.bash"
-		ctx.tools_file     = "tools.bash"
-	case .FISH:
-		ctx.path_file      = "path.fish"
-		ctx.alias_file     = "aliases.fish"
-		ctx.constants_file = "constants.fish"
-		ctx.init_file      = "init.fish"
-		ctx.tools_file     = "tools.fish"
-	case .UNKNOWN:
-		ctx.path_file      = "path.zsh"
-		ctx.alias_file     = "aliases.zsh"
-		ctx.constants_file = "constants.zsh"
-		ctx.init_file      = "init.zsh"
-		ctx.tools_file     = "tools.zsh"
-	}
 }
 
-// Legacy shim — tests call this, so keep the name but populate wayu.
+// Populate `wayu` once (tests call it too).
 // Idempotent: skips if config or data are already set (avoids overwriting test overrides).
 init_shell_globals :: proc() {
 	if len(wayu.config) > 0 || len(wayu.data) > 0 do return
@@ -220,13 +187,6 @@ main :: proc() {
 	}
 
 	init_shell_globals()
-	// Note: the legacy `init_config_files()` startup call was removed on
-	// 2026-04-24 (code review L4). It did 4 `os.exists` syscalls on every CLI
-	// invocation to auto-create empty path/aliases/constants/extra legacy
-	// shell files, which are shadowed by wayu.toml anyway. Use explicit
-	// `wayu init` (which still calls init_shell_configs) for first-time
-	// bootstrap. The main TOML flow calls `ensure_wayu_toml_exists()` on
-	// demand, so `wayu path add /foo` on a fresh install still works.
 
 	// No arguments → launch TUI (the primary interface)
 	if len(os.args) < 2 {
@@ -487,9 +447,7 @@ print_init_dry_run :: proc(shell: ShellType, ext: string) {
 		base := wayu.config if sub == "functions" else wayu.data
 		would(fmt.tprintf("%s/%s", base, sub), "directory")
 	}
-	for name in ([]string{"path", "aliases", "constants", "init"}) {
-		would(fmt.tprintf("%s/%s.%s", wayu.data, name, ext), "file")
-	}
+	would(fmt.tprintf("%s/init.%s", wayu.data, ext), "file")
 	for name in ([]string{"tools", "extra"}) {
 		would(fmt.tprintf("%s/%s.%s", wayu.config, name, ext), "file")
 	}
@@ -517,9 +475,6 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		template: proc(ShellType) -> string,
 		dir:      string,  // which base directory to use
 	}{
-		{"path", get_path_template, wayu.data},
-		{"aliases", get_aliases_template, wayu.data},
-		{"constants", get_constants_template, wayu.data},
 		{"init", get_init_template, wayu.data},
 		{"tools", get_tools_template, wayu.config},
 		{"extra", get_extra_template, wayu.config},
@@ -695,8 +650,7 @@ print_init_help :: proc() {
 	fmt.println("  wayu.toml (the config every command edits), init.<ext> (source it from")
 	fmt.println("  your rc file), extra.<ext> and tools.<ext> (your own shell code),")
 	fmt.println("  alias-sources.conf, functions/, completions/ and plugins/, then generates")
-	fmt.println("  core.<ext>. The path/aliases/constants.<ext> files it writes are legacy")
-	fmt.println("  stubs: wayu.toml is the source of truth.")
+	fmt.println("  core.<ext>.")
 	fmt.println("  Safe to re-run — existing files are preserved.")
 	fmt.println()
 	fmt.println("  --template <name>  Then apply a template (see 'wayu template list');")

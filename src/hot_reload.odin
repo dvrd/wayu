@@ -258,7 +258,6 @@ print_watch_help :: proc() {
 	fmt.println()
 	fmt.println("The watcher monitors:")
 	fmt.println("  • wayu.toml")
-	fmt.println("  • legacy path/aliases/constants.<ext> files, when they exist")
 	fmt.println()
 	fmt.println("Changes are debounced (500ms) before triggering regeneration.")
 }
@@ -558,30 +557,6 @@ get_default_watch_paths :: proc() -> []string {
 		append(&paths, toml_path)
 	} else {
 		delete(toml_path)
-	}
-
-	// Individual config files. Important: delete the path string ONLY when we
-	// didn't hand it off to the paths array — otherwise the array ends up
-	// holding a dangling pointer and later clones emit garbage bytes.
-	path_file := get_config_file_with_fallback("path", wayu.shell)
-	if os.exists(path_file) {
-		append(&paths, path_file)
-	} else {
-		delete(path_file)
-	}
-
-	alias_file := get_config_file_with_fallback("aliases", wayu.shell)
-	if os.exists(alias_file) {
-		append(&paths, alias_file)
-	} else {
-		delete(alias_file)
-	}
-
-	constants_file := get_config_file_with_fallback("constants", wayu.shell)
-	if os.exists(constants_file) {
-		append(&paths, constants_file)
-	} else {
-		delete(constants_file)
 	}
 
 	result := make([]string, len(paths))

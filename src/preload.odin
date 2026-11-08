@@ -6,57 +6,6 @@ import "core:fmt"
 // Preload configuration templates for faster startup
 // This reduces filesystem I/O by embedding common configuration templates
 
-PATH_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
-
-# Centralized PATH registry
-# Managed by wayu - Add entries below
-# Note: add_to_path() calls from v2.x are replaced by WAYU_PATHS array entries
-WAYU_PATHS=(
-)
-
-# Build PATH from registry with deduplication
-for dir in "${WAYU_PATHS[@]}"; do
-    # Check if directory exists
-    if [ ! -d "$dir" ]; then
-        continue
-    fi
-
-    # Check if directory is already in PATH
-    if [[ ":$PATH:" == *":$dir:"* ]]; then
-        continue
-    fi
-
-    # Add to PATH (prepend)
-    export PATH="$dir:$PATH"
-done
-
-# Final deduplication pass (Zsh-compatible method)
-remove_path_duplicates() {
-    local new_path=""
-    local dir
-    local -a dirs
-    dirs=(${(s/:/)PATH})
-    for dir in "${dirs[@]}"; do
-        if [[ ":$new_path:" != *":$dir:"* ]] && [ -n "$dir" ]; then
-            if [ -z "$new_path" ]; then
-                new_path="$dir"
-            else
-                new_path="$new_path:$dir"
-            fi
-        fi
-    done
-    export PATH="$new_path"
-}
-
-remove_path_duplicates
-`
-
-ALIASES_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
-
-# Shell Aliases Configuration
-# This file contains all command aliases and shortcuts
-`
-
 // Template for alias-sources.conf — lists external alias sources shown by
 // "wayu alias list". Not a shell script; plain config format.
 ALIAS_SOURCES_TEMPLATE :: `# alias-sources.conf - External alias source registry
@@ -73,16 +22,10 @@ ALIAS_SOURCES_TEMPLATE :: `# alias-sources.conf - External alias source registry
 #
 `
 
-CONSTANTS_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
-
-# Environment Constants and Configuration Variables
-# This file centralizes all constant definitions and environment variables
-`
-
 INIT_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 
 # Wayu Shell Initialization - Main Orchestrator
-# This file loads all configuration modules in the correct order
+# Sources core.<ext>, which wayu compiles from wayu.toml
 
 # Directories. wayu writes this file into its data dir, so that dir is this
 # file's own location (WAYU_DATA_DIR / WAYU_CONFIG_DIR given to wayu need not
@@ -95,63 +38,14 @@ if [ -z "${WAYU_CONFIG_DIR-}" ]; then
     if [ -f "$WAYU_DATA_DIR/wayu.toml" ]; then WAYU_CONFIG_DIR=$WAYU_DATA_DIR; else WAYU_CONFIG_DIR=$HOME/.config/wayu; fi
 fi
 
-# === Fast path: compiled core from wayu.toml ===
-# After wayu v3.10 wayu.toml is the source of truth. 'wayu path/alias/
-# constants add', 'wayu template apply' and 'wayu build eval' all write
-# into core.zsh. When it exists we source it exclusively — the legacy
-# individual files below stay empty and would just be no-ops anyway.
-# core.zsh itself sources plugins.zsh, tools.zsh and extra.zsh (once each),
-# so nothing else is sourced here.
+# === Compiled core ===
+# core.zsh is generated from wayu.toml (any wayu write, or 'wayu build') and
+# sources plugins.zsh, tools.zsh and extra.zsh itself (once each).
 if [ -f "$WAYU_DATA_DIR/core.zsh" ]; then
     source "$WAYU_DATA_DIR/core.zsh"
-    return 0 2>/dev/null || true
+else
+    echo "wayu: $WAYU_DATA_DIR/core.zsh is missing; run 'wayu build'" >&2
 fi
-
-# === Legacy fallback (pre-wayu.toml era) ===
-
-# === 1. Core Configuration ===
-# Load constants and environment variables first (they may be needed by other modules)
-source "$WAYU_DATA_DIR/constants.zsh"
-
-# === 2. PATH Configuration ===
-# Set up PATH with duplicate prevention
-source "$WAYU_DATA_DIR/path.zsh"
-
-# === 3. Functions Loading ===
-# Load custom shell functions from the functions directory
-() { emulate -L zsh; typeset -ga _wayu_fn_files; _wayu_fn_files=( "$WAYU_CONFIG_DIR/functions"/*(N-.) ) }
-for _wayu_f in "${_wayu_fn_files[@]}"; do source "$_wayu_f"; done
-unset _wayu_f _wayu_fn_files
-
-# === 4. Completions Setup ===
-# Add custom completions directory to fpath
-fpath=("$WAYU_DATA_DIR/completions" "${fpath[@]}")
-
-# Initialize completion system
-autoload -U add-zsh-hook compinit
-compinit
-
-# === 5. Plugins Loading ===
-# Load Wayu-managed plugins
-if [ -f "$WAYU_DATA_DIR/plugins.zsh" ]; then source "$WAYU_DATA_DIR/plugins.zsh"; fi
-if [ -f "$WAYU_DATA_DIR/plugins/config.zsh" ]; then source "$WAYU_DATA_DIR/plugins/config.zsh"; fi
-
-# === 6. Aliases ===
-# Load command aliases and shortcuts
-source "$WAYU_DATA_DIR/aliases.zsh"
-
-# === 7. External Tools Initialization ===
-# Initialize external tools and utilities (NVM, Starship, Zoxide, etc.)
-source "$WAYU_CONFIG_DIR/tools.zsh"
-
-# === Completion Notes ===
-# Additional completions are loaded from:
-# - $WAYU_DATA_DIR/completions (jj, bun, etc.)
-# - Tools may add their own completions during initialization
-
-# === 8. Extra Config ===
-# User-defined shell snippets (hooks, env loaders, ad-hoc settings)
-if [ -f "$WAYU_CONFIG_DIR/extra.zsh" ]; then source "$WAYU_CONFIG_DIR/extra.zsh"; fi
 `
 
 TOOLS_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
@@ -191,65 +85,10 @@ EXTRA_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 `
 
 // Bash-compatible templates
-PATH_TEMPLATE_BASH :: `#!/usr/bin/env bash
-
-# Centralized PATH registry
-# Managed by wayu - Add entries below
-WAYU_PATHS=(
-)
-
-# Build PATH from registry with deduplication
-for dir in "${WAYU_PATHS[@]}"; do
-    # Check if directory exists
-    if [ ! -d "$dir" ]; then
-        continue
-    fi
-
-    # Check if directory is already in PATH
-    if [[ ":$PATH:" == *":$dir:"* ]]; then
-        continue
-    fi
-
-    # Add to PATH (prepend)
-    export PATH="$dir:$PATH"
-done
-
-# Final deduplication pass (Bash-compatible method)
-remove_path_duplicates() {
-    local new_path=""
-    local dir
-    IFS=':' read -ra DIRS <<< "$PATH"
-    for dir in "${DIRS[@]}"; do
-        if [[ ":$new_path:" != *":$dir:"* ]] && [ -n "$dir" ]; then
-            if [ -z "$new_path" ]; then
-                new_path="$dir"
-            else
-                new_path="$new_path:$dir"
-            fi
-        fi
-    done
-    export PATH="$new_path"
-}
-
-remove_path_duplicates
-`
-
-ALIASES_TEMPLATE_BASH :: `#!/usr/bin/env bash
-
-# Shell Aliases Configuration
-# This file contains all command aliases and shortcuts
-`
-
-CONSTANTS_TEMPLATE_BASH :: `#!/usr/bin/env bash
-
-# Environment Constants and Configuration Variables
-# This file centralizes all constant definitions and environment variables
-`
-
 INIT_TEMPLATE_BASH :: `#!/usr/bin/env bash
 
 # Wayu Shell Initialization - Main Orchestrator (Bash)
-# This file loads all configuration modules in the correct order
+# Sources core.<ext>, which wayu compiles from wayu.toml
 
 # Directories. wayu writes this file into its data dir, so that dir is this
 # file's own location (WAYU_DATA_DIR / WAYU_CONFIG_DIR given to wayu need not
@@ -264,73 +103,14 @@ if [ -z "${WAYU_CONFIG_DIR-}" ]; then
     if [ -f "$WAYU_DATA_DIR/wayu.toml" ]; then WAYU_CONFIG_DIR=$WAYU_DATA_DIR; else WAYU_CONFIG_DIR=$HOME/.config/wayu; fi
 fi
 
-# === Fast path: compiled core from wayu.toml ===
-# See the zsh template comment for rationale (core.bash itself sources
-# plugins.bash, tools.bash and extra.bash once each).
+# === Compiled core ===
+# core.bash is generated from wayu.toml (any wayu write, or 'wayu build') and
+# sources plugins.bash, tools.bash and extra.bash itself (once each).
 if [ -f "$WAYU_DATA_DIR/core.bash" ]; then
     source "$WAYU_DATA_DIR/core.bash"
-    return 0 2>/dev/null || true
+else
+    echo "wayu: $WAYU_DATA_DIR/core.bash is missing; run 'wayu build'" >&2
 fi
-
-# === Legacy fallback (pre-wayu.toml era) ===
-
-# === 1. Core Configuration ===
-# Load constants and environment variables first (they may be needed by other modules)
-source "$WAYU_DATA_DIR/constants.bash"
-
-# === 2. PATH Configuration ===
-# Set up PATH with duplicate prevention
-source "$WAYU_DATA_DIR/path.bash"
-
-# === 3. Functions Loading ===
-# Load custom shell functions from the functions directory
-if [ -d "$WAYU_CONFIG_DIR/functions" ]; then
-    for f in "$WAYU_CONFIG_DIR/functions"/*; do
-        if [ -f "$f" ]; then
-            source "$f"
-        fi
-    done
-fi
-
-# === 4. Bash Completion ===
-# Initialize Bash programmable completion
-if ! shopt -oq posix; then
-    if [ -f /usr/share/bash-completion/bash_completion ]; then
-        source /usr/share/bash-completion/bash_completion
-    elif [ -f /etc/bash_completion ]; then
-        source /etc/bash_completion
-    fi
-fi
-
-# Load custom completions
-if [ -d "$WAYU_DATA_DIR/completions" ]; then
-    for f in "$WAYU_DATA_DIR/completions"/*.bash-completion; do
-        if [ -f "$f" ]; then
-            source "$f"
-        fi
-    done
-fi
-
-# === 5. Plugins Loading ===
-# Load Wayu-managed plugins
-if [ -f "$WAYU_DATA_DIR/plugins.bash" ]; then source "$WAYU_DATA_DIR/plugins.bash"; fi
-
-# === 6. Aliases ===
-# Load command aliases and shortcuts
-source "$WAYU_DATA_DIR/aliases.bash"
-
-# === 7. External Tools Initialization ===
-# Initialize external tools and utilities (NVM, Starship, Zoxide, etc.)
-source "$WAYU_CONFIG_DIR/tools.bash"
-
-# === Completion Notes ===
-# Additional completions are loaded from:
-# - $WAYU_DATA_DIR/completions (tools may install .bash-completion files)
-# - Tools may add their own completions during initialization
-
-# === 8. Extra Config ===
-# User-defined shell snippets (hooks, env loaders, ad-hoc settings)
-if [ -f "$WAYU_CONFIG_DIR/extra.bash" ]; then source "$WAYU_CONFIG_DIR/extra.bash"; fi
 `
 
 TOOLS_TEMPLATE_BASH :: `#!/usr/bin/env bash
@@ -371,47 +151,10 @@ EXTRA_TEMPLATE_BASH :: `#!/usr/bin/env bash
 `
 
 // Fish shell templates
-PATH_TEMPLATE_FISH :: `#!/usr/bin/env fish
-
-# Centralized PATH registry
-# Managed by wayu - Add entries below
-set -gx WAYU_PATHS
-
-# Build PATH from registry with deduplication
-for dir in $WAYU_PATHS
-    # Check if directory exists
-    if not test -d "$dir"
-        continue
-    end
-
-    # Check if directory is already in PATH
-    if contains "$dir" $PATH
-        continue
-    end
-
-    # Add to PATH (prepend)
-    set -gx PATH "$dir" $PATH
-end
-`
-
-ALIASES_TEMPLATE_FISH :: `#!/usr/bin/env fish
-
-# Shell Aliases Configuration
-# This file contains all command aliases and shortcuts
-# Use 'alias' command for Fish shell
-`
-
-CONSTANTS_TEMPLATE_FISH :: `#!/usr/bin/env fish
-
-# Environment Constants and Configuration Variables
-# This file centralizes all constant definitions and environment variables
-# Use 'set -gx' for exported globals in Fish
-`
-
 INIT_TEMPLATE_FISH :: `#!/usr/bin/env fish
 
 # Wayu Shell Initialization - Main Orchestrator (Fish)
-# This file loads all configuration modules in the correct order
+# Sources core.<ext>, which wayu compiles from wayu.toml
 
 # Directories. wayu writes this file into its data dir, so that dir is this
 # file's own location (WAYU_DATA_DIR / WAYU_CONFIG_DIR given to wayu need not
@@ -430,10 +173,9 @@ if test -z "$WAYU_CONFIG_DIR"
         set -gx WAYU_CONFIG_DIR $HOME/.config/wayu
     end
 end
-# === Fast path: compiled core from wayu.toml ===
-# After wayu v3.10 wayu.toml is the source of truth. When core.fish
-# exists we source it exclusively — the legacy individual files below
-# stay empty and would just be no-ops anyway.
+# === Compiled core ===
+# core.fish is generated from wayu.toml (any wayu write, or 'wayu build');
+# tools.fish and extra.fish follow it.
 if test -f "$WAYU_DATA_DIR/core.fish"
     source "$WAYU_DATA_DIR/core.fish"
     if test -f "$WAYU_CONFIG_DIR/tools.fish"
@@ -442,57 +184,8 @@ if test -f "$WAYU_DATA_DIR/core.fish"
     if test -f "$WAYU_CONFIG_DIR/extra.fish"
         source "$WAYU_CONFIG_DIR/extra.fish"
     end
-    return 0
-end
-
-# === Legacy fallback (pre-wayu.toml era) ===
-
-# === 1. Core Configuration ===
-# Load constants and environment variables first (they may be needed by other modules)
-source "$WAYU_DATA_DIR/constants.fish"
-
-# === 2. PATH Configuration ===
-# Set up PATH with duplicate prevention
-source "$WAYU_DATA_DIR/path.fish"
-
-# === 3. Functions Loading ===
-# Load custom shell functions from the functions directory
-if test -d "$WAYU_CONFIG_DIR/functions"
-    for f in $WAYU_CONFIG_DIR/functions/*.fish
-        if test -f "$f"
-            source "$f"
-        end
-    end
-end
-
-# === 4. Completions Setup ===
-# Fish completions are loaded from ~/.config/fish/completions/
-# Add wayu completions path if exists
-if test -d "$WAYU_DATA_DIR/completions"
-    set -gx fish_complete_path "$WAYU_DATA_DIR/completions" $fish_complete_path
-end
-
-# === 5. Plugins Loading ===
-# Load Wayu-managed plugins
-if test -f "$WAYU_DATA_DIR/plugins.fish"
-    source "$WAYU_DATA_DIR/plugins.fish"
-end
-if test -f "$WAYU_DATA_DIR/plugins/config.fish"
-    source "$WAYU_DATA_DIR/plugins/config.fish"
-end
-
-# === 6. Aliases ===
-# Load command aliases and shortcuts
-source "$WAYU_DATA_DIR/aliases.fish"
-
-# === 7. External Tools Initialization ===
-# Initialize external tools and utilities (NVM, Starship, Zoxide, etc.)
-source "$WAYU_CONFIG_DIR/tools.fish"
-
-# === 8. Extra Config ===
-# User-defined shell snippets (hooks, env loaders, ad-hoc settings)
-if test -f "$WAYU_CONFIG_DIR/extra.fish"
-    source "$WAYU_CONFIG_DIR/extra.fish"
+else
+    echo "wayu: $WAYU_DATA_DIR/core.fish is missing; run 'wayu build'" >&2
 end
 `
 
@@ -543,7 +236,7 @@ init_config_file :: proc(file_path: string, template: string) -> bool {
 
 	debug("Creating config file: %s", file_path)
 
-	// Owner-only: wayu.toml and the legacy constants file hold [env] secrets.
+	// Owner-only: wayu.toml holds [env] secrets.
 	write_err := os.write_entire_file(file_path, transmute([]byte)template, SECRET_FILE_PERMS)
 	if write_err != nil {
 		debug("Failed to create config file: %s", file_path)
@@ -556,13 +249,13 @@ init_config_file :: proc(file_path: string, template: string) -> bool {
 
 // Template selection functions based on shell type.
 //
-// All six getters pick one of three shell-specific templates for the current
+// The getters pick one of three shell-specific templates for the current
 // `ShellType`. They all share the same dispatch logic, so they delegate to
 // `select_template`. `.UNKNOWN` falls back to the Bash template for POSIX-ish
 // compatibility.
 //
 // NOTE: keep these as named procs (not inlined) so they can be used as
-// function pointers — see `main.odin:778-783` where they're stored in a slice.
+// function pointers — init_shell_configs stores them in a slice.
 
 select_template :: proc(shell: ShellType, zsh, bash, fish: string) -> string {
 	switch shell {
@@ -578,18 +271,6 @@ select_template :: proc(shell: ShellType, zsh, bash, fish: string) -> string {
 	return bash
 }
 
-get_path_template :: proc(shell: ShellType) -> string {
-	return select_template(shell, PATH_TEMPLATE_ZSH, PATH_TEMPLATE_BASH, PATH_TEMPLATE_FISH)
-}
-
-get_aliases_template :: proc(shell: ShellType) -> string {
-	return select_template(shell, ALIASES_TEMPLATE_ZSH, ALIASES_TEMPLATE_BASH, ALIASES_TEMPLATE_FISH)
-}
-
-get_constants_template :: proc(shell: ShellType) -> string {
-	return select_template(shell, CONSTANTS_TEMPLATE_ZSH, CONSTANTS_TEMPLATE_BASH, CONSTANTS_TEMPLATE_FISH)
-}
-
 get_init_template :: proc(shell: ShellType) -> string {
 	return select_template(shell, INIT_TEMPLATE_ZSH, INIT_TEMPLATE_BASH, INIT_TEMPLATE_FISH)
 }
@@ -600,37 +281,4 @@ get_tools_template :: proc(shell: ShellType) -> string {
 
 get_extra_template :: proc(shell: ShellType) -> string {
 	return select_template(shell, EXTRA_TEMPLATE_ZSH, EXTRA_TEMPLATE_BASH, EXTRA_TEMPLATE_FISH)
-}
-
-// Initialize all config files with shell-specific templates
-init_config_files :: proc() {
-	shell := wayu.shell
-	config_dir := fmt.aprintf("%s", wayu.config)
-	defer delete(config_dir)
-
-	// Use fallback-aware config file creation to preserve backward compatibility
-	path_file := get_config_file_with_fallback("path", shell)
-	defer delete(path_file)
-	// Only create if neither the preferred file nor fallback exists
-	if !os.exists(path_file) {
-		init_config_file(path_file, get_path_template(shell))
-	}
-
-	alias_file := get_config_file_with_fallback("aliases", shell)
-	defer delete(alias_file)
-	if !os.exists(alias_file) {
-		init_config_file(alias_file, get_aliases_template(shell))
-	}
-
-	constants_file := get_config_file_with_fallback("constants", shell)
-	defer delete(constants_file)
-	if !os.exists(constants_file) {
-		init_config_file(constants_file, get_constants_template(shell))
-	}
-
-	extra_file := get_config_file_with_fallback("extra", shell)
-	defer delete(extra_file)
-	if !os.exists(extra_file) {
-		init_config_file(extra_file, get_extra_template(shell))
-	}
 }

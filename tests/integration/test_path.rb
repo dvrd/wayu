@@ -144,7 +144,6 @@ class PathIntegrationTest
     File.write(@toml_file, content.rstrip + "\n\n[paths]\n" + lines.join("\n") + "\n")
   end
 
-  # Regression: clean/dedup used to edit the legacy path.zsh, never wayu.toml.
   def test_clean_operates_on_wayu_toml
     print "Test 13: path clean removes missing entries from wayu.toml... "
 

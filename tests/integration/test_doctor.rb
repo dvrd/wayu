@@ -103,7 +103,7 @@ class DoctorIntegrationTest
   end
 
   def test_path_check_reads_wayu_toml
-    print "Test 1: PATH check reads wayu.toml [paths] (not legacy path.zsh)... "
+    print "Test 1: PATH check reads wayu.toml [paths]... "
     write_paths_toml
     out, _ = run_wayu('doctor --no-color')
     ok = out.include?('3 PATH entries') && out.include?('1 missing') && out.include?('1 duplicates')
