@@ -227,6 +227,8 @@ class SecretsStoreIntegrationTest
     check('not converted', st.success? && out.include?('converted') && marker == { 'name' => 'FAKE_CONVERT_KEY', 'secret' => true } &&
           names.include?('FAKE_TOKEN') && names.index('EDITOR') < names.index('FAKE_TOKEN') &&
           !File.read("#{@data_dir}/entries.json").include?('fake-plain') && got.chomp == 'fake-plain-0004', out + err)
+    leaked = Dir.glob("#{@data_dir}/backup/*").select { |f| File.file?(f) && File.binread(f).include?('fake-plain-0004') }
+    check('plaintext left in backups', leaked.empty?, leaked.inspect)
   end
 
   def test_plain_add_over_secret_refused

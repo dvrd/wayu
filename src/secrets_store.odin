@@ -598,13 +598,15 @@ env_store_mark_secret :: proc(name: string, run_only := false) -> (converted: bo
 	store, rerr, rok := entries_read()
 	if !rok { return false, false, rerr }
 	defer entries_store_destroy(&store)
+	plain: string // the plaintext value being converted (owned; wiped below)
+	defer if len(plain) > 0 {
+		crypto.zero_explicit(raw_data(plain), len(plain))
+		delete(plain)
+	}
 	if i := entries_find(&store, .ENV, name); i >= 0 {
 		e := &store.env[i]
 		converted = !e.secret
-		if len(e.value) > 0 {
-			crypto.zero_explicit(raw_data(e.value), len(e.value))
-			delete(e.value)
-		}
+		plain = e.value
 		e.value = ""
 		e.secret = true
 		e.run_only = run_only
@@ -612,7 +614,31 @@ env_store_mark_secret :: proc(name: string, run_only := false) -> (converted: bo
 		append(&store.env, StoreEnv{name = strings.clone(name), secret = true, run_only = run_only})
 	}
 	if !entries_save(&store) { return converted, false, fmt.tprintf("I/O error: could not update %s", ENTRIES_FILE) }
+	if len(plain) > 0 { scrub_entries_backups(plain) }
 	return converted, true, ""
+}
+
+// Delete every entries.json backup that still holds `plain` (as its JSON
+// string form): converting a constant to a secret must not leave its
+// plaintext behind in the backups taken before the conversion.
+@(private = "file")
+scrub_entries_backups :: proc(plain: string) {
+	needle, merr := json.marshal(plain)
+	if merr != nil { return }
+	defer {
+		crypto.zero_explicit(raw_data(needle), len(needle))
+		delete(needle)
+	}
+	backups := list_backups_for_file(entries_file_path())
+	defer free_backup_infos(backups)
+	for b in backups {
+		data, rerr := os.read_entire_file(b.backup_file, context.allocator)
+		if rerr != nil { continue }
+		hit := strings.contains(string(data), string(needle))
+		crypto.zero_explicit(raw_data(data), len(data))
+		delete(data)
+		if hit { os.remove(b.backup_file) }
+	}
 }
 
 // Forget that `name` is a secret constant (const remove): delete its entry.
