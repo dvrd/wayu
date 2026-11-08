@@ -360,9 +360,9 @@ test_is_plugin_installed :: proc(t: ^testing.T) {
 
 @(test)
 test_popular_plugins_registry :: proc(t: ^testing.T) {
-	// Registry should have 62 curated entries (54 zsh/bash + 8 fish-native).
-	testing.expect(t, len(wayu.POPULAR_PLUGINS) == 62,
-		"Popular plugins registry should have 62 entries")
+	// Curated shell plugins (32 zsh/bash + 8 fish-native); binary tools
+	// without a loadable shell file are not listed.
+	testing.expect_value(t, len(wayu.POPULAR_PLUGINS), 40)
 
 	// Test that known plugins exist by key
 	known_plugins := []string{
@@ -370,10 +370,9 @@ test_popular_plugins_registry :: proc(t: ^testing.T) {
 		"autosuggestions",
 		"git-open",
 		"powerlevel10k",
-		"fzf",
 		"forgit",
-		"atuin",
-		"zoxide",
+		"z",
+		"pure-fish",
 	}
 
 	for plugin_name in known_plugins {
@@ -452,7 +451,9 @@ test_get_remote_commit_valid_repo :: proc(t: ^testing.T) {
 @(test)
 test_get_remote_commit_invalid_url :: proc(t: ^testing.T) {
 	// Test with invalid URL (network error expected)
-	invalid_url := "https://invalid-domain-that-does-not-exist-12345.com/repo.git"
+	// Offline: a file:// remote that does not exist fails like an
+	// unreachable host would.
+	invalid_url := fmt.tprintf("file:///tmp/wayu_unit_no_such_remote_%d.git", os.get_pid())
 	branch := "main"
 
 	remote_commit := wayu.get_remote_commit(invalid_url, branch)

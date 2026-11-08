@@ -3,6 +3,7 @@ package wayu
 import "core:c"
 import "core:strings"
 import "core:sys/posix"
+import "core:time"
 
 // run_command runs a subprocess with the given arg array (no shell).
 // Returns true if the process exits with code 0, false otherwise.
@@ -352,5 +353,196 @@ run_command_capture_stderr :: proc(args: []string) -> (ok: bool, stderr_text: st
 
 	ok = posix.WIFEXITED(status) && posix.WEXITSTATUS(status) == 0
 	stderr_text = strings.clone(strings.trim_space(strings.to_string(sb)))
+	return
+}
+
+// An environment variable set in a child process only when the parent's
+// environment does not already define it (the user's value always wins).
+Env_Default :: struct {
+	name:  string,
+	value: string,
+}
+
+// Outcome of run_command_timeout. stdout/stderr are trimmed and ALLOCATED
+// (possibly empty) — release with command_result_destroy.
+Command_Result :: struct {
+	ok:        bool, // exited 0 before the deadline
+	timed_out: bool, // killed at the deadline (ok is false)
+	stdout:    string,
+	stderr:    string,
+}
+
+command_result_destroy :: proc(r: ^Command_Result) {
+	delete(r.stdout)
+	delete(r.stderr)
+	r.stdout = ""
+	r.stderr = ""
+}
+
+// run_command_timeout runs a subprocess (no shell) with stdin on /dev/null,
+// capturing stdout and stderr (each capped at 64 KiB; the rest is drained
+// and dropped). Like capture_command the child gets GIT_TERMINAL_PROMPT=0
+// and a new session (no controlling terminal), so neither git nor ssh can
+// prompt on — or read keys from — the user's terminal.
+//
+// timeout_ms > 0 is an overall deadline: when it passes, the child's whole
+// process group (git and the ssh/https helpers it spawned) is killed with
+// SIGKILL and the result has timed_out = true. timeout_ms <= 0 waits forever.
+// env_defaults are set in the child only when not already set.
+run_command_timeout :: proc(args: []string, timeout_ms: int, env_defaults: []Env_Default = nil) -> (result: Command_Result) {
+	if len(args) == 0 {
+		result.stdout = strings.clone("")
+		result.stderr = strings.clone("")
+		return
+	}
+
+	argv := make([dynamic]cstring, len(args) + 1)
+	defer {
+		for i in 0..<len(args) {
+			delete(argv[i])
+		}
+		delete(argv)
+	}
+	for arg, i in args {
+		argv[i] = strings.clone_to_cstring(arg)
+	}
+	argv[len(args)] = nil
+
+	// Child-side env strings are prepared before fork (no allocation in the child).
+	env_c := make([]cstring, 2 * len(env_defaults))
+	defer {
+		for s in env_c {
+			delete(s)
+		}
+		delete(env_c)
+	}
+	for e, i in env_defaults {
+		env_c[2 * i] = strings.clone_to_cstring(e.name)
+		env_c[2 * i + 1] = strings.clone_to_cstring(e.value)
+	}
+
+	out_pipe, err_pipe: [2]posix.FD
+	if posix.pipe(&out_pipe) != .OK {
+		result.stdout = strings.clone("")
+		result.stderr = strings.clone("")
+		return
+	}
+	if posix.pipe(&err_pipe) != .OK {
+		posix.close(out_pipe[0])
+		posix.close(out_pipe[1])
+		result.stdout = strings.clone("")
+		result.stderr = strings.clone("")
+		return
+	}
+
+	pid := posix.fork()
+	if pid < 0 {
+		posix.close(out_pipe[0])
+		posix.close(out_pipe[1])
+		posix.close(err_pipe[0])
+		posix.close(err_pipe[1])
+		result.stdout = strings.clone("")
+		result.stderr = strings.clone("")
+		return
+	}
+
+	if pid == 0 {
+		posix.close(out_pipe[0])
+		posix.close(err_pipe[0])
+		posix.dup2(out_pipe[1], posix.FD(1))
+		posix.dup2(err_pipe[1], posix.FD(2))
+		posix.close(out_pipe[1])
+		posix.close(err_pipe[1])
+		stdin_null := posix.open("/dev/null", {})
+		if stdin_null >= 0 {
+			posix.dup2(stdin_null, posix.FD(0))
+			posix.close(stdin_null)
+		}
+		posix.setenv("GIT_TERMINAL_PROMPT", "0", true)
+		for i := 0; i < len(env_c); i += 2 {
+			posix.setenv(env_c[i], env_c[i + 1], false)
+		}
+		// New session: no controlling terminal, and the child leads its own
+		// process group so the deadline can kill git's helpers too.
+		posix.setsid()
+		posix.execvp(argv[0], raw_data(argv[:]))
+		posix._exit(127)
+	}
+
+	posix.close(out_pipe[1])
+	posix.close(err_pipe[1])
+
+	MAX_CAPTURE :: 64 * 1024
+	out_sb := strings.builder_make()
+	err_sb := strings.builder_make()
+	defer strings.builder_destroy(&out_sb)
+	defer strings.builder_destroy(&err_sb)
+
+	fds := [2]posix.pollfd{
+		{fd = out_pipe[0], events = {.IN}},
+		{fd = err_pipe[0], events = {.IN}},
+	}
+	open_count := 2
+	start := time.tick_now()
+	buf: [4096]byte
+
+	for open_count > 0 {
+		wait_ms: c.int = -1
+		if timeout_ms > 0 {
+			elapsed := int(time.duration_milliseconds(time.tick_since(start)))
+			if elapsed >= timeout_ms {
+				result.timed_out = true
+				break
+			}
+			wait_ms = c.int(timeout_ms - elapsed)
+		}
+
+		n := posix.poll(raw_data(fds[:]), 2, wait_ms)
+		if n < 0 {
+			if posix.errno() == .EINTR {
+				continue
+			}
+			break
+		}
+		if n == 0 {
+			continue // the deadline is re-checked at the top
+		}
+
+		for &p, i in fds {
+			if p.fd < 0 || p.revents == {} {
+				continue
+			}
+			got := posix.read(p.fd, raw_data(buf[:]), len(buf))
+			if got <= 0 {
+				posix.close(p.fd)
+				p.fd = -1 // poll ignores negative fds
+				open_count -= 1
+				continue
+			}
+			sb := &out_sb if i == 0 else &err_sb
+			if strings.builder_len(sb^) < MAX_CAPTURE {
+				strings.write_bytes(sb, buf[:got])
+			}
+		}
+	}
+
+	if result.timed_out {
+		// The child is a session (and process group) leader: take down the
+		// whole group, then the child itself in case setsid failed.
+		posix.killpg(pid, .SIGKILL)
+		posix.kill(pid, .SIGKILL)
+	}
+	for p in fds {
+		if p.fd >= 0 {
+			posix.close(p.fd)
+		}
+	}
+
+	status: c.int = 0
+	for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+
+	result.ok = !result.timed_out && posix.WIFEXITED(status) && posix.WEXITSTATUS(status) == 0
+	result.stdout = strings.clone(strings.trim_space(strings.to_string(out_sb)))
+	result.stderr = strings.clone(strings.trim_space(strings.to_string(err_sb)))
 	return
 }

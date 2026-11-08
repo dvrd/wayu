@@ -606,8 +606,8 @@ command_accepts_flag :: proc(command: Command, arg: string) -> bool {
 	case .COMPLETIONS:
 		return arg == "--generate" || arg == "-g"
 	case .PLUGIN:
-		switch arg { case "--all", "-a", "--category", "-c": return true }
-		return strings.has_prefix(arg, "--category=")
+		switch arg { case "--all", "-a", "--category", "-c", "--use": return true }
+		return strings.has_prefix(arg, "--category=") || strings.has_prefix(arg, "--use=")
 	case .EXPORT:
 		switch arg { case "--eval", "--turbo", "--check": return true }
 	case .CONSTANTS, .TOML:

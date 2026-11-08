@@ -637,6 +637,34 @@ handle_plugin_add :: proc(args: []string) {
 	// "<name-or-url>@<sha>" pins the plugin to that commit.
 	name_or_url, pin_commit := split_plugin_commit_pin(args[0])
 
+	// --use GLOB / --use=GLOB (repeatable): the files to load, matched at
+	// the repository root, instead of auto-detection.
+	use_globs := make([dynamic]string, context.temp_allocator)
+	for i := 1; i < len(args); i += 1 {
+		arg := args[i]
+		glob: string
+		if strings.has_prefix(arg, "--use=") {
+			glob = arg[len("--use="):]
+		} else if arg == "--use" {
+			if i + 1 >= len(args) {
+				print_error_simple("--use requires a file name or glob (e.g. --use '*.zsh')")
+				os.exit(EXIT_USAGE)
+			}
+			i += 1
+			glob = args[i]
+		} else {
+			print_error_simple("Unexpected argument '%s'", arg)
+			print_plugin_add_help()
+			os.exit(EXIT_USAGE)
+		}
+		if !is_valid_use_glob(glob) {
+			print_error_simple("Invalid --use value '%s': give a file name or glob at the repository root (no '/')", glob)
+			os.exit(EXIT_USAGE)
+		}
+		append(&use_globs, glob)
+	}
+	from_url := is_valid_git_url(name_or_url)
+
 	// Plugin code is sourced into every shell: never fetch it in plaintext.
 	if is_insecure_git_url(name_or_url) {
 		print_error_simple("Refusing insecure plugin URL '%s'", name_or_url)
@@ -682,9 +710,14 @@ handle_plugin_add :: proc(args: []string) {
 	print_header("Installing Plugin", EMOJI_COMMAND)
 	print_info("Name: %s", info.name)
 	print_info("URL: %s", info.url)
-	print_info("Shell: %s", shell_compat_to_string(info.shell))
+	if !from_url {
+		print_info("Shell: %s", shell_compat_to_string(info.shell))
+	}
 	if pin_commit != "" {
 		print_info("Pinned commit: %s", pin_commit)
+	}
+	if len(use_globs) > 0 {
+		print_info("Load: %s", strings.join(use_globs[:], " ", context.temp_allocator))
 	}
 	fmt.println()
 
@@ -716,7 +749,7 @@ handle_plugin_add :: proc(args: []string) {
 	if pin_commit != "" {
 		success, clone_err = git_clone_at_commit(info.url, plugin_path, pin_commit)
 	} else {
-		success = git_clone(info.url, plugin_path)
+		success, clone_err = git_clone(info.url, plugin_path)
 	}
 	defer delete(clone_err)
 
@@ -736,6 +769,32 @@ handle_plugin_add :: proc(args: []string) {
 
 	if !wayu.dry_run {
 		print_success("Cloned plugin repository")
+
+		// Refuse a plugin that would load nothing: the loader would only
+		// emit a comment while the install claimed success.
+		loadable := plugin_loadable_shells(info.name, plugin_path, use_globs[:])
+		loads := false
+		if from_url {
+			// Custom URL: record the shells it actually has files for, so a
+			// fish-only repo added from zsh (or vice versa) loads where it can.
+			compat, any_shell := shell_compat_from_loadable(loadable)
+			if any_shell {
+				info.shell = compat
+				loads = true
+			}
+			print_info("Shell: %s (detected)", shell_compat_to_string(info.shell))
+		} else {
+			loads = plugin_compat_loads_any(info.shell, loadable)
+		}
+		if !loads {
+			if !existed_before {
+				remove_cloned_plugin_dir(plugin_path, plugins_dir)
+			}
+			print_plugin_nothing_to_load(info, use_globs[:])
+			os.exit(EXIT_DATAERR)
+		}
+	} else if from_url {
+		print_info("Shell: detected after cloning")
 	}
 
 	// Add to config
@@ -762,13 +821,17 @@ handle_plugin_add :: proc(args: []string) {
 		shell = info.shell,
 		installed_path = strings.clone(plugin_path),
 		entry_file = "",  // Will be detected by generate_plugins_file
-		use = make([dynamic]string),  // Empty = auto-detect
+		use = make([dynamic]string),  // Empty = auto-detect (filled below)
 		template = .Source,  // Default loading template
 		git = git_info,
 		dependencies = make([dynamic]string),  // Phase 4: Initialize empty
 		priority = 100,  // Phase 5: Default priority
 		profiles = make([dynamic]string),  // Empty = all profiles
 		conflicts = ConflictInfo{},  // Phase 6: No conflicts yet
+	}
+
+	for glob in use_globs {
+		append(&new_plugin.use, strings.clone(glob))
 	}
 
 	append(&config.plugins, new_plugin)
