@@ -683,8 +683,12 @@ def test_add_and_delete_mutations():
             backups = os.listdir(os.path.join(os.environ["HOME"], ".config", "wayu", "backup"))
             test("mutations/backed_up",
                  AssertResult(any(b.startswith("wayu.toml.backup.") for b in backups), f"backups: {backups}"))
-            s.send(b"\x1b"); s.read(timeout=0.2)
+            s.send(b"\x1b"); s.read(timeout=0.5)
+            # A busy TUI can read "ESC q" as one Alt-q chord; send q again
+            # if the first one didn't quit.
             s.send(b"q")
+            if s.wait_exit(timeout=2.0) is None:
+                s.send(b"q")
             check_clean_exit(s, "mutations", want_code=0)
         finally:
             s.kill()
