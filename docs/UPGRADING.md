@@ -127,6 +127,12 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - New `wayu build clean` deletes the cache
   (`${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`), for init output that
   depends on config or environment.
+- `args` is split into words like the shell does (quotes honoured) and each
+  word is quoted in the generated call; `$NAME` / `${NAME...}` and a leading
+  `~/` still expand, `{a,b}` no longer brace-expands. Args containing a
+  newline, `;` `&` `|` `<` `>` `(` `)`, `$(...)` / backticks or glob
+  characters (`*` `?` `[`) are refused: `wayu build` exits `78` naming the
+  tool, other regenerations skip the tool with a warning on stderr.
 
 ## 5.0.0
 

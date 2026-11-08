@@ -1590,18 +1590,144 @@ tool_kind_is_evalcache :: proc(kind: string) -> bool {
 	return len(kind) == 0 || kind == "evalcache"
 }
 
-// `_wayu_evalcache <name> <args>`. Args are intentionally word-split (they
-// are the tool's argv, e.g. "init zsh --disable-up-arrow").
+// `_wayu_evalcache <name> <args>`. `args` is the tool's argv ("init zsh
+// --disable-up-arrow"): split into words by tool_args_to_shell and each word
+// re-quoted, so the value can never run code at startup. Unusable args skip
+// the tool (comment in the file, warning on stderr — stdout of `wayu build
+// eval` is eval'd); `wayu build` refuses them up front (validate_tools_args).
 emit_evalcache_call :: proc(b: ^strings.Builder, t: ToolEntry) {
 	if !is_safe_alias_name(t.name) {
 		fmt.sbprintfln(b, "# wayu: invalid tool name %q - skipping", t.name)
 		return
 	}
-	if len(t.args) > 0 {
-		fmt.sbprintfln(b, "_wayu_evalcache %s %s", t.name, t.args)
-	} else {
+	if len(t.args) == 0 {
 		fmt.sbprintfln(b, "_wayu_evalcache %s", t.name)
+		return
 	}
+	words, reason, ok := tool_args_to_shell(t.args)
+	defer if ok { delete(words) }
+	if !ok {
+		fmt.sbprintfln(b, "# wayu: [tools] %s: args %s - skipping", t.name, reason)
+		fmt.eprintfln("[wayu] [tools] %s: args %s - skipping", t.name, reason)
+		return
+	}
+	fmt.sbprintfln(b, "_wayu_evalcache %s %s", t.name, words)
+}
+
+// Split a [tools] `args` value into words the way the shell would (quotes
+// and backslashes honoured) and re-emit each word quoted. Kept expandable:
+// `$NAME` / `${NAME...}` variables (as in [env] values) and a leading `~/`.
+// Refused, with a reason: newline, operators (; & | < > ( )), command
+// substitution ($(...), backticks), glob characters (* ? [) and a word
+// mixing quoted and unquoted `$`. Brace expansion is not performed: `{a,b}`
+// stays literal. `out` is allocated with `allocator` (owned by the caller
+// when ok); `reason` is static or temp-allocated.
+tool_args_to_shell :: proc(args: string, allocator := context.allocator) -> (out: string, reason: string, ok: bool) {
+	if strings.contains_any(args, "\n\r") {
+		return "", "contains a newline", false
+	}
+	stmts := shell_parse_statements(args, .POSIX)
+	defer shell_statements_destroy(&stmts)
+	if len(stmts) == 0 { return strings.clone("", allocator), "", true }
+	st := stmts[0]
+	if len(st.error) > 0 {
+		return "", fmt.tprintf("cannot be parsed (%s)", st.error), false
+	}
+
+	sb := strings.builder_make(allocator)
+	defer if !ok { strings.builder_destroy(&sb) }
+	for tok, ti in st.tokens {
+		if tok.kind == .Op {
+			return "", fmt.tprintf("contains the shell operator %q", tok.op), false
+		}
+		text, active := tok.word.text, tok.word.active
+		dollar_active, dollar_quoted := false, false
+		for i in 0..<len(text) {
+			c := text[i]
+			if !active[i] {
+				if c == '$' { dollar_quoted = true }
+				continue
+			}
+			switch c {
+			case '`':
+				return "", "contains command substitution (`...`)", false
+			case '$':
+				if i + 1 < len(text) && text[i+1] == '(' {
+					return "", "contains command substitution ($(...))", false
+				}
+				dollar_active = true
+			case '*', '?', '[':
+				return "", fmt.tprintf("contains the glob character %q", c), false
+			}
+		}
+		if dollar_active && dollar_quoted {
+			return "", fmt.tprintf("word %q mixes quoted and unquoted $", text), false
+		}
+		tilde := len(active) > 0 && active[0] && (text == "~" || strings.has_prefix(text, "~/"))
+
+		if ti > 0 { strings.write_byte(&sb, ' ') }
+		// Heap, not the temp arena: a huge config (thousands of aliases)
+		// can exhaust the arena, and a failed temp allocation would
+		// silently drop the args.
+		quoted := ""
+		switch {
+		case dollar_active || (tilde && !dollar_quoted):
+			v := expand_leading_tilde_to_home_var(text) if tilde else strings.clone(text)
+			quoted = shell_double_quote_env(v)
+			delete(v)
+		case tilde:
+			strings.write_string(&sb, "~/" if len(text) > 1 else "~")
+			if len(text) > 2 { quoted = shell_single_quote(text[2:]) }
+		case len(text) > 0 && is_bare_shell_word(text):
+			strings.write_string(&sb, text)
+		case:
+			quoted = shell_single_quote(text)
+		}
+		strings.write_string(&sb, quoted)
+		delete(quoted)
+	}
+	return strings.to_string(sb), "", true
+}
+
+// Only characters no shell (zsh/bash, any options) treats specially.
+@(private = "file")
+is_bare_shell_word :: proc(s: string) -> bool {
+	for i in 0..<len(s) {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '-' || c == '_' || c == '.' || c == '/' || c == ',' || c == ':' || c == '+' || c == '@' || c == '%':
+		case c == '=' && i > 0:
+		case:
+			return false
+		}
+	}
+	return true
+}
+
+// `wayu build`: refuse [tools] entries whose args the generator would skip,
+// naming the tool, before anything is written. Returns false after printing.
+validate_tools_args :: proc() -> bool {
+	tools := read_wayu_toml_tools()
+	defer {
+		for &t in tools { destroy_tool_entry(&t) }
+		delete(tools)
+	}
+	ok := true
+	for t in tools {
+		if !tool_kind_is_evalcache(t.kind) || len(t.args) == 0 { continue }
+		words, reason, valid := tool_args_to_shell(t.args)
+		if valid {
+			delete(words)
+		} else {
+			print_error("wayu.toml [tools] %s: args %s", t.name, reason)
+			ok = false
+		}
+	}
+	if !ok {
+		fmt.println("  Write args as plain words, quoting with '...' where needed (no ; | & < > newlines, $(...), backticks or globs).")
+	}
+	return ok
 }
 
 // Emit the deferred init code for a single tool entry.

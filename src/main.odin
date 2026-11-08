@@ -919,6 +919,10 @@ handle_build_command :: proc(action: Action) {
 		return
 	}
 	
+	if !validate_tools_args() {
+		os.exit(EXIT_CONFIG)
+	}
+
 	// Regenerate the files init.<ext> sources (core/path_sync/lazy/...) for
 	// every initialized shell, so hand edits of wayu.toml take effect (open
 	// shells pick up [paths] at their next prompt via path_sync).
