@@ -210,13 +210,14 @@ list_toml_constants :: proc() {
 		}
 	}
 
-	if len(entries) == 0 && len(external_constants) == 0 {
-		print_info("No Constants found")
+	// JSON first: an empty list is still a JSON document (OKAMI-239).
+	if wayu.json_output {
+		print_constants_json(entries[:], external_constants[:])
 		return
 	}
 
-	if wayu.json_output {
-		print_constants_json(entries[:], external_constants[:])
+	if len(entries) == 0 && len(external_constants) == 0 {
+		print_info("No Constants found")
 		return
 	}
 

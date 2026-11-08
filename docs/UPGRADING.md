@@ -121,6 +121,18 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `alias`/`const` (they exited `66` with "File not found").
 - `wayu export help` / `export list` work without a wayu config.
 
+**--json**
+- `alias list --json`, `const list --json` and `plugin list --json` print
+  an empty JSON list (`{"aliases": []}`, …) when there is nothing to list;
+  they printed `ℹ No … found`.
+- `plugin list --json` escapes every string (a quote or backslash in a
+  path broke the document).
+- `path list --json --source external` (and `--full`) include the external
+  `$PATH` entries the table shows (`"source": "external"`); they were
+  dropped.
+- `search QUERY --json` prints `{"query": …, "results": [{"type", "name",
+  "value", "match", "field", "score"}], "count": N}`; it ignored `--json`.
+
 ## 5.0.0
 
 **doctor**

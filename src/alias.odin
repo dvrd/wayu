@@ -118,13 +118,14 @@ list_toml_aliases :: proc() {
 		}
 	}
 
-	if len(entries) == 0 && len(external_aliases) == 0 {
-		print_info("No Aliases found")
+	// JSON first: an empty list is still a JSON document (OKAMI-239).
+	if wayu.json_output {
+		print_aliases_json(entries[:], external_aliases[:])
 		return
 	}
 
-	if wayu.json_output {
-		print_aliases_json(entries[:], external_aliases[:])
+	if len(entries) == 0 && len(external_aliases) == 0 {
+		print_info("No Aliases found")
 		return
 	}
 

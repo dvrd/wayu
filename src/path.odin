@@ -801,7 +801,22 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 		}
 	}
 
-	fmt.println()
+	// External entries (in $PATH, not from wayu.toml): same rows as the
+	// table view, so --source external / --full agree with it (OKAMI-239).
+	if show_external {
+		for env_path in path_entries {
+			if _, is_wayu := wayu_set[env_path]; is_wayu { continue }
+			if !first_entry {
+				fmt.println(",")
+			}
+			exists_str := os.exists(env_path) ? "true" : "false"
+			path_j := json_escape(env_path); defer delete(path_j)
+			fmt.printf("    %c\"path\": \"%s\", \"source\": \"external\", \"exists\": %s%c", '{', path_j, exists_str, '}')
+			first_entry = false
+		}
+	}
+
+	if !first_entry { fmt.println() }
 	fmt.println("  ]")
 	fmt.println("}")
 }
