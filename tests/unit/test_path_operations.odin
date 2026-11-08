@@ -72,56 +72,16 @@ test_ops_parse_path_line_rejects_unquoted :: proc(t: ^testing.T) {
 }
 
 // ============================================================================
-// format_path_line tests (used when writing back cleaned/deduped entries)
+// parse_path_line on a WAYU_PATHS array element
 // ============================================================================
 
 @(test)
-test_ops_format_path_line_basic :: proc(t: ^testing.T) {
-	entry := wayu.ConfigEntry{
-		type = .PATH,
-		name = "/usr/local/bin",
-		value = "",
-		line = "",
-	}
-	result := wayu.format_path_line(entry)
-	defer delete(result)
-
-	testing.expect_value(t, result, `  "/usr/local/bin"`)
-}
-
-@(test)
-test_ops_format_path_line_with_spaces :: proc(t: ^testing.T) {
-	entry := wayu.ConfigEntry{
-		type = .PATH,
-		name = "/path/with spaces/bin",
-		value = "",
-		line = "",
-	}
-	result := wayu.format_path_line(entry)
-	defer delete(result)
-
-	testing.expect_value(t, result, `  "/path/with spaces/bin"`)
-}
-
-@(test)
-test_ops_format_path_line_roundtrip :: proc(t: ^testing.T) {
-	// Format a path, then parse it back - should get the same name
-	original_path := "/opt/homebrew/bin"
-	entry := wayu.ConfigEntry{
-		type = .PATH,
-		name = original_path,
-		value = "",
-		line = "",
-	}
-
-	formatted := wayu.format_path_line(entry)
-	defer delete(formatted)
-
-	parsed, ok := wayu.parse_path_line(formatted)
+test_ops_parse_path_line_array_element :: proc(t: ^testing.T) {
+	parsed, ok := wayu.parse_path_line(`  "/opt/homebrew/bin"`)
 	defer if ok do wayu.cleanup_entry(&parsed)
 
-	testing.expect(t, ok, "Should parse formatted line")
-	testing.expect_value(t, parsed.name, original_path)
+	testing.expect(t, ok, "Should parse array element line")
+	testing.expect_value(t, parsed.name, "/opt/homebrew/bin")
 }
 
 // ============================================================================

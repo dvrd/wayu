@@ -200,7 +200,7 @@ class ConstantsIntegrationTest
   def test_get_constant_unescapes_value
     print "Test 5d: Get unescapes shell-escaped values... "
 
-    # Add a constant with quotes — sanitize_shell_value stores them as \"
+    # A value with double quotes round-trips through wayu.toml unchanged
     run_wayu('constants add ESCAPE_TEST \'say "hello"\'')
     output, status = run_wayu("constants get ESCAPE_TEST")
     run_wayu("constants rm ESCAPE_TEST")
