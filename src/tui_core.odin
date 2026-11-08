@@ -1857,8 +1857,11 @@ tui_load_constants :: proc(state: ^TUIState) {
 		}
 
 		content, file_ok := safe_read_file(toml_file)
+		// Freed at the end of this branch, not of the `if file_ok` block:
+		// wayu_constants keys below point into `content` and are looked up
+		// again by the external-env pass.
+		defer if file_ok do delete(content)
 		if file_ok {
-			defer delete(content)
 			lines := strings.split(string(content), "\n")
 			defer delete(lines)
 
@@ -1903,7 +1906,11 @@ tui_load_constants :: proc(state: ^TUIState) {
 				const_name := pair[:eq] if eq >= 0 else pair
 				if len(const_name) == 0 { continue }
 				if !(const_name in wayu_constants) {
-					append(&external_constants, strings.clone(const_name))
+					// Mark as seen: os.environ can list a name twice (Odin's
+					// posix _environ repeats environ[0]); the clone outlives the map.
+					name_copy := strings.clone(const_name)
+					append(&external_constants, name_copy)
+					wayu_constants[name_copy] = true
 				}
 			}
 		}
