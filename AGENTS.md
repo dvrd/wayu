@@ -132,6 +132,8 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/templates.odin` | `wayu template` presets + `init --template` |
 | `src/turbo_export.odin` | `wayu export` (turbo copy of core, `--eval`, `--check`) |
 | `src/secrets.odin` | Secret heuristic + masking; file modes for files holding [env] values |
+| `src/secrets_store.odin` | Encrypted constants: ChaCha20-Poly1305 store (`secrets.json`), session cache + core loader, `const add --secret`/get/rm, `wayu secrets`, doctor check; `env_store_mark_secret` seam to the env store |
+| `src/keystore.odin` | Master key backends (`[secrets] backend`): keychain, secret-service, file |
 | `src/env_snapshot.odin` | Snapshot of the running env (PATH, aliases, env) for the list views' `source` column |
 | `src/atomic_io.odin` | Atomic file replacement + inter-process config lock |
 | `src/subprocess.odin` | `run_command`: subprocess without a shell, with timeouts (plugin clones, shells) |
@@ -152,8 +154,8 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 ### Config File Format
 
 Reference: `docs/config-reference.md`.
-- `wayu.toml` (config dir, user-edited): `[shell]`, `[settings]`, `[tools]`, `[prompt]` / `[prompt.*]`, `[scripts]`. Read through `src/toml_parse.odin` (strict for validate/doctor/backup, lenient elsewhere); wayu only writes it when creating it. `[paths]`/`[aliases]`/`[env]` there are errors (validate, doctor) naming the `wayu path|alias|const add` command.
-- `entries.json` (data dir, managed): `{"version":1,"paths":[{"key","dir"}],"aliases":[{"name","value"}],"env":[{"name","value"}]}` (env entries may carry `"secret": true`, serialized only when true). `src/entries.odin`: strict read (malformed → EXIT_CONFIG naming the file; missing → empty store), writes atomic under the lock, 0600, pretty-printed, stable order (array order = PATH priority / export order).
+- `wayu.toml` (config dir, user-edited): `[shell]`, `[settings]`, `[tools]`, `[prompt]` / `[prompt.*]`, `[scripts]`, `[secrets]` (key backend). Read through `src/toml_parse.odin` (strict for validate/doctor/backup, lenient elsewhere); wayu only writes it when creating it. `[paths]`/`[aliases]`/`[env]` there are errors (validate, doctor) naming the `wayu path|alias|const add` command.
+- `entries.json` (data dir, managed): `{"version":1,"paths":[{"key","dir"}],"aliases":[{"name","value"}],"env":[{"name","value"}]}` (env entries may carry `"secret": true`, serialized only when true; the encrypted value is in `secrets.json`, see `src/secrets_store.odin`). `src/entries.odin`: strict read (malformed → EXIT_CONFIG naming the file; missing → empty store), writes atomic under the lock, 0600, pretty-printed, stable order (array order = PATH priority / export order).
 - `functions/`, `scripts/`, `bin/` (data dir, managed by `wayu function` / `wayu script`): the directories are the source of truth.
 - Generated shell code: `src/init_generator.odin` compiles wayu.toml + entries.json into `core.<ext>` (the one file `init.<ext>` sources) and `path_sync.<ext>`; never edit those by hand.
 

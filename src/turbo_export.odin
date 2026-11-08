@@ -190,6 +190,7 @@ build_eval_content :: proc() -> string {
 	defer strings.builder_destroy(&builder)
 
 	emit_env_exports(&builder, ";")
+	emit_secrets_loader(&builder, wayu.shell, ";")
 	emit_path_eval(&builder, ";")
 	emit_alias_definitions(&builder, ";")
 

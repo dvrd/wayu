@@ -58,9 +58,9 @@ Developer flags (golden-file tests, see AGENTS.md): `-c=<component>`,
    Flags may still come before the first value word
    (`wayu alias add -n gc 'git commit'`). A dash word right where the value
    starts is the value: `wayu const add OFFSET -5`.
-   Exception: `--dry-run`, `--yes`, `--json` and `--no-color` at the very
-   end of the line are flags (`wayu alias add gpf git push -f --dry-run`
-   previews). To keep them in the value, put `--` before it:
+   Exception: `--dry-run`, `--yes`, `--json` and `--no-color` (and, for
+   `constants add`, `--secret`) at the very end of the line are flags
+   (`wayu alias add gpf git push -f --dry-run` previews). To keep them in the value, put `--` before it:
    `wayu alias add hd -- helm install --dry-run`. A trailing `-n` or `-y`
    stays in the value with a warning on stderr.
 3. Anywhere else a global flag may appear in any position.
@@ -118,17 +118,28 @@ Manage constants: exported environment variables (stored in
 | Action | Arguments | |
 |---|---|---|
 | `add` | `<NAME> <value...>` | Add or replace a variable |
-| `remove`, `rm` | `<NAME>` | |
+| `add` | `<NAME> [value...] --secret` | Store the value encrypted (see [`wayu secrets`](#wayu-secrets-secret)) |
+| `remove`, `rm` | `<NAME>` | Plain or encrypted |
 | `list`, `ls` | | `--json`, `--full`, `--source`, `--reveal` |
-| `get` | `<NAME>` | Print the real value (exact name only) |
+| `get` | `<NAME>` | Print the real value (exact name only; decrypts a secret) |
 | `help` | | |
 
 | Flag | |
 |---|---|
-| `--reveal` | `list`: show secret-looking values instead of `********` |
+| `--reveal` | `list`: show secret-looking values instead of `********` (never encrypted ones) |
+| `--secret` | `add`: encrypt the value into `secrets.json` instead of storing it in `entries.json` |
 
 `get` is safe in scripts: `X=$(wayu const get NAME)` either gets that
 variable's value or fails with exit `65`.
+
+`add --secret`: without a value, it is read from stdin (hidden when stdin is
+a terminal; one trailing newline is dropped), so it stays out of argv and
+shell history: `wayu const get OLD | wayu const add NEW --secret`. Like
+`--dry-run`, a `--secret` at the end of the line is a flag, not part of the
+value. An existing plain constant is converted (its `entries.json` entry
+keeps its place, without the value). A plain `add` of a name that is a secret exits `65`; `--secret`
+on any other action exits `64`. Hooks receive an empty `{value}` for
+secrets. `list` shows secrets as `********` with source `wayu (secret)`.
 
 ### `wayu search` (`find`, `f`)
 
@@ -366,6 +377,32 @@ wayu script import ~/bin/* --dry-run
 wayu script list --json
 ```
 
+### `wayu secrets` (`secret`)
+
+Encrypted constants. `wayu const add NAME [VALUE] --secret` stores the value
+encrypted (ChaCha20-Poly1305, AAD = the name) in the data dir's
+`secrets.json` (`0600`); the 256-bit master key lives in the
+[`[secrets] backend`](config-reference.md#secrets) (macOS keychain, Secret
+Service, or `secret.key` in the config dir). `const get` decrypts,
+`const rm` removes. Default action: `list`.
+
+| Action | Arguments | |
+|---|---|---|
+| `list`, `ls` | | Secret names, one per line (never values) |
+| `rekey` | | New master key, re-encrypt every secret, drop the session cache |
+| `lock` | | Delete the decrypted session cache (next shell decrypts again) |
+| `help` | | |
+
+Shells never read plaintext from the data dir: `core.<ext>` sources a
+per-login-session cache, `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/wayu-<uid>/secrets-<id>.<ext>`
+(`0600` in a `0700` dir owned by you), when it is newer than
+`secrets.json`; otherwise it runs `wayu secrets cache` once (a hidden helper
+that decrypts into that file). When the key is unavailable or a value does
+not decrypt, the shell prints one `wayu: secrets not loaded: …` line on
+stderr and starts without the secrets. The first `add --secret` creates the
+key; wayu never creates a new key while `secrets.json` holds values (exit
+`78`). Errors reading the store or key exit `78`; write errors `74`.
+
 ### `wayu reload` (`watch`, `hot-reload`)
 
 `wayu reload [start|stop|status|regenerate]`. `start` (the default) watches
@@ -394,7 +431,7 @@ keys may be added, existing ones keep their meaning.
 |---------|----------|
 | `path list` | `{"paths": [{"path", "source", "exists": bool}]}` |
 | `alias list` | `{"aliases": [{"alias", "command", "source"}]}` |
-| `const list` | `{"constants": [{"constant", "value", "source"}]}` |
+| `const list` | `{"constants": [{"constant", "value", "source"}]}`; an encrypted constant is `{"constant", "secret": true, "source"}` (no `value`) |
 | `plugin list` | `{"plugins": [{"name", "enabled": bool, "priority": int, "shell", "url", "commit", "installed_path", "conflicts": [{"kind", "name", "with"}]}], "count": int, "enabled": int}` |
 | `backup list` | `{"backups": [{"file", "count": int, "entries": [{"index": int, "timestamp", "size_bytes": int, "path", "pre_restore": bool}]}]}` |
 | `script list` | `{"scripts": [{"name", "lang", "source", "bin", "compiled": bool, "stale": bool}], "count": int}` |

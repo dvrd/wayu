@@ -372,6 +372,7 @@ Command_Result :: struct {
 	ok:        bool, // exited 0 before the deadline
 	timed_out: bool, // killed at the deadline (ok is false)
 	cancelled: bool, // killed because subprocess_cancel_check said so (ok is false)
+	exit_code: int,  // the child's exit status when it exited normally, else -1
 	stdout:    string,
 	stderr:    string,
 }
@@ -401,6 +402,7 @@ SUBPROCESS_CANCEL_POLL_MS :: 100
 // SIGKILL and the result has timed_out = true. timeout_ms <= 0 waits forever.
 // env_defaults are set in the child only when not already set.
 run_command_timeout :: proc(args: []string, timeout_ms: int, env_defaults: []Env_Default = nil) -> (result: Command_Result) {
+	result.exit_code = -1
 	if len(args) == 0 {
 		result.stdout = strings.clone("")
 		result.stderr = strings.clone("")
@@ -559,6 +561,7 @@ run_command_timeout :: proc(args: []string, timeout_ms: int, env_defaults: []Env
 	status: c.int = 0
 	for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
 
+	result.exit_code = int(posix.WEXITSTATUS(status)) if posix.WIFEXITED(status) else -1
 	result.ok = !result.timed_out && !result.cancelled && posix.WIFEXITED(status) && posix.WEXITSTATUS(status) == 0
 	result.stdout = strings.clone(strings.trim_space(strings.to_string(out_sb)))
 	result.stderr = strings.clone(strings.trim_space(strings.to_string(err_sb)))

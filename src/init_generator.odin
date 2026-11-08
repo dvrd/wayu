@@ -1011,6 +1011,8 @@ build_core_content :: proc(mask := false) -> string {
 	fmt.sbprintln(&b, "# === Environment ===")
 	emit_env_exports(&b, mask = mask)
 	fmt.sbprintln(&b)
+	// Encrypted constants: source the per-session cache (secrets_store.odin).
+	emit_secrets_loader(&b, wayu.shell)
 
 	// PATH from [paths] (file order = priority). The startup apply is the same
 	// call path_sync.<ext> makes, inlined (no extra file read); the prompt
@@ -2155,6 +2157,7 @@ generate_core_init_fish :: proc() {
 		fmt.sbprintfln(b, `set -gx %s %s`, e.name, fish_double_quote_env(v, context.temp_allocator))
 	}
 	fmt.sbprintln(b)
+	emit_secrets_loader(b, .FISH)
 
 	// PATH: the same call path_sync.fish makes, inlined; the fish_prompt
 	// hook re-sources path_sync.fish when its signature changes.
