@@ -6,6 +6,20 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**`wayu build eval` removed; zsh PATH order restored after login**
+
+- `wayu build eval` is gone (exit 64). It rebuilt every generated file at
+  each shell start, which nothing needs: every wayu write regenerates them and
+  the prompt hook runs `wayu build` when `wayu.toml` was edited by hand.
+  Replace `eval "$(wayu build eval)"` in rc files with
+  `source "${WAYU_DATA_DIR:-$HOME/.config/wayu}/init.zsh"` (or `init.bash`).
+  `eval "$(wayu export --eval)"` (env/PATH/aliases only) is unchanged.
+- zsh: at the first prompt wayu puts its `[paths]` dirs back in front of the
+  dirs that were on PATH when it loaded or that macOS `path_helper` manages
+  (`/etc/paths`, `/etc/paths.d`). Loading wayu from `~/.zshenv` therefore
+  keeps wayu's PATH precedence in login shells; dirs prepended in `.zshrc`
+  stay ahead.
+
 **Removed: backward compatibility**
 
 wayu now reads only the current formats: `wayu.toml` (`[shell]`, `[paths]`,

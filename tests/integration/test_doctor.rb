@@ -314,7 +314,7 @@ class DoctorIntegrationTest
     reset_rc_files
     File.write("#{@tmp_home}/.zshrc", "source \"$WAYU/init.zsh\"\n")
     out1, _ = run_wayu('--shell zsh doctor --no-color')
-    File.write("#{@tmp_home}/.zshrc", "eval \"$(wayu build eval)\"\n")
+    File.write("#{@tmp_home}/.zshrc", "eval \"$(wayu export --eval)\"\n")
     out2, _ = run_wayu('--shell zsh doctor --no-color')
     check(shell_line(out1).include?('wayu sourced') && shell_line(out2).include?('wayu sourced'),
           shell_line(out1) + shell_line(out2))

@@ -116,7 +116,7 @@ class ValidationIntegrationTest
     stored = toml.include?('co:lon') || toml.include?('a:.')
     toml = toml.include?('[paths]') ? toml.sub('[paths]', "[paths]\nhand = \"#{dot}\"") : toml + "\n[paths]\nhand = \"#{dot}\"\n"
     File.write(toml_file, toml)
-    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'build', 'eval')
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'build')
     sync = File.exist?("#{@data_dir}/path_sync.zsh") ? File.read("#{@data_dir}/path_sync.zsh") : ''
     out, = Open3.capture3(env, 'zsh', '-fc', ". '#{@data_dir}/core.zsh' >/dev/null 2>&1; print -rl -- $path")
     bad_entry = out.lines.map(&:chomp).any? { |l| ['.', "#{@tmp_home}/a", "#{@tmp_home}/co"].include?(l) }

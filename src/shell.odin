@@ -523,23 +523,6 @@ command_exists :: proc(cmd: string) -> bool {
 // Fish Config File Operations
 // ============================================================================
 
-// Shell of the parent process. `build eval` output is eval'd by its parent
-// (the command-substitution subshell), so this is the shell that will run the
-// generated code — unlike $SHELL, which sudo resets to root's /bin/sh and a
-// bash started from zsh leaves as zsh. UNKNOWN when it can't be determined
-// or the parent isn't zsh/bash/fish (e.g. bash invoked as `sh`).
-detect_parent_shell :: proc() -> ShellType {
-    name := parent_process_name()
-    name = strings.trim_prefix(name, "-") // login shells report "-zsh"
-    if slash := strings.last_index_byte(name, '/'); slash >= 0 { name = name[slash + 1:] }
-    switch name {
-    case "zsh":  return .ZSH
-    case "bash": return .BASH
-    case "fish": return .FISH
-    }
-    return .UNKNOWN
-}
-
 when ODIN_OS == .Darwin {
     foreign import libsys "system:c"
     foreign libsys {
@@ -562,17 +545,6 @@ parent_process_name :: proc() -> string {
     } else {
         return ""
     }
-}
-
-// True when running as root on a config dir owned by another user (e.g. a
-// `sudo zsh` that still sources the user's .zshenv). Writing there would leave
-// root-owned generated files in the user's config.
-running_as_root_on_user_config :: proc(dir: string) -> bool {
-    if posix.geteuid() != 0 { return false }
-    st: posix.stat_t
-    cdir := strings.clone_to_cstring(dir, context.temp_allocator)
-    if posix.stat(cdir, &st) != .OK { return false }
-    return st.st_uid != 0
 }
 
 // Set by `--shell`: an explicit choice that auto-detection must not override.

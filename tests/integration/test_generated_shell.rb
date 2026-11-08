@@ -55,6 +55,7 @@ class GeneratedShellTest
       test_init_and_turbo_define_the_same
       test_prompt_vi_mode_and_widgets
       test_prompt_git_branch_without_git
+      test_login_reorder_restored_at_first_prompt
     ensure
       teardown_test_env
     end
@@ -89,7 +90,7 @@ class GeneratedShellTest
     File.write("#{cfg}/functions/myfn.#{shell}", "myfn() { echo myfn-ok; }\n")
     File.write("#{cfg}/extra.#{shell}", "EXTRA_LOADED=1\n")
     Open3.capture3(env, @wayu_bin, 'completions', 'generate')
-    Open3.capture3(env, @wayu_bin, 'build', 'eval')
+    Open3.capture3(env, @wayu_bin, 'build')
     [home, cfg, env]
   end
 
@@ -186,6 +187,32 @@ class GeneratedShellTest
     out, err, = Open3.capture3(env, 'zsh', '-f', '-c', script)
     check('nvmrc', out.strip == 'v20.18.0 v20.1.0 v20.18.0 v18.2.0' && err.strip.empty?,
           "out=#{out.strip.inspect} err=#{err.strip[0, 300]}")
+  end
+
+  # A login shell runs .zprofile (macOS: /etc/zprofile's path_helper) after
+  # .zshenv and can move dirs that were already on PATH ahead of wayu's. The
+  # first prompt must put wayu's dirs back in front of those, while a dir
+  # prepended later (in .zshrc) keeps its place. Simulated with a .zprofile
+  # so it runs on Linux too.
+  def test_login_reorder_restored_at_first_prompt
+    print "Test: wayu PATH order restored at first prompt after a login reorder... "
+    home = "#{@tmp_home}/login_reorder"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(%w[a/bin b/bin pre/bin .config].map { |d| "#{home}/#{d}" })
+    env = { 'HOME' => home, 'SHELL' => '/bin/zsh', 'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin', 'ZDOTDIR' => home,
+            'WAYU_CONFIG' => nil, 'WAYU_DATA_DIR' => nil, 'WAYU_CONFIG_DIR' => nil, 'XDG_CONFIG_HOME' => nil }
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh', stdin_data: '')
+    File.write("#{home}/.config/wayu/wayu.toml", "[paths]\na = \"#{home}/a/bin\"\nb = \"#{home}/b/bin\"\n")
+    Open3.capture3(env, @wayu_bin, 'build')
+    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-$HOME/.config/wayu}/init.zsh\"\n")
+    File.write("#{home}/.zprofile", "path=( /usr/sbin /bin ${path:#(/usr/sbin|/bin)} )\n")
+    File.write("#{home}/.zshrc", "path=( $HOME/pre/bin $path )\n")
+    probe = 'print -r -- "${(j.:.)path[1,4]}"; for f in $precmd_functions; do $f; done; print -r -- "${(j.:.)path[1,5]}"'
+    out, err, = Open3.capture3(env, 'zsh', '-l', '-i', '-c', probe)
+    before, after = out.lines.map(&:strip).last(2)
+    want = ["#{home}/pre/bin", "#{home}/a/bin", "#{home}/b/bin", '/usr/sbin', '/bin'].join(':')
+    check('login_reorder', before.to_s.start_with?("#{home}/pre/bin:/usr/sbin:/bin") && after == want,
+          "before=#{before} after=#{after} err=#{err.strip[0, 200]}")
   end
 
   # with `wayu completions add` must be active in the next (interactive) shell.

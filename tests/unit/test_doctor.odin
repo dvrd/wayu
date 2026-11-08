@@ -8,7 +8,8 @@ import wayu "../../src"
 test_doctor_rc_loads_wayu :: proc(t: ^testing.T) {
 	testing.expect(t, wayu.rc_loads_wayu(`source "$HOME/.config/wayu/init.zsh"`))
 	testing.expect(t, wayu.rc_loads_wayu(`. "$WAYU/init.bash"`))
-	testing.expect(t, wayu.rc_loads_wayu(`eval "$(wayu build eval)"`))
+	testing.expect(t, wayu.rc_loads_wayu(`eval "$(wayu export --eval)"`))
+	testing.expect(t, wayu.rc_loads_wayu(`source "${WAYU_DATA_DIR:-$HOME/.config/wayu}/init.zsh"`))
 	testing.expect(t, wayu.rc_loads_wayu("export X=1\nsource ~/.config/wayu/turbo.zsh  # fast\n"))
 	testing.expect(t, !wayu.rc_loads_wayu(`# source "$HOME/.config/wayu/init.zsh"`))
 	testing.expect(t, !wayu.rc_loads_wayu(`alias w=wayu`))

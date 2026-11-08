@@ -78,8 +78,8 @@ class BuildProfileTest
     _o3, bogus_export = run_wayu("export bogus")
     _o4, bogus_build = run_wayu("build bogus")
     _o5, build_eval = run_wayu("build eval")
-    ok = [fish_turbo, fish_eval, bogus_export, bogus_build].all? { |s| s.exitstatus == 64 } && build_eval.success?
-    report("Test 6: fish export refused, unknown export/build targets exit 64", ok,
+    ok = [fish_turbo, fish_eval, bogus_export, bogus_build, build_eval].all? { |s| s.exitstatus == 64 }
+    report("Test 6: fish export refused, unknown export/build targets (incl. removed `build eval`) exit 64", ok,
            [fish_turbo, fish_eval, bogus_export, bogus_build, build_eval].map(&:exitstatus).inspect)
   end
 

@@ -143,7 +143,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 	 flags = {{"--fix", "Repair what 'config scan' found"}}},
 	{command = .BUILD, names = {"build"}, desc = "Compile wayu.toml into shell init files", default_action = .LIST,
 	 actions = {
-		{"eval", .EVAL, "Regenerate and print shell code"}, {"turbo", .TURBO, "Generate turbo file"},
+		{"turbo", .TURBO, "Generate turbo file"},
 		{"profile", .CHECK, "Profile startup"}, {"clean", .CLEAN, "Clear the [tools] evalcache"},
 		{"help", .HELP, "Show help"}}},
 	{command = .EXPORT, names = {"export"}, desc = "Generate turbo export file", default_action = .TURBO,

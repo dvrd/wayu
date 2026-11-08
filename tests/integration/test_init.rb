@@ -32,7 +32,7 @@ class InitIntegrationTest
       %w[zsh bash].each { |sh| test_generated_files_valid_syntax(sh); test_core_wiring(sh) }
       test_stale_init_is_resynced
       test_edited_init_is_preserved
-      test_build_eval_dry_run_writes_nothing
+      test_build_dry_run_writes_nothing
       test_large_toml_regenerates
       test_live_path_sync
       test_path_sync_status_and_nounset
@@ -41,7 +41,6 @@ class InitIntegrationTest
       test_paths_expanded_in_shell
       test_fish_paths_expanded_in_shell
       test_hand_edits_reach_open_shells
-      test_build_eval_uses_evaluating_shell
       test_rewrite_drops_stale_zwc
       test_prompt_opt_in_and_escaping
     ensure
@@ -331,7 +330,7 @@ class InitIntegrationTest
     Open3.capture3(env, "#{@wayu_bin} init --shell #{shell}")
     cfg = "#{home}/.config/wayu"
     File.write("#{cfg}/wayu.toml", TRICKY_TOML)
-    Open3.capture3(env, "#{@wayu_bin} build eval")
+    Open3.capture3(env, "#{@wayu_bin} build")
     [home, cfg, env]
   end
 
@@ -411,7 +410,7 @@ class InitIntegrationTest
   end
 
   # OKAMI-235: an init.zsh the user edited is never rewritten; wayu warns on
-  # stderr instead (stdout of `build eval` stays clean for eval).
+  # stderr instead (stdout stays clean).
   def test_edited_init_is_preserved
     print "Test: user-edited init.zsh is kept, with a warning... "
     _, cfg, env = generate_tricky('zsh')
@@ -419,7 +418,7 @@ class InitIntegrationTest
     edited = File.read(init) + "export MY_CUSTOM=1\n"
     File.write(init, edited)
     _, err1, st1 = Open3.capture3(env, "#{@wayu_bin} alias add qq 'echo q'")
-    out2, err2, = Open3.capture3(env, "#{@wayu_bin} build eval")
+    out2, err2, = Open3.capture3(env, "#{@wayu_bin} build")
     if st1.success? && File.read(init) == edited && err1.include?('local edits') &&
        err2.include?('local edits') && !out2.include?('local edits')
       puts "✓"; @passed += 1
@@ -515,7 +514,7 @@ class InitIntegrationTest
       home, env = sync_home("managed_#{sh}", [sh], %w[a b c s])
       File.write("#{home}/.config/wayu/wayu.toml",
                  "[paths]\na = \"#{home}/a\"\nb = \"#{home}/b\"\ns = \"#{home}/s\"\n")
-      Open3.capture3(env, @wayu_bin, '--shell', sh, 'build', 'eval')
+      Open3.capture3(env, @wayu_bin, '--shell', sh, 'build')
       script = <<~SH
         . "$HOME/.config/wayu/core.#{sh}"
         show() { echo "$PATH" | sed "s|$HOME/||g"; }
@@ -719,27 +718,6 @@ class InitIntegrationTest
     end
   end
 
-  # `sudo zsh` resets SHELL to /bin/sh but still sources the user's .zshenv:
-  # `build eval` must emit code for the shell that evals it (its parent), not
-  # $SHELL, never create *.sh files, and startup must end with status 0.
-  def test_build_eval_uses_evaluating_shell
-    { '/bin/zsh' => ['zsh', '/bin/sh', '-fc'], '/bin/bash' => ['bash', '/bin/zsh', '-c'] }.each do |bin, (sh, shell_env, flag)|
-      print "Test: build eval follows the evaluating shell (#{bin}, SHELL=#{shell_env})... "
-      home = "#{@tmp_home}/evalshell_#{sh}"
-      cfg = "#{home}/.config/wayu"
-      FileUtils.mkdir_p(cfg)
-      File.write("#{cfg}/wayu.toml", "[paths]\nb = \"/usr/bin\"\n")
-      env = { 'HOME' => home, 'SHELL' => shell_env }
-      out, err, = Open3.capture3(env, bin, flag, "eval \"$(#{@wayu_bin} build eval)\"; echo rc=$?; type _wayu_paths_sync >/dev/null && echo hook")
-      sh_files = Dir.glob("#{cfg}/*.sh")
-      if out.lines.map(&:strip) == %w[rc=0 hook] && err.strip.empty? && sh_files.empty? && File.exist?("#{cfg}/core.#{sh}")
-        puts "✓"; @passed += 1
-      else
-        puts "✗"; puts "  out=#{out.inspect} err=#{err.strip[0, 300]} sh_files=#{sh_files}"; @failed += 1
-      end
-    end
-  end
-
   # Large configs (thousands of aliases) must not overflow the [tools] parser arena.
   def test_large_toml_regenerates
     print "Test: regenerate with 4000 aliases + [tools] succeeds... "
@@ -749,7 +727,7 @@ class InitIntegrationTest
     aliases = (1..4000).map { |i| "a#{i} = \"echo #{'x' * 120} #{i}\"" }.join("\n")
     File.write("#{home}/.config/wayu/wayu.toml",
                "[tools]\nnosuchtoolxyz = { kind = \"evalcache\", args = \"init zsh\" }\n\n[aliases]\n#{aliases}\n")
-    _, _, st = Open3.capture3(env, "#{@wayu_bin} build eval")
+    _, _, st = Open3.capture3(env, "#{@wayu_bin} build")
     core = "#{home}/.config/wayu/core.zsh"
     lazy = "#{home}/.config/wayu/core.zsh"
     if st.success? && File.read(core).include?("alias a4000=") && File.read(lazy).include?('_wayu_evalcache nosuchtoolxyz init zsh')
@@ -759,14 +737,14 @@ class InitIntegrationTest
     end
   end
 
-  # `build eval --dry-run` must not write anything.
-  def test_build_eval_dry_run_writes_nothing
-    print "Test: build eval --dry-run writes nothing... "
+  # `build --dry-run` must not write anything.
+  def test_build_dry_run_writes_nothing
+    print "Test: build --dry-run writes nothing... "
     home = "#{@tmp_home}/dry_eval"
     FileUtils.mkdir_p("#{home}/.config/wayu")
     env = { 'HOME' => home, 'SHELL' => '/bin/zsh' }
     File.write("#{home}/.config/wayu/wayu.toml", "[aliases]\nx = \"y\"\n")
-    out, _, st = Open3.capture3(env, "#{@wayu_bin} --dry-run build eval")
+    out, _, st = Open3.capture3(env, "#{@wayu_bin} --dry-run build")
     if st.success? && !File.exist?("#{home}/.config/wayu/core.zsh")
       puts "✓"; @passed += 1
     else

@@ -756,7 +756,6 @@ handle_build_command :: proc(action: Action) {
 	}
 	
 	turbo_mode := action == .TURBO
-	eval_mode := action == .EVAL
 	profile_mode := action == .CHECK
 	
 	if profile_mode {
@@ -774,20 +773,6 @@ handle_build_command :: proc(action: Action) {
 		return
 	}
 	
-	if eval_mode {
-		// The parent process is the shell that will eval our output; trust
-		// it over $SHELL (sudo resets SHELL to /bin/sh) unless --shell given.
-		if !shell_flag_given {
-			if ps := detect_parent_shell(); ps != .UNKNOWN { set_active_shell(ps) }
-		}
-		if wayu.shell == .UNKNOWN {
-			// Never emit bash/zsh code into an unknown shell.
-			fmt.eprintln("wayu: build eval: unknown shell; pass --shell zsh|bash|fish")
-			return
-		}
-		generate_eval_output_optimized()
-		return
-	}
 	
 	// Standard build - use the optimized code generator
 	print_header("Building Shell Configuration", "🔧")

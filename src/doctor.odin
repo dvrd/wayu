@@ -618,7 +618,7 @@ rc_active_code :: proc(line: string) -> string {
 // True when an active (non-comment) line of `content` loads wayu: it runs
 // `source` / `.` / `eval` as a command, names wayu (any case, so
 // `$WAYU/init.zsh` counts) and sources an init/turbo file or evals wayu
-// output (`eval "$(wayu build eval)"`). A line that merely mentions the file
+// output (`eval "$(wayu export --eval)"`). A line that merely mentions the file
 // (`alias e='vim ~/.config/wayu/init.zsh'`) does not count. With
 // `turbo_only`, only a turbo.zsh / wayu-turbo reference counts.
 rc_loads_wayu :: proc(content: string, turbo_only := false) -> bool {

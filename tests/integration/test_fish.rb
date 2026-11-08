@@ -116,7 +116,7 @@ class FishIntegrationTest
   def test_init_core_fish_is_native_syntax
     print "Test 5: core.fish uses fish-native syntax... "
     # Rebuild after alias/path were added so core.fish reflects them.
-    run_fish('build eval')
+    run_fish('build')
     unless File.exist?(@init_core)
       puts "✗"; puts "  core.fish not created"; @failed += 1
       return
@@ -146,7 +146,7 @@ class FishIntegrationTest
     env = ENV.to_h.merge('HOME' => scratch, 'SHELL' => '/usr/bin/fish', 'EDITOR' => nil, 'GOPATH' => nil)
     Open3.capture3(env, "#{@wayu_bin} init --shell fish")
     Open3.capture3(env, "#{@wayu_bin} template apply developer")
-    Open3.capture3(env, "#{@wayu_bin} build eval")
+    Open3.capture3(env, "#{@wayu_bin} build")
     toml = File.read("#{scratch}/.config/wayu/wayu.toml")
     init = File.read("#{scratch}/.config/wayu/core.fish")
     toml_ok = toml.include?('g = "git"') && toml.include?('EDITOR = "code --wait"') &&
@@ -194,7 +194,7 @@ class FishIntegrationTest
     baseline_has_alias = File.exist?(core) && File.read(core).include?("alias gg")
     Open3.capture3(env, "#{@wayu_bin} alias add gg 'git status'")
     Open3.capture3(env, "#{@wayu_bin} constants add MY_VAR xyz")
-    # No explicit 'build eval' run — core must reflect changes already.
+    # No explicit 'build' run — core must reflect changes already.
     body = File.exist?(core) ? File.read(core) : ''
     ok = !baseline_has_alias &&
          body.include?("alias gg 'git status'") &&
@@ -259,7 +259,7 @@ class FishIntegrationTest
     toml = toml.include?("[aliases]\n") ? toml.sub("[aliases]\n") { "[aliases]\n#{sq_line}" } : toml + "\n[aliases]\n#{sq_line}"
     toml = toml.include?("[env]\n") ? toml.sub("[env]\n") { "[env]\n#{fq_line}" } : toml + "\n[env]\n#{fq_line}"
     File.write(@toml_file, toml)
-    run_fish('build eval')
+    run_fish('build')
     body = File.read(@init_core)
     alias_ok = body.include?(%q{alias sq 'echo \'it\' a\\\\b'})
     env_ok = body.include?(%q{set -gx FQ "say \"hi\" $HOME"})

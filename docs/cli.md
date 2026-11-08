@@ -217,7 +217,6 @@ Without an action it prints its help.
 | Action | |
 |---|---|
 | *(none)* | Regenerate the init files from wayu.toml (after a hand edit) |
-| `eval` | Regenerate, then print `source <data-dir>/core.<ext>` |
 | `turbo` | Same as `wayu export --turbo` |
 | `profile` | Time shell startup and each section, tool and plugin of `core.<ext>` |
 | `clean` | Delete the `[tools]` evalcache (`${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`) |

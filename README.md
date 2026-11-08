@@ -70,6 +70,13 @@ The shell is detected from `$SHELL`; `wayu init --shell bash` (or `zsh`,
 `fish`) picks another one. Run `wayu init` once per shell you use; they share
 one `wayu.toml`.
 
+zsh: to give scripts (`zsh -c`, editors, cron) your PATH and env too, put the
+line in `~/.zshenv` instead of `~/.zshrc` — once, not in both. A login shell
+runs `/etc/zprofile` after `.zshenv`, and on macOS its `path_helper` moves the
+system dirs ahead of yours; wayu puts its dirs back in front at the first
+prompt (dirs you prepend in `.zshrc` stay ahead of them). If you moved the
+data dir, use `source "${WAYU_DATA_DIR:-$HOME/.config/wayu}/init.zsh"`.
+
 `init.<ext>` sources one precomputed file, `core.<ext>`, which wayu rewrites
 after every change (`wayu path|alias|const …`, the TUI, `wayu build`). That
 is the recommended setup. The alternatives:
@@ -78,7 +85,6 @@ is the recommended setup. The alternatives:
 |---|---|
 | `source "$HOME/.config/wayu/init.zsh"` | Default. Fast; picks up every wayu change. |
 | `source "$HOME/.config/wayu/turbo.zsh"` | Only for rc files that already use it: `turbo.<ext>` (zsh/bash, written by `wayu export`) is a copy of `core.<ext>`, kept current by wayu. |
-| `eval "$(wayu build eval)"` | Regenerates the init files from `wayu.toml` at every shell start, then sources `core.<ext>`. Use it when `wayu.toml` is edited outside wayu (e.g. synced dotfiles) and you never want to run `wayu build`; it costs one `wayu` run per shell. |
 | `eval "$(wayu export --eval)"` | Only `[env]`, `[paths]` and `[aliases]`, as shell code, without plugins, `[tools]`, prompt or completions. For scripts, containers or CI that want the variables but none of the interactive setup. Writes nothing. |
 
 After editing `wayu.toml` by hand, run `wayu build` (or `wayu toml validate`
