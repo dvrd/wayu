@@ -132,6 +132,21 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   dropped.
 - `search QUERY --json` prints `{"query": …, "results": [{"type", "name",
   "value", "match", "field", "score"}], "count": N}`; it ignored `--json`.
+- `--json` on a command/action without JSON output (`path add`,
+  `const get`, `hooks`, `toml show`, …) exits `64` and names the commands
+  that support it; it used to be ignored. Supported: `path|alias|const|
+  backup|plugin list`, `search`, `doctor` (and any `help`).
+
+**Commands and actions**
+- Command names, action words, per-command flags and `--json` support
+  come from one table (also used by completions and `wayu help`). An
+  action word a command doesn't have exits `64` with that command's help:
+  e.g. `alias check` (silently did nothing, exit `0`), `alias clean`
+  (exit `1`), `backup clean|add|get`, `path enable`.
+- `wayu help` lists every command (it missed `build` and `export`) and a
+  COMMAND FLAGS section; `--json` and `--no-color` are listed under FLAGS.
+- Completions offer each command's flags and `--json` where supported, and
+  `export check`.
 
 ## 5.0.0
 

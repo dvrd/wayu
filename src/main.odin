@@ -240,6 +240,10 @@ main :: proc() {
 		fmt.eprintln("To pass a value that starts with '-', put it after '--'.")
 		os.exit(EXIT_USAGE)
 	}
+	if parsed.json_unsupported {
+		print_error_simple("--json is not supported here; it works with: %s", json_commands_summary())
+		os.exit(EXIT_USAGE)
+	}
 	if f := parsed.ambiguous_tail_flag; len(f) > 0 {
 		long := "--dry-run" if f == "-n" else "--yes"
 		fmt.eprintfln("%s⚠ trailing '%s' was kept as part of the value; use '%s' for the flag (put '--' before the value to silence this)%s",
@@ -734,45 +738,45 @@ print_help :: proc() {
 	fmt.println()
 
 	print_section("COMMANDS:", EMOJI_COMMAND)
-	print_item("", "path", "Manage PATH entries", EMOJI_PATH)
-	print_item("", "alias", "Manage shell aliases", EMOJI_ALIAS)
-	print_item("", "constants", "Manage environment constants (aliases: const, env)", EMOJI_CONSTANT)
-	print_item("", "search, find, f", "Fuzzy search across all configurations", "🔍")
-	print_item("", "toml", "TOML configuration management", "⚙️ ")
-	print_item("", "doctor", "Health check and diagnostics", "🔬")
-	print_item("", "template", "Configuration presets", "📋")
-	print_item("", "hooks", "Pre/post action hooks", "🪝")
-	print_item("", "function", "Manage custom shell functions (add, list, remove)", "🔧")
-	print_item("", "completions", "Manage Zsh completion scripts", EMOJI_COMMAND)
-	print_item("", "backup", "Manage configuration backups", EMOJI_INFO)
-	print_item("", "plugin", "Manage shell plugins", EMOJI_COMMAND)
-	print_item("", "init", "Initialize wayu configuration directory", EMOJI_INFO)
-	print_item("", "migrate", "Migrate configuration between shells", EMOJI_INFO)
-	print_item("", "config", "Manage configuration files (edit, extend, scan)", EMOJI_INFO)
-	print_item("", "reload", "Watch config files and regenerate init files (aliases: watch, hot-reload)", "\U0001F440")
-	print_item("", "version", "Show version information", EMOJI_INFO)
-	print_item("", "help", "Show this help message", EMOJI_INFO)
+	// Generated from WAYU_COMMAND_SPECS so help, dispatch and completions
+	// list the same commands (OKAMI-282).
+	name_width := 0
+	for spec in WAYU_COMMAND_SPECS {
+		name_width = max(name_width, len(strings.join(spec.names, ", ", context.temp_allocator)))
+	}
+	for spec in WAYU_COMMAND_SPECS {
+		names := strings.join(spec.names, ", ", context.temp_allocator)
+		fmt.printf("  %s%s  %s\n", names, strings.repeat(" ", name_width - len(names), context.temp_allocator), spec.desc)
+	}
 	fmt.println()
 
 	print_section("ACTIONS:", EMOJI_ACTION)
 	print_item("", "add", "Add a new entry", EMOJI_ADD)
-	print_item("", "remove, rm", "Remove an entry (interactive if no args)", EMOJI_REMOVE)
+	print_item("", "remove, rm", "Remove an entry", EMOJI_REMOVE)
 	print_item("", "list, ls", "List all entries", EMOJI_LIST)
-	print_item("", "check", "Check for updates (plugins only)", EMOJI_INFO)
-	print_item("", "update", "Update entry (plugins only)", EMOJI_INFO)
-	print_item("", "help", "Show command-specific help", EMOJI_INFO)
+	print_item("", "help", "Show command-specific help ('wayu <command> help')", EMOJI_INFO)
 	fmt.println()
 
 	print_section("FLAGS:", EMOJI_ACTION)
 	print_item("", "--dry-run, -n", "Preview changes without modifying files", EMOJI_INFO)
 	print_item("", "--yes, -y", "Skip confirmation prompts (for clean/dedup)", EMOJI_INFO)
 	print_item("", "--full, -f", "Show all entries including external", EMOJI_INFO)
-	print_item("", "--reveal", "Show secret values unmasked (const list, toml show)", EMOJI_INFO)
+	print_item("", "--json", fmt.tprintf("Machine-readable output (%s)", json_commands_summary()), EMOJI_INFO)
+	print_item("", "--no-color", "No colors (also NO_COLOR=1; off when output is not a terminal)", EMOJI_INFO)
 	print_item("", "--", "End of flags: everything after is a literal argument", EMOJI_INFO)
 	print_item("", "--tui", "Launch interactive Terminal UI mode (same as no args)", EMOJI_INFO)
 	print_item("", "-c=<component>", "Test TUI component rendering (dev mode)", EMOJI_INFO)
 	print_item("", "--snapshot", "Save component output as golden file", EMOJI_INFO)
 	print_item("", "--test", "Test component against golden file", EMOJI_INFO)
+	fmt.println()
+
+	print_section("COMMAND FLAGS:", EMOJI_ACTION)
+	for spec in WAYU_COMMAND_SPECS {
+		for f in spec.flags {
+			if len(f.desc) == 0 { continue }
+			print_item("", fmt.tprintf("%s %s", spec.names[0], f.flag), f.desc)
+		}
+	}
 	fmt.println()
 
 	print_section("EXAMPLES:", EMOJI_CYCLIST)
