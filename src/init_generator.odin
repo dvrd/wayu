@@ -4,7 +4,6 @@ import "base:runtime"
 import "core:c/libc"
 import "core:fmt"
 import "core:hash"
-import "core:mem"
 import "core:mem/virtual"
 import "core:os"
 import "core:path/filepath"
@@ -188,9 +187,9 @@ generate_runtime_files_for_active_shell :: proc() -> (plugins_ok: bool) {
 	// Generators use the temp arena for quoting; roll it back per shell so
 	// regenerating several shells doesn't multiply temp usage.
 	has_arena := wayu.temp_arena != nil
-	arena_mark: mem.Arena_Temp_Memory
-	if has_arena { arena_mark = mem.begin_arena_temp_memory(wayu.temp_arena) }
-	defer if has_arena { mem.end_arena_temp_memory(arena_mark) }
+	arena_mark: virtual.Arena_Temp
+	if has_arena { arena_mark = virtual.arena_temp_begin(wayu.temp_arena) }
+	defer if has_arena { virtual.arena_temp_end(arena_mark) }
 	if wayu.shell == .FISH {
 		generate_core_init_fish()
 	} else {

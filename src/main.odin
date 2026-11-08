@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:log"
-import "core:mem"
+import "core:mem/virtual"
 // Semantic versioning - update with each release.
 // VERSION here is the single source of truth; docs (AGENTS.md, README)
 // should not hardcode a version number that can drift.
@@ -31,7 +31,7 @@ AppContext :: struct {
 	reveal_secrets: bool,    // --reveal: list views print secret-looking values unmasked
 	source_filter:  string,
 	tui_mode:       bool,
-	temp_arena:     ^mem.Arena,
+	temp_arena:     ^virtual.Arena,
 }
 
 // Global context — populated once by init_app_context().
@@ -168,30 +168,32 @@ tui_launch :: proc() {
 	tui_run()
 }
 
+// Process-wide temp arena (context.temp_allocator). A package global, not a
+// local of main, so wayu.temp_arena never points into a stack frame.
+@(private = "file")
+main_temp_arena: virtual.Arena
+
 main :: proc() {
-  // Set up temp arena for transient allocations (string building, intermediate operations, etc.)
-  // This arena is automatically cleared, reducing memory fragmentation
-  // Keep context.allocator as heap for now to maintain compatibility with existing delete() calls
-  // TUI needs more arena space for rendering; CLI is lightweight.
-  // Same flag-position rules as parse_args (`--` / add-value tail), so
-  // `wayu alias add x echo --tui` doesn't size the arena for the TUI.
-  is_tui := len(os.args) < 2 || global_flag_present(os.args[1:], "--tui")
-  temp_arena_size := 2 * 1024 * 1024 if is_tui else 256 * 1024  // 2MB TUI, 256KB CLI
-  temp_arena_backing := make([]byte, temp_arena_size)
-  defer delete(temp_arena_backing)
+  // Temp arena for transient allocations (string building, quoting, etc.).
+  // Growing (virtual memory, new blocks on demand): the old fixed 256 KB
+  // buffer ran out on large configs and tprintf/join then returned empty
+  // strings, silently skipping writes such as path_sync. The TUI frame loop
+  // and the watcher free_all it per iteration; the CLI frees it at exit.
+  // context.allocator stays the heap (existing delete() calls).
+  if err := virtual.arena_init_growing(&main_temp_arena); err != nil {
+    fmt.eprintln("wayu: cannot reserve memory for the temp arena")
+    os.exit(EXIT_FAILURE)
+  }
+  defer virtual.arena_destroy(&main_temp_arena)
 
-  temp_arena: mem.Arena
-  mem.arena_init(&temp_arena, temp_arena_backing)
-  // No need to explicitly destroy arena - just free the backing buffer
+  wayu.temp_arena = &main_temp_arena
 
-  wayu.temp_arena = &temp_arena
-
-  context.temp_allocator = mem.arena_allocator(&temp_arena)
+  context.temp_allocator = virtual.arena_allocator(&main_temp_arena)
 
   context.logger = log.create_console_logger(.Debug, { .Level, .Terminal_Color })
   defer log.destroy_console_logger(context.logger)
 
-	// Clean up temp arena at the very end (before arena backing is freed)
+	// Clean up temp arena at the very end (before the arena is destroyed)
 	// This defer executes after all other defers in this scope
 	defer if wayu.temp_arena != nil do free_all(context.temp_allocator)
 
