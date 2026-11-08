@@ -380,7 +380,7 @@ execute_pending_delete :: proc(state: ^TUIState) {
 		case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .HOOKS_VIEW, .SETTINGS_VIEW:
 			label = "entry"
 		}
-		set_notification(state, .SUCCESS, fmt.tprintf("Removed %s: %s", label, name))
+		set_notification(state, .SUCCESS, fmt.tprintf("%s %s: %s", wayu.dry_run ? "Dry run: would remove" : "Removed", label, name))
 
 		// Drop the cache; tui_ensure_data_loaded reloads it next frame and
 		// re-applies the filter + clamps selection to the shorter list.
@@ -743,7 +743,7 @@ execute_add_form :: proc(state: ^TUIState) {
 		case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .HOOKS_VIEW, .SETTINGS_VIEW:
 			label = "entry"
 		}
-		msg := fmt.tprintf("Added %s: %s", label, val_0)
+		msg := fmt.tprintf("%s %s: %s", wayu.dry_run ? "Dry run: would add" : "Added", label, val_0)
 		clear_add_form(state)
 		clear_view_cache(state, view)
 		set_notification(state, .SUCCESS, msg)

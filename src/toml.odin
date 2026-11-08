@@ -366,6 +366,8 @@ commit_wayu_toml :: proc(new_content: string) -> bool {
 print_toml_dry_run :: proc(section, dry_label: string, removed: []string, name := "", value := "", existed := false) {
 	// Only the changed keys, values masked if secret-looking. Never dump the
 	// whole file: it holds every [env] secret (OKAMI-208).
+	// The TUI sets print_quiet; writing here would draw over its screen.
+	if print_quiet do return
 	print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 	fmt.println()
 	fmt.printfln("%sWould update wayu.toml [%s] (%s):%s", BRIGHT_CYAN, section, dry_label, RESET)
