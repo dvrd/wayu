@@ -206,7 +206,8 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `"ZSH"`, `"Bash"`, `"Fish"`, `"Unknown"`) by `wayu init`, `migrate --from
   X --to Y` and any command that creates a missing `wayu.toml`.
   `wayu config edit` on a missing file creates the same scaffold (it wrote
-  `[settings] shell = "zsh"` plus commented examples).
+  `[settings] shell = "zsh"` plus commented examples), and so does legacy
+  `wayu migrate` (it started the file with a comment line and no `[shell]`).
 - `toml validate` now checks `[shell] type` (case-insensitive); it only saw
   a top-level `shell = …` key before. A value other than zsh/bash/fish
   — including `"Unknown"`, written when no shell was detected — fails with
