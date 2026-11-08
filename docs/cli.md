@@ -197,19 +197,6 @@ unmodified old `init.<ext>` is updated. `--shell` picks the shell.
 |---|---|
 | `--template <name>`, `--template=<name>` | Then apply a template (see `wayu template list`) |
 
-### `wayu migrate`
-
-| Usage | |
-|---|---|
-| `wayu migrate` | Import legacy `path` / `aliases` / `constants.<ext>` into wayu.toml (all or nothing) |
-| `wayu migrate --schema` | Rewrite an obsolete `[[paths]]` / `[[aliases]]` / `[[constants]]` wayu.toml as tables |
-| `wayu migrate --from <shell> --to <shell>` | Switch `[shell] type` and generate the target shell's files |
-
-| Flag | |
-|---|---|
-| `--from`, `--to` | Source and target shell (`zsh`, `bash`, `fish`); both required |
-| `--schema` | Schema upgrade |
-
 ### `wayu config`
 
 Without an action it prints its help.
@@ -256,7 +243,6 @@ Default action: `turbo`. Each action may also be written as a flag
 | `validate` | Strict check of wayu.toml (syntax, duplicate keys, names, `[shell] type`); exit `65` on error |
 | `show` | Print wayu.toml with secret-looking `[env]` values masked |
 | `keys` | List wayu.toml's top-level keys and tables, in file order; exit `65` if it does not parse |
-| `convert` | Same as `wayu migrate` |
 | `help` | |
 
 | Flag | |
@@ -397,7 +383,6 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu search` | 64 |
 | `wayu plugin priority` | 64 |
 | `wayu doctor --optimize` | 64 |
-| `wayu migrate --from zsh` | 64 |
 | `wayu doctor --fix` | 64 |
 | `wayu const get NO_SUCH_NAME` | 65 |
 | `wayu path rm /no/such/dir` | 65 |

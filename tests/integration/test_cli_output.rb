@@ -22,11 +22,11 @@ class CliOutputIntegrationTest
     'doctor', 'doctor --json', 'plugin list', 'plugin list --json', 'plugin search', 'plugin --help',
     'completions list', 'completions --help', 'toml validate', 'toml show', 'toml keys',
     'template list', 'hooks', 'function list', 'export list', 'build help',
-    'migrate --help', 'init --help', 'search ll', 'search ll --json',
+    'init --help', 'search ll', 'search ll --json',
     'nosuchcmd', 'path add', 'path list --bogus', 'path add /tmp --json'
   ].freeze
 
-  HELP_COMMANDS = %w[path alias const constants env backup plugin init migrate config build export
+  HELP_COMMANDS = %w[path alias const constants env backup plugin init config build export
                      toml doctor template hooks function reload search completions].freeze
 
   def initialize

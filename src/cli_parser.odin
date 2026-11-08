@@ -281,7 +281,7 @@ parse_command_and_action :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 	}
 
 	// The word after the command is its action. Commands without action
-	// words (init, migrate, search, reload) get every word as an argument;
+	// words (init, search, reload) get every word as an argument;
 	// a leading help word still sets .HELP but stays in args for their
 	// handlers.
 	rest := filtered_args[1:]

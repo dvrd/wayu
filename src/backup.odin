@@ -28,7 +28,7 @@ BACKUP_KEEP_COUNT :: 5
 BACKUP_PRE_RESTORE_TAG :: ".pre-restore"
 
 // Files already backed up by create_backup_cli in this (non-TUI) process.
-// A command that writes the same file many times (migrate, template apply,
+// A command that writes the same file many times (template apply,
 // doctor --fix) keeps ONE backup: the state before the command ran.
 // Allocated on the raw heap: lives for the whole process.
 @(private = "file")
@@ -84,7 +84,7 @@ create_backup :: proc(file_path: string, tag := "") -> (backup_path: string, ok:
 
 	// Generate backup filename with human-readable date format plus
 	// microseconds. Second resolution alone let two backups taken within the
-	// same second (migrate / doctor --fix write once per entry) overwrite
+	// same second (doctor --fix write once per entry) overwrite
 	// each other, losing the pristine pre-operation copy. The file is also
 	// created exclusively (O_EXCL) with a `-N` suffix on collision, so an
 	// existing backup is never clobbered.

@@ -45,7 +45,6 @@ Command :: enum {
 	BACKUP,
 	PLUGIN,
 	INIT,
-	MIGRATE,
 	CONFIG,
 	BUILD,      // Compile wayu.toml to optimized shell config
 	EXPORT,     // High-performance turbo export
@@ -274,10 +273,10 @@ main :: proc() {
 	// Hard-break guard: any command that touches wayu.toml refuses to run
 	// while the file still uses the obsolete [[paths]]/[[aliases]]/[[constants]]
 	// schema. The few commands that either don't read the toml (VERSION/HELP)
-	// or are the recovery path itself (MIGRATE) skip this check.
+	// skip this check.
 	needs_modern_toml := true
 	#partial switch parsed.command {
-	case .VERSION, .HELP, .MIGRATE, .UNKNOWN:
+	case .VERSION, .HELP, .UNKNOWN:
 		// pure non-toml commands and the recovery path itself
 		needs_modern_toml = false
 	case .BACKUP:
@@ -334,8 +333,6 @@ main :: proc() {
 				apply_template(template)
 			}
 		}
-	case .MIGRATE:
-		handle_migrate_command(parsed.args)
 	case .CONFIG:
 		handle_config_extra_command(parsed.action, parsed.args)
 	case .BUILD:
@@ -811,7 +808,6 @@ print_help :: proc() {
 	fmt.printf("  wayu plugin check                # Check plugins for updates\n")
 	fmt.printf("  wayu plugin update plugin-name   # Update specific plugin\n")
 	fmt.printf("  wayu plugin update --all         # Update all plugins\n")
-	fmt.printf("  wayu migrate --from zsh --to bash # Migrate between shells\n")
 	fmt.println()
 	fmt.printf("  # TOML configuration (declarative mode):\n")
 	fmt.printf("  wayu toml validate               # Check wayu.toml syntax\n")
@@ -926,11 +922,8 @@ handle_build_command :: proc(action: Action) {
 	defer delete(toml_path)
 	
 	if !os.exists(toml_path) {
-		print_info("No wayu.toml found. Using existing shell configs.")
-		fmt.println()
-		fmt.println("To create wayu.toml:")
-		fmt.printfln("  %swayu toml convert%s", get_primary(), RESET)
-		return
+		print_error_simple("No wayu.toml found at %s. Run 'wayu init' first.", toml_path)
+		os.exit(EXIT_CONFIG)
 	}
 	
 	if !validate_tools_args() {

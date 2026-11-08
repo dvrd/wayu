@@ -531,18 +531,6 @@ handle_validate :: proc() -> bool {
 	return true
 }
 
-// `wayu toml convert` is now an alias for `wayu migrate`. The original
-// implementation was a scaffolding stub that created an empty wayu.toml
-// and printed "Migration not yet implemented". The real migration path
-// lives in migrate_legacy_to_toml (see main.odin).
-handle_convert_to_toml :: proc() -> bool {
-	fmt.println()
-	print_info("`wayu toml convert` now runs `wayu migrate` under the hood.")
-	fmt.println()
-	migrate_legacy_to_toml(wayu.dry_run)
-	return true
-}
-
 // Handle 'wayu toml show' - display TOML content
 handle_toml_show :: proc() {
 	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
@@ -636,14 +624,6 @@ handle_toml_command :: proc(action: Action) {
 			os.exit(EXIT_CONFIG)
 		}
 		handle_toml_show()
-	case .UPDATE:
-		// `toml convert` - legacy shell configs → wayu.toml. This runs even
-		// when the regular essential-files gate would fail, because the whole
-		// point of migration is to bootstrap an incomplete setup into the
-		// TOML layout.
-		if !handle_convert_to_toml() {
-			os.exit(EXIT_CANTCREAT)
-		}
 	case .HELP:
 		print_toml_usage()
 	case:
@@ -664,7 +644,6 @@ print_toml_usage :: proc() {
 	fmt.printfln("  wayu toml show               Display TOML content (secrets masked)")
 	fmt.printfln("  wayu toml show --reveal      Display TOML content with real [env] values")
 	fmt.printfln("  wayu toml keys               List wayu.toml's top-level keys and tables")
-	fmt.printfln("  wayu toml convert            Convert legacy shell configs → wayu.toml (alias of `wayu migrate`)")
 	fmt.printfln("  wayu toml help               Show this help")
 	fmt.println()
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
@@ -677,9 +656,6 @@ print_toml_usage :: proc() {
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
 	fmt.println("  # Validate your TOML config")
 	fmt.println("  wayu toml validate")
-	fmt.println()
-	fmt.println("  # Convert legacy shell configs to wayu.toml (same as `wayu migrate`)")
-	fmt.println("  wayu toml convert")
 	fmt.println()
 	fmt.println("  # Apply wayu.toml to shell (rebuild init script)")
 	fmt.println("  wayu build")

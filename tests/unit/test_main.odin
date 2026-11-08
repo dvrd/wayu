@@ -142,12 +142,6 @@ test_print_help :: proc(t: ^testing.T) {
 	testing.expect(t, true, "print_help should not crash")
 }
 
-@(test)
-test_print_migrate_help :: proc(t: ^testing.T) {
-	// Test that migrate help printing doesn't crash
-	wayu.print_migrate_help()
-	testing.expect(t, true, "print_migrate_help should not crash")
-}
 // Global-flag position rules (see cli_parser.odin): flags inside the value
 // tail of `alias add` / `const add` belong to the value.
 @(test)

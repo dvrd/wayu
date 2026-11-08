@@ -204,7 +204,7 @@ Keys:
 
 | Reader | On a syntax error |
 |---|---|
-| `wayu toml validate`, `wayu doctor`, `wayu backup restore`, `wayu migrate --schema` (strict) | Fail and name the line: `Failed to parse <file>: line 5: invalid value "ls" (strings must be quoted)` |
+| `wayu toml validate`, `wayu doctor`, `wayu backup restore` (strict) | Fail and name the line: `Failed to parse <file>: line 5: invalid value "ls" (strings must be quoted)` |
 | Everything else: `alias/const/path list`, the generator (`wayu build`, every write), the TUI, the in-place editor (lenient) | Use what was recovered. A `key = value` line whose value is not valid TOML is read the old one-line way: `ll = ls -la` is the alias `ls -la` |
 
 Strict-only failures: a key defined twice in one table, a table defined twice,
@@ -231,7 +231,7 @@ status: `0` valid, `65` invalid, `78` before `wayu init`.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `type` | string | `"zsh"` | `zsh`, `bash` or `fish` (case-insensitive). Written lowercase by `wayu init`, `wayu migrate --from X --to Y` and any command that creates a missing `wayu.toml`. |
+| `type` | string | `"zsh"` | `zsh`, `bash` or `fish` (case-insensitive). Written lowercase by `wayu init` and any command that creates a missing `wayu.toml`. |
 
 `type` is a record of the shell the config was set up for and is checked by
 `toml validate`; it does not choose the shell. wayu acts for the shell named

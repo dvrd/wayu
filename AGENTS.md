@@ -120,8 +120,6 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/plugin_loader.odin` | Generates runtime plugin loader shell scripts |
 | `src/backup.odin` | Timestamped backups (once per CLI run, pruned to 5 on every write), restore by index/file |
 | `src/doctor.odin` | Health check orchestrator + individual checks |
-| `src/migrate.odin` | Legacy shell config → wayu.toml migration (all-or-nothing) + schema migration + `--from/--to` |
-| `src/migrate_parse.odin` | Legacy file parser: each line → entry or listed `file:line` + reason |
 | `src/shell_words.odin` | Exact POSIX/fish shell-word tokenizer (quotes, escapes, expandability) |
 | `src/validation.odin` | Input validation + error handling |
 | `src/hooks.odin` | hooks.conf loading + execution; live pre/post hook procs (ConfigEntrySpec, path, plugin add, export) |
@@ -153,7 +151,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 `wayu.toml` is the source of truth (reference: `docs/config-reference.md`):
 `[shell]`, `[paths]` (`key = "dir"`, file order = PATH priority), `[aliases]`,
 `[env]`, `[settings]`, `[tools]`, `[prompt]` / `[prompt.*]`.
-- Reading: always through `src/toml_parse.odin` (strict for validate/doctor/backup/migrate, lenient elsewhere).
+- Reading: always through `src/toml_parse.odin` (strict for validate/doctor/backup, lenient elsewhere).
 - Writing: the line-level editor in `src/toml.odin` (`toml_kv_upsert` / `toml_kv_delete`) keeps comments and order; writes go through `write_file_atomic` under the config lock.
 - Generated shell code: `src/init_generator.odin` compiles wayu.toml into `core.<ext>` (the one file `init.<ext>` sources) and `path_sync.<ext>`; never edit those by hand.
 - Legacy `path/aliases/constants.<ext>` files (pre-3.10 layout) are only read by `wayu migrate` and by `init.<ext>`'s fallback when `core.<ext>` is missing; an obsolete `[[paths]]` wayu.toml makes most commands exit 78 until `wayu migrate --schema`.
