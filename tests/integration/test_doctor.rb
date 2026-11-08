@@ -31,6 +31,7 @@ class DoctorIntegrationTest
       test_fix_dry_run_changes_nothing
       test_fix_keeps_variable_paths
       test_fix_keeps_relative_paths
+      test_fix_refuses_repeated_key
       test_toml_check_detects_malformed
       test_commented_source_not_counted
       test_json_output_parses
@@ -179,6 +180,24 @@ class DoctorIntegrationTest
     ok = toml.include?('nm = ') && toml.include?('bare = ') && !toml.include?('gone =') &&
          out.include?('1 missing') && out.include?('relative paths')
     check(ok, "#{out.lines.grep(/PATH|Removed|- /).join}\n#{toml}")
+  end
+
+  # A repeated [paths] key: the duplicate's deletion removed every line of
+  # the key, survivor included. --fix must refuse (78) and change nothing.
+  def test_fix_refuses_repeated_key
+    print "Test 5c: --fix refuses a repeated [paths] key, changes nothing... "
+    dir = "#{@tmp_home}/dupkey"
+    FileUtils.mkdir_p(dir)
+    File.write("#{@config_dir}/wayu.toml", <<~TOML)
+      [paths]
+      a = "#{dir}"
+      a = "#{dir}"
+    TOML
+    before = File.read("#{@config_dir}/wayu.toml")
+    out, status = run_wayu('doctor --fix --yes --no-color')
+    after = File.read("#{@config_dir}/wayu.toml")
+    check(status.exitstatus == 78 && after == before && out.include?("key 'a'"),
+          "exit=#{status.exitstatus}\n#{out.lines.grep(/PATH|key|Removed/).join}\n#{after}")
   end
 
   def test_toml_check_detects_malformed

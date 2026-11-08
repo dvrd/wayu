@@ -18,6 +18,9 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - A relative `[paths]` entry (`./node_modules/.bin`) is no longer reported
   as missing or removed by `doctor --fix`: it is counted with the entries
   that "use unset variables or relative paths (left alone)".
+- `doctor --fix` exits `78` and changes nothing when a key it would drop is
+  repeated in `[paths]` (`a = "/x"` twice); it used to delete every line of
+  that key, the kept entry included.
 
 **Backups**
 - `wayu backup restore` waits for other wayu commands (config lock) instead

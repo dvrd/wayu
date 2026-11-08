@@ -934,6 +934,18 @@ doctor_fix_toml_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, 
 		return 0, true, "Nothing to remove"
 	}
 
+	// The rewrite deletes every line of a key. If a key to drop also names
+	// an entry that stays (a repeated key: `a = "/x"` twice), deleting it
+	// would remove the survivor too — refuse and change nothing.
+	for s in scan {
+		if s.missing || s.duplicate { continue }
+		for k in drop_keys {
+			if k != s.entry.key { continue }
+			print_error("wayu.toml [paths] defines key '%s' more than once — --fix would delete every line of it. Rename or remove the repeated key by hand; nothing changed.", k)
+			os.exit(EXIT_CONFIG)
+		}
+	}
+
 	if wayu.dry_run {
 		return removed, true, fmt.aprintf("DRY RUN: would remove %d entr%s from wayu.toml [paths]",
 			removed, removed == 1 ? "y" : "ies")
