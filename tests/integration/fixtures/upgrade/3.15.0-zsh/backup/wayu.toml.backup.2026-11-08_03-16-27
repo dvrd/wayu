@@ -1,0 +1,19 @@
+[shell]
+type = "ZSH"
+
+[[paths]]
+path = "@HOME@/tools"
+
+[[paths]]
+path = "@HOME@/bin dir"
+
+[aliases]
+ll = "ls -la"
+gs = "git status --short"
+q = "echo \"it's quoted\""
+
+
+[env]
+EDITOR = "nvim"
+GREETING = "hello world"
+

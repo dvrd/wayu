@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+# Centralized PATH registry
+# Managed by wayu - Add entries below
+WAYU_PATHS=(
+  "@HOME@/tools"
+  "@HOME@/bin dir"
+)
+
+# Build PATH from registry with deduplication
+for dir in "${WAYU_PATHS[@]}"; do
+    # Check if directory exists
+    if [ ! -d "$dir" ]; then
+        continue
+    fi
+
+    # Check if directory is already in PATH
+    if [[ ":$PATH:" == *":$dir:"* ]]; then
+        continue
+    fi
+
+    # Add to PATH (prepend)
+    export PATH="$dir:$PATH"
+done
+
+# Final deduplication pass (Bash-compatible method)
+remove_path_duplicates() {
+    local new_path=""
+    local dir
+    IFS=':' read -ra DIRS <<< "$PATH"
+    for dir in "${DIRS[@]}"; do
+        if [[ ":$new_path:" != *":$dir:"* ]] && [ -n "$dir" ]; then
+            if [ -z "$new_path" ]; then
+                new_path="$dir"
+            else
+                new_path="$new_path:$dir"
+            fi
+        fi
+    done
+    export PATH="$new_path"
+}
+
+remove_path_duplicates

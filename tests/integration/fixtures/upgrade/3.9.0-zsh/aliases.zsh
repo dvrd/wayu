@@ -1,0 +1,8 @@
+#!/usr/bin/env zsh
+
+# Shell Aliases Configuration
+# This file contains all command aliases and shortcuts
+
+alias ll="ls -la"
+alias gs="git status --short"
+alias q="echo \"it's quoted\""

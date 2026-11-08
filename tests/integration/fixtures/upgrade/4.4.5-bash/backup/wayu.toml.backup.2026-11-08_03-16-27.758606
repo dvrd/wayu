@@ -1,0 +1,9 @@
+[shell]
+type = "Bash"
+
+[aliases]
+
+[env]
+
+[paths]
+tools = "@HOME@/tools"
