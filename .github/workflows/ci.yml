@@ -101,9 +101,6 @@ jobs:
   sanitize:
     name: AddressSanitizer (integration)
     runs-on: ubuntu-latest
-    # New job: reports without blocking releases until it has been green on
-    # develop; then drop this line.
-    continue-on-error: true
 
     steps:
     - name: Checkout code
