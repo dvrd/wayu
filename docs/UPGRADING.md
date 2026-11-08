@@ -102,6 +102,20 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - `wayu backup restore` waits for other wayu commands (config lock) instead
   of racing them; a concurrent edit can no longer overwrite the restore.
 
+**WAYU_CONFIG_DIR / WAYU_DATA_DIR**
+- `WAYU_DATA_DIR` is honoured when `WAYU_CONFIG_DIR` is also set (it was
+  ignored: data always went to the config dir). Data dir = `WAYU_DATA_DIR`,
+  else the config dir.
+- `init.zsh` / `init.bash` / `init.fish` find their files next to
+  themselves instead of in `~/.config/wayu`, so the rc line works without
+  exporting the overrides to the shell (it used to fail with "no such file"
+  and load no PATH/aliases). The config dir falls back to the init file's dir
+  when that holds `wayu.toml`. An unmodified init file is updated on the next
+  regeneration (backup first).
+- When the dirs differ from the defaults, `core.<ext>` exports
+  `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR`, so `wayu` commands typed in that shell
+  (and the path-sync background `wayu build`) use the same dirs.
+
 ## 5.0.0
 
 **doctor**

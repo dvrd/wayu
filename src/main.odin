@@ -86,19 +86,21 @@ init_app_context :: proc(ctx: ^AppContext) {
 
 	ctx.home = os.get_env("HOME", heap)
 
+	// config: WAYU_CONFIG_DIR, else ~/.config/wayu.
+	// data:   WAYU_DATA_DIR, else the config dir. The generated init derives
+	// its data dir from its own location and core.<ext> exports both
+	// overrides, so a shell sourcing it runs `wayu` against the same dirs.
 	config_dir_override := os.get_env("WAYU_CONFIG_DIR", heap)
 	if config_dir_override != "" {
 		ctx.config = config_dir_override
-		// When overridden (e.g. tests), data lives alongside config
-		ctx.data = config_dir_override
 	} else {
 		ctx.config = fmt.aprintf("%s/.config/wayu", ctx.home, allocator = heap)
-		data_dir_override := os.get_env("WAYU_DATA_DIR", heap)
-		if data_dir_override != "" {
-			ctx.data = data_dir_override
-		} else {
-			ctx.data = fmt.aprintf("%s/.config/wayu", ctx.home, allocator = heap)
-		}
+	}
+	data_dir_override := os.get_env("WAYU_DATA_DIR", heap)
+	if data_dir_override != "" {
+		ctx.data = data_dir_override
+	} else {
+		ctx.data = ctx.config
 	}
 
 	ctx.shell = detect_shell()
