@@ -6,6 +6,16 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**Plugins (review fixes)**
+- `plugin update` no longer resets a checkout whose HEAD has commits that
+  were never on the remote: when it cannot fast-forward, the update fails
+  (exit `74`) instead of discarding those commits. Push/rebase them or
+  reinstall the plugin.
+- `plugins.json` `dependencies` entries must be valid plugin names (no
+  newline, `/`, leading `-`, empty, `.`/`..`); otherwise any command that
+  reads it exits `78`. A newline in one used to inject shell code into the
+  generated `plugins.<ext>`.
+
 **doctor**
 - `doctor --json` (and `--json doctor`) prints JSON; `--json --fix` exits `64`.
 - `doctor` exits `78` when any check reports an error (also with `--json`).
