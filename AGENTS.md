@@ -209,7 +209,7 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 ## Shell-Specific Notes
 
 - Config files use `.zsh` or `.bash` extensions determined by `src/shell.odin` at runtime
-- wayu's own completions (zsh/bash/fish) are generated from `WAYU_COMMAND_SPECS` in `src/wayu_completions.odin` — add new commands/actions there (a unit test checks every `Command` has a row)
+- wayu's own completions (zsh/bash/fish) are generated from `WAYU_COMMAND_SPECS` in `src/wayu_completions.odin` — add new commands/actions there (a unit test checks every `Command` has a row); `arg_names`/`arg_name_actions` make an action's first argument complete existing entries via the hidden `wayu completions names <kind>`
 - `src/preload.odin` has separate templates for each shell with shell-specific syntax
 - Both Zsh and Bash PATH templates include a dedup pass after exporting `WAYU_PATHS`
 

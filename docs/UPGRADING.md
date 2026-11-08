@@ -147,6 +147,18 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `${ZDOTDIR:-$HOME}/.zcompdump.wayu`; the first shell after upgrading
   rebuilds the dump once.
 
+**Completions for wayu itself (zsh, bash, fish)**
+- The first argument of `path|alias|const rm|get`, `plugin
+  rm|get|enable|disable|priority|update`, `function add|edit|rm` and
+  `completions rm` completes existing entries (paths as written in
+  `wayu.toml`, alias/constant/plugin/function/completion names). The
+  scripts list them by running the hidden `wayu completions names <kind>`
+  (`$_WAYU_BIN`, else `wayu` on `PATH`) at TAB time. Re-run
+  `wayu completions generate` to update installed scripts.
+- fish: action words are offered only right after the command
+  (`wayu alias rm <TAB>` no longer offers `add`, `list`, …); flags still
+  complete anywhere.
+
 **migrate --schema**
 - Values it can't convert exactly (multi-line `"""` strings, arrays, inline
   tables) in the rewritten sections are listed as `wayu.toml:N`; nothing is
