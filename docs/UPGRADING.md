@@ -19,6 +19,10 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   (`/etc/paths`, `/etc/paths.d`). Loading wayu from `~/.zshenv` therefore
   keeps wayu's PATH precedence in login shells; dirs prepended in `.zshrc`
   stay ahead.
+- zsh native prompt: `PROMPT`/`RPROMPT` are set again at the first prompt,
+  so `/etc/zshrc` (macOS sets `PS1`) or `.zshrc` can't replace them when wayu
+  is loaded from `.zshenv`. To manage the prompt yourself, set
+  `[prompt] enabled = false`.
 
 **Removed: backward compatibility**
 
