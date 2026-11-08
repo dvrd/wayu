@@ -398,6 +398,11 @@ ruby tests/integration/run_all.rb
 
 ## Releasing
 
+Day-to-day work lands on the **`develop`** branch (CI runs, nothing is
+released). When a batch is ready to ship, `develop` is merged into `main`;
+PRs into `main` are only accepted from `develop` or `hotfix/*`
+([`main-guard.yml`](.github/workflows/main-guard.yml)).
+
 Releases are **automatic**. Every push to `main` runs
 [`.github/workflows/bump.yml`](.github/workflows/bump.yml), which:
 
@@ -421,8 +426,8 @@ Behavior changes users must know about are marked breaking (`fix(scope)!:` or a
 `BREAKING CHANGE:` footer): they force a major bump and are listed under
 "⚠ Upgrade notes" in the changelog and release.
 
-So you do **not** bump the version by hand — just land your Conventional Commits
-on `main`. `./build_it release [vX.Y.Z]` exists as a manual override (it also
+So you do **not** bump the version by hand — land your Conventional Commits on
+`develop` and merge `develop` into `main` to ship. `./build_it release [vX.Y.Z]` exists as a manual override (it also
 auto-detects the version when the argument is omitted); the version argument is
 only needed when `git-cliff` is unavailable.
 

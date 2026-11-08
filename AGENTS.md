@@ -56,6 +56,24 @@ ruby tests/integration/test_golden.rb             # compare every golden (also r
 
 Each `tests/golden/<component>_<W>x<H>.txt` needs a matching line (component + args) in `tests/golden/cases.txt`; the test fails if a golden has no case.
 
+## Branching & releases
+
+- **`develop` is the integration branch.** All work (features, fixes, review
+  follow-ups, whole roadmap phases) merges into `develop`; pushes there run CI
+  but never release.
+- **`main` is release-only.** Every push to `main` triggers
+  `.github/workflows/bump.yml` → version bump, GitHub release, Homebrew update.
+  Merge `develop` → `main` only when the maintainer explicitly says to ship;
+  never push or merge to `main` on your own. A batch of phases ships as one
+  version.
+- PRs into `main` must come from `develop` (or `hotfix/*` for an urgent,
+  maintainer-approved fix); `.github/workflows/main-guard.yml` fails any other
+  source. A `hotfix/*` merged to `main` is merged back into `develop` right
+  after.
+- A phase/ticket is "done" when it is merged and CI-green on `develop`.
+- Keep `docs/UPGRADING.md` "## Unreleased" up to date on `develop`; rename it to
+  the version when shipping.
+
 ## Commit convention (drives versioning)
 
 Conventional Commits; `git-cliff` derives the next version from them (`cliff.toml` `[bump]`):
@@ -66,7 +84,7 @@ Conventional Commits; `git-cliff` derives the next version from them (`cliff.tom
 | `feat: …` | minor |
 | anything else (`fix:`, `refactor:`, …) | patch |
 
-Any **user-visible behavior change** (output, exit codes, flags, generated shell code, config semantics) is breaking even when it is a fix: mark it `fix(scope)!:` and write the footer — it becomes the release's "⚠ Upgrade notes". No AI attribution in commits/PRs (no `Co-Authored-By`, no "Generated with").
+Any **user-visible behavior change** (output, exit codes, flags, generated shell code, config semantics) is breaking even when it is a fix: mark it `fix(scope)!:` and write the footer — it becomes the release's "⚠ Upgrade notes". Batching on `develop` (above) keeps majors infrequent; don't drop the `!` to avoid one. No AI attribution in commits/PRs (no `Co-Authored-By`, no "Generated with").
 
 ## Architecture
 

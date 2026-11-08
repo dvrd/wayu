@@ -1,0 +1,31 @@
+name: Main Guard
+
+# main is release-only: every push to it ships a version (bump.yml).
+# Work lands on develop; only develop (or an approved hotfix/*) may be
+# merged into main. See AGENTS.md "Branching & releases".
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  source-branch:
+    name: PR source is develop or hotfix/*
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check source branch
+      env:
+        HEAD_REF: ${{ github.head_ref }}
+        HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        BASE_REPO: ${{ github.repository }}
+      run: |
+        if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+          echo "::error::PRs from forks target develop, not main."
+          exit 1
+        fi
+        case "$HEAD_REF" in
+          develop|hotfix/*) echo "OK: $HEAD_REF -> main" ;;
+          *) echo "::error::main only accepts PRs from develop or hotfix/* (got '$HEAD_REF'). Target develop instead."; exit 1 ;;
+        esac
