@@ -6,7 +6,7 @@ import "core:strings"
 import "core:time"
 
 // Shell compatibility for plugins.
-// BOTH = works on zsh AND bash (legacy name, pre-fish).
+// BOTH = works on zsh AND bash.
 // ANY  = works on all supported shells including fish.
 ShellCompat :: enum {
 	ZSH,
@@ -32,21 +32,6 @@ PluginInfo :: struct {
 	url:         string,
 	shell:       ShellCompat,
 	description: string,
-}
-
-// Installed plugin with metadata
-InstalledPlugin :: struct {
-	name:           string,
-	url:            string,
-	enabled:        bool,
-	shell:          ShellCompat,
-	installed_path: string,
-	entry_file:     string, // Main file to source
-}
-
-// Plugin configuration state
-PluginConfig :: struct {
-	plugins: [dynamic]InstalledPlugin,
 }
 
 // Plugin source types (inspired by sheldon - natively integrated)

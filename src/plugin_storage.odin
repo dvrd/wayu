@@ -973,160 +973,73 @@ print_plugins_json_tail :: proc(count, enabled_count: int) {
 
 // Handle plugin list command
 handle_plugin_list :: proc(args: []string) {
-	// Run migration if needed
-	if !migrate_plugin_config() {
+	// Read from JSON5 config
+	config, ok := read_plugin_config_json()
+	if !ok {
 		os.exit(EXIT_CONFIG)
 	}
+	defer cleanup_plugin_config_json(&config)
 
-	// Use JSON5 config if it exists, otherwise fall back to old format
-	json_file := get_plugins_json_config_file()
-	defer delete(json_file)
+	if wayu.json_output {
+		print_plugins_json(&config)
+		return
+	}
 
-	use_json := os.exists(json_file)
+	if len(config.plugins) == 0 {
+		print_info("No plugins installed")
+		fmt.println("\nRun 'wayu plugin add <name>' to install a plugin")
+		return
+	}
 
-	if use_json {
-		// Read from JSON5 config
-		config, ok := read_plugin_config_json()
-		if !ok {
-			os.exit(EXIT_CONFIG)
+	print_header("Installed Plugins", EMOJI_COMMAND)
+	fmt.println()
+
+	// Create table
+	table := new_table([]string{"Name", "Status", "Priority", "Shell", "URL"})
+	defer delete(table.rows)
+
+	for plugin in config.plugins {
+		status := plugin.enabled ? "✓ Active" : "○ Disabled"
+		priority_str := fmt.aprintf("%d", plugin.priority)
+		shell_str := shell_compat_to_string(plugin.shell)
+
+		// Truncate URL for display
+		url_display := plugin.url
+		if len(url_display) > 40 {
+			url_display = fmt.aprintf("%s...", plugin.url[:37])
 		}
-		defer cleanup_plugin_config_json(&config)
 
-		if wayu.json_output {
-			print_plugins_json(&config)
-			return
+		row := []string{plugin.name, status, priority_str, shell_str, url_display}
+		table_add_row(&table, row)
+		delete(priority_str)
+
+		if len(url_display) > 40 {
+			delete(url_display)
 		}
+	}
 
-		if len(config.plugins) == 0 {
-			print_info("No plugins installed")
-			fmt.println("\nRun 'wayu plugin add <name>' to install a plugin")
-			return
+	output := table_render(table, get_cli_terminal_width())
+	defer delete(output)
+	fmt.print(output)
+
+	fmt.println()
+	enabled_count := 0
+	for plugin in config.plugins {
+		if plugin.enabled {
+			enabled_count += 1
 		}
+	}
 
-		print_header("Installed Plugins", EMOJI_COMMAND)
+	print_info("%d plugins installed (%d enabled)", len(config.plugins), enabled_count)
+
+	// Conflicts between enabled plugins / with wayu.toml (OKAMI-276).
+	conflicts := collect_plugin_conflicts(&config)
+	if len(conflicts) > 0 {
 		fmt.println()
-
-		// Create table
-		table := new_table([]string{"Name", "Status", "Priority", "Shell", "URL"})
-		defer delete(table.rows)
-
-		for plugin in config.plugins {
-			status := plugin.enabled ? "✓ Active" : "○ Disabled"
-			priority_str := fmt.aprintf("%d", plugin.priority)
-			shell_str := shell_compat_to_string(plugin.shell)
-
-			// Truncate URL for display
-			url_display := plugin.url
-			if len(url_display) > 40 {
-				url_display = fmt.aprintf("%s...", plugin.url[:37])
-			}
-
-			row := []string{plugin.name, status, priority_str, shell_str, url_display}
-			table_add_row(&table, row)
-			delete(priority_str)
-
-			if len(url_display) > 40 {
-				delete(url_display)
-			}
+		print_warning("%d conflict(s); the definition loaded last wins:", len(conflicts))
+		for c in conflicts {
+			fmt.eprintfln("    %s: %s %s (also defined by %s)", c.plugin, c.kind, c.name, c.other)
 		}
-
-		output := table_render(table, get_cli_terminal_width())
-		defer delete(output)
-		fmt.print(output)
-
-		fmt.println()
-		enabled_count := 0
-		for plugin in config.plugins {
-			if plugin.enabled {
-				enabled_count += 1
-			}
-		}
-
-		print_info("%d plugins installed (%d enabled)", len(config.plugins), enabled_count)
-
-		// Conflicts between enabled plugins / with wayu.toml (OKAMI-276).
-		conflicts := collect_plugin_conflicts(&config)
-		if len(conflicts) > 0 {
-			fmt.println()
-			print_warning("%d conflict(s); the definition loaded last wins:", len(conflicts))
-			for c in conflicts {
-				fmt.eprintfln("    %s: %s %s (also defined by %s)", c.plugin, c.kind, c.name, c.other)
-			}
-		}
-	} else {
-		// Fall back to old format (for backward compatibility during transition)
-		config := read_plugin_config()
-		defer {
-			for plugin in config.plugins {
-				delete(plugin.name)
-				delete(plugin.url)
-				delete(plugin.installed_path)
-				delete(plugin.entry_file)
-			}
-			delete(config.plugins)
-		}
-
-		if wayu.json_output {
-			// Same shape as print_plugins_json; the legacy format has no
-			// priority (100) or commit.
-			fmt.println("{")
-			fmt.println(`  "plugins": [`)
-			enabled_count := 0
-			for plugin, i in config.plugins {
-				if plugin.enabled { enabled_count += 1 }
-				print_plugin_json_row(i, plugin.name, plugin.enabled, 100,
-					shell_compat_to_string(plugin.shell), plugin.url, "", plugin.installed_path)
-			}
-			print_plugins_json_tail(len(config.plugins), enabled_count)
-			return
-		}
-
-		if len(config.plugins) == 0 {
-			print_info("No plugins installed")
-			fmt.println("\nRun 'wayu plugin add <name>' to install a plugin")
-			return
-		}
-
-		print_header("Installed Plugins", EMOJI_COMMAND)
-		fmt.println()
-
-		// Create table (old format fallback - priority defaults to 100)
-		table := new_table([]string{"Name", "Status", "Priority", "Shell", "URL"})
-		defer delete(table.rows)
-
-		for plugin in config.plugins {
-			status := plugin.enabled ? "✓ Active" : "○ Disabled"
-			priority_str := fmt.aprintf("%d", 100)  // Old format doesn't have priority field
-			shell_str := shell_compat_to_string(plugin.shell)
-
-			// Truncate URL for display
-			url_display := plugin.url
-			if len(url_display) > 40 {
-				url_display = fmt.aprintf("%s...", plugin.url[:37])
-			}
-
-			row := []string{plugin.name, status, priority_str, shell_str, url_display}
-			table_add_row(&table, row)
-			delete(priority_str)
-
-			if len(url_display) > 40 {
-				delete(url_display)
-			}
-		}
-
-		output := table_render(table, get_cli_terminal_width())
-		defer delete(output)
-		fmt.print(output)
-
-		fmt.println()
-		enabled_count := 0
-		for plugin in config.plugins {
-			if plugin.enabled {
-				enabled_count += 1
-			}
-		}
-
-		print_info("%d plugins installed (%d enabled)", len(config.plugins), enabled_count)
 	}
 }
 

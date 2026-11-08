@@ -74,22 +74,6 @@ test_shell_compat_to_string :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_get_plugins_config_file :: proc(t: ^testing.T) {
-	// Initialize shell globals before testing
-	wayu.init_shell_globals()
-
-	// Test plugins config file path generation
-	path := wayu.get_plugins_config_file()
-	defer delete(path)
-
-	testing.expect(t, len(path) > 0, "Should return non-empty path")
-	// Verify the path ends with plugins.conf
-	testing.expect(t, strings.has_suffix(path, "plugins.conf"), "Should end with plugins.conf")
-	// Verify it's an absolute path (starts with /)
-	testing.expect(t, strings.has_prefix(path, "/"), "Should be an absolute path")
-}
-
-@(test)
 test_get_plugins_dir :: proc(t: ^testing.T) {
 	// Initialize shell globals before testing
 	wayu.init_shell_globals()
@@ -103,99 +87,6 @@ test_get_plugins_dir :: proc(t: ^testing.T) {
 	testing.expect(t, strings.has_suffix(path, "plugins"), "Should end with plugins")
 	// Verify it's an absolute path (starts with /)
 	testing.expect(t, strings.has_prefix(path, "/"), "Should be an absolute path")
-}
-
-@(test)
-test_read_plugin_config_empty :: proc(t: ^testing.T) {
-	// Initialize shell globals before testing
-	wayu.init_shell_globals()
-	original := plugin_use_temp_config()
-	defer { wayu.wayu.config = original; wayu.wayu.data = original; os.remove_all(plugin_test_dir()) }
-
-	// Test reading non-existent config file (temp dir has no plugins.conf)
-
-	config := wayu.read_plugin_config()
-	defer {
-		for plugin in config.plugins {
-			delete(plugin.name)
-			delete(plugin.url)
-			delete(plugin.installed_path)
-			delete(plugin.entry_file)
-		}
-		delete(config.plugins)
-	}
-
-	testing.expect(t, len(config.plugins) == 0, "Should return empty config for non-existent file")
-}
-
-@(test)
-test_write_and_read_plugin_config :: proc(t: ^testing.T) {
-	// Initialize shell globals before testing
-	wayu.init_shell_globals()
-	original := plugin_use_temp_config()
-	defer { wayu.wayu.config = original; wayu.wayu.data = original; os.remove_all(plugin_test_dir()) }
-
-	// Create test config
-	test_config := wayu.PluginConfig{}
-	test_config.plugins = make([dynamic]wayu.InstalledPlugin)
-
-	plugin1 := wayu.InstalledPlugin{
-		name = strings.clone("test-plugin"),
-		url = strings.clone("https://github.com/test/plugin.git"),
-		enabled = true,
-		shell = wayu.ShellCompat.ZSH,
-		installed_path = strings.clone("/tmp/test-plugin"),
-	}
-	append(&test_config.plugins, plugin1)
-
-	plugin2 := wayu.InstalledPlugin{
-		name = strings.clone("another-plugin"),
-		url = strings.clone("https://github.com/another/plugin.git"),
-		enabled = false,
-		shell = wayu.ShellCompat.BOTH,
-		installed_path = strings.clone("/tmp/another-plugin"),
-	}
-	append(&test_config.plugins, plugin2)
-
-	// Write config
-	write_ok := wayu.write_plugin_config(&test_config)
-	testing.expect(t, write_ok, "Should write config successfully")
-
-	// Clean up test config
-	for plugin in test_config.plugins {
-		delete(plugin.name)
-		delete(plugin.url)
-		delete(plugin.installed_path)
-		delete(plugin.entry_file)
-	}
-	delete(test_config.plugins)
-
-	// Read config back
-	read_config := wayu.read_plugin_config()
-	defer {
-		for plugin in read_config.plugins {
-			delete(plugin.name)
-			delete(plugin.url)
-			delete(plugin.installed_path)
-			delete(plugin.entry_file)
-		}
-		delete(read_config.plugins)
-	}
-
-	testing.expect(t, len(read_config.plugins) == 2, "Should read 2 plugins")
-
-	if len(read_config.plugins) >= 2 {
-		// Check first plugin
-		testing.expect(t, read_config.plugins[0].name == "test-plugin", "First plugin name should match")
-		testing.expect(t, read_config.plugins[0].enabled == true, "First plugin should be enabled")
-		testing.expect(t, read_config.plugins[0].shell == wayu.ShellCompat.ZSH, "First plugin shell should be ZSH")
-
-		// Check second plugin
-		testing.expect(t, read_config.plugins[1].name == "another-plugin", "Second plugin name should match")
-		testing.expect(t, read_config.plugins[1].enabled == false, "Second plugin should be disabled")
-		testing.expect(t, read_config.plugins[1].shell == wayu.ShellCompat.BOTH, "Second plugin shell should be BOTH")
-	}
-
 }
 
 @(test)
@@ -296,66 +187,6 @@ test_resolve_plugin_invalid :: proc(t: ^testing.T) {
 
 	_, ok := wayu.resolve_plugin("not-a-plugin-or-url")
 	testing.expect(t, !ok, "Should fail to resolve invalid plugin")
-}
-
-@(test)
-test_find_plugin :: proc(t: ^testing.T) {
-	// Test finding plugin in config
-	config := wayu.PluginConfig{}
-	config.plugins = make([dynamic]wayu.InstalledPlugin)
-	defer delete(config.plugins)
-
-	plugin1 := wayu.InstalledPlugin{
-		name = "plugin-one",
-		url = "https://example.com/one.git",
-		enabled = true,
-		shell = wayu.ShellCompat.ZSH,
-		installed_path = "/tmp/one",
-	}
-	append(&config.plugins, plugin1)
-
-	plugin2 := wayu.InstalledPlugin{
-		name = "plugin-two",
-		url = "https://example.com/two.git",
-		enabled = false,
-		shell = wayu.ShellCompat.BASH,
-		installed_path = "/tmp/two",
-	}
-	append(&config.plugins, plugin2)
-
-	// Find existing plugin
-	found, ok := wayu.find_plugin(&config, "plugin-one")
-	testing.expect(t, ok, "Should find 'plugin-one'")
-	if ok {
-		testing.expect(t, found.name == "plugin-one", "Found plugin should have correct name")
-		testing.expect(t, found.enabled == true, "Found plugin should be enabled")
-	}
-
-	// Find non-existent plugin
-	_, not_found := wayu.find_plugin(&config, "nonexistent")
-	testing.expect(t, !not_found, "Should not find non-existent plugin")
-}
-
-@(test)
-test_is_plugin_installed :: proc(t: ^testing.T) {
-	// Test checking if plugin is installed
-	config := wayu.PluginConfig{}
-	config.plugins = make([dynamic]wayu.InstalledPlugin)
-	defer delete(config.plugins)
-
-	plugin := wayu.InstalledPlugin{
-		name = "installed-plugin",
-		url = "https://example.com/plugin.git",
-		enabled = true,
-		shell = wayu.ShellCompat.ZSH,
-		installed_path = "/tmp/plugin",
-	}
-	append(&config.plugins, plugin)
-
-	testing.expect(t, wayu.is_plugin_installed(&config, "installed-plugin"),
-		"Should detect installed plugin")
-	testing.expect(t, !wayu.is_plugin_installed(&config, "not-installed"),
-		"Should not detect non-installed plugin")
 }
 
 @(test)
