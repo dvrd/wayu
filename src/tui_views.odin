@@ -179,6 +179,7 @@ render_list_item :: proc(
 
 	if is_selected {
 		screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+		screen_mark_focus(screen, text_x, y)
 		if glyph_w > 0 do render_text_styled(screen, text_x, y, glyph, TUI_PRIMARY, "", true)
 		render_text_styled(screen, text_x + text_offset, y, display, TUI_PRIMARY, "", true)
 	} else {
@@ -291,6 +292,7 @@ render_table_row :: proc(
 	if is_selected {
 		// Selected: accent bar ┃ + bold primary key + bold primary value
 		screen_set_cell(screen, x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+		screen_mark_focus(screen, text_x, y)
 		render_text_styled(screen, text_x, y, truncated_key, TUI_PRIMARY, "", true)
 		if len(truncated_value) > 0 {
 			render_text_styled(screen, value_x, y, truncated_value, TUI_PRIMARY, "", true)
@@ -1258,6 +1260,7 @@ render_registry_row :: proc(
 
 	if is_selected {
 		screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+		screen_mark_focus(screen, text_x, y)
 		render_text_styled(screen, text_x,   y, key,  TUI_PRIMARY, "", true)
 		render_text_styled(screen, x_cat,    y, cat,  TUI_PRIMARY, "", true)
 		render_text_styled(screen, x_sh,     y, sh,   TUI_PRIMARY, "", true)

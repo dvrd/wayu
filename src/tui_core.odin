@@ -41,9 +41,11 @@ tui_run :: proc() {
 	// NO_COLOR / --no-color: drop color escapes and use ASCII source tags.
 	tui_color_mode = CURRENT_COLOR_PROFILE
 	tui_plain_glyphs = CURRENT_COLOR_PROFILE == .ASCII
+	tui_theme = tui_detect_theme()  // light/dark background (after the size probe)
 	defer {
 		tui_color_mode = .TRUECOLOR
 		tui_plain_glyphs = false
+		tui_theme = .Dark
 	}
 
 	// CLI print helpers (print_success/print_error/...) would scribble over
@@ -604,6 +606,7 @@ render_main_menu :: proc(state: ^TUIState, screen: ^Screen) {
 		if i == state.selected_index {
 			// Selected: accent bar ┃ + bold primary text
 			screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+			screen_mark_focus(screen, text_x, y)
 			render_text_styled(screen, text_x, y, display, TUI_PRIMARY, "", true)
 		} else {
 			// Normal: no accent bar, muted text at same x
@@ -2149,8 +2152,8 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 				assert(curr.char != 0x1b, "ANSI escape in screen cell — see thoughts/scroll_bug_spec.md")
 			}
 
-			fg := curr.fg if use_color else ""
-			bg := curr.bg if use_color else ""
+			fg := tui_theme_color(curr.fg) if use_color else ""
+			bg := tui_theme_color(curr.bg) if use_color else ""
 
 			// Move cursor if needed (minimize cursor movement)
 			if x != screen.cursor_x || y != screen.cursor_y {
@@ -2216,6 +2219,12 @@ screen_flush :: proc(screen: ^Screen, force_full_render := false) {
 	// Reset attributes at end of frame
 	if active_fg != "" || active_bg != "" || active_bold || active_dim {
 		strings.write_string(&builder, "\x1b[0m")
+	}
+
+	// Park the hidden cursor on the selected row (screen readers track it).
+	if screen.has_focus && (screen.cursor_x != screen.focus_x || screen.cursor_y != screen.focus_y) {
+		fmt.sbprintf(&builder, "\x1b[%d;%dH", screen.focus_y + 1, screen.focus_x + 1)
+		screen.cursor_x, screen.cursor_y = screen.focus_x, screen.focus_y
 	}
 
 	// Single write to terminal (batch for performance)

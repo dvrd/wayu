@@ -497,6 +497,17 @@ Screen :: struct {
 	height:      int,
 	cursor_x:    int,
 	cursor_y:    int,
+	// Selected row for this frame (screen_mark_focus): screen_flush parks the
+	// (hidden) hardware cursor there so screen readers follow the selection.
+	focus_x:     int,
+	focus_y:     int,
+	has_focus:   bool,
+}
+
+// Mark (x, y) as the focused (selected) row's start for this frame.
+screen_mark_focus :: proc(screen: ^Screen, x, y: int) {
+	if x < 0 || x >= screen.width || y < 0 || y >= screen.height do return
+	screen.focus_x, screen.focus_y, screen.has_focus = x, y, true
 }
 
 // Create screen with dimensions
@@ -625,6 +636,7 @@ screen_attach_combining :: proc(screen: ^Screen, x, y: int, r: rune) {
 
 // Clear screen (fill with spaces, reset all formatting)
 screen_clear :: proc(screen: ^Screen) {
+	screen.has_focus = false
 	for y in 0..<screen.height {
 		for x in 0..<screen.width {
 			// Clear cell completely - char AND all formatting fields
@@ -1149,7 +1161,8 @@ write_tui_color :: proc(b: ^strings.Builder, code: string) {
 	if tui_color_mode == .ANSI256 {
 		fmt.sbprintf(b, "\x1b[%d;5;%dm", 48 if is_bg else 38, rgb_to_ansi256(r, g, bl))
 	} else {
-		idx := rgb_to_ansi16(r, g, bl)
+		idx, known := palette_ansi16(code)
+		if !known do idx = rgb_to_ansi16(r, g, bl)
 		base := 40 if is_bg else 30
 		if idx >= 8 {
 			base = 100 if is_bg else 90
@@ -1219,6 +1232,164 @@ rgb_to_ansi16 :: proc(r, g, b: int) -> int {
 		}
 	}
 	return best
+}
+
+// ============================================================================
+// Theme (OKAMI-263)
+// ============================================================================
+//
+// The palette below is tuned for dark backgrounds. Instead of painting a
+// background of its own, the TUI adapts the foreground colors:
+//   - normal text (TUI_MUTED) uses the terminal's default foreground, which
+//     is readable on any background;
+//   - on a light background (WAYU_THEME=light, COLORFGBG, or the terminal's
+//     OSC 11 answer) dividers, orange/amber/green/blue get darker variants;
+//   - in 16-color mode each palette color has a fixed, distinct ANSI color
+//     (pink → bright magenta, dividers → gray) instead of the nearest match,
+//     which turned dividers black and pink/red into the same red.
+// Selection is shown by the ┃ bar + bold, not by color alone, and the
+// hardware cursor (hidden) sits on the selected row for screen readers.
+
+TuiTheme :: enum { Dark, Light }
+
+// Theme the TUI renders with (tui_run sets it from tui_detect_theme).
+tui_theme: TuiTheme = .Dark
+
+// Map a palette color to the escape drawn for the current theme ("" = the
+// terminal's default color).
+tui_theme_color :: proc(code: string) -> string {
+	return theme_color_for(code, tui_theme, tui_color_mode)
+}
+
+// tui_theme_color for an explicit theme and color mode.
+theme_color_for :: proc(code: string, theme: TuiTheme, mode: ColorProfile) -> string {
+	if code == TUI_MUTED do return ""
+	if theme != .Light || mode == .ANSI do return code
+	switch code {
+	case TUI_DIVIDER:              return "\x1b[38;2;200;200;200m"  // #C8C8C8
+	case TUI_ORANGE:               return "\x1b[38;2;194;65;12m"    // #C2410C
+	case TUI_WARNING:              return "\x1b[38;2;180;83;9m"     // #B45309 (also wayu-inactive)
+	case TUI_SOURCE_WAYU_ACTIVE:   return "\x1b[38;2;21;128;61m"    // #15803D
+	case TUI_SOURCE_EXTERNAL:      return "\x1b[38;2;29;78;216m"    // #1D4ED8
+	case TUI_SOURCE_SHADOWED:      return "\x1b[38;2;126;34;206m"   // #7E22CE
+	}
+	return code
+}
+
+// Fixed 16-color index for the palette colors (see the theme notes above).
+palette_ansi16 :: proc(code: string, theme := tui_theme) -> (idx: int, ok: bool) {
+	light := theme == .Light
+	switch code {
+	case TUI_PRIMARY:            return 13, true            // bright magenta
+	case TUI_ERROR:              return 1, true             // red
+	case TUI_SECONDARY:          return 6, true             // cyan
+	case TUI_WARNING:            return 3, true             // yellow
+	case TUI_ORANGE:             return (3 if light else 11), true
+	case TUI_SOURCE_WAYU_ACTIVE: return 2, true             // green
+	case TUI_SOURCE_EXTERNAL:    return 4, true             // blue
+	case TUI_SOURCE_SHADOWED:    return 5, true             // magenta
+	case TUI_DIM, TUI_DIVIDER:   return 8, true             // gray (bright black)
+	}
+	return 0, false
+}
+
+// Pick the theme: WAYU_THEME=light|dark wins; then COLORFGBG ("fg;bg", set
+// by rxvt, Konsole, iTerm2 …); then ask the terminal for its background
+// (OSC 11, only when colors are on). Defaults to dark.
+tui_detect_theme :: proc() -> TuiTheme {
+	buf: [32]u8
+	if s, err := os.lookup_env_buf(buf[:], "WAYU_THEME"); err == nil {
+		switch strings.to_lower(strings.trim_space(s), context.temp_allocator) {
+		case "light": return .Light
+		case "dark":  return .Dark
+		}
+	}
+	if s, err := os.lookup_env_buf(buf[:], "COLORFGBG"); err == nil {
+		if theme, ok := theme_from_colorfgbg(s); ok do return theme
+	}
+	if tui_color_mode != .ASCII {
+		if r, g, b, ok := query_terminal_background(); ok {
+			return theme_from_rgb(r, g, b)
+		}
+	}
+	return .Dark
+}
+
+// COLORFGBG "15;0" / "0;default;15": the last field is the background's
+// ANSI index; 7 and 9-15 are light.
+theme_from_colorfgbg :: proc(value: string) -> (TuiTheme, bool) {
+	field := value
+	if i := strings.last_index_byte(value, ';'); i >= 0 do field = value[i + 1:]
+	bg, ok := strconv.parse_int(field)
+	if !ok || bg < 0 || bg > 15 do return .Dark, false
+	return (.Light if bg == 7 || bg >= 9 else .Dark), true
+}
+
+// Relative luminance above one half = light background (components 0..1).
+theme_from_rgb :: proc(r, g, b: f64) -> TuiTheme {
+	return .Light if 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5 else .Dark
+}
+
+// Parse an OSC 11 reply ("ESC ] 11 ; rgb:RRRR/GGGG/BBBB" + BEL or ESC \)
+// found anywhere in `s`. Components may have 1-4 hex digits.
+parse_osc11_reply :: proc(s: string) -> (r, g, b: f64, ok: bool) {
+	start := strings.index(s, "\x1b]11;rgb:")
+	if start < 0 do return
+	rest := s[start + len("\x1b]11;rgb:"):]
+	end := strings.index_any(rest, "\x07\x1b")
+	if end < 0 do return
+	parts: [3]f64
+	body := rest[:end]
+	for i in 0..<3 {
+		slash := strings.index_byte(body, '/')
+		part := body if slash < 0 || i == 2 else body[:slash]
+		if len(part) == 0 || len(part) > 4 do return
+		v, v_ok := strconv.parse_int(part, 16)
+		if !v_ok do return
+		max_v := f64(int(1) << uint(4 * len(part))) - 1
+		parts[i] = f64(v) / max_v
+		if i < 2 {
+			if slash < 0 do return
+			body = body[slash + 1:]
+		}
+	}
+	return parts[0], parts[1], parts[2], true
+}
+
+// Ask the terminal for its background color (OSC 11) followed by a cursor
+// position request: every terminal answers the latter, and in order, so a
+// DSR reply without an OSC reply before it means "not supported" — no need
+// to wait out the timeout. Replies stay in input_pending; the decoder
+// skips them (OSC is swallowed, CSI … R is ignored), and keys typed
+// meanwhile are kept.
+@(private="file")
+query_terminal_background :: proc() -> (r, g, b: f64, ok: bool) {
+	QUERY :: "\x1b]11;?\x1b\\\x1b[6n"
+	write_all_fd(posix.FD(STDOUT_FILENO), QUERY)
+	BUDGET_US :: 300_000
+	SLICE_US  :: 20_000
+	for waited := 0; waited < BUDGET_US; waited += SLICE_US {
+		if stdin_ready(SLICE_US) && !fill_input() do break
+		pending := string(input_pending[:input_pending_len])
+		if r, g, b, ok = parse_osc11_reply(pending); ok do return
+		if has_cursor_position_reply(pending) do return
+		if input_pending_len >= INPUT_BUFFER_SIZE do return
+	}
+	return
+}
+
+// True when `s` holds a complete "ESC [ row ; col R" reply.
+@(private="file")
+has_cursor_position_reply :: proc(s: string) -> bool {
+	rest := s
+	for {
+		i := strings.index(rest, "\x1b[")
+		if i < 0 do return false
+		rest = rest[i + 2:]
+		j := 0
+		for j < len(rest) && ((rest[j] >= '0' && rest[j] <= '9') || rest[j] == ';') do j += 1
+		if j > 0 && j < len(rest) && rest[j] == 'R' do return true
+	}
 }
 
 // ============================================================================
