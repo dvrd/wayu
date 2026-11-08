@@ -581,3 +581,52 @@ test_ops_alias_spec_no_dedup :: proc(t: ^testing.T) {
 	// Verify ALIAS_SPEC does NOT support dedup (only PATH does)
 	testing.expect(t, !wayu.ALIAS_SPEC.has_dedup, "ALIAS_SPEC should not support dedup")
 }
+
+// ============================================================================
+// clean / dedup decision masks (OKAMI-168)
+// ============================================================================
+
+@(test)
+test_ops_clean_mask_keeps_unresolved_and_env_paths :: proc(t: ^testing.T) {
+	existing := os.get_env("HOME", context.temp_allocator)
+	consts := []wayu.ConfigEntry{{type = .CONSTANT, name = "WAYU_OPS_ROOT", value = existing}}
+	entries := []wayu.TomlPathEntry{
+		{key = "unset", path = "$WAYU_OPS_SURELY_UNSET_VAR/bin"}, // unknown → kept
+		{key = "toml_env", path = "${WAYU_OPS_ROOT}"},           // [env] → exists → kept
+		{key = "gone", path = "/nonexistent/wayu_ops_clean_gone"},
+		{key = "gone_env", path = "$WAYU_OPS_ROOT/wayu_ops_clean_gone"},
+	}
+	drop := wayu.path_clean_drop_mask(entries, consts)
+	defer delete(drop)
+	testing.expect_value(t, drop[0], false)
+	testing.expect_value(t, drop[1], false)
+	testing.expect_value(t, drop[2], true)
+	testing.expect_value(t, drop[3], true)
+}
+
+@(test)
+test_ops_dedup_mask_uses_toml_env :: proc(t: ^testing.T) {
+	consts := []wayu.ConfigEntry{{type = .CONSTANT, name = "WAYU_OPS_TOOLS", value = "/opt/tools"}}
+	entries := []wayu.TomlPathEntry{
+		{key = "a", path = "$WAYU_OPS_TOOLS/bin"},
+		{key = "b", path = "/opt/tools/bin"},                 // same dir via [env]
+		{key = "c", path = "$WAYU_OPS_SURELY_UNSET_VAR/bin"},
+		{key = "d", path = "$WAYU_OPS_SURELY_UNSET_VAR/bin"}, // byte-identical unresolved
+		{key = "e", path = "$WAYU_OPS_SURELY_UNSET_VAR/x"},
+	}
+	drop := wayu.path_dedup_drop_mask(entries, consts)
+	defer delete(drop)
+	testing.expect_value(t, drop[0], false)
+	testing.expect_value(t, drop[1], true)
+	testing.expect_value(t, drop[2], false)
+	testing.expect_value(t, drop[3], true)
+	testing.expect_value(t, drop[4], false)
+}
+
+@(test)
+test_ops_drop_key_conflict :: proc(t: ^testing.T) {
+	entries := []wayu.TomlPathEntry{{key = "a", path = "/x"}, {key = "a", path = "/x"}, {key = "b", path = "/y"}}
+	testing.expect_value(t, wayu.path_drop_key_conflict(entries, []bool{false, true, false}), "a")
+	testing.expect_value(t, wayu.path_drop_key_conflict(entries, []bool{true, true, false}), "")
+	testing.expect_value(t, wayu.path_drop_key_conflict(entries, []bool{false, false, true}), "")
+}

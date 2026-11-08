@@ -87,14 +87,17 @@ handle_path_command :: proc(action: Action, args: []string) {
 			print_error("Usage: wayu path remove <name-or-path>")
 			os.exit(EXIT_USAGE)
 		}
-		if toml_path_exists(args[0]) { hook_pre_path_remove(args[0]) }
+		// Hooks get the stored directory ({path}), also when the target is a key.
+		hook_path, found := toml_path_lookup(args[0])
+		defer delete(hook_path)
+		if found { hook_pre_path_remove(hook_path) }
 		res := toml_path_remove_result(args[0])
 		exit_on_path_failure(res)
 		if wayu.dry_run { return }
 		regenerate_init_core_silently()
 		print_success("✅ Removed from wayu.toml: %s", args[0])
 		print_path_applied_hint()
-		hook_post_path_remove(args[0])
+		hook_post_path_remove(hook_path)
 	case .LIST:
 		toml_path_list()
 	case:
@@ -150,6 +153,13 @@ mutate_path_entries :: proc(spec: PathMutationSpec, entries: []TomlPathEntry, dr
 	if count == 0 {
 		print_success("%s", spec.empty_success_msg)
 		return
+	}
+
+	// toml_kv_delete removes every line of a key: with a hand-edited
+	// duplicate key, dropping one entry would also delete its survivor.
+	if dup := path_drop_key_conflict(entries, drop); len(dup) > 0 {
+		print_error("Duplicate key %q in wayu.toml [paths]: rename one of them, then retry. Nothing changed.", dup)
+		os.exit(EXIT_CONFIG)
 	}
 
 	print_targets :: proc(entries: []TomlPathEntry, drop: []bool) {
@@ -215,8 +225,61 @@ free_toml_path_entries :: proc(entries: ^[dynamic]TomlPathEntry) {
 	delete(entries^)
 }
 
+// First key that is both dropped and kept (a duplicate TOML key), or "".
+path_drop_key_conflict :: proc(entries: []TomlPathEntry, drop: []bool) -> string {
+	for d, i in entries {
+		if !drop[i] { continue }
+		for k, j in entries {
+			if !drop[j] && k.key == d.key { return d.key }
+		}
+	}
+	return ""
+}
+
+// Which [paths] entries `path clean` drops: those whose directory is missing
+// after expanding wayu.toml [env] constants, the environment and `~` the way
+// the generated init does (doctor_expand_path). An entry using a variable
+// set in neither is unresolved — its directory is unknown, so it is kept.
+// Caller deletes the result.
+path_clean_drop_mask :: proc(entries: []TomlPathEntry, consts: []ConfigEntry) -> []bool {
+	drop := make([]bool, len(entries))
+	for e, i in entries {
+		expanded := doctor_expand_path(e.path, consts)
+		defer delete(expanded)
+		drop[i] = len(expanded) > 0 && !os.exists(expanded)
+	}
+	return drop
+}
+
+// Which [paths] entries `path dedup` drops: later entries resolving (same
+// expansion as path_clean_drop_mask) to an earlier entry's directory.
+// Unresolved entries only match byte-for-byte. Caller deletes the result.
+path_dedup_drop_mask :: proc(entries: []TomlPathEntry, consts: []ConfigEntry) -> []bool {
+	drop := make([]bool, len(entries))
+	seen := make(map[string]bool)
+	defer {
+		for k in seen { delete(k) }
+		delete(seen)
+	}
+	for e, i in entries {
+		k := doctor_expand_path(e.path, consts)
+		if len(k) == 0 {
+			// Expanded keys are absolute ("/..."), so "raw:" can't collide.
+			delete(k)
+			k = strings.concatenate({"raw:", e.path})
+		}
+		if k in seen {
+			drop[i] = true
+			delete(k)
+			continue
+		}
+		seen[k] = true
+	}
+	return drop
+}
+
 // Clean missing paths - remove [paths] entries whose directory no longer
-// exists. Stored values are expanded ($HOME, ${VAR}, ~) before the check.
+// exists (see path_clean_drop_mask; unset variables are never "missing").
 clean_missing_paths :: proc() {
 	if !check_wayu_initialized() {
 		os.exit(EXIT_CONFIG)
@@ -228,13 +291,10 @@ clean_missing_paths :: proc() {
 	entries := toml_path_read_keyed()
 	defer free_toml_path_entries(&entries)
 
-	drop := make([]bool, len(entries))
+	consts := read_wayu_toml_constants()
+	defer cleanup_entries(&consts)
+	drop := path_clean_drop_mask(entries[:], consts)
 	defer delete(drop)
-	for e, i in entries {
-		expanded := expand_env_vars(e.path)
-		defer delete(expanded)
-		drop[i] = !os.exists(expanded)
-	}
 
 	mutate_path_entries(PathMutationSpec{
 		label             = "missing directories",
@@ -260,22 +320,10 @@ remove_duplicate_paths :: proc() {
 	entries := toml_path_read_keyed()
 	defer free_toml_path_entries(&entries)
 
-	expanded := make([]string, len(entries))
-	defer {
-		for p in expanded { delete(p) }
-		delete(expanded)
-	}
-	for e, i in entries {
-		expanded[i] = expand_env_vars(e.path)
-	}
-
-	seen := make(map[string]bool)
-	defer delete(seen)
-	drop := make([]bool, len(entries))
+	consts := read_wayu_toml_constants()
+	defer cleanup_entries(&consts)
+	drop := path_dedup_drop_mask(entries[:], consts)
 	defer delete(drop)
-	for p, i in expanded {
-		if p in seen { drop[i] = true } else { seen[p] = true }
-	}
 
 	mutate_path_entries(PathMutationSpec{
 		label             = "duplicate entries",
@@ -794,16 +842,25 @@ toml_path_add_would_change :: proc(raw_path: string, name_hint: string = "") -> 
 // Read-only: true when `target` names an entry toml_path_remove_result would
 // remove. Lets pre_path_remove skip targets that are not there.
 toml_path_exists :: proc(target: string) -> bool {
+	p, found := toml_path_lookup(target)
+	delete(p)
+	return found
+}
+
+// Read-only: the stored path of the entry toml_path_remove_result would
+// remove for `target` (same match order: key, exact value, resolved value).
+// Caller deletes `path` ("" when not found).
+toml_path_lookup :: proc(target: string) -> (path: string, found: bool) {
 	clear_toml_content_cache()
 	existing := toml_path_read_keyed()
 	defer {
 		for &e in existing { delete(e.key); delete(e.path) }
 		delete(existing)
 	}
-	for e in existing {
-		if e.key == target || e.path == target || path_values_equal(e.path, target) { return true }
-	}
-	return false
+	for e in existing { if e.key == target { return strings.clone(e.path), true } }
+	for e in existing { if e.path == target { return strings.clone(e.path), true } }
+	for e in existing { if path_values_equal(e.path, target) { return strings.clone(e.path), true } }
+	return "", false
 }
 
 toml_path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOpResult {

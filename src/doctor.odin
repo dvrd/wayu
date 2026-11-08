@@ -816,6 +816,7 @@ doctor_is_ident_byte :: proc(c: byte) -> bool {
 // entry's existence is unknown, so it must never be classed as missing.
 doctor_expand_path :: proc(path: string, consts: []ConfigEntry) -> string {
 	b := strings.builder_make()
+	defer strings.builder_destroy(&b) // expand_env_vars returns a fresh string
 	i := 0
 	for i < len(path) {
 		if path[i] != '$' {
