@@ -113,8 +113,22 @@ parse_alias_listing :: proc(text: string, out: ^map[string]string) {
 	it := text
 	for line in strings.split_lines_iterator(&it) {
 		l := strings.trim_right(line, "\r")
+		has_alias_kw := strings.has_prefix(l, "alias ")
 		l = strings.trim_prefix(l, "alias ")
 		eq := strings.index_byte(l, '=')
+		sp := strings.index_byte(l, ' ')
+		// fish: `alias name 'value'` (space-separated, fish quoting).
+		if has_alias_kw && sp > 0 && (eq < 0 || sp < eq) {
+			name := l[:sp]
+			value := fish_unquote_word(strings.trim_left_space(l[sp+1:]))
+			if old, exists := out[name]; exists {
+				delete(old)
+				out[name] = value
+			} else {
+				out[strings.clone(name)] = value
+			}
+			continue
+		}
 		if eq <= 0 { continue }
 		name := l[:eq]
 		// zsh quotes names containing special chars: 'a-b'=...
@@ -176,6 +190,36 @@ shell_unquote_word :: proc(s: string) -> string {
 			strings.write_byte(&sb, c)
 			i += 1
 		}
+	}
+	return strings.to_string(sb)
+}
+
+// Remove fish quoting from one word as printed by fish's `alias`: inside
+// '...' only `\'` and `\\` are escapes; inside "..." `\"`, `\$`, `\\`;
+// outside quotes a backslash escapes the next byte. Heap-allocated.
+fish_unquote_word :: proc(s: string) -> string {
+	sb := strings.builder_make()
+	quote: byte = 0
+	for i := 0; i < len(s); i += 1 {
+		c := s[i]
+		if quote == 0 && (c == '\'' || c == '"') {
+			quote = c
+			continue
+		}
+		if c == quote {
+			quote = 0
+			continue
+		}
+		if c == '\\' && i + 1 < len(s) {
+			n := s[i+1]
+			escapes := quote == 0 || n == '\\' || n == quote || (quote == '"' && n == '$')
+			if escapes {
+				strings.write_byte(&sb, n)
+				i += 1
+				continue
+			}
+		}
+		strings.write_byte(&sb, c)
 	}
 	return strings.to_string(sb)
 }

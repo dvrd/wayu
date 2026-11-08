@@ -129,6 +129,23 @@ test_parse_alias_listing_zsh_and_bash :: proc(t: ^testing.T) {
 	testing.expect_value(t, out["a-b"], "x y")
 }
 
+// fish's `alias` prints `alias name 'value'`; it used to parse to nothing,
+// so every wayu alias showed as inactive under fish.
+@(test)
+test_parse_alias_listing_fish :: proc(t: ^testing.T) {
+	out := make(map[string]string)
+	defer {
+		for k, v in out { delete(k); delete(v) }
+		delete(out)
+	}
+	text := "alias ll 'ls -la'\nalias sq 'echo it\\'s \\\\ x'\nalias bare git\nalias eq 'a=b c'\n"
+	wayu.parse_alias_listing(text, &out)
+	testing.expect_value(t, out["ll"], "ls -la")
+	testing.expect_value(t, out["sq"], `echo it's \ x`)
+	testing.expect_value(t, out["bare"], "git")
+	testing.expect_value(t, out["eq"], "a=b c")
+}
+
 @(test)
 test_context_detect_condition :: proc(t: ^testing.T) {
 	cond := wayu.context_detect_condition([]string{"*.kt", "Makefile", "bad;rm -rf"})
