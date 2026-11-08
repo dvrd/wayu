@@ -54,6 +54,22 @@ test_migrate_schema_unconvertible_lines :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(clean), 0)
 }
 
+// OKAMI-274: [[...]] fields the modern schema can't hold are listed.
+@(test)
+test_migrate_schema_dropped_fields :: proc(t: ^testing.T) {
+	content := "[[paths]]\npath = \"/a\"\nkey = \"a\"\nenabled = true\n\n" +
+		"[[aliases]]\nname = \"ll\"\ncommand = \"ls\"\ndescription = \"list\"\n\n" +
+		"[[constants]]\nname = \"X\"\nvalue = \"1\"\nexport = true\nsecret = false\n\n" +
+		"[env]\nFOO = \"bar\"\n"
+	got := wayu.migrate_schema_dropped_fields(content)
+	defer delete(got)
+	want := []int{4, 9, 14, 15}
+	testing.expectf(t, len(got) == len(want), "got %v want %v", got[:], want)
+	if len(got) == len(want) {
+		for w, i in want { testing.expectf(t, got[i] == w, "got %v want %v", got[:], want) }
+	}
+}
+
 // A header with a trailing comment (`[aliases] # mine`) is the same table.
 @(test)
 test_migrate_schema_commented_header :: proc(t: ^testing.T) {

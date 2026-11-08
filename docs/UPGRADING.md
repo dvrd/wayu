@@ -154,6 +154,10 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   a `"""` command became `""`). A section header with a trailing comment
   (`[aliases] # mine`) is now recognised.
 - Waits for other wayu commands (config lock) before rewriting wayu.toml.
+- `[[paths]]` / `[[aliases]]` / `[[constants]]` fields the modern schema
+  has no place for (legacy `description`, `export`, `secret`, …) are listed
+  on stderr as `wayu.toml:N` warnings; they used to vanish silently. The
+  migration still runs (exit `0`).
 
 **doctor**
 - A relative `[paths]` entry (`./node_modules/.bin`) is no longer reported
