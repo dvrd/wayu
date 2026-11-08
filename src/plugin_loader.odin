@@ -1,6 +1,7 @@
 package wayu
 
 import "core:fmt"
+import "core:mem/virtual"
 import "core:os"
 import "core:strings"
 import "core:time"
@@ -27,61 +28,23 @@ plugin_accept_keys_from_toml :: proc() -> []string {
 	}
 	defer if len(uncached_raw) > 0 { delete(uncached_raw) }
 
-	it := make_line_iter(content_str)
-	in_settings := false
+	// Shared TOML parser: the array may span lines and hold comments.
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil { return make_default_autosuggest_accept_keys() }
+	defer virtual.arena_destroy(&arena)
+	doc, _ := toml_doc_parse_alloc(content_str, virtual.arena_allocator(&arena))
+
 	keys := make([dynamic]string)
 	defer if len(keys) == 0 do delete(keys)
-
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") {
-			continue
-		}
-		if trimmed == "[settings]" {
-			in_settings = true
-			continue
-		}
-		if in_settings && strings.has_prefix(trimmed, "[") {
-			break
-		}
-		if !in_settings || !strings.has_prefix(trimmed, "autosuggestions_accept_keys") {
-			continue
-		}
-
-		eq_idx := strings.index(trimmed, "=")
-		if eq_idx < 0 {
-			break
-		}
-		raw := strings.trim_space(trimmed[eq_idx+1:])
-		in_quote := false
-		quote_char: byte = 0
-		start := 0
-		for i := 0; i < len(raw); i += 1 {
-			ch := raw[i]
-			if !in_quote && (ch == '"' || ch == '\'') {
-				in_quote = true
-				quote_char = ch
-				start = i + 1
-				continue
+	if val := get_toml_value(&doc, "settings.autosuggestions_accept_keys"); val != nil && val.type == .ARRAY {
+		for el in val.arr_val {
+			if el.type != .STRING || len(el.str_val) == 0 { continue }
+			duplicate := false
+			for existing in keys {
+				if existing == el.str_val { duplicate = true; break }
 			}
-			if in_quote && ch == quote_char {
-				key := raw[start:i]
-				if len(key) > 0 {
-					duplicate := false
-					for existing in keys {
-						if existing == key {
-							duplicate = true
-							break
-						}
-					}
-					if !duplicate {
-						append(&keys, strings.clone(key))
-					}
-				}
-				in_quote = false
-			}
+			if !duplicate { append(&keys, strings.clone(el.str_val)) }
 		}
-		break
 	}
 
 	if len(keys) == 0 {

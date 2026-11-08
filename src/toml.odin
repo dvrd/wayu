@@ -23,9 +23,7 @@ import "core:mem"
 import "core:mem/virtual"
 import "core:os"
 import "core:slice"
-import "core:strconv"
 import "core:strings"
-import "core:unicode"
 
 
 // ============================================================================
@@ -92,14 +90,17 @@ TomlValueType :: enum {
 	BOOLEAN,
 	ARRAY,
 	TABLE,
+	FLOAT,    // str_val holds the text as written
+	DATETIME, // str_val holds the text as written
 }
 
+// INTEGER also sets str_val (decimal) so every scalar has a text form.
 TomlValue :: struct {
 	type: TomlValueType,
 	str_val: string,
 	int_val: int,
 	bool_val: bool,
-	arr_val: [dynamic]TomlValue,
+	arr_val: [dynamic]^TomlValue,
 	table_val: map[string]^TomlValue,
 }
 
@@ -115,8 +116,13 @@ make_toml_table :: proc() -> TomlValue {
 // TOML DOCUMENT
 // ============================================================================
 
+// Parsed document (see toml_parse.odin): the value tree plus every header
+// and `key = value` statement in file order, and the errors recovered from.
 TomlDoc :: struct {
-	values: map[string]^TomlValue,
+	values:  map[string]^TomlValue,
+	headers: [dynamic]TomlHeader,
+	entries: [dynamic]TomlEntry,
+	errors:  [dynamic]TomlParseError,
 }
 
 // Get value from doc by key path (e.g., "path.entries")
@@ -152,16 +158,11 @@ get_toml_value :: proc(doc: ^TomlDoc, key: string) -> ^TomlValue {
 // PUBLIC API (from interfaces.odin)
 // ============================================================================
 
-// Parse TOML content into TomlConfig
+// Parse TOML content into TomlConfig. Strict: any syntax error fails
+// (toml validate, doctor, backup restore). See toml_parse_lenient.
 toml_parse :: proc(content: string) -> (TomlConfig, bool) {
-	if !toml_content_is_sane(content) {
-		return {}, false
-	}
-
-	// Arena-backed parse. A *growing* virtual arena: the previous fixed
-	// buffer (capped at 1MB) overflowed on large configs (~3000 aliases),
-	// returning nil allocations and crashing. doc_to_config copies what it
-	// keeps, so the whole AST is released in one go below.
+	// Growing virtual arena (a fixed 1MB buffer overflowed on ~3000 aliases);
+	// doc_to_config copies what it keeps, so the AST is released in one go.
 	arena: virtual.Arena
 	if err := virtual.arena_init_growing(&arena); err != nil {
 		return {}, false
@@ -172,8 +173,22 @@ toml_parse :: proc(content: string) -> (TomlConfig, bool) {
 	if !ok {
 		return {}, false
 	}
-
 	return doc_to_config(&doc)
+}
+
+// Like toml_parse, but a file with syntax errors still yields everything
+// the parser recovered - the same entries `alias list`, the generator etc.
+// see. For views (TUI) that must agree with the CLI.
+toml_parse_lenient :: proc(content: string) -> TomlConfig {
+	arena: virtual.Arena
+	if err := virtual.arena_init_growing(&arena); err != nil {
+		return {}
+	}
+	defer virtual.arena_destroy(&arena)
+
+	doc, _ := toml_doc_parse_alloc(content, virtual.arena_allocator(&arena))
+	config, _ := doc_to_config(&doc)
+	return config
 }
 
 // Validate TOML configuration
@@ -261,6 +276,16 @@ toml_read_file :: proc(path: string) -> (TomlConfig, bool) {
 	defer delete(content)
 
 	return toml_parse(string(content))
+}
+
+// toml_read_file with toml_parse_lenient. ok=false only when unreadable.
+toml_read_file_lenient :: proc(path: string) -> (TomlConfig, bool) {
+	content, err := os.read_entire_file_from_path(path, context.allocator)
+	if err != nil {
+		return {}, false
+	}
+	defer delete(content)
+	return toml_parse_lenient(string(content)), true
 }
 
 // Get default config file path
@@ -399,7 +424,9 @@ toml_kv_upsert :: proc(section, dry_label, name, value: string) -> (res: TomlEdi
 
 	escaped := escape_toml_string(value)
 	defer delete(escaped)
-	line := fmt.aprintf(`%s = "%s"`, name, escaped)
+	key := toml_format_key(name)
+	defer delete(key)
+	line := fmt.aprintf(`%s = "%s"`, key, escaped)
 	defer delete(line)
 
 	new_content, had, bad := toml_table_set(string(content), section, name, line)
@@ -507,11 +534,18 @@ handle_validate :: proc() -> bool {
 		return false
 	}
 
-	config, ok := toml_read_file(config_path)
-	if !ok {
-		fmt.eprintfln("Error: Failed to parse %s", config_path)
+	content, read_err := os.read_entire_file_from_path(config_path, context.allocator)
+	if read_err != nil {
+		fmt.eprintfln("Error: Failed to read %s", config_path)
 		return false
 	}
+	defer delete(content)
+	if valid, perr := toml_check(string(content)); !valid {
+		defer delete(perr.msg)
+		fmt.eprintfln("Error: Failed to parse %s: line %d: %s", config_path, perr.line, perr.msg)
+		return false
+	}
+	config, _ := toml_parse(string(content))
 	defer cleanup_toml_config(&config)
 
 	result := toml_validate(config)
@@ -731,58 +765,11 @@ cleanup_toml_config :: proc(config: ^TomlConfig) {
 }
 
 // ============================================================================
-// Merged from: config_toml_simple.odin
+// Single-line helpers (the parser itself lives in toml_parse.odin)
 // ============================================================================
 
-// config_toml_simple.odin - Simplified TOML parser using arenas
-// This is a drop-in replacement for the complex pointer-based parser
-
-
-
-// Reject malformed TOML before the permissive legacy parser builds the AST.
-// This keeps wayu from silently accepting corrupt configs or unknown bare values.
-toml_content_is_sane :: proc(content: string) -> bool {
-	lines := strings.split(content, "\n")
-	defer delete(lines)
-
-	current_section := make(map[string]bool)
-	defer delete(current_section)
-
-	for line in lines {
-		trimmed := strings.trim_space(line)
-		if len(trimmed) == 0 || strings.has_prefix(trimmed, "#") { continue }
-
-		line_no_comment, ok := toml_strip_inline_comment_strict(trimmed)
-		if !ok { return false }
-		trimmed = strings.trim_space(line_no_comment)
-		if len(trimmed) == 0 { continue }
-
-		if strings.has_prefix(trimmed, "[") {
-			array_table := strings.has_prefix(trimmed, "[[")
-			if array_table {
-				if !strings.has_suffix(trimmed, "]]") || len(trimmed) <= 4 { return false }
-				section := strings.trim_space(trimmed[2:len(trimmed)-2])
-				if !toml_key_path_is_plain(section) { return false }
-				continue
-			}
-
-			if !strings.has_suffix(trimmed, "]") || strings.has_prefix(trimmed, "[[") || len(trimmed) <= 2 { return false }
-			section := strings.trim_space(trimmed[1:len(trimmed)-1])
-			if !toml_key_path_is_plain(section) { return false }
-			if current_section[section] { return false }
-			current_section[section] = true
-			continue
-		}
-
-		eq_idx := strings.index(trimmed, "=")
-		if eq_idx <= 0 { return false }
-		key := strings.trim_space(trimmed[:eq_idx])
-		value := strings.trim_space(trimmed[eq_idx+1:])
-		if !toml_key_is_plain(key) || !toml_value_is_sane(value) { return false }
-	}
-	return true
-}
-
+// Cut `line` at the first `#` outside a string. ok=false when a string is
+// left open on the line.
 toml_strip_inline_comment_strict :: proc(line: string) -> (string, bool) {
 	in_string := false
 	string_char: byte = 0
@@ -811,471 +798,6 @@ toml_is_escaped_quote :: proc(s: string, i: int) -> bool {
 	bs := 0
 	for j := i - 1; j >= 0 && s[j] == '\\'; j -= 1 { bs += 1 }
 	return bs % 2 == 1
-}
-
-toml_key_is_plain :: proc(key: string) -> bool {
-	if len(key) == 0 { return false }
-	for c in key {
-		ok := (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-'
-		if !ok { return false }
-	}
-	return true
-}
-
-toml_key_path_is_plain :: proc(path: string) -> bool {
-	if len(path) == 0 { return false }
-	parts := strings.split(path, ".")
-	defer delete(parts)
-	for part in parts {
-		if !toml_key_is_plain(strings.trim_space(part)) { return false }
-	}
-	return true
-}
-
-toml_value_is_sane :: proc(value: string) -> bool {
-	if len(value) == 0 { return false }
-
-	if strings.has_prefix(value, "\"") {
-		return toml_basic_string_is_sane(value)
-	}
-	if strings.has_prefix(value, "'") {
-		return len(value) >= 2 && strings.has_suffix(value, "'")
-	}
-	if value == "true" || value == "false" { return true }
-	if _, ok := strconv.parse_int(value); ok { return true }
-	if strings.has_prefix(value, "[") {
-		if !strings.has_suffix(value, "]") { return false }
-		return toml_collection_is_balanced(value)
-	}
-	if strings.has_prefix(value, "{") {
-		if !strings.has_suffix(value, "}") { return false }
-		return toml_collection_is_balanced(value)
-	}
-	return false
-}
-
-toml_basic_string_is_sane :: proc(value: string) -> bool {
-	if len(value) < 2 || !strings.has_suffix(value, "\"") { return false }
-	for i := 1; i < len(value) - 1; i += 1 {
-		c := value[i]
-		if c == '"' && !toml_is_escaped_quote(value, i) { return false }
-		if c == '\\' {
-			if i + 1 >= len(value) - 1 { return false }
-			switch value[i+1] {
-			case 'b', 't', 'n', 'f', 'r', '"', '\\', 'u', 'U':
-				i += 1
-			case:
-				return false
-			}
-		}
-	}
-	return true
-}
-
-toml_collection_is_balanced :: proc(value: string) -> bool {
-	depth_brk, depth_brc := 0, 0
-	in_string := false
-	string_char: byte = 0
-	for i := 0; i < len(value); i += 1 {
-		c := value[i]
-		if in_string {
-			if c == string_char {
-				if string_char == '\'' || !toml_is_escaped_quote(value, i) { in_string = false }
-			}
-			continue
-		}
-		switch c {
-		case '"', '\'':
-			in_string = true
-			string_char = c
-		case '[':
-			depth_brk += 1
-		case ']':
-			depth_brk -= 1
-			if depth_brk < 0 { return false }
-		case '{':
-			depth_brc += 1
-		case '}':
-			depth_brc -= 1
-			if depth_brc < 0 { return false }
-		}
-	}
-	return !in_string && depth_brk == 0 && depth_brc == 0
-}
-
-// TomlDocSimple uses an arena for all allocations
-toml_doc_parse_simple :: proc(content: string, arena: ^mem.Arena) -> (TomlDoc, bool) {
-	return toml_doc_parse_alloc(content, mem.arena_allocator(arena))
-}
-
-// Parse with any allocator; every AST node and string lives in `alloc`.
-toml_doc_parse_alloc :: proc(content: string, alloc: mem.Allocator) -> (TomlDoc, bool) {
-    doc: TomlDoc
-    doc.values = make(map[string]^TomlValue, allocator = alloc)
-
-    lines := strings.split(content, "\n")
-    defer delete(lines)
-
-    current_section := ""
-    current_array_idx := -1  // -1 means not in an array of tables
-
-    for line, line_num in lines {
-        line_trimmed := strings.trim_space(line)
-
-        // Skip empty lines and full-line comments
-        if len(line_trimmed) == 0 || strings.has_prefix(line_trimmed, "#") {
-            continue
-        }
-
-        // Remove inline comments (but not inside strings)
-        in_string := false
-        string_char: byte = 0
-        comment_start := -1
-
-        for i := 0; i < len(line_trimmed); i += 1 {
-            c := line_trimmed[i]
-
-            if !in_string && (c == '"' || c == '\'') {
-                in_string = true
-                string_char = c
-            } else if in_string && c == string_char {
-				if string_char == '\'' || !toml_is_escaped_quote(line_trimmed, i) {
-					in_string = false
-				}
-            } else if !in_string && c == '#' {
-                comment_start = i
-                break
-            }
-        }
-
-        if comment_start >= 0 {
-            line_trimmed = strings.trim_space(line_trimmed[:comment_start])
-        }
-
-        // Check for array of tables [[section]] or [[section.sub.array]]
-        if strings.has_prefix(line_trimmed, "[[") && strings.has_suffix(line_trimmed, "]]") {
-            section_name := line_trimmed[2:len(line_trimmed)-2]
-            current_section = strings.clone(section_name, allocator = alloc)
-
-            // Handle dotted array names like [[profile.work.aliases]]
-            if strings.contains(section_name, ".") {
-                parts := strings.split(section_name, ".")
-                defer delete(parts)
-
-                current_map := &doc.values
-                for i := 0; i < len(parts) - 1; i += 1 {
-                    part := parts[i]
-
-                    if existing, ok := current_map[part]; ok {
-                        if existing.type != .TABLE {
-                            existing.type = .TABLE
-                            existing.table_val = make(map[string]^TomlValue, allocator = alloc)
-                        }
-                        current_map = &existing.table_val
-                    } else {
-                        new_table := new(TomlValue, allocator = alloc)
-                        new_table.type = .TABLE
-                        new_table.table_val = make(map[string]^TomlValue, allocator = alloc)
-                        current_map[part] = new_table
-                        current_map = &new_table.table_val
-                    }
-                }
-
-                array_name := parts[len(parts) - 1]
-
-                arr_val, ok := current_map[array_name]
-                if !ok {
-                    arr_val = new(TomlValue, allocator = alloc)
-                    arr_val.type = .ARRAY
-                    arr_val.arr_val = make([dynamic]TomlValue, allocator = alloc)
-                    current_map[array_name] = arr_val
-                } else if arr_val.type != .ARRAY {
-                    arr_val.type = .ARRAY
-                    arr_val.arr_val = make([dynamic]TomlValue, allocator = alloc)
-                }
-
-                new_table: TomlValue
-                new_table.type = .TABLE
-                new_table.table_val = make(map[string]^TomlValue, allocator = alloc)
-                append(&arr_val.arr_val, new_table)
-                current_array_idx = len(arr_val.arr_val) - 1
-            } else {
-                arr_val, ok := doc.values[current_section]
-                if !ok {
-                    arr_val = new(TomlValue, allocator = alloc)
-                    arr_val.type = .ARRAY
-                    arr_val.arr_val = make([dynamic]TomlValue, allocator = alloc)
-                    doc.values[current_section] = arr_val
-                } else if arr_val.type != .ARRAY {
-                    arr_val.type = .ARRAY
-                    arr_val.arr_val = make([dynamic]TomlValue, allocator = alloc)
-                }
-
-                new_table: TomlValue
-                new_table.type = .TABLE
-                new_table.table_val = make(map[string]^TomlValue, allocator = alloc)
-                append(&arr_val.arr_val, new_table)
-                current_array_idx = len(arr_val.arr_val) - 1
-            }
-            continue
-        }
-
-        // Check for regular table [section] or [section.subsection]
-        if strings.has_prefix(line_trimmed, "[") && strings.has_suffix(line_trimmed, "]") && !strings.has_prefix(line_trimmed, "[[") {
-            section_name := line_trimmed[1:len(line_trimmed)-1]
-            current_section = strings.clone(section_name, allocator = alloc)
-            current_array_idx = -1
-
-            if strings.contains(section_name, ".") {
-                parts := strings.split(section_name, ".")
-                defer delete(parts)
-
-                current_map := &doc.values
-                for i := 0; i < len(parts); i += 1 {
-                    part := parts[i]
-
-                    if existing, ok := current_map[part]; ok {
-                        if existing.type != .TABLE {
-                            existing.type = .TABLE
-                            existing.table_val = make(map[string]^TomlValue, allocator = alloc)
-                        }
-                        current_map = &existing.table_val
-                    } else {
-                        new_table := new(TomlValue, allocator = alloc)
-                        new_table.type = .TABLE
-                        new_table.table_val = make(map[string]^TomlValue, allocator = alloc)
-                        current_map[part] = new_table
-                        current_map = &new_table.table_val
-                    }
-                }
-            } else {
-                if _, ok := doc.values[current_section]; !ok {
-                    table_val := new(TomlValue, allocator = alloc)
-                    table_val.type = .TABLE
-                    table_val.table_val = make(map[string]^TomlValue, allocator = alloc)
-                    doc.values[current_section] = table_val
-                }
-            }
-            continue
-        }
-
-        // Parse key = value
-        if strings.contains(line_trimmed, "=") {
-            eq_idx := strings.index(line_trimmed, "=")
-            if eq_idx > 0 {
-                key := strings.trim_space(line_trimmed[:eq_idx])
-                value_str := strings.trim_space(line_trimmed[eq_idx+1:])
-
-                val := parse_toml_value_simple(value_str, alloc)
-				if val == nil { return {}, false }
-
-                if current_array_idx >= 0 && len(current_section) > 0 {
-                    if strings.contains(current_section, ".") {
-                        parts := strings.split(current_section, ".")
-                        defer delete(parts)
-
-                        current_map := &doc.values
-                        for i := 0; i < len(parts) - 1; i += 1 {
-                            part := parts[i]
-                            if existing, ok := current_map[part]; ok && existing.type == .TABLE {
-                                current_map = &existing.table_val
-                            } else {
-                                break
-                            }
-                        }
-
-                        array_name := parts[len(parts) - 1]
-                        if arr_val, ok := current_map[array_name]; ok && arr_val.type == .ARRAY {
-                            if current_array_idx < len(arr_val.arr_val) {
-                                table_ptr := &arr_val.arr_val[current_array_idx]
-                                table_ptr.table_val[key] = val
-                            }
-                        }
-                    } else {
-                        arr_val := doc.values[current_section]
-                        if arr_val != nil && arr_val.type == .ARRAY && current_array_idx < len(arr_val.arr_val) {
-                            table_ptr := &arr_val.arr_val[current_array_idx]
-                            table_ptr.table_val[key] = val
-                        }
-                    }
-                } else if len(current_section) > 0 {
-                    if strings.contains(current_section, ".") {
-                        parts := strings.split(current_section, ".")
-                        defer delete(parts)
-
-                        current_map := &doc.values
-                        for part in parts {
-                            if existing, ok := current_map[part]; ok && existing.type == .TABLE {
-                                current_map = &existing.table_val
-                            } else {
-                                break
-                            }
-                        }
-                        current_map[key] = val
-                    } else {
-                        table_val := doc.values[current_section]
-                        if table_val != nil && table_val.type == .TABLE {
-                            table_val.table_val[key] = val
-                        }
-                    }
-                } else {
-                    doc.values[key] = val
-                }
-            }
-        }
-    }
-
-    return doc, true
-}
-
-parse_toml_value_simple :: proc(value_str: string, alloc: mem.Allocator) -> ^TomlValue {
-    val := new(TomlValue, allocator = alloc)
-
-    s := strings.trim_space(value_str)
-
-	if strings.has_prefix(s, "\"") && strings.has_suffix(s, "\"") {
-		val.type = .STRING
-		if len(s) >= 2 {
-			unescaped := unescape_toml_string(s[1:len(s)-1])
-			defer delete(unescaped)
-			val.str_val = strings.clone(unescaped, allocator = alloc)
-		} else {
-			val.str_val = ""
-		}
-		return val
-	}
-
-	if strings.has_prefix(s, "'") && strings.has_suffix(s, "'") {
-		val.type = .STRING
-		if len(s) >= 2 {
-			val.str_val = strings.clone(s[1:len(s)-1], allocator = alloc)
-		} else {
-			val.str_val = ""
-		}
-		return val
-	}
-
-    if s == "true" {
-        val.type = .BOOLEAN
-        val.bool_val = true
-        return val
-    }
-    if s == "false" {
-        val.type = .BOOLEAN
-        val.bool_val = false
-        return val
-    }
-
-    if n, ok := strconv.parse_int(s); ok {
-        val.type = .INTEGER
-        val.int_val = n
-        return val
-    }
-
-    if strings.has_prefix(s, "[") && strings.has_suffix(s, "]") {
-        val.type = .ARRAY
-        val.arr_val = make([dynamic]TomlValue, allocator = alloc)
-        inner := strings.trim_space(s[1:len(s)-1])
-        if len(inner) > 0 {
-            // Use bracket/quote-aware splitting so nested arrays, inline
-            // tables and strings containing commas survive intact.
-            elements := split_toml_top_level(inner, alloc)
-            defer delete(elements)
-            for elem in elements {
-                if len(elem) > 0 {
-                    parsed_elem := parse_toml_value_simple(elem, alloc)
-					if parsed_elem == nil { return nil }
-                    append(&val.arr_val, parsed_elem^)
-                }
-            }
-        }
-        return val
-    }
-
-    // Inline table: { key = value, key2 = value2, ... }
-    // Standard TOML inline-table syntax. Nested arrays/tables and quoted
-    // strings (which may contain commas) are handled by split_toml_top_level.
-    if strings.has_prefix(s, "{") && strings.has_suffix(s, "}") {
-        val.type = .TABLE
-        val.table_val = make(map[string]^TomlValue, allocator = alloc)
-        inner := strings.trim_space(s[1:len(s)-1])
-        if len(inner) > 0 {
-            pairs := split_toml_top_level(inner, alloc)
-            defer delete(pairs)
-            for pair in pairs {
-                if len(pair) == 0 { continue }
-                eq_idx := strings.index(pair, "=")
-                if eq_idx <= 0 { continue }
-                key := strings.trim_space(pair[:eq_idx])
-                value_str := strings.trim_space(pair[eq_idx+1:])
-                if len(key) == 0 { continue }
-                child := parse_toml_value_simple(value_str, alloc)
-				if child == nil { return nil }
-                key_clone := strings.clone(key, allocator = alloc)
-                val.table_val[key_clone] = child
-            }
-        }
-        return val
-    }
-
-	return nil
-}
-
-// Split a TOML value-list at top-level commas, ignoring commas that appear
-// inside quoted strings, [arrays], or {inline tables}. The returned slice
-// header is allocated with the default allocator so callers can release it
-// with a plain `delete(parts)`. Substrings are zero-copy views into `s`
-// (which lives in the arena), so no per-element cleanup is required.
-split_toml_top_level :: proc(s: string, alloc: mem.Allocator) -> []string {
-    parts := make([dynamic]string)
-    depth_brk := 0   // [ ] depth
-    depth_brc := 0   // { } depth
-    in_string := false
-    string_char: byte = 0
-    start := 0
-
-    for i := 0; i < len(s); i += 1 {
-        c := s[i]
-        if in_string {
-            // Quote closes the string only if it's not preceded by an odd
-            // number of backslashes - that catches `\"` (escaped) and
-            // `\\"` (literal backslash followed by closing quote) correctly.
-            if c == string_char {
-                bs := 0
-                for j := i - 1; j >= 0 && s[j] == '\\'; j -= 1 { bs += 1 }
-                if bs % 2 == 0 {
-                    in_string = false
-                }
-            }
-            continue
-        }
-        switch c {
-        case '"', '\'':
-            in_string = true
-            string_char = c
-        case '[':
-            depth_brk += 1
-        case ']':
-            if depth_brk > 0 { depth_brk -= 1 }
-        case '{':
-            depth_brc += 1
-        case '}':
-            if depth_brc > 0 { depth_brc -= 1 }
-        case ',':
-            if depth_brk == 0 && depth_brc == 0 {
-                segment := strings.trim_space(s[start:i])
-                append(&parts, segment)
-                start = i + 1
-            }
-        }
-    }
-    if start <= len(s) {
-        tail := strings.trim_space(s[start:])
-        if len(tail) > 0 {
-            append(&parts, tail)
-        }
-    }
-    return parts[:]
 }
 
 // ============================================================================
@@ -1362,57 +884,61 @@ doc_parse_base_fields :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
 	config.wayu_version = get_string(get_toml_value(doc, "wayu_version"), VERSION)
 }
 
+// [paths] / [aliases] / [env] go through toml_doc_section_kvs, the reader
+// every CLI command and the generator use, so all consumers agree on keys,
+// values and FILE ORDER (= PATH priority; the old map walk sorted by key).
 @(private = "file")
 doc_parse_paths_section :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
-	paths_val := get_toml_value(doc, "paths")
-	if paths_val != nil && paths_val.type == .TABLE {
-		paths_entries := make([dynamic]string)
-		names := make([dynamic]string)
-		defer delete(names)
-		for name, _ in paths_val.table_val { append(&names, name) }
-		for i := 1; i < len(names); i += 1 {
-			j := i
-			for j > 0 && names[j-1] > names[j] {
-				names[j-1], names[j] = names[j], names[j-1]
-				j -= 1
-			}
-		}
-		for n in names {
-			v := paths_val.table_val[n]
-			if v != nil && v.type == .STRING {
-				append(&paths_entries, strings.clone(v.str_val))
-			}
-		}
-		config.path.entries = paths_entries[:]
+	kvs := toml_doc_section_kvs(doc, "paths")
+	defer destroy_toml_kvs(&kvs)
+	entries := make([dynamic]string)
+	for kv in kvs {
+		if len(kv.value) == 0 { continue } // an empty PATH entry is meaningless
+		append(&entries, strings.clone(kv.value))
 	}
+	config.path.entries = entries[:]
 	config.path.dedup = get_bool(get_toml_value(doc, "path.dedup"), true)
 	config.path.clean = get_bool(get_toml_value(doc, "path.clean"), false)
 }
 
+// Duplicate keys (invalid TOML, kept when recovering) resolve like the CLI
+// readers: last value, first position. Returns the kept indices into kvs
+// paired with the index whose value wins. Caller deletes.
+@(private = "file")
+kv_dedupe :: proc(kvs: []TomlKV) -> [dynamic][2]int {
+	out := make([dynamic][2]int)
+	seen := make(map[string]int)
+	defer delete(seen)
+	for kv, i in kvs {
+		if at, dup := seen[kv.key]; dup {
+			out[at][1] = i
+			continue
+		}
+		seen[kv.key] = len(out)
+		append(&out, [2]int{i, i})
+	}
+	return out
+}
+
 @(private = "file")
 doc_parse_aliases_section :: proc(doc: ^TomlDoc, aliases: ^[dynamic]TomlAlias) {
-	val := get_toml_value(doc, "aliases")
-	if val == nil || val.type != .TABLE { return }
-	for name, cmd in val.table_val {
-		if cmd == nil || cmd.type != .STRING { continue }
-		append(aliases, TomlAlias{
-			name = strings.clone(name),
-			command = strings.clone(cmd.str_val),
-		})
+	kvs := toml_doc_section_kvs(doc, "aliases")
+	defer destroy_toml_kvs(&kvs)
+	kept := kv_dedupe(kvs[:])
+	defer delete(kept)
+	for k in kept {
+		append(aliases, TomlAlias{name = strings.clone(kvs[k[0]].key), command = strings.clone(kvs[k[1]].value)})
 	}
 }
 
 @(private = "file")
 doc_parse_env_section :: proc(doc: ^TomlDoc, constants: ^[dynamic]TomlConstant) {
-	val := get_toml_value(doc, "env")
-	if val == nil || val.type != .TABLE { return }
-	for name, v in val.table_val {
-		if v == nil || v.type != .STRING { continue }
-		append(constants, TomlConstant{
-			name = strings.clone(name),
-			value = strings.clone(v.str_val),
-			export = true,
-		})
+	kvs := toml_doc_section_kvs(doc, "env")
+	defer destroy_toml_kvs(&kvs)
+	kept := kv_dedupe(kvs[:])
+	defer delete(kept)
+	for k in kept {
+		append(constants, TomlConstant{name = strings.clone(kvs[k[0]].key), value = strings.clone(kvs[k[1]].value), export = true})
 	}
 }
 
@@ -1570,7 +1096,7 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
 
 // Physical line range [first, last] (0-based, inclusive) of one
 // `key = value` entry. A multi-line string or array spans several lines.
-// `key` is unquoted and aliases the scanned content.
+// `key` is decoded (quotes/escapes; dotted parts joined with '.').
 TomlEntrySpan :: struct {
 	key:   string,
 	first: int,
@@ -1581,114 +1107,43 @@ TomlTableScan :: struct {
 	header:   int, // line index of the `[section]` header, -1 when absent
 	end:      int, // exclusive line index where the table ends
 	entries:  [dynamic]TomlEntrySpan,
-	bad_line: int, // 1-based line of a value that never terminates, 0 when ok
+	bad_line: int,    // 1-based line of a broken multi-line value, 0 when ok
+	bad_msg:  string, // the parser's reason for bad_line
 }
 
-// Multi-line value tracking across physical lines.
-@(private = "file")
-TomlValueScan :: struct {
-	depth: int,  // open `[` / `{` outside strings
-	ml:    byte, // 0, or the quote char of an open `"""` / `'''` string
-}
-
-// Advance `st` over one physical line of a value. Single-line strings cannot
-// span lines, so they are skipped within the line; `#` outside a string ends
-// the line.
-@(private = "file")
-toml_value_scan_line :: proc(s: string, st: ^TomlValueScan) {
-	i := 0
-	for i < len(s) {
-		c := s[i]
-		if st.ml != 0 {
-			if c == '\\' && st.ml == '"' { i += 2; continue }
-			if c == st.ml && i + 2 < len(s) && s[i+1] == c && s[i+2] == c {
-				st.ml = 0
-				i += 3
-				// Up to two quotes may directly precede the closing delimiter.
-				for i < len(s) && s[i] == c { i += 1 }
-				continue
-			}
-			i += 1
-			continue
-		}
-		switch c {
-		case '#':
-			return
-		case '"', '\'':
-			if i + 2 < len(s) && s[i+1] == c && s[i+2] == c {
-				st.ml = c
-				i += 3
-				continue
-			}
-			j := i + 1
-			for j < len(s) && s[j] != c {
-				if c == '"' && s[j] == '\\' { j += 1 }
-				j += 1
-			}
-			i = j + 1
-			continue
-		case '[', '{':
-			st.depth += 1
-		case ']', '}':
-			if st.depth > 0 { st.depth -= 1 }
-		}
-		i += 1
-	}
-}
-
-// `"my key"` → `my key`; bare keys are returned as-is.
-@(private = "file")
-toml_unquote_key :: proc(key: string) -> string {
-	n := len(key)
-	if n >= 2 && (key[0] == '"' || key[0] == '\'') && key[n-1] == key[0] {
-		return key[1:n-1]
-	}
-	return key
-}
-
-// Locate `[section]` in `lines` and every entry inside it. Lines that are not
-// `key = value` (comments, blanks, junk) are not entries and are never
-// touched by the editors below. Caller deletes `entries`.
-toml_scan_table :: proc(lines: []string, section: string, allocator := context.allocator) -> TomlTableScan {
-	scan := TomlTableScan{header = -1, end = len(lines)}
+// Locate `[section]` and every entry inside it, using the same parser as
+// every reader (so keys and value extents agree with what was read). Lines
+// that are not `key = value` (comments, blanks, junk) are not entries and
+// are never touched by the editors below. A value that opens a multi-line
+// construct and does not parse sets bad_line: its extent is unknown, so the
+// editors refuse to write. Everything is allocated in `allocator` (pass an
+// arena).
+toml_scan_table :: proc(content: string, n_lines: int, section: string, allocator: mem.Allocator) -> TomlTableScan {
+	scan := TomlTableScan{header = -1, end = n_lines}
 	scan.entries = make([dynamic]TomlEntrySpan, allocator)
 
-	for line, i in lines {
-		if toml_line_is_section(strings.trim_space(line), section) {
-			scan.header = i
+	doc, _ := toml_doc_parse_alloc(content, allocator)
+	hidx := -1
+	for h, i in doc.headers {
+		if !h.invalid && !h.array && len(h.path) == 1 && h.path[0] == section {
+			hidx = i
+			scan.header = h.line
 			break
 		}
 	}
-	if scan.header < 0 { return scan }
+	if hidx < 0 { return scan }
+	if hidx + 1 < len(doc.headers) { scan.end = doc.headers[hidx + 1].line }
 
-	for i := scan.header + 1; i < len(lines); i += 1 {
-		trimmed := strings.trim_space(lines[i])
-		if strings.has_prefix(trimmed, "[") {
-			scan.end = i
+	for e in doc.errors {
+		if e.multiline && e.stmt_line > scan.header && e.stmt_line < scan.end {
+			scan.bad_line = e.stmt_line + 1
+			scan.bad_msg = e.msg
 			return scan
 		}
-		if len(trimmed) == 0 || trimmed[0] == '#' { continue }
-		eq := strings.index_byte(trimmed, '=')
-		if eq < 1 { continue }
-
-		first := i
-		st: TomlValueScan
-		toml_value_scan_line(trimmed[eq+1:], &st)
-		for st.ml != 0 || st.depth > 0 {
-			i += 1
-			if i >= len(lines) {
-				// Unterminated value: refuse to guess where it ends.
-				scan.bad_line = first + 1
-				scan.end = len(lines)
-				return scan
-			}
-			toml_value_scan_line(lines[i], &st)
-		}
-		append(&scan.entries, TomlEntrySpan{
-			key   = toml_unquote_key(strings.trim_space(trimmed[:eq])),
-			first = first,
-			last  = i,
-		})
+	}
+	for e in doc.entries {
+		if e.header != hidx { continue }
+		append(&scan.entries, TomlEntrySpan{key = toml_entry_name(e, allocator), first = e.first, last = e.last})
 	}
 	return scan
 }
@@ -1697,14 +1152,20 @@ toml_scan_table :: proc(lines: []string, section: string, allocator := context.a
 // An existing entry is replaced where it stands, keeping its indentation and,
 // for a single-line entry, its inline comment. A new key is appended after
 // the table's last entry; a missing table is appended at the end of the file.
-// Returns bad_line > 0 (and no output) when the table holds an unterminated
-// value. Caller deletes `out`.
+// Returns bad_line > 0 (and no output) when the table holds a broken
+// multi-line value. Caller deletes `out`.
 toml_table_set :: proc(content, section, key, entry_line: string) -> (out: string, existed: bool, bad_line: int) {
-	lines := strings.split(content, "\n")
-	defer delete(lines)
-	scan := toml_scan_table(lines, section)
-	defer delete(scan.entries)
-	if scan.bad_line > 0 { return "", false, scan.bad_line }
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil { return "", false, 1 }
+	defer virtual.arena_destroy(&arena)
+	scratch := virtual.arena_allocator(&arena)
+
+	lines := strings.split(content, "\n", scratch)
+	scan := toml_scan_table(content, len(lines), section, scratch)
+	if scan.bad_line > 0 {
+		toml_last_bad_msg_set(scan.bad_msg)
+		return "", false, scan.bad_line
+	}
 
 	if scan.header < 0 {
 		b := strings.builder_make()
@@ -1719,8 +1180,7 @@ toml_table_set :: proc(content, section, key, entry_line: string) -> (out: strin
 		return strings.clone(strings.to_string(b)), false, 0
 	}
 
-	out_lines := make([dynamic]string, 0, len(lines) + 1)
-	defer delete(out_lines)
+	out_lines := make([dynamic]string, 0, len(lines) + 1, scratch)
 
 	for e in scan.entries {
 		if e.key != key { continue }
@@ -1732,8 +1192,7 @@ toml_table_set :: proc(content, section, key, entry_line: string) -> (out: strin
 				comment = old[len(strings.trim_right_space(code)):]
 			}
 		}
-		replacement := strings.concatenate({indent, entry_line, comment})
-		defer delete(replacement)
+		replacement := strings.concatenate({indent, entry_line, comment}, scratch)
 
 		append(&out_lines, ..lines[:e.first])
 		append(&out_lines, replacement)
@@ -1758,33 +1217,51 @@ toml_table_set :: proc(content, section, key, entry_line: string) -> (out: strin
 
 // Delete every entry of `[section]` whose key is in `keys`, including all
 // continuation lines of multi-line values. Everything else is untouched.
-// Returns bad_line > 0 (and no output) when the table holds an unterminated
-// value. Caller deletes `out` (also when removed == 0).
+// Returns bad_line > 0 (and no output) when the table holds a broken
+// multi-line value. Caller deletes `out` (also when removed == 0).
 toml_table_delete :: proc(content, section: string, keys: []string) -> (out: string, removed: int, bad_line: int) {
-	lines := strings.split(content, "\n")
-	defer delete(lines)
-	scan := toml_scan_table(lines, section)
-	defer delete(scan.entries)
-	if scan.bad_line > 0 { return "", 0, scan.bad_line }
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil { return "", 0, 1 }
+	defer virtual.arena_destroy(&arena)
+	scratch := virtual.arena_allocator(&arena)
 
-	drop := make([]bool, len(lines))
-	defer delete(drop)
+	lines := strings.split(content, "\n", scratch)
+	scan := toml_scan_table(content, len(lines), section, scratch)
+	if scan.bad_line > 0 {
+		toml_last_bad_msg_set(scan.bad_msg)
+		return "", 0, scan.bad_line
+	}
+
+	drop := make([]bool, len(lines), scratch)
 	for e in scan.entries {
 		if !slice.contains(keys, e.key) { continue }
 		for i in e.first..=e.last { drop[i] = true }
 		removed += 1
 	}
 
-	out_lines := make([dynamic]string, 0, len(lines))
-	defer delete(out_lines)
+	out_lines := make([dynamic]string, 0, len(lines), scratch)
 	for line, i in lines {
 		if !drop[i] { append(&out_lines, line) }
 	}
 	return strings.join(out_lines[:], "\n"), removed, 0
 }
 
-// Explain an unterminated value and that nothing was written.
+// Parser reason for the last bad_line returned by the editors (shown by
+// toml_print_bad_line).
+@(private = "file")
+toml_last_bad_msg: [256]byte
+@(private = "file")
+toml_last_bad_msg_len: int
+
+@(private = "file")
+toml_last_bad_msg_set :: proc(msg: string) {
+	toml_last_bad_msg_len = copy(toml_last_bad_msg[:], msg)
+}
+
+// Explain a broken multi-line value and that nothing was written.
 toml_print_bad_line :: proc(section: string, bad_line: int) {
-	print_error("wayu.toml line %d: unterminated multi-line value in [%s] — fix it by hand; nothing was written",
-		bad_line, section)
+	reason := string(toml_last_bad_msg[:toml_last_bad_msg_len])
+	if len(reason) == 0 { reason = "unterminated multi-line value" }
+	print_error("wayu.toml line %d: %s in [%s] — fix it by hand; nothing was written",
+		bad_line, reason, section)
 }

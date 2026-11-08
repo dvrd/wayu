@@ -19,9 +19,7 @@ handle_alias_command :: proc(action: Action, args: []string) {
 }
 
 read_toml_alias_entries :: proc() -> []ConfigEntry {
-	// Parse [aliases] directly (rather than via init_generator's reader) so
-	// values round-trip exactly: inline comments are stripped and only ONE
-	// matching quote pair is removed (`"git log --format='%h'"` keeps its `'`).
+	// The shared parser (toml_read_section), like the generator and the TUI.
 	content_str, cached := get_cached_toml_content()
 	uncached_raw: []byte
 	if !cached {
@@ -34,22 +32,17 @@ read_toml_alias_entries :: proc() -> []ConfigEntry {
 	}
 	defer if len(uncached_raw) > 0 { delete(uncached_raw) }
 
+	kvs := toml_read_section(content_str, "aliases")
+	defer delete(kvs)
 	entries := make([dynamic]ConfigEntry)
-	it := make_line_iter(content_str)
-	in_section := false
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-		if toml_line_is_section(trimmed, "aliases") { in_section = true; continue }
-		if strings.has_prefix(trimmed, "[") { in_section = false; continue }
-		if !in_section { continue }
-
-		name, value, ok := toml_parse_kv_line(trimmed)
-		if !ok { continue }
+	for kv in kvs {
+		// Duplicate key (invalid TOML): last value wins, first position.
 		replaced := false
 		for &e in entries {
-			if e.name == name {
+			if e.name == kv.key {
 				delete(e.value)
-				e.value = value
+				e.value = kv.value
+				delete(kv.key)
 				replaced = true
 				break
 			}
@@ -57,8 +50,8 @@ read_toml_alias_entries :: proc() -> []ConfigEntry {
 		if replaced { continue }
 		append(&entries, ConfigEntry{
 			type  = .ALIAS,
-			name  = strings.clone(name),
-			value = value,
+			name  = kv.key,  // ownership moves
+			value = kv.value,
 			line  = "",  // Only populated on-demand by write paths
 		})
 	}

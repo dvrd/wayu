@@ -1717,7 +1717,7 @@ tui_load_path :: proc(state: ^TUIState) {
 	defer delete(toml_file)
 
 	if os.exists(toml_file) {
-		config, ok := toml_read_file(toml_file)
+		config, ok := toml_read_file_lenient(toml_file)
 		defer {
 			for entry in config.path.entries { delete(entry) }
 			delete(config.path.entries)
@@ -1778,7 +1778,7 @@ tui_load_alias :: proc(state: ^TUIState) {
 	defer delete(toml_file)
 
 	if os.exists(toml_file) {
-		config, ok := toml_read_file(toml_file)
+		config, ok := toml_read_file_lenient(toml_file)
 		defer {
 			for alias in config.aliases {
 				delete(alias.name)
@@ -1847,7 +1847,7 @@ tui_load_constants :: proc(state: ^TUIState) {
 		wayu_constants := make(map[string]bool)
 		defer delete(wayu_constants)
 
-		config, ok := toml_read_file(toml_file)
+		config, ok := toml_read_file_lenient(toml_file)
 		defer {
 			for const in config.constants {
 				delete(const.name)
@@ -1865,39 +1865,6 @@ tui_load_constants :: proc(state: ^TUIState) {
 
 				display := fmt.aprintf("%s=%s", const.name, mask_secret_value(const.name, const.value))
 				cache_push(&items, &meta, display, const.name, const.value, source)
-			}
-		}
-
-		content, file_ok := safe_read_file(toml_file)
-		// Freed at the end of this branch, not of the `if file_ok` block:
-		// wayu_constants keys below point into `content` and are looked up
-		// again by the external-env pass.
-		defer if file_ok do delete(content)
-		if file_ok {
-			lines := strings.split(string(content), "\n")
-			defer delete(lines)
-
-			in_env := false
-			for line in lines {
-				trimmed := strings.trim_space(line)
-				if toml_line_is_section(trimmed, "env") { in_env = true; continue }
-				if strings.has_prefix(trimmed, "[") { in_env = false; continue }
-				if !in_env { continue }
-
-				// Shared parser: strips inline comment + one matching quote pair,
-				// so values like `--format='%h'` keep their trailing quote.
-				name, unescaped, kv_ok := toml_parse_kv_line(trimmed)
-				if !kv_ok { continue }
-				defer delete(unescaped)
-				if name in wayu_constants { continue }
-
-				// Key must outlive this loop iteration (map stores the slice).
-				// `name` points into `content`, which lives until proc exit.
-				wayu_constants[name] = true
-				is_active := snapshot_env_var(name) != nil
-				source := RowSource.WAYU_ACTIVE if is_active else RowSource.WAYU_INACTIVE
-				display := fmt.aprintf("%s=%s", name, mask_secret_value(name, unescaped))
-				cache_push(&items, &meta, display, name, unescaped, source)
 			}
 		}
 

@@ -19,7 +19,6 @@ import "core:strings"
 // seconds. So: unchanged content is not rewritten (a valid .zwc stays
 // usable), and a rewrite deletes the .zwc — otherwise a digest compiled in
 // the same second from the previous content would shadow the new file.
-@(private = "file")
 write_init_file :: proc(path, content: string) {
 	zwc := fmt.tprintf("%s.zwc", path)
 	if old, err := os.read_entire_file(path, context.allocator); err == nil {
@@ -749,10 +748,12 @@ read_wayu_toml_path_values :: proc() -> [dynamic]string {
 toml_has_table :: proc(name: string) -> bool {
 	content, ok := get_cached_toml_content()
 	if !ok { return false }
-	it := make_line_iter(content)
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-		if strings.has_prefix(trimmed, "[") && toml_line_is_section(trimmed, name) { return true }
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil { return false }
+	defer virtual.arena_destroy(&arena)
+	doc, _ := toml_doc_parse_alloc(content, virtual.arena_allocator(&arena))
+	for h in doc.headers {
+		if !h.invalid && !h.array && len(h.path) == 1 && h.path[0] == name { return true }
 	}
 	return false
 }
@@ -1261,40 +1262,23 @@ generate_helpers_init_v2 :: proc() {
 // TOML table readers for [paths] / [env] / [aliases]
 // ============================================================================
 //
-// Line parsing is delegated to the shared toml.odin helpers
-// (toml_line_is_section / toml_parse_kv_line): inline comments stripped, one
-// MATCHING quote pair removed ("..." unescaped, '...' literal), empty ""
-// values kept — so `git log --format='%h'` keeps its trailing quote.
+// Parsing is the shared TOML parser (toml_read_section): quoted keys and
+// escapes decoded, multi-line strings read, inline comments stripped, empty
+// "" values kept, FILE order - the same view every other command has.
 
 TomlKV :: struct { key, value: string }
 
 // Read `key = value` pairs of one top-level table, in file order.
 // Caller owns keys/values (destroy with destroy_toml_kvs).
 read_toml_section_kvs :: proc(section: string) -> [dynamic]TomlKV {
-	out := make([dynamic]TomlKV)
 	content_str, ok := get_cached_toml_content()
-	if !ok { return out }
-
-	it := make_line_iter(content_str)
-	in_section := false
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-		if strings.has_prefix(trimmed, "[") {
-			in_section = toml_line_is_section(trimmed, section)
-			continue
-		}
-		if !in_section { continue }
-
-		key, value, kv_ok := toml_parse_kv_line(trimmed)
-		if !kv_ok { continue }
-		if len(key) >= 2 && ((key[0] == '"' && key[len(key)-1] == '"') || (key[0] == '\'' && key[len(key)-1] == '\'')) {
-			key = key[1:len(key)-1]
-		}
-		if len(key) == 0 {
-			delete(value)
-			continue
-		}
-		append(&out, TomlKV{key = strings.clone(key), value = value})
+	if !ok { return make([dynamic]TomlKV) }
+	out := toml_read_section(content_str, section)
+	// An empty key ("" = ...) names nothing in a shell.
+	for i := len(out) - 1; i >= 0; i -= 1 {
+		if len(out[i].key) > 0 { continue }
+		delete(out[i].key); delete(out[i].value)
+		ordered_remove(&out, i)
 	}
 	return out
 }
