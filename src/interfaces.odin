@@ -8,37 +8,6 @@ package wayu
 import "core:strings"
 @(require) import "core:log" // used by debug() under ODIN_DEBUG only
 // ============================================================================
-// LOCK FILE SYSTEM
-// ============================================================================
-
-LockFile :: struct {
-    version:      string,           // "1.0.0"
-    generated_at: string,           // RFC3339 timestamp
-    entries:      []LockEntry,
-}
-
-LockEntry :: struct {
-    type:        ConfigType,
-    name:        string,
-    value:       string,           // For constants/aliases
-    hash:        string,           // SHA256 of normalized content
-    source:      string,           // URL, path, or "manual"
-    added_at:    string,           // RFC3339
-    modified_at: string,           // RFC3339
-    metadata:    map[string]string, // Extensible metadata
-}
-
-ConfigType :: enum {
-    PATH,
-    ALIAS,
-    CONSTANT,
-    PLUGIN,
-    COMPLETION,
-}
-
-// Note: Lock file operations (lock_read, lock_write, etc.) implemented in lock.odin
-
-// ============================================================================
 // TOML CONFIGURATION SYSTEM
 // ============================================================================
 

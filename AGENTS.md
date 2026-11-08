@@ -133,7 +133,6 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/secrets.odin` | Secret heuristic + masking; file modes for files holding [env] values |
 | `src/env_snapshot.odin` | Snapshot of the running env (PATH, aliases, env) for the list views' `source` column |
 | `src/atomic_io.odin` | Atomic file replacement + inter-process config lock |
-| `src/lock.odin` | wayu.lock reader (hot reload) |
 | `src/subprocess.odin` | `run_command`: subprocess without a shell, with timeouts (plugin clones, shells) |
 | `src/wayu_completions.odin` | `WAYU_COMMAND_SPECS` (commands/actions/flags/--json; drives parser, help, completions) + wayu's own completions |
 | `src/table.odin`, `src/spinner.odin` | CLI table and spinner components |
