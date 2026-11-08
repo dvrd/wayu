@@ -230,7 +230,7 @@ class WriteIntegrityIntegrationTest
       File.write("#{r}/cplug#{i}.plugin.zsh", "echo #{i}\n")
       system('git', '-C', r, 'init', '-q') &&
         system('git', '-C', r, 'add', '.') &&
-        system('git', '-C', r, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init')
+        system('git', '-C', r, '-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'init')
     end
     git_env = {
       'GIT_CONFIG_COUNT' => '1',
