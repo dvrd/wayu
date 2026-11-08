@@ -6,6 +6,17 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**path**
+- `path clean` resolves `$VAR`/`${VAR}` from `wayu.toml` `[env]` first, then
+  the environment (as the generated init does), and never removes an entry
+  whose variable is set in neither. `path dedup` also resolves `[env]`
+  variables, so `$TOOLS/bin` and its absolute form count as duplicates.
+- `path clean`/`path dedup` exit `78` without changing anything when a dropped
+  entry shares its key with a kept one (hand-edited duplicate key in
+  `[paths]`); they used to delete both lines.
+- `pre_path_remove`/`post_path_remove` hooks get the entry's directory as
+  `{path}` when `path rm` is given a key (they got the key).
+
 **doctor**
 - `doctor --json` (and `--json doctor`) prints JSON; `--json --fix` exits `64`.
 - `doctor` exits `78` when any check reports an error (also with `--json`).

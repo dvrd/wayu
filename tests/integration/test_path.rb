@@ -38,6 +38,9 @@ class PathIntegrationTest
       test_clean_operates_on_wayu_toml
       test_dedup_operates_on_wayu_toml
       test_add_detects_resolved_duplicate
+      test_clean_keeps_unresolved_and_env_paths
+      test_dedup_refuses_duplicate_key
+      test_remove_by_key_hook_gets_path
       test_help_command
     ensure
       teardown_test_env
@@ -186,6 +189,57 @@ class PathIntegrationTest
     report(status.success? && output.include?("already") && !output.include?("Added") &&
            content.scan("#{@tmp_home}").empty?,
            "out=#{output}\ntoml=#{content}")
+  end
+
+  # Regression (OKAMI-168): clean deleted entries using a variable it could
+  # not resolve, and ignored wayu.toml [env] (core exports it before PATH).
+  def test_clean_keeps_unresolved_and_env_paths
+    print "Test 16: path clean keeps $VAR entries it cannot prove missing... "
+
+    tools = "#{@tmp_home}/okami168_tools"
+    FileUtils.mkdir_p("#{tools}/bin")
+    run_wayu("const add OKAMI168_ROOT #{tools}")
+    write_paths_table([%(unset_bin = "$WAYU_OKAMI168_SURELY_UNSET/bin"),
+                       %(env_bin = "${OKAMI168_ROOT}/bin"),
+                       %(gone = "/tmp/wayu_test_clean168_gone_#{$$}")])
+    output, status = run_wayu("path clean --yes")
+    content = File.read(@toml_file)
+
+    report(status.success? && content.include?("unset_bin =") && content.include?("env_bin =") &&
+           !content.include?("gone ="),
+           "out=#{output}\ntoml=#{content}")
+  end
+
+  # Regression (OKAMI-168): two entries sharing a (hand-edited) key — dedup
+  # deleted every line of that key, dropping the survivor too.
+  def test_dedup_refuses_duplicate_key
+    print "Test 17: path dedup refuses a duplicate [paths] key... "
+
+    write_paths_table([%(dup = "/tmp"), %(dup = "/tmp")])
+    before = File.read(@toml_file)
+    output, status = run_wayu("path dedup --yes")
+    after = File.read(@toml_file)
+
+    report(status.exitstatus == 78 && before == after && output.include?("Duplicate key"),
+           "status=#{status.exitstatus}\nout=#{output}\ntoml=#{after}")
+  end
+
+  # Regression (OKAMI-168): `path rm <key>` passed the key, not the
+  # directory, as {path} to pre/post_path_remove.
+  def test_remove_by_key_hook_gets_path
+    print "Test 18: path rm <key> gives hooks the directory... "
+
+    log = "#{@tmp_home}/okami168_hook.log"
+    hooks = "#{@config_dir}/hooks.conf"
+    File.write(hooks, "pre_path_remove = echo \"pre:{path}\" >> #{log}\n" \
+                      "post_path_remove = echo \"post:{path}\" >> #{log}\n")
+    write_paths_table([%(hooked = "/tmp")])
+    output, status = run_wayu("path rm hooked")
+    logged = File.exist?(log) ? File.read(log) : ""
+    FileUtils.rm_f(hooks)
+
+    report(status.success? && logged == "pre:/tmp\npost:/tmp\n",
+           "out=#{output}\nlog=#{logged.inspect}")
   end
 
   def test_duplicate_path_handling
