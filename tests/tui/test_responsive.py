@@ -55,13 +55,29 @@ def open_pty_with_size(cols, rows):
 
 class TUISession:
     """Manages a PTY session with the wayu TUI, auto-responding to DSR queries."""
-    def __init__(self, cols, rows, env=None):
+    def __init__(self, cols, rows, env=None, args=None, pty_size=None, size_env=True):
         """`env`: when given, the child gets exactly this environment (plus
         COLUMNS/LINES) instead of inheriting ours — used by views that list
-        environment variables, so real secrets never reach the screen."""
+        environment variables, so real secrets never reach the screen.
+        `args`: extra wayu arguments (e.g. --dry-run). `pty_size`: (cols,
+        rows) reported by TIOCGWINSZ when it should differ from the size the
+        harness answers DSR with ((0, 0) = ioctl gives no size).
+        `size_env=False`: no COLUMNS/LINES in the child's environment."""
         self.cols = cols
         self.rows = rows
-        self.master_fd, slave_fd = open_pty_with_size(cols, rows)
+        self.args = TUI_ARGS + list(args or [])
+        pcols, prows = pty_size if pty_size is not None else (cols, rows)
+        self.master_fd, slave_fd = open_pty_with_size(pcols, prows)
+        # The terminal settings the user's shell would get back. Read via
+        # the master: macOS revokes other slave fds when the session leader
+        # (the TUI) exits.
+        self.termios_before = termios.tcgetattr(self.master_fd)
+        if env is None:
+            env = dict(os.environ)
+            env.pop("COLUMNS", None)
+            env.pop("LINES", None)
+        if size_env:
+            env = dict(env, COLUMNS=str(cols), LINES=str(rows))
 
         pid = os.fork()
         if pid == 0:
@@ -73,15 +89,11 @@ class TUISession:
             os.dup2(slave_fd, 2)
             if slave_fd > 2:
                 os.close(slave_fd)
-            if env is not None:
-                child_env = dict(env, COLUMNS=str(cols), LINES=str(rows))
-                os.execve(WAYU_BIN, [WAYU_BIN] + TUI_ARGS, child_env)
-            os.environ["COLUMNS"] = str(cols)
-            os.environ["LINES"] = str(rows)
-            os.execvp(WAYU_BIN, [WAYU_BIN] + TUI_ARGS)
+            os.execve(WAYU_BIN, [WAYU_BIN] + self.args, env)
 
         os.close(slave_fd)
         self.pid = pid
+        self.exit_status = None
         self.screen = pyte.Screen(cols, rows)
         self.stream = pyte.Stream(self.screen)
         # Incremental decoder: a read() can end mid UTF-8 sequence (box
@@ -143,6 +155,41 @@ class TUISession:
                 return True
         return False
 
+    def wait_exit(self, timeout=3.0):
+        """Wait for the child to exit (draining its output). Returns the
+        wait status, or None if it is still running after `timeout`."""
+        deadline = time.time() + timeout
+        while self.exit_status is None and time.time() < deadline:
+            pid, status = os.waitpid(self.pid, os.WNOHANG)
+            if pid == self.pid:
+                self.exit_status = status
+                break
+            self.read(timeout=POLL_INTERVAL)
+        self.read(timeout=0.2)
+        return self.exit_status
+
+    def alive(self):
+        if self.exit_status is None:
+            pid, status = os.waitpid(self.pid, os.WNOHANG)
+            if pid == self.pid:
+                self.exit_status = status
+        return self.exit_status is None
+
+    def termios_restored(self):
+        """(ok, detail): the terminal's settings equal those before the TUI
+        started (cooked mode: ECHO/ICANON/ISIG/ICRNL back)."""
+        now = termios.tcgetattr(self.master_fd)
+        before = self.termios_before
+        names = ["iflag", "oflag", "cflag", "lflag", "ispeed", "ospeed"]
+        diff = [f"{n}: {before[i]:#x} -> {now[i]:#x}" for i, n in enumerate(names) if before[i] != now[i]]
+        if now[6] != before[6]:
+            diff.append("cc changed")
+        return not diff, ", ".join(diff)
+
+    def raw_mode_active(self):
+        lflag = termios.tcgetattr(self.master_fd)[3]
+        return not (lflag & termios.ECHO) and not (lflag & termios.ICANON)
+
     def kill(self):
         try:
             self.send(b"q")
@@ -154,8 +201,9 @@ class TUISession:
         except OSError:
             pass
         try:
-            os.kill(self.pid, 9)
-            os.waitpid(self.pid, os.WNOHANG)
+            if self.exit_status is None:
+                os.kill(self.pid, 9)
+                os.waitpid(self.pid, 0)
         except (OSError, ChildProcessError):
             pass
 
@@ -464,12 +512,301 @@ def test_sigterm_restores_terminal():
         tail = bytes(s.raw[-64:])
         test("sigterm/leaves_alt_screen",
              AssertResult(tail.endswith(b"\x1b[?25h\x1b[?1049l"), f"output tail: {tail!r}"))
-        _, status = os.waitpid(s.pid, 0)
+        status = s.wait_exit()
         test("sigterm/dies_by_signal",
-             AssertResult(os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGTERM,
+             AssertResult(status is not None and os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGTERM,
                           f"wait status {status}"))
+        ok, diff = s.termios_restored()
+        test("sigterm/termios_restored", AssertResult(ok, diff))
     finally:
         s.kill()
+
+
+# ── Terminal restore on every way out (OKAMI-248) ──────────────────────────
+
+def leaves_alt_screen(raw):
+    """The last alt-screen switch in the output is a leave, and the cursor
+    is shown again after the last hide."""
+    raw = bytes(raw)
+    return (raw.rfind(b"\x1b[?1049l") > raw.rfind(b"\x1b[?1049h") >= 0
+            and raw.rfind(b"\x1b[?25h") > raw.rfind(b"\x1b[?25l"))
+
+
+def check_clean_exit(s, name, want_code=None, want_signal=None):
+    status = s.wait_exit()
+    if want_signal is not None:
+        ok = status is not None and os.WIFSIGNALED(status) and os.WTERMSIG(status) == want_signal
+    else:
+        ok = status is not None and os.WIFEXITED(status) and os.WEXITSTATUS(status) == want_code
+    test(f"{name}/exit_status", AssertResult(ok, f"wait status {status}"))
+    ok, diff = s.termios_restored()
+    test(f"{name}/termios_restored", AssertResult(ok, diff))
+    test(f"{name}/leaves_alt_screen",
+         AssertResult(leaves_alt_screen(s.raw), f"output tail: {bytes(s.raw[-80:])!r}"))
+
+
+def test_exit_paths_restore_terminal():
+    """`q`, Esc on the main menu, Ctrl+C (in-band: ISIG is off) and
+    SIGHUP/SIGINT all hand the shell back its cooked-mode terminal."""
+    print(f"\n── Exit paths restore the terminal ──")
+    for name, how in [("quit_q", b"q"), ("quit_ctrl_c", b"\x03")]:
+        s = TUISession(80, 24)
+        try:
+            ok = s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+            test(f"{name}/raw_mode_while_running",
+                 AssertResult(ok and s.raw_mode_active(), "TUI did not enter raw mode"))
+            s.send(how)
+            check_clean_exit(s, name, want_code=0)
+        finally:
+            s.kill()
+    for sig in (signal.SIGHUP, signal.SIGINT):
+        name = f"signal_{sig.name}"
+        s = TUISession(80, 24)
+        try:
+            s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+            os.kill(s.pid, sig)
+            check_clean_exit(s, name, want_signal=sig)
+        finally:
+            s.kill()
+
+
+def test_obsolete_schema_mid_session():
+    """wayu.toml rewritten to the obsolete [[paths]] schema while the TUI
+    runs (another terminal, an old wayu): adding an entry is refused with
+    the reason (the CLI exits 78) instead of appending a [paths] table to
+    the [[paths]] file, and the terminal is restored afterwards."""
+    print(f"\n── Obsolete schema while running ──")
+    toml_path = os.path.join(os.environ["HOME"], ".config", "wayu", "wayu.toml")
+    obsolete = '[[paths]]\npath = "/usr/bin"\n'
+    s = TUISession(80, 24, env=constants_env())
+    try:
+        s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+        with open(toml_path, "w") as f:
+            f.write(obsolete)
+        s.send(b"l")
+        s.read(timeout=1.0)
+        refused = False
+        if s.alive():
+            fill_add_form(s, ["/tmp"])
+            refused = s.wait_for(lambda snap: "obsolete" in snap, timeout=TIMEOUT_KEY)
+        test("obsolete_schema/add_refused", AssertResult(refused, s.snapshot()))
+        test("obsolete_schema/file_untouched",
+             AssertResult(open(toml_path).read() == obsolete, repr(open(toml_path).read())))
+        if s.alive():
+            s.send(b"\x03")
+        status = s.wait_exit()
+        test("obsolete_schema/exits", AssertResult(status is not None, "TUI still running"))
+        ok, diff = s.termios_restored()
+        test("obsolete_schema/termios_restored", AssertResult(ok, diff))
+        test("obsolete_schema/leaves_alt_screen",
+             AssertResult(leaves_alt_screen(s.raw), f"output tail: {bytes(s.raw[-80:])!r}"))
+    finally:
+        s.kill()
+        with open(toml_path, "w") as f:
+            f.write(FIXTURE_TOML)
+
+
+# ── Mutations through the TUI (OKAMI-248) ──────────────────────────────────
+
+MENU_INDEX = {"path": 0, "alias": 1, "constants": 2}
+
+
+def open_view(s, view, ready):
+    s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+    for _ in range(MENU_INDEX[view]):
+        s.send(b"j"); s.read(timeout=0.15)
+    s.send(b"l")
+    return s.wait_for(ready, timeout=TIMEOUT_KEY)
+
+
+def fill_add_form(s, fields):
+    """Open the add form (`a`), type each field (Tab between), submit."""
+    s.send(b"a"); s.read(timeout=0.2)
+    for i, value in enumerate(fields):
+        if i:
+            s.send(b"\t"); s.read(timeout=0.1)
+        s.send(value.encode())
+        s.read(timeout=0.2)
+    s.send(b"\r")
+
+
+def config_snapshot():
+    """Bytes of every file under ~/.config/wayu (dry-run must change none)."""
+    root = os.path.join(os.environ["HOME"], ".config", "wayu")
+    out = {}
+    for dirpath, _, files in os.walk(root):
+        for fn in files:
+            if fn.endswith(".zwc") or fn == ".wayu.lock":
+                continue
+            p = os.path.join(dirpath, fn)
+            with open(p, "rb") as f:
+                out[os.path.relpath(p, root)] = f.read()
+    return out
+
+
+def reset_config():
+    root = os.path.join(os.environ["HOME"], ".config", "wayu")
+    shutil.rmtree(root, ignore_errors=True)
+    os.makedirs(root)
+    with open(os.path.join(root, "wayu.toml"), "w") as f:
+        f.write(FIXTURE_TOML)
+
+
+def read_toml():
+    with open(os.path.join(os.environ["HOME"], ".config", "wayu", "wayu.toml")) as f:
+        return f.read()
+
+
+def test_add_and_delete_mutations():
+    """Add an alias, a constant and a PATH entry through the add form, and
+    delete a constant: wayu.toml gets exactly those changes, with a backup."""
+    print(f"\n── Mutations ──")
+    reset_config()
+    newdir = tempfile.mkdtemp(prefix="wayu_tui_dir_")
+    try:
+        s = TUISession(80, 24, env=constants_env())
+        try:
+            open_view(s, "alias", lambda snap: "ALIASES" in snap and "gs" in snap)
+            fill_add_form(s, ["tz", "echo 'tui added'"])
+            ok = s.wait_for(lambda snap: "Added alias: tz" in snap, timeout=TIMEOUT_KEY)
+            test("mutations/add_alias_notified", AssertResult(ok, s.snapshot()))
+            test("mutations/add_alias_written",
+                 AssertResult('tz = "echo \'tui added\'"' in read_toml(), read_toml()))
+
+            s.send(b"h"); s.read(timeout=0.2)  # back to the menu
+            s.send(b"j"); s.read(timeout=0.15)
+            s.send(b"l")
+            s.wait_for(lambda snap: "EDITOR" in snap, timeout=TIMEOUT_KEY)
+            fill_add_form(s, ["TUI_CONST", "a b c"])
+            ok = s.wait_for(lambda snap: "Added constant: TUI_CONST" in snap, timeout=TIMEOUT_KEY)
+            test("mutations/add_const", AssertResult(ok and 'TUI_CONST = "a b c"' in read_toml(), read_toml()))
+
+            # Delete EDITOR via the filter (first match), confirm with y.
+            s.send(b"/"); s.read(timeout=0.2)
+            s.send(b"EDITOR")
+            s.wait_for(lambda snap: "(1/" in snap, timeout=TIMEOUT_KEY)
+            s.send(b"\r"); s.read(timeout=0.2)
+            s.send(b"d")
+            s.wait_for(lambda snap: "DELETE CONFIRMATION" in snap, timeout=TIMEOUT_KEY)
+            s.send(b"y")
+            ok = s.wait_for(lambda snap: "Removed constant: EDITOR" in snap, timeout=TIMEOUT_KEY)
+            content = read_toml()
+            test("mutations/delete_const",
+                 AssertResult(ok and "EDITOR" not in content and "TUI_CONST" in content, content))
+
+            s.send(b"\x1b"); s.read(timeout=0.2)  # leave filter
+            s.send(b"h"); s.read(timeout=0.2)
+            s.send(b"k"); s.read(timeout=0.15)
+            s.send(b"k"); s.read(timeout=0.15)
+            s.send(b"l")
+            s.wait_for(lambda snap: "PATH" in snap and "CONFIGURATION" in snap, timeout=TIMEOUT_KEY)
+            fill_add_form(s, [newdir])
+            ok = s.wait_for(lambda snap: "Added PATH entry" in snap, timeout=TIMEOUT_KEY)
+            test("mutations/add_path", AssertResult(ok and newdir in read_toml(), read_toml()))
+
+            backups = os.listdir(os.path.join(os.environ["HOME"], ".config", "wayu", "backup"))
+            test("mutations/backed_up",
+                 AssertResult(any(b.startswith("wayu.toml.backup.") for b in backups), f"backups: {backups}"))
+            s.send(b"\x1b"); s.read(timeout=0.2)
+            s.send(b"q")
+            check_clean_exit(s, "mutations", want_code=0)
+        finally:
+            s.kill()
+    finally:
+        shutil.rmtree(newdir, ignore_errors=True)
+        reset_config()
+
+
+def test_dry_run_writes_nothing():
+    """`wayu --tui --dry-run`: add and delete report "Dry run: would …" and
+    leave every file under ~/.config/wayu byte-identical."""
+    print(f"\n── Dry run ──")
+    reset_config()
+    before = config_snapshot()
+    s = TUISession(80, 24, args=["--dry-run"])
+    try:
+        open_view(s, "alias", lambda snap: "ALIASES" in snap and "gs" in snap)
+        fill_add_form(s, ["dz", "echo dry"])
+        ok = s.wait_for(lambda snap: "Dry run: would add alias: dz" in snap, timeout=TIMEOUT_KEY)
+        test("dry_run/add_notified", AssertResult(ok, s.snapshot()))
+        s.send(b"d")
+        s.wait_for(lambda snap: "DELETE CONFIRMATION" in snap, timeout=TIMEOUT_KEY)
+        s.send(b"y")
+        ok = s.wait_for(lambda snap: "Dry run: would remove alias" in snap, timeout=TIMEOUT_KEY)
+        test("dry_run/delete_notified", AssertResult(ok, s.snapshot()))
+        s.send(b"q")
+        s.wait_exit()
+        after = config_snapshot()
+        changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+        test("dry_run/no_file_changed", AssertResult(not changed, f"changed: {changed}"))
+    finally:
+        s.kill()
+        reset_config()
+
+
+def test_paste_burst():
+    """A paste arrives as one burst of bytes (no bracketed paste), larger
+    than the 512-byte input buffer and with multi-byte UTF-8 split across
+    reads: every character lands in the field, in order."""
+    print(f"\n── Paste burst ──")
+    reset_config()
+    value = ("ünïcödé→" + "x" * 37) * 24  # ~1.2 KB, multi-byte runes throughout
+    s = TUISession(80, 24, env=constants_env())
+    try:
+        open_view(s, "constants", lambda snap: "EDITOR" in snap)
+        s.send(b"a"); s.read(timeout=0.2)
+        s.send(b"PASTED"); s.read(timeout=0.2)
+        s.send(b"\t"); s.read(timeout=0.1)
+        s.send(value.encode())  # one write = one paste
+        s.read(timeout=1.0)
+        s.send(b"\r")
+        ok = s.wait_for(lambda snap: "Added constant: PASTED" in snap, timeout=TIMEOUT_KEY * 2)
+        test("paste/added", AssertResult(ok, s.snapshot()))
+        test("paste/value_intact",
+             AssertResult(f'PASTED = "{value}"' in read_toml(), read_toml()[:300]))
+        s.send(b"\x03")  # Ctrl+C quits from any view
+        check_clean_exit(s, "paste", want_code=0)
+    finally:
+        s.kill()
+        reset_config()
+
+
+# ── Terminal size detection (OKAMI-248) ────────────────────────────────────
+
+def box_right_edge(s):
+    for line in s.screen.display:
+        if "╮" in line:
+            return line.index("╮")
+    return None
+
+
+def test_size_detection():
+    """TIOCGWINSZ (variadic ioctl) is the primary source; when it reports
+    no size, $COLUMNS/$LINES; without those, the DSR cursor probe the
+    harness answers. The main menu box must fit the detected width."""
+    print(f"\n── Size detection ──")
+    cases = [
+        # name, pty size (ioctl), DSR/env size, COLUMNS/LINES in env
+        ("ioctl", (64, 20), (64, 20), False),
+        ("env", (0, 0), (70, 20), True),
+        ("dsr", (0, 0), (58, 18), False),
+    ]
+    for name, pty_size, (cols, rows), size_env in cases:
+        s = TUISession(cols, rows, pty_size=pty_size, size_env=size_env)
+        if pty_size == (0, 0):
+            # pyte still needs a screen to draw on: give it room beyond the
+            # detected width so an overflow would be visible.
+            s.screen = pyte.Screen(100, 30)
+            s.stream = pyte.Stream(s.screen)
+        try:
+            ok = s.wait_for(lambda snap: "WAYU" in snap and "╮" in snap, timeout=TIMEOUT_STARTUP)
+            edge = box_right_edge(s)
+            test(f"size/{name}/renders", AssertResult(ok, s.snapshot()))
+            test(f"size/{name}/fits_width",
+                 AssertResult(edge is not None and cols - 4 <= edge < cols,
+                              f"box right edge at col {edge}, detected width {cols}\n{s.snapshot()}"))
+        finally:
+            s.kill()
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
@@ -585,9 +922,17 @@ def run_all():
     # Filter index mapping + terminal restore
     test_filtered_delete()
     test_sigterm_restores_terminal()
+    test_exit_paths_restore_terminal()
+    test_obsolete_schema_mid_session()
 
     # Secret masking + reveal key
     test_constants_view_masks_secrets()
+
+    # Mutations, dry-run, paste, size detection
+    test_add_and_delete_mutations()
+    test_dry_run_writes_nothing()
+    test_paste_burst()
+    test_size_detection()
 
     # Summary
     passed = sum(1 for r in results if r.passed)
