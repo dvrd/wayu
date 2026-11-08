@@ -231,8 +231,8 @@ class PathIntegrationTest
 
     log = "#{@tmp_home}/okami168_hook.log"
     hooks = "#{@config_dir}/hooks.conf"
-    File.write(hooks, "pre_path_remove = echo \"pre:{path}\" >> #{log}\n" \
-                      "post_path_remove = echo \"post:{path}\" >> #{log}\n")
+    File.write(hooks, "pre_path_remove = echo pre:{path} >> #{log}\n" \
+                      "post_path_remove = echo post:{path} >> #{log}\n")
     write_paths_table([%(hooked = "/tmp")])
     output, status = run_wayu("path rm hooked")
     logged = File.exist?(log) ? File.read(log) : ""

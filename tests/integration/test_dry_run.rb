@@ -34,6 +34,9 @@ class DryRunIntegrationTest
       test_literal_values_after_double_dash
       test_pre_hooks_skip_failed_ops
       test_hook_nested_shell_no_injection
+      test_hook_double_quoted_placeholder_refused
+      test_hook_double_quoted_post_hook_blocks_write
+      test_hooks_list_flags_invalid
     ensure
       teardown_test_env
     end
@@ -169,11 +172,11 @@ class DryRunIntegrationTest
   def test_pre_hooks_skip_failed_ops
     log = "#{@tmp_home}/prehook.log"
     hooks = "#{@config_dir}/hooks.conf"
-    File.write(hooks, %(pre_alias_add = echo "add {name}" >> #{log}\n) +
-                      %(pre_alias_remove = echo "rm {name}" >> #{log}\n) +
-                      %(pre_constant_add = echo "cadd {name}" >> #{log}\n) +
-                      %(pre_path_add = echo "padd {path}" >> #{log}\n) +
-                      %(pre_path_remove = echo "prm {path}" >> #{log}\n))
+    File.write(hooks, %(pre_alias_add = echo add {name} >> #{log}\n) +
+                      %(pre_alias_remove = echo rm {name} >> #{log}\n) +
+                      %(pre_constant_add = echo cadd {name} >> #{log}\n) +
+                      %(pre_path_add = echo padd {path} >> #{log}\n) +
+                      %(pre_path_remove = echo prm {path} >> #{log}\n))
     run_wayu("path add /tmp")
     File.delete(log) if File.exist?(log)
     run_wayu("alias add bad-name! x")   # invalid name
@@ -210,6 +213,60 @@ class DryRunIntegrationTest
           st.success? && !File.exist?(pwn) && !File.exist?(pwn2) &&
             content.include?("$(touch #{pwn})") && content.include?("r nest"),
           "pwned=#{File.exist?(pwn)}/#{File.exist?(pwn2)} log=#{content.inspect}")
+  end
+
+  # Maintainer decision: a placeholder inside "..." is refused. The outer
+  # shell expands it, then a nested sh -c "..." re-parses the value as code.
+  def test_hook_double_quoted_placeholder_refused
+    hooks = "#{@config_dir}/hooks.conf"
+    pwn = "#{@tmp_home}/PWNED"
+    toml = "#{@config_dir}/wayu.toml"
+    File.write(hooks, %(# c\npre_alias_add = sh -c "echo {value}"\n))
+    before = File.read(toml)
+    out, st = run_wayu(%(alias add zz 'echo hi; touch #{pwn}'))
+    after = File.read(toml)
+
+    # Same hook with '...' and unquoted still runs and substitutes safely.
+    log = "#{@tmp_home}/ok.log"
+    File.write(hooks, %(pre_alias_add = sh -c 'echo q {value} >> #{log}'\n) +
+                      %(post_alias_add = echo u {name} >> #{log}\n))
+    _o2, st2 = run_wayu(%(alias add zz2 'echo hi; touch #{pwn}'))
+    logged = File.exist?(log) ? File.read(log) : ""
+    run_wayu("alias rm zz2")
+    File.delete(hooks)
+    check("Test 12: placeholder inside \"...\" refused (exit 78, nothing written)",
+          st.exitstatus == 78 && !File.exist?(pwn) && before == after &&
+            out.include?("line 2: pre_alias_add") && out.include?("WAYU_HOOK_") &&
+            st2.success? && logged.include?("q echo hi; touch #{pwn}") &&
+            logged.include?("u zz2") && !File.exist?(pwn),
+          "st=#{st.exitstatus} pwned=#{File.exist?(pwn)} changed=#{before != after} " \
+          "st2=#{st2.exitstatus} log=#{logged.inspect}\n  out=#{out}")
+  end
+
+  # An invalid post-hook must stop the operation before the write, not after.
+  def test_hook_double_quoted_post_hook_blocks_write
+    hooks = "#{@config_dir}/hooks.conf"
+    toml = "#{@config_dir}/wayu.toml"
+    File.write(hooks, %(post_path_add = echo "added {path}"\n))
+    before = File.read(toml)
+    out1, st1 = run_wayu("path add /usr")
+    out2, st2 = run_wayu("const add DQ_HOOK v")
+    out3, st3 = run_wayu("--dry-run alias add dqal x")
+    after = File.read(toml)
+    File.delete(hooks)
+    check("Test 13: invalid post-hook blocks path/const add before writing",
+          [st1, st2, st3].all? { |s| s.exitstatus == 78 } && before == after,
+          "st=#{[st1, st2, st3].map(&:exitstatus)} changed=#{before != after}\n  out=#{out1}#{out2}#{out3}")
+  end
+
+  def test_hooks_list_flags_invalid
+    hooks = "#{@config_dir}/hooks.conf"
+    File.write(hooks, %(pre_path_add = echo ok {path}\npost_alias_add = eval "x={name}"\n))
+    out, st = run_wayu("hooks")
+    File.delete(hooks)
+    check("Test 14: `wayu hooks` flags a double-quoted placeholder as invalid",
+          st.success? && out.include?("INVALID (line 2)") && out.scan("INVALID").size == 1,
+          "out=#{out}")
   end
 
   def test_dry_run_no_success_no_hooks
