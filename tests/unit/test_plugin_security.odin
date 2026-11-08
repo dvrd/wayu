@@ -22,7 +22,7 @@ clone_ok :: proc(url: string, dest: string) -> bool {
 
 @(private="file")
 sec_dir :: proc() -> string {
-	return fmt.tprintf("/tmp/wayu_unit_plgsec_%d", os.get_pid())
+	return test_tmp("wayu_unit_plgsec")
 }
 
 // Run a shell command with a deterministic git identity and no signing.

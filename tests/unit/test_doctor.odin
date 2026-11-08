@@ -46,11 +46,16 @@ declare -a PROMPT_COMMAND=(a b)
 @(test)
 test_doctor_expand_path_uses_toml_env :: proc(t: ^testing.T) {
 	consts := []wayu.ConfigEntry{{type = .CONSTANT, name = "WAYU_DOC_TOOLS", value = "/opt/tools"}}
-	testing.expect_value(t, wayu.doctor_expand_path("$WAYU_DOC_TOOLS/bin", consts), "/opt/tools/bin")
-	testing.expect_value(t, wayu.doctor_expand_path("${WAYU_DOC_TOOLS}/bin", consts), "/opt/tools/bin")
-	testing.expect_value(t, wayu.doctor_expand_path("/usr/bin", consts), "/usr/bin")
+	expect_expand :: proc(t: ^testing.T, path: string, consts: []wayu.ConfigEntry, want: string, loc := #caller_location) {
+		got := wayu.doctor_expand_path(path, consts)
+		defer if len(got) > 0 do delete(got)
+		testing.expect_value(t, got, want, loc)
+	}
+	expect_expand(t, "$WAYU_DOC_TOOLS/bin", consts, "/opt/tools/bin")
+	expect_expand(t, "${WAYU_DOC_TOOLS}/bin", consts, "/opt/tools/bin")
+	expect_expand(t, "/usr/bin", consts, "/usr/bin")
 	// An unresolved variable yields "" (existence unknown, never "missing").
-	testing.expect_value(t, wayu.doctor_expand_path("$WAYU_DOC_SURELY_UNSET_VAR/bin", consts), "")
+	expect_expand(t, "$WAYU_DOC_SURELY_UNSET_VAR/bin", consts, "")
 }
 
 // A relative entry resolves against the shell's cwd, so doctor (whose cwd is

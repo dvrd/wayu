@@ -69,7 +69,7 @@ test_table_row_keeps_right_border :: proc(t: ^testing.T) {
 
 @(test)
 test_tui_load_constants_lists_each_env_var_once :: proc(t: ^testing.T) {
-	dir := fmt.tprintf("/tmp/wayu-test-tui-rows-%d", os.get_pid())
+	dir := test_tmp("wayu-test-tui-rows")
 	os.make_directory(dir)
 	defer os.remove_all(dir)
 

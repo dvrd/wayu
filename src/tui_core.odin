@@ -1726,10 +1726,7 @@ tui_load_path :: proc(state: ^TUIState) {
 
 	if os.exists(toml_file) {
 		config, ok := toml_read_file(toml_file)
-		defer {
-			for entry in config.path.entries { delete(entry) }
-			delete(config.path.entries)
-		}
+		defer cleanup_toml_config(&config)
 		if ok {
 			// Cached by env_snapshot — not owned here.
 			env_paths := snapshot_path_entries()
@@ -1787,14 +1784,7 @@ tui_load_alias :: proc(state: ^TUIState) {
 
 	if os.exists(toml_file) {
 		config, ok := toml_read_file(toml_file)
-		defer {
-			for alias in config.aliases {
-				delete(alias.name)
-				delete(alias.command)
-				delete(alias.description)
-			}
-			delete(config.aliases)
-		}
+		defer cleanup_toml_config(&config)
 		if ok {
 			env_aliases := snapshot_aliases()
 
@@ -1856,14 +1846,7 @@ tui_load_constants :: proc(state: ^TUIState) {
 		defer delete(wayu_constants)
 
 		config, ok := toml_read_file(toml_file)
-		defer {
-			for const in config.constants {
-				delete(const.name)
-				delete(const.value)
-				delete(const.description)
-			}
-			delete(config.constants)
-		}
+		defer cleanup_toml_config(&config)
 		if ok {
 			for const in config.constants {
 				wayu_constants[const.name] = true

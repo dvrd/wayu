@@ -141,11 +141,16 @@ cmd_run :: proc(cmd: ^Cmd, opt: Cmd_Run_Opt = {}) -> bool {
         stderr_file = f
     }
 
+    // Without a redirect the child inherits our stdout/stderr. os.process_start
+    // treats a nil handle as "shut down that stream", which hid every compiler
+    // error and failing test name. Only the opened redirect files are closed
+    // afterwards — never os.stdout/os.stderr. stdin stays closed unless
+    // redirected, so nothing the build runs can block on the terminal.
     desc := os.Process_Desc{
         command = command,
         stdin   = stdin_file,
-        stdout  = stdout_file,
-        stderr  = stderr_file,
+        stdout  = stdout_file if stdout_file != nil else os.stdout,
+        stderr  = stderr_file if stderr_file != nil else os.stderr,
     }
 
     if opt.async != nil {

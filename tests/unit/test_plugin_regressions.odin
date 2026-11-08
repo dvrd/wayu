@@ -5,21 +5,22 @@
 package test_wayu
 
 import "core:testing"
+import "core:fmt"
 import "core:os"
 import "core:strings"
 import wayu "../../src"
 
-REGRESSION_TEST_DIR :: "/tmp/wayu-test-plugin-regressions"
+regression_test_dir :: proc() -> string { return test_tmp("wayu-test-plugin-regressions") }
 
 @(private="file")
 use_regression_dir :: proc() -> (old_config: string, old_data: string) {
 	wayu.init_shell_globals()
 	old_config = wayu.wayu.config
 	old_data = wayu.wayu.data
-	os.remove_all(REGRESSION_TEST_DIR)
-	os.make_directory(REGRESSION_TEST_DIR)
-	wayu.wayu.config = REGRESSION_TEST_DIR
-	wayu.wayu.data = REGRESSION_TEST_DIR
+	os.remove_all(regression_test_dir())
+	os.make_directory(regression_test_dir())
+	wayu.wayu.config = regression_test_dir()
+	wayu.wayu.data = regression_test_dir()
 	return
 }
 
@@ -27,7 +28,7 @@ use_regression_dir :: proc() -> (old_config: string, old_data: string) {
 restore_dirs :: proc(old_config: string, old_data: string) {
 	wayu.wayu.config = old_config
 	wayu.wayu.data = old_data
-	os.remove_all(REGRESSION_TEST_DIR)
+	os.remove_all(regression_test_dir())
 }
 
 // Fully-owned PluginMetadata (safe for cleanup_plugin_metadata).
@@ -92,16 +93,16 @@ test_plugin_remove_ownership_and_exact_target :: proc(t: ^testing.T) {
 	wayu.wayu.dry_run = false
 	defer { wayu.wayu.yes_flag = old_yes; wayu.wayu.dry_run = old_dry }
 
-	plugins_dir :: REGRESSION_TEST_DIR + "/plugins"
+	plugins_dir := fmt.tprintf("%s/plugins", regression_test_dir())
 	os.make_directory(plugins_dir)
-	os.make_directory(plugins_dir + "/alpha")
-	os.make_directory(plugins_dir + "/alpha-extra")
-	os.make_directory(plugins_dir + "/beta")
+	os.make_directory(fmt.tprintf("%s/alpha", plugins_dir))
+	os.make_directory(fmt.tprintf("%s/alpha-extra", plugins_dir))
+	os.make_directory(fmt.tprintf("%s/beta", plugins_dir))
 
 	testing.expect(t, write_config_with({
-		make_owned_plugin("alpha", plugins_dir + "/alpha"),
-		make_owned_plugin("alpha-extra", plugins_dir + "/alpha-extra"),
-		make_owned_plugin("beta", plugins_dir + "/beta"),
+		make_owned_plugin("alpha", fmt.tprintf("%s/alpha", plugins_dir)),
+		make_owned_plugin("alpha-extra", fmt.tprintf("%s/alpha-extra", plugins_dir)),
+		make_owned_plugin("beta", fmt.tprintf("%s/beta", plugins_dir)),
 	}), "seed config")
 
 	// Before the fix this double-freed config.plugins (UAF / bad free).
@@ -115,9 +116,9 @@ test_plugin_remove_ownership_and_exact_target :: proc(t: ^testing.T) {
 		testing.expect_value(t, config.plugins[0].name, "alpha-extra")
 		testing.expect_value(t, config.plugins[1].name, "beta")
 	}
-	testing.expect(t, !os.exists(plugins_dir + "/alpha"), "target dir removed")
-	testing.expect(t, os.exists(plugins_dir + "/alpha-extra"), "similar-named dir kept")
-	testing.expect(t, os.exists(plugins_dir + "/beta"), "other dir kept")
+	testing.expect(t, !os.exists(fmt.tprintf("%s/alpha", plugins_dir)), "target dir removed")
+	testing.expect(t, os.exists(fmt.tprintf("%s/alpha-extra", plugins_dir)), "similar-named dir kept")
+	testing.expect(t, os.exists(fmt.tprintf("%s/beta", plugins_dir)), "other dir kept")
 }
 
 // #8: an entry whose installed_path is the plugins root (legacy empty name)
@@ -131,22 +132,22 @@ test_plugin_remove_never_wipes_plugins_root :: proc(t: ^testing.T) {
 	wayu.wayu.dry_run = false
 	defer { wayu.wayu.yes_flag = old_yes; wayu.wayu.dry_run = old_dry }
 
-	plugins_dir :: REGRESSION_TEST_DIR + "/plugins"
+	plugins_dir := fmt.tprintf("%s/plugins", regression_test_dir())
 	os.make_directory(plugins_dir)
-	os.make_directory(plugins_dir + "/keepme")
-	outside :: REGRESSION_TEST_DIR + "/outside"
+	os.make_directory(fmt.tprintf("%s/keepme", plugins_dir))
+	outside := fmt.tprintf("%s/outside", regression_test_dir())
 	os.make_directory(outside)
 
 	testing.expect(t, write_config_with({
 		make_owned_plugin("", plugins_dir),
 		make_owned_plugin("evil", outside),
-		make_owned_plugin("keepme", plugins_dir + "/keepme"),
+		make_owned_plugin("keepme", fmt.tprintf("%s/keepme", plugins_dir)),
 	}), "seed config")
 
 	wayu.handle_plugin_remove({""})
 	wayu.handle_plugin_remove({"evil"})
 
-	testing.expect(t, os.exists(plugins_dir + "/keepme"), "plugins root must survive rm of empty-name entry")
+	testing.expect(t, os.exists(fmt.tprintf("%s/keepme", plugins_dir)), "plugins root must survive rm of empty-name entry")
 	testing.expect(t, os.exists(outside), "dir outside plugins root must survive")
 
 	config, ok := wayu.read_plugin_config_json()
@@ -168,12 +169,12 @@ test_plugin_remove_dry_run_no_side_effects :: proc(t: ^testing.T) {
 	wayu.wayu.dry_run = true
 	defer { wayu.wayu.yes_flag = old_yes; wayu.wayu.dry_run = old_dry }
 
-	plugins_dir :: REGRESSION_TEST_DIR + "/plugins"
+	plugins_dir := fmt.tprintf("%s/plugins", regression_test_dir())
 	os.make_directory(plugins_dir)
-	os.make_directory(plugins_dir + "/alpha")
-	testing.expect(t, write_config_with({make_owned_plugin("alpha", plugins_dir + "/alpha")}), "seed")
+	os.make_directory(fmt.tprintf("%s/alpha", plugins_dir))
+	testing.expect(t, write_config_with({make_owned_plugin("alpha", fmt.tprintf("%s/alpha", plugins_dir))}), "seed")
 
-	json_path :: REGRESSION_TEST_DIR + "/plugins.json"
+	json_path := fmt.tprintf("%s/plugins.json", regression_test_dir())
 	before := read_file_string(json_path)
 	defer delete(before)
 
@@ -182,8 +183,8 @@ test_plugin_remove_dry_run_no_side_effects :: proc(t: ^testing.T) {
 	after := read_file_string(json_path)
 	defer delete(after)
 	testing.expect(t, before == after, "dry-run rm must not rewrite plugins.json")
-	testing.expect(t, os.exists(plugins_dir + "/alpha"), "dry-run rm must not delete dir")
-	testing.expect(t, !os.exists(REGRESSION_TEST_DIR + "/backup"), "dry-run rm must not create backups")
+	testing.expect(t, os.exists(fmt.tprintf("%s/alpha", plugins_dir)), "dry-run rm must not delete dir")
+	testing.expect(t, !os.exists(fmt.tprintf("%s/backup", regression_test_dir())), "dry-run rm must not create backups")
 }
 
 // #3 + #4: dry-run add of a registry key: no plugins.json write, and the
@@ -199,8 +200,8 @@ test_plugin_add_dry_run_registry_key :: proc(t: ^testing.T) {
 	wayu.handle_plugin_add({"syntax-highlighting"})
 	wayu.handle_plugin_add({"https://github.com/user/custom-plugin.git"})
 
-	testing.expect(t, !os.exists(REGRESSION_TEST_DIR + "/plugins.json"), "dry-run add must not write plugins.json")
-	testing.expect(t, !os.exists(REGRESSION_TEST_DIR + "/plugins/zsh-syntax-highlighting"), "dry-run add must not clone")
+	testing.expect(t, !os.exists(fmt.tprintf("%s/plugins.json", regression_test_dir())), "dry-run add must not write plugins.json")
+	testing.expect(t, !os.exists(fmt.tprintf("%s/plugins/zsh-syntax-highlighting", regression_test_dir())), "dry-run add must not clone")
 
 	// Registry entry still intact after the add returned.
 	info, found := wayu.popular_plugin_find("syntax-highlighting")
@@ -422,19 +423,19 @@ test_shared_env_vars_not_conflicts :: proc(t: ^testing.T) {
 	wayu.wayu.shell = .ZSH
 	defer wayu.wayu.shell = old_shell
 
-	base :: REGRESSION_TEST_DIR + "-conflicts"
+	base := fmt.tprintf("%s-conflicts", regression_test_dir())
 	os.remove_all(base)
 	os.make_directory(base)
 	defer os.remove_all(base)
-	os.make_directory(base + "/a")
-	os.make_directory(base + "/b")
-	_ = os.write_entire_file(base + "/a/a.plugin.zsh", transmute([]byte)string("export PATH=\"$HOME/bin:$PATH\"\nexport FPATH=x\nreply=()\n"))
-	_ = os.write_entire_file(base + "/b/b.plugin.zsh", transmute([]byte)string("export PATH=\"/opt:$PATH\"\nfpath+=(x)\nreply=()\n"))
+	os.make_directory(fmt.tprintf("%s/a", base))
+	os.make_directory(fmt.tprintf("%s/b", base))
+	_ = os.write_entire_file(fmt.tprintf("%s/a/a.plugin.zsh", base), transmute([]byte)string("export PATH=\"$HOME/bin:$PATH\"\nexport FPATH=x\nreply=()\n"))
+	_ = os.write_entire_file(fmt.tprintf("%s/b/b.plugin.zsh", base), transmute([]byte)string("export PATH=\"/opt:$PATH\"\nfpath+=(x)\nreply=()\n"))
 
 	config := wayu.PluginConfigJSON{plugins = make([dynamic]wayu.PluginMetadata)}
 	defer wayu.cleanup_plugin_config_json(&config)
-	append(&config.plugins, make_owned_plugin("a", base + "/a"))
-	append(&config.plugins, make_owned_plugin("b", base + "/b"))
+	append(&config.plugins, make_owned_plugin("a", fmt.tprintf("%s/a", base)))
+	append(&config.plugins, make_owned_plugin("b", fmt.tprintf("%s/b", base)))
 
 	wayu.detect_conflicts(&config)
 	testing.expect(t, !config.plugins[0].conflicts.detected, "PATH/FPATH/reply=() must not be conflicts")

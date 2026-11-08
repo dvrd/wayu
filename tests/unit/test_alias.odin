@@ -177,7 +177,7 @@ test_expand_home_no_tilde :: proc(t: ^testing.T) {
 @(test)
 test_read_alias_sources_empty_file :: proc(t: ^testing.T) {
 	// Set up temp config dir
-	tmp_dir :: "/tmp/wayu-test-alias-sources"
+	tmp_dir := test_tmp("wayu-test-alias-sources")
 	os.make_directory(tmp_dir)
 	defer os.remove_all(tmp_dir)
 
@@ -200,7 +200,7 @@ test_read_alias_sources_empty_file :: proc(t: ^testing.T) {
 
 @(test)
 test_read_alias_sources_missing_file :: proc(t: ^testing.T) {
-	tmp_dir :: "/tmp/wayu-test-alias-sources-missing"
+	tmp_dir := test_tmp("wayu-test-alias-sources-missing")
 	os.make_directory(tmp_dir)
 	defer os.remove_all(tmp_dir)
 
@@ -217,7 +217,7 @@ test_read_alias_sources_missing_file :: proc(t: ^testing.T) {
 
 @(test)
 test_read_alias_sources_parses_dir_entry :: proc(t: ^testing.T) {
-	tmp_dir :: "/tmp/wayu-test-alias-sources-parse"
+	tmp_dir := test_tmp("wayu-test-alias-sources-parse")
 	os.make_directory(tmp_dir)
 	defer os.remove_all(tmp_dir)
 
@@ -243,7 +243,7 @@ test_read_alias_sources_parses_dir_entry :: proc(t: ^testing.T) {
 
 @(test)
 test_read_alias_sources_skips_unknown_type :: proc(t: ^testing.T) {
-	tmp_dir :: "/tmp/wayu-test-alias-sources-skip"
+	tmp_dir := test_tmp("wayu-test-alias-sources-skip")
 	os.make_directory(tmp_dir)
 	defer os.remove_all(tmp_dir)
 

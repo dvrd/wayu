@@ -7,14 +7,13 @@ import "core:os"
 import "core:fmt"
 import "core:strings"
 import "core:time"
-import "core:sys/posix"
 import wayu "../../src"
 
 @(test)
 test_create_backup_nonexistent_file :: proc(t: ^testing.T) {
 	// When the source file doesn't exist, create_backup returns ("", false).
 	// ok=false signals "no backup was made" — callers must treat this as a no-op, not an error.
-	fake_file := "/tmp/wayu-test-nonexistent-file"
+	fake_file := test_tmp("wayu-test-nonexistent-file")
 
 	backup_path, ok := wayu.create_backup(fake_file)
 	defer if len(backup_path) > 0 do delete(backup_path)
@@ -27,14 +26,14 @@ test_create_backup_nonexistent_file :: proc(t: ^testing.T) {
 test_create_backup_existing_file :: proc(t: ^testing.T) {
 	// Point wayu.data to a temp dir so backup/ can be created there
 	original_data := wayu.wayu.data
-	wayu.wayu.data = "/tmp/wayu-test-backup"
-	os.make_directory("/tmp/wayu-test-backup")
-	os.make_directory("/tmp/wayu-test-backup/backup")
-	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-backup") }
+	wayu.wayu.data = test_tmp("wayu-test-backup")
+	os.make_directory(test_tmp("wayu-test-backup"))
+	os.make_directory(test_tmp("wayu-test-backup/backup"))
+	defer { wayu.wayu.data = original_data; os.remove_all(test_tmp("wayu-test-backup")) }
 
 	// Create a temporary file
 	test_content := "test backup content\nline 2\n"
-	test_file := "/tmp/wayu-test-backup-source"
+	test_file := test_tmp("wayu-test-backup-source")
 
 	_ = os.write_entire_file(test_file, transmute([]byte)test_content)
 	defer os.remove(test_file)
@@ -138,7 +137,7 @@ test_format_backup_time :: proc(t: ^testing.T) {
 @(test)
 test_list_backups_for_nonexistent_file :: proc(t: ^testing.T) {
 	// Test listing backups for non-existent file
-	fake_file := "/tmp/wayu-test-no-backups-file"
+	fake_file := test_tmp("wayu-test-no-backups-file")
 
 	backups := wayu.list_backups_for_file(fake_file)
 	defer {
@@ -192,13 +191,13 @@ test_get_config_file_path :: proc(t: ^testing.T) {
 test_backup_workflow :: proc(t: ^testing.T) {
 	// Test complete backup workflow: create -> list -> restore
 	original_data := wayu.wayu.data
-	wayu.wayu.data = "/tmp/wayu-test-backup-wf"
-	os.make_directory("/tmp/wayu-test-backup-wf")
-	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-backup-wf") }
+	wayu.wayu.data = test_tmp("wayu-test-backup-wf")
+	os.make_directory(test_tmp("wayu-test-backup-wf"))
+	defer { wayu.wayu.data = original_data; os.remove_all(test_tmp("wayu-test-backup-wf")) }
 
 	// Setup test file
 	test_content := "original content for backup test\n"
-	test_file := "/tmp/wayu-test-backup-workflow"
+	test_file := test_tmp("wayu-test-backup-workflow")
 
 	_ = os.write_entire_file(test_file, transmute([]byte)test_content)
 	defer os.remove(test_file)
@@ -261,14 +260,14 @@ test_cleanup_old_backups :: proc(t: ^testing.T) {
 	// Test backup cleanup functionality
 	original_data := wayu.wayu.data
 	// Per-process paths: parallel test runs (e.g. several worktrees) must not collide.
-	data_dir := fmt.tprintf("/tmp/wayu-test-backup-cleanup-%d", posix.getpid())
+	data_dir := test_tmp("wayu-test-backup-cleanup")
 	wayu.wayu.data = data_dir
 	os.make_directory(data_dir)
 	defer { wayu.wayu.data = original_data; os.remove_all(data_dir) }
 
 	// Create test file
 	test_content := "content for cleanup test\n"
-	test_file := fmt.tprintf("/tmp/wayu-test-cleanup-%d", posix.getpid())
+	test_file := test_tmp("wayu-test-cleanup")
 
 	_ = os.write_entire_file(test_file, transmute([]byte)test_content)
 	defer os.remove(test_file)
@@ -338,7 +337,7 @@ test_cleanup_old_backups :: proc(t: ^testing.T) {
 @(test)
 test_restore_nonexistent_backup :: proc(t: ^testing.T) {
 	// Test restore when no backups exist
-	fake_file := "/tmp/wayu-test-no-restore-file"
+	fake_file := test_tmp("wayu-test-no-restore-file")
 
 	result := wayu.restore_from_backup(fake_file)
 	testing.expect(t, !result, "Should fail when no backups exist")
@@ -349,11 +348,11 @@ test_restore_nonexistent_backup :: proc(t: ^testing.T) {
 @(test)
 test_rapid_backups_are_unique :: proc(t: ^testing.T) {
 	original_data := wayu.wayu.data
-	wayu.wayu.data = "/tmp/wayu-test-backup-rapid"
-	os.make_directory("/tmp/wayu-test-backup-rapid")
-	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-backup-rapid") }
+	wayu.wayu.data = test_tmp("wayu-test-backup-rapid")
+	os.make_directory(test_tmp("wayu-test-backup-rapid"))
+	defer { wayu.wayu.data = original_data; os.remove_all(test_tmp("wayu-test-backup-rapid")) }
 
-	test_file := "/tmp/wayu-test-backup-rapid-src"
+	test_file := test_tmp("wayu-test-backup-rapid-src")
 	defer os.remove(test_file)
 
 	contents := []string{"v0\n", "v1\n", "v2\n", "v3\n", "v4\n"}
@@ -423,18 +422,18 @@ test_parse_backup_suffix_formats :: proc(t: ^testing.T) {
 @(test)
 test_restore_rejects_invalid_toml_backup :: proc(t: ^testing.T) {
 	original_data := wayu.wayu.data
-	wayu.wayu.data = "/tmp/wayu-test-restore-invalid"
-	os.make_directory("/tmp/wayu-test-restore-invalid")
-	os.make_directory("/tmp/wayu-test-restore-invalid/backup")
-	os.make_directory("/tmp/wayu-test-restore-invalid/cfg")
-	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-restore-invalid") }
+	wayu.wayu.data = test_tmp("wayu-test-restore-invalid")
+	os.make_directory(test_tmp("wayu-test-restore-invalid"))
+	os.make_directory(test_tmp("wayu-test-restore-invalid/backup"))
+	os.make_directory(test_tmp("wayu-test-restore-invalid/cfg"))
+	defer { wayu.wayu.data = original_data; os.remove_all(test_tmp("wayu-test-restore-invalid")) }
 
-	target := "/tmp/wayu-test-restore-invalid/cfg/wayu.toml"
+	target := test_tmp("wayu-test-restore-invalid/cfg/wayu.toml")
 	good := "[paths]\nbin = \"/usr/bin\"\n"
 	_ = os.write_entire_file(target, transmute([]byte)good)
 
 	bad := "[paths\nnot = = toml\n"
-	bad_backup := "/tmp/wayu-test-restore-invalid/backup/wayu.toml.backup.2030-01-01_00-00-00.000000"
+	bad_backup := test_tmp("wayu-test-restore-invalid/backup/wayu.toml.backup.2030-01-01_00-00-00.000000")
 	_ = os.write_entire_file(bad_backup, transmute([]byte)bad)
 
 	ok := wayu.restore_from_backup(target)
@@ -450,11 +449,11 @@ test_restore_rejects_invalid_toml_backup :: proc(t: ^testing.T) {
 @(test)
 test_restore_backs_up_current_first :: proc(t: ^testing.T) {
 	original_data := wayu.wayu.data
-	wayu.wayu.data = "/tmp/wayu-test-restore-pre"
-	os.make_directory("/tmp/wayu-test-restore-pre")
-	defer { wayu.wayu.data = original_data; os.remove_all("/tmp/wayu-test-restore-pre") }
+	wayu.wayu.data = test_tmp("wayu-test-restore-pre")
+	os.make_directory(test_tmp("wayu-test-restore-pre"))
+	defer { wayu.wayu.data = original_data; os.remove_all(test_tmp("wayu-test-restore-pre")) }
 
-	target := "/tmp/wayu-test-restore-pre-src"
+	target := test_tmp("wayu-test-restore-pre-src")
 	defer os.remove(target)
 
 	_ = os.write_entire_file(target, transmute([]byte)string("old\n"))
@@ -491,13 +490,13 @@ test_restore_backs_up_current_first :: proc(t: ^testing.T) {
 // backs a file up only once (bulk commands keep their pre-command copy).
 @(test)
 test_backup_cli_retention_and_once_per_run :: proc(t: ^testing.T) {
-	dir := "/tmp/wayu-test-backup-retention"
+	dir := test_tmp("wayu-test-backup-retention")
 	original_data := wayu.wayu.data
 	wayu.wayu.data = dir
 	os.remove_all(dir)
 	os.make_directory(dir)
 	defer { wayu.wayu.data = original_data; os.remove_all(dir) }
-	target := "/tmp/wayu-test-backup-retention-src"
+	target := test_tmp("wayu-test-backup-retention-src")
 	defer os.remove(target)
 	defer wayu.backup_run_reset()
 
@@ -528,13 +527,13 @@ test_backup_cli_retention_and_once_per_run :: proc(t: ^testing.T) {
 // snapshots so repeated restores don't ping-pong.
 @(test)
 test_restore_selects_backup :: proc(t: ^testing.T) {
-	dir := "/tmp/wayu-test-restore-select"
+	dir := test_tmp("wayu-test-restore-select")
 	original_data := wayu.wayu.data
 	wayu.wayu.data = dir
 	os.remove_all(dir)
 	os.make_directory(dir)
 	defer { wayu.wayu.data = original_data; os.remove_all(dir) }
-	target := "/tmp/wayu-test-restore-select-src"
+	target := test_tmp("wayu-test-restore-select-src")
 	defer os.remove(target)
 
 	read :: proc(f: string) -> string {

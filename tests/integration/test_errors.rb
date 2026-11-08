@@ -87,7 +87,7 @@ class ErrorsIntegrationTest
     print "Test 3: Config not initialized error... "
 
     # Use a fresh tmp dir that has never been initialized as HOME
-    no_config_home = "/tmp/wayu_no_config_#{$$}_#{Time.now.to_i}"
+    no_config_home = "#{@scratch}/no_config_home"
 
     begin
       env = { 'HOME' => no_config_home }
@@ -163,7 +163,7 @@ class ErrorsIntegrationTest
     print "Test 7: Recovery commands in errors... "
 
     # Use a fresh tmp dir that has never been initialized as HOME
-    no_config_home = "/tmp/wayu_no_config_recovery_#{$$}_#{Time.now.to_i}"
+    no_config_home = "#{@scratch}/no_config_recovery_home"
 
     begin
       env = { 'HOME' => no_config_home }

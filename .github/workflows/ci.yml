@@ -61,9 +61,18 @@ jobs:
     - name: Verify build
       run: ./bin/wayu --version
 
-    # ./build_it test sandboxes HOME, same as local runs.
+    # ./build_it test sandboxes HOME and the tests' scratch dirs (per run),
+    # same as local runs. Leaks / bad frees (tracking allocator) fail it.
     - name: Run unit tests
       run: ./build_it test
+
+    - name: Upload unit-test stdout on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: unit-tests-stdout-${{ matrix.os }}
+        path: bin/unit-tests.stdout.log
+        if-no-files-found: ignore
 
     - name: Run integration tests (incl. golden)
       run: ruby tests/integration/run_all.rb
@@ -84,6 +93,49 @@ jobs:
           echo "Expected exit code 64, got $EXIT_CODE"
           exit 1
         fi
+
+  # Integration suites against an AddressSanitizer build: catches
+  # use-after-free / out-of-bounds in the real CLI paths. Leak detection is
+  # off (a CLI process intentionally leaves memory to exit); unit tests cover
+  # leaks with the tracking allocator.
+  sanitize:
+    name: AddressSanitizer (integration)
+    runs-on: ubuntu-latest
+    # New job: reports without blocking releases until it has been green on
+    # develop; then drop this line.
+    continue-on-error: true
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Odin
+      uses: ./.github/actions/setup-odin
+
+    - name: Setup Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.3'
+
+    - name: Install shells
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq zsh fish
+
+    - name: Bootstrap build script
+      run: odin build build -out:build_it
+
+    - name: Build wayu (regular + ASan)
+      run: |
+        ./build_it build
+        mkdir -p bin/asan
+        odin build src -out:bin/asan/wayu -sanitize:address -debug
+
+    - name: Run integration tests (ASan)
+      env:
+        WAYU_BIN: bin/asan/wayu
+        ASAN_OPTIONS: detect_leaks=0:halt_on_error=1:abort_on_error=0
+      run: ruby tests/integration/run_all.rb
 
   lint:
     name: Lint

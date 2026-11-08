@@ -133,7 +133,10 @@ do_debug :: proc() {
 }
 
 do_test :: proc() {
-	if !run_unit_tests() {
+	// `./build_it test NAME[,NAME...]` runs only those tests
+	// (package-qualified names, e.g. test_wayu.test_path_add).
+	names := os.args[2] if len(os.args) > 2 else ""
+	if !run_unit_tests(names) {
 		bld.log_error("Tests failed")
 		os.exit(1)
 	}
@@ -144,7 +147,7 @@ do_test :: proc() {
 // sandbox before returning. Returns instead of exiting so the restore and
 // cleanup always run; do_release runs git afterwards and needs the real HOME
 // for ~/.gitconfig (identity, commit signing, credential helper).
-run_unit_tests :: proc() -> bool {
+run_unit_tests :: proc(names := "") -> bool {
 	bld.log_info("Running unit tests...")
 	bld.mkdir_if_not_exists(BIN_DIR)
 	// Sandbox HOME so no test can ever write into the real ~/.config/wayu
@@ -155,23 +158,65 @@ run_unit_tests :: proc() -> bool {
 	os.make_directory_all(test_home)
 	real_home, had_home := os.lookup_env("HOME", context.temp_allocator)
 	os.set_env("HOME", test_home)
+	// Tests put scratch files under this per-run root (tests/unit/test_tmp.odin),
+	// removed with the sandbox: concurrent runs never share a /tmp path.
+	os.set_env("WAYU_TEST_TMPDIR", fmt.tprintf("%s/tmp", test_home))
 	defer {
 		if had_home {
 			os.set_env("HOME", real_home)
 		} else {
 			os.unset_env("HOME")
 		}
+		os.unset_env("WAYU_TEST_TMPDIR")
 		os.remove_all(test_home)
 	}
-	return bld.test({
+	// The test runner reports progress, per-test logs, leaks and the names of
+	// failed tests on stderr, which is passed through. The tested code's own
+	// stdout (CLI output, TUI escape sequences — some query the terminal and
+	// would inject replies into its input) goes to a log, shown on failure.
+	stdout_log := fmt.tprintf("%s/unit-tests.stdout.log", test_home)
+	defines := make([dynamic]bld.Define, context.temp_allocator)
+	append(&defines, bld.Define{name = "ODIN_TEST_THREADS", value = "1"})
+	// A leak or bad free (tracking allocator, on by default) fails the
+	// test instead of only printing a warning.
+	append(&defines, bld.Define{name = "ODIN_TEST_FAIL_ON_BAD_MEMORY", value = "true"})
+	if len(names) > 0 {
+		append(&defines, bld.Define{name = "ODIN_TEST_NAMES", value = names})
+	}
+	ok := bld.test({
 		package_path = TEST_DIR,
+		// Per-run binary: odin test otherwise writes ./unit in the cwd, which
+		// concurrent runs in one checkout would overwrite mid-run.
+		out          = fmt.tprintf("%s/wayu_unit_tests", test_home),
 		file_mode    = true,
 		opt          = .Speed,
-		defines      = {
-			{name = "ODIN_TEST_THREADS", value = "1"},
-		},
+		defines      = defines[:],
 		ignore_unused_defineables = true,
-	})
+	}, {stdout_path = stdout_log})
+	if !ok {
+		show_test_stdout(stdout_log)
+	}
+	return ok
+}
+
+// On failure: keep the tested code's stdout as bin/unit-tests.stdout.log
+// (the sandbox is removed) and print its tail.
+show_test_stdout :: proc(stdout_log: string) {
+	TAIL_LINES :: 40
+	kept := fmt.tprintf("%s/unit-tests.stdout.log", BIN_DIR)
+	data, err := os.read_entire_file_from_path(stdout_log, context.temp_allocator)
+	if err != nil || len(data) == 0 { return }
+	_ = os.write_entire_file(kept, data)
+	lines := strings.split_lines(strings.trim_right(string(data), "\n"), context.temp_allocator)
+	from := max(0, len(lines) - TAIL_LINES)
+	fmt.eprintfln("---- last %d lines of test stdout (full log: %s) ----", len(lines) - from, kept)
+	for line in lines[from:] {
+		// Show escape sequences instead of sending them: some (cursor
+		// position queries) make the terminal type a reply into its input.
+		safe, _ := strings.replace_all(line, "\x1b", "^[", context.temp_allocator)
+		fmt.eprintln(safe)
+	}
+	fmt.eprintln("---- end of test stdout ----")
 }
 
 // Run `git <args>`; true on exit status 0.
@@ -625,7 +670,7 @@ do_help :: proc() {
 	fmt.println("Targets:")
 	fmt.println("  build     Optimized release build (default)")
 	fmt.println("  debug     Debug build with symbols")
-	fmt.println("  test      Run unit tests")
+	fmt.println("  test      Run unit tests (optional: NAME[,NAME] to run only those)")
 	fmt.println("  check     Type-check only")
 	fmt.println("  clean     Remove build artifacts")
 	fmt.println("  install   Build + install to $PREFIX/bin (default ~/.local/bin) + wayu init [--force]")
