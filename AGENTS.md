@@ -102,16 +102,18 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/plugin_ops.odin` | Git ops, dependency resolution, conflict detection |
 | `src/plugin_storage.odin` | Plugin command handlers (add, remove, list, update, etc.) |
 | `src/plugin_loader.odin` | Generates runtime plugin loader shell scripts |
-| `src/backup.odin` | Timestamped backups, restore, cleanup (keeps last 5) |
+| `src/backup.odin` | Timestamped backups (once per CLI run, pruned to 5 on every write), restore by index/file |
 | `src/doctor.odin` | Health check orchestrator + individual checks |
-| `src/migrate.odin` | Legacy shell config → wayu.toml migration + schema migration |
+| `src/migrate.odin` | Legacy shell config → wayu.toml migration (all-or-nothing) + schema migration + `--from/--to` |
+| `src/migrate_parse.odin` | Legacy file parser: each line → entry or listed `file:line` + reason |
+| `src/shell_words.odin` | Exact POSIX/fish shell-word tokenizer (quotes, escapes, expandability) |
 | `src/validation.odin` | Input validation + error handling |
 | `src/hooks.odin` | Pre/post operation hook procs (stubs assigned to ConfigEntrySpec) |
 | `src/hot_reload.odin` | `wayu reload`/`watch`: file watcher, debounced core regeneration |
 | `src/tui_core.odin` | TUI main loop, state machine, data loading, render orchestrator |
 | `src/tui_views.odin` | TUI view renderers (list, overlays, cache, handlers, hooks, plugins, settings) |
 | `src/tui_io.odin` | TUI terminal I/O: raw mode, input, screen buffer, events, colors, layout, components |
-| `src/prompt.odin` | Native zsh prompt generation + interactive features |
+| `src/prompt.odin` | Native zsh prompt (opt-in: `[prompt] enabled = true`) + vi-mode; values escaped |
 | `src/fuzzy.odin` | Fuzzy matching, interactive terminal selection, completions extraction |
 | `src/interfaces.odin` | Shared types (LockFile, TomlConfig, etc.), exit codes, debug |
 | `src/colors.odin` | ANSI color profiles + output helpers |
@@ -188,7 +190,7 @@ Unit tests: `tests/unit/test_<module>.odin`. Integration tests spawn the compile
 ## Shell-Specific Notes
 
 - Config files use `.zsh` or `.bash` extensions determined by `src/shell.odin` at runtime
-- Completions are Zsh-only (`_wayu` file) — Bash/Fish completion not yet implemented
+- wayu's own completions (zsh/bash/fish) are generated from `WAYU_COMMAND_SPECS` in `src/wayu_completions.odin` — add new commands/actions there (a unit test checks every `Command` has a row)
 - `src/preload.odin` has separate templates for each shell with shell-specific syntax
 - Both Zsh and Bash PATH templates include a dedup pass after exporting `WAYU_PATHS`
 
