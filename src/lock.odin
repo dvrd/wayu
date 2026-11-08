@@ -10,7 +10,6 @@ package wayu
 import "core:os"
 import "core:strings"
 
-LOCK_FILE_NAME :: "wayu.lock"
 LOCK_VERSION   :: "1.0.0"
 
 // Read a lock file from the given path.

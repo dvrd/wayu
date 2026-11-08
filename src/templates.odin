@@ -9,16 +9,6 @@ package wayu
 import "core:fmt"
 import "core:os"
 
-// Template definition
-ConfigTemplate :: struct {
-	name:        string,
-	description: string,
-	apply:       proc(),
-}
-
-// Template names for reference
-template_names := []string{"developer", "minimal", "data-science", "full"}
-
 // Handle template command
 handle_template_command :: proc(action: Action, args: []string) {
 	#partial switch action {

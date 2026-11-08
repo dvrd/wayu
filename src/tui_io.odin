@@ -285,11 +285,6 @@ fd_set_bit :: proc(set: ^fd_set, fd: c.int) {
     set.bits[fd / (8 * size_of(c.long))] |= 1 << (uint(fd) % (8 * size_of(c.long)))
 }
 
-@(private)
-fd_isset :: proc(set: ^fd_set, fd: c.int) -> bool {
-    return (set.bits[fd / (8 * size_of(c.long))] >> (uint(fd) % (8 * size_of(c.long)))) & 1 != 0
-}
-
 // Field order is layout-optimized (data-oriented): the 8-byte-aligned
 // strings come first, then the 4-byte rune, then the 1-byte bools. This
 // packs Cell into 40 bytes instead of 48 (rune no longer forces 4 bytes of
@@ -974,15 +969,6 @@ BOX_DBL_BOTTOM_LEFT    :: '╚'  // U+255A
 BOX_DBL_BOTTOM_RIGHT   :: '╝'  // U+255D
 
 // ============================================================================
-// Helper: Color Aliases for Backward Compatibility
-// ============================================================================
-
-// These aliases map new naming to old code expecting different names
-TUI_FG_NORMAL    :: TUI_MUTED      // Normal text
-TUI_FG_SELECTED  :: TUI_PRIMARY    // Selected item text
-TUI_FG_HIGHLIGHT :: TUI_HIGHLIGHT  // Highlighted text
-TUI_FG_MUTED     :: TUI_DIM        // Muted text
-// ============================================================================
 // Border Layout Constants
 // ============================================================================
 
@@ -1071,11 +1057,6 @@ calculate_visible_height :: proc(terminal_height: int) -> int {
 // Calculate footer Y position
 calculate_footer_y :: proc(terminal_height: int) -> int {
 	return terminal_height - FOOTER_OFFSET_FROM_BOTTOM - 1  // -1 for border
-}
-
-// Calculate list item Y position
-calculate_list_item_y :: proc(index_in_visible_area: int) -> int {
-	return LIST_ITEM_START_LINE + index_in_visible_area
 }
 
 // Calculate border dimensions (responsive - fills terminal width)

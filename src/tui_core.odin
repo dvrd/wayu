@@ -830,16 +830,6 @@ RowMeta :: struct {
 	kind:   RowKind,
 }
 
-row_source_from_entry :: proc(source: EntrySource) -> RowSource {
-	switch source {
-	case .WAYU_ACTIVE:   return .WAYU_ACTIVE
-	case .WAYU_INACTIVE: return .WAYU_INACTIVE
-	case .EXTERNAL:      return .EXTERNAL
-	case .SHADOWED:      return .SHADOWED
-	}
-	return .NONE
-}
-
 // When true, source glyphs render as ASCII tags ("[wayu]") instead of Unicode
 // symbols. Set by tui_run from the active color profile (NO_COLOR/--no-color).
 tui_plain_glyphs: bool
