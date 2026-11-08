@@ -174,7 +174,7 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 	init_exists := os.exists(init_file)
 
 	if wayu.dry_run {
-		fmt.printfln("  Would set [shell] type = \"%s\" in wayu.toml", to_name)
+		fmt.printfln("  Would set [shell] type = \"%s\" in wayu.toml", shell_config_name(to_shell))
 		if !init_exists {
 			fmt.printfln("  Would create %s", init_file)
 		}
@@ -187,7 +187,7 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
 
-	res, _ := toml_kv_upsert("shell", "shell", "type", to_name)
+	res, _ := toml_kv_upsert("shell", "shell", "type", shell_config_name(to_shell))
 	switch res {
 	case .OK:
 	case .MALFORMED:
@@ -196,7 +196,7 @@ migrate_shell_config :: proc(from_shell: ShellType, to_shell: ShellType) {
 		print_error("Could not update [shell] type in %s", toml_path)
 		os.exit(EXIT_IOERR)
 	}
-	fmt.printfln("  ✓ wayu.toml [shell] type = \"%s\"", to_name)
+	fmt.printfln("  ✓ wayu.toml [shell] type = \"%s\"", shell_config_name(to_shell))
 
 	if !init_exists {
 		template := get_init_template(to_shell)

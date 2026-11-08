@@ -59,17 +59,22 @@ ensure_wayu_toml_exists :: proc() -> bool {
 		return true
 	}
 
-	shell_name := get_shell_name(wayu.shell)
-	scaffold := fmt.aprintf(`[shell]
+	scaffold := wayu_toml_scaffold(wayu.shell)
+	defer delete(scaffold)
+
+	return init_config_file(toml_file, scaffold)
+}
+
+// The one wayu.toml scaffold (ensure_wayu_toml_exists, `wayu init`,
+// `wayu config edit`). Caller owns the returned string.
+wayu_toml_scaffold :: proc(shell: ShellType) -> string {
+	return fmt.aprintf(`[shell]
 type = "%s"
 
 [aliases]
 
 [env]
-`, shell_name)
-	defer delete(scaffold)
-
-	return init_config_file(toml_file, scaffold)
+`, shell_config_name(shell))
 }
 
 // Default autosuggest accept keys shared by toml_create_default and doc_to_config.
@@ -846,7 +851,14 @@ get_bool :: proc(val: ^TomlValue, default: bool = false) -> bool {
 @(private = "file")
 doc_parse_base_fields :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
 	config.version = get_string(get_toml_value(doc, "version"), "1.0")
-	config.shell = get_string(get_toml_value(doc, "shell"), "zsh")
+	// `[shell] type`; a top-level `shell = "..."` string is still honored.
+	shell_val := get_toml_value(doc, "shell")
+	if shell_val == nil || shell_val.type != .STRING {
+		shell_val = get_toml_value(doc, "shell.type")
+	}
+	raw_shell := get_string(shell_val, "zsh")
+	config.shell = strings.to_lower(raw_shell)
+	delete(raw_shell)
 	config.wayu_version = get_string(get_toml_value(doc, "wayu_version"), VERSION)
 }
 

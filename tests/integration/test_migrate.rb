@@ -386,7 +386,7 @@ class MigrateIntegrationTest
     toml = File.read("#{@config_dir}/wayu.toml")
     files_ok = init.include?('core.bash') && !init.include?('core.zsh') &&
                !core.empty? && !core.include?('(N)') && !core.include?('typeset -U')
-    type_ok  = toml.match?(/^\[shell\]\s*\ntype = "Bash"/)
+    type_ok  = toml.match?(/^\[shell\]\s*\ntype = "bash"/)
     zsh_kept = File.exist?("#{@data_dir}/core.zsh") && File.exist?("#{@data_dir}/init.zsh")
     bash_out, bash_err, bash_status = Open3.capture3({ 'HOME' => @tmp_home }, 'bash', '--norc', '--noprofile', '-c',
       "shopt -s expand_aliases\nsource '#{@data_dir}/init.bash'\nalias glf\nprintf '%s|%s' \"$GREETING\" \"$PATH\"")
@@ -406,7 +406,7 @@ class MigrateIntegrationTest
     init = File.read("#{@data_dir}/init.fish") rescue ''
     toml = File.read("#{@config_dir}/wayu.toml")
     ok = status.success? && core.include?('glf') && init.include?('core.fish') &&
-         !init.include?('core.zsh') && toml.match?(/^type = "Fish"/)
+         !init.include?('core.zsh') && toml.match?(/^type = "fish"/)
     if ok && system('command -v fish >/dev/null 2>&1')
       fish_out, _ = Open3.capture2({ 'HOME' => @tmp_home }, 'fish', '--no-config', '-c',
         "source '#{@data_dir}/init.fish'; printf '%s' \"$GREETING\"")

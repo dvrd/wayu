@@ -191,6 +191,50 @@ shell = "invalid_shell"
  testing.expect(t, !result.valid, "Invalid shell should fail validation")
 }
 
+// OKAMI-277 (CFG-23): the scaffold's `[shell] type` is what gets validated,
+// case-insensitively (pre-6.0 scaffolds wrote "ZSH" / "Bash").
+@(test)
+test_toml_shell_type_table_is_read_and_validated :: proc(t: ^testing.T) {
+ cases := []struct{ value, want: string, valid: bool }{
+  {"zsh", "zsh", true},
+  {"ZSH", "zsh", true},
+  {"Bash", "bash", true},
+  {"fish", "fish", true},
+  {"tcsh", "tcsh", false},
+ }
+ for c in cases {
+  content := fmt.aprintf("[shell]\ntype = \"%s\"\n\n[aliases]\n", c.value)
+  defer delete(content)
+  config, ok := wayu.toml_parse(content)
+  defer wayu.cleanup_toml_config(&config)
+  testing.expect(t, ok, "Parsing should succeed")
+  testing.expect_value(t, config.shell, c.want)
+
+  result := wayu.toml_validate(config)
+  defer if result.error_message != "" do delete(result.error_message)
+  testing.expectf(t, result.valid == c.valid, "[shell] type = %q: valid=%v", c.value, result.valid)
+ }
+}
+
+@(test)
+test_wayu_toml_scaffold_uses_lowercase_shell_type :: proc(t: ^testing.T) {
+ shells := []wayu.ShellType{.ZSH, .BASH, .FISH, .UNKNOWN}
+ wants := []string{"zsh", "bash", "fish", "zsh"}
+ for s, i in shells {
+  scaffold := wayu.wayu_toml_scaffold(s)
+  defer delete(scaffold)
+  want := fmt.tprintf("[shell]\ntype = \"%s\"\n", wants[i])
+  testing.expectf(t, strings.has_prefix(scaffold, want), "scaffold for %v: %q", s, scaffold)
+
+  config, ok := wayu.toml_parse(scaffold)
+  defer wayu.cleanup_toml_config(&config)
+  testing.expect(t, ok, "scaffold must parse")
+  result := wayu.toml_validate(config)
+  defer if result.error_message != "" do delete(result.error_message)
+  testing.expect(t, result.valid, "scaffold must validate")
+ }
+}
+
 @(test)
 test_toml_validate_invalid_alias :: proc(t: ^testing.T) {
  content := `

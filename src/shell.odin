@@ -158,6 +158,18 @@ get_shell_name :: proc(shell: ShellType) -> string {
     return "Unknown"
 }
 
+// Value stored in wayu.toml `[shell] type` (lowercase, as parse_shell_type
+// and toml_validate expect). UNKNOWN maps to zsh, the default wayu falls
+// back to everywhere else.
+shell_config_name :: proc(shell: ShellType) -> string {
+    switch shell {
+    case .BASH:            return "bash"
+    case .FISH:            return "fish"
+    case .ZSH, .UNKNOWN:   return "zsh"
+    }
+    return "zsh"
+}
+
 // Parse shell type from string (for CLI flags)
 parse_shell_type :: proc(shell_str: string) -> ShellType {
     shell_lower := strings.to_lower(shell_str)
