@@ -8,7 +8,7 @@
 //     print a min/mean/max table across (no-rc, wayu-init, turbo, full).
 //   - `render_phase_breakdown()` — per-unit core.<ext> timing (zsh, bash 5+):
 //     each core section, each [tools] entry (evalcache call or lazy recipe,
-//     from the inlined lazy.<ext> and the eager tools) and each plugin
+//     all inline in core since OKAMI-284) and each plugin
 //     (from the inlined plugins.<ext>), so the slow tool/plugin is named.
 //
 // Works for Bash/Zsh/Fish; resolves the shell binary via `which <shell>`
@@ -119,7 +119,7 @@ profile_startup_performance :: proc() {
 	}
 	fmt.println()
 	print_section("Next steps", EMOJI_ACTION)
-	fmt.println("  wayu export           Generate turbo.{ext} (compiled, 2-4x faster)")
+	fmt.println("  wayu export           Write turbo.{ext} (same as core, refreshed on build)")
 	fmt.println("  wayu doctor           Health check and optimization hints")
 	fmt.println()
 }
@@ -127,8 +127,7 @@ profile_startup_performance :: proc() {
 // Render a per-unit timing breakdown of core.<ext> (OKAMI-180).
 //
 // Strategy: split core into units (profile_core_units: `# === <name> ===`
-// sections, with lazy.<ext> and plugins.<ext> inlined and split per tool /
-// plugin), generate a script that records $EPOCHREALTIME before and after
+// sections, with plugins.<ext> inlined, split per tool / plugin), generate a script that records $EPOCHREALTIME before and after
 // each unit, run it once under the user's shell, parse `PHASE=...` lines
 // from stdout, and print a sorted table (slowest first).
 //
@@ -229,21 +228,18 @@ epoch_decimal :: proc(s: string) -> string {
 
 // Units to time in core.<ext>: one per `# === <name> ===` section (text
 // before the first marker is "__prelude__"). The line that sources
-// lazy.<ext> and the one that sources plugins.<ext> are replaced by those
-// files' contents, split further: `lazy › <section>`, `tool <name>
-// (evalcache)` per `_wayu_evalcache` call (eager ones in core too),
-// `tool <recipe>` per `# --- recipe: … ---` block, and `plugin <name>` per
-// plugin block of the loader. Units whose body has no code are dropped.
+// plugins.<ext> is replaced by that file's contents. Split further:
+// `tool <name> (evalcache)` per `_wayu_evalcache` call, `tool <recipe>` per
+// `# --- recipe: … ---` block, and `plugin <name>` per plugin block of the
+// loader. Other `# --- … ---` markers (prompt features) name a sub-unit of
+// their section. Units whose body has no code are dropped.
 // Returned names/bodies are heap-allocated — caller owns them.
 profile_core_units :: proc(content: string, shell: ShellType) -> [dynamic]InitCorePhase {
 	ext := get_shell_extension(shell)
-	lazy_q    := shell_double_quote_literal(fmt.tprintf("%s/lazy.%s", wayu.data, ext), context.temp_allocator)
 	plugins_q := shell_double_quote_literal(fmt.tprintf("%s/plugins.%s", wayu.data, ext), context.temp_allocator)
 	ctx := ProfileSplit{
 		units        = make([dynamic]InitCorePhase),
-		lazy_line    = fmt.tprintf("source %s", lazy_q),
 		plugins_line = fmt.tprintf("if [ -f %s ]; then source %s; fi", plugins_q, plugins_q),
-		lazy_file    = fmt.tprintf("%s/lazy.%s", wayu.data, ext),
 		plugins_file = fmt.tprintf("%s/plugins.%s", wayu.data, ext),
 		sb           = strings.builder_make(context.temp_allocator),
 	}
@@ -254,9 +250,7 @@ profile_core_units :: proc(content: string, shell: ShellType) -> [dynamic]InitCo
 @(private = "file")
 ProfileSplit :: struct {
 	units:        [dynamic]InitCorePhase,
-	lazy_line:    string,
 	plugins_line: string,
-	lazy_file:    string,
 	plugins_file: string,
 	sb:           strings.Builder, // body of the current unit
 	name:         string,          // name of the current unit (temp)
@@ -293,7 +287,12 @@ profile_split :: proc(ctx: ^ProfileSplit, content, prefix, first_name: string, d
 			profile_flush(ctx)
 			// `recipe: nvm (lazy)` → `tool nvm (lazy)`; the generic
 			// `recipe: lazy (<name>)` → `tool <name> (lazy)`.
-			inner := strings.trim_prefix(trimmed[len("# --- "):len(trimmed) - len(" ---")], "recipe: ")
+			raw := trimmed[len("# --- "):len(trimmed) - len(" ---")]
+			if !strings.has_prefix(raw, "recipe: ") {
+				ctx.name = fmt.tprintf("%s › %s", section, raw)
+				continue
+			}
+			inner := raw[len("recipe: "):]
 			if strings.has_prefix(inner, "lazy (") && strings.has_suffix(inner, ")") {
 				inner = fmt.tprintf("%s (lazy)", inner[len("lazy ("):len(inner) - 1])
 			}
@@ -312,19 +311,11 @@ profile_split :: proc(ctx: ^ProfileSplit, content, prefix, first_name: string, d
 			profile_flush(ctx)
 			ctx.name = fmt.tprintf("plugin %s", trimmed[2:strings.index(trimmed, " (priority: ")])
 			continue
-		case depth == 0 && (line == ctx.lazy_line || line == ctx.plugins_line):
-			is_lazy := line == ctx.lazy_line
-			data, ok := os.read_entire_file(is_lazy ? ctx.lazy_file : ctx.plugins_file, context.temp_allocator)
-			if ok != nil {
-				if is_lazy { break } // keep the source line (fails visibly)
-				continue           // plugins: `[ -f ]` guard — nothing to load
-			}
+		case depth == 0 && line == ctx.plugins_line:
+			data, ok := os.read_entire_file(ctx.plugins_file, context.temp_allocator)
+			if ok != nil do continue // `[ -f ]` guard — nothing to load
 			profile_flush(ctx)
-			if is_lazy {
-				profile_split(ctx, string(data), "lazy › ", "lazy › (top)", depth + 1)
-			} else {
-				profile_split(ctx, string(data), "", "plugins (loader)", depth + 1)
-			}
+			profile_split(ctx, string(data), "", "plugins (loader)", depth + 1)
 			profile_flush(ctx)
 			ctx.name = section
 			continue

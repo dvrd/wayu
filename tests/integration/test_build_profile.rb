@@ -159,8 +159,8 @@ class BuildProfileTest
     _o, _e0, st_build = Open3.capture3(env, "#{@wayu_bin} build")
     out, _e, st = Open3.capture3(env, "#{@wayu_bin} build profile")
     ok = st_build.success? && st.success? &&
-         out.match?(/ms\s+[\d.]+%\s+lazy › tool wayufaketool \(evalcache\)/) &&
-         out.include?('lazy › tool fakelazy (lazy)')
+         out.match?(/ms\s+[\d.]+%\s+tool wayufaketool \(evalcache\)/) &&
+         out.include?('tool fakelazy (lazy)') && !out.include?('lazy ›')
     report("Test 4b: per-tool rows", ok, out.lines.grep(/%/).join)
   end
 
