@@ -2,10 +2,13 @@
 # Integration tests for secret handling (OKAMI-206/207/208):
 #   * wayu.toml, backups and generated core files are owner-only;
 #   * `get` is exact-match only and never prints another entry's value;
-#   * dry-run / search / export previews mask secret-looking values.
+#   * dry-run / search / export previews mask secret-looking values;
+#   * list views (`const list`, `--full`, `--json`, `toml show`) mask them
+#     unless `--reveal`; `const get` keeps printing the real value.
 # All values below are fake. Runs in a temporary HOME.
 
 require 'open3'
+require 'json'
 require 'fileutils'
 require_relative 'test_helper'
 
@@ -41,6 +44,13 @@ class SecretsIntegrationTest
       test_dry_run_const_rm_shows_name_only
       test_search_masks_and_skips_values
       test_export_dry_run_masks
+      test_const_list_masks
+      test_const_list_full_masks_external
+      test_const_list_json_masks
+      test_const_list_reveal_shows
+      test_const_get_unmasked_in_clean_env
+      test_toml_show_masks_unless_reveal
+      test_reveal_rejected_elsewhere
     ensure
       teardown_test_env
     end
@@ -55,6 +65,19 @@ class SecretsIntegrationTest
     env = ENV.to_h.merge('HOME' => @tmp_home, 'NO_COLOR' => '1')
     project_root = File.expand_path('../..', __dir__)
     out, err, status = Open3.capture3(env, "#{@wayu_bin} #{args}", chdir: project_root)
+    [out.force_encoding('UTF-8'), err.force_encoding('UTF-8'), status]
+  end
+
+  # Fully controlled environment (unsetenv_others): the caller's real
+  # environment — which may hold real secrets — never reaches wayu, so
+  # `--full` / `--reveal` output can only contain the fake values here.
+  EXT_SECRET = 'fake-ext-secret-0004'.freeze
+
+  def run_clean(args)
+    env = { 'HOME' => @tmp_home, 'PATH' => '/usr/bin:/bin', 'SHELL' => '/bin/zsh',
+            'NO_COLOR' => '1', 'FAKE_EXT_API_KEY' => EXT_SECRET }
+    project_root = File.expand_path('../..', __dir__)
+    out, err, status = Open3.capture3(env, "#{@wayu_bin} #{args}", chdir: project_root, unsetenv_others: true)
     [out.force_encoding('UTF-8'), err.force_encoding('UTF-8'), status]
   end
 
@@ -185,6 +208,71 @@ class SecretsIntegrationTest
     all = out + err
     ok = status.success? && all.include?('FIREWORKS_AI_API_KEY') && !all.include?(SECRET) && !all.include?(DB_PW)
     check(all, ok)
+  end
+
+  def test_const_list_masks
+    print 'Test 14: const list masks secret-looking values... '
+    out, err, status = run_clean('const list')
+    all = out + err
+    ok = status.success? && all.include?('FIREWORKS_AI_API_KEY') && all.include?('********') &&
+         all.include?('nvim') && !all.include?(SECRET) && !all.include?(DB_PW) && all.include?('--reveal')
+    check(all, ok)
+  end
+
+  def test_const_list_full_masks_external
+    print 'Test 15: const list --full masks external secrets too... '
+    out, err, status = run_clean('const list --full')
+    all = out + err
+    ok = status.success? && all.include?('FAKE_EXT_API_KEY') && !all.include?(EXT_SECRET) &&
+         !all.include?(SECRET) && !all.include?(DB_PW)
+    check(all, ok)
+  end
+
+  def test_const_list_json_masks
+    print 'Test 16: --json const list (with and without --full) masks values... '
+    plain_out, _, plain_status = run_clean('--json const list')
+    full_out, _, full_status = run_clean('--json const list --full')
+    plain = JSON.parse(plain_out)['constants'].to_h { |c| [c['constant'], c['value']] }
+    full = JSON.parse(full_out)['constants'].to_h { |c| [c['constant'], c['value']] }
+    ok = plain_status.success? && full_status.success? &&
+         plain['FIREWORKS_AI_API_KEY'] == '********' && plain['DATABASE_URL'] == '********' &&
+         plain['EDITOR'] == 'nvim' && !plain.key?('FAKE_EXT_API_KEY') &&
+         full['FIREWORKS_AI_API_KEY'] == '********' && full['FAKE_EXT_API_KEY'] == '********' &&
+         !(plain_out + full_out).include?(SECRET) && !(plain_out + full_out).include?(EXT_SECRET)
+    check("plain=#{plain_out} full=#{full_out}", ok)
+  rescue JSON::ParserError => e
+    check("invalid JSON: #{e.message}", false)
+  end
+
+  def test_const_list_reveal_shows
+    print 'Test 17: --reveal shows real values (text, --full, --json)... '
+    out, err, status = run_clean('const list --reveal')
+    full_out, _, full_status = run_clean('--json const list --full --reveal')
+    ok = status.success? && full_status.success? && (out + err).include?(SECRET) &&
+         full_out.include?(SECRET) && full_out.include?(EXT_SECRET) && !full_out.include?('********')
+    check("out=#{out} json=#{full_out}", ok)
+  end
+
+  def test_const_get_unmasked_in_clean_env
+    print 'Test 18: const get still prints the real value... '
+    out, _err, status = run_clean('const get FIREWORKS_AI_API_KEY')
+    check("exit=#{status.exitstatus} out=#{out.inspect}", status.success? && out.strip == SECRET)
+  end
+
+  def test_toml_show_masks_unless_reveal
+    print 'Test 19: toml show masks [env] secrets; --reveal shows them... '
+    out, _, status = run_clean('toml show')
+    rout, _, rstatus = run_clean('toml show --reveal')
+    ok = status.success? && rstatus.success? && out.include?('FIREWORKS_AI_API_KEY = "********"') &&
+         !out.include?(SECRET) && !out.include?(DB_PW) && out.include?('nvim') && out.end_with?("\n") &&
+         rout.include?(SECRET) && rout == File.read("#{@config_dir}/wayu.toml")
+    check("masked=#{out}", ok)
+  end
+
+  def test_reveal_rejected_elsewhere
+    print 'Test 20: --reveal is a usage error on commands without masked lists... '
+    _, err, status = run_clean('path list --reveal')
+    check("exit=#{status.exitstatus} err=#{err}", status.exitstatus == 64 && err.include?('--reveal'))
   end
 end
 

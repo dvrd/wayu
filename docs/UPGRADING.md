@@ -19,6 +19,23 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `"$WAYU_HOOK_VALUE"` when you need double quotes. (This replaces the 4.4.x
   advice to use double quotes for direct substitution.)
 
+**Secret values in list views**
+- `const list` (text and `--json`, with and without `--full`) now shows
+  secret-looking values (names with KEY, TOKEN, SECRET, PASS, API, AUTH, …,
+  or token-shaped values) as `********` — both `wayu.toml` `[env]` entries and
+  external environment variables. Scripts that read values from
+  `const list --json` must add `--reveal`, or use `const get NAME` (unchanged,
+  prints the real value). The text table ends with a hint when something was
+  masked.
+- `toml show` masks secret-looking `[env]` values the same way;
+  `toml show --reveal` prints the file verbatim.
+- `--reveal` is accepted only by `const` and `toml`; elsewhere it is an
+  unknown option (exit `64`).
+- TUI constants view: values are masked by default; `v` toggles reveal (the
+  footer shows `v Reveal` / `v Hide`) and resets when you leave the view. The
+  `/` filter matches the masked text, so typing part of a secret no longer
+  finds its row. The detail overlay (Enter) follows the same toggle.
+
 **Plugins (review fixes)**
 - `plugin update` no longer resets a checkout whose HEAD has commits that
   were never on the remote: when it cannot fast-forward, the update fails

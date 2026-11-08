@@ -55,7 +55,10 @@ def open_pty_with_size(cols, rows):
 
 class TUISession:
     """Manages a PTY session with the wayu TUI, auto-responding to DSR queries."""
-    def __init__(self, cols, rows):
+    def __init__(self, cols, rows, env=None):
+        """`env`: when given, the child gets exactly this environment (plus
+        COLUMNS/LINES) instead of inheriting ours — used by views that list
+        environment variables, so real secrets never reach the screen."""
         self.cols = cols
         self.rows = rows
         self.master_fd, slave_fd = open_pty_with_size(cols, rows)
@@ -70,6 +73,9 @@ class TUISession:
             os.dup2(slave_fd, 2)
             if slave_fd > 2:
                 os.close(slave_fd)
+            if env is not None:
+                child_env = dict(env, COLUMNS=str(cols), LINES=str(rows))
+                os.execve(WAYU_BIN, [WAYU_BIN] + TUI_ARGS, child_env)
             os.environ["COLUMNS"] = str(cols)
             os.environ["LINES"] = str(rows)
             os.execvp(WAYU_BIN, [WAYU_BIN] + TUI_ARGS)
@@ -478,7 +484,58 @@ gs = "git status"
 
 [env]
 EDITOR = "vim"
+DEMO_API_KEY = "fake-tui-secret-0005"
 """
+
+# Fake values only: the constants view test runs wayu with exactly this
+# environment, never the real one.
+TUI_SECRET = "fake-tui-secret-0005"
+TUI_EXT_SECRET = "fake-tui-ext-0006"
+
+
+def constants_env():
+    return {
+        "HOME": os.environ["HOME"],  # sandbox_home()
+        "SHELL": "/bin/zsh",
+        "PATH": "/usr/bin:/bin",
+        "TERM": os.environ.get("TERM", "xterm-256color"),
+        "FAKE_EXT_API_KEY": TUI_EXT_SECRET,
+    }
+
+
+# ── Test: constants view masks secrets until `v` ───────────────────────────
+
+def test_constants_view_masks_secrets():
+    print(f"\n── Constants view secret masking ──")
+    s = TUISession(80, 24, env=constants_env())
+    try:
+        s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+        s.send(b"j"); s.read(timeout=0.15)
+        s.send(b"j"); s.read(timeout=0.15)
+        s.send(b"l")
+        ok = s.wait_for(lambda snap: "DEMO_API_KEY" in snap and "FAKE_EXT_API_KEY" in snap,
+                        timeout=TIMEOUT_KEY)
+        snap = s.snapshot()
+        test("constants/renders", AssertResult(ok, "constants view rows missing"))
+        test("constants/masked_by_default",
+             AssertResult(ok and "********" in snap and TUI_SECRET not in snap
+                          and TUI_EXT_SECRET not in snap and "vim" in snap,
+                          "secret shown unmasked (or mask missing)"))
+        test("constants/footer_reveal_hint",
+             AssertResult("v Reveal" in snap, "footer lacks `v Reveal`"))
+
+        s.send(b"v")
+        ok = s.wait_for(lambda snap: TUI_SECRET in snap, timeout=TIMEOUT_KEY)
+        snap = s.snapshot()
+        test("constants/v_reveals",
+             AssertResult(ok and TUI_EXT_SECRET in snap and "v Hide" in snap,
+                          "`v` did not reveal values"))
+
+        s.send(b"v")
+        ok = s.wait_for(lambda snap: TUI_SECRET not in snap, timeout=TIMEOUT_KEY)
+        test("constants/v_hides_again", AssertResult(ok, "second `v` did not mask again"))
+    finally:
+        s.kill()
 
 
 def sandbox_home():
@@ -528,6 +585,9 @@ def run_all():
     # Filter index mapping + terminal restore
     test_filtered_delete()
     test_sigterm_restores_terminal()
+
+    # Secret masking + reveal key
+    test_constants_view_masks_secrets()
 
     # Summary
     passed = sum(1 for r in results if r.passed)

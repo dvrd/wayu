@@ -287,9 +287,13 @@ handle_selection :: proc(state: ^TUIState) {
 		_, row, ok := selected_row(state)
 		if !ok || row.kind == .Separator do return
 		value_label := "Command" if state.current_view == .ALIAS_VIEW else "Value"
+		value := row.value
+		if state.current_view == .CONSTANTS_VIEW {
+			value = list_display_value(row.key, row.value, state.reveal_secrets)
+		}
 		lines := []string{
 			fmt.tprintf("Name: %s", row.key),
-			fmt.tprintf("%s: %s", value_label, row.value),
+			fmt.tprintf("%s: %s", value_label, value),
 		}
 		show_detail_overlay(state, row.key, lines)
 
@@ -434,7 +438,8 @@ tui_render :: proc(state: ^TUIState, screen: ^Screen) {
 			col_label_0  = "NAME",
 			col_label_1  = "VALUE",
 			empty_line_1 = "No constants found",
-			footer       = get_footer_data_view(state.terminal_width),
+			footer       = get_footer_constants_view(state.terminal_width, state.reveal_secrets),
+			mask_secrets = !state.reveal_secrets,
 		})
 
 	case .COMPLETIONS_VIEW:
@@ -1059,6 +1064,9 @@ TUIState :: struct {
 	terminal_width:  int,
 	terminal_height: int,
 	plugin_tab:      int,  // 0 = Installed, 1 = Registry
+	// Constants view shows secret-looking values unmasked (`v` toggles;
+	// reset whenever the view changes, so reveal never outlives the view).
+	reveal_secrets:  bool,
 	needs_refresh:   bool,
 	// Repaint every cell (and clear the terminal) on the next flush — set
 	// after resizes and mutations, which may have scribbled over the screen.
@@ -1256,6 +1264,7 @@ tui_state_goto_view :: proc(state: ^TUIState, view: TUIView) {
 	deactivate_filter(state)
 	state.previous_view = state.current_view
 	state.current_view = view
+	state.reveal_secrets = false
 	// Invalidate settings cache on entry so backup/plugin counters reflect
 	// state changes that happened while the user was in other views.
 	if view == .SETTINGS_VIEW {
@@ -1272,6 +1281,7 @@ tui_state_go_back :: proc(state: ^TUIState) {
 	temp := state.current_view
 	state.current_view = state.previous_view
 	state.previous_view = temp
+	state.reveal_secrets = false
 	restore_cursor(state, state.current_view)
 	state.needs_refresh = true
 }
@@ -1853,7 +1863,7 @@ tui_load_constants :: proc(state: ^TUIState) {
 				is_active := snapshot_env_var(const.name) != nil
 				source := RowSource.WAYU_ACTIVE if is_active else RowSource.WAYU_INACTIVE
 
-				display := fmt.aprintf("%s=%s", const.name, const.value)
+				display := fmt.aprintf("%s=%s", const.name, mask_secret_value(const.name, const.value))
 				cache_push(&items, &meta, display, const.name, const.value, source)
 			}
 		}
@@ -1886,7 +1896,7 @@ tui_load_constants :: proc(state: ^TUIState) {
 				wayu_constants[name] = true
 				is_active := snapshot_env_var(name) != nil
 				source := RowSource.WAYU_ACTIVE if is_active else RowSource.WAYU_INACTIVE
-				display := fmt.aprintf("%s=%s", name, unescaped)
+				display := fmt.aprintf("%s=%s", name, mask_secret_value(name, unescaped))
 				cache_push(&items, &meta, display, name, unescaped, source)
 			}
 		}
@@ -1923,7 +1933,7 @@ tui_load_constants :: proc(state: ^TUIState) {
 
 			for ext_const_name in external_constants {
 				if env_val, has := snapshot_env_var(ext_const_name).?; has {
-					display := fmt.aprintf("%s=%s", ext_const_name, env_val)
+					display := fmt.aprintf("%s=%s", ext_const_name, mask_secret_value(ext_const_name, env_val))
 					cache_push(&items, &meta, display, ext_const_name, env_val, .EXTERNAL)
 				}
 			}
@@ -1933,7 +1943,7 @@ tui_load_constants :: proc(state: ^TUIState) {
 		defer cleanup_entries(&entries)
 
 		for entry in entries {
-			display := fmt.aprintf("%s=%s", entry.name, entry.value)
+			display := fmt.aprintf("%s=%s", entry.name, mask_secret_value(entry.name, entry.value))
 			cache_push(&items, &meta, display, entry.name, entry.value)
 		}
 	}

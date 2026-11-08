@@ -194,6 +194,8 @@ render_list_item :: proc(
 // Standard footer for filterable data views
 FOOTER_FILTER_ACTIVE :: "Type to filter   Esc Cancel   Enter Accept   j/k Navigate"
 FOOTER_DATA_VIEW     :: "/ Filter   s Source   a Add   d Delete   h Back   l Enter   j/k"
+FOOTER_CONSTANTS_VIEW        :: "/ Filter   v Reveal   s Source   a Add   d Del   h Back   l Enter   j/k"
+FOOTER_CONSTANTS_VIEW_REVEAL :: "/ Filter   v Hide   s Source   a Add   d Del   h Back   l Enter   j/k"
 FOOTER_READONLY_VIEW :: "/ Filter   h Back   l Enter   j/k Navigate"
 FOOTER_BACKUP_VIEW   :: "/ Filter   c Cleanup   h Back   j/k Navigate"
 FOOTER_STATIC_VIEW   :: "h Back"
@@ -337,6 +339,7 @@ ListViewConfig :: struct {
 	empty_line_1: string,
 	empty_line_2: string,   // "" means skip second empty line
 	footer:       string,
+	mask_secrets: bool,     // Table: show secret-looking values as SECRET_MASK
 }
 
 // render_list_view is the single generic implementation shared by all five
@@ -461,6 +464,7 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 				} else if eq_idx := strings.index_byte(key, '='); eq_idx >= 0 {
 					key, value = items[idx][:eq_idx], items[idx][eq_idx + 1:]
 				}
+				if cfg.mask_secrets && !is_sep { value = mask_secret_value(key, value) }
 				render_table_row(screen, header_x, y, key, value, key_col_width, value_col_width, selected, is_sep)
 			}
 		}
@@ -922,6 +926,7 @@ DataViewBehavior :: struct {
 	supports_source_filter: bool,
 	supports_cleanup:       bool,
 	supports_delete:        bool,
+	supports_reveal:        bool,          // `v` toggles masking of secret-looking values
 	delete_label:           string,        // "" for raw display (PATH); "Alias"/"Constant" otherwise
 }
 
@@ -946,6 +951,7 @@ data_view_behavior :: proc(view: TUIView) -> DataViewBehavior {
 			supports_add           = true,
 			supports_source_filter = true,
 			supports_delete        = true,
+			supports_reveal        = true,
 			delete_label           = "Constant",
 		}
 	case .BACKUPS_VIEW:
@@ -1000,6 +1006,11 @@ handle_data_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 		case '/':
 			activate_filter(state)
 			apply_filter(state, get_current_cache(state), get_current_meta(state))
+			state.needs_refresh = true
+
+		case 'v':
+			if !b.supports_reveal do return
+			state.reveal_secrets = !state.reveal_secrets
 			state.needs_refresh = true
 
 		case 's':

@@ -66,7 +66,8 @@ wayu alias rm ll
 
 # Environment variables
 wayu constants add EDITOR nvim
-wayu constants list
+wayu constants list            # secret-looking values shown as ********
+wayu constants list --reveal   # show real values
 wayu constants rm EDITOR
 
 # Fuzzy matching - smart search with acronym support
@@ -200,6 +201,7 @@ wayu <command> <action> [arguments] [flags]
 | `--tui` | Launch interactive TUI |
 | `--json` | Machine-readable output (doctor, list, plugin list) |
 | `--source <filter>` | List filter: `all`, `wayu`, `external`, `inactive` |
+| `--reveal` | `const list` / `toml show`: show secret-looking values unmasked |
 | `--no-color` | Disable ANSI colors (equivalent to `NO_COLOR=1`) |
 | `--from <shell>` | Source shell for migration |
 | `--to <shell>` | Target shell for migration |
@@ -261,9 +263,12 @@ wayu const get FIRE
 Constants whose name looks like a credential (contains `KEY`, `TOKEN`,
 `SECRET`, `PASS`, `API`, `AUTH`, `CREDENTIAL`, `PRIVATE`, ...) or whose value
 looks like one (`sk-...`, `ghp_...`, `scheme://user:pass@host`, ...) are shown
-as `********` in `search` results and `--dry-run` previews. `search` matches
-constant names only, never their values. `const get NAME` and `const list`
-still print real values.
+as `********` in `const list` (text and `--json`, with or without `--full`;
+external environment variables included), `toml show`, the TUI constants
+view, `search` results and `--dry-run` previews. `search` matches constant
+names only, never their values. Pass `--reveal` to `const list` / `toml show`
+(or press `v` in the TUI constants view) to see real values; `const get NAME`
+always prints the real value.
 
 ### Score Indicators
 
@@ -318,6 +323,7 @@ Launch with `wayu` (no args) or `wayu --tui` for an interactive terminal interfa
 | `s` | PATH / Alias / Constants | Cycle source filter |
 | `a` | PATH / Alias / Constants | Add entry (modal form) |
 | `d` / `x` | PATH / Alias / Constants | Delete entry (with confirmation) |
+| `v` | Constants | Reveal / hide secret-looking values (masked by default) |
 | Tab / `t` | Plugins view | Switch Installed ↔ Registry tab |
 | `e` | Plugins (Installed) | Enable selected plugin |
 | `d` | Plugins (Installed) | Disable selected plugin |

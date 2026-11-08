@@ -1199,6 +1199,18 @@ get_footer_data_view :: proc(width: int) -> string {
 	return FOOTER_DATA_VIEW
 }
 
+// Constants view: the data-view keys plus `v`, which toggles masking of
+// secret-looking values (label shows what pressing it will do).
+get_footer_constants_view :: proc(width: int, revealed: bool) -> string {
+	if width < BREAKPOINT_NARROW {
+		return "/ Filter   v Hide   h Back" if revealed else "/ Filter   v Reveal   h Back"
+	}
+	if width < BREAKPOINT_COMPACT {
+		return "/ Filter   v Hide   a Add   d Del   h Back" if revealed else "/ Filter   v Reveal   a Add   d Del   h Back"
+	}
+	return FOOTER_CONSTANTS_VIEW_REVEAL if revealed else FOOTER_CONSTANTS_VIEW
+}
+
 get_footer_readonly_view :: proc(width: int) -> string {
 	if width < BREAKPOINT_NARROW {
 		return "/ Filter   h Back"

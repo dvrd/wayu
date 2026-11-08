@@ -55,6 +55,9 @@ GlobalFlags :: struct {
 	component_snapshot: bool,
 	component_verify: bool,
 	json:             bool,
+	// --reveal: position-independent like --full, but only commands whose
+	// command_accepts_flag lists it (list views that mask secrets) take it.
+	reveal:           bool,
 	source_filter:    string,
 	// Indexes into filtered_args of dash tokens that were not consumed as
 	// global flags and are not literal (after `--`, add value). Validated
@@ -129,7 +132,7 @@ trailing_flags_start :: proc(args: []string) -> int {
 is_simple_global_flag :: proc(arg: string) -> bool {
 	switch arg {
 	case "--full", "-f", "--dry-run", "-n", "--yes", "-y", "--tui",
-	     "--snapshot", "--test", "--json", "--no-color", "--no-colour":
+	     "--snapshot", "--test", "--json", "--no-color", "--no-colour", "--reveal":
 		return true
 	}
 	return strings.has_prefix(arg, "-c=") || strings.has_prefix(arg, "--source=")
@@ -205,6 +208,8 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 		case arg == "--json":
 			flags.json = true
 			wayu.json_output = true
+		case arg == "--reveal":
+			flags.reveal = true
 		case strings.has_prefix(arg, "--source="):
 			flags.source_filter = strings.trim_prefix(arg, "--source=")
 		case arg == "--source" && i + 1 < len(args):
@@ -576,6 +581,14 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			break
 		}
 	}
+	wayu.reveal_secrets = false
+	if flags.reveal {
+		if command_accepts_flag(parsed.command, "--reveal") {
+			wayu.reveal_secrets = true
+		} else if len(parsed.unknown_flag) == 0 {
+			parsed.unknown_flag = "--reveal"
+		}
+	}
 	return parsed
 }
 
@@ -597,6 +610,9 @@ command_accepts_flag :: proc(command: Command, arg: string) -> bool {
 		return strings.has_prefix(arg, "--category=")
 	case .EXPORT:
 		switch arg { case "--eval", "--turbo", "--check": return true }
+	case .CONSTANTS, .TOML:
+		// `const list` / `toml show` mask secret-looking values unless asked.
+		return arg == "--reveal"
 	case .VERSION, .HELP, .UNKNOWN:
 		// Nothing to protect: these never write.
 		return true
