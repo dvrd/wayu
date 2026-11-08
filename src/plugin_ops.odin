@@ -4,7 +4,6 @@ import "core:os"
 import "core:strings"
 import "core:slice"
 import "core:sync"
-import "core:strconv"
 import "core:encoding/json"
 import "core:path/filepath"
 // Clone a plugin repository (shallow). `--` ends option parsing so a URL or
@@ -393,17 +392,9 @@ is_plugin_installed :: proc(config: ^PluginConfig, name: string) -> bool {
 	return found
 }
 
-// Plugin match result with score
-PluginMatch :: struct {
-	plugin: ^PluginMetadata,
-	score:  int,
-}
-
 // Find plugin in JSON config by EXACT name (or exact display name).
-// Never prompts and never fuzzy-matches: this is the lookup used for
-// identity checks ("already installed", dependency resolution, loader
-// generation, removal, TUI). User-facing CLI commands that want typo
-// tolerance call find_plugin_json_fuzzy instead.
+// Never prompts and never fuzzy-matches. User-facing commands go through
+// find_plugin_or_exit, which adds the "did you mean" miss report.
 find_plugin_json :: proc(config: ^PluginConfigJSON, name: string) -> (^PluginMetadata, bool) {
 	for &plugin in config.plugins {
 		if plugin.name == name {
@@ -418,175 +409,31 @@ find_plugin_json :: proc(config: ^PluginConfigJSON, name: string) -> (^PluginMet
 	return nil, false
 }
 
-// Collect fuzzy candidates (score >= 50), best first. Allocated in temp.
-plugin_fuzzy_candidates :: proc(config: ^PluginConfigJSON, name: string) -> [dynamic]PluginMatch {
-	matches := make([dynamic]PluginMatch, allocator = context.temp_allocator)
-
-	for &plugin in config.plugins {
-		score := fuzzy_match_score(plugin.name, name)
-		if plugin.display_name != "" && plugin.display_name != plugin.name {
-			dn_score := fuzzy_match_score(plugin.display_name, name)
-			if dn_score > score {
-				score = dn_score
-			}
-		}
-		if score >= 50 {
-			append(&matches, PluginMatch{plugin = &plugin, score = score})
-		}
-	}
-
-	slice.stable_sort_by(matches[:], proc(a, b: PluginMatch) -> bool {
-		return a.score > b.score
-	})
-	return matches
-}
-
-// Print up to 3 "did you mean" suggestions to stderr. Returns true when at
-// least one suggestion was printed.
-print_plugin_suggestions :: proc(config: ^PluginConfigJSON, name: string) -> bool {
-	matches := plugin_fuzzy_candidates(config, name)
-	if len(matches) == 0 {
-		return false
-	}
-	fmt.eprintln("Did you mean:")
-	for i in 0..<min(len(matches), 3) {
-		fmt.eprintfln("  %s", matches[i].plugin.name)
-	}
-	return true
-}
-
-// Find plugin by name with fuzzy fallback (CLI convenience lookup).
-// Exact match wins. Otherwise a single/clearly-best fuzzy match is returned.
-// With several close matches, an interactive selection is shown ONLY when
-// stdin is a terminal; otherwise the candidates are listed on stderr and the
-// lookup fails (never blocks on stdin in scripts/pipes).
-find_plugin_json_fuzzy :: proc(config: ^PluginConfigJSON, name: string) -> (^PluginMetadata, bool) {
+// Exact lookup for every CLI plugin subcommand that takes a name (update,
+// enable, disable, priority, get, rm). Same contract as `const get`: a miss
+// never acts on a fuzzy guess (`plugin disable rig` used to disable
+// `origin`); it prints the error plus up to GET_SUGGESTION_LIMIT similar
+// plugin names on stderr, nothing on stdout, and exits EXIT_DATAERR.
+find_plugin_or_exit :: proc(config: ^PluginConfigJSON, name: string) -> ^PluginMetadata {
 	if p, ok := find_plugin_json(config, name); ok {
-		return p, true
+		return p
 	}
-
-	matches := plugin_fuzzy_candidates(config, name)
-
-	if len(matches) == 0 {
-		return nil, false
-	}
-
-	// If only one match, return it directly
-	if len(matches) == 1 {
-		return matches[0].plugin, true
-	}
-
-	// If best match has significantly higher score (20+ points), use it
-	if matches[0].score >= matches[1].score + 20 {
-		return matches[0].plugin, true
-	}
-
-	num_options := min(len(matches), 3)
-
-	if !os.is_tty(os.stdin) {
-		fmt.eprintfln("Ambiguous plugin name '%s'. Candidates:", name)
-		for i in 0..<num_options {
-			fmt.eprintfln("  %s", matches[i].plugin.name)
-		}
-		return nil, false
-	}
-
-	// Multiple close matches - show selection menu (max 3 options)
-	fmt.println()
-	fmt.printfln("%sMultiple matches found for '%s':%s", BOLD, name, RESET)
-	fmt.println()
-
-	for i in 0..<num_options {
-		marker := "  "
-		if i == 0 {
-			marker = "→ "  // Preselected option
-		}
-
-		status_icon := "○"
-		if matches[i].plugin.enabled {
-			status_icon = "✓"
-		}
-
-		score_str := ""
-		if matches[i].score < 100 {
-			score_str = fmt.tprintf(" (%d%% match)", matches[i].score)
-		}
-
-		fmt.printfln("%s%d. %s %s%s%s%s",
-			marker, i + 1, status_icon, matches[i].plugin.name,
-			RESET, score_str, get_muted())
-	}
-
-	fmt.println()
-	fmt.printf("Select option [1-%d, Enter for 1]: ", num_options)
-
-	// Read user input
-	input_buf: [8]byte
-	n, _ := os.read(os.stdin, input_buf[:])
-
-	selection := 1  // Default to first (preselected)
-	if n > 1 {
-		input_str := strings.trim_space(string(input_buf[:n]))
-		if parsed, ok := strconv.parse_int(input_str); ok && parsed >= 1 && parsed <= num_options {
-			selection = parsed
-		}
-	}
-
-	fmt.printfln("%sSelected: %s%s", get_success(), matches[selection - 1].plugin.name, RESET)
-	fmt.println()
-
-	return matches[selection - 1].plugin, true
+	exit_plugin_not_found(config, name)
 }
 
-// Simple fuzzy match score (0-100+)
-fuzzy_match_score :: proc(text: string, query: string) -> int {
-	if len(query) == 0 {
-		return 0
+exit_plugin_not_found :: proc(config: ^PluginConfigJSON, query: string) -> ! {
+	names := make([dynamic]string, 0, len(config.plugins), context.temp_allocator)
+	for plugin in config.plugins {
+		if plugin.name != "" { append(&names, plugin.name) }
 	}
-	if len(text) == 0 {
-		return 0
+	print_error_simple("Plugin not found: %s", query)
+	suggestions := suggest_similar_names(query, names[:], GET_SUGGESTION_LIMIT, context.temp_allocator)
+	if len(suggestions) > 0 {
+		fmt.eprintln("Did you mean:")
+		for name in suggestions { fmt.eprintfln("  %s", name) }
 	}
-	
-	text_lower := strings.to_lower(text)
-	defer delete(text_lower)
-	query_lower := strings.to_lower(query)
-	defer delete(query_lower)
-	
-	// Exact match = 100
-	if text_lower == query_lower {
-		return 100
-	}
-	
-	// Starts with = 90
-	if strings.has_prefix(text_lower, query_lower) {
-		return 90
-	}
-	
-	// Contains = 70
-	if strings.contains(text_lower, query_lower) {
-		return 70
-	}
-	
-	// Fuzzy match - all characters in order
-	score := 0
-	text_idx := 0
-	for query_char in query_lower {
-		for text_idx < len(text_lower) {
-			if rune(text_lower[text_idx]) == query_char {
-				score += 10
-				text_idx += 1
-				break
-			}
-			text_idx += 1
-		}
-	}
-	
-	// Normalize by query length
-	if score > 0 {
-		return score * 10 / len(query)
-	}
-	
-	return 0
+	fmt.eprintln("Run 'wayu plugin list' to see installed plugins")
+	os.exit(EXIT_DATAERR)
 }
 
 // Validate that all of a plugin's dependencies are installed

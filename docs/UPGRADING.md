@@ -37,6 +37,12 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   finds its row. The detail overlay (Enter) follows the same toggle.
 
 **Plugins (review fixes)**
+- `plugin update|enable|disable|priority|get|rm NAME` match the exact plugin
+  name (or display name) only, like `const get`. A miss prints nothing on
+  stdout, lists up to 5 similar plugin names on stderr and exits `65`; it
+  never acts on a fuzzy guess (`plugin disable rig` used to disable `origin`)
+  and never prompts. `plugin rm` of an unknown name now exits `65` too (it
+  exited `0` "already removed" when nothing was similar).
 - `plugin update` no longer resets a checkout whose HEAD has commits that
   were never on the remote: when it cannot fast-forward, the update fails
   (exit `74`) instead of discarding those commits. Push/rebase them or

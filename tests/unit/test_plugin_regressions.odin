@@ -242,12 +242,25 @@ test_find_plugin_json_is_exact :: proc(t: ^testing.T) {
 	p, found2 := wayu.find_plugin_json(&config, "forgit")
 	testing.expect(t, found2 && p.name == "forgit", "exact match works")
 
-	// Ambiguous fuzzy lookup with non-TTY stdin (test runner) must not block.
-	_, found3 := wayu.find_plugin_json_fuzzy(&config, "zsh-auto")
-	testing.expect(t, !found3, "ambiguous fuzzy lookup fails instead of prompting")
+	// No fuzzy resolution anywhere: a unique near-miss still fails.
+	_, found3 := wayu.find_plugin_json(&config, "forgi")
+	testing.expect(t, !found3, "'forgi' must not resolve to 'forgit'")
+}
 
-	p4, found4 := wayu.find_plugin_json_fuzzy(&config, "forgi")
-	testing.expect(t, found4 && p4.name == "forgit", "unique fuzzy match still resolves")
+// CLI misses (update/enable/disable/priority/get/rm) only *suggest* names:
+// `plugin disable rig` used to disable `origin`.
+@(test)
+test_plugin_miss_suggests_names_only :: proc(t: ^testing.T) {
+	config := wayu.PluginConfigJSON{plugins = make([dynamic]wayu.PluginMetadata)}
+	defer wayu.cleanup_plugin_config_json(&config)
+	append(&config.plugins, make_owned_plugin("origin", "/tmp/x/origin"))
+
+	_, found := wayu.find_plugin_json(&config, "rig")
+	testing.expect(t, !found, "'rig' must not resolve to 'origin'")
+
+	names := []string{"origin"}
+	suggestions := wayu.suggest_similar_names("rig", names, wayu.GET_SUGGESTION_LIMIT, context.temp_allocator)
+	testing.expect(t, len(suggestions) == 1 && suggestions[0] == "origin", "'origin' suggested for 'rig'")
 }
 
 @(test)

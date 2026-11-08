@@ -217,12 +217,18 @@ handle_plugin_update :: proc(args: []string) {
 	}
 	defer cleanup_plugin_config_json(&config)
 
-	// Handle empty plugin list
-	if len(config.plugins) == 0 {
+	// Handle empty plugin list (a named update falls through to the miss report)
+	if len(config.plugins) == 0 && update_all {
 		print_info("No plugins installed")
 		fmt.println()
 		fmt.println("Run 'wayu plugin add <name>' to install a plugin")
 		return
+	}
+
+	// Exact name only; a miss exits before anything is printed on stdout.
+	plugin_ptr: ^PluginMetadata
+	if !update_all {
+		plugin_ptr = find_plugin_or_exit(&config, args[0])
 	}
 
 	// Display header
@@ -238,18 +244,6 @@ handle_plugin_update :: proc(args: []string) {
 
 	// Update specific plugin
 	if !update_all {
-		plugin_name := args[0]
-
-		// Find plugin (with fuzzy fallback)
-		plugin_ptr, found := find_plugin_json_fuzzy(&config, plugin_name)
-		
-		if !found {
-			print_error_simple("Plugin '%s' not found", plugin_name)
-			fmt.println()
-			fmt.println("Run 'wayu plugin list' to see installed plugins")
-			os.exit(EXIT_DATAERR)
-		}
-
 		if pinned, ref := plugin_pinned_ref(plugin_ptr); pinned {
 			print_info("Plugin '%s' is pinned to %s — not updating", plugin_ptr.name, ref)
 			fmt.println("Unpin it in plugins.json to follow a branch again")
@@ -445,18 +439,10 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		os.exit(EXIT_CONFIG)
 	}
 
-	// 3. Find plugin by name (with fuzzy fallback)
-	plugin_ptr, found := find_plugin_json_fuzzy(&config, plugin_name)
-	
-	if !found {
-		cleanup_plugin_config_json(&config)
-		print_error_simple("Plugin '%s' not found", plugin_name)
-		fmt.println()
-		fmt.println("Run 'wayu plugin list' to see installed plugins")
-		os.exit(EXIT_DATAERR)
-	}
+	// 3. Find plugin by exact name (miss: suggestions on stderr, exit 65)
+	plugin_ptr := find_plugin_or_exit(&config, plugin_name)
 
-	// Messages use the resolved name (the arg may have been a fuzzy query).
+	// Messages use the canonical name (the arg may have matched display_name).
 	// Cloned because config is freed before the final messages (proc always exits).
 	plugin_name = strings.clone(plugin_ptr.name)
 
@@ -589,14 +575,10 @@ handle_plugin_priority :: proc(args: []string) {
 	}
 	defer cleanup_plugin_config_json(&config)
 
-	// 4. Find plugin
-	plugin, found := find_plugin_json_fuzzy(&config, plugin_name)
-	if !found {
-		print_error_simple("Plugin '%s' not found", plugin_name)
-		fmt.println()
-		fmt.println("Use 'wayu plugin list' to see installed plugins")
-		os.exit(EXIT_DATAERR)
-	}
+	// 4. Find plugin by exact name (miss: suggestions on stderr, exit 65).
+	// Messages use the canonical name (the arg may have matched display_name).
+	plugin := find_plugin_or_exit(&config, plugin_name)
+	plugin_name = plugin.name
 
 	if wayu.dry_run {
 		print_info("[DRY RUN] Would set priority of '%s' to %d (current: %d)",
@@ -1048,7 +1030,8 @@ handle_plugin_remove :: proc(args: []string) {
 	}
 	defer cleanup_plugin_config_json(&config)
 
-	if len(config.plugins) == 0 {
+	// A named rm on an empty list falls through to the miss report (exit 65).
+	if len(config.plugins) == 0 && len(args) == 0 {
 		print_info("No plugins installed")
 		return
 	}
@@ -1070,16 +1053,8 @@ handle_plugin_remove :: proc(args: []string) {
 	arg_name := args[0]
 
 	// Exact match only: removal is destructive, so a fuzzy guess must never
-	// pick the target. Offer suggestions instead.
-	plugin_ptr, found := find_plugin_json(&config, arg_name)
-	if !found {
-		if print_plugin_suggestions(&config, arg_name) {
-			print_error_simple("Plugin '%s' not found", arg_name)
-			os.exit(EXIT_DATAERR)
-		}
-		print_info("Plugin '%s' not found (already removed)", arg_name)
-		os.exit(EXIT_SUCCESS)
-	}
+	// pick the target (miss: suggestions on stderr, exit 65).
+	plugin_ptr := find_plugin_or_exit(&config, arg_name)
 
 	// From here on use the canonical name (arg may have matched display_name).
 	// Cloned: the config entry is freed before the final message.
@@ -1233,13 +1208,8 @@ handle_plugin_get :: proc(args: []string) {
 	}
 	defer cleanup_plugin_config_json(&config)
 
-	// Find plugin
-	plugin_ptr, found := find_plugin_json_fuzzy(&config, plugin_name)
-	if !found {
-		print_error_simple("Plugin '%s' not found", plugin_name)
-		fmt.println("\nRun 'wayu plugin list' to see installed plugins")
-		os.exit(EXIT_DATAERR)
-	}
+	// Find plugin by exact name (miss: suggestions on stderr, exit 65)
+	plugin_ptr := find_plugin_or_exit(&config, plugin_name)
 
 	// Display plugin information
 	print_header("Plugin Information", EMOJI_COMMAND)
