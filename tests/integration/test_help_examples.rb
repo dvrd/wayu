@@ -2,7 +2,7 @@
 # Help and docs must match behavior (OKAMI-269).
 #
 # Every `wayu …` example printed by `wayu help`, by each command's --help, and
-# written in README.md must parse: it may fail for lack of state (exit
+# written in README.md / docs/cli.md must parse: it may fail for lack of state (exit
 # 65/66/78, …) but never with a usage error (exit 64), unless its comment
 # documents the exit code ("# exit 65"), which must then match. A comment that
 # names an entry ("# matches OPENAI_API_KEY") or calls the match an acronym
@@ -28,10 +28,14 @@ class HelpExamplesIntegrationTest
   PLACEHOLDER = /[<>\[\]|…]|\.\.\./.freeze
   SEARCH_WORDS = %w[search find f].freeze
 
-  # README inline-code mentions that name a command in prose rather than show
-  # a complete invocation.
-  README_INLINE_REFERENCES = [
+  # Markdown docs whose examples are checked.
+  DOCS = %w[README.md docs/cli.md].freeze
+
+  # Inline-code mentions that name a command in prose rather than show a
+  # complete invocation.
+  DOC_INLINE_REFERENCES = [
     'wayu function add', # "wayu function add seeds a skeleton …" (needs NAME)
+    'wayu vX.Y.Z',       # what --version prints
   ].freeze
 
   def initialize
@@ -53,7 +57,7 @@ class HelpExamplesIntegrationTest
       prepare_pristine_home
       @commands = help_commands
       @actions = action_words
-      examples = collect_help_examples + collect_readme_examples
+      examples = collect_help_examples + DOCS.flat_map { |d| collect_doc_examples(d) }
       check('found examples in help and README', examples.count { |e| !e[:synopsis] } > 50,
             "only #{examples.size}")
       examples.uniq { |e| [e[:cmd], e[:comment]] }.each do |e|
@@ -179,21 +183,29 @@ class HelpExamplesIntegrationTest
     end
   end
 
-  def collect_readme_examples
+  # Fenced code lines and inline `wayu …` spans of a Markdown doc. In a table
+  # row "| `wayu …` | 64 |" the number is the documented exit code.
+  def collect_doc_examples(rel)
     examples = []
     in_code = false
-    File.read(File.join(ROOT, 'README.md')).lines.each_with_index do |l, i|
+    File.read(File.join(ROOT, rel)).lines.each_with_index do |l, i|
       if l.start_with?('```')
         in_code = !in_code
         next
       end
-      where = "README.md:#{i + 1}"
+      where = "#{rel}:#{i + 1}"
       if in_code
         examples << example_from_line(l, where)
-      else
-        l.scan(/`(wayu [^`]+)`/).flatten.each do |span|
-          examples << example_from_line(span, where) unless README_INLINE_REFERENCES.include?(span)
-        end
+        next
+      end
+      next if l.start_with?('#') # a heading names the command it documents
+      l.scan(/`(wayu [^`]+)`/).flatten.each do |span|
+        next if DOC_INLINE_REFERENCES.include?(span)
+        e = example_from_line(span, where)
+        next unless e
+        code = l[/\A\|\s*`#{Regexp.escape(span)}`\s*\|\s*(\d+)\s*\|/, 1]
+        e[:comment] = "exit #{code}" if code
+        examples << e
       end
     end
     examples.compact
