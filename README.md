@@ -364,6 +364,34 @@ wayu stores everything under `~/.config/wayu/` — the files you edit and the fi
 
 Shell is detected automatically from `$SHELL`. Override with `--shell bash`, `--shell zsh`, or `--shell fish`.
 
+### PATH changes in open shells and scripts
+
+`wayu path add/rm` (and edits to `[paths]` in `wayu.toml`) reach already-open
+zsh/bash shells at their next prompt: `core.<ext>` installs a prompt hook,
+`_wayu_paths_sync` (zsh `precmd`, bash `PROMPT_COMMAND`), that re-reads
+`path_sync.<ext>` only when the `[paths]` list changed. fish has no live sync
+yet: reload it or `source ~/.config/wayu/init.fish`.
+
+**Scripts** never show a prompt, so the hook never runs. A script that sources
+`init.<ext>` and changes `[paths]` applies the change itself:
+
+```bash
+source "$HOME/.config/wayu/init.bash"   # or init.zsh
+wayu path add "$HOME/tools/bin"
+_wayu_paths_sync                        # PATH now includes ~/tools/bin
+```
+
+A script that did not source `init.<ext>` has no `_wayu_paths_sync`; extend
+`PATH` yourself (`PATH="$HOME/tools/bin:$PATH"`) — `wayu`, a child process,
+cannot change its caller's environment.
+
+**bash and `PROMPT_COMMAND`:** wayu prepends `_wayu_paths_sync` to
+`PROMPT_COMMAND` when `init.bash` is sourced. A later line that *replaces*
+it (`PROMPT_COMMAND='history -a'`) silently drops the hook. Append instead
+(`PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND;}history -a"` or, in
+bash ≥ 5.1, `PROMPT_COMMAND+=(...)`), or source `init.bash` after it.
+`wayu doctor` warns about such lines in your bash startup files.
+
 ### External Alias Sources
 
 `alias-sources.conf` lets you surface aliases from external tools (e.g. [fabric](https://github.com/danielmiessler/fabric) patterns) in `wayu alias list` as read-only sections.

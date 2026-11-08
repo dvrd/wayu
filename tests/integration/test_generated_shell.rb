@@ -47,6 +47,7 @@ class GeneratedShellTest
       test_compinit_picks_up_new_completions
       test_env_values_and_functions_all_shells
       test_fresh_init_has_no_error_output
+      test_script_path_sync_after_path_add
     ensure
       teardown_test_env
     end
@@ -256,6 +257,30 @@ class GeneratedShellTest
       ok = syntax.empty? && st.success? && err.strip.empty? &&
            lines == [want_env, "fn-#{sh}", 'path-ok']
       check("env #{sh}", ok, "syntax=#{syntax.map { |f| File.basename(f) }} out=#{out.inspect} err=#{err.strip[0, 400]}")
+    end
+  end
+
+  # Scripts never reach a prompt, so the hook never runs (OKAMI-177): the
+  # documented way is to call _wayu_paths_sync after `wayu path add/rm`.
+  def test_script_path_sync_after_path_add
+    %w[zsh bash].each do |sh|
+      print "Test: script picks up 'wayu path add' via _wayu_paths_sync (#{sh})... "
+      home, cfg, env = setup_home("script_sync_#{sh}", sh)
+      dir = "#{home}/scriptbin"
+      FileUtils.mkdir_p(dir)
+      script = <<~SH
+        source '#{cfg}/init.#{sh}'
+        case ":$PATH:" in *':#{dir}:'*) echo early ;; esac
+        '#{@wayu_bin}' path add '#{dir}' >/dev/null 2>&1 || echo add-failed
+        _wayu_paths_sync
+        case ":$PATH:" in *':#{dir}:'*) echo synced ;; esac
+        '#{@wayu_bin}' path rm '#{dir}' >/dev/null 2>&1 || echo rm-failed
+        _wayu_paths_sync
+        case ":$PATH:" in *':#{dir}:'*) echo still-there ;; esac
+      SH
+      out, err, = Open3.capture3(env, sh, *(sh == 'zsh' ? ['-f'] : ['--norc']), '-c', script)
+      check("script sync #{sh}", out.strip == 'synced' && err.strip.empty?,
+            "out=#{out.strip.inspect} err=#{err.strip[0, 300]}")
     end
   end
 
