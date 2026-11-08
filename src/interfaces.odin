@@ -11,28 +11,12 @@ import "core:strings"
 // TOML CONFIGURATION SYSTEM
 // ============================================================================
 
+// wayu.toml (hand-edited settings). PATH entries, aliases and constants are
+// not here: they live in the entry store (entries.odin).
 TomlConfig :: struct {
     version:   string,                      // "1.0"
     shell:     string,                      // "zsh", "bash", "fish"
-
-    path:      TomlPathConfig,
-    aliases:   []TomlAlias,
-    constants: []TomlConstant,
     settings:  WayuSettings,
-}
-
-TomlPathConfig :: struct {
-    entries:   []string,           // PATH entries, file order
-}
-
-TomlAlias :: struct {
-    name:        string,
-    command:     string,
-}
-
-TomlConstant :: struct {
-    name:        string,
-    value:       string,
 }
 
 WayuSettings :: struct {

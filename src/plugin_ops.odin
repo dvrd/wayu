@@ -1287,7 +1287,7 @@ detect_conflicts :: proc(config: ^PluginConfigJSON) {
 }
 
 // One name two definitions share (OKAMI-276). `other` is another enabled
-// plugin, or PLUGIN_CONFLICT_WAYU_TOML for the user's own [aliases]/[env].
+// plugin, or PLUGIN_CONFLICT_WAYU for the user's own aliases/constants.
 // `kind`: "function", "alias" or "env".
 PluginConflict :: struct {
 	plugin: string,
@@ -1296,7 +1296,7 @@ PluginConflict :: struct {
 	name:   string,
 }
 
-PLUGIN_CONFLICT_WAYU_TOML :: "wayu.toml"
+PLUGIN_CONFLICT_WAYU :: "entries.json"
 
 // Every conflict between enabled plugins (same function, alias or exported
 // variable) and between an enabled plugin and wayu.toml (a plugin alias or
@@ -1334,24 +1334,22 @@ collect_plugin_conflicts :: proc(config: ^PluginConfigJSON, allocator := context
 		}
 	}
 
-	aliases := read_toml_section_kvs("aliases")
-	defer destroy_toml_kvs(&aliases)
-	env := read_toml_section_kvs("env")
-	defer destroy_toml_kvs(&env)
+	store, _, store_ok := entries_read() // doctor's entries check reports a bad store
+	defer if store_ok { entries_store_destroy(&store) }
 	for &p in config.plugins {
 		if !p.enabled { continue }
-		for kv in aliases {
-			for f in p.conflicts.functions { if f == kv.key { add(&out, p.name, PLUGIN_CONFLICT_WAYU_TOML, "function", f, allocator) } }
-			for al in p.conflicts.aliases_ { if al == kv.key { add(&out, p.name, PLUGIN_CONFLICT_WAYU_TOML, "alias", al, allocator) } }
+		for a in store.aliases {
+			for f in p.conflicts.functions { if f == a.name { add(&out, p.name, PLUGIN_CONFLICT_WAYU, "function", f, allocator) } }
+			for al in p.conflicts.aliases_ { if al == a.name { add(&out, p.name, PLUGIN_CONFLICT_WAYU, "alias", al, allocator) } }
 		}
-		for kv in env {
-			for v in p.conflicts.env_vars { if v == kv.key { add(&out, p.name, PLUGIN_CONFLICT_WAYU_TOML, "env", v, allocator) } }
+		for e in store.env {
+			for v in p.conflicts.env_vars { if v == e.name { add(&out, p.name, PLUGIN_CONFLICT_WAYU, "env", v, allocator) } }
 		}
 	}
 	return out
 }
 
-// "function dup (also in d2)" / "alias gs (also in wayu.toml)": one line
+// "function dup (also in d2)" / "alias gs (also in entries.json)": one line
 // per conflict that involves `plugin`, from that plugin's point of view.
 // Temp-allocated.
 plugin_conflict_lines :: proc(conflicts: []PluginConflict, plugin: string) -> []string {

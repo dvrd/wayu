@@ -68,8 +68,8 @@ handle_search_command :: proc(args: []string) {
 		delete(all_results)
 	}
 
-	// Search PATH entries from TOML
-	path_entries_toml := read_toml_path_entries()
+	// Search PATH entries
+	path_entries_toml := read_path_config_entries()
 	defer {
 		for entry in path_entries_toml {
 			delete(entry.name)
@@ -96,8 +96,8 @@ handle_search_command :: proc(args: []string) {
 		})
 	}
 
-	// Search aliases from TOML
-	alias_entries_toml := read_toml_alias_entries()
+	// Search aliases
+	alias_entries_toml := read_alias_entries()
 	defer {
 		for entry in alias_entries_toml {
 			delete(entry.name)
@@ -125,8 +125,8 @@ handle_search_command :: proc(args: []string) {
 		})
 	}
 
-	// Search constants from TOML
-	const_entries_toml := read_wayu_toml_constants()
+	// Search constants
+	const_entries_toml := read_env_entries()
 	defer {
 		for entry in const_entries_toml {
 			delete(entry.name)

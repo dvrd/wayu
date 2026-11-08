@@ -258,6 +258,7 @@ print_watch_help :: proc() {
 	fmt.println()
 	fmt.println("The watcher monitors:")
 	fmt.println("  • wayu.toml")
+	fmt.println("  • entries.json (PATH entries, aliases, constants)")
 	fmt.println()
 	fmt.println("Changes are debounced (500ms) before triggering regeneration.")
 }
@@ -400,8 +401,9 @@ check_file_changes :: proc() -> []string {
 // ============================================================================
 
 // Regenerate the shell init files (core + path_sync + plugin runtime)
-// from wayu.toml. These are the files init.<ext> actually sources, so a hot
-// reload is picked up by the next shell (or `source ~/.config/wayu/init.<ext>`).
+// from wayu.toml and entries.json. These are the files init.<ext> actually
+// sources, so a hot reload is picked up by the next shell (or by sourcing
+// <data>/init.<ext> again).
 // The old implementation wrote an orphaned wayu_static.<ext> that nothing
 // sourced and crashed on missing/malformed TOML.
 regenerate_static :: proc() {
@@ -551,12 +553,13 @@ stop_existing_watcher :: proc(pid: int) {
 get_default_watch_paths :: proc() -> []string {
 	paths := make([dynamic]string)
 
-	// Main TOML config
-	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	if os.exists(toml_path) {
-		append(&paths, toml_path)
-	} else {
-		delete(toml_path)
+	// Main TOML config + the entry store
+	for p in ([]string{fmt.aprintf("%s/wayu.toml", wayu.config), entries_file_path(context.allocator)}) {
+		if os.exists(p) {
+			append(&paths, p)
+		} else {
+			delete(p)
+		}
 	}
 
 	result := make([]string, len(paths))

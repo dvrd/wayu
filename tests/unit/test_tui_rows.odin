@@ -73,13 +73,11 @@ test_tui_load_constants_lists_each_env_var_once :: proc(t: ^testing.T) {
 	os.make_directory(dir)
 	defer os.remove_all(dir)
 
-	toml_path := fmt.tprintf("%s/%s", dir, wayu.WAYU_TOML)
-	content := "[env]\nWAYU_TUI_ROWS_MANAGED = \"1\"\n"
-	testing.expect(t, os.write_entire_file(toml_path, transmute([]byte)content) == nil)
+	write_entries_json(t, dir, `{"version": 1, "env": [{"name": "WAYU_TUI_ROWS_MANAGED", "value": "1"}]}`)
 
-	original_config := wayu.wayu.config
-	wayu.wayu.config = dir
-	defer wayu.wayu.config = original_config
+	original_config, original_data := wayu.wayu.config, wayu.wayu.data
+	wayu.wayu.config, wayu.wayu.data = dir, dir
+	defer { wayu.wayu.config, wayu.wayu.data = original_config, original_data }
 
 	state := wayu.tui_state_init()
 	defer wayu.tui_state_destroy(&state)

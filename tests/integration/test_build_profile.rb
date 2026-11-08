@@ -129,7 +129,7 @@ class BuildProfileTest
     # Should pick up at least two of the standard core.zsh section
     # markers (PATH is always there, Aliases appears after our add above).
     has_path = out.include?('PATH')
-    has_aliases = out.match?(/Aliases \(from wayu\.toml/)
+    has_aliases = out.match?(/^\s*\S.*\bAliases\b/)
     if status.success? && has_heading && has_sum && has_path && has_aliases
       puts "✓"; @passed += 1
     else

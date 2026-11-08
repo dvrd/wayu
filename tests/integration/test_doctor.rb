@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Integration tests for `wayu doctor` (PATH check + --fix against wayu.toml,
+# Integration tests for `wayu doctor` (PATH check + --fix against entries.json,
 # TOML validation, shell startup-file detection, --json, exit status,
 # --fix safety, removed --optimize).
 
@@ -33,6 +33,7 @@ class DoctorIntegrationTest
       test_fix_keeps_relative_paths
       test_fix_refuses_repeated_key
       test_toml_check_detects_malformed
+      test_entries_check
       test_commented_source_not_counted
       test_json_output_parses
       test_global_json_flag
@@ -84,26 +85,23 @@ class DoctorIntegrationTest
     out.lines.each_cons(2).find { |a, _| a.include?('shell configuration') }&.join.to_s
   end
 
+  CLEAN_TOML = "[shell]\ntype = \"zsh\"\n".freeze
+
   def write_paths_toml
     @real_dir = "#{@tmp_home}/realdir"
     FileUtils.mkdir_p(@real_dir)
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [paths]
-      real = "#{@real_dir}"
-      gone = "/nonexistent/wayu_doctor_test"
-      again = "#{@real_dir}"
-
-      [aliases]
-      ll = "ls -la"
-    TOML
+    File.write("#{@config_dir}/wayu.toml", CLEAN_TOML)
+    write_entries(paths: { 'real' => @real_dir, 'gone' => '/nonexistent/wayu_doctor_test', 'again' => @real_dir },
+                  aliases: { 'll' => 'ls -la' })
   end
 
   def write_clean_toml
-    File.write("#{@config_dir}/wayu.toml", "[aliases]\nll = \"ls -la\"\n")
+    File.write("#{@config_dir}/wayu.toml", CLEAN_TOML)
+    write_entries(aliases: { 'll' => 'ls -la' })
   end
 
   def test_path_check_reads_wayu_toml
-    print "Test 1: PATH check reads wayu.toml [paths]... "
+    print "Test 1: PATH check reads entries.json... "
     write_paths_toml
     out, _ = run_wayu('doctor --no-color')
     ok = out.include?('3 PATH entries') && out.include?('1 missing') && out.include?('1 duplicates')
@@ -113,92 +111,75 @@ class DoctorIntegrationTest
   def test_fix_requires_yes
     print "Test 2: --fix without --yes exits 64 and changes nothing... "
     write_paths_toml
-    before = File.read("#{@config_dir}/wayu.toml")
+    before = File.read(@entries_file)
     out, status = run_wayu('doctor --fix --no-color')
-    check(status.exitstatus == 64 && File.read("#{@config_dir}/wayu.toml") == before &&
+    check(status.exitstatus == 64 && File.read(@entries_file) == before &&
           out.include?('--yes'), "exit=#{status.exitstatus}\n#{out}")
   end
 
   def test_fix_rewrites_wayu_toml_paths
     print "Test 3: --fix --yes removes missing/duplicate entries with one backup... "
     write_paths_toml
-    before = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*").size
+    before = Dir.glob("#{@data_dir}/backup/entries.json.backup.*").size
     out, _ = run_wayu('doctor --fix --yes --no-color')
-    toml = File.read("#{@config_dir}/wayu.toml")
-    after = Dir.glob("#{@data_dir}/backup/wayu.toml.backup.*").size
-    ok = toml.include?("real = \"#{@real_dir}\"") &&
-         !toml.include?('nonexistent') && !toml.include?('again =') &&
-         toml.include?('ll = "ls -la"') &&
+    after = Dir.glob("#{@data_dir}/backup/entries.json.backup.*").size
+    ok = store_map('paths') == { 'real' => @real_dir } &&
+         store_map('aliases') == { 'll' => 'ls -la' } &&
          after == before + 1 &&
          out.include?('1 PATH entries, all valid')
-    check(ok, "backups #{before}->#{after}\n#{toml}")
+    check(ok, "backups #{before}->#{after}\n#{File.read(@entries_file)}")
   end
 
   def test_fix_dry_run_changes_nothing
-    print "Test 4: --dry-run --fix (no --yes needed) leaves wayu.toml untouched... "
+    print "Test 4: --dry-run --fix (no --yes needed) leaves entries.json untouched... "
     write_paths_toml
-    before = File.read("#{@config_dir}/wayu.toml")
+    before = File.read(@entries_file)
     out, _ = run_wayu('--dry-run doctor --fix --no-color')
-    check(File.read("#{@config_dir}/wayu.toml") == before && out.include?('DRY RUN') &&
+    check(File.read(@entries_file) == before && out.include?('DRY RUN') &&
           out.include?('previewed') && !out.include?('applied successfully'), out)
   end
 
   def test_fix_keeps_variable_paths
-    print "Test 5: --fix keeps entries using wayu.toml [env] or unset variables... "
+    print "Test 5: --fix keeps entries using wayu constants or unset variables... "
     tools = "#{@tmp_home}/mytools"
     FileUtils.mkdir_p("#{tools}/bin")
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [paths]
-      mytools = "$MYTOOLS/bin"
-      braced = "${MYTOOLS}"
-      later = "$WAYU_DOCTOR_TEST_UNSET/bin"
-      gone = "/nonexistent/wayu_doctor_test"
-
-      [env]
-      MYTOOLS = "#{tools}"
-    TOML
+    write_entries(paths: { 'mytools' => '$MYTOOLS/bin', 'braced' => '${MYTOOLS}',
+                           'later' => '$WAYU_DOCTOR_TEST_UNSET/bin', 'gone' => '/nonexistent/wayu_doctor_test' },
+                  env: { 'MYTOOLS' => tools })
     out, _, _ = run_wayu_env({ 'MYTOOLS' => nil, 'WAYU_DOCTOR_TEST_UNSET' => nil },
                              'doctor --fix --yes --no-color')
-    toml = File.read("#{@config_dir}/wayu.toml")
-    ok = toml.include?('mytools = "$MYTOOLS/bin"') && toml.include?('braced = ') &&
-         toml.include?('later = ') && !toml.include?('gone =') &&
+    paths = store_map('paths')
+    ok = paths == { 'mytools' => '$MYTOOLS/bin', 'braced' => '${MYTOOLS}', 'later' => '$WAYU_DOCTOR_TEST_UNSET/bin' } &&
          out.include?('1 missing') && out.include?('unset variables')
-    check(ok, "#{out.lines.grep(/PATH|Removed|- /).join}\n#{toml}")
+    check(ok, "#{out.lines.grep(/PATH|Removed|- /).join}\n#{paths}")
   end
 
   # A relative entry resolves against the shell's cwd; doctor's cwd says
   # nothing about it, so --fix must not delete it as "missing".
   def test_fix_keeps_relative_paths
     print "Test 5b: --fix keeps relative entries (cwd-dependent)... "
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [paths]
-      nm = "./wayu_doctor_rel_test/.bin"
-      bare = "wayu_doctor_rel_test/bin"
-      gone = "/nonexistent/wayu_doctor_test"
-    TOML
+    write_entries(paths: { 'nm' => './wayu_doctor_rel_test/.bin', 'bare' => 'wayu_doctor_rel_test/bin',
+                           'gone' => '/nonexistent/wayu_doctor_test' })
     out, _ = run_wayu('doctor --fix --yes --no-color')
-    toml = File.read("#{@config_dir}/wayu.toml")
-    ok = toml.include?('nm = ') && toml.include?('bare = ') && !toml.include?('gone =') &&
+    paths = store_map('paths')
+    ok = paths.keys == %w[nm bare] &&
          out.include?('1 missing') && out.include?('relative paths')
-    check(ok, "#{out.lines.grep(/PATH|Removed|- /).join}\n#{toml}")
+    check(ok, "#{out.lines.grep(/PATH|Removed|- /).join}\n#{paths}")
   end
 
-  # A repeated [paths] key: the duplicate's deletion removed every line of
-  # the key, survivor included. --fix must refuse (78) and change nothing.
+  # A repeated PATH key: the duplicate's deletion removed every entry of
+  # the key, survivor included. The store reader refuses the file, so --fix
+  # exits 78 and changes nothing.
   def test_fix_refuses_repeated_key
-    print "Test 5c: --fix refuses a repeated [paths] key, changes nothing... "
+    print "Test 5c: --fix refuses a repeated PATH key, changes nothing... "
     dir = "#{@tmp_home}/dupkey"
     FileUtils.mkdir_p(dir)
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [paths]
-      a = "#{dir}"
-      a = "#{dir}"
-    TOML
-    before = File.read("#{@config_dir}/wayu.toml")
+    File.write(@entries_file, %({"version": 1, "paths": [{"key": "a", "dir": "#{dir}"}, {"key": "a", "dir": "#{dir}"}]}\n))
+    before = File.read(@entries_file)
     out, status = run_wayu('doctor --fix --yes --no-color')
-    after = File.read("#{@config_dir}/wayu.toml")
-    check(status.exitstatus == 78 && after == before && out.include?("key 'a'"),
-          "exit=#{status.exitstatus}\n#{out.lines.grep(/PATH|key|Removed/).join}\n#{after}")
+    after = File.read(@entries_file)
+    check(status.exitstatus == 78 && after == before && out.include?('"a" appears twice'),
+          "exit=#{status.exitstatus}\n#{out.lines.grep(/PATH|key|twice|entries/).join}\n#{after}")
   end
 
   def test_toml_check_detects_malformed
@@ -210,10 +191,30 @@ class DoctorIntegrationTest
     check(out.include?('malformed'), out.lines.grep(/TOML/).join)
   end
 
+  # The entries check: malformed entries.json and [paths]/[aliases]/[env]
+  # left in wayu.toml are errors (exit 78) that say what to do.
+  def test_entries_check
+    print "Test 6b: malformed entries.json / tables left in wayu.toml are errors... "
+    write_clean_toml
+    good = File.read(@entries_file)
+    File.write(@entries_file, %({"version": 1, "aliases": [\n))
+    bad_out, bad_status = run_wayu('--shell zsh doctor --no-color')
+    File.write(@entries_file, good)
+    File.write("#{@config_dir}/wayu.toml", CLEAN_TOML + "\n[aliases]\nll = \"ls -la\"\n")
+    moved_out, moved_status = run_wayu('--shell zsh doctor --no-color')
+    write_clean_toml
+    ok_out, = run_wayu('--shell zsh doctor --no-color')
+    ok = bad_status.exitstatus == 78 && bad_out.include?(@entries_file) &&
+         moved_status.exitstatus == 78 && moved_out.include?("'wayu alias add'") &&
+         ok_out.include?('0 PATH entries, 1 aliases, 0 constants')
+    check(ok, "bad=#{bad_status.exitstatus} moved=#{moved_status.exitstatus}\n" \
+              "#{(bad_out + moved_out + ok_out).lines.grep(/entries|TOML|alias/).join}")
+  end
+
   def test_commented_source_not_counted
     print "Test 7: commented-out source line is not 'wayu sourced'... "
     reset_rc_files
-    File.write("#{@tmp_home}/.zshrc", "# source \"$HOME/.config/wayu/init.zsh\"\n")
+    File.write("#{@tmp_home}/.zshrc", "# source \"$HOME/.local/share/wayu/init.zsh\"\n")
     out, _ = run_wayu('--shell zsh doctor --no-color')
     check(out.include?('wayu not sourced'), shell_line(out))
   end
@@ -248,7 +249,7 @@ class DoctorIntegrationTest
     print "Test 11: exit 0 when no check reports an error... "
     reset_rc_files
     write_clean_toml
-    File.write("#{@tmp_home}/.zshrc", "source \"$HOME/.config/wayu/init.zsh\"\n")
+    File.write("#{@tmp_home}/.zshrc", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
     out, status = run_wayu('--shell zsh doctor --no-color')
     check(status.exitstatus == 0 && out.include?('0 errors'), "exit=#{status.exitstatus}\n#{out}")
   end
@@ -267,7 +268,7 @@ class DoctorIntegrationTest
     print "Test 13: bash source line in ~/.bash_profile (where init writes) counts... "
     reset_rc_files
     File.write("#{@tmp_home}/.bashrc", "# interactive bits\n")
-    File.write("#{@tmp_home}/.bash_profile", "source \"$HOME/.config/wayu/init.bash\"\n")
+    File.write("#{@tmp_home}/.bash_profile", "source \"$HOME/.local/share/wayu/init.bash\"\n")
     out, _ = run_wayu('--shell bash doctor --no-color')
     ok = shell_line(out).include?('wayu sourced in ~/.bash_profile') && !out.include?('.zshrc')
     check(ok, shell_line(out))
@@ -278,12 +279,12 @@ class DoctorIntegrationTest
   def test_bash_prompt_command_overwrite
     print "Test 13b: bash rc replacing PROMPT_COMMAND after wayu is a warning... "
     reset_rc_files
-    File.write("#{@tmp_home}/.bashrc", "source \"$HOME/.config/wayu/init.bash\"\n" \
+    File.write("#{@tmp_home}/.bashrc", "source \"$HOME/.local/share/wayu/init.bash\"\n" \
                                        "PROMPT_COMMAND='history -a'\n" \
                                        "PROMPT_COMMAND=\"${PROMPT_COMMAND:+$PROMPT_COMMAND;}x\"\n")
     out, status = run_wayu('--shell bash doctor --no-color')
     warn = out.lines.each_cons(2).find { |a, _| a.include?('PROMPT_COMMAND') }&.join.to_s
-    File.write("#{@tmp_home}/.bashrc", "source \"$HOME/.config/wayu/init.bash\"\nPROMPT_COMMAND+=';x'\n")
+    File.write("#{@tmp_home}/.bashrc", "source \"$HOME/.local/share/wayu/init.bash\"\nPROMPT_COMMAND+=';x'\n")
     clean, = run_wayu('--shell bash doctor --no-color')
     zsh, = run_wayu('--shell zsh doctor --no-color')
     ok = warn.include?('~/.bashrc:2') && !warn.include?('~/.bashrc:3') &&
@@ -295,7 +296,7 @@ class DoctorIntegrationTest
     print "Test 14: $ZDOTDIR/.zshrc is scanned when ZDOTDIR is set... "
     reset_rc_files
     FileUtils.mkdir_p("#{@tmp_home}/.zsh")
-    File.write("#{@tmp_home}/.zsh/.zshrc", "source \"$HOME/.config/wayu/init.zsh\"\n")
+    File.write("#{@tmp_home}/.zsh/.zshrc", "source \"$HOME/.local/share/wayu/init.zsh\"\n")
     out, _, _ = run_wayu_env({ 'ZDOTDIR' => "#{@tmp_home}/.zsh" }, '--shell zsh doctor --no-color')
     check(shell_line(out).include?('wayu sourced in ~/.zsh/.zshrc'), shell_line(out))
   end
@@ -304,7 +305,7 @@ class DoctorIntegrationTest
     print "Test 15: source line in ~/.zshenv counts even with a ~/.zshrc... "
     reset_rc_files
     File.write("#{@tmp_home}/.zshrc", "# prompt stuff\n")
-    File.write("#{@tmp_home}/.zshenv", "source ~/.config/wayu/init.zsh\n")
+    File.write("#{@tmp_home}/.zshenv", "source ~/.local/share/wayu/init.zsh\n")
     out, _ = run_wayu('--shell zsh doctor --no-color')
     check(shell_line(out).include?('wayu sourced in ~/.zshenv'), shell_line(out))
   end
@@ -335,7 +336,7 @@ class DoctorIntegrationTest
   def test_turbo_not_fixable_or_generated
     print "Test 18: missing turbo.zsh is not fixable and --fix never generates it... "
     reset_rc_files
-    File.write("#{@tmp_home}/.zshrc", "source \"$HOME/.config/wayu/init.zsh\"\n")
+    File.write("#{@tmp_home}/.zshrc", "source \"$HOME/.local/share/wayu/init.zsh\"\n")
     FileUtils.rm_f("#{@data_dir}/turbo.zsh")
     jout, _, _ = run_wayu_env({}, '--shell zsh doctor --json')
     turbo = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'turbo export' } rescue nil)

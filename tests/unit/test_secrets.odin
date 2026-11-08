@@ -44,24 +44,6 @@ test_mask_secret_value :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_mask_toml_env_section :: proc(t: ^testing.T) {
-	content := "[shell]\ntype = \"zsh\"\n\n[aliases]\nkey = \"echo aliasval\"\n\n[env]\nEDITOR = \"nvim\"\nAPI_TOKEN = \"fake-tok-123\"\n"
-	masked := wayu.mask_toml_env_section(content)
-	defer delete(masked)
-	testing.expect(t, !strings.contains(masked, "fake-tok-123"), "secret [env] value must be masked")
-	testing.expect(t, strings.contains(masked, "API_TOKEN = \"********\""))
-	testing.expect(t, strings.contains(masked, "EDITOR = \"nvim\""), "non-secret value kept")
-	testing.expect(t, strings.contains(masked, "key = \"echo aliasval\""), "only [env] is masked")
-
-	multi := "[env]\nBLOB = \"\"\"\nfake-line-1\nfake-line-2\"\"\"\nEDITOR = \"vim\"\n"
-	masked_multi := wayu.mask_toml_env_section(multi)
-	defer delete(masked_multi)
-	testing.expect(t, !strings.contains(masked_multi, "fake-line"), "multi-line [env] body must be dropped")
-	testing.expect(t, strings.contains(masked_multi, "BLOB = \"********\""))
-	testing.expect(t, strings.contains(masked_multi, "EDITOR = \"vim\""), "lines after the block are kept")
-}
-
-@(test)
 test_suggest_similar_names_names_only :: proc(t: ^testing.T) {
 	names := []string{"EDITOR", "FIREWORKS_AI_API_KEY", "FIREFOX_PROFILE", "LANG"}
 	got := wayu.suggest_similar_names("FIRE", names, 5)
@@ -109,7 +91,7 @@ test_backup_is_owner_only :: proc(t: ^testing.T) {
 
 // ---------------------------------------------------------------------------
 // List views mask secret-looking values unless revealed (`const list`,
-// `toml show`, TUI constants view). Values below are fake.
+// TUI constants view). Values below are fake.
 // ---------------------------------------------------------------------------
 
 @(test)
@@ -132,7 +114,7 @@ test_parse_args_reveal_flag :: proc(t: ^testing.T) {
 		{{"const", "list", "--reveal"}, "", true, .LIST},
 		{{"--reveal", "const", "list", "--full"}, "", true, .LIST},
 		{{"const", "--reveal", "list"}, "", true, .LIST},
-		{{"toml", "show", "--reveal"}, "", true, .GET},
+		{{"toml", "show", "--reveal"}, "--reveal", false, .GET},
 		{{"const", "list"}, "", false, .LIST},
 		{{"path", "list", "--reveal"}, "--reveal", false, .LIST},
 		{{"alias", "list", "--reveal"}, "--reveal", false, .LIST},
@@ -147,18 +129,6 @@ test_parse_args_reveal_flag :: proc(t: ^testing.T) {
 		}
 		if len(parsed.args) > 0 do delete(parsed.args)
 	}
-}
-
-@(test)
-test_mask_toml_env_section_for_toml_show :: proc(t: ^testing.T) {
-	doc := "[aliases]\nll = \"ls -la\"\n\n[env]\nEDITOR = \"vim\"\nFAKE_API_KEY = \"fake-key-0001\"\n"
-	out := wayu.mask_toml_env_section(doc)
-	defer delete(out)
-	testing.expect(t, !strings.contains(out, "fake-key-0001"), "secret value must be masked")
-	testing.expect(t, strings.contains(out, `FAKE_API_KEY = "********"`), out)
-	testing.expect(t, strings.contains(out, `EDITOR = "vim"`), out)
-	testing.expect(t, strings.contains(out, `ll = "ls -la"`), out)
-	testing.expect(t, strings.has_suffix(out, "\"vim\"\n") || strings.has_suffix(out, "\"********\"\n"), "trailing newline kept")
 }
 
 // Render the current view into a screen and return its text (caller deletes).

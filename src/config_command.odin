@@ -29,7 +29,7 @@ handle_config_extra_command :: proc(action: Action, args: []string) {
 		defer delete(toml_file)
 		edit_toml_config(toml_file)
 		// Apply the edit: regenerate init files for every initialized shell
-		// (open shells pick up [paths] at their next prompt via path_sync).
+		// (open shells pick up PATH changes at their next prompt via path_sync).
 		regenerate_init_core_silently()
 	case .CHECK: // scan/detect
 		has_fix, has_dry_run, has_yes := extract_scan_flags(args)
@@ -352,7 +352,8 @@ print_config_usage :: proc() {
 	fmt.println("  scan, s, detect          Detect scripts in .zshrc for migration")
 	fmt.println()
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
-	fmt.println("  wayu.toml: Declarative configuration (PATH, aliases, constants)")
+	fmt.println("  wayu.toml: Settings ([shell], [settings], [tools], [prompt]); PATH entries,")
+	fmt.println("             aliases and constants are managed with wayu path/alias/const")
 	fmt.println("  extra.<ext>: Shell scripts that run at end of initialization")
 	fmt.println("               Use for conda init, tool evals, custom functions, etc.")
 	fmt.println()

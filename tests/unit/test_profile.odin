@@ -27,13 +27,13 @@ test_profile_core_units_split_tools_and_plugins :: proc(t: ^testing.T) {
 		"# beta (priority: 200, template: source)\nif [ -f '/p/beta.zsh' ]; then\n    source '/p/beta.zsh'\nfi\n\n# End of plugin loading\n"
 	testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/plugins.zsh", tmp), transmute([]byte)plugins))
 
-	core := fmt.tprintf("#!/usr/bin/env zsh\n# core.zsh\n\n# === Environment (from wayu.toml [env]) ===\nexport A=1\n\n" +
+	core := fmt.tprintf("#!/usr/bin/env zsh\n# core.zsh\n\n# === Environment ===\nexport A=1\n\n" +
 		"# === Tools (eager - keybindings, immediate) ===\n_wayu_evalcache atuin 'init' 'zsh'\n\n" +
 		"# === Plugins ===\nif [ -f \"%s/plugins.zsh\" ]; then source \"%s/plugins.zsh\"; fi\nbindkey x y\n\n" +
 		"# === Prompt (wayu native, interactive shells) ===\n# --- vi mode ---\nbindkey -v\n\n" +
 		"# === Tools (deferred) ===\n_wayu_evalcache zoxide 'init' 'zsh'\n" +
 		"# --- recipe: nvm (lazy) ---\nnvm() { :; }\n# --- recipe: lazy (sdk) ---\nsdk() { :; }\n\n# === Extra config ===\necho extra\n\n" +
-		"# === Aliases (from wayu.toml [aliases]) ===\nalias ll='ls'\n",
+		"# === Aliases ===\nalias ll='ls'\n",
 		tmp, tmp)
 
 	units := wayu.profile_core_units(core, .ZSH)
@@ -42,7 +42,7 @@ test_profile_core_units_split_tools_and_plugins :: proc(t: ^testing.T) {
 		delete(units)
 	}
 	want := []string{
-		"Environment (from wayu.toml [env])",
+		"Environment",
 		"tool atuin (evalcache)",
 		"plugin alpha",
 		"plugin beta",
@@ -52,7 +52,7 @@ test_profile_core_units_split_tools_and_plugins :: proc(t: ^testing.T) {
 		"tool nvm (lazy)",
 		"tool sdk (lazy)",
 		"Extra config",
-		"Aliases (from wayu.toml [aliases])",
+		"Aliases",
 	}
 	names := make([dynamic]string, context.temp_allocator)
 	for u in units { append(&names, u.name) }

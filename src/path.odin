@@ -11,19 +11,18 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 
-// Outcome of a [paths] mutation. Lets the CLI handler tell a real change
+// Outcome of a PATH entry mutation. Lets the CLI handler tell a real change
 // apart from a no-op (duplicate add) and pick the right exit code.
 PathOpResult :: enum {
 	OK,        // changed (or, under --dry-run, would change)
 	NOOP,      // nothing to do (e.g. path already present)
-	NOT_FOUND, // remove target not in [paths]           → EXIT_DATAERR
+	NOT_FOUND, // remove target not an entry             → EXIT_DATAERR
 	INVALID,   // bad input (name hint, ...)             → EXIT_DATAERR
-	IO_ERROR,  // read/backup/write failure              → EXIT_IOERR
-	UNREADABLE, // wayu.toml can't be read                → EXIT_NOINPUT
+	IO_ERROR,  // backup/write failure                   → EXIT_IOERR
+	BAD_STORE, // entries.json unreadable / malformed    → EXIT_CONFIG
 }
 
-// Main handler for PATH commands.
-// wayu.toml is the single source of truth for PATH; we create it if missing.
+// Main handler for PATH commands (entries live in <data>/entries.json).
 handle_path_command :: proc(action: Action, args: []string) {
 	// Mutations hold the config lock across read → write → regenerate so
 	// concurrent wayu runs neither lose entries nor publish stale init files.
@@ -52,7 +51,7 @@ handle_path_command :: proc(action: Action, args: []string) {
 			print_cli_usage_error(&PATH_SPEC, "get")
 			os.exit(EXIT_USAGE)
 		}
-		get_toml_path_value(args[0])
+		path_get_value(args[0])
 	case .ADD:
 		if len(args) == 0 {
 			print_error("Usage: wayu path add [<name>=]<path>")
@@ -69,16 +68,16 @@ handle_path_command :: proc(action: Action, args: []string) {
 		if !check_wayu_initialized() {
 			os.exit(EXIT_CONFIG)
 		}
-		// pre-hook only for an add that will really change wayu.toml
+		// pre-hook only for an add that will really change the entries
 		// (duplicates / bad names are reported by the write below).
-		if toml_path_add_would_change(raw_path, name_hint) { hook_pre_path_add(expanded) }
-		res := toml_path_add_result(raw_path, name_hint)
+		if path_add_would_change(raw_path, name_hint) { hook_pre_path_add(expanded) }
+		res := path_add_result(raw_path, name_hint)
 		exit_on_path_failure(res)
 		// NOOP: already present (warning printed). Dry-run: preview printed.
 		// Neither changed anything, so no regen, no success line, no hook.
 		if res == .NOOP || wayu.dry_run { return }
 		regenerate_init_core_silently()
-		print_success("✅ Added to wayu.toml: %s", expanded)
+		print_success("✅ Added to PATH: %s", expanded)
 		print_path_applied_hint()
 		hook_post_path_add(expanded)
 	case .REMOVE:
@@ -87,18 +86,18 @@ handle_path_command :: proc(action: Action, args: []string) {
 			os.exit(EXIT_USAGE)
 		}
 		// Hooks get the stored directory ({path}), also when the target is a key.
-		hook_path, found := toml_path_lookup(args[0])
+		hook_path, found := path_entry_lookup(args[0])
 		defer delete(hook_path)
 		if found { hook_pre_path_remove(hook_path) }
-		res := toml_path_remove_result(args[0])
+		res := path_remove_result(args[0])
 		exit_on_path_failure(res)
 		if wayu.dry_run { return }
 		regenerate_init_core_silently()
-		print_success("✅ Removed from wayu.toml: %s", args[0])
+		print_success("✅ Removed from PATH: %s", args[0])
 		print_path_applied_hint()
 		hook_post_path_remove(hook_path)
 	case .LIST:
-		toml_path_list()
+		path_list()
 	case:
 		handle_config_command(&PATH_SPEC, action, args)
 	}
@@ -133,7 +132,7 @@ path_add_check :: proc(raw_path: string) -> (expanded: string, err: string, code
 @(private = "file")
 print_path_applied_hint :: proc() {
 	if wayu.shell == .FISH {
-		fmt.printfln("   Reload your shell (or 'source ~/.config/wayu/init.%s') to apply.", wayu.shell_ext)
+		fmt.printfln("   Reload your shell (or 'source %s/init.%s') to apply.", wayu.data, wayu.shell_ext)
 		return
 	}
 	fmt.println("   Open shells apply it at their next prompt; new shells pick it up automatically.")
@@ -145,7 +144,7 @@ exit_on_path_failure :: proc(res: PathOpResult) {
 	#partial switch res {
 	case .NOT_FOUND, .INVALID: os.exit(EXIT_DATAERR)
 	case .IO_ERROR:            os.exit(EXIT_IOERR)
-	case .UNREADABLE:          os.exit(EXIT_NOINPUT)
+	case .BAD_STORE:           os.exit(EXIT_CONFIG)
 	}
 }
 
@@ -153,10 +152,9 @@ exit_on_path_failure :: proc(res: PathOpResult) {
 // PATH-specific operations (clean and dedup)
 // ============================================================================
 //
-// Both operate on wayu.toml's [paths] table (the single source of truth):
-// compute the set of entries to drop, then share one mutation tail —
-// empty-set early return, --dry-run preview, --yes gate, backup + in-place
-// deletion of the dropped [paths] lines (toml_kv_delete), init regeneration.
+// Both compute the set of store entries to drop, then share one mutation
+// tail — empty-set early return, --dry-run preview, --yes gate, backup +
+// rewrite of entries.json without the dropped entries, init regeneration.
 
 PathMutationSpec :: struct {
 	label:             string, // Human-readable "duplicate entries" / "missing directories"
@@ -167,9 +165,9 @@ PathMutationSpec :: struct {
 	success_fmt:       string, // Printed on success with the count, e.g. "✅ Removed %d missing ..."
 }
 
-// Drop every `entries[i]` with `drop[i] == true` from [paths]. Handles
-// preview, confirmation, backup, write and regeneration per `spec`.
-mutate_path_entries :: proc(spec: PathMutationSpec, entries: []TomlPathEntry, drop: []bool) {
+// Drop every `entries[i]` with `drop[i] == true`. Handles preview,
+// confirmation, backup, write and regeneration per `spec`.
+mutate_path_entries :: proc(spec: PathMutationSpec, entries: []StorePath, drop: []bool) {
 	assert(len(entries) == len(drop))
 	count := 0
 	for d in drop { if d { count += 1 } }
@@ -179,16 +177,9 @@ mutate_path_entries :: proc(spec: PathMutationSpec, entries: []TomlPathEntry, dr
 		return
 	}
 
-	// toml_kv_delete removes every line of a key: with a hand-edited
-	// duplicate key, dropping one entry would also delete its survivor.
-	if dup := path_drop_key_conflict(entries, drop); len(dup) > 0 {
-		print_error("Duplicate key %q in wayu.toml [paths]: rename one of them, then retry. Nothing changed.", dup)
-		os.exit(EXIT_CONFIG)
-	}
-
-	print_targets :: proc(entries: []TomlPathEntry, drop: []bool) {
+	print_targets :: proc(entries: []StorePath, drop: []bool) {
 		for e, i in entries {
-			if drop[i] { fmt.printfln("  - %s = %s", e.key, e.path) }
+			if drop[i] { fmt.printfln("  - %s = %s", e.key, e.dir) }
 		}
 	}
 
@@ -222,63 +213,32 @@ mutate_path_entries :: proc(spec: PathMutationSpec, entries: []TomlPathEntry, dr
 	print_targets(entries, drop)
 	fmt.println()
 
-	// Delete only the dropped lines: the survivors keep their order (PATH
-	// precedence), comments and formatting.
-	keys := make([dynamic]string, 0, count)
-	defer delete(keys)
-	for e, i in entries {
-		if drop[i] { append(&keys, e.key) }
-	}
-	#partial switch toml_kv_delete("paths", "paths", keys[:]) {
-	case .OK:
-	case .MALFORMED: os.exit(EXIT_DATAERR)
-	case:            os.exit(EXIT_IOERR)
-	}
-
-	config_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
-	defer delete(config_file)
-	cleanup_old_backups(config_file, 5)
+	// The survivors keep their order (PATH precedence).
+	exit_on_path_failure(path_store_drop(entries, drop))
 
 	regenerate_init_core_silently()
 	print_success(spec.success_fmt, count)
 }
 
-@(private = "file")
-free_toml_path_entries :: proc(entries: ^[dynamic]TomlPathEntry) {
-	for &e in entries { delete(e.key); delete(e.path) }
-	delete(entries^)
-}
-
-// First key that is both dropped and kept (a duplicate TOML key), or "".
-path_drop_key_conflict :: proc(entries: []TomlPathEntry, drop: []bool) -> string {
-	for d, i in entries {
-		if !drop[i] { continue }
-		for k, j in entries {
-			if !drop[j] && k.key == d.key { return d.key }
-		}
-	}
-	return ""
-}
-
-// Which [paths] entries `path clean` drops: those whose directory is missing
-// after expanding wayu.toml [env] constants, the environment and `~` the way
-// the generated init does (doctor_expand_path). An entry using a variable
-// set in neither is unresolved — its directory is unknown, so it is kept.
+// Which PATH entries `path clean` drops: those whose directory is missing
+// after expanding the env constants, the environment and `~` the way the
+// generated init does (doctor_expand_path). An entry using a variable set in
+// neither is unresolved — its directory is unknown, so it is kept.
 // Caller deletes the result.
-path_clean_drop_mask :: proc(entries: []TomlPathEntry, consts: []ConfigEntry) -> []bool {
+path_clean_drop_mask :: proc(entries: []StorePath, consts: []ConfigEntry) -> []bool {
 	drop := make([]bool, len(entries))
 	for e, i in entries {
-		expanded := doctor_expand_path(e.path, consts)
+		expanded := doctor_expand_path(e.dir, consts)
 		defer delete(expanded)
 		drop[i] = len(expanded) > 0 && !os.exists(expanded)
 	}
 	return drop
 }
 
-// Which [paths] entries `path dedup` drops: later entries resolving (same
+// Which PATH entries `path dedup` drops: later entries resolving (same
 // expansion as path_clean_drop_mask) to an earlier entry's directory.
 // Unresolved entries only match byte-for-byte. Caller deletes the result.
-path_dedup_drop_mask :: proc(entries: []TomlPathEntry, consts: []ConfigEntry) -> []bool {
+path_dedup_drop_mask :: proc(entries: []StorePath, consts: []ConfigEntry) -> []bool {
 	drop := make([]bool, len(entries))
 	seen := make(map[string]bool)
 	defer {
@@ -286,11 +246,11 @@ path_dedup_drop_mask :: proc(entries: []TomlPathEntry, consts: []ConfigEntry) ->
 		delete(seen)
 	}
 	for e, i in entries {
-		k := doctor_expand_path(e.path, consts)
+		k := doctor_expand_path(e.dir, consts)
 		if len(k) == 0 {
 			// Expanded keys are absolute ("/..."), so "raw:" can't collide.
 			delete(k)
-			k = strings.concatenate({"raw:", e.path})
+			k = strings.concatenate({"raw:", e.dir})
 		}
 		if k in seen {
 			drop[i] = true
@@ -302,61 +262,50 @@ path_dedup_drop_mask :: proc(entries: []TomlPathEntry, consts: []ConfigEntry) ->
 	return drop
 }
 
-// Clean missing paths - remove [paths] entries whose directory no longer
-// exists (see path_clean_drop_mask; unset variables are never "missing").
-clean_missing_paths :: proc() {
+// clean / dedup: compute `mask` over the current entries and apply `spec`.
+@(private = "file")
+path_prune :: proc(spec: PathMutationSpec, mask: proc(entries: []StorePath, consts: []ConfigEntry) -> []bool) {
 	if !check_wayu_initialized() {
 		os.exit(EXIT_CONFIG)
 	}
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
-	clear_toml_content_cache() // decide on what is on disk now, not the startup cache
 
-	entries := toml_path_read_keyed()
-	defer free_toml_path_entries(&entries)
-
-	consts := read_wayu_toml_constants()
+	store := entries_load()
+	defer entries_store_destroy(&store)
+	consts := entries_as_config_entries(&store, .ENV)
 	defer cleanup_entries(&consts)
-	drop := path_clean_drop_mask(entries[:], consts)
+	drop := mask(store.paths[:], consts)
 	defer delete(drop)
 
-	mutate_path_entries(PathMutationSpec{
+	mutate_path_entries(spec, store.paths[:], drop)
+}
+
+// Clean missing paths - remove PATH entries whose directory no longer
+// exists (see path_clean_drop_mask; unset variables are never "missing").
+clean_missing_paths :: proc() {
+	path_prune(PathMutationSpec{
 		label             = "missing directories",
 		empty_success_msg = "✅ No missing directories found in PATH",
 		header_title      = "Clean Missing PATH Entries",
 		header_icon       = "🧹",
 		yes_hint_cmd      = "wayu path clean --yes",
 		success_fmt       = "✅ Removed %d missing directories from PATH",
-	}, entries[:], drop)
+	}, path_clean_drop_mask)
 }
 
 // Remove duplicate paths - entries that resolve to the same directory after
 // expansion (`$HOME/bin` == `~/bin` == `/Users/me/bin`). The first entry in
-// declaration order survives; later duplicates are dropped.
+// order survives; later duplicates are dropped.
 remove_duplicate_paths :: proc() {
-	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
-	}
-	config_lock_acquire_or_exit()
-	defer config_lock_release()
-	clear_toml_content_cache() // decide on what is on disk now, not the startup cache
-
-	entries := toml_path_read_keyed()
-	defer free_toml_path_entries(&entries)
-
-	consts := read_wayu_toml_constants()
-	defer cleanup_entries(&consts)
-	drop := path_dedup_drop_mask(entries[:], consts)
-	defer delete(drop)
-
-	mutate_path_entries(PathMutationSpec{
+	path_prune(PathMutationSpec{
 		label             = "duplicate entries",
 		empty_success_msg = "✅ No duplicate entries found in PATH",
 		header_title      = "Remove Duplicate PATH Entries",
 		header_icon       = "🔗",
 		yes_hint_cmd      = "wayu path dedup --yes",
 		success_fmt       = "✅ Removed %d duplicate entries from PATH",
-	}, entries[:], drop)
+	}, path_dedup_drop_mask)
 }
 
 // os.exists on the resolved value (`$HOME/bin` checks /Users/me/bin).
@@ -494,102 +443,51 @@ expand_env_vars :: proc(path: string, require_resolved: bool = false) -> string 
 }
 
 // ============================================================================
-// wayu.toml PATH operations
+// PATH entries in the entry store (entries.json "paths")
 // ============================================================================
 
 WAYU_TOML :: "wayu.toml"
 
-// TomlPathEntry is a (key, value) pair from the [paths] table in wayu.toml.
-// (Distinct from output.odin's PathEntry which models a $PATH directory.)
-TomlPathEntry :: struct {
-	key:  string,
-	path: string,
+// Free the strings of `paths` and the array.
+free_store_paths :: proc(paths: ^[dynamic]StorePath) {
+	for p in paths { delete(p.key); delete(p.dir) }
+	delete(paths^)
 }
 
-// Read [paths] table. Exits when wayu.toml can't be read. Caller frees each
-// entry's strings + the slice.
-toml_path_read_keyed :: proc() -> [dynamic]TomlPathEntry {
-	entries, code := toml_path_read_keyed_checked()
-	if code != 0 do wayu_exit(code)
-	return entries
+// The store's PATH entries (key, dir), in order (= PATH priority). Exits
+// EXIT_CONFIG when entries.json is malformed. Free with free_store_paths.
+path_entries_read :: proc() -> [dynamic]StorePath {
+	store := entries_load()
+	paths := store.paths
+	store.paths = nil
+	entries_store_destroy(&store)
+	return paths
 }
 
-// toml_path_read_keyed without exiting: exit_code is 0, or EXIT_NOINPUT (the
-// reason was printed unless `quiet`) and no entries. Code the TUI reaches
-// uses this (OKAMI-251).
-toml_path_read_keyed_checked :: proc(quiet := false) -> (entries: [dynamic]TomlPathEntry, exit_code: int) {
-	// Use the shared TOML content cache when available.
-	content_str, cached := get_cached_toml_content()
-	uncached_content: []byte
-	if !cached {
-		config_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
-		defer delete(config_file)
-		if quiet {
-			data, err := os.read_entire_file(config_file, context.allocator)
-			if err != nil do return nil, EXIT_NOINPUT
-			uncached_content = data
-		} else {
-			ok: bool
-			uncached_content, ok = safe_read_file(config_file)
-			// safe_read_file already printed why (one error per failure).
-			if !ok do return nil, EXIT_NOINPUT
-		}
-		content_str = string(uncached_content)
-	}
-	defer if len(uncached_content) > 0 { delete(uncached_content) }
-
-	// Shared parser (toml_read_section): declaration order, duplicates kept
-	// (path clean/dedup detect hand-edited duplicate keys).
-	kvs := toml_read_section(content_str, "paths")
-	defer delete(kvs)
-	entries = make([dynamic]TomlPathEntry)
-	for kv in kvs {
-		if len(kv.value) == 0 { // an empty PATH entry is meaningless
-			delete(kv.key); delete(kv.value)
-			continue
-		}
-		append(&entries, TomlPathEntry{key = kv.key, path = kv.value}) // ownership moves
-	}
-	return entries, 0
-}
-
-
-// Convenience: returns just the path values, in declaration order. Free with
+// Just the dirs of path_entries_read, in order. Free with
 // `for p in paths { delete(p) }; delete(paths)`.
-toml_path_read :: proc() -> [dynamic]string {
-	entries := toml_path_read_keyed()
+path_dirs_read :: proc() -> [dynamic]string {
+	entries := path_entries_read()
 	defer {
-		for &e in entries { delete(e.key) }
+		for e in entries { delete(e.key) }
 		delete(entries)
 	}
-	out := make([dynamic]string)
-	for e in entries { append(&out, e.path) }
+	out := make([dynamic]string, 0, len(entries))
+	for e in entries { append(&out, e.dir) }
 	return out
 }
 
-// read_toml_path_entries - Read PATH entries from TOML as ConfigEntry array
-read_toml_path_entries :: proc() -> [dynamic]ConfigEntry {
-	paths := toml_path_read()
-	defer {
-		for p in paths { delete(p) }
-		delete(paths)
-	}
-
-	entries := make([dynamic]ConfigEntry)
-	for path in paths {
-		append(&entries, ConfigEntry{
-			type  = .PATH,
-			name  = strings.clone(path),
-			value = "",
-			line  = "",  // Only populated on-demand by write paths
-		})
-	}
-
+// PATH entries as ConfigEntry values (name = dir). Free with cleanup_entries.
+read_path_config_entries :: proc() -> []ConfigEntry {
+	dirs := path_dirs_read()
+	defer delete(dirs)
+	entries := make([]ConfigEntry, len(dirs))
+	for d, i in dirs { entries[i] = ConfigEntry{type = .PATH, name = d} } // ownership moves
 	return entries
 }
 
-// Get a specific PATH entry from TOML with fuzzy matching fallback
-get_toml_path_value :: proc(search_path: string) {
+// Get a PATH entry (exact, or resolved-equal: `$HOME/bin` == `~/bin`).
+path_get_value :: proc(search_path: string) {
 	if len(strings.trim_space(search_path)) == 0 {
 		print_cli_usage_error(&PATH_SPEC, "get")
 		os.exit(EXIT_USAGE)
@@ -598,9 +496,8 @@ get_toml_path_value :: proc(search_path: string) {
 		os.exit(EXIT_CONFIG)
 	}
 
-	paths := toml_path_read()
+	paths := path_dirs_read()
 
-	// Try exact match first, then a resolved match ($HOME/bin == ~/bin).
 	exact_idx := -1
 	for path_entry, i in paths {
 		if path_entry == search_path { exact_idx = i; break }
@@ -612,9 +509,7 @@ get_toml_path_value :: proc(search_path: string) {
 	}
 	if exact_idx >= 0 {
 		fmt.println(paths[exact_idx])
-		for p in paths {
-			delete(p)
-		}
+		for p in paths { delete(p) }
 		delete(paths)
 		return
 	}
@@ -623,9 +518,9 @@ get_toml_path_value :: proc(search_path: string) {
 	exit_get_not_found(&PATH_SPEC, search_path, paths[:])
 }
 
-// Lista los paths de wayu.toml en stdout
-toml_path_list :: proc() {
-	paths := toml_path_read()
+// `wayu path list`: wayu's PATH entries and (with --full) the rest of $PATH.
+path_list :: proc() {
+	paths := path_dirs_read()
 	defer {
 		for p in paths { delete(p) }
 		delete(paths)
@@ -642,12 +537,11 @@ toml_path_list :: proc() {
 	}
 
 	if wayu.json_output {
-		// JSON output: only include wayu entries for now (external JSON support deferred)
 		print_paths_json(paths[:], path_entries[:], wayu_set)
 		return
 	}
 
-	print_header("PATH (wayu.toml)", PATH_SPEC.icon)
+	print_header("PATH (wayu)", PATH_SPEC.icon)
 	fmt.println()
 
 	// Count external entries early for later checks
@@ -670,7 +564,6 @@ toml_path_list :: proc() {
 		env_path_set[env_path] = true
 	}
 
-	// Count sources
 	active_count := 0
 	inactive_count := 0
 	for p in paths {
@@ -681,7 +574,6 @@ toml_path_list :: proc() {
 		}
 	}
 
-	// Count external entries
 	external_count := 0
 	for env_path in path_entries {
 		if _, is_wayu := wayu_set[env_path]; !is_wayu {
@@ -689,7 +581,6 @@ toml_path_list :: proc() {
 		}
 	}
 
-	// Print summary with external count
 	fmt.printfln("  %d active · %d inactive · %d external", active_count, inactive_count, external_count)
 	fmt.println()
 
@@ -701,7 +592,6 @@ toml_path_list :: proc() {
 	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
 	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive" || wayu.source_filter == "wayu"
 
-	// Build table: only show Source column when multiple sources are visible
 	has_multiple_sources := show_external || (show_wayu && show_inactive)
 	headers: []string
 	if has_multiple_sources {
@@ -716,19 +606,11 @@ toml_path_list :: proc() {
 	table_header_style(&path_table, style_bold(style_foreground(new_style(), "cyan"), true))
 	table_border(&path_table, .Normal)
 
-	// Add wayu entries
 	if show_wayu || show_inactive {
 		for p in paths {
-			// O(1) lookup using env_path_set built above
 			found := p in env_path_set
-
-			// Skip if not matching filter
-			if found && !show_wayu {
-				continue
-			}
-			if !found && !show_inactive {
-				continue
-			}
+			if found && !show_wayu { continue }
+			if !found && !show_inactive { continue }
 
 			status := " "
 			if !path_exists_expanded(p) { status = "✗" }
@@ -736,23 +618,19 @@ toml_path_list :: proc() {
 			if has_multiple_sources {
 				source := "wayu"
 				if !found { source = "wayu (inactive)" }
-				row := []string{p, status, source}
-				table_add_row(&path_table, row)
+				table_add_row(&path_table, []string{p, status, source})
 			} else {
-				row := []string{p, status}
-				table_add_row(&path_table, row)
+				table_add_row(&path_table, []string{p, status})
 			}
 		}
 	}
 
-	// Add external entries
 	if show_external {
 		for env_path in path_entries {
 			if _, is_wayu := wayu_set[env_path]; !is_wayu {
 				status := " "
 				if !os.exists(env_path) { status = "✗" }
-				row := []string{env_path, status, "external"}
-				table_add_row(&path_table, row)
+				table_add_row(&path_table, []string{env_path, status, "external"})
 			}
 		}
 	}
@@ -770,14 +648,12 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 	fmt.println("{")
 	fmt.println("  \"paths\": [")
 
-	// Determine if we show different source categories (same logic as table view)
 	show_wayu := wayu.source_filter == "all" || wayu.source_filter == "wayu"
 	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
 	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive" || wayu.source_filter == "wayu"
 
 	first_entry := true
 
-	// Output wayu entries
 	if show_wayu || show_inactive {
 		for p in paths {
 			found := false
@@ -787,14 +663,8 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 					break
 				}
 			}
-
-			// Skip if not matching filter
-			if found && !show_wayu {
-				continue
-			}
-			if !found && !show_inactive {
-				continue
-			}
+			if found && !show_wayu { continue }
+			if !found && !show_inactive { continue }
 
 			source := found ? "wayu" : "wayu (inactive)"
 			exists := path_exists_expanded(p)
@@ -812,8 +682,8 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 		}
 	}
 
-	// External entries (in $PATH, not from wayu.toml): same rows as the
-	// table view, so --source external / --full agree with it (OKAMI-239).
+	// External entries (in $PATH, not wayu's): same rows as the table view,
+	// so --source external / --full agree with it (OKAMI-239).
 	if show_external {
 		for env_path in path_entries {
 			if _, is_wayu := wayu_set[env_path]; is_wayu { continue }
@@ -832,77 +702,73 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 	fmt.println("}")
 }
 
-// Add a path to wayu.toml's [paths] table. `name_hint` is optional; when
-// empty we derive a key from the basename (`/usr/local/bin` → `local_bin`).
-// The new entry is appended after the last [paths] entry: declaration order
-// is PATH precedence (first wins), so existing entries never move and a new
-// directory never shadows one the user already has.
-//
-// Compatibility wrapper: true when the path is (or would be, under
-// --dry-run) present afterwards. Use toml_path_add_result to distinguish a
-// real change from a duplicate no-op.
-toml_path_add :: proc(raw_path: string, name_hint: string = "") -> bool {
-	res := toml_path_add_result(raw_path, name_hint)
-	return res == .OK || res == .NOOP
+// Store read for a mutation (fresh, no exit): BAD_STORE prints why unless
+// `quiet`.
+@(private = "file")
+path_store_read :: proc(quiet := false) -> (store: EntryStore, res: PathOpResult) {
+	s, err, ok := entries_read()
+	if !ok {
+		if !quiet { print_error_simple("%s", err) }
+		return {}, .BAD_STORE
+	}
+	return s, .OK
 }
 
-// Read-only, silent preview of toml_path_add_result: true when the add would
-// change wayu.toml (not a duplicate, name hint usable). Used to fire
+// Index of the entry `target` names: key, then exact dir, then resolved dir
+// (`wayu path rm ./bin` matches what `wayu path add ./bin` stored). -1 if none.
+path_store_match :: proc(paths: []StorePath, target: string) -> int {
+	for e, i in paths { if e.key == target { return i } }
+	for e, i in paths { if e.dir == target { return i } }
+	for e, i in paths { if path_values_equal(e.dir, target) { return i } }
+	return -1
+}
+
+// Read-only, silent preview of path_add_result: true when the add would
+// change the store (not a duplicate, name hint usable). Used to fire
 // pre_path_add only for real changes (OKAMI-230); the locked write re-checks.
-toml_path_add_would_change :: proc(raw_path: string, name_hint: string = "") -> bool {
+path_add_would_change :: proc(raw_path: string, name_hint: string = "") -> bool {
 	path := expand_env_vars(raw_path, require_resolved = true)
 	defer delete(path)
 	if len(path) == 0 { return false }
 
-	clear_toml_content_cache()
-	existing, read_code := toml_path_read_keyed_checked(quiet = true)
-	if read_code != 0 { return false } // the write reports why
-	defer {
-		for &e in existing { delete(e.key); delete(e.path) }
-		delete(existing)
-	}
-	for e in existing {
-		if path_values_equal(e.path, path) { return false }
+	store, res := path_store_read(quiet = true)
+	if res != .OK { return false } // the write reports why
+	defer entries_store_destroy(&store)
+	for e in store.paths {
+		if path_values_equal(e.dir, path) { return false }
 	}
 	if len(name_hint) > 0 {
 		sanitised := sanitize_path_key(name_hint)
 		defer if len(sanitised) > 0 { delete(sanitised) }
 		if len(sanitised) == 0 { return false }
-		for e in existing {
+		for e in store.paths {
 			if e.key == sanitised { return false }
 		}
 	}
 	return true
 }
 
-// Read-only: true when `target` names an entry toml_path_remove_result would
-// remove. Lets pre_path_remove skip targets that are not there.
-toml_path_exists :: proc(target: string) -> bool {
-	p, found := toml_path_lookup(target)
-	delete(p)
-	return found
-}
-
-// Read-only: the stored path of the entry toml_path_remove_result would
-// remove for `target` (same match order: key, exact value, resolved value).
-// Caller deletes `path` ("" when not found).
-toml_path_lookup :: proc(target: string) -> (path: string, found: bool) {
-	clear_toml_content_cache()
-	existing, read_code := toml_path_read_keyed_checked(quiet = true)
-	if read_code != 0 { return "", false } // the remove reports why
-	defer {
-		for &e in existing { delete(e.key); delete(e.path) }
-		delete(existing)
+// Read-only: the stored dir of the entry path_remove_result would remove for
+// `target` (key, exact dir, resolved dir). Caller deletes `path` ("" when
+// not found).
+path_entry_lookup :: proc(target: string) -> (path: string, found: bool) {
+	store, res := path_store_read(quiet = true)
+	if res != .OK { return "", false } // the remove reports why
+	defer entries_store_destroy(&store)
+	if i := path_store_match(store.paths[:], target); i >= 0 {
+		return strings.clone(store.paths[i].dir), true
 	}
-	for e in existing { if e.key == target { return strings.clone(e.path), true } }
-	for e in existing { if e.path == target { return strings.clone(e.path), true } }
-	for e in existing { if path_values_equal(e.path, target) { return strings.clone(e.path), true } }
 	return "", false
 }
 
-toml_path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOpResult {
-	// Freeze the intended path at every write boundary (CLI, TUI, templates,
-	// migration), before duplicate detection or key generation.
+// Add a PATH entry. `name_hint` is optional; when empty a key is derived from
+// the basename (`/usr/local/bin` → `local_bin`). The new entry is appended:
+// order is PATH precedence (first wins), so existing entries never move and a
+// new directory never shadows one the user already has. NOOP when the dir
+// (resolved) is already there.
+path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOpResult {
+	// Freeze the intended path at every write boundary (CLI, TUI, templates)
+	// before duplicate detection or key generation.
 	path := expand_env_vars(raw_path, require_resolved = true)
 	defer delete(path)
 	if len(path) == 0 {
@@ -912,26 +778,22 @@ toml_path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOp
 
 	if !config_lock_acquire() { return .IO_ERROR }
 	defer config_lock_release()
-	clear_toml_content_cache() // decide on what is on disk now
 
-	existing, read_code := toml_path_read_keyed_checked()
-	if read_code != 0 { return .UNREADABLE }
-	defer {
-		for &e in existing { delete(e.key); delete(e.path) }
-		delete(existing)
-	}
+	store, read_res := path_store_read()
+	if read_res != .OK { return read_res }
+	defer entries_store_destroy(&store)
 
 	// Compare resolved values so `$HOME/bin` already stored blocks `~/bin`.
-	for e in existing {
-		if path_values_equal(e.path, path) {
-			print_warning("Path already exists in wayu.toml: %s (key %q)", e.path, e.key)
+	for e in store.paths {
+		if path_values_equal(e.dir, path) {
+			print_warning("Path already added: %s (key %q)", e.dir, e.key)
 			return .NOOP
 		}
 	}
 
 	taken := make(map[string]bool)
 	defer delete(taken)
-	for e in existing { taken[e.key] = true }
+	for e in store.paths { taken[e.key] = true }
 
 	new_key: string
 	if len(name_hint) > 0 {
@@ -942,35 +804,36 @@ toml_path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOp
 			return .INVALID
 		}
 		if sanitised in taken {
-			print_error("Name %q already used in [paths]", sanitised)
+			print_error("Name %q is already used by another PATH entry", sanitised)
 			return .INVALID
 		}
 		new_key = strings.clone(sanitised)
 	} else {
 		new_key = derive_path_key(path, taken)
 	}
-	defer delete(new_key)
 
 	if wayu.dry_run {
+		defer delete(new_key)
 		// The TUI sets print_quiet and shows its own preview.
 		if !print_quiet {
 			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 			fmt.println()
-			fmt.printfln("%sWould add to wayu.toml: %s = %q%s", BRIGHT_CYAN, new_key, path, RESET)
+			fmt.printfln("%sWould add PATH entry: %s = %q%s", BRIGHT_CYAN, new_key, path, RESET)
 		}
 		return .OK
 	}
 
-	res, _ := toml_kv_upsert("paths", "paths", new_key, path)
-	return path_op_result(res)
+	append(&store.paths, StorePath{key = new_key, dir = strings.clone(path)}) // the store owns both
+	if !entries_save(&store) { return .IO_ERROR }
+	return .OK
 }
 
-// Point the [paths] entry matching `target` (key, stored path, or resolved
-// path — same match order as remove) at `raw_path`, in place: the entry
-// keeps its key and its position (= PATH precedence). Used by the TUI edit
-// action. NOOP when it already holds that path; INVALID when another entry
-// does. Honors --dry-run (preview silenced under print_quiet).
-toml_path_replace_result :: proc(target, raw_path: string) -> PathOpResult {
+// Point the entry matching `target` (key, stored dir, or resolved dir — same
+// match order as remove) at `raw_path`, in place: the entry keeps its key and
+// its position (= PATH precedence). Used by the TUI edit action. NOOP when it
+// already holds that path; INVALID when another entry does. Honors --dry-run
+// (preview silenced under print_quiet).
+path_replace_result :: proc(target, raw_path: string) -> PathOpResult {
 	path := expand_env_vars(raw_path, require_resolved = true)
 	defer delete(path)
 	if len(path) == 0 {
@@ -980,109 +843,90 @@ toml_path_replace_result :: proc(target, raw_path: string) -> PathOpResult {
 
 	if !config_lock_acquire() { return .IO_ERROR }
 	defer config_lock_release()
-	clear_toml_content_cache()
 
-	existing := toml_path_read_keyed()
-	defer {
-		for &e in existing { delete(e.key); delete(e.path) }
-		delete(existing)
-	}
-	idx := -1
-	for e, i in existing { if e.key == target { idx = i; break } }
-	if idx < 0 { for e, i in existing { if e.path == target { idx = i; break } } }
-	if idx < 0 { for e, i in existing { if path_values_equal(e.path, target) { idx = i; break } } }
+	store, read_res := path_store_read()
+	if read_res != .OK { return read_res }
+	defer entries_store_destroy(&store)
+
+	idx := path_store_match(store.paths[:], target)
 	if idx < 0 {
-		print_error("Not found in wayu.toml [paths]: %s", target)
+		print_error("PATH entry not found: %s", target)
 		return .NOT_FOUND
 	}
-	if existing[idx].path == path { return .NOOP }
-	for e, i in existing {
-		if i != idx && path_values_equal(e.path, path) {
-			print_error("Path already exists in wayu.toml: %s (key %q)", e.path, e.key)
+	if store.paths[idx].dir == path { return .NOOP }
+	for e, i in store.paths {
+		if i != idx && path_values_equal(e.dir, path) {
+			print_error("Path already added: %s (key %q)", e.dir, e.key)
 			return .INVALID
 		}
 	}
 	if wayu.dry_run {
 		if !print_quiet {
 			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-			fmt.printfln("%sWould set wayu.toml: %s = %q%s", BRIGHT_CYAN, existing[idx].key, path, RESET)
+			fmt.printfln("%sWould set PATH entry: %s = %q%s", BRIGHT_CYAN, store.paths[idx].key, path, RESET)
 		}
 		return .OK
 	}
-	res, _ := toml_kv_upsert("paths", "paths", existing[idx].key, path)
-	return path_op_result(res)
+	delete(store.paths[idx].dir)
+	store.paths[idx].dir = strings.clone(path)
+	if !entries_save(&store) { return .IO_ERROR }
+	return .OK
 }
 
-@(private = "file")
-path_op_result :: proc(res: TomlEditResult) -> PathOpResult {
-	switch res {
-	case .OK:        return .OK
-	case .NOT_FOUND: return .NOT_FOUND
-	case .MALFORMED: return .INVALID
-	case .IO_ERROR:  return .IO_ERROR
-	}
-	return .IO_ERROR
-}
-
-toml_path_remove_result :: proc(target: string) -> PathOpResult {
+// Remove the entry `target` names (key, exact dir, resolved dir).
+path_remove_result :: proc(target: string) -> PathOpResult {
 	if !config_lock_acquire() { return .IO_ERROR }
 	defer config_lock_release()
-	clear_toml_content_cache() // decide on what is on disk now
 
-	existing, read_code := toml_path_read_keyed_checked()
-	if read_code != 0 { return .UNREADABLE }
-	defer {
-		for &e in existing { delete(e.key); delete(e.path) }
-		delete(existing)
-	}
+	store, read_res := path_store_read()
+	if read_res != .OK { return read_res }
+	defer entries_store_destroy(&store)
 
-	match_idx := -1
-	for e, i in existing {
-		if e.key == target { match_idx = i; break }
-	}
-	if match_idx < 0 {
-		for e, i in existing {
-			if e.path == target { match_idx = i; break }
-		}
-	}
-	// Resolve the target the same way toml_path_add does (~, $VAR, relative →
-	// absolute) so `wayu path rm ./bin` matches what `wayu path add ./bin` stored.
-	// Stored values are expanded too, covering hand-written unexpanded entries.
-	if match_idx < 0 {
-		for e, i in existing {
-			if path_values_equal(e.path, target) { match_idx = i; break }
-		}
-	}
-
-	if match_idx < 0 {
-		print_error("Not found in wayu.toml [paths]: %s", target)
+	idx := path_store_match(store.paths[:], target)
+	if idx < 0 {
+		print_error("PATH entry not found: %s", target)
 		return .NOT_FOUND
 	}
 
-	removed := existing[match_idx]
-
 	if wayu.dry_run {
 		if !print_quiet {
+			removed := store.paths[idx]
 			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-			fmt.printfln("%sWould remove from wayu.toml: %s = %q%s", BRIGHT_CYAN, removed.key, removed.path, RESET)
+			fmt.printfln("%sWould remove PATH entry: %s = %q%s", BRIGHT_CYAN, removed.key, removed.dir, RESET)
 		}
 		return .OK
 	}
 
-	return path_op_result(toml_kv_delete("paths", "paths", {removed.key}))
+	delete(store.paths[idx].key)
+	delete(store.paths[idx].dir)
+	ordered_remove(&store.paths, idx)
+	if !entries_save(&store) { return .IO_ERROR }
+	return .OK
 }
 
-// Render `entries` as `key = "value"` lines. The path value is escaped so
-// pathological inputs (`"`, `\`, newlines) can't inject TOML structure.
-// Caller frees each line + slice.
-render_keyed_body :: proc(entries: []TomlPathEntry) -> []string {
-	out := make([]string, len(entries))
-	for e, i in entries {
-		escaped := escape_toml_string(e.path)
-		key := toml_format_key(e.key)
-		out[i] = fmt.aprintf(`%s = "%s"`, key, escaped)
-		delete(escaped)
-		delete(key)
+// Drop the entries of `entries` whose `drop[i]` is set (clean/dedup/doctor
+// --fix). The store is re-read and entries are matched by key (keys are
+// unique), so entries added meanwhile survive. Caller holds the config lock
+// and handled --dry-run.
+path_store_drop :: proc(entries: []StorePath, drop: []bool) -> PathOpResult {
+	store, read_res := path_store_read()
+	if read_res != .OK { return read_res }
+	defer entries_store_destroy(&store)
+
+	kept := make([dynamic]StorePath, 0, len(store.paths))
+	for e in store.paths {
+		gone := false
+		for d, i in entries {
+			if drop[i] && d.key == e.key { gone = true; break }
+		}
+		if gone {
+			delete(e.key); delete(e.dir)
+		} else {
+			append(&kept, e)
+		}
 	}
-	return out
+	delete(store.paths)
+	store.paths = kept
+	if !entries_save(&store) { return .IO_ERROR }
+	return .OK
 }

@@ -238,10 +238,10 @@ print_error_with_context :: proc(
 	case .FILE_NOT_FOUND:
 		eprintfln_color("File not found: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 
-		if strings.contains(resource, ".config/wayu") {
+		if strings.contains(resource, "/wayu/") {
 			fmt.eprintfln("\n%sSuggestion:%s Run %swayu init%s to create configuration files",
 				BRIGHT_CYAN, RESET, BOLD, RESET)
-			fmt.eprintfln("            This will set up all required configuration files in ~/.config/wayu/")
+			fmt.eprintfln("            This sets up ~/.config/wayu/ (config) and ~/.local/share/wayu/ (data)")
 		} else {
 			fmt.eprintfln("\n%sSuggestion:%s Check the file path and try again",
 				BRIGHT_CYAN, RESET)
@@ -299,7 +299,7 @@ print_error_with_context :: proc(
 			BRIGHT_CYAN, RESET)
 		eprintfln_color("  %swayu init%s", BOLD, RESET)
 		fmt.eprintfln("\nThis will:")
-		fmt.eprintfln("  • Create ~/.config/wayu/ directory")
+		fmt.eprintfln("  • Create ~/.config/wayu/ and ~/.local/share/wayu/")
 		fmt.eprintfln("  • Initialize all configuration files")
 		fmt.eprintfln("  • Set up shell integration")
 

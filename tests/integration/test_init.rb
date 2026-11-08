@@ -67,6 +67,7 @@ class InitIntegrationTest
 
     # Clean up any existing config
     FileUtils.rm_rf(@config_dir) if Dir.exist?(@config_dir)
+    FileUtils.rm_rf(@data_dir) if Dir.exist?(@data_dir)
 
     output, status = run_wayu("init")
 
@@ -102,10 +103,17 @@ class InitIntegrationTest
       "#{@config_dir}/wayu.toml",
       "#{@config_dir}/tools.zsh"
     ]
-    # No per-type shell files: wayu.toml holds paths, aliases and env.
+    # No per-type shell files: entries.json holds paths, aliases and env.
     stale_files = %w[path aliases constants].map { |b| "#{@data_dir}/#{b}.zsh" }
+    # The rc line init offers is the portable bootstrap (finds the data dir
+    # itself); without a TTY it is printed.
+    File.write("#{@tmp_home}/.zshrc", "# rc\n") unless File.exist?("#{@tmp_home}/.zshrc")
+    rc, = run_wayu("init")
+    FileUtils.rm_f("#{@tmp_home}/.zshrc")
+    bootstrap = 'source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh"'
 
-    all_exist = required_files.all? { |file| File.exist?(file) } && stale_files.none? { |f| File.exist?(f) }
+    all_exist = required_files.all? { |file| File.exist?(file) } && stale_files.none? { |f| File.exist?(f) } &&
+                rc.include?(bootstrap) && !File.read("#{@config_dir}/wayu.toml").include?('[paths]')
 
     if all_exist
       puts "✓"
@@ -113,7 +121,7 @@ class InitIntegrationTest
     else
       puts "✗"
       puts "  Failed to create config files"
-      puts "  Missing: #{required_files.reject { |f| File.exist?(f) }.join(', ')}"
+      puts "  Missing: #{required_files.reject { |f| File.exist?(f) }.join(', ')} rc_line=#{rc.include?(bootstrap)}"
       @failed += 1
     end
   end
@@ -123,6 +131,7 @@ class InitIntegrationTest
 
     # Re-init with ZSH
     FileUtils.rm_rf(@config_dir) if Dir.exist?(@config_dir)
+    FileUtils.rm_rf(@data_dir) if Dir.exist?(@data_dir)
     output, status = run_wayu_with_env("init", {"SHELL" => "/bin/zsh"})
 
     if status.success? && output.include?("zsh")
@@ -141,6 +150,7 @@ class InitIntegrationTest
 
     # Re-init with Bash
     FileUtils.rm_rf(@config_dir) if Dir.exist?(@config_dir)
+    FileUtils.rm_rf(@data_dir) if Dir.exist?(@data_dir)
     output, status = run_wayu_with_env("init", {"SHELL" => "/bin/bash"})
 
     if status.success? && output.include?("bash")
@@ -159,6 +169,7 @@ class InitIntegrationTest
 
     # Reinitialize
     FileUtils.rm_rf(@config_dir) if Dir.exist?(@config_dir)
+    FileUtils.rm_rf(@data_dir) if Dir.exist?(@data_dir)
     run_wayu("init")
 
     # Check that each file has proper shebang and structure (relaxed checks)
@@ -255,6 +266,7 @@ class InitIntegrationTest
 
     # Clean up
     FileUtils.rm_rf(@config_dir) if Dir.exist?(@config_dir)
+    FileUtils.rm_rf(@data_dir) if Dir.exist?(@data_dir)
 
     output, status = run_wayu("--dry-run init")
 
@@ -285,29 +297,19 @@ class InitIntegrationTest
     end
   end
 
+  TRICKY_PATHS = { 'zz' => '$HOME/pz', 'aa' => '~/pa', 'mm' => '$HOME/p m', 'gone' => '/nonexistent/wayu/xyz' }.freeze
+  TRICKY_ENV = {
+    'GOPATH' => '$HOME/go', 'GOBIN' => '$GOPATH/bin', 'BREW' => '$HOMEBREW_PREFIX/x',
+    'LEDGER_FILE' => '~/ledger.journal', 'QUOTED' => 'he said "hi" `whoami` $(id) back\\slash',
+    'UNI' => 'héllo ✓', 'EMPTY' => ''
+  }.freeze
+  TRICKY_ALIASES = {
+    'gl' => "git log --format='%h %s'", 'q' => %q(echo "double" and 'single' `tick` $HOME), 'u' => 'echo ünï'
+  }.freeze
+
   TRICKY_TOML = <<~'TOML'
     [shell]
     type = "x"
-
-    [paths]
-    zz = "$HOME/pz"
-    aa = "~/pa"
-    mm = "$HOME/p m" # comment
-    gone = "/nonexistent/wayu/xyz"
-
-    [env]
-    GOPATH = "$HOME/go"
-    GOBIN = "$GOPATH/bin"
-    BREW = "$HOMEBREW_PREFIX/x"
-    LEDGER_FILE = "~/ledger.journal"
-    QUOTED = "he said \"hi\" `whoami` $(id) back\\slash"
-    UNI = "héllo ✓"
-    EMPTY = ""
-
-    [aliases]
-    gl = "git log --format='%h %s'"
-    q = "echo \"double\" and 'single' `tick` $HOME"
-    u = "echo ünï"
 
     [tools]
     nvm = { kind = "nvm" }
@@ -320,7 +322,8 @@ class InitIntegrationTest
     kotlin = { format = "[K $version](magenta)", detect = ["*.kt", "build.gradle.kts"] }
   TOML
 
-  # Build a fresh HOME for `shell`, write a tricky wayu.toml and regenerate.
+  # Build a fresh HOME for `shell`, write a tricky wayu.toml + entries and
+  # regenerate. Returns [home, data dir (generated files), env].
   def generate_tricky(shell)
     home = "#{@tmp_home}/tricky_#{shell}"
     FileUtils.rm_rf(home)
@@ -329,9 +332,11 @@ class InitIntegrationTest
     env = { 'HOME' => home, 'SHELL' => "/bin/#{shell}" }
     Open3.capture3(env, "#{@wayu_bin} init --shell #{shell}")
     cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
     File.write("#{cfg}/wayu.toml", TRICKY_TOML)
+    write_entries(paths: TRICKY_PATHS, env: TRICKY_ENV, aliases: TRICKY_ALIASES, data: data)
     Open3.capture3(env, "#{@wayu_bin} build")
-    [home, cfg, env]
+    [home, data, env]
   end
 
   # Every generated runtime file must parse with `<shell> -n`, and sourcing
@@ -348,7 +353,7 @@ class InitIntegrationTest
             nil, '[]', '/hb/x']
     values_ok = lines[0] == want[0] && lines[1] == want[1] && lines[2] == want[2] &&
                 lines[4] == want[4] && lines[5] == want[5] && lines[6].to_s.include?("%h %s")
-    if files.size >= 4 && bad.empty? && values_ok
+    if files.size >= 3 && bad.empty? && values_ok
       puts "✓"; @passed += 1
     else
       puts "✗"
@@ -436,12 +441,12 @@ class InitIntegrationTest
       home = "#{@tmp_home}/sync_#{sh}"
       d1 = "#{home}/d1"
       d2 = "#{home}/my dir"
-      FileUtils.mkdir_p([d1, d2, "#{home}/.config/wayu"])
+      FileUtils.mkdir_p([d1, d2, "#{home}/.config"])
       env = { 'HOME' => home }
       Open3.capture3(env, @wayu_bin, 'init', '--shell', sh)
       Open3.capture3(env, @wayu_bin, '--shell', sh, 'path', 'add', d1)
       script = <<~SH
-        . "$HOME/.config/wayu/core.#{sh}"
+        . "$HOME/.local/share/wayu/core.#{sh}"
         has() { case ":$PATH:" in *":$1:"*) echo y ;; *) echo n ;; esac; }
         r="$(has "$D1")"
         "$W" --shell #{sh} path add "$D2" >/dev/null 2>&1; _wayu_paths_sync
@@ -466,7 +471,7 @@ class InitIntegrationTest
   def sync_home(name, shells, dirs = [])
     home = "#{@tmp_home}/#{name}"
     FileUtils.rm_rf(home)
-    FileUtils.mkdir_p(["#{home}/.config/wayu"] + dirs.map { |d| "#{home}/#{d}" })
+    FileUtils.mkdir_p(["#{home}/.config"] + dirs.map { |d| "#{home}/#{d}" })
     env = { 'HOME' => home, 'PATH' => '/usr/bin:/bin', 'W' => @wayu_bin }
     shells.each { |sh| Open3.capture3(env, @wayu_bin, 'init', '--shell', sh) }
     [home, env]
@@ -485,7 +490,7 @@ class InitIntegrationTest
         #{strict}
         __p() { echo "LAST=$?"; }
         PROMPT_COMMAND=__p
-        . "$HOME/.config/wayu/init.#{sh}"
+        . "$HOME/.local/share/wayu/init.#{sh}"
         has() { case ":$PATH:" in *":$1:"*) echo y ;; *) echo n ;; esac; }
         echo "start=$(has "$HOME/d1")"
         "$W" --shell #{sh} path add "$HOME/d2" >/dev/null 2>&1
@@ -512,11 +517,11 @@ class InitIntegrationTest
     { '/bin/bash' => 'bash', '/bin/zsh' => 'zsh' }.each do |bin, sh|
       print "Test: path sync keeps system dirs + [paths] order (#{bin})... "
       home, env = sync_home("managed_#{sh}", [sh], %w[a b c s])
-      File.write("#{home}/.config/wayu/wayu.toml",
-                 "[paths]\na = \"#{home}/a\"\nb = \"#{home}/b\"\ns = \"#{home}/s\"\n")
+      write_entries(paths: { 'a' => "#{home}/a", 'b' => "#{home}/b", 's' => "#{home}/s" },
+                    data: "#{home}/.local/share/wayu")
       Open3.capture3(env, @wayu_bin, '--shell', sh, 'build')
       script = <<~SH
-        . "$HOME/.config/wayu/core.#{sh}"
+        . "$HOME/.local/share/wayu/core.#{sh}"
         show() { echo "$PATH" | sed "s|$HOME/||g"; }
         show
         "$W" --shell #{sh} path rm "$HOME/s" --yes >/dev/null 2>&1; _wayu_paths_sync; show
@@ -541,14 +546,14 @@ class InitIntegrationTest
     home, env = sync_home('allshells', %w[bash fish], %w[d1 d2])
     Open3.capture3(env, @wayu_bin, '--shell', 'bash', 'path', 'add', "#{home}/d1")
     script = <<~SH
-      . "$HOME/.config/wayu/core.bash"
+      . "$HOME/.local/share/wayu/core.bash"
       SHELL=/bin/zsh "$W" path add "$HOME/d2" >/dev/null 2>&1
       SHELL=/bin/zsh "$W" alias add zzq 'echo hi' >/dev/null 2>&1
       _wayu_paths_sync
       case ":$PATH:" in *":$HOME/d2:"*) echo open=y ;; *) echo open=n ;; esac
     SH
     out, err, = Open3.capture3(env, '/bin/bash', '-c', script)
-    cfg = "#{home}/.config/wayu"
+    cfg = "#{home}/.local/share/wayu"
     core_bash = File.read("#{cfg}/core.bash")
     core_fish = File.read("#{cfg}/core.fish")
     ok = out.strip == 'open=y' && core_bash.include?('alias zzq=') &&
@@ -561,24 +566,19 @@ class InitIntegrationTest
     end
   end
 
-  # OKAMI-213 (GEN-18): [paths] values are expanded by the shell, after [env]:
-  # `$GOPATH/bin` uses [env] GOPATH, an unset var drops the entry (no bare
-  # "/bin"), and a dir created after `wayu build` shows up in new shells.
+  # OKAMI-213 (GEN-18): PATH entries are expanded by the shell, after the
+  # constants: `$GOPATH/bin` uses the GOPATH constant, an unset var drops the
+  # entry (no bare "/bin"), and a dir created after `wayu build` shows up in
+  # new shells.
   def test_paths_expanded_in_shell
     { '/bin/bash' => 'bash', '/bin/zsh' => 'zsh' }.each do |bin, sh|
-      print "Test: [paths] expanded in-shell after [env] (#{bin})... "
+      print "Test: PATH entries expanded in-shell after constants (#{bin})... "
       home, env = sync_home("inshell_#{sh}", [sh], %w[go/bin])
-      File.write("#{home}/.config/wayu/wayu.toml", <<~TOML)
-        [env]
-        GOPATH = "$HOME/go"
-
-        [paths]
-        gobin = "$GOPATH/bin"
-        cargo = "${NO_SUCH_WAYU_VAR}/bin"
-        later = "~/later"
-      TOML
+      write_entries(env: { 'GOPATH' => '$HOME/go' },
+                    paths: { 'gobin' => '$GOPATH/bin', 'cargo' => '${NO_SUCH_WAYU_VAR}/bin', 'later' => '~/later' },
+                    data: "#{home}/.local/share/wayu")
       _, _, st = Open3.capture3(env, @wayu_bin, '--shell', sh, 'build')
-      probe = %(. "$HOME/.config/wayu/core.#{sh}" >/dev/null 2>&1; echo "$PATH")
+      probe = %(. "$HOME/.local/share/wayu/core.#{sh}" >/dev/null 2>&1; echo "$PATH")
       first, = Open3.capture3(env.merge('PATH' => '/usr/bin'), bin, '-c', probe)
       FileUtils.mkdir_p("#{home}/later")
       second, = Open3.capture3(env.merge('PATH' => '/usr/bin'), bin, '-c', probe)
@@ -594,24 +594,18 @@ class InitIntegrationTest
 
   # Same contract for core.fish (expanded by fish, guarded per variable).
   def test_fish_paths_expanded_in_shell
-    print "Test: [paths] expanded in-shell after [env] (fish)... "
+    print "Test: PATH entries expanded in-shell after constants (fish)... "
     fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
     unless fish
       puts "skipped (fish not installed)"; return
     end
     home, env = sync_home('inshell_fish', ['fish'], %w[go/bin it's])
-    File.write("#{home}/.config/wayu/wayu.toml", <<~TOML)
-      [env]
-      GOPATH = "$HOME/go"
-
-      [paths]
-      gobin = "$GOPATH/bin"
-      cargo = "${NO_SUCH_WAYU_VAR}/bin"
-      quote = "~/it's"
-    TOML
+    write_entries(env: { 'GOPATH' => '$HOME/go' },
+                  paths: { 'gobin' => '$GOPATH/bin', 'cargo' => '${NO_SUCH_WAYU_VAR}/bin', 'quote' => "~/it's" },
+                  data: "#{home}/.local/share/wayu")
     Open3.capture3(env, @wayu_bin, '--shell', 'fish', 'build')
     out, err, = Open3.capture3(env.merge('PATH' => '/usr/bin'), fish, '--no-config', '-c',
-                               "source $HOME/.config/wayu/core.fish; string join : $PATH")
+                               "source $HOME/.local/share/wayu/core.fish; string join : $PATH")
     if out.strip.split(':') == ["#{home}/go/bin", "#{home}/it's", '/usr/bin']
       puts "✓"; @passed += 1
     else
@@ -619,25 +613,29 @@ class InitIntegrationTest
     end
   end
 
-  # OKAMI-213 (CFG-13): hand edits of [paths] reach path_sync via `wayu build`
-  # and `wayu config edit`, and reach an open shell at its next prompt even
-  # without either (the hook regenerates when wayu.toml is newer).
+  # OKAMI-213 (CFG-13): entries.json replaced outside the CLI (a restore
+  # by hand, a dotfiles sync) reaches path_sync via `wayu build`, and an open
+  # shell at its next prompt even without it (the hook regenerates when
+  # entries.json is newer).
   def test_hand_edits_reach_open_shells
     { '/bin/bash' => 'bash', '/bin/zsh' => 'zsh' }.each do |bin, sh|
-      print "Test: hand edits of [paths] reach open shells (#{bin})... "
+      print "Test: external entries.json changes reach open shells (#{bin})... "
       home, env = sync_home("hand_#{sh}", [sh], %w[d1 d2 d3 d4])
       Open3.capture3(env, @wayu_bin, '--shell', sh, 'path', 'add', "#{home}/d1")
-      toml = "#{home}/.config/wayu/wayu.toml"
-      editor = "#{home}/editor.sh"
-      File.write(editor, "#!/bin/sh\nprintf 'd3 = \"%s/d3\"\\n' \"$HOME\" >> \"$1\"\n")
-      File.chmod(0o755, editor)
+      store = "#{home}/.local/share/wayu/entries.json"
+      snap = lambda do |name, keys|
+        file = "#{home}/#{name}.json"
+        File.write(file, JSON.generate('version' => 1, 'paths' => keys.map { |k| { 'key' => k, 'dir' => "#{home}/#{k}" } }))
+        file
+      end
+      s2 = snap.call('s2', %w[d1 d2])
+      s4 = snap.call('s4', %w[d1 d2 d4])
       script = <<~SH
-        . "$HOME/.config/wayu/core.#{sh}"
+        . "$HOME/.local/share/wayu/core.#{sh}"
         has() { case ":$PATH:" in *":$HOME/$1:"*) echo y ;; *) echo n ;; esac; }
-        sleep 1; printf 'd2 = "%s/d2"\\n' "$HOME" >> "$TOML"
+        sleep 1; cp "$S2" "$STORE"
         "$W" --shell #{sh} build >/dev/null 2>&1; _wayu_paths_sync; echo "build=$(has d2)"
-        sleep 1; EDITOR="$ED" "$W" --shell #{sh} config edit >/dev/null 2>&1; _wayu_paths_sync; echo "edit=$(has d3)"
-        sleep 1; printf 'd4 = "%s/d4"\\n' "$HOME" >> "$TOML"
+        sleep 1; cp "$S4" "$STORE"
         PATH="$DECOY:$PATH"; _wayu_paths_sync; echo "hook=$(has d4)"
       SH
       # A stale wayu earlier on PATH (e.g. Homebrew while running a dev build)
@@ -646,9 +644,9 @@ class InitIntegrationTest
       FileUtils.mkdir_p(decoy)
       File.write("#{decoy}/wayu", "#!/bin/sh\nexit 0\n")
       File.chmod(0o755, "#{decoy}/wayu")
-      extra = { 'TOML' => toml, 'ED' => editor, 'DECOY' => decoy }
+      extra = { 'STORE' => store, 'S2' => s2, 'S4' => s4, 'DECOY' => decoy }
       out, err, = Open3.capture3(env.merge(extra), bin, '-c', script)
-      if out.lines.map(&:strip) == %w[build=y edit=y hook=y]
+      if out.lines.map(&:strip) == %w[build=y hook=y]
         puts "✓"; @passed += 1
       else
         puts "✗"; puts "  out=#{out.lines.map(&:strip).inspect} err=#{err.strip[0, 300]}"; @failed += 1
@@ -662,7 +660,7 @@ class InitIntegrationTest
   def test_rewrite_drops_stale_zwc
     print "Test: rewriting core.zsh drops a stale .zwc... "
     home, env = sync_home('stalezwc', ['zsh'])
-    cfg = "#{home}/.config/wayu"
+    cfg = "#{home}/.local/share/wayu"
     Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_ZWC_PROBE', 'old')
     Open3.capture3(env, '/bin/zsh', '-fc', "zcompile '#{cfg}/core.zsh' && touch -t 203001010000 '#{cfg}/core.zsh.zwc'")
     Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_ZWC_PROBE', 'new')
@@ -681,11 +679,12 @@ class InitIntegrationTest
     print "Test: native prompt is opt-in; [prompt]/keybinding values stay literal... "
     home, env = sync_home('prompt_optin', ['zsh'])
     cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
     pwn = "#{home}/PWNED"
     base = File.exist?("#{cfg}/wayu.toml") ? File.read("#{cfg}/wayu.toml") : ''
     File.write("#{cfg}/wayu.toml", base + "\n[prompt]\nformat = \"{dir} {character}\"\n")
     Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_PROMPT_PROBE', '1')
-    off_ok = File.exist?("#{cfg}/core.zsh") && !File.read("#{cfg}/core.zsh").include?('_wayu_prompt_master')
+    off_ok = File.exist?("#{data}/core.zsh") && !File.read("#{data}/core.zsh").include?('_wayu_prompt_master')
 
     File.write("#{cfg}/wayu.toml", base + <<~TOML)
 
@@ -700,13 +699,13 @@ class InitIntegrationTest
       autosuggestions_accept_keys = ["^Y'; touch #{pwn}; '"]
     TOML
     Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_PROMPT_PROBE', '2')
-    core = File.read("#{cfg}/core.zsh")
+    core = File.read("#{data}/core.zsh")
     on_ok = core.include?('_wayu_prompt_master') && !core.include?('.wayu_async_$$')
-    files = ["#{cfg}/core.zsh", "#{cfg}/plugins/config.zsh"].select { |f| File.exist?(f) }
+    files = ["#{data}/core.zsh", "#{data}/plugins/config.zsh"].select { |f| File.exist?(f) }
     syntax_ok = files.size == 2 && files.all? { |f| system('zsh', '-n', f, out: File::NULL, err: File::NULL) }
     keys_ok = files.size == 2 && File.read(files[1]).include?(%q{bindkey '^Y'\''; touch})
     out, = Open3.capture3(env, '/bin/zsh', '-fic',
-      "source '#{cfg}/core.zsh' >/dev/null 2>&1; source '#{cfg}/plugins/config.zsh' >/dev/null 2>&1; _wayu_prompt_full")
+      "source '#{data}/core.zsh' >/dev/null 2>&1; source '#{data}/plugins/config.zsh' >/dev/null 2>&1; _wayu_prompt_full")
     literal_ok = out.include?("it\"s $(touch #{pwn}) `touch #{pwn}`")
     if off_ok && on_ok && syntax_ok && keys_ok && literal_ok && !File.exist?(pwn)
       puts "✓"; @passed += 1
@@ -718,18 +717,19 @@ class InitIntegrationTest
     end
   end
 
-  # Large configs (thousands of aliases) must not overflow the [tools] parser arena.
+  # Large stores (thousands of aliases) must not overflow the generator.
   def test_large_toml_regenerates
     print "Test: regenerate with 4000 aliases + [tools] succeeds... "
     home = "#{@tmp_home}/large"
     FileUtils.mkdir_p("#{home}/.config/wayu")
     env = { 'HOME' => home, 'SHELL' => '/bin/zsh' }
-    aliases = (1..4000).map { |i| "a#{i} = \"echo #{'x' * 120} #{i}\"" }.join("\n")
+    aliases = (1..4000).to_h { |i| ["a#{i}", "echo #{'x' * 120} #{i}"] }
     File.write("#{home}/.config/wayu/wayu.toml",
-               "[tools]\nnosuchtoolxyz = { kind = \"evalcache\", args = \"init zsh\" }\n\n[aliases]\n#{aliases}\n")
+               "[tools]\nnosuchtoolxyz = { kind = \"evalcache\", args = \"init zsh\" }\n")
+    write_entries(aliases: aliases, data: "#{home}/.local/share/wayu")
     _, _, st = Open3.capture3(env, "#{@wayu_bin} build")
-    core = "#{home}/.config/wayu/core.zsh"
-    lazy = "#{home}/.config/wayu/core.zsh"
+    core = "#{home}/.local/share/wayu/core.zsh"
+    lazy = core
     if st.success? && File.read(core).include?("alias a4000=") && File.read(lazy).include?('_wayu_evalcache nosuchtoolxyz init zsh')
       puts "✓"; @passed += 1
     else
@@ -743,9 +743,10 @@ class InitIntegrationTest
     home = "#{@tmp_home}/dry_eval"
     FileUtils.mkdir_p("#{home}/.config/wayu")
     env = { 'HOME' => home, 'SHELL' => '/bin/zsh' }
-    File.write("#{home}/.config/wayu/wayu.toml", "[aliases]\nx = \"y\"\n")
+    File.write("#{home}/.config/wayu/wayu.toml", "[shell]\ntype = \"zsh\"\n")
+    write_entries(aliases: { 'x' => 'y' }, data: "#{home}/.local/share/wayu")
     out, _, st = Open3.capture3(env, "#{@wayu_bin} --dry-run build")
-    if st.success? && !File.exist?("#{home}/.config/wayu/core.zsh")
+    if st.success? && !File.exist?("#{home}/.local/share/wayu/core.zsh")
       puts "✓"; @passed += 1
     else
       puts "✗"; puts "  core.zsh written under dry-run: #{out}"; @failed += 1

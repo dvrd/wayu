@@ -156,8 +156,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 	{command = .TOML, names = {"toml"}, desc = "TOML configuration management", default_action = .CHECK,
 	 actions = {
 		{"validate", .CHECK, "Validate wayu.toml"},
-		{"show", .GET, "Show config"}, {"keys", .LIST, "List keys"}, {"help", .HELP, "Show help"}},
-	 flags = {{"--reveal", "Show secret values unmasked in show"}}},
+		{"show", .GET, "Show config"}, {"keys", .LIST, "List keys"}, {"help", .HELP, "Show help"}}},
 	{command = .DOCTOR, names = {"doctor"}, desc = "Health check and diagnostics", default_action = .LIST, json = {.LIST},
 	 flags = {
 		{"--fix", "Repair what can be repaired"}, {"--profile", "Profile shell startup"},
@@ -703,7 +702,7 @@ print_completion_names :: proc(kind_word: string) {
 }
 
 // Existing entries of one kind, as the matching command accepts them:
-// [paths] values as written, [aliases]/[env] names, plugin names, function
+// PATH entry dirs as stored, alias/constant names, plugin names, function
 // names (functions/<name>.<ext>) and completion names (file name without
 // the shell prefix/suffix). Sorted. Allocated; caller deletes each and the
 // array.
@@ -715,20 +714,16 @@ collect_completion_names :: proc(kind: CompletionNames) -> [dynamic]string {
 	}
 	switch kind {
 	case .NONE:
-	case .PATH:
-		kvs := read_toml_section_kvs("paths")
-		defer destroy_toml_kvs(&kvs)
-		for kv in kvs {
-			if len(strings.trim_space(kv.value)) > 0 { add_unique(&out, kv.value) }
+	case .PATH, .ALIAS, .CONSTANT:
+		// Tab completion stays silent: a broken entries.json completes nothing.
+		store, _, ok := entries_read()
+		if !ok { break }
+		defer entries_store_destroy(&store)
+		#partial switch kind {
+		case .PATH:     for p in store.paths { add_unique(&out, p.dir) }
+		case .ALIAS:    for a in store.aliases { add_unique(&out, a.name) }
+		case .CONSTANT: for e in store.env { add_unique(&out, e.name) }
 		}
-	case .ALIAS:
-		kvs := read_toml_section_kvs("aliases")
-		defer destroy_toml_kvs(&kvs)
-		for kv in kvs { add_unique(&out, kv.key) }
-	case .CONSTANT:
-		kvs := read_toml_section_kvs("env")
-		defer destroy_toml_kvs(&kvs)
-		for kv in kvs { add_unique(&out, kv.key) }
 	case .PLUGIN:
 		json_file := get_plugins_json_config_file()
 		defer delete(json_file)
@@ -1128,7 +1123,7 @@ print_completions_help :: proc() {
 
 	// Notes section
 	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
-	fmt.printf("  %s• Completion files are stored in ~/.config/wayu/completions/%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Completion files are stored in ~/.local/share/wayu/completions/%s\n", get_muted(), RESET)
 	fmt.printf("  %s• Naming follows the active shell: zsh `_name`, bash `name.bash-completion`, fish `name.fish`%s\n", get_muted(), RESET)
 	fmt.printf("  %s• If the input already has a recognized form (_foo, foo.fish, ...) it is kept as-is%s\n", get_muted(), RESET)
 	fmt.printf("  %s• Restart your shell or re-source the wayu init file after adding%s\n", get_muted(), RESET)

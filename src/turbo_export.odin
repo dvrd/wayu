@@ -213,23 +213,23 @@ print_export_usage :: proc() {
 	fmt.println("  Writes turbo.<ext>: the same single precomputed file init.<ext> loads")
 	fmt.println("  (core.<ext>), kept up to date by wayu. Sourcing init.<ext> is just")
 	fmt.println("  as fast; turbo stays for rc files that already use it. zsh/bash only.")
-	fmt.println("  --eval prints only [env], [paths] and [aliases] (for eval contexts).")
+	fmt.println("  --eval prints only constants, PATH entries and aliases (for eval contexts).")
 	fmt.println()
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
 	fmt.println("  # Generate turbo file")
 	fmt.println("  wayu export --turbo")
 	fmt.println()
 	fmt.println("  # Use in .zshrc (equivalent to sourcing init.zsh)")
-	fmt.println("  source \"$HOME/.config/wayu/turbo.zsh\"")
+	fmt.println("  source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/turbo.zsh\"")
 	fmt.println()
 	fmt.println("  # Or eval mode (env, PATH and aliases only)")
 	fmt.println("  eval \"$(wayu export --eval)\"")
 	fmt.println()
-	fmt.printfln("%sTURBO FILE:%s ~/.config/wayu/%s", get_muted(), RESET, turbo_export_file_name())
+	fmt.printfln("%sTURBO FILE:%s %s/%s", get_muted(), RESET, wayu.data, turbo_export_file_name())
 }
 
 // Check if the turbo file for the active shell exists and is current
-// (not older than wayu.toml).
+// (not older than wayu.toml or entries.json).
 check_turbo_status :: proc() -> (exists: bool, current: bool) {
 	turbo_path := fmt.aprintf("%s/%s", wayu.data, turbo_export_file_name())
 	defer delete(turbo_path)
@@ -239,13 +239,13 @@ check_turbo_status :: proc() -> (exists: bool, current: bool) {
 		return false, false
 	}
 
-	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	defer delete(toml_path)
-	toml_info, terr := os.stat(toml_path, context.temp_allocator)
-	if terr != nil {
-		return true, true
+	current = true
+	for src in ([]string{fmt.tprintf("%s/wayu.toml", wayu.config), entries_file_path()}) {
+		info, serr := os.stat(src, context.temp_allocator)
+		if serr != nil { continue }
+		if turbo_info.modification_time._nsec < info.modification_time._nsec { current = false }
 	}
-	return true, turbo_info.modification_time._nsec >= toml_info.modification_time._nsec
+	return true, current
 }
 
 // Handle export --check action

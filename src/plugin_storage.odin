@@ -905,7 +905,7 @@ remove_cloned_plugin_dir :: proc(plugin_path: string, plugins_dir: string) -> bo
 //                   "conflicts": [{"kind": "function|alias|env",
 //                                  "name": ..., "with": ...}]}, ... ],
 //     "count": N, "enabled": M }
-// "with" is another plugin or "wayu.toml" (OKAMI-276).
+// "with" is another plugin or "entries.json" (OKAMI-276).
 print_plugins_json :: proc(config: ^PluginConfigJSON) {
 	enabled_count := 0
 	for plugin in config.plugins {

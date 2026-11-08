@@ -443,8 +443,7 @@ test_collect_completion_names :: proc(t: ^testing.T) {
 	wayu.clear_toml_content_cache()
 	defer wayu.clear_toml_content_cache()
 
-	toml := "[paths]\nbin = \"$HOME/bin\"\n\n[aliases]\nzz = \"ls\"\nll = \"ls -la\"\n\n[env]\nFOO = \"1\"\n"
-	testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/wayu.toml", tmp), transmute([]byte)toml))
+	write_entries_json(t, tmp, `{"version": 1, "paths": [{"key": "bin", "dir": "$HOME/bin"}], "aliases": [{"name": "zz", "value": "ls"}, {"name": "ll", "value": "ls -la"}], "env": [{"name": "FOO", "value": "1"}]}`)
 	for f in ([]string{"_jj", "gh.bash-completion", "notes.txt"}) {
 		testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/completions/%s", tmp, f), transmute([]byte)string("x")))
 	}

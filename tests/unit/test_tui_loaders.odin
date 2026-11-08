@@ -12,25 +12,34 @@ import "core:testing"
 import wayu "../../src"
 
 @(private = "file")
-LOADER_TOML :: `[paths]
-bin = "/usr/bin"
-missing = "/nonexistent/wayu-tui-loader"
+LOADER_TOML :: "[shell]\ntype = \"zsh\"\n"
 
-[aliases]
-ll = "ls -la"
-gs = "git status"
-
-[env]
-EDITOR = "vim"
+@(private = "file")
+LOADER_ENTRIES :: `{
+  "version": 1,
+  "paths": [
+    {"key": "bin", "dir": "/usr/bin"},
+    {"key": "missing", "dir": "/nonexistent/wayu-tui-loader"}
+  ],
+  "aliases": [
+    {"name": "ll", "value": "ls -la"},
+    {"name": "gs", "value": "git status"}
+  ],
+  "env": [
+    {"name": "EDITOR", "value": "vim"}
+  ]
+}
 `
 
-// Scratch config+data dir holding LOADER_TOML, a backup, a completion and
-// plugins.json. Restores wayu.wayu on return through the caller's defer.
+// Scratch config+data dir holding LOADER_TOML, LOADER_ENTRIES, an
+// entries.json backup, a completion and plugins.json. Restores wayu.wayu on
+// return through the caller's defer.
 @(private = "file")
 Sandbox :: struct {
-	dir:  string,
-	toml: string,
-	saved: wayu.AppContext,
+	dir:     string,
+	toml:    string,
+	entries: string,
+	saved:   wayu.AppContext,
 }
 
 @(private = "file")
@@ -40,11 +49,13 @@ sandbox_open :: proc(t: ^testing.T, name: string) -> Sandbox {
 	testing.expect(t, os.make_directory_all(fmt.tprintf("%s/backup", sb.dir)) == nil)
 	testing.expect(t, os.make_directory_all(fmt.tprintf("%s/completions", sb.dir)) == nil)
 	sb.toml = fmt.aprintf("%s/%s", sb.dir, wayu.WAYU_TOML)
+	sb.entries = fmt.aprintf("%s/%s", sb.dir, wayu.ENTRIES_FILE)
 	write :: proc(t: ^testing.T, path, body: string) {
 		testing.expectf(t, os.write_entire_file(path, transmute([]byte)body) == nil, "write %s", path)
 	}
 	write(t, sb.toml, LOADER_TOML)
-	write(t, fmt.tprintf("%s/backup/wayu.toml.backup.2026-01-01_00-00-00.000001", sb.dir), LOADER_TOML)
+	write(t, sb.entries, LOADER_ENTRIES)
+	write(t, fmt.tprintf("%s/backup/entries.json.backup.2026-01-01_00-00-00.000001", sb.dir), LOADER_ENTRIES)
 	write(t, fmt.tprintf("%s/completions/_demo", sb.dir), "#compdef demo\n")
 	write(t, fmt.tprintf("%s/plugins.json", sb.dir),
 		`{"version": "1.0", "plugins": [{"name": "demo", "url": "https://example.test/demo.git", "enabled": true, "shell": "ZSH", "installed_path": "/nonexistent/demo", "priority": 100}]}`)
@@ -66,6 +77,7 @@ sandbox_close :: proc(sb: ^Sandbox) {
 	wayu.clear_toml_content_cache()
 	os.remove_all(sb.dir)
 	delete(sb.toml)
+	delete(sb.entries)
 }
 
 @(private = "file")
@@ -103,13 +115,13 @@ test_tui_loaders_do_not_leak :: proc(t: ^testing.T) {
 		wayu.tui_load_settings(&state)
 	}
 
-	testing.expect(t, cache_has(&state, .PATH_VIEW, "/usr/bin"), "PATH view lists [paths] entries")
-	testing.expect(t, cache_has(&state, .ALIAS_VIEW, "gs"), "alias view lists [aliases] entries")
-	testing.expect(t, cache_has(&state, .CONSTANTS_VIEW, "EDITOR"), "constants view lists [env] entries")
+	testing.expect(t, cache_has(&state, .PATH_VIEW, "/usr/bin"), "PATH view lists the store's paths")
+	testing.expect(t, cache_has(&state, .ALIAS_VIEW, "gs"), "alias view lists the store's aliases")
+	testing.expect(t, cache_has(&state, .CONSTANTS_VIEW, "EDITOR"), "constants view lists the store's env")
 	testing.expect(t, cache_has(&state, .PLUGINS_VIEW, "demo"), "plugins view lists plugins.json entries")
 	testing.expect(t, len(state.row_meta[.COMPLETIONS_VIEW]) == 1, "completions view lists _demo")
-	testing.expectf(t, len(state.row_meta[.BACKUPS_VIEW]) == 1, "backups view lists the wayu.toml backup (got %d rows)", len(state.row_meta[.BACKUPS_VIEW]))
-	testing.expectf(t, state.settings.backups == 1, "settings count the wayu.toml backup (got %d)", state.settings.backups)
+	testing.expectf(t, len(state.row_meta[.BACKUPS_VIEW]) == 1, "backups view lists the entries.json backup (got %d rows)", len(state.row_meta[.BACKUPS_VIEW]))
+	testing.expectf(t, state.settings.backups == 1, "settings count the entries.json backup (got %d)", state.settings.backups)
 	testing.expect(t, state.plugin_registry_cache != nil, "plugins view loads the registry")
 	testing.expect(t, state.settings.loaded, "settings loaded")
 }
@@ -128,7 +140,7 @@ confirm_delete :: proc(state: ^wayu.TUIState, view: wayu.TUIView, name: string) 
 	wayu.execute_pending_delete(state)
 }
 
-// Add + delete for each data view: wayu.toml gets exactly the change, the
+// Add + delete for each data view: entries.json gets exactly the change, the
 // notification says so, the cache is dropped for a reload; no leaks.
 @(test)
 test_tui_mutations_write_and_notify :: proc(t: ^testing.T) {
@@ -142,7 +154,7 @@ test_tui_mutations_write_and_notify :: proc(t: ^testing.T) {
 	wayu.tui_ensure_data_loaded(&state, .ALIAS_VIEW)
 	fill_form(&state, .ALIAS_VIEW, "tz", "echo 'tui'")
 	wayu.execute_add_form(&state)
-	testing.expectf(t, strings.contains(read_text(sb.toml), `tz = "echo 'tui'"`), "alias written:\n%s", read_text(sb.toml))
+	testing.expectf(t, strings.contains(read_text(sb.entries), `{"name": "tz", "value": "echo 'tui'"}`), "alias written:\n%s", read_text(sb.entries))
 	testing.expect_value(t, state.notify.kind, wayu.NotificationKind.SUCCESS)
 	testing.expect(t, strings.has_prefix(state.notify.message, "Added alias: tz"), state.notify.message)
 	testing.expect(t, !state.add_form.active, "form closes after a successful add")
@@ -150,35 +162,35 @@ test_tui_mutations_write_and_notify :: proc(t: ^testing.T) {
 
 	fill_form(&state, .CONSTANTS_VIEW, "TUI_CONST", "a b")
 	wayu.execute_add_form(&state)
-	testing.expect(t, strings.contains(read_text(sb.toml), `TUI_CONST = "a b"`), "constant written")
+	testing.expect(t, strings.contains(read_text(sb.entries), `{"name": "TUI_CONST", "value": "a b"}`), "constant written")
 
 	fill_form(&state, .PATH_VIEW, sb.dir, "")
 	wayu.execute_add_form(&state)
-	testing.expectf(t, strings.contains(read_text(sb.toml), sb.dir), "path written:\n%s", read_text(sb.toml))
+	testing.expectf(t, strings.contains(read_text(sb.entries), fmt.tprintf(`"dir": "%s"`, sb.dir)), "path written:\n%s", read_text(sb.entries))
 
 	confirm_delete(&state, .ALIAS_VIEW, "gs")
-	testing.expect(t, !strings.contains(read_text(sb.toml), "gs ="), "alias removed")
+	testing.expect(t, !strings.contains(read_text(sb.entries), `"name": "gs"`), "alias removed")
 	testing.expect(t, strings.has_prefix(state.notify.message, "Removed alias: gs"), state.notify.message)
 	testing.expect(t, !state.delete_confirm.pending && !state.detail.shown, "confirm dialog dismissed")
 
 	confirm_delete(&state, .CONSTANTS_VIEW, "EDITOR")
-	testing.expect(t, !strings.contains(read_text(sb.toml), "EDITOR"), "constant removed")
+	testing.expect(t, !strings.contains(read_text(sb.entries), "EDITOR"), "constant removed")
 
 	confirm_delete(&state, .PATH_VIEW, "/usr/bin")
-	testing.expect(t, !strings.contains(read_text(sb.toml), `"/usr/bin"`), "path removed")
+	testing.expect(t, !strings.contains(read_text(sb.entries), `"/usr/bin"`), "path removed")
 
 	// Failures keep the form open with the reason; nothing is written.
-	before := strings.clone(read_text(sb.toml))
+	before := strings.clone(read_text(sb.entries))
 	defer delete(before)
 	fill_form(&state, .ALIAS_VIEW, "bad name", "x")
 	wayu.execute_add_form(&state)
 	testing.expect(t, state.add_form.active && len(state.add_form.error_message) > 0, "invalid alias keeps the form with an error")
-	testing.expect_value(t, read_text(sb.toml), before)
+	testing.expect_value(t, read_text(sb.entries), before)
 	wayu.clear_add_form(&state)
 
 	confirm_delete(&state, .ALIAS_VIEW, "no-such-alias")
 	testing.expect_value(t, state.notify.kind, wayu.NotificationKind.ERROR)
-	testing.expect_value(t, read_text(sb.toml), before)
+	testing.expect_value(t, read_text(sb.entries), before)
 }
 
 // --dry-run: notifications "[dry-run] would …", and no file in
@@ -237,7 +249,7 @@ press :: proc(state: ^wayu.TUIState, k: wayu.Key, ch: rune = 0) {
 	wayu.handle_key_event(state, wayu.KeyEvent{key = k, char = ch})
 }
 
-// OKAMI-254: --dry-run never writes plugins.json / wayu.toml / backups and
+// OKAMI-254: --dry-run never writes plugins.json / entries.json / backups and
 // says so as a preview ([dry-run], INFO), for every TUI mutation.
 @(test)
 test_tui_dry_run_previews_every_mutation :: proc(t: ^testing.T) {
@@ -246,8 +258,8 @@ test_tui_dry_run_previews_every_mutation :: proc(t: ^testing.T) {
 	plugins_json := fmt.tprintf("%s/plugins.json", sb.dir)
 	before_plugins := strings.clone(read_text(plugins_json))
 	defer delete(before_plugins)
-	before_toml := strings.clone(read_text(sb.toml))
-	defer delete(before_toml)
+	before_entries := strings.clone(read_text(sb.entries))
+	defer delete(before_entries)
 	wayu.wayu.dry_run = true
 
 	state := wayu.tui_state_init()
@@ -263,7 +275,7 @@ test_tui_dry_run_previews_every_mutation :: proc(t: ^testing.T) {
 	testing.expect(t, !ok, "tui_install_plugin never installs under --dry-run")
 	delete(err)
 
-	wayu.tui_restore_backup(&state, fmt.tprintf("%s/backup/wayu.toml.backup.2026-01-01_00-00-00.000001", sb.dir))
+	wayu.tui_restore_backup(&state, fmt.tprintf("%s/backup/entries.json.backup.2026-01-01_00-00-00.000001", sb.dir))
 	testing.expect(t, strings.has_prefix(state.notify.message, "[dry-run] would restore"), state.notify.message)
 	wayu.tui_cleanup_backups(&state)
 	testing.expect(t, strings.has_prefix(state.notify.message, "[dry-run] would remove"), state.notify.message)
@@ -274,7 +286,7 @@ test_tui_dry_run_previews_every_mutation :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(state.notify.message, `dz = "echo dry"`), state.notify.message)
 
 	testing.expect_value(t, read_text(plugins_json), before_plugins)
-	testing.expect_value(t, read_text(sb.toml), before_toml)
+	testing.expect_value(t, read_text(sb.entries), before_entries)
 	backups := wayu.list_backups_for_file(plugins_json)
 	defer wayu.free_backup_infos(backups)
 	testing.expect_value(t, len(backups), 0)
@@ -293,7 +305,7 @@ test_tui_add_matches_cli_semantics :: proc(t: ^testing.T) {
 	sub := fmt.tprintf("%s/completions", sb.dir)
 	fill_form(&state, .PATH_VIEW, fmt.tprintf("mytools=%s", sub), "")
 	wayu.execute_add_form(&state)
-	testing.expectf(t, strings.contains(read_text(sb.toml), fmt.tprintf(`mytools = "%s"`, sub)), "name=path keeps the name:\n%s", read_text(sb.toml))
+	testing.expectf(t, strings.contains(read_text(sb.entries), strings.concatenate({`{"key": "mytools", "dir": "`, sub, `"}`}, context.temp_allocator)), "name=path keeps the name:\n%s", read_text(sb.entries))
 	testing.expect(t, strings.has_prefix(state.notify.message, "Added PATH entry"), state.notify.message)
 
 	// Same path again: nothing changed, said so (was "Added").
@@ -317,9 +329,9 @@ test_tui_add_matches_cli_semantics :: proc(t: ^testing.T) {
 	fill_form(&state, .ALIAS_VIEW, "ll", "ls -lah")
 	wayu.execute_add_form(&state)
 	testing.expect(t, state.delete_confirm.pending && state.delete_confirm.kind == .REPLACE, "replace asks first")
-	testing.expect(t, strings.contains(read_text(sb.toml), `ll = "ls -la"`), "not written before yes")
+	testing.expect(t, strings.contains(read_text(sb.entries), `"ls -la"`), "not written before yes")
 	press(&state, .Char, 'y')
-	testing.expect(t, strings.contains(read_text(sb.toml), `ll = "ls -lah"`), "replaced after yes")
+	testing.expect(t, strings.contains(read_text(sb.entries), `{"name": "ll", "value": "ls -lah"}`), "replaced after yes")
 	testing.expect(t, strings.has_prefix(state.notify.message, "Updated alias: ll"), state.notify.message)
 	testing.expect(t, !state.add_form.active, "form closed")
 
@@ -328,7 +340,7 @@ test_tui_add_matches_cli_semantics :: proc(t: ^testing.T) {
 	wayu.execute_add_form(&state)
 	press(&state, .Escape)
 	testing.expect(t, state.add_form.active && !state.delete_confirm.pending, "cancel returns to the form")
-	testing.expect(t, strings.contains(read_text(sb.toml), `EDITOR = "vim"`), "kept")
+	testing.expect(t, strings.contains(read_text(sb.entries), `{"name": "EDITOR", "value": "vim"}`), "kept")
 	wayu.clear_add_form(&state)
 }
 
@@ -349,10 +361,10 @@ test_tui_reload_cycles_do_not_leak :: proc(t: ^testing.T) {
 		wayu.execute_add_form(&state)
 		wayu.tui_reload_all(&state)
 	}
-	testing.expect(t, strings.contains(read_text(sb.toml), "C_4"), "writes happened")
+	testing.expect(t, strings.contains(read_text(sb.entries), "C_4"), "writes happened")
 }
 
-// OKAMI-260: an external wayu.toml edit drops the caches; r reloads.
+// OKAMI-260: an external entries.json edit drops the caches; r reloads.
 @(test)
 test_tui_reloads_external_edits :: proc(t: ^testing.T) {
 	sb := sandbox_open(t, "wayu-test-tui-external")
@@ -364,8 +376,8 @@ test_tui_reloads_external_edits :: proc(t: ^testing.T) {
 	wayu.tui_ensure_data_loaded(&state, .ALIAS_VIEW)
 	testing.expect(t, cache_has(&state, .ALIAS_VIEW, "gs"), "loaded")
 
-	edited, _ := strings.replace_all(LOADER_TOML, `gs = "git status"`, `ext_added = "echo external"`, context.temp_allocator)
-	testing.expect(t, os.write_entire_file(sb.toml, transmute([]byte)edited) == nil)
+	edited, _ := strings.replace_all(LOADER_ENTRIES, `{"name": "gs", "value": "git status"}`, `{"name": "ext_added", "value": "echo external"}`, context.temp_allocator)
+	testing.expect(t, os.write_entire_file(sb.entries, transmute([]byte)edited) == nil)
 	testing.expect(t, wayu.tui_check_external_changes(&state, force = true), "change detected")
 	wayu.tui_ensure_data_loaded(&state, .ALIAS_VIEW)
 	testing.expect(t, cache_has(&state, .ALIAS_VIEW, "ext_added"), "new alias shown")
@@ -376,15 +388,15 @@ test_tui_reloads_external_edits :: proc(t: ^testing.T) {
 	testing.expect(t, state.data_cache[.ALIAS_VIEW] == nil, "r drops the cache")
 }
 
-// OKAMI-266: the Backups view lists every backup group; Enter restores a
-// wayu.toml backup after confirmation; c prunes every group to 5.
+// OKAMI-266: the Backups view lists every backup group; Enter restores an
+// entries.json backup after confirmation; c prunes every group to 5.
 @(test)
 test_tui_backups_restore_and_cleanup :: proc(t: ^testing.T) {
 	sb := sandbox_open(t, "wayu-test-tui-backups")
 	defer sandbox_close(&sb)
 	for i in 0..<7 {
-		path := fmt.tprintf("%s/backup/wayu.toml.backup.2025-01-0%d_00-00-00.000000", sb.dir, i + 1)
-		body := fmt.tprintf("[aliases]\nold%d = \"x\"\n", i)
+		path := fmt.tprintf("%s/backup/entries.json.backup.2025-01-0%d_00-00-00.000000", sb.dir, i + 1)
+		body := strings.concatenate({`{"version": 1, "aliases": [{"name": "old`, fmt.tprint(i), `", "value": "x"}]}`}, context.temp_allocator)
 		testing.expect(t, os.write_entire_file(path, transmute([]byte)body) == nil)
 	}
 	testing.expect(t, os.write_entire_file(fmt.tprintf("%s/backup/plugins.json.backup.2025-01-01_00-00-00.000000", sb.dir), transmute([]byte)string("{}")) == nil)
@@ -393,28 +405,28 @@ test_tui_backups_restore_and_cleanup :: proc(t: ^testing.T) {
 	defer wayu.tui_state_destroy(&state)
 	state.current_view = .BACKUPS_VIEW
 	wayu.tui_ensure_data_loaded(&state, .BACKUPS_VIEW)
-	testing.expectf(t, len(state.row_meta[.BACKUPS_VIEW]) == 9, "8 wayu.toml + 1 plugins.json backups (got %d)", len(state.row_meta[.BACKUPS_VIEW]))
-	testing.expect_value(t, state.row_meta[.BACKUPS_VIEW][0].value, wayu.WAYU_TOML)
+	testing.expectf(t, len(state.row_meta[.BACKUPS_VIEW]) == 9, "8 entries.json + 1 plugins.json backups (got %d)", len(state.row_meta[.BACKUPS_VIEW]))
+	testing.expect_value(t, state.row_meta[.BACKUPS_VIEW][0].value, wayu.ENTRIES_FILE)
 
 	press(&state, .Char, 'c')
 	testing.expect(t, state.delete_confirm.pending && state.delete_confirm.kind == .CLEANUP, "c asks first")
 	press(&state, .Char, 'y')
 	testing.expect(t, strings.has_prefix(state.notify.message, "Removed 3 old backup(s)"), state.notify.message)
-	backups := wayu.list_backups_for_file(sb.toml)
+	backups := wayu.list_backups_for_file(sb.entries)
 	testing.expect_value(t, len(backups), wayu.BACKUP_KEEP_COUNT)
 	wayu.free_backup_infos(backups)
 
-	// Newest wayu.toml backup is the 2026 one from the sandbox (row 0).
+	// Newest entries.json backup is the 2026 one from the sandbox (row 0).
 	wayu.tui_ensure_data_loaded(&state, .BACKUPS_VIEW)
 	state.selected_index = 0
-	CHANGED :: "[aliases]\nchanged = \"y\"\n"
-	testing.expect(t, os.write_entire_file(sb.toml, transmute([]byte)string(CHANGED)) == nil)
+	CHANGED :: `{"version": 1, "aliases": [{"name": "changed", "value": "y"}]}`
+	testing.expect(t, os.write_entire_file(sb.entries, transmute([]byte)string(CHANGED)) == nil)
 	press(&state, .Enter)
 	testing.expect(t, state.delete_confirm.pending && state.delete_confirm.kind == .RESTORE, "Enter asks to restore")
-	testing.expect_value(t, read_text(sb.toml), CHANGED)
+	testing.expect_value(t, read_text(sb.entries), CHANGED)
 	press(&state, .Char, 'y')
-	testing.expect(t, strings.has_prefix(state.notify.message, "Restored wayu.toml"), state.notify.message)
-	testing.expect_value(t, read_text(sb.toml), LOADER_TOML)
+	testing.expect(t, strings.has_prefix(state.notify.message, "Restored entries.json"), state.notify.message)
+	testing.expect_value(t, read_text(sb.entries), LOADER_ENTRIES)
 }
 
 // OKAMI-264: cursor editing in the form, 'e' edits in place, 'u' offers undo.
@@ -453,19 +465,19 @@ test_tui_form_editing_and_edit_action :: proc(t: ^testing.T) {
 	state.add_form.cursor_0 = len(state.add_form.input_0)
 	type_into(&state, "t")
 	wayu.handle_add_form_input(&state, {key = .Enter})
-	toml := read_text(sb.toml)
-	testing.expectf(t, strings.contains(toml, `gst = "git status"`) && !strings.contains(toml, "gs ="), "renamed:\n%s", toml)
+	store := read_text(sb.entries)
+	testing.expectf(t, strings.contains(store, `{"name": "gst", "value": "git status"}`) && !strings.contains(store, `"name": "gs"`), "renamed:\n%s", store)
 
 	// PATH edit keeps the key and position.
 	wayu.show_edit_form(&state, .PATH_VIEW, "/nonexistent/wayu-tui-loader", "")
 	clear(&state.add_form.input_0)
 	append(&state.add_form.input_0, ..transmute([]u8)sb.dir)
 	wayu.execute_add_form(&state)
-	toml = read_text(sb.toml)
-	testing.expectf(t, strings.contains(toml, fmt.tprintf(`missing = "%s"`, sb.dir)), "path edited in place:\n%s", toml)
-	testing.expect(t, strings.index(toml, "bin =") < strings.index(toml, "missing ="), "order kept")
+	store = read_text(sb.entries)
+	testing.expectf(t, strings.contains(store, strings.concatenate({`{"key": "missing", "dir": "`, sb.dir, `"}`}, context.temp_allocator)), "path edited in place:\n%s", store)
+	testing.expect(t, strings.index(store, `"key": "bin"`) < strings.index(store, `"key": "missing"`), "order kept")
 
-	// u offers to restore the newest wayu.toml backup.
+	// u offers to restore the newest entries.json backup.
 	state.current_view = .ALIAS_VIEW
 	press(&state, .Char, 'u')
 	testing.expect(t, state.delete_confirm.pending && state.delete_confirm.kind == .RESTORE, "u asks to restore")

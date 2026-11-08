@@ -460,7 +460,7 @@ test_split_shell_statements :: proc(t: ^testing.T) {
 }
 
 // OKAMI-276: conflicts are listed by name — between plugins and with
-// wayu.toml [aliases]/[env].
+// wayu's own aliases/constants (entries.json).
 @(test)
 test_collect_plugin_conflicts :: proc(t: ^testing.T) {
 	old_shell := wayu.wayu.shell
@@ -475,11 +475,11 @@ test_collect_plugin_conflicts :: proc(t: ^testing.T) {
 	os.make_directory(fmt.tprintf("%s/d2", base))
 	_ = os.write_entire_file(fmt.tprintf("%s/d1/d1.plugin.zsh", base), transmute([]byte)string("dup() { :; }\nalias gs='git status'\n"))
 	_ = os.write_entire_file(fmt.tprintf("%s/d2/d2.plugin.zsh", base), transmute([]byte)string("export MYV=1; dup() { :; }; alias gs=x\n"))
-	_ = os.write_entire_file(fmt.tprintf("%s/wayu.toml", base), transmute([]byte)string("[aliases]\ngs = \"git st\"\n\n[env]\nMYV = \"2\"\n"))
+	write_entries_json(t, base, `{"version": 1, "aliases": [{"name": "gs", "value": "git st"}], "env": [{"name": "MYV", "value": "2"}]}`)
 
-	saved_config := wayu.wayu.config
-	wayu.wayu.config = base
-	defer wayu.wayu.config = saved_config
+	saved_config, saved_data := wayu.wayu.config, wayu.wayu.data
+	wayu.wayu.config, wayu.wayu.data = base, base
+	defer { wayu.wayu.config, wayu.wayu.data = saved_config, saved_data }
 	wayu.clear_toml_content_cache()
 	defer wayu.clear_toml_content_cache()
 
@@ -497,8 +497,8 @@ test_collect_plugin_conflicts :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, has(conflicts[:], "d1", "d2", "function", "dup"), "d1/d2 dup")
 	testing.expect(t, has(conflicts[:], "d1", "d2", "alias", "gs"), "d1/d2 gs")
-	testing.expect(t, has(conflicts[:], "d1", "wayu.toml", "alias", "gs"), "d1 gs vs wayu.toml")
-	testing.expect(t, has(conflicts[:], "d2", "wayu.toml", "env", "MYV"), "d2 MYV vs [env]")
+	testing.expect(t, has(conflicts[:], "d1", wayu.PLUGIN_CONFLICT_WAYU, "alias", "gs"), "d1 gs vs wayu entries")
+	testing.expect(t, has(conflicts[:], "d2", wayu.PLUGIN_CONFLICT_WAYU, "env", "MYV"), "d2 MYV vs wayu constants")
 	testing.expectf(t, len(conflicts) == 5, "5 conflicts, got %v", conflicts[:])
 
 	lines := wayu.plugin_conflict_lines(conflicts[:], "d2")

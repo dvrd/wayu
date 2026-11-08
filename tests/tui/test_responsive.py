@@ -12,6 +12,7 @@ Requirements:
     pip install pyte
 """
 
+import json
 import os
 import sys
 import pty
@@ -486,7 +487,6 @@ def test_filtered_delete():
     """Selection maps through the filter's index list: deleting the only
     match of `/gs` removes `gs`, never the unfiltered row 0 (`ll`)."""
     print(f"\n── Filtered delete ──")
-    toml_path = os.path.join(os.environ["HOME"], ".config", "wayu", "wayu.toml")
     s = TUISession(80, 24)
     try:
         s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
@@ -503,13 +503,12 @@ def test_filtered_delete():
              AssertResult(ok and "Alias: gs" in s.snapshot(), f"confirm dialog not for gs\n{s.snapshot()}"))
         s.send(b"y")
         s.wait_for(lambda snap: "Removed" in snap, timeout=TIMEOUT_KEY)
-        content = open(toml_path).read()
+        content = read_entries()
         test("filtered_delete/removed_match",
-             AssertResult("gs =" not in content and "ll =" in content, f"wayu.toml after delete:\n{content}"))
+             AssertResult("gs =" not in content and "ll =" in content, f"entries.json after delete:\n{content}"))
     finally:
         s.kill()
-        with open(toml_path, "w") as f:
-            f.write(FIXTURE_TOML)
+        reset_config()
 
 
 # ── Test: terminal restored when killed ────────────────────────────────────
@@ -606,36 +605,71 @@ def fill_add_form(s, fields):
     s.send(b"\r")
 
 
+def config_dir():
+    return os.path.join(os.environ["HOME"], ".config", "wayu")
+
+
+def data_dir():
+    return os.path.join(os.environ["HOME"], ".local", "share", "wayu")
+
+
+def entries_path():
+    return os.path.join(data_dir(), "entries.json")
+
+
 def config_snapshot():
-    """Bytes of every file under ~/.config/wayu (dry-run must change none)."""
-    root = os.path.join(os.environ["HOME"], ".config", "wayu")
+    """Bytes of every file under the config and data dirs (dry-run must
+    change none)."""
     out = {}
-    for dirpath, _, files in os.walk(root):
-        for fn in files:
-            if fn.endswith(".zwc") or fn == ".wayu.lock":
-                continue
-            p = os.path.join(dirpath, fn)
-            with open(p, "rb") as f:
-                out[os.path.relpath(p, root)] = f.read()
+    for root in (config_dir(), data_dir()):
+        for dirpath, _, files in os.walk(root):
+            for fn in files:
+                if fn.endswith(".zwc") or fn == ".wayu.lock":
+                    continue
+                p = os.path.join(dirpath, fn)
+                with open(p, "rb") as f:
+                    out[p] = f.read()
     return out
 
 
+def write_entries(entries):
+    """entries: {"paths": [(key, dir)], "aliases": [(name, value)],
+    "env": [(name, value)]} -> entries.json (the store wayu manages)."""
+    os.makedirs(data_dir(), exist_ok=True)
+    doc = {
+        "version": 1,
+        "paths": [{"key": k, "dir": d} for k, d in entries.get("paths", [])],
+        "aliases": [{"name": n, "value": v} for n, v in entries.get("aliases", [])],
+        "env": [{"name": n, "value": v} for n, v in entries.get("env", [])],
+    }
+    with open(entries_path(), "w") as f:
+        f.write(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
+    os.chmod(entries_path(), 0o600)
+
+
 def reset_config():
-    root = os.path.join(os.environ["HOME"], ".config", "wayu")
-    shutil.rmtree(root, ignore_errors=True)
-    os.makedirs(root)
-    with open(os.path.join(root, "wayu.toml"), "w") as f:
+    for root in (config_dir(), data_dir()):
+        shutil.rmtree(root, ignore_errors=True)
+        os.makedirs(root)
+    with open(os.path.join(config_dir(), "wayu.toml"), "w") as f:
         f.write(FIXTURE_TOML)
+    write_entries(FIXTURE_ENTRIES)
 
 
-def read_toml():
-    with open(os.path.join(os.environ["HOME"], ".config", "wayu", "wayu.toml")) as f:
-        return f.read()
+def read_entries():
+    """entries.json flattened to `name = "value"` lines (all sections) so
+    checks can look for one entry."""
+    with open(entries_path()) as f:
+        doc = json.load(f)
+    lines = [f'{e["key"]} = {json.dumps(e["dir"], ensure_ascii=False)}' for e in doc.get("paths", [])]
+    for sec in ("aliases", "env"):
+        lines += [f'{e["name"]} = {json.dumps(e["value"], ensure_ascii=False)}' for e in doc.get(sec, [])]
+    return "\n".join(lines) + "\n"
 
 
 def test_add_and_delete_mutations():
     """Add an alias, a constant and a PATH entry through the add form, and
-    delete a constant: wayu.toml gets exactly those changes, with a backup."""
+    delete a constant: entries.json gets exactly those changes, with a backup."""
     print(f"\n── Mutations ──")
     reset_config()
     newdir = tempfile.mkdtemp(prefix="wayu_tui_dir_")
@@ -647,7 +681,7 @@ def test_add_and_delete_mutations():
             ok = s.wait_for(lambda snap: "Added alias: tz" in snap, timeout=TIMEOUT_KEY)
             test("mutations/add_alias_notified", AssertResult(ok, s.snapshot()))
             test("mutations/add_alias_written",
-                 AssertResult('tz = "echo \'tui added\'"' in read_toml(), read_toml()))
+                 AssertResult('tz = "echo \'tui added\'"' in read_entries(), read_entries()))
 
             s.send(b"h"); s.read(timeout=0.2)  # back to the menu
             s.send(b"j"); s.read(timeout=0.15)
@@ -655,7 +689,7 @@ def test_add_and_delete_mutations():
             s.wait_for(lambda snap: "EDITOR" in snap, timeout=TIMEOUT_KEY)
             fill_add_form(s, ["TUI_CONST", "a b c"])
             ok = s.wait_for(lambda snap: "Added constant: TUI_CONST" in snap, timeout=TIMEOUT_KEY)
-            test("mutations/add_const", AssertResult(ok and 'TUI_CONST = "a b c"' in read_toml(), read_toml()))
+            test("mutations/add_const", AssertResult(ok and 'TUI_CONST = "a b c"' in read_entries(), read_entries()))
 
             # Delete EDITOR via the filter (first match), confirm with y.
             s.send(b"/"); s.read(timeout=0.2)
@@ -666,7 +700,7 @@ def test_add_and_delete_mutations():
             s.wait_for(lambda snap: "DELETE CONFIRMATION" in snap, timeout=TIMEOUT_KEY)
             s.send(b"y")
             ok = s.wait_for(lambda snap: "Removed constant: EDITOR" in snap, timeout=TIMEOUT_KEY)
-            content = read_toml()
+            content = read_entries()
             test("mutations/delete_const",
                  AssertResult(ok and "EDITOR" not in content and "TUI_CONST" in content, content))
 
@@ -678,11 +712,11 @@ def test_add_and_delete_mutations():
             s.wait_for(lambda snap: "PATH" in snap and "CONFIGURATION" in snap, timeout=TIMEOUT_KEY)
             fill_add_form(s, [newdir])
             ok = s.wait_for(lambda snap: "Added PATH entry" in snap, timeout=TIMEOUT_KEY)
-            test("mutations/add_path", AssertResult(ok and newdir in read_toml(), read_toml()))
+            test("mutations/add_path", AssertResult(ok and newdir in read_entries(), read_entries()))
 
-            backups = os.listdir(os.path.join(os.environ["HOME"], ".config", "wayu", "backup"))
+            backups = os.listdir(os.path.join(data_dir(), "backup"))
             test("mutations/backed_up",
-                 AssertResult(any(b.startswith("wayu.toml.backup.") for b in backups), f"backups: {backups}"))
+                 AssertResult(any(b.startswith("entries.json.backup.") for b in backups), f"backups: {backups}"))
             s.send(b"\x1b"); s.read(timeout=0.5)
             # A busy TUI can read "ESC q" as one Alt-q chord; send q again
             # if the first one didn't quit.
@@ -699,7 +733,7 @@ def test_add_and_delete_mutations():
 
 def test_dry_run_writes_nothing():
     """`wayu --tui --dry-run`: add and delete report "[dry-run] would …" and
-    leave every file under ~/.config/wayu byte-identical."""
+    leave every file under the config and data dirs byte-identical."""
     print(f"\n── Dry run ──")
     reset_config()
     before = config_snapshot()
@@ -743,7 +777,7 @@ def test_paste_burst():
         ok = s.wait_for(lambda snap: "Added constant: PASTED" in snap, timeout=TIMEOUT_KEY * 2)
         test("paste/added", AssertResult(ok, s.snapshot()))
         test("paste/value_intact",
-             AssertResult(f'PASTED = "{value}"' in read_toml(), read_toml()[:300]))
+             AssertResult(f'PASTED = "{value}"' in read_entries(), read_entries()[:300]))
         s.send(b"\x03")  # Ctrl+C quits from any view
         check_clean_exit(s, "paste", want_code=0)
     finally:
@@ -780,15 +814,14 @@ def test_slow_rc_shows_progress_and_cancels():
 
 
 def test_external_edit_reloads():
-    """OKAMI-260: an alias added to wayu.toml by someone else shows up in
+    """OKAMI-260: an alias added to entries.json by someone else shows up in
     the open view without leaving it."""
     print(f"\n── External edit reload ──")
     reset_config()
     s = TUISession(80, 24, env=constants_env())
     try:
         open_view(s, "alias", lambda snap: "ALIASES" in snap and "gs" in snap)
-        with open(os.path.join(os.environ["HOME"], ".config", "wayu", "wayu.toml"), "w") as f:
-            f.write(FIXTURE_TOML.replace('gs = "git status"', 'extadded = "echo ext"'))
+        write_entries(dict(FIXTURE_ENTRIES, aliases=[("ll", "ls -la"), ("extadded", "echo ext")]))
         ok = s.wait_for(lambda snap: "extadded" in snap, timeout=3.0)
         test("external/reloaded", AssertResult(ok, s.snapshot()))
         test("external/removed_row_gone", AssertResult("git status" not in s.snapshot(), s.snapshot()))
@@ -865,7 +898,7 @@ def test_add_form_editing_and_semantics():
             test("form/shows_tail", AssertResult(tail in s.snapshot(), s.snapshot()))
             s.send(b"\r")
             ok = s.wait_for(lambda snap: "Added PATH entry" in snap, timeout=TIMEOUT_KEY)
-            test("form/name_eq_path", AssertResult(ok and f'tailtest = "{newdir}"' in read_toml(), read_toml()))
+            test("form/name_eq_path", AssertResult(ok and f'tailtest = "{newdir}"' in read_entries(), read_entries()))
 
             s.send(b"h"); s.read(timeout=0.2)
             s.send(b"j"); s.read(timeout=0.15)
@@ -882,7 +915,7 @@ def test_add_form_editing_and_semantics():
             test("form/replace_asks", AssertResult(ok, s.snapshot()))
             s.send(b"y")
             ok = s.wait_for(lambda snap: "Updated alias: ll" in snap, timeout=TIMEOUT_KEY)
-            test("form/replaced", AssertResult(ok and 'll = "ls -lah"' in read_toml(), read_toml()))
+            test("form/replaced", AssertResult(ok and 'll = "ls -lah"' in read_entries(), read_entries()))
             s.send(b"\x03")
             check_clean_exit(s, "form", want_code=0)
         finally:
@@ -974,7 +1007,7 @@ def test_bracketed_paste():
     nothing outside a text field (OKAMI-253)."""
     print(f"\n── Bracketed paste ──")
     reset_config()
-    before = read_toml()
+    before = read_entries()
     s = TUISession(80, 24, env=constants_env())
     try:
         open_view(s, "alias", lambda snap: "ALIASES" in snap and "gs" in snap)
@@ -983,13 +1016,13 @@ def test_bracketed_paste():
         s.send(b"\x1b[200~zz\techo z\rdy\x1b[201~")
         ok = s.wait_for(lambda snap: "zz echo zdy" in snap, timeout=TIMEOUT_KEY)
         test("paste/inserted_into_field", AssertResult(ok, s.snapshot()))
-        test("paste/nothing_submitted", AssertResult(read_toml() == before, read_toml()))
+        test("paste/nothing_submitted", AssertResult(read_entries() == before, read_entries()))
         s.send(b"\x1b"); wait_quiet(s, 0.3)  # close the form
         # Outside a text field a paste is ignored: "dy" must not delete.
         s.send(b"\x1b[200~dy\x1b[201~"); wait_quiet(s, 0.5)
         snap = s.snapshot()
         test("paste/ignored_in_list",
-             AssertResult("DELETE CONFIRMATION" not in snap and read_toml() == before, snap))
+             AssertResult("DELETE CONFIRMATION" not in snap and read_entries() == before, snap))
         s.send(b"\x03")
         check_clean_exit(s, "paste_bracketed", want_code=0)
         tail = bytes(s.raw)
@@ -1013,7 +1046,7 @@ def test_unbracketed_paste_cannot_confirm():
         s.send(b"zz\techo z\rdy")
         s.wait_for(lambda snap: "Added alias: zz" in snap, timeout=TIMEOUT_KEY)
         wait_quiet(s, 0.5)
-        content = read_toml()
+        content = read_entries()
         test("burst/added", AssertResult('zz = "echo z"' in content, content))
         test("burst/no_delete",
              AssertResult("ll =" in content and "gs =" in content
@@ -1031,7 +1064,7 @@ def test_alt_keys_and_esc_delay():
     still an arrow key, not Escape (OKAMI-257)."""
     print(f"\n── Alt keys / ESC delay ──")
     reset_config()
-    before = read_toml()
+    before = read_entries()
     s = TUISession(80, 24, env=constants_env())
     try:
         open_view(s, "alias", lambda snap: "ALIASES" in snap and "gs" in snap)
@@ -1051,7 +1084,7 @@ def test_alt_keys_and_esc_delay():
              AssertResult("DELETE CONFIRMATION" not in snap and "ADD ALIAS" in snap, snap))
         s.send(b"\x1b"); wait_quiet(s, 0.3)
 
-        test("alt/nothing_written", AssertResult(read_toml() == before, read_toml()))
+        test("alt/nothing_written", AssertResult(read_entries() == before, read_entries()))
         s.send(b"\x03")
         check_clean_exit(s, "alt", want_code=0)
     finally:
@@ -1076,13 +1109,13 @@ def test_alt_keys_and_esc_delay():
         reset_config()
 
 
-UNICODE_TOML = """[aliases]
-acute = "echo café end"
-arrows = "echo ➜ ✔ ★ end"
-heart = "echo ❤️ in end"
-family = "echo \U0001F468‍\U0001F469‍\U0001F467 plain end"
-cjk = "echo 日本 end"
-"""
+UNICODE_ALIASES = [
+    ("acute", "echo café end"),
+    ("arrows", "echo ➜ ✔ ★ end"),
+    ("heart", "echo ❤️ in end"),
+    ("family", "echo \U0001F468‍\U0001F469‍\U0001F467 plain end"),
+    ("cjk", "echo 日本 end"),
+]
 
 
 def cells(s, row):
@@ -1137,9 +1170,7 @@ def test_unicode_widths():
     incremental screen equals a full repaint after opening and closing the
     detail overlay on every row (OKAMI-258)."""
     print(f"\n── Unicode widths ──")
-    toml_path = os.path.join(os.environ["HOME"], ".config", "wayu", "wayu.toml")
-    with open(toml_path, "w") as f:
-        f.write(UNICODE_TOML)
+    write_entries({"aliases": UNICODE_ALIASES})
     s = TUISession(80, 24, env=constants_env())
     try:
         ok = open_view(s, "alias", lambda snap: "acute" in snap and "family" in snap)
@@ -1231,45 +1262,43 @@ def test_suspend_resume():
         s.kill()
 
 
-def test_unreadable_toml_mid_session():
-    """wayu.toml made unreadable while the TUI runs: adding a PATH entry
+def test_unreadable_store_mid_session():
+    """entries.json made unreadable while the TUI runs: adding a PATH entry
     reports the error in the form instead of os.exit()ing on the alternate
     screen with the terminal raw (OKAMI-251)."""
-    print(f"\n── Unreadable wayu.toml while running ──")
+    print(f"\n── Unreadable entries.json while running ──")
     reset_config()
-    toml_path = os.path.join(os.environ["HOME"], ".config", "wayu", "wayu.toml")
+    store_path = entries_path()
+    before = read_entries()
     s = TUISession(80, 24, env=constants_env())
     try:
         open_view(s, "path", lambda snap: "CONFIGURATION" in snap)
-        os.chmod(toml_path, 0)
+        os.chmod(store_path, 0)
         fill_add_form(s, ["/tmp"])
         ok = s.wait_for(lambda snap: "cannot read" in snap, timeout=TIMEOUT_KEY)
         test("unreadable/reported", AssertResult(ok and s.alive(), s.snapshot()))
-        os.chmod(toml_path, 0o644)
-        test("unreadable/untouched", AssertResult(read_toml() == FIXTURE_TOML, read_toml()))
+        os.chmod(store_path, 0o600)
+        test("unreadable/untouched", AssertResult(read_entries() == before, read_entries()))
         if s.alive():
             s.send(b"\x03")
         check_clean_exit(s, "unreadable", want_code=0)
     finally:
-        os.chmod(toml_path, 0o644)
+        os.chmod(store_path, 0o600)
         s.kill()
         reset_config()
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
 
-FIXTURE_TOML = """[paths]
-bin = "/usr/bin"
-local = "/usr/local/bin"
-
-[aliases]
-ll = "ls -la"
-gs = "git status"
-
-[env]
-EDITOR = "vim"
-DEMO_API_KEY = "fake-tui-secret-0005"
+FIXTURE_TOML = """[shell]
+type = "zsh"
 """
+
+FIXTURE_ENTRIES = {
+    "paths": [("bin", "/usr/bin"), ("local", "/usr/local/bin")],
+    "aliases": [("ll", "ls -la"), ("gs", "git status")],
+    "env": [("EDITOR", "vim"), ("DEMO_API_KEY", "fake-tui-secret-0005")],
+}
 
 # Fake values only: the constants view test runs wayu with exactly this
 # environment, never the real one.
@@ -1324,14 +1353,13 @@ def test_constants_view_masks_secrets():
 
 def sandbox_home():
     """Temp HOME with a small fixed config: never reads the real
-    ~/.config/wayu, and every run renders the same data (CI + local)."""
+    config or data dirs, and every run renders the same data (CI + local)."""
     home = tempfile.mkdtemp(prefix="wayu_tui_")
-    cfg = os.path.join(home, ".config", "wayu")
-    os.makedirs(cfg)
-    with open(os.path.join(cfg, "wayu.toml"), "w") as f:
-        f.write(FIXTURE_TOML)
+    for var in ("WAYU_CONFIG_DIR", "WAYU_DATA_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME"):
+        os.environ.pop(var, None)
     os.environ["HOME"] = home
     os.environ["SHELL"] = "/bin/zsh"
+    reset_config()
     return home
 
 
@@ -1395,7 +1423,7 @@ def run_all():
     test_unicode_widths()
     test_theme()
     test_suspend_resume()
-    test_unreadable_toml_mid_session()
+    test_unreadable_store_mid_session()
 
     # Summary
     passed = sum(1 for r in results if r.passed)

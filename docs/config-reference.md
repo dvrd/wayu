@@ -1,9 +1,10 @@
 # wayu configuration reference
 
-Everything wayu reads: `wayu.toml` (every table and key), the other files you
-may edit (`hooks.conf`, `plugins.json`, `extra.<ext>`, `tools.<ext>`,
-`functions/`, `alias-sources.conf`, `completions/`), where they live, and which
-files are generated.
+Everything wayu reads: `wayu.toml` (every table and key), the entries wayu
+manages for you (`entries.json`: PATH entries, aliases, constants), the other
+files you may edit (`hooks.conf`, `plugins.json`, `extra.<ext>`,
+`tools.<ext>`, `functions/`, `alias-sources.conf`, `completions/`), where they
+live, and which files are generated.
 
 - Commands and flags: [cli.md](cli.md).
 - Behavior changes between versions: [UPGRADING.md](UPGRADING.md).
@@ -18,13 +19,15 @@ files are generated.
   - [TOML syntax wayu accepts](#toml-syntax-wayu-accepts)
   - [Strict and lenient reading](#strict-and-lenient-reading)
   - [`[shell]`](#shell)
-  - [`[paths]`](#paths)
-  - [`[aliases]`](#aliases)
-  - [`[env]`](#env)
   - [`[settings]`](#settings)
   - [`[tools]`](#tools)
   - [`[prompt]`](#prompt)
   - [Keys wayu does not read](#keys-wayu-does-not-read)
+- [Managed data](#managed-data)
+  - [entries.json](#entriesjson)
+  - [PATH entries](#path-entries)
+  - [Aliases](#aliases)
+  - [Constants](#constants)
 - [Other files you edit](#other-files-you-edit)
   - [hooks.conf](#hooksconf)
   - [plugins.json](#pluginsjson)
@@ -41,14 +44,19 @@ files are generated.
 | Variable | Default | Holds |
 |---|---|---|
 | `WAYU_CONFIG_DIR` | `~/.config/wayu` | Files you edit: `wayu.toml`, `hooks.conf`, `alias-sources.conf`, `extra.<ext>`, `tools.<ext>`, `config.<ext>`, `functions/` |
-| `WAYU_DATA_DIR` | the config dir | Generated and runtime files: `init.<ext>`, `core.<ext>`, `path_sync.<ext>`, `turbo.<ext>`, `plugins.json`, `plugins.<ext>`, `plugins/`, `completions/`, `backup/` |
+| `WAYU_DATA_DIR` | `${XDG_DATA_HOME:-~/.local/share}/wayu` | Data wayu manages: `entries.json`, `plugins.json`, and generated / runtime files: `init.<ext>`, `core.<ext>`, `path_sync.<ext>`, `turbo.<ext>`, `plugins.<ext>`, `plugins/`, `completions/`, `backup/`, `.wayu.lock` |
 
-- Each variable is read independently: `WAYU_DATA_DIR` applies whether or not
-  `WAYU_CONFIG_DIR` is set.
-- `init.<ext>` finds its files next to itself, so the rc line
-  (`source <data>/init.zsh`) works without exporting either variable to the
-  shell. If `WAYU_CONFIG_DIR` is unset, the config dir is the init file's dir
-  when that dir holds `wayu.toml`, else `~/.config/wayu`.
+- Each variable is read independently: setting one never moves the other.
+  `wayu init` creates both dirs.
+- The rc line `wayu init` adds finds the data dir by itself:
+
+  ```sh
+  source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh"
+  ```
+
+- `init.<ext>` finds its files next to itself, so that line works without
+  exporting either variable to the shell. If `WAYU_CONFIG_DIR` is unset, the
+  config dir is `~/.config/wayu`.
 - When either dir differs from the default, `core.<ext>` exports
   `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR`, so `wayu` commands typed in that shell
   use the same dirs.
@@ -57,23 +65,19 @@ files are generated.
 
 ## wayu.toml
 
-`$WAYU_CONFIG_DIR/wayu.toml` is the single source of truth for PATH, aliases,
-environment variables, `[tools]` loaders and the native prompt. `wayu init`
+`$WAYU_CONFIG_DIR/wayu.toml` is the file you edit for `[shell]`,
+`[settings]`, `[tools]` loaders and the native `[prompt]`. PATH entries,
+aliases and constants are not in it: wayu manages them in
+[`entries.json`](#managed-data) through `wayu path|alias|const`. `wayu init`
 creates this scaffold:
 
 ```toml
 [shell]
 type = "zsh"
-
-[aliases]
-
-[env]
 ```
 
-After editing it by hand, run `wayu build`. Open shells also pick up
-`[paths]` changes at their next prompt (the prompt hook runs `wayu build`
-when `wayu.toml` is newer than `path_sync.<ext>`); everything else applies to
-new shells. `wayu toml validate` checks the file (see
+After editing it by hand, run `wayu build`; changes apply to new shells.
+`wayu toml validate` checks the file (see
 [Strict and lenient reading](#strict-and-lenient-reading)).
 
 ### Complete example
@@ -83,28 +87,6 @@ This file passes `wayu toml validate` and `wayu build` as-is.
 ```toml
 [shell]
 type = "zsh"
-
-# PATH: first entry = highest priority. Keys are labels only.
-[paths]
-local_bin    = "~/.local/bin"
-cargo_bin    = "$HOME/.cargo/bin"
-go_bin       = "$GOPATH/bin"            # dropped while GOPATH is unset
-homebrew_bin = "/opt/homebrew/bin"
-
-[aliases]
-ll         = "ls -lah"
-gs         = "git status"
-onlead-logs = "tail -f /var/log/onlead.log"
-gl         = 'git log --format="%h %s"'   # literal string: no escapes
-
-[env]
-EDITOR     = "nvim"
-GOPATH     = "$HOME/go"
-GOBIN      = "${GOPATH}/bin"
-PAGER_OPTS = "${LESS:--R}"
-PRICE      = "costs $5"                 # `$5` is not a name: stays literal
-HISTSIZE   = 50000                      # integers are read as text
-GITHUB_TOKEN = "ghp_example"            # masked in list views
 
 [settings]
 autosuggestions_accept_keys = [
@@ -150,7 +132,8 @@ async_rprompt = true
 rprompt_format = "[ {git_pending}](242)"
 ```
 
-What it generates in `core.zsh` (excerpt):
+What it generates in `core.zsh` together with the
+[entries.json example](#entriesjson) (excerpt):
 
 ```zsh
 export GOBIN="${GOPATH}/bin"
@@ -172,16 +155,6 @@ conveniences `\e`, `\xHH`, and newlines / trailing commas in inline tables).
 A UTF-8 BOM, comments, dotted keys, quoted keys, multi-line arrays, floats and
 dates are all accepted.
 
-| Value | Example | In `[paths]` / `[aliases]` / `[env]` |
-|---|---|---|
-| Basic string | `"a \"b\" \t \u00e9"` | Escapes decoded |
-| Literal string | `'C:\no\escapes'` | Taken verbatim |
-| Multi-line string | `"""..."""`, `'''...'''` | Used as written (newline after the opening quotes dropped) |
-| Integer | `1_000`, `0x1F` | Decimal text: `1000`, `31` |
-| Float, date-time | `1.5`, `1979-05-27` | Text as written |
-| Boolean | `true` | `"true"` / `"false"` |
-| Array, inline table | `["a"]`, `{ a = 1 }` | Entry skipped |
-
 Arrays and inline tables are valid only where a key below says so:
 `[settings] autosuggestions_accept_keys`, `[tools]` entries and their
 `hook_commands`, and `[prompt.contexts]` entries.
@@ -191,28 +164,18 @@ Keys:
 - A bare key may use `A-Z a-z 0-9 _ -`. Anything else needs quotes:
   `"my key" = ...`. Quoted keys are decoded everywhere (`"q\"k"` is the name
   `q"k`).
-- A dotted bare key inside `[paths]`, `[aliases]` or `[env]` (`g.st = ...`) is
-  read as the single name `g.st`.
-- When wayu writes an entry it uses a bare key when TOML allows and a quoted
-  basic string otherwise (`"g.st" = "git status"`), and escapes control
-  characters in values (`\u001B`). Everything wayu writes is valid TOML.
-- wayu edits `wayu.toml` line by line: only the entry being changed is
-  rewritten; comments, blank lines, order and keys it does not know are kept
-  byte-for-byte.
+- wayu writes `wayu.toml` only when it creates it (`wayu init`, or a command
+  that needs a missing one); after that the file is yours.
 
 ### Strict and lenient reading
 
 | Reader | On a syntax error |
 |---|---|
 | `wayu toml validate`, `wayu doctor`, `wayu backup restore` (strict) | Fail and name the line: `Failed to parse <file>: line 5: invalid value "ls" (strings must be quoted)` |
-| Everything else: `alias/const/path list`, the generator (`wayu build`, every write), the TUI, the in-place editor (lenient) | Use what was recovered. A `key = value` line whose value is not valid TOML is read the old one-line way: `ll = ls -la` is the alias `ls -la` |
+| Everything else: the generator (`wayu build`, every write), the TUI (lenient) | Use what was recovered; a line that is not valid TOML is skipped |
 
 Strict-only failures: a key defined twice in one table, a table defined twice,
-an integer with leading zeros (`007`), an unquoted string. Lenient readers
-resolve a duplicate `[aliases]` / `[env]` key as last value, first position.
-The table editor refuses to write when the table it edits holds a broken
-multi-line value (`wayu.toml line N: unterminated array (missing ']') in
-[env] ...`).
+an integer with leading zeros (`007`), an unquoted string.
 
 After parsing, `wayu toml validate` also checks:
 
@@ -220,10 +183,8 @@ After parsing, `wayu toml validate` also checks:
 |---|---|
 | Top-level `version`, if present, is `"1.0"` | `Unsupported config version: 2.0` |
 | `[shell] type` (case-insensitive) is zsh, bash or fish | `Invalid shell: unknown (must be zsh, bash, or fish)` |
-| `[aliases]` names and commands (rules in [`[aliases]`](#aliases)) | `Invalid alias 'cd': Cannot use shell reserved word 'cd' as Alias name` |
-| `[env]` names (rules in [`[env]`](#env)) | `Invalid constant 'MY-VAR': ...` |
-| `[paths]` values: no `:`, newline or NUL | `Invalid path entry '/a:/b': Path cannot contain ':' or newlines (PATH separator)` |
-| `shell`, `paths`, `aliases`, `env`, `settings`, `tools`, `prompt` are tables (`[paths]`, not `[[paths]]` or `paths = ...`) | `Validation failed: line 1: [[paths]]: paths must be a table ([paths]), not an array of tables` |
+| No `[paths]`, `[aliases]` or `[env]` (in any form): those entries live in `entries.json` | `Validation failed: line 4: [env] is not read from wayu.toml: its entries are managed with 'wayu const add' (stored in <data>/entries.json); move them there and delete the table` |
+| `shell`, `settings`, `tools`, `prompt` are tables (`[tools]`, not `[[tools]]` or `tools = ...`) | `Validation failed: line 1: [[tools]]: tools must be a table ([tools]), not an array of tables` |
 
 Keys and tables wayu does not read are warnings, not errors (see [Keys wayu
 does not read](#keys-wayu-does-not-read)).
@@ -242,129 +203,6 @@ status: `0` valid, `65` invalid, `78` before `wayu init`.
 by `--shell`, else `$SHELL`, and regenerates the files of every other shell
 already initialized in the data dir (`init.<ext>` or `core.<ext>` exists). A
 top-level `shell = "..."` string is not read (`toml validate` rejects it).
-
-### `[paths]`
-
-```toml
-[paths]
-local_bin = "~/.local/bin"
-go_bin    = "$GOPATH/bin"
-nm        = "./node_modules/.bin"
-```
-
-Each entry is `key = "directory"`.
-
-- **Order is priority.** Entries go to the front of `PATH` in file order (the
-  first entry wins). `wayu path add` appends; existing entries never move.
-- **Keys are labels.** The shell never sees them; `wayu path rm <key>` and
-  `wayu path add name=dir` use them. `path add` derives one when not given:
-  lowercase, non-alphanumerics to `_`, `.local` to `hidden_local`, a generic
-  basename (`bin`, ...) prefixed with its parent (`/usr/local/bin` to
-  `local_bin`), `_2`, `_3` on collision.
-- **Expansion happens in the shell**, at startup and at each re-sync: a
-  leading `~` or `~/` becomes `$HOME`; `$NAME` and `${NAME}` expand (an
-  `[env]` variable is already exported because `[env]` comes first). Nothing
-  else expands: `${X:-y}`, `$(...)`, a bare `$` stay literal. An entry whose
-  variable is unset or empty is dropped (never turned into `/bin`).
-- **Skipped at runtime:** directories that do not exist (re-checked when the
-  list is re-applied), values containing `:` or a newline (warning on stderr),
-  empty values, and repeats of an earlier value.
-- **Relative paths** (`./node_modules/.bin`) are kept as written: the shell
-  tests them against its current directory when the list is applied and, once
-  on `PATH`, resolves them against the current directory at every command
-  lookup. `wayu doctor` counts them with the entries it leaves alone, never
-  as missing.
-  `wayu path add` itself never stores a relative path: it resolves `~`,
-  `$VAR` and relative arguments to an absolute directory, which must exist.
-- **Integration with PATH:** wayu removes only directories it put on `PATH`
-  itself (tracked in `_WAYU_PATHS_MANAGED`); a system directory that is also
-  in `[paths]` is moved to wayu's position but never removed. In zsh the
-  session also gets `typeset -U path`. In fish the dirs move to the front in
-  `[paths]` order, like `fish_add_path -gpm`.
-
-### `[aliases]`
-
-```toml
-[aliases]
-ll          = "ls -lah"
-onlead-logs = "tail -f /var/log/onlead.log"
-gl          = 'git log --format="%h %s"'
-```
-
-Each entry is `name = "command"`.
-
-| Rule | `toml validate`, `alias add`, TUI | Generator |
-|---|---|---|
-| Name characters | First an ASCII letter or `_`, then letters, digits, `_` or `-` (not first) | Any name without whitespace, quotes, `` ` `` `$ = ; & \| < > ( ) { } \ * ? [ ] # ~ !` or control characters; other names are skipped with a `# wayu: skipping invalid alias name` comment |
-| Reserved names | `if then else elif fi case esac for while until do done in function time select coproc declare typeset local export readonly unset return exit cd pwd echo test true false` are refused | Not checked |
-| Length | At most 255 characters | Not checked |
-| Command | Must not be empty or blank | Emitted as given |
-
-So a hand-written `".." = "cd .."` or `"g.st" = "..."` is defined by the
-generated init and shown by `alias list`, but `toml validate` and `alias add`
-refuse the name.
-
-Generated code: zsh/bash `alias name='command'`, fish `alias name 'command'`.
-The command is single-quoted and stored verbatim, so `$VAR` in it expands when
-the alias runs. Aliases are emitted sorted by name, last in `core.<ext>`
-(after plugins and tools), so an alias never breaks a function wayu or a
-plugin defines.
-
-### `[env]`
-
-```toml
-[env]
-GOPATH = "$HOME/go"
-GOBIN  = "${GOPATH}/bin"
-```
-
-Each entry is `NAME = "value"`, exported as `export NAME="..."` (zsh/bash) or
-`set -gx NAME "..."` (fish), in file order, so a later value can use an
-earlier one.
-
-Names: an ASCII letter or `_`, then letters, digits or `_` (no `-`), not a
-reserved word (list above), at most 255 characters. `toml validate` refuses
-other names; the generator skips them with a comment. Lowercase names are
-allowed (`const add` warns that the convention is `UPPER_CASE`). An empty
-value (`X = ""`) is exported as empty.
-
-**Expansion.** A leading `~` or `~/` becomes `$HOME`. Only references to
-named variables expand; every other character, `$` included, is literal:
-
-| Written | zsh / bash | fish |
-|---|---|---|
-| `$NAME` | expands (emitted as `${NAME}`, so `$HOME:h` or `$HOME[1]` are not zsh modifiers / subscripts) | expands |
-| `${NAME}` | expands | expands |
-| `${NAME<op>...}`, op = `-` `=` `+` `?` (each also with a leading `:`), `#`, `%`, `/` | expands, e.g. `${X:-d}`, `${X#pre}`, `${X/a/b}` | literal |
-| `${#NAME}` | expands | literal |
-| Any other `${...}`: `${X@P}`, `${X[1]}`, `${X:1}`, `${X: -2}`, `${X^}`, `${HOME:h}`, `${(e)X}` | literal | literal |
-| `$1`, `$$`, `$?`, `$%`, a trailing `$`, an unclosed `${` | literal | literal |
-| `$(cmd)`, `` `cmd` `` | literal (never run) | literal |
-| `"`, `\` | literal | literal |
-
-The text inside an expanding `${NAME:-...}` follows the same rules, so
-`${X:-$(cmd)}` never runs `cmd`.
-
-**Secret masking.** An entry looks secret when its name contains (any case)
-`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `PASS`, `API`, `CREDENTIAL`,
-`AUTH`, `PRIVATE`, `SESSION`, `COOKIE`, `SIGNATURE`, `CERT` or `DSN`, or when
-its value starts with a known token prefix (`sk-`, `sk_`, `pk_live_`,
-`rk_live_`, `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`, `glpat-`,
-`xoxb-`, `xoxp-`, `xoxa-`, `xapp-`, `AKIA`, `ASIA`, `AIza`, `ya29.`, `eyJ`,
-`npm_`, `hf_`, `-----BEGIN`) or is a URL with a password
-(`scheme://user:pass@host`). Empty values are never masked.
-
-| Where | Shows |
-|---|---|
-| `wayu const list` (text and `--json`, with or without `--full`) | `********` for secret-looking `[env]` values and environment variables; `--reveal` shows them |
-| `wayu toml show` | The file with secret-looking `[env]` values as `********` (multi-line strings always masked; arrays / inline tables masked by name); `--reveal` prints the file verbatim |
-| TUI constants view | Masked; `v` toggles reveal |
-| Dry-run previews | Masked |
-| `wayu const get NAME` | The real value |
-
-Masking only affects display: `core.<ext>` holds and exports the real
-values. Files holding `[env]` values (`wayu.toml` written by wayu, backups,
-`core.<ext>`, `path_sync.<ext>`) are created owner-only (`0600`).
 
 ### `[settings]`
 
@@ -420,7 +258,7 @@ Kinds:
 and double quotes, backslashes) and each word is re-quoted in the generated
 call, so it can never run code at startup:
 
-- Expand: `$NAME` / `${NAME...}` (same rules as [`[env]`](#env)) outside
+- Expand: `$NAME` / `${NAME...}` (same rules as [constants](#constants)) outside
   single quotes, and a leading `~` / `~/`.
 - Literal: everything else, including `{a,b}` (no brace expansion).
 - Refused: a newline, `;` `&` `|` `<` `>` `(` `)`, `$(...)`, backticks,
@@ -577,6 +415,172 @@ live in `plugins.json` —, `[profile.*]`, `[constants]`) has no effect:
 `wayu doctor` reports them as a warning. Keys inside an unknown table are not
 listed one by one.
 
+## Managed data
+
+PATH entries, aliases and constants are data wayu manages: `wayu path|alias|
+const add|rm`, the TUI and templates edit them, and `wayu build` compiles them
+into `core.<ext>`. They are not read from `wayu.toml`; a `[paths]`,
+`[aliases]` or `[env]` table there is an error for `wayu toml validate` and
+`wayu doctor`, naming the command to use instead.
+
+### entries.json
+
+`$WAYU_DATA_DIR/entries.json`:
+
+```json
+{
+  "version": 1,
+  "paths": [
+    {"key": "local_bin", "dir": "~/.local/bin"},
+    {"key": "cargo_bin", "dir": "$HOME/.cargo/bin"},
+    {"key": "go_bin", "dir": "$GOPATH/bin"},
+    {"key": "homebrew_bin", "dir": "/opt/homebrew/bin"}
+  ],
+  "aliases": [
+    {"name": "ll", "value": "ls -lah"},
+    {"name": "gs", "value": "git status"},
+    {"name": "onlead-logs", "value": "tail -f /var/log/onlead.log"},
+    {"name": "gl", "value": "git log --format=\"%h %s\""}
+  ],
+  "env": [
+    {"name": "EDITOR", "value": "nvim"},
+    {"name": "GOPATH", "value": "$HOME/go"},
+    {"name": "GOBIN", "value": "${GOPATH}/bin"},
+    {"name": "PAGER_OPTS", "value": "${LESS:--R}"},
+    {"name": "PRICE", "value": "costs $5"},
+    {"name": "GITHUB_TOKEN", "value": "ghp_example"}
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `version` | `1`. Any other value is an error. |
+| `paths[]` | `{"key", "dir"}`: PATH entries, highest priority first. |
+| `aliases[]` | `{"name", "value"}`: aliases. |
+| `env[]` | `{"name", "value"}`: constants (exported variables), in export order. |
+
+- **Writes** are atomic (temp file + rename, symlinks kept), under the lock
+  shared by concurrent wayu commands, owner-only (`0600`), pretty-printed with
+  one entry per line, in stable order: a write changes only the entries it
+  touches. Each write is backed up first (`wayu backup restore entries`).
+- **Reading is strict.** A missing file is an empty store. A file that is not
+  valid JSON, has another `version`, a field of the wrong type, an entry
+  without its key / name (or a path without `dir`), or the same key / name
+  twice in a section makes every command that reads it exit `78`, naming the
+  file and the problem; nothing is written. `wayu doctor` reports it too.
+- Unknown fields are ignored and dropped on the next write.
+- It is safe to edit by hand while no wayu command runs; run `wayu build`
+  afterwards (open shells also notice a newer file, see
+  [PATH entries](#path-entries)).
+
+### PATH entries
+
+`wayu path add ~/.local/bin`, `wayu path add go_bin='$GOPATH/bin'`: each
+entry is a `key` (a label) and a `dir`.
+
+- **Order is priority.** Entries go to the front of `PATH` in store order (the
+  first entry wins). `wayu path add` appends; existing entries never move.
+- **Keys are labels.** The shell never sees them; `wayu path rm <key>` and
+  `wayu path add name=dir` use them. `path add` derives one when not given:
+  lowercase, non-alphanumerics to `_`, `.local` to `hidden_local`, a generic
+  basename (`bin`, ...) prefixed with its parent (`/usr/local/bin` to
+  `local_bin`), `_2`, `_3` on collision.
+- **Expansion happens in the shell**, at startup and at each re-sync: a
+  leading `~` or `~/` becomes `$HOME`; `$NAME` and `${NAME}` expand (an
+  constant is already exported because constants come first). Nothing
+  else expands: `${X:-y}`, `$(...)`, a bare `$` stay literal. An entry whose
+  variable is unset or empty is dropped (never turned into `/bin`).
+- **Skipped at runtime:** directories that do not exist (re-checked when the
+  list is re-applied), values containing `:` or a newline (warning on stderr),
+  empty values, and repeats of an earlier value.
+- **Relative paths** (`./node_modules/.bin`) are kept as written: the shell
+  tests them against its current directory when the list is applied and, once
+  on `PATH`, resolves them against the current directory at every command
+  lookup. `wayu doctor` counts them with the entries it leaves alone, never
+  as missing.
+  `wayu path add` itself never stores a relative path: it resolves `~`,
+  `$VAR` and relative arguments to an absolute directory, which must exist.
+- **Integration with PATH:** wayu removes only directories it put on `PATH`
+  itself (tracked in `_WAYU_PATHS_MANAGED`); a system directory that is also
+  a PATH entry is moved to wayu's position but never removed. In zsh the
+  session also gets `typeset -U path`. In fish the dirs move to the front in
+  store order, like `fish_add_path -gpm`.
+
+- **Open shells** pick up PATH changes at their next prompt: the prompt hook
+  re-applies `path_sync.<ext>` when its signature changes, and runs `wayu
+  build` first when `wayu.toml` or `entries.json` is newer than it.
+
+### Aliases
+
+`wayu alias add ll 'ls -lah'`: each entry is a `name` and a command
+(`value`).
+
+| Rule | `alias add`, TUI | Generator |
+|---|---|---|
+| Name characters | First an ASCII letter or `_`, then letters, digits, `_` or `-` (not first) | Any name without whitespace, quotes, `` ` `` `$ = ; & \| < > ( ) { } \ * ? [ ] # ~ !` or control characters; other names are skipped with a `# wayu: skipping invalid alias name` comment |
+| Reserved names | `if then else elif fi case esac for while until do done in function time select coproc declare typeset local export readonly unset return exit cd pwd echo test true false` are refused | Not checked |
+| Length | At most 255 characters | Not checked |
+| Command | Must not be empty or blank | Emitted as given |
+
+So a hand-written `..` or `g.st` alias in `entries.json` is defined by the
+generated init and shown by `alias list`, but `alias add` refuses the name.
+
+Generated code: zsh/bash `alias name='command'`, fish `alias name 'command'`.
+The command is single-quoted and stored verbatim, so `$VAR` in it expands when
+the alias runs. Aliases are emitted sorted by name, last in `core.<ext>`
+(after plugins and tools), so an alias never breaks a function wayu or a
+plugin defines.
+
+### Constants
+
+`wayu const add GOPATH '$HOME/go'`: each entry is a `name` and a `value`,
+exported as `export NAME="..."` (zsh/bash) or `set -gx NAME "..."` (fish), in
+store order, so a later value can use an earlier one.
+
+Names: an ASCII letter or `_`, then letters, digits or `_` (no `-`), not a
+reserved word (list above), at most 255 characters. `const add` refuses
+other names; the generator skips them with a comment. Lowercase names are
+allowed (`const add` warns that the convention is `UPPER_CASE`). An empty
+value is exported as empty.
+
+**Expansion.** A leading `~` or `~/` becomes `$HOME`. Only references to
+named variables expand; every other character, `$` included, is literal:
+
+| Written | zsh / bash | fish |
+|---|---|---|
+| `$NAME` | expands (emitted as `${NAME}`, so `$HOME:h` or `$HOME[1]` are not zsh modifiers / subscripts) | expands |
+| `${NAME}` | expands | expands |
+| `${NAME<op>...}`, op = `-` `=` `+` `?` (each also with a leading `:`), `#`, `%`, `/` | expands, e.g. `${X:-d}`, `${X#pre}`, `${X/a/b}` | literal |
+| `${#NAME}` | expands | literal |
+| Any other `${...}`: `${X@P}`, `${X[1]}`, `${X:1}`, `${X: -2}`, `${X^}`, `${HOME:h}`, `${(e)X}` | literal | literal |
+| `$1`, `$$`, `$?`, `$%`, a trailing `$`, an unclosed `${` | literal | literal |
+| `$(cmd)`, `` `cmd` `` | literal (never run) | literal |
+| `"`, `\` | literal | literal |
+
+The text inside an expanding `${NAME:-...}` follows the same rules, so
+`${X:-$(cmd)}` never runs `cmd`.
+
+**Secret masking.** An entry looks secret when its name contains (any case)
+`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `PASS`, `API`, `CREDENTIAL`,
+`AUTH`, `PRIVATE`, `SESSION`, `COOKIE`, `SIGNATURE`, `CERT` or `DSN`, or when
+its value starts with a known token prefix (`sk-`, `sk_`, `pk_live_`,
+`rk_live_`, `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`, `glpat-`,
+`xoxb-`, `xoxp-`, `xoxa-`, `xapp-`, `AKIA`, `ASIA`, `AIza`, `ya29.`, `eyJ`,
+`npm_`, `hf_`, `-----BEGIN`) or is a URL with a password
+(`scheme://user:pass@host`). Empty values are never masked.
+
+| Where | Shows |
+|---|---|
+| `wayu const list` (text and `--json`, with or without `--full`) | `********` for secret-looking constants and environment variables; `--reveal` shows them |
+| TUI constants view | Masked; `v` toggles reveal |
+| Dry-run previews | Masked |
+| `wayu const get NAME` | The real value |
+
+Masking only affects display: `core.<ext>` holds and exports the real
+values. Files holding constant values (`entries.json`, its backups,
+`core.<ext>`, `path_sync.<ext>`) are owner-only (`0600`).
+
 ## Other files you edit
 
 ### hooks.conf
@@ -636,7 +640,7 @@ cloned to `$WAYU_DATA_DIR/plugins/<name>`.
       "url": "https://github.com/zsh-users/zsh-autosuggestions.git",
       "enabled": true,
       "shell": "ZSH",
-      "installed_path": "/home/me/.config/wayu/plugins/zsh-autosuggestions",
+      "installed_path": "/home/me/.local/share/wayu/plugins/zsh-autosuggestions",
       "use": [],
       "template": "Source",
       "dependencies": [],
@@ -741,14 +745,14 @@ every shell initialized in the data dir.
 | File (data dir) | Content |
 |---|---|
 | `init.<ext>` | Entry point your rc file sources: loads `core.<ext>` (prints a hint to run `wayu build` when it is missing). Written by `wayu init`. An unmodified copy of the current or previous template is replaced when the template changes (backup first); an edited one is kept, with a warning. |
-| `core.<ext>` | Everything `init.<ext>` loads, precomputed from `wayu.toml` (zsh also `core.zsh.zwc`, compiled in the background). |
-| `path_sync.<ext>` | The `[paths]` list; line 1 is its signature. The prompt hook re-sources it when the signature changes. |
+| `core.<ext>` | Everything `init.<ext>` loads, precomputed from `wayu.toml` and `entries.json` (zsh also `core.zsh.zwc`, compiled in the background). |
+| `path_sync.<ext>` | The PATH entry list; line 1 is its signature. The prompt hook re-sources it when the signature changes. |
 | `turbo.<ext>` | zsh/bash. Same content as `core.<ext>`, refreshed with it, only if it exists (created by `wayu export`). |
 | `plugins.<ext>` | Plugin loader, regenerated on any `plugin` change and by `wayu init`. |
 | `plugins/config.zsh` | `[settings] autosuggestions_accept_keys` bindings. |
 | `backup/` | Timestamped backups `<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]` (UTC), 5 newest per file (see `wayu backup`). Files named otherwise are ignored. |
 
-Also `$WAYU_CONFIG_DIR/.wayu.lock` (lock shared by concurrent wayu commands)
+Also `$WAYU_DATA_DIR/.wayu.lock` (lock shared by concurrent wayu commands)
 and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 
 ## Load order
@@ -756,8 +760,8 @@ and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 `core.zsh` / `core.bash`, each `# === ... ===` line a section:
 
 1. `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR` exports (only when not default)
-2. `[env]`
-3. `[paths]` (and the live PATH sync hook)
+2. Constants
+3. PATH entries (and the live PATH sync hook)
 4. Completions (zsh: `fpath`, `compinit` in interactive shells)
 5. `functions/`
 6. `config.<ext>` content
@@ -769,9 +773,9 @@ and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 12. `tools.<ext>`
 13. `extra.<ext>`
 14. Login-only `[tools]`
-15. `[aliases]`
+15. Aliases
 
-`core.fish`: directory exports, `[env]`, `[paths]`, completions,
+`core.fish`: directory exports, constants, PATH entries, completions,
 `functions/*.fish`, `config.fish` content, evalcache helper, eager `[tools]`,
-`plugins.fish`, deferred `[tools]`, login-only `[tools]`, `[aliases]`. No
+`plugins.fish`, deferred `[tools]`, login-only `[tools]`, aliases. No
 native prompt. `init.fish` then sources `tools.fish` and `extra.fish`.

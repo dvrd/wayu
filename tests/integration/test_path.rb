@@ -35,8 +35,8 @@ class PathIntegrationTest
       test_nonexistent_path_handling
       test_remove_nonexistent_path
       test_path_persistence_after_modifications
-      test_clean_operates_on_wayu_toml
-      test_dedup_operates_on_wayu_toml
+      test_clean_operates_on_entries
+      test_dedup_operates_on_entries
       test_add_detects_resolved_duplicate
       test_clean_keeps_unresolved_and_env_paths
       test_dedup_refuses_duplicate_key
@@ -60,7 +60,7 @@ class PathIntegrationTest
 
     output, status = run_wayu("path add #{test_dir}")
 
-    if status.success? && File.read(@toml_file).include?("= \"#{test_dir}\"")
+    if status.success? && store_text.include?("\"dir\": \"#{test_dir}\"")
       puts "✓"
       @passed += 1
     else
@@ -79,8 +79,8 @@ class PathIntegrationTest
 
     test_dirs.each { |dir| run_wayu("path add #{dir}") }
 
-    path_content = File.read(@toml_file)
-    all_present = test_dirs.all? { |dir| path_content.include?("= \"#{dir}\"") }
+    path_content = store_text
+    all_present = test_dirs.all? { |dir| path_content.include?("\"dir\": \"#{dir}\"") }
 
     if all_present
       puts "✓"
@@ -115,8 +115,8 @@ class PathIntegrationTest
     test_dir = "#{@scratch}/wayu_test_path1"
     output, status = run_wayu("path rm #{test_dir}")
 
-    path_content = File.read(@toml_file)
-    if status.success? && !path_content.include?("path = \"#{test_dir}\"")
+    path_content = store_text
+    if status.success? && !path_content.include?("\"dir\": \"#{test_dir}\"")
       puts "✓"
       @passed += 1
     else
@@ -138,42 +138,46 @@ class PathIntegrationTest
     end
   end
 
-  # Replace the [paths] table of wayu.toml with raw `key = "value"` lines.
-  def write_paths_table(lines)
-    content = File.read(@toml_file).sub(/^\[paths\][^\[]*/m, "")
-    File.write(@toml_file, content.rstrip + "\n\n[paths]\n" + lines.join("\n") + "\n")
+  # entries.json as text ("" when missing).
+  def store_text
+    File.exist?(@entries_file) ? File.read(@entries_file) : ""
   end
 
-  def test_clean_operates_on_wayu_toml
-    print "Test 13: path clean removes missing entries from wayu.toml... "
+  # Replace the PATH entries of entries.json (aliases/env are kept).
+  def write_paths_table(pairs)
+    write_entries(paths: pairs, aliases: store_map('aliases'), env: store_map('env'))
+  end
+
+  def test_clean_operates_on_entries
+    print "Test 13: path clean removes missing entries from entries.json... "
 
     keep = "#{@scratch}/wayu_test_clean_keep"
     FileUtils.mkdir_p(keep)
-    write_paths_table([%(keep = "#{keep}"), %(gone = "#{@scratch}/wayu_test_clean_gone_#{$$}"), %(home_var = "$HOME")])
+    write_paths_table('keep' => keep, 'gone' => "#{@scratch}/wayu_test_clean_gone_#{$$}", 'home_var' => '$HOME')
 
     dry_out, dry_status = run_wayu("--dry-run path clean")
-    after_dry = File.read(@toml_file)
+    after_dry = store_text
     refuse_out, refuse_status = run_wayu("path clean")
     output, status = run_wayu("path clean --yes")
-    content = File.read(@toml_file)
+    content = store_text
 
-    report(dry_status.success? && dry_out.include?("gone") && after_dry.include?("gone =") &&
+    report(dry_status.success? && dry_out.include?("gone") && after_dry.include?(%("key": "gone")) &&
            refuse_status.exitstatus == 64 &&
-           status.success? && !content.include?("gone =") && content.include?("keep =") &&
-           content.include?("home_var ="),  # $HOME expands → exists → kept
-           "dry=#{dry_out}\nrefuse=#{refuse_out}\nout=#{output}\ntoml=#{content}")
+           status.success? && !content.include?(%("key": "gone")) && content.include?(%("key": "keep")) &&
+           content.include?(%("key": "home_var")),  # $HOME expands → exists → kept
+           "dry=#{dry_out}\nrefuse=#{refuse_out}\nout=#{output}\nstore=#{content}")
   end
 
-  def test_dedup_operates_on_wayu_toml
-    print "Test 14: path dedup removes resolved duplicates from wayu.toml... "
+  def test_dedup_operates_on_entries
+    print "Test 14: path dedup removes resolved duplicates from entries.json... "
 
-    write_paths_table([%(a_home = "$HOME"), %(b_home = "#{@tmp_home}"), %(c_tmp = "/tmp")])
+    write_paths_table('a_home' => '$HOME', 'b_home' => @tmp_home, 'c_tmp' => '/tmp')
     output, status = run_wayu("path dedup --yes")
-    content = File.read(@toml_file)
+    content = store_text
 
-    report(status.success? && content.include?("a_home =") && !content.include?("b_home =") &&
-           content.include?("c_tmp ="),
-           "out=#{output}\ntoml=#{content}")
+    report(status.success? && content.include?(%("key": "a_home")) && !content.include?(%("key": "b_home")) &&
+           content.include?(%("key": "c_tmp")),
+           "out=#{output}\nstore=#{content}")
   end
 
   # Regression: `$HOME/x` stored + `add ~/x` (or the absolute form) was not
@@ -181,46 +185,48 @@ class PathIntegrationTest
   def test_add_detects_resolved_duplicate
     print "Test 15: add detects duplicate of an env-var path... "
 
-    write_paths_table([%(home = "$HOME")])
+    write_paths_table('home' => '$HOME')
     output, status = run_wayu("path add #{@tmp_home}")
-    content = File.read(@toml_file)
+    content = store_text
 
     report(status.success? && output.include?("already") && !output.include?("Added") &&
            content.scan("#{@tmp_home}").empty?,
-           "out=#{output}\ntoml=#{content}")
+           "out=#{output}\nstore=#{content}")
   end
 
   # Regression (OKAMI-168): clean deleted entries using a variable it could
-  # not resolve, and ignored wayu.toml [env] (core exports it before PATH).
+  # not resolve, and ignored wayu's constants (core exports them before PATH).
   def test_clean_keeps_unresolved_and_env_paths
     print "Test 16: path clean keeps $VAR entries it cannot prove missing... "
 
     tools = "#{@tmp_home}/okami168_tools"
     FileUtils.mkdir_p("#{tools}/bin")
     run_wayu("const add OKAMI168_ROOT #{tools}")
-    write_paths_table([%(unset_bin = "$WAYU_OKAMI168_SURELY_UNSET/bin"),
-                       %(env_bin = "${OKAMI168_ROOT}/bin"),
-                       %(gone = "#{@scratch}/wayu_test_clean168_gone_#{$$}")])
+    write_paths_table('unset_bin' => '$WAYU_OKAMI168_SURELY_UNSET/bin',
+                      'env_bin' => '${OKAMI168_ROOT}/bin',
+                      'gone' => "#{@scratch}/wayu_test_clean168_gone_#{$$}")
     output, status = run_wayu("path clean --yes")
-    content = File.read(@toml_file)
+    content = store_text
 
-    report(status.success? && content.include?("unset_bin =") && content.include?("env_bin =") &&
-           !content.include?("gone ="),
-           "out=#{output}\ntoml=#{content}")
+    report(status.success? && content.include?(%("key": "unset_bin")) && content.include?(%("key": "env_bin")) &&
+           !content.include?(%("key": "gone")),
+           "out=#{output}\nstore=#{content}")
   end
 
   # Regression (OKAMI-168): two entries sharing a (hand-edited) key — dedup
-  # deleted every line of that key, dropping the survivor too.
+  # deleted every entry of that key, dropping the survivor too. The store
+  # reader refuses such a file (config error) and nothing is written.
   def test_dedup_refuses_duplicate_key
-    print "Test 17: path dedup refuses a duplicate [paths] key... "
+    print "Test 17: path dedup refuses a duplicate PATH key... "
 
-    write_paths_table([%(dup = "/tmp"), %(dup = "/tmp")])
-    before = File.read(@toml_file)
+    File.write(@entries_file, %({"version": 1, "paths": [{"key": "dup", "dir": "/tmp"}, {"key": "dup", "dir": "/tmp"}]}\n))
+    before = store_text
     output, status = run_wayu("path dedup --yes")
-    after = File.read(@toml_file)
+    after = store_text
 
-    report(status.exitstatus == 78 && before == after && output.include?("Duplicate key"),
-           "status=#{status.exitstatus}\nout=#{output}\ntoml=#{after}")
+    report(status.exitstatus == 78 && before == after && output.include?("appears twice") &&
+           output.include?(@entries_file),
+           "status=#{status.exitstatus}\nout=#{output}\nstore=#{after}")
   end
 
   # Regression (OKAMI-168): `path rm <key>` passed the key, not the
@@ -232,7 +238,7 @@ class PathIntegrationTest
     hooks = "#{@config_dir}/hooks.conf"
     File.write(hooks, "pre_path_remove = echo pre:{path} >> #{log}\n" \
                       "post_path_remove = echo post:{path} >> #{log}\n")
-    write_paths_table([%(hooked = "/tmp")])
+    write_paths_table('hooked' => '/tmp')
     output, status = run_wayu("path rm hooked")
     logged = File.exist?(log) ? File.read(log) : ""
     FileUtils.rm_f(hooks)
@@ -252,7 +258,7 @@ class PathIntegrationTest
     output, status = run_wayu("path add #{test_dir}")
 
     # Should either prevent duplicate or warn
-    path_content = File.read(@toml_file)
+    path_content = store_text
     occurrences = path_content.scan(/#{Regexp.escape(test_dir)}/).length
 
     if occurrences == 1 || output.include?("already") || output.include?("exists")
@@ -280,7 +286,7 @@ class PathIntegrationTest
     # Add in order
     test_dirs.each { |dir| run_wayu("path add #{dir}") }
 
-    path_content = File.read(@toml_file)
+    path_content = store_text
     order1_pos = path_content.index("wayu_order_zeta")
     order2_pos = path_content.index("wayu_order_alpha")
     order3_pos = path_content.index("wayu_order_mid")
@@ -310,10 +316,10 @@ class PathIntegrationTest
 
     failures = cases.map do |argument, expected|
       output, status = run_wayu("path add #{argument}")
-      content = File.read(@toml_file)
-      stored = content.include?("= \"#{expected}\"")
+      content = store_text
+      stored = content.include?("\"dir\": \"#{expected}\"")
       named = !argument.start_with?('relative_named=') ||
-              content.include?("relative_named = \"#{expected}\"")
+              content.include?("{\"key\": \"relative_named\", \"dir\": \"#{expected}\"}")
       "#{argument}: #{output}" unless status.success? && stored && named
     end
 
@@ -343,7 +349,7 @@ class PathIntegrationTest
     failures = cases.map do |argument, expected|
       run_wayu("path add #{argument}")
       output, status = run_wayu("path rm #{argument}")
-      still_there = File.read(@toml_file).include?("= \"#{expected}\"")
+      still_there = store_text.include?("\"dir\": \"#{expected}\"")
       "#{argument}: #{output}" unless status.success? && !still_there
     end
 
@@ -372,27 +378,27 @@ class PathIntegrationTest
     }
     failures = cases.map do |argument, expected|
       output, status = run_wayu("path add #{argument}")
-      content = File.read(@toml_file)
+      content = store_text
       "#{argument}: #{output}" unless status.success? &&
-        content.include?("= \"#{expected}\"") &&
+        content.include?("\"dir\": \"#{expected}\"") &&
         !content.include?('$HOME') && !content.include?('${HOME}') &&
-        !content.include?('"~')
+        !content.include?('"dir": "~')
     end.compact
 
-    content = File.read(@toml_file)
+    content = store_text
     failures << 'Equivalent home paths were duplicated' unless
-      content.scan("= \"#{@tmp_home}/bin\"").length == 1
+      content.scan("\"dir\": \"#{@tmp_home}/bin\"").length == 1
 
     # An unresolved token must fail even if a directory with that literal name exists.
     FileUtils.mkdir_p("#{@tmp_home}/$WAYU_UNSET_PATH_TEST/bin")
     output, status = run_wayu("path add '#{@tmp_home}/$WAYU_UNSET_PATH_TEST/bin'")
     failures << "Unresolved variable was saved: #{output}" if
-      status.success? || File.read(@toml_file) != content
+      status.success? || store_text != content
 
     output, status = run_wayu("path add 'preview=$HOME/.config' --dry-run")
     failures << "Dry run did not resolve the path: #{output}" unless
       status.success? && output.include?("#{@tmp_home}/.config") &&
-      File.read(@toml_file) == content
+      store_text == content
 
     if failures.empty?
       puts "✓"
@@ -413,7 +419,7 @@ class PathIntegrationTest
     output, status = run_wayu("path add \"#{test_dir}\"")
 
     if status.success?
-      path_content = File.read(@toml_file)
+      path_content = store_text
       # Should handle spaces correctly (either quoted or escaped)
       if path_content.include?("wayu test with spaces")
         puts "✓"
@@ -501,7 +507,7 @@ class PathIntegrationTest
     run_wayu("path add #{test_dir}")
 
     # Read content
-    content_before = File.read(@toml_file)
+    content_before = store_text
 
     # Add another path (triggers file write)
     test_dir2 = "#{@scratch}/wayu_persist_test2"
@@ -509,7 +515,7 @@ class PathIntegrationTest
     run_wayu("path add #{test_dir2}")
 
     # Check both paths still exist
-    content_after = File.read(@toml_file)
+    content_after = store_text
 
     if content_after.include?(test_dir) && content_after.include?(test_dir2)
       puts "✓"

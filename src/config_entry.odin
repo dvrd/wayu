@@ -7,7 +7,6 @@
 
 package wayu
 import "core:fmt"
-import "core:os"
 import "core:strings"
 // ConfigEntryType defines the type of configuration entry
 ConfigEntryType :: enum {
@@ -65,7 +64,7 @@ ConfigEntrySpec :: struct {
 	list_epilogue:    proc(),
 }
 
-// Generic dispatcher for TOML-backed config entry commands. Used by
+// Generic dispatcher for the entry-store commands. Used by
 // `handle_alias_command` and `handle_constants_command`. Assumes the spec has
 // all four `toml_*` fields set; falls back to `handle_config_command` for
 // actions outside ADD/REMOVE/LIST/GET (e.g. HELP, UNKNOWN).
@@ -100,7 +99,7 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 				print_cli_usage_error(spec, "remove")
 				wayu_exit(EXIT_USAGE)
 			}
-			if spec.hook_pre_remove != nil && entry_exists_in_toml(spec, args[0]) do spec.hook_pre_remove(args[0], "")
+			if spec.hook_pre_remove != nil && entry_exists_in_store(spec, args[0]) do spec.hook_pre_remove(args[0], "")
 			ok, err := spec.toml_remove(args[0])
 			if !ok {
 				exit_with_entry_error(err)
@@ -143,34 +142,38 @@ entry_add_is_valid :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> bool {
 	return v.valid
 }
 
-// True when `name` is a key of the spec's wayu.toml table (aliases / env),
-// so pre_*_remove hooks skip names that are not there. A malformed table
-// counts as present: the writer reports that error itself.
-entry_exists_in_toml :: proc(spec: ^ConfigEntrySpec, name: string) -> bool {
-	section: string
+// True when `name` is an alias / constant of the store, so pre_*_remove
+// hooks skip names that are not there. An unreadable store counts as
+// present: the writer reports that error itself.
+entry_exists_in_store :: proc(spec: ^ConfigEntrySpec, name: string) -> bool {
+	kind: EntryKind
 	#partial switch spec.type {
-	case .ALIAS:    section = "aliases"
-	case .CONSTANT: section = "env"
+	case .ALIAS:    kind = .ALIAS
+	case .CONSTANT: kind = .ENV
 	case:           return true
 	}
-	content, ok := read_wayu_toml_fresh()
-	if !ok { return false }
-	defer delete(content)
-	new_content, removed, bad := toml_table_delete(string(content), section, {name})
-	delete(new_content)
-	return removed > 0 || bad > 0
+	store, _, ok := entries_read()
+	if !ok { return true }
+	defer entries_store_destroy(&store)
+	return entries_find(&store, kind, name) >= 0
 }
 
 // Print an add/remove failure and exit with the code matching its kind:
-// messages starting with "I/O error" (the convention used by every
-// toml_* writer) are EXIT_IOERR, everything else (not found, invalid
-// input) is EXIT_DATAERR. The message is user-derived, so it is always
-// printed through "%s" and never used as a format string. Frees `err`.
+// "I/O error..." is EXIT_IOERR, ENTRY_ERROR_CONFIG_PREFIX (malformed
+// entries.json, reason already printed) is EXIT_CONFIG, everything else (not
+// found, invalid input) is EXIT_DATAERR. The message is user-derived, so it
+// is always printed through "%s" and never used as a format string. Frees
+// `err`.
 exit_with_entry_error :: proc(err: string) -> ! {
-	print_error_simple("%s", err)
 	exit_code := EXIT_DATAERR
-	if strings.has_prefix(err, "I/O error") {
+	switch {
+	case strings.has_prefix(err, "I/O error"):
 		exit_code = EXIT_IOERR
+		print_error_simple("%s", err)
+	case strings.has_prefix(err, ENTRY_ERROR_CONFIG_PREFIX):
+		exit_code = EXIT_CONFIG
+	case:
+		print_error_simple("%s", err)
 	}
 	delete(err)
 	wayu_exit(exit_code)
@@ -241,22 +244,13 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 	}
 }
 
-// Helper: Read all entries of `spec`'s type from wayu.toml (none when it
-// is missing or unreadable).
+// Helper: Read all entries of `spec`'s type from the entry store (exits
+// EXIT_CONFIG when entries.json is malformed). Free with cleanup_entries.
 read_config_entries :: proc(spec: ^ConfigEntrySpec) -> []ConfigEntry {
-	toml_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-	has_toml := os.exists(toml_path)
-	delete(toml_path)
-	if !has_toml { return {} }
-	if _, ok := get_cached_toml_content(); !ok { return {} }
 	switch spec.type {
-	case .PATH:
-		entries := read_toml_path_entries()
-		return entries[:]
-	case .ALIAS:
-		return read_toml_alias_entries()
-	case .CONSTANT:
-		return read_wayu_toml_constants()
+	case .PATH:     return read_path_config_entries()
+	case .ALIAS:    return read_alias_entries()
+	case .CONSTANT: return read_env_entries()
 	}
 	return {}
 }
@@ -472,7 +466,7 @@ EntryOutcome :: enum {
 	DRY_RUN,   // --dry-run: would change, nothing written
 }
 
-// Add an entry to wayu.toml. Both CLI and TUI use this for mutations from
+// Add an entry to the store. Both CLI and TUI use this for mutations from
 // outside the spec-driven dispatchers.
 //
 // Mirrors the CLI: the same validation (PATH: path_add_check, i.e. the path
@@ -482,14 +476,14 @@ EntryOutcome :: enum {
 entry_add :: proc(entry: Entry) -> (EntryOutcome, string) {
 	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
 	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
-	if msg, bad := wayu_toml_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := entries_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
 		expanded, check_err, code := path_add_check(e.path)
 		defer delete(expanded)
 		if code != EXIT_SUCCESS { return .FAILED, check_err }
-		if toml_path_add_would_change(e.path, e.name) { hook_pre_path_add(expanded) }
-		#partial switch toml_path_add_result(e.path, e.name) {
+		if path_add_would_change(e.path, e.name) { hook_pre_path_add(expanded) }
+		#partial switch path_add_result(e.path, e.name) {
 		case .OK:
 			if wayu.dry_run { return .DRY_RUN, "" }
 			regenerate_init_core_silently()
@@ -498,13 +492,11 @@ entry_add :: proc(entry: Entry) -> (EntryOutcome, string) {
 		case .NOOP:
 			return .UNCHANGED, ""
 		case .IO_ERROR:
-			return .FAILED, strings.clone("I/O error: failed to write path to wayu.toml")
-		case .UNREADABLE:
-			return .FAILED, strings.clone("I/O error: cannot read wayu.toml")
+			return .FAILED, strings.clone("I/O error: failed to write the PATH entry")
 		case:
 			// The writer reported the reason (bad/taken name) via print_error.
 			if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
-			return .FAILED, strings.clone("failed to write path to wayu.toml")
+			return .FAILED, strings.clone("failed to write the PATH entry")
 		}
 	case EntryAlias:
 		return entry_add_with_hooks(&ALIAS_SPEC, ConfigEntry{type = .ALIAS, name = e.name, value = e.command})
@@ -516,7 +508,7 @@ entry_add :: proc(entry: Entry) -> (EntryOutcome, string) {
 
 @(private = "file")
 entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (EntryOutcome, string) {
-	existed := entry_exists_in_toml(spec, entry.name)
+	existed := entry_exists_in_store(spec, entry.name)
 	if spec.hook_pre_add != nil && entry_add_is_valid(spec, entry) do spec.hook_pre_add(entry.name, entry.value)
 	ok, err := spec.toml_add(entry)
 	if !ok { return .FAILED, err }
@@ -525,32 +517,30 @@ entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (Ent
 	return .UPDATED if existed else .ADDED, err
 }
 
-// Remove an entry by identity (path or [paths] key for EntryPath, name for
+// Remove an entry by identity (dir or key for EntryPath, name for
 // the others). The non-identity fields on the variant are ignored. Same hook
 // / dry-run semantics as entry_add.
 entry_remove :: proc(entry: Entry) -> (EntryOutcome, string) {
 	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
 	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
-	if msg, bad := wayu_toml_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := entries_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
 	switch e in entry {
 	case EntryPath:
 		// Hooks get the stored directory, also when the target is a key (as the CLI).
-		hook_path, found := toml_path_lookup(e.path)
+		hook_path, found := path_entry_lookup(e.path)
 		defer delete(hook_path)
 		if found { hook_pre_path_remove(hook_path) }
-		#partial switch toml_path_remove_result(e.path) {
+		#partial switch path_remove_result(e.path) {
 		case .OK:
 			if wayu.dry_run { return .DRY_RUN, "" }
 			regenerate_init_core_silently()
 			hook_post_path_remove(hook_path)
 			return .REMOVED, ""
 		case .IO_ERROR:
-			return .FAILED, strings.clone("I/O error: failed to remove path from wayu.toml")
-		case .UNREADABLE:
-			return .FAILED, strings.clone("I/O error: cannot read wayu.toml")
+			return .FAILED, strings.clone("I/O error: failed to remove the PATH entry")
 		case:
 			if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
-			return .FAILED, strings.clone("failed to remove path from wayu.toml")
+			return .FAILED, strings.clone("failed to remove the PATH entry")
 		}
 	case EntryAlias:
 		return entry_remove_with_hooks(&ALIAS_SPEC, e.name)
@@ -560,21 +550,22 @@ entry_remove :: proc(entry: Entry) -> (EntryOutcome, string) {
 	return .FAILED, strings.clone("unknown entry type")
 }
 
-// Change the directory of the [paths] entry `target` (key or path) to
+// Change the directory of the PATH entry `target` (key or path) to
 // `raw_path` in place (TUI edit): same checks as entry_add (path_add_check),
 // runs the remove hooks for the old directory and the add hooks for the new.
 entry_replace_path :: proc(target, raw_path: string) -> (EntryOutcome, string) {
 	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := entries_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
 	expanded, check_err, code := path_add_check(raw_path)
 	defer delete(expanded)
 	if code != EXIT_SUCCESS { return .FAILED, check_err }
-	old_path, found := toml_path_lookup(target)
+	old_path, found := path_entry_lookup(target)
 	defer delete(old_path)
 	if found && old_path != expanded {
 		hook_pre_path_remove(old_path)
 		hook_pre_path_add(expanded)
 	}
-	#partial switch toml_path_replace_result(target, raw_path) {
+	#partial switch path_replace_result(target, raw_path) {
 	case .OK:
 		if wayu.dry_run { return .DRY_RUN, "" }
 		regenerate_init_core_silently()
@@ -584,16 +575,16 @@ entry_replace_path :: proc(target, raw_path: string) -> (EntryOutcome, string) {
 	case .NOOP:
 		return .UNCHANGED, ""
 	case .IO_ERROR:
-		return .FAILED, strings.clone("I/O error: failed to write path to wayu.toml")
+		return .FAILED, strings.clone("I/O error: failed to write the PATH entry")
 	case:
 		if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
-		return .FAILED, strings.clone("failed to update path in wayu.toml")
+		return .FAILED, strings.clone("failed to update the PATH entry")
 	}
 }
 
 @(private = "file")
 entry_remove_with_hooks :: proc(spec: ^ConfigEntrySpec, name: string) -> (EntryOutcome, string) {
-	if spec.hook_pre_remove != nil && entry_exists_in_toml(spec, name) do spec.hook_pre_remove(name, "")
+	if spec.hook_pre_remove != nil && entry_exists_in_store(spec, name) do spec.hook_pre_remove(name, "")
 	ok, err := spec.toml_remove(name)
 	if !ok { return .FAILED, err }
 	if wayu.dry_run { return .DRY_RUN, err }
@@ -758,16 +749,12 @@ parse_path_arg :: proc(arg: string) -> (name, path: string, explicit: bool) {
 	return lhs, rhs, true
 }
 
-// Reason (temp allocator) not to edit wayu.toml now: it exists but can't
-// be read (permissions changed while the TUI runs). The writers would
-// otherwise fail deep inside, where the CLI exits.
-wayu_toml_unreadable_error :: proc() -> (msg: string, bad: bool) {
-	toml_path := fmt.tprintf("%s/%s", wayu.config, WAYU_TOML)
-	if !os.exists(toml_path) do return "", false
-	f, err := os.open(toml_path)
-	if err != nil {
-		return fmt.tprintf("cannot read %s: %v", toml_path, err), true
-	}
-	os.close(f)
+// Reason (temp allocator) not to edit the entries now: entries.json can't be
+// read or is malformed (the TUI shows it instead of exiting). The writers
+// would otherwise fail deep inside.
+entries_unreadable_error :: proc() -> (msg: string, bad: bool) {
+	store, err, ok := entries_read()
+	if !ok { return err, true }
+	entries_store_destroy(&store)
 	return "", false
 }

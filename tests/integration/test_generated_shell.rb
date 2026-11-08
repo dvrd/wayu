@@ -14,13 +14,9 @@ class GeneratedShellTest
 
   NODE_VERSIONS = %w[v18.2.0 v20.1.0 v20.9.0 v20.18.0 v22.3.0].freeze
 
-  TOML = <<~'TOML'
-    [aliases]
-    npm = "pnpm"
-    conda = "echo aliased-conda"
-    sdk = "echo aliased-sdk"
-    ll = "ls -la"
+  ALIASES = { 'npm' => 'pnpm', 'conda' => 'echo aliased-conda', 'sdk' => 'echo aliased-sdk', 'll' => 'ls -la' }.freeze
 
+  TOML = <<~'TOML'
     [tools]
     nvm = { kind = "nvm" }
     conda = { kind = "conda" }
@@ -67,8 +63,9 @@ class GeneratedShellTest
 
   private
 
-  # Fresh HOME for `shell` with the test wayu.toml, a fake nvm install,
-  # anaconda dir, a user function, extra.<ext> and wayu's own completions.
+  # Fresh HOME for `shell` with the test wayu.toml + aliases, a fake nvm
+  # install, anaconda dir, a user function, extra.<ext> and wayu's own
+  # completions. Returns [home, data dir (generated files), env, config dir].
   def setup_home(name, shell, nvm_default: '20')
     home = "#{@tmp_home}/#{name}"
     FileUtils.rm_rf(home)
@@ -86,13 +83,15 @@ class GeneratedShellTest
             'NVM_DIR' => nil, 'WAYU_CONFIG' => nil, 'XDG_CONFIG_HOME' => nil, 'XDG_DATA_HOME' => nil }
     Open3.capture3(env, @wayu_bin, 'init', '--shell', shell)
     cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
     File.write("#{cfg}/wayu.toml", TOML)
+    write_entries(aliases: ALIASES, data: data)
     FileUtils.mkdir_p("#{cfg}/functions")
     File.write("#{cfg}/functions/myfn.#{shell}", "myfn() { echo myfn-ok; }\n")
     File.write("#{cfg}/extra.#{shell}", "EXTRA_LOADED=1\n")
     Open3.capture3(env, @wayu_bin, 'completions', 'generate')
     Open3.capture3(env, @wayu_bin, 'build')
-    [home, cfg, env]
+    [home, data, env, cfg]
   end
 
   def check(label, ok, detail)
@@ -111,8 +110,8 @@ class GeneratedShellTest
   # (interactive: compinit runs in interactive shells only, OKAMI-284).
   # error line and leave functions/, extra, lazy wrappers and completions set up.
   def test_zsh_hostile_environments
-    _, cfg, env = setup_home('zsh_hostile', 'zsh')
-    bad = Dir.glob("#{cfg}/*.zsh").reject { |f| system('zsh', '-n', f, out: File::NULL, err: File::NULL) }
+    _, data, env = setup_home('zsh_hostile', 'zsh')
+    bad = Dir.glob("#{data}/*.zsh").reject { |f| system('zsh', '-n', f, out: File::NULL, err: File::NULL) }
     pres = {
       'NO_BARE_GLOB_QUAL' => 'unsetopt BARE_GLOB_QUAL',
       'KSH_ARRAYS' => 'setopt KSH_ARRAYS',
@@ -122,7 +121,7 @@ class GeneratedShellTest
     }
     pres.each do |name, pre|
       print "Test: zsh init sources cleanly under #{name}... "
-      script = "#{pre}\nsource '#{cfg}/init.zsh'\n#{ZSH_PROBE}"
+      script = "#{pre}\nsource '#{data}/init.zsh'\n#{ZSH_PROBE}"
       out, err, st = Open3.capture3(env, 'zsh', '-f', '-i', '-c', script)
       want_node = pre.include?('node=false') ? '' : 'v20.18.0'
       want = "node=#{want_node} myfn=myfn-ok extra=1 nvm=1 sdk=1 conda=1 comp=_wayu"
@@ -135,14 +134,14 @@ class GeneratedShellTest
   # sourcing and [aliases] named like wrappers must not break lazy.bash;
   # wayu's own bash completion (completions/wayu.bash) is loaded.
   def test_bash_hostile_aliases
-    _, cfg, env = setup_home('bash_hostile', 'bash')
-    bad = Dir.glob("#{cfg}/*.bash").reject { |f| system('bash', '-n', f, out: File::NULL, err: File::NULL) }
+    _, data, env = setup_home('bash_hostile', 'bash')
+    bad = Dir.glob("#{data}/*.bash").reject { |f| system('bash', '-n', f, out: File::NULL, err: File::NULL) }
     [['plain', ''], ['hostile aliases', HOSTILE_ALIASES]].each do |name, pre|
       print "Test: bash init sources cleanly with #{name}, loads wayu completion... "
       script = <<~SH
         shopt -s expand_aliases
         #{pre}
-        source '#{cfg}/init.bash'
+        source '#{data}/init.bash'
         echo "node=$(command node 2>&1) myfn=$(myfn 2>&1) extra=${EXTRA_LOADED-} nvm=$(declare -F nvm) sdk=$(declare -F sdk) conda=$(declare -F conda) comp=$(complete -p wayu 2>&1)"
       SH
       out, err, st = Open3.capture3(env, 'bash', '-c', script)
@@ -163,9 +162,9 @@ class GeneratedShellTest
       print "Test: nvm default resolution (#{sh})... "
       fails = []
       cases.each do |spec, want|
-        _, cfg, env = setup_home("nvm_#{sh}", sh, nvm_default: spec)
-        probe = sh == 'zsh' ? "source '#{cfg}/init.zsh'; command node 2>/dev/null" :
-                              "source '#{cfg}/init.bash'; command node 2>/dev/null"
+        _, data, env = setup_home("nvm_#{sh}", sh, nvm_default: spec)
+        probe = sh == 'zsh' ? "source '#{data}/init.zsh'; command node 2>/dev/null" :
+                              "source '#{data}/init.bash'; command node 2>/dev/null"
         out, = Open3.capture3(env, sh, *(sh == 'zsh' ? ['-f'] : []), '-c', probe)
         fails << "#{spec}=>#{out.strip.inspect} (want #{want.inspect})" unless out.strip == want
       end
@@ -176,13 +175,13 @@ class GeneratedShellTest
   # zsh .nvmrc fast path (startup and chpwd) uses the same resolution.
   def test_nvmrc_resolution
     print "Test: .nvmrc resolution (zsh)... "
-    home, cfg, env = setup_home('nvmrc', 'zsh')
+    home, data, env = setup_home('nvmrc', 'zsh')
     { 'p20' => "20\n", 'p201' => "v20.1\n", 'plts' => "lts/*\n", 'p18' => " 18 \n" }.each do |d, c|
       FileUtils.mkdir_p("#{home}/#{d}")
       File.write("#{home}/#{d}/.nvmrc", c)
     end
     script = <<~SH
-      source '#{cfg}/init.zsh'
+      source '#{data}/init.zsh'
       for d in p20 p201 plts p18; do cd "$HOME/$d"; print -n "$(command node) "; done
     SH
     out, err, = Open3.capture3(env, 'zsh', '-f', '-c', script)
@@ -203,7 +202,7 @@ class GeneratedShellTest
     Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh', stdin_data: '')
     File.write("#{home}/.config/wayu/wayu.toml", "[prompt]\nenabled = true\n")
     Open3.capture3(env, @wayu_bin, 'build')
-    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-$HOME/.config/wayu}/init.zsh\"\n")
+    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
     File.write("#{home}/.zshrc", "PS1=\"%n@%m %1~ %# \"\n")
     probe = 'for f in $precmd_functions; do $f; done; print -r -- "$PROMPT"; print -r -- "${(j: :)precmd_functions}"'
     out, err, = Open3.capture3(env, 'zsh', '-i', '-c', probe)
@@ -226,9 +225,9 @@ class GeneratedShellTest
     env = { 'HOME' => home, 'SHELL' => '/bin/zsh', 'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin', 'ZDOTDIR' => home,
             'WAYU_CONFIG' => nil, 'WAYU_DATA_DIR' => nil, 'WAYU_CONFIG_DIR' => nil, 'XDG_CONFIG_HOME' => nil }
     Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh', stdin_data: '')
-    File.write("#{home}/.config/wayu/wayu.toml", "[paths]\na = \"#{home}/a/bin\"\nb = \"#{home}/b/bin\"\n")
+    write_entries(paths: { 'a' => "#{home}/a/bin", 'b' => "#{home}/b/bin" }, data: "#{home}/.local/share/wayu")
     Open3.capture3(env, @wayu_bin, 'build')
-    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-$HOME/.config/wayu}/init.zsh\"\n")
+    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
     File.write("#{home}/.zprofile", "path=( /usr/sbin /bin ${path:#(/usr/sbin|/bin)} )\n")
     File.write("#{home}/.zshrc", "path=( $HOME/pre/bin $path )\n")
     probe = 'print -r -- "${(j.:.)path[1,4]}"; for f in $precmd_functions; do $f; done; print -r -- "${(j.:.)path[1,5]}"'
@@ -243,8 +242,8 @@ class GeneratedShellTest
   # with `wayu completions add` must be active in the next shell.
   def test_compinit_picks_up_new_completions
     print "Test: completions added by wayu reach the next zsh (dump refreshed)... "
-    home, cfg, env = setup_home('compdump', 'zsh')
-    probe = "source '#{cfg}/init.zsh'; print -r -- \"${_comps[foocmd]-none}\""
+    home, data, env = setup_home('compdump', 'zsh')
+    probe = "source '#{data}/init.zsh'; print -r -- \"${_comps[foocmd]-none}\""
     first, = Open3.capture3(env, 'zsh', '-f', '-i', '-c', probe)
     dump_ok = File.exist?("#{home}/.zcompdump")
     src = "#{home}/_foocmd"
@@ -253,32 +252,24 @@ class GeneratedShellTest
     # Same second as the dump (OKAMI-283): zsh's `-nt` compares whole
     # seconds, so pin both mtimes to one second; the listing must still win.
     t = File.mtime("#{home}/.zcompdump")
-    File.utime(t, t, "#{cfg}/completions")
+    File.utime(t, t, "#{data}/completions")
     second, err, = Open3.capture3(env, 'zsh', '-f', '-i', '-c', probe)
     third, = Open3.capture3(env, 'zsh', '-f', '-i', '-c', probe)
     check('compdump', dump_ok && first.strip == 'none' && second.strip == '_foocmd' && third.strip == '_foocmd',
           "dump=#{dump_ok} first=#{first.strip} second=#{second.strip} third=#{third.strip} err=#{err.strip[0, 200]}")
   end
 
-  # [env] values that used to break a whole generated file: an unclosed `${`
+  # Constant values that used to break a whole generated file: an unclosed `${`
   # (zsh/bash syntax error), `${VAR}` / a bare `$` (fish parse error), zsh
   # `${(e)...}` (ran commands), `$X:h` (zsh modifier). Every shell must
   # source core cleanly, keep later entries and agree on the values.
   # functions/<name>.<ext> is loaded by its own shell only; a file without
   # that extension is not loaded.
-  ENV_TOML = <<~'TOML'
-    [paths]
-    gobin = "$FZ_GO/bin"
-
-    [env]
-    FZ_GO = "${HOME}/go"
-    FZ_PW = 'pa${ss'
-    FZ_EFLAG = '${(e):-$(echo PWNED)}'
-    FZ_POS = 'a$1$'
-    FZ_MOD = '$HOME:hello'
-    FZ_PCT = 'a$%b'
-    FZ_LAST = "ok"
-  TOML
+  ENV_PATHS = { 'gobin' => '$FZ_GO/bin' }.freeze
+  ENV_VALUES = {
+    'FZ_GO' => '${HOME}/go', 'FZ_PW' => 'pa${ss', 'FZ_EFLAG' => '${(e):-$(echo PWNED)}', 'FZ_POS' => 'a$1$',
+    'FZ_MOD' => '$HOME:hello', 'FZ_PCT' => 'a$%b', 'FZ_LAST' => 'ok'
+  }.freeze
 
   def test_env_values_and_functions_all_shells
     fish = %w[/opt/homebrew/bin/fish /usr/local/bin/fish /usr/bin/fish].find { |f| File.executable?(f) }
@@ -290,7 +281,8 @@ class GeneratedShellTest
             'WAYU_CONFIG' => nil, 'XDG_CONFIG_HOME' => nil, 'XDG_DATA_HOME' => nil }
     shells.each { |s| Open3.capture3(env, @wayu_bin, 'init', '--shell', s) }
     cfg = "#{home}/.config/wayu"
-    File.write("#{cfg}/wayu.toml", ENV_TOML)
+    data = "#{home}/.local/share/wayu"
+    write_entries(paths: ENV_PATHS, env: ENV_VALUES, data: data)
     FileUtils.mkdir_p("#{cfg}/functions")
     File.write("#{cfg}/functions/fzfn.zsh", "fzfn() { echo fn-zsh; }\n")
     File.write("#{cfg}/functions/fzfn.bash", "fzfn() { echo fn-bash; }\n")
@@ -303,12 +295,12 @@ class GeneratedShellTest
     shells.each do |sh|
       print "Test: tricky [env] values + functions/ load cleanly in #{sh}... "
       exe = sh == 'fish' ? fish : sh
-      syntax = Dir.glob("#{cfg}/*.#{sh}").reject { |f| Open3.capture3(exe, '-n', f)[2].success? }
+      syntax = Dir.glob("#{data}/*.#{sh}").reject { |f| Open3.capture3(exe, '-n', f)[2].success? }
       probe = if sh == 'fish'
-                "source '#{cfg}/init.fish'; for v in #{vars.join(' ')}; printf '%s=%s ' $v \"$$v\"; end; " \
+                "source '#{data}/init.fish'; for v in #{vars.join(' ')}; printf '%s=%s ' $v \"$$v\"; end; " \
                 "echo; fzfn; contains -- '#{home}/go/bin' $PATH; and echo path-ok"
               else
-                "source '#{cfg}/init.#{sh}'; for v in #{vars.join(' ')}; do printf '%s=%s ' \"$v\" \"$(printenv \"$v\")\"; done; " \
+                "source '#{data}/init.#{sh}'; for v in #{vars.join(' ')}; do printf '%s=%s ' \"$v\" \"$(printenv \"$v\")\"; done; " \
                 "echo; fzfn; case \":$PATH:\" in *':#{home}/go/bin:'*) echo path-ok ;; esac"
               end
       args = { 'zsh' => ['-f', '-c'], 'bash' => ['--norc', '-c'], 'fish' => ['--no-config', '-c'] }[sh]
@@ -325,11 +317,11 @@ class GeneratedShellTest
   def test_script_path_sync_after_path_add
     %w[zsh bash].each do |sh|
       print "Test: script picks up 'wayu path add' via _wayu_paths_sync (#{sh})... "
-      home, cfg, env = setup_home("script_sync_#{sh}", sh)
+      home, data, env = setup_home("script_sync_#{sh}", sh)
       dir = "#{home}/scriptbin"
       FileUtils.mkdir_p(dir)
       script = <<~SH
-        source '#{cfg}/init.#{sh}'
+        source '#{data}/init.#{sh}'
         case ":$PATH:" in *':#{dir}:'*) echo early ;; esac
         '#{@wayu_bin}' path add '#{dir}' >/dev/null 2>&1 || echo add-failed
         _wayu_paths_sync
@@ -373,7 +365,7 @@ class GeneratedShellTest
       shells.each { |s| Open3.capture3(wenv, @wayu_bin, 'init', '--shell', s) }
       Open3.capture3(wenv, @wayu_bin, 'path', 'add', "#{home}/mybin")
       Open3.capture3(wenv, @wayu_bin, 'const', 'add', 'DIRS_PROBE', name)
-      data = over['WAYU_DATA_DIR'] || over['WAYU_CONFIG_DIR']
+      data = over['WAYU_DATA_DIR'] || "#{home}/.local/share/wayu"
       shells.each do |sh|
         print "Test: init.#{sh} works with #{over.keys.join('+')} not exported... "
         exe = sh == 'fish' ? FISH_BIN : sh
@@ -411,6 +403,7 @@ class GeneratedShellTest
       env = clean_env(home, 'SHELL' => "/bin/#{sh}")
       Open3.capture3(env, @wayu_bin, 'init', '--shell', sh)
       cfg = "#{home}/.config/wayu"
+      data = "#{home}/.local/share/wayu"
       File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[tools]\nfaketool = { args = \"init #{sh}\" }\n")
       Open3.capture3(env, @wayu_bin, 'build')
       tool = "#{home}/bin/faketool"
@@ -427,7 +420,7 @@ class GeneratedShellTest
       end
       run = lambda do
         out, err, = Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), sh, *SHELL_ARGS[sh],
-                                   "source '#{cfg}/init.#{sh}'; echo \"$TOOLV\"")
+                                   "source '#{data}/init.#{sh}'; echo \"$TOOLV\"")
         [out.strip, err.strip]
       end
       put.call(tool, '1')
@@ -461,6 +454,7 @@ class GeneratedShellTest
     env = clean_env(home)
     Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
     cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
     base = File.read("#{cfg}/wayu.toml")
     File.write("#{home}/bin/argtool", "#!/bin/sh\nprintf 'export ARGS=\"'; printf '<%s>' \"$@\"; printf '\"\\n'\n")
     File.chmod(0o755, "#{home}/bin/argtool")
@@ -470,7 +464,7 @@ class GeneratedShellTest
     File.write("#{cfg}/wayu.toml", base + "\n[tools]\nargtool = { args = \"init 'a b' --x=$HOME\" }\n")
     _, berr, bst = Open3.capture3(env, @wayu_bin, 'build')
     out, err, = Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-c',
-                               "source '#{cfg}/init.zsh'; echo \"$ARGS\"")
+                               "source '#{data}/init.zsh'; echo \"$ARGS\"")
     check('args quoted', bst.success? && berr.strip.empty? && out.strip == "<init><a b><--x=#{home}>" && err.strip.empty?,
           "build=#{bst.exitstatus} berr=#{berr.strip} out=#{out.inspect} err=#{err.strip[0, 300]}")
 
@@ -480,8 +474,8 @@ class GeneratedShellTest
       bout, berr, bst = Open3.capture3(env, @wayu_bin, 'build')
       bout += berr
       Open3.capture3(env, @wayu_bin, 'const', 'add', 'ARGS_PROBE', '1') # silent regeneration
-      lazy = File.read("#{cfg}/core.zsh")
-      Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-c', "source '#{cfg}/init.zsh'")
+      lazy = File.read("#{data}/core.zsh")
+      Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-c', "source '#{data}/init.zsh'")
       ok = bst.exitstatus == 78 && bout.include?('argtool') && !lazy.include?('_wayu_evalcache argtool') && !File.exist?(pwn)
       check("args refused #{args.inspect}", ok,
             "exit=#{bst.exitstatus} out=#{bout.strip[0, 200]} lazy_call=#{lazy.include?('_wayu_evalcache argtool')} pwned=#{File.exist?(pwn)}")
@@ -500,6 +494,7 @@ class GeneratedShellTest
     env = clean_env(home)
     Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
     cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
     File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") +
                "\n[prompt]\nenabled = true\nformat = \"{dir}{git_branch}\"\n")
     Open3.capture3(env, @wayu_bin, 'build')
@@ -511,7 +506,7 @@ class GeneratedShellTest
     File.chmod(0o755, "#{home}/bin/go")
     hostile = 'alias git=false awk=false sed=false head=false wc=false tr=false mktemp=false rm=false mv=false'
     funcs = 'git() { echo HIJACK; }; awk() { echo HIJACK; }; sed() { echo HIJACK; }'
-    script = "#{hostile}\nsource '#{cfg}/init.zsh'\n#{funcs}\ncd '#{home}/repo'\n_wayu_update_git_info\n" \
+    script = "#{hostile}\nsource '#{data}/init.zsh'\n#{funcs}\ncd '#{home}/repo'\n_wayu_update_git_info\n" \
              "print -r -- \"$(_wayu_prompt_full)\"\nprint -r -- \"ver=$(_wayu_version_cmd golang)\""
     out, err, st = Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-i', '-c', script)
     lines = out.lines.map(&:strip)
@@ -534,14 +529,15 @@ class GeneratedShellTest
       env = clean_env(home, 'EDITOR' => nil, 'VISUAL' => nil, 'KEYTIMEOUT' => nil)
       Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
       cfg = "#{home}/.config/wayu"
+      data = "#{home}/.local/share/wayu"
       File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") +
                  "\n[prompt]\nenabled = true\n#{vi ? "vi_mode = true\n" : ''}")
       Open3.capture3(env, @wayu_bin, 'build')
       script = <<~SH
         my_line_init() { MY_INIT=1; }
         zle -N zle-line-init my_line_init
-        source '#{cfg}/init.zsh'
-        source '#{cfg}/init.zsh'
+        source '#{data}/init.zsh'
+        source '#{data}/init.zsh'
         print -r -- "map=$(bindkey -lL main) kt=${(t)KEYTIMEOUT}:$KEYTIMEOUT li=${widgets[zle-line-init]} prev=${widgets[_wayu_prev_zle-line-init]-none} prevprev=${widgets[_wayu_prev__wayu_prev_zle-line-init]-none}"
       SH
       out, err, st = Open3.capture3(env, 'zsh', '-f', '-i', '-c', script)
@@ -566,6 +562,7 @@ class GeneratedShellTest
     env = clean_env(home)
     Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
     cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
     File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[prompt]\nenabled = true\n")
     Open3.capture3(env, @wayu_bin, 'build')
     git_env = clean_env(home, 'GIT_CONFIG_NOSYSTEM' => '1')
@@ -578,7 +575,7 @@ class GeneratedShellTest
     File.write("#{home}/bin/git", "#!/bin/sh\necho GIT-RAN >&2\nexit 1\n")
     File.chmod(0o755, "#{home}/bin/git")
     script = <<~SH
-      source '#{cfg}/init.zsh'
+      source '#{data}/init.zsh'
       for d in repo/sub/deep wt . ; do cd "$HOME/$d"; _wayu_update_git_info; print -rn -- "[$_WAYU_GIT_BRANCH|${_WAYU_GIT_DIR:t}]"; done
       print -r -- '#{sha.strip}' > "$HOME/repo/.git/HEAD"
       cd "$HOME/repo"; _wayu_update_git_info; print -r -- "[$_WAYU_GIT_BRANCH]"
@@ -596,11 +593,10 @@ class GeneratedShellTest
   def test_init_and_turbo_define_the_same
     %w[zsh bash].each do |sh|
       print "Test: #{sh} init.#{sh} and turbo.#{sh} define the same things... "
-      home, cfg, env = setup_home("turbo_#{sh}", sh)
+      home, data, env, cfg = setup_home("turbo_#{sh}", sh)
       FileUtils.mkdir_p("#{home}/pbin")
-      File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") +
-                 "\n[paths]\npbin = \"~/pbin\"\n\n[env]\nPARITY = \"$HOME/x\"\n" +
-                 (sh == 'zsh' ? "\n[prompt]\nenabled = true\n" : ''))
+      write_entries(paths: { 'pbin' => '~/pbin' }, aliases: ALIASES, env: { 'PARITY' => '$HOME/x' }, data: data)
+      File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + (sh == 'zsh' ? "\n[prompt]\nenabled = true\n" : ''))
       Open3.capture3(env, @wayu_bin, '--shell', sh, 'build')
       _, terr, tst = Open3.capture3(env, @wayu_bin, '--shell', sh, 'export', '--turbo')
       Open3.capture3(env, @wayu_bin, '--shell', sh, 'alias', 'add', 'parity_late', 'echo late')
@@ -612,12 +608,12 @@ class GeneratedShellTest
               end
       run = lambda do |file|
         args = sh == 'zsh' ? ['zsh', '-f', '-i', '-c'] : ['bash', '--norc', '-c']
-        Open3.capture3(env, *args, "source '#{cfg}/#{file}' >/dev/null 2>&1; #{probe}")
+        Open3.capture3(env, *args, "source '#{data}/#{file}' >/dev/null 2>&1; #{probe}")
       end
       run.call("init.#{sh}") # warm-up: first zsh rebuilds the completion dump
       init_out, init_err, = run.call("init.#{sh}")
       turbo_out, turbo_err, = run.call("turbo.#{sh}")
-      same_file = File.read("#{cfg}/turbo.#{sh}") == File.read("#{cfg}/core.#{sh}")
+      same_file = File.read("#{data}/turbo.#{sh}") == File.read("#{data}/core.#{sh}")
       ok = tst.success? && same_file && init_out == turbo_out && init_out.include?("#{home}/pbin") &&
            init_out.include?('parity_late') && init_out.include?('myfn') && init_out.include?("PARITY=#{home}/x") &&
            init_err.strip.empty? && turbo_err.strip.empty?
@@ -638,7 +634,8 @@ class GeneratedShellTest
     env = { 'HOME' => home, 'SHELL' => '/bin/zsh', 'ZDOTDIR' => nil, 'WAYU_CONFIG' => nil,
             'XDG_CONFIG_HOME' => nil, 'XDG_DATA_HOME' => nil }
     _, err, st = Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
-    check('fresh init', st.success? && err.strip.empty? && File.exist?("#{home}/.config/wayu/wayu.toml"),
+    check('fresh init', st.success? && err.strip.empty? && File.exist?("#{home}/.config/wayu/wayu.toml") &&
+                        File.exist?("#{home}/.local/share/wayu/init.zsh"),
           "exit=#{st.exitstatus} err=#{err.strip[0, 300]}")
   end
 end

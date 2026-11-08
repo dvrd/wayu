@@ -74,7 +74,7 @@ handle_doctor_command :: proc(fix_mode: bool, json_output: bool, profile_mode: b
 	// --fix rewrites wayu.toml (drops PATH entries), so it follows the same
 	// confirmation rule as `wayu path clean`.
 	if fix_mode && !wayu.dry_run && !wayu.yes_flag {
-		print_error("doctor --fix removes missing/duplicate PATH entries from wayu.toml. Pass --yes to confirm, or --dry-run to preview.")
+		print_error("doctor --fix removes missing/duplicate PATH entries. Pass --yes to confirm, or --dry-run to preview.")
 		os.exit(EXIT_USAGE)
 	}
 
@@ -322,9 +322,9 @@ attempt_auto_fixes :: proc(results: []CheckResult, arena_alloc: mem.Allocator) -
 
 		switch result.name {
 		case "PATH entries":
-			fmt.printfln("  %s• Cleaning wayu.toml [paths] (missing + duplicate entries)...%s", get_primary(), RESET)
+			fmt.printfln("  %s• Cleaning PATH entries (missing + duplicates)...%s", get_primary(), RESET)
 
-			_, fix_ok, fix_msg := doctor_fix_toml_paths(arena_alloc)
+			_, fix_ok, fix_msg := doctor_fix_paths(arena_alloc)
 			if fix_ok {
 				fmt.printfln("    %s✓ %s%s", get_success(), fix_msg, RESET)
 			} else {
@@ -417,7 +417,7 @@ print_doctor_usage :: proc() {
 	fmt.println()
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
 	fmt.printfln("  wayu doctor              Run all health checks")
-	fmt.printfln("  wayu doctor --fix --yes  Remove missing/duplicate PATH entries from wayu.toml")
+	fmt.printfln("  wayu doctor --fix --yes  Remove missing/duplicate PATH entries")
 	fmt.printfln("  wayu doctor --fix -n     Preview what --fix would change (dry run)")
 	fmt.printfln("  wayu doctor --json       Output results as JSON")
 	fmt.printfln("  wayu doctor --profile    Profile shell startup performance")
@@ -462,6 +462,8 @@ echo ""
 
 times=()
 labels=()
+# Generated files, plugins and completions live in the data dir.
+export WAYU_PROFILE_DATA=${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}
 
 run_step() {
   local label=$1
@@ -475,7 +477,7 @@ run_step() {
 }
 
 echo "=== Phase 1: Core Config ==="
-run_step "core.zsh" source "$HOME/.config/wayu/core.zsh" 2>/dev/null || true
+run_step "core.zsh" source "$WAYU_PROFILE_DATA/core.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 2: Functions ==="
@@ -483,14 +485,14 @@ run_step "functions (glob)" zsh -c 'for f in "$HOME/.config/wayu/functions"/*.zs
 
 echo ""
 echo "=== Phase 3: Completions Setup ==="
-run_step "fpath setup" zsh -c 'fpath=("$HOME/.config/wayu/completions" $fpath)'
+run_step "fpath setup" zsh -c 'fpath=("$WAYU_PROFILE_DATA/completions" $fpath)'
 run_step "compinit" autoload -Uz compinit && compinit -C
 
 echo ""
 echo "=== Phase 4: Plugins ==="
-run_step "autosuggestions" source "$HOME/.config/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" 2>/dev/null || true
-run_step "syntax-highlighting" source "$HOME/.config/wayu/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" 2>/dev/null || true
-run_step "plugin config" source "$HOME/.config/wayu/plugins/config.zsh" 2>/dev/null || true
+run_step "autosuggestions" source "$WAYU_PROFILE_DATA/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh" 2>/dev/null || true
+run_step "syntax-highlighting" source "$WAYU_PROFILE_DATA/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" 2>/dev/null || true
+run_step "plugin config" source "$WAYU_PROFILE_DATA/plugins/config.zsh" 2>/dev/null || true
 
 echo ""
 echo "=== Phase 5: Aliases & Tools ==="
@@ -573,6 +575,7 @@ CHECKS := []CheckEntry{
 	{"plugins",      check_plugins},
 	{"backups",      check_backups},
 	{"toml",         check_toml_config},
+	{"entries",      check_entries_store},
 	{"turbo",        check_turbo_export},
 	{"deps",         check_dependencies},
 	{"sync",         check_sync_status},
@@ -813,12 +816,12 @@ check_bash_prompt_command :: proc(results: ^[dynamic]CheckResult) {
 	})
 }
 
-// Check 3: PATH entries — read from wayu.toml [paths].
+// Check 3: PATH entries (entry store).
 check_path_entries :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
 	arena_alloc := get_doctor_allocator()
 
-	scan, scan_ok, skip_reason := doctor_scan_toml_paths(arena_alloc)
+	scan, scan_ok, skip_reason := doctor_scan_paths(arena_alloc)
 	if !scan_ok {
 		append(results, CheckResult{
 			name    = clone_arena("PATH entries"),
@@ -889,12 +892,12 @@ check_path_entries :: proc(results: ^[dynamic]CheckResult) {
 	}
 }
 
-// One [paths] entry plus its health verdict.
+// One PATH entry plus its health verdict.
 DoctorPathScan :: struct {
-	entry:      TomlPathEntry,
+	entry:      StorePath,
 	missing:    bool, // directory doesn't exist (after $VAR / ~ expansion)
 	duplicate:  bool, // expands to the same dir as an earlier entry
-	unresolved: bool, // uses a variable set neither in wayu.toml [env] nor the environment, or is relative (cwd-dependent)
+	unresolved: bool, // uses a variable set neither as a constant nor in the environment, or is relative (cwd-dependent)
 	expanded:   string, // the directory the shell would add ("" when unresolved)
 }
 
@@ -903,8 +906,8 @@ doctor_is_ident_byte :: proc(c: byte) -> bool {
 	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'
 }
 
-// Expand `path` the way the generated shell init does: wayu.toml [env]
-// constants first (core exports them before PATH), then the environment,
+// Expand `path` the way the generated shell init does: wayu's constants
+// first (core exports them before PATH), then the environment,
 // then a leading `~`. Returns "" when any variable stays unresolved — such an
 // entry's existence is unknown, so it must never be classed as missing.
 doctor_expand_path :: proc(path: string, consts: []ConfigEntry) -> string {
@@ -961,33 +964,23 @@ doctor_expand_path :: proc(path: string, consts: []ConfigEntry) -> string {
 	return expand_env_vars(s, require_resolved = true)
 }
 
-// Read wayu.toml [paths] and classify each entry. Never exits: a missing or
-// unreadable wayu.toml is reported via ok=false + reason (the TOML check
-// surfaces the actual problem). All memory comes from `alloc`.
-doctor_scan_toml_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPathScan, ok: bool, reason: string) {
+// Read the PATH entries and classify each one. Never exits: an unreadable or
+// malformed entries.json is reported via ok=false + reason (the entries
+// check surfaces the actual problem). All memory comes from `alloc`.
+doctor_scan_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPathScan, ok: bool, reason: string) {
 	context.allocator = alloc
 
-	toml_path := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
-	if !os.exists(toml_path) {
-		return nil, false, "No wayu.toml — PATH check skipped"
-	}
-	_, read_ok := safe_read_file(toml_path)
+	store, _, read_ok := entries_read()
 	if !read_ok {
-		return nil, false, "Cannot read wayu.toml — PATH check skipped"
+		return nil, false, fmt.aprintf("%s is unreadable or malformed — PATH check skipped", ENTRIES_FILE)
 	}
+	consts := entries_as_config_entries(&store, .ENV)
 
-	// toml_path_read_keyed may serve a cached copy; make sure it's fresh.
-	clear_toml_content_cache()
-	entries := toml_path_read_keyed()
-	consts := read_wayu_toml_constants()
-	// Don't leave arena-owned memory in the global cache once doctor returns.
-	defer clear_toml_content_cache()
-
-	scan = make([dynamic]DoctorPathScan, 0, len(entries))
+	scan = make([dynamic]DoctorPathScan, 0, len(store.paths))
 	seen := make(map[string]bool)
-	for e in entries {
+	for e in store.paths {
 		s := DoctorPathScan{entry = e}
-		expanded := doctor_expand_path(e.path, consts)
+		expanded := doctor_expand_path(e.dir, consts)
 		if len(expanded) == 0 {
 			s.unresolved = true
 			append(&scan, s)
@@ -1004,10 +997,10 @@ doctor_scan_toml_paths :: proc(alloc: mem.Allocator) -> (scan: [dynamic]DoctorPa
 	return scan, true, ""
 }
 
-// --fix for PATH: drop missing + duplicate entries from wayu.toml [paths]
-// with a single backup and a single rewrite, then regenerate the shell init.
+// --fix for PATH: drop missing + duplicate entries with a single backup and
+// a single rewrite, then regenerate the shell init.
 // Returns (removed_count, ok, message).
-doctor_fix_toml_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, message: string) {
+doctor_fix_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, message: string) {
 	context.allocator = alloc
 
 	// Scan and rewrite under one lock so the fix acts on what is on disk.
@@ -1016,52 +1009,40 @@ doctor_fix_toml_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, 
 	}
 	defer config_lock_release()
 
-	scan, scan_ok, reason := doctor_scan_toml_paths(alloc)
+	scan, scan_ok, reason := doctor_scan_paths(alloc)
 	if !scan_ok {
 		return 0, false, reason
 	}
 
-	drop_keys := make([dynamic]string)
-	for s in scan {
+	entries := make([]StorePath, len(scan))
+	drop := make([]bool, len(scan))
+	for s, i in scan {
+		entries[i] = s.entry
 		if s.missing || s.duplicate {
 			removed += 1
+			drop[i] = true
 			reason_word := s.missing ? "missing" : "duplicate"
-			fmt.printfln("    - %s = %q (%s)", s.entry.key, s.entry.path, reason_word)
-			append(&drop_keys, s.entry.key)
+			fmt.printfln("    - %s = %q (%s)", s.entry.key, s.entry.dir, reason_word)
 		}
 	}
 	if removed == 0 {
 		return 0, true, "Nothing to remove"
 	}
 
-	// The rewrite deletes every line of a key. If a key to drop also names
-	// an entry that stays (a repeated key: `a = "/x"` twice), deleting it
-	// would remove the survivor too — refuse and change nothing.
-	for s in scan {
-		if s.missing || s.duplicate { continue }
-		for k in drop_keys {
-			if k != s.entry.key { continue }
-			print_error("wayu.toml [paths] defines key '%s' more than once — --fix would delete every line of it. Rename or remove the repeated key by hand; nothing changed.", k)
-			os.exit(EXIT_CONFIG)
-		}
-	}
-
 	if wayu.dry_run {
-		return removed, true, fmt.aprintf("DRY RUN: would remove %d entr%s from wayu.toml [paths]",
+		return removed, true, fmt.aprintf("DRY RUN: would remove %d PATH entr%s",
 			removed, removed == 1 ? "y" : "ies")
 	}
 
-	// One backup, one in-place deletion of just the dropped lines: the
-	// survivors keep their order (PATH precedence) and comments.
-	switch toml_kv_delete("paths", "paths", drop_keys[:]) {
+	// One backup, one rewrite: the survivors keep their order (PATH precedence).
+	#partial switch path_store_drop(entries, drop) {
 	case .OK:
-	case .MALFORMED: return 0, false, "wayu.toml [paths] is malformed — nothing changed"
-	case .NOT_FOUND: return 0, false, "PATH entries changed during the fix — nothing changed"
-	case .IO_ERROR:  return 0, false, "Could not back up or write wayu.toml"
+	case .BAD_STORE: return 0, false, "entries.json is malformed — nothing changed"
+	case:            return 0, false, "Could not back up or write entries.json"
 	}
 	regenerate_init_core_silently()
 
-	return removed, true, fmt.aprintf("Removed %d missing/duplicate entr%s from wayu.toml",
+	return removed, true, fmt.aprintf("Removed %d missing/duplicate PATH entr%s",
 		removed, removed == 1 ? "y" : "ies")
 }
 
@@ -1234,6 +1215,50 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 	})
 }
 
+// Check: the entry store (<data>/entries.json) parses and is private.
+check_entries_store :: proc(results: ^[dynamic]CheckResult) {
+	ensure_arena_initialized()
+	name :: "entries"
+	file := entries_file_path()
+	store, err, ok := entries_read()
+	if !ok {
+		append(results, CheckResult{
+			name    = clone_arena(name),
+			status  = .ERROR,
+			message = clone_arena(fmt.tprintf("%s — restore it with `wayu backup restore entries --yes`", err)),
+			fixable = false,
+		})
+		return
+	}
+	defer entries_store_destroy(&store)
+	if !os.exists(file) {
+		append(results, CheckResult{
+			name    = clone_arena(name),
+			status  = .INFO,
+			message = clone_arena("No PATH entries, aliases or constants yet"),
+			fixable = false,
+		})
+		return
+	}
+	if fi, serr := os.stat(file, context.temp_allocator); serr == nil {
+		if fi.mode & {.Read_Group, .Write_Group, .Execute_Group, .Read_Other, .Write_Other, .Execute_Other} != {} {
+			append(results, CheckResult{
+				name    = clone_arena(name),
+				status  = .WARNING,
+				message = clone_arena(fmt.tprintf("%s is readable by other users (constants may be secrets) — chmod 600 it", file)),
+				fixable = false,
+			})
+			return
+		}
+	}
+	append(results, CheckResult{
+		name    = clone_arena(name),
+		status  = .OK,
+		message = clone_arena(fmt.tprintf("%d PATH entries, %d aliases, %d constants", len(store.paths), len(store.aliases), len(store.env))),
+		fixable = false,
+	})
+}
+
 // Check 7: turbo export. turbo.zsh is optional; it only matters when a
 // startup file sources it. Report-only: doctor never generates it.
 check_turbo_export :: proc(results: ^[dynamic]CheckResult) {
@@ -1333,9 +1358,9 @@ check_sync_status :: proc(results: ^[dynamic]CheckResult) {
 		sync_msg = clone_arena("wayu is not loaded by any startup file - see 'shell configuration' above")
 		sync_status = .WARNING
 	} else {
-		// Compare wayu.toml [paths] (existing, resolvable dirs) with the
+		// Compare the PATH entries (existing, resolvable dirs) with the
 		// $PATH doctor was started with.
-		scan, scan_ok, _ := doctor_scan_toml_paths(alloc)
+		scan, scan_ok, _ := doctor_scan_paths(alloc)
 		env_path := os.get_env("PATH", alloc)
 		active := make(map[string]bool, allocator = alloc)
 		for dir in strings.split(env_path, ":", alloc) { active[dir] = true }
