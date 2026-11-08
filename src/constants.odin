@@ -1,6 +1,6 @@
 // constants.odin - CONSTANTS entry management
 //
-// Constants are always TOML-native; if wayu.toml is absent we create it.
+// Constants live in the entry store (<data>/entries.json, see entries.odin).
 
 package wayu
 
@@ -10,81 +10,22 @@ import "core:strings"
 
 // Main handler for CONSTANTS commands.
 //
-// Thin delegation to the generic TOML-entry dispatcher. The spec wires up
+// Thin delegation to the generic entry dispatcher. The spec wires up
 // toml_constant_add/remove/list/get + per-action hooks (see CONSTANTS_SPEC
-// in config_specs.odin). wayu.toml is the single source of truth for
-// constants; all per-type logic lives in toml_constant_* procs below.
+// in config_specs.odin).
 handle_constants_command :: proc(action: Action, args: []string) {
 	handle_toml_entry_command(&CONSTANTS_SPEC, action, args)
 }
 
-read_wayu_toml_constants :: proc() -> []ConfigEntry {
-	// Use cached TOML content when available (populated by main pre-dispatch)
-	content_str, cached := get_cached_toml_content()
-	uncached_raw: []byte
-	if !cached {
-		config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
-		defer delete(config_path)
-		ok: bool
-		uncached_raw, ok = safe_read_file(config_path)
-		if !ok { return {} }
-		content_str = string(uncached_raw)
-	}
-	defer if len(uncached_raw) > 0 { delete(uncached_raw) }
-
-	// Shared parser (toml_read_section). Empty values (`FOO = ""`) are kept
-	// so a later rewrite of [env] doesn't silently drop them.
-	kvs := toml_read_section(content_str, "env")
-	defer destroy_toml_kvs(&kvs)
-	entries := make([dynamic]ConfigEntry)
-	for kv in kvs {
-		upsert_toml_constant(&entries, kv.key, kv.value)
-	}
-	return entries[:]
+// The store's constants in order. Exits EXIT_CONFIG when entries.json is
+// malformed. Free with cleanup_entries.
+read_env_entries :: proc() -> []ConfigEntry {
+	store := entries_load()
+	defer entries_store_destroy(&store)
+	return entries_as_config_entries(&store, .ENV)
 }
 
-upsert_toml_constant :: proc(entries: ^[dynamic]ConfigEntry, name, value: string) {
-	for &entry in entries {
-		if entry.name == name {
-			delete(entry.value)
-			entry.value = strings.clone(value)
-			delete(entry.line)
-			entry.line = fmt.aprintf(`export %s="%s"`, name, value)
-			return
-		}
-	}
-
-	append(entries, ConfigEntry{
-		type = .CONSTANT,
-		name = strings.clone(name),
-		value = strings.clone(value),
-		line = fmt.aprintf(`export %s="%s"`, name, value),
-	})
-}
-
-escape_toml_string :: proc(value: string) -> string {
-	builder := strings.builder_make()
-	defer strings.builder_destroy(&builder)
-
-	// Byte-wise: UTF-8 (even invalid UTF-8) is copied verbatim. Other
-	// control characters are not allowed raw in a TOML basic string.
-	for i in 0..<len(value) {
-		c := value[i]
-		switch c {
-		case '\\': strings.write_string(&builder, "\\\\")
-		case '"': strings.write_string(&builder, `\"`)
-		case '\n': strings.write_string(&builder, `\n`)
-		case '\r': strings.write_string(&builder, `\r`)
-		case '\t': strings.write_string(&builder, `\t`)
-		case 0x00..=0x1f, 0x7f: fmt.sbprintf(&builder, `\u%04X`, c)
-		case: strings.write_byte(&builder, c)
-		}
-	}
-
-	return strings.clone(strings.to_string(builder))
-}
-
-// Unescape TOML escape sequences (inverse of escape_toml_string)
+// Unescape TOML basic-string escape sequences
 unescape_toml_string :: proc(value: string) -> string {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
@@ -159,12 +100,11 @@ toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
 		print_warning("%s", validation.warning)
 		delete(validation.warning)
 	}
-	// Edits only this constant's line in [env] (see toml_kv_upsert).
-	return toml_entry_upsert(entry.name, entry.value, "Constant", "env", "constants")
+	return entries_entry_upsert(.ENV, entry.name, entry.value, "Constant")
 }
 
 toml_constant_remove :: proc(name: string) -> (bool, string) {
-	return toml_entry_remove(name, "Constant", "env", "constants")
+	return entries_entry_remove(.ENV, name, "Constant")
 }
 
 list_toml_constants :: proc() {
@@ -172,7 +112,7 @@ list_toml_constants :: proc() {
 		os.exit(EXIT_CONFIG)
 	}
 
-	entries := read_wayu_toml_constants()
+	entries := read_env_entries()
 	defer cleanup_entries(&entries)
 
 	// Build set of wayu-managed constants for fast lookup
@@ -182,7 +122,7 @@ list_toml_constants :: proc() {
 		wayu_set[entry.name] = true
 	}
 
-	// Find external constants (in env but not in wayu.toml)
+	// Find external constants (in env but not managed by wayu)
 	external_constants := make([dynamic]string)
 	defer delete(external_constants)
 
@@ -219,7 +159,7 @@ list_toml_constants :: proc() {
 		return
 	}
 
-	print_header("Constants (wayu.toml)", CONSTANTS_SPEC.icon)
+	print_header("Constants (wayu)", CONSTANTS_SPEC.icon)
 	fmt.println()
 
 	// Count sources
@@ -405,7 +345,7 @@ get_toml_constant_value :: proc(name: string) {
 		os.exit(EXIT_CONFIG)
 	}
 
-	entries := read_wayu_toml_constants()
+	entries := read_env_entries()
 
 	// Try exact match first
 	for entry in entries {

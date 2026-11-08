@@ -4,9 +4,9 @@ Agent instructions for AI coding assistants working in this repository.
 
 ## Project Overview
 
-wayu is a shell configuration management CLI written in Odin. It manages PATH entries, aliases, environment constants, `[tools]` loaders, a native zsh prompt, plugins, functions and completions. All wayu files live under `~/.config/wayu/` (`WAYU_CONFIG_DIR` / `WAYU_DATA_DIR` move them) — user-edited files (wayu.toml, hooks.conf, extra.<ext>, tools.<ext>, functions/) alongside generated runtime files (init.<ext>, core.<ext>, path_sync.<ext>, plugins, completions, backups).
+wayu is a shell configuration management CLI written in Odin. It manages PATH entries, aliases, environment constants, `[tools]` loaders, a native zsh prompt, plugins, functions and completions. User-edited files live in the config dir `~/.config/wayu/` (`WAYU_CONFIG_DIR`): wayu.toml, hooks.conf, extra.<ext>, tools.<ext>, functions/. Data wayu manages lives in the data dir `${XDG_DATA_HOME:-~/.local/share}/wayu/` (`WAYU_DATA_DIR`): entries.json (PATH entries, aliases, constants), plugins.json, and the generated runtime files (init.<ext>, core.<ext>, path_sync.<ext>, plugins, completions, backups, the lock).
 
-User docs: [README.md](README.md) (install, shell setup, upgrade), [docs/cli.md](docs/cli.md) (every command/flag, `--json` shapes, exit codes), [docs/config-reference.md](docs/config-reference.md) (wayu.toml and the other config files), [docs/UPGRADING.md](docs/UPGRADING.md) (behavior changes per release).
+User docs: [README.md](README.md) (install, shell setup, upgrade), [docs/cli.md](docs/cli.md) (every command/flag, `--json` shapes, exit codes), [docs/config-reference.md](docs/config-reference.md) (wayu.toml, entries.json and the other config files), [docs/UPGRADING.md](docs/UPGRADING.md) (behavior changes per release).
 
 **Current version**: see `VERSION` constant in `src/main.odin` (single source of truth) — run `./bin/wayu --version` to print.
 **Supported shells**: Zsh (primary), Bash, Fish (core.fish: [tools], functions/, live PATH sync; no native prompt)
@@ -89,7 +89,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 
 1. `src/main.odin` — entry point; `parse_args` (`src/cli_parser.odin`) resolves `Command/Action/Args` from `WAYU_COMMAND_SPECS` (`src/wayu_completions.odin`) and validates flags
 2. Command handlers (`path.odin`, `alias.odin`, `constants.odin`, …) process the action
-3. Entry commands edit `wayu.toml` in place (line-level table editor in `toml.odin`, under the config lock, atomic write), then regenerate `core.<ext>` / `path_sync.<ext>` (`init_generator.odin`)
+3. Entry commands (path/alias/const) edit `<data>/entries.json` (`entries.odin`: strict read, whole-file rewrite under the config lock, atomic write), then regenerate `core.<ext>` / `path_sync.<ext>` (`init_generator.odin`)
 4. Each file is backed up before its first write in a run
 
 ### Dual-Mode Architecture
@@ -104,12 +104,13 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/main.odin` | Entry point, argument parsing, init command, CLI dispatch |
 | `src/cli_parser.odin` | CLI argument parsing: global flags, command + action resolution |
 | `src/shell.odin` | Shell detection, extension mapping, Fish init generation |
-| `src/path.odin` | PATH management — TOML-native via handle_toml_entry_command |
+| `src/entries.odin` | Entry store `<data>/entries.json`: strict parse, stable serialize, atomic save, upsert/delete under the lock |
+| `src/path.odin` | PATH management (entries.json) |
 | `src/alias.odin` | Alias management + alias sources |
 | `src/constants.odin` | Environment constant management |
 | `src/config_entry.odin` | Generic config entry system: read/write, specs, entry types, path keys |
 | `src/config_specs.odin` | ConfigEntrySpec per type (PATH, ALIAS, CONSTANTS) |
-| `src/toml.odin` | TOML config mapping, line-level table editor, `wayu toml` commands |
+| `src/toml.odin` | TOML config mapping, schema checks (moved `[paths]`/`[aliases]`/`[env]` are errors), `wayu toml` commands |
 | `src/toml_parse.odin` | The one TOML parser (error recovery, file order, line spans) — every wayu.toml reader uses it |
 | `src/preload.odin` | Shell script templates for init (zsh/bash/fish) |
 | `src/init_generator.odin` | Generates core.<ext> (the one file init.<ext> loads) + path_sync.<ext> |
@@ -148,12 +149,10 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 
 ### Config File Format
 
-`wayu.toml` is the source of truth (reference: `docs/config-reference.md`):
-`[shell]`, `[paths]` (`key = "dir"`, file order = PATH priority), `[aliases]`,
-`[env]`, `[settings]`, `[tools]`, `[prompt]` / `[prompt.*]`.
-- Reading: always through `src/toml_parse.odin` (strict for validate/doctor/backup, lenient elsewhere).
-- Writing: the line-level editor in `src/toml.odin` (`toml_kv_upsert` / `toml_kv_delete`) keeps comments and order; writes go through `write_file_atomic` under the config lock.
-- Generated shell code: `src/init_generator.odin` compiles wayu.toml into `core.<ext>` (the one file `init.<ext>` sources) and `path_sync.<ext>`; never edit those by hand.
+Reference: `docs/config-reference.md`.
+- `wayu.toml` (config dir, user-edited): `[shell]`, `[settings]`, `[tools]`, `[prompt]` / `[prompt.*]`. Read through `src/toml_parse.odin` (strict for validate/doctor/backup, lenient elsewhere); wayu only writes it when creating it. `[paths]`/`[aliases]`/`[env]` there are errors (validate, doctor) naming the `wayu path|alias|const add` command.
+- `entries.json` (data dir, managed): `{"version":1,"paths":[{"key","dir"}],"aliases":[{"name","value"}],"env":[{"name","value"}]}` (env entries may carry `"secret": true`, serialized only when true). `src/entries.odin`: strict read (malformed → EXIT_CONFIG naming the file; missing → empty store), writes atomic under the lock, 0600, pretty-printed, stable order (array order = PATH priority / export order).
+- Generated shell code: `src/init_generator.odin` compiles wayu.toml + entries.json into `core.<ext>` (the one file `init.<ext>` sources) and `path_sync.<ext>`; never edit those by hand.
 
 ### TUI Architecture (src/tui_core.odin, tui_views.odin, tui_io.odin)
 
@@ -222,7 +221,7 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 - Shell files use `.zsh`, `.bash` or `.fish` extensions, chosen by `src/shell.odin` from `$SHELL` / `--shell`
 - wayu's own completions (zsh/bash/fish) are generated from `WAYU_COMMAND_SPECS` in `src/wayu_completions.odin` — add new commands/actions there (a unit test checks every `Command` has a row); `arg_names`/`arg_name_actions` make an action's first argument complete existing entries via the hidden `wayu completions names <kind>`
 - `src/preload.odin` has separate templates for each shell with shell-specific syntax
-- The PATH apply in `core.<ext>` prepends `[paths]` dirs in order without duplicates; open shells re-apply `path_sync.<ext>` from a prompt hook (`_wayu_paths_sync`) when `[paths]` changed
+- The PATH apply in `core.<ext>` prepends the PATH entries' dirs in order without duplicates; open shells re-apply `path_sync.<ext>` from a prompt hook (`_wayu_paths_sync`) when the list changed
 
 ## CLI Interface Contract
 

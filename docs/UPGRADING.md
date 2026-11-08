@@ -6,15 +6,58 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**PATH entries, aliases and constants move to `entries.json`; data dir is
+`~/.local/share/wayu`**
+
+- The default data dir is now `${XDG_DATA_HOME:-~/.local/share}/wayu`
+  (was: the config dir). It holds `init.<ext>`, the generated files,
+  `plugins.json`, `plugins/`, `completions/`, `backup/` and the lock.
+  `WAYU_DATA_DIR` still overrides it, and no longer follows
+  `WAYU_CONFIG_DIR`. `wayu init` creates both dirs.
+- The rc line is now
+  `source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh"`
+  (`init.bash` likewise; fish: see the README). Replace the old
+  `source "$HOME/.config/wayu/init.zsh"` line; `wayu init` prints the new one.
+- `[paths]`, `[aliases]` and `[env]` are no longer read from `wayu.toml`.
+  They live in `<data>/entries.json`
+  (`{"version":1,"paths":[{"key","dir"}],"aliases":[{"name","value"}],"env":[{"name","value"}]}`),
+  written only by wayu (`wayu path|alias|const`, the TUI, templates):
+  atomic, owner-only (`0600`), pretty-printed, stable order. A malformed
+  `entries.json` makes every command that reads it exit `78` naming the file;
+  a missing one is empty.
+- Nothing is converted. To upgrade: run `wayu init`, re-add each entry with
+  `wayu path add <key>=<dir>`, `wayu alias add <name> <command>` and
+  `wayu const add <NAME> <value>` (in the old file order), delete the three
+  tables from `wayu.toml`, move `plugins.json` and `plugins/` from
+  `~/.config/wayu` to the data dir (or re-add the plugins), and update the rc
+  line. `wayu toml validate` (exit `65`) and `wayu doctor` (exit `78`) report
+  a leftover `[paths]` / `[aliases]` / `[env]` table with the command to use.
+- `wayu toml show` prints `wayu.toml` verbatim; `--reveal` is gone (exit `64`).
+- `wayu backup`: types are `toml` (wayu.toml) and `entries`
+  (`entries.json`; `path`, `alias` and `constants` name it too). A restore of
+  entries reverts all PATH entries, aliases and constants.
+- `wayu doctor` has an `entries` check (error when `entries.json` does not
+  parse).
+- `plugin list --json` conflicts: `with` is `"entries.json"` (was
+  `"wayu.toml"`) for a clash with your aliases / constants.
+- Messages: `path add` prints `Added to PATH: <dir>`, a missing entry is
+  `PATH entry not found: <dir>`, `alias add` prints `Alias added: <name>`,
+  dry runs print `Would update entries.json (aliases)` etc.
+
+Notes further down this section that describe `[paths]`, `[aliases]` or
+`[env]` in `wayu.toml` (editing, reading, `toml show` masking) now apply to
+the same entries in `entries.json`, or no longer apply.
+
 **`wayu build eval` removed; zsh PATH order restored after login**
 
 - `wayu build eval` is gone (exit 64). It rebuilt every generated file at
   each shell start, which nothing needs: every wayu write regenerates them and
-  the prompt hook runs `wayu build` when `wayu.toml` was edited by hand.
-  Replace `eval "$(wayu build eval)"` in rc files with
-  `source "${WAYU_DATA_DIR:-$HOME/.config/wayu}/init.zsh"` (or `init.bash`).
+  the prompt hook runs `wayu build` when `wayu.toml` or `entries.json` was
+  edited by hand.
+  Replace `eval "$(wayu build eval)"` in rc files with the `source` line
+  above (or `init.bash`).
   `eval "$(wayu export --eval)"` (env/PATH/aliases only) is unchanged.
-- zsh: at the first prompt wayu puts its `[paths]` dirs back in front of the
+- zsh: at the first prompt wayu puts its PATH entries' dirs back in front of the
   dirs that were on PATH when it loaded or that macOS `path_helper` manages
   (`/etc/paths`, `/etc/paths.d`). Loading wayu from `~/.zshenv` therefore
   keeps wayu's PATH precedence in login shells; dirs prepended in `.zshrc`
@@ -26,8 +69,7 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 **Removed: backward compatibility**
 
-wayu now reads only the current formats: `wayu.toml` (`[shell]`, `[paths]`,
-`[aliases]`, `[env]`, …), `plugins.json`, `hooks.conf`,
+wayu now reads only the current formats: `wayu.toml`, `entries.json`, `plugins.json`, `hooks.conf`,
 `functions/<name>.<ext>`, `extra.<ext>` and the files the current generator
 writes. Configs left by older releases are not converted or tolerated any
 more. Upgrade from the previous release only.

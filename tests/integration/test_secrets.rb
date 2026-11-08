@@ -1,10 +1,11 @@
 #!/usr/bin/env ruby
 # Integration tests for secret handling (OKAMI-206/207/208):
-#   * wayu.toml, backups and generated core files are owner-only;
+#   * wayu.toml, entries.json, backups and generated core files are owner-only;
 #   * `get` is exact-match only and never prints another entry's value;
 #   * dry-run / search / export previews mask secret-looking values;
-#   * list views (`const list`, `--full`, `--json`, `toml show`) mask them
-#     unless `--reveal`; `const get` keeps printing the real value.
+#   * list views (`const list`, `--full`, `--json`) mask them unless
+#     `--reveal`; `const get` keeps printing the real value; `toml show`
+#     never sees them (constants live in entries.json).
 # All values below are fake. Runs in a temporary HOME.
 
 require 'open3'
@@ -107,10 +108,10 @@ class SecretsIntegrationTest
   end
 
   def test_toml_and_generated_files_owner_only
-    print 'Test 1: wayu.toml and generated core files are 0600... '
-    files = ["#{@config_dir}/wayu.toml"] + Dir.glob("#{@data_dir}/{core,lazy,login,helpers}.zsh")
+    print 'Test 1: wayu.toml, entries.json and generated core files are 0600... '
+    files = ["#{@config_dir}/wayu.toml", @entries_file] + Dir.glob("#{@data_dir}/{core,lazy,login,helpers}.zsh")
     bad = files.reject { |f| mode(f) == 0o600 }.map { |f| "#{File.basename(f)}=#{format('%o', mode(f))}" }
-    check('files wider than 0600', bad.empty? && files.size >= 2, bad.join(' '))
+    check('files wider than 0600', bad.empty? && files.size >= 3, bad.join(' '))
   end
 
   def test_backups_owner_only
@@ -255,13 +256,12 @@ class SecretsIntegrationTest
   end
 
   def test_toml_show_masks_unless_reveal
-    print 'Test 19: toml show masks [env] secrets; --reveal shows them... '
+    print 'Test 19: toml show prints wayu.toml verbatim (no constants); --reveal is a usage error... '
     out, _, status = run_clean('toml show')
-    rout, _, rstatus = run_clean('toml show --reveal')
-    ok = status.success? && rstatus.success? && out.include?('FIREWORKS_AI_API_KEY = "********"') &&
-         !out.include?(SECRET) && !out.include?(DB_PW) && out.include?('nvim') && out.end_with?("\n") &&
-         rout.include?(SECRET) && rout == File.read("#{@config_dir}/wayu.toml")
-    check("masked=#{out}", ok)
+    _, rerr, rstatus = run_clean('toml show --reveal')
+    ok = status.success? && out == File.read("#{@config_dir}/wayu.toml") &&
+         !out.include?(SECRET) && !out.include?(DB_PW) && rstatus.exitstatus == 64 && rerr.include?('--reveal')
+    check("out=#{out} reveal exit=#{rstatus.exitstatus}", ok)
   end
 
   def test_reveal_rejected_elsewhere

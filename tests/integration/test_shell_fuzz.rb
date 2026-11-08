@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
-# Property test for generated shell quoting (OKAMI-174): random [aliases],
-# [env] and [paths] values → `wayu build` → every generated file passes
+# Property test for generated shell quoting (OKAMI-174): random alias,
+# constant and PATH entries (entries.json) → `wayu build` → every generated file passes
 # `<shell> -n` and sourcing init.<ext> in real zsh / bash / fish yields
 # exactly the original values (env via the shell's own variable, aliases via
 # the shell's alias table — fish via the arguments core.fish passes to
@@ -30,14 +30,6 @@ class ShellFuzzTest
   AFTER_DOLLAR = LITERAL.reject { |c| c =~ /[A-Za-z_{]/ }
   PATH_CHARS = LITERAL - ['/', ':', '~']
   # Payloads that would run a command if an operator evaluated them.
-  HOSTILE_ENV = <<~'TOML'
-    FZ_CMD = '$(echo PWNED-cmd >&2)'
-    FZ_SUB = 'a[$(echo PWNED-sub >&2)]'
-    FZ_OP_P = '${FZ_CMD@P}'
-    FZ_OP_IDX = '${FZ_CMD[FZ_SUB]}'
-    FZ_OP_OFF = '${FZ_CMD:FZ_SUB}'
-    FZ_OP_UP = '${FZ_CMD^}'
-  TOML
   HOSTILE_WANT = {
     'FZ_CMD' => '$(echo PWNED-cmd >&2)', 'FZ_SUB' => 'a[$(echo PWNED-sub >&2)]',
     'FZ_OP_P' => '${FZ_CMD@P}', 'FZ_OP_IDX' => '${FZ_CMD[FZ_SUB]}',
@@ -140,10 +132,6 @@ class ShellFuzzTest
     [src, sh, fish]
   end
 
-  def toml_string(s)
-    '"' + s.gsub('\\') { '\\\\' }.gsub('"') { '\\"' } + '"'
-  end
-
   def run_round(r)
     home = "#{@tmp_home}/round#{r}"
     FileUtils.rm_rf(home)
@@ -151,7 +139,7 @@ class ShellFuzzTest
     env = { 'HOME' => home, 'SHELL' => '/bin/zsh', 'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin', 'ZDOTDIR' => nil,
             'WAYU_CONFIG' => nil, 'XDG_CONFIG_HOME' => nil, 'XDG_DATA_HOME' => nil, 'FZ_REF' => nil }
     @shells.map { |s| s[:name] }.uniq.each { |s| Open3.capture3(env, @wayu_bin, 'init', '--shell', s) }
-    cfg = "#{home}/.config/wayu"
+    cfg = "#{home}/.local/share/wayu"
 
     # Alias bodies are stored verbatim (`$` included: it expands when the
     # alias runs, not when it is defined).
@@ -166,13 +154,9 @@ class ShellFuzzTest
       ["fz_p#{i}", dir]
     end
 
-    toml = +"[paths]\n"
-    paths.each { |k, v| toml << "#{k} = #{toml_string(v)}\n" }
-    toml << "\n[env]\nFZ_REF = \"#{REF_VALUE}\"\n" << HOSTILE_ENV
-    envs.each { |k, v, _, _| toml << "#{k} = #{toml_string(v)}\n" }
-    toml << "\n[aliases]\n"
-    aliases.each { |k, v| toml << "#{k} = #{toml_string(v)}\n" }
-    File.write("#{cfg}/wayu.toml", toml)
+    env_entries = { 'FZ_REF' => REF_VALUE }.merge(HOSTILE_WANT)
+    envs.each { |k, v, _, _| env_entries[k] = v }
+    write_entries(paths: paths.to_h, aliases: aliases.to_h, env: env_entries, data: cfg)
     _, berr, bst = Open3.capture3(env, @wayu_bin, 'build')
     unless bst.success?
       check("round #{r} build", false, "build failed: #{berr[0, 400]}")

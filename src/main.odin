@@ -12,12 +12,13 @@ VERSION :: "5.0.0"
 
 // AppContext bundles all mutable program state.
 // Created once in main() and referenced as `wayu.*` throughout the codebase.
-// XDG layout: config (~/.config/wayu) for user-edited files,
-//             data (~/.config/wayu by default; WAYU_DATA_DIR to override) for generated/runtime files.
+// XDG layout: config (~/.config/wayu; WAYU_CONFIG_DIR) for files the user edits,
+//             data (${XDG_DATA_HOME:-~/.local/share}/wayu; WAYU_DATA_DIR) for
+//             everything wayu manages: entries.json, generated/runtime files.
 AppContext :: struct {
 	home:           string,
 	config:         string,  // ~/.config/wayu (user-edited files)
-	data:           string,  // generated/runtime files (defaults to ~/.config/wayu; WAYU_DATA_DIR override)
+	data:           string,  // managed + generated files (${XDG_DATA_HOME:-~/.local/share}/wayu; WAYU_DATA_DIR)
 	shell:          ShellType,
 	shell_ext:      string,
 	dry_run:        bool,
@@ -81,9 +82,10 @@ init_app_context :: proc(ctx: ^AppContext) {
 	ctx.home = os.get_env("HOME", heap)
 
 	// config: WAYU_CONFIG_DIR, else ~/.config/wayu.
-	// data:   WAYU_DATA_DIR, else the config dir. The generated init derives
-	// its data dir from its own location and core.<ext> exports both
-	// overrides, so a shell sourcing it runs `wayu` against the same dirs.
+	// data:   WAYU_DATA_DIR, else ${XDG_DATA_HOME:-~/.local/share}/wayu. The
+	// generated init derives its data dir from its own location and
+	// core.<ext> exports both overrides, so a shell sourcing it runs `wayu`
+	// against the same dirs.
 	config_dir_override := os.get_env("WAYU_CONFIG_DIR", heap)
 	if config_dir_override != "" {
 		ctx.config = config_dir_override
@@ -94,11 +96,31 @@ init_app_context :: proc(ctx: ^AppContext) {
 	if data_dir_override != "" {
 		ctx.data = data_dir_override
 	} else {
-		ctx.data = ctx.config
+		ctx.data = default_data_dir(ctx.home, heap)
 	}
 
 	ctx.shell = detect_shell()
 	ctx.shell_ext = get_shell_extension(ctx.shell)
+}
+
+// The data dir without WAYU_DATA_DIR: $XDG_DATA_HOME/wayu when that is an
+// absolute path (the XDG spec ignores relative ones), else
+// ~/.local/share/wayu.
+default_data_dir :: proc(home: string, allocator := context.allocator) -> string {
+	xdg := os.get_env("XDG_DATA_HOME", context.temp_allocator)
+	if strings.has_prefix(xdg, "/") {
+		return fmt.aprintf("%s/wayu", strings.trim_right(xdg, "/"), allocator = allocator)
+	}
+	return fmt.aprintf("%s/.local/share/wayu", home, allocator = allocator)
+}
+
+// The line rc files use to load wayu (README, `wayu init`): finds init.<ext>
+// in the data dir however it was chosen. fish has no ${X:-y}.
+bootstrap_source_line :: proc(ext: string, allocator := context.temp_allocator) -> string {
+	if ext == "fish" {
+		return strings.clone(`if test -n "$WAYU_DATA_DIR"; source $WAYU_DATA_DIR/init.fish; else if test -n "$XDG_DATA_HOME"; source $XDG_DATA_HOME/wayu/init.fish; else; source ~/.local/share/wayu/init.fish; end`, allocator)
+	}
+	return fmt.aprintf(`source "${{WAYU_DATA_DIR:-${{XDG_DATA_HOME:-$HOME/.local/share}}/wayu}}/init.%s"`, ext, allocator = allocator)
 }
 
 // Populate `wayu` once (tests call it too).
@@ -347,7 +369,7 @@ handle_init_command :: proc() {
 		print_info("Directory already exists: %s", config_dir)
 	}
 
-	// Create data directory (defaults to ~/.config/wayu)
+	// Create data directory (defaults to ~/.local/share/wayu)
 	if !os.exists(data_dir) {
 		// Create parent directories if needed (may not exist in test envs)
 		err := make_directory_all(data_dir)
@@ -434,7 +456,7 @@ print_init_dry_run :: proc(shell: ShellType, ext: string) {
 	if data, err := os.read_entire_file(rc_file_path, context.allocator); err == nil {
 		defer delete(data)
 		if !strings.contains(string(data), "wayu/init") {
-			fmt.printfln("  Would offer to append 'source %s/init.%s' to %s (backup first)", wayu.data, ext, rc_file_path)
+			fmt.printfln("  Would offer to append '%s' to %s (backup first)", bootstrap_source_line(ext), rc_file_path)
 		}
 	}
 	fmt.println()
@@ -516,13 +538,12 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 	rc_file_path := get_rc_file_path(shell)
 	defer delete(rc_file_path)
 
-	init_file := fmt.aprintf("%s/init.%s", wayu.data, ext)
-	defer delete(init_file)
+	source_line := bootstrap_source_line(ext)
 
 	// Check if RC file exists
 	if !os.exists(rc_file_path) {
 		fmt.printfln("\nNo %s found. Create one and add the following line:", rc_file_path)
-		fmt.printfln("  source %s", init_file)
+		fmt.printfln("  %s", source_line)
 		return
 	}
 
@@ -548,7 +569,7 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 	// Only prompt if stdin is a TTY (interactive mode)
 	if !os.is_tty(os.stdin) {
 		fmt.printfln("\nTo manually initialize wayu, add this line to your %s:", rc_file_path)
-		fmt.printfln("  source %s", init_file)
+		fmt.printfln("  %s", source_line)
 		return
 	}
 
@@ -558,7 +579,7 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 	n, err := os.read(os.stdin, input_buf[:])
 	if err != nil {
 		fmt.printfln("\nTo manually initialize wayu, add this line to your %s:", rc_file_path)
-		fmt.printfln("  source %s", init_file)
+		fmt.printfln("  %s", source_line)
 		return
 	}
 
@@ -566,14 +587,14 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 
 	if response == "" || response == "y" || response == "Y" {
 		// Append to RC file
-		new_content := fmt.aprintf("%s\n# Wayu shell configuration\nsource \"%s\"\n", content, init_file)
+		new_content := fmt.aprintf("%s\n# Wayu shell configuration\n%s\n", content, source_line)
 		defer delete(new_content)
 
 		// The RC file is the user's, not ours: never modify it without a
 		// restorable copy.
 		if !create_backup_cli(rc_file_path) {
 			fmt.printfln("\nTo manually initialize wayu, add this line to your %s:", rc_file_path)
-			fmt.printfln("  source %s", init_file)
+			fmt.printfln("  %s", source_line)
 			return
 		}
 
@@ -587,7 +608,7 @@ update_shell_rc :: proc(shell: ShellType, ext: string) {
 		fmt.printfln("Run 'source %s' or restart your shell to apply changes", rc_file_path)
 	} else {
 		fmt.printfln("\nTo manually initialize wayu, add this line to your %s:", rc_file_path)
-		fmt.printfln("  source %s", init_file)
+		fmt.printfln("  %s", source_line)
 	}
 }
 
@@ -603,11 +624,12 @@ print_init_help :: proc() {
 	fmt.println("  wayu init [--template <name>]")
 	fmt.println()
 	fmt.println("DESCRIPTION:")
-	fmt.println("  Creates ~/.config/wayu for the detected shell (or --shell zsh|bash|fish):")
-	fmt.println("  wayu.toml (the config every command edits), init.<ext> (source it from")
-	fmt.println("  your rc file), extra.<ext> and tools.<ext> (your own shell code),")
-	fmt.println("  alias-sources.conf, functions/, completions/ and plugins/, then generates")
-	fmt.println("  core.<ext>.")
+	fmt.println("  Sets wayu up for the detected shell (or --shell zsh|bash|fish).")
+	fmt.println("  Config dir (~/.config/wayu, files you edit): wayu.toml, extra.<ext>,")
+	fmt.println("  tools.<ext>, alias-sources.conf, functions/.")
+	fmt.println("  Data dir (~/.local/share/wayu, managed by wayu): init.<ext> (source it")
+	fmt.println("  from your rc file), the PATH/alias/constant entries, completions/,")
+	fmt.println("  plugins/, and the generated core.<ext>.")
 	fmt.println("  Safe to re-run — existing files are preserved.")
 	fmt.println()
 	fmt.println("  --template <name>  Then apply a template (see 'wayu template list');")
@@ -679,7 +701,7 @@ print_help :: proc() {
 	fmt.printf("  wayu f git                       # Short alias for search\n")
 	fmt.printf("  wayu completions add jj /path/to/_jj\n")
 	fmt.printf("  wayu backup list                 # Show all backups\n")
-	fmt.printf("  wayu backup restore path --yes   # Restore the latest wayu.toml backup\n")
+	fmt.printf("  wayu backup restore entries --yes  # Restore the latest entries.json backup\n")
 	fmt.printf("  wayu plugin add syntax-highlighting  # Install plugin\n")
 	fmt.printf("  wayu plugin check                # Check plugins for updates\n")
 	fmt.printf("  wayu plugin update plugin-name   # Update specific plugin\n")

@@ -1,26 +1,22 @@
 // toml_parse.odin - the one TOML parser (OKAMI-240)
 //
 // Every reader of wayu.toml goes through toml_doc_parse_alloc: `toml
-// validate`, doctor, the TUI, `alias/const/path list`, the shell generator,
-// the line-level table editor, and secret masking. Before, six
-// readers disagreed (quoted keys, escapes, multi-line arrays, a BOM, key
-// order), so a file could be "invalid" for one command and work for another.
+// validate`, doctor, backup restore, the settings/[tools]/[prompt] readers
+// and the TUI, so a file is never "invalid" for one command and fine for
+// another.
 //
 // The parser is a real TOML 1.0 parser (plus the 1.1 conveniences \e, \xHH
 // and newlines/trailing commas in inline tables) with ERROR RECOVERY: a bad
 // statement is recorded in doc.errors and parsing resumes on the next line.
 //   - Strict consumers (toml validate, doctor, backup restore) treat
 //     any error as "invalid" and can print the line and reason.
-//   - Lenient consumers (lists, generator, TUI, editor) use whatever was
-//     recovered. A `key = value` line whose value is not valid TOML is
-//     recovered with the historical single-line interpretation
-//     (toml_parse_kv_line), so a hand-written `ll = ls -la` keeps working
-//     exactly as before while `toml validate` names the line.
+//   - Lenient consumers use whatever was recovered. A `key = value` line
+//     whose value is not valid TOML is recovered with the historical
+//     single-line interpretation (toml_parse_kv_line).
 //
 // Besides the value tree (doc.values, TomlValue) the parse keeps every
 // header and every `key = value` statement in FILE ORDER with its physical
-// line span (doc.headers / doc.entries): declaration order is PATH priority,
-// and the editor splices exactly those lines.
+// line span (doc.headers / doc.entries).
 package wayu
 
 import "core:fmt"
@@ -138,77 +134,6 @@ toml_content_is_sane :: proc(content: string) -> bool {
 	ok, err := toml_check(content)
 	delete(err.msg)
 	return ok
-}
-
-// Text of a scalar value as wayu's flat tables use it ([paths]/[aliases]/
-// [env]): strings as-is, integers in decimal, booleans as true/false,
-// floats and date-times as written. Arrays and tables have no text form.
-toml_value_text :: proc(v: ^TomlValue) -> (string, bool) {
-	if v == nil { return "", false }
-	switch v.type {
-	case .STRING, .INTEGER, .FLOAT, .DATETIME: return v.str_val, true
-	case .BOOLEAN:                             return v.bool_val ? "true" : "false", true
-	case .ARRAY, .TABLE:                       return "", false
-	}
-	return "", false
-}
-
-// Name of a flat-table entry: its key parts joined with '.'. wayu wrote
-// alias names like `g.st` bare (a dotted key in TOML), so a dotted key
-// inside [aliases]/[env]/[paths] is read back as that one name.
-toml_entry_name :: proc(e: TomlEntry, allocator := context.allocator) -> string {
-	return strings.join(e.key, ".", allocator)
-}
-
-// True when entry `e` sits directly in the top-level `[section]` table.
-toml_entry_in_section :: proc(doc: ^TomlDoc, e: TomlEntry, section: string) -> bool {
-	if e.header < 0 { return false }
-	h := doc.headers[e.header]
-	return !h.invalid && !h.array && len(h.path) == 1 && h.path[0] == section
-}
-
-// Every `key = value` of the top-level `[section]` table in FILE ORDER, as
-// text (see toml_value_text; non-scalar values are skipped). Duplicate keys
-// are all returned - each consumer keeps its own duplicate policy. Keys and
-// values are allocated with `allocator`.
-toml_doc_section_kvs :: proc(doc: ^TomlDoc, section: string, allocator := context.allocator) -> [dynamic]TomlKV {
-	out := make([dynamic]TomlKV, allocator)
-	for e in doc.entries {
-		if !toml_entry_in_section(doc, e, section) { continue }
-		text, ok := toml_value_text(e.value)
-		if !ok { continue }
-		append(&out, TomlKV{key = toml_entry_name(e, allocator), value = strings.clone(text, allocator)})
-	}
-	return out
-}
-
-// Parse `content` and return `[section]` (toml_doc_section_kvs). The single
-// reader behind alias/const/path lists, the generator and the TUI. Caller
-// destroys with destroy_toml_kvs.
-toml_read_section :: proc(content, section: string) -> [dynamic]TomlKV {
-	arena: virtual.Arena
-	if virtual.arena_init_growing(&arena) != nil { return make([dynamic]TomlKV) }
-	defer virtual.arena_destroy(&arena)
-	doc, _ := toml_doc_parse_alloc(content, virtual.arena_allocator(&arena))
-	return toml_doc_section_kvs(&doc, section, context.allocator)
-}
-
-// A key as wayu writes it: bare when TOML allows, else a basic string.
-// Caller deletes.
-toml_format_key :: proc(key: string, allocator := context.allocator) -> string {
-	if toml_key_is_plain(key) { return strings.clone(key, allocator) }
-	escaped := escape_toml_string(key)
-	defer delete(escaped)
-	return strings.concatenate({`"`, escaped, `"`}, allocator)
-}
-
-// True when `key` is a TOML bare key (A-Z a-z 0-9 _ -).
-toml_key_is_plain :: proc(key: string) -> bool {
-	if len(key) == 0 { return false }
-	for i in 0..<len(key) {
-		if !tp_is_bare(key[i]) { return false }
-	}
-	return true
 }
 
 // ---------------------------------------------------------------------------

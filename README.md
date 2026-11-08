@@ -56,26 +56,28 @@ source build, `brew uninstall wayu` first; to switch back, delete
 
 ## Shell setup
 
-`wayu init` creates `~/.config/wayu/` (a `wayu.toml` scaffold plus the
-generated files) and offers to add one line to your rc file — or prints it
-when stdin is not a terminal:
+`wayu init` creates `~/.config/wayu/` (a `wayu.toml` scaffold and the other
+files you edit) and the data dir `~/.local/share/wayu/` (your PATH entries,
+aliases and constants, plus the generated files), and offers to add one line
+to your rc file — or prints it when stdin is not a terminal:
 
 | Shell | rc file | Line |
 |---|---|---|
-| zsh | `${ZDOTDIR:-~}/.zshrc` | `source "$HOME/.config/wayu/init.zsh"` |
-| bash | `~/.bash_profile` if it exists, else `~/.bashrc` | `source "$HOME/.config/wayu/init.bash"` |
-| fish | `~/.config/fish/config.fish` | `source ~/.config/wayu/init.fish` |
+| zsh | `${ZDOTDIR:-~}/.zshrc` | `source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh"` |
+| bash | `~/.bash_profile` if it exists, else `~/.bashrc` | `source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.bash"` |
+| fish | `~/.config/fish/config.fish` | `if test -n "$WAYU_DATA_DIR"; source $WAYU_DATA_DIR/init.fish; else if test -n "$XDG_DATA_HOME"; source $XDG_DATA_HOME/wayu/init.fish; else; source ~/.local/share/wayu/init.fish; end` |
 
-The shell is detected from `$SHELL`; `wayu init --shell bash` (or `zsh`,
-`fish`) picks another one. Run `wayu init` once per shell you use; they share
-one `wayu.toml`.
+The line finds the data dir however it was chosen (`WAYU_DATA_DIR`,
+`XDG_DATA_HOME`, or the default). The shell is detected from `$SHELL`;
+`wayu init --shell bash` (or `zsh`, `fish`) picks another one. Run
+`wayu init` once per shell you use; they share one `wayu.toml` and one set of
+entries.
 
 zsh: to give scripts (`zsh -c`, editors, cron) your PATH and env too, put the
 line in `~/.zshenv` instead of `~/.zshrc` — once, not in both. A login shell
 runs `/etc/zprofile` after `.zshenv`, and on macOS its `path_helper` moves the
 system dirs ahead of yours; wayu puts its dirs back in front at the first
-prompt (dirs you prepend in `.zshrc` stay ahead of them). If you moved the
-data dir, use `source "${WAYU_DATA_DIR:-$HOME/.config/wayu}/init.zsh"`.
+prompt (dirs you prepend in `.zshrc` stay ahead of them).
 
 `init.<ext>` sources one precomputed file, `core.<ext>`, which wayu rewrites
 after every change (`wayu path|alias|const …`, the TUI, `wayu build`). That
@@ -83,18 +85,18 @@ is the recommended setup. The alternatives:
 
 | rc line | When |
 |---|---|
-| `source "$HOME/.config/wayu/init.zsh"` | Default. Fast; picks up every wayu change. |
-| `source "$HOME/.config/wayu/turbo.zsh"` | Only for rc files that already use it: `turbo.<ext>` (zsh/bash, written by `wayu export`) is a copy of `core.<ext>`, kept current by wayu. |
-| `eval "$(wayu export --eval)"` | Only `[env]`, `[paths]` and `[aliases]`, as shell code, without plugins, `[tools]`, prompt or completions. For scripts, containers or CI that want the variables but none of the interactive setup. Writes nothing. |
+| `source ".../wayu/init.zsh"` (the line above) | Default. Fast; picks up every wayu change. |
+| `source "$HOME/.local/share/wayu/turbo.zsh"` | Only for rc files that already use it: `turbo.<ext>` (zsh/bash, written by `wayu export`) is a copy of `core.<ext>`, kept current by wayu. |
+| `eval "$(wayu export --eval)"` | Only constants, PATH entries and aliases, as shell code, without plugins, `[tools]`, prompt or completions. For scripts, containers or CI that want the variables but none of the interactive setup. Writes nothing. |
 
 After editing `wayu.toml` by hand, run `wayu build` (or `wayu toml validate`
-first). `[paths]` changes reach shells that are already open at their next
+first). PATH changes reach shells that are already open at their next
 prompt (see [PATH changes in open shells and
 scripts](#path-changes-in-open-shells-and-scripts)); other changes apply to
 new shells, or `source` the init file again.
 
-Every key of `wayu.toml` and the other config files is described in
-[docs/config-reference.md](docs/config-reference.md).
+Every key of `wayu.toml`, the entry store and the other config files is
+described in [docs/config-reference.md](docs/config-reference.md).
 
 ## Upgrading
 
@@ -154,7 +156,7 @@ wayu completions generate          # generate wayu self-completions (zsh + bash 
 
 # Backups
 wayu backup list
-wayu backup restore path --yes   # restore the latest wayu.toml backup
+wayu backup restore entries --yes  # restore the latest entries.json backup
 
 # Plugins
 wayu plugin search                          # browse popular plugins
@@ -221,9 +223,9 @@ rule), the `--json` document shapes and the exit codes.
 
 | Command | Description |
 |---------|-------------|
-| `path` | Manage `[paths]` (PATH entries) |
-| `alias` | Manage `[aliases]` |
-| `constants`, `const`, `env` | Manage `[env]` (environment variables) |
+| `path` | Manage PATH entries |
+| `alias` | Manage aliases |
+| `constants`, `const`, `env` | Manage constants (environment variables) |
 | `search`, `find`, `f` | Fuzzy search across all configurations |
 | `completions` | Manage shell completion scripts |
 | `backup` | List, restore and prune backups |
@@ -237,7 +239,7 @@ rule), the `--json` document shapes and the exit codes.
 | `template` | Apply config presets (developer / minimal / data-science / full) |
 | `hooks` | Pre/post operation hooks |
 | `function`, `functions`, `func`, `fn` | Manage custom shell functions in `~/.config/wayu/functions/` |
-| `reload`, `watch`, `hot-reload` | Watch wayu.toml and regenerate on change |
+| `reload`, `watch`, `hot-reload` | Watch wayu.toml and entries.json and regenerate on change |
 | `version` | Show version |
 | `help` | Show help |
 
@@ -352,23 +354,28 @@ Built from scratch with raw termios control, alternate screen buffer, differenti
 
 ## Configuration
 
-wayu stores everything under `~/.config/wayu/` — the files you edit and the files it generates:
+wayu keeps the files you edit in `~/.config/wayu/` and the data it manages in
+`~/.local/share/wayu/`:
 
 ```
 ~/.config/wayu/
   # --- You edit these (version-control them) ---
-  wayu.toml                 # declarative config (source of truth for path/alias/env)
+  wayu.toml                 # [shell], [settings], [tools], [prompt]
   extra.{zsh,bash,fish}     # custom scripts (conda init, tool evals, etc.)
   tools.{zsh,bash,fish}     # one-off tool setup not expressible as [tools]
   alias-sources.conf        # external alias sources (shell-agnostic, read-only)
   hooks.conf                # pre/post operation hooks
   functions/                # custom shell functions
 
+~/.local/share/wayu/        # ${XDG_DATA_HOME:-~/.local/share}/wayu
+  # --- wayu manages these (`wayu path|alias|const|plugin`, the TUI) ---
+  entries.json              # PATH entries, aliases, constants
+  plugins.json              # installed plugin metadata (JSON5)
+
   # --- wayu generates these (safe to delete; regenerated on change) ---
   init.{zsh,bash,fish}      # entry point — source THIS in your RC file
   core.{zsh,bash,fish}      # the generated init loaded by init.<shell> (one precomputed file)
-  path_sync.{zsh,bash,fish} # [paths] list re-read by the live PATH sync prompt hook
-  plugins.json              # installed plugin metadata (JSON5)
+  path_sync.{zsh,bash,fish} # PATH entry list re-read by the live PATH sync prompt hook
   plugins.{zsh,bash,fish}   # generated plugin loader
   plugins/                  # cloned plugin repos + runtime config
   turbo.{zsh,bash}          # optional copy of core via `wayu export` (zsh/bash only)
@@ -378,25 +385,25 @@ wayu stores everything under `~/.config/wayu/` — the files you edit and the fi
 
 Shell is detected automatically from `$SHELL`. Override with `--shell bash`, `--shell zsh`, or `--shell fish`.
 
-`WAYU_CONFIG_DIR` moves the files you edit and `WAYU_DATA_DIR` the
-generated ones (default: the config dir). Every `wayu.toml` table and key
-(`[paths]`, `[aliases]`, `[env]`, `[tools]`, `[prompt]`, …), `hooks.conf`,
-`plugins.json` and the other files are described in
+`WAYU_CONFIG_DIR` moves the files you edit and `WAYU_DATA_DIR` the data
+dir. Every `wayu.toml` table and key (`[tools]`, `[prompt]`, …),
+`entries.json`, `hooks.conf`, `plugins.json` and the other files are
+described in
 [docs/config-reference.md](docs/config-reference.md).
 
 ### PATH changes in open shells and scripts
 
-`wayu path add/rm` (and edits to `[paths]` in `wayu.toml`) reach already-open
+`wayu path add/rm` (and hand edits of `entries.json`) reach already-open
 zsh/bash shells at their next prompt: `core.<ext>` installs a prompt hook,
 `_wayu_paths_sync` (zsh `precmd`, bash `PROMPT_COMMAND`, fish `fish_prompt`
-event), that re-reads `path_sync.<ext>` only when the `[paths]` list
+event), that re-reads `path_sync.<ext>` only when the PATH entry list
 changed.
 
 **Scripts** never show a prompt, so the hook never runs. A script that sources
-`init.<ext>` and changes `[paths]` applies the change itself:
+`init.<ext>` and changes PATH entries applies the change itself:
 
 ```bash
-source "$HOME/.config/wayu/init.bash"   # or init.zsh
+source "$HOME/.local/share/wayu/init.bash"   # or init.zsh
 wayu path add "$HOME/tools/bin"
 _wayu_paths_sync                        # PATH now includes ~/tools/bin
 ```
@@ -415,14 +422,14 @@ bash ≥ 5.1, `PROMPT_COMMAND+=(...)`), or source `init.bash` after it.
 ### Startup time
 
 `init.<shell>` loads one generated file, `core.<shell>`: everything from
-`wayu.toml` is precomputed into straight-line code (zcompiled for zsh), and
+`wayu.toml` and `entries.json` is precomputed into straight-line code (zcompiled for zsh), and
 the dynamic parts — `[tools]` lazy loaders, the native prompt, live PATH
 sync — are function definitions and hooks, not work done at startup. zsh
 runs `compinit` (with a cached, zcompiled `.zcompdump`) and sets up the
 prompt in interactive shells only.
 
-Measured with `tests/benchmark/startup.sh` (20 `[paths]`, 60 `[aliases]`,
-20 `[env]`; macOS, hyperfine, empty zsh ≈ 3.5 ms, empty bash ≈ 2–3 ms):
+Measured with `tests/benchmark/startup.sh` (20 PATH entries, 60 aliases,
+20 constants; macOS, hyperfine, empty zsh ≈ 3.5 ms, empty bash ≈ 2–3 ms):
 
 | | before (5.0) | now |
 |---|---|---|

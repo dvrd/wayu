@@ -158,7 +158,8 @@ backup_key_display :: proc(key: string, allocator := context.allocator) -> strin
 }
 
 // Every backup group in the backup dir (the <key> of "<key>.backup.*"),
-// wayu.toml first, then by name. Free with delete_backup_keys.
+// wayu.toml first, entries.json second, then by name. Free with
+// delete_backup_keys.
 list_backup_keys :: proc(allocator := context.allocator) -> []string {
 	dir := fmt.tprintf("%s/backup", wayu.data)
 	dir_handle, err := os.open(dir)
@@ -178,7 +179,14 @@ list_backup_keys :: proc(allocator := context.allocator) -> []string {
 		append(&keys, strings.clone(key, allocator))
 	}
 	slice.sort_by(keys[:], proc(a, b: string) -> bool {
-		if (a == WAYU_TOML) != (b == WAYU_TOML) { return a == WAYU_TOML }
+		rank :: proc(k: string) -> int {
+			switch k {
+			case WAYU_TOML:    return 0
+			case ENTRIES_FILE: return 1
+			}
+			return 2
+		}
+		if rank(a) != rank(b) { return rank(a) < rank(b) }
 		return a < b
 	})
 	return keys[:]
@@ -316,13 +324,13 @@ select_backup :: proc(backups: []BackupInfo, selector: string) -> int {
 // Restore `file_path` from a backup (see select_backup for `selector`).
 //
 // Safety contract:
-//   * the backup content is validated before anything is written (for
-//     wayu.toml: toml_content_is_sane), so a corrupt backup can't replace a
-//     working config;
+//   * the backup content is validated before anything is written (wayu.toml:
+//     toml_content_is_sane, entries.json: entries_parse), so a corrupt
+//     backup can't replace a working config;
 //   * the CURRENT file is backed up first (tagged pre-restore), so a restore
 //     is itself undoable (`wayu backup restore <type> 1`);
-//   * after restoring wayu.toml the generated shell init is regenerated so
-//     the shell actually sees the restored state.
+//   * after restoring wayu.toml or entries.json the generated shell init is
+//     regenerated so the shell actually sees the restored state.
 // The --yes confirmation gate lives in the CLI handler (restore_config_backup).
 restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 	debug("Attempting to restore from backup: %s", file_path)
@@ -363,10 +371,19 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 	}
 	defer delete(content)
 
-	is_wayu_toml := get_base_name(file_path) == WAYU_TOML
-	if is_wayu_toml && !toml_content_is_sane(string(content)) {
-		print_error_simple("Backup %s is not valid TOML — refusing to restore it", chosen.backup_file)
-		return false
+	switch get_base_name(file_path) {
+	case WAYU_TOML:
+		if !toml_content_is_sane(string(content)) {
+			print_error_simple("Backup %s is not valid TOML — refusing to restore it", chosen.backup_file)
+			return false
+		}
+	case ENTRIES_FILE:
+		store, perr, ok := entries_parse(string(content))
+		if !ok {
+			print_error_simple("Backup %s is not a valid entry store (%s) — refusing to restore it", chosen.backup_file, perr)
+			return false
+		}
+		entries_store_destroy(&store)
 	}
 
 	// Back up the current state so the restore can be undone.
@@ -387,11 +404,14 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 	// snapshot just taken; the chosen backup is protected explicitly.
 	prune_backups(file_path, BACKUP_KEEP_COUNT, chosen.backup_file)
 
+	// entries.json holds secrets: keep it owner-only whatever the backup's mode.
+	if get_base_name(file_path) == ENTRIES_FILE { restrict_file_mode(file_path) }
+
 	// Only regenerate when restoring the live config (not an arbitrary
 	// file that happens to be named wayu.toml).
 	live_toml := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	defer delete(live_toml)
-	if file_path == live_toml {
+	if file_path == live_toml || file_path == entries_file_path() {
 		regenerate_init_core_silently()
 	}
 
@@ -670,18 +690,30 @@ handle_backup_command :: proc(action: Action, args: []string) {
 	}
 }
 
-// The groups `backup list` / `backup rm` act on: wayu.toml always (so it is
-// shown even with no backups), then every other group in the backup dir
-// (init.zsh from --optimize, the rc file from init, plugins.json, ...).
-// Also the TUI Backups view and its cleanup. Free with delete_backup_keys.
+// The groups `backup list` / `backup rm` act on: wayu.toml and entries.json
+// always (so they are shown even with no backups), then every other group in
+// the backup dir (the rc file from init, plugins.json, ...). Also the TUI
+// Backups view and its cleanup. Free with delete_backup_keys.
 backup_list_groups :: proc() -> []string {
 	keys := list_backup_keys()
-	if slice.contains(keys, WAYU_TOML) { return keys }
-	out := make([]string, len(keys) + 1)
-	out[0] = strings.clone(WAYU_TOML)
-	copy(out[1:], keys)
+	out := make([dynamic]string, 0, len(keys) + 2)
+	for k in ([]string{WAYU_TOML, ENTRIES_FILE}) {
+		if !slice.contains(keys, k) { append(&out, strings.clone(k)) }
+	}
+	append(&out, ..keys)
 	delete(keys)
-	return out
+	slice.sort_by(out[:], proc(a, b: string) -> bool {
+		rank :: proc(k: string) -> int {
+			switch k {
+			case WAYU_TOML:    return 0
+			case ENTRIES_FILE: return 1
+			}
+			return 2
+		}
+		if rank(a) != rank(b) { return rank(a) < rank(b) }
+		return a < b
+	})
+	return out[:]
 }
 
 // Emit the same data as list_all_backups as a JSON document.
@@ -751,7 +783,7 @@ list_all_backups :: proc() {
 		backups := list_backups_for_key(key, key)
 		defer free_backup_infos(backups)
 		if len(backups) == 0 { continue }
-		if key != WAYU_TOML { other_files = true }
+		if key != WAYU_TOML && key != ENTRIES_FILE { other_files = true }
 
 		fmt.printfln("%s%s%s (%d backup(s)):", BRIGHT_CYAN, file_name, RESET, len(backups))
 		for backup, i in backups {
@@ -773,8 +805,8 @@ list_all_backups :: proc() {
 	} else {
 		fmt.printfln("%sTotal:%s %d backup(s) across all files", BRIGHT_CYAN, RESET, total_backups)
 		if other_files {
-			// Only wayu.toml has `backup restore`; the others are plain copies.
-			fmt.printfln("%sFiles other than wayu.toml: copy a backup back by hand from %s/backup (see 'wayu backup list --json' for paths)%s",
+			// Only wayu.toml and entries.json have `backup restore`; the others are plain copies.
+			fmt.printfln("%sFiles other than wayu.toml and entries.json: copy a backup back by hand from %s/backup (see 'wayu backup list --json' for paths)%s",
 				MUTED, wayu.data, RESET)
 		}
 	}
@@ -785,7 +817,7 @@ list_backups_for_config :: proc(config_type: string) {
 	config_file := get_config_file_path(config_type)
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
-		fmt.println("Valid types: path, alias, constants")
+		fmt.println("Valid types: toml, entries (or path, alias, constants)")
 		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
@@ -798,14 +830,15 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 	config_file := get_config_file_path(config_type)
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
-		fmt.println("Valid types: path, alias, constants")
+		fmt.println("Valid types: toml, entries (or path, alias, constants)")
 		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
 
-	// path/alias/constants all live in the single wayu.toml, so restoring
+	// path/alias/constants all live in the single entries.json, so restoring
 	// any of them reverts the WHOLE file. Make that explicit.
-	shared_note :: "wayu.toml holds paths, aliases AND constants — restoring reverts the entire file, not just %s entries."
+	is_entries := get_base_name(config_file) == ENTRIES_FILE
+	shared_note := "entries.json holds PATH entries, aliases AND constants — restoring reverts all of them." if is_entries else "Restoring reverts the entire wayu.toml."
 
 	// Resolve an explicit selector up front: a bad index/name is a data
 	// error (65), not an I/O failure.
@@ -818,7 +851,7 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 	}
 
 	if wayu.dry_run {
-		fmt.printfln("%sNote:%s " + shared_note, BRIGHT_YELLOW, RESET, config_type)
+		fmt.printfln("%sNote:%s %s", BRIGHT_YELLOW, RESET, shared_note)
 		restore_from_backup(config_file, selector)
 		return
 	}
@@ -826,10 +859,10 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 	if !wayu.yes_flag {
 		print_error("This operation requires confirmation.")
 		fmt.println()
-		fmt.printfln(shared_note, config_type)
+		fmt.println(shared_note)
 		if idx >= 0 {
 			fmt.printfln("Would restore %s from: %s", get_base_name(config_file), backups[idx].backup_file)
-			fmt.println("The current wayu.toml will be backed up first.")
+			fmt.printfln("The current %s will be backed up first.", get_base_name(config_file))
 		} else {
 			fmt.printfln("No backups found for %s.", get_base_name(config_file))
 		}
@@ -843,14 +876,14 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 		os.exit(EXIT_USAGE)
 	}
 
-	// Serialize with every other wayu.toml writer: without the lock a
+	// Serialize with every other writer: without the lock a
 	// concurrent `wayu const add` that read the file before the restore
 	// overwrites it afterwards and the restore is silently lost. The backup
 	// is re-selected under the lock (restore_from_backup).
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
 
-	fmt.printfln("%sNote:%s " + shared_note, BRIGHT_YELLOW, RESET, config_type)
+	fmt.printfln("%sNote:%s %s", BRIGHT_YELLOW, RESET, shared_note)
 	if !restore_from_backup(config_file, selector) {
 		os.exit(EXIT_IOERR)
 	}
@@ -925,7 +958,7 @@ cleanup_config_backups :: proc(config_type: string) {
 	config_file := get_config_file_path(config_type)
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
-		fmt.println("Valid types: path, alias, constants")
+		fmt.println("Valid types: toml, entries (or path, alias, constants)")
 		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
@@ -986,11 +1019,12 @@ cleanup_config_backups :: proc(config_type: string) {
 
 // Get config file path for backup operations
 get_config_file_path :: proc(config_type: string) -> string {
-	// wayu.toml is now the single source of truth for path/alias/constants,
-	// so every config-type argument resolves to it. The distinction survives
-	// only for CLI compatibility.
+	// PATH entries, aliases and constants share entries.json, so those
+	// types (and "entries") resolve to it; "toml" is wayu.toml.
 	switch config_type {
-	case "path", "alias", "constants", "toml":
+	case "entries", "path", "alias", "constants":
+		return entries_file_path(context.allocator)
+	case "toml":
 		return fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	case:
 		return ""
@@ -1013,9 +1047,9 @@ print_backup_help :: proc() {
 
 	// Config types section
 	fmt.printf("\n%s%sCONFIG TYPES:%s\n", BOLD, get_secondary(), RESET)
-	fmt.println("  path, alias, constants, toml")
-	fmt.println("             All map to the single wayu.toml file — a restore")
-	fmt.println("             reverts the WHOLE wayu.toml, not just one section")
+	fmt.println("  toml       wayu.toml")
+	fmt.println("  entries    entries.json (path, alias and constants are the same file —")
+	fmt.println("             a restore reverts all PATH entries, aliases and constants)")
 
 	// Examples section
 	fmt.printf("\n%s%sEXAMPLES:%s\n", BOLD, get_secondary(), RESET)
@@ -1036,7 +1070,7 @@ print_backup_help :: proc() {
 	fmt.printf("\n%s%sNOTES:%s\n", BOLD, get_secondary(), RESET)
 	fmt.printf("  %s• Backups are created automatically before modifications%s\n", get_muted(), RESET)
 	fmt.printf("  %s• Only the last 5 backups are kept per file; one backup per command%s\n", get_muted(), RESET)
-	fmt.printf("  %s• Backup files are stored in ~/.config/wayu/backup/%s\n", get_muted(), RESET)
+	fmt.printf("  %s• Backup files are stored in %s/backup/%s\n", get_muted(), wayu.data, RESET)
 	fmt.printf("  %s• Restore backs up the current file first ([pre-restore]); without N it%s\n", get_muted(), RESET)
 	fmt.printf("  %s  uses the newest backup that is not a [pre-restore] one%s\n", get_muted(), RESET)
 	fmt.println()

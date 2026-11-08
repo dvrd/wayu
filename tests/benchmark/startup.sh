@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shell startup benchmark: init.<ext> vs turbo vs eval vs an empty shell.
 #
-# Builds a fixed config (20 [paths], 60 [aliases], 20 [env]) in a throwaway
+# Builds a fixed entry store (21 paths, 60 aliases, 20 constants) in a throwaway
 # HOME, runs `wayu init` + `wayu build` + `wayu export --turbo`, then times
 # `zsh -f -c 'source …'` / `bash --norc -c …` / `fish --no-config -c …` with
 # hyperfine when it is installed, otherwise with a plain loop (mean of RUNS).
@@ -28,6 +28,7 @@ export HOME=$home
 unset ZDOTDIR WAYU_CONFIG WAYU_CONFIG_DIR WAYU_DATA_DIR XDG_CONFIG_HOME XDG_DATA_HOME XDG_CACHE_HOME
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 cfg=$home/.config/wayu
+data=$home/.local/share/wayu
 mkdir -p "$home/.config" "$home/bin"
 
 for sh in $SHELLS; do
@@ -38,21 +39,40 @@ if [ "$TOOLS" = 1 ]; then
 	printf '#!/bin/sh\necho "alias benchtool_ok=true"\n' > "$home/bin/benchtool"
 	chmod +x "$home/bin/benchtool"
 fi
+# The temp HOME path holds no quotes or backslashes, so plain JSON strings.
 {
-	echo "[paths]"
-	echo "bin = \"$home/bin\""
+	echo '{'
+	echo '  "version": 1,'
+	echo '  "paths": ['
+	echo "    {\"key\": \"bin\", \"dir\": \"$home/bin\"},"
 	i=1
-	while [ $i -le 20 ]; do mkdir -p "$home/bins/b$i"; echo "p$i = \"$home/bins/b$i\""; i=$((i + 1)); done
-	echo
-	echo "[env]"
+	while [ $i -le 20 ]; do
+		mkdir -p "$home/bins/b$i"
+		sep=,; [ $i -lt 20 ] || sep=
+		echo "    {\"key\": \"p$i\", \"dir\": \"$home/bins/b$i\"}$sep"
+		i=$((i + 1))
+	done
+	echo '  ],'
+	echo '  "env": ['
 	i=1
-	while [ $i -le 20 ]; do echo "BENCH_E$i = \"value-$i:\${HOME}/x\""; i=$((i + 1)); done
-	echo
-	echo "[aliases]"
+	while [ $i -le 20 ]; do
+		sep=,; [ $i -lt 20 ] || sep=
+		echo "    {\"name\": \"BENCH_E$i\", \"value\": \"value-$i:\${HOME}/x\"}$sep"
+		i=$((i + 1))
+	done
+	echo '  ],'
+	echo '  "aliases": ['
 	i=1
-	while [ $i -le 60 ]; do echo "ba$i = \"echo alias $i && ls -la\""; i=$((i + 1)); done
+	while [ $i -le 60 ]; do
+		sep=,; [ $i -lt 60 ] || sep=
+		echo "    {\"name\": \"ba$i\", \"value\": \"echo alias $i && ls -la\"}$sep"
+		i=$((i + 1))
+	done
+	echo '  ]'
+	echo '}'
+} > "$data/entries.json"
+{
 	if [ "$TOOLS" = 1 ]; then
-		echo
 		echo "[tools]"
 		echo 'sdk = { kind = "lazy", init_script = "~/.sdk/init.sh", hook_commands = ["sdk"] }'
 		echo 'benchtool = { args = "init" }'
@@ -84,13 +104,13 @@ for sh in $SHELLS; do
 	# Interactive: completion (compinit) and the prompt are set up only there.
 	[ "$sh" != zsh ] || names="$names empty-i init-i turbo-i"
 	# Warm the compinit dump (+ its .zwc) / evalcache.
-	"$exe" $f -i -c "source '$cfg/init.$sh'" >/dev/null 2>&1 </dev/null || true
+	"$exe" $f -i -c "source '$data/init.$sh'" >/dev/null 2>&1 </dev/null || true
 	sleep 1
 	cmd_of() {
 		case $1 in
 			empty|empty-i) echo ":" ;;
-			init|init-i) echo "source '$cfg/init.$sh'" ;;
-			turbo|turbo-i) echo "source '$cfg/turbo.$sh'" ;;
+			init|init-i) echo "source '$data/init.$sh'" ;;
+			turbo|turbo-i) echo "source '$data/turbo.$sh'" ;;
 			eval) echo "eval \"\$('$WAYU_BIN' --shell $sh export --eval)\"" ;;
 		esac
 	}

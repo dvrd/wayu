@@ -81,35 +81,32 @@ class FishIntegrationTest
   end
 
   def test_alias_writes_to_toml
-    print "Test 2: alias add writes to wayu.toml (fish)... "
+    print "Test 2: alias add writes to entries.json (fish)... "
     _, status = run_fish('alias add ll "ls -la"')
-    content = File.read(@toml_file)
-    if status.success? && content.include?('ll = "ls -la"')
+    if status.success? && store_map('aliases')['ll'] == 'ls -la'
       puts "✓"; @passed += 1
     else
-      puts "✗"; puts "  Alias not written to wayu.toml under fish"; @failed += 1
+      puts "✗"; puts "  Alias not written to entries.json under fish"; @failed += 1
     end
   end
 
   def test_constant_writes_to_toml
-    print "Test 3: constants add writes to wayu.toml (fish)... "
+    print "Test 3: constants add writes to entries.json (fish)... "
     _, status = run_fish('constants add API_URL "https://example.com"')
-    content = File.read(@toml_file)
-    if status.success? && content.include?('API_URL = "https://example.com"')
+    if status.success? && store_map('env')['API_URL'] == 'https://example.com'
       puts "✓"; @passed += 1
     else
-      puts "✗"; puts "  Constant not written to wayu.toml under fish"; @failed += 1
+      puts "✗"; puts "  Constant not written to entries.json under fish"; @failed += 1
     end
   end
 
   def test_path_writes_to_toml
-    print "Test 4: path add writes to wayu.toml (fish)... "
+    print "Test 4: path add writes to entries.json (fish)... "
     _, status = run_fish('path add /tmp')
-    content = File.read(@toml_file)
-    if status.success? && content.include?('= "/tmp"') && content.include?('[paths]')
+    if status.success? && store_map('paths').value?('/tmp')
       puts "✓"; @passed += 1
     else
-      puts "✗"; puts "  Path not written to wayu.toml under fish"; @failed += 1
+      puts "✗"; puts "  Path not written to entries.json under fish"; @failed += 1
     end
   end
 
@@ -137,7 +134,7 @@ class FishIntegrationTest
   end
 
   def test_template_applies_to_toml_with_fish_syntax
-    print "Test 8: template apply writes to wayu.toml + fish-native init... "
+    print "Test 8: template apply writes to entries.json + fish-native init... "
     # Use a dedicated tmp home so previous tests don't influence content.
     scratch = "#{@tmp_home}/scratch_tpl"
     FileUtils.mkdir_p("#{scratch}/.config")
@@ -147,10 +144,10 @@ class FishIntegrationTest
     Open3.capture3(env, "#{@wayu_bin} init --shell fish")
     Open3.capture3(env, "#{@wayu_bin} template apply developer")
     Open3.capture3(env, "#{@wayu_bin} build")
-    toml = File.read("#{scratch}/.config/wayu/wayu.toml")
-    init = File.read("#{scratch}/.config/wayu/core.fish")
-    toml_ok = toml.include?('g = "git"') && toml.include?('EDITOR = "code --wait"') &&
-              toml.include?('= "/opt/homebrew/bin"')
+    store = File.read("#{scratch}/.local/share/wayu/entries.json")
+    init = File.read("#{scratch}/.local/share/wayu/core.fish")
+    toml_ok = store.include?('{"name": "g", "value": "git"}') && store.include?('{"name": "EDITOR", "value": "code --wait"}') &&
+              store.include?('"dir": "/opt/homebrew/bin"')
     fish_native = init.include?("alias g 'git'") && init.include?('set -gx EDITOR') &&
                   init.include?('set -gx PATH')
     bash_leak  = init.include?('alias g="git"') || init.include?('export EDITOR=')
@@ -189,7 +186,7 @@ class FishIntegrationTest
     FileUtils.mkdir_p("#{scratch}/.config")
     env = ENV.to_h.merge('HOME' => scratch, 'SHELL' => '/usr/bin/fish')
     Open3.capture3(env, "#{@wayu_bin} init --shell fish")
-    core = "#{scratch}/.config/wayu/core.fish"
+    core = "#{scratch}/.local/share/wayu/core.fish"
     # After fresh init, core.fish is generated but empty of user config.
     baseline_has_alias = File.exist?(core) && File.read(core).include?("alias gg")
     Open3.capture3(env, "#{@wayu_bin} alias add gg 'git status'")
@@ -253,12 +250,9 @@ class FishIntegrationTest
   # `fish -n` when fish is installed.
   def test_fish_escaping
     print "Test 11: core.fish escapes quotes/backslashes... "
-    toml = File.read(@toml_file)
-    sq_line = "sq = \"echo 'it' a\\\\b\"\n"
-    fq_line = "FQ = \"say \\\"hi\\\" $HOME\"\n"
-    toml = toml.include?("[aliases]\n") ? toml.sub("[aliases]\n") { "[aliases]\n#{sq_line}" } : toml + "\n[aliases]\n#{sq_line}"
-    toml = toml.include?("[env]\n") ? toml.sub("[env]\n") { "[env]\n#{fq_line}" } : toml + "\n[env]\n#{fq_line}"
-    File.write(@toml_file, toml)
+    write_entries(paths: store_map('paths'),
+                  aliases: store_map('aliases').merge('sq' => "echo 'it' a\\b"),
+                  env: store_map('env').merge('FQ' => 'say "hi" $HOME'))
     run_fish('build')
     body = File.read(@init_core)
     alias_ok = body.include?(%q{alias sq 'echo \'it\' a\\\\b'})
@@ -285,10 +279,10 @@ class FishIntegrationTest
       puts "SKIP (fish not installed)"
       return
     end
-    files = Dir.glob("#{@config_dir}/**/*.fish")
+    files = Dir.glob("#{@config_dir}/**/*.fish") + Dir.glob("#{@data_dir}/**/*.fish")
     bad = files.reject { |f| Open3.capture3('fish', '-n', f)[2].success? }
     env = ENV.to_h.merge('HOME' => @tmp_home)
-    _, err, st = Open3.capture3(env, 'fish', '-c', "source #{@config_dir}/init.fish")
+    _, err, st = Open3.capture3(env, 'fish', '-c', "source #{@data_dir}/init.fish")
     if !files.empty? && bad.empty? && st.success? && err.strip.empty?
       puts "✓"; @passed += 1
     else
@@ -319,18 +313,23 @@ class FishIntegrationTest
               'PATH' => "#{fb}:/usr/bin:/bin:/usr/sbin:/sbin" }
       Open3.capture3(env, @wayu_bin, 'init', '--shell', 'fish')
       cfg = "#{home}/.config/wayu"
+      data = "#{home}/.local/share/wayu"
       File.open("#{cfg}/wayu.toml", 'a') do |f|
-        f.puts "\n[paths]\np1 = \"#{home}/p1\"\np2 = \"$HOME/p2\"\nsys = \"/bin\""
         f.puts "\n[tools]\nfaketool = { args = \"init zsh\" }"
       end
+      File.write("#{data}/entries.json", JSON.generate(
+        'version' => 1,
+        'paths' => [{ 'key' => 'p1', 'dir' => "#{home}/p1" }, { 'key' => 'p2', 'dir' => '$HOME/p2' },
+                    { 'key' => 'sys', 'dir' => '/bin' }]
+      ))
       FileUtils.mkdir_p("#{cfg}/functions")
       File.write("#{cfg}/functions/myfn.fish", "function myfn; echo myfn; end\n")
       File.write("#{cfg}/tools.fish", "set -g ORDER tools\n")
       File.write("#{cfg}/extra.fish", "set -a ORDER extra\n")
       _, berr, bst = Open3.capture3(env, @wayu_bin, 'build')
       script = <<~FISH
-        source #{cfg}/init.fish
-        source #{cfg}/init.fish
+        source #{data}/init.fish
+        source #{data}/init.fish
         echo "path=$PATH[1..3]"
         echo "args=$FAKE_ARGS"
         functions -q myfn; and echo myfn-ok

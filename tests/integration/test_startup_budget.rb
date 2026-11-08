@@ -49,20 +49,21 @@ class StartupBudgetTest
     found.map { |name, exe, flag| { name: name, exe: exe, flag: flag } }
   end
 
-  # 40 paths (half existing), 60 aliases, 40 env vars, a lazy tool.
-  def toml(home)
-    t = +"[paths]\n"
+  # 40 paths (half existing), 60 aliases, 40 env vars (entries.json), a
+  # lazy tool (wayu.toml).
+  def write_config(home, cfg, data)
+    paths = {}
     40.times do |i|
       dir = "#{home}/bins/b#{i}"
       FileUtils.mkdir_p(dir) if i.even?
-      t << "p#{i} = \"#{dir}\"\n"
+      paths["p#{i}"] = dir
     end
-    t << "gobin = \"$GOPATH/bin\"\n\n[env]\nGOPATH = \"$HOME/go\"\n"
-    40.times { |i| t << "BUDGET_E#{i} = \"value-#{i}:${HOME}/x\"\n" }
-    t << "\n[aliases]\n"
-    60.times { |i| t << "ba#{i} = \"echo alias #{i} && ls -la\"\n" }
-    t << "\n[tools]\nsdk = { kind = \"lazy\", init_script = \"~/.sdk/init.sh\", hook_commands = [\"sdk\"] }\n"
-    t
+    paths['gobin'] = '$GOPATH/bin'
+    env = { 'GOPATH' => '$HOME/go' }
+    40.times { |i| env["BUDGET_E#{i}"] = "value-#{i}:${HOME}/x" }
+    aliases = 60.times.to_h { |i| ["ba#{i}", "echo alias #{i} && ls -la"] }
+    write_entries(paths: paths, aliases: aliases, env: env, data: data)
+    File.write("#{cfg}/wayu.toml", "[tools]\nsdk = { kind = \"lazy\", init_script = \"~/.sdk/init.sh\", hook_commands = [\"sdk\"] }\n")
   end
 
   def now_ms
@@ -93,7 +94,8 @@ class StartupBudgetTest
             'ZDOTDIR' => nil, 'WAYU_CONFIG' => nil, 'XDG_CONFIG_HOME' => nil, 'XDG_DATA_HOME' => nil }
     Open3.capture3(env, @wayu_bin, 'init', '--shell', sh[:name])
     cfg = "#{home}/.config/wayu"
-    File.write("#{cfg}/wayu.toml", toml(home))
+    data = "#{home}/.local/share/wayu"
+    write_config(home, cfg, data)
     Open3.capture3(env, @wayu_bin, 'completions', 'generate')
     _, berr, bst = Open3.capture3(env, @wayu_bin, 'build')
     unless bst.success?
@@ -102,7 +104,7 @@ class StartupBudgetTest
     end
     begin
       base = median(time_runs(env, sh, ':'))
-      init = median(time_runs(env, sh, "source '#{cfg}/init.#{sh[:name]}'"))
+      init = median(time_runs(env, sh, "source '#{data}/init.#{sh[:name]}'"))
     rescue RuntimeError => e
       check(false, e.message)
       return

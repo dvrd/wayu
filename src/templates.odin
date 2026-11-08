@@ -105,8 +105,8 @@ init_template_arg :: proc(args: []string) -> string {
 template_added, template_skipped: int
 
 // Apply a template. Entries already present are kept (never overwritten):
-// a [paths] directory already listed, an alias or [env] name already in
-// wayu.toml, or a constant already set in the environment wayu runs in.
+// a PATH directory already listed, an alias or constant name wayu already
+// has, or a constant already set in the environment wayu runs in.
 // --dry-run prints what would be added/skipped and writes nothing.
 apply_template :: proc(name: string) {
 	template_added, template_skipped = 0, 0
@@ -130,20 +130,20 @@ apply_template :: proc(name: string) {
 	}
 }
 
-// Shared helpers: each template writes through the wayu.toml add paths.
+// Shared helpers: each template writes through the same add paths as the
+// CLI (entry store).
 
-// Keys of wayu.toml [section] as they are on disk now (temp allocator).
+// Alias / constant names the store has now (temp allocator). Exits
+// EXIT_CONFIG when entries.json is malformed.
 @(private = "file")
-template_existing_keys :: proc(section: string) -> map[string]bool {
+template_existing_keys :: proc(kind: EntryKind) -> map[string]bool {
 	keys := make(map[string]bool, allocator = context.temp_allocator)
-	toml_path := fmt.tprintf("%s/%s", wayu.config, WAYU_TOML)
-	if !os.exists(toml_path) { return keys }
-	content, ok := safe_read_file(toml_path)
-	if !ok { return keys }
-	defer delete(content)
-	kvs := toml_read_section(string(content), section)
-	defer destroy_toml_kvs(&kvs)
-	for kv in kvs { keys[strings.clone(kv.key, context.temp_allocator)] = true }
+	store := entries_load()
+	defer entries_store_destroy(&store)
+	switch kind {
+	case .ALIAS: for a in store.aliases { keys[strings.clone(a.name, context.temp_allocator)] = true }
+	case .ENV:   for e in store.env { keys[strings.clone(e.name, context.temp_allocator)] = true }
+	}
 	return keys
 }
 
@@ -159,36 +159,29 @@ template_report :: proc(verb, what: string, skipped_why := "") {
 }
 
 template_add_paths :: proc(paths: []string) {
-	toml_path := fmt.tprintf("%s/%s", wayu.config, WAYU_TOML)
-	if !wayu.dry_run && !ensure_wayu_toml_exists() {
-		print_error_simple("Failed to create wayu.toml")
-		os.exit(EXIT_CANTCREAT)
-	}
+	store := entries_load() // malformed entries.json: exit 78 before any write
+	entries_store_destroy(&store)
 	for p in paths {
 		what := fmt.tprintf("%s%s%s", get_muted(), p, RESET)
-		if os.exists(toml_path) && !toml_path_add_would_change(p) {
-			template_report("path", what, "already in wayu.toml")
+		if !path_add_would_change(p) {
+			template_report("path", what, "already added")
 			continue
 		}
 		if wayu.dry_run {
 			template_report("path", what)
 			continue
 		}
-		switch toml_path_add_result(p) {
+		switch path_add_result(p) {
 		case .OK:   template_report("path", what)
-		case .NOOP: template_report("path", what, "already in wayu.toml")
-		case .INVALID, .NOT_FOUND, .IO_ERROR, .UNREADABLE:
+		case .NOOP: template_report("path", what, "already added")
+		case .INVALID, .NOT_FOUND, .IO_ERROR, .BAD_STORE:
 			print_warning("  skipped (could not write): %s", p)
 		}
 	}
 }
 
 template_add_aliases :: proc(aliases: []struct{name, command: string}) {
-	if !wayu.dry_run && !ensure_wayu_toml_exists() {
-		print_error_simple("Failed to create wayu.toml")
-		os.exit(EXIT_CANTCREAT)
-	}
-	existing := template_existing_keys("aliases")
+	existing := template_existing_keys(.ALIAS)
 	for a in aliases {
 		what := fmt.tprintf("%s%s%s = %s", get_primary(), a.name, RESET, a.command)
 		if a.name in existing {
@@ -206,15 +199,11 @@ template_add_aliases :: proc(aliases: []struct{name, command: string}) {
 }
 
 template_add_constants :: proc(consts: []struct{name, value: string}) {
-	if !wayu.dry_run && !ensure_wayu_toml_exists() {
-		print_error_simple("Failed to create wayu.toml")
-		os.exit(EXIT_CANTCREAT)
-	}
-	existing := template_existing_keys("env")
+	existing := template_existing_keys(.ENV)
 	for c in consts {
 		what := fmt.tprintf("%s%s%s = %s", get_primary(), c.name, RESET, c.value)
 		if c.name in existing {
-			template_report("constant", what, "your value in wayu.toml is kept")
+			template_report("constant", what, "your value is kept")
 			continue
 		}
 		if v, set := os.lookup_env(c.name, context.temp_allocator); set && len(v) > 0 {

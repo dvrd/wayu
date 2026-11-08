@@ -77,7 +77,8 @@ names on stderr; it never acts on a guess.
 
 ### `wayu path`
 
-Manage `[paths]` in wayu.toml. Default action: `list`.
+Manage PATH entries (stored in `<data>/entries.json`, see
+[config-reference.md](config-reference.md#managed-data)). Default action: `list`.
 
 | Action | Arguments | |
 |---|---|---|
@@ -97,7 +98,7 @@ wayu path clean --dry-run
 
 ### `wayu alias`
 
-Manage `[aliases]`. Default action: `list`. Names: ASCII letters, digits,
+Manage aliases (stored in `entries.json`). Default action: `list`. Names: ASCII letters, digits,
 `_`, and `-` after the first character.
 
 | Action | Arguments | |
@@ -110,7 +111,8 @@ Manage `[aliases]`. Default action: `list`. Names: ASCII letters, digits,
 
 ### `wayu constants` (`const`, `env`)
 
-Manage `[env]`. Default action: `list`.
+Manage constants: exported environment variables (stored in
+`entries.json`). Default action: `list`.
 
 | Action | Arguments | |
 |---|---|---|
@@ -154,13 +156,15 @@ command) and keeps the newest 5 per file in `backup/`.
 
 | Action | Arguments | |
 |---|---|---|
-| `list`, `ls` | `[type]` | All backup groups (wayu.toml, plugins.json, the rc file, …); `--json` |
-| `restore` | `<type> [N\|file]` | Restore wayu.toml from the newest backup, backup #N, or a file (`--yes`) |
+| `list`, `ls` | `[type]` | All backup groups (wayu.toml, entries.json, plugins.json, the rc file, …); `--json` |
+| `restore` | `<type> [N\|file]` | Restore the file `type` names from the newest backup, backup #N, or a file (`--yes`) |
 | `remove`, `rm` | `[type]` | Prune to the newest 5 (`--yes`) |
 | `help` | | |
 
-`type` is `path`, `alias`, `constants` or `toml`; all name wayu.toml, so a
-restore reverts the whole file. The current file is backed up first.
+`type` is `toml` (wayu.toml) or `entries` (entries.json); `path`, `alias`
+and `constants` also name entries.json, so a restore reverts all PATH
+entries, aliases and constants together. The current file is backed up
+first.
 
 ### `wayu plugin`
 
@@ -187,10 +191,16 @@ Default action: `list`. `<name>` must match an installed plugin exactly.
 
 ### `wayu init`
 
-`wayu init [--template <name>]`: create the config and data dirs, a
-`wayu.toml` scaffold and `init.<ext>`, generate the init files, and offer to
-add `source …/init.<ext>` to your rc file (only when stdin is a terminal;
-otherwise it prints the line). Safe to re-run: existing files are kept and an
+`wayu init [--template <name>]`: create the config dir
+(`~/.config/wayu`) and the data dir (`${XDG_DATA_HOME:-~/.local/share}/wayu`),
+a `wayu.toml` scaffold and `init.<ext>`, generate the init files, and offer
+to add this line to your rc file (only when stdin is a terminal; otherwise it
+prints the line):
+
+```sh
+source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh"
+```
+ Safe to re-run: existing files are kept and an
 unmodified `init.<ext>` from the previous release is updated. `--shell` picks the shell.
 
 | Flag | |
@@ -216,7 +226,7 @@ Without an action it prints its help.
 
 | Action | |
 |---|---|
-| *(none)* | Regenerate the init files from wayu.toml (after a hand edit) |
+| *(none)* | Regenerate the init files from wayu.toml and entries.json (after a hand edit) |
 | `turbo` | Same as `wayu export --turbo` |
 | `profile` | Time shell startup and each section, tool and plugin of `core.<ext>` |
 | `clean` | Delete the `[tools]` evalcache (`${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`) |
@@ -230,7 +240,7 @@ Default action: `turbo`. Each action may also be written as a flag
 | Action | |
 |---|---|
 | `turbo` | Write `turbo.<ext>`, a copy of `core.<ext>` (zsh, bash) |
-| `eval` | Print `[env]`, `[paths]` and `[aliases]` as shell code for `eval` (writes nothing) |
+| `eval` | Print constants, PATH entries and aliases as shell code for `eval` (writes nothing) |
 | `check` | Exit `0` if `turbo.<ext>` is current, `78` if it is missing or stale |
 | `list`, `ls` | Show the formats |
 | `help` | |
@@ -239,26 +249,24 @@ Default action: `turbo`. Each action may also be written as a flag
 
 | Action | |
 |---|---|
-| `validate` | Strict check of wayu.toml (syntax, duplicate keys, names, `[shell] type`, table shapes); exit `65` on error. Keys wayu does not read are warnings (exit `0`) |
-| `show` | Print wayu.toml with secret-looking `[env]` values masked |
+| `validate` | Strict check of wayu.toml (syntax, duplicate keys, `[shell] type`, table shapes, no `[paths]` / `[aliases]` / `[env]`); exit `65` on error. Keys wayu does not read are warnings (exit `0`) |
+| `show` | Print wayu.toml |
 | `keys` | List wayu.toml's top-level keys and tables, in file order; exit `65` if it does not parse |
 | `help` | |
-
-| Flag | |
-|---|---|
-| `--reveal` | `show`: print the file verbatim |
 
 Without an action, `wayu toml` behaves like `wayu toml validate`.
 
 ### `wayu doctor`
 
 Health checks: installation, rc file, PATH entries, plugins and plugin
-conflicts, backups, wayu.toml, turbo file, dependencies. Exits `78` when any
+conflicts, backups, wayu.toml (a `[paths]`, `[aliases]` or `[env]` table is an
+error naming the `wayu path|alias|const add` command), entries.json (must
+parse), turbo file, dependencies. Exits `78` when any
 check reports an error (warnings don't), so it can gate CI. Supports `--json`.
 
 | Flag | |
 |---|---|
-| `--fix` | Remove missing / duplicate `[paths]` entries (`--yes`, or `--dry-run` to preview) |
+| `--fix` | Remove missing / duplicate PATH entries (`--yes`, or `--dry-run` to preview) |
 | `--profile` | Same as `wayu build profile` |
 | `--optimize` | Removed; prints a pointer to `wayu build` / `wayu export` and exits `64` |
 
@@ -299,7 +307,7 @@ Shell functions as files in the config dir's `functions/`. Default action:
 ### `wayu reload` (`watch`, `hot-reload`)
 
 `wayu reload [start|stop|status|regenerate]`. `start` (the default) watches
-wayu.toml and regenerates the init files on change (debounced) until
+wayu.toml and entries.json and regenerates the init files on change (debounced) until
 interrupted; `stop` stops a running watcher; `regenerate` (`regen`)
 regenerates once.
 
@@ -330,11 +338,11 @@ keys may be added, existing ones keep their meaning.
 | `doctor` | `{"checks": [{"name", "status", "message", "fixable": bool}], "summary": {"ok", "warnings", "errors", "info", "fixable"}}` |
 
 Unmarked fields are strings. `source` is `wayu`, `wayu (inactive)` (in
-wayu.toml but not in this shell's environment) or `external`; `--source`
+entries.json but not in this shell's environment) or `external`; `--source`
 and `--full` filter rows, not the shape. `const list` masks secret-looking
 values as `********` unless `--reveal` is given. Plugin `shell` is
 `zsh|bash|both|fish|any`; a conflict's `kind` is `function|alias|env` and
-`with` is another plugin or `wayu.toml`. Doctor `status` is
+`with` is another plugin or `entries.json`. Doctor `status` is
 `ok|warning|error|info`; `backup list` `timestamp` is ISO 8601 UTC.
 
 ## Exit codes
@@ -395,14 +403,16 @@ Run against a freshly initialized config (`wayu init`) by
 
 Also tested: `path`, `alias` and `const` exit `78` before `wayu init`;
 `wayu doctor` exits `78` and `wayu toml validate` `65` when wayu.toml does
-not parse.
+not parse; every command that reads entries.json exits `78` when it does not
+parse.
 
 ## Environment variables
 
 | Variable | Effect |
 |---|---|
 | `WAYU_CONFIG_DIR` | Config dir (wayu.toml, extra/tools, hooks.conf, functions/); default `~/.config/wayu` |
-| `WAYU_DATA_DIR` | Data dir (generated init files, plugins, completions, backups); default: the config dir |
+| `WAYU_DATA_DIR` | Data dir (entries.json, plugins, generated init files, completions, backups); default `${XDG_DATA_HOME:-~/.local/share}/wayu` |
+| `XDG_DATA_HOME` | Base of the default data dir |
 | `SHELL` | Shell detection (override with `--shell`) |
 | `NO_COLOR` | Disable colors (wins over `FORCE_COLOR`) |
 | `FORCE_COLOR`, `CLICOLOR_FORCE` | Keep colors when stdout is not a terminal |

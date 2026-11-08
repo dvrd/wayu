@@ -10,7 +10,6 @@ class ConstantsIntegrationTest
 
   def initialize
     setup_test_env
-    @toml_file = "#{@config_dir}/wayu.toml"
   end
 
   def run
@@ -55,30 +54,25 @@ class ConstantsIntegrationTest
 
   private
 
-  # Regressions: unescape mangled UTF-8 (é → Ã©); `FOO = ""` was skipped by
-  # the reader and so deleted on the next write; `[env]  # c` header was not
-  # recognised, producing a duplicate [env] table; inline comments leaked
-  # into values.
+  # Regressions: unescape mangled UTF-8 (é → Ã©); an empty value was
+  # dropped by the reader and so deleted on the next write.
   def test_utf8_and_empty_values_survive_rewrite
-    print "Test R1: UTF-8, empty values, commented header survive rewrite... "
+    print "Test R1: UTF-8 and empty values survive a rewrite... "
 
-    content = File.read(@toml_file).sub(/^\[env\][ \t]*$/, "[env]  # my vars\n# keep me\nEMPTY_C = \"\"\nCMT_C = \"nvim\" # editor")
-    File.write(@toml_file, content)
+    write_entries(env: store_map('env').merge('EMPTY_C' => '', 'CMT_C' => 'nvim # not a comment'))
     run_wayu("const add CAFE_C 'café'")
     out_cafe, s1 = run_wayu("const get CAFE_C")
     out_cmt, _ = run_wayu("const get CMT_C")
-    toml = File.read(@toml_file)
-    _, valid = run_wayu("toml validate")
+    env = store_map('env')
 
-    ok = s1.success? && out_cafe.strip == "café" && out_cmt.strip == "nvim" &&
-         toml.include?(%(EMPTY_C = "")) && toml.scan(/^\[env\]/).length == 1 &&
-         toml.include?("# keep me") && valid.success?
+    ok = s1.success? && out_cafe.strip == "café" && out_cmt.strip == "nvim # not a comment" &&
+         env['EMPTY_C'] == '' && env['CAFE_C'] == 'café'
     if ok
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  cafe=#{out_cafe} cmt=#{out_cmt}\n  toml=#{toml}"
+      puts "  cafe=#{out_cafe} cmt=#{out_cmt}\n  env=#{env}"
       @failed += 1
     end
   end
@@ -88,7 +82,7 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu('constants add MY_VAR "test_value"')
 
-    if status.success? && File.read(@toml_file).include?('MY_VAR = ')
+    if status.success? && store_map('env')['MY_VAR'] == 'test_value'
       puts "✓"
       @passed += 1
     else
@@ -104,7 +98,7 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu('constants add MY_PATH "/usr/local/my path"')
 
-    if status.success? && File.read(@toml_file).include?('MY_PATH = ')
+    if status.success? && store_map('env')['MY_PATH'] == '/usr/local/my path'
       puts "✓"
       @passed += 1
     else
@@ -120,7 +114,7 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu('constants add API_KEY "abc-123_xyz.789"')
 
-    if status.success? && File.read(@toml_file).include?('API_KEY = ')
+    if status.success? && store_map('env')['API_KEY'] == 'abc-123_xyz.789'
       puts "✓"
       @passed += 1
     else
@@ -200,7 +194,7 @@ class ConstantsIntegrationTest
   def test_get_constant_unescapes_value
     print "Test 5d: Get unescapes shell-escaped values... "
 
-    # A value with double quotes round-trips through wayu.toml unchanged
+    # A value with double quotes round-trips through entries.json unchanged
     run_wayu('constants add ESCAPE_TEST \'say "hello"\'')
     output, status = run_wayu("constants get ESCAPE_TEST")
     run_wayu("constants rm ESCAPE_TEST")
@@ -222,8 +216,7 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu("constants rm MY_VAR")
 
-    constants_content = File.read(@toml_file)
-    if status.success? && !constants_content.include?('MY_VAR = ')
+    if status.success? && !store_map('env').key?('MY_VAR')
       puts "✓"
       @passed += 1
     else
@@ -242,10 +235,9 @@ class ConstantsIntegrationTest
     output, status = run_wayu('constants add DUPLICATE_TEST "second"')
 
     # Should either prevent duplicate or overwrite
-    constants_content = File.read(@toml_file)
-    occurrences = constants_content.scan(/DUPLICATE_TEST = /).length
+    occurrences = (read_entries['env'] || []).count { |e| e['name'] == 'DUPLICATE_TEST' }
 
-    if occurrences == 1
+    if occurrences == 1 && store_map('env')['DUPLICATE_TEST'] == 'second'
       puts "✓"
       @passed += 1
     else
@@ -302,7 +294,7 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu('constants add QUOTED_VALUE "\"Hello, World!\""')
 
-    if status.success? && File.read(@toml_file).include?('QUOTED_VALUE = ')
+    if status.success? && store_map('env')['QUOTED_VALUE'] == '"Hello, World!"'
       puts "✓"
       @passed += 1
     else
@@ -318,7 +310,7 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu('constants add VERSION_2024 "1.2.3"')
 
-    if status.success? && File.read(@toml_file).include?('VERSION_2024 = ')
+    if status.success? && store_map('env')['VERSION_2024'] == '1.2.3'
       puts "✓"
       @passed += 1
     else
@@ -352,14 +344,13 @@ class ConstantsIntegrationTest
 
     # Add a constant
     run_wayu('constants add PERSIST_TEST_1 "value1"')
-    content_before = File.read(@toml_file)
 
     # Add another constant
     run_wayu('constants add PERSIST_TEST_2 "value2"')
-    content_after = File.read(@toml_file)
+    env = store_map('env')
 
     # Both should exist
-    if content_after.include?('PERSIST_TEST_1 = ') && content_after.include?('PERSIST_TEST_2 = ')
+    if env['PERSIST_TEST_1'] == 'value1' && env['PERSIST_TEST_2'] == 'value2'
       puts "✓"
       @passed += 1
     else
@@ -370,13 +361,9 @@ class ConstantsIntegrationTest
   end
 
   def test_list_constants_from_wayu_toml_env
-    print "Test 16: List constants from wayu.toml [env]... "
+    print "Test 16: List constants from entries.json... "
 
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [env]
-      FROM_TOML = "loaded"
-      SECOND_VAR = "also_loaded"
-    TOML
+    write_entries(env: { 'FROM_TOML' => 'loaded', 'SECOND_VAR' => 'also_loaded' })
 
     output, status = run_wayu("constants list")
 
@@ -385,19 +372,16 @@ class ConstantsIntegrationTest
       @passed += 1
     else
       puts "✗"
-      puts "  Expected constants list to read from wayu.toml [env]"
+      puts "  Expected constants list to read from entries.json"
       puts "  Output: #{output}"
       @failed += 1
     end
   end
 
   def test_get_constant_from_wayu_toml_constants
-    print "Test 17: Get constant from wayu.toml [env]... "
+    print "Test 17: Get constant from entries.json... "
 
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [env]
-      TOML_ONLY = "from_table"
-    TOML
+    write_entries(env: { 'TOML_ONLY' => 'from_table' })
 
     output, status = run_wayu("constants get TOML_ONLY")
 
@@ -412,45 +396,40 @@ class ConstantsIntegrationTest
   end
 
   def test_add_constant_to_wayu_toml
-    print "Test 18: Add constant writes to wayu.toml... "
+    print "Test 18: Add constant writes to entries.json only... "
 
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [env]
-      EXISTING = "value"
-    TOML
+    write_entries(env: { 'EXISTING' => 'value' })
+    toml_before = File.read("#{@config_dir}/wayu.toml")
 
     output, status = run_wayu('constants add TOML_ADDED "new_value"')
-    toml = File.read("#{@config_dir}/wayu.toml")
+    env = (read_entries['env'] || []).map { |e| [e['name'], e['value']] }
 
-    if status.success? && toml.include?('TOML_ADDED = "new_value"')
+    if status.success? && env == [%w[EXISTING value], %w[TOML_ADDED new_value]] &&
+       File.read("#{@config_dir}/wayu.toml") == toml_before
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Expected constants add to update wayu.toml only"
+      puts "  Expected constants add to append to entries.json and leave wayu.toml alone"
       puts "  Output: #{output}"
       @failed += 1
     end
   end
 
   def test_remove_constant_from_wayu_toml
-    print "Test 19: Remove constant writes to wayu.toml... "
+    print "Test 19: Remove constant writes to entries.json... "
 
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [env]
-      REMOVE_ME = "bye"
-      KEEP_ME = "stay"
-    TOML
+    write_entries(env: { 'REMOVE_ME' => 'bye', 'KEEP_ME' => 'stay' })
 
     output, status = run_wayu('constants rm REMOVE_ME')
-    toml = File.read("#{@config_dir}/wayu.toml")
+    env = store_map('env')
 
-    if status.success? && !toml.include?('REMOVE_ME =') && toml.include?('KEEP_ME = "stay"')
+    if status.success? && !env.key?('REMOVE_ME') && env['KEEP_ME'] == 'stay'
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Expected constants rm to update wayu.toml"
+      puts "  Expected constants rm to update entries.json"
       puts "  Output: #{output}"
       @failed += 1
     end
@@ -475,14 +454,10 @@ class ConstantsIntegrationTest
   def test_const_alias
     print "Test 14: 'const' alias behaves identically to 'constants'... "
 
-    File.write("#{@config_dir}/wayu.toml", <<~TOML)
-      [env]
-      BASE = "value"
-    TOML
+    write_entries(env: { 'BASE' => 'value' })
 
     run_wayu('const add CONST_ALIAS_TEST "alias_value"')
-    toml_after_add = File.read("#{@config_dir}/wayu.toml")
-    added = toml_after_add.include?('CONST_ALIAS_TEST = "alias_value"')
+    added = store_map('env')['CONST_ALIAS_TEST'] == 'alias_value'
 
     list_out, list_status = run_wayu("const list")
     listed = list_status.success? && list_out.include?("CONST_ALIAS_TEST")
@@ -491,7 +466,7 @@ class ConstantsIntegrationTest
     got = get_status.success? && get_out.strip == "alias_value"
 
     run_wayu("const rm CONST_ALIAS_TEST")
-    removed = !File.read("#{@config_dir}/wayu.toml").include?('CONST_ALIAS_TEST =')
+    removed = !store_map('env').key?('CONST_ALIAS_TEST')
 
     if added && listed && got && removed
       puts "✓"

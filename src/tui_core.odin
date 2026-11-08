@@ -245,7 +245,7 @@ handle_key_event :: proc(state: ^TUIState, key: KeyEvent) {
 	}
 
 	// Reload: r, Ctrl+R or F5 drop every cache (and the shell snapshot) so
-	// the current view re-reads wayu.toml / plugins.json / the backup dir.
+	// the current view re-reads entries.json / plugins.json / the backup dir.
 	if key.key == .F5 || (key.key == .Char && (key.char == 'r' || key.char == 'R') && (.Ctrl in key.modifiers || key.char == 'r')) {
 		tui_reload_all(state)
 		set_notification(state, .INFO, "Reloaded")
@@ -392,19 +392,19 @@ handle_selection :: proc(state: ^TUIState) {
 
 	case .BACKUPS_VIEW:
 		// Enter on a backup: restore it (with confirmation) when it is a
-		// wayu.toml backup — the only file `wayu backup restore` handles —
-		// otherwise show where it is so it can be copied back by hand.
+		// wayu.toml or entries.json backup — the files `wayu backup restore`
+		// handles — otherwise show where it is so it can be copied back by hand.
 		display, row, ok := selected_row(state)
 		if !ok do return
 		group := row.value if len(row.value) > 0 else display
-		if group == WAYU_TOML {
+		if group == WAYU_TOML || group == ENTRIES_FILE {
 			show_restore_confirmation(state, row.key)
 		} else {
 			lines := []string{
 				fmt.tprintf("File:   %s", backup_key_display(group, context.temp_allocator)),
 				fmt.tprintf("Backup: %s", display),
 				"",
-				"Only wayu.toml backups are restored by wayu;",
+				"Only wayu.toml and entries.json backups are restored by wayu;",
 				fmt.tprintf("copy this one back by hand: %s", row.key),
 			}
 			show_detail_overlay(state, "Backup Detail", lines)
@@ -1050,17 +1050,16 @@ finish_add_form :: proc(state: ^TUIState, view: TUIView, outcome: EntryOutcome, 
 	state.full_redraw = true
 }
 
-// Current wayu.toml value of alias / constant `name` (read fresh from disk,
+// Current stored value of alias / constant `name` (read fresh from disk,
 // not from the possibly stale view cache). Result is temp-allocated.
 tui_current_value :: proc(view: TUIView, name: string) -> (value: string, found: bool) {
-	toml_file := fmt.tprintf("%s/%s", wayu.config, WAYU_TOML)
-	config, ok := toml_read_file_lenient(toml_file)
-	defer cleanup_toml_config(&config)
+	store, _, ok := entries_read()
 	if !ok do return "", false
+	defer entries_store_destroy(&store)
 	if view == .ALIAS_VIEW {
-		for a in config.aliases do if a.name == name do return strings.clone(a.command, context.temp_allocator), true
+		for a in store.aliases do if a.name == name do return strings.clone(a.value, context.temp_allocator), true
 	} else {
-		for c in config.constants do if c.name == name do return strings.clone(c.value, context.temp_allocator), true
+		for c in store.env do if c.name == name do return strings.clone(c.value, context.temp_allocator), true
 	}
 	return "", false
 }
@@ -1306,7 +1305,7 @@ DetailOverlay :: struct {
 ConfirmKind :: enum u8 {
 	DELETE,   // remove entry `name` from `view`
 	REPLACE,  // overwrite an existing alias/constant with the add form's values
-	RESTORE,  // restore wayu.toml from backup file `name`
+	RESTORE,  // restore wayu.toml / entries.json from backup file `name`
 	CLEANUP,  // prune every backup group to BACKUP_KEEP_COUNT
 	INSTALL,  // install registry plugin `name`
 }
@@ -1339,7 +1338,8 @@ FileStamp :: struct {
 
 // Files whose external changes reload the views that show them.
 WatchState :: struct {
-	toml:       FileStamp,  // wayu.toml → PATH, aliases, constants, settings
+	toml:       FileStamp,  // wayu.toml → settings
+	entries:    FileStamp,  // entries.json → PATH, aliases, constants
 	plugins:    FileStamp,  // plugins.json → plugins
 	backup_dir: FileStamp,  // backup/ → backups, settings
 	hooks:      FileStamp,  // hooks.conf → hooks
@@ -1547,7 +1547,7 @@ show_confirmation :: proc(state: ^TUIState, kind: ConfirmKind, view: TUIView, ti
 show_delete_confirmation :: proc(state: ^TUIState, view: TUIView, display_name: string, delete_key: string) {
 	undo := "A backup is created first (u restores it)." if !wayu.dry_run else "Dry run: nothing will be written."
 	show_confirmation(state, .DELETE, view, "DELETE CONFIRMATION",
-		{display_name, "", "Removes it from wayu.toml.", undo}, delete_key)
+		{display_name, "", "Removes it from wayu's entries.", undo}, delete_key)
 }
 
 // Ask before an add overwrites an existing alias / constant.
@@ -1566,13 +1566,25 @@ show_replace_confirmation :: proc(state: ^TUIState, view: TUIView, name, current
 	}, name)
 }
 
-// Ask before restoring wayu.toml from `backup_path`.
+// The file a wayu.toml / entries.json backup restores (its group), from the
+// backup's file name "<group>.backup.<stamp>".
+@(private = "file")
+tui_backup_target :: proc(backup_path: string) -> (file, name: string) {
+	if strings.has_prefix(get_base_name(backup_path), ENTRIES_FILE + ".backup.") {
+		return entries_file_path(), ENTRIES_FILE
+	}
+	return fmt.tprintf("%s/%s", wayu.config, WAYU_TOML), WAYU_TOML
+}
+
+// Ask before restoring wayu.toml / entries.json from `backup_path`.
 show_restore_confirmation :: proc(state: ^TUIState, backup_path: string) {
-	show_confirmation(state, .RESTORE, .BACKUPS_VIEW, "RESTORE wayu.toml", {
+	_, name := tui_backup_target(backup_path)
+	what := "Reverts PATH entries, aliases AND constants." if name == ENTRIES_FILE else "Reverts the whole wayu.toml."
+	show_confirmation(state, .RESTORE, .BACKUPS_VIEW, fmt.tprintf("RESTORE %s", name), {
 		fmt.tprintf("From: %s", get_base_name(backup_path)),
 		"",
-		"Reverts paths, aliases AND constants.",
-		"The current wayu.toml is backed up first.",
+		what,
+		fmt.tprintf("The current %s is backed up first.", name),
 	}, backup_path)
 }
 
@@ -2096,8 +2108,9 @@ file_stamp :: proc(path: string) -> FileStamp {
 }
 
 @(private = "file")
-watch_paths :: proc() -> (toml, plugins, backup_dir, hooks: string) {
+watch_paths :: proc() -> (toml, entries, plugins, backup_dir, hooks: string) {
 	toml       = fmt.tprintf("%s/%s", wayu.config, WAYU_TOML)
+	entries    = entries_file_path()
 	plugins    = fmt.tprintf("%s/plugins.json", wayu.config)
 	backup_dir = fmt.tprintf("%s/backup", wayu.data)
 	hooks      = fmt.tprintf("%s/%s", wayu.config, HOOK_CONFIG_FILE)
@@ -2107,8 +2120,9 @@ watch_paths :: proc() -> (toml, plugins, backup_dir, hooks: string) {
 // Record the current stamps: what the TUI itself just wrote is not an
 // external change.
 tui_watch_sync :: proc(state: ^TUIState) {
-	t, p, b, h := watch_paths()
+	t, e, p, b, h := watch_paths()
 	state.watch.toml = file_stamp(t)
+	state.watch.entries = file_stamp(e)
 	state.watch.plugins = file_stamp(p)
 	state.watch.backup_dir = file_stamp(b)
 	state.watch.hooks = file_stamp(h)
@@ -2122,13 +2136,18 @@ tui_check_external_changes :: proc(state: ^TUIState, force := false) -> bool {
 	if !force && time.tick_since(state.watch.last_check) < WATCH_INTERVAL do return false
 	// Never under an open dialog: its rows must stay what the user sees.
 	if state.add_form.active || state.detail.shown do return false
-	t, p, b, h := watch_paths()
-	toml, plugins, backup_dir, hooks := file_stamp(t), file_stamp(p), file_stamp(b), file_stamp(h)
+	t, e, p, b, h := watch_paths()
+	toml, entries, plugins, backup_dir, hooks := file_stamp(t), file_stamp(e), file_stamp(p), file_stamp(b), file_stamp(h)
 	state.watch.last_check = time.tick_now()
 
 	changed := false
 	if toml != state.watch.toml {
 		state.watch.toml = toml
+		state.settings.loaded = false
+		changed = true
+	}
+	if entries != state.watch.entries {
+		state.watch.entries = entries
 		for v in ([]TUIView{.PATH_VIEW, .ALIAS_VIEW, .CONSTANTS_VIEW}) do clear_view_cache(state, v)
 		state.settings.loaded = false
 		changed = true
@@ -2182,21 +2201,21 @@ tui_after_write :: proc(state: ^TUIState, view: TUIView) {
 // Backups: restore, cleanup
 // ============================================================================
 
-// Restore wayu.toml from `backup_path` (the CLI's restore_from_backup: the
-// current file is backed up first, invalid backups are
-// refused, init files regenerated).
+// Restore wayu.toml or entries.json (by the backup's group) from
+// `backup_path` (the CLI's restore_from_backup: the current file is backed
+// up first, invalid backups are refused, init files regenerated).
 tui_restore_backup :: proc(state: ^TUIState, backup_path: string) {
 	name := get_base_name(backup_path)
+	target, target_name := tui_backup_target(backup_path)
 	if wayu.dry_run {
-		set_notification(state, .INFO, fmt.tprintf("[dry-run] would restore wayu.toml from %s", name))
+		set_notification(state, .INFO, fmt.tprintf("[dry-run] would restore %s from %s", target_name, name))
 		return
 	}
-	toml_file := fmt.tprintf("%s/%s", wayu.config, WAYU_TOML)
 	if !config_lock_acquire() {
 		set_notification(state, .ERROR, "Could not lock the wayu config (another wayu is writing)")
 		return
 	}
-	ok := restore_from_backup(toml_file, backup_path)
+	ok := restore_from_backup(target, backup_path)
 	config_lock_release()
 	if !ok {
 		set_notification(state, .ERROR, failure_message("", fmt.tprintf("Failed to restore from %s", name)))
@@ -2204,17 +2223,17 @@ tui_restore_backup :: proc(state: ^TUIState, backup_path: string) {
 	}
 	for v in ([]TUIView{.PATH_VIEW, .ALIAS_VIEW, .CONSTANTS_VIEW}) do clear_view_cache(state, v)
 	tui_after_write(state, .BACKUPS_VIEW)
-	set_notification(state, .SUCCESS, fmt.tprintf("Restored wayu.toml from %s", name))
+	set_notification(state, .SUCCESS, fmt.tprintf("Restored %s from %s", target_name, name))
 }
 
-// 'u' in a data view: restore the newest wayu.toml backup (with confirmation).
+// 'u' in a data view: restore the newest entries.json backup (with
+// confirmation).
 tui_offer_undo :: proc(state: ^TUIState) {
-	toml_file := fmt.tprintf("%s/%s", wayu.config, WAYU_TOML)
-	backups := list_backups_for_file(toml_file)
+	backups := list_backups_for_file(entries_file_path())
 	defer free_backup_infos(backups)
 	idx := select_backup(backups, "")
 	if idx < 0 {
-		set_notification(state, .ERROR, "No wayu.toml backup to restore")
+		set_notification(state, .ERROR, "No entries.json backup to restore")
 		return
 	}
 	show_restore_confirmation(state, backups[idx].backup_file)
@@ -2508,16 +2527,25 @@ external_separator :: proc(count: int) -> string {
 	return fmt.aprintf("─── External (%d) ───", count)
 }
 
+// The entry store for a loader; a broken entries.json shows as a
+// notification (the view stays empty) instead of exiting the TUI.
+@(private="file")
+tui_entries_read :: proc(state: ^TUIState) -> (store: EntryStore, ok: bool) {
+	s, err, read_ok := entries_read()
+	if !read_ok {
+		set_notification(state, .ERROR, err)
+		return {}, false
+	}
+	return s, true
+}
+
 tui_load_path :: proc(state: ^TUIState) {
 	items := make([dynamic]string)
 	meta  := make([dynamic]RowMeta)
 
-	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
-	defer delete(toml_file)
-
-	if os.exists(toml_file) {
-		config, ok := toml_read_file_lenient(toml_file)
-		defer cleanup_toml_config(&config)
+	{
+		store, ok := tui_entries_read(state)
+		defer if ok do entries_store_destroy(&store)
 		if ok {
 			// Cached by env_snapshot — not owned here.
 			env_paths := snapshot_path_entries()
@@ -2525,7 +2553,8 @@ tui_load_path :: proc(state: ^TUIState) {
 			wayu_entries := make(map[string]bool)
 			defer delete(wayu_entries)
 
-			for entry in config.path.entries {
+			for e in store.paths {
+				entry := e.dir
 				is_in_env := false
 				for env_path in env_paths {
 					if env_path == entry {
@@ -2554,13 +2583,6 @@ tui_load_path :: proc(state: ^TUIState) {
 				}
 			}
 		}
-	} else {
-		entries := read_config_entries(&PATH_SPEC)
-		defer cleanup_entries(&entries)
-
-		for entry in entries {
-			cache_push(&items, &meta, strings.clone(entry.name), entry.name)
-		}
 	}
 
 	tui_store_cache(state, .PATH_VIEW, items, meta)
@@ -2570,12 +2592,9 @@ tui_load_alias :: proc(state: ^TUIState) {
 	items := make([dynamic]string)
 	meta  := make([dynamic]RowMeta)
 
-	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
-	defer delete(toml_file)
-
-	if os.exists(toml_file) {
-		config, ok := toml_read_file_lenient(toml_file)
-		defer cleanup_toml_config(&config)
+	{
+		store, ok := tui_entries_read(state)
+		defer if ok do entries_store_destroy(&store)
 		if ok {
 			// The first snapshot runs the user's interactive shell (rc files
 			// and all): show progress, allow Esc, and repaint afterwards.
@@ -2588,15 +2607,15 @@ tui_load_alias :: proc(state: ^TUIState) {
 			wayu_aliases := make(map[string]bool)
 			defer delete(wayu_aliases)
 
-			for alias in config.aliases {
+			for alias in store.aliases {
 				wayu_aliases[alias.name] = true
 
 				env_val, exists := env_aliases[alias.name]
-				is_active := exists && env_val == alias.command
+				is_active := exists && env_val == alias.value
 				source := RowSource.WAYU_ACTIVE if is_active else RowSource.WAYU_INACTIVE
 
-				display := fmt.aprintf("%s=%s", alias.name, alias.command)
-				cache_push(&items, &meta, display, alias.name, alias.command, source)
+				display := fmt.aprintf("%s=%s", alias.name, alias.value)
+				cache_push(&items, &meta, display, alias.name, alias.value, source)
 			}
 
 			external_count := 0
@@ -2624,14 +2643,6 @@ tui_load_alias :: proc(state: ^TUIState) {
 				}
 			}
 		}
-	} else {
-		entries := read_config_entries(&ALIAS_SPEC)
-		defer cleanup_entries(&entries)
-
-		for entry in entries {
-			display := fmt.aprintf("%s=%s", entry.name, entry.value)
-			cache_push(&items, &meta, display, entry.name, entry.value)
-		}
 	}
 
 	tui_store_cache(state, .ALIAS_VIEW, items, meta)
@@ -2641,17 +2652,14 @@ tui_load_constants :: proc(state: ^TUIState) {
 	items := make([dynamic]string)
 	meta  := make([dynamic]RowMeta)
 
-	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
-	defer delete(toml_file)
-
-	if os.exists(toml_file) {
+	{
 		wayu_constants := make(map[string]bool)
 		defer delete(wayu_constants)
 
-		config, ok := toml_read_file_lenient(toml_file)
-		defer cleanup_toml_config(&config)
+		store, ok := tui_entries_read(state)
+		defer if ok do entries_store_destroy(&store)
 		if ok {
-			for const in config.constants {
+			for const in store.env {
 				wayu_constants[const.name] = true
 
 				is_active := snapshot_env_var(const.name) != nil
@@ -2698,14 +2706,6 @@ tui_load_constants :: proc(state: ^TUIState) {
 					cache_push(&items, &meta, display, ext_const_name, env_val, .EXTERNAL)
 				}
 			}
-		}
-	} else {
-		entries := read_config_entries(&CONSTANTS_SPEC)
-		defer cleanup_entries(&entries)
-
-		for entry in entries {
-			display := fmt.aprintf("%s=%s", entry.name, mask_secret_value(entry.name, entry.value))
-			cache_push(&items, &meta, display, entry.name, entry.value)
 		}
 	}
 

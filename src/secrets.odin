@@ -1,9 +1,9 @@
 // secrets.odin - Single source of truth for secret handling:
-//   * file modes for files that may contain [env] values (wayu.toml,
+//   * file modes for files that may contain constant values (entries.json,
 //     backups, generated core/path_sync scripts);
 //   * the "looks secret" heuristic and value masking used by every preview
 //     and list output (dry-run, search, export --dry-run, `const list`,
-//     `toml show`, the TUI constants view).
+//     the TUI constants view).
 //
 // `wayu const get NAME` (exact) deliberately prints the real value — that is
 // its purpose. List views mask unless the user asks with `--reveal` (CLI) or
@@ -11,13 +11,11 @@
 
 package wayu
 
-import "core:mem"
-import "core:mem/virtual"
 import "core:os"
 import "core:strings"
 
-// 0600 / 0700: owner-only. Anything holding [env] values is created with
-// these; never wider than what the user chose for wayu.toml.
+// 0600 / 0700: owner-only. Anything holding constant values is created with
+// these.
 SECRET_FILE_PERMS :: os.Permissions{.Read_User, .Write_User}
 SECRET_DIR_PERMS  :: os.Permissions{.Read_User, .Write_User, .Execute_User}
 
@@ -93,73 +91,4 @@ restrict_file_mode :: proc(path: string) {
 	if err := os.chmod(path, SECRET_FILE_PERMS); err != nil {
 		debug("chmod 0600 failed for %s: %v", path, err)
 	}
-}
-
-// Copy of a wayu.toml document with secret-looking [env] values replaced by
-// SECRET_MASK, for previews that show a whole rewritten file (e.g. schema
-// migration --dry-run). Other lines are kept verbatim. Caller deletes.
-mask_toml_env_section :: proc(content: string, allocator := context.allocator) -> string {
-	// Same parser as every reader, so the preview masks exactly the entries
-	// `const list` would show (quoted keys, multi-line values, CRLF, BOM).
-	arena: virtual.Arena
-	if virtual.arena_init_growing(&arena) != nil { return strings.clone(SECRET_MASK, allocator) }
-	defer virtual.arena_destroy(&arena)
-	scratch := virtual.arena_allocator(&arena)
-
-	doc, _ := toml_doc_parse_alloc(content, scratch)
-	lines := strings.split(content, "\n", scratch)
-	replace := make([]string, len(lines), scratch) // "" = keep the line
-	drop := make([]bool, len(lines), scratch)
-
-	mask_lines :: proc(replace: []string, drop: []bool, key: string, first, last: int, alloc: mem.Allocator) {
-		replace[first] = strings.concatenate({key, ` = "`, SECRET_MASK, `"`}, alloc)
-		for i in first + 1 ..= last { drop[i] = true }
-	}
-
-	for e in doc.entries {
-		if !toml_entry_in_section(&doc, e, "env") { continue }
-		name := toml_entry_name(e, scratch)
-		secret := false
-		if text, ok := toml_value_text(e.value); ok {
-			// Multi-line strings ("""…""" / '''…''') can't be judged from
-			// one line (PEM blocks, certs): always mask them in previews.
-			multiline := e.vstart >= 0 && (strings.has_prefix(content[e.vstart:], `"""`) || strings.has_prefix(content[e.vstart:], "'''"))
-			secret = multiline || (len(text) > 0 && looks_secret(name, text))
-		} else {
-			secret = looks_secret_name(name) // arrays / inline tables: by name
-		}
-		if secret {
-			mask_lines(replace, drop, toml_format_key(name, scratch), e.first, e.last, scratch)
-		}
-	}
-
-	// A broken multi-line value in [env] has no known end: mask its line and
-	// drop everything up to the next table header.
-	for err in doc.errors {
-		if !err.multiline { continue }
-		in_env := false
-		next := len(lines)
-		for h in doc.headers {
-			if h.line < err.stmt_line {
-				in_env = !h.invalid && !h.array && len(h.path) == 1 && h.path[0] == "env"
-			} else if h.line > err.stmt_line {
-				next = h.line
-				break
-			}
-		}
-		if !in_env { continue }
-		line := lines[err.stmt_line]
-		key := strings.trim_space(line[:max(strings.index_byte(line, '='), 0)])
-		mask_lines(replace, drop, key, err.stmt_line, next - 1, scratch)
-	}
-
-	b := strings.builder_make(0, len(content), allocator)
-	first := true
-	for line, i in lines {
-		if drop[i] { continue }
-		if !first { strings.write_byte(&b, '\n') }
-		first = false
-		strings.write_string(&b, replace[i] if len(replace[i]) > 0 else line)
-	}
-	return strings.to_string(b)
 }
