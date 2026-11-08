@@ -1,9 +1,0 @@
-[shell]
-type = "ZSH"
-
-[aliases]
-
-[env]
-
-[paths]
-tools = "@HOME@/tools"
