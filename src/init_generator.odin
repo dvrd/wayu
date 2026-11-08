@@ -869,15 +869,23 @@ generate_core_init_v2 :: proc() {
 		// fpath, so completions wayu adds/removes would never show up: when
 		// the completions dir changed after the dump was written, rebuild it
 		// (`-u`: no interactive compaudit prompt, as -C never audited).
+		// `-nt` compares whole seconds, so a completion added in the same
+		// second as the dump was missed (OKAMI-283): the file listing of the
+		// dir (a glob, no fork) is also compared with the one recorded in
+		// $dump.wayu when the dump was last rebuilt.
 		q := shell_double_quote_literal(completions_dir, context.temp_allocator)
 		fmt.sbprintfln(&builder, `fpath=(%s "${{fpath[@]}}")`, q)
 		fmt.sbprintln(&builder, `() {`)
 		fmt.sbprintln(&builder, `  emulate -L zsh`)
-		fmt.sbprintln(&builder, `  local dump="${ZDOTDIR:-$HOME}/.zcompdump"`)
+		fmt.sbprintln(&builder, `  local dump="${ZDOTDIR:-$HOME}/.zcompdump" seen=""`)
+		fmt.sbprintfln(&builder, `  local -a comps=( %s/*(N:t) )`, q)
+		fmt.sbprintln(&builder, `  local list="${(j:/:)comps}"`)
+		fmt.sbprintln(&builder, `  { read -r seen < "$dump.wayu" } 2>/dev/null`)
 		fmt.sbprintln(&builder, `  autoload -Uz compinit`)
-		fmt.sbprintfln(&builder, `  if [[ ! -s $dump || %s -nt $dump ]]; then`, q)
+		fmt.sbprintfln(&builder, `  if [[ ! -s $dump || %s -nt $dump || "$seen" != "$list" ]]; then`, q)
 		fmt.sbprintln(&builder, `    command rm -f -- "$dump" "$dump.zwc"`)
 		fmt.sbprintln(&builder, `    compinit -u -d "$dump"`)
+		fmt.sbprintln(&builder, `    { print -r -- "$list" >| "$dump.wayu" } 2>/dev/null`)
 		fmt.sbprintln(&builder, `  else`)
 		fmt.sbprintln(&builder, `    compinit -C -d "$dump"`)
 		fmt.sbprintln(&builder, `  fi`)

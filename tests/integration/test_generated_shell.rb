@@ -187,10 +187,13 @@ class GeneratedShellTest
     probe = "source '#{cfg}/init.zsh'; print -r -- \"${_comps[foocmd]-none}\""
     first, = Open3.capture3(env, 'zsh', '-f', '-c', probe)
     dump_ok = File.exist?("#{home}/.zcompdump")
-    sleep 1.1 # mtimes: the completions dir must be newer than the dump
     src = "#{home}/_foocmd"
     File.write(src, "#compdef foocmd\n_foocmd() { _files }\n")
     Open3.capture3(env, @wayu_bin, 'completions', 'add', 'foocmd', src)
+    # Same second as the dump (OKAMI-283): zsh's `-nt` compares whole
+    # seconds, so pin both mtimes to one second; the listing must still win.
+    t = File.mtime("#{home}/.zcompdump")
+    File.utime(t, t, "#{cfg}/completions")
     second, err, = Open3.capture3(env, 'zsh', '-f', '-c', probe)
     third, = Open3.capture3(env, 'zsh', '-f', '-c', probe)
     check('compdump', dump_ok && first.strip == 'none' && second.strip == '_foocmd' && third.strip == '_foocmd',

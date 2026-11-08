@@ -82,6 +82,13 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   were parse errors at every startup). Files without those extensions are
   still sourced by zsh and bash.
 
+**Completions (zsh)**
+- core.zsh also rebuilds `.zcompdump` when the list of files in the
+  completions dir changed, so a completion added in the same second as the
+  dump is no longer missed. The list seen at the last rebuild is kept in
+  `${ZDOTDIR:-$HOME}/.zcompdump.wayu`; the first shell after upgrading
+  rebuilds the dump once.
+
 **migrate --schema**
 - Values it can't convert exactly (multi-line `"""` strings, arrays, inline
   tables) in the rewritten sections are listed as `wayu.toml:N`; nothing is
