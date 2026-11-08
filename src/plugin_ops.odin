@@ -70,6 +70,9 @@ run_git_network :: proc(args: []string, default_timeout_ms: int, repo_dir := "")
 		result.stderr = fmt.aprintf(
 			"git timed out after %ds and was stopped (set WAYU_GIT_TIMEOUT=<seconds> to allow longer)",
 			timeout_ms / 1000)
+	} else if result.cancelled {
+		delete(result.stderr)
+		result.stderr = strings.clone("cancelled")
 	}
 	return result
 }

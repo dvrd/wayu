@@ -385,6 +385,12 @@ get_directory :: proc(file_path: string) -> string {
 
 // Print formatted error (simple version for backwards compatibility)
 print_error_simple :: proc(format: string, args: ..any) {
+	// The TUI (print_quiet) captures it for its notification instead of
+	// writing over the alternate screen.
+	if print_quiet {
+		print_error(format, ..args)
+		return
+	}
 	eprintf_color("%s%sERROR:%s ", BOLD, ERROR, RESET)
 	fmt.eprintfln(format, ..args)
 }

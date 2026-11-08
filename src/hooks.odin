@@ -124,8 +124,18 @@ execute_hook_ctx :: proc(hook_type: HookType, ctx: HookContext) {
 	// Execute via shell (fire and forget - don't block on output)
 	debug("Executing hook: %s", cmd)
 	hook_args := []string{"sh", "-c", cmd}
-	run_command(hook_args)  // Ignoring return value - hooks are best-effort
+	// Hooks are best-effort: the exit status is ignored. In the TUI a hook
+	// gets a deadline and can be cancelled (Esc / Ctrl+C) instead of
+	// freezing the screen.
+	if wayu.tui_mode {
+		r := run_command_timeout(hook_args, HOOK_TUI_TIMEOUT_MS)
+		command_result_destroy(&r)
+	} else {
+		run_command(hook_args)
+	}
 }
+
+HOOK_TUI_TIMEOUT_MS :: 30_000
 
 HOOK_ENV_PATH  :: "WAYU_HOOK_PATH"
 HOOK_ENV_NAME  :: "WAYU_HOOK_NAME"
