@@ -177,9 +177,10 @@ run :: proc(config: Build_Config, args: ..string) -> bool {
     return _run_odin("run", config, args)
 }
 
-// Build and run tests in an Odin package.
-test :: proc(config: Build_Config) -> bool {
-    return _run_odin("test", config)
+// Build and run tests in an Odin package. `opt` redirects the test process's
+// streams (e.g. stdout to a log so tested code can't write to the terminal).
+test :: proc(config: Build_Config, opt: Cmd_Run_Opt = {}) -> bool {
+    return _run_odin("test", config, nil, opt)
 }
 
 // Type-check an Odin package without building.
@@ -211,6 +212,7 @@ _run_odin :: proc(
     verb:   string,
     config: Build_Config,
     run_args: []string = nil,
+    run_opt: Cmd_Run_Opt = {},
 ) -> bool {
     if len(config.package_path) == 0 {
         log_error("Build_Config.package_path is required")
@@ -360,5 +362,5 @@ _run_odin :: proc(
         }
     }
 
-    return cmd_run(&cmd)
+    return cmd_run(&cmd, run_opt)
 }

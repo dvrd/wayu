@@ -73,7 +73,7 @@ chain_cmd :: proc(chain: ^Chain, cmd: ^Cmd, opt: Chain_Cmd_Opt = {}) -> bool {
             command = command,
             stdin   = chain.pipe_read,
             stdout  = w,
-            stderr  = chain.err2out ? w : nil,
+            stderr  = chain.err2out ? w : os.stderr,
         }
 
         if echo_actions do log_info("PIPE: %s", cmd_render(chain.pending))
@@ -149,8 +149,9 @@ chain_end :: proc(chain: ^Chain, opt: Chain_End_Opt = {}) -> bool {
     desc := os.Process_Desc{
         command = command,
         stdin   = chain.pipe_read,
-        stdout  = stdout_file,
-        stderr  = chain.err2out ? stdout_file : stderr_file,
+        // nil would shut the stream down; inherit ours unless redirected.
+        stdout  = stdout_file if stdout_file != nil else os.stdout,
+        stderr  = chain.err2out ? (stdout_file if stdout_file != nil else os.stdout) : (stderr_file if stderr_file != nil else os.stderr),
     }
 
     if echo_actions do log_info("PIPE: %s", cmd_render(chain.pending))
