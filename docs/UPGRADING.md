@@ -88,7 +88,19 @@ the same entries in `entries.json`, or no longer apply.
   `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/wayu-<uid>/` (running
   `wayu secrets cache` once when it is stale). Nothing changes for configs
   without secrets.
-- `wayu doctor` has a `secrets` check (an `info` row when there are none).
+- `wayu doctor` has a `secrets` check (an `info` row when there are none);
+  its message counts run-only secrets.
+- Run-only secrets: `wayu const add NAME [VALUE] --run-only` (implies
+  `--secret`) stores a secret that is never exported to shells (not in the
+  session cache, core, turbo or `export --eval`). `const list` shows it with
+  source `wayu (run-only)`, `--json` adds `"run_only": true`. Re-adding with
+  `--secret` / `--run-only` switches the mode.
+- New `wayu secrets run NAME... -- CMD [ARGS...]`: execs CMD (PATH lookup,
+  no shell) with those secrets added to the environment. Exit `64` without
+  `--`/names/CMD, `65` for an unknown name, `127` / `126` when CMD is not
+  found / not executable; otherwise CMD's own status.
+- `wayu secrets list` prints a mode column (`session` / `run-only`) after
+  each name.
 
 **`wayu build eval` removed; zsh PATH order restored after login**
 

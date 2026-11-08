@@ -26,6 +26,7 @@ AppContext :: struct {
 	json_output:    bool,
 	reveal_secrets: bool,    // --reveal: list views print secret-looking values unmasked
 	secret_flag:    bool,    // --secret: `const add` stores the value encrypted (secrets_store.odin)
+	run_only_flag:  bool,    // --run-only: that secret is only injected by `wayu secrets run`
 	source_filter:  string,
 	tui_mode:       bool,
 	temp_arena:     ^virtual.Arena,
@@ -77,6 +78,7 @@ Action :: enum {
 	DEDUP,
 	IMPORT,   // script import
 	BUILD,    // script build
+	RUN,      // secrets run
 	HELP,
 	UNKNOWN,
 }

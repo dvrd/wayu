@@ -321,9 +321,18 @@ secrets from a per-session cache in `$XDG_RUNTIME_DIR` / `$TMPDIR`
 wayu const add OPENAI_API_KEY --secret      # prompts, input hidden
 wayu const get OLD_TOKEN | wayu const add OLD_TOKEN --secret   # convert a plain one
 wayu const get OPENAI_API_KEY               # decrypts
-wayu secrets list                           # names only
+wayu secrets list                           # names and mode, never values
 wayu secrets rekey                          # new master key
 wayu secrets lock                           # drop the decrypted session cache
+```
+
+A **run-only** secret (`--run-only`) is never exported to your shells; only
+`wayu secrets run NAME... -- CMD` decrypts it, into that one command's
+environment (exec, no shell):
+
+```bash
+wayu const add GH_TOKEN --run-only
+wayu alias add gh 'wayu secrets run GH_TOKEN -- gh'
 ```
 
 See [docs/config-reference.md](docs/config-reference.md#secrets).

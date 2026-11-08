@@ -430,13 +430,18 @@ Encrypted constants (`wayu const add NAME [VALUE] --secret`) are kept in
 `<data>/secrets.json` (`0600`, managed by wayu, not for hand edits):
 
 ```json
-{"version": 1, "cipher": "chacha20poly1305", "values": {"NAME": "<base64 nonce||ciphertext||tag>"}}
+{"version": 1, "cipher": "chacha20poly1305", "values": {"NAME": "<base64 nonce||ciphertext||tag>"}, "run_only": ["NAME"]}
 ```
 
 Each value is encrypted with ChaCha20-Poly1305 under a 256-bit master key,
 with a random nonce and the variable name as associated data. In `entries.json` a
 secret is `{"name": "NAME", "secret": true}`, with no value, at its place
-in the constants' order. `backend` says where the master key lives:
+in the constants' order. A run-only secret (`--run-only`) is also listed in
+`run_only` (written only when non-empty) and marked `"run_only": true` in
+`entries.json`; it is never written to the session cache, so shells never
+export it, and only `wayu secrets run` decrypts it. The mark is part of the
+associated data (`NAME` + `\0run-only`), so removing it from `secrets.json`
+makes the value fail to decrypt rather than get exported. `backend` says where the master key lives:
 
 | `backend` | Key storage |
 |---|---|
@@ -462,7 +467,8 @@ literal: no `$VAR` or `~` expansion.
 
 Decrypted values are never written to `core.<ext>`, `path_sync.<ext>`,
 `turbo.<ext>`, backups or logs; only to the session cache and to the output
-of `wayu const get NAME`. `wayu doctor` checks the backend, the key, the
+of `wayu const get NAME` (and to the environment of `wayu secrets run`'s
+command). `wayu doctor` checks the backend, the key, the
 store's mode, that every secret decrypts, and the cache dir.
 
 ### Keys wayu does not read

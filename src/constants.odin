@@ -146,6 +146,8 @@ list_toml_constants :: proc() {
 	defer secrets_store_destroy(&secret_store)
 	secret_names := make([]string, len(secret_store.entries), context.temp_allocator)
 	for e, i in secret_store.entries { secret_names[i] = e.name }
+	run_only_set := make(map[string]bool, context.temp_allocator)
+	for e in secret_store.entries { if e.run_only { run_only_set[e.name] = true } }
 	// The entries.json markers of secrets carry no value: list them once,
 	// from secrets.json, below the plain constants.
 	{
@@ -197,7 +199,7 @@ list_toml_constants :: proc() {
 
 	// JSON first: an empty list is still a JSON document (OKAMI-239).
 	if wayu.json_output {
-		print_constants_json(entries[:], external_constants[:], secret_names)
+		print_constants_json(entries[:], external_constants[:], secret_names, run_only_set)
 		return
 	}
 
@@ -291,6 +293,7 @@ list_toml_constants :: proc() {
 			if !is_active && !show_inactive { continue }
 			if has_multiple_sources {
 				source := "wayu (secret)" if is_active else "wayu (secret, inactive)"
+				if name in run_only_set { source = "wayu (run-only)" }
 				table_add_row(&table, []string{name, SECRET_MASK, source})
 			} else {
 				table_add_row(&table, []string{name, SECRET_MASK})
@@ -326,7 +329,7 @@ list_toml_constants :: proc() {
 	}
 }
 
-print_constants_json :: proc(entries: []ConfigEntry, external_constants: []string, secret_names: []string = nil) {
+print_constants_json :: proc(entries: []ConfigEntry, external_constants: []string, secret_names: []string = nil, run_only_set: map[string]bool = nil) {
 	// Build wayu set for fast lookup
 	wayu_set := make(map[string]bool)
 	defer delete(wayu_set)
@@ -382,9 +385,11 @@ print_constants_json :: proc(entries: []ConfigEntry, external_constants: []strin
 			if is_active && !show_wayu { continue }
 			if !is_active && !show_inactive { continue }
 			source := "wayu" if is_active else "wayu (inactive)"
+			run_only := name in run_only_set
+			if run_only { source = "wayu (run-only)" }
 			if !first_entry { fmt.println(",") }
 			name_j := json_escape(name); defer delete(name_j)
-			fmt.printf("    %c\"constant\": \"%s\", \"secret\": true, \"source\": \"%s\"%c", '{', name_j, source, '}')
+			fmt.printf("    %c\"constant\": \"%s\", \"secret\": true, %s\"source\": \"%s\"%c", '{', name_j, "\"run_only\": true, " if run_only else "", source, '}')
 			first_entry = false
 		}
 	}

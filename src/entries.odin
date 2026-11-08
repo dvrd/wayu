@@ -52,11 +52,14 @@ StoreAlias :: struct {
 }
 
 // `secret` marks a constant whose value is kept encrypted outside this file
-// (no `value` here). Serialized only when true.
+// (no `value` here); `run_only` (with `secret`) marks one that is only
+// injected by `wayu secrets run`, never exported by the shell. Each is
+// serialized only when true.
 StoreEnv :: struct {
-	name:   string,
-	value:  string,
-	secret: bool,
+	name:     string,
+	value:    string,
+	secret:   bool,
+	run_only: bool,
 }
 
 EntryStore :: struct {
@@ -129,7 +132,7 @@ entries_parse :: proc(content: string) -> (store: EntryStore, err: string, ok: b
 	store.env = make([dynamic]StoreEnv, 0, len(raw.env))
 	for p in raw.paths { append(&store.paths, StorePath{strings.clone(p.key), strings.clone(p.dir)}) }
 	for a in raw.aliases { append(&store.aliases, StoreAlias{strings.clone(a.name), strings.clone(a.value)}) }
-	for e in raw.env { append(&store.env, StoreEnv{strings.clone(e.name), strings.clone(e.value), e.secret}) }
+	for e in raw.env { append(&store.env, StoreEnv{strings.clone(e.name), strings.clone(e.value), e.secret, e.secret && e.run_only}) }
 	return store, "", true
 }
 
@@ -215,6 +218,7 @@ entries_serialize :: proc(s: ^EntryStore) -> string {
 			strings.write_string(&b, "    {\"name\": "); q(&b, e.name)
 			if e.secret {
 				strings.write_string(&b, ", \"secret\": true")
+				if e.run_only { strings.write_string(&b, ", \"run_only\": true") }
 			} else {
 				strings.write_string(&b, ", \"value\": "); q(&b, e.value)
 			}
@@ -358,6 +362,7 @@ entries_kv_upsert :: proc(kind: EntryKind, name, value: string) -> (res: StoreEd
 			delete(store.env[idx].value)
 			store.env[idx].value = strings.clone(value)
 			store.env[idx].secret = false
+			store.env[idx].run_only = false
 		} else {
 			append(&store.env, StoreEnv{name = strings.clone(name), value = strings.clone(value)})
 		}

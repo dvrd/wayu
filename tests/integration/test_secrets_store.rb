@@ -59,6 +59,15 @@ class SecretsStoreIntegrationTest
       test_unsafe_key_file_refused
       test_bad_backend_rejected
       test_remove
+      test_run_only_add
+      test_run_only_never_exported
+      test_run_only_aad_bound
+      test_secrets_run_passes_vars
+      test_secrets_run_exit_status
+      test_secrets_run_exec_failures
+      test_secrets_run_usage
+      test_secrets_run_dry_run
+      test_run_only_convert
     ensure
       teardown_test_env
     end
@@ -160,9 +169,9 @@ class SecretsStoreIntegrationTest
   end
 
   def test_secrets_list_names
-    print 'Test 7: secrets list prints names only... '
+    print 'Test 7: secrets list prints names and mode only... '
     out, = w('secrets list')
-    check('list wrong', out.split("\n") == %w[FAKE_MULTI FAKE_TOKEN], out)
+    check('list wrong', out.split("\n").map(&:split) == [%w[FAKE_MULTI session], %w[FAKE_TOKEN session]], out)
   end
 
   def test_zsh_sources_cache
@@ -325,6 +334,102 @@ class SecretsStoreIntegrationTest
     out, = w('secrets list')
     _, _, gst = w('const get FAKE_TOKEN')
     check('not removed', st.success? && !out.include?('FAKE_TOKEN') && gst.exitstatus != 0, err)
+  end
+
+  RUN_ONLY = 'fake-run-only-0007'.freeze
+
+  def test_run_only_add
+    print 'Test 26: const add --run-only: marked in secrets.json, entries.json, list... '
+    _, err, st = w(['const', 'add', 'FAKE_RUN', RUN_ONLY, '--run-only'])
+    doc = JSON.parse(File.read(store))
+    marker = JSON.parse(File.read("#{@data_dir}/entries.json"))['env'].find { |e| e['name'] == 'FAKE_RUN' }
+    row = JSON.parse(w('const list --json')[0])['constants'].find { |c| c['constant'] == 'FAKE_RUN' }
+    text, = w('const list')
+    listed, = w('secrets list')
+    ok = st.success? && doc['run_only'] == ['FAKE_RUN'] &&
+         marker == { 'name' => 'FAKE_RUN', 'secret' => true, 'run_only' => true } &&
+         row && row['run_only'] == true && row['secret'] == true && !row.key?('value') && row['source'] == 'wayu (run-only)' &&
+         text.include?('wayu (run-only)') && listed.split("\n").map(&:split).include?(%w[FAKE_RUN run-only])
+    check('run-only not recorded', ok, err + listed)
+  end
+
+  def test_run_only_never_exported
+    print 'Test 27: run-only value never in cache, core, turbo, export --eval... '
+    w('export turbo')
+    out, = sh(['zsh', '-fc', "source #{@data_dir}/init.zsh; print -r -- \"[${FAKE_RUN-unset}] $FAKE_MULTI\""])
+    eval_out, = w('export --eval')
+    files = caches + Dir.glob("#{@data_dir}/{core,turbo}.*")
+    leaks = files.select { |f| s = File.binread(f); s.include?('FAKE_RUN') || s.include?('fake-run-only') }
+    ok = out.start_with?('[unset] fake-line-1') && caches.any? && leaks.empty? && !eval_out.include?('fake-run-only')
+    check('run-only leaked', ok, "out=#{out.inspect} leaks=#{leaks}")
+  end
+
+  def test_run_only_aad_bound
+    print 'Test 28: editing run_only away does not export it (AAD-bound)... '
+    saved = File.read(store)
+    doc = JSON.parse(saved)
+    doc.delete('run_only')
+    File.write(store, JSON.pretty_generate(doc))
+    _, err, st = w('secrets cache --shell zsh')
+    leaked = caches.any? { |f| File.binread(f).include?('fake-run-only') }
+    File.write(store, saved)
+    w('secrets lock')
+    check('flag edit exported the value', !st.success? && err.include?('FAKE_RUN') && !leaked, err)
+  end
+
+  def test_secrets_run_passes_vars
+    print 'Test 29: secrets run sets run-only and session secrets in the child only... '
+    _, err, st = w(['secrets', 'run', 'FAKE_RUN', 'FAKE_MULTI', '--', 'sh', '-c',
+                    "test \"$FAKE_RUN\" = '#{RUN_ONLY}' && test \"$FAKE_MULTI\" = \"$(printf 'fake-line-1\\nfake-line-2')\""])
+    _, _, st2 = w(['secrets', 'run', 'FAKE_RUN', '--', 'sh', '-c', 'test "$FAKE_RUN" = wrong'])
+    check('child did not get the values', st.success? && st2.exitstatus == 1, err)
+  end
+
+  def test_secrets_run_exit_status
+    print 'Test 30: secrets run passes the exit status through... '
+    _, _, st = w(['secrets', 'run', 'FAKE_RUN', '--', 'sh', '-c', 'exit 7'])
+    check('exit status lost', st.exitstatus == 7, st.inspect)
+  end
+
+  def test_secrets_run_exec_failures
+    print 'Test 31: secrets run: 127 not found, 126 not executable... '
+    noexec = "#{@tmp_home}/noexec.sh"
+    File.write(noexec, "#!/bin/sh\nexit 0\n")
+    File.chmod(0o644, noexec)
+    _, err1, st1 = w(['secrets', 'run', 'FAKE_RUN', '--', 'wayu-no-such-command-xyz'])
+    _, err2, st2 = w(['secrets', 'run', 'FAKE_RUN', '--', noexec])
+    ok = st1.exitstatus == 127 && st2.exitstatus == 126 && !(err1 + err2).include?('fake-run-only')
+    check('exec failure codes wrong', ok, "#{st1.exitstatus} #{st2.exitstatus} #{err1}#{err2}")
+  end
+
+  def test_secrets_run_usage
+    print 'Test 32: secrets run usage: no -- or no CMD 64, unknown name 65... '
+    _, _, a = w(['secrets', 'run', 'FAKE_RUN', 'true'])
+    _, _, b = w(['secrets', 'run', 'FAKE_RUN', '--'])
+    _, _, c = w(['secrets', 'run', '--', 'true'])
+    _, _, d = w(['secrets', 'run', 'NO_SUCH_SECRET', '--', 'true'])
+    codes = [a, b, c, d].map(&:exitstatus)
+    check('usage codes wrong', codes == [64, 64, 64, 65], codes.inspect)
+  end
+
+  def test_secrets_run_dry_run
+    print 'Test 33: secrets run --dry-run names the vars, runs nothing, no values... '
+    marker = "#{@tmp_home}/ran"
+    out, err, st = w(['secrets', 'run', 'FAKE_RUN', '--dry-run', '--', 'touch', marker])
+    ok = st.success? && !File.exist?(marker) && out.include?('FAKE_RUN') && out.include?('touch') && !(out + err).include?('fake-run-only')
+    check('dry-run wrong', ok, out + err)
+  end
+
+  def test_run_only_convert
+    print 'Test 34: re-adding with --secret makes it a session secret, and back... '
+    w(['const', 'add', 'FAKE_RUN', RUN_ONLY, '--secret'])
+    out, = sh(['zsh', '-fc', "source #{@data_dir}/init.zsh; [[ $FAKE_RUN == '#{RUN_ONLY}' ]] && print ok"])
+    doc1 = JSON.parse(File.read(store))
+    w(['const', 'add', 'FAKE_RUN', RUN_ONLY, '--run-only'])
+    out2, = sh(['zsh', '-fc', "source #{@data_dir}/init.zsh; print -r -- ${FAKE_RUN-unset}"])
+    got, = w('const get FAKE_RUN')
+    ok = out == "ok\n" && !doc1.key?('run_only') && out2 == "unset\n" && got.chomp == RUN_ONLY
+    check('conversion wrong', ok, "#{out.inspect} #{out2.inspect}")
   end
 end
 

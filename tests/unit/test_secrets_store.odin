@@ -219,3 +219,48 @@ test_secrets_cache_dir_check :: proc(t: ^testing.T) {
 	ok, msg = wayu.secrets_cache_dir_check(dir)
 	testing.expect(t, !ok && strings.contains(msg, "0700"), "a group-accessible dir must be refused")
 }
+
+@(test)
+test_secrets_run_only_storage :: proc(t: ^testing.T) {
+	// secrets.json: "run_only" lists the run-only names; parse restores the flag.
+	s: wayu.Secrets_Store
+	append(&s.entries, wayu.Secret_Entry{name = strings.clone("FAKE_B"), blob = strings.clone("eHl6"), run_only = true})
+	append(&s.entries, wayu.Secret_Entry{name = strings.clone("FAKE_A"), blob = strings.clone("YWJj")})
+	defer wayu.secrets_store_destroy(&s)
+	text := wayu.secrets_store_format(&s)
+	defer delete(text)
+	testing.expect(t, strings.contains(text, "  },\n  \"run_only\": [\"FAKE_B\"]\n}\n"), text)
+	back, err := wayu.secrets_store_parse(text)
+	defer wayu.secrets_store_destroy(&back)
+	testing.expect_value(t, err, "")
+	if len(back.entries) == 2 {
+		testing.expect(t, !back.entries[0].run_only && back.entries[1].run_only, "run_only flag lost")
+	}
+	testing.expect_value(t, wayu.secrets_session_count(&back), 1)
+
+	// The flag is bound into the AAD: flipping it fails decryption.
+	key := test_key(3)
+	blob := wayu.secrets_seal(key, "FAKE_B", "fake-v", run_only = true)
+	defer delete(blob)
+	_, ok := wayu.secrets_open(key, "FAKE_B", blob)
+	testing.expect(t, !ok, "run-only value must not decrypt as a session value")
+	v, ok2 := wayu.secrets_open(key, "FAKE_B", blob, run_only = true)
+	testing.expect(t, ok2 && v == "fake-v")
+	wayu.secrets_wipe(v)
+}
+
+@(test)
+test_entries_run_only_marker :: proc(t: ^testing.T) {
+	text := `{"version": 1, "env": [{"name": "FAKE_A", "secret": true, "run_only": true}, {"name": "FAKE_B", "secret": true}, {"name": "FAKE_C", "value": "x", "run_only": true}]}`
+	store, err, ok := wayu.entries_parse(text)
+	defer wayu.entries_store_destroy(&store)
+	testing.expectf(t, ok, "parse failed: %s", err)
+	if len(store.env) != 3 { return }
+	testing.expect(t, store.env[0].run_only && !store.env[1].run_only, "run_only read")
+	testing.expect(t, !store.env[2].run_only, "run_only without secret is ignored")
+	out := wayu.entries_serialize(&store)
+	defer delete(out)
+	testing.expect(t, strings.contains(out, `{"name": "FAKE_A", "secret": true, "run_only": true}`), out)
+	testing.expect(t, strings.contains(out, `{"name": "FAKE_B", "secret": true}`), out)
+	testing.expect(t, !strings.contains(out, `"FAKE_C", "value": "x", "run_only"`), out)
+}
