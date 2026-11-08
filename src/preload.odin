@@ -534,20 +534,6 @@ EXTRA_TEMPLATE_FISH :: `#!/usr/bin/env fish
 #   - Ad-hoc exports and settings
 `
 
-// Common configuration directory paths
-CONFIG_PATHS :: []string{
-	"/usr/local/bin",
-	"/usr/bin",
-	"/bin",
-	"/usr/sbin",
-	"/sbin",
-	"/opt/homebrew/bin",
-	"/opt/homebrew/sbin",
-	"$HOME/go/bin",
-	"$HOME/.local/bin",
-	"$HOME/.cargo/bin",
-}
-
 // Helper to initialize config files with templates if they don't exist
 init_config_file :: proc(file_path: string, template: string) -> bool {
 	// Check if file already exists
@@ -647,14 +633,4 @@ init_config_files :: proc() {
 	if !os.exists(extra_file) {
 		init_config_file(extra_file, get_extra_template(shell))
 	}
-}
-
-// Fast path lookup for common paths
-is_common_path :: proc(path: string) -> bool {
-	for common_path in CONFIG_PATHS {
-		if path == common_path {
-			return true
-		}
-	}
-	return false
 }

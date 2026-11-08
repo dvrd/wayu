@@ -76,24 +76,6 @@ table_border :: proc(table: ^Table, border: BorderStyle) -> ^Table {
 	return table
 }
 
-// Helper to recalculate column widths ensuring they fit all content
-recalculate_column_widths :: proc(table: ^Table) {
-	// Recalculate based on headers
-	for header, i in table.headers {
-		table.column_widths[i] = visual_width(header)
-	}
-
-	// Recalculate based on all rows
-	for row in table.rows {
-		for cell, i in row {
-			cell_width := visual_width(cell)
-			if cell_width > table.column_widths[i] {
-				table.column_widths[i] = cell_width
-			}
-		}
-	}
-}
-
 // Clamp column widths so the total table fits within max_width.
 // Strategy: shrink the widest columns first, keeping a minimum of 4 chars per column.
 clamp_table_widths :: proc(table: ^Table, max_width: int) {

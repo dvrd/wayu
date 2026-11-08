@@ -584,13 +584,6 @@ print_completions_help_extended :: proc() {
 	fmt.println("  wayu completions add jj /path/to/_jj")
 }
 
-// List existing completions (existing function wrapper)
-handle_completions_list :: proc() {
-	// Call original completions list
-	handle_completions_command(.LIST, nil)
-}
-COMPLETIONS_FILE :: "completions"
-
 // Returns the on-disk filename a completion should have for the current shell.
 //
 // If `name` already carries a conventional prefix/extension, keep it as-is
@@ -826,43 +819,6 @@ remove_completion :: proc(name: string) {
 	cleanup_old_backups(file_path, 5)
 
 	print_success("Removed completion: %s", completion_name)
-}
-
-// TUI-only: Interactive removal using fuzzy finder
-// This function is ONLY called from TUI bridge, never from CLI
-remove_completion_interactive :: proc() {
-	items := extract_completion_items()
-	defer {
-		for item in items {
-			delete(item)
-		}
-		delete(items)
-	}
-
-	if len(items) == 0 {
-		print_warning("No completions found to remove")
-		return
-	}
-
-	prompt_text := "Select completion to remove (Ctrl+C to cancel):"
-	if wayu.dry_run {
-		prompt_text = "Select completion to remove (DRY RUN - no changes will be made):"
-	}
-
-	prompt := fmt.aprintf(prompt_text)
-	defer delete(prompt)
-
-	selected, ok := interactive_fuzzy_select(items, prompt)
-	if !ok {
-		print_info("Operation cancelled")
-		return
-	}
-
-	// Clone before parent is freed
-	selected_copy := strings.clone(selected)
-	defer delete(selected_copy)
-
-	remove_completion(selected_copy)
 }
 
 // List all completions with metadata

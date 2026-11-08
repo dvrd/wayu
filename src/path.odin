@@ -369,19 +369,6 @@ path_values_equal :: proc(a, b: string) -> bool {
 // PATH-specific helpers
 // ============================================================================
 
-// Extract PATH items as a list of strings (for backward compatibility with old code)
-extract_path_items :: proc() -> []string {
-	entries := read_config_entries(&PATH_SPEC)
-	defer cleanup_entries(&entries)
-
-	items := make([]string, len(entries))
-	for entry, i in entries {
-		items[i] = strings.clone(entry.name)
-	}
-
-	return items
-}
-
 // is_env_var_char returns true for characters valid in a shell identifier:
 // A-Z, a-z, 0-9, underscore.
 @(private="file")
@@ -947,16 +934,6 @@ path_op_result :: proc(res: TomlEditResult) -> PathOpResult {
 	case .IO_ERROR:  return .IO_ERROR
 	}
 	return .IO_ERROR
-}
-
-// Remove a path. `target` matches against either a key (`local_bin`) or a
-// path value (`/usr/local/bin`). Key match is tried first, then an exact
-// value match, then a resolved match (`~/bin` removes a stored `$HOME/bin`).
-//
-// Compatibility wrapper: true only when an entry was (or, under --dry-run,
-// would be) removed.
-toml_path_remove :: proc(target: string) -> bool {
-	return toml_path_remove_result(target) == .OK
 }
 
 toml_path_remove_result :: proc(target: string) -> PathOpResult {

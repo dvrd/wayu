@@ -336,40 +336,6 @@ toml_parse_kv_line :: proc(line: string) -> (key: string, value: string, ok: boo
 	return key, value, true
 }
 
-// Return `content` with the entire `[section]` table removed (header + body),
-// preserving every other line verbatim. Single source of truth for the
-// section-rewrite used by alias + constant management.
-strip_toml_section :: proc(content: string, section: string) -> string {
-	builder := strings.builder_make(0, len(content))
-	defer strings.builder_destroy(&builder)
-
-	it := make_line_iter(content)
-	skip_section := false
-	first := true
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-
-		if toml_line_is_section(trimmed, section) {
-			skip_section = true
-			continue
-		}
-
-		if skip_section && strings.has_prefix(trimmed, "[") {
-			skip_section = false
-		}
-
-		if skip_section {
-			continue
-		}
-
-		if !first { strings.write_byte(&builder, '\n') }
-		strings.write_string(&builder, line)
-		first = false
-	}
-
-	return strings.clone(strings.to_string(builder))
-}
-
 // Read wayu.toml straight from disk (never the startup cache: a writer must
 // see what concurrent processes committed). Caller deletes.
 read_wayu_toml_fresh :: proc() -> (content: []byte, ok: bool) {

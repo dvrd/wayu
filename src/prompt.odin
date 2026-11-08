@@ -687,39 +687,6 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	return strings.clone(strings.to_string(builder))
 }
 
-// Para backward compatibility
-PromptConfig :: struct {
-	format:           string,
-	symbols_success:  string,
-	symbols_error:    string,
-	colors_directory: string,
-	colors_git_branch: string,
-	colors_symbol_success: string,
-	colors_symbol_error: string,
-}
-
-parse_prompt_config :: proc(toml_data: string) -> PromptConfig {
-	full := parse_full_prompt_config(toml_data)
-	
-	return PromptConfig{
-		format = full.format,
-		symbols_success = "➜",
-		symbols_error = "✗",
-		colors_directory = "cyan",
-		colors_git_branch = "magenta",
-		colors_symbol_success = "green",
-		colors_symbol_error = "red",
-	}
-}
-
-generate_native_prompt :: proc(config: PromptConfig) -> string {
-	full := PromptConfigFull{
-		format = config.format,
-		character_success = config.symbols_success,
-		character_error = config.symbols_error,
-	}
-	return generate_full_prompt(full)
-}
 InteractiveConfig :: struct {
 	// Toggle
 	toggle_key: string,

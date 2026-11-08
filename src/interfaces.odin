@@ -7,12 +7,6 @@
 package wayu
 import "core:strings"
 // ============================================================================
-// VERSION
-// ============================================================================
-
-INTERFACES_VERSION :: "1.0.0"
-
-// ============================================================================
 // LOCK FILE SYSTEM
 // ============================================================================
 
@@ -119,31 +113,6 @@ WayuSettings :: struct {
 }
 
 // Note: TOML operations (toml_parse, toml_validate, etc.) implemented in toml.odin
-
-// ============================================================================
-// OUTPUT FORMATS
-// ============================================================================
-
-OutputFormat :: enum {
-    Plain,
-    JSON,
-    YAML,
-}
-
-// Note: Output operations implemented in output.odin
-
-// ============================================================================
-// STATIC GENERATION
-// ============================================================================
-
-StaticConfig :: struct {
-    generated_at: string,
-    wayu_version: string,
-    shell:        string,
-    content:      string,           // Generated shell script
-}
-
-// Note: Static generation operations implemented in static_gen.odin
 
 // ============================================================================
 // HOT RELOAD

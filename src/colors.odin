@@ -329,50 +329,6 @@ strip_ansi_codes :: proc(text: string, newlines_to_space := false, allocator := 
 	return strings.clone(string(buf[:]), allocator)
 }
 
-// Strip ANSI codes from a string if in ASCII mode
-maybe_strip_ansi :: proc(text: string) -> string {
-	if CURRENT_COLOR_PROFILE != .ASCII {
-		return text
-	}
-	return strip_ansi_codes(text)
-}
-
-// Wrapper for fmt.printf that strips ANSI codes in ASCII mode
-fmt_printf :: proc(format: string, args: ..any) {
-	if CURRENT_COLOR_PROFILE == .ASCII {
-		text := fmt.tprintf(format, ..args)
-		stripped := maybe_strip_ansi(text)
-		defer delete(stripped)
-		fmt.printf(stripped)
-	} else {
-		fmt.printf(format, ..args)
-	}
-}
-
-// Wrapper for fmt.println that strips ANSI codes in ASCII mode
-fmt_println :: proc(args: ..any) {
-	if CURRENT_COLOR_PROFILE == .ASCII {
-		text := fmt.tprint(..args)
-		stripped := maybe_strip_ansi(text)
-		defer delete(stripped)
-		fmt.println(stripped)
-	} else {
-		fmt.println(..args)
-	}
-}
-
-// Wrapper for fmt.printfln that strips ANSI codes in ASCII mode
-fmt_printfln :: proc(format: string, args: ..any) {
-	if CURRENT_COLOR_PROFILE == .ASCII {
-		text := fmt.tprintf(format, ..args)
-		stripped := maybe_strip_ansi(text)
-		defer delete(stripped)
-		fmt.println(stripped)
-	} else {
-		fmt.printfln(format, ..args)
-	}
-}
-
 // Emojis
 EMOJI_SUCCESS   :: "✅"
 EMOJI_ERROR     :: "❌"

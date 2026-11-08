@@ -308,23 +308,6 @@ test_toml_profile_keys_survive_after_parse :: proc(t: ^testing.T) {
  testing.expect(t, found, "Profile map key should remain valid after parser arena is released")
 }
 
-// Regression: strip_toml_section must NOT prepend bytes to the output.
-// A prior bug used strings.builder_make(len(content)) which pre-filled the
-// builder with len(content) zero bytes, corrupting the head of wayu.toml on
-// every alias/constant write. Guard that the head byte stays '['.
-@(test)
-test_strip_toml_section_no_leading_padding :: proc(t: ^testing.T) {
- content := "[shell]\ntype = \"ZSH\"\n\n[env]\nFOO = \"bar\"\n"
- out := wayu.strip_toml_section(content, "env")
- defer delete(out)
-
- testing.expect(t, len(out) > 0, "stripped output should be non-empty")
- testing.expect(t, out[0] == '[', "stripped output must start with '[' (no padding)")
- testing.expect(t, strings.has_prefix(out, "[shell]"), "head section must be preserved verbatim")
- testing.expect(t, !strings.contains(out, "[env]"), "stripped section must be removed")
- testing.expect(t, !strings.contains_rune(out, rune(0)), "output must contain no NUL bytes")
-}
-
 // ---------------------------------------------------------------------------
 // Value / header parsing regressions (quote stripping, comments, UTF-8)
 // ---------------------------------------------------------------------------
@@ -391,15 +374,6 @@ test_toml_line_is_section_with_comment :: proc(t: ^testing.T) {
 	testing.expect(t, wayu.toml_line_is_section("[ env ]", "env"))
 	testing.expect(t, !wayu.toml_line_is_section("[[env]]", "env"))
 	testing.expect(t, !wayu.toml_line_is_section("[environment]", "env"))
-}
-
-@(test)
-test_strip_toml_section_header_with_comment :: proc(t: ^testing.T) {
-	content := "[aliases]  # c\nll = \"ls\"\n[env]\nA = \"1\"\n"
-	out := wayu.strip_toml_section(content, "aliases")
-	defer delete(out)
-	testing.expect(t, !strings.contains(out, "ll ="), "commented header must be recognised")
-	testing.expect(t, strings.contains(out, "[env]"))
 }
 
 // Regression: toml_parse used a fixed arena capped at 1MB, so a large

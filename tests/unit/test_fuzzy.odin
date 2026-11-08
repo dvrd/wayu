@@ -92,14 +92,6 @@ test_extract_alias_items :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_extract_path_items :: proc(t: ^testing.T) {
-	items := wayu.extract_path_items()
-	defer for item in items do delete(item)
-	defer delete(items)
-	testing.expect(t, len(items) >= 0, "Should return valid array")
-}
-
-@(test)
 test_extract_constant_items :: proc(t: ^testing.T) {
 	entries := wayu.read_config_entries(&wayu.CONSTANTS_SPEC)
 	defer {

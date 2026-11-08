@@ -59,30 +59,6 @@ test_get_shebang :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_shell_supports_arrays :: proc(t: ^testing.T) {
-	testing.expect_value(t, wayu.shell_supports_arrays(.BASH), true)
-	testing.expect_value(t, wayu.shell_supports_arrays(.ZSH), true)
-	testing.expect_value(t, wayu.shell_supports_arrays(.FISH), true)
-	testing.expect_value(t, wayu.shell_supports_arrays(.UNKNOWN), false)
-}
-
-@(test)
-test_shell_supports_completion :: proc(t: ^testing.T) {
-	testing.expect_value(t, wayu.shell_supports_completion(.BASH), true)
-	testing.expect_value(t, wayu.shell_supports_completion(.ZSH), true)
-	testing.expect_value(t, wayu.shell_supports_completion(.FISH), true)
-	testing.expect_value(t, wayu.shell_supports_completion(.UNKNOWN), false)
-}
-
-@(test)
-test_shell_supports_functions :: proc(t: ^testing.T) {
-	// All shells support functions
-	testing.expect_value(t, wayu.shell_supports_functions(.BASH), true)
-	testing.expect_value(t, wayu.shell_supports_functions(.ZSH), true)
-	testing.expect_value(t, wayu.shell_supports_functions(.UNKNOWN), true)
-}
-
-@(test)
 test_parse_shell_type :: proc(t: ^testing.T) {
 	bash_type := wayu.parse_shell_type("bash")
 	testing.expect_value(t, bash_type, wayu.ShellType.BASH)

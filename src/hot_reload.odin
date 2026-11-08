@@ -140,13 +140,6 @@ hot_reload_stop :: proc() {
 	print_success("Hot reload watcher stopped")
 }
 
-// Check if watcher is currently running
-hot_reload_is_running :: proc() -> bool {
-	sync.mutex_lock(&g_watcher.mutex)
-	defer sync.mutex_unlock(&g_watcher.mutex)
-	return g_watcher.watching
-}
-
 // Trigger manual regeneration
 hot_reload_regenerate :: proc() {
 	regenerate_static()
