@@ -199,13 +199,39 @@ wayu <command> <action> [arguments] [flags]
 | `--dry-run`, `-n` | Preview changes without applying |
 | `--yes`, `-y` | Skip confirmation prompts |
 | `--tui` | Launch interactive TUI |
-| `--json` | Machine-readable output (doctor, list, plugin list) |
+| `--json` | Machine-readable output (see [JSON output](#json-output)) |
 | `--source <filter>` | List filter: `all`, `wayu`, `external`, `inactive` |
 | `--reveal` | `const list` / `toml show`: show secret-looking values unmasked |
 | `--no-color` | Disable ANSI colors (equivalent to `NO_COLOR=1`) |
 | `--from <shell>` | Source shell for migration |
 | `--to <shell>` | Target shell for migration |
 | `-v`, `--version` | Show version |
+
+### JSON output
+
+`--json` is accepted by `path|alias|const|plugin|backup list`, `search` and
+`doctor`; anywhere else it exits `64`. Output is one JSON document on stdout
+(errors stay on stderr); an empty list is `[]`. The shapes below are
+checked by `tests/integration/test_cli_output.rb` — new keys may be added,
+existing ones keep their meaning.
+
+| Command | Document |
+|---------|----------|
+| `path list` | `{"paths": [{"path", "source", "exists": bool}]}` |
+| `alias list` | `{"aliases": [{"alias", "command", "source"}]}` |
+| `const list` | `{"constants": [{"constant", "value", "source"}]}` |
+| `plugin list` | `{"plugins": [{"name", "enabled": bool, "priority": int, "shell", "url", "commit", "installed_path", "conflicts": [{"kind", "name", "with"}]}], "count": int, "enabled": int}` |
+| `backup list` | `{"backups": [{"file", "count": int, "entries": [{"index": int, "timestamp", "size_bytes": int, "path", "pre_restore": bool}]}]}` |
+| `search QUERY` | `{"query", "results": [{"type", "name", "value", "match", "field", "score": int}], "count": int}` |
+| `doctor` | `{"checks": [{"name", "status", "message", "fixable": bool}], "summary": {"ok", "warnings", "errors", "info", "fixable"}}` |
+
+Unmarked fields are strings. `source` is `wayu`, `wayu (inactive)` (in
+wayu.toml but not in this shell's environment) or `external`; `--source`
+and `--full` filter rows, not the shape. `const list` masks secret-looking
+values as `********` unless `--reveal` is given. Plugin `shell` is
+`zsh|bash|both|fish|any`; a conflict's `kind` is `function|alias|env` and
+`with` is another plugin or `wayu.toml`. Doctor `status` is
+`ok|warning|error|info`; `backup list` `timestamp` is ISO 8601 UTC.
 
 ## Fuzzy Matching
 

@@ -220,7 +220,7 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 - `--version` / `-v`: prints `wayu vX.Y.Z`
 - `--no-color`: disables ANSI colors (equivalent to `NO_COLOR=1`)
 - `--yes` / `-y`: skip confirmation on destructive operations (required by: `path clean`, `path dedup`, `backup rm`, `plugin remove`, `doctor --fix`)
-- `--json`: machine-readable output (currently only `doctor` — expand to list commands)
+- `--json`: machine-readable output for `path|alias|const|plugin|backup list`, `search`, `doctor` (the `json` bit_set in `WAYU_COMMAND_SPECS`; elsewhere exit 64). Schemas are documented in README "JSON output" and pinned by `test_json_schema` in `tests/integration/test_cli_output.rb` — update both when a shape changes
 - `wayu doctor` exits `EXIT_CONFIG` (78) when any check reports an error, so it can gate CI
 - `--dry-run`: show what would happen without writing
 
