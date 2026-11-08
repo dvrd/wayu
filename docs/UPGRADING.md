@@ -74,6 +74,15 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - fish: `${NAME}`, a bare `$` or `$$` no longer make core.fish fail to parse
   (fish then loaded none of wayu's env, PATH or aliases). `${NAME:-x}` has no
   fish equivalent and is kept literal in fish.
+- zsh/bash: `${NAME<op>...}` expands only with `-` `=` `+` `?` (each also
+  with a leading `:`), `#`, `%` or `/` (e.g. `${X:-d}`, `${X#pre}`,
+  `${X/a/b}`); `${#NAME}` only without an operator. Everything else is now
+  literal, e.g. `${X@P}` (bash ≥ 4.4 ran a `$(...)` stored in X),
+  `${X[Y]}` / `${X:Y}` (bash evaluated Y arithmetically, running a
+  `$(...)` hidden in Y's value), `${X: -2}`, `${X^}` and zsh modifiers such
+  as `${HOME:h}` (zsh aborted core.zsh on an unknown modifier).
+- fish: `$NAME` followed by a non-ASCII letter (`$HOMEé`) no longer reads as
+  the longer variable name `HOMEé`.
 
 **functions/**
 - fish now sources `functions/*.fish` (core.fish never loaded them).
