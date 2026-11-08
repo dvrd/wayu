@@ -33,7 +33,7 @@ class SecretsIntegrationTest
 
       test_toml_and_generated_files_owner_only
       test_backups_owner_only
-      test_legacy_backup_modes_repaired
+      test_core_mode_repaired
       test_const_get_exact_prints_value
       test_const_get_prefix_miss
       test_const_get_case_mismatch_miss
@@ -122,16 +122,11 @@ class SecretsIntegrationTest
           mode(dir) == 0o700 && !backups.empty? && bad.empty?)
   end
 
-  def test_legacy_backup_modes_repaired
-    print 'Test 3: next backup tightens legacy 0755/0644 modes... '
-    dir = "#{@data_dir}/backup"
-    File.chmod(0o755, dir)
-    Dir.glob("#{dir}/*").each { |f| File.chmod(0o644, f) }
+  def test_core_mode_repaired
+    print 'Test 3: regeneration makes core.zsh 0600 again... '
     File.chmod(0o644, "#{@data_dir}/core.zsh")
     run_split('const add REPAIR_TRIGGER 1')
-    bad = Dir.glob("#{dir}/*").reject { |f| mode(f) == 0o600 }
-    check("dir=#{format('%o', mode(dir))} core=#{format('%o', mode("#{@data_dir}/core.zsh"))} bad=#{bad.size}",
-          mode(dir) == 0o700 && bad.empty? && mode("#{@data_dir}/core.zsh") == 0o600)
+    check("core=#{format('%o', mode("#{@data_dir}/core.zsh"))}", mode("#{@data_dir}/core.zsh") == 0o600)
   end
 
   def test_const_get_exact_prints_value

@@ -741,7 +741,7 @@ every shell initialized in the data dir.
 | `turbo.<ext>` | zsh/bash. Same content as `core.<ext>`, refreshed with it, only if it exists (created by `wayu export`). |
 | `plugins.<ext>` | Plugin loader, regenerated on any `plugin` change and by `wayu init`. |
 | `plugins/config.zsh` | `[settings] autosuggestions_accept_keys` bindings. |
-| `backup/` | Timestamped backups, 5 newest per file (see `wayu backup`). |
+| `backup/` | Timestamped backups `<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]` (UTC), 5 newest per file (see `wayu backup`). Files named otherwise are ignored. |
 
 Also `$WAYU_CONFIG_DIR/.wayu.lock` (lock shared by concurrent wayu commands)
 and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.

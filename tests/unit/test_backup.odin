@@ -58,23 +58,6 @@ test_create_backup_existing_file :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_parse_timestamp :: proc(t: ^testing.T) {
-	// Test timestamp parsing
-	timestamp_str := "1640995200" // 2022-01-01 00:00:00 UTC
-	parsed_time := wayu.parse_timestamp(timestamp_str)
-
-	// Check that it parsed to a reasonable time
-	unix_time := parsed_time._nsec / 1_000_000_000
-	testing.expect(t, unix_time == 1640995200, "Should parse timestamp correctly")
-
-	// Test invalid timestamp
-	invalid_timestamp := "abc123"
-	parsed_invalid := wayu.parse_timestamp(invalid_timestamp)
-	unix_invalid := parsed_invalid._nsec / 1_000_000_000
-	testing.expect(t, unix_invalid == 0, "Should handle invalid timestamp")
-}
-
-@(test)
 test_get_directory_path :: proc(t: ^testing.T) {
 	// Test directory path extraction
 	test_cases := []struct {
@@ -401,20 +384,26 @@ test_rapid_backups_are_unique :: proc(t: ^testing.T) {
 
 @(test)
 test_parse_backup_suffix_formats :: proc(t: ^testing.T) {
-	// Old second-resolution format still parses.
-	old := wayu.parse_timestamp("2026-01-09_19-45-30")
-	y, m, d := time.date(old)
-	testing.expect(t, y == 2026 && int(m) == 1 && d == 9, "old format date")
-
-	// New microsecond format orders after the old same-second name.
-	newer, seq0 := wayu.parse_backup_suffix("2026-01-09_19-45-30.000250")
-	testing.expect(t, time.diff(old, newer) > 0, "fractional part must be honoured")
+	base, seq0, ok0 := wayu.parse_backup_suffix("2026-01-09_19-45-30.000250")
+	testing.expect(t, ok0, "current format parses")
+	y, m, d := time.date(base)
+	testing.expect(t, y == 2026 && int(m) == 1 && d == 9, "date")
 	testing.expect_value(t, seq0, 0)
+	earlier, _, _ := wayu.parse_backup_suffix("2026-01-09_19-45-30.000249")
+	testing.expect(t, time.diff(earlier, base) > 0, "fractional part must be honoured")
 
 	// Collision sequence suffix.
-	same, seq := wayu.parse_backup_suffix("2026-01-09_19-45-30.000250-3")
-	testing.expect(t, time.diff(newer, same) == 0, "seq does not change time")
+	same, seq, ok := wayu.parse_backup_suffix("2026-01-09_19-45-30.000250-3")
+	testing.expect(t, ok)
+	testing.expect(t, time.diff(base, same) == 0, "seq does not change time")
 	testing.expect_value(t, seq, 3)
+
+	// Anything else is not a wayu backup (second resolution, unix seconds,
+	// garbage, a bad sequence).
+	for bad in ([]string{"2026-01-09_19-45-30", "1640995200", "abc123", "2026-01-09_19-45-30.000250-", "2026-01-09_19-45-30.000250x"}) {
+		_, _, bad_ok := wayu.parse_backup_suffix(bad)
+		testing.expectf(t, !bad_ok, "%q must not parse", bad)
+	}
 }
 
 // Regression (#2): restore must refuse a corrupt wayu.toml backup and must
