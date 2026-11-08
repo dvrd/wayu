@@ -107,7 +107,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/path.odin` | PATH management — TOML-native via handle_toml_entry_command |
 | `src/alias.odin` | Alias management + alias sources |
 | `src/constants.odin` | Environment constant management |
-| `src/config_entry.odin` | Generic config entry system: read/write, specs, entry types, path keys, schema check |
+| `src/config_entry.odin` | Generic config entry system: read/write, specs, entry types, path keys |
 | `src/config_specs.odin` | ConfigEntrySpec per type (PATH, ALIAS, CONSTANTS) |
 | `src/toml.odin` | TOML config mapping, line-level table editor, `wayu toml` commands |
 | `src/toml_parse.odin` | The one TOML parser (error recovery, file order, line spans) — every wayu.toml reader uses it |
@@ -142,7 +142,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/tui_io.odin` | TUI terminal I/O: raw mode, input, screen buffer, events, colors, layout, components |
 | `src/prompt.odin` | Native zsh prompt (opt-in: `[prompt] enabled = true`) + vi-mode; values escaped |
 | `src/fuzzy.odin` | Fuzzy matching, interactive terminal selection, completions extraction |
-| `src/interfaces.odin` | Shared types (LockFile, TomlConfig, etc.), exit codes, debug |
+| `src/interfaces.odin` | Shared types (TomlConfig, etc.), exit codes, debug |
 | `src/colors.odin` | ANSI color profiles + output helpers |
 | `src/style.odin` | TUI styling: render pipeline, text styling, unicode width utilities |
 
@@ -210,7 +210,7 @@ Code the TUI can reach (config readers, locks) exits with `wayu_exit(code)`, whi
 tests/
 ├── unit/          # Odin unit tests, one file per module (test_cli_doc.odin checks docs/cli.md against WAYU_COMMAND_SPECS)
 ├── golden/        # Component goldens + cases.txt (checked by integration/test_golden.rb)
-├── integration/   # Ruby, end-to-end CLI behavior (run_all.rb; fixtures/upgrade = old releases' config dirs; test_exit_codes.rb runs docs/cli.md's exit code table)
+├── integration/   # Ruby, end-to-end CLI behavior (run_all.rb; fixtures/init-prev.zsh = previous release's init.zsh; test_exit_codes.rb runs docs/cli.md's exit code table)
 ├── tui/           # TUI tests (Python/pyte: test_responsive.py) + gen_rune_width.py
 └── benchmark/     # startup.sh: shell startup timing (hyperfine)
 ```

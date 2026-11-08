@@ -6,6 +6,54 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**Removed: backward compatibility**
+
+wayu now reads only the current formats: `wayu.toml` (`[shell]`, `[paths]`,
+`[aliases]`, `[env]`, …), `plugins.json`, `hooks.conf`,
+`functions/<name>.<ext>`, `extra.<ext>` and the files the current generator
+writes. Configs left by older releases are not converted or tolerated any
+more. Upgrade from the previous release only.
+
+- `wayu migrate` (legacy shell files → wayu.toml, `--schema`, `--from/--to`)
+  and `wayu toml convert` are removed (exit `64`). Use
+  `wayu --shell <shell> init` to set up another shell. `wayu build` without a
+  `wayu.toml` exits `78`.
+- The 3.x `[[paths]]` / `[[aliases]]` / `[[constants]]` schema is no longer
+  detected: no exit `78` with a migration hint, no backup-restore refusal.
+  `toml validate` rejects it (exit `65`) and `doctor` reports an error.
+- `path.<ext>`, `aliases.<ext>` and `constants.<ext>` are neither created by
+  `wayu init` nor read: `init.<ext>` sources only `core.<ext>` (and prints a
+  `wayu build` hint when it is missing), `core.<ext>` no longer sources
+  `path.<ext>`, `wayu watch` no longer watches them, and the TUI/search read
+  `wayu.toml` only.
+- Only an untouched `init.<ext>` from the previous release is refreshed; an
+  older one is treated as edited (kept, with a warning): move it aside and
+  run `wayu init`. Leftover `lazy`, `login` and `helpers.<ext>` files are no
+  longer deleted.
+- `plugins.conf` is ignored (no migration to `plugins.json`). Enum values in
+  `plugins.json` must be names (`"zsh"`, `"source"`); numbers fail to load
+  (exit `78`). The unused `entry_file` and `profiles` fields are no longer
+  written.
+- Backups are listed, restored and pruned only under the current name
+  (`<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]`); older names are ignored.
+  A backup dir left group/world-readable by an old release is no longer
+  tightened (new backups are still `0600` in a `0700` dir).
+- Keys wayu never read are no longer parsed: `wayu_version`, `[settings]`
+  `auto_backup` / `fuzzy_fallback` / `dry_run_default`, `[path]`
+  `dedup` / `clean`, `[[plugins]]`, `[profile.*]`,
+  `[prompt.username] style_user`, `[prompt.interactive] async_interval`.
+  `toml validate` prints a warning per unknown key or table, with its line,
+  and still exits `0`; a known table in the wrong shape (`[[paths]]`,
+  `paths = …`) is an error (exit `65`). `doctor` warns about unknown keys.
+- A top-level `shell = "…"` in wayu.toml is not read; use `[shell] type`.
+- `functions/`: zsh sources only `*.zsh`, bash only `*.bash` (fish already
+  `*.fish`); files without that extension are no longer sourced. Functions
+  under the old `~/.local/share/wayu/functions` are no longer copied over.
+
+Notes further down this section about `wayu migrate`, the `[[paths]]`
+refusal, `plugins.conf` or the legacy shell files describe changes made
+before these features were removed; they no longer apply.
+
 **Unknown actions, `wayu toml`**
 
 - `wayu toml` with no action validates wayu.toml (same as `toml validate`,
