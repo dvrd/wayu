@@ -6,6 +6,25 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**[env] values (generated core.zsh / core.bash / core.fish)**
+- Only named variables expand: `$NAME`, `${NAME}` and `${NAME...}` /
+  `${#NAME}` with a closing `}` (zsh/bash; e.g. `${X:-default}`). Every other
+  `$` is now literal: `$1`, `$$`, `$?`, a trailing `$`, `$%`, an unclosed
+  `${` (was a syntax error that dropped the whole core file) and zsh flags
+  like `${(e)...}` (which evaluated the text, running commands).
+- zsh: `$NAME` is emitted as `${NAME}`, so `$HOME:h…` / `$HOME[1]` are no
+  longer zsh modifiers/subscripts — zsh now gives the same value as bash.
+- fish: `${NAME}`, a bare `$` or `$$` no longer make core.fish fail to parse
+  (fish then loaded none of wayu's env, PATH or aliases). `${NAME:-x}` has no
+  fish equivalent and is kept literal in fish.
+
+**functions/**
+- fish now sources `functions/*.fish` (core.fish never loaded them).
+- zsh no longer sources `functions/*.bash` / `*.fish`, bash no longer sources
+  `functions/*.zsh` / `*.fish` (other shells' files from `wayu function add`
+  were parse errors at every startup). Files without those extensions are
+  still sourced by zsh and bash.
+
 **doctor**
 - `doctor --json` (and `--json doctor`) prints JSON; `--json --fix` exits `64`.
 - `doctor` exits `78` when any check reports an error (also with `--json`).

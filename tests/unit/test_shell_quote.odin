@@ -18,10 +18,50 @@ test_shell_single_quote :: proc(t: ^testing.T) {
 
 @(test)
 test_shell_double_quote_env :: proc(t: ^testing.T) {
-	testing.expect_value(t, wayu.shell_double_quote_env("$HOME/go", context.temp_allocator), `"$HOME/go"`)
+	testing.expect_value(t, wayu.shell_double_quote_env("$HOME/go", context.temp_allocator), `"${HOME}/go"`)
 	testing.expect_value(t, wayu.shell_double_quote_env(`a"b\c`, context.temp_allocator), `"a\"b\\c"`)
 	testing.expect_value(t, wayu.shell_double_quote_env("x`id`$(id)${HOME}", context.temp_allocator), "\"x\\`id\\`\\$(id)${HOME}\"")
 	testing.expect_value(t, wayu.shell_double_quote_env("héllo ✓", context.temp_allocator), `"héllo ✓"`)
+}
+
+// Only named-variable references expand; anything that used to break the
+// generated file (unclosed `${`) or run code (zsh `${(e)...}`) is literal.
+@(test)
+test_shell_double_quote_env_dollar_forms :: proc(t: ^testing.T) {
+	Case :: struct { src, want: string }
+	cases := []Case{
+		{`pa${ss`, `"pa\${ss"`},                          // unclosed: was a syntax error
+		{`${(e):-$(id)}`, `"\${(e):-\$(id)}"`},            // zsh flag: evaluated its text
+		{`a${1abc}`, `"a\${1abc}"`},                       // zsh: bad substitution aborted core
+		{`$HOME:h[1]`, `"${HOME}:h[1]"`},                  // no zsh modifier / subscript
+		{`a$1$$b$`, `"a\$1\$${b}\$"`},                     // positional/special/trailing
+		{`${X:-$(id)}`, `"${X:-\$(id)}"`},                 // default kept, body escaped
+		{`${A:-${B}}/x`, `"${A:-${B}}/x"`},                // nested
+		{`${#HOME}`, `"${#HOME}"`},
+		{`a$%b`, `"a\$%b"`},
+	}
+	for c in cases {
+		got := wayu.shell_double_quote_env(c.src, context.temp_allocator)
+		testing.expectf(t, got == c.want, "shell_double_quote_env(%q) = %s, want %s", c.src, got, c.want)
+	}
+}
+
+@(test)
+test_fish_double_quote_env_dollar_forms :: proc(t: ^testing.T) {
+	Case :: struct { src, want: string }
+	cases := []Case{
+		{`${HOME}/go`, `"$HOME/go"`},          // fish rejects ${ at parse time
+		{`$HOME[1]x`, `"$HOME""[1]x"`},        // no fish index
+		{`${HOME}bin`, `"$HOME""bin"`},        // no longer name
+		{`pa${ss`, `"pa\${ss"`},
+		{`a$`, `"a\$"`},
+		{`$$x$1`, `"\$$x\$1"`},
+		{`${X:-y}`, `"\${X:-y}"`},             // no fish equivalent: literal
+	}
+	for c in cases {
+		got := wayu.fish_double_quote_env(c.src, context.temp_allocator)
+		testing.expectf(t, got == c.want, "fish_double_quote_env(%q) = %s, want %s", c.src, got, c.want)
+	}
 }
 
 @(test)

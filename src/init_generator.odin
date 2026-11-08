@@ -66,8 +66,15 @@ get_cached_toml_content :: proc() -> (string, bool) {
 	config_path := fmt.aprintf("%s/wayu.toml", wayu.config)
 	defer delete(config_path)
 
-	raw, ok := safe_read_file(config_path)
 	TOML_CONTENT_CACHE.loaded = true
+	// A missing wayu.toml is a normal state here (main pre-warms this cache
+	// before `wayu init` creates it); safe_read_file would print
+	// "ERROR: File not found" for it. Callers that require the file report
+	// it themselves (check_wayu_initialized).
+	if !os.exists(config_path) {
+		return "", false
+	}
+	raw, ok := safe_read_file(config_path)
 	if !ok {
 		return "", false
 	}
@@ -441,14 +448,18 @@ emit_path_export :: proc(b: ^strings.Builder, sep: string = "\n") -> bool {
 // zsh: the glob runs in an anonymous function under `emulate -L zsh` so the
 // user's NO_BARE_GLOB_QUAL / NO_GLOB / KSH_ARRAYS can't break it (OKAMI-224);
 // the files are sourced outside it so they run with the user's own options.
+// `wayu function add` writes functions/<name>.<ext> per shell, so files of
+// the other shells (*.zsh / *.bash / *.fish) are skipped: zsh sourcing a
+// .fish function was a parse error at every startup. Other files (no
+// extension, .sh) are still sourced by zsh and bash.
 emit_functions_loader :: proc(b: ^strings.Builder) {
 	dir := shell_double_quote_literal(fmt.tprintf("%s/functions", wayu.config), context.temp_allocator)
 	if wayu.shell == .ZSH {
-		fmt.sbprintfln(b, `() {{ emulate -L zsh; typeset -ga _wayu_fn_files; _wayu_fn_files=( %s/*(N-.) ) }}`, dir)
+		fmt.sbprintfln(b, `() {{ emulate -L zsh -o extended_glob; typeset -ga _wayu_fn_files; _wayu_fn_files=( %s/^*.(bash|fish)(N-.) ) }}`, dir)
 		fmt.sbprintln(b, `for _wayu_f in "${_wayu_fn_files[@]}"; do source "$_wayu_f"; done`)
 		fmt.sbprintln(b, `unset _wayu_f _wayu_fn_files`)
 	} else {
-		fmt.sbprintfln(b, `if [ -d %s ]; then for f in %s/*; do if [ -f "$f" ]; then source "$f"; fi; done; fi`, dir, dir)
+		fmt.sbprintfln(b, `if [ -d %s ]; then for f in %s/*; do case "$f" in *.zsh|*.fish) ;; *) if [ -f "$f" ]; then source "$f"; fi ;; esac; done; fi`, dir, dir)
 	}
 }
 
@@ -1933,6 +1944,15 @@ generate_core_init_fish :: proc() {
 		}
 		fmt.sbprintfln(&builder, `alias %s %s`, a.name, escape_fish_string(a.command, context.temp_allocator))
 	}
+	fmt.sbprintln(&builder)
+
+	// User functions (`wayu function add` writes functions/<name>.fish),
+	// same as zsh/bash core. A glob with no match is not an error in `for`.
+	fmt.sbprintln(&builder, "# === Functions ===")
+	fmt.sbprintfln(&builder, `for _wayu_f in %s/*.fish`, escape_fish_string(fmt.tprintf("%s/functions", wayu.config), context.temp_allocator))
+	fmt.sbprintln(&builder, `    test -f $_wayu_f; and source $_wayu_f`)
+	fmt.sbprintln(&builder, "end")
+	fmt.sbprintln(&builder, "set -e _wayu_f")
 	fmt.sbprintln(&builder)
 
 	// Completions directory

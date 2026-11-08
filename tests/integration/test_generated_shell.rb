@@ -45,6 +45,8 @@ class GeneratedShellTest
       test_nvm_default_resolution
       test_nvmrc_resolution
       test_compinit_picks_up_new_completions
+      test_env_values_and_functions_all_shells
+      test_fresh_init_has_no_error_output
     ensure
       teardown_test_env
     end
@@ -193,6 +195,79 @@ class GeneratedShellTest
     third, = Open3.capture3(env, 'zsh', '-f', '-c', probe)
     check('compdump', dump_ok && first.strip == 'none' && second.strip == '_foocmd' && third.strip == '_foocmd',
           "dump=#{dump_ok} first=#{first.strip} second=#{second.strip} third=#{third.strip} err=#{err.strip[0, 200]}")
+  end
+
+  # [env] values that used to break a whole generated file: an unclosed `${`
+  # (zsh/bash syntax error), `${VAR}` / a bare `$` (fish parse error), zsh
+  # `${(e)...}` (ran commands), `$X:h` (zsh modifier). Every shell must
+  # source core cleanly, keep later entries and agree on the values.
+  # functions/<name>.<ext> is loaded by its own shell only (fish loads them
+  # too; zsh used to source .fish files and fail).
+  ENV_TOML = <<~'TOML'
+    [paths]
+    gobin = "$FZ_GO/bin"
+
+    [env]
+    FZ_GO = "${HOME}/go"
+    FZ_PW = 'pa${ss'
+    FZ_EFLAG = '${(e):-$(echo PWNED)}'
+    FZ_POS = 'a$1$'
+    FZ_MOD = '$HOME:hello'
+    FZ_PCT = 'a$%b'
+    FZ_LAST = "ok"
+  TOML
+
+  def test_env_values_and_functions_all_shells
+    fish = %w[/opt/homebrew/bin/fish /usr/local/bin/fish /usr/bin/fish].find { |f| File.executable?(f) }
+    shells = %w[zsh bash] + (fish ? ['fish'] : [])
+    home = "#{@tmp_home}/env_values"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/go/bin"])
+    env = { 'HOME' => home, 'SHELL' => '/bin/zsh', 'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin', 'ZDOTDIR' => nil,
+            'WAYU_CONFIG' => nil, 'XDG_CONFIG_HOME' => nil, 'XDG_DATA_HOME' => nil }
+    shells.each { |s| Open3.capture3(env, @wayu_bin, 'init', '--shell', s) }
+    cfg = "#{home}/.config/wayu"
+    File.write("#{cfg}/wayu.toml", ENV_TOML)
+    FileUtils.mkdir_p("#{cfg}/functions")
+    File.write("#{cfg}/functions/fzfn.zsh", "fzfn() { echo fn-zsh; }\n")
+    File.write("#{cfg}/functions/fzfn.bash", "fzfn() { echo fn-bash; }\n")
+    File.write("#{cfg}/functions/fzfn.fish", "function fzfn; echo fn-fish; end\n")
+    Open3.capture3(env, @wayu_bin, 'build')
+    want_env = "FZ_GO=#{home}/go FZ_PW=pa${ss FZ_EFLAG=${(e):-$(echo PWNED)} FZ_POS=a$1$ " \
+               "FZ_MOD=#{home}:hello FZ_PCT=a$%b FZ_LAST=ok"
+    vars = %w[FZ_GO FZ_PW FZ_EFLAG FZ_POS FZ_MOD FZ_PCT FZ_LAST]
+    shells.each do |sh|
+      print "Test: tricky [env] values + functions/ load cleanly in #{sh}... "
+      exe = sh == 'fish' ? fish : sh
+      syntax = Dir.glob("#{cfg}/*.#{sh}").reject { |f| Open3.capture3(exe, '-n', f)[2].success? }
+      probe = if sh == 'fish'
+                "source '#{cfg}/init.fish'; for v in #{vars.join(' ')}; printf '%s=%s ' $v \"$$v\"; end; " \
+                "echo; fzfn; contains -- '#{home}/go/bin' $PATH; and echo path-ok"
+              else
+                "source '#{cfg}/init.#{sh}'; for v in #{vars.join(' ')}; do printf '%s=%s ' \"$v\" \"$(printenv \"$v\")\"; done; " \
+                "echo; fzfn; case \":$PATH:\" in *':#{home}/go/bin:'*) echo path-ok ;; esac"
+              end
+      args = { 'zsh' => ['-f', '-c'], 'bash' => ['--norc', '-c'], 'fish' => ['--no-config', '-c'] }[sh]
+      out, err, st = Open3.capture3(env, exe, *args, probe)
+      lines = out.lines.map(&:strip)
+      ok = syntax.empty? && st.success? && err.strip.empty? &&
+           lines == [want_env, "fn-#{sh}", 'path-ok']
+      check("env #{sh}", ok, "syntax=#{syntax.map { |f| File.basename(f) }} out=#{out.inspect} err=#{err.strip[0, 400]}")
+    end
+  end
+
+  # `wayu init` on a fresh HOME used to print "ERROR: File not found:
+  # .../wayu.toml" (startup pre-read of the not-yet-created file).
+  def test_fresh_init_has_no_error_output
+    print "Test: wayu init on a fresh HOME writes nothing to stderr... "
+    home = "#{@tmp_home}/fresh_init"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(home)
+    env = { 'HOME' => home, 'SHELL' => '/bin/zsh', 'ZDOTDIR' => nil, 'WAYU_CONFIG' => nil,
+            'XDG_CONFIG_HOME' => nil, 'XDG_DATA_HOME' => nil }
+    _, err, st = Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    check('fresh init', st.success? && err.strip.empty? && File.exist?("#{home}/.config/wayu/wayu.toml"),
+          "exit=#{st.exitstatus} err=#{err.strip[0, 300]}")
   end
 end
 

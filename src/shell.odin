@@ -327,26 +327,97 @@ shell_single_quote :: proc(s: string, allocator := context.allocator) -> string 
 
 // Double-quote an env value for zsh/bash keeping `$VAR` / `${VAR}` expansion.
 // See the policy comment above for what gets escaped and why.
+//
+// Only references to named variables expand: `$NAME` (emitted as `${NAME}`
+// so zsh never reads a following `:x` / `[i]` as a modifier / subscript) and
+// `${NAME...}` / `${#NAME}` with a matching `}` (its body is escaped the same
+// way, so `${X:-$(cmd)}` stays inert). Every other `$` is literal: `$(`,
+// `$1`, `$$`, a trailing `$`, an unclosed `${` (a syntax error that used to
+// break the whole generated file) and zsh flags such as `${(e)...}` (which
+// would evaluate its text, running commands).
 shell_double_quote_env :: proc(s: string, allocator := context.allocator) -> string {
     sb := strings.builder_make(allocator)
     strings.write_byte(&sb, '"')
-    for i in 0..<len(s) {
+    write_env_dq_body(&sb, s)
+    strings.write_byte(&sb, '"')
+    return strings.to_string(sb)
+}
+
+@(private = "file")
+write_env_dq_body :: proc(sb: ^strings.Builder, s: string) {
+    i := 0
+    for i < len(s) {
         c := s[i]
         switch c {
         case '"', '\\', '`':
-            strings.write_byte(&sb, '\\')
-            strings.write_byte(&sb, c)
+            strings.write_byte(sb, '\\')
+            strings.write_byte(sb, c)
+            i += 1
+            continue
         case '$':
-            if i + 1 < len(s) && s[i+1] == '(' {
-                strings.write_byte(&sb, '\\')
+            if n := var_name_prefix_len(s[i+1:]); n > 0 {
+                strings.write_string(sb, "${")
+                strings.write_string(sb, s[i+1:i+1+n])
+                strings.write_byte(sb, '}')
+                i += 1 + n
+                continue
             }
-            strings.write_byte(&sb, c)
-        case:
-            strings.write_byte(&sb, c)
+            if i + 1 < len(s) && s[i+1] == '{' {
+                inner := s[i+2:]
+                lead := 1 if len(inner) > 0 && inner[0] == '#' else 0
+                n := var_name_prefix_len(inner[lead:])
+                close := matching_brace(inner)
+                if n > 0 && close >= lead + n {
+                    strings.write_string(sb, "${")
+                    strings.write_string(sb, inner[:lead+n])
+                    write_env_dq_body(sb, inner[lead+n:close])
+                    strings.write_byte(sb, '}')
+                    i += 2 + close + 1
+                    continue
+                }
+            }
+            strings.write_string(sb, `\$`)
+            i += 1
+            continue
+        }
+        strings.write_byte(sb, c)
+        i += 1
+    }
+}
+
+// Length of the variable name ([A-Za-z_][A-Za-z0-9_]*) at the start of s, or 0.
+var_name_prefix_len :: proc(s: string) -> int {
+    n := 0
+    for n < len(s) {
+        c := s[n]
+        alpha := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+        digit := c >= '0' && c <= '9'
+        if !alpha && !(digit && n > 0) { break }
+        n += 1
+    }
+    return n
+}
+
+// Index in s (the text after a `${`) of the `}` closing it, counting nested
+// `${`; a backslash skips the next byte. -1 when unbalanced.
+@(private = "file")
+matching_brace :: proc(s: string) -> int {
+    depth := 0
+    for j := 0; j < len(s); j += 1 {
+        switch s[j] {
+        case '\\':
+            j += 1
+        case '$':
+            if j + 1 < len(s) && s[j+1] == '{' {
+                depth += 1
+                j += 1
+            }
+        case '}':
+            if depth == 0 { return j }
+            depth -= 1
         }
     }
-    strings.write_byte(&sb, '"')
-    return strings.to_string(sb)
+    return -1
 }
 
 // Double-quote a fully literal value for zsh/bash (no expansion of any kind).
@@ -366,25 +437,46 @@ shell_double_quote_literal :: proc(s: string, allocator := context.allocator) ->
 }
 
 // Double-quote an env value for fish keeping `$VAR` expansion. Inside fish
-// double quotes only `\"`, `\$`, `\\` are escapes; `$(` is command
-// substitution since fish 3.4, so it is neutralised like in bash/zsh.
+// double quotes only `\"`, `\$`, `\\` are escapes. `$NAME` and `${NAME}`
+// expand (as `$NAME`, followed by `""` when a name character or `[` comes
+// next, so fish doesn't read a longer name or an index). Every other `$` is
+// literal: fish rejects `${`, `$$`, `$1`, a trailing `$` … at parse time,
+// which used to make the whole core.fish fail to load, and `$(` is command
+// substitution since fish 3.4. `${NAME:-x}` has no fish equivalent: literal.
 fish_double_quote_env :: proc(s: string, allocator := context.allocator) -> string {
     sb := strings.builder_make(allocator)
     strings.write_byte(&sb, '"')
-    for i in 0..<len(s) {
+    i := 0
+    for i < len(s) {
         c := s[i]
         switch c {
         case '"', '\\':
             strings.write_byte(&sb, '\\')
-            strings.write_byte(&sb, c)
         case '$':
-            if i + 1 < len(s) && s[i+1] == '(' {
-                strings.write_byte(&sb, '\\')
+            // `$NAME` or `${NAME}`: name = s[start:start+n], next byte at `end`.
+            start := i + 1
+            braced := start < len(s) && s[start] == '{'
+            if braced { start += 1 }
+            n := var_name_prefix_len(s[start:])
+            end := start + n
+            if braced {
+                if end < len(s) && s[end] == '}' { end += 1 } else { n = 0 }
             }
-            strings.write_byte(&sb, c)
-        case:
-            strings.write_byte(&sb, c)
+            if n == 0 {
+                strings.write_string(&sb, `\$`)
+                i += 1
+                continue
+            }
+            strings.write_byte(&sb, '$')
+            strings.write_string(&sb, s[start:start+n])
+            if end < len(s) && (var_name_prefix_len(s[end:end+1]) > 0 || (s[end] >= '0' && s[end] <= '9') || s[end] == '[') {
+                strings.write_string(&sb, `""`)
+            }
+            i = end
+            continue
         }
+        strings.write_byte(&sb, c)
+        i += 1
     }
     strings.write_byte(&sb, '"')
     return strings.to_string(sb)
