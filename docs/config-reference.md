@@ -223,6 +223,10 @@ After parsing, `wayu toml validate` also checks:
 | `[aliases]` names and commands (rules in [`[aliases]`](#aliases)) | `Invalid alias 'cd': Cannot use shell reserved word 'cd' as Alias name` |
 | `[env]` names (rules in [`[env]`](#env)) | `Invalid constant 'MY-VAR': ...` |
 | `[paths]` values: no `:`, newline or NUL | `Invalid path entry '/a:/b': Path cannot contain ':' or newlines (PATH separator)` |
+| `shell`, `paths`, `aliases`, `env`, `settings`, `tools`, `prompt` are tables (`[paths]`, not `[[paths]]` or `paths = ...`) | `Validation failed: line 1: [[paths]]: paths must be a table ([paths]), not an array of tables` |
+
+Keys and tables wayu does not read are warnings, not errors (see [Keys wayu
+does not read](#keys-wayu-does-not-read)).
 
 It does not check `[tools]` args (`wayu build` does) or `[prompt]`. Exit
 status: `0` valid, `65` invalid, `78` before `wayu init`.
@@ -565,11 +569,13 @@ name. A built-in match without a user `format` shows the shell name.
 
 ### Keys wayu does not read
 
-These parse without error but have no effect: `wayu_version`; `[settings]`
-`auto_backup`, `fuzzy_fallback`, `dry_run_default`; `[path] dedup` /
-`[path] clean`; `[[plugins]]` (plugins live in `plugins.json`); `[profile.*]`;
-`[prompt.username] style_user`; `[prompt.interactive]` `async_interval`,
-`transient_format`; any table not listed above.
+wayu reads only the keys and tables listed above. Anything else (for example
+`wayu_version`, `[settings] auto_backup`, `[path]`, `[[plugins]]` — plugins
+live in `plugins.json` —, `[profile.*]`, `[constants]`) has no effect:
+`wayu toml validate` prints a warning per unknown key or table, with its line
+(`⚠ line 5: unknown key settings.auto_backup (ignored)`), and still exits `0`;
+`wayu doctor` reports them as a warning. Keys inside an unknown table are not
+listed one by one.
 
 ## Other files you edit
 

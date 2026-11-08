@@ -1200,6 +1200,32 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 		return
 	}
 
+	// Wrong table shapes ([[paths]]) are errors; keys wayu does not read
+	// are a warning (`toml validate` lists them).
+	issues := toml_content_schema_issues(string(content))
+	unknown := 0
+	for is in issues {
+		if is.is_error {
+			append(results, CheckResult{
+				name    = clone_arena("TOML config"),
+				status  = .ERROR,
+				message = clone_arena(fmt.tprintf("wayu.toml line %d: %s", is.line, is.msg)),
+				fixable = false,
+			})
+			return
+		}
+		unknown += 1
+	}
+	if unknown > 0 {
+		append(results, CheckResult{
+			name    = clone_arena("TOML config"),
+			status  = .WARNING,
+			message = clone_arena(fmt.tprintf("wayu.toml has %d key(s)/table(s) wayu does not read — see `wayu toml validate`", unknown)),
+			fixable = false,
+		})
+		return
+	}
+
 	append(results, CheckResult{
 		name    = clone_arena("TOML config"),
 		status  = .OK,

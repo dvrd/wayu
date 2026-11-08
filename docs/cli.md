@@ -240,7 +240,7 @@ Default action: `turbo`. Each action may also be written as a flag
 
 | Action | |
 |---|---|
-| `validate` | Strict check of wayu.toml (syntax, duplicate keys, names, `[shell] type`); exit `65` on error |
+| `validate` | Strict check of wayu.toml (syntax, duplicate keys, names, `[shell] type`, table shapes); exit `65` on error. Keys wayu does not read are warnings (exit `0`) |
 | `show` | Print wayu.toml with secret-looking `[env]` values masked |
 | `keys` | List wayu.toml's top-level keys and tables, in file order; exit `65` if it does not parse |
 | `help` | |

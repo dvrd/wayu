@@ -29,6 +29,7 @@ class ValidationIntegrationTest
       test_alias_valid_input
       test_constant_valid_input
       test_path_valid_input
+      test_toml_validate_unknown_keys
     ensure
       teardown_test_env
     end
@@ -125,6 +126,31 @@ class ValidationIntegrationTest
     else
       puts "✗"
       puts "  codes=#{codes} stored=#{stored} sync_has=#{sync.include?('a:.')} bad_entry=#{bad_entry}"
+      @failed += 1
+    end
+  end
+
+  # Keys wayu does not read are warnings (exit 0); a table in the wrong
+  # shape ([[paths]], the 3.x schema) is an error (exit 65), no migration hint.
+  def test_toml_validate_unknown_keys
+    print "Test: toml validate warns on unknown keys, rejects [[paths]]... "
+    toml_file = "#{@config_dir}/wayu.toml"
+    before = File.read(toml_file)
+    File.write(toml_file, "[shell]\ntype = \"zsh\"\n\n[settings]\nauto_backup = true\n\n[constants]\nX = \"1\"\n")
+    warn_out, warn_st = run_wayu('toml validate')
+    File.write(toml_file, "[[paths]]\npath = \"/usr/bin\"\n")
+    err_out, err_st = run_wayu('toml validate')
+    File.write(toml_file, before)
+    ok = warn_st.exitstatus == 0 && warn_out.include?('line 5: unknown key settings.auto_backup') &&
+         warn_out.include?('line 7: unknown table [constants]') &&
+         err_st.exitstatus == 65 && err_out.include?('paths must be a table') && !err_out.include?('migrate')
+    if ok
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  warn exit=#{warn_st.exitstatus} out=#{warn_out.strip}"
+      puts "  err exit=#{err_st.exitstatus} out=#{err_out.strip}"
       @failed += 1
     end
   end

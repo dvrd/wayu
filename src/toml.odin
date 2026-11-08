@@ -12,9 +12,8 @@
 //   4. Mapping                  - TomlDoc -> TomlConfig (typed config)
 //   5. File I/O                 - read_file / write_file + ensure_exists
 //   6. Table editor             - line-level edits of one [section] entry
-//   7. Serialization            - TomlConfig -> canonical TOML text
-//   8. Profile merging          - pick + merge active profile
-//   9. CLI handlers             - wayu toml init/show/keys/...
+//   7. Schema check             - unknown keys / wrong table shapes
+//   8. CLI handlers             - wayu toml validate/show/keys
 
 package wayu
 
@@ -32,9 +31,8 @@ import "core:strings"
 
 // config_toml.odin - TOML configuration file support for wayu
 //
-// This module provides TOML parsing, validation, and serialization for wayu's
-// configuration files. It supports profiles, nested structures, and all
-// configuration types defined in interfaces.odin.
+// This module provides TOML parsing and validation for wayu's configuration
+// file (the types are in interfaces.odin).
 
 
 
@@ -516,6 +514,14 @@ handle_validate :: proc() -> bool {
 		fmt.eprintfln("Error: Failed to parse %s: line %d: %s", config_path, perr.line, perr.msg)
 		return false
 	}
+	issues := toml_content_schema_issues(string(content))
+	for is in issues {
+		if is.is_error {
+			fmt.eprintfln("Validation failed: line %d: %s", is.line, is.msg)
+			return false
+		}
+	}
+
 	config, _ := toml_parse(string(content))
 	defer cleanup_toml_config(&config)
 
@@ -527,8 +533,144 @@ handle_validate :: proc() -> bool {
 		return false
 	}
 
+	for is in issues {
+		print_warning("line %d: %s", is.line, is.msg)
+	}
 	fmt.println("✓ TOML config is valid")
 	return true
+}
+
+// ============================================================================
+// Schema check: keys wayu reads (docs/config-reference.md)
+// ============================================================================
+
+TOML_TABLES :: []string{"shell", "paths", "aliases", "env", "settings", "tools", "prompt"}
+@(private = "file")
+TOML_TOOL_KEYS :: []string{"kind", "args", "eager", "login_only", "init_script", "hook_commands"}
+@(private = "file")
+TOML_PROMPT_TABLES :: []string{"username", "hostname", "localip", "dir", "git_branch", "character", "contexts", "interactive"}
+
+// One finding of toml_schema_issues. `msg` is temp-allocated.
+TomlSchemaIssue :: struct {
+	line:     int, // 1-based
+	msg:      string,
+	is_error: bool,
+}
+
+// Is the full key path `p` (table path + key) one wayu reads?
+@(private = "file")
+toml_key_known :: proc(p: []string) -> bool {
+	if len(p) == 0 { return false }
+	in_set :: proc(s: string, set: []string) -> bool { return slice.contains(set, s) }
+	switch p[0] {
+	case "version":
+		return len(p) == 1
+	case "shell":
+		return len(p) == 2 && p[1] == "type"
+	case "paths", "aliases", "env":
+		return len(p) >= 2
+	case "settings":
+		return len(p) == 2 && p[1] == "autosuggestions_accept_keys"
+	case "tools":
+		return len(p) == 2 || (len(p) == 3 && in_set(p[2], TOML_TOOL_KEYS))
+	case "prompt":
+		switch len(p) {
+		case 2:
+			return in_set(p[1], {"enabled", "vi_mode", "format"})
+		case 3:
+			switch p[1] {
+			case "username":   return in_set(p[2], {"format", "show_always"})
+			case "hostname", "localip", "dir", "git_branch": return p[2] == "format"
+			case "character":  return in_set(p[2], {"success_symbol", "error_symbol", "vimcmd_symbol", "vimcmd_visual_symbol", "vimcmd_replace_symbol"})
+			case "interactive": return in_set(p[2], {"toggle_enabled", "toggle_key", "transient_enabled", "vi_mode_indicator", "context_aware", "async_rprompt", "rprompt_format"})
+			case "contexts":   return true
+			}
+		case 4:
+			return p[1] == "contexts" && in_set(p[3], {"format", "detect"})
+		}
+	}
+	return false
+}
+
+// Is `[p]` a table header wayu reads?
+@(private = "file")
+toml_table_known :: proc(p: []string) -> bool {
+	switch len(p) {
+	case 1: return slice.contains(TOML_TABLES, p[0])
+	case 2: return p[0] == "tools" || (p[0] == "prompt" && slice.contains(TOML_PROMPT_TABLES, p[1]))
+	}
+	return false
+}
+
+// Keys and tables of a parsed wayu.toml that wayu does not read (warnings:
+// they have no effect) and top-level tables in the wrong shape (errors: e.g.
+// `[[paths]]` instead of `[paths]`), in file order. Unknown tables are
+// reported once, not per key. Everything is temp-allocated.
+toml_schema_issues :: proc(doc: ^TomlDoc) -> [dynamic]TomlSchemaIssue {
+	issues := make([dynamic]TomlSchemaIssue, context.temp_allocator)
+	dotted :: proc(p: []string) -> string { return strings.join(p, ".", context.temp_allocator) }
+
+	header_ok := make([]bool, len(doc.headers), context.temp_allocator)
+	for h, i in doc.headers {
+		if h.invalid || len(h.path) == 0 { continue }
+		name := dotted(h.path)
+		switch {
+		case h.array && slice.contains(TOML_TABLES, h.path[0]):
+			append(&issues, TomlSchemaIssue{h.line + 1, fmt.tprintf("[[%s]]: %s must be a table ([%s]), not an array of tables", name, h.path[0], h.path[0]), true})
+		case h.array:
+			append(&issues, TomlSchemaIssue{h.line + 1, fmt.tprintf("unknown table [[%s]] (ignored)", name), false})
+		case !toml_table_known(h.path):
+			append(&issues, TomlSchemaIssue{h.line + 1, fmt.tprintf("unknown table [%s] (ignored)", name), false})
+		case:
+			header_ok[i] = true
+		}
+	}
+
+	for e in doc.entries {
+		if len(e.key) == 0 { continue }
+		path := make([dynamic]string, context.temp_allocator)
+		if e.header >= 0 {
+			if !header_ok[e.header] { continue } // reported with its table
+			append(&path, ..doc.headers[e.header].path)
+		}
+		append(&path, ..e.key)
+		p := path[:]
+		line := e.first + 1
+		if len(p) == 1 && slice.contains(TOML_TABLES, p[0]) {
+			append(&issues, TomlSchemaIssue{line, fmt.tprintf("%s must be a table ([%s])", p[0], p[0]), true})
+			continue
+		}
+		if !toml_key_known(p) {
+			append(&issues, TomlSchemaIssue{line, fmt.tprintf("unknown key %s (ignored)", dotted(p)), false})
+			continue
+		}
+		// Inline tables of [tools] / [prompt.contexts]: check their keys.
+		inline := (len(p) == 2 && p[0] == "tools") || (len(p) == 3 && p[0] == "prompt" && p[1] == "contexts")
+		if inline && e.value != nil && e.value.type == .TABLE {
+			keys := make([dynamic]string, context.temp_allocator)
+			for k in e.value.table_val { append(&keys, k) }
+			slice.sort(keys[:])
+			for k in keys {
+				sub := make([dynamic]string, context.temp_allocator)
+				append(&sub, ..p)
+				append(&sub, k)
+				if !toml_key_known(sub[:]) {
+					append(&issues, TomlSchemaIssue{line, fmt.tprintf("unknown key %s (ignored)", dotted(sub[:])), false})
+				}
+			}
+		}
+	}
+	slice.stable_sort_by(issues[:], proc(a, b: TomlSchemaIssue) -> bool { return a.line < b.line })
+	return issues
+}
+
+// toml_schema_issues of `content` (parse errors are toml_check's job).
+toml_content_schema_issues :: proc(content: string) -> [dynamic]TomlSchemaIssue {
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil { return make([dynamic]TomlSchemaIssue, context.temp_allocator) }
+	defer virtual.arena_destroy(&arena)
+	doc, _ := toml_doc_parse_alloc(content, virtual.arena_allocator(&arena))
+	return toml_schema_issues(&doc)
 }
 
 // Handle 'wayu toml show' - display TOML content
@@ -667,7 +809,6 @@ print_toml_usage :: proc() {
 cleanup_toml_config :: proc(config: ^TomlConfig) {
 	delete(config.version)
 	delete(config.shell)
-	delete(config.wayu_version)
 	for e in config.path.entries {
 		delete(e)
 	}
@@ -675,63 +816,13 @@ cleanup_toml_config :: proc(config: ^TomlConfig) {
 	for alias in config.aliases {
 		delete(alias.name)
 		delete(alias.command)
-		delete(alias.description)
 	}
 	delete(config.aliases)
 	for constant in config.constants {
 		delete(constant.name)
 		delete(constant.value)
-		delete(constant.description)
 	}
 	delete(config.constants)
-	for plugin in config.plugins {
-		delete(plugin.name)
-		delete(plugin.source)
-		delete(plugin.version)
-		delete(plugin.condition)
-		delete(plugin.description)
-		for u in plugin.use {
-			delete(u)
-		}
-		delete(plugin.use)
-	}
-	delete(config.plugins)
-	for key, profile in config.profiles {
-		delete(key)
-		for a in profile.aliases {
-			delete(a.name)
-			delete(a.command)
-			delete(a.description)
-		}
-		delete(profile.aliases)
-		for c in profile.constants {
-			delete(c.name)
-			delete(c.value)
-			delete(c.description)
-		}
-		delete(profile.constants)
-		for p in profile.plugins {
-			delete(p.name)
-			delete(p.source)
-			delete(p.version)
-			delete(p.condition)
-			delete(p.description)
-			for u in p.use {
-				delete(u)
-			}
-			delete(p.use)
-		}
-		delete(profile.plugins)
-		if profile.path != nil {
-			for e in profile.path.entries {
-				delete(e)
-			}
-			delete(profile.path.entries)
-			free(profile.path)
-		}
-		delete(profile.condition)
-	}
-	delete(config.profiles)
 	if config.settings.autosuggestions_accept_keys != nil {
 		for k in config.settings.autosuggestions_accept_keys {
 			delete(k)
@@ -864,7 +955,6 @@ doc_parse_base_fields :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
 	raw_shell := get_string(shell_val, "zsh")
 	config.shell = strings.to_lower(raw_shell)
 	delete(raw_shell)
-	config.wayu_version = get_string(get_toml_value(doc, "wayu_version"), VERSION)
 }
 
 // [paths] / [aliases] / [env] go through toml_doc_section_kvs, the reader
@@ -880,8 +970,6 @@ doc_parse_paths_section :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
 		append(&entries, strings.clone(kv.value))
 	}
 	config.path.entries = entries[:]
-	config.path.dedup = get_bool(get_toml_value(doc, "path.dedup"), true)
-	config.path.clean = get_bool(get_toml_value(doc, "path.clean"), false)
 }
 
 // Duplicate keys (invalid TOML, kept when recovering) resolve like the CLI
@@ -921,110 +1009,7 @@ doc_parse_env_section :: proc(doc: ^TomlDoc, constants: ^[dynamic]TomlConstant) 
 	kept := kv_dedupe(kvs[:])
 	defer delete(kept)
 	for k in kept {
-		append(constants, TomlConstant{name = strings.clone(kvs[k[0]].key), value = strings.clone(kvs[k[1]].value), export = true})
-	}
-}
-
-@(private = "file")
-doc_parse_plugins_section :: proc(doc: ^TomlDoc, plugins: ^[dynamic]TomlPlugin) {
-	val := get_toml_value(doc, "plugins")
-	if val == nil || val.type != .ARRAY { return }
-	for t in val.arr_val {
-		if t.type != .TABLE { continue }
-		p: TomlPlugin
-		if v, ok := t.table_val["name"]; ok && v.type == .STRING { p.name = strings.clone(v.str_val) }
-		if v, ok := t.table_val["source"]; ok && v.type == .STRING { p.source = strings.clone(v.str_val) }
-		if v, ok := t.table_val["version"]; ok && v.type == .STRING { p.version = strings.clone(v.str_val) }
-		if v, ok := t.table_val["defer"]; ok { p.defer_load = get_bool(v, false) }
-		if v, ok := t.table_val["priority"]; ok { p.priority = get_int(v, 100) } else { p.priority = 100 }
-		if v, ok := t.table_val["condition"]; ok && v.type == .STRING { p.condition = strings.clone(v.str_val) }
-		if v, ok := t.table_val["description"]; ok && v.type == .STRING { p.description = strings.clone(v.str_val) }
-		if v, ok := t.table_val["use"]; ok && v.type == .ARRAY {
-			use_files, _ := get_string_array(v)
-			p.use = use_files
-		}
-		if len(p.name) > 0 { append(plugins, p) }
-	}
-}
-
-@(private = "file")
-doc_parse_profile_aliases :: proc(val: ^TomlValue, out: ^[dynamic]TomlAlias) {
-	if val == nil { return }
-	if val.type == .TABLE {
-		for name, cmd in val.table_val {
-			if cmd.type == .STRING {
-				append(out, TomlAlias{name = strings.clone(name), command = strings.clone(cmd.str_val)})
-			}
-		}
-	} else if val.type == .ARRAY {
-		for t in val.arr_val {
-			if t.type != .TABLE { continue }
-			a: TomlAlias
-			if v, ok := t.table_val["name"]; ok && v.type == .STRING { a.name = strings.clone(v.str_val) }
-			if v, ok := t.table_val["command"]; ok && v.type == .STRING { a.command = strings.clone(v.str_val) }
-			if len(a.name) > 0 { append(out, a) }
-		}
-	}
-}
-
-@(private = "file")
-doc_parse_profile_constants :: proc(val: ^TomlValue, out: ^[dynamic]TomlConstant) {
-	if val == nil { return }
-	if val.type == .TABLE {
-		for name, v in val.table_val {
-			if v.type == .STRING {
-				append(out, TomlConstant{name = strings.clone(name), value = strings.clone(v.str_val), export = true})
-			}
-		}
-	} else if val.type == .ARRAY {
-		for t in val.arr_val {
-			if t.type != .TABLE { continue }
-			c: TomlConstant
-			if v, ok := t.table_val["name"]; ok && v.type == .STRING { c.name = strings.clone(v.str_val) }
-			if v, ok := t.table_val["value"]; ok && v.type == .STRING { c.value = strings.clone(v.str_val) }
-			if len(c.name) > 0 { append(out, c) }
-		}
-	}
-}
-
-@(private = "file")
-doc_parse_profile_plugins :: proc(val: ^TomlValue, out: ^[dynamic]TomlPlugin) {
-	if val == nil || val.type != .ARRAY { return }
-	for t in val.arr_val {
-		if t.type != .TABLE { continue }
-		p: TomlPlugin
-		if v, ok := t.table_val["name"]; ok && v.type == .STRING { p.name = strings.clone(v.str_val) }
-		if len(p.name) > 0 { append(out, p) }
-	}
-}
-
-@(private = "file")
-doc_parse_profiles_section :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
-	val := get_toml_value(doc, "profile")
-	if val == nil || val.type != .TABLE { return }
-	for name, t in val.table_val {
-		if t.type != .TABLE { continue }
-		profile: ProfileConfig
-		if path_val, ok := t.table_val["path"]; ok && path_val.type == .TABLE {
-			profile.path = new(TomlPathConfig)
-			if v, ok2 := path_val.table_val["entries"]; ok2 && v.type == .ARRAY {
-				profile.path.entries, _ = get_string_array(v)
-			}
-			profile.path.dedup = get_bool(path_val.table_val["dedup"], true)
-			profile.path.clean = get_bool(path_val.table_val["clean"], false)
-		}
-		aliases_dyn := make([dynamic]TomlAlias)
-		constants_dyn := make([dynamic]TomlConstant)
-		plugins_dyn := make([dynamic]TomlPlugin)
-		doc_parse_profile_aliases(t.table_val["aliases"], &aliases_dyn)
-		doc_parse_profile_constants(t.table_val["constants"], &constants_dyn)
-		doc_parse_profile_plugins(t.table_val["plugins"], &plugins_dyn)
-		profile.aliases = make([]TomlAlias, len(aliases_dyn)); copy(profile.aliases, aliases_dyn[:])
-		profile.constants = make([]TomlConstant, len(constants_dyn)); copy(profile.constants, constants_dyn[:])
-		profile.plugins = make([]TomlPlugin, len(plugins_dyn)); copy(profile.plugins, plugins_dyn[:])
-		delete(aliases_dyn); delete(constants_dyn); delete(plugins_dyn)
-		if v, ok := t.table_val["condition"]; ok && v.type == .STRING { profile.condition = strings.clone(v.str_val) }
-		config.profiles[strings.clone(name)] = profile
+		append(constants, TomlConstant{name = strings.clone(kvs[k[0]].key), value = strings.clone(kvs[k[1]].value)})
 	}
 }
 
@@ -1032,9 +1017,6 @@ doc_parse_profiles_section :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
 doc_parse_settings_section :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
 	val := get_toml_value(doc, "settings")
 	if val == nil || val.type != .TABLE { return }
-	if v, ok := val.table_val["auto_backup"]; ok { config.settings.auto_backup = get_bool(v, true) }
-	if v, ok := val.table_val["fuzzy_fallback"]; ok { config.settings.fuzzy_fallback = get_bool(v, true) }
-	if v, ok := val.table_val["dry_run_default"]; ok { config.settings.dry_run_default = get_bool(v, false) }
 	if v, ok := val.table_val["autosuggestions_accept_keys"]; ok && v.type == .ARRAY {
 		if keys, ok2 := get_string_array(v); ok2 { config.settings.autosuggestions_accept_keys = keys }
 	}
@@ -1052,17 +1034,13 @@ doc_to_config :: proc(doc: ^TomlDoc) -> (TomlConfig, bool) {
 
 	aliases_dyn := make([dynamic]TomlAlias)
 	constants_dyn := make([dynamic]TomlConstant)
-	plugins_dyn := make([dynamic]TomlPlugin)
 	doc_parse_aliases_section(doc, &aliases_dyn)
 	doc_parse_env_section(doc, &constants_dyn)
-	doc_parse_plugins_section(doc, &plugins_dyn)
 
 	config.aliases = make([]TomlAlias, len(aliases_dyn)); copy(config.aliases, aliases_dyn[:])
 	config.constants = make([]TomlConstant, len(constants_dyn)); copy(config.constants, constants_dyn[:])
-	config.plugins = make([]TomlPlugin, len(plugins_dyn)); copy(config.plugins, plugins_dyn[:])
-	delete(aliases_dyn); delete(constants_dyn); delete(plugins_dyn)
+	delete(aliases_dyn); delete(constants_dyn)
 
-	doc_parse_profiles_section(doc, &config)
 	doc_parse_settings_section(doc, &config)
 
 	return config, true
