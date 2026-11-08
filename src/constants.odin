@@ -200,8 +200,11 @@ list_toml_constants :: proc() {
 			eq := strings.index_byte(pair, '=')
 			const_name := pair[:eq] if eq > 0 else pair
 			if len(const_name) > 0 {
-				if _, is_wayu := wayu_set[const_name]; !is_wayu {
+				if _, seen := wayu_set[const_name]; !seen {
 					append(&external_constants, const_name)
+					// os.environ can repeat a name (Odin's posix _environ returns
+					// environ[0] twice); list each variable once.
+					wayu_set[const_name] = true
 				}
 			}
 		}

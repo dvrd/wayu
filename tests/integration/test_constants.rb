@@ -38,6 +38,7 @@ class ConstantsIntegrationTest
       test_multiline_value_handling
       test_constant_persistence
       test_list_constants_from_wayu_toml_env
+      test_full_list_names_each_env_var_once
       test_get_constant_from_wayu_toml_constants
       test_add_constant_to_wayu_toml
       test_remove_constant_from_wayu_toml
@@ -498,6 +499,23 @@ class ConstantsIntegrationTest
     else
       puts "✗"
       puts "  const alias failed (add=#{added}, list=#{listed}, get=#{got}, rm=#{removed})"
+      @failed += 1
+    end
+  end
+
+  def test_full_list_names_each_env_var_once
+    print "  Testing const list --full lists each env var once... "
+    # Minimal, controlled environment: Odin's os.environ repeats environ[0].
+    env = { 'HOME' => @tmp_home, 'PATH' => ENV['PATH'], 'WAYU_FIRST_VAR' => 'x', 'NO_COLOR' => '1' }
+    out, _err, status = Open3.capture3(env, "#{@wayu_bin} --json const list --full", unsetenv_others: true)
+    names = out.scan(/"constant": "([^"]+)"/).flatten
+    dups = names.select { |n| names.count(n) > 1 }.uniq
+    if status.success? && !names.empty? && dups.empty?
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  duplicates: #{dups.inspect} (exit #{status.exitstatus})"
       @failed += 1
     end
   end
