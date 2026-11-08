@@ -28,6 +28,9 @@ brew install wayu
 wayu init
 ```
 
+Prebuilt for macOS arm64 and Linux x86_64; on other platforms build from
+source.
+
 ### From source
 
 Requires the [Odin compiler](https://odin-lang.org/docs/install/) at the
@@ -37,13 +40,75 @@ and releases are built with (download it from
 warns when your `odin` is a different release.
 
 ```bash
-# Bootstrap the build system, then build + install
+# Bootstrap the build system, then build, install and run `wayu init`
 odin build build -out:build_it && ./build_it install
-
-# Or manually:
-odin build src -out:bin/wayu -o:speed && cp bin/wayu /usr/local/bin/
-wayu init       # creates ~/.config/wayu/ with shell-appropriate config files
 ```
+
+`./build_it install` puts the binary in `$PREFIX/bin` (default
+`~/.local/bin`, which must be on your `PATH`), replacing it atomically, and
+warns when another `wayu` earlier on `PATH` shadows it.
+
+**Use one install method.** While Homebrew manages wayu, `./build_it install`
+refuses to run (`--force` overrides): two copies on `PATH` mean the shell
+runs one version and you upgrade the other. To switch from Homebrew to a
+source build, `brew uninstall wayu` first; to switch back, delete
+`~/.local/bin/wayu`.
+
+## Shell setup
+
+`wayu init` creates `~/.config/wayu/` (a `wayu.toml` scaffold plus the
+generated files) and offers to add one line to your rc file — or prints it
+when stdin is not a terminal:
+
+| Shell | rc file | Line |
+|---|---|---|
+| zsh | `${ZDOTDIR:-~}/.zshrc` | `source "$HOME/.config/wayu/init.zsh"` |
+| bash | `~/.bash_profile` if it exists, else `~/.bashrc` | `source "$HOME/.config/wayu/init.bash"` |
+| fish | `~/.config/fish/config.fish` | `source ~/.config/wayu/init.fish` |
+
+The shell is detected from `$SHELL`; `wayu init --shell bash` (or `zsh`,
+`fish`) picks another one. Run `wayu init` once per shell you use; they share
+one `wayu.toml`.
+
+`init.<ext>` sources one precomputed file, `core.<ext>`, which wayu rewrites
+after every change (`wayu path|alias|const …`, the TUI, `wayu build`). That
+is the recommended setup. The alternatives:
+
+| rc line | When |
+|---|---|
+| `source "$HOME/.config/wayu/init.zsh"` | Default. Fast; picks up every wayu change. |
+| `source "$HOME/.config/wayu/turbo.zsh"` | Only for rc files that already use it: `turbo.<ext>` (zsh/bash, written by `wayu export`) is a copy of `core.<ext>`, kept current by wayu. |
+| `eval "$(wayu build eval)"` | Regenerates the init files from `wayu.toml` at every shell start, then sources `core.<ext>`. Use it when `wayu.toml` is edited outside wayu (e.g. synced dotfiles) and you never want to run `wayu build`; it costs one `wayu` run per shell. |
+| `eval "$(wayu export --eval)"` | Only `[env]`, `[paths]` and `[aliases]`, as shell code, without plugins, `[tools]`, prompt or completions. For scripts, containers or CI that want the variables but none of the interactive setup. Writes nothing. |
+
+After editing `wayu.toml` by hand, run `wayu build` (or `wayu toml validate`
+first). `[paths]` changes reach shells that are already open at their next
+prompt (see [PATH changes in open shells and
+scripts](#path-changes-in-open-shells-and-scripts)); other changes apply to
+new shells, or `source` the init file again.
+
+Every key of `wayu.toml` and the other config files is described in
+[docs/config-reference.md](docs/config-reference.md).
+
+## Upgrading
+
+```bash
+brew upgrade wayu        # or, from source: git pull && ./build_it install
+wayu init                # refresh init.<ext> and regenerate core.<ext>
+wayu doctor              # check the result
+```
+
+`wayu init` keeps `wayu.toml`, `extra.<ext>` and your other files; an
+unmodified `init.<ext>` from an older release is replaced (the old one is
+backed up). Any ordinary write (`wayu alias add …`) regenerates too.
+
+- `wayu.toml` from wayu 3.x (`[[paths]]` arrays of tables): every command
+  exits `78` until you run `wayu migrate --schema`.
+- wayu ≤ 3.9 (no `wayu.toml`, entries in `path.zsh` / `aliases.zsh` /
+  `constants.zsh`): run `wayu migrate`, then `wayu init`.
+
+What changed in each release, and what you may need to adapt, is in
+[docs/UPGRADING.md](docs/UPGRADING.md).
 
 ## Quick Start
 
@@ -146,92 +211,36 @@ wayu --tui                       # explicit flag
 ## CLI Reference
 
 ```
-wayu <command> <action> [arguments] [flags]
+wayu <command> [<action>] [arguments] [flags]
 ```
 
-### Commands
+**[docs/cli.md](docs/cli.md)** documents every command, action and flag,
+where flags are recognised (`--` and the `alias add` / `const add` value
+rule), the `--json` document shapes and the exit codes.
+`wayu help` and `wayu <command> help` print the same from the binary.
 
 | Command | Description |
 |---------|-------------|
-| `path` | Manage PATH entries |
-| `alias` | Manage shell aliases |
-| `constants`, `const`, `env` | Manage environment variables |
+| `path` | Manage `[paths]` (PATH entries) |
+| `alias` | Manage `[aliases]` |
+| `constants`, `const`, `env` | Manage `[env]` (environment variables) |
 | `search`, `find`, `f` | Fuzzy search across all configurations |
 | `completions` | Manage shell completion scripts |
+| `backup` | List, restore and prune backups |
 | `plugin` | Install and manage shell plugins |
-| `config` | Manage extra config and TOML files |
-| `export` | Write turbo.<shell> (same as the generated init) or print env/PATH/aliases for eval |
-| `doctor` | Health check and diagnostics |
-| `toml` | TOML configuration management |
+| `init` | Create the config and wire up your shell |
+| `migrate` | Import legacy files, upgrade an old wayu.toml, switch shells |
+| `config` | Edit wayu.toml / extra.<shell>, scan your rc file |
+| `build` | Regenerate the init files; `profile` startup; clear the evalcache |
+| `export` | Write turbo.<shell> or print env/PATH/aliases for eval |
+| `toml` | Validate / show wayu.toml |
+| `doctor` | Health check and diagnostics (`--json`, `--fix`) |
 | `template` | Apply config presets (developer / minimal / data-science / full) |
 | `hooks` | Pre/post operation hooks |
-| `function` | Manage custom shell functions in `~/.config/wayu/functions/` (opens `$EDITOR`) |
-| `reload`, `watch`, `hot-reload` | Watch config files and regenerate on change |
-| `backup` | Manage configuration backups |
-| `init` | Initialize config directory |
-| `migrate` | Migrate config between shells |
+| `function`, `functions`, `func`, `fn` | Manage custom shell functions in `~/.config/wayu/functions/` |
+| `reload`, `watch`, `hot-reload` | Watch wayu.toml and regenerate on change |
 | `version` | Show version |
 | `help` | Show help |
-
-### Actions
-
-| Action | Description |
-|--------|-------------|
-| `add` | Add a new entry |
-| `remove`, `rm` | Remove an entry |
-| `list`, `ls` | List all entries |
-| `get` | Get value by exact name (miss: exit 65 + name suggestions on stderr) |
-| `restore` | Restore from backup |
-| `clean` | Remove PATH entries pointing to missing directories |
-| `dedup` | Remove duplicate PATH entries |
-| `edit` | Edit config file in `$EDITOR` (`config`, `hooks`) |
-| `extend`, `scan` | Manage extra config (`config extend`, `config scan`) |
-| `apply` | Apply preset (`template apply <name>`) |
-| `validate` | Schema-check `wayu.toml` (`toml validate`) |
-| `start`, `stop`, `status` | Manage the file watcher (`reload`) |
-| `help` | Show command-specific help |
-
-### Flags
-
-| Flag | Description |
-|------|-------------|
-| `--shell <bash\|zsh\|fish>` | Override shell detection |
-| `--dry-run`, `-n` | Preview changes without applying |
-| `--yes`, `-y` | Skip confirmation prompts |
-| `--tui` | Launch interactive TUI |
-| `--json` | Machine-readable output (see [JSON output](#json-output)) |
-| `--source <filter>` | List filter: `all`, `wayu`, `external`, `inactive` |
-| `--reveal` | `const list` / `toml show`: show secret-looking values unmasked |
-| `--no-color` | Disable ANSI colors (equivalent to `NO_COLOR=1`) |
-| `--from <shell>` | Source shell for migration |
-| `--to <shell>` | Target shell for migration |
-| `-v`, `--version` | Show version |
-
-### JSON output
-
-`--json` is accepted by `path|alias|const|plugin|backup list`, `search` and
-`doctor`; anywhere else it exits `64`. Output is one JSON document on stdout
-(errors stay on stderr); an empty list is `[]`. The shapes below are
-checked by `tests/integration/test_cli_output.rb` — new keys may be added,
-existing ones keep their meaning.
-
-| Command | Document |
-|---------|----------|
-| `path list` | `{"paths": [{"path", "source", "exists": bool}]}` |
-| `alias list` | `{"aliases": [{"alias", "command", "source"}]}` |
-| `const list` | `{"constants": [{"constant", "value", "source"}]}` |
-| `plugin list` | `{"plugins": [{"name", "enabled": bool, "priority": int, "shell", "url", "commit", "installed_path", "conflicts": [{"kind", "name", "with"}]}], "count": int, "enabled": int}` |
-| `backup list` | `{"backups": [{"file", "count": int, "entries": [{"index": int, "timestamp", "size_bytes": int, "path", "pre_restore": bool}]}]}` |
-| `search QUERY` | `{"query", "results": [{"type", "name", "value", "match", "field", "score": int}], "count": int}` |
-| `doctor` | `{"checks": [{"name", "status", "message", "fixable": bool}], "summary": {"ok", "warnings", "errors", "info", "fixable"}}` |
-
-Unmarked fields are strings. `source` is `wayu`, `wayu (inactive)` (in
-wayu.toml but not in this shell's environment) or `external`; `--source`
-and `--full` filter rows, not the shape. `const list` masks secret-looking
-values as `********` unless `--reveal` is given. Plugin `shell` is
-`zsh|bash|both|fish|any`; a conflict's `kind` is `function|alias|env` and
-`with` is another plugin or `wayu.toml`. Doctor `status` is
-`ok|warning|error|info`; `backup list` `timestamp` is ISO 8601 UTC.
 
 ## Fuzzy Matching
 
@@ -311,19 +320,10 @@ export WAYU_FFF_ENABLED=0        # Disable fuzzy features
 
 ## Exit Codes
 
-BSD sysexits.h compatible for scripting:
-
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | General error |
-| 64 | Usage error (bad arguments) |
-| 65 | Data format error |
-| 66 | Input file not found |
-| 73 | Cannot create output file |
-| 74 | I/O error |
-| 77 | Permission denied |
-| 78 | Configuration error |
+BSD `sysexits.h` values for scripting: `0` success, `64` usage error, `65`
+bad input, `66` missing input file, `78` configuration error, … — the full
+table, with examples checked by the test suite, is in
+[docs/cli.md](docs/cli.md#exit-codes).
 
 ## TUI Mode
 
@@ -368,6 +368,7 @@ wayu stores everything under `~/.config/wayu/` — the files you edit and the fi
   # --- You edit these (version-control them) ---
   wayu.toml                 # declarative config (source of truth for path/alias/env)
   extra.{zsh,bash,fish}     # custom scripts (conda init, tool evals, etc.)
+  tools.{zsh,bash,fish}     # one-off tool setup not expressible as [tools]
   alias-sources.conf        # external alias sources (shell-agnostic, read-only)
   hooks.conf                # pre/post operation hooks
   functions/                # custom shell functions
@@ -388,6 +389,12 @@ wayu stores everything under `~/.config/wayu/` — the files you edit and the fi
 ```
 
 Shell is detected automatically from `$SHELL`. Override with `--shell bash`, `--shell zsh`, or `--shell fish`.
+
+`WAYU_CONFIG_DIR` moves the files you edit and `WAYU_DATA_DIR` the
+generated ones (default: the config dir). Every `wayu.toml` table and key
+(`[paths]`, `[aliases]`, `[env]`, `[tools]`, `[prompt]`, …), `hooks.conf`,
+`plugins.json` and the other files are described in
+[docs/config-reference.md](docs/config-reference.md).
 
 ### PATH changes in open shells and scripts
 
@@ -462,6 +469,8 @@ dir ~/.config/fabric/patterns fabric --pattern {name}
 ## Development
 
 Uses [bld](https://github.com/dvrd/bld), an Odin build system library. No external tools required.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and [SECURITY.md](SECURITY.md)
+to report a vulnerability; contributor notes on the code are in [AGENTS.md](AGENTS.md).
 
 ```bash
 # Bootstrap (once)

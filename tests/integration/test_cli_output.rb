@@ -169,7 +169,7 @@ class CliOutputIntegrationTest
     check('Every --json output is one valid JSON document', bad.empty?, bad.join('; '))
   end
 
-  # OKAMI-185: every list --json follows the schema documented in README
+  # OKAMI-185: every list --json follows the schema documented in docs/cli.md
   # ("JSON output"): top-level keys and the exact key set of each row.
   JSON_SCHEMA = {
     'path list --json' => [%w[paths], %w[path source exists]],
