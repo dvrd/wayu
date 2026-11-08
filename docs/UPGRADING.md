@@ -334,6 +334,15 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - Completions offer each command's flags and `--json` where supported, and
   `export check`.
 
+**Tables and pickers**
+- List tables written to a pipe or file (`wayu path list | cat`) are no
+  longer fitted to 80 columns: values are printed whole. An exported
+  `COLUMNS` still sets the width.
+- The interactive picker (TUI remove, completions) keeps every character of
+  a paste or fast typing (only the first one was used), ignores unknown
+  escape sequences instead of filtering on their bytes, and a lone `Esc`
+  cancels like `Ctrl+C`. `kill -INT` / `kill -QUIT` restore the terminal.
+
 ## 5.0.0
 
 **doctor**

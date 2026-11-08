@@ -220,10 +220,11 @@ validate_shell_compatibility :: proc(shell: ShellType) -> (valid: bool, message:
     return false, "Unsupported shell type"
 }
 
-// Get the terminal width for CLI output.
-// Tries: COLUMNS env var → stty size → fallback of 80.
+// Width CLI tables are fitted to (table_render's max_width).
+// Tries: exported COLUMNS → 0 (no limit) when stdout is not a terminal, so
+// `wayu path list | cat` keeps whole values → ioctl size → 80.
 get_cli_terminal_width :: proc() -> int {
-    // Method 1: COLUMNS env var (set by most shells)
+    // Method 1: COLUMNS env var (an explicit export wins)
     cols_env := os.get_env("COLUMNS", context.temp_allocator)
     if len(cols_env) > 0 {
         cols, ok := strconv.parse_int(cols_env)
@@ -231,6 +232,9 @@ get_cli_terminal_width :: proc() -> int {
             return cols
         }
     }
+
+    // Piped / redirected: never truncate values with '…'.
+    if !is_stdout_tty() { return 0 }
 
     // Method 2: ioctl TIOCGWINSZ (direct syscall, no subprocess)
     ws: winsize
