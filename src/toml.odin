@@ -349,6 +349,8 @@ toml_key_known :: proc(p: []string) -> bool {
 		return len(p) == 2 && p[1] == "type"
 	case "settings":
 		return len(p) == 2 && p[1] == "autosuggestions_accept_keys"
+	case "scripts":
+		return len(p) == 2 && p[1] == "default_lang"
 	case "tools":
 		return len(p) == 2 || (len(p) == 3 && in_set(p[2], TOML_TOOL_KEYS))
 	case "prompt":
@@ -374,7 +376,7 @@ toml_key_known :: proc(p: []string) -> bool {
 @(private = "file")
 toml_table_known :: proc(p: []string) -> bool {
 	switch len(p) {
-	case 1: return slice.contains(TOML_TABLES, p[0])
+	case 1: return slice.contains(TOML_TABLES, p[0]) || p[0] == "scripts"
 	case 2: return p[0] == "tools" || (p[0] == "prompt" && slice.contains(TOML_PROMPT_TABLES, p[1]))
 	}
 	return false
@@ -426,6 +428,10 @@ toml_schema_issues :: proc(doc: ^TomlDoc) -> [dynamic]TomlSchemaIssue {
 		}
 		if !toml_key_known(p) {
 			append(&issues, TomlSchemaIssue{line, fmt.tprintf("unknown key %s (ignored)", dotted(p)), false})
+			continue
+		}
+		if msg := script_default_lang_issue(p, e.value); len(msg) > 0 {
+			append(&issues, TomlSchemaIssue{line, msg, true})
 			continue
 		}
 		// Inline tables of [tools] / [prompt.contexts]: check their keys.

@@ -51,6 +51,7 @@ CompletionNames :: enum {
 	PLUGIN,
 	FUNCTION,
 	COMPLETION,
+	SCRIPT,
 }
 
 // The <kind> word of `wayu completions names <kind>`.
@@ -62,6 +63,7 @@ COMPLETION_NAMES_KIND := [CompletionNames]string{
 	.PLUGIN     = "plugin",
 	.FUNCTION   = "function",
 	.COMPLETION = "completion",
+	.SCRIPT     = "script",
 }
 
 // An action word. `desc == ""` marks a parser-only synonym (`config e`)
@@ -176,6 +178,17 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 		{"new", .ADD, "Create a function"}, {"list", .LIST, "List functions"}, {"ls", .LIST, "List functions"},
 		{"remove", .REMOVE, "Delete a function"}, {"rm", .REMOVE, "Delete a function"},
 		{"delete", .REMOVE, "Delete a function"}, {"help", .HELP, "Show help"}}},
+	{command = .SCRIPT, names = {"script", "scripts"}, desc = "Manage standalone scripts on PATH (any language)",
+	 default_action = .LIST, json = {.LIST}, arg_names = .SCRIPT, arg_name_actions = {.UPDATE, .REMOVE, .BUILD},
+	 actions = {
+		{"new", .ADD, "Create a script in $EDITOR and build it"}, {"edit", .UPDATE, "Edit and rebuild a script"},
+		{"list", .LIST, "List scripts"}, {"ls", .LIST, "List scripts"},
+		{"remove", .REMOVE, "Delete a script"}, {"rm", .REMOVE, "Delete a script"},
+		{"import", .IMPORT, "Import existing script files"}, {"build", .BUILD, "Build stale scripts"},
+		{"help", .HELP, "Show help"}},
+	 flags = {
+		{"--lang", "Language of 'script new'"}, {"--lang=", ""},
+		{"--copy", "'script import': keep the original files"}}},
 	{command = .RELOAD, names = {"reload", "watch", "hot-reload"}, desc = "Watch config files and regenerate init files"},
 	{command = .VERSION, names = {"version"}, desc = "Show version", any_flag = true},
 	{command = .HELP, names = {"help"}, desc = "Show help", any_flag = true},
@@ -734,7 +747,7 @@ collect_completion_names :: proc(kind: CompletionNames) -> [dynamic]string {
 			for p in config.plugins { add_unique(&out, p.name) }
 		}
 	case .FUNCTION, .COMPLETION:
-		dir := kind == .FUNCTION ? fmt.tprintf("%s/functions", wayu.config) : fmt.tprintf("%s/completions", wayu.data)
+		dir := kind == .FUNCTION ? fmt.tprintf("%s/functions", wayu.data) : fmt.tprintf("%s/completions", wayu.data)
 		handle, err := os.open(dir)
 		if err != nil { break }
 		defer os.close(handle)
@@ -760,6 +773,8 @@ collect_completion_names :: proc(kind: CompletionNames) -> [dynamic]string {
 			}
 			if len(name) > 0 { add_unique(&out, name) }
 		}
+	case .SCRIPT:
+		for s in script_list_all() { add_unique(&out, s.name) }
 	}
 	slice.sort(out[:])
 	return out

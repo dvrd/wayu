@@ -76,7 +76,7 @@ EXTRA_TEMPLATE_ZSH :: `#!/usr/bin/env zsh
 # Common uses:
 #   - Conditional hooks (chpwd, preexec, precmd)
 #   - Third-party tool env loaders (cargo, bun, conda, etc.)
-#   - Custom functions that don't belong in ~/.config/wayu/functions
+#   - Custom functions not managed with "wayu function"
 #   - Completion fpath additions
 #   - Ad-hoc exports and settings
 `
@@ -141,7 +141,7 @@ EXTRA_TEMPLATE_BASH :: `#!/usr/bin/env bash
 #
 # Common uses:
 #   - Third-party tool env loaders (cargo, bun, conda, etc.)
-#   - Custom functions that don't belong in ~/.config/wayu/functions
+#   - Custom functions not managed with "wayu function"
 #   - Ad-hoc exports and settings
 `
 
@@ -216,7 +216,7 @@ EXTRA_TEMPLATE_FISH :: `#!/usr/bin/env fish
 #
 # Common uses:
 #   - Third-party tool env loaders (cargo, bun, conda, etc.)
-#   - Custom functions that don't belong in ~/.config/wayu/functions
+#   - Custom functions not managed with "wayu function"
 #   - Ad-hoc exports and settings
 `
 

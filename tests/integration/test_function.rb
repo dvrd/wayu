@@ -21,7 +21,7 @@ class FunctionIntegrationTest
       initialize_wayu(shell: 'zsh')
 
       test_list_empty
-      test_add_creates_file_in_config_dir
+      test_add_creates_file_in_data_dir
       test_list_shows_added_function
       test_remove_requires_yes
       test_remove_dry_run_keeps_file
@@ -52,7 +52,7 @@ class FunctionIntegrationTest
   end
 
   def functions_dir
-    "#{@config_dir}/functions"
+    "#{@data_dir}/functions"
   end
 
   def check(label, condition, detail = nil)
@@ -74,10 +74,10 @@ class FunctionIntegrationTest
           "Output: #{output}")
   end
 
-  def test_add_creates_file_in_config_dir
+  def test_add_creates_file_in_data_dir
     output, status = run_wayu_func("function add greet")
     file = "#{functions_dir}/greet.zsh"
-    check("Test 2: Add creates a function file in the config dir",
+    check("Test 2: Add creates a function file in the data dir",
           status.success? && File.exist?(file),
           "Expected #{file}; Output: #{output}")
   end

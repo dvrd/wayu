@@ -416,6 +416,10 @@ regenerate_static :: proc() {
 		return
 	}
 
+	// Scripts first: a first built script puts <data>/bin on PATH.
+	if built, failed := scripts_build_stale(quiet = true); built > 0 || failed > 0 {
+		print_info("Scripts rebuilt: %d, failed: %d", built, failed)
+	}
 	regenerate_init_core_silently()
 
 	core_path := fmt.aprintf("%s/core.%s", wayu.data, get_shell_extension(wayu.shell))
@@ -561,6 +565,9 @@ get_default_watch_paths :: proc() -> []string {
 			delete(p)
 		}
 	}
+
+	// Script sources: an edit rebuilds the script (regenerate_static).
+	script_watch_paths(&paths)
 
 	result := make([]string, len(paths))
 	for i := 0; i < len(paths); i += 1 {

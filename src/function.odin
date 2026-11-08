@@ -1,8 +1,8 @@
 // function.odin - Implementation of `wayu function {add,list,remove}`
 //
 // Manages custom shell functions stored as individual files in the
-// `functions/` directory under the wayu config dir
-// (~/.config/wayu/functions). `function add <name>` seeds a skeleton file
+// `functions/` directory under the wayu data dir (<data>/functions; wayu
+// manages them, like scripts/). `function add <name>` seeds a skeleton file
 // if it does not exist and opens it in $EDITOR; the shell init loads every
 // file in this directory at startup.
 
@@ -42,12 +42,12 @@ handle_function_command :: proc(action: Action, args: []string) {
 // Resolve the absolute path to a function file for the active shell.
 // Caller owns the returned string.
 function_file_path :: proc(name: string) -> string {
-	return fmt.aprintf("%s/functions/%s.%s", wayu.config, name, wayu.shell_ext)
+	return fmt.aprintf("%s/functions/%s.%s", wayu.data, name, wayu.shell_ext)
 }
 
-// Ensure ~/.config/wayu/functions exists. Exits on failure.
+// Ensure <data>/functions exists. Exits on failure.
 ensure_functions_dir :: proc() -> string {
-	dir := fmt.aprintf("%s/functions", wayu.config)
+	dir := fmt.aprintf("%s/functions", wayu.data)
 	if !os.exists(dir) {
 		if err := make_directory_all(dir); err != nil {
 			print_error_simple("Failed to create functions directory: %s", dir)
@@ -162,7 +162,7 @@ remove_function :: proc(name: string) {
 }
 
 list_functions :: proc() {
-	dir := fmt.aprintf("%s/functions", wayu.config)
+	dir := fmt.aprintf("%s/functions", wayu.data)
 	defer delete(dir)
 
 	if !os.exists(dir) {
@@ -259,7 +259,7 @@ print_function_usage :: proc() {
 	fmt.println("  wayu function remove <name>  Delete a function file (needs --yes)")
 	fmt.println()
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
-	fmt.println("  Functions live as individual files in ~/.config/wayu/functions/")
+	fmt.printfln("  Functions live as individual files in %s/functions/", wayu.data)
 	fmt.println("  and are sourced when your shell starts. 'add' seeds a skeleton")
 	fmt.println("  matching your shell and opens it in your editor.")
 	fmt.println()

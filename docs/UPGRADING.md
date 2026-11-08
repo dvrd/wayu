@@ -48,6 +48,26 @@ Notes further down this section that describe `[paths]`, `[aliases]` or
 `[env]` in `wayu.toml` (editing, reading, `toml show` masking) now apply to
 the same entries in `entries.json`, or no longer apply.
 
+**Functions move to the data dir; new `wayu script`**
+
+- `functions/` now lives in the data dir (`$WAYU_DATA_DIR/functions`), not
+  the config dir: `wayu function` writes there, `core.<ext>` sources only
+  that dir, and `wayu init` creates it there. Nothing is moved for you:
+  `mv ~/.config/wayu/functions/* "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/functions/"`.
+- New `wayu script` (`scripts`): standalone executables in any language
+  (swift compiled with `swiftc`; python, ruby, node, bun, bash, zsh, fish,
+  perl, lua, sh linked) in `<data>/scripts/`, run from `<data>/bin/`.
+  `wayu init` creates both dirs. Once `bin/` holds a script, `core.<ext>` /
+  `path_sync.<ext>` put it first among wayu's PATH entries (zsh, bash,
+  fish), so a script can shadow a tool of the same name; `wayu export
+  --eval` includes it too.
+- `wayu build` and `wayu reload` rebuild stale scripts; `wayu doctor` has a
+  `scripts` check (stale or broken scripts, `bin/` entries without a
+  script). New exit code `69` (`EXIT_UNAVAILABLE`): `script new` when the
+  language's interpreter or compiler is not on PATH.
+- wayu.toml accepts `[scripts] default_lang`; an unknown language is a
+  `toml validate` error (exit `65`).
+
 **`wayu build eval` removed; zsh PATH order restored after login**
 
 - `wayu build eval` is gone (exit 64). It rebuilt every generated file at

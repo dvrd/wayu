@@ -11,7 +11,7 @@
 - **Fuzzy matching** -- Smart search with acronym support (e.g., `faak` → `FIREWORKS_AI_API_KEY`)
 - **Completions** -- Manage shell completion scripts (Zsh, Bash, Fish)
 - **Plugin management** -- Install, enable/disable, and prioritize shell plugins with dependency resolution
-- **Custom functions** -- `wayu function add` seeds a skeleton in `~/.config/wayu/functions/`, opens `$EDITOR`, and sources it on startup
+- **Functions and scripts** -- shell functions (`wayu function`, sourced at startup) and standalone executables in any language (`wayu script`: swift compiled, python/ruby/node/bun/shells/... linked) on PATH; existing scripts can be imported
 - **Backup & restore** -- Automatic timestamped backups before every modification
 - **Shell migration** -- Migrate configs between Bash, Zsh, and Fish
 - **Dry-run mode** -- Preview any change before applying it
@@ -195,10 +195,10 @@ wayu reload stop
 wayu hooks                       # show configured hooks
 wayu hooks edit                  # edit ~/.config/wayu/hooks.conf
 
-# Custom shell functions (stored in ~/.config/wayu/functions/, sourced at startup)
-wayu function add mkcd           # seed a skeleton and open it in $EDITOR
-wayu function list               # list defined functions
-wayu function remove mkcd --yes  # delete a function file
+# Functions and scripts (see "Functions and scripts" below)
+wayu function add mkcd           # shell function: seed a skeleton, open $EDITOR
+wayu script new hello --lang python  # executable on PATH: skeleton, $EDITOR, build
+wayu script import ~/bin/* --dry-run # preview adopting existing scripts
 
 # Templates (config presets)
 wayu template list               # available: developer, minimal, data-science, full
@@ -238,8 +238,9 @@ rule), the `--json` document shapes and the exit codes.
 | `doctor` | Health check and diagnostics (`--json`, `--fix`) |
 | `template` | Apply config presets (developer / minimal / data-science / full) |
 | `hooks` | Pre/post operation hooks |
-| `function`, `functions`, `func`, `fn` | Manage custom shell functions in `~/.config/wayu/functions/` |
-| `reload`, `watch`, `hot-reload` | Watch wayu.toml and entries.json and regenerate on change |
+| `function`, `functions`, `func`, `fn` | Manage shell functions (data dir `functions/`) |
+| `script`, `scripts` | Manage standalone scripts on PATH (data dir `scripts/` + `bin/`) |
+| `reload`, `watch`, `hot-reload` | Watch wayu.toml, entries.json and script sources; regenerate on change |
 | `version` | Show version |
 | `help` | Show help |
 
@@ -365,7 +366,6 @@ wayu keeps the files you edit in `~/.config/wayu/` and the data it manages in
   tools.{zsh,bash,fish}     # one-off tool setup not expressible as [tools]
   alias-sources.conf        # external alias sources (shell-agnostic, read-only)
   hooks.conf                # pre/post operation hooks
-  functions/                # custom shell functions
 
 ~/.local/share/wayu/        # ${XDG_DATA_HOME:-~/.local/share}/wayu
   # --- wayu manages these (`wayu path|alias|const|plugin`, the TUI) ---
@@ -381,6 +381,11 @@ wayu keeps the files you edit in `~/.config/wayu/` and the data it manages in
   turbo.{zsh,bash}          # optional copy of core via `wayu export` (zsh/bash only)
   completions/              # shell completion scripts
   backup/                   # timestamped backups (last 5 per file)
+
+  # --- managed by commands (`wayu function`, `wayu script`) ---
+  functions/                # shell functions, sourced at startup
+  scripts/                  # script sources (NAME.<ext>)
+  bin/                      # what runs: links / compiled binaries, first on PATH
 ```
 
 Shell is detected automatically from `$SHELL`. Override with `--shell bash`, `--shell zsh`, or `--shell fish`.
@@ -390,6 +395,32 @@ dir. Every `wayu.toml` table and key (`[tools]`, `[prompt]`, …),
 `entries.json`, `hooks.conf`, `plugins.json` and the other files are
 described in
 [docs/config-reference.md](docs/config-reference.md).
+
+### Functions and scripts
+
+Both live in the data dir and are managed with commands; the directory is
+the source of truth.
+
+- **Functions** (`wayu function add|list|remove`) are shell functions in
+  `functions/<name>.<ext>`, sourced by `core.<ext>`: they run inside your
+  shell and can change its state (`cd`, variables).
+- **Scripts** (`wayu script new|edit|list|remove|import|build`) are
+  standalone executables in any language: swift, python, ruby, node, bun,
+  bash, zsh, fish, perl, lua, sh. The source is `scripts/<name>.<ext>`;
+  `bin/<name>` runs it (a link for interpreted languages, a `swiftc -O`
+  binary for swift), and `bin/` is first among wayu's PATH entries in zsh,
+  bash and fish. `script new` writes the interpreter's absolute path as the
+  shebang, `wayu build` rebuilds scripts whose source changed, and
+  `script import` adopts existing scripts while skipping binaries,
+  symlinks and package-manager launchers. Default language:
+  `[scripts] default_lang` (else swift).
+
+```bash
+wayu script new today --lang python   # create, edit, link into bin/
+today                                 # on PATH (open shells: next prompt)
+wayu script import ~/bin/* --dry-run  # what would be imported / skipped
+wayu script list --json
+```
 
 ### PATH changes in open shells and scripts
 
