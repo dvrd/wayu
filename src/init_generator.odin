@@ -104,15 +104,6 @@ zcompile_file :: proc(path: string) {
 	append(&ZCOMPILE_BATCH, strings.clone(path))
 }
 
-// Discard all queued zcompile paths without running them.
-// Used by regenerate_init_core_silently to skip the ~10ms zsh spawn
-// on write operations where bytecode freshness is not critical.
-@(private = "file")
-discard_zcompile_batch :: proc() {
-	for p in ZCOMPILE_BATCH { delete(p) }
-	clear(&ZCOMPILE_BATCH)
-}
-
 // Flush all queued zcompile paths in a single zsh invocation.
 //
 // Paths are passed as positional arguments to `zsh -fc` (each one
@@ -245,10 +236,11 @@ regenerate_init_core_silently :: proc() {
 
 	// Flush cached resources after all generators have run.
 	clear_toml_content_cache()
-	// Skip zcompile on mutations — only zcompile during explicit `wayu init`
-	// / `build`. The text files work fine without bytecode; zcompile is a
-	// startup-time micro-optimization that isn't worth ~10ms per CLI write.
-	discard_zcompile_batch()
+	// Recompile the rewritten zsh files in the background (fire-and-forget,
+	// the CLI doesn't wait). write_init_file deleted their now-stale .zwc;
+	// without this the bytecode speedup was gone after the first mutation
+	// until the next explicit `wayu init` / `build`.
+	flush_zcompile_batch()
 }
 
 // fnv64a of every init.{zsh,bash,fish} template wayu has shipped (from the

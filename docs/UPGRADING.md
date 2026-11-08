@@ -148,6 +148,13 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - Prompt code runs `command git` / `awk` / `sed` / …, so user aliases or
   functions with those names no longer change or break it.
 
+**zcompile**
+- Generated zsh files are recompiled in the background after every change
+  (`wayu path/alias/const add`, TUI, …), not only by `wayu init` / `build`,
+  so the bytecode speedup no longer disappears after the first edit.
+- `wayu_compile` (helpers.zsh) uses the data dir the file was generated for.
+- `wayu build profile` works when the data dir path contains spaces.
+
 ## 5.0.0
 
 **doctor**
