@@ -191,6 +191,9 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `[[paths]]` schema (e.g. replaced by an old wayu after the TUI started)
   is refused with "run `wayu migrate --schema`"; it used to append a
   `[paths]` table to the old-schema file.
+- The Backups view lists `wayu.toml` backups and Settings counts them; both
+  only looked at the pre-3.10 `path`/`aliases`/`constants` files, so they
+  showed none.
 
 **wayu.toml parsing (one parser for every command)**
 - `toml validate`, `doctor`, `backup restore`, `migrate --schema`, the TUI,
