@@ -34,6 +34,7 @@ class BackupIntegrationTest
       test_backup_error_handling
       test_retention_after_many_writes
       test_restore_chosen_backup
+      test_restore_waits_for_config_lock
     ensure
       cleanup
       teardown_test_env
@@ -89,6 +90,20 @@ class BackupIntegrationTest
            no_ping_pong && chose_older && bad.exitstatus == 65 && listed,
            "no_ping_pong=#{no_ping_pong} chose_older=#{chose_older} bad=#{bad.exitstatus} listed=#{listed} out=#{out[0, 300]}")
     %w[pick1 pick2 pick3].each { |a| run_wayu("alias rm #{a}") }
+  end
+
+  # A restore is a wayu.toml write: without the config lock a concurrent
+  # `alias add` that read the file earlier overwrote the restore.
+  def test_restore_waits_for_config_lock
+    run_wayu("alias add lockt one")
+    out, st, waited = run_wayu_with_config_lock_held("backup restore alias --yes", hold: 2)
+    if waited.nil?
+      report("Test 11: restore waits for the config lock (skipped: no python3)", true, "")
+    else
+      report("Test 11: restore waits for the config lock", st.success? && waited >= 1.5,
+             "waited=#{waited.round(2)}s exit=#{st.exitstatus} #{out[0, 200]}")
+    end
+    run_wayu("alias rm lockt")
   end
 
   def test_automatic_backup_creation

@@ -3,6 +3,7 @@
 package test_wayu
 
 import "core:fmt"
+import "core:strings"
 import "core:testing"
 import wayu "../../src"
 
@@ -29,6 +30,45 @@ test_migrate_parse_toml_kv_decodes_once :: proc(t: ^testing.T) {
 			delete(k); delete(v)
 		}
 	}
+}
+
+// migrate --schema drops and re-emits [[aliases]]/[aliases]/[env]/... from
+// what the one-line parser read; lines it can't read must be reported, not
+// silently lost (an alias's `command = """..."""` used to become "").
+@(test)
+test_migrate_schema_unconvertible_lines :: proc(t: ^testing.T) {
+	content := "[shell]\ntype = \"ZSH\"\nX = [1, 2]\n\n" +
+		"[[aliases]]\nname = \"ll\"\ncommand = \"\"\"ls -la\"\"\"\n\n" +
+		"[env] # mine\nEDITOR = \"vim\"\n# comment\nMULTI = \"\"\"\nline1\nline2\"\"\"\nLIST = [\"a\"]\n"
+	got := wayu.migrate_schema_unconvertible(content)
+	defer delete(got)
+	// [shell] isn't rewritten, so its array (line 3) is fine.
+	want := []int{7, 12, 13, 14, 15}
+	testing.expectf(t, len(got) == len(want), "got %v want %v", got[:], want)
+	if len(got) == len(want) {
+		for w, i in want { testing.expectf(t, got[i] == w, "got %v want %v", got[:], want) }
+	}
+
+	clean := wayu.migrate_schema_unconvertible("[[aliases]]\nname = \"gs\"\ncommand = \"git status\"\n")
+	defer delete(clean)
+	testing.expect_value(t, len(clean), 0)
+}
+
+// A header with a trailing comment (`[aliases] # mine`) is the same table.
+@(test)
+test_migrate_schema_commented_header :: proc(t: ^testing.T) {
+	testing.expect_value(t, wayu.migrate_section_header("[aliases] # mine"), "[aliases]")
+	testing.expect_value(t, wayu.migrate_section_header("[[paths]]"), "[[paths]]")
+	testing.expect_value(t, wayu.migrate_section_header("ll = \"x # y\""), "ll = \"x # y\"")
+
+	content := "[[aliases]]\nname = \"gs\"\ncommand = \"git status\"\n\n[aliases] # mine\nll = \"ls -la\"\n"
+	aliases := wayu.parse_legacy_aliases(content)
+	defer { for a in aliases { delete(a.name); delete(a.command) }; delete(aliases) }
+	testing.expect_value(t, len(aliases), 2)
+
+	stripped := wayu.strip_legacy_sections(content)
+	defer delete(stripped)
+	testing.expectf(t, !strings.contains(stripped, "ll ="), "commented [aliases] table not stripped: %q", stripped)
 }
 
 @(test)

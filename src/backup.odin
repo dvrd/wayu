@@ -816,6 +816,13 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 		os.exit(EXIT_USAGE)
 	}
 
+	// Serialize with every other wayu.toml writer: without the lock a
+	// concurrent `wayu const add` that read the file before the restore
+	// overwrites it afterwards and the restore is silently lost. The backup
+	// is re-selected under the lock (restore_from_backup).
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
+
 	fmt.printfln("%sNote:%s " + shared_note, BRIGHT_YELLOW, RESET, config_type)
 	if !restore_from_backup(config_file, selector) {
 		os.exit(EXIT_IOERR)

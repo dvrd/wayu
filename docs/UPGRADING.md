@@ -6,6 +6,25 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**migrate --schema**
+- Values it can't convert exactly (multi-line `"""` strings, arrays, inline
+  tables) in the rewritten sections are listed as `wayu.toml:N`; nothing is
+  written and it exits `65`. They used to be dropped silently (an alias with
+  a `"""` command became `""`). A section header with a trailing comment
+  (`[aliases] # mine`) is now recognised.
+- Waits for other wayu commands (config lock) before rewriting wayu.toml.
+
+**doctor**
+- A relative `[paths]` entry (`./node_modules/.bin`) is no longer reported
+  as missing or removed by `doctor --fix`: it is counted with the entries
+  that "use unset variables or relative paths (left alone)".
+
+**Backups**
+- `wayu backup restore` waits for other wayu commands (config lock) instead
+  of racing them; a concurrent edit can no longer overwrite the restore.
+
+## 5.0.0
+
 **doctor**
 - `doctor --json` (and `--json doctor`) prints JSON; `--json --fix` exits `64`.
 - `doctor` exits `78` when any check reports an error (also with `--json`).
