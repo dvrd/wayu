@@ -391,3 +391,78 @@ test_wayu_command_table_drives_json :: proc(t: ^testing.T) {
 		testing.expectf(t, parsed.json_unsupported == c.unsupported, "%v: json_unsupported=%v", c.args, parsed.json_unsupported)
 	}
 }
+
+// OKAMI-181/182: every row that completes existing entries hands every
+// CMD ACTION pair to `completions names <kind>` in all three scripts, and
+// the hidden `names` word parses but is never offered.
+@(test)
+test_wayu_completions_offer_existing_entries :: proc(t: ^testing.T) {
+	zsh := wayu.generate_wayu_completion_zsh()
+	defer delete(zsh)
+	bash := wayu.generate_wayu_completion_bash()
+	defer delete(bash)
+	fish := wayu.generate_wayu_completion_fish()
+	defer delete(fish)
+
+	rows := 0
+	for spec in wayu.WAYU_COMMAND_SPECS {
+		if spec.arg_names == .NONE { continue }
+		rows += 1
+		kind := wayu.COMPLETION_NAMES_KIND[spec.arg_names]
+		testing.expectf(t, strings.contains(zsh, fmt.tprintf("_wayu_names %s ;;", kind)), "zsh misses names %s", kind)
+		testing.expectf(t, strings.contains(bash, fmt.tprintf("_wayu_names %s;", kind)), "bash misses names %s", kind)
+		testing.expectf(t, strings.contains(fish, fmt.tprintf("completions names %s 2>/dev/null", kind)), "fish misses names %s", kind)
+		for name in spec.names {
+			for a in spec.actions {
+				if a.action not_in spec.arg_name_actions { continue }
+				pair := fmt.tprintf("\"%s %s\"", name, a.word)
+				testing.expectf(t, strings.contains(zsh, pair), "zsh misses %s", pair)
+				testing.expectf(t, strings.contains(bash, pair), "bash misses %s", pair)
+			}
+		}
+	}
+	testing.expect(t, rows >= 6, "path/alias/const/plugin/function/completions complete entries")
+
+	parsed := wayu.parse_args([]string{"completions", "names", "alias"})
+	defer delete(parsed.args)
+	testing.expect(t, parsed.command == .COMPLETIONS && parsed.action == .SEARCH, "completions names parses")
+	testing.expect(t, !strings.contains(zsh, "'names:"), "hidden names word not offered")
+}
+
+@(test)
+test_collect_completion_names :: proc(t: ^testing.T) {
+	tmp := test_tmp("wayu_test_completion_names")
+	os.remove_all(tmp)
+	testing.expect(t, os.make_directory(tmp) == nil)
+	defer os.remove_all(tmp)
+	testing.expect(t, os.make_directory(fmt.tprintf("%s/completions", tmp)) == nil)
+
+	saved_config, saved_data := wayu.wayu.config, wayu.wayu.data
+	wayu.wayu.config, wayu.wayu.data = tmp, tmp
+	defer { wayu.wayu.config, wayu.wayu.data = saved_config, saved_data }
+	wayu.clear_toml_content_cache()
+	defer wayu.clear_toml_content_cache()
+
+	toml := "[paths]\nbin = \"$HOME/bin\"\n\n[aliases]\nzz = \"ls\"\nll = \"ls -la\"\n\n[env]\nFOO = \"1\"\n"
+	testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/wayu.toml", tmp), transmute([]byte)toml))
+	for f in ([]string{"_jj", "gh.bash-completion", "notes.txt"}) {
+		testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/completions/%s", tmp, f), transmute([]byte)string("x")))
+	}
+
+	expect_names :: proc(t: ^testing.T, kind: wayu.CompletionNames, want: []string) {
+		got := wayu.collect_completion_names(kind)
+		defer {
+			for n in got { delete(n) }
+			delete(got)
+		}
+		testing.expectf(t, len(got) == len(want), "%v: got %v want %v", kind, got[:], want)
+		if len(got) != len(want) { return }
+		for w, i in want { testing.expectf(t, got[i] == w, "%v[%d]: got %s want %s", kind, i, got[i], w) }
+	}
+	expect_names(t, .PATH, {"$HOME/bin"})
+	expect_names(t, .ALIAS, {"ll", "zz"})
+	expect_names(t, .CONSTANT, {"FOO"})
+	expect_names(t, .COMPLETION, {"gh", "jj"})
+	expect_names(t, .PLUGIN, {})
+	expect_names(t, .NONE, {})
+}

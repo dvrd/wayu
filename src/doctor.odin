@@ -1120,7 +1120,30 @@ check_plugins :: proc(results: ^[dynamic]CheckResult) {
 			message = msg,
 			fixable = false,
 		})
+		check_plugin_conflicts(results)
 	}
+}
+
+// Same function/alias/export in two enabled plugins, or in a plugin and
+// wayu.toml (OKAMI-276): a warning naming each conflict.
+check_plugin_conflicts :: proc(results: ^[dynamic]CheckResult) {
+	config, ok := read_plugin_config_json()
+	defer cleanup_plugin_config_json(&config)
+	if !ok { return }
+	conflicts := collect_plugin_conflicts(&config)
+	if len(conflicts) == 0 { return }
+	b := strings.builder_make(context.temp_allocator)
+	fmt.sbprintf(&b, "%d plugin conflict(s): ", len(conflicts))
+	for c, i in conflicts {
+		if i > 0 { strings.write_string(&b, "; ") }
+		fmt.sbprintf(&b, "%s %s in %s and %s", c.kind, c.name, c.plugin, c.other)
+	}
+	append(results, CheckResult{
+		name    = clone_arena("plugin conflicts"),
+		status  = .WARNING,
+		message = clone_arena(strings.to_string(b)),
+		fixable = false,
+	})
 }
 
 // Check 5: backups

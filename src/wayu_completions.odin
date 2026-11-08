@@ -7,6 +7,7 @@ package wayu
 
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 
 // One row per top-level command: the single source for command dispatch
@@ -34,6 +35,33 @@ WayuCommandSpec :: struct {
 	json: bit_set[Action],
 	// Accept any dash token (version/help never write).
 	any_flag: bool,
+	// Existing entries completions offer as the first argument of the
+	// `arg_name_actions` actions (`alias rm <TAB>` → alias names), listed at
+	// TAB time by the hidden `wayu completions names <kind>` (OKAMI-181/182).
+	arg_names:        CompletionNames,
+	arg_name_actions: bit_set[Action],
+}
+
+// Kinds of existing entries `wayu completions names <kind>` prints.
+CompletionNames :: enum {
+	NONE,
+	PATH,
+	ALIAS,
+	CONSTANT,
+	PLUGIN,
+	FUNCTION,
+	COMPLETION,
+}
+
+// The <kind> word of `wayu completions names <kind>`.
+COMPLETION_NAMES_KIND := [CompletionNames]string{
+	.NONE       = "",
+	.PATH       = "path",
+	.ALIAS      = "alias",
+	.CONSTANT   = "const",
+	.PLUGIN     = "plugin",
+	.FUNCTION   = "function",
+	.COMPLETION = "completion",
 }
 
 // An action word. `desc == ""` marks a parser-only synonym (`config e`)
@@ -53,6 +81,7 @@ WayuFlagSpec :: struct {
 
 WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 	{command = .PATH, names = {"path"}, desc = "Manage PATH entries", default_action = .LIST, json = {.LIST},
+	 arg_names = .PATH, arg_name_actions = {.REMOVE, .GET},
 	 actions = {
 		{"add", .ADD, "Add a PATH entry"}, {"remove", .REMOVE, "Remove a PATH entry"},
 		{"rm", .REMOVE, "Remove a PATH entry"}, {"list", .LIST, "List PATH entries"},
@@ -60,12 +89,13 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 		{"clean", .CLEAN, "Remove missing directories"}, {"dedup", .DEDUP, "Remove duplicates"},
 		{"help", .HELP, "Show help"}}},
 	{command = .ALIAS, names = {"alias"}, desc = "Manage shell aliases", default_action = .LIST, json = {.LIST},
+	 arg_names = .ALIAS, arg_name_actions = {.REMOVE, .GET},
 	 actions = {
 		{"add", .ADD, "Add an alias"}, {"remove", .REMOVE, "Remove an alias"},
 		{"rm", .REMOVE, "Remove an alias"}, {"list", .LIST, "List aliases"},
 		{"ls", .LIST, "List aliases"}, {"get", .GET, "Get alias value"}, {"help", .HELP, "Show help"}}},
 	{command = .CONSTANTS, names = {"constants", "const", "env"}, desc = "Manage environment constants",
-	 default_action = .LIST, json = {.LIST},
+	 default_action = .LIST, json = {.LIST}, arg_names = .CONSTANT, arg_name_actions = {.REMOVE, .GET},
 	 actions = {
 		{"add", .ADD, "Add a constant"}, {"remove", .REMOVE, "Remove a constant"},
 		{"rm", .REMOVE, "Remove a constant"}, {"list", .LIST, "List constants"},
@@ -74,12 +104,14 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 	{command = .SEARCH, names = {"search", "find", "f"}, desc = "Fuzzy search across all configs",
 	 default_action = .LIST, json = {.LIST}},
 	{command = .COMPLETIONS, names = {"completions"}, desc = "Manage shell completion scripts", default_action = .LIST,
+	 arg_names = .COMPLETION, arg_name_actions = {.REMOVE},
 	 actions = {
 		{"add", .ADD, "Add a completion script"}, {"remove", .REMOVE, "Remove a completion"},
 		{"rm", .REMOVE, "Remove a completion"}, {"list", .LIST, "List completions"},
 		{"ls", .LIST, "List completions"}, {"generate", .UPDATE, "Generate wayu's own completions"},
 		{"gen", .UPDATE, ""}, {"bash", .CHECK, "Print bash completion for wayu"},
 		{"fish", .GET, "Print fish completion for wayu"}, {"zsh", .TURBO, "Print zsh completion for wayu"},
+		{"names", .SEARCH, ""},
 		{"help", .HELP, "Show help"}},
 	 flags = {{"--generate", ""}, {"-g", ""}}},
 	{command = .BACKUP, names = {"backup"}, desc = "Manage configuration backups", default_action = .LIST, json = {.LIST},
@@ -88,6 +120,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 		{"restore", .RESTORE, "Restore from backup"}, {"remove", .REMOVE, "Clean up old backups"},
 		{"rm", .REMOVE, "Clean up old backups"}, {"help", .HELP, "Show help"}}},
 	{command = .PLUGIN, names = {"plugin"}, desc = "Manage shell plugins", default_action = .LIST, json = {.LIST},
+	 arg_names = .PLUGIN, arg_name_actions = {.REMOVE, .GET, .ENABLE, .DISABLE, .PRIORITY, .UPDATE},
 	 actions = {
 		{"add", .ADD, "Install a plugin"}, {"remove", .REMOVE, "Remove a plugin"},
 		{"rm", .REMOVE, "Remove a plugin"}, {"list", .LIST, "List installed plugins"},
@@ -142,7 +175,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 		{"list", .LIST, "List hooks"}, {"ls", .LIST, "List hooks"}, {"edit", .ADD, "Edit hooks"},
 		{"help", .HELP, "Show help"}}},
 	{command = .FUNCTION, names = {"function", "functions", "func", "fn"}, desc = "Manage custom shell functions",
-	 default_action = .LIST,
+	 default_action = .LIST, arg_names = .FUNCTION, arg_name_actions = {.ADD, .REMOVE},
 	 actions = {
 		{"add", .ADD, "Create a function in $EDITOR"}, {"edit", .ADD, "Edit a function"},
 		{"new", .ADD, "Create a function"}, {"list", .LIST, "List functions"}, {"ls", .LIST, "List functions"},
@@ -254,6 +287,23 @@ completion_words :: proc(spec: WayuCommandSpec) -> []CompletionWord {
 	return words[:]
 }
 
+// "CMD ACTION" pairs (every command name × every action word, synonyms
+// included) whose first argument completes `spec.arg_names` entries.
+// Temp-allocated.
+@(private = "file")
+arg_name_pairs :: proc(spec: WayuCommandSpec) -> []string {
+	pairs := make([dynamic]string, context.temp_allocator)
+	if spec.arg_names == .NONE { return pairs[:] }
+	for name in spec.names {
+		for a in spec.actions {
+			if a.action in spec.arg_name_actions {
+				append(&pairs, fmt.tprintf("%s %s", name, a.word))
+			}
+		}
+	}
+	return pairs[:]
+}
+
 // zsh completion for wayu (an fpath `_wayu` file). Allocated; caller deletes.
 generate_wayu_completion_zsh :: proc(allocator := context.allocator) -> string {
 	b := strings.builder_make(allocator)
@@ -286,6 +336,33 @@ generate_wayu_completion_zsh :: proc(allocator := context.allocator) -> string {
 	}
 	strings.write_string(&b, "    esac\n    (( ${#actions} )) && _describe -t actions \"$1 action\" actions\n}\n\n")
 
+	// Arguments: directories/files for `add`, existing entries (listed by
+	// the binary core.zsh records in _WAYU_BIN) for the first argument of
+	// rm/get/enable/... With `*::`, $line/$words hold the normal arguments
+	// only, so the first argument after the action is CURRENT == 3.
+	strings.write_string(&b, `_wayu_names() {
+    local -a names
+    names=( ${(f)"$(command "${_WAYU_BIN:-wayu}" completions names "$1" 2>/dev/null)"} )
+    (( ${#names} )) && compadd -a names
+}
+
+_wayu_args() {
+    case "$line[1] $line[2]" in
+        "path add") _path_files -/ ;;
+        "completions add") _files ;;
+`)
+	for spec in WAYU_COMMAND_SPECS {
+		pairs := arg_name_pairs(spec)
+		if len(pairs) == 0 { continue }
+		strings.write_string(&b, "        ")
+		for p, i in pairs {
+			if i > 0 { strings.write_byte(&b, '|') }
+			fmt.sbprintf(&b, "\"%s\"", p)
+		}
+		fmt.sbprintf(&b, ") (( CURRENT == 3 )) && _wayu_names %s ;;\n", COMPLETION_NAMES_KIND[spec.arg_names])
+	}
+	strings.write_string(&b, "    esac\n}\n\n")
+
 	strings.write_string(&b, `# Main completion function
 _wayu() {
     local curcontext="$curcontext" state line
@@ -308,18 +385,7 @@ _wayu() {
             _wayu_actions "$line[1]"
             ;;
         args)
-            case "$line[1]" in
-                path)
-                    if [[ "$line[2]" == "add" ]]; then
-                        _path_files -/
-                    fi
-                    ;;
-                completions)
-                    if [[ "$line[2]" == "add" ]]; then
-                        _files
-                    fi
-                    ;;
-            esac
+            _wayu_args
             ;;
     esac
 }
@@ -374,9 +440,32 @@ generate_wayu_completion_bash :: proc(allocator := context.allocator) -> string 
         case "${COMP_WORDS[1]} ${COMP_WORDS[2]}" in
             "path add") COMPREPLY=($(compgen -d -- "$cur")); return 0 ;;
             "completions add") COMPREPLY=($(compgen -f -- "$cur")); return 0 ;;
-        esac
+`)
+	// Existing entries for the first argument of rm/get/enable/...
+	// (OKAMI-181), listed by the binary core.bash records in _WAYU_BIN.
+	for spec in WAYU_COMMAND_SPECS {
+		pairs := arg_name_pairs(spec)
+		if len(pairs) == 0 { continue }
+		strings.write_string(&b, "            ")
+		for p, i in pairs {
+			if i > 0 { strings.write_byte(&b, '|') }
+			fmt.sbprintf(&b, "\"%s\"", p)
+		}
+		fmt.sbprintf(&b, ") [ \"$COMP_CWORD\" -eq 3 ] && _wayu_names %s; return 0 ;;\n", COMPLETION_NAMES_KIND[spec.arg_names])
+	}
+	strings.write_string(&b, `        esac
     fi
     COMPREPLY=($(compgen -W "$words" -- "$cur"))
+}
+
+# Entries are matched by prefix and quoted with %q (compgen -W would expand
+# a stored "$HOME/bin" instead of offering it).
+_wayu_names() {
+    local cur="${COMP_WORDS[COMP_CWORD]}" n
+    while IFS= read -r n; do
+        [ -n "$n" ] || continue
+        case "$n" in "$cur"*) COMPREPLY+=("$(printf '%q' "$n")") ;; esac
+    done < <(command "${_WAYU_BIN:-wayu}" completions names "$1" 2>/dev/null)
 }
 
 complete -F _wayu_completion wayu
@@ -407,13 +496,42 @@ generate_wayu_completion_fish :: proc(allocator := context.allocator) -> string 
 		words := completion_words(spec)
 		if len(words) == 0 { continue }
 		cond := fmt.tprintf("__fish_seen_subcommand_from %s", strings.join(spec.names, " ", context.temp_allocator))
+		// Action words only right after the command (flags anywhere), so
+		// `wayu alias rm <TAB>` offers aliases, not actions again.
+		action_cond := fmt.tprintf("%s; and test (count (commandline -opc)) -eq 2", cond)
 		fmt.sbprintf(&b, "\n# %s\n", spec.names[0])
 		for w in words {
 			fmt.sbprintf(&b, "complete -c wayu -n %s -a %s -d %s\n",
-				escape_fish_string(cond, context.temp_allocator),
+				escape_fish_string(strings.has_prefix(w.word, "-") ? cond : action_cond, context.temp_allocator),
 				escape_fish_string(w.word, context.temp_allocator),
 				escape_fish_string(w.desc, context.temp_allocator))
 		}
+	}
+	// Existing entries for the first argument of rm/get/enable/...
+	// (OKAMI-182): `__wayu_arg1 CMD... -- ACTION...` is true when the
+	// command line is exactly `wayu CMD ACTION` plus the word being typed.
+	strings.write_string(&b, `
+# Existing entries (first argument of rm/get/enable/...)
+function __wayu_arg1
+    set -l t (commandline -opc)
+    test (count $t) -eq 3; or return 1
+    set -l i (contains -i -- -- $argv); or return 1
+    contains -- $t[2] $argv[1..(math $i - 1)]; or return 1
+    contains -- $t[3] $argv[(math $i + 1)..-1]
+end
+`)
+	for spec in WAYU_COMMAND_SPECS {
+		if spec.arg_names == .NONE { continue }
+		cond := strings.builder_make(context.temp_allocator)
+		strings.write_string(&cond, "__wayu_arg1")
+		for name in spec.names { fmt.sbprintf(&cond, " %s", name) }
+		strings.write_string(&cond, " --")
+		for a in spec.actions {
+			if a.action in spec.arg_name_actions { fmt.sbprintf(&cond, " %s", a.word) }
+		}
+		fmt.sbprintf(&b, "complete -c wayu -n %s -a %s\n",
+			escape_fish_string(strings.to_string(cond), context.temp_allocator),
+			escape_fish_string(fmt.tprintf("(command wayu completions names %s 2>/dev/null)", COMPLETION_NAMES_KIND[spec.arg_names]), context.temp_allocator))
 	}
 	strings.write_string(&b, `
 # Global flags
@@ -557,9 +675,103 @@ handle_completions_command_extended :: proc(action: Action, args: []string) {
 		handle_completions_fish()
 	case .TURBO:  // zsh
 		handle_completions_zsh()
+	case .SEARCH: // names <kind> (hidden; used by the completion scripts)
+		print_completion_names(len(args) > 0 ? args[0] : "")
 	case:
 		handle_completions_command(action, args)
 	}
+}
+
+// `wayu completions names <kind>`: existing entries, one per line, for
+// the completion scripts (OKAMI-181/182). Read-only and quiet: an unknown
+// kind or unreadable config prints nothing; the exit status is always 0
+// (the scripts discard stderr).
+print_completion_names :: proc(kind_word: string) {
+	kind := CompletionNames.NONE
+	for word, k in COMPLETION_NAMES_KIND {
+		if k != .NONE && word == kind_word { kind = k }
+	}
+	names := collect_completion_names(kind)
+	defer {
+		for n in names { delete(n) }
+		delete(names)
+	}
+	b := strings.builder_make(context.temp_allocator)
+	for n in names {
+		// One entry per line: a name containing a newline can't be offered.
+		if strings.contains_any(n, "\r\n") { continue }
+		strings.write_string(&b, n)
+		strings.write_byte(&b, '\n')
+	}
+	fmt.print(strings.to_string(b))
+}
+
+// Existing entries of one kind, as the matching command accepts them:
+// [paths] values as written, [aliases]/[env] names, plugin names, function
+// names (functions/<name>.<ext>) and completion names (file name without
+// the shell prefix/suffix). Sorted. Allocated; caller deletes each and the
+// array.
+collect_completion_names :: proc(kind: CompletionNames) -> [dynamic]string {
+	out := make([dynamic]string)
+	add_unique :: proc(out: ^[dynamic]string, s: string) {
+		for e in out { if e == s { return } }
+		append(out, strings.clone(s))
+	}
+	switch kind {
+	case .NONE:
+	case .PATH:
+		kvs := read_toml_section_kvs("paths")
+		defer destroy_toml_kvs(&kvs)
+		for kv in kvs {
+			if len(strings.trim_space(kv.value)) > 0 { add_unique(&out, kv.value) }
+		}
+	case .ALIAS:
+		kvs := read_toml_section_kvs("aliases")
+		defer destroy_toml_kvs(&kvs)
+		for kv in kvs { add_unique(&out, kv.key) }
+	case .CONSTANT:
+		kvs := read_toml_section_kvs("env")
+		defer destroy_toml_kvs(&kvs)
+		for kv in kvs { add_unique(&out, kv.key) }
+	case .PLUGIN:
+		json_file := get_plugins_json_config_file()
+		defer delete(json_file)
+		if !os.exists(json_file) { break }
+		config, ok := read_plugin_config_json()
+		defer cleanup_plugin_config_json(&config)
+		if ok {
+			for p in config.plugins { add_unique(&out, p.name) }
+		}
+	case .FUNCTION, .COMPLETION:
+		dir := kind == .FUNCTION ? fmt.tprintf("%s/functions", wayu.config) : fmt.tprintf("%s/completions", wayu.data)
+		handle, err := os.open(dir)
+		if err != nil { break }
+		defer os.close(handle)
+		infos, read_err := os.read_dir(handle, -1, context.allocator)
+		if read_err != nil { break }
+		defer os.file_info_slice_delete(infos, context.allocator)
+		for info in infos {
+			if info.type == .Directory { continue }
+			name := info.name
+			if kind == .FUNCTION {
+				suffix := fmt.tprintf(".%s", wayu.shell_ext)
+				if !strings.has_suffix(name, suffix) { continue }
+				name = strings.trim_suffix(name, suffix)
+			} else {
+				if !is_completion_file(name) { continue }
+				name = strings.trim_prefix(name, "_")
+				for suffix in ([]string{".bash-completion", ".bash", ".fish"}) {
+					if strings.has_suffix(name, suffix) {
+						name = strings.trim_suffix(name, suffix)
+						break
+					}
+				}
+			}
+			if len(name) > 0 { add_unique(&out, name) }
+		}
+	}
+	slice.sort(out[:])
+	return out
 }
 
 // Print extended completions help with generate option

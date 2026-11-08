@@ -47,6 +47,7 @@ class CliOutputIntegrationTest
       test_no_escape_codes_with_no_color
       test_force_color_keeps_colors
       test_json_documents
+      test_json_schema
       test_json_empty_lists
       test_json_external_paths
       test_json_rejected_where_unsupported
@@ -166,6 +167,36 @@ class CliOutputIntegrationTest
       bad << "#{cmd} (exit #{st.exitstatus}) #{err.lines.first&.strip}" unless valid_json?(out)
     end
     check('Every --json output is one valid JSON document', bad.empty?, bad.join('; '))
+  end
+
+  # OKAMI-185: every list --json follows the schema documented in README
+  # ("JSON output"): top-level keys and the exact key set of each row.
+  JSON_SCHEMA = {
+    'path list --json' => [%w[paths], %w[path source exists]],
+    'alias list --json' => [%w[aliases], %w[alias command source]],
+    'const list --json' => [%w[constants], %w[constant value source]],
+    'plugin list --json' => [%w[plugins count enabled], %w[name enabled priority shell url commit installed_path conflicts]],
+    'backup list --json' => [%w[backups], %w[file count entries]],
+    'search ll --json' => [%w[results query count], %w[type name value match field score]],
+    'doctor --json' => [%w[checks summary], %w[name status message fixable]],
+  }.freeze
+
+  def test_json_schema
+    bad = []
+    JSON_SCHEMA.each do |cmd, (top, row)|
+      out, = run_split(cmd)
+      doc = valid_json?(out) ? JSON.parse(out) : {}
+      bad << "#{cmd}: top keys #{doc.keys}" unless doc.keys.sort == top.sort
+      rows = doc[top.first] || []
+      bad << "#{cmd}: no rows" if rows.empty? && cmd !~ /plugin/
+      rows.each { |r| bad << "#{cmd}: row keys #{r.keys}" unless r.keys.sort == row.sort }
+    end
+    backup = JSON.parse(run_split('backup list --json').first)['backups'].first
+    entry_keys = %w[index timestamp size_bytes path pre_restore]
+    bad << "backup entry keys #{backup['entries'].first.keys}" unless backup && backup['entries'].all? { |e| e.keys.sort == entry_keys.sort }
+    summary = JSON.parse(run_split('doctor --json').first)['summary']
+    bad << "doctor summary #{summary.keys}" unless summary.keys.sort == %w[ok warnings errors info fixable].sort
+    check('--json output matches the documented schema', bad.empty?, bad.join('; '))
   end
 
   def test_json_empty_lists

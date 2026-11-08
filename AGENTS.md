@@ -128,8 +128,9 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/migrate_parse.odin` | Legacy file parser: each line → entry or listed `file:line` + reason |
 | `src/shell_words.odin` | Exact POSIX/fish shell-word tokenizer (quotes, escapes, expandability) |
 | `src/validation.odin` | Input validation + error handling |
-| `src/hooks.odin` | Pre/post operation hook procs (stubs assigned to ConfigEntrySpec) |
+| `src/hooks.odin` | hooks.conf loading + execution; live pre/post hook procs (ConfigEntrySpec, path, plugin add, export) |
 | `src/hot_reload.odin` | `wayu reload`/`watch`: file watcher, debounced core regeneration |
+| `src/profile.odin` | `wayu build profile`: startup timing + per-section/tool/plugin breakdown (zsh, bash 5+) |
 | `src/tui_core.odin` | TUI main loop, state machine, data loading, render orchestrator |
 | `src/tui_views.odin` | TUI view renderers (list, overlays, cache, handlers, hooks, plugins, settings) |
 | `src/tui_io.odin` | TUI terminal I/O: raw mode, input, screen buffer, events, colors, layout, components |
@@ -209,7 +210,7 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 ## Shell-Specific Notes
 
 - Config files use `.zsh` or `.bash` extensions determined by `src/shell.odin` at runtime
-- wayu's own completions (zsh/bash/fish) are generated from `WAYU_COMMAND_SPECS` in `src/wayu_completions.odin` — add new commands/actions there (a unit test checks every `Command` has a row)
+- wayu's own completions (zsh/bash/fish) are generated from `WAYU_COMMAND_SPECS` in `src/wayu_completions.odin` — add new commands/actions there (a unit test checks every `Command` has a row); `arg_names`/`arg_name_actions` make an action's first argument complete existing entries via the hidden `wayu completions names <kind>`
 - `src/preload.odin` has separate templates for each shell with shell-specific syntax
 - Both Zsh and Bash PATH templates include a dedup pass after exporting `WAYU_PATHS`
 
@@ -219,7 +220,7 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 - `--version` / `-v`: prints `wayu vX.Y.Z`
 - `--no-color`: disables ANSI colors (equivalent to `NO_COLOR=1`)
 - `--yes` / `-y`: skip confirmation on destructive operations (required by: `path clean`, `path dedup`, `backup rm`, `plugin remove`, `doctor --fix`)
-- `--json`: machine-readable output (currently only `doctor` — expand to list commands)
+- `--json`: machine-readable output for `path|alias|const|plugin|backup list`, `search`, `doctor` (the `json` bit_set in `WAYU_COMMAND_SPECS`; elsewhere exit 64). Schemas are documented in README "JSON output" and pinned by `test_json_schema` in `tests/integration/test_cli_output.rb` — update both when a shape changes
 - `wayu doctor` exits `EXIT_CONFIG` (78) when any check reports an error, so it can gate CI
 - `--dry-run`: show what would happen without writing
 
@@ -227,8 +228,6 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 
 These are acknowledged incomplete features — do not add workarounds, implement them properly:
 
-- `wayu build profile`: profiling not yet implemented
 - `src/fuzzy.odin`: interactive_select is alive; FuzzyView-based full-screen finder removed as dead code
 - Fish shell: completions and templates wired; `--shell fish` flag fixed in init command
-- `src/hooks.odin`: hook procs are no-op stubs assigned to ConfigEntrySpec function pointers
 - `src/tui_views.odin`: hooks and settings views render minimal placeholder content

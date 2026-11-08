@@ -105,6 +105,7 @@ class PluginIntegrationTest
       test_offline_add_fish_url_records_fish
       test_offline_concurrent_adds
       test_offline_registry_pure_fish_name
+      test_offline_conflicts_reported
       test_ssh_batch_mode_and_timeout
     ensure
       teardown_test_env
@@ -1633,6 +1634,42 @@ class PluginIntegrationTest
          loader.include?("#{@plugins_dir}/alpha/alpha.plugin.zsh") &&
          !loader.include?("#{@plugins_dir}/alpha/alpha.zsh'")
     check("offline add failed", ok, output + "\nloader:\n" + loader, status)
+  end
+
+  # OKAMI-276: conflicts are shown on add/enable, in `plugin list` (text and
+  # --json) and by doctor — between plugins and with wayu.toml, including
+  # definitions after `export X=..;` on the same line.
+  def test_offline_conflicts_reported
+    print "Test 39b: plugin conflicts shown on add/enable, list, list --json, doctor... "
+    reset_plugins
+    run_wayu("alias add gq 'git status'")
+    fixture_repo("cfa", { "cfa.plugin.zsh" => "dup() { :; }\nalias gs='git status'\n" })
+    fixture_repo("cfb", { "cfb.plugin.zsh" => "export CFB_X=1; dup() { :; }; alias gq='git q'\n" })
+    failures = []
+    _, st = run_wayu("plugin add #{fixture_url('cfa')}")
+    failures << "add cfa #{st.exitstatus}" unless st.exitstatus == 0
+    out, st = run_wayu("plugin add #{fixture_url('cfb')}")
+    failures << "add cfb warning: #{out}" unless st.exitstatus == 0 &&
+      out.include?("function dup (also defined by cfa)") && out.include?("alias gq (also defined by wayu.toml)")
+    run_wayu("plugin disable cfb")
+    out, st = run_wayu("plugin enable cfb")
+    failures << "enable warning: #{out}" unless st.exitstatus == 0 && out.include?("function dup (also defined by cfa)")
+    out, _ = run_wayu("plugin list")
+    failures << "list: #{out}" unless out.include?("cfa: function dup (also defined by cfb)") && out.include?("cfb: alias gq (also defined by wayu.toml)")
+    json, st = run_wayu("plugin list --json")
+    begin
+      doc = JSON.parse(json)
+      cfa = doc["plugins"].find { |x| x["name"] == "cfa" }
+      cfb = doc["plugins"].find { |x| x["name"] == "cfb" }
+      failures << "json cfa: #{cfa}" unless cfa["conflicts"] == [{ "kind" => "function", "name" => "dup", "with" => "cfb" }]
+      failures << "json cfb: #{cfb}" unless cfb["conflicts"].include?({ "kind" => "alias", "name" => "gq", "with" => "wayu.toml" })
+    rescue StandardError => e
+      failures << "json: #{e} #{json}"
+    end
+    out, st = run_wayu("doctor")
+    failures << "doctor: #{out}" unless out.include?("function dup in cfa and cfb")
+    run_wayu("alias rm gq")
+    check("conflicts reported", failures.empty?, failures.join("\n  "), nil)
   end
 
   def test_offline_check_and_update

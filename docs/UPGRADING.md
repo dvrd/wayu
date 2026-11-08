@@ -52,6 +52,27 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   reads it exits `78`. A newline in one used to inject shell code into the
   generated `plugins.<ext>`.
 
+**build profile**
+- The phase breakdown inlines `lazy.<ext>` and `plugins.<ext>`: it has a
+  row per `[tools]` entry (`tool <name> (evalcache)`, `lazy › tool nvm
+  (lazy)`, `tool <name> (lazy)`) and per plugin (`plugin <name>`) instead
+  of one `Lazy init` / `Plugins` row; core sections keep their names, and
+  sections of `lazy.<ext>` are prefixed `lazy › `. Rows with no code are
+  left out.
+- bash: the breakdown now runs too when the shell has `$EPOCHREALTIME`
+  (bash 5+); with an older bash it prints a note instead.
+
+**Plugin conflicts**
+- A function, alias or exported variable defined by two enabled plugins,
+  or by a plugin and your `wayu.toml` (`[aliases]` / `[env]`), is now
+  reported: `plugin add` and `plugin enable` print a warning (stderr)
+  naming each one, `plugin list` ends with a conflicts section (stderr),
+  `plugin list --json` has a `"conflicts": [{"kind", "name", "with"}]`
+  array per plugin (`with` is a plugin name or `"wayu.toml"`), and
+  `wayu doctor` adds a `plugin conflicts` warning (exit code unchanged).
+  Several statements on one line (`export X=1; alias gs=...`) are all
+  scanned; the ones after the first were ignored.
+
 **Plugins: installing and loading**
 - `plugin add` (and TUI install) refuses a repository with nothing to load
   for the plugin's shell(s): it exits `65`, removes the fresh clone and
@@ -146,6 +167,18 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   dump is no longer missed. The list seen at the last rebuild is kept in
   `${ZDOTDIR:-$HOME}/.zcompdump.wayu`; the first shell after upgrading
   rebuilds the dump once.
+
+**Completions for wayu itself (zsh, bash, fish)**
+- The first argument of `path|alias|const rm|get`, `plugin
+  rm|get|enable|disable|priority|update`, `function add|edit|rm` and
+  `completions rm` completes existing entries (paths as written in
+  `wayu.toml`, alias/constant/plugin/function/completion names). The
+  scripts list them by running the hidden `wayu completions names <kind>`
+  (`$_WAYU_BIN`, else `wayu` on `PATH`) at TAB time. Re-run
+  `wayu completions generate` to update installed scripts.
+- fish: action words are offered only right after the command
+  (`wayu alias rm <TAB>` no longer offers `add`, `list`, …); flags still
+  complete anywhere.
 
 **migrate --schema**
 - Values it can't convert exactly (multi-line `"""` strings, arrays, inline

@@ -442,6 +442,70 @@ test_shared_env_vars_not_conflicts :: proc(t: ^testing.T) {
 	testing.expect(t, !config.plugins[1].conflicts.detected, "PATH/FPATH/reply=() must not be conflicts")
 }
 
+// OKAMI-276: statements after `export X=..;` count; quoted `;` doesn't split.
+@(test)
+test_split_shell_statements :: proc(t: ^testing.T) {
+	cases := []struct { line: string, want: []string }{
+		{"export A=1; alias gs='git status'", {"export A=1", "alias gs='git status'"}},
+		{"alias x='a; b' && f() { :; }", {"alias x='a; b'", "f() { :", "}"}},
+		{`echo "a;b" || y`, {`echo "a;b"`, "y"}},
+		{"a=1 # c; d", {"a=1"}},
+		{"echo ${#x}", {"echo ${#x}"}},
+	}
+	for c in cases {
+		got := wayu.split_shell_statements(c.line, context.temp_allocator)
+		testing.expectf(t, len(got) == len(c.want), "%q -> %v", c.line, got)
+		if len(got) != len(c.want) { continue }
+		for w, i in c.want { testing.expectf(t, got[i] == w, "%q[%d]: %q != %q", c.line, i, got[i], w) }
+	}
+}
+
+// OKAMI-276: conflicts are listed by name — between plugins and with
+// wayu.toml [aliases]/[env].
+@(test)
+test_collect_plugin_conflicts :: proc(t: ^testing.T) {
+	old_shell := wayu.wayu.shell
+	wayu.wayu.shell = .ZSH
+	defer wayu.wayu.shell = old_shell
+
+	base := fmt.tprintf("%s-collect-conflicts", regression_test_dir())
+	os.remove_all(base)
+	os.make_directory(base)
+	defer os.remove_all(base)
+	os.make_directory(fmt.tprintf("%s/d1", base))
+	os.make_directory(fmt.tprintf("%s/d2", base))
+	_ = os.write_entire_file(fmt.tprintf("%s/d1/d1.plugin.zsh", base), transmute([]byte)string("dup() { :; }\nalias gs='git status'\n"))
+	_ = os.write_entire_file(fmt.tprintf("%s/d2/d2.plugin.zsh", base), transmute([]byte)string("export MYV=1; dup() { :; }; alias gs=x\n"))
+	_ = os.write_entire_file(fmt.tprintf("%s/wayu.toml", base), transmute([]byte)string("[aliases]\ngs = \"git st\"\n\n[env]\nMYV = \"2\"\n"))
+
+	saved_config := wayu.wayu.config
+	wayu.wayu.config = base
+	defer wayu.wayu.config = saved_config
+	wayu.clear_toml_content_cache()
+	defer wayu.clear_toml_content_cache()
+
+	config := wayu.PluginConfigJSON{plugins = make([dynamic]wayu.PluginMetadata)}
+	defer wayu.cleanup_plugin_config_json(&config)
+	append(&config.plugins, make_owned_plugin("d1", fmt.tprintf("%s/d1", base)))
+	append(&config.plugins, make_owned_plugin("d2", fmt.tprintf("%s/d2", base)))
+
+	conflicts := wayu.collect_plugin_conflicts(&config)
+	has :: proc(cs: []wayu.PluginConflict, plugin, other, kind, name: string) -> bool {
+		for c in cs {
+			if c.plugin == plugin && c.other == other && c.kind == kind && c.name == name { return true }
+		}
+		return false
+	}
+	testing.expect(t, has(conflicts[:], "d1", "d2", "function", "dup"), "d1/d2 dup")
+	testing.expect(t, has(conflicts[:], "d1", "d2", "alias", "gs"), "d1/d2 gs")
+	testing.expect(t, has(conflicts[:], "d1", "wayu.toml", "alias", "gs"), "d1 gs vs wayu.toml")
+	testing.expect(t, has(conflicts[:], "d2", "wayu.toml", "env", "MYV"), "d2 MYV vs [env]")
+	testing.expectf(t, len(conflicts) == 5, "5 conflicts, got %v", conflicts[:])
+
+	lines := wayu.plugin_conflict_lines(conflicts[:], "d2")
+	testing.expectf(t, len(lines) == 4, "d2 lines %v", lines)
+}
+
 // ---------------------------------------------------------------------------
 // #14: loader quoting
 // ---------------------------------------------------------------------------

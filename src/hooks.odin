@@ -2,6 +2,19 @@
 //
 // Allows users to run custom commands before or after wayu operations.
 // Useful for logging, notifications, or custom integrations.
+//
+// Model (OKAMI-186): `hooks.conf` (in the config dir) maps a key per
+// HookType (`pre_alias_add = <command>`) to a shell command; the command is
+// read fresh on every call (load_hook_config) and run by execute_hook_ctx.
+// Every hook_* proc at the bottom of this file is live, not a stub:
+//   - alias/constant: assigned to ALIAS_SPEC / CONSTANTS_SPEC
+//     (config_specs.odin) and called by the generic entry handlers in
+//     config_entry.odin (CLI and TUI add/remove);
+//   - path: called by path.odin and config_entry.odin;
+//   - plugin install: plugin_storage.odin (`plugin add`) and the TUI install;
+//   - export: main.odin around `wayu export`/`build turbo` generation.
+// Pre-hooks run only when the operation will actually change something;
+// post-hooks only after a successful write; none run under --dry-run.
 
 package wayu
 
