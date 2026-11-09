@@ -136,6 +136,9 @@ class StartupTest
     print "Test: compinit_guard = false leaves later compinit calls alone... "
     home, data, env = setup_home('guard_off', settings: 'compinit_guard = false', zshrc: INSTALLER_RC_NOAUDIT)
     installer_dir(home)
+    # Debian/Ubuntu's /etc/zsh/zshrc runs its own audited compinit unless
+    # skip_global_compinit is set; with the guard off nothing intercepts it.
+    env = env.merge('skip_global_compinit' => '1')
     out, err, = zsh(env, '-i', '-c', 'print -r -- "foo=${_comps[sufoo]-none} fn=${functions[compinit][1,40]}"')
     core = File.read("#{data}/core.zsh")
     check('guard off', out.strip.start_with?('foo=_sufoo fn=') && !out.include?('_wayu_compinit_scan') &&
