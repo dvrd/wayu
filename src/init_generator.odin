@@ -1325,7 +1325,7 @@ ZSH_COMPINIT :: `  function _wayu_compinit {
     zstat -A mt +mtime -- ${^fpath}(N/) 2>/dev/null
     sig="${(j:/:)comps} ${(j: :)fpath} ${(j: :)mt}"
     sig=${sig//$'\n'/?}
-    { read -r seen < "$dump.wayu" } 2>/dev/null
+    { IFS= read -r seen < "$dump.wayu" } 2>/dev/null
     (( ${+functions[compinit]} )) && unfunction compinit
     autoload -Uz compinit
     if [[ ! -s $dump || "$seen" != "$sig" ]]; then

@@ -28,6 +28,7 @@ class StartupTest
       build_project
       test_installer_compinit_is_guarded
       test_compinit_guard_off
+      test_dump_kept_with_empty_completions
       test_dump_signature_covers_fpath_dirs
       test_resourcing_is_idempotent
       test_non_interactive_skips_interactive_parts
@@ -144,6 +145,27 @@ class StartupTest
     check('guard off', out.strip.start_with?('foo=_sufoo fn=') && !out.include?('_wayu_compinit_scan') &&
                        !core.include?('function _wayu_compinit_guard') && err.strip.empty?,
           "out=#{out.strip.inspect} err=#{err.strip[0, 300]}")
+  end
+
+  # Right after `wayu init` the completions dir is empty and the stored
+  # signature starts with a space; `read` without IFS= stripped it, so every
+  # shell rebuilt the dump (a full compinit, ~300 ms).
+  def test_dump_kept_with_empty_completions
+    print "Test: fresh init (no completions) reuses the dump on the next shell... "
+    home = "#{@tmp_home}/empty_comps"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p("#{home}/.config")
+    env = env_for(home)
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
+    zsh(env, '-i', '-c', 'exit')
+    dump = "#{home}/.zcompdump"
+    before = File.exist?(dump) && File.mtime(dump)
+    sleep 1.1
+    _, err, = zsh(env, '-i', '-c', 'exit')
+    after = File.exist?(dump) && File.mtime(dump)
+    check('empty comps', before && before == after && err.strip.empty?,
+          "dump_rewritten=#{before != after} err=#{err.strip[0, 300]}")
   end
 
   # The dump signature covers every fpath dir and its mtime: a completion
