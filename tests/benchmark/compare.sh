@@ -16,6 +16,8 @@
 #                  freshness check; new completions need a manual rebuild)
 #   wayu           `wayu init` + entries.json + `wayu plugin add` x2, defaults
 #   wayu-defer     same + [settings] defer_plugins = true (plugins after 1st prompt)
+#   wayu-fsh       wayu with fast-syntax-highlighting instead of zsh-syntax-highlighting
+#   wayu-suggest-fsh  wayu-suggest with fast-syntax-highlighting
 #   wayu-suggest   same as wayu, but [settings] autosuggest = true (wayu's built-in
 #                  suggestions) instead of the zsh-autosuggestions plugin
 #   oh-my-zsh      default lib, plugins=(the two, as custom plugins), no theme,
@@ -69,6 +71,7 @@ ZINIT_REPO=https://github.com/zdharma-continuum/zinit.git            ZINIT_SHA=c
 ANTIDOTE_REPO=https://github.com/mattmc3/antidote.git                ANTIDOTE_SHA=e6612794db27e6fae70eddbcff08201a6cba0748 # v2.3.0+3
 ZSA_REPO=https://github.com/zsh-users/zsh-autosuggestions.git        ZSA_SHA=85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5 # v0.7.1+6
 ZSH_HL_REPO=https://github.com/zsh-users/zsh-syntax-highlighting.git ZSH_HL_SHA=e6683f20e5c38d3e5447f45845d04ddda75d0f23 # 0.8.0+8
+FSH_REPO=https://github.com/zdharma-continuum/fast-syntax-highlighting.git FSH_SHA=4672ad5dd9ad68a7effc1476d65afb7c584ce2b3 # v1.56+
 ZSH_DEFER_REPO=https://github.com/romkatv/zsh-defer.git              ZSH_DEFER_SHA=53a26e287fbbe2dcebb3aa1801546c6de32416fa
 ZSH_BENCH_REPO=https://github.com/romkatv/zsh-bench.git              ZSH_BENCH_SHA=28b1b1bc888159f0a2cf50f9d29381758341aba1
 
@@ -157,7 +160,7 @@ wayu_completions() {
 	[ "${WAYU_EMPTY_COMPLETIONS:-0}" = 1 ] || in_home "$1" wayu --shell zsh completions generate </dev/null >/dev/null
 }
 
-setup_wayu() { # $1 = HOME, $2 = defer (0|1), $3 = built-in autosuggest (0|1)
+setup_wayu() { # $1 = HOME, $2 = defer (0|1), $3 = built-in autosuggest (0|1), $4 = fast (fast-syntax-highlighting)
 	local h=$1 data=$1/.local/share/wayu i
 	mkdir -p "$h/.config"
 	in_home "$h" wayu init --shell zsh </dev/null >/dev/null
@@ -166,8 +169,13 @@ setup_wayu() { # $1 = HOME, $2 = defer (0|1), $3 = built-in autosuggest (0|1)
 		in_home "$h" wayu --shell zsh plugin add autosuggestions </dev/null >/dev/null
 		pin "$data/plugins/zsh-autosuggestions" $ZSA_SHA
 	fi
-	in_home "$h" wayu --shell zsh plugin add syntax-highlighting </dev/null >/dev/null
-	pin "$data/plugins/zsh-syntax-highlighting" $ZSH_HL_SHA
+	if [ "${4:-}" = fast ]; then
+		in_home "$h" wayu --shell zsh plugin add fast-syntax-highlighting </dev/null >/dev/null
+		pin "$data/plugins/fast-syntax-highlighting" $FSH_SHA
+	else
+		in_home "$h" wayu --shell zsh plugin add syntax-highlighting </dev/null >/dev/null
+		pin "$data/plugins/zsh-syntax-highlighting" $ZSH_HL_SHA
+	fi
 	{
 		echo '{'
 		echo '  "version": 1,'
@@ -310,6 +318,8 @@ setup() { # $1 = contender name, $2 = HOME
 		wayu) setup_wayu "$2" 0 ;;
 		wayu-defer) setup_wayu "$2" 1 ;;
 		wayu-suggest) setup_wayu "$2" 0 1 ;;
+		wayu-fsh) setup_wayu "$2" 0 0 fast ;;
+		wayu-suggest-fsh) setup_wayu "$2" 0 1 fast ;;
 		oh-my-zsh) setup_omz "$2" ;;
 		zinit) setup_zinit "$2" 0 ;;
 		zinit-turbo) setup_zinit "$2" 1 ;;
