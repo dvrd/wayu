@@ -1329,6 +1329,9 @@ ZSH_COMPINIT :: `  function _wayu_compinit {
         zstat -A s1 -- "$dump" || exit
         if zcompile -R -- "$dump.$$.zwc" "$dump" && zstat -A s2 -- "$dump" && [[ "${s1[1,2]} ${s1[8]} ${s1[10,11]}" == "${s2[1,2]} ${s2[8]} ${s2[10,11]}" ]]; then
           command mv -f -- "$dump.$$.zwc" "$dump.zwc"
+          # A rebuild between the check and the mv: zsh would load this stale
+          # .zwc (it wins when not older, whole seconds), so drop it.
+          zstat -A s2 -- "$dump" && [[ "${s1[1,2]} ${s1[8]} ${s1[10,11]}" == "${s2[1,2]} ${s2[8]} ${s2[10,11]}" ]] || command rm -f -- "$dump.zwc"
         else
           command rm -f -- "$dump.$$.zwc"
         fi
