@@ -6,6 +6,347 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 
+## [6.0.0] - 2026-11-09
+
+### ⚠ Upgrade notes
+
+- **plugin**: `plugin update` fails (exit 74) instead of resetting a checkout whose HEAD has commits not on the remote. `plugins.json` `dependencies` entries must be valid plugin names, otherwise commands reading it exit 78.
+- **path**: Path clean keeps [paths] entries whose $VAR is set in
+neither wayu.toml [env] nor the environment, and resolves [env] variables
+(dedup too). clean/dedup exit 78 without changes on a duplicate [paths]
+key. pre/post_path_remove get the directory as {path} when removing by key.
+- **tui**: In the TUI with --dry-run, add/remove notifications read
+"Dry run: would add/remove …" instead of "Added/Removed …", and the
+dry-run preview is no longer printed over the TUI.
+- **shell**: [env] values: `$1`, `$$`, `$?`, a trailing `$`, an
+unclosed `${` and zsh flags like `${(e)...}` are now literal text; in zsh
+- **doctor**: `wayu doctor` no longer reports relative [paths]
+entries as missing and `doctor --fix` keeps them; the PATH check note
+now reads "N use(s) unset variables or relative paths (left alone)".
+- **migrate,backup**: `wayu migrate --schema` exits 65 and writes nothing
+when a rewritten section holds a value it can't convert exactly
+(multi-line strings, arrays, inline tables); it lists them as
+- **doctor**: `wayu doctor --fix` exits 78 without writing when
+wayu.toml [paths] repeats a key it would drop; remove or rename the
+repeated key by hand.
+- **hooks**: Hooks.conf commands with a placeholder inside double
+quotes are refused (exit 78, nothing written). Write the placeholder
+unquoted, inside '...' for an inner shell, or use "$WAYU_HOOK_PATH" /
+"$WAYU_HOOK_NAME" / "$WAYU_HOOK_VALUE".
+- **const**: `wayu const list` (including --full and --json) and
+`wayu toml show` show secret-looking values as `********`. Pass
+--reveal for real values, or use `wayu const get NAME`. The TUI
+constants view masks them until `v` is pressed.
+- **plugin**: `wayu plugin update|enable|disable|priority|get|rm NAME`
+require the exact plugin name. A miss prints nothing on stdout, lists up
+to 5 similar plugin names on stderr and exits 65; it never acts on a
+fuzzy guess or prompts. `plugin rm` of an unknown name exits 65 (it used
+to exit 0 "already removed" when nothing was similar).
+- **plugin**: Plugin add exits 65 and installs nothing when the repo
+has nothing to load (use --use); extra plugin add arguments exit 64. URL
+adds record detected shells. Generated plugins.<ext> sources only the
+first entry file and picks up .zsh-theme/.sh entries. 22 registry keys
+removed; pure-fish installs as pure-fish. Network git: batch-mode ssh
+(prompts fail), stalled https aborts, git killed after 10 min / 60 s
+(WAYU_GIT_TIMEOUT). See docs/UPGRADING.md "Unreleased".
+- **build**: ./build_it install installs to ~/.local/bin ($PREFIX/bin), not /usr/local/bin, and refuses while Homebrew manages wayu unless --force.
+- **zsh**: Zsh writes ${ZDOTDIR:-$HOME}/.zcompdump.wayu next to
+.zcompdump (the completions listing at the last dump rebuild); the first
+shell after upgrading rebuilds the dump once.
+- **env**: In [env] values, ${NAME<op>} with an operator other than
+- = + ? (optionally prefixed by :), # % / is now literal text in zsh/bash
+(e.g. ${X@P}, ${X[1]}, ${X:1}, ${X^}, zsh ${HOME:h}); ${#NAME} only
+expands without an operator. fish: $NAME before a non-ASCII letter now
+expands NAME.
+- **doctor**: Wayu doctor (bash) prints a new 'bash PROMPT_COMMAND'
+warning, also in --json, when a startup file replaces PROMPT_COMMAND
+after loading wayu. Exit status is unchanged.
+- **toml**: Toml validate/doctor/backup restore accept BOMs,
+multi-line arrays, quoted and dotted keys, floats and dates, and reject
+duplicate keys/tables; parse errors name the line. Quoted keys are decoded
+in every list ("q\"k" is the alias q"k; alias rm .. finds ".."). TUI shows
+[paths] in file order and shows entries of files with syntax errors.
+Arrays/inline tables in [paths]/[aliases]/[env] are skipped instead of
+exported as raw text; integers are read as their value. wayu writes keys
+needing quotes quoted and control characters escaped. migrate --schema
+lists invalid TOML lines instead of copying them. See docs/UPGRADING.md.
+- **init**: WAYU_DATA_DIR is honoured together with WAYU_CONFIG_DIR;
+init.<ext> loads the files next to itself instead of ~/.config/wayu; core
+exports WAYU_CONFIG_DIR / WAYU_DATA_DIR when they are not the defaults.
+- **tools**: Evalcache files gain a signature header (old caches are
+rebuilt once), tools are run with `command`, and `wayu build clean` is a
+new build target.
+- **tools**: [tools] args with a newline, ; & | < > ( ), $(...),
+backticks or * ? [ are refused (`wayu build` exits 78); {a,b} is no longer
+brace-expanded.
+- **prompt**: The default native prompt gains separators and hides the
+user name outside SSH/root; the prompt toggle is opt-in and bound in
+explicit keymaps.
+- **zsh**: Every wayu write now spawns a background zcompile of the
+regenerated zsh files.
+- **cli**: Piped or redirected output is plain text (no ANSI codes)
+unless FORCE_COLOR=1 / CLICOLOR_FORCE=1; NO_COLOR=1 and --no-color now
+remove every escape code, including tables, errors, doctor and help.
+- **cli**: ERROR/warning lines moved from stdout to stderr; path
+commands on an uninitialized config exit 78 instead of 66.
+- **cli**: List commands print JSON (not an info line) for empty
+lists under --json; path list --json --source external/--full now
+includes external entries; search honors --json.
+- **cli**: An action word a command does not have (alias check,
+backup clean, path enable, ...) exits 64 with the command's help instead
+of doing nothing or exiting 1; --json where no JSON output exists exits
+64 instead of being ignored.
+- **toml**: New wayu.toml files (wayu init, config edit, any command
+creating a missing wayu.toml) and `migrate --from X --to Y` write
+`[shell] type = "zsh"|"bash"|"fish"` in lowercase. `wayu toml validate`
+now rejects a `[shell] type` other than zsh/bash/fish (any case), e.g. the
+"Unknown" older versions wrote when no shell was detected (exit 65).
+- **migrate**: `wayu migrate` on an install without wayu.toml now
+writes `[shell] type = "<shell>"`, `[aliases]` and `[env]` before the
+imported entries instead of a "# wayu configuration (auto-generated by
+migrate)" comment line.
+- **doctor**: Doctor output changes: Sync status reports PATH entries
+missing from the current $PATH (INFO); a missing backup dir is INFO; the
+shell dependency follows the configured shell; rc lines that only mention
+the init file no longer count as loading wayu.
+- **backup**: Backup list shows times with a UTC suffix and --json
+timestamps are ISO-8601 (2026-11-07T14:35:37Z); backup list/rm include
+non-wayu.toml backups; rc backups outside $HOME's top level are named by
+path (.config%zsh%.zshrc.backup.*); restore indexes must be decimal.
+- **cli**: Piped/redirected list tables are no longer truncated to
+80 columns with '…'; export COLUMNS to fit a width.
+- **picker**: In the interactive picker a lone Esc now cancels, and
+unknown escape sequences no longer add characters to the filter.
+- **editor**: A failing or missing editor now exits 1 instead of 0;
+$EDITOR with arguments works; the no-EDITOR fallback is vi (was nvim for
+function/config). config scan --fix no longer re-appends blocks already
+in extra.<ext> and aborts with 74 when the backup fails.
+- **migrate**: Migrate --schema prints a warning block on stderr when
+legacy entries carry fields (description, export, secret, ...) that are
+not migrated.
+- **template**: Template apply no longer overwrites existing aliases,
+constants or constants set in the environment; --dry-run no longer claims
+the template was applied; the developer template no longer defines
+alias code; init accepts --template and rejects other arguments (64).
+- **backup**: `wayu backup` works while wayu.toml uses the obsolete
+[[paths]] schema; `backup restore` refuses (exit 74) a wayu.toml backup
+that uses the obsolete schema — copy it by hand and run
+`wayu migrate --schema`.
+- **init**: An unmodified init.zsh written by wayu 3.9 or older is
+now replaced by the current template (old file backed up) instead of
+being kept with a "has local edits" warning.
+- **tui**: TUI add/delete is refused while wayu.toml uses the
+obsolete [[paths]] schema instead of writing a mixed-schema file.
+- **tui**: The TUI Backups view lists wayu.toml backups and
+Settings counts them.
+- **tui**: TUI keys and messages changed: registry Enter shows
+details (install is i + confirm), plugin d no longer disables (space/x do),
+dry-run notifications read "[dry-run] would ...", PATH add refuses missing
+or unresolvable paths and treats name=path as a key, adding an existing
+alias/constant asks to replace, Backups Enter restores and c asks first.
+See docs/UPGRADING.md.
+- **completions**: Regenerated completion scripts call
+`wayu completions names <kind>` at TAB time; fish no longer offers action
+words after the action. Re-run `wayu completions generate`.
+
+OKAMI-181, OKAMI-182
+- **plugin**: Plugin add/enable/list print conflict warnings on
+stderr, plugin list --json rows gain a "conflicts" array, and doctor
+may add a "plugin conflicts" warning.
+
+OKAMI-276
+- **build**: Build profile breakdown rows changed: one per tool and
+plugin, lazy sections prefixed 'lazy › ', empty rows omitted; bash gets a
+breakdown (or a note on bash < 5).
+
+OKAMI-180
+- **tui**: Text-style symbols such as ➜ ✔ ★ ❤ ⛰ count as one column
+and combining accents/VS16/ZWJ as none, in the TUI and in CLI tables, so
+such rows line up differently; the TUI draws ❤️ as ❤ and a ZWJ family emoji
+as its separate emoji.
+- **tui**: In the TUI, Esc followed by a key within 100ms is Alt+key
+and does nothing (it was Escape then the key); a lone Esc takes effect after
+100ms (ESCDELAY changes it). A paste only types into the focused text field
+and is ignored elsewhere; keys typed ahead of a delete confirmation or after
+a submitted form are discarded.
+- **tui**: TUI list text is drawn in the terminal's default color
+instead of #D0D0D0; light backgrounds (WAYU_THEME=light, COLORFGBG or the
+terminal's OSC 11 answer; WAYU_THEME=dark skips the query) get darker
+dividers and accents; 16-color terminals show the accent as bright magenta
+and dividers as gray.
+- **prompt**: The native prompt no longer switches zsh to the vi keymap
+or sets KEYTIMEOUT. vi users must add `vi_mode = true` under [prompt].
+KEYTIMEOUT is no longer exported. zle-line-init / zle-keymap-select
+defined before wayu are now kept and run first instead of being replaced.
+- **init**: Lazy.<ext>, login.<ext> and helpers.<ext> are no longer
+generated (and are deleted); their content is in core.<ext>. zsh runs
+compinit only in interactive shells. turbo.<ext> now equals core.<ext>
+and is refreshed on every regeneration; `wayu export --turbo` output and
+the `export --eval` PATH statement changed; `wayu build` no longer prints
+the turbo report.
+- **fish**: Fish: [paths] dirs already on PATH now move to wayu's
+position; [aliases] are defined after plugins/tools; init.fish sources
+tools.fish before extra.fish; [tools] entries now run in fish (zsh/bash
+args retargeted to fish). See docs/UPGRADING.md "fish (core.fish)".
+- **alias**: `wayu alias add`, `toml validate` and the TUI accept alias
+names such as `onlead-logs`. A leading `-` is still refused.
+- **init**: Generated core.zsh changes (the background .zcompdump
+compile checks the dump before installing the .zwc); run `wayu build`.
+- **cli**: `wayu toml` validates instead of printing keys; `toml
+keys` prints the file's real keys; unknown actions of toml, hooks,
+config, template, function and extra doctor arguments exit 64 (were 0);
+invalid --source/--shell values exit 64; alias/const usage errors say
+`wayu alias` / `wayu const`.
+- **migrate**: `wayu migrate` and `wayu toml convert` are removed (exit
+64). Use `wayu --shell <shell> init` to set up another shell. `wayu build`
+without wayu.toml exits 78.
+- **toml**: A wayu.toml on the 3.x [[paths]]/[[aliases]]/[[constants]]
+schema is no longer detected: no exit 78 with a migration hint, no
+backup-restore refusal, no doctor error. It is just an invalid config.
+- **init**: Path/aliases/constants.<ext> are neither created nor read.
+init.<ext> sources only core.<ext> (unmodified copies are refreshed on the
+next regeneration).
+- **init**: An untouched init.<ext> from a release older than the
+previous one is no longer refreshed (it is treated as user-edited: kept,
+with a warning); move it aside and run `wayu init`. Leftover lazy, login
+and helpers.<ext> files are no longer deleted.
+- **plugin**: Plugins.conf is ignored (no migration to plugins.json).
+A plugins.json with numeric enum values ("shell": 0) fails to load (exit
+78); write the names ("zsh", "source", ...).
+- **backup**: Backups named in an older format no longer show in
+`backup list` and cannot be restored or pruned by wayu; an existing
+group/world-readable backup dir is no longer tightened (new backups are
+still 0600 in a 0700 dir).
+- **toml**: `toml validate` exits 65 for [[paths]]/[[aliases]]/
+[[env]] (and other known tables written as arrays or values) and prints
+warnings for keys wayu ignores; `doctor` warns about them.
+- Functions/ files must be named <name>.zsh / <name>.bash
+(as `wayu function add` writes them); others are not sourced. Functions
+still under ~/.local/share/wayu/functions are not copied anymore. A
+top-level `shell = "..."` in wayu.toml is not read; use [shell] type.
+- **init**: `wayu build eval` exits 64; use
+`source "${WAYU_DATA_DIR:-$HOME/.config/wayu}/init.zsh"` instead. zsh
+reorders PATH once at the first prompt (wayu dirs before system dirs).
+- **prompt**: With [prompt] enabled = true, a PROMPT/PS1 assigned
+after wayu loads (e.g. in .zshrc) is replaced at the first prompt; set
+[prompt] enabled = false to manage the prompt yourself.
+- [paths], [aliases] and [env] are no longer read from
+wayu.toml; they live in <data>/entries.json and are not converted (re-add
+them with wayu path|alias|const add). The default data dir is now
+- **script**: Functions/ is read from and written to the data dir
+($WAYU_DATA_DIR/functions, default ~/.local/share/wayu/functions) instead
+of the config dir; move existing files by hand. <data>/bin is prepended to
+PATH once it holds a script. New exit code 69 for `script new` when the
+interpreter/compiler is missing.
+- **secrets**: A trailing `--secret` on `wayu const add` is now a flag
+(encrypt the value), not part of the value; put `--` before the value to
+store it literally. `--secret` elsewhere exits 64. A plain `const add` of
+a secret's name exits 65. `const list --json` rows for secrets have
+- **secrets**: `wayu secrets list` prints a mode column (`session` /
+`run-only`) after each name; the doctor secrets message changed; a
+trailing `--run-only` on `const add` is now a flag, not part of the
+value. New exit codes 126/127 for `wayu secrets run`.
+- **secrets**: `wayu const add NAME --secret` over a plain constant
+deletes the entries.json backups that hold its plaintext value.
+
+### Added
+
+- **doctor**: Warn when a bash rc replaces PROMPT_COMMAND after wayu
+- **completions**: Complete existing entries in zsh, bash and fish
+- **plugin**: Report plugin conflicts on add/enable, list and doctor
+- **build**: Profile startup per [tools] entry and per plugin
+- **tui**: Suspend/resume; restore the terminal on os.exit, replay stderr
+- **fish**: [tools], functions/, live PATH sync and -gpm PATH order
+- **toml**: Warn on keys wayu does not read; drop dead keys
+- Move PATH entries, aliases and constants to entries.json
+- **script**: Wayu script for standalone scripts; functions move to data dir
+- **secrets**: Encrypted constants with const add --secret
+- **secrets**: Run-only secrets and wayu secrets run
+
+### Changed
+
+- **cli**: Drive dispatch, flags, --json and help from WAYU_COMMAND_SPECS
+- **config**: Delete legacy shell-file CRUD and unused spec fields
+- Delete procs, types and constants with no callers
+- Delete uncalled procs in fuzzy, lock, templates and TUI code
+- **prompt**: Split parse_full_prompt_config
+- **migrate**: Split migrate_legacy_to_toml into phases
+- **core**: Shared add checks, entry outcomes, cancellable children
+- **init**: One fast generated init with every feature; thin turbo
+- **search**: Drop dead fuzzy-search code; fix acronym docs
+- **lock**: Remove unused wayu.lock reader
+- **migrate**: Remove wayu migrate and toml convert
+- **toml**: Drop obsolete [[paths]] schema detection
+- **init**: Drop legacy path/aliases/constants shell files
+- **init**: Keep only current/previous init template hashes
+- **plugin**: Drop plugins.conf migration and numeric enums
+- **backup**: Accept only the current backup name format
+- Drop the remaining back-compat fallbacks
+
+### Fixed
+
+- **plugin**: Keep local commits on update, validate dependency names
+- **path**: Clean/dedup resolve [env] vars and never drop unset ones
+- **tui**: Keep the box's right border on list and table rows
+- **tui**: List each environment variable once in the constants view
+- **const**: List each environment variable once in const list --full
+- **tui**: Dry run doesn't draw over the screen or claim success
+- **shell**: Literal non-variable $ in [env]; per-shell functions/
+- **alias**: Parse fish's alias listing in --full cross-reference
+- **doctor**: Leave relative [paths] entries alone
+- **migrate,backup**: No silent loss in migrate --schema; lock restore
+- **doctor**: Refuse --fix when a dropped [paths] key is repeated
+- **hooks**: Refuse placeholders inside double quotes
+- **const**: Mask secret values in list views, add --reveal
+- **plugin**: Plugin name lookups are exact, misses only suggest
+- **tui**: Declare ioctl variadic so TIOCGWINSZ gets a valid pointer
+- **plugin**: Refuse plugins with nothing to load; network git deadlines
+- **build**: Install to ~/.local/bin, refuse over Homebrew
+- **zsh**: Rebuild compdump when completions change within the same second
+- **env**: Keep evaluating ${NAME<op>} forms literal; fuzz shell quoting
+- **build**: Show unit-test output and failure names
+- **plugin**: Free fish conf.d/functions match slices in the loader
+- **toml**: One TOML parser behind every wayu.toml reader
+- **doctor**: Malformed-toml hint names the real command (wayu toml validate)
+- **init**: WAYU_CONFIG_DIR / WAYU_DATA_DIR overrides produce a working init
+- **tools**: Evalcache keyed on binary identity, add `wayu build clean`
+- **tools**: Quote [tools] evalcache args, refuse code-running values
+- **prompt**: Toggle keymap, starship-like defaults, no bare git/awk/sed
+- **zsh**: Keep zcompile bytecode fresh after edits; quote profile path
+- **cli**: Honor NO_COLOR/--no-color everywhere; plain output off-TTY
+- **cli**: Errors to stderr, one error per failure, help without config
+- **cli**: Valid --json for empty lists, plugins, external paths, search
+- Use-after-free in completions list; env leak in const list --full
+- **build**: Restore core:log import needed by -debug builds
+- **toml**: One wayu.toml scaffold with a lowercase [shell] type
+- **migrate**: Start a new wayu.toml from the shared scaffold
+- **doctor**: Honest sync status, tighter loader match, fewer false positives
+- **backup**: Manage every backup group, label UTC, prune on restore
+- **cli**: Don't fit list tables to 80 columns when piped
+- **picker**: Decode every byte of a read; lone Esc cancels; restore on INT/QUIT
+- **editor**: One launch_editor: multi-word $EDITOR, exit status checked
+- **cli**: Growing temp arena; no pointer into main's stack frame
+- **lock**: Drop and free nameless [[entries]] instead of leaking them
+- **migrate**: List [[...]] fields --schema can't migrate
+- **template**: Keep existing entries, honor --dry-run, implement init --template
+- **backup**: Usable on obsolete schema; refuse obsolete-schema restore
+- **init**: Recognise init.zsh templates from wayu <= 3.9
+- **tui**: Refuse edits to an obsolete-schema wayu.toml
+- **tui**: List and count wayu.toml backups
+- **tui**: CLI add semantics, dry-run previews, reload, real hooks/settings views
+- **tui**: Terminal-accurate rune widths for combining marks, VS16, ZWJ
+- **tui**: Bracketed paste, Alt chords and a slow-link-safe ESC delay
+- **tui**: Readable on light terminals and in 16 colors; tests + notes
+- **prompt**: Opt-in vi mode, chained zle widgets, fork-free git branch
+- **build**: Profile per-tool rows from core now that lazy.<ext> is gone
+- **alias**: Allow hyphens in alias names
+- **init**: Never install a stale .zcompdump.zwc
+- **release**: Sync README/site version on release, fail CI on drift
+- **cli**: Help and usage text match behavior; unknown actions exit 64
+- **init**: Restore wayu PATH order at first prompt; remove build eval
+- **prompt**: Set the native prompt again at the first prompt
+- **secrets**: Drop entries.json backups holding a converted value
+- **const**: List each suggested name once on a get miss
 ## [5.0.0] - 2026-11-08
 
 ### ⚠ Upgrade notes
@@ -722,6 +1063,7 @@ Major version bump to 2.0.0 due to multi-shell architecture changes.
 ### Changed
 
 - Clean up code and improve error handling
+[6.0.0]: https://github.com/dvrd/wayu/releases/tag/v6.0.0
 [5.0.0]: https://github.com/dvrd/wayu/releases/tag/v5.0.0
 [4.4.5]: https://github.com/dvrd/wayu/releases/tag/v4.4.5
 [4.4.4]: https://github.com/dvrd/wayu/releases/tag/v4.4.4
