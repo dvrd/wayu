@@ -1063,6 +1063,7 @@ doctor_fix_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, messa
 // Check 4: plugins
 check_plugins :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
+	defer check_autosuggest(results)
 	config_file := fmt.aprintf("%s/plugins.json", wayu.data, allocator = get_doctor_allocator())
 
 	if !os.exists(config_file) {
@@ -1127,6 +1128,30 @@ check_plugin_conflicts :: proc(results: ^[dynamic]CheckResult) {
 		name    = clone_arena("plugin conflicts"),
 		status  = .WARNING,
 		message = clone_arena(strings.to_string(b)),
+		fixable = false,
+	})
+}
+
+// `[settings] autosuggest` (OKAMI-376): a row only when something is off —
+// the zsh-autosuggestions plugin still enabled (core skips it: the two
+// would both draw suggestions), or a shell other than zsh (zsh-only).
+check_autosuggest :: proc(results: ^[dynamic]CheckResult) {
+	if !read_startup_settings().autosuggest { return }
+	msg: string
+	if wayu.shell != .ZSH {
+		msg = "[settings] autosuggest is zsh-only; ignored in this shell"
+	} else {
+		config, ok := read_plugin_config_json()
+		defer cleanup_plugin_config_json(&config)
+		if !ok { return }
+		p, found := find_plugin_json(&config, "zsh-autosuggestions")
+		if !found || !p.enabled { return }
+		msg = "[settings] autosuggest is on and the zsh-autosuggestions plugin is enabled: wayu does not load the plugin; remove it with `wayu plugin remove zsh-autosuggestions --yes` (or `wayu plugin disable zsh-autosuggestions`)"
+	}
+	append(results, CheckResult{
+		name    = clone_arena("autosuggest"),
+		status  = .WARNING if wayu.shell == .ZSH else .INFO,
+		message = clone_arena(msg),
 		fixable = false,
 	})
 }

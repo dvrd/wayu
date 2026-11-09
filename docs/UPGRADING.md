@@ -39,6 +39,12 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   completions dir to `fpath` again or rerun `compinit`.
 - New opt-in `[settings]` keys (zsh): `defer_plugins` (load plugins after
   the first prompt) and `lazy_compinit` (compinit on the first completion).
+- New opt-in `[settings] autosuggest = true` (zsh): history suggestions
+  built into `core.zsh` (one redraw hook, 13 accept widgets wrapped instead
+  of every widget), styled by `autosuggest_style` (default `"fg=8"`),
+  accepted with →/End/`^F`/`^Y` (`autosuggestions_accept_keys`). While it is
+  on, the zsh-autosuggestions plugin is not loaded and `wayu doctor` warns if
+  it is still enabled. Off by default: nothing changes unless you set it.
 
 **`wayu optimize`: installer lines in your startup files move into wayu**
 

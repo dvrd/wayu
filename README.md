@@ -15,6 +15,7 @@
 - **Fuzzy matching** -- Smart search with acronym support (e.g., `faak` → `FIREWORKS_AI_API_KEY`)
 - **Completions** -- Manage shell completion scripts (Zsh, Bash, Fish)
 - **Plugin management** -- Install, enable/disable, and prioritize shell plugins with dependency resolution
+- **Built-in autosuggestions** -- opt-in fish-like history suggestions for zsh (`[settings] autosuggest = true`), without wrapping every zle widget like the zsh-autosuggestions plugin
 - **Functions and scripts** -- shell functions (`wayu function`, sourced at startup) and standalone executables in any language (`wayu script`: swift compiled, python/ruby/node/bun/shells/... linked) on PATH; existing scripts can be imported
 - **Backup & restore** -- Automatic timestamped backups before every modification
 - **Shell migration** -- Migrate configs between Bash, Zsh, and Fish
