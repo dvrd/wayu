@@ -214,6 +214,69 @@ test_zsh_suggest_module :: proc(t: ^testing.T) {
 	}
 }
 
+// [settings] highlight / highlight_styles (OKAMI-377): off and
+// zsh-syntax-highlighting's styles by default; overrides from an inline
+// table or [settings.highlight_styles]; "none" = no style; unknown names,
+// non-strings and unusable specs keep the default.
+@(test)
+test_toml_parser_highlight_settings :: proc(t: ^testing.T) {
+	defer wayu.clear_toml_content_cache()
+	idx :: proc(name: string) -> int { return wayu.highlight_style_index(name) }
+	use_cached_toml("[shell]\ntype = \"zsh\"\n")
+	s := wayu.read_startup_settings()
+	testing.expect(t, !s.highlight, "off by default")
+	testing.expect_value(t, s.highlight_styles[idx("unknown-token")], "fg=red,bold")
+	testing.expect_value(t, s.highlight_styles[idx("command")], "fg=green")
+	testing.expect_value(t, s.highlight_styles[idx("single-hyphen-option")], "")
+	testing.expect_value(t, idx("nosuch"), -1)
+
+	use_cached_toml("[settings]\nhighlight = true\nhighlight_styles = { command = \"fg=blue,bold\", comment = \"none\", nosuch = \"fg=1\", builtin = 3, alias = \"fg=1\\nx\" }\n")
+	s = wayu.read_startup_settings()
+	testing.expect(t, s.highlight, "parsed")
+	testing.expect_value(t, s.highlight_styles[idx("command")], "fg=blue,bold")
+	testing.expect_value(t, s.highlight_styles[idx("comment")], "")
+	testing.expect_value(t, s.highlight_styles[idx("builtin")], "fg=green")
+	testing.expect_value(t, s.highlight_styles[idx("alias")], "fg=green")
+
+	use_cached_toml("[settings]\nhighlight = \"yes\"\n[settings.highlight_styles]\npath = \"fg=cyan,underline\"\n")
+	s = wayu.read_startup_settings()
+	testing.expect(t, !s.highlight, "string is not a boolean")
+	testing.expect_value(t, s.highlight_styles[idx("path")], "fg=cyan,underline")
+}
+
+// The generated module: every style quoted into the table, the placeholder
+// gone, one redraw hook, nothing that forks ($(...) or backtick command
+// substitution in the module's own code).
+@(test)
+test_zsh_highlight_module :: proc(t: ^testing.T) {
+	defer wayu.clear_toml_content_cache()
+	use_cached_toml("[settings]\nhighlight = true\nhighlight_styles = { command = \"fg=blue\", comment = \"none\" }\n")
+	s := wayu.read_startup_settings()
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	wayu.emit_zsh_highlight(&b, s.highlight_styles)
+	code := strings.to_string(b)
+	testing.expect(t, !strings.contains(code, "@STYLES@"), "placeholder replaced")
+	testing.expect(t, strings.contains(code, "      command 'fg=blue'\n"), "override")
+	testing.expect(t, strings.contains(code, "      comment ''\n"), "none = empty")
+	testing.expect(t, strings.contains(code, "      unknown-token 'fg=red,bold'\n"), "default")
+	styles := wayu.HIGHLIGHT_STYLES
+	for st in styles {
+		testing.expectf(t, strings.contains(code, fmt.tprintf("\n      %s '", st.name)), "style %s in the table", st.name)
+		testing.expectf(t, strings.count(code, st.name) >= 2, "style %s used by the module", st.name)
+	}
+	testing.expect_value(t, strings.count(code, "add-zle-hook-widget zle-line-pre-redraw _wayu_hl_redraw"), 1)
+	testing.expect(t, strings.contains(code, "memo=wayu-highlight"), "entries tagged")
+	testing.expect(t, strings.has_prefix(code, "if [[ -o interactive && -o zle ]]; then\n") && strings.has_suffix(code, "fi\n"), "interactive zle only")
+	// No command substitution (a fork) in the module's own code: outside
+	// comments every "$(" is arithmetic "$((".
+	for line in strings.split_lines(code, context.temp_allocator) {
+		trimmed := strings.trim_space(line)
+		if strings.has_prefix(trimmed, "#") { continue }
+		testing.expectf(t, strings.count(trimmed, "$(") == strings.count(trimmed, "$(("), "no command substitution: %q", trimmed)
+	}
+}
+
 @(test)
 test_toml_parser_recovers_invalid_lines :: proc(t: ^testing.T) {
 	content := "[a]\nll = ls -la\nok = \"fine\"\n[b\nHIDDEN = \"x\"\n[b]\nA = \"1\" trailing\nB = \"2\"\n"

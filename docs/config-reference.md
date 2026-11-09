@@ -218,6 +218,8 @@ top-level `shell = "..."` string is not read (`toml validate` rejects it).
 
 | `compinit_guard` | boolean | `true` | zsh only. After wayu's `compinit`, `compinit` is a function that only registers the completions (`#compdef` / `#autoload` files) of `fpath` dirs added since; its flags (`-C`, `-i`, `-u`, `-d <dump>`, ...) are accepted and ignored. An installer's `autoload -Uz compinit && compinit` in `.zshrc` then costs a glob of the new dirs instead of a second full completion setup (audit, dump check/rewrite), and its dirs' completions work even with `-C`. The same registration runs once at the first prompt, for dirs added to `fpath` without a `compinit` call. `false`: later `compinit` calls are zsh's own. |
 | `defer_plugins` | boolean | `false` | zsh only. Load the plugins (`plugins.zsh`, the zsh-autosuggestions / zsh-syntax-highlighting fallbacks, `plugins/config.zsh`) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after `tools.zsh` / `extra.zsh`: code there that needs a plugin widget should run through `zsh-defer`. |
+| `highlight` | boolean | `false` | zsh only (5.3+, interactive). Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see [Syntax highlighting](#syntax-highlighting). A non-boolean value is an error. |
+| `highlight_styles` | table of strings | see [styles](#syntax-highlighting) | zsh only. Per-style `region_highlight` specs, as an inline table (`highlight_styles = { command = "fg=blue", comment = "fg=244" }`) or a `[settings.highlight_styles]` table. `"none"`: not highlighted. A value that isn't a one-line string of at most 64 bytes is an error; an unknown style name is a warning (ignored). |
 | `lazy_compinit` | boolean | `false` | zsh only. No `compinit` at startup: the completion widgets (Tab, `^D` list, ...) set up completion on first use and then complete. `compdef` calls made before that are queued and replayed. `$_comps` and completion functions don't exist until then. |
 
 The plugin bindings are written to `<data>/plugins/config.zsh`, which
@@ -253,6 +255,69 @@ as the zsh-autosuggestions plugin does.
   at startup; it is cheap). bash and fish ignore it (`doctor` notes it).
 - Suggestions come from history only (no completion strategy); a multi-line
   history entry is suggested whole.
+
+#### Syntax highlighting
+
+`highlight = true` puts a syntax highlighter in `core.zsh` itself
+(interactive zsh 5.3+; nothing forks, no extra files, no widget is wrapped).
+It runs in a `zle-line-pre-redraw` hook, like the autosuggestions: zsh's own
+lexer (`${(z)BUFFER}`) splits the line into words, which are colored by
+`region_highlight` entries (tagged `memo=wayu-highlight` on zsh 5.9+; other
+entries, such as the suggestion's or your own, are kept). The line is only
+looked at again when it changed, and typing or deleting at its end
+re-highlights the last word or two, not the whole line. Command lookups and
+path checks are cached until a command runs or the directory / `PATH`
+changes.
+
+The style names are zsh-syntax-highlighting's (its `ZSH_HIGHLIGHT_STYLES`
+values carry over) and so are the defaults:
+
+| Style | Default | What |
+|---|---|---|
+| `unknown-token` | `fg=red,bold` | a command that doesn't exist (yet) |
+| `reserved-word` | `fg=yellow` | `if` `then` `for` `do` `case` `[[` `]]` `{` `}` `((` `))` `(` `)` `!` ... |
+| `alias` | `fg=green` | an alias |
+| `suffix-alias` | `fg=green,underline` | a file run through a suffix alias (`alias -s`) |
+| `global-alias` | `fg=cyan` | a global alias (`alias -g`), anywhere on the line |
+| `builtin` | `fg=green` | a builtin (`typeset` & co. too) |
+| `function` | `fg=green` | a function |
+| `command` | `fg=green` | a command on `PATH`, or an executable path |
+| `precommand` | `fg=green,underline` | `sudo` `doas` `env` `command` `builtin` `exec` `noglob` `nocorrect` `time` `nohup` `nice` `-`: the next word is a command again (after their options; `sudo -u user`, `env -u NAME`, `env NAME=value` are understood) |
+| `commandseparator` | none | `;` `&&` `\|\|` `\|` `\|&` `&` `;;`, newline |
+| `autodirectory` | `fg=green,underline` | a directory in command position, with `setopt autocd` |
+| `path` | `underline` | an existing file or directory (`~` and `~name` expanded) |
+| `path_prefix` | `underline` | the last word, while it is the start of an existing name |
+| `globbing` | `fg=blue` | a word with unquoted `*` `?` `[...]` |
+| `expansion` | `fg=cyan` | `$var` `${...}` `$((...))` outside double quotes (wayu's; zsh-syntax-highlighting leaves them plain) |
+| `command-substitution-delimiter` | `fg=magenta` | `$(` and `)`; the inside is highlighted as a command line |
+| `process-substitution-delimiter` | `fg=magenta` | `<(` `>(` `=(` and `)` |
+| `back-quoted-argument-delimiter` | `fg=magenta` | the backticks of `` `...` `` |
+| `single-hyphen-option` | none | `-x` |
+| `double-hyphen-option` | none | `--long` |
+| `single-quoted-argument` | `fg=yellow` | `'...'` (to the end while unterminated) |
+| `double-quoted-argument` | `fg=yellow` | `"..."` (to the end while unterminated) |
+| `dollar-quoted-argument` | `fg=yellow` | `$'...'` |
+| `dollar-double-quoted-argument` | `fg=cyan` | `$var` `${...}` `$((...))` inside `"..."` |
+| `back-double-quoted-argument` | `fg=cyan` | `\"` `\$` `` \` `` `\\` inside `"..."` |
+| `back-dollar-quoted-argument` | `fg=cyan` | `\n` & co. inside `$'...'` |
+| `assign` | none | `NAME=value` before a command (the value is highlighted too) |
+| `redirection` | `fg=yellow` | `>` `>>` `<` `2>` `&>` `<<<` `>&` `{fd}>` ... |
+| `comment` | `fg=black,bold` | `# ...`, with `setopt interactive_comments` |
+
+- Heredoc bodies are skipped; what follows the delimiter line is a command
+  line again.
+- The selected region, the incremental search match and pasted text keep
+  their `zle_highlight` look (default: standout / underline / standout).
+- With `highlight = true` the zsh-syntax-highlighting and
+  fast-syntax-highlighting plugins are not loaded, even if installed and
+  enabled (`wayu doctor` warns until they are removed or disabled).
+  `defer_plugins` / `lazy_compinit` don't affect it (it is set up at
+  startup; it is cheap). bash and fish ignore it (`doctor` notes it).
+- Not covered (zsh-syntax-highlighting's other highlighters and some main
+  ones): bracket matching, history expansion (`!!`), `rc-quote`,
+  `named-fd`/`numeric-fd`, `hashed-command`, path separators, and
+  `command`'s `-v` resolution; a line longer than 20000 characters is not
+  highlighted.
 
 Interactive-only parts of `core.zsh` (completion, the native prompt,
 plugins, zsh-defer) are skipped in non-interactive zsh (`zsh -c`,
@@ -898,7 +963,8 @@ and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 10. Native prompt (zsh, interactive, `[prompt] enabled = true`)
 11. Plugins (`plugins.<ext>`; zsh: `plugins/config.zsh`, interactive
     shells only, after the first prompt with `defer_plugins`; zsh with
-    `[settings] autosuggest`: the built-in suggestions first)
+    `[settings] autosuggest` / `highlight`: the built-in suggestions and
+    syntax highlighting first)
 12. Deferred `[tools]`
 13. `tools.<ext>`
 14. `extra.<ext>`

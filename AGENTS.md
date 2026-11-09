@@ -147,6 +147,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/tui_views.odin` | TUI view renderers (list, overlays, cache, handlers, hooks, plugins, settings) |
 | `src/tui_io.odin` | TUI terminal I/O: raw mode, input, screen buffer, events, colors, layout, components |
 | `src/prompt.odin` | Native zsh prompt (opt-in: `[prompt] enabled = true`) + vi-mode; values escaped |
+| `src/highlight.odin` | Built-in zsh syntax highlighting (opt-in: `[settings] highlight`): style table (`HIGHLIGHT_STYLES`), `highlight_styles` reading/validation, emits `src/highlight.zsh` (embedded with `#load`) into core.zsh |
 | `src/fuzzy.odin` | Fuzzy matching, interactive terminal selection, completions extraction |
 | `src/interfaces.odin` | Shared types (TomlConfig, etc.), exit codes, debug |
 | `src/colors.odin` | ANSI color profiles + output helpers |

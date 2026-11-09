@@ -86,7 +86,16 @@ Y = "2"
   testing.expectf(t, len(errs) == 1 && errs[0].is_error && errs[0].line == 2, "%q must be a schema error: %v", bad, errs)
  }
 
- clean := wayu.toml_content_schema_issues("version = \"1.0\"\n[settings]\nautosuggest = true\nautosuggest_style = \"fg=8\"\n[tools.atuin]\nkind = \"evalcache\"\n[prompt]\nenabled = true\n[prompt.contexts]\ngo = { format = \"go\", detect = [\"go.mod\"] }\n[prompt.interactive]\nasync_rprompt = false\n")
+ for bad in ([]string{"[settings]\nhighlight = 1\n", "[settings]\nhighlight_styles = \"fg=1\"\n", "[settings]\nhighlight_styles = { command = 3 }\n", "[settings]\nhighlight_styles = { command = \"\" }\n", "[settings.highlight_styles]\ncomment = \"fg=1\\nbold\"\n"}) {
+  errs := wayu.toml_content_schema_issues(bad)
+  testing.expectf(t, len(errs) == 1 && errs[0].is_error && errs[0].line == 2, "%q must be a schema error: %v", bad, errs)
+ }
+ for unknown in ([]string{"[settings]\nhighlight_styles = { nosuch = \"fg=1\" }\n", "[settings.highlight_styles]\nnosuch = \"fg=1\"\n"}) {
+  w := wayu.toml_content_schema_issues(unknown)
+  testing.expectf(t, len(w) == 1 && !w[0].is_error && strings.contains(w[0].msg, "settings.highlight_styles.nosuch"), "%q: unknown style is a warning: %v", unknown, w)
+ }
+
+ clean := wayu.toml_content_schema_issues("version = \"1.0\"\n[settings]\nautosuggest = true\nautosuggest_style = \"fg=8\"\nhighlight = true\nhighlight_styles = { command = \"fg=blue\", unknown-token = \"none\", path_prefix = \"fg=8,underline\" }\n[tools.atuin]\nkind = \"evalcache\"\n[prompt]\nenabled = true\n[prompt.contexts]\ngo = { format = \"go\", detect = [\"go.mod\"] }\n[prompt.interactive]\nasync_rprompt = false\n")
  testing.expectf(t, len(clean) == 0, "known keys must not be reported: %v", clean)
 }
 

@@ -16,6 +16,7 @@
 - **Completions** -- Manage shell completion scripts (Zsh, Bash, Fish)
 - **Plugin management** -- Install, enable/disable, and prioritize shell plugins with dependency resolution
 - **Built-in autosuggestions** -- opt-in fish-like history suggestions for zsh (`[settings] autosuggest = true`), without wrapping every zle widget like the zsh-autosuggestions plugin
+- **Built-in syntax highlighting** -- opt-in command-line highlighting for zsh (`[settings] highlight = true`) with zsh-syntax-highlighting's styles, using zsh's own lexer, no widget wrapping and no forks; a keystroke re-highlights only the last words
 - **Functions and scripts** -- shell functions (`wayu function`, sourced at startup) and standalone executables in any language (`wayu script`: swift compiled, python/ruby/node/bun/shells/... linked) on PATH; existing scripts can be imported
 - **Backup & restore** -- Automatic timestamped backups before every modification
 - **Shell migration** -- Migrate configs between Bash, Zsh, and Fish

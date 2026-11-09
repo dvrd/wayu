@@ -1063,7 +1063,7 @@ doctor_fix_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, messa
 // Check 4: plugins
 check_plugins :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	defer check_autosuggest(results)
+	defer { check_autosuggest(results); check_highlight(results) }
 	config_file := fmt.aprintf("%s/plugins.json", wayu.data, allocator = get_doctor_allocator())
 
 	if !os.exists(config_file) {
@@ -1150,6 +1150,36 @@ check_autosuggest :: proc(results: ^[dynamic]CheckResult) {
 	}
 	append(results, CheckResult{
 		name    = clone_arena("autosuggest"),
+		status  = .WARNING if wayu.shell == .ZSH else .INFO,
+		message = clone_arena(msg),
+		fixable = false,
+	})
+}
+
+// `[settings] highlight` (OKAMI-377): a row only when something is off —
+// zsh-syntax-highlighting / fast-syntax-highlighting still enabled (core
+// skips them: two highlighters would fight over region_highlight), or a
+// shell other than zsh (zsh-only).
+check_highlight :: proc(results: ^[dynamic]CheckResult) {
+	if !read_startup_settings().highlight { return }
+	msg: string
+	if wayu.shell != .ZSH {
+		msg = "[settings] highlight is zsh-only; ignored in this shell"
+	} else {
+		config, ok := read_plugin_config_json()
+		defer cleanup_plugin_config_json(&config)
+		if !ok { return }
+		names := HIGHLIGHT_PLUGINS
+		for name in names {
+			p, found := find_plugin_json(&config, name)
+			if !found || !p.enabled { continue }
+			msg = fmt.tprintf("[settings] highlight is on and the %s plugin is enabled: wayu does not load the plugin; remove it with `wayu plugin remove %s --yes` (or `wayu plugin disable %s`)", name, name, name)
+			break
+		}
+		if len(msg) == 0 { return }
+	}
+	append(results, CheckResult{
+		name    = clone_arena("highlight"),
 		status  = .WARNING if wayu.shell == .ZSH else .INFO,
 		message = clone_arena(msg),
 		fixable = false,
