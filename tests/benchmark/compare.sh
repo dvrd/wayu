@@ -20,6 +20,8 @@
 #   wayu-suggest-fsh  wayu-suggest with fast-syntax-highlighting
 #   wayu-suggest   same as wayu, but [settings] autosuggest = true (wayu's built-in
 #                  suggestions) instead of the zsh-autosuggestions plugin
+#   wayu-native    [settings] autosuggest = true + highlight = true: wayu's built-in
+#                  suggestions and syntax highlighting, no plugin at all
 #   oh-my-zsh      default lib, plugins=(the two, as custom plugins), no theme,
 #                  auto-update off; workload lines after `source oh-my-zsh.sh`
 #   zinit          `zinit light` x2, compinit, `zinit cdreplay -q`
@@ -160,7 +162,7 @@ wayu_completions() {
 	[ "${WAYU_EMPTY_COMPLETIONS:-0}" = 1 ] || in_home "$1" wayu --shell zsh completions generate </dev/null >/dev/null
 }
 
-setup_wayu() { # $1 = HOME, $2 = defer (0|1), $3 = built-in autosuggest (0|1), $4 = fast (fast-syntax-highlighting)
+setup_wayu() { # $1 = HOME, $2 = defer (0|1), $3 = built-in autosuggest (0|1), $4 = highlighter: "" (zsh-syntax-highlighting), fast (fast-syntax-highlighting) or native ([settings] highlight)
 	local h=$1 data=$1/.local/share/wayu i
 	mkdir -p "$h/.config"
 	in_home "$h" wayu init --shell zsh </dev/null >/dev/null
@@ -169,7 +171,9 @@ setup_wayu() { # $1 = HOME, $2 = defer (0|1), $3 = built-in autosuggest (0|1), $
 		in_home "$h" wayu --shell zsh plugin add autosuggestions </dev/null >/dev/null
 		pin "$data/plugins/zsh-autosuggestions" $ZSA_SHA
 	fi
-	if [ "${4:-}" = fast ]; then
+	if [ "${4:-}" = native ]; then
+		:
+	elif [ "${4:-}" = fast ]; then
 		in_home "$h" wayu --shell zsh plugin add fast-syntax-highlighting </dev/null >/dev/null
 		pin "$data/plugins/fast-syntax-highlighting" $FSH_SHA
 	else
@@ -200,9 +204,10 @@ setup_wayu() { # $1 = HOME, $2 = defer (0|1), $3 = built-in autosuggest (0|1), $
 		echo '}'
 	} > "$data/entries.json"
 	{
-		[ "$2" = 1 ] || [ "${3:-0}" = 1 ] && printf '\n[settings]\n'
+		[ "$2" = 1 ] || [ "${3:-0}" = 1 ] || [ "${4:-}" = native ] && printf '\n[settings]\n'
 		[ "$2" = 1 ] && echo 'defer_plugins = true'
 		[ "${3:-0}" = 1 ] && echo 'autosuggest = true'
+		[ "${4:-}" = native ] && echo 'highlight = true'
 		true
 	} >> "$h/.config/wayu/wayu.toml"
 	in_home "$h" wayu --shell zsh build >/dev/null
@@ -320,6 +325,7 @@ setup() { # $1 = contender name, $2 = HOME
 		wayu-suggest) setup_wayu "$2" 0 1 ;;
 		wayu-fsh) setup_wayu "$2" 0 0 fast ;;
 		wayu-suggest-fsh) setup_wayu "$2" 0 1 fast ;;
+		wayu-native) setup_wayu "$2" 0 1 native ;;
 		oh-my-zsh) setup_omz "$2" ;;
 		zinit) setup_zinit "$2" 0 ;;
 		zinit-turbo) setup_zinit "$2" 1 ;;

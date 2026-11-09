@@ -348,7 +348,8 @@ toml_key_known :: proc(p: []string) -> bool {
 	case "shell":
 		return len(p) == 2 && p[1] == "type"
 	case "settings":
-		return len(p) == 2 && in_set(p[1], {"autosuggest", "autosuggest_style", "autosuggestions_accept_keys", "auto_optimize", "compinit_guard", "defer_plugins", "lazy_compinit"})
+		if len(p) == 3 && p[1] == "highlight_styles" { return highlight_style_index(p[2]) >= 0 }
+		return len(p) == 2 && in_set(p[1], {"autosuggest", "autosuggest_style", "autosuggestions_accept_keys", "auto_optimize", "compinit_guard", "defer_plugins", "highlight", "highlight_styles", "lazy_compinit"})
 	case "scripts":
 		return len(p) == 2 && p[1] == "default_lang"
 	case "secrets":
@@ -379,7 +380,7 @@ toml_key_known :: proc(p: []string) -> bool {
 toml_table_known :: proc(p: []string) -> bool {
 	switch len(p) {
 	case 1: return slice.contains(TOML_TABLES, p[0]) || p[0] == "scripts"
-	case 2: return p[0] == "tools" || (p[0] == "prompt" && slice.contains(TOML_PROMPT_TABLES, p[1]))
+	case 2: return p[0] == "tools" || (p[0] == "prompt" && slice.contains(TOML_PROMPT_TABLES, p[1])) || (p[0] == "settings" && p[1] == "highlight_styles")
 	}
 	return false
 }
@@ -443,8 +444,31 @@ toml_schema_issues :: proc(doc: ^TomlDoc) -> [dynamic]TomlSchemaIssue {
 			}
 			continue
 		}
-		if len(p) == 2 && p[0] == "settings" && p[1] == "autosuggest" && (e.value == nil || e.value.type != .BOOLEAN) {
-			append(&issues, TomlSchemaIssue{line, "settings.autosuggest must be true or false", true})
+		if len(p) == 2 && p[0] == "settings" && (p[1] == "autosuggest" || p[1] == "highlight") && (e.value == nil || e.value.type != .BOOLEAN) {
+			append(&issues, TomlSchemaIssue{line, fmt.tprintf("settings.%s must be true or false", p[1]), true})
+			continue
+		}
+		if len(p) == 2 && p[0] == "settings" && p[1] == "highlight_styles" {
+			if e.value == nil || e.value.type != .TABLE {
+				append(&issues, TomlSchemaIssue{line, "settings.highlight_styles must be a table of style = \"spec\" (e.g. { command = \"fg=green\" })", true})
+				continue
+			}
+			names := make([dynamic]string, context.temp_allocator)
+			for k in e.value.table_val { append(&names, k) }
+			slice.sort(names[:])
+			for k in names {
+				if highlight_style_index(k) < 0 {
+					append(&issues, TomlSchemaIssue{line, fmt.tprintf("unknown key settings.highlight_styles.%s (ignored)", k), false})
+				} else if msg := highlight_style_issue(k, e.value.table_val[k]); len(msg) > 0 {
+					append(&issues, TomlSchemaIssue{line, msg, true})
+				}
+			}
+			continue
+		}
+		if len(p) == 3 && p[0] == "settings" && p[1] == "highlight_styles" {
+			if msg := highlight_style_issue(p[2], e.value); len(msg) > 0 {
+				append(&issues, TomlSchemaIssue{line, msg, true})
+			}
 			continue
 		}
 		if len(p) == 2 && p[0] == "settings" && p[1] == "autosuggest_style" &&

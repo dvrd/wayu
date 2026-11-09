@@ -1154,9 +1154,17 @@ build_core_content :: proc(mask := false) -> string {
 	// syntax-highlighting's redraw hook runs after the suggestion's. The
 	// zsh-autosuggestions plugin is then not loaded: marked as loaded for
 	// plugins.zsh's guard (`wayu doctor` warns while it is enabled).
+	// `[settings] highlight` (built-in syntax highlighting) likewise goes
+	// before the plugins and keeps zsh-syntax-highlighting /
+	// fast-syntax-highlighting from loading (plugins.zsh and the fallback).
 	if is_zsh && startup.autosuggest {
 		fmt.sbprintln(&b, "# === Autosuggestions (wayu built-in, [settings] autosuggest) ===")
 		emit_zsh_suggest(&b, startup.autosuggest_style)
+		fmt.sbprintln(&b)
+	}
+	if is_zsh && startup.highlight {
+		fmt.sbprintln(&b, "# === Syntax highlighting (wayu built-in, [settings] highlight) ===")
+		emit_zsh_highlight(&b, startup.highlight_styles)
 		fmt.sbprintln(&b)
 	}
 	fmt.sbprintln(&b, "# === Plugins ===")
@@ -1168,6 +1176,12 @@ build_core_content :: proc(mask := false) -> string {
 		if startup.autosuggest {
 			fmt.sbprintln(&b, `[[ ":${_WAYU_PLUGINS_LOADED-}:" == *:zsh-autosuggestions:* ]] || _WAYU_PLUGINS_LOADED="${_WAYU_PLUGINS_LOADED-}:zsh-autosuggestions"`)
 		}
+		if startup.highlight {
+			hl_plugins := HIGHLIGHT_PLUGINS
+			for name in hl_plugins {
+				fmt.sbprintfln(&b, `[[ ":${{_WAYU_PLUGINS_LOADED-}}:" == *:%s:* ]] || _WAYU_PLUGINS_LOADED="${{_WAYU_PLUGINS_LOADED-}}:%s"`, name, name)
+			}
+		}
 		if startup.defer_plugins {
 			fmt.sbprintln(&b, "function _wayu_plugins_load {")
 		}
@@ -1176,7 +1190,9 @@ build_core_content :: proc(mask := false) -> string {
 			fmt.sbprintfln(&b, "if (( ! ${{+functions[_zsh_autosuggest_start]}} )) && [ -f %s ]; then source %s; fi", as_q, as_q)
 		}
 		emit_source_if_exists(&b, fmt.tprintf("%s/config.zsh", plugins_dir))
-		fmt.sbprintfln(&b, "if (( ! ${{+functions[_zsh_highlight]}} )) && [ -f %s ]; then source %s; fi", sh_q, sh_q)
+		if !startup.highlight {
+			fmt.sbprintfln(&b, "if (( ! ${{+functions[_zsh_highlight]}} )) && [ -f %s ]; then source %s; fi", sh_q, sh_q)
+		}
 		if startup.defer_plugins {
 			fmt.sbprintln(&b, "}")
 			fmt.sbprintln(&b, "zsh-defer _wayu_plugins_load")
@@ -1250,6 +1266,8 @@ StartupSettings :: struct {
 	lazy_compinit:  bool, // compinit on the first completion attempt
 	autosuggest:    bool, // built-in history autosuggestions (OKAMI-376)
 	autosuggest_style: string, // region_highlight spec of the suggestion (temp-allocated)
+	highlight:      bool, // built-in syntax highlighting (OKAMI-377)
+	highlight_styles: [HIGHLIGHT_STYLE_COUNT]string, // see HIGHLIGHT_STYLES (temp-allocated)
 }
 
 AUTOSUGGEST_DEFAULT_STYLE :: "fg=8"
@@ -1258,6 +1276,8 @@ AUTOSUGGEST_DEFAULT_STYLE :: "fg=8"
 // non-boolean value keeps the default.
 read_startup_settings :: proc() -> StartupSettings {
 	s := StartupSettings{compinit_guard = true, autosuggest_style = AUTOSUGGEST_DEFAULT_STYLE}
+	styles := HIGHLIGHT_STYLES
+	for st, i in styles { s.highlight_styles[i] = st.default }
 	content, ok := get_cached_toml_content()
 	if !ok { return s }
 	arena: virtual.Arena
@@ -1269,6 +1289,7 @@ read_startup_settings :: proc() -> StartupSettings {
 		{"settings.defer_plugins", &s.defer_plugins},
 		{"settings.lazy_compinit", &s.lazy_compinit},
 		{"settings.autosuggest", &s.autosuggest},
+		{"settings.highlight", &s.highlight},
 	}
 	for k in keys {
 		if v := get_toml_value(&doc, k.name); v != nil && v.type == .BOOLEAN { k.field^ = v.bool_val }
@@ -1276,6 +1297,7 @@ read_startup_settings :: proc() -> StartupSettings {
 	if v := get_toml_value(&doc, "settings.autosuggest_style"); v != nil && v.type == .STRING && autosuggest_style_valid(v.str_val) {
 		s.autosuggest_style = strings.clone(v.str_val, context.temp_allocator)
 	}
+	s.highlight_styles = read_highlight_styles(&doc)
 	return s
 }
 

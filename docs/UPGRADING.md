@@ -45,6 +45,14 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   accepted with →/End/`^F`/`^Y` (`autosuggestions_accept_keys`). While it is
   on, the zsh-autosuggestions plugin is not loaded and `wayu doctor` warns if
   it is still enabled. Off by default: nothing changes unless you set it.
+- New opt-in `[settings] highlight = true` (zsh): syntax highlighting built
+  into `core.zsh` (one redraw hook, no widget wrapped, nothing forks; zsh's
+  own lexer; a keystroke at the end of the line re-highlights only the last
+  words). Styles use zsh-syntax-highlighting's names and defaults, changed
+  with `highlight_styles = { command = "fg=blue", ... }` (or a
+  `[settings.highlight_styles]` table). While it is on, the
+  zsh-syntax-highlighting and fast-syntax-highlighting plugins are not
+  loaded and `wayu doctor` warns if one is still enabled. Off by default.
 
 **`wayu optimize`: installer lines in your startup files move into wayu**
 
