@@ -66,6 +66,18 @@ generate_plugins_runtime_config :: proc(shell: ShellType) -> bool {
 		}
 	}
 
+	// Plugin checkouts are the subdirs (config.zsh here is rewritten in place).
+	if !wayu.dry_run {
+		if fd, err := os.open(plugins_dir); err == nil {
+			if entries, rerr := os.read_dir(fd, -1, context.temp_allocator); rerr == nil {
+				for e in entries {
+					if e.type == .Directory { zcompile_plugin_sources(fmt.tprintf("%s/%s", plugins_dir, e.name)) }
+				}
+			}
+			os.close(fd)
+		}
+	}
+
 	config_path := fmt.aprintf("%s/config.zsh", plugins_dir)
 	defer delete(config_path)
 
@@ -334,7 +346,12 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 	if shell == .ZSH {
 		zcompile_file(plugins_file)
 	}
-	return generate_plugins_runtime_config(shell)
+	runtime_ok := generate_plugins_runtime_config(shell)
+	// Plugin commands regenerate only this file: start the queued compiles
+	// (plugins.zsh + plugin sources) here; inside a full regeneration the
+	// batch is just flushed earlier.
+	flush_zcompile_batch()
+	return runtime_ok
 }
 
 // Get files to source for a plugin based on 'use' globs or auto-detect.
@@ -427,6 +444,39 @@ plugin_has_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> 
 		delete(files)
 	}
 	return len(files) > 0
+}
+
+// Queue every *.zsh / *.zsh-theme under a plugin's checkout whose digest is
+// missing or older than the file, for the background zcompile: a plugin
+// sources its entry file and that sources the rest (zsh-syntax-highlighting
+// loads ~10 more), and zsh parses each one at every startup unless a
+// not-older <file>.zwc sits next to it (~4.5 ms for autosuggestions +
+// syntax-highlighting). A `wayu plugin update` makes the sources newer, so
+// zsh ignores the old digests until the next regeneration recompiles them.
+// Skips .git and test/doc dirs (never sourced at startup).
+zcompile_plugin_sources :: proc(dir: string, depth := 0) {
+	if depth > 4 { return }
+	fd, err := os.open(dir)
+	if err != nil { return }
+	defer os.close(fd)
+	entries, read_err := os.read_dir(fd, -1, context.temp_allocator)
+	if read_err != nil { return }
+	for e in entries {
+		path := fmt.tprintf("%s/%s", dir, e.name)
+		#partial switch e.type {
+		case .Directory:
+			switch e.name {
+			case ".git", "test", "tests", "test-data", "spec", "docs", "doc", "images", "node_modules":
+				continue
+			}
+			zcompile_plugin_sources(path, depth + 1)
+		case .Regular:
+			if !strings.has_suffix(e.name, ".zsh") && !strings.has_suffix(e.name, ".zsh-theme") { continue }
+			zwc, zerr := os.stat(fmt.tprintf("%s.zwc", path), context.temp_allocator)
+			if zerr == nil && time.diff(e.modification_time, zwc.modification_time) >= 0 { continue }
+			zcompile_file(path)
+		}
+	}
 }
 
 // Match files using glob patterns

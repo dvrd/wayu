@@ -94,6 +94,7 @@ class PluginIntegrationTest
       test_exact_name_still_works
       # Offline real-git flows (https://example.test/ → local fixtures)
       test_offline_add_clones_and_loads
+      test_offline_plugin_sources_zcompiled
       test_offline_check_and_update
       test_offline_check_exact_branch_ref
       test_offline_check_unreachable_exits_74
@@ -1634,6 +1635,23 @@ class PluginIntegrationTest
          loader.include?("#{@plugins_dir}/alpha/alpha.plugin.zsh") &&
          !loader.include?("#{@plugins_dir}/alpha/alpha.zsh'")
     check("offline add failed", ok, output + "\nloader:\n" + loader, status)
+  end
+
+  # Plugin *.zsh sources are compiled to .zwc in the background (zsh would
+  # parse them at every startup otherwise); test/test-data dirs are skipped.
+  def test_offline_plugin_sources_zcompiled
+    print "Test 39a: plugin sources get .zwc digests, tests dirs skipped... "
+    reset_plugins
+    fixture_repo("zc", { "zc.plugin.zsh" => "source ${0:h}/lib/zc.zsh\n", "lib/zc.zsh" => "zc() { :; }\n",
+                         "test/t.zsh" => "# test\n", "x/test-data/d.zsh" => "# data\n" })
+    output, status = run_wayu("plugin add #{fixture_url('zc')}")
+    dir = "#{@plugins_dir}/zc"
+    want = ["#{dir}/zc.plugin.zsh.zwc", "#{dir}/lib/zc.zsh.zwc"]
+    deadline = Time.now + 10
+    sleep 0.1 until want.all? { |f| File.exist?(f) } || Time.now > deadline
+    ok = status.exitstatus == 0 && want.all? { |f| File.exist?(f) } &&
+         !File.exist?("#{dir}/test/t.zsh.zwc") && !File.exist?("#{dir}/x/test-data/d.zsh.zwc")
+    check("plugin zcompile", ok, output + "\nfiles: " + Dir.glob("#{dir}/**/*.zwc").join(" "), status)
   end
 
   # OKAMI-276: conflicts are shown on add/enable, in `plugin list` (text and
