@@ -72,7 +72,9 @@ test_prompt_async_private_tempdir :: proc(t: ^testing.T) {
 	code := strings.to_string(sb)
 
 	testing.expect(t, !strings.contains(code, ".wayu_async_$$"), "no predictable shared temp file")
-	testing.expect(t, strings.contains(code, `mktemp -d "${TMPDIR:-/tmp}/wayu-async.XXXXXX"`), "private 0700 dir via mktemp -d")
+	testing.expect(t, strings.contains(code, `zf_mkdir -m 700 -- "$_d"`), "private 0700 dir, builtin mkdir (no fork)")
+	testing.expect(t, strings.contains(code, `mktemp -d "${TMPDIR:-/tmp}/wayu-async.XXXXXX"`), "mktemp -d fallback without zsh/files")
+	testing.expect(t, strings.contains(code, "_wayu_async_worker &!") && !strings.contains(code, "(_wayu_async_worker &)"), "worker started with one fork")
 	testing.expect(t, strings.contains(code, `mktemp "$dir/.w.XXXXXX"`), "worker writes a fresh (O_EXCL) file")
 	testing.expect(t, strings.contains(code, `mv -f -- "$tmpf" "$dir/data"`), "atomic rename into place")
 	testing.expect(t, strings.contains(code, "add-zsh-hook zshexit _wayu_async_cleanup"), "dir removed on shell exit")

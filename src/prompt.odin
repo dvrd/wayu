@@ -1165,10 +1165,24 @@ generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	fmt.sbprintln(b, `typeset -g _WAYU_ASYNC_DIR="${_WAYU_ASYNC_DIR-}"`)
 	fmt.sbprintln(b, "_wayu_start_async() {")
 	fmt.sbprintln(b, "  local ret=$?")
+	// The private dir: zsh/files' builtin mkdir (no fork; `mktemp -d` cost
+	// ~7 ms before the first prompt). -m 700 on a fresh random name that
+	// must not exist yet, so nothing pre-created by someone else is used.
+	// The worker is started with &! (one fork, no job message; the old
+	// `( worker & )` waited on a second fork every prompt).
 	fmt.sbprintln(b, `  if [[ -z "$_WAYU_ASYNC_DIR" || ! -d "$_WAYU_ASYNC_DIR" ]]; then`)
-	fmt.sbprintln(b, `    _WAYU_ASYNC_DIR="$(command mktemp -d "${TMPDIR:-/tmp}/wayu-async.XXXXXX" 2>/dev/null)" || _WAYU_ASYNC_DIR=""`)
+	fmt.sbprintln(b, `    _WAYU_ASYNC_DIR=""`)
+	fmt.sbprintln(b, `    if zmodload -F zsh/files b:zf_mkdir 2>/dev/null; then`)
+	fmt.sbprintln(b, `      local _d _i`)
+	fmt.sbprintln(b, `      for _i in 1 2 3; do`)
+	fmt.sbprintln(b, `        _d="${TMPDIR:-/tmp}"; _d="${_d%/}/wayu-async.$$.$RANDOM$RANDOM"`)
+	fmt.sbprintln(b, `        if zf_mkdir -m 700 -- "$_d" 2>/dev/null; then _WAYU_ASYNC_DIR=$_d; break; fi`)
+	fmt.sbprintln(b, `      done`)
+	fmt.sbprintln(b, `    else`)
+	fmt.sbprintln(b, `      _WAYU_ASYNC_DIR="$(command mktemp -d "${TMPDIR:-/tmp}/wayu-async.XXXXXX" 2>/dev/null)" || _WAYU_ASYNC_DIR=""`)
+	fmt.sbprintln(b, `    fi`)
 	fmt.sbprintln(b, "  fi")
-	fmt.sbprintln(b, `  [[ -n "$_WAYU_ASYNC_DIR" ]] && (_wayu_async_worker &)`)
+	fmt.sbprintln(b, `  [[ -n "$_WAYU_ASYNC_DIR" ]] && _wayu_async_worker &!`)
 	fmt.sbprintln(b, "  return $ret")
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b, "_wayu_async_cleanup() {")
