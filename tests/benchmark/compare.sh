@@ -16,6 +16,8 @@
 #                  freshness check; new completions need a manual rebuild)
 #   wayu           `wayu init` + entries.json + `wayu plugin add` x2, defaults
 #   wayu-defer     same + [settings] defer_plugins = true (plugins after 1st prompt)
+#   wayu-suggest   same as wayu, but [settings] autosuggest = true (wayu's built-in
+#                  suggestions) instead of the zsh-autosuggestions plugin
 #   oh-my-zsh      default lib, plugins=(the two, as custom plugins), no theme,
 #                  auto-update off; workload lines after `source oh-my-zsh.sh`
 #   zinit          `zinit light` x2, compinit, `zinit cdreplay -q`
@@ -56,7 +58,7 @@ set -eu
 
 WAYU_BIN=${WAYU_BIN:-$PWD/bin/wayu}
 ITERS=${ITERS:-32}
-ONLY=${ONLY:-"floor plain plain-c wayu wayu-defer oh-my-zsh zinit zinit-turbo antidote antidote-defer"}
+ONLY=${ONLY:-"floor plain plain-c wayu wayu-defer wayu-suggest oh-my-zsh zinit zinit-turbo antidote antidote-defer"}
 SCENARIOS=${SCENARIOS:-"stack optimize"}
 KEEP=${KEEP:-0}
 JSON=${JSON:-}
@@ -155,14 +157,16 @@ wayu_completions() {
 	[ "${WAYU_EMPTY_COMPLETIONS:-0}" = 1 ] || in_home "$1" wayu --shell zsh completions generate </dev/null >/dev/null
 }
 
-setup_wayu() { # $1 = HOME, $2 = defer (0|1)
+setup_wayu() { # $1 = HOME, $2 = defer (0|1), $3 = built-in autosuggest (0|1)
 	local h=$1 data=$1/.local/share/wayu i
 	mkdir -p "$h/.config"
 	in_home "$h" wayu init --shell zsh </dev/null >/dev/null
 	wayu_completions "$h"
-	in_home "$h" wayu --shell zsh plugin add autosuggestions </dev/null >/dev/null
+	if [ "${3:-0}" != 1 ]; then
+		in_home "$h" wayu --shell zsh plugin add autosuggestions </dev/null >/dev/null
+		pin "$data/plugins/zsh-autosuggestions" $ZSA_SHA
+	fi
 	in_home "$h" wayu --shell zsh plugin add syntax-highlighting </dev/null >/dev/null
-	pin "$data/plugins/zsh-autosuggestions" $ZSA_SHA
 	pin "$data/plugins/zsh-syntax-highlighting" $ZSH_HL_SHA
 	{
 		echo '{'
@@ -187,7 +191,12 @@ setup_wayu() { # $1 = HOME, $2 = defer (0|1)
 		echo '  ]'
 		echo '}'
 	} > "$data/entries.json"
-	[ "$2" = 1 ] && printf '\n[settings]\ndefer_plugins = true\n' >> "$h/.config/wayu/wayu.toml"
+	{
+		[ "$2" = 1 ] || [ "${3:-0}" = 1 ] && printf '\n[settings]\n'
+		[ "$2" = 1 ] && echo 'defer_plugins = true'
+		[ "${3:-0}" = 1 ] && echo 'autosuggest = true'
+		true
+	} >> "$h/.config/wayu/wayu.toml"
 	in_home "$h" wayu --shell zsh build >/dev/null
 	{
 		echo 'source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh"'
@@ -300,6 +309,7 @@ setup() { # $1 = contender name, $2 = HOME
 		plain-c) setup_plain "$2" -C ;;
 		wayu) setup_wayu "$2" 0 ;;
 		wayu-defer) setup_wayu "$2" 1 ;;
+		wayu-suggest) setup_wayu "$2" 0 1 ;;
 		oh-my-zsh) setup_omz "$2" ;;
 		zinit) setup_zinit "$2" 0 ;;
 		zinit-turbo) setup_zinit "$2" 1 ;;
