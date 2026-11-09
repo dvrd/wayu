@@ -348,7 +348,7 @@ toml_key_known :: proc(p: []string) -> bool {
 	case "shell":
 		return len(p) == 2 && p[1] == "type"
 	case "settings":
-		return len(p) == 2 && in_set(p[1], {"autosuggestions_accept_keys", "auto_optimize", "compinit_guard", "defer_plugins", "lazy_compinit"})
+		return len(p) == 2 && in_set(p[1], {"autosuggest", "autosuggest_style", "autosuggestions_accept_keys", "auto_optimize", "compinit_guard", "defer_plugins", "lazy_compinit"})
 	case "scripts":
 		return len(p) == 2 && p[1] == "default_lang"
 	case "secrets":
@@ -441,6 +441,15 @@ toml_schema_issues :: proc(doc: ^TomlDoc) -> [dynamic]TomlSchemaIssue {
 			if _, known := secrets_backend_parse(word); !known {
 				append(&issues, TomlSchemaIssue{line, "secrets.backend must be one of \"auto\", \"keychain\", \"secret-service\", \"file\"", true})
 			}
+			continue
+		}
+		if len(p) == 2 && p[0] == "settings" && p[1] == "autosuggest" && (e.value == nil || e.value.type != .BOOLEAN) {
+			append(&issues, TomlSchemaIssue{line, "settings.autosuggest must be true or false", true})
+			continue
+		}
+		if len(p) == 2 && p[0] == "settings" && p[1] == "autosuggest_style" &&
+		   (e.value == nil || e.value.type != .STRING || !autosuggest_style_valid(e.value.str_val)) {
+			append(&issues, TomlSchemaIssue{line, "settings.autosuggest_style must be a highlight spec string like \"fg=8\" (one line, at most 64 bytes)", true})
 			continue
 		}
 		// Inline tables of [tools] / [prompt.contexts]: check their keys.

@@ -81,7 +81,12 @@ Y = "2"
   testing.expectf(t, len(errs) > 0 && errs[0].is_error, "%q must be a schema error", bad)
  }
 
- clean := wayu.toml_content_schema_issues("version = \"1.0\"\n[tools.atuin]\nkind = \"evalcache\"\n[prompt]\nenabled = true\n[prompt.contexts]\ngo = { format = \"go\", detect = [\"go.mod\"] }\n[prompt.interactive]\nasync_rprompt = false\n")
+ for bad in ([]string{"[settings]\nautosuggest = \"yes\"\n", "[settings]\nautosuggest_style = 8\n", "[settings]\nautosuggest_style = \"\"\n"}) {
+  errs := wayu.toml_content_schema_issues(bad)
+  testing.expectf(t, len(errs) == 1 && errs[0].is_error && errs[0].line == 2, "%q must be a schema error: %v", bad, errs)
+ }
+
+ clean := wayu.toml_content_schema_issues("version = \"1.0\"\n[settings]\nautosuggest = true\nautosuggest_style = \"fg=8\"\n[tools.atuin]\nkind = \"evalcache\"\n[prompt]\nenabled = true\n[prompt.contexts]\ngo = { format = \"go\", detect = [\"go.mod\"] }\n[prompt.interactive]\nasync_rprompt = false\n")
  testing.expectf(t, len(clean) == 0, "known keys must not be reported: %v", clean)
 }
 

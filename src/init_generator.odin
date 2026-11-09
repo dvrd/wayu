@@ -1149,17 +1149,32 @@ build_core_content :: proc(mask := false) -> string {
 	// zsh: interactive shells only (plugins are line-editor features;
 	// OKAMI-375); `[settings] defer_plugins` loads them after the first
 	// prompt is drawn (zsh-defer), as one function so the order holds.
+	// `[settings] autosuggest` (built-in suggestions) is set up first: after
+	// the prompt (its `bindkey -v`) and before the plugins, so
+	// syntax-highlighting's redraw hook runs after the suggestion's. The
+	// zsh-autosuggestions plugin is then not loaded: marked as loaded for
+	// plugins.zsh's guard (`wayu doctor` warns while it is enabled).
+	if is_zsh && startup.autosuggest {
+		fmt.sbprintln(&b, "# === Autosuggestions (wayu built-in, [settings] autosuggest) ===")
+		emit_zsh_suggest(&b, startup.autosuggest_style)
+		fmt.sbprintln(&b)
+	}
 	fmt.sbprintln(&b, "# === Plugins ===")
 	if is_zsh {
 		plugins_dir := fmt.tprintf("%s/plugins", wayu.data)
 		as_q := shell_double_quote_literal(fmt.tprintf("%s/zsh-autosuggestions/zsh-autosuggestions.zsh", plugins_dir), context.temp_allocator)
 		sh_q := shell_double_quote_literal(fmt.tprintf("%s/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh", plugins_dir), context.temp_allocator)
 		fmt.sbprintln(&b, "if [[ -o interactive ]]; then")
+		if startup.autosuggest {
+			fmt.sbprintln(&b, `[[ ":${_WAYU_PLUGINS_LOADED-}:" == *:zsh-autosuggestions:* ]] || _WAYU_PLUGINS_LOADED="${_WAYU_PLUGINS_LOADED-}:zsh-autosuggestions"`)
+		}
 		if startup.defer_plugins {
 			fmt.sbprintln(&b, "function _wayu_plugins_load {")
 		}
 		emit_source_if_exists(&b, runtime_file("plugins"))
-		fmt.sbprintfln(&b, "if (( ! ${{+functions[_zsh_autosuggest_start]}} )) && [ -f %s ]; then source %s; fi", as_q, as_q)
+		if !startup.autosuggest {
+			fmt.sbprintfln(&b, "if (( ! ${{+functions[_zsh_autosuggest_start]}} )) && [ -f %s ]; then source %s; fi", as_q, as_q)
+		}
 		emit_source_if_exists(&b, fmt.tprintf("%s/config.zsh", plugins_dir))
 		fmt.sbprintfln(&b, "if (( ! ${{+functions[_zsh_highlight]}} )) && [ -f %s ]; then source %s; fi", sh_q, sh_q)
 		if startup.defer_plugins {
@@ -1233,12 +1248,16 @@ StartupSettings :: struct {
 	compinit_guard: bool, // later `compinit` calls only register new fpath dirs
 	defer_plugins:  bool, // plugins load after the first prompt (zsh-defer)
 	lazy_compinit:  bool, // compinit on the first completion attempt
+	autosuggest:    bool, // built-in history autosuggestions (OKAMI-376)
+	autosuggest_style: string, // region_highlight spec of the suggestion (temp-allocated)
 }
+
+AUTOSUGGEST_DEFAULT_STYLE :: "fg=8"
 
 // Read StartupSettings from wayu.toml (cached content); a missing key or a
 // non-boolean value keeps the default.
 read_startup_settings :: proc() -> StartupSettings {
-	s := StartupSettings{compinit_guard = true}
+	s := StartupSettings{compinit_guard = true, autosuggest_style = AUTOSUGGEST_DEFAULT_STYLE}
 	content, ok := get_cached_toml_content()
 	if !ok { return s }
 	arena: virtual.Arena
@@ -1249,12 +1268,174 @@ read_startup_settings :: proc() -> StartupSettings {
 		{"settings.compinit_guard", &s.compinit_guard},
 		{"settings.defer_plugins", &s.defer_plugins},
 		{"settings.lazy_compinit", &s.lazy_compinit},
+		{"settings.autosuggest", &s.autosuggest},
 	}
 	for k in keys {
 		if v := get_toml_value(&doc, k.name); v != nil && v.type == .BOOLEAN { k.field^ = v.bool_val }
 	}
+	if v := get_toml_value(&doc, "settings.autosuggest_style"); v != nil && v.type == .STRING && autosuggest_style_valid(v.str_val) {
+		s.autosuggest_style = strings.clone(v.str_val, context.temp_allocator)
+	}
 	return s
 }
+
+// A usable `[settings] autosuggest_style`: a short region_highlight spec
+// (`fg=8`, `fg=244,underline`) on one line.
+autosuggest_style_valid :: proc(style: string) -> bool {
+	if len(style) == 0 || len(style) > 64 { return false }
+	for c in transmute([]byte)style {
+		if c < 0x20 || c == 0x7f { return false }
+	}
+	return true
+}
+
+// `[settings] autosuggest` (OKAMI-376): fish-like suggestions from history,
+// built into core.zsh. Interactive zsh >= 5.3 with zle only; nothing forks.
+//
+// The zsh-autosuggestions plugin wraps every zle widget at the first prompt
+// (and by default re-wraps them before every prompt). Here the suggestion
+// is computed in a zle-line-pre-redraw hook (add-zle-hook-widget, which
+// zsh-syntax-highlighting >= 0.8 shares): the newest history entry that
+// starts with $BUFFER (`(b)`: glob chars typed are literal), shown in
+// POSTDISPLAY and highlighted by a region_highlight entry (removed by its
+// exact text, with `memo=` on zsh >= 5.9 so other highlighters keep it).
+// Only the accept widgets (forward-char, end-of-line, vi-forward-char,
+// vi-end-of-line, vi-add-eol: take the whole suggestion) and the
+// partial-accept ones (forward-word & co.: run on BUFFER+suggestion, keep
+// what ends up left of the cursor) are wrapped, chaining to the widget that
+// was there before. History/search widgets clear the suggestion (the line
+// came from history already); zle-line-finish clears it so an accepted line
+// never keeps it. `[settings] autosuggestions_accept_keys` are bound to
+// wayu-suggest-accept (emacs + viins).
+emit_zsh_suggest :: proc(b: ^strings.Builder, style: string) {
+	keys := plugin_accept_keys_from_toml()
+	defer {
+		for k in keys { delete(k) }
+		delete(keys)
+	}
+	binds := strings.builder_make(context.temp_allocator)
+	for k in keys {
+		// Same filter as the plugin's config.zsh: key sequences, not names.
+		if len(k) == 0 || (!strings.has_prefix(k, "^") && !strings.contains(k, "[")) { continue }
+		qk := shell_quote(k, .ZSH) // temp-allocated
+		fmt.sbprintfln(&binds, "    bindkey -M emacs %s wayu-suggest-accept; bindkey -M viins %s wayu-suggest-accept", qk, qk)
+	}
+	code, _ := strings.replace_all(ZSH_SUGGEST, "@STYLE@", shell_double_quote_literal(style, context.temp_allocator), context.temp_allocator)
+	code, _ = strings.replace_all(code, "@BINDS@\n", strings.to_string(binds), context.temp_allocator)
+	fmt.sbprint(b, code)
+}
+
+ZSH_SUGGEST :: `if [[ -o interactive && -o zle ]]; then
+  function _wayu_suggest_redraw {
+    emulate -L zsh
+    local -i end=$#BUFFER
+    [[ $KEYMAP == vicmd ]] && (( end-- ))
+    if (( ! $#BUFFER || CURSOR != end || PENDING )) || [[ $LASTWIDGET == (*history*|*search*) ]]; then
+      POSTDISPLAY=
+      _wayu_suggest_buf=
+    elif [[ $BUFFER != "$_wayu_suggest_buf" ]]; then
+      # Typing on from the last lookup: its entry (or no match) still holds.
+      if [[ -z $_wayu_suggest_buf || $BUFFER != "$_wayu_suggest_buf"* ||
+            ( -n $_wayu_suggest_full && $_wayu_suggest_full != "$BUFFER"* ) ]]; then
+        _wayu_suggest_full=${history[(r)${(b)BUFFER}*]}
+      fi
+      _wayu_suggest_buf=$BUFFER
+      POSTDISPLAY=${_wayu_suggest_full[$#BUFFER+1,-1]}
+    fi
+    _wayu_suggest_paint
+    return 0
+  }
+  function _wayu_suggest_paint {
+    (( $#_wayu_suggest_hl )) && region_highlight=( "${(@)region_highlight:#(${_wayu_suggest_hl}|*memo=wayu-suggest)}" )
+    if (( $#POSTDISPLAY )); then
+      _wayu_suggest_hl="$#BUFFER $(( $#BUFFER + $#POSTDISPLAY )) $_wayu_suggest_style"
+      region_highlight+=( "$_wayu_suggest_hl" )
+    else
+      _wayu_suggest_hl=
+    fi
+    return 0
+  }
+  function _wayu_suggest_finish {
+    emulate -L zsh
+    POSTDISPLAY=
+    _wayu_suggest_buf=
+    _wayu_suggest_paint
+  }
+  # $1: the wrapped widget (empty for wayu-suggest-accept), then its args.
+  function _wayu_suggest_accept {
+    emulate -L zsh
+    local w=$1
+    shift
+    local -i end=$#BUFFER ret=0
+    [[ $KEYMAP == vicmd ]] && (( end-- ))
+    if (( ! $#POSTDISPLAY || CURSOR != end )); then
+      [[ -z $w ]] || zle _wayu_suggest_orig_$w -- "$@"
+      return
+    fi
+    BUFFER+=$POSTDISPLAY
+    POSTDISPLAY=
+    _wayu_suggest_buf=$BUFFER
+    if [[ -n $w ]]; then
+      zle _wayu_suggest_orig_$w -- "$@"
+      ret=$?
+    fi
+    if [[ $KEYMAP == vicmd ]]; then CURSOR=$(( $#BUFFER - 1 )); else CURSOR=$#BUFFER; fi
+    return ret
+  }
+  function _wayu_suggest_partial {
+    emulate -L zsh
+    local w=$1
+    shift
+    if (( ! $#POSTDISPLAY )); then
+      zle _wayu_suggest_orig_$w -- "$@"
+      return
+    fi
+    local orig=$BUFFER post=$POSTDISPLAY
+    local -i ret loc
+    BUFFER+=$POSTDISPLAY
+    POSTDISPLAY=
+    zle _wayu_suggest_orig_$w -- "$@"
+    ret=$?
+    loc=$CURSOR
+    [[ $KEYMAP == vicmd ]] && (( loc++ ))
+    if (( loc > $#orig )); then
+      POSTDISPLAY=${BUFFER[loc+1,-1]}
+      BUFFER=${BUFFER[1,loc]}
+    else
+      BUFFER=$orig
+      POSTDISPLAY=$post
+    fi
+    _wayu_suggest_buf=$BUFFER
+    return ret
+  }
+  function _wayu_suggest_key { _wayu_suggest_accept "" "$@"; }
+  () {
+    emulate -L zsh
+    [[ $ZSH_VERSION == (5.<3->|<6->.)* ]] || return 0
+    zmodload zsh/parameter zsh/zleparameter 2>/dev/null || return 0
+    typeset -g _wayu_suggest_style=@STYLE@ _wayu_suggest_hl= _wayu_suggest_buf= _wayu_suggest_full=
+    [[ $ZSH_VERSION == (5.<9->|<6->.)* ]] && _wayu_suggest_style+=", memo=wayu-suggest"
+    (( ${+widgets[_wayu_suggest_redraw]} )) && return 0
+    local w fn
+    for fn w in accept forward-char accept end-of-line accept vi-forward-char accept vi-end-of-line \
+                accept vi-add-eol partial forward-word partial emacs-forward-word partial vi-forward-word \
+                partial vi-forward-word-end partial vi-forward-blank-word partial vi-forward-blank-word-end \
+                partial vi-find-next-char partial vi-find-next-char-skip; do
+      [[ ${widgets[$w]-} == user:_wayu_suggest_* ]] && continue
+      zle -A $w _wayu_suggest_orig_$w
+      functions[_wayu_suggest_$w]="_wayu_suggest_$fn $w \"\$@\""
+      zle -N $w _wayu_suggest_$w
+    done
+    zle -N wayu-suggest-accept _wayu_suggest_key
+    zle -N _wayu_suggest_redraw
+    zle -N _wayu_suggest_finish
+    autoload -Uz add-zle-hook-widget
+    add-zle-hook-widget zle-line-pre-redraw _wayu_suggest_redraw
+    add-zle-hook-widget zle-line-finish _wayu_suggest_finish
+@BINDS@
+  }
+fi
+`
 
 // zsh completion setup: wayu's completions dir on fpath (once: re-sourcing
 // core doesn't add it again), then compinit — in interactive shells only

@@ -166,6 +166,54 @@ test_toml_parser_startup_settings :: proc(t: ^testing.T) {
 	testing.expect(t, !s.compinit_guard && s.defer_plugins && !s.lazy_compinit, "parsed")
 }
 
+// [settings] autosuggest / autosuggest_style (OKAMI-376): off and "fg=8" by
+// default; a non-boolean / unusable style keeps the default.
+@(test)
+test_toml_parser_autosuggest_settings :: proc(t: ^testing.T) {
+	defer wayu.clear_toml_content_cache()
+	use_cached_toml("[shell]\ntype = \"zsh\"\n")
+	s := wayu.read_startup_settings()
+	testing.expect(t, !s.autosuggest, "off by default")
+	testing.expect_value(t, s.autosuggest_style, "fg=8")
+
+	use_cached_toml("[settings]\nautosuggest = true\nautosuggest_style = \"fg=244,underline\"\n")
+	s = wayu.read_startup_settings()
+	testing.expect(t, s.autosuggest, "parsed")
+	testing.expect_value(t, s.autosuggest_style, "fg=244,underline")
+
+	use_cached_toml("[settings]\nautosuggest = \"yes\"\nautosuggest_style = \"fg=1\\nbold\"\n")
+	s = wayu.read_startup_settings()
+	testing.expect(t, !s.autosuggest, "string is not a boolean")
+	testing.expect_value(t, s.autosuggest_style, "fg=8")
+}
+
+// The generated module: style quoted in, every placeholder replaced, the
+// accept keys bound in emacs + viins, only the accept/partial widgets wrapped.
+@(test)
+test_zsh_suggest_module :: proc(t: ^testing.T) {
+	defer wayu.clear_toml_content_cache()
+	use_cached_toml("[settings]\nautosuggest = true\nautosuggestions_accept_keys = [\"^Y\", \"^[[121;5u\", \"ctrl-e\"]\n")
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	wayu.emit_zsh_suggest(&b, "fg=244,underline")
+	code := strings.to_string(b)
+	testing.expect(t, !strings.contains(code, "@STYLE@") && !strings.contains(code, "@BINDS@"), "placeholders replaced")
+	testing.expect(t, strings.contains(code, `_wayu_suggest_style="fg=244,underline"`), "style")
+	testing.expect(t, strings.contains(code, "bindkey -M emacs '^Y' wayu-suggest-accept; bindkey -M viins '^Y' wayu-suggest-accept"), "^Y bound")
+	testing.expect(t, strings.contains(code, "bindkey -M emacs '^[[121;5u' wayu-suggest-accept"), "kitty ^Y bound")
+	testing.expect(t, !strings.contains(code, "ctrl-e"), "key names (not sequences) skipped, as in config.zsh")
+	testing.expect(t, strings.contains(code, "${history[(r)${(b)BUFFER}*]}"), "BUFFER is a literal prefix")
+	testing.expect(t, strings.contains(code, "add-zle-hook-widget zle-line-pre-redraw _wayu_suggest_redraw"), "redraw hook")
+	testing.expect(t, strings.contains(code, "add-zle-hook-widget zle-line-finish _wayu_suggest_finish"), "finish hook")
+	testing.expect_value(t, strings.count(code, "zle -N $w "), 1) // one loop over the 13 wrapped widgets
+	testing.expect(t, strings.has_prefix(code, "if [[ -o interactive && -o zle ]]; then\n") && strings.has_suffix(code, "fi\n"), "interactive zle only")
+
+	testing.expect(t, wayu.autosuggest_style_valid("fg=8"), "fg=8")
+	for bad in ([]string{"", "fg=1\nbold", strings.repeat("x", 65, context.temp_allocator)}) {
+		testing.expectf(t, !wayu.autosuggest_style_valid(bad), "%q must be invalid", bad)
+	}
+}
+
 @(test)
 test_toml_parser_recovers_invalid_lines :: proc(t: ^testing.T) {
 	content := "[a]\nll = ls -la\nok = \"fine\"\n[b\nHIDDEN = \"x\"\n[b]\nA = \"1\" trailing\nB = \"2\"\n"

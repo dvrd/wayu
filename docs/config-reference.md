@@ -211,16 +211,48 @@ top-level `shell = "..."` string is not read (`toml validate` rejects it).
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `autosuggestions_accept_keys` | array of strings | `["^Y", "^[[121;5u"]` | zsh only. Key sequences bound to `autosuggest-accept` (zsh-autosuggestions) in the `main`, `emacs` and `viins` keymaps. Entries must start with `^` or contain `[`; others, non-strings, empties and duplicates are ignored. An empty or missing array uses the default. The array may span lines. |
+| `autosuggest` | boolean | `false` | zsh only (5.3+, interactive). Built-in fish-like suggestions from history, in place of the zsh-autosuggestions plugin: see [Autosuggestions](#autosuggestions). A non-boolean value is an error (`toml validate`, `doctor`). |
+| `autosuggest_style` | string | `"fg=8"` | zsh only. How the suggestion is drawn: a `region_highlight` spec (`fg=244`, `fg=8,underline`; one line, at most 64 bytes, else an error). |
+| `autosuggestions_accept_keys` | array of strings | `["^Y", "^[[121;5u"]` | zsh only. Key sequences that accept the whole suggestion: bound to `autosuggest-accept` (zsh-autosuggestions) in the `main`, `emacs` and `viins` keymaps, or, with `autosuggest = true`, to `wayu-suggest-accept` in `emacs` and `viins`. Entries must start with `^` or contain `[`; others, non-strings, empties and duplicates are ignored. An empty or missing array uses the default. The array may span lines. |
 | `auto_optimize` | boolean | `false` | When an open shell notices that a startup file changed (prompt hook) and it has lines `wayu optimize` can move, move them right away (backups first) and print what moved, instead of printing the `wayu: ~/.zshrc changed: N lines can be optimized` notice. |
 
 | `compinit_guard` | boolean | `true` | zsh only. After wayu's `compinit`, `compinit` is a function that only registers the completions (`#compdef` / `#autoload` files) of `fpath` dirs added since; its flags (`-C`, `-i`, `-u`, `-d <dump>`, ...) are accepted and ignored. An installer's `autoload -Uz compinit && compinit` in `.zshrc` then costs a glob of the new dirs instead of a second full completion setup (audit, dump check/rewrite), and its dirs' completions work even with `-C`. The same registration runs once at the first prompt, for dirs added to `fpath` without a `compinit` call. `false`: later `compinit` calls are zsh's own. |
 | `defer_plugins` | boolean | `false` | zsh only. Load the plugins (`plugins.zsh`, the zsh-autosuggestions / zsh-syntax-highlighting fallbacks, `plugins/config.zsh`) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after `tools.zsh` / `extra.zsh`: code there that needs a plugin widget should run through `zsh-defer`. |
 | `lazy_compinit` | boolean | `false` | zsh only. No `compinit` at startup: the completion widgets (Tab, `^D` list, ...) set up completion on first use and then complete. `compdef` calls made before that are queued and replayed. `$_comps` and completion functions don't exist until then. |
 
-The bindings are written to `<data>/plugins/config.zsh`, which `core.zsh`
-sources after the plugins; they apply only when the `autosuggest-accept`
-widget exists. No other `[settings]` key is read.
+The plugin bindings are written to `<data>/plugins/config.zsh`, which
+`core.zsh` sources after the plugins; they apply only when the
+`autosuggest-accept` widget exists. No other `[settings]` key is read.
+
+#### Autosuggestions
+
+`autosuggest = true` puts suggestions in `core.zsh` itself (interactive zsh
+5.3+; nothing forks, no extra files). As you type, the newest history entry
+that starts with the line (typed glob characters are literal) is shown after
+the cursor in `autosuggest_style`. It is computed in a `zle-line-pre-redraw`
+hook (`add-zle-hook-widget`, which zsh-syntax-highlighting 0.8+ also uses)
+instead of wrapping every widget at the first prompt and before every prompt
+as the zsh-autosuggestions plugin does.
+
+- Accept all: `forward-char`, `end-of-line`, `vi-forward-char`,
+  `vi-end-of-line`, `vi-add-eol` (→, `^F`, `^E`/End where bound, vi `l`
+  `$` `A`) with the cursor at the end of the line, and the
+  `autosuggestions_accept_keys` (default `^Y`).
+- Accept part: `forward-word`, `emacs-forward-word`, `vi-forward-word`,
+  `vi-forward-word-end`, `vi-forward-blank-word`, `vi-forward-blank-word-end`,
+  `vi-find-next-char`, `vi-find-next-char-skip` (`M-f`, vi `w` `e` `W` `E`
+  `f` `t`) move through the suggestion and take what ends up before the
+  cursor.
+- Only these 13 widgets are wrapped (chaining to what was bound before);
+  the suggestion is gone when the cursor isn't at the end, after history
+  and search widgets (the line already came from history) and once the line
+  is accepted: Enter runs only what you typed.
+- With `autosuggest = true` the zsh-autosuggestions plugin is not loaded,
+  even if installed and enabled (`wayu doctor` warns until it is removed or
+  disabled). `defer_plugins` / `lazy_compinit` don't affect it (it is set up
+  at startup; it is cheap). bash and fish ignore it (`doctor` notes it).
+- Suggestions come from history only (no completion strategy); a multi-line
+  history entry is suggested whole.
 
 Interactive-only parts of `core.zsh` (completion, the native prompt,
 plugins, zsh-defer) are skipped in non-interactive zsh (`zsh -c`,
@@ -865,7 +897,8 @@ and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 9. Eager `[tools]`
 10. Native prompt (zsh, interactive, `[prompt] enabled = true`)
 11. Plugins (`plugins.<ext>`; zsh: `plugins/config.zsh`, interactive
-    shells only, after the first prompt with `defer_plugins`)
+    shells only, after the first prompt with `defer_plugins`; zsh with
+    `[settings] autosuggest`: the built-in suggestions first)
 12. Deferred `[tools]`
 13. `tools.<ext>`
 14. `extra.<ext>`
