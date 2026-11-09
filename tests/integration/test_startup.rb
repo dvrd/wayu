@@ -89,17 +89,7 @@ class StartupTest
     warn "build failed: #{err}" unless st.success?
     File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
     File.write("#{home}/.zshrc", zshrc)
-    no_group_write(home)
     [home, data, env]
-  end
-
-  # compaudit (run by a plain compinit) refuses group/other-writable fpath
-  # dirs and aborts in a non-tty shell; CI runners use umask 002.
-  def no_group_write(dir)
-    [dir, *Dir.glob("#{dir}/**/*", File::FNM_DOTMATCH)].each do |d|
-      next if File.symlink?(d) || !File.directory?(d)
-      File.chmod(File.stat(d).mode & 0o7755, d)
-    end
   end
 
   # An fpath dir an installer adds: `_sufoo` (#compdef sufoo) and an
@@ -109,11 +99,13 @@ class StartupTest
     FileUtils.mkdir_p(dir)
     File.write("#{dir}/_sufoo", "#compdef sufoo\n_sufoo() { _files }\n")
     File.write("#{dir}/_suhelper", "#autoload\n_suhelper() { :; }\n")
-    no_group_write(dir)
     dir
   end
 
   INSTALLER_RC = "fpath=($HOME/instcomp $fpath)\nautoload -Uz compinit && compinit\n"
+  # Real compinit audits fpath and, in a non-tty shell, aborts on any insecure
+  # dir (CI runners' system fpath dirs): -u skips the audit, the rest is real.
+  INSTALLER_RC_NOAUDIT = "fpath=($HOME/instcomp $fpath)\nautoload -Uz compinit && compinit -u\n"
 
   def zsh(env, *args, **kw)
     Open3.capture3(env, 'zsh', *args, **kw)
@@ -142,7 +134,7 @@ class StartupTest
   # `[settings] compinit_guard = false`: a later compinit is zsh's own again.
   def test_compinit_guard_off
     print "Test: compinit_guard = false leaves later compinit calls alone... "
-    home, data, env = setup_home('guard_off', settings: 'compinit_guard = false', zshrc: INSTALLER_RC)
+    home, data, env = setup_home('guard_off', settings: 'compinit_guard = false', zshrc: INSTALLER_RC_NOAUDIT)
     installer_dir(home)
     out, err, = zsh(env, '-i', '-c', 'print -r -- "foo=${_comps[sufoo]-none} fn=${functions[compinit][1,40]}"')
     core = File.read("#{data}/core.zsh")

@@ -706,12 +706,17 @@ def test_add_and_delete_mutations():
             test("mutations/delete_const",
                  AssertResult(ok and "EDITOR" not in content and "TUI_CONST" in content, content))
 
-            s.send(b"\x1b"); s.read(timeout=0.2)  # leave filter
+            # Leave the filter and wait for it to close: an `h` right after
+            # ESC can be read as one Alt-h chord on a busy runner.
+            s.send(b"\x1b")
+            s.wait_for(lambda snap: "(1/" not in snap, timeout=TIMEOUT_KEY)
+            s.read(timeout=0.3)
             s.send(b"h"); s.read(timeout=0.2)
             s.send(b"k"); s.read(timeout=0.15)
             s.send(b"k"); s.read(timeout=0.15)
             s.send(b"l")
-            s.wait_for(lambda snap: "PATH" in snap and "CONFIGURATION" in snap, timeout=TIMEOUT_KEY)
+            # The sidebar always shows "PATH": wait for the view's own title.
+            s.wait_for(lambda snap: "PATH CONFIGURATION" in snap, timeout=TIMEOUT_KEY)
             fill_add_form(s, [newdir])
             ok = s.wait_for(lambda snap: "Added PATH entry" in snap, timeout=TIMEOUT_KEY)
             test("mutations/add_path", AssertResult(ok and newdir in read_entries(), read_entries()))
