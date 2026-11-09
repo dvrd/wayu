@@ -2,6 +2,10 @@
 
 **v6.0.0** · A shell configuration management CLI written in [Odin](https://odin-lang.org/) with zero external dependencies. Manages PATH entries, aliases, environment variables, completions, and backups across Bash, Zsh, and Fish.
 
+![wayu demo: path, alias and run-only secret added, constants listed with the secret masked, a Python script created and run with the secret, doctor, then an alias added in the TUI](docs/demo/demo.gif)
+
+<sub>Recorded with [VHS](https://github.com/charmbracelet/vhs) in a throwaway home: `vhs docs/demo/demo.tape` (see [docs/demo/](docs/demo/)). Website: [wayu.dvrd.io](https://wayu.dvrd.io).</sub>
+
 ## Features
 
 - **Multi-shell** -- Automatic Bash/Zsh/Fish detection with shell-specific config files
