@@ -281,6 +281,18 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 			delete(files_to_source)
 		}
 		
+		// zsh/bash: a plugin already loaded in this shell is skipped when
+		// plugins.<ext> is sourced again (re-sourcing init / .zshrc): no
+		// second source, no PATH/FPATH prepend reordering (OKAMI-372). The
+		// list is a plain (not exported) shell variable, so new shells load
+		// everything.
+		guarded := shell != .FISH && len(files_to_source) > 0
+		if guarded {
+			qname := shell_quote(plugin.name, shell)
+			fmt.sbprintf(&sb, "if [[ \":${{_WAYU_PLUGINS_LOADED-}}:\" != *:%s:* ]]; then\n", qname)
+			fmt.sbprintf(&sb, "_WAYU_PLUGINS_LOADED=\"${{_WAYU_PLUGINS_LOADED-}}:\"%s\n", qname)
+		}
+
 		// Apply template to generate loading code.
 		// Fish uses `test -f X; and <cmd>; end`; zsh/bash use POSIX `if [ -f X ]; then <cmd>; fi`.
 		for file in files_to_source {
@@ -297,6 +309,7 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 			strings.write_string(&sb, source_line)
 			delete(source_line)
 		}
+		if guarded { strings.write_string(&sb, "fi\n") }
 		strings.write_string(&sb, "\n")
 		
 		if found {

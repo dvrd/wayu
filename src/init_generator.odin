@@ -41,7 +41,10 @@ write_init_file :: proc(path, content: string) {
 //   - one file: init.<ext> sources core.<ext> only (OKAMI-284)
 //   - zcompile: core.zsh and the compinit dump are compiled to .zwc
 //   - [tools]: evalcache'd output, lazy wrappers, built-in zsh-defer
-//   - compinit -C: the dump is rebuilt only when the completions dir changed
+//   - compinit -C: the dump is rebuilt only when wayu's completions or an
+//     fpath dir changed; later compinit calls are guarded (emit_zsh_completions)
+//   - zsh: plugins, zsh-defer, compinit and the prompt in interactive shells
+//     only; the prompt is rendered without command substitution
 
 // --------------------------------------------------------------------------
 // Cached wayu.toml content — shared across all commands in a single
@@ -1041,10 +1044,11 @@ build_core_content :: proc(mask := false) -> string {
 	}
 	fmt.sbprintln(&b)
 
+	startup := read_startup_settings()
 	completions_dir := fmt.tprintf("%s/completions", wayu.data)
 	fmt.sbprintln(&b, "# === Completions ===")
 	if is_zsh {
-		emit_zsh_completions(&b, completions_dir)
+		emit_zsh_completions(&b, completions_dir, startup)
 	} else {
 		// `wayu completions generate` writes wayu.bash; `completions add`
 		// writes name.bash-completion (or keeps a given .bash name).
@@ -1126,15 +1130,29 @@ build_core_content :: proc(mask := false) -> string {
 	// the hard-coded zsh-autosuggestions / zsh-syntax-highlighting lines are
 	// only a fallback when plugins.zsh didn't already load them, and
 	// syntax-highlighting is sourced last (after prompt widgets exist).
+	// zsh: interactive shells only (plugins are line-editor features;
+	// OKAMI-375); `[settings] defer_plugins` loads them after the first
+	// prompt is drawn (zsh-defer), as one function so the order holds.
 	fmt.sbprintln(&b, "# === Plugins ===")
-	emit_source_if_exists(&b, runtime_file("plugins"))
 	if is_zsh {
 		plugins_dir := fmt.tprintf("%s/plugins", wayu.data)
 		as_q := shell_double_quote_literal(fmt.tprintf("%s/zsh-autosuggestions/zsh-autosuggestions.zsh", plugins_dir), context.temp_allocator)
 		sh_q := shell_double_quote_literal(fmt.tprintf("%s/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh", plugins_dir), context.temp_allocator)
+		fmt.sbprintln(&b, "if [[ -o interactive ]]; then")
+		if startup.defer_plugins {
+			fmt.sbprintln(&b, "function _wayu_plugins_load {")
+		}
+		emit_source_if_exists(&b, runtime_file("plugins"))
 		fmt.sbprintfln(&b, "if (( ! ${{+functions[_zsh_autosuggest_start]}} )) && [ -f %s ]; then source %s; fi", as_q, as_q)
 		emit_source_if_exists(&b, fmt.tprintf("%s/config.zsh", plugins_dir))
 		fmt.sbprintfln(&b, "if (( ! ${{+functions[_zsh_highlight]}} )) && [ -f %s ]; then source %s; fi", sh_q, sh_q)
+		if startup.defer_plugins {
+			fmt.sbprintln(&b, "}")
+			fmt.sbprintln(&b, "zsh-defer _wayu_plugins_load")
+		}
+		fmt.sbprintln(&b, "fi")
+	} else {
+		emit_source_if_exists(&b, runtime_file("plugins"))
 	}
 	fmt.sbprintln(&b)
 
@@ -1190,63 +1208,201 @@ build_core_content :: proc(mask := false) -> string {
 	return strings.to_string(b)
 }
 
-// zsh completion setup: wayu's completions dir on fpath, then compinit —
-// in interactive shells only (completion is a line-editor feature; compinit
-// is most of the cost of a non-interactive `source init.zsh`). Elsewhere a
-// no-op `compdef` keeps plugins/tools that call it quiet.
+// [settings] keys that shape the generated zsh startup (OKAMI-372/375).
+StartupSettings :: struct {
+	compinit_guard: bool, // later `compinit` calls only register new fpath dirs
+	defer_plugins:  bool, // plugins load after the first prompt (zsh-defer)
+	lazy_compinit:  bool, // compinit on the first completion attempt
+}
+
+// Read StartupSettings from wayu.toml (cached content); a missing key or a
+// non-boolean value keeps the default.
+read_startup_settings :: proc() -> StartupSettings {
+	s := StartupSettings{compinit_guard = true}
+	content, ok := get_cached_toml_content()
+	if !ok { return s }
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil { return s }
+	defer virtual.arena_destroy(&arena)
+	doc, _ := toml_doc_parse_alloc(content, virtual.arena_allocator(&arena))
+	keys := [?]struct{ name: string, field: ^bool }{
+		{"settings.compinit_guard", &s.compinit_guard},
+		{"settings.defer_plugins", &s.defer_plugins},
+		{"settings.lazy_compinit", &s.lazy_compinit},
+	}
+	for k in keys {
+		if v := get_toml_value(&doc, k.name); v != nil && v.type == .BOOLEAN { k.field^ = v.bool_val }
+	}
+	return s
+}
+
+// zsh completion setup: wayu's completions dir on fpath (once: re-sourcing
+// core doesn't add it again), then compinit — in interactive shells only
+// (completion is a line-editor feature; compinit is most of the cost of a
+// non-interactive `source init.zsh`). Elsewhere a no-op `compdef` keeps
+// plugins/tools that call it quiet.
 //
-// "${fpath[@]}" keeps every entry under KSH_ARRAYS (`$fpath` is only
-// fpath[0] there). `compinit -C` reuses the dump without scanning fpath, so
-// completions wayu adds/removes would never show up: when the completions
-// dir changed after the dump was written, rebuild it (`-u`: no interactive
-// compaudit prompt, as -C never audited). `-nt` compares whole seconds, so a
-// completion added in the same second as the dump was missed (OKAMI-283):
-// the file listing of the dir (a glob, no fork) is also compared with the
-// one recorded in $dump.wayu when the dump was last rebuilt.
-// compinit sources the dump at every start; a zcompiled dump loads ~40%
-// faster, so it is compiled (in the background, temp file + rename) when
-// missing or older than the dump, and installed only if the dump did not
-// change while compiling.
+// _wayu_compinit runs `compinit -C` on a cached dump. -C never scans fpath,
+// so the dump is rebuilt (`-u`: no interactive compaudit prompt, as -C never
+// audited) when its signature changed: the file listing of wayu's
+// completions dir (a glob, no fork; whole-second mtimes missed a completion
+// added in the same second as the dump, OKAMI-283) + every fpath dir with
+// its mtime (zstat, one call), so completions brew/the system/a plugin add
+// to any fpath dir are picked up too. The signature of the last rebuild is
+// kept in $dump.wayu. A zcompiled dump loads ~40% faster, so it is compiled
+// (in the background, temp file + rename) when missing or older than the
+// dump, and installed only if the dump did not change while compiling.
+//
+// compinit guard (`[settings] compinit_guard`, default on): installers append
+// `autoload -Uz compinit && compinit` to .zshrc, which redoes the whole
+// completion setup (and with -C still misses the dirs they just put on
+// fpath). After wayu's compinit, `compinit` is a function that only
+// registers the `#compdef` / `#autoload` files of fpath dirs added since
+// (as compinit itself would, first dir wins); its flags are accepted and
+// ignored. `autoload -Uz compinit` of a defined function is a no-op in zsh,
+// so the installer line can't replace it. The same scan runs once at the
+// first prompt, for dirs added to fpath without a compinit call.
+//
+// lazy_compinit: the completion widgets (Tab etc.) are wrappers that run the
+// setup above on first use and then re-run the widget (compinit replaces
+// them with the real completion widgets); `compdef` calls made before that
+// are queued and replayed.
 @(private = "file")
-emit_zsh_completions :: proc(b: ^strings.Builder, completions_dir: string) {
+emit_zsh_completions :: proc(b: ^strings.Builder, completions_dir: string, s: StartupSettings) {
 	q := shell_double_quote_literal(completions_dir, context.temp_allocator)
-	fmt.sbprintfln(b, `fpath=(%s "${{fpath[@]}}")`, q)
+	fmt.sbprintfln(b, `() {{ emulate -L zsh; (( ${{fpath[(Ie)$1]}} )) || fpath=( "$1" "${{fpath[@]}}" ) }} %s`, q)
 	fmt.sbprintln(b, `if [[ -o interactive ]]; then`)
-	fmt.sbprintln(b, `  () {`)
-	fmt.sbprintln(b, `    emulate -L zsh`)
-	fmt.sbprintln(b, `    local dump="${ZDOTDIR:-$HOME}/.zcompdump" seen=""`)
-	fmt.sbprintfln(b, `    local -a comps=( %s/*(N:t) )`, q)
-	fmt.sbprintln(b, `    local list="${(j:/:)comps}"`)
-	fmt.sbprintln(b, `    { read -r seen < "$dump.wayu" } 2>/dev/null`)
-	fmt.sbprintln(b, `    autoload -Uz compinit`)
-	fmt.sbprintfln(b, `    if [[ ! -s $dump || %s -nt $dump || "$seen" != "$list" ]]; then`, q)
-	fmt.sbprintln(b, `      command rm -f -- "$dump" "$dump.zwc"`)
-	fmt.sbprintln(b, `      compinit -u -d "$dump"`)
-	fmt.sbprintln(b, `      { print -r -- "$list" >| "$dump.wayu" } 2>/dev/null`)
-	fmt.sbprintln(b, `    else`)
-	fmt.sbprintln(b, `      compinit -C -d "$dump"`)
-	fmt.sbprintln(b, `    fi`)
-	fmt.sbprintln(b, `    if [[ -s $dump && -w ${dump:h} && ( ! -s $dump.zwc || $dump -nt $dump.zwc ) ]]; then`)
-	// Install the .zwc only if the dump is unchanged (device, inode, size,
-	// mtime, ctime; not atime, which zcompile itself updates) since compiling began:
-	// another shell may rebuild the dump meanwhile, and a .zwc of the old
-	// dump (newer mtime) would then shadow the new one.
-	fmt.sbprintln(b, `      {`)
-	fmt.sbprintln(b, `        zmodload -F zsh/stat b:zstat || exit`)
-	fmt.sbprintln(b, `        local -a s1 s2`)
-	fmt.sbprintln(b, `        zstat -A s1 -- "$dump" || exit`)
-	fmt.sbprintln(b, `        if zcompile -R -- "$dump.$$.zwc" "$dump" && zstat -A s2 -- "$dump" && [[ "${s1[1,2]} ${s1[8]} ${s1[10,11]}" == "${s2[1,2]} ${s2[8]} ${s2[10,11]}" ]]; then`)
-	fmt.sbprintln(b, `          command mv -f -- "$dump.$$.zwc" "$dump.zwc"`)
-	fmt.sbprintln(b, `        else`)
-	fmt.sbprintln(b, `          command rm -f -- "$dump.$$.zwc"`)
-	fmt.sbprintln(b, `        fi`)
-	fmt.sbprintln(b, `      } >/dev/null 2>&1 &!`)
-	fmt.sbprintln(b, `    fi`)
-	fmt.sbprintln(b, `  }`)
+	code, _ := strings.replace_all(ZSH_COMPINIT, "@COMPLETIONS_DIR@", q, context.temp_allocator)
+	fmt.sbprint(b, code)
+	if s.compinit_guard {
+		fmt.sbprint(b, ZSH_COMPINIT_GUARD)
+	}
+	if s.lazy_compinit {
+		fmt.sbprint(b, ZSH_COMPINIT_LAZY)
+		if !s.compinit_guard {
+			// No guard: an early `compinit` call does the real setup now.
+			fmt.sbprintln(b, `  if (( ! ${+_wayu_comp_fpath} )); then function compinit { _wayu_compinit_now; }; fi`)
+		}
+	} else {
+		fmt.sbprintln(b, `  _wayu_compinit`)
+	}
 	fmt.sbprintln(b, `else`)
 	fmt.sbprintln(b, `  (( ${+functions[compdef]} )) || compdef() { return 0; }`)
 	fmt.sbprintln(b, `fi`)
 }
+
+ZSH_COMPINIT :: `  function _wayu_compinit {
+    emulate -L zsh
+    if (( ${+_wayu_comp_fpath} )); then
+      _wayu_compinit_scan
+      return 0
+    fi
+    local dump="${ZDOTDIR:-$HOME}/.zcompdump" seen="" sig
+    local -a comps=( @COMPLETIONS_DIR@/*(N:t) ) mt
+    zmodload -F zsh/stat b:zstat 2>/dev/null
+    zstat -A mt +mtime -- ${^fpath}(N/) 2>/dev/null
+    sig="${(j:/:)comps} ${(j: :)fpath} ${(j: :)mt}"
+    sig=${sig//$'\n'/?}
+    { read -r seen < "$dump.wayu" } 2>/dev/null
+    (( ${+functions[compinit]} )) && unfunction compinit
+    autoload -Uz compinit
+    if [[ ! -s $dump || "$seen" != "$sig" ]]; then
+      command rm -f -- "$dump" "$dump.zwc"
+      compinit -u -d "$dump"
+      { print -r -- "$sig" >| "$dump.wayu" } 2>/dev/null
+    else
+      compinit -C -d "$dump"
+    fi
+    typeset -ga _wayu_comp_fpath=( "${fpath[@]}" )
+    (( ${+functions[_wayu_compinit_guard]} )) && _wayu_compinit_guard
+    if [[ -s $dump && -w ${dump:h} && ( ! -s $dump.zwc || $dump -nt $dump.zwc ) ]]; then
+      {
+        zmodload -F zsh/stat b:zstat || exit
+        local -a s1 s2
+        zstat -A s1 -- "$dump" || exit
+        if zcompile -R -- "$dump.$$.zwc" "$dump" && zstat -A s2 -- "$dump" && [[ "${s1[1,2]} ${s1[8]} ${s1[10,11]}" == "${s2[1,2]} ${s2[8]} ${s2[10,11]}" ]]; then
+          command mv -f -- "$dump.$$.zwc" "$dump.zwc"
+        else
+          command rm -f -- "$dump.$$.zwc"
+        fi
+      } >/dev/null 2>&1 &!
+    fi
+  }
+  # Register the completions of fpath dirs added since _wayu_compinit.
+  function _wayu_compinit_scan {
+    emulate -L zsh -o extended_glob
+    (( ${+_wayu_comp_fpath} && ${+functions[compdef]} )) || return 0
+    local d f n
+    local -a l
+    for d in "${fpath[@]}"; do
+      [[ $d == . ]] && continue
+      (( ${_wayu_comp_fpath[(Ie)$d]} )) && continue
+      _wayu_comp_fpath+=( "$d" )
+      for f in $d/^([^_]*|*~|*.zwc)(N); do
+        n=${f:t}
+        IFS=$' \t' read -rA l < $f || continue
+        case ${l[1]-} in
+          ('#compdef')
+            shift l
+            if [[ ${l[1]-} == -[pPkK](n|) ]]; then
+              compdef ${l[1]}na $n "${(@)l[2,-1]}"
+            else
+              compdef -na $n "${(@)l}"
+            fi ;;
+          ('#autoload')
+            shift l
+            autoload -rUz "${(@)l}" $n ;;
+        esac
+      done
+    done
+    return 0
+  }
+`
+
+ZSH_COMPINIT_GUARD :: `  # compinit guard ([settings] compinit_guard): see init_generator.odin.
+  function _wayu_compinit_guard {
+    function compinit { _wayu_compinit_scan; }
+  }
+  function _wayu_compinit_first_prompt {
+    local s=$?
+    _wayu_compinit_scan
+    add-zsh-hook -d precmd _wayu_compinit_first_prompt
+    return $s
+  }
+  autoload -Uz add-zsh-hook
+  add-zsh-hook precmd _wayu_compinit_first_prompt
+`
+
+ZSH_COMPINIT_LAZY :: `  # lazy_compinit ([settings]): completion set up on the first completion.
+  if (( ! ${+_wayu_comp_fpath} )); then
+    typeset -ga _wayu_compdef_queue
+    function compdef { _wayu_compdef_queue+=( "${(j: :)${(@q)@}}" ); }
+    if (( ${+functions[_wayu_compinit_guard]} )); then
+      function compinit { return 0; }
+    fi
+    () {
+      local w
+      for w in complete-word delete-char-or-list expand-or-complete expand-or-complete-prefix \
+               list-choices menu-complete menu-expand-or-complete reverse-menu-complete; do
+        zle -N $w _wayu_compinit_lazy
+      done
+    } 2>/dev/null
+  fi
+  function _wayu_compinit_now {
+    (( ${+_wayu_compdef_queue} )) || return 0
+    local -a q=( "${_wayu_compdef_queue[@]}" )
+    local c w
+    unset _wayu_compdef_queue
+    unfunction compdef 2>/dev/null
+    for w in ${(k)widgets[(R)user:_wayu_compinit_lazy]}; do zle -A .$w $w; done
+    _wayu_compinit
+    for c in "${q[@]}"; do eval "compdef $c"; done
+  }
+  function _wayu_compinit_lazy {
+    _wayu_compinit_now
+    zle "$WIDGET" -- "$@"
+  }
+`
 
 // evalcache. The cache key includes the sanitised args, so `zoxide init zsh`
 // and `zoxide init zsh --cmd cd` don't share (and serve) a stale cache when
@@ -1369,72 +1525,78 @@ _wayu_evalcache() {
 }
 `
 
-// zsh-only helpers: built-in zsh-defer + the single USR1 handler shared with
-// the async prompt (prompt.odin defines _wayu_async_on_usr1). Previously the
-// prompt's TRAPUSR1 replaced this file's `trap ... USR1`, so the defer queue
-// only advanced one item per prompt.
+// zsh-only helpers: built-in zsh-defer (interactive shells; a no-op
+// elsewhere, where nothing ever drained the queue). The queue drains one
+// command per idle moment of the line editor once the prompt is drawn: a
+// `zle -F` handler on a /dev/null fd (always readable) runs as soon as zle
+// waits for input — no fork, no signal (it used a precmd hook, which runs
+// before the prompt is drawn, plus `sleep 0.1 && kill -USR1` subshells, and
+// owned TRAPUSR1; OKAMI-375).
 HELPER_ZSH_DEFER :: `
 # ============================================================================
 # ZSH-DEFER BUILT-IN - Implementation without external plugin
-# Defers execution until the prompt is ready and idle
+# Defers execution until the prompt is drawn and the line editor is idle
 # ============================================================================
+if [[ -o interactive ]]; then
+  # Deferred command queue
+  (( ${+_wayu_defer_queue} )) || typeset -ga _wayu_defer_queue
+  typeset -g _wayu_defer_fd="${_wayu_defer_fd-}"
 
-# Deferred command queue
-(( ${+_wayu_defer_queue} )) || typeset -ga _wayu_defer_queue
+  function zsh-defer {
+    local delay=0
+    while [[ "$1" == -* ]]; do
+      case "$1" in
+        -t|--time) delay="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    local cmd="$*"
+    [[ -n "$cmd" ]] || return 0
+    _wayu_defer_queue+=("$cmd:$delay")
+    _wayu_defer_arm
+    return 0
+  }
 
-zsh-defer() {
-  local delay=0
-  while [[ "$1" == -* ]]; do
-    case "$1" in
-      -t|--time) delay="$2"; shift 2 ;;
-      *) shift ;;
-    esac
-  done
-  local cmd="$*"
-  [[ -n "$cmd" ]] && _wayu_defer_queue+=("$cmd:$delay")
-  return 0
-}
+  # Process one deferred command
+  function _wayu_defer_process_one {
+    (( ${#_wayu_defer_queue} )) || return 0
+    local item="${_wayu_defer_queue[@]:0:1}"  # first item, with or without KSH_ARRAYS
+    local cmd="${item%:*}"
+    local delay="${item##*:}"
+    shift _wayu_defer_queue
+    if [[ "$delay" != "0" && -n "$delay" ]]; then
+      (command sleep "$delay" && eval "$cmd") &!
+    else
+      eval "$cmd"
+    fi
+    return 0
+  }
 
-# Process one deferred command
-_wayu_defer_process_one() {
-  (( ${#_wayu_defer_queue} )) || return 0
-  local item="${_wayu_defer_queue[@]:0:1}"  # first item, with or without KSH_ARRAYS
-  local cmd="${item%:*}"
-  local delay="${item##*:}"
-  shift _wayu_defer_queue
-  if [[ "$delay" != "0" && -n "$delay" ]]; then
-    (command sleep "$delay" && eval "$cmd") &!
-  else
-    eval "$cmd" 2>/dev/null
-  fi
-  return 0
-}
+  function _wayu_defer_arm {
+    [[ -z $_wayu_defer_fd ]] || return 0
+    {
+      exec {_wayu_defer_fd}</dev/null &&
+        zle -N _wayu_defer_resume &&
+        zle -F -w $_wayu_defer_fd _wayu_defer_resume
+    } 2>/dev/null || _wayu_defer_fd=""
+    return 0
+  }
 
-# Ask ourselves (via USR1) to continue draining the queue shortly.
-_wayu_defer_kick() {
-  ( command sleep 0.1 && builtin kill -USR1 $$ 2>/dev/null ) &!
-}
-
-# precmd hook - runs deferred commands after the first prompt
-_wayu_defer_precmd() {
-  (( ${#_wayu_defer_queue} )) || return 0
-  _wayu_defer_process_one
-  (( ${#_wayu_defer_queue} )) && _wayu_defer_kick
-  return 0
-}
-
-# Single USR1 handler: drains zsh-defer AND forwards to the async prompt.
-TRAPUSR1() {
-  if (( ${#_wayu_defer_queue} )); then
+  # zle -F widget: run one queued command, then wait for the next idle moment.
+  function _wayu_defer_resume {
+    zle -F $_wayu_defer_fd 2>/dev/null
+    exec {_wayu_defer_fd}<&-
+    _wayu_defer_fd=""
     _wayu_defer_process_one
-    (( ${#_wayu_defer_queue} )) && _wayu_defer_kick
-  fi
-  (( ${+functions[_wayu_async_on_usr1]} )) && _wayu_async_on_usr1
-  return 0
-}
-
-autoload -Uz add-zsh-hook
-add-zsh-hook precmd _wayu_defer_precmd
+    (( ${#_wayu_defer_queue} )) && _wayu_defer_arm
+    zle reset-prompt 2>/dev/null
+    zle -R 2>/dev/null
+    return 0
+  }
+  (( ${#_wayu_defer_queue} )) && _wayu_defer_arm
+else
+  function zsh-defer { return 0; }
+fi
 
 # ============================================================================
 # WAYU COMPILE - Compile init files to bytecode (manual command)

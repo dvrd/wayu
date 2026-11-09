@@ -213,9 +213,22 @@ top-level `shell = "..."` string is not read (`toml validate` rejects it).
 |---|---|---|---|
 | `autosuggestions_accept_keys` | array of strings | `["^Y", "^[[121;5u"]` | zsh only. Key sequences bound to `autosuggest-accept` (zsh-autosuggestions) in the `main`, `emacs` and `viins` keymaps. Entries must start with `^` or contain `[`; others, non-strings, empties and duplicates are ignored. An empty or missing array uses the default. The array may span lines. |
 
+| `compinit_guard` | boolean | `true` | zsh only. After wayu's `compinit`, `compinit` is a function that only registers the completions (`#compdef` / `#autoload` files) of `fpath` dirs added since; its flags (`-C`, `-i`, `-u`, `-d <dump>`, ...) are accepted and ignored. An installer's `autoload -Uz compinit && compinit` in `.zshrc` then costs a glob of the new dirs instead of a second full completion setup (audit, dump check/rewrite), and its dirs' completions work even with `-C`. The same registration runs once at the first prompt, for dirs added to `fpath` without a `compinit` call. `false`: later `compinit` calls are zsh's own. |
+| `defer_plugins` | boolean | `false` | zsh only. Load the plugins (`plugins.zsh`, the zsh-autosuggestions / zsh-syntax-highlighting fallbacks, `plugins/config.zsh`) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after `tools.zsh` / `extra.zsh`: code there that needs a plugin widget should run through `zsh-defer`. |
+| `lazy_compinit` | boolean | `false` | zsh only. No `compinit` at startup: the completion widgets (Tab, `^D` list, ...) set up completion on first use and then complete. `compdef` calls made before that are queued and replayed. `$_comps` and completion functions don't exist until then. |
+
 The bindings are written to `<data>/plugins/config.zsh`, which `core.zsh`
 sources after the plugins; they apply only when the `autosuggest-accept`
 widget exists. No other `[settings]` key is read.
+
+Interactive-only parts of `core.zsh` (completion, the native prompt,
+plugins, zsh-defer) are skipped in non-interactive zsh (`zsh -c`,
+scripts): there it sets constants, secrets, PATH entries, `functions/`,
+`config.zsh`, `[tools]`, `tools.zsh`, `extra.zsh` and aliases (zsh expands
+aliases in `zsh -c` too), and `zsh-defer` is a no-op. Sourcing `init.zsh`
+again in a shell (e.g. from both `.zshenv` and `.zshrc`) doesn't reorder
+PATH, add wayu's completions dir to `fpath` twice, source an already
+loaded plugin again or redo `compinit`.
 
 ### `[tools]`
 
@@ -795,7 +808,7 @@ here):
 
 | Shell | Used as |
 |---|---|
-| zsh | Prepended to `fpath` (files named `_<command>`); `compinit` runs in interactive shells and rebuilds `.zcompdump` when the dir's file list changes |
+| zsh | Prepended to `fpath` (files named `_<command>`); `compinit` runs in interactive shells and rebuilds `.zcompdump` when the dir's file list, or any `fpath` dir or its mtime, changed |
 | bash | Sources `*.bash-completion` and `*.bash` |
 | fish | Prepended to `fish_complete_path` |
 
@@ -839,28 +852,17 @@ and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 
 1. `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR` exports (only when not default)
 2. Constants
-3. `bin/` (scripts) and PATH entries (and the live PATH sync hook)
-4. Completions (zsh: `fpath`, `compinit` in interactive shells)
-5. `functions/`
-6. `config.<ext>` content
-7. Helpers (evalcache; zsh: zsh-defer, `wayu_compile`)
-8. Eager `[tools]`
-9. Native prompt (zsh, interactive, `[prompt] enabled = true`)
-10. Plugins (`plugins.<ext>`; zsh: `plugins/config.zsh`)
-11. Deferred `[tools]`
-12. `tools.<ext>`
-13. `extra.<ext>`
-14. Login-only `[tools]`
-15. Aliases
 3. Secrets (session cache; only when `secrets.json` holds values)
-4. PATH entries (and the live PATH sync hook)
-5. Completions (zsh: `fpath`, `compinit` in interactive shells)
+4. `bin/` (scripts) and PATH entries (and the live PATH sync hook)
+5. Completions (zsh: `fpath`; `compinit` and the compinit guard in
+   interactive shells, see [`[settings]`](#settings))
 6. `functions/`
 7. `config.<ext>` content
-8. Helpers (evalcache; zsh: zsh-defer, `wayu_compile`)
+8. Helpers (evalcache; zsh: zsh-defer in interactive shells, `wayu_compile`)
 9. Eager `[tools]`
 10. Native prompt (zsh, interactive, `[prompt] enabled = true`)
-11. Plugins (`plugins.<ext>`; zsh: `plugins/config.zsh`)
+11. Plugins (`plugins.<ext>`; zsh: `plugins/config.zsh`, interactive
+    shells only, after the first prompt with `defer_plugins`)
 12. Deferred `[tools]`
 13. `tools.<ext>`
 14. `extra.<ext>`

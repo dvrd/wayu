@@ -348,7 +348,7 @@ toml_key_known :: proc(p: []string) -> bool {
 	case "shell":
 		return len(p) == 2 && p[1] == "type"
 	case "settings":
-		return len(p) == 2 && p[1] == "autosuggestions_accept_keys"
+		return len(p) == 2 && in_set(p[1], {"autosuggestions_accept_keys", "compinit_guard", "defer_plugins", "lazy_compinit"})
 	case "scripts":
 		return len(p) == 2 && p[1] == "default_lang"
 	case "secrets":

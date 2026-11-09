@@ -707,7 +707,7 @@ class InitIntegrationTest
     syntax_ok = files.size == 2 && files.all? { |f| system('zsh', '-n', f, out: File::NULL, err: File::NULL) }
     keys_ok = files.size == 2 && File.read(files[1]).include?(%q{bindkey '^Y'\''; touch})
     out, = Open3.capture3(env, '/bin/zsh', '-fic',
-      "source '#{data}/core.zsh' >/dev/null 2>&1; source '#{data}/plugins/config.zsh' >/dev/null 2>&1; _wayu_prompt_full")
+      "source '#{data}/core.zsh' >/dev/null 2>&1; source '#{data}/plugins/config.zsh' >/dev/null 2>&1; _wayu_prompt_full; print -r -- \"$REPLY\"")
     literal_ok = out.include?("it\"s $(touch #{pwn}) `touch #{pwn}`")
     if off_ok && on_ok && syntax_ok && keys_ok && literal_ok && !File.exist?(pwn)
       puts "✓"; @passed += 1
