@@ -208,7 +208,7 @@ class GeneratedShellTest
     out, err, = Open3.capture3(env, 'zsh', '-i', '-c', probe)
     lines = out.lines.map(&:chomp)
     hooks = lines.last.to_s
-    check('prompt_reset', out.include?('$(_wayu_prompt_master)') && !hooks.include?('_wayu_prompt_reassert'),
+    check('prompt_reset', out.include?('${_WAYU_PS1}') && !hooks.include?('_wayu_prompt_reassert'),
           "out=#{out.inspect[0, 300]} err=#{err.strip[0, 200]}")
   end
 
@@ -507,7 +507,7 @@ class GeneratedShellTest
     hostile = 'alias git=false awk=false sed=false head=false wc=false tr=false mktemp=false rm=false mv=false'
     funcs = 'git() { echo HIJACK; }; awk() { echo HIJACK; }; sed() { echo HIJACK; }'
     script = "#{hostile}\nsource '#{data}/init.zsh'\n#{funcs}\ncd '#{home}/repo'\n_wayu_update_git_info\n" \
-             "print -r -- \"$(_wayu_prompt_full)\"\nprint -r -- \"ver=$(_wayu_version_cmd golang)\""
+             "_wayu_prompt_full; print -r -- \"$REPLY\"\nprint -r -- \"ver=$(_wayu_version_cmd golang)\""
     out, err, st = Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-i', '-c', script)
     lines = out.lines.map(&:strip)
     ok = st.success? && err.strip.empty? && lines[0].to_s.include?('hostile-br') && !out.include?('HIJACK') &&

@@ -420,7 +420,8 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 		fmt.sbprintln(builder)
 	} else if name == "localip" {
 		// $localip gets replaced with a shell subshell that fetches the IP
-		rendered := prompt_render_module(cfg.localip_format, {{`\$localip`, `$(command ipconfig getifaddr en0 2>/dev/null || command ip -4 route get 1 2>/dev/null | command awk '{print $7; exit}')`}})
+		// Looked up once per prompt by _wayu_update_localip (precmd).
+		rendered := prompt_render_module(cfg.localip_format, {{`\$localip`, "${_WAYU_LOCALIP}"}})
 		strings.write_string(builder, `  result+="`)
 		strings.write_string(builder, rendered)
 		strings.write_string(builder, `"`)
@@ -565,9 +566,15 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	// Hook precmd
 	fmt.sbprintln(&builder, "autoload -Uz add-zsh-hook")
 	fmt.sbprintln(&builder, "add-zsh-hook precmd _wayu_update_git_info")
+	if strings.contains(cfg.format, "{localip}") {
+		fmt.sbprintln(&builder, `typeset -g _WAYU_LOCALIP=""`)
+		fmt.sbprintln(&builder, `_wayu_update_localip() { _WAYU_LOCALIP="$(command ipconfig getifaddr en0 2>/dev/null || command ip -4 route get 1 2>/dev/null | command awk '{print $7; exit}')"; }`)
+		fmt.sbprintln(&builder, "add-zsh-hook precmd _wayu_update_localip")
+	}
 	fmt.sbprintln(&builder)
 
-	// Función principal de prompt (full version)
+	// The full prompt text, built in the shell itself (no subshell, no fork)
+	// into REPLY; _wayu_prompt_render stores it for PROMPT.
 	fmt.sbprintln(&builder, "_wayu_prompt_full() {")
 	fmt.sbprintln(&builder, `  local result=""`)
 	fmt.sbprintln(&builder, "  # _WAYU_LAST_EXIT set by _wayu_prompt_master")
@@ -681,8 +688,7 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 		}
 	}  // Cierre del for loop
 	
-	// Output final
-	fmt.sbprintln(&builder, `  print -r -- "$result"`)
+	fmt.sbprintln(&builder, `  REPLY=$result`)
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
 	
@@ -775,37 +781,36 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	// 6. SEPARATOR LINE (línea entre output y prompt)
 	generate_separator_feature(&builder)
 
-	// Función de prompt maestra que combina todo
+	// The prompt is rendered without command substitution (OKAMI-375):
+	// PROMPT='${_WAYU_PS1}' (promptsubst) and _wayu_prompt_render computes
+	// _WAYU_PS1 in the shell itself — from precmd (_wayu_prompt_master,
+	// which captures the exit status first), and from the widgets / signal
+	// handler that change what it shows (vi mode, toggle, async data) right
+	// before their `zle reset-prompt`. A parameter's value is not expanded
+	// again, so a `$(...)` in a branch name stays text.
 	fmt.sbprintln(&builder, "# --- Master Prompt Function ---")
-	fmt.sbprintln(&builder, "_wayu_prompt_master() {")
-	fmt.sbprintln(&builder, "  local exit_code=$?")
-	fmt.sbprintln(&builder, "  local result=\"\"")
-	fmt.sbprintln(&builder)
-
-	// Guardar exit_code para que _wayu_prompt_full lo use
-	fmt.sbprintln(&builder, "  # Guardar exit_code para funciones hijas")
-	fmt.sbprintln(&builder, "  export _WAYU_LAST_EXIT=$exit_code")
-	fmt.sbprintln(&builder)
-
-	// Usar prompt según modo (full/minimal)
+	fmt.sbprintln(&builder, `typeset -g _WAYU_PS1="${_WAYU_PS1-}"`)
+	fmt.sbprintln(&builder, "_wayu_prompt_render() {")
+	fmt.sbprintln(&builder, "  local REPLY=\"\"")
 	if cfg.toggle_enabled || cfg.transient_enabled {
-		fmt.sbprintln(&builder, "  # Select prompt based on mode")
 		fmt.sbprintln(&builder, "  if [[ \"$_WAYU_PROMPT_MODE\" == \"minimal\" ]]; then")
 		if cfg.transient_enabled {
-			fmt.sbprintln(&builder, "    result+=\"$(_wayu_prompt_transient)\"")
+			fmt.sbprintln(&builder, "    _wayu_prompt_transient")
 		} else {
-			fmt.sbprintln(&builder, "    result+=\"%~ ➜ \"")
+			fmt.sbprintln(&builder, "    REPLY=\"%~ ➜ \"")
 		}
 		fmt.sbprintln(&builder, "  else")
-		fmt.sbprintln(&builder, "    result+=\"$(_wayu_prompt_full)\"")
+		fmt.sbprintln(&builder, "    _wayu_prompt_full")
 		fmt.sbprintln(&builder, "  fi")
 	} else {
-		fmt.sbprintln(&builder, "  # Full prompt only")
-		fmt.sbprintln(&builder, "  result+=\"$(_wayu_prompt_full)\"")
+		fmt.sbprintln(&builder, "  _wayu_prompt_full")
 	}
-
-	fmt.sbprintln(&builder)
-	fmt.sbprintln(&builder, `  print -r -- "$result"`)
+	fmt.sbprintln(&builder, "  _WAYU_PS1=$REPLY")
+	fmt.sbprintln(&builder, "}")
+	fmt.sbprintln(&builder, "_wayu_prompt_master() {")
+	fmt.sbprintln(&builder, "  export _WAYU_LAST_EXIT=$?")
+	fmt.sbprintln(&builder, "  _wayu_prompt_render")
+	fmt.sbprintln(&builder, "  return $_WAYU_LAST_EXIT")
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
 
@@ -815,8 +820,7 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	// startup files afterwards, which would replace the prompt.
 	fmt.sbprintln(&builder, "_wayu_prompt_set() {")
 	fmt.sbprintln(&builder, "  setopt promptsubst")
-	// PROMPT: newline + $() in single quotes → promptsubst re-evaluates each render
-	fmt.sbprintln(&builder, `  PROMPT=$'\n''$(_wayu_prompt_master)'`)
+	fmt.sbprintln(&builder, `  PROMPT=$'\n''${_WAYU_PS1}'`)
 	if cfg.async_rprompt {
 		fmt.sbprintln(&builder, `  RPROMPT='${_WAYU_ASYNC_DATA}'`)
 	} else {
@@ -832,6 +836,8 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder, "autoload -Uz add-zsh-hook")
 	fmt.sbprintln(&builder, "add-zsh-hook precmd _wayu_prompt_reassert")
+	// After _wayu_update_git_info (added with the base prompt).
+	fmt.sbprintln(&builder, "add-zsh-hook precmd _wayu_prompt_master")
 
 	return strings.clone(strings.to_string(builder))
 }
@@ -846,7 +852,7 @@ generate_toggle_feature :: proc(b: ^strings.Builder, key: string, vi: bool) {
 	fmt.sbprintln(b, "  else")
 	fmt.sbprintln(b, `    _WAYU_PROMPT_MODE="full"`)
 	fmt.sbprintln(b, "  fi")
-	fmt.sbprintln(b, "  zle reset-prompt")
+	fmt.sbprintln(b, "  _wayu_prompt_render; zle reset-prompt")
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b, "zle -N _wayu_toggle_prompt")
 	key_q := shell_single_quote(key, context.temp_allocator)
@@ -883,7 +889,7 @@ PROMPT_VI_INDICATOR_ZSH :: `_wayu_vi_mode_from_keymap() {
   esac
   [[ $m == "$_WAYU_VI_MODE" ]] && return 0
   _WAYU_VI_MODE=$m
-  zle reset-prompt
+  _wayu_prompt_render; zle reset-prompt
 }
 _wayu_zle_keymap_select() {
   (( ${+widgets[_wayu_prev_zle-keymap-select]} )) && zle _wayu_prev_zle-keymap-select -- "$@"
@@ -908,12 +914,12 @@ _wayu_zle_chain zle-line-init _wayu_zle_line_init
 _wayu_visual_mode() {
   zle visual-mode
   _WAYU_VI_MODE="VISUAL"
-  zle reset-prompt
+  _wayu_prompt_render; zle reset-prompt
 }
 _wayu_visual_line_mode() {
   zle visual-line-mode
   _WAYU_VI_MODE="VISUAL"
-  zle reset-prompt
+  _wayu_prompt_render; zle reset-prompt
 }
 zle -N _wayu_visual_mode
 zle -N _wayu_visual_line_mode
@@ -1129,9 +1135,9 @@ generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
 
-	// USR1 handler body. core.zsh (helpers section) owns the single TRAPUSR1 (shared with
-	// zsh-defer) and forwards here; defining TRAPUSR1 in the prompt used to
-	// clobber the zsh-defer trap. Fallback TRAPUSR1 only if none exists.
+	// USR1 handler (the async worker signals the shell). A TRAPUSR1 function
+	// defined before wayu is kept as _wayu_prev_TRAPUSR1 and called first
+	// (OKAMI-375); re-sourcing core doesn't chain wayu's handler to itself.
 	fmt.sbprintln(b, "_wayu_async_on_usr1() {")
 	fmt.sbprintln(b, `  local f="$_WAYU_ASYNC_DIR/data"`)
 	fmt.sbprintln(b, "  if [[ -n \"$_WAYU_ASYNC_DIR\" && -f \"$f\" ]]; then")
@@ -1140,12 +1146,17 @@ generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="${lines[2]-}"`)
 	fmt.sbprintln(b, `    command rm -f -- "$f"`)
 	fmt.sbprintln(b, "  fi")
-	fmt.sbprintln(b, "  zle && zle reset-prompt")
+	fmt.sbprintln(b, "  _wayu_prompt_render; zle && zle reset-prompt")
 	fmt.sbprintln(b, "  return 0")
 	fmt.sbprintln(b, "}")
-	fmt.sbprintln(b, "if (( ! ${+functions[TRAPUSR1]} )); then")
-	fmt.sbprintln(b, "  TRAPUSR1() { _wayu_async_on_usr1; return 0; }")
+	fmt.sbprintln(b, `if (( ${+functions[TRAPUSR1]} )) && [[ ${functions[TRAPUSR1]} != *_wayu_async_on_usr1* ]]; then`)
+	fmt.sbprintln(b, `  functions[_wayu_prev_TRAPUSR1]=${functions[TRAPUSR1]}`)
 	fmt.sbprintln(b, "fi")
+	fmt.sbprintln(b, "function TRAPUSR1 {")
+	fmt.sbprintln(b, "  (( ${+functions[_wayu_prev_TRAPUSR1]} )) && _wayu_prev_TRAPUSR1 \"$@\"")
+	fmt.sbprintln(b, "  _wayu_async_on_usr1")
+	fmt.sbprintln(b, "  return 0")
+	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
 
 	// The private dir is created lazily on the first prompt (one mktemp per
@@ -1190,7 +1201,7 @@ generate_transient_feature :: proc(b: ^strings.Builder, format: string) {
 		fmt.sbprintln(b, "  fi")
 	}
 
-	fmt.sbprintln(b, `  print -r -- "$result"`)
+	fmt.sbprintln(b, `  REPLY=$result`)
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
 }

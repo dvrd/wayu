@@ -152,6 +152,20 @@ test_toml_parser_accepts_what_the_cli_used :: proc(t: ^testing.T) {
 // Recovery: a bad statement is recorded and parsing resumes
 // ---------------------------------------------------------------------------
 
+// [settings] startup keys (OKAMI-372/375): defaults, booleans read, other
+// types ignored.
+@(test)
+test_toml_parser_startup_settings :: proc(t: ^testing.T) {
+	use_cached_toml("[shell]\ntype = \"zsh\"\n")
+	s := wayu.read_startup_settings()
+	testing.expect(t, s.compinit_guard && !s.defer_plugins && !s.lazy_compinit, "defaults")
+
+	use_cached_toml("[settings]\ncompinit_guard = false\ndefer_plugins = true # comment\nlazy_compinit = \"yes\"\n")
+	defer wayu.clear_toml_content_cache()
+	s = wayu.read_startup_settings()
+	testing.expect(t, !s.compinit_guard && s.defer_plugins && !s.lazy_compinit, "parsed")
+}
+
 @(test)
 test_toml_parser_recovers_invalid_lines :: proc(t: ^testing.T) {
 	content := "[a]\nll = ls -la\nok = \"fine\"\n[b\nHIDDEN = \"x\"\n[b]\nA = \"1\" trailing\nB = \"2\"\n"

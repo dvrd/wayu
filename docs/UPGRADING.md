@@ -4,6 +4,42 @@ User-visible behavior changes per release. From 4.4.5 on, these are generated
 automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 4.4.3 and 4.4.4 shipped them as patch releases, so they are listed here.
 
+## Unreleased
+
+**zsh startup: interactive-only parts skipped in non-interactive shells; compinit guard**
+
+- Non-interactive zsh (`zsh -c`, scripts; wayu loaded from `.zshenv`) no
+  longer loads plugins (`plugins.zsh`, the zsh-autosuggestions /
+  zsh-syntax-highlighting fallbacks, `plugins/config.zsh`) or sets up
+  zsh-defer; `zsh-defer` is a no-op there (nothing ever drained its queue
+  outside a prompt). Constants, secrets, PATH, `functions/`, `[tools]`,
+  `tools.zsh`, `extra.zsh` and aliases still load. `zsh -c true` with a
+  typical setup: ~20 ms → ~8 ms.
+- After wayu's `compinit`, a later `compinit` call (an installer's
+  `autoload -Uz compinit && compinit` in `.zshrc`) no longer redoes the
+  completion setup: it only registers the completions of `fpath` dirs added
+  since, ignoring its flags; the same registration runs at the first prompt.
+  `[settings] compinit_guard = false` restores zsh's own `compinit`.
+- `.zcompdump` is also rebuilt when any `fpath` dir (or its mtime) changed,
+  so completions installed into brew's/the system's `fpath` dirs show up in
+  the next shell (were only picked up after wayu's own completions changed).
+- zsh-defer runs queued commands once the prompt is drawn and the line
+  editor is idle (a `zle -F` handler), one per idle moment, with errors shown
+  (they were run from a precmd hook, before the prompt was drawn, with stderr
+  discarded). wayu no longer defines `TRAPUSR1` for it; with the native
+  prompt's async data, a `TRAPUSR1` function defined before wayu is kept and
+  called first.
+- Native prompt: `PROMPT` is `$'\n''${_WAYU_PS1}'`, rendered in the shell
+  (precmd, and before the vi-mode / toggle / async `zle reset-prompt`)
+  instead of two `$(...)` subshells per render. `_wayu_prompt_full` and
+  `_wayu_prompt_transient` set `REPLY` instead of printing; `{localip}` is
+  looked up once per prompt.
+- Re-sourcing `init.zsh` / `init.bash` in a shell skips plugins already
+  loaded in it (`plugins.<ext>` guards each plugin) and doesn't add wayu's
+  completions dir to `fpath` again or rerun `compinit`.
+- New opt-in `[settings]` keys (zsh): `defer_plugins` (load plugins after
+  the first prompt) and `lazy_compinit` (compinit on the first completion).
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is
