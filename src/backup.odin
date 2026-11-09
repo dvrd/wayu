@@ -805,8 +805,9 @@ list_all_backups :: proc() {
 	} else {
 		fmt.printfln("%sTotal:%s %d backup(s) across all files", BRIGHT_CYAN, RESET, total_backups)
 		if other_files {
-			// Only wayu.toml and entries.json have `backup restore`; the others are plain copies.
-			fmt.printfln("%sFiles other than wayu.toml and entries.json: copy a backup back by hand from %s/backup (see 'wayu backup list --json' for paths)%s",
+			// `backup restore` takes wayu.toml, entries.json and the shell
+			// startup files (by the name shown above); the others are plain copies.
+			fmt.printfln("%sShell startup files: 'wayu backup restore <name above>'. Other files: copy a backup back by hand from %s/backup (see 'wayu backup list --json' for paths)%s",
 				MUTED, wayu.data, RESET)
 		}
 	}
@@ -817,7 +818,7 @@ list_backups_for_config :: proc(config_type: string) {
 	config_file := get_config_file_path(config_type)
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
-		fmt.println("Valid types: toml, entries (or path, alias, constants)")
+		fmt.println("Valid types: toml, entries (or path, alias, constants), or a shell startup file (.zshrc, .bashrc, ...)")
 		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
@@ -830,7 +831,7 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 	config_file := get_config_file_path(config_type)
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
-		fmt.println("Valid types: toml, entries (or path, alias, constants)")
+		fmt.println("Valid types: toml, entries (or path, alias, constants), or a shell startup file (.zshrc, .bashrc, ...)")
 		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
@@ -839,6 +840,9 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 	// any of them reverts the WHOLE file. Make that explicit.
 	is_entries := get_base_name(config_file) == ENTRIES_FILE
 	shared_note := "entries.json holds PATH entries, aliases AND constants — restoring reverts all of them." if is_entries else "Restoring reverts the entire wayu.toml."
+	if !is_entries && get_base_name(config_file) != WAYU_TOML {
+		shared_note = fmt.tprintf("Restoring replaces the whole %s with the backup.", optimize_tilde(config_file))
+	}
 
 	// Resolve an explicit selector up front: a bad index/name is a data
 	// error (65), not an I/O failure.
@@ -958,7 +962,7 @@ cleanup_config_backups :: proc(config_type: string) {
 	config_file := get_config_file_path(config_type)
 	if config_file == "" {
 		print_error_simple("Unknown config type: %s", config_type)
-		fmt.println("Valid types: toml, entries (or path, alias, constants)")
+		fmt.println("Valid types: toml, entries (or path, alias, constants), or a shell startup file (.zshrc, .bashrc, ...)")
 		os.exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
@@ -1027,8 +1031,25 @@ get_config_file_path :: proc(config_type: string) -> string {
 	case "toml":
 		return fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)
 	case:
-		return ""
+		return startup_file_for_backup_name(config_type)
 	}
+}
+
+// A shell startup file (zsh, bash or fish; see shell_startup_files) named
+// by its backup group as `backup list` shows it (".zshrc",
+// "~/.config/zsh/.zshrc"), its key or its path. `wayu optimize` backs these
+// up before rewriting them. "" (not allocated) when `name` is none of them.
+startup_file_for_backup_name :: proc(name: string) -> string {
+	if len(name) == 0 { return "" }
+	for sh in ([]ShellType{.ZSH, .BASH, .FISH}) {
+		for f in shell_startup_files(sh, context.temp_allocator) {
+			key := backup_key(f, context.temp_allocator)
+			if name == f || name == key || name == backup_key_display(key, context.temp_allocator) || name == optimize_tilde(f) {
+				return strings.clone(f)
+			}
+		}
+	}
+	return ""
 }
 
 // Help for backup command

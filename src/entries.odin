@@ -14,8 +14,18 @@
 //     ],
 //     "env": [
 //       {"name": "EDITOR", "value": "nvim"}
+//     ],
+//     "fpath": ["$HOME/.grok/completions/zsh"],
+//     "generators": [
+//       {"shell": "zsh", "cmd": "ng", "args": "completion script"}
 //     ]
 //   }
+//
+// `fpath` (zsh completion dirs, put on fpath before compinit) and
+// `generators` (`source <(cmd args)` / `eval "$(cmd args)"` lines, run
+// through the evalcache in that shell's core) are filled by `wayu optimize`
+// (optimize.odin) and `wayu completions fpath`; each is written only when
+// non-empty.
 //
 // Arrays keep their order: paths order = PATH priority, aliases and env keep
 // insertion order. A path's `key` is the name `wayu path add key=dir` gives
@@ -62,11 +72,22 @@ StoreEnv :: struct {
 	run_only: bool,
 }
 
+// A cached generator: core.<shell> runs `_wayu_evalcache cmd args` (output
+// cached, re-run when the binary changes). `args` uses the [tools] args
+// syntax (tool_args_to_shell).
+StoreGenerator :: struct {
+	shell: string, // "zsh" | "bash" | "fish": the core it is emitted into
+	cmd:   string,
+	args:  string,
+}
+
 EntryStore :: struct {
-	version: int,
-	paths:   [dynamic]StorePath,
-	aliases: [dynamic]StoreAlias,
-	env:     [dynamic]StoreEnv,
+	version:    int,
+	paths:      [dynamic]StorePath,
+	aliases:    [dynamic]StoreAlias,
+	env:        [dynamic]StoreEnv,
+	fpath:      [dynamic]string,
+	generators: [dynamic]StoreGenerator,
 }
 
 // Which name/value list of the store an alias/constant operation targets.
@@ -84,9 +105,13 @@ entries_store_destroy :: proc(s: ^EntryStore) {
 	for p in s.paths { delete(p.key); delete(p.dir) }
 	for a in s.aliases { delete(a.name); delete(a.value) }
 	for e in s.env { delete(e.name); delete(e.value) }
+	for f in s.fpath { delete(f) }
+	for g in s.generators { delete(g.shell); delete(g.cmd); delete(g.args) }
 	delete(s.paths)
 	delete(s.aliases)
 	delete(s.env)
+	delete(s.fpath)
+	delete(s.generators)
 	s^ = {}
 }
 
@@ -126,6 +151,27 @@ entries_parse :: proc(content: string) -> (store: EntryStore, err: string, ok: b
 		}
 	}
 
+	for f, i in raw.fpath {
+		if len(strings.trim_space(f)) == 0 { return {}, fmt.tprintf("fpath[%d] is empty", i), false }
+		if !is_path_entry_safe(f) { return {}, fmt.tprintf("fpath[%d] contains ':' or a newline", i), false }
+		for g in raw.fpath[:i] {
+			if g == f { return {}, fmt.tprintf("fpath: %q appears twice", f), false }
+		}
+	}
+	for g, i in raw.generators {
+		switch g.shell {
+		case "zsh", "bash", "fish":
+		case: return {}, fmt.tprintf("generators[%d]: \"shell\" must be zsh, bash or fish", i), false
+		}
+		if !is_safe_alias_name(g.cmd) { return {}, fmt.tprintf("generators[%d]: invalid \"cmd\" %q", i, g.cmd), false }
+		if strings.contains_any(g.args, "\n\r") { return {}, fmt.tprintf("generators[%d] (%s): \"args\" contains a newline", i, g.cmd), false }
+		for h in raw.generators[:i] {
+			if h.shell == g.shell && h.cmd == g.cmd && h.args == g.args {
+				return {}, fmt.tprintf("generators: %s %s (%s) appears twice", g.cmd, g.args, g.shell), false
+			}
+		}
+	}
+
 	store.version = raw.version
 	store.paths = make([dynamic]StorePath, 0, len(raw.paths))
 	store.aliases = make([dynamic]StoreAlias, 0, len(raw.aliases))
@@ -133,6 +179,10 @@ entries_parse :: proc(content: string) -> (store: EntryStore, err: string, ok: b
 	for p in raw.paths { append(&store.paths, StorePath{strings.clone(p.key), strings.clone(p.dir)}) }
 	for a in raw.aliases { append(&store.aliases, StoreAlias{strings.clone(a.name), strings.clone(a.value)}) }
 	for e in raw.env { append(&store.env, StoreEnv{strings.clone(e.name), strings.clone(e.value), e.secret, e.secret && e.run_only}) }
+	store.fpath = make([dynamic]string, 0, len(raw.fpath))
+	store.generators = make([dynamic]StoreGenerator, 0, len(raw.generators))
+	for f in raw.fpath { append(&store.fpath, strings.clone(f)) }
+	for g in raw.generators { append(&store.generators, StoreGenerator{strings.clone(g.shell), strings.clone(g.cmd), strings.clone(g.args)}) }
 	return store, "", true
 }
 
@@ -213,7 +263,8 @@ entries_serialize :: proc(s: ^EntryStore) -> string {
 		}
 		close(&b, false)
 	}
-	if section(&b, "env", len(s.env), true) {
+	env_last := len(s.fpath) == 0 && len(s.generators) == 0
+	if section(&b, "env", len(s.env), env_last) {
 		for e, i in s.env {
 			strings.write_string(&b, "    {\"name\": "); q(&b, e.name)
 			if e.secret {
@@ -223,6 +274,28 @@ entries_serialize :: proc(s: ^EntryStore) -> string {
 				strings.write_string(&b, ", \"value\": "); q(&b, e.value)
 			}
 			strings.write_string(&b, "}," if i + 1 < len(s.env) else "}")
+			strings.write_byte(&b, '\n')
+		}
+		close(&b, env_last)
+	}
+	// fpath / generators: written only when non-empty (optimize.odin).
+	if len(s.fpath) > 0 {
+		gen_none := len(s.generators) == 0
+		section(&b, "fpath", len(s.fpath), gen_none)
+		for f, i in s.fpath {
+			strings.write_string(&b, "    "); q(&b, f)
+			strings.write_string(&b, "," if i + 1 < len(s.fpath) else "")
+			strings.write_byte(&b, '\n')
+		}
+		close(&b, gen_none)
+	}
+	if len(s.generators) > 0 {
+		section(&b, "generators", len(s.generators), true)
+		for g, i in s.generators {
+			strings.write_string(&b, "    {\"shell\": "); q(&b, g.shell)
+			strings.write_string(&b, ", \"cmd\": "); q(&b, g.cmd)
+			strings.write_string(&b, ", \"args\": "); q(&b, g.args)
+			strings.write_string(&b, "}," if i + 1 < len(s.generators) else "}")
 			strings.write_byte(&b, '\n')
 		}
 		close(&b, true)
@@ -242,6 +315,12 @@ entries_invalid_utf8 :: proc(s: ^EntryStore) -> string {
 	}
 	for e in s.env {
 		if !utf8.valid_string(e.value) || !utf8.valid_string(e.name) { return e.name }
+	}
+	for f in s.fpath {
+		if !utf8.valid_string(f) { return f }
+	}
+	for g in s.generators {
+		if !utf8.valid_string(g.cmd) || !utf8.valid_string(g.args) { return g.cmd }
 	}
 	return ""
 }

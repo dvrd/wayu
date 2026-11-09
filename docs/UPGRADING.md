@@ -40,6 +40,37 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - New opt-in `[settings]` keys (zsh): `defer_plugins` (load plugins after
   the first prompt) and `lazy_compinit` (compinit on the first completion).
 
+**`wayu optimize`: installer lines in your startup files move into wayu**
+
+- New `wayu optimize [--check] [--dry-run] [--yes]` (see `docs/cli.md`):
+  lines after the one that loads wayu (`source <(tool completion zsh)`,
+  `eval "$(tool init zsh)"`, `fpath=(dir $fpath)`, a second `compinit`,
+  `export PATH=dir:$PATH`, `alias`, `export NAME=value`) are moved into wayu
+  and **removed from the file** (backed up first; `wayu backup restore .zshrc
+  --yes` undoes it). It needs `--yes` like other commands that rewrite files;
+  without it (or with `--dry-run`) it shows the diff.
+- `entries.json` has two new optional sections, `fpath` (zsh completion dirs,
+  put on `fpath` before `compinit`) and `generators` (cached
+  `_wayu_evalcache` calls, emitted in that shell's core only, interactive
+  shells only for zsh/bash). New `wayu completions fpath [list|add|rm]`.
+- Generated `core.<ext>` has a new prompt hook, `_wayu_rc_check`: when a
+  startup file is newer than `<data>/rc_check.stamp` it runs
+  `wayu optimize --notify` once and prints
+  `wayu: ~/.zshrc changed: N lines can be optimized (wayu optimize)` on
+  stderr (once per change; the first prompt after upgrading checks once).
+  `[settings] auto_optimize = true` moves the lines instead.
+- `wayu doctor` has a new "startup files" check (warning, with an estimated
+  cost per shell start; generator commands are run once to time them), and
+  `doctor --fix --yes` runs `wayu optimize`.
+- `wayu backup restore` accepts a shell startup file (`.zshrc`, `.bashrc`,
+  `~/.config/zsh/.zshrc`, or its path).
+- `wayu config scan` reads the current shell's rc file (`$ZDOTDIR/.zshrc` when
+  ZDOTDIR is set; `.bashrc`/`.bash_profile` for bash, `config.fish` for
+  fish) instead of always `~/.zshrc`, so `--fix` writes the blocks to the
+  matching `extra.<ext>`; it detects `# >>> … # <<<` installer blocks (conda)
+  as one block, and no longer takes a backup of `extra.<ext>` when it has
+  nothing to add.
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is

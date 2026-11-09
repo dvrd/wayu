@@ -121,7 +121,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 		{"ls", .LIST, "List completions"}, {"generate", .UPDATE, "Generate wayu's own completions"},
 		{"gen", .UPDATE, ""}, {"bash", .CHECK, "Print bash completion for wayu"},
 		{"fish", .GET, "Print fish completion for wayu"}, {"zsh", .TURBO, "Print zsh completion for wayu"},
-		{"names", .SEARCH, ""},
+		{"names", .SEARCH, ""}, {"fpath", .FPATH, "Managed zsh completion dirs (list, add, rm)"},
 		{"help", .HELP, "Show help"}},
 	 flags = {{"--generate", ""}, {"-g", ""}}},
 	{command = .BACKUP, names = {"backup"}, desc = "Manage configuration backups", default_action = .LIST, json = {.LIST},
@@ -197,6 +197,9 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec{
 	 flags = {
 		{"--lang", "Language of 'script new'"}, {"--lang=", ""},
 		{"--copy", "'script import': keep the original files"}}},
+	{command = .OPTIMIZE, names = {"optimize"}, desc = "Move installer lines from shell startup files into wayu",
+	 default_action = .UPDATE,
+	 flags = {{"--check", "Exit 1 when startup-file lines can be optimized"}, {"--notify", ""}}},
 	{command = .RELOAD, names = {"reload", "watch", "hot-reload"}, desc = "Watch config files and regenerate init files"},
 	{command = .VERSION, names = {"version"}, desc = "Show version", any_flag = true},
 	{command = .HELP, names = {"help"}, desc = "Show help", any_flag = true},

@@ -128,6 +128,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/script.odin` | `wayu script` (new/edit/list/remove/import/build): <data>/scripts sources, <data>/bin links/binaries, staleness, import classification, doctor check |
 | `src/script_langs.odin` | `SCRIPT_LANGS`: the one language table (ext, interpreters, shebang names, skeleton, compile step) |
 | `src/config_command.odin` | `wayu config edit/extend/scan [--fix]` |
+| `src/optimize.odin` | `wayu optimize`: pure rc-line classifier + block-aware scan, store merge (entries.json `fpath`/`generators`), rc rewrite with backups, `--notify` / `auto_optimize`, prompt-hook rc watch, doctor check, `completions fpath` |
 | `src/search.odin` | `wayu search` / `find` / `f` |
 | `src/templates.odin` | `wayu template` presets + `init --template` |
 | `src/turbo_export.odin` | `wayu export` (turbo copy of core, `--eval`, `--check`) |
@@ -155,7 +156,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 
 Reference: `docs/config-reference.md`.
 - `wayu.toml` (config dir, user-edited): `[shell]`, `[settings]`, `[tools]`, `[prompt]` / `[prompt.*]`, `[scripts]`, `[secrets]` (key backend). Read through `src/toml_parse.odin` (strict for validate/doctor/backup, lenient elsewhere); wayu only writes it when creating it. `[paths]`/`[aliases]`/`[env]` there are errors (validate, doctor) naming the `wayu path|alias|const add` command.
-- `entries.json` (data dir, managed): `{"version":1,"paths":[{"key","dir"}],"aliases":[{"name","value"}],"env":[{"name","value"}]}` (env entries may carry `"secret": true` and `"run_only": true`, serialized only when true; the encrypted value is in `secrets.json`, see `src/secrets_store.odin`). `src/entries.odin`: strict read (malformed → EXIT_CONFIG naming the file; missing → empty store), writes atomic under the lock, 0600, pretty-printed, stable order (array order = PATH priority / export order).
+- `entries.json` (data dir, managed): `{"version":1,"paths":[{"key","dir"}],"aliases":[{"name","value"}],"env":[{"name","value"}]}` (env entries may carry `"secret": true` and `"run_only": true`, serialized only when true; the encrypted value is in `secrets.json`, see `src/secrets_store.odin`); optional `"fpath":[dir]` and `"generators":[{"shell","cmd","args"}]` (written only when non-empty; `src/optimize.odin`). `src/entries.odin`: strict read (malformed → EXIT_CONFIG naming the file; missing → empty store), writes atomic under the lock, 0600, pretty-printed, stable order (array order = PATH priority / export order).
 - `functions/`, `scripts/`, `bin/` (data dir, managed by `wayu function` / `wayu script`): the directories are the source of truth.
 - Generated shell code: `src/init_generator.odin` compiles wayu.toml + entries.json into `core.<ext>` (the one file `init.<ext>` sources) and `path_sync.<ext>`; never edit those by hand.
 
@@ -236,7 +237,7 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 - `--help` / `-h`: works globally and per-command
 - `--version` / `-v`: prints `wayu vX.Y.Z`
 - `--no-color`: disables ANSI colors (equivalent to `NO_COLOR=1`)
-- `--yes` / `-y`: confirm destructive operations (required by: `path clean`, `path dedup`, `backup restore`, `backup rm`, `plugin remove`, `function remove`, `script remove`, `config scan --fix`, `doctor --fix`); without it they exit 64
+- `--yes` / `-y`: confirm destructive operations (required by: `path clean`, `path dedup`, `backup restore`, `backup rm`, `plugin remove`, `function remove`, `script remove`, `config scan --fix`, `doctor --fix`, `optimize`); without it they exit 64
 - `--`: ends flag parsing; in `alias add` / `const add` the rest of the line after the first value word is the value (see `docs/cli.md`). Unknown options exit 64
 - `--json`: machine-readable output for `path|alias|const|plugin|backup|script list`, `search`, `doctor` (the `json` bit_set in `WAYU_COMMAND_SPECS`; elsewhere exit 64). Schemas are documented in `docs/cli.md` "JSON output" and pinned by `test_json_schema` in `tests/integration/test_cli_output.rb` — update both when a shape changes
 - `docs/cli.md` is the CLI contract: when you add/rename a command, action or flag in `WAYU_COMMAND_SPECS`, or change an exit code, update it (`tests/unit/test_cli_doc.odin` and `tests/integration/test_exit_codes.rb` fail otherwise)
