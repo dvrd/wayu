@@ -483,7 +483,7 @@
             <summary>Show the numbers as a table</summary>
             <div id="bench-table"></div>
           </details>
-          <noscript><p class="bench-cap">Time until the first command runs (zsh-bench, median of 32, Apple M1 Max): zsh with no config 23.0 ms; wayu 65.5 ms; hand-written .zshrc with compinit -C 67.7 ms; antidote 79.6 ms; hand-written .zshrc 82.9 ms; oh-my-zsh 101.3 ms; zinit 103.7 ms.</p></noscript>
+          <noscript><p class="bench-cap">Time until the first command runs (zsh-bench, median of 32, Apple M1 Max): zsh, no config 19.9 ms; wayu 58.9 ms; hand-written (compinit -C) 65.2 ms; hand-written .zshrc 77.3 ms; antidote 86.8 ms; oh-my-zsh 105.0 ms; zinit 111.1 ms.</p></noscript>
         </div>
       </div>
     </section>
@@ -494,7 +494,7 @@
   "machine": "Apple M1 Max, macOS 27.2, zsh 5.9",
   "method": "romkatv/zsh-bench in a pty, interactive login zsh, warm caches, each contender in its own throwaway HOME; value = median of 32 iterations.",
   "runs": 32,
-  "date": "2026-11-08",
+  "date": "2026-11-09",
   "scenarios": [
     {
       "id": "first-command",
@@ -505,36 +505,36 @@
       "results": [
         {
           "name": "zsh, no config",
-          "value": 23.0
+          "value": 19.9
         },
         {
           "name": "wayu",
-          "value": 65.5,
+          "value": 58.9,
           "highlight": true
         },
         {
           "name": "hand-written (compinit -C)",
-          "value": 67.7
-        },
-        {
-          "name": "antidote",
-          "value": 79.6
+          "value": 65.2
         },
         {
           "name": "hand-written .zshrc",
-          "value": 82.9
+          "value": 77.3
+        },
+        {
+          "name": "antidote",
+          "value": 86.8
         },
         {
           "name": "oh-my-zsh",
-          "value": 101.3
+          "value": 105.0
         },
         {
           "name": "zinit",
-          "value": 103.7
+          "value": 111.1
         }
       ],
       "versions": {
-        "wayu": "develop 1ebbe5e (next release)",
+        "wayu": "develop 6bf570c (next release)",
         "oh-my-zsh": "cca3bdf",
         "zinit": "cb49681 (v3.17.1+10)",
         "antidote": "e661279 (v2.3.0+3)",
@@ -552,20 +552,20 @@
       "results": [
         {
           "name": "wayu (defer_plugins)",
-          "value": 30.5,
+          "value": 36.4,
           "highlight": true
         },
         {
           "name": "antidote (kind:defer)",
-          "value": 51.1
+          "value": 58.3
         },
         {
           "name": "zinit (turbo)",
-          "value": 56.4
+          "value": 61.8
         }
       ],
       "versions": {
-        "wayu": "develop 1ebbe5e (next release)",
+        "wayu": "develop 6bf570c (next release)",
         "zinit": "cb49681 (v3.17.1+10)",
         "antidote": "e661279 (v2.3.0+3)",
         "zsh-defer": "53a26e2",
@@ -583,16 +583,16 @@
       "results": [
         {
           "name": "after wayu optimize",
-          "value": 62.2,
+          "value": 72.1,
           "highlight": true
         },
         {
           "name": "before",
-          "value": 210.2
+          "value": 240.4
         }
       ],
       "versions": {
-        "wayu": "develop 1ebbe5e (next release)",
+        "wayu": "develop 6bf570c (next release)",
         "zsh-autosuggestions": "85919cd (v0.7.1+6)",
         "zsh-syntax-highlighting": "e6683f2 (0.8.0+8)",
         "zsh-bench": "28b1b1b"
