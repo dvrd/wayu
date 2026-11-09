@@ -19,9 +19,9 @@
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
   <link rel="shortcut icon" href="favicon.ico" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
-  <meta name="theme-color" content="#f5f1ec" media="(prefers-color-scheme: light)" />
-  <meta name="theme-color" content="#141016" media="(prefers-color-scheme: dark)" />
-  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#f6f2ee" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0f0b10" media="(prefers-color-scheme: dark)" />
+  <meta name="color-scheme" content="dark light" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -37,348 +37,368 @@
   </script>
 
   <style>
-    /* ── Tokens ─────────────────────────────────────────────────────────── */
+    /* ── Tokens: dark first, light when the system (or the toggle) asks ── */
     :root {
-      --bg:        #f5f1ec;
-      --bg-2:      #ece6df;
-      --surface:   #fbf9f6;
-      --ink:       #1d1519;
-      --ink-2:     #564a50;
-      --ink-3:     #6f6268;
-      --line:      rgba(29, 21, 25, 0.12);
-      --line-2:    rgba(29, 21, 25, 0.2);
-      --accent:    #c0003f;          /* text/links on bg: 5.9:1 */
-      --accent-fill: #e40050;        /* brand fill (white text 4.6:1) */
-      --accent-soft: rgba(228, 0, 80, 0.09);
+      --bg:        #0f0b10;
+      --bg-2:      #161117;
+      --surface:   #1b151c;
+      --surface-2: #231c24;
+      --ink:       #f4eef1;
+      --ink-2:     #bdb1b7;
+      --ink-3:     #968a91;
+      --line:      rgba(244, 238, 241, 0.09);
+      --line-2:    rgba(244, 238, 241, 0.17);
+      --accent:    #ff5b8f;           /* text/links on bg */
+      --accent-fill: #e40050;         /* the brand dot */
+      --accent-soft: rgba(255, 91, 143, 0.12);
       --on-accent: #fff8fa;
-      --shadow:    0 1px 2px rgba(29, 21, 25, 0.06), 0 8px 24px -12px rgba(29, 21, 25, 0.18);
-      --shadow-lift: 0 1px 2px rgba(29, 21, 25, 0.06), 0 18px 40px -16px rgba(29, 21, 25, 0.28);
-      --img-outline: rgba(0, 0, 0, 0.1);
-      --code-bg:   rgba(29, 21, 25, 0.065);
-      --halo-1:    rgba(228, 0, 80, 0.18);
-      --halo-2:    rgba(228, 0, 80, 0.10);
+      --bar:       #5f545b;           /* neutral bars */
+      --halo-1:    rgba(228, 0, 80, 0.34);
+      --halo-2:    rgba(228, 0, 80, 0.16);
+      --glow:      rgba(228, 0, 80, 0.20);
+      --shadow:    0 1px 2px rgba(0, 0, 0, 0.35), 0 16px 40px -20px rgba(0, 0, 0, 0.8);
+      --code-bg:   rgba(244, 238, 241, 0.08);
+      --img-outline: rgba(255, 255, 255, 0.1);
 
-      /* The terminal is dark in both themes (it matches the demo video). */
+      /* Terminal: dark in both themes (it matches the demo recording). */
       --term-bg:   #1e1e2e;
       --term-bar:  #181825;
       --term-fg:   #cdd6f4;
-      --term-dim:  #8b90a8;
+      --term-dim:  #8f94ad;
       --term-ok:   #74c7ec;
       --term-dir:  #94e2d5;
       --term-git:  #f5c2e7;
       --term-arrow:#a6e3a1;
       --term-key:  #f9e2af;
       --term-pink: #f38ba8;
+      --term-red:  #f38ba8;
 
       --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
       --font-body: 'Geist', ui-sans-serif, system-ui, sans-serif;
       --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
       --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-      --ease-swap: cubic-bezier(0.2, 0, 0, 1);
-      --r-sm: 6px;
-      --r: 10px;
-      --r-lg: 16px;
+      --r-sm: 6px; --r: 10px; --r-lg: 16px;
       --gutter: clamp(16px, 4vw, 40px);
-      --max: 1180px;
+      --max: 1200px;
     }
-    @media (prefers-color-scheme: dark) {
-      :root:not([data-theme="light"]) {
-        --bg:        #141016;
-        --bg-2:      #1b161d;
-        --surface:   #1f1a21;
-        --ink:       #f2ecef;
-        --ink-2:     #b9adb3;
-        --ink-3:     #8f8389;
-        --line:      rgba(242, 236, 239, 0.1);
-        --line-2:    rgba(242, 236, 239, 0.18);
-        --accent:    #ff5b8f;
-        --accent-fill: #e40050;
-        --accent-soft: rgba(255, 91, 143, 0.12);
-        --shadow:    0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
-        --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.3), 0 20px 44px -16px rgba(0, 0, 0, 0.75);
-        --img-outline: rgba(255, 255, 255, 0.1);
-        --code-bg:   rgba(242, 236, 239, 0.08);
-        --halo-1:    rgba(228, 0, 80, 0.32);
-        --halo-2:    rgba(228, 0, 80, 0.16);
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg: #f6f2ee; --bg-2: #ede7e1; --surface: #fcfaf8; --surface-2: #f3eee9;
+        --ink: #1d1519; --ink-2: #54484e; --ink-3: #6b5e64;
+        --line: rgba(29, 21, 25, 0.10); --line-2: rgba(29, 21, 25, 0.18);
+        --accent: #c0003f; --accent-soft: rgba(228, 0, 80, 0.08);
+        --bar: #b9adb3;
+        --halo-1: rgba(228, 0, 80, 0.20); --halo-2: rgba(228, 0, 80, 0.10);
+        --glow: rgba(228, 0, 80, 0.10);
+        --shadow: 0 1px 2px rgba(29, 21, 25, 0.06), 0 14px 32px -18px rgba(29, 21, 25, 0.28);
+        --code-bg: rgba(29, 21, 25, 0.065);
+        --img-outline: rgba(0, 0, 0, 0.1);
       }
     }
-    :root[data-theme="dark"] {
-      --bg:        #141016;
-      --bg-2:      #1b161d;
-      --surface:   #1f1a21;
-      --ink:       #f2ecef;
-      --ink-2:     #b9adb3;
-      --ink-3:     #8f8389;
-      --line:      rgba(242, 236, 239, 0.1);
-      --line-2:    rgba(242, 236, 239, 0.18);
-      --accent:    #ff5b8f;
-      --accent-fill: #e40050;
-      --accent-soft: rgba(255, 91, 143, 0.12);
-      --shadow:    0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
-      --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.3), 0 20px 44px -16px rgba(0, 0, 0, 0.75);
-      --img-outline: rgba(255, 255, 255, 0.1);
-      --code-bg:   rgba(242, 236, 239, 0.08);
-      --halo-1:    rgba(228, 0, 80, 0.32);
-      --halo-2:    rgba(228, 0, 80, 0.16);
+    :root[data-theme="light"] {
+      --bg: #f6f2ee; --bg-2: #ede7e1; --surface: #fcfaf8; --surface-2: #f3eee9;
+      --ink: #1d1519; --ink-2: #54484e; --ink-3: #6b5e64;
+      --line: rgba(29, 21, 25, 0.10); --line-2: rgba(29, 21, 25, 0.18);
+      --accent: #c0003f; --accent-soft: rgba(228, 0, 80, 0.08);
+      --bar: #b9adb3;
+      --halo-1: rgba(228, 0, 80, 0.20); --halo-2: rgba(228, 0, 80, 0.10);
+      --glow: rgba(228, 0, 80, 0.10);
+      --shadow: 0 1px 2px rgba(29, 21, 25, 0.06), 0 14px 32px -18px rgba(29, 21, 25, 0.28);
+      --code-bg: rgba(29, 21, 25, 0.065);
+      --img-outline: rgba(0, 0, 0, 0.1);
     }
 
     /* ── Base ───────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; }
-    html { -webkit-text-size-adjust: 100%; scroll-padding-top: 84px; }
+    html { -webkit-text-size-adjust: 100%; scroll-padding-top: 80px; }
     @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--ink);
-      font: 400 17px/1.6 var(--font-body);
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      overflow-x: clip;
-    }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 400 17px/1.6 var(--font-body); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; overflow-x: clip; }
     h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.05; letter-spacing: -0.025em; margin: 0; text-wrap: balance; }
     p { margin: 0; text-wrap: pretty; }
     a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
     a:hover { text-decoration-thickness: 2px; }
     code, pre, kbd { font-family: var(--font-mono); font-size: 0.86em; }
-    :not(pre) > code { background: var(--code-bg); color: var(--ink); padding: 0.1em 0.35em; border-radius: 4px; white-space: nowrap; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+    :not(pre) > code { background: var(--code-bg); color: var(--ink); padding: 0.1em 0.35em; border-radius: 4px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
     :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
     ::selection { background: var(--accent-fill); color: var(--on-accent); }
+    button { font: inherit; color: inherit; }
     .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter); }
     .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
     .skip { position: absolute; left: 12px; top: -60px; z-index: 100; background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: var(--r-sm); text-decoration: none; transition: transform 0.2s var(--ease-out); }
     .skip:focus { transform: translateY(72px); }
+    .num { font-variant-numeric: tabular-nums; }
+
+    /* The brand: a red dot inside two soft halo rings (favicon.svg). */
+    .dot { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--accent-fill); box-shadow: 0 0 0 2.5px var(--halo-1), 0 0 0 5px var(--halo-2); }
+
+    /* ── Announcement bar ───────────────────────────────────────────────── */
+    .announce { background: var(--bg-2); border-bottom: 1px solid var(--line); font-size: 0.84rem; }
+    .announce a { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 38px; padding: 6px var(--gutter); color: var(--ink-2); text-decoration: none; text-align: center; }
+    .announce a:hover { color: var(--ink); }
+    .announce .dot { width: 6px; height: 6px; box-shadow: 0 0 0 2px var(--halo-1), 0 0 0 4px var(--halo-2); }
+    .announce strong { color: var(--ink); font-weight: 600; }
+    .announce .go { color: var(--accent); white-space: nowrap; }
+    @media (max-width: 640px) { .announce .long { display: none; } }
 
     /* ── Nav ────────────────────────────────────────────────────────────── */
-    .nav {
-      position: sticky; top: 0; z-index: 50;
-      background: color-mix(in srgb, var(--bg) 86%, transparent);
-      -webkit-backdrop-filter: saturate(1.4) blur(10px);
-      backdrop-filter: saturate(1.4) blur(10px);
-      box-shadow: 0 1px 0 transparent;
-      transition: box-shadow 0.25s ease;
-    }
+    .nav { position: sticky; top: 0; z-index: 50; background: color-mix(in srgb, var(--bg) 84%, transparent); -webkit-backdrop-filter: saturate(1.4) blur(12px); backdrop-filter: saturate(1.4) blur(12px); box-shadow: 0 1px 0 transparent; transition: box-shadow 0.25s ease; }
     .nav.scrolled { box-shadow: 0 1px 0 var(--line); }
-    .nav-inner { display: flex; align-items: center; gap: 24px; height: 64px; }
-    .brand { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); text-decoration: none; font: 800 1.35rem/1 var(--font-display); letter-spacing: -0.03em; }
-    /* The favicon, drawn in CSS: solid #E40050 dot inside two soft halo rings. */
-    .brand-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--accent-fill); box-shadow: 0 0 0 2.5px var(--halo-1), 0 0 0 5px var(--halo-2); transition: box-shadow 0.3s var(--ease-out); }
-    .brand:hover .brand-dot { box-shadow: 0 0 0 3.5px var(--halo-1), 0 0 0 7px var(--halo-2); }
-    .nav-inner > nav { margin-left: auto; }
-    .nav-links { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; align-items: center; }
-    .nav-links a[aria-current="page"] { color: var(--ink); }
-    .nav-links a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 10px; color: var(--ink-2); text-decoration: none; font-size: 0.93rem; border-radius: var(--r-sm); transition: color 0.15s ease, background-color 0.15s ease; }
-    .nav-links a:hover { color: var(--ink); background: var(--bg-2); }
-    .nav-version { font: 500 0.78rem/1 var(--font-mono); color: var(--ink-2); padding: 5px 8px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-2); font-variant-numeric: tabular-nums; }
+    .nav-inner { display: flex; align-items: center; gap: 16px; height: 62px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font: 800 1.35rem/1 var(--font-display); letter-spacing: -0.03em; }
+    .brand .dot { transition: box-shadow 0.3s var(--ease-out); }
+    .brand:hover .dot { box-shadow: 0 0 0 3.5px var(--halo-1), 0 0 0 7px var(--halo-2); }
+    .nav-links { display: flex; align-items: center; gap: 2px; margin: 0 0 0 auto; padding: 0; list-style: none; }
+    .nav-links a:not(.btn) { display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 10px; color: var(--ink-2); text-decoration: none; font-size: 0.92rem; border-radius: var(--r-sm); transition: color 0.15s ease, background-color 0.15s ease; }
+    .nav-links a:not(.btn):hover { color: var(--ink); background: var(--bg-2); }
+    .nav-links svg { width: 18px; height: 18px; }
+    .nav-links .btn { margin-left: 8px; min-height: 36px; padding: 0 14px; font-size: 0.88rem; }
+    @media (max-width: 860px) { .nav-links .hide-md { display: none; } }
+    @media (max-width: 520px) { .nav-links .hide-sm { display: none; } .nav-inner { gap: 6px; } .nav-links .btn { margin-left: 4px; } }
     .icon-btn { position: relative; display: inline-grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); cursor: pointer; transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s var(--ease-out); }
     .icon-btn:hover { color: var(--ink); background: var(--bg-2); }
     .icon-btn:active { transform: scale(0.96); }
-    .icon-btn svg { width: 20px; height: 20px; }
-    .theme-btn .sun, .theme-btn .moon { grid-area: 1 / 1; transition: opacity 0.3s var(--ease-swap), transform 0.3s var(--ease-swap), filter 0.3s var(--ease-swap); }
-    .theme-btn .moon { opacity: 0; transform: scale(0.25); filter: blur(4px); }
-    :root[data-theme="dark"] .theme-btn .sun { opacity: 0; transform: scale(0.25); filter: blur(4px); }
-    :root[data-theme="dark"] .theme-btn .moon { opacity: 1; transform: none; filter: none; }
-    @media (prefers-color-scheme: dark) {
-      :root:not([data-theme="light"]) .theme-btn .sun { opacity: 0; transform: scale(0.25); filter: blur(4px); }
-      :root:not([data-theme="light"]) .theme-btn .moon { opacity: 1; transform: none; filter: none; }
-    }
-    @media (max-width: 760px) { .nav-links .hide-sm { display: none; } .nav-inner { gap: 8px; } }
+    .icon-btn svg { width: 19px; height: 19px; }
+    .theme-btn .sun, .theme-btn .moon { grid-area: 1 / 1; transition: opacity 0.3s ease, transform 0.3s var(--ease-out); }
+    .theme-btn .sun { opacity: 0; transform: scale(0.3); }
+    @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .theme-btn .sun { opacity: 1; transform: none; } :root:not([data-theme="dark"]) .theme-btn .moon { opacity: 0; transform: scale(0.3); } }
+    :root[data-theme="light"] .theme-btn .sun { opacity: 1; transform: none; }
+    :root[data-theme="light"] .theme-btn .moon { opacity: 0; transform: scale(0.3); }
 
     /* ── Buttons ────────────────────────────────────────────────────────── */
-    .btn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: var(--r); font: 500 0.95rem/1 var(--font-body); text-decoration: none; border: 0; cursor: pointer; transition: transform 0.15s var(--ease-out), background-color 0.15s ease, box-shadow 0.2s ease, color 0.15s ease; }
-    .btn:active { transform: scale(0.96); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: var(--r); font: 500 0.95rem/1 var(--font-body); text-decoration: none; border: 0; cursor: pointer; transition: transform 0.15s var(--ease-out), background-color 0.15s ease, box-shadow 0.2s ease, color 0.15s ease; }
+    .btn:active { transform: scale(0.97); }
     .btn-primary { background: var(--accent-fill); color: var(--on-accent); box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 6px 18px -8px rgba(228, 0, 80, 0.7); }
     .btn-primary:hover { background: #cc0047; }
-    .btn-ghost { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-2); background: transparent; }
+    .btn-ghost { color: var(--ink); background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); }
     .btn-ghost:hover { background: var(--bg-2); }
     .btn svg { width: 16px; height: 16px; flex: none; }
 
     /* ── Hero ───────────────────────────────────────────────────────────── */
-    .hero { padding: clamp(40px, 7vw, 88px) 0 clamp(56px, 8vw, 104px); }
-    .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(40px, 5vw, 64px); align-items: center; }
-    @media (min-width: 1000px) { .hero-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-    .eyebrow { display: inline-flex; align-items: center; gap: 10px; font: 500 0.8rem/1.3 var(--font-mono); color: var(--ink-2); letter-spacing: 0.02em; }
-    .eyebrow::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-fill); box-shadow: 0 0 0 2px var(--halo-1), 0 0 0 4px var(--halo-2); }
-    .hero h1 { margin-top: 20px; font-size: clamp(2.6rem, 6.2vw, 4.6rem); font-weight: 800; letter-spacing: -0.04em; line-height: 0.96; }
+    .hero { position: relative; padding: clamp(40px, 6vw, 80px) 0 clamp(56px, 7vw, 88px); text-align: center; isolation: isolate; overflow-x: clip; }
+    .hero::before { content: ""; position: absolute; z-index: -1; left: 50%; top: -120px; width: min(1100px, 140vw); height: 620px; transform: translateX(-50%); background: radial-gradient(closest-side, var(--glow), transparent 72%); pointer-events: none; }
+    .badge { display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px 6px 10px; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); font: 500 0.8rem/1.2 var(--font-mono); color: var(--ink-2); text-decoration: none; }
+    .badge .dot { width: 7px; height: 7px; box-shadow: 0 0 0 2px var(--halo-1), 0 0 0 4px var(--halo-2); }
+    .badge b { color: var(--ink); font-weight: 600; }
+    .badge:hover { color: var(--ink); }
+    .hero h1 { margin: 26px auto 0; max-width: 13em; font-size: clamp(2.5rem, 7.4vw, 5.6rem); font-weight: 800; letter-spacing: -0.035em; line-height: 0.98; }
     .hero h1 em { font-style: normal; color: var(--accent); }
-    .hero-lede { margin-top: 24px; max-width: 32em; font-size: clamp(1.05rem, 1.5vw, 1.18rem); line-height: 1.55; color: var(--ink-2); }
-    .hero-actions { margin-top: 32px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-    .hero-foot { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 0.88rem; color: var(--ink-3); }
-    .hero-foot span { display: inline; white-space: nowrap; }
-    .hero-foot span:first-child::before { display: none; }
-    .hero-foot span::before { content: ""; display: inline-block; vertical-align: middle; width: 4px; height: 4px; margin: -2px 8px 0 0; border-radius: 50%; background: var(--ink-3); opacity: 0.7; }
+    .hero-sub { margin: 24px auto 0; max-width: 36em; font-size: clamp(1.04rem, 1.6vw, 1.2rem); line-height: 1.55; color: var(--ink-2); }
+    .hero .install { margin: 36px auto 0; }
+    .hero-links { margin-top: 16px; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 22px; font-size: 0.9rem; color: var(--ink-3); }
+    .hero-links a { color: var(--ink-2); text-decoration: none; }
+    .hero-links a:hover { color: var(--ink); text-decoration: underline; }
 
-    /* Install one-liner with copy button */
-    .cmd { display: flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 4px 0 14px; border-radius: var(--r); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); font: 500 0.9rem/1 var(--font-mono); color: var(--ink); max-width: 100%; }
-    .cmd .p { color: var(--ink-3); user-select: none; margin-right: 6px; }
-    .cmd code { background: none; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: inherit; }
-    .copy-btn .ok, .copy-btn .cp { grid-area: 1 / 1; transition: opacity 0.25s var(--ease-swap), transform 0.25s var(--ease-swap), filter 0.25s var(--ease-swap); }
-    .copy-btn .ok { opacity: 0; transform: scale(0.25); filter: blur(4px); color: var(--accent); }
-    .copy-btn.copied .cp { opacity: 0; transform: scale(0.25); filter: blur(4px); }
-    .copy-btn.copied .ok { opacity: 1; transform: none; filter: none; }
-    .copy-btn svg { width: 18px; height: 18px; }
+    /* ── Install box (tabs + command + copy) ────────────────────────────── */
+    .install { width: 100%; max-width: 620px; text-align: left; border-radius: var(--r-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2), var(--shadow); overflow: hidden; }
+    .tabs { display: flex; gap: 2px; padding: 6px; overflow-x: auto; scrollbar-width: none; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { flex: none; min-height: 34px; padding: 0 12px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-3); font: 500 0.84rem/1 var(--font-body); cursor: pointer; white-space: nowrap; transition: color 0.15s ease, background-color 0.15s ease; }
+    .tab:hover { color: var(--ink); }
+    .tab[aria-selected="true"] { color: var(--ink); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line-2); }
+    .install .tabs { border-bottom: 1px solid var(--line); }
+    .install-panel { position: relative; }
+    .install-panel pre { margin: 0; padding: 16px 56px 16px 18px; font: 450 0.88rem/1.75 var(--font-mono); color: var(--ink); overflow-x: auto; white-space: pre; }
+    .install-panel pre .p { color: var(--ink-3); user-select: none; -webkit-user-select: none; }
+    .install-panel pre .cm { color: var(--ink-3); }
+    .install-panel .copy-btn { position: absolute; top: 8px; right: 8px; }
+    .install-note { padding: 10px 18px 12px; border-top: 1px solid var(--line); font-size: 0.82rem; color: var(--ink-3); }
+    .copy-btn .ok, .copy-btn .cp { grid-area: 1 / 1; transition: opacity 0.2s ease, transform 0.2s var(--ease-out); }
+    .copy-btn .ok { opacity: 0; transform: scale(0.3); color: var(--accent); }
+    .copy-btn.copied .cp { opacity: 0; transform: scale(0.3); }
+    .copy-btn.copied .ok { opacity: 1; transform: none; }
+    [role="tabpanel"][hidden] { display: none; }
 
-    /* ── Terminal ───────────────────────────────────────────────────────── */
-    .term { position: relative; border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 30px 60px -30px rgba(20, 8, 16, 0.55), 0 12px 24px -12px rgba(20, 8, 16, 0.35); overflow: hidden; min-width: 0; }
-    .term-bar { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; background: var(--term-bar); }
-    .term-bar i { width: 11px; height: 11px; border-radius: 50%; background: #45475a; }
-    .term-bar i:nth-child(1) { background: #f38ba8; } .term-bar i:nth-child(2) { background: #f9e2af; } .term-bar i:nth-child(3) { background: #a6e3a1; }
-    .term-bar span { margin-left: 8px; font: 500 0.75rem/1 var(--font-mono); color: var(--term-dim); }
-    /* Output wraps like a real terminal; only the table keeps its shape (and scrolls on its own if it must). */
-    .term pre { margin: 0; padding: 18px 20px 22px; font: 400 0.82rem/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; min-height: calc(23 * 1.6em + 40px); tab-size: 2; }
-    @media (max-width: 520px) { .term pre { font-size: 0.74rem; padding: 14px 14px 18px; min-height: calc(27 * 1.6em + 32px); } }
-    .t-dir { color: var(--term-dir); font-weight: 600; } .t-git { color: var(--term-git); font-weight: 600; } .t-arr { color: var(--term-arrow); }
-    .t-tbl { display: inline-block; vertical-align: top; line-height: 1.2; white-space: pre; max-width: 100%; overflow-x: auto; overflow-wrap: normal; scrollbar-width: none; }
-    .t-ok { color: var(--term-ok); } .t-dim { color: var(--term-dim); } .t-key { color: var(--term-key); } .t-pink { color: var(--term-pink); }
-    .t-caret { display: inline-block; width: 0.6em; height: 1.15em; margin-bottom: -0.2em; background: #f5e0dc; }
-    @media (prefers-reduced-motion: no-preference) { .t-caret.blink { animation: blink 1.1s steps(1) infinite; } }
-    @keyframes blink { 50% { opacity: 0; } }
-
-    /* ── Sections ───────────────────────────────────────────────────────── */
-    section { padding: clamp(72px, 9vw, 112px) 0; }
-    .sec-alt { background: var(--bg-2); box-shadow: inset 0 1px 0 var(--line), inset 0 -1px 0 var(--line); }
-    .sec-head { max-width: 44rem; }
-    .sec-head .kicker { display: inline-flex; align-items: center; gap: 10px; font: 500 0.8rem/1.2 var(--font-mono); color: var(--accent); letter-spacing: 0.02em; }
-    .sec-head .kicker::before { content: ""; width: 18px; height: 1.5px; border-radius: 1px; background: currentColor; }
-    .sec-head h2 { margin-top: 16px; font-size: clamp(1.95rem, 3.6vw, 2.8rem); line-height: 1.04; }
-    .sec-head .lede { margin-top: 18px; max-width: 38em; font-size: 1.08rem; color: var(--ink-2); }
-
-    /* Demo */
-    .demo-frame { position: relative; margin-top: 40px; border-radius: var(--r-lg); overflow: hidden; background: var(--term-bg); box-shadow: var(--shadow-lift); aspect-ratio: 1200 / 720; }
-    .demo-frame video { display: block; width: 100%; height: 100%; object-fit: cover; outline: 1px solid var(--img-outline); outline-offset: -1px; }
-    .demo-ctl { position: absolute; right: 12px; bottom: 12px; display: inline-grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 50%; background: rgba(17, 17, 27, 0.72); color: #f5f1ec; cursor: pointer; transition: transform 0.15s var(--ease-out), background-color 0.15s ease; }
-    .demo-ctl:hover { background: rgba(17, 17, 27, 0.9); }
-    .demo-ctl:active { transform: scale(0.96); }
-    .demo-ctl svg { grid-area: 1/1; width: 16px; height: 16px; transition: opacity 0.2s var(--ease-swap), transform 0.2s var(--ease-swap); }
-    .demo-ctl .play { opacity: 0; transform: scale(0.25); }
-    .demo-ctl.paused .play { opacity: 1; transform: none; }
-    .demo-ctl.paused .pause { opacity: 0; transform: scale(0.25); }
-    /* Demo chapters: a ruled row of numbered steps under the video, two columns on phones */
-    .demo-steps { margin: 28px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; color: var(--ink-2); font-size: 0.9rem; counter-reset: s; }
-    @media (min-width: 760px) { .demo-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-    @media (min-width: 1100px) { .demo-steps { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
-    .demo-steps code { background: none; padding: 0; color: var(--ink); }
-    .demo-steps li { counter-increment: s; padding: 12px 0; border-top: 1px solid var(--line-2); line-height: 1.45; }
-    .demo-steps li::before { content: "0" counter(s); display: block; margin-bottom: 4px; font: 500 0.74rem/1 var(--font-mono); color: var(--accent); font-variant-numeric: tabular-nums; }
-
-    /* Model: two inputs compile into one output */
-    .files { margin-top: 48px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
-    @media (min-width: 880px) {
-      .files { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .files .file:not(.gen) { display: grid; grid-template-rows: subgrid; grid-row: span 5; row-gap: 0; }
-      .files .merge, .files .file.gen { grid-column: 1 / -1; }
-      .files .file:not(.gen) .path { align-self: end; }
+    /* ── Benchmark ──────────────────────────────────────────────────────── */
+    .bench { margin: clamp(48px, 6vw, 72px) auto 0; max-width: 880px; text-align: left; }
+    .bench-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+    .bench-top .tabs { padding: 4px; border-radius: var(--r); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); min-width: 0; max-width: 100%; }
+    .replay { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font: 500 0.84rem/1 var(--font-body); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line-2); transition: color 0.15s ease, background-color 0.15s ease; }
+    .replay:hover { color: var(--ink); background: var(--bg-2); }
+    .replay svg { width: 14px; height: 14px; }
+    .bench-panel { margin-top: 22px; }
+    .bench-panel h3 { font-size: clamp(1.25rem, 2.4vw, 1.6rem); letter-spacing: -0.02em; }
+    .bench-metric { margin-top: 6px; font: 500 0.8rem/1.4 var(--font-mono); color: var(--ink-3); }
+    .bars { margin: 22px 0 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+    .bar { display: grid; grid-template-columns: minmax(0, 15.5rem) minmax(0, 1fr) 4.6rem; gap: 16px; align-items: center; }
+    .bar .name { font: 450 0.86rem/1.35 var(--font-mono); color: var(--ink-2); overflow-wrap: anywhere; }
+    .bar.hl .name { color: var(--ink); font-weight: 600; }
+    .bar .track { position: relative; height: 26px; border-radius: 5px; background: var(--line); overflow: hidden; }
+    .bar .fill { position: absolute; inset: 0; border-radius: 5px; background: var(--bar); transform-origin: left center; transform: scaleX(var(--s, 0)); }
+    .bar.hl .fill { background: var(--accent-fill); }
+    .bar .val { text-align: right; font: 600 0.9rem/1 var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .bar.hl .val { color: var(--accent); }
+    @media (max-width: 640px) {
+      .bar { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
+      .bar .track { grid-column: 1 / -1; grid-row: 2; height: 18px; }
     }
-    .file { position: relative; display: flex; flex-direction: column; border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow); padding: 22px 22px 0; min-width: 0; overflow: hidden; }
-    .file-who { font: 500 0.74rem/1 var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; }
-    .file h3 { margin-top: 10px; font: 600 1.2rem/1.2 var(--font-mono); letter-spacing: -0.01em; }
-    .file h3 code { font-size: inherit; background: none; padding: 0; color: var(--ink); }
-    .file p { margin-top: 8px; color: var(--ink-2); font-size: 0.95rem; }
-    .file .path { margin-top: 12px; font: 400 0.78rem/1.4 var(--font-mono); color: var(--ink-3); overflow-wrap: anywhere; }
-    .file pre { margin: 18px -22px 0; padding: 16px 22px 20px; background: var(--term-bg); color: var(--term-fg); font: 400 0.78rem/1.65 var(--font-mono); overflow-x: auto; flex: 1; }
-    /* The generated file: text beside its code on wide screens, outlined in the brand red */
-    .file.gen::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1.5px var(--accent-fill); pointer-events: none; }
-    @media (min-width: 880px) {
-      .file.gen { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); grid-template-rows: auto auto auto 1fr; column-gap: 28px; padding: 0 0 0 26px; }
-      .file.gen > :not(pre) { grid-column: 1; }
-      .file.gen > .file-who { margin-top: 26px; }
-      .file.gen > .path { align-self: start; margin-bottom: 26px; }
-      .file.gen pre { grid-column: 2; grid-row: 1 / -1; margin: 0; padding: 24px; }
-    }
-    .merge { display: flex; align-items: center; gap: 14px; color: var(--ink-3); font: 500 0.78rem/1 var(--font-mono); }
-    .merge::before, .merge::after { content: ""; flex: 1; height: 1px; background: var(--line-2); }
-    .merge svg { width: 14px; height: 14px; color: var(--accent); }
-    .c-com { color: var(--term-dim); } .c-key { color: var(--term-ok); } .c-str { color: var(--term-arrow); } .c-tab { color: var(--term-pink); } .c-num { color: var(--term-key); }
-    .files-note { margin-top: 28px; color: var(--ink-2); font-size: 0.95rem; max-width: 46rem; }
-    .files-note .block { margin-top: 12px; }
+    .bench-note { margin-top: 18px; color: var(--ink-2); font-size: 0.92rem; }
+    .bench-cap { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 0.84rem; line-height: 1.6; }
+    .bench details { margin-top: 14px; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .data-table caption { text-align: left; padding: 12px 0 6px; font-weight: 600; color: var(--ink); }
+    .data-table th, .data-table td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .data-table td.n { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .data-table th { color: var(--ink-3); font-weight: 500; }
 
-    /* Split feature sections (scripts, secrets) */
-    .split { display: grid; gap: clamp(36px, 5vw, 72px); grid-template-columns: minmax(0, 1fr); align-items: start; }
-    @media (min-width: 980px) { .split { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); } .split.flip { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); } .split.flip > :first-child { order: 2; } .split > .code-stack { position: sticky; top: 96px; } }
-    .points { margin: 32px 0 0; padding: 0; list-style: none; display: grid; gap: 18px; }
-    .points li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; color: var(--ink-2); }
-    .points li::before { content: ""; width: 8px; height: 8px; margin: 0.6em 0 0 4px; border-radius: 50%; background: var(--accent-fill); box-shadow: 0 0 0 3px var(--halo-2); }
-    .points strong { color: var(--ink); font-weight: 600; }
-    .points strong code { font-weight: 600; white-space: normal; }
-    .langs-wrap { margin-top: 8px; }
-    .langs-label { font: 500 0.74rem/1 var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; }
-    .langs { margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 6px; padding: 0; list-style: none; }
-    .langs li { font: 500 0.8rem/1 var(--font-mono); padding: 7px 10px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--ink-2); }
-    .langs li.hl { color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink-3); }
-    .langs li.hl::after { content: " · compiled"; color: var(--ink-3); }
-    .code-stack { display: grid; gap: 16px; min-width: 0; }
-    /* One terminal chrome for every code sample: muted window dots + title */
-    .code-card { border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: var(--shadow), 0 0 0 1px rgba(255,255,255,0.05) inset; overflow: hidden; min-width: 0; }
-    .code-card header { display: flex; align-items: center; gap: 12px; height: 36px; padding: 0 14px; background: var(--term-bar); font: 500 0.74rem/1.3 var(--font-mono); color: var(--term-dim); }
-    .code-card header::before { content: ""; flex: none; width: 38px; height: 10px; background: radial-gradient(circle at 5px 5px, #45475a 4.5px, transparent 5px) 0 0 / 14px 10px repeat-x; }
-    .code-card header span:last-child { margin-left: auto; }
-    .code-card pre { margin: 0; padding: 16px 18px 18px; font: 400 0.8rem/1.65 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-    @media (max-width: 520px) { .code-card pre { font-size: 0.74rem; padding: 14px 14px 16px; } }
-    .json-card { margin-top: 44px; }
-
-    /* Feature index (not a card grid: a ruled two-column list) */
-    .index { margin-top: 48px; display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 64px; }
-    @media (min-width: 860px) { .index { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    .item { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 24px 0; border-top: 1px solid var(--line-2); }
-    .item h3 { font-size: 1.18rem; letter-spacing: -0.015em; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-    .item h3 code { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500; letter-spacing: 0; color: var(--ink-3); background: none; padding: 0; }
-    .item p { color: var(--ink-2); font-size: 0.96rem; max-width: 34em; }
-
-    /* Speed */
-    .bars { margin-top: 44px; display: grid; gap: 32px; max-width: 60rem; }
-    .bars-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0; padding: 0; list-style: none; font-size: 0.85rem; color: var(--ink-3); }
-    .bars-legend li { display: inline-flex; align-items: center; gap: 8px; }
-    .bars-legend li::before { content: ""; width: 14px; height: 8px; border-radius: 999px; background: var(--ink-3); }
-    .bars-legend li.w::before { background: var(--accent-fill); }
-    .bar-group h3 { font: 600 0.8rem/1 var(--font-mono); color: var(--ink-3); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 10px; }
-    .bar { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) 4.8rem; gap: 16px; align-items: center; padding: 8px 0; }
-    @media (max-width: 640px) { .bar { grid-template-columns: minmax(0, 1fr) 4.2rem; gap: 6px 10px; } .bar .track { grid-column: 1 / -1; grid-row: 2; } }
-    .bar .lbl { font-size: 0.92rem; color: var(--ink-2); }
-    .bar .lbl code { white-space: normal; }
-    .bar .track { height: 10px; border-radius: 999px; background: var(--line); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
-    .bar .fill { display: block; height: 100%; border-radius: 999px; background: var(--ink-3); transform-origin: left center; transform: scaleX(var(--v)); }
-    .bar.wayu .fill { background: var(--accent-fill); }
-    .bar .val { text-align: right; font: 600 0.92rem/1 var(--font-mono); font-variant-numeric: tabular-nums; }
-    .method { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 0.86rem; line-height: 1.65; max-width: 60rem; }
-
-    /* Install */
-    .install-body { max-width: 52rem; }
-    .steps { margin: 40px 0 0; padding: 0; list-style: none; display: grid; gap: 28px; counter-reset: st; }
-    .steps > li { counter-increment: st; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 18px; align-items: start; }
-    .steps > li::before { content: counter(st); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; font: 600 0.85rem/1 var(--font-mono); color: var(--on-accent); background: var(--accent-fill); box-shadow: 0 0 0 3px var(--halo-2); font-variant-numeric: tabular-nums; }
-    .steps h3 { font-size: 1.12rem; margin-top: 4px; letter-spacing: -0.01em; }
-    .steps p { margin-top: 6px; color: var(--ink-2); font-size: 0.95rem; }
-    .block { position: relative; margin-top: 12px; border-radius: var(--r); background: var(--term-bg); color: var(--term-fg); min-width: 0; box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset; }
-    .block pre { margin: 0; padding: 14px 56px 14px 16px; font: 400 0.82rem/1.6 var(--font-mono); overflow-x: auto; }
-    .block .copy-btn { position: absolute; top: 4px; right: 4px; color: var(--term-dim); background: var(--term-bg); }
-    .block .copy-btn:hover { color: var(--term-fg); background: rgba(255,255,255,0.06); }
-    .block .copy-btn .ok { color: var(--term-arrow); }
-    .more { margin-top: 40px; display: grid; gap: 10px; }
-    @media (min-width: 600px) { .more { margin-left: 54px; } }
-    details { border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line-2); background: color-mix(in srgb, var(--surface) 50%, transparent); }
-    summary { cursor: pointer; padding: 12px 16px; min-height: 48px; font-weight: 500; list-style: none; display: flex; align-items: center; gap: 12px; border-radius: var(--r); transition: background-color 0.15s ease; }
-    summary:hover { background: color-mix(in srgb, var(--surface) 80%, transparent); }
+    details { border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line-2); }
+    summary { cursor: pointer; padding: 10px 14px; min-height: 44px; font-size: 0.9rem; font-weight: 500; color: var(--ink-2); list-style: none; display: flex; align-items: center; gap: 12px; border-radius: var(--r); }
+    summary:hover { color: var(--ink); }
     summary::-webkit-details-marker { display: none; }
     summary::before { content: ""; flex: none; width: 7px; height: 7px; margin-left: 2px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 0.2s var(--ease-out); }
     details[open] summary::before { transform: rotate(45deg); }
-    details > div { padding: 0 16px 16px 37px; color: var(--ink-2); font-size: 0.95rem; }
+    details > div { padding: 0 14px 14px; overflow-x: auto; }
 
-    /* Footer */
-    footer { padding: 48px 0 56px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 0.9rem; }
-    .foot { display: flex; flex-wrap: wrap; gap: 18px 40px; align-items: flex-start; justify-content: space-between; }
-    .foot-brand p { margin-top: 10px; }
-    .foot-brand p a { color: inherit; }
-    .foot ul { display: flex; flex-wrap: wrap; gap: 0 22px; margin: 0; padding: 0; list-style: none; }
-    .foot ul a { color: var(--ink-2); text-decoration: none; display: inline-flex; min-height: 40px; align-items: center; }
+    /* ── Sections ───────────────────────────────────────────────────────── */
+    section { padding: clamp(72px, 9vw, 120px) 0; }
+    .sec-alt { background: var(--bg-2); box-shadow: inset 0 1px 0 var(--line), inset 0 -1px 0 var(--line); }
+    .sec-head { max-width: 46rem; }
+    .kicker { display: inline-flex; align-items: center; gap: 10px; font: 500 0.8rem/1.2 var(--font-mono); color: var(--accent); letter-spacing: 0.02em; }
+    .kicker::before { content: ""; width: 18px; height: 1.5px; border-radius: 1px; background: currentColor; }
+    .sec-head h2 { margin-top: 14px; font-size: clamp(2rem, 4.2vw, 3.2rem); line-height: 1.02; letter-spacing: -0.035em; }
+    .sec-head .lede { margin-top: 16px; max-width: 38em; font-size: 1.07rem; color: var(--ink-2); }
+
+    /* ── Feature cards ──────────────────────────────────────────────────── */
+    .cards { margin-top: 48px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 640px) { .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (min-width: 1040px) { .cards { grid-template-columns: repeat(4, minmax(0, 1fr)); } .card.wide { grid-column: span 2; } }
+    .card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 22px 22px 18px; border-radius: var(--r-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow 0.2s ease, transform 0.2s var(--ease-out); }
+    .card:hover { box-shadow: inset 0 0 0 1px var(--line-2); }
+    .card .rep { font: 500 0.7rem/1.2 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+    .card .rep s { display: block; margin-top: 6px; font: 400 0.84rem/1.4 var(--font-body); letter-spacing: 0; text-transform: none; text-decoration: none; color: var(--ink-2); }
+    .card .rep s::before { content: ""; display: inline-block; width: 10px; height: 1.5px; margin: 0 8px 0.3em 0; vertical-align: middle; background: var(--accent-fill); }
+    .card h3 { font-size: 1.22rem; letter-spacing: -0.015em; display: flex; align-items: center; gap: 10px; }
+    .card h3 .tag { font: 500 0.66rem/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; padding: 4px 6px; border-radius: 4px; color: var(--accent); background: var(--accent-soft); }
+    .card p { color: var(--ink-2); font-size: 0.93rem; line-height: 1.55; }
+    .card .cmd { margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--line-2); font: 450 0.8rem/1.5 var(--font-mono); color: var(--ink); overflow-wrap: anywhere; }
+    .card .cmd::before { content: "$ "; color: var(--ink-3); }
+    .card .cmd.toml::before { content: "toml "; color: var(--ink-3); }
+    .card.wide .rep s { color: var(--ink); }
+
+    /* ── Step replay ────────────────────────────────────────────────────── */
+    .replay-grid { margin-top: 44px; display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+    @media (min-width: 960px) { .replay-grid { grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr); gap: 28px; } }
+    .steps { display: grid; gap: 4px; margin: 0; padding: 0; }
+    @media (max-width: 959px) { .steps { display: flex; overflow-x: auto; scrollbar-width: none; gap: 6px; padding-bottom: 2px; } .steps::-webkit-scrollbar { display: none; } .steps .step { flex: none; width: 15.5rem; } }
+    .step { position: relative; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 2px 10px; width: 100%; padding: 12px 14px; border: 0; border-radius: var(--r); background: transparent; text-align: left; cursor: pointer; overflow: hidden; transition: background-color 0.15s ease; }
+    .step:hover { background: var(--surface); }
+    .step[aria-selected="true"] { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); }
+    .step .n { grid-row: 1 / span 2; font: 600 0.78rem/1.6 var(--font-mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+    .step[aria-selected="true"] .n { color: var(--accent); }
+    .step .t { font-weight: 600; font-size: 0.95rem; color: var(--ink); }
+    .step .c { font: 450 0.76rem/1.45 var(--font-mono); color: var(--ink-3); overflow-wrap: anywhere; }
+    .step .prog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent-fill); transform-origin: left; transform: scaleX(0); }
+    .term { border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 30px 60px -30px rgba(0, 0, 0, 0.6); overflow: hidden; min-width: 0; }
+    .term-bar { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px; background: var(--term-bar); }
+    .term-bar i { width: 10px; height: 10px; border-radius: 50%; background: #45475a; }
+    .term-bar span { margin-left: 8px; font: 500 0.74rem/1 var(--font-mono); color: var(--term-dim); }
+    .tour-toggle { margin-left: auto; min-height: 26px; padding: 0 10px; border: 0; border-radius: 5px; background: rgba(255,255,255,0.06); color: var(--term-dim); font: 500 0.72rem/1 var(--font-mono); cursor: pointer; }
+    .tour-toggle:hover { color: var(--term-fg); background: rgba(255,255,255,0.12); }
+    .term pre { margin: 0; padding: 16px 18px 20px; font: 400 0.8rem/1.62 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; min-height: calc(22 * 1.62em + 36px); }
+    @media (max-width: 520px) { .term pre { font-size: 0.72rem; padding: 14px 14px 16px; min-height: calc(28 * 1.62em + 30px); } }
+    .t-dir { color: var(--term-dir); font-weight: 600; } .t-git { color: var(--term-git); font-weight: 600; } .t-arr { color: var(--term-arrow); }
+    .t-ok { color: var(--term-ok); } .t-dim { color: var(--term-dim); } .t-key { color: var(--term-key); } .t-pink { color: var(--term-pink); } .t-add { color: var(--term-arrow); } .t-del { color: var(--term-red); }
+    .t-tbl { display: inline-block; vertical-align: top; line-height: 1.2; white-space: pre; max-width: 100%; overflow-x: auto; overflow-wrap: normal; scrollbar-width: none; }
+    .t-caret { display: inline-block; width: 0.6em; height: 1.15em; margin-bottom: -0.2em; background: #f5e0dc; }
+    @media (prefers-reduced-motion: no-preference) { .t-caret.blink { animation: blink 1.1s steps(1) infinite; } }
+    @keyframes blink { 50% { opacity: 0; } }
+    .replay-foot { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 0.85rem; color: var(--ink-3); }
+
+    /* Demo recording */
+    .demo { margin-top: 56px; display: grid; gap: 22px; grid-template-columns: minmax(0, 1fr); align-items: center; }
+    @media (min-width: 900px) { .demo { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 40px; } }
+    .demo h3 { font-size: 1.4rem; letter-spacing: -0.02em; }
+    .demo p { margin-top: 10px; color: var(--ink-2); font-size: 0.95rem; }
+    .demo-frame { position: relative; border-radius: var(--r-lg); overflow: hidden; background: var(--term-bg); box-shadow: var(--shadow); aspect-ratio: 1200 / 720; }
+    .demo-frame video { display: block; width: 100%; height: 100%; object-fit: cover; outline: 1px solid var(--img-outline); outline-offset: -1px; }
+    .demo-play { position: absolute; inset: 0; display: grid; place-items: center; border: 0; background: rgba(17, 17, 27, 0.25); cursor: pointer; transition: background-color 0.2s ease; }
+    .demo-play:hover { background: rgba(17, 17, 27, 0.1); }
+    .demo-play span { display: inline-flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 999px; background: rgba(17, 17, 27, 0.82); color: #f6f2ee; font: 500 0.9rem/1 var(--font-body); }
+    .demo-play svg { width: 14px; height: 14px; }
+
+    /* ── Release callout ────────────────────────────────────────────────── */
+    .release { position: relative; display: grid; gap: 36px; grid-template-columns: minmax(0, 1fr); padding: clamp(28px, 4vw, 52px); border-radius: 22px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); overflow: hidden; isolation: isolate; }
+    .release::after { content: ""; position: absolute; z-index: -1; right: -180px; top: -180px; width: 520px; height: 520px; border-radius: 50%; background: radial-gradient(closest-side, var(--glow), transparent); }
+    @media (min-width: 960px) { .release { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
+    .release .big { font: 800 clamp(3.4rem, 8vw, 6.2rem)/0.85 var(--font-display); letter-spacing: -0.05em; display: flex; align-items: center; gap: 18px; }
+    .release .big .dot { width: 18px; height: 18px; box-shadow: 0 0 0 4px var(--halo-1), 0 0 0 9px var(--halo-2); }
+    .release h2 { margin-top: 18px; font-size: clamp(1.5rem, 2.6vw, 2rem); letter-spacing: -0.025em; }
+    .release ul.pts { margin: 20px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; color: var(--ink-2); font-size: 0.95rem; }
+    .release ul.pts li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; }
+    .release ul.pts li::before { content: ""; width: 6px; height: 6px; margin-top: 0.62em; border-radius: 50%; background: var(--accent-fill); }
+    .release .cta-row { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 10px; }
+    .tiles { display: grid; gap: 1px; grid-template-columns: repeat(2, minmax(0, 1fr)); border-radius: var(--r-lg); overflow: hidden; background: var(--line-2); box-shadow: 0 0 0 1px var(--line-2); }
+    .tile { padding: 20px 18px; background: var(--surface); min-width: 0; }
+    .tile .v { font: 700 clamp(1.6rem, 3.2vw, 2.3rem)/1 var(--font-display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+    .tile .v small { font-size: 0.5em; font-weight: 600; color: var(--ink-3); letter-spacing: 0; }
+    .tile .v .was { display: block; margin-bottom: 6px; font: 500 0.78rem/1 var(--font-mono); color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--accent-fill); }
+    .tile p { margin-top: 10px; font-size: 0.82rem; line-height: 1.45; color: var(--ink-2); }
+    .tiles-src { margin-top: 10px; font-size: 0.78rem; color: var(--ink-3); }
+
+    /* ── Batteries ──────────────────────────────────────────────────────── */
+    .chips { margin-top: 36px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { min-height: 38px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: var(--ink-2); font: 500 0.84rem/1 var(--font-mono); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line-2); transition: color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease; }
+    .chip:hover { color: var(--ink); background: var(--surface); }
+    .chip[aria-selected="true"] { color: var(--on-accent); background: var(--accent-fill); box-shadow: none; }
+    @media (max-width: 640px) { .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-left: calc(-1 * var(--gutter)); margin-right: calc(-1 * var(--gutter)); padding: 0 var(--gutter) 2px; } .chips::-webkit-scrollbar { display: none; } .chip { flex: none; } }
+    .bat { margin-top: 32px; display: grid; gap: 18px 36px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 960px) { .bat-panel { display: grid; grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr); gap: 36px; align-items: start; } .bat-panel[hidden] { display: none; } }
+    .bat-panel h3 { font-size: 1.35rem; letter-spacing: -0.02em; }
+    .bat-panel .txt p { margin-top: 10px; color: var(--ink-2); font-size: 0.95rem; }
+    .bat-panel .txt a { font-size: 0.9rem; }
+    .bat-panel .txt .more { display: inline-block; margin-top: 14px; }
+    .code { border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset, var(--shadow); overflow: hidden; min-width: 0; margin-top: 18px; }
+    @media (min-width: 960px) { .code { margin-top: 0; } }
+    .code header { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; background: var(--term-bar); font: 500 0.74rem/1 var(--font-mono); color: var(--term-dim); }
+    .code pre { margin: 0; padding: 16px 18px 18px; font: 400 0.8rem/1.65 var(--font-mono); overflow-x: auto; white-space: pre; }
+    @media (max-width: 520px) { .code pre { font-size: 0.72rem; padding: 14px; } }
+    .c-com { color: var(--term-dim); } .c-key { color: var(--term-ok); } .c-str { color: var(--term-arrow); } .c-tab { color: var(--term-pink); } .c-num { color: var(--term-key); }
+
+    /* ── Comparison ─────────────────────────────────────────────────────── */
+    .cmp-wrap { margin-top: 40px; overflow-x: auto; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line-2); background: var(--surface); }
+    .cmp { width: 100%; min-width: 660px; border-collapse: collapse; font-size: 0.92rem; }
+    .cmp th, .cmp td { padding: 14px 16px; text-align: center; border-bottom: 1px solid var(--line); vertical-align: middle; }
+    .cmp tbody tr:last-child th, .cmp tbody tr:last-child td { border-bottom: 0; }
+    .cmp thead th { font: 600 0.84rem/1.3 var(--font-body); color: var(--ink-2); background: var(--surface-2); }
+    .cmp thead th.us { color: var(--ink); }
+    .cmp thead th.us span { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-display); font-size: 1.05rem; font-weight: 800; letter-spacing: -0.02em; }
+    .cmp thead th.us .dot { width: 7px; height: 7px; box-shadow: 0 0 0 2px var(--halo-1), 0 0 0 4px var(--halo-2); }
+    .cmp tbody th { text-align: left; font-weight: 500; color: var(--ink); }
+    @media (max-width: 760px) { .cmp tbody th, .cmp thead th:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); min-width: 11rem; box-shadow: 1px 0 0 var(--line-2); } .cmp thead th:first-child { background: var(--surface-2); } }
+    .cmp tbody th small { display: block; margin-top: 2px; color: var(--ink-3); font-size: 0.8rem; font-weight: 400; }
+    .cmp td.us { background: var(--accent-soft); }
+    .mk { position: relative; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; vertical-align: middle; }
+    .mk::before { font: 700 0.78rem/1 var(--font-body); }
+    .mk.y { background: var(--accent-fill); color: var(--on-accent); }
+    .mk.y::before { content: "\2713"; content: "\2713" / ""; }
+    .mk.n { color: var(--ink-3); }
+    .mk.n::before { content: "\2014"; content: "\2014" / ""; font-weight: 400; }
+    .cmp td .part { display: block; font-size: 0.78rem; color: var(--ink-3); }
+    .cmp-note { margin-top: 14px; font-size: 0.84rem; color: var(--ink-3); max-width: 52rem; }
+
+    /* ── Closing CTA + footer ───────────────────────────────────────────── */
+    .cta { text-align: center; }
+    .cta h2 { font-size: clamp(2.2rem, 5.4vw, 4rem); letter-spacing: -0.04em; line-height: 1; }
+    .cta p.sub { margin: 16px auto 0; max-width: 32em; color: var(--ink-2); }
+    .cta .install { margin: 32px auto 0; }
+    .cta .hero-links { margin-top: 18px; }
+    footer { padding: 56px 0 48px; border-top: 1px solid var(--line); font-size: 0.9rem; color: var(--ink-3); }
+    .foot { display: grid; gap: 32px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 760px) { .foot { grid-template-columns: minmax(0, 1.4fr) repeat(3, minmax(0, 1fr)); } }
+    .foot-brand p { margin-top: 12px; max-width: 22em; }
+    .foot h2 { font: 600 0.78rem/1 var(--font-mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.08em; }
+    .foot ul { margin: 12px 0 0; padding: 0; list-style: none; }
+    .foot ul a { display: inline-flex; align-items: center; min-height: 34px; color: var(--ink-2); text-decoration: none; }
     .foot ul a:hover { color: var(--ink); text-decoration: underline; }
+    .foot-bottom { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; font-size: 0.82rem; }
+    .foot-bottom a { color: inherit; }
 
-    /* ── Motion: scroll reveals (JS + no reduced motion only) ──────────── */
+    /* ── Motion ─────────────────────────────────────────────────────────── */
     @media (prefers-reduced-motion: no-preference) {
-      .js .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out); transition-delay: calc(var(--i, 0) * 80ms); }
+      .js .reveal { opacity: 0; transform: translateY(14px); transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out); transition-delay: calc(var(--i, 0) * 70ms); }
       .js .reveal.in { opacity: 1; transform: none; }
-      .js .bar .fill { transform: scaleX(0); transition: transform 1.1s var(--ease-out); transition-delay: calc(var(--i, 0) * 90ms + 150ms); }
-      .js .bars.in .bar .fill { transform: scaleX(var(--v)); }
-      .js .hero .rise { opacity: 0; transform: translateY(14px); animation: rise 0.8s var(--ease-out) forwards; animation-delay: calc(var(--i, 0) * 90ms + 60ms); }
+      .js .hero .rise { opacity: 0; transform: translateY(12px); animation: rise 0.8s var(--ease-out) forwards; animation-delay: calc(var(--i, 0) * 80ms + 40ms); }
+      .card:hover { transform: translateY(-2px); }
     }
     @keyframes rise { to { opacity: 1; transform: none; } }
   </style>
@@ -386,28 +406,31 @@
 <body>
   <a class="skip" href="#main">Skip to content</a>
 
+  <div class="announce">
+    <a href="docs/?p=upgrading"><span class="dot" aria-hidden="true"></span><span><strong>wayu 6.0</strong><span class="long"> — encrypted secrets, scripts in any language, one generated init file</span></span><span class="go">Upgrade notes →</span></a>
+  </div>
+
   <header class="nav" id="nav">
     <div class="wrap nav-inner">
-      <a class="brand" href="#top" aria-label="wayu home"><span class="brand-dot" aria-hidden="true"></span>wayu</a>
-      <nav aria-label="Main">
+      <a class="brand" href="#top" aria-label="wayu home"><span class="dot" aria-hidden="true"></span>wayu</a>
+      <nav aria-label="Main" style="margin-left:auto">
         <ul class="nav-links">
-          <li class="hide-sm"><a href="#demo">Demo</a></li>
-          <li class="hide-sm"><a href="#scripts">Scripts</a></li>
-          <li class="hide-sm"><a href="#secrets">Secrets</a></li>
-          <li class="hide-sm"><a href="#install">Install</a></li>
-          <li><a href="docs.html">Docs</a></li>
-          <li><span class="nav-version" aria-label="Version 6.0.0">v6.0.0</span></li>
+          <li class="hide-sm"><a href="docs/">Docs</a></li>
+          <li class="hide-md"><a href="docs/?p=cli">CLI reference</a></li>
+          <li class="hide-md"><a href="docs/?p=upgrading">Upgrading</a></li>
           <li>
-            <a class="icon-btn" href="https://github.com/dvrd/wayu" aria-label="wayu on GitHub">
+            <a href="https://github.com/dvrd/wayu" aria-label="wayu on GitHub">
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+              <span class="hide-sm">GitHub</span>
             </a>
           </li>
           <li>
-            <button class="icon-btn theme-btn" id="theme-btn" type="button" aria-label="Switch to dark theme">
+            <button class="icon-btn theme-btn" id="theme-btn" type="button" aria-label="Switch to light theme">
               <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
               <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.6A8.5 8.5 0 0 1 9.4 4a8.5 8.5 0 1 0 10.6 10.6Z"/></svg>
             </button>
           </li>
+          <li><a class="btn btn-primary" href="#install">Install</a></li>
         </ul>
       </nav>
     </div>
@@ -416,589 +439,867 @@
   <main id="main">
     <!-- ── Hero ──────────────────────────────────────────────────────── -->
     <section class="hero" id="top" aria-labelledby="hero-title">
-      <div class="wrap hero-grid">
-        <div>
-          <p class="eyebrow rise" style="--i:0">Shell configuration for zsh, bash and fish</p>
-          <h1 id="hero-title" class="rise" style="--i:1">Your shell setup, <em>managed by commands.</em></h1>
-          <p class="hero-lede rise" style="--i:2">
-            wayu keeps your PATH entries, aliases, environment variables, encrypted secrets, scripts and plugins
-            in one place, and compiles them into a single file your shell sources at startup.
-            Add something with one command; every open shell picks up PATH changes at its next prompt.
-          </p>
-          <div class="hero-actions rise" style="--i:3">
-            <div class="cmd" role="group" aria-label="Install command">
-              <span class="p" aria-hidden="true">$</span><code id="brew-cmd">brew install dvrd/wayu/wayu</code>
-              <button class="icon-btn copy-btn" type="button" data-copy="brew install dvrd/wayu/wayu" aria-label="Copy install command">
-                <svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg>
-                <svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
-              </button>
-            </div>
-            <a class="btn btn-ghost" href="docs.html">
-              Read the docs
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
-            </a>
+      <div class="wrap">
+        <a class="badge rise" style="--i:0" href="https://github.com/dvrd/wayu/releases"><span class="dot" aria-hidden="true"></span><b>v6.0.0</b> zsh · bash · fish</a>
+        <h1 id="hero-title" class="rise" style="--i:1">Your shell setup, <em>managed by commands.</em></h1>
+        <p class="hero-sub rise" style="--i:2">PATH entries, aliases, env vars, encrypted secrets, scripts and plugins — added with one command each, compiled into one file your shell sources at startup.</p>
+
+        <div class="install rise" style="--i:3" data-install>
+          <div class="tabs" role="tablist" aria-label="Install method">
+            <button class="tab" role="tab" type="button" id="hi-brew-tab" aria-controls="hi-brew" aria-selected="true">Homebrew</button>
+            <button class="tab" role="tab" type="button" id="hi-src-tab" aria-controls="hi-src" aria-selected="false" tabindex="-1">From source</button>
           </div>
-          <p class="hero-foot rise" style="--i:4">
-            <span>zsh sources it in <a href="#speed">9.2 ms</a></span>
-            <span>no runtime dependencies</span>
-            <span>MIT, written in Odin</span>
-          </p>
+          <div class="install-panel" role="tabpanel" id="hi-brew" aria-labelledby="hi-brew-tab">
+<pre><span class="p">$ </span>brew tap dvrd/wayu
+<span class="p">$ </span>brew install wayu
+<span class="p">$ </span>wayu init</pre>
+            <button class="icon-btn copy-btn" type="button" data-copy="brew tap dvrd/wayu&#10;brew install wayu&#10;wayu init" aria-label="Copy Homebrew install commands"></button>
+          </div>
+          <div class="install-panel" role="tabpanel" id="hi-src" aria-labelledby="hi-src-tab" hidden>
+<pre><span class="p">$ </span>git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu
+<span class="p">$ </span>odin build build -out:build_it &amp;&amp; ./build_it install
+<span class="cm"># builds, installs to ~/.local/bin, runs wayu init</span></pre>
+            <button class="icon-btn copy-btn" type="button" data-copy="git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu&#10;odin build build -out:build_it &amp;&amp; ./build_it install" aria-label="Copy source build commands"></button>
+          </div>
         </div>
+        <p class="hero-links rise" style="--i:4">
+          <a href="https://github.com/dvrd/wayu#shell-setup"><code>wayu init</code> adds one line to your rc file</a>
+          <a href="https://github.com/dvrd/wayu#quick-start">Read the quickstart →</a>
+        </p>
 
-        <div class="term rise" style="--i:2">
-          <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><span>zsh — ~/projects/api</span></div>
-          <p class="sr-only">Example session: wayu path add ~/.cargo/bin adds the directory to PATH; wayu alias add gs 'git status -sb' adds an alias; wayu const add OPENAI_API_KEY --run-only asks for the value with hidden input and stores it encrypted; wayu const list shows the secret as eight asterisks with source "wayu (run-only)".</p>
-          <pre id="term" aria-hidden="true"></pre>
+        <!-- ── Benchmark (rendered from #bench-data) ─────────────────── -->
+        <div class="bench rise" style="--i:5" id="bench" role="region" aria-labelledby="bench-title">
+          <h2 class="sr-only" id="bench-title">Shell startup benchmark</h2>
+          <div class="bench-top">
+            <div class="tabs" role="tablist" aria-label="Benchmark scenario" id="bench-tabs"></div>
+            <button class="replay" type="button" id="bench-replay">
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.3-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z"/></svg>
+              <span>Replay in real time</span>
+            </button>
+          </div>
+          <div id="bench-panels"></div>
+          <p class="bench-cap" id="bench-cap"></p>
+          <details>
+            <summary>Show the numbers as a table</summary>
+            <div id="bench-table"></div>
+          </details>
+          <noscript><p class="bench-cap">Time until the first command runs (zsh-bench, median of 32, Apple M1 Max): zsh with no config 23.0 ms; wayu 65.5 ms; hand-written .zshrc with compinit -C 67.7 ms; antidote 79.6 ms; hand-written .zshrc 82.9 ms; oh-my-zsh 101.3 ms; zinit 103.7 ms.</p></noscript>
         </div>
       </div>
     </section>
 
-    <!-- ── Demo ──────────────────────────────────────────────────────── -->
-    <section class="sec-alt" id="demo" aria-labelledby="demo-title">
-      <div class="wrap">
-        <div class="sec-head reveal">
-          <p class="kicker">Demo · 41 seconds</p>
-          <h2 id="demo-title">From a new alias to an encrypted key in one session.</h2>
-          <p class="lede">Recorded with <a href="https://github.com/charmbracelet/vhs">VHS</a> in a throwaway home directory; the tape and setup script are in <a href="https://github.com/dvrd/wayu/tree/main/docs/demo"><code>docs/demo/</code></a>, so you can re-record it.</p>
-        </div>
-        <div class="demo-frame reveal">
-          <video id="demo-video" autoplay muted loop playsinline preload="metadata" poster="demo/poster.jpg" width="1200" height="720"
-                 aria-label="Terminal recording: wayu adds a PATH entry, an alias and a run-only secret, lists constants with the secret masked, creates a Python script and runs it with the secret, runs doctor, then adds an alias in the TUI.">
-            <source src="demo/demo.mp4" type="video/mp4" />
-          </video>
-          <button class="demo-ctl" id="demo-ctl" type="button" aria-label="Pause demo">
-            <svg class="pause" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3.5" y="2.5" width="3" height="11" rx="1"/><rect x="9.5" y="2.5" width="3" height="11" rx="1"/></svg>
-            <svg class="play" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.3-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z"/></svg>
-          </button>
-        </div>
-        <ol class="demo-steps reveal">
-          <li><code>path add</code>, <code>alias add</code></li>
-          <li><code>const add --run-only</code></li>
-          <li><code>const list</code>: value masked</li>
-          <li><code>script new</code>, <code>secrets run</code></li>
-          <li><code>doctor</code></li>
-          <li>TUI: add an alias</li>
-        </ol>
-      </div>
-    </section>
-
-    <!-- ── Model ─────────────────────────────────────────────────────── -->
-    <section id="how" aria-labelledby="how-title">
-      <div class="wrap">
-        <div class="sec-head reveal">
-          <p class="kicker">How it works</p>
-          <h2 id="how-title">You edit one file. wayu writes another. Your shell reads a third.</h2>
-          <p class="lede">Settings you choose by hand stay in a TOML file you can keep in git. The entries you add from the command line live in a JSON store only wayu writes. Both compile into one generated init file.</p>
-        </div>
-
-        <div class="files">
-          <article class="file reveal" style="--i:0">
-            <p class="file-who">You edit</p>
-            <h3><code>wayu.toml</code></h3>
-            <p>Shell, <code>[tools]</code> loaders, the prompt, script and secrets settings. Run <code>wayu build</code> after an edit, or let the next prompt rebuild it.</p>
-            <p class="path">~/.config/wayu/wayu.toml</p>
-<pre><span class="c-tab">[tools]</span>
-<span class="c-key">zoxide</span> = { kind = <span class="c-str">"evalcache"</span>, args = <span class="c-str">"init zsh"</span> }
-<span class="c-key">nvm</span>    = { kind = <span class="c-str">"nvm"</span> }
-
-<span class="c-tab">[prompt]</span>
-<span class="c-key">enabled</span> = <span class="c-num">true</span>
-<span class="c-key">vi_mode</span> = <span class="c-num">true</span>
-
-<span class="c-tab">[secrets]</span>
-<span class="c-key">backend</span> = <span class="c-str">"auto"</span></pre>
-          </article>
-
-          <article class="file reveal" style="--i:1">
-            <p class="file-who">wayu writes</p>
-            <h3><code>entries.json</code></h3>
-            <p>PATH entries, aliases and constants from <code>wayu path|alias|const</code> and the TUI. Atomic writes, mode 0600, backed up first.</p>
-            <p class="path">~/.local/share/wayu/entries.json</p>
-<pre>{
-  <span class="c-key">"paths"</span>: [
-    {<span class="c-key">"key"</span>: <span class="c-str">"cargo_bin"</span>, <span class="c-key">"dir"</span>: <span class="c-str">"$HOME/.cargo/bin"</span>}
-  ],
-  <span class="c-key">"aliases"</span>: [
-    {<span class="c-key">"name"</span>: <span class="c-str">"gs"</span>, <span class="c-key">"value"</span>: <span class="c-str">"git status -sb"</span>}
-  ],
-  <span class="c-key">"env"</span>: [
-    {<span class="c-key">"name"</span>: <span class="c-str">"GOPATH"</span>, <span class="c-key">"value"</span>: <span class="c-str">"$HOME/go"</span>},
-    {<span class="c-key">"name"</span>: <span class="c-str">"OPENAI_API_KEY"</span>, <span class="c-key">"secret"</span>: <span class="c-num">true</span>}
+    <!-- BENCH DATA: from tests/benchmark/compare.sh -->
+    <script type="application/json" id="bench-data">
+{
+  "machine": "Apple M1 Max, macOS 27.2, zsh 5.9",
+  "method": "romkatv/zsh-bench in a pty, interactive login zsh, warm caches, each contender in its own throwaway HOME; value = median of 32 iterations.",
+  "runs": 32,
+  "date": "2026-11-08",
+  "scenarios": [
+    {
+      "id": "first-command",
+      "tab": "Everything loaded",
+      "title": "Time until the first command runs",
+      "metric": "first command lag · ms (lower is better)",
+      "note": "Same workload everywhere: compinit, zsh-autosuggestions + zsh-syntax-highlighting, 20 aliases, 10 PATH entries, 5 env vars; no prompt theme (PROMPT='%1~ %# '), all loaded before the first prompt. 'zsh, no config' is the floor (zsh + /etc/zshrc). 'hand-written (compinit -C)' skips compinit's security audit and dump freshness check.",
+      "results": [
+        {
+          "name": "zsh, no config",
+          "value": 23.0
+        },
+        {
+          "name": "wayu",
+          "value": 65.5,
+          "highlight": true
+        },
+        {
+          "name": "hand-written (compinit -C)",
+          "value": 67.7
+        },
+        {
+          "name": "antidote",
+          "value": 79.6
+        },
+        {
+          "name": "hand-written .zshrc",
+          "value": 82.9
+        },
+        {
+          "name": "oh-my-zsh",
+          "value": 101.3
+        },
+        {
+          "name": "zinit",
+          "value": 103.7
+        }
+      ],
+      "versions": {
+        "wayu": "develop 1ebbe5e (next release)",
+        "oh-my-zsh": "cca3bdf",
+        "zinit": "cb49681 (v3.17.1+10)",
+        "antidote": "e661279 (v2.3.0+3)",
+        "zsh-autosuggestions": "85919cd (v0.7.1+6)",
+        "zsh-syntax-highlighting": "e6683f2 (0.8.0+8)",
+        "zsh-bench": "28b1b1b"
+      }
+    },
+    {
+      "id": "deferred",
+      "tab": "Deferred plugins",
+      "title": "Time to first prompt with deferred plugin loading",
+      "metric": "first prompt lag · ms (lower is better)",
+      "note": "Same workload; plugins load after the prompt is drawn (wayu defer_plugins = true, antidote kind:defer, zinit turbo per its README, which also defers compinit; wayu and antidote run compinit before the prompt). Plugins are not active yet when the very first command runs.",
+      "results": [
+        {
+          "name": "wayu (defer_plugins)",
+          "value": 30.5,
+          "highlight": true
+        },
+        {
+          "name": "antidote (kind:defer)",
+          "value": 51.1
+        },
+        {
+          "name": "zinit (turbo)",
+          "value": 56.4
+        }
+      ],
+      "versions": {
+        "wayu": "develop 1ebbe5e (next release)",
+        "zinit": "cb49681 (v3.17.1+10)",
+        "antidote": "e661279 (v2.3.0+3)",
+        "zsh-defer": "53a26e2",
+        "zsh-autosuggestions": "85919cd (v0.7.1+6)",
+        "zsh-syntax-highlighting": "e6683f2 (0.8.0+8)",
+        "zsh-bench": "28b1b1b"
+      }
+    },
+    {
+      "id": "optimize",
+      "tab": "wayu optimize",
+      "title": "A hand-grown .zshrc before and after wayu optimize",
+      "metric": "first command lag · ms (lower is better)",
+      "note": "A .zshrc with the same workload plus plain compinit and eval \"$(tool completion zsh)\" for 3 CLIs that take ~25 ms to start (simulated); after `wayu optimize --yes` the PATH/env/alias lines move to wayu, compinit is wayu's, and the completion output is cached.",
+      "results": [
+        {
+          "name": "after wayu optimize",
+          "value": 62.2,
+          "highlight": true
+        },
+        {
+          "name": "before",
+          "value": 210.2
+        }
+      ],
+      "versions": {
+        "wayu": "develop 1ebbe5e (next release)",
+        "zsh-autosuggestions": "85919cd (v0.7.1+6)",
+        "zsh-syntax-highlighting": "e6683f2 (0.8.0+8)",
+        "zsh-bench": "28b1b1b"
+      }
+    }
   ]
-}</pre>
-          </article>
+}
+    </script>
 
-          <p class="merge reveal" aria-hidden="true"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4 9l4 4 4-4"/></svg>both compile into one file<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4 9l4 4 4-4"/></svg></p>
-          <article class="file gen reveal" style="--i:2">
-            <p class="file-who">Your shell sources</p>
-            <h3><code>core.zsh</code></h3>
-            <p>Straight-line code, regenerated after every change (zcompiled for zsh). Lazy loaders, the prompt and PATH sync are function definitions and hooks, not startup work.</p>
-            <p class="path">~/.local/share/wayu/core.zsh (generated)</p>
-<pre><span class="c-com"># === Environment ===</span>
-export GOPATH=<span class="c-str">"${HOME}/go"</span>
-
-<span class="c-com"># === Secrets (encrypted store, per-session cache) ===</span>
-<span class="c-com"># fresh cache: source it; else `wayu secrets cache` once</span>
-[ -O "$_wayu_sc" ] &amp;&amp; … &amp;&amp; source "$_wayu_sc"
-
-<span class="c-com"># === PATH (live-synced at each prompt) ===</span>
-_wayu_paths_apply &lt;sig&gt; ${HOME:+<span class="c-str">"${HOME}"'/.cargo/bin'</span>}
-
-<span class="c-com"># === Aliases ===</span>
-alias gs=<span class="c-str">'git status -sb'</span></pre>
-          </article>
-        </div>
-        <div class="files-note reveal">
-          <p>Excerpts above are shortened. Your rc file gets one line, which <code>wayu init</code> offers to add; bash and fish get <code>init.bash</code> and <code>init.fish</code> from the same entries.</p>
-          <div class="block">
-<pre>source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh"</pre>
-                <button class="icon-btn copy-btn" type="button" data-copy="source &quot;${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh&quot;" aria-label="Copy the rc line">
-                  <svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg>
-                  <svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
-                </button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── Scripts ───────────────────────────────────────────────────── -->
-    <section class="sec-alt" id="scripts" aria-labelledby="scripts-title">
-      <div class="wrap split">
-        <div>
-          <div class="sec-head reveal">
-            <p class="kicker">wayu script</p>
-            <h2 id="scripts-title">Small tools in any language, already on your PATH.</h2>
-            <p class="lede">Scripts get the same treatment as aliases: one command to create, list or remove, and a directory wayu manages.</p>
-          </div>
-          <ul class="points">
-            <li class="reveal" style="--i:0"><span><strong><code>wayu script new today --lang python</code></strong> writes a skeleton with the interpreter's absolute path as the shebang, opens <code>$EDITOR</code>, then links it into <code>bin/</code>, which is first among wayu's PATH entries.</span></li>
-            <li class="reveal" style="--i:1"><span><strong>Swift is compiled</strong> with <code>swiftc -O</code>. <code>wayu build</code> rebuilds only scripts whose source hash changed.</span></li>
-            <li class="reveal" style="--i:2"><span><strong><code>wayu script import</code></strong> adopts scripts you already have in <code>~/.local/bin</code> or <code>~/bin</code>, skipping binaries, symlinks and package-manager launchers. <code>--dry-run</code> shows what it would do.</span></li>
-            <li class="reveal" style="--i:3"><span><strong><code>wayu doctor</code></strong> reports stale or broken scripts and <code>bin/</code> entries without a source.</span></li>
-          </ul>
-        </div>
-        <div class="code-stack">
-          <div class="code-card reveal" style="--i:1">
-            <header><span>zsh</span><span>import</span></header>
-<pre><span class="t-dir">~</span> <span class="t-arr">❯</span> wayu script import ~/.local/bin/hello --dry-run
-<span class="t-dim">   DRY RUN - No changes will be made</span>
-  import  ~/.local/bin/hello -&gt; ~/.local/share/wayu/scripts/hello.sh (sh, move)</pre>
-          </div>
-          <div class="code-card reveal" style="--i:2">
-            <header><span>zsh</span><span>create, then list</span></header>
-<pre><span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> wayu script new ask --lang python
-<span class="t-ok">✓ Created script: ~/.local/share/wayu/scripts/ask.py</span>
-<span class="t-ok">✓ Linked ~/.local/share/wayu/bin/ask -&gt; ../scripts/ask.py</span>
-
-<span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> wayu script list
-  ask  python  ok     ~/.local/share/wayu/scripts/ask.py</pre>
-          </div>
-          <div class="langs-wrap reveal" style="--i:3">
-            <p class="langs-label" id="langs-label">Languages</p>
-            <ul class="langs" aria-labelledby="langs-label">
-              <li class="hl">swift</li><li>python</li><li>ruby</li><li>node</li><li>bun</li><li>bash</li><li>zsh</li><li>fish</li><li>perl</li><li>lua</li><li>sh</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── Secrets ───────────────────────────────────────────────────── -->
-    <section id="secrets" aria-labelledby="secrets-title">
-      <div class="wrap split flip">
-        <div>
-          <div class="sec-head reveal">
-            <p class="kicker">Encrypted constants</p>
-            <h2 id="secrets-title">API keys out of your dotfiles, without slowing startup.</h2>
-            <p class="lede">A secret is a constant whose value is stored encrypted. Your config, the generated files and the backups only ever hold its name.</p>
-          </div>
-          <ul class="points">
-            <li class="reveal" style="--i:0"><span><strong><code>wayu const add NAME --secret</code></strong> reads the value with hidden input, so it stays out of argv and history, and encrypts it with ChaCha20-Poly1305.</span></li>
-            <li class="reveal" style="--i:1"><span><strong>The master key</strong> lives in the macOS Keychain, the Secret Service on Linux, or a 0600 key file: <code>[secrets] backend</code>.</span></li>
-            <li class="reveal" style="--i:2"><span><strong>Startup sources a per-session cache</strong> (0600, in your runtime dir), decrypted once and then loaded without forking. Five secrets added 0.6 ms to zsh startup in our <a href="#speed">measurement</a>.</span></li>
-            <li class="reveal" style="--i:3"><span><strong>Run-only secrets</strong> (<code>--run-only</code>) are never exported to your shell. <code>wayu secrets run NAME -- cmd</code> hands them to that one command.</span></li>
-            <li class="reveal" style="--i:4"><span><strong>Masked everywhere</strong>: <code>const list</code>, <code>search</code>, the TUI and dry runs show <code>********</code>; <code>const get NAME</code> prints the value when you ask for it.</span></li>
-          </ul>
-        </div>
-        <div class="code-stack">
-          <div class="code-card reveal" style="--i:1">
-            <header><span>zsh</span><span>store</span></header>
-<pre><span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> wayu const add OPENAI_API_KEY --run-only
-Value for OPENAI_API_KEY (input hidden):
-<span class="t-ok">✓ Secret added (encrypted) (run-only: wayu secrets run): OPENAI_API_KEY</span>
-
-<span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> wayu secrets list
-OPENAI_API_KEY  run-only</pre>
-          </div>
-          <div class="code-card reveal" style="--i:2">
-            <header><span>zsh</span><span>use for one command</span></header>
-<pre><span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> echo ${OPENAI_API_KEY:-not set in this shell}
-not set in this shell
-
-<span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> wayu secrets run OPENAI_API_KEY -- ask
-ask: key sk-demo-… (40 chars) → POST /v1/responses
-
-<span class="t-dim"># or give one tool its token every time:</span>
-<span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> wayu alias add gh 'wayu secrets run GH_TOKEN -- gh'</pre>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ── Everything else ───────────────────────────────────────────── -->
+    <!-- ── Feature cards ─────────────────────────────────────────────── -->
     <section class="sec-alt" id="features" aria-labelledby="features-title">
       <div class="wrap">
         <div class="sec-head reveal">
-          <p class="kicker">Also included</p>
-          <h2 id="features-title">The rest of a shell setup.</h2>
+          <p class="kicker">What it replaces</p>
+          <h2 id="features-title">Ten jobs, one binary.</h2>
+          <p class="lede">Each card is something you used to do by hand in an rc file, or with another tool. In wayu it is a command, and the result lands in the same generated init.</p>
         </div>
-        <div class="index">
-          <div class="item reveal" style="--i:0"><h3>Native zsh prompt <code>[prompt]</code></h3><p>Opt-in. Directory, git branch read from <code>.git/HEAD</code> without running git, project context detection, an async right prompt with the changed-file count, and vi-mode with a mode indicator.</p></div>
-          <div class="item reveal" style="--i:1"><h3>Plugins <code>wayu plugin</code></h3><p>Search a built-in registry or install from a git URL. Enable, disable, set load priority, resolve dependencies, and see conflicts with your own aliases and constants.</p></div>
-          <div class="item reveal" style="--i:0"><h3>Tool loaders <code>[tools]</code></h3><p>Cache the output of <code>zoxide init zsh</code> and similar until the binary changes, or load nvm, conda and sdkman only when you first call them.</p></div>
-          <div class="item reveal" style="--i:1"><h3>Health check <code>wayu doctor</code></h3><p>Checks PATH entries, config, scripts, plugins, backups and the secrets store. Exits 78 on any error, so it can gate CI; <code>--fix</code> repairs what it can.</p></div>
-          <div class="item reveal" style="--i:0"><h3>Full-screen TUI <code>wayu</code></h3><p>Run it with no arguments to browse, filter, add and delete PATH entries, aliases and constants, and to manage plugins, backups and hooks. Vim keys and arrow keys.</p></div>
-          <div class="item reveal" style="--i:1"><h3>Scriptable CLI <code>--json</code></h3><p>Never prompts. Lists, search and doctor print JSON; exit codes follow <code>sysexits.h</code>; destructive actions need <code>--yes</code>; <code>--dry-run</code> previews any write.</p></div>
-          <div class="item reveal" style="--i:0"><h3>Live PATH in open shells</h3><p>A prompt hook re-reads the PATH list when it changed, so <code>wayu path add</code> reaches every open zsh, bash and fish at its next prompt.</p></div>
-          <div class="item reveal" style="--i:1"><h3>Backups <code>wayu backup</code></h3><p>Each file is backed up before its first write in a run; the last five are kept. Restore by index with <code>wayu backup restore</code>.</p></div>
+        <div class="cards">
+          <article class="card reveal" style="--i:0">
+            <p class="rep">replaces <s>export PATH="…:$PATH" in each rc file</s></p>
+            <h3>PATH entries</h3>
+            <p>Keyed, validated, deduplicated. Open shells pick up a change at their next prompt.</p>
+            <p class="cmd">wayu path add ~/.cargo/bin</p>
+          </article>
+          <article class="card reveal" style="--i:1">
+            <p class="rep">replaces <s>alias and export blocks</s></p>
+            <h3>Aliases &amp; constants</h3>
+            <p>Constants expand <code>$VAR</code>; values that look like credentials are masked in every list.</p>
+            <p class="cmd">wayu alias add gs 'git status -sb'</p>
+          </article>
+          <article class="card wide reveal" style="--i:2">
+            <p class="rep">replaces <s>API keys in plaintext .env files and dotfiles</s></p>
+            <h3>Encrypted secrets</h3>
+            <p>ChaCha20-Poly1305, master key in the macOS Keychain, the Secret Service or a 0600 file. Value read with hidden input; config, generated files and backups only hold the name. Run-only secrets reach one command through <code>wayu secrets run</code>.</p>
+            <p class="cmd">wayu const add OPENAI_API_KEY --secret</p>
+          </article>
+          <article class="card reveal" style="--i:0">
+            <p class="rep">replaces <s>a hand-kept ~/bin</s></p>
+            <h3>Scripts, any language</h3>
+            <p>Swift, Python, Ruby, Node, Bun, shells, Perl, Lua. Swift is compiled; the rest are linked into a dir on PATH.</p>
+            <p class="cmd">wayu script new today --lang python</p>
+          </article>
+          <article class="card reveal" style="--i:1">
+            <p class="rep">replaces <s>a separate plugin manager</s></p>
+            <h3>Plugins</h3>
+            <p>From a built-in registry or a git URL. Enable, disable, load priority, dependencies, conflict checks.</p>
+            <p class="cmd">wayu plugin add autosuggestions</p>
+          </article>
+          <article class="card reveal" style="--i:2">
+            <p class="rep">replaces <s>a prompt framework (zsh)</s></p>
+            <h3>Native prompt</h3>
+            <p>Opt-in. Git branch read from <code>.git/HEAD</code> without running git, project contexts, async right prompt, vi-mode.</p>
+            <p class="cmd toml">[prompt] enabled = true</p>
+          </article>
+          <article class="card reveal" style="--i:3">
+            <p class="rep">replaces <s>eval "$(tool init zsh)" on every start</s></p>
+            <h3>Tool loaders</h3>
+            <p>Init output cached until the binary changes; nvm, conda and sdkman load on first call.</p>
+            <p class="cmd toml">zoxide = { kind = "evalcache", args = "init zsh" }</p>
+          </article>
+          <article class="card wide reveal" style="--i:0">
+            <p class="rep">replaces <s>installer lines piling up at the end of .zshrc</s></p>
+            <h3>wayu optimize <span class="tag">new</span></h3>
+            <p>Moves <code>source &lt;(tool completion zsh)</code>, <code>eval "$(… init zsh)"</code>, <code>fpath</code> edits, a second <code>compinit</code>, PATH exports and aliases from your rc file into wayu's cached init. Shows the diff first, backs the file up, and an open shell tells you when new lines appear.</p>
+            <p class="cmd">wayu optimize --dry-run</p>
+          </article>
+          <article class="card reveal" style="--i:1">
+            <p class="rep">replaces <s>functions pasted into .zshrc</s></p>
+            <h3>Functions</h3>
+            <p>One file per function, a skeleton opened in <code>$EDITOR</code>, sourced at startup.</p>
+            <p class="cmd">wayu function add mkcd</p>
+          </article>
+          <article class="card reveal" style="--i:2">
+            <p class="rep">replaces <s>bisecting .zshrc to find what broke</s></p>
+            <h3>Doctor</h3>
+            <p>Checks PATH, config, scripts, plugins, backups, secrets and slow startup lines. Exits 78 on errors, so CI can gate on it.</p>
+            <p class="cmd">wayu doctor --fix --dry-run</p>
+          </article>
         </div>
-        <div class="code-card json-card reveal">
-          <header><span>zsh</span><span>doctor --json (excerpt)</span></header>
-<pre><span class="t-dir">~</span> <span class="t-arr">❯</span> wayu doctor --json
+      </div>
+    </section>
+
+    <!-- ── A minute with wayu ────────────────────────────────────────── -->
+    <section id="tour" aria-labelledby="tour-title">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <p class="kicker">A minute with wayu</p>
+          <h2 id="tour-title">Six steps, one terminal session.</h2>
+          <p class="lede">The output below is what wayu prints. Click a step; hover or press Pause to hold it.</p>
+        </div>
+        <div class="replay-grid reveal" id="tour-box">
+          <div class="steps" role="tablist" aria-label="Tour steps" aria-orientation="vertical" id="tour-steps"></div>
+          <div>
+            <div class="term" role="tabpanel" id="tour-panel" aria-labelledby="tour-step-0" tabindex="0">
+              <div class="term-bar"><i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i><span aria-hidden="true">zsh — ~/projects/api</span><button class="tour-toggle" type="button" id="tour-toggle" hidden>Pause</button></div>
+              <pre id="tour-term"></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="demo reveal">
+          <div>
+            <h3>The 41-second recording</h3>
+            <p>Path, alias and a run-only secret, the masked constants list, a Python script run with the secret, <code>doctor</code>, then an alias added in the TUI. Recorded with <a href="https://github.com/charmbracelet/vhs">VHS</a> in a throwaway home; the tape is in <a href="https://github.com/dvrd/wayu/tree/main/docs/demo"><code>docs/demo/</code></a>.</p>
+          </div>
+          <div class="demo-frame">
+            <video id="demo-video" muted playsinline loop preload="none" poster="demo/poster.jpg" width="1200" height="720"
+                   aria-label="Terminal recording: wayu adds a PATH entry, an alias and a run-only secret, lists constants with the secret masked, creates a Python script and runs it with the secret, runs doctor, then adds an alias in the TUI.">
+              <source src="demo/demo.mp4" type="video/mp4" />
+              <a href="demo/demo.gif">Watch the recording (GIF)</a>
+            </video>
+            <button class="demo-play" id="demo-play" type="button" aria-label="Play the recording">
+              <span><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.3-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z"/></svg>Play · 0:41</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Release callout ───────────────────────────────────────────── -->
+    <section class="sec-alt" id="release" aria-labelledby="release-title">
+      <div class="wrap">
+        <div class="release reveal">
+          <div>
+            <p class="big" aria-hidden="true"><span class="dot"></span>6.0</p>
+            <h2 id="release-title">wayu 6.0: one init file, encrypted secrets, scripts.</h2>
+            <ul class="pts">
+              <li><span>PATH entries, aliases and constants live in <code>entries.json</code> in <code>~/.local/share/wayu</code>; <code>wayu.toml</code> keeps the settings you write by hand.</span></li>
+              <li><span>Everything compiles into one straight-line <code>core.zsh</code> (zcompiled), <code>core.bash</code> or <code>core.fish</code>.</span></li>
+              <li><span><code>const add --secret</code>, <code>--run-only</code> and <code>wayu secrets</code>: encrypted constants, decrypted once per session.</span></li>
+              <li><span><code>wayu script</code>: executables in eleven languages, managed like aliases.</span></li>
+            </ul>
+            <div class="cta-row">
+              <a class="btn btn-ghost" href="docs/?p=upgrading">Upgrading from 5.x</a>
+              <a class="btn btn-ghost" href="https://github.com/dvrd/wayu/blob/main/CHANGELOG.md">Changelog</a>
+            </div>
+          </div>
+          <div>
+            <div class="tiles">
+              <div class="tile"><p class="v num"><span class="was">22.8 ms</span>9.3<small> ms</small></p><p><code>zsh -f -c 'source init.zsh'</code>, 5.0 → 6.0</p></div>
+              <div class="tile"><p class="v num"><span class="was">22.3 ms</span>16.0<small> ms</small></p><p>interactive zsh, with <code>compinit</code></p></div>
+              <div class="tile"><p class="v num">+0.6<small> ms</small></p><p>for five session secrets (8.1 → 8.7 ms)</p></div>
+              <div class="tile"><p class="v num">11</p><p>script languages; Swift compiled with <code>swiftc -O</code></p></div>
+            </div>
+            <p class="tiles-src">Startup numbers: <code>tests/benchmark/startup.sh</code> with hyperfine on macOS. The secrets figure is a 50-run hyperfine in the <code>docs/demo/setup.sh</code> home.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Batteries included ────────────────────────────────────────── -->
+    <section id="batteries" aria-labelledby="bat-title">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <p class="kicker">Batteries included</p>
+          <h2 id="bat-title">The rest of a shell setup, in the same binary.</h2>
+        </div>
+        <div class="chips reveal" role="tablist" aria-label="Features" id="bat-chips">
+          <button class="chip" role="tab" type="button" id="bt-tools" aria-controls="bp-tools" aria-selected="true">[tools]</button>
+          <button class="chip" role="tab" type="button" id="bt-prompt" aria-controls="bp-prompt" aria-selected="false" tabindex="-1">[prompt]</button>
+          <button class="chip" role="tab" type="button" id="bt-hooks" aria-controls="bp-hooks" aria-selected="false" tabindex="-1">hooks.conf</button>
+          <button class="chip" role="tab" type="button" id="bt-run" aria-controls="bp-run" aria-selected="false" tabindex="-1">secrets run</button>
+          <button class="chip" role="tab" type="button" id="bt-script" aria-controls="bp-script" aria-selected="false" tabindex="-1">script new</button>
+          <button class="chip" role="tab" type="button" id="bt-json" aria-controls="bp-json" aria-selected="false" tabindex="-1">--json</button>
+          <button class="chip" role="tab" type="button" id="bt-doctor" aria-controls="bp-doctor" aria-selected="false" tabindex="-1">doctor</button>
+        </div>
+        <div class="bat reveal">
+          <div class="bat-panel" role="tabpanel" id="bp-tools" aria-labelledby="bt-tools">
+            <div class="txt">
+              <h3>Tool loaders without the startup cost</h3>
+              <p><code>evalcache</code> runs <code>zoxide init zsh</code> once and sources the cached output until the binary changes. <code>nvm</code>, <code>conda</code> and <code>lazy</code> load on first call. <code>eager</code> loads before the prompt; <code>login_only</code> only in login shells.</p>
+              <a class="more" href="docs/?p=config#tools">[tools] reference →</a>
+            </div>
+            <div class="code"><header>~/.config/wayu/wayu.toml</header>
+<pre><span class="c-tab">[tools]</span>
+<span class="c-key">zoxide</span>   = { kind = <span class="c-str">"evalcache"</span>, args = <span class="c-str">"init zsh"</span> }
+<span class="c-key">atuin</span>    = { args = <span class="c-str">"init zsh --disable-up-arrow"</span>, eager = <span class="c-num">true</span> }
+<span class="c-key">nvm</span>      = { kind = <span class="c-str">"nvm"</span> }
+<span class="c-key">keychain</span> = { args = <span class="c-str">"--eval --quiet id_ed25519"</span>, login_only = <span class="c-num">true</span> }
+
+<span class="c-tab">[tools.sdk]</span>
+<span class="c-key">kind</span>          = <span class="c-str">"lazy"</span>
+<span class="c-key">init_script</span>   = <span class="c-str">"~/.sdkman/bin/sdkman-init.sh"</span>
+<span class="c-key">hook_commands</span> = [<span class="c-str">"sdk"</span>]</pre>
+            </div>
+          </div>
+          <div class="bat-panel" role="tabpanel" id="bp-prompt" aria-labelledby="bt-prompt" hidden>
+            <div class="txt">
+              <h3>A native zsh prompt</h3>
+              <p>Off by default. Generated into the same init: the git branch comes from <code>.git/HEAD</code>, the changed-file count from an async right prompt, and vi-mode shows its mode in the prompt character.</p>
+              <a class="more" href="docs/?p=config#prompt">[prompt] reference →</a>
+            </div>
+            <div class="code"><header>~/.config/wayu/wayu.toml</header>
+<pre><span class="c-tab">[prompt]</span>
+<span class="c-key">enabled</span> = <span class="c-num">true</span>
+<span class="c-key">vi_mode</span> = <span class="c-num">true</span>
+<span class="c-key">format</span>  = <span class="c-str">"{dir}{git_branch}[{language_context}](yellow){character} "</span>
+
+<span class="c-tab">[prompt.dir]</span>
+<span class="c-key">format</span> = <span class="c-str">"[$dir](cyan bold) "</span>
+
+<span class="c-tab">[prompt.git_branch]</span>
+<span class="c-key">format</span> = <span class="c-str">"on [$branch](magenta bold) "</span>
+
+<span class="c-tab">[prompt.character]</span>
+<span class="c-key">success_symbol</span> = <span class="c-str">"[>](green)"</span>
+<span class="c-key">error_symbol</span>   = <span class="c-str">"[x](red)"</span>
+
+<span class="c-tab">[prompt.interactive]</span>
+<span class="c-key">async_rprompt</span>  = <span class="c-num">true</span>
+<span class="c-key">rprompt_format</span> = <span class="c-str">"[ {git_pending}](242)"</span></pre>
+            </div>
+          </div>
+          <div class="bat-panel" role="tabpanel" id="bp-hooks" aria-labelledby="bt-hooks" hidden>
+            <div class="txt">
+              <h3>Hooks around every write</h3>
+              <p>Run a command before or after a PATH, alias, constant, plugin or export operation. Placeholders become quoted variables, never code; pre-hooks run only when something will change, none under <code>--dry-run</code>.</p>
+              <a class="more" href="docs/?p=config#hooksconf">hooks.conf reference →</a>
+            </div>
+            <div class="code"><header>~/.config/wayu/hooks.conf</header>
+<pre><span class="c-com"># event = command</span>
+<span class="c-key">post_path_add</span> = echo added {path} &gt;&gt; ~/hook.log
+<span class="c-key">pre_constant_remove</span> = sh -c <span class="c-str">'echo removing {name} &gt;&gt; ~/hook.log'</span>
+<span class="c-key">post_constant_remove</span> = echo <span class="c-str">"gone: $WAYU_HOOK_NAME"</span> &gt;&gt; ~/hook.log</pre>
+            </div>
+          </div>
+          <div class="bat-panel" role="tabpanel" id="bp-run" aria-labelledby="bt-run" hidden>
+            <div class="txt">
+              <h3>A token for one command, not your whole shell</h3>
+              <p>A run-only secret is never exported. <code>wayu secrets run</code> decrypts it into the environment of that one command and execs it, without a shell. Put it behind an alias and <code>gh</code> gets its token every time.</p>
+              <a class="more" href="docs/?p=config#secrets">[secrets] reference →</a>
+            </div>
+            <div class="code"><header>zsh</header>
+<pre><span class="t-arr">❯</span> wayu const add GH_TOKEN --run-only
+Value for GH_TOKEN (input hidden):
+<span class="t-ok">✓ Secret added (encrypted) (run-only: wayu secrets run): GH_TOKEN</span>
+
+<span class="t-arr">❯</span> wayu alias add gh 'wayu secrets run GH_TOKEN -- gh'
+<span class="t-ok">✓ Alias added: gh</span>
+
+<span class="t-arr">❯</span> wayu secrets list
+GH_TOKEN  run-only</pre>
+            </div>
+          </div>
+          <div class="bat-panel" role="tabpanel" id="bp-script" aria-labelledby="bt-script" hidden>
+            <div class="txt">
+              <h3>Small tools, already on PATH</h3>
+              <p><code>script new</code> writes a skeleton with the interpreter's absolute path as the shebang, opens <code>$EDITOR</code>, and links it into <code>bin/</code>, first among wayu's PATH entries. <code>script import</code> adopts what you already have in <code>~/bin</code>.</p>
+              <a class="more" href="docs/?p=cli#wayu-script-scripts">wayu script reference →</a>
+            </div>
+            <div class="code"><header>zsh</header>
+<pre><span class="t-arr">❯</span> wayu script new today --lang python
+<span class="t-ok">✓ Created script: /Users/ana/.local/share/wayu/scripts/today.py</span>
+<span class="t-ok">✓ Linked /Users/ana/.local/share/wayu/bin/today -&gt; ../scripts/today.py</span>
+
+<span class="t-arr">❯</span> wayu script list
+📜 Scripts
+  today  python  ok     /Users/ana/.local/share/wayu/scripts/today.py</pre>
+            </div>
+          </div>
+          <div class="bat-panel" role="tabpanel" id="bp-json" aria-labelledby="bt-json" hidden>
+            <div class="txt">
+              <h3>Scriptable by default</h3>
+              <p>The CLI never prompts. Lists, <code>search</code> and <code>doctor</code> print JSON with <code>--json</code>; exit codes follow <code>sysexits.h</code>; destructive actions need <code>--yes</code>; <code>--dry-run</code> previews any write.</p>
+              <a class="more" href="docs/?p=cli#json-output">JSON shapes →</a>
+            </div>
+            <div class="code"><header>zsh</header>
+<pre><span class="t-arr">❯</span> wayu path list --json
 {
-  <span class="c-key">"checks"</span>: [
-    {<span class="c-key">"name"</span>: <span class="c-str">"wayu installation"</span>, <span class="c-key">"status"</span>: <span class="c-str">"ok"</span>, <span class="c-key">"message"</span>: <span class="c-str">"wayu 6.0.0 installed"</span>, <span class="c-key">"fixable"</span>: <span class="c-num">false</span>},
-    {<span class="c-key">"name"</span>: <span class="c-str">"scripts"</span>, <span class="c-key">"status"</span>: <span class="c-str">"ok"</span>, <span class="c-key">"message"</span>: <span class="c-str">"1 script(s) built"</span>, <span class="c-key">"fixable"</span>: <span class="c-num">false</span>},
-    {<span class="c-key">"name"</span>: <span class="c-str">"secrets backend"</span>, <span class="c-key">"status"</span>: <span class="c-str">"ok"</span>, <span class="c-key">"message"</span>: <span class="c-str">"file: key present, every secret decrypts"</span>, <span class="c-key">"fixable"</span>: <span class="c-num">false</span>}
-  ],
-  <span class="c-key">"summary"</span>: {<span class="c-key">"ok"</span>: <span class="c-num">13</span>, <span class="c-key">"warnings"</span>: <span class="c-num">0</span>, <span class="c-key">"errors"</span>: <span class="c-num">0</span>, <span class="c-key">"info"</span>: <span class="c-num">1</span>, <span class="c-key">"fixable"</span>: <span class="c-num">0</span>}
-}</pre>
+  <span class="c-key">"paths"</span>: [
+    {<span class="c-key">"path"</span>: <span class="c-str">"/Users/ana/.cargo/bin"</span>, <span class="c-key">"source"</span>: <span class="c-str">"wayu"</span>, <span class="c-key">"exists"</span>: <span class="c-num">true</span>}
+  ]
+}
+
+<span class="t-arr">❯</span> wayu alias list --json | jq -r '.aliases[].command'
+git status -sb</pre>
+            </div>
+          </div>
+          <div class="bat-panel" role="tabpanel" id="bp-doctor" aria-labelledby="bt-doctor" hidden>
+            <div class="txt">
+              <h3>One health check for the whole setup</h3>
+              <p>PATH entries, config, scripts, plugins, backups, the secrets store and key, and startup-file lines that cost time. <code>--fix</code> repairs what it can; any error exits 78.</p>
+              <a class="more" href="docs/?p=cli#wayu-doctor">wayu doctor reference →</a>
+            </div>
+            <div class="code"><header>zsh · excerpt</header>
+<pre><span class="t-arr">❯</span> wayu doctor
+🔬 wayu Doctor - System Health Check
+
+  <span class="t-ok">✓</span> wayu installation
+    wayu 6.0.0 installed
+  <span class="t-ok">✓</span> PATH entries
+    1 PATH entries, all valid
+  <span class="t-ok">✓</span> scripts
+    1 script(s) built
+  <span class="t-ok">✓</span> secrets backend
+    keychain: key present, every secret decrypts
+  <span class="t-ok">✓</span> startup files
+    No startup-file line after wayu loads needs to move into wayu
+  <span class="t-dim">…</span></pre>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- ── Speed ─────────────────────────────────────────────────────── -->
-    <section id="speed" aria-labelledby="speed-title">
+    <!-- ── Comparison ────────────────────────────────────────────────── -->
+    <section class="sec-alt" id="compare" aria-labelledby="cmp-title">
       <div class="wrap">
         <div class="sec-head reveal">
-          <p class="kicker">Startup time</p>
-          <h2 id="speed-title">Mostly the time it takes to start the shell.</h2>
-          <p class="lede">Everything is precomputed into one file at write time, so a new shell runs straight-line code instead of calling wayu.</p>
+          <p class="kicker">Compared</p>
+          <h2 id="cmp-title">What you get that an rc file can't give you.</h2>
         </div>
-        <div class="bars" id="bars">
-          <ul class="bars-legend" aria-label="Legend"><li>the shell alone</li><li class="w">with wayu's init</li></ul>
-          <div class="bar-group">
-            <h3>zsh 5.9</h3>
-            <div class="bar" style="--v:0.235;--i:0"><span class="lbl">empty shell, <code>zsh -f -c :</code></span><span class="track"><span class="fill"></span></span><span class="val">3.6 ms</span></div>
-            <div class="bar wayu" style="--v:0.601;--i:1"><span class="lbl">source <code>init.zsh</code></span><span class="track"><span class="fill"></span></span><span class="val">9.2 ms</span></div>
-            <div class="bar wayu" style="--v:0.954;--i:2"><span class="lbl">interactive, with <code>compinit</code></span><span class="track"><span class="fill"></span></span><span class="val">14.6 ms</span></div>
-            <div class="bar wayu" style="--v:1;--i:3"><span class="lbl">interactive + <code>[tools]</code> + prompt</span><span class="track"><span class="fill"></span></span><span class="val">15.3 ms</span></div>
-          </div>
-          <div class="bar-group">
-            <h3>bash 3.2</h3>
-            <div class="bar" style="--v:0.131;--i:4"><span class="lbl">empty shell, <code>bash --norc -c :</code></span><span class="track"><span class="fill"></span></span><span class="val">2.0 ms</span></div>
-            <div class="bar wayu" style="--v:0.281;--i:5"><span class="lbl">source <code>init.bash</code></span><span class="track"><span class="fill"></span></span><span class="val">4.3 ms</span></div>
-          </div>
+        <div class="cmp-wrap reveal" role="region" aria-labelledby="cmp-title" tabindex="0">
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th scope="col"><span class="sr-only">Capability</span></th>
+                <th scope="col" class="us"><span><span class="dot" aria-hidden="true"></span>wayu</span></th>
+                <th scope="col">Hand-written dotfiles</th>
+                <th scope="col">oh-my-zsh</th>
+                <th scope="col">zinit / antidote</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row">PATH, aliases and env vars added by command<small>add, remove, list; no editing files</small></th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+              <tr><th scope="row">Encrypted secrets<small>run-only secrets for a single command</small></th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+              <tr><th scope="row">zsh, bash and fish from one set of entries</th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span><span class="part">one file per shell</span></td><td><span class="mk n"><span class="sr-only">No</span></span><span class="part">zsh only</span></td><td><span class="mk n"><span class="sr-only">No</span></span><span class="part">zsh only</span></td></tr>
+              <tr><th scope="row">Install plugins from a git URL</th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span><span class="part">clone into $ZSH_CUSTOM by hand</span></td><td><span class="mk y"><span class="sr-only">Yes</span></span></td></tr>
+              <tr><th scope="row">Preview every write, automatic backups<small>--dry-run; backup before the first write</small></th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+              <tr><th scope="row">JSON output and sysexits exit codes</th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+              <tr><th scope="row">Full-screen TUI for entries</th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+            </tbody>
+          </table>
         </div>
-        <p class="method reveal">Mean of 40 runs with hyperfine, measured with <a href="https://github.com/dvrd/wayu/blob/main/tests/benchmark/startup.sh"><code>tests/benchmark/startup.sh</code></a>: 21 PATH entries, 60 aliases, 20 constants, warm caches, on an Apple M1 Max (macOS). The secrets figure is a separate hyperfine run (50 runs, <code>zsh -f -c 'source init.zsh'</code>) in the small demo home built by <code>docs/demo/setup.sh</code>, before and after adding five session secrets: 8.1 → 8.7 ms. Your numbers will differ; run the script, or <code>wayu build profile</code> to time each section of your own init.</p>
+        <p class="cmp-note">oh-my-zsh and zinit/antidote are good at what they do: themes, a large plugin collection, fast plugin loading. wayu can run alongside them; the table lists only what each one does out of the box.</p>
       </div>
     </section>
 
-    <!-- ── Install ───────────────────────────────────────────────────── -->
-    <section class="sec-alt" id="install" aria-labelledby="install-title">
+    <!-- ── Closing CTA ───────────────────────────────────────────────── -->
+    <section class="cta" id="install" aria-labelledby="cta-title">
       <div class="wrap">
-        <div class="sec-head reveal">
-          <p class="kicker">Install</p>
-          <h2 id="install-title">Three steps to a working setup.</h2>
-          <p class="lede">Prebuilt for macOS arm64 and Linux x86_64. Other platforms build from source.</p>
-        </div>
-        <div class="install-body">
-        <ol class="steps">
-          <li class="reveal" style="--i:0">
-            <div>
-              <h3>Install with Homebrew</h3>
-              <div class="block">
-<pre>brew tap dvrd/wayu
-brew install wayu</pre>
-                <button class="icon-btn copy-btn" type="button" data-copy="brew tap dvrd/wayu&#10;brew install wayu" aria-label="Copy Homebrew commands">
-                  <svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg>
-                  <svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
-                </button>
-              </div>
-            </div>
-          </li>
-          <li class="reveal" style="--i:1">
-            <div>
-              <h3>Create the config and wire up your shell</h3>
-              <p>Creates <code>~/.config/wayu/</code> and <code>~/.local/share/wayu/</code>, and offers to add the <code>source</code> line to your rc file. Use <code>--shell bash</code> or <code>--shell fish</code> for another shell.</p>
-              <div class="block">
-<pre>wayu init</pre>
-                <button class="icon-btn copy-btn" type="button" data-copy="wayu init" aria-label="Copy wayu init">
-                  <svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg>
-                  <svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
-                </button>
-              </div>
-            </div>
-          </li>
-          <li class="reveal" style="--i:2">
-            <div>
-              <h3>Add your first entries</h3>
-              <div class="block">
-<pre>wayu path add ~/.cargo/bin
-wayu alias add gs 'git status -sb'
-wayu const add OPENAI_API_KEY --secret
-wayu doctor</pre>
-                <button class="icon-btn copy-btn" type="button" data-copy="wayu path add ~/.cargo/bin&#10;wayu alias add gs 'git status -sb'&#10;wayu const add OPENAI_API_KEY --secret&#10;wayu doctor" aria-label="Copy first commands">
-                  <svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg>
-                  <svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
-                </button>
-              </div>
-            </div>
-          </li>
-        </ol>
-
-        <div class="more">
-        <details class="reveal">
-          <summary>Build from source</summary>
-          <div>
-            <p>Needs the <a href="https://odin-lang.org/docs/install/">Odin compiler</a> at the release named in <code>.github/odin-release</code>. <code>./build_it install</code> puts the binary in <code>~/.local/bin</code> and runs <code>wayu init</code>.</p>
-            <div class="block">
-<pre>git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu
-odin build build -out:build_it &amp;&amp; ./build_it install</pre>
-            </div>
+        <h2 id="cta-title" class="reveal">Hand your shell setup to wayu.</h2>
+        <p class="sub reveal">Prebuilt for macOS arm64 and Linux x86_64. Other platforms build from source with Odin.</p>
+        <div class="install reveal" data-install>
+          <div class="tabs" role="tablist" aria-label="Install method">
+            <button class="tab" role="tab" type="button" id="ci-brew-tab" aria-controls="ci-brew" aria-selected="true">Homebrew</button>
+            <button class="tab" role="tab" type="button" id="ci-src-tab" aria-controls="ci-src" aria-selected="false" tabindex="-1">From source</button>
           </div>
-        </details>
-        <details class="reveal">
-          <summary>Upgrading from 5.x</summary>
-          <div>
-            <p>6.0.0 moves PATH entries, aliases and constants from <code>wayu.toml</code> to <code>entries.json</code> in the data dir, and changes the rc line. Nothing is converted automatically: the steps are in the <a href="docs.html?p=upgrading">upgrade guide</a>.</p>
+          <div class="install-panel" role="tabpanel" id="ci-brew" aria-labelledby="ci-brew-tab">
+<pre><span class="p">$ </span>brew tap dvrd/wayu
+<span class="p">$ </span>brew install wayu
+<span class="p">$ </span>wayu init</pre>
+            <button class="icon-btn copy-btn" type="button" data-copy="brew tap dvrd/wayu&#10;brew install wayu&#10;wayu init" aria-label="Copy Homebrew install commands"></button>
           </div>
-        </details>
+          <div class="install-panel" role="tabpanel" id="ci-src" aria-labelledby="ci-src-tab" hidden>
+<pre><span class="p">$ </span>git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu
+<span class="p">$ </span>odin build build -out:build_it &amp;&amp; ./build_it install
+<span class="cm"># needs the Odin release in .github/odin-release</span></pre>
+            <button class="icon-btn copy-btn" type="button" data-copy="git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu&#10;odin build build -out:build_it &amp;&amp; ./build_it install" aria-label="Copy source build commands"></button>
+          </div>
+          <p class="install-note"><code>wayu init</code> offers to add one line to your rc file, e.g. for zsh: <code>source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh"</code></p>
         </div>
-        </div>
+        <p class="hero-links reveal">
+          <a href="docs/">Docs</a>
+          <a href="docs/?p=cli">CLI reference</a>
+          <a href="docs/?p=upgrading">Upgrading from 5.x</a>
+        </p>
       </div>
     </section>
   </main>
 
   <footer>
-    <div class="wrap foot">
-      <div class="foot-brand">
-        <a class="brand" href="#top" aria-label="wayu home"><span class="brand-dot" aria-hidden="true"></span>wayu</a>
-        <p><span class="foot-ver">v6.0.0</span> · MIT License · Built with <a href="https://odin-lang.org">Odin</a></p>
+    <div class="wrap">
+      <div class="foot">
+        <div class="foot-brand">
+          <a class="brand" href="#top" aria-label="wayu home"><span class="dot" aria-hidden="true"></span>wayu</a>
+          <p>Shell configuration for zsh, bash and fish, managed by commands. MIT, written in <a href="https://odin-lang.org">Odin</a>, no runtime dependencies.</p>
+        </div>
+        <nav aria-labelledby="f-docs"><h2 id="f-docs">Docs</h2>
+          <ul>
+            <li><a href="docs/?p=cli">CLI reference</a></li>
+            <li><a href="docs/?p=config">Config reference</a></li>
+            <li><a href="docs/?p=upgrading">Upgrading</a></li>
+            <li><a href="https://github.com/dvrd/wayu#quick-start">Quickstart</a></li>
+          </ul>
+        </nav>
+        <nav aria-labelledby="f-proj"><h2 id="f-proj">Project</h2>
+          <ul>
+            <li><a href="https://github.com/dvrd/wayu">GitHub</a></li>
+            <li><a href="https://github.com/dvrd/wayu/releases">Releases</a></li>
+            <li><a href="https://github.com/dvrd/wayu/blob/main/CHANGELOG.md">Changelog</a></li>
+            <li><a href="https://github.com/dvrd/wayu/blob/main/SECURITY.md">Security</a></li>
+          </ul>
+        </nav>
+        <nav aria-labelledby="f-more"><h2 id="f-more">More</h2>
+          <ul>
+            <li><a href="https://github.com/dvrd/wayu/tree/main/tests/benchmark">Benchmarks</a></li>
+            <li><a href="https://github.com/dvrd/wayu/tree/main/docs/demo">Demo tape</a></li>
+            <li><a href="https://github.com/dvrd/homebrew-wayu">Homebrew tap</a></li>
+            <li><a href="https://github.com/dvrd/wayu/blob/main/CONTRIBUTING.md">Contributing</a></li>
+          </ul>
+        </nav>
       </div>
-      <ul>
-        <li><a href="docs.html">Docs</a></li>
-        <li><a href="docs.html?p=cli">CLI reference</a></li>
-        <li><a href="docs.html?p=config">Config reference</a></li>
-        <li><a href="docs.html?p=upgrading">Upgrading</a></li>
-        <li><a href="https://github.com/dvrd/wayu">GitHub</a></li>
-        <li><a href="https://github.com/dvrd/wayu/blob/main/CHANGELOG.md">Changelog</a></li>
-      </ul>
+      <div class="foot-bottom"><span>v6.0.0 · MIT License</span><a href="#top">Back to top ↑</a></div>
     </div>
   </footer>
 
   <script>
   (function () {
+    'use strict';
     var root = document.documentElement;
     var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
-    var darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+    var lightMq = window.matchMedia('(prefers-color-scheme: light)');
+    function $(id) { return document.getElementById(id); }
+    function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
     /* Theme toggle */
-    var themeBtn = document.getElementById('theme-btn');
-    function isDark() { return root.dataset.theme ? root.dataset.theme === 'dark' : darkMq.matches; }
-    function syncThemeLabel() { themeBtn.setAttribute('aria-label', isDark() ? 'Switch to light theme' : 'Switch to dark theme'); }
+    var themeBtn = $('theme-btn');
+    function isLight() { return root.dataset.theme ? root.dataset.theme === 'light' : lightMq.matches; }
+    function syncThemeLabel() { themeBtn.setAttribute('aria-label', isLight() ? 'Switch to dark theme' : 'Switch to light theme'); }
     themeBtn.addEventListener('click', function () {
-      var next = isDark() ? 'light' : 'dark';
+      var next = isLight() ? 'dark' : 'light';
       root.dataset.theme = next;
       try { localStorage.setItem('wayu-theme', next); } catch (e) {}
       syncThemeLabel();
     });
-    darkMq.addEventListener && darkMq.addEventListener('change', syncThemeLabel);
+    if (lightMq.addEventListener) lightMq.addEventListener('change', syncThemeLabel);
     syncThemeLabel();
 
     /* Nav hairline once scrolled */
-    var nav = document.getElementById('nav');
-    function onScroll() { nav.classList.toggle('scrolled', window.scrollY > 8); }
+    var nav = $('nav');
+    function onScroll() { nav.classList.toggle('scrolled', window.scrollY > 40); }
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
 
+    /* Tabs: roving tabindex, arrow keys, Home/End. onSelect(index, tab). */
+    function tabs(list, onSelect) {
+      var items = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
+      var vertical = list.getAttribute('aria-orientation') === 'vertical';
+      function select(i, focus, fromUser) {
+        items.forEach(function (t, k) {
+          var on = k === i;
+          t.setAttribute('aria-selected', on ? 'true' : 'false');
+          t.tabIndex = on ? 0 : -1;
+          var p = t.getAttribute('aria-controls') && $(t.getAttribute('aria-controls'));
+          if (p && p !== $('tour-panel')) p.hidden = !on;
+        });
+        if (focus) items[i].focus();
+        if (onSelect) onSelect(i, items[i], fromUser);
+      }
+      items.forEach(function (t, i) {
+        t.addEventListener('click', function () { select(i, false, true); });
+        t.addEventListener('keydown', function (e) {
+          var n = items.length, j = -1;
+          var next = vertical && window.innerWidth >= 960 ? 'ArrowDown' : 'ArrowRight';
+          var prev = vertical && window.innerWidth >= 960 ? 'ArrowUp' : 'ArrowLeft';
+          if (e.key === next || e.key === 'ArrowRight' || e.key === 'ArrowDown') j = (i + 1) % n;
+          else if (e.key === prev || e.key === 'ArrowLeft' || e.key === 'ArrowUp') j = (i - 1 + n) % n;
+          else if (e.key === 'Home') j = 0;
+          else if (e.key === 'End') j = n - 1;
+          if (j < 0) return;
+          e.preventDefault();
+          select(j, true, true);
+        });
+      });
+      return { select: select, items: items };
+    }
+
+    /* Copy buttons */
+    var COPY_SVG = '<svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+    document.querySelectorAll('.copy-btn').forEach(function (btn) {
+      var timer, label = btn.getAttribute('aria-label');
+      btn.innerHTML = COPY_SVG;
+      btn.addEventListener('click', function () {
+        var text = btn.getAttribute('data-copy') || '';
+        if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+        navigator.clipboard.writeText(text).then(function () {
+          btn.classList.add('copied');
+          btn.setAttribute('aria-label', 'Copied');
+          clearTimeout(timer);
+          timer = setTimeout(function () { btn.classList.remove('copied'); btn.setAttribute('aria-label', label); }, 1600);
+        }, function () {});
+      });
+    });
+
+    /* Install boxes: both stay on the same method */
+    var installs = [];
+    document.querySelectorAll('[data-install] [role="tablist"]').forEach(function (list) {
+      var t = tabs(list, function (i, _tab, fromUser) {
+        if (!fromUser) return;
+        installs.forEach(function (o) { if (o !== t) o.select(i, false, false); });
+      });
+      installs.push(t);
+    });
+
     /* Scroll reveals */
-    var revealables = document.querySelectorAll('.reveal, #bars');
+    var revealables = document.querySelectorAll('.reveal');
     if ('IntersectionObserver' in window && !reduce.matches) {
       var io = new IntersectionObserver(function (entries) {
-        entries.forEach(function (e) {
-          if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
-        });
-      }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
+        entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+      }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
       revealables.forEach(function (el) { io.observe(el); });
     } else {
       revealables.forEach(function (el) { el.classList.add('in'); });
     }
 
-    /* Code blocks that scroll sideways must be reachable by keyboard */
-    function markScrollable() {
-      document.querySelectorAll('pre:not(#term)').forEach(function (pre) {
-        if (pre.scrollWidth > pre.clientWidth + 1) {
-          pre.setAttribute('tabindex', '0');
-          pre.setAttribute('role', 'region');
-          pre.setAttribute('aria-label', 'Code example (scrolls horizontally)');
-        } else {
-          pre.removeAttribute('tabindex'); pre.removeAttribute('role'); pre.removeAttribute('aria-label');
-        }
-      });
-    }
-    markScrollable();
-    window.addEventListener('resize', markScrollable, { passive: true });
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(markScrollable);
+    /* ── Benchmark: rendered from the JSON block ────────────────────── */
+    (function () {
+      var data;
+      try { data = JSON.parse($('bench-data').textContent); } catch (e) { return; }
+      var scen = (data.scenarios || []).filter(function (s) { return s.results && s.results.length; });
+      if (!scen.length) return;
+      var tabList = $('bench-tabs'), panels = $('bench-panels');
+      var globalMax = 0;
+      scen.forEach(function (s) { s.results.forEach(function (r) { if (r.value > globalMax) globalMax = r.value; }); });
+      // Replay slow-down: a "nice" factor so the longest bar takes ~2.5 s, same for every tab.
+      var raw = 2500 / globalMax, p10 = Math.pow(10, Math.floor(Math.log10(raw)));
+      var slow = [1, 2, 5, 10].map(function (m) { return m * p10; }).filter(function (v) { return v <= raw; }).pop() || p10;
+      function fmt(v) { return (Math.round(v * 10) / 10).toFixed(1) + ' ms'; }
 
-    /* Copy buttons */
-    document.querySelectorAll('.copy-btn').forEach(function (btn) {
-      var timer;
-      btn.addEventListener('click', function () {
-        var text = btn.getAttribute('data-copy');
-        if (!text) {
-          var pre = btn.parentElement.querySelector('pre');
-          text = pre ? pre.textContent.trim() : '';
-        }
-        var done = function () {
-          btn.classList.add('copied');
-          var label = btn.getAttribute('aria-label');
-          btn.setAttribute('aria-label', 'Copied');
-          clearTimeout(timer);
-          timer = setTimeout(function () { btn.classList.remove('copied'); btn.setAttribute('aria-label', label); }, 1600);
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(done, function () {});
-        }
+      scen.forEach(function (s, i) {
+        var max = 0; s.results.forEach(function (r) { if (r.value > max) max = r.value; });
+        var b = document.createElement('button');
+        b.className = 'tab'; b.type = 'button'; b.setAttribute('role', 'tab');
+        b.id = 'bench-t-' + s.id; b.setAttribute('aria-controls', 'bench-p-' + s.id);
+        b.setAttribute('aria-selected', i === 0 ? 'true' : 'false'); if (i) b.tabIndex = -1;
+        b.textContent = s.tab;
+        tabList.appendChild(b);
+        var p = document.createElement('div');
+        p.className = 'bench-panel'; p.id = 'bench-p-' + s.id; p.setAttribute('role', 'tabpanel'); p.setAttribute('aria-labelledby', b.id); p.hidden = i !== 0;
+        var vers = s.versions ? Object.keys(s.versions).map(function (k) { return k + ' ' + s.versions[k]; }).join(' · ') : '';
+        p.innerHTML = '<h3>' + esc(s.title) + '</h3><p class="bench-metric">' + esc(s.metric || '') + (vers ? ' · ' + esc(vers) : '') + '</p>' +
+          '<ol class="bars">' + s.results.map(function (r) {
+            return '<li class="bar' + (r.highlight ? ' hl' : '') + '" data-v="' + r.value + '" data-max="' + max + '">' +
+              '<span class="name">' + esc(r.name) + '</span><span class="track" aria-hidden="true"><span class="fill" style="--s:' + (r.value / max).toFixed(4) + '"></span></span>' +
+              '<span class="val">' + fmt(r.value) + '</span></li>';
+          }).join('') + '</ol>' + (s.note ? '<p class="bench-note">' + esc(s.note) + '</p>' : '');
+        panels.appendChild(p);
       });
-    });
-    // The source-build block has no data-copy; give it a button too.
-    document.querySelectorAll('details .block').forEach(function (block) {
-      var tpl = document.querySelector('.steps .copy-btn');
-      if (!tpl) return;
-      var b = tpl.cloneNode(true);
-      b.removeAttribute('data-copy');
-      b.setAttribute('aria-label', 'Copy build commands');
-      block.appendChild(b);
-      b.addEventListener('click', function () {
-        var text = block.querySelector('pre').textContent.trim();
-        if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () {
-          b.classList.add('copied');
-          setTimeout(function () { b.classList.remove('copied'); }, 1600);
-        }, function () {});
-      });
-    });
 
-    /* Demo video: pause control, honor reduced motion, pause off-screen */
-    var video = document.getElementById('demo-video');
-    var ctl = document.getElementById('demo-ctl');
-    var userPaused = false;
-    function syncCtl() {
-      var paused = video.paused;
-      ctl.classList.toggle('paused', paused);
-      ctl.setAttribute('aria-label', paused ? 'Play demo' : 'Pause demo');
-    }
-    if (reduce.matches) { video.removeAttribute('autoplay'); video.pause(); userPaused = true; }
-    ctl.addEventListener('click', function () {
-      if (video.paused) { userPaused = false; var p = video.play(); if (p && p.catch) p.catch(function () {}); }
-      else { userPaused = true; video.pause(); }
-    });
-    video.addEventListener('play', syncCtl);
-    video.addEventListener('pause', syncCtl);
-    syncCtl();
-    if ('IntersectionObserver' in window) {
-      new IntersectionObserver(function (entries) {
-        entries.forEach(function (e) {
-          if (!e.isIntersecting) { if (!video.paused) video.pause(); }
-          else if (!userPaused && video.paused) { var p = video.play(); if (p && p.catch) p.catch(function () {}); }
+      $('bench-cap').innerHTML = esc(data.machine) + ' · ' + esc(data.method) + (data.date ? ' · ' + esc(data.date) : '') +
+        '. Replay runs ' + slow + '× slower than real time so the bars are visible; bars grow at the same rate, so their lengths are the real proportions. ' +
+        '<a href="https://github.com/dvrd/wayu/tree/main/tests/benchmark">Reproduce it</a>, or run <code>wayu build profile</code> on your own setup.';
+
+      $('bench-table').innerHTML = scen.map(function (s) {
+        return '<table class="data-table"><caption>' + esc(s.title) + '</caption><thead><tr><th scope="col">Run</th><th scope="col" style="text-align:right">Mean</th></tr></thead><tbody>' +
+          s.results.map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td class="n">' + fmt(r.value) + '</td></tr>'; }).join('') + '</tbody></table>';
+      }).join('');
+
+      var raf = 0;
+      function setBars(panel, t) { // t: benchmark ms elapsed; Infinity = final
+        panel.querySelectorAll('.bar').forEach(function (li) {
+          var v = +li.dataset.v, m = +li.dataset.max, cur = Math.min(t, v);
+          li.querySelector('.fill').style.setProperty('--s', (cur / m).toFixed(4));
+          li.querySelector('.val').textContent = fmt(cur);
         });
-      }, { threshold: 0.25 }).observe(video);
-    }
-
-    /* Hero terminal: types the commands, prints wayu's real output */
-    var term = document.getElementById('term');
-    var PROMPT = '<span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> ';
-    var script = [
-      { cmd: 'wayu path add ~/.cargo/bin', out: [
-        '<span class="t-ok">✓ Added to PATH: /Users/ana/.cargo/bin</span>',
-        '   Open shells apply it at their next prompt; new shells pick it up automatically.'] },
-      { cmd: "wayu alias add gs 'git status -sb'", out: ['<span class="t-ok">✓ Alias added: gs</span>'] },
-      { cmd: 'wayu const add OPENAI_API_KEY --run-only', secret: true, out: [
-        '<span class="t-ok">✓ Secret added (encrypted) (run-only: wayu secrets run): OPENAI_API_KEY</span>'] },
-      { cmd: 'wayu const list', out: [
-        '<span class="t-pink">💾 Constants (wayu)</span>',
-        '<span class="t-tbl"><span class="t-pink">╭────────────────┬───────────────┬─────────────────╮</span>',
-        '<span class="t-pink">│</span> <span class="t-ok">Constant</span>       <span class="t-pink">│</span> <span class="t-ok">Value</span>         <span class="t-pink">│</span> <span class="t-ok">Source</span>          <span class="t-pink">│</span>',
-        '<span class="t-pink">├────────────────┼───────────────┼─────────────────┤</span>',
-        '<span class="t-pink">│</span> GOPATH         <span class="t-pink">│</span> /Users/ana/go <span class="t-pink">│</span> wayu            <span class="t-pink">│</span>',
-        '<span class="t-pink">│</span> OPENAI_API_KEY <span class="t-pink">│</span> ********      <span class="t-pink">│</span> wayu (run-only) <span class="t-pink">│</span>',
-        '<span class="t-pink">╰────────────────┴───────────────┴─────────────────╯</span></span>'] }
-    ];
-    var SECRET_PROMPT = 'Value for OPENAI_API_KEY (input hidden): ';
-
-    function finalHTML() {
-      var h = '';
-      script.forEach(function (s) {
-        h += PROMPT + esc(s.cmd) + '\n';
-        if (s.secret) h += SECRET_PROMPT + '\n';
-        h += s.out.join('\n') + '\n\n';
-      });
-      return h + PROMPT + '<span class="t-caret"></span>';
-    }
-    function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-
-    if (reduce.matches) { term.innerHTML = finalHTML(); return; }
-
-    var done = '', caret = '<span class="t-caret"></span>', running = false;
-    function paint(extra) { term.innerHTML = done + (extra || '') + caret; }
-    function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-    function typeLine(prefix, text) {
-      var i = 0;
-      return new Promise(function (resolve) {
-        (function step() {
-          i++;
-          paint(prefix + esc(text.slice(0, i)));
-          if (i < text.length) setTimeout(step, 28 + Math.random() * 42);
-          else resolve();
-        })();
-      });
-    }
-    async function run() {
-      running = true;
-      while (true) {
-        done = '';
-        for (var k = 0; k < script.length; k++) {
-          var s = script[k];
-          caret = '<span class="t-caret blink"></span>';
-          paint(PROMPT);
-          await wait(k === 0 ? 500 : 650);
-          caret = '<span class="t-caret"></span>';
-          await typeLine(PROMPT, s.cmd);
-          await wait(260);
-          done += PROMPT + esc(s.cmd) + '\n';
-          if (s.secret) {
-            caret = '<span class="t-caret blink"></span>';
-            paint(SECRET_PROMPT);
-            await wait(1300);  // input is hidden: nothing is echoed
-            done += SECRET_PROMPT + '\n';
-          }
-          await wait(140);
-          done += s.out.join('\n') + '\n\n';
-          paint();
-          await wait(s.out.length > 3 ? 900 : 500);
-        }
-        caret = '<span class="t-caret blink"></span>';
-        paint(PROMPT);
-        await wait(5200);
       }
-    }
-    // Start when the terminal is visible (it is, above the fold on desktop).
-    if ('IntersectionObserver' in window) {
-      var tio = new IntersectionObserver(function (entries) {
-        if (entries[0].isIntersecting && !running) { tio.disconnect(); run(); }
+      function play(panel) {
+        cancelAnimationFrame(raf);
+        if (reduce.matches) { setBars(panel, Infinity); return; }
+        var max = 0; panel.querySelectorAll('.bar').forEach(function (li) { max = Math.max(max, +li.dataset.v); });
+        var start = performance.now();
+        setBars(panel, 0);
+        (function frame(now) {
+          var t = (now - start) / slow;
+          setBars(panel, t);
+          if (t < max) raf = requestAnimationFrame(frame); else setBars(panel, Infinity);
+        })(start);
+      }
+      function current() { return panels.querySelector('.bench-panel:not([hidden])'); }
+      tabs(tabList, function (_i, _t, fromUser) { if (fromUser) play(current()); });
+      $('bench-replay').addEventListener('click', function () { play(current()); });
+      if ('IntersectionObserver' in window && !reduce.matches) {
+        var bio = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { bio.disconnect(); play(current()); } }, { threshold: 0.4 });
+        bio.observe(panels);
+      }
+    })();
+
+    /* ── A minute with wayu: stepped terminal replay ────────────────── */
+    (function () {
+      var P = '<span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> ';
+      var OK = function (s) { return '<span class="t-ok">' + s + '</span>'; };
+      var STEPS = [
+        { t: 'Add a PATH entry', c: 'wayu path add ~/.cargo/bin', lines: [
+          { cmd: 'wayu path add ~/.cargo/bin' },
+          { out: OK('✓ ✅ Added to PATH: /Users/ana/.cargo/bin') + '\n   Open shells apply it at their next prompt; new shells pick it up automatically.' } ] },
+        { t: 'Add an alias', c: "wayu alias add gs 'git status -sb'", lines: [
+          { cmd: "wayu alias add gs 'git status -sb'" },
+          { out: OK('✓ Alias added: gs') },
+          { cmd: 'wayu const add EDITOR nvim' },
+          { out: OK('✓ Constant added: EDITOR') } ] },
+        { t: 'Store a run-only secret', c: 'wayu const add GH_TOKEN --run-only', lines: [
+          { cmd: 'wayu const add GH_TOKEN --run-only' },
+          { hidden: 'Value for GH_TOKEN (input hidden): ' },
+          { out: OK('✓ Secret added (encrypted) (run-only: wayu secrets run): GH_TOKEN') },
+          { cmd: 'wayu const list' },
+          { out: '<span class="t-pink">💾 Constants (wayu)</span>\n\n<span class="t-tbl"><span class="t-pink">╭──────────┬──────────┬─────────────────╮</span>\n<span class="t-pink">│</span> <span class="t-ok">Constant</span> <span class="t-pink">│</span> <span class="t-ok">Value</span>    <span class="t-pink">│</span> <span class="t-ok">Source</span>          <span class="t-pink">│</span>\n<span class="t-pink">├──────────┼──────────┼─────────────────┤</span>\n<span class="t-pink">│</span> EDITOR   <span class="t-pink">│</span> nvim     <span class="t-pink">│</span> wayu            <span class="t-pink">│</span>\n<span class="t-pink">│</span> GH_TOKEN <span class="t-pink">│</span> ******** <span class="t-pink">│</span> wayu (run-only) <span class="t-pink">│</span>\n<span class="t-pink">╰──────────┴──────────┴─────────────────╯</span></span>' } ] },
+        { t: 'Hand it to one command', c: 'wayu secrets run GH_TOKEN -- …', lines: [
+          { cmd: 'echo ${GH_TOKEN:-not set in this shell}' },
+          { out: 'not set in this shell' },
+          { cmd: "wayu secrets run GH_TOKEN -- sh -c 'echo ${#GH_TOKEN} chars'" },
+          { out: '40 chars' } ] },
+        { t: 'Write a script', c: 'wayu script new today --lang python', lines: [
+          { cmd: 'wayu script new today --lang python' },
+          { out: OK('✓ Created script: /Users/ana/.local/share/wayu/scripts/today.py') + '\n' + OK('✓ Linked /Users/ana/.local/share/wayu/bin/today -&gt; ../scripts/today.py') },
+          { cmd: 'wayu script list' },
+          { out: '📜 Scripts\n  today  python  ok     /Users/ana/.local/share/wayu/scripts/today.py' } ] },
+        { t: 'Clean up .zshrc', c: 'wayu optimize --yes', lines: [
+          { cmd: 'wayu optimize --yes' },
+          { out: '--- ~/.zshrc\n+++ ~/.zshrc (optimized)\n<span class="t-dim">@@ -1,5 +1,1 @@</span>\n source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh"\n' +
+            '<span class="t-del">-fpath=($HOME/.docker/completions $fpath)\n-autoload -Uz compinit &amp;&amp; compinit\n-eval "$(zoxide init zsh)"\n-export PATH="$HOME/.bun/bin:$PATH"</span>\n\n' +
+            '📦 Moves into wayu\n  ~/.zshrc:2  fpath      $HOME/.docker/completions\n  ~/.zshrc:3  compinit   removed (wayu already runs compinit)\n  ~/.zshrc:4  generator  zoxide init zsh  (zsh, cached by the evalcache)\n  ~/.zshrc:5  path       $HOME/.bun/bin (front)\n\n' +
+            OK('✓ Moved 4 lines into wayu; open a new shell to use them') + '\n  Undo ~/.zshrc: wayu backup restore .zshrc --yes\n  (and \'wayu backup restore entries --yes\' for the entries)' } ] }
+      ];
+      var list = $('tour-steps'), term = $('tour-term'), toggle = $('tour-toggle'), box = $('tour-box');
+      STEPS.forEach(function (s, i) {
+        var b = document.createElement('button');
+        b.className = 'step'; b.type = 'button'; b.setAttribute('role', 'tab'); b.id = 'tour-step-' + i;
+        b.setAttribute('aria-controls', 'tour-panel'); b.setAttribute('aria-selected', i ? 'false' : 'true'); if (i) b.tabIndex = -1;
+        b.innerHTML = '<span class="n">0' + (i + 1) + '</span><span class="t">' + esc(s.t) + '</span><span class="c">' + esc(s.c) + '</span><span class="prog" aria-hidden="true"></span>';
+        list.appendChild(b);
       });
-      tio.observe(term);
-    } else { run(); }
+      var steps = list.querySelectorAll('.step');
+      var CARET = '<span class="t-caret blink"></span>';
+      function fullHTML(s) {
+        var h = '';
+        s.lines.forEach(function (l) {
+          if (l.cmd) h += P + esc(l.cmd) + '\n';
+          else if (l.hidden) h += esc(l.hidden) + '\n';
+          else h += l.out + '\n\n';
+        });
+        return h + P + CARET;
+      }
+
+      var cur = 0, token = 0, hover = false, held = false, started = false, auto = !reduce.matches;
+      var HOLD = 4200;
+      function sleep(ms, tk, prog) { // pause-aware; resolves false when cancelled
+        return new Promise(function (resolve) {
+          var left = ms, last = performance.now();
+          (function tick() {
+            if (tk !== token) return resolve(false);
+            var now = performance.now();
+            if (!(held || (prog && hover))) left -= now - last;
+            last = now;
+            if (prog) prog.style.transform = 'scaleX(' + Math.min(1, 1 - left / ms).toFixed(3) + ')';
+            if (left <= 0) return resolve(true);
+            setTimeout(tick, 40);
+          })();
+        });
+      }
+      function setState() { toggle.textContent = held ? 'Play' : 'Pause'; toggle.setAttribute('aria-pressed', held ? 'true' : 'false'); }
+      if (auto) { toggle.hidden = false; toggle.addEventListener('click', function () { held = !held; setState(); }); setState(); }
+      async function show(i) {
+        var tk = ++token;
+        cur = i;
+        steps.forEach(function (b) { b.querySelector('.prog').style.transform = 'scaleX(0)'; });
+        $('tour-panel').setAttribute('aria-labelledby', 'tour-step-' + i);
+        var s = STEPS[i];
+        if (!auto) { term.innerHTML = fullHTML(s); return; }
+        var done = '';
+        for (var k = 0; k < s.lines.length; k++) {
+          var l = s.lines[k];
+          if (l.cmd) {
+            term.innerHTML = done + P + CARET;
+            if (!(await sleep(k ? 450 : 350, tk))) return;
+            for (var c = 1; c <= l.cmd.length; c++) {
+              term.innerHTML = done + P + esc(l.cmd.slice(0, c)) + '<span class="t-caret"></span>';
+              if (!(await sleep(16 + Math.random() * 30, tk))) return;
+            }
+            if (!(await sleep(220, tk))) return;
+            done += P + esc(l.cmd) + '\n';
+          } else if (l.hidden) {
+            term.innerHTML = done + esc(l.hidden) + CARET;
+            if (!(await sleep(1100, tk))) return; // input is hidden: nothing is echoed
+            done += esc(l.hidden) + '\n';
+          } else {
+            done += l.out + '\n\n';
+            term.innerHTML = done + P + CARET;
+          }
+        }
+        term.innerHTML = done + P + CARET;
+        if (!(await sleep(HOLD, tk, steps[i].querySelector('.prog')))) return;
+        tabsApi.select((i + 1) % STEPS.length, false, false);
+      }
+      var tabsApi = tabs(list, function (i, _t, fromUser) { if (fromUser) started = true; show(i); });
+      box.addEventListener('mouseenter', function () { hover = true; });
+      box.addEventListener('mouseleave', function () { hover = false; });
+      term.innerHTML = fullHTML(STEPS[0]);
+      if (auto && 'IntersectionObserver' in window) {
+        var tio = new IntersectionObserver(function (es) {
+          if (es[0].isIntersecting && !started) { started = true; tio.disconnect(); show(0); }
+        }, { threshold: 0.35 });
+        tio.observe(box);
+      } else if (auto) { show(0); }
+    })();
+
+    /* Demo video: loads only when asked */
+    var video = $('demo-video'), playBtn = $('demo-play');
+    playBtn.addEventListener('click', function () {
+      video.setAttribute('controls', '');
+      playBtn.remove();
+      var p = video.play(); if (p && p.catch) p.catch(function () {});
+    });
+
+    /* Static tabs (batteries) */
+    tabs($('bat-chips'));
+
   })();
   </script>
 </body>
