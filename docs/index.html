@@ -2,2529 +2,932 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>wayu — Shell config management that gets out of the way</title>
-  <meta name="description" content="A zero-dependency CLI for Zsh and Bash (Fish experimental). Manage PATH, aliases, env vars, and plugins with one command. Every change backed up automatically. Written in pure Odin." />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>wayu — shell configuration, managed by commands</title>
+  <meta name="description" content="wayu manages PATH entries, aliases, environment variables, encrypted secrets, scripts and plugins for zsh, bash and fish, and compiles them into one file your shell sources at startup." />
 
-  <!-- Open Graph -->
-  <meta property="og:title" content="wayu — Shell config management that gets out of the way" />
-  <meta property="og:description" content="A zero-dependency CLI for Zsh and Bash. Manage PATH, aliases, env vars, and plugins with one command." />
-  <!-- TODO: create og.png (1200×630) and uncomment -->
-  <!-- <meta property="og:image" content="https://wayu.dvrd.io/og.png" /> -->
+  <meta property="og:title" content="wayu — shell configuration, managed by commands" />
+  <meta property="og:description" content="PATH entries, aliases, constants, encrypted secrets, scripts and plugins for zsh, bash and fish, compiled into one init file." />
+  <meta property="og:image" content="https://wayu.dvrd.io/demo/poster.jpg" />
   <meta property="og:url" content="https://wayu.dvrd.io" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
-  <!-- <meta name="twitter:image" content="https://wayu.dvrd.io/og.png" /> -->
+  <meta name="twitter:image" content="https://wayu.dvrd.io/demo/poster.jpg" />
 
-  <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
   <link rel="shortcut icon" href="favicon.ico" />
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
-  <meta name="theme-color" content="#E40050" />
+  <meta name="theme-color" content="#f5f1ec" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#141016" media="(prefers-color-scheme: dark)" />
+  <meta name="color-scheme" content="light dark" />
 
-  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400..600&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet" />
+
+  <script>
+    // Before first paint: enable JS-only styles and apply a saved theme.
+    document.documentElement.classList.add('js');
+    try {
+      var t = localStorage.getItem('wayu-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
 
   <style>
-    /* ─── DESIGN TOKENS ─────────────────────────────────────────────────── */
+    /* ── Tokens ─────────────────────────────────────────────────────────── */
     :root {
-      --black:        #000000;
-      --bg:           #0a0a0f;
-      --bg-2:         #0f0f18;
-      --bg-3:         #181825;
-      --surface:      #1c1c2e;
-      --border:       #2a2a3e;
-      --border-hot:   rgba(228,0,80,0.35);
+      --bg:        #f5f1ec;
+      --bg-2:      #ece6df;
+      --surface:   #fbf9f6;
+      --ink:       #1d1519;
+      --ink-2:     #564a50;
+      --ink-3:     #6f6268;
+      --line:      rgba(29, 21, 25, 0.12);
+      --line-2:    rgba(29, 21, 25, 0.2);
+      --accent:    #c0003f;          /* text/links on bg: 5.9:1 */
+      --accent-fill: #e40050;        /* brand fill (white text 4.6:1) */
+      --accent-soft: rgba(228, 0, 80, 0.09);
+      --on-accent: #fff8fa;
+      --shadow:    0 1px 2px rgba(29, 21, 25, 0.06), 0 8px 24px -12px rgba(29, 21, 25, 0.18);
+      --shadow-lift: 0 1px 2px rgba(29, 21, 25, 0.06), 0 18px 40px -16px rgba(29, 21, 25, 0.28);
+      --img-outline: rgba(0, 0, 0, 0.1);
 
-      --pink:         #E40050;
-      --pink-dim:     rgba(228,0,80,0.12);
-      --pink-glow:    rgba(228,0,80,0.25);
-      --teal:         #0E7490;
-      --teal-dim:     rgba(14,116,144,0.15);
-      --orange:       #C2410C;
-      --amber:        #D97706;
+      /* The terminal is dark in both themes (it matches the demo video). */
+      --term-bg:   #1e1e2e;
+      --term-bar:  #181825;
+      --term-fg:   #cdd6f4;
+      --term-dim:  #8b90a8;
+      --term-ok:   #74c7ec;
+      --term-dir:  #94e2d5;
+      --term-git:  #f5c2e7;
+      --term-arrow:#a6e3a1;
+      --term-key:  #f9e2af;
+      --term-pink: #f38ba8;
 
-      --text:         #f0f0f5;
-      --text-2:       #a0a0b8;
-      --text-3:       #606078;
-      --text-code:    #e0e0f0;
+      --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+      --font-body: 'Geist', ui-sans-serif, system-ui, sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
-      --font-sans:    'Space Grotesk', sans-serif;
-      --font-mono:    'Space Mono', monospace;
-
-      --radius-sm:    4px;
-      --radius:       8px;
-      --radius-lg:    16px;
-
-      --ease-out:     cubic-bezier(0.16, 1, 0.3, 1);
-      --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
+      --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      --ease-swap: cubic-bezier(0.2, 0, 0, 1);
+      --r-sm: 6px;
+      --r: 10px;
+      --r-lg: 16px;
+      --gutter: clamp(16px, 4vw, 40px);
+      --max: 1180px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg:        #141016;
+        --bg-2:      #1b161d;
+        --surface:   #1f1a21;
+        --ink:       #f2ecef;
+        --ink-2:     #b9adb3;
+        --ink-3:     #8f8389;
+        --line:      rgba(242, 236, 239, 0.1);
+        --line-2:    rgba(242, 236, 239, 0.18);
+        --accent:    #ff5b8f;
+        --accent-fill: #e40050;
+        --accent-soft: rgba(255, 91, 143, 0.12);
+        --shadow:    0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
+        --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.3), 0 20px 44px -16px rgba(0, 0, 0, 0.75);
+        --img-outline: rgba(255, 255, 255, 0.1);
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg:        #141016;
+      --bg-2:      #1b161d;
+      --surface:   #1f1a21;
+      --ink:       #f2ecef;
+      --ink-2:     #b9adb3;
+      --ink-3:     #8f8389;
+      --line:      rgba(242, 236, 239, 0.1);
+      --line-2:    rgba(242, 236, 239, 0.18);
+      --accent:    #ff5b8f;
+      --accent-fill: #e40050;
+      --accent-soft: rgba(255, 91, 143, 0.12);
+      --shadow:    0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
+      --shadow-lift: 0 1px 2px rgba(0, 0, 0, 0.3), 0 20px 44px -16px rgba(0, 0, 0, 0.75);
+      --img-outline: rgba(255, 255, 255, 0.1);
     }
 
-    /* ─── RESET ─────────────────────────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html {
-      scroll-behavior: smooth;
+    /* ── Base ───────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; scroll-padding-top: 84px; }
+    @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font: 400 17px/1.6 var(--font-body);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-      text-rendering: optimizeLegibility;
-      overflow-x: hidden;
-    }
-
-    body {
-      font-family: var(--font-sans);
-      background: var(--black);
-      color: var(--text);
-      cursor: none;
-    }
-
-    /* ─── CUSTOM CURSOR ──────────────────────────────────────────────────── */
-    #cursor {
-      position: fixed;
-      width: 10px; height: 10px;
-      background: var(--pink);
-      border-radius: 50%;
-      pointer-events: none;
-      z-index: 9999;
-      transform: translate(-50%, -50%);
-      transition: width 0.2s var(--ease-out), height 0.2s var(--ease-out), opacity 0.2s;
-      mix-blend-mode: difference;
-    }
-    #cursor-ring {
-      position: fixed;
-      width: 36px; height: 36px;
-      border: 1.5px solid rgba(228,0,80,0.5);
-      border-radius: 50%;
-      pointer-events: none;
-      z-index: 9998;
-      transform: translate(-50%, -50%);
-      transition: transform 0.12s var(--ease-out), width 0.25s var(--ease-out), height 0.25s var(--ease-out), border-color 0.2s;
-    }
-    body:has(a:hover) #cursor,
-    body:has(button:hover) #cursor { width: 18px; height: 18px; }
-    body:has(a:hover) #cursor-ring,
-    body:has(button:hover) #cursor-ring { width: 52px; height: 52px; border-color: var(--pink); }
-
-    /* ─── NOISE OVERLAY ──────────────────────────────────────────────────── */
-    body::before {
-      content: '';
-      position: fixed; inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-      pointer-events: none;
-      z-index: 9997;
-      opacity: 0.5;
-    }
-
-    /* ─── SCROLLBAR ──────────────────────────────────────────────────────── */
-    ::-webkit-scrollbar { width: 4px; }
-    ::-webkit-scrollbar-track { background: var(--bg); }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-    ::-webkit-scrollbar-thumb:hover { background: var(--pink); }
-
-    /* ─── UTILITIES ──────────────────────────────────────────────────────── */
-    .container { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
-    @media (max-width: 768px) { .container { padding: 0 20px; } }
-
-    .visually-hidden {
-      position: absolute; width: 1px; height: 1px;
-      overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap;
-    }
-
-    /* ─── SMOOTH SCROLL OFFSET (fixed nav clearance) ────────────────────── */
-    section[id], div[id] {
-      scroll-margin-top: 80px;
-    }
-
-    /* ─── NAV ────────────────────────────────────────────────────────────── */
-    nav {
-      position: fixed; top: 0; left: 0; right: 0;
-      z-index: 100;
-      padding: 20px 0;
-      transition: background 0.4s, backdrop-filter 0.4s, border-bottom 0.4s;
-    }
-    nav.scrolled {
-      background: rgba(0,0,0,0.85);
-      backdrop-filter: blur(20px);
-      border-bottom: 1px solid var(--border);
-    }
-    .nav-inner {
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .nav-logo {
-      font-family: var(--font-mono);
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: var(--text);
-      text-decoration: none;
-      letter-spacing: -0.02em;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .nav-logo .logo-dot {
-      width: 8px; height: 8px;
-      background: var(--pink);
-      border-radius: 50%;
-      display: inline-block;
-      animation: pulse-dot 2.5s ease-in-out infinite;
-    }
-    @keyframes pulse-dot {
-      0%, 100% { box-shadow: 0 0 0 0 var(--pink-glow); }
-      50% { box-shadow: 0 0 0 6px transparent; }
-    }
-    .nav-links {
-      display: flex; align-items: center; gap: 32px;
-      list-style: none;
-    }
-    .nav-links a {
-      font-size: 0.875rem;
-      font-weight: 500;
-      color: var(--text-2);
-      text-decoration: none;
-      letter-spacing: 0.01em;
-      transition: color 0.2s;
-    }
-    .nav-links a:hover { color: var(--text); }
-    .nav-cta {
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      font-weight: 700;
-      color: var(--pink) !important;
-      border: 1px solid var(--pink);
-      padding: 8px 16px;
-      border-radius: var(--radius-sm);
-      transition: background 0.2s ease, color 0.2s ease, transform 0.12s var(--ease-spring) !important;
-    }
-    .nav-cta:hover { background: var(--pink) !important; color: var(--black) !important; }
-    .nav-cta:active { transform: scale(0.96); transition-duration: 0.1s; }
-    .nav-version {
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      color: var(--text-3);
-      background: var(--surface);
-      border: 1px solid var(--border);
-      padding: 3px 8px;
-      border-radius: 100px;
-    }
-    @media (max-width: 768px) {
-      .nav-links { display: none; }
-    }
-
-    /* ─── HERO ───────────────────────────────────────────────────────────── */
-    .hero {
-      min-height: 100vh;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      align-items: center;
-      gap: 0;
-      position: relative;
-      overflow: hidden;
-      padding-top: 80px;
-    }
-
-    /* Diagonal split background */
-    .hero::before {
-      content: '';
-      position: absolute; inset: 0;
-      background: linear-gradient(135deg,
-        var(--black) 0%,
-        var(--bg) 40%,
-        var(--bg-2) 60%,
-        var(--bg-3) 100%
-      );
-    }
-    .hero::after {
-      content: '';
-      position: absolute;
-      top: -200px; right: -200px;
-      width: 700px; height: 700px;
-      background: radial-gradient(circle, rgba(228,0,80,0.08) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    /* Diagonal divider line */
-    .hero-diagonal {
-      position: absolute;
-      top: 0; bottom: 0;
-      left: 50%;
-      width: 1px;
-      background: linear-gradient(180deg, transparent 0%, var(--border) 30%, var(--border) 70%, transparent 100%);
-      transform: rotate(8deg) translateX(-50%);
-      transform-origin: center center;
-      pointer-events: none;
-      opacity: 0.4;
-    }
-
-    .hero-left {
-      position: relative; z-index: 2;
-      padding: 80px 60px 80px 0;
-    }
-    .hero-right {
-      position: relative; z-index: 2;
-      padding: 80px 0 80px 60px;
-    }
-
-    @media (max-width: 1024px) {
-      .hero {
-        grid-template-columns: 1fr;
-        min-height: auto;
-        padding: 120px 0 60px;
-      }
-      .hero-left { padding: 0 0 40px 0; }
-      .hero-right { padding: 0; }
-      .hero-diagonal { display: none; }
-    }
-
-    .hero-eyebrow {
-      display: inline-flex; align-items: center; gap: 8px;
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      font-weight: 400;
-      color: var(--pink);
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      margin-bottom: 28px;
-    }
-    .hero-eyebrow::before {
-      content: '';
-      display: block;
-      width: 24px; height: 1px;
-      background: var(--pink);
-    }
-
-    .hero-title {
-      font-size: clamp(3rem, 6vw, 5.5rem);
-      font-weight: 700;
-      line-height: 0.95;
-      letter-spacing: -0.04em;
-      margin-bottom: 28px;
-      text-wrap: balance;
-    }
-    .hero-title .line-1 { display: block; color: var(--text); }
-    .hero-title .line-2 {
-      display: block;
-      background: linear-gradient(135deg, var(--orange) 0%, var(--pink) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .hero-title .line-3 { display: block; color: var(--text-2); }
-
-    .hero-desc {
-      font-size: 1.1rem;
-      line-height: 1.7;
-      color: var(--text-2);
-      max-width: 480px;
-      margin-bottom: 44px;
-      font-weight: 300;
-      text-wrap: pretty;
-    }
-
-    .hero-actions {
-      display: flex; align-items: center; gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    .btn-primary {
-      display: inline-flex; align-items: center; gap: 10px;
-      font-family: var(--font-mono);
-      font-size: 0.875rem;
-      font-weight: 700;
-      color: var(--black);
-      background: var(--pink);
-      padding: 14px 28px;
-      border-radius: var(--radius-sm);
-      text-decoration: none;
-      border: none;
-      transition: transform 0.2s var(--ease-spring), box-shadow 0.2s;
-      box-shadow: 0 0 0 0 var(--pink-glow);
-    }
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 32px var(--pink-glow), 0 0 0 1px var(--pink);
-    }
-    .btn-primary:active {
-      transform: translateY(0) scale(0.96);
-      transition-duration: 0.1s;
-    }
-    .btn-primary:focus-visible {
-      outline: 2px solid var(--pink);
-      outline-offset: 3px;
-    }
-
-    .btn-ghost {
-      display: inline-flex; align-items: center; gap: 8px;
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      font-weight: 400;
-      color: var(--text-2);
-      text-decoration: none;
-      padding: 14px 0;
-      transition: color 0.2s;
-    }
-    .btn-ghost:hover { color: var(--text); }
-    .btn-ghost svg { transition: transform 0.2s var(--ease-spring); }
-    .btn-ghost:hover svg { transform: translateX(4px); }
-
-    .hero-meta {
-      display: flex; align-items: center; gap: 24px;
-      margin-top: 48px;
-      padding-top: 32px;
-      border-top: 1px solid var(--border);
-    }
-    .hero-stat {
-      display: flex; flex-direction: column; gap: 2px;
-    }
-    .hero-stat-num {
-      font-family: var(--font-mono);
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--text);
-      line-height: 1;
-      font-variant-numeric: tabular-nums;
-    }
-    .hero-stat-label {
-      font-size: 0.75rem;
-      color: var(--text-3);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-    .hero-stat-divider {
-      width: 1px; height: 36px;
-      background: var(--border);
-    }
-
-    /* ─── TERMINAL ───────────────────────────────────────────────────────── */
-    .terminal {
-      background: var(--bg-3);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-      box-shadow:
-        0 0 0 1px rgba(255,255,255,0.03),
-        0 32px 64px rgba(0,0,0,0.6),
-        0 0 80px rgba(228,0,80,0.06);
-      position: relative;
-    }
-    .terminal::before {
-      content: '';
-      position: absolute; inset: 0;
-      background: linear-gradient(135deg, rgba(228,0,80,0.03) 0%, transparent 50%);
-      pointer-events: none;
-    }
-    .terminal-bar {
-      display: flex; align-items: center; gap: 8px;
-      padding: 14px 18px;
-      background: rgba(255,255,255,0.03);
-      border-bottom: 1px solid var(--border);
-    }
-    .terminal-dot {
-      width: 12px; height: 12px;
-      border-radius: 50%;
-    }
-    .terminal-dot:nth-child(1) { background: #FF5F57; }
-    .terminal-dot:nth-child(2) { background: #FEBC2E; }
-    .terminal-dot:nth-child(3) { background: #28C840; }
-    .terminal-title {
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      color: var(--text-3);
-      margin-left: auto;
-      margin-right: auto;
-      transform: translateX(-18px);
-    }
-    .terminal-body {
-      padding: 24px;
-      font-family: var(--font-mono);
-      font-size: 0.82rem;
-      line-height: 1.8;
-      min-height: 320px;
-    }
-    .t-prompt {
-      color: var(--teal);
-      user-select: none;
-    }
-    .t-cmd { color: var(--text-code); }
-    .t-arg { color: var(--pink); }
-    .t-path { color: var(--amber); }
-    .t-comment { color: var(--text-3); }
-    .t-success { color: #28C840; }
-    .t-info { color: var(--teal); }
-    .t-output { color: var(--text-2); }
-    .t-line { display: block; white-space: pre; }
-    .t-line.hidden { display: none; }
-    .t-cursor {
-      display: inline-block;
-      width: 8px; height: 14px;
-      background: var(--pink);
-      vertical-align: middle;
-      animation: blink 1s step-end infinite;
-    }
-    @keyframes blink {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-    }
-
-    /* ─── SECTION SHARED ─────────────────────────────────────────────────── */
-    section { position: relative; }
-
-    .section-label {
-      display: inline-flex; align-items: center; gap: 8px;
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      font-weight: 400;
-      color: var(--pink);
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      margin-bottom: 16px;
-    }
-    .section-label::before {
-      content: '//';
-      color: var(--text-3);
-    }
-
-    .section-title {
-      font-size: clamp(2rem, 4vw, 3.2rem);
-      font-weight: 700;
-      letter-spacing: -0.03em;
-      line-height: 1.05;
-      color: var(--text);
-      text-wrap: balance;
-    }
-    .section-title em {
-      font-style: normal;
-      background: linear-gradient(135deg, var(--orange) 0%, var(--pink) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    /* ─── PROBLEM STRIP ──────────────────────────────────────────────────── */
-    .problem-strip {
-      padding: 32px 0;
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-      background: var(--bg);
-      overflow: hidden;
-    }
-    .problem-track {
-      display: flex; gap: 48px;
-      animation: scroll-left 30s linear infinite;
-      width: max-content;
-    }
-    @keyframes scroll-left {
-      from { transform: translateX(0); }
-      to { transform: translateX(-50%); }
-    }
-    .problem-item {
-      display: flex; align-items: center; gap: 12px;
-      white-space: nowrap;
-      font-family: var(--font-mono);
-      font-size: 0.85rem;
-      color: var(--text-3);
-    }
-    .problem-item .icon {
-      font-size: 1rem;
-      filter: grayscale(1) opacity(0.5);
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .problem-track { animation: none; }
-    }
-
-    /* ─── FEATURES ───────────────────────────────────────────────────────── */
-    .features {
-      padding: 120px 0;
-      background: var(--bg);
-    }
-
-    .features-header {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 80px;
-      align-items: end;
-      margin-bottom: 80px;
-    }
-    @media (max-width: 768px) {
-      .features-header { grid-template-columns: 1fr; gap: 24px; }
-    }
-
-    .features-desc {
-      font-size: 1.05rem;
-      line-height: 1.75;
-      color: var(--text-2);
-      font-weight: 300;
-      align-self: end;
-      text-wrap: pretty;
-    }
-
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1px;
-      background: var(--border);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-    }
-    @media (max-width: 1024px) {
-      .features-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-    @media (max-width: 640px) {
-      .features-grid { grid-template-columns: 1fr; }
-    }
-
-    .feature-card {
-      background: var(--bg-2);
-      padding: 36px 32px;
-      position: relative;
-      transition: background 0.25s;
-      overflow: hidden;
-    }
-    .feature-card::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 1px;
-      background: linear-gradient(90deg, transparent, var(--pink), transparent);
-      opacity: 0;
-      transition: opacity 0.3s;
-    }
-    .feature-card:hover { background: var(--bg-3); }
-    .feature-card:hover::before { opacity: 1; }
-
-    .feature-card.featured {
-      background: var(--surface);
-      grid-column: span 2;
-    }
-    .feature-card.featured:hover { background: var(--bg-3); }
-
-    @media (max-width: 1024px) {
-      .feature-card.featured { grid-column: span 1; }
-    }
-
-    .feature-icon {
-      width: 44px; height: 44px;
-      background: var(--pink-dim);
-      border: 1px solid var(--border-hot);
-      border-radius: var(--radius);
-      display: flex; align-items: center; justify-content: center;
-      margin-bottom: 20px;
-      font-size: 1.1rem;
-      transition: transform 0.2s var(--ease-spring);
-    }
-    .feature-card:hover .feature-icon { transform: scale(1.1) rotate(-3deg); }
-
-    .feature-name {
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 10px;
-      letter-spacing: -0.01em;
-      text-wrap: balance;
-    }
-    .feature-desc {
-      font-size: 0.875rem;
-      line-height: 1.65;
-      color: var(--text-2);
-      font-weight: 300;
-      text-wrap: pretty;
-    }
-
-    .feature-badge {
-      display: inline-block;
-      margin-top: 14px;
-      font-family: var(--font-mono);
-      font-size: 0.68rem;
-      color: var(--pink);
-      background: var(--pink-dim);
-      border: 1px solid var(--border-hot);
-      padding: 3px 8px;
-      border-radius: 100px;
-      letter-spacing: 0.04em;
-    }
-
-    /* ─── FEATURE GROUPS ──────────────────────────────────────────────── */
-    .feature-group {
-      margin-top: 64px;
-    }
-    .feature-group:first-of-type {
-      margin-top: 0;
-    }
-    .feature-group-header {
-      display: flex;
-      align-items: baseline;
-      gap: 24px;
-      margin-bottom: 28px;
-      padding-bottom: 18px;
-      border-bottom: 1px solid var(--border);
-    }
-    .feature-group-num {
-      font-family: var(--font-mono);
-      font-size: 0.78rem;
-      font-weight: 700;
-      color: var(--pink);
-      letter-spacing: 0.1em;
-    }
-    .feature-group-title {
-      font-size: 1.6rem;
-      font-weight: 600;
-      color: var(--text);
-      letter-spacing: -0.02em;
-      line-height: 1;
-    }
-    .feature-group-desc {
-      font-size: 0.85rem;
-      font-weight: 300;
-      color: var(--text-3);
-      line-height: 1.5;
-      margin-left: auto;
-      max-width: 480px;
-      text-align: right;
-      text-wrap: pretty;
-    }
-    @media (max-width: 768px) {
-      .feature-group-header { flex-direction: column; gap: 8px; align-items: flex-start; }
-      .feature-group-desc { text-align: left; margin-left: 0; }
-    }
-
-    /* ─── COMMANDS SHOWCASE ──────────────────────────────────────────────── */
-    .commands {
-      padding: 120px 0;
-      background: var(--black);
-      overflow: hidden;
-    }
-
-    .commands-inner {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 80px;
-      align-items: center;
-    }
-    @media (max-width: 1024px) {
-      .commands-inner { grid-template-columns: 1fr; }
-    }
-
-    .cmd-tabs {
-      display: flex; gap: 4px;
-      flex-wrap: wrap;
-      margin-bottom: 20px;
-      background: var(--bg-2);
-      padding: 4px;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-    }
-    .cmd-tab {
-      font-family: var(--font-mono);
-      font-size: 0.72rem;
-      color: var(--text-3);
-      padding: 9px 12px;
-      border-radius: 4px;
-      cursor: none;
-      transition: background 0.2s ease, color 0.2s ease, transform 0.12s var(--ease-spring);
-      border: none;
-      background: transparent;
-      white-space: nowrap;
-    }
-    .cmd-tab:active { transform: scale(0.96); }
-    .cmd-tab.active {
-      background: var(--surface);
-      color: var(--text);
-      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-    }
-    .cmd-tab:hover:not(.active) { color: var(--text-2); }
-
-    .cmd-block {
-      min-height: 485px;
-      background: var(--bg-3);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-      display: none;
-    }
-    .cmd-block.active { display: block; }
-
-    .cmd-block-bar {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 12px 18px;
-      border-bottom: 1px solid var(--border);
-      background: rgba(255,255,255,0.02);
-    }
-    .cmd-block-label {
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      color: var(--text-3);
-    }
-    .cmd-copy {
-      position: relative;
-      font-family: var(--font-mono);
-      font-size: 0.65rem;
-      color: var(--text-3);
-      background: none;
-      border: none;
-      cursor: none;
-      transition: color 0.2s ease, transform 0.12s var(--ease-spring);
-      padding: 2px 6px;
-    }
-    /* Extended hit area — visible button stays small, tap target is ~40×40 */
-    .cmd-copy::before {
-      content: '';
-      position: absolute;
-      inset: -14px -10px;
-    }
-    .cmd-copy:hover { color: var(--pink); }
-    .cmd-copy:active { transform: scale(0.96); }
-
-    .cmd-block pre {
-      padding: 24px;
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      line-height: 2;
-      overflow-x: auto;
-    }
-    .cmd-block code { color: var(--text-code); }
-    .cmd-k { color: var(--teal); }
-    .cmd-v { color: var(--pink); }
-    .cmd-p { color: var(--amber); }
-    .cmd-c { color: var(--text-3); }
-
-    .commands-right {
-      display: flex; flex-direction: column; gap: 28px;
-    }
-    .cmd-feature {
-      display: flex; gap: 20px;
-      align-items: flex-start;
-    }
-    .cmd-feature-num {
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      color: var(--pink);
-      background: var(--pink-dim);
-      border: 1px solid var(--border-hot);
-      width: 28px; height: 28px;
-      border-radius: var(--radius-sm);
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-      margin-top: 2px;
-    }
-    .cmd-feature-title {
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 6px;
-    }
-    .cmd-feature-desc {
-      font-size: 0.85rem;
-      line-height: 1.6;
-      color: var(--text-2);
-      font-weight: 300;
-    }
-
-    /* ─── ARCHITECTURE STRIP ─────────────────────────────────────────────── */
-    .arch-strip {
-      padding: 80px 0;
-      background: var(--bg);
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-    }
-    .arch-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 1px;
-      background: var(--border);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-    }
-    @media (max-width: 768px) {
-      .arch-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-    .arch-card {
-      background: var(--bg-2);
-      padding: 32px 28px;
-      position: relative;
-    }
-    .arch-card-num {
-      font-family: var(--font-mono);
-      font-size: 3rem;
-      font-weight: 700;
-      color: var(--text);
-      line-height: 1;
-      margin-bottom: 8px;
-      letter-spacing: -0.04em;
-      font-variant-numeric: tabular-nums;
-    }
-    .arch-card-num span {
-      font-size: 1.2rem;
-      color: var(--pink);
-      vertical-align: super;
-    }
-    .arch-card-label {
-      font-size: 0.8rem;
-      color: var(--text-3);
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-    .arch-card-detail {
-      margin-top: 12px;
-      font-size: 0.8rem;
-      color: var(--text-2);
-      line-height: 1.5;
-    }
-
-    /* ─── DECLARATIVE ────────────────────────────────────────────────────── */
-    .declarative {
-      padding: 120px 0;
-      background: var(--bg);
-      position: relative;
-    }
-    .declarative::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 50%;
-      width: 1px; height: 80px;
-      background: linear-gradient(180deg, transparent, var(--border));
-      transform: translateX(-50%);
-    }
-    .declarative-inner {
-      display: grid;
-      grid-template-columns: 1fr 1.1fr;
-      gap: 80px;
-      align-items: start;
-    }
-    @media (max-width: 1024px) {
-      .declarative-inner { grid-template-columns: 1fr; gap: 48px; }
-    }
-    .declarative-desc {
-      margin-top: 28px;
-      font-size: 1.05rem;
-      line-height: 1.75;
-      color: var(--text-2);
-      font-weight: 300;
-      max-width: 520px;
-      text-wrap: pretty;
-    }
-    .declarative-bullets {
-      margin-top: 36px;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-    }
-    .declarative-bullet {
-      display: flex;
-      align-items: flex-start;
-      gap: 14px;
-      font-size: 0.9rem;
-      line-height: 1.65;
-      color: var(--text-2);
-      font-weight: 300;
-    }
-    .declarative-bullet strong {
-      color: var(--text);
-      font-weight: 600;
-    }
-    .declarative-bullet code {
-      font-family: var(--font-mono);
-      font-size: 0.82em;
-      color: var(--amber);
-      background: rgba(217,119,6,0.08);
-      padding: 1px 6px;
-      border-radius: 3px;
-    }
-    .d-bullet-icon {
-      flex-shrink: 0;
-      width: 22px; height: 22px;
-      border-radius: 50%;
-      background: var(--pink-dim);
-      border: 1px solid var(--border-hot);
-      color: var(--pink);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.7rem;
-      font-weight: 700;
-      margin-top: 1px;
-    }
-
-    .toml-card {
-      background: var(--bg-3);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-      box-shadow:
-        0 0 0 1px rgba(255,255,255,0.03),
-        0 32px 64px rgba(0,0,0,0.4);
-    }
-    .toml-bar {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 12px 18px;
-      background: rgba(255,255,255,0.03);
-      border-bottom: 1px solid var(--border);
-    }
-    .toml-filename {
-      font-family: var(--font-mono);
-      font-size: 0.72rem;
-      color: var(--text-3);
-    }
-    .toml-flag {
-      font-family: var(--font-mono);
-      font-size: 0.65rem;
-      color: var(--pink);
-      background: var(--pink-dim);
-      border: 1px solid var(--border-hot);
-      padding: 2px 8px;
-      border-radius: 100px;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-    .toml-code {
-      padding: 24px 28px;
-      font-family: var(--font-mono);
-      font-size: 0.78rem;
-      line-height: 1.85;
-      overflow-x: auto;
-      color: var(--text-code);
-    }
-    .toml-section { color: var(--pink); font-weight: 700; }
-    .toml-key { color: var(--teal); }
-    .toml-str { color: var(--amber); }
-    .toml-num { color: #c084fc; }
-    .toml-bool { color: #fb7185; }
-
-    .toml-tools {
-      display: flex; gap: 10px; flex-wrap: wrap;
-      margin-top: 18px;
-    }
-    .toml-tool {
-      font-family: var(--font-mono);
-      font-size: 0.78rem;
-      padding: 8px 14px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--text-2);
-      transition: border-color 0.2s ease, transform 0.12s var(--ease-spring);
-    }
-    .toml-tool:hover { border-color: var(--border-hot); }
-    .toml-tool:active { transform: scale(0.96); }
-
-    /* ─── DOCTOR ─────────────────────────────────────────────────────────── */
-    .doctor {
-      padding: 120px 0;
-      background: var(--bg);
-      position: relative;
-    }
-    .doctor-inner {
-      display: grid;
-      grid-template-columns: 1fr 1.2fr;
-      gap: 64px;
-      align-items: start;
-    }
-    @media (max-width: 1024px) {
-      .doctor-inner { grid-template-columns: 1fr; gap: 48px; }
-    }
-    .doctor-desc {
-      margin-top: 24px;
-      font-size: 1.05rem;
-      line-height: 1.75;
-      color: var(--text-2);
-      font-weight: 300;
-      text-wrap: pretty;
-    }
-    .doctor-bullets {
-      margin-top: 32px;
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-    .doctor-bullets li {
-      font-size: 0.9rem;
-      line-height: 1.6;
-      color: var(--text-2);
-      font-weight: 300;
-      padding-left: 20px;
-      position: relative;
-    }
-    .doctor-bullets li::before {
-      content: '→';
-      position: absolute;
-      left: 0;
-      color: var(--pink);
-      font-weight: 700;
-    }
-    .doctor-bullets code {
-      font-family: var(--font-mono);
-      font-size: 0.82em;
-      color: var(--amber);
-    }
-
-    .doctor-tabs {
-      display: flex; gap: 4px;
-      margin-bottom: 16px;
-      background: var(--bg-2);
-      padding: 4px;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      width: fit-content;
-    }
-    .doctor-tab {
-      font-family: var(--font-mono);
-      font-size: 0.72rem;
-      color: var(--text-3);
-      padding: 9px 14px;
-      border-radius: 4px;
-      cursor: none;
-      transition: background 0.2s ease, color 0.2s ease, transform 0.12s var(--ease-spring);
-      border: none;
-      background: transparent;
-    }
-    .doctor-tab:active { transform: scale(0.96); }
-    .doctor-tab.active {
-      background: var(--surface);
-      color: var(--text);
-      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-    }
-    .doctor-tab:hover:not(.active) { color: var(--text-2); }
-
-    .doctor-pane { display: none; }
-    .doctor-pane.active { display: block; }
-
-    /* extra terminal token colors */
-    .t-warn { color: #FBBF24; }
-    .t-error { color: #F87171; }
-    .t-fix { color: var(--pink); }
-
-    /* JSON syntax */
-    .json-k { color: var(--teal); }
-    .json-s { color: var(--amber); }
-    .json-n { color: #c084fc; }
-    .json-b { color: #fb7185; }
-    .json-p { color: var(--text-3); }
-
-    /* ─── DUAL MODE ──────────────────────────────────────────────────────── */
-    .dual-mode {
-      padding: 120px 0;
-      background: var(--black);
-    }
-    .dual-mode-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 2px;
-      margin-top: 64px;
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-    }
-    @media (max-width: 768px) {
-      .dual-mode-grid { grid-template-columns: 1fr; }
-    }
-    .mode-card {
-      padding: 52px 48px;
-      position: relative;
-      overflow: hidden;
-    }
-    .mode-card.cli {
-      background: var(--bg-2);
-    }
-    .mode-card.tui {
-      background: var(--surface);
-    }
-    .mode-card::after {
-      content: '';
-      position: absolute;
-      bottom: -60px; right: -60px;
-      width: 200px; height: 200px;
-      border-radius: 50%;
-      pointer-events: none;
-    }
-    .mode-card.cli::after {
-      background: radial-gradient(circle, rgba(14,116,144,0.1) 0%, transparent 70%);
-    }
-    .mode-card.tui::after {
-      background: radial-gradient(circle, rgba(228,0,80,0.1) 0%, transparent 70%);
-    }
-    .mode-tag {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-family: var(--font-mono);
-      font-size: 0.7rem;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      padding: 5px 10px;
-      border-radius: 100px;
-      margin-bottom: 24px;
-    }
-    .mode-tag.cli-tag {
-      color: var(--teal);
-      background: var(--teal-dim);
-      border: 1px solid rgba(14,116,144,0.3);
-    }
-    .mode-tag.tui-tag {
-      color: var(--pink);
-      background: var(--pink-dim);
-      border: 1px solid var(--border-hot);
-    }
-    .mode-title {
-      font-size: 1.8rem;
-      font-weight: 700;
-      letter-spacing: -0.03em;
-      color: var(--text);
-      margin-bottom: 16px;
-      line-height: 1.1;
-      text-wrap: balance;
-    }
-    .mode-desc {
-      font-size: 0.95rem;
-      line-height: 1.7;
-      color: var(--text-2);
-      font-weight: 300;
-      margin-bottom: 28px;
-    }
-    .mode-points {
-      list-style: none;
-      display: flex; flex-direction: column; gap: 10px;
-    }
-    .mode-points li {
-      display: flex; align-items: flex-start; gap: 10px;
-      font-size: 0.875rem;
-      color: var(--text-2);
-      line-height: 1.5;
-    }
-    .mode-points li::before {
-      content: '›';
-      color: var(--pink);
-      font-weight: 700;
-      flex-shrink: 0;
-      margin-top: 1px;
-    }
-
-    /* ─── INSTALL ────────────────────────────────────────────────────────── */
-    .install {
-      padding: 120px 0;
-      background: var(--bg);
-    }
-    .install-inner {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 80px;
-      align-items: center;
-    }
-    @media (max-width: 1024px) {
-      .install-inner { grid-template-columns: 1fr; }
-    }
-
-    .install-steps {
-      display: flex; flex-direction: column; gap: 0;
-    }
-    .install-step {
-      display: flex; gap: 20px;
-      position: relative;
-      padding-bottom: 36px;
-    }
-    .install-step:last-child { padding-bottom: 0; }
-    .install-step::before {
-      content: '';
-      position: absolute;
-      left: 17px; top: 36px;
-      width: 1px;
-      bottom: 0;
-      background: linear-gradient(180deg, var(--border) 0%, transparent 100%);
-    }
-    .install-step:last-child::before { display: none; }
-
-    /* ─── INSTALL METHOD TABS ────────────────────────────────────────────── */
-    .install-tabs {
-      display: flex;
-      gap: 4px;
-      margin-bottom: 36px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 4px;
-      width: fit-content;
-    }
-    .install-tab {
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      padding: 9px 18px;
-      border-radius: 4px;
-      border: none;
-      background: transparent;
-      color: var(--text-3);
-      cursor: none;
-      transition: background 0.2s ease, color 0.2s ease, transform 0.12s var(--ease-spring);
-      letter-spacing: 0.02em;
-    }
-    .install-tab:active { transform: scale(0.96); }
-    .install-tab.active {
-      background: var(--pink);
-      color: #fff;
-    }
-    .install-tab:not(.active):hover {
-      color: var(--text);
-      background: rgba(255,255,255,0.06);
-    }
-    .step-num {
-      width: 36px; height: 36px;
-      border-radius: 50%;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: center;
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      color: var(--text-3);
-      flex-shrink: 0;
-      transition: background 0.2s, border-color 0.2s, color 0.2s;
-    }
-    .install-step:hover .step-num {
-      background: var(--pink-dim);
-      border-color: var(--border-hot);
-      color: var(--pink);
-    }
-    .step-content { flex: 1; }
-    .step-title {
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--text);
-      margin-bottom: 8px;
-      padding-top: 6px;
-    }
-    .step-code {
-      background: var(--bg-3);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px 18px;
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      color: var(--text-code);
-      margin-top: 10px;
-      position: relative;
-      overflow: hidden;
-    }
-    .step-code::before {
-      content: '';
-      position: absolute;
-      left: 0; top: 0; bottom: 0;
-      width: 2px;
-      background: var(--pink);
-    }
-
-    .install-right {
-      display: flex; flex-direction: column; gap: 16px;
-    }
-    .config-file {
-      background: var(--bg-2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 20px 24px;
-      transition: border-color 0.2s;
-    }
-    .config-file:hover { border-color: var(--border-hot); }
-    .config-file-name {
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      color: var(--amber);
-      margin-bottom: 6px;
-    }
-    .config-file-desc {
-      font-size: 0.82rem;
-      color: var(--text-3);
-      line-height: 1.5;
-    }
-
-    /* ─── CTA ────────────────────────────────────────────────────────────── */
-    .cta {
-      padding: 140px 0;
-      background: var(--black);
-      text-align: center;
-      position: relative;
-      overflow: hidden;
-    }
-    .cta::before {
-      content: '';
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 800px; height: 400px;
-      background: radial-gradient(ellipse, rgba(228,0,80,0.07) 0%, transparent 70%);
-      pointer-events: none;
-    }
-    .cta-eyebrow {
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      color: var(--text-3);
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      margin-bottom: 24px;
-    }
-    .cta-title {
-      font-size: clamp(2.5rem, 6vw, 5rem);
-      font-weight: 700;
-      letter-spacing: -0.04em;
-      line-height: 0.95;
-      margin-bottom: 28px;
-      text-wrap: balance;
-    }
-    .cta-title .big {
-      display: block;
-      background: linear-gradient(135deg, var(--text) 0%, var(--text-2) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .cta-title .accent {
-      display: block;
-      background: linear-gradient(135deg, var(--orange) 0%, var(--pink) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .cta-sub {
-      font-size: 1.05rem;
-      color: var(--text-2);
-      font-weight: 300;
-      margin-bottom: 48px;
-      max-width: 480px;
-      margin-left: auto; margin-right: auto;
-    }
-    .cta-actions {
-      display: flex; align-items: center; justify-content: center; gap: 16px;
-      flex-wrap: wrap;
-    }
-    .btn-outline {
-      display: inline-flex; align-items: center; gap: 8px;
-      font-family: var(--font-mono);
-      font-size: 0.875rem;
-      font-weight: 700;
-      color: var(--text);
-      background: transparent;
-      border: 1px solid var(--border);
-      padding: 14px 28px;
-      border-radius: var(--radius-sm);
-      text-decoration: none;
-      cursor: none;
-      transition: border-color 0.2s ease, color 0.2s ease, transform 0.12s var(--ease-spring);
-    }
-    .btn-outline:hover { border-color: var(--text-2); }
-    .btn-outline:active { transform: scale(0.96); transition-duration: 0.1s; }
-    .btn-outline:focus-visible { outline: 2px solid var(--pink); outline-offset: 3px; }
-
-    /* ─── FOOTER ─────────────────────────────────────────────────────────── */
-    footer {
-      padding: 48px 0;
-      border-top: 1px solid var(--border);
-      background: var(--black);
-    }
-    .footer-inner {
-      display: flex; align-items: center; justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 24px;
-    }
-    .footer-logo {
-      font-family: var(--font-mono);
-      font-size: 1rem;
-      font-weight: 700;
-      color: var(--text-3);
-      text-decoration: none;
-      display: flex; align-items: center; gap: 8px;
-    }
-    .footer-logo .logo-dot {
-      width: 6px; height: 6px;
-      background: var(--pink);
-      border-radius: 50%;
-    }
-    .footer-links {
-      display: flex; gap: 28px; list-style: none;
-    }
-    .footer-links a {
-      font-size: 0.8rem;
-      color: var(--text-3);
-      text-decoration: none;
-      transition: color 0.2s;
-    }
-    .footer-links a:hover { color: var(--text-2); }
-    .footer-copy {
-      font-size: 0.75rem;
-      color: var(--text-3);
-      font-family: var(--font-mono);
-    }
-
-    /* ─── SCROLL ANIMATIONS ──────────────────────────────────────────────── */
-    .reveal {
-      opacity: 0;
-      transform: translateY(28px);
-      transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out);
-    }
-    .reveal.visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-    .reveal-delay-1 { transition-delay: 0.1s; }
-    .reveal-delay-2 { transition-delay: 0.2s; }
-    .reveal-delay-3 { transition-delay: 0.3s; }
-    .reveal-delay-4 { transition-delay: 0.4s; }
-
-    @media (prefers-reduced-motion: reduce) {
-      .reveal { opacity: 1; transform: none; transition: none; }
-      .problem-track { animation: none; }
-      .t-cursor { animation: none; }
-      .logo-dot { animation: none; }
-    }
-
-    /* ─── FOCUS STYLES ───────────────────────────────────────────────────── */
-    :focus-visible {
-      outline: 2px solid var(--pink);
-      outline-offset: 3px;
-      border-radius: 2px;
-    }
-
-    /* ─── GLOBAL CURSOR NONE ─────────────────────────────────────────────── */
-    a, button, [role="tab"], [role="button"], input, label, select, textarea {
-      cursor: none;
-    }
-
-    /* ─── MOBILE CURSOR DISABLE ──────────────────────────────────────────── */
-    @media (hover: none) {
-      body { cursor: auto; }
-      #cursor, #cursor-ring { display: none; }
-      a, button, [role="tab"], [role="button"], input, label, select, textarea {
-        cursor: pointer;
-      }
-    }
+      overflow-x: clip;
+    }
+    h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.05; letter-spacing: -0.025em; margin: 0; text-wrap: balance; }
+    p { margin: 0; text-wrap: pretty; }
+    a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+    a:hover { text-decoration-thickness: 2px; }
+    code, pre, kbd { font-family: var(--font-mono); font-size: 0.86em; }
+    :not(pre) > code { background: var(--accent-soft); color: var(--ink); padding: 0.1em 0.35em; border-radius: 4px; overflow-wrap: anywhere; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+    ::selection { background: var(--accent-fill); color: var(--on-accent); }
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter); }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+    .skip { position: absolute; left: 12px; top: -60px; z-index: 100; background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: var(--r-sm); text-decoration: none; transition: transform 0.2s var(--ease-out); }
+    .skip:focus { transform: translateY(72px); }
+
+    /* ── Nav ────────────────────────────────────────────────────────────── */
+    .nav {
+      position: sticky; top: 0; z-index: 50;
+      background: color-mix(in srgb, var(--bg) 86%, transparent);
+      -webkit-backdrop-filter: saturate(1.4) blur(10px);
+      backdrop-filter: saturate(1.4) blur(10px);
+      box-shadow: 0 1px 0 transparent;
+      transition: box-shadow 0.25s ease;
+    }
+    .nav.scrolled { box-shadow: 0 1px 0 var(--line); }
+    .nav-inner { display: flex; align-items: center; gap: 24px; height: 64px; }
+    .brand { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); text-decoration: none; font: 800 1.35rem/1 var(--font-display); letter-spacing: -0.03em; }
+    .brand-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--accent-fill); box-shadow: 0 0 0 4px var(--accent-soft); }
+    .nav-links { display: flex; gap: 4px; margin: 0 0 0 auto; padding: 0; list-style: none; align-items: center; }
+    .nav-links a { display: inline-flex; align-items: center; min-height: 40px; padding: 0 10px; color: var(--ink-2); text-decoration: none; font-size: 0.93rem; border-radius: var(--r-sm); transition: color 0.15s ease, background-color 0.15s ease; }
+    .nav-links a:hover { color: var(--ink); background: var(--bg-2); }
+    .nav-version { font: 500 0.78rem/1 var(--font-mono); color: var(--ink-2); padding: 5px 8px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-2); font-variant-numeric: tabular-nums; }
+    .icon-btn { position: relative; display: inline-grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); cursor: pointer; transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s var(--ease-out); }
+    .icon-btn:hover { color: var(--ink); background: var(--bg-2); }
+    .icon-btn:active { transform: scale(0.96); }
+    .icon-btn svg { width: 20px; height: 20px; }
+    .theme-btn .sun, .theme-btn .moon { grid-area: 1 / 1; transition: opacity 0.3s var(--ease-swap), transform 0.3s var(--ease-swap), filter 0.3s var(--ease-swap); }
+    .theme-btn .moon { opacity: 0; transform: scale(0.25); filter: blur(4px); }
+    :root[data-theme="dark"] .theme-btn .sun { opacity: 0; transform: scale(0.25); filter: blur(4px); }
+    :root[data-theme="dark"] .theme-btn .moon { opacity: 1; transform: none; filter: none; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) .theme-btn .sun { opacity: 0; transform: scale(0.25); filter: blur(4px); }
+      :root:not([data-theme="light"]) .theme-btn .moon { opacity: 1; transform: none; filter: none; }
+    }
+    @media (max-width: 760px) { .nav-links .hide-sm { display: none; } .nav-inner { gap: 8px; } }
+
+    /* ── Buttons ────────────────────────────────────────────────────────── */
+    .btn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: var(--r); font: 500 0.95rem/1 var(--font-body); text-decoration: none; border: 0; cursor: pointer; transition: transform 0.15s var(--ease-out), background-color 0.15s ease, box-shadow 0.2s ease, color 0.15s ease; }
+    .btn:active { transform: scale(0.96); }
+    .btn-primary { background: var(--accent-fill); color: var(--on-accent); box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 6px 18px -8px rgba(228, 0, 80, 0.7); }
+    .btn-primary:hover { background: #cc0047; }
+    .btn-ghost { color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-2); background: transparent; }
+    .btn-ghost:hover { background: var(--bg-2); }
+    .btn svg { width: 16px; height: 16px; flex: none; }
+
+    /* ── Hero ───────────────────────────────────────────────────────────── */
+    .hero { padding: clamp(40px, 8vw, 96px) 0 clamp(48px, 8vw, 88px); }
+    .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(36px, 5vw, 64px); align-items: center; }
+    @media (min-width: 1000px) { .hero-grid { grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr); } }
+    .eyebrow { display: inline-flex; align-items: center; gap: 10px; font: 500 0.8rem/1.2 var(--font-mono); color: var(--ink-2); letter-spacing: 0.02em; }
+    .eyebrow::before { content: ""; width: 18px; height: 1px; background: currentColor; opacity: 0.6; }
+    .hero h1 { margin-top: 18px; font-size: clamp(2.5rem, 6vw, 4.4rem); font-weight: 800; letter-spacing: -0.04em; line-height: 0.98; }
+    .hero h1 em { font-style: normal; color: var(--accent); }
+    .hero-lede { margin-top: 22px; max-width: 34em; font-size: clamp(1.05rem, 1.6vw, 1.2rem); color: var(--ink-2); }
+    .hero-actions { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .hero-foot { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.88rem; color: var(--ink-3); }
+    .hero-foot span { display: inline; }
+    .hero-foot span::before { content: ""; display: inline-block; vertical-align: middle; width: 4px; height: 4px; margin: -2px 8px 0 0; border-radius: 50%; background: var(--ink-3); opacity: 0.7; }
+
+    /* Install one-liner with copy button */
+    .cmd { display: flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 4px 0 14px; border-radius: var(--r); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); font: 500 0.9rem/1 var(--font-mono); color: var(--ink); max-width: 100%; }
+    .cmd .p { color: var(--ink-3); user-select: none; margin-right: 6px; }
+    .cmd code { background: none; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: inherit; }
+    .copy-btn .ok, .copy-btn .cp { grid-area: 1 / 1; transition: opacity 0.25s var(--ease-swap), transform 0.25s var(--ease-swap), filter 0.25s var(--ease-swap); }
+    .copy-btn .ok { opacity: 0; transform: scale(0.25); filter: blur(4px); color: var(--accent); }
+    .copy-btn.copied .cp { opacity: 0; transform: scale(0.25); filter: blur(4px); }
+    .copy-btn.copied .ok { opacity: 1; transform: none; filter: none; }
+    .copy-btn svg { width: 18px; height: 18px; }
+
+    /* ── Terminal ───────────────────────────────────────────────────────── */
+    .term { position: relative; border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 30px 60px -30px rgba(20, 8, 16, 0.55), 0 12px 24px -12px rgba(20, 8, 16, 0.35); overflow: hidden; min-width: 0; }
+    .term-bar { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; background: var(--term-bar); }
+    .term-bar i { width: 11px; height: 11px; border-radius: 50%; background: #45475a; }
+    .term-bar i:nth-child(1) { background: #f38ba8; } .term-bar i:nth-child(2) { background: #f9e2af; } .term-bar i:nth-child(3) { background: #a6e3a1; }
+    .term-bar span { margin-left: 8px; font: 500 0.75rem/1 var(--font-mono); color: var(--term-dim); }
+    .term pre { margin: 0; padding: 18px 20px 22px; font: 400 0.82rem/1.6 var(--font-mono); white-space: pre; overflow-x: auto; min-height: calc(23 * 1.6em + 40px); tab-size: 2; }
+    @media (min-width: 521px) { .term pre { white-space: pre-wrap; overflow-wrap: anywhere; } }
+    @media (max-width: 520px) { .term pre { font-size: 0.72rem; padding: 14px 14px 18px; } }
+    .t-dir { color: var(--term-dir); font-weight: 600; } .t-git { color: var(--term-git); font-weight: 600; } .t-arr { color: var(--term-arrow); }
+    .t-tbl { display: inline-block; vertical-align: top; line-height: 1.2; white-space: pre; }
+    .t-ok { color: var(--term-ok); } .t-dim { color: var(--term-dim); } .t-key { color: var(--term-key); } .t-pink { color: var(--term-pink); }
+    .t-caret { display: inline-block; width: 0.6em; height: 1.15em; margin-bottom: -0.2em; background: #f5e0dc; }
+    @media (prefers-reduced-motion: no-preference) { .t-caret.blink { animation: blink 1.1s steps(1) infinite; } }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ── Sections ───────────────────────────────────────────────────────── */
+    section { padding: clamp(64px, 10vw, 120px) 0; }
+    .sec-alt { background: var(--bg-2); }
+    .kicker { font: 500 0.8rem/1 var(--font-mono); color: var(--accent); letter-spacing: 0.02em; }
+    .sec-head { max-width: 46rem; }
+    .sec-head h2 { margin-top: 14px; font-size: clamp(2rem, 4.6vw, 3.3rem); }
+    .sec-head p { margin-top: 18px; font-size: 1.08rem; color: var(--ink-2); }
+
+    /* Demo */
+    .demo-frame { position: relative; margin-top: 40px; border-radius: var(--r-lg); overflow: hidden; background: var(--term-bg); box-shadow: var(--shadow-lift); aspect-ratio: 1200 / 720; }
+    .demo-frame video { display: block; width: 100%; height: 100%; object-fit: cover; outline: 1px solid var(--img-outline); outline-offset: -1px; }
+    .demo-ctl { position: absolute; right: 12px; bottom: 12px; display: inline-grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 50%; background: rgba(17, 17, 27, 0.72); color: #f5f1ec; cursor: pointer; transition: transform 0.15s var(--ease-out), background-color 0.15s ease; }
+    .demo-ctl:hover { background: rgba(17, 17, 27, 0.9); }
+    .demo-ctl:active { transform: scale(0.96); }
+    .demo-ctl svg { grid-area: 1/1; width: 16px; height: 16px; transition: opacity 0.2s var(--ease-swap), transform 0.2s var(--ease-swap); }
+    .demo-ctl .play { opacity: 0; transform: scale(0.25); }
+    .demo-ctl.paused .play { opacity: 1; transform: none; }
+    .demo-ctl.paused .pause { opacity: 0; transform: scale(0.25); }
+    .demo-steps { margin: 22px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 8px 22px; color: var(--ink-2); font-size: 0.92rem; counter-reset: s; }
+    .demo-steps li { counter-increment: s; }
+    .demo-steps li::before { content: counter(s) " "; font: 500 0.78rem var(--font-mono); color: var(--accent); margin-right: 4px; }
+
+    /* Model: three files */
+    .files { margin-top: 48px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 960px) { .files { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.1fr); align-items: stretch; } }
+    .file { position: relative; display: flex; flex-direction: column; border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow); padding: 22px 22px 0; min-width: 0; overflow: hidden; transition: transform 0.3s var(--ease-out), box-shadow 0.3s var(--ease-out); }
+    .file:hover { transform: translateY(-3px); box-shadow: var(--shadow-lift); }
+    .file-who { font: 500 0.75rem/1 var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+    .file h3 { margin-top: 10px; font-size: 1.35rem; letter-spacing: -0.02em; }
+    .file h3 code { font-size: 0.82em; background: none; padding: 0; color: var(--ink); }
+    .file p { margin-top: 8px; color: var(--ink-2); font-size: 0.95rem; }
+    .file .path { margin-top: 10px; font: 400 0.78rem/1.4 var(--font-mono); color: var(--ink-3); overflow-wrap: anywhere; }
+    .file pre { margin: 18px -22px 0; padding: 16px 22px 20px; background: var(--term-bg); color: var(--term-fg); font: 400 0.76rem/1.6 var(--font-mono); overflow-x: auto; flex: 1; }
+    .file.gen { box-shadow: var(--shadow), inset 0 0 0 1.5px var(--accent-fill); }
+    .c-com { color: var(--term-dim); } .c-key { color: var(--term-ok); } .c-str { color: var(--term-arrow); } .c-tab { color: var(--term-pink); } .c-num { color: var(--term-key); }
+    .files-note { margin-top: 22px; color: var(--ink-2); font-size: 0.95rem; max-width: 52rem; }
+
+    /* Split feature sections (scripts, secrets) */
+    .split { display: grid; gap: clamp(32px, 5vw, 64px); grid-template-columns: minmax(0, 1fr); align-items: start; }
+    @media (min-width: 980px) { .split { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); } .split.flip > :first-child { order: 2; } .split > .code-stack { position: sticky; top: 96px; } }
+    .points { margin: 28px 0 0; padding: 0; list-style: none; display: grid; gap: 18px; }
+    .points li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; color: var(--ink-2); }
+    .points li::before { content: ""; width: 9px; height: 9px; margin: 0.55em 0 0 4px; border-radius: 2px; background: var(--accent-fill); transform: rotate(45deg); }
+    .points strong { color: var(--ink); font-weight: 600; }
+    .langs { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 6px; padding: 0; list-style: none; }
+    .langs li { font: 500 0.8rem/1 var(--font-mono); padding: 7px 10px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--ink-2); transition: color 0.15s ease, box-shadow 0.15s ease, transform 0.2s var(--ease-out); }
+    .langs li:hover { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); transform: translateY(-1px); }
+    .langs li.hl { color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink-3); }
+    .code-stack { display: grid; gap: 14px; min-width: 0; }
+    .code-card { border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: var(--shadow); overflow: hidden; min-width: 0; }
+    .code-card header { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; background: var(--term-bar); font: 500 0.74rem/1.3 var(--font-mono); color: var(--term-dim); }
+    .code-card pre { margin: 0; padding: 16px 18px 18px; font: 400 0.8rem/1.65 var(--font-mono); overflow-x: auto; }
+    @media (max-width: 520px) { .code-card pre { font-size: 0.72rem; } }
+    .json-card { margin-top: 40px; }
+
+    /* Feature index (not a card grid: a ruled two-column list) */
+    .index { margin-top: 48px; display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 56px; }
+    @media (min-width: 860px) { .index { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .item { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 22px 0; border-top: 1px solid var(--line); }
+    .item h3 { font-size: 1.2rem; letter-spacing: -0.015em; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+    .item h3 code { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500; letter-spacing: 0; }
+    .item p { color: var(--ink-2); font-size: 0.96rem; }
+
+    /* Speed */
+    .bars { margin-top: 44px; display: grid; gap: 28px; }
+    .bar-group h3 { font: 600 0.82rem/1 var(--font-mono); color: var(--ink-3); letter-spacing: 0.02em; margin-bottom: 12px; }
+    .bar { display: grid; grid-template-columns: minmax(0, 15rem) minmax(0, 1fr) 4.8rem; gap: 14px; align-items: center; padding: 7px 0; }
+    @media (max-width: 640px) { .bar { grid-template-columns: minmax(0, 1fr) 4.2rem; gap: 6px 10px; } .bar .track { grid-column: 1 / -1; grid-row: 2; } }
+    .bar .lbl { font-size: 0.92rem; color: var(--ink-2); }
+    .bar .lbl code { white-space: normal; }
+    .bar .track { height: 12px; border-radius: 999px; background: var(--line); overflow: hidden; }
+    .bar .fill { display: block; height: 100%; border-radius: 999px; background: var(--ink-3); transform-origin: left center; transform: scaleX(var(--v)); }
+    .bar.wayu .fill { background: var(--accent-fill); }
+    .bar .val { text-align: right; font: 600 0.92rem/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+    .method { margin-top: 30px; color: var(--ink-3); font-size: 0.88rem; max-width: 56rem; }
+
+    /* Install */
+    .steps { margin: 40px 0 0; padding: 0; list-style: none; display: grid; gap: 14px; counter-reset: st; max-width: 56rem; }
+    .steps > li { counter-increment: st; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .steps > li::before { content: counter(st); display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; font: 600 0.9rem/1 var(--font-mono); color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+    .steps h3 { font-size: 1.1rem; margin-top: 6px; letter-spacing: -0.01em; }
+    .steps p { margin-top: 6px; color: var(--ink-2); font-size: 0.95rem; }
+    .block { position: relative; margin-top: 10px; border-radius: var(--r); background: var(--term-bg); color: var(--term-fg); min-width: 0; }
+    .block pre { margin: 0; padding: 14px 56px 14px 16px; font: 400 0.82rem/1.6 var(--font-mono); overflow-x: auto; }
+    .block .copy-btn { position: absolute; top: 4px; right: 4px; color: var(--term-dim); }
+    .block .copy-btn:hover { color: var(--term-fg); background: rgba(255,255,255,0.06); }
+    .block .copy-btn .ok { color: var(--term-arrow); }
+    .alt-install { margin-top: 28px; color: var(--ink-2); font-size: 0.95rem; max-width: 56rem; }
+    details { margin-top: 14px; max-width: 56rem; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line-2); }
+    summary { cursor: pointer; padding: 14px 16px; min-height: 44px; font-weight: 500; list-style: none; display: flex; align-items: center; gap: 10px; border-radius: var(--r); }
+    summary::-webkit-details-marker { display: none; }
+    summary::before { content: ""; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform 0.2s var(--ease-out); }
+    details[open] summary::before { transform: rotate(45deg); }
+    details > div { padding: 0 16px 16px; color: var(--ink-2); font-size: 0.95rem; }
+
+    /* Footer */
+    footer { padding: 40px 0 56px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 0.9rem; }
+    .foot { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: center; justify-content: space-between; }
+    .foot ul { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0; padding: 0; list-style: none; }
+    .foot a { color: var(--ink-2); text-decoration: none; display: inline-flex; min-height: 40px; align-items: center; }
+    .foot a:hover { color: var(--ink); text-decoration: underline; }
+
+    /* ── Motion: scroll reveals (JS + no reduced motion only) ──────────── */
+    @media (prefers-reduced-motion: no-preference) {
+      .js .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out); transition-delay: calc(var(--i, 0) * 80ms); }
+      .js .reveal.in { opacity: 1; transform: none; }
+      .js .bar .fill { transform: scaleX(0); transition: transform 1.1s var(--ease-out); transition-delay: calc(var(--i, 0) * 90ms + 150ms); }
+      .js .bars.in .bar .fill { transform: scaleX(var(--v)); }
+      .js .hero .rise { opacity: 0; transform: translateY(14px); animation: rise 0.8s var(--ease-out) forwards; animation-delay: calc(var(--i, 0) * 90ms + 60ms); }
+    }
+    @keyframes rise { to { opacity: 1; transform: none; } }
   </style>
 </head>
 <body>
+  <a class="skip" href="#main">Skip to content</a>
 
-  <!-- Custom cursor -->
-  <div id="cursor" aria-hidden="true"></div>
-  <div id="cursor-ring" aria-hidden="true"></div>
-
-  <!-- ─── NAV ──────────────────────────────────────────────────────────── -->
-  <nav id="nav" role="navigation" aria-label="Main navigation">
-    <div class="container">
-      <div class="nav-inner">
-        <a href="/" class="nav-logo" aria-label="wayu home">
-          <span class="logo-dot" aria-hidden="true"></span>
-          wayu
-        </a>
+  <header class="nav" id="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="wayu home"><span class="brand-dot" aria-hidden="true"></span>wayu</a>
+      <nav aria-label="Main">
         <ul class="nav-links">
-          <li><a href="#features">Features</a></li>
-          <li><a href="#commands">Commands</a></li>
-          <li><a href="#declarative">Declarative</a></li>
-          <li><a href="#doctor">Doctor</a></li>
-          <li><a href="#install">Install</a></li>
+          <li class="hide-sm"><a href="#demo">Demo</a></li>
+          <li class="hide-sm"><a href="#scripts">Scripts</a></li>
+          <li class="hide-sm"><a href="#secrets">Secrets</a></li>
+          <li class="hide-sm"><a href="#install">Install</a></li>
+          <li class="hide-sm"><a href="https://github.com/dvrd/wayu/blob/main/docs/cli.md">Docs</a></li>
           <li><span class="nav-version" aria-label="Version 6.0.0">v6.0.0</span></li>
-          <li><a href="https://github.com/dvrd/wayu" class="nav-cta" target="_blank" rel="noopener">GitHub ↗</a></li>
+          <li>
+            <a class="icon-btn" href="https://github.com/dvrd/wayu" aria-label="wayu on GitHub">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+            </a>
+          </li>
+          <li>
+            <button class="icon-btn theme-btn" id="theme-btn" type="button" aria-label="Switch to dark theme">
+              <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+              <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.6A8.5 8.5 0 0 1 9.4 4a8.5 8.5 0 1 0 10.6 10.6Z"/></svg>
+            </button>
+          </li>
         </ul>
-      </div>
+      </nav>
     </div>
-  </nav>
+  </header>
 
-  <!-- ─── HERO ─────────────────────────────────────────────────────────── -->
-  <section class="hero" aria-labelledby="hero-title">
-    <div class="hero-diagonal" aria-hidden="true"></div>
-
-    <div class="container" style="display:contents;">
-
-      <div class="hero-left" style="padding-left: max(32px, calc((100vw - 1280px) / 2 + 32px));">
-        <div class="hero-eyebrow reveal">Shell Config Management</div>
-
-        <h1 class="hero-title reveal reveal-delay-1" id="hero-title">
-          <span class="line-1">Stop editing</span>
-          <span class="line-2">dotfiles</span>
-          <span class="line-3">by hand.</span>
-        </h1>
-
-        <p class="hero-desc reveal reveal-delay-2">
-          wayu is a zero-dependency CLI for Zsh and Bash. Manage PATH entries, aliases, env vars, and plugins with one command. Every change backed up automatically.
-        </p>
-
-        <div class="hero-actions reveal reveal-delay-3">
-          <a href="#install" class="btn-primary">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M8 2v8M4 7l4 4 4-4M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            Get Started
-          </a>
-          <a href="#features" class="btn-ghost">
-            Explore features
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </a>
-        </div>
-
-        <div class="hero-meta reveal reveal-delay-4">
-          <div class="hero-stat">
-            <span class="hero-stat-num">474</span>
-            <span class="hero-stat-label">Tests</span>
-          </div>
-          <div class="hero-stat-divider" aria-hidden="true"></div>
-          <div class="hero-stat">
-            <span class="hero-stat-num">0</span>
-            <span class="hero-stat-label">Dependencies</span>
-          </div>
-          <div class="hero-stat-divider" aria-hidden="true"></div>
-          <div class="hero-stat">
-            <span class="hero-stat-num">31K</span>
-            <span class="hero-stat-label">Lines of Odin</span>
-          </div>
-          <div class="hero-stat-divider" aria-hidden="true"></div>
-          <div class="hero-stat">
-            <span class="hero-stat-num">MIT</span>
-            <span class="hero-stat-label">License</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="hero-right reveal reveal-delay-2" style="padding-right: max(32px, calc((100vw - 1280px) / 2 + 32px));">
-        <div class="terminal" role="region" aria-label="wayu terminal demo">
-          <div class="terminal-bar" aria-hidden="true">
-            <span class="terminal-dot"></span>
-            <span class="terminal-dot"></span>
-            <span class="terminal-dot"></span>
-            <span class="terminal-title">zsh — ~/projects</span>
-          </div>
-          <div class="terminal-body" id="terminal-body" aria-live="polite" aria-atomic="false">
-            <!-- Animated by JS -->
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- ─── PROBLEM STRIP ─────────────────────────────────────────────────── -->
-  <div class="problem-strip" aria-hidden="true">
-    <div class="problem-track">
-      <span class="problem-item"><span class="icon">😤</span> PATH scattered across 4 files</span>
-      <span class="problem-item"><span class="icon">🔥</span> Corrupted .zshrc, no backup</span>
-      <span class="problem-item"><span class="icon">🤷</span> Which alias is actually loaded?</span>
-      <span class="problem-item"><span class="icon">😩</span> Switching from Zsh to Bash</span>
-      <span class="problem-item"><span class="icon">💀</span> New PATH entries silently ineffective</span>
-      <span class="problem-item"><span class="icon">🌀</span> Plugin conflicts with no debug info</span>
-      <span class="problem-item"><span class="icon">📋</span> Copy-pasting snippets into dotfiles</span>
-      <span class="problem-item"><span class="icon">🔍</span> Can't find which file exports EDITOR</span>
-      <!-- duplicate for seamless loop -->
-      <span class="problem-item"><span class="icon">😤</span> PATH scattered across 4 files</span>
-      <span class="problem-item"><span class="icon">🔥</span> Corrupted .zshrc, no backup</span>
-      <span class="problem-item"><span class="icon">🤷</span> Which alias is actually loaded?</span>
-      <span class="problem-item"><span class="icon">😩</span> Switching from Zsh to Bash</span>
-      <span class="problem-item"><span class="icon">💀</span> New PATH entries silently ineffective</span>
-      <span class="problem-item"><span class="icon">🌀</span> Plugin conflicts with no debug info</span>
-      <span class="problem-item"><span class="icon">📋</span> Copy-pasting snippets into dotfiles</span>
-      <span class="problem-item"><span class="icon">🔍</span> Can't find which file exports EDITOR</span>
-    </div>
-  </div>
-
-  <!-- ─── FEATURES ──────────────────────────────────────────────────────── -->
-  <section class="features" id="features" aria-labelledby="features-title">
-    <div class="container">
-      <div class="features-header">
+  <main id="main">
+    <!-- ── Hero ──────────────────────────────────────────────────────── -->
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="wrap hero-grid">
         <div>
-          <div class="section-label reveal">Features</div>
-          <h2 class="section-title reveal reveal-delay-1" id="features-title">
-            Everything your shell<br>config <em>actually needs</em>
-          </h2>
+          <p class="eyebrow rise" style="--i:0">Shell configuration for zsh, bash and fish</p>
+          <h1 id="hero-title" class="rise" style="--i:1">Your shell setup, <em>managed by commands.</em></h1>
+          <p class="hero-lede rise" style="--i:2">
+            wayu keeps your PATH entries, aliases, environment variables, encrypted secrets, scripts and plugins
+            in one place, and compiles them into a single file your shell sources at startup.
+            Add something with one command; every open shell picks up PATH changes at its next prompt.
+          </p>
+          <div class="hero-actions rise" style="--i:3">
+            <div class="cmd" role="group" aria-label="Install command">
+              <span class="p" aria-hidden="true">$</span><code id="brew-cmd">brew install dvrd/wayu/wayu</code>
+              <button class="icon-btn copy-btn" type="button" data-copy="brew install dvrd/wayu/wayu" aria-label="Copy install command">
+                <svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg>
+                <svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+              </button>
+            </div>
+            <a class="btn btn-ghost" href="#demo">
+              Watch the demo
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v10M4 9l4 4 4-4"/></svg>
+            </a>
+          </div>
+          <p class="hero-foot rise" style="--i:4">
+            <span>zsh sources it in 9.2 ms (<a href="#speed">measured</a>)</span>
+            <span>no runtime dependencies</span>
+            <span>MIT, written in Odin</span>
+          </p>
         </div>
-        <p class="features-desc reveal reveal-delay-2">
-          wayu replaces the scattered, manual editing of shell config files with structured commands — each with validation, dry-run preview, and automatic backups.
-        </p>
-      </div>
 
-      <!-- ── GROUP 1: CORE ─────────────────────────────────────────────── -->
-      <div class="feature-group reveal">
-        <div class="feature-group-header">
-          <span class="feature-group-num" aria-hidden="true">01</span>
-          <h3 class="feature-group-title">Core</h3>
-          <span class="feature-group-desc">The foundation — every config change, validated, backed up, and predictable.</span>
-        </div>
-        <div class="features-grid">
-
-          <article class="feature-card featured">
-            <div class="feature-icon" aria-hidden="true">🛤️</div>
-            <h3 class="feature-name">TOML-Based PATH Management</h3>
-            <p class="feature-desc">
-              A declarative <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu.toml</code> keyed table for PATH entries. Auto-derived keys, deduplication, validation, and a <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">clean</code> command that removes entries pointing to missing directories. Changes compile to optimized shell scripts automatically.
-            </p>
-            <span class="feature-badge">v4 — TOML-first</span>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">💾</div>
-            <h3 class="feature-name">Auto Backup &amp; Restore</h3>
-            <p class="feature-desc">Every modification creates a timestamped backup automatically. Keeps the last 5. Restore any config type with one command. You cannot accidentally lose your shell config.</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">🐚</div>
-            <h3 class="feature-name">Multi-Shell</h3>
-            <p class="feature-desc">Automatic Zsh/Bash detection from <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">$SHELL</code>. Shell-specific config files with correct syntax. Fish support is experimental. Migrate between shells with <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu migrate</code>.</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">✅</div>
-            <h3 class="feature-name">Input Validation</h3>
-            <p class="feature-desc">Shell identifier validation, reserved word checking (<code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">if</code>, <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">export</code>, etc.), dangerous character escaping, and path sanitization.</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">🔗</div>
-            <h3 class="feature-name">External Alias Sources</h3>
-            <p class="feature-desc">Surface read-only aliases from external tools (e.g. fabric patterns) in <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu alias list</code> via <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">alias-sources.conf</code>.</p>
-          </article>
-
+        <div class="term rise" style="--i:2">
+          <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i><span>zsh — ~/projects/api</span></div>
+          <p class="sr-only">Example session: wayu path add ~/.cargo/bin adds the directory to PATH; wayu alias add gs 'git status -sb' adds an alias; wayu const add OPENAI_API_KEY --run-only asks for the value with hidden input and stores it encrypted; wayu const list shows the secret as eight asterisks with source "wayu (run-only)".</p>
+          <pre id="term" aria-hidden="true"></pre>
         </div>
       </div>
+    </section>
 
-      <!-- ── GROUP 2: POWER ────────────────────────────────────────────── -->
-      <div class="feature-group reveal">
-        <div class="feature-group-header">
-          <span class="feature-group-num" aria-hidden="true">02</span>
-          <h3 class="feature-group-title">Power</h3>
-          <span class="feature-group-desc">Declarative config, fuzzy search, plugin ecosystem, dual-mode UX.</span>
+    <!-- ── Demo ──────────────────────────────────────────────────────── -->
+    <section class="sec-alt" id="demo" aria-labelledby="demo-title">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <p class="kicker">Demo · 41 seconds</p>
+          <h2 id="demo-title">From a new alias to an encrypted key in one session.</h2>
+          <p>Recorded with <a href="https://github.com/charmbracelet/vhs">VHS</a> in a throwaway home directory; the tape and setup script are in <a href="https://github.com/dvrd/wayu/tree/main/docs/demo"><code>docs/demo/</code></a>, so you can re-record it.</p>
         </div>
-        <div class="features-grid">
-
-          <article class="feature-card featured">
-            <div class="feature-icon" aria-hidden="true">📜</div>
-            <h3 class="feature-name">Declarative TOML Config</h3>
-            <p class="feature-desc">
-              Author your entire shell environment in one <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu.toml</code> file — PATH, aliases, constants, plugins, prompt, even the prompt format. Single source of truth, dotfile-friendly, machine-portable. Validated with <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu toml validate</code>.
-            </p>
-            <span class="feature-badge">TOML-first in v4</span>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">🔍</div>
-            <h3 class="feature-name">Global Fuzzy Search</h3>
-            <p class="feature-desc"><code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu search &lt;query&gt;</code> across PATH entries, aliases, and constants at once. Acronym matching: <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">frwrks</code> finds <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">FIREWORKS_AI_API_KEY</code>.</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">🔌</div>
-            <h3 class="feature-name">Plugin Registry</h3>
-            <p class="feature-desc">62 curated plugins. Install from registry name or any Git URL. Dependency resolution with cycle detection. Conflict detection across env vars, functions, aliases. Priority-based load ordering.</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">⬛</div>
-            <h3 class="feature-name">CLI / TUI Dual Mode</h3>
-            <p class="feature-desc">CLI mode is pipe-safe and CI-ready. Run <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu</code> with no args (or <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">--tui</code>) for an 8-view full-screen interface with vim-style navigation, fuzzy filter, confirmation modals.</p>
-          </article>
-
+        <div class="demo-frame reveal">
+          <video id="demo-video" autoplay muted loop playsinline preload="metadata" poster="demo/poster.jpg" width="1200" height="720"
+                 aria-label="Terminal recording: wayu adds a PATH entry, an alias and a run-only secret, lists constants with the secret masked, creates a Python script and runs it with the secret, runs doctor, then adds an alias in the TUI.">
+            <source src="demo/demo.mp4" type="video/mp4" />
+          </video>
+          <button class="demo-ctl" id="demo-ctl" type="button" aria-label="Pause demo">
+            <svg class="pause" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3.5" y="2.5" width="3" height="11" rx="1"/><rect x="9.5" y="2.5" width="3" height="11" rx="1"/></svg>
+            <svg class="play" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.3-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z"/></svg>
+          </button>
         </div>
+        <ol class="demo-steps reveal">
+          <li><code>path add</code>, <code>alias add</code></li>
+          <li><code>const add --run-only</code></li>
+          <li><code>const list</code>: value masked</li>
+          <li><code>script new</code>, <code>secrets run</code></li>
+          <li><code>doctor</code></li>
+          <li>TUI: add an alias</li>
+        </ol>
       </div>
+    </section>
 
-      <!-- ── GROUP 3: WORKFLOW ─────────────────────────────────────────── -->
-      <div class="feature-group reveal">
-        <div class="feature-group-header">
-          <span class="feature-group-num" aria-hidden="true">03</span>
-          <h3 class="feature-group-title">Workflow</h3>
-          <span class="feature-group-desc">Diagnostics, automation, and integration with the rest of your toolchain.</span>
+    <!-- ── Model ─────────────────────────────────────────────────────── -->
+    <section id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <p class="kicker">How it works</p>
+          <h2 id="how-title">You edit one file. wayu writes another. Your shell reads a third.</h2>
+          <p>Settings you choose by hand stay in a TOML file you can keep in git. The entries you add from the command line live in a JSON store only wayu writes. Both compile into one generated init file.</p>
         </div>
-        <div class="features-grid">
 
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">🔬</div>
-            <h3 class="feature-name">wayu doctor</h3>
-            <p class="feature-desc">Health-check every config: install, source line, PATH entries, plugins, backups, TOML, dependencies. <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">--fix</code> auto-repairs known issues. <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">--json</code> output for CI.</p>
+        <div class="files">
+          <article class="file reveal" style="--i:0">
+            <p class="file-who">You edit</p>
+            <h3><code>wayu.toml</code></h3>
+            <p>Shell, <code>[tools]</code> loaders, the prompt, script and secrets settings. Run <code>wayu build</code> after an edit, or let the next prompt rebuild it.</p>
+            <p class="path">~/.config/wayu/wayu.toml</p>
+<pre><span class="c-tab">[tools]</span>
+<span class="c-key">zoxide</span> = { kind = <span class="c-str">"evalcache"</span>, args = <span class="c-str">"init zsh"</span> }
+<span class="c-key">nvm</span>    = { kind = <span class="c-str">"nvm"</span> }
+
+<span class="c-tab">[prompt]</span>
+<span class="c-key">enabled</span> = <span class="c-num">true</span>
+<span class="c-key">vi_mode</span> = <span class="c-num">true</span>
+
+<span class="c-tab">[secrets]</span>
+<span class="c-key">backend</span> = <span class="c-str">"auto"</span></pre>
           </article>
 
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">👁</div>
-            <h3 class="feature-name">Hot Reload</h3>
-            <p class="feature-desc"><code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu reload start</code> watches <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu.toml</code> and config files. Regenerates static output on save (debounced 500ms). No more <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">source ~/.zshrc</code> after every tweak.</p>
+          <article class="file reveal" style="--i:1">
+            <p class="file-who">wayu writes</p>
+            <h3><code>entries.json</code></h3>
+            <p>PATH entries, aliases and constants from <code>wayu path|alias|const</code> and the TUI. Atomic writes, mode 0600, backed up first.</p>
+            <p class="path">~/.local/share/wayu/entries.json</p>
+<pre>{
+  <span class="c-key">"paths"</span>: [
+    {<span class="c-key">"key"</span>: <span class="c-str">"cargo_bin"</span>, <span class="c-key">"dir"</span>: <span class="c-str">"$HOME/.cargo/bin"</span>}
+  ],
+  <span class="c-key">"aliases"</span>: [
+    {<span class="c-key">"name"</span>: <span class="c-str">"gs"</span>, <span class="c-key">"value"</span>: <span class="c-str">"git status -sb"</span>}
+  ],
+  <span class="c-key">"env"</span>: [
+    {<span class="c-key">"name"</span>: <span class="c-str">"GOPATH"</span>, <span class="c-key">"value"</span>: <span class="c-str">"$HOME/go"</span>},
+    {<span class="c-key">"name"</span>: <span class="c-str">"OPENAI_API_KEY"</span>, <span class="c-key">"secret"</span>: <span class="c-num">true</span>}
+  ]
+}</pre>
           </article>
 
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">🪝</div>
-            <h3 class="feature-name">Pre/Post Hooks</h3>
-            <p class="feature-desc">Configure custom commands to run before or after operations via <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">hooks.conf</code>. Supports <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">pre_path_add</code>, <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">post_alias_add</code>, etc. Logging, notifications, custom integrations.</p>
-          </article>
+          <article class="file gen reveal" style="--i:2">
+            <p class="file-who">Your shell sources</p>
+            <h3><code>core.zsh</code></h3>
+            <p>Straight-line code, regenerated after every change (zcompiled for zsh). Lazy loaders, the prompt and PATH sync are function definitions and hooks, not startup work.</p>
+            <p class="path">~/.local/share/wayu/core.zsh (generated)</p>
+<pre><span class="c-com"># === Environment ===</span>
+export GOPATH=<span class="c-str">"${HOME}/go"</span>
 
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">📝</div>
-            <h3 class="feature-name">Templates</h3>
-            <p class="feature-desc">Bootstrap with <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu template apply developer</code>. Presets: developer, minimal, data-science, full. Each preset adds common paths, aliases, and constants to your <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu.toml</code>.</p>
-          </article>
+<span class="c-com"># === Secrets (encrypted store, per-session cache) ===</span>
+<span class="c-com"># fresh cache: source it; else `wayu secrets cache` once</span>
+[ -O "$_wayu_sc" ] &amp;&amp; … &amp;&amp; source "$_wayu_sc"
 
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">🔧</div>
-            <h3 class="feature-name">Custom Functions</h3>
-            <p class="feature-desc"><code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu function add mkcd</code> seeds a shell-specific skeleton in <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">~/.config/wayu/functions/</code> and opens it in <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">$EDITOR</code>. Every file is sourced at shell startup. <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">list</code> and <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">remove</code> round it out.</p>
-          </article>
+<span class="c-com"># === PATH (live-synced at each prompt) ===</span>
+_wayu_paths_apply &lt;sig&gt; ${HOME:+<span class="c-str">"${HOME}"'/.cargo/bin'</span>}
 
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">🔄</div>
-            <h3 class="feature-name">Shell Migration</h3>
-            <p class="feature-desc"><code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">wayu migrate --from zsh --to bash</code>. Generates equivalent shell-specific config files. Switch between Zsh and Bash without losing PATH, aliases, env, or plugin state. Fish migration is experimental.</p>
+<span class="c-com"># === Aliases ===</span>
+alias gs=<span class="c-str">'git status -sb'</span></pre>
           </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">👁‍🗨</div>
-            <h3 class="feature-name">Dry-Run Everywhere</h3>
-            <p class="feature-desc">The <code style="font-family:var(--font-mono);font-size:0.8em;color:var(--amber);">--dry-run</code> flag previews any change before it&rsquo;s written to disk. BSD sysexits.h exit codes (0, 1, 64–78). Fails fast, never silently.</p>
-          </article>
-
         </div>
+        <p class="files-note reveal">Your rc file gets one line, <code>source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh"</code>, which <code>wayu init</code> offers to add. bash and fish get <code>init.bash</code> and <code>init.fish</code> from the same entries. (Excerpts above are shortened.)</p>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ─── COMMANDS ──────────────────────────────────────────────────────── -->
-  <section class="commands" id="commands" aria-labelledby="commands-title">
-    <div class="container">
-      <div class="commands-inner">
+    <!-- ── Scripts ───────────────────────────────────────────────────── -->
+    <section class="sec-alt" id="scripts" aria-labelledby="scripts-title">
+      <div class="wrap split">
         <div>
-          <div class="section-label reveal">Commands</div>
-          <h2 class="section-title reveal reveal-delay-1" id="commands-title">
-            One syntax.<br><em>Every config.</em>
-          </h2>
-          <p style="margin-top:20px;font-size:1rem;color:var(--text-2);font-weight:300;line-height:1.7;margin-bottom:36px;" class="reveal reveal-delay-2">
-            Every command follows the same pattern: <code style="font-family:var(--font-mono);font-size:0.85em;color:var(--amber);">wayu &lt;command&gt; &lt;action&gt; [args]</code>. No flags to memorize. No config files to learn.
-          </p>
-
-          <div class="cmd-tabs reveal reveal-delay-3" role="tablist" aria-label="Command examples">
-            <button class="cmd-tab active" role="tab" aria-selected="true" aria-controls="tab-path" id="btn-path" onclick="switchTab('path')">path</button>
-            <button class="cmd-tab" role="tab" aria-selected="false" aria-controls="tab-alias" id="btn-alias" onclick="switchTab('alias')">alias</button>
-            <button class="cmd-tab" role="tab" aria-selected="false" aria-controls="tab-search" id="btn-search" onclick="switchTab('search')">search</button>
-            <button class="cmd-tab" role="tab" aria-selected="false" aria-controls="tab-doctor" id="btn-doctor" onclick="switchTab('doctor')">doctor</button>
-            <button class="cmd-tab" role="tab" aria-selected="false" aria-controls="tab-config" id="btn-config" onclick="switchTab('config')">config</button>
-            <button class="cmd-tab" role="tab" aria-selected="false" aria-controls="tab-plugin" id="btn-plugin" onclick="switchTab('plugin')">plugin</button>
-            <button class="cmd-tab" role="tab" aria-selected="false" aria-controls="tab-backup" id="btn-backup" onclick="switchTab('backup')">backup</button>
+          <div class="sec-head reveal">
+            <p class="kicker">wayu script</p>
+            <h2 id="scripts-title">Small tools in any language, already on your PATH.</h2>
+            <p>Scripts get the same treatment as aliases: one command to create, list or remove, and a directory wayu manages.</p>
           </div>
-
-          <div class="cmd-block active reveal reveal-delay-4" id="tab-path" role="tabpanel" aria-labelledby="btn-path">
-            <div class="cmd-block-bar">
-              <span class="cmd-block-label">path management</span>
-              <button class="cmd-copy" onclick="copyCode('path')" aria-label="Copy path commands">copy</button>
-            </div>
-            <pre><code id="code-path"><span class="cmd-c"># Add a new PATH entry</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">path add</span> <span class="cmd-p">~/.cargo/bin</span>
-
-<span class="cmd-c"># List all entries</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">path list</span>
-
-<span class="cmd-c"># Remove an entry</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">path rm</span> <span class="cmd-p">/usr/local/bin</span>
-
-<span class="cmd-c"># Remove broken entries (preview first)</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">path clean</span> --dry-run
-<span class="cmd-k">wayu</span> <span class="cmd-v">path clean</span> --yes
-
-<span class="cmd-c"># Remove duplicates</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">path dedup</span> --yes</code></pre>
-          </div>
-
-          <div class="cmd-block" id="tab-alias" role="tabpanel" aria-labelledby="btn-alias">
-            <div class="cmd-block-bar">
-              <span class="cmd-block-label">alias management</span>
-              <button class="cmd-copy" onclick="copyCode('alias')" aria-label="Copy alias commands">copy</button>
-            </div>
-            <pre><code id="code-alias"><span class="cmd-c"># Add aliases</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">alias add</span> <span class="cmd-p">ll</span> <span class="cmd-p">'ls -la'</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">alias add</span> <span class="cmd-p">gs</span> <span class="cmd-p">'git status'</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">alias add</span> <span class="cmd-p">gc</span> <span class="cmd-p">'git commit'</span>
-
-<span class="cmd-c"># List wayu-managed (--full for external too)</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">alias list</span>
-
-<span class="cmd-c"># Remove an alias</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">alias rm</span> <span class="cmd-p">ll</span>
-
-</code></pre>
-          </div>
-
-          <div class="cmd-block" id="tab-plugin" role="tabpanel" aria-labelledby="btn-plugin">
-            <div class="cmd-block-bar">
-              <span class="cmd-block-label">plugin management</span>
-              <button class="cmd-copy" onclick="copyCode('plugin')" aria-label="Copy plugin commands">copy</button>
-            </div>
-            <pre><code id="code-plugin"><span class="cmd-c"># Browse 62 popular plugins</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">plugin search</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">plugin search</span> <span class="cmd-p">syntax</span>
-
-<span class="cmd-c"># Install from registry or URL</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">plugin add</span> <span class="cmd-p">autosuggestions</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">plugin add</span> <span class="cmd-p">https://github.com/user/plugin.git</span>
-
-<span class="cmd-c"># Manage plugins</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">plugin list</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">plugin enable</span> <span class="cmd-p">zsh-autosuggestions</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">plugin priority</span> <span class="cmd-p">zsh-autosuggestions</span> <span class="cmd-p">50</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">plugin update</span> --all</code></pre>
-          </div>
-
-          <div class="cmd-block" id="tab-search" role="tabpanel" aria-labelledby="btn-search">
-            <div class="cmd-block-bar">
-              <span class="cmd-block-label">global fuzzy search</span>
-              <button class="cmd-copy" onclick="copyCode('search')" aria-label="Copy search commands">copy</button>
-            </div>
-            <pre><code id="code-search"><span class="cmd-c"># Search across PATH, aliases, and constants</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">search</span> <span class="cmd-p">git</span>
-
-<span class="cmd-c"># Acronym matching: 'frwrks' → FIREWORKS_AI_API_KEY</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">find</span> <span class="cmd-p">frwrks</span>
-
-<span class="cmd-c"># Short alias</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">f</span> <span class="cmd-p">api</span>
-
-<span class="cmd-c"># Direct lookup of one constant</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">const get</span> <span class="cmd-p">CLOUDFLARE_API_TOKEN</span></code></pre>
-          </div>
-
-          <div class="cmd-block" id="tab-doctor" role="tabpanel" aria-labelledby="btn-doctor">
-            <div class="cmd-block-bar">
-              <span class="cmd-block-label">health check &amp; auto-fix</span>
-              <button class="cmd-copy" onclick="copyCode('doctor')" aria-label="Copy doctor commands">copy</button>
-            </div>
-            <pre><code id="code-doctor"><span class="cmd-c"># Run all checks (9 diagnostics)</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span>
-
-<span class="cmd-c"># Auto-fix issues marked 🔧</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span> --fix --yes
-
-<span class="cmd-c"># Machine-readable output (CI-friendly)</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">doctor</span> --json</code></pre>
-          </div>
-
-          <div class="cmd-block" id="tab-config" role="tabpanel" aria-labelledby="btn-config">
-            <div class="cmd-block-bar">
-              <span class="cmd-block-label">declarative TOML config</span>
-              <button class="cmd-copy" onclick="copyCode('config')" aria-label="Copy config commands">copy</button>
-            </div>
-            <pre><code id="code-config"><span class="cmd-c"># Edit declarative wayu.toml</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">config edit</span>
-
-<span class="cmd-c"># Validate schema</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">toml validate</span>
-
-<span class="cmd-c"># Watch mode — regenerate on save</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">reload</span> <span class="cmd-p">start</span>
-
-<span class="cmd-c"># Custom shell scripts (extra.&lt;shell&gt;)</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">config extend</span>
-
-<span class="cmd-c"># Detect inline scripts to migrate</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">config scan</span></code></pre>
-          </div>
-
-          <div class="cmd-block" id="tab-backup" role="tabpanel" aria-labelledby="btn-backup">
-            <div class="cmd-block-bar">
-              <span class="cmd-block-label">backup & restore</span>
-              <button class="cmd-copy" onclick="copyCode('backup')" aria-label="Copy backup commands">copy</button>
-            </div>
-            <pre><code id="code-backup"><span class="cmd-c"># Backups are created automatically.</span>
-<span class="cmd-c"># These commands let you manage them.</span>
-
-<span class="cmd-c"># List all backups</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">backup list</span>
-
-<span class="cmd-c"># List backups for one config type</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">backup list</span> <span class="cmd-p">path</span>
-
-<span class="cmd-c"># Restore most recent backup</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">backup restore</span> <span class="cmd-p">path</span>
-
-<span class="cmd-c"># Clean up old backups (keeps last 5)</span>
-<span class="cmd-k">wayu</span> <span class="cmd-v">backup rm</span></code></pre>
-          </div>
-        </div>
-
-        <div class="commands-right reveal reveal-delay-2">
-          <div class="cmd-feature">
-            <div class="cmd-feature-num" aria-hidden="true">01</div>
-            <div>
-              <div class="cmd-feature-title">Consistent syntax across everything</div>
-              <p class="cmd-feature-desc">Every command is <code style="font-family:var(--font-mono);font-size:0.85em;color:var(--amber);">wayu &lt;noun&gt; &lt;verb&gt;</code>. No flags to memorize, no subcommand trees. Muscle memory transfers instantly.</p>
-            </div>
-          </div>
-          <div class="cmd-feature">
-            <div class="cmd-feature-num" aria-hidden="true">02</div>
-            <div>
-              <div class="cmd-feature-title">Preview before you commit</div>
-              <p class="cmd-feature-desc">Add <code style="font-family:var(--font-mono);font-size:0.85em;color:var(--amber);">--dry-run</code> to any command to see exactly what would change. No surprises, no rollbacks needed.</p>
-            </div>
-          </div>
-          <div class="cmd-feature">
-            <div class="cmd-feature-num" aria-hidden="true">03</div>
-            <div>
-              <div class="cmd-feature-title">Pipe-safe and CI-ready</div>
-              <p class="cmd-feature-desc">Zero interactive prompts in CLI mode. BSD exit codes for proper error handling. Add <code style="font-family:var(--font-mono);font-size:0.85em;color:var(--amber);">--yes</code> for unattended operations.</p>
-            </div>
-          </div>
-          <div class="cmd-feature">
-            <div class="cmd-feature-num" aria-hidden="true">04</div>
-            <div>
-              <div class="cmd-feature-title">Real shell files, no magic</div>
-              <p class="cmd-feature-desc">Generates plain <code style="font-family:var(--font-mono);font-size:0.85em;color:var(--amber);">.zsh</code> / <code style="font-family:var(--font-mono);font-size:0.85em;color:var(--amber);">.bash</code> files you can read and edit directly. No lock-in, no proprietary format.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── DECLARATIVE TOML ──────────────────────────────────────────────── -->
-  <section class="declarative" id="declarative" aria-labelledby="declarative-title">
-    <div class="container">
-      <div class="declarative-inner">
-        <div class="declarative-left">
-          <div class="section-label reveal">Declarative</div>
-          <h2 class="section-title reveal reveal-delay-1" id="declarative-title">
-            One file.<br><em>Your whole shell.</em>
-          </h2>
-          <p class="declarative-desc reveal reveal-delay-2">
-            <code style="font-family:var(--font-mono);font-size:0.9em;color:var(--amber);">~/.config/wayu/wayu.toml</code> is the single source of truth: PATH, aliases, constants, plugins, prompt, and inline scripts.
-            Commit it to your dotfiles. Restore your entire shell on any machine in one command. Hot-reload on every save.
-          </p>
-          <div class="declarative-bullets reveal reveal-delay-3">
-            <div class="declarative-bullet">
-              <span class="d-bullet-icon">✓</span>
-              <div>
-                <strong>Imperative or declarative</strong> — use <code>wayu &lt;cmd&gt; add</code> to mutate, or edit the TOML directly.
-                Wayu detects which is your source of truth.
-              </div>
-            </div>
-            <div class="declarative-bullet">
-              <span class="d-bullet-icon">✓</span>
-              <div>
-                <strong>Pre-compiled prompt</strong> — native zsh prompt format with Nerd Font icons, no external binaries (no starship, no oh-my-zsh).
-              </div>
-            </div>
-            <div class="declarative-bullet">
-              <span class="d-bullet-icon">✓</span>
-              <div>
-                <strong>Hot reload</strong> — <code>wayu reload start</code> watches the TOML and regenerates static <code>.zsh</code> files on save (debounced 500ms).
-              </div>
-            </div>
-            <div class="declarative-bullet">
-              <span class="d-bullet-icon">✓</span>
-              <div>
-                <strong>Schema-validated</strong> — <code>wayu toml validate</code> catches typos, malformed values, and missing required keys.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="declarative-right reveal reveal-delay-2">
-          <div class="toml-card">
-            <div class="toml-bar">
-              <span class="toml-filename">~/.config/wayu/wayu.toml</span>
-              <span class="toml-flag">declarative</span>
-            </div>
-            <pre class="toml-code"><code><span class="cmd-c"># Single source of truth for your shell</span>
-
-<span class="toml-section">[shell]</span>
-<span class="toml-key">type</span> = <span class="toml-str">"zsh"</span>
-
-<span class="toml-section">[prompt]</span>
-<span class="toml-key">enabled</span> = <span class="toml-num">true</span>
-<span class="toml-key">format</span> = <span class="toml-str">"{username}{dir}{git_branch}\n{character}"</span>
-<span class="toml-key">command_timeout</span> = <span class="toml-num">60000</span>
-
-<span class="toml-section">[paths]</span>
-<span class="toml-key">cargo_bin</span>    = <span class="toml-str">"$HOME/.cargo/bin"</span>
-<span class="toml-key">local_bin</span>    = <span class="toml-str">"$HOME/.local/bin"</span>
-<span class="toml-key">homebrew_bin</span> = <span class="toml-str">"/opt/homebrew/bin"</span>
-
-<span class="toml-section">[aliases]</span>
-<span class="toml-key">ll</span>  = <span class="toml-str">"ls -la"</span>
-<span class="toml-key">gs</span>  = <span class="toml-str">"git status"</span>
-<span class="toml-key">gco</span> = <span class="toml-str">"git checkout"</span>
-
-<span class="toml-section">[env]</span>
-<span class="toml-key">EDITOR</span> = <span class="toml-str">"nvim"</span>
-<span class="toml-key">PAGER</span>  = <span class="toml-str">"less -R"</span>
-
-<span class="cmd-c"># Plugins managed separately in plugins.json</span>
-<span class="cmd-c"># Install with: wayu plugin add autosuggestions</span></code></pre>
-          </div>
-
-          <div class="toml-tools">
-            <code class="toml-tool"><span class="cmd-k">wayu</span> <span class="cmd-v">config edit</span></code>
-            <code class="toml-tool"><span class="cmd-k">wayu</span> <span class="cmd-v">toml validate</span></code>
-            <code class="toml-tool"><span class="cmd-k">wayu</span> <span class="cmd-v">reload start</span></code>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── ARCH STRIP ─────────────────────────────────────────────────────── -->
-  <div class="arch-strip" aria-label="Project statistics">
-    <div class="container">
-      <div class="arch-grid">
-        <div class="arch-card reveal">
-          <div class="arch-card-num">31<span>K</span></div>
-          <div class="arch-card-label">Lines of Odin</div>
-          <div class="arch-card-detail">Pure, zero-dependency systems code. Compiles in seconds.</div>
-        </div>
-        <div class="arch-card reveal reveal-delay-1">
-          <div class="arch-card-num">474</div>
-          <div class="arch-card-label">Tests</div>
-          <div class="arch-card-detail">Unit, integration, and golden-file visual regression.</div>
-        </div>
-        <div class="arch-card reveal reveal-delay-2">
-          <div class="arch-card-num">62</div>
-          <div class="arch-card-label">Plugins in Registry</div>
-          <div class="arch-card-detail">Curated popular plugins. Install any Git URL too.</div>
-        </div>
-        <div class="arch-card reveal reveal-delay-3">
-          <div class="arch-card-num">0</div>
-          <div class="arch-card-label">Runtime Dependencies</div>
-          <div class="arch-card-detail">Single binary. No Python, no Node, no package manager.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ─── DUAL MODE ─────────────────────────────────────────────────────── -->
-  <section class="dual-mode" aria-labelledby="dual-mode-title">
-    <div class="container">
-      <div class="section-label reveal">Two Modes</div>
-      <h2 class="section-title reveal reveal-delay-1" id="dual-mode-title">
-        Built for scripts.<br><em>Built for humans.</em>
-      </h2>
-      <div class="dual-mode-grid">
-        <div class="mode-card cli reveal reveal-delay-2">
-          <span class="mode-tag cli-tag">$ CLI Mode</span>
-          <h3 class="mode-title">Non-interactive.<br>Pipe-safe. Scriptable.</h3>
-          <p class="mode-desc">Activated when you pass a command. Zero prompts, zero interactive elements. Designed for shell scripts, CI/CD pipelines, and provisioning tools.</p>
-          <ul class="mode-points">
-            <li>BSD sysexits.h exit codes (0, 1, 64–78)</li>
-            <li>No fuzzy finders or interactive prompts, no TTY required</li>
-            <li><code style="font-family:var(--font-mono);font-size:0.85em;">--yes</code> flag for confirmation-free destructive ops</li>
-            <li>Fails fast on errors with categorized messages</li>
-            <li>Safe to use in <code style="font-family:var(--font-mono);font-size:0.85em;">if</code> statements and pipes</li>
+          <ul class="points">
+            <li class="reveal" style="--i:0"><span><strong><code>wayu script new today --lang python</code></strong> writes a skeleton with the interpreter's absolute path as the shebang, opens <code>$EDITOR</code>, then links it into <code>bin/</code>, which is first among wayu's PATH entries.</span></li>
+            <li class="reveal" style="--i:1"><span><strong>Swift is compiled</strong> with <code>swiftc -O</code>. <code>wayu build</code> rebuilds only scripts whose source hash changed.</span></li>
+            <li class="reveal" style="--i:2"><span><strong><code>wayu script import</code></strong> adopts scripts you already have in <code>~/.local/bin</code> or <code>~/bin</code>, skipping binaries, symlinks and package-manager launchers. <code>--dry-run</code> shows what it would do.</span></li>
+            <li class="reveal" style="--i:3"><span><strong><code>wayu doctor</code></strong> reports stale or broken scripts and <code>bin/</code> entries without a source.</span></li>
+          </ul>
+          <ul class="langs reveal" aria-label="Supported languages">
+            <li class="hl">swift</li><li>python</li><li>ruby</li><li>node</li><li>bun</li><li>bash</li><li>zsh</li><li>fish</li><li>perl</li><li>lua</li><li>sh</li>
           </ul>
         </div>
-        <div class="mode-card tui reveal reveal-delay-3">
-          <span class="mode-tag tui-tag">⬛ TUI Mode</span>
-          <h3 class="mode-title">Full-screen.<br>Visual. Interactive.</h3>
-          <p class="mode-desc">Launch with <code style="font-family:var(--font-mono);font-size:0.9em;color:var(--pink);">wayu</code> (no args) or <code style="font-family:var(--font-mono);font-size:0.9em;color:var(--pink);">wayu --tui</code>. A complete terminal UI built from scratch — no external TUI libraries.</p>
-          <ul class="mode-points">
-            <li>Vim-style navigation (<code style="font-family:var(--font-mono);font-size:0.85em;">j</code>/<code style="font-family:var(--font-mono);font-size:0.85em;">k</code>, arrow keys)</li>
-            <li>8 views: PATH, Aliases, Constants, Completions, Backups, Plugins, Hooks, Settings</li>
-            <li>Fuzzy search and inline filtering</li>
-            <li>Confirmation modals before destructive actions</li>
-            <li>Alternate screen buffer — terminal history preserved</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─── DOCTOR ─────────────────────────────────────────────────────────── -->
-  <section class="doctor" id="doctor" aria-labelledby="doctor-title">
-    <div class="container">
-      <div class="doctor-inner">
-        <div class="doctor-left reveal">
-          <div class="section-label">Diagnostics</div>
-          <h2 class="section-title reveal-delay-1" id="doctor-title">
-            <em>wayu doctor</em><br>
-            knows what's<br>
-            wrong before you do.
-          </h2>
-          <p class="doctor-desc reveal-delay-2">
-            9 checks across install state, shell sourcing, PATH validity, plugin health,
-            backups, TOML schema, and external dependencies. Auto-fix what's mechanical.
-            JSON output for CI pipelines.
-          </p>
-          <ul class="doctor-bullets reveal-delay-3">
-            <li><code>wayu doctor</code> — interactive run with status, summary, and fix suggestions</li>
-            <li><code>wayu doctor --fix --yes</code> — auto-repair issues marked 🔧 (preview with <code>--dry-run</code>)</li>
-            <li><code>wayu doctor --json</code> — structured output for CI / monitoring; exits 78 when any check errors</li>
-          </ul>
-        </div>
-
-        <div class="doctor-right reveal reveal-delay-2">
-          <div class="doctor-tabs" role="tablist" aria-label="Doctor output formats">
-            <button class="doctor-tab active" role="tab" aria-selected="true" onclick="switchDoctorTab('pretty')">interactive</button>
-            <button class="doctor-tab" role="tab" aria-selected="false" onclick="switchDoctorTab('json')">--json</button>
+        <div class="code-stack">
+          <div class="code-card reveal" style="--i:1">
+            <header><span>zsh</span><span>import</span></header>
+<pre><span class="t-dir">~</span> <span class="t-arr">❯</span> wayu script import ~/.local/bin/hello --dry-run
+<span class="t-dim">   DRY RUN - No changes will be made</span>
+  import  ~/.local/bin/hello -&gt; ~/.local/share/wayu/scripts/hello.sh (sh, move)</pre>
           </div>
+          <div class="code-card reveal" style="--i:2">
+            <header><span>zsh</span><span>create, then run</span></header>
+<pre><span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> wayu script new ask --lang python
+<span class="t-ok">✓ Created script: ~/.local/share/wayu/scripts/ask.py</span>
+<span class="t-ok">✓ Linked ~/.local/share/wayu/bin/ask -&gt; ../scripts/ask.py</span>
 
-          <div class="doctor-pane active" id="doctor-pretty">
-            <div class="terminal" style="margin:0">
-              <div class="terminal-bar">
-                <span class="terminal-dot"></span>
-                <span class="terminal-dot"></span>
-                <span class="terminal-dot"></span>
-                <span class="terminal-title">wayu doctor</span>
-              </div>
-              <div class="terminal-body" style="min-height:auto;font-size:0.78rem">
-<span class="t-line"><span class="t-info">🔬</span> <span class="t-cmd">wayu Doctor — System Health Check</span></span>
-<span class="t-line"></span>
-<span class="t-line">  <span class="t-success">✓</span> wayu installation</span>
-<span class="t-line">    <span class="t-output">wayu 6.0.0 installed</span></span>
-<span class="t-line">  <span class="t-success">✓</span> shell configuration</span>
-<span class="t-line">    <span class="t-output">init.zsh sourced from ~/.zshrc</span></span>
-<span class="t-line">  <span class="t-success">✓</span> PATH entries</span>
-<span class="t-line">    <span class="t-output">12 entries, all directories exist</span></span>
-<span class="t-line">  <span class="t-success">✓</span> plugins</span>
-<span class="t-line">    <span class="t-output">8 plugin(s) installed</span></span>
-<span class="t-line">  <span class="t-success">✓</span> backups</span>
-<span class="t-line">    <span class="t-output">Backup system configured</span></span>
-<span class="t-line">  <span class="t-success">✓</span> TOML config</span>
-<span class="t-line">    <span class="t-output">wayu.toml exists and is readable</span></span>
-<span class="t-line">  <span class="t-warn">⚠</span> turbo export <span class="t-fix">🔧</span></span>
-<span class="t-line">    <span class="t-output">Turbo export generated but not used in shell config</span></span>
-<span class="t-line">  <span class="t-success">✓</span> dependency: git, zsh</span>
-<span class="t-line">    <span class="t-output">All required dependencies found</span></span>
-<span class="t-line"></span>
-<span class="t-line"><span class="t-info">󰋽</span> <span class="t-cmd">Summary</span></span>
-<span class="t-line">  <span class="t-success">7 OK</span>  <span class="t-warn">1 warning</span>  <span class="t-error">0 errors</span></span>
-<span class="t-line">  <span class="t-fix">🔧</span> <span class="t-output">1 issue can be auto-fixed</span></span>
-<span class="t-line"></span>
-<span class="t-line">  <span class="t-output">Run with --fix to attempt automatic fixes:</span></span>
-<span class="t-line">    <span class="t-cmd">wayu doctor --fix</span></span>
-              </div>
-            </div>
-          </div>
-
-          <div class="doctor-pane" id="doctor-json">
-            <div class="terminal" style="margin:0">
-              <div class="terminal-bar">
-                <span class="terminal-dot"></span>
-                <span class="terminal-dot"></span>
-                <span class="terminal-dot"></span>
-                <span class="terminal-title">wayu doctor --json | jq .</span>
-              </div>
-              <div class="terminal-body" style="min-height:auto;font-size:0.78rem">
-<span class="t-line"><span class="json-p">{</span></span>
-<span class="t-line">  <span class="json-k">"checks"</span><span class="json-p">:</span> <span class="json-p">[</span></span>
-<span class="t-line">    <span class="json-p">{</span></span>
-<span class="t-line">      <span class="json-k">"name"</span><span class="json-p">:</span> <span class="json-s">"wayu installation"</span><span class="json-p">,</span></span>
-<span class="t-line">      <span class="json-k">"status"</span><span class="json-p">:</span> <span class="json-s">"ok"</span><span class="json-p">,</span></span>
-<span class="t-line">      <span class="json-k">"message"</span><span class="json-p">:</span> <span class="json-s">"wayu 6.0.0 installed"</span><span class="json-p">,</span></span>
-<span class="t-line">      <span class="json-k">"fixable"</span><span class="json-p">:</span> <span class="json-b">false</span></span>
-<span class="t-line">    <span class="json-p">},</span></span>
-<span class="t-line">    <span class="json-p">{</span></span>
-<span class="t-line">      <span class="json-k">"name"</span><span class="json-p">:</span> <span class="json-s">"shell configuration"</span><span class="json-p">,</span></span>
-<span class="t-line">      <span class="json-k">"status"</span><span class="json-p">:</span> <span class="json-s">"ok"</span><span class="json-p">,</span></span>
-<span class="t-line">      <span class="json-k">"message"</span><span class="json-p">:</span> <span class="json-s">"init.zsh sourced"</span><span class="json-p">,</span></span>
-<span class="t-line">      <span class="json-k">"fixable"</span><span class="json-p">:</span> <span class="json-b">false</span></span>
-<span class="t-line">    <span class="json-p">},</span></span>
-<span class="t-line">    <span class="json-p">{</span></span>
-<span class="t-line">      <span class="json-k">"name"</span><span class="json-p">:</span> <span class="json-s">"turbo export"</span><span class="json-p">,</span></span>
-<span class="t-line">      <span class="json-k">"status"</span><span class="json-p">:</span> <span class="json-s">"warning"</span><span class="json-p">,</span></span>
-<span class="t-line">      <span class="json-k">"message"</span><span class="json-p">:</span> <span class="json-s">"Turbo export generated but not used"</span><span class="json-p">,</span></span>
-<span class="t-line">      <span class="json-k">"fixable"</span><span class="json-p">:</span> <span class="json-b">true</span></span>
-<span class="t-line">    <span class="json-p">}</span></span>
-<span class="t-line">  <span class="json-p">],</span></span>
-<span class="t-line">  <span class="json-k">"summary"</span><span class="json-p">:</span> <span class="json-p">{</span></span>
-<span class="t-line">    <span class="json-k">"ok"</span><span class="json-p">:</span> <span class="json-n">7</span><span class="json-p">,</span></span>
-<span class="t-line">    <span class="json-k">"warnings"</span><span class="json-p">:</span> <span class="json-n">1</span><span class="json-p">,</span></span>
-<span class="t-line">    <span class="json-k">"errors"</span><span class="json-p">:</span> <span class="json-n">0</span><span class="json-p">,</span></span>
-<span class="t-line">    <span class="json-k">"info"</span><span class="json-p">:</span> <span class="json-n">0</span><span class="json-p">,</span></span>
-<span class="t-line">    <span class="json-k">"fixable"</span><span class="json-p">:</span> <span class="json-n">1</span></span>
-<span class="t-line">  <span class="json-p">}</span></span>
-<span class="t-line"><span class="json-p">}</span></span>
-              </div>
-            </div>
+<span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> wayu script list
+  ask  python  ok     ~/.local/share/wayu/scripts/ask.py</pre>
           </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ─── INSTALL ───────────────────────────────────────────────────────── -->
-  <section class="install" id="install" aria-labelledby="install-title">
-    <div class="container">
-      <div class="install-inner">
+    <!-- ── Secrets ───────────────────────────────────────────────────── -->
+    <section id="secrets" aria-labelledby="secrets-title">
+      <div class="wrap split flip">
         <div>
-          <div class="section-label reveal">Installation</div>
-          <h2 class="section-title reveal reveal-delay-1" id="install-title">
-            Up and running<br>in <em>three steps</em>
-          </h2>
-          <p style="margin-top:20px;font-size:1rem;color:var(--text-2);font-weight:300;line-height:1.7;margin-bottom:32px;" class="reveal reveal-delay-2">
-            One command via Homebrew. No compiler, no build system, no drama.
-          </p>
-
-          <!-- install method tabs -->
-          <div class="install-tabs reveal reveal-delay-2" role="tablist" aria-label="Installation method">
-            <button class="install-tab active" role="tab" aria-selected="true" aria-controls="imethod-brew" onclick="switchInstallTab('brew')">Homebrew</button>
-            <button class="install-tab" role="tab" aria-selected="false" aria-controls="imethod-source" onclick="switchInstallTab('source')">From source</button>
+          <div class="sec-head reveal">
+            <p class="kicker">Encrypted constants</p>
+            <h2 id="secrets-title">API keys out of your dotfiles, without slowing startup.</h2>
+            <p>A secret is a constant whose value is stored encrypted. Your config, the generated files and the backups only ever hold its name.</p>
           </div>
-
-          <div class="install-steps" id="imethod-brew">
-            <div class="install-step reveal reveal-delay-3">
-              <div class="step-num" aria-hidden="true">1</div>
-              <div class="step-content">
-                <div class="step-title">Tap and install</div>
-                <div class="step-code">brew tap dvrd/wayu<br>brew install wayu</div>
-              </div>
-            </div>
-            <div class="install-step reveal reveal-delay-4">
-              <div class="step-num" aria-hidden="true">2</div>
-              <div class="step-content">
-                <div class="step-title">Initialize your config directory</div>
-                <div class="step-code">wayu init</div>
-              </div>
-            </div>
-            <div class="install-step reveal reveal-delay-5">
-              <div class="step-num" aria-hidden="true">3</div>
-              <div class="step-content">
-                <div class="step-title">Source the init file in your shell RC</div>
-                <div class="step-code"><span style="color:var(--text-3)"># ~/.zshrc or ~/.bashrc</span><br>source ~/.config/wayu/init.zsh</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="install-steps" id="imethod-source" style="display:none">
-            <div class="install-step">
-              <div class="step-num" aria-hidden="true">1</div>
-              <div class="step-content">
-                <div class="step-title">Clone and build</div>
-                <div class="step-code">git clone https://github.com/dvrd/wayu<br>cd wayu<br>odin build build -out:build_it<br>./build_it install</div>
-                <div style="margin-top:8px;font-size:0.8rem;color:var(--text-3);">Requires the <a href="https://odin-lang.org/docs/install/" style="color:var(--teal);text-decoration:none;" target="_blank" rel="noopener">Odin compiler</a></div>
-              </div>
-            </div>
-            <div class="install-step">
-              <div class="step-num" aria-hidden="true">2</div>
-              <div class="step-content">
-                <div class="step-title">Initialize your config directory</div>
-                <div class="step-code">wayu init</div>
-              </div>
-            </div>
-            <div class="install-step">
-              <div class="step-num" aria-hidden="true">3</div>
-              <div class="step-content">
-                <div class="step-title">Source the init file in your shell RC</div>
-                <div class="step-code"><span style="color:var(--text-3)"># ~/.zshrc or ~/.bashrc</span><br>source ~/.config/wayu/init.zsh</div>
-              </div>
-            </div>
-          </div>
+          <ul class="points">
+            <li class="reveal" style="--i:0"><span><strong><code>wayu const add NAME --secret</code></strong> reads the value with hidden input, so it stays out of argv and history, and encrypts it with ChaCha20-Poly1305.</span></li>
+            <li class="reveal" style="--i:1"><span><strong>The master key</strong> lives in the macOS Keychain, the Secret Service on Linux, or a 0600 key file: <code>[secrets] backend</code>.</span></li>
+            <li class="reveal" style="--i:2"><span><strong>Startup sources a per-session cache</strong> (0600, in your runtime dir), decrypted once and then loaded without forking. Five secrets added 0.6 ms to zsh startup in our <a href="#speed">measurement</a>.</span></li>
+            <li class="reveal" style="--i:3"><span><strong>Run-only secrets</strong> (<code>--run-only</code>) are never exported to your shell. <code>wayu secrets run NAME -- cmd</code> hands them to that one command.</span></li>
+            <li class="reveal" style="--i:4"><span><strong>Masked everywhere</strong>: <code>const list</code>, <code>search</code>, the TUI and dry runs show <code>********</code>; <code>const get NAME</code> prints the value when you ask for it.</span></li>
+          </ul>
         </div>
+        <div class="code-stack">
+          <div class="code-card reveal" style="--i:1">
+            <header><span>zsh</span><span>store</span></header>
+<pre><span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> wayu const add OPENAI_API_KEY --run-only
+Value for OPENAI_API_KEY (input hidden):
+<span class="t-ok">✓ Secret added (encrypted) (run-only: wayu secrets run): OPENAI_API_KEY</span>
 
-        <div class="install-right reveal reveal-delay-2">
-          <p style="font-size:0.75rem;color:var(--text-3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;">Config &amp; runtime files in <code style="font-family:var(--font-mono);">~/.config/wayu/</code></p>
-          <div class="config-file">
-            <div class="config-file-name">wayu.toml</div>
-            <div class="config-file-desc">Declarative config — source of truth for PATH entries, aliases, and environment variables. Version-controllable.</div>
+<span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> wayu secrets list
+OPENAI_API_KEY  run-only</pre>
           </div>
-          <div class="config-file">
-            <div class="config-file-name">init.{zsh,bash} + core, lazy, helpers</div>
-            <div class="config-file-desc">Generated init files in <code style="font-family:var(--font-mono)">~/.config/wayu/</code>. Source <code style="font-family:var(--font-mono)">init.zsh</code> from your shell RC — it loads core, lazy, and helper scripts automatically.</div>
-          </div>
-          <div class="config-file">
-            <div class="config-file-name">plugins.json</div>
-            <div class="config-file-desc">Installed plugin metadata (JSON5). Tracks enabled state, priority, dependencies, and git commit SHAs.</div>
-          </div>
-          <div class="config-file">
-            <div class="config-file-name">plugins.{zsh,bash}</div>
-            <div class="config-file-desc">Generated plugin loader. Resolves dependencies, respects priority order, detects conflicts.</div>
-          </div>
-          <div class="config-file">
-            <div class="config-file-name">alias-sources.conf</div>
-            <div class="config-file-desc">Shell-agnostic. Surface read-only aliases from external tools like fabric patterns.</div>
-          </div>
-          <div class="config-file">
-            <div class="config-file-name">backup/</div>
-            <div class="config-file-desc">Timestamped backups. Created automatically before every modification. Keeps last 5.</div>
+          <div class="code-card reveal" style="--i:2">
+            <header><span>zsh</span><span>use for one command</span></header>
+<pre><span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> echo ${OPENAI_API_KEY:-not set in this shell}
+not set in this shell
+
+<span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> wayu secrets run OPENAI_API_KEY -- ask
+ask: key sk-demo-… (40 chars) → POST /v1/responses
+
+<span class="t-dim"># or give one tool its token every time:</span>
+<span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> wayu alias add gh 'wayu secrets run GH_TOKEN -- gh'</pre>
           </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ─── CTA ───────────────────────────────────────────────────────────── -->
-  <section class="cta" aria-labelledby="cta-title">
-    <div class="container">
-      <p class="cta-eyebrow reveal">Ready to clean up?</p>
-      <h2 class="cta-title reveal reveal-delay-1" id="cta-title">
-        <span class="big">Your shell.</span>
-        <span class="accent">Under control.</span>
-      </h2>
-      <p class="cta-sub reveal reveal-delay-2">
-        One binary. Zero dependencies. Every shell config change backed up, validated, and reversible.
-      </p>
-      <div class="cta-actions reveal reveal-delay-3">
-        <a href="#install" class="btn-primary">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M8 2v8M4 7l4 4 4-4M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-          Install wayu
-        </a>
-        <a href="https://github.com/dvrd/wayu" class="btn-outline" target="_blank" rel="noopener">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
-          </svg>
-          View on GitHub
-        </a>
+    <!-- ── Everything else ───────────────────────────────────────────── -->
+    <section class="sec-alt" id="features" aria-labelledby="features-title">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <p class="kicker">Also included</p>
+          <h2 id="features-title">The rest of a shell setup.</h2>
+        </div>
+        <div class="index">
+          <div class="item reveal" style="--i:0"><h3>Native zsh prompt <code>[prompt]</code></h3><p>Opt-in. Directory, git branch read from <code>.git/HEAD</code> without running git, project context detection, an async right prompt with the changed-file count, and vi-mode with a mode indicator.</p></div>
+          <div class="item reveal" style="--i:1"><h3>Plugins <code>wayu plugin</code></h3><p>Search a built-in registry or install from a git URL. Enable, disable, set load priority, resolve dependencies, and see conflicts with your own aliases and constants.</p></div>
+          <div class="item reveal" style="--i:0"><h3>Tool loaders <code>[tools]</code></h3><p>Cache the output of <code>zoxide init zsh</code> and similar until the binary changes, or load nvm, conda and sdkman only when you first call them.</p></div>
+          <div class="item reveal" style="--i:1"><h3>Health check <code>wayu doctor</code></h3><p>Checks PATH entries, config, scripts, plugins, backups and the secrets store. Exits 78 on any error, so it can gate CI; <code>--fix</code> repairs what it can.</p></div>
+          <div class="item reveal" style="--i:0"><h3>Full-screen TUI <code>wayu</code></h3><p>Run it with no arguments to browse, filter, add and delete PATH entries, aliases and constants, and to manage plugins, backups and hooks. Vim keys and arrow keys.</p></div>
+          <div class="item reveal" style="--i:1"><h3>Scriptable CLI <code>--json</code></h3><p>Never prompts. Lists, search and doctor print JSON; exit codes follow <code>sysexits.h</code>; destructive actions need <code>--yes</code>; <code>--dry-run</code> previews any write.</p></div>
+          <div class="item reveal" style="--i:0"><h3>Live PATH in open shells</h3><p>A prompt hook re-reads the PATH list when it changed, so <code>wayu path add</code> reaches every open zsh, bash and fish at its next prompt.</p></div>
+          <div class="item reveal" style="--i:1"><h3>Backups <code>wayu backup</code></h3><p>Each file is backed up before its first write in a run; the last five are kept. Restore by index with <code>wayu backup restore</code>.</p></div>
+        </div>
+        <div class="code-card json-card reveal">
+          <header><span>zsh</span><span>doctor --json (excerpt)</span></header>
+<pre><span class="t-dir">~</span> <span class="t-arr">❯</span> wayu doctor --json
+{
+  <span class="c-key">"checks"</span>: [
+    {<span class="c-key">"name"</span>: <span class="c-str">"wayu installation"</span>, <span class="c-key">"status"</span>: <span class="c-str">"ok"</span>, <span class="c-key">"message"</span>: <span class="c-str">"wayu 6.0.0 installed"</span>, <span class="c-key">"fixable"</span>: <span class="c-num">false</span>},
+    {<span class="c-key">"name"</span>: <span class="c-str">"scripts"</span>, <span class="c-key">"status"</span>: <span class="c-str">"ok"</span>, <span class="c-key">"message"</span>: <span class="c-str">"1 script(s) built"</span>, <span class="c-key">"fixable"</span>: <span class="c-num">false</span>},
+    {<span class="c-key">"name"</span>: <span class="c-str">"secrets backend"</span>, <span class="c-key">"status"</span>: <span class="c-str">"ok"</span>, <span class="c-key">"message"</span>: <span class="c-str">"file: key present, every secret decrypts"</span>, <span class="c-key">"fixable"</span>: <span class="c-num">false</span>}
+  ],
+  <span class="c-key">"summary"</span>: {<span class="c-key">"ok"</span>: <span class="c-num">13</span>, <span class="c-key">"warnings"</span>: <span class="c-num">0</span>, <span class="c-key">"errors"</span>: <span class="c-num">0</span>, <span class="c-key">"info"</span>: <span class="c-num">1</span>, <span class="c-key">"fixable"</span>: <span class="c-num">0</span>}
+}</pre>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- ─── FOOTER ────────────────────────────────────────────────────────── -->
+    <!-- ── Speed ─────────────────────────────────────────────────────── -->
+    <section id="speed" aria-labelledby="speed-title">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <p class="kicker">Startup time</p>
+          <h2 id="speed-title">Mostly the time it takes to start the shell.</h2>
+          <p>Everything is precomputed into one file at write time, so a new shell runs straight-line code instead of calling wayu.</p>
+        </div>
+        <div class="bars" id="bars">
+          <div class="bar-group">
+            <h3>zsh 5.9</h3>
+            <div class="bar" style="--v:0.235;--i:0"><span class="lbl">empty shell, <code>zsh -f -c :</code></span><span class="track"><span class="fill"></span></span><span class="val">3.6 ms</span></div>
+            <div class="bar wayu" style="--v:0.601;--i:1"><span class="lbl">source <code>init.zsh</code></span><span class="track"><span class="fill"></span></span><span class="val">9.2 ms</span></div>
+            <div class="bar wayu" style="--v:0.954;--i:2"><span class="lbl">interactive, with <code>compinit</code></span><span class="track"><span class="fill"></span></span><span class="val">14.6 ms</span></div>
+            <div class="bar wayu" style="--v:1;--i:3"><span class="lbl">interactive + <code>[tools]</code> + prompt</span><span class="track"><span class="fill"></span></span><span class="val">15.3 ms</span></div>
+          </div>
+          <div class="bar-group">
+            <h3>bash 3.2</h3>
+            <div class="bar" style="--v:0.131;--i:4"><span class="lbl">empty shell, <code>bash --norc -c :</code></span><span class="track"><span class="fill"></span></span><span class="val">2.0 ms</span></div>
+            <div class="bar wayu" style="--v:0.281;--i:5"><span class="lbl">source <code>init.bash</code></span><span class="track"><span class="fill"></span></span><span class="val">4.3 ms</span></div>
+          </div>
+        </div>
+        <p class="method reveal">Mean of 40 runs with hyperfine, measured with <a href="https://github.com/dvrd/wayu/blob/main/tests/benchmark/startup.sh"><code>tests/benchmark/startup.sh</code></a>: 21 PATH entries, 60 aliases, 20 constants, warm caches, on an Apple M1 Max (macOS). The secrets figure is a separate hyperfine run (50 runs, <code>zsh -f -c 'source init.zsh'</code>) in the small demo home built by <code>docs/demo/setup.sh</code>, before and after adding five session secrets: 8.1 → 8.7 ms. Your numbers will differ; run the script, or <code>wayu build profile</code> to time each section of your own init.</p>
+      </div>
+    </section>
+
+    <!-- ── Install ───────────────────────────────────────────────────── -->
+    <section class="sec-alt" id="install" aria-labelledby="install-title">
+      <div class="wrap">
+        <div class="sec-head reveal">
+          <p class="kicker">Install</p>
+          <h2 id="install-title">Three commands to a working setup.</h2>
+          <p>Prebuilt for macOS arm64 and Linux x86_64. Other platforms build from source.</p>
+        </div>
+        <ol class="steps">
+          <li class="reveal" style="--i:0">
+            <div>
+              <h3>Install with Homebrew</h3>
+              <div class="block">
+<pre>brew tap dvrd/wayu
+brew install wayu</pre>
+                <button class="icon-btn copy-btn" type="button" data-copy="brew tap dvrd/wayu&#10;brew install wayu" aria-label="Copy Homebrew commands">
+                  <svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg>
+                  <svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+                </button>
+              </div>
+            </div>
+          </li>
+          <li class="reveal" style="--i:1">
+            <div>
+              <h3>Create the config and wire up your shell</h3>
+              <p>Creates <code>~/.config/wayu/</code> and <code>~/.local/share/wayu/</code>, and offers to add the <code>source</code> line to your rc file. Use <code>--shell bash</code> or <code>--shell fish</code> for another shell.</p>
+              <div class="block">
+<pre>wayu init</pre>
+                <button class="icon-btn copy-btn" type="button" data-copy="wayu init" aria-label="Copy wayu init">
+                  <svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg>
+                  <svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+                </button>
+              </div>
+            </div>
+          </li>
+          <li class="reveal" style="--i:2">
+            <div>
+              <h3>Add your first entries</h3>
+              <div class="block">
+<pre>wayu path add ~/.cargo/bin
+wayu alias add gs 'git status -sb'
+wayu const add OPENAI_API_KEY --secret
+wayu doctor</pre>
+                <button class="icon-btn copy-btn" type="button" data-copy="wayu path add ~/.cargo/bin&#10;wayu alias add gs 'git status -sb'&#10;wayu const add OPENAI_API_KEY --secret&#10;wayu doctor" aria-label="Copy first commands">
+                  <svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg>
+                  <svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+                </button>
+              </div>
+            </div>
+          </li>
+        </ol>
+
+        <details class="reveal">
+          <summary>Build from source</summary>
+          <div>
+            <p>Needs the <a href="https://odin-lang.org/docs/install/">Odin compiler</a> at the release named in <code>.github/odin-release</code>. <code>./build_it install</code> puts the binary in <code>~/.local/bin</code> and runs <code>wayu init</code>.</p>
+            <div class="block">
+<pre>git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu
+odin build build -out:build_it &amp;&amp; ./build_it install</pre>
+            </div>
+          </div>
+        </details>
+        <details class="reveal">
+          <summary>Upgrading from 5.x</summary>
+          <div>
+            <p>6.0.0 moves PATH entries, aliases and constants from <code>wayu.toml</code> to <code>entries.json</code> in the data dir, and changes the rc line. Nothing is converted automatically: the steps are in <a href="https://github.com/dvrd/wayu/blob/main/docs/UPGRADING.md">docs/UPGRADING.md</a>.</p>
+          </div>
+        </details>
+      </div>
+    </section>
+  </main>
+
   <footer>
-    <div class="container">
-      <div class="footer-inner">
-        <a href="/" class="footer-logo" aria-label="wayu home">
-          <span class="logo-dot" aria-hidden="true"></span>
-          wayu
-        </a>
-        <ul class="footer-links">
-          <li><a href="#features">Features</a></li>
-          <li><a href="#commands">Commands</a></li>
-          <li><a href="#declarative">Declarative</a></li>
-          <li><a href="#doctor">Doctor</a></li>
-          <li><a href="#install">Install</a></li>
-          <li><a href="https://github.com/dvrd/wayu" target="_blank" rel="noopener">GitHub</a></li>
-        </ul>
-        <p class="footer-copy">v6.0.0 · MIT License · Built with <a href="https://odin-lang.org" style="color:var(--teal);text-decoration:none;" target="_blank" rel="noopener">Odin</a></p>
-      </div>
+    <div class="wrap foot">
+      <p>v6.0.0 · MIT License · Built with <a href="https://odin-lang.org">Odin</a></p>
+      <ul>
+        <li><a href="https://github.com/dvrd/wayu">GitHub</a></li>
+        <li><a href="https://github.com/dvrd/wayu/blob/main/docs/cli.md">CLI reference</a></li>
+        <li><a href="https://github.com/dvrd/wayu/blob/main/docs/config-reference.md">Config reference</a></li>
+        <li><a href="https://github.com/dvrd/wayu/blob/main/docs/UPGRADING.md">Upgrading</a></li>
+        <li><a href="https://github.com/dvrd/wayu/blob/main/CHANGELOG.md">Changelog</a></li>
+      </ul>
     </div>
   </footer>
 
   <script>
-    // ─── CURSOR ────────────────────────────────────────────────────────────
-    const cursor = document.getElementById('cursor');
-    const ring = document.getElementById('cursor-ring');
-    let mx = 0, my = 0, rx = 0, ry = 0;
+  (function () {
+    var root = document.documentElement;
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+    var darkMq = window.matchMedia('(prefers-color-scheme: dark)');
 
-    document.addEventListener('mousemove', e => {
-      mx = e.clientX; my = e.clientY;
-      cursor.style.left = mx + 'px';
-      cursor.style.top = my + 'px';
+    /* Theme toggle */
+    var themeBtn = document.getElementById('theme-btn');
+    function isDark() { return root.dataset.theme ? root.dataset.theme === 'dark' : darkMq.matches; }
+    function syncThemeLabel() { themeBtn.setAttribute('aria-label', isDark() ? 'Switch to light theme' : 'Switch to dark theme'); }
+    themeBtn.addEventListener('click', function () {
+      var next = isDark() ? 'light' : 'dark';
+      root.dataset.theme = next;
+      try { localStorage.setItem('wayu-theme', next); } catch (e) {}
+      syncThemeLabel();
     });
+    darkMq.addEventListener && darkMq.addEventListener('change', syncThemeLabel);
+    syncThemeLabel();
 
-    function animateRing() {
-      rx += (mx - rx) * 0.12;
-      ry += (my - ry) * 0.12;
-      ring.style.left = rx + 'px';
-      ring.style.top = ry + 'px';
-      requestAnimationFrame(animateRing);
-    }
-    animateRing();
+    /* Nav hairline once scrolled */
+    var nav = document.getElementById('nav');
+    function onScroll() { nav.classList.toggle('scrolled', window.scrollY > 8); }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
 
-    // ─── NAV SCROLL ────────────────────────────────────────────────────────
-    const nav = document.getElementById('nav');
-    window.addEventListener('scroll', () => {
-      nav.classList.toggle('scrolled', window.scrollY > 40);
-    }, { passive: true });
-
-    // ─── SMOOTH ANCHOR SCROLL ──────────────────────────────────────────────
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-      anchor.addEventListener('click', e => {
-        const target = document.querySelector(anchor.getAttribute('href'));
-        if (!target) return;
-        e.preventDefault();
-        const navHeight = nav.getBoundingClientRect().height;
-        const top = target.getBoundingClientRect().top + window.scrollY - navHeight - 24;
-        window.scrollTo({ top, behavior: 'smooth' });
-      });
-    });
-
-    // ─── TERMINAL ANIMATION ────────────────────────────────────────────────
-    const lines = [
-      { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu path add</span> <span class="t-path">~/.cargo/bin</span>', delay: 0 },
-      { html: '<span class="t-success">✓</span> <span class="t-output">Backup created → wayu.toml.backup.2026-05-13</span>', delay: 500 },
-      { html: '<span class="t-success">✓</span> <span class="t-output">Added to wayu.toml: ~/.cargo/bin</span>', delay: 800 },
-      { html: '', delay: 1200 },
-      { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu search</span> <span class="t-arg">frwrks</span>', delay: 1400 },
-      { html: '<span class="t-info">⚡</span> <span class="t-output">Constants · 1 match</span>', delay: 1900 },
-      { html: '<span class="t-output">  FIREWORKS_AI_API_KEY = sk-…</span>', delay: 2100 },
-      { html: '', delay: 2500 },
-      { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu config</span> <span class="t-arg">edit</span>', delay: 2700 },
-      { html: '<span class="t-info"></span> <span class="t-output">Opening ~/.config/wayu/wayu.toml in $EDITOR</span>', delay: 3100 },
-      { html: '<span class="t-success">✓</span> <span class="t-output">Schema valid · reload triggered</span>', delay: 3400 },
-      { html: '', delay: 3800 },
-      { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu doctor</span> <span class="t-arg">--fix</span>', delay: 4000 },
-      { html: '<span class="t-success">✓</span> <span class="t-output">9 OK · 1 warning · 0 errors</span>', delay: 4500 },
-      { html: '<span class="t-info">🔧</span> <span class="t-output">Auto-fixed: shell RC source line</span>', delay: 4800 },
-      { html: '', delay: 5300 },
-      { html: '<span class="t-prompt">❯</span> <span class="t-cmd">wayu plugin add</span> <span class="t-arg">autosuggestions</span>', delay: 5500 },
-      { html: '<span class="t-info">→</span> <span class="t-output">Resolving deps · detecting conflicts</span>', delay: 6000 },
-      { html: '<span class="t-success">✓</span> <span class="t-output">Installed at priority 50 · enabled</span>', delay: 6400 },
-      { html: '', delay: 6800 },
-      { html: '<span class="t-prompt">❯</span> <span class="t-cursor"></span>', delay: 7000 },
-    ];
-
-    const body = document.getElementById('terminal-body');
-    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    if (prefersReduced) {
-      lines.forEach(l => {
-        if (!l.html) return;
-        const span = document.createElement('span');
-        span.className = 't-line';
-        span.innerHTML = l.html;
-        body.appendChild(span);
-        body.appendChild(document.createTextNode('\n'));
-      });
+    /* Scroll reveals */
+    var revealables = document.querySelectorAll('.reveal, #bars');
+    if ('IntersectionObserver' in window && !reduce.matches) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+        });
+      }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
+      revealables.forEach(function (el) { io.observe(el); });
     } else {
-      lines.forEach(l => {
-        setTimeout(() => {
-          const span = document.createElement('span');
-          span.className = 't-line';
-          span.innerHTML = l.html;
-          body.appendChild(span);
-          body.appendChild(document.createTextNode('\n'));
-          body.scrollTop = body.scrollHeight;
-        }, l.delay);
-      });
+      revealables.forEach(function (el) { el.classList.add('in'); });
     }
 
-    // ─── SCROLL REVEAL ─────────────────────────────────────────────────────
-    const reveals = document.querySelectorAll('.reveal');
-    const observer = new IntersectionObserver(entries => {
-      entries.forEach(e => {
-        if (e.isIntersecting) {
-          e.target.classList.add('visible');
-          observer.unobserve(e.target);
+    /* Code blocks that scroll sideways must be reachable by keyboard */
+    function markScrollable() {
+      document.querySelectorAll('pre:not(#term)').forEach(function (pre) {
+        if (pre.scrollWidth > pre.clientWidth + 1) {
+          pre.setAttribute('tabindex', '0');
+          pre.setAttribute('role', 'region');
+          pre.setAttribute('aria-label', 'Code example (scrolls horizontally)');
+        } else {
+          pre.removeAttribute('tabindex'); pre.removeAttribute('role'); pre.removeAttribute('aria-label');
         }
       });
-    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+    }
+    markScrollable();
+    window.addEventListener('resize', markScrollable, { passive: true });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(markScrollable);
 
-    reveals.forEach(el => observer.observe(el));
+    /* Copy buttons */
+    document.querySelectorAll('.copy-btn').forEach(function (btn) {
+      var timer;
+      btn.addEventListener('click', function () {
+        var text = btn.getAttribute('data-copy');
+        if (!text) {
+          var pre = btn.parentElement.querySelector('pre');
+          text = pre ? pre.textContent.trim() : '';
+        }
+        var done = function () {
+          btn.classList.add('copied');
+          var label = btn.getAttribute('aria-label');
+          btn.setAttribute('aria-label', 'Copied');
+          clearTimeout(timer);
+          timer = setTimeout(function () { btn.classList.remove('copied'); btn.setAttribute('aria-label', label); }, 1600);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {});
+        }
+      });
+    });
+    // The source-build block has no data-copy; give it a button too.
+    document.querySelectorAll('details .block').forEach(function (block) {
+      var tpl = document.querySelector('.steps .copy-btn');
+      if (!tpl) return;
+      var b = tpl.cloneNode(true);
+      b.removeAttribute('data-copy');
+      b.setAttribute('aria-label', 'Copy build commands');
+      block.appendChild(b);
+      b.addEventListener('click', function () {
+        var text = block.querySelector('pre').textContent.trim();
+        if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () {
+          b.classList.add('copied');
+          setTimeout(function () { b.classList.remove('copied'); }, 1600);
+        }, function () {});
+      });
+    });
 
-    // ─── COMMAND TABS ──────────────────────────────────────────────────────
-    function switchTab(name) {
-      document.querySelectorAll('.cmd-tab').forEach(t => {
-        t.classList.toggle('active', t.getAttribute('onclick').includes(`'${name}'`));
-        t.setAttribute('aria-selected', t.classList.contains('active'));
-      });
-      document.querySelectorAll('.cmd-block').forEach(b => {
-        b.classList.toggle('active', b.id === `tab-${name}`);
-      });
+    /* Demo video: pause control, honor reduced motion, pause off-screen */
+    var video = document.getElementById('demo-video');
+    var ctl = document.getElementById('demo-ctl');
+    var userPaused = false;
+    function syncCtl() {
+      var paused = video.paused;
+      ctl.classList.toggle('paused', paused);
+      ctl.setAttribute('aria-label', paused ? 'Play demo' : 'Pause demo');
+    }
+    if (reduce.matches) { video.removeAttribute('autoplay'); video.pause(); userPaused = true; }
+    ctl.addEventListener('click', function () {
+      if (video.paused) { userPaused = false; var p = video.play(); if (p && p.catch) p.catch(function () {}); }
+      else { userPaused = true; video.pause(); }
+    });
+    video.addEventListener('play', syncCtl);
+    video.addEventListener('pause', syncCtl);
+    syncCtl();
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (!e.isIntersecting) { if (!video.paused) video.pause(); }
+          else if (!userPaused && video.paused) { var p = video.play(); if (p && p.catch) p.catch(function () {}); }
+        });
+      }, { threshold: 0.25 }).observe(video);
     }
 
-    // ─── INSTALL TABS ──────────────────────────────────────────────────────
-    function switchInstallTab(method) {
-      document.querySelectorAll('.install-tab').forEach(t => {
-        const active = t.getAttribute('onclick').includes(`'${method}'`);
-        t.classList.toggle('active', active);
-        t.setAttribute('aria-selected', active);
-      });
-      document.getElementById('imethod-brew').style.display   = method === 'brew'   ? 'block' : 'none';
-      document.getElementById('imethod-source').style.display = method === 'source' ? 'block' : 'none';
-    }
+    /* Hero terminal: types the commands, prints wayu's real output */
+    var term = document.getElementById('term');
+    var PROMPT = '<span class="t-dir">api</span> <span class="t-git">main</span> <span class="t-arr">❯</span> ';
+    var script = [
+      { cmd: 'wayu path add ~/.cargo/bin', out: [
+        '<span class="t-ok">✓ Added to PATH: /Users/ana/.cargo/bin</span>',
+        '   Open shells apply it at their next prompt; new shells pick it up automatically.'] },
+      { cmd: "wayu alias add gs 'git status -sb'", out: ['<span class="t-ok">✓ Alias added: gs</span>'] },
+      { cmd: 'wayu const add OPENAI_API_KEY --run-only', secret: true, out: [
+        '<span class="t-ok">✓ Secret added (encrypted) (run-only: wayu secrets run): OPENAI_API_KEY</span>'] },
+      { cmd: 'wayu const list', out: [
+        '<span class="t-pink">💾 Constants (wayu)</span>',
+        '<span class="t-tbl"><span class="t-pink">╭────────────────┬───────────────┬─────────────────╮</span>',
+        '<span class="t-pink">│</span> <span class="t-ok">Constant</span>       <span class="t-pink">│</span> <span class="t-ok">Value</span>         <span class="t-pink">│</span> <span class="t-ok">Source</span>          <span class="t-pink">│</span>',
+        '<span class="t-pink">├────────────────┼───────────────┼─────────────────┤</span>',
+        '<span class="t-pink">│</span> GOPATH         <span class="t-pink">│</span> /Users/ana/go <span class="t-pink">│</span> wayu            <span class="t-pink">│</span>',
+        '<span class="t-pink">│</span> OPENAI_API_KEY <span class="t-pink">│</span> ********      <span class="t-pink">│</span> wayu (run-only) <span class="t-pink">│</span>',
+        '<span class="t-pink">╰────────────────┴───────────────┴─────────────────╯</span></span>'] }
+    ];
+    var SECRET_PROMPT = 'Value for OPENAI_API_KEY (input hidden): ';
 
-    // ─── DOCTOR TABS ─────────────────────────────────────────────────────
-    function switchDoctorTab(format) {
-      document.querySelectorAll('.doctor-tab').forEach(t => {
-        const active = t.getAttribute('onclick').includes(`'${format}'`);
-        t.classList.toggle('active', active);
-        t.setAttribute('aria-selected', active);
+    function finalHTML() {
+      var h = '';
+      script.forEach(function (s) {
+        h += PROMPT + esc(s.cmd) + '\n';
+        if (s.secret) h += SECRET_PROMPT + '\n';
+        h += s.out.join('\n') + '\n\n';
       });
-      document.querySelectorAll('.doctor-pane').forEach(p => {
-        p.classList.toggle('active', p.id === `doctor-${format}`);
-      });
+      return h + PROMPT + '<span class="t-caret"></span>';
     }
+    function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
-    // ─── COPY CODE ─────────────────────────────────────────────────────────
-    function copyCode(tab) {
-      const el = document.getElementById(`code-${tab}`);
-      const text = el.innerText;
-      navigator.clipboard.writeText(text).then(() => {
-        const btn = el.closest('.cmd-block').querySelector('.cmd-copy');
-        const orig = btn.textContent;
-        btn.textContent = 'copied!';
-        btn.style.color = 'var(--teal)';
-        setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1800);
+    if (reduce.matches) { term.innerHTML = finalHTML(); return; }
+
+    var done = '', caret = '<span class="t-caret"></span>', running = false;
+    function paint(extra) { term.innerHTML = done + (extra || '') + caret; }
+    function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    function typeLine(prefix, text) {
+      var i = 0;
+      return new Promise(function (resolve) {
+        (function step() {
+          i++;
+          paint(prefix + esc(text.slice(0, i)));
+          if (i < text.length) setTimeout(step, 28 + Math.random() * 42);
+          else resolve();
+        })();
       });
     }
+    async function run() {
+      running = true;
+      while (true) {
+        done = '';
+        for (var k = 0; k < script.length; k++) {
+          var s = script[k];
+          caret = '<span class="t-caret blink"></span>';
+          paint(PROMPT);
+          await wait(k === 0 ? 500 : 650);
+          caret = '<span class="t-caret"></span>';
+          await typeLine(PROMPT, s.cmd);
+          await wait(260);
+          done += PROMPT + esc(s.cmd) + '\n';
+          if (s.secret) {
+            caret = '<span class="t-caret blink"></span>';
+            paint(SECRET_PROMPT);
+            await wait(1300);  // input is hidden: nothing is echoed
+            done += SECRET_PROMPT + '\n';
+          }
+          await wait(140);
+          done += s.out.join('\n') + '\n\n';
+          paint();
+          await wait(s.out.length > 3 ? 900 : 500);
+        }
+        caret = '<span class="t-caret blink"></span>';
+        paint(PROMPT);
+        await wait(5200);
+      }
+    }
+    // Start when the terminal is visible (it is, above the fold on desktop).
+    if ('IntersectionObserver' in window) {
+      var tio = new IntersectionObserver(function (entries) {
+        if (entries[0].isIntersecting && !running) { tio.disconnect(); run(); }
+      });
+      tio.observe(term);
+    } else { run(); }
+  })();
   </script>
 </body>
 </html>
