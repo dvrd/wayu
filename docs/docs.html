@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>wayu docs</title>
+  <meta name="description" content="wayu documentation: the CLI reference, the configuration reference and the upgrade guide, rendered from the Markdown files in the repository." />
+
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
+  <link rel="shortcut icon" href="favicon.ico" />
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
+  <meta name="theme-color" content="#f5f1ec" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#141016" media="(prefers-color-scheme: dark)" />
+  <meta name="color-scheme" content="light dark" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400..600&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet" />
+
+  <!-- Markdown is the source of truth (docs/*.md, checked by tests); it is rendered here, in the browser. -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.6/purify.min.js" integrity="sha384-JEyTNhjM6R1ElGoJns4U2Ln4ofPcqzSsynQkmEc/KGy6336qAZl70tDLufbkla+3" crossorigin="anonymous" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js" integrity="sha384-RH2xi4eIQ/gjtbs9fUXM68sLSi99C7ZWBRX1vDrVv6GQXRibxXLbwO2NGZB74MbU" crossorigin="anonymous" defer></script>
+
+  <script>
+    document.documentElement.classList.add('js');
+    try {
+      var t = localStorage.getItem('wayu-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+
+  <style>
+    /* ── Tokens (same as index.html) ─────────────────────────────────────── */
+    :root {
+      --bg:        #f5f1ec;
+      --bg-2:      #ece6df;
+      --surface:   #fbf9f6;
+      --ink:       #1d1519;
+      --ink-2:     #564a50;
+      --ink-3:     #6f6268;
+      --line:      rgba(29, 21, 25, 0.12);
+      --line-2:    rgba(29, 21, 25, 0.2);
+      --accent:    #c0003f;
+      --accent-fill: #e40050;
+      --accent-soft: rgba(228, 0, 80, 0.09);
+      --on-accent: #fff8fa;
+      --shadow:    0 1px 2px rgba(29, 21, 25, 0.06), 0 8px 24px -12px rgba(29, 21, 25, 0.18);
+      --code-bg:   rgba(29, 21, 25, 0.065);
+      --halo-1:    rgba(228, 0, 80, 0.18);
+      --halo-2:    rgba(228, 0, 80, 0.10);
+      --mark:      rgba(228, 0, 80, 0.16);
+
+      --term-bg:   #1e1e2e;
+      --term-bar:  #181825;
+      --term-fg:   #cdd6f4;
+      --term-dim:  #8b90a8;
+      --term-ok:   #74c7ec;
+      --term-dir:  #94e2d5;
+      --term-git:  #f5c2e7;
+      --term-arrow:#a6e3a1;
+      --term-key:  #f9e2af;
+      --term-pink: #f38ba8;
+
+      --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+      --font-body: 'Geist', ui-sans-serif, system-ui, sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+      --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+      --ease-swap: cubic-bezier(0.2, 0, 0, 1);
+      --r-sm: 6px;
+      --r: 10px;
+      --r-lg: 16px;
+      --gutter: clamp(16px, 4vw, 40px);
+      --header: 64px;
+      --side: 264px;
+      --toc: 220px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg:        #141016;
+        --bg-2:      #1b161d;
+        --surface:   #1f1a21;
+        --ink:       #f2ecef;
+        --ink-2:     #b9adb3;
+        --ink-3:     #8f8389;
+        --line:      rgba(242, 236, 239, 0.1);
+        --line-2:    rgba(242, 236, 239, 0.18);
+        --accent:    #ff5b8f;
+        --accent-soft: rgba(255, 91, 143, 0.12);
+        --shadow:    0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
+        --code-bg:   rgba(242, 236, 239, 0.08);
+        --halo-1:    rgba(228, 0, 80, 0.32);
+        --halo-2:    rgba(228, 0, 80, 0.16);
+        --mark:      rgba(255, 91, 143, 0.26);
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg:        #141016;
+      --bg-2:      #1b161d;
+      --surface:   #1f1a21;
+      --ink:       #f2ecef;
+      --ink-2:     #b9adb3;
+      --ink-3:     #8f8389;
+      --line:      rgba(242, 236, 239, 0.1);
+      --line-2:    rgba(242, 236, 239, 0.18);
+      --accent:    #ff5b8f;
+      --accent-soft: rgba(255, 91, 143, 0.12);
+      --shadow:    0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
+      --code-bg:   rgba(242, 236, 239, 0.08);
+      --halo-1:    rgba(228, 0, 80, 0.32);
+      --halo-2:    rgba(228, 0, 80, 0.16);
+      --mark:      rgba(255, 91, 143, 0.26);
+    }
+
+    /* ── Base ───────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; scroll-padding-top: calc(var(--header) + 20px); }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.65 var(--font-body); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; overflow-x: clip; }
+    h1, h2, h3, h4 { font-family: var(--font-display); line-height: 1.15; letter-spacing: -0.02em; text-wrap: balance; }
+    a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+    a:hover { text-decoration-thickness: 2px; }
+    code, pre, kbd { font-family: var(--font-mono); }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+    ::selection { background: var(--accent-fill); color: var(--on-accent); }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+    .skip { position: absolute; left: 12px; top: -60px; z-index: 100; background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: var(--r-sm); text-decoration: none; transition: transform 0.2s var(--ease-out); }
+    .skip:focus { transform: translateY(72px); }
+    kbd { display: inline-grid; place-items: center; min-width: 1.6em; height: 1.6em; padding: 0 0.35em; border-radius: 4px; font-size: 0.72rem; color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--line-2), 0 1px 0 var(--line-2); }
+
+    /* ── Header (same as the landing nav) ──────────────────────────────── */
+    .nav { position: sticky; top: 0; z-index: 50; height: var(--header); background: color-mix(in srgb, var(--bg) 88%, transparent); -webkit-backdrop-filter: saturate(1.4) blur(10px); backdrop-filter: saturate(1.4) blur(10px); box-shadow: 0 1px 0 var(--line); }
+    .nav-inner { display: flex; align-items: center; gap: 16px; height: 100%; padding: 0 var(--gutter); }
+    .brand { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); text-decoration: none; font: 800 1.35rem/1 var(--font-display); letter-spacing: -0.03em; }
+    .brand-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--accent-fill); box-shadow: 0 0 0 2.5px var(--halo-1), 0 0 0 5px var(--halo-2); transition: box-shadow 0.3s var(--ease-out); }
+    .brand:hover .brand-dot { box-shadow: 0 0 0 3.5px var(--halo-1), 0 0 0 7px var(--halo-2); }
+    .brand-sub { font: 500 0.8rem/1 var(--font-mono); color: var(--ink-3); padding-left: 10px; margin-left: 2px; box-shadow: inset 1px 0 0 var(--line-2); }
+    .nav-inner > nav { margin-left: auto; }
+    .nav-links { display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; align-items: center; }
+    .nav-links a:not(.icon-btn) { display: inline-flex; align-items: center; min-height: 40px; padding: 0 10px; color: var(--ink-2); text-decoration: none; font-size: 0.93rem; border-radius: var(--r-sm); transition: color 0.15s ease, background-color 0.15s ease; }
+    .nav-links a:not(.icon-btn):hover { color: var(--ink); background: var(--bg-2); }
+    .icon-btn { position: relative; display: inline-grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); cursor: pointer; transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s var(--ease-out); }
+    .icon-btn:hover { color: var(--ink); background: var(--bg-2); }
+    .icon-btn:active { transform: scale(0.96); }
+    .icon-btn svg { width: 20px; height: 20px; }
+    .theme-btn .sun, .theme-btn .moon, .copy-btn .cp, .copy-btn .ok { grid-area: 1 / 1; transition: opacity 0.3s var(--ease-swap), transform 0.3s var(--ease-swap), filter 0.3s var(--ease-swap); }
+    .theme-btn .moon { opacity: 0; transform: scale(0.25); filter: blur(4px); }
+    :root[data-theme="dark"] .theme-btn .sun { opacity: 0; transform: scale(0.25); filter: blur(4px); }
+    :root[data-theme="dark"] .theme-btn .moon { opacity: 1; transform: none; filter: none; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) .theme-btn .sun { opacity: 0; transform: scale(0.25); filter: blur(4px); }
+      :root:not([data-theme="light"]) .theme-btn .moon { opacity: 1; transform: none; filter: none; }
+    }
+    .menu-btn { display: none; margin-left: -8px; }
+    @media (max-width: 899px) { .menu-btn { display: inline-grid; } .nav-links .hide-sm { display: none; } .brand-sub { display: none; } }
+
+    /* ── Layout: sidebar · article · on-this-page ──────────────────────── */
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr); max-width: 1440px; margin: 0 auto; }
+    @media (min-width: 900px) { .layout { grid-template-columns: var(--side) minmax(0, 1fr); } }
+    @media (min-width: 1240px) { .layout { grid-template-columns: var(--side) minmax(0, 1fr) var(--toc); } }
+
+    .side { position: sticky; top: var(--header); align-self: start; height: calc(100dvh - var(--header)); overflow-y: auto; overscroll-behavior: contain; padding: 24px 16px 40px var(--gutter); box-shadow: inset -1px 0 0 var(--line); scrollbar-width: thin; }
+    @media (max-width: 899px) {
+      .side { position: fixed; z-index: 60; top: var(--header); left: 0; width: min(320px, 86vw); height: calc(100dvh - var(--header)); padding: 20px 16px 40px; background: var(--bg); box-shadow: var(--shadow), inset -1px 0 0 var(--line); transform: translateX(-102%); visibility: hidden; transition: transform 0.3s var(--ease-out), visibility 0s linear 0.3s; }
+      .nav-open .side { transform: none; visibility: visible; transition: transform 0.3s var(--ease-out), visibility 0s; }
+      .scrim { position: fixed; inset: var(--header) 0 0 0; z-index: 55; background: rgba(20, 8, 16, 0.4); opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+      .nav-open .scrim { opacity: 1; pointer-events: auto; }
+    }
+    @media (min-width: 900px) { .scrim { display: none; } }
+
+    .search { position: relative; }
+    .search svg { position: absolute; left: 11px; top: 50%; width: 16px; height: 16px; margin-top: -8px; color: var(--ink-3); pointer-events: none; }
+    .search input { width: 100%; height: 40px; padding: 0 40px 0 34px; border: 0; border-radius: var(--r); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); color: var(--ink); font: 400 0.92rem var(--font-body); transition: box-shadow 0.15s ease; }
+    .search input::placeholder { color: var(--ink-3); }
+    .search input:focus { outline: none; box-shadow: inset 0 0 0 1.5px var(--accent); }
+    .search input::-webkit-search-cancel-button { display: none; }
+    .search kbd { position: absolute; right: 9px; top: 50%; margin-top: -0.8em; pointer-events: none; }
+    .search input:focus ~ kbd, .search input:not(:placeholder-shown) ~ kbd { display: none; }
+
+    .side-label { margin: 24px 0 8px 10px; font: 500 0.72rem/1 var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.08em; }
+    .pages { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+    .pages > li > a { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 6px 10px; border-radius: var(--r-sm); color: var(--ink-2); text-decoration: none; font-weight: 500; font-size: 0.94rem; transition: color 0.15s ease, background-color 0.15s ease; }
+    .pages > li > a:hover { color: var(--ink); background: var(--bg-2); }
+    .pages > li > a[aria-current="page"] { color: var(--ink); background: var(--bg-2); }
+    .pages > li > a::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--line-2); transition: background-color 0.15s ease, box-shadow 0.15s ease; }
+    .pages > li > a[aria-current="page"]::before { background: var(--accent-fill); box-shadow: 0 0 0 2px var(--halo-1), 0 0 0 4px var(--halo-2); }
+
+    /* On-this-page lists: in the right rail on wide screens, nested in the sidebar otherwise */
+    .toc-list { margin: 0; padding: 0; list-style: none; }
+    .toc-list a { display: block; padding: 4px 10px 4px 12px; color: var(--ink-3); text-decoration: none; font-size: 0.85rem; line-height: 1.4; box-shadow: inset 1.5px 0 0 var(--line); transition: color 0.15s ease, box-shadow 0.15s ease; overflow-wrap: anywhere; }
+    .toc-list a:hover { color: var(--ink); }
+    .toc-list a.l3 { padding-left: 24px; font-size: 0.82rem; }
+    .toc-list a.active { color: var(--ink); box-shadow: inset 1.5px 0 0 var(--accent-fill); }
+    .side-toc { margin: 6px 0 8px 14px; }
+    @media (min-width: 1240px) { .side-toc { display: none; } }
+    .rail { display: none; }
+    @media (min-width: 1240px) { .rail { display: block; position: sticky; top: var(--header); align-self: start; max-height: calc(100dvh - var(--header)); overflow-y: auto; padding: 40px var(--gutter) 40px 8px; scrollbar-width: thin; } }
+    .rail .side-label { margin-top: 0; }
+
+    .results { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+    .results a { display: block; padding: 8px 10px; border-radius: var(--r-sm); color: var(--ink-2); text-decoration: none; font-size: 0.85rem; line-height: 1.45; }
+    .results a:hover, .results a:focus-visible { background: var(--bg-2); color: var(--ink); outline-offset: -2px; }
+    .results .r-where { display: block; font: 500 0.7rem/1.3 var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+    .results .r-title { display: block; margin-top: 2px; color: var(--ink); font-weight: 600; }
+    .results .r-snip { display: block; margin-top: 2px; color: var(--ink-3); }
+    .results mark, .doc mark { background: var(--mark); color: inherit; border-radius: 3px; padding: 0 1px; }
+    .results-empty { margin: 14px 10px 0; color: var(--ink-3); font-size: 0.88rem; }
+    [hidden] { display: none !important; }
+
+    /* ── Article ───────────────────────────────────────────────────────── */
+    .main { min-width: 0; padding: 40px var(--gutter) 96px; }
+    @media (min-width: 900px) { .main { padding-left: clamp(32px, 4vw, 64px); padding-right: clamp(32px, 4vw, 64px); } }
+    .doc { max-width: 48rem; }
+    .doc-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 14px; font: 500 0.78rem/1.2 var(--font-mono); color: var(--ink-3); }
+    .doc-meta .crumb { color: var(--accent); }
+    .doc-meta a { color: var(--ink-3); }
+    .doc-meta a:hover { color: var(--ink); }
+    .md > :first-child { margin-top: 0; }
+    .md h1 { margin: 0 0 20px; font-size: clamp(2.1rem, 4vw, 2.9rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.02; }
+    .md h2 { margin: 56px 0 14px; padding-top: 28px; font-size: clamp(1.5rem, 2.6vw, 1.85rem); font-weight: 700; box-shadow: 0 -1px 0 var(--line); }
+    .md h3 { margin: 36px 0 10px; font-size: 1.22rem; font-weight: 700; }
+    .md h4 { margin: 28px 0 8px; font-size: 1.02rem; font-weight: 700; }
+    .md p, .md ul, .md ol, .md blockquote, .md .table-wrap, .md .code { margin: 0 0 16px; }
+    .md p, .md li { color: var(--ink-2); text-wrap: pretty; }
+    .md strong { color: var(--ink); font-weight: 600; }
+    .md ul, .md ol { padding-left: 1.4em; }
+    .md li + li { margin-top: 4px; }
+    .md li > ul, .md li > ol { margin: 4px 0 0; }
+    .md li::marker { color: var(--ink-3); }
+    .md hr { border: 0; height: 1px; background: var(--line); margin: 40px 0; }
+    .md blockquote { padding: 2px 0 2px 16px; box-shadow: inset 2px 0 0 var(--line-2); color: var(--ink-2); }
+    .md :not(pre) > code { font-size: 0.86em; background: var(--code-bg); color: var(--ink); padding: 0.12em 0.36em; border-radius: 4px; -webkit-box-decoration-break: clone; box-decoration-break: clone; overflow-wrap: break-word; }
+    .md :is(h1, h2, h3, h4) > code { font-size: 0.86em; background: none; padding: 0; letter-spacing: -0.01em; }
+    .md p.pseudo-h { margin-top: 32px; }
+    .md p.pseudo-h strong { font: 700 1.08rem/1.35 var(--font-display); letter-spacing: -0.01em; }
+
+    /* Heading anchors */
+    .md .anchor { margin-left: 8px; color: var(--ink-3); text-decoration: none; font-weight: 500; opacity: 0; transition: opacity 0.15s ease, color 0.15s ease; }
+    .md :is(h2, h3, h4, .pseudo-h):hover .anchor, .md .anchor:focus-visible { opacity: 1; }
+    .md .anchor:hover { color: var(--accent); }
+    @media (hover: none) { .md .anchor { opacity: 0.6; } }
+    @media (prefers-reduced-motion: no-preference) { .md .flash { animation: flash 1.6s var(--ease-out); } }
+    @keyframes flash { 0%, 30% { background: var(--mark); } 100% { background: transparent; } }
+    .md .flash { border-radius: 4px; }
+
+    /* Tables scroll on their own, never the page */
+    .table-wrap { overflow-x: auto; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line); }
+    .md table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .md th, .md td { padding: 9px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    .md th { font-weight: 600; color: var(--ink); background: var(--bg-2); white-space: nowrap; }
+    .md td { color: var(--ink-2); }
+    .md tr:last-child td { border-bottom: 0; }
+    .md table { min-width: 34rem; }
+    .md code.nw { white-space: nowrap; }
+
+    /* Code blocks: the same dark terminal as the landing page, in both themes */
+    .code { position: relative; border-radius: var(--r); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset; min-width: 0; }
+    .code pre { margin: 0; padding: 14px 48px 14px 18px; overflow-x: auto; font: 400 0.82rem/1.65 var(--font-mono); tab-size: 4; scrollbar-width: thin; scrollbar-color: #45475a transparent; }
+    .code pre code { background: none; padding: 0; font: inherit; color: inherit; }
+    .code .copy-btn { position: absolute; top: 3px; right: 3px; width: 36px; height: 36px; color: var(--term-dim); background: var(--term-bg); }
+    .code .copy-btn:hover { color: var(--term-fg); background: #2a2a3c; }
+    .code .copy-btn svg { width: 16px; height: 16px; }
+    .copy-btn .ok { opacity: 0; transform: scale(0.25); filter: blur(4px); color: var(--term-arrow); }
+    .copy-btn.copied .cp { opacity: 0; transform: scale(0.25); filter: blur(4px); }
+    .copy-btn.copied .ok { opacity: 1; transform: none; filter: none; }
+    .hljs-comment, .hljs-quote { color: var(--term-dim); font-style: italic; }
+    .hljs-keyword, .hljs-built_in, .hljs-selector-tag, .hljs-section { color: var(--term-pink); }
+    .hljs-string, .hljs-regexp, .hljs-addition { color: var(--term-arrow); }
+    .hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable, .hljs-property { color: var(--term-ok); }
+    .hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet { color: var(--term-key); }
+    .hljs-title, .hljs-name, .hljs-type, .hljs-meta { color: var(--term-dir); }
+    .hljs-subst, .hljs-params { color: var(--term-fg); }
+    .hljs-deletion { color: var(--term-pink); }
+
+    /* Pager + states */
+    .pager { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 64px; padding-top: 28px; box-shadow: 0 -1px 0 var(--line); }
+    .pager a { display: block; padding: 14px 16px; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line-2); text-decoration: none; color: var(--ink); font-weight: 600; transition: box-shadow 0.15s ease, background-color 0.15s ease; }
+    .pager a:hover { background: var(--surface); box-shadow: inset 0 0 0 1px var(--accent); }
+    .pager span { display: block; font: 500 0.72rem/1.4 var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+    .pager .next { grid-column: 2; text-align: right; }
+    .state { padding: 8px 0; }
+    .state h1 { margin: 0 0 14px; font-size: clamp(2.1rem, 4vw, 2.9rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.02; }
+    .state p { color: var(--ink-2); max-width: 36em; }
+    .cards { margin-top: 32px; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 700px) { .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    .cards a { display: flex; flex-direction: column; gap: 6px; padding: 18px; border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow); color: var(--ink-2); text-decoration: none; font-size: 0.9rem; transition: transform 0.2s var(--ease-out), box-shadow 0.2s ease; }
+    .cards a strong { color: var(--ink); font: 700 1.1rem/1.2 var(--font-display); letter-spacing: -0.015em; }
+    .cards a:hover { transform: translateY(-2px); box-shadow: var(--shadow), inset 0 0 0 1.5px var(--accent-fill); }
+    .cards a:active { transform: scale(0.98); }
+    .loading { display: grid; gap: 12px; max-width: 48rem; }
+    .loading i { display: block; height: 14px; border-radius: 6px; background: var(--bg-2); }
+    .loading i:first-child { height: 40px; width: 55%; margin-bottom: 14px; }
+    .loading i:nth-child(3n) { width: 82%; }
+    @media (prefers-reduced-motion: no-preference) { .loading i { animation: pulse 1.4s ease-in-out infinite alternate; } }
+    @keyframes pulse { to { opacity: 0.45; } }
+    .foot { margin-top: 48px; color: var(--ink-3); font-size: 0.85rem; }
+    .foot a { color: var(--ink-2); }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#doc">Skip to content</a>
+
+  <header class="nav">
+    <div class="nav-inner">
+      <button class="icon-btn menu-btn" id="menu-btn" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="side">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+      </button>
+      <a class="brand" href="index.html" aria-label="wayu home"><span class="brand-dot" aria-hidden="true"></span>wayu</a>
+      <span class="brand-sub">docs</span>
+      <nav aria-label="Site">
+        <ul class="nav-links">
+          <li class="hide-sm"><a href="index.html">Home</a></li>
+          <li class="hide-sm"><a href="index.html#install">Install</a></li>
+          <li>
+            <a class="icon-btn" href="https://github.com/dvrd/wayu" aria-label="wayu on GitHub">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+            </a>
+          </li>
+          <li>
+            <button class="icon-btn theme-btn" id="theme-btn" type="button" aria-label="Switch to dark theme">
+              <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+              <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.6A8.5 8.5 0 0 1 9.4 4a8.5 8.5 0 1 0 10.6 10.6Z"/></svg>
+            </button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <div class="scrim" id="scrim"></div>
+
+  <div class="layout">
+    <aside class="side" id="side" aria-label="Documentation">
+      <div class="search" role="search">
+        <label class="sr-only" for="q">Search the docs</label>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+        <input id="q" type="search" placeholder="Search the docs" autocomplete="off" spellcheck="false" aria-controls="results" aria-describedby="search-hint" />
+        <kbd aria-hidden="true">/</kbd>
+        <span class="sr-only" id="search-hint">Type to filter every page. Use the down arrow to move into the results.</span>
+      </div>
+      <p class="sr-only" id="results-status" aria-live="polite"></p>
+      <ul class="results" id="results" hidden></ul>
+      <p class="results-empty" id="results-empty" hidden>No matches. Try a command name, a flag or a file.</p>
+
+      <nav id="pages-nav" aria-label="Pages">
+        <p class="side-label">Reference</p>
+        <ul class="pages" id="pages"></ul>
+      </nav>
+    </aside>
+
+    <main class="main" id="doc" tabindex="-1">
+      <article class="doc" id="article" aria-live="off">
+        <div class="loading" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <noscript>
+          <p>These pages are rendered from Markdown with JavaScript. Read them on GitHub instead:
+          <a href="https://github.com/dvrd/wayu/blob/main/docs/cli.md">CLI reference</a>,
+          <a href="https://github.com/dvrd/wayu/blob/main/docs/config-reference.md">configuration reference</a>,
+          <a href="https://github.com/dvrd/wayu/blob/main/docs/UPGRADING.md">upgrade guide</a>.</p>
+        </noscript>
+      </article>
+    </main>
+
+    <aside class="rail" id="rail" aria-label="On this page" hidden>
+      <p class="side-label">On this page</p>
+      <ul class="toc-list" id="toc"></ul>
+    </aside>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+    var REPO = 'https://github.com/dvrd/wayu/blob/main/';
+    var PAGES = [
+      { id: 'cli', file: 'cli.md', title: 'CLI reference', desc: 'Every command, action and flag, the --json shapes and the exit codes.' },
+      { id: 'config', file: 'config-reference.md', title: 'Configuration', desc: 'wayu.toml, entries.json, hooks, plugins and the files wayu generates.' },
+      { id: 'upgrading', file: 'UPGRADING.md', title: 'Upgrading', desc: 'User-visible behavior changes per release, with the steps to follow.' }
+    ];
+    var byId = {}, byFile = {};
+    PAGES.forEach(function (p) { byId[p.id] = p; byFile[p.file.toLowerCase()] = p; });
+
+    var root = document.documentElement;
+    var article = document.getElementById('article');
+    var docMain = document.getElementById('doc');
+    var pagesEl = document.getElementById('pages');
+    var rail = document.getElementById('rail');
+    var tocEl = document.getElementById('toc');
+    var q = document.getElementById('q');
+    var resultsEl = document.getElementById('results');
+    var emptyEl = document.getElementById('results-empty');
+    var statusEl = document.getElementById('results-status');
+    var pagesNav = document.getElementById('pages-nav');
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+    function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+    function href(id, hash) { return 'docs.html' + (id ? '?p=' + id : '') + (hash ? '#' + hash : ''); }
+
+    /* ── Theme toggle (shared key with the landing page) ─────────────── */
+    var darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+    var themeBtn = document.getElementById('theme-btn');
+    function isDark() { return root.dataset.theme ? root.dataset.theme === 'dark' : darkMq.matches; }
+    function syncThemeLabel() { themeBtn.setAttribute('aria-label', isDark() ? 'Switch to light theme' : 'Switch to dark theme'); }
+    themeBtn.addEventListener('click', function () {
+      var next = isDark() ? 'light' : 'dark';
+      root.dataset.theme = next;
+      try { localStorage.setItem('wayu-theme', next); } catch (e) {}
+      syncThemeLabel();
+    });
+    if (darkMq.addEventListener) darkMq.addEventListener('change', syncThemeLabel);
+    syncThemeLabel();
+
+    /* ── Mobile drawer ───────────────────────────────────────────────── */
+    var menuBtn = document.getElementById('menu-btn');
+    var narrow = window.matchMedia('(max-width: 899px)');
+    function setDrawer(open, focusSearch) {
+      document.body.classList.toggle('nav-open', open);
+      menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      menuBtn.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+      if (open && focusSearch) q.focus({ preventScroll: true });
+      if (!open && focusSearch === false) menuBtn.focus();
+    }
+    menuBtn.addEventListener('click', function () { setDrawer(!document.body.classList.contains('nav-open'), true); });
+    document.getElementById('scrim').addEventListener('click', function () { setDrawer(false); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && document.body.classList.contains('nav-open') && narrow.matches && q.value === '') setDrawer(false, false);
+    });
+
+    /* ── Markdown → HTML ─────────────────────────────────────────────── */
+    // GitHub's heading slugs, so links written for github.com keep working here.
+    function slugger() {
+      var seen = {};
+      return function (text) {
+        var base = text.trim().toLowerCase().replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '').replace(/\s/g, '-');
+        var slug = base, n = seen[base] || 0;
+        if (n) slug = base + '-' + n;
+        seen[base] = n + 1;
+        return slug;
+      };
+    }
+
+    var LANG_ALIAS = { zsh: 'bash', sh: 'bash', shell: 'bash', toml: 'ini', conf: 'ini' };
+
+    function rewriteLink(a) {
+      var raw = a.getAttribute('href') || '';
+      if (/^(https?:|mailto:)/i.test(raw)) { a.setAttribute('rel', 'noopener'); return; }
+      if (raw.charAt(0) === '#') return;  // same page
+      var m = raw.match(/^(?:\.\/)?([^#?]+?)(#.*)?$/);
+      if (!m) return;
+      var target = byFile[m[1].toLowerCase()];
+      if (target) { a.setAttribute('href', href(target.id, (m[2] || '').slice(1))); a.dataset.route = '1'; return; }
+      // Anything else in the repo (scripts, other Markdown): link to it on GitHub.
+      a.setAttribute('href', REPO + 'docs/' + m[1].replace(/^\.\//, '') + (m[2] || ''));
+    }
+
+    var COPY_SVG = '<svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+
+    // Render one page into a detached element; returns { el, title, toc, sections }.
+    function render(page, md) {
+      var html = window.marked.parse(md, { gfm: true });
+      var el = document.createElement('div');
+      el.className = 'md';
+      el.innerHTML = window.DOMPurify.sanitize(html);
+      var slug = slugger(), toc = [], title = page.title;
+
+      // A paragraph that is only bold text works as a sub-heading in UPGRADING.md: anchor it too.
+      el.querySelectorAll('p').forEach(function (p) {
+        if (p.childNodes.length === 1 && p.firstChild.nodeName === 'STRONG') p.classList.add('pseudo-h');
+      });
+      el.querySelectorAll('h1, h2, h3, h4, p.pseudo-h').forEach(function (h) {
+        var text = h.textContent.replace(/\s+/g, ' ').trim();
+        var id = slug(text);
+        h.id = id;
+        if (h.tagName === 'H1') { title = text; return; }
+        var a = document.createElement('a');
+        a.className = 'anchor'; a.href = '#' + id; a.textContent = '#';
+        a.setAttribute('aria-label', 'Link to this section');
+        (h.classList.contains('pseudo-h') ? h.firstChild : h).appendChild(a);
+        var level = h.tagName === 'H2' ? 2 : 3;
+        if (h.tagName === 'H4') return;
+        if (h.classList.contains('pseudo-h') && page.id !== 'upgrading') return;
+        toc.push({ id: id, text: text, level: level });
+      });
+      // Short inline code never breaks at its hyphens ("--json" stays whole).
+      el.querySelectorAll(':not(pre) > code').forEach(function (c) { if (c.textContent.length <= 28) c.classList.add('nw'); });
+      el.querySelectorAll('a[href]').forEach(function (a) { if (!a.classList.contains('anchor')) rewriteLink(a); });
+      el.querySelectorAll('table').forEach(function (t) {
+        var w = document.createElement('div');
+        w.className = 'table-wrap';
+        t.parentNode.insertBefore(w, t); w.appendChild(t);
+      });
+      el.querySelectorAll('pre').forEach(function (pre) {
+        var code = pre.querySelector('code');
+        var w = document.createElement('div');
+        w.className = 'code';
+        pre.parentNode.insertBefore(w, pre); w.appendChild(pre);
+        var lang = '';
+        if (code) {
+          var cls = (code.className.match(/language-(\S+)/) || [])[1] || '';
+          lang = cls;
+          var hl = LANG_ALIAS[cls] || cls;
+          if (window.hljs && hl && window.hljs.getLanguage(hl)) {
+            code.innerHTML = window.hljs.highlight(code.textContent, { language: hl, ignoreIllegals: true }).value;
+          }
+        }
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'icon-btn copy-btn'; b.setAttribute('aria-label', lang ? 'Copy ' + lang + ' code' : 'Copy code');
+        b.innerHTML = COPY_SVG;
+        w.appendChild(b);
+      });
+
+      // Search sections: each heading and the text up to the next one.
+      var sections = [], cur = { id: '', title: title, text: '' };
+      Array.prototype.forEach.call(el.children, function (node) {
+        if (/^H[1-4]$/.test(node.tagName) || node.classList.contains('pseudo-h')) {
+          if (cur.text || cur.id) sections.push(cur);
+          cur = { id: node.tagName === 'H1' ? '' : node.id, title: node.textContent.replace(/#$/, '').replace(/\s+/g, ' ').trim(), text: '' };
+        } else {
+          cur.text += ' ' + node.textContent;
+        }
+      });
+      sections.push(cur);
+      sections.forEach(function (s) { s.text = s.text.replace(/\s+/g, ' ').trim(); s.page = page; s.hay = (s.title + ' ' + s.text).toLowerCase(); s.titleLc = s.title.toLowerCase(); });
+      return { el: el, title: title, toc: toc, sections: sections };
+    }
+
+    /* ── Loading ─────────────────────────────────────────────────────── */
+    var cache = {};   // id -> rendered
+    var loads = {};   // id -> promise
+    function libsReady() {
+      return new Promise(function (resolve) {
+        (function check() { if (window.marked && window.DOMPurify && window.hljs) resolve(); else setTimeout(check, 20); })();
+      });
+    }
+    function load(page) {
+      if (!loads[page.id]) {
+        loads[page.id] = Promise.all([fetch(page.file, { cache: 'no-cache' }).then(function (r) {
+          if (!r.ok) throw new Error(page.file + ': HTTP ' + r.status);
+          return r.text();
+        }), libsReady()]).then(function (res) { cache[page.id] = render(page, res[0]); return cache[page.id]; });
+      }
+      return loads[page.id];
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────── */
+    pagesEl.innerHTML = PAGES.map(function (p) {
+      return '<li><a href="' + href(p.id) + '" data-route="1" data-page="' + p.id + '">' + esc(p.title) + '</a><ul class="toc-list side-toc" data-for="' + p.id + '" hidden></ul></li>';
+    }).join('');
+
+    function tocHTML(toc) {
+      return toc.map(function (t) {
+        return '<li><a class="' + (t.level === 3 ? 'l3' : 'l2') + '" href="#' + esc(t.id) + '" data-id="' + esc(t.id) + '">' + esc(t.text) + '</a></li>';
+      }).join('');
+    }
+
+    /* ── Routing ─────────────────────────────────────────────────────── */
+    var currentId = null;
+    function parseLoc() {
+      var p = new URLSearchParams(location.search).get('p');
+      var hash = decodeURIComponent(location.hash.slice(1));
+      return { id: p, hash: hash };
+    }
+
+    function setCurrentNav(id) {
+      pagesEl.querySelectorAll('a[data-page]').forEach(function (a) {
+        if (a.dataset.page === id) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+      });
+      pagesEl.querySelectorAll('.side-toc').forEach(function (ul) { ul.hidden = ul.dataset.for !== id; });
+    }
+
+    function overview() {
+      currentId = '';
+      document.title = 'wayu docs';
+      setCurrentNav('');
+      rail.hidden = true;
+      article.innerHTML =
+        '<div class="state">' +
+        '<p class="doc-meta"><span class="crumb">Docs</span></p>' +
+        '<h1>wayu documentation</h1>' +
+        '<p>The reference for every command and config file, rendered from the Markdown in the repository, so it always matches the release on <code>main</code>. New here? Start with <a href="index.html#install">install</a>, then keep the CLI reference open.</p>' +
+        '<div class="cards">' + PAGES.map(function (p) {
+          return '<a href="' + href(p.id) + '" data-route="1"><strong>' + esc(p.title) + '</strong>' + esc(p.desc) + '</a>';
+        }).join('') + '</div>' +
+        '<p class="foot">Press <kbd>/</kbd> to search every page.</p>' +
+        '</div>';
+    }
+
+    function notFound(id) {
+      currentId = null;
+      document.title = 'Page not found · wayu docs';
+      setCurrentNav('');
+      rail.hidden = true;
+      article.innerHTML =
+        '<div class="state">' +
+        '<p class="doc-meta"><span class="crumb">404</span></p>' +
+        '<h1>No docs page called “' + esc(id) + '”.</h1>' +
+        '<p>It may have been renamed. These are the pages that exist:</p>' +
+        '<div class="cards">' + PAGES.map(function (p) {
+          return '<a href="' + href(p.id) + '" data-route="1"><strong>' + esc(p.title) + '</strong>' + esc(p.desc) + '</a>';
+        }).join('') + '</div></div>';
+    }
+
+    function failed(page, err) {
+      article.innerHTML = '<div class="state"><p class="doc-meta"><span class="crumb">Error</span></p><h1>Could not load this page.</h1>' +
+        '<p>' + esc(err && err.message || err) + '. Read <a href="' + REPO + 'docs/' + page.file + '">' + esc(page.file) + ' on GitHub</a> instead.</p></div>';
+    }
+
+    function scrollToHash(hash, smooth) {
+      if (!hash) { window.scrollTo(0, 0); return; }
+      var t = document.getElementById(hash);
+      if (!t) { window.scrollTo(0, 0); return; }
+      t.scrollIntoView({ behavior: smooth && !reduce.matches ? 'smooth' : 'auto', block: 'start' });
+      var flashEl = t.classList.contains('pseudo-h') ? t.firstChild : t;
+      flashEl.classList.remove('flash'); void flashEl.offsetWidth; flashEl.classList.add('flash');
+    }
+
+    function show(loc, opts) {
+      opts = opts || {};
+      if (!loc.id) { overview(); if (!opts.keepScroll) window.scrollTo(0, 0); return Promise.resolve(); }
+      var page = byId[loc.id];
+      if (!page) { notFound(loc.id); return Promise.resolve(); }
+      if (currentId === page.id) { scrollToHash(loc.hash, true); return Promise.resolve(); }
+      currentId = page.id;
+      setCurrentNav(page.id);
+      return load(page).then(function (r) {
+        if (currentId !== page.id) return;
+        var idx = PAGES.indexOf(page), prev = PAGES[idx - 1], next = PAGES[idx + 1];
+        article.innerHTML = '';
+        var meta = document.createElement('p');
+        meta.className = 'doc-meta';
+        meta.innerHTML = '<span class="crumb">Docs / ' + esc(page.title) + '</span><a href="' + REPO + 'docs/' + page.file + '">Source: docs/' + esc(page.file) + '</a>';
+        article.appendChild(meta);
+        article.appendChild(r.el);
+        var pager = document.createElement('nav');
+        pager.className = 'pager'; pager.setAttribute('aria-label', 'Previous and next page');
+        pager.innerHTML = (prev ? '<a class="prev" href="' + href(prev.id) + '" data-route="1"><span>Previous</span>' + esc(prev.title) + '</a>' : '') +
+                          (next ? '<a class="next" href="' + href(next.id) + '" data-route="1"><span>Next</span>' + esc(next.title) + '</a>' : '');
+        article.appendChild(pager);
+        document.title = page.title + ' · wayu docs';
+        var t = tocHTML(r.toc);
+        tocEl.innerHTML = t;
+        rail.hidden = r.toc.length === 0;
+        var side = pagesEl.querySelector('.side-toc[data-for="' + page.id + '"]');
+        side.innerHTML = t;
+        if (opts.focus) docMain.focus({ preventScroll: true });
+        scrollToHash(loc.hash, false);
+        spy();
+      }, function (err) { failed(page, err); });
+    }
+
+    function navigate(url, push) {
+      var u = new URL(url, location.href);
+      if (push) history.pushState(null, '', u.pathname.split('/').pop() + u.search + u.hash);
+      return show({ id: u.searchParams.get('p'), hash: decodeURIComponent(u.hash.slice(1)) }, { focus: push });
+    }
+
+    document.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a');
+      if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      var raw = a.getAttribute('href') || '';
+      if (raw.charAt(0) === '#' && a.closest('.md, .toc-list')) {
+        e.preventDefault();
+        history.pushState(null, '', location.search + raw);
+        scrollToHash(decodeURIComponent(raw.slice(1)), true);
+        if (narrow.matches) setDrawer(false);
+        return;
+      }
+      if (a.dataset.route) {
+        e.preventDefault();
+        navigate(a.href, true);
+        if (narrow.matches) setDrawer(false);
+      }
+    });
+    window.addEventListener('popstate', function () { show(parseLoc()); });
+
+    /* ── Copy buttons ────────────────────────────────────────────────── */
+    article.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('.copy-btn');
+      if (!b) return;
+      var pre = b.parentNode.querySelector('pre');
+      var text = pre ? pre.textContent.replace(/\n$/, '') : '';
+      if (!navigator.clipboard) return;
+      var label = b.getAttribute('aria-label') === 'Copied' ? 'Copy code' : b.getAttribute('aria-label');
+      navigator.clipboard.writeText(text).then(function () {
+        b.classList.add('copied'); b.setAttribute('aria-label', 'Copied');
+        clearTimeout(b._t);
+        b._t = setTimeout(function () { b.classList.remove('copied'); b.setAttribute('aria-label', label); }, 1600);
+      }, function () {});
+    });
+
+    /* ── Scroll-spy ──────────────────────────────────────────────────── */
+    var ticking = false;
+    function spy() {
+      ticking = false;
+      if (!currentId || !cache[currentId]) return;
+      var toc = cache[currentId].toc, active = null, line = parseFloat(getComputedStyle(root).scrollPaddingTop) + 8;
+      for (var i = 0; i < toc.length; i++) {
+        var el = document.getElementById(toc[i].id);
+        if (!el) continue;
+        if (el.getBoundingClientRect().top <= line) active = toc[i].id; else break;
+      }
+      if (!active && toc.length) active = null;
+      document.querySelectorAll('.toc-list a').forEach(function (a) {
+        var on = a.dataset.id === active;
+        a.classList.toggle('active', on);
+        if (on) a.setAttribute('aria-current', 'location'); else a.removeAttribute('aria-current');
+      });
+      // Keep the active entry visible in the right rail.
+      var cur = tocEl.querySelector('a.active');
+      if (cur && !rail.hidden) {
+        var rr = rail.getBoundingClientRect(), cr = cur.getBoundingClientRect();
+        if (cr.top < rr.top + 40 || cr.bottom > rr.bottom - 40) rail.scrollTop += cr.top - rr.top - rr.height / 3;
+      }
+    }
+    window.addEventListener('scroll', function () { if (!ticking) { ticking = true; requestAnimationFrame(spy); } }, { passive: true });
+
+    /* ── Search across every page ───────────────────────────────────── */
+    var allLoaded = null;
+    function loadAll() { return allLoaded || (allLoaded = Promise.all(PAGES.map(load))); }
+
+    function highlight(text, terms) {
+      var out = esc(text);
+      terms.forEach(function (t) {
+        if (!t) return;
+        out = out.replace(new RegExp('(' + esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'), '<mark>$1</mark>');
+      });
+      return out;
+    }
+    function snippet(text, terms) {
+      var lc = text.toLowerCase(), at = -1;
+      for (var i = 0; i < terms.length && at < 0; i++) at = lc.indexOf(terms[i]);
+      if (at < 0) return text.slice(0, 110) + (text.length > 110 ? '…' : '');
+      var start = Math.max(0, at - 40), end = Math.min(text.length, at + 90);
+      return (start > 0 ? '…' : '') + text.slice(start, end) + (end < text.length ? '…' : '');
+    }
+
+    function search(query) {
+      var terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+      if (!terms.length) {
+        resultsEl.hidden = true; emptyEl.hidden = true; pagesNav.hidden = false; statusEl.textContent = '';
+        return;
+      }
+      loadAll().then(function () {
+        if (q.value.toLowerCase().split(/\s+/).filter(Boolean).join(' ') !== terms.join(' ')) return;
+        var hits = [];
+        PAGES.forEach(function (p) {
+          cache[p.id].sections.forEach(function (s) {
+            var score = 0;
+            for (var i = 0; i < terms.length; i++) {
+              if (s.hay.indexOf(terms[i]) < 0) return;
+              if (s.titleLc.indexOf(terms[i]) >= 0) score += 10;
+              score += Math.min(5, s.hay.split(terms[i]).length - 1);
+            }
+            hits.push({ s: s, score: score });
+          });
+        });
+        hits.sort(function (a, b) { return b.score - a.score; });
+        hits = hits.slice(0, 40);
+        pagesNav.hidden = true;
+        emptyEl.hidden = hits.length > 0;
+        resultsEl.hidden = hits.length === 0;
+        statusEl.textContent = hits.length ? hits.length + (hits.length === 40 ? '+' : '') + ' results' : 'No results';
+        resultsEl.innerHTML = hits.map(function (h) {
+          var s = h.s;
+          return '<li><a href="' + href(s.page.id, s.id) + '" data-route="1">' +
+            '<span class="r-where">' + esc(s.page.title) + '</span>' +
+            '<span class="r-title">' + highlight(s.title, terms) + '</span>' +
+            (s.text ? '<span class="r-snip">' + highlight(snippet(s.text, terms), terms) + '</span>' : '') +
+            '</a></li>';
+        }).join('');
+      });
+    }
+    var debounce;
+    q.addEventListener('input', function () { clearTimeout(debounce); debounce = setTimeout(function () { search(q.value); }, 70); });
+    q.addEventListener('focus', loadAll, { once: true });
+    q.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { var f = resultsEl.querySelector('a'); if (f && !resultsEl.hidden) { e.preventDefault(); f.focus(); } }
+      else if (e.key === 'Enter') { var first = resultsEl.querySelector('a'); if (first && !resultsEl.hidden) { e.preventDefault(); first.click(); } }
+      else if (e.key === 'Escape') { if (q.value) { e.preventDefault(); e.stopPropagation(); q.value = ''; search(''); } }
+    });
+    resultsEl.addEventListener('keydown', function (e) {
+      var links = Array.prototype.slice.call(resultsEl.querySelectorAll('a'));
+      var i = links.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); (links[i + 1] || links[i]).focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); if (i <= 0) q.focus(); else links[i - 1].focus(); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); q.focus(); }
+    });
+    document.addEventListener('keydown', function (e) {
+      var tag = (document.activeElement && document.activeElement.tagName) || '';
+      var typing = tag === 'INPUT' || tag === 'TEXTAREA' || (document.activeElement && document.activeElement.isContentEditable);
+      if ((e.key === '/' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) || (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey))) {
+        e.preventDefault();
+        if (narrow.matches) setDrawer(true, true); else q.focus();
+      }
+    });
+
+    /* ── Start ───────────────────────────────────────────────────────── */
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    show(parseLoc());
+  })();
+  </script>
+</body>
+</html>
