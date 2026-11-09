@@ -327,7 +327,7 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 		return generate_plugins_runtime_config(shell)
 	}
 
-	if write_file_atomic(plugins_file, transmute([]byte)content) != nil {
+	if !replace_zsh_source(plugins_file, content) {
 		return false
 	}
 	// Compile to bytecode for faster loading (zsh only)

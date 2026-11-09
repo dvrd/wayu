@@ -29,12 +29,25 @@ write_init_file :: proc(path, content: string) {
 			return
 		}
 	}
-	if write_file_atomic(path, transmute([]byte)content) != nil {
+	if !replace_zsh_source(path, content) {
 		print_warning("Failed to write %s", path)
 		return
 	}
 	restrict_file_mode(path)
-	os.remove(zwc)
+}
+
+// Atomically replace a file zsh may load through a .zwc digest, deleting the
+// digest first, under the config lock. The background zcompile
+// (flush_zcompile_batch) takes the same lock to check its snapshot and
+// install the digest, so a digest of the old content can never sit next to
+// the new file: deleting it after the rename left a window where a shell
+// starting in the same second sourced the old digest, and a background
+// install racing the rewrite could land after the delete (OKAMI-293).
+replace_zsh_source :: proc(path, content: string) -> bool {
+	locked := config_lock_acquire()
+	defer if locked { config_lock_release() }
+	_ = os.remove(fmt.tprintf("%s.zwc", path))
+	return write_file_atomic(path, transmute([]byte)content) == nil
 }
 
 // What keeps the generated init fast (see generate_core_content):
@@ -125,17 +138,19 @@ flush_zcompile_batch :: proc() {
 	defer strings.builder_destroy(&builder)
 	// Compile to a temp digest then rename: zcompile writes in place, and a
 	// shell starting meanwhile would source a half-written .zwc
-	// ("invalid zwc file"). The digest is installed only if $f is unchanged
-	// since the compile started: zsh prefers a .zwc newer than its source, so
-	// a slow background compile finishing after a later regeneration would
-	// otherwise shadow the fresh file with stale code. (If $f changes after
-	// the check, the writer deletes the .zwc after writing, and the re-check
-	// after mv removes a digest installed after that delete — zsh compares
-	// mtimes in whole seconds, so mtime alone can't tell them apart.)
+	// ("invalid zwc file"). The digest is compiled from a snapshot of $f
+	// (same name, private temp dir: zsh keys the digest by name), and
+	// installed under the config lock ($1) only if $f still holds that
+	// snapshot. Writers delete the .zwc and replace $f under the same lock
+	// (replace_zsh_source), so a digest never outlives its content: zsh
+	// prefers a .zwc not older than its source, in whole seconds (OKAMI-293).
 	// The temp digest is removed if the compile is interrupted (trap), and
 	// temp digests older than a minute — left by a compile killed hard, e.g.
 	// with its terminal — are swept first.
-	strings.write_string(&builder, `zsh -fc 'umask 077; t=; trap '\''rm -f -- "$t"; exit 1'\'' HUP INT TERM; for f; do rm -f -- $f.<->.tmp.zwc(Nmm+1); t="$f.$$.tmp.zwc"; c="$(<$f)"; if zcompile -- "$t" "$f" && [[ "$(<$f)" == "$c" ]]; then mv -f -- "$t" "$f.zwc"; [[ "$(<$f)" == "$c" ]] || rm -f -- "$f.zwc"; else rm -f -- "$t"; fi; t=; done' zsh`)
+	strings.write_string(&builder, `zsh -fc 'umask 077; zmodload zsh/mapfile zsh/system || exit 1; l=$1; shift; t=; d=; trap '\''rm -rf -- "$t" "$d"; exit 1'\'' HUP INT TERM; for f; do [[ -f $f ]] || continue; rm -f -- $f.<->.tmp.zwc(Nmm+1); t="$f.$$.tmp.zwc"; d="${TMPDIR:-/tmp}/wayu-zc.$$.$RANDOM"; n=${f:t}; c=$mapfile[$f]; if mkdir -m 700 -- "$d" && mapfile[$d/$n]=$c && zcompile -- "$t" "$d/$n" && zsystem flock -t 10 -f fd -- "$l"; then [[ $mapfile[$f] == "$c" ]] && mv -f -- "$t" "$f.zwc"; zsystem flock -u $fd; fi; rm -rf -- "$t" "$d"; t= d=; done' zsh`)
+	lock_dir := os.is_dir(wayu.data) ? wayu.data : wayu.config
+	strings.write_byte(&builder, ' ')
+	strings.write_string(&builder, shell_single_quote(fmt.tprintf("%s/%s", lock_dir, CONFIG_LOCK_FILE), context.temp_allocator))
 	for p in ZCOMPILE_BATCH {
 		strings.write_byte(&builder, ' ')
 		strings.write_string(&builder, shell_single_quote(p, context.temp_allocator))

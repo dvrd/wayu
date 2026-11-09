@@ -162,12 +162,10 @@ build_turbo_content :: proc(mask_secrets := false) -> string {
 // Write turbo.<ext> (always rewritten, so `export --check` sees a fresh
 // mtime), owner-only (embeds [env] values, OKAMI-206), zcompiled for zsh.
 write_turbo_file :: proc(path, content: string) -> bool {
-	if write_file_atomic(path, transmute([]byte)content) != nil {
+	if !replace_zsh_source(path, content) {
 		return false
 	}
 	restrict_file_mode(path)
-	zwc := fmt.tprintf("%s.zwc", path)
-	if os.exists(zwc) { os.remove(zwc) }
 	zcompile_file(path)
 	return true
 }
