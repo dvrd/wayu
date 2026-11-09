@@ -601,7 +601,12 @@
     }
 
     function failed(page, err) {
-      article.innerHTML = '<div class="state"><p class="doc-meta"><span class="crumb">Error</span></p><h1>Could not load this page.</h1>' +
+      // Browsers refuse fetch() from file:// pages: explain how to preview.
+      var local = location.protocol === 'file:' ?
+        '<p>Opened from disk: browsers block loading the docs from <code>file://</code>. Preview with a local server:</p>' +
+        '<pre><code>python3 -m http.server -d docs 8000</code></pre>' +
+        '<p>then open <a href="http://localhost:8000/docs.html?p=' + esc(page.id) + '">localhost:8000/docs.html?p=' + esc(page.id) + '</a>.</p>' : '';
+      article.innerHTML = '<div class="state"><p class="doc-meta"><span class="crumb">Error</span></p><h1>Could not load this page.</h1>' + local +
         '<p>' + esc(err && err.message || err) + '. Read <a href="' + REPO + 'docs/' + page.file + '">' + esc(page.file) + ' on GitHub</a> instead.</p></div>';
     }
 
