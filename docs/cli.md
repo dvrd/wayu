@@ -162,6 +162,7 @@ Completion scripts in the data dir's `completions/`. Default action: `list`.
 | `list`, `ls` | | |
 | `generate` | | Write wayu's own zsh, bash and fish completions |
 | `zsh`, `bash`, `fish` | | Print wayu's completion script for that shell |
+| `fpath` | `[list]`, `add <dir>`, `rm <dir>` | zsh: completion dirs wayu puts on `fpath` before `compinit` (entries.json `fpath`; `wayu optimize` fills it). `add` puts the dir first |
 | `help` | | |
 
 ### `wayu backup`
@@ -178,8 +179,10 @@ command) and keeps the newest 5 per file in `backup/`.
 
 `type` is `toml` (wayu.toml) or `entries` (entries.json); `path`, `alias`
 and `constants` also name entries.json, so a restore reverts all PATH
-entries, aliases and constants together. The current file is backed up
-first.
+entries, aliases and constants together. A shell startup file (zsh, bash or
+fish; what `wayu optimize` rewrites) is named as `backup list` shows it
+(`.zshrc`, `~/.config/zsh/.zshrc`) or by its path. The current file is backed
+up first.
 
 ### `wayu plugin`
 
@@ -230,12 +233,12 @@ Without an action it prints its help.
 |---|---|
 | `edit` | Open wayu.toml in `$VISUAL` / `$EDITOR` (else `vi`), then regenerate |
 | `extend` | Open `extra.<ext>` (shell code sourced at the end of init) |
-| `scan` | Find tool-init blocks in your rc file that could move to `extra.<ext>` |
+| `scan` | Find tool-init blocks in the current shell's rc file (zsh: `$ZDOTDIR/.zshrc` when set) that could move to `extra.<ext>`, including `# >>> … # <<<` installer blocks |
 | `help` | |
 
 | Flag | |
 |---|---|
-| `--fix` | `scan`: append the blocks found to `extra.<ext>` (`--yes`) |
+| `--fix` | `scan`: append the blocks found to `extra.<ext>` of the same shell (`--yes`); the rc file is left as is (`wayu optimize` moves lines and removes them) |
 
 ### `wayu build`
 
@@ -277,12 +280,14 @@ Health checks: installation, rc file, PATH entries, plugins and plugin
 conflicts, backups, wayu.toml (a `[paths]`, `[aliases]` or `[env]` table is an
 error naming the `wayu path|alias|const add` command), entries.json (must
 parse), scripts (stale or broken builds, `bin/` entries without a script),
-turbo file, dependencies. Exits `78` when any
+turbo file, dependencies, startup files (lines `wayu optimize` would move,
+with an estimated cost per shell start: each generator command is timed once,
+a second `compinit` counts ~250 ms). Exits `78` when any
 check reports an error (warnings don't), so it can gate CI. Supports `--json`.
 
 | Flag | |
 |---|---|
-| `--fix` | Remove missing / duplicate PATH entries (`--yes`, or `--dry-run` to preview) |
+| `--fix` | Remove missing / duplicate PATH entries and run `wayu optimize` (`--yes`, or `--dry-run` to preview) |
 | `--profile` | Same as `wayu build profile` |
 | `--optimize` | Removed; prints a pointer to `wayu build` / `wayu export` and exits `64` |
 
@@ -425,6 +430,45 @@ stderr and starts without the secrets. The first `add --secret` creates the
 key; wayu never creates a new key while `secrets.json` holds values (exit
 `78`). Errors reading the store or key exit `78`; write errors `74`.
 
+### `wayu optimize`
+
+`wayu optimize [--check] [--dry-run] [--yes]`: move the lines installers
+append to your shell startup files into wayu, and remove them from the file.
+Scanned, in load order, for the current shell (or `--shell`): zsh
+`~/.zshenv` and `$ZDOTDIR` (else `~`) `.zshenv`, `.zprofile`, `.zshrc`,
+`.zlogin`; bash `.bash_profile`, `.bash_login`, `.profile`, `.bashrc`; fish
+`conf.d/*.fish`, `config.fish`. Only lines **after** the line that loads
+wayu, and only top-level statements: anything inside `if`/`for`/`while`/
+`case`/function bodies, here-documents, compound lines and values wayu can't
+reproduce exactly stays untouched.
+
+| Line | Becomes |
+|---|---|
+| `source <(tool completion zsh)`, `. <(…)`, `eval "$(tool init zsh)"`; fish `tool init fish \| source` | A cached generator (entries.json `generators`): `core.<ext>` runs `_wayu_evalcache tool …` (output cached, regenerated when the binary changes; `wayu build clean` clears it). Only from the interactive file (`.zshrc`, `.bashrc`; fish: any), only for a plain command on PATH whose arguments name an `init`, `completion(s)`, `hook`, `shellenv` or `activate` subcommand; zsh/bash run it in interactive shells only |
+| `fpath=(dir $fpath)`, `fpath+=(dir)`, `FPATH=dir:$FPATH` (zsh) | entries.json `fpath` (see `wayu completions fpath`): on `fpath` before wayu's `compinit` |
+| `compinit`, `autoload -Uz compinit && compinit -C …` (zsh) | Removed: wayu already runs `compinit` |
+| `export PATH=dir:$PATH`, `PATH="$PATH:dir"`, `path=(dir $path)`; fish `set -gx PATH dir $PATH`, `fish_add_path dir` | PATH entries, prepends in front of the list (a later line further in front), appends at its end (a dir already listed stays where it is) |
+| `alias name=value` (fish also `alias name value`) | An alias; the value must not expand when defined (`alias x="cd $HOME"` stays) |
+| `export NAME=value`; fish `set -gx NAME value` | A constant; a secret-looking name or value is stored encrypted (`const add --secret`). Values may use `$HOME`, `$USER`, `~/` and constants wayu already has |
+
+Without `--yes` it prints a unified diff per file and the list of what moves,
+then exits `64`; `--dry-run` prints the same and exits `0`. With `--yes` each
+changed file is backed up (`wayu backup restore .zshrc --yes` undoes it;
+entries.json is backed up too), rewritten atomically, entries.json updated
+under the config lock and the init files regenerated. A second run finds
+nothing and exits `0`.
+
+| Flag | |
+|---|---|
+| `--check` | Write nothing; list the optimizable lines and exit `1` when there are any, `0` when there are none |
+
+Open shells notice changes: the prompt hook compares the startup files'
+mtimes with `<data>/rc_check.stamp` (a builtin `-nt` test, no fork) and, when
+one is newer, runs `wayu optimize --notify` once, which prints
+`wayu: ~/.zshrc changed: N lines can be optimized (wayu optimize)` on stderr
+(once per change). With `[settings] auto_optimize = true` in wayu.toml it moves
+them instead (with backups) and prints what it moved.
+
 ### `wayu reload` (`watch`, `hot-reload`)
 
 `wayu reload [start|stop|status|regenerate]`. `start` (the default) watches
@@ -475,7 +519,7 @@ BSD `sysexits.h` values (`EXIT_*` in `src/interfaces.odin`):
 | Code | Name | Meaning |
 |---|---|---|
 | 0 | `EXIT_SUCCESS` | Success (also: nothing to do) |
-| 1 | `EXIT_FAILURE` | General error (e.g. the editor exited non-zero; the TUI started without a terminal) |
+| 1 | `EXIT_FAILURE` | General error (e.g. the editor exited non-zero; the TUI started without a terminal); `optimize --check`: lines can be optimized |
 | 64 | `EXIT_USAGE` | Bad usage: unknown command, action or option; missing argument; `--json` where unsupported; missing `--yes` |
 | 65 | `EXIT_DATAERR` | Bad input: invalid name or value, no such entry, unknown template, `toml validate` failed |
 | 66 | `EXIT_NOINPUT` | Input file or directory not found or unreadable (`path add` of a missing dir) |
@@ -530,6 +574,9 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu function rm no_such_function` | 66 |
 | `wayu script rm no_such_script --yes` | 65 |
 | `wayu script new x --lang cobol` | 64 |
+| `wayu optimize --check` | 0 |
+| `wayu optimize bogus` | 64 |
+| `wayu completions fpath bogus` | 64 |
 | `wayu export check` | 78 |
 
 Also tested: `path`, `alias` and `const` exit `78` before `wayu init`;

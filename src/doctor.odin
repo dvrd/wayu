@@ -74,7 +74,7 @@ handle_doctor_command :: proc(fix_mode: bool, json_output: bool, profile_mode: b
 	// --fix rewrites wayu.toml (drops PATH entries), so it follows the same
 	// confirmation rule as `wayu path clean`.
 	if fix_mode && !wayu.dry_run && !wayu.yes_flag {
-		print_error("doctor --fix removes missing/duplicate PATH entries. Pass --yes to confirm, or --dry-run to preview.")
+		print_error("doctor --fix removes missing/duplicate PATH entries and moves startup-file lines into wayu (wayu optimize). Pass --yes to confirm, or --dry-run to preview.")
 		os.exit(EXIT_USAGE)
 	}
 
@@ -336,6 +336,17 @@ attempt_auto_fixes :: proc(results: []CheckResult, arena_alloc: mem.Allocator) -
 				message = fix_msg,
 			})
 
+		case "startup files":
+			fmt.printfln("  %s• Moving startup-file lines into wayu (wayu optimize)...%s", get_primary(), RESET)
+			fix_ok, fix_msg := doctor_fix_rc_optimize()
+			fix_msg = strings.clone(fix_msg, arena_alloc)
+			if fix_ok {
+				fmt.printfln("    %s✓ %s%s", get_success(), fix_msg, RESET)
+			} else {
+				fmt.printfln("    %s✗ %s%s", get_error(), fix_msg, RESET)
+			}
+			append(&attempts, FixAttempt{name = result.name, success = fix_ok, message = fix_msg})
+
 		case:
 			fmt.printfln("  %s• Cannot auto-fix: %s%s", get_muted(), result.name, RESET)
 		}
@@ -581,6 +592,7 @@ CHECKS := []CheckEntry{
 	{"deps",         check_dependencies},
 	{"sync",         check_sync_status},
 	{"secrets",      check_secrets},
+	{"rcfiles",      check_rc_optimize},
 }
 
 // Check 1: wayu installation. Report-only: doctor never installs a binary

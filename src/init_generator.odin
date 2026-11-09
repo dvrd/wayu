@@ -1043,6 +1043,7 @@ build_core_content :: proc(mask := false) -> string {
 		fmt.sbprintln(&b, "typeset -U path PATH")
 	}
 	fmt.sbprintln(&b)
+	emit_rc_watch(&b, wayu.shell) // optimize.odin
 
 	startup := read_startup_settings()
 	completions_dir := fmt.tprintf("%s/completions", wayu.data)
@@ -1197,6 +1198,10 @@ build_core_content :: proc(mask := false) -> string {
 		fmt.sbprintln(&b)
 	}
 
+	// Generators moved from the rc file by `wayu optimize` run where those
+	// lines ran: after everything else wayu sets up.
+	emit_generators(&b, wayu.shell)
+
 	// Aliases last (OKAMI-224): zsh and bash expand aliases while parsing, so
 	// an [aliases] entry named like a wrapper wayu defines earlier (npm,
 	// conda, a lazy hook command) would break that definition. Defined here
@@ -1271,6 +1276,8 @@ read_startup_settings :: proc() -> StartupSettings {
 emit_zsh_completions :: proc(b: ^strings.Builder, completions_dir: string, s: StartupSettings) {
 	q := shell_double_quote_literal(completions_dir, context.temp_allocator)
 	fmt.sbprintfln(b, `() {{ emulate -L zsh; (( ${{fpath[(Ie)$1]}} )) || fpath=( "$1" "${{fpath[@]}}" ) }} %s`, q)
+	// entries.json `fpath` (wayu optimize / completions fpath), before compinit.
+	emit_managed_fpath(b)
 	fmt.sbprintln(b, `if [[ -o interactive ]]; then`)
 	code, _ := strings.replace_all(ZSH_COMPINIT, "@COMPLETIONS_DIR@", q, context.temp_allocator)
 	fmt.sbprint(b, code)
@@ -2341,6 +2348,7 @@ generate_core_init_fish :: proc() {
 		fmt.sbprintln(b, "set -e _wayu_w")
 	}
 	fmt.sbprintln(b)
+	emit_rc_watch(b, .FISH) // optimize.odin
 
 	// Completions directory; `contains` keeps a re-source from adding it again.
 	completions_q := escape_fish_string(fmt.tprintf("%s/completions", wayu.data), context.temp_allocator)
@@ -2376,7 +2384,7 @@ generate_core_init_fish :: proc() {
 		for &t in tools { destroy_tool_entry(&t) }
 		delete(tools)
 	}
-	if len(tools) > 0 {
+	if len(tools) > 0 || fish_has_generators() {
 		fmt.sbprintln(b, "# === Helpers (evalcache) ===")
 		fmt.sbprint(b, HELPER_EVALCACHE_FISH)
 		fmt.sbprintln(b)
@@ -2426,6 +2434,8 @@ generate_core_init_fish :: proc() {
 			fmt.sbprintln(b)
 		}
 	}
+
+	emit_generators(b, .FISH) // optimize.odin
 
 	// Aliases from [aliases] last (as in core.zsh/bash): fully literal
 	// single-quoted body, and a plugin can't redefine one.

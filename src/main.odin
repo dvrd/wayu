@@ -57,6 +57,7 @@ Command :: enum {
 	HELP,
 	SEARCH,     // Global fuzzy search across all configs
 	SECRETS,    // Encrypted secret constants (secrets_store.odin)
+	OPTIMIZE,   // Move startup-file lines into wayu (optimize.odin)
 	UNKNOWN,
 }
 
@@ -79,6 +80,7 @@ Action :: enum {
 	IMPORT,   // script import
 	BUILD,    // script build
 	RUN,      // secrets run
+	FPATH,    // completions fpath
 	HELP,
 	UNKNOWN,
 }
@@ -269,6 +271,8 @@ main :: proc() {
 	case .COMPLETIONS:
 		if parsed.action == .UPDATE {
 			handle_completions_generate()
+		} else if parsed.action == .FPATH {
+			handle_completions_fpath(parsed.args)
 		} else {
 			handle_completions_command_extended(parsed.action, parsed.args)
 		}
@@ -331,6 +335,8 @@ main :: proc() {
 		handle_search_command(parsed.args)
 	case .SECRETS:
 		handle_secrets_command(parsed.action, parsed.args)
+	case .OPTIMIZE:
+		handle_optimize_command(parsed.action, parsed.args)
 	case .UNKNOWN:
 		fmt.eprintfln("Unknown command: %s", os.args[1])
 		print_help()
