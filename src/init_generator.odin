@@ -139,15 +139,16 @@ flush_zcompile_batch :: proc() {
 	// Compile to a temp digest then rename: zcompile writes in place, and a
 	// shell starting meanwhile would source a half-written .zwc
 	// ("invalid zwc file"). The digest is compiled from a snapshot of $f
-	// (same name, private temp dir: zsh keys the digest by name), and
-	// installed under the config lock ($1) only if $f still holds that
-	// snapshot. Writers delete the .zwc and replace $f under the same lock
+	// in a private temp dir (same name: zsh keys the digest by name), and
+	// moved next to $f only under the config lock ($1) and only if $f still
+	// holds that snapshot: nothing is written beside $f outside the lock, so
+	// `plugin rm` (which holds it) never races a new file into the dir. Writers delete the .zwc and replace $f under the same lock
 	// (replace_zsh_source), so a digest never outlives its content: zsh
 	// prefers a .zwc not older than its source, in whole seconds (OKAMI-293).
 	// The temp digest is removed if the compile is interrupted (trap), and
 	// temp digests older than a minute — left by a compile killed hard, e.g.
 	// with its terminal — are swept first.
-	strings.write_string(&builder, `zsh -fc 'umask 077; zmodload zsh/mapfile zsh/system || exit 1; l=$1; shift; t=; d=; trap '\''rm -rf -- "$t" "$d"; exit 1'\'' HUP INT TERM; for f; do [[ -f $f ]] || continue; rm -f -- $f.<->.tmp.zwc(Nmm+1); t="$f.$$.tmp.zwc"; d="${TMPDIR:-/tmp}/wayu-zc.$$.$RANDOM"; n=${f:t}; c=$mapfile[$f]; if mkdir -m 700 -- "$d" && mapfile[$d/$n]=$c && zcompile -- "$t" "$d/$n" && zsystem flock -t 10 -f fd -- "$l"; then [[ $mapfile[$f] == "$c" ]] && mv -f -- "$t" "$f.zwc"; zsystem flock -u $fd; fi; rm -rf -- "$t" "$d"; t= d=; done' zsh`)
+	strings.write_string(&builder, `zsh -fc 'umask 077; zmodload zsh/mapfile zsh/system || exit 1; l=$1; shift; t=; d=; trap '\''rm -rf -- "$t" "$d"; exit 1'\'' HUP INT TERM; for f; do [[ -f $f ]] || continue; rm -f -- $f.<->.tmp.zwc(Nmm+1); d="${TMPDIR:-/tmp}/wayu-zc.$$.$RANDOM"; n=${f:t}; c=$mapfile[$f]; if mkdir -m 700 -- "$d" && mapfile[$d/$n]=$c && zcompile -- "$d/$n.zwc" "$d/$n" && zsystem flock -t 10 -f fd -- "$l"; then [[ $mapfile[$f] == "$c" ]] && t="$f.$$.tmp.zwc" && mv -f -- "$d/$n.zwc" "$t" && mv -f -- "$t" "$f.zwc"; zsystem flock -u $fd; fi; rm -rf -- "$t" "$d"; t= d=; done' zsh`)
 	lock_dir := os.is_dir(wayu.data) ? wayu.data : wayu.config
 	strings.write_byte(&builder, ' ')
 	strings.write_string(&builder, shell_single_quote(fmt.tprintf("%s/%s", lock_dir, CONFIG_LOCK_FILE), context.temp_allocator))
