@@ -8,6 +8,7 @@ package test_wayu
 
 import wayu "../../src"
 import "base:runtime"
+import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
@@ -491,4 +492,104 @@ test_secret_buffers_wiped :: proc(t: ^testing.T) {
 		wayu.secrets_wipe(content, alloc)
 	}
 	testing.expect_value(t, check.dirty, 0)
+}
+
+// A private data dir + runtime dir for store tests (no key backend is ever
+// asked: the stores below hold only run-only values). Restores on return.
+@(private = "file")
+Store_Sandbox :: struct {
+	data, runtime: string,
+	saved_data:    string,
+	saved_xdg:     string,
+	had_xdg:       bool,
+	saved_tmp:     string,
+	had_tmp:       bool,
+}
+
+@(private = "file")
+store_sandbox_enter :: proc(name: string) -> (sb: Store_Sandbox) {
+	root := test_tmp(name)
+	os.remove_all(root)
+	sb.data = strings.concatenate({root, "/data"}, context.temp_allocator)
+	sb.runtime = strings.concatenate({root, "/rt"}, context.temp_allocator)
+	os.make_directory_all(sb.data)
+	os.make_directory_all(sb.runtime)
+	sb.saved_data = wayu.wayu.data
+	wayu.wayu.data = sb.data
+	sb.saved_xdg, sb.had_xdg = os.lookup_env("XDG_RUNTIME_DIR", context.temp_allocator)
+	sb.saved_tmp, sb.had_tmp = os.lookup_env("TMPDIR", context.temp_allocator)
+	os.set_env("XDG_RUNTIME_DIR", sb.runtime)
+	os.set_env("TMPDIR", sb.runtime)
+	return
+}
+
+@(private = "file")
+store_sandbox_leave :: proc(sb: ^Store_Sandbox) {
+	wayu.wayu.data = sb.saved_data
+	if sb.had_xdg {
+		os.set_env("XDG_RUNTIME_DIR", sb.saved_xdg)
+	} else {
+		os.unset_env("XDG_RUNTIME_DIR")
+	}
+	if sb.had_tmp {
+		os.set_env("TMPDIR", sb.saved_tmp)
+	} else {
+		os.unset_env("TMPDIR")
+	}
+	os.remove_all(strings.trim_suffix(sb.data, "/data"))
+}
+
+// secrets.json holding `n` run-only entries (fake ciphertext: never opened).
+@(private = "file")
+write_run_only_store :: proc(n: int) {
+	s: wayu.Secrets_Store
+	defer wayu.secrets_store_destroy(&s)
+	for i in 0 ..< n {
+		append(
+			&s.entries,
+			wayu.Secret_Entry {
+				name = strings.clone(fmt.tprintf("FAKE_R%d", i)),
+				blob = strings.clone("eHl6"),
+				run_only = true,
+			},
+		)
+	}
+	text := wayu.secrets_store_format(&s)
+	defer delete(text)
+	_ = os.write_entire_file(wayu.secrets_store_path(), transmute([]byte)text)
+}
+
+@(private = "file")
+race_calls: int
+@(private = "file")
+race_always: bool
+
+// OKAMI-301: a store write between reading secrets.json and writing the
+// cache must not leave a cache marked fresh with the old values.
+@(test)
+test_secrets_cache_write_detects_store_change :: proc(t: ^testing.T) {
+	sb := store_sandbox_enter("secrets_cache_race")
+	defer store_sandbox_leave(&sb)
+	defer wayu.secrets_cache_race_hook = nil
+
+	write_run_only_store(1)
+	race_calls = 0
+	race_always = false
+	wayu.secrets_cache_race_hook = proc() {
+		race_calls += 1
+		if race_calls == 1 || race_always {
+			write_run_only_store(race_calls + 1) // a concurrent `const add`
+		}
+	}
+	path, ok, err := wayu.secrets_cache_write(.ZSH)
+	testing.expectf(t, ok, "cache write failed: %s", err)
+	testing.expect_value(t, race_calls, 2) // detected, rewritten from the new store
+	testing.expect(t, os.exists(path), "cache missing after a clean retry")
+
+	// A store that never settles: error, and no cache left behind.
+	race_calls = 0
+	race_always = true
+	path, ok, err = wayu.secrets_cache_write(.ZSH)
+	testing.expect(t, !ok && strings.contains(err, "kept changing"), err)
+	testing.expect(t, !os.exists(path), "stale cache left behind")
 }

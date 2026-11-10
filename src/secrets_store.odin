@@ -701,18 +701,74 @@ secrets_cache_invalidate :: proc() -> (removed: int) {
 // Decrypt everything and write the cache for `shell`. The cache's mtime is
 // pushed past secrets.json's whole second, so core's `-nt` test (whole
 // seconds in some shells) sees it as newer.
+//
+// No lock (it runs at shell start): instead secrets.json's identity (inode,
+// size, mtime, ctime) is taken before it is read and checked again after the
+// cache is in place. A store write in between (const add, rm, rekey) means
+// the cache may hold the old values: it is deleted and rewritten from the new
+// store (OKAMI-301). A writer that lands after the re-check deletes the cache
+// itself (secrets_store_save invalidates after writing).
 secrets_cache_write :: proc(shell: ShellType) -> (path: string, ok: bool, err: string) {
+	MAX_ATTEMPTS :: 5
+	for _ in 0 ..< MAX_ATTEMPTS {
+		before, _ := secrets_store_stamp()
+		changed: bool
+		path, ok, err, changed = secrets_cache_write_once(shell, before)
+		if !changed {
+			return
+		}
+	}
+	return path, false, fmt.tprintf(
+		"%s kept changing while the session cache was written",
+		secrets_store_path(),
+	)
+}
+
+// Identity of secrets.json for change detection (zero when missing).
+Secrets_Store_Stamp :: struct {
+	ino:   u64,
+	size:  i64,
+	mtime: i64, // ns
+	ctime: i64, // ns
+}
+
+secrets_store_stamp :: proc() -> (stamp: Secrets_Store_Stamp, exists: bool) {
+	st: posix.stat_t
+	if posix.stat(strings.clone_to_cstring(secrets_store_path(), context.temp_allocator), &st) !=
+	   .OK {
+		return {}, false
+	}
+	ns :: proc(t: posix.timespec) -> i64 {return i64(t.tv_sec) * 1e9 + i64(t.tv_nsec)}
+	return {u64(st.st_ino), i64(st.st_size), ns(st.st_mtim), ns(st.st_ctim)}, true
+}
+
+// Test seam: runs after the store was read and decrypted, before the cache
+// is written (unit tests change the store here to simulate a race).
+secrets_cache_race_hook: proc()
+
+// One attempt of secrets_cache_write. changed = secrets.json is no longer
+// `before` once the cache was written: the cache was deleted, try again.
+@(private = "file")
+secrets_cache_write_once :: proc(
+	shell: ShellType,
+	before: Secrets_Store_Stamp,
+) -> (
+	path: string,
+	ok: bool,
+	err: string,
+	changed: bool,
+) {
 	s, exists, lerr := secrets_store_load()
 	if len(lerr) > 0 {
-		return "", false, lerr
+		return "", false, lerr, false
 	}
 	defer secrets_store_destroy(&s)
 	path = secrets_cache_path(shell)
 	if !exists {
-		return path, false, fmt.tprintf(
-			"no secrets stored (%s does not exist)",
-			secrets_store_path(),
-		)
+		return path,
+			false,
+			fmt.tprintf("no secrets stored (%s does not exist)", secrets_store_path()),
+			false
 	}
 
 	// Run-only values are never decrypted here: they never reach the cache.
@@ -722,7 +778,7 @@ secrets_cache_write :: proc(shell: ShellType) -> (path: string, ok: bool, err: s
 	if secrets_session_count(&s) > 0 {
 		key, kok, kerr := secrets_key_for_read()
 		if !kok {
-			return path, false, kerr
+			return path, false, kerr, false
 		}
 		defer crypto.zero_explicit(&key, size_of(key))
 		for e in s.entries {
@@ -731,19 +787,25 @@ secrets_cache_write :: proc(shell: ShellType) -> (path: string, ok: bool, err: s
 			}
 			v, dok := secrets_open(key, e.name, e.blob)
 			if !dok {
-				return path, false, fmt.tprintf(
-					"%s does not decrypt with the current master key (wrong key or tampered store)",
-					e.name,
-				)
+				return path,
+					false,
+					fmt.tprintf(
+						"%s does not decrypt with the current master key (wrong key or tampered store)",
+						e.name,
+					),
+					false
 			}
 			append(&names, e.name)
 			append(&values, v)
 		}
 	}
+	if secrets_cache_race_hook != nil {
+		secrets_cache_race_hook()
+	}
 
 	dir := secrets_cache_dir()
 	if dok, derr := secrets_cache_dir_ensure(dir); !dok {
-		return path, false, derr
+		return path, false, derr, false
 	}
 	// write_file_atomic follows symlinks: never write decrypted values
 	// through one (or keep a planted link the loader would refuse).
@@ -751,27 +813,30 @@ secrets_cache_write :: proc(shell: ShellType) -> (path: string, ok: bool, err: s
 	   posix.lstat(strings.clone_to_cstring(path, context.temp_allocator), &st) == .OK &&
 	   !posix.S_ISREG(st.st_mode) {
 		if rerr := os.remove(path); rerr != nil {
-			return path, false, fmt.tprintf("cannot replace %s: %v", path, rerr)
+			return path, false, fmt.tprintf("cannot replace %s: %v", path, rerr), false
 		}
 	}
 	content := secrets_cache_content(shell, names[:], values[:])
 	defer secrets_wipe(content)
 	if werr := write_file_atomic(path, transmute([]byte)content); werr != nil {
-		return path, false, fmt.tprintf("cannot write %s: %v", path, werr)
+		return path, false, fmt.tprintf("cannot write %s: %v", path, werr), false
 	}
 	restrict_file_mode(path)
 
+	// Newer than the store we read, in whole seconds (some shells' -nt).
 	mtime := time.now()
-	if fi, serr := os.stat(secrets_store_path(), context.temp_allocator); serr == nil {
-		after := time.from_nanoseconds(
-			(time.to_unix_nanoseconds(fi.modification_time) / 1e9 + 1) * 1e9,
-		)
-		if time.diff(mtime, after) > 0 {
-			mtime = after
-		}
+	after := time.from_nanoseconds((before.mtime / 1e9 + 1) * 1e9)
+	if time.diff(mtime, after) > 0 {
+		mtime = after
 	}
 	_ = os.chtimes(path, mtime, mtime)
-	return path, true, ""
+
+	// The store changed since it was read: these values may be stale.
+	if now, _ := secrets_store_stamp(); now != before {
+		os.remove(path)
+		return path, false, "", true
+	}
+	return path, true, "", false
 }
 
 // ---------------------------------------------------------------------------
