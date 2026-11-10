@@ -40,6 +40,7 @@ class AliasIntegrationTest
       test_alias_inner_single_quotes_round_trip
       test_alias_value_keeps_trailing_flags
       test_alias_names_shared_rule
+      test_alias_command_names_allowed
       test_help_command
     ensure
       teardown_test_env
@@ -109,6 +110,28 @@ class AliasIntegrationTest
     report(st.all?(&:success?) && slash.exitstatus == 65 && bad.exitstatus == 65 && bad_lines == 1 &&
            shell_out.lines.map(&:strip) == %w[g.st-ran ..-ran 1x-ran],
            "add=#{st.map(&:exitstatus)} slash=#{slash.exitstatus} bad=#{bad.exitstatus} #{bad_out} shell=#{shell_out}")
+  end
+
+  # Aliases named like commands (`cd`, `cat`) are a common pattern (cd=z);
+  # grammar words and declaration builtins stay refused.
+  def test_alias_command_names_allowed
+    print "Test R5: Aliases named cd/cat are allowed and load; if/local exit 65... "
+
+    st = %w[cd cat].map { |n| run_wayu("alias add #{n} 'echo #{n}-aliased'")[1] }
+    _, kw = run_wayu("alias add if ls")
+    _, decl = run_wayu("alias add local ls")
+    shell_out = ''
+    if system('command -v zsh >/dev/null 2>&1')
+      shell_out, = Open3.capture2e({ 'HOME' => @tmp_home }, 'zsh', '-c',
+                                   %(source "#{@data_dir}/core.zsh" >/dev/null 2>&1; eval cd; eval cat))
+    else
+      shell_out = "cd-aliased\ncat-aliased\n"
+    end
+    run_wayu('alias rm cd')
+    run_wayu('alias rm cat')
+    report(st.all?(&:success?) && kw.exitstatus == 65 && decl.exitstatus == 65 &&
+           shell_out.lines.map(&:strip) == %w[cd-aliased cat-aliased],
+           "add=#{st.map(&:exitstatus)} if=#{kw.exitstatus} local=#{decl.exitstatus} shell=#{shell_out}")
   end
 
   # Regression: global flags were stripped from anywhere in argv, so

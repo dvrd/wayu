@@ -172,7 +172,21 @@ test_validate_alias_allows_inner_hyphen :: proc(t: ^testing.T) {
 // generator emits (is_safe_alias_name).
 @(test)
 test_alias_name_error_shared_rule :: proc(t: ^testing.T) {
-	for n in ([]string{"..", "g.st", "1x", "k8s-ctx", "ll", "_x", "a+b", "@x"}) {
+	for n in ([]string {
+			"..",
+			"g.st",
+			"1x",
+			"k8s-ctx",
+			"ll",
+			"_x",
+			"a+b",
+			"@x",
+			"cd",
+			"ls",
+			"cat",
+			"echo",
+			"test",
+		}) {
 		testing.expectf(t, wayu.alias_name_error(n) == "", "%s should be valid", n)
 		testing.expectf(t, wayu.is_safe_alias_name(n), "%s must be emittable", n)
 	}
@@ -186,7 +200,9 @@ test_alias_name_error_shared_rule :: proc(t: ^testing.T) {
 			"a$b",
 			".",
 			"if",
-			"cd",
+			"done",
+			"local",
+			"export",
 			"café",
 			"a\x00b",
 		}) {

@@ -8,6 +8,13 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+**Aliases may use command names**
+
+- `alias add cd z`, `alias add cat bat` and other aliases named like a
+  command (`cd`, `pwd`, `echo`, `test`, `true`, `false` were refused) are
+  accepted. Shell grammar words and declaration builtins (`local`, `export`,
+  `typeset`, `return`, ...) are still refused.
+
 **macOS 15 or later**
 
 - Release binaries require macOS 15 (Sequoia) or later; the Homebrew

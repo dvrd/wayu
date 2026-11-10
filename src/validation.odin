@@ -42,13 +42,44 @@ SHELL_RESERVED_WORDS :: []string {
 	"unset",
 	"return",
 	"exit",
-	// Common commands that shouldn't be aliased
+	// Common commands that shouldn't be constant/function names
 	"cd",
 	"pwd",
 	"echo",
 	"test",
 	"true",
 	"false",
+}
+
+// Names an alias may not take: the shell grammar words and the declaration /
+// flow builtins, whose aliases break every function or plugin parsed after
+// them. Commands such as cd, ls or cat may be aliased (`alias cd=z`).
+ALIAS_REFUSED_NAMES :: []string {
+	"if",
+	"then",
+	"else",
+	"elif",
+	"fi",
+	"case",
+	"esac",
+	"for",
+	"while",
+	"until",
+	"do",
+	"done",
+	"in",
+	"function",
+	"time",
+	"select",
+	"coproc",
+	"declare",
+	"typeset",
+	"local",
+	"export",
+	"readonly",
+	"unset",
+	"return",
+	"exit",
 }
 
 // Validate shell identifier (alias/constant name)
@@ -142,7 +173,8 @@ validate_identifier :: proc(
 // this accepts. Allowed: printable ASCII except whitespace, quotes, shell
 // metacharacters, glob characters, `=`, `/` (bash refuses it) and `^`
 // (zsh extendedglob), not starting with `-`; so `..`, `g.st`, `1x`, `k8s-ctx`
-// are fine. Shell reserved words (SHELL_RESERVED_WORDS) and `.` are refused.
+// are fine, and so are command names (`cd`, `ls`). Shell grammar words and
+// declaration builtins (ALIAS_REFUSED_NAMES) and `.` are refused.
 // Temp-allocated.
 alias_name_error :: proc(name: string) -> string {
 	if len(name) == 0 {
@@ -174,7 +206,7 @@ alias_name_error :: proc(name: string) -> string {
 	if name == "." {
 		return "Cannot use '.' (the source builtin) as Alias name"
 	}
-	for reserved_word in SHELL_RESERVED_WORDS {
+	for reserved_word in ALIAS_REFUSED_NAMES {
 		if name == reserved_word {
 			return fmt.tprintf("Cannot use shell reserved word '%s' as Alias name", name)
 		}
