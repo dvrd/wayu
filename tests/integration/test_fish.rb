@@ -36,6 +36,8 @@ class FishIntegrationTest
       test_fish_escaping
       test_all_generated_fish_files_parse
       test_fish_parity_tools_functions_path_sync
+      test_fish_native_prompt
+      test_fish_turbo_export
     ensure
       teardown_test_env
     end
@@ -356,6 +358,139 @@ class FishIntegrationTest
         puts "✗"
         puts "  build=#{bst.success?} #{berr.strip[0, 200]} cache=#{cache}"
         puts "  out=#{out} err=#{err.strip[0, 300]}"
+        @failed += 1
+      end
+    ensure
+      FileUtils.rm_rf(home)
+    end
+  end
+
+  def fish_bin
+    ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
+  end
+
+  # Throwaway fish setup (temp HOME) with `toml` appended to wayu.toml.
+  def fish_home(name, toml)
+    home = Dir.mktmpdir(name)
+    env = { 'HOME' => home, 'SHELL' => '/usr/bin/fish', 'XDG_CACHE_HOME' => nil, 'XDG_DATA_HOME' => nil,
+            'XDG_CONFIG_HOME' => nil, 'WAYU_CONFIG_DIR' => nil, 'WAYU_DATA_DIR' => nil,
+            'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin' }
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'fish')
+    File.open("#{home}/.config/wayu/wayu.toml", 'a') { |f| f.puts toml }
+    _o, berr, bst = Open3.capture3(env, @wayu_bin, 'build')
+    [home, env, bst.success? ? '' : berr]
+  end
+
+  # OKAMI-368: `[prompt] enabled = true` gives fish a native prompt from the
+  # same tables as zsh: module formats + styles, git branch (read without
+  # git), character by exit status / vi mode, [prompt.contexts], config text
+  # printed literally, and the async right prompt (pending count).
+  def test_fish_native_prompt
+    print "Test 14: fish native prompt (fish_prompt / fish_right_prompt)... "
+    fish = fish_bin
+    unless fish
+      puts "SKIP (fish not installed)"; return
+    end
+    toml = <<~TOML
+
+      [prompt]
+      enabled = true
+      vi_mode = true
+      format = "{dir}{git_branch}{language_context} $(id) 100%\\n{character} "
+      [prompt.character]
+      vimcmd_symbol = "[N](green)"
+      [prompt.contexts]
+      kotlin = { format = "[kt$version](purple) ", detect = ["*.kt"] }
+    TOML
+    home, env, berr = fish_home('wayu_fish_prompt', toml)
+    begin
+      data = "#{home}/.local/share/wayu"
+      repo = "#{home}/repo"
+      FileUtils.mkdir_p("#{repo}/sub")
+      Open3.capture3(env.merge('GIT_CONFIG_NOSYSTEM' => '1'), 'git', 'init', '-q', '-b', 'fbr%n', repo)
+      File.write("#{repo}/sub/a.kt", "x\n")
+      script = <<~FISH
+        source #{data}/init.fish
+        cd #{repo}/sub
+        emit fish_prompt
+        set fish_bind_mode insert
+        echo "[1]"(fish_prompt | string collect)
+        false
+        set fish_bind_mode default
+        echo "[2]"(fish_prompt | string collect)
+        set -l n 0
+        while test -z "$_wayu_async_data"; and test $n -lt 300; sleep 0.01; set n (math $n + 1); end
+        echo "[r]"(fish_right_prompt)
+        cd #{home}
+        emit fish_prompt
+        echo "[3]ctx=$_wayu_context data=[$_wayu_async_data]"
+      FISH
+      out, err, st = Open3.capture3(env.merge('PATH' => "#{File.dirname(fish)}:/usr/bin:/bin"), fish, '-i', '--no-config', '-c', script)
+      plain = out.gsub(/\e\[[0-9;]*m/, '')
+      ok = berr.empty? && st.success? && err.strip.empty? &&
+           plain.include?("[1]\n~/repo/sub on fbr%n kt  $(id) 100%\n➜ ") &&
+           plain.include?("[2]\n~/repo/sub on fbr%n kt  $(id) 100%\nN ") &&
+           out.include?("\e[36;1m~/repo/sub\e[0m") && out.include?("\e[38;5;202m\e[1m➜") &&
+           plain.include?("[r]1\n") && plain.include?("[3]ctx=default data=[]")
+      if ok
+        puts "✓"; @passed += 1
+      else
+        puts "✗"
+        puts "  build=#{berr[0, 200]} out=#{out.inspect} err=#{err.strip[0, 400]}"
+        @failed += 1
+      end
+    ensure
+      FileUtils.rm_rf(home)
+    end
+  end
+
+  # OKAMI-368: `wayu export` for fish: turbo.fish = core.fish + tools/extra
+  # (sourcing it alone equals init.fish), --check compares content, --eval
+  # prints fish code for `| source`; regeneration keeps turbo.fish current.
+  def test_fish_turbo_export
+    print "Test 15: fish export --turbo / --check / --eval... "
+    fish = fish_bin
+    unless fish
+      puts "SKIP (fish not installed)"; return
+    end
+    home, env, berr = fish_home('wayu_fish_turbo', '')
+    begin
+      data = "#{home}/.local/share/wayu"
+      cfg = "#{home}/.config/wayu"
+      FileUtils.mkdir_p("#{home}/p1")
+      File.write("#{cfg}/extra.fish", "set -g EXTRA_RAN yes\n")
+      Open3.capture3(env, @wayu_bin, 'path', 'add', "#{home}/p1")
+      Open3.capture3(env, @wayu_bin, 'const', 'add', 'TURBO_K', 'v1')
+      Open3.capture3(env, @wayu_bin, 'alias', 'add', 'tl', 'echo turbo-alias')
+      _o, _e, miss = Open3.capture3(env, @wayu_bin, "export", "--check")
+      _o, gen_err, gen = Open3.capture3(env, @wayu_bin, 'export', '--turbo')
+      _o, _e, cur = Open3.capture3(env, @wayu_bin, 'export', '--check')
+      Open3.capture3(env, @wayu_bin, 'const', 'add', 'TURBO_K2', 'v2') # regenerates turbo.fish
+      _o, _e, cur2 = Open3.capture3(env, @wayu_bin, 'export', '--check')
+      File.write("#{cfg}/config.fish", "set -g CFG_RAN yes\n")
+      _o, _e, stale = Open3.capture3(env, @wayu_bin, 'export', '--check')
+      File.delete("#{cfg}/config.fish")
+      evald, _e, evst = Open3.capture3(env, @wayu_bin, 'export', '--eval')
+      script = <<~FISH
+        source #{data}/turbo.fish
+        echo "t=$TURBO_K2 extra=$EXTRA_RAN p=$PATH[1]"; tl
+      FISH
+      out, err, st = Open3.capture3(env, fish, '--no-config', '-c', script)
+      ev_out, ev_err, _s = Open3.capture3(env, fish, '--no-config', '-c',
+                                          "#{@wayu_bin} export --eval | source; echo \"e=$TURBO_K p=$PATH[1]\"; tl")
+      ok = berr.empty? && miss.exitstatus == 78 && gen.success? && cur.exitstatus.zero? &&
+           cur2.exitstatus.zero? && stale.exitstatus == 78 && evst.success? &&
+           st.success? && err.strip.empty? &&
+           out.include?("t=v2 extra=yes p=#{home}/p1\nturbo-alias") &&
+           ev_err.strip.empty? && ev_out.include?("e=v1 p=#{home}/p1\nturbo-alias") &&
+           !evald.include?('export ')
+      if ok
+        puts "✓"; @passed += 1
+      else
+        puts "✗"
+        puts "  miss=#{miss.exitstatus} gen=#{gen.exitstatus} #{gen_err.strip[0, 200]} cur=#{cur.exitstatus} " \
+             "cur2=#{cur2.exitstatus} stale=#{stale.exitstatus} out=#{out.inspect} err=#{err.strip[0, 300]} " \
+             "ev=#{ev_out.inspect} #{ev_err.strip[0, 300]}"
         @failed += 1
       end
     ensure

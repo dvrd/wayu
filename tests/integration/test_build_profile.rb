@@ -25,7 +25,7 @@ class BuildProfileTest
       test_profile_breakdown_names_tools
       test_profile_breakdown_is_interactive
       test_export_flag_modes
-      test_export_refuses_fish_and_build_rejects_unknown
+      test_export_build_rejects_unknown
     ensure
       teardown_test_env
     end
@@ -89,15 +89,13 @@ class BuildProfileTest
     run_wayu("alias rm exll")
   end
 
-  def test_export_refuses_fish_and_build_rejects_unknown
-    _o1, fish_turbo = run_wayu("--shell fish export")
-    _o2, fish_eval = run_wayu("--shell fish export --eval")
+  def test_export_build_rejects_unknown
     _o3, bogus_export = run_wayu("export bogus")
     _o4, bogus_build = run_wayu("build bogus")
     _o5, build_eval = run_wayu("build eval")
-    ok = [fish_turbo, fish_eval, bogus_export, bogus_build, build_eval].all? { |s| s.exitstatus == 64 }
-    report("Test 6: fish export refused, unknown export/build targets (incl. removed `build eval`) exit 64", ok,
-           [fish_turbo, fish_eval, bogus_export, bogus_build, build_eval].map(&:exitstatus).inspect)
+    ok = [bogus_export, bogus_build, build_eval].all? { |s| s.exitstatus == 64 }
+    report("Test 6: unknown export/build targets (incl. removed `build eval`) exit 64", ok,
+           [bogus_export, bogus_build, build_eval].map(&:exitstatus).inspect)
   end
 
   def test_profile_reports_both_scenarios

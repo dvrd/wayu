@@ -425,7 +425,7 @@ wayu keeps the files you edit in `~/.config/wayu/` and the data it manages in
   path_sync.{zsh,bash,fish} # PATH entry list re-read by the live PATH sync prompt hook
   plugins.{zsh,bash,fish}   # generated plugin loader
   plugins/                  # cloned plugin repos + runtime config
-  turbo.{zsh,bash}          # optional copy of core via `wayu export` (zsh/bash only)
+  turbo.{zsh,bash,fish}     # optional copy of core via `wayu export`
   completions/              # shell completion scripts
   backup/                   # timestamped backups (last 5 per file)
 

@@ -276,8 +276,8 @@ Default action: `turbo`. Each action may also be written as a flag
 
 | Action | |
 |---|---|
-| `turbo` | Write `turbo.<ext>`, a copy of `core.<ext>` (zsh, bash) |
-| `eval` | Print constants, PATH entries and aliases as shell code for `eval` (writes nothing) |
+| `turbo` | Write `turbo.<ext>`, a copy of `core.<ext>` (fish: `core.fish` followed by `tools.fish` and `extra.fish`, like `init.fish`) |
+| `eval` | Print constants, PATH entries and aliases as shell code for `eval` (fish: `wayu export --eval \| source`; writes nothing) |
 | `check` | Exit `0` if `turbo.<ext>` is current — its content is exactly what `export --turbo` would write now (any input: wayu.toml, entries.json, `config.<ext>`, a newer wayu) — `78` if it is missing or stale |
 | `list`, `ls` | Show the formats |
 | `help` | |

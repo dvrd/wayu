@@ -4,12 +4,12 @@ Agent instructions for AI coding assistants working in this repository.
 
 ## Project Overview
 
-wayu is a shell configuration management CLI written in Odin. It manages PATH entries, aliases, environment constants, `[tools]` loaders, a native zsh prompt, plugins, functions and completions. User-edited files live in the config dir `~/.config/wayu/` (`WAYU_CONFIG_DIR`): wayu.toml, hooks.conf, extra.<ext>, tools.<ext>, functions/. Data wayu manages lives in the data dir `${XDG_DATA_HOME:-~/.local/share}/wayu/` (`WAYU_DATA_DIR`): entries.json (PATH entries, aliases, constants), plugins.json, and the generated runtime files (init.<ext>, core.<ext>, path_sync.<ext>, plugins, completions, backups, the lock).
+wayu is a shell configuration management CLI written in Odin. It manages PATH entries, aliases, environment constants, `[tools]` loaders, a native prompt (zsh, fish), plugins, functions and completions. User-edited files live in the config dir `~/.config/wayu/` (`WAYU_CONFIG_DIR`): wayu.toml, hooks.conf, extra.<ext>, tools.<ext>, functions/. Data wayu manages lives in the data dir `${XDG_DATA_HOME:-~/.local/share}/wayu/` (`WAYU_DATA_DIR`): entries.json (PATH entries, aliases, constants), plugins.json, and the generated runtime files (init.<ext>, core.<ext>, path_sync.<ext>, plugins, completions, backups, the lock).
 
 User docs: [README.md](README.md) (install, shell setup, upgrade), [docs/cli.md](docs/cli.md) (every command/flag, `--json` shapes, exit codes), [docs/config-reference.md](docs/config-reference.md) (wayu.toml, entries.json and the other config files), [docs/UPGRADING.md](docs/UPGRADING.md) (behavior changes per release).
 
 **Current version**: see `VERSION` constant in `src/main.odin` (single source of truth) — run `./bin/wayu --version` to print.
-**Supported shells**: Zsh (primary), Bash, Fish (core.fish: [tools], functions/, live PATH sync; no native prompt)
+**Supported shells**: Zsh (primary), Bash, Fish (core.fish: [tools], functions/, live PATH sync, native prompt, turbo export)
 
 ## Build & Development Commands
 
@@ -132,7 +132,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/optimize.odin` | `wayu optimize`: pure rc-line classifier + block-aware scan, store merge (entries.json `fpath`/`generators`), rc rewrite with backups, `--notify` / `auto_optimize`, prompt-hook rc watch, doctor check, `completions fpath` |
 | `src/search.odin` | `wayu search` / `find` / `f` |
 | `src/templates.odin` | `wayu template` presets + `init --template` |
-| `src/turbo_export.odin` | `wayu export` (turbo copy of core, `--eval`, `--check`) |
+| `src/turbo_export.odin` | `wayu export` (turbo copy of core, `--eval`, `--check` compares content; zsh, bash, fish) |
 | `src/secrets.odin` | Secret heuristic + masking; file modes for files holding [env] values |
 | `src/secrets_store.odin` | Encrypted constants: ChaCha20-Poly1305 store (`secrets.json`), session cache + core loader, `const add --secret`/`--run-only`/get/rm, `wayu secrets` (incl. `run`: setenv + execvp), doctor check; `env_store_mark_secret` seam to the env store |
 | `src/keystore.odin` | Master key backends (`[secrets] backend`): keychain, secret-service, file |
@@ -147,7 +147,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/tui_core.odin` | TUI main loop, state machine, data loading, render orchestrator |
 | `src/tui_views.odin` | TUI view renderers (list, overlays, cache, handlers, hooks, plugins, settings) |
 | `src/tui_io.odin` | TUI terminal I/O: raw mode, input, screen buffer, events, colors, layout, components |
-| `src/prompt.odin` | Native zsh prompt (opt-in: `[prompt] enabled = true`) + vi-mode; values escaped |
+| `src/prompt.odin` | Native zsh + fish prompt (opt-in: `[prompt] enabled = true`) + vi-mode; values escaped |
 | `src/highlight.odin` | Built-in zsh syntax highlighting (opt-in: `[settings] highlight`): style table (`HIGHLIGHT_STYLES`), `highlight_styles` reading/validation, emits `src/highlight.zsh` (embedded with `#load`) into core.zsh |
 | `src/fuzzy.odin` | Fuzzy matching, interactive terminal selection, completions extraction |
 | `src/interfaces.odin` | Shared types (TomlConfig, etc.), exit codes, debug |
@@ -254,5 +254,4 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 
 These are acknowledged incomplete features — do not add workarounds, implement them properly:
 
-- Fish: no native prompt (`[prompt]` is zsh-only); `wayu export` turbo is zsh/bash only
 - TUI plugins view: remove/update not available (CLI handlers exit the process; needs a non-exiting core)

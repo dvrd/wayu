@@ -83,6 +83,17 @@ releases, so they are listed here too.
   now reports stale after a change to `config.<ext>`, a hand edit of the
   turbo file or a wayu upgrade that changes the generated code, and no
   longer after a save of wayu.toml that changed nothing.
+- fish: `[prompt] enabled = true` now generates a native prompt in
+  core.fish (`fish_prompt`, and `fish_right_prompt` with `async_rprompt`):
+  it replaces a `fish_prompt` from `~/.config/fish/functions/` (one
+  defined later in config.fish or a plugin still wins); `vi_mode = true`
+  switches to `fish_vi_key_bindings` and empties `fish_mode_prompt`. See
+  config-reference "Prompt in fish". A fish setup with `[prompt] enabled`
+  that relied on fish ignoring it should remove the table.
+- fish: `wayu export` (`--turbo`, `--eval`, `--check`) works for fish (it
+  exited `64`): `turbo.fish` is core.fish followed by `tools.fish` /
+  `extra.fish` (same as sourcing init.fish) and is kept current by every
+  regeneration; `--eval` prints fish code for `wayu export --eval | source`.
 - `wayu build profile` times core and its phase breakdown in an
   interactive shell that reads only core (zsh: `ZDOTDIR` = a private temp
   dir; bash: `--rcfile`), not `-c`: compinit, the native prompt and the

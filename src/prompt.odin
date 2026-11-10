@@ -3,6 +3,7 @@
 package wayu
 import "core:fmt"
 import "core:mem/virtual"
+import "core:strconv"
 import "core:strings"
 // Convert a wayu style string (e.g. "bold green", "red italic", "242")
 // into zsh prompt escapes (e.g. "%B%F{2}", "%F{1}%3m", "%F{242}").
@@ -1357,4 +1358,697 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 		}
 	}
 	return cfg
+}
+
+// ============================================================================
+// fish native prompt (OKAMI-368)
+// ============================================================================
+//
+// `[prompt] enabled = true` in a fish setup: core.fish defines fish_prompt
+// (and fish_right_prompt with async_rprompt) from the same [prompt] /
+// [prompt.*] tables as zsh: format tokens, module formats ([text](style),
+// $user / $hostname / $localip / $dir / $basename / $pwd / $branch /
+// $version), character symbols and colors, [prompt.contexts], vi mode
+// (fish_vi_key_bindings; the character follows $fish_bind_mode), the
+// minimal-mode toggle and the async right prompt. Styles are precomputed
+// ANSI sequences (printf format), every value is printed as a `%s`
+// argument, and a render runs only builtins (no fork) except {localip}.
+
+// ANSI SGR printf format (`\e[1;36m`) for a wayu style string ("" when the
+// style has no known word). Same words and colors as style_to_zsh.
+// Temp-allocated.
+style_to_ansi :: proc(style: string) -> string {
+	codes := make([dynamic]string, context.temp_allocator)
+	for token in strings.split(style, " ", context.temp_allocator) {
+		t := strings.trim_space(token)
+		switch t {
+		case "":
+		case "bold":
+			append(&codes, "1")
+		case "dim":
+			append(&codes, "2")
+		case "italic":
+			append(&codes, "3")
+		case "underline":
+			append(&codes, "4")
+		case:
+			num := color_name_to_num(t)
+			if num < 0 && all_digits(t) {
+				num, _ = strconv.parse_int(t)
+			}
+			if num >= 0 && num < 8 {
+				append(&codes, fmt.tprintf("%d", 30 + num))
+			} else if num >= 8 && num < 256 {
+				append(&codes, fmt.tprintf("38;5;%d", num))
+			}
+		}
+	}
+	if len(codes) == 0 {
+		return ""
+	}
+	return fmt.tprintf("\\e[%sm", strings.join(codes[:], ";", context.temp_allocator))
+}
+
+// One piece of a module format: text, styled when it came from
+// `[text](style)` (same parsing as dsl_to_zsh_format).
+PromptSegment :: struct {
+	text:   string,
+	style:  string,
+	styled: bool,
+}
+
+// Split a DSL format into segments (slices of `format`; temp array).
+prompt_dsl_segments :: proc(format: string) -> [dynamic]PromptSegment {
+	segs := make([dynamic]PromptSegment, context.temp_allocator)
+	i := 0
+	for i < len(format) {
+		lb := strings.index(format[i:], "[")
+		if lb == -1 {
+			append(&segs, PromptSegment{text = format[i:]})
+			break
+		}
+		lb += i
+		if lb > i {
+			append(&segs, PromptSegment{text = format[i:lb]})
+		}
+		rb := strings.index(format[lb:], "]")
+		if rb == -1 {
+			append(&segs, PromptSegment{text = format[lb:]})
+			break
+		}
+		rb += lb
+		if rb + 1 >= len(format) || format[rb + 1] != '(' {
+			append(&segs, PromptSegment{text = format[lb:rb + 1]})
+			i = rb + 1
+			continue
+		}
+		rp := strings.index(format[rb + 1:], ")")
+		if rp == -1 {
+			append(&segs, PromptSegment{text = format[lb:]})
+			break
+		}
+		rp += rb + 1
+		append(
+			&segs,
+			PromptSegment {
+				text = strings.trim_space(format[lb + 1:rb]),
+				style = strings.trim_space(format[rb + 2:rp]),
+				styled = true,
+			},
+		)
+		i = rp + 1
+	}
+	return segs
+}
+
+@(private = "file")
+fish_prompt_flush_literal :: proc(b: ^strings.Builder, indent: string, lit: ^strings.Builder) {
+	if strings.builder_len(lit^) == 0 {
+		return
+	}
+	fmt.sbprintfln(
+		b,
+		"%sprintf '%%s' %s",
+		indent,
+		escape_fish_string(strings.to_string(lit^), context.temp_allocator),
+	)
+	strings.builder_reset(lit)
+}
+
+// `printf '%s' ...` lines printing `text`, with each occurrence of a
+// vars key ({key, fish expression}, longest key wins) printed as its
+// expression and everything else as a literal word.
+fish_prompt_emit_text :: proc(b: ^strings.Builder, indent, text: string, vars: [][2]string) {
+	lit := strings.builder_make(context.temp_allocator)
+	i := 0
+	for i < len(text) {
+		best := -1
+		for v, k in vars {
+			if strings.has_prefix(text[i:], v[0]) && (best < 0 || len(v[0]) > len(vars[best][0])) {
+				best = k
+			}
+		}
+		if best >= 0 {
+			fish_prompt_flush_literal(b, indent, &lit)
+			fmt.sbprintfln(b, "%sprintf '%%s' %s", indent, vars[best][1])
+			i += len(vars[best][0])
+			continue
+		}
+		strings.write_byte(&lit, text[i])
+		i += 1
+	}
+	fish_prompt_flush_literal(b, indent, &lit)
+}
+
+// A module format (DSL + vars) as fish code: styled segments are wrapped
+// in their ANSI sequence and a reset.
+fish_prompt_emit_module :: proc(b: ^strings.Builder, indent, format: string, vars: [][2]string) {
+	for s in prompt_dsl_segments(format) {
+		ansi := style_to_ansi(s.style) if s.styled else ""
+		if len(ansi) > 0 {
+			fmt.sbprintfln(b, "%sprintf '%s'", indent, ansi)
+		}
+		fish_prompt_emit_text(b, indent, s.text, vars)
+		if len(ansi) > 0 {
+			fmt.sbprintfln(b, "%sprintf '\\e[0m'", indent)
+		}
+	}
+}
+
+// Fish code for one {token} of [prompt] format (inside fish_prompt).
+fish_prompt_emit_token :: proc(
+	b: ^strings.Builder,
+	cfg: PromptConfigFull,
+	icfg: InteractiveConfig,
+	name: string,
+) {
+	q :: proc(s: string) -> string {return escape_fish_string(s, context.temp_allocator)}
+	switch name {
+	case "username":
+		indent := "    "
+		if !cfg.username_show_always {
+			fmt.sbprintln(
+				b,
+				"    if set -q SSH_CONNECTION; or set -q SSH_CLIENT; or set -q SSH_TTY; or begin; functions -q fish_is_root_user; and fish_is_root_user; end",
+			)
+			indent = "        "
+		}
+		fish_prompt_emit_module(b, indent, cfg.username_format, {{"$user", `"$USER"`}})
+		if !cfg.username_show_always {
+			fmt.sbprintln(b, "    end")
+		}
+	case "hostname":
+		fish_prompt_emit_module(
+			b,
+			"    ",
+			cfg.hostname_format,
+			{{"$hostname", `(string replace -r '\..*' '' -- $hostname)`}},
+		)
+	case "localip":
+		fish_prompt_emit_module(b, "    ", cfg.localip_format, {{"$localip", `"$_wayu_localip"`}})
+	case "dir":
+		fish_prompt_emit_module(
+			b,
+			"    ",
+			cfg.dir_format,
+			{
+				{"$basename", "(_wayu_prompt_dir 1)"},
+				{"$pwd", `"$PWD"`},
+				{"$dir", "(_wayu_prompt_dir)"},
+			},
+		)
+	case "git_branch":
+		fmt.sbprintln(b, `    if test -n "$_wayu_git_branch"`)
+		fish_prompt_emit_module(
+			b,
+			"        ",
+			cfg.git_branch_format,
+			{{"$branch", `"$_wayu_git_branch"`}},
+		)
+		fmt.sbprintln(b, "    end")
+	case "language_context", "context_icon":
+		fmt.sbprintln(b, `    switch "$_wayu_context"`)
+		for lang in cfg.context_order {
+			f, has := cfg.context_formats[lang]
+			if !has {
+				continue
+			}
+			fmt.sbprintfln(b, "        case %s", q(sanitize_ident(lang)))
+			fish_prompt_emit_module(b, "            ", f, {{"$version", `"$_wayu_context_ver"`}})
+		}
+		fmt.sbprintln(b, "        case '*'")
+		fmt.sbprintln(b, `            printf '%s' (string replace -r '.*/' '' -- "$SHELL")`)
+		fmt.sbprintln(b, "    end")
+	case "character":
+		fmt.sbprintfln(b, "    set -l _wayu_sym %s", q(cfg.character_success))
+		fmt.sbprintln(b, "    set -l _wayu_col 2")
+		fmt.sbprintln(b, "    if test $_wayu_st -ne 0")
+		fmt.sbprintfln(b, "        set _wayu_sym %s", q(cfg.character_error))
+		fmt.sbprintln(b, "        set _wayu_col 1")
+		fmt.sbprintln(b, "    end")
+		if icfg.vi_mode && icfg.vi_mode_indicator {
+			fmt.sbprintln(b, "    switch $fish_bind_mode")
+			fmt.sbprintln(b, "        case insert")
+			fmt.sbprintfln(
+				b,
+				"            set _wayu_sym %s; set _wayu_col 202",
+				q(cfg.character_success),
+			)
+			fmt.sbprintln(b, "        case default")
+			fmt.sbprintfln(
+				b,
+				"            set _wayu_sym %s; set _wayu_col 2",
+				q(cfg.vimcmd_symbol),
+			)
+			fmt.sbprintln(b, "        case visual")
+			fmt.sbprintfln(
+				b,
+				"            set _wayu_sym %s; set _wayu_col 129",
+				q(cfg.vimcmd_visual_symbol),
+			)
+			fmt.sbprintln(b, "        case replace replace_one")
+			fmt.sbprintfln(
+				b,
+				"            set _wayu_sym %s; set _wayu_col 129",
+				q(cfg.vimcmd_replace_symbol),
+			)
+			fmt.sbprintln(b, "    end")
+		}
+		fmt.sbprintln(b, `    printf '\e[38;5;%sm\e[1m%s\e[0m' $_wayu_col $_wayu_sym`)
+	}
+}
+
+// Prompt helpers: the directory module and the git branch, read like the
+// zsh prompt (PROMPT_GIT_INFO_ZSH) with builtins only.
+PROMPT_FISH_HELPERS :: `set -g _wayu_git_branch ''
+set -g _wayu_context default
+set -g _wayu_context_ver ''
+function _wayu_prompt_dir
+    set -l p $PWD
+    if test "$p" = "$HOME"
+        set p '~'
+    else if test -n "$HOME"; and string match -q -- "$HOME/*" "$p"
+        set p '~'(string sub -s (math (string length -- "$HOME") + 1) -- $p)
+    end
+    if set -q argv[1]; and test "$p" != /; and test "$p" != '~'
+        set p (string replace -r '.*/' '' -- $p)
+    end
+    printf '%s' $p
+end
+function _wayu_update_git_info
+    set -g _wayu_git_branch ''
+    set -l d $PWD
+    set -l g ''
+    set -l l ''
+    if test -n "$GIT_DIR"
+        set g (path resolve -- $GIT_DIR)
+    else
+        while true
+            if test -d "$d/.git"
+                set g $d/.git
+                break
+            else if test -f "$d/.git"
+                test -r "$d/.git"; and read l <"$d/.git"
+                if string match -q -- 'gitdir: *' "$l"
+                    set g (string replace -- 'gitdir: ' '' "$l")
+                    string match -q -- '/*' $g; or set g $d/$g
+                end
+                break
+            end
+            test "$d" = /; and break
+            test -z "$d"; and break
+            set d (path dirname -- $d)
+        end
+    end
+    test -n "$g"; and test -r "$g/HEAD"; or return 0
+    set l ''
+    read l <"$g/HEAD"
+    switch "$l"
+        case 'ref: refs/heads/.invalid'
+            set -g _wayu_git_branch (command git symbolic-ref --short HEAD 2>/dev/null)
+        case 'ref: refs/heads/*'
+            set -g _wayu_git_branch (string replace -- 'ref: refs/heads/' '' "$l")
+        case 'ref: *'
+            set -g _wayu_git_branch (string replace -- 'ref: ' '' "$l")
+        case '*'
+            set -g _wayu_git_branch (string sub -l 7 -- "$l")
+    end
+    return 0
+end
+`
+
+PromptFishContext :: struct {
+	name:   string,
+	detect: []string,
+}
+
+// Built-in context detection for fish: (name, files or `*` globs). Same
+// rules as the zsh BUILTIN table in generate_context_feature.
+PROMPT_FISH_BUILTIN_CONTEXTS := [?]PromptFishContext {
+	{"rust", {"Cargo.toml"}},
+	{"bun", {"bun.lockb", "bunfig.toml"}},
+	{"gleam", {"gleam.toml"}},
+	{"swift", {"Package.swift"}},
+	{"dart", {"pubspec.yaml"}},
+	{"php", {"composer.json"}},
+	{"ruby", {"Gemfile", ".ruby-version"}},
+	{"elixir", {"mix.exs"}},
+	{"erlang", {"rebar.config", "erlang.mk"}},
+	{"haskell", {"stack.yaml", "cabal.project"}},
+	{"julia", {"Project.toml", "Manifest.toml"}},
+	{"odin", {"ols.json", "*.odin", "src/*.odin"}},
+	{"golang", {"go.mod"}},
+	{"nim", {"nim.cfg"}},
+	{"ocaml", {"dune"}},
+	{"nix", {"flake.nix", "default.nix"}},
+	{"deno", {"deno.json", "deno.jsonc"}},
+	{"elm", {"elm.json"}},
+	{"crystal", {"shard.yml"}},
+	{"perl", {"cpanfile"}},
+	{"buf", {"buf.yaml"}},
+	{"nodejs", {"package.json"}},
+	{"java", {"pom.xml", "build.gradle"}},
+	{"scala", {"build.sbt"}},
+	{"python", {"requirements.txt", "pyproject.toml"}},
+	{"zig", {"build.zig", "build.zig.zon"}},
+	{"rlang", {"DESCRIPTION"}},
+	{"lua", {".lua-version"}},
+	{"docker", {"Dockerfile", "docker-compose.yml"}},
+	{"aws", {".aws"}},
+}
+
+// fish condition for a detect list: `test -e 'f'` per file, `count g >/dev/null`
+// per `*` glob (a glob with no match is no error for count). Entries outside
+// context_detect_condition's safe character set are skipped. Temp-allocated
+// ("" when nothing is usable).
+fish_detect_condition :: proc(detects: []string) -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	n := 0
+	for raw in detects {
+		item := strings.trim_space(raw)
+		if len(item) == 0 || len(context_detect_condition({item})) == 0 {
+			continue
+		}
+		if n > 0 {
+			strings.write_string(&sb, "; or ")
+		}
+		if strings.contains(item, "*") {
+			fmt.sbprintf(&sb, "count %s >/dev/null", item)
+		} else {
+			fmt.sbprintf(&sb, "test -e %s", escape_fish_string(item, context.temp_allocator))
+		}
+		n += 1
+	}
+	return strings.to_string(sb)
+}
+
+// The async worker, run as `fish --no-config -c <script> -- <dir> <branch>
+// <context> <parent pid>` in the prompt's directory: pending count and tool
+// version into <dir>/data (atomic rename), then USR1 to the shell.
+// Temp-allocated.
+fish_async_worker_script :: proc() -> string {
+	sb := strings.builder_make(context.temp_allocator)
+	fmt.sbprintln(&sb, "set -l n ''")
+	fmt.sbprintln(&sb, `if test -n "$argv[2]"`)
+	fmt.sbprintln(&sb, "    set -l st (command git status --porcelain 2>/dev/null)")
+	fmt.sbprintln(&sb, "    set -q st[1]; and set n (count $st)")
+	fmt.sbprintln(&sb, "end")
+	fmt.sbprintln(&sb, "set -l ver ''")
+	fmt.sbprintln(&sb, "switch $argv[3]")
+	versions := PROMPT_VERSION_CMDS
+	for v in versions {
+		fmt.sbprintfln(&sb, "    case %s", v[0])
+		fmt.sbprintfln(&sb, "        set ver (%s)", v[1])
+	}
+	fmt.sbprintln(&sb, "end")
+	fmt.sbprintln(&sb, "set -l tmp $argv[1]/.w.$fish_pid")
+	fmt.sbprintln(
+		&sb,
+		`printf '%s\n%s\n' "$n" "$ver" >$tmp; and command mv -f -- $tmp $argv[1]/data; and kill -USR1 $argv[4]`,
+	)
+	return strings.to_string(sb)
+}
+
+// The [prompt] format as fish_prompt body lines: literal text, {token} and
+// [{token}](style), `\n` = a new line (same walk as generate_full_prompt).
+@(private = "file")
+fish_prompt_emit_format :: proc(
+	b: ^strings.Builder,
+	cfg: PromptConfigFull,
+	icfg: InteractiveConfig,
+) {
+	format, _ := strings.replace_all(cfg.format, `\n`, "\n", context.temp_allocator)
+	for part, i in strings.split(format, "\n", context.temp_allocator) {
+		if i > 0 {
+			fmt.sbprintln(b, "    echo")
+		}
+		pos := 0
+		for pos < len(part) {
+			ob := strings.index(part[pos:], "[{")
+			oc := strings.index(part[pos:], "{")
+			if ob != -1 && (oc == -1 || ob <= oc) {
+				ob += pos
+				fish_prompt_emit_text(b, "    ", part[pos:ob], {})
+				cb := strings.index(part[ob:], "}]")
+				if cb != -1 {
+					cb += ob
+					if cb + 2 < len(part) && part[cb + 2] == '(' {
+						cp := strings.index(part[cb + 2:], ")")
+						if cp != -1 {
+							cp += cb + 2
+							ansi := style_to_ansi(strings.trim_space(part[cb + 3:cp]))
+							if len(ansi) > 0 {
+								fmt.sbprintfln(b, "    printf '%s'", ansi)
+							}
+							fish_prompt_emit_token(b, cfg, icfg, part[ob + 2:cb])
+							if len(ansi) > 0 {
+								fmt.sbprintln(b, `    printf '\e[0m'`)
+							}
+							pos = cp + 1
+							continue
+						}
+					}
+				}
+				fish_prompt_emit_text(b, "    ", "[", {})
+				pos = ob + 1
+				continue
+			}
+			if oc == -1 {
+				fish_prompt_emit_text(b, "    ", part[pos:], {})
+				break
+			}
+			oc += pos
+			fish_prompt_emit_text(b, "    ", part[pos:oc], {})
+			cc := strings.index(part[oc:], "}")
+			if cc == -1 {
+				fish_prompt_emit_text(b, "    ", part[oc:], {})
+				break
+			}
+			cc += oc
+			fish_prompt_emit_token(b, cfg, icfg, part[oc + 1:cc])
+			pos = cc + 1
+		}
+	}
+}
+
+// Toggle (opt-in): bound from fish_user_key_bindings (run after the key
+// bindings are set up), chaining one defined before wayu. Only `^X` keys
+// have a fish form.
+@(private = "file")
+fish_prompt_emit_toggle :: proc(b: ^strings.Builder, icfg: InteractiveConfig) {
+	key := icfg.toggle_key
+	fmt.sbprintln(b, "# --- Feature: Toggle Prompt (Minimal/Full) ---")
+	fmt.sbprintln(b, "set -g _wayu_prompt_mode full")
+	fmt.sbprintln(b, "function _wayu_toggle_prompt")
+	fmt.sbprintln(
+		b,
+		`    test "$_wayu_prompt_mode" = full; and set -g _wayu_prompt_mode minimal; or set -g _wayu_prompt_mode full`,
+	)
+	fmt.sbprintln(b, "    commandline -f repaint")
+	fmt.sbprintln(b, "end")
+	letter :=
+		len(key) == 2 &&
+		key[0] == '^' &&
+		((key[1] >= 'A' && key[1] <= 'Z') || (key[1] >= 'a' && key[1] <= 'z'))
+	if !letter {
+		fmt.sbprintln(b, "# wayu: toggle_key has no fish form (use ^X); not bound")
+		return
+	}
+	fkey := fmt.tprintf("\\c%c", rune(key[1] | 0x20))
+	fmt.sbprintln(
+		b,
+		"if functions -q fish_user_key_bindings; and not functions -q _wayu_prev_fish_user_key_bindings; and not string match -q -- '*_wayu_toggle_prompt*' (functions fish_user_key_bindings)",
+	)
+	fmt.sbprintln(b, "    functions -c fish_user_key_bindings _wayu_prev_fish_user_key_bindings")
+	fmt.sbprintln(b, "end")
+	fmt.sbprintln(b, "function fish_user_key_bindings")
+	fmt.sbprintln(
+		b,
+		"    functions -q _wayu_prev_fish_user_key_bindings; and _wayu_prev_fish_user_key_bindings",
+	)
+	if icfg.vi_mode {
+		fmt.sbprintfln(b, "    bind -M insert %s _wayu_toggle_prompt", fkey)
+		fmt.sbprintfln(b, "    bind -M default %s _wayu_toggle_prompt", fkey)
+	} else {
+		fmt.sbprintfln(b, "    bind %s _wayu_toggle_prompt", fkey)
+	}
+	fmt.sbprintln(b, "end")
+}
+
+// Context detection on directory change (file tests only).
+@(private = "file")
+fish_prompt_emit_context :: proc(b: ^strings.Builder, icfg: InteractiveConfig) {
+	fmt.sbprintln(b, "# --- Feature: Context-Aware Prompt ---")
+	fmt.sbprintln(b, "function _wayu_detect_context --on-variable PWD")
+	fmt.sbprintln(b, "    set -g _wayu_context default")
+	configured := make(map[string]bool, 16, context.temp_allocator)
+	first := true
+	if icfg.contexts != nil {
+		for name in icfg.contexts.context_order {
+			detects, has := icfg.contexts.context_detects[name]
+			if !has || len(detects) == 0 {
+				continue
+			}
+			cond := fish_detect_condition(detects[:])
+			if len(cond) == 0 {
+				continue
+			}
+			configured[name] = true
+			fmt.sbprintfln(b, "    %s %s", "if" if first else "else if", cond)
+			fmt.sbprintfln(b, "        set -g _wayu_context %s", sanitize_ident(name))
+			first = false
+		}
+	}
+	for entry in PROMPT_FISH_BUILTIN_CONTEXTS {
+		if configured[entry.name] {
+			continue
+		}
+		fmt.sbprintfln(
+			b,
+			"    %s %s",
+			"if" if first else "else if",
+			fish_detect_condition(entry.detect),
+		)
+		fmt.sbprintfln(b, "        set -g _wayu_context %s", entry.name)
+		first = false
+	}
+	if !first {
+		fmt.sbprintln(b, "    end")
+	}
+	fmt.sbprintln(b, "end")
+	fmt.sbprintln(b, "_wayu_detect_context")
+}
+
+// Async right prompt: a worker per prompt, only where there is something to
+// fetch (a git work tree, a context with a version command), like zsh.
+@(private = "file")
+fish_prompt_emit_async :: proc(b: ^strings.Builder, icfg: InteractiveConfig) {
+	names := make([dynamic]string, context.temp_allocator)
+	versions := PROMPT_VERSION_CMDS
+	for v in versions {append(&names, v[0])}
+	fmt.sbprintln(b, "# --- Feature: Async RPROMPT ---")
+	fmt.sbprintln(b, "set -g _wayu_async_data ''")
+	fmt.sbprintln(b, "set -q _wayu_async_dir; or set -g _wayu_async_dir ''")
+	fmt.sbprintfln(
+		b,
+		"set -g _wayu_async_script %s",
+		escape_fish_string(fish_async_worker_script(), context.temp_allocator),
+	)
+	fmt.sbprintln(b, "function _wayu_async_start")
+	fmt.sbprintfln(
+		b,
+		`    if test -z "$_wayu_git_branch"; and not contains -- "$_wayu_context" %s`,
+		strings.join(names[:], " ", context.temp_allocator),
+	)
+	fmt.sbprint(b, PROMPT_FISH_ASYNC)
+	fmt.sbprintln(b, "function fish_right_prompt")
+	fmt.sbprintln(b, `    test -n "$_wayu_async_data"; or return 0`)
+	fish_prompt_emit_module(
+		b,
+		"    ",
+		icfg.rprompt_format,
+		{{"{git_pending}", `"$_wayu_async_data"`}, {"{git_branch}", `"$_wayu_git_branch"`}},
+	)
+	fmt.sbprintln(b, "end")
+}
+
+// Rest of _wayu_async_start, the USR1 handler and the exit cleanup. The
+// private dir (mktemp -d, once per shell) holds the worker's result.
+PROMPT_FISH_ASYNC :: `        set -g _wayu_async_data ''
+        set -g _wayu_context_ver ''
+        return 0
+    end
+    if test -z "$_wayu_async_dir"; or not test -d "$_wayu_async_dir"
+        set -l t /tmp
+        test -n "$TMPDIR"; and set t (string trim -r -c / -- "$TMPDIR")
+        set -g _wayu_async_dir (command mktemp -d $t/wayu-async.XXXXXX 2>/dev/null); or set -g _wayu_async_dir ''
+        test -n "$_wayu_async_dir"; or return 0
+    end
+    set -l fb (status fish-path)
+    command $fb --no-config -c $_wayu_async_script -- $_wayu_async_dir "$_wayu_git_branch" "$_wayu_context" $fish_pid &
+    disown $last_pid 2>/dev/null
+    return 0
+end
+function _wayu_async_on_usr1 --on-signal SIGUSR1
+    test -n "$_wayu_async_dir"; and test -f "$_wayu_async_dir/data"; or return 0
+    set -l a ''
+    set -l v ''
+    read -L a v <"$_wayu_async_dir/data"
+    set -g _wayu_async_data $a
+    set -g _wayu_context_ver $v
+    commandline -f repaint 2>/dev/null
+end
+function _wayu_async_cleanup --on-event fish_exit
+    test -n "$_wayu_async_dir"; and test -d "$_wayu_async_dir"; and command rm -rf -- "$_wayu_async_dir"
+end
+`
+
+// core.fish's prompt section (the caller wraps it in `if status
+// is-interactive`). Caller owns the result.
+generate_fish_prompt :: proc(cfg: PromptConfigFull, icfg: InteractiveConfig) -> string {
+	b := strings.builder_make()
+	fmt.sbprintln(&b, "# --- Wayu Native Prompt (fish) ---")
+	fmt.sbprint(&b, PROMPT_FISH_HELPERS)
+	has_localip := strings.contains(cfg.format, "{localip}")
+	if has_localip {
+		fmt.sbprintln(&b, "set -g _wayu_localip ''")
+	}
+	// Vi mode: fish's own vi bindings; the character shows the mode, so the
+	// default mode prompt ([I]) is emptied (fish then repaints the whole
+	// prompt on a mode change).
+	if icfg.vi_mode {
+		fmt.sbprintln(&b, "# --- Feature: VI Mode ---")
+		fmt.sbprintln(&b, "set -g fish_key_bindings fish_vi_key_bindings")
+		fmt.sbprintln(&b, "function fish_mode_prompt; end")
+	}
+	if icfg.toggle_enabled {
+		fish_prompt_emit_toggle(&b, icfg)
+	}
+	if icfg.context_aware {
+		fish_prompt_emit_context(&b, icfg)
+	}
+	if icfg.async_rprompt {
+		fish_prompt_emit_async(&b, icfg)
+	}
+
+	// Per-prompt state, set before fish_prompt runs (the fish_prompt event).
+	fmt.sbprintln(&b, "# --- Prompt ---")
+	fmt.sbprintln(&b, "function _wayu_prompt_pre --on-event fish_prompt")
+	fmt.sbprintln(&b, "    _wayu_update_git_info")
+	if has_localip {
+		fmt.sbprintln(
+			&b,
+			`    set -g _wayu_localip (command ipconfig getifaddr en0 2>/dev/null; or command ip -4 route get 1 2>/dev/null | command awk '{print $7; exit}')`,
+		)
+	}
+	if icfg.async_rprompt {
+		fmt.sbprintln(&b, "    _wayu_async_start")
+	}
+	fmt.sbprintln(&b, "end")
+
+	// fish_prompt: a blank line, then the format (like zsh's PROMPT).
+	fmt.sbprintln(&b, "function fish_prompt")
+	fmt.sbprintln(&b, "    set -l _wayu_st $status")
+	fmt.sbprintln(&b, "    echo")
+	if icfg.toggle_enabled {
+		fmt.sbprintln(&b, `    if test "$_wayu_prompt_mode" = minimal`)
+		if icfg.transient_enabled {
+			if strings.contains(icfg.transient_format, "{dir}") {
+				fmt.sbprintln(&b, `        printf '%s ' (_wayu_prompt_dir)`)
+			}
+			if strings.contains(icfg.transient_format, "{character}") {
+				fmt.sbprintln(
+					&b,
+					`        test $_wayu_st -eq 0; and printf '➜ '; or printf '✗ '`,
+				)
+			}
+		} else {
+			fmt.sbprintln(&b, `        printf '%s ➜ ' (_wayu_prompt_dir)`)
+		}
+		fmt.sbprintln(&b, "        return 0")
+		fmt.sbprintln(&b, "    end")
+	}
+	fish_prompt_emit_format(&b, cfg, icfg)
+	fmt.sbprintln(&b, "end")
+	return strings.to_string(b)
 }
