@@ -38,6 +38,7 @@ class GeneratedShellTest
       build_project
       test_zsh_hostile_environments
       test_bash_hostile_aliases
+      test_bash_glob_options
       test_nvm_default_resolution
       test_nvmrc_resolution
       test_compinit_picks_up_new_completions
@@ -149,6 +150,24 @@ class GeneratedShellTest
       want = 'node=v20.18.0 myfn=myfn-ok extra=1 nvm=nvm sdk=sdk conda=conda comp=complete -F _wayu_completion wayu'
       check(name, bad.empty? && st.success? && err.strip.empty? && out.strip == want,
             "syntax=#{bad.map { |f| File.basename(f) }} out=#{out.strip.inspect} err=#{err.strip[0, 400]}")
+    end
+  end
+
+  # OKAMI-345: failglob / nullglob / noglob / nounset in the user's bash
+  # don't make core.bash print "no match" or skip functions/ and
+  # completions/, and the options are restored afterwards.
+  def test_bash_glob_options
+    _, data, env = setup_home('bash_glob', 'bash')
+    { 'failglob' => 'shopt -s failglob', 'nullglob + nounset' => 'shopt -s nullglob; set -u',
+      'noglob' => 'set -f' }.each do |name, pre|
+      print "Test: bash init with #{name}: functions and completions load, options kept... "
+      script = "#{pre}\nsource '#{data}/init.bash'\n" \
+               'echo "myfn=$(myfn) comp=$(complete -p wayu 2>&1) fg=$(shopt -q failglob && echo 1) ng=$(shopt -q nullglob && echo 1) f=${-//[^f]/} leak=${_wayu_files+x}${f+x}"'
+      out, err, st = Open3.capture3(env, '/bin/bash', '--norc', '--noprofile', '-c', script)
+      want = "myfn=myfn-ok comp=complete -F _wayu_completion wayu fg=#{pre.include?('failglob') ? 1 : ''} " \
+             "ng=#{pre.include?('nullglob') ? 1 : ''} f=#{pre.include?('set -f') ? 'f' : ''} leak="
+      check(name, st.success? && err.strip.empty? && out.strip == want,
+            "out=#{out.strip.inspect} want=#{want.inspect} err=#{err.strip[0, 300]}")
     end
   end
 

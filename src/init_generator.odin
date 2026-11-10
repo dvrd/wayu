@@ -521,13 +521,33 @@ emit_functions_loader :: proc(b: ^strings.Builder) {
 		fmt.sbprintln(b, `for _wayu_f in "${_wayu_fn_files[@]}"; do source "$_wayu_f"; done`)
 		fmt.sbprintln(b, `unset _wayu_f _wayu_fn_files`)
 	} else {
-		fmt.sbprintfln(
-			b,
-			`if [ -d %s ]; then for f in %s/*.bash; do if [ -f "$f" ]; then source "$f"; fi; done; fi`,
-			dir,
-			dir,
-		)
+		emit_bash_glob_source(b, dir, {"*.bash"})
 	}
+}
+
+// bash: source every file matching `patterns` in `dir_q` (an already quoted
+// dir). The glob runs with failglob off and globbing on (a user's
+// `shopt -s failglob` made every start print "no match", OKAMI-345; `set -f`
+// skipped the files), both restored before the files are sourced, so they
+// run with the user's options. nullglob and `set -u` safe (bash 3.2 too).
+emit_bash_glob_source :: proc(b: ^strings.Builder, dir_q: string, patterns: []string) {
+	fmt.sbprintfln(b, "if [ -d %s ]; then", dir_q)
+	fmt.sbprintln(b, "  _wayu_fg=0 _wayu_nf=0")
+	fmt.sbprintln(b, "  if shopt -q failglob; then _wayu_fg=1; shopt -u failglob; fi")
+	fmt.sbprintln(b, "  case $- in *f*) _wayu_nf=1; set +f ;; esac")
+	fmt.sbprint(b, "  _wayu_files=(")
+	for pat in patterns {
+		fmt.sbprintf(b, " %s/%s", dir_q, pat)
+	}
+	fmt.sbprintln(b, " )")
+	fmt.sbprintln(b, `  [ "$_wayu_fg" = 0 ] || shopt -s failglob`)
+	fmt.sbprintln(b, `  [ "$_wayu_nf" = 0 ] || set -f`)
+	fmt.sbprintln(
+		b,
+		`  for _wayu_f in ${_wayu_files[@]+"${_wayu_files[@]}"}; do if [ -f "$_wayu_f" ]; then source "$_wayu_f"; fi; done`,
+	)
+	fmt.sbprintln(b, "  unset _wayu_f _wayu_files _wayu_fg _wayu_nf")
+	fmt.sbprintln(b, "fi")
 }
 
 // Live PATH sync (replaces the old `wayu()` shell-function wrapper, which
@@ -1233,13 +1253,7 @@ build_core_content :: proc(mask := false) -> string {
 		// `wayu completions generate` writes wayu.bash; `completions add`
 		// writes name.bash-completion (or keeps a given .bash name).
 		q := shell_double_quote_literal(completions_dir, context.temp_allocator)
-		fmt.sbprintfln(
-			&b,
-			`if [ -d %s ]; then for f in %s/*.bash-completion %s/*.bash; do if [ -f "$f" ]; then source "$f"; fi; done; fi`,
-			q,
-			q,
-			q,
-		)
+		emit_bash_glob_source(&b, q, {"*.bash-completion", "*.bash"})
 	}
 	fmt.sbprintln(&b)
 

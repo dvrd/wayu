@@ -37,6 +37,11 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   with `set -e` when a tool is missing, fails or its cache can't be written
   (a failing tool now returns 0), and on bash 3.2 finds tools by walking
   `PATH` in the shell instead of one `$(type -P …)` fork per tool.
+- core.bash: the `functions/*.bash` and `completions/*.bash(-completion)`
+  loops glob with `failglob` off and globbing on (restored before the files
+  are sourced): `shopt -s failglob` printed "no match" on every start and
+  `set -f` skipped the files. The loop variable is `_wayu_f` (core.bash
+  left a global `f` behind).
 
 **One status icon per line**
 
