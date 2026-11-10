@@ -551,7 +551,13 @@ class SecretsStoreIntegrationTest
     out, = sh(['zsh', '-fc', "source #{@data_dir}/init.zsh; print -r -- \"[${FAKE_RUN-unset}] $FAKE_MULTI\""])
     eval_out, = w('export --eval')
     files = caches + Dir.glob("#{@data_dir}/{core,turbo}.*")
-    leaks = files.select { |f| s = File.binread(f); s.include?('FAKE_RUN') || s.include?('fake-run-only') }
+    # A background zcompile's temp file can vanish between glob and read.
+    read = lambda do |f|
+      File.binread(f)
+    rescue Errno::ENOENT
+      ''
+    end
+    leaks = files.select { |f| s = read.call(f); s.include?('FAKE_RUN') || s.include?('fake-run-only') }
     ok = out.start_with?('[unset] fake-line-1') && caches.any? && leaks.empty? && !eval_out.include?('fake-run-only')
     check('run-only leaked', ok, "out=#{out.inspect} leaks=#{leaks}")
   end
