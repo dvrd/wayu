@@ -1310,24 +1310,30 @@ check_plugins :: proc(results: ^[dynamic]CheckResult) {
 		return
 	}
 
-	data, ok := safe_read_file(config_file)
+	// Parse with the same strict reader `wayu plugin list` uses (JSON,
+	// enums, entry fields, dependency cycles): counting "name" strings
+	// reported a malformed file as healthy (OKAMI-298). The reader prints
+	// the details to stderr, so `doctor --json` stdout stays valid JSON.
+	config, ok := read_plugin_config_json()
+	defer cleanup_plugin_config_json(&config)
 	if !ok {
 		append(
 			results,
 			CheckResult {
 				name = clone_arena("plugins"),
-				status = .WARNING,
-				message = clone_arena("Could not read plugins configuration"),
+				status = .ERROR,
+				message = fmt.aprintf(
+					"%s is invalid - run 'wayu plugin list' for details",
+					doctor_tilde(config_file),
+					allocator = get_doctor_allocator(),
+				),
 				fixable = false,
 			},
 		)
 		return
 	}
-	defer delete(data)
 
-	content := string(data)
-	plugin_count := strings.count(content, "\"name\"")
-
+	plugin_count := len(config.plugins)
 	if plugin_count == 0 {
 		append(
 			results,
@@ -1703,11 +1709,14 @@ check_entries_store :: proc(results: ^[dynamic]CheckResult) {
 	)
 }
 
-// Check 7: turbo export. turbo.zsh is optional; it only matters when a
+// Check 7: turbo export. turbo.<ext> is optional; it only matters when a
 // startup file sources it. Report-only: doctor never generates it.
 check_turbo_export :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	turbo_path := fmt.aprintf("%s/turbo.zsh", wayu.data, allocator = get_doctor_allocator())
+	alloc := get_doctor_allocator()
+	// `wayu export` writes turbo.<ext> for the current shell (OKAMI-297).
+	turbo_name := fmt.aprintf("turbo.%s", get_shell_extension(wayu.shell), allocator = alloc)
+	turbo_path := fmt.aprintf("%s/%s", wayu.data, turbo_name, allocator = alloc)
 	exists := os.exists(turbo_path)
 	referenced_in, _ := doctor_find_wayu_source(turbo_only = true)
 	referenced := len(referenced_in) > 0
@@ -1718,15 +1727,20 @@ check_turbo_export :: proc(results: ^[dynamic]CheckResult) {
 	case !exists && referenced:
 		status = .ERROR
 		msg = fmt.aprintf(
-			"%s sources turbo.zsh but it is not generated - run 'wayu export'",
+			"%s sources %s but it is not generated - run 'wayu export'",
 			doctor_tilde(referenced_in),
-			allocator = get_doctor_allocator(),
+			turbo_name,
+			allocator = alloc,
 		)
 	case !exists:
 		msg = "Not in use (optional: 'wayu export' writes a single-file turbo init)"
 	case !referenced:
 		status = .INFO
-		msg = "turbo.zsh exists but no startup file sources it (unused; safe to delete)"
+		msg = fmt.aprintf(
+			"%s exists but no startup file sources it (unused; safe to delete)",
+			turbo_name,
+			allocator = alloc,
+		)
 	}
 	append(
 		results,

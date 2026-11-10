@@ -820,7 +820,8 @@ detect_circular_dependencies :: proc(graph: map[string][dynamic]string) -> Cycle
 
 // Validate that plugin configuration has no circular dependencies.
 // Returns true if the config is valid (no cycles), false if a cycle was detected.
-// Prints the error details when returning false — caller is responsible for cleanup and exit.
+// Prints the error details to stderr when returning false (stdout may be
+// `--json`) — caller is responsible for cleanup and exit.
 validate_no_circular_dependencies :: proc(config: ^PluginConfigJSON) -> bool {
 	// Build dependency graph
 	graph := build_dependency_graph(config)
@@ -848,13 +849,13 @@ validate_no_circular_dependencies :: proc(config: ^PluginConfigJSON) -> bool {
 		defer delete(cycle_str)
 
 		print_error("Circular dependency detected: %s", cycle_str)
-		fmt.println()
-		fmt.println("Circular dependencies prevent determining a valid plugin load order.")
-		fmt.println()
-		fmt.println("Suggestions:")
-		fmt.println("  • Review the dependencies for these plugins")
-		fmt.println("  • Remove the dependency that creates the cycle")
-		fmt.println("  • Consider if all these dependencies are necessary")
+		fmt.eprintln()
+		fmt.eprintln("Circular dependencies prevent determining a valid plugin load order.")
+		fmt.eprintln()
+		fmt.eprintln("Suggestions:")
+		fmt.eprintln("  • Review the dependencies for these plugins")
+		fmt.eprintln("  • Remove the dependency that creates the cycle")
+		fmt.eprintln("  • Consider if all these dependencies are necessary")
 		return false
 	}
 

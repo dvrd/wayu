@@ -281,6 +281,16 @@ releases, so they are listed here too.
   left by a dead watcher no longer gets an unrelated process (one that
   reused the PID) killed. `watch start` refuses while the lock is held.
 
+**`wayu doctor` checks**
+
+- The turbo export check looks for `turbo.<ext>` of the current shell
+  (`turbo.bash` for bash): a bash setup sourcing `turbo.bash` was reported as
+  "sources turbo.zsh but it is not generated" (error, exit 78).
+- The plugins check parses `plugins.json` with the same strict reader as
+  `wayu plugin list`: a malformed file, an invalid value or a dependency
+  cycle is an error (exit 78; it was "✓ N plugin(s) installed", exit 0). The
+  cycle explanation goes to stderr, so `doctor --json` stays valid JSON.
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is
