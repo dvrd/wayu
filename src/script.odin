@@ -290,6 +290,10 @@ script_build :: proc(s: ScriptInfo, quiet := false) -> bool {
 			print_error_simple("Cannot build '%s': %s not found on PATH", s.name, comp.compiler)
 			return false
 		}
+		// Hash the source as it is before the compiler reads it (OKAMI-311):
+		// an edit saved during the compile then leaves the binary stale
+		// instead of recording the new source as built.
+		src_hash := script_source_hash(s.source)
 		tmp := fmt.tprintf("%s/.%s.build", scripts_bin_dir(), s.name)
 		args := make([dynamic]string, context.temp_allocator)
 		append(&args, compiler)
@@ -327,11 +331,7 @@ script_build :: proc(s: ScriptInfo, quiet := false) -> bool {
 			return false
 		}
 		_ = os.chmod(s.bin, os.perm_number(0o755))
-		if write_file_atomic(
-			   script_hash_file(s.name),
-			   transmute([]byte)script_source_hash(s.source),
-		   ) !=
-		   nil {
+		if write_file_atomic(script_hash_file(s.name), transmute([]byte)src_hash) != nil {
 			print_warning("Failed to write %s", script_hash_file(s.name))
 		}
 		if !quiet {
@@ -584,27 +584,49 @@ script_new :: proc(name: string, lang_flag: string) {
 		return
 	}
 
+	// The lock covers the skeleton write and the build, never the editor
+	// (OKAMI-307): an editor session that runs wayu (`wayu alias add` from
+	// :!) or simply stays open would otherwise block every other write.
 	config_lock_acquire_or_exit()
-	defer config_lock_release()
+	if existing, ok := script_find(name); ok {
+		config_lock_release()
+		print_error_simple(
+			"Script '%s' already exists: %s (open it with: wayu script edit %s)",
+			name,
+			existing.source,
+			name,
+		)
+		os.exit(EXIT_DATAERR)
+	}
 	if !script_ensure_dirs() {
+		config_lock_release()
 		os.exit(EXIT_CANTCREAT)
 	}
-	had_bin := len(script_path_value()) > 0
-
 	skeleton := script_skeleton(lang, name, context.temp_allocator)
 	content := fmt.tprintf("#!%s\n%s", interp, skeleton)
 	if write_file_atomic(source, transmute([]byte)content) != nil {
+		config_lock_release()
 		print_error_simple("Failed to create %s", source)
 		os.exit(EXIT_CANTCREAT)
 	}
 	_ = os.chmod(source, os.perm_number(0o755))
+	config_lock_release()
 	print_success("Created script: %s", source)
 
 	_, edit_ok := editor_maybe_open(source)
 	if !edit_ok {
 		os.exit(EXIT_FAILURE)
 	}
-	s, _ := script_find(name)
+
+	config_lock_acquire_or_exit()
+	defer config_lock_release()
+	s, found := script_find(name)
+	if !found {
+		print_error_simple("Script '%s' was removed while it was being edited", name)
+		os.exit(EXIT_NOINPUT)
+	}
+	// had_bin: was <data>/bin on PATH before this script's bin entry?
+	had_bin := len(script_path_value()) > 0
 	ok := script_build(s)
 	script_sync_path(had_bin)
 	if !ok {
