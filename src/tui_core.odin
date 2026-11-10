@@ -2951,8 +2951,8 @@ tui_install_plugin_locked :: proc(
 		append(&config.plugins, new_plugin)
 	}
 
-	if err := plugin_config_save(&config); err != "" {
-		return false, strings.clone(err)
+	if save_err := plugin_config_save(&config); save_err != "" {
+		return false, strings.clone(save_err)
 	}
 	if !generate_plugins_file(wayu.shell) {
 		return false, strings.clone("Could not regenerate the plugin loader")
