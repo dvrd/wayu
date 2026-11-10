@@ -579,9 +579,14 @@ error). `backend` says where the master key lives:
 | `backend` | Key storage |
 |---|---|
 | `"auto"` (default) | `keychain` on macOS; `secret-service` on Linux when `secret-tool` is on PATH; else `file` |
-| `"keychain"` | macOS login keychain: generic password, account `wayu`, service `wayu-master-key`, via `security`. Storing (first secret, `rekey`) passes the key on `security`'s command line for a moment, where other processes of the same user could see it. |
-| `"secret-service"` | freedesktop Secret Service via `secret-tool` (`service wayu account master`); the key goes over stdin |
+| `"keychain"` | macOS login keychain: generic password, service `wayu-master-key`, account `wayu-<id>`, via `security`. Storing (first secret, `rekey`) passes the key on `security`'s command line for a moment, where other processes of the same user could see it. |
+| `"secret-service"` | freedesktop Secret Service via `secret-tool` (`service wayu account wayu-<id>`); the key goes over stdin |
 | `"file"` | `<config>/secret.key`: 64 hex characters, `0600`, created exclusively; refused when group/other can read it. Protects against reading the data dir alone, not against reading your whole home. |
+
+`<id>` is 16 hex digits identifying the data dir (FNV-1a 64 of its path, the
+same id as in the session cache name): each data dir (another
+`WAYU_DATA_DIR`, a test `HOME`) has its own key and never reads another's.
+`wayu doctor` prints the account (`keychain (account wayu-…)`).
 
 Any other value is an error (`toml validate` exits `65`; secret commands exit
 `78`). The key is created with the first secret; wayu never creates a new

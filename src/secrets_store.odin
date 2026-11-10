@@ -1371,6 +1371,9 @@ check_secrets :: proc(results: ^[dynamic]CheckResult) {
 
 	backend := secrets_backend_resolve(backend_cfg)
 	bname := SECRETS_BACKEND_NAMES[backend]
+	if backend == .KEYCHAIN || backend == .SECRET_SERVICE {
+		bname = fmt.tprintf("%s (account %s)", bname, keystore_account())
+	}
 	if prog := keystore_backend_program(backend); len(prog) > 0 && !check_command_exists(prog) {
 		add(
 			results,
@@ -1383,7 +1386,9 @@ check_secrets :: proc(results: ^[dynamic]CheckResult) {
 	key, status, msg := keystore_load(backend)
 	defer crypto.zero_explicit(&key, size_of(key))
 	if status != .OK {
-		add(results, "secrets backend", .ERROR, fmt.tprintf("%s: %s", bname, msg))
+		// A MISSING message already names the account.
+		label := SECRETS_BACKEND_NAMES[backend] if status == .MISSING else bname
+		add(results, "secrets backend", .ERROR, fmt.tprintf("%s: %s", label, msg))
 		return
 	}
 	bad := make([dynamic]string, context.temp_allocator)

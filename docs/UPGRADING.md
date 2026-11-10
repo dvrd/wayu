@@ -13,6 +13,17 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   names missing from `values` (or listed twice) are errors (exit 78 naming
   the file) instead of being ignored. wayu never writes such a file; only a
   hand edit is affected.
+- The master key in the macOS keychain / Secret Service is stored per data
+  dir: account `wayu-<id>` (keychain service `wayu-master-key`; Secret
+  Service `service wayu`), where `<id>` is the 16-hex id `wayu doctor`
+  prints. The old item (account `wayu` / `account master`) is no longer
+  read: with secrets stored, `const get` and new shells report the key as
+  missing until it is moved. Move it once (macOS; take the account from
+  `wayu doctor`):
+  `security add-generic-password -a wayu-<id> -s wayu-master-key -l 'wayu master key' -w "$(security find-generic-password -a wayu -s wayu-master-key -w)"`,
+  check with `wayu doctor`, then `security delete-generic-password -a wayu -s wayu-master-key`.
+  Secret Service: `secret-tool lookup service wayu account master | secret-tool store --label='wayu master key' service wayu account wayu-<id>`,
+  then `secret-tool clear service wayu account master`.
 
 **One status icon per line**
 

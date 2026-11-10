@@ -4,11 +4,14 @@
 // by `[secrets] backend` in wayu.toml:
 //
 //   keychain        macOS login keychain via `security` (generic password,
-//                   account "wayu", service "wayu-master-key"). Storing puts
-//                   the hex key briefly on `security`'s argv: `security` has
-//                   no stdin mode for -w.
-//   secret-service  freedesktop Secret Service via `secret-tool` (the key is
-//                   written to its stdin, never on argv).
+//                   account "wayu-<id>", service "wayu-master-key"). Storing
+//                   puts the hex key briefly on `security`'s argv: `security`
+//                   has no stdin mode for -w.
+//   secret-service  freedesktop Secret Service via `secret-tool` (service
+//                   "wayu", account "wayu-<id>"; the key is written to its
+//                   stdin, never on argv).
+//
+//   <id> is the data dir's id (keystore_account): one key per data dir.
 //   file            <config>/secret.key: 64 hex chars, mode 0600, created
 //                   with O_EXCL; refused when group/other can read it.
 //   auto (default)  keychain on macOS; secret-service on Linux when
@@ -52,8 +55,9 @@ Key_Status :: enum {
 	INVALID, // a key is stored but unusable (bad format, unsafe file mode)
 }
 
-KEYCHAIN_ACCOUNT :: "wayu"
+KEYCHAIN_ACCOUNT_PREFIX :: "wayu" // account = "wayu-<data dir id>" (keystore_account)
 KEYCHAIN_SERVICE :: "wayu-master-key"
+SECRET_SERVICE_SERVICE :: "wayu"
 SECRET_KEY_FILE :: "secret.key"
 
 // `security find-generic-password` exit status for "item not found".
@@ -154,8 +158,23 @@ keystore_backend_program :: proc(b: Secrets_Backend) -> string {
 // argv construction (unit-tested; never run against the real keychain in tests)
 // ---------------------------------------------------------------------------
 
-// `security add-generic-password -U -a wayu -s wayu-master-key -w <hex>`.
-// -U updates an existing item (rekey). Slice is temp-allocated.
+// Account of the master key in the keychain / Secret Service: "wayu-<id>",
+// <id> = secrets_cache_id() (FNV-1a 64 of the data dir path, 16 hex
+// digits). Each data dir (a second profile, a test HOME) has its own key;
+// none can read another's. Temp-allocated.
+keystore_account :: proc() -> string {
+	return fmt.tprintf("%s-%s", KEYCHAIN_ACCOUNT_PREFIX, secrets_cache_id())
+}
+
+// Human-readable label of the stored item: names the data dir it is for.
+@(private = "file")
+keystore_label :: proc() -> string {
+	return fmt.tprintf("wayu master key (%s)", wayu.data)
+}
+
+// `security add-generic-password -U -a wayu-<id> -s wayu-master-key
+// -l 'wayu master key (<data>)' -w <hex>`. -U updates an existing item
+// (rekey). Slice is temp-allocated.
 keychain_store_argv :: proc(key_hex: string) -> []string {
 	return slice_temp(
 		{
@@ -163,23 +182,26 @@ keychain_store_argv :: proc(key_hex: string) -> []string {
 			"add-generic-password",
 			"-U",
 			"-a",
-			KEYCHAIN_ACCOUNT,
+			keystore_account(),
 			"-s",
 			KEYCHAIN_SERVICE,
+			"-l",
+			keystore_label(),
 			"-w",
 			key_hex,
 		},
 	)
 }
 
-// `security find-generic-password -a wayu -s wayu-master-key -w` (prints the key).
+// `security find-generic-password -a wayu-<id> -s wayu-master-key -w`
+// (prints the key).
 keychain_load_argv :: proc() -> []string {
 	return slice_temp(
 		{
 			"security",
 			"find-generic-password",
 			"-a",
-			KEYCHAIN_ACCOUNT,
+			keystore_account(),
 			"-s",
 			KEYCHAIN_SERVICE,
 			"-w",
@@ -187,25 +209,34 @@ keychain_load_argv :: proc() -> []string {
 	)
 }
 
-// `secret-tool store --label='wayu master key' service wayu account master`
-// (the key is written to stdin).
+// `secret-tool store --label='wayu master key (<data>)' service wayu
+// account wayu-<id>` (the key is written to stdin).
 secret_service_store_argv :: proc() -> []string {
 	return slice_temp(
 		{
 			"secret-tool",
 			"store",
-			"--label=wayu master key",
+			fmt.tprintf("--label=%s", keystore_label()),
 			"service",
-			"wayu",
+			SECRET_SERVICE_SERVICE,
 			"account",
-			"master",
+			keystore_account(),
 		},
 	)
 }
 
-// `secret-tool lookup service wayu account master` (prints the key).
+// `secret-tool lookup service wayu account wayu-<id>` (prints the key).
 secret_service_load_argv :: proc() -> []string {
-	return slice_temp({"secret-tool", "lookup", "service", "wayu", "account", "master"})
+	return slice_temp(
+		{
+			"secret-tool",
+			"lookup",
+			"service",
+			SECRET_SERVICE_SERVICE,
+			"account",
+			keystore_account(),
+		},
+	)
 }
 
 @(private = "file")
@@ -341,7 +372,11 @@ keystore_load_command :: proc(
 		if res.exit_code == not_found_exit &&
 		   len(res.stdout) == 0 &&
 		   (not_found_exit == KEYCHAIN_NOT_FOUND_EXIT || len(res.stderr) == 0) {
-			return key, .MISSING, fmt.tprintf("no wayu master key in the %s", label)
+			return key, .MISSING, fmt.tprintf(
+				"no wayu master key in the %s (account %s)",
+				label,
+				keystore_account(),
+			)
 		}
 		if res.timed_out {
 			return key, .UNAVAILABLE, fmt.tprintf("%s did not answer in time", label)

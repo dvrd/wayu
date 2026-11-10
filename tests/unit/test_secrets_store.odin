@@ -189,6 +189,19 @@ test_keystore_argv :: proc(t: ^testing.T) {
 		}
 		for w, i in want {testing.expectf(t, got[i] == w, "argv[%d] %q != %q", i, got[i], w)}
 	}
+	// OKAMI-306: the account is per data dir ("wayu-<id>").
+	saved_data := wayu.wayu.data
+	defer wayu.wayu.data = saved_data
+	wayu.wayu.data = "/fake/home/.local/share/wayu"
+	account := wayu.keystore_account()
+	testing.expect(
+		t,
+		strings.has_prefix(account, "wayu-") &&
+		strings.has_suffix(account, wayu.secrets_cache_id()) &&
+		len(account) == len("wayu-") + 16,
+		account,
+	)
+	label :: "wayu master key (/fake/home/.local/share/wayu)"
 	expect_argv(
 		t,
 		wayu.keychain_store_argv("00ff"),
@@ -197,9 +210,11 @@ test_keystore_argv :: proc(t: ^testing.T) {
 			"add-generic-password",
 			"-U",
 			"-a",
-			"wayu",
+			account,
 			"-s",
 			"wayu-master-key",
+			"-l",
+			label,
 			"-w",
 			"00ff",
 		},
@@ -207,27 +222,22 @@ test_keystore_argv :: proc(t: ^testing.T) {
 	expect_argv(
 		t,
 		wayu.keychain_load_argv(),
-		{"security", "find-generic-password", "-a", "wayu", "-s", "wayu-master-key", "-w"},
+		{"security", "find-generic-password", "-a", account, "-s", "wayu-master-key", "-w"},
 	)
 	// secret-tool reads the key from stdin: it is never on argv.
 	expect_argv(
 		t,
 		wayu.secret_service_store_argv(),
-		{
-			"secret-tool",
-			"store",
-			"--label=wayu master key",
-			"service",
-			"wayu",
-			"account",
-			"master",
-		},
+		{"secret-tool", "store", "--label=" + label, "service", "wayu", "account", account},
 	)
 	expect_argv(
 		t,
 		wayu.secret_service_load_argv(),
-		{"secret-tool", "lookup", "service", "wayu", "account", "master"},
+		{"secret-tool", "lookup", "service", "wayu", "account", account},
 	)
+	// Another data dir: another account.
+	wayu.wayu.data = "/fake/other/wayu"
+	testing.expect(t, wayu.keystore_account() != account, "data dirs must not share a key")
 }
 
 @(test)
