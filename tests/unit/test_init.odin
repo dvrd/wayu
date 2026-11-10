@@ -211,6 +211,35 @@ test_tool_args_to_shell :: proc(t: ^testing.T) {
 	}
 }
 
+// OKAMI-313: core.bash gets `init bash` for `args = "init zsh"` (and core.zsh
+// `init zsh` for `init bash`); other words are left alone.
+@(test)
+test_tool_args_retarget :: proc(t: ^testing.T) {
+	cases := [][3]string {
+		{"init zsh", "bash", "init bash"},
+		{"init zsh --cmd cd", "bash", "init bash --cmd cd"},
+		{"completion --zsh", "bash", "completion --bash"},
+		{"init bash", "zsh", "init zsh"},
+		{"init zshrc 'zsh x'", "bash", "init zshrc 'zsh x'"},
+		{"init zsh", "", "init zsh"},
+	}
+	for c in cases {
+		out, reason, ok := wayu.tool_args_to_shell(c[0], retarget = c[1])
+		defer delete(out)
+		testing.expectf(
+			t,
+			ok && out == c[2],
+			"%q (%s) -> %q (ok=%v %s), want %q",
+			c[0],
+			c[1],
+			out,
+			ok,
+			reason,
+			c[2],
+		)
+	}
+}
+
 // OKAMI-268: fish args are fish-quoted and retargeted to fish.
 @(test)
 test_tool_args_to_fish :: proc(t: ^testing.T) {

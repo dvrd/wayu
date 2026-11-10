@@ -2242,7 +2242,12 @@ emit_evalcache_call :: proc(b: ^strings.Builder, t: ToolEntry) {
 		fmt.sbprintfln(b, "_wayu_evalcache %s", t.name)
 		return
 	}
-	words, reason, ok := tool_args_to_shell(t.args)
+	// `args = "init zsh"` also serves core.bash (OKAMI-313): retargeted to
+	// the shell this core is for, like fish.
+	words, reason, ok := tool_args_to_shell(
+		t.args,
+		retarget = "bash" if wayu.shell == .BASH else "zsh",
+	)
 	defer if ok {
 		delete(words)
 	}
@@ -2260,11 +2265,15 @@ emit_evalcache_call :: proc(b: ^strings.Builder, t: ToolEntry) {
 // Refused, with a reason: newline, operators (; & | < > ( )), command
 // substitution ($(...), backticks), glob characters (* ? [) and a word
 // mixing quoted and unquoted `$`. Brace expansion is not performed: `{a,b}`
-// stays literal. `out` is allocated with `allocator` (owned by the caller
-// when ok); `reason` is static or temp-allocated.
+// stays literal. `retarget` (a shell name): the words `zsh` / `bash`
+// become it and `--zsh` / `--bash` become `--<retarget>`, so one [tools]
+// entry (`args = "init zsh"`) serves every shell's core. `out` is allocated
+// with `allocator` (owned by the caller when ok); `reason` is static or
+// temp-allocated.
 tool_args_to_shell :: proc(
 	args: string,
 	allocator := context.allocator,
+	retarget := "",
 ) -> (
 	out: string,
 	reason: string,
@@ -2317,6 +2326,15 @@ tool_args_to_shell :: proc(
 			return "", fmt.tprintf("word %q mixes quoted and unquoted $", text), false
 		}
 		tilde := len(active) > 0 && active[0] && (text == "~" || strings.has_prefix(text, "~/"))
+		// After the per-byte checks (`active` is indexed by `text`).
+		if len(retarget) > 0 {
+			switch text {
+			case "zsh", "bash":
+				text = retarget
+			case "--zsh", "--bash":
+				text = fmt.tprintf("--%s", retarget)
+			}
+		}
 
 		if ti > 0 {
 			strings.write_byte(&sb, ' ')

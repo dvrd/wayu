@@ -402,9 +402,11 @@ call, so it can never run code at startup:
 For example `args = 'init "$HOME/x y" ~/z {a,b}'` generates
 `_wayu_evalcache foo init "${HOME}/x y" "${HOME}/z" '{a,b}'`.
 
-**fish.** `[tools]` load in fish too. In `args`, a word `zsh` or `bash`
-becomes `fish` and `--zsh` / `--bash` becomes `--fish`, so
-`args = "init zsh"` runs `zoxide init fish`.
+**Shell name in `args`.** One entry serves every shell: a word `zsh` or
+`bash` in `args` becomes the shell whose file is generated, and `--zsh` /
+`--bash` becomes `--<shell>`. `args = "init zsh"` runs `zoxide init zsh` in
+core.zsh, `zoxide init bash` in core.bash and `zoxide init fish` in fish
+(`[tools]` load in fish too).
 
 **Where they load** (see [Load order](#load-order)): eager evalcache tools
 before the prompt and plugins; all other non-login tools ("deferred") after

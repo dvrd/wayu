@@ -27,6 +27,10 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   only plugins enabled in `plugins.json` load (`wayu plugin disable` had no
   effect on those two). A checkout not registered in `plugins.json` is no
   longer loaded: register it with `wayu plugin add`.
+- bash: a `[tools]` word `zsh` / `--zsh` in `args` becomes `bash` /
+  `--bash` in core.bash, as fish already did (`args = "init zsh"` put
+  `zoxide init zsh` into core.bash; bash 3.2 failed on its output). In
+  core.zsh, `bash` / `--bash` likewise become `zsh` / `--zsh`.
 
 **One status icon per line**
 
