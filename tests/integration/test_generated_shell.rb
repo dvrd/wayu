@@ -54,6 +54,7 @@ class GeneratedShellTest
       test_init_and_turbo_define_the_same
       test_prompt_vi_mode_and_widgets
       test_prompt_git_branch_without_git
+      test_prompt_values_are_not_prompt_escapes
       test_login_reorder_restored_at_first_prompt
       test_login_c_reorder_restored
       test_prompt_survives_later_ps1_reset
@@ -701,6 +702,33 @@ class GeneratedShellTest
     want = "[main-br|repo][wt-br|wt][|][#{sha.strip[0, 7]}]"
     check('git branch', out.strip == want && !err.include?('GIT-RAN'),
           "out=#{out.strip.inspect} want=#{want.inspect} err=#{err.strip[0, 300]}")
+  end
+
+  # OKAMI-343: a git branch (or tool version, shell name) containing `%` is
+  # shown as is, never expanded as a prompt escape.
+  def test_prompt_values_are_not_prompt_escapes
+    print "Test: % in a git branch / context version is shown literally in the prompt... "
+    home = "#{@tmp_home}/prompt_pct"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p("#{home}/.config")
+    env = clean_env(home)
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") +
+      "\n[prompt]\nenabled = true\nformat = \"<{git_branch}|{language_context}>\"\n" \
+      "[prompt.git_branch]\nformat = \"$branch\"\n[prompt.contexts]\nrust = { format = \"v$version\", detect = [\"Cargo.toml\"] }\n")
+    Open3.capture3(env, @wayu_bin, 'build')
+    script = <<~'SH'
+      source "$HOME/.local/share/wayu/init.zsh"
+      _WAYU_GIT_BRANCH='feat%n-%D{%Y}' _WAYU_CONTEXT=rust _WAYU_CONTEXT_VER='1%m'
+      _wayu_prompt_full; print -rP -- "$REPLY"
+      _WAYU_CONTEXT=default SHELL=/bin/z%n; _wayu_prompt_full; print -rP -- "$REPLY"
+    SH
+    out, err, = Open3.capture3(env, 'zsh', '-f', '-i', '-c', script)
+    want = ['<feat%n-%D{%Y}|v1%m>', '<feat%n-%D{%Y}|z%n>']
+    check('prompt %', out.lines.map(&:strip) == want && err.strip.empty?,
+          "out=#{out.inspect} want=#{want.inspect} err=#{err.strip[0, 300]}")
   end
 
   # OKAMI-284: turbo.<ext> is the same generated output as core.<ext>, so a

@@ -58,6 +58,10 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   the wrong type keep the default (`context_aware = "false"` turned it off;
   `toggle_enabled = true # not false` read as false), and dotted keys,
   `[prompt.contexts.<name>]` tables and multi-line strings work.
+- Native prompt: a `%` in the git branch, the local IP, a context's tool
+  version or the shell name is shown as is (it was expanded as a prompt
+  escape: a branch `feat%n` showed the user name), in the prompt and the
+  async right prompt.
 
 **One status icon per line**
 

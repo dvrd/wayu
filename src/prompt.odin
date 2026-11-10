@@ -361,6 +361,15 @@ prompt_table_bool :: proc(toml: string, key: string) -> (value: bool, found: boo
 	return prompt_get_bool(&doc, fmt.tprintf("prompt.%s", key))
 }
 
+// Values that come from outside the config (git branch, local IP, tool
+// version, shell name) spliced into the prompt with every `%` doubled: the
+// prompt is %-expanded after the values are substituted, so a branch named
+// `feat%n-%D{%Y}` printed the user name and the date, or any other prompt
+// escape (OKAMI-343). zsh's own %~ / %n / %m output is not re-expanded.
+PROMPT_GIT_BRANCH :: `${_WAYU_GIT_BRANCH//\%/%%}`
+PROMPT_LOCALIP :: `${_WAYU_LOCALIP//\%/%%}`
+PROMPT_CONTEXT_VER :: `${_WAYU_CONTEXT_VER//\%/%%}`
+
 // Escape `s` for splicing inside a zsh double-quoted string: backslash, `"`,
 // `$` and backtick are backslash-escaped so config text is always literal (no `$(...)` execution,
 // no broken quoting). Prompt `%` escapes are left for prompt expansion.
@@ -429,7 +438,7 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 	} else if name == "localip" {
 		// $localip gets replaced with a shell subshell that fetches the IP
 		// Looked up once per prompt by _wayu_update_localip (precmd).
-		rendered := prompt_render_module(cfg.localip_format, {{`\$localip`, "${_WAYU_LOCALIP}"}})
+		rendered := prompt_render_module(cfg.localip_format, {{`\$localip`, PROMPT_LOCALIP}})
 		strings.write_string(builder, `  result+="`)
 		strings.write_string(builder, rendered)
 		strings.write_string(builder, `"`)
@@ -444,10 +453,7 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 		strings.write_string(builder, `"`)
 		fmt.sbprintln(builder)
 	} else if name == "git_branch" {
-		rendered := prompt_render_module(
-			cfg.git_branch_format,
-			{{`\$branch`, "${_WAYU_GIT_BRANCH}"}},
-		)
+		rendered := prompt_render_module(cfg.git_branch_format, {{`\$branch`, PROMPT_GIT_BRANCH}})
 		fmt.sbprintln(builder, `  if [[ -n "$_WAYU_GIT_BRANCH" ]]; then`)
 		strings.write_string(builder, `    result+="`)
 		strings.write_string(builder, rendered)
@@ -459,7 +465,7 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 		fmt.sbprintln(builder, `  case "$_WAYU_CONTEXT" in`)
 		for lang, fmt_str in cfg.context_formats {
 			// $version -> async-fetched version string
-			rendered := prompt_render_module(fmt_str, {{`\$version`, "${_WAYU_CONTEXT_VER}"}})
+			rendered := prompt_render_module(fmt_str, {{`\$version`, PROMPT_CONTEXT_VER}})
 			strings.write_string(builder, `    `)
 			// Same sanitizing as _wayu_detect_context's _WAYU_CONTEXT values.
 			strings.write_string(builder, sanitize_ident(lang))
@@ -469,7 +475,7 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 			fmt.sbprintln(builder)
 		}
 		// Default: show shell name
-		fmt.sbprintln(builder, `    *) result+="$SHELL:t" ;;`)
+		fmt.sbprintln(builder, `    *) result+="${${SHELL:t}//\%/%%}" ;;`)
 		fmt.sbprintln(builder, "  esac")
 	} else if name == "character" {
 		fmt.sbprintln(builder, "  local char_symbol char_color")
@@ -1168,7 +1174,7 @@ generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	{
 		rpfmt := prompt_render_module(
 			rprompt_format,
-			{{"{git_pending}", "${git_pending}"}, {"{git_branch}", "${_WAYU_GIT_BRANCH}"}},
+			{{"{git_pending}", "${git_pending}"}, {"{git_branch}", PROMPT_GIT_BRANCH}},
 		)
 		fmt.sbprint(b, "      git_pending=\"")
 		fmt.sbprint(b, rpfmt)

@@ -483,3 +483,27 @@ vimcmd_symbol = "[O](red)"
 		"comment ignored",
 	)
 }
+
+// OKAMI-343: values from outside the config reach PS1/RPROMPT with `%`
+// doubled (async right prompt and local IP included).
+@(test)
+test_prompt_values_percent_escaped :: proc(t: ^testing.T) {
+	cfg := wayu.parse_full_prompt_config(
+		"[prompt]\nenabled = true\nformat = \"{localip}{git_branch}\"\n",
+	)
+	defer wayu.destroy_full_prompt_config(&cfg)
+	base := wayu.generate_full_prompt(cfg)
+	defer delete(base)
+	icfg := wayu.parse_interactive_config(
+		"[prompt.interactive]\nrprompt_format = \"{git_branch} {git_pending}\"\n",
+	)
+	code := wayu.generate_interactive_prompt(base, icfg)
+	defer delete(code)
+	testing.expect(t, strings.contains(code, `${_WAYU_LOCALIP//\%/%%}`), "local ip escaped")
+	testing.expect(
+		t,
+		strings.count(code, `${_WAYU_GIT_BRANCH//\%/%%}`) == 2,
+		"branch escaped in PS1 and the async right prompt",
+	)
+	testing.expect(t, !strings.contains(code, `"${_WAYU_GIT_BRANCH}"`), "no raw branch")
+}
