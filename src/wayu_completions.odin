@@ -261,7 +261,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec {
 	{
 		command = .BUILD,
 		names = {"build"},
-		desc = "Compile wayu.toml into shell init files",
+		desc = "Compile wayu.toml + entries.json into shell init files",
 		default_action = .LIST,
 		actions = {
 			{"turbo", .TURBO, "Generate turbo file"},
@@ -301,15 +301,15 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec {
 		},
 	},
 	{
-		command = .DOCTOR,
-		names = {"doctor"},
-		desc = "Health check and diagnostics",
+		command        = .DOCTOR,
+		names          = {"doctor"},
+		desc           = "Health check and diagnostics",
 		default_action = .LIST,
-		json = {.LIST},
-		flags = {
+		json           = {.LIST},
+		flags          = {
 			{"--fix", "Repair what can be repaired"},
 			{"--profile", "Profile shell startup"},
-			{"--optimize", "Suggest optimizations"},
+			{"--optimize", ""}, // removed: exits 64 with a pointer
 		},
 	},
 	{

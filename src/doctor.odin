@@ -514,10 +514,14 @@ print_doctor_usage :: proc() {
 	fmt.println()
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
 	fmt.printfln("  wayu doctor              Run all health checks")
-	fmt.printfln("  wayu doctor --fix --yes  Remove missing/duplicate PATH entries")
+	fmt.printfln(
+		"  wayu doctor --fix --yes  Remove missing/duplicate PATH entries, run wayu optimize",
+	)
 	fmt.printfln("  wayu doctor --fix -n     Preview what --fix would change (dry run)")
 	fmt.printfln("  wayu doctor --json       Output results as JSON")
-	fmt.printfln("  wayu doctor --profile    Profile shell startup performance")
+	fmt.printfln(
+		"  wayu doctor --profile    Write a zsh startup profiler script (see wayu build profile)",
+	)
 	fmt.println()
 	fmt.printfln("%sEXIT STATUS:%s", get_primary(), RESET)
 	fmt.println("  0 when no check reports an error, 78 (EXIT_CONFIG) otherwise")
@@ -527,17 +531,9 @@ print_doctor_usage :: proc() {
 	fmt.println("  plugins, backups, and other common issues.")
 	fmt.println()
 	fmt.printfln("%sCHECKS PERFORMED:%s", get_primary(), RESET)
-	fmt.println("  • wayu installation and version")
-	fmt.println("  • Shell RC file configuration")
-	fmt.println("  • bash: PROMPT_COMMAND not replaced after wayu is loaded")
-	fmt.println("  • PATH entries (missing directories, duplicates)")
-	fmt.println("  • Plugin status")
-	fmt.println("  • Backup system")
-	fmt.println("  • TOML configuration validity")
-	fmt.println("  • Turbo export status")
-	fmt.println("  • Required dependencies (git, zsh)")
-	fmt.println()
-	fmt.printfln("  %s--profile%s     Measure shell startup performance", get_primary(), RESET)
+	for check in CHECKS {
+		fmt.printfln("  • %s", check.desc)
+	}
 }
 
 // Run shell startup profiling
@@ -659,26 +655,35 @@ CheckFn :: proc(results: ^[dynamic]CheckResult)
 CheckEntry :: struct {
 	name: string,
 	fn:   CheckFn,
+	desc: string, // `wayu doctor --help` "CHECKS PERFORMED" line
 }
 
 // All registered checks. `run_all_checks` iterates this in order.
 // Order mirrors the original hard-coded sequence from pre-refactor doctor.odin
 // so output stays byte-stable for users.
 CHECKS := []CheckEntry {
-	{"installation", check_wayu_installation},
-	{"shell", check_shell_config},
-	{"promptcmd", check_bash_prompt_command},
-	{"path", check_path_entries},
-	{"plugins", check_plugins},
-	{"backups", check_backups},
-	{"toml", check_toml_config},
-	{"entries", check_entries_store},
-	{"scripts", check_scripts},
-	{"turbo", check_turbo_export},
-	{"deps", check_dependencies},
-	{"sync", check_sync_status},
-	{"secrets", check_secrets},
-	{"rcfiles", check_rc_optimize},
+	{"installation", check_wayu_installation, "wayu is on PATH (version)"},
+	{"shell", check_shell_config, "A startup file loads wayu (init.<ext>)"},
+	{"promptcmd", check_bash_prompt_command, "bash: PROMPT_COMMAND not replaced after wayu loads"},
+	{"path", check_path_entries, "PATH entries: missing directories, duplicates"},
+	{
+		"plugins",
+		check_plugins,
+		"plugins.json parses; plugin conflicts; autosuggest / highlight settings",
+	},
+	{"backups", check_backups, "Backups"},
+	{"toml", check_toml_config, "wayu.toml parses; no moved [paths]/[aliases]/[env]"},
+	{"entries", check_entries_store, "entries.json parses"},
+	{"scripts", check_scripts, "Scripts: stale or broken builds, dangling bin/ entries"},
+	{"turbo", check_turbo_export, "turbo.<ext>: generated when a startup file sources it"},
+	{"deps", check_dependencies, "git and the current shell installed"},
+	{"sync", check_sync_status, "PATH entries active in this shell"},
+	{
+		"secrets",
+		check_secrets,
+		"Secrets: store 0600, key present, values decrypt, entries.json markers paired",
+	},
+	{"rcfiles", check_rc_optimize, "Startup-file lines 'wayu optimize' would move"},
 }
 
 // Check 1: wayu installation. Report-only: doctor never installs a binary

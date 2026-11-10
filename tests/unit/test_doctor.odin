@@ -39,6 +39,15 @@ test_doctor_rc_loads_wayu :: proc(t: ^testing.T) {
 	testing.expect(t, wayu.rc_loads_wayu(`source ~/.config/wayu/turbo.zsh`, turbo_only = true))
 }
 
+// OKAMI-354: `doctor --help` lists every check from the registry.
+@(test)
+test_doctor_checks_have_descriptions :: proc(t: ^testing.T) {
+	testing.expect(t, len(wayu.CHECKS) >= 14)
+	for c in wayu.CHECKS {
+		testing.expectf(t, len(c.desc) > 0, "check %s has no help description", c.name)
+	}
+}
+
 // OKAMI-176: a later rc line replacing PROMPT_COMMAND drops _wayu_paths_sync.
 @(test)
 test_doctor_rc_prompt_command_overwrites :: proc(t: ^testing.T) {

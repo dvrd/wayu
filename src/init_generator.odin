@@ -3290,10 +3290,14 @@ clear_evalcache :: proc() {
 // Print build command help
 print_build_help :: proc() {
 	fmt.println()
-	fmt.printfln("%swayu build - Compile wayu.toml to optimized shell config%s", BOLD, RESET)
+	fmt.printfln(
+		"%swayu build - Compile wayu.toml + entries.json into shell init files%s",
+		BOLD,
+		RESET,
+	)
 	fmt.println()
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
-	fmt.printfln("  wayu build              Regenerate init files from wayu.toml")
+	fmt.printfln("  wayu build              Regenerate init files from wayu.toml + entries.json")
 	fmt.printfln("  wayu build turbo        Write the turbo export (see wayu export help)")
 	fmt.printfln("  wayu build profile      Measure shell startup time (5-iter mean)")
 	fmt.printfln("  wayu build clean        Clear cached [tools] init output (evalcache)")
@@ -3301,11 +3305,12 @@ print_build_help :: proc() {
 	fmt.println()
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
 	fmt.println("  Regenerates core.<ext> (the one file init.<ext> sources) and the path")
-	fmt.println("  sync file for every initialized shell. Run it after editing")
-	fmt.println("  wayu.toml by hand; an existing turbo file is refreshed too.")
+	fmt.println("  sync file for every initialized shell from wayu.toml and entries.json")
+	fmt.println("  (plus plugins.json for the plugin loaders). Run it after editing them")
+	fmt.println("  by hand; an existing turbo file is refreshed too.")
 	fmt.println()
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
-	fmt.println("  wayu build              # Apply hand edits of wayu.toml")
+	fmt.println("  wayu build              # Apply hand edits of wayu.toml / entries.json")
 	fmt.println("  wayu build turbo        # Write turbo.zsh / turbo.bash")
 	fmt.println()
 	fmt.println("  # In ~/.zshenv (or ~/.bashrc):")

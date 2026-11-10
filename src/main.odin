@@ -44,7 +44,7 @@ Command :: enum {
 	PLUGIN,
 	INIT,
 	CONFIG,
-	BUILD, // Compile wayu.toml to optimized shell config
+	BUILD, // Compile wayu.toml + entries.json into shell init files
 	EXPORT, // High-performance turbo export
 	TOML, // TOML configuration management
 	DOCTOR, // Health check and diagnostics
@@ -872,10 +872,13 @@ print_help :: proc() {
 	fmt.printf("  65  Data format error (invalid input)\n")
 	fmt.printf("  66  Input file not found\n")
 	fmt.printf("  69  Required tool not installed (script interpreter/compiler)\n")
+	fmt.printf("  71  TUI could not set up the terminal\n")
 	fmt.printf("  73  Cannot create output file\n")
 	fmt.printf("  74  I/O error (read/write failure)\n")
 	fmt.printf("  77  Permission denied\n")
 	fmt.printf("  78  Configuration error\n")
+	fmt.printf("  126 secrets run: command not executable\n")
+	fmt.printf("  127 secrets run: command not found\n")
 	fmt.println()
 	fmt.printf(
 		"  %sNote:%s Running %swayu%s with no arguments opens the interactive TUI\n",
@@ -892,7 +895,7 @@ print_help :: proc() {
 	fmt.println()
 }
 
-// handle_build_command - Compile wayu.toml to optimized shell config
+// handle_build_command - Compile wayu.toml + entries.json into shell init files
 handle_build_command :: proc(action: Action) {
 	// Explicit help (unknown targets are rejected by main with exit 64)
 	if action == .HELP || action == .UNKNOWN {

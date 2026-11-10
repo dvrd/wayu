@@ -52,6 +52,7 @@ class CliOutputIntegrationTest
       test_json_external_paths
       test_json_rejected_where_unsupported
       test_help_lists_every_command
+      test_help_lists_every_exit_code
     ensure
       teardown_test_env
     end
@@ -241,6 +242,18 @@ class CliOutputIntegrationTest
     names = zsh.scan(/^\s+'([a-z-]+):/).flatten.uniq
     missing = names.reject { |n| out.match?(/^\s+(\S+, )*#{Regexp.escape(n)}(,|\s)/) }
     check('help lists every command completions offer', !names.empty? && missing.empty?, "missing: #{missing.join(', ')}")
+  end
+
+  # OKAMI-354: `wayu help` EXIT CODES lists every code docs/cli.md documents.
+  def test_help_lists_every_exit_code
+    doc = File.read(File.expand_path('../../docs/cli.md', __dir__))
+    table = doc[/^## Exit codes\n(.*?)(?=^#)/m, 1].to_s
+    codes = table.scan(/^\| (\d+) \| `EXIT_/).flatten
+    out, = run_split('help --no-color')
+    listed = out[/EXIT CODES:(.*)/m, 1].to_s.scan(/^\s+(\d+)\s/).flatten
+    missing = codes - listed
+    check('help EXIT CODES lists every documented code', codes.size >= 10 && missing.empty?,
+          "missing: #{missing.join(', ')}")
   end
 end
 
