@@ -216,8 +216,12 @@ backup_drop_secrets_companions :: proc() {
 }
 
 // Name a file's backups are stored under: "<key>.backup.<stamp>". Files wayu
-// owns (under wayu.config / wayu.data: wayu.toml, init.zsh, plugins.json,
-// extra.zsh ...) keep their base name. Any other file (the user's rc file)
+// owns are keyed by their path relative to wayu.config / wayu.data: a file
+// directly in the dir (wayu.toml, init.zsh, plugins.json, extra.zsh ...)
+// keeps its base name; a nested one is '@' + the relative path with '/' as
+// '%' (<data>/functions/init.zsh -> "@functions%init.zsh"), so it never
+// shares a history with a top-level file of the same name (OKAMI-305).
+// Any other file (the user's rc file)
 // is keyed by its path with '/' as '%': relative to $HOME (~/.zshrc ->
 // ".zshrc", $ZDOTDIR=~/.config/zsh -> ".config%zsh%.zshrc"), or absolute
 // with a leading '%'. So two rc files with the same name keep separate
@@ -231,8 +235,20 @@ backup_key :: proc(file_path: string, allocator := context.allocator) -> string 
 			path[len(root)] == '/' \
 		)
 	}
-	if under(file_path, wayu.config) || under(file_path, wayu.data) {
-		return strings.clone(get_base_name(file_path), allocator)
+	// The longer root wins when one wayu dir is inside the other.
+	root := ""
+	for r in ([]string{wayu.config, wayu.data}) {
+		if under(file_path, r) && len(r) > len(root) {
+			root = r
+		}
+	}
+	if len(root) > 0 {
+		own := file_path[len(root) + 1:]
+		if !strings.contains(own, "/") {
+			return strings.clone(own, allocator)
+		}
+		nested, _ := strings.replace_all(own, "/", "%", context.temp_allocator)
+		return strings.concatenate({"@", nested}, allocator)
 	}
 	rel := file_path
 	home := os.get_env("HOME", context.temp_allocator)
@@ -247,12 +263,16 @@ backup_key :: proc(file_path: string, allocator := context.allocator) -> string 
 }
 
 // The file a backup key stands for, for display: "~/.config/zsh/.zshrc",
-// "/etc/x", or the bare name for wayu's own files and top-level ~ files.
+// "/etc/x", "functions/init.zsh" (a nested wayu file, relative to its dir),
+// or the bare name for wayu's own top-level files and top-level ~ files.
 backup_key_display :: proc(key: string, allocator := context.allocator) -> string {
 	if !strings.contains(key, "%") {
 		return strings.clone(key, allocator)
 	}
 	decoded, _ := strings.replace_all(key, "%", "/", context.temp_allocator)
+	if strings.has_prefix(decoded, "@") {
+		return strings.clone(decoded[1:], allocator)
+	}
 	if strings.has_prefix(decoded, "/") {
 		return strings.clone(decoded, allocator)
 	}

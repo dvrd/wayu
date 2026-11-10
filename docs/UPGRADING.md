@@ -281,6 +281,15 @@ releases, so they are listed here too.
   left by a dead watcher no longer gets an unrelated process (one that
   reused the PID) killed. `watch start` refuses while the lock is held.
 
+**Backups, plugins, scripts and functions**
+
+- Backups of files in a subdirectory of the config/data dir (functions,
+  scripts) are named after their path relative to that dir:
+  `@functions%init.zsh.backup.<stamp>`, shown as `functions/init.zsh` by
+  `backup list` (was the bare file name, so `functions/init.zsh` shared — and
+  pruned — the history of `init.zsh`, and `functions/extra.zsh` that of
+  `extra.zsh`). Existing backups of such files keep their old name and group.
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is

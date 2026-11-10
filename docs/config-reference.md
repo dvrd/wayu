@@ -994,7 +994,7 @@ every shell initialized in the data dir.
 | `plugins.<ext>` | Plugin loader, regenerated on any `plugin` change and by `wayu init`. |
 | `plugins/config.zsh` | `[settings] autosuggestions_accept_keys` bindings. |
 | `secrets.json` | Encrypted constants (see [`[secrets]`](#secrets)); written by `wayu const add --secret`, `const rm`, `secrets rekey`. Not generated from wayu.toml. |
-| `backup/` | Timestamped backups `<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]` (UTC), 5 newest per file (see `wayu backup`). Files named otherwise are ignored. |
+| `backup/` | Timestamped backups `<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]` (UTC), 5 newest per file (see `wayu backup`). `<file>` is the name of a file directly in the config/data dir, `@` + its relative path with `/` as `%` for a nested one (`@functions%init.zsh`), or the path of a file outside them (`.zshrc`, `.config%zsh%.zshrc`). Files named otherwise are ignored. |
 
 Also `$WAYU_DATA_DIR/.wayu.lock` (lock shared by concurrent wayu commands)
 and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
