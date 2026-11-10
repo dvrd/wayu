@@ -185,6 +185,15 @@ Completion scripts in the data dir's `completions/`. Default action: `list`.
 | `fpath` | `[list]`, `add <dir>`, `rm <dir>` | zsh: completion dirs wayu puts on `fpath` before `compinit` (entries.json `fpath`; `wayu optimize` fills it). `add` puts the dir first |
 | `help` | | |
 
+wayu's own completions parse the line rather than count positions: global
+flags (with their values) may come anywhere, command flags complete at any
+position after the command, and `--` ends the flags. Besides commands,
+actions and flags they offer the values of `--shell`, `--source`, `--lang`,
+`--category`/`-c`, `--template`, existing entries for `rm`/`get`/... ,
+`backup list|restore|rm` types and `backup restore <type>` numbers,
+`template apply` and `plugin add` names, `secrets run` secret names and,
+after `--`, the command. Run `generate` again after upgrading wayu.
+
 ### `wayu backup`
 
 Default action: `list`. wayu backs a file up before changing it (once per

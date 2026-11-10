@@ -239,7 +239,8 @@ class CliOutputIntegrationTest
   def test_help_lists_every_command
     out, = run_split('help')
     zsh, = run_split('completions zsh')
-    names = zsh.scan(/^\s+'([a-z-]+):/).flatten.uniq
+    commands = zsh[/^_wayu_commands\(\) \{.*?^\}/m].to_s
+    names = commands.scan(/^\s+'([a-z-]+):/).flatten.uniq
     missing = names.reject { |n| out.match?(/^\s+(\S+, )*#{Regexp.escape(n)}(,|\s)/) }
     check('help lists every command completions offer', !names.empty? && missing.empty?, "missing: #{missing.join(', ')}")
   end
