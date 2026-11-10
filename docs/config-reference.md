@@ -264,10 +264,12 @@ It runs in a `zle-line-pre-redraw` hook, like the autosuggestions: zsh's own
 lexer (`${(z)BUFFER}`) splits the line into words, which are colored by
 `region_highlight` entries (tagged `memo=wayu-highlight` on zsh 5.9+; other
 entries, such as the suggestion's or your own, are kept). The line is only
-looked at again when it changed, and typing or deleting at its end
-re-highlights the last word or two, not the whole line. Command lookups and
-path checks are cached until a command runs or the directory / `PATH`
-changes.
+looked at again when it changed, and an edit anywhere in it re-highlights
+from the word before the change until the words after it are back in the
+state they had (usually a word or two), not the whole line. Lines already
+entered at a continuation prompt (PS2) are highlighted with the current one,
+so its words keep their meaning. Command lookups and path checks are cached
+until a command runs or the directory / `PATH` changes.
 
 The style names are zsh-syntax-highlighting's (its `ZSH_HIGHLIGHT_STYLES`
 values carry over) and so are the defaults:
@@ -275,7 +277,7 @@ values carry over) and so are the defaults:
 | Style | Default | What |
 |---|---|---|
 | `unknown-token` | `fg=red,bold` | a command that doesn't exist (yet) |
-| `reserved-word` | `fg=yellow` | `if` `then` `for` `do` `case` `[[` `]]` `{` `}` `((` `))` `(` `)` `!` ... |
+| `reserved-word` | `fg=yellow` | `if` `then` `for` `do` `case` `in` `always` `[[` `]]` `{` `}` `((` `))` `(` `)` `!`, case pattern parentheses ... |
 | `alias` | `fg=green` | an alias |
 | `suffix-alias` | `fg=green,underline` | a file run through a suffix alias (`alias -s`) |
 | `global-alias` | `fg=cyan` | a global alias (`alias -g`), anywhere on the line |
@@ -300,9 +302,17 @@ values carry over) and so are the defaults:
 | `dollar-double-quoted-argument` | `fg=cyan` | `$var` `${...}` `$((...))` inside `"..."` |
 | `back-double-quoted-argument` | `fg=cyan` | `\"` `\$` `` \` `` `\\` inside `"..."` |
 | `back-dollar-quoted-argument` | `fg=cyan` | `\n` & co. inside `$'...'` |
-| `assign` | none | `NAME=value` before a command (the value is highlighted too) |
+| `assign` | none | `NAME=value` before a command or after `typeset` & co. (the value is highlighted too), `name=(` ... `)` |
 | `redirection` | `fg=yellow` | `>` `>>` `<` `2>` `&>` `<<<` `>&` `{fd}>` ... |
 | `comment` | `fg=black,bold` | `# ...`, with `setopt interactive_comments` |
+| `history-expansion` | `fg=blue` | `!!` `!$` `!-2` `!str` ... (with `banghist`; also inside `"..."`, where zsh expands them too) |
+| `named-fd` | none | `{fd}` in `{fd}>file` |
+| `numeric-fd` | none | the descriptor after `>&` / `<&` (`2>&1`, `>&-`) |
+| `bracket-level-1` | `fg=blue,bold` | `(` `)` `[` `]` `{` `}` outside quotes, by nesting depth (levels 1–3, then 1 again) |
+| `bracket-level-2` | `fg=green,bold` | |
+| `bracket-level-3` | `fg=magenta,bold` | |
+| `bracket-error` | `fg=red,bold` | a bracket without its pair (or closed by the wrong one) |
+| `cursor-matchingbracket` | `standout` | the pair of the bracket under the cursor |
 
 - Heredoc bodies are skipped; what follows the delimiter line is a command
   line again.
@@ -313,11 +323,16 @@ values carry over) and so are the defaults:
   enabled (`wayu doctor` warns until they are removed or disabled).
   `defer_plugins` / `lazy_compinit` don't affect it (it is set up at
   startup; it is cheap). bash and fish ignore it (`doctor` notes it).
+- Brackets: `((` `))` of arithmetic, `[[` `]]`, `[` `]` as words, the
+  parentheses of case patterns and of `name=(...)` are syntax, not brackets;
+  brackets inside `"..."` are not counted.
+- After `noglob`, `*` `?` `[...]` are not highlighted as globs; after
+  `command -v`, the name is highlighted as a command.
 - Not covered (zsh-syntax-highlighting's other highlighters and some main
-  ones): bracket matching, history expansion (`!!`), `rc-quote`,
-  `named-fd`/`numeric-fd`, `hashed-command`, path separators, and
-  `command`'s `-v` resolution; a line longer than 20000 characters is not
-  highlighted.
+  ones): `rc-quote`, `hashed-command`, path separators; a line longer than
+  20000 characters is not highlighted. `tests/highlight_diff` compares the
+  highlighter with fast-syntax-highlighting and lists the intended
+  differences.
 
 Interactive-only parts of `core.zsh` (completion, the native prompt,
 plugins, zsh-defer) are skipped in non-interactive zsh (`zsh -c`,

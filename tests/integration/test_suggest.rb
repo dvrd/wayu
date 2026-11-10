@@ -24,6 +24,7 @@ class SuggestTest
 
   def initialize
     setup_test_env
+    @shell_errors = []
   end
 
   def run
@@ -39,6 +40,12 @@ class SuggestTest
         test_suggest_in_line_editor
         test_suggest_with_defer_and_lazy
         test_suggest_vi_mode
+        test_suggest_wide_and_multiline
+        test_suggest_continuation_and_paste
+        test_suggest_undo_yank_search
+        test_suggest_vi_accept
+        test_suggest_widget_wrappers
+        test_suggest_no_errors
       else
         puts "(zsh < 5.3 or missing: line editor tests skipped)"
       end
@@ -75,6 +82,8 @@ class SuggestTest
   end
 
   HISTORY = [
+    'print 日本語 🎉 done',
+    "for i in 1 2\\\ndo print $i\\\ndone",
     'print -r -- ALPHA-old',
     'print -r -- ALPHA-one-two three',
     'ls *[ab]-glob-x',
@@ -99,7 +108,10 @@ class SuggestTest
   # Probe widget (^X^P) + a finish hook after wayu's, both logging to probe.log.
   PROBE_RC = <<~'ZSH'
     HISTFILE=$HOME/.zsh_history HISTSIZE=100 SAVEHIST=100
-    _su_probe() { print -r -- "${1:-P}|B=[$BUFFER]|S=[$POSTDISPLAY]|C=$CURSOR|H=[${(j:;:)region_highlight}]" >> $HOME/probe.log; }
+    _su_probe() {
+      local nl=$'\n' us=$'\x1f'
+      print -r -- "${1:-P}|B=[${BUFFER//$nl/$us}]|S=[${POSTDISPLAY//$nl/$us}]|C=$CURSOR|H=[${(j:;:)region_highlight}]" >> $HOME/probe.log
+    }
     _su_probe_w() { _su_probe P; }
     _su_probe_f() { _su_probe F; }
     zle -N _su_probe_w
@@ -109,10 +121,15 @@ class SuggestTest
     autoload -Uz add-zle-hook-widget
     zle -N _su_probe_f
     add-zle-hook-widget zle-line-finish _su_probe_f
+    bindkey -M emacs '^Xr' redo
+    bindkey -M emacs '^Xy' yank
+    autoload -Uz up-line-or-beginning-search
+    zle -N up-line-or-beginning-search
+    bindkey -M emacs '^[[A' up-line-or-beginning-search
     precmd() { print -r -- "$SU_MARK" }
   ZSH
 
-  def setup_home(name, settings: "autosuggest = true\n", prompt: nil, plugin_json: false)
+  def setup_home(name, settings: "autosuggest = true\n", prompt: nil, plugin_json: false, rc_extra: '', zshenv_pre: '')
     home = "#{@tmp_home}/#{name}"
     FileUtils.rm_rf(home)
     FileUtils.mkdir_p("#{home}/.config")
@@ -145,9 +162,9 @@ class SuggestTest
     end
     _, err, st = Open3.capture3(env, @wayu_bin, 'build')
     warn "build failed: #{err}" unless st.success?
-    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
+    File.write("#{home}/.zshenv", zshenv_pre + "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
     # emacs keymap unless wayu's vi mode is on (as with EDITOR unset).
-    File.write("#{home}/.zshrc", (prompt.to_s.include?('vi_mode = true') ? '' : "bindkey -e\n") + PROBE_RC)
+    File.write("#{home}/.zshrc", (prompt.to_s.include?('vi_mode = true') ? '' : "bindkey -e\n") + PROBE_RC + rc_extra)
     File.write("#{home}/.zsh_history", HISTORY.join("\n") + "\n")
     [home, data, env]
   end
@@ -235,6 +252,7 @@ class SuggestTest
       Process.kill('KILL', pid) rescue nil
       Process.wait(pid) rescue nil
     end
+    @shell_errors.concat(out.scan(/[^\r\n]*_wayu_[a-z_]+:\d+:[^\r\n]*/))
     [out, File.exist?(log) ? File.readlines(log, chomp: true) : []]
   end
 
@@ -322,6 +340,144 @@ class SuggestTest
     errs << "2: #{p[2]}" unless field(p[2], 'B') == 'print -r -- ALPHA-one-two three' && field(p[2], 'S') == ''
     errs << "3: #{p[3]}" unless field(p[3], 'B').to_s.start_with?('print -r -- ALPHA') && field(p[3], 'S').to_s.end_with?('three')
     check('vi', errs.empty?, "#{errs.join(' / ')} log=#{log.inspect[0, 700]}")
+  end
+
+  # [start, end, attrs] of the suggestion's region_highlight entry.
+  def sug_entry(line)
+    field(line, 'H').to_s.split(';').map(&:strip).map { |e| e.match(/\A(\d+) (\d+) (fg=8)(,|\s|$)/) }
+                    .compact.map { |m| [m[1].to_i, m[2].to_i] }.first
+  end
+
+  # Wide characters / emoji: POSTDISPLAY and its highlight count characters;
+  # a multi-line history entry is suggested and accepted whole.
+  def test_suggest_wide_and_multiline
+    print "Test: wide chars / emoji and multi-line history entries: suggested, highlighted, accepted... "
+    home, _, env = setup_home('pty_wide')
+    steps = [CLEAR, 'print 日', PROBE, "\e[C", PROBE,
+             CLEAR, 'print 日本語 🎉', PROBE, "\ef", PROBE,
+             CLEAR, 'for i', PROBE, "\x05", PROBE]
+    _, log = pty_session(home, env, steps)
+    p = log.select { |l| l.start_with?('P|') }
+    us = "\x1f"
+    errs = []
+    errs << "0: #{p[0]}" unless field(p[0], 'S') == '本語 🎉 done' && sug_entry(p[0]) == [7, 7 + '本語 🎉 done'.size]
+    errs << "1: #{p[1]}" unless field(p[1], 'B') == 'print 日本語 🎉 done' && field(p[1], 'S') == '' && sug_entry(p[1]).nil?
+    errs << "2: #{p[2]}" unless field(p[2], 'S') == ' done' && sug_entry(p[2]) == [11, 16]
+    errs << "3: #{p[3]}" unless field(p[3], 'B') == 'print 日本語 🎉 ' && field(p[3], 'S') == 'done' # M-f: start of the next word
+    errs << "4: #{p[4]}" unless field(p[4], 'S') == " in 1 2#{us}do print $i#{us}done" && sug_entry(p[4]) == [5, 5 + 24]
+    errs << "5: #{p[5]}" unless field(p[5], 'B') == "for i in 1 2#{us}do print $i#{us}done" && field(p[5], 'S') == ''
+    check('wide', errs.empty? && p.size == 6, "#{errs.join(' / ')} log=#{log.inspect[0, 600]}")
+  end
+
+  # At a continuation prompt (PS2) the suggestion comes from what is typed
+  # on that line; a pasted long line (bracketed paste) gets none, quickly.
+  def test_suggest_continuation_and_paste
+    print "Test: continuation line suggestion; bracketed paste of a long line... "
+    home, _, env = setup_home('pty_ps2')
+    long = 'echo ' + (1..600).map { |i| "w#{i}" }.join(' ')
+    steps = ["echo \\\r", 'print -r -- AL', PROBE, "\e[C", PROBE, "\x03",
+             CLEAR, "\e[200~#{long}\e[201~", PROBE, ' x', PROBE,
+             CLEAR, "\e[200~print -r -- B\e[201~", PROBE]
+    _, log = pty_session(home, env, steps)
+    p = log.select { |l| l.start_with?('P|') }
+    errs = []
+    errs << "ps2: #{p[0]}" unless field(p[0], 'B') == 'print -r -- AL' && field(p[0], 'S') == 'PHA-one-two three'
+    errs << "ps2 accept: #{p[1]}" unless field(p[1], 'B') == 'print -r -- ALPHA-one-two three'
+    errs << "paste: #{p[2].to_s[0, 80]}" unless field(p[2], 'B') == long && field(p[2], 'S') == ''
+    errs << "paste+x: #{p[3].to_s[0, 80]}" unless field(p[3], 'B') == "#{long} x" && field(p[3], 'S') == ''
+    errs << "paste short: #{p[4]}" unless field(p[4], 'B') == 'print -r -- B' && field(p[4], 'S') == 'ETA-zzz'
+    check('ps2', errs.empty? && p.size == 5, errs.join(' / '))
+  end
+
+  # Undo of an accept brings the suggestion back; kill + yank; ^R and
+  # up-line-or-beginning-search show none.
+  def test_suggest_undo_yank_search
+    print "Test: undo/redo of accept, kill/yank, ^R, up-line-or-beginning-search... "
+    home, _, env = setup_home('pty_undo')
+    steps = [CLEAR, 'print -r -- AL', "\e[C", PROBE, "\x1f", PROBE, "\x18r", PROBE, # accept, ^_ undo, redo
+             CLEAR, 'print -r -- AL', "\x17", PROBE, "\x18y", PROBE,              # ^W, yank (^Y accepts)
+             CLEAR, 'print -r -- A', "\e[A", PROBE,                                # up-line-or-beginning-search
+             CLEAR, ":\r", "\x12BETA", "\x05", PROBE]                         # (: resets the history position)                                     # ^R BETA, ^E
+    _, log = pty_session(home, env, steps)
+    p = log.select { |l| l.start_with?('P|') }
+    full = 'print -r -- ALPHA-one-two three'
+    errs = []
+    errs << "accept: #{p[0]}" unless field(p[0], 'B') == full && field(p[0], 'S') == ''
+    errs << "undo: #{p[1]}" unless field(p[1], 'B') == 'print -r -- AL' && field(p[1], 'S') == 'PHA-one-two three'
+    errs << "redo: #{p[2]}" unless field(p[2], 'B') == full && field(p[2], 'S') == ''
+    errs << "kill: #{p[3]}" unless field(p[3], 'B') == 'print -r -- ' && field(p[3], 'S') == 'BETA-zzz'
+    errs << "yank: #{p[4]}" unless field(p[4], 'B') == 'print -r -- AL' && field(p[4], 'S') == 'PHA-one-two three'
+    errs << "up: #{p[5]}" unless field(p[5], 'B') == full && field(p[5], 'S') == ''
+    errs << "^R: #{p[6]}" unless field(p[6], 'B') == 'print -r -- BETA-zzz' && field(p[6], 'S') == ''
+    check('undo', errs.empty? && p.size == 7, errs.join(' / '))
+  end
+
+  # vi mode: $ and l accept in normal mode; insert mode → accepts.
+  def test_suggest_vi_accept
+    print "Test: vi mode: $ / l / → accept, e takes a word... "
+    home, _, env = setup_home('pty_vi_acc', prompt: "vi_mode = true\n")
+    steps = ['print -r -- AL', "\e", '$', PROBE,
+             "\e", 'S', 'print -r -- AL', "\e", 'l', PROBE,
+             "\e", 'S', 'print -r -- AL', "\e[C", PROBE,
+             "\e", 'S', 'print -r -- AL', "\e", 'e', PROBE]
+    _, log = pty_session(home, env, steps)
+    p = log.select { |l| l.start_with?('P|') }
+    full = 'print -r -- ALPHA-one-two three'
+    errs = []
+    errs << "$: #{p[0]}" unless field(p[0], 'B') == full && field(p[0], 'S') == ''
+    errs << "l: #{p[1]}" unless field(p[1], 'B') == full && field(p[1], 'S') == ''
+    errs << "right: #{p[2]}" unless field(p[2], 'B') == full && field(p[2], 'S') == ''
+    errs << "e: #{p[3]}" unless field(p[3], 'B').to_s.start_with?('print -r -- ALPHA') && field(p[3], 'B') != full &&
+                                (field(p[3], 'B') + field(p[3], 'S').to_s) == full
+    check('vi-accept', errs.empty? && p.size == 4, errs.join(' / '))
+  end
+
+  # Plugins wrapping the same widgets, after wayu (re-wrapping before every
+  # prompt, like fzf-tab / zsh-autosuggestions) and before it.
+  FAKE_WRAP = <<~'ZSH'
+    _fw_wrap() {
+      local w
+      for w in self-insert forward-char forward-word end-of-line backward-delete-char; do
+        [[ ${widgets[$w]-} == user:_fw_* ]] && continue
+        zle -A $w _fw_orig_$w
+        functions[_fw_$w]="(( FW_CALLS++ )); zle _fw_orig_$w -- \"\$@\""
+        zle -N $w _fw_$w
+      done
+    }
+    _fw_wrap
+    autoload -Uz add-zsh-hook
+    add-zsh-hook precmd _fw_wrap
+  ZSH
+  EARLY_WRAP = <<~'ZSH'
+    if [[ -o interactive ]]; then
+      zle -A forward-char _ew_orig_fc
+      _ew_fc() { (( EW_CALLS++ )); zle _ew_orig_fc -- "$@" }
+      zle -N forward-char _ew_fc
+    fi
+  ZSH
+
+  def test_suggest_widget_wrappers
+    print "Test: other plugins wrapping the accept widgets (before and after wayu): accept / partial still work... "
+    home, _, env = setup_home('pty_wrap', rc_extra: FAKE_WRAP, zshenv_pre: EARLY_WRAP)
+    steps = ['print -r -- AL', PROBE, "\e[C", PROBE, CLEAR, 'print -r -- AL', "\ef", PROBE, CLEAR,
+             "print -r -- \"FW=$FW_CALLS:$EW_CALLS\"\r", 'print -r -- AL', PROBE, "\e[C", PROBE]
+    out, log = pty_session(home, env, steps)
+    p = log.select { |l| l.start_with?('P|') }
+    full = 'print -r -- ALPHA-one-two three'
+    counts = out[/FW=(\d+):(\d+)/] ? [$1, $2].map(&:to_i) : []
+    errs = []
+    errs << "0: #{p[0]}" unless field(p[0], 'S') == 'PHA-one-two three'
+    errs << "accept: #{p[1]}" unless field(p[1], 'B') == full && field(p[1], 'S') == ''
+    errs << "M-f: #{p[2]}" unless field(p[2], 'B') == 'print -r -- ALPHA-one-two ' && field(p[2], 'S') == 'three'
+    errs << "2nd prompt: #{p[3]}" unless field(p[3], 'S') == 'PHA-one-two three'
+    errs << "2nd accept: #{p[4]}" unless field(p[4], 'B') == full
+    errs << "counts #{counts}" unless counts.size == 2 && counts.all?(&:positive?)
+    check('wrap', errs.empty?, errs.join(' / '))
+  end
+
+  def test_suggest_no_errors
+    print "Test: no shell errors from the suggest module in any session... "
+    check('errors', @shell_errors.empty?, @shell_errors.uniq.first(5).inspect)
   end
 end
 

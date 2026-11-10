@@ -61,6 +61,24 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `[settings.highlight_styles]` table). While it is on, the
   zsh-syntax-highlighting and fast-syntax-highlighting plugins are not
   loaded and `wayu doctor` warns if one is still enabled. Off by default.
+- Built-in highlighting, checked against fast-syntax-highlighting
+  (`tests/highlight_diff`): brackets are colored by depth (new styles
+  `bracket-level-1..3`, `bracket-error` for unmatched ones,
+  `cursor-matchingbracket` for the pair of the one under the cursor), history
+  expansions (`!!`, `!$`, ...: `history-expansion`), `in` after `case` and
+  `always` are reserved words, assignments after `typeset` / `local` /
+  `export` / `readonly` are `assign`, `command -v NAME` highlights NAME as a
+  command, nothing is a glob after `noglob`, `=cmd` is a command, a quoted
+  command name is colored as the command, `{fd}` in `{fd}>file` is
+  `named-fd` (default none; was `redirection`) and the descriptor in `2>&1`
+  is `numeric-fd` (default none). Fixed: `'...'` followed by more text in
+  the same word was colored to the end of the word, `&!` lost the rest of
+  the line, `$[...]` was a glob, `for x (...)` / `for ((...))`,
+  `function name { ... }`, case `(pattern)`, `name=(...)` inside `$(...)`,
+  and a stale result after deleting part of a heredoc operator. Lines
+  entered at a continuation prompt are now highlighted with the current
+  line, and an edit in the middle of a long line no longer re-highlights it
+  all (500 characters: ~4 ms → ~0.9 ms per keystroke).
 
 **`wayu optimize`: installer lines in your startup files move into wayu**
 
