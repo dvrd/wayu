@@ -146,7 +146,8 @@ function_skeleton :: proc(name: string) -> string {
 			name,
 			"\n\n",
 			name,
-			"() {\n    # TODO: implement\n}\n",
+			// `:` keeps the body non-empty: bash rejects `f() { }` (OKAMI-312).
+			"() {\n    # TODO: implement\n    :\n}\n",
 		},
 	)
 }
