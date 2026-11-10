@@ -236,6 +236,7 @@ tests/
 ├── golden/        # Component goldens + cases.txt (checked by integration/test_golden.rb)
 ├── integration/   # Ruby, end-to-end CLI behavior (run_all.rb; fixtures/init-prev.zsh = previous release's init.zsh; test_exit_codes.rb runs docs/cli.md's exit code table)
 ├── tui/           # TUI tests (Python/pyte: test_responsive.py) + gen_rune_width.py
+├── release/       # Pre-ship checks, run by hand (macOS): upgrade_from_release.sh (previous tag → this build), fresh_shells.sh (clean install, zsh/bash/fish), bash_trial.sh
 └── benchmark/     # startup.sh: shell startup timing (hyperfine)
 ```
 

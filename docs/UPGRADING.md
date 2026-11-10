@@ -28,8 +28,8 @@ releases, so they are listed here too.
 
 - `wayu doctor` warns about folders under `<data>/plugins` that no
   `plugins.json` entry points at: only registered plugins load, so such a
-  checkout is silently ignored otherwise. Register it (`wayu plugin add`)
-  or delete it.
+  checkout is silently ignored otherwise (see "Generated shell code and
+  startup"). Register it (`wayu plugin add`) or delete it.
 
 **Aliases may use command names**
 
@@ -64,6 +64,9 @@ releases, so they are listed here too.
   only plugins enabled in `plugins.json` load (`wayu plugin disable` had no
   effect on those two). A checkout not registered in `plugins.json` is no
   longer loaded: register it with `wayu plugin add`.
+- Plugin `*.zsh` sources are compiled to `.zwc` next to them (zsh loads
+  the digest instead of parsing the source each start): plugin checkouts
+  get `.zwc` files (untracked in their git checkouts).
 - bash: a `[tools]` word `zsh` / `--zsh` in `args` becomes `bash` /
   `--bash` in core.bash, as fish already did (`args = "init zsh"` put
   `zoxide init zsh` into core.bash; bash 3.2 failed on its output). In
@@ -200,8 +203,7 @@ releases, so they are listed here too.
 **zsh startup: interactive-only parts skipped in non-interactive shells; compinit guard**
 
 - Non-interactive zsh (`zsh -c`, scripts; wayu loaded from `.zshenv`) no
-  longer loads plugins (`plugins.zsh`, the zsh-autosuggestions /
-  zsh-syntax-highlighting fallbacks, `plugins/config.zsh`) or sets up
+  longer loads plugins (`plugins.zsh`, `plugins/config.zsh`) or sets up
   zsh-defer; `zsh-defer` is a no-op there (nothing ever drained its queue
   outside a prompt). Constants, secrets, PATH, `functions/`, `[tools]`,
   `tools.zsh`, `extra.zsh` and aliases still load. `zsh -c true` with a
@@ -263,7 +265,8 @@ releases, so they are listed here too.
   and a stale result after deleting part of a heredoc operator. Lines
   entered at a continuation prompt are now highlighted with the current
   line, and an edit in the middle of a long line no longer re-highlights it
-  all (500 characters: ~4 ms → ~0.9 ms per keystroke).
+  all (500 characters: ~4 ms → ~0.9 ms per keystroke). To keep the old
+  look, set the new styles to `"none"` in `[settings] highlight_styles`.
 
 **`wayu optimize`: installer lines in your startup files move into wayu**
 
@@ -319,8 +322,8 @@ releases, so they are listed here too.
 - Alias names follow one rule everywhere (`alias add`, the TUI, templates,
   `entries.json`): printable ASCII except whitespace, quotes, shell
   metacharacters, glob characters, `=`, `/` and `^`, not starting with `-`.
-  `..`, `g.st` and `1x` are now accepted; shell reserved words and `.` are
-  still refused.
+  `..`, `g.st` and `1x` are now accepted; `.` and the words in "Aliases may
+  use command names" above are still refused.
 - `const add` refuses protected names with exit 65: `PATH`, `path`, `FPATH`,
   `fpath`, `HOME`, `IFS`, `SHELL`, `USER`, `LOGNAME`, `PWD`, `OLDPWD`,
   `ZDOTDIR`, `SHLVL`, `_` and every `WAYU_*` name (also with `--secret`).
@@ -383,7 +386,7 @@ releases, so they are listed here too.
 
 **`search` and secret display**
 
-- `wayu search` matches names only: alias commands are no longer
+- `wayu search` matches names only (PATH entries: key or directory): alias commands are no longer
   searched (a token inside one was findable, like constant values before
   6.0.0). `--json` `field` is always `name`, and an encrypted constant has
   `"secret": true` (text: `********`).
