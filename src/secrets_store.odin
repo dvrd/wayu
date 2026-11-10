@@ -1333,12 +1333,18 @@ const_add_secret :: proc(args: []string) {
 		config_lock_acquire_or_exit()
 		defer config_lock_release()
 		run_only := wayu.run_only_flag
+		// secrets.json is written first; if entries.json then can't be
+		// updated, secrets.json goes back to what it was (OKAMI-323), so no
+		// value is exported without a constant listing it.
+		snap := secrets_store_snapshot()
+		defer secrets_store_snapshot_destroy(&snap)
 		existed, ok, err := secrets_set(name, value, run_only)
 		if !ok {
 			exit_with_secret_error(err)
 		}
 		converted, mok, merr := env_store_mark_secret(name, run_only)
 		if !mok {
+			secrets_store_snapshot_restore(&snap)
 			exit_with_entry_error(strings.clone(merr))
 		}
 		regenerate_init_core_silently()
@@ -1379,6 +1385,8 @@ const_get_secret :: proc(name: string) -> bool {
 // Remove a secret constant. Returns false when NAME is not a secret.
 // Caller holds the config lock and handled --dry-run.
 const_remove_secret :: proc(name: string) -> bool {
+	snap := secrets_store_snapshot()
+	defer secrets_store_snapshot_destroy(&snap)
 	removed, ok, err := secrets_remove(name)
 	if !ok {
 		exit_with_secret_error(err)
@@ -1387,9 +1395,49 @@ const_remove_secret :: proc(name: string) -> bool {
 		return false
 	}
 	if uok, uerr := env_store_unmark_secret(name); !uok {
+		secrets_store_snapshot_restore(&snap) // keep the pair consistent
 		exit_with_entry_error(strings.clone(uerr))
 	}
 	return true
+}
+
+// secrets.json as it was before a two-file change (const add --secret,
+// const rm), to put back when the entries.json half fails.
+Secrets_Store_Snapshot :: struct {
+	data:    []byte,
+	existed: bool,
+	ok:      bool, // read succeeded (a failed read is never "restored")
+}
+
+secrets_store_snapshot :: proc() -> (snap: Secrets_Store_Snapshot) {
+	path := secrets_store_path()
+	if !os.exists(path) {
+		return {ok = true}
+	}
+	data, err := os.read_entire_file_from_path(path, context.allocator)
+	if err != nil {
+		return {}
+	}
+	return {data = data, existed = true, ok = true}
+}
+
+secrets_store_snapshot_destroy :: proc(snap: ^Secrets_Store_Snapshot) {
+	delete(snap.data)
+	snap^ = {}
+}
+
+// Put secrets.json back as snapshotted (best effort; caller is failing).
+secrets_store_snapshot_restore :: proc(snap: ^Secrets_Store_Snapshot) {
+	if !snap.ok {
+		return
+	}
+	path := secrets_store_path()
+	if !snap.existed {
+		os.remove(path)
+	} else if write_file_atomic(path, snap.data) == nil {
+		restrict_file_mode(path)
+	}
+	secrets_cache_invalidate()
 }
 
 // Is NAME a secret? Exits EXIT_CONFIG on a malformed store.

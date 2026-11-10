@@ -50,6 +50,7 @@ class SecretsStoreIntegrationTest
       test_convert_plain_constant
       test_convert_scrubs_unicode_cr_del
       test_plain_add_over_secret_refused
+      test_add_rolls_back_store_when_entries_fail
       test_dry_run_writes_nothing
       test_secret_flag_rejected_elsewhere
       test_export_eval_has_no_plaintext
@@ -337,6 +338,20 @@ class SecretsStoreIntegrationTest
     print 'Test 14: plain add over a secret is refused (65)... '
     _, err, st = w('const add FAKE_TOKEN plain')
     check('plain add accepted', st.exitstatus == 65 && err.include?('encrypted secret'), err)
+  end
+
+  def test_add_rolls_back_store_when_entries_fail
+    print 'Test 14b: entries.json write fails: secrets.json rolled back (OKAMI-323)... '
+    entries = "#{@data_dir}/entries.json"
+    saved = File.read(entries)
+    before = File.read(store)
+    File.write(entries, '{"version": 1, "env": [')
+    _, err, st = w(['const', 'add', 'FAKE_ROLLBACK', 'fake-rollback-0009', '--secret'])
+    after = File.read(store)
+    File.write(entries, saved)
+    listed, = w('secrets list')
+    ok = !st.success? && after == before && !listed.include?('FAKE_ROLLBACK')
+    check('secret kept without its entries.json marker', ok, "#{st.exitstatus} #{err}")
   end
 
   def test_dry_run_writes_nothing
