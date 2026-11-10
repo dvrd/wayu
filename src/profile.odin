@@ -17,6 +17,7 @@
 package wayu
 
 import "core:fmt"
+import "core:math/rand"
 import "core:os"
 import "core:slice"
 import "core:strconv"
@@ -42,8 +43,8 @@ ProfileSample :: struct {
 // wall time with Odin's `time.tick_now()`, running each scenario N times
 // and reporting min/mean/max. Two scenarios:
 //
-//   1. `core` alone: `shell -c 'source $WAYU_CONFIG/core.{ext}'`
-//      — what wayu itself adds to startup.
+//   1. `core` alone: an interactive shell whose only rc file sources
+//      core.{ext} (profile_interactive_command) — what wayu itself adds.
 //   2. interactive shell: `shell -i -c exit` — total cost the user sees on
 //      every new terminal. The difference is shell-builtin work
 //      (rcfile parsing, compinit, etc.) plus anything the user hand-added
@@ -80,13 +81,24 @@ profile_startup_performance :: proc() {
 	}
 
 	// Build the two scenarios. Keep command slices alive until after rendering.
+	// core runs in an interactive shell whose only rc file sources it
+	// (OKAMI-348): `-c` skipped compinit, the prompt and the plugins.
 	source_cmd := fmt.aprintf("source %s", shell_single_quote(core_file, context.temp_allocator))
 	defer delete(source_cmd)
+	rc_dir, rc_ok := profile_rc_dir()
+	defer if rc_ok {
+		_ = os.remove_all(rc_dir)
+		delete(rc_dir)
+	}
+	core_cmd := profile_interactive_command(shell_bin, rc_dir, source_cmd, wayu.shell)
+	if !rc_ok {
+		core_cmd = []string{shell_bin, "-c", source_cmd}
+	}
 
 	scenarios := []ProfileSample {
 		{
-			label = fmt.tprintf("core.%s (sourced in -c)", wayu.shell_ext),
-			command = []string{shell_bin, "-c", source_cmd},
+			label = fmt.tprintf("core.%s (interactive, no user rc)", wayu.shell_ext),
+			command = core_cmd,
 		},
 		{
 			label = "interactive shell (-i -c exit)",
@@ -132,6 +144,62 @@ profile_startup_performance :: proc() {
 	fmt.println()
 }
 
+// Private 0700 dir (under $TMPDIR, else /tmp) for the rc file of the
+// profiled interactive shells. Caller removes and frees it.
+profile_rc_dir :: proc() -> (string, bool) {
+	base := os.get_env("TMPDIR", context.temp_allocator)
+	if len(base) == 0 {
+		base = "/tmp"
+	}
+	base = strings.trim_right(base, "/")
+	for attempt in 0 ..< 5 {
+		dir := fmt.aprintf(
+			"%s/wayu-profile.%d.%x",
+			base,
+			os.get_pid(),
+			rand.uint64() ~ u64(time.now()._nsec) ~ u64(attempt),
+		)
+		if os.make_directory(dir, SECRET_DIR_PERMS) == nil {
+			return dir, true
+		}
+		delete(dir)
+	}
+	return "", false
+}
+
+// argv (temp-allocated) of an interactive `shell` whose only startup code
+// is `code` (OKAMI-348: `-c` is non-interactive, so compinit, the prompt
+// and the plugins never ran): zsh reads <dir>/.zshrc (ZDOTDIR=<dir>, so the
+// user's own startup files are skipped), bash `--rcfile <dir>/rc`, fish
+// `-i --no-config -c code`. nil when the rc file can't be written.
+profile_interactive_command :: proc(shell_bin, dir, code: string, shell: ShellType) -> []string {
+	switch shell {
+	case .ZSH:
+		rc := fmt.tprintf("%s/.zshrc", dir)
+		if os.write_entire_file(rc, transmute([]byte)code, SECRET_FILE_PERMS) != nil {
+			return nil
+		}
+		return slice.clone(
+			[]string{"env", fmt.tprintf("ZDOTDIR=%s", dir), shell_bin, "-i", "-c", "exit 0"},
+			context.temp_allocator,
+		)
+	case .BASH:
+		rc := fmt.tprintf("%s/rc", dir)
+		if os.write_entire_file(rc, transmute([]byte)code, SECRET_FILE_PERMS) != nil {
+			return nil
+		}
+		return slice.clone(
+			[]string{shell_bin, "--rcfile", rc, "-i", "-c", "exit 0"},
+			context.temp_allocator,
+		)
+	case .FISH, .UNKNOWN:
+	}
+	return slice.clone(
+		[]string{shell_bin, "-i", "--no-config", "-c", code},
+		context.temp_allocator,
+	)
+}
+
 // Render a per-unit timing breakdown of core.<ext> (OKAMI-180).
 //
 // Strategy: split core into units (profile_core_units: `# === <name> ===`
@@ -157,8 +225,8 @@ render_phase_breakdown :: proc(shell_bin, core_file: string, shell: ShellType) {
 	}
 	if len(phases) == 0 do return
 
-	// Build the instrumented script in memory, then hand it to the shell
-	// via -c so we don't have to touch the filesystem.
+	// Build the instrumented script in memory; it becomes the rc file of an
+	// interactive shell below.
 	sb := strings.builder_make()
 	defer strings.builder_destroy(&sb)
 
@@ -182,7 +250,17 @@ render_phase_breakdown :: proc(shell_bin, core_file: string, shell: ShellType) {
 		)
 	}
 
-	out := capture_command([]string{shell_bin, "-c", strings.to_string(sb)})
+	// Run it as the rc file of an interactive shell (OKAMI-348), so the
+	// interactive-only parts — compinit, the prompt, plugins — are timed.
+	rc_dir, rc_ok := profile_rc_dir()
+	if !rc_ok do return
+	defer {
+		_ = os.remove_all(rc_dir)
+		delete(rc_dir)
+	}
+	cmd := profile_interactive_command(shell_bin, rc_dir, strings.to_string(sb), shell)
+	if cmd == nil do return
+	out := capture_command(cmd)
 	defer if len(out) > 0 do delete(out)
 	if len(out) == 0 do return
 	if strings.contains(out, "WAYU_NO_EPOCHREALTIME") {

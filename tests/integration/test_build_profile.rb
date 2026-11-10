@@ -23,8 +23,9 @@ class BuildProfileTest
       test_profile_missing_init_core_warns
       test_profile_zsh_phase_breakdown
       test_profile_breakdown_names_tools
+      test_profile_breakdown_is_interactive
       test_export_flag_modes
-      test_export_refuses_fish_and_build_rejects_unknown
+      test_export_build_rejects_unknown
     ensure
       teardown_test_env
     end
@@ -64,23 +65,37 @@ class BuildProfileTest
     _o, miss = run_wayu("export --check")           # no turbo yet: 78
     _o, gen = run_wayu("export --turbo")
     _o, cur = run_wayu("export --check")            # fresh: 0
+    # OKAMI-364: content, not mtimes. A touched-but-unchanged wayu.toml is
+    # still current; an input the mtimes missed (config.zsh, inlined into
+    # core) or a hand-edited turbo file is stale.
+    FileUtils.touch("#{@config_dir}/wayu.toml", mtime: Time.now + 5)
+    _o, touched = run_wayu("export --check")
+    File.write("#{@config_dir}/config.zsh", "export CFG_PROBE=1\n")
+    _o, cfg_stale = run_wayu("export --check")
+    _o, _regen = run_wayu("export --turbo")
+    _o, regen = run_wayu("export --check")
+    File.delete("#{@config_dir}/config.zsh")
+    run_wayu("export --turbo")
+    File.write(turbo, File.read(turbo) + "# edited\n")
+    _o, edited = run_wayu("export --check")
     ok = eval_clean && zsh_out.include?("hello") && zsh_out.include?("exll") &&
-         miss.exitstatus == 78 && gen.success? && File.exist?(turbo) && cur.exitstatus == 0
+         miss.exitstatus == 78 && gen.success? && File.exist?(turbo) && cur.exitstatus == 0 &&
+         touched.exitstatus == 0 && cfg_stale.exitstatus == 78 && regen.exitstatus == 0 && edited.exitstatus == 78
     report("Test 5: export --eval is clean + evalable, --check reports staleness", ok,
-           "eval_clean=#{eval_clean} zsh=#{zsh_out.inspect} miss=#{miss.exitstatus} gen=#{gen.exitstatus} cur=#{cur.exitstatus}")
+           "eval_clean=#{eval_clean} zsh=#{zsh_out.inspect} miss=#{miss.exitstatus} gen=#{gen.exitstatus} cur=#{cur.exitstatus} " \
+           "touched=#{touched.exitstatus} cfg=#{cfg_stale.exitstatus} regen=#{regen.exitstatus} edited=#{edited.exitstatus}")
+    run_wayu("export --turbo")
     run_wayu("const rm EXPORT_T")
     run_wayu("alias rm exll")
   end
 
-  def test_export_refuses_fish_and_build_rejects_unknown
-    _o1, fish_turbo = run_wayu("--shell fish export")
-    _o2, fish_eval = run_wayu("--shell fish export --eval")
+  def test_export_build_rejects_unknown
     _o3, bogus_export = run_wayu("export bogus")
     _o4, bogus_build = run_wayu("build bogus")
     _o5, build_eval = run_wayu("build eval")
-    ok = [fish_turbo, fish_eval, bogus_export, bogus_build, build_eval].all? { |s| s.exitstatus == 64 }
-    report("Test 6: fish export refused, unknown export/build targets (incl. removed `build eval`) exit 64", ok,
-           [fish_turbo, fish_eval, bogus_export, bogus_build, build_eval].map(&:exitstatus).inspect)
+    ok = [bogus_export, bogus_build, build_eval].all? { |s| s.exitstatus == 64 }
+    report("Test 6: unknown export/build targets (incl. removed `build eval`) exit 64", ok,
+           [bogus_export, bogus_build, build_eval].map(&:exitstatus).inspect)
   end
 
   def test_profile_reports_both_scenarios
@@ -135,6 +150,33 @@ class BuildProfileTest
     else
       puts "✗"
       puts "  heading=#{has_heading} sum=#{has_sum} path=#{has_path} aliases=#{has_aliases}"
+      @failed += 1
+    end
+  end
+
+  # OKAMI-348: the breakdown runs in an interactive shell (it used `-c`,
+  # which skipped compinit, the prompt and the plugins): a config.zsh that
+  # only sleeps in interactive shells shows up with its time,. The
+  # profiled shell reads no user rc (ZDOTDIR is redirected).
+  def test_profile_breakdown_is_interactive
+    unless system('command -v zsh >/dev/null 2>&1')
+      puts "skipped (no zsh)"; return
+    end
+    print "Test 4c: phase breakdown runs interactively... "
+    File.write("#{@config_dir}/config.zsh", "[[ -o interactive ]] && sleep 0.3\n")
+    run_wayu('build')
+    out, status = run_wayu('build profile')
+    row = out.lines.find { |l| l.include?('User configuration (from config.zsh)') }.to_s
+    ms = row[/([\d.]+) ms/, 1].to_f
+    ok = status.success? && ms >= 250 && out.include?('(interactive, no user rc)')
+    File.delete("#{@config_dir}/config.zsh")
+    run_wayu('build')
+    report_ok = ok
+    if report_ok
+      puts "✓"; @passed += 1
+    else
+      puts "✗"
+      puts "  row=#{row.strip.inspect} status=#{status.exitstatus} out=#{out[0, 600]}"
       @failed += 1
     end
   end

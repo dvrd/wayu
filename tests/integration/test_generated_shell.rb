@@ -51,6 +51,7 @@ class GeneratedShellTest
       test_bash_errexit_with_tools
       test_tools_args_never_run_code
       test_prompt_survives_hostile_commands
+      test_prompt_async_forks
       test_init_and_turbo_define_the_same
       test_prompt_vi_mode_and_widgets
       test_prompt_git_branch_without_git
@@ -599,6 +600,43 @@ class GeneratedShellTest
             "exit=#{bst.exitstatus} out=#{bout.strip[0, 200]} lazy_call=#{lazy.include?('_wayu_evalcache argtool')} pwned=#{File.exist?(pwn)}")
       Open3.capture3(env, @wayu_bin, 'const', 'rm', 'ARGS_PROBE')
     end
+  end
+
+  # OKAMI-349: outside a git work tree (and a versioned context) a prompt
+  # render starts no async worker; in a repo the worker reports the pending
+  # count and the USR1 handler reads and removes the result without forking
+  # (`rm`/`mv`/`mktemp` are aliased to `false` to prove builtins are used).
+  def test_prompt_async_forks
+    print "Test: native prompt: no worker outside git, fork-free USR1 handler... "
+    home = "#{@tmp_home}/prompt_async"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/repo", "#{home}/plain"])
+    env = clean_env(home)
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[prompt]\nenabled = true\n")
+    Open3.capture3(env, @wayu_bin, 'build')
+    git_env = clean_env(home, 'GIT_CONFIG_NOSYSTEM' => '1')
+    Open3.capture3(git_env, 'git', 'init', '-q', "#{home}/repo")
+    File.write("#{home}/repo/untracked", "x\n")
+    script = <<~SH
+      zmodload zsh/zselect
+      source '#{data}/init.zsh'
+      alias rm=false mv=false mktemp=false
+      run() { local f; for f in $precmd_functions; do $f; done; }
+      cd '#{home}/plain'; _wayu_detect_context
+      b=$!; run; print -r -- "plain bang=$(( $! == b )) dir=${_WAYU_ASYNC_DIR:-none}"
+      cd '#{home}/repo'; _wayu_detect_context
+      run; n=0
+      while [[ -z $_WAYU_ASYNC_DATA ]] && (( n++ < 300 )); do zselect -t 1; done
+      print -r -- "repo data=$_WAYU_ASYNC_DATA left=$(ls -A $_WAYU_ASYNC_DIR | wc -l | tr -d ' ')"
+      cd '#{home}/plain'; run; print -r -- "back data=[${_WAYU_ASYNC_DATA}]"
+    SH
+    out, err, st = Open3.capture3(env, 'zsh', '-f', '-i', '-c', script)
+    ok = st.success? && out.include?('plain bang=1 dir=none') && out =~ /repo data=\S*1\S* left=0/ &&
+         out.include?('back data=[]')
+    check('prompt async forks', ok, "out=#{out.inspect} err=#{err.strip[0, 400]}")
   end
 
   # OKAMI-279: with `[prompt] enabled = true`, aliases and functions named

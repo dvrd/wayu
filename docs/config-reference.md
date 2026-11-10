@@ -420,19 +420,13 @@ the plugins; `login_only` tools after `tools.<ext>` and `extra.<ext>`.
 
 ### `[prompt]`
 
-A native zsh prompt, off by default. It is generated only for zsh, only when
-`[prompt] enabled = true`, and set up only in interactive shells. bash and
-fish ignore the whole table.
+A native prompt for zsh and fish, off by default. It is generated only when
+`[prompt] enabled = true`, and set up only in interactive shells. bash
+ignores the whole table. fish differences: see [fish](#prompt-in-fish).
 
-The `[prompt]` tables are read line by line, not with the TOML parser:
-
-- Each header must be exactly `[prompt]`, `[prompt.username]`, ... on its own
-  line: `[prompt] # mine` or `[ prompt ]` is not recognised (and the prompt
-  stays off).
-- Each key and value must be on one line; `[prompt.contexts]` entries are
-  one-line inline tables.
-- `enabled` and `vi_mode` must be the bare word `true` (a trailing `# comment`
-  is fine).
+The `[prompt]` tables are read with the same TOML parser as the rest of
+`wayu.toml`: comments, dotted keys, `[prompt.contexts.<name>]` tables and
+multi-line strings work, and a value of the wrong type keeps the default.
 
 #### `[prompt]`
 
@@ -541,8 +535,30 @@ name. A built-in match without a user `format` shows the shell name.
 | `transient_enabled` | boolean | `true` | Minimal prompt = current dir + success/error symbol. `false`: minimal prompt = `%~ ➜ `. Only reachable through the toggle. |
 | `vi_mode_indicator` | boolean | `true` | With `vi_mode`, track the keymap in `{character}`. `zle-line-init` / `zle-keymap-select` already defined are kept and run first. |
 | `context_aware` | boolean | `true` | Detect the project type on `cd` (for `{language_context}`). |
-| `async_rprompt` | boolean | `true` | Background job after each command: git changed-file count (right prompt) and context version. |
+| `async_rprompt` | boolean | `true` | Background job after each command: git changed-file count (right prompt) and context version. Started only in a git work tree or a context with a version command; elsewhere the right prompt is cleared without forking. |
 | `rprompt_format` | string | `"[ {git_pending}](242)"` | Right prompt, shown when the work tree has changes. `{git_pending}` = number of changed files, `{git_branch}` = branch. |
+
+#### Prompt in fish
+
+core.fish defines `fish_prompt` (and `fish_right_prompt` with
+`async_rprompt`) from the same tables, in interactive shells, before the
+plugins: a plugin or `config.fish` code that defines `fish_prompt` later
+wins. Same tokens, module variables, styles (as ANSI colors; a styled part
+ends with a full reset), symbols and colors. A render runs only fish
+builtins, except `{localip}`. Differences:
+
+- `vi_mode = true` sets `fish_key_bindings` to `fish_vi_key_bindings`;
+  `{character}` follows `$fish_bind_mode` (insert, default = normal, visual,
+  replace / replace_one) and `fish_mode_prompt` is emptied. Without
+  `vi_mode` the key bindings and `fish_mode_prompt` are left alone.
+- `toggle_key` must be `^X` (a letter, bound as `\cx`); it is bound from
+  `fish_user_key_bindings`, which calls one defined before wayu first. Other
+  keys are not bound (a comment in core.fish says so).
+- `[prompt.contexts]` detection runs on `$PWD` changes; a glob matches with
+  `*` only.
+- `async_rprompt` starts `fish --no-config` in the background per prompt
+  (only in a git work tree or a versioned context) and repaints on
+  `SIGUSR1`.
 
 ### `[scripts]`
 
@@ -1027,5 +1043,7 @@ and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 
 `core.fish`: directory exports, constants, secrets, PATH entries, completions,
 `functions/*.fish`, `config.fish` content, evalcache helper, eager `[tools]`,
-`plugins.fish`, deferred `[tools]`, login-only `[tools]`, aliases. No
-native prompt. `init.fish` then sources `tools.fish` and `extra.fish`.
+the native prompt (`[prompt] enabled = true`), `plugins.fish`, deferred
+`[tools]`, login-only `[tools]`, aliases. `init.fish` then sources
+`tools.fish` and `extra.fish`; `turbo.fish` (`wayu export`) is core.fish
+followed by those two.

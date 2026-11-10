@@ -72,6 +72,33 @@ releases, so they are listed here too.
 - Native prompt (vi mode): `R` (replace) and `r` (replace one character,
   while it waits for the key) show `vimcmd_replace_symbol` in the replace
   color; they showed the insert / normal symbol.
+- Native prompt (`async_rprompt`): the background worker starts only in a
+  git work tree or in a context with a version command (rust, nodejs, …);
+  elsewhere the right prompt and `$version` are cleared without forking.
+  The USR1 handler no longer forks (`read` + `zf_rm` instead of `$(<f)` +
+  `rm`): a render outside a repo forks 0 times (was 2), inside a repo once
+  (the worker). Run `wayu build` once to regenerate.
+- `wayu export --check` compares `turbo.<ext>` with what `export --turbo`
+  would write now, instead of its mtime with wayu.toml / entries.json: it
+  now reports stale after a change to `config.<ext>`, a hand edit of the
+  turbo file or a wayu upgrade that changes the generated code, and no
+  longer after a save of wayu.toml that changed nothing.
+- fish: `[prompt] enabled = true` now generates a native prompt in
+  core.fish (`fish_prompt`, and `fish_right_prompt` with `async_rprompt`):
+  it replaces a `fish_prompt` from `~/.config/fish/functions/` (one
+  defined later in config.fish or a plugin still wins); `vi_mode = true`
+  switches to `fish_vi_key_bindings` and empties `fish_mode_prompt`. See
+  config-reference "Prompt in fish". A fish setup with `[prompt] enabled`
+  that relied on fish ignoring it should remove the table.
+- fish: `wayu export` (`--turbo`, `--eval`, `--check`) works for fish (it
+  exited `64`): `turbo.fish` is core.fish followed by `tools.fish` /
+  `extra.fish` (same as sourcing init.fish) and is kept current by every
+  regeneration; `--eval` prints fish code for `wayu export --eval | source`.
+- `wayu build profile` times core and its phase breakdown in an
+  interactive shell that reads only core (zsh: `ZDOTDIR` = a private temp
+  dir; bash: `--rcfile`), not `-c`: compinit, the native prompt and the
+  plugins are now included, so the numbers are higher (and real). The first
+  scenario is labeled `core.<ext> (interactive, no user rc)`.
 
 **wayu's own completions: position-independent, value completion**
 

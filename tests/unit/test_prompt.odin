@@ -155,6 +155,28 @@ test_prompt_async_private_tempdir :: proc(t: ^testing.T) {
 		strings.contains(code, "add-zsh-hook zshexit _wayu_async_cleanup"),
 		"dir removed on shell exit",
 	)
+	// OKAMI-349: no fork in the USR1 handler, none at all when there is
+	// nothing to fetch.
+	handler := code[strings.index(code, "_wayu_async_on_usr1() {"):strings.index(
+		code,
+		"function TRAPUSR1",
+	)]
+	testing.expect(t, strings.contains(handler, `zf_rm -f -- "$f"`), "handler removes with zf_rm")
+	testing.expect(t, !strings.contains(handler, "$(<"), "handler reads without $(<)")
+	testing.expect(
+		t,
+		strings.contains(
+			code,
+			`if [[ -z "$_WAYU_GIT_BRANCH" && $_WAYU_CONTEXT != ${~_WAYU_VERSIONED} ]]; then`,
+		),
+		"worker skipped outside git / versioned contexts",
+	)
+	testing.expect(
+		t,
+		strings.contains(code, "_WAYU_VERSIONED='(rust|bun|") &&
+		strings.contains(code, `zf_mv -f -- "$tmpf" "$dir/data"`),
+		"versioned contexts listed; worker renames with zf_mv",
+	)
 }
 
 // GEN-19: the toggle is opt-in, bound after `bindkey -v` and in explicit
@@ -506,4 +528,63 @@ test_prompt_values_percent_escaped :: proc(t: ^testing.T) {
 		"branch escaped in PS1 and the async right prompt",
 	)
 	testing.expect(t, !strings.contains(code, `"${_WAYU_GIT_BRANCH}"`), "no raw branch")
+}
+
+// OKAMI-368: fish prompt — styles become ANSI printf formats, config text
+// is a single-quoted literal (never run), tokens map to fish expressions,
+// vi mode / toggle / async parts follow [prompt.interactive].
+@(test)
+test_fish_prompt_generation :: proc(t: ^testing.T) {
+	testing.expect_value(t, wayu.style_to_ansi("cyan bold"), `\e[36;1m`)
+	testing.expect_value(t, wayu.style_to_ansi("242"), `\e[38;5;242m`)
+	testing.expect_value(t, wayu.style_to_ansi("orange"), `\e[38;5;208m`)
+	testing.expect_value(t, wayu.style_to_ansi("nope"), "")
+
+	toml := `[prompt]
+enabled = true
+vi_mode = true
+format = "{dir}$(id) it's {character}"
+[prompt.interactive]
+toggle_enabled = true
+toggle_key = "^X'; touch pwn"
+`
+	cfg := wayu.parse_full_prompt_config(toml)
+	defer wayu.destroy_full_prompt_config(&cfg)
+	icfg := wayu.parse_interactive_config(toml)
+	icfg.contexts = &cfg
+	code := wayu.generate_fish_prompt(cfg, icfg)
+	defer delete(code)
+
+	testing.expect(t, strings.contains(code, "function fish_prompt\n"), "fish_prompt defined")
+	testing.expect(t, strings.contains(code, `printf '%s' '$(id) it\'s '`), "config text literal")
+	testing.expect(t, strings.contains(code, "printf '%s' (_wayu_prompt_dir)"), "$dir mapped")
+	testing.expect(t, strings.contains(code, `printf '\e[36;1m'`), "dir style")
+	testing.expect(
+		t,
+		strings.contains(code, "set -g fish_key_bindings fish_vi_key_bindings"),
+		"vi mode",
+	)
+	testing.expect(
+		t,
+		strings.contains(code, "switch $fish_bind_mode"),
+		"character follows bind mode",
+	)
+	testing.expect(t, !strings.contains(code, "touch pwn"), "bad toggle key not bound or echoed")
+	testing.expect(t, strings.contains(code, "function fish_right_prompt"), "async right prompt")
+	testing.expect(
+		t,
+		strings.contains(
+			code,
+			`if test -z "$_wayu_git_branch"; and not contains -- "$_wayu_context" rust bun`,
+		),
+		"worker only where there is something to fetch",
+	)
+
+	icfg2 := wayu.parse_interactive_config(
+		"[prompt]\nenabled = true\n[prompt.interactive]\ntoggle_enabled = true\n",
+	)
+	code2 := wayu.generate_fish_prompt(cfg, icfg2)
+	defer delete(code2)
+	testing.expect(t, strings.contains(code2, `    bind \cp _wayu_toggle_prompt`), "^P -> \\cp")
+	testing.expect(t, !strings.contains(code2, "fish_vi_key_bindings"), "no vi mode by default")
 }
