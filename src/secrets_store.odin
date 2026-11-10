@@ -356,6 +356,12 @@ secrets_store_load_or_exit :: proc() -> (store: Secrets_Store, exists: bool) {
 // Write the store (caller holds the config lock), then drop the session
 // cache so no shell sources values older than the store.
 secrets_store_save :: proc(s: ^Secrets_Store) -> (ok: bool, err: string) {
+	// entries.json is backed up (with the secrets.json copy, backup.odin)
+	// before the first secrets.json write of the command, so the backup
+	// holds the pair as it was before the command (OKAMI-303).
+	if !create_backup_cli(entries_file_path()) {
+		return false, fmt.tprintf("I/O error: could not back up %s", ENTRIES_FILE)
+	}
 	if wok, werr := secrets_store_write_to(secrets_store_path(), s); !wok {
 		return false, werr
 	}
@@ -1137,7 +1143,7 @@ scrub_entries_backups :: proc(plain: string) {
 		crypto.zero_explicit(raw_data(data), len(data))
 		delete(data)
 		if hit {
-			os.remove(b.backup_file)
+			backup_remove(b.backup_file)
 		}
 	}
 }
@@ -1440,6 +1446,84 @@ secrets_store_snapshot_restore :: proc(snap: ^Secrets_Store_Snapshot) {
 	secrets_cache_invalidate()
 }
 
+// `const get NAME` when entries.json marks NAME secret but secrets.json
+// has no value for it (e.g. entries.json restored alone): an error, never
+// an empty value (OKAMI-303). Returns when NAME is not such a marker.
+const_get_exit_if_secret_missing :: proc(name: string) {
+	store, _, ok := entries_read()
+	if !ok {
+		return // the plain lookup reports a malformed entries.json
+	}
+	i := entries_find(&store, .ENV, name)
+	is_marker := i >= 0 && store.env[i].secret
+	entries_store_destroy(&store)
+	if !is_marker {
+		return
+	}
+	print_error_simple(
+		"%s is a secret in %s, but %s has no value for it: restore both with `wayu backup restore entries --yes`, or remove it with `wayu const rm %s`",
+		name,
+		ENTRIES_FILE,
+		SECRETS_STORE_FILE,
+		name,
+	)
+	wayu_exit(EXIT_DATAERR)
+}
+
+// entries.json secret markers vs secrets.json values (doctor): a marker
+// with no ciphertext is an error (the constant has no value), ciphertext
+// with no marker a warning (exported but not listed by `const list`).
+@(private = "file")
+check_secrets_pairing :: proc(
+	results: ^[dynamic]CheckResult,
+	s: ^Secrets_Store,
+	add: proc(results: ^[dynamic]CheckResult, name: string, status: CheckStatus, msg: string),
+) {
+	store, _, ok := entries_read()
+	if !ok {
+		return // the entries check reports it
+	}
+	defer entries_store_destroy(&store)
+	missing := make([dynamic]string, context.temp_allocator)
+	for e in store.env {
+		if e.secret && secrets_store_find(s, e.name) < 0 {
+			append(&missing, e.name)
+		}
+	}
+	orphans := make([dynamic]string, context.temp_allocator)
+	for e in s.entries {
+		if i := entries_find(&store, .ENV, e.name); i < 0 || !store.env[i].secret {
+			append(&orphans, e.name)
+		}
+	}
+	if len(missing) > 0 {
+		add(
+			results,
+			"secrets pairing",
+			.ERROR,
+			fmt.tprintf(
+				"%s marks %s secret but %s has no value: restore both (`wayu backup restore entries --yes`) or `wayu const rm` them",
+				ENTRIES_FILE,
+				strings.join(missing[:], ", ", context.temp_allocator),
+				SECRETS_STORE_FILE,
+			),
+		)
+	}
+	if len(orphans) > 0 {
+		add(
+			results,
+			"secrets pairing",
+			.WARNING,
+			fmt.tprintf(
+				"%s holds %s with no secret entry in %s (still exported; `wayu const rm NAME` removes it)",
+				SECRETS_STORE_FILE,
+				strings.join(orphans[:], ", ", context.temp_allocator),
+				ENTRIES_FILE,
+			),
+		)
+	}
+}
+
 // Is NAME a secret? Exits EXIT_CONFIG on a malformed store.
 secrets_store_has_name_or_exit :: proc(name: string) -> bool {
 	s, _ := secrets_store_load_or_exit()
@@ -1584,6 +1668,7 @@ secrets_rekey :: proc() {
 		)
 	}
 	secrets_cache_invalidate()
+	backup_drop_secrets_companions() // their ciphertext is under the old key
 	print_success(
 		"Re-encrypted %d secret(s) with a new master key (%s)",
 		len(s.entries),
@@ -1649,6 +1734,7 @@ check_secrets :: proc(results: ^[dynamic]CheckResult) {
 		add(results, "secrets", .ERROR, err)
 		return
 	}
+	check_secrets_pairing(results, &s, add)
 	if !exists || len(s.entries) == 0 {
 		add(results, "secrets", .INFO, "No encrypted secrets (wayu const add NAME --secret)")
 		return

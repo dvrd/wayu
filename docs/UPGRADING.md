@@ -30,6 +30,16 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `<data>/run/wayu-<uid>/`) and never through a symlinked cache file; `wayu
   secrets cache` replaces such a link instead of writing through it.
   Regenerate core (`wayu build`) to get the new loader.
+- `wayu backup restore entries` (and TUI undo) also restores `secrets.json`
+  as it was when that backup was taken (a copy is now kept with every
+  entries.json backup in `backup/secrets/`); before, only entries.json was
+  restored and secret markers and values could drift apart. `secrets
+  rekey` drops those copies.
+- `wayu const get NAME` exits `65` with an error when entries.json marks
+  NAME secret but secrets.json has no value for it (printed an empty line
+  and exited `0`). `wayu doctor` reports that as an error (`secrets
+  pairing`, exit `78`) and a secrets.json value without a secret entry in
+  entries.json as a warning.
 
 **One status icon per line**
 

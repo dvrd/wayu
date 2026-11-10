@@ -74,6 +74,8 @@ class SecretsStoreIntegrationTest
       test_secrets_run_usage
       test_secrets_run_dry_run
       test_run_only_convert
+      test_restore_keeps_entries_and_secrets_paired
+      test_marker_without_ciphertext_is_an_error
     ensure
       teardown_test_env
     end
@@ -620,6 +622,47 @@ class SecretsStoreIntegrationTest
     got, = w('const get FAKE_RUN')
     ok = out == "ok\n" && !doc1.key?('run_only') && out2 == "unset\n" && got.chomp == RUN_ONLY
     check('conversion wrong', ok, "#{out.inspect} #{out2.inspect}")
+  end
+
+  def doctor_rows
+    out, = w('doctor --json')
+    rows = JSON.parse(out)
+    rows.is_a?(Hash) ? rows['checks'] : rows
+  end
+
+  def test_restore_keeps_entries_and_secrets_paired
+    print 'Test 35: backup restore of entries.json restores secrets.json with it (OKAMI-303)... '
+    _, err, st = w(['const', 'add', 'FAKE_BK', 'fake-bk-0010', '--secret'])
+    _, rerr, rst = w('backup restore entries --yes')
+    gone = !w('secrets list')[0].include?('FAKE_BK') &&
+           JSON.parse(File.read("#{@data_dir}/entries.json"))['env'].none? { |e| e['name'] == 'FAKE_BK' }
+    _, uerr, ust = w('backup restore entries 1 --yes') # undo: the pre-restore snapshot
+    back, = w('const get FAKE_BK')
+    ok = st.success? && rst.success? && gone && ust.success? && back.chomp == 'fake-bk-0010'
+    check('entries.json and secrets.json restored apart', ok, "#{err}#{rerr}#{uerr} gone=#{gone} back=#{back.inspect}")
+  end
+
+  def test_marker_without_ciphertext_is_an_error
+    print 'Test 36: secret marker without ciphertext: get 65, doctor error; orphan ciphertext: warning... '
+    saved = File.read(store)
+    doc = JSON.parse(saved)
+    doc['values'].delete('FAKE_BK')
+    File.write(store, JSON.pretty_generate(doc))
+    out, err, st = w('const get FAKE_BK')
+    rows = doctor_rows
+    _, _, dst = w('doctor')
+    missing = rows.find { |r| r['name'] == 'secrets pairing' && r['status'] == 'error' }
+    File.write(store, saved)
+    entries = "#{@data_dir}/entries.json"
+    saved_entries = File.read(entries)
+    edoc = JSON.parse(saved_entries)
+    edoc['env'].reject! { |e| e['name'] == 'FAKE_BK' }
+    File.write(entries, JSON.pretty_generate(edoc))
+    orphan = doctor_rows.find { |r| r['name'] == 'secrets pairing' && r['status'] == 'warning' }
+    File.write(entries, saved_entries)
+    ok = st.exitstatus == 65 && out.empty? && err.include?('FAKE_BK') && missing && missing['message'].include?('FAKE_BK') &&
+         dst.exitstatus == 78 && orphan && orphan['message'].include?('FAKE_BK')
+    check('inconsistency not reported', ok, "get=#{st.exitstatus} #{err} doctor=#{dst.exitstatus} #{missing.inspect} #{orphan.inspect}")
   end
 end
 
