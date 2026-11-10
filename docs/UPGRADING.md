@@ -8,6 +8,16 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+**Leftover `[paths]` / `[aliases]` / `[env]` in `wayu.toml` are reported by `build`**
+
+- `wayu build` warns (stderr) for each of these tables still in `wayu.toml`:
+  wayu does not read them (`wayu path|alias|const add` manage those
+  entries). Before, only `toml validate` and `doctor` said so, and a hand
+  edit there was silently ignored.
+- The prompt hook's rebuild (after a hand edit of `wayu.toml` /
+  `entries.json`) no longer discards its stderr: its warnings and errors
+  show in the terminal once, at that prompt. A clean rebuild prints nothing.
+
 **`doctor`: unregistered plugin folders**
 
 - `wayu doctor` warns about folders under `<data>/plugins` that no

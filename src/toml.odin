@@ -669,6 +669,39 @@ toml_content_schema_issues :: proc(content: string) -> [dynamic]TomlSchemaIssue 
 	return toml_schema_issues(&doc)
 }
 
+// Messages for the moved tables ([paths]/[aliases]/[env]) `content` still
+// holds, one per table, in file order. `wayu build` (also run by the prompt
+// hook) warns with them so a hand edit there is not silently ignored
+// (OKAMI-333). Temp-allocated.
+toml_moved_table_warnings :: proc(content: string) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil {
+		return out[:]
+	}
+	defer virtual.arena_destroy(&arena)
+	doc, _ := toml_doc_parse_alloc(content, virtual.arena_allocator(&arena))
+	seen := make([dynamic]string, context.temp_allocator)
+	note :: proc(name: string, seen: ^[dynamic]string, out: ^[dynamic]string) {
+		if len(toml_moved_table_cli(name)) == 0 || slice.contains(seen[:], name) {
+			return
+		}
+		append(seen, strings.clone(name, context.temp_allocator))
+		append(out, toml_moved_table_msg(name))
+	}
+	for h in doc.headers {
+		if !h.invalid && len(h.path) > 0 {
+			note(h.path[0], &seen, &out)
+		}
+	}
+	for e in doc.entries {
+		if e.header < 0 && len(e.key) > 0 {
+			note(e.key[0], &seen, &out)
+		}
+	}
+	return out[:]
+}
+
 // Handle 'wayu toml show' - display TOML content
 handle_toml_show :: proc() {
 	toml_file := fmt.aprintf("%s/%s", wayu.config, WAYU_TOML)

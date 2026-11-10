@@ -943,6 +943,15 @@ handle_build_command :: proc(action: Action) {
 		wayu_exit(EXIT_CONFIG)
 	}
 
+	// [paths]/[aliases]/[env] left in wayu.toml are not read: say so on
+	// every build, or a hand edit there vanishes silently (OKAMI-333).
+	if content, rerr := os.read_entire_file_from_path(toml_path, context.temp_allocator);
+	   rerr == nil {
+		for msg in toml_moved_table_warnings(string(content)) {
+			print_warning("%s", msg)
+		}
+	}
+
 	// Regenerate the files init.<ext> sources (core/path_sync/lazy/...) for
 	// every initialized shell, so hand edits of wayu.toml take effect (open
 	// shells pick up [paths] at their next prompt via path_sync).

@@ -678,7 +678,7 @@ _wayu_paths_sync() {
   (( ${+_wayu_paths_seen} )) && _wayu_paths_restore
   if [[ ${_WAYU_PATHS_REGEN-1} == 1 && ( ${_WAYU_TOML_FILE-} -nt $_WAYU_PATHS_FILE || ${_WAYU_ENTRIES_FILE-} -nt $_WAYU_PATHS_FILE ) ]] &&
      [[ ! -e $_WAYU_PATHS_FILE.regen-failed || ! ${_WAYU_TOML_FILE-} -ot $_WAYU_PATHS_FILE.regen-failed || ! ${_WAYU_ENTRIES_FILE-} -ot $_WAYU_PATHS_FILE.regen-failed ]]; then
-    WAYU_PROMPT_HOOK=1 command "${_WAYU_BIN:-wayu}" build </dev/null >/dev/null 2>&1
+    WAYU_PROMPT_HOOK=1 command "${_WAYU_BIN:-wayu}" build </dev/null >/dev/null
     if [[ ${_WAYU_TOML_FILE-} -nt $_WAYU_PATHS_FILE || ${_WAYU_ENTRIES_FILE-} -nt $_WAYU_PATHS_FILE ]]; then
       { : >| $_WAYU_PATHS_FILE.regen-failed } 2>/dev/null || typeset -g _WAYU_PATHS_REGEN=0
     fi
@@ -767,7 +767,7 @@ _wayu_paths_sync() {
   local m="$_WAYU_PATHS_FILE.regen-failed"
   if [ "${_WAYU_PATHS_REGEN-1}" = 1 ] && { [ "${_WAYU_TOML_FILE-}" -nt "$_WAYU_PATHS_FILE" ] || [ "${_WAYU_ENTRIES_FILE-}" -nt "$_WAYU_PATHS_FILE" ]; } &&
      { [ ! -e "$m" ] || ! [ "${_WAYU_TOML_FILE-}" -ot "$m" ] || ! [ "${_WAYU_ENTRIES_FILE-}" -ot "$m" ]; }; then
-    WAYU_PROMPT_HOOK=1 command "${_WAYU_BIN:-wayu}" build </dev/null >/dev/null 2>&1
+    WAYU_PROMPT_HOOK=1 command "${_WAYU_BIN:-wayu}" build </dev/null >/dev/null
     if [ "${_WAYU_TOML_FILE-}" -nt "$_WAYU_PATHS_FILE" ] || [ "${_WAYU_ENTRIES_FILE-}" -nt "$_WAYU_PATHS_FILE" ]; then
       { : >| "$m"; } 2>/dev/null || _WAYU_PATHS_REGEN=0
     fi
@@ -838,7 +838,7 @@ function _wayu_paths_sync --on-event fish_prompt
     if test "$_WAYU_PATHS_REGEN" != 0; and begin; test "$_WAYU_TOML_FILE" -nt "$_WAYU_PATHS_FILE"; or test "$_WAYU_ENTRIES_FILE" -nt "$_WAYU_PATHS_FILE"; end; and begin; not test -e "$m"; or not test "$_WAYU_TOML_FILE" -ot "$m"; or not test "$_WAYU_ENTRIES_FILE" -ot "$m"; end
         set -l bin wayu
         test -n "$_WAYU_BIN"; and set bin $_WAYU_BIN
-        WAYU_PROMPT_HOOK=1 command $bin build </dev/null >/dev/null 2>&1
+        WAYU_PROMPT_HOOK=1 command $bin build </dev/null >/dev/null
         if begin; test "$_WAYU_TOML_FILE" -nt "$_WAYU_PATHS_FILE"; or test "$_WAYU_ENTRIES_FILE" -nt "$_WAYU_PATHS_FILE"; end
             true >"$m" 2>/dev/null; or set -g _WAYU_PATHS_REGEN 0
         end

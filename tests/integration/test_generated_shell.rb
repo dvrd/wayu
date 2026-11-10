@@ -392,7 +392,10 @@ class GeneratedShellTest
                 "_wayu_paths_sync; case \":$PATH:\" in *':#{home}/newbin:'*) echo synced ;; esac"
               end
       out, err, = Open3.capture3(env, exe, *SHELL_ARGS[sh], probe)
-      check("retry #{sh}", out.lines.map(&:strip) == %w[marker synced] && err.strip.empty?,
+      # The failed rebuild's error reaches the terminal once (OKAMI-333).
+      errs = err.lines.map(&:strip).reject(&:empty?)
+      check("retry #{sh}", out.lines.map(&:strip) == %w[marker synced] &&
+            errs.size == 1 && errs[0].include?('entries.json: not valid JSON'),
             "out=#{out.inspect} err=#{err.strip[0, 300]}")
     end
   end

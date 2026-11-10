@@ -36,6 +36,7 @@ class InitIntegrationTest
       test_large_toml_regenerates
       test_live_path_sync
       test_path_sync_status_and_nounset
+      test_moved_tables_warned_on_build
       test_path_sync_managed_dirs
       test_regen_covers_all_initialized_shells
       test_paths_expanded_in_shell
@@ -470,6 +471,32 @@ class InitIntegrationTest
         puts "✓"; @passed += 1
       else
         puts "✗"; puts "  out=#{out.strip.inspect} err=#{err.strip[0, 300]}"; @failed += 1
+      end
+    end
+  end
+
+  # OKAMI-333: [paths]/[aliases]/[env] left in wayu.toml are not read;
+  # `wayu build` warns, and so does the prompt hook's rebuild after a hand
+  # edit (its stderr reaches the terminal; a clean rebuild prints nothing).
+  def test_moved_tables_warned_on_build
+    %w[zsh bash].each do |sh|
+      print "Test: build + prompt hook warn about [paths]/[aliases] in wayu.toml (#{sh})... "
+      home, env = sync_home("moved_#{sh}", [sh])
+      script = <<~SH
+        . "$HOME/.local/share/wayu/core.#{sh}"
+        sleep 1
+        printf '\n[paths]\nx = "/opt/x"\n[aliases]\ny = "ls"\n' >> "$HOME/.config/wayu/wayu.toml"
+        _wayu_paths_sync
+      SH
+      _, herr, hst = Open3.capture3(env, sh, '-c', script)
+      _, berr, bst = Open3.capture3(env, @wayu_bin, '--shell', sh, 'build')
+      want = ["[paths] is not read from wayu.toml", "'wayu path add'", "[aliases] is not read", "'wayu alias add'"]
+      ok = hst.success? && bst.success? && want.all? { |w| herr.include?(w) && berr.include?(w) } &&
+           herr.scan('[paths] is not read').size == 1
+      if ok
+        puts "✓"; @passed += 1
+      else
+        puts "✗"; puts "  hook=#{herr[0, 400]} build=#{berr[0, 400]}"; @failed += 1
       end
     end
   end
