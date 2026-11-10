@@ -36,6 +36,7 @@ class StartupTest
       test_trapusr1_is_chained
       test_prompt_renders_without_forks
       test_prompt_at_a_real_prompt
+      test_vi_replace_symbol
       test_defer_plugins
       test_lazy_compinit
       test_settings_are_known_keys
@@ -360,6 +361,19 @@ class StartupTest
       Process.wait(pid) rescue nil
     end
     out
+  end
+
+  # OKAMI-347: vi replace mode (`R`, and `r` while it waits for the
+  # character) shows vimcmd_replace_symbol, not the insert symbol.
+  def test_vi_replace_symbol
+    print "Test: vi replace mode (R / r) shows vimcmd_replace_symbol... "
+    toml = PROMPT_TOML + "vimcmd_replace_symbol = \"[RPL>](red)\"\n"
+    _, _, env = setup_home('vi_replace', prompt: toml, zshrc: "precmd() { print -r -- \"$SU_MARK\" }\n")
+    big_r = pty_session(env, ["\e", "R"])
+    small_r = pty_session(env, ["\e", "r"])
+    plain = pty_session(env, ["\e", "i"])
+    check('vi replace', big_r.include?('RPL>') && small_r.include?('RPL>') && !plain.include?('RPL>'),
+          "R=#{big_r.include?('RPL>')} r=#{small_r.include?('RPL>')} i=#{plain.include?('RPL>')}")
   end
 
   # `[settings] defer_plugins = true`: plugins load after the first prompt

@@ -501,7 +501,7 @@ variables. Config text is always literal: `$(...)` in it never runs.
 | `error_symbol` | string | `✗` | Symbol after a failed command. |
 | `vimcmd_symbol` | string | `❮` | vi normal mode. |
 | `vimcmd_visual_symbol` | string | `❮` | vi visual mode. |
-| `vimcmd_replace_symbol` | string | `❮` | vi replace mode. |
+| `vimcmd_replace_symbol` | string | `❮` | vi replace mode: `R`, and `r` while it waits for the character. |
 
 Only the text between `[` and `]` is used (`"[>](green)"` gives `>`); the
 style part is ignored. Colors are fixed: green on success, red on error;

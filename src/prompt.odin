@@ -911,12 +911,17 @@ generate_vi_mode_feature :: proc(b: ^strings.Builder, cfg: InteractiveConfig) {
 	fmt.sbprintln(b)
 }
 
+// Replace mode (OKAMI-347): `R` (vi-replace) switches to the insert keymap
+// in overwrite mode, so the keymap alone said INSERT; ZLE_STATE tells. `r`
+// (vi-replace-chars) reads one character without a keymap change: wrapped to
+// show REPLACE_ONE while it waits (zle -R draws it before the key read).
+// Both use vimcmd_replace_symbol.
 PROMPT_VI_INDICATOR_ZSH :: `_wayu_vi_mode_from_keymap() {
   local m
   case $KEYMAP in
     vicmd) m=NORMAL ;;
     visual|vivis) m=VISUAL ;;
-    *) m=INSERT ;;
+    *) [[ ${ZLE_STATE-} == *overwrite* ]] && m=REPLACE || m=INSERT ;;
   esac
   [[ $m == "$_WAYU_VI_MODE" ]] && return 0
   _WAYU_VI_MODE=$m
@@ -952,6 +957,13 @@ _wayu_visual_line_mode() {
   _WAYU_VI_MODE="VISUAL"
   _wayu_prompt_render; zle reset-prompt
 }
+_wayu_vi_replace_chars() {
+  _WAYU_VI_MODE="REPLACE_ONE"
+  _wayu_prompt_render; zle reset-prompt; zle -R
+  zle .vi-replace-chars -- "$@"
+  _wayu_vi_mode_from_keymap
+}
+zle -N vi-replace-chars _wayu_vi_replace_chars
 zle -N _wayu_visual_mode
 zle -N _wayu_visual_line_mode
 bindkey -M vicmd 'v' _wayu_visual_mode

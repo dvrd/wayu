@@ -62,6 +62,9 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   version or the shell name is shown as is (it was expanded as a prompt
   escape: a branch `feat%n` showed the user name), in the prompt and the
   async right prompt.
+- Native prompt (vi mode): `R` (replace) and `r` (replace one character,
+  while it waits for the key) show `vimcmd_replace_symbol` in the replace
+  color; they showed the insert / normal symbol.
 
 **One status icon per line**
 
