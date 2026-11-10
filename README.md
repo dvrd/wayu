@@ -568,7 +568,8 @@ Releases are **automatic**. Every push to `main` runs
 2. Derives the next version from [Conventional Commits](https://www.conventionalcommits.org/)
    since the last tag via [`git-cliff`](https://github.com/orhun/git-cliff)
    (`feat` → minor, `fix`/`refactor`/etc. → patch, `!`/`BREAKING CHANGE` → major).
-3. Bumps `VERSION` in `src/main.odin`, regenerates `CHANGELOG.md`, commits
+3. Bumps `VERSION` in `src/main.odin`, regenerates `CHANGELOG.md`, renames
+   the `## Unreleased` section of `docs/UPGRADING.md` to the version, commits
    `chore: release vX.Y.Z`, and tags it.
 4. Builds the release binaries (macOS arm64, Linux x86_64), publishes the
    GitHub release, and regenerates the Homebrew tap formula
@@ -581,7 +582,8 @@ CI uses the Odin release pinned in `.github/odin-release`.
 
 Behavior changes users must know about are marked breaking (`fix(scope)!:` or a
 `BREAKING CHANGE:` footer): they force a major bump and are listed under
-"⚠ Upgrade notes" in the changelog and release.
+"⚠ Upgrade notes" in the changelog. The release page's "⚠ Upgrade notes" are
+the version's section of `docs/UPGRADING.md`.
 
 So you do **not** bump the version by hand — land your Conventional Commits on
 `develop` and merge `develop` into `main` to ship. `./build_it release [vX.Y.Z]` exists as a manual override (it also

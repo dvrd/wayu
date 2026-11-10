@@ -188,6 +188,13 @@ jobs:
         VERSION: ${{ steps.version.outputs.VERSION }}
       run: git cliff --tag "$VERSION" -o CHANGELOG.md
 
+    # The release notes take their upgrade notes from this section.
+    - name: Name the UPGRADING.md section
+      if: steps.version.outputs.MODE == 'bump'
+      env:
+        VERSION: ${{ steps.version.outputs.VERSION }}
+      run: .github/scripts/upgrading-version.sh "$VERSION"
+
     - name: Commit and tag
       if: steps.version.outputs.SKIP == 'false'
       env:
@@ -209,7 +216,7 @@ jobs:
         else
           # bump: ship commit + tag atomically. If main moved meanwhile the push
           # is rejected and NEITHER ref updates; the run for the new tip retries.
-          git add src/main.odin CHANGELOG.md README.md docs/index.html
+          git add src/main.odin CHANGELOG.md README.md docs/index.html docs/UPGRADING.md
           git commit -m "chore: release $VERSION"
           git tag "$VERSION"
           git push --atomic origin main "refs/tags/$VERSION"
@@ -331,8 +338,16 @@ jobs:
     - name: Install git-cliff
       run: cargo install git-cliff --locked
 
+    # Upgrade notes from the tag's docs/UPGRADING.md "## X.Y.Z" section
+    # (curated, complete), the rest from git-cliff.
     - name: Generate release notes
-      run: git cliff --latest --strip header > release_notes.md
+      env:
+        VERSION: ${{ needs.bump.outputs.version }}
+      run: |
+        set -euo pipefail
+        git cliff --latest --strip header > cliff_notes.md
+        .github/scripts/release-notes.sh "$VERSION" cliff_notes.md > release_notes.md
+        cat release_notes.md
 
     - name: Create Release
       # Updates an existing release at the same tag, so re-runs are idempotent.

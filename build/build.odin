@@ -569,6 +569,15 @@ do_release :: proc() {
 		os.exit(1)
 	}
 
+	// 3a'. Name docs/UPGRADING.md's "## Unreleased" section after the version
+	//      (the release notes take their upgrade notes from it), like bump.yml.
+	upgrading_cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&upgrading_cmd, ".github/scripts/upgrading-version.sh", version)
+	if !bld.cmd_run(&upgrading_cmd) {
+		bld.log_error("upgrading-version.sh failed")
+		os.exit(1)
+	}
+
 	// 3b. Update VERSION in src/main.odin
 	bld.log_info("Updating VERSION in src/main.odin...")
 	main_odin_path := "src/main.odin"
@@ -612,7 +621,15 @@ do_release :: proc() {
 	sync_docs_version_str(version_bare)
 
 	// 3d. Commit CHANGELOG.md, src/main.odin, docs, and README together
-	git_must("git add", "add", "CHANGELOG.md", "src/main.odin", "docs/index.html", "README.md")
+	git_must(
+		"git add",
+		"add",
+		"CHANGELOG.md",
+		"src/main.odin",
+		"docs/index.html",
+		"docs/UPGRADING.md",
+		"README.md",
+	)
 	git_must("git commit", "commit", "-m", fmt.tprintf("chore: release %s", version))
 
 	// 4. Tag the release commit.

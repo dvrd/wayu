@@ -175,7 +175,10 @@ jobs:
 
     - name: Check required files exist
       run: |
-        for f in README.md docs/index.html .github/workflows/bump.yml .github/scripts/homebrew-formula.sh; do
+        for f in README.md docs/index.html docs/UPGRADING.md .github/workflows/bump.yml \
+          .github/scripts/homebrew-formula.sh .github/scripts/release-notes.sh \
+          .github/scripts/upgrading-version.sh .github/scripts/check-macos-minos.sh \
+          .github/macos-minimum-version; do
           [ -f "$f" ] || { echo "Missing: $f"; exit 1; }
         done
         echo "All required files present"

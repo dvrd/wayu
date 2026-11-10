@@ -1,7 +1,8 @@
 #!/usr/bin/env ruby
 # Release tooling (.github/scripts, cliff.toml): the Homebrew formula
-# (OKAMI-295: caveats name the data-dir init file; OKAMI-294: macOS floor)
-# and the macOS minimum version of bin/wayu (OKAMI-294).
+# (OKAMI-295: caveats name the data-dir init file; OKAMI-294: macOS floor),
+# the macOS minimum version of bin/wayu (OKAMI-294), and the release notes
+# (OKAMI-319: full BREAKING CHANGE footers; upgrade notes from UPGRADING.md).
 
 require 'fileutils'
 require 'open3'
@@ -27,6 +28,11 @@ class ReleaseIntegrationTest
       test_formula_caveats
       test_formula_macos_floor
       test_macos_minos
+      test_release_notes_use_upgrading_section
+      test_release_notes_without_section
+      test_release_notes_without_cliff_upgrade_notes
+      test_upgrading_version_rename
+      test_cliff_keeps_whole_breaking_footer
     ensure
       teardown_test_env
     end
@@ -94,6 +100,123 @@ class ReleaseIntegrationTest
     print "Test: bin/wayu runs on the macOS floor (otool minos)... "
     out, st = Open3.capture2e(File.join(SCRIPTS, 'check-macos-minos.sh'), @wayu_bin)
     check(st.success?, out)
+  end
+
+  CLIFF_NOTES = <<~MD
+    ## [9.0.0] - 2026-01-01
+
+    ### ⚠ Upgrade notes
+
+    - **shell**: Cut off footer from the
+    commit
+
+    ### Added
+
+    - **x**: A feature
+
+    ### Fixed
+
+    - **y**: A fix
+  MD
+
+  UPGRADING = <<~MD
+    # Upgrading wayu
+
+    ## Unreleased
+
+    - Next thing.
+
+    ## 9.0.0
+
+    **Data dir moves**
+
+    - The full, curated note.
+
+    ## 8.0.0
+
+    - Older note.
+  MD
+
+  def release_notes(version, cliff, upgrading)
+    Dir.mktmpdir('wayu_notes_') do |dir|
+      File.write(File.join(dir, 'cliff.md'), cliff)
+      File.write(File.join(dir, 'UPGRADING.md'), upgrading)
+      Open3.capture3(File.join(SCRIPTS, 'release-notes.sh'), version,
+                     File.join(dir, 'cliff.md'), File.join(dir, 'UPGRADING.md'))
+    end
+  end
+
+  def test_release_notes_use_upgrading_section
+    print "Test: release notes take the upgrade notes from UPGRADING.md... "
+    out, err, st = release_notes('v9.0.0', CLIFF_NOTES, UPGRADING)
+    ok = st.success? &&
+         out.include?("### ⚠ Upgrade notes\n\n**Data dir moves**\n\n- The full, curated note.") &&
+         out.include?('UPGRADING.md#900') &&
+         !out.include?('Cut off footer') && !out.include?('Older note') && !out.include?('Next thing') &&
+         out.include?("### Added\n\n- **x**: A feature") && out.include?("### Fixed\n\n- **y**: A fix") &&
+         out.index('### ⚠ Upgrade notes') < out.index('### Added')
+    check(ok, "#{err}\n#{out}")
+  end
+
+  def test_release_notes_without_section
+    print "Test: release notes keep git-cliff's notes without an UPGRADING section... "
+    out, err, st = release_notes('v9.1.0', CLIFF_NOTES, UPGRADING)
+    check(st.success? && out == CLIFF_NOTES, "#{err}\n#{out}")
+  end
+
+  def test_release_notes_without_cliff_upgrade_notes
+    print "Test: release notes add the UPGRADING section when no commit was breaking... "
+    cliff = CLIFF_NOTES.sub(/### ⚠ Upgrade notes.*?(?=### Added)/m, '')
+    out, err, st = release_notes('v9.0.0', cliff, UPGRADING)
+    ok = st.success? && out.include?('The full, curated note.') &&
+         out.index('### ⚠ Upgrade notes') < out.index('### Added')
+    check(ok, "#{err}\n#{out}")
+  end
+
+  def test_upgrading_version_rename
+    print "Test: upgrading-version.sh names the Unreleased section after the release... "
+    Dir.mktmpdir('wayu_upg_') do |dir|
+      path = File.join(dir, 'UPGRADING.md')
+      File.write(path, UPGRADING)
+      _, err, st = Open3.capture3(File.join(SCRIPTS, 'upgrading-version.sh'), 'v9.1.0', path)
+      text = File.read(path)
+      ok = st.success? && text.include?("## 9.1.0\n\n- Next thing.") && !text.include?('## Unreleased')
+      # A second run (re-run of the release) changes nothing.
+      _, _, st2 = Open3.capture3(File.join(SCRIPTS, 'upgrading-version.sh'), 'v9.1.0', path)
+      check(ok && st2.success? && File.read(path) == text, "#{err}\n#{text}")
+    end
+  end
+
+  # git-cliff's parsed breaking_description stops at a wrapped line that
+  # looks like a footer token ("`$NAME:x` ..."); the template must keep the
+  # whole footer.
+  def test_cliff_keeps_whole_breaking_footer
+    _, st = Open3.capture2e('git', 'cliff', '--version')
+    unless st.success?
+      puts "Test: cliff.toml keeps whole BREAKING CHANGE footers... skipped (git-cliff not installed)"
+      return
+    end
+    print "Test: cliff.toml keeps whole BREAKING CHANGE footers... "
+    Dir.mktmpdir('wayu_cliff_') do |dir|
+      git = ->(*args) { Open3.capture2e('git', '-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t',
+                                        '-c', 'commit.gpgsign=false', '-c', 'tag.gpgsign=false', *args) }
+      git.call('init', '-q')
+      File.write(File.join(dir, 'a'), '1')
+      git.call('add', 'a')
+      git.call('commit', '-q', '-m', 'feat: first')
+      git.call('tag', 'v1.0.0')
+      File.write(File.join(dir, 'a'), '2')
+      git.call('add', 'a')
+      msg = "fix(shell)!: literal dollars\n\nBody text.\n\n" \
+            "BREAKING CHANGE: values are literal; in zsh\n`$NAME:x` no longer applies modifiers;\n" \
+            "fish keeps `${NAME:-x}` literal. END-OF-FOOTER."
+      git.call('commit', '-q', '-m', msg)
+      out, st2 = Open3.capture2e('git', 'cliff', '--config', File.join(ROOT, 'cliff.toml'),
+                                 '--unreleased', '--strip', 'all', chdir: dir)
+      ok = st2.success? && out.include?("- **shell**: Values are literal; in zsh\n`$NAME:x` no longer applies modifiers;") &&
+           out.include?('END-OF-FOOTER.')
+      check(ok, out)
+    end
   end
 end
 

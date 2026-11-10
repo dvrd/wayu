@@ -18,8 +18,19 @@ body = """
 {% set breaking = commits | filter(attribute="breaking", value=true) %}\
 {% if breaking %}
 ### ⚠ Upgrade notes
-{% for commit in breaking %}
-- {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ commit.breaking_description | default(value=commit.message) | upper_first }}\
+{% for commit in breaking %}\
+{#- The whole BREAKING CHANGE footer, to the end of the message. The parsed
+    commit.breaking_description stops at the first wrapped line that looks
+    like a footer token ("`$NAME:x`", "functions/:"), cutting notes
+    mid-sentence. Wrapped lines stay in the bullet (Markdown lazy
+    continuation; `trim` strips any indentation). #}\
+{% set raw = commit.raw_message | replace(from="BREAKING-CHANGE: ", to="BREAKING CHANGE: ") %}\
+{% if raw is containing("BREAKING CHANGE: ") %}\
+{% set note = raw | split(pat="BREAKING CHANGE: ") | last | trim %}\
+{% else %}\
+{% set note = commit.message %}\
+{% endif %}
+- {% if commit.scope %}**{{ commit.scope }}**: {% endif %}{{ note | upper_first }}\
 {% endfor %}
 {% endif %}\
 {% for group, commits in commits | group_by(attribute="group") %}
