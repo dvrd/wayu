@@ -83,6 +83,11 @@ releases, so they are listed here too.
   now reports stale after a change to `config.<ext>`, a hand edit of the
   turbo file or a wayu upgrade that changes the generated code, and no
   longer after a save of wayu.toml that changed nothing.
+- `wayu build profile` times core and its phase breakdown in an
+  interactive shell that reads only core (zsh: `ZDOTDIR` = a private temp
+  dir; bash: `--rcfile`), not `-c`: compinit, the native prompt and the
+  plugins are now included, so the numbers are higher (and real). The first
+  scenario is labeled `core.<ext> (interactive, no user rc)`.
 
 **Encrypted secrets hardening**
 

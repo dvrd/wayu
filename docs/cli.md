@@ -265,7 +265,7 @@ Without an action it prints its help.
 |---|---|
 | *(none)* | Regenerate the init files from wayu.toml and entries.json (after a hand edit), and `plugins.<ext>` from plugins.json, for every set-up shell. Exit `78` when plugins.json is invalid (the plugin loaders are left as they were; everything else is regenerated) or a `[tools]` entry's `args` is unusable |
 | `turbo` | Same as `wayu export --turbo` |
-| `profile` | Time shell startup and each section, tool and plugin of `core.<ext>` |
+| `profile` | Time shell startup and each section, tool and plugin of `core.<ext>`. core is timed in an interactive shell whose only rc file sources it (zsh: `ZDOTDIR` set to a private temp dir; bash: `--rcfile`; fish: `-i --no-config`), so compinit, the prompt and plugins count; the per-unit breakdown needs zsh or bash 5+ |
 | `clean` | Delete the `[tools]` evalcache (`${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`) |
 | `help` | |
 

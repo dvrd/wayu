@@ -23,6 +23,7 @@ class BuildProfileTest
       test_profile_missing_init_core_warns
       test_profile_zsh_phase_breakdown
       test_profile_breakdown_names_tools
+      test_profile_breakdown_is_interactive
       test_export_flag_modes
       test_export_refuses_fish_and_build_rejects_unknown
     ensure
@@ -151,6 +152,33 @@ class BuildProfileTest
     else
       puts "✗"
       puts "  heading=#{has_heading} sum=#{has_sum} path=#{has_path} aliases=#{has_aliases}"
+      @failed += 1
+    end
+  end
+
+  # OKAMI-348: the breakdown runs in an interactive shell (it used `-c`,
+  # which skipped compinit, the prompt and the plugins): a config.zsh that
+  # only sleeps in interactive shells shows up with its time,. The
+  # profiled shell reads no user rc (ZDOTDIR is redirected).
+  def test_profile_breakdown_is_interactive
+    unless system('command -v zsh >/dev/null 2>&1')
+      puts "skipped (no zsh)"; return
+    end
+    print "Test 4c: phase breakdown runs interactively... "
+    File.write("#{@config_dir}/config.zsh", "[[ -o interactive ]] && sleep 0.3\n")
+    run_wayu('build')
+    out, status = run_wayu('build profile')
+    row = out.lines.find { |l| l.include?('User configuration (from config.zsh)') }.to_s
+    ms = row[/([\d.]+) ms/, 1].to_f
+    ok = status.success? && ms >= 250 && out.include?('(interactive, no user rc)')
+    File.delete("#{@config_dir}/config.zsh")
+    run_wayu('build')
+    report_ok = ok
+    if report_ok
+      puts "✓"; @passed += 1
+    else
+      puts "✗"
+      puts "  row=#{row.strip.inspect} status=#{status.exitstatus} out=#{out[0, 600]}"
       @failed += 1
     end
   end
