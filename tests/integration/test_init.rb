@@ -268,11 +268,12 @@ class InitIntegrationTest
     dry_ok = status.success? && output.include?('DRY RUN') &&
              !Dir.exist?(@config_dir) && !File.exist?("#{@data_dir}/init.zsh")
     real, = run_wayu('init --no-color')
-    created = real.scan('Created config file:').size
+    # '✓ ' prefix: a -debug build (CI ASan) also logs "Created config file:".
+    created = real.scan('✓ Created config file:').size
     summary = real[/Created (\d+) config file\(s\)/, 1].to_i
     # OKAMI-357: the summary came before the last two files and said 3.
     count_ok = created >= 5 && summary == created &&
-               real.rindex('Created config file:') < real.index(/Created \d+ config file/)
+               real.rindex('✓ Created config file:') < real.index(/✓ Created \d+ config file/)
     check_result(dry_ok && count_ok, "dry_ok=#{dry_ok} created=#{created} summary=#{summary}\n#{output}")
   end
 

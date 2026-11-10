@@ -425,7 +425,9 @@ class FishIntegrationTest
         emit fish_prompt
         echo "[3]ctx=$_wayu_context data=[$_wayu_async_data]"
       FISH
-      out, err, st = Open3.capture3(env.merge('PATH' => "#{File.dirname(fish)}:/usr/bin:/bin"), fish, '-i', '--no-config', '-c', script)
+      # fish -i warns on stderr without TERM (CI has none).
+      out, err, st = Open3.capture3(env.merge('PATH' => "#{File.dirname(fish)}:/usr/bin:/bin", 'TERM' => 'dumb'), fish, '-i', '--no-config', '-c', script)
+      err = err.lines.reject { |l| l.match?(/\Awarning: (TERM|Using fallback|Could not set up terminal)/) }.join
       plain = out.gsub(/\e\[[0-9;]*m/, '')
       ok = berr.empty? && st.success? && err.strip.empty? &&
            plain.include?("[1]\n~/repo/sub on fbr%n kt  $(id) 100%\n➜ ") &&
