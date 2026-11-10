@@ -2157,23 +2157,58 @@ read_wayu_toml_tools :: proc() -> [dynamic]ToolEntry {
 		return make([dynamic]ToolEntry)
 	}
 
-	// Sort by tool name so the generated init files are deterministic
-	// run-to-run (Odin map iteration order is undefined).
-	names := make([dynamic]string, 0, len(tools_val.table_val))
+	// wayu.toml file order (OKAMI-365): a tool's init may depend on an
+	// earlier one (they were sorted by name).
+	names := toml_tools_file_order(&doc)
 	defer delete(names)
-	for name, val in tools_val.table_val {
-		if val == nil || val.type != .TABLE {
-			continue
-		}
-		append(&names, name)
-	}
-	slice.sort(names[:])
 
 	entries := make([dynamic]ToolEntry)
 	for name in names {
-		append(&entries, tool_entry_from_inline_table(name, tools_val.table_val[name]))
+		val := tools_val.table_val[name]
+		if val == nil || val.type != .TABLE {
+			continue
+		}
+		append(&entries, tool_entry_from_inline_table(name, val))
 	}
 	return entries
+}
+
+// [tools] entry names in the order they first appear in wayu.toml: an
+// entry under [tools], a [tools.<name>] header, or a dotted
+// `tools.<name>...` key. The names slice the doc (caller deletes the array).
+@(private = "file")
+toml_tools_file_order :: proc(doc: ^TomlDoc) -> [dynamic]string {
+	Seen :: struct {
+		line: int,
+		name: string,
+	}
+	found := make([dynamic]Seen, context.temp_allocator)
+	for h in doc.headers {
+		if !h.array && len(h.path) >= 2 && h.path[0] == "tools" {
+			append(&found, Seen{h.line, h.path[1]})
+		}
+	}
+	for e in doc.entries {
+		full := e.key
+		if e.header >= 0 {
+			hp := doc.headers[e.header].path
+			if doc.headers[e.header].array {
+				continue
+			}
+			full = slice.concatenate([][]string{hp, e.key}, context.temp_allocator)
+		}
+		if len(full) >= 2 && full[0] == "tools" {
+			append(&found, Seen{e.first, full[1]})
+		}
+	}
+	slice.stable_sort_by(found[:], proc(a, b: Seen) -> bool {return a.line < b.line})
+	names := make([dynamic]string)
+	for f in found {
+		if !slice.contains(names[:], f.name) {
+			append(&names, f.name)
+		}
+	}
+	return names
 }
 
 // `kind` defaults to "evalcache" so terse entries like `zoxide = { args = "init zsh" }` work.

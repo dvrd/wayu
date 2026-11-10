@@ -31,6 +31,8 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `--bash` in core.bash, as fish already did (`args = "init zsh"` put
   `zoxide init zsh` into core.bash; bash 3.2 failed on its output). In
   core.zsh, `bash` / `--bash` likewise become `zsh` / `--zsh`.
+- `[tools]` entries are emitted in `wayu.toml` file order (were sorted by
+  name), so a tool can rely on one listed above it.
 
 **One status icon per line**
 

@@ -364,7 +364,8 @@ args = "hook zsh"
 ```
 
 Each entry is an inline table or a `[tools.<name>]` sub-table; other values
-are ignored. Entries are emitted sorted by name (not file order).
+are ignored. Entries are emitted in file order (an entry may rely on one
+above it).
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
