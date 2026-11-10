@@ -338,6 +338,46 @@ releases, so they are listed here too.
   word: `wayu plugin search -c=dev` no longer runs the component tester
   (it exits 64 as an unknown option; use `--category dev` / `-c dev`).
 
+**Backups, plugins, scripts and functions**
+
+- Backups of files in a subdirectory of the config/data dir (functions,
+  scripts) are named after their path relative to that dir:
+  `@functions%init.zsh.backup.<stamp>`, shown as `functions/init.zsh` by
+  `backup list` (was the bare file name, so `functions/init.zsh` shared — and
+  pruned — the history of `init.zsh`, and `functions/extra.zsh` that of
+  `extra.zsh`). Existing backups of such files keep their old name and group.
+- `plugins.json` backups are pruned to the newest 5 like every other file's
+  (every `plugin` command added one, never removed). A `plugin` command whose
+  backup fails now writes nothing and exits with an error (was a warning).
+- `plugins.json` with an entry without a name, two entries with the same
+  name, or a `use` glob containing `/` (`"../../etc/*"`) is invalid: every
+  command that reads it exits 78 naming the entry. Fix the entry by hand.
+- `plugin update --all` counts only plugins whose checkout moved as
+  "updated" and reports the rest as "N already up to date" (all fetched
+  plugins were counted as updated).
+- TUI plugins view (Installed tab): `u` updates the selected plugin (Esc
+  cancels), `d` removes it after a confirmation (was a hint to use the CLI).
+- `wayu script`: a source in any language can declare its build command in
+  a header comment (`// wayu: build = cc -O2 -o {out} {src}`); swift's
+  `swiftc -O` is now a preset of the same mechanism. The build hash covers
+  the build command too, so every swift script is rebuilt once.
+- Two script sources with the same name (`foo.sh`, `foo.rb`) are an error:
+  neither is built (`script build` exits 1, they used to replace each
+  other's `bin/foo` on every build), `script edit|build|rm foo` exit 65 and
+  doctor reports an error. Delete or rename one.
+- A script whose shebang line ends in CR (CRLF line endings) is not linked
+  (`script build` exits 1 explaining it) and doctor reports an error;
+  `script import` converts such a file to LF (it was imported and failed
+  with `bad interpreter`).
+- `script rm NAME --yes` removes a `bin/NAME` entry that has no script (was
+  exit 65); doctor reports those entries as a separate, fixable check
+  ("script bin entries", was part of "scripts") and `doctor --fix --yes`
+  removes them.
+- Shebangs `#!/usr/bin/env -u VAR python` / `-P dir` / `-C dir` /
+  `--unset=VAR` are read correctly (the option's argument was taken as the
+  interpreter); `#!/usr/bin/env -S uv run --script` (PEP 723) is a python
+  script.
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is

@@ -418,6 +418,23 @@ attempt_auto_fixes :: proc(results: []CheckResult, arena_alloc: mem.Allocator) -
 			}
 			append(&attempts, FixAttempt{name = result.name, success = fix_ok, message = fix_msg})
 
+		case "script bin entries":
+			fmt.printfln(
+				"  %s• Removing bin/ entries without a script...%s",
+				get_primary(),
+				RESET,
+			)
+			fix_ok, fix_msg := doctor_fix_script_bins()
+			fix_msg = strings.clone(fix_msg, arena_alloc)
+			fmt.printfln(
+				"    %s%s %s%s",
+				get_success() if fix_ok else get_error(),
+				"✓" if fix_ok else "✗",
+				fix_msg,
+				RESET,
+			)
+			append(&attempts, FixAttempt{name = result.name, success = fix_ok, message = fix_msg})
+
 		case:
 			fmt.printfln("  %s• Cannot auto-fix: %s%s", get_muted(), result.name, RESET)
 		}

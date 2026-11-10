@@ -681,3 +681,53 @@ test_backup_key_and_backup_dir_names :: proc(t: ^testing.T) {
 	testing.expect_value(t, abs, "%etc%zshrc")
 	testing.expect_value(t, wayu.backup_key_display(abs, context.temp_allocator), "/etc/zshrc")
 }
+
+// OKAMI-305: wayu files are keyed by their path relative to the config/data
+// dir, so <data>/functions/init.zsh and <data>/init.zsh, or
+// <data>/functions/extra.zsh and <config>/extra.zsh, keep separate histories.
+@(test)
+test_backup_key_relative_to_wayu_dirs :: proc(t: ^testing.T) {
+	data := test_tmp("wayu-test-backup-relkey-data")
+	config := test_tmp("wayu-test-backup-relkey-config")
+	orig_data, orig_config := wayu.wayu.data, wayu.wayu.config
+	wayu.wayu.data, wayu.wayu.config = data, config
+	for d in ([]string{data, config}) {
+		os.remove_all(d)
+		os.make_directory(d)
+	}
+	os.make_directory(fmt.tprintf("%s/functions", data))
+	defer {
+		wayu.wayu.data, wayu.wayu.config = orig_data, orig_config
+		os.remove_all(data)
+		os.remove_all(config)
+	}
+
+	fn_init := fmt.tprintf("%s/functions/init.zsh", data)
+	fn_extra := fmt.tprintf("%s/functions/extra.zsh", data)
+	top_init := fmt.tprintf("%s/init.zsh", data)
+	cfg_extra := fmt.tprintf("%s/extra.zsh", config)
+
+	k := wayu.backup_key(fn_init, context.temp_allocator)
+	testing.expect_value(t, k, "@functions%init.zsh")
+	testing.expect_value(
+		t,
+		wayu.backup_key_display(k, context.temp_allocator),
+		"functions/init.zsh",
+	)
+	testing.expect_value(t, wayu.backup_key(top_init, context.temp_allocator), "init.zsh")
+	testing.expect_value(t, wayu.backup_key(cfg_extra, context.temp_allocator), "extra.zsh")
+
+	for f in ([]string{fn_init, fn_extra, top_init, cfg_extra}) {
+		_ = os.write_entire_file(f, transmute([]byte)string("x\n"))
+		p, ok := wayu.create_backup(f)
+		testing.expect(t, ok, f)
+		if ok {
+			delete(p)
+		}
+	}
+	for f in ([]string{fn_init, fn_extra, top_init, cfg_extra}) {
+		b := wayu.list_backups_for_file(f)
+		testing.expectf(t, len(b) == 1, "%s: %d backups, want 1", f, len(b))
+		wayu.free_backup_infos(b)
+	}
+}

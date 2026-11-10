@@ -106,6 +106,9 @@ class PluginIntegrationTest
       test_offline_add_fish_url_records_fish
       test_offline_concurrent_adds
       test_offline_registry_pure_fish_name
+      test_offline_update_all_counts_real_updates
+      test_plugins_json_backups_pruned
+      test_plugins_json_rejects_bad_entries
       test_offline_conflicts_reported
       test_ssh_batch_mode_and_timeout
       test_build_regenerates_plugin_loaders
@@ -1456,13 +1459,16 @@ class PluginIntegrationTest
   end
 
   def test_rm_empty_name_never_wipes_root
-    print "Test 34: rm of legacy empty-name entry never deletes plugins root... "
+    print "Test 34: rm with an empty-name entry never deletes plugins root... "
     keep = "#{@plugins_dir}/keep-me"
     FileUtils.mkdir_p(keep)
     seed_plugins([plugin_entry("", @plugins_dir), plugin_entry("keep-me", keep)])
 
+    # A nameless entry makes plugins.json invalid (OKAMI-342): exit 78,
+    # nothing touched.
     output, status = run_wayu("plugin rm '' --yes")
-    ok = status.exitstatus == 0 && Dir.exist?(keep) && plugin_names_in_config == ["keep-me"]
+    ok = status.exitstatus == 78 && Dir.exist?(keep) && plugin_names_in_config == ["", "keep-me"]
+    seed_plugins([])
     check("plugins root wiped", ok, output, status)
   end
 
@@ -1921,6 +1927,60 @@ class PluginIntegrationTest
          output.include?("timed out") && ssh_args.include?("BatchMode=yes") &&
          ssh_args.include?("ConnectTimeout=") && !Dir.exist?("#{@plugins_dir}/hung")
     check("ssh batch/timeout", ok, "#{output}\nssh args: #{ssh_args.inspect}\nelapsed=#{elapsed.round(1)}s", status)
+  end
+
+  # OKAMI-342: `update --all` counts only checkouts that moved; the rest are
+  # reported as already up to date.
+  def test_offline_update_all_counts_real_updates
+    print "Test 60: update --all counts only real updates... "
+    reset_plugins
+    repo = fixture_repo("upa")
+    fixture_repo("upb")
+    run_wayu("plugin add #{fixture_url('upa')}")
+    run_wayu("plugin add #{fixture_url('upb')}")
+    fixture_commit(repo, "upa.plugin.zsh", "# upa v2\n")
+    out, st = run_wayu("plugin update --all")
+    ok = st.exitstatus == 0 && out.include?("1 plugin updated") && out.include?("1 already up to date")
+    check("update --all count", ok, out, st)
+  end
+
+  # OKAMI-330: plugins.json backups are pruned like every other file's.
+  def test_plugins_json_backups_pruned
+    print "Test 61: plugins.json backups pruned to 5... "
+    dir = "#{@plugins_dir}/prune-me"
+    FileUtils.mkdir_p(dir)
+    seed_plugins([plugin_entry("prune-me", dir)])
+    FileUtils.rm_f(backup_files)
+    out = +""
+    4.times do
+      o1, = run_wayu("plugin disable prune-me")
+      o2, = run_wayu("plugin enable prune-me")
+      out << o1 << o2
+    end
+    run_wayu("plugin priority prune-me 50")
+    n = backup_files.size
+    check("backups: #{n}", n == 5, out, nil)
+  end
+
+  # OKAMI-342: a nameless entry, a duplicate name and a `use` glob that
+  # leaves the checkout are refused (exit 78), not loaded.
+  def test_plugins_json_rejects_bad_entries
+    print "Test 62: plugins.json with missing/duplicate name or ../ use glob exits 78... "
+    dir = "#{@plugins_dir}/v1"
+    FileUtils.mkdir_p(dir)
+    bad = {
+      "missing name" => [plugin_entry("", dir)],
+      "duplicate name" => [plugin_entry("v1", dir), plugin_entry("v1", dir)],
+      "use escape" => [plugin_entry("v1", dir).merge("use" => ["../../../etc/*"])],
+    }
+    failures = []
+    bad.each do |label, entries|
+      seed_plugins(entries)
+      out, st = run_wayu("plugin list")
+      failures << "#{label}: exit #{st.exitstatus} #{out}" unless st.exitstatus == 78 && out.include?("Invalid plugins.json")
+    end
+    seed_plugins([])
+    check("validation", failures.empty?, failures.join("\n  "), nil)
   end
 
 end

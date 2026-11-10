@@ -41,6 +41,9 @@ class ScriptIntegrationTest
       test_import_copy_and_duplicate
       test_remove
       test_doctor_dangling_bin
+      test_duplicate_names
+      test_crlf_scripts
+      test_build_header
       test_path_in_shells
       test_live_path_sync
       test_functions_in_data_dir
@@ -364,14 +367,89 @@ class ScriptIntegrationTest
           "noyes=#{noyes.exitstatus} dry=#{dry.exitstatus} kept=#{kept} rm=#{st.exitstatus} sw=#{sw.exitstatus} missing=#{missing.exitstatus}")
   end
 
+  # OKAMI-339: a bin/ entry without a script is a fixable warning; `script
+  # rm NAME --yes` and `doctor --fix --yes` remove it.
   def test_doctor_dangling_bin
     File.write("#{bin_dir}/orphan", "#!/bin/sh\n")
     out, = run_s('doctor --json')
-    File.delete("#{bin_dir}/orphan")
-    found = JSON.parse(out)['checks'].find { |c| c['name'] == 'scripts' } rescue nil
-    check('doctor warns about a bin entry without a script',
-          found && found['status'] == 'warning' && found['message'].include?('orphan'),
-          "check=#{found.inspect}")
+    found = JSON.parse(out)['checks'].find { |c| c['name'] == 'script bin entries' } rescue nil
+    _, noyes = run_s('script rm orphan')
+    _, rm = run_s('script rm orphan --yes')
+    rm_gone = !File.exist?("#{bin_dir}/orphan")
+    File.symlink('../scripts/gone.sh', "#{bin_dir}/orphan2")
+    fix_out, = run_s('doctor --fix --yes')
+    fix_gone = !File.symlink?("#{bin_dir}/orphan2")
+    check('doctor warns about a bin entry without a script; script rm / doctor --fix remove it',
+          found && found['status'] == 'warning' && found['message'].include?('orphan') &&
+          noyes.exitstatus == 64 && rm.success? && rm_gone && fix_gone,
+          "check=#{found.inspect} noyes=#{noyes.exitstatus} rm=#{rm.exitstatus} rm_gone=#{rm_gone} fix_gone=#{fix_gone} fix=#{fix_out}")
+  end
+
+  # OKAMI-339: two sources for one name: building refuses (no flapping link),
+  # edit/build by name exit 65, doctor reports an error; new/import refuse
+  # the name.
+  def test_duplicate_names
+    File.write("#{scripts_dir}/dup.sh", "#!/bin/sh\necho sh\n")
+    File.write("#{scripts_dir}/dup.rb", "#!/usr/bin/ruby\nputs 1\n")
+    _, build = run_s('script build')
+    link = File.symlink?("#{bin_dir}/dup")
+    _, named = run_s('script build dup')
+    doc, = run_s('doctor --json')
+    found = JSON.parse(doc)['checks'].find { |c| c['name'] == 'scripts' } rescue nil
+    _, new_st = run_s('script new dup --lang sh')
+    imp = "#{@scratch}/dupimp"
+    FileUtils.mkdir_p(imp)
+    File.write("#{imp}/dup.py", "#!/usr/bin/env python3\nprint(1)\n")
+    imp_out, imp_st = run_s("script import #{imp}/dup.py")
+    FileUtils.rm_f(["#{scripts_dir}/dup.sh", "#{scripts_dir}/dup.rb", "#{bin_dir}/dup"])
+    check('duplicate script names: no build, 65 by name, doctor error, new/import refused',
+          build.exitstatus == 1 && !link && named.exitstatus == 65 &&
+          found && found['status'] == 'error' && found['message'].include?("claim 'dup'") &&
+          new_st.exitstatus == 65 && imp_st.exitstatus == 65 && imp_out.include?('already exists'),
+          "build=#{build.exitstatus} link=#{link} named=#{named.exitstatus} doctor=#{found.inspect} new=#{new_st.exitstatus} imp=#{imp_st.exitstatus} #{imp_out}")
+  end
+
+  # OKAMI-338: import converts a CRLF script to LF (it runs); a CRLF source
+  # placed by hand is not linked and doctor reports it.
+  def test_crlf_scripts
+    dir = "#{@scratch}/crlf"
+    FileUtils.mkdir_p(dir)
+    File.binwrite("#{dir}/crl.sh", "#!/bin/sh\r\necho crlf-ok\r\n")
+    out, st = run_s("script import #{dir}/crl.sh")
+    content = File.binread("#{scripts_dir}/crl.sh") rescue ''
+    run_out, = Open3.capture2e("#{bin_dir}/crl")
+    File.binwrite("#{scripts_dir}/hand.sh", "#!/bin/sh\r\necho hand\r\n")
+    bout, bst = run_s('script build hand')
+    doc, = run_s('doctor --json')
+    found = JSON.parse(doc)['checks'].find { |c| c['name'] == 'scripts' } rescue nil
+    FileUtils.rm_f(["#{scripts_dir}/hand.sh", "#{scripts_dir}/crl.sh", "#{bin_dir}/crl"])
+    check('CRLF: import converts to LF and runs; hand-placed CRLF refused by build + doctor error',
+          st.success? && out.include?('CRLF') && !content.include?("\r") && run_out.strip == 'crlf-ok' &&
+          bst.exitstatus == 1 && bout.include?('CRLF') && !File.symlink?("#{bin_dir}/hand") &&
+          found && found['status'] == 'error' && found['message'].include?('hand: CRLF'),
+          "import=#{st.exitstatus} #{out} run=#{run_out} build=#{bst.exitstatus} #{bout} doctor=#{found.inspect}")
+  end
+
+  # OKAMI-369: a `wayu: build =` header builds any language; the output
+  # becomes bin/NAME and edits rebuild it.
+  def test_build_header
+    File.write("#{@fakebin}/fakecc", <<~SH)
+      #!/bin/sh
+      # fakecc -o OUT SRC
+      printf '#!/bin/sh\\necho "cc %s"\\n' "$(basename "$3")" > "$2"; chmod +x "$2"
+    SH
+    FileUtils.chmod(0o755, "#{@fakebin}/fakecc")
+    File.write("#{scripts_dir}/hdr.c", "// wayu: build = fakecc -o {out} {src}\nint main(void) { return 0; }\n")
+    _, st = run_s('script build')
+    run_out, = Open3.capture2e("#{bin_dir}/hdr")
+    info = list_json['hdr']
+    File.write("#{scripts_dir}/hdr.c", "// wayu: build = fakecc -o {out} {src}\nint main(void) { return 1; }\n")
+    stale = list_json.dig('hdr', 'stale')
+    _, rm = run_s('script rm hdr --yes')
+    check('build header: any language compiles with its own command, staleness tracked',
+          st.success? && run_out.strip == 'cc hdr.c' && info && info['compiled'] == true &&
+          info['stale'] == false && stale == true && rm.success?,
+          "build=#{st.exitstatus} run=#{run_out} info=#{info.inspect} stale=#{stale}")
   end
 
   def test_path_in_shells

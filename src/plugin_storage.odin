@@ -159,33 +159,78 @@ plugin_pinned_commit_problem :: proc(plugin: ^PluginMetadata) -> string {
 	return ""
 }
 
-// Update one plugin checkout and refresh its metadata. Prints progress with
-// `indent`; returns false on failure (git's stderr is shown). In dry-run
-// nothing is executed and the caller must not count it as updated.
-plugin_update_one :: proc(plugin: ^PluginMetadata, indent: string) -> bool {
-	old_commit := strings.clone(plugin.git.commit)
-	defer delete(old_commit)
+// What updating one plugin checkout did.
+PluginUpdateStatus :: enum {
+	Failed,
+	Up_To_Date, // fetched; the checkout was already at the remote's commit
+	Updated, // the checkout moved to a new commit
+}
 
+// Update one plugin checkout and refresh its metadata, without printing or
+// exiting (shared by `plugin update` and the TUI). old_commit (the commit
+// before) and err (git's stderr on failure) are owned by the caller.
+// reset: upstream rewrote history and the checkout was reset to the remote.
+// Not called in dry-run.
+plugin_update_core :: proc(
+	plugin: ^PluginMetadata,
+) -> (
+	status: PluginUpdateStatus,
+	reset: bool,
+	old_commit: string,
+	err: string,
+) {
+	old_commit = strings.clone(plugin.git.commit)
 	result, err_text := git_update(plugin.installed_path, plugin.git.branch)
+	if result == .Failed {
+		return .Failed, false, old_commit, err_text
+	}
+	delete(err_text)
+	plugin_refresh_git_metadata(plugin)
+	if git_commits_match(old_commit, plugin.git.commit) {
+		return .Up_To_Date, false, old_commit, ""
+	}
+	return .Updated, result == .Reset, old_commit, ""
+}
+
+// Back up plugins.json (pruned to BACKUP_KEEP_COUNT like every other
+// file, OKAMI-330), then write `config`. No backup, no write. Never prints
+// its own error or exits: returns "" on success, else the reason (static).
+// Shared by the CLI handlers and the TUI.
+plugin_config_save :: proc(config: ^PluginConfigJSON) -> string {
+	config_file := get_plugins_json_config_file()
+	defer delete(config_file)
+	if !create_backup_cli(config_file) {
+		return "Could not back up plugins.json; nothing was written"
+	}
+	if !write_plugin_config_json(config) {
+		return "Failed to write plugins.json"
+	}
+	return ""
+}
+
+// Update one plugin checkout and refresh its metadata. Prints progress with
+// `indent` (git's stderr on failure). In dry-run nothing is executed and the
+// caller must not count it as updated.
+plugin_update_one :: proc(plugin: ^PluginMetadata, indent: string) -> PluginUpdateStatus {
+	status, reset, old_commit, err_text := plugin_update_core(plugin)
+	defer delete(old_commit)
 	defer delete(err_text)
 
-	if result == .Failed {
+	if status == .Failed {
 		print_warning_at(indent, "Failed to update %s", plugin.name)
 		for line in strings.split_lines(err_text, context.temp_allocator) {
 			if len(strings.trim_space(line)) > 0 {
 				fmt.eprintfln("%s  %s", indent, line)
 			}
 		}
-		return false
+		return .Failed
 	}
-
-	plugin_refresh_git_metadata(plugin)
 
 	old_short := old_commit[:min(7, len(old_commit))]
 	new_short := plugin.git.commit[:min(7, len(plugin.git.commit))]
-	if git_commits_match(old_commit, plugin.git.commit) {
+	if status == .Up_To_Date {
 		print_success_at(indent, "Already up to date (%s)", new_short)
-	} else if result == .Reset {
+	} else if reset {
 		print_success_at(
 			indent,
 			"Updated %s → %s (upstream history was rewritten; reset to remote)",
@@ -195,7 +240,7 @@ plugin_update_one :: proc(plugin: ^PluginMetadata, indent: string) -> bool {
 	} else {
 		print_success_at(indent, "Updated %s → %s", old_short, new_short)
 	}
-	return true
+	return status
 }
 
 // Handle plugin update command - update plugins
@@ -251,7 +296,9 @@ handle_plugin_update :: proc(args: []string) {
 	}
 	fmt.println()
 
+	// Only checkouts that moved count as updated (OKAMI-342).
 	updated_count := 0
+	current_count := 0
 	failed_count := 0
 
 	// Update specific plugin
@@ -272,11 +319,15 @@ handle_plugin_update :: proc(args: []string) {
 		}
 
 		print_info("Updating %s...", plugin_ptr.name)
-		if !plugin_update_one(plugin_ptr, "  ") {
+		switch plugin_update_one(plugin_ptr, "  ") {
+		case .Failed:
 			print_error_simple("Failed to update plugin '%s'", plugin_ptr.name)
 			os.exit(EXIT_IOERR)
+		case .Up_To_Date:
+			current_count = 1
+		case .Updated:
+			updated_count = 1
 		}
-		updated_count = 1
 	} else {
 		would_update := 0
 
@@ -299,11 +350,14 @@ handle_plugin_update :: proc(args: []string) {
 			}
 
 			print_info("Updating %s...", plugin.name)
-			if !plugin_update_one(&plugin, "  ") {
+			switch plugin_update_one(&plugin, "  ") {
+			case .Failed:
 				failed_count += 1
-				continue
+			case .Up_To_Date:
+				current_count += 1
+			case .Updated:
+				updated_count += 1
 			}
-			updated_count += 1
 		}
 
 		if wayu.dry_run {
@@ -317,22 +371,9 @@ handle_plugin_update :: proc(args: []string) {
 
 	// Save updated metadata
 	if !wayu.dry_run {
-		// Create backup before writing
-		config_file := get_plugins_json_config_file()
-		defer delete(config_file)
-
-		if os.exists(config_file) {
-			backup_path, backup_ok := create_backup(config_file)
-			if backup_ok {
-				defer delete(backup_path)
-			} else {
-				print_warning("Warning: Failed to create backup")
-			}
-		}
-
-		// Write updated config
-		if !write_plugin_config_json(&config) {
-			print_error_simple("Failed to save plugin metadata")
+		// Back up (pruned), then write updated config
+		if err := plugin_config_save(&config); err != "" {
+			print_error_simple("%s", err)
 			os.exit(EXIT_CONFIG)
 		}
 	} else {
@@ -346,6 +387,9 @@ handle_plugin_update :: proc(args: []string) {
 		print_success("1 plugin updated")
 	} else {
 		print_success("%d plugins updated", updated_count)
+	}
+	if current_count > 0 {
+		print_info("%d already up to date", current_count)
 	}
 
 	// Regenerate plugins loader file for current shell
@@ -476,37 +520,23 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	print_header(header_text, EMOJI_COMMAND)
 	fmt.println()
 
-	// 5. Create backup before modifying (never in dry-run: no side effects)
-	config_file := get_plugins_json_config_file()
-
-	if !wayu.dry_run && os.exists(config_file) {
-		backup_path, backup_ok := create_backup(config_file)
-		if backup_ok {
-			delete(backup_path)
-		} else {
-			print_warning("Warning: Failed to create backup")
-		}
-	}
-
-	// 6. Set plugin enabled state
+	// 5. Set plugin enabled state
 	plugin_ptr.enabled = enable
 
-	// 7. Write updated configuration
+	// 6. Back up (pruned; never in dry-run), then write the configuration
 	if !wayu.dry_run {
-		if !write_plugin_config_json(&config) {
-			delete(config_file)
+		if err := plugin_config_save(&config); err != "" {
 			cleanup_plugin_config_json(&config)
-			print_error_simple("Failed to save plugin configuration")
+			print_error_simple("%s", err)
 			os.exit(EXIT_CONFIG)
 		}
 	} else {
 		print_info("[DRY RUN] Would save updated configuration")
 	}
 
-	// 8. Regenerate shell loader
+	// 7. Regenerate shell loader
 	if !wayu.dry_run {
 		if !generate_plugins_file(wayu.shell) {
-			delete(config_file)
 			cleanup_plugin_config_json(&config)
 			print_error_simple("Failed to regenerate plugins loader")
 			os.exit(EXIT_IOERR)
@@ -515,8 +545,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		print_info("[DRY RUN] Would regenerate shell loader")
 	}
 
-	// 9. Success
-	delete(config_file)
+	// 8. Success
 	cleanup_plugin_config_json(&config)
 	print_success("Plugin '%s' %s successfully", plugin_name, action_past)
 	fmt.println()
@@ -622,22 +651,9 @@ handle_plugin_priority :: proc(args: []string) {
 	old_priority := plugin.priority
 	plugin.priority = priority
 
-	// 5. Create backup before modifying
-	config_file := get_plugins_json_config_file()
-	defer delete(config_file)
-
-	if os.exists(config_file) {
-		backup_path, backup_ok := create_backup(config_file)
-		if backup_ok {
-			defer delete(backup_path)
-		} else {
-			print_warning("Warning: Failed to create backup")
-		}
-	}
-
-	// 6. Save config
-	if !write_plugin_config_json(&config) {
-		print_error_simple("Failed to save configuration")
+	// 5. Back up (pruned), then save config
+	if err := plugin_config_save(&config); err != "" {
+		print_error_simple("%s", err)
 		os.exit(EXIT_CANTCREAT)
 	}
 
@@ -896,23 +912,12 @@ handle_plugin_add :: proc(args: []string) {
 		return
 	}
 
-	// Create backup before writing
-	config_file := get_plugins_json_config_file()
-	defer delete(config_file)
-
-	if os.exists(config_file) {
-		backup_path, backup_ok := create_backup(config_file)
-		if backup_ok {
-			defer delete(backup_path)
-		}
-	}
-
-	// Write config
-	if !write_plugin_config_json(&config) {
+	// Back up (pruned), then write config
+	if err := plugin_config_save(&config); err != "" {
 		if !existed_before {
 			remove_cloned_plugin_dir(plugin_path, plugins_dir)
 		}
-		print_error_simple("Failed to write plugin configuration")
+		print_error_simple("%s", err)
 		os.exit(EXIT_IOERR)
 	}
 
@@ -1235,41 +1240,21 @@ handle_plugin_remove :: proc(args: []string) {
 	print_info("Name: %s", plugin_name)
 	fmt.println()
 
-	// Remove plugin directory — only when it is strictly inside the plugins
-	// root (never the root itself, never outside it).
+	// The plugin directory is removed only when it is strictly inside the
+	// plugins root (never the root itself, never outside it).
 	plugins_dir := get_plugins_dir()
 	defer delete(plugins_dir)
 
-	installed_path := plugin_ptr.installed_path
-	if len(installed_path) == 0 {
-		// Nothing on disk to remove.
+	installed_path := strings.clone(plugin_ptr.installed_path, context.temp_allocator)
+	if len(installed_path) == 0 || !wayu.dry_run {
+		// Nothing on disk to remove / done by plugin_remove_core below.
 	} else if !is_path_inside_dir(installed_path, plugins_dir) {
 		print_warning("Not deleting '%s': outside the plugins directory", installed_path)
-	} else if wayu.dry_run {
+	} else {
 		if is_symlink(installed_path) {
 			print_info("[DRY RUN] Would remove symlink (target kept): %s", installed_path)
 		} else {
 			print_info("[DRY RUN] Would remove directory: %s", installed_path)
-		}
-	} else {
-		was_symlink := is_symlink(installed_path)
-		switch remove_plugin_dir_safely(installed_path, plugins_dir) {
-		case .Removed:
-			if was_symlink {
-				print_success("Removed plugin symlink (its target was left untouched)")
-			} else {
-				print_success("Removed plugin directory")
-			}
-		case .Missing:
-		// Nothing on disk; just drop the config entry.
-		case .Outside:
-			print_warning(
-				"Not deleting '%s': it resolves outside the plugins directory",
-				installed_path,
-			)
-		case .Failed:
-			print_error_simple("Failed to remove plugin directory")
-			os.exit(EXIT_IOERR)
 		}
 	}
 
@@ -1281,40 +1266,87 @@ handle_plugin_remove :: proc(args: []string) {
 		return
 	}
 
-	// Remove from config in place. config.plugins keeps ownership of the
-	// remaining entries; the removed entry is freed here exactly once.
-	for i := 0; i < len(config.plugins); i += 1 {
-		if config.plugins[i].name == plugin_name {
-			cleanup_plugin_metadata(&config.plugins[i])
-			ordered_remove(&config.plugins, i)
+	res := plugin_remove_core(&config, plugin_name)
+	switch res.dir {
+	case .Removed:
+		if res.was_symlink {
+			print_success("Removed plugin symlink (its target was left untouched)")
+		} else {
+			print_success("Removed plugin directory")
+		}
+	case .Missing:
+	// Nothing on disk (or no path); just drop the config entry.
+	case .Outside:
+		print_warning("Not deleting '%s': outside the plugins directory", installed_path)
+	case .Failed:
+	}
+	if len(res.err) > 0 {
+		print_error_simple("%s", res.err)
+		os.exit(EXIT_IOERR)
+	}
+	print_success("Plugin '%s' removed successfully", plugin_name)
+}
+
+// What plugin_remove_core did. `err` (static/temp, "" on success) says why
+// it stopped; `dir` what happened to the checkout.
+PluginRemoveResult :: struct {
+	dir:         PluginDirRemoval,
+	was_symlink: bool,
+	err:         string,
+}
+
+// Remove plugin `name` (exact) without printing or exiting (shared by
+// `plugin rm` and the TUI): back up plugins.json first (no backup, nothing
+// removed), delete its checkout when it lies inside the plugins dir (a
+// symlink is only unlinked), drop the entry from `config`, write it and
+// regenerate the loader. The caller holds the config lock and handles
+// --dry-run and confirmation.
+plugin_remove_core :: proc(config: ^PluginConfigJSON, name: string) -> (res: PluginRemoveResult) {
+	idx := -1
+	for p, i in config.plugins {
+		if p.name == name {
+			idx = i
 			break
 		}
 	}
+	if idx < 0 {
+		res.err = fmt.tprintf("Plugin not found: %s", name)
+		return
+	}
 
-	// Create backup before writing
 	config_file := get_plugins_json_config_file()
 	defer delete(config_file)
+	if !create_backup_cli(config_file) {
+		res.err = "Could not back up plugins.json; nothing was removed"
+		return
+	}
 
-	if os.exists(config_file) {
-		backup_path, backup_ok := create_backup(config_file)
-		if backup_ok {
-			defer delete(backup_path)
+	plugins_dir := get_plugins_dir()
+	defer delete(plugins_dir)
+	installed_path := config.plugins[idx].installed_path
+	res.dir = .Missing
+	if len(installed_path) > 0 {
+		res.was_symlink = is_symlink(installed_path)
+		res.dir = remove_plugin_dir_safely(installed_path, plugins_dir)
+		if res.dir == .Failed {
+			res.err = fmt.tprintf("Failed to remove plugin directory %s", installed_path)
+			return
 		}
 	}
 
-	// Write config
-	if !write_plugin_config_json(&config) {
-		print_error_simple("Failed to write plugin configuration")
-		os.exit(EXIT_IOERR)
-	}
+	// config.plugins keeps ownership of the remaining entries; the removed
+	// entry is freed here exactly once.
+	cleanup_plugin_metadata(&config.plugins[idx])
+	ordered_remove(&config.plugins, idx)
 
-	// Generate plugins file
+	if !write_plugin_config_json(config) {
+		res.err = "Failed to write plugins.json"
+		return
+	}
 	if !generate_plugins_file(wayu.shell) {
-		print_error_simple("Failed to generate plugins loader")
-		os.exit(EXIT_IOERR)
+		res.err = "Failed to generate plugins loader"
 	}
-
-	print_success("Plugin '%s' removed successfully", plugin_name)
+	return
 }
 
 // Handle plugin get command - display plugin info and copy URL to clipboard

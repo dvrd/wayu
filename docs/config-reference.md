@@ -886,14 +886,14 @@ cloned to `$WAYU_DATA_DIR/plugins/<name>`.
 |---|---|---|
 | `version` | string | `"1.0"`. |
 | `last_updated` | string | Set by wayu on every write. |
-| `plugins[].name` | string | Plugin name: one path component, not starting with `-`. |
+| `plugins[].name` | string | Required, unique: one path component, not starting with `-`. |
 | `plugins[].display_name` | string | Alternative name accepted by `plugin get/enable/...`. |
 | `plugins[].url` | string | Clone URL (validated). |
 | `plugins[].source_type` | enum | `GitHub`, `GitLab`, `Gist`, `Git`, `Remote`, `Local`. |
 | `plugins[].enabled` | boolean | Only enabled plugins load. |
 | `plugins[].shell` | enum | `ZSH`, `BASH`, `BOTH` (zsh + bash), `FISH`, `ANY` (all three). |
 | `plugins[].installed_path` | string | Clone dir; no leading `-`, no control characters. |
-| `plugins[].use` | array of strings | Files to source, matched at the repository root: exact names or one-`*` globs (`"*.plugin.zsh"`). Set with `wayu plugin add <url> --use <file-or-glob>` (repeatable). Empty: auto-detect (below). |
+| `plugins[].use` | array of strings | Files to source, matched at the repository root: exact names or one-`*` globs (`"*.plugin.zsh"`); no `/` (a `../` path is refused). Set with `wayu plugin add <url> --use <file-or-glob>` (repeatable). Empty: auto-detect (below). |
 | `plugins[].template` | enum | How each file is loaded: `Source` (`source file`), `Path` (prepend the plugin dir to `PATH`), `FPath` (prepend to `FPATH`), `Autoload` (`autoload -Uz name`), `Eval` (`eval "$(file)"`). |
 | `plugins[].git` | object | `ref_type` (`Branch`, `Tag`, `Commit`), `branch`, `tag`, `commit`, `pinned_ref`, `last_checked`, `remote_commit`. Refs are validated. |
 | `plugins[].dependencies` | array of strings | Plugin names loaded before this one. Must be valid plugin names; a cycle is an error. A missing or disabled dependency is noted as a comment in `plugins.<ext>`. |
@@ -949,7 +949,8 @@ startup:
 `NAME.<ext>` per script; the directory is the list) and
 `$WAYU_DATA_DIR/bin/` what runs: a relative symlink to the source for
 interpreted languages, the compiled binary plus `.NAME.hash` (hash of the
-source it was built from) for swift. Use `wayu script` rather than editing
+source and build command it was built from) for swift and any source with a
+`wayu: build = ...` header (see `wayu script` in docs/cli.md). Use `wayu script` rather than editing
 `bin/`. Once `bin/` holds a script, `core.<ext>` and `path_sync.<ext>` put it
 first among wayu's PATH entries (zsh, bash, fish), so a script may shadow a
 tool of the same name.
@@ -994,7 +995,7 @@ every shell initialized in the data dir.
 | `plugins.<ext>` | Plugin loader, regenerated on any `plugin` change and by `wayu init`. |
 | `plugins/config.zsh` | `[settings] autosuggestions_accept_keys` bindings. |
 | `secrets.json` | Encrypted constants (see [`[secrets]`](#secrets)); written by `wayu const add --secret`, `const rm`, `secrets rekey`. Not generated from wayu.toml. |
-| `backup/` | Timestamped backups `<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]` (UTC), 5 newest per file (see `wayu backup`). Files named otherwise are ignored. |
+| `backup/` | Timestamped backups `<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]` (UTC), 5 newest per file (see `wayu backup`). `<file>` is the name of a file directly in the config/data dir, `@` + its relative path with `/` as `%` for a nested one (`@functions%init.zsh`), or the path of a file outside them (`.zshrc`, `.config%zsh%.zshrc`). Files named otherwise are ignored. |
 
 Also `$WAYU_DATA_DIR/.wayu.lock` (lock shared by concurrent wayu commands)
 and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.

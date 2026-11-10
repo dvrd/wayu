@@ -131,7 +131,8 @@ test_plugin_remove_ownership_and_exact_target :: proc(t: ^testing.T) {
 	testing.expect(t, os.exists(fmt.tprintf("%s/beta", plugins_dir)), "other dir kept")
 }
 
-// #8: an entry whose installed_path is the plugins root (legacy empty name)
+// #8: an entry whose installed_path is the plugins root (a nameless entry is
+// refused when plugins.json is read, OKAMI-342)
 // must never wipe the root or anything outside it.
 @(test)
 test_plugin_remove_never_wipes_plugins_root :: proc(t: ^testing.T) {
@@ -152,7 +153,7 @@ test_plugin_remove_never_wipes_plugins_root :: proc(t: ^testing.T) {
 		t,
 		write_config_with(
 			{
-				make_owned_plugin("", plugins_dir),
+				make_owned_plugin("rooted", plugins_dir),
 				make_owned_plugin("evil", outside),
 				make_owned_plugin("keepme", fmt.tprintf("%s/keepme", plugins_dir)),
 			},
@@ -160,13 +161,13 @@ test_plugin_remove_never_wipes_plugins_root :: proc(t: ^testing.T) {
 		"seed config",
 	)
 
-	wayu.handle_plugin_remove({""})
+	wayu.handle_plugin_remove({"rooted"})
 	wayu.handle_plugin_remove({"evil"})
 
 	testing.expect(
 		t,
 		os.exists(fmt.tprintf("%s/keepme", plugins_dir)),
-		"plugins root must survive rm of empty-name entry",
+		"plugins root must survive rm of an entry pointing at it",
 	)
 	testing.expect(t, os.exists(outside), "dir outside plugins root must survive")
 

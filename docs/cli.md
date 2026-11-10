@@ -315,7 +315,9 @@ Without an action, `wayu toml` behaves like `wayu toml validate`.
 Health checks: installation, rc file, PATH entries, plugins and plugin
 conflicts, backups, wayu.toml (a `[paths]`, `[aliases]` or `[env]` table is an
 error naming the `wayu path|alias|const add` command), entries.json (must
-parse), scripts (stale or broken builds, `bin/` entries without a script),
+parse), scripts (error: two sources for one name or a CRLF shebang; warning:
+stale or broken builds), script bin entries (`bin/` entries without a script;
+`--fix` removes them),
 turbo file, dependencies, startup files (lines `wayu optimize` would move,
 with an estimated cost per shell start: each generator command is timed once,
 a second `compinit` counts ~250 ms). Exits `78` when any
@@ -371,14 +373,15 @@ dir's `scripts/` (the directory is the list: `NAME.<ext>`); what runs is
 `bin/NAME`, and `core.<ext>` puts the data dir's `bin/` first among wayu's
 PATH entries (once it holds a script) in zsh, bash and fish. Interpreted
 scripts are linked (`bin/NAME` → `../scripts/NAME.<ext>`, source `0755`);
-swift is compiled with `swiftc -O` into `bin/NAME`. Default action: `list`.
+compiled ones are built into `bin/NAME` (swift: `swiftc -O`, or any build
+command a source declares, below). Default action: `list`.
 
 | Action | Arguments | |
 |---|---|---|
 | `new` | `<name> [--lang <lang>]` | Create `scripts/<name>.<ext>` from a skeleton, open it in the editor, build it. Exit `65` if the name exists |
 | `edit` | `<name>` | Open the source in the editor, then rebuild it if it changed |
 | `list`, `ls` | | Name, language, state, source; `--json` |
-| `remove`, `rm` | `<name>` | Delete the source (backed up first) and its `bin/` entry (`--yes`) |
+| `remove`, `rm` | `<name>` | Delete the source (backed up first) and its `bin/` entry (`--yes`); a `bin/` entry without a script is removed alone |
 | `import` | `<file>...` | Move existing scripts in (`--copy` keeps the originals; `--dry-run` previews) |
 | `build` | `[<name>...]` | Build every stale script, or the ones named |
 | `help` | | |
@@ -396,18 +399,53 @@ PATH at that moment (`#!/opt/homebrew/bin/python3`); when it is missing
 `$VISUAL` and a terminal it prints the new file's path instead of opening
 an editor.
 
-A compiled script is stale when its source no longer matches the hash
-stored in `bin/.NAME.hash` (or the binary is missing); an interpreted one
-when its link is missing or wrong. `wayu build`, `wayu reload` (which also
+Build commands: a source in any language may declare how it is built in a
+comment line (`//`, `#`, `--`, `;`, `/*`, `*`) among its first 20 lines:
+
+```c
+// wayu: build = cc -O2 -o {out} {src}
+```
+
+`{src}` is the source, `{out}` the file the command must write (it becomes
+`bin/NAME`; a command without `{out}` is refused). The words are split like a
+shell would (quotes, backslashes; no expansions or pipes) and run without a
+shell; the first word is looked up on PATH. Such a source may have any
+extension (`tool.c` → `tool`). Swift's `swiftc -O -o {out} {src}` is the same
+mechanism as a preset, used when a swift source declares none.
+
+Python with inline dependencies ([PEP 723](https://peps.python.org/pep-0723/))
+runs through [uv](https://docs.astral.sh/uv/) without a build: give the
+script the shebang `#!/usr/bin/env -S uv run --script` and a `# /// script`
+block (it is a python script: `uv` in a shebang is recognised on import):
+
+```python
+#!/usr/bin/env -S uv run --script
+# /// script
+# dependencies = ["requests"]
+# ///
+import requests
+```
+
+Two sources with the same name (`foo.sh`, `foo.rb`) are an error: neither
+is built (`script build` exits `1`), `edit` / `build` / `rm` of that name exit
+`65`, and doctor reports it. A source whose shebang line ends in CR (CRLF line
+endings; it could only fail with `bad interpreter`) is not linked and doctor
+reports it; `import` converts such a file to LF.
+
+A compiled script is stale when its source or build command no longer
+matches the hash stored in `bin/.NAME.hash` (or the binary is missing); an
+interpreted one when its link is missing or wrong. `wayu build`, `wayu reload` (which also
 watches the sources) and `script build` rebuild stale scripts (the
 `wayu build` that the prompt hook runs starts a background `script build`
 instead of waiting for the compiler). A failed
 compile prints the compiler's output, exits `1` and keeps the previous
 binary.
 
-`import` takes regular text files with a `#!` line or a known extension.
-The language comes from the shebang's interpreter (`#!/usr/bin/env X` is
-read as `X`; trailing version digits are ignored: `python3.12` → python),
+`import` takes regular text files with a `#!` line, a known extension or a
+build command header. The language comes from the shebang's interpreter
+(`#!/usr/bin/env X` is read as `X`, skipping env's options and their
+arguments: `-u VAR`, `-P dir`, `-C dir`, `--unset=VAR`; trailing version
+digits are ignored: `python3.12` → python),
 else from the extension. The file keeps its shebang and a known extension
 (else gets the language's); a file without a shebang gets one for the
 interpreter on PATH. It skips, with the reason: symlinks, binaries (NUL
