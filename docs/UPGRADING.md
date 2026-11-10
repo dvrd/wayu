@@ -51,6 +51,13 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   restore after macOS `path_helper` only happened at the first prompt,
   which these never draw. core.zsh sets a self-removing `TRAPDEBUG` for
   such runs only, and not when a `TRAPDEBUG` is already defined.
+- `[prompt]` / `[prompt.*]` are read with the TOML parser like the rest of
+  `wayu.toml` (were matched line by line): comments are ignored (a
+  `# success_symbol = …` line was applied), keys count only in their own
+  table (a `success_symbol` in any `[prompt.*]` table was used), values of
+  the wrong type keep the default (`context_aware = "false"` turned it off;
+  `toggle_enabled = true # not false` read as false), and dotted keys,
+  `[prompt.contexts.<name>]` tables and multi-line strings work.
 
 **One status icon per line**
 
