@@ -28,6 +28,10 @@ WatcherState :: struct {
 	mutex:         sync.Mutex,
 	stop_signal:   bool,
 	pid_file:      string,
+	// The first poll only records mtimes; after it, a watched file that
+	// appears or disappears is a change too (secrets.json is created by the
+	// first secret and may arrive by sync).
+	primed:        bool,
 }
 
 // Global watcher state
@@ -56,7 +60,9 @@ hot_reload_init :: proc(watch_paths: []string, callback: FileWatcherCallback) {
 	sync.mutex_lock(&g_watcher.mutex)
 	defer sync.mutex_unlock(&g_watcher.mutex)
 
-	// Clean up any existing paths
+	// Clean up any existing paths (the map's keys are those strings)
+	clear(&g_watcher.last_modified)
+	g_watcher.primed = false
 	if g_watcher.watched_paths != nil {
 		for path in g_watcher.watched_paths {
 			delete(path)
@@ -83,6 +89,20 @@ hot_reload_init :: proc(watch_paths: []string, callback: FileWatcherCallback) {
 	if g_watcher.pid_file == "" {
 		g_watcher.pid_file = fmt.aprintf("%s/%s", wayu.data, WATCHER_PID_FILE)
 	}
+}
+
+// Free the watched paths and mtimes (tests; the watcher process exits).
+hot_reload_reset :: proc() {
+	sync.mutex_lock(&g_watcher.mutex)
+	defer sync.mutex_unlock(&g_watcher.mutex)
+	delete(g_watcher.last_modified)
+	g_watcher.last_modified = nil
+	for path in g_watcher.watched_paths {delete(path)}
+	delete(g_watcher.watched_paths)
+	g_watcher.watched_paths = nil
+	g_watcher.primed = false
+	delete(g_watcher.pid_file)
+	g_watcher.pid_file = ""
 }
 
 // Start the file watcher
@@ -276,6 +296,7 @@ print_watch_help :: proc() {
 	fmt.println("The watcher monitors:")
 	fmt.println("  • wayu.toml")
 	fmt.println("  • entries.json (PATH entries, aliases, constants)")
+	fmt.println("  • secrets.json (encrypted constants)")
 	fmt.println()
 	fmt.println("Changes are debounced (500ms) before triggering regeneration.")
 }
@@ -288,6 +309,7 @@ print_watch_help :: proc() {
 watcher_thread_proc :: proc() {
 	debounce_timer: time.Time
 	pending_regen := false
+	pending_secrets := false
 
 	for {
 		// Check stop signal
@@ -315,6 +337,7 @@ watcher_thread_proc :: proc() {
 
 			for file in changed_files {
 				print_info("Change detected: %s", file)
+				if watch_path_is_secrets(file) do pending_secrets = true
 			}
 		}
 
@@ -322,8 +345,11 @@ watcher_thread_proc :: proc() {
 		if pending_regen {
 			elapsed := time.diff(debounce_timer, time.now())
 			if elapsed >= time.Duration(g_watcher.debounce_ms) * time.Millisecond {
+				// New values: drop the session cache so shells re-decrypt.
+				if pending_secrets do secrets_cache_invalidate()
 				regenerate_static()
 				pending_regen = false
+				pending_secrets = false
 			}
 		}
 
@@ -389,27 +415,27 @@ check_file_changes :: proc() -> []string {
 	defer sync.mutex_unlock(&g_watcher.mutex)
 
 	for path in g_watcher.watched_paths {
-		if !os.exists(path) {
-			continue
-		}
-
-		// Get file info
+		last_mod, seen := g_watcher.last_modified[path]
 		file_info, err := os.stat(path, context.temp_allocator)
 		if err != nil {
+			// Gone (or unreadable): a change when it was there before.
+			if seen {
+				delete_key(&g_watcher.last_modified, path)
+				append(&changed, strings.clone(path))
+			}
 			continue
 		}
-
-		// Check modification time
-		last_mod, exists := g_watcher.last_modified[path]
-		if !exists || time.diff(last_mod, file_info.modification_time) > 0 {
+		if !seen || time.diff(last_mod, file_info.modification_time) > 0 {
 			g_watcher.last_modified[path] = file_info.modification_time
-			if exists {
-				// File was modified (not first check)
+			// New since the first poll, or modified.
+			if seen || g_watcher.primed {
 				append(&changed, strings.clone(path))
 			}
 		}
 	}
+	g_watcher.primed = true
 
+	defer delete(changed)
 	result := make([]string, len(changed))
 	for i := 0; i < len(changed); i += 1 {
 		result[i] = changed[i]
@@ -590,6 +616,11 @@ stop_existing_watcher :: proc(pid: int) {
 // Helper Functions
 // ============================================================================
 
+// Is `path` the encrypted store (<data>/secrets.json)?
+watch_path_is_secrets :: proc(path: string) -> bool {
+	return path == secrets_store_path()
+}
+
 // Get default paths to watch
 get_default_watch_paths :: proc() -> []string {
 	paths := make([dynamic]string)
@@ -606,9 +637,15 @@ get_default_watch_paths :: proc() -> []string {
 		}
 	}
 
+	// secrets.json, also before the first secret creates it: new values
+	// invalidate the session cache, and an empty/non-empty store changes
+	// core's Secrets section (OKAMI-361).
+	append(&paths, strings.clone(secrets_store_path()))
+
 	// Script sources: an edit rebuilds the script (regenerate_static).
 	script_watch_paths(&paths)
 
+	defer delete(paths)
 	result := make([]string, len(paths))
 	for i := 0; i < len(paths); i += 1 {
 		result[i] = paths[i]

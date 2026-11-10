@@ -114,6 +114,11 @@ releases, so they are listed here too.
   removes it like `wayu const rm` (the entries.json entry and the
   secrets.json value together). A malformed `secrets.json` during a TUI
   add/delete is shown as an error instead of ending the TUI.
+- `wayu reload` / `wayu watch` also watches `secrets.json` (also before the
+  first secret creates it): a change, e.g. by a sync, drops the secrets
+  session cache and regenerates the init files. Any watched file that
+  appears or is removed while the watcher runs now counts as a change
+  (was ignored).
 
 **One status icon per line**
 
