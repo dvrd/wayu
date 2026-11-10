@@ -46,6 +46,7 @@ class SuggestTest
         test_suggest_vi_accept
         test_suggest_widget_wrappers
         test_suggest_no_errors
+        test_suggest_command_fallback
       else
         puts "(zsh < 5.3 or missing: line editor tests skipped)"
       end
@@ -167,6 +168,33 @@ class SuggestTest
     File.write("#{home}/.zshrc", (prompt.to_s.include?('vi_mode = true') ? '' : "bindkey -e\n") + PROBE_RC + rc_extra)
     File.write("#{home}/.zsh_history", HISTORY.join("\n") + "\n")
     [home, data, env]
+  end
+
+  # No history match on the first word: a command name from PATH
+  # (shortest, then alphabetical); history still wins; never past a space.
+  def test_suggest_command_fallback
+    print "Test: first word with no history match completes a PATH command... "
+    rc = <<~'ZSH'
+      mkdir -p $HOME/fbbin
+      for c in sufbother sufbqq sufbqqq sufbqqa sufbcmd; do print '#!/bin/sh' > $HOME/fbbin/$c; chmod +x $HOME/fbbin/$c; done
+      path=($HOME/fbbin $path)
+      print -s 'sufbcmd --from-history'
+    ZSH
+    home, _, env = setup_home('fallback', rc_extra: rc)
+    steps = [
+      'sufbo', PROBE,           # 0 PATH command
+      CLEAR, 'sufbq', PROBE,    # 1 shortest wins (sufbqq)
+      CLEAR, 'sufbqqq', PROBE,  # 2 exact name: nothing to add
+      CLEAR, 'sufbc', PROBE,    # 3 history beats PATH
+      CLEAR, 'sufbo ', PROBE,   # 4 past the first word: no fallback
+      CLEAR, 'sufbz', PROBE,    # 5 no command
+    ]
+    _, log = pty_session(home, env, steps)
+    p = log.select { |l| l.start_with?('P|') }
+    want = [%w[sufbo ther], %w[sufbq q], ['sufbqqq', ''], ['sufbc', 'md --from-history'], ['sufbo ', ''], ['sufbz', '']]
+    errs = want.each_with_index.reject { |(b, sug), i| p[i] && field(p[i], 'B') == b && field(p[i], 'S') == sug }
+               .map { |_, i| "#{i}: #{p[i].inspect}" }
+    check('fallback', errs.empty?, errs.join(' | '))
   end
 
   def test_core_has_module_only_when_enabled

@@ -48,6 +48,8 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - New opt-in `[settings]` keys (zsh): `defer_plugins` (load plugins after
   the first prompt) and `lazy_compinit` (compinit on the first completion).
 - New opt-in `[settings] autosuggest = true` (zsh): history suggestions
+  (falling back to a `PATH` command name for a first word history doesn't
+  match)
   built into `core.zsh` (one redraw hook, 13 accept widgets wrapped instead
   of every widget), styled by `autosuggest_style` (default `"fg=8"`),
   accepted with →/End/`^F`/`^Y` (`autosuggestions_accept_keys`). While it is

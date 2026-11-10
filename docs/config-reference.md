@@ -253,8 +253,11 @@ as the zsh-autosuggestions plugin does.
   even if installed and enabled (`wayu doctor` warns until it is removed or
   disabled). `defer_plugins` / `lazy_compinit` don't affect it (it is set up
   at startup; it is cheap). bash and fish ignore it (`doctor` notes it).
-- Suggestions come from history only (no completion strategy); a multi-line
-  history entry is suggested whole.
+- Suggestions come from history (most recent match); a multi-line history
+  entry is suggested whole. When nothing in history matches and the line is
+  a single word, the shortest command name on `PATH` starting with it is
+  suggested (ties: alphabetical), e.g. `no` → `node` if no `no…` command is
+  shorter. No completion strategy beyond that.
 
 #### Syntax highlighting
 

@@ -1361,6 +1361,14 @@ ZSH_SUGGEST :: `if [[ -o interactive && -o zle ]]; then
       if [[ -z $_wayu_suggest_buf || $BUFFER != "$_wayu_suggest_buf"* ||
             ( -n $_wayu_suggest_full && $_wayu_suggest_full != "$BUFFER"* ) ]]; then
         _wayu_suggest_full=${history[(r)${(b)BUFFER}*]}
+        # No history match on the first word: complete a command name from
+        # PATH (shortest, then alphabetical).
+        if [[ -z $_wayu_suggest_full && $BUFFER != *[^[:alnum:]_.+-]* ]]; then
+          local c
+          for c in ${(ko)commands[(I)${(b)BUFFER}?*]}; do
+            (( ! $#_wayu_suggest_full || $#c < $#_wayu_suggest_full )) && _wayu_suggest_full=$c
+          done
+        fi
       fi
       _wayu_suggest_buf=$BUFFER
       POSTDISPLAY=${_wayu_suggest_full[$#BUFFER+1,-1]}
