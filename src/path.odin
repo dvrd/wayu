@@ -129,8 +129,9 @@ handle_path_command :: proc(action: Action, args: []string) {
 }
 
 // The checks `wayu path add` applies to its path argument before writing,
-// shared with the TUI add form: valid format, resolvable to an absolute path
-// ($VAR set, relative paths against the working directory), and existing.
+// shared with the TUI add form and templates: valid format, resolvable to an
+// absolute path ($VAR set, relative paths against the working directory), and
+// an existing directory (missing: EXIT_NOINPUT; another file: EXIT_DATAERR).
 // On success `expanded` is the resolved path (caller deletes) and code is
 // EXIT_SUCCESS; otherwise `err` (caller deletes) says why and `code` is the
 // CLI exit code (EXIT_DATAERR / EXIT_NOINPUT).
@@ -150,6 +151,11 @@ path_add_check :: proc(raw_path: string) -> (expanded: string, err: string, code
 	if !os.exists(expanded) {
 		delete(expanded)
 		return "", fmt.aprintf("Path does not exist: %s", raw_path), EXIT_NOINPUT
+	}
+	// PATH holds directories: a regular file there does nothing (OKAMI-332).
+	if !os.is_dir(expanded) {
+		delete(expanded)
+		return "", fmt.aprintf("Not a directory: %s", raw_path), EXIT_DATAERR
 	}
 	return expanded, "", EXIT_SUCCESS
 }

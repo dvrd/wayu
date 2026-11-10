@@ -702,7 +702,7 @@ entry is a `key` (a label) and a `dir`.
   lookup. `wayu doctor` counts them with the entries it leaves alone, never
   as missing.
   `wayu path add` itself never stores a relative path: it resolves `~`,
-  `$VAR` and relative arguments to an absolute directory, which must exist.
+  `$VAR` and relative arguments to an absolute directory, which must exist (and be a directory).
 - **Integration with PATH:** wayu removes only directories it put on `PATH`
   itself (tracked in `_WAYU_PATHS_MANAGED`); a system directory that is also
   a PATH entry is moved to wayu's position but never removed. In zsh the

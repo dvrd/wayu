@@ -83,7 +83,7 @@ Manage PATH entries (stored in `<data>/entries.json`, see
 
 | Action | Arguments | |
 |---|---|---|
-| `add` | `<dir>` or `<key>=<dir>` | Add a directory (must exist, else exit `66`; `~` and relative paths are resolved). The key defaults to the directory's base name; an existing directory is left as is (exit `0`) |
+| `add` | `<dir>` or `<key>=<dir>` | Add a directory (must exist, else exit `66`; a file that is not a directory exits `65`; `~` and relative paths are resolved). The key defaults to the directory's base name; an existing directory is left as is (exit `0`) |
 | `remove`, `rm` | `<dir-or-key>` | Remove an entry by directory or key |
 | `list`, `ls` | | List entries (`--json`, `--full`, `--source`) |
 | `get` | `<dir>` | Print the entry (exact directory) |
@@ -308,7 +308,7 @@ Default action: `list`. Templates: `developer`, `minimal`, `data-science`,
 | Action | Arguments | |
 |---|---|---|
 | `list`, `ls` | | |
-| `apply` | `<name>` | Add the template's entries; existing ones are kept |
+| `apply` | `<name>` | Add the template's entries; existing ones are kept, PATH dirs missing on this machine (or not directories) are skipped |
 | `help` | | |
 
 ### `wayu hooks`
@@ -580,6 +580,7 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu path rm /no/such/dir` | 65 |
 | `wayu alias add 'a b' x` | 65 |
 | `wayu const add PATH /x` | 65 |
+| `wayu path add /etc/hosts` | 65 |
 | `wayu plugin rm no-such-plugin` | 65 |
 | `wayu template apply no-such-template` | 65 |
 | `wayu path add /no/such/dir` | 66 |

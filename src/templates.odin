@@ -175,6 +175,16 @@ template_add_paths :: proc(paths: []string) {
 	entries_store_destroy(&store)
 	for p in paths {
 		what := fmt.tprintf("%s%s%s", get_muted(), p, RESET)
+		// The same checks as `wayu path add` (OKAMI-332): a directory that
+		// exists on this machine.
+		expanded, check_err, code := path_add_check(p)
+		delete(expanded)
+		if code != EXIT_SUCCESS {
+			delete(check_err)
+			why := "not on this machine" if code == EXIT_NOINPUT else "not a directory"
+			template_report("path", what, why)
+			continue
+		}
 		if !path_add_would_change(p) {
 			template_report("path", what, "already added")
 			continue

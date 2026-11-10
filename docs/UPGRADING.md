@@ -163,6 +163,14 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   or not at all, before the data dir existed, and concurrent first writes
   lost entries). A leftover `~/.config/wayu/.wayu.lock` can be deleted.
 
+**PATH entries must be directories**
+
+- `wayu path add` of an existing path that is not a directory (`/etc/hosts`)
+  exits 65 (it was stored). A missing path still exits 66.
+- `wayu template apply` / `init --template` add only PATH dirs that exist and
+  are directories (others are listed as kept out: "not on this machine");
+  they were added whether or not they existed.
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is
