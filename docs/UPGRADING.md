@@ -171,6 +171,14 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   are directories (others are listed as kept out: "not on this machine");
   they were added whether or not they existed.
 
+**`wayu watch stop` / `status` check the watcher's lock**
+
+- A running watcher holds a lock on `<data>/watcher.lock`. `watch stop` and
+  `watch status` report "not running" (and remove `watcher.pid`) when no
+  process holds it, instead of trusting the PID in `watcher.pid`: a PID file
+  left by a dead watcher no longer gets an unrelated process (one that
+  reused the PID) killed. `watch start` refuses while the lock is held.
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is

@@ -486,8 +486,10 @@ them instead (with backups) and prints what it moved.
 `wayu reload [start|stop|status|regenerate]`. `start` (the default) watches
 wayu.toml and entries.json and regenerates the init files on change (debounced) until
 interrupted (script sources too: an edit rebuilds the script); `stop` stops
-a running watcher; `regenerate` (`regen`)
-regenerates once.
+a running watcher; `status` says whether one runs; `regenerate` (`regen`)
+regenerates once. The running watcher holds a lock on `<data>/watcher.lock`;
+`stop` / `status` treat a `watcher.pid` without that lock held as stale
+(removed, nothing signalled), and `start` refuses while it is held.
 
 ### `wayu version`
 
