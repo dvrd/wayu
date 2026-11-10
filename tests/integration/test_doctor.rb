@@ -48,6 +48,7 @@ class DoctorIntegrationTest
       test_no_auto_install
       test_turbo_not_fixable_or_generated
       test_turbo_bash_uses_shell_ext
+      test_unregistered_plugin_folders
       test_no_startup_file_says_what_to_add
       test_plugins_malformed_is_error
       test_plugins_cycle_keeps_json_valid
@@ -335,6 +336,28 @@ class DoctorIntegrationTest
     ok = inst && inst['fixable'] == false && inst['status'] == 'warning' &&
          !out.include?('Installing') && !out.include?('/usr/local/bin')
     check(ok, "#{inst.inspect}\n#{out.lines.grep(/install/i).join}")
+  end
+
+  # Only plugins registered in plugins.json load: a folder nothing points at
+  # is reported (warning), registered ones and hidden dirs are not.
+  def test_unregistered_plugin_folders
+    print "Test 18c: plugin folders missing from plugins.json are a warning... "
+    pdir = "#{@data_dir}/plugins"
+    FileUtils.mkdir_p(["#{pdir}/orphan-plugin", "#{pdir}/registered", "#{pdir}/.cache"])
+    saved = File.exist?("#{@data_dir}/plugins.json") ? File.read("#{@data_dir}/plugins.json") : nil
+    File.write("#{@data_dir}/plugins.json", JSON.generate(
+      'version' => '1.0', 'last_updated' => '2026-01-01T00:00:00Z',
+      'plugins' => [{ 'name' => 'registered', 'url' => 'https://example.com/registered.git',
+                      'enabled' => false, 'shell' => 'ZSH', 'installed_path' => "#{pdir}/registered" }]))
+    jout, _, _ = run_wayu_env({}, '--shell zsh doctor --json')
+    row = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'plugin folders' } rescue nil)
+    FileUtils.rm_rf(["#{pdir}/orphan-plugin", "#{pdir}/registered", "#{pdir}/.cache"])
+    saved ? File.write("#{@data_dir}/plugins.json", saved) : FileUtils.rm_f("#{@data_dir}/plugins.json")
+    jout2, _, _ = run_wayu_env({}, '--shell zsh doctor --json')
+    after = (JSON.parse(jout2)['checks'].find { |c| c['name'] == 'plugin folders' } rescue :bad)
+    ok = row && row['status'] == 'warning' && row['message'].include?('orphan-plugin') &&
+         !row['message'].include?('registered') && !row['message'].include?('.cache') && after.nil?
+    check(ok, "row=#{row.inspect} after=#{after.inspect}")
   end
 
   def test_turbo_not_fixable_or_generated

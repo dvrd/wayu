@@ -8,6 +8,13 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+**`doctor`: unregistered plugin folders**
+
+- `wayu doctor` warns about folders under `<data>/plugins` that no
+  `plugins.json` entry points at: only registered plugins load, so such a
+  checkout is silently ignored otherwise. Register it (`wayu plugin add`)
+  or delete it.
+
 **Aliases may use command names**
 
 - `alias add cd z`, `alias add cat bat` and other aliases named like a

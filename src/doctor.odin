@@ -9,6 +9,7 @@ import "core:fmt"
 import "core:mem"
 import "core:mem/virtual"
 import "core:os"
+import "core:path/filepath"
 import "core:strings"
 // Check result structure - all strings allocated from arena
 CheckResult :: struct {
@@ -1339,7 +1340,9 @@ doctor_fix_paths :: proc(alloc: mem.Allocator) -> (removed: int, ok: bool, messa
 // Check 4: plugins
 check_plugins :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	defer {check_autosuggest(results); check_highlight(results)}
+	defer {
+		check_autosuggest(results); check_highlight(results); check_unregistered_plugins(results)
+	}
 	config_file := fmt.aprintf("%s/plugins.json", wayu.data, allocator = get_doctor_allocator())
 
 	if !os.exists(config_file) {
@@ -1406,6 +1409,70 @@ check_plugins :: proc(results: ^[dynamic]CheckResult) {
 		)
 		check_plugin_conflicts(results)
 	}
+}
+
+// Folders under <data>/plugins that no plugins.json entry points at are
+// never loaded (only registered, enabled plugins load): warn and name them.
+// Skipped when plugins.json is invalid (the plugins check reports that).
+check_unregistered_plugins :: proc(results: ^[dynamic]CheckResult) {
+	plugins_dir := get_plugins_dir()
+	defer delete(plugins_dir)
+	dir_handle, err := os.open(plugins_dir)
+	if err != nil {
+		return
+	}
+	defer os.close(dir_handle)
+	infos, read_err := os.read_dir(dir_handle, -1, context.allocator)
+	if read_err != nil {
+		return
+	}
+	defer os.file_info_slice_delete(infos, context.allocator)
+
+	config: PluginConfigJSON
+	if os.exists(fmt.tprintf("%s/plugins.json", wayu.data)) {
+		ok: bool
+		config, ok = read_plugin_config_json()
+		if !ok {
+			return
+		}
+	}
+	defer cleanup_plugin_config_json(&config)
+
+	unregistered := make([dynamic]string, context.temp_allocator)
+	for info in infos {
+		if info.type != .Directory || strings.has_prefix(info.name, ".") {
+			continue
+		}
+		registered := false
+		for &p in config.plugins {
+			if p.name == info.name ||
+			   filepath.base(strings.trim_right(p.installed_path, "/")) == info.name {
+				registered = true
+				break
+			}
+		}
+		if !registered {
+			append(&unregistered, info.name)
+		}
+	}
+	if len(unregistered) == 0 {
+		return
+	}
+	append(
+		results,
+		CheckResult {
+			name = clone_arena("plugin folders"),
+			status = .WARNING,
+			message = fmt.aprintf(
+				"%s in %s not in plugins.json, so never loaded: %s (register with 'wayu plugin add <url>' or delete the folder)",
+				len(unregistered) == 1 ? "1 folder" : fmt.tprintf("%d folders", len(unregistered)),
+				doctor_tilde(plugins_dir),
+				strings.join(unregistered[:], ", ", context.temp_allocator),
+				allocator = get_doctor_allocator(),
+			),
+			fixable = false,
+		},
+	)
 }
 
 // Same function/alias/export in two enabled plugins, or in a plugin and
