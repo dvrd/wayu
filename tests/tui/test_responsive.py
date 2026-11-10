@@ -1021,7 +1021,8 @@ def test_hooks_and_settings_views():
         s.send(b"j"); s.read(timeout=0.1)
         s.send(b"l")
         s.wait_for(lambda snap: "SETTINGS" in snap and "Dry run" in snap, timeout=TIMEOUT_KEY)
-        for _ in range(9):
+        # Dry run is the last settings row (SETTING_ROWS: 11 rows).
+        for _ in range(10):
             s.send(b"j"); s.read(timeout=0.05)
         s.send(b"\r")
         ok = s.wait_for(lambda snap: "DRY RUN" in snap, timeout=TIMEOUT_KEY)
