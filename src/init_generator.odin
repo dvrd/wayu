@@ -601,6 +601,11 @@ emit_bash_glob_source :: proc(b: ^strings.Builder, dir_q: string, patterns: []st
 //   every dir that was already on PATH when wayu loaded or that path_helper
 //   manages (/etc/paths, /etc/paths.d — read without forking); other dirs
 //   added after that (e.g. prepended in .zshrc) keep their place ahead.
+//   `zsh -l -c CMD` / `-l -i -c` never draw a prompt (IDEs resolving the
+//   login env, ssh commands): there a TRAPDEBUG (WAYU_PATH_LOGIN_RESTORE_ZSH,
+//   set at the end of core only in that case) runs the restore before the
+//   first command of CMD (ZSH_EVAL_CONTEXT cmdarg:*, i.e. after every
+//   startup file) and removes itself (OKAMI-318).
 // Both hooks preserve $? (prompt commands after them read it) and are
 // `set -u` / nounset safe.
 WAYU_PATH_SYNC_ZSH :: `_wayu_paths_apply() {
@@ -661,6 +666,13 @@ _wayu_paths_restore() {
   export PATH
   unset _wayu_paths_seen _wayu_paths_want
 }
+# No emulate -L here: its local_traps would bring the trap back on return.
+_wayu_paths_debug() {
+  [[ $ZSH_EVAL_CONTEXT == cmdarg:* ]] || return 0
+  [[ ${functions[TRAPDEBUG]-} == *_wayu_paths_debug* ]] && unfunction TRAPDEBUG
+  (( ${+_wayu_paths_seen} )) && _wayu_paths_restore
+  return 0
+}
 _wayu_paths_sync() {
   local s=$? l
   (( ${+_wayu_paths_seen} )) && _wayu_paths_restore
@@ -677,6 +689,13 @@ _wayu_paths_sync() {
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook precmd _wayu_paths_sync
+`
+
+// zsh login shell running a -c command (see WAYU_PATH_SYNC_ZSH): restore
+// the wayu PATH order before the command runs. Not when a TRAPDEBUG exists.
+WAYU_PATH_LOGIN_RESTORE_ZSH :: `if [[ -o login && -n ${ZSH_EXECUTION_STRING-} ]] && (( ${+_wayu_paths_seen} && ! ${+functions[TRAPDEBUG]} )); then
+  TRAPDEBUG() { _wayu_paths_debug }
+fi
 `
 
 // bash 3.2 compatible: no associative arrays, so membership tests use
@@ -1466,6 +1485,12 @@ build_core_content :: proc(mask := false) -> string {
 	fmt.sbprintln(&b, "# === Aliases ===")
 	emit_alias_definitions(&b)
 	fmt.sbprintln(&b)
+	if is_zsh {
+		// Last, so nothing in core runs under the trap (OKAMI-318).
+		fmt.sbprintln(&b, "# === PATH order for login -c runs ===")
+		fmt.sbprint(&b, WAYU_PATH_LOGIN_RESTORE_ZSH)
+		fmt.sbprintln(&b)
+	}
 
 	return strings.to_string(b)
 }

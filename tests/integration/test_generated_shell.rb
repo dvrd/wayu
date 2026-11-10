@@ -55,6 +55,7 @@ class GeneratedShellTest
       test_prompt_vi_mode_and_widgets
       test_prompt_git_branch_without_git
       test_login_reorder_restored_at_first_prompt
+      test_login_c_reorder_restored
       test_prompt_survives_later_ps1_reset
     ensure
       teardown_test_env
@@ -248,7 +249,10 @@ class GeneratedShellTest
     Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh', stdin_data: '')
     write_entries(paths: { 'a' => "#{home}/a/bin", 'b' => "#{home}/b/bin" }, data: "#{home}/.local/share/wayu")
     Open3.capture3(env, @wayu_bin, 'build')
-    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
+    # A TRAPDEBUG of the user's: wayu then leaves the -c restore to the first
+    # prompt (simulated by running the precmd hooks), the path tested here.
+    File.write("#{home}/.zshenv", "TRAPDEBUG() { : }\n" \
+                                  "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
     File.write("#{home}/.zprofile", "path=( /usr/sbin /bin ${path:#(/usr/sbin|/bin)} )\n")
     File.write("#{home}/.zshrc", "path=( $HOME/pre/bin $path )\n")
     probe = 'print -r -- "${(j.:.)path[1,4]}"; for f in $precmd_functions; do $f; done; print -r -- "${(j.:.)path[1,5]}"'
@@ -257,6 +261,32 @@ class GeneratedShellTest
     want = ["#{home}/pre/bin", "#{home}/a/bin", "#{home}/b/bin", '/usr/sbin', '/bin'].join(':')
     check('login_reorder', before.to_s.start_with?("#{home}/pre/bin:/usr/sbin:/bin") && after == want,
           "before=#{before} after=#{after} err=#{err.strip[0, 200]}")
+  end
+
+  # OKAMI-318: `zsh -l -c` / `zsh -l -i -c` (no prompt ever) get the wayu
+  # order back before the command runs; the trap is gone afterwards.
+  def test_login_c_reorder_restored
+    print "Test: wayu PATH order restored in zsh -l -c and -l -i -c... "
+    home = "#{@tmp_home}/login_c_reorder"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(%w[a/bin b/bin pre/bin .config].map { |d| "#{home}/#{d}" })
+    env = { 'HOME' => home, 'SHELL' => '/bin/zsh', 'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin', 'ZDOTDIR' => home,
+            'WAYU_CONFIG' => nil, 'WAYU_DATA_DIR' => nil, 'WAYU_CONFIG_DIR' => nil, 'XDG_CONFIG_HOME' => nil }
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh', stdin_data: '')
+    write_entries(paths: { 'a' => "#{home}/a/bin", 'b' => "#{home}/b/bin" }, data: "#{home}/.local/share/wayu")
+    Open3.capture3(env, @wayu_bin, 'build')
+    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
+    File.write("#{home}/.zprofile", "path=( /usr/sbin /bin ${path:#(/usr/sbin|/bin)} )\n")
+    File.write("#{home}/.zshrc", "path=( $HOME/pre/bin $path )\n")
+    probe = 'false; print -r -- "$? ${(j.:.)path[1,5]} trap=${+functions[TRAPDEBUG]}"'
+    nonint, err1, = Open3.capture3(env, 'zsh', '-l', '-c', probe)
+    inter, err2, = Open3.capture3(env, 'zsh', '-l', '-i', '-c', probe)
+    plain, = Open3.capture3(env, 'zsh', '-c', 'print -r -- "trap=${+functions[TRAPDEBUG]}"')
+    want_n = "1 #{home}/a/bin:#{home}/b/bin:/usr/sbin:/bin:" # 5th: whatever the system zprofile adds
+    want_i = "1 #{["#{home}/pre/bin", "#{home}/a/bin", "#{home}/b/bin", '/usr/sbin', '/bin'].join(':')} trap=0"
+    check('login_c', nonint.start_with?(want_n) && nonint.strip.end_with?(" trap=0") && inter.lines.last.to_s.strip == want_i && plain.strip == 'trap=0' &&
+                     (err1 + err2).strip.empty?,
+          "nonint=#{nonint.strip} want=#{want_n} inter=#{inter.strip} want=#{want_i} err=#{(err1 + err2).strip[0, 200]}")
   end
 
   # with `wayu completions add` must be active in the next (interactive) shell.

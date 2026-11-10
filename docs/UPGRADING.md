@@ -46,6 +46,11 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   hand save of `wayu.toml` / `entries.json`), open shells retry after the
   next save of either file instead of never again; the hook records the
   failure in `<data>/path_sync.<ext>.regen-failed`.
+- zsh: `zsh -l -c …` and `zsh -l -i -c …` (IDEs reading the login env,
+  ssh commands) get wayu's PATH order back before the command runs; the
+  restore after macOS `path_helper` only happened at the first prompt,
+  which these never draw. core.zsh sets a self-removing `TRAPDEBUG` for
+  such runs only, and not when a `TRAPDEBUG` is already defined.
 
 **One status icon per line**
 
