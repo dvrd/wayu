@@ -1290,7 +1290,8 @@ handle_data_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 
 // Plugins view keys. Enter shows details (handle_selection); installing
 // needs 'i' plus a confirmation (it clones from the network).
-//   Installed: space toggles enabled, e enables, x disables.
+//   Installed: space toggles enabled, e enables, x disables, d removes
+//              (confirmed), u updates.
 //   Registry:  i installs.
 handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 	#partial switch key.key {
@@ -1323,16 +1324,19 @@ handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 			state.full_redraw = true
 			state.needs_refresh = true
 		case 'd':
-			// 'd' deletes in every other view; removing a plugin (clone,
-			// dependents) is a CLI job for now — never disable silently.
+			// Remove (checkout + plugins.json entry) after a confirmation.
 			if state.plugin_tab != PLUGIN_TAB_INSTALLED do return
 			_, row, ok := selected_row(state)
 			if !ok || len(row.key) == 0 do return
-			set_notification(
-				state,
-				.INFO,
-				fmt.tprintf("Remove with: wayu plugin rm %s   (space disables)", row.key),
-			)
+			tui_offer_remove_plugin(state, row.key)
+		case 'u':
+			// Fetch + fast-forward the selected plugin.
+			if state.plugin_tab != PLUGIN_TAB_INSTALLED do return
+			_, row, ok := selected_row(state)
+			if !ok || len(row.key) == 0 do return
+			tui_update_plugin(state, row.key)
+			state.full_redraw = true
+			state.needs_refresh = true
 		}
 	}
 }
@@ -1462,7 +1466,7 @@ PLUGIN_TAB_INSTALLED :: 0
 PLUGIN_TAB_REGISTRY :: 1
 
 // Footer strings for each tab
-FOOTER_PLUGINS_INSTALLED :: "Tab Switch tab  / Filter  Space On/Off  Enter Details  r Reload  h Back"
+FOOTER_PLUGINS_INSTALLED :: "Tab Switch tab  / Filter  Space On/Off  u Update  d Remove  h Back"
 FOOTER_PLUGINS_REGISTRY :: "Tab Switch tab  / Filter  Enter Details  i Install  h Back  j/k Navigate"
 
 // Render the two-tab header bar for the plugins view.

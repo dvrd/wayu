@@ -243,13 +243,33 @@ validate_plugin_config_entries :: proc(config: ^PluginConfigJSON) -> string {
 	for &p, i in config.plugins {
 		label := fmt.tprintf("plugin #%d ('%s')", i + 1, p.name)
 
-		// An empty name/url is tolerated so a broken legacy entry can still
-		// be listed and removed (removal is guarded by the plugins root).
-		if len(p.name) > 0 && !is_valid_plugin_name(p.name) {
+		// Every command finds a plugin by name: a nameless entry could never
+		// be removed, and a second one with the same name could never be
+		// reached (OKAMI-342).
+		if len(p.name) == 0 {
+			return fmt.tprintf("plugin #%d: missing name", i + 1)
+		}
+		if !is_valid_plugin_name(p.name) {
 			return fmt.tprintf(
 				"%s: invalid name (must be a single path component, not starting with '-')",
 				label,
 			)
+		}
+		for j in 0 ..< i {
+			if config.plugins[j].name == p.name {
+				return fmt.tprintf("%s: duplicate name (also plugin #%d)", label, j + 1)
+			}
+		}
+		// `use` globs match files at the checkout's root (like `--use`): a
+		// '/' or ".." would load files from outside it.
+		for glob in p.use {
+			if !is_valid_use_glob(glob) {
+				return fmt.tprintf(
+					"%s: invalid use glob %q (a file name or glob at the repository root, no '/')",
+					label,
+					glob,
+				)
+			}
 		}
 		if len(p.url) > 0 {
 			if problem := plugin_url_problem(p.url); problem != "" {

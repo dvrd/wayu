@@ -289,6 +289,17 @@ releases, so they are listed here too.
   `backup list` (was the bare file name, so `functions/init.zsh` shared — and
   pruned — the history of `init.zsh`, and `functions/extra.zsh` that of
   `extra.zsh`). Existing backups of such files keep their old name and group.
+- `plugins.json` backups are pruned to the newest 5 like every other file's
+  (every `plugin` command added one, never removed). A `plugin` command whose
+  backup fails now writes nothing and exits with an error (was a warning).
+- `plugins.json` with an entry without a name, two entries with the same
+  name, or a `use` glob containing `/` (`"../../etc/*"`) is invalid: every
+  command that reads it exits 78 naming the entry. Fix the entry by hand.
+- `plugin update --all` counts only plugins whose checkout moved as
+  "updated" and reports the rest as "N already up to date" (all fetched
+  plugins were counted as updated).
+- TUI plugins view (Installed tab): `u` updates the selected plugin (Esc
+  cancels), `d` removes it after a confirmation (was a hint to use the CLI).
 
 ## 6.0.0
 

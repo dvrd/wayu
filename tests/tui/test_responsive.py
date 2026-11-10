@@ -25,6 +25,7 @@ import shutil
 import tempfile
 import codecs
 import signal
+import subprocess
 
 import pyte
 
@@ -881,6 +882,69 @@ def test_dry_run_badge_and_plugin_install_confirm():
         reset_config()
 
 
+def _git(*args):
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.test",
+                    "-c", "commit.gpgsign=false", *args],
+                   check=True, capture_output=True)
+
+
+def test_plugin_update_and_remove():
+    """OKAMI-362: in the Installed tab, u updates the selected plugin and
+    d removes it after a confirmation (checkout + plugins.json entry)."""
+    print(f"\n── Plugin update + remove ──")
+    reset_config()
+    origin = os.path.join(os.environ["HOME"], "tuiplug-origin")
+    shutil.rmtree(origin, ignore_errors=True)
+    _git("init", "-q", "-b", "main", origin)
+    with open(os.path.join(origin, "tuiplug.plugin.zsh"), "w") as f:
+        f.write("# v1\n")
+    _git("-C", origin, "add", "-A")
+    _git("-C", origin, "commit", "-q", "-m", "v1")
+    dest = os.path.join(data_dir(), "plugins", "tuiplug")
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    _git("clone", "-q", origin, dest)
+    head = subprocess.run(["git", "-C", dest, "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+    with open(os.path.join(data_dir(), "plugins.json"), "w") as f:
+        json.dump({"version": "1.0", "last_updated": "2026-01-01T00:00:00Z", "plugins": [{
+            "name": "tuiplug", "display_name": "tuiplug",
+            "url": "https://github.com/test/tuiplug.git", "enabled": True,
+            "shell": "ZSH", "installed_path": dest, "priority": 100,
+            "git": {"branch": "main", "commit": head}}]}, f)
+    with open(os.path.join(origin, "tuiplug.plugin.zsh"), "w") as f:
+        f.write("# v2\n")
+    _git("-C", origin, "commit", "-q", "-am", "v2")
+
+    s = TUISession(100, 30)
+    try:
+        s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+        for _ in range(5):
+            s.send(b"j"); s.read(timeout=0.1)
+        s.send(b"l")
+        ok = s.wait_for(lambda snap: "PLUGINS" in snap and "tuiplug" in snap, timeout=TIMEOUT_KEY)
+        test("plugins/installed_listed", AssertResult(ok, s.snapshot()))
+        s.send(b"u")
+        ok = s.wait_for(lambda snap: "Updated tuiplug" in snap, timeout=TIMEOUT_KEY * 4)
+        with open(os.path.join(dest, "tuiplug.plugin.zsh")) as f:
+            updated = "v2" in f.read()
+        test("plugins/update", AssertResult(ok and updated, s.snapshot()))
+        s.send(b"d")
+        ok = s.wait_for(lambda snap: "REMOVE PLUGIN" in snap, timeout=TIMEOUT_KEY)
+        test("plugins/remove_confirms", AssertResult(ok and os.path.isdir(dest), s.snapshot()))
+        s.send(b"y")
+        ok = s.wait_for(lambda snap: "Removed tuiplug" in snap, timeout=TIMEOUT_KEY)
+        with open(os.path.join(data_dir(), "plugins.json")) as f:
+            names = [p["name"] for p in json.load(f)["plugins"]]
+        test("plugins/remove", AssertResult(ok and not os.path.exists(dest) and names == [],
+                                            f"names={names}\n{s.snapshot()}"))
+        s.send(b"\x03")
+        check_clean_exit(s, "plugins_rm", want_code=0)
+    finally:
+        s.kill()
+        shutil.rmtree(origin, ignore_errors=True)
+        reset_config()
+
+
 def test_tiny_terminal_notice():
     """OKAMI-267: below 40x12 a 'too small' notice replaces the layout."""
     print(f"\n── Tiny terminal ──")
@@ -1425,6 +1489,7 @@ def run_all():
     test_slow_rc_shows_progress_and_cancels()
     test_external_edit_reloads()
     test_dry_run_badge_and_plugin_install_confirm()
+    test_plugin_update_and_remove()
     test_tiny_terminal_notice()
     test_add_form_editing_and_semantics()
     test_hooks_and_settings_views()

@@ -255,4 +255,3 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 These are acknowledged incomplete features — do not add workarounds, implement them properly:
 
 - Fish: no native prompt (`[prompt]` is zsh-only); `wayu export` turbo is zsh/bash only
-- TUI plugins view: remove/update not available (CLI handlers exit the process; needs a non-exiting core)

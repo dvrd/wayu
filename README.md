@@ -392,9 +392,11 @@ Launch with `wayu` (no args) or `wayu --tui` for an interactive terminal interfa
 | `d` / `x` | PATH / Alias / Constants | Delete entry (with confirmation) |
 | `v` | Constants | Reveal / hide secret-looking values (masked by default) |
 | Tab / `t` | Plugins view | Switch Installed ↔ Registry tab |
-| `e` | Plugins (Installed) | Enable selected plugin |
-| `d` | Plugins (Installed) | Disable selected plugin |
-| `i` / Enter | Plugins (Registry) | Install selected plugin |
+| Space | Plugins (Installed) | Enable / disable selected plugin |
+| `e` / `x` | Plugins (Installed) | Enable / disable selected plugin |
+| `u` | Plugins (Installed) | Update selected plugin (Esc cancels) |
+| `d` | Plugins (Installed) | Remove selected plugin (with confirmation) |
+| `i` | Plugins (Registry) | Install selected plugin (with confirmation) |
 | `c` | Backups view | Cleanup old backups |
 | Ctrl+C | Anywhere | Quit |
 

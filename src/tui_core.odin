@@ -491,6 +491,8 @@ execute_pending_delete :: proc(state: ^TUIState) {
 		tui_cleanup_backups(state)
 	case .INSTALL:
 		tui_install_registry_plugin(state, name)
+	case .REMOVE_PLUGIN:
+		tui_remove_plugin(state, name)
 	}
 
 	state.full_redraw = true
@@ -1468,6 +1470,7 @@ ConfirmKind :: enum u8 {
 	RESTORE, // restore wayu.toml / entries.json from backup file `name`
 	CLEANUP, // prune every backup group to BACKUP_KEEP_COUNT
 	INSTALL, // install registry plugin `name`
+	REMOVE_PLUGIN, // remove installed plugin `name` (checkout + plugins.json entry)
 }
 
 // Confirmation state — when pending, the detail overlay acts as a confirm
@@ -1803,6 +1806,8 @@ confirm_action_label :: proc(kind: ConfirmKind, compact: bool) -> string {
 		return "y CLEAN" if compact else "y CLEAN UP"
 	case .INSTALL:
 		return "y INST" if compact else "y INSTALL"
+	case .REMOVE_PLUGIN:
+		return "y REM" if compact else "y REMOVE"
 	}
 	return "y OK"
 }
@@ -2584,7 +2589,9 @@ tui_cleanup_backups :: proc(state: ^TUIState) {
 // ============================================================================
 
 // Enable / disable / toggle (nil) an installed plugin. Returns the new state.
-tui_set_plugin_enabled :: proc(state: ^TUIState, name: string, enable: Maybe(bool) = nil) {
+tui_set_plugin_enabled :: proc(state: ^TUIState, row_key: string, enable: Maybe(bool) = nil) {
+	// row_key lives in the view's row cache, freed by clear_view_cache below.
+	name := strings.clone(row_key, context.temp_allocator)
 	if !config_lock_acquire() {
 		set_notification(state, .ERROR, "Could not lock the wayu config (another wayu is writing)")
 		return
@@ -2618,7 +2625,7 @@ tui_set_plugin_enabled :: proc(state: ^TUIState, name: string, enable: Maybe(boo
 			return
 		}
 		plugin.enabled = target
-		if !tui_commit_plugin_config(&config) || !generate_plugins_file(wayu.shell) {
+		if plugin_config_save(&config) != "" || !generate_plugins_file(wayu.shell) {
 			set_notification(
 				state,
 				.ERROR,
@@ -2637,16 +2644,157 @@ tui_set_plugin_enabled :: proc(state: ^TUIState, name: string, enable: Maybe(boo
 	set_notification(state, .ERROR, fmt.tprintf("Plugin not found: %s", name))
 }
 
-// Back up plugins.json, then write `config`. A TUI mutation must never
-// replace the file without a restorable copy.
-@(private = "file")
-tui_commit_plugin_config :: proc(config: ^PluginConfigJSON) -> bool {
-	config_file := get_plugins_json_config_file()
-	defer delete(config_file)
-	if !create_backup_tui(config_file) {
-		return false
+// 'd' on an installed plugin: ask before removing it (its checkout and its
+// plugins.json entry), naming the plugins that depend on it.
+tui_offer_remove_plugin :: proc(state: ^TUIState, name: string) {
+	config, ok := read_plugin_config_json()
+	defer cleanup_plugin_config_json(&config)
+	if !ok {
+		set_notification(state, .ERROR, failure_message("", "plugins.json could not be read"))
+		return
 	}
-	return write_plugin_config_json(config)
+	plugin, found := find_plugin_json(&config, name)
+	if !found {
+		set_notification(state, .ERROR, fmt.tprintf("Plugin not found: %s", name))
+		return
+	}
+	lines := make([dynamic]string, context.temp_allocator)
+	append(&lines, fmt.tprintf("Remove %s?", plugin.name))
+	append(&lines, "")
+	if len(plugin.installed_path) > 0 {
+		append(&lines, fmt.tprintf("Deletes %s", plugin.installed_path))
+	}
+	append(&lines, "and its plugins.json entry (backed up first).")
+	dependents := check_plugin_dependents(plugin.name, &config)
+	defer {
+		for d in dependents do delete(d)
+		delete(dependents)
+	}
+	if len(dependents) > 0 {
+		append(
+			&lines,
+			fmt.tprintf(
+				"Depended on by: %s",
+				strings.join(dependents[:], ", ", context.temp_allocator),
+			),
+		)
+	}
+	show_confirmation(state, .REMOVE_PLUGIN, .PLUGINS_VIEW, "REMOVE PLUGIN", lines[:], plugin.name)
+}
+
+// Remove an installed plugin (confirmed) through plugin_remove_core, the
+// CLI's `plugin rm` code path.
+tui_remove_plugin :: proc(state: ^TUIState, name: string) {
+	if wayu.dry_run {
+		set_notification(state, .INFO, fmt.tprintf("[dry-run] would remove %s", name))
+		return
+	}
+	if !config_lock_acquire() {
+		set_notification(state, .ERROR, "Could not lock the wayu config (another wayu is writing)")
+		return
+	}
+	defer config_lock_release()
+	config, ok := read_plugin_config_json()
+	defer cleanup_plugin_config_json(&config)
+	if !ok {
+		set_notification(state, .ERROR, failure_message("", "plugins.json could not be read"))
+		return
+	}
+	res := plugin_remove_core(&config, name)
+	if len(res.err) > 0 {
+		set_notification(state, .ERROR, failure_message(res.err, "Failed to remove plugin"))
+		return
+	}
+	clear_view_cache(state, .PLUGINS_VIEW)
+	clear_registry_cache(state)
+	tui_after_write(state, .PLUGINS_VIEW)
+	msg := fmt.tprintf("Removed %s", name)
+	if res.dir == .Outside {
+		msg = fmt.tprintf("Removed %s (its directory is outside plugins/ and was kept)", name)
+	}
+	set_notification(state, .SUCCESS, msg)
+}
+
+// 'u' on an installed plugin: fetch and fast-forward it (plugin_update_core,
+// the CLI's `plugin update` code path) with a progress frame; Esc cancels.
+tui_update_plugin :: proc(state: ^TUIState, row_key: string) {
+	// row_key lives in the view's row cache, freed by clear_view_cache below.
+	name := strings.clone(row_key, context.temp_allocator)
+	if !config_lock_acquire() {
+		set_notification(state, .ERROR, "Could not lock the wayu config (another wayu is writing)")
+		return
+	}
+	defer config_lock_release()
+	config, ok := read_plugin_config_json()
+	defer cleanup_plugin_config_json(&config)
+	if !ok {
+		set_notification(state, .ERROR, failure_message("", "plugins.json could not be read"))
+		return
+	}
+	plugin, found := find_plugin_json(&config, name)
+	if !found {
+		set_notification(state, .ERROR, fmt.tprintf("Plugin not found: %s", name))
+		return
+	}
+	if pinned, ref := plugin_pinned_ref(plugin); pinned {
+		set_notification(state, .INFO, fmt.tprintf("%s is pinned to %s: not updating", name, ref))
+		return
+	}
+	if wayu.dry_run {
+		set_notification(state, .INFO, fmt.tprintf("[dry-run] would update %s", name))
+		return
+	}
+	tui_busy_begin(state, fmt.tprintf("Updating %s…", name))
+	status, _, old_commit, err := plugin_update_core(plugin)
+	cancelled := tui_busy_end(state)
+	defer delete(old_commit)
+	defer delete(err)
+	if status == .Failed {
+		if cancelled {
+			set_notification(state, .INFO, fmt.tprintf("Cancelled: %s was not updated", name))
+			return
+		}
+		first := strings.trim_space(err)
+		if i := strings.index_byte(first, '\n'); i >= 0 do first = first[:i]
+		set_notification(
+			state,
+			.ERROR,
+			failure_message(
+				fmt.tprintf("Failed to update %s: %s", name, first) if len(first) > 0 else "",
+				fmt.tprintf("Failed to update %s", name),
+			),
+		)
+		return
+	}
+	if save_err := plugin_config_save(&config); save_err != "" {
+		set_notification(state, .ERROR, failure_message(save_err, "Failed to save plugins.json"))
+		return
+	}
+	if !generate_plugins_file(wayu.shell) {
+		set_notification(state, .ERROR, "Could not regenerate the plugin loader")
+		return
+	}
+	clear_view_cache(state, .PLUGINS_VIEW)
+	tui_after_write(state, .PLUGINS_VIEW)
+	new_short := plugin.git.commit[:min(7, len(plugin.git.commit))]
+	if status == .Up_To_Date {
+		set_notification(
+			state,
+			.SUCCESS,
+			fmt.tprintf("%s already up to date (%s)", name, new_short),
+		)
+	} else {
+		set_notification(
+			state,
+			.SUCCESS,
+			fmt.tprintf(
+				"Updated %s %s → %s",
+				name,
+				old_commit[:min(7, len(old_commit))],
+				new_short,
+			),
+		)
+	}
 }
 
 // Ask before installing registry plugin `key` (it clones from the network).
@@ -2803,8 +2951,8 @@ tui_install_plugin_locked :: proc(
 		append(&config.plugins, new_plugin)
 	}
 
-	if !tui_commit_plugin_config(&config) {
-		return false, strings.clone("Could not write plugins.json")
+	if err := plugin_config_save(&config); err != "" {
+		return false, strings.clone(err)
 	}
 	if !generate_plugins_file(wayu.shell) {
 		return false, strings.clone("Could not regenerate the plugin loader")
