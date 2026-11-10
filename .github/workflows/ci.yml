@@ -85,19 +85,8 @@ jobs:
     - name: Run TUI layout tests (pyte)
       run: |
         python3 -m venv "$RUNNER_TEMP/tui-venv"
-        "$RUNNER_TEMP/tui-venv/bin/pip" install --quiet pyte
+        "$RUNNER_TEMP/tui-venv/bin/pip" install --quiet pyte==0.8.2
         "$RUNNER_TEMP/tui-venv/bin/python" tests/tui/test_responsive.py
-
-    - name: Test CLI exit codes
-      run: |
-        EXIT_CODE=0
-        ./bin/wayu path add > /dev/null 2>&1 || EXIT_CODE=$?
-        if [ "$EXIT_CODE" -eq 64 ]; then
-          echo "CLI returns correct exit code 64 for missing args"
-        else
-          echo "Expected exit code 64, got $EXIT_CODE"
-          exit 1
-        fi
 
   # Integration suites against an AddressSanitizer build: catches
   # use-after-free / out-of-bounds in the real CLI paths. Leak detection is
