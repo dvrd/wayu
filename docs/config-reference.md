@@ -570,7 +570,11 @@ in the constants' order. A run-only secret (`--run-only`) is also listed in
 `entries.json`; it is never written to the session cache, so shells never
 export it, and only `wayu secrets run` decrypts it. The mark is part of the
 associated data (`NAME` + `\0run-only`), so removing it from `secrets.json`
-makes the value fail to decrypt rather than get exported. `backend` says where the master key lives:
+makes the value fail to decrypt rather than get exported. The file is read
+strictly: any other field, text after the object, a name that is not a shell
+variable name, a non-string value, or a `run_only` name missing from
+`values` makes it malformed (secret commands exit `78`, `doctor` reports an
+error). `backend` says where the master key lives:
 
 | `backend` | Key storage |
 |---|---|

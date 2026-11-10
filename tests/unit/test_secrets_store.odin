@@ -102,6 +102,20 @@ test_secrets_store_parse_rejects :: proc(t: ^testing.T) {
 		"{not json",
 		`{"version": 2, "cipher": "chacha20poly1305", "values": {}}`,
 		`{"version": 1, "cipher": "aes", "values": {}}`,
+		// OKAMI-322: strict schema.
+		`{"version": 1, "cipher": "chacha20poly1305", "values": {}, "extra": 1}`,
+		`{"version": 1, "cipher": "chacha20poly1305", "values": {}} {}`,
+		`{"version": 1, "cipher": "chacha20poly1305", "values": {}},`,
+		`{"version": "1", "cipher": "chacha20poly1305", "values": {}}`,
+		`{"version": 1, "cipher": "chacha20poly1305"}`,
+		`{"version": 1, "cipher": "chacha20poly1305", "values": []}`,
+		`{"version": 1, "cipher": "chacha20poly1305", "values": {"BAD-NAME": "eHl6"}}`,
+		`{"version": 1, "cipher": "chacha20poly1305", "values": {"X\u0000run-only": "eHl6"}}`,
+		`{"version": 1, "cipher": "chacha20poly1305", "values": {"FAKE_A": 1}}`,
+		`{"version": 1, "cipher": "chacha20poly1305", "values": {"FAKE_A": "eHl6"}, "run_only": ["FAKE_B"]}`,
+		`{"version": 1, "cipher": "chacha20poly1305", "values": {"FAKE_A": "eHl6"}, "run_only": ["FAKE_A", "FAKE_A"]}`,
+		`{"version": 1, "cipher": "chacha20poly1305", "values": {"FAKE_A": "eHl6"}, "run_only": "FAKE_A"}`,
+		`[]`,
 	}
 	for text in bad {
 		s, err := wayu.secrets_store_parse(text)

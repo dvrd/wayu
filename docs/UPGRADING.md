@@ -6,6 +6,14 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**Encrypted secrets hardening**
+
+- `secrets.json` is read strictly: unknown fields, text after the object,
+  names that are not shell variable names, non-string values and `run_only`
+  names missing from `values` (or listed twice) are errors (exit 78 naming
+  the file) instead of being ignored. wayu never writes such a file; only a
+  hand edit is affected.
+
 **One status icon per line**
 
 - `path add` / `path remove` print `✓ Added to PATH: <dir>` / `✓ Removed

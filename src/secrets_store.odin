@@ -182,15 +182,11 @@ secrets_wipe :: proc(s: string, allocator := context.allocator) {
 // secrets.json
 // ---------------------------------------------------------------------------
 
-@(private = "file")
-Secrets_File_JSON :: struct {
-	version:  int,
-	cipher:   string,
-	values:   map[string]string,
-	run_only: []string,
-}
-
 // Parse secrets.json text. err (temp-allocated) explains a rejection.
+// Strict: one JSON object with exactly the keys secrets_store_format writes
+// ("version", "cipher", "values", optional "run_only"), nothing after it;
+// every name a shell variable name; every value a string; "run_only" a list
+// of distinct names that are in "values".
 secrets_store_parse :: proc(text: string) -> (store: Secrets_Store, err: string) {
 	arena: virtual.Arena
 	if virtual.arena_init_growing(&arena) != nil {
@@ -199,28 +195,82 @@ secrets_store_parse :: proc(text: string) -> (store: Secrets_Store, err: string)
 	defer virtual.arena_destroy(&arena)
 	scratch := virtual.arena_allocator(&arena)
 
-	doc: Secrets_File_JSON
-	if uerr := json.unmarshal_string(text, &doc, allocator = scratch); uerr != nil {
-		return {}, fmt.tprintf("not valid JSON (%v)", uerr)
+	p := json.make_parser_from_string(text, .JSON, true, scratch)
+	root, perr := json.parse_value(&p)
+	if perr != nil {
+		return {}, fmt.tprintf("not valid JSON (%v)", perr)
 	}
-	if doc.version != SECRETS_VERSION {
+	if p.curr_token.kind != .EOF {
+		return {}, "not valid JSON (text after the closing brace)"
+	}
+	doc, is_obj := root.(json.Object)
+	if !is_obj {
+		return {}, "not a JSON object"
+	}
+	for k in doc {
+		switch k {
+		case "version", "cipher", "values", "run_only":
+		case:
+			return {}, fmt.tprintf("unknown field %q", k)
+		}
+	}
+	version, v_ok := doc["version"].(json.Integer)
+	if !v_ok || version != SECRETS_VERSION {
 		return {}, fmt.tprintf(
-			"unsupported version %d (expected %d)",
-			doc.version,
+			"unsupported version %v (expected %d)",
+			doc["version"],
 			SECRETS_VERSION,
 		)
 	}
-	if doc.cipher != SECRETS_CIPHER {
-		return {}, fmt.tprintf("unsupported cipher %q (expected %q)", doc.cipher, SECRETS_CIPHER)
+	cipher, c_ok := doc["cipher"].(json.String)
+	if !c_ok || cipher != SECRETS_CIPHER {
+		return {}, fmt.tprintf(
+			"unsupported cipher %v (expected %q)",
+			doc["cipher"],
+			SECRETS_CIPHER,
+		)
 	}
-	store.entries = make([dynamic]Secret_Entry, 0, len(doc.values))
-	for name, blob in doc.values {
+	values, vals_ok := doc["values"].(json.Object)
+	if !vals_ok {
+		return {}, "\"values\" must be an object of name: ciphertext"
+	}
+	run_only: [dynamic]string
+	run_only.allocator = scratch
+	if ro, has_ro := doc["run_only"]; has_ro {
+		list, l_ok := ro.(json.Array)
+		if !l_ok {
+			return {}, "\"run_only\" must be a list of names"
+		}
+		for item in list {
+			name, s_ok := item.(json.String)
+			if !s_ok {
+				return {}, "\"run_only\" must be a list of names"
+			}
+			if name not_in values {
+				return {}, fmt.tprintf("\"run_only\" names %q, which is not in \"values\"", name)
+			}
+			if slice.contains(run_only[:], name) {
+				return {}, fmt.tprintf("\"run_only\" lists %q twice", name)
+			}
+			append(&run_only, name)
+		}
+	}
+	for name, v in values {
+		if !is_shell_var_name(name) {
+			return {}, fmt.tprintf("%q is not a valid variable name", name)
+		}
+		if _, s_ok := v.(json.String); !s_ok {
+			return {}, fmt.tprintf("the value of %s is not a string", name)
+		}
+	}
+	store.entries = make([dynamic]Secret_Entry, 0, len(values))
+	for name, v in values {
 		append(
 			&store.entries,
 			Secret_Entry {
 				name = strings.clone(name),
-				blob = strings.clone(blob),
-				run_only = slice.contains(doc.run_only, name),
+				blob = strings.clone(v.(json.String)),
+				run_only = slice.contains(run_only[:], name),
 			},
 		)
 	}
