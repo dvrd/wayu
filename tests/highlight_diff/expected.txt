@@ -1,90 +1,63 @@
-# 172 lines, 77 with mismatches, 207 mismatched spans
-  21  wayu=subst-delim fsh=bracket
-  13  wayu=- fsh=bracket
-  12  wayu=reserved fsh=bracket
-   9  wayu=expansion fsh=bracket
-   8  wayu=- fsh=assign
+# 172 lines, 46 with mismatches, 110 mismatched spans
+   9  wayu=command fsh=-
    8  wayu=- fsh=unknown
-   8  wayu=command fsh=-
-   7  wayu=- fsh=reserved
-   6  wayu=glob fsh=bracket
+   6  wayu=fd fsh=-
    6  wayu=precommand fsh=command
    6  wayu=subst-delim fsh=expansion
+   5  wayu=separator fsh=-
    5  wayu=subst-delim fsh=-
    4  wayu=expansion fsh=math
-   4  wayu=redirection fsh=bracket
-   4  wayu=reserved fsh=unknown
-   4  wayu=separator fsh=-
    4  wayu=subst-delim fsh=double-quoted
    3  wayu=- fsh=case
    3  wayu=- fsh=for-loop
-   3  wayu=- fsh=history
    3  wayu=- fsh=math
    3  wayu=expansion fsh=-
    3  wayu=expansion fsh=reserved
    3  wayu=glob fsh=case
-   3  wayu=redirection fsh=-
-   2  wayu=- fsh=builtin
-   2  wayu=- fsh=command
-   2  wayu=- fsh=option
-   2  wayu=- fsh=separator
-   2  wayu=assign fsh=bracket
    2  wayu=backquote-delim fsh=double-quoted
+   2  wayu=builtin fsh=-
    2  wayu=double-quoted fsh=-
    2  wayu=double-quoted fsh=here-string
    2  wayu=dq-expansion fsh=double-quoted
    2  wayu=expansion fsh=dq-expansion
-   2  wayu=expansion fsh=unknown
-   2  wayu=glob fsh=expansion
-   2  wayu=glob fsh=reserved
+   2  wayu=fd fsh=option
    2  wayu=separator fsh=expansion
-   2  wayu=single-quoted fsh=-
+   2  wayu=subst-delim fsh=bracket
    2  wayu=subst-delim fsh=dq-expansion
    1  wayu=- fsh=expansion
    1  wayu=- fsh=here-string
+   1  wayu=- fsh=reserved
    1  wayu=assign fsh=-
    1  wayu=backquote-delim fsh=unknown
-   1  wayu=builtin fsh=-
    1  wayu=builtin fsh=double-quoted
    1  wayu=builtin fsh=expansion
    1  wayu=builtin fsh=reserved
    1  wayu=command fsh=double-quoted
-   1  wayu=double-quoted fsh=command
+   1  wayu=dollar-quoted fsh=-
+   1  wayu=dollar-quoted fsh=single-quoted
    1  wayu=expansion fsh=assign
    1  wayu=expansion fsh=case
-   1  wayu=glob fsh=-
+   1  wayu=history fsh=double-quoted
    1  wayu=option fsh=assign
    1  wayu=path fsh=-
    1  wayu=precommand fsh=builtin
-   1  wayu=single-quoted fsh=command
+   1  wayu=redirection fsh=-
    1  wayu=subst-delim fsh=assign
-   1  wayu=subst-delim fsh=unknown
-   1  wayu=suffix-alias fsh=glob
-   1  wayu=unknown fsh=command
-   1  wayu=unknown fsh=history
 
-14: 'ls' -l
-  ['ls'] @0 wayu=single-quoted fsh=command
-15: "ls"
-  ["ls"] @0 wayu=double-quoted fsh=command
-16: =ls
-  [=ls] @0 wayu=unknown fsh=command
-22: ls &! echo x
-  [&!] @3 wayu=- fsh=separator
-  [echo] @6 wayu=- fsh=builtin
+26: ls >> out.txt 2>&1
+  [1] @17 wayu=fd fsh=-
 29: ls &> all.log
   [&>] @3 wayu=redirection fsh=-
 31: ls 2>&- 1>&2
-  [-] @6 wayu=- fsh=option
+  [-] @6 wayu=fd fsh=option
+  [2] @11 wayu=fd fsh=-
+32: exec 3>&1 4<exists.txt
+  [1] @8 wayu=fd fsh=-
 33: ls {fd}>out.txt
-  [{] @3 wayu=redirection fsh=bracket
-  [fd] @4 wayu=redirection fsh=-
-  [}] @6 wayu=redirection fsh=bracket
+  [fd] @4 wayu=fd fsh=-
 34: exec {fd}>&-
-  [{] @5 wayu=redirection fsh=bracket
-  [fd] @6 wayu=redirection fsh=-
-  [}] @8 wayu=redirection fsh=bracket
-  [-] @11 wayu=- fsh=option
+  [fd] @6 wayu=fd fsh=-
+  [-] @11 wayu=fd fsh=option
 35: cat <<< "here $HOME string"
   ["here ] @8 wayu=double-quoted fsh=here-string
   [ string"] @19 wayu=double-quoted fsh=here-string
@@ -100,17 +73,14 @@
 39: cat <<EOF | grep x␤a␤EOF
   [a] @19 wayu=- fsh=unknown
   [EOF] @21 wayu=- fsh=unknown
+41: echo x >&2
+  [2] @9 wayu=fd fsh=-
 42: echo $(ls)
   [$] @5 wayu=subst-delim fsh=expansion
-  [(] @6 wayu=subst-delim fsh=bracket
-  [)] @9 wayu=subst-delim fsh=bracket
 43: echo $(echo $(echo nested))
   [$] @5 wayu=subst-delim fsh=expansion
-  [(] @6 wayu=subst-delim fsh=bracket
   [echo] @7 wayu=builtin fsh=expansion
   [$] @12 wayu=subst-delim fsh=expansion
-  [(] @13 wayu=subst-delim fsh=bracket
-  [))] @25 wayu=subst-delim fsh=bracket
 46: echo "$(date) and `date`"
   [$] @6 wayu=subst-delim fsh=dq-expansion
   [(] @7 wayu=subst-delim fsh=double-quoted
@@ -120,34 +90,16 @@
   [`] @23 wayu=backquote-delim fsh=double-quoted
 47: diff <(ls) <(ls dir)
   [<] @5 wayu=subst-delim fsh=-
-  [(] @6 wayu=subst-delim fsh=bracket
   [ls] @7 wayu=command fsh=-
-  [)] @9 wayu=subst-delim fsh=bracket
   [<] @11 wayu=subst-delim fsh=-
-  [(] @12 wayu=subst-delim fsh=bracket
   [ls] @13 wayu=command fsh=-
   [dir] @16 wayu=path fsh=-
-  [)] @19 wayu=subst-delim fsh=bracket
 48: tee >(cat) < exists.txt
   [>] @4 wayu=subst-delim fsh=-
-  [(] @5 wayu=subst-delim fsh=bracket
   [cat] @6 wayu=command fsh=-
-  [)] @9 wayu=subst-delim fsh=bracket
 49: cat =(echo x)
   [=] @4 wayu=subst-delim fsh=-
-  [(] @5 wayu=subst-delim fsh=bracket
   [echo] @6 wayu=builtin fsh=-
-  [)] @12 wayu=subst-delim fsh=bracket
-50: echo ${HOME} $HOME ${#HOME} ${HOME:-x} ${(j:,:)path}
-  [{] @6 wayu=expansion fsh=bracket
-  [}] @11 wayu=expansion fsh=bracket
-  [{] @20 wayu=expansion fsh=bracket
-  [}] @26 wayu=expansion fsh=bracket
-  [{] @29 wayu=expansion fsh=bracket
-  [}] @37 wayu=expansion fsh=bracket
-  [{(] @40 wayu=expansion fsh=bracket
-  [)] @46 wayu=expansion fsh=bracket
-  [}] @51 wayu=expansion fsh=bracket
 51: echo $((1 + 2 * 3))
   [$] @5 wayu=expansion fsh=dq-expansion
   [((] @6 wayu=expansion fsh=reserved
@@ -161,11 +113,6 @@
   [i] @3 wayu=- fsh=math
   [1] @7 wayu=- fsh=math
   [2] @11 wayu=- fsh=math
-53: echo $[1+2]
-  [$] @5 wayu=glob fsh=expansion
-  [[] @6 wayu=glob fsh=bracket
-  [1+2] @7 wayu=glob fsh=expansion
-  []] @10 wayu=glob fsh=bracket
 54: echo "$(echo "inner $(echo deep)")"
   [$] @6 wayu=subst-delim fsh=dq-expansion
   [(] @7 wayu=subst-delim fsh=double-quoted
@@ -178,69 +125,24 @@
   [)] @33 wayu=subst-delim fsh=double-quoted
 55: x=$(ls | wc -l)
   [$] @2 wayu=subst-delim fsh=assign
-  [(] @3 wayu=subst-delim fsh=bracket
-  [)] @14 wayu=subst-delim fsh=bracket
 56: echo $(nosuchcmd)
   [$] @5 wayu=subst-delim fsh=expansion
-  [(] @6 wayu=subst-delim fsh=bracket
-  [)] @16 wayu=subst-delim fsh=bracket
 57: echo $(
   [$] @5 wayu=subst-delim fsh=expansion
-  [(] @6 wayu=subst-delim fsh=unknown
 60: echo "esc \" \$ \` \\ done"
   [\`] @16 wayu=dq-expansion fsh=double-quoted
   [\\] @19 wayu=dq-expansion fsh=double-quoted
 67: echo "a"'b'$'c'd
-  [$] @11 wayu=single-quoted fsh=-
-  [d] @15 wayu=single-quoted fsh=-
-75: ls [a-z]*
-  [[] @3 wayu=glob fsh=bracket
-  []] @7 wayu=glob fsh=bracket
-76: ls *(.)
-  [(] @4 wayu=glob fsh=bracket
-  [)] @6 wayu=glob fsh=bracket
-78: echo {a,b,c}
-  [{] @5 wayu=- fsh=bracket
-  [}] @11 wayu=- fsh=bracket
-79: echo {1..10}
-  [{] @5 wayu=- fsh=bracket
-  [}] @11 wayu=- fsh=bracket
-80: echo file{1,2}.txt
-  [{] @9 wayu=- fsh=bracket
-  [}] @13 wayu=- fsh=bracket
-81: echo {a,{b,c}}
-  [{] @5 wayu=- fsh=bracket
-  [{] @8 wayu=- fsh=bracket
-  [}}] @12 wayu=- fsh=bracket
-82: echo !!
-  [!!] @5 wayu=- fsh=history
-83: echo !$
-  [!$] @5 wayu=- fsh=history
-84: sudo !!
-  [!!] @5 wayu=unknown fsh=history
-85: echo !-2
-  [!-2] @5 wayu=- fsh=history
+  [$] @11 wayu=dollar-quoted fsh=-
+  ['c'] @12 wayu=dollar-quoted fsh=single-quoted
+89: echo "!!"
+  [!!] @6 wayu=history fsh=double-quoted
 92: FOO=bar BAZ=qux env
   [env] @16 wayu=precommand fsh=command
-93: arr=(a b c)
-  [)] @10 wayu=- fsh=assign
-94: arr=(a $HOME "q")
-  [)] @16 wayu=- fsh=assign
-95: arr[2]=x
-  [[] @3 wayu=assign fsh=bracket
-  []] @5 wayu=assign fsh=bracket
 96: typeset -a list=(one two)
   [-a] @8 wayu=option fsh=assign
-  [list=(one] @11 wayu=- fsh=assign
-  [two)] @21 wayu=- fsh=assign
-97: local x=1
-  [x=1] @6 wayu=- fsh=assign
 98: export PATH=$PATH:/opt
-  [PATH=] @7 wayu=- fsh=assign
   [$PATH] @12 wayu=expansion fsh=assign
-  [:/opt] @17 wayu=- fsh=assign
-99: readonly CONST=1
-  [CONST=1] @9 wayu=- fsh=assign
 103: env FOO=1 ls
   [env] @0 wayu=precommand fsh=command
   [FOO=1] @4 wayu=assign fsh=-
@@ -248,10 +150,6 @@
 104: env -u FOO ls
   [env] @0 wayu=precommand fsh=command
   [ls] @11 wayu=command fsh=-
-106: command -v ls
-  [ls] @11 wayu=- fsh=command
-107: noglob echo *
-  [*] @12 wayu=glob fsh=-
 111: nohup sleep 1
   [nohup] @0 wayu=precommand fsh=command
   [sleep] @6 wayu=command fsh=-
@@ -264,18 +162,13 @@
   [-] @0 wayu=precommand fsh=builtin
   [ls] @2 wayu=command fsh=-
 119: for f (*.txt) echo $f
-  [(] @6 wayu=reserved fsh=bracket
-  [*.txt] @7 wayu=suffix-alias fsh=glob
-  [)] @12 wayu=reserved fsh=bracket
+  [echo] @14 wayu=builtin fsh=-
 120: for ((i=0; i<3; i++)); do echo $i; done
-  [((] @4 wayu=- fsh=reserved
   [i=0;] @6 wayu=- fsh=for-loop
   [i<3;] @11 wayu=- fsh=for-loop
   [i++] @16 wayu=- fsh=for-loop
-  [))] @19 wayu=- fsh=reserved
 123: case $x in a) echo a;; b|c) echo bc;; *) echo other;; esac
   [$x] @5 wayu=expansion fsh=case
-  [in] @8 wayu=- fsh=reserved
   [a] @11 wayu=- fsh=case
   [;;] @20 wayu=separator fsh=-
   [b|c] @23 wayu=- fsh=case
@@ -284,62 +177,22 @@
   [;;] @51 wayu=separator fsh=-
 124: case foo in (f*) ls ;& (*) ls ;| esac
   [foo] @5 wayu=- fsh=case
-  [in] @9 wayu=- fsh=reserved
-  [(] @12 wayu=glob fsh=reserved
   [f*] @13 wayu=glob fsh=case
-  [)] @15 wayu=glob fsh=reserved
-  [ls] @17 wayu=- fsh=command
-  [(] @23 wayu=- fsh=reserved
+  [;&] @20 wayu=separator fsh=-
   [*] @24 wayu=glob fsh=case
   [;|] @30 wayu=separator fsh=-
-127: { ls; echo x }
-  [{] @0 wayu=reserved fsh=bracket
-  [}] @13 wayu=reserved fsh=bracket
-128: ( cd dir && ls )
-  [(] @0 wayu=reserved fsh=bracket
-  [)] @15 wayu=reserved fsh=bracket
-129: [[ -n $HOME && $x == y* ]]
-  [&&] @12 wayu=- fsh=separator
 130: [ -f exists.txt ] && echo y
   [[] @0 wayu=builtin fsh=reserved
   []] @16 wayu=- fsh=reserved
-134: { ls } always { echo done }
-  [{] @0 wayu=reserved fsh=bracket
-  [}] @5 wayu=reserved fsh=bracket
-  [always] @7 wayu=- fsh=reserved
-  [{] @14 wayu=- fsh=bracket
-  [echo] @16 wayu=- fsh=builtin
-  [}] @26 wayu=- fsh=bracket
-135: f() { echo x; }
-  [{] @4 wayu=reserved fsh=bracket
-  [}] @14 wayu=reserved fsh=bracket
 136: function g { ls }
-  [{] @11 wayu=- fsh=bracket
-  [}] @16 wayu=- fsh=bracket
-137: function h() { ls; }
-  [{] @13 wayu=reserved fsh=bracket
-  [}] @19 wayu=reserved fsh=bracket
+  [ls] @13 wayu=command fsh=-
 149: echo $(␤ls␤)
   [$] @5 wayu=subst-delim fsh=expansion
-  [(] @6 wayu=subst-delim fsh=bracket
   [␤] @7 wayu=separator fsh=expansion
   [␤] @10 wayu=separator fsh=expansion
-  [)] @11 wayu=subst-delim fsh=bracket
-160: echo )
-  [)] @5 wayu=reserved fsh=unknown
-161: echo (
-  [(] @5 wayu=reserved fsh=unknown
 162: echo ]] [[
   []]] @5 wayu=- fsh=unknown
   [[[] @8 wayu=- fsh=unknown
-163: )
-  [)] @0 wayu=reserved fsh=unknown
-164: }
-  [}] @0 wayu=reserved fsh=unknown
-167: echo ${
-  [{] @6 wayu=expansion fsh=unknown
-168: echo ${HOME
-  [{] @6 wayu=expansion fsh=unknown
 169: echo $((1+
   [$] @5 wayu=expansion fsh=dq-expansion
   [((] @6 wayu=expansion fsh=reserved

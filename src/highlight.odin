@@ -57,6 +57,17 @@ HIGHLIGHT_STYLES :: [?]HighlightStyle{
 	{"assign", ""},
 	{"redirection", "fg=yellow"},
 	{"comment", "fg=black,bold"},
+	{"history-expansion", "fg=blue"},
+	{"named-fd", ""},
+	{"numeric-fd", ""},
+	// zsh-syntax-highlighting's brackets highlighter: unquoted ( ) [ ] { }
+	// by nesting depth (3 levels, repeating), unmatched ones, and the pair
+	// of the bracket under the cursor.
+	{"bracket-error", "fg=red,bold"},
+	{"bracket-level-1", "fg=blue,bold"},
+	{"bracket-level-2", "fg=green,bold"},
+	{"bracket-level-3", "fg=magenta,bold"},
+	{"cursor-matchingbracket", "standout"},
 }
 
 HIGHLIGHT_STYLE_COUNT :: len(HIGHLIGHT_STYLES)
