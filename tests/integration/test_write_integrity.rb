@@ -36,6 +36,8 @@ class WriteIntegrityIntegrationTest
       test_mode_and_symlink_preserved
       test_concurrent_alias_adds
       test_concurrent_const_adds
+      test_first_run_concurrent_adds
+      test_relative_dir_overrides_refused
       test_concurrent_path_adds
       test_concurrent_plugin_adds
       test_reader_parity_across_commands
@@ -209,6 +211,36 @@ class WriteIntegrityIntegrationTest
     check("Test 8: #{CONCURRENCY} concurrent const adds all land",
           results.all? { |_, rc| rc.zero? } && landed == CONCURRENCY,
           "landed=#{landed}/#{CONCURRENCY}")
+  end
+
+  # Regression (OKAMI-327): before the data dir existed the lock fell back to
+  # the config dir (or to no lock at all), so concurrent first writes lost
+  # entries (20 parallel adds -> 19) and left a .wayu.lock in the config dir.
+  def test_first_run_concurrent_adds
+    data = "#{@tmp_home}/fresh-data"
+    FileUtils.rm_rf(data)
+    results = run_parallel(CONCURRENCY, 'WAYU_DATA_DIR' => data) { |i| ['const', 'add', "FR#{i}", i.to_s] }
+    file = "#{data}/entries.json"
+    landed = File.exist?(file) ? JSON.parse(File.read(file))['env'].map { |e| e['name'] }.grep(/\AFR\d+\z/).length : 0
+    check("Test 8b: #{CONCURRENCY} concurrent const adds on a missing data dir all land, lock in the data dir",
+          results.all? { |_, rc| rc.zero? } && landed == CONCURRENCY &&
+            File.exist?("#{data}/.wayu.lock") && !File.exist?("#{@config_dir}/.wayu.lock"),
+          "landed=#{landed}/#{CONCURRENCY} rcs=#{results.map { |_, rc| rc }.uniq} " \
+          "config_lock=#{File.exist?("#{@config_dir}/.wayu.lock")}")
+  end
+
+  # Regression (OKAMI-328): a relative WAYU_DATA_DIR / WAYU_CONFIG_DIR was
+  # used as-is (a store under the working directory). Now: exit 78.
+  def test_relative_dir_overrides_refused
+    cwd = "#{@tmp_home}/cwd"
+    FileUtils.mkdir_p(cwd)
+    env = ENV.to_h.merge('HOME' => @tmp_home)
+    o1, s1 = Open3.capture2e(env.merge('WAYU_DATA_DIR' => 'rel'), @wayu_bin, 'const', 'add', 'REL', '1', chdir: cwd)
+    o2, s2 = Open3.capture2e(env.merge('WAYU_CONFIG_DIR' => 'relcfg'), @wayu_bin, 'alias', 'list', chdir: cwd)
+    check("Test 8c: relative WAYU_DATA_DIR / WAYU_CONFIG_DIR exit 78, nothing created in the cwd",
+          s1.exitstatus == 78 && o1.include?('WAYU_DATA_DIR must be an absolute path') &&
+            s2.exitstatus == 78 && o2.include?('WAYU_CONFIG_DIR') && Dir.children(cwd).empty?,
+          "data=#{s1.exitstatus} #{o1.strip} config=#{s2.exitstatus} #{o2.strip} cwd=#{Dir.children(cwd)}")
   end
 
   def test_concurrent_path_adds

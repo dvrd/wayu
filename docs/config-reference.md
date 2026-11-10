@@ -50,7 +50,11 @@ they live, and which files are generated.
 | `WAYU_DATA_DIR` | `${XDG_DATA_HOME:-~/.local/share}/wayu` | Data wayu manages: `entries.json`, `plugins.json`, `functions/` (`wayu function`), `scripts/` and `bin/` (`wayu script`), and generated / runtime files: `init.<ext>`, `core.<ext>`, `path_sync.<ext>`, `turbo.<ext>`, `plugins.<ext>`, `plugins/`, `completions/`, `backup/`, `.wayu.lock` |
 
 - Each variable is read independently: setting one never moves the other.
-  `wayu init` creates both dirs.
+  `wayu init` creates both dirs; the first command that writes creates the
+  data dir if it is missing.
+- `WAYU_CONFIG_DIR` and `WAYU_DATA_DIR` must be absolute paths: a relative one
+  makes every command exit `78`. A relative `XDG_DATA_HOME` is ignored (XDG
+  spec), so the data dir is then `~/.local/share/wayu`.
 - The rc line `wayu init` adds finds the data dir by itself:
 
   ```sh

@@ -540,7 +540,7 @@ BSD `sysexits.h` values (`EXIT_*` in `src/interfaces.odin`):
 | 73 | `EXIT_CANTCREAT` | Cannot create an output file or directory |
 | 74 | `EXIT_IOERR` | Read/write failure, failed git operation |
 | 77 | `EXIT_NOPERM` | Permission denied |
-| 78 | `EXIT_CONFIG` | Configuration problem: not initialized, invalid `hooks.conf`, `doctor` found an error, `export check` found no current turbo file |
+| 78 | `EXIT_CONFIG` | Configuration problem: not initialized, invalid `hooks.conf` or `entries.json`, relative `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR`, `doctor` found an error, `export check` found no current turbo file |
 | 126 | `EXIT_EXEC_NOT_RUNNABLE` | `secrets run`: the command was found but cannot be executed |
 | 127 | `EXIT_EXEC_NOT_FOUND` | `secrets run`: the command was not found |
 
@@ -579,6 +579,7 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu secrets run NO_SUCH_NAME -- true` | 65 |
 | `wayu path rm /no/such/dir` | 65 |
 | `wayu alias add 'a b' x` | 65 |
+| `wayu const add PATH /x` | 65 |
 | `wayu plugin rm no-such-plugin` | 65 |
 | `wayu template apply no-such-template` | 65 |
 | `wayu path add /no/such/dir` | 66 |
@@ -600,9 +601,9 @@ parse.
 
 | Variable | Effect |
 |---|---|
-| `WAYU_CONFIG_DIR` | Config dir (wayu.toml, extra/tools, hooks.conf); default `~/.config/wayu` |
-| `WAYU_DATA_DIR` | Data dir (entries.json, functions/, scripts/, bin/, plugins, generated init files, completions, backups); default `${XDG_DATA_HOME:-~/.local/share}/wayu` |
-| `XDG_DATA_HOME` | Base of the default data dir |
+| `WAYU_CONFIG_DIR` | Config dir (wayu.toml, extra/tools, hooks.conf); default `~/.config/wayu`. Must be absolute (else exit `78`) |
+| `WAYU_DATA_DIR` | Data dir (entries.json, functions/, scripts/, bin/, plugins, generated init files, completions, backups); default `${XDG_DATA_HOME:-~/.local/share}/wayu`. Must be absolute (else exit `78`) |
+| `XDG_DATA_HOME` | Base of the default data dir (ignored when relative) |
 | `SHELL` | Shell detection (override with `--shell`) |
 | `NO_COLOR` | Disable colors (wins over `FORCE_COLOR`) |
 | `FORCE_COLOR`, `CLICOLOR_FORCE` | Keep colors when stdout is not a terminal |

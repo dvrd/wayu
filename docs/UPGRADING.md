@@ -153,6 +153,16 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   a NUL written raw into `core.<ext>`). Fix the file by hand or `wayu backup
   restore entries --yes`.
 
+**Directories and the lock**
+
+- A relative `WAYU_CONFIG_DIR` or `WAYU_DATA_DIR` makes every command exit 78
+  (it was used as-is, relative to each process's working directory). Use an
+  absolute path.
+- The config lock is always `<data>/.wayu.lock`: the first writing command
+  creates the data dir if it is missing (it used to lock in the config dir,
+  or not at all, before the data dir existed, and concurrent first writes
+  lost entries). A leftover `~/.config/wayu/.wayu.lock` can be deleted.
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is
