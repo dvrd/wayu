@@ -7,6 +7,7 @@
 package test_wayu
 
 import wayu "../../src"
+import "base:runtime"
 import "core:os"
 import "core:strings"
 import "core:testing"
@@ -406,4 +407,88 @@ test_entries_text_holds_any_escaping :: proc(t: ^testing.T) {
 	)
 	// Unparsable text: raw search.
 	testing.expect(t, wayu.entries_text_holds(`{"env": [ "pässwörd€xyz"`, "pässwörd€xyz"))
+}
+
+// Allocator that counts allocations and every block released (freed, or left
+// behind by a resize) while still holding non-zero bytes.
+@(private = "file")
+Wipe_Check :: struct {
+	backing: runtime.Allocator,
+	allocs:  int,
+	dirty:   int,
+}
+
+@(private = "file")
+wipe_check_proc :: proc(
+	data: rawptr,
+	mode: runtime.Allocator_Mode,
+	size, alignment: int,
+	old_memory: rawptr,
+	old_size: int,
+	loc := #caller_location,
+) -> (
+	[]byte,
+	runtime.Allocator_Error,
+) {
+	w := (^Wipe_Check)(data)
+	#partial switch mode {
+	case .Alloc, .Alloc_Non_Zeroed:
+		w.allocs += 1
+	case .Free, .Resize, .Resize_Non_Zeroed:
+		if old_memory != nil {
+			for b in ([^]byte)(old_memory)[:old_size] {
+				if b != 0 {
+					w.dirty += 1
+					break
+				}
+			}
+		}
+		if mode != .Free {
+			w.allocs += 1
+		}
+	}
+	return w.backing.procedure(w.backing.data, mode, size, alignment, old_memory, old_size, loc)
+}
+
+// OKAMI-326: buffers holding plaintext never leave an unwiped copy behind.
+@(test)
+test_secret_buffers_wiped :: proc(t: ^testing.T) {
+	check := Wipe_Check {
+		backing = context.allocator,
+	}
+	alloc := runtime.Allocator{wipe_check_proc, &check}
+
+	// stdin buffer: grows several times, every old block wiped.
+	{
+		context.allocator = alloc
+		b: [dynamic]byte
+		chunk := [100]byte{}
+		for &c in chunk {c = 'x'}
+		for _ in 0 ..< 40 {wayu.secret_buf_append(&b, chunk[:])}
+		testing.expect_value(t, len(b), 4000)
+		wayu.secret_buf_destroy(&b)
+	}
+	testing.expect_value(t, check.dirty, 0)
+
+	// Session cache text: one exact-size allocation (no regrowth).
+	check = {
+		backing = context.allocator,
+	}
+	names := []string{"FAKE_A", "FAKE_B", "bad-name", "FAKE_C"}
+	long := strings.repeat("fake-'\\-", 200, context.temp_allocator)
+	values := []string{"it's", long, "x", ""}
+	for sh in ([]wayu.ShellType{.ZSH, .BASH, .FISH}) {
+		check.allocs = 0
+		content := wayu.secrets_cache_content(sh, names, values, alloc)
+		testing.expectf(
+			t,
+			check.allocs == 1 && check.dirty == 0,
+			"%v: allocs=%d dirty=%d",
+			sh,
+			check.allocs,
+			check.dirty,
+		)
+		wayu.secrets_wipe(content, alloc)
+	}
+	testing.expect_value(t, check.dirty, 0)
 }
