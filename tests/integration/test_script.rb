@@ -35,6 +35,7 @@ class ScriptIntegrationTest
       test_failed_build_keeps_binary
       test_edit_during_compile_stays_stale
       test_new_editor_can_run_wayu
+      test_prompt_hook_build_compiles_in_background
       test_import_dry_run
       test_import
       test_import_copy_and_duplicate
@@ -67,6 +68,7 @@ class ScriptIntegrationTest
         case "$1" in -o) out=$2; shift 2 ;; -*) shift ;; *) src=$1; shift ;; esac
       done
       if grep -q COMPILE_ERROR "$src"; then echo "error: fake compile error" >&2; exit 1; fi
+      if grep -q SLOW_COMPILE "$src"; then sleep 3; fi
       n=$(grep -c . "$src")
       # MUTATE: the source is saved again while the compiler runs.
       if grep -q MUTATE "$src"; then echo '// saved mid-build' >> "$src"; fi
@@ -251,6 +253,27 @@ class ScriptIntegrationTest
     run_s('const rm EDITOR_PROBE')
     check('script new: an $EDITOR that runs wayu completes (no lock held during the editor)',
           status&.success? && store.include?('EDITOR_PROBE'), "status=#{status.inspect}")
+  end
+
+  # OKAMI-308: the prompt hook's `wayu build` (WAYU_PROMPT_HOOK=1) doesn't
+  # wait for a compiler; the stale script is built in the background.
+  def test_prompt_hook_build_compiles_in_background
+    File.write("#{scripts_dir}/sw.swift", "// SLOW_COMPILE\nprint(1)\nprint(2)\n")
+    t0 = Time.now
+    _, st = run_s('build', 'WAYU_PROMPT_HOOK' => '1')
+    elapsed = Time.now - t0
+    stale_after = list_json.dig('sw', 'stale')
+    built = false
+    40.times do
+      break if (built = list_json.dig('sw', 'stale') == false)
+      sleep 0.25
+    end
+    run_out, = Open3.capture2e("#{bin_dir}/sw")
+    core = File.read("#{@data_dir}/core.zsh")
+    check('the prompt hook build returns before the compile; it runs in the background',
+          st.success? && elapsed < 2.5 && stale_after == true && built && run_out.include?('lines=3') &&
+          core.include?('WAYU_PROMPT_HOOK=1 command "${_WAYU_BIN:-wayu}" build'),
+          "exit=#{st.exitstatus} elapsed=#{elapsed.round(2)} stale_after=#{stale_after} built=#{built} run=#{run_out}")
   end
 
   def import_fixtures(dir)

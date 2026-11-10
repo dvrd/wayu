@@ -38,20 +38,25 @@ class GeneratedShellTest
       build_project
       test_zsh_hostile_environments
       test_bash_hostile_aliases
+      test_bash_glob_options
       test_nvm_default_resolution
       test_nvmrc_resolution
       test_compinit_picks_up_new_completions
       test_env_values_and_functions_all_shells
       test_fresh_init_has_no_error_output
       test_script_path_sync_after_path_add
+      test_path_sync_retries_after_bad_save
       test_dir_overrides_produce_working_init
       test_evalcache_binary_identity
+      test_bash_errexit_with_tools
       test_tools_args_never_run_code
       test_prompt_survives_hostile_commands
       test_init_and_turbo_define_the_same
       test_prompt_vi_mode_and_widgets
       test_prompt_git_branch_without_git
+      test_prompt_values_are_not_prompt_escapes
       test_login_reorder_restored_at_first_prompt
+      test_login_c_reorder_restored
       test_prompt_survives_later_ps1_reset
     ensure
       teardown_test_env
@@ -151,6 +156,24 @@ class GeneratedShellTest
     end
   end
 
+  # OKAMI-345: failglob / nullglob / noglob / nounset in the user's bash
+  # don't make core.bash print "no match" or skip functions/ and
+  # completions/, and the options are restored afterwards.
+  def test_bash_glob_options
+    _, data, env = setup_home('bash_glob', 'bash')
+    { 'failglob' => 'shopt -s failglob', 'nullglob + nounset' => 'shopt -s nullglob; set -u',
+      'noglob' => 'set -f' }.each do |name, pre|
+      print "Test: bash init with #{name}: functions and completions load, options kept... "
+      script = "#{pre}\nsource '#{data}/init.bash'\n" \
+               'echo "myfn=$(myfn) comp=$(complete -p wayu 2>&1) fg=$(shopt -q failglob && echo 1) ng=$(shopt -q nullglob && echo 1) f=${-//[^f]/} leak=${_wayu_files+x}${f+x}"'
+      out, err, st = Open3.capture3(env, '/bin/bash', '--norc', '--noprofile', '-c', script)
+      want = "myfn=myfn-ok comp=complete -F _wayu_completion wayu fg=#{pre.include?('failglob') ? 1 : ''} " \
+             "ng=#{pre.include?('nullglob') ? 1 : ''} f=#{pre.include?('set -f') ? 'f' : ''} leak="
+      check(name, st.success? && err.strip.empty? && out.strip == want,
+            "out=#{out.strip.inspect} want=#{want.inspect} err=#{err.strip[0, 300]}")
+    end
+  end
+
   # alias/default as nvm itself resolves it: highest matching install,
   # optional leading v, alias chains (lts/iron, lts/*), node = newest,
   # partial versions match whole components only.
@@ -227,7 +250,10 @@ class GeneratedShellTest
     Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh', stdin_data: '')
     write_entries(paths: { 'a' => "#{home}/a/bin", 'b' => "#{home}/b/bin" }, data: "#{home}/.local/share/wayu")
     Open3.capture3(env, @wayu_bin, 'build')
-    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
+    # A TRAPDEBUG of the user's: wayu then leaves the -c restore to the first
+    # prompt (simulated by running the precmd hooks), the path tested here.
+    File.write("#{home}/.zshenv", "TRAPDEBUG() { : }\n" \
+                                  "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
     File.write("#{home}/.zprofile", "path=( /usr/sbin /bin ${path:#(/usr/sbin|/bin)} )\n")
     File.write("#{home}/.zshrc", "path=( $HOME/pre/bin $path )\n")
     probe = 'print -r -- "${(j.:.)path[1,4]}"; for f in $precmd_functions; do $f; done; print -r -- "${(j.:.)path[1,5]}"'
@@ -236,6 +262,32 @@ class GeneratedShellTest
     want = ["#{home}/pre/bin", "#{home}/a/bin", "#{home}/b/bin", '/usr/sbin', '/bin'].join(':')
     check('login_reorder', before.to_s.start_with?("#{home}/pre/bin:/usr/sbin:/bin") && after == want,
           "before=#{before} after=#{after} err=#{err.strip[0, 200]}")
+  end
+
+  # OKAMI-318: `zsh -l -c` / `zsh -l -i -c` (no prompt ever) get the wayu
+  # order back before the command runs; the trap is gone afterwards.
+  def test_login_c_reorder_restored
+    print "Test: wayu PATH order restored in zsh -l -c and -l -i -c... "
+    home = "#{@tmp_home}/login_c_reorder"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(%w[a/bin b/bin pre/bin .config].map { |d| "#{home}/#{d}" })
+    env = { 'HOME' => home, 'SHELL' => '/bin/zsh', 'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin', 'ZDOTDIR' => home,
+            'WAYU_CONFIG' => nil, 'WAYU_DATA_DIR' => nil, 'WAYU_CONFIG_DIR' => nil, 'XDG_CONFIG_HOME' => nil }
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh', stdin_data: '')
+    write_entries(paths: { 'a' => "#{home}/a/bin", 'b' => "#{home}/b/bin" }, data: "#{home}/.local/share/wayu")
+    Open3.capture3(env, @wayu_bin, 'build')
+    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
+    File.write("#{home}/.zprofile", "path=( /usr/sbin /bin ${path:#(/usr/sbin|/bin)} )\n")
+    File.write("#{home}/.zshrc", "path=( $HOME/pre/bin $path )\n")
+    probe = 'false; print -r -- "$? ${(j.:.)path[1,5]} trap=${+functions[TRAPDEBUG]}"'
+    nonint, err1, = Open3.capture3(env, 'zsh', '-l', '-c', probe)
+    inter, err2, = Open3.capture3(env, 'zsh', '-l', '-i', '-c', probe)
+    plain, = Open3.capture3(env, 'zsh', '-c', 'print -r -- "trap=${+functions[TRAPDEBUG]}"')
+    want_n = "1 #{home}/a/bin:#{home}/b/bin:/usr/sbin:/bin:" # 5th: whatever the system zprofile adds
+    want_i = "1 #{["#{home}/pre/bin", "#{home}/a/bin", "#{home}/b/bin", '/usr/sbin', '/bin'].join(':')} trap=0"
+    check('login_c', nonint.start_with?(want_n) && nonint.strip.end_with?(" trap=0") && inter.lines.last.to_s.strip == want_i && plain.strip == 'trap=0' &&
+                     (err1 + err2).strip.empty?,
+          "nonint=#{nonint.strip} want=#{want_n} inter=#{inter.strip} want=#{want_i} err=#{(err1 + err2).strip[0, 200]}")
   end
 
   # with `wayu completions add` must be active in the next (interactive) shell.
@@ -309,6 +361,38 @@ class GeneratedShellTest
       ok = syntax.empty? && st.success? && err.strip.empty? &&
            lines == [want_env, "fn-#{sh}", 'path-ok']
       check("env #{sh}", ok, "syntax=#{syntax.map { |f| File.basename(f) }} out=#{out.inspect} err=#{err.strip[0, 400]}")
+    end
+  end
+
+  # OKAMI-344: a malformed hand save of entries.json (build fails) no longer
+  # stops the live PATH sync for good: the next save is picked up.
+  def test_path_sync_retries_after_bad_save
+    fish = `command -v fish 2>/dev/null`.strip
+    shells = { 'zsh' => 'zsh', 'bash' => '/bin/bash' }
+    shells['fish'] = fish unless fish.empty?
+    shells.each do |sh, exe|
+      print "Test: live PATH sync retries after a malformed entries.json save (#{sh})... "
+      home = "#{@tmp_home}/regen_retry_#{sh}"
+      FileUtils.rm_rf(home)
+      FileUtils.mkdir_p(["#{home}/.config", "#{home}/newbin"])
+      env = clean_env(home, 'SHELL' => "/bin/#{sh}", 'PATH' => "#{File.dirname(@wayu_bin)}:/usr/bin:/bin")
+      Open3.capture3(env, @wayu_bin, 'init', '--shell', sh)
+      data = "#{home}/.local/share/wayu"
+      entries = "#{data}/entries.json"
+      good = JSON.generate('version' => 1, 'paths' => [{ 'key' => 'nb', 'dir' => "#{home}/newbin" }])
+      File.write("#{home}/good.json", good)
+      probe = if sh == 'fish'
+                "source '#{data}/init.fish'; sleep 1.1; echo '{ bad' > '#{entries}'; _wayu_paths_sync; " \
+                "test -e \"$_WAYU_PATHS_FILE.regen-failed\"; and echo marker; sleep 1.1; cp '#{home}/good.json' '#{entries}'; " \
+                "_wayu_paths_sync; contains -- '#{home}/newbin' $PATH; and echo synced"
+              else
+                "source '#{data}/init.#{sh}'; sleep 1.1; echo '{ bad' > '#{entries}'; _wayu_paths_sync; " \
+                "[ -e \"$_WAYU_PATHS_FILE.regen-failed\" ] && echo marker; sleep 1.1; cp '#{home}/good.json' '#{entries}'; " \
+                "_wayu_paths_sync; case \":$PATH:\" in *':#{home}/newbin:'*) echo synced ;; esac"
+              end
+      out, err, = Open3.capture3(env, exe, *SHELL_ARGS[sh], probe)
+      check("retry #{sh}", out.lines.map(&:strip) == %w[marker synced] && err.strip.empty?,
+            "out=#{out.inspect} err=#{err.strip[0, 300]}")
     end
   end
 
@@ -441,6 +525,40 @@ class GeneratedShellTest
       want = %w[1 2 A B B]
       check("evalcache #{sh}", seen.map(&:first) == want && seen.all? { |s| s[1].empty? } && clean_st.success? && gone,
             "seen=#{seen.inspect} clean=#{clean_st.exitstatus} gone=#{gone}")
+    end
+  end
+
+  # OKAMI-315/349: core.bash sourced under `set -e` (bash 3.2 and a newer
+  # bash when installed) survives a [tools] binary that is missing or fails,
+  # and finds tools without a `$(type -P)` fork.
+  def test_bash_errexit_with_tools
+    bashes = ['/bin/bash', '/opt/homebrew/bin/bash', '/usr/local/bin/bash'].select { |b| File.executable?(b) }.uniq
+    bashes.each do |bash|
+      ver = `#{bash} -c 'echo $BASH_VERSION'`.strip
+      print "Test: core.bash under set -e with missing/failing tools (bash #{ver})... "
+      home = "#{@tmp_home}/errexit_#{File.basename(File.dirname(File.dirname(bash)))}"
+      FileUtils.rm_rf(home)
+      FileUtils.mkdir_p(["#{home}/.config", "#{home}/bin"])
+      env = clean_env(home, 'SHELL' => '/bin/bash')
+      Open3.capture3(env, @wayu_bin, 'init', '--shell', 'bash')
+      cfg = "#{home}/.config/wayu"
+      data = "#{home}/.local/share/wayu"
+      File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") +
+        "\n[tools]\nnosuchtool = { args = \"init bash\" }\nbadtool = { args = \"init bash\" }\n" \
+        "goodtool = { args = \"init zsh\" }\n")
+      Open3.capture3(env, @wayu_bin, 'build')
+      File.write("#{home}/bin/goodtool", "#!/bin/sh\necho \"export TOOLV=$2\"\n")
+      File.write("#{home}/bin/badtool", "#!/bin/sh\nexit 1\n")
+      FileUtils.chmod(0o755, ["#{home}/bin/goodtool", "#{home}/bin/badtool"])
+      run_env = clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin")
+      outs = 2.times.map do
+        out, err, st = Open3.capture3(run_env, bash, '--norc', '--noprofile', '-e', '-c',
+                                      "source '#{data}/init.bash'; echo \"ok=$TOOLV\"")
+        [out.strip, err.strip, st.exitstatus]
+      end
+      core = File.read("#{data}/core.bash")
+      check("errexit #{ver}", outs.all? { |o| o == ['ok=bash', '', 0] } && !core.include?('type -P'),
+            "runs=#{outs.inspect} type-P=#{core.include?('type -P')}")
     end
   end
 
@@ -584,6 +702,33 @@ class GeneratedShellTest
     want = "[main-br|repo][wt-br|wt][|][#{sha.strip[0, 7]}]"
     check('git branch', out.strip == want && !err.include?('GIT-RAN'),
           "out=#{out.strip.inspect} want=#{want.inspect} err=#{err.strip[0, 300]}")
+  end
+
+  # OKAMI-343: a git branch (or tool version, shell name) containing `%` is
+  # shown as is, never expanded as a prompt escape.
+  def test_prompt_values_are_not_prompt_escapes
+    print "Test: % in a git branch / context version is shown literally in the prompt... "
+    home = "#{@tmp_home}/prompt_pct"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p("#{home}/.config")
+    env = clean_env(home)
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") +
+      "\n[prompt]\nenabled = true\nformat = \"<{git_branch}|{language_context}>\"\n" \
+      "[prompt.git_branch]\nformat = \"$branch\"\n[prompt.contexts]\nrust = { format = \"v$version\", detect = [\"Cargo.toml\"] }\n")
+    Open3.capture3(env, @wayu_bin, 'build')
+    script = <<~'SH'
+      source "$HOME/.local/share/wayu/init.zsh"
+      _WAYU_GIT_BRANCH='feat%n-%D{%Y}' _WAYU_CONTEXT=rust _WAYU_CONTEXT_VER='1%m'
+      _wayu_prompt_full; print -rP -- "$REPLY"
+      _WAYU_CONTEXT=default SHELL=/bin/z%n; _wayu_prompt_full; print -rP -- "$REPLY"
+    SH
+    out, err, = Open3.capture3(env, 'zsh', '-f', '-i', '-c', script)
+    want = ['<feat%n-%D{%Y}|v1%m>', '<feat%n-%D{%Y}|z%n>']
+    check('prompt %', out.lines.map(&:strip) == want && err.strip.empty?,
+          "out=#{out.inspect} want=#{want.inspect} err=#{err.strip[0, 300]}")
   end
 
   # OKAMI-284: turbo.<ext> is the same generated output as core.<ext>, so a

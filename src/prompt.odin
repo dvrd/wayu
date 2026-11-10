@@ -2,6 +2,7 @@
 // Copied from starship.toml configuration - SIMPLIFIED VERSION
 package wayu
 import "core:fmt"
+import "core:mem/virtual"
 import "core:strings"
 // Convert a wayu style string (e.g. "bold green", "red italic", "242")
 // into zsh prompt escapes (e.g. "%B%F{2}", "%F{1}%3m", "%F{242}").
@@ -153,7 +154,7 @@ PromptConfigFull :: struct {
 }
 
 // Free the heap parts of a PromptConfigFull (detect lists + containers).
-// Format strings are slices of the TOML text and are not owned.
+// Format strings and context names are temp-allocated (or literals).
 destroy_full_prompt_config :: proc(cfg: ^PromptConfigFull) {
 	for _, list in cfg.context_detects {
 		for item in list {delete(item)}
@@ -164,7 +165,43 @@ destroy_full_prompt_config :: proc(cfg: ^PromptConfigFull) {
 	delete(cfg.context_order)
 }
 
-// Parse config simple desde TOML
+// [prompt] / [prompt.*] are read through the one TOML parser (OKAMI-363;
+// they were matched line by line with strings.contains): any valid TOML
+// form works (dotted keys, multi-line strings, escapes, comments), keys only
+// count in their own table, and a value of the wrong type keeps the
+// default. Lenient, like the other generators: a bad line elsewhere in
+// wayu.toml doesn't drop the prompt settings. The returned strings are
+// temp-allocated; the doc lives in `arena` (caller destroys it).
+@(private = "file")
+prompt_doc_parse :: proc(toml: string, arena: ^virtual.Arena) -> (doc: TomlDoc, ok: bool) {
+	if virtual.arena_init_growing(arena) != nil {
+		return {}, false
+	}
+	doc, _ = toml_doc_parse_alloc(toml, virtual.arena_allocator(arena))
+	return doc, true
+}
+
+// String at `key` (temp-allocated clone), found = false when absent or not
+// a string.
+@(private = "file")
+prompt_get_string :: proc(doc: ^TomlDoc, key: string) -> (value: string, found: bool) {
+	v := get_toml_value(doc, key)
+	if v == nil || v.type != .STRING {
+		return "", false
+	}
+	return strings.clone(v.str_val, context.temp_allocator), true
+}
+
+@(private = "file")
+prompt_get_bool :: proc(doc: ^TomlDoc, key: string) -> (value: bool, found: bool) {
+	v := get_toml_value(doc, key)
+	if v == nil || v.type != .BOOLEAN {
+		return false, false
+	}
+	return v.bool_val, true
+}
+
+// Parse [prompt] and its module tables (see prompt_doc_parse).
 parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 	cfg := PromptConfigFull {
 		// Modules carry their own trailing separators (starship defaults).
@@ -185,141 +222,58 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 		context_order         = make([dynamic]string),
 	}
 
-	it := make_line_iter(toml)
-	current_section := "" // which [prompt.*] section we're in
+	arena: virtual.Arena
+	doc, ok := prompt_doc_parse(toml, &arena)
+	if !ok {
+		return cfg
+	}
+	defer virtual.arena_destroy(&arena)
 
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-
-		if trimmed == "[prompt]" {
-			current_section = "prompt"
-			continue
-		} else if trimmed == "[prompt.character]" {
-			current_section = "character"
-			continue
-		} else if trimmed == "[prompt.username]" {
-			current_section = "username"
-			continue
-		} else if trimmed == "[prompt.hostname]" {
-			current_section = "hostname"
-			continue
-		} else if trimmed == "[prompt.localip]" {
-			current_section = "localip"
-			continue
-		} else if trimmed == "[prompt.dir]" {
-			current_section = "dir"
-			continue
-		} else if trimmed == "[prompt.git_branch]" {
-			current_section = "git_branch"
-			continue
-		} else if trimmed == "[prompt.contexts]" {
-			current_section = "contexts"
-			continue
-		}
-		if strings.has_prefix(trimmed, "[") {
-			current_section = ""
-			continue
-		}
-
-		if len(current_section) == 0 {
-			continue
-		}
-
-		// format = "..." only in [prompt] section
-		if current_section == "prompt" &&
-		   strings.has_prefix(trimmed, "format") &&
-		   strings.contains(trimmed, "=") {
-			eq_idx := strings.index(trimmed, "=")
-			if eq_idx > 0 {
-				value := strings.trim_space(trimmed[eq_idx + 1:])
-				value = prompt_strip_matching_quotes(value)
-				if len(value) > 0 && value != "true" && value != "false" {
-					cfg.format = value
-				}
-			}
-		}
-
-		if strings.contains(trimmed, "success_symbol") {
-			if v, ok := prompt_bracket_symbol(trimmed); ok {
-				cfg.character_success = v
-			}
-		}
-		if strings.contains(trimmed, "error_symbol") {
-			if v, ok := prompt_bracket_symbol(trimmed); ok {
-				cfg.character_error = v
-			}
-		}
-		// VI mode symbols - procesar específicos primero para evitar substring matches
-		if strings.contains(trimmed, "vimcmd_visual_symbol") {
-			if v, ok := prompt_bracket_symbol(trimmed); ok {
-				cfg.vimcmd_visual_symbol = v
-			}
-		}
-		if strings.contains(trimmed, "vimcmd_replace_symbol") {
-			if v, ok := prompt_bracket_symbol(trimmed); ok {
-				cfg.vimcmd_replace_symbol = v
-			}
-		}
-		if strings.contains(trimmed, "vimcmd_symbol") {
-			if v, ok := prompt_bracket_symbol(trimmed); ok {
-				cfg.vimcmd_symbol = v
-			}
-		}
-		// [prompt.contexts] entries: name = { format = "...", detect = [...] }
-		if current_section == "contexts" &&
-		   strings.contains(trimmed, "=") &&
-		   strings.contains(trimmed, "format") {
-			prompt_parse_context_line(&cfg, trimmed)
-		}
-
-		// Per-section format parsing
-		if (current_section == "username" ||
-			   current_section == "hostname" ||
-			   current_section == "localip" ||
-			   current_section == "dir" ||
-			   current_section == "git_branch") &&
-		   strings.has_prefix(trimmed, "format") &&
-		   strings.contains(trimmed, "=") {
-			eq_idx := strings.index(trimmed, "=")
-			if eq_idx > 0 {
-				value := strings.trim_space(trimmed[eq_idx + 1:])
-				value = prompt_strip_matching_quotes(value)
-				if len(value) > 0 {
-					switch current_section {
-					case "username":
-						cfg.username_format = value
-					case "hostname":
-						cfg.hostname_format = value
-					case "localip":
-						cfg.localip_format = value
-					case "dir":
-						cfg.dir_format = value
-					case "git_branch":
-						cfg.git_branch_format = value
-					}
-				}
-			}
-		}
-
-		// [prompt.username] keys
-		if current_section == "username" &&
-		   strings.contains(trimmed, "show_always") &&
-		   strings.contains(trimmed, "true") {
-			cfg.username_show_always = true
+	// Non-empty strings only (an empty format would hide the module).
+	formats := [?]struct {
+		key:   string,
+		field: ^string,
+	} {
+		{"prompt.format", &cfg.format},
+		{"prompt.username.format", &cfg.username_format},
+		{"prompt.hostname.format", &cfg.hostname_format},
+		{"prompt.localip.format", &cfg.localip_format},
+		{"prompt.dir.format", &cfg.dir_format},
+		{"prompt.git_branch.format", &cfg.git_branch_format},
+	}
+	for f in formats {
+		if v, found := prompt_get_string(&doc, f.key); found && len(v) > 0 {
+			f.field^ = v
 		}
 	}
-
+	// Symbols: the text between `[` and `]` of "[sym](style)".
+	symbols := [?]struct {
+		key:   string,
+		field: ^string,
+	} {
+		{"prompt.character.success_symbol", &cfg.character_success},
+		{"prompt.character.error_symbol", &cfg.character_error},
+		{"prompt.character.vimcmd_symbol", &cfg.vimcmd_symbol},
+		{"prompt.character.vimcmd_visual_symbol", &cfg.vimcmd_visual_symbol},
+		{"prompt.character.vimcmd_replace_symbol", &cfg.vimcmd_replace_symbol},
+	}
+	for sym in symbols {
+		if v, found := prompt_get_string(&doc, sym.key); found {
+			if inner, has := prompt_bracket_symbol(v); has {
+				sym.field^ = inner
+			}
+		}
+	}
+	if v, found := prompt_get_bool(&doc, "prompt.username.show_always"); found {
+		cfg.username_show_always = v
+	}
+	prompt_read_contexts(&cfg, &doc)
 	return cfg
 }
 
-// Symbol inside the brackets of `key = "[sym](style)"`, trimmed.
+// Symbol inside the brackets of "[sym](style)", trimmed.
 @(private = "file")
-prompt_bracket_symbol :: proc(trimmed: string) -> (string, bool) {
-	eq_idx := strings.index(trimmed, "=")
-	if eq_idx <= 0 {
-		return "", false
-	}
-	value := strings.trim_space(trimmed[eq_idx + 1:])
+prompt_bracket_symbol :: proc(value: string) -> (string, bool) {
 	start := strings.index(value, "[")
 	end := strings.index(value, "]")
 	if start >= 0 && end > start {
@@ -328,66 +282,61 @@ prompt_bracket_symbol :: proc(trimmed: string) -> (string, bool) {
 	return "", false
 }
 
-// One [prompt.contexts] line: name = { format = "...", detect = [...] }.
-// A repeated name keeps its first position and takes the new values.
+// [prompt.contexts]: `name = { format = "...", detect = [...] }` (or a
+// [prompt.contexts.<name>] table), in file order. A repeated name keeps its
+// first position and takes the last values.
 @(private = "file")
-prompt_parse_context_line :: proc(cfg: ^PromptConfigFull, trimmed: string) {
-	// Extract language name (before first =)
-	first_eq := strings.index(trimmed, "=")
-	if first_eq <= 0 {
-		return
-	}
-	lang_name := strings.trim_space(trimmed[:first_eq])
-	seen := false
-	for n in cfg.context_order {
-		if n == lang_name {
-			seen = true; break
+prompt_read_contexts :: proc(cfg: ^PromptConfigFull, doc: ^TomlDoc) {
+	for e in doc.entries {
+		full := e.key
+		if e.header >= 0 {
+			h := doc.headers[e.header]
+			if h.array {
+				continue
+			}
+			parts := make([dynamic]string, context.temp_allocator)
+			append(&parts, ..h.path)
+			append(&parts, ..e.key)
+			full = parts[:]
 		}
-	}
-	if !seen {
-		append(&cfg.context_order, lang_name)
-	}
-	// Extract format value between quotes after "format"
-	fmt_idx := strings.index(trimmed, "format")
-	if fmt_idx > 0 {
-		// Find the value after format =
-		fmt_eq := strings.index(trimmed[fmt_idx:], "=")
-		if fmt_eq > 0 {
-			rest := strings.trim_space(trimmed[fmt_idx + fmt_eq + 1:])
-			// Strip quotes and trailing content
-			rest = strings.trim_prefix(rest, `"`)
-			// Find closing quote
-			end_quote := strings.index(rest, `"`)
-			if end_quote > 0 {
-				format_val := rest[:end_quote]
-				cfg.context_formats[lang_name] = format_val
+		if len(full) < 3 || full[0] != "prompt" || full[1] != "contexts" {
+			continue
+		}
+		name := strings.clone(full[2], context.temp_allocator)
+		known := false
+		for n in cfg.context_order {
+			if n == name {
+				known = true; break
 			}
 		}
-	}
-	// Extract detect array
-	det_idx := strings.index(trimmed, "detect")
-	if det_idx > 0 {
-		bracket_start := strings.index(trimmed[det_idx:], "[")
-		bracket_end := strings.index(trimmed[det_idx:], "]")
-		if bracket_start >= 0 && bracket_end > bracket_start {
-			arr_content := trimmed[det_idx + bracket_start + 1:det_idx + bracket_end]
-			// Split by comma, strip quotes
-			items := strings.split(arr_content, ",")
-			defer delete(items)
-			detect_list := make([dynamic]string)
-			for item in items {
-				val := strings.trim_space(item)
-				val = strings.trim_prefix(val, `"`)
-				val = strings.trim_suffix(val, `"`)
-				if len(val) > 0 {
-					append(&detect_list, strings.clone(val))
+		if !known {
+			append(&cfg.context_order, name)
+		}
+		// An inline table entry (`name = {...}`) carries its own value (the
+		// last duplicate wins); dotted keys / sub-tables are read below.
+		table := e.value if len(full) == 3 else nil
+		if table == nil {
+			parent := get_toml_value(doc, fmt.tprintf("prompt.contexts.%s", full[2]))
+			table = parent
+		}
+		if table == nil || table.type != .TABLE {
+			continue
+		}
+		if f, has := table.table_val["format"]; has && f != nil && f.type == .STRING {
+			cfg.context_formats[name] = strings.clone(f.str_val, context.temp_allocator)
+		}
+		if d, has := table.table_val["detect"]; has && d != nil && d.type == .ARRAY {
+			list := make([dynamic]string)
+			for item in d.arr_val {
+				if item != nil && item.type == .STRING && len(item.str_val) > 0 {
+					append(&list, strings.clone(item.str_val))
 				}
 			}
-			if old, exists := cfg.context_detects[lang_name]; exists {
+			if old, exists := cfg.context_detects[name]; exists {
 				for item in old {delete(item)}
 				delete(old)
 			}
-			cfg.context_detects[lang_name] = detect_list
+			cfg.context_detects[name] = list
 		}
 	}
 }
@@ -400,32 +349,26 @@ prompt_is_enabled :: proc(toml: string) -> bool {
 	return v
 }
 
-// `key = true|false` directly under [prompt] (not its sub-tables);
-// found = false when the key is absent.
+// Boolean `key` directly under [prompt] (not its sub-tables); found = false
+// when the key is absent or not a boolean.
 prompt_table_bool :: proc(toml: string, key: string) -> (value: bool, found: bool) {
-	it := make_line_iter(toml)
-	in_prompt := false
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-		if strings.has_prefix(trimmed, "[") {
-			in_prompt = trimmed == "[prompt]"
-			continue
-		}
-		if !in_prompt {
-			continue
-		}
-		eq := strings.index_byte(trimmed, '=')
-		if eq <= 0 || strings.trim_space(trimmed[:eq]) != key {
-			continue
-		}
-		v := strings.trim_space(trimmed[eq + 1:])
-		if hash := strings.index_byte(v, '#'); hash >= 0 {
-			v = strings.trim_space(v[:hash])
-		}
-		return v == "true", true
+	arena: virtual.Arena
+	doc, ok := prompt_doc_parse(toml, &arena)
+	if !ok {
+		return false, false
 	}
-	return false, false
+	defer virtual.arena_destroy(&arena)
+	return prompt_get_bool(&doc, fmt.tprintf("prompt.%s", key))
 }
+
+// Values that come from outside the config (git branch, local IP, tool
+// version, shell name) spliced into the prompt with every `%` doubled: the
+// prompt is %-expanded after the values are substituted, so a branch named
+// `feat%n-%D{%Y}` printed the user name and the date, or any other prompt
+// escape (OKAMI-343). zsh's own %~ / %n / %m output is not re-expanded.
+PROMPT_GIT_BRANCH :: `${_WAYU_GIT_BRANCH//\%/%%}`
+PROMPT_LOCALIP :: `${_WAYU_LOCALIP//\%/%%}`
+PROMPT_CONTEXT_VER :: `${_WAYU_CONTEXT_VER//\%/%%}`
 
 // Escape `s` for splicing inside a zsh double-quoted string: backslash, `"`,
 // `$` and backtick are backslash-escaped so config text is always literal (no `$(...)` execution,
@@ -495,7 +438,7 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 	} else if name == "localip" {
 		// $localip gets replaced with a shell subshell that fetches the IP
 		// Looked up once per prompt by _wayu_update_localip (precmd).
-		rendered := prompt_render_module(cfg.localip_format, {{`\$localip`, "${_WAYU_LOCALIP}"}})
+		rendered := prompt_render_module(cfg.localip_format, {{`\$localip`, PROMPT_LOCALIP}})
 		strings.write_string(builder, `  result+="`)
 		strings.write_string(builder, rendered)
 		strings.write_string(builder, `"`)
@@ -510,10 +453,7 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 		strings.write_string(builder, `"`)
 		fmt.sbprintln(builder)
 	} else if name == "git_branch" {
-		rendered := prompt_render_module(
-			cfg.git_branch_format,
-			{{`\$branch`, "${_WAYU_GIT_BRANCH}"}},
-		)
+		rendered := prompt_render_module(cfg.git_branch_format, {{`\$branch`, PROMPT_GIT_BRANCH}})
 		fmt.sbprintln(builder, `  if [[ -n "$_WAYU_GIT_BRANCH" ]]; then`)
 		strings.write_string(builder, `    result+="`)
 		strings.write_string(builder, rendered)
@@ -525,7 +465,7 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 		fmt.sbprintln(builder, `  case "$_WAYU_CONTEXT" in`)
 		for lang, fmt_str in cfg.context_formats {
 			// $version -> async-fetched version string
-			rendered := prompt_render_module(fmt_str, {{`\$version`, "${_WAYU_CONTEXT_VER}"}})
+			rendered := prompt_render_module(fmt_str, {{`\$version`, PROMPT_CONTEXT_VER}})
 			strings.write_string(builder, `    `)
 			// Same sanitizing as _wayu_detect_context's _WAYU_CONTEXT values.
 			strings.write_string(builder, sanitize_ident(lang))
@@ -535,7 +475,7 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 			fmt.sbprintln(builder)
 		}
 		// Default: show shell name
-		fmt.sbprintln(builder, `    *) result+="$SHELL:t" ;;`)
+		fmt.sbprintln(builder, `    *) result+="${${SHELL:t}//\%/%%}" ;;`)
 		fmt.sbprintln(builder, "  esac")
 	} else if name == "character" {
 		fmt.sbprintln(builder, "  local char_symbol char_color")
@@ -971,12 +911,17 @@ generate_vi_mode_feature :: proc(b: ^strings.Builder, cfg: InteractiveConfig) {
 	fmt.sbprintln(b)
 }
 
+// Replace mode (OKAMI-347): `R` (vi-replace) switches to the insert keymap
+// in overwrite mode, so the keymap alone said INSERT; ZLE_STATE tells. `r`
+// (vi-replace-chars) reads one character without a keymap change: wrapped to
+// show REPLACE_ONE while it waits (zle -R draws it before the key read).
+// Both use vimcmd_replace_symbol.
 PROMPT_VI_INDICATOR_ZSH :: `_wayu_vi_mode_from_keymap() {
   local m
   case $KEYMAP in
     vicmd) m=NORMAL ;;
     visual|vivis) m=VISUAL ;;
-    *) m=INSERT ;;
+    *) [[ ${ZLE_STATE-} == *overwrite* ]] && m=REPLACE || m=INSERT ;;
   esac
   [[ $m == "$_WAYU_VI_MODE" ]] && return 0
   _WAYU_VI_MODE=$m
@@ -1012,6 +957,13 @@ _wayu_visual_line_mode() {
   _WAYU_VI_MODE="VISUAL"
   _wayu_prompt_render; zle reset-prompt
 }
+_wayu_vi_replace_chars() {
+  _WAYU_VI_MODE="REPLACE_ONE"
+  _wayu_prompt_render; zle reset-prompt; zle -R
+  zle .vi-replace-chars -- "$@"
+  _wayu_vi_mode_from_keymap
+}
+zle -N vi-replace-chars _wayu_vi_replace_chars
 zle -N _wayu_visual_mode
 zle -N _wayu_visual_line_mode
 bindkey -M vicmd 'v' _wayu_visual_mode
@@ -1234,7 +1186,7 @@ generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	{
 		rpfmt := prompt_render_module(
 			rprompt_format,
-			{{"{git_pending}", "${git_pending}"}, {"{git_branch}", "${_WAYU_GIT_BRANCH}"}},
+			{{"{git_pending}", "${git_pending}"}, {"{git_branch}", PROMPT_GIT_BRANCH}},
 		)
 		fmt.sbprint(b, "      git_pending=\"")
 		fmt.sbprint(b, rpfmt)
@@ -1373,7 +1325,7 @@ generate_separator_feature :: proc(b: ^strings.Builder) {
 	// Separator lines disabled
 }
 
-// Parse config interactiva desde TOML (simplificado)
+// [prompt] vi_mode and [prompt.interactive] (see prompt_doc_parse).
 parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 	cfg := InteractiveConfig {
 		toggle_key        = "^P",
@@ -1385,80 +1337,45 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 		vi_visual_symbol  = "[V]",
 		context_aware     = true,
 		async_rprompt     = true,
-		rprompt_format    = "[ {git_pending}](242)",
+		rprompt_format    = "[ {git_pending}](242)",
 		transient_enabled = true,
 		transient_format  = "{dir} {character}",
 	}
 
-	cfg.vi_mode, _ = prompt_table_bool(toml, "vi_mode")
+	arena: virtual.Arena
+	doc, ok := prompt_doc_parse(toml, &arena)
+	if !ok {
+		return cfg
+	}
+	defer virtual.arena_destroy(&arena)
 
-	it := make_line_iter(toml)
-	in_interactive := false
-
-	for line in line_iter_next(&it) {
-		trimmed := strings.trim_space(line)
-
-		if trimmed == "[prompt.interactive]" {
-			in_interactive = true
-			continue
-		}
-		if strings.has_prefix(trimmed, "[") && in_interactive {
-			in_interactive = false
-			continue
-		}
-
-		if !in_interactive {
-			continue
-		}
-
-		if strings.contains(trimmed, "toggle_key") {
-			start := strings.index(trimmed, `"`)
-			end := strings.last_index(trimmed, `"`)
-			if start >= 0 && end > start {
-				cfg.toggle_key = trimmed[start + 1:end]
-			}
-		}
-		if strings.contains(trimmed, "toggle_enabled") {
-			if strings.contains(trimmed, "true") {
-				cfg.toggle_enabled = true
-			}
-			if strings.contains(trimmed, "false") {
-				cfg.toggle_enabled = false
-			}
-		}
-		if strings.contains(trimmed, "vi_mode_indicator") && strings.contains(trimmed, "false") {
-			cfg.vi_mode_indicator = false
-		}
-		if strings.contains(trimmed, "context_aware") && strings.contains(trimmed, "false") {
-			cfg.context_aware = false
-		}
-		if strings.contains(trimmed, "async_rprompt") && strings.contains(trimmed, "false") {
-			cfg.async_rprompt = false
-		}
-		if strings.contains(trimmed, "transient_enabled") && strings.contains(trimmed, "false") {
-			cfg.transient_enabled = false
-		}
-		if strings.contains(trimmed, "rprompt_format") && strings.contains(trimmed, "=") {
-			eq_idx := strings.index(trimmed, "=")
-			if eq_idx > 0 {
-				value := prompt_strip_matching_quotes(strings.trim_space(trimmed[eq_idx + 1:]))
-				if len(value) > 0 {
-					cfg.rprompt_format = value
-				}
-			}
+	bools := [?]struct {
+		key:   string,
+		field: ^bool,
+	} {
+		{"prompt.vi_mode", &cfg.vi_mode},
+		{"prompt.interactive.toggle_enabled", &cfg.toggle_enabled},
+		{"prompt.interactive.vi_mode_indicator", &cfg.vi_mode_indicator},
+		{"prompt.interactive.context_aware", &cfg.context_aware},
+		{"prompt.interactive.async_rprompt", &cfg.async_rprompt},
+		{"prompt.interactive.transient_enabled", &cfg.transient_enabled},
+	}
+	for k in bools {
+		if v, found := prompt_get_bool(&doc, k.key); found {
+			k.field^ = v
 		}
 	}
-
+	strs := [?]struct {
+		key:   string,
+		field: ^string,
+	} {
+		{"prompt.interactive.toggle_key", &cfg.toggle_key},
+		{"prompt.interactive.rprompt_format", &cfg.rprompt_format},
+	}
+	for k in strs {
+		if v, found := prompt_get_string(&doc, k.key); found && len(v) > 0 {
+			k.field^ = v
+		}
+	}
 	return cfg
-}
-
-// Strip exactly one MATCHING pair of surrounding quotes ("…" or '…').
-// Borrowed slice, no allocation. Independent trimming of " and ' used to cut
-// a trailing ' off values such as "[%n]'".
-prompt_strip_matching_quotes :: proc(v: string) -> string {
-	n := len(v)
-	if n >= 2 && ((v[0] == '"' && v[n - 1] == '"') || (v[0] == '\'' && v[n - 1] == '\'')) {
-		return v[1:n - 1]
-	}
-	return v
 }

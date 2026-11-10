@@ -93,7 +93,8 @@ zsh: to give scripts (`zsh -c`, editors, cron) your PATH and env too, put the
 line in `~/.zshenv` instead of `~/.zshrc` — once, not in both. A login shell
 runs `/etc/zprofile` after `.zshenv`, and on macOS its `path_helper` moves the
 system dirs ahead of yours; wayu puts its dirs back in front at the first
-prompt (dirs you prepend in `.zshrc` stay ahead of them).
+prompt, or right before the command in `zsh -l -c …` (dirs you prepend in
+`.zshrc` stay ahead of them).
 
 `init.<ext>` sources one precomputed file, `core.<ext>`, which wayu rewrites
 after every change (`wayu path|alias|const …`, the TUI, `wayu build`). That

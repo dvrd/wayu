@@ -196,6 +196,25 @@ test_toml_parser_accepts_what_the_cli_used :: proc(t: ^testing.T) {
 // Recovery: a bad statement is recorded and parsing resumes
 // ---------------------------------------------------------------------------
 
+// OKAMI-365: [tools] entries come back in wayu.toml file order (inline
+// entries, [tools.<name>] sub-tables and dotted keys alike), not by name.
+@(test)
+test_toml_parser_tools_file_order :: proc(t: ^testing.T) {
+	use_cached_toml(
+		"[tools]\nzz.args = \"a\"\nmm = { args = \"b\" }\naa = { kind = \"nvm\" }\n" +
+		"[tools.bb]\nargs = \"c\"\n[other]\nx = 1\n",
+	)
+	defer wayu.clear_toml_content_cache()
+	tools := wayu.read_wayu_toml_tools()
+	defer {
+		for &tool in tools {wayu.destroy_tool_entry(&tool)}
+		delete(tools)
+	}
+	names := make([dynamic]string, context.temp_allocator)
+	for tool in tools {append(&names, tool.name)}
+	testing.expectf(t, slice.equal(names[:], []string{"zz", "mm", "aa", "bb"}), "order %v", names)
+}
+
 // [settings] startup keys (OKAMI-372/375): defaults, booleans read, other
 // types ignored.
 @(test)

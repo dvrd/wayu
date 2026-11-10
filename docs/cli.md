@@ -253,7 +253,7 @@ Without an action it prints its help.
 
 | Action | |
 |---|---|
-| *(none)* | Regenerate the init files from wayu.toml and entries.json (after a hand edit) |
+| *(none)* | Regenerate the init files from wayu.toml and entries.json (after a hand edit), and `plugins.<ext>` from plugins.json, for every set-up shell. Exit `78` when plugins.json is invalid (the plugin loaders are left as they were; everything else is regenerated) or a `[tools]` entry's `args` is unusable |
 | `turbo` | Same as `wayu export --turbo` |
 | `profile` | Time shell startup and each section, tool and plugin of `core.<ext>` |
 | `clean` | Delete the `[tools]` evalcache (`${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`) |
@@ -372,7 +372,9 @@ an editor.
 A compiled script is stale when its source no longer matches the hash
 stored in `bin/.NAME.hash` (or the binary is missing); an interpreted one
 when its link is missing or wrong. `wayu build`, `wayu reload` (which also
-watches the sources) and `script build` rebuild stale scripts. A failed
+watches the sources) and `script build` rebuild stale scripts (the
+`wayu build` that the prompt hook runs starts a background `script build`
+instead of waiting for the compiler). A failed
 compile prints the compiler's output, exits `1` and keeps the previous
 binary.
 
@@ -542,7 +544,7 @@ BSD `sysexits.h` values (`EXIT_*` in `src/interfaces.odin`):
 | 73 | `EXIT_CANTCREAT` | Cannot create an output file or directory |
 | 74 | `EXIT_IOERR` | Read/write failure, failed git operation |
 | 77 | `EXIT_NOPERM` | Permission denied |
-| 78 | `EXIT_CONFIG` | Configuration problem: not initialized, invalid `hooks.conf` or `entries.json`, relative `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR`, `doctor` found an error, `export check` found no current turbo file |
+| 78 | `EXIT_CONFIG` | Configuration problem: not initialized, invalid `hooks.conf`, `entries.json` or `plugins.json` (`build`), relative `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR`, `doctor` found an error, `export check` found no current turbo file |
 | 126 | `EXIT_EXEC_NOT_RUNNABLE` | `secrets run`: the command was found but cannot be executed |
 | 127 | `EXIT_EXEC_NOT_FOUND` | `secrets run`: the command was not found |
 

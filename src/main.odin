@@ -937,15 +937,36 @@ handle_build_command :: proc(action: Action) {
 	// An existing turbo.<ext> is rewritten with core's content along the way.
 	// Scripts whose source changed since their last build (`wayu script`),
 	// first: a first built script puts <data>/bin on PATH.
-	config_lock_acquire_or_exit()
-	_, failed := scripts_build_stale(quiet = true)
-	config_lock_release()
-	if failed > 0 {
-		print_warning("%d script(s) failed to build (run: wayu script build)", failed)
+	// The live PATH sync prompt hook (WAYU_PROMPT_HOOK=1) runs this build in
+	// the foreground: compiling there froze the prompt (a Swift script took
+	// ~10 s, OKAMI-308). It hands stale scripts to a background
+	// `wayu script build` instead.
+	if os.get_env("WAYU_PROMPT_HOOK", context.temp_allocator) == "1" {
+		scripts_build_stale_in_background()
+	} else {
+		config_lock_acquire_or_exit()
+		_, failed := scripts_build_stale(quiet = true)
+		config_lock_release()
+		if failed > 0 {
+			print_warning("%d script(s) failed to build (run: wayu script build)", failed)
+		}
 	}
 
-	generate_optimized_init_all()
+	// plugins.json is checked once: an invalid file (error printed) keeps
+	// every plugins.<ext> as it is, the rest is still regenerated (PATH
+	// sync keeps working), and build exits 78 (OKAMI-309).
+	plugins_cfg, plugins_ok := read_plugin_config_json()
+	cleanup_plugin_config_json(&plugins_cfg)
+
+	generate_optimized_init_all(plugins = plugins_ok)
 	fmt.println()
+	if !plugins_ok {
+		print_error_simple(
+			"%s/plugins.json is invalid: plugins.<ext> not regenerated (fix the file, then run: wayu build)",
+			wayu.data,
+		)
+		os.exit(EXIT_CONFIG)
+	}
 }
 // Golden file directory
 GOLDEN_DIR :: "tests/golden"

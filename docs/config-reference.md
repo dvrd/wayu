@@ -221,7 +221,7 @@ top-level `shell = "..."` string is not read (`toml validate` rejects it).
 | `auto_optimize` | boolean | `false` | When an open shell notices that a startup file changed (prompt hook) and it has lines `wayu optimize` can move, move them right away (backups first) and print what moved, instead of printing the `wayu: ~/.zshrc changed: N lines can be optimized` notice. |
 
 | `compinit_guard` | boolean | `true` | zsh only. After wayu's `compinit`, `compinit` is a function that only registers the completions (`#compdef` / `#autoload` files) of `fpath` dirs added since; its flags (`-C`, `-i`, `-u`, `-d <dump>`, ...) are accepted and ignored. An installer's `autoload -Uz compinit && compinit` in `.zshrc` then costs a glob of the new dirs instead of a second full completion setup (audit, dump check/rewrite), and its dirs' completions work even with `-C`. The same registration runs once at the first prompt, for dirs added to `fpath` without a `compinit` call. `false`: later `compinit` calls are zsh's own. |
-| `defer_plugins` | boolean | `false` | zsh only. Load the plugins (`plugins.zsh`, the zsh-autosuggestions / zsh-syntax-highlighting fallbacks, `plugins/config.zsh`) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after `tools.zsh` / `extra.zsh`: code there that needs a plugin widget should run through `zsh-defer`. |
+| `defer_plugins` | boolean | `false` | zsh only. Load the plugins (`plugins.zsh`, `plugins/config.zsh`) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after `tools.zsh` / `extra.zsh`: code there that needs a plugin widget should run through `zsh-defer`. |
 | `highlight` | boolean | `false` | zsh only (interactive). Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see [Syntax highlighting](#syntax-highlighting). A non-boolean value is an error. |
 | `highlight_styles` | table of strings | see [styles](#syntax-highlighting) | zsh only. Per-style `region_highlight` specs, as an inline table (`highlight_styles = { command = "fg=blue", comment = "fg=244" }`) or a `[settings.highlight_styles]` table. `"none"`: not highlighted. A value that isn't a one-line string of at most 64 bytes is an error; an unknown style name is a warning (ignored). |
 | `lazy_compinit` | boolean | `false` | zsh only. No `compinit` at startup: the completion widgets (Tab, `^D` list, ...) set up completion on first use and then complete. `compdef` calls made before that are queued and replayed. `$_comps` and completion functions don't exist until then. |
@@ -368,7 +368,8 @@ args = "hook zsh"
 ```
 
 Each entry is an inline table or a `[tools.<name>]` sub-table; other values
-are ignored. Entries are emitted sorted by name (not file order).
+are ignored. Entries are emitted in file order (an entry may rely on one
+above it).
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
@@ -406,9 +407,11 @@ call, so it can never run code at startup:
 For example `args = 'init "$HOME/x y" ~/z {a,b}'` generates
 `_wayu_evalcache foo init "${HOME}/x y" "${HOME}/z" '{a,b}'`.
 
-**fish.** `[tools]` load in fish too. In `args`, a word `zsh` or `bash`
-becomes `fish` and `--zsh` / `--bash` becomes `--fish`, so
-`args = "init zsh"` runs `zoxide init fish`.
+**Shell name in `args`.** One entry serves every shell: a word `zsh` or
+`bash` in `args` becomes the shell whose file is generated, and `--zsh` /
+`--bash` becomes `--<shell>`. `args = "init zsh"` runs `zoxide init zsh` in
+core.zsh, `zoxide init bash` in core.bash and `zoxide init fish` in fish
+(`[tools]` load in fish too).
 
 **Where they load** (see [Load order](#load-order)): eager evalcache tools
 before the prompt and plugins; all other non-login tools ("deferred") after
@@ -502,7 +505,7 @@ variables. Config text is always literal: `$(...)` in it never runs.
 | `error_symbol` | string | `✗` | Symbol after a failed command. |
 | `vimcmd_symbol` | string | `❮` | vi normal mode. |
 | `vimcmd_visual_symbol` | string | `❮` | vi visual mode. |
-| `vimcmd_replace_symbol` | string | `❮` | vi replace mode. |
+| `vimcmd_replace_symbol` | string | `❮` | vi replace mode: `R`, and `r` while it waits for the character. |
 
 Only the text between `[` and `]` is used (`"[>](green)"` gives `>`); the
 style part is ignored. Colors are fixed: green on success, red on error;
@@ -711,7 +714,11 @@ entry is a `key` (a label) and a `dir`.
 
 - **Open shells** pick up PATH changes at their next prompt: the prompt hook
   re-applies `path_sync.<ext>` when its signature changes, and runs `wayu
-  build` first when `wayu.toml` or `entries.json` is newer than it.
+  build` first when `wayu.toml` or `entries.json` is newer than it. That
+  build never compiles: stale scripts are built by a background `wayu
+  script build`. When that build fails (e.g. a malformed `entries.json`
+  save), the hook writes `path_sync.<ext>.regen-failed` and tries again
+  after the next save of either file.
 
 ### Aliases
 

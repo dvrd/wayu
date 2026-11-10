@@ -232,7 +232,7 @@ class HighlightTest
          on.include?('_WAYU_PLUGINS_LOADED="${_WAYU_PLUGINS_LOADED-}:zsh-syntax-highlighting"') &&
          on.include?('_WAYU_PLUGINS_LOADED="${_WAYU_PLUGINS_LOADED-}:fast-syntax-highlighting"') &&
          !on.include?('zsh-syntax-highlighting/zsh-syntax-highlighting.zsh') &&
-         !off.include?('_wayu_hl') && off.include?('zsh-syntax-highlighting/zsh-syntax-highlighting.zsh') &&
+         !off.include?('_wayu_hl') && !off.include?('zsh-syntax-highlighting/zsh-syntax-highlighting.zsh') &&
          on.index('# === Syntax highlighting') < on.index('# === Plugins ===')
     _, st = Open3.capture2e('zsh', '-n', "#{on_data}/core.zsh")
     check('core', ok && st.success?, "on has module=#{on.include?('_wayu_hl_redraw')} off has module=#{off.include?('_wayu_hl')} zsh -n=#{st.exitstatus}")

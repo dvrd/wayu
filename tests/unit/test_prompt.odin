@@ -430,3 +430,80 @@ test_prompt_vi_mode_opt_in_and_chained :: proc(t: ^testing.T) {
 		testing.expect(t, !v && !found, "only keys directly under [prompt]")
 	}
 }
+
+// OKAMI-363: [prompt] / [prompt.*] go through the TOML parser: comments,
+// dotted keys, sub-table scoping, multi-line strings and value types are
+// honoured (the line matcher took `# success_symbol = ...` comments, read
+// `toggle_enabled = true # not false` as false, and `"false"` strings).
+@(test)
+test_prompt_config_uses_toml_parser :: proc(t: ^testing.T) {
+	toml := `[prompt]
+enabled = true
+character.success_symbol = "[S](green)"
+format = """{dir}
+{character}"""
+
+[prompt.character]
+# error_symbol = "[X](red)"
+error_symbol = "[E](red)" # vimcmd_symbol = "[Z](red)"
+
+[prompt.contexts.kt]
+format = "kt "
+detect = ["*.kt"]
+
+[prompt.interactive]
+toggle_enabled = true # not false
+context_aware = "false"
+async_rprompt = false
+rprompt_format = '[{git_branch}](242)'
+
+[other]
+vimcmd_symbol = "[O](red)"
+`
+	cfg := wayu.parse_full_prompt_config(toml)
+	defer wayu.destroy_full_prompt_config(&cfg)
+	testing.expect_value(t, cfg.character_success, "S")
+	testing.expect_value(t, cfg.character_error, "E")
+	testing.expect_value(t, cfg.vimcmd_symbol, "❮")
+	testing.expect_value(t, cfg.format, "{dir}\n{character}")
+	testing.expect_value(t, len(cfg.context_order), 1)
+	testing.expect_value(t, cfg.context_formats["kt"], "kt ")
+	testing.expect_value(t, len(cfg.context_detects["kt"]), 1)
+
+	icfg := wayu.parse_interactive_config(toml)
+	testing.expect(t, icfg.toggle_enabled, "boolean read, comment ignored")
+	testing.expect(t, icfg.context_aware, "a string is not a boolean: default kept")
+	testing.expect(t, !icfg.async_rprompt, "async_rprompt = false")
+	testing.expect_value(t, icfg.rprompt_format, "[{git_branch}](242)")
+
+	testing.expect(t, wayu.prompt_is_enabled(toml), "enabled")
+	testing.expect(
+		t,
+		!wayu.prompt_is_enabled("[prompt]\n# enabled = true\nenabled = false\n"),
+		"comment ignored",
+	)
+}
+
+// OKAMI-343: values from outside the config reach PS1/RPROMPT with `%`
+// doubled (async right prompt and local IP included).
+@(test)
+test_prompt_values_percent_escaped :: proc(t: ^testing.T) {
+	cfg := wayu.parse_full_prompt_config(
+		"[prompt]\nenabled = true\nformat = \"{localip}{git_branch}\"\n",
+	)
+	defer wayu.destroy_full_prompt_config(&cfg)
+	base := wayu.generate_full_prompt(cfg)
+	defer delete(base)
+	icfg := wayu.parse_interactive_config(
+		"[prompt.interactive]\nrprompt_format = \"{git_branch} {git_pending}\"\n",
+	)
+	code := wayu.generate_interactive_prompt(base, icfg)
+	defer delete(code)
+	testing.expect(t, strings.contains(code, `${_WAYU_LOCALIP//\%/%%}`), "local ip escaped")
+	testing.expect(
+		t,
+		strings.count(code, `${_WAYU_GIT_BRANCH//\%/%%}`) == 2,
+		"branch escaped in PS1 and the async right prompt",
+	)
+	testing.expect(t, !strings.contains(code, `"${_WAYU_GIT_BRANCH}"`), "no raw branch")
+}

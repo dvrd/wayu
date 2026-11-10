@@ -32,9 +32,11 @@ class StartupTest
       test_dump_signature_covers_fpath_dirs
       test_resourcing_is_idempotent
       test_non_interactive_skips_interactive_parts
+      test_disabled_plugin_not_loaded
       test_trapusr1_is_chained
       test_prompt_renders_without_forks
       test_prompt_at_a_real_prompt
+      test_vi_replace_symbol
       test_defer_plugins
       test_lazy_compinit
       test_settings_are_known_keys
@@ -85,12 +87,21 @@ class StartupTest
     zsh_hl = "#{data}/plugins/zsh-syntax-highlighting"
     FileUtils.mkdir_p(zsh_hl)
     File.write("#{zsh_hl}/zsh-syntax-highlighting.zsh", "_zsh_highlight() { :; }\n(( SU_HL_LOADS++ ))\n")
+    # Registered in plugins.json: only enabled plugins load (OKAMI-310).
+    File.write("#{data}/plugins.json", JSON.generate(
+      'version' => '1.0', 'last_updated' => '2026-01-01T00:00:00Z', 'plugins' => [hl_plugin(data)]))
     Open3.capture3(env, @wayu_bin, 'completions', 'generate')
     _, err, st = Open3.capture3(env, @wayu_bin, 'build')
     warn "build failed: #{err}" unless st.success?
     File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
     File.write("#{home}/.zshrc", zshrc)
     [home, data, env]
+  end
+
+  def hl_plugin(data)
+    { 'name' => 'zsh-syntax-highlighting', 'url' => 'https://github.com/zsh-users/zsh-syntax-highlighting.git',
+      'enabled' => true, 'shell' => 'ZSH', 'installed_path' => "#{data}/plugins/zsh-syntax-highlighting",
+      'use' => ['zsh-syntax-highlighting.zsh'] }
   end
 
   # An fpath dir an installer adds: `_sufoo` (#compdef sufoo) and an
@@ -202,7 +213,7 @@ class StartupTest
       'plugins' => [{ 'name' => 'su-plug', 'url' => 'https://example.invalid/su-plug.git', 'enabled' => true, 'shell' => 'zsh',
                       'installed_path' => plugin, 'priority' => 100,
                       'git' => { 'branch' => 'main', 'commit' => 'abc', 'lastChecked' => '2026-01-01T00:00:00Z' },
-                      'lastUpdated' => '2026-01-01T00:00:00Z' }]))
+                      'lastUpdated' => '2026-01-01T00:00:00Z' }, hl_plugin(data)]))
     _, perr, pst = Open3.capture3(env, @wayu_bin, 'plugin', 'priority', 'su-plug', '50')
     script = <<~'SH'
       path=( /opt/su-later $path )
@@ -235,6 +246,22 @@ class StartupTest
     want_i = 'c=c1 p=1 fn=sufn-ok al=1 hl=1 usr1=1 prompt=1 comp=1 defer=0/1'
     check('nonint', nst.success? && nonint.strip == want_n && inter.strip == want_i && (nerr + ierr).strip.empty?,
           "nonint=#{nonint.strip.inspect} want=#{want_n.inspect} inter=#{inter.strip.inspect} want=#{want_i.inspect} err=#{(nerr + ierr).strip[0, 300]}")
+  end
+
+  # OKAMI-310: a disabled plugin is not loaded even though its checkout
+  # exists (core had hard-coded zsh-autosuggestions / zsh-syntax-highlighting
+  # fallbacks).
+  def test_disabled_plugin_not_loaded
+    print "Test: a disabled plugin is not loaded (no core fallback)... "
+    _, data, env = setup_home('disabled')
+    probe = 'print -r -- "hl=${+functions[_zsh_highlight]}"'
+    before, = zsh(env, '-i', '-c', probe)
+    _, derr, dst = Open3.capture3(env, @wayu_bin, 'plugin', 'disable', 'zsh-syntax-highlighting')
+    after, err, = zsh(env, '-i', '-c', probe)
+    core = File.read("#{data}/core.zsh")
+    check('disabled', dst.success? && before.strip == 'hl=1' && after.strip == 'hl=0' && err.strip.empty? &&
+                      !core.include?('zsh-syntax-highlighting.zsh') && !core.include?('zsh-autosuggestions.zsh'),
+          "disable=#{dst.exitstatus} #{derr.strip[0, 200]} before=#{before.strip} after=#{after.strip} err=#{err.strip[0, 200]}")
   end
 
   # A TRAPUSR1 defined before wayu still runs (wayu's async prompt handler is
@@ -334,6 +361,19 @@ class StartupTest
       Process.wait(pid) rescue nil
     end
     out
+  end
+
+  # OKAMI-347: vi replace mode (`R`, and `r` while it waits for the
+  # character) shows vimcmd_replace_symbol, not the insert symbol.
+  def test_vi_replace_symbol
+    print "Test: vi replace mode (R / r) shows vimcmd_replace_symbol... "
+    toml = PROMPT_TOML + "vimcmd_replace_symbol = \"[RPL>](red)\"\n"
+    _, _, env = setup_home('vi_replace', prompt: toml, zshrc: "precmd() { print -r -- \"$SU_MARK\" }\n")
+    big_r = pty_session(env, ["\e", "R"])
+    small_r = pty_session(env, ["\e", "r"])
+    plain = pty_session(env, ["\e", "i"])
+    check('vi replace', big_r.include?('RPL>') && small_r.include?('RPL>') && !plain.include?('RPL>'),
+          "R=#{big_r.include?('RPL>')} r=#{small_r.include?('RPL>')} i=#{plain.include?('RPL>')}")
   end
 
   # `[settings] defer_plugins = true`: plugins load after the first prompt

@@ -13,6 +13,66 @@ releases, so they are listed here too.
 - Release binaries require macOS 15 (Sequoia) or later; the Homebrew
   formula says so. README lists the tested platforms and shell versions.
 
+**Generated shell code and startup**
+
+- core.<ext>: the Secrets section runs after the PATH apply, and its
+  cache-miss `wayu secrets cache` call (like the prompt hook's `wayu build`)
+  uses wayu's absolute path, also when wayu was run by bare name from
+  `PATH` (was a bare `wayu`, not found in shells with a minimal PATH: cron,
+  GUI apps, ssh commands). Run `wayu build` once to regenerate.
+- The prompt hook's `wayu build` (after a hand edit of `wayu.toml` /
+  `entries.json`) no longer compiles stale scripts while the prompt waits:
+  it starts `wayu script build` in the background (a Swift script froze the
+  prompt for ~10 s).
+- `wayu build` regenerates `plugins.<ext>` from `plugins.json` for every
+  set-up shell (a hand edit, e.g. disabling a plugin, had no effect until a
+  `wayu plugin` command ran), and exits `78` naming the file when
+  `plugins.json` is invalid (was silent, exit 0); the plugin loaders are then
+  kept as they were. `plugins.<ext>` no longer has a `# Last updated` line.
+- core.zsh no longer sources `plugins/zsh-autosuggestions` /
+  `plugins/zsh-syntax-highlighting` on its own when their checkouts exist:
+  only plugins enabled in `plugins.json` load (`wayu plugin disable` had no
+  effect on those two). A checkout not registered in `plugins.json` is no
+  longer loaded: register it with `wayu plugin add`.
+- bash: a `[tools]` word `zsh` / `--zsh` in `args` becomes `bash` /
+  `--bash` in core.bash, as fish already did (`args = "init zsh"` put
+  `zoxide init zsh` into core.bash; bash 3.2 failed on its output). In
+  core.zsh, `bash` / `--bash` likewise become `zsh` / `--zsh`.
+- `[tools]` entries are emitted in `wayu.toml` file order (were sorted by
+  name), so a tool can rely on one listed above it.
+- bash: the `[tools]` evalcache helper no longer aborts a shell running
+  with `set -e` when a tool is missing, fails or its cache can't be written
+  (a failing tool now returns 0), and on bash 3.2 finds tools by walking
+  `PATH` in the shell instead of one `$(type -P …)` fork per tool.
+- core.bash: the `functions/*.bash` and `completions/*.bash(-completion)`
+  loops glob with `failglob` off and globbing on (restored before the files
+  are sourced): `shopt -s failglob` printed "no match" on every start and
+  `set -f` skipped the files. The loop variable is `_wayu_f` (core.bash
+  left a global `f` behind).
+- Live PATH sync: when the prompt hook's `wayu build` fails (a malformed
+  hand save of `wayu.toml` / `entries.json`), open shells retry after the
+  next save of either file instead of never again; the hook records the
+  failure in `<data>/path_sync.<ext>.regen-failed`.
+- zsh: `zsh -l -c …` and `zsh -l -i -c …` (IDEs reading the login env,
+  ssh commands) get wayu's PATH order back before the command runs; the
+  restore after macOS `path_helper` only happened at the first prompt,
+  which these never draw. core.zsh sets a self-removing `TRAPDEBUG` for
+  such runs only, and not when a `TRAPDEBUG` is already defined.
+- `[prompt]` / `[prompt.*]` are read with the TOML parser like the rest of
+  `wayu.toml` (were matched line by line): comments are ignored (a
+  `# success_symbol = …` line was applied), keys count only in their own
+  table (a `success_symbol` in any `[prompt.*]` table was used), values of
+  the wrong type keep the default (`context_aware = "false"` turned it off;
+  `toggle_enabled = true # not false` read as false), and dotted keys,
+  `[prompt.contexts.<name>]` tables and multi-line strings work.
+- Native prompt: a `%` in the git branch, the local IP, a context's tool
+  version or the shell name is shown as is (it was expanded as a prompt
+  escape: a branch `feat%n` showed the user name), in the prompt and the
+  async right prompt.
+- Native prompt (vi mode): `R` (replace) and `r` (replace one character,
+  while it waits for the key) show `vimcmd_replace_symbol` in the replace
+  color; they showed the insert / normal symbol.
+
 **One status icon per line**
 
 - `path add` / `path remove` print `✓ Added to PATH: <dir>` / `✓ Removed

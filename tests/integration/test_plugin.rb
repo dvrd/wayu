@@ -108,6 +108,7 @@ class PluginIntegrationTest
       test_offline_registry_pure_fish_name
       test_offline_conflicts_reported
       test_ssh_batch_mode_and_timeout
+      test_build_regenerates_plugin_loaders
     ensure
       teardown_test_env
     end
@@ -1496,6 +1497,32 @@ class PluginIntegrationTest
     git = JSON.parse(File.read("#{@data_dir}/plugins.json"))["plugins"][0]["git"]
     ok = status.exitstatus == 0 && git["tag"] == "v1.0.0" && git["pinned_ref"] == "v1.0.0"
     check("pinned plugin was updated or lost its pin", ok, output, status)
+  end
+
+  # OKAMI-309: `wayu build` regenerates plugins.<ext> for every set-up shell
+  # from a hand-edited plugins.json; an invalid one exits 78 and keeps them.
+  def test_build_regenerates_plugin_loaders
+    print "Test: build regenerates plugins.<ext>; invalid plugins.json exits 78... "
+    run_wayu("--shell bash init")
+    dir = "#{@plugins_dir}/regen-p"
+    FileUtils.mkdir_p(dir)
+    File.write("#{dir}/regen-p.plugin.zsh", "# regen\n")
+    seed_plugins([plugin_entry("regen-p", dir)])
+    _, _, st1 = run_wayu_split("build")
+    on = File.read("#{@data_dir}/plugins.zsh")
+    bash_ok = File.exist?("#{@data_dir}/plugins.bash")
+    seed_plugins([plugin_entry("regen-p", dir, enabled: false)])
+    _, _, st2 = run_wayu_split("build")
+    off = File.read("#{@data_dir}/plugins.zsh")
+    File.write("#{@data_dir}/plugins.json", "{ not json")
+    _, err3, st3 = run_wayu_split("build")
+    kept = File.read("#{@data_dir}/plugins.zsh")
+    seed_plugins([])
+    ok = st1.success? && on.include?("regen-p.plugin.zsh") && bash_ok && st2.success? &&
+         !off.include?("regen-p.plugin.zsh") && st3.exitstatus == 78 && err3.include?("plugins.json") && kept == off
+    check("build/plugin loaders", ok,
+          "st=#{[st1, st2, st3].map(&:exitstatus)} on=#{on.include?('regen-p')} bash=#{bash_ok} off=#{off.include?('regen-p')} err3=#{err3[0, 300]}",
+          st3)
   end
 
   # stdout and stderr kept apart (run_wayu merges them).
