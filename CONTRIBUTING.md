@@ -81,9 +81,10 @@ The release version is derived from them by
 
 **Any user-visible behavior change is breaking**, even when it is a bug fix:
 output, exit codes, flags, generated shell code, or config semantics. Mark it
-`fix(scope)!:` and write the `BREAKING CHANGE:` footer — it becomes the
-release's "⚠ Upgrade notes". Also add an entry under `## Unreleased` in
-[`docs/UPGRADING.md`](docs/UPGRADING.md).
+`fix(scope)!:` and write the `BREAKING CHANGE:` footer — `CHANGELOG.md` lists
+it under "⚠ Upgrade notes". Also add an entry under `## Unreleased` in
+[`docs/UPGRADING.md`](docs/UPGRADING.md): the release names that section after
+the version and publishes it as the GitHub release's upgrade notes.
 
 Commit messages should not include tool attribution trailers (for example
 `Co-Authored-By:` lines or "Generated with …" notes added by coding tools).

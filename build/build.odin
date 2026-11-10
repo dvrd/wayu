@@ -111,10 +111,35 @@ warn_if_odin_unpinned :: proc() {
 	bld.log_warn("Install it from https://github.com/odin-lang/Odin/releases/tag/%s", pin)
 }
 
+// The oldest macOS the binaries run on (LC_BUILD_VERSION minos). Without
+// -minimum-os-version Odin stamps the build host's version, so a release
+// built on a new runner refused to start on older macOS. CI checks the
+// released binary against this file (.github/scripts/check-macos-minos.sh).
+MACOS_MIN_VERSION_FILE :: ".github/macos-minimum-version"
+
+// Extra compiler flags for this host: -minimum-os-version on macOS.
+platform_flags :: proc() -> []string {
+	when ODIN_OS == .Darwin {
+		data, err := os.read_entire_file_from_path(MACOS_MIN_VERSION_FILE, context.temp_allocator)
+		version := strings.trim_space(string(data))
+		if err != nil || version == "" {
+			bld.log_error("Cannot read the macOS minimum version from %s", MACOS_MIN_VERSION_FILE)
+			os.exit(1)
+		}
+		flags := make([]string, 1, context.temp_allocator)
+		flags[0] = fmt.tprintf("-minimum-os-version:%s", version)
+		return flags
+	} else {
+		return nil
+	}
+}
+
 do_build :: proc() {
 	bld.log_info("Building %s (optimized)...", BINARY_NAME)
 	bld.mkdir_if_not_exists(BIN_DIR)
-	ok := bld.build({package_path = SRC_DIR, out = bin_path(), opt = .Speed})
+	ok := bld.build(
+		{package_path = SRC_DIR, out = bin_path(), opt = .Speed, extra_flags = platform_flags()},
+	)
 	if !ok {
 		bld.log_error("Build failed")
 		os.exit(1)
@@ -125,7 +150,9 @@ do_build :: proc() {
 do_debug :: proc() {
 	bld.log_info("Building %s (debug)...", BINARY_NAME)
 	bld.mkdir_if_not_exists(BIN_DIR)
-	ok := bld.build({package_path = SRC_DIR, out = debug_path(), debug = true})
+	ok := bld.build(
+		{package_path = SRC_DIR, out = debug_path(), debug = true, extra_flags = platform_flags()},
+	)
 	if !ok {
 		bld.log_error("Debug build failed")
 		os.exit(1)
@@ -542,6 +569,15 @@ do_release :: proc() {
 		os.exit(1)
 	}
 
+	// 3a'. Name docs/UPGRADING.md's "## Unreleased" section after the version
+	//      (the release notes take their upgrade notes from it), like bump.yml.
+	upgrading_cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&upgrading_cmd, ".github/scripts/upgrading-version.sh", version)
+	if !bld.cmd_run(&upgrading_cmd) {
+		bld.log_error("upgrading-version.sh failed")
+		os.exit(1)
+	}
+
 	// 3b. Update VERSION in src/main.odin
 	bld.log_info("Updating VERSION in src/main.odin...")
 	main_odin_path := "src/main.odin"
@@ -585,7 +621,15 @@ do_release :: proc() {
 	sync_docs_version_str(version_bare)
 
 	// 3d. Commit CHANGELOG.md, src/main.odin, docs, and README together
-	git_must("git add", "add", "CHANGELOG.md", "src/main.odin", "docs/index.html", "README.md")
+	git_must(
+		"git add",
+		"add",
+		"CHANGELOG.md",
+		"src/main.odin",
+		"docs/index.html",
+		"docs/UPGRADING.md",
+		"README.md",
+	)
 	git_must("git commit", "commit", "-m", fmt.tprintf("chore: release %s", version))
 
 	// 4. Tag the release commit.

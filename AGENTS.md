@@ -68,8 +68,9 @@ Each `tests/golden/<component>_<W>x<H>.txt` needs a matching line (component + a
   source. A `hotfix/*` merged to `main` is merged back into `develop` right
   after.
 - A phase/ticket is "done" when it is merged and CI-green on `develop`.
-- Keep `docs/UPGRADING.md` "## Unreleased" up to date on `develop`; rename it to
-  the version when shipping.
+- Keep `docs/UPGRADING.md` "## Unreleased" up to date on `develop`: the
+  release renames it to the version (`.github/scripts/upgrading-version.sh`)
+  and publishes it as the release's upgrade notes (`release-notes.sh`).
 
 ## Commit convention (drives versioning)
 

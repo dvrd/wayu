@@ -40,7 +40,7 @@ jobs:
     name: Bump version
     needs: ci
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 
@@ -57,8 +57,22 @@ jobs:
         fetch-tags: true            # fetch ALL tags, including orphans whose commits aren't on main
         token: ${{ secrets.GITHUB_TOKEN }}
 
+    # Pinned prebuilt release, checksum-verified (was: an unpinned
+    # `cargo install`, compiled from source in two jobs per release). The
+    # release notes are generated in this job too, so it is the only install.
     - name: Install git-cliff
-      run: cargo install git-cliff --locked
+      env:
+        CLIFF_VERSION: 2.9.1
+        CLIFF_SHA256: 532a89577230128d7df74d912843d561aea2660e280ebd0ed92f24c972438f1c
+      run: |
+        set -euo pipefail
+        name="git-cliff-${CLIFF_VERSION}"
+        curl -sSfL -o "$RUNNER_TEMP/$name.tar.gz" \
+          "https://github.com/orhun/git-cliff/releases/download/v${CLIFF_VERSION}/${name}-x86_64-unknown-linux-gnu.tar.gz"
+        echo "${CLIFF_SHA256}  $RUNNER_TEMP/$name.tar.gz" | sha256sum -c -
+        tar -xzf "$RUNNER_TEMP/$name.tar.gz" -C "$RUNNER_TEMP"
+        sudo install -m 0755 "$RUNNER_TEMP/$name/git-cliff" /usr/local/bin/git-cliff
+        git cliff --version
 
     # Decides what to do and refuses anything unsafe. This step never deletes
     # or moves a tag or release; on any inconsistency it fails with a
@@ -188,6 +202,13 @@ jobs:
         VERSION: ${{ steps.version.outputs.VERSION }}
       run: git cliff --tag "$VERSION" -o CHANGELOG.md
 
+    # The release notes take their upgrade notes from this section.
+    - name: Name the UPGRADING.md section
+      if: steps.version.outputs.MODE == 'bump'
+      env:
+        VERSION: ${{ steps.version.outputs.VERSION }}
+      run: .github/scripts/upgrading-version.sh "$VERSION"
+
     - name: Commit and tag
       if: steps.version.outputs.SKIP == 'false'
       env:
@@ -209,11 +230,32 @@ jobs:
         else
           # bump: ship commit + tag atomically. If main moved meanwhile the push
           # is rejected and NEITHER ref updates; the run for the new tip retries.
-          git add src/main.odin CHANGELOG.md README.md docs/index.html
+          git add src/main.odin CHANGELOG.md README.md docs/index.html docs/UPGRADING.md
           git commit -m "chore: release $VERSION"
           git tag "$VERSION"
           git push --atomic origin main "refs/tags/$VERSION"
         fi
+
+    # HEAD is the release tag now. Upgrade notes from its docs/UPGRADING.md
+    # "## X.Y.Z" section (curated, complete), the rest from git-cliff.
+    - name: Generate release notes
+      if: steps.version.outputs.SKIP == 'false'
+      env:
+        VERSION: ${{ steps.version.outputs.VERSION }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/release-notes"
+        git cliff --latest --strip header > "$RUNNER_TEMP/cliff_notes.md"
+        .github/scripts/release-notes.sh "$VERSION" "$RUNNER_TEMP/cliff_notes.md" \
+          > "$RUNNER_TEMP/release-notes/release_notes.md"
+        cat "$RUNNER_TEMP/release-notes/release_notes.md"
+
+    - name: Upload release notes
+      if: steps.version.outputs.SKIP == 'false'
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: release-notes
+        path: ${{ runner.temp }}/release-notes/release_notes.md
 
   build-release:
     name: Build ${{ matrix.artifact }}
@@ -227,10 +269,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             arch: x86_64
             artifact: wayu-linux-amd64
-          - os: macos-latest
+          - os: macos-15
             arch: arm64
             artifact: wayu-macos-arm64
 
@@ -254,11 +296,18 @@ jobs:
     - name: Setup Odin
       uses: ./.github/actions/setup-odin
 
+    # ./build_it build is the one release build: on macOS it passes
+    # -minimum-os-version from .github/macos-minimum-version (Odin otherwise
+    # stamps the runner's macOS, and the binary refuses to start on older Macs).
     - name: Build optimized release
       run: |
-        mkdir -p bin
-        odin build src -out:bin/wayu -o:speed
+        odin build build -out:build_it
+        ./build_it build
         chmod +x bin/wayu
+
+    - name: Check macOS minimum version
+      if: runner.os == 'macOS'
+      run: .github/scripts/check-macos-minos.sh bin/wayu
 
     - name: Verify build matches release version
       env:
@@ -304,28 +353,15 @@ jobs:
     name: Create GitHub Release
     needs: [bump, build-release]
     if: needs.bump.outputs.skip == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      with:
-        ref: ${{ needs.bump.outputs.version }}
-        fetch-depth: 0
-        fetch-tags: true
-
     - name: Download all artifacts
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
         path: artifacts
-
-    - name: Install git-cliff
-      run: cargo install git-cliff --locked
-
-    - name: Generate release notes
-      run: git cliff --latest --strip header > release_notes.md
 
     - name: Create Release
       # Updates an existing release at the same tag, so re-runs are idempotent.
@@ -333,7 +369,8 @@ jobs:
       with:
         tag_name: ${{ needs.bump.outputs.version }}
         name: wayu ${{ needs.bump.outputs.version }}
-        body_path: release_notes.md
+        # Written by the bump job (the one git-cliff install).
+        body_path: artifacts/release-notes/release_notes.md
         draft: false
         prerelease: false
         fail_on_unmatched_files: true
@@ -349,7 +386,7 @@ jobs:
     name: Update Homebrew tap
     needs: [bump, create-release]
     if: needs.bump.outputs.skip == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
@@ -395,6 +432,10 @@ jobs:
         mkdir -p tap/Formula
         wayu/.github/scripts/homebrew-formula.sh "$VERSION" "$MACOS_ARM64_SHA" "$LINUX_AMD64_SHA" > "$FORMULA.new"
         ruby -c "$FORMULA.new"
+        if grep -n '\.config/wayu/init' "$FORMULA.new"; then
+          echo "::error::Formula caveats name ~/.config/wayu/init.*; use the data dir"
+          exit 1
+        fi
         mv "$FORMULA.new" "$FORMULA"
         cat "$FORMULA"
 

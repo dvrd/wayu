@@ -548,6 +548,7 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu bogus` | 64 |
 | `wayu path list --dryrun` | 64 |
 | `wayu path add /tmp --json` | 64 |
+| `wayu path add` | 64 |
 | `wayu alias check` | 64 |
 | `wayu toml bogus` | 64 |
 | `wayu hooks bogus` | 64 |

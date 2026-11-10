@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-24.04, macos-15]
 
     steps:
     - name: Checkout code
@@ -61,6 +61,11 @@ jobs:
     - name: Verify build
       run: ./bin/wayu --version
 
+    # Release binaries must start on macOS >= .github/macos-minimum-version.
+    - name: Check macOS minimum version
+      if: runner.os == 'macOS'
+      run: .github/scripts/check-macos-minos.sh bin/wayu
+
     # ./build_it test sandboxes HOME and the tests' scratch dirs (per run),
     # same as local runs. Leaks / bad frees (tracking allocator) fail it.
     - name: Run unit tests
@@ -80,19 +85,8 @@ jobs:
     - name: Run TUI layout tests (pyte)
       run: |
         python3 -m venv "$RUNNER_TEMP/tui-venv"
-        "$RUNNER_TEMP/tui-venv/bin/pip" install --quiet pyte
+        "$RUNNER_TEMP/tui-venv/bin/pip" install --quiet pyte==0.8.2
         "$RUNNER_TEMP/tui-venv/bin/python" tests/tui/test_responsive.py
-
-    - name: Test CLI exit codes
-      run: |
-        EXIT_CODE=0
-        ./bin/wayu path add > /dev/null 2>&1 || EXIT_CODE=$?
-        if [ "$EXIT_CODE" -eq 64 ]; then
-          echo "CLI returns correct exit code 64 for missing args"
-        else
-          echo "Expected exit code 64, got $EXIT_CODE"
-          exit 1
-        fi
 
   # Integration suites against an AddressSanitizer build: catches
   # use-after-free / out-of-bounds in the real CLI paths. Leak detection is
@@ -100,7 +94,7 @@ jobs:
   # leaks with the tracking allocator.
   sanitize:
     name: AddressSanitizer (integration)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout code
@@ -136,7 +130,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout code
@@ -152,7 +146,7 @@ jobs:
 
   release-check:
     name: Release Readiness
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout code
@@ -170,7 +164,10 @@ jobs:
 
     - name: Check required files exist
       run: |
-        for f in README.md docs/index.html .github/workflows/bump.yml .github/scripts/homebrew-formula.sh; do
+        for f in README.md docs/index.html docs/UPGRADING.md .github/workflows/bump.yml \
+          .github/scripts/homebrew-formula.sh .github/scripts/release-notes.sh \
+          .github/scripts/upgrading-version.sh .github/scripts/check-macos-minos.sh \
+          .github/macos-minimum-version; do
           [ -f "$f" ] || { echo "Missing: $f"; exit 1; }
         done
         echo "All required files present"
@@ -180,3 +177,14 @@ jobs:
         A=$(printf 'a%.0s' {1..64}); B=$(printf 'b%.0s' {1..64})
         .github/scripts/homebrew-formula.sh v0.0.0 "$A" "$B" > /tmp/wayu.rb
         ruby -c /tmp/wayu.rb
+        # init.<ext> lives in the data dir since 6.0.0; caveats must not
+        # point new users at the old ~/.config/wayu/init.<ext>.
+        if grep -n '\.config/wayu/init' /tmp/wayu.rb; then
+          echo "::error::Formula caveats name ~/.config/wayu/init.*; use the data dir"
+          exit 1
+        fi
+        # shellcheck disable=SC2016 # a literal $HOME in the formula text
+        grep -q 'XDG_DATA_HOME:-\$HOME/.local/share}/wayu}/init.zsh' /tmp/wayu.rb || {
+          echo "::error::Formula caveats lack the data-dir init.zsh line"
+          exit 1
+        }

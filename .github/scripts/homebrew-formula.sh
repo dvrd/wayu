@@ -33,6 +33,24 @@ for sha in "$MACOS_ARM64_SHA" "$LINUX_AMD64_SHA"; do
 done
 
 VERSION_BARE="${VERSION#v}"
+
+# The macOS binary is built for macOS >= .github/macos-minimum-version
+# (-minimum-os-version); brew refuses older systems with its own message.
+FLOOR_FILE="$(cd "$(dirname "$0")/.." && pwd)/macos-minimum-version"
+MACOS_FLOOR=$(tr -d "[:space:]" < "$FLOOR_FILE")
+case "${MACOS_FLOOR%%.*}" in
+  11) MACOS_SYMBOL=big_sur ;;
+  12) MACOS_SYMBOL=monterey ;;
+  13) MACOS_SYMBOL=ventura ;;
+  14) MACOS_SYMBOL=sonoma ;;
+  15) MACOS_SYMBOL=sequoia ;;
+  26) MACOS_SYMBOL=tahoe ;;
+  *)
+    echo "error: no Homebrew macOS name for floor '$MACOS_FLOOR' ($FLOOR_FILE)" >&2
+    exit 65
+    ;;
+esac
+
 BASE_URL="https://github.com/dvrd/wayu/releases/download/${VERSION}"
 
 cat <<FORMULA
@@ -43,8 +61,10 @@ class Wayu < Formula
   license "MIT"
 
   # Prebuilt binaries exist for macOS arm64 and Linux x86_64 only.
+  # macOS: built for ${MACOS_FLOOR} and later.
   on_macos do
     depends_on arch: :arm64
+    depends_on macos: :${MACOS_SYMBOL}
     url "${BASE_URL}/wayu-macos-arm64.tar.gz"
     sha256 "${MACOS_ARM64_SHA}"
   end
@@ -61,12 +81,17 @@ class Wayu < Formula
 
   def caveats
     <<~EOS
-      Initialize wayu config files by running:
+      Set wayu up by running:
         wayu init
 
-      Then add this line to your shell RC file:
-        source ~/.config/wayu/init.zsh   # zsh
-        source ~/.config/wayu/init.bash  # bash
+      It creates ~/.config/wayu (wayu.toml) and the data dir
+      ~/.local/share/wayu, and offers to add the line that loads wayu to
+      your shell rc file. To add it yourself:
+        zsh  (~/.zshrc):
+          source "\${WAYU_DATA_DIR:-\${XDG_DATA_HOME:-\$HOME/.local/share}/wayu}/init.zsh"
+        bash (~/.bash_profile or ~/.bashrc):
+          source "\${WAYU_DATA_DIR:-\${XDG_DATA_HOME:-\$HOME/.local/share}/wayu}/init.bash"
+        fish: see "Shell setup" in https://github.com/dvrd/wayu#shell-setup
     EOS
   end
 
