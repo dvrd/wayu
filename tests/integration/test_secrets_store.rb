@@ -47,6 +47,7 @@ class SecretsStoreIntegrationTest
       test_fish_sources_cache
       test_stdin_value
       test_convert_plain_constant
+      test_convert_scrubs_unicode_cr_del
       test_plain_add_over_secret_refused
       test_dry_run_writes_nothing
       test_secret_flag_rejected_elsewhere
@@ -229,6 +230,39 @@ class SecretsStoreIntegrationTest
           !File.read("#{@data_dir}/entries.json").include?('fake-plain') && got.chomp == 'fake-plain-0004', out + err)
     leaked = Dir.glob("#{@data_dir}/backup/*").select { |f| File.file?(f) && File.binread(f).include?('fake-plain-0004') }
     check('plaintext left in backups', leaked.empty?, leaked.inspect)
+  end
+
+  def test_convert_scrubs_unicode_cr_del
+    print 'Test 13b: conversion scrubs backups of non-Latin-1 / CR / DEL values (OKAMI-296)... '
+    leaks = []
+    ["fake-pässwörd€xyz", "fake-cr\rx", "fake-del\x7fx"].each_with_index do |plain, i|
+      name = "FAKE_SCRUB_#{i}"
+      w(['const', 'add', name, plain])
+      w(['alias', 'add', "scrub#{i}", 'true'])
+      _, err, st = w(['const', 'add', name, '--secret'], stdin: "#{plain}\n")
+      leaks << "#{name}: add failed #{err}" unless st.success?
+      Dir.glob("#{@data_dir}/backup/**/*").select { |f| File.file?(f) }.each do |f|
+        raw = File.binread(f)
+        hit = raw.include?(plain.b) || json_strings(raw).any? { |s| s.include?(plain) }
+        leaks << "#{name}: #{f}" if hit
+      end
+    end
+    check('plaintext left in backups', leaks.empty?, leaks.join(' '))
+  end
+
+  # Every string (keys and values) of a JSON document; [] when it does not parse.
+  def json_strings(raw)
+    walk = lambda do |v|
+      case v
+      when String then [v]
+      when Array then v.flat_map(&walk)
+      when Hash then v.flat_map { |k, x| [k] + walk.call(x) }
+      else []
+      end
+    end
+    walk.call(JSON.parse(raw.dup.force_encoding('UTF-8')))
+  rescue JSON::ParserError, EncodingError
+    []
   end
 
   def test_plain_add_over_secret_refused

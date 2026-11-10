@@ -348,3 +348,52 @@ test_entries_run_only_marker :: proc(t: ^testing.T) {
 	testing.expect(t, strings.contains(out, `{"name": "FAKE_B", "secret": true}`), out)
 	testing.expect(t, !strings.contains(out, `"FAKE_C", "value": "x", "run_only"`), out)
 }
+
+// OKAMI-296: backups are found whatever escaping wrote them (raw UTF-8 above
+// U+00FF, CR as \u000d or \r, raw DEL), so a converted constant's plaintext
+// never survives in an entries.json backup.
+@(test)
+test_entries_text_holds_any_escaping :: proc(t: ^testing.T) {
+	plains := []string{"pässwörd€xyz", "fake\rcr", "fake\x7fdel", "fake-𝄞-\"q\"\\"}
+	for plain in plains {
+		store := wayu.EntryStore {
+			version = 1,
+		}
+		append(
+			&store.env,
+			wayu.StoreEnv{name = strings.clone("FAKE_A"), value = strings.clone(plain)},
+		)
+		text := wayu.entries_serialize(&store)
+		wayu.entries_store_destroy(&store)
+		defer delete(text)
+		testing.expectf(
+			t,
+			wayu.entries_text_holds(text, plain),
+			"not found in writer output: %q",
+			plain,
+		)
+		testing.expectf(
+			t,
+			!wayu.entries_text_holds(text, "fake-other-value"),
+			"false hit for %q",
+			plain,
+		)
+	}
+	// Other escapings of the same value (\uXXXX for non-ASCII, \r, \u007f).
+	testing.expect(
+		t,
+		wayu.entries_text_holds(
+			`{"version": 1, "env": [{"name": "FAKE_A", "value": "pässwörd€xyz"}]}`,
+			"pässwörd€xyz",
+		),
+	)
+	testing.expect(
+		t,
+		wayu.entries_text_holds(
+			`{"version": 1, "env": [{"name": "FAKE_A", "value": "fake\r\u007fx"}]}`,
+			"fake\r\x7fx",
+		),
+	)
+	// Unparsable text: raw search.
+	testing.expect(t, wayu.entries_text_holds(`{"env": [ "pässwörd€xyz"`, "pässwörd€xyz"))
+}

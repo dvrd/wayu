@@ -883,19 +883,11 @@ env_store_mark_secret :: proc(
 	return converted, true, ""
 }
 
-// Delete every entries.json backup that still holds `plain` (as its JSON
-// string form): converting a constant to a secret must not leave its
-// plaintext behind in the backups taken before the conversion.
+// Delete every entries.json backup that still holds `plain`: converting a
+// constant to a secret must not leave its plaintext behind in the backups
+// taken before the conversion.
 @(private = "file")
 scrub_entries_backups :: proc(plain: string) {
-	needle, merr := json.marshal(plain)
-	if merr != nil {
-		return
-	}
-	defer {
-		crypto.zero_explicit(raw_data(needle), len(needle))
-		delete(needle)
-	}
 	backups := list_backups_for_file(entries_file_path())
 	defer free_backup_infos(backups)
 	for b in backups {
@@ -903,13 +895,72 @@ scrub_entries_backups :: proc(plain: string) {
 		if rerr != nil {
 			continue
 		}
-		hit := strings.contains(string(data), string(needle))
+		hit := entries_text_holds(string(data), plain)
 		crypto.zero_explicit(raw_data(data), len(data))
 		delete(data)
 		if hit {
 			os.remove(b.backup_file)
 		}
 	}
+}
+
+// Does entries.json text hold `plain` in any of its strings? The text is
+// parsed and every decoded string compared, so the escaping the backup was
+// written with does not matter (\uXXXX vs raw UTF-8, `\r` vs `\u000d`, raw
+// DEL). Text that does not parse is searched for `plain` raw and in both
+// JSON escapings wayu has written (json_escape, json.marshal).
+entries_text_holds :: proc(text, plain: string) -> bool {
+	if len(plain) == 0 {
+		return false
+	}
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil {
+		return strings.contains(text, plain)
+	}
+	defer {
+		// Decoded strings are plaintext copies: wipe before releasing.
+		for blk := arena.curr_block; blk != nil; blk = blk.prev {
+			crypto.zero_explicit(blk.base, int(blk.used))
+		}
+		virtual.arena_destroy(&arena)
+	}
+	scratch := virtual.arena_allocator(&arena)
+
+	holds :: proc(v: json.Value, plain: string) -> bool {
+		#partial switch x in v {
+		case json.String:
+			return strings.contains(x, plain)
+		case json.Array:
+			for item in x {
+				if holds(item, plain) {
+					return true
+				}
+			}
+		case json.Object:
+			for k, item in x {
+				if strings.contains(k, plain) || holds(item, plain) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if doc, perr := json.parse_string(text, .JSON, true, scratch);
+	   perr == nil && holds(doc, plain) {
+		return true
+	}
+	if strings.contains(text, plain) {
+		return true
+	}
+	esc := json_escape(plain)
+	defer secrets_wipe(esc)
+	if strings.contains(text, esc) {
+		return true
+	}
+	if m, merr := json.marshal(plain, allocator = scratch); merr == nil {
+		return strings.contains(text, string(m))
+	}
+	return false
 }
 
 // Forget that `name` is a secret constant (const remove): delete its entry.
