@@ -113,7 +113,7 @@ execute_hook_ctx :: proc(hook_type: HookType, ctx: HookContext) {
 	if msg, bad := hook_config_error(); bad {
 		if wayu.tui_mode do return
 		print_error("%s", msg)
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	if wayu.dry_run do return
 
@@ -557,7 +557,7 @@ handle_hooks_command :: proc(action: Action, args: []string) {
 	case:
 		fmt.eprintln("Unknown hooks action")
 		print_hooks_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
@@ -681,14 +681,14 @@ edit_hooks_config :: proc() {
 		write_ok := safe_write_file(hook_path, transmute([]byte)(example))
 		if !write_ok {
 			print_error("Failed to create hooks config")
-			os.exit(EXIT_IOERR)
+			wayu_exit(EXIT_IOERR)
 		}
 	}
 
 	// Open in editor (inherits the terminal; see launch_editor).
 	print_info("Opening hooks config in %s...", editor_command())
 	if !launch_editor(hook_path) {
-		os.exit(EXIT_FAILURE)
+		wayu_exit(EXIT_FAILURE)
 	}
 }
 

@@ -40,7 +40,7 @@ toml_alias_remove :: proc(name: string) -> (bool, string) {
 
 list_toml_aliases :: proc() {
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	entries := read_alias_entries()
@@ -301,10 +301,10 @@ print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
 get_toml_alias_value :: proc(name: string) {
 	if len(strings.trim_space(name)) == 0 {
 		print_cli_usage_error(&ALIAS_SPEC, "get")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	entries := read_alias_entries()

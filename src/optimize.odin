@@ -1615,7 +1615,7 @@ handle_optimize_command :: proc(action: Action, args: []string) {
 		case:
 			print_error_simple("Unknown argument: %s", a)
 			print_optimize_help()
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 	}
 	if action == .HELP {
@@ -1628,7 +1628,7 @@ handle_optimize_command :: proc(action: Action, args: []string) {
 	}
 	if wayu.shell == .UNKNOWN {
 		print_error_simple("Could not determine your shell - pass --shell zsh|bash|fish")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	store := entries_load()
@@ -1649,7 +1649,7 @@ handle_optimize_command :: proc(action: Action, args: []string) {
 		}
 		if n > 0 {
 			fmt.printfln("%d line%s can be optimized (wayu optimize)", n, "" if n == 1 else "s")
-			os.exit(EXIT_FAILURE)
+			wayu_exit(EXIT_FAILURE)
 		}
 		if !plan.loaded {
 			fmt.println("wayu is not loaded from any startup file; nothing to check")
@@ -1683,7 +1683,7 @@ handle_optimize_command :: proc(action: Action, args: []string) {
 		print_error(
 			"wayu optimize rewrites your shell startup files (each is backed up first). Pass --yes to apply, or --dry-run to preview.",
 		)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	moved, ok, err := optimize_apply(&plan)
@@ -1692,7 +1692,7 @@ handle_optimize_command :: proc(action: Action, args: []string) {
 		if moved > 0 {
 			regenerate_init_core_silently()
 		}
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	regenerate_init_core_silently()
 	optimize_touch_stamp()
@@ -2097,12 +2097,12 @@ handle_completions_fpath :: proc(args: []string) {
 	case "add", "rm", "remove":
 		if len(rest) != 1 {
 			print_error_simple("Usage: wayu completions fpath %s DIR", sub)
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		dir := rest[0]
 		if len(strings.trim_space(dir)) == 0 || !is_path_entry_safe(dir) {
 			print_error_simple("Invalid directory: %q (empty, or contains ':' or a newline)", dir)
-			os.exit(EXIT_DATAERR)
+			wayu_exit(EXIT_DATAERR)
 		}
 		config_lock_acquire_or_exit()
 		defer config_lock_release()
@@ -2122,7 +2122,7 @@ handle_completions_fpath :: proc(args: []string) {
 		} else {
 			if idx < 0 {
 				print_error_simple("Not on the managed fpath: %s", dir)
-				os.exit(EXIT_DATAERR)
+				wayu_exit(EXIT_DATAERR)
 			}
 			if wayu.dry_run {
 				print_info("[dry-run] Would remove %s from the managed fpath", dir)
@@ -2132,7 +2132,7 @@ handle_completions_fpath :: proc(args: []string) {
 			ordered_remove(&store.fpath, idx)
 		}
 		if !entries_save(&store) {
-			os.exit(EXIT_IOERR)
+			wayu_exit(EXIT_IOERR)
 		}
 		regenerate_init_core_silently()
 		print_success(
@@ -2142,7 +2142,7 @@ handle_completions_fpath :: proc(args: []string) {
 		)
 	case:
 		print_error_simple("Unknown fpath action: %s (expected list, add, rm)", sub)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 

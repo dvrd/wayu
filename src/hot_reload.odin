@@ -190,7 +190,7 @@ handle_watch_command :: proc(action: string, args: []string) {
 
 	// Check if wayu is initialized
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	switch action {
@@ -245,7 +245,7 @@ handle_watch_command :: proc(action: string, args: []string) {
 				wayu.data,
 				WATCHER_LOCK_FILE,
 			)
-			os.exit(EXIT_FAILURE)
+			wayu_exit(EXIT_FAILURE)
 		}
 		stop_existing_watcher(pid)
 
@@ -271,7 +271,7 @@ handle_watch_command :: proc(action: string, args: []string) {
 	case:
 		print_error("Unknown watch action: %s", action)
 		print_watch_help()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
@@ -561,7 +561,7 @@ watcher_lock_take :: proc() -> bool {
 	f, err := os.open(path, {.Read, .Write, .Create}, os.perm_number(0o600))
 	if err != nil {
 		print_error("Cannot open %s: %v", path, err)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	if posix.lockf(posix.FD(os.fd(f)), .TLOCK, 0) != .OK {
 		os.close(f)

@@ -442,7 +442,7 @@ script_require_valid_name :: proc(name: string) {
 	if !result.valid {
 		print_error("%s", result.error_message)
 		delete(result.error_message)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 }
 
@@ -452,7 +452,7 @@ script_require_existing :: proc(name: string) -> ScriptInfo {
 	s, ok := script_find(name)
 	if !ok {
 		print_error_simple("Script not found: %s", name)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 	return s
 }
@@ -482,7 +482,7 @@ script_parse_opts :: proc(args: []string) -> ScriptOpts {
 		case a == "--lang":
 			if i + 1 >= len(args) {
 				print_error_simple("--lang needs a value (one of: %s)", script_lang_names())
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 			o.lang = args[i + 1]
 			i += 1
@@ -498,7 +498,7 @@ script_parse_opts :: proc(args: []string) -> ScriptOpts {
 			o.lang,
 			script_lang_names(),
 		)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 	return o
 }
@@ -509,7 +509,7 @@ handle_script_command :: proc(action: Action, args: []string) {
 	need_name :: proc(words: []string, usage: string) -> string {
 		if len(words) < 1 {
 			print_error_simple("Script name required. Usage: wayu script %s", usage)
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		return words[0]
 	}
@@ -525,7 +525,7 @@ handle_script_command :: proc(action: Action, args: []string) {
 	case .IMPORT:
 		if len(words) == 0 {
 			print_error_simple("Nothing to import. Usage: wayu script import <file>... [--copy]")
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		script_import(words, opts.copy)
 	case .BUILD:
@@ -535,7 +535,7 @@ handle_script_command :: proc(action: Action, args: []string) {
 	case:
 		fmt.eprintln("Unknown script action")
 		print_script_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
@@ -550,7 +550,7 @@ script_new :: proc(name: string, lang_flag: string) {
 				lang_name,
 				script_lang_names(),
 			)
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 	}
 	lang := script_lang_by_name(lang_name)
@@ -562,7 +562,7 @@ script_new :: proc(name: string, lang_flag: string) {
 			existing.source,
 			name,
 		)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 
 	// Shebang: the interpreter found on PATH now. A compiled language needs
@@ -580,7 +580,7 @@ script_new :: proc(name: string, lang_flag: string) {
 				lang.name,
 				comp.compiler,
 			)
-			os.exit(EXIT_UNAVAILABLE)
+			wayu_exit(EXIT_UNAVAILABLE)
 		}
 		if len(interp) == 0 {
 			interp = fmt.tprintf("/usr/bin/env %s", lang.interpreters[0])
@@ -591,7 +591,7 @@ script_new :: proc(name: string, lang_flag: string) {
 			lang.name,
 			strings.join(lang.interpreters, ", ", context.temp_allocator),
 		)
-		os.exit(EXIT_UNAVAILABLE)
+		wayu_exit(EXIT_UNAVAILABLE)
 	}
 
 	source := fmt.tprintf("%s/%s.%s", scripts_dir(), name, lang.ext)
@@ -619,18 +619,18 @@ script_new :: proc(name: string, lang_flag: string) {
 			existing.source,
 			name,
 		)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 	if !script_ensure_dirs() {
 		config_lock_release()
-		os.exit(EXIT_CANTCREAT)
+		wayu_exit(EXIT_CANTCREAT)
 	}
 	skeleton := script_skeleton(lang, name, context.temp_allocator)
 	content := fmt.tprintf("#!%s\n%s", interp, skeleton)
 	if write_file_atomic(source, transmute([]byte)content) != nil {
 		config_lock_release()
 		print_error_simple("Failed to create %s", source)
-		os.exit(EXIT_CANTCREAT)
+		wayu_exit(EXIT_CANTCREAT)
 	}
 	_ = os.chmod(source, os.perm_number(0o755))
 	config_lock_release()
@@ -638,7 +638,7 @@ script_new :: proc(name: string, lang_flag: string) {
 
 	_, edit_ok := editor_maybe_open(source)
 	if !edit_ok {
-		os.exit(EXIT_FAILURE)
+		wayu_exit(EXIT_FAILURE)
 	}
 
 	config_lock_acquire_or_exit()
@@ -646,14 +646,14 @@ script_new :: proc(name: string, lang_flag: string) {
 	s, found := script_find(name)
 	if !found {
 		print_error_simple("Script '%s' was removed while it was being edited", name)
-		os.exit(EXIT_NOINPUT)
+		wayu_exit(EXIT_NOINPUT)
 	}
 	// had_bin: was <data>/bin on PATH before this script's bin entry?
 	had_bin := len(script_path_value()) > 0
 	ok := script_build(s)
 	script_sync_path(had_bin)
 	if !ok {
-		os.exit(EXIT_FAILURE)
+		wayu_exit(EXIT_FAILURE)
 	}
 }
 
@@ -666,7 +666,7 @@ script_edit :: proc(name: string) {
 	}
 	_, edit_ok := editor_maybe_open(s.source)
 	if !edit_ok {
-		os.exit(EXIT_FAILURE)
+		wayu_exit(EXIT_FAILURE)
 	}
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
@@ -677,7 +677,7 @@ script_edit :: proc(name: string) {
 		return
 	}
 	if !script_build(s) {
-		os.exit(EXIT_FAILURE)
+		wayu_exit(EXIT_FAILURE)
 	}
 }
 
@@ -741,20 +741,20 @@ script_remove :: proc(name: string) {
 	}
 	if !wayu.yes_flag {
 		fmt.printfln("This will delete %s and %s. Pass --yes to confirm.", s.source, s.bin)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
 	// The source is the only copy of the user's code: no backup, no delete.
 	if !create_backup_cli(s.source) {
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	had_bin := len(script_path_value()) > 0
 	defer script_sync_path(had_bin)
 	script_remove_bin(s.name)
 	if err := os.remove(s.source); err != nil {
 		print_error_simple("Failed to remove %s", s.source)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	print_success("Removed script: %s", name)
 }
@@ -773,7 +773,7 @@ script_build_command :: proc(names: []string) {
 			script_sync_path(had_bin)
 			config_lock_release()
 			if !ok {
-				os.exit(EXIT_FAILURE)
+				wayu_exit(EXIT_FAILURE)
 			}
 		}
 		return
@@ -800,7 +800,7 @@ script_build_command :: proc(names: []string) {
 		print_info("All scripts are up to date")
 	}
 	if failed > 0 {
-		os.exit(EXIT_FAILURE)
+		wayu_exit(EXIT_FAILURE)
 	}
 }
 
@@ -1072,7 +1072,7 @@ script_import :: proc(paths: []string, keep_original: bool) {
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
 	if !script_ensure_dirs() {
-		os.exit(EXIT_CANTCREAT)
+		wayu_exit(EXIT_CANTCREAT)
 	}
 	had_bin := len(script_path_value()) > 0
 
@@ -1099,7 +1099,7 @@ script_import :: proc(paths: []string, keep_original: bool) {
 		}
 	}
 	if imported == 0 && skipped > 0 {
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 }
 

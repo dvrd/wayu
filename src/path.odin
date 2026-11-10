@@ -39,13 +39,13 @@ handle_path_command :: proc(action: Action, args: []string) {
 
 	if !ensure_wayu_toml_exists() {
 		print_error_simple("Failed to create wayu.toml")
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	// Before `wayu init`: one "not initialized" error (exit 78) like alias/
 	// const, not a file-not-found plus a read error (OKAMI-237). `add`
 	// checks after validating its argument (bad input is reported first).
 	if action != .HELP && action != .UNKNOWN && action != .ADD && !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	#partial switch action {
@@ -56,13 +56,13 @@ handle_path_command :: proc(action: Action, args: []string) {
 	case .GET:
 		if len(args) == 0 {
 			print_cli_usage_error(&PATH_SPEC, "get")
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		path_get_value(args[0])
 	case .ADD:
 		if len(args) == 0 {
 			print_error("Usage: wayu path add [<name>=]<path>")
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		name_hint, raw_path, _ := parse_path_arg(args[0])
 		expanded, check_err, check_code := path_add_check(raw_path)
@@ -70,10 +70,10 @@ handle_path_command :: proc(action: Action, args: []string) {
 		if check_code != EXIT_SUCCESS {
 			print_error("%s", check_err)
 			delete(check_err)
-			os.exit(check_code)
+			wayu_exit(check_code)
 		}
 		if !check_wayu_initialized() {
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 		// pre-hook only for an add that will really change the entries
 		// (duplicates / bad names are reported by the write below).
@@ -99,7 +99,7 @@ handle_path_command :: proc(action: Action, args: []string) {
 	case .REMOVE:
 		if len(args) == 0 {
 			print_error("Usage: wayu path remove <name-or-path>")
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		// Hooks get the stored directory ({path}), also when the target is a key.
 		hook_path, found := path_entry_lookup(args[0])
@@ -182,11 +182,11 @@ print_path_applied_hint :: proc() {
 exit_on_path_failure :: proc(res: PathOpResult) {
 	#partial switch res {
 	case .NOT_FOUND, .INVALID:
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	case .IO_ERROR:
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	case .BAD_STORE:
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 }
 
@@ -251,7 +251,7 @@ mutate_path_entries :: proc(spec: PathMutationSpec, entries: []StorePath, drop: 
 		fmt.println()
 		fmt.printfln("Add --yes flag to proceed:")
 		fmt.printfln("  %s", spec.yes_hint_cmd)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	// Confirmation banner
@@ -317,7 +317,7 @@ path_prune :: proc(
 	mask: proc(entries: []StorePath, consts: []ConfigEntry) -> []bool,
 ) {
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
@@ -563,10 +563,10 @@ read_path_config_entries :: proc() -> []ConfigEntry {
 path_get_value :: proc(search_path: string) {
 	if len(strings.trim_space(search_path)) == 0 {
 		print_cli_usage_error(&PATH_SPEC, "get")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	paths := path_dirs_read()

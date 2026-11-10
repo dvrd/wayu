@@ -677,7 +677,7 @@ handle_toml_show :: proc() {
 	content, err := os.read_entire_file_from_path(toml_file, context.allocator)
 	if err != nil {
 		fmt.eprintfln("Failed to read TOML file: %s", toml_file)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	defer delete(content)
 
@@ -694,20 +694,20 @@ handle_toml_keys :: proc() {
 	content, err := os.read_entire_file_from_path(toml_file, context.allocator)
 	if err != nil {
 		print_error_simple("Failed to read TOML file: %s", toml_file)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	defer delete(content)
 
 	arena: virtual.Arena
 	if virtual.arena_init_growing(&arena) != nil {
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	defer virtual.arena_destroy(&arena)
 	doc, ok := toml_doc_parse_alloc(string(content), virtual.arena_allocator(&arena))
 	if !ok {
 		e := doc.errors[0]
 		print_error_simple("Failed to parse TOML file: %s (line %d: %s)", toml_file, e.line, e.msg)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 
 	// Root `key = value` statements and table headers interleave in file
@@ -746,21 +746,21 @@ handle_toml_command :: proc(action: Action) {
 	case .CHECK:
 		// Validate TOML config
 		if !check_wayu_initialized() {
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 		if !handle_validate() {
-			os.exit(EXIT_DATAERR)
+			wayu_exit(EXIT_DATAERR)
 		}
 	case .LIST:
 		// Show all TOML keys
 		if !check_wayu_initialized() {
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 		handle_toml_keys()
 	case .GET:
 		// Show TOML content
 		if !check_wayu_initialized() {
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 		handle_toml_show()
 	case .HELP:
@@ -768,7 +768,7 @@ handle_toml_command :: proc(action: Action) {
 	case:
 		fmt.eprintln("Unknown toml action")
 		print_toml_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 

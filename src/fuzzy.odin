@@ -693,7 +693,7 @@ exit_get_not_found :: proc(spec: ^ConfigEntrySpec, query: string, names: []strin
 		fmt.eprintln("Did you mean:")
 		for name in suggestions {fmt.eprintfln("  %s", name)}
 	}
-	os.exit(EXIT_DATAERR)
+	wayu_exit(EXIT_DATAERR)
 }
 
 // Rank `names` against `query` (exact-fold > prefix > substring > acronym >

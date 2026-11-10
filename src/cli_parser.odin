@@ -12,7 +12,6 @@
 package wayu
 
 import "core:fmt"
-import "core:os"
 import "core:strings"
 
 ParsedArgs :: struct {
@@ -413,14 +412,14 @@ parse_doctor_flags :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 			parsed.doctor_optimize = true
 		case "--help", "-h", "help":
 			print_doctor_usage()
-			os.exit(0)
+			wayu_exit(0)
 		case:
 			// doctor takes no action words; dash tokens are checked by the
 			// flag allow-list (command_accepts_flag).
 			if !strings.has_prefix(filtered_args[i], "-") {
 				print_error_simple("Unknown doctor argument: %s", filtered_args[i])
 				print_doctor_usage()
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 		}
 	}

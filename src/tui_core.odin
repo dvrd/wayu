@@ -13,7 +13,7 @@ tui_run :: proc() {
 	if !is_stdin_tty() || !is_stdout_tty() {
 		fmt.eprintln("Error: TUI requires an interactive terminal (TTY)")
 		fmt.eprintln("Cannot run TUI when stdin or stdout is not a terminal")
-		os.exit(EXIT_GENERAL)
+		wayu_exit(EXIT_GENERAL)
 	}
 
 	// Restore the terminal before printing any assert/panic message.
@@ -136,7 +136,7 @@ tui_run :: proc() {
 tui_init :: proc() {
 	if !tui_enable_raw_mode() {
 		fmt.eprintln("Error: Failed to enable raw mode")
-		os.exit(EXIT_OSERR)
+		wayu_exit(EXIT_OSERR)
 	}
 	tui_install_signal_handlers()
 	tui_load_esc_delay()

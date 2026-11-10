@@ -201,7 +201,7 @@ main :: proc() {
 	// context.allocator stays the heap (existing delete() calls).
 	if err := virtual.arena_init_growing(&main_temp_arena); err != nil {
 		fmt.eprintln("wayu: cannot reserve memory for the temp arena")
-		os.exit(EXIT_FAILURE)
+		wayu_exit(EXIT_FAILURE)
 	}
 	defer virtual.arena_destroy(&main_temp_arena)
 
@@ -243,7 +243,7 @@ main :: proc() {
 	init_shell_globals()
 	if msg := dir_override_error(); len(msg) > 0 {
 		print_error_simple("%s", msg)
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	// No arguments → launch TUI (the primary interface)
@@ -259,18 +259,18 @@ main :: proc() {
 		print_error_simple("Unknown option: %s", parsed.unknown_flag)
 		fmt.eprintln("Run 'wayu help' (or 'wayu <command> --help') for the accepted options.")
 		fmt.eprintln("To pass a value that starts with '-', put it after '--'.")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 	if len(parsed.bad_flag_value) > 0 {
 		print_error_simple("%s", parsed.bad_flag_value)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 	if parsed.json_unsupported {
 		print_error_simple(
 			"--json is not supported here; it works with: %s",
 			json_commands_summary(),
 		)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 	if f := parsed.ambiguous_tail_flag; len(f) > 0 {
 		long := "--dry-run" if f == "-n" else "--yes"
@@ -338,7 +338,7 @@ main :: proc() {
 				"Unknown build target (expected: turbo, eval, profile, clean, help)",
 			)
 			print_build_help()
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		handle_build_command(parsed.action)
 	case .EXPORT:
@@ -386,7 +386,7 @@ main :: proc() {
 	case .UNKNOWN:
 		fmt.eprintfln("Unknown command: %s", os.args[1])
 		print_help()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
@@ -404,7 +404,7 @@ handle_init_command :: proc() {
 	shell_valid, shell_msg := validate_shell_compatibility(shell)
 	if !shell_valid {
 		print_error_simple("%s", shell_msg)
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	ext := get_shell_extension(shell)
@@ -428,7 +428,7 @@ handle_init_command :: proc() {
 
 		if err != nil {
 			print_error_simple("Error creating config directory: %v", err)
-			os.exit(EXIT_CANTCREAT)
+			wayu_exit(EXIT_CANTCREAT)
 		}
 		print_success("Created directory: %s", config_dir)
 	} else {
@@ -442,7 +442,7 @@ handle_init_command :: proc() {
 
 		if err != nil {
 			print_error_simple("Error creating data directory: %v", err)
-			os.exit(EXIT_CANTCREAT)
+			wayu_exit(EXIT_CANTCREAT)
 		}
 		print_success("Created directory: %s", data_dir)
 	} else {
@@ -463,7 +463,7 @@ handle_init_command :: proc() {
 
 			if err != nil {
 				print_error_simple("Error creating directory %s: %v", subdir, err)
-				os.exit(EXIT_CANTCREAT)
+				wayu_exit(EXIT_CANTCREAT)
 			}
 			print_success("Created directory: %s", subdir_path)
 			created_subdirs += 1
@@ -924,11 +924,11 @@ handle_build_command :: proc(action: Action) {
 
 	if !os.exists(toml_path) {
 		print_error_simple("No wayu.toml found at %s. Run 'wayu init' first.", toml_path)
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	if !validate_tools_args() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	// Regenerate the files init.<ext> sources (core/path_sync/lazy/...) for
@@ -965,7 +965,7 @@ handle_build_command :: proc(action: Action) {
 			"%s/plugins.json is invalid: plugins.<ext> not regenerated (fix the file, then run: wayu build)",
 			wayu.data,
 		)
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 }
 // Golden file directory
@@ -989,7 +989,7 @@ run_component_testing :: proc(
 		fmt.eprintln("  - footer")
 		fmt.eprintln("  - scroll-indicator")
 		fmt.eprintln("  - empty-state")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	// Parse component arguments
@@ -1005,13 +1005,13 @@ run_component_testing :: proc(
 		// Save golden file
 		success := save_golden(component_name, component_args, output)
 		if !success {
-			os.exit(EXIT_IOERR)
+			wayu_exit(EXIT_IOERR)
 		}
 	} else if verify {
 		// Test against golden file
 		success := compare_golden(component_name, component_args, output)
 		if !success {
-			os.exit(EXIT_GENERAL)
+			wayu_exit(EXIT_GENERAL)
 		}
 	} else {
 		// Just print output

@@ -229,9 +229,10 @@ tui_enable_raw_mode :: proc() -> bool {
 	tui_raw_termios = raw
 	intrinsics.volatile_store(&tui_termios_saved, true)
 	if !tui_atexit_registered {
-		// os.exit from shared CLI code (config readers, locks, …) skips our
-		// defers; libc runs atexit handlers on the way out (macOS). On other
-		// platforms the runtime exits directly — callers use wayu_exit.
+		// Belt and braces for exits that bypass wayu_exit (libc exit from C
+		// code): libc runs atexit handlers. Odin's os.exit runs them only on
+		// macOS; on Linux it is a raw exit_group, so wayu code never calls it
+		// (every exit goes through wayu_exit; test_no_bare_os_exit).
 		posix.atexit(tui_atexit_handler)
 		tui_atexit_registered = true
 	}
@@ -274,10 +275,12 @@ tui_emergency_restore :: proc "contextless" () {
 	tui_stderr_capture_end(replay = true)
 }
 
-// Exit the process, restoring the terminal first when the TUI owns it.
-// Use instead of os.exit in code the TUI can reach (config readers, locks):
-// os.exit skips deferred cleanup, and on Linux the Odin runtime exits
-// without running atexit handlers (OKAMI-251).
+// Exit the process, restoring the terminal first when the TUI owns it (a
+// no-op otherwise). The only os.exit call in wayu: os.exit skips deferred
+// cleanup, and on Linux the Odin runtime exits with a raw exit_group that
+// runs no atexit handlers (OKAMI-251, OKAMI-367), so any exit reachable from
+// the TUI must come through here. Never call it in a forked child (it would
+// reset the parent's terminal): children use posix._exit.
 wayu_exit :: proc "contextless" (code: int) -> ! {
 	tui_emergency_restore()
 	os.exit(code)
