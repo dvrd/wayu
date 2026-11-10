@@ -155,6 +155,28 @@ test_prompt_async_private_tempdir :: proc(t: ^testing.T) {
 		strings.contains(code, "add-zsh-hook zshexit _wayu_async_cleanup"),
 		"dir removed on shell exit",
 	)
+	// OKAMI-349: no fork in the USR1 handler, none at all when there is
+	// nothing to fetch.
+	handler := code[strings.index(code, "_wayu_async_on_usr1() {"):strings.index(
+		code,
+		"function TRAPUSR1",
+	)]
+	testing.expect(t, strings.contains(handler, `zf_rm -f -- "$f"`), "handler removes with zf_rm")
+	testing.expect(t, !strings.contains(handler, "$(<"), "handler reads without $(<)")
+	testing.expect(
+		t,
+		strings.contains(
+			code,
+			`if [[ -z "$_WAYU_GIT_BRANCH" && $_WAYU_CONTEXT != ${~_WAYU_VERSIONED} ]]; then`,
+		),
+		"worker skipped outside git / versioned contexts",
+	)
+	testing.expect(
+		t,
+		strings.contains(code, "_WAYU_VERSIONED='(rust|bun|") &&
+		strings.contains(code, `zf_mv -f -- "$tmpf" "$dir/data"`),
+		"versioned contexts listed; worker renames with zf_mv",
+	)
 }
 
 // GEN-19: the toggle is opt-in, bound after `bindkey -v` and in explicit

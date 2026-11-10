@@ -541,7 +541,7 @@ name. A built-in match without a user `format` shows the shell name.
 | `transient_enabled` | boolean | `true` | Minimal prompt = current dir + success/error symbol. `false`: minimal prompt = `%~ ➜ `. Only reachable through the toggle. |
 | `vi_mode_indicator` | boolean | `true` | With `vi_mode`, track the keymap in `{character}`. `zle-line-init` / `zle-keymap-select` already defined are kept and run first. |
 | `context_aware` | boolean | `true` | Detect the project type on `cd` (for `{language_context}`). |
-| `async_rprompt` | boolean | `true` | Background job after each command: git changed-file count (right prompt) and context version. |
+| `async_rprompt` | boolean | `true` | Background job after each command: git changed-file count (right prompt) and context version. Started only in a git work tree or a context with a version command; elsewhere the right prompt is cleared without forking. |
 | `rprompt_format` | string | `"[ {git_pending}](242)"` | Right prompt, shown when the work tree has changes. `{git_pending}` = number of changed files, `{git_branch}` = branch. |
 
 ### `[scripts]`

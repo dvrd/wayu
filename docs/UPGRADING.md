@@ -72,6 +72,12 @@ releases, so they are listed here too.
 - Native prompt (vi mode): `R` (replace) and `r` (replace one character,
   while it waits for the key) show `vimcmd_replace_symbol` in the replace
   color; they showed the insert / normal symbol.
+- Native prompt (`async_rprompt`): the background worker starts only in a
+  git work tree or in a context with a version command (rust, nodejs, …);
+  elsewhere the right prompt and `$version` are cleared without forking.
+  The USR1 handler no longer forks (`read` + `zf_rm` instead of `$(<f)` +
+  `rm`): a render outside a repo forks 0 times (was 2), inside a repo once
+  (the worker). Run `wayu build` once to regenerate.
 
 **Encrypted secrets hardening**
 

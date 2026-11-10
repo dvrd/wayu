@@ -1124,176 +1124,155 @@ context_detect_condition :: proc(detects: []string) -> string {
 }
 
 // 4. ASYNC FEATURE
-// Async worker runs in background subshell after each command.
-// Fetches: git pending count + context version string.
-// Writes results to a temp file and signals the parent to re-render.
+// A background worker, started from precmd, fetches the git pending count
+// and the context's tool version, writes them into the shell's private dir
+// and signals the parent (USR1), which re-renders. Per render the shell
+// itself forks at most once (OKAMI-349): the worker start (`&!`), and only
+// when there is something to fetch — in a git work tree, or in a context
+// with a version command (PROMPT_VERSION_CMDS). Elsewhere the RPROMPT data
+// is cleared without forking. The USR1 handler reads the result with `read`
+// and removes it with zsh/files' zf_rm (it ran `$(<f)` + `command rm`); the
+// worker uses zf_mv and a pid-named file instead of mktemp + mv.
+PROMPT_VERSION_CMDS :: [?][2]string {
+	{"rust", `command rustc --version 2>/dev/null | command awk '{print $2}'`},
+	{"bun", `command bun --version 2>/dev/null`},
+	{"dart", `command dart --version 2>/dev/null | command awk '{print $4}'`},
+	{"ruby", `command ruby --version 2>/dev/null | command awk '{print $2}'`},
+	{"elixir", `command elixir --version 2>/dev/null | command awk 'NR==1{print $2}'`},
+	{"odin", `command odin version 2>/dev/null | command awk '{print $3}'`},
+	{"golang", `command go version 2>/dev/null | command awk '{print $3}' | command sed 's/go//'`},
+	{"deno", `command deno --version 2>/dev/null | command head -1 | command awk '{print $2}'`},
+	{"nodejs", `command node --version 2>/dev/null | command sed 's/v//'`},
+	{"python", `command python3 --version 2>/dev/null | command awk '{print $2}'`},
+	{"zig", `command zig version 2>/dev/null`},
+}
+
 generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	fmt.sbprintln(b, "# --- Feature: Async RPROMPT ---")
-	fmt.sbprintln(b, "typeset -g _WAYU_ASYNC_FD=")
 	fmt.sbprintln(b)
 
 	// Version command lookup — maps context name to version command.
 	// Runs in the background worker so it never blocks the prompt.
+	versions := PROMPT_VERSION_CMDS
+	names := make([dynamic]string, context.temp_allocator)
 	fmt.sbprintln(b, "_wayu_version_cmd() {")
 	fmt.sbprintln(b, `  case "$1" in`)
-	fmt.sbprintln(
-		b,
-		`    rust)    command rustc --version 2>/dev/null | command awk '{print $2}' ;;`,
-	)
-	fmt.sbprintln(b, `    bun)     command bun --version 2>/dev/null ;;`)
-	fmt.sbprintln(
-		b,
-		`    dart)    command dart --version 2>/dev/null | command awk '{print $4}' ;;`,
-	)
-	fmt.sbprintln(
-		b,
-		`    ruby)    command ruby --version 2>/dev/null | command awk '{print $2}' ;;`,
-	)
-	fmt.sbprintln(
-		b,
-		`    elixir)  command elixir --version 2>/dev/null | command awk 'NR==1{print $2}' ;;`,
-	)
-	fmt.sbprintln(b, `    odin)    command odin version 2>/dev/null | command awk '{print $3}' ;;`)
-	fmt.sbprintln(
-		b,
-		`    golang)  command go version 2>/dev/null | command awk '{print $3}' | command sed 's/go//' ;;`,
-	)
-	fmt.sbprintln(
-		b,
-		`    deno)    command deno --version 2>/dev/null | command head -1 | command awk '{print $2}' ;;`,
-	)
-	fmt.sbprintln(b, `    nodejs)  command node --version 2>/dev/null | command sed 's/v//' ;;`)
-	fmt.sbprintln(
-		b,
-		`    python)  command python3 --version 2>/dev/null | command awk '{print $2}' ;;`,
-	)
-	fmt.sbprintln(b, `    zig)     command zig version 2>/dev/null ;;`)
-	fmt.sbprintln(b, `    *)       ;;`)
+	for v in versions {
+		fmt.sbprintfln(b, "    %s) %s ;;", v[0], v[1])
+		append(&names, v[0])
+	}
+	fmt.sbprintln(b, `    *) ;;`)
 	fmt.sbprintln(b, "  esac")
 	fmt.sbprintln(b, "}")
+	fmt.sbprintfln(
+		b,
+		"_WAYU_VERSIONED='(%s)'",
+		strings.join(names[:], "|", context.temp_allocator),
+	)
 	fmt.sbprintln(b)
 
-	// The background worker
-	fmt.sbprintln(b, "_wayu_async_worker() {")
-	fmt.sbprintln(b, "  local git_pending=\"\"")
-	fmt.sbprintln(b, "  if [[ -n \"$_WAYU_GIT_BRANCH\" ]]; then")
-	fmt.sbprintln(
-		b,
-		`    git_pending="$(command git status --porcelain 2>/dev/null | command wc -l | command tr -d ' ')"`,
+	// The background worker. The rprompt format is DSL-converted, escaped
+	// and its tokens substituted (prompt_render_module).
+	rpfmt := prompt_render_module(
+		rprompt_format,
+		{{"{git_pending}", "${git_pending}"}, {"{git_branch}", PROMPT_GIT_BRANCH}},
 	)
-	fmt.sbprintln(b, "    if [[ \"$git_pending\" -gt 0 ]]; then")
-	// Apply rprompt_format: DSL conversion + escaping + token substitution
-	{
-		rpfmt := prompt_render_module(
-			rprompt_format,
-			{{"{git_pending}", "${git_pending}"}, {"{git_branch}", PROMPT_GIT_BRANCH}},
-		)
-		fmt.sbprint(b, "      git_pending=\"")
-		fmt.sbprint(b, rpfmt)
-		fmt.sbprint(b, "\"")
-		fmt.sbprintln(b)
-	}
-	fmt.sbprintln(b, "    else")
-	fmt.sbprintln(b, `      git_pending=""`)
+	fmt.sbprintln(b, "_wayu_async_worker() {")
+	fmt.sbprintln(b, `  local git_pending="" ver="" dir="$_WAYU_ASYNC_DIR" tmpf`)
+	fmt.sbprintln(b, "  local -a st")
+	fmt.sbprintln(b, `  if [[ -n "$_WAYU_GIT_BRANCH" ]]; then`)
+	fmt.sbprintln(b, `    st=( ${(f)"$(command git status --porcelain 2>/dev/null)"} )`)
+	fmt.sbprintln(b, "    if (( ${#st} > 0 )); then")
+	fmt.sbprintln(b, "      git_pending=${#st}")
+	fmt.sbprintfln(b, `      git_pending="%s"`, rpfmt)
 	fmt.sbprintln(b, "    fi")
 	fmt.sbprintln(b, "  fi")
-	fmt.sbprintln(b)
 	fmt.sbprintln(
 		b,
-		"  # Fetch version string for current context (async — never blocks prompt)",
+		`  [[ $_WAYU_CONTEXT == ${~_WAYU_VERSIONED} ]] && ver="$(_wayu_version_cmd "$_WAYU_CONTEXT")"`,
 	)
-	fmt.sbprintln(b, `  local ver="$(_wayu_version_cmd "$_WAYU_CONTEXT")"`)
-	fmt.sbprintln(b)
-	// Results go through the shell's private 0700 dir (mktemp -d in
-	// _wayu_start_async): written to a fresh mktemp file, then renamed over
-	// `data` so the reader never sees a torn write and nothing in a shared
-	// /tmp has a guessable name.
-	fmt.sbprintln(b, "  # Write results atomically into the private dir and signal parent")
-	fmt.sbprintln(b, `  local dir="$_WAYU_ASYNC_DIR" tmpf`)
+	// Results go through the shell's private 0700 dir (_wayu_start_async):
+	// written to a file named after the worker's pid, then renamed over
+	// `data` so the reader never sees a torn write.
 	fmt.sbprintln(b, `  [[ -n "$dir" && -d "$dir" ]] || return 0`)
-	fmt.sbprintln(b, `  tmpf="$(command mktemp "$dir/.w.XXXXXX" 2>/dev/null)" || return 0`)
+	fmt.sbprintln(b, `  if zmodload zsh/system 2>/dev/null && (( ${+builtins[zf_mv]} )); then`)
+	fmt.sbprintln(b, `    tmpf="$dir/.w.$sysparams[pid]"`)
 	fmt.sbprintln(
 		b,
-		`  if builtin printf '%s\n%s' "$git_pending" "$ver" > "$tmpf" && command mv -f -- "$tmpf" "$dir/data" 2>/dev/null; then`,
+		`    builtin printf '%s\n%s' "$git_pending" "$ver" >| "$tmpf" && zf_mv -f -- "$tmpf" "$dir/data" || { zf_rm -f -- "$tmpf"; return 0; }`,
 	)
-	fmt.sbprintln(b, "    builtin kill -USR1 $$ 2>/dev/null || true")
 	fmt.sbprintln(b, "  else")
-	fmt.sbprintln(b, `    command rm -f -- "$tmpf"`)
+	fmt.sbprintln(b, `    tmpf="$(command mktemp "$dir/.w.XXXXXX" 2>/dev/null)" || return 0`)
+	fmt.sbprintln(
+		b,
+		`    builtin printf '%s\n%s' "$git_pending" "$ver" > "$tmpf" && command mv -f -- "$tmpf" "$dir/data" 2>/dev/null || { command rm -f -- "$tmpf"; return 0; }`,
+	)
 	fmt.sbprintln(b, "  fi")
+	fmt.sbprintln(b, "  builtin kill -USR1 $$ 2>/dev/null")
+	fmt.sbprintln(b, "  return 0")
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
 
 	// USR1 handler (the async worker signals the shell). A TRAPUSR1 function
 	// defined before wayu is kept as _wayu_prev_TRAPUSR1 and called first
 	// (OKAMI-375); re-sourcing core doesn't chain wayu's handler to itself.
-	fmt.sbprintln(b, "_wayu_async_on_usr1() {")
-	fmt.sbprintln(b, `  local f="$_WAYU_ASYNC_DIR/data"`)
-	fmt.sbprintln(b, "  if [[ -n \"$_WAYU_ASYNC_DIR\" && -f \"$f\" ]]; then")
-	fmt.sbprintln(b, `    local lines=("${(@f)$(< "$f")}")`)
-	fmt.sbprintln(b, `    _WAYU_ASYNC_DATA="${lines[1]-}"`)
-	fmt.sbprintln(b, `    _WAYU_CONTEXT_VER="${lines[2]-}"`)
-	fmt.sbprintln(b, `    command rm -f -- "$f"`)
-	fmt.sbprintln(b, "  fi")
-	fmt.sbprintln(b, "  _wayu_prompt_render; zle && zle reset-prompt")
-	fmt.sbprintln(b, "  return 0")
-	fmt.sbprintln(b, "}")
-	fmt.sbprintln(
-		b,
-		`if (( ${+functions[TRAPUSR1]} )) && [[ ${functions[TRAPUSR1]} != *_wayu_async_on_usr1* ]]; then`,
-	)
-	fmt.sbprintln(b, `  functions[_wayu_prev_TRAPUSR1]=${functions[TRAPUSR1]}`)
-	fmt.sbprintln(b, "fi")
-	fmt.sbprintln(b, "function TRAPUSR1 {")
-	fmt.sbprintln(b, "  (( ${+functions[_wayu_prev_TRAPUSR1]} )) && _wayu_prev_TRAPUSR1 \"$@\"")
-	fmt.sbprintln(b, "  _wayu_async_on_usr1")
-	fmt.sbprintln(b, "  return 0")
-	fmt.sbprintln(b, "}")
-	fmt.sbprintln(b)
-
-	// The private dir is created lazily on the first prompt (one mktemp per
-	// shell, nothing at startup) and removed when the shell exits.
-	// Re-sourcing core keeps the existing dir (no orphaned dirs).
-	fmt.sbprintln(b, `typeset -g _WAYU_ASYNC_DIR="${_WAYU_ASYNC_DIR-}"`)
-	fmt.sbprintln(b, "_wayu_start_async() {")
-	fmt.sbprintln(b, "  local ret=$?")
-	// The private dir: zsh/files' builtin mkdir (no fork; `mktemp -d` cost
-	// ~7 ms before the first prompt). -m 700 on a fresh random name that
-	// must not exist yet, so nothing pre-created by someone else is used.
-	// The worker is started with &! (one fork, no job message; the old
-	// `( worker & )` waited on a second fork every prompt).
-	fmt.sbprintln(b, `  if [[ -z "$_WAYU_ASYNC_DIR" || ! -d "$_WAYU_ASYNC_DIR" ]]; then`)
-	fmt.sbprintln(b, `    _WAYU_ASYNC_DIR=""`)
-	fmt.sbprintln(b, `    if zmodload -F zsh/files b:zf_mkdir 2>/dev/null; then`)
-	fmt.sbprintln(b, `      local _d _i`)
-	fmt.sbprintln(b, `      for _i in 1 2 3; do`)
-	fmt.sbprintln(b, `        _d="${TMPDIR:-/tmp}"; _d="${_d%/}/wayu-async.$$.$RANDOM$RANDOM"`)
-	fmt.sbprintln(
-		b,
-		`        if zf_mkdir -m 700 -- "$_d" 2>/dev/null; then _WAYU_ASYNC_DIR=$_d; break; fi`,
-	)
-	fmt.sbprintln(b, `      done`)
-	fmt.sbprintln(b, `    else`)
-	fmt.sbprintln(
-		b,
-		`      _WAYU_ASYNC_DIR="$(command mktemp -d "${TMPDIR:-/tmp}/wayu-async.XXXXXX" 2>/dev/null)" || _WAYU_ASYNC_DIR=""`,
-	)
-	fmt.sbprintln(b, `    fi`)
-	fmt.sbprintln(b, "  fi")
-	fmt.sbprintln(b, `  [[ -n "$_WAYU_ASYNC_DIR" ]] && _wayu_async_worker &!`)
-	fmt.sbprintln(b, "  return $ret")
-	fmt.sbprintln(b, "}")
-	fmt.sbprintln(b, "_wayu_async_cleanup() {")
-	fmt.sbprintln(
-		b,
-		`  [[ -n "$_WAYU_ASYNC_DIR" && -d "$_WAYU_ASYNC_DIR" ]] && command rm -rf -- "$_WAYU_ASYNC_DIR"`,
-	)
-	fmt.sbprintln(b, "  return 0")
-	fmt.sbprintln(b, "}")
-	fmt.sbprintln(b)
-	fmt.sbprintln(b, "add-zsh-hook precmd _wayu_start_async")
-	fmt.sbprintln(b, "add-zsh-hook zshexit _wayu_async_cleanup")
+	fmt.sbprint(b, PROMPT_ASYNC_HANDLER_ZSH)
 	fmt.sbprintln(b)
 }
+
+// The USR1 handler, the TRAPUSR1 chain and the per-prompt worker start. The
+// private dir is created lazily on the first prompt that needs the worker
+// (zsh/files' builtin mkdir, -m 700 on a fresh random name that must not
+// exist yet; `mktemp -d` without zsh/files) and removed when the shell
+// exits. Re-sourcing core keeps the existing dir.
+PROMPT_ASYNC_HANDLER_ZSH :: `_wayu_async_on_usr1() {
+  local f="$_WAYU_ASYNC_DIR/data" a="" v=""
+  if [[ -n "$_WAYU_ASYNC_DIR" && -f "$f" ]]; then
+    { IFS= read -r a; IFS= read -r v } < "$f" 2>/dev/null
+    _WAYU_ASYNC_DATA=$a _WAYU_CONTEXT_VER=$v
+    if (( ${+builtins[zf_rm]} )); then zf_rm -f -- "$f"; else command rm -f -- "$f"; fi
+  fi
+  _wayu_prompt_render; zle && zle reset-prompt
+  return 0
+}
+if (( ${+functions[TRAPUSR1]} )) && [[ ${functions[TRAPUSR1]} != *_wayu_async_on_usr1* ]]; then
+  functions[_wayu_prev_TRAPUSR1]=${functions[TRAPUSR1]}
+fi
+function TRAPUSR1 {
+  (( ${+functions[_wayu_prev_TRAPUSR1]} )) && _wayu_prev_TRAPUSR1 "$@"
+  _wayu_async_on_usr1
+  return 0
+}
+
+typeset -g _WAYU_ASYNC_DIR="${_WAYU_ASYNC_DIR-}"
+_wayu_start_async() {
+  local ret=$?
+  if [[ -z "$_WAYU_GIT_BRANCH" && $_WAYU_CONTEXT != ${~_WAYU_VERSIONED} ]]; then
+    _WAYU_ASYNC_DATA="" _WAYU_CONTEXT_VER=""
+    return $ret
+  fi
+  if [[ -z "$_WAYU_ASYNC_DIR" || ! -d "$_WAYU_ASYNC_DIR" ]]; then
+    _WAYU_ASYNC_DIR=""
+    if zmodload -F zsh/files b:zf_mkdir b:zf_mv b:zf_rm 2>/dev/null; then
+      local _d _i
+      for _i in 1 2 3; do
+        _d="${TMPDIR:-/tmp}"; _d="${_d%/}/wayu-async.$$.$RANDOM$RANDOM"
+        if zf_mkdir -m 700 -- "$_d" 2>/dev/null; then _WAYU_ASYNC_DIR=$_d; break; fi
+      done
+    else
+      _WAYU_ASYNC_DIR="$(command mktemp -d "${TMPDIR:-/tmp}/wayu-async.XXXXXX" 2>/dev/null)" || _WAYU_ASYNC_DIR=""
+    fi
+  fi
+  [[ -n "$_WAYU_ASYNC_DIR" ]] && _wayu_async_worker &!
+  return $ret
+}
+_wayu_async_cleanup() {
+  [[ -n "$_WAYU_ASYNC_DIR" && -d "$_WAYU_ASYNC_DIR" ]] && command rm -rf -- "$_WAYU_ASYNC_DIR"
+  return 0
+}
+add-zsh-hook precmd _wayu_start_async
+add-zsh-hook zshexit _wayu_async_cleanup
+`
 
 // 5. TRANSIENT FEATURE
 generate_transient_feature :: proc(b: ^strings.Builder, format: string) {
