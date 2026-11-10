@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-24.04, macos-15]
 
     steps:
     - name: Checkout code
@@ -61,6 +61,11 @@ jobs:
     - name: Verify build
       run: ./bin/wayu --version
 
+    # Release binaries must start on macOS >= .github/macos-minimum-version.
+    - name: Check macOS minimum version
+      if: runner.os == 'macOS'
+      run: .github/scripts/check-macos-minos.sh bin/wayu
+
     # ./build_it test sandboxes HOME and the tests' scratch dirs (per run),
     # same as local runs. Leaks / bad frees (tracking allocator) fail it.
     - name: Run unit tests
@@ -100,7 +105,7 @@ jobs:
   # leaks with the tracking allocator.
   sanitize:
     name: AddressSanitizer (integration)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout code
@@ -136,7 +141,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout code
@@ -152,7 +157,7 @@ jobs:
 
   release-check:
     name: Release Readiness
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout code

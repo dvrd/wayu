@@ -40,7 +40,7 @@ jobs:
     name: Bump version
     needs: ci
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 
@@ -227,10 +227,10 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             arch: x86_64
             artifact: wayu-linux-amd64
-          - os: macos-latest
+          - os: macos-15
             arch: arm64
             artifact: wayu-macos-arm64
 
@@ -254,11 +254,18 @@ jobs:
     - name: Setup Odin
       uses: ./.github/actions/setup-odin
 
+    # ./build_it build is the one release build: on macOS it passes
+    # -minimum-os-version from .github/macos-minimum-version (Odin otherwise
+    # stamps the runner's macOS, and the binary refuses to start on older Macs).
     - name: Build optimized release
       run: |
-        mkdir -p bin
-        odin build src -out:bin/wayu -o:speed
+        odin build build -out:build_it
+        ./build_it build
         chmod +x bin/wayu
+
+    - name: Check macOS minimum version
+      if: runner.os == 'macOS'
+      run: .github/scripts/check-macos-minos.sh bin/wayu
 
     - name: Verify build matches release version
       env:
@@ -304,7 +311,7 @@ jobs:
     name: Create GitHub Release
     needs: [bump, build-release]
     if: needs.bump.outputs.skip == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
 
@@ -349,7 +356,7 @@ jobs:
     name: Update Homebrew tap
     needs: [bump, create-release]
     if: needs.bump.outputs.skip == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 

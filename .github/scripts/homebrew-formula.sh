@@ -33,6 +33,24 @@ for sha in "$MACOS_ARM64_SHA" "$LINUX_AMD64_SHA"; do
 done
 
 VERSION_BARE="${VERSION#v}"
+
+# The macOS binary is built for macOS >= .github/macos-minimum-version
+# (-minimum-os-version); brew refuses older systems with its own message.
+FLOOR_FILE="$(cd "$(dirname "$0")/.." && pwd)/macos-minimum-version"
+MACOS_FLOOR=$(tr -d "[:space:]" < "$FLOOR_FILE")
+case "${MACOS_FLOOR%%.*}" in
+  11) MACOS_SYMBOL=big_sur ;;
+  12) MACOS_SYMBOL=monterey ;;
+  13) MACOS_SYMBOL=ventura ;;
+  14) MACOS_SYMBOL=sonoma ;;
+  15) MACOS_SYMBOL=sequoia ;;
+  26) MACOS_SYMBOL=tahoe ;;
+  *)
+    echo "error: no Homebrew macOS name for floor '$MACOS_FLOOR' ($FLOOR_FILE)" >&2
+    exit 65
+    ;;
+esac
+
 BASE_URL="https://github.com/dvrd/wayu/releases/download/${VERSION}"
 
 cat <<FORMULA
@@ -43,8 +61,10 @@ class Wayu < Formula
   license "MIT"
 
   # Prebuilt binaries exist for macOS arm64 and Linux x86_64 only.
+  # macOS: built for ${MACOS_FLOOR} and later.
   on_macos do
     depends_on arch: :arm64
+    depends_on macos: :${MACOS_SYMBOL}
     url "${BASE_URL}/wayu-macos-arm64.tar.gz"
     sha256 "${MACOS_ARM64_SHA}"
   end

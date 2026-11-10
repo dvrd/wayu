@@ -34,8 +34,8 @@ brew install wayu
 wayu init
 ```
 
-Prebuilt for macOS arm64 and Linux x86_64; on other platforms build from
-source.
+Prebuilt for macOS arm64 (macOS 13 Ventura or later) and Linux x86_64; on
+other platforms build from source.
 
 ### From source
 
