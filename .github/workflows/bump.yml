@@ -402,6 +402,10 @@ jobs:
         mkdir -p tap/Formula
         wayu/.github/scripts/homebrew-formula.sh "$VERSION" "$MACOS_ARM64_SHA" "$LINUX_AMD64_SHA" > "$FORMULA.new"
         ruby -c "$FORMULA.new"
+        if grep -n '\.config/wayu/init' "$FORMULA.new"; then
+          echo "::error::Formula caveats name ~/.config/wayu/init.*; use the data dir"
+          exit 1
+        fi
         mv "$FORMULA.new" "$FORMULA"
         cat "$FORMULA"
 

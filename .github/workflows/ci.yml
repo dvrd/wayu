@@ -185,3 +185,14 @@ jobs:
         A=$(printf 'a%.0s' {1..64}); B=$(printf 'b%.0s' {1..64})
         .github/scripts/homebrew-formula.sh v0.0.0 "$A" "$B" > /tmp/wayu.rb
         ruby -c /tmp/wayu.rb
+        # init.<ext> lives in the data dir since 6.0.0; caveats must not
+        # point new users at the old ~/.config/wayu/init.<ext>.
+        if grep -n '\.config/wayu/init' /tmp/wayu.rb; then
+          echo "::error::Formula caveats name ~/.config/wayu/init.*; use the data dir"
+          exit 1
+        fi
+        # shellcheck disable=SC2016 # a literal $HOME in the formula text
+        grep -q 'XDG_DATA_HOME:-\$HOME/.local/share}/wayu}/init.zsh' /tmp/wayu.rb || {
+          echo "::error::Formula caveats lack the data-dir init.zsh line"
+          exit 1
+        }

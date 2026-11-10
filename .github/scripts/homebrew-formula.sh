@@ -81,12 +81,17 @@ class Wayu < Formula
 
   def caveats
     <<~EOS
-      Initialize wayu config files by running:
+      Set wayu up by running:
         wayu init
 
-      Then add this line to your shell RC file:
-        source ~/.config/wayu/init.zsh   # zsh
-        source ~/.config/wayu/init.bash  # bash
+      It creates ~/.config/wayu (wayu.toml) and the data dir
+      ~/.local/share/wayu, and offers to add the line that loads wayu to
+      your shell rc file. To add it yourself:
+        zsh  (~/.zshrc):
+          source "\${WAYU_DATA_DIR:-\${XDG_DATA_HOME:-\$HOME/.local/share}/wayu}/init.zsh"
+        bash (~/.bash_profile or ~/.bashrc):
+          source "\${WAYU_DATA_DIR:-\${XDG_DATA_HOME:-\$HOME/.local/share}/wayu}/init.bash"
+        fish: see "Shell setup" in https://github.com/dvrd/wayu#shell-setup
     EOS
   end
 
