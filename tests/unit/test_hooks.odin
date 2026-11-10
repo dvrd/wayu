@@ -325,3 +325,22 @@ test_spec_hooks_are_wired_and_fire :: proc(t: ^testing.T) {
 		"{value} filled on add",
 	)
 }
+
+// OKAMI-335: only quotes wrapping the whole hooks.conf value are stripped.
+@(test)
+test_hook_strip_wrapping_quotes :: proc(t: ^testing.T) {
+	cases := [][2]string {
+		{`"echo 'hi'"`, `echo 'hi'`},
+		{`'echo "hi"'`, `echo "hi"`},
+		{`"/bin/echo" {path} "done"`, `"/bin/echo" {path} "done"`},
+		{`'a' b 'c'`, `'a' b 'c'`},
+		{`"a \" b"`, `a \" b`},
+		{`echo hi`, `echo hi`},
+		{`"`, `"`},
+		{`""`, ``},
+	}
+	for c in cases {
+		got := wayu.hook_strip_wrapping_quotes(c[0])
+		testing.expectf(t, got == c[1], "%s: got %s, want %s", c[0], got, c[1])
+	}
+}

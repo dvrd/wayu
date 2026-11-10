@@ -94,10 +94,29 @@ add_function :: proc(name: string) {
 		print_success("Created function: %s", func_file)
 	}
 
-	if !launch_editor(func_file) {
+	// No $EDITOR/$VISUAL and no terminal: print the file instead of running
+	// vi (like `script new`).
+	opened, edit_ok := editor_maybe_open(func_file)
+	if !edit_ok {
 		os.exit(EXIT_FAILURE)
 	}
-	print_info("Reload your shell to load '%s'", name)
+	if opened {
+		print_info("Reload your shell to load '%s'", name)
+	}
+}
+
+// Open the editor unless there is none to open: no $EDITOR/$VISUAL and no
+// terminal (scripts, CI), where the file's path is printed instead.
+// ok=false when the editor failed.
+editor_maybe_open :: proc(file: string) -> (opened: bool, ok: bool) {
+	has_editor :=
+		len(strings.trim_space(os.get_env("EDITOR", context.temp_allocator))) > 0 ||
+		len(strings.trim_space(os.get_env("VISUAL", context.temp_allocator))) > 0
+	if !has_editor && !(is_tty(0) && is_tty(1)) {
+		fmt.println(file)
+		return false, true
+	}
+	return true, launch_editor(file)
 }
 
 // Build a shell-appropriate skeleton for a new function.

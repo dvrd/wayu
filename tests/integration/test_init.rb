@@ -663,14 +663,14 @@ class InitIntegrationTest
     print "Test: rewriting core.zsh drops a stale .zwc... "
     home, env = sync_home('stalezwc', ['zsh'])
     cfg = "#{home}/.local/share/wayu"
-    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_ZWC_PROBE', 'old')
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'ZWC_PROBE_C', 'old')
     Open3.capture3(env, '/bin/zsh', '-fc', "zcompile '#{cfg}/core.zsh' && touch -t 203001010000 '#{cfg}/core.zsh.zwc'")
-    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_ZWC_PROBE', 'new')
-    out, = Open3.capture3(env, '/bin/zsh', '-fc', ". '#{cfg}/core.zsh' >/dev/null 2>&1; echo \"$WAYU_ZWC_PROBE\"")
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'ZWC_PROBE_C', 'new')
+    out, = Open3.capture3(env, '/bin/zsh', '-fc', ". '#{cfg}/core.zsh' >/dev/null 2>&1; echo \"$ZWC_PROBE_C\"")
     if out.strip == 'new'
       puts "✓"; @passed += 1
     else
-      puts "✗"; puts "  WAYU_ZWC_PROBE=#{out.strip} zwc_exists=#{File.exist?("#{cfg}/core.zsh.zwc")}"; @failed += 1
+      puts "✗"; puts "  ZWC_PROBE_C=#{out.strip} zwc_exists=#{File.exist?("#{cfg}/core.zsh.zwc")}"; @failed += 1
     end
   end
 
@@ -685,7 +685,7 @@ class InitIntegrationTest
     pwn = "#{home}/PWNED"
     base = File.exist?("#{cfg}/wayu.toml") ? File.read("#{cfg}/wayu.toml") : ''
     File.write("#{cfg}/wayu.toml", base + "\n[prompt]\nformat = \"{dir} {character}\"\n")
-    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_PROMPT_PROBE', '1')
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'PROMPT_PROBE_C', '1')
     off_ok = File.exist?("#{data}/core.zsh") && !File.read("#{data}/core.zsh").include?('_wayu_prompt_master')
 
     File.write("#{cfg}/wayu.toml", base + <<~TOML)
@@ -700,7 +700,7 @@ class InitIntegrationTest
       [settings]
       autosuggestions_accept_keys = ["^Y'; touch #{pwn}; '"]
     TOML
-    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_PROMPT_PROBE', '2')
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'PROMPT_PROBE_C', '2')
     core = File.read("#{data}/core.zsh")
     on_ok = core.include?('_wayu_prompt_master') && !core.include?('.wayu_async_$$')
     files = ["#{data}/core.zsh", "#{data}/plugins/config.zsh"].select { |f| File.exist?(f) }

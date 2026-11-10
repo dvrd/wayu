@@ -38,6 +38,7 @@
 // after a backup.
 package wayu
 
+import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:mem/virtual"
@@ -115,10 +116,20 @@ entries_store_destroy :: proc(s: ^EntryStore) {
 	s^ = {}
 }
 
-// Parse entries.json content. The schema is checked (version, non-empty and
-// unique names / keys, non-empty dirs); `err` (temp allocator) says what is
-// wrong when ok=false. On success the store's strings are in context.allocator.
+// Parse entries.json content strictly (OKAMI-321): exactly one JSON
+// document (RFC 8259: no trailing commas, nothing after it, no duplicate
+// keys, valid UTF-8, no NUL), every field of the schema with its exact type
+// and no unknown field, `"version": 1` as a number, names valid (aliases:
+// alias_name_error; constants: shell variable names; PATH keys: letters,
+// digits, `_`), values present (an alias's command non-empty; a constant's
+// value unless it is a secret), names / keys unique, dirs non-empty without
+// ':' or newlines. `err` (temp allocator) says what is wrong when ok=false.
+// On success the store's strings are in context.allocator.
 entries_parse :: proc(content: string) -> (store: EntryStore, err: string, ok: bool) {
+	if serr := json_strict_check(content); len(serr) > 0 {
+		return {}, fmt.tprintf("not valid JSON (%s)", serr), false
+	}
+
 	arena: virtual.Arena
 	if virtual.arena_init_growing(&arena) != nil {
 		return {}, "out of memory", false
@@ -126,25 +137,34 @@ entries_parse :: proc(content: string) -> (store: EntryStore, err: string, ok: b
 	defer virtual.arena_destroy(&arena)
 	scratch := virtual.arena_allocator(&arena)
 
-	raw: EntryStore
-	if uerr := json.unmarshal_string(content, &raw, .JSON, scratch); uerr != nil {
-		return {}, fmt.tprintf("not valid JSON for the entry store (%v)", uerr), false
+	doc, perr := json.parse_string(content, .JSON, true, scratch)
+	if perr != nil {
+		return {}, fmt.tprintf("not valid JSON (%v)", perr), false
 	}
-	if raw.version != ENTRIES_FORMAT_VERSION {
-		return {},
-			fmt.tprintf(
-				"unsupported \"version\" %d (expected %d)",
-				raw.version,
-				ENTRIES_FORMAT_VERSION,
-			),
-			false
+	raw: EntryStore
+	if werr := entries_from_json(doc, &raw, scratch); len(werr) > 0 {
+		return {}, werr, false
 	}
 	for p, i in raw.paths {
 		if len(p.key) == 0 {
 			return {}, fmt.tprintf("paths[%d] has no \"key\"", i), false
 		}
+		if !entries_is_path_key(p.key) {
+			return {},
+				fmt.tprintf(
+					"paths[%d]: invalid \"key\" %q (letters, digits and _ only)",
+					i,
+					p.key,
+				),
+				false
+		}
 		if len(strings.trim_space(p.dir)) == 0 {
 			return {}, fmt.tprintf("paths[%d] (%s) has no \"dir\"", i, p.key), false
+		}
+		if !is_path_entry_safe(p.dir) {
+			return {},
+				fmt.tprintf("paths[%d] (%s): \"dir\" contains ':' or a newline", i, p.key),
+				false
 		}
 		for q in raw.paths[:i] {
 			if q.key == p.key {
@@ -156,6 +176,12 @@ entries_parse :: proc(content: string) -> (store: EntryStore, err: string, ok: b
 		if len(a.name) == 0 {
 			return {}, fmt.tprintf("aliases[%d] has no \"name\"", i), false
 		}
+		if nerr := alias_name_error(a.name); len(nerr) > 0 {
+			return {}, fmt.tprintf("aliases[%d]: %s", i, nerr), false
+		}
+		if len(strings.trim_space(a.value)) == 0 {
+			return {}, fmt.tprintf("aliases[%d] (%s) has an empty \"value\"", i, a.name), false
+		}
 		for b in raw.aliases[:i] {
 			if b.name == a.name {
 				return {}, fmt.tprintf("aliases: %q appears twice", a.name), false
@@ -165,6 +191,15 @@ entries_parse :: proc(content: string) -> (store: EntryStore, err: string, ok: b
 	for e, i in raw.env {
 		if len(e.name) == 0 {
 			return {}, fmt.tprintf("env[%d] has no \"name\"", i), false
+		}
+		if !is_shell_var_name(e.name) {
+			return {},
+				fmt.tprintf(
+					"env[%d]: invalid \"name\" %q (letters, digits and _, not starting with a digit)",
+					i,
+					e.name,
+				),
+				false
 		}
 		for f in raw.env[:i] {
 			if f.name == e.name {
@@ -221,6 +256,392 @@ entries_parse :: proc(content: string) -> (store: EntryStore, err: string, ok: b
 	for f in raw.fpath {append(&store.fpath, strings.clone(f))}
 	for g in raw.generators {append(&store.generators, StoreGenerator{strings.clone(g.shell), strings.clone(g.cmd), strings.clone(g.args)})}
 	return store, "", true
+}
+
+// A PATH entry key: letters, digits and `_` (what sanitize_path_key and
+// derive_path_key produce, plus upper case for hand edits).
+@(private = "file")
+entries_is_path_key :: proc(s: string) -> bool {
+	if len(s) == 0 do return false
+	for i in 0 ..< len(s) {
+		c := s[i]
+		ok :=
+			(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
+		if !ok do return false
+	}
+	return true
+}
+
+// Fill `raw` (allocated with `allocator`) from the parsed entries.json
+// document, checking every field's presence and type and refusing unknown
+// fields. Returns the error ("" when the document fits the schema);
+// temp-allocated.
+@(private = "file")
+entries_from_json :: proc(
+	doc: json.Value,
+	raw: ^EntryStore,
+	allocator: runtime.Allocator,
+) -> string {
+	root, is_obj := doc.(json.Object)
+	if !is_obj do return "the top level must be an object"
+	for k in root {
+		switch k {
+		case "version", "paths", "aliases", "env", "fpath", "generators":
+		case:
+			return fmt.tprintf("unknown field %q", k)
+		}
+	}
+	version, has_version := root["version"]
+	if !has_version do return "missing \"version\""
+	n, is_int := version.(json.Integer)
+	if !is_int || n != ENTRIES_FORMAT_VERSION {
+		return fmt.tprintf("\"version\" must be the number %d", ENTRIES_FORMAT_VERSION)
+	}
+	raw.version = int(n)
+	raw.paths = make([dynamic]StorePath, allocator)
+	raw.aliases = make([dynamic]StoreAlias, allocator)
+	raw.env = make([dynamic]StoreEnv, allocator)
+	raw.fpath = make([dynamic]string, allocator)
+	raw.generators = make([dynamic]StoreGenerator, allocator)
+
+	items, err := entries_json_array(root, "paths")
+	if len(err) > 0 do return err
+	for item, i in items {
+		at := fmt.tprintf("paths[%d]", i)
+		o, oerr := entries_json_object(item, at, {"key", "dir"}, 2)
+		if len(oerr) > 0 do return oerr
+		p: StorePath
+		ferr: string
+		entries_json_str(o, "key", at, &p.key, &ferr)
+		entries_json_str(o, "dir", at, &p.dir, &ferr)
+		if len(ferr) > 0 do return ferr
+		append(&raw.paths, p)
+	}
+
+	items, err = entries_json_array(root, "aliases")
+	if len(err) > 0 do return err
+	for item, i in items {
+		at := fmt.tprintf("aliases[%d]", i)
+		o, oerr := entries_json_object(item, at, {"name", "value"}, 2)
+		if len(oerr) > 0 do return oerr
+		a: StoreAlias
+		ferr: string
+		entries_json_str(o, "name", at, &a.name, &ferr)
+		entries_json_str(o, "value", at, &a.value, &ferr)
+		if len(ferr) > 0 do return ferr
+		append(&raw.aliases, a)
+	}
+
+	items, err = entries_json_array(root, "env")
+	if len(err) > 0 do return err
+	for item, i in items {
+		at := fmt.tprintf("env[%d]", i)
+		o, oerr := entries_json_object(item, at, {"name", "value", "secret", "run_only"}, 1)
+		if len(oerr) > 0 do return oerr
+		e: StoreEnv
+		ferr: string
+		entries_json_str(o, "name", at, &e.name, &ferr)
+		has_value := entries_json_str(o, "value", at, &e.value, &ferr)
+		entries_json_flag(o, "secret", at, &e.secret, &ferr)
+		entries_json_flag(o, "run_only", at, &e.run_only, &ferr)
+		if len(ferr) > 0 do return ferr
+		switch {
+		case e.secret && has_value:
+			return fmt.tprintf("%s (%s): a secret has no \"value\" here", at, e.name)
+		case !e.secret && !has_value:
+			return fmt.tprintf("%s (%s) has no \"value\"", at, e.name)
+		case e.run_only && !e.secret:
+			return fmt.tprintf("%s (%s): \"run_only\" needs \"secret\": true", at, e.name)
+		}
+		append(&raw.env, e)
+	}
+
+	items, err = entries_json_array(root, "fpath")
+	if len(err) > 0 do return err
+	for item, i in items {
+		s, is_str := item.(json.String)
+		if !is_str do return fmt.tprintf("fpath[%d] must be a string", i)
+		append(&raw.fpath, string(s))
+	}
+
+	items, err = entries_json_array(root, "generators")
+	if len(err) > 0 do return err
+	for item, i in items {
+		at := fmt.tprintf("generators[%d]", i)
+		o, oerr := entries_json_object(item, at, {"shell", "cmd", "args"}, 3)
+		if len(oerr) > 0 do return oerr
+		g: StoreGenerator
+		ferr: string
+		entries_json_str(o, "shell", at, &g.shell, &ferr)
+		entries_json_str(o, "cmd", at, &g.cmd, &ferr)
+		entries_json_str(o, "args", at, &g.args, &ferr)
+		if len(ferr) > 0 do return ferr
+		append(&raw.generators, g)
+	}
+	return ""
+}
+
+// root[key] as an array (absent: empty). err is temp-allocated.
+@(private = "file")
+entries_json_array :: proc(root: json.Object, key: string) -> (items: json.Array, err: string) {
+	v, has := root[key]
+	if !has do return nil, ""
+	arr, is_arr := v.(json.Array)
+	if !is_arr do return nil, fmt.tprintf("%q must be an array", key)
+	return arr, ""
+}
+
+// `v` as an object whose fields are all in `allowed`, with the first
+// `required` of them present. err is temp-allocated.
+@(private = "file")
+entries_json_object :: proc(
+	v: json.Value,
+	at: string,
+	allowed: []string,
+	required: int,
+) -> (
+	o: json.Object,
+	err: string,
+) {
+	obj, is_obj := v.(json.Object)
+	if !is_obj do return nil, fmt.tprintf("%s must be an object", at)
+	for k in obj {
+		known := false
+		for a in allowed {
+			if k == a {
+				known = true; break
+			}
+		}
+		if !known do return nil, fmt.tprintf("%s: unknown field %q", at, k)
+	}
+	for a in allowed[:required] {
+		if a not_in obj do return nil, fmt.tprintf("%s has no %q", at, a)
+	}
+	return obj, ""
+}
+
+// dst^ = o[key] when it is a string; returns whether the field is present.
+// A non-string records an error in err^ (the first one wins).
+@(private = "file")
+entries_json_str :: proc(o: json.Object, key, at: string, dst: ^string, err: ^string) -> bool {
+	v, has := o[key]
+	if !has do return false
+	str, is_str := v.(json.String)
+	if !is_str {
+		if len(err^) == 0 do err^ = fmt.tprintf("%s: %q must be a string", at, key)
+		return true
+	}
+	dst^ = string(str)
+	return true
+}
+
+// dst^ = o[key] when it is a boolean (absent: unchanged); a non-boolean
+// records an error in err^ (the first one wins).
+@(private = "file")
+entries_json_flag :: proc(o: json.Object, key, at: string, dst: ^bool, err: ^string) {
+	v, has := o[key]
+	if !has do return
+	val, is_bool := v.(json.Boolean)
+	if !is_bool {
+		if len(err^) == 0 do err^ = fmt.tprintf("%s: %q must be true or false", at, key)
+		return
+	}
+	dst^ = bool(val)
+}
+
+// Strict RFC 8259 syntax check of a whole JSON text: exactly one value
+// surrounded by whitespace only, no trailing commas, no duplicate keys in
+// an object, valid UTF-8, no control characters inside strings, no NUL
+// (`\u0000`), nesting at most 64 deep. core:encoding/json accepts trailing
+// commas and ignores whatever follows the first value. Returns the problem
+// with its line ("" when the text is fine); temp-allocated.
+json_strict_check :: proc(s: string) -> string {
+	if !utf8.valid_string(s) {
+		return "not valid UTF-8"
+	}
+	p := Json_Strict {
+		s = s,
+	}
+	if !jsc_value(&p) {
+		return p.err
+	}
+	jsc_ws(&p)
+	if p.i != len(p.s) {
+		jsc_fail(&p, "unexpected content after the JSON document")
+		return p.err
+	}
+	return ""
+}
+
+@(private = "file")
+Json_Strict :: struct {
+	s:     string,
+	i:     int,
+	depth: int,
+	err:   string,
+}
+
+@(private = "file")
+jsc_fail :: proc(p: ^Json_Strict, msg: string) -> bool {
+	if len(p.err) == 0 {
+		line := 1 + strings.count(p.s[:min(p.i, len(p.s))], "\n")
+		p.err = fmt.tprintf("line %d: %s", line, msg)
+	}
+	return false
+}
+
+@(private = "file")
+jsc_ws :: proc(p: ^Json_Strict) {
+	for p.i < len(p.s) {
+		switch p.s[p.i] {
+		case ' ', '\t', '\n', '\r':
+			p.i += 1
+		case:
+			return
+		}
+	}
+}
+
+@(private = "file")
+jsc_value :: proc(p: ^Json_Strict) -> bool {
+	jsc_ws(p)
+	if p.i >= len(p.s) do return jsc_fail(p, "unexpected end of the file")
+	switch c := p.s[p.i]; c {
+	case '{', '[':
+		return jsc_container(p, c)
+	case '"':
+		_, ok := jsc_string(p)
+		return ok
+	case 't':
+		return jsc_literal(p, "true")
+	case 'f':
+		return jsc_literal(p, "false")
+	case 'n':
+		return jsc_literal(p, "null")
+	case '-', '0' ..= '9':
+		return jsc_number(p)
+	}
+	return jsc_fail(p, fmt.tprintf("unexpected character %q", rune(p.s[p.i])))
+}
+
+// An object (open == '{') or array (open == '[').
+@(private = "file")
+jsc_container :: proc(p: ^Json_Strict, open: u8) -> bool {
+	close: u8 = '}' if open == '{' else ']'
+	p.depth += 1
+	if p.depth > 64 do return jsc_fail(p, "nested too deeply")
+	p.i += 1
+	keys := make([dynamic]string, context.temp_allocator)
+	jsc_ws(p)
+	if p.i < len(p.s) && p.s[p.i] == close {
+		p.i += 1
+		p.depth -= 1
+		return true
+	}
+	for {
+		if open == '{' {
+			jsc_ws(p)
+			if p.i >= len(p.s) || p.s[p.i] != '"' do return jsc_fail(p, "expected a quoted key")
+			key := jsc_string(p) or_return
+			for k in keys {
+				if k == key do return jsc_fail(p, fmt.tprintf("key %q appears twice in one object", key))
+			}
+			append(&keys, key)
+			jsc_ws(p)
+			if p.i >= len(p.s) || p.s[p.i] != ':' do return jsc_fail(p, "expected ':' after a key")
+			p.i += 1
+		}
+		jsc_value(p) or_return
+		jsc_ws(p)
+		if p.i >= len(p.s) do return jsc_fail(p, "unexpected end of the file")
+		if p.s[p.i] == ',' {
+			p.i += 1
+			jsc_ws(p)
+			if p.i < len(p.s) && p.s[p.i] == close do return jsc_fail(p, "trailing comma")
+			continue
+		}
+		if p.s[p.i] == close {
+			p.i += 1
+			p.depth -= 1
+			return true
+		}
+		return jsc_fail(p, fmt.tprintf("expected ',' or '%c'", rune(close)))
+	}
+}
+
+// A string token at p.i (the opening quote); returns its raw text.
+@(private = "file")
+jsc_string :: proc(p: ^Json_Strict) -> (raw: string, ok: bool) {
+	p.i += 1
+	start := p.i
+	for p.i < len(p.s) {
+		c := p.s[p.i]
+		switch {
+		case c == '"':
+			raw = p.s[start:p.i]
+			p.i += 1
+			return raw, true
+		case c == '\\':
+			if p.i + 1 >= len(p.s) do return "", jsc_fail(p, "unterminated string")
+			switch p.s[p.i + 1] {
+			case '"', '\\', '/', 'b', 'f', 'n', 'r', 't':
+				p.i += 2
+			case 'u':
+				if p.i + 6 > len(p.s) do return "", jsc_fail(p, "incomplete \\u escape")
+				hex := p.s[p.i + 2:p.i + 6]
+				for h in hex {
+					if !strings.contains_rune("0123456789abcdefABCDEF", h) {
+						return "", jsc_fail(p, "invalid \\u escape")
+					}
+				}
+				if hex == "0000" do return "", jsc_fail(p, "NUL character (\\u0000) in a string")
+				p.i += 6
+			case:
+				return "", jsc_fail(p, "invalid escape in a string")
+			}
+		case c < 0x20:
+			return "", jsc_fail(p, "control character inside a string (escape it)")
+		case:
+			p.i += 1
+		}
+	}
+	return "", jsc_fail(p, "unterminated string")
+}
+
+@(private = "file")
+jsc_literal :: proc(p: ^Json_Strict, word: string) -> bool {
+	if !strings.has_prefix(p.s[p.i:], word) do return jsc_fail(p, "invalid literal")
+	p.i += len(word)
+	return true
+}
+
+// -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?
+@(private = "file")
+jsc_number :: proc(p: ^Json_Strict) -> bool {
+	digits :: proc(p: ^Json_Strict) -> int {
+		n := 0
+		for p.i < len(p.s) && p.s[p.i] >= '0' && p.s[p.i] <= '9' {
+			p.i += 1
+			n += 1
+		}
+		return n
+	}
+	if p.s[p.i] == '-' do p.i += 1
+	if p.i < len(p.s) && p.s[p.i] == '0' {
+		p.i += 1
+	} else if digits(p) == 0 {
+		return jsc_fail(p, "invalid number")
+	}
+	if p.i < len(p.s) && p.s[p.i] == '.' {
+		p.i += 1
+		if digits(p) == 0 do return jsc_fail(p, "invalid number")
+	}
+	if p.i < len(p.s) && (p.s[p.i] == 'e' || p.s[p.i] == 'E') {
+		p.i += 1
+		if p.i < len(p.s) && (p.s[p.i] == '+' || p.s[p.i] == '-') do p.i += 1
+		if digits(p) == 0 do return jsc_fail(p, "invalid number")
+	}
+	return true
 }
 
 // Read entries.json without exiting or printing. Missing file = empty store

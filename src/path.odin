@@ -27,7 +27,9 @@ PathOpResult :: enum {
 handle_path_command :: proc(action: Action, args: []string) {
 	// Mutations hold the config lock across read → write → regenerate so
 	// concurrent wayu runs neither lose entries nor publish stale init files.
-	mutating := action == .ADD || action == .REMOVE || action == .CLEAN || action == .DEDUP
+	// add/remove take it themselves, around the write only: their hooks run
+	// outside it, so a hook can run wayu (OKAMI-299).
+	mutating := action == .CLEAN || action == .DEDUP
 	if mutating {
 		config_lock_acquire_or_exit()
 	}
@@ -78,14 +80,19 @@ handle_path_command :: proc(action: Action, args: []string) {
 		if path_add_would_change(raw_path, name_hint) {
 			hook_pre_path_add(expanded)
 		}
+		config_lock_acquire_or_exit()
 		res := path_add_result(raw_path, name_hint)
-		exit_on_path_failure(res)
 		// NOOP: already present (warning printed). Dry-run: preview printed.
 		// Neither changed anything, so no regen, no success line, no hook.
-		if res == .NOOP || wayu.dry_run {
+		changed := res == .OK && !wayu.dry_run
+		if changed {
+			regenerate_init_core_silently()
+		}
+		config_lock_release()
+		exit_on_path_failure(res)
+		if !changed {
 			return
 		}
-		regenerate_init_core_silently()
 		print_success("Added to PATH: %s", expanded)
 		print_path_applied_hint()
 		hook_post_path_add(expanded)
@@ -100,12 +107,17 @@ handle_path_command :: proc(action: Action, args: []string) {
 		if found {
 			hook_pre_path_remove(hook_path)
 		}
+		config_lock_acquire_or_exit()
 		res := path_remove_result(args[0])
+		changed := res == .OK && !wayu.dry_run
+		if changed {
+			regenerate_init_core_silently()
+		}
+		config_lock_release()
 		exit_on_path_failure(res)
-		if wayu.dry_run {
+		if !changed {
 			return
 		}
-		regenerate_init_core_silently()
 		print_success("Removed from PATH: %s", args[0])
 		print_path_applied_hint()
 		hook_post_path_remove(hook_path)
@@ -117,8 +129,9 @@ handle_path_command :: proc(action: Action, args: []string) {
 }
 
 // The checks `wayu path add` applies to its path argument before writing,
-// shared with the TUI add form: valid format, resolvable to an absolute path
-// ($VAR set, relative paths against the working directory), and existing.
+// shared with the TUI add form and templates: valid format, resolvable to an
+// absolute path ($VAR set, relative paths against the working directory), and
+// an existing directory (missing: EXIT_NOINPUT; another file: EXIT_DATAERR).
 // On success `expanded` is the resolved path (caller deletes) and code is
 // EXIT_SUCCESS; otherwise `err` (caller deletes) says why and `code` is the
 // CLI exit code (EXIT_DATAERR / EXIT_NOINPUT).
@@ -138,6 +151,11 @@ path_add_check :: proc(raw_path: string) -> (expanded: string, err: string, code
 	if !os.exists(expanded) {
 		delete(expanded)
 		return "", fmt.aprintf("Path does not exist: %s", raw_path), EXIT_NOINPUT
+	}
+	// PATH holds directories: a regular file there does nothing (OKAMI-332).
+	if !os.is_dir(expanded) {
+		delete(expanded)
+		return "", fmt.aprintf("Not a directory: %s", raw_path), EXIT_DATAERR
 	}
 	return expanded, "", EXIT_SUCCESS
 }

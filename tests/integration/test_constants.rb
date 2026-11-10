@@ -44,6 +44,8 @@ class ConstantsIntegrationTest
       test_help_command
       test_const_alias
       test_utf8_and_empty_values_survive_rewrite
+      test_protected_names_refused
+      test_invalid_utf8_value_is_data_error
     ensure
       teardown_test_env
     end
@@ -53,6 +55,47 @@ class ConstantsIntegrationTest
   end
 
   private
+
+  def report(ok, detail)
+    if ok
+      puts "✓"
+      @passed += 1
+    else
+      puts "✗"
+      puts "  #{detail}"
+      @failed += 1
+    end
+  end
+
+  # Regression (OKAMI-304): `const add PATH /x` was accepted and broke every
+  # new shell. Protected names exit 65; stored ones are a doctor error.
+  def test_protected_names_refused
+    print "Test R2: Protected names (PATH, HOME, IFS, WAYU_*) exit 65; doctor flags stored ones... "
+
+    codes = %w[PATH HOME IFS SHELL ZDOTDIR WAYU_CONFIG_DIR WAYU_ANY].map do |n|
+      run_wayu("const add #{n} /x")[1].exitstatus
+    end
+    _, secret = run_wayu("const add PATH /x --secret")
+    stored_before = store_map('env')
+    write_entries(env: stored_before.merge('PATH' => '/x'))
+    doc_out, doc = run_wayu('doctor')
+    _, rm = run_wayu('const rm PATH')
+    report(codes.all?(65) && secret.exitstatus == 65 && !stored_before.key?('PATH') &&
+           doc.exitstatus == 78 && doc_out.include?('protected environment names') &&
+           doc_out.include?('PATH') && rm.success?,
+           "codes=#{codes} secret=#{secret.exitstatus} doctor=#{doc.exitstatus} rm=#{rm.exitstatus}\n#{doc_out}")
+  end
+
+  # Regression (OKAMI-331): a value that is not UTF-8 printed two errors and
+  # exited 74 (I/O) instead of one data error.
+  def test_invalid_utf8_value_is_data_error
+    print "Test R3: A non-UTF-8 value is one data error (65)... "
+
+    out, st = run_wayu(%q(const add BADUTF "$(printf 'a\377b')"))
+    errors = out.lines.count { |l| l.include?('ERROR') }
+    report(st.exitstatus == 65 && errors == 1 && out.include?('UTF-8') && !store_map('env').key?('BADUTF'),
+           "status=#{st.exitstatus} out=#{out}")
+  end
 
   # Regressions: unescape mangled UTF-8 (é → Ã©); an empty value was
   # dropped by the reader and so deleted on the next write.

@@ -139,6 +139,21 @@ bootstrap_source_line :: proc(ext: string, allocator := context.temp_allocator) 
 	)
 }
 
+// Why WAYU_CONFIG_DIR / WAYU_DATA_DIR cannot be used, "" when both are fine
+// (or unset). A relative one is refused (OKAMI-328): wayu, the generated
+// init and every shell would resolve it against their own working
+// directory. (A relative XDG_DATA_HOME is ignored, as the XDG spec says; see
+// default_data_dir.) Temp-allocated.
+dir_override_error :: proc() -> string {
+	for name in ([]string{"WAYU_CONFIG_DIR", "WAYU_DATA_DIR"}) {
+		v := os.get_env(name, context.temp_allocator)
+		if len(v) > 0 && !strings.has_prefix(v, "/") {
+			return fmt.tprintf("%s must be an absolute path (got %q)", name, v)
+		}
+	}
+	return ""
+}
+
 // Populate `wayu` once (tests call it too).
 // Idempotent: skips if config or data are already set (avoids overwriting test overrides).
 init_shell_globals :: proc() {
@@ -226,6 +241,10 @@ main :: proc() {
 	}
 
 	init_shell_globals()
+	if msg := dir_override_error(); len(msg) > 0 {
+		print_error_simple("%s", msg)
+		os.exit(EXIT_CONFIG)
+	}
 
 	// No arguments → launch TUI (the primary interface)
 	if len(os.args) < 2 {

@@ -120,6 +120,72 @@ releases, so they are listed here too.
   as one block, and no longer takes a backup of `extra.<ext>` when it has
   nothing to add.
 
+**Hooks: run outside the lock, with a timeout, output shown**
+
+- Hooks no longer run under wayu's config lock (pre-hooks before it is taken,
+  post-hooks after it is released), so a hook may run `wayu` (a `path add`
+  or `plugin add` hook calling `wayu build` hung forever).
+- Every hook is killed after 30 s (with its child processes; the CLI prints a
+  warning naming it). `timeout = <seconds>` in `hooks.conf` changes it.
+- CLI hooks now share wayu's stdout and stderr (their output was discarded);
+  stdin is `/dev/null`. Redirect inside the hook to keep it quiet.
+- `pre/post_alias_remove` and `pre/post_constant_remove` now get the removed
+  alias command / constant value as `{value}` (was empty; still empty for an
+  encrypted secret).
+- A hook command's quotes are removed only when one quoted string wraps the
+  whole command: `post_path_add = "/bin/echo" {path} "done"` is kept as
+  written (it lost its first and last quote, and every write exited 78).
+- `wayu function add` with no `$EDITOR`/`$VISUAL` and no terminal prints the
+  new file's path and exits 0, like `script new` (it ran `vi` and exited 1).
+
+**Entry names and values**
+
+- Alias names follow one rule everywhere (`alias add`, the TUI, templates,
+  `entries.json`): printable ASCII except whitespace, quotes, shell
+  metacharacters, glob characters, `=`, `/` and `^`, not starting with `-`.
+  `..`, `g.st` and `1x` are now accepted; shell reserved words and `.` are
+  still refused.
+- `const add` refuses protected names with exit 65: `PATH`, `path`, `FPATH`,
+  `fpath`, `HOME`, `IFS`, `SHELL`, `USER`, `LOGNAME`, `PWD`, `OLDPWD`,
+  `ZDOTDIR`, `SHLVL`, `_` and every `WAYU_*` name (also with `--secret`).
+  `wayu doctor` reports stored ones as an error (exit 78); remove them with
+  `wayu const rm NAME`.
+- A value with a NUL byte or invalid UTF-8 (alias command, constant value,
+  PATH dir) is one data error, exit 65 (was two messages and exit 74).
+- `entries.json` is read strictly: anything after the document, a trailing
+  comma, a duplicate key, `"version": "1"`, an unknown field, a missing
+  `value`, a `run_only` without `secret`, an invalid alias / constant name or
+  PATH key, or a NUL character now makes every command exit 78 naming the
+  file (these were read silently, unknown fields dropped on the next write,
+  a NUL written raw into `core.<ext>`). Fix the file by hand or `wayu backup
+  restore entries --yes`.
+
+**Directories and the lock**
+
+- A relative `WAYU_CONFIG_DIR` or `WAYU_DATA_DIR` makes every command exit 78
+  (it was used as-is, relative to each process's working directory). Use an
+  absolute path.
+- The config lock is always `<data>/.wayu.lock`: the first writing command
+  creates the data dir if it is missing (it used to lock in the config dir,
+  or not at all, before the data dir existed, and concurrent first writes
+  lost entries). A leftover `~/.config/wayu/.wayu.lock` can be deleted.
+
+**PATH entries must be directories**
+
+- `wayu path add` of an existing path that is not a directory (`/etc/hosts`)
+  exits 65 (it was stored). A missing path still exits 66.
+- `wayu template apply` / `init --template` add only PATH dirs that exist and
+  are directories (others are listed as kept out: "not on this machine");
+  they were added whether or not they existed.
+
+**`wayu watch stop` / `status` check the watcher's lock**
+
+- A running watcher holds a lock on `<data>/watcher.lock`. `watch stop` and
+  `watch status` report "not running" (and remove `watcher.pid`) when no
+  process holds it, instead of trusting the PID in `watcher.pid`: a PID file
+  left by a dead watcher no longer gets an unrelated process (one that
+  reused the PID) killed. `watch start` refuses while the lock is held.
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is

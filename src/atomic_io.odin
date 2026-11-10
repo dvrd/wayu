@@ -180,14 +180,16 @@ config_lock_acquire :: proc() -> bool {
 		return true
 	}
 
+	// Always <data>/.wayu.lock: on a first run the data dir is created here,
+	// so concurrent first writes take the same lock (OKAMI-327; falling back
+	// to the config dir, or to no lock, let them drop each other's changes).
 	dir := wayu.data
 	if !os.is_dir(dir) {
-		dir = wayu.config
-	}
-	if !os.is_dir(dir) {
-		// Nothing on disk to protect yet (first run before init).
-		_config_lock.depth += 1
-		return true
+		_ = make_directory_all(dir) // a concurrent wayu may create it first
+		if !os.is_dir(dir) {
+			print_error("Cannot create the data dir %s for the lock file", dir)
+			return false
+		}
 	}
 
 	lock_path := fmt.tprintf("%s/%s", dir, CONFIG_LOCK_FILE)

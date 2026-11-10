@@ -83,7 +83,7 @@ Manage PATH entries (stored in `<data>/entries.json`, see
 
 | Action | Arguments | |
 |---|---|---|
-| `add` | `<dir>` or `<key>=<dir>` | Add a directory (must exist, else exit `66`; `~` and relative paths are resolved). The key defaults to the directory's base name; an existing directory is left as is (exit `0`) |
+| `add` | `<dir>` or `<key>=<dir>` | Add a directory (must exist, else exit `66`; a file that is not a directory exits `65`; `~` and relative paths are resolved). The key defaults to the directory's base name; an existing directory is left as is (exit `0`) |
 | `remove`, `rm` | `<dir-or-key>` | Remove an entry by directory or key |
 | `list`, `ls` | | List entries (`--json`, `--full`, `--source`) |
 | `get` | `<dir>` | Print the entry (exact directory) |
@@ -99,8 +99,11 @@ wayu path clean --dry-run
 
 ### `wayu alias`
 
-Manage aliases (stored in `entries.json`). Default action: `list`. Names: ASCII letters, digits,
-`_`, and `-` after the first character.
+Manage aliases (stored in `entries.json`). Default action: `list`. Names:
+printable ASCII except whitespace, quotes, `$` `` ` `` `\` `=` `/` `^` `;` `&`
+`|` `<` `>` `(` `)` `{` `}` `[` `]` `*` `?` `#` `~` `!`, not starting with `-`
+(so `..`, `g.st`, `1x`, `k8s-ctx` work); shell reserved words and `.` are
+refused (exit `65`). The same rule applies to names in `entries.json`.
 
 | Action | Arguments | |
 |---|---|---|
@@ -113,7 +116,13 @@ Manage aliases (stored in `entries.json`). Default action: `list`. Names: ASCII 
 ### `wayu constants` (`const`, `env`)
 
 Manage constants: exported environment variables (stored in
-`entries.json`). Default action: `list`.
+`entries.json`). Default action: `list`. Names: ASCII letters, digits and
+`_`, not starting with a digit. Protected names exit `65`: `PATH`, `path`,
+`FPATH`, `fpath`, `HOME`, `IFS`, `SHELL`, `USER`, `LOGNAME`, `PWD`,
+`OLDPWD`, `ZDOTDIR`, `SHLVL`, `_` and every `WAYU_*` name (setting them from
+wayu breaks the shell or wayu; `wayu doctor` reports stored ones as an
+error). A value (alias command, constant value, PATH dir) with a NUL byte or
+invalid UTF-8 exits `65`.
 
 | Action | Arguments | |
 |---|---|---|
@@ -299,7 +308,7 @@ Default action: `list`. Templates: `developer`, `minimal`, `data-science`,
 | Action | Arguments | |
 |---|---|---|
 | `list`, `ls` | | |
-| `apply` | `<name>` | Add the template's entries; existing ones are kept |
+| `apply` | `<name>` | Add the template's entries; existing ones are kept, PATH dirs missing on this machine (or not directories) are skipped |
 | `help` | | |
 
 ### `wayu hooks`
@@ -313,6 +322,9 @@ Default action: `list`. Hooks are configured in `hooks.conf`
 | `edit` | Open `hooks.conf` in the editor |
 | `help` | |
 
+Hooks run outside wayu's config lock (so they may run `wayu`), with their
+output shown, and are killed after 30 s (`timeout` in `hooks.conf`).
+
 ### `wayu function` (`functions`, `func`, `fn`)
 
 Shell functions as files in the data dir's `functions/` (sourced by
@@ -320,7 +332,7 @@ Shell functions as files in the data dir's `functions/` (sourced by
 
 | Action | Arguments | |
 |---|---|---|
-| `add`, `new`, `edit` | `<name>` | Create (from a skeleton for the shell) or open the function file in the editor |
+| `add`, `new`, `edit` | `<name>` | Create (from a skeleton for the shell) or open the function file in the editor; without `$EDITOR` / `$VISUAL` and a terminal, print its path instead |
 | `list`, `ls` | | |
 | `remove`, `rm`, `delete` | `<name>` | Delete the file (`--yes`) |
 | `help` | | |
@@ -474,8 +486,10 @@ them instead (with backups) and prints what it moved.
 `wayu reload [start|stop|status|regenerate]`. `start` (the default) watches
 wayu.toml and entries.json and regenerates the init files on change (debounced) until
 interrupted (script sources too: an edit rebuilds the script); `stop` stops
-a running watcher; `regenerate` (`regen`)
-regenerates once.
+a running watcher; `status` says whether one runs; `regenerate` (`regen`)
+regenerates once. The running watcher holds a lock on `<data>/watcher.lock`;
+`stop` / `status` treat a `watcher.pid` without that lock held as stale
+(removed, nothing signalled), and `start` refuses while it is held.
 
 ### `wayu version`
 
@@ -528,7 +542,7 @@ BSD `sysexits.h` values (`EXIT_*` in `src/interfaces.odin`):
 | 73 | `EXIT_CANTCREAT` | Cannot create an output file or directory |
 | 74 | `EXIT_IOERR` | Read/write failure, failed git operation |
 | 77 | `EXIT_NOPERM` | Permission denied |
-| 78 | `EXIT_CONFIG` | Configuration problem: not initialized, invalid `hooks.conf`, `doctor` found an error, `export check` found no current turbo file |
+| 78 | `EXIT_CONFIG` | Configuration problem: not initialized, invalid `hooks.conf` or `entries.json`, relative `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR`, `doctor` found an error, `export check` found no current turbo file |
 | 126 | `EXIT_EXEC_NOT_RUNNABLE` | `secrets run`: the command was found but cannot be executed |
 | 127 | `EXIT_EXEC_NOT_FOUND` | `secrets run`: the command was not found |
 
@@ -568,6 +582,8 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu secrets run NO_SUCH_NAME -- true` | 65 |
 | `wayu path rm /no/such/dir` | 65 |
 | `wayu alias add 'a b' x` | 65 |
+| `wayu const add PATH /x` | 65 |
+| `wayu path add /etc/hosts` | 65 |
 | `wayu plugin rm no-such-plugin` | 65 |
 | `wayu template apply no-such-template` | 65 |
 | `wayu path add /no/such/dir` | 66 |
@@ -589,9 +605,9 @@ parse.
 
 | Variable | Effect |
 |---|---|
-| `WAYU_CONFIG_DIR` | Config dir (wayu.toml, extra/tools, hooks.conf); default `~/.config/wayu` |
-| `WAYU_DATA_DIR` | Data dir (entries.json, functions/, scripts/, bin/, plugins, generated init files, completions, backups); default `${XDG_DATA_HOME:-~/.local/share}/wayu` |
-| `XDG_DATA_HOME` | Base of the default data dir |
+| `WAYU_CONFIG_DIR` | Config dir (wayu.toml, extra/tools, hooks.conf); default `~/.config/wayu`. Must be absolute (else exit `78`) |
+| `WAYU_DATA_DIR` | Data dir (entries.json, functions/, scripts/, bin/, plugins, generated init files, completions, backups); default `${XDG_DATA_HOME:-~/.local/share}/wayu`. Must be absolute (else exit `78`) |
+| `XDG_DATA_HOME` | Base of the default data dir (ignored when relative) |
 | `SHELL` | Shell detection (override with `--shell`) |
 | `NO_COLOR` | Disable colors (wins over `FORCE_COLOR`) |
 | `FORCE_COLOR`, `CLICOLOR_FORCE` | Keep colors when stdout is not a terminal |

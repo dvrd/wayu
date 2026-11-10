@@ -36,6 +36,8 @@ class WriteIntegrityIntegrationTest
       test_mode_and_symlink_preserved
       test_concurrent_alias_adds
       test_concurrent_const_adds
+      test_first_run_concurrent_adds
+      test_relative_dir_overrides_refused
       test_concurrent_path_adds
       test_concurrent_plugin_adds
       test_reader_parity_across_commands
@@ -141,6 +143,34 @@ class WriteIntegrityIntegrationTest
           status.exitstatus == 78 && File.read(@entries_file) == broken && out.include?(@entries_file),
           "exit=#{status.exitstatus} out=#{out.strip}")
     write_entries
+
+    # OKAMI-321: the reader is strict. Each of these was read without error
+    # (a NUL was even written raw into core.zsh).
+    good = %({"version": 1, "env": [{"name": "X", "value": "1"}]})
+    bad = {
+      'trailing garbage' => "#{good} x",
+      'two documents' => "#{good}#{good}",
+      'trailing comma' => %({"version": 1, "env": [{"name": "X", "value": "1"},]}),
+      'version as a string' => %({"version": "1"}),
+      'unknown field' => %({"version": 1, "extra": []}),
+      'alias without value' => %({"version": 1, "aliases": [{"name": "ll"}]}),
+      'invalid alias name' => %({"version": 1, "aliases": [{"name": "a b", "value": "ls"}]}),
+      'NUL in a value' => %({"version": 1, "env": [{"name": "X", "value": "a\\u0000b"}]})
+    }
+    core = "#{@data_dir}/core.zsh"
+    failures = bad.map do |what, text|
+      File.write(@entries_file, text)
+      core_before = File.exist?(core) ? File.binread(core) : nil
+      out, status = run_wayu('alias list')
+      _, bstatus = run_wayu('build')
+      core_after = File.exist?(core) ? File.binread(core) : nil
+      ok = status.exitstatus == 78 && out.include?(@entries_file) && bstatus.exitstatus == 78 &&
+           core_after == core_before && !(core_after || '').include?("\0")
+      ok ? nil : "#{what}: list=#{status.exitstatus} build=#{bstatus.exitstatus} #{out.strip}"
+    end
+    check("Test 5b: entries.json strictness (garbage, 2 docs, trailing comma, version \"1\", unknown field, missing value, bad name, NUL): exit 78, core untouched",
+          failures.compact.empty?, failures.compact.join("\n  "))
+    write_entries
   end
 
   def test_mode_and_symlink_preserved
@@ -181,6 +211,36 @@ class WriteIntegrityIntegrationTest
     check("Test 8: #{CONCURRENCY} concurrent const adds all land",
           results.all? { |_, rc| rc.zero? } && landed == CONCURRENCY,
           "landed=#{landed}/#{CONCURRENCY}")
+  end
+
+  # Regression (OKAMI-327): before the data dir existed the lock fell back to
+  # the config dir (or to no lock at all), so concurrent first writes lost
+  # entries (20 parallel adds -> 19) and left a .wayu.lock in the config dir.
+  def test_first_run_concurrent_adds
+    data = "#{@tmp_home}/fresh-data"
+    FileUtils.rm_rf(data)
+    results = run_parallel(CONCURRENCY, 'WAYU_DATA_DIR' => data) { |i| ['const', 'add', "FR#{i}", i.to_s] }
+    file = "#{data}/entries.json"
+    landed = File.exist?(file) ? JSON.parse(File.read(file))['env'].map { |e| e['name'] }.grep(/\AFR\d+\z/).length : 0
+    check("Test 8b: #{CONCURRENCY} concurrent const adds on a missing data dir all land, lock in the data dir",
+          results.all? { |_, rc| rc.zero? } && landed == CONCURRENCY &&
+            File.exist?("#{data}/.wayu.lock") && !File.exist?("#{@config_dir}/.wayu.lock"),
+          "landed=#{landed}/#{CONCURRENCY} rcs=#{results.map { |_, rc| rc }.uniq} " \
+          "config_lock=#{File.exist?("#{@config_dir}/.wayu.lock")}")
+  end
+
+  # Regression (OKAMI-328): a relative WAYU_DATA_DIR / WAYU_CONFIG_DIR was
+  # used as-is (a store under the working directory). Now: exit 78.
+  def test_relative_dir_overrides_refused
+    cwd = "#{@tmp_home}/cwd"
+    FileUtils.mkdir_p(cwd)
+    env = ENV.to_h.merge('HOME' => @tmp_home)
+    o1, s1 = Open3.capture2e(env.merge('WAYU_DATA_DIR' => 'rel'), @wayu_bin, 'const', 'add', 'REL', '1', chdir: cwd)
+    o2, s2 = Open3.capture2e(env.merge('WAYU_CONFIG_DIR' => 'relcfg'), @wayu_bin, 'alias', 'list', chdir: cwd)
+    check("Test 8c: relative WAYU_DATA_DIR / WAYU_CONFIG_DIR exit 78, nothing created in the cwd",
+          s1.exitstatus == 78 && o1.include?('WAYU_DATA_DIR must be an absolute path') &&
+            s2.exitstatus == 78 && o2.include?('WAYU_CONFIG_DIR') && Dir.children(cwd).empty?,
+          "data=#{s1.exitstatus} #{o1.strip} config=#{s2.exitstatus} #{o2.strip} cwd=#{Dir.children(cwd)}")
   end
 
   def test_concurrent_path_adds
@@ -260,12 +320,12 @@ class WriteIntegrityIntegrationTest
   # found; X-19: an escaped quote in a name is decoded everywhere.
   def test_quoted_keys_listed_and_removed
     write_toml("[shell]\ntype = \"zsh\"\n")
-    write_entries(aliases: { '..' => 'cd ..', 'q"k' => 'echo quoted', 'll' => 'ls' })
+    write_entries(aliases: { '..' => 'cd ..', 'g.st' => 'echo quoted', 'll' => 'ls' })
     out_l, _ = run_wayu('alias list --json')
     _, s_r = run_wayu('alias rm ..')
     after = store_map('aliases')
-    check("Test 12: special alias names are listed decoded and removable",
-          out_l.include?('".."') && out_l.include?('q\\"k') && !out_l.include?('\\"q') &&
+    check("Test 12: special alias names are listed and removable",
+          out_l.include?('".."') && out_l.include?('"g.st"') &&
             s_r.success? && !after.key?('..') && after['ll'] == 'ls',
           "list=#{out_l}\nafter=#{after}")
   end

@@ -50,7 +50,11 @@ they live, and which files are generated.
 | `WAYU_DATA_DIR` | `${XDG_DATA_HOME:-~/.local/share}/wayu` | Data wayu manages: `entries.json`, `plugins.json`, `functions/` (`wayu function`), `scripts/` and `bin/` (`wayu script`), and generated / runtime files: `init.<ext>`, `core.<ext>`, `path_sync.<ext>`, `turbo.<ext>`, `plugins.<ext>`, `plugins/`, `completions/`, `backup/`, `.wayu.lock` |
 
 - Each variable is read independently: setting one never moves the other.
-  `wayu init` creates both dirs.
+  `wayu init` creates both dirs; the first command that writes creates the
+  data dir if it is missing.
+- `WAYU_CONFIG_DIR` and `WAYU_DATA_DIR` must be absolute paths: a relative one
+  makes every command exit `78`. A relative `XDG_DATA_HOME` is ignored (XDG
+  spec), so the data dir is then `~/.local/share/wayu`.
 - The rc line `wayu init` adds finds the data dir by itself:
 
   ```sh
@@ -650,10 +654,10 @@ into `core.<ext>`. They are not read from `wayu.toml`; a `[paths]`,
 
 | Field | Meaning |
 |---|---|
-| `version` | `1`. Any other value is an error. |
-| `paths[]` | `{"key", "dir"}`: PATH entries, highest priority first. |
-| `aliases[]` | `{"name", "value"}`: aliases. |
-| `env[]` | `{"name", "value"}`: constants (exported variables), in export order. |
+| `version` | The number `1` (required). Any other value, `"1"` or `1.0` is an error. |
+| `paths[]` | `{"key", "dir"}`: PATH entries, highest priority first. `key`: letters, digits, `_`; `dir`: non-empty, no `:` or newline. |
+| `aliases[]` | `{"name", "value"}`: aliases. `name` follows the [alias name rule](#aliases); `value` must not be blank. |
+| `env[]` | `{"name", "value"}`: constants (exported variables), in export order. `name`: letters, digits, `_`, not starting with a digit. An encrypted one is `{"name", "secret": true}` (no `value`), optionally `"run_only": true`. |
 | `fpath[]` | Strings, zsh only: completion dirs put on `fpath` (first = front) before wayu's `compinit`; the dump is rebuilt when their file list changes. Same expansion as PATH entries. Written only when non-empty (`wayu completions fpath`, `wayu optimize`). |
 | `generators[]` | `{"shell", "cmd", "args"}`: `source <(cmd args)` / `eval "$(cmd args)"` lines moved by `wayu optimize`. `core.<shell>` (only that shell's) runs `_wayu_evalcache cmd args` after everything else, before the aliases; zsh/bash in interactive shells only. `args` follows the `[tools]` args rules. Written only when non-empty. |
 
@@ -661,12 +665,13 @@ into `core.<ext>`. They are not read from `wayu.toml`; a `[paths]`,
   shared by concurrent wayu commands, owner-only (`0600`), pretty-printed with
   one entry per line, in stable order: a write changes only the entries it
   touches. Each write is backed up first (`wayu backup restore entries`).
-- **Reading is strict.** A missing file is an empty store. A file that is not
-  valid JSON, has another `version`, a field of the wrong type, an entry
-  without its key / name (or a path without `dir`), or the same key / name
-  twice in a section makes every command that reads it exit `78`, naming the
-  file and the problem; nothing is written. `wayu doctor` reports it too.
-- Unknown fields are ignored and dropped on the next write.
+- **Reading is strict.** A missing file is an empty store. Anything else
+  must be exactly one JSON document (nothing after it, no trailing commas, no
+  key twice in an object, valid UTF-8, no NUL character) that fits the table
+  above: every field with its type, no unknown field, required fields present,
+  names valid, the same key / name at most once per section. Otherwise every
+  command that reads it exits `78`, naming the file and the problem; nothing
+  is written. `wayu doctor` reports it too.
 - It is safe to edit by hand while no wayu command runs; run `wayu build`
   afterwards (open shells also notice a newer file, see
   [PATH entries](#path-entries)).
@@ -697,7 +702,7 @@ entry is a `key` (a label) and a `dir`.
   lookup. `wayu doctor` counts them with the entries it leaves alone, never
   as missing.
   `wayu path add` itself never stores a relative path: it resolves `~`,
-  `$VAR` and relative arguments to an absolute directory, which must exist.
+  `$VAR` and relative arguments to an absolute directory, which must exist (and be a directory).
 - **Integration with PATH:** wayu removes only directories it put on `PATH`
   itself (tracked in `_WAYU_PATHS_MANAGED`); a system directory that is also
   a PATH entry is moved to wayu's position but never removed. In zsh the
@@ -713,15 +718,14 @@ entry is a `key` (a label) and a `dir`.
 `wayu alias add ll 'ls -lah'`: each entry is a `name` and a command
 (`value`).
 
-| Rule | `alias add`, TUI | Generator |
-|---|---|---|
-| Name characters | First an ASCII letter or `_`, then letters, digits, `_` or `-` (not first) | Any name without whitespace, quotes, `` ` `` `$ = ; & \| < > ( ) { } \ * ? [ ] # ~ !` or control characters; other names are skipped with a `# wayu: skipping invalid alias name` comment |
-| Reserved names | `if then else elif fi case esac for while until do done in function time select coproc declare typeset local export readonly unset return exit cd pwd echo test true false` are refused | Not checked |
-| Length | At most 255 characters | Not checked |
-| Command | Must not be empty or blank | Emitted as given |
+One rule for `alias add`, the TUI, templates and `entries.json`:
 
-So a hand-written `..` or `g.st` alias in `entries.json` is defined by the
-generated init and shown by `alias list`, but `alias add` refuses the name.
+| Rule | |
+|---|---|
+| Name characters | Printable ASCII except whitespace, quotes, `` ` `` `$ \ = / ^ ; & \| < > ( ) { } [ ] * ? # ~ !`; not starting with `-`. `..`, `g.st`, `1x`, `k8s-ctx` are fine |
+| Reserved names | `.` and `if then else elif fi case esac for while until do done in function time select coproc declare typeset local export readonly unset return exit cd pwd echo test true false` are refused |
+| Length | At most 255 characters |
+| Command | Must not be blank; no NUL byte, valid UTF-8 |
 
 Generated code: zsh/bash `alias name='command'`, fish `alias name 'command'`.
 The command is single-quoted and stored verbatim, so `$VAR` in it expands when
@@ -793,8 +797,10 @@ pre_constant_remove = sh -c 'echo removing {name} >> ~/hook.log'
 post_constant_remove = echo "gone: $WAYU_HOOK_NAME" >> ~/hook.log
 ```
 
-Format: one `event = command` per line; `#` starts a comment line; one
-matching pair of quotes around the whole command is removed; unknown keys
+Format: one `event = command` per line; `#` starts a comment line; a pair
+of quotes is removed only when it wraps the whole command as one quoted
+string (`pre_export = "echo 'Generating...'"`), so `"/bin/echo" {path} "done"`
+is kept as written; unknown keys
 are ignored; for a repeated key the last line wins.
 
 | Event | `{path}` | `{name}` | `{value}` |
@@ -802,7 +808,7 @@ are ignored; for a repeated key the last line wins.
 | `pre_path_add`, `post_path_add` | directory | | |
 | `pre_path_remove`, `post_path_remove` | directory (also when removed by key) | | |
 | `pre_alias_add`, `post_alias_add`, `pre_alias_remove`, `post_alias_remove` | | alias name | command |
-| `pre_constant_add`, `post_constant_add`, `pre_constant_remove`, `post_constant_remove` | | variable name | value |
+| `pre_constant_add`, `post_constant_add`, `pre_constant_remove`, `post_constant_remove` | | variable name | value (empty for an encrypted secret) |
 | `pre_plugin_install`, `post_plugin_install` | | plugin name | |
 | `pre_export`, `post_export` (around `wayu export` / `build turbo`) | | | |
 
@@ -817,9 +823,15 @@ Placeholder quoting:
 | Inside `'...'`: `sh -c 'echo {path}'` | Left as `"${WAYU_HOOK_PATH}"` for the inner shell, which expands it quoted. |
 | Inside `"..."`: `sh -c "echo {value}"` | Refused. Any wayu operation that would run hooks exits `78` before writing anything and names the line; `wayu hooks` marks it `INVALID`. Use `"$WAYU_HOOK_VALUE"` when you need double quotes. |
 
-Hooks run with `sh -c`; their exit status is ignored. Pre-hooks run only when
-the operation will change something, post-hooks only after a successful
-write, and none under `--dry-run`. In the TUI a hook is stopped after 30 s.
+Hooks run with `sh -c`, stdin on `/dev/null`; their exit status is ignored.
+In the CLI a hook's stdout and stderr are shown (in the TUI they are
+captured). Pre-hooks run only when the operation will change something,
+post-hooks only after a successful write, and none under `--dry-run`. Hooks
+run outside wayu's config lock (pre-hooks before it is taken, post-hooks
+after it is released), so a hook may run `wayu` itself. A hook still running
+after 30 s is killed with its child processes (the CLI prints a warning
+naming it); a `timeout = <seconds>` line in hooks.conf changes that limit
+(whole seconds above 0; other values keep 30).
 
 ### plugins.json
 

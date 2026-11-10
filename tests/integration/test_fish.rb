@@ -142,12 +142,16 @@ class FishIntegrationTest
     # unset the ones it adds (nil unsets in an Open3 env hash).
     env = ENV.to_h.merge('HOME' => scratch, 'SHELL' => '/usr/bin/fish', 'EDITOR' => nil, 'GOPATH' => nil)
     Open3.capture3(env, "#{@wayu_bin} init --shell fish")
-    Open3.capture3(env, "#{@wayu_bin} template apply developer")
+    # Templates add only directories that exist here, like `path add`
+    # (OKAMI-332): ~/.cargo/bin does, ~/.npm-global/bin does not.
+    FileUtils.mkdir_p("#{scratch}/.cargo/bin")
+    tpl_out, = Open3.capture3(env, "#{@wayu_bin} template apply developer")
     Open3.capture3(env, "#{@wayu_bin} build")
     store = File.read("#{scratch}/.local/share/wayu/entries.json")
     init = File.read("#{scratch}/.local/share/wayu/core.fish")
     toml_ok = store.include?('{"name": "g", "value": "git"}') && store.include?('{"name": "EDITOR", "value": "code --wait"}') &&
-              store.include?('"dir": "/opt/homebrew/bin"')
+              store.include?(%("dir": "#{scratch}/.cargo/bin")) && !store.include?('.npm-global') &&
+              tpl_out.include?('not on this machine')
     fish_native = init.include?("alias g 'git'") && init.include?('set -gx EDITOR') &&
                   init.include?('set -gx PATH')
     bash_leak  = init.include?('alias g="git"') || init.include?('export EDITOR=')

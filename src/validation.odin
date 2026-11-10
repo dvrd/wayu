@@ -136,12 +136,109 @@ validate_identifier :: proc(
 	return ValidationResult{valid = true, error_message = ""}
 }
 
+// Why `name` cannot be an alias name, "" when it can. The one alias name
+// rule (OKAMI-366), used by `alias add`, the TUI, templates and the
+// entries.json reader; the generator's is_safe_alias_name accepts every name
+// this accepts. Allowed: printable ASCII except whitespace, quotes, shell
+// metacharacters, glob characters, `=`, `/` (bash refuses it) and `^`
+// (zsh extendedglob), not starting with `-`; so `..`, `g.st`, `1x`, `k8s-ctx`
+// are fine. Shell reserved words (SHELL_RESERVED_WORDS) and `.` are refused.
+// Temp-allocated.
+alias_name_error :: proc(name: string) -> string {
+	if len(name) == 0 {
+		return "Alias name cannot be empty"
+	}
+	if len(name) > 255 {
+		return fmt.tprintf(
+			"Alias name too long (%d characters). Maximum 255 characters allowed.",
+			len(name),
+		)
+	}
+	if name[0] == '-' {
+		return fmt.tprintf("Alias name cannot start with '-': %s", name)
+	}
+	for i in 0 ..< len(name) {
+		c := name[i]
+		if c <= 0x20 || c >= 0x7f || c == '/' || c == '^' || !is_safe_alias_name(name[i:i + 1]) {
+			shown :=
+				fmt.tprintf("'%c'", rune(c)) if \
+					c > 0x20 && c < 0x7f else \
+					fmt.tprintf("byte 0x%02x", c)
+			return fmt.tprintf(
+				"Alias name contains invalid character %s at position %d (not allowed: whitespace, quotes, $ ` \\ = / ^ ; & | < > ( ) {{ }} [ ] * ? # ~ !, non-ASCII)",
+				shown,
+				i,
+			)
+		}
+	}
+	if name == "." {
+		return "Cannot use '.' (the source builtin) as Alias name"
+	}
+	for reserved_word in SHELL_RESERVED_WORDS {
+		if name == reserved_word {
+			return fmt.tprintf("Cannot use shell reserved word '%s' as Alias name", name)
+		}
+	}
+	return ""
+}
+
+// Why `value` cannot be stored (alias command, constant value, PATH dir),
+// "" when it can: a NUL byte (the shell cannot hold one; it was written raw
+// into core.<ext>) or invalid UTF-8 (entries.json is JSON text). `what`
+// names the value in the message. Temp-allocated.
+stored_value_error :: proc(what: string, value: string) -> string {
+	if strings.index_byte(value, 0) >= 0 {
+		return fmt.tprintf("%s contains a NUL byte", what)
+	}
+	if !utf8.valid_string(value) {
+		return fmt.tprintf("%s is not valid UTF-8", what)
+	}
+	return ""
+}
+
+// Environment names `wayu const add` refuses (OKAMI-304): setting them from
+// wayu breaks the shell or wayu itself (`const add PATH /x` left every new
+// shell without ls). zsh ties `path`/`fpath` to PATH/FPATH. Every WAYU_*
+// name is refused too (wayu's own settings and runtime variables).
+PROTECTED_ENV_NAMES :: []string {
+	"PATH",
+	"path",
+	"FPATH",
+	"fpath",
+	"HOME",
+	"IFS",
+	"SHELL",
+	"USER",
+	"LOGNAME",
+	"PWD",
+	"OLDPWD",
+	"ZDOTDIR",
+	"SHLVL",
+	"_",
+}
+
+// Why `name` is a protected environment name, "" when it is not.
+// Temp-allocated.
+protected_env_name_error :: proc(name: string) -> string {
+	if strings.has_prefix(name, "WAYU_") {
+		return fmt.tprintf("%s is reserved: wayu does not manage WAYU_* variables", name)
+	}
+	for p in PROTECTED_ENV_NAMES {
+		if name == p {
+			return fmt.tprintf(
+				"%s is protected: setting it from wayu would break your shell (protected: %s, WAYU_*)",
+				name,
+				strings.join(PROTECTED_ENV_NAMES, ", ", context.temp_allocator),
+			)
+		}
+	}
+	return ""
+}
+
 // Validate alias-specific rules
 validate_alias :: proc(name: string, command: string) -> ValidationResult {
-	// First validate the identifier
-	result := validate_identifier(name, "Alias", allow_hyphen = true)
-	if !result.valid {
-		return result
+	if err := alias_name_error(name); len(err) > 0 {
+		return ValidationResult{valid = false, error_message = strings.clone(err)}
 	}
 
 	// Check command is not empty
@@ -150,6 +247,9 @@ validate_alias :: proc(name: string, command: string) -> ValidationResult {
 			valid = false,
 			error_message = fmt.aprintf("Alias command cannot be empty"),
 		}
+	}
+	if err := stored_value_error("Alias command", command); len(err) > 0 {
+		return ValidationResult{valid = false, error_message = strings.clone(err)}
 	}
 
 	return ValidationResult{valid = true, error_message = ""}
@@ -161,6 +261,12 @@ validate_constant :: proc(name: string, value: string) -> ValidationResult {
 	result := validate_identifier(name, "Constant")
 	if !result.valid {
 		return result
+	}
+	if err := protected_env_name_error(name); len(err) > 0 {
+		return ValidationResult{valid = false, error_message = strings.clone(err)}
+	}
+	if err := stored_value_error("Constant value", value); len(err) > 0 {
+		return ValidationResult{valid = false, error_message = strings.clone(err)}
 	}
 
 	// Convention: constants should be uppercase (warning, not error).
@@ -211,12 +317,9 @@ validate_path :: proc(path: string) -> ValidationResult {
 		return ValidationResult{valid = false, error_message = fmt.aprintf("Path cannot be empty")}
 	}
 
-	// Check for null bytes (security)
-	if strings.contains(path, "\x00") {
-		return ValidationResult {
-			valid = false,
-			error_message = fmt.aprintf("Path contains null bytes"),
-		}
+	// NUL bytes (security) / invalid UTF-8 (entries.json is JSON text).
+	if err := stored_value_error("Path", path); len(err) > 0 {
+		return ValidationResult{valid = false, error_message = strings.clone(err)}
 	}
 
 	// ':' is the PATH separator: "/x/a:." would put "/x/a" AND "." (the CWD)

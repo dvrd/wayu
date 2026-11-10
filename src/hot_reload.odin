@@ -36,6 +36,17 @@ g_watcher: WatcherState
 // PID file for coordinating multiple watch instances
 WATCHER_PID_FILE :: "watcher.pid"
 
+// The running watcher holds a lockf lock on <data>/watcher.lock for its whole
+// life (OKAMI-316). The kernel drops it when the watcher dies, so the lock,
+// not the PID file, says whether a watcher runs: a PID file left by a dead
+// watcher may name a reused PID that `stop` must never signal.
+WATCHER_LOCK_FILE :: "watcher.lock"
+
+// The lock file, open for the life of the watcher process (closing any
+// descriptor of it would drop the lock).
+@(private = "file")
+_watcher_lock: ^os.File
+
 // ============================================================================
 // Core Watcher Functions
 // ============================================================================
@@ -164,8 +175,8 @@ handle_watch_command :: proc(action: string, args: []string) {
 
 	switch action {
 	case "", "start":
-		// Check if already running
-		if is_watcher_running() {
+		// Take the watcher lock first: it is the one "already running" check.
+		if !watcher_lock_take() {
 			print_warning("Watcher is already running")
 			pid := read_watcher_pid()
 			if pid > 0 {
@@ -208,9 +219,15 @@ handle_watch_command :: proc(action: string, args: []string) {
 
 		// Try to stop existing watcher
 		pid := read_watcher_pid()
-		if pid > 0 {
-			stop_existing_watcher(pid)
+		if pid <= 0 {
+			print_warning(
+				"A watcher holds %s/%s but its PID file is missing",
+				wayu.data,
+				WATCHER_LOCK_FILE,
+			)
+			os.exit(EXIT_FAILURE)
 		}
+		stop_existing_watcher(pid)
 
 		print_success("Watcher stopped")
 
@@ -504,52 +521,68 @@ read_watcher_pid :: proc() -> int {
 	return pid
 }
 
-// Check if watcher is running (by PID file and process check).
-//
-// Uses the portable `kill(pid, 0)` probe: sends signal 0 (no-op, just permission
-// check) and relies on the kernel to answer "no such process" via ESRCH when
-// the PID is gone. /proc/<pid> only works on Linux, so we used to always
-// return false on macOS/BSD.
-is_watcher_running :: proc() -> bool {
-	pid := read_watcher_pid()
-	if pid <= 0 {
+// Take the watcher lock for the life of this process. False when another
+// process holds it (a watcher runs); exits EXIT_IOERR when the lock file
+// cannot be opened.
+watcher_lock_take :: proc() -> bool {
+	if _watcher_lock != nil {
+		return true
+	}
+	if !os.is_dir(wayu.data) {
+		_ = make_directory_all(wayu.data)
+	}
+	path := fmt.tprintf("%s/%s", wayu.data, WATCHER_LOCK_FILE)
+	f, err := os.open(path, {.Read, .Write, .Create}, os.perm_number(0o600))
+	if err != nil {
+		print_error("Cannot open %s: %v", path, err)
+		os.exit(EXIT_IOERR)
+	}
+	if posix.lockf(posix.FD(os.fd(f)), .TLOCK, 0) != .OK {
+		os.close(f)
 		return false
 	}
-
-	when ODIN_OS == .Linux || ODIN_OS == .Darwin {
-		if posix.kill(posix.pid_t(pid), posix.Signal(0)) == .OK {
-			return true
-		}
-		// errno == ESRCH: no such process → stale PID file, clean it up so
-		// future status calls don't keep probing a ghost.
-		if posix.errno() == .ESRCH {
-			remove_watcher_pid()
-			return false
-		}
-		// EPERM means the process exists but we can't signal it — still "running".
-		return posix.errno() == .EPERM
-	} else {
-		return false
-	}
+	_watcher_lock = f
+	return true
 }
 
-// Stop existing watcher by sending signal
+// Is a watcher running: does another process hold <data>/watcher.lock?
+// The PID file alone is no proof (OKAMI-316). When no watcher holds the
+// lock, a leftover PID file is removed.
+is_watcher_running :: proc() -> bool {
+	if _watcher_lock != nil {
+		return true // this process is the watcher
+	}
+	path := fmt.tprintf("%s/%s", wayu.data, WATCHER_LOCK_FILE)
+	held := false
+	if f, err := os.open(path, {.Read, .Write}); err == nil {
+		fd := posix.FD(os.fd(f))
+		if posix.lockf(fd, .TLOCK, 0) == .OK {
+			_ = posix.lockf(fd, .ULOCK, 0)
+		} else {
+			held = true
+		}
+		os.close(f)
+	}
+	if !held {
+		remove_watcher_pid()
+	}
+	return held
+}
+
+// Stop the watcher `pid` (read from the PID file while the watcher lock was
+// held): SIGTERM, then SIGKILL if it still holds the lock after 2 s.
 stop_existing_watcher :: proc(pid: int) {
 	when ODIN_OS == .Linux || ODIN_OS == .Darwin {
-		// Try graceful termination first (SIGTERM)
 		posix.kill(posix.pid_t(pid), posix.Signal.SIGTERM)
-
-		// Wait briefly for termination
-		time.sleep(500 * time.Millisecond)
-
-		// Check if still running
-		if is_watcher_running() {
-			// Force kill (SIGKILL)
-			posix.kill(posix.pid_t(pid), posix.Signal.SIGKILL)
+		for _ in 0 ..< 40 {
+			time.sleep(50 * time.Millisecond)
+			if !is_watcher_running() {
+				return
+			}
 		}
+		posix.kill(posix.pid_t(pid), posix.Signal.SIGKILL)
+		time.sleep(100 * time.Millisecond)
 	}
-
-	// Clean up PID file
 	remove_watcher_pid()
 }
 

@@ -33,6 +33,8 @@ class ScriptIntegrationTest
       test_edit_rebuilds
       test_stale_and_build
       test_failed_build_keeps_binary
+      test_edit_during_compile_stays_stale
+      test_new_editor_can_run_wayu
       test_import_dry_run
       test_import
       test_import_copy_and_duplicate
@@ -66,6 +68,8 @@ class ScriptIntegrationTest
       done
       if grep -q COMPILE_ERROR "$src"; then echo "error: fake compile error" >&2; exit 1; fi
       n=$(grep -c . "$src")
+      # MUTATE: the source is saved again while the compiler runs.
+      if grep -q MUTATE "$src"; then echo '// saved mid-build' >> "$src"; fi
       printf '#!/bin/sh\\necho "compiled %s lines=%s"\\n' "$(basename "$src")" "$n" > "$out"
       chmod +x "$out"
     SH
@@ -207,6 +211,46 @@ class ScriptIntegrationTest
     check('a failed compile prints the compiler error, exits 1, keeps the old binary',
           st.exitstatus == 1 && out.include?('fake compile error') && run_out.include?('lines=1'),
           "exit=#{st.exitstatus} out=#{out} run=#{run_out}")
+  end
+
+  # Regression (OKAMI-311): the hash was taken after the compile, so a
+  # save during the compile was recorded as built and never rebuilt.
+  def test_edit_during_compile_stays_stale
+    File.write("#{scripts_dir}/sw.swift", "// MUTATE\nprint(1)\n")
+    _, st = run_s('script build sw')
+    stale = list_json.dig('sw', 'stale')
+    File.write("#{scripts_dir}/sw.swift", "print(1)\n")
+    run_s('script build sw')
+    check('a source saved during the compile stays stale after the build',
+          st.success? && stale == true, "exit=#{st.exitstatus} stale=#{stale.inspect}")
+  end
+
+  # Regression (OKAMI-307): `script new` held the config lock while $EDITOR
+  # ran, so an editor that runs wayu (or stays open) blocked every write.
+  def test_new_editor_can_run_wayu
+    editor = "#{@scratch}/wayu-editor"
+    File.write(editor, "#!/bin/sh\n\"#{@wayu_bin}\" const add EDITOR_PROBE 1 >/dev/null 2>&1\n")
+    FileUtils.chmod(0o755, editor)
+    full = env('EDITOR' => editor)
+    project_root = File.expand_path('../..', __dir__)
+    status = nil
+    Open3.popen3(full, "#{@wayu_bin} script new edlock --lang bash", chdir: project_root, pgroup: true) do |i, o, e, w|
+      i.close
+      out_t = Thread.new { o.read }
+      err_t = Thread.new { e.read }
+      unless w.join(20)
+        Process.kill('KILL', -w.pid) rescue nil
+        w.join
+      else
+        status = w.value
+      end
+      out_t.value; err_t.value
+    end
+    store = File.exist?("#{@data_dir}/entries.json") ? File.read("#{@data_dir}/entries.json") : ''
+    run_s('script remove edlock --yes')
+    run_s('const rm EDITOR_PROBE')
+    check('script new: an $EDITOR that runs wayu completes (no lock held during the editor)',
+          status&.success? && store.include?('EDITOR_PROBE'), "status=#{status.inspect}")
   end
 
   def import_fixtures(dir)

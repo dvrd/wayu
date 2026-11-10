@@ -580,3 +580,69 @@ run_command_timeout :: proc(
 	result.stderr = strings.clone(strings.trim_space(strings.to_string(err_sb)))
 	return
 }
+
+// run_command_passthrough_timeout runs a subprocess (no shell) that shares
+// wayu's stdout and stderr (its output is shown), with stdin on /dev/null.
+// The child leads its own process group; when timeout_ms > 0 passes, the
+// whole group is killed with SIGKILL and timed_out is true. timeout_ms <= 0
+// waits forever. ok: exited 0 before the deadline.
+run_command_passthrough_timeout :: proc(
+	args: []string,
+	timeout_ms: int,
+) -> (
+	ok: bool,
+	timed_out: bool,
+) {
+	if len(args) == 0 {
+		return false, false
+	}
+	argv := make([dynamic]cstring, len(args) + 1)
+	defer {
+		for i in 0 ..< len(args) {
+			delete(argv[i])
+		}
+		delete(argv)
+	}
+	for arg, i in args {
+		argv[i] = strings.clone_to_cstring(arg)
+	}
+	argv[len(args)] = nil
+
+	pid := posix.fork()
+	if pid < 0 {
+		return false, false
+	}
+	if pid == 0 {
+		stdin_null := posix.open("/dev/null", {})
+		if stdin_null >= 0 {
+			posix.dup2(stdin_null, posix.FD(0))
+			posix.close(stdin_null)
+		}
+		posix.setpgid(0, 0)
+		posix.execvp(argv[0], raw_data(argv[:]))
+		posix._exit(127)
+	}
+	// Also set from the parent so the group exists before a deadline kill.
+	posix.setpgid(pid, pid)
+
+	start := time.tick_now()
+	status: c.int = 0
+	for {
+		r := posix.waitpid(pid, &status, {.NOHANG})
+		if r == pid {
+			break
+		}
+		if r < 0 && posix.errno() != .EINTR {
+			return false, false
+		}
+		if timeout_ms > 0 &&
+		   int(time.duration_milliseconds(time.tick_since(start))) >= timeout_ms {
+			posix.killpg(pid, .SIGKILL)
+			posix.kill(pid, .SIGKILL)
+			for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
+			return false, true
+		}
+		time.sleep(10 * time.Millisecond)
+	}
+	return posix.WIFEXITED(status) && posix.WEXITSTATUS(status) == 0, false
+}
