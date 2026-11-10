@@ -160,7 +160,7 @@ flush_zcompile_batch :: proc() {
 		&builder,
 		`zsh -fc 'umask 077; zmodload zsh/mapfile zsh/system || exit 1; l=$1; shift; t=; d=; trap '\''rm -rf -- "$t" "$d"; exit 1'\'' HUP INT TERM; for f; do [[ -f $f ]] || continue; rm -f -- $f.<->.tmp.zwc(Nmm+1); d="${TMPDIR:-/tmp}/wayu-zc.$$.$RANDOM"; n=${f:t}; c=$mapfile[$f]; if mkdir -m 700 -- "$d" && mapfile[$d/$n]=$c && zcompile -- "$d/$n.zwc" "$d/$n" && zsystem flock -t 10 -f fd -- "$l"; then [[ $mapfile[$f] == "$c" ]] && t="$f.$$.tmp.zwc" && mv -f -- "$d/$n.zwc" "$t" && mv -f -- "$t" "$f.zwc"; zsystem flock -u $fd; fi; rm -rf -- "$t" "$d"; t= d=; done' zsh`,
 	)
-	lock_dir := os.is_dir(wayu.data) ? wayu.data : wayu.config
+	lock_dir := wayu.data // the config lock always lives in the data dir (OKAMI-327)
 	strings.write_byte(&builder, ' ')
 	strings.write_string(
 		&builder,
