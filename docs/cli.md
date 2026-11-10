@@ -99,8 +99,11 @@ wayu path clean --dry-run
 
 ### `wayu alias`
 
-Manage aliases (stored in `entries.json`). Default action: `list`. Names: ASCII letters, digits,
-`_`, and `-` after the first character.
+Manage aliases (stored in `entries.json`). Default action: `list`. Names:
+printable ASCII except whitespace, quotes, `$` `` ` `` `\` `=` `/` `^` `;` `&`
+`|` `<` `>` `(` `)` `{` `}` `[` `]` `*` `?` `#` `~` `!`, not starting with `-`
+(so `..`, `g.st`, `1x`, `k8s-ctx` work); shell reserved words and `.` are
+refused (exit `65`). The same rule applies to names in `entries.json`.
 
 | Action | Arguments | |
 |---|---|---|
@@ -113,7 +116,13 @@ Manage aliases (stored in `entries.json`). Default action: `list`. Names: ASCII 
 ### `wayu constants` (`const`, `env`)
 
 Manage constants: exported environment variables (stored in
-`entries.json`). Default action: `list`.
+`entries.json`). Default action: `list`. Names: ASCII letters, digits and
+`_`, not starting with a digit. Protected names exit `65`: `PATH`, `path`,
+`FPATH`, `fpath`, `HOME`, `IFS`, `SHELL`, `USER`, `LOGNAME`, `PWD`,
+`OLDPWD`, `ZDOTDIR`, `SHLVL`, `_` and every `WAYU_*` name (setting them from
+wayu breaks the shell or wayu; `wayu doctor` reports stored ones as an
+error). A value (alias command, constant value, PATH dir) with a NUL byte or
+invalid UTF-8 exits `65`.
 
 | Action | Arguments | |
 |---|---|---|

@@ -1633,6 +1633,30 @@ check_entries_store :: proc(results: ^[dynamic]CheckResult) {
 		)
 		return
 	}
+	// Constants `const add` refuses (OKAMI-304) that are already stored.
+	protected := make([dynamic]string, context.temp_allocator)
+	for e in store.env {
+		if len(protected_env_name_error(e.name)) > 0 {
+			append(&protected, e.name)
+		}
+	}
+	if len(protected) > 0 {
+		append(
+			results,
+			CheckResult {
+				name = clone_arena(name),
+				status = .ERROR,
+				message = clone_arena(
+					fmt.tprintf(
+						"protected environment names set as constants: %s — they break the shell or wayu; remove them with `wayu const rm NAME`",
+						strings.join(protected[:], ", ", context.temp_allocator),
+					),
+				),
+				fixable = false,
+			},
+		)
+		return
+	}
 	if fi, serr := os.stat(file, context.temp_allocator); serr == nil {
 		if fi.mode &
 			   {

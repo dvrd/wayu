@@ -131,6 +131,21 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 - `wayu function add` with no `$EDITOR`/`$VISUAL` and no terminal prints the
   new file's path and exits 0, like `script new` (it ran `vi` and exited 1).
 
+**Entry names and values**
+
+- Alias names follow one rule everywhere (`alias add`, the TUI, templates,
+  `entries.json`): printable ASCII except whitespace, quotes, shell
+  metacharacters, glob characters, `=`, `/` and `^`, not starting with `-`.
+  `..`, `g.st` and `1x` are now accepted; shell reserved words and `.` are
+  still refused.
+- `const add` refuses protected names with exit 65: `PATH`, `path`, `FPATH`,
+  `fpath`, `HOME`, `IFS`, `SHELL`, `USER`, `LOGNAME`, `PWD`, `OLDPWD`,
+  `ZDOTDIR`, `SHLVL`, `_` and every `WAYU_*` name (also with `--secret`).
+  `wayu doctor` reports stored ones as an error (exit 78); remove them with
+  `wayu const rm NAME`.
+- A value with a NUL byte or invalid UTF-8 (alias command, constant value,
+  PATH dir) is one data error, exit 65 (was two messages and exit 74).
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is

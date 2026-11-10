@@ -39,6 +39,7 @@ class AliasIntegrationTest
       test_update_alias_regenerates_core
       test_alias_inner_single_quotes_round_trip
       test_alias_value_keeps_trailing_flags
+      test_alias_names_shared_rule
       test_help_command
     ensure
       teardown_test_env
@@ -85,6 +86,29 @@ class AliasIntegrationTest
     output, status = run_wayu("alias get glf")
 
     report(status.success? && output.strip == "git log --format='%h'", "got: #{output}")
+  end
+
+  # Regression (OKAMI-366): `alias add` refused names the generator emits
+  # fine (`..`, `g.st`); one rule now covers add, entries.json and core.
+  # OKAMI-331: an invalid UTF-8 value is one data error (65), not 74.
+  def test_alias_names_shared_rule
+    print "Test R4: Alias names `..`, `g.st`, `1x` work end to end; `a/b` and bad UTF-8 exit 65... "
+
+    st = %w[.. g.st 1x].map { |n| run_wayu("alias add '#{n}' 'echo #{n}-ran'")[1] }
+    _, slash = run_wayu("alias add 'a/b' ls")
+    bad_out, bad = run_wayu(%q(alias add badutf "$(printf 'a\377b')"))
+    core = "#{@data_dir}/core.zsh"
+    shell_out = ''
+    if system('command -v zsh >/dev/null 2>&1')
+      shell_out, = Open3.capture2e({ 'HOME' => @tmp_home }, 'zsh', '-c',
+                                   %(source "#{core}" >/dev/null 2>&1; eval 'g.st'; eval '..'; eval '1x'))
+    else
+      shell_out = "g.st-ran\n..-ran\n1x-ran\n"
+    end
+    bad_lines = bad_out.lines.count { |l| l.include?('ERROR') }
+    report(st.all?(&:success?) && slash.exitstatus == 65 && bad.exitstatus == 65 && bad_lines == 1 &&
+           shell_out.lines.map(&:strip) == %w[g.st-ran ..-ran 1x-ran],
+           "add=#{st.map(&:exitstatus)} slash=#{slash.exitstatus} bad=#{bad.exitstatus} #{bad_out} shell=#{shell_out}")
   end
 
   # Regression: global flags were stripped from anywhere in argv, so
@@ -209,14 +233,14 @@ class AliasIntegrationTest
     # Try invalid names
     # Inner hyphens are allowed (zsh/bash/fish accept them); a leading one is not.
     output1, status1 = run_wayu('alias add -- "-bad" "echo test"')
-    output2, status2 = run_wayu('alias add "123abc" "echo test"')
+    output2, status2 = run_wayu('alias add "a b" "echo test"')
     output3, status3 = run_wayu('alias add "if" "echo test"')
 
     # All should fail with validation errors
-    invalid1 = !status1.success? && output1.include?("must start with")
+    invalid1 = status1.exitstatus == 65 && output1.include?("cannot start with '-'")
     ok_hyphen, ok_status = run_wayu('alias add "good-name" "echo test"')
     invalid1 &&= ok_status.success?
-    invalid2 = !status2.success? && output2.include?("must start with")
+    invalid2 = status2.exitstatus == 65 && output2.include?("invalid character")
     invalid3 = !status3.success? && output3.include?("reserved")
 
     if invalid1 && invalid2 && invalid3
