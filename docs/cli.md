@@ -360,7 +360,9 @@ an editor.
 A compiled script is stale when its source no longer matches the hash
 stored in `bin/.NAME.hash` (or the binary is missing); an interpreted one
 when its link is missing or wrong. `wayu build`, `wayu reload` (which also
-watches the sources) and `script build` rebuild stale scripts. A failed
+watches the sources) and `script build` rebuild stale scripts (the
+`wayu build` that the prompt hook runs starts a background `script build`
+instead of waiting for the compiler). A failed
 compile prints the compiler's output, exits `1` and keeps the previous
 binary.
 

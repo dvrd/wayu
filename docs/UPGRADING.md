@@ -13,6 +13,10 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   uses wayu's absolute path, also when wayu was run by bare name from
   `PATH` (was a bare `wayu`, not found in shells with a minimal PATH: cron,
   GUI apps, ssh commands). Run `wayu build` once to regenerate.
+- The prompt hook's `wayu build` (after a hand edit of `wayu.toml` /
+  `entries.json`) no longer compiles stale scripts while the prompt waits:
+  it starts `wayu script build` in the background (a Swift script froze the
+  prompt for ~10 s).
 
 **One status icon per line**
 

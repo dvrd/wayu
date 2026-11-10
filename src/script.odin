@@ -374,6 +374,29 @@ scripts_build_stale :: proc(quiet := false) -> (built: int, failed: int) {
 	return
 }
 
+// When any script is stale, start `wayu script build` detached (output
+// discarded) and return at once: the prompt hook's `wayu build` must not
+// wait for a compiler (OKAMI-308).
+scripts_build_stale_in_background :: proc() {
+	if wayu.dry_run {
+		return
+	}
+	for s in script_list_all() {
+		if !script_is_stale(s) {
+			continue
+		}
+		if self := wayu_self_path(); len(self) > 0 {
+			run_background_shell(
+				fmt.tprintf(
+					"exec %s script build",
+					shell_single_quote(self, context.temp_allocator),
+				),
+			)
+		}
+		return
+	}
+}
+
 // [scripts] default_lang, else SCRIPT_DEFAULT_LANG.
 script_default_lang :: proc() -> string {
 	content, ok := get_cached_toml_content()
