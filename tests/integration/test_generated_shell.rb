@@ -45,6 +45,7 @@ class GeneratedShellTest
       test_env_values_and_functions_all_shells
       test_fresh_init_has_no_error_output
       test_script_path_sync_after_path_add
+      test_path_sync_retries_after_bad_save
       test_dir_overrides_produce_working_init
       test_evalcache_binary_identity
       test_bash_errexit_with_tools
@@ -329,6 +330,38 @@ class GeneratedShellTest
       ok = syntax.empty? && st.success? && err.strip.empty? &&
            lines == [want_env, "fn-#{sh}", 'path-ok']
       check("env #{sh}", ok, "syntax=#{syntax.map { |f| File.basename(f) }} out=#{out.inspect} err=#{err.strip[0, 400]}")
+    end
+  end
+
+  # OKAMI-344: a malformed hand save of entries.json (build fails) no longer
+  # stops the live PATH sync for good: the next save is picked up.
+  def test_path_sync_retries_after_bad_save
+    fish = `command -v fish 2>/dev/null`.strip
+    shells = { 'zsh' => 'zsh', 'bash' => '/bin/bash' }
+    shells['fish'] = fish unless fish.empty?
+    shells.each do |sh, exe|
+      print "Test: live PATH sync retries after a malformed entries.json save (#{sh})... "
+      home = "#{@tmp_home}/regen_retry_#{sh}"
+      FileUtils.rm_rf(home)
+      FileUtils.mkdir_p(["#{home}/.config", "#{home}/newbin"])
+      env = clean_env(home, 'SHELL' => "/bin/#{sh}", 'PATH' => "#{File.dirname(@wayu_bin)}:/usr/bin:/bin")
+      Open3.capture3(env, @wayu_bin, 'init', '--shell', sh)
+      data = "#{home}/.local/share/wayu"
+      entries = "#{data}/entries.json"
+      good = JSON.generate('version' => 1, 'paths' => [{ 'key' => 'nb', 'dir' => "#{home}/newbin" }])
+      File.write("#{home}/good.json", good)
+      probe = if sh == 'fish'
+                "source '#{data}/init.fish'; sleep 1.1; echo '{ bad' > '#{entries}'; _wayu_paths_sync; " \
+                "test -e \"$_WAYU_PATHS_FILE.regen-failed\"; and echo marker; sleep 1.1; cp '#{home}/good.json' '#{entries}'; " \
+                "_wayu_paths_sync; contains -- '#{home}/newbin' $PATH; and echo synced"
+              else
+                "source '#{data}/init.#{sh}'; sleep 1.1; echo '{ bad' > '#{entries}'; _wayu_paths_sync; " \
+                "[ -e \"$_WAYU_PATHS_FILE.regen-failed\" ] && echo marker; sleep 1.1; cp '#{home}/good.json' '#{entries}'; " \
+                "_wayu_paths_sync; case \":$PATH:\" in *':#{home}/newbin:'*) echo synced ;; esac"
+              end
+      out, err, = Open3.capture3(env, exe, *SHELL_ARGS[sh], probe)
+      check("retry #{sh}", out.lines.map(&:strip) == %w[marker synced] && err.strip.empty?,
+            "out=#{out.inspect} err=#{err.strip[0, 300]}")
     end
   end
 

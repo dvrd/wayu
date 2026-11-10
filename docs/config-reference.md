@@ -711,7 +711,9 @@ entry is a `key` (a label) and a `dir`.
   re-applies `path_sync.<ext>` when its signature changes, and runs `wayu
   build` first when `wayu.toml` or `entries.json` is newer than it. That
   build never compiles: stale scripts are built by a background `wayu
-  script build`.
+  script build`. When that build fails (e.g. a malformed `entries.json`
+  save), the hook writes `path_sync.<ext>.regen-failed` and tries again
+  after the next save of either file.
 
 ### Aliases
 

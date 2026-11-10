@@ -42,6 +42,10 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   are sourced): `shopt -s failglob` printed "no match" on every start and
   `set -f` skipped the files. The loop variable is `_wayu_f` (core.bash
   left a global `f` behind).
+- Live PATH sync: when the prompt hook's `wayu build` fails (a malformed
+  hand save of `wayu.toml` / `entries.json`), open shells retry after the
+  next save of either file instead of never again; the hook records the
+  failure in `<data>/path_sync.<ext>.regen-failed`.
 
 **One status icon per line**
 
