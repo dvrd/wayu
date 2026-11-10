@@ -416,6 +416,25 @@ print_warning :: proc(msg: string, args: ..any) {
 	eprintf_color("%s\n", RESET)
 }
 
+// Status lines nested under a parent line: the indent goes before the icon.
+print_success_at :: proc(indent: string, msg: string, args: ..any) {
+	if print_quiet do return
+	fmt.print(indent)
+	print_success(msg, ..args)
+}
+
+print_warning_at :: proc(indent: string, msg: string, args: ..any) {
+	if print_quiet do return
+	eprintf_color("%s", indent)
+	print_warning(msg, ..args)
+}
+
+print_info_at :: proc(indent: string, msg: string, args: ..any) {
+	if print_quiet do return
+	fmt.print(indent)
+	print_info(msg, ..args)
+}
+
 print_info :: proc(msg: string, args: ..any) {
 	if print_quiet do return
 	fmt.printf("%sℹ ", get_info())

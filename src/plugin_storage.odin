@@ -46,11 +46,11 @@ handle_plugin_check :: proc(args: []string) {
 			// A commit pin is an integrity claim: verify the checkout still
 			// sits on it (someone may have pulled/checked out by hand).
 			if problem := plugin_pinned_commit_problem(&plugin); problem != "" {
-				print_warning("  ⚠ %s", problem)
+				print_warning_at("  ", "%s", problem)
 				failed_count += 1
 				continue
 			}
-			print_info("  ⚓ Pinned to %s (skipped)", ref)
+			print_info_at("  ", "Pinned to %s (skipped)", ref)
 			continue
 		}
 
@@ -60,7 +60,7 @@ handle_plugin_check :: proc(args: []string) {
 		// a plain delete at the bottom of the loop body instead.
 		remote_commit := get_remote_commit(plugin.url, plugin.git.branch)
 		if remote_commit == "" {
-			print_warning("  ⚠ Failed to check remote (network error, invalid URL or missing branch)")
+			print_warning_at("  ", "Failed to check remote (network error, invalid URL or missing branch)")
 			failed_count += 1
 			continue
 		}
@@ -78,10 +78,10 @@ handle_plugin_check :: proc(args: []string) {
 			local_short := plugin.git.commit[0:min(7, len(plugin.git.commit))]
 			remote_short := remote_commit[0:min(7, len(remote_commit))]
 
-			print_success("  ↑ Update available: %s → %s", local_short, remote_short)
+			print_info_at("  ", "Update available: %s → %s", local_short, remote_short)
 			updates_available = true
 		} else {
-			print_info("  ✓ Up to date")
+			print_success_at("  ", "Up to date")
 		}
 
 		delete(remote_commit)  // Free per-iteration — not deferred (see note above)
@@ -160,7 +160,7 @@ plugin_update_one :: proc(plugin: ^PluginMetadata, indent: string) -> bool {
 	defer delete(err_text)
 
 	if result == .Failed {
-		print_warning("%s⚠ Failed to update %s", indent, plugin.name)
+		print_warning_at(indent, "Failed to update %s", plugin.name)
 		for line in strings.split_lines(err_text, context.temp_allocator) {
 			if len(strings.trim_space(line)) > 0 {
 				fmt.eprintfln("%s  %s", indent, line)
@@ -174,11 +174,11 @@ plugin_update_one :: proc(plugin: ^PluginMetadata, indent: string) -> bool {
 	old_short := old_commit[:min(7, len(old_commit))]
 	new_short := plugin.git.commit[:min(7, len(plugin.git.commit))]
 	if git_commits_match(old_commit, plugin.git.commit) {
-		print_success("%s✓ Already up to date (%s)", indent, new_short)
+		print_success_at(indent, "Already up to date (%s)", new_short)
 	} else if result == .Reset {
-		print_success("%s✓ Updated %s → %s (upstream history was rewritten; reset to remote)", indent, old_short, new_short)
+		print_success_at(indent, "Updated %s → %s (upstream history was rewritten; reset to remote)", old_short, new_short)
 	} else {
-		print_success("%s✓ Updated %s → %s", indent, old_short, new_short)
+		print_success_at(indent, "Updated %s → %s", old_short, new_short)
 	}
 	return true
 }

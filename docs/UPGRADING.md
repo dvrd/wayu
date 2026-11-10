@@ -6,6 +6,14 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**One status icon per line**
+
+- `path add` / `path remove` print `✓ Added to PATH: <dir>` / `✓ Removed
+  from PATH: <name>` (no extra `✅`). `plugin check` / `plugin update` put
+  the indent before the line's icon and drop the second one (`  ✓ Up to
+  date`, `  ℹ Update available: a → b`, `  ⚠ Failed to check remote …`).
+  Scripts matching the old text with the emoji need updating.
+
 **zsh startup: interactive-only parts skipped in non-interactive shells; compinit guard**
 
 - Non-interactive zsh (`zsh -c`, scripts; wayu loaded from `.zshenv`) no

@@ -77,7 +77,7 @@ handle_path_command :: proc(action: Action, args: []string) {
 		// Neither changed anything, so no regen, no success line, no hook.
 		if res == .NOOP || wayu.dry_run { return }
 		regenerate_init_core_silently()
-		print_success("✅ Added to PATH: %s", expanded)
+		print_success("Added to PATH: %s", expanded)
 		print_path_applied_hint()
 		hook_post_path_add(expanded)
 	case .REMOVE:
@@ -93,7 +93,7 @@ handle_path_command :: proc(action: Action, args: []string) {
 		exit_on_path_failure(res)
 		if wayu.dry_run { return }
 		regenerate_init_core_silently()
-		print_success("✅ Removed from PATH: %s", args[0])
+		print_success("Removed from PATH: %s", args[0])
 		print_path_applied_hint()
 		hook_post_path_remove(hook_path)
 	case .LIST:
