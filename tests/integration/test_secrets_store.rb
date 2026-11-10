@@ -54,6 +54,7 @@ class SecretsStoreIntegrationTest
       test_secret_flag_rejected_elsewhere
       test_export_eval_has_no_plaintext
       test_rekey
+      test_rekey_crash_recovery
       test_lock
       test_cache_symlinks_refused
       test_cache_private_fallback
@@ -365,6 +366,27 @@ class SecretsStoreIntegrationTest
     k2 = File.read(keyfile)
     out, = w('const get FAKE_TOKEN')
     check('rekey failed', st.success? && k1 != k2 && mode(keyfile) == 0o600 && out.chomp == TOKEN && caches.empty?, err)
+  end
+
+  def test_rekey_crash_recovery
+    print 'Test 18b: an interrupted rekey is finished or undone on the next load (OKAMI-302)... '
+    s1 = File.read(store)
+    k1 = File.read(keyfile)
+    _, err, st = w('secrets rekey')
+    s2 = File.read(store)
+    pending = "#{store}.rekey"
+    # Crash after the new key was saved, before the rename: finish it.
+    File.write(pending, s2, perm: 0o600)
+    File.write(store, s1)
+    out_a, err_a, st_a = w('const get FAKE_TOKEN')
+    a_ok = st_a.success? && out_a.chomp == TOKEN && !File.exist?(pending) && File.read(store) == s2
+    # Crash before the key was saved: drop the pending store.
+    File.write(keyfile, k1)
+    File.write(store, s1)
+    File.write(pending, s2, perm: 0o600)
+    out_b, err_b, st_b = w('const get FAKE_TOKEN')
+    b_ok = st_b.success? && out_b.chomp == TOKEN && !File.exist?(pending) && File.read(store) == s1
+    check('rekey not recovered', st.success? && a_ok && b_ok, "#{err} a=#{a_ok} #{err_a} b=#{b_ok} #{err_b}")
   end
 
   def test_lock

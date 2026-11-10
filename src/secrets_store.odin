@@ -325,6 +325,9 @@ secrets_store_format :: proc(s: ^Secrets_Store, allocator := context.allocator) 
 // or malformed one is an error (never treated as empty).
 secrets_store_load :: proc() -> (store: Secrets_Store, exists: bool, err: string) {
 	path := secrets_store_path()
+	if os.exists(secrets_rekey_pending_path()) {
+		secrets_rekey_recover()
+	}
 	if !os.exists(path) {
 		return {}, false, ""
 	}
@@ -353,9 +356,18 @@ secrets_store_load_or_exit :: proc() -> (store: Secrets_Store, exists: bool) {
 // Write the store (caller holds the config lock), then drop the session
 // cache so no shell sources values older than the store.
 secrets_store_save :: proc(s: ^Secrets_Store) -> (ok: bool, err: string) {
+	if wok, werr := secrets_store_write_to(secrets_store_path(), s); !wok {
+		return false, werr
+	}
+	secrets_cache_invalidate()
+	return true, ""
+}
+
+// Write the store text to `path` (atomic, 0600), creating the data dir.
+@(private = "file")
+secrets_store_write_to :: proc(path: string, s: ^Secrets_Store) -> (ok: bool, err: string) {
 	text := secrets_store_format(s)
 	defer delete(text)
-	path := secrets_store_path()
 	if !os.exists(wayu.data) {
 		if e := os.make_directory_all(wayu.data); e != nil {
 			return false, fmt.tprintf("I/O error: cannot create %s: %v", wayu.data, e)
@@ -365,8 +377,80 @@ secrets_store_save :: proc(s: ^Secrets_Store) -> (ok: bool, err: string) {
 		return false, fmt.tprintf("I/O error: cannot write %s: %v", path, e)
 	}
 	restrict_file_mode(path)
-	secrets_cache_invalidate()
 	return true, ""
+}
+
+// ---------------------------------------------------------------------------
+// Rekey: crash-safe key + store swap
+// ---------------------------------------------------------------------------
+//
+// `secrets rekey` writes the re-encrypted store to <data>/secrets.json.rekey,
+// then saves the new key, then renames the pending store over secrets.json.
+// A crash leaves the pending file; the next store load finishes or undoes
+// the rekey (secrets_rekey_recover), so the key and the store never end up
+// out of step (OKAMI-302).
+
+// <data>/secrets.json.rekey (temp-allocated).
+secrets_rekey_pending_path :: proc() -> string {
+	return fmt.tprintf("%s.rekey", secrets_store_path())
+}
+
+// Does the first value of `s` decrypt with `key`?
+@(private = "file")
+secrets_store_opens_with :: proc(s: ^Secrets_Store, key: [SECRETS_KEY_SIZE]byte) -> bool {
+	if len(s.entries) == 0 {
+		return false
+	}
+	e := s.entries[0]
+	v, ok := secrets_open(key, e.name, e.blob, run_only = e.run_only)
+	if ok {
+		secrets_wipe(v)
+	}
+	return ok
+}
+
+// An interrupted rekey left secrets.json.rekey: if its values decrypt with
+// the stored key, the key was already replaced, so the pending store is
+// moved into place; if secrets.json still decrypts with it, the key was not
+// replaced and the pending store is dropped. When the key can't be read
+// (backend unavailable) nothing changes and the next load tries again.
+secrets_rekey_recover :: proc() {
+	pending := strings.clone(secrets_rekey_pending_path(), context.temp_allocator)
+	data, rerr := os.read_entire_file_from_path(pending, context.allocator)
+	if rerr != nil {
+		return
+	}
+	ps, perr := secrets_store_parse(string(data))
+	delete(data)
+	defer secrets_store_destroy(&ps)
+	if len(perr) > 0 {
+		return
+	}
+	backend, cfg_ok, _ := secrets_backend_configured()
+	if !cfg_ok {
+		return
+	}
+	key, status, _ := keystore_load(backend)
+	defer crypto.zero_explicit(&key, size_of(key))
+	if status != .OK {
+		return
+	}
+	if secrets_store_opens_with(&ps, key) {
+		if os.rename(pending, secrets_store_path()) == nil {
+			secrets_cache_invalidate()
+		}
+		return
+	}
+	cur_data, cerr := os.read_entire_file_from_path(secrets_store_path(), context.allocator)
+	if cerr != nil {
+		return
+	}
+	cur, cperr := secrets_store_parse(string(cur_data))
+	delete(cur_data)
+	defer secrets_store_destroy(&cur)
+	if len(cperr) == 0 && secrets_store_opens_with(&cur, key) {
+		os.remove(pending)
+	}
 }
 
 // Names in the store (sorted, temp-allocated). Empty on a missing or
@@ -1428,19 +1512,30 @@ secrets_rekey :: proc() {
 		secrets_wipe(v)
 	}
 
-	if saved, serr := keystore_save(backend, new_key, true); !saved {
-		for b in new_blobs {delete(b)}
-		exit_with_secret_error(serr)
-	}
 	for &e, i in s.entries {
 		delete(e.blob)
 		e.blob = new_blobs[i]
 	}
-	if sok, serr := secrets_store_save(&s); !sok {
-		// Put the old key back so the unchanged store stays readable.
-		_, _ = keystore_save(backend, old_key, true)
+	// Pending store first, then the key, then the rename: a crash at any
+	// point is finished or undone by secrets_rekey_recover.
+	pending := strings.clone(secrets_rekey_pending_path(), context.temp_allocator)
+	if wok, werr := secrets_store_write_to(pending, &s); !wok {
+		os.remove(pending)
+		exit_with_secret_error(werr)
+	}
+	if saved, serr := keystore_save(backend, new_key, true); !saved {
+		os.remove(pending)
 		exit_with_secret_error(serr)
 	}
+	if rerr := os.rename(pending, secrets_store_path()); rerr != nil {
+		// Put the old key back so the unchanged store stays readable.
+		_, _ = keystore_save(backend, old_key, true)
+		os.remove(pending)
+		exit_with_secret_error(
+			fmt.tprintf("I/O error: cannot replace %s: %v", secrets_store_path(), rerr),
+		)
+	}
+	secrets_cache_invalidate()
 	print_success(
 		"Re-encrypted %d secret(s) with a new master key (%s)",
 		len(s.entries),

@@ -591,7 +591,11 @@ same id as in the session cache name): each data dir (another
 Any other value is an error (`toml validate` exits `65`; secret commands exit
 `78`). The key is created with the first secret; wayu never creates a new
 key while `secrets.json` holds values (it would make them undecryptable).
-`wayu secrets rekey` replaces it and re-encrypts everything.
+`wayu secrets rekey` replaces it and re-encrypts everything: the new store
+is written to `secrets.json.rekey` first, then the key is saved, then the
+file is renamed over `secrets.json`; if wayu is interrupted in between, the
+next command that reads the store finishes or undoes the rekey, whichever
+matches the stored key.
 
 At shell start `core.<ext>` sources the session cache
 `${XDG_RUNTIME_DIR:-${TMPDIR:-<data>/run}}/wayu-<uid>/secrets-<id>.<ext>`
