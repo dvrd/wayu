@@ -17,6 +17,11 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `entries.json`) no longer compiles stale scripts while the prompt waits:
   it starts `wayu script build` in the background (a Swift script froze the
   prompt for ~10 s).
+- `wayu build` regenerates `plugins.<ext>` from `plugins.json` for every
+  set-up shell (a hand edit, e.g. disabling a plugin, had no effect until a
+  `wayu plugin` command ran), and exits `78` naming the file when
+  `plugins.json` is invalid (was silent, exit 0); the plugin loaders are then
+  kept as they were. `plugins.<ext>` no longer has a `# Last updated` line.
 
 **One status icon per line**
 

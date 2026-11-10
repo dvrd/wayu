@@ -933,8 +933,21 @@ handle_build_command :: proc(action: Action) {
 		}
 	}
 
-	generate_optimized_init_all()
+	// plugins.json is checked once: an invalid file (error printed) keeps
+	// every plugins.<ext> as it is, the rest is still regenerated (PATH
+	// sync keeps working), and build exits 78 (OKAMI-309).
+	plugins_cfg, plugins_ok := read_plugin_config_json()
+	cleanup_plugin_config_json(&plugins_cfg)
+
+	generate_optimized_init_all(plugins = plugins_ok)
 	fmt.println()
+	if !plugins_ok {
+		print_error_simple(
+			"%s/plugins.json is invalid: plugins.<ext> not regenerated (fix the file, then run: wayu build)",
+			wayu.data,
+		)
+		os.exit(EXIT_CONFIG)
+	}
 }
 // Golden file directory
 GOLDEN_DIR :: "tests/golden"

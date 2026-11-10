@@ -221,9 +221,11 @@ shells_to_generate :: proc() -> (out: [4]ShellType, n: int) {
 }
 
 // Generate every runtime file for the ACTIVE shell (wayu.shell): core.<ext>
-// + path_sync.<ext> (fish has its own native generator).
+// + path_sync.<ext> (fish has its own native generator); with `plugins`
+// also plugins.<ext> from plugins.json (`wayu build`, `wayu init`;
+// OKAMI-309), else only the zsh plugin keybindings (plugins/config.zsh).
 @(private = "file")
-generate_runtime_files_for_active_shell :: proc() -> (plugins_ok: bool) {
+generate_runtime_files_for_active_shell :: proc(plugins := false) -> (plugins_ok: bool) {
 	// Generators use the temp arena for quoting; roll it back per shell so
 	// regenerating several shells doesn't multiply temp usage.
 	has_arena := wayu.temp_arena != nil
@@ -239,7 +241,11 @@ generate_runtime_files_for_active_shell :: proc() -> (plugins_ok: bool) {
 	} else {
 		generate_core_init_v2()
 	}
-	plugins_ok = generate_plugins_runtime_config(wayu.shell)
+	if plugins {
+		plugins_ok = generate_plugins_file(wayu.shell)
+	} else {
+		plugins_ok = generate_plugins_runtime_config(wayu.shell)
+	}
 	// Keep init.{ext} in sync with the current orchestrator template.
 	sync_init_orchestrator()
 	return
@@ -366,8 +372,9 @@ warn_customized_init :: proc(path, current: string) {
 
 // Generate all optimized init files (v2 with all optimizations) for every
 // initialized shell (see shells_to_generate), printing what was written as
-// `#` comments (harmless if stdout is captured into a shell).
-generate_optimized_init_all :: proc() {
+// `#` comments (harmless if stdout is captured into a shell). `plugins`:
+// also regenerate plugins.<ext> from plugins.json.
+generate_optimized_init_all :: proc(plugins := true) {
 	shells, n := shells_to_generate()
 
 	if wayu.dry_run {
@@ -385,8 +392,8 @@ generate_optimized_init_all :: proc() {
 	for s in shells[:n] {
 		wayu.shell = s
 		wayu.shell_ext = get_shell_extension(s)
-		if !generate_runtime_files_for_active_shell() {
-			print_warning("Failed to generate plugin runtime config")
+		if !generate_runtime_files_for_active_shell(plugins) {
+			print_warning("Failed to generate plugins.%s", wayu.shell_ext)
 		}
 	}
 	wayu.shell, wayu.shell_ext = saved_shell, saved_ext
