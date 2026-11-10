@@ -187,7 +187,6 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec {
 			{"fpath", .FPATH, "Managed zsh completion dirs (list, add, rm)"},
 			{"help", .HELP, "Show help"},
 		},
-		flags = {{"--generate", ""}, {"-g", ""}},
 	},
 	{
 		command = .BACKUP,
@@ -986,12 +985,6 @@ handle_completions_command_extended :: proc(action: Action, args: []string) {
 	case .ADD, .REMOVE, .RESTORE, .CLEAN, .DEDUP, .UNKNOWN:
 		handle_completions_command(action, args)
 	case .LIST:
-		for arg in args {
-			if arg == "--generate" || arg == "-g" || arg == "generate" {
-				handle_completions_generate()
-				return
-			}
-		}
 		handle_completions_command(.LIST, args)
 	case .HELP:
 		print_completions_help()

@@ -607,6 +607,8 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu optimize --check` | 0 |
 | `wayu optimize bogus` | 64 |
 | `wayu completions fpath bogus` | 64 |
+| `wayu completions --generate` | 64 |
+| `wayu completions list -g` | 64 |
 | `wayu export check` | 78 |
 
 Also tested: `path`, `alias` and `const` exit `78` before `wayu init`;

@@ -294,6 +294,12 @@ releases, so they are listed here too.
   `builtin source`, `command source` / `command .` or `zsh-defer source`
   (they were "wayu not sourced", exit 78).
 
+**CLI flags and arguments**
+
+- The hidden `wayu completions list --generate` / `-g` spelling is gone
+  (exit 64; `wayu completions --generate` never worked): use
+  `wayu completions generate`.
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is
