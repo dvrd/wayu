@@ -475,7 +475,8 @@ print_constants_json :: proc(
 			if !is_active && !show_inactive {
 				continue
 			}
-			source := "wayu" if is_active else "wayu (inactive)"
+			// Same source strings as the text view (OKAMI-356).
+			source := "wayu (secret)" if is_active else "wayu (secret, inactive)"
 			run_only := name in run_only_set
 			if run_only {
 				source = "wayu (run-only)"

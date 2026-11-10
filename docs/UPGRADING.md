@@ -294,6 +294,16 @@ releases, so they are listed here too.
   `builtin source`, `command source` / `command .` or `zsh-defer source`
   (they were "wayu not sourced", exit 78).
 
+**`search` and secret display**
+
+- `wayu search` matches names only: alias commands are no longer
+  searched (a token inside one was findable, like constant values before
+  6.0.0). `--json` `field` is always `name`, and an encrypted constant has
+  `"secret": true` (text: `********`).
+- `const list --json`: an encrypted constant's `source` is `wayu (secret)`
+  / `wayu (secret, inactive)`, as in the text view (was `wayu` /
+  `wayu (inactive)`).
+
 **CLI flags and arguments**
 
 - The hidden `wayu completions list --generate` / `-g` spelling is gone
