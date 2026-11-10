@@ -316,8 +316,13 @@ def test_main_menu(size_name, cols, rows):
     s = TUISession(cols, rows)
 
     try:
-        # Wait for WAYU to appear
+        # Wait for WAYU to appear, then for the rest of the frame: the first
+        # read can stop mid-frame (title drawn, box/footer not yet).
         ok = s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+        if ok:
+            s.wait_for(lambda snap: any(h in snap for h in ("Navigate", "Nav", "Quit")),
+                       timeout=TIMEOUT_STARTUP)
+            s.read(timeout=0.1)
         snap = s.snapshot()
 
         test(f"{size_name}/main_menu/renders",
