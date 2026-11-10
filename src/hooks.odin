@@ -460,7 +460,7 @@ load_hook_config :: proc() -> HookConfig {
 		switch key {
 		case "timeout":
 			// Whole seconds > 0; anything else keeps the default.
-			if n, ok := strconv.parse_int(value, 10); ok && n > 0 && n <= 86_400 {
+			if n, n_ok := strconv.parse_int(value, 10); n_ok && n > 0 && n <= 86_400 {
 				config.timeout_s = n
 			}
 		case "pre_path_add":
