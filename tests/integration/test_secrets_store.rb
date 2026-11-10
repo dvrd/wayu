@@ -55,6 +55,8 @@ class SecretsStoreIntegrationTest
       test_export_eval_has_no_plaintext
       test_rekey
       test_lock
+      test_cache_symlinks_refused
+      test_cache_private_fallback
       test_doctor_ok
       test_tamper_warns_and_continues
       test_missing_key_never_replaced
@@ -371,6 +373,56 @@ class SecretsStoreIntegrationTest
     had = caches.any?
     _, err, st = w('secrets lock')
     check('cache kept', had && st.success? && caches.empty?, err)
+  end
+
+  PLANTED = "export FAKE_TOKEN=planted; export FAKE_PLANTED=1\n".freeze
+
+  def zsh_secret_probe(extra_env = {})
+    out, err, = Open3.capture3(env.merge(extra_env), 'zsh', '-fc',
+                               "source #{@data_dir}/init.zsh; print -r -- \"[${FAKE_PLANTED-unset}] $FAKE_TOKEN\"",
+                               unsetenv_others: true)
+    [out.force_encoding('UTF-8'), err]
+  end
+
+  def test_cache_symlinks_refused
+    print 'Test 19b: a symlinked cache file or cache dir is never sourced (OKAMI-300)... '
+    w('secrets lock')
+    elsewhere = "#{@tmp_home}/elsewhere"
+    FileUtils.mkdir_p(elsewhere, mode: 0o700)
+    # (a) the cache file is a symlink to a newer file we own.
+    sh(['zsh', '-fc', "source #{@data_dir}/init.zsh"])
+    cache = caches.find { |f| f.end_with?('.zsh') }
+    File.write("#{elsewhere}/planted.zsh", PLANTED)
+    File.delete(cache)
+    File.symlink("#{elsewhere}/planted.zsh", cache)
+    future = Time.now + 3600
+    File.utime(future, future, "#{elsewhere}/planted.zsh")
+    out_a, err_a = zsh_secret_probe
+    # (b) the cache dir is a symlink to a dir holding a fresh planted cache.
+    FileUtils.rm_rf(cache_dir)
+    File.symlink(elsewhere, cache_dir)
+    File.write("#{elsewhere}/#{File.basename(cache)}", PLANTED)
+    File.utime(future, future, "#{elsewhere}/#{File.basename(cache)}")
+    out_b, err_b = zsh_secret_probe
+    private_cache = Dir.glob("#{@data_dir}/run/wayu-#{Process.uid}/secrets-*.zsh")
+    File.delete(cache_dir)
+    FileUtils.rm_rf(elsewhere)
+    ok = out_a == "[unset] #{TOKEN}\n" && out_b == "[unset] #{TOKEN}\n" && private_cache.size == 1 &&
+         mode(File.dirname(private_cache[0])) == 0o700
+    check('planted cache sourced', ok, "a=#{out_a.inspect} #{err_a} b=#{out_b.inspect} #{err_b} private=#{private_cache}")
+  end
+
+  def test_cache_private_fallback
+    print 'Test 19c: no XDG_RUNTIME_DIR / TMPDIR: cache in <data>/run, never /tmp (OKAMI-300)... '
+    FileUtils.rm_rf("#{@data_dir}/run")
+    no_tmp = env.reject { |k, _| k == 'TMPDIR' }
+    out, err, = Open3.capture3(no_tmp, 'zsh', '-fc', "source #{@data_dir}/init.zsh; print -r -- \"$FAKE_TOKEN\"",
+                               unsetenv_others: true)
+    files = Dir.glob("#{@data_dir}/run/wayu-#{Process.uid}/secrets-*.zsh")
+    in_tmp = File.exist?("/tmp/wayu-#{Process.uid}") && Dir.glob("/tmp/wayu-#{Process.uid}/secrets-*").any? { |f| File.mtime(f) > Time.now - 30 }
+    ok = out.force_encoding('UTF-8') == "#{TOKEN}\n" && files.size == 1 && mode(files[0]) == 0o600 &&
+         mode("#{@data_dir}/run") == 0o700 && !in_tmp
+    check('cache not in the private dir', ok, "out=#{out.inspect} err=#{err} files=#{files}")
   end
 
   def test_doctor_ok

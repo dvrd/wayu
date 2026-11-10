@@ -553,15 +553,23 @@ secrets_get :: proc(
 // Session cache
 // ---------------------------------------------------------------------------
 
-// `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}` with one trailing '/' removed — the
-// same expression core.<ext> evaluates (temp-allocated).
+// <data>/run: the private fallback base of the session cache, used when
+// neither XDG_RUNTIME_DIR nor TMPDIR is set (never a shared /tmp, where
+// another user could create wayu-<uid> first) or when the cache dir under
+// them is not ours (temp-allocated).
+secrets_private_run_dir :: proc() -> string {
+	return fmt.tprintf("%s/run", wayu.data)
+}
+
+// `${XDG_RUNTIME_DIR:-${TMPDIR:-<data>/run}}` with one trailing '/'
+// removed — the same expression core.<ext> evaluates (temp-allocated).
 secrets_runtime_base :: proc() -> string {
 	base := os.get_env("XDG_RUNTIME_DIR", context.temp_allocator)
 	if len(base) == 0 {
 		base = os.get_env("TMPDIR", context.temp_allocator)
 	}
 	if len(base) == 0 {
-		base = "/tmp"
+		base = secrets_private_run_dir()
 	}
 	if len(base) > 1 && strings.has_suffix(base, "/") {
 		base = base[:len(base) - 1]
@@ -575,9 +583,18 @@ secrets_cache_id :: proc() -> string {
 	return fmt.tprintf("%016x", hash.fnv64a(transmute([]byte)wayu.data))
 }
 
-// <runtime>/wayu-<uid> (temp-allocated).
+// <runtime>/wayu-<uid>, or <data>/run/wayu-<uid> when that path exists but
+// is a symlink, not a directory, or owned by someone else. core.<ext> makes
+// the same choice (emit_secrets_loader). Temp-allocated.
 secrets_cache_dir :: proc() -> string {
-	return fmt.tprintf("%s/wayu-%d", secrets_runtime_base(), posix.getuid())
+	dir := fmt.tprintf("%s/wayu-%d", secrets_runtime_base(), posix.getuid())
+	st: posix.stat_t
+	if posix.lstat(strings.clone_to_cstring(dir, context.temp_allocator), &st) == .OK {
+		if !posix.S_ISDIR(st.st_mode) || st.st_uid != posix.getuid() {
+			return fmt.tprintf("%s/wayu-%d", secrets_private_run_dir(), posix.getuid())
+		}
+	}
+	return dir
 }
 
 // <runtime>/wayu-<uid>/secrets-<id>.<ext> (temp-allocated).
@@ -593,6 +610,14 @@ secrets_cache_path :: proc(shell: ShellType) -> string {
 // Create (0700) or verify the cache dir: a real directory (not a symlink),
 // owned by us, no group/other permissions. Anything else is refused.
 secrets_cache_dir_ensure :: proc(dir: string) -> (ok: bool, err: string) {
+	// The private base under the data dir is ours to create (0700).
+	run := secrets_private_run_dir()
+	if strings.has_prefix(dir, run) && len(dir) > len(run) && dir[len(run)] == '/' {
+		crun := strings.clone_to_cstring(run, context.temp_allocator)
+		if posix.mkdir(crun, posix.S_IRWXU) != .OK && posix.errno() != .EEXIST {
+			return false, fmt.tprintf("cannot create %s: %s", run, posix.strerror(posix.errno()))
+		}
+	}
 	cdir := strings.clone_to_cstring(dir, context.temp_allocator)
 	if posix.mkdir(cdir, posix.S_IRWXU) != .OK && posix.errno() != .EEXIST {
 		return false, fmt.tprintf("cannot create %s: %s", dir, posix.strerror(posix.errno()))
@@ -720,6 +745,15 @@ secrets_cache_write :: proc(shell: ShellType) -> (path: string, ok: bool, err: s
 	if dok, derr := secrets_cache_dir_ensure(dir); !dok {
 		return path, false, derr
 	}
+	// write_file_atomic follows symlinks: never write decrypted values
+	// through one (or keep a planted link the loader would refuse).
+	if st: posix.stat_t;
+	   posix.lstat(strings.clone_to_cstring(path, context.temp_allocator), &st) == .OK &&
+	   !posix.S_ISREG(st.st_mode) {
+		if rerr := os.remove(path); rerr != nil {
+			return path, false, fmt.tprintf("cannot replace %s: %v", path, rerr)
+		}
+	}
 	content := secrets_cache_content(shell, names[:], values[:])
 	defer secrets_wipe(content)
 	if werr := write_file_atomic(path, transmute([]byte)content); werr != nil {
@@ -776,17 +810,25 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 		return
 	}
 	ext := get_shell_extension(shell)
-	tail := fmt.tprintf("/wayu-%d/secrets-%s.%s", posix.getuid(), secrets_cache_id(), ext)
+	uid_dir := fmt.tprintf("/wayu-%d", posix.getuid())
+	file := fmt.tprintf("/secrets-%s.%s", secrets_cache_id(), ext)
+	run := secrets_private_run_dir()
+	fallback := strings.concatenate({run, uid_dir}, context.temp_allocator)
 	store := secrets_store_path()
 	bin := wayu_self_path()
 	if len(bin) == 0 {
 		bin = "wayu"
 	}
+	// The cache is only trusted in a directory we own that is not a symlink
+	// (else <data>/run/wayu-<uid>, the same choice secrets_cache_dir makes),
+	// and only when the file itself is ours, not a symlink, and newer than
+	// the store. There is no shared /tmp default: <data>/run instead.
 
 	if shell == .FISH {
-		qstore := escape_fish_string(store, context.temp_allocator)
+		fq :: proc(s: string) -> string {return escape_fish_string(s, context.temp_allocator)}
+		qstore := fq(store)
 		fmt.sbprintln(b, "# === Secrets (encrypted store, per-session cache) ===")
-		fmt.sbprintln(b, "set -l _wayu_sc /tmp")
+		fmt.sbprintfln(b, "set -l _wayu_sc %s", fq(run))
 		fmt.sbprintln(
 			b,
 			`if test -n "$XDG_RUNTIME_DIR"; set _wayu_sc $XDG_RUNTIME_DIR; else if test -n "$TMPDIR"; set _wayu_sc $TMPDIR; end`,
@@ -794,18 +836,29 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 		fmt.sbprintfln(
 			b,
 			"set _wayu_sc (string replace -r '(.)/$' '$1' -- $_wayu_sc)%s",
-			escape_fish_string(tail, context.temp_allocator),
+			fq(uid_dir),
 		)
-		fmt.sbprintfln(b, "if not test -O $_wayu_sc; or not test $_wayu_sc -nt %s", qstore)
+		fmt.sbprintln(
+			b,
+			"if test -L $_wayu_sc; or begin; test -e $_wayu_sc; and begin; not test -d $_wayu_sc; or not test -O $_wayu_sc; end; end",
+		)
+		fmt.sbprintfln(b, "    set _wayu_sc %s", fq(fallback))
+		fmt.sbprintln(b, "end")
+		fmt.sbprintfln(b, "set _wayu_sc $_wayu_sc%s", fq(file))
+		fmt.sbprintfln(
+			b,
+			"if not test -O $_wayu_sc; or test -L $_wayu_sc; or not test $_wayu_sc -nt %s",
+			qstore,
+		)
 		fmt.sbprintfln(
 			b,
 			"    command %s secrets cache --shell fish </dev/null >/dev/null",
-			escape_fish_string(bin, context.temp_allocator),
+			fq(bin),
 		)
 		fmt.sbprintln(b, "end")
 		fmt.sbprintfln(
 			b,
-			"if test -O $_wayu_sc; and test $_wayu_sc -nt %s; source $_wayu_sc; end",
+			"if test -O $_wayu_sc; and not test -L $_wayu_sc; and test $_wayu_sc -nt %s; source $_wayu_sc; end",
 			qstore,
 		)
 		fmt.sbprintln(b, "set -e _wayu_sc")
@@ -813,21 +866,43 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 		return
 	}
 
-	qstore := shell_single_quote(store, context.temp_allocator)
-	fresh := fmt.tprintf(`[ -O "$_wayu_sc" ] && [ "$_wayu_sc" -nt %s ]`, qstore)
+	sq :: proc(s: string) -> string {return shell_single_quote(s, context.temp_allocator)}
+	fresh := strings.concatenate(
+		{`[ -O "$_wayu_sc" ] && [ ! -h "$_wayu_sc" ] && [ "$_wayu_sc" -nt `, sq(store), " ]"},
+		context.temp_allocator,
+	)
 	lines := [?]string {
-		`_wayu_sc=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}`,
-		`[ "$_wayu_sc" = / ] || _wayu_sc=${_wayu_sc%/}`,
-		fmt.tprintf(`_wayu_sc="$_wayu_sc"%s`, shell_single_quote(tail, context.temp_allocator)),
-		// `{` opens a struct verb in Odin's fmt: emit it via %c.
-		fmt.tprintf(
-			"%c %s; } || command %s secrets cache --shell %s </dev/null >/dev/null",
-			'{',
-			fresh,
-			shell_single_quote(bin, context.temp_allocator),
-			ext,
+		strings.concatenate(
+			{`_wayu_sc=${XDG_RUNTIME_DIR:-${TMPDIR:-`, sq(run), "}}"},
+			context.temp_allocator,
 		),
-		fmt.tprintf(`if %s; then source "$_wayu_sc"; fi`, fresh),
+		`[ "$_wayu_sc" = / ] || _wayu_sc=${_wayu_sc%/}`,
+		strings.concatenate({`_wayu_sc="$_wayu_sc"`, sq(uid_dir)}, context.temp_allocator),
+		strings.concatenate(
+			{
+				`if [ -h "$_wayu_sc" ] || { [ -e "$_wayu_sc" ] && { [ ! -d "$_wayu_sc" ] || [ ! -O "$_wayu_sc" ]; }; }; then _wayu_sc=`,
+				sq(fallback),
+				"; fi",
+			},
+			context.temp_allocator,
+		),
+		strings.concatenate({`_wayu_sc="$_wayu_sc"`, sq(file)}, context.temp_allocator),
+		strings.concatenate(
+			{
+				"{ ",
+				fresh,
+				"; } || command ",
+				sq(bin),
+				" secrets cache --shell ",
+				ext,
+				" </dev/null >/dev/null",
+			},
+			context.temp_allocator,
+		),
+		strings.concatenate(
+			{"if ", fresh, `; then source "$_wayu_sc"; fi`},
+			context.temp_allocator,
+		),
 		"unset _wayu_sc",
 	}
 	if sep == "\n" {

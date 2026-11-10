@@ -24,6 +24,12 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   check with `wayu doctor`, then `security delete-generic-password -a wayu -s wayu-master-key`.
   Secret Service: `secret-tool lookup service wayu account master | secret-tool store --label='wayu master key' service wayu account wayu-<id>`,
   then `secret-tool clear service wayu account master`.
+- Secrets session cache: with neither `XDG_RUNTIME_DIR` nor `TMPDIR` set it
+  lives in `<data>/run/wayu-<uid>/` (was `/tmp/wayu-<uid>/`). `core.<ext>`
+  sources it only from a dir you own that is not a symlink (otherwise from
+  `<data>/run/wayu-<uid>/`) and never through a symlinked cache file; `wayu
+  secrets cache` replaces such a link instead of writing through it.
+  Regenerate core (`wayu build`) to get the new loader.
 
 **One status icon per line**
 
