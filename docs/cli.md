@@ -140,7 +140,10 @@ invalid UTF-8 exits `65`.
 | `--run-only` | `add`: like `--secret`, but the shell never exports it; only the `secrets run` action injects it |
 
 `get` is safe in scripts: `X=$(wayu const get NAME)` either gets that
-variable's value or fails with exit `65`.
+variable's value or fails with exit `65`, also when `entries.json` marks
+NAME secret but `secrets.json` has no value for it (`wayu doctor` reports
+that as an error, and a value in `secrets.json` with no secret entry in
+`entries.json` as a warning).
 
 `add --secret`: without a value, it is read from stdin (hidden when stdin is
 a terminal; one trailing newline is dropped), so it stays out of argv and
@@ -192,6 +195,13 @@ entries, aliases and constants together. A shell startup file (zsh, bash or
 fish; what `wayu optimize` rewrites) is named as `backup list` shows it
 (`.zshrc`, `~/.config/zsh/.zshrc`) or by its path. The current file is backed
 up first.
+
+Each entries.json backup keeps a copy of `secrets.json` (ciphertext only) as
+it was at that moment, in `backup/secrets/`; restoring entries.json restores
+`secrets.json` with it (or removes it when there was none), so secret
+constants and their values stay paired. Backups without that copy (taken
+before this, or before a `secrets rekey`, which drops the copies: their
+values were encrypted with the old key) restore entries.json only.
 
 ### `wayu plugin`
 
@@ -435,8 +445,9 @@ wayu alias add gh 'wayu secrets run GH_TOKEN -- gh'
 ```
 
 Shells never read plaintext from the data dir: `core.<ext>` sources a
-per-login-session cache, `${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/wayu-<uid>/secrets-<id>.<ext>`
-(`0600` in a `0700` dir owned by you), when it is newer than
+per-login-session cache, `${XDG_RUNTIME_DIR:-${TMPDIR:-<data>/run}}/wayu-<uid>/secrets-<id>.<ext>`
+(`0600` in a `0700` dir owned by you; `<data>/run/wayu-<uid>` when that dir
+is a symlink or not yours; a symlinked cache file is never sourced), when it is newer than
 `secrets.json`; otherwise it runs `wayu secrets cache` once (a hidden helper
 that decrypts into that file). When the key is unavailable or a value does
 not decrypt, the shell prints one `wayu: secrets not loaded: …` line on

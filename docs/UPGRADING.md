@@ -73,6 +73,41 @@ releases, so they are listed here too.
   while it waits for the key) show `vimcmd_replace_symbol` in the replace
   color; they showed the insert / normal symbol.
 
+**Encrypted secrets hardening**
+
+- `secrets.json` is read strictly: unknown fields, text after the object,
+  names that are not shell variable names, non-string values and `run_only`
+  names missing from `values` (or listed twice) are errors (exit 78 naming
+  the file) instead of being ignored. wayu never writes such a file; only a
+  hand edit is affected.
+- The master key in the macOS keychain / Secret Service is stored per data
+  dir: account `wayu-<id>` (keychain service `wayu-master-key`; Secret
+  Service `service wayu`), where `<id>` is the 16-hex id `wayu doctor`
+  prints. The old item (account `wayu` / `account master`) is no longer
+  read: with secrets stored, `const get` and new shells report the key as
+  missing until it is moved. Move it once (macOS; take the account from
+  `wayu doctor`):
+  `security add-generic-password -a wayu-<id> -s wayu-master-key -l 'wayu master key' -w "$(security find-generic-password -a wayu -s wayu-master-key -w)"`,
+  check with `wayu doctor`, then `security delete-generic-password -a wayu -s wayu-master-key`.
+  Secret Service: `secret-tool lookup service wayu account master | secret-tool store --label='wayu master key' service wayu account wayu-<id>`,
+  then `secret-tool clear service wayu account master`.
+- Secrets session cache: with neither `XDG_RUNTIME_DIR` nor `TMPDIR` set it
+  lives in `<data>/run/wayu-<uid>/` (was `/tmp/wayu-<uid>/`). `core.<ext>`
+  sources it only from a dir you own that is not a symlink (otherwise from
+  `<data>/run/wayu-<uid>/`) and never through a symlinked cache file; `wayu
+  secrets cache` replaces such a link instead of writing through it.
+  Regenerate core (`wayu build`) to get the new loader.
+- `wayu backup restore entries` (and TUI undo) also restores `secrets.json`
+  as it was when that backup was taken (a copy is now kept with every
+  entries.json backup in `backup/secrets/`); before, only entries.json was
+  restored and secret markers and values could drift apart. `secrets
+  rekey` drops those copies.
+- `wayu const get NAME` exits `65` with an error when entries.json marks
+  NAME secret but secrets.json has no value for it (printed an empty line
+  and exited `0`). `wayu doctor` reports that as an error (`secrets
+  pairing`, exit `78`) and a secrets.json value without a secret entry in
+  entries.json as a warning.
+
 **One status icon per line**
 
 - `path add` / `path remove` print `✓ Added to PATH: <dir>` / `✓ Removed

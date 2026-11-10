@@ -47,13 +47,19 @@ class SecretsStoreIntegrationTest
       test_bash_sources_cache
       test_fish_sources_cache
       test_stdin_value
+      test_hidden_input_signals
       test_convert_plain_constant
+      test_convert_scrubs_unicode_cr_del
       test_plain_add_over_secret_refused
+      test_add_rolls_back_store_when_entries_fail
       test_dry_run_writes_nothing
       test_secret_flag_rejected_elsewhere
       test_export_eval_has_no_plaintext
       test_rekey
+      test_rekey_crash_recovery
       test_lock
+      test_cache_symlinks_refused
+      test_cache_private_fallback
       test_doctor_ok
       test_tamper_warns_and_continues
       test_missing_key_never_replaced
@@ -69,6 +75,8 @@ class SecretsStoreIntegrationTest
       test_secrets_run_usage
       test_secrets_run_dry_run
       test_run_only_convert
+      test_restore_keeps_entries_and_secrets_paired
+      test_marker_without_ciphertext_is_an_error
     ensure
       teardown_test_env
     end
@@ -253,10 +261,121 @@ class SecretsStoreIntegrationTest
     check('plaintext left in backups', leaked.empty?, leaked.inspect)
   end
 
+  def test_convert_scrubs_unicode_cr_del
+    print 'Test 13b: conversion scrubs backups of non-Latin-1 / CR / DEL values (OKAMI-296)... '
+    leaks = []
+    ["fake-pässwörd€xyz", "fake-cr\rx", "fake-del\x7fx"].each_with_index do |plain, i|
+      name = "FAKE_SCRUB_#{i}"
+      w(['const', 'add', name, plain])
+      w(['alias', 'add', "scrub#{i}", 'true'])
+      _, err, st = w(['const', 'add', name, '--secret'], stdin: "#{plain}\n")
+      leaks << "#{name}: add failed #{err}" unless st.success?
+      Dir.glob("#{@data_dir}/backup/**/*").select { |f| File.file?(f) }.each do |f|
+        raw = File.binread(f)
+        hit = raw.include?(plain.b) || json_strings(raw).any? { |s| s.include?(plain) }
+        leaks << "#{name}: #{f}" if hit
+      end
+    end
+    check('plaintext left in backups', leaks.empty?, leaks.join(' '))
+  end
+
+  # Every string (keys and values) of a JSON document; [] when it does not parse.
+  def json_strings(raw)
+    walk = lambda do |v|
+      case v
+      when String then [v]
+      when Array then v.flat_map(&walk)
+      when Hash then v.flat_map { |k, x| [k] + walk.call(x) }
+      else []
+      end
+    end
+    walk.call(JSON.parse(raw.dup.force_encoding('UTF-8')))
+  rescue JSON::ParserError, EncodingError
+    []
+  end
+
+  # Echo state of a terminal: true / false (from `stty -a`).
+  def tty_echo?(tty)
+    out = `stty -a < #{tty} 2>/dev/null`
+    out.match?(/(?<![-\w])echo(?!\w)/)
+  end
+
+  def read_until(io, pattern, timeout = 10)
+    buf = +''
+    deadline = Time.now + timeout
+    until buf.match?(pattern) || Time.now > deadline
+      begin
+        buf << io.read_nonblock(4096)
+      rescue IO::WaitReadable
+        IO.select([io], nil, nil, 0.1)
+      rescue EOFError, Errno::EIO
+        break
+      end
+    end
+    buf
+  end
+
+  # Write to a pty whose other side may already be gone.
+  def pty_write(io, text)
+    io.write(text)
+  rescue Errno::EIO, IOError
+    nil
+  end
+
+  # Ctrl-Z / Ctrl-C at the hidden value prompt, on a real terminal. The
+  # fixtures/jobctl.py parent puts wayu in its own foreground process group
+  # (a group that can stop) and reports the echo state when it stops / exits.
+  def test_hidden_input_signals
+    print 'Test 12b: Ctrl-Z / Ctrl-C at the hidden prompt restore echo (OKAMI-324)... '
+    if `command -v python3 2>/dev/null`.strip.empty?
+      puts 'skipped (python3 not installed)'
+      return
+    end
+    require 'pty'
+    jobctl = File.join(__dir__, 'fixtures', 'jobctl.py')
+    r, wr, pid = PTY.spawn(env, 'python3', jobctl, @wayu_bin, 'const', 'add', 'FAKE_SIG', '--secret')
+    out = read_until(r, /input hidden/)
+    tty = out[/TTY (\S+)/, 1]
+    pty_write(wr, "\x1a") # Ctrl-Z
+    stopped = read_until(r, /STOPPED echo-\w+/)[/STOPPED (echo-\w+)/, 1]
+    pty_write(wr, "\n") # jobctl: continue it
+    sleep 0.5
+    resumed_echo = tty && tty_echo?(tty)
+    pty_write(wr, "\x03") # Ctrl-C
+    exited = read_until(r, /EXITED echo-\w+/)[/EXITED (echo-\w+)/, 1]
+    _, _, gst = w('const get FAKE_SIG')
+    ok = stopped == 'echo-on' && resumed_echo == false && exited == 'echo-on' && !gst.success?
+    check('echo left off', ok,
+          "stopped=#{stopped.inspect} resumed_echo=#{resumed_echo.inspect} exited=#{exited.inspect} get=#{gst.exitstatus}")
+  ensure
+    begin
+      if pid
+        Process.kill('KILL', pid)
+        Process.wait(pid)
+      end
+    rescue Errno::ESRCH, Errno::ECHILD
+      nil
+    end
+  end
+
   def test_plain_add_over_secret_refused
     print 'Test 14: plain add over a secret is refused (65)... '
     _, err, st = w('const add FAKE_TOKEN plain')
     check('plain add accepted', st.exitstatus == 65 && err.include?('encrypted secret'), err)
+  end
+
+  def test_add_rolls_back_store_when_entries_fail
+    print 'Test 14b: entries.json write fails: secrets.json rolled back (OKAMI-323)... '
+    entries = "#{@data_dir}/entries.json"
+    saved = File.read(entries)
+    before = File.read(store)
+    File.write(entries, '{"version": 1, "env": [')
+    _, err, st = w(['const', 'add', 'FAKE_ROLLBACK', 'fake-rollback-0009', '--secret'])
+    after = File.read(store)
+    File.write(entries, saved)
+    listed, = w('secrets list')
+    ok = !st.success? && after == before && !listed.include?('FAKE_ROLLBACK')
+    check('secret kept without its entries.json marker', ok, "#{st.exitstatus} #{err}")
   end
 
   def test_dry_run_writes_nothing
@@ -288,12 +407,83 @@ class SecretsStoreIntegrationTest
     check('rekey failed', st.success? && k1 != k2 && mode(keyfile) == 0o600 && out.chomp == TOKEN && caches.empty?, err)
   end
 
+  def test_rekey_crash_recovery
+    print 'Test 18b: an interrupted rekey is finished or undone on the next load (OKAMI-302)... '
+    s1 = File.read(store)
+    k1 = File.read(keyfile)
+    _, err, st = w('secrets rekey')
+    s2 = File.read(store)
+    pending = "#{store}.rekey"
+    # Crash after the new key was saved, before the rename: finish it.
+    File.write(pending, s2, perm: 0o600)
+    File.write(store, s1)
+    out_a, err_a, st_a = w('const get FAKE_TOKEN')
+    a_ok = st_a.success? && out_a.chomp == TOKEN && !File.exist?(pending) && File.read(store) == s2
+    # Crash before the key was saved: drop the pending store.
+    File.write(keyfile, k1)
+    File.write(store, s1)
+    File.write(pending, s2, perm: 0o600)
+    out_b, err_b, st_b = w('const get FAKE_TOKEN')
+    b_ok = st_b.success? && out_b.chomp == TOKEN && !File.exist?(pending) && File.read(store) == s1
+    check('rekey not recovered', st.success? && a_ok && b_ok, "#{err} a=#{a_ok} #{err_a} b=#{b_ok} #{err_b}")
+  end
+
   def test_lock
     print 'Test 19: lock deletes the session cache... '
     sh(['zsh', '-fc', "source #{@data_dir}/init.zsh"])
     had = caches.any?
     _, err, st = w('secrets lock')
     check('cache kept', had && st.success? && caches.empty?, err)
+  end
+
+  PLANTED = "export FAKE_TOKEN=planted; export FAKE_PLANTED=1\n".freeze
+
+  def zsh_secret_probe(extra_env = {})
+    out, err, = Open3.capture3(env.merge(extra_env), 'zsh', '-fc',
+                               "source #{@data_dir}/init.zsh; print -r -- \"[${FAKE_PLANTED-unset}] $FAKE_TOKEN\"",
+                               unsetenv_others: true)
+    [out.force_encoding('UTF-8'), err]
+  end
+
+  def test_cache_symlinks_refused
+    print 'Test 19b: a symlinked cache file or cache dir is never sourced (OKAMI-300)... '
+    w('secrets lock')
+    elsewhere = "#{@tmp_home}/elsewhere"
+    FileUtils.mkdir_p(elsewhere, mode: 0o700)
+    # (a) the cache file is a symlink to a newer file we own.
+    sh(['zsh', '-fc', "source #{@data_dir}/init.zsh"])
+    cache = caches.find { |f| f.end_with?('.zsh') }
+    File.write("#{elsewhere}/planted.zsh", PLANTED)
+    File.delete(cache)
+    File.symlink("#{elsewhere}/planted.zsh", cache)
+    future = Time.now + 3600
+    File.utime(future, future, "#{elsewhere}/planted.zsh")
+    out_a, err_a = zsh_secret_probe
+    # (b) the cache dir is a symlink to a dir holding a fresh planted cache.
+    FileUtils.rm_rf(cache_dir)
+    File.symlink(elsewhere, cache_dir)
+    File.write("#{elsewhere}/#{File.basename(cache)}", PLANTED)
+    File.utime(future, future, "#{elsewhere}/#{File.basename(cache)}")
+    out_b, err_b = zsh_secret_probe
+    private_cache = Dir.glob("#{@data_dir}/run/wayu-#{Process.uid}/secrets-*.zsh")
+    File.delete(cache_dir)
+    FileUtils.rm_rf(elsewhere)
+    ok = out_a == "[unset] #{TOKEN}\n" && out_b == "[unset] #{TOKEN}\n" && private_cache.size == 1 &&
+         mode(File.dirname(private_cache[0])) == 0o700
+    check('planted cache sourced', ok, "a=#{out_a.inspect} #{err_a} b=#{out_b.inspect} #{err_b} private=#{private_cache}")
+  end
+
+  def test_cache_private_fallback
+    print 'Test 19c: no XDG_RUNTIME_DIR / TMPDIR: cache in <data>/run, never /tmp (OKAMI-300)... '
+    FileUtils.rm_rf("#{@data_dir}/run")
+    no_tmp = env.reject { |k, _| k == 'TMPDIR' }
+    out, err, = Open3.capture3(no_tmp, 'zsh', '-fc', "source #{@data_dir}/init.zsh; print -r -- \"$FAKE_TOKEN\"",
+                               unsetenv_others: true)
+    files = Dir.glob("#{@data_dir}/run/wayu-#{Process.uid}/secrets-*.zsh")
+    in_tmp = File.exist?("/tmp/wayu-#{Process.uid}") && Dir.glob("/tmp/wayu-#{Process.uid}/secrets-*").any? { |f| File.mtime(f) > Time.now - 30 }
+    ok = out.force_encoding('UTF-8') == "#{TOKEN}\n" && files.size == 1 && mode(files[0]) == 0o600 &&
+         mode("#{@data_dir}/run") == 0o700 && !in_tmp
+    check('cache not in the private dir', ok, "out=#{out.inspect} err=#{err} files=#{files}")
   end
 
   def test_doctor_ok
@@ -383,7 +573,13 @@ class SecretsStoreIntegrationTest
     out, = sh(['zsh', '-fc', "source #{@data_dir}/init.zsh; print -r -- \"[${FAKE_RUN-unset}] $FAKE_MULTI\""])
     eval_out, = w('export --eval')
     files = caches + Dir.glob("#{@data_dir}/{core,turbo}.*")
-    leaks = files.select { |f| s = File.binread(f); s.include?('FAKE_RUN') || s.include?('fake-run-only') }
+    # A background zcompile's temp file can vanish between glob and read.
+    read = lambda do |f|
+      File.binread(f)
+    rescue Errno::ENOENT
+      ''
+    end
+    leaks = files.select { |f| s = read.call(f); s.include?('FAKE_RUN') || s.include?('fake-run-only') }
     ok = out.start_with?('[unset] fake-line-1') && caches.any? && leaks.empty? && !eval_out.include?('fake-run-only')
     check('run-only leaked', ok, "out=#{out.inspect} leaks=#{leaks}")
   end
@@ -454,6 +650,47 @@ class SecretsStoreIntegrationTest
     got, = w('const get FAKE_RUN')
     ok = out == "ok\n" && !doc1.key?('run_only') && out2 == "unset\n" && got.chomp == RUN_ONLY
     check('conversion wrong', ok, "#{out.inspect} #{out2.inspect}")
+  end
+
+  def doctor_rows
+    out, = w('doctor --json')
+    rows = JSON.parse(out)
+    rows.is_a?(Hash) ? rows['checks'] : rows
+  end
+
+  def test_restore_keeps_entries_and_secrets_paired
+    print 'Test 35: backup restore of entries.json restores secrets.json with it (OKAMI-303)... '
+    _, err, st = w(['const', 'add', 'FAKE_BK', 'fake-bk-0010', '--secret'])
+    _, rerr, rst = w('backup restore entries --yes')
+    gone = !w('secrets list')[0].include?('FAKE_BK') &&
+           JSON.parse(File.read("#{@data_dir}/entries.json"))['env'].none? { |e| e['name'] == 'FAKE_BK' }
+    _, uerr, ust = w('backup restore entries 1 --yes') # undo: the pre-restore snapshot
+    back, = w('const get FAKE_BK')
+    ok = st.success? && rst.success? && gone && ust.success? && back.chomp == 'fake-bk-0010'
+    check('entries.json and secrets.json restored apart', ok, "#{err}#{rerr}#{uerr} gone=#{gone} back=#{back.inspect}")
+  end
+
+  def test_marker_without_ciphertext_is_an_error
+    print 'Test 36: secret marker without ciphertext: get 65, doctor error; orphan ciphertext: warning... '
+    saved = File.read(store)
+    doc = JSON.parse(saved)
+    doc['values'].delete('FAKE_BK')
+    File.write(store, JSON.pretty_generate(doc))
+    out, err, st = w('const get FAKE_BK')
+    rows = doctor_rows
+    _, _, dst = w('doctor')
+    missing = rows.find { |r| r['name'] == 'secrets pairing' && r['status'] == 'error' }
+    File.write(store, saved)
+    entries = "#{@data_dir}/entries.json"
+    saved_entries = File.read(entries)
+    edoc = JSON.parse(saved_entries)
+    edoc['env'].reject! { |e| e['name'] == 'FAKE_BK' }
+    File.write(entries, JSON.pretty_generate(edoc))
+    orphan = doctor_rows.find { |r| r['name'] == 'secrets pairing' && r['status'] == 'warning' }
+    File.write(entries, saved_entries)
+    ok = st.exitstatus == 65 && out.empty? && err.include?('FAKE_BK') && missing && missing['message'].include?('FAKE_BK') &&
+         dst.exitstatus == 78 && orphan && orphan['message'].include?('FAKE_BK')
+    check('inconsistency not reported', ok, "get=#{st.exitstatus} #{err} doctor=#{dst.exitstatus} #{missing.inspect} #{orphan.inspect}")
   end
 end
 

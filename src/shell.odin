@@ -253,17 +253,33 @@ get_cli_terminal_width :: proc() -> int {
 // backslash and single quote must be escaped; everything else (including `$`
 // and `*`) is literal. Works byte-wise, so UTF-8 passes through untouched.
 escape_fish_string :: proc(s: string, allocator := context.allocator) -> string {
-	sb := strings.builder_make(allocator)
-	strings.write_byte(&sb, '\'')
+	sb := strings.builder_make_len_cap(0, escape_fish_string_len(s), allocator)
+	escape_fish_string_to(&sb, s)
+	return strings.to_string(sb)
+}
+
+// escape_fish_string, appended to `sb`.
+escape_fish_string_to :: proc(sb: ^strings.Builder, s: string) {
+	strings.write_byte(sb, '\'')
 	for i in 0 ..< len(s) {
 		c := s[i]
 		if c == '\\' || c == '\'' {
-			strings.write_byte(&sb, '\\')
+			strings.write_byte(sb, '\\')
 		}
-		strings.write_byte(&sb, c)
+		strings.write_byte(sb, c)
 	}
-	strings.write_byte(&sb, '\'')
-	return strings.to_string(sb)
+	strings.write_byte(sb, '\'')
+}
+
+// Length of escape_fish_string(s) in bytes.
+escape_fish_string_len :: proc(s: string) -> int {
+	n := len(s) + 2
+	for i in 0 ..< len(s) {
+		if s[i] == '\\' || s[i] == '\'' {
+			n += 1
+		}
+	}
+	return n
 }
 
 // ============================================================================
@@ -292,18 +308,34 @@ escape_fish_string :: proc(s: string, allocator := context.allocator) -> string 
 
 // Wrap `s` in single quotes for zsh/bash, encoding embedded `'` as `'\''`.
 shell_single_quote :: proc(s: string, allocator := context.allocator) -> string {
-	sb := strings.builder_make(allocator)
-	strings.write_byte(&sb, '\'')
+	sb := strings.builder_make_len_cap(0, shell_single_quote_len(s), allocator)
+	shell_single_quote_to(&sb, s)
+	return strings.to_string(sb)
+}
+
+// shell_single_quote, appended to `sb`.
+shell_single_quote_to :: proc(sb: ^strings.Builder, s: string) {
+	strings.write_byte(sb, '\'')
 	for i in 0 ..< len(s) {
 		c := s[i]
 		if c == '\'' {
-			strings.write_string(&sb, `'\''`)
+			strings.write_string(sb, `'\''`)
 		} else {
-			strings.write_byte(&sb, c)
+			strings.write_byte(sb, c)
 		}
 	}
-	strings.write_byte(&sb, '\'')
-	return strings.to_string(sb)
+	strings.write_byte(sb, '\'')
+}
+
+// Length of shell_single_quote(s) in bytes.
+shell_single_quote_len :: proc(s: string) -> int {
+	n := len(s) + 2
+	for i in 0 ..< len(s) {
+		if s[i] == '\'' {
+			n += 3
+		}
+	}
+	return n
 }
 
 // Double-quote an env value for zsh/bash keeping `$VAR` / `${VAR}` expansion.

@@ -117,8 +117,9 @@ class SecretsIntegrationTest
   def test_backups_owner_only
     print 'Test 2: backup dir 0700, backups 0600... '
     dir = "#{@data_dir}/backup"
-    backups = Dir.glob("#{dir}/*")
-    bad = backups.reject { |f| mode(f) == 0o600 }
+    # Files 0600; dirs (backup/secrets: secrets.json copies) 0700.
+    backups = Dir.glob("#{dir}/**/*")
+    bad = backups.reject { |f| mode(f) == (File.directory?(f) ? 0o700 : 0o600) }
     check("dir=#{format('%o', mode(dir))} bad=#{bad}",
           mode(dir) == 0o700 && !backups.empty? && bad.empty?)
   end

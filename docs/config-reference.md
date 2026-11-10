@@ -577,24 +577,40 @@ in the constants' order. A run-only secret (`--run-only`) is also listed in
 `entries.json`; it is never written to the session cache, so shells never
 export it, and only `wayu secrets run` decrypts it. The mark is part of the
 associated data (`NAME` + `\0run-only`), so removing it from `secrets.json`
-makes the value fail to decrypt rather than get exported. `backend` says where the master key lives:
+makes the value fail to decrypt rather than get exported. The file is read
+strictly: any other field, text after the object, a name that is not a shell
+variable name, a non-string value, or a `run_only` name missing from
+`values` makes it malformed (secret commands exit `78`, `doctor` reports an
+error). `backend` says where the master key lives:
 
 | `backend` | Key storage |
 |---|---|
 | `"auto"` (default) | `keychain` on macOS; `secret-service` on Linux when `secret-tool` is on PATH; else `file` |
-| `"keychain"` | macOS login keychain: generic password, account `wayu`, service `wayu-master-key`, via `security`. Storing (first secret, `rekey`) passes the key on `security`'s command line for a moment, where other processes of the same user could see it. |
-| `"secret-service"` | freedesktop Secret Service via `secret-tool` (`service wayu account master`); the key goes over stdin |
+| `"keychain"` | macOS login keychain: generic password, service `wayu-master-key`, account `wayu-<id>`, via `security`. Storing (first secret, `rekey`) passes the key on `security`'s command line for a moment, where other processes of the same user could see it. |
+| `"secret-service"` | freedesktop Secret Service via `secret-tool` (`service wayu account wayu-<id>`); the key goes over stdin |
 | `"file"` | `<config>/secret.key`: 64 hex characters, `0600`, created exclusively; refused when group/other can read it. Protects against reading the data dir alone, not against reading your whole home. |
+
+`<id>` is 16 hex digits identifying the data dir (FNV-1a 64 of its path, the
+same id as in the session cache name): each data dir (another
+`WAYU_DATA_DIR`, a test `HOME`) has its own key and never reads another's.
+`wayu doctor` prints the account (`keychain (account wayu-…)`).
 
 Any other value is an error (`toml validate` exits `65`; secret commands exit
 `78`). The key is created with the first secret; wayu never creates a new
 key while `secrets.json` holds values (it would make them undecryptable).
-`wayu secrets rekey` replaces it and re-encrypts everything.
+`wayu secrets rekey` replaces it and re-encrypts everything: the new store
+is written to `secrets.json.rekey` first, then the key is saved, then the
+file is renamed over `secrets.json`; if wayu is interrupted in between, the
+next command that reads the store finishes or undoes the rekey, whichever
+matches the stored key.
 
 At shell start `core.<ext>` sources the session cache
-`${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/wayu-<uid>/secrets-<id>.<ext>` (single-
-quoted `export` / `set -gx` lines, `0600` in a `0700` dir you own) when it is
-newer than `secrets.json`, without forking. Otherwise it runs
+`${XDG_RUNTIME_DIR:-${TMPDIR:-<data>/run}}/wayu-<uid>/secrets-<id>.<ext>`
+(single-quoted `export` / `set -gx` lines, `0600` in a `0700` dir you own)
+when it is newer than `secrets.json`, without forking. The dir must be yours
+and not a symlink (else `<data>/run/wayu-<uid>` is used), and the file must
+be yours and not a symlink; with neither `XDG_RUNTIME_DIR` nor `TMPDIR` set
+the cache lives under `<data>/run` (`0700`), never in a shared `/tmp`. Otherwise it runs
 `wayu secrets cache` once to (re)write it. If the key is unavailable or a
 value does not decrypt, one `wayu: secrets not loaded: …` line goes to stderr
 and startup continues without the secrets. Every change to `secrets.json`

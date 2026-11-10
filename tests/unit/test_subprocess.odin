@@ -81,3 +81,25 @@ test_run_command_with_stdin_empty_input :: proc(t: ^testing.T) {
 	ok := wayu.run_command_with_stdin([]string{"cat"}, "")
 	testing.expect(t, ok, "run_command_with_stdin with empty input should return true")
 }
+
+// OKAMI-325: stdin input with a deadline (secret-tool store).
+@(test)
+test_run_command_timeout_stdin :: proc(t: ^testing.T) {
+	r := wayu.run_command_timeout([]string{"cat"}, 5000, stdin_data = "fake-key-hex\n")
+	defer wayu.command_result_destroy(&r)
+	testing.expect(t, r.ok && r.stdout == "fake-key-hex", r.stdout)
+
+	// A child that reads its stdin and then hangs is killed at the deadline.
+	h := wayu.run_command_timeout(
+		[]string{"sh", "-c", "read x; sleep 30"},
+		300,
+		stdin_data = "fake\n",
+	)
+	defer wayu.command_result_destroy(&h)
+	testing.expect(t, h.timed_out && !h.ok, "hung child must time out")
+
+	// A child that exits without reading must not take us down (SIGPIPE).
+	e := wayu.run_command_timeout([]string{"true"}, 5000, stdin_data = "fake")
+	defer wayu.command_result_destroy(&e)
+	testing.expect(t, e.ok)
+}

@@ -131,12 +131,88 @@ create_backup :: proc(file_path: string, tag := "") -> (backup_path: string, ok:
 			return "", false
 		}
 
+		// entries.json and secrets.json are one state: keep secrets.json's
+		// copy with every entries.json backup (OKAMI-303).
+		if file_path == entries_file_path() && !backup_write_secrets_companion(candidate) {
+			os.remove(candidate)
+			delete(candidate)
+			debug("Failed to copy secrets.json with the entries.json backup")
+			return "", false
+		}
+
 		debug("Backup created successfully")
 		return candidate, true
 	}
 
 	debug("Could not find a free backup filename for %s", base_name)
 	return "", false
+}
+
+// ---------------------------------------------------------------------------
+// secrets.json copies kept with entries.json backups
+// ---------------------------------------------------------------------------
+//
+// A secret constant lives in two files: its marker in entries.json and its
+// ciphertext in secrets.json. Every entries.json backup therefore has a
+// companion <data>/backup/secrets/<backup file name>: a copy of secrets.json
+// as it was (ciphertext only), or an empty file when there was none.
+// `backup restore` of entries.json restores both; removing a backup removes
+// both. A backup without a companion (older than this, or taken before a
+// `secrets rekey`, which drops them: their ciphertext no longer decrypts)
+// restores entries.json only.
+
+// <data>/backup/secrets (temp-allocated).
+backup_secrets_dir :: proc() -> string {
+	return fmt.tprintf("%s/backup/secrets", wayu.data)
+}
+
+// The companion of an entries.json backup (temp-allocated).
+backup_secrets_companion :: proc(backup_path: string) -> string {
+	return fmt.tprintf("%s/%s", backup_secrets_dir(), get_base_name(backup_path))
+}
+
+@(private = "file")
+backup_write_secrets_companion :: proc(backup_path: string) -> bool {
+	dir := backup_secrets_dir()
+	if !os.exists(dir) && os.make_directory(dir, SECRET_DIR_PERMS) != nil {
+		return false
+	}
+	content: []byte
+	src := fmt.tprintf("%s/%s", wayu.data, SECRETS_STORE_FILE)
+	if os.exists(src) {
+		data, err := os.read_entire_file_from_path(src, context.temp_allocator)
+		if err != nil {
+			return false
+		}
+		content = data
+	}
+	dst := backup_secrets_companion(backup_path)
+	f, err := os.open(dst, {.Write, .Create, .Trunc}, SECRET_FILE_PERMS)
+	if err != nil {
+		return false
+	}
+	n, werr := os.write(f, content)
+	cerr := os.close(f)
+	if werr != nil || cerr != nil || n != len(content) {
+		os.remove(dst)
+		return false
+	}
+	return true
+}
+
+// Delete a backup file and, for an entries.json backup, its secrets.json copy.
+backup_remove :: proc(backup_path: string) -> os.Error {
+	companion := backup_secrets_companion(backup_path)
+	if os.exists(companion) {
+		os.remove(companion)
+	}
+	return os.remove(backup_path)
+}
+
+// Drop every secrets.json copy (`secrets rekey`: their ciphertext is under
+// the old key). The entries.json backups stay.
+backup_drop_secrets_companions :: proc() {
+	os.remove_all(backup_secrets_dir())
 }
 
 // Name a file's backups are stored under: "<key>.backup.<stamp>". Files wayu
@@ -309,7 +385,7 @@ prune_backups :: proc(file_path: string, keep: int, protect := "") {
 			continue
 		}
 		debug("Pruning old backup: %s", b.backup_file)
-		_ = os.remove(b.backup_file)
+		_ = backup_remove(b.backup_file)
 	}
 }
 
@@ -431,6 +507,10 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 		fmt.printfln("%sWould restore from backup:%s", BRIGHT_CYAN, RESET)
 		fmt.printfln("  File:   %s", file_path)
 		fmt.printfln("  Backup: %s", chosen.backup_file)
+		if file_path == entries_file_path() &&
+		   os.exists(backup_secrets_companion(chosen.backup_file)) {
+			fmt.printfln("  Also:   secrets.json (the copy taken with this backup)")
+		}
 		fmt.println()
 		fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
 		return true
@@ -465,6 +545,38 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 		entries_store_destroy(&store)
 	}
 
+	// The secrets.json copy taken with an entries.json backup is restored
+	// with it (validated first); none: secrets.json is left as it is.
+	live_entries := file_path == entries_file_path()
+	secrets_copy: []byte
+	has_secrets_copy := false
+	if live_entries {
+		companion := backup_secrets_companion(chosen.backup_file)
+		if os.exists(companion) {
+			data, err := os.read_entire_file_from_path(companion, context.allocator)
+			if err != nil {
+				print_error_simple("Cannot read %s: %v — aborting restore", companion, err)
+				return false
+			}
+			if len(data) > 0 {
+				s, perr := secrets_store_parse(string(data))
+				secrets_store_destroy(&s)
+				if len(perr) > 0 {
+					delete(data)
+					print_error_simple(
+						"%s is not a valid secrets store (%s) — refusing to restore it",
+						companion,
+						perr,
+					)
+					return false
+				}
+			}
+			secrets_copy = data
+			has_secrets_copy = true
+		}
+	}
+	defer delete(secrets_copy)
+
 	// Back up the current state so the restore can be undone.
 	if os.exists(file_path) {
 		pre_path, pre_ok := create_backup(file_path, BACKUP_PRE_RESTORE_TAG)
@@ -478,6 +590,22 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 
 	if !safe_write_file(file_path, content) {
 		return false
+	}
+	if has_secrets_copy {
+		store_path := fmt.tprintf("%s/%s", wayu.data, SECRETS_STORE_FILE)
+		if len(secrets_copy) == 0 {
+			if os.exists(store_path) && os.remove(store_path) != nil {
+				print_error_simple("Could not remove %s", store_path)
+				return false
+			}
+		} else {
+			if err := write_file_atomic(store_path, secrets_copy); err != nil {
+				print_error_simple("Could not restore %s: %v", store_path, err)
+				return false
+			}
+			restrict_file_mode(store_path)
+		}
+		secrets_cache_invalidate()
 	}
 	// Keep the retention cap across repeated restores. The newest entry is the
 	// snapshot just taken; the chosen backup is protected explicitly.
@@ -662,7 +790,7 @@ cleanup_old_backups_key :: proc(key: string, keep_count: int = 5) -> int {
 	removed_count := 0
 	for i in keep_count ..< len(backups) {
 		debug("Removing old backup: %s", backups[i].backup_file)
-		err := os.remove(backups[i].backup_file)
+		err := backup_remove(backups[i].backup_file)
 		if err == nil {
 			removed_count += 1
 		}

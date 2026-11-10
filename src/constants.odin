@@ -536,6 +536,7 @@ get_toml_constant_value :: proc(name: string) {
 	if const_get_secret(name) {
 		return
 	} // decrypts (secrets_store.odin)
+	const_get_exit_if_secret_missing(name)
 
 	entries := read_env_entries()
 
