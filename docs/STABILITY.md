@@ -1,11 +1,6 @@
 # Stability guarantees
 
-> **Draft (OKAMI-194)**: proposed for the first stable release; not in
-> effect yet. Until then wayu reads only the current format (see the README's
-> "Upgrade" section).
-
-What a wayu release promises from the first stable version on, and what
-it does not. Version numbers follow [Semantic Versioning](https://semver.org):
+What a wayu release promises from 7.0 on, and what it does not. Version numbers follow [Semantic Versioning](https://semver.org):
 anything listed under "Stable" changes only in a major release, and every
 such change is listed under "⚠ Upgrade notes" in the release and in
 [UPGRADING.md](UPGRADING.md).

@@ -6,7 +6,7 @@ Agent instructions for AI coding assistants working in this repository.
 
 wayu is a shell configuration management CLI written in Odin. It manages PATH entries, aliases, environment constants, `[tools]` loaders, a native prompt (zsh, fish), plugins, functions and completions. User-edited files live in the config dir `~/.config/wayu/` (`WAYU_CONFIG_DIR`): wayu.toml, hooks.conf, extra.<ext>, tools.<ext>, functions/. Data wayu manages lives in the data dir `${XDG_DATA_HOME:-~/.local/share}/wayu/` (`WAYU_DATA_DIR`): entries.json (PATH entries, aliases, constants), plugins.json, and the generated runtime files (init.<ext>, core.<ext>, path_sync.<ext>, plugins, completions, backups, the lock).
 
-User docs: [README.md](README.md) (install, shell setup, upgrade), [docs/cli.md](docs/cli.md) (every command/flag, `--json` shapes, exit codes), [docs/config-reference.md](docs/config-reference.md) (wayu.toml, entries.json and the other config files), [docs/UPGRADING.md](docs/UPGRADING.md) (behavior changes per release).
+User docs: [README.md](README.md) (install, shell setup, upgrade), [docs/cli.md](docs/cli.md) (every command/flag, `--json` shapes, exit codes), [docs/config-reference.md](docs/config-reference.md) (wayu.toml, entries.json and the other config files), [docs/UPGRADING.md](docs/UPGRADING.md) (behavior changes per release), [docs/STABILITY.md](docs/STABILITY.md) (what is stable, migration and deprecation policy).
 
 **Current version**: see `VERSION` constant in `src/main.odin` (single source of truth) — run `./bin/wayu --version` to print.
 **Supported shells**: Zsh (primary), Bash, Fish (core.fish: [tools], functions/, live PATH sync, native prompt, turbo export)
@@ -83,6 +83,16 @@ Conventional Commits; `git-cliff` derives the next version from them (`cliff.tom
 | anything else (`fix:`, `refactor:`, …) | patch |
 
 Any **user-visible behavior change** (output, exit codes, flags, generated shell code, config semantics) is breaking even when it is a fix: mark it `fix(scope)!:` and write the footer — it becomes the release's "⚠ Upgrade notes". Batching on `develop` (above) keeps majors infrequent; don't drop the `!` to avoid one. No AI attribution in commits/PRs (no `Co-Authored-By`, no "Generated with").
+
+## Backward compatibility (from 7.0)
+
+[docs/STABILITY.md](docs/STABILITY.md) is the contract. A change to a data
+file format (`entries.json`, `plugins.json`, `secrets.json`) or to where wayu
+keeps a file, directory or keychain item ships with an automatic one-time
+migration in the same release: read the old form, write the new one (backup
+first), verify it, print a one-time notice, and test it (old-form fixture).
+Never require a manual step. Removing a command, flag or `wayu.toml` key
+needs a deprecation warning for at least one minor release first.
 
 ## Architecture
 

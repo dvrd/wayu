@@ -125,9 +125,11 @@ wayu doctor              # check the result
 
 `wayu init` keeps `wayu.toml`, `extra.<ext>` and your other files; an
 unmodified `init.<ext>` from the previous release is replaced (the old one is
-backed up). Any ordinary write (`wayu alias add …`) regenerates too. wayu
-reads only the current config format and does not convert configs from
-older releases: upgrade one release at a time.
+backed up). Any ordinary write (`wayu alias add …`) regenerates too. From
+7.0 on, a release that changes a data format or moves a file converts or
+moves yours automatically the first time it runs (backup first, one-time
+notice); see [docs/STABILITY.md](docs/STABILITY.md) for what each release
+guarantees.
 
 What changed in each release, and what you may need to adapt, is in
 [docs/UPGRADING.md](docs/UPGRADING.md).
