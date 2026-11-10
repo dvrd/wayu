@@ -78,6 +78,11 @@ releases, so they are listed here too.
   The USR1 handler no longer forks (`read` + `zf_rm` instead of `$(<f)` +
   `rm`): a render outside a repo forks 0 times (was 2), inside a repo once
   (the worker). Run `wayu build` once to regenerate.
+- `wayu export --check` compares `turbo.<ext>` with what `export --turbo`
+  would write now, instead of its mtime with wayu.toml / entries.json: it
+  now reports stale after a change to `config.<ext>`, a hand edit of the
+  turbo file or a wayu upgrade that changes the generated code, and no
+  longer after a save of wayu.toml that changed nothing.
 
 **Encrypted secrets hardening**
 

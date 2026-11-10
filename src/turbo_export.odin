@@ -237,28 +237,21 @@ print_export_usage :: proc() {
 	fmt.printfln("%sTURBO FILE:%s %s/%s", get_muted(), RESET, wayu.data, turbo_export_file_name())
 }
 
-// Check if the turbo file for the active shell exists and is current
-// (not older than wayu.toml or entries.json).
+// Check if the turbo file for the active shell exists and is current: its
+// content is exactly what `wayu export --turbo` would write now (OKAMI-364).
+// Comparing content rather than mtimes catches every input — wayu.toml,
+// entries.json, functions/, plugins.json, secrets.json, config.<ext>,
+// tools/extra — and a wayu upgrade that changes the generated code.
 check_turbo_status :: proc() -> (exists: bool, current: bool) {
-	turbo_path := fmt.aprintf("%s/%s", wayu.data, turbo_export_file_name())
-	defer delete(turbo_path)
-
-	turbo_info, err := os.stat(turbo_path, context.temp_allocator)
+	turbo_path := fmt.tprintf("%s/%s", wayu.data, turbo_export_file_name())
+	data, err := os.read_entire_file(turbo_path, context.allocator)
 	if err != nil {
 		return false, false
 	}
-
-	current = true
-	for src in ([]string{fmt.tprintf("%s/wayu.toml", wayu.config), entries_file_path()}) {
-		info, serr := os.stat(src, context.temp_allocator)
-		if serr != nil {
-			continue
-		}
-		if turbo_info.modification_time._nsec < info.modification_time._nsec {
-			current = false
-		}
-	}
-	return true, current
+	defer delete(data)
+	want := build_turbo_content()
+	defer delete(want)
+	return true, string(data) == want
 }
 
 // Handle export --check action

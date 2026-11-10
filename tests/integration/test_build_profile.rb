@@ -64,10 +64,26 @@ class BuildProfileTest
     _o, miss = run_wayu("export --check")           # no turbo yet: 78
     _o, gen = run_wayu("export --turbo")
     _o, cur = run_wayu("export --check")            # fresh: 0
+    # OKAMI-364: content, not mtimes. A touched-but-unchanged wayu.toml is
+    # still current; an input the mtimes missed (config.zsh, inlined into
+    # core) or a hand-edited turbo file is stale.
+    FileUtils.touch("#{@config_dir}/wayu.toml", mtime: Time.now + 5)
+    _o, touched = run_wayu("export --check")
+    File.write("#{@config_dir}/config.zsh", "export CFG_PROBE=1\n")
+    _o, cfg_stale = run_wayu("export --check")
+    _o, _regen = run_wayu("export --turbo")
+    _o, regen = run_wayu("export --check")
+    File.delete("#{@config_dir}/config.zsh")
+    run_wayu("export --turbo")
+    File.write(turbo, File.read(turbo) + "# edited\n")
+    _o, edited = run_wayu("export --check")
     ok = eval_clean && zsh_out.include?("hello") && zsh_out.include?("exll") &&
-         miss.exitstatus == 78 && gen.success? && File.exist?(turbo) && cur.exitstatus == 0
+         miss.exitstatus == 78 && gen.success? && File.exist?(turbo) && cur.exitstatus == 0 &&
+         touched.exitstatus == 0 && cfg_stale.exitstatus == 78 && regen.exitstatus == 0 && edited.exitstatus == 78
     report("Test 5: export --eval is clean + evalable, --check reports staleness", ok,
-           "eval_clean=#{eval_clean} zsh=#{zsh_out.inspect} miss=#{miss.exitstatus} gen=#{gen.exitstatus} cur=#{cur.exitstatus}")
+           "eval_clean=#{eval_clean} zsh=#{zsh_out.inspect} miss=#{miss.exitstatus} gen=#{gen.exitstatus} cur=#{cur.exitstatus} " \
+           "touched=#{touched.exitstatus} cfg=#{cfg_stale.exitstatus} regen=#{regen.exitstatus} edited=#{edited.exitstatus}")
+    run_wayu("export --turbo")
     run_wayu("const rm EXPORT_T")
     run_wayu("alias rm exll")
   end
