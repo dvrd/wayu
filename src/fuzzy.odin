@@ -52,11 +52,27 @@ RAW_RESTORE_SIGNALS :: [4]libc.int{libc.SIGTERM, SIGHUP_NUM, libc.SIGINT, SIGQUI
 @(private = "file")
 prev_signal_handlers: [len(RAW_RESTORE_SIGNALS)]proc "c" (_: libc.int)
 
+// Hidden line input (no_echo_mode_enable): echo off, ISIG kept so Ctrl+C /
+// Ctrl+Z still signal. The same handlers restore echo before dying; Ctrl+Z
+// restores it while stopped and turns it off again on SIGCONT.
+@(private = "file")
+no_echo_active: bool
+@(private = "file")
+no_echo_termios: posix.termios
+@(private = "file")
+prev_tstp_handler: proc "c" (_: posix.Signal)
+
 // Async-signal-safe: only tcsetattr, write, signal, raise.
 terminal_restore_signal_handler :: proc "c" (sig: libc.int) {
 	if raw_mode_active {
 		posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &saved_termios)
 		raw_mode_active = false
+	}
+	if no_echo_active {
+		// No cursor/alt-screen state to undo for a hidden prompt.
+		libc.signal(sig, cast(proc "c" (_: libc.int))libc.SIG_DFL)
+		libc.raise(sig)
+		return
 	}
 	show := "\x1b[?25h"
 	posix.write(posix.FD(STDOUT_FILENO), raw_data(show), len(show))
@@ -115,7 +131,55 @@ disable_raw_mode :: proc() {
 	for sig, i in RAW_RESTORE_SIGNALS {
 		libc.signal(sig, prev_signal_handlers[i])
 	}
+	if no_echo_active {
+		posix.signal(.SIGTSTP, prev_tstp_handler)
+		no_echo_active = false
+	}
 	debug("Terminal restored to original state")
+}
+
+// SIGTSTP during hidden input: echo back on while stopped, off again after
+// SIGCONT. SIGTSTP is blocked while its handler runs: unblock it before
+// re-raising, or the stop would only happen after the handler returned.
+@(private = "file")
+no_echo_sigtstp_handler :: proc "c" (sig: posix.Signal) {
+	saved_errno := posix.get_errno()
+	posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &saved_termios)
+	posix.signal(.SIGTSTP, auto_cast posix.SIG_DFL)
+	set: posix.sigset_t
+	posix.sigemptyset(&set)
+	posix.sigaddset(&set, .SIGTSTP)
+	posix.sigprocmask(.UNBLOCK, &set, nil)
+	posix.raise(.SIGTSTP) // stopped here until SIGCONT
+	posix.signal(.SIGTSTP, no_echo_sigtstp_handler)
+	if raw_mode_active {
+		posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &no_echo_termios)
+	}
+	posix.set_errno(saved_errno)
+}
+
+// Turn terminal echo off for hidden line input (a secret value), keeping
+// canonical mode and signals. Until disable_raw_mode, any terminating signal
+// (Ctrl+C, SIGTERM, SIGHUP, SIGQUIT) restores the terminal before the
+// default action, and Ctrl+Z restores it while stopped (OKAMI-324).
+// False when stdin is not a terminal.
+no_echo_mode_enable :: proc() -> bool {
+	if posix.tcgetattr(posix.FD(STDIN_FILENO), &saved_termios) != .OK {
+		return false
+	}
+	no_echo_termios = saved_termios
+	no_echo_termios.c_lflag -= {.ECHO}
+	no_echo_active = true
+	raw_mode_active = true
+	for sig, i in RAW_RESTORE_SIGNALS {
+		prev_signal_handlers[i] = libc.signal(sig, terminal_restore_signal_handler)
+	}
+	prev_tstp_handler = posix.signal(.SIGTSTP, no_echo_sigtstp_handler)
+	if posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &no_echo_termios) != .OK {
+		disable_raw_mode()
+		return false
+	}
+	return true
 }
 
 // ============================================================================

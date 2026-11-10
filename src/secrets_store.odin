@@ -983,19 +983,18 @@ env_store_unmark_secret :: proc(name: string) -> (ok: bool, err: string) {
 @(private = "file")
 read_secret_value :: proc(name: string) -> (value: string, ok: bool) {
 	tty := bool(posix.isatty(posix.STDIN_FILENO))
-	saved: posix.termios
 	if tty {
 		fmt.eprintf("Value for %s (input hidden): ", name)
-		if posix.tcgetattr(posix.STDIN_FILENO, &saved) == .OK {
-			quiet := saved
-			quiet.c_lflag -= {.ECHO}
-			posix.tcsetattr(posix.STDIN_FILENO, .TCSANOW, &quiet)
-		}
+		// Echo off; Ctrl+C / Ctrl+Z / SIGTERM restore it (fuzzy.odin).
+		no_echo_mode_enable()
 	}
 	b := strings.builder_make()
 	buf: [512]byte
 	for {
 		n := posix.read(posix.STDIN_FILENO, raw_data(buf[:]), len(buf))
+		if n < 0 && posix.errno() == .EINTR {
+			continue // stopped (Ctrl+Z) and continued
+		}
 		if n <= 0 {
 			break
 		}
@@ -1006,7 +1005,7 @@ read_secret_value :: proc(name: string) -> (value: string, ok: bool) {
 	}
 	crypto.zero_explicit(&buf, size_of(buf))
 	if tty {
-		posix.tcsetattr(posix.STDIN_FILENO, .TCSANOW, &saved)
+		disable_raw_mode()
 		fmt.eprintln()
 	}
 	s := strings.to_string(b)

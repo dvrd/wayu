@@ -46,6 +46,7 @@ class SecretsStoreIntegrationTest
       test_bash_sources_cache
       test_fish_sources_cache
       test_stdin_value
+      test_hidden_input_signals
       test_convert_plain_constant
       test_convert_scrubs_unicode_cr_del
       test_plain_add_over_secret_refused
@@ -263,6 +264,70 @@ class SecretsStoreIntegrationTest
     walk.call(JSON.parse(raw.dup.force_encoding('UTF-8')))
   rescue JSON::ParserError, EncodingError
     []
+  end
+
+  # Echo state of a terminal: true / false (from `stty -a`).
+  def tty_echo?(tty)
+    out = `stty -a < #{tty} 2>/dev/null`
+    out.match?(/(?<![-\w])echo(?!\w)/)
+  end
+
+  def read_until(io, pattern, timeout = 10)
+    buf = +''
+    deadline = Time.now + timeout
+    until buf.match?(pattern) || Time.now > deadline
+      begin
+        buf << io.read_nonblock(4096)
+      rescue IO::WaitReadable
+        IO.select([io], nil, nil, 0.1)
+      rescue EOFError, Errno::EIO
+        break
+      end
+    end
+    buf
+  end
+
+  # Write to a pty whose other side may already be gone.
+  def pty_write(io, text)
+    io.write(text)
+  rescue Errno::EIO, IOError
+    nil
+  end
+
+  # Ctrl-Z / Ctrl-C at the hidden value prompt, on a real terminal. The
+  # fixtures/jobctl.py parent puts wayu in its own foreground process group
+  # (a group that can stop) and reports the echo state when it stops / exits.
+  def test_hidden_input_signals
+    print 'Test 12b: Ctrl-Z / Ctrl-C at the hidden prompt restore echo (OKAMI-324)... '
+    if `command -v python3 2>/dev/null`.strip.empty?
+      puts 'skipped (python3 not installed)'
+      return
+    end
+    require 'pty'
+    jobctl = File.join(__dir__, 'fixtures', 'jobctl.py')
+    r, wr, pid = PTY.spawn(env, 'python3', jobctl, @wayu_bin, 'const', 'add', 'FAKE_SIG', '--secret')
+    out = read_until(r, /input hidden/)
+    tty = out[/TTY (\S+)/, 1]
+    pty_write(wr, "\x1a") # Ctrl-Z
+    stopped = read_until(r, /STOPPED echo-\w+/)[/STOPPED (echo-\w+)/, 1]
+    pty_write(wr, "\n") # jobctl: continue it
+    sleep 0.5
+    resumed_echo = tty && tty_echo?(tty)
+    pty_write(wr, "\x03") # Ctrl-C
+    exited = read_until(r, /EXITED echo-\w+/)[/EXITED (echo-\w+)/, 1]
+    _, _, gst = w('const get FAKE_SIG')
+    ok = stopped == 'echo-on' && resumed_echo == false && exited == 'echo-on' && !gst.success?
+    check('echo left off', ok,
+          "stopped=#{stopped.inspect} resumed_echo=#{resumed_echo.inspect} exited=#{exited.inspect} get=#{gst.exitstatus}")
+  ensure
+    begin
+      if pid
+        Process.kill('KILL', pid)
+        Process.wait(pid)
+      end
+    rescue Errno::ESRCH, Errno::ECHILD
+      nil
+    end
   end
 
   def test_plain_add_over_secret_refused
