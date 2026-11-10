@@ -650,10 +650,10 @@ into `core.<ext>`. They are not read from `wayu.toml`; a `[paths]`,
 
 | Field | Meaning |
 |---|---|
-| `version` | `1`. Any other value is an error. |
-| `paths[]` | `{"key", "dir"}`: PATH entries, highest priority first. |
-| `aliases[]` | `{"name", "value"}`: aliases. |
-| `env[]` | `{"name", "value"}`: constants (exported variables), in export order. |
+| `version` | The number `1` (required). Any other value, `"1"` or `1.0` is an error. |
+| `paths[]` | `{"key", "dir"}`: PATH entries, highest priority first. `key`: letters, digits, `_`; `dir`: non-empty, no `:` or newline. |
+| `aliases[]` | `{"name", "value"}`: aliases. `name` follows the [alias name rule](#aliases); `value` must not be blank. |
+| `env[]` | `{"name", "value"}`: constants (exported variables), in export order. `name`: letters, digits, `_`, not starting with a digit. An encrypted one is `{"name", "secret": true}` (no `value`), optionally `"run_only": true`. |
 | `fpath[]` | Strings, zsh only: completion dirs put on `fpath` (first = front) before wayu's `compinit`; the dump is rebuilt when their file list changes. Same expansion as PATH entries. Written only when non-empty (`wayu completions fpath`, `wayu optimize`). |
 | `generators[]` | `{"shell", "cmd", "args"}`: `source <(cmd args)` / `eval "$(cmd args)"` lines moved by `wayu optimize`. `core.<shell>` (only that shell's) runs `_wayu_evalcache cmd args` after everything else, before the aliases; zsh/bash in interactive shells only. `args` follows the `[tools]` args rules. Written only when non-empty. |
 
@@ -661,12 +661,13 @@ into `core.<ext>`. They are not read from `wayu.toml`; a `[paths]`,
   shared by concurrent wayu commands, owner-only (`0600`), pretty-printed with
   one entry per line, in stable order: a write changes only the entries it
   touches. Each write is backed up first (`wayu backup restore entries`).
-- **Reading is strict.** A missing file is an empty store. A file that is not
-  valid JSON, has another `version`, a field of the wrong type, an entry
-  without its key / name (or a path without `dir`), or the same key / name
-  twice in a section makes every command that reads it exit `78`, naming the
-  file and the problem; nothing is written. `wayu doctor` reports it too.
-- Unknown fields are ignored and dropped on the next write.
+- **Reading is strict.** A missing file is an empty store. Anything else
+  must be exactly one JSON document (nothing after it, no trailing commas, no
+  key twice in an object, valid UTF-8, no NUL character) that fits the table
+  above: every field with its type, no unknown field, required fields present,
+  names valid, the same key / name at most once per section. Otherwise every
+  command that reads it exits `78`, naming the file and the problem; nothing
+  is written. `wayu doctor` reports it too.
 - It is safe to edit by hand while no wayu command runs; run `wayu build`
   afterwards (open shells also notice a newer file, see
   [PATH entries](#path-entries)).
@@ -713,15 +714,14 @@ entry is a `key` (a label) and a `dir`.
 `wayu alias add ll 'ls -lah'`: each entry is a `name` and a command
 (`value`).
 
-| Rule | `alias add`, TUI | Generator |
-|---|---|---|
-| Name characters | First an ASCII letter or `_`, then letters, digits, `_` or `-` (not first) | Any name without whitespace, quotes, `` ` `` `$ = ; & \| < > ( ) { } \ * ? [ ] # ~ !` or control characters; other names are skipped with a `# wayu: skipping invalid alias name` comment |
-| Reserved names | `if then else elif fi case esac for while until do done in function time select coproc declare typeset local export readonly unset return exit cd pwd echo test true false` are refused | Not checked |
-| Length | At most 255 characters | Not checked |
-| Command | Must not be empty or blank | Emitted as given |
+One rule for `alias add`, the TUI, templates and `entries.json`:
 
-So a hand-written `..` or `g.st` alias in `entries.json` is defined by the
-generated init and shown by `alias list`, but `alias add` refuses the name.
+| Rule | |
+|---|---|
+| Name characters | Printable ASCII except whitespace, quotes, `` ` `` `$ \ = / ^ ; & \| < > ( ) { } [ ] * ? # ~ !`; not starting with `-`. `..`, `g.st`, `1x`, `k8s-ctx` are fine |
+| Reserved names | `.` and `if then else elif fi case esac for while until do done in function time select coproc declare typeset local export readonly unset return exit cd pwd echo test true false` are refused |
+| Length | At most 255 characters |
+| Command | Must not be blank; no NUL byte, valid UTF-8 |
 
 Generated code: zsh/bash `alias name='command'`, fish `alias name 'command'`.
 The command is single-quoted and stored verbatim, so `$VAR` in it expands when

@@ -47,7 +47,7 @@ test_entries_round_trip_keeps_order :: proc(t: ^testing.T) {
 	}
 	for kv in ([][2]string {
 			{"zz", "ls"},
-			{`q"k`, "echo \"hi\"\n\\x"},
+			{"q-k", "echo \"hi\"\n\\x"},
 			{"g.st", "git log --format='%h'"},
 		}) {
 		append(&store.aliases, wayu.StoreAlias{strings.clone(kv[0]), strings.clone(kv[1])})
@@ -213,6 +213,50 @@ test_entries_parse_is_leak_free :: proc(t: ^testing.T) {
 		)
 		testing.expect(t, !bok)
 		wayu.entries_store_destroy(&bad)
+	}
+	free_all(context.temp_allocator)
+}
+
+// OKAMI-321: the reader is strict. Each of these was accepted before.
+@(test)
+test_entries_parse_strict :: proc(t: ^testing.T) {
+	GOOD :: `{"version": 1, "paths": [{"key": "a", "dir": "/a"}], "aliases": [{"name": "..", "value": "cd .."}], "env": [{"name": "A", "value": ""}, {"name": "S", "secret": true, "run_only": true}]}`
+	s, gerr, gok := wayu.entries_parse(GOOD)
+	testing.expectf(t, gok, "good store: %s", gerr)
+	wayu.entries_store_destroy(&s)
+
+	bad := []string {
+		GOOD + ` x`, // trailing garbage
+		GOOD + GOOD, // two documents
+		`{"version": 1, "paths": [],}`, // trailing comma (object)
+		`{"version": 1, "paths": [{"key": "a", "dir": "/a"},]}`, // trailing comma (array)
+		`{"version": "1"}`, // version as a string
+		`{"version": 1.0}`, // version as a float
+		`{"paths": []}`, // no version
+		`{"version": 1, "extra": 1}`, // unknown top-level field
+		`{"version": 1, "aliases": [{"name": "ll", "value": "ls", "x": 1}]}`, // unknown entry field
+		`{"version": 1, "aliases": [{"name": "ll"}]}`, // alias without value
+		`{"version": 1, "aliases": [{"name": "ll", "value": " "}]}`, // empty alias value
+		`{"version": 1, "aliases": [{"name": "a b", "value": "ls"}]}`, // invalid alias name
+		`{"version": 1, "aliases": [{"name": "if", "value": "ls"}]}`, // reserved word
+		`{"version": 1, "env": [{"name": "1A", "value": "x"}]}`, // invalid env name
+		`{"version": 1, "env": [{"name": "A"}]}`, // constant without value
+		`{"version": 1, "env": [{"name": "A", "value": "x", "secret": true}]}`, // secret with a value
+		`{"version": 1, "env": [{"name": "A", "value": "x", "run_only": true}]}`, // run_only, not secret
+		`{"version": 1, "env": [{"name": "A", "value": 1}]}`, // value not a string
+		`{"version": 1, "env": [{"name": "A", "value": "a\u0000b"}]}`, // NUL
+		`{"version": 1, "env": [{"name": "A", "value": "a` + "\x01" + `b"}]}`, // raw control char
+		`{"version": 1, "env": [{"name": "A", "value": "a` + "\xff" + `b"}]}`, // invalid UTF-8
+		`{"version": 1, "version": 1}`, // duplicate key
+		`{"version": 1, "paths": [{"key": "a.b", "dir": "/a"}]}`, // invalid path key
+		`{"version": 1, "paths": [{"key": "a", "dir": "/a:/b"}]}`, // ':' in dir
+		`[1]`, // not an object
+	}
+	for b in bad {
+		st, err, ok := wayu.entries_parse(b)
+		testing.expectf(t, !ok, "accepted: %s", b)
+		testing.expectf(t, ok || len(err) > 0, "no reason for: %s", b)
+		wayu.entries_store_destroy(&st)
 	}
 	free_all(context.temp_allocator)
 }

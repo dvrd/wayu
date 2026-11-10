@@ -315,7 +315,12 @@ test_secrets_run_only_storage :: proc(t: ^testing.T) {
 
 @(test)
 test_entries_run_only_marker :: proc(t: ^testing.T) {
-	text := `{"version": 1, "env": [{"name": "FAKE_A", "secret": true, "run_only": true}, {"name": "FAKE_B", "secret": true}, {"name": "FAKE_C", "value": "x", "run_only": true}]}`
+	text := `{"version": 1, "env": [{"name": "FAKE_A", "secret": true, "run_only": true}, {"name": "FAKE_B", "secret": true}, {"name": "FAKE_C", "value": "x"}]}`
+	// run_only without secret is refused by the strict reader (OKAMI-321).
+	_, _, lenient := wayu.entries_parse(
+		`{"version": 1, "env": [{"name": "FAKE_C", "value": "x", "run_only": true}]}`,
+	)
+	testing.expect(t, !lenient, "run_only without secret is an error")
 	store, err, ok := wayu.entries_parse(text)
 	defer wayu.entries_store_destroy(&store)
 	testing.expectf(t, ok, "parse failed: %s", err)
@@ -323,7 +328,7 @@ test_entries_run_only_marker :: proc(t: ^testing.T) {
 		return
 	}
 	testing.expect(t, store.env[0].run_only && !store.env[1].run_only, "run_only read")
-	testing.expect(t, !store.env[2].run_only, "run_only without secret is ignored")
+	testing.expect(t, !store.env[2].run_only, "a plain constant is not run-only")
 	out := wayu.entries_serialize(&store)
 	defer delete(out)
 	testing.expect(

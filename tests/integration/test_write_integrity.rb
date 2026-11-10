@@ -141,6 +141,34 @@ class WriteIntegrityIntegrationTest
           status.exitstatus == 78 && File.read(@entries_file) == broken && out.include?(@entries_file),
           "exit=#{status.exitstatus} out=#{out.strip}")
     write_entries
+
+    # OKAMI-321: the reader is strict. Each of these was read without error
+    # (a NUL was even written raw into core.zsh).
+    good = %({"version": 1, "env": [{"name": "X", "value": "1"}]})
+    bad = {
+      'trailing garbage' => "#{good} x",
+      'two documents' => "#{good}#{good}",
+      'trailing comma' => %({"version": 1, "env": [{"name": "X", "value": "1"},]}),
+      'version as a string' => %({"version": "1"}),
+      'unknown field' => %({"version": 1, "extra": []}),
+      'alias without value' => %({"version": 1, "aliases": [{"name": "ll"}]}),
+      'invalid alias name' => %({"version": 1, "aliases": [{"name": "a b", "value": "ls"}]}),
+      'NUL in a value' => %({"version": 1, "env": [{"name": "X", "value": "a\\u0000b"}]})
+    }
+    core = "#{@data_dir}/core.zsh"
+    failures = bad.map do |what, text|
+      File.write(@entries_file, text)
+      core_before = File.exist?(core) ? File.binread(core) : nil
+      out, status = run_wayu('alias list')
+      _, bstatus = run_wayu('build')
+      core_after = File.exist?(core) ? File.binread(core) : nil
+      ok = status.exitstatus == 78 && out.include?(@entries_file) && bstatus.exitstatus == 78 &&
+           core_after == core_before && !(core_after || '').include?("\0")
+      ok ? nil : "#{what}: list=#{status.exitstatus} build=#{bstatus.exitstatus} #{out.strip}"
+    end
+    check("Test 5b: entries.json strictness (garbage, 2 docs, trailing comma, version \"1\", unknown field, missing value, bad name, NUL): exit 78, core untouched",
+          failures.compact.empty?, failures.compact.join("\n  "))
+    write_entries
   end
 
   def test_mode_and_symlink_preserved
@@ -260,12 +288,12 @@ class WriteIntegrityIntegrationTest
   # found; X-19: an escaped quote in a name is decoded everywhere.
   def test_quoted_keys_listed_and_removed
     write_toml("[shell]\ntype = \"zsh\"\n")
-    write_entries(aliases: { '..' => 'cd ..', 'q"k' => 'echo quoted', 'll' => 'ls' })
+    write_entries(aliases: { '..' => 'cd ..', 'g.st' => 'echo quoted', 'll' => 'ls' })
     out_l, _ = run_wayu('alias list --json')
     _, s_r = run_wayu('alias rm ..')
     after = store_map('aliases')
-    check("Test 12: special alias names are listed decoded and removable",
-          out_l.include?('".."') && out_l.include?('q\\"k') && !out_l.include?('\\"q') &&
+    check("Test 12: special alias names are listed and removable",
+          out_l.include?('".."') && out_l.include?('"g.st"') &&
             s_r.success? && !after.key?('..') && after['ll'] == 'ls',
           "list=#{out_l}\nafter=#{after}")
   end

@@ -145,6 +145,13 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `wayu const rm NAME`.
 - A value with a NUL byte or invalid UTF-8 (alias command, constant value,
   PATH dir) is one data error, exit 65 (was two messages and exit 74).
+- `entries.json` is read strictly: anything after the document, a trailing
+  comma, a duplicate key, `"version": "1"`, an unknown field, a missing
+  `value`, a `run_only` without `secret`, an invalid alias / constant name or
+  PATH key, or a NUL character now makes every command exit 78 naming the
+  file (these were read silently, unknown fields dropped on the next write,
+  a NUL written raw into `core.<ext>`). Fix the file by hand or `wayu backup
+  restore entries --yes`.
 
 ## 6.0.0
 
