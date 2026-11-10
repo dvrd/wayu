@@ -954,12 +954,15 @@ check_shell_config :: proc(results: ^[dynamic]CheckResult) {
 		append(
 			results,
 			CheckResult {
-				name = clone_arena("shell configuration"),
-				status = .WARNING,
+				name    = clone_arena("shell configuration"),
+				status  = .WARNING,
+				// `wayu init` never creates a startup file: say what to
+				// put in one (OKAMI-357).
 				message = fmt.aprintf(
-					"No %s startup file found (expected %s) - run 'wayu init'",
+					"No %s startup file found - create %s with: %s",
 					get_shell_name(wayu.shell),
 					rc,
+					bootstrap_source_line(get_shell_extension(wayu.shell)),
 					allocator = alloc,
 				),
 				fixable = false,

@@ -48,6 +48,7 @@ class DoctorIntegrationTest
       test_no_auto_install
       test_turbo_not_fixable_or_generated
       test_turbo_bash_uses_shell_ext
+      test_no_startup_file_says_what_to_add
       test_plugins_malformed_is_error
       test_plugins_cycle_keeps_json_valid
       test_optimize_removed
@@ -364,6 +365,15 @@ class DoctorIntegrationTest
     ok = turbo && turbo['status'] == 'ok' &&
          missing && missing['status'] == 'error' && missing['message'].include?('turbo.bash')
     check(ok, "#{turbo.inspect}\n#{missing.inspect}")
+  end
+
+  def test_no_startup_file_says_what_to_add
+    print "Test 18e: no startup file: doctor names the source line (not 'run wayu init')... "
+    reset_rc_files
+    jout, _, _ = run_wayu_env({}, '--shell zsh doctor --json')
+    shell = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'shell configuration' } rescue nil)
+    msg = shell ? shell['message'] : ''
+    check(msg.include?('/init.zsh') && msg.include?('source') && !msg.include?('wayu init'), msg)
   end
 
   def plugin_entry(name, deps)

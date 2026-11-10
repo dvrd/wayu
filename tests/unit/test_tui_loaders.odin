@@ -831,6 +831,13 @@ test_tui_settings_view :: proc(t: ^testing.T) {
 	wayu.tui_ensure_data_loaded(&state, .SETTINGS_VIEW)
 	rows := wayu.SETTING_ROWS
 	testing.expect_value(t, wayu.get_view_item_count(&state), len(rows))
+	// OKAMI-357: the data dir (entries.json, generated files) has a row.
+	has_data_dir := false
+	for id in rows do if id == .DATA_DIR {
+		label, value, toggles := wayu.setting_row(&state, id)
+		has_data_dir = label == "Data dir" && value == wayu.wayu.data && !toggles
+	}
+	testing.expect(t, has_data_dir, "settings show the data dir")
 	for id, i in rows do if id == .DRY_RUN do state.selected_index = i
 	press(&state, .Enter)
 	testing.expect(t, wayu.wayu.dry_run, "Enter turns dry-run on for the session")

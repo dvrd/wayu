@@ -3892,6 +3892,7 @@ SettingId :: enum {
 	VERSION,
 	SHELL,
 	CONFIG_DIR,
+	DATA_DIR,
 	TOML,
 	BACKUPS,
 	KEEP,
@@ -3905,6 +3906,7 @@ SETTING_ROWS :: [?]SettingId {
 	.VERSION,
 	.SHELL,
 	.CONFIG_DIR,
+	.DATA_DIR,
 	.TOML,
 	.BACKUPS,
 	.KEEP,
@@ -3924,6 +3926,8 @@ setting_row :: proc(state: ^TUIState, id: SettingId) -> (label, value: string, t
 		return "Shell", st.shell, false
 	case .CONFIG_DIR:
 		return "Config dir", st.config_dir, false
+	case .DATA_DIR:
+		return "Data dir", wayu.data, false
 	case .TOML:
 		return "wayu.toml", st.toml_path if st.toml_exists else "missing", false
 	case .BACKUPS:

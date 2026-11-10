@@ -293,6 +293,12 @@ releases, so they are listed here too.
 - The shell configuration check sees startup lines that load wayu through
   `builtin source`, `command source` / `command .` or `zsh-defer source`
   (they were "wayu not sourced", exit 78).
+- With no startup file at all, the shell configuration warning names the
+  file to create and the `source` line to put in it (it said
+  "run 'wayu init'", which never creates one).
+- `wayu init` prints its "Created N config file(s)" summary after the last
+  file and counts all of them (it said 3 after five "Created" lines). The TUI
+  settings view has a "Data dir" row.
 
 **`search` and secret display**
 

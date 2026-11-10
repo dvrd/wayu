@@ -565,12 +565,6 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		}
 	}
 
-	if created_files > 0 {
-		print_success("Created %d config file(s)", created_files)
-	} else {
-		print_info("All config files already exist")
-	}
-
 	// alias-sources.conf is shell-agnostic — create once regardless of shell
 	alias_sources_file := fmt.aprintf("%s/%s", wayu.config, ALIAS_SOURCES_FILE)
 	defer delete(alias_sources_file)
@@ -579,6 +573,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		success := init_config_file(alias_sources_file, ALIAS_SOURCES_TEMPLATE)
 		if success {
 			print_success("Created config file: %s", alias_sources_file)
+			created_files += 1
 		} else {
 			print_error_simple("Failed to create config file: %s", alias_sources_file)
 		}
@@ -597,11 +592,20 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		success := init_config_file(toml_file, toml_scaffold)
 		if success {
 			print_success("Created config file: %s", toml_file)
+			created_files += 1
 		} else {
 			print_error_simple("Failed to create config file: %s", toml_file)
 		}
 	} else {
 		print_info("Config file already exists: %s", toml_file)
+	}
+
+	// One summary after every file, counting them all (it said "Created 3"
+	// after five "Created" lines, OKAMI-357).
+	if created_files > 0 {
+		print_success("Created %d config file(s)", created_files)
+	} else {
+		print_info("All config files already exist")
 	}
 }
 
