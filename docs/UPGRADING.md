@@ -22,6 +22,11 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   `wayu plugin` command ran), and exits `78` naming the file when
   `plugins.json` is invalid (was silent, exit 0); the plugin loaders are then
   kept as they were. `plugins.<ext>` no longer has a `# Last updated` line.
+- core.zsh no longer sources `plugins/zsh-autosuggestions` /
+  `plugins/zsh-syntax-highlighting` on its own when their checkouts exist:
+  only plugins enabled in `plugins.json` load (`wayu plugin disable` had no
+  effect on those two). A checkout not registered in `plugins.json` is no
+  longer loaded: register it with `wayu plugin add`.
 
 **One status icon per line**
 

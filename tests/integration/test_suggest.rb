@@ -153,14 +153,15 @@ class SuggestTest
     as = "#{data}/plugins/zsh-autosuggestions"
     FileUtils.mkdir_p(as)
     File.write("#{as}/zsh-autosuggestions.zsh", "_zsh_autosuggest_start() { :; }\n(( SU_AS_LOADS++ ))\n")
+    # Only plugins enabled in plugins.json load (OKAMI-310).
+    plugins = [{ 'name' => 'zsh-syntax-highlighting', 'url' => 'https://github.com/zsh-users/zsh-syntax-highlighting.git',
+                 'enabled' => true, 'shell' => 'ZSH', 'installed_path' => hl, 'use' => ['zsh-syntax-highlighting.zsh'] }]
     if plugin_json
-      File.write("#{data}/plugins.json", JSON.generate(
-        'version' => '1.0', 'last_updated' => '2026-01-01T00:00:00Z',
-        'plugins' => [{ 'name' => 'zsh-autosuggestions', 'url' => 'https://github.com/zsh-users/zsh-autosuggestions.git',
-                        'enabled' => true, 'shell' => 'ZSH', 'installed_path' => as }]))
-      _, err, st = Open3.capture3(env, @wayu_bin, 'plugin', 'priority', 'zsh-autosuggestions', '50')
-      warn "plugin priority failed: #{err}" unless st.success?
+      plugins.unshift({ 'name' => 'zsh-autosuggestions', 'url' => 'https://github.com/zsh-users/zsh-autosuggestions.git',
+                        'enabled' => true, 'shell' => 'ZSH', 'installed_path' => as, 'priority' => 50 })
     end
+    File.write("#{data}/plugins.json", JSON.generate(
+      'version' => '1.0', 'last_updated' => '2026-01-01T00:00:00Z', 'plugins' => plugins))
     _, err, st = Open3.capture3(env, @wayu_bin, 'build')
     warn "build failed: #{err}" unless st.success?
     File.write("#{home}/.zshenv", zshenv_pre + "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
@@ -206,7 +207,7 @@ class SuggestTest
     ok = on.include?('_wayu_suggest_redraw') && on.include?('wayu-suggest-accept') &&
          on.include?('_WAYU_PLUGINS_LOADED="${_WAYU_PLUGINS_LOADED-}:zsh-autosuggestions"') &&
          !on.include?('zsh-autosuggestions/zsh-autosuggestions.zsh') &&
-         !off.include?('_wayu_suggest') && off.include?('zsh-autosuggestions/zsh-autosuggestions.zsh') &&
+         !off.include?('_wayu_suggest') && !off.include?('zsh-autosuggestions/zsh-autosuggestions.zsh') &&
          on.index('# === Autosuggestions') < on.index('# === Plugins ===')
     check('core', ok, "on has module=#{on.include?('_wayu_suggest_redraw')} off has module=#{off.include?('_wayu_suggest')}")
   end

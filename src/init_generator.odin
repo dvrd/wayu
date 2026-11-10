@@ -1316,10 +1316,9 @@ build_core_content :: proc(mask := false) -> string {
 		}
 	}
 
-	// Plugins. plugins.{ext} is the loader written by `wayu plugin add`;
-	// the hard-coded zsh-autosuggestions / zsh-syntax-highlighting lines are
-	// only a fallback when plugins.zsh didn't already load them, and
-	// syntax-highlighting is sourced last (after prompt widgets exist).
+	// Plugins. plugins.{ext} is the loader generated from plugins.json: only
+	// enabled plugins load (no hard-coded zsh-autosuggestions /
+	// zsh-syntax-highlighting fallback: it loaded disabled plugins, OKAMI-310).
 	// zsh: interactive shells only (plugins are line-editor features;
 	// OKAMI-375); `[settings] defer_plugins` loads them after the first
 	// prompt is drawn (zsh-defer), as one function so the order holds.
@@ -1330,7 +1329,7 @@ build_core_content :: proc(mask := false) -> string {
 	// plugins.zsh's guard (`wayu doctor` warns while it is enabled).
 	// `[settings] highlight` (built-in syntax highlighting) likewise goes
 	// before the plugins and keeps zsh-syntax-highlighting /
-	// fast-syntax-highlighting from loading (plugins.zsh and the fallback).
+	// fast-syntax-highlighting from loading (plugins.zsh's guard).
 	if is_zsh && startup.autosuggest {
 		fmt.sbprintln(&b, "# === Autosuggestions (wayu built-in, [settings] autosuggest) ===")
 		emit_zsh_suggest(&b, startup.autosuggest_style)
@@ -1344,14 +1343,6 @@ build_core_content :: proc(mask := false) -> string {
 	fmt.sbprintln(&b, "# === Plugins ===")
 	if is_zsh {
 		plugins_dir := fmt.tprintf("%s/plugins", wayu.data)
-		as_q := shell_double_quote_literal(
-			fmt.tprintf("%s/zsh-autosuggestions/zsh-autosuggestions.zsh", plugins_dir),
-			context.temp_allocator,
-		)
-		sh_q := shell_double_quote_literal(
-			fmt.tprintf("%s/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh", plugins_dir),
-			context.temp_allocator,
-		)
 		fmt.sbprintln(&b, "if [[ -o interactive ]]; then")
 		if startup.autosuggest {
 			fmt.sbprintln(
@@ -1374,23 +1365,7 @@ build_core_content :: proc(mask := false) -> string {
 			fmt.sbprintln(&b, "function _wayu_plugins_load {")
 		}
 		emit_source_if_exists(&b, runtime_file("plugins"))
-		if !startup.autosuggest {
-			fmt.sbprintfln(
-				&b,
-				"if (( ! ${{+functions[_zsh_autosuggest_start]}} )) && [ -f %s ]; then source %s; fi",
-				as_q,
-				as_q,
-			)
-		}
 		emit_source_if_exists(&b, fmt.tprintf("%s/config.zsh", plugins_dir))
-		if !startup.highlight {
-			fmt.sbprintfln(
-				&b,
-				"if (( ! ${{+functions[_zsh_highlight]}} )) && [ -f %s ]; then source %s; fi",
-				sh_q,
-				sh_q,
-			)
-		}
 		if startup.defer_plugins {
 			fmt.sbprintln(&b, "}")
 			fmt.sbprintln(&b, "zsh-defer _wayu_plugins_load")
