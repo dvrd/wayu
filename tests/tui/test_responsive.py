@@ -1427,6 +1427,88 @@ def test_constants_view_masks_secrets():
         s.kill()
 
 
+# ── Test: encrypted constants in the constants view (OKAMI-360) ───────────
+
+SEALED_VALUE = "fake-sealed-value-0007"
+RUNONLY_VALUE = "fake-runonly-value-0008"
+
+
+def add_secret(name, value, run_only=False):
+    """`wayu const add NAME --secret [--run-only]` with the file key backend
+    (never the real keychain); the value goes in on stdin."""
+    args = [WAYU_BIN, "const", "add", name, "--secret"] + (["--run-only"] if run_only else [])
+    r = subprocess.run(args, input=value + "\n", env=constants_env(),
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        raise RuntimeError(f"{' '.join(args[1:])} exited {r.returncode}: {r.stderr}")
+
+
+def secret_names():
+    with open(os.path.join(data_dir(), "secrets.json")) as f:
+        doc = json.load(f)
+    return sorted(doc["values"])
+
+
+def env_names():
+    with open(entries_path()) as f:
+        return sorted(e["name"] for e in json.load(f)["env"])
+
+
+def test_constants_view_lists_secrets():
+    """Secret and run-only constants are listed masked with a marker (also
+    after `v`), never decrypted; `e` shows the CLI hint; `d` removes the
+    entries.json marker and the secrets.json value together."""
+    print(f"\n── Constants view: encrypted secrets ──")
+    reset_config()
+    with open(os.path.join(config_dir(), "wayu.toml"), "a") as f:
+        f.write('\n[secrets]\nbackend = "file"\n')
+    add_secret("TUI_SEALED", SEALED_VALUE)
+    add_secret("TUI_RUNONLY", RUNONLY_VALUE, run_only=True)
+    s = TUISession(100, 30, env=constants_env())
+    try:
+        ok = open_view(s, "constants", lambda snap: "TUI_SEALED" in snap and "TUI_RUNONLY" in snap)
+        snap = s.snapshot()
+        test("secrets/listed", AssertResult(ok, snap))
+        test("secrets/masked_with_marker",
+             AssertResult("******** (secret)" in snap and "******** (secret, run-only)" in snap,
+                          snap))
+        s.send(b"v")
+        s.wait_for(lambda snap: "v Hide" in snap, timeout=TIMEOUT_KEY)
+        snap = s.snapshot()
+        test("secrets/never_revealed",
+             AssertResult("v Hide" in snap and SEALED_VALUE not in snap and RUNONLY_VALUE not in snap
+                          and "******** (secret)" in snap, snap))
+
+        s.send(b"/"); s.read(timeout=0.2)
+        s.send(b"TUI_SEALED")
+        s.wait_for(lambda snap: "(1/" in snap, timeout=TIMEOUT_KEY)
+        s.send(b"\r"); s.read(timeout=0.2)
+        s.send(b"e")
+        ok = s.wait_for(lambda snap: "wayu const add TUI_SEALED --secret" in snap, timeout=TIMEOUT_KEY)
+        snap = s.snapshot()
+        test("secrets/edit_blocked_with_hint",
+             AssertResult(ok and "EDIT" not in snap and SEALED_VALUE not in snap, snap))
+
+        s.send(b"d")
+        s.wait_for(lambda snap: "DELETE CONFIRMATION" in snap, timeout=TIMEOUT_KEY)
+        s.send(b"y")
+        ok = s.wait_for(lambda snap: "Removed constant: TUI_SEALED" in snap, timeout=TIMEOUT_KEY)
+        test("secrets/delete_notified", AssertResult(ok, s.snapshot()))
+        test("secrets/delete_keeps_pair",
+             AssertResult(env_names() == ["DEMO_API_KEY", "EDITOR", "TUI_RUNONLY"]
+                          and secret_names() == ["TUI_RUNONLY"],
+                          f"entries.json env {env_names()}, secrets.json {secret_names()}"))
+        s.send(b"\x1b")
+        s.wait_for(lambda snap: "(1/" not in snap, timeout=TIMEOUT_KEY)
+        s.read(timeout=0.3)
+        test("secrets/never_decrypted",
+             AssertResult(SEALED_VALUE.encode() not in s.raw and RUNONLY_VALUE.encode() not in s.raw,
+                          "a secret value reached the terminal"))
+    finally:
+        s.kill()
+        reset_config()
+
+
 def sandbox_home():
     """Temp HOME with a small fixed config: never reads the real
     config or data dirs, and every run renders the same data (CI + local)."""
@@ -1477,6 +1559,7 @@ def run_all():
 
     # Secret masking + reveal key
     test_constants_view_masks_secrets()
+    test_constants_view_lists_secrets()
 
     # Mutations, dry-run, paste, size detection
     test_add_and_delete_mutations()

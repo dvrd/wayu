@@ -64,7 +64,7 @@ handle_doctor_command :: proc(
 		print_error(
 			"'wayu doctor --optimize' was removed: wayu already generates an optimized init (`wayu build`); use `wayu export` for a single-file turbo init",
 		)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	// Profile mode: write the startup profiler script; no checks needed.
@@ -74,7 +74,7 @@ handle_doctor_command :: proc(
 			"--profile only writes the startup profiler script; it cannot be combined with %s",
 			"--json" if json_output else "--fix",
 		)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 	if profile_mode {
 		run_shell_profile()
@@ -83,7 +83,7 @@ handle_doctor_command :: proc(
 
 	if fix_mode && json_output {
 		print_error("--json reports only; it cannot be combined with --fix")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	// --fix rewrites wayu.toml (drops PATH entries), so it follows the same
@@ -92,7 +92,7 @@ handle_doctor_command :: proc(
 		print_error(
 			"doctor --fix removes missing/duplicate PATH entries and moves startup-file lines into wayu (wayu optimize). Pass --yes to confirm, or --dry-run to preview.",
 		)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	ensure_arena_initialized()
@@ -134,10 +134,10 @@ handle_doctor_command :: proc(
 doctor_exit :: proc(results: []CheckResult) -> ! {
 	for r in results {
 		if r.status == .ERROR {
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 	}
-	os.exit(EXIT_SUCCESS)
+	wayu_exit(EXIT_SUCCESS)
 }
 
 // Run all diagnostic checks.

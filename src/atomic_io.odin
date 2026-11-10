@@ -235,6 +235,6 @@ config_lock_release :: proc() {
 // `defer config_lock_release()`.
 config_lock_acquire_or_exit :: proc() {
 	if !config_lock_acquire() {
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 }

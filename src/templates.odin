@@ -21,7 +21,7 @@ handle_template_command :: proc(action: Action, args: []string) {
 			print_error("Usage: wayu template apply <name>")
 			fmt.println()
 			list_templates()
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		apply_template(args[0])
 	case .HELP:
@@ -29,7 +29,7 @@ handle_template_command :: proc(action: Action, args: []string) {
 	case:
 		fmt.eprintln("Unknown template action")
 		print_template_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
@@ -86,7 +86,7 @@ init_template_arg :: proc(args: []string) -> string {
 			if i + 1 >= len(args) || strings.has_prefix(args[i + 1], "-") {
 				print_error_simple("--template requires a template name")
 				list_templates()
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 			name = args[i + 1]
 			i += 1
@@ -95,13 +95,13 @@ init_template_arg :: proc(args: []string) -> string {
 		case:
 			print_error_simple("Unexpected argument for init: %s", a)
 			fmt.eprintln("Usage: wayu init [--template <name>]")
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 	}
 	if len(name) > 0 && !template_exists(name) {
 		print_error_simple("Unknown template: %s", name)
 		list_templates()
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 	return name
 }
@@ -132,7 +132,7 @@ apply_template :: proc(name: string) {
 		print_error("Unknown template: %s", name)
 		fmt.println()
 		list_templates()
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 }
 

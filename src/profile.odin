@@ -64,7 +64,7 @@ profile_startup_performance :: proc() {
 		fmt.println(
 			"Install the shell or run 'wayu build profile' from an interactive session of that shell.",
 		)
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer delete(shell_bin)
 

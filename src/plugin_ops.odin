@@ -645,7 +645,7 @@ exit_plugin_not_found :: proc(config: ^PluginConfigJSON, query: string) -> ! {
 		for name in suggestions {fmt.eprintfln("  %s", name)}
 	}
 	fmt.eprintln("Run 'wayu plugin list' to see installed plugins")
-	os.exit(EXIT_DATAERR)
+	wayu_exit(EXIT_DATAERR)
 }
 
 // Validate that all of a plugin's dependencies are installed

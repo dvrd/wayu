@@ -7,7 +7,6 @@
 package wayu
 
 import "core:fmt"
-import "core:os"
 import "core:slice"
 import "core:strings"
 
@@ -32,21 +31,21 @@ SearchEntry :: struct {
 handle_search_command :: proc(args: []string) {
 	if len(args) == 0 {
 		print_search_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	query := args[0]
 	if query == "--help" || query == "-h" || query == "help" {
 		print_search_usage()
-		os.exit(EXIT_SUCCESS)
+		wayu_exit(EXIT_SUCCESS)
 	}
 	if len(strings.trim_space(query)) == 0 {
 		print_search_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	// Search across all config types

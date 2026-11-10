@@ -909,7 +909,7 @@ handle_backup_command :: proc(action: Action, args: []string) {
 			print_error_simple("Usage: wayu backup restore <config-type> [N|backup-file]")
 			fmt.println("Example: wayu backup restore path        # newest backup")
 			fmt.println("         wayu backup restore path 3      # #3 in 'wayu backup list'")
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		restore_config_backup(args[0], args[1] if len(args) == 2 else "")
 	case .REMOVE:
@@ -921,25 +921,25 @@ handle_backup_command :: proc(action: Action, args: []string) {
 	case .GET:
 		fmt.eprintln("ERROR: get action not supported for backup command")
 		fmt.println("The get action only applies to plugins")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	case .HELP:
 		print_backup_help()
 	case .UNKNOWN:
 		fmt.eprintln("Unknown backup action")
 		print_backup_help()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	case .ADD:
 		print_error_simple("Backups are created automatically when modifying files")
 		fmt.println("Use 'wayu backup list' to see existing backups")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	case .CLEAN:
 		fmt.eprintln("ERROR: clean action not supported for backup command")
 		fmt.println("The clean action only applies to path entries")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	case .DEDUP:
 		fmt.eprintln("ERROR: dedup action not supported for backup command")
 		fmt.println("The dedup action only applies to path entries")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
@@ -1111,7 +1111,7 @@ list_backups_for_config :: proc(config_type: string) {
 		fmt.println(
 			"Valid types: toml, entries (or path, alias, constants), or a shell startup file (.zshrc, .bashrc, ...)",
 		)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
 
@@ -1126,7 +1126,7 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 		fmt.println(
 			"Valid types: toml, entries (or path, alias, constants), or a shell startup file (.zshrc, .bashrc, ...)",
 		)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
 
@@ -1152,7 +1152,7 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 	if len(backups) > 0 {
 		idx = select_backup(backups, selector)
 		if idx < 0 {
-			os.exit(EXIT_DATAERR)
+			wayu_exit(EXIT_DATAERR)
 		}
 	}
 
@@ -1183,7 +1183,7 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 		} else {
 			fmt.printfln("  wayu backup restore %s --yes", config_type)
 		}
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	// Serialize with every other writer: without the lock a
@@ -1195,7 +1195,7 @@ restore_config_backup :: proc(config_type: string, selector := "") {
 
 	fmt.printfln("%sNote:%s %s", BRIGHT_YELLOW, RESET, shared_note)
 	if !restore_from_backup(config_file, selector) {
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 }
 
@@ -1254,7 +1254,7 @@ cleanup_all_old_backups :: proc() {
 		fmt.println()
 		fmt.printfln("Add --yes flag to proceed:")
 		fmt.printfln("  wayu backup rm --yes")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	// Proceed with removal
@@ -1278,7 +1278,7 @@ cleanup_config_backups :: proc(config_type: string) {
 		fmt.println(
 			"Valid types: toml, entries (or path, alias, constants), or a shell startup file (.zshrc, .bashrc, ...)",
 		)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 	defer delete(config_file)
 
@@ -1325,7 +1325,7 @@ cleanup_config_backups :: proc(config_type: string) {
 		fmt.println()
 		fmt.printfln("Add --yes flag to proceed:")
 		fmt.printfln("  wayu backup rm %s --yes", config_type)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	removed := cleanup_old_backups(config_file, 5)

@@ -13,7 +13,7 @@ tui_run :: proc() {
 	if !is_stdin_tty() || !is_stdout_tty() {
 		fmt.eprintln("Error: TUI requires an interactive terminal (TTY)")
 		fmt.eprintln("Cannot run TUI when stdin or stdout is not a terminal")
-		os.exit(EXIT_GENERAL)
+		wayu_exit(EXIT_GENERAL)
 	}
 
 	// Restore the terminal before printing any assert/panic message.
@@ -136,7 +136,7 @@ tui_run :: proc() {
 tui_init :: proc() {
 	if !tui_enable_raw_mode() {
 		fmt.eprintln("Error: Failed to enable raw mode")
-		os.exit(EXIT_OSERR)
+		wayu_exit(EXIT_OSERR)
 	}
 	tui_install_signal_handlers()
 	tui_load_esc_delay()
@@ -393,6 +393,15 @@ handle_selection :: proc(state: ^TUIState) {
 		value := row.value
 		if state.current_view == .CONSTANTS_VIEW {
 			value = list_display_value(row.key, row.value, state.reveal_secrets)
+		}
+		if row.kind == .Secret || row.kind == .SecretRunOnly {
+			lines := []string {
+				fmt.tprintf("Name: %s", row.key),
+				fmt.tprintf("%s: %s", value_label, secret_row_value(row.kind)),
+				fmt.tprintf("Show it: wayu const get %s", row.key),
+			}
+			show_detail_overlay(state, row.key, lines)
+			return
 		}
 		lines := []string {
 			fmt.tprintf("Name: %s", row.key),
@@ -1196,7 +1205,9 @@ tui_current_value :: proc(view: TUIView, name: string) -> (value: string, found:
 	if view == .ALIAS_VIEW {
 		for a in store.aliases do if a.name == name do return strings.clone(a.value, context.temp_allocator), true
 	} else {
-		for c in store.env do if c.name == name do return strings.clone(c.value, context.temp_allocator), true
+		// A secret is not offered for replacing: the writer refuses it with
+		// the `--secret` hint.
+		for c in store.env do if c.name == name && !c.secret do return strings.clone(c.value, context.temp_allocator), true
 	}
 	return "", false
 }
@@ -1259,6 +1270,25 @@ RowSource :: enum u8 {
 RowKind :: enum u8 {
 	Entry,
 	Separator,
+	Secret, // encrypted constant: value never loaded (RowMeta.value = "")
+	SecretRunOnly, // encrypted, injected only by `wayu secrets run`
+}
+
+// Value column text of an encrypted constant row: always the mask plus a
+// marker, whatever the reveal toggle says (the TUI never decrypts).
+secret_row_value :: proc(kind: RowKind) -> string {
+	#partial switch kind {
+	case .Secret:
+		return SECRET_MASK + " (secret)"
+	case .SecretRunOnly:
+		return SECRET_MASK + " (secret, run-only)"
+	}
+	return ""
+}
+
+// The hint shown when editing an encrypted constant (temp-allocated).
+secret_edit_hint :: proc(name: string) -> string {
+	return fmt.tprintf("Encrypted secret: change it in the CLI: wayu const add %s --secret", name)
 }
 
 // Structured data kept alongside each display row of a data-view cache.
@@ -3182,6 +3212,14 @@ tui_load_constants :: proc(state: ^TUIState) {
 
 				is_active := snapshot_env_var(const.name) != nil
 				source := RowSource.WAYU_ACTIVE if is_active else RowSource.WAYU_INACTIVE
+
+				// Secrets: the marker only — the value stays encrypted.
+				if const.secret {
+					kind := RowKind.SecretRunOnly if const.run_only else RowKind.Secret
+					display := fmt.aprintf("%s=%s", const.name, secret_row_value(kind))
+					cache_push(&items, &meta, display, const.name, "", source, kind)
+					continue
+				}
 
 				display := fmt.aprintf(
 					"%s=%s",

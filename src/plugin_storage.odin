@@ -12,7 +12,7 @@ handle_plugin_check :: proc(args: []string) {
 	// Read plugin configuration
 	config, ok := read_plugin_config_json()
 	if !ok {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 
@@ -104,7 +104,7 @@ handle_plugin_check :: proc(args: []string) {
 	if !wayu.dry_run {
 		if !write_plugin_config_json(&config) {
 			print_error_simple("Failed to save plugin metadata")
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 	} else {
 		print_info("[DRY RUN] Would save updated metadata")
@@ -123,7 +123,7 @@ handle_plugin_check :: proc(args: []string) {
 	if failed_count > 0 {
 		fmt.println()
 		print_error_simple("%d plugin(s) could not be checked", failed_count)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	if !updates_available {
@@ -257,7 +257,7 @@ handle_plugin_update :: proc(args: []string) {
 		fmt.println()
 		fmt.printfln("%sExample:%s", get_muted(), RESET)
 		fmt.printfln("  %swayu plugin update zsh-autosuggestions%s", get_muted(), RESET)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	update_all := args[0] == "--all" || args[0] == "-a"
@@ -270,7 +270,7 @@ handle_plugin_update :: proc(args: []string) {
 	// Read plugin configuration
 	config, ok := read_plugin_config_json()
 	if !ok {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 
@@ -322,7 +322,7 @@ handle_plugin_update :: proc(args: []string) {
 		switch plugin_update_one(plugin_ptr, "  ") {
 		case .Failed:
 			print_error_simple("Failed to update plugin '%s'", plugin_ptr.name)
-			os.exit(EXIT_IOERR)
+			wayu_exit(EXIT_IOERR)
 		case .Up_To_Date:
 			current_count = 1
 		case .Updated:
@@ -374,7 +374,7 @@ handle_plugin_update :: proc(args: []string) {
 		// Back up (pruned), then write updated config
 		if err := plugin_config_save(&config); err != "" {
 			print_error_simple("%s", err)
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 	} else {
 		print_info("[DRY RUN] Would save updated metadata")
@@ -404,7 +404,7 @@ handle_plugin_update :: proc(args: []string) {
 
 	if failed_count > 0 {
 		print_error_simple("%d plugin(s) failed to update", failed_count)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 }
 
@@ -486,7 +486,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 			get_primary(),
 			RESET,
 		)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	plugin_name := args[0]
@@ -499,7 +499,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	// 2. Read plugin configuration
 	config, ok := read_plugin_config_json()
 	if !ok {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	// 3. Find plugin by exact name (miss: suggestions on stderr, exit 65)
@@ -513,7 +513,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	if plugin_ptr.enabled == enable {
 		cleanup_plugin_config_json(&config)
 		print_info("Plugin '%s' is already %s", plugin_name, action_past)
-		os.exit(EXIT_SUCCESS) // NOT an error - idempotent
+		wayu_exit(EXIT_SUCCESS) // NOT an error - idempotent
 	}
 
 	// Display header
@@ -528,7 +528,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		if err := plugin_config_save(&config); err != "" {
 			cleanup_plugin_config_json(&config)
 			print_error_simple("%s", err)
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 	} else {
 		print_info("[DRY RUN] Would save updated configuration")
@@ -539,7 +539,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		if !generate_plugins_file(wayu.shell) {
 			cleanup_plugin_config_json(&config)
 			print_error_simple("Failed to regenerate plugins loader")
-			os.exit(EXIT_IOERR)
+			wayu_exit(EXIT_IOERR)
 		}
 	} else {
 		print_info("[DRY RUN] Would regenerate shell loader")
@@ -568,7 +568,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		warn_plugin_conflicts(plugin_name)
 	}
 
-	os.exit(EXIT_SUCCESS)
+	wayu_exit(EXIT_SUCCESS)
 }
 
 // Handle plugin enable command - enable a disabled plugin
@@ -602,7 +602,7 @@ handle_plugin_priority :: proc(args: []string) {
 		fmt.println()
 		fmt.println("Example:")
 		fmt.println("  wayu plugin priority zsh-autosuggestions 50")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	plugin_name := args[0]
@@ -614,7 +614,7 @@ handle_plugin_priority :: proc(args: []string) {
 		print_error_simple("Invalid priority number '%s'", priority_str)
 		fmt.println()
 		fmt.println("Priority must be a valid integer")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	// Hold the config lock across read-modify-write of plugins.json so
@@ -625,7 +625,7 @@ handle_plugin_priority :: proc(args: []string) {
 	// 3. Read config
 	config, read_ok := read_plugin_config_json()
 	if !read_ok {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 
@@ -654,7 +654,7 @@ handle_plugin_priority :: proc(args: []string) {
 	// 5. Back up (pruned), then save config
 	if err := plugin_config_save(&config); err != "" {
 		print_error_simple("%s", err)
-		os.exit(EXIT_CANTCREAT)
+		wayu_exit(EXIT_CANTCREAT)
 	}
 
 	// 7. Regenerate loader (load order changed)
@@ -676,7 +676,7 @@ handle_plugin_add :: proc(args: []string) {
 	if len(args) == 0 {
 		print_error_simple("Plugin name or URL required")
 		print_plugin_add_help()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 	if args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
 		print_plugin_add_help()
@@ -697,21 +697,21 @@ handle_plugin_add :: proc(args: []string) {
 		} else if arg == "--use" {
 			if i + 1 >= len(args) {
 				print_error_simple("--use requires a file name or glob (e.g. --use '*.zsh')")
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 			i += 1
 			glob = args[i]
 		} else {
 			print_error_simple("Unexpected argument '%s'", arg)
 			print_plugin_add_help()
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		if !is_valid_use_glob(glob) {
 			print_error_simple(
 				"Invalid --use value '%s': give a file name or glob at the repository root (no '/')",
 				glob,
 			)
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		append(&use_globs, glob)
 	}
@@ -723,7 +723,7 @@ handle_plugin_add :: proc(args: []string) {
 		fmt.println(
 			"Plaintext http:// and git:// can be tampered with in transit; use https:// or ssh instead.",
 		)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 
 	// Resolve plugin (all fields of `info` are owned)
@@ -735,7 +735,7 @@ handle_plugin_add :: proc(args: []string) {
 			print_error_simple("Unknown plugin '%s'", name_or_url)
 			fmt.println("\nRun 'wayu plugin search' to see available plugins")
 		}
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 	defer plugin_info_destroy(&info)
 
@@ -744,7 +744,7 @@ handle_plugin_add :: proc(args: []string) {
 	plugin_add_exit_if_installed :: proc(config: ^PluginConfigJSON, name: string) {
 		if _, found := find_plugin_json(config, name); found {
 			print_warning("Plugin '%s' is already installed", name)
-			os.exit(EXIT_SUCCESS)
+			wayu_exit(EXIT_SUCCESS)
 		}
 	}
 
@@ -771,7 +771,7 @@ handle_plugin_add :: proc(args: []string) {
 	config, ok := read_plugin_config_json()
 	if !ok {
 		print_error_simple("Failed to read plugin configuration")
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 	plugin_add_exit_if_installed(&config, info.name)
@@ -798,7 +798,7 @@ handle_plugin_add :: proc(args: []string) {
 		err := os.make_directory(plugins_dir)
 		if err != nil {
 			print_error_simple("Failed to create plugins directory: %v", err)
-			os.exit(EXIT_CANTCREAT)
+			wayu_exit(EXIT_CANTCREAT)
 		}
 	}
 
@@ -826,7 +826,7 @@ handle_plugin_add :: proc(args: []string) {
 		if len(clone_err) > 0 {
 			fmt.eprintln(clone_err)
 		}
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	if !wayu.dry_run {
@@ -853,7 +853,7 @@ handle_plugin_add :: proc(args: []string) {
 				remove_cloned_plugin_dir(plugin_path, plugins_dir)
 			}
 			print_plugin_nothing_to_load(info, use_globs[:])
-			os.exit(EXIT_DATAERR)
+			wayu_exit(EXIT_DATAERR)
 		}
 	} else if from_url {
 		print_info("Shell: detected after cloning")
@@ -901,7 +901,7 @@ handle_plugin_add :: proc(args: []string) {
 		if !existed_before {
 			remove_cloned_plugin_dir(plugin_path, plugins_dir)
 		}
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 
 	if wayu.dry_run {
@@ -918,7 +918,7 @@ handle_plugin_add :: proc(args: []string) {
 			remove_cloned_plugin_dir(plugin_path, plugins_dir)
 		}
 		print_error_simple("%s", err)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	// Generate plugins file for current shell
@@ -932,7 +932,7 @@ handle_plugin_add :: proc(args: []string) {
 		}
 		generate_plugins_file(wayu.shell)
 		print_error_simple("Failed to generate plugins loader")
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	print_success("Plugin '%s' installed successfully", info.name)
@@ -1069,7 +1069,7 @@ handle_plugin_list :: proc(args: []string) {
 	// Read from JSON5 config
 	config, ok := read_plugin_config_json()
 	if !ok {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 
@@ -1147,7 +1147,7 @@ handle_plugin_remove :: proc(args: []string) {
 	config, ok := read_plugin_config_json()
 	if !ok {
 		print_error_simple("Failed to read plugin configuration")
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 
@@ -1173,7 +1173,7 @@ handle_plugin_remove :: proc(args: []string) {
 			get_primary(),
 			RESET,
 		)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	arg_name := args[0]
@@ -1214,7 +1214,7 @@ handle_plugin_remove :: proc(args: []string) {
 		delete(dependents)
 		fmt.printfln("Add --yes flag to proceed:")
 		fmt.printfln("  wayu plugin rm %s --yes", plugin_name)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	// Phase 3: Check for dependents (warning only since --yes was provided)
@@ -1282,7 +1282,7 @@ handle_plugin_remove :: proc(args: []string) {
 	}
 	if len(res.err) > 0 {
 		print_error_simple("%s", res.err)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	print_success("Plugin '%s' removed successfully", plugin_name)
 }
@@ -1354,7 +1354,7 @@ handle_plugin_get :: proc(args: []string) {
 	if len(args) == 0 {
 		print_error_simple("Plugin name required")
 		fmt.println("\nUsage: wayu plugin get <name>")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	plugin_name := args[0]
@@ -1363,7 +1363,7 @@ handle_plugin_get :: proc(args: []string) {
 	config, ok := read_plugin_config_json()
 	if !ok {
 		print_error_simple("Failed to read plugin configuration")
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 
@@ -1454,7 +1454,7 @@ handle_plugin_search :: proc(args: []string) {
 				i += 2
 			} else {
 				print_error_simple("--category requires a value")
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 		} else {
 			query = strings.to_lower(arg)

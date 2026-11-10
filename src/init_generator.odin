@@ -3282,7 +3282,7 @@ clear_evalcache :: proc() {
 	}
 	if err := os.remove_all(dir); err != nil {
 		print_error("Failed to remove %s: %v", dir, err)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	print_success("Cleared evalcache (%s); new shells regenerate it", dir)
 }

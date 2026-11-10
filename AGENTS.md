@@ -169,7 +169,7 @@ All TUI code lives in 3 consolidated files (down from 18). No separate `tui/` pa
 
 ### Exit Codes
 
-Always use the `EXIT_*` constants from `src/interfaces.odin`. **Never use bare `os.exit(1)`**.
+Always use the `EXIT_*` constants from `src/interfaces.odin`, and exit with `wayu_exit(code)`: **never call `os.exit` directly** (`tests/unit/test_exit_paths.odin` enforces it).
 
 | Constant | Value | When to use |
 |---|---|---|
@@ -202,7 +202,7 @@ defer delete(config_file)
 result := validate_path(path)
 if !result.valid {
     print_error(result.error_message)
-    os.exit(EXIT_DATAERR)
+    wayu_exit(EXIT_DATAERR)
 }
 
 // Backup before any write
@@ -212,11 +212,11 @@ defer if ok do delete(backup_path)
 // Guard destructive operations with --yes
 if !wayu.yes_flag {
     print_error("This operation requires confirmation.")
-    os.exit(EXIT_USAGE)
+    wayu_exit(EXIT_USAGE)
 }
 ```
 
-Code the TUI can reach (config readers, locks) exits with `wayu_exit(code)`, which restores the terminal first, instead of `os.exit`.
+Every exit goes through `wayu_exit(code)` (`src/tui_io.odin`), which restores the terminal first when the TUI owns it: on Linux the Odin runtime's `os.exit` is a raw `exit_group` that skips atexit handlers, so a bare `os.exit` reachable from the TUI would leave the shell in raw mode on the alternate screen. Forked children use `posix._exit`.
 
 ## Testing Structure
 

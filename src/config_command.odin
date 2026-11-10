@@ -46,7 +46,7 @@ handle_config_extra_command :: proc(action: Action, args: []string) {
 	case:
 		fmt.eprintln("Unknown config action")
 		print_config_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
@@ -79,13 +79,13 @@ edit_extra_config :: proc(extra_file: string) {
 		content := "# Extra configuration - runs at end of shell initialization\n# Add custom scripts, conda initialization, etc. here\n"
 		if write_ok := os.write_entire_file_from_string(extra_file, content); write_ok != nil {
 			print_error_simple("Failed to create extra config: %s", extra_file)
-			os.exit(EXIT_CANTCREAT)
+			wayu_exit(EXIT_CANTCREAT)
 		}
 		print_success("Created extra config: %s", extra_file)
 	}
 
 	if !launch_editor(extra_file) {
-		os.exit(EXIT_FAILURE)
+		wayu_exit(EXIT_FAILURE)
 	}
 }
 
@@ -100,13 +100,13 @@ edit_toml_config :: proc(toml_file: string) {
 			SECRET_FILE_PERMS,
 		); write_ok != nil {
 			print_error_simple("Failed to create wayu.toml: %s", toml_file)
-			os.exit(EXIT_CANTCREAT)
+			wayu_exit(EXIT_CANTCREAT)
 		}
 		print_success("Created wayu.toml: %s", toml_file)
 	}
 
 	if !launch_editor(toml_file) {
-		os.exit(EXIT_FAILURE)
+		wayu_exit(EXIT_FAILURE)
 	}
 }
 
@@ -218,13 +218,13 @@ detect_zshrc_script_blocks :: proc(
 ) {
 	if !os.exists(rc_path) {
 		print_error_simple("%s not found", rc_path)
-		os.exit(EXIT_NOINPUT)
+		wayu_exit(EXIT_NOINPUT)
 	}
 
 	content, read_ok := safe_read_file(rc_path)
 	if !read_ok {
 		// safe_read_file already printed why (one error per failure).
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	return detect_rc_script_blocks_in(string(content)), content
 }
@@ -328,7 +328,7 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 	if !force_yes {
 		fmt.printfln("This will append %d blocks to %s", len(detected_blocks), extra_file)
 		fmt.println("Pass --yes to confirm")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	builder: strings.Builder
@@ -342,7 +342,7 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 		read_ok: bool
 		existing, read_ok = safe_read_file(extra_file)
 		if !read_ok {
-			os.exit(EXIT_IOERR)
+			wayu_exit(EXIT_IOERR)
 		}
 	}
 	defer delete(existing)
@@ -389,7 +389,7 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 
 	// Back up first (only when something is written); no backup, no write.
 	if !create_backup_cli(extra_file) {
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	// Write file
@@ -405,7 +405,7 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 		)
 	} else {
 		print_error_simple("Failed to write %s", extra_file)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 }
 

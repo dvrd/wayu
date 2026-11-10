@@ -41,11 +41,11 @@ handle_export_command :: proc(action: Action, args: []string) {
 	case .UNKNOWN:
 		print_error_simple("Unknown export mode")
 		print_export_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	// Turbo/eval emit sh syntax (`if [ ... ]; then`, `export`): never hand
@@ -54,7 +54,7 @@ handle_export_command :: proc(action: Action, args: []string) {
 		print_error_simple(
 			"wayu export does not support fish; source init.fish instead (wayu build)",
 		)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	#partial switch action {
@@ -68,14 +68,14 @@ handle_export_command :: proc(action: Action, args: []string) {
 	case:
 		print_error("Unknown export action")
 		print_export_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
 // Handle --eval flag for direct shell integration (stdout only, no writes)
 handle_export_eval :: proc() {
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	generate_eval_output()
 }
@@ -137,7 +137,7 @@ generate_turbo_export :: proc(dry_run: bool) {
 	delete(sync_file)
 	if !write_turbo_file(output_path, content) {
 		print_error("Failed to write turbo export file")
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	flush_zcompile_batch()
 
@@ -268,15 +268,15 @@ handle_export_check :: proc() {
 	if !exists {
 		fmt.printfln("%s✗ Turbo file not found%s", get_warning(), RESET)
 		fmt.printfln("%sRun: wayu export --turbo%s", get_primary(), RESET)
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	if !current {
 		fmt.printfln("%s⚠ Turbo file is outdated%s", get_warning(), RESET)
 		fmt.printfln("%sRegenerate: wayu export --turbo%s", get_primary(), RESET)
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	fmt.printfln("%s✓ Turbo file is up to date%s", get_success(), RESET)
-	os.exit(EXIT_SUCCESS)
+	wayu_exit(EXIT_SUCCESS)
 }

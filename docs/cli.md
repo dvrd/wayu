@@ -552,8 +552,10 @@ them instead (with backups) and prints what it moved.
 ### `wayu reload` (`watch`, `hot-reload`)
 
 `wayu reload [start|stop|status|regenerate]`. `start` (the default) watches
-wayu.toml and entries.json and regenerates the init files on change (debounced) until
-interrupted (script sources too: an edit rebuilds the script); `stop` stops
+wayu.toml, entries.json and secrets.json and regenerates the init files on
+change (debounced) until interrupted (a secrets.json change, including the
+file appearing or going away, also drops the secrets session cache; script
+sources too: an edit rebuilds the script); `stop` stops
 a running watcher; `status` says whether one runs; `regenerate` (`regen`)
 regenerates once. The running watcher holds a lock on `<data>/watcher.lock`;
 `stop` / `status` treat a `watcher.pid` without that lock held as stale

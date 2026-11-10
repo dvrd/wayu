@@ -114,7 +114,11 @@ parse_hex_codepoint :: proc(value: string, start, width: int) -> (rune, bool) {
 
 toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
 	// A secret never silently becomes plaintext again.
-	if secrets_store_has_name_or_exit(entry.name) {
+	is_secret, serr := secrets_store_has_name(entry.name)
+	if len(serr) > 0 {
+		return false, serr
+	}
+	if is_secret {
 		return false, fmt.aprintf(
 			"%s is an encrypted secret: change it with `wayu const add %s VALUE --secret`, or remove it first",
 			entry.name,
@@ -134,8 +138,13 @@ toml_constant_add :: proc(entry: ConfigEntry) -> (bool, string) {
 	return entries_entry_upsert(.ENV, entry.name, entry.value, "Constant")
 }
 
+// Never exits (the TUI removes through it): errors come back heap-owned.
 toml_constant_remove :: proc(name: string) -> (bool, string) {
-	if !secrets_store_has_name_or_exit(name) {
+	is_secret, serr := secrets_store_has_name(name)
+	if len(serr) > 0 {
+		return false, serr
+	}
+	if !is_secret {
 		return entries_entry_remove(.ENV, name, "Constant")
 	}
 	// Secret: drop the ciphertext (secrets.json) and the entries.json marker.
@@ -143,9 +152,13 @@ toml_constant_remove :: proc(name: string) -> (bool, string) {
 		print_info("[dry-run] Would remove secret %s from %s", name, secrets_store_path())
 		return true, ""
 	}
-	config_lock_acquire_or_exit()
+	if !config_lock_acquire() {
+		return false, strings.clone("I/O error: could not lock wayu config")
+	}
 	defer config_lock_release()
-	_ = const_remove_secret(name)
+	if _, ok, err := const_remove_secret(name); !ok {
+		return false, strings.clone(err)
+	}
 	regenerate_init_core_silently()
 	print_success("Secret removed: %s", name)
 	return true, ""
@@ -153,7 +166,7 @@ toml_constant_remove :: proc(name: string) -> (bool, string) {
 
 list_toml_constants :: proc() {
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	all_entries := read_env_entries()
@@ -528,10 +541,10 @@ print_constants_json :: proc(
 get_toml_constant_value :: proc(name: string) {
 	if len(strings.trim_space(name)) == 0 {
 		print_cli_usage_error(&CONSTANTS_SPEC, "get")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	if const_get_secret(name) {

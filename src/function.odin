@@ -19,13 +19,13 @@ handle_function_command :: proc(action: Action, args: []string) {
 	case .ADD:
 		if len(args) < 1 {
 			print_error_simple("Function name required. Usage: wayu function add <name>")
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		add_function(args[0])
 	case .REMOVE:
 		if len(args) < 1 {
 			print_error_simple("Function name required. Usage: wayu function remove <name>")
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		remove_function(args[0])
 	case .LIST:
@@ -35,7 +35,7 @@ handle_function_command :: proc(action: Action, args: []string) {
 	case:
 		fmt.eprintln("Unknown function action")
 		print_function_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
@@ -51,7 +51,7 @@ ensure_functions_dir :: proc() -> string {
 	if !os.exists(dir) {
 		if err := make_directory_all(dir); err != nil {
 			print_error_simple("Failed to create functions directory: %s", dir)
-			os.exit(EXIT_CANTCREAT)
+			wayu_exit(EXIT_CANTCREAT)
 		}
 	}
 	return dir
@@ -62,7 +62,7 @@ add_function :: proc(name: string) {
 	if !result.valid {
 		print_error("%s", result.error_message)
 		delete(result.error_message)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 
 	if wayu.dry_run {
@@ -89,7 +89,7 @@ add_function :: proc(name: string) {
 		defer delete(skeleton)
 		if write_ok := os.write_entire_file_from_string(func_file, skeleton); write_ok != nil {
 			print_error_simple("Failed to create function file: %s", func_file)
-			os.exit(EXIT_CANTCREAT)
+			wayu_exit(EXIT_CANTCREAT)
 		}
 		print_success("Created function: %s", func_file)
 	}
@@ -98,7 +98,7 @@ add_function :: proc(name: string) {
 	// vi (like `script new`).
 	opened, edit_ok := editor_maybe_open(func_file)
 	if !edit_ok {
-		os.exit(EXIT_FAILURE)
+		wayu_exit(EXIT_FAILURE)
 	}
 	if opened {
 		print_info("Reload your shell to load '%s'", name)
@@ -159,7 +159,7 @@ remove_function :: proc(name: string) {
 	if !result.valid {
 		print_error("%s", result.error_message)
 		delete(result.error_message)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 
 	func_file := function_file_path(name)
@@ -167,7 +167,7 @@ remove_function :: proc(name: string) {
 
 	if !os.exists(func_file) {
 		print_error_simple("Function not found: %s", name)
-		os.exit(EXIT_NOINPUT)
+		wayu_exit(EXIT_NOINPUT)
 	}
 
 	if wayu.dry_run {
@@ -178,18 +178,18 @@ remove_function :: proc(name: string) {
 
 	if !wayu.yes_flag {
 		fmt.printfln("This will delete %s. Pass --yes to confirm.", func_file)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	// Backup before deleting so the user can recover the function body.
 	// No backup → no delete (the file is the only copy of the user's code).
 	if !create_backup_cli(func_file) {
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	if err := os.remove(func_file); err != nil {
 		print_error_simple("Failed to remove function file: %s", func_file)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	print_success("Removed function: %s", name)
 }
@@ -206,14 +206,14 @@ list_functions :: proc() {
 	handle, open_err := os.open(dir)
 	if open_err != nil {
 		print_error_simple("Failed to open functions directory: %s", dir)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	defer os.close(handle)
 
 	entries, read_err := os.read_dir(handle, -1, context.allocator)
 	if read_err != nil {
 		print_error_simple("Failed to read functions directory: %s", dir)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	defer os.file_info_slice_delete(entries, context.allocator)
 

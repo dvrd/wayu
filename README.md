@@ -257,7 +257,7 @@ rule), the `--json` document shapes and the exit codes.
 | `hooks` | Pre/post operation hooks |
 | `function`, `functions`, `func`, `fn` | Manage shell functions (data dir `functions/`) |
 | `script`, `scripts` | Manage standalone scripts on PATH (data dir `scripts/` + `bin/`) |
-| `reload`, `watch`, `hot-reload` | Watch wayu.toml, entries.json and script sources; regenerate on change |
+| `reload`, `watch`, `hot-reload` | Watch wayu.toml, entries.json, secrets.json and script sources; regenerate on change |
 | `version` | Show version |
 | `help` | Show help |
 
