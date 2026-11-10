@@ -2,10 +2,10 @@ package wayu
 import "core:fmt"
 import "core:mem"
 import "core:os"
-import "core:strings"
+import "core:path/filepath"
 import "core:slice"
 import "core:strconv"
-import "core:path/filepath"
+import "core:strings"
 // ── Network git ─────────────────────────────────────────────────────────
 // Every git command that talks to a remote (clone, fetch, ls-remote) goes
 // through run_git_network: no terminal (new session, stdin /dev/null, no
@@ -13,13 +13,13 @@ import "core:path/filepath"
 // transfer stalls, and an overall deadline after which git and its helpers
 // are killed.
 
-GIT_CLONE_TIMEOUT_MS      :: 10 * 60 * 1000 // clone / fetch: repos can be large
-GIT_LS_REMOTE_TIMEOUT_MS  :: 60 * 1000      // `plugin check`: one small request
-GIT_SSH_BATCH_COMMAND     :: "ssh -o BatchMode=yes -o ConnectTimeout=10"
+GIT_CLONE_TIMEOUT_MS :: 10 * 60 * 1000 // clone / fetch: repos can be large
+GIT_LS_REMOTE_TIMEOUT_MS :: 60 * 1000 // `plugin check`: one small request
+GIT_SSH_BATCH_COMMAND :: "ssh -o BatchMode=yes -o ConnectTimeout=10"
 // http.lowSpeedLimit/Time: abort an https transfer that stays below
 // 1000 bytes/s for 30 s.
-GIT_HTTP_LOW_SPEED_LIMIT  :: "1000"
-GIT_HTTP_LOW_SPEED_TIME   :: "30"
+GIT_HTTP_LOW_SPEED_LIMIT :: "1000"
+GIT_HTTP_LOW_SPEED_TIME :: "30"
 
 // Overall deadline for a network git command: WAYU_GIT_TIMEOUT (whole
 // seconds, > 0) when set and valid, else `default_ms`.
@@ -50,7 +50,9 @@ git_network_env :: proc(repo_dir: string) -> []Env_Default {
 		if repo_dir == "" {
 			configured = capture_command([]string{"git", "config", "--get", "core.sshCommand"})
 		} else {
-			configured = capture_command([]string{"git", "-C", repo_dir, "config", "--get", "core.sshCommand"})
+			configured = capture_command(
+				[]string{"git", "-C", repo_dir, "config", "--get", "core.sshCommand"},
+			)
 		}
 		defer delete(configured)
 		if configured == "" {
@@ -63,14 +65,19 @@ git_network_env :: proc(repo_dir: string) -> []Env_Default {
 // Run a git command that contacts a remote (see the section comment above).
 // On timeout, stderr explains it. Result strings are ALLOCATED — release
 // with command_result_destroy.
-run_git_network :: proc(args: []string, default_timeout_ms: int, repo_dir := "") -> Command_Result {
+run_git_network :: proc(
+	args: []string,
+	default_timeout_ms: int,
+	repo_dir := "",
+) -> Command_Result {
 	timeout_ms := git_network_timeout_ms(default_timeout_ms)
 	result := run_command_timeout(args, timeout_ms, git_network_env(repo_dir))
 	if result.timed_out {
 		delete(result.stderr)
 		result.stderr = fmt.aprintf(
 			"git timed out after %ds and was stopped (set WAYU_GIT_TIMEOUT=<seconds> to allow longer)",
-			timeout_ms / 1000)
+			timeout_ms / 1000,
+		)
 	} else if result.cancelled {
 		delete(result.stderr)
 		result.stderr = strings.clone("cancelled")
@@ -87,7 +94,10 @@ git_clone :: proc(url: string, dest: string) -> (ok: bool, err_text: string) {
 		return true, strings.clone("")
 	}
 
-	r := run_git_network([]string{"git", "clone", "--depth=1", "--quiet", "--", url, dest}, GIT_CLONE_TIMEOUT_MS)
+	r := run_git_network(
+		[]string{"git", "clone", "--depth=1", "--quiet", "--", url, dest},
+		GIT_CLONE_TIMEOUT_MS,
+	)
 	delete(r.stdout)
 	return r.ok, r.stderr
 }
@@ -97,7 +107,14 @@ git_clone :: proc(url: string, dest: string) -> (ok: bool, err_text: string) {
 // checkout HEAD must start with `commit`, otherwise the clone is rejected.
 // `commit` must already have passed is_valid_commit_sha.
 // err_text is ALLOCATED (possibly empty) — caller must delete.
-git_clone_at_commit :: proc(url: string, dest: string, commit: string) -> (ok: bool, err_text: string) {
+git_clone_at_commit :: proc(
+	url: string,
+	dest: string,
+	commit: string,
+) -> (
+	ok: bool,
+	err_text: string,
+) {
 	if wayu.dry_run {
 		print_info("[DRY RUN] Would execute: git clone --no-checkout --quiet -- %s %s", url, dest)
 		print_info("[DRY RUN] Would execute: git -C %s checkout --quiet --detach %s", dest, commit)
@@ -107,14 +124,19 @@ git_clone_at_commit :: proc(url: string, dest: string, commit: string) -> (ok: b
 		return false, fmt.aprintf("invalid commit '%s'", commit)
 	}
 
-	cloned := run_git_network([]string{"git", "clone", "--no-checkout", "--quiet", "--", url, dest}, GIT_CLONE_TIMEOUT_MS)
+	cloned := run_git_network(
+		[]string{"git", "clone", "--no-checkout", "--quiet", "--", url, dest},
+		GIT_CLONE_TIMEOUT_MS,
+	)
 	delete(cloned.stdout)
 	if !cloned.ok {
 		return false, cloned.stderr
 	}
 	delete(cloned.stderr)
 
-	checked_out, co_err := run_command_capture_stderr([]string{"git", "-C", dest, "checkout", "--quiet", "--detach", commit})
+	checked_out, co_err := run_command_capture_stderr(
+		[]string{"git", "-C", dest, "checkout", "--quiet", "--detach", commit},
+	)
 	if !checked_out {
 		return false, co_err
 	}
@@ -163,8 +185,8 @@ split_plugin_commit_pin :: proc(arg: string) -> (url: string, commit: string) {
 
 GitUpdateResult :: enum {
 	Failed,
-	Updated,       // fast-forward (or already up to date)
-	Reset,         // upstream rewrote history; checkout reset to the remote
+	Updated, // fast-forward (or already up to date)
+	Reset, // upstream rewrote history; checkout reset to the remote
 }
 
 // Update a managed plugin checkout to the tip of `branch` on origin
@@ -180,7 +202,13 @@ GitUpdateResult :: enum {
 //
 // Git's stderr is returned on failure. err_text is ALLOCATED (possibly
 // empty) — caller must delete. Not called in dry-run.
-git_update :: proc(plugin_dir: string, branch: string) -> (result: GitUpdateResult, err_text: string) {
+git_update :: proc(
+	plugin_dir: string,
+	branch: string,
+) -> (
+	result: GitUpdateResult,
+	err_text: string,
+) {
 	ref := (branch == "" || branch == "HEAD") ? "HEAD" : branch
 	if strings.has_prefix(ref, "-") {
 		return .Failed, fmt.aprintf("invalid branch name '%s'", branch)
@@ -189,17 +217,26 @@ git_update :: proc(plugin_dir: string, branch: string) -> (result: GitUpdateResu
 	// Before the fetch moves the remote-tracking ref: is every commit of HEAD
 	// already on the remote? If not, the checkout has local commits and a
 	// reset would discard them. Any git error also counts as "not safe".
-	tracking := ref == "HEAD" ? "refs/remotes/origin/HEAD" : fmt.tprintf("refs/remotes/origin/%s", ref)
-	head_on_remote := run_command([]string{"git", "-C", plugin_dir, "merge-base", "--is-ancestor", "HEAD", tracking})
+	tracking :=
+		ref == "HEAD" ? "refs/remotes/origin/HEAD" : fmt.tprintf("refs/remotes/origin/%s", ref)
+	head_on_remote := run_command(
+		[]string{"git", "-C", plugin_dir, "merge-base", "--is-ancestor", "HEAD", tracking},
+	)
 
-	fetched := run_git_network([]string{"git", "-C", plugin_dir, "fetch", "--quiet", "origin", ref}, GIT_CLONE_TIMEOUT_MS, plugin_dir)
+	fetched := run_git_network(
+		[]string{"git", "-C", plugin_dir, "fetch", "--quiet", "origin", ref},
+		GIT_CLONE_TIMEOUT_MS,
+		plugin_dir,
+	)
 	delete(fetched.stdout)
 	if !fetched.ok {
 		return .Failed, fetched.stderr
 	}
 	delete(fetched.stderr)
 
-	merged, merge_err := run_command_capture_stderr([]string{"git", "-C", plugin_dir, "merge", "--ff-only", "--quiet", "FETCH_HEAD"})
+	merged, merge_err := run_command_capture_stderr(
+		[]string{"git", "-C", plugin_dir, "merge", "--ff-only", "--quiet", "FETCH_HEAD"},
+	)
 	if merged {
 		delete(merge_err)
 		return .Updated, strings.clone("")
@@ -207,18 +244,28 @@ git_update :: proc(plugin_dir: string, branch: string) -> (result: GitUpdateResu
 	delete(merge_err)
 
 	if is_symlink(plugin_dir) {
-		return .Failed, strings.clone("upstream history diverged from this symlinked checkout; update it manually")
+		return .Failed, strings.clone(
+			"upstream history diverged from this symlinked checkout; update it manually",
+		)
 	}
-	dirty := capture_command([]string{"git", "-C", plugin_dir, "status", "--porcelain", "--untracked-files=no"})
+	dirty := capture_command(
+		[]string{"git", "-C", plugin_dir, "status", "--porcelain", "--untracked-files=no"},
+	)
 	defer delete(dirty)
 	if len(dirty) > 0 {
-		return .Failed, strings.clone("checkout has local modifications and cannot be fast-forwarded; commit/discard them or reinstall the plugin")
+		return .Failed, strings.clone(
+			"checkout has local modifications and cannot be fast-forwarded; commit/discard them or reinstall the plugin",
+		)
 	}
 	if !head_on_remote {
-		return .Failed, strings.clone("checkout has local commits that are not on the remote and cannot be fast-forwarded; push/rebase them or reinstall the plugin")
+		return .Failed, strings.clone(
+			"checkout has local commits that are not on the remote and cannot be fast-forwarded; push/rebase them or reinstall the plugin",
+		)
 	}
 
-	reset, reset_err := run_command_capture_stderr([]string{"git", "-C", plugin_dir, "reset", "--hard", "--quiet", "FETCH_HEAD"})
+	reset, reset_err := run_command_capture_stderr(
+		[]string{"git", "-C", plugin_dir, "reset", "--hard", "--quiet", "FETCH_HEAD"},
+	)
 	if !reset {
 		return .Failed, reset_err
 	}
@@ -272,7 +319,10 @@ plugin_loadable_shells :: proc(name: string, dir: string, use: []string) -> bit_
 		return shells
 	}
 
-	probe := PluginMetadata{name = name, installed_path = dir}
+	probe := PluginMetadata {
+		name           = name,
+		installed_path = dir,
+	}
 	for shell in ([]ShellType{.ZSH, .BASH, .FISH}) {
 		if plugin_has_files_to_source(probe, shell) {
 			shells += {shell}
@@ -287,11 +337,21 @@ plugin_loadable_shells :: proc(name: string, dir: string, use: []string) -> bit_
 // then simply finds nothing for the third shell).
 shell_compat_from_loadable :: proc(shells: bit_set[ShellType]) -> (compat: ShellCompat, ok: bool) {
 	s := shells & {.ZSH, .BASH, .FISH}
-	if s == {}            { return .BOTH, false }
-	if s == {.ZSH}        { return .ZSH, true }
-	if s == {.BASH}       { return .BASH, true }
-	if s == {.FISH}       { return .FISH, true }
-	if s == {.ZSH, .BASH} { return .BOTH, true }
+	if s == {} {
+		return .BOTH, false
+	}
+	if s == {.ZSH} {
+		return .ZSH, true
+	}
+	if s == {.BASH} {
+		return .BASH, true
+	}
+	if s == {.FISH} {
+		return .FISH, true
+	}
+	if s == {.ZSH, .BASH} {
+		return .BOTH, true
+	}
 	return .ANY, true
 }
 
@@ -327,7 +387,14 @@ is_valid_use_glob :: proc(glob: string) -> bool {
 // conf.d/*.fish and functions/*.fish. This helper still returns the most
 // canonical single file when one exists (useful for the one-file-plugin
 // case) — full discovery happens in get_plugin_files_to_source.
-detect_plugin_file :: proc(plugin_dir: string, plugin_name: string, shell: ShellType) -> (string, bool) {
+detect_plugin_file :: proc(
+	plugin_dir: string,
+	plugin_name: string,
+	shell: ShellType,
+) -> (
+	string,
+	bool,
+) {
 	ext := get_shell_extension(shell)
 
 	// 1. Standard plugin file: {name}.plugin.{zsh,bash,fish}
@@ -398,9 +465,9 @@ plugin_url_problem :: proc(url: string) -> string {
 		return "plaintext http:// and git:// URLs are refused (use https:// or ssh)"
 	}
 	if !(strings.has_prefix(url, "https://") ||
-	     strings.has_prefix(url, "ssh://") ||
-	     strings.has_prefix(url, "git@") ||
-	     strings.has_prefix(url, "file://")) {
+		   strings.has_prefix(url, "ssh://") ||
+		   strings.has_prefix(url, "git@") ||
+		   strings.has_prefix(url, "file://")) {
 		return "URL must start with https://, ssh://, git@ or file://"
 	}
 	if !is_safe_shell_arg(url) {
@@ -477,9 +544,9 @@ is_path_inside_dir :: proc(path: string, root: string) -> bool {
 }
 
 PluginDirRemoval :: enum {
-	Removed,  // directory deleted, or symlink unlinked (target untouched)
-	Missing,  // nothing at that path
-	Outside,  // refused: not strictly inside the plugins root
+	Removed, // directory deleted, or symlink unlinked (target untouched)
+	Missing, // nothing at that path
+	Outside, // refused: not strictly inside the plugins root
 	Failed,
 }
 
@@ -562,13 +629,20 @@ find_plugin_or_exit :: proc(config: ^PluginConfigJSON, name: string) -> ^PluginM
 exit_plugin_not_found :: proc(config: ^PluginConfigJSON, query: string) -> ! {
 	names := make([dynamic]string, 0, len(config.plugins), context.temp_allocator)
 	for plugin in config.plugins {
-		if plugin.name != "" { append(&names, plugin.name) }
+		if plugin.name != "" {
+			append(&names, plugin.name)
+		}
 	}
 	print_error_simple("Plugin not found: %s", query)
-	suggestions := suggest_similar_names(query, names[:], GET_SUGGESTION_LIMIT, context.temp_allocator)
+	suggestions := suggest_similar_names(
+		query,
+		names[:],
+		GET_SUGGESTION_LIMIT,
+		context.temp_allocator,
+	)
 	if len(suggestions) > 0 {
 		fmt.eprintln("Did you mean:")
-		for name in suggestions { fmt.eprintfln("  %s", name) }
+		for name in suggestions {fmt.eprintfln("  %s", name)}
 	}
 	fmt.eprintln("Run 'wayu plugin list' to see installed plugins")
 	os.exit(EXIT_DATAERR)
@@ -610,7 +684,7 @@ check_plugin_dependents :: proc(
 		for dep_name in plugin.dependencies {
 			if dep_name == plugin_name {
 				append(&dependents, strings.clone(plugin.name))
-				break  // Each plugin only added once
+				break // Each plugin only added once
 			}
 		}
 	}
@@ -622,15 +696,15 @@ check_plugin_dependents :: proc(
 
 // DFS color states for cycle detection
 DFSColor :: enum {
-	WHITE = 0,  // Not visited yet
-	GRAY  = 1,  // Currently being processed (in recursion stack)
-	BLACK = 2,  // Fully processed
+	WHITE = 0, // Not visited yet
+	GRAY  = 1, // Currently being processed (in recursion stack)
+	BLACK = 2, // Fully processed
 }
 
 // Result of circular dependency detection
 CycleDetectionResult :: struct {
 	has_cycle:  bool,
-	cycle_path: [dynamic]string,  // Empty if no cycle
+	cycle_path: [dynamic]string, // Empty if no cycle
 }
 
 // Build directed dependency graph from plugin config
@@ -668,7 +742,7 @@ reconstruct_cycle :: proc(
 		append(&path, strings.clone(current))
 		current = parent[current]
 	}
-	append(&path, strings.clone(cycle_start))  // Close the cycle
+	append(&path, strings.clone(cycle_start)) // Close the cycle
 
 	// Reverse to get correct order: A → B → C → A
 	for i := 0; i < len(path) / 2; i += 1 {
@@ -689,7 +763,7 @@ dfs_visit :: proc(
 	cycle_start: ^string,
 	cycle_end: ^string,
 ) -> bool {
-	color[node] = .GRAY  // Mark as being processed
+	color[node] = .GRAY // Mark as being processed
 
 	// Visit all dependencies
 	if node in graph {
@@ -709,15 +783,13 @@ dfs_visit :: proc(
 		}
 	}
 
-	color[node] = .BLACK  // Mark as fully processed
+	color[node] = .BLACK // Mark as fully processed
 	return false
 }
 
 // Detect circular dependencies in plugin dependency graph
 // Uses three-color DFS with parent tracking for cycle reconstruction
-detect_circular_dependencies :: proc(
-	graph: map[string][dynamic]string,
-) -> CycleDetectionResult {
+detect_circular_dependencies :: proc(graph: map[string][dynamic]string) -> CycleDetectionResult {
 	color := make(map[string]DFSColor)
 	parent := make(map[string]string)
 	defer delete(color)
@@ -737,16 +809,13 @@ detect_circular_dependencies :: proc(
 			if dfs_visit(plugin_name, graph, &color, &parent, &cycle_start, &cycle_end) {
 				// Cycle found! Reconstruct path
 				cycle_path := reconstruct_cycle(cycle_start, cycle_end, parent)
-				return CycleDetectionResult{
-					has_cycle = true,
-					cycle_path = cycle_path,
-				}
+				return CycleDetectionResult{has_cycle = true, cycle_path = cycle_path}
 			}
 		}
 	}
 
 	// No cycle found
-	return CycleDetectionResult{ has_cycle = false }
+	return CycleDetectionResult{has_cycle = false}
 }
 
 // Validate that plugin configuration has no circular dependencies.
@@ -804,7 +873,12 @@ plugin_must_load_last :: proc(name: string) -> bool {
 // lowest priority number is emitted first.  This guarantees:
 //   1. A node is never emitted before any of its dependencies.
 //   2. Among "ready" nodes (all deps satisfied), lower priority number wins.
-resolve_dependencies_with_priority :: proc(config: ^PluginConfigJSON) -> (order: [dynamic]string, ok: bool) {
+resolve_dependencies_with_priority :: proc(
+	config: ^PluginConfigJSON,
+) -> (
+	order: [dynamic]string,
+	ok: bool,
+) {
 	order = make([dynamic]string)
 
 	// Build priority map and collect enabled plugin names
@@ -820,7 +894,7 @@ resolve_dependencies_with_priority :: proc(config: ^PluginConfigJSON) -> (order:
 	// Build in-degree map and reverse adjacency list (dependents)
 	// in_degree[A] = number of enabled dependencies A still needs before it can load
 	// dependents[B] = list of plugins that directly depend on B
-	in_degree  := make(map[string]int)
+	in_degree := make(map[string]int)
 	dependents := make(map[string][dynamic]string)
 	defer delete(in_degree)
 	defer {
@@ -906,7 +980,7 @@ resolve_dependencies_with_priority :: proc(config: ^PluginConfigJSON) -> (order:
 
 	for len(ready) > 0 {
 		best_idx := 0
-		for i in 1..<len(ready) {
+		for i in 1 ..< len(ready) {
 			if ready_less(ready[i], ready[best_idx], priority_map, index_map) {
 				best_idx = i
 			}
@@ -945,9 +1019,17 @@ resolve_dependencies_with_priority :: proc(config: ^PluginConfigJSON) -> (order:
 
 // Variables every plugin legitimately appends to; sharing them is not a
 // conflict.
-SHARED_ENV_VARS :: [?]string{
-	"PATH", "FPATH", "MANPATH", "INFOPATH", "CDPATH",
-	"path", "fpath", "manpath", "infopath", "cdpath",
+SHARED_ENV_VARS :: [?]string {
+	"PATH",
+	"FPATH",
+	"MANPATH",
+	"INFOPATH",
+	"CDPATH",
+	"path",
+	"fpath",
+	"manpath",
+	"infopath",
+	"cdpath",
 }
 
 is_shared_env_var :: proc(name: string) -> bool {
@@ -967,7 +1049,24 @@ is_shell_identifier :: proc(name: string) -> bool {
 	}
 	for c in name {
 		switch c {
-		case ' ', '\t', '=', '$', '(', ')', '{', '}', '"', '\'', '`', ';', '&', '|', '<', '>', '[', ']':
+		case ' ',
+		     '\t',
+		     '=',
+		     '$',
+		     '(',
+		     ')',
+		     '{',
+		     '}',
+		     '"',
+		     '\'',
+		     '`',
+		     ';',
+		     '&',
+		     '|',
+		     '<',
+		     '>',
+		     '[',
+		     ']':
 			return false
 		}
 	}
@@ -1028,7 +1127,7 @@ free_string_list :: proc(list: ^[dynamic]string) {
 }
 
 // Scan one script file and record exports/functions/aliases.
-@(private="file")
+@(private = "file")
 scan_conflicts_in_file :: proc(plugin: ^PluginMetadata, path: string) -> bool {
 	content, read_err := os.read_entire_file(path, context.allocator)
 	if read_err != nil {
@@ -1068,8 +1167,12 @@ split_shell_statements :: proc(line: string, allocator := context.allocator) -> 
 	for i < len(line) {
 		c := line[i]
 		if quote != 0 {
-			if c == '\\' && quote == '"' && i + 1 < len(line) { i += 2; continue }
-			if c == quote { quote = 0 }
+			if c == '\\' && quote == '"' && i + 1 < len(line) {
+				i += 2; continue
+			}
+			if c == quote {
+				quote = 0
+			}
 			i += 1
 			continue
 		}
@@ -1081,23 +1184,33 @@ split_shell_statements :: proc(line: string, allocator := context.allocator) -> 
 			quote = c
 		case c == '#' && (i == 0 || line[i - 1] == ' ' || line[i - 1] == '\t'):
 			// Trailing comment: the rest of the line is not code.
-			if s := strings.trim_space(line[start:i]); len(s) > 0 { append(&out, s) }
+			if s := strings.trim_space(line[start:i]); len(s) > 0 {
+				append(&out, s)
+			}
 			return out[:]
-		case c == ';' || (i + 1 < len(line) && ((c == '&' && line[i + 1] == '&') || (c == '|' && line[i + 1] == '|'))):
-			if s := strings.trim_space(line[start:i]); len(s) > 0 { append(&out, s) }
-			if c != ';' { i += 1 }
+		case c == ';' ||
+		     (i + 1 < len(line) &&
+				     ((c == '&' && line[i + 1] == '&') || (c == '|' && line[i + 1] == '|'))):
+			if s := strings.trim_space(line[start:i]); len(s) > 0 {
+				append(&out, s)
+			}
+			if c != ';' {
+				i += 1
+			}
 			start = i + 1
 		}
 		i += 1
 	}
 	if start < len(line) {
-		if s := strings.trim_space(line[start:]); len(s) > 0 { append(&out, s) }
+		if s := strings.trim_space(line[start:]); len(s) > 0 {
+			append(&out, s)
+		}
 	}
 	return out[:]
 }
 
 // Record what one statement defines (export / alias / function).
-@(private="file")
+@(private = "file")
 scan_conflicts_in_statement :: proc(plugin: ^PluginMetadata, trimmed: string) {
 	// export VAR=value / export VAR
 	if strings.has_prefix(trimmed, "export ") {
@@ -1110,7 +1223,9 @@ scan_conflicts_in_statement :: proc(plugin: ^PluginMetadata, trimmed: string) {
 			}
 		}
 		var_name := after_export[:end]
-		if is_shell_identifier(var_name) && !strings.has_prefix(var_name, "-") && !is_shared_env_var(var_name) {
+		if is_shell_identifier(var_name) &&
+		   !strings.has_prefix(var_name, "-") &&
+		   !is_shared_env_var(var_name) {
 			append_unique(&plugin.conflicts.env_vars, var_name)
 		}
 		return
@@ -1305,45 +1420,101 @@ PLUGIN_CONFLICT_WAYU :: "entries.json"
 // Runs detect_conflicts (scans the plugins' files). Results and their
 // strings are allocated with `allocator`; pairs are listed once, in
 // config order.
-collect_plugin_conflicts :: proc(config: ^PluginConfigJSON, allocator := context.temp_allocator) -> [dynamic]PluginConflict {
+collect_plugin_conflicts :: proc(
+	config: ^PluginConfigJSON,
+	allocator := context.temp_allocator,
+) -> [dynamic]PluginConflict {
 	detect_conflicts(config)
 	out := make([dynamic]PluginConflict, allocator)
-	add :: proc(out: ^[dynamic]PluginConflict, plugin, other, kind, name: string, allocator: mem.Allocator) {
-		append(out, PluginConflict{
-			plugin = strings.clone(plugin, allocator), other = strings.clone(other, allocator),
-			kind = kind, name = strings.clone(name, allocator),
-		})
+	add :: proc(
+		out: ^[dynamic]PluginConflict,
+		plugin, other, kind, name: string,
+		allocator: mem.Allocator,
+	) {
+		append(
+			out,
+			PluginConflict {
+				plugin = strings.clone(plugin, allocator),
+				other = strings.clone(other, allocator),
+				kind = kind,
+				name = strings.clone(name, allocator),
+			},
+		)
 	}
-	shared :: proc(out: ^[dynamic]PluginConflict, a, b: ^PluginMetadata, kind: string, la, lb: []string, allocator: mem.Allocator) {
+	shared :: proc(
+		out: ^[dynamic]PluginConflict,
+		a, b: ^PluginMetadata,
+		kind: string,
+		la, lb: []string,
+		allocator: mem.Allocator,
+	) {
 		for x in la {
 			for y in lb {
-				if x == y { add(out, a.name, b.name, kind, x, allocator) }
+				if x == y {
+					add(out, a.name, b.name, kind, x, allocator)
+				}
 			}
 		}
 	}
 
-	for i in 0..<len(config.plugins) {
+	for i in 0 ..< len(config.plugins) {
 		a := &config.plugins[i]
-		if !a.enabled { continue }
-		for j in i + 1..<len(config.plugins) {
+		if !a.enabled {
+			continue
+		}
+		for j in i + 1 ..< len(config.plugins) {
 			b := &config.plugins[j]
-			if !b.enabled { continue }
-			shared(&out, a, b, "function", a.conflicts.functions[:], b.conflicts.functions[:], allocator)
-			shared(&out, a, b, "alias", a.conflicts.aliases_[:], b.conflicts.aliases_[:], allocator)
+			if !b.enabled {
+				continue
+			}
+			shared(
+				&out,
+				a,
+				b,
+				"function",
+				a.conflicts.functions[:],
+				b.conflicts.functions[:],
+				allocator,
+			)
+			shared(
+				&out,
+				a,
+				b,
+				"alias",
+				a.conflicts.aliases_[:],
+				b.conflicts.aliases_[:],
+				allocator,
+			)
 			shared(&out, a, b, "env", a.conflicts.env_vars[:], b.conflicts.env_vars[:], allocator)
 		}
 	}
 
 	store, _, store_ok := entries_read() // doctor's entries check reports a bad store
-	defer if store_ok { entries_store_destroy(&store) }
+	defer if store_ok {
+		entries_store_destroy(&store)
+	}
 	for &p in config.plugins {
-		if !p.enabled { continue }
+		if !p.enabled {
+			continue
+		}
 		for a in store.aliases {
-			for f in p.conflicts.functions { if f == a.name { add(&out, p.name, PLUGIN_CONFLICT_WAYU, "function", f, allocator) } }
-			for al in p.conflicts.aliases_ { if al == a.name { add(&out, p.name, PLUGIN_CONFLICT_WAYU, "alias", al, allocator) } }
+			for f in p.conflicts.functions {
+				if f == a.name {
+					add(&out, p.name, PLUGIN_CONFLICT_WAYU, "function", f, allocator)
+				}
+			}
+			for al in p.conflicts.aliases_ {
+				if al == a.name {
+					add(&out, p.name, PLUGIN_CONFLICT_WAYU, "alias", al, allocator)
+				}
+			}
 		}
 		for e in store.env {
-			for v in p.conflicts.env_vars { if v == e.name { add(&out, p.name, PLUGIN_CONFLICT_WAYU, "env", v, allocator) } }
+			for v in p.conflicts.env_vars {
+				if v == e.name {
+					add(&out, p.name, PLUGIN_CONFLICT_WAYU, "env", v, allocator)
+				}
+			}
 		}
 	}
 	return out
@@ -1356,7 +1527,13 @@ plugin_conflict_lines :: proc(conflicts: []PluginConflict, plugin: string) -> []
 	lines := make([dynamic]string, context.temp_allocator)
 	for c in conflicts {
 		other := ""
-		if c.plugin == plugin { other = c.other } else if c.other == plugin { other = c.plugin } else { continue }
+		if c.plugin == plugin {
+			other = c.other
+		} else if c.other == plugin {
+			other = c.plugin
+		} else {
+			continue
+		}
 		append(&lines, fmt.tprintf("%s %s (also defined by %s)", c.kind, c.name, other))
 	}
 	return lines[:]
@@ -1367,12 +1544,20 @@ plugin_conflict_lines :: proc(conflicts: []PluginConflict, plugin: string) -> []
 warn_plugin_conflicts :: proc(plugin: string) {
 	config, ok := read_plugin_config_json()
 	defer cleanup_plugin_config_json(&config)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	conflicts := collect_plugin_conflicts(&config)
 	lines := plugin_conflict_lines(conflicts[:], plugin)
-	if len(lines) == 0 { return }
-	print_warning("Plugin '%s' has %d conflict(s); the definition loaded last wins:", plugin, len(lines))
-	for l in lines { fmt.eprintfln("    %s", l) }
+	if len(lines) == 0 {
+		return
+	}
+	print_warning(
+		"Plugin '%s' has %d conflict(s); the definition loaded last wins:",
+		plugin,
+		len(lines),
+	)
+	for l in lines {fmt.eprintfln("    %s", l)}
 	fmt.eprintln("    See 'wayu plugin list' or 'wayu doctor'.")
 }
 
@@ -1390,22 +1575,23 @@ resolve_plugin :: proc(name_or_url: string) -> (PluginInfo, bool) {
 			return PluginInfo{}, false
 		}
 
-		return PluginInfo{
-			name = plugin_name,
-			url = strings.clone(name_or_url),
-			shell = .BOTH, // Unknown shell compat for custom URLs
-			description = strings.clone("Custom plugin"),
-		}, true
+		return PluginInfo {
+				name        = plugin_name,
+				url         = strings.clone(name_or_url),
+				shell       = .BOTH, // Unknown shell compat for custom URLs
+				description = strings.clone("Custom plugin"),
+			}, true
 	}
 
 	// Check popular plugins registry (static literals — clone for ownership)
 	if info, found := popular_plugin_find(name_or_url); found {
-		return PluginInfo{
-			name = strings.clone(info.name),
-			url = strings.clone(info.url),
-			shell = info.shell,
-			description = strings.clone(info.description),
-		}, true
+		return PluginInfo {
+				name = strings.clone(info.name),
+				url = strings.clone(info.url),
+				shell = info.shell,
+				description = strings.clone(info.description),
+			},
+			true
 	}
 
 	return PluginInfo{}, false
@@ -1443,7 +1629,10 @@ get_remote_commit :: proc(url: string, branch: string) -> string {
 
 	// Output format: "<40-char-SHA>\t<ref-name>\n" per matching ref.
 	// `--` ends option parsing so the URL can never be read as an option.
-	result := run_git_network([]string{"git", "ls-remote", "--", url, ref}, GIT_LS_REMOTE_TIMEOUT_MS)
+	result := run_git_network(
+		[]string{"git", "ls-remote", "--", url, ref},
+		GIT_LS_REMOTE_TIMEOUT_MS,
+	)
 	defer command_result_destroy(&result)
 	if !result.ok {
 		return ""
@@ -1470,9 +1659,6 @@ get_remote_commit :: proc(url: string, branch: string) -> string {
 // ============================================================================
 
 
-
-
 // Handle plugin check command - check for available updates
 // CLI-only command (no interactive mode)
 // Checks all enabled plugins for updates using git ls-remote
-

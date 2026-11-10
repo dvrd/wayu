@@ -1,7 +1,7 @@
 package test_wayu
 
-import "core:testing"
 import wayu "../../src"
+import "core:testing"
 
 // ============================================================================
 // Basic style tests
@@ -24,7 +24,9 @@ test_style_render :: proc(t: ^testing.T) {
 	testing.expect(t, len(result) >= 5, "Result should contain at least the text")
 	defer delete(result)
 
-	bold_style := wayu.Style{bold = true}
+	bold_style := wayu.Style {
+		bold = true,
+	}
 	bold_result := wayu.render(bold_style, "Bold")
 	testing.expect(t, len(bold_result) > 4, "Bold text should have ANSI codes")
 	defer delete(bold_result)
@@ -79,7 +81,9 @@ test_visual_width :: proc(t: ^testing.T) {
 
 @(test)
 test_calculate_content_width_explicit :: proc(t: ^testing.T) {
-	style := wayu.Style{width = 50}
+	style := wayu.Style {
+		width = 50,
+	}
 	lines := []string{"Hello", "World"}
 	width := wayu.calculate_content_width(style, lines)
 	testing.expect_value(t, width, 50)
@@ -87,7 +91,9 @@ test_calculate_content_width_explicit :: proc(t: ^testing.T) {
 
 @(test)
 test_calculate_content_width_max :: proc(t: ^testing.T) {
-	style := wayu.Style{max_width = 10}
+	style := wayu.Style {
+		max_width = 10,
+	}
 	lines := []string{"This is a very long line"}
 	width := wayu.calculate_content_width(style, lines)
 	testing.expect_value(t, width, 10)
@@ -178,7 +184,7 @@ test_get_rune_width :: proc(t: ^testing.T) {
 @(test)
 test_is_wide_character :: proc(t: ^testing.T) {
 	testing.expect_value(t, wayu.is_wide_character('a'), false)
-	testing.expect_value(t, wayu.is_wide_character('✓'), false)  // explicit exclusion
+	testing.expect_value(t, wayu.is_wide_character('✓'), false) // explicit exclusion
 }
 
 // ============================================================================
@@ -187,7 +193,10 @@ test_is_wide_character :: proc(t: ^testing.T) {
 
 @(test)
 test_apply_text_only_style :: proc(t: ^testing.T) {
-	style := wayu.Style{bold = true, foreground = "red"}
+	style := wayu.Style {
+		bold       = true,
+		foreground = "red",
+	}
 	result := wayu.apply_text_only_style(style, "Test")
 	defer delete(result)
 	testing.expect(t, len(result) > 4, "Styled text should have ANSI codes")

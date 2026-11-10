@@ -10,12 +10,12 @@
 // (only entry point was list_config_interactive which had zero callers).
 
 package wayu
-import "core:fmt"
-import "core:os"
-import "core:strings"
-import "core:slice"
 import "core:c"
 import "core:c/libc"
+import "core:fmt"
+import "core:os"
+import "core:slice"
+import "core:strings"
 import "core:sys/posix"
 import "core:unicode"
 import "core:unicode/utf8"
@@ -45,12 +45,12 @@ raw_mode_active: bool
 
 // Signals that restore the terminal before the default action. SIGINT /
 // SIGQUIT only come from outside (`kill -INT`) while ISIG is off.
-SIGHUP_NUM  :: 1 // POSIX values on macOS/Linux/BSD
+SIGHUP_NUM :: 1 // POSIX values on macOS/Linux/BSD
 SIGQUIT_NUM :: 3
 @(private = "file")
 RAW_RESTORE_SIGNALS :: [4]libc.int{libc.SIGTERM, SIGHUP_NUM, libc.SIGINT, SIGQUIT_NUM}
 @(private = "file")
-prev_signal_handlers: [len(RAW_RESTORE_SIGNALS)]proc "c" (libc.int)
+prev_signal_handlers: [len(RAW_RESTORE_SIGNALS)]proc "c" (_: libc.int)
 
 // Async-signal-safe: only tcsetattr, write, signal, raise.
 terminal_restore_signal_handler :: proc "c" (sig: libc.int) {
@@ -64,7 +64,7 @@ terminal_restore_signal_handler :: proc "c" (sig: libc.int) {
 		leave_alt := "\x1b[?1049l"
 		posix.write(posix.FD(STDOUT_FILENO), raw_data(leave_alt), len(leave_alt))
 	}
-	libc.signal(sig, cast(proc "c" (libc.int))libc.SIG_DFL)
+	libc.signal(sig, cast(proc "c" (_: libc.int))libc.SIG_DFL)
 	libc.raise(sig)
 }
 
@@ -105,7 +105,9 @@ is_stdout_tty :: proc() -> bool {
 }
 
 disable_raw_mode :: proc() {
-	if !raw_mode_active { return }
+	if !raw_mode_active {
+		return
+	}
 	posix.tcsetattr(posix.FD(STDIN_FILENO), .TCSANOW, &saved_termios)
 	raw_mode_active = false
 
@@ -160,7 +162,9 @@ calculate_fuzzy_score :: proc(text: string, query: string) -> int {
 // never splitting a UTF-8 sequence. Result is either `s` itself or a
 // temp-allocated string — do not delete.
 truncate_display :: proc(s: string, max_runes: int) -> string {
-	if utf8.rune_count_in_string(s) <= max_runes { return s }
+	if utf8.rune_count_in_string(s) <= max_runes {
+		return s
+	}
 	keep := max(0, max_runes - 3)
 	count := 0
 	for _, i in s {
@@ -187,9 +191,9 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 
 	debug("Starting interactive fuzzy select with %d items", len(items))
 
-	CLEAR_SCREEN  :: "\033[2J\033[H"
-	HIDE_CURSOR   :: "\033[?25l"
-	SHOW_CURSOR   :: "\033[?25h"
+	CLEAR_SCREEN :: "\033[2J\033[H"
+	HIDE_CURSOR :: "\033[?25l"
+	SHOW_CURSOR :: "\033[?25h"
 
 	filter_text: [dynamic]u8
 	defer delete(filter_text)
@@ -212,7 +216,10 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 		query_lower := strings.to_lower(filter_str)
 		defer delete(query_lower)
 
-		Scored :: struct { item: string, score: int }
+		Scored :: struct {
+			item:  string,
+			score: int,
+		}
 		tmp := make([dynamic]Scored, context.temp_allocator)
 		for item in items {
 			item_lower := strings.to_lower(item)
@@ -220,7 +227,7 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 			score := calculate_fuzzy_score(item_lower, query_lower)
 			if score > 0 do append(&tmp, Scored{item, score})
 		}
-		slice.sort_by(tmp[:], proc(a, b: Scored) -> bool { return a.score > b.score })
+		slice.sort_by(tmp[:], proc(a, b: Scored) -> bool {return a.score > b.score})
 		for entry in tmp do append(filtered, entry.item)
 
 		debug("Filter '%s' matches %d items", filter_str, len(filtered))
@@ -235,7 +242,7 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 		visible_start := max(0, selected_idx - 10)
 		visible_end := min(len(filtered), visible_start + 20)
 
-		for i in visible_start..<visible_end {
+		for i in visible_start ..< visible_end {
 			if i == selected_idx {
 				fmt.printf("  %s%s> %s%s\r\n", BRIGHT_YELLOW, BOLD, filtered[i], RESET)
 			} else {
@@ -247,7 +254,9 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 			fmt.printf("  No matches found\r\n")
 		}
 
-		fmt.printf("\r\nType to filter, Ctrl+N/P to navigate, Ctrl+Y to select, Ctrl+C to quit\r\n")
+		fmt.printf(
+			"\r\nType to filter, Ctrl+N/P to navigate, Ctrl+Y to select, Ctrl+C to quit\r\n",
+		)
 	}
 
 	update_filter(items, filter_text[:], &filtered_items)
@@ -314,14 +323,18 @@ interactive_select :: proc(items: []string, prompt: string) -> (selected: string
 	return strings.clone(""), false
 }
 
-PickerAction :: enum { NONE, SELECT, CANCEL }
+PickerAction :: enum {
+	NONE,
+	SELECT,
+	CANCEL,
+}
 
 // What one batch of picker input does.
 PickerInput :: struct {
 	action:         PickerAction, // the first select/cancel key wins; later bytes are ignored
-	move:           int,          // net selection movement (+down / -up)
+	move:           int, // net selection movement (+down / -up)
 	filter_changed: bool,
-	incomplete:     int,          // trailing bytes of a UTF-8 character not yet complete
+	incomplete:     int, // trailing bytes of a UTF-8 character not yet complete
 }
 
 // Decode every key in `buf` (one read from the terminal), applying typed
@@ -335,33 +348,39 @@ picker_decode_input :: proc(buf: []byte, filter: ^[dynamic]u8) -> (ev: PickerInp
 	for i < len(buf) {
 		ch := buf[i]
 		switch {
-		case ch == 3: // Ctrl+C
+		case ch == 3:
+			// Ctrl+C
 			ev.action = .CANCEL
 			return
-		case ch == 13 || ch == 10 || ch == 25: // Enter / Ctrl+Y
+		case ch == 13 || ch == 10 || ch == 25:
+			// Enter / Ctrl+Y
 			ev.action = .SELECT
 			return
 		case ch == 27:
-			if i + 1 >= len(buf) { // ESC on its own
+			if i + 1 >= len(buf) { 	// ESC on its own
 				ev.action = .CANCEL
 				return
 			}
 			switch buf[i + 1] {
 			case '[':
 				j := i + 2
-				for j < len(buf) && !(buf[j] >= 0x40 && buf[j] <= 0x7E) { j += 1 }
+				for j < len(buf) && !(buf[j] >= 0x40 && buf[j] <= 0x7E) {j += 1}
 				if j < len(buf) {
 					switch buf[j] {
-					case 'A': ev.move -= 1
-					case 'B': ev.move += 1
+					case 'A':
+						ev.move -= 1
+					case 'B':
+						ev.move += 1
 					}
 				}
 				i = j + 1
 			case 'O':
 				if i + 2 < len(buf) {
 					switch buf[i + 2] {
-					case 'A': ev.move -= 1
-					case 'B': ev.move += 1
+					case 'A':
+						ev.move -= 1
+					case 'B':
+						ev.move += 1
 					}
 				}
 				i += 3
@@ -369,8 +388,10 @@ picker_decode_input :: proc(buf: []byte, filter: ^[dynamic]u8) -> (ev: PickerInp
 				i += 2 // Alt+key
 			}
 			continue
-		case ch == 14: ev.move += 1 // Ctrl+N
-		case ch == 16: ev.move -= 1 // Ctrl+P
+		case ch == 14:
+			ev.move += 1 // Ctrl+N
+		case ch == 16:
+			ev.move -= 1 // Ctrl+P
 		case ch == 127 || ch == 8:
 			if len(filter) > 0 {
 				// Drop the whole last rune, not just its final byte.
@@ -386,8 +407,14 @@ picker_decode_input :: proc(buf: []byte, filter: ^[dynamic]u8) -> (ev: PickerInp
 			if i + want > len(buf) {
 				// Only continuation bytes may follow; keep them for the next read.
 				ok := true
-				for b in buf[i + 1:] { if b & 0xC0 != 0x80 { ok = false } }
-				if ok { ev.incomplete = len(buf) - i; return }
+				for b in buf[i + 1:] {
+					if b & 0xC0 != 0x80 {
+						ok = false
+					}
+				}
+				if ok {
+					ev.incomplete = len(buf) - i; return
+				}
 				i += 1
 				continue
 			}
@@ -454,129 +481,129 @@ extract_completion_items :: proc() -> []string {
 
 // Simple fuzzy score calculation (0 = no match, higher = better)
 fuzzy_score :: proc(text: string, query: string) -> int {
-    if len(query) == 0 {
-        return 1
-    }
-    if len(text) == 0 {
-        return 0
-    }
-    
-    text_lower := strings.to_lower(text)
-    defer delete(text_lower)
-    query_lower := strings.to_lower(query)
-    defer delete(query_lower)
-    
-    score := 0
-    rest := text_lower
-    consecutive_bonus := 0
+	if len(query) == 0 {
+		return 1
+	}
+	if len(text) == 0 {
+		return 0
+	}
 
-    // Rune-by-rune (UTF-8 aware): comparing text bytes against query runes
-    // never matched non-ASCII characters.
-    for query_char in query_lower {
-        found := false
-        for len(rest) > 0 {
-            r, w := utf8.decode_rune_in_string(rest)
-            rest = rest[w:]
-            if r == query_char {
-                score += 10 + consecutive_bonus
-                consecutive_bonus += 5  // Bonus for consecutive matches
-                found = true
-                break
-            }
-            consecutive_bonus = 0  // Reset consecutive bonus
-        }
-        if !found {
-            return 0
-        }
-    }
+	text_lower := strings.to_lower(text)
+	defer delete(text_lower)
+	query_lower := strings.to_lower(query)
+	defer delete(query_lower)
 
-    query_runes := utf8.rune_count_in_string(query)
+	score := 0
+	rest := text_lower
+	consecutive_bonus := 0
 
-    // Bonus for exact substring match
-    if strings.contains(text_lower, query_lower) {
-        score += query_runes * 20
-    }
+	// Rune-by-rune (UTF-8 aware): comparing text bytes against query runes
+	// never matched non-ASCII characters.
+	for query_char in query_lower {
+		found := false
+		for len(rest) > 0 {
+			r, w := utf8.decode_rune_in_string(rest)
+			rest = rest[w:]
+			if r == query_char {
+				score += 10 + consecutive_bonus
+				consecutive_bonus += 5 // Bonus for consecutive matches
+				found = true
+				break
+			}
+			consecutive_bonus = 0 // Reset consecutive bonus
+		}
+		if !found {
+			return 0
+		}
+	}
 
-    // Bonus for exact match at start
-    if strings.has_prefix(text_lower, query_lower) {
-        score += query_runes * 30
-    }
+	query_runes := utf8.rune_count_in_string(query)
 
-    // Bonus for acronym match (e.g., "frwrks" matches "FIREWORKS")
-    if is_acronym_match(text, query) {
-        score += query_runes * 25
-    }
+	// Bonus for exact substring match
+	if strings.contains(text_lower, query_lower) {
+		score += query_runes * 20
+	}
 
-    // Penalty for length difference
-    length_diff := utf8.rune_count_in_string(text) - query_runes
-    if length_diff > 0 {
-        score -= length_diff * 2
-    }
-    
-    return score
+	// Bonus for exact match at start
+	if strings.has_prefix(text_lower, query_lower) {
+		score += query_runes * 30
+	}
+
+	// Bonus for acronym match (e.g., "frwrks" matches "FIREWORKS")
+	if is_acronym_match(text, query) {
+		score += query_runes * 25
+	}
+
+	// Penalty for length difference
+	length_diff := utf8.rune_count_in_string(text) - query_runes
+	if length_diff > 0 {
+		score -= length_diff * 2
+	}
+
+	return score
 }
 
 // Check if query matches acronym of text
 // (first letter of each word), e.g. text="FIREWORKS_AI_API_KEY", query="faak" → true
 is_acronym_match :: proc(text: string, query: string) -> bool {
-    // Build acronym from the first rune of each separator-delimited word,
-    // lower-cased as a full rune (u8 truncation corrupted non-ASCII).
-    acronym := strings.builder_make()
-    defer strings.builder_destroy(&acronym)
+	// Build acronym from the first rune of each separator-delimited word,
+	// lower-cased as a full rune (u8 truncation corrupted non-ASCII).
+	acronym := strings.builder_make()
+	defer strings.builder_destroy(&acronym)
 
-    prev_was_sep := true  // Start true to capture first letter
+	prev_was_sep := true // Start true to capture first letter
 
-    for c in text {
-        is_sep := c == '_' || c == '-' || c == ' ' || c == '.' || (c >= '0' && c <= '9')
+	for c in text {
+		is_sep := c == '_' || c == '-' || c == ' ' || c == '.' || (c >= '0' && c <= '9')
 
-        if is_sep {
-            prev_was_sep = true
-        } else if prev_was_sep {
-            strings.write_rune(&acronym, unicode.to_lower(c))
-            prev_was_sep = false
-        }
-    }
+		if is_sep {
+			prev_was_sep = true
+		} else if prev_was_sep {
+			strings.write_rune(&acronym, unicode.to_lower(c))
+			prev_was_sep = false
+		}
+	}
 
-    acronym_str := strings.to_string(acronym)
-    if len(acronym_str) == 0 {
-        return false
-    }
-    query_lower := strings.to_lower(query)
-    defer delete(query_lower)
-    
-    return strings.contains(acronym_str, query_lower)
+	acronym_str := strings.to_string(acronym)
+	if len(acronym_str) == 0 {
+		return false
+	}
+	query_lower := strings.to_lower(query)
+	defer delete(query_lower)
+
+	return strings.contains(acronym_str, query_lower)
 }
 
 // How a search result matched (search.odin).
 MatchType :: enum {
-    Exact,           // Match exacto
-    Prefix,          // Prefijo exacto
-    Substring,       // Substring
-    Fuzzy,           // Fuzzy match general
-    Acronym,         // Match por acrónimo
+	Exact, // Match exacto
+	Prefix, // Prefijo exacto
+	Substring, // Substring
+	Fuzzy, // Fuzzy match general
+	Acronym, // Match por acrónimo
 }
 
 // Clone a config entry
 clone_entry :: proc(entry: ConfigEntry) -> ConfigEntry {
-    return ConfigEntry{
-        type = entry.type,
-        name = strings.clone(entry.name),
-        value = strings.clone(entry.value),
-        line = strings.clone(entry.line),
-    }
+	return ConfigEntry {
+		type = entry.type,
+		name = strings.clone(entry.name),
+		value = strings.clone(entry.value),
+		line = strings.clone(entry.line),
+	}
 }
 
 // Helper to clean up cloned entries - takes entry by value and cleans it up
 cleanup_clone :: proc(entry: ConfigEntry) {
-    if entry.name != "" {
-        delete(entry.name)
-    }
-    if entry.value != "" {
-        delete(entry.value)
-    }
-    if entry.line != "" {
-        delete(entry.line)
-    }
+	if entry.name != "" {
+		delete(entry.name)
+	}
+	if entry.value != "" {
+		delete(entry.value)
+	}
+	if entry.line != "" {
+		delete(entry.line)
+	}
 }
 
 // ============================================================================
@@ -592,10 +619,15 @@ GET_SUGGESTION_LIMIT :: 5
 
 exit_get_not_found :: proc(spec: ^ConfigEntrySpec, query: string, names: []string) -> ! {
 	print_error_simple("%s not found: %s", spec.display_name, query)
-	suggestions := suggest_similar_names(query, names, GET_SUGGESTION_LIMIT, context.temp_allocator)
+	suggestions := suggest_similar_names(
+		query,
+		names,
+		GET_SUGGESTION_LIMIT,
+		context.temp_allocator,
+	)
 	if len(suggestions) > 0 {
 		fmt.eprintln("Did you mean:")
-		for name in suggestions { fmt.eprintfln("  %s", name) }
+		for name in suggestions {fmt.eprintfln("  %s", name)}
 	}
 	os.exit(EXIT_DATAERR)
 }
@@ -603,8 +635,16 @@ exit_get_not_found :: proc(spec: ^ConfigEntrySpec, query: string, names: []strin
 // Rank `names` against `query` (exact-fold > prefix > substring > acronym >
 // fuzzy) and return the best `limit`. The result slice is allocated with
 // `allocator`; its strings are views into `names`.
-suggest_similar_names :: proc(query: string, names: []string, limit: int, allocator := context.allocator) -> []string {
-	Scored :: struct { name: string, score: int }
+suggest_similar_names :: proc(
+	query: string,
+	names: []string,
+	limit: int,
+	allocator := context.allocator,
+) -> []string {
+	Scored :: struct {
+		name:  string,
+		score: int,
+	}
 	scored := make([dynamic]Scored, 0, len(names), context.temp_allocator)
 
 	query_lower := strings.to_lower(query, context.temp_allocator)
@@ -612,27 +652,38 @@ suggest_similar_names :: proc(query: string, names: []string, limit: int, alloca
 	for name in names {
 		// A name can come from two sources (a secret constant is in both
 		// entries.json and secrets.json); suggest it once.
-		if name in seen { continue }
+		if name in seen {
+			continue
+		}
 		seen[name] = {}
 		name_lower := strings.to_lower(name, context.temp_allocator)
 		score: int
 		switch {
-		case name_lower == query_lower:                   score = 10000
-		case strings.has_prefix(name_lower, query_lower): score = 5000 + fuzzy_score(name, query)
-		case strings.contains(name_lower, query_lower):   score = 3000 + fuzzy_score(name, query)
-		case is_acronym_match(name, query):               score = 2000 + fuzzy_score(name, query)
-		case:                                             score = fuzzy_score(name, query)
+		case name_lower == query_lower:
+			score = 10000
+		case strings.has_prefix(name_lower, query_lower):
+			score = 5000 + fuzzy_score(name, query)
+		case strings.contains(name_lower, query_lower):
+			score = 3000 + fuzzy_score(name, query)
+		case is_acronym_match(name, query):
+			score = 2000 + fuzzy_score(name, query)
+		case:
+			score = fuzzy_score(name, query)
 		}
-		if score > 0 { append(&scored, Scored{name, score}) }
+		if score > 0 {
+			append(&scored, Scored{name, score})
+		}
 	}
 
 	slice.sort_by(scored[:], proc(a, b: Scored) -> bool {
-		if a.score != b.score { return a.score > b.score }
+		if a.score != b.score {
+			return a.score > b.score
+		}
 		return a.name < b.name
 	})
 
 	n := min(limit, len(scored))
 	result := make([]string, n, allocator)
-	for i in 0..<n { result[i] = scored[i].name }
+	for i in 0 ..< n {result[i] = scored[i].name}
 	return result
 }

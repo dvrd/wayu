@@ -2,17 +2,17 @@
 
 package test_wayu
 
-import "core:testing"
-import "core:os"
-import "core:fmt"
-import "core:strings"
 import wayu "../../src"
+import "core:fmt"
+import "core:os"
+import "core:strings"
+import "core:testing"
 
 @(test)
 test_extract_completion_items_empty :: proc(t: ^testing.T) {
 	// Test with non-existent directory
 	original_config := wayu.wayu.config
-	defer { wayu.wayu.config = original_config; wayu.wayu.data = original_config }
+	defer {wayu.wayu.config = original_config; wayu.wayu.data = original_config}
 
 	wayu.wayu.config = test_tmp("wayu-test-nonexistent")
 	wayu.wayu.data = test_tmp("wayu-test-nonexistent")
@@ -46,7 +46,7 @@ test_extract_completion_items_single :: proc(t: ^testing.T) {
 
 	// Test extraction
 	original_config := wayu.wayu.config
-	defer { wayu.wayu.config = original_config; wayu.wayu.data = original_config }
+	defer {wayu.wayu.config = original_config; wayu.wayu.data = original_config}
 	wayu.wayu.config = test_dir
 	wayu.wayu.data = test_dir
 	items := wayu.extract_completion_items()
@@ -83,7 +83,7 @@ test_extract_completion_items_multiple :: proc(t: ^testing.T) {
 
 	// Test extraction
 	original_config := wayu.wayu.config
-	defer { wayu.wayu.config = original_config; wayu.wayu.data = original_config }
+	defer {wayu.wayu.config = original_config; wayu.wayu.data = original_config}
 	wayu.wayu.config = test_dir
 	wayu.wayu.data = test_dir
 	items := wayu.extract_completion_items()
@@ -139,7 +139,7 @@ test_extract_completion_items_filters :: proc(t: ^testing.T) {
 
 	// Test extraction
 	original_config := wayu.wayu.config
-	defer { wayu.wayu.config = original_config; wayu.wayu.data = original_config }
+	defer {wayu.wayu.config = original_config; wayu.wayu.data = original_config}
 	wayu.wayu.config = test_dir
 	wayu.wayu.data = test_dir
 	items := wayu.extract_completion_items()
@@ -193,8 +193,12 @@ test_completion_name_normalization :: proc(t: ^testing.T) {
 			needs_delete = true
 		}
 
-		msg := fmt.aprintf("Name '%s' should normalize to '%s', got '%s'",
-			name, expected[i], normalized)
+		msg := fmt.aprintf(
+			"Name '%s' should normalize to '%s', got '%s'",
+			name,
+			expected[i],
+			normalized,
+		)
 		testing.expect(t, normalized == expected[i], msg)
 		delete(msg)
 		if needs_delete do delete(normalized)
@@ -252,16 +256,30 @@ test_wayu_command_table_covers_dispatch :: proc(t: ^testing.T) {
 		if c == .UNKNOWN do continue
 		found := false
 		for spec in wayu.WAYU_COMMAND_SPECS {
-			if spec.command == c { found = true; break }
+			if spec.command == c {
+				found = true; break
+			}
 		}
-		testing.expectf(t, found, "Command .%v has no row in WAYU_COMMAND_SPECS (no completion)", c)
+		testing.expectf(
+			t,
+			found,
+			"Command .%v has no row in WAYU_COMMAND_SPECS (no completion)",
+			c,
+		)
 	}
 	for spec in wayu.WAYU_COMMAND_SPECS {
 		testing.expect(t, len(spec.names) > 0, "row without names")
 		for name in spec.names {
 			parsed := wayu.parse_args([]string{name})
 			delete(parsed.args)
-			testing.expectf(t, parsed.command == spec.command, "%q parses to %v, table says %v", name, parsed.command, spec.command)
+			testing.expectf(
+				t,
+				parsed.command == spec.command,
+				"%q parses to %v, table says %v",
+				name,
+				parsed.command,
+				spec.command,
+			)
 		}
 	}
 }
@@ -280,34 +298,81 @@ test_wayu_completions_list_every_command :: proc(t: ^testing.T) {
 	bash_top: []string
 	for l in bash_lines {
 		if strings.has_prefix(strings.trim_space(l), `words="path `) {
-			bash_top = strings.fields(strings.trim(strings.trim_space(l)[len(`words=`):], `"`), context.temp_allocator)
+			bash_top = strings.fields(
+				strings.trim(strings.trim_space(l)[len(`words=`):], `"`),
+				context.temp_allocator,
+			)
 			break
 		}
 	}
 
 	for spec in wayu.WAYU_COMMAND_SPECS {
 		for name in spec.names {
-			testing.expectf(t, strings.contains(zsh, fmt.tprintf("'%s:", name)), "zsh completion misses %q", name)
+			testing.expectf(
+				t,
+				strings.contains(zsh, fmt.tprintf("'%s:", name)),
+				"zsh completion misses %q",
+				name,
+			)
 			in_bash := false
-			for w in bash_top { if w == name { in_bash = true } }
+			for w in bash_top {
+				if w == name {
+					in_bash = true
+				}
+			}
 			testing.expectf(t, in_bash, "bash completion misses %q", name)
-			testing.expectf(t, strings.contains(fish, fmt.tprintf("-a %s -d", name)), "fish completion misses %q", name)
+			testing.expectf(
+				t,
+				strings.contains(fish, fmt.tprintf("-a %s -d", name)),
+				"fish completion misses %q",
+				name,
+			)
 		}
 		case_label := fmt.tprintf("%s) ", strings.join(spec.names, "|", context.temp_allocator))
 		bash_case := ""
 		for l in bash_lines {
-			if strings.has_prefix(strings.trim_space(l), case_label) { bash_case = l; break }
+			if strings.has_prefix(strings.trim_space(l), case_label) {
+				bash_case = l; break
+			}
 		}
 		// Offered words: visible actions and flags (hidden synonyms have no desc).
 		offered := make([dynamic]string, context.temp_allocator)
-		for a in spec.actions { if len(a.desc) > 0 { append(&offered, a.word) } }
-		for f in spec.flags { if len(f.desc) > 0 { append(&offered, f.flag) } }
-		if spec.json != {} { append(&offered, "--json") }
+		for a in spec.actions {
+			if len(a.desc) > 0 {
+				append(&offered, a.word)
+			}
+		}
+		for f in spec.flags {
+			if len(f.desc) > 0 {
+				append(&offered, f.flag)
+			}
+		}
+		if spec.json != {} {
+			append(&offered, "--json")
+		}
 		for word in offered {
-			testing.expectf(t, strings.contains(zsh, fmt.tprintf("'%s:", word)), "zsh: %s misses %q", spec.names[0], word)
-			testing.expectf(t, strings.contains(bash_case, word), "bash: %s misses %q", spec.names[0], word)
-			testing.expectf(t, strings.contains(fish, fmt.tprintf("-a '%s' -d", word)) || strings.contains(fish, fmt.tprintf("-a %s -d", word)),
-				"fish: %s misses %q", spec.names[0], word)
+			testing.expectf(
+				t,
+				strings.contains(zsh, fmt.tprintf("'%s:", word)),
+				"zsh: %s misses %q",
+				spec.names[0],
+				word,
+			)
+			testing.expectf(
+				t,
+				strings.contains(bash_case, word),
+				"bash: %s misses %q",
+				spec.names[0],
+				word,
+			)
+			testing.expectf(
+				t,
+				strings.contains(fish, fmt.tprintf("-a '%s' -d", word)) ||
+				strings.contains(fish, fmt.tprintf("-a %s -d", word)),
+				"fish: %s misses %q",
+				spec.names[0],
+				word,
+			)
 		}
 	}
 }
@@ -322,26 +387,53 @@ test_wayu_command_table_drives_actions :: proc(t: ^testing.T) {
 		for a in spec.actions {
 			parsed := wayu.parse_args([]string{spec.names[0], a.word})
 			delete(parsed.args)
-			testing.expectf(t, parsed.command == spec.command && parsed.action == a.action,
-				"%s %s parses to %v/%v, table says %v/%v", spec.names[0], a.word,
-				parsed.command, parsed.action, spec.command, a.action)
+			testing.expectf(
+				t,
+				parsed.command == spec.command && parsed.action == a.action,
+				"%s %s parses to %v/%v, table says %v/%v",
+				spec.names[0],
+				a.word,
+				parsed.command,
+				parsed.action,
+				spec.command,
+				a.action,
+			)
 		}
 		bare := wayu.parse_args([]string{spec.names[0]})
 		delete(bare.args)
 		if spec.command != .HELP && spec.command != .VERSION {
-			testing.expectf(t, bare.action == spec.default_action, "%s: default %v, table says %v",
-				spec.names[0], bare.action, spec.default_action)
+			testing.expectf(
+				t,
+				bare.action == spec.default_action,
+				"%s: default %v, table says %v",
+				spec.names[0],
+				bare.action,
+				spec.default_action,
+			)
 		}
 		if len(spec.actions) > 0 {
 			unk := wayu.parse_args([]string{spec.names[0], "no-such-action"})
 			delete(unk.args)
-			testing.expectf(t, unk.action == .UNKNOWN, "%s no-such-action parses to %v", spec.names[0], unk.action)
+			testing.expectf(
+				t,
+				unk.action == .UNKNOWN,
+				"%s no-such-action parses to %v",
+				spec.names[0],
+				unk.action,
+			)
 		}
 		for h in ([]string{"help", "-h", "--help"}) {
 			parsed := wayu.parse_args([]string{spec.names[0], h})
 			delete(parsed.args)
 			if spec.command != .HELP && spec.command != .VERSION {
-				testing.expectf(t, parsed.action == .HELP, "%s %s parses to %v", spec.names[0], h, parsed.action)
+				testing.expectf(
+					t,
+					parsed.action == .HELP,
+					"%s %s parses to %v",
+					spec.names[0],
+					h,
+					parsed.action,
+				)
 			}
 		}
 	}
@@ -353,23 +445,42 @@ test_wayu_command_table_drives_flags :: proc(t: ^testing.T) {
 	for spec in wayu.WAYU_COMMAND_SPECS {
 		for f in spec.flags {
 			flag := f.flag
-			if strings.has_suffix(flag, "=") { flag = fmt.tprintf("%sx", flag) }
-			testing.expectf(t, wayu.command_accepts_flag(spec.command, flag), "%s rejects its own flag %q", spec.names[0], flag)
+			if strings.has_suffix(flag, "=") {
+				flag = fmt.tprintf("%sx", flag)
+			}
+			testing.expectf(
+				t,
+				wayu.command_accepts_flag(spec.command, flag),
+				"%s rejects its own flag %q",
+				spec.names[0],
+				flag,
+			)
 		}
 		if !spec.any_flag {
-			testing.expectf(t, !wayu.command_accepts_flag(spec.command, "--definitely-not-a-flag"),
-				"%s accepts an unknown flag", spec.names[0])
+			testing.expectf(
+				t,
+				!wayu.command_accepts_flag(spec.command, "--definitely-not-a-flag"),
+				"%s accepts an unknown flag",
+				spec.names[0],
+			)
 		}
 	}
 	testing.expect(t, wayu.command_accepts_flag(.DOCTOR, "--fix"), "doctor --fix")
 	testing.expect(t, !wayu.command_accepts_flag(.PATH, "--fix"), "path --fix")
-	testing.expect(t, wayu.command_accepts_flag(.PLUGIN, "--category=dev"), "plugin --category=dev")
+	testing.expect(
+		t,
+		wayu.command_accepts_flag(.PLUGIN, "--category=dev"),
+		"plugin --category=dev",
+	)
 }
 
 // --json is accepted only where the table says the output is JSON.
 @(test)
 test_wayu_command_table_drives_json :: proc(t: ^testing.T) {
-	cases := []struct { args: []string, unsupported: bool }{
+	cases := []struct {
+		args:        []string,
+		unsupported: bool,
+	} {
 		{{"path", "list", "--json"}, false},
 		{{"alias", "--json"}, false},
 		{{"const", "ls", "--json"}, false},
@@ -388,7 +499,13 @@ test_wayu_command_table_drives_json :: proc(t: ^testing.T) {
 		parsed := wayu.parse_args(c.args)
 		delete(parsed.args)
 		wayu.wayu.json_output = saved
-		testing.expectf(t, parsed.json_unsupported == c.unsupported, "%v: json_unsupported=%v", c.args, parsed.json_unsupported)
+		testing.expectf(
+			t,
+			parsed.json_unsupported == c.unsupported,
+			"%v: json_unsupported=%v",
+			c.args,
+			parsed.json_unsupported,
+		)
 	}
 }
 
@@ -406,15 +523,34 @@ test_wayu_completions_offer_existing_entries :: proc(t: ^testing.T) {
 
 	rows := 0
 	for spec in wayu.WAYU_COMMAND_SPECS {
-		if spec.arg_names == .NONE { continue }
+		if spec.arg_names == .NONE {
+			continue
+		}
 		rows += 1
 		kind := wayu.COMPLETION_NAMES_KIND[spec.arg_names]
-		testing.expectf(t, strings.contains(zsh, fmt.tprintf("_wayu_names %s ;;", kind)), "zsh misses names %s", kind)
-		testing.expectf(t, strings.contains(bash, fmt.tprintf("_wayu_names %s;", kind)), "bash misses names %s", kind)
-		testing.expectf(t, strings.contains(fish, fmt.tprintf("completions names %s 2>/dev/null", kind)), "fish misses names %s", kind)
+		testing.expectf(
+			t,
+			strings.contains(zsh, fmt.tprintf("_wayu_names %s ;;", kind)),
+			"zsh misses names %s",
+			kind,
+		)
+		testing.expectf(
+			t,
+			strings.contains(bash, fmt.tprintf("_wayu_names %s;", kind)),
+			"bash misses names %s",
+			kind,
+		)
+		testing.expectf(
+			t,
+			strings.contains(fish, fmt.tprintf("completions names %s 2>/dev/null", kind)),
+			"fish misses names %s",
+			kind,
+		)
 		for name in spec.names {
 			for a in spec.actions {
-				if a.action not_in spec.arg_name_actions { continue }
+				if a.action not_in spec.arg_name_actions {
+					continue
+				}
 				pair := fmt.tprintf("\"%s %s\"", name, a.word)
 				testing.expectf(t, strings.contains(zsh, pair), "zsh misses %s", pair)
 				testing.expectf(t, strings.contains(bash, pair), "bash misses %s", pair)
@@ -425,7 +561,11 @@ test_wayu_completions_offer_existing_entries :: proc(t: ^testing.T) {
 
 	parsed := wayu.parse_args([]string{"completions", "names", "alias"})
 	defer delete(parsed.args)
-	testing.expect(t, parsed.command == .COMPLETIONS && parsed.action == .SEARCH, "completions names parses")
+	testing.expect(
+		t,
+		parsed.command == .COMPLETIONS && parsed.action == .SEARCH,
+		"completions names parses",
+	)
 	testing.expect(t, !strings.contains(zsh, "'names:"), "hidden names word not offered")
 }
 
@@ -439,24 +579,38 @@ test_collect_completion_names :: proc(t: ^testing.T) {
 
 	saved_config, saved_data := wayu.wayu.config, wayu.wayu.data
 	wayu.wayu.config, wayu.wayu.data = tmp, tmp
-	defer { wayu.wayu.config, wayu.wayu.data = saved_config, saved_data }
+	defer {wayu.wayu.config, wayu.wayu.data = saved_config, saved_data}
 	wayu.clear_toml_content_cache()
 	defer wayu.clear_toml_content_cache()
 
-	write_entries_json(t, tmp, `{"version": 1, "paths": [{"key": "bin", "dir": "$HOME/bin"}], "aliases": [{"name": "zz", "value": "ls"}, {"name": "ll", "value": "ls -la"}], "env": [{"name": "FOO", "value": "1"}]}`)
+	write_entries_json(
+		t,
+		tmp,
+		`{"version": 1, "paths": [{"key": "bin", "dir": "$HOME/bin"}], "aliases": [{"name": "zz", "value": "ls"}, {"name": "ll", "value": "ls -la"}], "env": [{"name": "FOO", "value": "1"}]}`,
+	)
 	for f in ([]string{"_jj", "gh.bash-completion", "notes.txt"}) {
-		testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/completions/%s", tmp, f), transmute([]byte)string("x")))
+		testing.expect(
+			t,
+			wayu.safe_write_file(
+				fmt.tprintf("%s/completions/%s", tmp, f),
+				transmute([]byte)string("x"),
+			),
+		)
 	}
 
 	expect_names :: proc(t: ^testing.T, kind: wayu.CompletionNames, want: []string) {
 		got := wayu.collect_completion_names(kind)
 		defer {
-			for n in got { delete(n) }
+			for n in got {delete(n)}
 			delete(got)
 		}
 		testing.expectf(t, len(got) == len(want), "%v: got %v want %v", kind, got[:], want)
-		if len(got) != len(want) { return }
-		for w, i in want { testing.expectf(t, got[i] == w, "%v[%d]: got %s want %s", kind, i, got[i], w) }
+		if len(got) != len(want) {
+			return
+		}
+		for w, i in want {
+			testing.expectf(t, got[i] == w, "%v[%d]: got %s want %s", kind, i, got[i], w)
+		}
 	}
 	expect_names(t, .PATH, {"$HOME/bin"})
 	expect_names(t, .ALIAS, {"ll", "zz"})

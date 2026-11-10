@@ -30,8 +30,8 @@ PROFILE_ITERATIONS :: 5
 
 // Sample describes a single timed invocation.
 ProfileSample :: struct {
-	label:   string,
-	command: []string,   // argv passed to the subprocess (no shell quoting)
+	label:    string,
+	command:  []string, // argv passed to the subprocess (no shell quoting)
 	times_ms: [PROFILE_ITERATIONS]f64,
 }
 
@@ -57,8 +57,13 @@ profile_startup_performance :: proc() {
 
 	shell_bin, ok := resolve_profile_shell(wayu.shell)
 	if !ok {
-		print_error_simple("Could not find a %s binary on $PATH to profile", get_shell_name(wayu.shell))
-		fmt.println("Install the shell or run 'wayu build profile' from an interactive session of that shell.")
+		print_error_simple(
+			"Could not find a %s binary on $PATH to profile",
+			get_shell_name(wayu.shell),
+		)
+		fmt.println(
+			"Install the shell or run 'wayu build profile' from an interactive session of that shell.",
+		)
 		os.exit(EXIT_CONFIG)
 	}
 	defer delete(shell_bin)
@@ -67,7 +72,10 @@ profile_startup_performance :: proc() {
 	defer delete(core_file)
 
 	if !os.exists(core_file) {
-		print_warning("core.%s not found — run 'wayu init' or any 'wayu path/alias/constants add' first.", wayu.shell_ext)
+		print_warning(
+			"core.%s not found — run 'wayu init' or any 'wayu path/alias/constants add' first.",
+			wayu.shell_ext,
+		)
 		fmt.println()
 	}
 
@@ -75,13 +83,13 @@ profile_startup_performance :: proc() {
 	source_cmd := fmt.aprintf("source %s", shell_single_quote(core_file, context.temp_allocator))
 	defer delete(source_cmd)
 
-	scenarios := []ProfileSample{
+	scenarios := []ProfileSample {
 		{
-			label   = fmt.tprintf("core.%s (sourced in -c)", wayu.shell_ext),
+			label = fmt.tprintf("core.%s (sourced in -c)", wayu.shell_ext),
 			command = []string{shell_bin, "-c", source_cmd},
 		},
 		{
-			label   = "interactive shell (-i -c exit)",
+			label = "interactive shell (-i -c exit)",
 			command = []string{shell_bin, "-i", "-c", "exit"},
 		},
 	}
@@ -92,7 +100,7 @@ profile_startup_performance :: proc() {
 	fmt.println()
 
 	for &scenario in scenarios {
-		for i in 0..<PROFILE_ITERATIONS {
+		for i in 0 ..< PROFILE_ITERATIONS {
 			start := time.tick_now()
 			_ = run_command(scenario.command)
 			elapsed := time.tick_since(start)
@@ -165,8 +173,13 @@ render_phase_breakdown :: proc(shell_bin, core_file: string, shell: ShellType) {
 		fmt.sbprintfln(&sb, "__wayu_t_%d_b=$EPOCHREALTIME", i)
 		// printf with %s keeps the floats as the shell printed them (locale
 		// independent, no precision loss from another printf spec).
-		fmt.sbprintfln(&sb, "printf 'PHASE=%%s|%%s|%%s\\n' %s \"$__wayu_t_%d_a\" \"$__wayu_t_%d_b\"",
-			shell_single_quote(p.name, context.temp_allocator), i, i)
+		fmt.sbprintfln(
+			&sb,
+			"printf 'PHASE=%%s|%%s|%%s\\n' %s \"$__wayu_t_%d_a\" \"$__wayu_t_%d_b\"",
+			shell_single_quote(p.name, context.temp_allocator),
+			i,
+			i,
+		)
 	}
 
 	out := capture_command([]string{shell_bin, "-c", strings.to_string(sb)})
@@ -174,13 +187,19 @@ render_phase_breakdown :: proc(shell_bin, core_file: string, shell: ShellType) {
 	if len(out) == 0 do return
 	if strings.contains(out, "WAYU_NO_EPOCHREALTIME") {
 		fmt.println()
-		print_info("Phase breakdown needs $EPOCHREALTIME (zsh, or bash 5+); %s has none.", shell_bin)
+		print_info(
+			"Phase breakdown needs $EPOCHREALTIME (zsh, or bash 5+); %s has none.",
+			shell_bin,
+		)
 		return
 	}
 
 	// Parse `PHASE=name|start|end` lines. Anything else is output from the
 	// phase body itself (e.g. a plugin's banner) and is ignored here.
-	PhaseTiming :: struct { name: string, ms: f64 }
+	PhaseTiming :: struct {
+		name: string,
+		ms:   f64,
+	}
 	timings := make([dynamic]PhaseTiming, context.temp_allocator)
 	for line in strings.split_lines(out, context.temp_allocator) {
 		if !strings.has_prefix(line, "PHASE=") do continue
@@ -189,16 +208,13 @@ render_phase_breakdown :: proc(shell_bin, core_file: string, shell: ShellType) {
 		if len(parts) != 3 do continue
 		// Some locales print the decimal separator as ','.
 		start_s, ok_a := strconv.parse_f64(epoch_decimal(parts[1]))
-		end_s,   ok_b := strconv.parse_f64(epoch_decimal(parts[2]))
+		end_s, ok_b := strconv.parse_f64(epoch_decimal(parts[2]))
 		if !ok_a || !ok_b do continue
-		append(&timings, PhaseTiming{
-			name = parts[0],
-			ms   = (end_s - start_s) * 1000.0,
-		})
+		append(&timings, PhaseTiming{name = parts[0], ms = (end_s - start_s) * 1000.0})
 	}
 	if len(timings) == 0 do return
 
-	slice.sort_by(timings[:], proc(a, b: PhaseTiming) -> bool { return a.ms > b.ms })
+	slice.sort_by(timings[:], proc(a, b: PhaseTiming) -> bool {return a.ms > b.ms})
 
 	total_ms := 0.0
 	for t in timings do total_ms += t.ms
@@ -210,8 +226,8 @@ render_phase_breakdown :: proc(shell_bin, core_file: string, shell: ShellType) {
 		if total_ms > 0 do share = (t.ms / total_ms) * 100.0
 		// Odin's %N.1f zero-pads when N > natural width; sidestep with
 		// manual space padding so the column stays neat.
-		ms_str    := fmt.aprintf("%.1f", t.ms);    defer delete(ms_str)
-		share_str := fmt.aprintf("%.1f", share);   defer delete(share_str)
+		ms_str := fmt.aprintf("%.1f", t.ms); defer delete(ms_str)
+		share_str := fmt.aprintf("%.1f", share); defer delete(share_str)
 		fmt.printfln("  %s ms  %s%%   %s", pad_left(ms_str, 6), pad_left(share_str, 4), t.name)
 	}
 	total_str := fmt.aprintf("%.1f", total_ms); defer delete(total_str)
@@ -236,8 +252,11 @@ epoch_decimal :: proc(s: string) -> string {
 // Returned names/bodies are heap-allocated — caller owns them.
 profile_core_units :: proc(content: string, shell: ShellType) -> [dynamic]InitCorePhase {
 	ext := get_shell_extension(shell)
-	plugins_q := shell_double_quote_literal(fmt.tprintf("%s/plugins.%s", wayu.data, ext), context.temp_allocator)
-	ctx := ProfileSplit{
+	plugins_q := shell_double_quote_literal(
+		fmt.tprintf("%s/plugins.%s", wayu.data, ext),
+		context.temp_allocator,
+	)
+	ctx := ProfileSplit {
 		units        = make([dynamic]InitCorePhase),
 		plugins_line = fmt.tprintf("if [ -f %s ]; then source %s; fi", plugins_q, plugins_q),
 		plugins_file = fmt.tprintf("%s/plugins.%s", wayu.data, ext),
@@ -253,7 +272,7 @@ ProfileSplit :: struct {
 	plugins_line: string,
 	plugins_file: string,
 	sb:           strings.Builder, // body of the current unit
-	name:         string,          // name of the current unit (temp)
+	name:         string, // name of the current unit (temp)
 }
 
 // Close the current unit; keep it when its body has code.
@@ -263,10 +282,15 @@ profile_flush :: proc(ctx: ^ProfileSplit) {
 	has_code := false
 	for l in strings.split_lines(body, context.temp_allocator) {
 		t := strings.trim_space(l)
-		if len(t) > 0 && !strings.has_prefix(t, "#") { has_code = true; break }
+		if len(t) > 0 && !strings.has_prefix(t, "#") {
+			has_code = true; break
+		}
 	}
 	if has_code {
-		append(&ctx.units, InitCorePhase{name = strings.clone(ctx.name), body = strings.clone(body)})
+		append(
+			&ctx.units,
+			InitCorePhase{name = strings.clone(ctx.name), body = strings.clone(body)},
+		)
 	}
 	strings.builder_reset(&ctx.sb)
 }
@@ -280,7 +304,11 @@ profile_split :: proc(ctx: ^ProfileSplit, content, prefix, first_name: string, d
 		switch {
 		case strings.has_prefix(trimmed, "# === ") && strings.has_suffix(trimmed, " ==="):
 			profile_flush(ctx)
-			section = fmt.tprintf("%s%s", prefix, trimmed[len("# === "):len(trimmed) - len(" ===")])
+			section = fmt.tprintf(
+				"%s%s",
+				prefix,
+				trimmed[len("# === "):len(trimmed) - len(" ===")],
+			)
 			ctx.name = section
 			continue
 		case strings.has_prefix(trimmed, "# --- ") && strings.has_suffix(trimmed, " ---"):
@@ -307,7 +335,9 @@ profile_split :: proc(ctx: ^ProfileSplit, content, prefix, first_name: string, d
 			profile_flush(ctx)
 			ctx.name = section
 			continue
-		case depth > 0 && strings.has_prefix(trimmed, "# ") && strings.contains(trimmed, " (priority: "):
+		case depth > 0 &&
+		     strings.has_prefix(trimmed, "# ") &&
+		     strings.contains(trimmed, " (priority: "):
 			profile_flush(ctx)
 			ctx.name = fmt.tprintf("plugin %s", trimmed[2:strings.index(trimmed, " (priority: ")])
 			continue
@@ -331,7 +361,9 @@ pad_left :: proc(s: string, width: int) -> string {
 	return fmt.tprintf("%s%s", strings.repeat(" ", width - len(s), context.temp_allocator), s)
 }
 
-InitCorePhase :: struct { name, body: string }
+InitCorePhase :: struct {
+	name, body: string,
+}
 
 // Compute min/mean/max from the populated times_ms and print a one-line
 // summary per scenario plus the raw samples.
@@ -368,12 +400,15 @@ render_profile_sample :: proc(s: ProfileSample) {
 resolve_profile_shell :: proc(shell: ShellType) -> (string, bool) {
 	name := ""
 	switch shell {
-	case .ZSH:  name = "zsh"
-	case .BASH: name = "bash"
-	case .FISH: name = "fish"
+	case .ZSH:
+		name = "zsh"
+	case .BASH:
+		name = "bash"
+	case .FISH:
+		name = "fish"
 	case .UNKNOWN:
-		// No explicit shell — skip the `which` probe and go straight to
-		// the environment fallback below.
+	// No explicit shell — skip the `which` probe and go straight to
+	// the environment fallback below.
 	}
 
 	if len(name) > 0 {
@@ -392,4 +427,3 @@ resolve_profile_shell :: proc(shell: ShellType) -> (string, bool) {
 	}
 	return "", false
 }
-

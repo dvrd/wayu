@@ -20,18 +20,21 @@ import "core:time"
 
 handle_config_extra_command :: proc(action: Action, args: []string) {
 	#partial switch action {
-	case .ADD: // extend (extra.zsh)
+	case .ADD:
+		// extend (extra.zsh)
 		extra_file := fmt.aprintf("%s/extra.%s", wayu.config, wayu.shell_ext)
 		defer delete(extra_file)
 		edit_extra_config(extra_file)
-	case .UPDATE: // edit (wayu.toml)
+	case .UPDATE:
+		// edit (wayu.toml)
 		toml_file := fmt.aprintf("%s/wayu.toml", wayu.config)
 		defer delete(toml_file)
 		edit_toml_config(toml_file)
 		// Apply the edit: regenerate init files for every initialized shell
 		// (open shells pick up PATH changes at their next prompt via path_sync).
 		regenerate_init_core_silently()
-	case .CHECK: // scan/detect
+	case .CHECK:
+		// scan/detect
 		has_fix, has_dry_run, has_yes := extract_scan_flags(args)
 		if has_fix {
 			scan_and_migrate_scripts(has_dry_run, has_yes)
@@ -52,8 +55,8 @@ handle_config_extra_command :: proc(action: Action, args: []string) {
 // honour those too to preserve `wayu config scan --fix --dry-run` behaviour.
 extract_scan_flags :: proc(args: []string) -> (bool, bool, bool) {
 	has_fix := false
-	has_dry_run := wayu.dry_run   // mirror the global flag
-	has_yes := wayu.yes_flag       // mirror the global flag
+	has_dry_run := wayu.dry_run // mirror the global flag
+	has_yes := wayu.yes_flag // mirror the global flag
 
 	for arg in args {
 		if arg == "--fix" {
@@ -81,7 +84,9 @@ edit_extra_config :: proc(extra_file: string) {
 		print_success("Created extra config: %s", extra_file)
 	}
 
-	if !launch_editor(extra_file) { os.exit(EXIT_FAILURE) }
+	if !launch_editor(extra_file) {
+		os.exit(EXIT_FAILURE)
+	}
 }
 
 edit_toml_config :: proc(toml_file: string) {
@@ -89,20 +94,26 @@ edit_toml_config :: proc(toml_file: string) {
 	if !os.exists(toml_file) {
 		default_content := wayu_toml_scaffold(wayu.shell)
 		defer delete(default_content)
-		if write_ok := os.write_entire_file_from_string(toml_file, default_content, SECRET_FILE_PERMS); write_ok != nil {
+		if write_ok := os.write_entire_file_from_string(
+			toml_file,
+			default_content,
+			SECRET_FILE_PERMS,
+		); write_ok != nil {
 			print_error_simple("Failed to create wayu.toml: %s", toml_file)
 			os.exit(EXIT_CANTCREAT)
 		}
 		print_success("Created wayu.toml: %s", toml_file)
 	}
 
-	if !launch_editor(toml_file) { os.exit(EXIT_FAILURE) }
+	if !launch_editor(toml_file) {
+		os.exit(EXIT_FAILURE)
+	}
 }
 
 // Patterns used by both scan procs. Lines that contain any of these substrings
 // are treated as the start of an inline-script block that should live in
 // extra.<shell> rather than the user's RC file. See `detect_rc_script_blocks`.
-ZSHRC_SCRIPT_PATTERNS := []string{
+ZSHRC_SCRIPT_PATTERNS := []string {
 	"eval \"$(",
 	"export PATH=",
 	"alias ",
@@ -160,7 +171,9 @@ detect_rc_script_blocks_in :: proc(content: string) -> (blocks: [dynamic][dynami
 		}
 		// Checked before comments are skipped: the markers are comments.
 		if strings.has_prefix(trimmed, "# >>>") {
-			if in_block { flush_block(&blocks, &current_block); in_block = false }
+			if in_block {
+				flush_block(&blocks, &current_block); in_block = false
+			}
 			in_marked = true
 			append(&current_block, line)
 			continue
@@ -197,7 +210,12 @@ detect_rc_script_blocks_in :: proc(content: string) -> (blocks: [dynamic][dynami
 // Load `rc_path` and detect its script blocks (detect_rc_script_blocks_in).
 // Errors are reported via print_error_simple + os.exit. The caller OWNS the
 // returned blocks and must free them via cleanup_zshrc_blocks.
-detect_zshrc_script_blocks :: proc(rc_path: string) -> (blocks: [dynamic][dynamic]string, content_data: []byte) {
+detect_zshrc_script_blocks :: proc(
+	rc_path: string,
+) -> (
+	blocks: [dynamic][dynamic]string,
+	content_data: []byte,
+) {
 	if !os.exists(rc_path) {
 		print_error_simple("%s not found", rc_path)
 		os.exit(EXIT_NOINPUT)
@@ -249,8 +267,17 @@ scan_zshrc_for_scripts :: proc() {
 
 	print_info("These scripts should be moved to extra.%s for better management", wayu.shell_ext)
 	fmt.println()
-	fmt.printfln("Run %swayu optimize%s to move installer lines into wayu (removes them, with a backup)", get_primary(), RESET)
-	fmt.printfln("Run %swayu config extend%s to edit extra.%s", get_primary(), RESET, wayu.shell_ext)
+	fmt.printfln(
+		"Run %swayu optimize%s to move installer lines into wayu (removes them, with a backup)",
+		get_primary(),
+		RESET,
+	)
+	fmt.printfln(
+		"Run %swayu config extend%s to edit extra.%s",
+		get_primary(),
+		RESET,
+		wayu.shell_ext,
+	)
 	fmt.printfln("Or run %swayu config scan --fix%s to copy them there", get_primary(), RESET)
 }
 
@@ -284,9 +311,17 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 	defer delete(extra_file)
 
 	if dry_run {
-		print_info("Dry-run mode: would append %d blocks to extra.%s", len(detected_blocks), wayu.shell_ext)
+		print_info(
+			"Dry-run mode: would append %d blocks to extra.%s",
+			len(detected_blocks),
+			wayu.shell_ext,
+		)
 		fmt.println()
-		fmt.printfln("Run %swayu config scan --fix --yes%s to actually migrate", get_primary(), RESET)
+		fmt.printfln(
+			"Run %swayu config scan --fix --yes%s to actually migrate",
+			get_primary(),
+			RESET,
+		)
 		return
 	}
 
@@ -306,7 +341,9 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 	if os.exists(extra_file) {
 		read_ok: bool
 		existing, read_ok = safe_read_file(extra_file)
-		if !read_ok { os.exit(EXIT_IOERR) }
+		if !read_ok {
+			os.exit(EXIT_IOERR)
+		}
 	}
 	defer delete(existing)
 	strings.write_string(&builder, string(existing))
@@ -324,9 +361,14 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 			strings.write_string(&block_text, line)
 			strings.write_string(&block_text, "\n")
 		}
-		if strings.contains(string(existing), strings.to_string(block_text)) { continue }
+		if strings.contains(string(existing), strings.to_string(block_text)) {
+			continue
+		}
 		if new_blocks == 0 {
-			strings.write_string(&builder, "\n# === Scripts imported by 'wayu config scan --fix' ===\n")
+			strings.write_string(
+				&builder,
+				"\n# === Scripts imported by 'wayu config scan --fix' ===\n",
+			)
 			strings.write_string(&builder, fmt.tprintf("# Imported on: %v\n", time.now()))
 			strings.write_string(&builder, "\n")
 		}
@@ -336,7 +378,11 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 	}
 
 	if new_blocks == 0 {
-		print_info("All %d blocks are already in %s - nothing to do", len(detected_blocks), extra_file)
+		print_info(
+			"All %d blocks are already in %s - nothing to do",
+			len(detected_blocks),
+			extra_file,
+		)
 		print_info("Remove the originals from %s once verified", shown)
 		return
 	}
@@ -352,7 +398,11 @@ scan_and_migrate_scripts :: proc(dry_run: bool, force_yes: bool) {
 
 	if write_ok {
 		print_success("Migrated %d blocks to %s", new_blocks, extra_file)
-		print_info("Original scripts remain in %s - review extra.%s and remove them manually", shown, wayu.shell_ext)
+		print_info(
+			"Original scripts remain in %s - review extra.%s and remove them manually",
+			shown,
+			wayu.shell_ext,
+		)
 	} else {
 		print_error_simple("Failed to write %s", extra_file)
 		os.exit(EXIT_IOERR)
@@ -393,4 +443,3 @@ print_config_usage :: proc() {
 	fmt.println("  wayu config scan")
 	fmt.println()
 }
-

@@ -1,9 +1,9 @@
 package test_wayu
 
-import "core:testing"
+import wayu "../../src"
 import "core:fmt"
 import "core:strings"
-import wayu "../../src"
+import "core:testing"
 
 @(test)
 test_stylize_function :: proc(t: ^testing.T) {
@@ -108,8 +108,11 @@ test_print_prompt :: proc(t: ^testing.T) {
 test_detect_color_profile :: proc(t: ^testing.T) {
 	// Test color profile detection
 	profile := wayu.detect_color_profile()
-	testing.expect(t, profile >= wayu.ColorProfile.ASCII && profile <= wayu.ColorProfile.TRUECOLOR,
-		"Should return valid color profile")
+	testing.expect(
+		t,
+		profile >= wayu.ColorProfile.ASCII && profile <= wayu.ColorProfile.TRUECOLOR,
+		"Should return valid color profile",
+	)
 }
 
 @(test)
@@ -117,78 +120,108 @@ test_init_colors :: proc(t: ^testing.T) {
 	// Test color initialization
 	wayu.init_colors()
 	profile := wayu.get_color_profile()
-	testing.expect(t, profile >= wayu.ColorProfile.ASCII && profile <= wayu.ColorProfile.TRUECOLOR,
-		"After init, should have valid color profile")
+	testing.expect(
+		t,
+		profile >= wayu.ColorProfile.ASCII && profile <= wayu.ColorProfile.TRUECOLOR,
+		"After init, should have valid color profile",
+	)
 }
 
 @(test)
 test_adaptive_color :: proc(t: ^testing.T) {
 	// Test adaptive color function
 	result := wayu.adaptive_color(wayu.VIBRANT_PRIMARY, wayu.ANSI256_PRIMARY, wayu.BRIGHT_CYAN)
-	testing.expect(t, len(result) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
-		"Should return color code or empty for ASCII")
+	testing.expect(
+		t,
+		len(result) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
+		"Should return color code or empty for ASCII",
+	)
 }
 
 @(test)
 test_get_primary :: proc(t: ^testing.T) {
 	// Test primary color getter
 	color := wayu.get_primary()
-	testing.expect(t, len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
-		"Should return primary color or empty for ASCII")
+	testing.expect(
+		t,
+		len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
+		"Should return primary color or empty for ASCII",
+	)
 }
 
 @(test)
 test_get_secondary :: proc(t: ^testing.T) {
 	// Test secondary color getter
 	color := wayu.get_secondary()
-	testing.expect(t, len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
-		"Should return secondary color or empty for ASCII")
+	testing.expect(
+		t,
+		len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
+		"Should return secondary color or empty for ASCII",
+	)
 }
 
 @(test)
 test_get_accent :: proc(t: ^testing.T) {
 	// Test accent color getter
 	color := wayu.get_accent()
-	testing.expect(t, len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
-		"Should return accent color or empty for ASCII")
+	testing.expect(
+		t,
+		len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
+		"Should return accent color or empty for ASCII",
+	)
 }
 
 @(test)
 test_get_success :: proc(t: ^testing.T) {
 	// Test success color getter
 	color := wayu.get_success()
-	testing.expect(t, len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
-		"Should return success color or empty for ASCII")
+	testing.expect(
+		t,
+		len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
+		"Should return success color or empty for ASCII",
+	)
 }
 
 @(test)
 test_get_error :: proc(t: ^testing.T) {
 	// Test error color getter
 	color := wayu.get_error()
-	testing.expect(t, len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
-		"Should return error color or empty for ASCII")
+	testing.expect(
+		t,
+		len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
+		"Should return error color or empty for ASCII",
+	)
 }
 
 @(test)
 test_get_warning :: proc(t: ^testing.T) {
 	// Test warning color getter
 	color := wayu.get_warning()
-	testing.expect(t, len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
-		"Should return warning color or empty for ASCII")
+	testing.expect(
+		t,
+		len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
+		"Should return warning color or empty for ASCII",
+	)
 }
 
 @(test)
 test_get_info :: proc(t: ^testing.T) {
 	// Test info color getter
 	color := wayu.get_info()
-	testing.expect(t, len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
-		"Should return info color or empty for ASCII")
+	testing.expect(
+		t,
+		len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
+		"Should return info color or empty for ASCII",
+	)
 }
 
 @(test)
 test_get_muted :: proc(t: ^testing.T) {
 	// Test muted color getter
 	color := wayu.get_muted()
-	testing.expect(t, len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
-		"Should return muted color or empty for ASCII")
+	testing.expect(
+		t,
+		len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
+		"Should return muted color or empty for ASCII",
+	)
 }

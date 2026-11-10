@@ -1,8 +1,8 @@
 package test_wayu
 
-import "core:testing"
-import "core:fmt"
 import wayu "../../src"
+import "core:fmt"
+import "core:testing"
 
 // ============================================================================
 // Test: Printable Characters
@@ -10,43 +10,43 @@ import wayu "../../src"
 
 @(test)
 test_parse_printable_char_lowercase :: proc(t: ^testing.T) {
-    input_buf := []byte{'a'}
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{'a'}
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse lowercase letter")
-    testing.expect_value(t, event.key, wayu.Key.Char)
-    testing.expect_value(t, event.char, 'a')
-    testing.expect(t, card(event.modifiers) == 0, "Should have no modifiers")
+	testing.expect(t, ok, "Should parse lowercase letter")
+	testing.expect_value(t, event.key, wayu.Key.Char)
+	testing.expect_value(t, event.char, 'a')
+	testing.expect(t, card(event.modifiers) == 0, "Should have no modifiers")
 }
 
 @(test)
 test_parse_printable_char_uppercase :: proc(t: ^testing.T) {
-    input_buf := []byte{'Z'}
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{'Z'}
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse uppercase letter")
-    testing.expect_value(t, event.key, wayu.Key.Char)
-    testing.expect_value(t, event.char, 'Z')
+	testing.expect(t, ok, "Should parse uppercase letter")
+	testing.expect_value(t, event.key, wayu.Key.Char)
+	testing.expect_value(t, event.char, 'Z')
 }
 
 @(test)
 test_parse_printable_char_digit :: proc(t: ^testing.T) {
-    input_buf := []byte{'5'}
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{'5'}
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse digit")
-    testing.expect_value(t, event.key, wayu.Key.Char)
-    testing.expect_value(t, event.char, '5')
+	testing.expect(t, ok, "Should parse digit")
+	testing.expect_value(t, event.key, wayu.Key.Char)
+	testing.expect_value(t, event.char, '5')
 }
 
 @(test)
 test_parse_printable_char_symbol :: proc(t: ^testing.T) {
-    input_buf := []byte{'@'}
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{'@'}
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse symbol")
-    testing.expect_value(t, event.key, wayu.Key.Char)
-    testing.expect_value(t, event.char, '@')
+	testing.expect(t, ok, "Should parse symbol")
+	testing.expect_value(t, event.key, wayu.Key.Char)
+	testing.expect_value(t, event.char, '@')
 }
 
 // ============================================================================
@@ -55,60 +55,60 @@ test_parse_printable_char_symbol :: proc(t: ^testing.T) {
 
 @(test)
 test_parse_lf_is_ctrl_j :: proc(t: ^testing.T) {
-    // TUI raw mode clears ICRNL: Enter arrives as CR, so LF is Ctrl+J
-    // (used for down-navigation in filter mode).
-    input_buf := []byte{10}
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	// TUI raw mode clears ICRNL: Enter arrives as CR, so LF is Ctrl+J
+	// (used for down-navigation in filter mode).
+	input_buf := []byte{10}
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse LF")
-    testing.expect_value(t, event.key, wayu.Key.Char)
-    testing.expect_value(t, event.char, 'j')
-    testing.expect(t, .Ctrl in event.modifiers, "LF must be Ctrl+J")
+	testing.expect(t, ok, "Should parse LF")
+	testing.expect_value(t, event.key, wayu.Key.Char)
+	testing.expect_value(t, event.char, 'j')
+	testing.expect(t, .Ctrl in event.modifiers, "LF must be Ctrl+J")
 }
 
 @(test)
 test_parse_enter_cr :: proc(t: ^testing.T) {
-    input_buf := []byte{13}  // CR (Carriage Return)
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{13} // CR (Carriage Return)
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse Enter (CR)")
-    testing.expect_value(t, event.key, wayu.Key.Enter)
+	testing.expect(t, ok, "Should parse Enter (CR)")
+	testing.expect_value(t, event.key, wayu.Key.Enter)
 }
 
 @(test)
 test_parse_tab :: proc(t: ^testing.T) {
-    input_buf := []byte{9}
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{9}
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse Tab")
-    testing.expect_value(t, event.key, wayu.Key.Tab)
+	testing.expect(t, ok, "Should parse Tab")
+	testing.expect_value(t, event.key, wayu.Key.Tab)
 }
 
 @(test)
 test_parse_backspace_127 :: proc(t: ^testing.T) {
-    input_buf := []byte{127}  // DEL
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{127} // DEL
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse Backspace (DEL)")
-    testing.expect_value(t, event.key, wayu.Key.Backspace)
+	testing.expect(t, ok, "Should parse Backspace (DEL)")
+	testing.expect_value(t, event.key, wayu.Key.Backspace)
 }
 
 @(test)
 test_parse_backspace_8 :: proc(t: ^testing.T) {
-    input_buf := []byte{8}  // BS
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{8} // BS
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse Backspace (BS)")
-    testing.expect_value(t, event.key, wayu.Key.Backspace)
+	testing.expect(t, ok, "Should parse Backspace (BS)")
+	testing.expect_value(t, event.key, wayu.Key.Backspace)
 }
 
 @(test)
 test_parse_escape :: proc(t: ^testing.T) {
-    input_buf := []byte{27}  // ESC alone
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{27} // ESC alone
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse Escape")
-    testing.expect_value(t, event.key, wayu.Key.Escape)
+	testing.expect(t, ok, "Should parse Escape")
+	testing.expect_value(t, event.key, wayu.Key.Escape)
 }
 
 // ============================================================================
@@ -117,56 +117,56 @@ test_parse_escape :: proc(t: ^testing.T) {
 
 @(test)
 test_parse_arrow_up :: proc(t: ^testing.T) {
-    input_buf := []byte{27, '[', 'A'}  // ESC [ A
-    event, ok := wayu.parse_key_event(input_buf, 3)
+	input_buf := []byte{27, '[', 'A'} // ESC [ A
+	event, ok := wayu.parse_key_event(input_buf, 3)
 
-    testing.expect(t, ok, "Should parse Up arrow")
-    testing.expect_value(t, event.key, wayu.Key.Up)
+	testing.expect(t, ok, "Should parse Up arrow")
+	testing.expect_value(t, event.key, wayu.Key.Up)
 }
 
 @(test)
 test_parse_arrow_down :: proc(t: ^testing.T) {
-    input_buf := []byte{27, '[', 'B'}  // ESC [ B
-    event, ok := wayu.parse_key_event(input_buf, 3)
+	input_buf := []byte{27, '[', 'B'} // ESC [ B
+	event, ok := wayu.parse_key_event(input_buf, 3)
 
-    testing.expect(t, ok, "Should parse Down arrow")
-    testing.expect_value(t, event.key, wayu.Key.Down)
+	testing.expect(t, ok, "Should parse Down arrow")
+	testing.expect_value(t, event.key, wayu.Key.Down)
 }
 
 @(test)
 test_parse_arrow_right :: proc(t: ^testing.T) {
-    input_buf := []byte{27, '[', 'C'}  // ESC [ C
-    event, ok := wayu.parse_key_event(input_buf, 3)
+	input_buf := []byte{27, '[', 'C'} // ESC [ C
+	event, ok := wayu.parse_key_event(input_buf, 3)
 
-    testing.expect(t, ok, "Should parse Right arrow")
-    testing.expect_value(t, event.key, wayu.Key.Right)
+	testing.expect(t, ok, "Should parse Right arrow")
+	testing.expect_value(t, event.key, wayu.Key.Right)
 }
 
 @(test)
 test_parse_arrow_left :: proc(t: ^testing.T) {
-    input_buf := []byte{27, '[', 'D'}  // ESC [ D
-    event, ok := wayu.parse_key_event(input_buf, 3)
+	input_buf := []byte{27, '[', 'D'} // ESC [ D
+	event, ok := wayu.parse_key_event(input_buf, 3)
 
-    testing.expect(t, ok, "Should parse Left arrow")
-    testing.expect_value(t, event.key, wayu.Key.Left)
+	testing.expect(t, ok, "Should parse Left arrow")
+	testing.expect_value(t, event.key, wayu.Key.Left)
 }
 
 @(test)
 test_parse_home :: proc(t: ^testing.T) {
-    input_buf := []byte{27, '[', 'H'}  // ESC [ H
-    event, ok := wayu.parse_key_event(input_buf, 3)
+	input_buf := []byte{27, '[', 'H'} // ESC [ H
+	event, ok := wayu.parse_key_event(input_buf, 3)
 
-    testing.expect(t, ok, "Should parse Home")
-    testing.expect_value(t, event.key, wayu.Key.Home)
+	testing.expect(t, ok, "Should parse Home")
+	testing.expect_value(t, event.key, wayu.Key.Home)
 }
 
 @(test)
 test_parse_end :: proc(t: ^testing.T) {
-    input_buf := []byte{27, '[', 'F'}  // ESC [ F
-    event, ok := wayu.parse_key_event(input_buf, 3)
+	input_buf := []byte{27, '[', 'F'} // ESC [ F
+	event, ok := wayu.parse_key_event(input_buf, 3)
 
-    testing.expect(t, ok, "Should parse End")
-    testing.expect_value(t, event.key, wayu.Key.End)
+	testing.expect(t, ok, "Should parse End")
+	testing.expect_value(t, event.key, wayu.Key.End)
 }
 
 // ============================================================================
@@ -175,46 +175,46 @@ test_parse_end :: proc(t: ^testing.T) {
 
 @(test)
 test_parse_ctrl_a :: proc(t: ^testing.T) {
-    input_buf := []byte{1}  // Ctrl+A
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{1} // Ctrl+A
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse Ctrl+A")
-    testing.expect_value(t, event.key, wayu.Key.Char)
-    testing.expect_value(t, event.char, 'a')
-    testing.expect(t, .Ctrl in event.modifiers, "Should have Ctrl modifier")
+	testing.expect(t, ok, "Should parse Ctrl+A")
+	testing.expect_value(t, event.key, wayu.Key.Char)
+	testing.expect_value(t, event.char, 'a')
+	testing.expect(t, .Ctrl in event.modifiers, "Should have Ctrl modifier")
 }
 
 @(test)
 test_parse_ctrl_c :: proc(t: ^testing.T) {
-    input_buf := []byte{3}  // Ctrl+C
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{3} // Ctrl+C
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse Ctrl+C")
-    testing.expect_value(t, event.key, wayu.Key.Char)
-    testing.expect_value(t, event.char, 'c')
-    testing.expect(t, .Ctrl in event.modifiers, "Should have Ctrl modifier")
+	testing.expect(t, ok, "Should parse Ctrl+C")
+	testing.expect_value(t, event.key, wayu.Key.Char)
+	testing.expect_value(t, event.char, 'c')
+	testing.expect(t, .Ctrl in event.modifiers, "Should have Ctrl modifier")
 }
 
 @(test)
 test_parse_ctrl_n :: proc(t: ^testing.T) {
-    input_buf := []byte{14}  // Ctrl+N
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{14} // Ctrl+N
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse Ctrl+N")
-    testing.expect_value(t, event.key, wayu.Key.Char)
-    testing.expect_value(t, event.char, 'n')
-    testing.expect(t, .Ctrl in event.modifiers, "Should have Ctrl modifier")
+	testing.expect(t, ok, "Should parse Ctrl+N")
+	testing.expect_value(t, event.key, wayu.Key.Char)
+	testing.expect_value(t, event.char, 'n')
+	testing.expect(t, .Ctrl in event.modifiers, "Should have Ctrl modifier")
 }
 
 @(test)
 test_parse_ctrl_z :: proc(t: ^testing.T) {
-    input_buf := []byte{26}  // Ctrl+Z
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{26} // Ctrl+Z
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse Ctrl+Z")
-    testing.expect_value(t, event.key, wayu.Key.Char)
-    testing.expect_value(t, event.char, 'z')
-    testing.expect(t, .Ctrl in event.modifiers, "Should have Ctrl modifier")
+	testing.expect(t, ok, "Should parse Ctrl+Z")
+	testing.expect_value(t, event.key, wayu.Key.Char)
+	testing.expect_value(t, event.char, 'z')
+	testing.expect(t, .Ctrl in event.modifiers, "Should have Ctrl modifier")
 }
 
 // ============================================================================
@@ -223,57 +223,70 @@ test_parse_ctrl_z :: proc(t: ^testing.T) {
 
 @(test)
 test_parse_f1 :: proc(t: ^testing.T) {
-    input_buf := []byte{27, 'O', 'P'}  // ESC O P
-    event, ok := wayu.parse_key_event(input_buf, 3)
+	input_buf := []byte{27, 'O', 'P'} // ESC O P
+	event, ok := wayu.parse_key_event(input_buf, 3)
 
-    testing.expect(t, ok, "Should parse F1")
-    testing.expect_value(t, event.key, wayu.Key.F1)
+	testing.expect(t, ok, "Should parse F1")
+	testing.expect_value(t, event.key, wayu.Key.F1)
 }
 
 @(test)
 test_parse_f2 :: proc(t: ^testing.T) {
-    input_buf := []byte{27, 'O', 'Q'}  // ESC O Q
-    event, ok := wayu.parse_key_event(input_buf, 3)
+	input_buf := []byte{27, 'O', 'Q'} // ESC O Q
+	event, ok := wayu.parse_key_event(input_buf, 3)
 
-    testing.expect(t, ok, "Should parse F2")
-    testing.expect_value(t, event.key, wayu.Key.F2)
+	testing.expect(t, ok, "Should parse F2")
+	testing.expect_value(t, event.key, wayu.Key.F2)
 }
 
 @(test)
 test_parse_f3 :: proc(t: ^testing.T) {
-    input_buf := []byte{27, 'O', 'R'}  // ESC O R
-    event, ok := wayu.parse_key_event(input_buf, 3)
+	input_buf := []byte{27, 'O', 'R'} // ESC O R
+	event, ok := wayu.parse_key_event(input_buf, 3)
 
-    testing.expect(t, ok, "Should parse F3")
-    testing.expect_value(t, event.key, wayu.Key.F3)
+	testing.expect(t, ok, "Should parse F3")
+	testing.expect_value(t, event.key, wayu.Key.F3)
 }
 
 @(test)
 test_parse_f4 :: proc(t: ^testing.T) {
-    input_buf := []byte{27, 'O', 'S'}  // ESC O S
-    event, ok := wayu.parse_key_event(input_buf, 3)
+	input_buf := []byte{27, 'O', 'S'} // ESC O S
+	event, ok := wayu.parse_key_event(input_buf, 3)
 
-    testing.expect(t, ok, "Should parse F4")
-    testing.expect_value(t, event.key, wayu.Key.F4)
+	testing.expect(t, ok, "Should parse F4")
+	testing.expect_value(t, event.key, wayu.Key.F4)
 }
 
 @(test)
 test_parse_tilde_function_keys :: proc(t: ^testing.T) {
-    Case :: struct { seq: string, key: wayu.Key }
-    cases := []Case{
-        {"\x1b[15~", .F5}, {"\x1b[17~", .F6}, {"\x1b[18~", .F7}, {"\x1b[19~", .F8},
-        {"\x1b[20~", .F9}, {"\x1b[21~", .F10}, {"\x1b[23~", .F11}, {"\x1b[24~", .F12},
-        // ESC[5~/6~ are PageUp/PageDown (previously misread as F5/F6-ish).
-        {"\x1b[5~", .PageUp}, {"\x1b[6~", .PageDown},
-        {"\x1b[3~", .Delete}, {"\x1b[1~", .Home}, {"\x1b[4~", .End},
-        {"\x1b[7~", .Home}, {"\x1b[8~", .End},
-    }
-    for c in cases {
-        buf := transmute([]byte)c.seq
-        event, ok := wayu.parse_key_event(buf, len(buf))
-        testing.expectf(t, ok, "should parse %q", c.seq)
-        testing.expectf(t, event.key == c.key, "%q: got %v want %v", c.seq, event.key, c.key)
-    }
+	Case :: struct {
+		seq: string,
+		key: wayu.Key,
+	}
+	cases := []Case {
+		{"\x1b[15~", .F5},
+		{"\x1b[17~", .F6},
+		{"\x1b[18~", .F7},
+		{"\x1b[19~", .F8},
+		{"\x1b[20~", .F9},
+		{"\x1b[21~", .F10},
+		{"\x1b[23~", .F11},
+		{"\x1b[24~", .F12},
+		// ESC[5~/6~ are PageUp/PageDown (previously misread as F5/F6-ish).
+		{"\x1b[5~", .PageUp},
+		{"\x1b[6~", .PageDown},
+		{"\x1b[3~", .Delete},
+		{"\x1b[1~", .Home},
+		{"\x1b[4~", .End},
+		{"\x1b[7~", .Home},
+		{"\x1b[8~", .End},
+	}
+	for c in cases {
+		buf := transmute([]byte)c.seq
+		event, ok := wayu.parse_key_event(buf, len(buf))
+		testing.expectf(t, ok, "should parse %q", c.seq)
+		testing.expectf(t, event.key == c.key, "%q: got %v want %v", c.seq, event.key, c.key)
+	}
 }
 
 // ============================================================================
@@ -282,42 +295,42 @@ test_parse_tilde_function_keys :: proc(t: ^testing.T) {
 
 @(test)
 test_parse_empty_buffer :: proc(t: ^testing.T) {
-    input_buf := []byte{}
-    event, ok := wayu.parse_key_event(input_buf, 0)
+	input_buf := []byte{}
+	event, ok := wayu.parse_key_event(input_buf, 0)
 
-    testing.expect(t, !ok, "Should not parse empty buffer")
+	testing.expect(t, !ok, "Should not parse empty buffer")
 }
 
 @(test)
 test_parse_invalid_escape_sequence :: proc(t: ^testing.T) {
-    input_buf := []byte{27, '[', 'X'}  // Invalid sequence
-    event, ok := wayu.parse_key_event(input_buf, 3)
+	input_buf := []byte{27, '[', 'X'} // Invalid sequence
+	event, ok := wayu.parse_key_event(input_buf, 3)
 
-    testing.expect(t, !ok, "Should not parse invalid escape sequence")
+	testing.expect(t, !ok, "Should not parse invalid escape sequence")
 }
 
 @(test)
 test_parse_incomplete_escape_sequence :: proc(t: ^testing.T) {
-    input_buf := []byte{27, '['}  // Incomplete
-    event, ok := wayu.parse_key_event(input_buf, 2)
+	input_buf := []byte{27, '['} // Incomplete
+	event, ok := wayu.parse_key_event(input_buf, 2)
 
-    testing.expect(t, !ok, "Should not parse incomplete escape sequence")
+	testing.expect(t, !ok, "Should not parse incomplete escape sequence")
 }
 
 @(test)
 test_parse_non_printable_char :: proc(t: ^testing.T) {
-    input_buf := []byte{0}  // NULL
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{0} // NULL
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, !ok, "Should not parse non-printable character")
+	testing.expect(t, !ok, "Should not parse non-printable character")
 }
 
 @(test)
 test_parse_high_byte :: proc(t: ^testing.T) {
-    input_buf := []byte{200}  // Above ASCII range
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{200} // Above ASCII range
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, !ok, "Should not parse high byte value")
+	testing.expect(t, !ok, "Should not parse high byte value")
 }
 
 // ============================================================================
@@ -326,24 +339,24 @@ test_parse_high_byte :: proc(t: ^testing.T) {
 
 @(test)
 test_key_event_modifiers_empty :: proc(t: ^testing.T) {
-    input_buf := []byte{'a'}
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{'a'}
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse")
-    testing.expect(t, card(event.modifiers) == 0, "Should have empty modifiers")
-    testing.expect(t, .Ctrl not_in event.modifiers, "Should not have Ctrl")
-    testing.expect(t, .Shift not_in event.modifiers, "Should not have Shift")
-    testing.expect(t, .Alt not_in event.modifiers, "Should not have Alt")
+	testing.expect(t, ok, "Should parse")
+	testing.expect(t, card(event.modifiers) == 0, "Should have empty modifiers")
+	testing.expect(t, .Ctrl not_in event.modifiers, "Should not have Ctrl")
+	testing.expect(t, .Shift not_in event.modifiers, "Should not have Shift")
+	testing.expect(t, .Alt not_in event.modifiers, "Should not have Alt")
 }
 
 @(test)
 test_key_event_modifiers_ctrl :: proc(t: ^testing.T) {
-    input_buf := []byte{1}  // Ctrl+A
-    event, ok := wayu.parse_key_event(input_buf, 1)
+	input_buf := []byte{1} // Ctrl+A
+	event, ok := wayu.parse_key_event(input_buf, 1)
 
-    testing.expect(t, ok, "Should parse")
-    testing.expect(t, .Ctrl in event.modifiers, "Should have Ctrl modifier")
-    testing.expect(t, card(event.modifiers) == 1, "Should have exactly one modifier")
+	testing.expect(t, ok, "Should parse")
+	testing.expect(t, .Ctrl in event.modifiers, "Should have Ctrl modifier")
+	testing.expect(t, card(event.modifiers) == 1, "Should have exactly one modifier")
 }
 
 // ============================================================================
@@ -352,10 +365,10 @@ test_key_event_modifiers_ctrl :: proc(t: ^testing.T) {
 
 @(test)
 test_key_enum_distinct :: proc(t: ^testing.T) {
-    // Verify that key enum values are distinct
-    testing.expect(t, wayu.Key.Char != wayu.Key.Enter, "Char != Enter")
-    testing.expect(t, wayu.Key.Up != wayu.Key.Down, "Up != Down")
-    testing.expect(t, wayu.Key.F1 != wayu.Key.F2, "F1 != F2")
+	// Verify that key enum values are distinct
+	testing.expect(t, wayu.Key.Char != wayu.Key.Enter, "Char != Enter")
+	testing.expect(t, wayu.Key.Up != wayu.Key.Down, "Up != Down")
+	testing.expect(t, wayu.Key.F1 != wayu.Key.F2, "F1 != F2")
 }
 
 // ============================================================================
@@ -364,54 +377,63 @@ test_key_enum_distinct :: proc(t: ^testing.T) {
 
 @(test)
 test_event_union_key_event :: proc(t: ^testing.T) {
-    key_event := wayu.KeyEvent{key = .Enter}
-    event: wayu.Event = key_event
+	key_event := wayu.KeyEvent {
+		key = .Enter,
+	}
+	event: wayu.Event = key_event
 
-    switch e in event {
-    case wayu.KeyEvent:
-        testing.expect_value(t, e.key, wayu.Key.Enter)
-    case wayu.MouseEvent:
-        testing.expect(t, false, "Should not be MouseEvent")
-    case wayu.ResizeEvent:
-        testing.expect(t, false, "Should not be ResizeEvent")
-    case wayu.PasteEvent:
-        testing.expect(t, false, "Should not be PasteEvent")
-    }
+	switch e in event {
+	case wayu.KeyEvent:
+		testing.expect_value(t, e.key, wayu.Key.Enter)
+	case wayu.MouseEvent:
+		testing.expect(t, false, "Should not be MouseEvent")
+	case wayu.ResizeEvent:
+		testing.expect(t, false, "Should not be ResizeEvent")
+	case wayu.PasteEvent:
+		testing.expect(t, false, "Should not be PasteEvent")
+	}
 }
 
 @(test)
 test_event_union_mouse_event :: proc(t: ^testing.T) {
-    mouse_event := wayu.MouseEvent{x = 10, y = 20, button = 1}
-    event: wayu.Event = mouse_event
+	mouse_event := wayu.MouseEvent {
+		x      = 10,
+		y      = 20,
+		button = 1,
+	}
+	event: wayu.Event = mouse_event
 
-    switch e in event {
-    case wayu.MouseEvent:
-        testing.expect_value(t, e.x, 10)
-        testing.expect_value(t, e.y, 20)
-        testing.expect_value(t, e.button, 1)
-    case wayu.KeyEvent:
-        testing.expect(t, false, "Should not be KeyEvent")
-    case wayu.ResizeEvent:
-        testing.expect(t, false, "Should not be ResizeEvent")
-    case wayu.PasteEvent:
-        testing.expect(t, false, "Should not be PasteEvent")
-    }
+	switch e in event {
+	case wayu.MouseEvent:
+		testing.expect_value(t, e.x, 10)
+		testing.expect_value(t, e.y, 20)
+		testing.expect_value(t, e.button, 1)
+	case wayu.KeyEvent:
+		testing.expect(t, false, "Should not be KeyEvent")
+	case wayu.ResizeEvent:
+		testing.expect(t, false, "Should not be ResizeEvent")
+	case wayu.PasteEvent:
+		testing.expect(t, false, "Should not be PasteEvent")
+	}
 }
 
 @(test)
 test_event_union_resize_event :: proc(t: ^testing.T) {
-    resize_event := wayu.ResizeEvent{width = 80, height = 24}
-    event: wayu.Event = resize_event
+	resize_event := wayu.ResizeEvent {
+		width  = 80,
+		height = 24,
+	}
+	event: wayu.Event = resize_event
 
-    switch e in event {
-    case wayu.ResizeEvent:
-        testing.expect_value(t, e.width, 80)
-        testing.expect_value(t, e.height, 24)
-    case wayu.KeyEvent:
-        testing.expect(t, false, "Should not be KeyEvent")
-    case wayu.MouseEvent:
-        testing.expect(t, false, "Should not be MouseEvent")
-    case wayu.PasteEvent:
-        testing.expect(t, false, "Should not be PasteEvent")
-    }
+	switch e in event {
+	case wayu.ResizeEvent:
+		testing.expect_value(t, e.width, 80)
+		testing.expect_value(t, e.height, 24)
+	case wayu.KeyEvent:
+		testing.expect(t, false, "Should not be KeyEvent")
+	case wayu.MouseEvent:
+		testing.expect(t, false, "Should not be MouseEvent")
+	case wayu.PasteEvent:
+		testing.expect(t, false, "Should not be PasteEvent")
+	}
 }

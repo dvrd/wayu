@@ -17,12 +17,18 @@ count_entries_by_source :: proc(meta: []RowMeta) -> (int, int, int, int) {
 	shadowed := 0
 
 	for m in meta {
-		if m.kind == .Separator { continue }
+		if m.kind == .Separator {
+			continue
+		}
 		switch m.source {
-		case .WAYU_ACTIVE:   wayu_active += 1
-		case .WAYU_INACTIVE: wayu_inactive += 1
-		case .EXTERNAL:      external += 1
-		case .SHADOWED:      shadowed += 1
+		case .WAYU_ACTIVE:
+			wayu_active += 1
+		case .WAYU_INACTIVE:
+			wayu_inactive += 1
+		case .EXTERNAL:
+			external += 1
+		case .SHADOWED:
+			shadowed += 1
 		case .NONE:
 		}
 	}
@@ -78,8 +84,18 @@ render_view_header :: proc(
 	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
 	// Accent bar ┃ spanning title + count lines
-	screen_set_cell(screen, header_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
-	screen_set_cell(screen, header_x, title_y + 1, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+	screen_set_cell(
+		screen,
+		header_x,
+		title_y,
+		Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true},
+	)
+	screen_set_cell(
+		screen,
+		header_x,
+		title_y + 1,
+		Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true},
+	)
 
 	// Title (bold primary) — truncate so it ends before the right border
 	// (at column BORDER_LEFT_WIDTH + border_width - 1), keeping one gap cell.
@@ -93,8 +109,13 @@ render_view_header :: proc(
 
 	divider_y := LIST_ITEM_START_LINE
 	divider_width := max(0, border_width - CONTENT_PADDING_LEFT - 2)
-	for dx in 0..<divider_width {
-		screen_set_cell(screen, header_x + dx, divider_y, Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
+	for dx in 0 ..< divider_width {
+		screen_set_cell(
+			screen,
+			header_x + dx,
+			divider_y,
+			Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER},
+		)
 	}
 }
 
@@ -121,7 +142,8 @@ render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) ->
 	filter_bar_y := LIST_ITEM_START_LINE + 1
 	filter_str := string(state.filter.text[:])
 
-	max_filter_width := state.terminal_width - BORDER_LEFT_WIDTH - CONTENT_PADDING_LEFT - BORDER_RIGHT_WIDTH - 2
+	max_filter_width :=
+		state.terminal_width - BORDER_LEFT_WIDTH - CONTENT_PADDING_LEFT - BORDER_RIGHT_WIDTH - 2
 
 	// Compose an optional `[source:X]` suffix when the source filter is on.
 	src_suffix: string = ""
@@ -130,11 +152,23 @@ render_filter_bar :: proc(screen: ^Screen, state: ^TUIState, item_count: int) ->
 	}
 
 	if state.filter.active {
-		filter_display := fmt.tprintf("/ %s\u2588  (%d/%d matches)%s", filter_str, len(state.filter.indices), item_count, src_suffix)
+		filter_display := fmt.tprintf(
+			"/ %s\u2588  (%d/%d matches)%s",
+			filter_str,
+			len(state.filter.indices),
+			item_count,
+			src_suffix,
+		)
 		display := truncate_text(filter_display, max_filter_width)
 		render_text_styled(screen, header_x, filter_bar_y, display, TUI_SECONDARY, "", true)
 	} else {
-		filter_display := fmt.tprintf("/ %s  (%d/%d matches)%s", filter_str, len(state.filter.indices), item_count, src_suffix)
+		filter_display := fmt.tprintf(
+			"/ %s  (%d/%d matches)%s",
+			filter_str,
+			len(state.filter.indices),
+			item_count,
+			src_suffix,
+		)
 		display := truncate_text(filter_display, max_filter_width)
 		render_text_styled(screen, header_x, filter_bar_y, display, TUI_DIM)
 	}
@@ -162,7 +196,7 @@ render_list_item :: proc(
 	// Clear the row inside the box only: the box's right border sits at
 	// column screen.width - BORDER_HORIZONTAL_TOTAL and must survive.
 	right_edge := screen.width - BORDER_HORIZONTAL_TOTAL
-	for clear_x in header_x..<right_edge {
+	for clear_x in header_x ..< right_edge {
 		screen_set_cell(screen, clear_x, y, Cell{char = ' '})
 	}
 
@@ -179,7 +213,12 @@ render_list_item :: proc(
 	}
 
 	if is_selected {
-		screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+		screen_set_cell(
+			screen,
+			header_x,
+			y,
+			Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true},
+		)
 		screen_mark_focus(screen, text_x, y)
 		if glyph_w > 0 do render_text_styled(screen, text_x, y, glyph, TUI_PRIMARY, "", true)
 		render_text_styled(screen, text_x + text_offset, y, display, TUI_PRIMARY, "", true)
@@ -196,13 +235,13 @@ render_list_item :: proc(
 // Standard footer for filterable data views
 // j/k type into the filter, so filter mode advertises the arrows / ^J ^K.
 FOOTER_FILTER_ACTIVE :: "Type to filter   Esc Cancel   Enter Accept   ↑/↓ ^J/^K Navigate"
-FOOTER_DATA_VIEW     :: "/ Filter  s Source  a Add  e Edit  d Del  u Undo  r Reload  h Back"
-FOOTER_CONSTANTS_VIEW        :: "/ Filter  v Reveal  s Src  a Add  e Edit  d Del  u Undo  r Reload  h Back"
+FOOTER_DATA_VIEW :: "/ Filter  s Source  a Add  e Edit  d Del  u Undo  r Reload  h Back"
+FOOTER_CONSTANTS_VIEW :: "/ Filter  v Reveal  s Src  a Add  e Edit  d Del  u Undo  r Reload  h Back"
 FOOTER_CONSTANTS_VIEW_REVEAL :: "/ Filter  v Hide  s Src  a Add  e Edit  d Del  u Undo  r Reload  h Back"
 FOOTER_READONLY_VIEW :: "/ Filter   r Reload   h Back   l Enter   j/k Navigate"
-FOOTER_BACKUP_VIEW   :: "/ Filter  Enter Restore  c Cleanup  r Reload  h Back"
-FOOTER_STATIC_VIEW   :: "h Back"
-FOOTER_HOOKS_VIEW    :: "Enter Details  Space On/Off  t Test  r Reload  h Back"
+FOOTER_BACKUP_VIEW :: "/ Filter  Enter Restore  c Cleanup  r Reload  h Back"
+FOOTER_STATIC_VIEW :: "h Back"
+FOOTER_HOOKS_VIEW :: "Enter Details  Space On/Off  t Test  r Reload  h Back"
 FOOTER_SETTINGS_VIEW :: "Enter Toggle  r Reload  h Back  j/k Navigate"
 
 render_data_footer :: proc(screen: ^Screen, state: ^TUIState, footer_text: string) {
@@ -212,8 +251,8 @@ render_data_footer :: proc(screen: ^Screen, state: ^TUIState, footer_text: strin
 	// The footer sits on the same row as the bottom border.
 	// Clear the area between the left border and right corner to erase
 	// any leftover border dashes (─) from render_box_styled.
-	right_x := state.terminal_width - BORDER_RIGHT_WIDTH - 1  // column before ╯
-	for x in header_x..<right_x {
+	right_x := state.terminal_width - BORDER_RIGHT_WIDTH - 1 // column before ╯
+	for x in header_x ..< right_x {
 		screen_set_cell(screen, x, footer_y, Cell{char = ' '})
 	}
 
@@ -235,9 +274,9 @@ render_data_footer :: proc(screen: ^Screen, state: ^TUIState, footer_text: strin
 // ============================================================================
 
 // Column layout constants for two-column table views (Alias, Constants)
-COLUMN_GAP          :: 3   // spaces between key and value columns
-MIN_KEY_COL_WIDTH   :: 8   // minimum key column width
-KEY_COL_MAX_PERCENT :: 30  // max % of content width for key column
+COLUMN_GAP :: 3 // spaces between key and value columns
+MIN_KEY_COL_WIDTH :: 8 // minimum key column width
+KEY_COL_MAX_PERCENT :: 30 // max % of content width for key column
 
 // Calculate optimal key column width from the widest key (display columns).
 // Keys come from RowMeta when available (separators skipped); otherwise the
@@ -248,14 +287,16 @@ calculate_key_column_width :: proc(items: []string, meta: []RowMeta, max_text_wi
 	for item, i in items {
 		key := item
 		if i < len(meta) {
-			if meta[i].kind == .Separator { continue }
+			if meta[i].kind == .Separator {
+				continue
+			}
 			key = meta[i].key
 		} else if eq_idx := strings.index_byte(item, '='); eq_idx >= 0 {
 			key = item[:eq_idx]
 		}
 		max_key_len = max(max_key_len, visual_width(key))
 	}
-	desired := max_key_len + 2  // breathing room
+	desired := max_key_len + 2 // breathing room
 	max_allowed := max_text_width * KEY_COL_MAX_PERCENT / 100
 	if max_allowed < MIN_KEY_COL_WIDTH {
 		max_allowed = MIN_KEY_COL_WIDTH
@@ -284,18 +325,34 @@ render_table_row :: proc(
 	// Clear the row between the box borders to prevent scroll overlap
 	// artifacts. Start at position 2 to preserve the left border at position 1
 	// and stop before the right border at screen.width - BORDER_HORIZONTAL_TOTAL.
-	for clear_x in 2..<screen.width - BORDER_HORIZONTAL_TOTAL {
-		screen_set_cell(screen, clear_x, y, Cell{char = ' ', fg = "", bg = "", bold = false, dim = false})
+	for clear_x in 2 ..< screen.width - BORDER_HORIZONTAL_TOTAL {
+		screen_set_cell(
+			screen,
+			clear_x,
+			y,
+			Cell{char = ' ', fg = "", bg = "", bold = false, dim = false},
+		)
 	}
 
 	if is_separator {
-		render_text_styled(screen, text_x, y, truncate_text(key, key_col_width + COLUMN_GAP + value_col_width), TUI_DIM)
+		render_text_styled(
+			screen,
+			text_x,
+			y,
+			truncate_text(key, key_col_width + COLUMN_GAP + value_col_width),
+			TUI_DIM,
+		)
 		return
 	}
 
 	if is_selected {
 		// Selected: accent bar ┃ + bold primary key + bold primary value
-		screen_set_cell(screen, x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+		screen_set_cell(
+			screen,
+			x,
+			y,
+			Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true},
+		)
 		screen_mark_focus(screen, text_x, y)
 		render_text_styled(screen, text_x, y, truncated_key, TUI_PRIMARY, "", true)
 		if len(truncated_value) > 0 {
@@ -314,7 +371,12 @@ render_table_row :: proc(
 // Layout:
 //   KEY_LABEL   VALUE_LABEL
 //   ─────────────────────── (divider)
-render_column_header :: proc(screen: ^Screen, x, y: int, key_label, value_label: string, key_col_width, border_width: int) {
+render_column_header :: proc(
+	screen: ^Screen,
+	x, y: int,
+	key_label, value_label: string,
+	key_col_width, border_width: int,
+) {
 	text_x := x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 	value_x := text_x + key_col_width + COLUMN_GAP
 
@@ -324,7 +386,7 @@ render_column_header :: proc(screen: ^Screen, x, y: int, key_label, value_label:
 	// Divider line below column headers
 	divider_y := y + 1
 	divider_width := max(0, border_width - CONTENT_PADDING_LEFT - 2)
-	for dx in 0..<divider_width {
+	for dx in 0 ..< divider_width {
 		screen_set_cell(screen, x + dx, divider_y, Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
 	}
 }
@@ -333,7 +395,10 @@ render_column_header :: proc(screen: ^Screen, x, y: int, key_label, value_label:
 // Generic List View — shared skeleton for all five data views
 // ============================================================================
 
-ListViewRowKind :: enum { Single, Table }
+ListViewRowKind :: enum {
+	Single,
+	Table,
+}
 
 ListViewConfig :: struct {
 	view_key:     TUIView,
@@ -343,18 +408,28 @@ ListViewConfig :: struct {
 	col_label_0:  string,
 	col_label_1:  string,
 	empty_line_1: string,
-	empty_line_2: string,   // "" means skip second empty line
+	empty_line_2: string, // "" means skip second empty line
 	footer:       string,
-	mask_secrets: bool,     // Table: show secret-looking values as SECRET_MASK
+	mask_secrets: bool, // Table: show secret-looking values as SECRET_MASK
 }
 
 // render_list_view is the single generic implementation shared by all five
 // data views (path, alias, constants, completions, backups).
 // Each public render_*_view proc constructs a ListViewConfig and delegates here.
 render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig) {
-	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
+	border_width, border_height := calculate_border_dimensions(
+		state.terminal_width,
+		state.terminal_height,
+	)
 	max_text_width := tui_calculate_content_width(border_width)
-	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
+	render_box_styled(
+		screen,
+		BORDER_LEFT_WIDTH,
+		BORDER_TOP_HEIGHT,
+		border_width,
+		border_height,
+		TUI_BORDER_FOCUSED,
+	)
 
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
 
@@ -378,8 +453,12 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 		// No source info — use raw count (completions, backups, etc.)
 		raw := 0
 		for item, i in items {
-			if i < len(meta) && meta[i].kind == .Separator { continue }
-			if len(item) > 0 { raw += 1 }
+			if i < len(meta) && meta[i].kind == .Separator {
+				continue
+			}
+			if len(item) > 0 {
+				raw += 1
+			}
 		}
 		if raw == 0 {
 			count_text = "0 entries"
@@ -406,7 +485,7 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 	render_view_header(screen, state, cfg.title, count_text, border_width)
 
 	// Column widths — only computed for Table row_kind
-	key_col_width   := 0
+	key_col_width := 0
 	value_col_width := 0
 	if cfg.row_kind == .Table {
 		key_col_width = calculate_key_column_width(items, meta, max_text_width)
@@ -426,8 +505,16 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 	// (must agree with view_shows_column_header used by get_view_visible_height)
 	col_header_offset := 0
 	if cfg.row_kind == .Table && view_shows_column_header(state) {
-		render_column_header(screen, header_x, content_start, cfg.col_label_0, cfg.col_label_1, key_col_width, border_width)
-		col_header_offset = 2  // header line + divider line
+		render_column_header(
+			screen,
+			header_x,
+			content_start,
+			cfg.col_label_0,
+			cfg.col_label_1,
+			key_col_width,
+			border_width,
+		)
+		col_header_offset = 2 // header line + divider line
 	}
 
 	data_start := content_start + col_header_offset
@@ -453,16 +540,27 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 		start := clamp(state.scroll_offset, 0, row_count)
 		end := min(start + visible_height, row_count)
 
-		for pos in start..<end {
+		for pos in start ..< end {
 			y := data_start + (pos - start)
 			idx := state.filter.indices[pos] if has_filter else pos
-			if idx < 0 || idx >= len(items) { continue }  // stale index guard
+			if idx < 0 || idx >= len(items) {
+				continue
+			} // stale index guard
 			m := meta[idx] if idx < len(meta) else RowMeta{}
 			is_sep := m.kind == .Separator
 			selected := pos == state.selected_index
 			switch cfg.row_kind {
 			case .Single:
-				render_list_item(screen, header_x, y, items[idx], max_text_width, selected, m.source, is_sep)
+				render_list_item(
+					screen,
+					header_x,
+					y,
+					items[idx],
+					max_text_width,
+					selected,
+					m.source,
+					is_sep,
+				)
 			case .Table:
 				key, value := items[idx], ""
 				if idx < len(meta) {
@@ -470,17 +568,29 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 				} else if eq_idx := strings.index_byte(key, '='); eq_idx >= 0 {
 					key, value = items[idx][:eq_idx], items[idx][eq_idx + 1:]
 				}
-				if cfg.mask_secrets && !is_sep { value = mask_secret_value(key, value) }
-				render_table_row(screen, header_x, y, key, value, key_col_width, value_col_width, selected, is_sep)
+				if cfg.mask_secrets && !is_sep {
+					value = mask_secret_value(key, value)
+				}
+				render_table_row(
+					screen,
+					header_x,
+					y,
+					key,
+					value,
+					key_col_width,
+					value_col_width,
+					selected,
+					is_sep,
+				)
 			}
 		}
 
 		if row_count > visible_height {
 			scroll_info: string
 			if has_filter {
-				scroll_info = fmt.tprintf("Showing %d-%d of %d matches", start+1, end, row_count)
+				scroll_info = fmt.tprintf("Showing %d-%d of %d matches", start + 1, end, row_count)
 			} else {
-				scroll_info = fmt.tprintf("Showing %d-%d of %d", start+1, end, row_count)
+				scroll_info = fmt.tprintf("Showing %d-%d of %d", start + 1, end, row_count)
 			}
 			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
 		}
@@ -535,8 +645,8 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	// Determine overlay height:
 	//   1 top border + 1 title + 1 blank + (4 per field: label + box-top + box-content + box-bottom) * field_count
 	//   + 1 blank + 1 error row (always reserved) + 1 blank + 1 button row + 1 bottom border
-	field_rows := form.field_count * 4   // label + box(3 rows) per field
-	overlay_height := 1 + 1 + 1 + field_rows + 1 + 1 + 1 + 1 + 1  // = 11 for 1-field, 15 for 2-field
+	field_rows := form.field_count * 4 // label + box(3 rows) per field
+	overlay_height := 1 + 1 + 1 + field_rows + 1 + 1 + 1 + 1 + 1 // = 11 for 1-field, 15 for 2-field
 
 	overlay_width := min(state.terminal_width - 4, 56)
 	if overlay_width < 24 {
@@ -546,14 +656,21 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	overlay_y := (state.terminal_height - overlay_height) / 2
 
 	// Fill interior with spaces to erase underlying content
-	for dy in 1..<overlay_height-1 {
-		for dx in 1..<overlay_width-1 {
+	for dy in 1 ..< overlay_height - 1 {
+		for dx in 1 ..< overlay_width - 1 {
 			screen_set_cell(screen, overlay_x + dx, overlay_y + dy, Cell{char = ' '})
 		}
 	}
 
 	// Border
-	render_box_styled(screen, overlay_x, overlay_y, overlay_width, overlay_height, TUI_BORDER_FOCUSED)
+	render_box_styled(
+		screen,
+		overlay_x,
+		overlay_y,
+		overlay_width,
+		overlay_height,
+		TUI_BORDER_FOCUSED,
+	)
 
 	content_x := overlay_x + 2
 
@@ -561,19 +678,35 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	title_y := overlay_y + 1
 	view_name: string
 	switch form.view {
-	case .PATH_VIEW:      view_name = "PATH"
-	case .ALIAS_VIEW:     view_name = "ALIAS"
-	case .CONSTANTS_VIEW: view_name = "CONSTANT"
+	case .PATH_VIEW:
+		view_name = "PATH"
+	case .ALIAS_VIEW:
+		view_name = "ALIAS"
+	case .CONSTANTS_VIEW:
+		view_name = "CONSTANT"
 	case .MAIN_MENU, .COMPLETIONS_VIEW, .BACKUPS_VIEW, .PLUGINS_VIEW, .HOOKS_VIEW, .SETTINGS_VIEW:
 		view_name = "ENTRY"
 	}
 	title_text := fmt.tprintf("%s %s", "EDIT" if len(form.edit_key) > 0 else "ADD", view_name)
-	screen_set_cell(screen, content_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
-	render_text_styled(screen, content_x + MENU_ACCENT_BAR_WIDTH + 1, title_y, title_text, TUI_PRIMARY, "", true)
+	screen_set_cell(
+		screen,
+		content_x,
+		title_y,
+		Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true},
+	)
+	render_text_styled(
+		screen,
+		content_x + MENU_ACCENT_BAR_WIDTH + 1,
+		title_y,
+		title_text,
+		TUI_PRIMARY,
+		"",
+		true,
+	)
 
 	// Focus indices: 0..field_count-1 = fields, field_count = CANCEL, field_count+1 = ADD
 	cancel_idx := form.field_count
-	add_idx    := form.field_count + 1
+	add_idx := form.field_count + 1
 
 	// Fields — each block: label row + bordered input box (3 rows: top, content, bottom)
 	// Layout per field (4 rows total):
@@ -581,7 +714,7 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	//   ┌──────────────────────────┐
 	//   │ text█                    │   ← focused: orange border + cursor; unfocused: dim border
 	//   └──────────────────────────┘
-	field_start_y := title_y + 2  // blank line after title
+	field_start_y := title_y + 2 // blank line after title
 	// Box width: overlay_width - 2 (outer border) - 2 (content_x offset) - 2 (inner padding) = overlay_width - 6
 	// But content_x is already overlay_x + 2, and we want the box to start at content_x + 2 (same indent as label).
 	// Box occupies columns [content_x+2 .. content_x+2+box_width-1].
@@ -596,7 +729,7 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		text_max = 1
 	}
 
-	for fi in 0..<form.field_count {
+	for fi in 0 ..< form.field_count {
 		label: string
 		if fi == 0 {
 			label = form.label_0
@@ -611,9 +744,9 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		}
 		is_focused := fi == form.field_index
 
-		label_y   := field_start_y + fi * 4
-		box_y     := label_y + 1   // top border of box
-		content_y := label_y + 2   // text row inside box
+		label_y := field_start_y + fi * 4
+		box_y := label_y + 1 // top border of box
+		content_y := label_y + 2 // text row inside box
 		// box bottom is at label_y + 3 (drawn by render_box_styled)
 
 		// Label — orange only when this field is focused
@@ -636,7 +769,7 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		render_box_styled(screen, box_x, box_y, box_width, 3, box_fg)
 
 		// Clear interior (1 row, box_width-2 chars)
-		for dx in 1..<box_width-1 {
+		for dx in 1 ..< box_width - 1 {
 			screen_set_cell(screen, box_x + dx, content_y, Cell{char = ' '})
 		}
 
@@ -647,7 +780,13 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 			cursor := clamp(form.cursor_0 if fi == 0 else form.cursor_1, 0, len(input_str))
 			render_input_with_cursor(screen, box_x + 1, content_y, input_str, cursor, text_max)
 		} else {
-			render_text_styled(screen, box_x + 1, content_y, truncate_text(input_str, text_max), TUI_DIM)
+			render_text_styled(
+				screen,
+				box_x + 1,
+				content_y,
+				truncate_text(input_str, text_max),
+				TUI_DIM,
+			)
 		}
 	}
 
@@ -659,24 +798,24 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	}
 
 	// Button row — each button is orange+bold only when focused, dim otherwise
-	button_y     := error_y + 2
+	button_y := error_y + 2
 	cancel_label := "Esc CANCEL"
-	add_label    := "Enter SAVE" if len(form.edit_key) > 0 else "Enter ADD"
+	add_label := "Enter SAVE" if len(form.edit_key) > 0 else "Enter ADD"
 
 	// Responsive: shorter labels on narrow overlays
 	if is_compact(overlay_width) {
 		cancel_label = "Esc CAN"
-		add_label    = "\u23CE SAVE" if len(form.edit_key) > 0 else "\u23CE ADD"  // ⏎ ADD
+		add_label = "\u23CE SAVE" if len(form.edit_key) > 0 else "\u23CE ADD" // ⏎ ADD
 	}
-	button_gap   :: 2
-	right_edge   := overlay_x + overlay_width - 3
-	add_btn_w    := len(add_label) + 4    // "[ " + label + " ]"
+	button_gap :: 2
+	right_edge := overlay_x + overlay_width - 3
+	add_btn_w := len(add_label) + 4 // "[ " + label + " ]"
 	cancel_btn_w := len(cancel_label) + 4
-	add_start    := right_edge - add_btn_w
+	add_start := right_edge - add_btn_w
 	cancel_start := add_start - button_gap - cancel_btn_w
 
 	cancel_focused := form.field_index == cancel_idx
-	add_focused    := form.field_index == add_idx
+	add_focused := form.field_index == add_idx
 
 	cancel_fg: string
 	if cancel_focused {
@@ -692,20 +831,48 @@ render_add_form_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	}
 
 	// CANCEL button
-	screen_set_cell(screen, cancel_start, button_y, Cell{char = '[', fg = cancel_fg, bold = cancel_focused})
+	screen_set_cell(
+		screen,
+		cancel_start,
+		button_y,
+		Cell{char = '[', fg = cancel_fg, bold = cancel_focused},
+	)
 	screen_set_cell(screen, cancel_start + 1, button_y, Cell{char = ' ', fg = cancel_fg})
-	render_text_styled(screen, cancel_start + 2, button_y, cancel_label, cancel_fg, "", cancel_focused)
-	screen_set_cell(screen, cancel_start + cancel_btn_w - 2, button_y, Cell{char = ' ', fg = cancel_fg})
-	screen_set_cell(screen, cancel_start + cancel_btn_w - 1, button_y, Cell{char = ']', fg = cancel_fg, bold = cancel_focused})
+	render_text_styled(
+		screen,
+		cancel_start + 2,
+		button_y,
+		cancel_label,
+		cancel_fg,
+		"",
+		cancel_focused,
+	)
+	screen_set_cell(
+		screen,
+		cancel_start + cancel_btn_w - 2,
+		button_y,
+		Cell{char = ' ', fg = cancel_fg},
+	)
+	screen_set_cell(
+		screen,
+		cancel_start + cancel_btn_w - 1,
+		button_y,
+		Cell{char = ']', fg = cancel_fg, bold = cancel_focused},
+	)
 
 	// ADD button
 	screen_set_cell(screen, add_start, button_y, Cell{char = '[', fg = add_fg, bold = add_focused})
 	screen_set_cell(screen, add_start + 1, button_y, Cell{char = ' ', fg = add_fg})
 	render_text_styled(screen, add_start + 2, button_y, add_label, add_fg, "", add_focused)
 	screen_set_cell(screen, add_start + add_btn_w - 2, button_y, Cell{char = ' ', fg = add_fg})
-	screen_set_cell(screen, add_start + add_btn_w - 1, button_y, Cell{char = ']', fg = add_fg, bold = add_focused})
+	screen_set_cell(
+		screen,
+		add_start + add_btn_w - 1,
+		button_y,
+		Cell{char = ']', fg = add_fg, bold = add_focused},
+	)
 
-	_ = add_idx  // suppress unused warning
+	_ = add_idx // suppress unused warning
 }
 
 // ============================================================================
@@ -724,28 +891,48 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 	overlay_y := (state.terminal_height - overlay_height) / 2
 
 	// Fill interior with spaces to cover underlying content
-	for dy in 1..<overlay_height-1 {
-		for dx in 1..<overlay_width-1 {
+	for dy in 1 ..< overlay_height - 1 {
+		for dx in 1 ..< overlay_width - 1 {
 			screen_set_cell(screen, overlay_x + dx, overlay_y + dy, Cell{char = ' '})
 		}
 	}
 
 	// Draw border (hot pink for focused)
-	render_box_styled(screen, overlay_x, overlay_y, overlay_width, overlay_height, TUI_BORDER_FOCUSED)
+	render_box_styled(
+		screen,
+		overlay_x,
+		overlay_y,
+		overlay_width,
+		overlay_height,
+		TUI_BORDER_FOCUSED,
+	)
 
 	// Title line with accent bar
 	content_x := overlay_x + 2
 	title_y := overlay_y + 1
-	screen_set_cell(screen, content_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+	screen_set_cell(
+		screen,
+		content_x,
+		title_y,
+		Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true},
+	)
 	title_display := truncate_text(state.detail.title, overlay_width - 6)
-	render_text_styled(screen, content_x + MENU_ACCENT_BAR_WIDTH + 1, title_y, title_display, TUI_PRIMARY, "", true)
+	render_text_styled(
+		screen,
+		content_x + MENU_ACCENT_BAR_WIDTH + 1,
+		title_y,
+		title_display,
+		TUI_PRIMARY,
+		"",
+		true,
+	)
 
 	// Detail lines
 	max_lines := overlay_height - 6
 	for line, i in state.detail.lines {
 		if i >= max_lines do break
 		line_y := title_y + 2 + i
-		max_line_width := overlay_width - 6  // 2 indent + border + padding
+		max_line_width := overlay_width - 6 // 2 indent + border + padding
 		display_line := truncate_text(line, max_line_width)
 		render_text_styled(screen, content_x + 2, line_y, display_line, TUI_MUTED)
 	}
@@ -759,36 +946,82 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 		cancel_label := "Esc CAN" if compact else "Esc CANCEL"
 		delete_label := confirm_action_label(state.delete_confirm.kind, compact)
 
-		button_gap   :: 2              // spaces between buttons
+		button_gap :: 2 // spaces between buttons
 
 		// Right-align: position DELETE button first, then CANCEL to its left
 		// Each button is: [ + space + label + space + ] = len(label) + 4
-		right_edge    := overlay_x + overlay_width - 3
-		delete_btn_w  := len(delete_label) + 4
-		cancel_btn_w  := len(cancel_label) + 4
-		delete_start  := right_edge - delete_btn_w
-		cancel_start  := delete_start - button_gap - cancel_btn_w
+		right_edge := overlay_x + overlay_width - 3
+		delete_btn_w := len(delete_label) + 4
+		cancel_btn_w := len(cancel_label) + 4
+		delete_start := right_edge - delete_btn_w
+		cancel_start := delete_start - button_gap - cancel_btn_w
 
 		// Button colors driven by focus state
 		// Focused button: TUI_ORANGE (bright orange), bold. Unfocused: TUI_DIM.
 		cancel_fg := TUI_ORANGE if !state.delete_confirm.focused else TUI_DIM
-		delete_fg := TUI_ORANGE if  state.delete_confirm.focused else TUI_DIM
+		delete_fg := TUI_ORANGE if state.delete_confirm.focused else TUI_DIM
 		cancel_bold := !state.delete_confirm.focused
-		delete_bold :=  state.delete_confirm.focused
+		delete_bold := state.delete_confirm.focused
 
 		// Render CANCEL button
-		screen_set_cell(screen, cancel_start, footer_y, Cell{char = '[', fg = cancel_fg, bold = cancel_bold})
+		screen_set_cell(
+			screen,
+			cancel_start,
+			footer_y,
+			Cell{char = '[', fg = cancel_fg, bold = cancel_bold},
+		)
 		screen_set_cell(screen, cancel_start + 1, footer_y, Cell{char = ' ', fg = cancel_fg})
-		render_text_styled(screen, cancel_start + 2, footer_y, cancel_label, cancel_fg, "", cancel_bold)
-		screen_set_cell(screen, cancel_start + cancel_btn_w - 2, footer_y, Cell{char = ' ', fg = cancel_fg})
-		screen_set_cell(screen, cancel_start + cancel_btn_w - 1, footer_y, Cell{char = ']', fg = cancel_fg, bold = cancel_bold})
+		render_text_styled(
+			screen,
+			cancel_start + 2,
+			footer_y,
+			cancel_label,
+			cancel_fg,
+			"",
+			cancel_bold,
+		)
+		screen_set_cell(
+			screen,
+			cancel_start + cancel_btn_w - 2,
+			footer_y,
+			Cell{char = ' ', fg = cancel_fg},
+		)
+		screen_set_cell(
+			screen,
+			cancel_start + cancel_btn_w - 1,
+			footer_y,
+			Cell{char = ']', fg = cancel_fg, bold = cancel_bold},
+		)
 
 		// Render DELETE button
-		screen_set_cell(screen, delete_start, footer_y, Cell{char = '[', fg = delete_fg, bold = delete_bold})
+		screen_set_cell(
+			screen,
+			delete_start,
+			footer_y,
+			Cell{char = '[', fg = delete_fg, bold = delete_bold},
+		)
 		screen_set_cell(screen, delete_start + 1, footer_y, Cell{char = ' ', fg = delete_fg})
-		render_text_styled(screen, delete_start + 2, footer_y, delete_label, delete_fg, "", delete_bold)
-		screen_set_cell(screen, delete_start + delete_btn_w - 2, footer_y, Cell{char = ' ', fg = delete_fg})
-		screen_set_cell(screen, delete_start + delete_btn_w - 1, footer_y, Cell{char = ']', fg = delete_fg, bold = delete_bold})
+		render_text_styled(
+			screen,
+			delete_start + 2,
+			footer_y,
+			delete_label,
+			delete_fg,
+			"",
+			delete_bold,
+		)
+		screen_set_cell(
+			screen,
+			delete_start + delete_btn_w - 2,
+			footer_y,
+			Cell{char = ' ', fg = delete_fg},
+		)
+		screen_set_cell(
+			screen,
+			delete_start + delete_btn_w - 1,
+			footer_y,
+			Cell{char = ']', fg = delete_fg, bold = delete_bold},
+		)
 	} else {
 		render_text_styled(screen, content_x, footer_y, "Esc or Enter to close", TUI_DIM)
 	}
@@ -800,7 +1033,9 @@ render_detail_overlay :: proc(state: ^TUIState, screen: ^Screen) {
 // Free and nil out the registry cache so it reloads on next entry.
 // Call after a successful install so the installed plugin is filtered out.
 clear_registry_cache :: proc(state: ^TUIState) {
-	if state.plugin_registry_cache == nil { return }
+	if state.plugin_registry_cache == nil {
+		return
+	}
 	for item in state.plugin_registry_cache^ {
 		delete(item)
 	}
@@ -836,21 +1071,21 @@ get_view_item_count :: proc(state: ^TUIState) -> int {
 
 	switch state.current_view {
 	case .MAIN_MENU:
-		return 8  // PATH, Aliases, Constants, Completions, Backups, Plugins, Hooks, Settings
+		return 8 // PATH, Aliases, Constants, Completions, Backups, Plugins, Hooks, Settings
 
 	case .PATH_VIEW:
 		if state.data_cache[.PATH_VIEW] != nil {
 			items := cast(^[dynamic]string)state.data_cache[.PATH_VIEW]
 			return len(items)
 		}
-		return 0  // cache not yet loaded
+		return 0 // cache not yet loaded
 
 	case .ALIAS_VIEW:
 		if state.data_cache[.ALIAS_VIEW] != nil {
 			items := cast(^[dynamic]string)state.data_cache[.ALIAS_VIEW]
 			return len(items)
 		}
-		return 0  // cache not yet loaded
+		return 0 // cache not yet loaded
 
 	case .CONSTANTS_VIEW:
 		if state.data_cache[.CONSTANTS_VIEW] != nil {
@@ -907,13 +1142,15 @@ handle_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 	case .HOOKS_VIEW:
 		if key.key != .Char do return
 		switch key.char {
-		case ' ': tui_toggle_hook(state)
-		case 't': tui_test_hook(state)
+		case ' ':
+			tui_toggle_hook(state)
+		case 't':
+			tui_test_hook(state)
 		}
 	case .SETTINGS_VIEW:
 		if key.key == .Char && key.char == ' ' do toggle_selected_setting(state)
 	case .MAIN_MENU:
-		// handled elsewhere
+	// handled elsewhere
 	}
 }
 
@@ -927,42 +1164,40 @@ DataViewBehavior :: struct {
 	supports_source_filter: bool,
 	supports_cleanup:       bool,
 	supports_delete:        bool,
-	supports_reveal:        bool,          // `v` toggles masking of secret-looking values
-	supports_edit:          bool,          // `e` edits the selected entry, `u` restores the last backup
-	delete_label:           string,        // "" for raw display (PATH); "Alias"/"Constant" otherwise
+	supports_reveal:        bool, // `v` toggles masking of secret-looking values
+	supports_edit:          bool, // `e` edits the selected entry, `u` restores the last backup
+	delete_label:           string, // "" for raw display (PATH); "Alias"/"Constant" otherwise
 }
 
-@(private="file")
+@(private = "file")
 data_view_behavior :: proc(view: TUIView) -> DataViewBehavior {
 	#partial switch view {
 	case .PATH_VIEW:
-		return DataViewBehavior{
-			supports_add           = true,
+		return DataViewBehavior {
+			supports_add = true,
 			supports_source_filter = true,
-			supports_delete        = true,
-			supports_edit          = true,
+			supports_delete = true,
+			supports_edit = true,
 		}
 	case .ALIAS_VIEW:
-		return DataViewBehavior{
-			supports_add           = true,
+		return DataViewBehavior {
+			supports_add = true,
 			supports_source_filter = true,
-			supports_delete        = true,
-			supports_edit          = true,
-			delete_label           = "Alias",
+			supports_delete = true,
+			supports_edit = true,
+			delete_label = "Alias",
 		}
 	case .CONSTANTS_VIEW:
-		return DataViewBehavior{
-			supports_add           = true,
+		return DataViewBehavior {
+			supports_add = true,
 			supports_source_filter = true,
-			supports_delete        = true,
-			supports_edit          = true,
-			supports_reveal        = true,
-			delete_label           = "Constant",
+			supports_delete = true,
+			supports_edit = true,
+			supports_reveal = true,
+			delete_label = "Constant",
 		}
 	case .BACKUPS_VIEW:
-		return DataViewBehavior{
-			supports_cleanup = true,
-		}
+		return DataViewBehavior{supports_cleanup = true}
 	case:
 		// .COMPLETIONS_VIEW and any other read-only view
 		return DataViewBehavior{}
@@ -986,7 +1221,11 @@ handle_data_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 			_, row, ok := selected_row(state)
 			if !ok || row.kind == .Separator || len(row.key) == 0 do return
 			if row.source == .EXTERNAL {
-				set_notification(state, .ERROR, fmt.tprintf("%s is not managed by wayu (external)", row.key))
+				set_notification(
+					state,
+					.ERROR,
+					fmt.tprintf("%s is not managed by wayu (external)", row.key),
+				)
 				return
 			}
 			// Delete key comes from RowMeta — never from display text, so
@@ -1002,11 +1241,17 @@ handle_data_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 			_, row, ok := selected_row(state)
 			if !ok || row.kind == .Separator || len(row.key) == 0 do return
 			if row.source == .EXTERNAL {
-				set_notification(state, .ERROR, fmt.tprintf("%s is not managed by wayu (external)", row.key))
+				set_notification(
+					state,
+					.ERROR,
+					fmt.tprintf("%s is not managed by wayu (external)", row.key),
+				)
 				return
 			}
 			// Never put a masked secret on screen through the form.
-			if view == .CONSTANTS_VIEW && !state.reveal_secrets && looks_secret(row.key, row.value) {
+			if view == .CONSTANTS_VIEW &&
+			   !state.reveal_secrets &&
+			   looks_secret(row.key, row.value) {
 				set_notification(state, .INFO, "Secret value: press v to reveal it before editing")
 				return
 			}
@@ -1083,22 +1328,26 @@ handle_plugins_event :: proc(state: ^TUIState, key: KeyEvent) {
 			if state.plugin_tab != PLUGIN_TAB_INSTALLED do return
 			_, row, ok := selected_row(state)
 			if !ok || len(row.key) == 0 do return
-			set_notification(state, .INFO, fmt.tprintf("Remove with: wayu plugin rm %s   (space disables)", row.key))
+			set_notification(
+				state,
+				.INFO,
+				fmt.tprintf("Remove with: wayu plugin rm %s   (space disables)", row.key),
+			)
 		}
 	}
 }
 
-@(private="file")
+@(private = "file")
 switch_plugin_tab :: proc(state: ^TUIState) {
 	deactivate_filter(state)
 	state.selected_index = 0
-	state.scroll_offset  = 0
-	state.plugin_tab = 1 - state.plugin_tab  // toggle 0↔1
+	state.scroll_offset = 0
+	state.plugin_tab = 1 - state.plugin_tab // toggle 0↔1
 	state.needs_refresh = true
 }
 
 // Ask to install the registry row under the (filter-mapped) selection.
-@(private="file")
+@(private = "file")
 install_selected_registry_plugin :: proc(state: ^TUIState) {
 	display, _, ok := selected_row(state)
 	if !ok do return
@@ -1114,8 +1363,18 @@ install_selected_registry_plugin :: proc(state: ^TUIState) {
 // Hooks view: one row per hook event (configured or not). Status glyph:
 // ● enabled, ○ disabled (by the TUI), ✗ invalid (never runs), · not set.
 render_hooks_view :: proc(state: ^TUIState, screen: ^Screen) {
-	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
-	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
+	border_width, border_height := calculate_border_dimensions(
+		state.terminal_width,
+		state.terminal_height,
+	)
+	render_box_styled(
+		screen,
+		BORDER_LEFT_WIDTH,
+		BORDER_TOP_HEIGHT,
+		border_width,
+		border_height,
+		TUI_BORDER_FOCUSED,
+	)
 
 	if !state.hooks.loaded {
 		render_view_loading(screen, state, "HOOKS", border_width)
@@ -1123,9 +1382,19 @@ render_hooks_view :: proc(state: ^TUIState, screen: ^Screen) {
 	}
 	configured := 0
 	for r in state.hooks.rows do if len(r.command) > 0 && !r.disabled do configured += 1
-	render_view_header(screen, state, "HOOKS",
-		fmt.tprintf("%d of %d events have a hook  ·  %s/%s", configured, len(state.hooks.rows), wayu.config, HOOK_CONFIG_FILE),
-		border_width)
+	render_view_header(
+		screen,
+		state,
+		"HOOKS",
+		fmt.tprintf(
+			"%d of %d events have a hook  ·  %s/%s",
+			configured,
+			len(state.hooks.rows),
+			wayu.config,
+			HOOK_CONFIG_FILE,
+		),
+		border_width,
+	)
 
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
 	max_text_width := tui_calculate_content_width(border_width)
@@ -1134,7 +1403,7 @@ render_hooks_view :: proc(state: ^TUIState, screen: ^Screen) {
 	start := clamp(state.scroll_offset, 0, len(state.hooks.rows))
 	end := min(start + visible, len(state.hooks.rows))
 	KEY_W :: 22
-	for i in start..<end {
+	for i in start ..< end {
 		r := state.hooks.rows[i]
 		glyph, color := "·", TUI_DIM
 		cmd := r.command
@@ -1152,10 +1421,14 @@ render_hooks_view :: proc(state: ^TUIState, screen: ^Screen) {
 		}
 		if tui_plain_glyphs {
 			switch glyph {
-			case "✗": glyph = "x"
-			case "○": glyph = "o"
-			case "●": glyph = "*"
-			case "·": glyph = "-"
+			case "✗":
+				glyph = "x"
+			case "○":
+				glyph = "o"
+			case "●":
+				glyph = "*"
+			case "·":
+				glyph = "-"
 			}
 		}
 		y := content_start + (i - start)
@@ -1167,8 +1440,13 @@ render_hooks_view :: proc(state: ^TUIState, screen: ^Screen) {
 		}
 	}
 	if len(state.hooks.rows) > visible {
-		render_text_styled(screen, header_x, content_start + visible,
-			fmt.tprintf("Showing %d-%d of %d", start + 1, end, len(state.hooks.rows)), TUI_DIM)
+		render_text_styled(
+			screen,
+			header_x,
+			content_start + visible,
+			fmt.tprintf("Showing %d-%d of %d", start + 1, end, len(state.hooks.rows)),
+			TUI_DIM,
+		)
 	}
 
 	render_data_footer(screen, state, FOOTER_HOOKS_VIEW)
@@ -1181,33 +1459,43 @@ render_hooks_view :: proc(state: ^TUIState, screen: ^Screen) {
 
 // Tab indices
 PLUGIN_TAB_INSTALLED :: 0
-PLUGIN_TAB_REGISTRY  :: 1
+PLUGIN_TAB_REGISTRY :: 1
 
 // Footer strings for each tab
 FOOTER_PLUGINS_INSTALLED :: "Tab Switch tab  / Filter  Space On/Off  Enter Details  r Reload  h Back"
-FOOTER_PLUGINS_REGISTRY  :: "Tab Switch tab  / Filter  Enter Details  i Install  h Back  j/k Navigate"
+FOOTER_PLUGINS_REGISTRY :: "Tab Switch tab  / Filter  Enter Details  i Install  h Back  j/k Navigate"
 
 // Render the two-tab header bar for the plugins view.
-@(private="file")
+@(private = "file")
 render_plugin_tab_bar :: proc(screen: ^Screen, state: ^TUIState, border_width: int) {
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	text_x   := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
-	title_y  := HEADER_TITLE_LINE + CONTENT_PADDING_TOP
-	tab_y    := title_y + 1
+	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+	title_y := HEADER_TITLE_LINE + CONTENT_PADDING_TOP
+	tab_y := title_y + 1
 
 	// Accent bar spans title + tab line
-	screen_set_cell(screen, header_x, title_y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
-	screen_set_cell(screen, header_x, tab_y,   Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+	screen_set_cell(
+		screen,
+		header_x,
+		title_y,
+		Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true},
+	)
+	screen_set_cell(
+		screen,
+		header_x,
+		tab_y,
+		Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true},
+	)
 
 	render_text_styled(screen, text_x, title_y, "PLUGINS", TUI_PRIMARY, "", true)
 
 	// Responsive tab labels
 	compact := is_compact(state.terminal_width)
 	tab_installed_label := "[Installed]"
-	tab_registry_label  := "[Registry]"
+	tab_registry_label := "[Registry]"
 	if compact {
 		tab_installed_label = "[Inst]"
-		tab_registry_label  = "[Reg]"
+		tab_registry_label = "[Reg]"
 	}
 	tab_gap := 2
 
@@ -1224,16 +1512,21 @@ render_plugin_tab_bar :: proc(screen: ^Screen, state: ^TUIState, border_width: i
 	}
 
 	// Horizontal divider
-	divider_y     := LIST_ITEM_START_LINE
+	divider_y := LIST_ITEM_START_LINE
 	divider_width := max(0, border_width - CONTENT_PADDING_LEFT - 2)
-	for dx in 0..<divider_width {
-		screen_set_cell(screen, header_x + dx, divider_y, Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
+	for dx in 0 ..< divider_width {
+		screen_set_cell(
+			screen,
+			header_x + dx,
+			divider_y,
+			Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER},
+		)
 	}
 }
 
 // Render one row of the registry table.
 // item format: "key\x00category\x00shell\x00description"
-@(private="file")
+@(private = "file")
 render_registry_row :: proc(
 	screen: ^Screen,
 	header_x, text_x, y: int,
@@ -1245,37 +1538,52 @@ render_registry_row :: proc(
 	defer delete(parts)
 	if len(parts) < 4 do return
 
-	key  := truncate_text(parts[0], col_key_w  - 1)
-	cat  := truncate_text(parts[1], col_cat_w  - 1)
-	sh   := truncate_text(parts[2], col_sh_w   - 1)
+	key := truncate_text(parts[0], col_key_w - 1)
+	cat := truncate_text(parts[1], col_cat_w - 1)
+	sh := truncate_text(parts[2], col_sh_w - 1)
 	desc := truncate_text(parts[3], col_desc_w - 1)
 
-	x_cat  := text_x + col_key_w
-	x_sh   := x_cat  + col_cat_w
-	x_desc := x_sh   + col_sh_w
+	x_cat := text_x + col_key_w
+	x_sh := x_cat + col_cat_w
+	x_desc := x_sh + col_sh_w
 
 	if is_selected {
-		screen_set_cell(screen, header_x, y, Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true})
+		screen_set_cell(
+			screen,
+			header_x,
+			y,
+			Cell{char = BOX_HEAVY_VERTICAL, fg = TUI_PRIMARY, bold = true},
+		)
 		screen_mark_focus(screen, text_x, y)
-		render_text_styled(screen, text_x,   y, key,  TUI_PRIMARY, "", true)
-		render_text_styled(screen, x_cat,    y, cat,  TUI_PRIMARY, "", true)
-		render_text_styled(screen, x_sh,     y, sh,   TUI_PRIMARY, "", true)
-		render_text_styled(screen, x_desc,   y, desc, TUI_PRIMARY, "", true)
+		render_text_styled(screen, text_x, y, key, TUI_PRIMARY, "", true)
+		render_text_styled(screen, x_cat, y, cat, TUI_PRIMARY, "", true)
+		render_text_styled(screen, x_sh, y, sh, TUI_PRIMARY, "", true)
+		render_text_styled(screen, x_desc, y, desc, TUI_PRIMARY, "", true)
 	} else {
-		render_text_styled(screen, text_x,   y, key,  TUI_MUTED)
-		render_text_styled(screen, x_cat,    y, cat,  TUI_DIM)
-		render_text_styled(screen, x_sh,     y, sh,   TUI_DIM)
-		render_text_styled(screen, x_desc,   y, desc, TUI_DIM)
+		render_text_styled(screen, text_x, y, key, TUI_MUTED)
+		render_text_styled(screen, x_cat, y, cat, TUI_DIM)
+		render_text_styled(screen, x_sh, y, sh, TUI_DIM)
+		render_text_styled(screen, x_desc, y, desc, TUI_DIM)
 	}
 }
 
 render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
-	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
+	border_width, border_height := calculate_border_dimensions(
+		state.terminal_width,
+		state.terminal_height,
+	)
 	max_text_width := tui_calculate_content_width(border_width)
-	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
+	render_box_styled(
+		screen,
+		BORDER_LEFT_WIDTH,
+		BORDER_TOP_HEIGHT,
+		border_width,
+		border_height,
+		TUI_BORDER_FOCUSED,
+	)
 
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
-	text_x   := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
+	text_x := header_x + MENU_ACCENT_BAR_WIDTH + MENU_ACCENT_GAP
 
 	// ── Tab: Installed ───────────────────────────────────────────────────
 	if state.plugin_tab == PLUGIN_TAB_INSTALLED {
@@ -1287,7 +1595,7 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 		items := cast(^[dynamic]string)state.data_cache[.PLUGINS_VIEW]
 		render_plugin_tab_bar(screen, state, border_width)
 
-		has_filter    := has_any_filter(state)
+		has_filter := has_any_filter(state)
 		filter_offset := render_filter_bar(screen, state, len(items))
 		content_start := LIST_ITEM_START_LINE + 1 + filter_offset
 
@@ -1295,35 +1603,73 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 			// Use get_view_visible_height to match the scroll logic's calculation exactly
 			visible_height := get_view_visible_height(state)
 			start := state.scroll_offset
-			end   := min(start + visible_height, len(state.filter.indices))
-			for idx in start..<end {
-				y            := content_start + (idx - start)
+			end := min(start + visible_height, len(state.filter.indices))
+			for idx in start ..< end {
+				y := content_start + (idx - start)
 				original_idx := state.filter.indices[idx]
-				if original_idx < 0 || original_idx >= len(items) { continue }
-				render_list_item(screen, header_x, y, items[original_idx], max_text_width, idx == state.selected_index)
+				if original_idx < 0 || original_idx >= len(items) {
+					continue
+				}
+				render_list_item(
+					screen,
+					header_x,
+					y,
+					items[original_idx],
+					max_text_width,
+					idx == state.selected_index,
+				)
 			}
 			if len(state.filter.indices) > visible_height {
-				scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filter.indices))
-				render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
+				scroll_info := fmt.tprintf(
+					"Showing %d-%d of %d matches",
+					start + 1,
+					end,
+					len(state.filter.indices),
+				)
+				render_text_styled(
+					screen,
+					header_x,
+					content_start + visible_height,
+					scroll_info,
+					TUI_DIM,
+				)
 			}
 		} else if has_filter && len(state.filter.indices) == 0 {
 			render_text_styled(screen, text_x, content_start + 1, "No matches found", TUI_DIM)
 		} else if len(items) == 0 {
 			render_text_styled(screen, text_x, content_start + 1, "No plugins installed", TUI_DIM)
-			render_text_styled(screen, text_x, content_start + 3,
-				"Switch to Registry tab (Tab key) to browse and install", TUI_MUTED)
+			render_text_styled(
+				screen,
+				text_x,
+				content_start + 3,
+				"Switch to Registry tab (Tab key) to browse and install",
+				TUI_MUTED,
+			)
 		} else {
 			// Use get_view_visible_height to match the scroll logic's calculation exactly
 			visible_height := get_view_visible_height(state)
 			start := state.scroll_offset
-			end   := min(start + visible_height, len(items))
-			for i in start..<end {
+			end := min(start + visible_height, len(items))
+			for i in start ..< end {
 				y := content_start + (i - start)
-				render_list_item(screen, header_x, y, items[i], max_text_width, i == state.selected_index)
+				render_list_item(
+					screen,
+					header_x,
+					y,
+					items[i],
+					max_text_width,
+					i == state.selected_index,
+				)
 			}
 			if len(items) > visible_height {
-				scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items))
-				render_text_styled(screen, header_x, content_start + visible_height, scroll_info, TUI_DIM)
+				scroll_info := fmt.tprintf("Showing %d-%d of %d", start + 1, end, len(items))
+				render_text_styled(
+					screen,
+					header_x,
+					content_start + visible_height,
+					scroll_info,
+					TUI_DIM,
+				)
 			}
 		}
 
@@ -1340,64 +1686,108 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 	items := state.plugin_registry_cache
 	render_plugin_tab_bar(screen, state, border_width)
 
-	has_filter    := has_any_filter(state)
+	has_filter := has_any_filter(state)
 	filter_offset := render_filter_bar(screen, state, len(items^))
 	content_start := LIST_ITEM_START_LINE + 1 + filter_offset
 
 	// Column widths — responsive based on available space
 	compact := is_compact(state.terminal_width)
-	narrow  := is_narrow(state.terminal_width)
-	col_key_w  : int
-	col_cat_w  : int
-	col_sh_w   : int
+	narrow := is_narrow(state.terminal_width)
+	col_key_w: int
+	col_cat_w: int
+	col_sh_w: int
 	if narrow {
 		col_key_w = 14
-		col_cat_w = 0  // hide category column
-		col_sh_w  = 0  // hide shell column
+		col_cat_w = 0 // hide category column
+		col_sh_w = 0 // hide shell column
 	} else if compact {
 		col_key_w = 16
 		col_cat_w = 8
-		col_sh_w  = 4
+		col_sh_w = 4
 	} else {
 		col_key_w = 22
 		col_cat_w = 12
-		col_sh_w  = 6
+		col_sh_w = 6
 	}
 	col_desc_w := max(1, max_text_width - col_key_w - col_cat_w - col_sh_w)
 
 	// Column header row
-	render_text_styled(screen, text_x,             content_start, "KEY", TUI_DIM, "", true)
+	render_text_styled(screen, text_x, content_start, "KEY", TUI_DIM, "", true)
 	if col_cat_w > 0 {
-		render_text_styled(screen, text_x + col_key_w,              content_start, "CATEGORY", TUI_DIM, "", true)
+		render_text_styled(
+			screen,
+			text_x + col_key_w,
+			content_start,
+			"CATEGORY",
+			TUI_DIM,
+			"",
+			true,
+		)
 	}
 	if col_sh_w > 0 {
-		render_text_styled(screen, text_x + col_key_w + col_cat_w,  content_start, "SHELL",    TUI_DIM, "", true)
+		render_text_styled(
+			screen,
+			text_x + col_key_w + col_cat_w,
+			content_start,
+			"SHELL",
+			TUI_DIM,
+			"",
+			true,
+		)
 	}
-	render_text_styled(screen, text_x + col_key_w + col_cat_w + col_sh_w, content_start, "DESCRIPTION", TUI_DIM, "", true)
+	render_text_styled(
+		screen,
+		text_x + col_key_w + col_cat_w + col_sh_w,
+		content_start,
+		"DESCRIPTION",
+		TUI_DIM,
+		"",
+		true,
+	)
 
 	// Thin divider under column headers
 	divider_width := max(0, border_width - CONTENT_PADDING_LEFT - 2)
-	for dx in 0..<divider_width {
-		screen_set_cell(screen, header_x + dx, content_start + 1,
-			Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER})
+	for dx in 0 ..< divider_width {
+		screen_set_cell(
+			screen,
+			header_x + dx,
+			content_start + 1,
+			Cell{char = BOX_HORIZONTAL, fg = TUI_DIVIDER},
+		)
 	}
 
-	data_start := content_start + 2  // col header + divider
+	data_start := content_start + 2 // col header + divider
 
 	if has_filter && len(state.filter.indices) > 0 {
 		// Same row budget as tui_state_move_selection uses for scrolling.
 		visible_height := max(1, get_view_visible_height(state))
 		start := state.scroll_offset
-		end   := min(start + visible_height, len(state.filter.indices))
-		for list_pos in start..<end {
+		end := min(start + visible_height, len(state.filter.indices))
+		for list_pos in start ..< end {
 			original_idx := state.filter.indices[list_pos]
-			if original_idx < 0 || original_idx >= len(items^) { continue }
-			render_registry_row(screen, header_x, text_x, data_start + (list_pos - start),
-				items[original_idx], col_key_w, col_cat_w, col_sh_w, col_desc_w,
-				list_pos == state.selected_index)
+			if original_idx < 0 || original_idx >= len(items^) {
+				continue
+			}
+			render_registry_row(
+				screen,
+				header_x,
+				text_x,
+				data_start + (list_pos - start),
+				items[original_idx],
+				col_key_w,
+				col_cat_w,
+				col_sh_w,
+				col_desc_w,
+				list_pos == state.selected_index,
+			)
 		}
 		if len(state.filter.indices) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d matches", start+1, end, len(state.filter.indices))
+			scroll_info := fmt.tprintf(
+				"Showing %d-%d of %d matches",
+				start + 1,
+				end,
+				len(state.filter.indices),
+			)
 			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
 		}
 	} else if has_filter && len(state.filter.indices) == 0 {
@@ -1405,14 +1795,23 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 	} else {
 		visible_height := max(1, get_view_visible_height(state))
 		start := state.scroll_offset
-		end   := min(start + visible_height, len(items^))
-		for i in start..<end {
-			render_registry_row(screen, header_x, text_x, data_start + (i - start),
-				items[i], col_key_w, col_cat_w, col_sh_w, col_desc_w,
-				i == state.selected_index)
+		end := min(start + visible_height, len(items^))
+		for i in start ..< end {
+			render_registry_row(
+				screen,
+				header_x,
+				text_x,
+				data_start + (i - start),
+				items[i],
+				col_key_w,
+				col_cat_w,
+				col_sh_w,
+				col_desc_w,
+				i == state.selected_index,
+			)
 		}
 		if len(items^) > visible_height {
-			scroll_info := fmt.tprintf("Showing %d-%d of %d", start+1, end, len(items^))
+			scroll_info := fmt.tprintf("Showing %d-%d of %d", start + 1, end, len(items^))
 			render_text_styled(screen, header_x, data_start + visible_height, scroll_info, TUI_DIM)
 		}
 	}
@@ -1424,12 +1823,28 @@ render_plugins_view :: proc(state: ^TUIState, screen: ^Screen) {
 // Settings view: what this session runs with. Enter (or space) toggles the
 // session-only rows (Colors, Dry run); the rest are read-only.
 render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
-	border_width, border_height := calculate_border_dimensions(state.terminal_width, state.terminal_height)
-	render_box_styled(screen, BORDER_LEFT_WIDTH, BORDER_TOP_HEIGHT, border_width, border_height, TUI_BORDER_FOCUSED)
+	border_width, border_height := calculate_border_dimensions(
+		state.terminal_width,
+		state.terminal_height,
+	)
+	render_box_styled(
+		screen,
+		BORDER_LEFT_WIDTH,
+		BORDER_TOP_HEIGHT,
+		border_width,
+		border_height,
+		TUI_BORDER_FOCUSED,
+	)
 
 	// Loaded by tui_ensure_data_loaded; idempotent here for direct renders.
 	tui_load_settings(state)
-	render_view_header(screen, state, "SETTINGS", "This session (Enter toggles marked rows)", border_width)
+	render_view_header(
+		screen,
+		state,
+		"SETTINGS",
+		"This session (Enter toggles marked rows)",
+		border_width,
+	)
 
 	header_x := BORDER_LEFT_WIDTH + CONTENT_PADDING_LEFT
 	max_text_width := tui_calculate_content_width(border_width)
@@ -1438,22 +1853,34 @@ render_settings_view :: proc(state: ^TUIState, screen: ^Screen) {
 	visible := max(1, get_view_visible_height(state))
 	start := clamp(state.scroll_offset, 0, len(rows))
 	end := min(start + visible, len(rows))
-	for i in start..<end {
+	for i in start ..< end {
 		label, value, toggles := setting_row(state, rows[i])
 		mark := "↵" if toggles && !tui_plain_glyphs else ("*" if toggles else " ")
 		line := fmt.tprintf("%-13s %s %s", label, mark, value)
-		render_list_item(screen, header_x, content_start + (i - start), line, max_text_width, i == state.selected_index)
+		render_list_item(
+			screen,
+			header_x,
+			content_start + (i - start),
+			line,
+			max_text_width,
+			i == state.selected_index,
+		)
 	}
 	if len(rows) > visible {
-		render_text_styled(screen, header_x, content_start + visible,
-			fmt.tprintf("Showing %d-%d of %d", start + 1, end, len(rows)), TUI_DIM)
+		render_text_styled(
+			screen,
+			header_x,
+			content_start + visible,
+			fmt.tprintf("Showing %d-%d of %d", start + 1, end, len(rows)),
+			TUI_DIM,
+		)
 	}
 
 	render_data_footer(screen, state, FOOTER_SETTINGS_VIEW)
 }
 
-INPUT_CURSOR_FG :: "\x1b[38;2;0;0;0m"       // black on
-INPUT_CURSOR_BG :: "\x1b[48;2;255;140;0m"   // TUI_ORANGE
+INPUT_CURSOR_FG :: "\x1b[38;2;0;0;0m" // black on
+INPUT_CURSOR_BG :: "\x1b[48;2;255;140;0m" // TUI_ORANGE
 
 // Draw a single-line input `text` with a block cursor at byte offset
 // `cursor`, within `width` columns starting at (x, y). Shows the tail when
@@ -1466,7 +1893,7 @@ render_input_with_cursor :: proc(screen: ^Screen, x, y: int, text: string, curso
 	budget := width - 1
 	start := 0
 	if visual_width(before) > budget {
-		budget -= 1  // room for "…"
+		budget -= 1 // room for "…"
 		used := 0
 		start = len(before)
 		for start > 0 {
@@ -1487,16 +1914,22 @@ render_input_with_cursor :: proc(screen: ^Screen, x, y: int, text: string, curso
 	cx += visual_width(shown)
 	limit := x + width
 	if len(after) == 0 {
-		render_text_styled(screen, cx, y, "\u2588", TUI_ORANGE)  // FULL BLOCK cursor at the end
+		render_text_styled(screen, cx, y, "\u2588", TUI_ORANGE) // FULL BLOCK cursor at the end
 		return
 	}
 	// Cursor on a character: draw it reversed (bright on the orange cell).
 	r, size := utf8.decode_rune(after)
 	if cx < limit {
 		if tui_color_mode == .ASCII {
-			screen_put_rune(screen, cx, y, '\u2588', Cell{})  // no colors: plain block
+			screen_put_rune(screen, cx, y, '\u2588', Cell{}) // no colors: plain block
 		} else {
-			screen_put_rune(screen, cx, y, r, Cell{fg = INPUT_CURSOR_FG, bg = INPUT_CURSOR_BG, bold = true})
+			screen_put_rune(
+				screen,
+				cx,
+				y,
+				r,
+				Cell{fg = INPUT_CURSOR_FG, bg = INPUT_CURSOR_BG, bold = true},
+			)
 		}
 	}
 	cx += max(1, get_rune_width(r))

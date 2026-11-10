@@ -2,8 +2,8 @@
 
 package test_wayu
 
-import "core:testing"
 import wayu "../../src"
+import "core:testing"
 
 @(test)
 test_validate_identifier_valid :: proc(t: ^testing.T) {

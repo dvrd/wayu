@@ -8,8 +8,8 @@ package test_wayu
 // the PTY cursor. Invariant: no cell in Screen.buffer may hold 0x1b as .char;
 // color must live exclusively in .fg / .bg.
 
-import "core:testing"
 import wayu "../../src"
+import "core:testing"
 
 @(test)
 test_render_text_styled_stores_no_ansi_bytes :: proc(t: ^testing.T) {
@@ -22,8 +22,8 @@ test_render_text_styled_stores_no_ansi_bytes :: proc(t: ^testing.T) {
 	// produces only printable cells.
 	wayu.render_text_styled(&screen, 0, 0, "○ /some/path", wayu.TUI_MUTED)
 
-	for y in 0..<screen.height {
-		for x in 0..<screen.width {
+	for y in 0 ..< screen.height {
+		for x in 0 ..< screen.width {
 			ch := screen.buffer[y][x].char
 			testing.expect(
 				t,
@@ -46,7 +46,7 @@ test_cell_char_is_single_rune_per_column :: proc(t: ^testing.T) {
 	wayu.render_text_styled(&screen, 0, 0, input, wayu.TUI_PRIMARY)
 
 	expected := []rune{'a', 'b', 'c', '1', '2', '3'}
-	for i in 0..<len(expected) {
+	for i in 0 ..< len(expected) {
 		testing.expect(
 			t,
 			screen.buffer[0][i].char == expected[i],
@@ -54,7 +54,7 @@ test_cell_char_is_single_rune_per_column :: proc(t: ^testing.T) {
 		)
 	}
 	// Columns beyond the string must remain untouched (space).
-	for i in len(expected)..<screen.width {
+	for i in len(expected) ..< screen.width {
 		testing.expect(
 			t,
 			screen.buffer[0][i].char == ' ',
@@ -77,7 +77,7 @@ test_render_text_styled_strips_ansi_escape_bytes :: proc(t: ^testing.T) {
 	poisoned := "\x1b[32m●\x1b[0m /path"
 	wayu.render_text_styled(&screen, 0, 0, poisoned, wayu.TUI_MUTED)
 
-	for x in 0..<screen.width {
+	for x in 0 ..< screen.width {
 		testing.expect(
 			t,
 			screen.buffer[0][x].char != 0x1b,
@@ -90,7 +90,7 @@ test_render_text_styled_strips_ansi_escape_bytes :: proc(t: ^testing.T) {
 	// ugly to signal the caller bug) — only that printable content landed
 	// and the glyph `●` is present somewhere in the row.
 	found_glyph := false
-	for x in 0..<screen.width {
+	for x in 0 ..< screen.width {
 		if screen.buffer[0][x].char == '●' {
 			found_glyph = true
 			break
@@ -113,7 +113,7 @@ test_render_list_item_maps_glyph_to_fg_not_char :: proc(t: ^testing.T) {
 	wayu.render_list_item(&screen, 2, 0, "/some/path", 50, false, .WAYU_ACTIVE)
 
 	// No ESC byte may appear anywhere after rendering.
-	for x in 0..<screen.width {
+	for x in 0 ..< screen.width {
 		testing.expect(
 			t,
 			screen.buffer[0][x].char != 0x1b,
@@ -124,7 +124,7 @@ test_render_list_item_maps_glyph_to_fg_not_char :: proc(t: ^testing.T) {
 	// The glyph must be rendered with the WAYU_ACTIVE source color via Cell.fg —
 	// not via inline ANSI in Cell.char. Scan the row for the `●` cell.
 	glyph_x := -1
-	for x in 0..<screen.width {
+	for x in 0 ..< screen.width {
 		if screen.buffer[0][x].char == '●' {
 			glyph_x = x
 			break

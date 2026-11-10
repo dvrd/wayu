@@ -41,13 +41,13 @@ import "core:sys/posix"
 import "core:time"
 
 SECRETS_STORE_FILE :: "secrets.json"
-SECRETS_CIPHER     :: "chacha20poly1305"
-SECRETS_VERSION    :: 1
+SECRETS_CIPHER :: "chacha20poly1305"
+SECRETS_VERSION :: 1
 
 @(private = "file")
 SECRETS_NONCE_SIZE :: chacha20poly1305.IV_SIZE
 @(private = "file")
-SECRETS_TAG_SIZE   :: chacha20poly1305.TAG_SIZE
+SECRETS_TAG_SIZE :: chacha20poly1305.TAG_SIZE
 
 // One encrypted value. `blob` is base64(nonce || ciphertext || tag).
 Secret_Entry :: struct {
@@ -72,7 +72,9 @@ secrets_store_destroy :: proc(s: ^Secrets_Store) {
 
 secrets_store_find :: proc(s: ^Secrets_Store, name: string) -> int {
 	for e, i in s.entries {
-		if e.name == name { return i }
+		if e.name == name {
+			return i
+		}
 	}
 	return -1
 }
@@ -95,33 +97,61 @@ secrets_new_key :: proc() -> (key: [SECRETS_KEY_SIZE]byte) {
 // Associated data of a value: its name, plus a run-only marker.
 @(private = "file")
 secrets_aad :: proc(name: string, run_only: bool) -> []byte {
-	if !run_only { return transmute([]byte)name }
+	if !run_only {
+		return transmute([]byte)name
+	}
 	return transmute([]byte)strings.concatenate({name, "\x00run-only"}, context.temp_allocator)
 }
 
 // Encrypt `plaintext` for variable `name`. Result: base64 text (allocator).
-secrets_seal :: proc(key: [SECRETS_KEY_SIZE]byte, name, plaintext: string, allocator := context.allocator, run_only := false) -> string {
+secrets_seal :: proc(
+	key: [SECRETS_KEY_SIZE]byte,
+	name, plaintext: string,
+	allocator := context.allocator,
+	run_only := false,
+) -> string {
 	k := key
 	defer crypto.zero_explicit(&k, size_of(k))
 	ctx: chacha20poly1305.Context
 	chacha20poly1305.init(&ctx, k[:])
 	defer chacha20poly1305.reset(&ctx)
 
-	buf := make([]byte, SECRETS_NONCE_SIZE + len(plaintext) + SECRETS_TAG_SIZE, context.temp_allocator)
+	buf := make(
+		[]byte,
+		SECRETS_NONCE_SIZE + len(plaintext) + SECRETS_TAG_SIZE,
+		context.temp_allocator,
+	)
 	nonce := buf[:SECRETS_NONCE_SIZE]
 	ct := buf[SECRETS_NONCE_SIZE:SECRETS_NONCE_SIZE + len(plaintext)]
 	tag := buf[SECRETS_NONCE_SIZE + len(plaintext):]
 	crypto.rand_bytes(nonce)
-	chacha20poly1305.seal(&ctx, ct, tag, nonce, secrets_aad(name, run_only), transmute([]byte)plaintext)
+	chacha20poly1305.seal(
+		&ctx,
+		ct,
+		tag,
+		nonce,
+		secrets_aad(name, run_only),
+		transmute([]byte)plaintext,
+	)
 	return base64.encode(buf, allocator = allocator)
 }
 
 // Decrypt a blob for variable `name`. ok = false on bad base64, a short
 // blob, a wrong key, a different name (AAD) or any tampering. The result
 // is allocated with `allocator`; wipe it with secrets_wipe when done.
-secrets_open :: proc(key: [SECRETS_KEY_SIZE]byte, name, blob: string, allocator := context.allocator, run_only := false) -> (plaintext: string, ok: bool) {
+secrets_open :: proc(
+	key: [SECRETS_KEY_SIZE]byte,
+	name, blob: string,
+	allocator := context.allocator,
+	run_only := false,
+) -> (
+	plaintext: string,
+	ok: bool,
+) {
 	raw, err := base64.decode(blob, allocator = context.temp_allocator)
-	if err != nil || len(raw) < SECRETS_NONCE_SIZE + SECRETS_TAG_SIZE { return "", false }
+	if err != nil || len(raw) < SECRETS_NONCE_SIZE + SECRETS_TAG_SIZE {
+		return "", false
+	}
 	k := key
 	defer crypto.zero_explicit(&k, size_of(k))
 	ctx: chacha20poly1305.Context
@@ -141,7 +171,9 @@ secrets_open :: proc(key: [SECRETS_KEY_SIZE]byte, name, blob: string, allocator 
 
 // Overwrite then free a decrypted value.
 secrets_wipe :: proc(s: string, allocator := context.allocator) {
-	if len(s) == 0 { return }
+	if len(s) == 0 {
+		return
+	}
 	crypto.zero_explicit(raw_data(s), len(s))
 	delete(s, allocator)
 }
@@ -161,7 +193,9 @@ Secrets_File_JSON :: struct {
 // Parse secrets.json text. err (temp-allocated) explains a rejection.
 secrets_store_parse :: proc(text: string) -> (store: Secrets_Store, err: string) {
 	arena: virtual.Arena
-	if virtual.arena_init_growing(&arena) != nil { return {}, "out of memory" }
+	if virtual.arena_init_growing(&arena) != nil {
+		return {}, "out of memory"
+	}
 	defer virtual.arena_destroy(&arena)
 	scratch := virtual.arena_allocator(&arena)
 
@@ -170,22 +204,33 @@ secrets_store_parse :: proc(text: string) -> (store: Secrets_Store, err: string)
 		return {}, fmt.tprintf("not valid JSON (%v)", uerr)
 	}
 	if doc.version != SECRETS_VERSION {
-		return {}, fmt.tprintf("unsupported version %d (expected %d)", doc.version, SECRETS_VERSION)
+		return {}, fmt.tprintf(
+			"unsupported version %d (expected %d)",
+			doc.version,
+			SECRETS_VERSION,
+		)
 	}
 	if doc.cipher != SECRETS_CIPHER {
 		return {}, fmt.tprintf("unsupported cipher %q (expected %q)", doc.cipher, SECRETS_CIPHER)
 	}
 	store.entries = make([dynamic]Secret_Entry, 0, len(doc.values))
 	for name, blob in doc.values {
-		append(&store.entries, Secret_Entry{name = strings.clone(name), blob = strings.clone(blob), run_only = slice.contains(doc.run_only, name)})
+		append(
+			&store.entries,
+			Secret_Entry {
+				name = strings.clone(name),
+				blob = strings.clone(blob),
+				run_only = slice.contains(doc.run_only, name),
+			},
+		)
 	}
-	slice.sort_by(store.entries[:], proc(a, b: Secret_Entry) -> bool { return a.name < b.name })
+	slice.sort_by(store.entries[:], proc(a, b: Secret_Entry) -> bool {return a.name < b.name})
 	return store, ""
 }
 
 // secrets.json text: pretty-printed, names sorted, trailing newline.
 secrets_store_format :: proc(s: ^Secrets_Store, allocator := context.allocator) -> string {
-	slice.sort_by(s.entries[:], proc(a, b: Secret_Entry) -> bool { return a.name < b.name })
+	slice.sort_by(s.entries[:], proc(a, b: Secret_Entry) -> bool {return a.name < b.name})
 	b := strings.builder_make(allocator)
 	fmt.sbprintfln(&b, "%c", '{')
 	fmt.sbprintfln(&b, `  "version": %d,`, SECRETS_VERSION)
@@ -194,7 +239,11 @@ secrets_store_format :: proc(s: ^Secrets_Store, allocator := context.allocator) 
 		strings.write_string(&b, "  \"values\": {}\n")
 	} else {
 		run_only := 0
-		for e in s.entries { if e.run_only { run_only += 1 } }
+		for e in s.entries {
+			if e.run_only {
+				run_only += 1
+			}
+		}
 		strings.write_string(&b, "  \"values\": {\n")
 		for e, i in s.entries {
 			strings.write_string(&b, "    \"")
@@ -208,8 +257,11 @@ secrets_store_format :: proc(s: ^Secrets_Store, allocator := context.allocator) 
 			strings.write_string(&b, "  \"run_only\": [")
 			k := 0
 			for e in s.entries {
-				if !e.run_only { continue }
-				n := json_escape(e.name); fmt.sbprintf(&b, "%s\"%s\"", ", " if k > 0 else "", n); delete(n)
+				if !e.run_only {
+					continue
+				}
+				n := json_escape(e.name); fmt.sbprintf(&b, "%s\"%s\"", ", " if k > 0 else "", n)
+				delete(n)
 				k += 1
 			}
 			strings.write_string(&b, "]\n")
@@ -223,12 +275,18 @@ secrets_store_format :: proc(s: ^Secrets_Store, allocator := context.allocator) 
 // or malformed one is an error (never treated as empty).
 secrets_store_load :: proc() -> (store: Secrets_Store, exists: bool, err: string) {
 	path := secrets_store_path()
-	if !os.exists(path) { return {}, false, "" }
+	if !os.exists(path) {
+		return {}, false, ""
+	}
 	data, rerr := os.read_entire_file_from_path(path, context.allocator)
-	if rerr != nil { return {}, true, fmt.tprintf("cannot read %s: %v", path, rerr) }
+	if rerr != nil {
+		return {}, true, fmt.tprintf("cannot read %s: %v", path, rerr)
+	}
 	defer delete(data)
 	s, perr := secrets_store_parse(string(data))
-	if len(perr) > 0 { return {}, true, fmt.tprintf("%s: %s", path, perr) }
+	if len(perr) > 0 {
+		return {}, true, fmt.tprintf("%s: %s", path, perr)
+	}
 	return s, true, ""
 }
 
@@ -265,17 +323,21 @@ secrets_store_save :: proc(s: ^Secrets_Store) -> (ok: bool, err: string) {
 // malformed store: callers that must report errors load the store.
 secrets_names :: proc() -> []string {
 	s, _, err := secrets_store_load()
-	if len(err) > 0 { return {} }
+	if len(err) > 0 {
+		return {}
+	}
 	defer secrets_store_destroy(&s)
 	names := make([]string, len(s.entries), context.temp_allocator)
-	for e, i in s.entries { names[i] = strings.clone(e.name, context.temp_allocator) }
+	for e, i in s.entries {names[i] = strings.clone(e.name, context.temp_allocator)}
 	return names
 }
 
 // Is `name` stored as a secret? (Malformed store: false.)
 secrets_has :: proc(name: string) -> bool {
 	for n in secrets_names() {
-		if n == name { return true }
+		if n == name {
+			return true
+		}
 	}
 	return false
 }
@@ -289,10 +351,17 @@ secrets_key_for_read :: proc() -> (key: [SECRETS_KEY_SIZE]byte, ok: bool, err: s
 	backend := secrets_backend_active()
 	k, status, msg := keystore_load(backend)
 	switch status {
-	case .OK:          return k, true, ""
-	case .MISSING:     return key, false, fmt.tprintf("the master key is missing (%s); secrets.json cannot be decrypted without it", msg)
-	case .UNAVAILABLE: return key, false, msg
-	case .INVALID:     return key, false, msg
+	case .OK:
+		return k, true, ""
+	case .MISSING:
+		return key, false, fmt.tprintf(
+			"the master key is missing (%s); secrets.json cannot be decrypted without it",
+			msg,
+		)
+	case .UNAVAILABLE:
+		return key, false, msg
+	case .INVALID:
+		return key, false, msg
 	}
 	return key, false, msg
 }
@@ -300,7 +369,13 @@ secrets_key_for_read :: proc() -> (key: [SECRETS_KEY_SIZE]byte, ok: bool, err: s
 // Key to encrypt a new value. A key is created only when the backend
 // reports none AND the store holds no ciphertext (never over existing
 // secrets, which would make them undecryptable).
-secrets_key_for_write :: proc(store_has_values: bool) -> (key: [SECRETS_KEY_SIZE]byte, ok: bool, err: string) {
+secrets_key_for_write :: proc(
+	store_has_values: bool,
+) -> (
+	key: [SECRETS_KEY_SIZE]byte,
+	ok: bool,
+	err: string,
+) {
 	backend := secrets_backend_active()
 	k, status, msg := keystore_load(backend)
 	switch status {
@@ -308,7 +383,11 @@ secrets_key_for_write :: proc(store_has_values: bool) -> (key: [SECRETS_KEY_SIZE
 		return k, true, ""
 	case .MISSING:
 		if store_has_values {
-			return key, false, fmt.tprintf("the master key is missing (%s) but %s holds encrypted values: refusing to create a new key over them", msg, secrets_store_path())
+			return key, false, fmt.tprintf(
+				"the master key is missing (%s) but %s holds encrypted values: refusing to create a new key over them",
+				msg,
+				secrets_store_path(),
+			)
 		}
 		nk := secrets_new_key()
 		if saved, serr := keystore_save(backend, nk, false); !saved {
@@ -328,13 +407,24 @@ secrets_key_for_write :: proc(store_has_values: bool) -> (key: [SECRETS_KEY_SIZE
 
 // Encrypt and store `value` under `name`. Caller holds the config lock and
 // has handled --dry-run. existed = the name was already a secret.
-secrets_set :: proc(name, value: string, run_only := false) -> (existed: bool, ok: bool, err: string) {
+secrets_set :: proc(
+	name, value: string,
+	run_only := false,
+) -> (
+	existed: bool,
+	ok: bool,
+	err: string,
+) {
 	s, _, lerr := secrets_store_load()
-	if len(lerr) > 0 { return false, false, lerr }
+	if len(lerr) > 0 {
+		return false, false, lerr
+	}
 	defer secrets_store_destroy(&s)
 
 	key, kok, kerr := secrets_key_for_write(len(s.entries) > 0)
-	if !kok { return false, false, kerr }
+	if !kok {
+		return false, false, kerr
+	}
 	defer crypto.zero_explicit(&key, size_of(key))
 
 	blob := secrets_seal(key, name, value, run_only = run_only)
@@ -344,7 +434,10 @@ secrets_set :: proc(name, value: string, run_only := false) -> (existed: bool, o
 		s.entries[i].run_only = run_only
 		existed = true
 	} else {
-		append(&s.entries, Secret_Entry{name = strings.clone(name), blob = blob, run_only = run_only})
+		append(
+			&s.entries,
+			Secret_Entry{name = strings.clone(name), blob = blob, run_only = run_only},
+		)
 	}
 	sok, serr := secrets_store_save(&s)
 	return existed, sok, serr
@@ -354,11 +447,17 @@ secrets_set :: proc(name, value: string, run_only := false) -> (existed: bool, o
 // the config lock and has handled --dry-run. Needs no key.
 secrets_remove :: proc(name: string) -> (removed: bool, ok: bool, err: string) {
 	s, exists, lerr := secrets_store_load()
-	if len(lerr) > 0 { return false, false, lerr }
+	if len(lerr) > 0 {
+		return false, false, lerr
+	}
 	defer secrets_store_destroy(&s)
-	if !exists { return false, true, "" }
+	if !exists {
+		return false, true, ""
+	}
 	i := secrets_store_find(&s, name)
-	if i < 0 { return false, true, "" }
+	if i < 0 {
+		return false, true, ""
+	}
 	delete(s.entries[i].name)
 	delete(s.entries[i].blob)
 	ordered_remove(&s.entries, i)
@@ -367,17 +466,36 @@ secrets_remove :: proc(name: string) -> (removed: bool, ok: bool, err: string) {
 }
 
 // Decrypt one value (allocator; wipe with secrets_wipe).
-secrets_get :: proc(name: string, allocator := context.allocator) -> (value: string, found: bool, ok: bool, err: string) {
+secrets_get :: proc(
+	name: string,
+	allocator := context.allocator,
+) -> (
+	value: string,
+	found: bool,
+	ok: bool,
+	err: string,
+) {
 	s, _, lerr := secrets_store_load()
-	if len(lerr) > 0 { return "", false, false, lerr }
+	if len(lerr) > 0 {
+		return "", false, false, lerr
+	}
 	defer secrets_store_destroy(&s)
 	i := secrets_store_find(&s, name)
-	if i < 0 { return "", false, true, "" }
+	if i < 0 {
+		return "", false, true, ""
+	}
 	key, kok, kerr := secrets_key_for_read()
-	if !kok { return "", true, false, kerr }
+	if !kok {
+		return "", true, false, kerr
+	}
 	defer crypto.zero_explicit(&key, size_of(key))
 	v, dok := secrets_open(key, name, s.entries[i].blob, allocator, s.entries[i].run_only)
-	if !dok { return "", true, false, fmt.tprintf("%s does not decrypt with the current master key (wrong key or tampered store)", name) }
+	if !dok {
+		return "", true, false, fmt.tprintf(
+			"%s does not decrypt with the current master key (wrong key or tampered store)",
+			name,
+		)
+	}
 	return v, true, true, ""
 }
 
@@ -389,9 +507,15 @@ secrets_get :: proc(name: string, allocator := context.allocator) -> (value: str
 // same expression core.<ext> evaluates (temp-allocated).
 secrets_runtime_base :: proc() -> string {
 	base := os.get_env("XDG_RUNTIME_DIR", context.temp_allocator)
-	if len(base) == 0 { base = os.get_env("TMPDIR", context.temp_allocator) }
-	if len(base) == 0 { base = "/tmp" }
-	if len(base) > 1 && strings.has_suffix(base, "/") { base = base[:len(base) - 1] }
+	if len(base) == 0 {
+		base = os.get_env("TMPDIR", context.temp_allocator)
+	}
+	if len(base) == 0 {
+		base = "/tmp"
+	}
+	if len(base) > 1 && strings.has_suffix(base, "/") {
+		base = base[:len(base) - 1]
+	}
 	return base
 }
 
@@ -408,7 +532,12 @@ secrets_cache_dir :: proc() -> string {
 
 // <runtime>/wayu-<uid>/secrets-<id>.<ext> (temp-allocated).
 secrets_cache_path :: proc(shell: ShellType) -> string {
-	return fmt.tprintf("%s/secrets-%s.%s", secrets_cache_dir(), secrets_cache_id(), get_shell_extension(shell))
+	return fmt.tprintf(
+		"%s/secrets-%s.%s",
+		secrets_cache_dir(),
+		secrets_cache_id(),
+		get_shell_extension(shell),
+	)
 }
 
 // Create (0700) or verify the cache dir: a real directory (not a symlink),
@@ -428,8 +557,12 @@ secrets_cache_dir_check :: proc(dir: string) -> (ok: bool, err: string) {
 	if posix.lstat(cdir, &st) != .OK {
 		return false, fmt.tprintf("cannot stat %s: %s", dir, posix.strerror(posix.errno()))
 	}
-	if !posix.S_ISDIR(st.st_mode) { return false, fmt.tprintf("%s is not a directory", dir) }
-	if st.st_uid != posix.getuid() { return false, fmt.tprintf("%s is owned by another user", dir) }
+	if !posix.S_ISDIR(st.st_mode) {
+		return false, fmt.tprintf("%s is not a directory", dir)
+	}
+	if st.st_uid != posix.getuid() {
+		return false, fmt.tprintf("%s is owned by another user", dir)
+	}
 	if st.st_mode & (posix.S_IRWXG | posix.S_IRWXO) != {} {
 		return false, fmt.tprintf("%s is accessible by group/other (expected mode 0700)", dir)
 	}
@@ -438,11 +571,20 @@ secrets_cache_dir_check :: proc(dir: string) -> (ok: bool, err: string) {
 
 // Shell code of the cache: one export per value, single-quoted (literal:
 // no expansion of `$`, backticks or `\`). Invalid names are skipped.
-secrets_cache_content :: proc(shell: ShellType, names, values: []string, allocator := context.allocator) -> string {
+secrets_cache_content :: proc(
+	shell: ShellType,
+	names, values: []string,
+	allocator := context.allocator,
+) -> string {
 	b := strings.builder_make(allocator)
-	strings.write_string(&b, "# wayu secrets session cache - generated by `wayu secrets cache`; do not edit.\n")
+	strings.write_string(
+		&b,
+		"# wayu secrets session cache - generated by `wayu secrets cache`; do not edit.\n",
+	)
 	for name, i in names {
-		if !is_shell_var_name(name) { continue }
+		if !is_shell_var_name(name) {
+			continue
+		}
 		if shell == .FISH {
 			q := escape_fish_string(values[i], context.temp_allocator)
 			fmt.sbprintfln(&b, "set -gx %s %s", name, q)
@@ -460,7 +602,9 @@ secrets_cache_content :: proc(shell: ShellType, names, values: []string, allocat
 secrets_cache_invalidate :: proc() -> (removed: int) {
 	for sh in ([]ShellType{.ZSH, .BASH, .FISH}) {
 		p := secrets_cache_path(sh)
-		if os.exists(p) && os.remove(p) == nil { removed += 1 }
+		if os.exists(p) && os.remove(p) == nil {
+			removed += 1
+		}
 	}
 	return
 }
@@ -470,32 +614,48 @@ secrets_cache_invalidate :: proc() -> (removed: int) {
 // seconds in some shells) sees it as newer.
 secrets_cache_write :: proc(shell: ShellType) -> (path: string, ok: bool, err: string) {
 	s, exists, lerr := secrets_store_load()
-	if len(lerr) > 0 { return "", false, lerr }
+	if len(lerr) > 0 {
+		return "", false, lerr
+	}
 	defer secrets_store_destroy(&s)
 	path = secrets_cache_path(shell)
 	if !exists {
-		return path, false, fmt.tprintf("no secrets stored (%s does not exist)", secrets_store_path())
+		return path, false, fmt.tprintf(
+			"no secrets stored (%s does not exist)",
+			secrets_store_path(),
+		)
 	}
 
 	// Run-only values are never decrypted here: they never reach the cache.
 	names := make([dynamic]string, 0, len(s.entries), context.temp_allocator)
 	values := make([dynamic]string, 0, len(s.entries), context.temp_allocator)
-	defer for v in values { secrets_wipe(v) }
+	defer for v in values {secrets_wipe(v)}
 	if secrets_session_count(&s) > 0 {
 		key, kok, kerr := secrets_key_for_read()
-		if !kok { return path, false, kerr }
+		if !kok {
+			return path, false, kerr
+		}
 		defer crypto.zero_explicit(&key, size_of(key))
 		for e in s.entries {
-			if e.run_only { continue }
+			if e.run_only {
+				continue
+			}
 			v, dok := secrets_open(key, e.name, e.blob)
-			if !dok { return path, false, fmt.tprintf("%s does not decrypt with the current master key (wrong key or tampered store)", e.name) }
+			if !dok {
+				return path, false, fmt.tprintf(
+					"%s does not decrypt with the current master key (wrong key or tampered store)",
+					e.name,
+				)
+			}
 			append(&names, e.name)
 			append(&values, v)
 		}
 	}
 
 	dir := secrets_cache_dir()
-	if dok, derr := secrets_cache_dir_ensure(dir); !dok { return path, false, derr }
+	if dok, derr := secrets_cache_dir_ensure(dir); !dok {
+		return path, false, derr
+	}
 	content := secrets_cache_content(shell, names[:], values[:])
 	defer secrets_wipe(content)
 	if werr := write_file_atomic(path, transmute([]byte)content); werr != nil {
@@ -505,8 +665,12 @@ secrets_cache_write :: proc(shell: ShellType) -> (path: string, ok: bool, err: s
 
 	mtime := time.now()
 	if fi, serr := os.stat(secrets_store_path(), context.temp_allocator); serr == nil {
-		after := time.from_nanoseconds((time.to_unix_nanoseconds(fi.modification_time) / 1e9 + 1) * 1e9)
-		if time.diff(mtime, after) > 0 { mtime = after }
+		after := time.from_nanoseconds(
+			(time.to_unix_nanoseconds(fi.modification_time) / 1e9 + 1) * 1e9,
+		)
+		if time.diff(mtime, after) > 0 {
+			mtime = after
+		}
 	}
 	_ = os.chtimes(path, mtime, mtime)
 	return path, true, ""
@@ -518,7 +682,11 @@ secrets_cache_write :: proc(shell: ShellType) -> (path: string, ok: bool, err: s
 
 // Values the session cache exports (all but run-only ones).
 secrets_session_count :: proc(s: ^Secrets_Store) -> (n: int) {
-	for e in s.entries { if !e.run_only { n += 1 } }
+	for e in s.entries {
+		if !e.run_only {
+			n += 1
+		}
+	}
 	return
 }
 
@@ -526,7 +694,9 @@ secrets_session_count :: proc(s: ^Secrets_Store) -> (n: int) {
 // gets the loader; a store of only run-only secrets needs none.)
 secrets_store_nonempty :: proc() -> bool {
 	s, _, err := secrets_store_load()
-	if len(err) > 0 { return false }
+	if len(err) > 0 {
+		return false
+	}
 	defer secrets_store_destroy(&s)
 	return secrets_session_count(&s) > 0
 }
@@ -538,23 +708,42 @@ secrets_store_nonempty :: proc() -> bool {
 // without the secrets. Nothing when no secret exists. zsh/bash statements
 // are one per line so they also survive `eval $(...)` joined by `;`.
 emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") {
-	if !secrets_store_nonempty() { return }
+	if !secrets_store_nonempty() {
+		return
+	}
 	ext := get_shell_extension(shell)
 	tail := fmt.tprintf("/wayu-%d/secrets-%s.%s", posix.getuid(), secrets_cache_id(), ext)
 	store := secrets_store_path()
 	bin := wayu_self_path()
-	if len(bin) == 0 { bin = "wayu" }
+	if len(bin) == 0 {
+		bin = "wayu"
+	}
 
 	if shell == .FISH {
 		qstore := escape_fish_string(store, context.temp_allocator)
 		fmt.sbprintln(b, "# === Secrets (encrypted store, per-session cache) ===")
 		fmt.sbprintln(b, "set -l _wayu_sc /tmp")
-		fmt.sbprintln(b, `if test -n "$XDG_RUNTIME_DIR"; set _wayu_sc $XDG_RUNTIME_DIR; else if test -n "$TMPDIR"; set _wayu_sc $TMPDIR; end`)
-		fmt.sbprintfln(b, "set _wayu_sc (string replace -r '(.)/$' '$1' -- $_wayu_sc)%s", escape_fish_string(tail, context.temp_allocator))
+		fmt.sbprintln(
+			b,
+			`if test -n "$XDG_RUNTIME_DIR"; set _wayu_sc $XDG_RUNTIME_DIR; else if test -n "$TMPDIR"; set _wayu_sc $TMPDIR; end`,
+		)
+		fmt.sbprintfln(
+			b,
+			"set _wayu_sc (string replace -r '(.)/$' '$1' -- $_wayu_sc)%s",
+			escape_fish_string(tail, context.temp_allocator),
+		)
 		fmt.sbprintfln(b, "if not test -O $_wayu_sc; or not test $_wayu_sc -nt %s", qstore)
-		fmt.sbprintfln(b, "    command %s secrets cache --shell fish </dev/null >/dev/null", escape_fish_string(bin, context.temp_allocator))
+		fmt.sbprintfln(
+			b,
+			"    command %s secrets cache --shell fish </dev/null >/dev/null",
+			escape_fish_string(bin, context.temp_allocator),
+		)
 		fmt.sbprintln(b, "end")
-		fmt.sbprintfln(b, "if test -O $_wayu_sc; and test $_wayu_sc -nt %s; source $_wayu_sc; end", qstore)
+		fmt.sbprintfln(
+			b,
+			"if test -O $_wayu_sc; and test $_wayu_sc -nt %s; source $_wayu_sc; end",
+			qstore,
+		)
 		fmt.sbprintln(b, "set -e _wayu_sc")
 		fmt.sbprintln(b)
 		return
@@ -562,21 +751,31 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 
 	qstore := shell_single_quote(store, context.temp_allocator)
 	fresh := fmt.tprintf(`[ -O "$_wayu_sc" ] && [ "$_wayu_sc" -nt %s ]`, qstore)
-	lines := [?]string{
+	lines := [?]string {
 		`_wayu_sc=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}`,
 		`[ "$_wayu_sc" = / ] || _wayu_sc=${_wayu_sc%/}`,
 		fmt.tprintf(`_wayu_sc="$_wayu_sc"%s`, shell_single_quote(tail, context.temp_allocator)),
 		// `{` opens a struct verb in Odin's fmt: emit it via %c.
-		fmt.tprintf("%c %s; } || command %s secrets cache --shell %s </dev/null >/dev/null", '{', fresh, shell_single_quote(bin, context.temp_allocator), ext),
+		fmt.tprintf(
+			"%c %s; } || command %s secrets cache --shell %s </dev/null >/dev/null",
+			'{',
+			fresh,
+			shell_single_quote(bin, context.temp_allocator),
+			ext,
+		),
 		fmt.tprintf(`if %s; then source "$_wayu_sc"; fi`, fresh),
 		"unset _wayu_sc",
 	}
-	if sep == "\n" { fmt.sbprintln(b, "# === Secrets (encrypted store, per-session cache) ===") }
+	if sep == "\n" {
+		fmt.sbprintln(b, "# === Secrets (encrypted store, per-session cache) ===")
+	}
 	for line in lines {
 		strings.write_string(b, line)
 		strings.write_string(b, sep)
 	}
-	if sep == "\n" { fmt.sbprintln(b) }
+	if sep == "\n" {
+		fmt.sbprintln(b)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -594,9 +793,18 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 // position and loses its plaintext value, else a marker is appended.
 // `run_only` is recorded too ({"name", "secret": true, "run_only": true}).
 // converted = a plain value was there (the add converted it).
-env_store_mark_secret :: proc(name: string, run_only := false) -> (converted: bool, ok: bool, err: string) {
+env_store_mark_secret :: proc(
+	name: string,
+	run_only := false,
+) -> (
+	converted: bool,
+	ok: bool,
+	err: string,
+) {
 	store, rerr, rok := entries_read()
-	if !rok { return false, false, rerr }
+	if !rok {
+		return false, false, rerr
+	}
 	defer entries_store_destroy(&store)
 	plain: string // the plaintext value being converted (owned; wiped below)
 	defer if len(plain) > 0 {
@@ -611,10 +819,17 @@ env_store_mark_secret :: proc(name: string, run_only := false) -> (converted: bo
 		e.secret = true
 		e.run_only = run_only
 	} else {
-		append(&store.env, StoreEnv{name = strings.clone(name), secret = true, run_only = run_only})
+		append(
+			&store.env,
+			StoreEnv{name = strings.clone(name), secret = true, run_only = run_only},
+		)
 	}
-	if !entries_save(&store) { return converted, false, fmt.tprintf("I/O error: could not update %s", ENTRIES_FILE) }
-	if len(plain) > 0 { scrub_entries_backups(plain) }
+	if !entries_save(&store) {
+		return converted, false, fmt.tprintf("I/O error: could not update %s", ENTRIES_FILE)
+	}
+	if len(plain) > 0 {
+		scrub_entries_backups(plain)
+	}
 	return converted, true, ""
 }
 
@@ -624,7 +839,9 @@ env_store_mark_secret :: proc(name: string, run_only := false) -> (converted: bo
 @(private = "file")
 scrub_entries_backups :: proc(plain: string) {
 	needle, merr := json.marshal(plain)
-	if merr != nil { return }
+	if merr != nil {
+		return
+	}
 	defer {
 		crypto.zero_explicit(raw_data(needle), len(needle))
 		delete(needle)
@@ -633,19 +850,25 @@ scrub_entries_backups :: proc(plain: string) {
 	defer free_backup_infos(backups)
 	for b in backups {
 		data, rerr := os.read_entire_file(b.backup_file, context.allocator)
-		if rerr != nil { continue }
+		if rerr != nil {
+			continue
+		}
 		hit := strings.contains(string(data), string(needle))
 		crypto.zero_explicit(raw_data(data), len(data))
 		delete(data)
-		if hit { os.remove(b.backup_file) }
+		if hit {
+			os.remove(b.backup_file)
+		}
 	}
 }
 
 // Forget that `name` is a secret constant (const remove): delete its entry.
 env_store_unmark_secret :: proc(name: string) -> (ok: bool, err: string) {
 	#partial switch entries_kv_delete(.ENV, {name}) {
-	case .BAD_STORE: return false, ENTRY_ERROR_CONFIG_PREFIX + "nothing was written"
-	case .IO_ERROR:  return false, fmt.tprintf("I/O error: could not update %s", ENTRIES_FILE)
+	case .BAD_STORE:
+		return false, ENTRY_ERROR_CONFIG_PREFIX + "nothing was written"
+	case .IO_ERROR:
+		return false, fmt.tprintf("I/O error: could not update %s", ENTRIES_FILE)
 	}
 	return true, ""
 }
@@ -672,9 +895,13 @@ read_secret_value :: proc(name: string) -> (value: string, ok: bool) {
 	buf: [512]byte
 	for {
 		n := posix.read(posix.STDIN_FILENO, raw_data(buf[:]), len(buf))
-		if n <= 0 { break }
+		if n <= 0 {
+			break
+		}
 		strings.write_bytes(&b, buf[:n])
-		if tty && strings.contains_rune(strings.to_string(b), '\n') { break }
+		if tty && strings.contains_rune(strings.to_string(b), '\n') {
+			break
+		}
 	}
 	crypto.zero_explicit(&buf, size_of(buf))
 	if tty {
@@ -683,7 +910,9 @@ read_secret_value :: proc(name: string) -> (value: string, ok: bool) {
 	}
 	s := strings.to_string(b)
 	if tty {
-		if i := strings.index_byte(s, '\n'); i >= 0 { s = s[:i] }
+		if i := strings.index_byte(s, '\n'); i >= 0 {
+			s = s[:i]
+		}
 	} else {
 		s = strings.trim_suffix(s, "\n")
 	}
@@ -716,10 +945,14 @@ const_add_secret :: proc(args: []string) {
 		value = v
 		owned = true
 	}
-	defer if owned { secrets_wipe(value) }
+	defer if owned {
+		secrets_wipe(value)
+	}
 
 	v := validate_constant(name, value if len(value) > 0 else "x")
-	if len(v.warning) > 0 { delete(v.warning) }
+	if len(v.warning) > 0 {
+		delete(v.warning)
+	}
 	if !v.valid {
 		print_error_simple("%s", v.error_message)
 		delete(v.error_message)
@@ -727,7 +960,12 @@ const_add_secret :: proc(args: []string) {
 	}
 
 	if wayu.dry_run {
-		print_info("[dry-run] Would store %s %s encrypted in %s (value not shown)", "run-only secret" if wayu.run_only_flag else "secret", name, secrets_store_path())
+		print_info(
+			"[dry-run] Would store %s %s encrypted in %s (value not shown)",
+			"run-only secret" if wayu.run_only_flag else "secret",
+			name,
+			secrets_store_path(),
+		)
 		return
 	}
 
@@ -737,15 +975,22 @@ const_add_secret :: proc(args: []string) {
 		defer config_lock_release()
 		run_only := wayu.run_only_flag
 		existed, ok, err := secrets_set(name, value, run_only)
-		if !ok { exit_with_secret_error(err) }
+		if !ok {
+			exit_with_secret_error(err)
+		}
 		converted, mok, merr := env_store_mark_secret(name, run_only)
-		if !mok { exit_with_entry_error(strings.clone(merr)) }
+		if !mok {
+			exit_with_entry_error(strings.clone(merr))
+		}
 		regenerate_init_core_silently()
-		mode :=" (run-only: wayu secrets run)" if run_only else ""
+		mode := " (run-only: wayu secrets run)" if run_only else ""
 		switch {
-		case converted: print_success("Constant converted to an encrypted secret%s: %s", mode, name)
-		case existed:   print_success("Secret updated%s: %s", mode, name)
-		case:           print_success("Secret added (encrypted)%s: %s", mode, name)
+		case converted:
+			print_success("Constant converted to an encrypted secret%s: %s", mode, name)
+		case existed:
+			print_success("Secret updated%s: %s", mode, name)
+		case:
+			print_success("Secret added (encrypted)%s: %s", mode, name)
 		}
 	}
 	hook_post_constant_add(name, "")
@@ -760,9 +1005,13 @@ exit_with_secret_error :: proc(err: string) -> ! {
 // `wayu const get NAME` for a secret: decrypt and print. Returns false
 // when NAME is not a secret (the caller looks in the plain store).
 const_get_secret :: proc(name: string) -> bool {
-	if !secrets_store_has_name_or_exit(name) { return false }
+	if !secrets_store_has_name_or_exit(name) {
+		return false
+	}
 	value, _, ok, err := secrets_get(name)
-	if !ok { exit_with_secret_error(err) }
+	if !ok {
+		exit_with_secret_error(err)
+	}
 	defer secrets_wipe(value)
 	fmt.println(value)
 	return true
@@ -772,9 +1021,15 @@ const_get_secret :: proc(name: string) -> bool {
 // Caller holds the config lock and handled --dry-run.
 const_remove_secret :: proc(name: string) -> bool {
 	removed, ok, err := secrets_remove(name)
-	if !ok { exit_with_secret_error(err) }
-	if !removed { return false }
-	if uok, uerr := env_store_unmark_secret(name); !uok { exit_with_entry_error(strings.clone(uerr)) }
+	if !ok {
+		exit_with_secret_error(err)
+	}
+	if !removed {
+		return false
+	}
+	if uok, uerr := env_store_unmark_secret(name); !uok {
+		exit_with_entry_error(strings.clone(uerr))
+	}
 	return true
 }
 
@@ -799,13 +1054,16 @@ handle_secrets_command :: proc(action: Action, args: []string) {
 			return
 		}
 		width := 0
-		for e in s.entries { width = max(width, len(e.name)) }
-		for e in s.entries { fmt.printfln("%-*s  %s", width, e.name, "run-only" if e.run_only else "session") }
+		for e in s.entries {width = max(width, len(e.name))}
+		for e in s.entries {fmt.printfln("%-*s  %s", width, e.name, "run-only" if e.run_only else "session")}
 	case .UPDATE:
 		secrets_rekey()
 	case .CLEAN:
 		if wayu.dry_run {
-			print_info("[dry-run] Would delete the secrets session cache in %s", secrets_cache_dir())
+			print_info(
+				"[dry-run] Would delete the secrets session cache in %s",
+				secrets_cache_dir(),
+			)
 			return
 		}
 		n := secrets_cache_invalidate()
@@ -838,7 +1096,9 @@ secrets_cache_command :: proc() {
 	}
 	path, ok, err := secrets_cache_write(wayu.shell)
 	if !ok {
-		if len(path) > 0 && os.exists(path) { os.remove(path) }
+		if len(path) > 0 && os.exists(path) {
+			os.remove(path)
+		}
 		fmt.eprintfln("wayu: secrets not loaded: %s", err)
 		wayu_exit(EXIT_CONFIG)
 	}
@@ -855,7 +1115,11 @@ secrets_rekey :: proc() {
 	backend := secrets_backend_active()
 
 	if wayu.dry_run {
-		print_info("[dry-run] Would create a new master key (%s) and re-encrypt %d secret(s)", SECRETS_BACKEND_NAMES[backend], len(s.entries))
+		print_info(
+			"[dry-run] Would create a new master key (%s) and re-encrypt %d secret(s)",
+			SECRETS_BACKEND_NAMES[backend],
+			len(s.entries),
+		)
 		return
 	}
 	if !exists || len(s.entries) == 0 {
@@ -864,7 +1128,9 @@ secrets_rekey :: proc() {
 	}
 
 	old_key, kok, kerr := secrets_key_for_read()
-	if !kok { exit_with_secret_error(kerr) }
+	if !kok {
+		exit_with_secret_error(kerr)
+	}
 	defer crypto.zero_explicit(&old_key, size_of(old_key))
 
 	new_key := secrets_new_key()
@@ -875,15 +1141,20 @@ secrets_rekey :: proc() {
 	for e, i in s.entries {
 		v, dok := secrets_open(old_key, e.name, e.blob, run_only = e.run_only)
 		if !dok {
-			for b in new_blobs[:i] { delete(b) }
-			exit_with_secret_error(fmt.tprintf("%s does not decrypt with the current master key: nothing was changed", e.name))
+			for b in new_blobs[:i] {delete(b)}
+			exit_with_secret_error(
+				fmt.tprintf(
+					"%s does not decrypt with the current master key: nothing was changed",
+					e.name,
+				),
+			)
 		}
 		new_blobs[i] = secrets_seal(new_key, e.name, v, run_only = e.run_only)
 		secrets_wipe(v)
 	}
 
 	if saved, serr := keystore_save(backend, new_key, true); !saved {
-		for b in new_blobs { delete(b) }
+		for b in new_blobs {delete(b)}
 		exit_with_secret_error(serr)
 	}
 	for &e, i in s.entries {
@@ -895,7 +1166,11 @@ secrets_rekey :: proc() {
 		_, _ = keystore_save(backend, old_key, true)
 		exit_with_secret_error(serr)
 	}
-	print_success("Re-encrypted %d secret(s) with a new master key (%s)", len(s.entries), SECRETS_BACKEND_NAMES[backend])
+	print_success(
+		"Re-encrypted %d secret(s) with a new master key (%s)",
+		len(s.entries),
+		SECRETS_BACKEND_NAMES[backend],
+	)
 }
 
 print_secrets_help :: proc() {
@@ -905,14 +1180,20 @@ print_secrets_help :: proc() {
 	fmt.println("<data>/secrets.json. The master key lives in the [secrets] backend.")
 	fmt.println()
 	fmt.printfln("%sUSAGE:%s", get_secondary(), RESET)
-	fmt.println("  wayu const add NAME [VALUE] --secret   Store an encrypted constant (VALUE from stdin if omitted)")
+	fmt.println(
+		"  wayu const add NAME [VALUE] --secret   Store an encrypted constant (VALUE from stdin if omitted)",
+	)
 	fmt.println("  wayu const get NAME                    Decrypt and print it")
 	fmt.println("  wayu const rm NAME                     Remove it")
 	fmt.println("  wayu secrets list                      List secret names")
 	fmt.println("  wayu secrets rekey                     New master key, re-encrypt every secret")
 	fmt.println("  wayu secrets lock                      Delete the decrypted session cache")
-	fmt.println("  wayu secrets run NAME... -- CMD [ARGS] Run CMD with these secrets set (no shell)")
-	fmt.println("  wayu const add NAME [VALUE] --run-only Secret only `secrets run` injects (never exported)")
+	fmt.println(
+		"  wayu secrets run NAME... -- CMD [ARGS] Run CMD with these secrets set (no shell)",
+	)
+	fmt.println(
+		"  wayu const add NAME [VALUE] --run-only Secret only `secrets run` injects (never exported)",
+	)
 }
 
 // ---------------------------------------------------------------------------
@@ -925,12 +1206,23 @@ print_secrets_help :: proc() {
 check_secrets :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
 	add :: proc(results: ^[dynamic]CheckResult, name: string, status: CheckStatus, msg: string) {
-		append(results, CheckResult{name = clone_arena(name), status = status, message = clone_arena(msg)})
+		append(
+			results,
+			CheckResult{name = clone_arena(name), status = status, message = clone_arena(msg)},
+		)
 	}
 
 	backend_cfg, cfg_ok, raw := secrets_backend_configured()
 	if !cfg_ok {
-		add(results, "secrets", .ERROR, fmt.tprintf("[secrets] backend = %q is not one of auto, keychain, secret-service, file", raw))
+		add(
+			results,
+			"secrets",
+			.ERROR,
+			fmt.tprintf(
+				"[secrets] backend = %q is not one of auto, keychain, secret-service, file",
+				raw,
+			),
+		)
 		return
 	}
 	s, exists, err := secrets_store_load()
@@ -946,17 +1238,45 @@ check_secrets :: proc(results: ^[dynamic]CheckResult) {
 
 	path := secrets_store_path()
 	if fi, serr := os.stat(path, context.temp_allocator); serr == nil {
-		if fi.mode & {.Read_Group, .Write_Group, .Execute_Group, .Read_Other, .Write_Other, .Execute_Other} != {} {
-			add(results, "secrets store", .ERROR, fmt.tprintf("%s is accessible by group/other: chmod 600 it", path))
+		if fi.mode &
+			   {
+					   .Read_Group,
+					   .Write_Group,
+					   .Execute_Group,
+					   .Read_Other,
+					   .Write_Other,
+					   .Execute_Other,
+				   } !=
+		   {} {
+			add(
+				results,
+				"secrets store",
+				.ERROR,
+				fmt.tprintf("%s is accessible by group/other: chmod 600 it", path),
+			)
 		} else {
-			add(results, "secrets store", .OK, fmt.tprintf("%d secret(s) (%d run-only), mode 0600", len(s.entries), len(s.entries) - secrets_session_count(&s)))
+			add(
+				results,
+				"secrets store",
+				.OK,
+				fmt.tprintf(
+					"%d secret(s) (%d run-only), mode 0600",
+					len(s.entries),
+					len(s.entries) - secrets_session_count(&s),
+				),
+			)
 		}
 	}
 
 	backend := secrets_backend_resolve(backend_cfg)
 	bname := SECRETS_BACKEND_NAMES[backend]
 	if prog := keystore_backend_program(backend); len(prog) > 0 && !check_command_exists(prog) {
-		add(results, "secrets backend", .ERROR, fmt.tprintf("%s: `%s` not found on PATH", bname, prog))
+		add(
+			results,
+			"secrets backend",
+			.ERROR,
+			fmt.tprintf("%s: `%s` not found on PATH", bname, prog),
+		)
 		return
 	}
 	key, status, msg := keystore_load(backend)
@@ -968,13 +1288,30 @@ check_secrets :: proc(results: ^[dynamic]CheckResult) {
 	bad := make([dynamic]string, context.temp_allocator)
 	for e in s.entries {
 		v, ok := secrets_open(key, e.name, e.blob, run_only = e.run_only)
-		if !ok { append(&bad, e.name); continue }
+		if !ok {
+			append(&bad, e.name); continue
+		}
 		secrets_wipe(v)
 	}
 	if len(bad) > 0 {
-		add(results, "secrets backend", .ERROR, fmt.tprintf("%s: key present, but %d secret(s) do not decrypt: %s", bname, len(bad), strings.join(bad[:], ", ", context.temp_allocator)))
+		add(
+			results,
+			"secrets backend",
+			.ERROR,
+			fmt.tprintf(
+				"%s: key present, but %d secret(s) do not decrypt: %s",
+				bname,
+				len(bad),
+				strings.join(bad[:], ", ", context.temp_allocator),
+			),
+		)
 	} else {
-		add(results, "secrets backend", .OK, fmt.tprintf("%s: key present, every secret decrypts", bname))
+		add(
+			results,
+			"secrets backend",
+			.OK,
+			fmt.tprintf("%s: key present, every secret decrypts", bname),
+		)
 	}
 
 	dir := secrets_cache_dir()
@@ -999,7 +1336,9 @@ check_secrets :: proc(results: ^[dynamic]CheckResult) {
 secrets_run_command :: proc(args: []string) {
 	sep := -1
 	for a, i in args {
-		if a == "--" { sep = i; break }
+		if a == "--" {
+			sep = i; break
+		}
 	}
 	if sep < 0 || sep + 1 >= len(args) || sep == 0 {
 		print_error_simple("Usage: wayu secrets run NAME... -- CMD [ARGS...]")
@@ -1018,18 +1357,29 @@ secrets_run_command :: proc(args: []string) {
 	}
 
 	if wayu.dry_run {
-		print_info("[dry-run] Would run %s with %s set", strings.join(cmd, " ", context.temp_allocator), strings.join(names, ", ", context.temp_allocator))
+		print_info(
+			"[dry-run] Would run %s with %s set",
+			strings.join(cmd, " ", context.temp_allocator),
+			strings.join(names, ", ", context.temp_allocator),
+		)
 		return
 	}
 
 	key, kok, kerr := secrets_key_for_read()
-	if !kok { exit_with_secret_error(kerr) }
+	if !kok {
+		exit_with_secret_error(kerr)
+	}
 	for n in names {
 		e := s.entries[secrets_store_find(&s, n)]
 		v, dok := secrets_open(key, e.name, e.blob, run_only = e.run_only)
 		if !dok {
 			crypto.zero_explicit(&key, size_of(key))
-			exit_with_secret_error(fmt.tprintf("%s does not decrypt with the current master key (wrong key or tampered store)", n))
+			exit_with_secret_error(
+				fmt.tprintf(
+					"%s does not decrypt with the current master key (wrong key or tampered store)",
+					n,
+				),
+			)
 		}
 		cname := strings.clone_to_cstring(n, context.temp_allocator)
 		cval := strings.clone_to_cstring(v, context.temp_allocator)
@@ -1040,7 +1390,7 @@ secrets_run_command :: proc(args: []string) {
 	crypto.zero_explicit(&key, size_of(key))
 
 	argv := make([]cstring, len(cmd) + 1, context.temp_allocator)
-	for a, i in cmd { argv[i] = strings.clone_to_cstring(a, context.temp_allocator) }
+	for a, i in cmd {argv[i] = strings.clone_to_cstring(a, context.temp_allocator)}
 	argv[len(cmd)] = nil
 	posix.execvp(argv[0], raw_data(argv))
 

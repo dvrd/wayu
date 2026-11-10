@@ -1,8 +1,8 @@
 package test_wayu
 
-import "core:testing"
-import "core:strings"
 import wayu "../../src"
+import "core:strings"
+import "core:testing"
 
 @(test)
 test_shell_extension_bash :: proc(t: ^testing.T) {
@@ -106,12 +106,28 @@ test_validate_shell_compatibility :: proc(t: ^testing.T) {
 @(test)
 test_get_init_template :: proc(t: ^testing.T) {
 	bash_template := wayu.get_init_template(.BASH)
-	testing.expect(t, strings.contains(bash_template, "#!/usr/bin/env bash"), "Bash template should have bash shebang")
-	testing.expect(t, strings.contains(bash_template, ".bash"), "Bash init should reference .bash files")
+	testing.expect(
+		t,
+		strings.contains(bash_template, "#!/usr/bin/env bash"),
+		"Bash template should have bash shebang",
+	)
+	testing.expect(
+		t,
+		strings.contains(bash_template, ".bash"),
+		"Bash init should reference .bash files",
+	)
 
 	zsh_template := wayu.get_init_template(.ZSH)
-	testing.expect(t, strings.contains(zsh_template, "#!/usr/bin/env zsh"), "ZSH template should have zsh shebang")
-	testing.expect(t, strings.contains(zsh_template, ".zsh"), "ZSH init should reference .zsh files")
+	testing.expect(
+		t,
+		strings.contains(zsh_template, "#!/usr/bin/env zsh"),
+		"ZSH template should have zsh shebang",
+	)
+	testing.expect(
+		t,
+		strings.contains(zsh_template, ".zsh"),
+		"ZSH init should reference .zsh files",
+	)
 }
 
 @(test)
@@ -120,15 +136,29 @@ test_get_tools_template :: proc(t: ^testing.T) {
 	// declarative [tools] table in wayu.toml doesn't model. Verify the
 	// shebang is correct and the template points users at [tools].
 	bash_template := wayu.get_tools_template(.BASH)
-	testing.expect(t, strings.contains(bash_template, "#!/usr/bin/env bash"), "Bash template should have bash shebang")
-	testing.expect(t, strings.contains(bash_template, "[tools]") ||
-	               strings.contains(bash_template, "starship init bash"),
-	               "Bash template should reference [tools] (or keep a starship example for legacy users)")
+	testing.expect(
+		t,
+		strings.contains(bash_template, "#!/usr/bin/env bash"),
+		"Bash template should have bash shebang",
+	)
+	testing.expect(
+		t,
+		strings.contains(bash_template, "[tools]") ||
+		strings.contains(bash_template, "starship init bash"),
+		"Bash template should reference [tools] (or keep a starship example for legacy users)",
+	)
 
 	zsh_template := wayu.get_tools_template(.ZSH)
-	testing.expect(t, strings.contains(zsh_template, "#!/usr/bin/env zsh"), "ZSH template should have zsh shebang")
-	testing.expect(t, strings.contains(zsh_template, "[tools]"),
-	               "ZSH template should point users at the declarative [tools] table")
+	testing.expect(
+		t,
+		strings.contains(zsh_template, "#!/usr/bin/env zsh"),
+		"ZSH template should have zsh shebang",
+	)
+	testing.expect(
+		t,
+		strings.contains(zsh_template, "[tools]"),
+		"ZSH template should point users at the declarative [tools] table",
+	)
 }
 
 // Regression test for D2: verify get_*_template routes all four ShellType
@@ -138,17 +168,26 @@ test_get_tools_template :: proc(t: ^testing.T) {
 test_template_routing_all_shells :: proc(t: ^testing.T) {
 	// Fish routing was not covered by the existing per-getter tests.
 	fish_init := wayu.get_init_template(.FISH)
-	testing.expect(t, strings.contains(fish_init, "fish") || strings.contains(fish_init, ".fish"),
-	                  "Fish init template should mention fish")
+	testing.expect(
+		t,
+		strings.contains(fish_init, "fish") || strings.contains(fish_init, ".fish"),
+		"Fish init template should mention fish",
+	)
 
 	// UNKNOWN must fall back to Bash template (matches pre-refactor behavior).
-	testing.expect(t, wayu.get_init_template(.UNKNOWN) == wayu.get_init_template(.BASH),
-	                  "UNKNOWN must fall back to the Bash template")
+	testing.expect(
+		t,
+		wayu.get_init_template(.UNKNOWN) == wayu.get_init_template(.BASH),
+		"UNKNOWN must fall back to the Bash template",
+	)
 
 	unknown_extra := wayu.get_extra_template(.UNKNOWN)
 	bash_extra := wayu.get_extra_template(.BASH)
-	testing.expect(t, unknown_extra == bash_extra,
-	                  "UNKNOWN extra must fall back to the Bash extra template")
+	testing.expect(
+		t,
+		unknown_extra == bash_extra,
+		"UNKNOWN extra must fall back to the Bash extra template",
+	)
 }
 
 // Note: detect_shell() and get_rc_file_path() are environment-dependent

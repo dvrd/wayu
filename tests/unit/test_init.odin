@@ -1,20 +1,20 @@
 package test_wayu
 
-import "core:testing"
-import "core:strings"
-import "core:os"
 import wayu "../../src"
+import "core:os"
+import "core:strings"
+import "core:testing"
 
 // OKAMI-213: [paths] values become shell words expanded at source time;
 // each referenced var guards the entry so an unset var drops it.
 @(test)
 test_path_value_shell_word :: proc(t: ^testing.T) {
-	cases := [][2]string{
+	cases := [][2]string {
 		{"/opt/bin", "'/opt/bin'"},
 		{"$HOME/bin", `${HOME:+"${HOME}"'/bin'}`},
 		{"${GOPATH}/bin", `${GOPATH:+"${GOPATH}"'/bin'}`},
 		{"$A/x/$B", `${A:+${B:+"${A}"'/x/'"${B}"}}`},
-		{"/a$/b", "'/a$/b'"},           // bare '$' stays literal
+		{"/a$/b", "'/a$/b'"}, // bare '$' stays literal
 		{"/x/${A:-y}", "'/x/${A:-y}'"}, // non-simple ${...} stays literal
 		{"/it's", `'/it'\''s'`},
 	}
@@ -46,7 +46,7 @@ test_parse_args_init :: proc(t: ^testing.T) {
 @(test)
 test_zshrc_detection_patterns :: proc(t: ^testing.T) {
 	// Test different ways wayu might be sourced in .zshrc
-	test_contents := []string{
+	test_contents := []string {
 		`source "/Users/test/.config/wayu/init.zsh"`,
 		`source /Users/test/.config/wayu/init.zsh`,
 		`source "$HOME/.config/wayu/init.zsh"`,
@@ -54,8 +54,9 @@ test_zshrc_detection_patterns :: proc(t: ^testing.T) {
 	}
 
 	for content in test_contents {
-		has_wayu := strings.contains(content, "wayu/init.zsh") ||
-		            strings.contains(content, "wayu") && strings.contains(content, "source")
+		has_wayu :=
+			strings.contains(content, "wayu/init.zsh") ||
+			strings.contains(content, "wayu") && strings.contains(content, "source")
 		testing.expect(t, has_wayu, "Should detect wayu in .zshrc")
 	}
 }
@@ -76,20 +77,39 @@ alias ll="ls -la"
 @(test)
 test_template_structure :: proc(t: ^testing.T) {
 	// Test that templates have proper structure
-	testing.expect(t, strings.has_prefix(wayu.INIT_TEMPLATE_ZSH, "#!/usr/bin/env zsh"),
-		"INIT_TEMPLATE_ZSH should have zsh shebang")
-	testing.expect(t, strings.has_prefix(wayu.TOOLS_TEMPLATE_ZSH, "#!/usr/bin/env zsh"),
-		"TOOLS_TEMPLATE_ZSH should have zsh shebang")
+	testing.expect(
+		t,
+		strings.has_prefix(wayu.INIT_TEMPLATE_ZSH, "#!/usr/bin/env zsh"),
+		"INIT_TEMPLATE_ZSH should have zsh shebang",
+	)
+	testing.expect(
+		t,
+		strings.has_prefix(wayu.TOOLS_TEMPLATE_ZSH, "#!/usr/bin/env zsh"),
+		"TOOLS_TEMPLATE_ZSH should have zsh shebang",
+	)
 }
 
 @(test)
 test_init_template_loads_core_only :: proc(t: ^testing.T) {
 	// init.<ext> sources the compiled core (which sources tools/extra) and
 	// nothing else; there are no per-type shell files any more.
-	for tmpl in ([]string{wayu.INIT_TEMPLATE_ZSH, wayu.INIT_TEMPLATE_BASH, wayu.INIT_TEMPLATE_FISH}) {
-		testing.expect(t, strings.contains(tmpl, "$WAYU_DATA_DIR/core."), "init template must source core.<ext>")
+	for tmpl in ([]string {
+			wayu.INIT_TEMPLATE_ZSH,
+			wayu.INIT_TEMPLATE_BASH,
+			wayu.INIT_TEMPLATE_FISH,
+		}) {
+		testing.expect(
+			t,
+			strings.contains(tmpl, "$WAYU_DATA_DIR/core."),
+			"init template must source core.<ext>",
+		)
 		for stale in ([]string{"constants.", "aliases.", "/path."}) {
-			testing.expectf(t, !strings.contains(tmpl, stale), "init template must not reference %s files", stale)
+			testing.expectf(
+				t,
+				!strings.contains(tmpl, stale),
+				"init template must not reference %s files",
+				stale,
+			)
 		}
 	}
 }
@@ -100,13 +120,22 @@ test_tools_template_has_examples :: proc(t: ^testing.T) {
 	// is the [tools] table in wayu.toml, with built-in recipes for
 	// nvm/conda/evalcache/lazy. Verify the template documents that contract
 	// and gives users at least one concrete example to copy.
-	testing.expect(t, strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "[tools]"),
-		"TOOLS_TEMPLATE_ZSH should reference the declarative [tools] table")
-	testing.expect(t, strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "wayu.toml"),
-		"TOOLS_TEMPLATE_ZSH should point users at wayu.toml")
-	testing.expect(t, strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "nvm") ||
-	               strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "NVM"),
-		"TOOLS_TEMPLATE_ZSH should still show an example referencing nvm")
+	testing.expect(
+		t,
+		strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "[tools]"),
+		"TOOLS_TEMPLATE_ZSH should reference the declarative [tools] table",
+	)
+	testing.expect(
+		t,
+		strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "wayu.toml"),
+		"TOOLS_TEMPLATE_ZSH should point users at wayu.toml",
+	)
+	testing.expect(
+		t,
+		strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "nvm") ||
+		strings.contains(wayu.TOOLS_TEMPLATE_ZSH, "NVM"),
+		"TOOLS_TEMPLATE_ZSH should still show an example referencing nvm",
+	)
 }
 
 // OKAMI-235: init.<ext> is only rewritten when it matches a template wayu
@@ -115,17 +144,24 @@ test_tools_template_has_examples :: proc(t: ^testing.T) {
 @(test)
 test_current_init_templates_are_known :: proc(t: ^testing.T) {
 	for s in ([]wayu.ShellType{.ZSH, .BASH, .FISH}) {
-		testing.expectf(t, wayu.is_known_init_template(wayu.get_init_template(s)),
-			"init template for %v: add its fnv64a hash to KNOWN_INIT_TEMPLATE_HASHES", s)
+		testing.expectf(
+			t,
+			wayu.is_known_init_template(wayu.get_init_template(s)),
+			"init template for %v: add its fnv64a hash to KNOWN_INIT_TEMPLATE_HASHES",
+			s,
+		)
 	}
-	testing.expect(t, !wayu.is_known_init_template("# Wayu Shell Initialization\nexport MY_CUSTOM=1\n"))
+	testing.expect(
+		t,
+		!wayu.is_known_init_template("# Wayu Shell Initialization\nexport MY_CUSTOM=1\n"),
+	)
 }
 
 // OKAMI-275: [tools] args become quoted argv words; anything that would run
 // code or expand at startup is refused with a reason.
 @(test)
 test_tool_args_to_shell :: proc(t: ^testing.T) {
-	good := [][2]string{
+	good := [][2]string {
 		{"init zsh", "init zsh"},
 		{"init zsh --cmd cd", "init zsh --cmd cd"},
 		{"init  zsh\t--x=1", "init zsh --x=1"},
@@ -133,7 +169,10 @@ test_tool_args_to_shell :: proc(t: ^testing.T) {
 		{`init "it's"`, `init 'it'\''s'`},
 		{`--opt {a,b}`, `--opt '{a,b}'`},
 		{`--config $HOME/x`, `--config "${HOME}/x"`},
-		{`--config ${XDG_CONFIG_HOME:-$HOME/.config}/t`, `--config "${XDG_CONFIG_HOME:-${HOME}/.config}/t"`},
+		{
+			`--config ${XDG_CONFIG_HOME:-$HOME/.config}/t`,
+			`--config "${XDG_CONFIG_HOME:-${HOME}/.config}/t"`,
+		},
 		{`--config ~/t`, `--config "${HOME}/t"`},
 		{`'$literal'`, `'$literal'`},
 		{"", ""},
@@ -141,9 +180,18 @@ test_tool_args_to_shell :: proc(t: ^testing.T) {
 	for c in good {
 		out, reason, ok := wayu.tool_args_to_shell(c[0])
 		defer delete(out)
-		testing.expectf(t, ok && out == c[1], "%q -> %q (ok=%v %s), want %q", c[0], out, ok, reason, c[1])
+		testing.expectf(
+			t,
+			ok && out == c[1],
+			"%q -> %q (ok=%v %s), want %q",
+			c[0],
+			out,
+			ok,
+			reason,
+			c[1],
+		)
 	}
-	bad := []string{
+	bad := []string {
 		"init zsh\ntouch /tmp/pwn",
 		"init zsh; touch /tmp/pwn",
 		"init zsh && x",
@@ -166,7 +214,7 @@ test_tool_args_to_shell :: proc(t: ^testing.T) {
 // OKAMI-268: fish args are fish-quoted and retargeted to fish.
 @(test)
 test_tool_args_to_fish :: proc(t: ^testing.T) {
-	good := [][2]string{
+	good := [][2]string {
 		{"init zsh", "'init' 'fish'"},
 		{"--bash", "'--fish'"},
 		{`init bash --cmd 'a b'`, `'init' 'fish' '--cmd' 'a b'`},
@@ -177,7 +225,16 @@ test_tool_args_to_fish :: proc(t: ^testing.T) {
 	}
 	for c in good {
 		out, reason, ok := wayu.tool_args_to_fish(c[0])
-		testing.expectf(t, ok && out == c[1], "%q -> %q (ok=%v %s), want %q", c[0], out, ok, reason, c[1])
+		testing.expectf(
+			t,
+			ok && out == c[1],
+			"%q -> %q (ok=%v %s), want %q",
+			c[0],
+			out,
+			ok,
+			reason,
+			c[1],
+		)
 	}
 	_, reason, ok := wayu.tool_args_to_fish("init $(id)")
 	testing.expectf(t, !ok && len(reason) > 0, "command substitution must be refused")

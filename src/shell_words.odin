@@ -18,7 +18,10 @@ package wayu
 
 import "core:strings"
 
-ShellDialect :: enum { POSIX, FISH }
+ShellDialect :: enum {
+	POSIX,
+	FISH,
+}
 
 // One decoded word. `active[i]` is true when text[i] was not quoted, so the
 // shell may still expand it (unquoted bytes, and `$`/backtick inside double
@@ -28,11 +31,14 @@ ShellWord :: struct {
 	active: []bool,
 }
 
-ShellTokenKind :: enum { Word, Op }
+ShellTokenKind :: enum {
+	Word,
+	Op,
+}
 
 ShellToken :: struct {
 	kind: ShellTokenKind,
-	op:   string,    // Op only: operator text (slice of the source)
+	op:   string, // Op only: operator text (slice of the source)
 	word: ShellWord, // Word only
 }
 
@@ -63,7 +69,8 @@ shell_statements_destroy :: proc(stmts: ^[dynamic]ShellStatement) {
 @(private = "file")
 shell_is_op_byte :: proc(c: u8) -> bool {
 	switch c {
-	case ';', '&', '|', '<', '>', '(', ')': return true
+	case ';', '&', '|', '<', '>', '(', ')':
+		return true
 	}
 	return false
 }
@@ -100,7 +107,10 @@ shell_parse_statements :: proc(content: string, dialect: ShellDialect) -> [dynam
 	s := content
 	i := 0
 	line := 1
-	cur := ShellStatement{first_line = 1, last_line = 1}
+	cur := ShellStatement {
+		first_line = 1,
+		last_line  = 1,
+	}
 
 	flush :: proc(out: ^[dynamic]ShellStatement, cur: ^ShellStatement, line: int) {
 		if len(cur.tokens) > 0 || len(cur.error) > 0 {
@@ -114,10 +124,18 @@ shell_parse_statements :: proc(content: string, dialect: ShellDialect) -> [dynam
 
 	// On error the remainder of the input belongs to the failing statement:
 	// the quoting state is unknown, so nothing after it can be trusted.
-	fail :: proc(out: ^[dynamic]ShellStatement, cur: ^ShellStatement, s: string, line: int, msg: string) {
+	fail :: proc(
+		out: ^[dynamic]ShellStatement,
+		cur: ^ShellStatement,
+		s: string,
+		line: int,
+		msg: string,
+	) {
 		cur.error = msg
 		last := line + strings.count(s, "\n")
-		if strings.has_suffix(s, "\n") { last -= 1 }
+		if strings.has_suffix(s, "\n") {
+			last -= 1
+		}
 		cur.last_line = max(last, cur.first_line)
 		append(out, cur^)
 		cur^ = {}
@@ -135,8 +153,8 @@ shell_parse_statements :: proc(content: string, dialect: ShellDialect) -> [dynam
 			i += 1
 		case c == '#':
 			// Comment (only reached at a word boundary).
-			for i < len(s) && s[i] != '\n' { i += 1 }
-		case c == '\\' && i + 1 < len(s) && s[i+1] == '\n':
+			for i < len(s) && s[i] != '\n' {i += 1}
+		case c == '\\' && i + 1 < len(s) && s[i + 1] == '\n':
 			line += 1
 			i += 2
 		case shell_is_op_byte(c):
@@ -144,7 +162,12 @@ shell_parse_statements :: proc(content: string, dialect: ShellDialect) -> [dynam
 			if c == '(' || c == ')' {
 				i += 1
 			} else {
-				for i < len(s) && (s[i] == ';' || s[i] == '&' || s[i] == '|' || s[i] == '<' || s[i] == '>') { i += 1 }
+				for i < len(s) &&
+				    (s[i] == ';' ||
+						    s[i] == '&' ||
+						    s[i] == '|' ||
+						    s[i] == '<' ||
+						    s[i] == '>') {i += 1}
 			}
 			op := s[start:i]
 			append(&cur.tokens, ShellToken{kind = .Op, op = op})
@@ -175,12 +198,16 @@ shell_copy_balanced :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf, open, c
 		c := s[i^]
 		wb_put(w, c, true)
 		i^ += 1
-		if c == '\n' { line^ += 1 }
+		if c == '\n' {
+			line^ += 1
+		}
 		if c == open {
 			depth += 1
 		} else if c == close {
 			depth -= 1
-			if depth == 0 { return true }
+			if depth == 0 {
+				return true
+			}
 		}
 	}
 	return false
@@ -188,7 +215,15 @@ shell_copy_balanced :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf, open, c
 
 // Read one word starting at s[i^]. Advances i past it.
 @(private = "file")
-shell_read_word :: proc(s: string, i: ^int, line: ^int, dialect: ShellDialect) -> (word: ShellWord, err: string) {
+shell_read_word :: proc(
+	s: string,
+	i: ^int,
+	line: ^int,
+	dialect: ShellDialect,
+) -> (
+	word: ShellWord,
+	err: string,
+) {
 	w: WordBuf
 	strings.builder_init(&w.text)
 	w.active = make([dynamic]bool)
@@ -196,7 +231,9 @@ shell_read_word :: proc(s: string, i: ^int, line: ^int, dialect: ShellDialect) -
 	ok := true
 	loop: for i^ < len(s) {
 		c := s[i^]
-		if c == '\n' || shell_is_blank(c) || shell_is_op_byte(c) { break loop }
+		if c == '\n' || shell_is_blank(c) || shell_is_op_byte(c) {
+			break loop
+		}
 
 		switch c {
 		case '\'':
@@ -204,17 +241,26 @@ shell_read_word :: proc(s: string, i: ^int, line: ^int, dialect: ShellDialect) -
 			closed := false
 			for i^ < len(s) {
 				d := s[i^]
-				if d == '\'' { closed = true; i^ += 1; break }
-				if dialect == .FISH && d == '\\' && i^ + 1 < len(s) && (s[i^+1] == '\'' || s[i^+1] == '\\') {
-					wb_put(&w, s[i^+1], false)
+				if d == '\'' {
+					closed = true; i^ += 1; break
+				}
+				if dialect == .FISH &&
+				   d == '\\' &&
+				   i^ + 1 < len(s) &&
+				   (s[i^ + 1] == '\'' || s[i^ + 1] == '\\') {
+					wb_put(&w, s[i^ + 1], false)
 					i^ += 2
 					continue
 				}
-				if d == '\n' { line^ += 1 }
+				if d == '\n' {
+					line^ += 1
+				}
 				wb_put(&w, d, false)
 				i^ += 1
 			}
-			if !closed { err = "unterminated single quote"; ok = false; break loop }
+			if !closed {
+				err = "unterminated single quote"; ok = false; break loop
+			}
 
 		case '"':
 			i^ += 1
@@ -223,14 +269,17 @@ shell_read_word :: proc(s: string, i: ^int, line: ^int, dialect: ShellDialect) -
 			}
 
 		case '\\':
-			if i^ + 1 >= len(s) { err = "trailing backslash"; ok = false; break loop }
-			n := s[i^+1]
+			if i^ + 1 >= len(s) {
+				err = "trailing backslash"; ok = false; break loop
+			}
+			n := s[i^ + 1]
 			if n == '\n' {
 				line^ += 1
 				i^ += 2
 				continue
 			}
-			if dialect == .FISH && ((n >= 'a' && n <= 'z') || (n >= 'A' && n <= 'Z') || (n >= '0' && n <= '9')) {
+			if dialect == .FISH &&
+			   ((n >= 'a' && n <= 'z') || (n >= 'A' && n <= 'Z') || (n >= '0' && n <= '9')) {
 				// fish turns \n, \t, \xHH, ... into control characters.
 				err = "fish escape sequence"; ok = false; break loop
 			}
@@ -239,10 +288,12 @@ shell_read_word :: proc(s: string, i: ^int, line: ^int, dialect: ShellDialect) -
 
 		case '$':
 			if i^ + 1 < len(s) {
-				n := s[i^+1]
+				n := s[i^ + 1]
 				if dialect == .POSIX && n == '\'' {
 					i^ += 2
-					if e := shell_read_ansi_c(s, i, line, &w); len(e) > 0 { err = e; ok = false; break loop }
+					if e := shell_read_ansi_c(s, i, line, &w); len(e) > 0 {
+						err = e; ok = false; break loop
+					}
 					continue
 				}
 				if dialect == .POSIX && n == '"' {
@@ -278,11 +329,19 @@ shell_read_word :: proc(s: string, i: ^int, line: ^int, dialect: ShellDialect) -
 				d := s[i^]
 				wb_put(&w, d, true)
 				i^ += 1
-				if d == '\n' { line^ += 1 }
-				if d == '\\' && i^ < len(s) { wb_put(&w, s[i^], true); i^ += 1; continue }
-				if d == '`' { closed = true; break }
+				if d == '\n' {
+					line^ += 1
+				}
+				if d == '\\' && i^ < len(s) {
+					wb_put(&w, s[i^], true); i^ += 1; continue
+				}
+				if d == '`' {
+					closed = true; break
+				}
 			}
-			if !closed { err = "unterminated backtick"; ok = false; break loop }
+			if !closed {
+				err = "unterminated backtick"; ok = false; break loop
+			}
 
 		case:
 			wb_put(&w, c, true)
@@ -312,8 +371,10 @@ shell_read_dq :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf, dialect: Shel
 			return true
 		case '\\':
 			if i^ + 1 < len(s) {
-				n := s[i^+1]
-				if n == '\n' { line^ += 1; i^ += 2; continue }
+				n := s[i^ + 1]
+				if n == '\n' {
+					line^ += 1; i^ += 2; continue
+				}
 				escapable := n == '"' || n == '\\' || n == '$' || (dialect == .POSIX && n == '`')
 				if escapable {
 					wb_put(w, n, false)
@@ -324,11 +385,13 @@ shell_read_dq :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf, dialect: Shel
 			wb_put(w, d, false)
 			i^ += 1
 		case '$':
-			if i^ + 1 < len(s) && (s[i^+1] == '(' || (dialect == .POSIX && s[i^+1] == '{')) {
-				n := s[i^+1]
+			if i^ + 1 < len(s) && (s[i^ + 1] == '(' || (dialect == .POSIX && s[i^ + 1] == '{')) {
+				n := s[i^ + 1]
 				wb_put(w, '$', true)
 				i^ += 1
-				if !shell_copy_balanced(s, i, line, w, n, n == '(' ? ')' : '}') { return false }
+				if !shell_copy_balanced(s, i, line, w, n, n == '(' ? ')' : '}') {
+					return false
+				}
 				continue
 			}
 			wb_put(w, d, true)
@@ -337,7 +400,9 @@ shell_read_dq :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf, dialect: Shel
 			wb_put(w, d, dialect == .POSIX)
 			i^ += 1
 		case:
-			if d == '\n' { line^ += 1 }
+			if d == '\n' {
+				line^ += 1
+			}
 			wb_put(w, d, false)
 			i^ += 1
 		}
@@ -352,30 +417,49 @@ shell_read_dq :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf, dialect: Shel
 shell_read_ansi_c :: proc(s: string, i: ^int, line: ^int, w: ^WordBuf) -> string {
 	for i^ < len(s) {
 		d := s[i^]
-		if d == '\'' { i^ += 1; return "" }
+		if d == '\'' {
+			i^ += 1; return ""
+		}
 		if d == '\\' {
-			if i^ + 1 >= len(s) { break }
+			if i^ + 1 >= len(s) {
+				break
+			}
 			out: u8
-			switch s[i^+1] {
-			case '\\': out = '\\'
-			case '\'': out = '\''
-			case '"':  out = '"'
-			case '?':  out = '?'
-			case 'n':  out = '\n'
-			case 't':  out = '\t'
-			case 'r':  out = '\r'
-			case 'a':  out = 0x07
-			case 'b':  out = 0x08
-			case 'e', 'E': out = 0x1b
-			case 'f':  out = 0x0c
-			case 'v':  out = 0x0b
-			case:      return "unsupported $'...' escape"
+			switch s[i^ + 1] {
+			case '\\':
+				out = '\\'
+			case '\'':
+				out = '\''
+			case '"':
+				out = '"'
+			case '?':
+				out = '?'
+			case 'n':
+				out = '\n'
+			case 't':
+				out = '\t'
+			case 'r':
+				out = '\r'
+			case 'a':
+				out = 0x07
+			case 'b':
+				out = 0x08
+			case 'e', 'E':
+				out = 0x1b
+			case 'f':
+				out = 0x0c
+			case 'v':
+				out = 0x0b
+			case:
+				return "unsupported $'...' escape"
 			}
 			wb_put(w, out, false)
 			i^ += 2
 			continue
 		}
-		if d == '\n' { line^ += 1 }
+		if d == '\n' {
+			line^ += 1
+		}
 		wb_put(w, d, false)
 		i^ += 1
 	}

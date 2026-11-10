@@ -20,15 +20,15 @@
 
 package main
 
+import bld "../bld"
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import bld "../bld"
 
-SRC_DIR     :: "src"
-BIN_DIR     :: "bin"
+SRC_DIR :: "src"
+BIN_DIR :: "bin"
 BINARY_NAME :: "wayu"
-TEST_DIR    :: "tests/unit"
+TEST_DIR :: "tests/unit"
 
 // Computed paths — avoids repeating fmt.tprintf("%s/%s", ...) everywhere.
 bin_path :: proc() -> string {
@@ -88,17 +88,25 @@ ODIN_PIN_FILE :: ".github/odin-release"
 // dev-2026-11:<hash>, so the comparison is on the dev-YYYY-MM series.
 warn_if_odin_unpinned :: proc() {
 	data, err := os.read_entire_file_from_path(ODIN_PIN_FILE, context.temp_allocator)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	pin := strings.trim_space(string(data))
 	series := strings.trim_right(pin, "abcdefghijklmnopqrstuvwxyz")
-	if series == "" { return }
+	if series == "" {
+		return
+	}
 
 	cmd := bld.cmd_create(context.temp_allocator)
 	bld.cmd_append(&cmd, "odin", "version")
 	out, ok := bld.cmd_run_capture(&cmd, context.temp_allocator)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	have := strings.trim_space(string(out))
-	if strings.contains(have, series) { return }
+	if strings.contains(have, series) {
+		return
+	}
 	bld.log_warn("Odin is '%s' but wayu pins %s (see %s).", have, pin, ODIN_PIN_FILE)
 	bld.log_warn("Install it from https://github.com/odin-lang/Odin/releases/tag/%s", pin)
 }
@@ -106,11 +114,7 @@ warn_if_odin_unpinned :: proc() {
 do_build :: proc() {
 	bld.log_info("Building %s (optimized)...", BINARY_NAME)
 	bld.mkdir_if_not_exists(BIN_DIR)
-	ok := bld.build({
-		package_path = SRC_DIR,
-		out          = bin_path(),
-		opt          = .Speed,
-	})
+	ok := bld.build({package_path = SRC_DIR, out = bin_path(), opt = .Speed})
 	if !ok {
 		bld.log_error("Build failed")
 		os.exit(1)
@@ -121,11 +125,7 @@ do_build :: proc() {
 do_debug :: proc() {
 	bld.log_info("Building %s (debug)...", BINARY_NAME)
 	bld.mkdir_if_not_exists(BIN_DIR)
-	ok := bld.build({
-		package_path = SRC_DIR,
-		out          = debug_path(),
-		debug        = true,
-	})
+	ok := bld.build({package_path = SRC_DIR, out = debug_path(), debug = true})
 	if !ok {
 		bld.log_error("Debug build failed")
 		os.exit(1)
@@ -184,16 +184,19 @@ run_unit_tests :: proc(names := "") -> bool {
 	if len(names) > 0 {
 		append(&defines, bld.Define{name = "ODIN_TEST_NAMES", value = names})
 	}
-	ok := bld.test({
-		package_path = TEST_DIR,
+	ok := bld.test(
+	{
+		package_path              = TEST_DIR,
 		// Per-run binary: odin test otherwise writes ./unit in the cwd, which
 		// concurrent runs in one checkout would overwrite mid-run.
-		out          = fmt.tprintf("%s/wayu_unit_tests", test_home),
-		file_mode    = true,
-		opt          = .Speed,
-		defines      = defines[:],
+		out                       = fmt.tprintf("%s/wayu_unit_tests", test_home),
+		file_mode                 = true,
+		opt                       = .Speed,
+		defines                   = defines[:],
 		ignore_unused_defineables = true,
-	}, {stdout_path = stdout_log})
+	},
+	{stdout_path = stdout_log},
+	)
 	if !ok {
 		show_test_stdout(stdout_log)
 	}
@@ -206,7 +209,9 @@ show_test_stdout :: proc(stdout_log: string) {
 	TAIL_LINES :: 40
 	kept := fmt.tprintf("%s/unit-tests.stdout.log", BIN_DIR)
 	data, err := os.read_entire_file_from_path(stdout_log, context.temp_allocator)
-	if err != nil || len(data) == 0 { return }
+	if err != nil || len(data) == 0 {
+		return
+	}
 	_ = os.write_entire_file(kept, data)
 	lines := strings.split_lines(strings.trim_right(string(data), "\n"), context.temp_allocator)
 	from := max(0, len(lines) - TAIL_LINES)
@@ -307,9 +312,12 @@ homebrew_wayu :: proc() -> string {
 wayu_on_path :: proc() -> string {
 	path_env, _ := os.lookup_env("PATH", context.temp_allocator)
 	for dir in strings.split(path_env, ":", context.temp_allocator) {
-		if len(dir) == 0 { continue }
+		if len(dir) == 0 {
+			continue
+		}
 		candidate := fmt.tprintf("%s/%s", strings.trim_right(dir, "/"), BINARY_NAME)
-		if fi, err := os.stat(candidate, context.temp_allocator); err == nil && fi.type != .Directory {
+		if fi, err := os.stat(candidate, context.temp_allocator);
+		   err == nil && fi.type != .Directory {
 			return candidate
 		}
 	}
@@ -326,7 +334,10 @@ do_install :: proc() {
 		case "--force":
 			force = true
 		case:
-			bld.log_error("Unknown install option '%s' (usage: ./build_it install [--force])", os.args[i])
+			bld.log_error(
+				"Unknown install option '%s' (usage: ./build_it install [--force])",
+				os.args[i],
+			)
 			os.exit(1)
 		}
 	}
@@ -361,7 +372,10 @@ do_install :: proc() {
 	tmp_path := fmt.tprintf("%s/.%s.install-%d", dir, BINARY_NAME, os.get_pid())
 	if !bld.copy_file(bin_path(), tmp_path) {
 		os.remove(tmp_path)
-		bld.log_error("Failed to copy the binary into %s (permissions? set PREFIX to another directory)", dir)
+		bld.log_error(
+			"Failed to copy the binary into %s (permissions? set PREFIX to another directory)",
+			dir,
+		)
 		os.exit(1)
 	}
 	// copy_file doesn't preserve permissions; 0755 before it becomes visible.
@@ -391,7 +405,12 @@ do_install :: proc() {
 	if found := wayu_on_path(); found == "" {
 		bld.log_warn("%s is not on your PATH; add it to use the installed wayu", dir)
 	} else if found != install_path {
-		bld.log_warn("`wayu` on your PATH is %s, which shadows %s; put %s earlier in PATH", found, install_path, dir)
+		bld.log_warn(
+			"`wayu` on your PATH is %s, which shadows %s; put %s earlier in PATH",
+			found,
+			install_path,
+			dir,
+		)
 	}
 }
 
@@ -431,13 +450,20 @@ do_release :: proc() {
 	} else {
 		// Auto-detect next version via git-cliff --bumped-version
 		if !cliff_available {
-			bld.log_error("git-cliff not found — either install it (cargo install git-cliff) or provide an explicit version: ./build_it release <version>")
+			bld.log_error(
+				"git-cliff not found — either install it (cargo install git-cliff) or provide an explicit version: ./build_it release <version>",
+			)
 			os.exit(1)
 		}
 		bld.log_info("Auto-detecting next version with git-cliff...")
 		tmp_file := "/tmp/wayu_next_version"
 		bump_cmd := bld.cmd_create(context.temp_allocator)
-		bld.cmd_append(&bump_cmd, "sh", "-c", fmt.tprintf("git-cliff --bumped-version > %s", tmp_file))
+		bld.cmd_append(
+			&bump_cmd,
+			"sh",
+			"-c",
+			fmt.tprintf("git-cliff --bumped-version > %s", tmp_file),
+		)
 		if !bld.cmd_run(&bump_cmd) {
 			bld.log_error("git-cliff --bumped-version failed")
 			os.exit(1)
@@ -491,13 +517,19 @@ do_release :: proc() {
 	// The git commands below must see the real HOME (identity, signing, credentials).
 	home_after, _ := os.lookup_env("HOME", context.temp_allocator)
 	if home_after != home_before {
-		bld.log_error("HOME not restored after tests (%s, expected %s) — aborting release", home_after, home_before)
+		bld.log_error(
+			"HOME not restored after tests (%s, expected %s) — aborting release",
+			home_after,
+			home_before,
+		)
 		os.exit(1)
 	}
 
 	// 3. Generate CHANGELOG and update VERSION in src/main.odin
 	if !cliff_available {
-		bld.log_error("git-cliff not found — cannot generate CHANGELOG (install: cargo install git-cliff)")
+		bld.log_error(
+			"git-cliff not found — cannot generate CHANGELOG (install: cargo install git-cliff)",
+		)
 		os.exit(1)
 	}
 
@@ -532,12 +564,12 @@ do_release :: proc() {
 		os.exit(1)
 	}
 	quote_start := start_idx + len(old_prefix)
-	quote_end   := strings.index(main_odin_src[quote_start:], `"`)
+	quote_end := strings.index(main_odin_src[quote_start:], `"`)
 	if quote_end == -1 {
 		bld.log_error("Malformed VERSION line in %s", main_odin_path)
 		os.exit(1)
 	}
-	old_version := main_odin_src[quote_start : quote_start + quote_end]
+	old_version := main_odin_src[quote_start:quote_start + quote_end]
 	old_version_line := fmt.tprintf(`VERSION :: "%s"`, old_version)
 	new_version_line := fmt.tprintf(`VERSION :: "%s"`, version_bare)
 
@@ -571,7 +603,10 @@ do_release :: proc() {
 		os.exit(1)
 	}
 
-	bld.log_info("Release %s pushed — bump.yml will run CI, then build, publish, and update the Homebrew tap", version)
+	bld.log_info(
+		"Release %s pushed — bump.yml will run CI, then build, publish, and update the Homebrew tap",
+		version,
+	)
 	bld.log_info("Track progress at: https://github.com/dvrd/wayu/actions")
 }
 
@@ -613,11 +648,11 @@ Version_Anchor :: struct {
 	required: bool,
 }
 
-VERSION_ANCHORS :: [?]Version_Anchor{
-	{"README.md",       "**v",                  true},  // **vX.Y.Z** under the title
-	{"docs/index.html", `aria-label="Version `, true},  // nav badge label
-	{"docs/index.html", `">v`,                  false}, // nav badge + footer text
-	{"docs/index.html", "wayu ",                false}, // terminal demo "wayu X.Y.Z installed"
+VERSION_ANCHORS :: [?]Version_Anchor {
+	{"README.md", "**v", true}, // **vX.Y.Z** under the title
+	{"docs/index.html", `aria-label="Version `, true}, // nav badge label
+	{"docs/index.html", `">v`, false}, // nav badge + footer text
+	{"docs/index.html", "wayu ", false}, // terminal demo "wayu X.Y.Z installed"
 }
 
 VERSION_FILES :: [?]string{"README.md", "docs/index.html"}
@@ -630,9 +665,13 @@ semver_len :: proc(s: string) -> int {
 		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
 			i += 1
 		}
-		if i == start { return 0 }
+		if i == start {
+			return 0
+		}
 		if part < 2 {
-			if i >= len(s) || s[i] != '.' { return 0 }
+			if i >= len(s) || s[i] != '.' {
+				return 0
+			}
 			i += 1
 		}
 	}
@@ -642,19 +681,31 @@ semver_len :: proc(s: string) -> int {
 // Replace the X.Y.Z after every occurrence of prefix with new_ver. Returns the
 // rewritten content and how many anchored versions were found; versions that
 // differed from new_ver are appended to stale.
-rewrite_anchored_versions :: proc(content, prefix, new_ver: string, stale: ^[dynamic]string) -> (out: string, found: int) {
+rewrite_anchored_versions :: proc(
+	content, prefix, new_ver: string,
+	stale: ^[dynamic]string,
+) -> (
+	out: string,
+	found: int,
+) {
 	b := strings.builder_make(context.temp_allocator)
 	rest := content
 	for {
 		idx := strings.index(rest, prefix)
-		if idx == -1 { break }
+		if idx == -1 {
+			break
+		}
 		after := idx + len(prefix)
 		strings.write_string(&b, rest[:after])
 		rest = rest[after:]
 		n := semver_len(rest)
-		if n == 0 { continue }
+		if n == 0 {
+			continue
+		}
 		found += 1
-		if rest[:n] != new_ver { append(stale, rest[:n]) }
+		if rest[:n] != new_ver {
+			append(stale, rest[:n])
+		}
 		strings.write_string(&b, new_ver)
 		rest = rest[n:]
 	}
@@ -675,11 +726,17 @@ sync_docs_version_str :: proc(new_ver: string, check := false) -> bool {
 		content := string(data)
 		stale := make([dynamic]string, context.temp_allocator)
 		for anchor in VERSION_ANCHORS {
-			if anchor.path != path { continue }
+			if anchor.path != path {
+				continue
+			}
 			found: int
 			content, found = rewrite_anchored_versions(content, anchor.prefix, new_ver, &stale)
 			if anchor.required && found == 0 {
-				bld.log_error("%s: version marker '%sX.Y.Z' not found (update VERSION_ANCHORS in build/build.odin)", path, anchor.prefix)
+				bld.log_error(
+					"%s: version marker '%sX.Y.Z' not found (update VERSION_ANCHORS in build/build.odin)",
+					path,
+					anchor.prefix,
+				)
 				os.exit(1)
 			}
 		}
@@ -688,7 +745,12 @@ sync_docs_version_str :: proc(new_ver: string, check := false) -> bool {
 		case len(stale) == 0:
 			bld.log_info("%s at v%s", path, new_ver)
 		case check:
-			bld.log_error("%s says v%s but src/main.odin VERSION is %s — run ./build_it docs", path, stale[0], new_ver)
+			bld.log_error(
+				"%s says v%s but src/main.odin VERSION is %s — run ./build_it docs",
+				path,
+				stale[0],
+				new_ver,
+			)
 			ok = false
 		case:
 			if os.write_entire_file(path, transmute([]byte)content) != nil {
@@ -711,7 +773,10 @@ sync_docs_version :: proc() {
 		case "--check":
 			check = true
 		case:
-			bld.log_error("Unknown docs option '%s' (usage: ./build_it docs [--check])", os.args[i])
+			bld.log_error(
+				"Unknown docs option '%s' (usage: ./build_it docs [--check])",
+				os.args[i],
+			)
 			os.exit(1)
 		}
 	}
@@ -731,10 +796,14 @@ do_help :: proc() {
 	fmt.println("  test      Run unit tests (optional: NAME[,NAME] to run only those)")
 	fmt.println("  check     Type-check only")
 	fmt.println("  clean     Remove build artifacts")
-	fmt.println("  install   Build + install to $PREFIX/bin (default ~/.local/bin) + wayu init [--force]")
+	fmt.println(
+		"  install   Build + install to $PREFIX/bin (default ~/.local/bin) + wayu init [--force]",
+	)
 	fmt.println("  dev       Debug build + run (extra args passed through)")
 	fmt.println("  release   Run tests, commit + tag, push to main (bump.yml publishes after CI)")
-	fmt.println("  docs      Sync docs/index.html + README.md version from src/main.odin [--check]")
+	fmt.println(
+		"  docs      Sync docs/index.html + README.md version from src/main.odin [--check]",
+	)
 	fmt.println("  help      Show this help")
 	fmt.println("")
 	fmt.println("Bootstrap:")

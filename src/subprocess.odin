@@ -17,7 +17,7 @@ run_command :: proc(args: []string) -> bool {
 	// Build null-terminated argv for execvp
 	argv := make([dynamic]cstring, len(args) + 1)
 	defer {
-		for i in 0..<len(args) {
+		for i in 0 ..< len(args) {
 			delete(argv[i])
 		}
 		delete(argv)
@@ -84,7 +84,7 @@ capture_command :: proc(args: []string) -> string {
 	// Build null-terminated argv
 	argv := make([dynamic]cstring, len(args) + 1)
 	defer {
-		for i in 0..<len(args) {
+		for i in 0 ..< len(args) {
 			delete(argv[i])
 		}
 		delete(argv)
@@ -115,18 +115,18 @@ capture_command :: proc(args: []string) -> string {
 
 	if pid == 0 {
 		// Child: redirect stdout to write end of pipe
-		posix.close(pipefd[0])                    // Close unused read end
-		posix.dup2(pipefd[1], posix.FD(1))        // stdout → pipe write end
-		posix.close(pipefd[1])                    // Close original write end (dup2'd)
+		posix.close(pipefd[0]) // Close unused read end
+		posix.dup2(pipefd[1], posix.FD(1)) // stdout → pipe write end
+		posix.close(pipefd[1]) // Close original write end (dup2'd)
 		if devnull >= 0 {
-			posix.dup2(devnull, posix.FD(2))       // stderr → /dev/null
+			posix.dup2(devnull, posix.FD(2)) // stderr → /dev/null
 			posix.close(devnull)
 		}
 		// Detach stdin from the controlling terminal so a captured command can
 		// never block on an interactive prompt. Without this, `git ls-remote`
 		// against an unreachable/private plugin remote hangs forever asking for
 		// credentials. Paired with GIT_TERMINAL_PROMPT=0, git fails fast instead.
-		stdin_null := posix.open("/dev/null", {})  // {} = O_RDONLY (read-only is the default mode)
+		stdin_null := posix.open("/dev/null", {}) // {} = O_RDONLY (read-only is the default mode)
 		if stdin_null >= 0 {
 			posix.dup2(stdin_null, posix.FD(0))
 			posix.close(stdin_null)
@@ -142,7 +142,7 @@ capture_command :: proc(args: []string) -> string {
 	}
 
 	// Parent: read from read end of pipe
-	posix.close(pipefd[1])  // Close write end — child owns it
+	posix.close(pipefd[1]) // Close write end — child owns it
 	if devnull >= 0 {
 		posix.close(devnull)
 	}
@@ -186,7 +186,7 @@ run_command_with_stdin :: proc(args: []string, input: string) -> bool {
 	// Build null-terminated argv
 	argv := make([dynamic]cstring, len(args) + 1)
 	defer {
-		for i in 0..<len(args) {
+		for i in 0 ..< len(args) {
 			delete(argv[i])
 		}
 		delete(argv)
@@ -217,12 +217,12 @@ run_command_with_stdin :: proc(args: []string, input: string) -> bool {
 
 	if pid == 0 {
 		// Child: redirect stdin from read end of pipe
-		posix.close(pipefd[1])                    // Close unused write end
-		posix.dup2(pipefd[0], posix.FD(0))        // stdin ← pipe read end
-		posix.close(pipefd[0])                    // Close original read end (dup2'd)
+		posix.close(pipefd[1]) // Close unused write end
+		posix.dup2(pipefd[0], posix.FD(0)) // stdin ← pipe read end
+		posix.close(pipefd[0]) // Close original read end (dup2'd)
 		if devnull >= 0 {
-			posix.dup2(devnull, posix.FD(1))       // stdout → /dev/null
-			posix.dup2(devnull, posix.FD(2))       // stderr → /dev/null
+			posix.dup2(devnull, posix.FD(1)) // stdout → /dev/null
+			posix.dup2(devnull, posix.FD(2)) // stderr → /dev/null
 			posix.close(devnull)
 		}
 		posix.execvp(argv[0], raw_data(argv[:]))
@@ -230,7 +230,7 @@ run_command_with_stdin :: proc(args: []string, input: string) -> bool {
 	}
 
 	// Parent: write input to write end, then close it (signals EOF to child)
-	posix.close(pipefd[0])  // Close read end — child owns it
+	posix.close(pipefd[0]) // Close read end — child owns it
 	if devnull >= 0 {
 		posix.close(devnull)
 	}
@@ -239,7 +239,7 @@ run_command_with_stdin :: proc(args: []string, input: string) -> bool {
 		input_bytes := transmute([]byte)input
 		posix.write(pipefd[1], raw_data(input_bytes), c.size_t(len(input_bytes)))
 	}
-	posix.close(pipefd[1])  // EOF signal to child
+	posix.close(pipefd[1]) // EOF signal to child
 
 	// Wait for child
 	status: c.int = 0
@@ -252,7 +252,9 @@ run_command_with_stdin :: proc(args: []string, input: string) -> bool {
 // waitpid (init inherits the orphan). Stdout/stderr go to /dev/null.
 run_background_shell :: proc(cmd: string) {
 	pid := posix.fork()
-	if pid < 0 { return }
+	if pid < 0 {
+		return
+	}
 	if pid > 0 {
 		// Parent: reap the intermediate child immediately
 		status: c.int = 0
@@ -261,8 +263,12 @@ run_background_shell :: proc(cmd: string) {
 	}
 	// Intermediate child: fork again so the grandchild is orphaned
 	gpid := posix.fork()
-	if gpid < 0 { posix._exit(1) }
-	if gpid > 0 { posix._exit(0) } // intermediate exits, grandchild reparents to init
+	if gpid < 0 {
+		posix._exit(1)
+	}
+	if gpid > 0 {
+		posix._exit(0)
+	} // intermediate exits, grandchild reparents to init
 
 	// Grandchild: own session, so closing the terminal (SIGHUP to its
 	// session) doesn't kill a background zcompile halfway; then redirect I/O
@@ -294,7 +300,7 @@ run_command_capture_stderr :: proc(args: []string) -> (ok: bool, stderr_text: st
 
 	argv := make([dynamic]cstring, len(args) + 1)
 	defer {
-		for i in 0..<len(args) {
+		for i in 0 ..< len(args) {
 			delete(argv[i])
 		}
 		delete(argv)
@@ -318,7 +324,7 @@ run_command_capture_stderr :: proc(args: []string) -> (ok: bool, stderr_text: st
 
 	if pid == 0 {
 		posix.close(pipefd[0])
-		posix.dup2(pipefd[1], posix.FD(2))        // stderr → pipe write end
+		posix.dup2(pipefd[1], posix.FD(2)) // stderr → pipe write end
 		posix.close(pipefd[1])
 		devnull := posix.open("/dev/null", {.RDWR})
 		if devnull >= 0 {
@@ -372,7 +378,7 @@ Command_Result :: struct {
 	ok:        bool, // exited 0 before the deadline
 	timed_out: bool, // killed at the deadline (ok is false)
 	cancelled: bool, // killed because subprocess_cancel_check said so (ok is false)
-	exit_code: int,  // the child's exit status when it exited normally, else -1
+	exit_code: int, // the child's exit status when it exited normally, else -1
 	stdout:    string,
 	stderr:    string,
 }
@@ -401,7 +407,13 @@ SUBPROCESS_CANCEL_POLL_MS :: 100
 // process group (git and the ssh/https helpers it spawned) is killed with
 // SIGKILL and the result has timed_out = true. timeout_ms <= 0 waits forever.
 // env_defaults are set in the child only when not already set.
-run_command_timeout :: proc(args: []string, timeout_ms: int, env_defaults: []Env_Default = nil) -> (result: Command_Result) {
+run_command_timeout :: proc(
+	args: []string,
+	timeout_ms: int,
+	env_defaults: []Env_Default = nil,
+) -> (
+	result: Command_Result,
+) {
 	result.exit_code = -1
 	if len(args) == 0 {
 		result.stdout = strings.clone("")
@@ -411,7 +423,7 @@ run_command_timeout :: proc(args: []string, timeout_ms: int, env_defaults: []Env
 
 	argv := make([dynamic]cstring, len(args) + 1)
 	defer {
-		for i in 0..<len(args) {
+		for i in 0 ..< len(args) {
 			delete(argv[i])
 		}
 		delete(argv)
@@ -491,10 +503,7 @@ run_command_timeout :: proc(args: []string, timeout_ms: int, env_defaults: []Env
 	defer strings.builder_destroy(&out_sb)
 	defer strings.builder_destroy(&err_sb)
 
-	fds := [2]posix.pollfd{
-		{fd = out_pipe[0], events = {.IN}},
-		{fd = err_pipe[0], events = {.IN}},
-	}
+	fds := [2]posix.pollfd{{fd = out_pipe[0], events = {.IN}}, {fd = err_pipe[0], events = {.IN}}}
 	open_count := 2
 	start := time.tick_now()
 	buf: [4096]byte
@@ -562,7 +571,11 @@ run_command_timeout :: proc(args: []string, timeout_ms: int, env_defaults: []Env
 	for posix.waitpid(pid, &status, {}) < 0 && posix.errno() == .EINTR {}
 
 	result.exit_code = int(posix.WEXITSTATUS(status)) if posix.WIFEXITED(status) else -1
-	result.ok = !result.timed_out && !result.cancelled && posix.WIFEXITED(status) && posix.WEXITSTATUS(status) == 0
+	result.ok =
+		!result.timed_out &&
+		!result.cancelled &&
+		posix.WIFEXITED(status) &&
+		posix.WEXITSTATUS(status) == 0
 	result.stdout = strings.clone(strings.trim_space(strings.to_string(out_sb)))
 	result.stderr = strings.clone(strings.trim_space(strings.to_string(err_sb)))
 	return

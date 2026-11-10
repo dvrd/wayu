@@ -51,7 +51,9 @@ handle_export_command :: proc(action: Action, args: []string) {
 	// Turbo/eval emit sh syntax (`if [ ... ]; then`, `export`): never hand
 	// that to fish (OKAMI-233).
 	if wayu.shell == .FISH && (action == .TURBO || action == .EVAL) {
-		print_error_simple("wayu export does not support fish; source init.fish instead (wayu build)")
+		print_error_simple(
+			"wayu export does not support fish; source init.fish instead (wayu build)",
+		)
 		os.exit(EXIT_USAGE)
 	}
 
@@ -141,7 +143,12 @@ generate_turbo_export :: proc(dry_run: bool) {
 
 	print_success("Turbo export generated: %s", output_path)
 	fmt.println()
-	fmt.printfln("turbo.%s has the same content as core.%s (what init.%s loads): every feature,", get_shell_extension(wayu.shell), get_shell_extension(wayu.shell), get_shell_extension(wayu.shell))
+	fmt.printfln(
+		"turbo.%s has the same content as core.%s (what init.%s loads): every feature,",
+		get_shell_extension(wayu.shell),
+		get_shell_extension(wayu.shell),
+		get_shell_extension(wayu.shell),
+	)
 	fmt.println("same speed. wayu keeps it up to date; sourcing init is equivalent:")
 	fmt.printfln("  source \"%s/init.%s\"", wayu.data, get_shell_extension(wayu.shell))
 	fmt.println()
@@ -219,7 +226,9 @@ print_export_usage :: proc() {
 	fmt.println("  wayu export --turbo")
 	fmt.println()
 	fmt.println("  # Use in .zshrc (equivalent to sourcing init.zsh)")
-	fmt.println("  source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/turbo.zsh\"")
+	fmt.println(
+		"  source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/turbo.zsh\"",
+	)
 	fmt.println()
 	fmt.println("  # Or eval mode (env, PATH and aliases only)")
 	fmt.println("  eval \"$(wayu export --eval)\"")
@@ -241,8 +250,12 @@ check_turbo_status :: proc() -> (exists: bool, current: bool) {
 	current = true
 	for src in ([]string{fmt.tprintf("%s/wayu.toml", wayu.config), entries_file_path()}) {
 		info, serr := os.stat(src, context.temp_allocator)
-		if serr != nil { continue }
-		if turbo_info.modification_time._nsec < info.modification_time._nsec { current = false }
+		if serr != nil {
+			continue
+		}
+		if turbo_info.modification_time._nsec < info.modification_time._nsec {
+			current = false
+		}
 	}
 	return true, current
 }

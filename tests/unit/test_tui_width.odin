@@ -4,17 +4,31 @@ package test_wayu
 // truncate_text, style.odin width helpers and table truncation must all agree
 // that CJK and emoji occupy two terminal columns.
 
+import wayu "../../src"
 import "core:strings"
 import "core:testing"
-import wayu "../../src"
 
 @(test)
 test_width_functions_agree_on_cjk :: proc(t: ^testing.T) {
 	cases := []string{"abc", "日本語", "a日b", "🚀x", "\x1b[31m日本\x1b[0m"}
-	want  := []int{3, 6, 4, 3, 4}
+	want := []int{3, 6, 4, 3, 4}
 	for s, i in cases {
-		testing.expectf(t, wayu.visual_width(s) == want[i], "visual_width(%q) = %d, want %d", s, wayu.visual_width(s), want[i])
-		testing.expectf(t, wayu.visible_width(s) == want[i], "visible_width(%q) = %d, want %d", s, wayu.visible_width(s), want[i])
+		testing.expectf(
+			t,
+			wayu.visual_width(s) == want[i],
+			"visual_width(%q) = %d, want %d",
+			s,
+			wayu.visual_width(s),
+			want[i],
+		)
+		testing.expectf(
+			t,
+			wayu.visible_width(s) == want[i],
+			"visible_width(%q) = %d, want %d",
+			s,
+			wayu.visible_width(s),
+			want[i],
+		)
 	}
 }
 
@@ -50,14 +64,20 @@ test_align_text_pads_by_columns :: proc(t: ^testing.T) {
 test_pad_string_truncates_by_columns :: proc(t: ^testing.T) {
 	got := wayu.pad_string("日本語日本語", 5)
 	defer delete(got)
-	testing.expectf(t, wayu.visual_width(got) <= 5, "pad_string overflowed: %q (%d cols)", got, wayu.visual_width(got))
+	testing.expectf(
+		t,
+		wayu.visual_width(got) <= 5,
+		"pad_string overflowed: %q (%d cols)",
+		got,
+		wayu.visual_width(got),
+	)
 }
 
 @(test)
 test_apply_text_styles_returns_owned_string :: proc(t: ^testing.T) {
 	s := wayu.style_bold(wayu.new_style(), true)
 	got := wayu.apply_text_styles(s, "hi", 4)
-	defer delete(got)  // must be a live heap string, not a destroyed builder buffer
+	defer delete(got) // must be a live heap string, not a destroyed builder buffer
 	plain := wayu.strip_ansi_codes(got)
 	defer delete(plain)
 	testing.expect_value(t, plain, "hi  ")
@@ -101,12 +121,12 @@ test_overwriting_half_of_wide_char_clears_other_half :: proc(t: ^testing.T) {
 
 	wayu.render_text_styled(&screen, 0, 0, "日")
 	wayu.screen_set_cell(&screen, 1, 0, wayu.Cell{char = 'x'})
-	testing.expect_value(t, screen.buffer[0][0].char, ' ')  // orphaned lead blanked
+	testing.expect_value(t, screen.buffer[0][0].char, ' ') // orphaned lead blanked
 	testing.expect_value(t, screen.buffer[0][1].char, 'x')
 
 	wayu.render_text_styled(&screen, 2, 0, "本")
 	wayu.screen_set_cell(&screen, 2, 0, wayu.Cell{char = 'y'})
-	testing.expect_value(t, screen.buffer[0][3].char, ' ')  // orphaned continuation blanked
+	testing.expect_value(t, screen.buffer[0][3].char, ' ') // orphaned continuation blanked
 }
 
 @(test)
@@ -129,5 +149,9 @@ test_truecolor_downsampling :: proc(t: ^testing.T) {
 
 	wayu.tui_color_mode = .ANSI256
 	wayu.write_tui_color(&sb, wayu.TUI_PRIMARY)
-	testing.expect(t, strings.has_prefix(strings.to_string(sb), "\x1b[38;5;"), "256-color profile must emit 38;5;N")
+	testing.expect(
+		t,
+		strings.has_prefix(strings.to_string(sb), "\x1b[38;5;"),
+		"256-color profile must emit 38;5;N",
+	)
 }

@@ -1,8 +1,8 @@
 package test_wayu
 
-import "core:testing"
-import "core:strings"
 import wayu "../../src"
+import "core:strings"
+import "core:testing"
 
 // Helper to count lines in output
 count_lines :: proc(s: string) -> int {
@@ -17,7 +17,10 @@ count_lines :: proc(s: string) -> int {
 // Box component tests
 @(test)
 test_box_small :: proc(t: ^testing.T) {
-	args := wayu.ComponentArgs{width = 10, height = 3}
+	args := wayu.ComponentArgs {
+		width  = 10,
+		height = 3,
+	}
 	output := wayu.render_component(.BOX, args)
 	defer delete(output)
 
@@ -28,7 +31,10 @@ test_box_small :: proc(t: ^testing.T) {
 
 @(test)
 test_box_large :: proc(t: ^testing.T) {
-	args := wayu.ComponentArgs{width = 80, height = 24}
+	args := wayu.ComponentArgs {
+		width  = 80,
+		height = 24,
+	}
 	output := wayu.render_component(.BOX, args)
 	defer delete(output)
 
@@ -40,10 +46,10 @@ test_box_large :: proc(t: ^testing.T) {
 // List item component tests
 @(test)
 test_list_item_unselected :: proc(t: ^testing.T) {
-	args := wayu.ComponentArgs{
-		width = 40,
-		height = 1,
-		text = strings.clone("Sample item"),
+	args := wayu.ComponentArgs {
+		width    = 40,
+		height   = 1,
+		text     = strings.clone("Sample item"),
 		selected = false,
 	}
 	defer delete(args.text)
@@ -53,15 +59,19 @@ test_list_item_unselected :: proc(t: ^testing.T) {
 
 	testing.expect(t, len(output) > 0, "List item output should not be empty")
 	testing.expect(t, strings.contains(output, "Sample item"), "Output should contain item text")
-	testing.expect(t, strings.contains(output, "  "), "Unselected item should have two spaces prefix")
+	testing.expect(
+		t,
+		strings.contains(output, "  "),
+		"Unselected item should have two spaces prefix",
+	)
 }
 
 @(test)
 test_list_item_selected :: proc(t: ^testing.T) {
-	args := wayu.ComponentArgs{
-		width = 40,
-		height = 1,
-		text = strings.clone("Selected item"),
+	args := wayu.ComponentArgs {
+		width    = 40,
+		height   = 1,
+		text     = strings.clone("Selected item"),
 		selected = true,
 	}
 	defer delete(args.text)
@@ -77,11 +87,11 @@ test_list_item_selected :: proc(t: ^testing.T) {
 // Header component tests
 @(test)
 test_header_plain :: proc(t: ^testing.T) {
-	args := wayu.ComponentArgs{
-		width = 60,
+	args := wayu.ComponentArgs {
+		width  = 60,
 		height = 3,
-		title = strings.clone("Test Header"),
-		count = 0,
+		title  = strings.clone("Test Header"),
+		count  = 0,
 	}
 	defer delete(args.title)
 
@@ -94,12 +104,12 @@ test_header_plain :: proc(t: ^testing.T) {
 
 @(test)
 test_header_with_emoji_and_count :: proc(t: ^testing.T) {
-	args := wayu.ComponentArgs{
-		width = 60,
+	args := wayu.ComponentArgs {
+		width  = 60,
 		height = 3,
-		title = strings.clone("Path Manager"),
-		emoji = strings.clone("🚀"),
-		count = 15,
+		title  = strings.clone("Path Manager"),
+		emoji  = strings.clone("🚀"),
+		count  = 15,
 	}
 	defer delete(args.title)
 	defer delete(args.emoji)
@@ -116,9 +126,9 @@ test_header_with_emoji_and_count :: proc(t: ^testing.T) {
 // Footer component tests
 @(test)
 test_footer_simple :: proc(t: ^testing.T) {
-	args := wayu.ComponentArgs{
-		width = 80,
-		height = 3,
+	args := wayu.ComponentArgs {
+		width     = 80,
+		height    = 3,
 		shortcuts = strings.clone("q=quit • h=help"),
 	}
 	defer delete(args.shortcuts)
@@ -132,9 +142,9 @@ test_footer_simple :: proc(t: ^testing.T) {
 
 @(test)
 test_footer_complex :: proc(t: ^testing.T) {
-	args := wayu.ComponentArgs{
-		width = 80,
-		height = 3,
+	args := wayu.ComponentArgs {
+		width     = 80,
+		height    = 3,
 		shortcuts = strings.clone("j/k=nav • enter=select • q=quit • ?=help"),
 	}
 	defer delete(args.shortcuts)
@@ -143,50 +153,62 @@ test_footer_complex :: proc(t: ^testing.T) {
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Footer output should not be empty")
-	testing.expect(t, strings.contains(output, "j/k=nav"), "Output should contain navigation shortcuts")
+	testing.expect(
+		t,
+		strings.contains(output, "j/k=nav"),
+		"Output should contain navigation shortcuts",
+	)
 }
 
 // Scroll indicator component tests
 @(test)
 test_scroll_indicator_start :: proc(t: ^testing.T) {
-	args := wayu.ComponentArgs{
-		width = 50,
+	args := wayu.ComponentArgs {
+		width  = 50,
 		height = 1,
-		start = 1,
-		end = 10,
-		total = 50,
+		start  = 1,
+		end    = 10,
+		total  = 50,
 	}
 
 	output := wayu.render_component(.SCROLL_INDICATOR, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Scroll indicator output should not be empty")
-	testing.expect(t, strings.contains(output, "Showing 1-10 of 50"), "Output should contain scroll info")
+	testing.expect(
+		t,
+		strings.contains(output, "Showing 1-10 of 50"),
+		"Output should contain scroll info",
+	)
 }
 
 @(test)
 test_scroll_indicator_middle :: proc(t: ^testing.T) {
-	args := wayu.ComponentArgs{
-		width = 50,
+	args := wayu.ComponentArgs {
+		width  = 50,
 		height = 1,
-		start = 21,
-		end = 30,
-		total = 100,
+		start  = 21,
+		end    = 30,
+		total  = 100,
 	}
 
 	output := wayu.render_component(.SCROLL_INDICATOR, args)
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Scroll indicator output should not be empty")
-	testing.expect(t, strings.contains(output, "Showing 21-30 of 100"), "Output should contain scroll info")
+	testing.expect(
+		t,
+		strings.contains(output, "Showing 21-30 of 100"),
+		"Output should contain scroll info",
+	)
 }
 
 // Empty state component tests
 @(test)
 test_empty_state_short_message :: proc(t: ^testing.T) {
-	args := wayu.ComponentArgs{
-		width = 60,
-		height = 10,
+	args := wayu.ComponentArgs {
+		width   = 60,
+		height  = 10,
 		message = strings.clone("No items found"),
 	}
 	defer delete(args.message)
@@ -200,9 +222,9 @@ test_empty_state_short_message :: proc(t: ^testing.T) {
 
 @(test)
 test_empty_state_long_message :: proc(t: ^testing.T) {
-	args := wayu.ComponentArgs{
-		width = 80,
-		height = 20,
+	args := wayu.ComponentArgs {
+		width   = 80,
+		height  = 20,
 		message = strings.clone("No configuration entries found. Add one to get started."),
 	}
 	defer delete(args.message)
@@ -211,7 +233,11 @@ test_empty_state_long_message :: proc(t: ^testing.T) {
 	defer delete(output)
 
 	testing.expect(t, len(output) > 0, "Empty state output should not be empty")
-	testing.expect(t, strings.contains(output, "No configuration entries found"), "Output should contain message")
+	testing.expect(
+		t,
+		strings.contains(output, "No configuration entries found"),
+		"Output should contain message",
+	)
 }
 
 // Component args parsing tests

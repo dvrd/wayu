@@ -1,5 +1,6 @@
-// templates.odin - Configuration presets for common setups
 #+feature dynamic-literals
+// templates.odin - Configuration presets for common setups
+
 //
 // Provides ready-to-use configurations for common use cases like
 // development environments, minimal setups, etc.
@@ -40,7 +41,7 @@ list_templates :: proc() {
 	template_list := []struct {
 		name:        string,
 		description: string,
-	}{
+	} {
 		{"developer", "Common dev tools: cargo, npm, go, homebrew paths"},
 		{"minimal", "Only essential paths, fastest startup"},
 		{"data-science", "Python, conda, jupyter, common ML tools"},
@@ -63,7 +64,8 @@ list_templates :: proc() {
 // True when `name` names a template apply_template knows.
 template_exists :: proc(name: string) -> bool {
 	switch name {
-	case "developer", "minimal", "data-science", "ds", "full": return true
+	case "developer", "minimal", "data-science", "ds", "full":
+		return true
 	}
 	return false
 }
@@ -141,8 +143,10 @@ template_existing_keys :: proc(kind: EntryKind) -> map[string]bool {
 	store := entries_load()
 	defer entries_store_destroy(&store)
 	switch kind {
-	case .ALIAS: for a in store.aliases { keys[strings.clone(a.name, context.temp_allocator)] = true }
-	case .ENV:   for e in store.env { keys[strings.clone(e.name, context.temp_allocator)] = true }
+	case .ALIAS:
+		for a in store.aliases {keys[strings.clone(a.name, context.temp_allocator)] = true}
+	case .ENV:
+		for e in store.env {keys[strings.clone(e.name, context.temp_allocator)] = true}
 	}
 	return keys
 }
@@ -151,7 +155,15 @@ template_existing_keys :: proc(kind: EntryKind) -> map[string]bool {
 template_report :: proc(verb, what: string, skipped_why := "") {
 	if len(skipped_why) > 0 {
 		template_skipped += 1
-		fmt.printfln("  %sKeeping%s %s %s(%s)%s", get_muted(), RESET, what, get_muted(), skipped_why, RESET)
+		fmt.printfln(
+			"  %sKeeping%s %s %s(%s)%s",
+			get_muted(),
+			RESET,
+			what,
+			get_muted(),
+			skipped_why,
+			RESET,
+		)
 		return
 	}
 	template_added += 1
@@ -172,15 +184,19 @@ template_add_paths :: proc(paths: []string) {
 			continue
 		}
 		switch path_add_result(p) {
-		case .OK:   template_report("path", what)
-		case .NOOP: template_report("path", what, "already added")
+		case .OK:
+			template_report("path", what)
+		case .NOOP:
+			template_report("path", what, "already added")
 		case .INVALID, .NOT_FOUND, .IO_ERROR, .BAD_STORE:
 			print_warning("  skipped (could not write): %s", p)
 		}
 	}
 }
 
-template_add_aliases :: proc(aliases: []struct{name, command: string}) {
+template_add_aliases :: proc(aliases: []struct {
+		name, command: string,
+	}) {
 	existing := template_existing_keys(.ALIAS)
 	for a in aliases {
 		what := fmt.tprintf("%s%s%s = %s", get_primary(), a.name, RESET, a.command)
@@ -189,8 +205,14 @@ template_add_aliases :: proc(aliases: []struct{name, command: string}) {
 			continue
 		}
 		template_report("alias", what)
-		if wayu.dry_run { continue }
-		entry := ConfigEntry{type = .ALIAS, name = a.name, value = a.command}
+		if wayu.dry_run {
+			continue
+		}
+		entry := ConfigEntry {
+			type  = .ALIAS,
+			name  = a.name,
+			value = a.command,
+		}
 		if ok, err := toml_alias_add(entry); !ok {
 			print_warning("  skipped %s: %s", a.name, err)
 			delete(err)
@@ -198,7 +220,9 @@ template_add_aliases :: proc(aliases: []struct{name, command: string}) {
 	}
 }
 
-template_add_constants :: proc(consts: []struct{name, value: string}) {
+template_add_constants :: proc(consts: []struct {
+		name, value: string,
+	}) {
 	existing := template_existing_keys(.ENV)
 	for c in consts {
 		what := fmt.tprintf("%s%s%s = %s", get_primary(), c.name, RESET, c.value)
@@ -207,12 +231,22 @@ template_add_constants :: proc(consts: []struct{name, value: string}) {
 			continue
 		}
 		if v, set := os.lookup_env(c.name, context.temp_allocator); set && len(v) > 0 {
-			template_report("constant", what, fmt.tprintf("already set in your environment: %s", v))
+			template_report(
+				"constant",
+				what,
+				fmt.tprintf("already set in your environment: %s", v),
+			)
 			continue
 		}
 		template_report("constant", what)
-		if wayu.dry_run { continue }
-		entry := ConfigEntry{type = .CONSTANT, name = c.name, value = c.value}
+		if wayu.dry_run {
+			continue
+		}
+		entry := ConfigEntry {
+			type  = .CONSTANT,
+			name  = c.name,
+			value = c.value,
+		}
 		if ok, err := toml_constant_add(entry); !ok {
 			print_warning("  skipped %s: %s", c.name, err)
 			delete(err)
@@ -225,13 +259,22 @@ template_add_constants :: proc(consts: []struct{name, value: string}) {
 template_finish :: proc(title: string) {
 	fmt.println()
 	if wayu.dry_run {
-		fmt.printfln("%s template: would add %d entr%s, keep %d existing. Nothing was written.",
-			title, template_added, template_added == 1 ? "y" : "ies", template_skipped)
+		fmt.printfln(
+			"%s template: would add %d entr%s, keep %d existing. Nothing was written.",
+			title,
+			template_added,
+			template_added == 1 ? "y" : "ies",
+			template_skipped,
+		)
 		return
 	}
 	regenerate_init_core_silently()
-	print_success("%s template applied: %d added, %d kept. Reload your shell to activate.",
-		title, template_added, template_skipped)
+	print_success(
+		"%s template applied: %d added, %d kept. Reload your shell to activate.",
+		title,
+		template_added,
+		template_skipped,
+	)
 }
 
 // Developer template
@@ -239,30 +282,35 @@ apply_developer_template :: proc() {
 	print_header("Applying Developer Template", "💻")
 	fmt.println()
 
-	template_add_paths([]string{
-		"/opt/homebrew/bin",
-		"/usr/local/bin",
-		"$HOME/.cargo/bin",
-		"$HOME/.local/bin",
-		"$HOME/.npm-global/bin",
-		"$HOME/go/bin",
-	})
+	template_add_paths(
+		[]string {
+			"/opt/homebrew/bin",
+			"/usr/local/bin",
+			"$HOME/.cargo/bin",
+			"$HOME/.local/bin",
+			"$HOME/.npm-global/bin",
+			"$HOME/go/bin",
+		},
+	)
 
 	fmt.println()
-	template_add_aliases([]struct{name, command: string}{
-		{"g", "git"},
-		{"gs", "git status"},
-		{"gcm", "git commit -m"},
-		{"gp", "git push"},
-		// No `code = "code ."`: an alias named like the binary shadows it
-		// (`code file.txt` opened the cwd).
-	})
+	template_add_aliases(
+		[]struct {
+			name, command: string,
+		} {
+			{"g", "git"},
+			{"gs", "git status"},
+			{"gcm", "git commit -m"},
+			{"gp", "git push"},
+			// No `code = "code ."`: an alias named like the binary shadows it
+			// (`code file.txt` opened the cwd).
+		},
+	)
 
 	fmt.println()
-	template_add_constants([]struct{name, value: string}{
-		{"EDITOR", "code --wait"},
-		{"GOPATH", "$HOME/go"},
-	})
+	template_add_constants([]struct {
+		name, value: string,
+	}{{"EDITOR", "code --wait"}, {"GOPATH", "$HOME/go"}})
 
 	template_finish("Developer")
 }
@@ -288,20 +336,19 @@ apply_datascience_template :: proc() {
 	print_header("Applying Data Science Template", "📊")
 	fmt.println()
 
-	template_add_paths([]string{
-		"/opt/homebrew/anaconda3/bin",
-		"$HOME/.conda/bin",
-		"$HOME/.local/bin",
-		"/usr/local/bin",
-	})
+	template_add_paths(
+		[]string {
+			"/opt/homebrew/anaconda3/bin",
+			"$HOME/.conda/bin",
+			"$HOME/.local/bin",
+			"/usr/local/bin",
+		},
+	)
 
 	fmt.println()
-	template_add_aliases([]struct{name, command: string}{
-		{"jlab", "jupyter lab"},
-		{"jnb", "jupyter notebook"},
-		{"py", "python3"},
-		{"pip", "pip3"},
-	})
+	template_add_aliases([]struct {
+		name, command: string,
+	}{{"jlab", "jupyter lab"}, {"jnb", "jupyter notebook"}, {"py", "python3"}, {"pip", "pip3"}})
 
 	template_finish("Data Science")
 }
@@ -311,17 +358,19 @@ apply_full_template :: proc() {
 	print_header("Applying Full Template", "🔥")
 	fmt.println()
 
-	template_add_paths([]string{
-		"/opt/homebrew/bin",
-		"/usr/local/bin",
-		"$HOME/.cargo/bin",
-		"$HOME/.local/bin",
-		"$HOME/.npm-global/bin",
-		"$HOME/go/bin",
-		"$HOME/.julia/bin",
-		"$HOME/.deno/bin",
-		"$HOME/.bun/bin",
-	})
+	template_add_paths(
+		[]string {
+			"/opt/homebrew/bin",
+			"/usr/local/bin",
+			"$HOME/.cargo/bin",
+			"$HOME/.local/bin",
+			"$HOME/.npm-global/bin",
+			"$HOME/go/bin",
+			"$HOME/.julia/bin",
+			"$HOME/.deno/bin",
+			"$HOME/.bun/bin",
+		},
+	)
 
 	template_finish("Full")
 }

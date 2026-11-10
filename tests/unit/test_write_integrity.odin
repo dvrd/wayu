@@ -3,12 +3,12 @@
 
 package test_wayu
 
+import wayu "../../src"
 import "core:fmt"
 import "core:mem"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import wayu "../../src"
 
 // ---------------------------------------------------------------------------
 // write_file_atomic
@@ -17,13 +17,19 @@ import wayu "../../src"
 @(private = "file")
 count_tmp_leftovers :: proc(dir: string) -> int {
 	f, err := os.open(dir)
-	if err != nil { return -1 }
+	if err != nil {
+		return -1
+	}
 	defer os.close(f)
 	infos, rerr := os.read_dir(f, -1, context.temp_allocator)
-	if rerr != nil { return -1 }
+	if rerr != nil {
+		return -1
+	}
 	n := 0
 	for fi in infos {
-		if strings.contains(fi.name, ".tmp.") { n += 1 }
+		if strings.contains(fi.name, ".tmp.") {
+			n += 1
+		}
 	}
 	return n
 }

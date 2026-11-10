@@ -9,10 +9,10 @@ import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import "core:time"
 import "core:sync"
-import "core:thread"
 import "core:sys/posix"
+import "core:thread"
+import "core:time"
 
 // ============================================================================
 // Types and State
@@ -325,13 +325,13 @@ watcher_thread_proc :: proc() {
 
 // PID file path as a C string, set before the handlers are installed so the
 // handler only does async-signal-safe work (unlink + re-raise).
-@(private="file")
+@(private = "file")
 g_watcher_pid_cpath: cstring
 
-@(private="file")
+@(private = "file")
 WATCHER_SIGNALS :: [?]posix.Signal{.SIGINT, .SIGTERM, .SIGHUP}
 
-@(private="file")
+@(private = "file")
 watcher_signal_handler :: proc "c" (sig: posix.Signal) {
 	if g_watcher_pid_cpath != nil {
 		posix.unlink(g_watcher_pid_cpath)
@@ -342,8 +342,12 @@ watcher_signal_handler :: proc "c" (sig: posix.Signal) {
 }
 
 watcher_install_signal_handlers :: proc() {
-	if g_watcher.pid_file == "" { return }
-	if g_watcher_pid_cpath != nil { delete(g_watcher_pid_cpath) }
+	if g_watcher.pid_file == "" {
+		return
+	}
+	if g_watcher_pid_cpath != nil {
+		delete(g_watcher_pid_cpath)
+	}
 	g_watcher_pid_cpath = strings.clone_to_cstring(g_watcher.pid_file)
 	for sig in WATCHER_SIGNALS {
 		posix.signal(sig, watcher_signal_handler)
@@ -558,7 +562,10 @@ get_default_watch_paths :: proc() -> []string {
 	paths := make([dynamic]string)
 
 	// Main TOML config + the entry store
-	for p in ([]string{fmt.aprintf("%s/wayu.toml", wayu.config), entries_file_path(context.allocator)}) {
+	for p in ([]string {
+			fmt.aprintf("%s/wayu.toml", wayu.config),
+			entries_file_path(context.allocator),
+		}) {
 		if os.exists(p) {
 			append(&paths, p)
 		} else {

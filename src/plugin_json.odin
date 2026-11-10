@@ -1,11 +1,11 @@
 package wayu
+import "base:intrinsics"
+import "core:encoding/json"
 import "core:fmt"
 import "core:os"
+import "core:reflect"
 import "core:strings"
 import "core:sync"
-import "core:encoding/json"
-import "core:reflect"
-import "base:intrinsics"
 // Mutex to protect concurrent access to plugins.json
 // Prevents race conditions when multiple threads read/write simultaneously
 _plugins_json_mutex: sync.Mutex
@@ -82,11 +82,11 @@ write_plugin_config_json :: proc(config: ^PluginConfigJSON) -> bool {
 	config.last_updated = get_iso8601_timestamp()
 
 	// Marshal to JSON5 with pretty printing
-	marshal_options := json.Marshal_Options{
-		pretty = true,
-		use_spaces = true,
-		spaces = 2,
-		spec = .JSON5,
+	marshal_options := json.Marshal_Options {
+		pretty         = true,
+		use_spaces     = true,
+		spaces         = 2,
+		spec           = .JSON5,
 		// "shell": "ZSH" instead of "shell": 0 — readable when hand-edited.
 		use_enum_names = true,
 	}
@@ -113,7 +113,13 @@ write_plugin_config_json :: proc(config: ^PluginConfigJSON) -> bool {
 // Resolve one plugins.json enum value: a value name, case-insensitively
 // ("zsh", "ZSH", "Both"); numbers are refused. json.unmarshal maps unknown or differently-cased names to the
 // zero value without an error, so enums are resolved here instead.
-plugin_enum_from_json :: proc($E: typeid, v: json.Value) -> (E, bool) where intrinsics.type_is_enum(E) {
+plugin_enum_from_json :: proc(
+	$E: typeid,
+	v: json.Value,
+) -> (
+	E,
+	bool,
+) where intrinsics.type_is_enum(E) {
 	#partial switch x in v {
 	case json.String:
 		for val in E {
@@ -126,7 +132,7 @@ plugin_enum_from_json :: proc($E: typeid, v: json.Value) -> (E, bool) where intr
 }
 
 // Names of an enum's values, lowercase, comma-separated (temp allocated).
-@(private="file")
+@(private = "file")
 plugin_enum_choices :: proc($E: typeid) -> string where intrinsics.type_is_enum(E) {
 	sb := strings.builder_make(context.temp_allocator)
 	first := true
@@ -135,7 +141,10 @@ plugin_enum_choices :: proc($E: typeid) -> string where intrinsics.type_is_enum(
 			strings.write_string(&sb, ", ")
 		}
 		first = false
-		strings.write_string(&sb, strings.to_lower(reflect.enum_string(val), context.temp_allocator))
+		strings.write_string(
+			&sb,
+			strings.to_lower(reflect.enum_string(val), context.temp_allocator),
+		)
 	}
 	return strings.to_string(sb)
 }
@@ -174,21 +183,36 @@ plugin_json_resolve_enums :: proc(data: []byte, config: ^PluginConfigJSON) -> st
 		if v, has := obj["shell"]; has {
 			val, vok := plugin_enum_from_json(ShellCompat, v)
 			if !vok {
-				return fmt.tprintf("%s: invalid shell %v (expected one of: %s)", label, v, plugin_enum_choices(ShellCompat))
+				return fmt.tprintf(
+					"%s: invalid shell %v (expected one of: %s)",
+					label,
+					v,
+					plugin_enum_choices(ShellCompat),
+				)
 			}
 			p.shell = val
 		}
 		if v, has := obj["template"]; has {
 			val, vok := plugin_enum_from_json(PluginLoadTemplate, v)
 			if !vok {
-				return fmt.tprintf("%s: invalid template %v (expected one of: %s)", label, v, plugin_enum_choices(PluginLoadTemplate))
+				return fmt.tprintf(
+					"%s: invalid template %v (expected one of: %s)",
+					label,
+					v,
+					plugin_enum_choices(PluginLoadTemplate),
+				)
 			}
 			p.template = val
 		}
 		if v, has := obj["source_type"]; has {
 			val, vok := plugin_enum_from_json(PluginSourceType, v)
 			if !vok {
-				return fmt.tprintf("%s: invalid source_type %v (expected one of: %s)", label, v, plugin_enum_choices(PluginSourceType))
+				return fmt.tprintf(
+					"%s: invalid source_type %v (expected one of: %s)",
+					label,
+					v,
+					plugin_enum_choices(PluginSourceType),
+				)
 			}
 			p.source_type = val
 		}
@@ -197,7 +221,12 @@ plugin_json_resolve_enums :: proc(data: []byte, config: ^PluginConfigJSON) -> st
 				if v, has := git_obj["ref_type"]; has {
 					val, vok := plugin_enum_from_json(GitRefType, v)
 					if !vok {
-						return fmt.tprintf("%s: invalid git.ref_type %v (expected one of: %s)", label, v, plugin_enum_choices(GitRefType))
+						return fmt.tprintf(
+							"%s: invalid git.ref_type %v (expected one of: %s)",
+							label,
+							v,
+							plugin_enum_choices(GitRefType),
+						)
 					}
 					p.git.ref_type = val
 				}
@@ -217,7 +246,10 @@ validate_plugin_config_entries :: proc(config: ^PluginConfigJSON) -> string {
 		// An empty name/url is tolerated so a broken legacy entry can still
 		// be listed and removed (removal is guarded by the plugins root).
 		if len(p.name) > 0 && !is_valid_plugin_name(p.name) {
-			return fmt.tprintf("%s: invalid name (must be a single path component, not starting with '-')", label)
+			return fmt.tprintf(
+				"%s: invalid name (must be a single path component, not starting with '-')",
+				label,
+			)
 		}
 		if len(p.url) > 0 {
 			if problem := plugin_url_problem(p.url); problem != "" {
@@ -239,7 +271,10 @@ validate_plugin_config_entries :: proc(config: ^PluginConfigJSON) -> string {
 				return fmt.tprintf("%s: invalid dependency name %q", label, dep)
 			}
 		}
-		refs := [?]struct{field: string, value: string}{
+		refs := [?]struct {
+			field: string,
+			value: string,
+		} {
 			{"git.branch", p.git.branch},
 			{"git.tag", p.git.tag},
 			{"git.commit", p.git.commit},

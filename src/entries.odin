@@ -102,11 +102,11 @@ entries_file_path :: proc(allocator := context.temp_allocator) -> string {
 }
 
 entries_store_destroy :: proc(s: ^EntryStore) {
-	for p in s.paths { delete(p.key); delete(p.dir) }
-	for a in s.aliases { delete(a.name); delete(a.value) }
-	for e in s.env { delete(e.name); delete(e.value) }
-	for f in s.fpath { delete(f) }
-	for g in s.generators { delete(g.shell); delete(g.cmd); delete(g.args) }
+	for p in s.paths {delete(p.key); delete(p.dir)}
+	for a in s.aliases {delete(a.name); delete(a.value)}
+	for e in s.env {delete(e.name); delete(e.value)}
+	for f in s.fpath {delete(f)}
+	for g in s.generators {delete(g.shell); delete(g.cmd); delete(g.args)}
 	delete(s.paths)
 	delete(s.aliases)
 	delete(s.env)
@@ -120,7 +120,9 @@ entries_store_destroy :: proc(s: ^EntryStore) {
 // wrong when ok=false. On success the store's strings are in context.allocator.
 entries_parse :: proc(content: string) -> (store: EntryStore, err: string, ok: bool) {
 	arena: virtual.Arena
-	if virtual.arena_init_growing(&arena) != nil { return {}, "out of memory", false }
+	if virtual.arena_init_growing(&arena) != nil {
+		return {}, "out of memory", false
+	}
 	defer virtual.arena_destroy(&arena)
 	scratch := virtual.arena_allocator(&arena)
 
@@ -129,45 +131,80 @@ entries_parse :: proc(content: string) -> (store: EntryStore, err: string, ok: b
 		return {}, fmt.tprintf("not valid JSON for the entry store (%v)", uerr), false
 	}
 	if raw.version != ENTRIES_FORMAT_VERSION {
-		return {}, fmt.tprintf("unsupported \"version\" %d (expected %d)", raw.version, ENTRIES_FORMAT_VERSION), false
+		return {},
+			fmt.tprintf(
+				"unsupported \"version\" %d (expected %d)",
+				raw.version,
+				ENTRIES_FORMAT_VERSION,
+			),
+			false
 	}
 	for p, i in raw.paths {
-		if len(p.key) == 0 { return {}, fmt.tprintf("paths[%d] has no \"key\"", i), false }
-		if len(strings.trim_space(p.dir)) == 0 { return {}, fmt.tprintf("paths[%d] (%s) has no \"dir\"", i, p.key), false }
+		if len(p.key) == 0 {
+			return {}, fmt.tprintf("paths[%d] has no \"key\"", i), false
+		}
+		if len(strings.trim_space(p.dir)) == 0 {
+			return {}, fmt.tprintf("paths[%d] (%s) has no \"dir\"", i, p.key), false
+		}
 		for q in raw.paths[:i] {
-			if q.key == p.key { return {}, fmt.tprintf("paths: key %q appears twice", p.key), false }
+			if q.key == p.key {
+				return {}, fmt.tprintf("paths: key %q appears twice", p.key), false
+			}
 		}
 	}
 	for a, i in raw.aliases {
-		if len(a.name) == 0 { return {}, fmt.tprintf("aliases[%d] has no \"name\"", i), false }
+		if len(a.name) == 0 {
+			return {}, fmt.tprintf("aliases[%d] has no \"name\"", i), false
+		}
 		for b in raw.aliases[:i] {
-			if b.name == a.name { return {}, fmt.tprintf("aliases: %q appears twice", a.name), false }
+			if b.name == a.name {
+				return {}, fmt.tprintf("aliases: %q appears twice", a.name), false
+			}
 		}
 	}
 	for e, i in raw.env {
-		if len(e.name) == 0 { return {}, fmt.tprintf("env[%d] has no \"name\"", i), false }
+		if len(e.name) == 0 {
+			return {}, fmt.tprintf("env[%d] has no \"name\"", i), false
+		}
 		for f in raw.env[:i] {
-			if f.name == e.name { return {}, fmt.tprintf("env: %q appears twice", e.name), false }
+			if f.name == e.name {
+				return {}, fmt.tprintf("env: %q appears twice", e.name), false
+			}
 		}
 	}
 
 	for f, i in raw.fpath {
-		if len(strings.trim_space(f)) == 0 { return {}, fmt.tprintf("fpath[%d] is empty", i), false }
-		if !is_path_entry_safe(f) { return {}, fmt.tprintf("fpath[%d] contains ':' or a newline", i), false }
+		if len(strings.trim_space(f)) == 0 {
+			return {}, fmt.tprintf("fpath[%d] is empty", i), false
+		}
+		if !is_path_entry_safe(f) {
+			return {}, fmt.tprintf("fpath[%d] contains ':' or a newline", i), false
+		}
 		for g in raw.fpath[:i] {
-			if g == f { return {}, fmt.tprintf("fpath: %q appears twice", f), false }
+			if g == f {
+				return {}, fmt.tprintf("fpath: %q appears twice", f), false
+			}
 		}
 	}
 	for g, i in raw.generators {
 		switch g.shell {
 		case "zsh", "bash", "fish":
-		case: return {}, fmt.tprintf("generators[%d]: \"shell\" must be zsh, bash or fish", i), false
+		case:
+			return {}, fmt.tprintf("generators[%d]: \"shell\" must be zsh, bash or fish", i), false
 		}
-		if !is_safe_alias_name(g.cmd) { return {}, fmt.tprintf("generators[%d]: invalid \"cmd\" %q", i, g.cmd), false }
-		if strings.contains_any(g.args, "\n\r") { return {}, fmt.tprintf("generators[%d] (%s): \"args\" contains a newline", i, g.cmd), false }
+		if !is_safe_alias_name(g.cmd) {
+			return {}, fmt.tprintf("generators[%d]: invalid \"cmd\" %q", i, g.cmd), false
+		}
+		if strings.contains_any(g.args, "\n\r") {
+			return {},
+				fmt.tprintf("generators[%d] (%s): \"args\" contains a newline", i, g.cmd),
+				false
+		}
 		for h in raw.generators[:i] {
 			if h.shell == g.shell && h.cmd == g.cmd && h.args == g.args {
-				return {}, fmt.tprintf("generators: %s %s (%s) appears twice", g.cmd, g.args, g.shell), false
+				return {},
+					fmt.tprintf("generators: %s %s (%s) appears twice", g.cmd, g.args, g.shell),
+					false
 			}
 		}
 	}
@@ -176,13 +213,13 @@ entries_parse :: proc(content: string) -> (store: EntryStore, err: string, ok: b
 	store.paths = make([dynamic]StorePath, 0, len(raw.paths))
 	store.aliases = make([dynamic]StoreAlias, 0, len(raw.aliases))
 	store.env = make([dynamic]StoreEnv, 0, len(raw.env))
-	for p in raw.paths { append(&store.paths, StorePath{strings.clone(p.key), strings.clone(p.dir)}) }
-	for a in raw.aliases { append(&store.aliases, StoreAlias{strings.clone(a.name), strings.clone(a.value)}) }
-	for e in raw.env { append(&store.env, StoreEnv{strings.clone(e.name), strings.clone(e.value), e.secret, e.secret && e.run_only}) }
+	for p in raw.paths {append(&store.paths, StorePath{strings.clone(p.key), strings.clone(p.dir)})}
+	for a in raw.aliases {append(&store.aliases, StoreAlias{strings.clone(a.name), strings.clone(a.value)})}
+	for e in raw.env {append(&store.env, StoreEnv{strings.clone(e.name), strings.clone(e.value), e.secret, e.secret && e.run_only})}
 	store.fpath = make([dynamic]string, 0, len(raw.fpath))
 	store.generators = make([dynamic]StoreGenerator, 0, len(raw.generators))
-	for f in raw.fpath { append(&store.fpath, strings.clone(f)) }
-	for g in raw.generators { append(&store.generators, StoreGenerator{strings.clone(g.shell), strings.clone(g.cmd), strings.clone(g.args)}) }
+	for f in raw.fpath {append(&store.fpath, strings.clone(f))}
+	for g in raw.generators {append(&store.generators, StoreGenerator{strings.clone(g.shell), strings.clone(g.cmd), strings.clone(g.args)})}
 	return store, "", true
 }
 
@@ -201,7 +238,13 @@ entries_read :: proc() -> (store: EntryStore, err: string, ok: bool) {
 	defer delete(data)
 	s, perr, pok := entries_parse(string(data))
 	if !pok {
-		return {}, fmt.tprintf("%s: %s (wayu manages this file; restore it with 'wayu backup restore entries')", file, perr), false
+		return {},
+			fmt.tprintf(
+				"%s: %s (wayu manages this file; restore it with 'wayu backup restore entries')",
+				file,
+				perr,
+			),
+			false
 	}
 	return s, "", true
 }
@@ -269,7 +312,9 @@ entries_serialize :: proc(s: ^EntryStore) -> string {
 			strings.write_string(&b, "    {\"name\": "); q(&b, e.name)
 			if e.secret {
 				strings.write_string(&b, ", \"secret\": true")
-				if e.run_only { strings.write_string(&b, ", \"run_only\": true") }
+				if e.run_only {
+					strings.write_string(&b, ", \"run_only\": true")
+				}
 			} else {
 				strings.write_string(&b, ", \"value\": "); q(&b, e.value)
 			}
@@ -308,19 +353,29 @@ entries_serialize :: proc(s: ^EntryStore) -> string {
 @(private = "file")
 entries_invalid_utf8 :: proc(s: ^EntryStore) -> string {
 	for p in s.paths {
-		if !utf8.valid_string(p.dir) || !utf8.valid_string(p.key) { return p.key }
+		if !utf8.valid_string(p.dir) || !utf8.valid_string(p.key) {
+			return p.key
+		}
 	}
 	for a in s.aliases {
-		if !utf8.valid_string(a.value) || !utf8.valid_string(a.name) { return a.name }
+		if !utf8.valid_string(a.value) || !utf8.valid_string(a.name) {
+			return a.name
+		}
 	}
 	for e in s.env {
-		if !utf8.valid_string(e.value) || !utf8.valid_string(e.name) { return e.name }
+		if !utf8.valid_string(e.value) || !utf8.valid_string(e.name) {
+			return e.name
+		}
 	}
 	for f in s.fpath {
-		if !utf8.valid_string(f) { return f }
+		if !utf8.valid_string(f) {
+			return f
+		}
 	}
 	for g in s.generators {
-		if !utf8.valid_string(g.cmd) || !utf8.valid_string(g.args) { return g.cmd }
+		if !utf8.valid_string(g.cmd) || !utf8.valid_string(g.args) {
+			return g.cmd
+		}
 	}
 	return ""
 }
@@ -340,7 +395,9 @@ entries_save :: proc(s: ^EntryStore) -> bool {
 		}
 	}
 	file := entries_file_path()
-	if !create_backup_cli(file) { return false }
+	if !create_backup_cli(file) {
+		return false
+	}
 	content := entries_serialize(s)
 	defer delete(content)
 	if err := write_file_atomic(file, transmute([]byte)content); err != nil {
@@ -355,9 +412,17 @@ entries_save :: proc(s: ^EntryStore) -> bool {
 entries_find :: proc(s: ^EntryStore, kind: EntryKind, name: string) -> int {
 	switch kind {
 	case .ALIAS:
-		for a, i in s.aliases { if a.name == name { return i } }
+		for a, i in s.aliases {
+			if a.name == name {
+				return i
+			}
+		}
 	case .ENV:
-		for e, i in s.env { if e.name == name { return i } }
+		for e, i in s.env {
+			if e.name == name {
+				return i
+			}
+		}
 	}
 	return -1
 }
@@ -370,12 +435,26 @@ entries_as_config_entries :: proc(s: ^EntryStore, kind: EntryKind) -> []ConfigEn
 	case .ALIAS:
 		out = make([dynamic]ConfigEntry, 0, len(s.aliases))
 		for a in s.aliases {
-			append(&out, ConfigEntry{type = .ALIAS, name = strings.clone(a.name), value = strings.clone(a.value)})
+			append(
+				&out,
+				ConfigEntry {
+					type = .ALIAS,
+					name = strings.clone(a.name),
+					value = strings.clone(a.value),
+				},
+			)
 		}
 	case .ENV:
 		out = make([dynamic]ConfigEntry, 0, len(s.env))
 		for e in s.env {
-			append(&out, ConfigEntry{type = .CONSTANT, name = strings.clone(e.name), value = strings.clone(e.value)})
+			append(
+				&out,
+				ConfigEntry {
+					type = .CONSTANT,
+					name = strings.clone(e.name),
+					value = strings.clone(e.value),
+				},
+			)
 		}
 	}
 	return out[:]
@@ -394,19 +473,37 @@ entries_kind_label :: proc(kind: EntryKind) -> string {
 }
 
 @(private = "file")
-print_entries_dry_run :: proc(kind: EntryKind, removed: []string, name := "", value := "", existed := false) {
+print_entries_dry_run :: proc(
+	kind: EntryKind,
+	removed: []string,
+	name := "",
+	value := "",
+	existed := false,
+) {
 	// Only the changed names, values masked if secret-looking (OKAMI-208).
 	// The TUI sets print_quiet; writing here would draw over its screen.
 	if print_quiet do return
 	print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 	fmt.println()
-	fmt.printfln("%sWould update %s (%s):%s", BRIGHT_CYAN, ENTRIES_FILE, entries_kind_label(kind), RESET)
+	fmt.printfln(
+		"%sWould update %s (%s):%s",
+		BRIGHT_CYAN,
+		ENTRIES_FILE,
+		entries_kind_label(kind),
+		RESET,
+	)
 	for n in removed {
 		fmt.printfln("  %s- %s%s", get_error(), n, RESET)
 	}
 	if len(removed) == 0 {
-		fmt.printfln("  %s%c %s = \"%s\"%s", existed ? get_warning() : get_success(),
-			existed ? '~' : '+', name, mask_secret_value(name, value), RESET)
+		fmt.printfln(
+			"  %s%c %s = \"%s\"%s",
+			existed ? get_warning() : get_success(),
+			existed ? '~' : '+',
+			name,
+			mask_secret_value(name, value),
+			RESET,
+		)
 	}
 	fmt.println()
 	fmt.printfln("%sTo apply changes, remove --dry-run flag%s", MUTED, RESET)
@@ -414,7 +511,13 @@ print_entries_dry_run :: proc(kind: EntryKind, removed: []string, name := "", va
 
 // Set alias / constant `name` to `value` (new names are appended, existing
 // ones keep their position). Honors --dry-run. Caller holds the config lock.
-entries_kv_upsert :: proc(kind: EntryKind, name, value: string) -> (res: StoreEditResult, existed: bool) {
+entries_kv_upsert :: proc(
+	kind: EntryKind,
+	name, value: string,
+) -> (
+	res: StoreEditResult,
+	existed: bool,
+) {
 	store, err, ok := entries_read()
 	if !ok {
 		print_error_simple("%s", err)
@@ -446,7 +549,9 @@ entries_kv_upsert :: proc(kind: EntryKind, name, value: string) -> (res: StoreEd
 			append(&store.env, StoreEnv{name = strings.clone(name), value = strings.clone(value)})
 		}
 	}
-	if !entries_save(&store) { return .IO_ERROR, existed }
+	if !entries_save(&store) {
+		return .IO_ERROR, existed
+	}
 	return .OK, existed
 }
 
@@ -463,7 +568,9 @@ entries_kv_delete :: proc(kind: EntryKind, names: []string) -> StoreEditResult {
 	removed := 0
 	for n in names {
 		idx := entries_find(&store, kind, n)
-		if idx < 0 { continue }
+		if idx < 0 {
+			continue
+		}
 		removed += 1
 		switch kind {
 		case .ALIAS:
@@ -474,12 +581,16 @@ entries_kv_delete :: proc(kind: EntryKind, names: []string) -> StoreEditResult {
 			ordered_remove(&store.env, idx)
 		}
 	}
-	if removed == 0 { return .NOT_FOUND }
+	if removed == 0 {
+		return .NOT_FOUND
+	}
 	if wayu.dry_run {
 		print_entries_dry_run(kind, names)
 		return .OK
 	}
-	if !entries_save(&store) { return .IO_ERROR }
+	if !entries_save(&store) {
+		return .IO_ERROR
+	}
 	return .OK
 }
 
@@ -495,11 +606,15 @@ entries_entry_upsert :: proc(kind: EntryKind, name, value, noun: string) -> (boo
 
 	res, existed := entries_kv_upsert(kind, name, value)
 	switch res {
-	case .BAD_STORE: return false, strings.clone(ENTRY_ERROR_CONFIG_PREFIX + "nothing was written")
-	case .IO_ERROR, .NOT_FOUND: return false, fmt.aprintf("I/O error: could not update %s", ENTRIES_FILE)
+	case .BAD_STORE:
+		return false, strings.clone(ENTRY_ERROR_CONFIG_PREFIX + "nothing was written")
+	case .IO_ERROR, .NOT_FOUND:
+		return false, fmt.aprintf("I/O error: could not update %s", ENTRIES_FILE)
 	case .OK:
 	}
-	if wayu.dry_run { return true, "" }
+	if wayu.dry_run {
+		return true, ""
+	}
 
 	regenerate_init_core_silently()
 	print_success("%s %s: %s", noun, "updated" if existed else "added", name)
@@ -514,12 +629,17 @@ entries_entry_remove :: proc(kind: EntryKind, name, noun: string) -> (bool, stri
 	defer config_lock_release()
 
 	switch entries_kv_delete(kind, {name}) {
-	case .NOT_FOUND: return false, fmt.aprintf("%s not found: %s", noun, name)
-	case .BAD_STORE: return false, strings.clone(ENTRY_ERROR_CONFIG_PREFIX + "nothing was written")
-	case .IO_ERROR:  return false, fmt.aprintf("I/O error: could not update %s", ENTRIES_FILE)
+	case .NOT_FOUND:
+		return false, fmt.aprintf("%s not found: %s", noun, name)
+	case .BAD_STORE:
+		return false, strings.clone(ENTRY_ERROR_CONFIG_PREFIX + "nothing was written")
+	case .IO_ERROR:
+		return false, fmt.aprintf("I/O error: could not update %s", ENTRIES_FILE)
 	case .OK:
 	}
-	if wayu.dry_run { return true, "" }
+	if wayu.dry_run {
+		return true, ""
+	}
 
 	regenerate_init_core_silently()
 	print_success("%s removed: %s", noun, name)

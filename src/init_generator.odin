@@ -25,7 +25,9 @@ write_init_file :: proc(path, content: string) {
 		delete(old)
 		if same {
 			restrict_file_mode(path)
-			if os.exists(zwc) { restrict_file_mode(zwc) }
+			if os.exists(zwc) {
+				restrict_file_mode(zwc)
+			}
 			return
 		}
 	}
@@ -45,7 +47,9 @@ write_init_file :: proc(path, content: string) {
 // install racing the rewrite could land after the delete (OKAMI-293).
 replace_zsh_source :: proc(path, content: string) -> bool {
 	locked := config_lock_acquire()
-	defer if locked { config_lock_release() }
+	defer if locked {
+		config_lock_release()
+	}
 	_ = os.remove(fmt.tprintf("%s.zwc", path))
 	return write_file_atomic(path, transmute([]byte)content) == nil
 }
@@ -65,14 +69,16 @@ replace_zsh_source :: proc(path, content: string) -> bool {
 // by regenerate_init_core_silently (before regen) and generate_optimized_init_all.
 // --------------------------------------------------------------------------
 TOML_CONTENT_CACHE: struct {
-	content:     string,
-	loaded:      bool,
-	owned:       bool,    // true when content was heap-allocated
+	content: string,
+	loaded:  bool,
+	owned:   bool, // true when content was heap-allocated
 } = {}
 
 get_cached_toml_content :: proc() -> (string, bool) {
 	if TOML_CONTENT_CACHE.loaded {
-		if len(TOML_CONTENT_CACHE.content) == 0 { return "", false }
+		if len(TOML_CONTENT_CACHE.content) == 0 {
+			return "", false
+		}
 		return TOML_CONTENT_CACHE.content, true
 	}
 
@@ -93,7 +99,7 @@ get_cached_toml_content :: proc() -> (string, bool) {
 	}
 
 	TOML_CONTENT_CACHE.content = string(raw)
-	TOML_CONTENT_CACHE.owned   = true
+	TOML_CONTENT_CACHE.owned = true
 	return TOML_CONTENT_CACHE.content, true
 }
 
@@ -114,7 +120,9 @@ ZCOMPILE_BATCH: [dynamic]string
 // queue, so the caller may free its copy right away; flush_zcompile_batch
 // frees the queued clones.
 zcompile_file :: proc(path: string) {
-	if wayu.shell != .ZSH { return }
+	if wayu.shell != .ZSH {
+		return
+	}
 	// Process-lifetime queue: heap, not the caller's context.allocator (a
 	// unit test's tracking allocator reported unflushed entries as leaks).
 	context.allocator = runtime.heap_allocator()
@@ -148,10 +156,19 @@ flush_zcompile_batch :: proc() {
 	// The temp digest is removed if the compile is interrupted (trap), and
 	// temp digests older than a minute — left by a compile killed hard, e.g.
 	// with its terminal — are swept first.
-	strings.write_string(&builder, `zsh -fc 'umask 077; zmodload zsh/mapfile zsh/system || exit 1; l=$1; shift; t=; d=; trap '\''rm -rf -- "$t" "$d"; exit 1'\'' HUP INT TERM; for f; do [[ -f $f ]] || continue; rm -f -- $f.<->.tmp.zwc(Nmm+1); d="${TMPDIR:-/tmp}/wayu-zc.$$.$RANDOM"; n=${f:t}; c=$mapfile[$f]; if mkdir -m 700 -- "$d" && mapfile[$d/$n]=$c && zcompile -- "$d/$n.zwc" "$d/$n" && zsystem flock -t 10 -f fd -- "$l"; then [[ $mapfile[$f] == "$c" ]] && t="$f.$$.tmp.zwc" && mv -f -- "$d/$n.zwc" "$t" && mv -f -- "$t" "$f.zwc"; zsystem flock -u $fd; fi; rm -rf -- "$t" "$d"; t= d=; done' zsh`)
+	strings.write_string(
+		&builder,
+		`zsh -fc 'umask 077; zmodload zsh/mapfile zsh/system || exit 1; l=$1; shift; t=; d=; trap '\''rm -rf -- "$t" "$d"; exit 1'\'' HUP INT TERM; for f; do [[ -f $f ]] || continue; rm -f -- $f.<->.tmp.zwc(Nmm+1); d="${TMPDIR:-/tmp}/wayu-zc.$$.$RANDOM"; n=${f:t}; c=$mapfile[$f]; if mkdir -m 700 -- "$d" && mapfile[$d/$n]=$c && zcompile -- "$d/$n.zwc" "$d/$n" && zsystem flock -t 10 -f fd -- "$l"; then [[ $mapfile[$f] == "$c" ]] && t="$f.$$.tmp.zwc" && mv -f -- "$d/$n.zwc" "$t" && mv -f -- "$t" "$f.zwc"; zsystem flock -u $fd; fi; rm -rf -- "$t" "$d"; t= d=; done' zsh`,
+	)
 	lock_dir := os.is_dir(wayu.data) ? wayu.data : wayu.config
 	strings.write_byte(&builder, ' ')
-	strings.write_string(&builder, shell_single_quote(fmt.tprintf("%s/%s", lock_dir, CONFIG_LOCK_FILE), context.temp_allocator))
+	strings.write_string(
+		&builder,
+		shell_single_quote(
+			fmt.tprintf("%s/%s", lock_dir, CONFIG_LOCK_FILE),
+			context.temp_allocator,
+		),
+	)
 	for p in ZCOMPILE_BATCH {
 		strings.write_byte(&builder, ' ')
 		strings.write_string(&builder, shell_single_quote(p, context.temp_allocator))
@@ -163,7 +180,7 @@ flush_zcompile_batch :: proc() {
 	// startup optimization; if it fails, zsh just sources the .zsh text.
 	run_background_shell(strings.to_string(builder))
 
-	for p in ZCOMPILE_BATCH { delete(p) }
+	for p in ZCOMPILE_BATCH {delete(p)}
 	clear(&ZCOMPILE_BATCH)
 }
 
@@ -190,9 +207,12 @@ shells_to_generate :: proc() -> (out: [4]ShellType, n: int) {
 	out[0] = wayu.shell
 	n = 1
 	for s in ([]ShellType{.ZSH, .BASH, .FISH}) {
-		if s == wayu.shell { continue }
+		if s == wayu.shell {
+			continue
+		}
 		ext := get_shell_extension(s)
-		if os.exists(fmt.tprintf("%s/init.%s", wayu.data, ext)) || os.exists(fmt.tprintf("%s/core.%s", wayu.data, ext)) {
+		if os.exists(fmt.tprintf("%s/init.%s", wayu.data, ext)) ||
+		   os.exists(fmt.tprintf("%s/core.%s", wayu.data, ext)) {
 			out[n] = s
 			n += 1
 		}
@@ -208,8 +228,12 @@ generate_runtime_files_for_active_shell :: proc() -> (plugins_ok: bool) {
 	// regenerating several shells doesn't multiply temp usage.
 	has_arena := wayu.temp_arena != nil
 	arena_mark: virtual.Arena_Temp
-	if has_arena { arena_mark = virtual.arena_temp_begin(wayu.temp_arena) }
-	defer if has_arena { virtual.arena_temp_end(arena_mark) }
+	if has_arena {
+		arena_mark = virtual.arena_temp_begin(wayu.temp_arena)
+	}
+	defer if has_arena {
+		virtual.arena_temp_end(arena_mark)
+	}
 	if wayu.shell == .FISH {
 		generate_core_init_fish()
 	} else {
@@ -267,13 +291,16 @@ regenerate_init_core_silently :: proc() {
 // refreshes. When INIT_TEMPLATE_* changes, replace the "previous" hashes
 // with the current ones and add the new template's hash (unit-tested: every
 // template currently shipped must be listed).
-KNOWN_INIT_TEMPLATE_HASHES :: [?]u64{
+KNOWN_INIT_TEMPLATE_HASHES :: [?]u64 {
 	// zsh: previous, current
-	0x96ea40ba08bbab77, 0xa898eeefc79dbe01,
+	0x96ea40ba08bbab77,
+	0xa898eeefc79dbe01,
 	// bash: previous, current
-	0xb2b8327b7b68ed26, 0x5b5f29c251fbdb06,
+	0xb2b8327b7b68ed26,
+	0x5b5f29c251fbdb06,
 	// fish: previous, current
-	0xfda840b65f7815f1, 0x1815574ae9245a00,
+	0xfda840b65f7815f1,
+	0x1815574ae9245a00,
 }
 
 is_known_init_template :: proc(content: string) -> bool {
@@ -326,7 +353,8 @@ warn_customized_init :: proc(path, current: string) {
 	if wayu.tui_mode do return
 	marker := fmt.tprintf("%s/.%s.customized", wayu.data, filepath.base(path))
 	sig := fmt.tprintf("%x\n", hash.fnv64a(transmute([]byte)current))
-	if old, err := os.read_entire_file(marker, context.temp_allocator); err == nil && string(old) == sig {
+	if old, err := os.read_entire_file(marker, context.temp_allocator);
+	   err == nil && string(old) == sig {
 		return
 	}
 	fmt.eprintfln("wayu: %s has local edits; not updating it to the current template.", path)
@@ -387,7 +415,7 @@ generate_optimized_init_all :: proc() {
 emit_env_exports :: proc(b: ^strings.Builder, sep: string = "\n", mask := false) {
 	toml_env := read_env_values()
 	defer {
-		for e in toml_env { delete(e.name); delete(e.value) }
+		for e in toml_env {delete(e.name); delete(e.value)}
 		delete(toml_env)
 	}
 	for e in toml_env {
@@ -396,8 +424,16 @@ emit_env_exports :: proc(b: ^strings.Builder, sep: string = "\n", mask := false)
 			continue
 		}
 		v := expand_leading_tilde_to_home_var(e.value, context.temp_allocator)
-		if mask { v = mask_secret_value(e.name, e.value) }
-		fmt.sbprintf(b, "export %s=%s%s", e.name, shell_double_quote_env(v, context.temp_allocator), sep)
+		if mask {
+			v = mask_secret_value(e.name, e.value)
+		}
+		fmt.sbprintf(
+			b,
+			"export %s=%s%s",
+			e.name,
+			shell_double_quote_env(v, context.temp_allocator),
+			sep,
+		)
 	}
 }
 
@@ -406,7 +442,7 @@ emit_env_exports :: proc(b: ^strings.Builder, sep: string = "\n", mask := false)
 emit_alias_definitions :: proc(b: ^strings.Builder, sep: string = "\n") {
 	toml_aliases := read_alias_values()
 	defer {
-		for a in toml_aliases { delete(a.name); delete(a.command) }
+		for a in toml_aliases {delete(a.name); delete(a.command)}
 		delete(toml_aliases)
 	}
 	for a in toml_aliases {
@@ -414,7 +450,13 @@ emit_alias_definitions :: proc(b: ^strings.Builder, sep: string = "\n") {
 			fmt.sbprintf(b, "# wayu: skipping invalid alias name %q%s", a.name, sep)
 			continue
 		}
-		fmt.sbprintf(b, "alias %s=%s%s", a.name, shell_single_quote(a.command, context.temp_allocator), sep)
+		fmt.sbprintf(
+			b,
+			"alias %s=%s%s",
+			a.name,
+			shell_single_quote(a.command, context.temp_allocator),
+			sep,
+		)
 	}
 }
 
@@ -429,17 +471,26 @@ emit_path_eval :: proc(b: ^strings.Builder, sep: string = "\n") -> bool {
 	values := read_path_values()
 	script_path_prepend(&values) // <data>/bin first (`wayu script`)
 	defer {
-		for v in values { delete(v) }
+		for v in values {delete(v)}
 		delete(values)
 	}
-	if len(values) == 0 { return false }
+	if len(values) == 0 {
+		return false
+	}
 	fmt.sbprint(b, "_wayu_np=; for _wayu_p in")
 	for v in values {
 		fmt.sbprint(b, " ")
 		fmt.sbprint(b, path_value_shell_word(v))
 	}
-	fmt.sbprint(b, `; do case "$_wayu_p" in ''|*:*) continue ;; esac; if [ -d "$_wayu_p" ]; then case ":$_wayu_np:" in *":$_wayu_p:"*) ;; *) _wayu_np="${_wayu_np:+$_wayu_np:}$_wayu_p" ;; esac; fi; done; `)
-	fmt.sbprintf(b, `if [ -n "$_wayu_np" ]; then export PATH="$_wayu_np:$PATH"; fi; unset _wayu_p _wayu_np%s`, sep)
+	fmt.sbprint(
+		b,
+		`; do case "$_wayu_p" in ''|*:*) continue ;; esac; if [ -d "$_wayu_p" ]; then case ":$_wayu_np:" in *":$_wayu_p:"*) ;; *) _wayu_np="${_wayu_np:+$_wayu_np:}$_wayu_p" ;; esac; fi; done; `,
+	)
+	fmt.sbprintf(
+		b,
+		`if [ -n "$_wayu_np" ]; then export PATH="$_wayu_np:$PATH"; fi; unset _wayu_p _wayu_np%s`,
+		sep,
+	)
 	return true
 }
 
@@ -450,13 +501,25 @@ emit_path_eval :: proc(b: ^strings.Builder, sep: string = "\n") -> bool {
 // `wayu function add` writes functions/<name>.<ext> per shell; each shell
 // sources only its own extension (*.zsh / *.bash).
 emit_functions_loader :: proc(b: ^strings.Builder) {
-	dir := shell_double_quote_literal(fmt.tprintf("%s/functions", wayu.data), context.temp_allocator)
+	dir := shell_double_quote_literal(
+		fmt.tprintf("%s/functions", wayu.data),
+		context.temp_allocator,
+	)
 	if wayu.shell == .ZSH {
-		fmt.sbprintfln(b, `() {{ emulate -L zsh; typeset -ga _wayu_fn_files; _wayu_fn_files=( %s/*.zsh(N-.) ) }}`, dir)
+		fmt.sbprintfln(
+			b,
+			`() {{ emulate -L zsh; typeset -ga _wayu_fn_files; _wayu_fn_files=( %s/*.zsh(N-.) ) }}`,
+			dir,
+		)
 		fmt.sbprintln(b, `for _wayu_f in "${_wayu_fn_files[@]}"; do source "$_wayu_f"; done`)
 		fmt.sbprintln(b, `unset _wayu_f _wayu_fn_files`)
 	} else {
-		fmt.sbprintfln(b, `if [ -d %s ]; then for f in %s/*.bash; do if [ -f "$f" ]; then source "$f"; fi; done; fi`, dir, dir)
+		fmt.sbprintfln(
+			b,
+			`if [ -d %s ]; then for f in %s/*.bash; do if [ -f "$f" ]; then source "$f"; fi; done; fi`,
+			dir,
+			dir,
+		)
 	}
 }
 
@@ -769,31 +832,51 @@ PathValueSegment :: struct {
 
 // Split a [paths] value (after `~` → `$HOME`) into literal / variable
 // segments. Segments slice `v`; the array uses `allocator`.
-split_path_value :: proc(v: string, allocator := context.temp_allocator) -> [dynamic]PathValueSegment {
+split_path_value :: proc(
+	v: string,
+	allocator := context.temp_allocator,
+) -> [dynamic]PathValueSegment {
 	segs := make([dynamic]PathValueSegment, allocator)
 	lit_start := 0
 	i := 0
 	for i < len(v) {
-		if v[i] != '$' { i += 1; continue }
+		if v[i] != '$' {
+			i += 1; continue
+		}
 		j := i + 1
 		braced := j < len(v) && v[j] == '{'
-		if braced { j += 1 }
+		if braced {
+			j += 1
+		}
 		name_start := j
 		for j < len(v) {
 			c := v[j]
-			if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') { break }
+			if !((c >= 'A' && c <= 'Z') ||
+				   (c >= 'a' && c <= 'z') ||
+				   (c >= '0' && c <= '9') ||
+				   c == '_') {
+				break
+			}
 			j += 1
 		}
 		name := v[name_start:j]
 		ok := is_shell_var_name(name) && (!braced || (j < len(v) && v[j] == '}'))
-		if !ok { i += 1; continue }
-		if braced { j += 1 }
-		if i > lit_start { append(&segs, PathValueSegment{text = v[lit_start:i]}) }
+		if !ok {
+			i += 1; continue
+		}
+		if braced {
+			j += 1
+		}
+		if i > lit_start {
+			append(&segs, PathValueSegment{text = v[lit_start:i]})
+		}
 		append(&segs, PathValueSegment{text = name, is_var = true})
 		i = j
 		lit_start = j
 	}
-	if lit_start < len(v) { append(&segs, PathValueSegment{text = v[lit_start:]}) }
+	if lit_start < len(v) {
+		append(&segs, PathValueSegment{text = v[lit_start:]})
+	}
 	return segs
 }
 
@@ -806,7 +889,9 @@ path_value_shell_word :: proc(v: string, allocator := context.temp_allocator) ->
 	segs := split_path_value(v)
 	names := make([dynamic]string, context.temp_allocator)
 	for s in segs {
-		if s.is_var && !slice.contains(names[:], s.text) { append(&names, s.text) }
+		if s.is_var && !slice.contains(names[:], s.text) {
+			append(&names, s.text)
+		}
 	}
 	sb := strings.builder_make(allocator)
 	for n in names {
@@ -823,7 +908,7 @@ path_value_shell_word :: proc(v: string, allocator := context.temp_allocator) ->
 			strings.write_string(&sb, shell_single_quote(s.text, context.temp_allocator))
 		}
 	}
-	for _ in names { strings.write_byte(&sb, '}') }
+	for _ in names {strings.write_byte(&sb, '}')}
 	return strings.to_string(sb)
 }
 
@@ -831,7 +916,13 @@ path_value_shell_word :: proc(v: string, allocator := context.temp_allocator) ->
 // escape_fish_string, variables as "$NAME" (adjacent quoted strings
 // concatenate). Returns the word and a `test -n "$A"; and ...` guard prefix
 // ("" when the value has no variables).
-path_value_fish_word :: proc(v: string, allocator := context.temp_allocator) -> (word: string, guard: string) {
+path_value_fish_word :: proc(
+	v: string,
+	allocator := context.temp_allocator,
+) -> (
+	word: string,
+	guard: string,
+) {
 	segs := split_path_value(v)
 	w := strings.builder_make(allocator)
 	g := strings.builder_make(allocator)
@@ -864,7 +955,9 @@ read_path_values :: proc() -> [dynamic]string {
 
 	values := make([dynamic]string)
 	for e in store.paths {
-		if len(strings.trim_space(e.dir)) == 0 { continue }
+		if len(strings.trim_space(e.dir)) == 0 {
+			continue
+		}
 		if !is_path_entry_safe(e.dir) {
 			// stderr: keep stdout clean for callers that capture it.
 			fmt.eprintfln("[wayu] PATH entry %s contains ':' or a newline - skipping", e.key)
@@ -884,9 +977,13 @@ read_path_values :: proc() -> [dynamic]string {
 // (os.args[0] contains '/'), else "" so the hook falls back to PATH lookup.
 // Not symlink-resolved: /opt/homebrew/bin/wayu must survive `brew upgrade`.
 wayu_self_path :: proc() -> string {
-	if len(os.args) == 0 || !strings.contains(os.args[0], "/") { return "" }
+	if len(os.args) == 0 || !strings.contains(os.args[0], "/") {
+		return ""
+	}
 	abs, err := filepath.abs(os.args[0], context.temp_allocator)
-	if err != nil { return "" }
+	if err != nil {
+		return ""
+	}
 	return abs
 }
 
@@ -931,7 +1028,7 @@ emit_path_apply_call_fish :: proc(b: ^strings.Builder, values: []string, sig: u6
 write_path_sync_file :: proc() -> (file: string) {
 	values, sig := read_path_sync_values()
 	defer {
-		for v in values { delete(v) }
+		for v in values {delete(v)}
 		delete(values)
 	}
 	file = fmt.aprintf("%s/path_sync.%s", wayu.data, get_shell_extension(wayu.shell))
@@ -964,24 +1061,38 @@ emit_dir_overrides :: proc(b: ^strings.Builder, fish: bool) {
 	default_config := fmt.aprintf("%s/.config/wayu", wayu.home)
 	defer delete(default_config)
 	default_data := default_data_dir(wayu.home, context.temp_allocator)
-	vars := [2][2]string{
+	vars := [2][2]string {
 		{"WAYU_CONFIG_DIR", wayu.config if wayu.config != default_config else ""},
 		{"WAYU_DATA_DIR", wayu.data if wayu.data != default_data else ""},
 	}
 	header := false
 	for v in vars {
-		if len(v[1]) == 0 { continue }
+		if len(v[1]) == 0 {
+			continue
+		}
 		if !header {
 			fmt.sbprintln(b, "# === wayu directories (non-default) ===")
 			header = true
 		}
 		if fish {
-			fmt.sbprintfln(b, "set -gx %s %s", v[0], escape_fish_string(v[1], context.temp_allocator))
+			fmt.sbprintfln(
+				b,
+				"set -gx %s %s",
+				v[0],
+				escape_fish_string(v[1], context.temp_allocator),
+			)
 		} else {
-			fmt.sbprintfln(b, "export %s=%s", v[0], shell_double_quote_literal(v[1], context.temp_allocator))
+			fmt.sbprintfln(
+				b,
+				"export %s=%s",
+				v[0],
+				shell_double_quote_literal(v[1], context.temp_allocator),
+			)
 		}
 	}
-	if header { fmt.sbprintln(b) }
+	if header {
+		fmt.sbprintln(b)
+	}
 }
 
 // zsh/bash: write core.<ext> — the ONE generated file init.<ext> sources —
@@ -999,7 +1110,9 @@ generate_core_init_v2 :: proc() {
 	zcompile_file(path)
 
 	turbo := fmt.tprintf("%s/turbo.%s", wayu.data, shell_ext)
-	if os.exists(turbo) { write_turbo_file(turbo, content) }
+	if os.exists(turbo) {
+		write_turbo_file(turbo, content)
+	}
 }
 
 // core.<ext> for zsh/bash (OKAMI-284). Everything is precomputed at build
@@ -1020,8 +1133,15 @@ build_core_content :: proc(mask := false) -> string {
 	b := strings.builder_make()
 
 	fmt.sbprintln(&b, get_shebang(wayu.shell))
-	fmt.sbprintfln(&b, "# core.%s - generated by wayu from wayu.toml and entries.json (`wayu build`); do not edit.", shell_ext)
-	fmt.sbprintln(&b, "# Everything init sources, in one file; each `# === ... ===` line starts a section.")
+	fmt.sbprintfln(
+		&b,
+		"# core.%s - generated by wayu from wayu.toml and entries.json (`wayu build`); do not edit.",
+		shell_ext,
+	)
+	fmt.sbprintln(
+		&b,
+		"# Everything init sources, in one file; each `# === ... ===` line starts a section.",
+	)
 	fmt.sbprintln(&b)
 	emit_dir_overrides(&b, false)
 
@@ -1039,16 +1159,31 @@ build_core_content :: proc(mask := false) -> string {
 	fmt.sbprintln(&b, "# === PATH (live-synced at each prompt) ===")
 	fmt.sbprint(&b, WAYU_PATH_SYNC_ZSH if is_zsh else WAYU_PATH_SYNC_BASH)
 	sync_file := fmt.tprintf("%s/path_sync.%s", wayu.data, shell_ext)
-	fmt.sbprintfln(&b, "_WAYU_PATHS_FILE=%s", shell_double_quote_literal(sync_file, context.temp_allocator))
+	fmt.sbprintfln(
+		&b,
+		"_WAYU_PATHS_FILE=%s",
+		shell_double_quote_literal(sync_file, context.temp_allocator),
+	)
 	if bin := wayu_self_path(); bin != "" {
 		fmt.sbprintfln(&b, "_WAYU_BIN=%s", shell_double_quote_literal(bin, context.temp_allocator))
 	}
-	fmt.sbprintfln(&b, "_WAYU_TOML_FILE=%s", shell_double_quote_literal(fmt.tprintf("%s/wayu.toml", wayu.config), context.temp_allocator))
-	fmt.sbprintfln(&b, "_WAYU_ENTRIES_FILE=%s", shell_double_quote_literal(entries_file_path(), context.temp_allocator))
+	fmt.sbprintfln(
+		&b,
+		"_WAYU_TOML_FILE=%s",
+		shell_double_quote_literal(
+			fmt.tprintf("%s/wayu.toml", wayu.config),
+			context.temp_allocator,
+		),
+	)
+	fmt.sbprintfln(
+		&b,
+		"_WAYU_ENTRIES_FILE=%s",
+		shell_double_quote_literal(entries_file_path(), context.temp_allocator),
+	)
 	{
 		values, sig := read_path_sync_values()
 		defer {
-			for v in values { delete(v) }
+			for v in values {delete(v)}
 			delete(values)
 		}
 		// _wayu_paths_apply leaves PATH deduplicated (wanted dirs first).
@@ -1070,7 +1205,13 @@ build_core_content :: proc(mask := false) -> string {
 		// `wayu completions generate` writes wayu.bash; `completions add`
 		// writes name.bash-completion (or keeps a given .bash name).
 		q := shell_double_quote_literal(completions_dir, context.temp_allocator)
-		fmt.sbprintfln(&b, `if [ -d %s ]; then for f in %s/*.bash-completion %s/*.bash; do if [ -f "$f" ]; then source "$f"; fi; done; fi`, q, q, q)
+		fmt.sbprintfln(
+			&b,
+			`if [ -d %s ]; then for f in %s/*.bash-completion %s/*.bash; do if [ -f "$f" ]; then source "$f"; fi; done; fi`,
+			q,
+			q,
+			q,
+		)
 	}
 	fmt.sbprintln(&b)
 
@@ -1099,7 +1240,7 @@ build_core_content :: proc(mask := false) -> string {
 
 	tools := read_wayu_toml_tools()
 	defer {
-		for &t in tools { destroy_tool_entry(&t) }
+		for &t in tools {destroy_tool_entry(&t)}
 		delete(tools)
 	}
 
@@ -1107,12 +1248,16 @@ build_core_content :: proc(mask := false) -> string {
 	// tools may be eager; other recipes are always in the deferred section.
 	eager_count := 0
 	for t in tools {
-		if t.eager && !t.login_only && tool_kind_is_evalcache(t.kind) { eager_count += 1 }
+		if t.eager && !t.login_only && tool_kind_is_evalcache(t.kind) {
+			eager_count += 1
+		}
 	}
 	if eager_count > 0 {
 		fmt.sbprintln(&b, "# === Tools (eager - keybindings, immediate) ===")
 		for t in tools {
-			if !t.eager || t.login_only || !tool_kind_is_evalcache(t.kind) { continue }
+			if !t.eager || t.login_only || !tool_kind_is_evalcache(t.kind) {
+				continue
+			}
 			emit_evalcache_call(&b, t)
 		}
 		fmt.sbprintln(&b)
@@ -1171,16 +1316,30 @@ build_core_content :: proc(mask := false) -> string {
 	fmt.sbprintln(&b, "# === Plugins ===")
 	if is_zsh {
 		plugins_dir := fmt.tprintf("%s/plugins", wayu.data)
-		as_q := shell_double_quote_literal(fmt.tprintf("%s/zsh-autosuggestions/zsh-autosuggestions.zsh", plugins_dir), context.temp_allocator)
-		sh_q := shell_double_quote_literal(fmt.tprintf("%s/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh", plugins_dir), context.temp_allocator)
+		as_q := shell_double_quote_literal(
+			fmt.tprintf("%s/zsh-autosuggestions/zsh-autosuggestions.zsh", plugins_dir),
+			context.temp_allocator,
+		)
+		sh_q := shell_double_quote_literal(
+			fmt.tprintf("%s/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh", plugins_dir),
+			context.temp_allocator,
+		)
 		fmt.sbprintln(&b, "if [[ -o interactive ]]; then")
 		if startup.autosuggest {
-			fmt.sbprintln(&b, `[[ ":${_WAYU_PLUGINS_LOADED-}:" == *:zsh-autosuggestions:* ]] || _WAYU_PLUGINS_LOADED="${_WAYU_PLUGINS_LOADED-}:zsh-autosuggestions"`)
+			fmt.sbprintln(
+				&b,
+				`[[ ":${_WAYU_PLUGINS_LOADED-}:" == *:zsh-autosuggestions:* ]] || _WAYU_PLUGINS_LOADED="${_WAYU_PLUGINS_LOADED-}:zsh-autosuggestions"`,
+			)
 		}
 		if startup.highlight {
 			hl_plugins := HIGHLIGHT_PLUGINS
 			for name in hl_plugins {
-				fmt.sbprintfln(&b, `[[ ":${{_WAYU_PLUGINS_LOADED-}}:" == *:%s:* ]] || _WAYU_PLUGINS_LOADED="${{_WAYU_PLUGINS_LOADED-}}:%s"`, name, name)
+				fmt.sbprintfln(
+					&b,
+					`[[ ":${{_WAYU_PLUGINS_LOADED-}}:" == *:%s:* ]] || _WAYU_PLUGINS_LOADED="${{_WAYU_PLUGINS_LOADED-}}:%s"`,
+					name,
+					name,
+				)
 			}
 		}
 		if startup.defer_plugins {
@@ -1188,11 +1347,21 @@ build_core_content :: proc(mask := false) -> string {
 		}
 		emit_source_if_exists(&b, runtime_file("plugins"))
 		if !startup.autosuggest {
-			fmt.sbprintfln(&b, "if (( ! ${{+functions[_zsh_autosuggest_start]}} )) && [ -f %s ]; then source %s; fi", as_q, as_q)
+			fmt.sbprintfln(
+				&b,
+				"if (( ! ${{+functions[_zsh_autosuggest_start]}} )) && [ -f %s ]; then source %s; fi",
+				as_q,
+				as_q,
+			)
 		}
 		emit_source_if_exists(&b, fmt.tprintf("%s/config.zsh", plugins_dir))
 		if !startup.highlight {
-			fmt.sbprintfln(&b, "if (( ! ${{+functions[_zsh_highlight]}} )) && [ -f %s ]; then source %s; fi", sh_q, sh_q)
+			fmt.sbprintfln(
+				&b,
+				"if (( ! ${{+functions[_zsh_highlight]}} )) && [ -f %s ]; then source %s; fi",
+				sh_q,
+				sh_q,
+			)
 		}
 		if startup.defer_plugins {
 			fmt.sbprintln(&b, "}")
@@ -1208,13 +1377,17 @@ build_core_content :: proc(mask := false) -> string {
 	// the lazy recipes nvm, conda, lazy — wrappers that load on first use).
 	deferred_count := 0
 	for t in tools {
-		if t.login_only || (t.eager && tool_kind_is_evalcache(t.kind)) { continue }
+		if t.login_only || (t.eager && tool_kind_is_evalcache(t.kind)) {
+			continue
+		}
 		deferred_count += 1
 	}
 	if deferred_count > 0 {
 		fmt.sbprintln(&b, "# === Tools (deferred) ===")
 		for t in tools {
-			if t.login_only || (t.eager && tool_kind_is_evalcache(t.kind)) { continue }
+			if t.login_only || (t.eager && tool_kind_is_evalcache(t.kind)) {
+				continue
+			}
 			emit_tool_recipe(&b, t)
 		}
 		fmt.sbprintln(&b)
@@ -1233,13 +1406,17 @@ build_core_content :: proc(mask := false) -> string {
 	// Login-shell-only tools (login_only = true).
 	login_count := 0
 	for t in tools {
-		if t.login_only { login_count += 1 }
+		if t.login_only {
+			login_count += 1
+		}
 	}
 	if login_count > 0 {
 		fmt.sbprintln(&b, "# === Login shell only ===")
 		fmt.sbprintln(&b, "if [[ -o login ]]; then" if is_zsh else "if shopt -q login_shell; then")
 		for t in tools {
-			if t.login_only { emit_tool_recipe(&b, t) }
+			if t.login_only {
+				emit_tool_recipe(&b, t)
+			}
 		}
 		fmt.sbprintln(&b, "fi")
 		fmt.sbprintln(&b)
@@ -1262,13 +1439,13 @@ build_core_content :: proc(mask := false) -> string {
 
 // [settings] keys that shape the generated zsh startup (OKAMI-372/375).
 StartupSettings :: struct {
-	compinit_guard: bool, // later `compinit` calls only register new fpath dirs
-	defer_plugins:  bool, // plugins load after the first prompt (zsh-defer)
-	lazy_compinit:  bool, // compinit on the first completion attempt
-	autosuggest:    bool, // built-in history autosuggestions (OKAMI-376)
+	compinit_guard:    bool, // later `compinit` calls only register new fpath dirs
+	defer_plugins:     bool, // plugins load after the first prompt (zsh-defer)
+	lazy_compinit:     bool, // compinit on the first completion attempt
+	autosuggest:       bool, // built-in history autosuggestions (OKAMI-376)
 	autosuggest_style: string, // region_highlight spec of the suggestion (temp-allocated)
-	highlight:      bool, // built-in syntax highlighting (OKAMI-377)
-	highlight_styles: [HIGHLIGHT_STYLE_COUNT]string, // see HIGHLIGHT_STYLES (temp-allocated)
+	highlight:         bool, // built-in syntax highlighting (OKAMI-377)
+	highlight_styles:  [HIGHLIGHT_STYLE_COUNT]string, // see HIGHLIGHT_STYLES (temp-allocated)
 }
 
 AUTOSUGGEST_DEFAULT_STYLE :: "fg=8"
@@ -1276,16 +1453,26 @@ AUTOSUGGEST_DEFAULT_STYLE :: "fg=8"
 // Read StartupSettings from wayu.toml (cached content); a missing key or a
 // non-boolean value keeps the default.
 read_startup_settings :: proc() -> StartupSettings {
-	s := StartupSettings{compinit_guard = true, autosuggest_style = AUTOSUGGEST_DEFAULT_STYLE}
+	s := StartupSettings {
+		compinit_guard    = true,
+		autosuggest_style = AUTOSUGGEST_DEFAULT_STYLE,
+	}
 	styles := HIGHLIGHT_STYLES
-	for st, i in styles { s.highlight_styles[i] = st.default }
+	for st, i in styles {s.highlight_styles[i] = st.default}
 	content, ok := get_cached_toml_content()
-	if !ok { return s }
+	if !ok {
+		return s
+	}
 	arena: virtual.Arena
-	if virtual.arena_init_growing(&arena) != nil { return s }
+	if virtual.arena_init_growing(&arena) != nil {
+		return s
+	}
 	defer virtual.arena_destroy(&arena)
 	doc, _ := toml_doc_parse_alloc(content, virtual.arena_allocator(&arena))
-	keys := [?]struct{ name: string, field: ^bool }{
+	keys := [?]struct {
+		name:  string,
+		field: ^bool,
+	} {
 		{"settings.compinit_guard", &s.compinit_guard},
 		{"settings.defer_plugins", &s.defer_plugins},
 		{"settings.lazy_compinit", &s.lazy_compinit},
@@ -1293,9 +1480,12 @@ read_startup_settings :: proc() -> StartupSettings {
 		{"settings.highlight", &s.highlight},
 	}
 	for k in keys {
-		if v := get_toml_value(&doc, k.name); v != nil && v.type == .BOOLEAN { k.field^ = v.bool_val }
+		if v := get_toml_value(&doc, k.name); v != nil && v.type == .BOOLEAN {
+			k.field^ = v.bool_val
+		}
 	}
-	if v := get_toml_value(&doc, "settings.autosuggest_style"); v != nil && v.type == .STRING && autosuggest_style_valid(v.str_val) {
+	if v := get_toml_value(&doc, "settings.autosuggest_style");
+	   v != nil && v.type == .STRING && autosuggest_style_valid(v.str_val) {
 		s.autosuggest_style = strings.clone(v.str_val, context.temp_allocator)
 	}
 	s.highlight_styles = read_highlight_styles(&doc)
@@ -1305,9 +1495,13 @@ read_startup_settings :: proc() -> StartupSettings {
 // A usable `[settings] autosuggest_style`: a short region_highlight spec
 // (`fg=8`, `fg=244,underline`) on one line.
 autosuggest_style_valid :: proc(style: string) -> bool {
-	if len(style) == 0 || len(style) > 64 { return false }
+	if len(style) == 0 || len(style) > 64 {
+		return false
+	}
 	for c in transmute([]byte)style {
-		if c < 0x20 || c == 0x7f { return false }
+		if c < 0x20 || c == 0x7f {
+			return false
+		}
 	}
 	return true
 }
@@ -1333,18 +1527,35 @@ autosuggest_style_valid :: proc(style: string) -> bool {
 emit_zsh_suggest :: proc(b: ^strings.Builder, style: string) {
 	keys := plugin_accept_keys_from_toml()
 	defer {
-		for k in keys { delete(k) }
+		for k in keys {delete(k)}
 		delete(keys)
 	}
 	binds := strings.builder_make(context.temp_allocator)
 	for k in keys {
 		// Same filter as the plugin's config.zsh: key sequences, not names.
-		if len(k) == 0 || (!strings.has_prefix(k, "^") && !strings.contains(k, "[")) { continue }
+		if len(k) == 0 || (!strings.has_prefix(k, "^") && !strings.contains(k, "[")) {
+			continue
+		}
 		qk := shell_quote(k, .ZSH) // temp-allocated
-		fmt.sbprintfln(&binds, "    bindkey -M emacs %s wayu-suggest-accept; bindkey -M viins %s wayu-suggest-accept", qk, qk)
+		fmt.sbprintfln(
+			&binds,
+			"    bindkey -M emacs %s wayu-suggest-accept; bindkey -M viins %s wayu-suggest-accept",
+			qk,
+			qk,
+		)
 	}
-	code, _ := strings.replace_all(ZSH_SUGGEST, "@STYLE@", shell_double_quote_literal(style, context.temp_allocator), context.temp_allocator)
-	code, _ = strings.replace_all(code, "@BINDS@\n", strings.to_string(binds), context.temp_allocator)
+	code, _ := strings.replace_all(
+		ZSH_SUGGEST,
+		"@STYLE@",
+		shell_double_quote_literal(style, context.temp_allocator),
+		context.temp_allocator,
+	)
+	code, _ = strings.replace_all(
+		code,
+		"@BINDS@\n",
+		strings.to_string(binds),
+		context.temp_allocator,
+	)
 	fmt.sbprint(b, code)
 }
 
@@ -1502,7 +1713,11 @@ fi
 @(private = "file")
 emit_zsh_completions :: proc(b: ^strings.Builder, completions_dir: string, s: StartupSettings) {
 	q := shell_double_quote_literal(completions_dir, context.temp_allocator)
-	fmt.sbprintfln(b, `() {{ emulate -L zsh; (( ${{fpath[(Ie)$1]}} )) || fpath=( "$1" "${{fpath[@]}}" ) }} %s`, q)
+	fmt.sbprintfln(
+		b,
+		`() {{ emulate -L zsh; (( ${{fpath[(Ie)$1]}} )) || fpath=( "$1" "${{fpath[@]}}" ) }} %s`,
+		q,
+	)
 	// entries.json `fpath` (wayu optimize / completions fpath), before compinit.
 	emit_managed_fpath(b)
 	fmt.sbprintln(b, `if [[ -o interactive ]]; then`)
@@ -1515,7 +1730,10 @@ emit_zsh_completions :: proc(b: ^strings.Builder, completions_dir: string, s: St
 		fmt.sbprint(b, ZSH_COMPINIT_LAZY)
 		if !s.compinit_guard {
 			// No guard: an early `compinit` call does the real setup now.
-			fmt.sbprintln(b, `  if (( ! ${+_wayu_comp_fpath} )); then function compinit { _wayu_compinit_now; }; fi`)
+			fmt.sbprintln(
+				b,
+				`  if (( ! ${+_wayu_comp_fpath} )); then function compinit { _wayu_compinit_now; }; fi`,
+			)
 		}
 	} else {
 		fmt.sbprintln(b, `  _wayu_compinit`)
@@ -1857,7 +2075,12 @@ emit_helpers :: proc(b: ^strings.Builder) {
 		fmt.sbprint(b, HELPER_EVALCACHE_ZSH)
 		// wayu_compile works on the data dir this file was generated for.
 		data_q := shell_double_quote_literal(wayu.data, context.temp_allocator)
-		defer_code, _ := strings.replace_all(HELPER_ZSH_DEFER, "@WAYU_DATA_DIR@", data_q, context.temp_allocator)
+		defer_code, _ := strings.replace_all(
+			HELPER_ZSH_DEFER,
+			"@WAYU_DATA_DIR@",
+			data_q,
+			context.temp_allocator,
+		)
 		fmt.sbprint(b, defer_code)
 	} else {
 		fmt.sbprint(b, HELPER_EVALCACHE_BASH)
@@ -1882,28 +2105,40 @@ emit_helpers :: proc(b: ^strings.Builder) {
 //   lazy       generic - wraps `hook_commands`, sources `init_script` once
 
 ToolEntry :: struct {
-	name:          string,    // recipe label; for evalcache also the binary to invoke
-	kind:          string,    // "evalcache" | "nvm" | "conda" | "lazy"
-	args:          string,    // evalcache: extra args (e.g. "init zsh")
-	eager:         bool,      // evalcache: load in core instead of lazy
-	login_only:    bool,      // only load in login shells (login.zsh)
-	init_script:   string,    // lazy: path sourced on first hook invocation
-	hook_commands: []string,  // lazy: commands wrapped to trigger load
+	name:          string, // recipe label; for evalcache also the binary to invoke
+	kind:          string, // "evalcache" | "nvm" | "conda" | "lazy"
+	args:          string, // evalcache: extra args (e.g. "init zsh")
+	eager:         bool, // evalcache: load in core instead of lazy
+	login_only:    bool, // only load in login shells (login.zsh)
+	init_script:   string, // lazy: path sourced on first hook invocation
+	hook_commands: []string, // lazy: commands wrapped to trigger load
 }
 
 destroy_tool_entry :: proc(t: ^ToolEntry) {
-	if len(t.name)        > 0 { delete(t.name) }
-	if len(t.kind)        > 0 { delete(t.kind) }
-	if len(t.args)        > 0 { delete(t.args) }
-	if len(t.init_script) > 0 { delete(t.init_script) }
-	for s in t.hook_commands { delete(s) }
-	if len(t.hook_commands) > 0 { delete(t.hook_commands) }
+	if len(t.name) > 0 {
+		delete(t.name)
+	}
+	if len(t.kind) > 0 {
+		delete(t.kind)
+	}
+	if len(t.args) > 0 {
+		delete(t.args)
+	}
+	if len(t.init_script) > 0 {
+		delete(t.init_script)
+	}
+	for s in t.hook_commands {delete(s)}
+	if len(t.hook_commands) > 0 {
+		delete(t.hook_commands)
+	}
 }
 
 // Caller must destroy_tool_entry each element + `delete` the dynamic array.
 read_wayu_toml_tools :: proc() -> [dynamic]ToolEntry {
 	content_str, ok := get_cached_toml_content()
-	if !ok { return make([dynamic]ToolEntry) }
+	if !ok {
+		return make([dynamic]ToolEntry)
+	}
 
 	// Growing virtual arena: the old fixed arena (capped at 512KB) ran out on
 	// large configs (thousands of aliases) and segfaulted every regenerate.
@@ -1924,7 +2159,9 @@ read_wayu_toml_tools :: proc() -> [dynamic]ToolEntry {
 	names := make([dynamic]string, 0, len(tools_val.table_val))
 	defer delete(names)
 	for name, val in tools_val.table_val {
-		if val == nil || val.type != .TABLE { continue }
+		if val == nil || val.type != .TABLE {
+			continue
+		}
 		append(&names, name)
 	}
 	slice.sort(names[:])
@@ -1960,7 +2197,11 @@ tool_entry_from_inline_table :: proc(name: string, table: ^TomlValue) -> ToolEnt
 	}
 	if v, ok := table.table_val["hook_commands"]; ok && v != nil && v.type == .ARRAY {
 		n := 0
-		for elem in v.arr_val { if elem.type == .STRING { n += 1 } }
+		for elem in v.arr_val {
+			if elem.type == .STRING {
+				n += 1
+			}
+		}
 		cmds := make([]string, n)
 		i := 0
 		for elem in v.arr_val {
@@ -1999,7 +2240,9 @@ emit_evalcache_call :: proc(b: ^strings.Builder, t: ToolEntry) {
 		return
 	}
 	words, reason, ok := tool_args_to_shell(t.args)
-	defer if ok { delete(words) }
+	defer if ok {
+		delete(words)
+	}
 	if !ok {
 		fmt.sbprintfln(b, "# wayu: [tools] %s: args %s - skipping", t.name, reason)
 		fmt.eprintfln("[wayu] [tools] %s: args %s - skipping", t.name, reason)
@@ -2016,37 +2259,50 @@ emit_evalcache_call :: proc(b: ^strings.Builder, t: ToolEntry) {
 // mixing quoted and unquoted `$`. Brace expansion is not performed: `{a,b}`
 // stays literal. `out` is allocated with `allocator` (owned by the caller
 // when ok); `reason` is static or temp-allocated.
-tool_args_to_shell :: proc(args: string, allocator := context.allocator) -> (out: string, reason: string, ok: bool) {
+tool_args_to_shell :: proc(
+	args: string,
+	allocator := context.allocator,
+) -> (
+	out: string,
+	reason: string,
+	ok: bool,
+) {
 	if strings.contains_any(args, "\n\r") {
 		return "", "contains a newline", false
 	}
 	stmts := shell_parse_statements(args, .POSIX)
 	defer shell_statements_destroy(&stmts)
-	if len(stmts) == 0 { return strings.clone("", allocator), "", true }
+	if len(stmts) == 0 {
+		return strings.clone("", allocator), "", true
+	}
 	st := stmts[0]
 	if len(st.error) > 0 {
 		return "", fmt.tprintf("cannot be parsed (%s)", st.error), false
 	}
 
 	sb := strings.builder_make(allocator)
-	defer if !ok { strings.builder_destroy(&sb) }
+	defer if !ok {
+		strings.builder_destroy(&sb)
+	}
 	for tok, ti in st.tokens {
 		if tok.kind == .Op {
 			return "", fmt.tprintf("contains the shell operator %q", tok.op), false
 		}
 		text, active := tok.word.text, tok.word.active
 		dollar_active, dollar_quoted := false, false
-		for i in 0..<len(text) {
+		for i in 0 ..< len(text) {
 			c := text[i]
 			if !active[i] {
-				if c == '$' { dollar_quoted = true }
+				if c == '$' {
+					dollar_quoted = true
+				}
 				continue
 			}
 			switch c {
 			case '`':
 				return "", "contains command substitution (`...`)", false
 			case '$':
-				if i + 1 < len(text) && text[i+1] == '(' {
+				if i + 1 < len(text) && text[i + 1] == '(' {
 					return "", "contains command substitution ($(...))", false
 				}
 				dollar_active = true
@@ -2059,7 +2315,9 @@ tool_args_to_shell :: proc(args: string, allocator := context.allocator) -> (out
 		}
 		tilde := len(active) > 0 && active[0] && (text == "~" || strings.has_prefix(text, "~/"))
 
-		if ti > 0 { strings.write_byte(&sb, ' ') }
+		if ti > 0 {
+			strings.write_byte(&sb, ' ')
+		}
 		// Heap, not the temp arena: a huge config (thousands of aliases)
 		// can exhaust the arena, and a failed temp allocation would
 		// silently drop the args.
@@ -2071,7 +2329,9 @@ tool_args_to_shell :: proc(args: string, allocator := context.allocator) -> (out
 			delete(v)
 		case tilde:
 			strings.write_string(&sb, "~/" if len(text) > 1 else "~")
-			if len(text) > 2 { quoted = shell_single_quote(text[2:]) }
+			if len(text) > 2 {
+				quoted = shell_single_quote(text[2:])
+			}
 		case len(text) > 0 && is_bare_shell_word(text):
 			strings.write_string(&sb, text)
 		case:
@@ -2086,11 +2346,19 @@ tool_args_to_shell :: proc(args: string, allocator := context.allocator) -> (out
 // Only characters no shell (zsh/bash, any options) treats specially.
 @(private = "file")
 is_bare_shell_word :: proc(s: string) -> bool {
-	for i in 0..<len(s) {
+	for i in 0 ..< len(s) {
 		c := s[i]
 		switch {
 		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		case c == '-' || c == '_' || c == '.' || c == '/' || c == ',' || c == ':' || c == '+' || c == '@' || c == '%':
+		case c == '-' ||
+		     c == '_' ||
+		     c == '.' ||
+		     c == '/' ||
+		     c == ',' ||
+		     c == ':' ||
+		     c == '+' ||
+		     c == '@' ||
+		     c == '%':
 		case c == '=' && i > 0:
 		case:
 			return false
@@ -2104,12 +2372,14 @@ is_bare_shell_word :: proc(s: string) -> bool {
 validate_tools_args :: proc() -> bool {
 	tools := read_wayu_toml_tools()
 	defer {
-		for &t in tools { destroy_tool_entry(&t) }
+		for &t in tools {destroy_tool_entry(&t)}
 		delete(tools)
 	}
 	ok := true
 	for t in tools {
-		if !tool_kind_is_evalcache(t.kind) || len(t.args) == 0 { continue }
+		if !tool_kind_is_evalcache(t.kind) || len(t.args) == 0 {
+			continue
+		}
 		words, reason, valid := tool_args_to_shell(t.args)
 		if valid {
 			delete(words)
@@ -2119,7 +2389,9 @@ validate_tools_args :: proc() -> bool {
 		}
 	}
 	if !ok {
-		fmt.println("  Write args as plain words, quoting with '...' where needed (no ; | & < > newlines, $(...), backticks or globs).")
+		fmt.println(
+			"  Write args as plain words, quoting with '...' where needed (no ; | & < > newlines, $(...), backticks or globs).",
+		)
 	}
 	return ok
 }
@@ -2155,13 +2427,17 @@ emit_tool_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 // generated script readable and verb-error-free.
 emit_lazy_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 	if len(t.init_script) == 0 || len(t.hook_commands) == 0 {
-		fmt.sbprintfln(b, "# wayu: 'lazy' kind for %q needs init_script + hook_commands - skipping", t.name)
+		fmt.sbprintfln(
+			b,
+			"# wayu: 'lazy' kind for %q needs init_script + hook_commands - skipping",
+			t.name,
+		)
 		return
 	}
 
-	ident  := sanitize_ident(t.name)
+	ident := sanitize_ident(t.name)
 	loader := fmt.tprintf("_wayu_lazy_%s_load", ident)
-	flag   := fmt.tprintf("_WAYU_LAZY_%s_LOADED", strings.to_upper(ident, context.temp_allocator))
+	flag := fmt.tprintf("_WAYU_LAZY_%s_LOADED", strings.to_upper(ident, context.temp_allocator))
 
 	cmds := make([dynamic]string, 0, len(t.hook_commands), context.temp_allocator)
 	for cmd in t.hook_commands {
@@ -2171,9 +2447,14 @@ emit_lazy_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 			fmt.sbprintfln(b, "# wayu: invalid hook command %q for %q - skipping", cmd, t.name)
 		}
 	}
-	if len(cmds) == 0 { return }
+	if len(cmds) == 0 {
+		return
+	}
 
-	script := shell_double_quote_env(expand_leading_tilde_to_home_var(t.init_script, context.temp_allocator), context.temp_allocator)
+	script := shell_double_quote_env(
+		expand_leading_tilde_to_home_var(t.init_script, context.temp_allocator),
+		context.temp_allocator,
+	)
 
 	fmt.sbprintfln(b, "# --- recipe: lazy (%s) ---", t.name)
 	fmt.sbprint(b, loader)
@@ -2184,7 +2465,7 @@ emit_lazy_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 	fmt.sbprintln(b, "-}\" ] && return 0")
 	fmt.sbprintfln(b, "  %s=1", flag)
 	fmt.sbprint(b, "  unset -f")
-	for cmd in cmds { fmt.sbprintf(b, " %s", cmd) }
+	for cmd in cmds {fmt.sbprintf(b, " %s", cmd)}
 	fmt.sbprintln(b, " 2>/dev/null")
 	fmt.sbprintfln(b, "  [ -s %s ] && \\. %s", script, script)
 	fmt.sbprintln(b, "}")
@@ -2210,10 +2491,7 @@ sanitize_ident :: proc(s: string) -> string {
 	for i := 0; i < len(s); i += 1 {
 		c := s[i]
 		switch {
-		case c >= 'a' && c <= 'z',
-		     c >= 'A' && c <= 'Z',
-		     c >= '0' && c <= '9',
-		     c == '_':
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_':
 			buf[i] = c
 		case:
 			buf[i] = '_'
@@ -2480,7 +2758,7 @@ _wayu_setup_conda_lazy`
 // ============================================================================
 
 EnvEntry :: struct {
-	name: string,
+	name:  string,
 	value: string,
 }
 
@@ -2493,7 +2771,9 @@ read_env_values :: proc() -> [dynamic]EnvEntry {
 	defer entries_store_destroy(&store)
 	entries := make([dynamic]EnvEntry, 0, len(store.env))
 	for e in store.env {
-		if e.secret { continue }
+		if e.secret {
+			continue
+		}
 		append(&entries, EnvEntry{name = strings.clone(e.name), value = strings.clone(e.value)})
 	}
 	return entries
@@ -2506,9 +2786,12 @@ read_alias_values :: proc() -> [dynamic]AliasEntry {
 	defer entries_store_destroy(&store)
 	entries := make([dynamic]AliasEntry, 0, len(store.aliases))
 	for a in store.aliases {
-		append(&entries, AliasEntry{name = strings.clone(a.name), command = strings.clone(a.value)})
+		append(
+			&entries,
+			AliasEntry{name = strings.clone(a.name), command = strings.clone(a.value)},
+		)
 	}
-	slice.sort_by(entries[:], proc(a, b: AliasEntry) -> bool { return a.name < b.name })
+	slice.sort_by(entries[:], proc(a, b: AliasEntry) -> bool {return a.name < b.name})
 	return entries
 }
 
@@ -2544,7 +2827,7 @@ generate_core_init_fish :: proc() {
 	fmt.sbprintln(b, "# === Environment ===")
 	toml_env := read_env_values()
 	defer {
-		for e in toml_env { delete(e.name); delete(e.value) }
+		for e in toml_env {delete(e.name); delete(e.value)}
 		delete(toml_env)
 	}
 	for e in toml_env {
@@ -2553,7 +2836,12 @@ generate_core_init_fish :: proc() {
 			continue
 		}
 		v := expand_leading_tilde_to_home_var(e.value, context.temp_allocator)
-		fmt.sbprintfln(b, `set -gx %s %s`, e.name, fish_double_quote_env(v, context.temp_allocator))
+		fmt.sbprintfln(
+			b,
+			`set -gx %s %s`,
+			e.name,
+			fish_double_quote_env(v, context.temp_allocator),
+		)
 	}
 	fmt.sbprintln(b)
 	emit_secrets_loader(b, .FISH)
@@ -2562,16 +2850,28 @@ generate_core_init_fish :: proc() {
 	// hook re-sources path_sync.fish when its signature changes.
 	fmt.sbprintln(b, "# === PATH ===")
 	fmt.sbprint(b, WAYU_PATH_SYNC_FISH)
-	fmt.sbprintfln(b, "set -g _WAYU_PATHS_FILE %s", escape_fish_string(sync_file, context.temp_allocator))
+	fmt.sbprintfln(
+		b,
+		"set -g _WAYU_PATHS_FILE %s",
+		escape_fish_string(sync_file, context.temp_allocator),
+	)
 	if self := wayu_self_path(); len(self) > 0 {
 		fmt.sbprintfln(b, "set -g _WAYU_BIN %s", escape_fish_string(self, context.temp_allocator))
 	}
-	fmt.sbprintfln(b, "set -g _WAYU_TOML_FILE %s", escape_fish_string(fmt.tprintf("%s/wayu.toml", wayu.config), context.temp_allocator))
-	fmt.sbprintfln(b, "set -g _WAYU_ENTRIES_FILE %s", escape_fish_string(entries_file_path(), context.temp_allocator))
+	fmt.sbprintfln(
+		b,
+		"set -g _WAYU_TOML_FILE %s",
+		escape_fish_string(fmt.tprintf("%s/wayu.toml", wayu.config), context.temp_allocator),
+	)
+	fmt.sbprintfln(
+		b,
+		"set -g _WAYU_ENTRIES_FILE %s",
+		escape_fish_string(entries_file_path(), context.temp_allocator),
+	)
 	{
 		values, sig := read_path_sync_values()
 		defer {
-			for v in values { delete(v) }
+			for v in values {delete(v)}
 			delete(values)
 		}
 		emit_path_apply_call_fish(b, values[:], sig)
@@ -2581,15 +2881,27 @@ generate_core_init_fish :: proc() {
 	emit_rc_watch(b, .FISH) // optimize.odin
 
 	// Completions directory; `contains` keeps a re-source from adding it again.
-	completions_q := escape_fish_string(fmt.tprintf("%s/completions", wayu.data), context.temp_allocator)
+	completions_q := escape_fish_string(
+		fmt.tprintf("%s/completions", wayu.data),
+		context.temp_allocator,
+	)
 	fmt.sbprintln(b, "# === Completions ===")
-	fmt.sbprintfln(b, `contains -- %s $fish_complete_path; or set -gp fish_complete_path %s`, completions_q, completions_q)
+	fmt.sbprintfln(
+		b,
+		`contains -- %s $fish_complete_path; or set -gp fish_complete_path %s`,
+		completions_q,
+		completions_q,
+	)
 	fmt.sbprintln(b)
 
 	// User functions (`wayu function add` writes functions/<name>.fish),
 	// same as zsh/bash core. A glob with no match is not an error in `for`.
 	fmt.sbprintln(b, "# === Functions ===")
-	fmt.sbprintfln(b, `for _wayu_f in %s/*.fish`, escape_fish_string(fmt.tprintf("%s/functions", wayu.data), context.temp_allocator))
+	fmt.sbprintfln(
+		b,
+		`for _wayu_f in %s/*.fish`,
+		escape_fish_string(fmt.tprintf("%s/functions", wayu.data), context.temp_allocator),
+	)
 	fmt.sbprintln(b, `    test -f $_wayu_f; and source $_wayu_f`)
 	fmt.sbprintln(b, "end")
 	fmt.sbprintln(b, "set -e _wayu_f")
@@ -2611,7 +2923,7 @@ generate_core_init_fish :: proc() {
 
 	tools := read_wayu_toml_tools()
 	defer {
-		for &t in tools { destroy_tool_entry(&t) }
+		for &t in tools {destroy_tool_entry(&t)}
 		delete(tools)
 	}
 	if len(tools) > 0 || fish_has_generators() {
@@ -2621,19 +2933,26 @@ generate_core_init_fish :: proc() {
 	}
 	eager_count := 0
 	for t in tools {
-		if t.eager && !t.login_only && tool_kind_is_evalcache(t.kind) { eager_count += 1 }
+		if t.eager && !t.login_only && tool_kind_is_evalcache(t.kind) {
+			eager_count += 1
+		}
 	}
 	if eager_count > 0 {
 		fmt.sbprintln(b, "# === Tools (eager - keybindings, immediate) ===")
 		for t in tools {
-			if !t.eager || t.login_only || !tool_kind_is_evalcache(t.kind) { continue }
+			if !t.eager || t.login_only || !tool_kind_is_evalcache(t.kind) {
+				continue
+			}
 			emit_tool_recipe_fish(b, t)
 		}
 		fmt.sbprintln(b)
 	}
 
 	// Plugin runtime (generated separately by generate_plugins_file)
-	plugins_q := escape_fish_string(fmt.tprintf("%s/plugins.fish", wayu.data), context.temp_allocator)
+	plugins_q := escape_fish_string(
+		fmt.tprintf("%s/plugins.fish", wayu.data),
+		context.temp_allocator,
+	)
 	fmt.sbprintln(b, "# === Plugins ===")
 	fmt.sbprintfln(b, `if test -f %s`, plugins_q)
 	fmt.sbprintfln(b, `    source %s`, plugins_q)
@@ -2643,15 +2962,23 @@ generate_core_init_fish :: proc() {
 	if len(tools) - eager_count > 0 {
 		deferred := 0
 		for t in tools {
-			if t.login_only || (t.eager && tool_kind_is_evalcache(t.kind)) { continue }
-			if deferred == 0 { fmt.sbprintln(b, "# === Tools (deferred) ===") }
+			if t.login_only || (t.eager && tool_kind_is_evalcache(t.kind)) {
+				continue
+			}
+			if deferred == 0 {
+				fmt.sbprintln(b, "# === Tools (deferred) ===")
+			}
 			deferred += 1
 			emit_tool_recipe_fish(b, t)
 		}
-		if deferred > 0 { fmt.sbprintln(b) }
+		if deferred > 0 {
+			fmt.sbprintln(b)
+		}
 		login := 0
 		for t in tools {
-			if !t.login_only { continue }
+			if !t.login_only {
+				continue
+			}
 			if login == 0 {
 				fmt.sbprintln(b, "# === Login shell only ===")
 				fmt.sbprintln(b, "if status is-login")
@@ -2672,7 +2999,7 @@ generate_core_init_fish :: proc() {
 	fmt.sbprintln(b, "# === Aliases ===")
 	toml_aliases := read_alias_values()
 	defer {
-		for a in toml_aliases { delete(a.name); delete(a.command) }
+		for a in toml_aliases {delete(a.name); delete(a.command)}
 		delete(toml_aliases)
 	}
 	for a in toml_aliases {
@@ -2680,7 +3007,12 @@ generate_core_init_fish :: proc() {
 			fmt.sbprintfln(b, "# wayu: skipping invalid alias name %q", a.name)
 			continue
 		}
-		fmt.sbprintfln(b, `alias %s %s`, a.name, escape_fish_string(a.command, context.temp_allocator))
+		fmt.sbprintfln(
+			b,
+			`alias %s %s`,
+			a.name,
+			escape_fish_string(a.command, context.temp_allocator),
+		)
 	}
 
 	content := strings.to_string(builder)
@@ -2712,9 +3044,12 @@ emit_tool_recipe_fish :: proc(b: ^strings.Builder, t: ToolEntry) {
 			fmt.sbprintfln(b, "_wayu_evalcache %s %s", t.name, words)
 		}
 	case t.kind == "lazy" && strings.has_suffix(t.init_script, ".fish"):
-		ident  := sanitize_ident(t.name)
+		ident := sanitize_ident(t.name)
 		loader := fmt.tprintf("_wayu_lazy_%s_load", ident)
-		flag   := fmt.tprintf("_WAYU_LAZY_%s_LOADED", strings.to_upper(ident, context.temp_allocator))
+		flag := fmt.tprintf(
+			"_WAYU_LAZY_%s_LOADED",
+			strings.to_upper(ident, context.temp_allocator),
+		)
 		cmds := make([dynamic]string, 0, len(t.hook_commands), context.temp_allocator)
 		for cmd in t.hook_commands {
 			if is_safe_alias_name(cmd) {
@@ -2727,13 +3062,16 @@ emit_tool_recipe_fish :: proc(b: ^strings.Builder, t: ToolEntry) {
 			fmt.sbprintfln(b, "# wayu: 'lazy' kind for %q needs hook_commands - skipping", t.name)
 			return
 		}
-		script := fish_double_quote_env(expand_leading_tilde_to_home_var(t.init_script, context.temp_allocator), context.temp_allocator)
+		script := fish_double_quote_env(
+			expand_leading_tilde_to_home_var(t.init_script, context.temp_allocator),
+			context.temp_allocator,
+		)
 		fmt.sbprintfln(b, "# --- recipe: lazy (%s) ---", t.name)
 		fmt.sbprintfln(b, "function %s", loader)
 		fmt.sbprintfln(b, "    set -q %s; and return 0", flag)
 		fmt.sbprintfln(b, "    set -g %s 1", flag)
 		fmt.sbprint(b, "    functions -e")
-		for cmd in cmds { fmt.sbprintf(b, " %s", cmd) }
+		for cmd in cmds {fmt.sbprintf(b, " %s", cmd)}
 		fmt.sbprintln(b)
 		fmt.sbprintfln(b, "    test -s %s; and source %s", script, script)
 		fmt.sbprintln(b, "end")
@@ -2744,7 +3082,11 @@ emit_tool_recipe_fish :: proc(b: ^strings.Builder, t: ToolEntry) {
 			fmt.sbprintln(b, "end")
 		}
 	case t.kind == "lazy":
-		fmt.sbprintfln(b, "# wayu: 'lazy' kind for %q needs a fish init_script (*.fish) in fish - skipping", t.name)
+		fmt.sbprintfln(
+			b,
+			"# wayu: 'lazy' kind for %q needs a fish init_script (*.fish) in fish - skipping",
+			t.name,
+		)
 	case t.kind == "nvm" || t.kind == "conda":
 		fmt.sbprintfln(b, "# wayu: kind %q (%s) has no fish recipe - skipping", t.kind, t.name)
 	case:
@@ -2758,24 +3100,34 @@ emit_tool_recipe_fish :: proc(b: ^strings.Builder, t: ToolEntry) {
 // emit_tool_recipe_fish). Result is temp-allocated.
 tool_args_to_fish :: proc(args: string) -> (out: string, reason: string, ok: bool) {
 	posix, why, valid := tool_args_to_shell(args, context.temp_allocator)
-	if !valid { return "", why, false }
+	if !valid {
+		return "", why, false
+	}
 	_ = posix
 	stmts := shell_parse_statements(args, .POSIX)
 	defer shell_statements_destroy(&stmts)
 	sb := strings.builder_make(context.temp_allocator)
-	if len(stmts) == 0 { return "", "", true }
+	if len(stmts) == 0 {
+		return "", "", true
+	}
 	for tok, ti in stmts[0].tokens {
 		text, active := tok.word.text, tok.word.active
 		dollar := false
-		for i in 0..<len(text) {
-			if active[i] && text[i] == '$' { dollar = true; break }
+		for i in 0 ..< len(text) {
+			if active[i] && text[i] == '$' {
+				dollar = true; break
+			}
 		}
 		tilde := len(active) > 0 && active[0] && (text == "~" || strings.has_prefix(text, "~/"))
 		switch text {
-		case "zsh", "bash": text = "fish"
-		case "--zsh", "--bash": text = "--fish"
+		case "zsh", "bash":
+			text = "fish"
+		case "--zsh", "--bash":
+			text = "--fish"
 		}
-		if ti > 0 { strings.write_byte(&sb, ' ') }
+		if ti > 0 {
+			strings.write_byte(&sb, ' ')
+		}
 		if dollar || tilde {
 			v := expand_leading_tilde_to_home_var(text, context.temp_allocator) if tilde else text
 			strings.write_string(&sb, fish_double_quote_env(v, context.temp_allocator))

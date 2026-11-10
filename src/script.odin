@@ -26,14 +26,14 @@ import "core:sys/posix"
 SCRIPT_COMPILE_TIMEOUT_MS :: 10 * 60 * 1000
 
 ScriptInfo :: struct {
-	name:   string,      // command name (bin/NAME)
-	source: string,      // <data>/scripts/<file>
-	bin:    string,      // <data>/bin/NAME
+	name:   string, // command name (bin/NAME)
+	source: string, // <data>/scripts/<file>
+	bin:    string, // <data>/bin/NAME
 	lang:   ^ScriptLang, // nil: unknown (no shebang, unknown extension)
 }
 
-scripts_dir :: proc() -> string { return fmt.tprintf("%s/scripts", wayu.data) }
-scripts_bin_dir :: proc() -> string { return fmt.tprintf("%s/bin", wayu.data) }
+scripts_dir :: proc() -> string {return fmt.tprintf("%s/scripts", wayu.data)}
+scripts_bin_dir :: proc() -> string {return fmt.tprintf("%s/bin", wayu.data)}
 
 @(private = "file")
 script_hash_file :: proc(name: string) -> string {
@@ -46,14 +46,22 @@ script_hash_file :: proc(name: string) -> string {
 // the dir up at their next prompt (script_sync_path). Temp-allocated.
 script_path_value :: proc() -> string {
 	dir := scripts_bin_dir()
-	if !is_path_entry_safe(dir) { return "" }
+	if !is_path_entry_safe(dir) {
+		return ""
+	}
 	handle, err := os.open(dir)
-	if err != nil { return "" }
+	if err != nil {
+		return ""
+	}
 	defer os.close(handle)
 	infos, rerr := os.read_dir(handle, -1, context.temp_allocator)
-	if rerr != nil { return "" }
+	if rerr != nil {
+		return ""
+	}
 	for info in infos {
-		if !strings.has_prefix(info.name, ".") { return dir }
+		if !strings.has_prefix(info.name, ".") {
+			return dir
+		}
 	}
 	return ""
 }
@@ -61,7 +69,9 @@ script_path_value :: proc() -> string {
 // Regenerate the init files when <data>/bin went on or off PATH since
 // `had_bin` (script_path_value before the change).
 script_sync_path :: proc(had_bin: bool) {
-	if had_bin != (len(script_path_value()) > 0) { regenerate_init_core_silently() }
+	if had_bin != (len(script_path_value()) > 0) {
+		regenerate_init_core_silently()
+	}
 }
 
 // Name and extension of a source file name: `foo.py` → ("foo", "py");
@@ -77,17 +87,23 @@ script_split_file_name :: proc(file: string) -> (name: string, ext: string) {
 // First line of `content` (no newline).
 @(private = "file")
 first_line :: proc(content: string) -> string {
-	if i := strings.index_byte(content, '\n'); i >= 0 { return content[:i] }
+	if i := strings.index_byte(content, '\n'); i >= 0 {
+		return content[:i]
+	}
 	return content
 }
 
 // Language of a source: its shebang's interpreter, else its extension.
 script_lang_of :: proc(file_name: string, content: string) -> ^ScriptLang {
 	if interp := script_shebang_interpreter(first_line(content)); len(interp) > 0 {
-		if l := script_lang_by_interpreter(script_basename(interp)); l != nil { return l }
+		if l := script_lang_by_interpreter(script_basename(interp)); l != nil {
+			return l
+		}
 	}
 	_, ext := script_split_file_name(file_name)
-	if len(ext) > 0 { return script_lang_by_ext(ext) }
+	if len(ext) > 0 {
+		return script_lang_by_ext(ext)
+	}
 	return nil
 }
 
@@ -96,11 +112,15 @@ script_lang_of :: proc(file_name: string, content: string) -> ^ScriptLang {
 @(private = "file")
 read_head :: proc(path: string, limit := 4096) -> string {
 	f, err := os.open(path)
-	if err != nil { return "" }
+	if err != nil {
+		return ""
+	}
 	defer os.close(f)
 	buf := make([]byte, limit, context.temp_allocator)
 	n, _ := os.read(f, buf)
-	if n < 0 { n = 0 }
+	if n < 0 {
+		n = 0
+	}
 	return string(buf[:n])
 }
 
@@ -109,34 +129,47 @@ script_list_all :: proc() -> [dynamic]ScriptInfo {
 	out := make([dynamic]ScriptInfo, context.temp_allocator)
 	dir := scripts_dir()
 	handle, err := os.open(dir)
-	if err != nil { return out }
+	if err != nil {
+		return out
+	}
 	defer os.close(handle)
 	infos, read_err := os.read_dir(handle, -1, context.temp_allocator)
-	if read_err != nil { return out }
+	if read_err != nil {
+		return out
+	}
 	for info in infos {
-		if info.type != .Regular || strings.has_prefix(info.name, ".") { continue }
+		if info.type != .Regular || strings.has_prefix(info.name, ".") {
+			continue
+		}
 		name, _ := script_split_file_name(info.name)
 		src := fmt.tprintf("%s/%s", dir, info.name)
-		append(&out, ScriptInfo{
-			name   = strings.clone(name, context.temp_allocator),
-			source = src,
-			bin    = fmt.tprintf("%s/%s", scripts_bin_dir(), name),
-			lang   = script_lang_of(info.name, read_head(src)),
-		})
+		append(
+			&out,
+			ScriptInfo {
+				name = strings.clone(name, context.temp_allocator),
+				source = src,
+				bin = fmt.tprintf("%s/%s", scripts_bin_dir(), name),
+				lang = script_lang_of(info.name, read_head(src)),
+			},
+		)
 	}
-	slice.sort_by(out[:], proc(a, b: ScriptInfo) -> bool { return a.name < b.name })
+	slice.sort_by(out[:], proc(a, b: ScriptInfo) -> bool {return a.name < b.name})
 	return out
 }
 
 script_find :: proc(name: string) -> (ScriptInfo, bool) {
 	for s in script_list_all() {
-		if s.name == name { return s, true }
+		if s.name == name {
+			return s, true
+		}
 	}
 	return {}, false
 }
 
 script_is_compiled :: proc(s: ScriptInfo) -> bool {
-	if s.lang == nil { return false }
+	if s.lang == nil {
+		return false
+	}
 	_, ok := s.lang.compile.?
 	return ok
 }
@@ -145,7 +178,9 @@ script_is_compiled :: proc(s: ScriptInfo) -> bool {
 @(private = "file")
 script_source_hash :: proc(path: string) -> string {
 	data, err := os.read_entire_file_from_path(path, context.temp_allocator)
-	if err != nil { return "" }
+	if err != nil {
+		return ""
+	}
 	return fmt.tprintf("%x", hash.fnv64a(data))
 }
 
@@ -158,16 +193,29 @@ script_link_target :: proc(s: ScriptInfo) -> string {
 // Does bin/NAME need (re)building?
 script_is_stale :: proc(s: ScriptInfo) -> bool {
 	info, err := os.lstat(s.bin, context.temp_allocator)
-	if err != nil { return true }
+	if err != nil {
+		return true
+	}
 	if script_is_compiled(s) {
-		if info.type != .Regular { return true }
-		stored, rerr := os.read_entire_file_from_path(script_hash_file(s.name), context.temp_allocator)
-		if rerr != nil { return true }
+		if info.type != .Regular {
+			return true
+		}
+		stored, rerr := os.read_entire_file_from_path(
+			script_hash_file(s.name),
+			context.temp_allocator,
+		)
+		if rerr != nil {
+			return true
+		}
 		return strings.trim_space(string(stored)) != script_source_hash(s.source)
 	}
-	if info.type != .Symlink { return true }
+	if info.type != .Symlink {
+		return true
+	}
 	target, lerr := os.read_link(s.bin, context.temp_allocator)
-	if lerr != nil || target != script_link_target(s) { return true }
+	if lerr != nil || target != script_link_target(s) {
+		return true
+	}
 	// The symlink is fine, but the source must stay executable.
 	return !script_is_executable(s.source)
 }
@@ -180,15 +228,21 @@ script_is_executable :: proc(path: string) -> bool {
 // Absolute path of `cmd` on $PATH (an executable regular file), else "".
 // Temp-allocated.
 script_find_on_path :: proc(cmd: string) -> string {
-	if len(cmd) == 0 { return "" }
+	if len(cmd) == 0 {
+		return ""
+	}
 	if strings.contains_rune(cmd, '/') {
 		return cmd if os.is_file(cmd) && script_is_executable(cmd) else ""
 	}
 	path_env := os.get_env("PATH", context.temp_allocator)
 	for dir in strings.split(path_env, ":", context.temp_allocator) {
-		if len(dir) == 0 { continue }
+		if len(dir) == 0 {
+			continue
+		}
 		full := fmt.tprintf("%s/%s", dir, cmd)
-		if os.is_file(full) && script_is_executable(full) { return full }
+		if os.is_file(full) && script_is_executable(full) {
+			return full
+		}
 	}
 	return ""
 }
@@ -196,7 +250,9 @@ script_find_on_path :: proc(cmd: string) -> string {
 // Create <data>/scripts and <data>/bin. Returns false after printing why.
 script_ensure_dirs :: proc() -> bool {
 	for dir in ([]string{scripts_dir(), scripts_bin_dir()}) {
-		if os.is_dir(dir) { continue }
+		if os.is_dir(dir) {
+			continue
+		}
 		if err := make_directory_all(dir); err != nil {
 			print_error_simple("Failed to create directory: %s", dir)
 			return false
@@ -209,8 +265,12 @@ script_ensure_dirs :: proc() -> bool {
 @(private = "file")
 script_remove_bin :: proc(name: string) {
 	bin := fmt.tprintf("%s/%s", scripts_bin_dir(), name)
-	if _, err := os.lstat(bin, context.temp_allocator); err == nil { _ = os.remove(bin) }
-	if os.exists(script_hash_file(name)) { _ = os.remove(script_hash_file(name)) }
+	if _, err := os.lstat(bin, context.temp_allocator); err == nil {
+		_ = os.remove(bin)
+	}
+	if os.exists(script_hash_file(name)) {
+		_ = os.remove(script_hash_file(name))
+	}
 }
 
 // (Re)build one script. Prints the reason and returns false on failure; a
@@ -220,7 +280,9 @@ script_build :: proc(s: ScriptInfo, quiet := false) -> bool {
 		print_error_simple("%s: unknown language (no shebang and no known extension)", s.source)
 		return false
 	}
-	if !script_ensure_dirs() { return false }
+	if !script_ensure_dirs() {
+		return false
+	}
 
 	if comp, ok := s.lang.compile.?; ok {
 		compiler := script_find_on_path(comp.compiler)
@@ -233,17 +295,30 @@ script_build :: proc(s: ScriptInfo, quiet := false) -> bool {
 		append(&args, compiler)
 		append(&args, ..comp.args)
 		append(&args, "-o", tmp, s.source)
-		if !quiet { print_info("Compiling %s (%s)...", s.name, comp.compiler) }
+		if !quiet {
+			print_info("Compiling %s (%s)...", s.name, comp.compiler)
+		}
 		res := run_command_timeout(args[:], SCRIPT_COMPILE_TIMEOUT_MS)
 		defer command_result_destroy(&res)
 		if !res.ok || !os.is_file(tmp) {
-			if os.exists(tmp) { _ = os.remove(tmp) }
-			print_error_simple("Build of '%s' failed%s", s.name, " (timed out)" if res.timed_out else "")
-			if len(res.stderr) > 0 { fmt.eprintln(res.stderr) }
-			if len(res.stdout) > 0 { fmt.eprintln(res.stdout) }
+			if os.exists(tmp) {
+				_ = os.remove(tmp)
+			}
+			print_error_simple(
+				"Build of '%s' failed%s",
+				s.name,
+				" (timed out)" if res.timed_out else "",
+			)
+			if len(res.stderr) > 0 {
+				fmt.eprintln(res.stderr)
+			}
+			if len(res.stdout) > 0 {
+				fmt.eprintln(res.stdout)
+			}
 			return false
 		}
-		if bin_info, err := os.lstat(s.bin, context.temp_allocator); err == nil && bin_info.type != .Regular {
+		if bin_info, err := os.lstat(s.bin, context.temp_allocator);
+		   err == nil && bin_info.type != .Regular {
 			_ = os.remove(s.bin)
 		}
 		if err := os.rename(tmp, s.bin); err != nil {
@@ -252,10 +327,16 @@ script_build :: proc(s: ScriptInfo, quiet := false) -> bool {
 			return false
 		}
 		_ = os.chmod(s.bin, os.perm_number(0o755))
-		if write_file_atomic(script_hash_file(s.name), transmute([]byte)script_source_hash(s.source)) != nil {
+		if write_file_atomic(
+			   script_hash_file(s.name),
+			   transmute([]byte)script_source_hash(s.source),
+		   ) !=
+		   nil {
 			print_warning("Failed to write %s", script_hash_file(s.name))
 		}
-		if !quiet { print_success("Built %s", s.bin) }
+		if !quiet {
+			print_success("Built %s", s.bin)
+		}
 		return true
 	}
 
@@ -268,17 +349,27 @@ script_build :: proc(s: ScriptInfo, quiet := false) -> bool {
 		print_error_simple("Failed to link %s", s.bin)
 		return false
 	}
-	if !quiet { print_success("Linked %s -> %s", s.bin, script_link_target(s)) }
+	if !quiet {
+		print_success("Linked %s -> %s", s.bin, script_link_target(s))
+	}
 	return true
 }
 
 // Rebuild every stale script (wayu build, the watcher, script build).
 // Returns how many were built and how many failed.
 scripts_build_stale :: proc(quiet := false) -> (built: int, failed: int) {
-	if wayu.dry_run { return }
+	if wayu.dry_run {
+		return
+	}
 	for s in script_list_all() {
-		if !script_is_stale(s) { continue }
-		if script_build(s, quiet) { built += 1 } else { failed += 1 }
+		if !script_is_stale(s) {
+			continue
+		}
+		if script_build(s, quiet) {
+			built += 1
+		} else {
+			failed += 1
+		}
 	}
 	return
 }
@@ -286,12 +377,18 @@ scripts_build_stale :: proc(quiet := false) -> (built: int, failed: int) {
 // [scripts] default_lang, else SCRIPT_DEFAULT_LANG.
 script_default_lang :: proc() -> string {
 	content, ok := get_cached_toml_content()
-	if !ok { return SCRIPT_DEFAULT_LANG }
+	if !ok {
+		return SCRIPT_DEFAULT_LANG
+	}
 	doc, _ := toml_doc_parse_alloc(content, context.temp_allocator)
 	scripts, has := doc.values["scripts"]
-	if !has || scripts == nil || scripts.type != .TABLE { return SCRIPT_DEFAULT_LANG }
+	if !has || scripts == nil || scripts.type != .TABLE {
+		return SCRIPT_DEFAULT_LANG
+	}
 	if v, found := scripts.table_val["default_lang"]; found {
-		if v != nil && v.type == .STRING { return v.str_val }
+		if v != nil && v.type == .STRING {
+			return v.str_val
+		}
 	}
 	return SCRIPT_DEFAULT_LANG
 }
@@ -299,12 +396,18 @@ script_default_lang :: proc() -> string {
 // toml_schema_issues hook: the error for a bad `[scripts] default_lang`,
 // "" when `p` is another key or the value is fine. Temp-allocated.
 script_default_lang_issue :: proc(p: []string, v: ^TomlValue) -> string {
-	if len(p) != 2 || p[0] != "scripts" || p[1] != "default_lang" { return "" }
+	if len(p) != 2 || p[0] != "scripts" || p[1] != "default_lang" {
+		return ""
+	}
 	if v == nil || v.type != .STRING {
 		return "scripts.default_lang must be a string"
 	}
 	if script_lang_by_name(v.str_val) == nil {
-		return fmt.tprintf("scripts.default_lang: unknown language '%s' (expected one of: %s)", v.str_val, script_lang_names())
+		return fmt.tprintf(
+			"scripts.default_lang: unknown language '%s' (expected one of: %s)",
+			v.str_val,
+			script_lang_names(),
+		)
 	}
 	return ""
 }
@@ -335,8 +438,9 @@ script_require_existing :: proc(name: string) -> ScriptInfo {
 // terminal (scripts, CI). Returns false when the editor failed.
 @(private = "file")
 script_maybe_edit :: proc(file: string) -> (opened: bool, ok: bool) {
-	has_editor := len(strings.trim_space(os.get_env("EDITOR", context.temp_allocator))) > 0 ||
-	               len(strings.trim_space(os.get_env("VISUAL", context.temp_allocator))) > 0
+	has_editor :=
+		len(strings.trim_space(os.get_env("EDITOR", context.temp_allocator))) > 0 ||
+		len(strings.trim_space(os.get_env("VISUAL", context.temp_allocator))) > 0
 	if !has_editor && !(is_tty(0) && is_tty(1)) {
 		fmt.println(file)
 		return false, true
@@ -358,7 +462,9 @@ ScriptOpts :: struct {
 
 @(private = "file")
 script_parse_opts :: proc(args: []string) -> ScriptOpts {
-	o := ScriptOpts{words = make([dynamic]string, context.temp_allocator)}
+	o := ScriptOpts {
+		words = make([dynamic]string, context.temp_allocator),
+	}
 	for i := 0; i < len(args); i += 1 {
 		a := args[i]
 		switch {
@@ -378,7 +484,11 @@ script_parse_opts :: proc(args: []string) -> ScriptOpts {
 		}
 	}
 	if len(o.lang) > 0 && script_lang_by_name(o.lang) == nil {
-		print_error_simple("Unknown --lang '%s' (expected one of: %s)", o.lang, script_lang_names())
+		print_error_simple(
+			"Unknown --lang '%s' (expected one of: %s)",
+			o.lang,
+			script_lang_names(),
+		)
 		os.exit(EXIT_USAGE)
 	}
 	return o
@@ -426,14 +536,23 @@ script_new :: proc(name: string, lang_flag: string) {
 	if len(lang_name) == 0 {
 		lang_name = script_default_lang()
 		if script_lang_by_name(lang_name) == nil {
-			print_error_simple("wayu.toml [scripts] default_lang: unknown language '%s' (expected one of: %s)", lang_name, script_lang_names())
+			print_error_simple(
+				"wayu.toml [scripts] default_lang: unknown language '%s' (expected one of: %s)",
+				lang_name,
+				script_lang_names(),
+			)
 			os.exit(EXIT_CONFIG)
 		}
 	}
 	lang := script_lang_by_name(lang_name)
 
 	if existing, ok := script_find(name); ok {
-		print_error_simple("Script '%s' already exists: %s (open it with: wayu script edit %s)", name, existing.source, name)
+		print_error_simple(
+			"Script '%s' already exists: %s (open it with: wayu script edit %s)",
+			name,
+			existing.source,
+			name,
+		)
 		os.exit(EXIT_DATAERR)
 	}
 
@@ -441,30 +560,49 @@ script_new :: proc(name: string, lang_flag: string) {
 	// its compiler; the interpreter there only documents direct runs.
 	interp := ""
 	for cand in lang.interpreters {
-		if p := script_find_on_path(cand); len(p) > 0 { interp = p; break }
+		if p := script_find_on_path(cand); len(p) > 0 {
+			interp = p; break
+		}
 	}
 	if comp, ok := lang.compile.?; ok {
 		if len(script_find_on_path(comp.compiler)) == 0 {
-			print_error_simple("%s scripts need %s, which is not on PATH", lang.name, comp.compiler)
+			print_error_simple(
+				"%s scripts need %s, which is not on PATH",
+				lang.name,
+				comp.compiler,
+			)
 			os.exit(EXIT_UNAVAILABLE)
 		}
-		if len(interp) == 0 { interp = fmt.tprintf("/usr/bin/env %s", lang.interpreters[0]) }
+		if len(interp) == 0 {
+			interp = fmt.tprintf("/usr/bin/env %s", lang.interpreters[0])
+		}
 	} else if len(interp) == 0 {
-		print_error_simple("No %s interpreter on PATH (looked for: %s)", lang.name,
-			strings.join(lang.interpreters, ", ", context.temp_allocator))
+		print_error_simple(
+			"No %s interpreter on PATH (looked for: %s)",
+			lang.name,
+			strings.join(lang.interpreters, ", ", context.temp_allocator),
+		)
 		os.exit(EXIT_UNAVAILABLE)
 	}
 
 	source := fmt.tprintf("%s/%s.%s", scripts_dir(), name, lang.ext)
 	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-		fmt.printfln("Would create %s (#!%s), open it in $EDITOR and build %s/%s", source, interp, scripts_bin_dir(), name)
+		fmt.printfln(
+			"Would create %s (#!%s), open it in $EDITOR and build %s/%s",
+			source,
+			interp,
+			scripts_bin_dir(),
+			name,
+		)
 		return
 	}
 
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
-	if !script_ensure_dirs() { os.exit(EXIT_CANTCREAT) }
+	if !script_ensure_dirs() {
+		os.exit(EXIT_CANTCREAT)
+	}
 	had_bin := len(script_path_value()) > 0
 
 	skeleton := script_skeleton(lang, name, context.temp_allocator)
@@ -477,11 +615,15 @@ script_new :: proc(name: string, lang_flag: string) {
 	print_success("Created script: %s", source)
 
 	_, edit_ok := script_maybe_edit(source)
-	if !edit_ok { os.exit(EXIT_FAILURE) }
+	if !edit_ok {
+		os.exit(EXIT_FAILURE)
+	}
 	s, _ := script_find(name)
 	ok := script_build(s)
 	script_sync_path(had_bin)
-	if !ok { os.exit(EXIT_FAILURE) }
+	if !ok {
+		os.exit(EXIT_FAILURE)
+	}
 }
 
 script_edit :: proc(name: string) {
@@ -492,7 +634,9 @@ script_edit :: proc(name: string) {
 		return
 	}
 	_, edit_ok := script_maybe_edit(s.source)
-	if !edit_ok { os.exit(EXIT_FAILURE) }
+	if !edit_ok {
+		os.exit(EXIT_FAILURE)
+	}
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
 	// The language may have changed with the shebang.
@@ -501,7 +645,9 @@ script_edit :: proc(name: string) {
 		print_info("%s is up to date", s.bin)
 		return
 	}
-	if !script_build(s) { os.exit(EXIT_FAILURE) }
+	if !script_build(s) {
+		os.exit(EXIT_FAILURE)
+	}
 }
 
 script_list :: proc() {
@@ -510,7 +656,9 @@ script_list :: proc() {
 		b := strings.builder_make(context.temp_allocator)
 		strings.write_string(&b, `{"scripts": [`)
 		for s, i in scripts {
-			if i > 0 { strings.write_string(&b, ", ") }
+			if i > 0 {
+				strings.write_string(&b, ", ")
+			}
 			q :: proc(b: ^strings.Builder, s: string) {
 				e := json_escape(s)
 				defer delete(e)
@@ -520,23 +668,36 @@ script_list :: proc() {
 			strings.write_string(&b, `, "lang": `); q(&b, s.lang.name if s.lang != nil else "")
 			strings.write_string(&b, `, "source": `); q(&b, s.source)
 			strings.write_string(&b, `, "bin": `); q(&b, s.bin)
-			fmt.sbprintf(&b, `, "compiled": %v, "stale": %v}`, script_is_compiled(s), script_is_stale(s))
+			fmt.sbprintf(
+				&b,
+				`, "compiled": %v, "stale": %v}`,
+				script_is_compiled(s),
+				script_is_stale(s),
+			)
 		}
 		fmt.sbprintf(&b, `], "count": %d}`, len(scripts))
 		fmt.println(strings.to_string(b))
 		return
 	}
 	if len(scripts) == 0 {
-		print_info("No scripts yet. Create one with: wayu script new <name> (or import: wayu script import <file>)")
+		print_info(
+			"No scripts yet. Create one with: wayu script new <name> (or import: wayu script import <file>)",
+		)
 		return
 	}
 	print_header("Scripts", "📜")
 	width := 0
-	for s in scripts { width = max(width, len(s.name)) }
+	for s in scripts {width = max(width, len(s.name))}
 	for s in scripts {
 		state := "stale" if script_is_stale(s) else "ok"
-		fmt.printfln("  %s%s  %-6s  %-5s  %s", s.name, strings.repeat(" ", width - len(s.name), context.temp_allocator),
-			s.lang.name if s.lang != nil else "?", state, s.source)
+		fmt.printfln(
+			"  %s%s  %-6s  %-5s  %s",
+			s.name,
+			strings.repeat(" ", width - len(s.name), context.temp_allocator),
+			s.lang.name if s.lang != nil else "?",
+			state,
+			s.source,
+		)
 	}
 }
 
@@ -554,7 +715,9 @@ script_remove :: proc(name: string) {
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
 	// The source is the only copy of the user's code: no backup, no delete.
-	if !create_backup_cli(s.source) { os.exit(EXIT_IOERR) }
+	if !create_backup_cli(s.source) {
+		os.exit(EXIT_IOERR)
+	}
 	had_bin := len(script_path_value()) > 0
 	defer script_sync_path(had_bin)
 	script_remove_bin(s.name)
@@ -578,7 +741,9 @@ script_build_command :: proc(names: []string) {
 			ok := script_build(s)
 			script_sync_path(had_bin)
 			config_lock_release()
-			if !ok { os.exit(EXIT_FAILURE) }
+			if !ok {
+				os.exit(EXIT_FAILURE)
+			}
 		}
 		return
 	}
@@ -586,9 +751,13 @@ script_build_command :: proc(names: []string) {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		n := 0
 		for s in script_list_all() {
-			if script_is_stale(s) { fmt.printfln("Would build %s", s.bin); n += 1 }
+			if script_is_stale(s) {
+				fmt.printfln("Would build %s", s.bin); n += 1
+			}
 		}
-		if n == 0 { print_info("All scripts are up to date") }
+		if n == 0 {
+			print_info("All scripts are up to date")
+		}
 		return
 	}
 	config_lock_acquire_or_exit()
@@ -596,8 +765,12 @@ script_build_command :: proc(names: []string) {
 	had_bin := len(script_path_value()) > 0
 	built, failed := scripts_build_stale()
 	script_sync_path(had_bin)
-	if built == 0 && failed == 0 { print_info("All scripts are up to date") }
-	if failed > 0 { os.exit(EXIT_FAILURE) }
+	if built == 0 && failed == 0 {
+		print_info("All scripts are up to date")
+	}
+	if failed > 0 {
+		os.exit(EXIT_FAILURE)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -607,11 +780,11 @@ script_build_command :: proc(names: []string) {
 // What `script import` does with one file: import it as NAME.<ext> in
 // `lang`, or skip it for `reason`.
 ScriptImportPlan :: struct {
-	path:   string,
-	name:   string,
-	ext:    string,
-	lang:   ^ScriptLang,
-	reason: string, // non-empty: skipped
+	path:        string,
+	name:        string,
+	ext:         string,
+	lang:        ^ScriptLang,
+	reason:      string, // non-empty: skipped
 	// Prepend this shebang when importing (file had none). "" = keep as is.
 	add_shebang: string,
 }
@@ -619,19 +792,41 @@ ScriptImportPlan :: struct {
 // Shebang paths that point inside a package manager's environment: the
 // file is a generated launcher, not the user's script.
 @(private = "file")
-SCRIPT_MANAGED_SHEBANG_MARKERS :: []string{"/pipx/", "/uv/", "/.venv/", "/venv/", "/venvs/", "/virtualenvs/", "site-packages", "/.pyenv/versions/"}
+SCRIPT_MANAGED_SHEBANG_MARKERS :: []string {
+	"/pipx/",
+	"/uv/",
+	"/.venv/",
+	"/venv/",
+	"/venvs/",
+	"/virtualenvs/",
+	"site-packages",
+	"/.pyenv/versions/",
+}
 
 // Classify a file by name and content (the head is enough). Pure: the
 // filesystem checks (symlink, regular file, existing names) are done by
 // script_plan_import. Temp-allocated.
-script_classify_content :: proc(file_name: string, content: string) -> (name: string, ext: string, lang: ^ScriptLang, reason: string) {
+script_classify_content :: proc(
+	file_name: string,
+	content: string,
+) -> (
+	name: string,
+	ext: string,
+	lang: ^ScriptLang,
+	reason: string,
+) {
 	if strings.index_byte(content, 0) >= 0 {
 		return "", "", nil, "binary file"
 	}
 	if len(content) >= 4 {
 		magic := content[:4]
 		switch magic {
-		case "\x7fELF", "\xfe\xed\xfa\xce", "\xfe\xed\xfa\xcf", "\xce\xfa\xed\xfe", "\xcf\xfa\xed\xfe", "\xca\xfe\xba\xbe":
+		case "\x7fELF",
+		     "\xfe\xed\xfa\xce",
+		     "\xfe\xed\xfa\xcf",
+		     "\xce\xfa\xed\xfe",
+		     "\xcf\xfa\xed\xfe",
+		     "\xca\xfe\xba\xbe":
 			return "", "", nil, "binary file"
 		}
 	}
@@ -641,7 +836,10 @@ script_classify_content :: proc(file_name: string, content: string) -> (name: st
 	if strings.has_prefix(line, "#!") {
 		for m in SCRIPT_MANAGED_SHEBANG_MARKERS {
 			if strings.contains(line, m) {
-				return name, ext, nil, fmt.tprintf("launcher generated by a package manager (%s)", strings.trim_space(line[2:]))
+				return name, ext, nil, fmt.tprintf(
+					"launcher generated by a package manager (%s)",
+					strings.trim_space(line[2:]),
+				)
 			}
 		}
 		interp := script_shebang_interpreter(line)
@@ -660,10 +858,15 @@ script_classify_content :: proc(file_name: string, content: string) -> (name: st
 		return name, ext, nil, fmt.tprintf("launcher for %s", target)
 	}
 	if lang.name == "python" && script_is_console_scripts_stub(content) {
-		return name, ext, nil, "launcher generated by a package manager (console_scripts entry point)"
+		return name,
+			ext,
+			nil,
+			"launcher generated by a package manager (console_scripts entry point)"
 	}
 	// Keep a known extension (bun runs .js as JS, not TS); else the language's.
-	if len(ext) == 0 { ext = lang.ext }
+	if len(ext) == 0 {
+		ext = lang.ext
+	}
 	return name, ext, lang, ""
 }
 
@@ -674,7 +877,9 @@ code_lines :: proc(content: string) -> [dynamic]string {
 	out := make([dynamic]string, context.temp_allocator)
 	for raw in strings.split_lines(content, context.temp_allocator) {
 		l := strings.trim_space(raw)
-		if len(l) == 0 || l[0] == '#' { continue }
+		if len(l) == 0 || l[0] == '#' {
+			continue
+		}
 		append(&out, l)
 	}
 	return out
@@ -684,24 +889,36 @@ code_lines :: proc(content: string) -> [dynamic]string {
 // quoted or not): returns the path.
 script_exec_launcher_target :: proc(content: string) -> (string, bool) {
 	lines := code_lines(content)
-	if len(lines) != 1 { return "", false }
+	if len(lines) != 1 {
+		return "", false
+	}
 	l := lines[0]
-	if !strings.has_prefix(l, "exec ") { return "", false }
+	if !strings.has_prefix(l, "exec ") {
+		return "", false
+	}
 	rest := strings.trim_space(l[len("exec "):])
 	target: string
 	if len(rest) > 0 && (rest[0] == '"' || rest[0] == '\'') {
 		end := strings.index_byte(rest[1:], rest[0])
-		if end < 0 { return "", false }
+		if end < 0 {
+			return "", false
+		}
 		target = rest[1:end + 1]
 		rest = strings.trim_space(rest[end + 2:])
 	} else {
 		sp := strings.index_byte(rest, ' ')
-		if sp < 0 { return "", false }
+		if sp < 0 {
+			return "", false
+		}
 		target = rest[:sp]
 		rest = strings.trim_space(rest[sp:])
 	}
-	if !strings.has_prefix(target, "/") { return "", false }
-	if rest != `"$@"` && rest != `$@` && rest != `"${@}"` { return "", false }
+	if !strings.has_prefix(target, "/") {
+		return "", false
+	}
+	if rest != `"$@"` && rest != `$@` && rest != `"${@}"` {
+		return "", false
+	}
 	return target, true
 }
 
@@ -709,16 +926,26 @@ script_exec_launcher_target :: proc(content: string) -> (string, bool) {
 // in a handful of lines.
 script_is_console_scripts_stub :: proc(content: string) -> bool {
 	lines := code_lines(content)
-	if len(lines) > 12 { return false }
+	if len(lines) > 12 {
+		return false
+	}
 	for l in lines {
-		if !strings.has_prefix(l, "from ") { continue }
+		if !strings.has_prefix(l, "from ") {
+			continue
+		}
 		i := strings.index(l, " import ")
-		if i < 0 { continue }
+		if i < 0 {
+			continue
+		}
 		fn := strings.trim_space(l[i + len(" import "):])
-		if len(fn) == 0 || strings.contains_any(fn, " ,()") { continue }
+		if len(fn) == 0 || strings.contains_any(fn, " ,()") {
+			continue
+		}
 		call := fmt.tprintf("sys.exit(%s())", fn)
 		for m in lines {
-			if strings.contains(m, call) { return true }
+			if strings.contains(m, call) {
+				return true
+			}
 		}
 	}
 	return false
@@ -727,7 +954,9 @@ script_is_console_scripts_stub :: proc(content: string) -> bool {
 // Plan the import of `path` (filesystem checks + script_classify_content).
 // `taken` holds names already used (existing scripts, earlier files).
 script_plan_import :: proc(path: string, taken: []string) -> ScriptImportPlan {
-	plan := ScriptImportPlan{path = path}
+	plan := ScriptImportPlan {
+		path = path,
+	}
 	base := script_basename(path)
 	info, err := os.lstat(path, context.temp_allocator)
 	switch {
@@ -742,7 +971,9 @@ script_plan_import :: proc(path: string, taken: []string) -> ScriptImportPlan {
 		return plan
 	}
 	plan.name, plan.ext, plan.lang, plan.reason = script_classify_content(base, read_head(path))
-	if len(plan.reason) > 0 { return plan }
+	if len(plan.reason) > 0 {
+		return plan
+	}
 
 	result := validate_identifier(plan.name, "Script", allow_hyphen = true)
 	if !result.valid {
@@ -759,10 +990,15 @@ script_plan_import :: proc(path: string, taken: []string) -> ScriptImportPlan {
 	if !strings.has_prefix(read_head(path, 2), "#!") {
 		if _, compiled := plan.lang.compile.?; !compiled {
 			for cand in plan.lang.interpreters {
-				if p := script_find_on_path(cand); len(p) > 0 { plan.add_shebang = p; break }
+				if p := script_find_on_path(cand); len(p) > 0 {
+					plan.add_shebang = p; break
+				}
 			}
 			if len(plan.add_shebang) == 0 {
-				plan.reason = fmt.tprintf("no shebang and no %s interpreter on PATH", plan.lang.name)
+				plan.reason = fmt.tprintf(
+					"no shebang and no %s interpreter on PATH",
+					plan.lang.name,
+				)
 			}
 		}
 	}
@@ -771,12 +1007,14 @@ script_plan_import :: proc(path: string, taken: []string) -> ScriptImportPlan {
 
 script_import :: proc(paths: []string, keep_original: bool) {
 	taken := make([dynamic]string, context.temp_allocator)
-	for s in script_list_all() { append(&taken, s.name) }
+	for s in script_list_all() {append(&taken, s.name)}
 
 	plans := make([dynamic]ScriptImportPlan, context.temp_allocator)
 	for p in paths {
 		plan := script_plan_import(p, taken[:])
-		if len(plan.reason) == 0 { append(&taken, plan.name) }
+		if len(plan.reason) == 0 {
+			append(&taken, plan.name)
+		}
 		append(&plans, plan)
 	}
 
@@ -786,8 +1024,15 @@ script_import :: proc(paths: []string, keep_original: bool) {
 			if len(plan.reason) > 0 {
 				fmt.printfln("  skip    %s: %s", plan.path, plan.reason)
 			} else {
-				fmt.printfln("  import  %s -> %s/%s.%s (%s%s)", plan.path, scripts_dir(), plan.name, plan.ext, plan.lang.name,
-					", copy" if keep_original else ", move")
+				fmt.printfln(
+					"  import  %s -> %s/%s.%s (%s%s)",
+					plan.path,
+					scripts_dir(),
+					plan.name,
+					plan.ext,
+					plan.lang.name,
+					", copy" if keep_original else ", move",
+				)
 			}
 		}
 		return
@@ -795,12 +1040,16 @@ script_import :: proc(paths: []string, keep_original: bool) {
 
 	config_lock_acquire_or_exit()
 	defer config_lock_release()
-	if !script_ensure_dirs() { os.exit(EXIT_CANTCREAT) }
+	if !script_ensure_dirs() {
+		os.exit(EXIT_CANTCREAT)
+	}
 	had_bin := len(script_path_value()) > 0
 
 	imported, skipped := 0, 0
 	for &plan in plans {
-		if len(plan.reason) == 0 { script_import_one(&plan, keep_original) }
+		if len(plan.reason) == 0 {
+			script_import_one(&plan, keep_original)
+		}
 		if len(plan.reason) > 0 {
 			skipped += 1
 		} else {
@@ -818,7 +1067,9 @@ script_import :: proc(paths: []string, keep_original: bool) {
 			fmt.printfln("  imported %s -> %s", plan.path, plan.name)
 		}
 	}
-	if imported == 0 && skipped > 0 { os.exit(EXIT_DATAERR) }
+	if imported == 0 && skipped > 0 {
+		os.exit(EXIT_DATAERR)
+	}
 }
 
 // Copy, build, then (unless keep_original) delete the original. Sets
@@ -831,7 +1082,9 @@ script_import_one :: proc(plan: ^ScriptImportPlan, keep_original: bool) {
 		return
 	}
 	content := string(data)
-	if len(plan.add_shebang) > 0 { content = fmt.tprintf("#!%s\n%s", plan.add_shebang, content) }
+	if len(plan.add_shebang) > 0 {
+		content = fmt.tprintf("#!%s\n%s", plan.add_shebang, content)
+	}
 	dest := fmt.tprintf("%s/%s.%s", scripts_dir(), plan.name, plan.ext)
 	if os.exists(dest) {
 		plan.reason = fmt.tprintf("%s already exists", dest)
@@ -842,7 +1095,7 @@ script_import_one :: proc(plan: ^ScriptImportPlan, keep_original: bool) {
 		return
 	}
 	_ = os.chmod(dest, os.perm_number(0o755))
-	s := ScriptInfo{
+	s := ScriptInfo {
 		name   = plan.name,
 		source = dest,
 		bin    = fmt.tprintf("%s/%s", scripts_bin_dir(), plan.name),
@@ -876,49 +1129,73 @@ check_scripts :: proc(results: ^[dynamic]CheckResult) {
 			append(&problems, fmt.tprintf("%s: unknown language", s.name))
 			continue
 		}
-		if interp := script_shebang_interpreter(first_line(read_head(s.source))); len(interp) > 0 && strings.has_prefix(interp, "/") {
+		if interp := script_shebang_interpreter(first_line(read_head(s.source)));
+		   len(interp) > 0 && strings.has_prefix(interp, "/") {
 			if !(os.is_file(interp) && script_is_executable(interp)) {
 				append(&problems, fmt.tprintf("%s: interpreter %s not found", s.name, interp))
 			}
 		}
 		if script_is_stale(s) {
-			append(&problems, fmt.tprintf("%s: not built or stale (run: wayu script build)", s.name))
+			append(
+				&problems,
+				fmt.tprintf("%s: not built or stale (run: wayu script build)", s.name),
+			)
 		}
 	}
 	if handle, err := os.open(scripts_bin_dir()); err == nil {
 		defer os.close(handle)
 		if infos, rerr := os.read_dir(handle, -1, context.temp_allocator); rerr == nil {
 			for info in infos {
-				if strings.has_prefix(info.name, ".") { continue }
+				if strings.has_prefix(info.name, ".") {
+					continue
+				}
 				if !slice.contains(names[:], info.name) {
-					append(&problems, fmt.tprintf("%s/%s: no script with that name (dangling)", scripts_bin_dir(), info.name))
-				} else if info.type == .Symlink && !os.exists(fmt.tprintf("%s/%s", scripts_bin_dir(), info.name)) {
+					append(
+						&problems,
+						fmt.tprintf(
+							"%s/%s: no script with that name (dangling)",
+							scripts_bin_dir(),
+							info.name,
+						),
+					)
+				} else if info.type == .Symlink &&
+				   !os.exists(fmt.tprintf("%s/%s", scripts_bin_dir(), info.name)) {
 					append(&problems, fmt.tprintf("%s: broken link", info.name))
 				}
 			}
 		}
 	}
-	if len(scripts) == 0 && len(problems) == 0 { return }
-	if len(problems) == 0 {
-		append(results, CheckResult{
-			name    = clone_arena("scripts"),
-			status  = .OK,
-			message = clone_arena(fmt.tprintf("%d script(s) built", len(scripts))),
-		})
+	if len(scripts) == 0 && len(problems) == 0 {
 		return
 	}
-	append(results, CheckResult{
-		name    = clone_arena("scripts"),
-		status  = .WARNING,
-		message = clone_arena(strings.join(problems[:], "; ", context.temp_allocator)),
-	})
+	if len(problems) == 0 {
+		append(
+			results,
+			CheckResult {
+				name = clone_arena("scripts"),
+				status = .OK,
+				message = clone_arena(fmt.tprintf("%d script(s) built", len(scripts))),
+			},
+		)
+		return
+	}
+	append(
+		results,
+		CheckResult {
+			name = clone_arena("scripts"),
+			status = .WARNING,
+			message = clone_arena(strings.join(problems[:], "; ", context.temp_allocator)),
+		},
+	)
 }
 
 // Files the watcher polls besides wayu.toml: the scripts dir (adds and
 // removes) and every source. Heap-allocated like get_default_watch_paths.
 script_watch_paths :: proc(out: ^[dynamic]string) {
-	if os.is_dir(scripts_dir()) { append(out, strings.clone(scripts_dir())) }
-	for s in script_list_all() { append(out, strings.clone(s.source)) }
+	if os.is_dir(scripts_dir()) {
+		append(out, strings.clone(scripts_dir()))
+	}
+	for s in script_list_all() {append(out, strings.clone(s.source))}
 }
 
 print_script_usage :: proc() {
@@ -926,17 +1203,29 @@ print_script_usage :: proc() {
 	fmt.printfln("%swayu script - Manage standalone scripts on PATH%s", BOLD, RESET)
 	fmt.println()
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
-	fmt.println("  wayu script new <name> [--lang <lang>]  Create a script, open it in $EDITOR, build it")
+	fmt.println(
+		"  wayu script new <name> [--lang <lang>]  Create a script, open it in $EDITOR, build it",
+	)
 	fmt.println("  wayu script edit <name>                 Open in $EDITOR, rebuild")
 	fmt.println("  wayu script list [--json]               List scripts")
 	fmt.println("  wayu script remove <name> --yes         Delete the source and its bin entry")
-	fmt.println("  wayu script import <file>... [--copy]   Import existing scripts (moved unless --copy)")
-	fmt.println("  wayu script build [<name>...]           Build stale scripts (or the ones named)")
+	fmt.println(
+		"  wayu script import <file>... [--copy]   Import existing scripts (moved unless --copy)",
+	)
+	fmt.println(
+		"  wayu script build [<name>...]           Build stale scripts (or the ones named)",
+	)
 	fmt.println()
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
-	fmt.printfln("  Sources live in %s/scripts/, executables in %s/bin/ (first on", wayu.data, wayu.data)
+	fmt.printfln(
+		"  Sources live in %s/scripts/, executables in %s/bin/ (first on",
+		wayu.data,
+		wayu.data,
+	)
 	fmt.println("  wayu's PATH entries). Interpreted scripts are linked; swift is compiled")
-	fmt.println("  with swiftc. Default language: [scripts] default_lang in wayu.toml, else swift.")
+	fmt.println(
+		"  with swiftc. Default language: [scripts] default_lang in wayu.toml, else swift.",
+	)
 	fmt.printfln("  Languages: %s", script_lang_names())
 	fmt.println()
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
@@ -950,7 +1239,9 @@ print_script_usage :: proc() {
 // the caller (values are heap strings), dropping a duplicate of it.
 script_path_prepend :: proc(values: ^[dynamic]string) {
 	bin := script_path_value()
-	if len(bin) == 0 { return }
+	if len(bin) == 0 {
+		return
+	}
 	for v, i in values {
 		if v == bin {
 			delete(v)

@@ -44,30 +44,30 @@ HookType :: enum {
 
 // Hook configuration
 HookConfig :: struct {
-	pre_path_add:       string,
-	post_path_add:      string,
-	pre_path_remove:    string,
-	post_path_remove:   string,
-	pre_alias_add:      string,
-	post_alias_add:     string,
-	pre_alias_remove:   string,
-	post_alias_remove:  string,
-	pre_constant_add:   string,
-	post_constant_add:  string,
-	pre_constant_remove: string,
+	pre_path_add:         string,
+	post_path_add:        string,
+	pre_path_remove:      string,
+	post_path_remove:     string,
+	pre_alias_add:        string,
+	post_alias_add:       string,
+	pre_alias_remove:     string,
+	post_alias_remove:    string,
+	pre_constant_add:     string,
+	post_constant_add:    string,
+	pre_constant_remove:  string,
 	post_constant_remove: string,
-	pre_plugin_install: string,
-	post_plugin_install: string,
-	pre_export:         string,
-	post_export:        string,
+	pre_plugin_install:   string,
+	post_plugin_install:  string,
+	pre_export:           string,
+	post_export:          string,
 	// Hooks refused at load (placeholder inside "..."); see hook_config_error.
-	invalid:            [dynamic]HookInvalid,
+	invalid:              [dynamic]HookInvalid,
 }
 
 // A hooks.conf line whose command puts a placeholder inside "...".
 HookInvalid :: struct {
 	key:   string, // owned
-	line:  int,    // 1-based line in hooks.conf
+	line:  int, // 1-based line in hooks.conf
 	token: string, // static: "{path}" / "{name}" / "{value}"
 }
 
@@ -81,9 +81,9 @@ HOOK_CONFIG_FILE :: "hooks.conf"
 // caller fills in only the placeholders meaningful for its hook type; the
 // others stay empty. See thoughts/code_review_2026-04-24.md N2.
 HookContext :: struct {
-	path:  string,  // for PATH_* hooks: the directory being added/removed
-	name:  string,  // for ALIAS/CONSTANT/PLUGIN_* hooks: the entry identifier
-	value: string,  // for CONSTANT_* hooks: the value being assigned (optional)
+	path:  string, // for PATH_* hooks: the directory being added/removed
+	name:  string, // for ALIAS/CONSTANT/PLUGIN_* hooks: the entry identifier
+	value: string, // for CONSTANT_* hooks: the value being assigned (optional)
 }
 
 // Execute a hook if configured.
@@ -150,8 +150,8 @@ execute_hook_ctx :: proc(hook_type: HookType, ctx: HookContext) {
 
 HOOK_TUI_TIMEOUT_MS :: 30_000
 
-HOOK_ENV_PATH  :: "WAYU_HOOK_PATH"
-HOOK_ENV_NAME  :: "WAYU_HOOK_NAME"
+HOOK_ENV_PATH :: "WAYU_HOOK_PATH"
+HOOK_ENV_NAME :: "WAYU_HOOK_NAME"
 HOOK_ENV_VALUE :: "WAYU_HOOK_VALUE"
 
 // Rewrite `{path}`/`{name}`/`{value}` placeholders in a hook command into
@@ -177,9 +177,17 @@ hook_render_command :: proc(cmd: string) -> string {
 // hook_render_command plus whether any placeholder sat inside '...' (shown
 // as a hint by `wayu hooks`: there it is NOT substituted by wayu's shell) and
 // the first placeholder found inside "..." ("" if none; such a hook is invalid).
-hook_render_command_ex :: proc(cmd: string) -> (out: string, single_quoted: bool, double_token: string) {
-	Placeholder :: struct { token, env: string }
-	placeholders := [3]Placeholder{
+hook_render_command_ex :: proc(
+	cmd: string,
+) -> (
+	out: string,
+	single_quoted: bool,
+	double_token: string,
+) {
+	Placeholder :: struct {
+		token, env: string,
+	}
+	placeholders := [3]Placeholder {
 		{"{path}", HOOK_ENV_PATH},
 		{"{name}", HOOK_ENV_NAME},
 		{"{value}", HOOK_ENV_VALUE},
@@ -192,16 +200,27 @@ hook_render_command_ex :: proc(cmd: string) -> (out: string, single_quoted: bool
 		c := cmd[i]
 		if c == '{' {
 			for p in placeholders {
-				if !strings.has_prefix(cmd[i:], p.token) { continue }
+				if !strings.has_prefix(cmd[i:], p.token) {
+					continue
+				}
 				ref := strings.concatenate({"${", p.env, "}"}, context.temp_allocator)
 				switch {
 				case in_single:
 					single_quoted = true
-					strings.write_string(&b, strings.concatenate({`"`, ref, `"`}, context.temp_allocator))
+					strings.write_string(
+						&b,
+						strings.concatenate({`"`, ref, `"`}, context.temp_allocator),
+					)
 				case in_double:
-					if len(double_token) == 0 { double_token = p.token }
+					if len(double_token) == 0 {
+						double_token = p.token
+					}
 					strings.write_string(&b, ref)
-				case:           strings.write_string(&b, strings.concatenate({`"`, ref, `"`}, context.temp_allocator))
+				case:
+					strings.write_string(
+						&b,
+						strings.concatenate({`"`, ref, `"`}, context.temp_allocator),
+					)
 				}
 				i += len(p.token)
 				continue outer
@@ -209,15 +228,19 @@ hook_render_command_ex :: proc(cmd: string) -> (out: string, single_quoted: bool
 		}
 		switch {
 		case in_single:
-			if c == '\'' { in_single = false }
+			if c == '\'' {
+				in_single = false
+			}
 		case c == '\\' && i + 1 < len(cmd):
 			// Escaped char (outside single quotes): copy the pair untouched.
 			strings.write_byte(&b, c)
-			strings.write_byte(&b, cmd[i+1])
+			strings.write_byte(&b, cmd[i + 1])
 			i += 2
 			continue outer
 		case in_double:
-			if c == '"' { in_double = false }
+			if c == '"' {
+				in_double = false
+			}
 		case c == '\'':
 			in_single = true
 		case c == '"':
@@ -245,14 +268,31 @@ hook_config_error :: proc() -> (msg: string, bad: bool) {
 	if len(config.invalid) == 0 do return "", false
 
 	b := strings.builder_make(context.temp_allocator)
-	fmt.sbprintf(&b, "invalid %s/%s: placeholder inside \"...\" is refused", wayu.config, HOOK_CONFIG_FILE)
+	fmt.sbprintf(
+		&b,
+		"invalid %s/%s: placeholder inside \"...\" is refused",
+		wayu.config,
+		HOOK_CONFIG_FILE,
+	)
 	for inv in config.invalid {
 		fmt.sbprintf(&b, "\n  line %d: %s puts %s inside \"...\"", inv.line, inv.key, inv.token)
 	}
-	strings.write_string(&b, "\n  The shell expands it before a nested sh -c \"...\" / eval \"...\" re-parses")
-	strings.write_string(&b, "\n  the text, so the value could run as code. Write the placeholder unquoted")
-	strings.write_string(&b, "\n  (echo Adding {path}), inside '...' for an inner shell (sh -c 'echo {path}'),")
-	strings.write_string(&b, "\n  or use the env vars: \"$WAYU_HOOK_PATH\" / \"$WAYU_HOOK_NAME\" / \"$WAYU_HOOK_VALUE\".")
+	strings.write_string(
+		&b,
+		"\n  The shell expands it before a nested sh -c \"...\" / eval \"...\" re-parses",
+	)
+	strings.write_string(
+		&b,
+		"\n  the text, so the value could run as code. Write the placeholder unquoted",
+	)
+	strings.write_string(
+		&b,
+		"\n  (echo Adding {path}), inside '...' for an inner shell (sh -c 'echo {path}'),",
+	)
+	strings.write_string(
+		&b,
+		"\n  or use the env vars: \"$WAYU_HOOK_PATH\" / \"$WAYU_HOOK_NAME\" / \"$WAYU_HOOK_VALUE\".",
+	)
 	strings.write_string(&b, "\n  No hook ran and nothing was changed.")
 	return strings.to_string(b), true
 }
@@ -264,12 +304,19 @@ execute_hook :: proc(hook_type: HookType, context_data: string = "") {
 	#partial switch hook_type {
 	case .PRE_PATH_ADD, .POST_PATH_ADD, .PRE_PATH_REMOVE, .POST_PATH_REMOVE:
 		ctx.path = context_data
-	case .PRE_ALIAS_ADD, .POST_ALIAS_ADD, .PRE_ALIAS_REMOVE, .POST_ALIAS_REMOVE,
-	     .PRE_CONSTANT_ADD, .POST_CONSTANT_ADD, .PRE_CONSTANT_REMOVE, .POST_CONSTANT_REMOVE,
-	     .PRE_PLUGIN_INSTALL, .POST_PLUGIN_INSTALL:
+	case .PRE_ALIAS_ADD,
+	     .POST_ALIAS_ADD,
+	     .PRE_ALIAS_REMOVE,
+	     .POST_ALIAS_REMOVE,
+	     .PRE_CONSTANT_ADD,
+	     .POST_CONSTANT_ADD,
+	     .PRE_CONSTANT_REMOVE,
+	     .POST_CONSTANT_REMOVE,
+	     .PRE_PLUGIN_INSTALL,
+	     .POST_PLUGIN_INSTALL:
 		ctx.name = context_data
 	case .PRE_EXPORT, .POST_EXPORT:
-		// No context — just run the command as-is.
+	// No context — just run the command as-is.
 	}
 	execute_hook_ctx(hook_type, ctx)
 }
@@ -357,17 +404,34 @@ load_hook_config :: proc() -> HookConfig {
 		value := strings.trim_space(parts[1])
 		// Remove ONE matching pair of surrounding quotes (not every quote
 		// char at either end, which would eat a trailing `'` of the command).
-		if len(value) >= 2 && value[0] == value[len(value)-1] && (value[0] == '"' || value[0] == '\'') {
-			value = value[1:len(value)-1]
+		if len(value) >= 2 &&
+		   value[0] == value[len(value) - 1] &&
+		   (value[0] == '"' || value[0] == '\'') {
+			value = value[1:len(value) - 1]
 		}
 
 		switch key {
-		case "pre_path_add", "post_path_add", "pre_path_remove", "post_path_remove",
-		     "pre_alias_add", "post_alias_add", "pre_alias_remove", "post_alias_remove",
-		     "pre_constant_add", "post_constant_add", "pre_constant_remove", "post_constant_remove",
-		     "pre_plugin_install", "post_plugin_install", "pre_export", "post_export":
+		case "pre_path_add",
+		     "post_path_add",
+		     "pre_path_remove",
+		     "post_path_remove",
+		     "pre_alias_add",
+		     "post_alias_add",
+		     "pre_alias_remove",
+		     "post_alias_remove",
+		     "pre_constant_add",
+		     "post_constant_add",
+		     "pre_constant_remove",
+		     "post_constant_remove",
+		     "pre_plugin_install",
+		     "post_plugin_install",
+		     "pre_export",
+		     "post_export":
 			if tok := hook_double_quoted_placeholder(value); len(tok) > 0 {
-				append(&config.invalid, HookInvalid{key = strings.clone(key), line = line_idx + 1, token = tok})
+				append(
+					&config.invalid,
+					HookInvalid{key = strings.clone(key), line = line_idx + 1, token = tok},
+				)
 			}
 		}
 
@@ -466,12 +530,22 @@ show_hooks_status :: proc() {
 			delete(rendered)
 			if len(double_tok) > 0 {
 				line := 0
-				for inv in config.invalid do if inv.key == name { line = inv.line }
-				fmt.printfln("    %s✗ INVALID (line %d): %s inside \"...\" is refused; this hook never runs and wayu operations exit 78. Write it unquoted, inside '...', or use \"$WAYU_HOOK_*\"%s",
-					get_error(), line, double_tok, RESET)
+				for inv in config.invalid do if inv.key == name {
+					line = inv.line
+				}
+				fmt.printfln(
+					"    %s✗ INVALID (line %d): %s inside \"...\" is refused; this hook never runs and wayu operations exit 78. Write it unquoted, inside '...', or use \"$WAYU_HOOK_*\"%s",
+					get_error(),
+					line,
+					double_tok,
+					RESET,
+				)
 			} else if single {
-				fmt.printfln("    %s⚠ placeholder inside '...' is passed to an inner shell as \"$WAYU_HOOK_*\", not substituted here; write it unquoted for direct substitution%s",
-					get_warning(), RESET)
+				fmt.printfln(
+					"    %s⚠ placeholder inside '...' is passed to an inner shell as \"$WAYU_HOOK_*\", not substituted here; write it unquoted for direct substitution%s",
+					get_warning(),
+					RESET,
+				)
 			}
 		}
 	}
@@ -557,7 +631,9 @@ edit_hooks_config :: proc() {
 
 	// Open in editor (inherits the terminal; see launch_editor).
 	print_info("Opening hooks config in %s...", editor_command())
-	if !launch_editor(hook_path) { os.exit(EXIT_FAILURE) }
+	if !launch_editor(hook_path) {
+		os.exit(EXIT_FAILURE)
+	}
 }
 
 // Print hooks usage
@@ -586,7 +662,9 @@ print_hooks_usage :: proc() {
 	fmt.println(`  post_alias_add = echo {name}={value} >> ~/wayu-aliases.log`)
 	fmt.println()
 	fmt.println("  # Notify when plugins are installed")
-	fmt.println(`  post_plugin_install = terminal-notifier -title wayu -message "Installed $WAYU_HOOK_NAME"`)
+	fmt.println(
+		`  post_plugin_install = terminal-notifier -title wayu -message "Installed $WAYU_HOOK_NAME"`,
+	)
 	fmt.println()
 	fmt.printfln("%sPLACEHOLDERS:%s", get_primary(), RESET)
 	fmt.println("  {path} {name} {value}: write them unquoted or inside '...' (for an")

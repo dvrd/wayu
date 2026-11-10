@@ -4,15 +4,15 @@
 
 package test_wayu
 
-import "core:testing"
+import wayu "../../src"
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import wayu "../../src"
+import "core:testing"
 
-regression_test_dir :: proc() -> string { return test_tmp("wayu-test-plugin-regressions") }
+regression_test_dir :: proc() -> string {return test_tmp("wayu-test-plugin-regressions")}
 
-@(private="file")
+@(private = "file")
 use_regression_dir :: proc() -> (old_config: string, old_data: string) {
 	wayu.init_shell_globals()
 	old_config = wayu.wayu.config
@@ -24,7 +24,7 @@ use_regression_dir :: proc() -> (old_config: string, old_data: string) {
 	return
 }
 
-@(private="file")
+@(private = "file")
 restore_dirs :: proc(old_config: string, old_data: string) {
 	wayu.wayu.config = old_config
 	wayu.wayu.data = old_data
@@ -32,23 +32,24 @@ restore_dirs :: proc(old_config: string, old_data: string) {
 }
 
 // Fully-owned PluginMetadata (safe for cleanup_plugin_metadata).
-@(private="file")
-make_owned_plugin :: proc(name: string, installed_path: string, deps: []string = nil) -> wayu.PluginMetadata {
-	p := wayu.PluginMetadata{
-		name           = strings.clone(name),
-		display_name   = strings.clone(name),
-		url            = strings.clone("https://github.com/test/x.git"),
-		enabled        = true,
-		shell          = .ZSH,
+@(private = "file")
+make_owned_plugin :: proc(
+	name: string,
+	installed_path: string,
+	deps: []string = nil,
+) -> wayu.PluginMetadata {
+	p := wayu.PluginMetadata {
+		name = strings.clone(name),
+		display_name = strings.clone(name),
+		url = strings.clone("https://github.com/test/x.git"),
+		enabled = true,
+		shell = .ZSH,
 		installed_path = strings.clone(installed_path),
-		use            = make([dynamic]string),
-		template       = .Source,
-		dependencies   = make([dynamic]string),
-		priority       = 100,
-		git = wayu.GitMetadata{
-			branch = strings.clone("main"),
-			commit = strings.clone("abc1234"),
-		},
+		use = make([dynamic]string),
+		template = .Source,
+		dependencies = make([dynamic]string),
+		priority = 100,
+		git = wayu.GitMetadata{branch = strings.clone("main"), commit = strings.clone("abc1234")},
 	}
 	for d in deps {
 		append(&p.dependencies, strings.clone(d))
@@ -56,9 +57,9 @@ make_owned_plugin :: proc(name: string, installed_path: string, deps: []string =
 	return p
 }
 
-@(private="file")
+@(private = "file")
 write_config_with :: proc(plugins: []wayu.PluginMetadata) -> bool {
-	config := wayu.PluginConfigJSON{
+	config := wayu.PluginConfigJSON {
 		version      = strings.clone("1.0"),
 		last_updated = wayu.get_iso8601_timestamp(),
 		plugins      = make([dynamic]wayu.PluginMetadata),
@@ -70,7 +71,7 @@ write_config_with :: proc(plugins: []wayu.PluginMetadata) -> bool {
 	return wayu.write_plugin_config_json(&config)
 }
 
-@(private="file")
+@(private = "file")
 read_file_string :: proc(path: string) -> string {
 	data, err := os.read_entire_file(path, context.allocator)
 	if err != nil {
@@ -90,7 +91,7 @@ test_plugin_remove_ownership_and_exact_target :: proc(t: ^testing.T) {
 	old_yes, old_dry := wayu.wayu.yes_flag, wayu.wayu.dry_run
 	wayu.wayu.yes_flag = true
 	wayu.wayu.dry_run = false
-	defer { wayu.wayu.yes_flag = old_yes; wayu.wayu.dry_run = old_dry }
+	defer {wayu.wayu.yes_flag = old_yes; wayu.wayu.dry_run = old_dry}
 
 	plugins_dir := fmt.tprintf("%s/plugins", regression_test_dir())
 	os.make_directory(plugins_dir)
@@ -98,11 +99,17 @@ test_plugin_remove_ownership_and_exact_target :: proc(t: ^testing.T) {
 	os.make_directory(fmt.tprintf("%s/alpha-extra", plugins_dir))
 	os.make_directory(fmt.tprintf("%s/beta", plugins_dir))
 
-	testing.expect(t, write_config_with({
-		make_owned_plugin("alpha", fmt.tprintf("%s/alpha", plugins_dir)),
-		make_owned_plugin("alpha-extra", fmt.tprintf("%s/alpha-extra", plugins_dir)),
-		make_owned_plugin("beta", fmt.tprintf("%s/beta", plugins_dir)),
-	}), "seed config")
+	testing.expect(
+		t,
+		write_config_with(
+			{
+				make_owned_plugin("alpha", fmt.tprintf("%s/alpha", plugins_dir)),
+				make_owned_plugin("alpha-extra", fmt.tprintf("%s/alpha-extra", plugins_dir)),
+				make_owned_plugin("beta", fmt.tprintf("%s/beta", plugins_dir)),
+			},
+		),
+		"seed config",
+	)
 
 	// Before the fix this double-freed config.plugins (UAF / bad free).
 	wayu.handle_plugin_remove({"alpha"})
@@ -116,7 +123,11 @@ test_plugin_remove_ownership_and_exact_target :: proc(t: ^testing.T) {
 		testing.expect_value(t, config.plugins[1].name, "beta")
 	}
 	testing.expect(t, !os.exists(fmt.tprintf("%s/alpha", plugins_dir)), "target dir removed")
-	testing.expect(t, os.exists(fmt.tprintf("%s/alpha-extra", plugins_dir)), "similar-named dir kept")
+	testing.expect(
+		t,
+		os.exists(fmt.tprintf("%s/alpha-extra", plugins_dir)),
+		"similar-named dir kept",
+	)
 	testing.expect(t, os.exists(fmt.tprintf("%s/beta", plugins_dir)), "other dir kept")
 }
 
@@ -129,7 +140,7 @@ test_plugin_remove_never_wipes_plugins_root :: proc(t: ^testing.T) {
 	old_yes, old_dry := wayu.wayu.yes_flag, wayu.wayu.dry_run
 	wayu.wayu.yes_flag = true
 	wayu.wayu.dry_run = false
-	defer { wayu.wayu.yes_flag = old_yes; wayu.wayu.dry_run = old_dry }
+	defer {wayu.wayu.yes_flag = old_yes; wayu.wayu.dry_run = old_dry}
 
 	plugins_dir := fmt.tprintf("%s/plugins", regression_test_dir())
 	os.make_directory(plugins_dir)
@@ -137,16 +148,26 @@ test_plugin_remove_never_wipes_plugins_root :: proc(t: ^testing.T) {
 	outside := fmt.tprintf("%s/outside", regression_test_dir())
 	os.make_directory(outside)
 
-	testing.expect(t, write_config_with({
-		make_owned_plugin("", plugins_dir),
-		make_owned_plugin("evil", outside),
-		make_owned_plugin("keepme", fmt.tprintf("%s/keepme", plugins_dir)),
-	}), "seed config")
+	testing.expect(
+		t,
+		write_config_with(
+			{
+				make_owned_plugin("", plugins_dir),
+				make_owned_plugin("evil", outside),
+				make_owned_plugin("keepme", fmt.tprintf("%s/keepme", plugins_dir)),
+			},
+		),
+		"seed config",
+	)
 
 	wayu.handle_plugin_remove({""})
 	wayu.handle_plugin_remove({"evil"})
 
-	testing.expect(t, os.exists(fmt.tprintf("%s/keepme", plugins_dir)), "plugins root must survive rm of empty-name entry")
+	testing.expect(
+		t,
+		os.exists(fmt.tprintf("%s/keepme", plugins_dir)),
+		"plugins root must survive rm of empty-name entry",
+	)
 	testing.expect(t, os.exists(outside), "dir outside plugins root must survive")
 
 	config, ok := wayu.read_plugin_config_json()
@@ -166,12 +187,16 @@ test_plugin_remove_dry_run_no_side_effects :: proc(t: ^testing.T) {
 	old_yes, old_dry := wayu.wayu.yes_flag, wayu.wayu.dry_run
 	wayu.wayu.yes_flag = true
 	wayu.wayu.dry_run = true
-	defer { wayu.wayu.yes_flag = old_yes; wayu.wayu.dry_run = old_dry }
+	defer {wayu.wayu.yes_flag = old_yes; wayu.wayu.dry_run = old_dry}
 
 	plugins_dir := fmt.tprintf("%s/plugins", regression_test_dir())
 	os.make_directory(plugins_dir)
 	os.make_directory(fmt.tprintf("%s/alpha", plugins_dir))
-	testing.expect(t, write_config_with({make_owned_plugin("alpha", fmt.tprintf("%s/alpha", plugins_dir))}), "seed")
+	testing.expect(
+		t,
+		write_config_with({make_owned_plugin("alpha", fmt.tprintf("%s/alpha", plugins_dir))}),
+		"seed",
+	)
 
 	json_path := fmt.tprintf("%s/plugins.json", regression_test_dir())
 	before := read_file_string(json_path)
@@ -182,8 +207,16 @@ test_plugin_remove_dry_run_no_side_effects :: proc(t: ^testing.T) {
 	after := read_file_string(json_path)
 	defer delete(after)
 	testing.expect(t, before == after, "dry-run rm must not rewrite plugins.json")
-	testing.expect(t, os.exists(fmt.tprintf("%s/alpha", plugins_dir)), "dry-run rm must not delete dir")
-	testing.expect(t, !os.exists(fmt.tprintf("%s/backup", regression_test_dir())), "dry-run rm must not create backups")
+	testing.expect(
+		t,
+		os.exists(fmt.tprintf("%s/alpha", plugins_dir)),
+		"dry-run rm must not delete dir",
+	)
+	testing.expect(
+		t,
+		!os.exists(fmt.tprintf("%s/backup", regression_test_dir())),
+		"dry-run rm must not create backups",
+	)
 }
 
 // #3 + #4: dry-run add of a registry key: no plugins.json write, and the
@@ -199,8 +232,16 @@ test_plugin_add_dry_run_registry_key :: proc(t: ^testing.T) {
 	wayu.handle_plugin_add({"syntax-highlighting"})
 	wayu.handle_plugin_add({"https://github.com/user/custom-plugin.git"})
 
-	testing.expect(t, !os.exists(fmt.tprintf("%s/plugins.json", regression_test_dir())), "dry-run add must not write plugins.json")
-	testing.expect(t, !os.exists(fmt.tprintf("%s/plugins/zsh-syntax-highlighting", regression_test_dir())), "dry-run add must not clone")
+	testing.expect(
+		t,
+		!os.exists(fmt.tprintf("%s/plugins.json", regression_test_dir())),
+		"dry-run add must not write plugins.json",
+	)
+	testing.expect(
+		t,
+		!os.exists(fmt.tprintf("%s/plugins/zsh-syntax-highlighting", regression_test_dir())),
+		"dry-run add must not clone",
+	)
 
 	// Registry entry still intact after the add returned.
 	info, found := wayu.popular_plugin_find("syntax-highlighting")
@@ -213,7 +254,11 @@ test_resolve_plugin_returns_owned_strings :: proc(t: ^testing.T) {
 	info, ok := wayu.resolve_plugin("autosuggestions")
 	testing.expect(t, ok, "registry key resolves")
 	reg, _ := wayu.popular_plugin_find("autosuggestions")
-	testing.expect(t, raw_data(info.name) != raw_data(reg.name), "name must be a clone, not the literal")
+	testing.expect(
+		t,
+		raw_data(info.name) != raw_data(reg.name),
+		"name must be a clone, not the literal",
+	)
 	wayu.plugin_info_destroy(&info) // tracking allocator flags a bad free if not owned
 
 	arg := strings.clone("https://github.com/user/thing.git")
@@ -230,7 +275,9 @@ test_resolve_plugin_returns_owned_strings :: proc(t: ^testing.T) {
 
 @(test)
 test_find_plugin_json_is_exact :: proc(t: ^testing.T) {
-	config := wayu.PluginConfigJSON{plugins = make([dynamic]wayu.PluginMetadata)}
+	config := wayu.PluginConfigJSON {
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
 	defer wayu.cleanup_plugin_config_json(&config)
 	append(&config.plugins, make_owned_plugin("forgit", "/tmp/x/forgit"))
 	append(&config.plugins, make_owned_plugin("zsh-autosuggestions", "/tmp/x/zsa"))
@@ -251,7 +298,9 @@ test_find_plugin_json_is_exact :: proc(t: ^testing.T) {
 // `plugin disable rig` used to disable `origin`.
 @(test)
 test_plugin_miss_suggests_names_only :: proc(t: ^testing.T) {
-	config := wayu.PluginConfigJSON{plugins = make([dynamic]wayu.PluginMetadata)}
+	config := wayu.PluginConfigJSON {
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
 	defer wayu.cleanup_plugin_config_json(&config)
 	append(&config.plugins, make_owned_plugin("origin", "/tmp/x/origin"))
 
@@ -259,20 +308,31 @@ test_plugin_miss_suggests_names_only :: proc(t: ^testing.T) {
 	testing.expect(t, !found, "'rig' must not resolve to 'origin'")
 
 	names := []string{"origin"}
-	suggestions := wayu.suggest_similar_names("rig", names, wayu.GET_SUGGESTION_LIMIT, context.temp_allocator)
-	testing.expect(t, len(suggestions) == 1 && suggestions[0] == "origin", "'origin' suggested for 'rig'")
+	suggestions := wayu.suggest_similar_names(
+		"rig",
+		names,
+		wayu.GET_SUGGESTION_LIMIT,
+		context.temp_allocator,
+	)
+	testing.expect(
+		t,
+		len(suggestions) == 1 && suggestions[0] == "origin",
+		"'origin' suggested for 'rig'",
+	)
 }
 
 @(test)
 test_dependency_check_is_exact :: proc(t: ^testing.T) {
-	config := wayu.PluginConfigJSON{plugins = make([dynamic]wayu.PluginMetadata)}
+	config := wayu.PluginConfigJSON {
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
 	defer wayu.cleanup_plugin_config_json(&config)
 	append(&config.plugins, make_owned_plugin("forgit", "/tmp/x/forgit"))
 	append(&config.plugins, make_owned_plugin("needs-git", "/tmp/x/ng", {"git"}))
 
 	missing := wayu.validate_plugin_dependencies(&config.plugins[1], &config)
 	defer {
-		for m in missing { delete(m) }
+		for m in missing {delete(m)}
 		delete(missing)
 	}
 	testing.expect_value(t, len(missing), 1)
@@ -284,7 +344,9 @@ test_dependency_check_is_exact :: proc(t: ^testing.T) {
 
 @(test)
 test_extract_plugin_name_trailing_slash :: proc(t: ^testing.T) {
-	cases := []struct{ url, expected: string }{
+	cases := []struct {
+		url, expected: string,
+	} {
 		{"https://github.com/user/repo/", "repo"},
 		{"https://github.com/user/repo.git/", "repo"},
 		{"https://github.com/user/repo//", "repo"},
@@ -309,10 +371,16 @@ test_is_valid_plugin_name :: proc(t: ^testing.T) {
 
 @(test)
 test_resolve_plugin_rejects_unsafe_url_names :: proc(t: ^testing.T) {
-	bad := []string{"https://github.com/user/.", "https://github.com/user/..", "https://github.com/user/-rf"}
+	bad := []string {
+		"https://github.com/user/.",
+		"https://github.com/user/..",
+		"https://github.com/user/-rf",
+	}
 	for u in bad {
 		info, ok := wayu.resolve_plugin(u)
-		if ok { wayu.plugin_info_destroy(&info) }
+		if ok {
+			wayu.plugin_info_destroy(&info)
+		}
 		testing.expectf(t, !ok, "%s must not resolve", u)
 	}
 }
@@ -322,9 +390,21 @@ test_is_path_inside_dir :: proc(t: ^testing.T) {
 	root := "/home/u/.config/wayu/plugins"
 	testing.expect(t, wayu.is_path_inside_dir("/home/u/.config/wayu/plugins/x", root), "child")
 	testing.expect(t, !wayu.is_path_inside_dir(root, root), "root itself")
-	testing.expect(t, !wayu.is_path_inside_dir("/home/u/.config/wayu/plugins/", root), "root with slash")
-	testing.expect(t, !wayu.is_path_inside_dir("/home/u/.config/wayu/plugins/x/..", root), "dotdot back to root")
-	testing.expect(t, !wayu.is_path_inside_dir("/home/u/.config/wayu/plugins-evil/x", root), "sibling prefix")
+	testing.expect(
+		t,
+		!wayu.is_path_inside_dir("/home/u/.config/wayu/plugins/", root),
+		"root with slash",
+	)
+	testing.expect(
+		t,
+		!wayu.is_path_inside_dir("/home/u/.config/wayu/plugins/x/..", root),
+		"dotdot back to root",
+	)
+	testing.expect(
+		t,
+		!wayu.is_path_inside_dir("/home/u/.config/wayu/plugins-evil/x", root),
+		"sibling prefix",
+	)
 	testing.expect(t, !wayu.is_path_inside_dir("/etc", root), "outside")
 	testing.expect(t, !wayu.is_path_inside_dir("", root), "empty")
 }
@@ -370,14 +450,16 @@ test_plugin_pinned_ref_detection :: proc(t: ^testing.T) {
 
 @(test)
 test_load_order_deterministic_and_zsh_highlighting_last :: proc(t: ^testing.T) {
-	config := wayu.PluginConfigJSON{plugins = make([dynamic]wayu.PluginMetadata)}
+	config := wayu.PluginConfigJSON {
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
 	defer wayu.cleanup_plugin_config_json(&config)
 	names := []string{"zsh-syntax-highlighting", "p1", "p2", "p3", "p4", "p5"}
 	for n in names {
 		append(&config.plugins, make_owned_plugin(n, "/nonexistent"))
 	}
 
-	for _ in 0..<5 {
+	for _ in 0 ..< 5 {
 		order, ok := wayu.resolve_dependencies_with_priority(&config)
 		testing.expect(t, ok, "resolves")
 		expected := []string{"p1", "p2", "p3", "p4", "p5", "zsh-syntax-highlighting"}
@@ -387,7 +469,7 @@ test_load_order_deterministic_and_zsh_highlighting_last :: proc(t: ^testing.T) {
 				testing.expectf(t, order[i] == e, "order[%d] = %s, want %s", i, order[i], e)
 			}
 		}
-		for o in order { delete(o) }
+		for o in order {delete(o)}
 		delete(order)
 	}
 }
@@ -398,7 +480,9 @@ test_load_order_deterministic_and_zsh_highlighting_last :: proc(t: ^testing.T) {
 
 @(test)
 test_parse_function_definition :: proc(t: ^testing.T) {
-	ok_cases := []struct{ line, name: string }{
+	ok_cases := []struct {
+		line, name: string,
+	} {
 		{"foo() {", "foo"},
 		{"foo () {", "foo"},
 		{"function foo {", "foo"},
@@ -428,23 +512,42 @@ test_shared_env_vars_not_conflicts :: proc(t: ^testing.T) {
 	defer os.remove_all(base)
 	os.make_directory(fmt.tprintf("%s/a", base))
 	os.make_directory(fmt.tprintf("%s/b", base))
-	_ = os.write_entire_file(fmt.tprintf("%s/a/a.plugin.zsh", base), transmute([]byte)string("export PATH=\"$HOME/bin:$PATH\"\nexport FPATH=x\nreply=()\n"))
-	_ = os.write_entire_file(fmt.tprintf("%s/b/b.plugin.zsh", base), transmute([]byte)string("export PATH=\"/opt:$PATH\"\nfpath+=(x)\nreply=()\n"))
+	_ = os.write_entire_file(
+		fmt.tprintf("%s/a/a.plugin.zsh", base),
+		transmute([]byte)string("export PATH=\"$HOME/bin:$PATH\"\nexport FPATH=x\nreply=()\n"),
+	)
+	_ = os.write_entire_file(
+		fmt.tprintf("%s/b/b.plugin.zsh", base),
+		transmute([]byte)string("export PATH=\"/opt:$PATH\"\nfpath+=(x)\nreply=()\n"),
+	)
 
-	config := wayu.PluginConfigJSON{plugins = make([dynamic]wayu.PluginMetadata)}
+	config := wayu.PluginConfigJSON {
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
 	defer wayu.cleanup_plugin_config_json(&config)
 	append(&config.plugins, make_owned_plugin("a", fmt.tprintf("%s/a", base)))
 	append(&config.plugins, make_owned_plugin("b", fmt.tprintf("%s/b", base)))
 
 	wayu.detect_conflicts(&config)
-	testing.expect(t, !config.plugins[0].conflicts.detected, "PATH/FPATH/reply=() must not be conflicts")
-	testing.expect(t, !config.plugins[1].conflicts.detected, "PATH/FPATH/reply=() must not be conflicts")
+	testing.expect(
+		t,
+		!config.plugins[0].conflicts.detected,
+		"PATH/FPATH/reply=() must not be conflicts",
+	)
+	testing.expect(
+		t,
+		!config.plugins[1].conflicts.detected,
+		"PATH/FPATH/reply=() must not be conflicts",
+	)
 }
 
 // OKAMI-276: statements after `export X=..;` count; quoted `;` doesn't split.
 @(test)
 test_split_shell_statements :: proc(t: ^testing.T) {
-	cases := []struct { line: string, want: []string }{
+	cases := []struct {
+		line: string,
+		want: []string,
+	} {
 		{"export A=1; alias gs='git status'", {"export A=1", "alias gs='git status'"}},
 		{"alias x='a; b' && f() { :; }", {"alias x='a; b'", "f() { :", "}"}},
 		{`echo "a;b" || y`, {`echo "a;b"`, "y"}},
@@ -454,8 +557,10 @@ test_split_shell_statements :: proc(t: ^testing.T) {
 	for c in cases {
 		got := wayu.split_shell_statements(c.line, context.temp_allocator)
 		testing.expectf(t, len(got) == len(c.want), "%q -> %v", c.line, got)
-		if len(got) != len(c.want) { continue }
-		for w, i in c.want { testing.expectf(t, got[i] == w, "%q[%d]: %q != %q", c.line, i, got[i], w) }
+		if len(got) != len(c.want) {
+			continue
+		}
+		for w, i in c.want {testing.expectf(t, got[i] == w, "%q[%d]: %q != %q", c.line, i, got[i], w)}
 	}
 }
 
@@ -473,17 +578,29 @@ test_collect_plugin_conflicts :: proc(t: ^testing.T) {
 	defer os.remove_all(base)
 	os.make_directory(fmt.tprintf("%s/d1", base))
 	os.make_directory(fmt.tprintf("%s/d2", base))
-	_ = os.write_entire_file(fmt.tprintf("%s/d1/d1.plugin.zsh", base), transmute([]byte)string("dup() { :; }\nalias gs='git status'\n"))
-	_ = os.write_entire_file(fmt.tprintf("%s/d2/d2.plugin.zsh", base), transmute([]byte)string("export MYV=1; dup() { :; }; alias gs=x\n"))
-	write_entries_json(t, base, `{"version": 1, "aliases": [{"name": "gs", "value": "git st"}], "env": [{"name": "MYV", "value": "2"}]}`)
+	_ = os.write_entire_file(
+		fmt.tprintf("%s/d1/d1.plugin.zsh", base),
+		transmute([]byte)string("dup() { :; }\nalias gs='git status'\n"),
+	)
+	_ = os.write_entire_file(
+		fmt.tprintf("%s/d2/d2.plugin.zsh", base),
+		transmute([]byte)string("export MYV=1; dup() { :; }; alias gs=x\n"),
+	)
+	write_entries_json(
+		t,
+		base,
+		`{"version": 1, "aliases": [{"name": "gs", "value": "git st"}], "env": [{"name": "MYV", "value": "2"}]}`,
+	)
 
 	saved_config, saved_data := wayu.wayu.config, wayu.wayu.data
 	wayu.wayu.config, wayu.wayu.data = base, base
-	defer { wayu.wayu.config, wayu.wayu.data = saved_config, saved_data }
+	defer {wayu.wayu.config, wayu.wayu.data = saved_config, saved_data}
 	wayu.clear_toml_content_cache()
 	defer wayu.clear_toml_content_cache()
 
-	config := wayu.PluginConfigJSON{plugins = make([dynamic]wayu.PluginMetadata)}
+	config := wayu.PluginConfigJSON {
+		plugins = make([dynamic]wayu.PluginMetadata),
+	}
 	defer wayu.cleanup_plugin_config_json(&config)
 	append(&config.plugins, make_owned_plugin("d1", fmt.tprintf("%s/d1", base)))
 	append(&config.plugins, make_owned_plugin("d2", fmt.tprintf("%s/d2", base)))
@@ -491,14 +608,24 @@ test_collect_plugin_conflicts :: proc(t: ^testing.T) {
 	conflicts := wayu.collect_plugin_conflicts(&config)
 	has :: proc(cs: []wayu.PluginConflict, plugin, other, kind, name: string) -> bool {
 		for c in cs {
-			if c.plugin == plugin && c.other == other && c.kind == kind && c.name == name { return true }
+			if c.plugin == plugin && c.other == other && c.kind == kind && c.name == name {
+				return true
+			}
 		}
 		return false
 	}
 	testing.expect(t, has(conflicts[:], "d1", "d2", "function", "dup"), "d1/d2 dup")
 	testing.expect(t, has(conflicts[:], "d1", "d2", "alias", "gs"), "d1/d2 gs")
-	testing.expect(t, has(conflicts[:], "d1", wayu.PLUGIN_CONFLICT_WAYU, "alias", "gs"), "d1 gs vs wayu entries")
-	testing.expect(t, has(conflicts[:], "d2", wayu.PLUGIN_CONFLICT_WAYU, "env", "MYV"), "d2 MYV vs wayu constants")
+	testing.expect(
+		t,
+		has(conflicts[:], "d1", wayu.PLUGIN_CONFLICT_WAYU, "alias", "gs"),
+		"d1 gs vs wayu entries",
+	)
+	testing.expect(
+		t,
+		has(conflicts[:], "d2", wayu.PLUGIN_CONFLICT_WAYU, "env", "MYV"),
+		"d2 MYV vs wayu constants",
+	)
 	testing.expectf(t, len(conflicts) == 5, "5 conflicts, got %v", conflicts[:])
 
 	lines := wayu.plugin_conflict_lines(conflicts[:], "d2")

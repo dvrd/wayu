@@ -1,11 +1,11 @@
 // validation.odin - Input validation and sanitization for shell configurations
 
 package wayu
+import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
-import "core:fmt"
-import "core:os"
 // Validation result with detailed error message and optional warning
 ValidationResult :: struct {
 	valid:         bool,
@@ -55,7 +55,11 @@ SHELL_RESERVED_WORDS :: []string {
 // allow_hyphen: aliases may contain `-` after the first character (zsh, bash
 // and fish accept it, and TOML bare keys allow it); env var and function
 // names may not.
-validate_identifier :: proc(name: string, identifier_type: string, allow_hyphen := false) -> ValidationResult {
+validate_identifier :: proc(
+	name: string,
+	identifier_type: string,
+	allow_hyphen := false,
+) -> ValidationResult {
 	// Check for empty
 	if len(name) == 0 {
 		return ValidationResult {
@@ -67,8 +71,10 @@ validate_identifier :: proc(name: string, identifier_type: string, allow_hyphen 
 	// ASCII only: names become TOML bare keys and shell identifiers, and both
 	// are restricted to [A-Za-z_][A-Za-z0-9_] (unicode.is_alpha would let
 	// `café` through, producing an invalid wayu.toml and shell syntax errors).
-	is_ascii_alpha :: proc(r: rune) -> bool { return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') }
-	is_ascii_digit :: proc(r: rune) -> bool { return r >= '0' && r <= '9' }
+	is_ascii_alpha :: proc(r: rune) -> bool {
+		return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+	}
+	is_ascii_digit :: proc(r: rune) -> bool {return r >= '0' && r <= '9'}
 
 	// Check first character (must be letter or underscore)
 	first_rune, _ := utf8.decode_rune_in_string(name)
@@ -140,7 +146,10 @@ validate_alias :: proc(name: string, command: string) -> ValidationResult {
 
 	// Check command is not empty
 	if len(strings.trim_space(command)) == 0 {
-		return ValidationResult{valid = false, error_message = fmt.aprintf("Alias command cannot be empty")}
+		return ValidationResult {
+			valid = false,
+			error_message = fmt.aprintf("Alias command cannot be empty"),
+		}
 	}
 
 	return ValidationResult{valid = true, error_message = ""}
@@ -165,10 +174,10 @@ validate_constant :: proc(name: string, value: string) -> ValidationResult {
 	}
 
 	if has_lowercase {
-		return ValidationResult{
-			valid         = true,
+		return ValidationResult {
+			valid = true,
 			error_message = "",
-			warning       = fmt.aprintf(
+			warning = fmt.aprintf(
 				"Constant name '%s' contains lowercase letters. Convention is UPPER_CASE.",
 				name,
 			),
@@ -204,13 +213,19 @@ validate_path :: proc(path: string) -> ValidationResult {
 
 	// Check for null bytes (security)
 	if strings.contains(path, "\x00") {
-		return ValidationResult{valid = false, error_message = fmt.aprintf("Path contains null bytes")}
+		return ValidationResult {
+			valid = false,
+			error_message = fmt.aprintf("Path contains null bytes"),
+		}
 	}
 
 	// ':' is the PATH separator: "/x/a:." would put "/x/a" AND "." (the CWD)
 	// on PATH. Newlines break the line-oriented generated files.
 	if !is_path_entry_safe(path) {
-		return ValidationResult{valid = false, error_message = fmt.aprintf("Path cannot contain ':' or newlines (PATH separator)")}
+		return ValidationResult {
+			valid = false,
+			error_message = fmt.aprintf("Path cannot contain ':' or newlines (PATH separator)"),
+		}
 	}
 
 	return ValidationResult{valid = true, error_message = ""}
@@ -239,12 +254,22 @@ print_error_with_context :: proc(
 		eprintfln_color("File not found: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 
 		if strings.contains(resource, "/wayu/") {
-			fmt.eprintfln("\n%sSuggestion:%s Run %swayu init%s to create configuration files",
-				BRIGHT_CYAN, RESET, BOLD, RESET)
-			fmt.eprintfln("            This sets up ~/.config/wayu/ (config) and ~/.local/share/wayu/ (data)")
+			fmt.eprintfln(
+				"\n%sSuggestion:%s Run %swayu init%s to create configuration files",
+				BRIGHT_CYAN,
+				RESET,
+				BOLD,
+				RESET,
+			)
+			fmt.eprintfln(
+				"            This sets up ~/.config/wayu/ (config) and ~/.local/share/wayu/ (data)",
+			)
 		} else {
-			fmt.eprintfln("\n%sSuggestion:%s Check the file path and try again",
-				BRIGHT_CYAN, RESET)
+			fmt.eprintfln(
+				"\n%sSuggestion:%s Check the file path and try again",
+				BRIGHT_CYAN,
+				RESET,
+			)
 		}
 
 	case .PERMISSION_DENIED:
@@ -259,8 +284,11 @@ print_error_with_context :: proc(
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Details: %s", context_msg)
 		}
-		fmt.eprintfln("\n%sSuggestion:%s Ensure the file is not corrupted or locked by another process",
-			BRIGHT_CYAN, RESET)
+		fmt.eprintfln(
+			"\n%sSuggestion:%s Ensure the file is not corrupted or locked by another process",
+			BRIGHT_CYAN,
+			RESET,
+		)
 		fmt.eprintfln("            Try closing other applications that may be using this file")
 
 	case .FILE_WRITE_ERROR:
@@ -268,7 +296,11 @@ print_error_with_context :: proc(
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Details: %s", context_msg)
 		}
-		eprintfln_color("\n%sSuggestion:%s Check disk space and file permissions:", BRIGHT_CYAN, RESET)
+		eprintfln_color(
+			"\n%sSuggestion:%s Check disk space and file permissions:",
+			BRIGHT_CYAN,
+			RESET,
+		)
 		eprintfln_color("            %sdf -h%s  # Check disk space", MUTED, RESET)
 		eprintfln_color("            %sls -la %s%s  # Check permissions", MUTED, resource, RESET)
 
@@ -279,24 +311,46 @@ print_error_with_context :: proc(
 		}
 		// Determine command type from resource
 		if strings.contains(resource, "alias") {
-			fmt.eprintfln("\n%sSuggestion:%s Use %swayu alias help%s for usage information",
-				BRIGHT_CYAN, RESET, MUTED, RESET)
+			fmt.eprintfln(
+				"\n%sSuggestion:%s Use %swayu alias help%s for usage information",
+				BRIGHT_CYAN,
+				RESET,
+				MUTED,
+				RESET,
+			)
 		} else if strings.contains(resource, "constant") {
-			fmt.eprintfln("\n%sSuggestion:%s Use %swayu constants help%s for usage information",
-				BRIGHT_CYAN, RESET, MUTED, RESET)
+			fmt.eprintfln(
+				"\n%sSuggestion:%s Use %swayu constants help%s for usage information",
+				BRIGHT_CYAN,
+				RESET,
+				MUTED,
+				RESET,
+			)
 		} else if strings.contains(resource, "path") {
-			fmt.eprintfln("\n%sSuggestion:%s Use %swayu path help%s for usage information",
-				BRIGHT_CYAN, RESET, MUTED, RESET)
+			fmt.eprintfln(
+				"\n%sSuggestion:%s Use %swayu path help%s for usage information",
+				BRIGHT_CYAN,
+				RESET,
+				MUTED,
+				RESET,
+			)
 		} else {
-			fmt.eprintfln("\n%sSuggestion:%s Use %swayu help%s for usage information",
-				BRIGHT_CYAN, RESET, MUTED, RESET)
+			fmt.eprintfln(
+				"\n%sSuggestion:%s Use %swayu help%s for usage information",
+				BRIGHT_CYAN,
+				RESET,
+				MUTED,
+				RESET,
+			)
 		}
 
 	case .CONFIG_NOT_INITIALIZED:
-		fmt.eprintfln("Wayu configuration not found in: %s%s%s",
-			BRIGHT_YELLOW, resource, RESET)
-		fmt.eprintfln("\n%sFirst time using wayu?%s Run the following command:",
-			BRIGHT_CYAN, RESET)
+		fmt.eprintfln("Wayu configuration not found in: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		fmt.eprintfln(
+			"\n%sFirst time using wayu?%s Run the following command:",
+			BRIGHT_CYAN,
+			RESET,
+		)
 		eprintfln_color("  %swayu init%s", BOLD, RESET)
 		fmt.eprintfln("\nThis will:")
 		fmt.eprintfln("  • Create ~/.config/wayu/ and ~/.local/share/wayu/")
@@ -308,7 +362,11 @@ print_error_with_context :: proc(
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Details: %s", context_msg)
 		}
-		eprintfln_color("\n%sSuggestion:%s Verify the directory exists or create it:", BRIGHT_CYAN, RESET)
+		eprintfln_color(
+			"\n%sSuggestion:%s Verify the directory exists or create it:",
+			BRIGHT_CYAN,
+			RESET,
+		)
 		eprintfln_color("            %smkdir -p %s%s", MUTED, resource, RESET)
 	}
 
@@ -360,8 +418,11 @@ safe_write_file :: proc(file_path: string, content: []byte) -> bool {
 		defer delete(dir_path)
 
 		if !os.exists(dir_path) {
-			print_error_with_context(.DIRECTORY_NOT_FOUND, dir_path,
-				"Parent directory does not exist")
+			print_error_with_context(
+				.DIRECTORY_NOT_FOUND,
+				dir_path,
+				"Parent directory does not exist",
+			)
 		} else {
 			// Check disk space
 			print_error_with_context(.FILE_WRITE_ERROR, file_path)
@@ -403,14 +464,22 @@ print_error_simple :: proc(format: string, args: ..any) {
 // Cached result for check_wayu_initialized — avoids repeated os.exists
 // calls and path allocation on every sub-command.
 @(private = "file")
-WAYU_INIT_CHECK: struct { done: bool, result: bool } = {}
+WAYU_INIT_CHECK: struct {
+	done:   bool,
+	result: bool,
+} = {}
 
 check_wayu_initialized :: proc() -> bool {
-	if WAYU_INIT_CHECK.done { return WAYU_INIT_CHECK.result }
+	if WAYU_INIT_CHECK.done {
+		return WAYU_INIT_CHECK.result
+	}
 
 	if !os.exists(wayu.config) {
 		print_error_with_context(.CONFIG_NOT_INITIALIZED, wayu.config)
-		WAYU_INIT_CHECK = { done = true, result = false }
+		WAYU_INIT_CHECK = {
+			done   = true,
+			result = false,
+		}
 		return false
 	}
 
@@ -419,10 +488,16 @@ check_wayu_initialized :: proc() -> bool {
 	defer delete(toml_path)
 	if !os.exists(toml_path) {
 		print_error_with_context(.FILE_NOT_FOUND, toml_path)
-		WAYU_INIT_CHECK = { done = true, result = false }
+		WAYU_INIT_CHECK = {
+			done   = true,
+			result = false,
+		}
 		return false
 	}
 
-	WAYU_INIT_CHECK = { done = true, result = true }
+	WAYU_INIT_CHECK = {
+		done   = true,
+		result = true,
+	}
 	return true
 }

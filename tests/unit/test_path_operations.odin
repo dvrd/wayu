@@ -7,10 +7,10 @@
 
 package test_wayu
 
-import "core:os"
-import "core:testing"
-import "core:strings"
 import wayu "../../src"
+import "core:os"
+import "core:strings"
+import "core:testing"
 
 // ============================================================================
 // Duplicate detection logic (algorithm used by remove_duplicate_paths)
@@ -24,8 +24,8 @@ test_ops_dedup_detection_finds_duplicates :: proc(t: ^testing.T) {
 	duplicate_indices := make([dynamic]int)
 	defer delete(duplicate_indices)
 
-	for i in 0..<len(paths) {
-		for j in i + 1..<len(paths) {
+	for i in 0 ..< len(paths) {
+		for j in i + 1 ..< len(paths) {
 			if paths[i] == paths[j] {
 				append(&duplicate_indices, j)
 			}
@@ -43,8 +43,8 @@ test_ops_dedup_detection_no_duplicates :: proc(t: ^testing.T) {
 	duplicate_indices := make([dynamic]int)
 	defer delete(duplicate_indices)
 
-	for i in 0..<len(paths) {
-		for j in i + 1..<len(paths) {
+	for i in 0 ..< len(paths) {
+		for j in i + 1 ..< len(paths) {
 			if paths[i] == paths[j] {
 				append(&duplicate_indices, j)
 			}
@@ -62,8 +62,8 @@ test_ops_dedup_detection_multiple_duplicates :: proc(t: ^testing.T) {
 	duplicate_indices := make([dynamic]int)
 	defer delete(duplicate_indices)
 
-	for i in 0..<len(paths) {
-		for j in i + 1..<len(paths) {
+	for i in 0 ..< len(paths) {
+		for j in i + 1 ..< len(paths) {
 			if paths[i] == paths[j] {
 				append(&duplicate_indices, j)
 			}
@@ -83,8 +83,8 @@ test_ops_dedup_detection_empty_list :: proc(t: ^testing.T) {
 	duplicate_indices := make([dynamic]int)
 	defer delete(duplicate_indices)
 
-	for i in 0..<len(paths) {
-		for j in i + 1..<len(paths) {
+	for i in 0 ..< len(paths) {
+		for j in i + 1 ..< len(paths) {
 			if paths[i] == paths[j] {
 				append(&duplicate_indices, j)
 			}
@@ -102,8 +102,8 @@ test_ops_dedup_detection_all_same :: proc(t: ^testing.T) {
 	duplicate_indices := make([dynamic]int)
 	defer delete(duplicate_indices)
 
-	for i in 0..<len(paths) {
-		for j in i + 1..<len(paths) {
+	for i in 0 ..< len(paths) {
+		for j in i + 1 ..< len(paths) {
 			if paths[i] == paths[j] {
 				append(&duplicate_indices, j)
 			}
@@ -122,10 +122,10 @@ test_ops_dedup_detection_all_same :: proc(t: ^testing.T) {
 test_ops_clean_filtering_identifies_missing :: proc(t: ^testing.T) {
 	// Simulate the missing path detection from clean_missing_paths:
 	// Parse paths and check which ones don't exist on the filesystem
-	test_paths := []string{
-		"/usr/local/bin",                    // likely exists
+	test_paths := []string {
+		"/usr/local/bin", // likely exists
 		"/nonexistent/path/that/wont/exist", // definitely doesn't exist
-		"/another/fake/path/12345",          // definitely doesn't exist
+		"/another/fake/path/12345", // definitely doesn't exist
 	}
 
 	missing_count := 0
@@ -145,11 +145,7 @@ test_ops_clean_filtering_identifies_missing :: proc(t: ^testing.T) {
 @(test)
 test_ops_clean_filtering_all_missing :: proc(t: ^testing.T) {
 	// All paths are nonexistent
-	test_paths := []string{
-		"/nonexistent/aaa/111",
-		"/nonexistent/bbb/222",
-		"/nonexistent/ccc/333",
-	}
+	test_paths := []string{"/nonexistent/aaa/111", "/nonexistent/bbb/222", "/nonexistent/ccc/333"}
 
 	missing_count := 0
 	for path in test_paths {
@@ -164,10 +160,7 @@ test_ops_clean_filtering_all_missing :: proc(t: ^testing.T) {
 @(test)
 test_ops_clean_filtering_none_missing :: proc(t: ^testing.T) {
 	// Use paths that definitely exist on any system
-	test_paths := []string{
-		"/usr",
-		"/tmp",
-	}
+	test_paths := []string{"/usr", "/tmp"}
 
 	missing_count := 0
 	for path in test_paths {
@@ -216,24 +209,28 @@ test_ops_expand_env_vars_multiple_vars :: proc(t: ^testing.T) {
 @(test)
 test_ops_entry_complete_path_with_name :: proc(t: ^testing.T) {
 	// PATH entries only need a name (no value)
-	entry := wayu.ConfigEntry{
-		type = .PATH,
-		name = "/usr/local/bin",
+	entry := wayu.ConfigEntry {
+		type  = .PATH,
+		name  = "/usr/local/bin",
 		value = "",
-		line = "",
+		line  = "",
 	}
 	testing.expect(t, wayu.is_entry_complete(entry), "PATH entry with name should be complete")
 }
 
 @(test)
 test_ops_entry_complete_path_empty_name :: proc(t: ^testing.T) {
-	entry := wayu.ConfigEntry{
-		type = .PATH,
-		name = "",
+	entry := wayu.ConfigEntry {
+		type  = .PATH,
+		name  = "",
 		value = "",
-		line = "",
+		line  = "",
 	}
-	testing.expect(t, !wayu.is_entry_complete(entry), "PATH entry without name should be incomplete")
+	testing.expect(
+		t,
+		!wayu.is_entry_complete(entry),
+		"PATH entry without name should be incomplete",
+	)
 }
 
 @(test)
@@ -279,9 +276,9 @@ test_ops_alias_spec_no_dedup :: proc(t: ^testing.T) {
 test_ops_clean_mask_keeps_unresolved_and_env_paths :: proc(t: ^testing.T) {
 	existing := os.get_env("HOME", context.temp_allocator)
 	consts := []wayu.ConfigEntry{{type = .CONSTANT, name = "WAYU_OPS_ROOT", value = existing}}
-	entries := []wayu.StorePath{
+	entries := []wayu.StorePath {
 		{key = "unset", dir = "$WAYU_OPS_SURELY_UNSET_VAR/bin"}, // unknown → kept
-		{key = "toml_env", dir = "${WAYU_OPS_ROOT}"},           // [env] → exists → kept
+		{key = "toml_env", dir = "${WAYU_OPS_ROOT}"}, // [env] → exists → kept
 		{key = "gone", dir = "/nonexistent/wayu_ops_clean_gone"},
 		{key = "gone_env", dir = "$WAYU_OPS_ROOT/wayu_ops_clean_gone"},
 	}
@@ -296,9 +293,9 @@ test_ops_clean_mask_keeps_unresolved_and_env_paths :: proc(t: ^testing.T) {
 @(test)
 test_ops_dedup_mask_uses_toml_env :: proc(t: ^testing.T) {
 	consts := []wayu.ConfigEntry{{type = .CONSTANT, name = "WAYU_OPS_TOOLS", value = "/opt/tools"}}
-	entries := []wayu.StorePath{
+	entries := []wayu.StorePath {
 		{key = "a", dir = "$WAYU_OPS_TOOLS/bin"},
-		{key = "b", dir = "/opt/tools/bin"},                 // same dir via [env]
+		{key = "b", dir = "/opt/tools/bin"}, // same dir via [env]
 		{key = "c", dir = "$WAYU_OPS_SURELY_UNSET_VAR/bin"},
 		{key = "d", dir = "$WAYU_OPS_SURELY_UNSET_VAR/bin"}, // byte-identical unresolved
 		{key = "e", dir = "$WAYU_OPS_SURELY_UNSET_VAR/x"},

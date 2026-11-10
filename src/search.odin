@@ -8,13 +8,13 @@ package wayu
 
 import "core:fmt"
 import "core:os"
-import "core:strings"
 import "core:slice"
+import "core:strings"
 
 // MatchedField indicates which field of an entry matched the query
 MatchedField :: enum {
-	NAME,   // Query matched the entry name
-	VALUE,  // Query matched the entry value
+	NAME, // Query matched the entry name
+	VALUE, // Query matched the entry value
 }
 
 // SearchResult represents a single match from any config type
@@ -86,14 +86,17 @@ handle_search_command :: proc(args: []string) {
 		delete(path_search_results)
 	}
 	for se in path_search_results {
-		append(&all_results, SearchResult{
-			spec_type      = .PATH,
-			name           = strings.clone(se.entry.name),
-			value          = "",
-			score          = se.score,
-			match_type     = se.match_type,
-			matched_field  = se.matched_field,
-		})
+		append(
+			&all_results,
+			SearchResult {
+				spec_type = .PATH,
+				name = strings.clone(se.entry.name),
+				value = "",
+				score = se.score,
+				match_type = se.match_type,
+				matched_field = se.matched_field,
+			},
+		)
 	}
 
 	// Search aliases
@@ -115,14 +118,17 @@ handle_search_command :: proc(args: []string) {
 	}
 	for se in alias_search_results {
 		value := strings.clone(se.entry.value) if se.entry.value != "" else ""
-		append(&all_results, SearchResult{
-			spec_type      = .ALIAS,
-			name           = strings.clone(se.entry.name),
-			value          = value,
-			score          = se.score,
-			match_type     = se.match_type,
-			matched_field  = se.matched_field,
-		})
+		append(
+			&all_results,
+			SearchResult {
+				spec_type = .ALIAS,
+				name = strings.clone(se.entry.name),
+				value = value,
+				score = se.score,
+				match_type = se.match_type,
+				matched_field = se.matched_field,
+			},
+		)
 	}
 
 	// Search constants
@@ -137,7 +143,11 @@ handle_search_command :: proc(args: []string) {
 	}
 	// Names only: matching inside constant values turns search into a
 	// secret oracle (`wayu f sk-` finding API keys). (OKAMI-208)
-	const_search_results := search_toml_entries_by_name(const_entries_toml[:], query, match_values = false)
+	const_search_results := search_toml_entries_by_name(
+		const_entries_toml[:],
+		query,
+		match_values = false,
+	)
 	defer {
 		for se in const_search_results {
 			cleanup_clone(se.entry)
@@ -146,14 +156,17 @@ handle_search_command :: proc(args: []string) {
 	}
 	for se in const_search_results {
 		value := strings.clone(se.entry.value) if se.entry.value != "" else ""
-		append(&all_results, SearchResult{
-			spec_type      = .CONSTANT,
-			name           = strings.clone(se.entry.name),
-			value          = value,
-			score          = se.score,
-			match_type     = se.match_type,
-			matched_field  = se.matched_field,
-		})
+		append(
+			&all_results,
+			SearchResult {
+				spec_type = .CONSTANT,
+				name = strings.clone(se.entry.name),
+				value = value,
+				score = se.score,
+				match_type = se.match_type,
+				matched_field = se.matched_field,
+			},
+		)
 	}
 
 	// Sort all results by score (highest first)
@@ -181,21 +194,37 @@ print_search_results_json :: proc(query: string, results: []SearchResult) {
 	fmt.printfln("  \"query\": \"%s\",", query_j)
 	fmt.println(`  "results": [`)
 	for r, i in results {
-		if i > 0 { fmt.println(",") }
+		if i > 0 {
+			fmt.println(",")
+		}
 		type_str := "path"
 		switch r.spec_type {
-		case .PATH:     type_str = "path"
-		case .ALIAS:    type_str = "alias"
-		case .CONSTANT: type_str = "constant"
+		case .PATH:
+			type_str = "path"
+		case .ALIAS:
+			type_str = "alias"
+		case .CONSTANT:
+			type_str = "constant"
 		}
-		name_j  := json_escape(r.name);                           defer delete(name_j)
+		name_j := json_escape(r.name); defer delete(name_j)
 		value_j := json_escape(mask_secret_value(r.name, r.value)); defer delete(value_j)
-		field   := "value" if r.matched_field == .VALUE else "name"
+		field := "value" if r.matched_field == .VALUE else "name"
 		// `{` is a struct-verb opener in Odin's fmt — emit via %c.
-		fmt.printf("    %c\"type\": \"%s\", \"name\": \"%s\", \"value\": \"%s\", \"match\": \"%s\", \"field\": \"%s\", \"score\": %d%c",
-			'{', type_str, name_j, value_j, match_type_to_string_short(r.match_type), field, r.score, '}')
+		fmt.printf(
+			"    %c\"type\": \"%s\", \"name\": \"%s\", \"value\": \"%s\", \"match\": \"%s\", \"field\": \"%s\", \"score\": %d%c",
+			'{',
+			type_str,
+			name_j,
+			value_j,
+			match_type_to_string_short(r.match_type),
+			field,
+			r.score,
+			'}',
+		)
 	}
-	if len(results) > 0 { fmt.println() }
+	if len(results) > 0 {
+		fmt.println()
+	}
 	fmt.println("  ],")
 	fmt.printfln("  \"count\": %d", len(results))
 	fmt.println("}")
@@ -204,7 +233,11 @@ print_search_results_json :: proc(query: string, results: []SearchResult) {
 // search_toml_entries_by_name - Fuzzy search through TOML config entries
 // Matches on the name and, when `match_values`, the value field. Returns
 // scored entries for sorting and display.
-search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string, match_values := true) -> [dynamic]SearchEntry {
+search_toml_entries_by_name :: proc(
+	entries: []ConfigEntry,
+	query: string,
+	match_values := true,
+) -> [dynamic]SearchEntry {
 	results := make([dynamic]SearchEntry)
 
 	if len(query) == 0 {
@@ -288,12 +321,15 @@ search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string, match
 		}
 
 		if score > 0 {
-			append(&results, SearchEntry{
-				entry          = clone_entry(entry),
-				score          = score,
-				match_type     = match_type,
-				matched_field  = matched_field,
-			})
+			append(
+				&results,
+				SearchEntry {
+					entry = clone_entry(entry),
+					score = score,
+					match_type = match_type,
+					matched_field = matched_field,
+				},
+			)
 		}
 	}
 
@@ -309,12 +345,12 @@ search_toml_entries_by_name :: proc(entries: []ConfigEntry, query: string, match
 	// Limit to top 20 results if needed
 	if len(results) > 20 {
 		// Clean up unused results
-		for i in 20..<len(results) {
+		for i in 20 ..< len(results) {
 			cleanup_clone(results[i].entry)
 		}
 		// Create new dynamic with only first 20
 		limited := make([dynamic]SearchEntry)
-		for i in 0..<20 {
+		for i in 0 ..< 20 {
 			append(&limited, results[i])
 		}
 		delete(results)
@@ -344,9 +380,12 @@ print_search_results :: proc(query: string, results: []SearchResult) {
 
 	for r in results {
 		switch r.spec_type {
-		case .PATH:     append(&paths, r)
-		case .ALIAS:    append(&aliases, r)
-		case .CONSTANT: append(&constants, r)
+		case .PATH:
+			append(&paths, r)
+		case .ALIAS:
+			append(&aliases, r)
+		case .CONSTANT:
+			append(&constants, r)
 		}
 	}
 
@@ -385,16 +424,18 @@ print_search_results :: proc(query: string, results: []SearchResult) {
 	// Print summary
 	fmt.printfln("%sTotal: %d match(es) found%s", get_muted(), total_found, RESET)
 	fmt.println()
-	fmt.printfln("%sTip:%s Use 'wayu <type> get <name>' to see full details%s",
-		get_secondary(), get_primary(), RESET)
+	fmt.printfln(
+		"%sTip:%s Use 'wayu <type> get <name>' to see full details%s",
+		get_secondary(),
+		get_primary(),
+		RESET,
+	)
 }
 
 // print_section_header - Print a section header for results
 print_section_header :: proc(title: string, icon: string, count: int) {
-	fmt.printfln("%s%s %s%s (%d found)%s",
-		get_primary(), icon, title, RESET, count, RESET)
-	fmt.printfln("%s%s%s",
-		get_muted(), strings.repeat("─", 50), RESET)
+	fmt.printfln("%s%s %s%s (%d found)%s", get_primary(), icon, title, RESET, count, RESET)
+	fmt.printfln("%s%s%s", get_muted(), strings.repeat("─", 50), RESET)
 }
 
 // print_search_result_line - Print a single search result line
@@ -415,11 +456,17 @@ print_search_result_line :: proc(result: SearchResult, cmd_type: string) {
 	}
 
 	// Print name with type indicator
-	fmt.printfln("  %s%s%s %s[%s]%s%s%s",
-		get_primary(), result.name, RESET,
-		get_muted(), type_indicator, RESET,
+	fmt.printfln(
+		"  %s%s%s %s[%s]%s%s%s",
+		get_primary(),
+		result.name,
+		RESET,
+		get_muted(),
+		type_indicator,
+		RESET,
 		field_indicator,
-		score_indicator)
+		score_indicator,
+	)
 
 	// Print value (truncated on a rune boundary so multi-byte UTF-8 is never
 	// split; long values used to be hidden entirely). Secret-looking values
@@ -433,11 +480,16 @@ print_search_result_line :: proc(result: SearchResult, cmd_type: string) {
 // match_type_to_string_short - Short string representation of match type
 match_type_to_string_short :: proc(mt: MatchType) -> string {
 	switch mt {
-	case .Exact:     return "exact"
-	case .Prefix:    return "prefix"
-	case .Substring: return "substring"
-	case .Acronym:   return "acronym"
-	case .Fuzzy:     return "fuzzy"
+	case .Exact:
+		return "exact"
+	case .Prefix:
+		return "prefix"
+	case .Substring:
+		return "substring"
+	case .Acronym:
+		return "acronym"
+	case .Fuzzy:
+		return "fuzzy"
 	}
 	return ""
 }
@@ -461,7 +513,9 @@ print_search_usage :: proc() {
 	fmt.println("  exact     - Exact name match")
 	fmt.println("  prefix    - Name starts with query")
 	fmt.println("  substring - Name contains query")
-	fmt.println("  acronym   - Query is in the first letters of the name's words (e.g., 'faak' → 'FIREWORKS_AI_API_KEY')")
+	fmt.println(
+		"  acronym   - Query is in the first letters of the name's words (e.g., 'faak' → 'FIREWORKS_AI_API_KEY')",
+	)
 	fmt.println("  fuzzy     - General fuzzy character matching")
 	fmt.println()
 	fmt.printfln("%sSCORE INDICATORS:%s", get_primary(), RESET)
@@ -473,6 +527,9 @@ print_search_usage :: proc() {
 	fmt.println("  wayu find faak           # Find FIREWORKS_AI_API_KEY by acronym")
 	fmt.println("  wayu f api               # Short alias for search")
 	fmt.println()
-	fmt.printfln("%sSee also:%s wayu <command> get <name> for specific value lookup",
-		get_muted(), RESET)
+	fmt.printfln(
+		"%sSee also:%s wayu <command> get <name> for specific value lookup",
+		get_muted(),
+		RESET,
+	)
 }

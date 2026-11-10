@@ -1,8 +1,8 @@
 package test_wayu
 
+import wayu "../../src"
 import "core:os"
 import "core:testing"
-import wayu "../../src"
 
 @(test)
 test_doctor_rc_loads_wayu :: proc(t: ^testing.T) {
@@ -18,8 +18,14 @@ test_doctor_rc_loads_wayu :: proc(t: ^testing.T) {
 	testing.expect(t, !wayu.rc_loads_wayu(`alias e='vim ~/.config/wayu/init.zsh'`))
 	testing.expect(t, !wayu.rc_loads_wayu(`alias s='source ~/.config/wayu/init.zsh'`))
 	testing.expect(t, !wayu.rc_loads_wayu(`export WAYU_INIT=~/.config/wayu/init.zsh`))
-	testing.expect(t, wayu.rc_loads_wayu(`[ -f ~/.config/wayu/init.zsh ] && source ~/.config/wayu/init.zsh`))
-	testing.expect(t, wayu.rc_loads_wayu(`if [ -r "$W/wayu/init.bash" ]; then . "$W/wayu/init.bash"; fi`))
+	testing.expect(
+		t,
+		wayu.rc_loads_wayu(`[ -f ~/.config/wayu/init.zsh ] && source ~/.config/wayu/init.zsh`),
+	)
+	testing.expect(
+		t,
+		wayu.rc_loads_wayu(`if [ -r "$W/wayu/init.bash" ]; then . "$W/wayu/init.bash"; fi`),
+	)
 	// turbo_only ignores plain init lines.
 	testing.expect(t, !wayu.rc_loads_wayu(`source ~/.config/wayu/init.zsh`, turbo_only = true))
 	testing.expect(t, wayu.rc_loads_wayu(`source ~/.config/wayu/turbo.zsh`, turbo_only = true))
@@ -45,16 +51,28 @@ declare -a PROMPT_COMMAND=(a b)
 	want := []int{3, 4, 11, 12}
 	testing.expectf(t, len(got) == len(want), "got %v, want %v", got, want)
 	for n, i in want {
-		if i < len(got) { testing.expect_value(t, got[i], n) }
+		if i < len(got) {
+			testing.expect_value(t, got[i], n)
+		}
 	}
 	// No wayu line: nothing to drop.
-	testing.expect_value(t, len(wayu.rc_prompt_command_overwrites("PROMPT_COMMAND=x\n", context.temp_allocator)), 0)
+	testing.expect_value(
+		t,
+		len(wayu.rc_prompt_command_overwrites("PROMPT_COMMAND=x\n", context.temp_allocator)),
+		0,
+	)
 }
 
 @(test)
 test_doctor_expand_path_uses_toml_env :: proc(t: ^testing.T) {
 	consts := []wayu.ConfigEntry{{type = .CONSTANT, name = "WAYU_DOC_TOOLS", value = "/opt/tools"}}
-	expect_expand :: proc(t: ^testing.T, path: string, consts: []wayu.ConfigEntry, want: string, loc := #caller_location) {
+	expect_expand :: proc(
+		t: ^testing.T,
+		path: string,
+		consts: []wayu.ConfigEntry,
+		want: string,
+		loc := #caller_location,
+	) {
 		got := wayu.doctor_expand_path(path, consts)
 		defer if len(got) > 0 do delete(got)
 		testing.expect_value(t, got, want, loc)

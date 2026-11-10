@@ -13,12 +13,18 @@ style_to_zsh :: proc(style: string) -> string {
 	defer delete(tokens)
 	for token in tokens {
 		t := strings.trim_space(token)
-		if len(t) == 0 { continue }
+		if len(t) == 0 {
+			continue
+		}
 		switch t {
-		case "bold":       strings.write_string(&b, "%B")
-		case "italic":     strings.write_string(&b, "%3m")
-		case "underline":  strings.write_string(&b, "%U")
-		case "dim":        strings.write_string(&b, "%2m")
+		case "bold":
+			strings.write_string(&b, "%B")
+		case "italic":
+			strings.write_string(&b, "%3m")
+		case "underline":
+			strings.write_string(&b, "%U")
+		case "dim":
+			strings.write_string(&b, "%2m")
 		case:
 			num := color_name_to_num(t)
 			if num >= 0 {
@@ -37,26 +43,45 @@ style_to_zsh :: proc(style: string) -> string {
 
 color_name_to_num :: proc(name: string) -> int {
 	switch name {
-	case "black":   return 0
-	case "red":     return 1
-	case "green":   return 2
-	case "yellow":  return 3
-	case "blue":    return 4
-	case "magenta": return 5
-	case "cyan":    return 6
-	case "white":   return 7
-	case "orange":  return 208
-	case "pink":    return 205
-	case "purple":  return 129
-	case "gray", "grey": return 242
-	case "lime":    return 118
-	case "teal":    return 30
-	case: return -1
+	case "black":
+		return 0
+	case "red":
+		return 1
+	case "green":
+		return 2
+	case "yellow":
+		return 3
+	case "blue":
+		return 4
+	case "magenta":
+		return 5
+	case "cyan":
+		return 6
+	case "white":
+		return 7
+	case "orange":
+		return 208
+	case "pink":
+		return 205
+	case "purple":
+		return 129
+	case "gray", "grey":
+		return 242
+	case "lime":
+		return 118
+	case "teal":
+		return 30
+	case:
+		return -1
 	}
 }
 
 all_digits :: proc(s: string) -> bool {
-	for c in s { if c < '0' || c > '9' { return false } }
+	for c in s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
 	return len(s) > 0
 }
 
@@ -68,23 +93,29 @@ dsl_to_zsh_format :: proc(format: string) -> string {
 	i := 0
 	for i < len(format) {
 		lbracket := strings.index(format[i:], "[")
-		if lbracket == -1 { strings.write_string(&b, format[i:]); break }
+		if lbracket == -1 {
+			strings.write_string(&b, format[i:]); break
+		}
 		lbracket += i
 		strings.write_string(&b, format[i:lbracket])
 		rbracket := strings.index(format[lbracket:], "]")
-		if rbracket == -1 { strings.write_string(&b, format[lbracket:]); break }
+		if rbracket == -1 {
+			strings.write_string(&b, format[lbracket:]); break
+		}
 		rbracket += lbracket
-		if rbracket+1 >= len(format) || format[rbracket+1] != '(' {
-			strings.write_string(&b, format[lbracket:rbracket+1])
+		if rbracket + 1 >= len(format) || format[rbracket + 1] != '(' {
+			strings.write_string(&b, format[lbracket:rbracket + 1])
 			i = rbracket + 1
 			continue
 		}
 		lparen := rbracket + 1
 		rparen := strings.index(format[lparen:], ")")
-		if rparen == -1 { strings.write_string(&b, format[lbracket:]); break }
+		if rparen == -1 {
+			strings.write_string(&b, format[lbracket:]); break
+		}
 		rparen += lparen
-		text := strings.trim_space(format[lbracket+1 : rbracket])
-		style_str := strings.trim_space(format[lparen+1 : rparen])
+		text := strings.trim_space(format[lbracket + 1:rbracket])
+		style_str := strings.trim_space(format[lparen + 1:rparen])
 		zsh := style_to_zsh(style_str)
 		defer delete(zsh)
 		strings.write_string(&b, zsh)
@@ -98,34 +129,34 @@ dsl_to_zsh_format :: proc(format: string) -> string {
 
 // Configuración del prompt (basada en starship.toml)
 PromptConfigFull :: struct {
-	format: string,
-	character_success: string,
-	character_error: string,
-	vimcmd_symbol: string,
-	vimcmd_visual_symbol: string,
+	format:                string,
+	character_success:     string,
+	character_error:       string,
+	vimcmd_symbol:         string,
+	vimcmd_visual_symbol:  string,
 	vimcmd_replace_symbol: string,
-	username_show_always: bool,
+	username_show_always:  bool,
 
 	// Per-module format strings (from each [prompt.*] section)
-	username_format:  string,
-	hostname_format:  string,
-	localip_format:   string,
-	dir_format:       string,
-	git_branch_format: string,
+	username_format:       string,
+	hostname_format:       string,
+	localip_format:        string,
+	dir_format:            string,
+	git_branch_format:     string,
 
 	// Per-language context entries from [prompt.contexts]
 	// Key = language name, value = format string for {language_context}
-	context_formats: map[string]string,
-	context_detects: map[string][dynamic]string,
+	context_formats:       map[string]string,
+	context_detects:       map[string][dynamic]string,
 	// Context names in [prompt.contexts] file order (first match wins).
-	context_order:   [dynamic]string,
+	context_order:         [dynamic]string,
 }
 
 // Free the heap parts of a PromptConfigFull (detect lists + containers).
 // Format strings are slices of the TOML text and are not owned.
 destroy_full_prompt_config :: proc(cfg: ^PromptConfigFull) {
 	for _, list in cfg.context_detects {
-		for item in list { delete(item) }
+		for item in list {delete(item)}
 		delete(list)
 	}
 	delete(cfg.context_detects)
@@ -135,31 +166,31 @@ destroy_full_prompt_config :: proc(cfg: ^PromptConfigFull) {
 
 // Parse config simple desde TOML
 parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
-	cfg := PromptConfigFull{
+	cfg := PromptConfigFull {
 		// Modules carry their own trailing separators (starship defaults).
-		format = "{username}{dir}{git_branch}{character} ",
-		character_success = "➜",
-		character_error = "✗",
-		vimcmd_symbol = "❮",
-		vimcmd_visual_symbol = "❮",
+		format                = "{username}{dir}{git_branch}{character} ",
+		character_success     = "➜",
+		character_error       = "✗",
+		vimcmd_symbol         = "❮",
+		vimcmd_visual_symbol  = "❮",
 		vimcmd_replace_symbol = "❮",
-		username_show_always = false,
-		username_format  = "[$user](white bold) in ",
-		hostname_format  = "$hostname",
-		localip_format   = "$localip",
-		dir_format       = "[$dir](cyan bold) ",
-		git_branch_format = "on [$branch](magenta bold) ",
-		context_formats = make(map[string]string),
-		context_detects = make(map[string][dynamic]string),
-		context_order   = make([dynamic]string),
+		username_show_always  = false,
+		username_format       = "[$user](white bold) in ",
+		hostname_format       = "$hostname",
+		localip_format        = "$localip",
+		dir_format            = "[$dir](cyan bold) ",
+		git_branch_format     = "on [$branch](magenta bold) ",
+		context_formats       = make(map[string]string),
+		context_detects       = make(map[string][dynamic]string),
+		context_order         = make([dynamic]string),
 	}
-	
+
 	it := make_line_iter(toml)
-	current_section := ""  // which [prompt.*] section we're in
-	
+	current_section := "" // which [prompt.*] section we're in
+
 	for line in line_iter_next(&it) {
 		trimmed := strings.trim_space(line)
-		
+
 		if trimmed == "[prompt]" {
 			current_section = "prompt"
 			continue
@@ -189,69 +220,95 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 			current_section = ""
 			continue
 		}
-		
-		if len(current_section) == 0 { continue }
-		
+
+		if len(current_section) == 0 {
+			continue
+		}
+
 		// format = "..." only in [prompt] section
-		if current_section == "prompt" && strings.has_prefix(trimmed, "format") && strings.contains(trimmed, "=") {
+		if current_section == "prompt" &&
+		   strings.has_prefix(trimmed, "format") &&
+		   strings.contains(trimmed, "=") {
 			eq_idx := strings.index(trimmed, "=")
 			if eq_idx > 0 {
-				value := strings.trim_space(trimmed[eq_idx+1:])
+				value := strings.trim_space(trimmed[eq_idx + 1:])
 				value = prompt_strip_matching_quotes(value)
 				if len(value) > 0 && value != "true" && value != "false" {
 					cfg.format = value
 				}
 			}
 		}
-		
+
 		if strings.contains(trimmed, "success_symbol") {
-			if v, ok := prompt_bracket_symbol(trimmed); ok { cfg.character_success = v }
+			if v, ok := prompt_bracket_symbol(trimmed); ok {
+				cfg.character_success = v
+			}
 		}
 		if strings.contains(trimmed, "error_symbol") {
-			if v, ok := prompt_bracket_symbol(trimmed); ok { cfg.character_error = v }
+			if v, ok := prompt_bracket_symbol(trimmed); ok {
+				cfg.character_error = v
+			}
 		}
 		// VI mode symbols - procesar específicos primero para evitar substring matches
 		if strings.contains(trimmed, "vimcmd_visual_symbol") {
-			if v, ok := prompt_bracket_symbol(trimmed); ok { cfg.vimcmd_visual_symbol = v }
+			if v, ok := prompt_bracket_symbol(trimmed); ok {
+				cfg.vimcmd_visual_symbol = v
+			}
 		}
 		if strings.contains(trimmed, "vimcmd_replace_symbol") {
-			if v, ok := prompt_bracket_symbol(trimmed); ok { cfg.vimcmd_replace_symbol = v }
+			if v, ok := prompt_bracket_symbol(trimmed); ok {
+				cfg.vimcmd_replace_symbol = v
+			}
 		}
 		if strings.contains(trimmed, "vimcmd_symbol") {
-			if v, ok := prompt_bracket_symbol(trimmed); ok { cfg.vimcmd_symbol = v }
+			if v, ok := prompt_bracket_symbol(trimmed); ok {
+				cfg.vimcmd_symbol = v
+			}
 		}
 		// [prompt.contexts] entries: name = { format = "...", detect = [...] }
-		if current_section == "contexts" && strings.contains(trimmed, "=") && strings.contains(trimmed, "format") {
+		if current_section == "contexts" &&
+		   strings.contains(trimmed, "=") &&
+		   strings.contains(trimmed, "format") {
 			prompt_parse_context_line(&cfg, trimmed)
 		}
 
 		// Per-section format parsing
-		if (current_section == "username" || current_section == "hostname" ||
-		    current_section == "localip" || current_section == "dir" ||
-		    current_section == "git_branch") &&
-		   strings.has_prefix(trimmed, "format") && strings.contains(trimmed, "=") {
+		if (current_section == "username" ||
+			   current_section == "hostname" ||
+			   current_section == "localip" ||
+			   current_section == "dir" ||
+			   current_section == "git_branch") &&
+		   strings.has_prefix(trimmed, "format") &&
+		   strings.contains(trimmed, "=") {
 			eq_idx := strings.index(trimmed, "=")
 			if eq_idx > 0 {
-				value := strings.trim_space(trimmed[eq_idx+1:])
+				value := strings.trim_space(trimmed[eq_idx + 1:])
 				value = prompt_strip_matching_quotes(value)
 				if len(value) > 0 {
 					switch current_section {
-					case "username":   cfg.username_format = value
-					case "hostname":   cfg.hostname_format = value
-					case "localip":    cfg.localip_format = value
-					case "dir":        cfg.dir_format = value
-					case "git_branch": cfg.git_branch_format = value
+					case "username":
+						cfg.username_format = value
+					case "hostname":
+						cfg.hostname_format = value
+					case "localip":
+						cfg.localip_format = value
+					case "dir":
+						cfg.dir_format = value
+					case "git_branch":
+						cfg.git_branch_format = value
 					}
 				}
 			}
 		}
 
 		// [prompt.username] keys
-		if current_section == "username" && strings.contains(trimmed, "show_always") && strings.contains(trimmed, "true") {
+		if current_section == "username" &&
+		   strings.contains(trimmed, "show_always") &&
+		   strings.contains(trimmed, "true") {
 			cfg.username_show_always = true
 		}
 	}
-	
+
 	return cfg
 }
 
@@ -259,12 +316,14 @@ parse_full_prompt_config :: proc(toml: string) -> PromptConfigFull {
 @(private = "file")
 prompt_bracket_symbol :: proc(trimmed: string) -> (string, bool) {
 	eq_idx := strings.index(trimmed, "=")
-	if eq_idx <= 0 { return "", false }
-	value := strings.trim_space(trimmed[eq_idx+1:])
+	if eq_idx <= 0 {
+		return "", false
+	}
+	value := strings.trim_space(trimmed[eq_idx + 1:])
 	start := strings.index(value, "[")
 	end := strings.index(value, "]")
 	if start >= 0 && end > start {
-		return strings.trim_space(value[start+1:end]), true
+		return strings.trim_space(value[start + 1:end]), true
 	}
 	return "", false
 }
@@ -275,13 +334,19 @@ prompt_bracket_symbol :: proc(trimmed: string) -> (string, bool) {
 prompt_parse_context_line :: proc(cfg: ^PromptConfigFull, trimmed: string) {
 	// Extract language name (before first =)
 	first_eq := strings.index(trimmed, "=")
-	if first_eq <= 0 { return }
+	if first_eq <= 0 {
+		return
+	}
 	lang_name := strings.trim_space(trimmed[:first_eq])
 	seen := false
 	for n in cfg.context_order {
-		if n == lang_name { seen = true; break }
+		if n == lang_name {
+			seen = true; break
+		}
 	}
-	if !seen { append(&cfg.context_order, lang_name) }
+	if !seen {
+		append(&cfg.context_order, lang_name)
+	}
 	// Extract format value between quotes after "format"
 	fmt_idx := strings.index(trimmed, "format")
 	if fmt_idx > 0 {
@@ -305,7 +370,7 @@ prompt_parse_context_line :: proc(cfg: ^PromptConfigFull, trimmed: string) {
 		bracket_start := strings.index(trimmed[det_idx:], "[")
 		bracket_end := strings.index(trimmed[det_idx:], "]")
 		if bracket_start >= 0 && bracket_end > bracket_start {
-			arr_content := trimmed[det_idx + bracket_start + 1 : det_idx + bracket_end]
+			arr_content := trimmed[det_idx + bracket_start + 1:det_idx + bracket_end]
 			// Split by comma, strip quotes
 			items := strings.split(arr_content, ",")
 			defer delete(items)
@@ -319,7 +384,7 @@ prompt_parse_context_line :: proc(cfg: ^PromptConfigFull, trimmed: string) {
 				}
 			}
 			if old, exists := cfg.context_detects[lang_name]; exists {
-				for item in old { delete(item) }
+				for item in old {delete(item)}
 				delete(old)
 			}
 			cfg.context_detects[lang_name] = detect_list
@@ -346,10 +411,14 @@ prompt_table_bool :: proc(toml: string, key: string) -> (value: bool, found: boo
 			in_prompt = trimmed == "[prompt]"
 			continue
 		}
-		if !in_prompt { continue }
+		if !in_prompt {
+			continue
+		}
 		eq := strings.index_byte(trimmed, '=')
-		if eq <= 0 || strings.trim_space(trimmed[:eq]) != key { continue }
-		v := strings.trim_space(trimmed[eq+1:])
+		if eq <= 0 || strings.trim_space(trimmed[:eq]) != key {
+			continue
+		}
+		v := strings.trim_space(trimmed[eq + 1:])
 		if hash := strings.index_byte(v, '#'); hash >= 0 {
 			v = strings.trim_space(v[:hash])
 		}
@@ -364,7 +433,7 @@ prompt_table_bool :: proc(toml: string, key: string) -> (value: bool, found: boo
 // Returns a temp-allocated string.
 prompt_dq_escape :: proc(s: string) -> string {
 	sb := strings.builder_make(context.temp_allocator)
-	for i in 0..<len(s) {
+	for i in 0 ..< len(s) {
 		c := s[i]
 		switch c {
 		case '\\', '"', '$', '`':
@@ -403,7 +472,10 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 		rendered := prompt_render_module(cfg.username_format, {{`\$user`, "%n"}})
 		indent := "  "
 		if !cfg.username_show_always {
-			fmt.sbprintln(builder, `  if [[ -n "${SSH_CONNECTION-}${SSH_CLIENT-}${SSH_TTY-}" ]] || (( EUID == 0 )); then`)
+			fmt.sbprintln(
+				builder,
+				`  if [[ -n "${SSH_CONNECTION-}${SSH_CLIENT-}${SSH_TTY-}" ]] || (( EUID == 0 )); then`,
+			)
 			indent = "    "
 		}
 		strings.write_string(builder, indent)
@@ -411,7 +483,9 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 		strings.write_string(builder, rendered)
 		strings.write_string(builder, `"`)
 		fmt.sbprintln(builder)
-		if !cfg.username_show_always { fmt.sbprintln(builder, "  fi") }
+		if !cfg.username_show_always {
+			fmt.sbprintln(builder, "  fi")
+		}
 	} else if name == "hostname" {
 		rendered := prompt_render_module(cfg.hostname_format, {{`\$hostname`, "%m"}})
 		strings.write_string(builder, `  result+="`)
@@ -427,13 +501,19 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 		strings.write_string(builder, `"`)
 		fmt.sbprintln(builder)
 	} else if name == "dir" {
-		rendered := prompt_render_module(cfg.dir_format, {{`\$basename`, "%1~"}, {`\$pwd`, "%/"}, {`\$dir`, "%~"}})
+		rendered := prompt_render_module(
+			cfg.dir_format,
+			{{`\$basename`, "%1~"}, {`\$pwd`, "%/"}, {`\$dir`, "%~"}},
+		)
 		strings.write_string(builder, `  result+="`)
 		strings.write_string(builder, rendered)
 		strings.write_string(builder, `"`)
 		fmt.sbprintln(builder)
 	} else if name == "git_branch" {
-		rendered := prompt_render_module(cfg.git_branch_format, {{`\$branch`, "${_WAYU_GIT_BRANCH}"}})
+		rendered := prompt_render_module(
+			cfg.git_branch_format,
+			{{`\$branch`, "${_WAYU_GIT_BRANCH}"}},
+		)
 		fmt.sbprintln(builder, `  if [[ -n "$_WAYU_GIT_BRANCH" ]]; then`)
 		strings.write_string(builder, `    result+="`)
 		strings.write_string(builder, rendered)
@@ -551,10 +631,10 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	builder: strings.Builder
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
-	
+
 	fmt.sbprintln(&builder, "# --- Wayu Native Prompt (from starship.toml) ---")
 	fmt.sbprintln(&builder)
-	
+
 	// Git branch for the prompt, without forking (OKAMI-285): see
 	// PROMPT_GIT_INFO_ZSH. The dirty count stays in the async worker.
 	fmt.sbprintln(&builder, "typeset -g _WAYU_GIT_BRANCH=\"\"")
@@ -568,7 +648,10 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	fmt.sbprintln(&builder, "add-zsh-hook precmd _wayu_update_git_info")
 	if strings.contains(cfg.format, "{localip}") {
 		fmt.sbprintln(&builder, `typeset -g _WAYU_LOCALIP=""`)
-		fmt.sbprintln(&builder, `_wayu_update_localip() { _WAYU_LOCALIP="$(command ipconfig getifaddr en0 2>/dev/null || command ip -4 route get 1 2>/dev/null | command awk '{print $7; exit}')"; }`)
+		fmt.sbprintln(
+			&builder,
+			`_wayu_update_localip() { _WAYU_LOCALIP="$(command ipconfig getifaddr en0 2>/dev/null || command ip -4 route get 1 2>/dev/null | command awk '{print $7; exit}')"; }`,
+		)
 		fmt.sbprintln(&builder, "add-zsh-hook precmd _wayu_update_localip")
 	}
 	fmt.sbprintln(&builder)
@@ -579,14 +662,16 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 	fmt.sbprintln(&builder, `  local result=""`)
 	fmt.sbprintln(&builder, "  # _WAYU_LAST_EXIT set by _wayu_prompt_master")
 	fmt.sbprintln(&builder)
-	
+
 	// Procesar cada componente según el format
 	// Manejar newlines en el format (reemplazar \n literal con newline real)
 	format_with_newlines, was_alloc := strings.replace_all(cfg.format, `\n`, "\n")
-	defer if was_alloc { delete(format_with_newlines) }
+	defer if was_alloc {
+		delete(format_with_newlines)
+	}
 	format_parts := strings.split(format_with_newlines, "\n")
 	defer delete(format_parts)
-	
+
 	for part, i in format_parts {
 		// Añadir newline antes de cada parte excepto la primera
 		if i > 0 {
@@ -600,7 +685,7 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 			// Check for [{token}](style) pattern first
 			open_bracket := strings.index(part[pos:], "[{")
 			open_brace := strings.index(part[pos:], "{")
-			
+
 			// If [{...}](...) comes before or at same position as bare {
 			if open_bracket != -1 && (open_brace == -1 || open_bracket <= open_brace) {
 				open_bracket += pos
@@ -611,33 +696,33 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 					fmt.sbprint(&builder, prompt_dq_escape(literal))
 					fmt.sbprintln(&builder, `"`)
 				}
-				
+
 				// Find closing }](style)
 				close_bracket := strings.index(part[open_bracket:], "}]")
 				if close_bracket != -1 {
 					close_bracket += open_bracket
-					token_name := part[open_bracket+2 : close_bracket]  // between [{ and }]
-					
+					token_name := part[open_bracket + 2:close_bracket] // between [{ and }]
+
 					// Check for (style) after }]
-					if close_bracket+2 < len(part) && part[close_bracket+2] == '(' {
-						close_paren := strings.index(part[close_bracket+2:], ")")
+					if close_bracket + 2 < len(part) && part[close_bracket + 2] == '(' {
+						close_paren := strings.index(part[close_bracket + 2:], ")")
 						if close_paren != -1 {
 							close_paren += close_bracket + 2
-							style_str := strings.trim_space(part[close_bracket+3 : close_paren])
-							
+							style_str := strings.trim_space(part[close_bracket + 3:close_paren])
+
 							// Emit style start
 							token_style := style_to_zsh(style_str)
 							defer delete(token_style)
 							fmt.sbprint(&builder, `  result+="`)
 							fmt.sbprint(&builder, token_style)
 							fmt.sbprintln(&builder, `"`)
-							
+
 							// Generate token code (will be wrapped in style)
 							generate_prompt_token(&builder, cfg, token_name)
-							
+
 							// Emit style end
 							fmt.sbprintln(&builder, `  result+="%f"`)
-							
+
 							pos = close_paren + 1
 							continue
 						}
@@ -650,7 +735,7 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 				pos = open_bracket + 1
 				continue
 			}
-			
+
 			if open_brace == -1 {
 				// Remaining text is literal
 				remaining := part[pos:]
@@ -680,52 +765,52 @@ generate_full_prompt :: proc(cfg: PromptConfigFull) -> string {
 				break
 			}
 			close_brace += open_brace
-			token := part[open_brace+1 : close_brace]
+			token := part[open_brace + 1:close_brace]
 			pos = close_brace + 1
 
 			// Generate shell code for known token
 			generate_prompt_token(&builder, cfg, token)
 		}
-	}  // Cierre del for loop
-	
+	} // Cierre del for loop
+
 	fmt.sbprintln(&builder, `  REPLY=$result`)
 	fmt.sbprintln(&builder, "}")
 	fmt.sbprintln(&builder)
-	
+
 	// NOTA: PROMPT se configura en generate_interactive_prompt
 	// para permitir integración con features interactivas
-	
+
 	return strings.clone(strings.to_string(builder))
 }
 
 InteractiveConfig :: struct {
 	// Toggle
-	toggle_key: string,
-	toggle_enabled: bool,
+	toggle_key:        string,
+	toggle_enabled:    bool,
 
 	// VI Mode: `[prompt] vi_mode = true` switches the line editor to the vi
 	// keymap (default false: the keymap is left alone, OKAMI-285);
 	// vi_mode_indicator ([prompt.interactive]) adds the mode indicator.
-	vi_mode: bool,
+	vi_mode:           bool,
 	vi_mode_indicator: bool,
-	vi_insert_symbol: string,
-	vi_normal_symbol: string,
-	vi_visual_symbol: string,
+	vi_insert_symbol:  string,
+	vi_normal_symbol:  string,
+	vi_visual_symbol:  string,
 
 	// Context
-	context_aware: bool,
+	context_aware:     bool,
 
 	// Async
-	async_rprompt: bool,
-	rprompt_format:  string,
+	async_rprompt:     bool,
+	rprompt_format:    string,
 
 	// Transient
 	transient_enabled: bool,
-	transient_format: string,
+	transient_format:  string,
 
 	// [prompt.contexts] (detect lists) used to generate context detection.
 	// Optional; nil means built-in detection only.
-	contexts: ^PromptConfigFull,
+	contexts:          ^PromptConfigFull,
 }
 
 // Genera todo el código interactivo
@@ -746,7 +831,11 @@ generate_interactive_prompt :: proc(base_prompt: string, cfg: InteractiveConfig)
 	fmt.sbprintln(&builder, "# State variables")
 	fmt.sbprintln(&builder, "typeset -g _WAYU_PROMPT_MODE=\"full\"")
 	// "" = no vi mode: the character module then reflects the exit status.
-	fmt.sbprintfln(&builder, "typeset -g _WAYU_VI_MODE=\"%s\"", "INSERT" if cfg.vi_mode && cfg.vi_mode_indicator else "")
+	fmt.sbprintfln(
+		&builder,
+		"typeset -g _WAYU_VI_MODE=\"%s\"",
+		"INSERT" if cfg.vi_mode && cfg.vi_mode_indicator else "",
+	)
 	fmt.sbprintln(&builder, "typeset -g _WAYU_CONTEXT=\"default\"")
 	fmt.sbprintln(&builder, "typeset -g _WAYU_CONTEXT_VER=\"\"")
 	fmt.sbprintln(&builder, "typeset -g _WAYU_ASYNC_DATA=\"\"")
@@ -875,7 +964,9 @@ generate_vi_mode_feature :: proc(b: ^strings.Builder, cfg: InteractiveConfig) {
 	fmt.sbprintln(b, "bindkey -M viins '^?' backward-delete-char")
 	fmt.sbprintln(b, "bindkey -M viins '^H' backward-delete-char")
 	fmt.sbprintln(b)
-	if !cfg.vi_mode_indicator { return }
+	if !cfg.vi_mode_indicator {
+		return
+	}
 	fmt.sbprint(b, PROMPT_VI_INDICATOR_ZSH)
 	fmt.sbprintln(b)
 }
@@ -958,9 +1049,13 @@ generate_context_feature :: proc(b: ^strings.Builder, contexts: ^PromptConfigFul
 	if contexts != nil {
 		for name in contexts.context_order {
 			detects, has := contexts.context_detects[name]
-			if !has || len(detects) == 0 { continue }
+			if !has || len(detects) == 0 {
+				continue
+			}
 			cond := context_detect_condition(detects[:])
-			if len(cond) == 0 { continue }
+			if len(cond) == 0 {
+				continue
+			}
 			configured[name] = true
 			strings.write_string(b, "  if " if first else "  elif ")
 			strings.write_string(b, cond)
@@ -972,40 +1067,45 @@ generate_context_feature :: proc(b: ^strings.Builder, contexts: ^PromptConfigFul
 	}
 
 	// Built-in detection: (context name, condition).
-	BUILTIN :: [?][2]string{
-		{"rust",    `[[ -f "Cargo.toml" ]]`},
-		{"bun",     `[[ -f "bun.lockb" ]] || [[ -f "bunfig.toml" ]]`},
-		{"gleam",   `[[ -f "gleam.toml" ]]`},
-		{"swift",   `[[ -f "Package.swift" ]]`},
-		{"dart",    `[[ -f "pubspec.yaml" ]]`},
-		{"php",     `[[ -f "composer.json" ]]`},
-		{"ruby",    `[[ -f "Gemfile" ]] || [[ -f ".ruby-version" ]]`},
-		{"elixir",  `[[ -f "mix.exs" ]]`},
-		{"erlang",  `[[ -f "rebar.config" ]] || [[ -f "erlang.mk" ]]`},
+	BUILTIN :: [?][2]string {
+		{"rust", `[[ -f "Cargo.toml" ]]`},
+		{"bun", `[[ -f "bun.lockb" ]] || [[ -f "bunfig.toml" ]]`},
+		{"gleam", `[[ -f "gleam.toml" ]]`},
+		{"swift", `[[ -f "Package.swift" ]]`},
+		{"dart", `[[ -f "pubspec.yaml" ]]`},
+		{"php", `[[ -f "composer.json" ]]`},
+		{"ruby", `[[ -f "Gemfile" ]] || [[ -f ".ruby-version" ]]`},
+		{"elixir", `[[ -f "mix.exs" ]]`},
+		{"erlang", `[[ -f "rebar.config" ]] || [[ -f "erlang.mk" ]]`},
 		{"haskell", `[[ -f "stack.yaml" ]] || [[ -f "cabal.project" ]]`},
-		{"julia",   `[[ -f "Project.toml" ]] || [[ -f "Manifest.toml" ]]`},
-		{"odin",    `[[ -f "ols.json" ]] || (){ [[ -e $1 ]] } *.odin(NY1) || (){ [[ -e $1 ]] } src/*.odin(NY1)`},
-		{"golang",  `[[ -f "go.mod" ]]`},
-		{"nim",     `[[ -f "nim.cfg" ]]`},
-		{"ocaml",   `[[ -f "dune" ]]`},
-		{"nix",     `[[ -f "flake.nix" ]] || [[ -f "default.nix" ]]`},
-		{"deno",    `[[ -f "deno.json" ]] || [[ -f "deno.jsonc" ]]`},
-		{"elm",     `[[ -f "elm.json" ]]`},
+		{"julia", `[[ -f "Project.toml" ]] || [[ -f "Manifest.toml" ]]`},
+		{
+			"odin",
+			`[[ -f "ols.json" ]] || (){ [[ -e $1 ]] } *.odin(NY1) || (){ [[ -e $1 ]] } src/*.odin(NY1)`,
+		},
+		{"golang", `[[ -f "go.mod" ]]`},
+		{"nim", `[[ -f "nim.cfg" ]]`},
+		{"ocaml", `[[ -f "dune" ]]`},
+		{"nix", `[[ -f "flake.nix" ]] || [[ -f "default.nix" ]]`},
+		{"deno", `[[ -f "deno.json" ]] || [[ -f "deno.jsonc" ]]`},
+		{"elm", `[[ -f "elm.json" ]]`},
 		{"crystal", `[[ -f "shard.yml" ]]`},
-		{"perl",    `[[ -f "cpanfile" ]]`},
-		{"buf",     `[[ -f "buf.yaml" ]]`},
-		{"nodejs",  `[[ -f "package.json" ]]`},
-		{"java",    `[[ -f "pom.xml" ]] || [[ -f "build.gradle" ]]`},
-		{"scala",   `[[ -f "build.sbt" ]]`},
-		{"python",  `[[ -f "requirements.txt" ]] || [[ -f "pyproject.toml" ]]`},
-		{"zig",     `[[ -f "build.zig" ]] || [[ -f "build.zig.zon" ]]`},
-		{"rlang",   `[[ -f "DESCRIPTION" ]]`},
-		{"lua",     `[[ -f ".lua-version" ]]`},
-		{"docker",  `[[ -f "Dockerfile" ]] || [[ -f "docker-compose.yml" ]]`},
-		{"aws",     `[[ -e ".aws" ]]`},
+		{"perl", `[[ -f "cpanfile" ]]`},
+		{"buf", `[[ -f "buf.yaml" ]]`},
+		{"nodejs", `[[ -f "package.json" ]]`},
+		{"java", `[[ -f "pom.xml" ]] || [[ -f "build.gradle" ]]`},
+		{"scala", `[[ -f "build.sbt" ]]`},
+		{"python", `[[ -f "requirements.txt" ]] || [[ -f "pyproject.toml" ]]`},
+		{"zig", `[[ -f "build.zig" ]] || [[ -f "build.zig.zon" ]]`},
+		{"rlang", `[[ -f "DESCRIPTION" ]]`},
+		{"lua", `[[ -f ".lua-version" ]]`},
+		{"docker", `[[ -f "Dockerfile" ]] || [[ -f "docker-compose.yml" ]]`},
+		{"aws", `[[ -e ".aws" ]]`},
 	}
 	for entry in BUILTIN {
-		if configured[entry[0]] { continue }
+		if configured[entry[0]] {
+			continue
+		}
 		strings.write_string(b, "  if " if first else "  elif ")
 		strings.write_string(b, entry[1])
 		strings.write_string(b, `; then _WAYU_CONTEXT="`)
@@ -1034,10 +1134,12 @@ context_detect_condition :: proc(detects: []string) -> string {
 	n := 0
 	for raw in detects {
 		item := strings.trim_space(raw)
-		if len(item) == 0 { continue }
+		if len(item) == 0 {
+			continue
+		}
 		safe := true
 		is_glob := false
-		for i in 0..<len(item) {
+		for i in 0 ..< len(item) {
 			c := item[i]
 			switch {
 			case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
@@ -1049,8 +1151,12 @@ context_detect_condition :: proc(detects: []string) -> string {
 				safe = false
 			}
 		}
-		if !safe { continue }
-		if n > 0 { strings.write_string(&sb, " || ") }
+		if !safe {
+			continue
+		}
+		if n > 0 {
+			strings.write_string(&sb, " || ")
+		}
 		if is_glob {
 			strings.write_string(&sb, "(){ [[ -e $1 ]] } ")
 			strings.write_string(&sb, item)
@@ -1078,16 +1184,37 @@ generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	// Runs in the background worker so it never blocks the prompt.
 	fmt.sbprintln(b, "_wayu_version_cmd() {")
 	fmt.sbprintln(b, `  case "$1" in`)
-	fmt.sbprintln(b, `    rust)    command rustc --version 2>/dev/null | command awk '{print $2}' ;;`)
+	fmt.sbprintln(
+		b,
+		`    rust)    command rustc --version 2>/dev/null | command awk '{print $2}' ;;`,
+	)
 	fmt.sbprintln(b, `    bun)     command bun --version 2>/dev/null ;;`)
-	fmt.sbprintln(b, `    dart)    command dart --version 2>/dev/null | command awk '{print $4}' ;;`)
-	fmt.sbprintln(b, `    ruby)    command ruby --version 2>/dev/null | command awk '{print $2}' ;;`)
-	fmt.sbprintln(b, `    elixir)  command elixir --version 2>/dev/null | command awk 'NR==1{print $2}' ;;`)
+	fmt.sbprintln(
+		b,
+		`    dart)    command dart --version 2>/dev/null | command awk '{print $4}' ;;`,
+	)
+	fmt.sbprintln(
+		b,
+		`    ruby)    command ruby --version 2>/dev/null | command awk '{print $2}' ;;`,
+	)
+	fmt.sbprintln(
+		b,
+		`    elixir)  command elixir --version 2>/dev/null | command awk 'NR==1{print $2}' ;;`,
+	)
 	fmt.sbprintln(b, `    odin)    command odin version 2>/dev/null | command awk '{print $3}' ;;`)
-	fmt.sbprintln(b, `    golang)  command go version 2>/dev/null | command awk '{print $3}' | command sed 's/go//' ;;`)
-	fmt.sbprintln(b, `    deno)    command deno --version 2>/dev/null | command head -1 | command awk '{print $2}' ;;`)
+	fmt.sbprintln(
+		b,
+		`    golang)  command go version 2>/dev/null | command awk '{print $3}' | command sed 's/go//' ;;`,
+	)
+	fmt.sbprintln(
+		b,
+		`    deno)    command deno --version 2>/dev/null | command head -1 | command awk '{print $2}' ;;`,
+	)
 	fmt.sbprintln(b, `    nodejs)  command node --version 2>/dev/null | command sed 's/v//' ;;`)
-	fmt.sbprintln(b, `    python)  command python3 --version 2>/dev/null | command awk '{print $2}' ;;`)
+	fmt.sbprintln(
+		b,
+		`    python)  command python3 --version 2>/dev/null | command awk '{print $2}' ;;`,
+	)
 	fmt.sbprintln(b, `    zig)     command zig version 2>/dev/null ;;`)
 	fmt.sbprintln(b, `    *)       ;;`)
 	fmt.sbprintln(b, "  esac")
@@ -1098,14 +1225,17 @@ generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	fmt.sbprintln(b, "_wayu_async_worker() {")
 	fmt.sbprintln(b, "  local git_pending=\"\"")
 	fmt.sbprintln(b, "  if [[ -n \"$_WAYU_GIT_BRANCH\" ]]; then")
-	fmt.sbprintln(b, `    git_pending="$(command git status --porcelain 2>/dev/null | command wc -l | command tr -d ' ')"`) 
+	fmt.sbprintln(
+		b,
+		`    git_pending="$(command git status --porcelain 2>/dev/null | command wc -l | command tr -d ' ')"`,
+	)
 	fmt.sbprintln(b, "    if [[ \"$git_pending\" -gt 0 ]]; then")
 	// Apply rprompt_format: DSL conversion + escaping + token substitution
 	{
-		rpfmt := prompt_render_module(rprompt_format, {
-			{"{git_pending}", "${git_pending}"},
-			{"{git_branch}", "${_WAYU_GIT_BRANCH}"},
-		})
+		rpfmt := prompt_render_module(
+			rprompt_format,
+			{{"{git_pending}", "${git_pending}"}, {"{git_branch}", "${_WAYU_GIT_BRANCH}"}},
+		)
 		fmt.sbprint(b, "      git_pending=\"")
 		fmt.sbprint(b, rpfmt)
 		fmt.sbprint(b, "\"")
@@ -1116,7 +1246,10 @@ generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	fmt.sbprintln(b, "    fi")
 	fmt.sbprintln(b, "  fi")
 	fmt.sbprintln(b)
-	fmt.sbprintln(b, "  # Fetch version string for current context (async — never blocks prompt)")
+	fmt.sbprintln(
+		b,
+		"  # Fetch version string for current context (async — never blocks prompt)",
+	)
 	fmt.sbprintln(b, `  local ver="$(_wayu_version_cmd "$_WAYU_CONTEXT")"`)
 	fmt.sbprintln(b)
 	// Results go through the shell's private 0700 dir (mktemp -d in
@@ -1127,7 +1260,10 @@ generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	fmt.sbprintln(b, `  local dir="$_WAYU_ASYNC_DIR" tmpf`)
 	fmt.sbprintln(b, `  [[ -n "$dir" && -d "$dir" ]] || return 0`)
 	fmt.sbprintln(b, `  tmpf="$(command mktemp "$dir/.w.XXXXXX" 2>/dev/null)" || return 0`)
-	fmt.sbprintln(b, `  if builtin printf '%s\n%s' "$git_pending" "$ver" > "$tmpf" && command mv -f -- "$tmpf" "$dir/data" 2>/dev/null; then`)
+	fmt.sbprintln(
+		b,
+		`  if builtin printf '%s\n%s' "$git_pending" "$ver" > "$tmpf" && command mv -f -- "$tmpf" "$dir/data" 2>/dev/null; then`,
+	)
 	fmt.sbprintln(b, "    builtin kill -USR1 $$ 2>/dev/null || true")
 	fmt.sbprintln(b, "  else")
 	fmt.sbprintln(b, `    command rm -f -- "$tmpf"`)
@@ -1149,7 +1285,10 @@ generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	fmt.sbprintln(b, "  _wayu_prompt_render; zle && zle reset-prompt")
 	fmt.sbprintln(b, "  return 0")
 	fmt.sbprintln(b, "}")
-	fmt.sbprintln(b, `if (( ${+functions[TRAPUSR1]} )) && [[ ${functions[TRAPUSR1]} != *_wayu_async_on_usr1* ]]; then`)
+	fmt.sbprintln(
+		b,
+		`if (( ${+functions[TRAPUSR1]} )) && [[ ${functions[TRAPUSR1]} != *_wayu_async_on_usr1* ]]; then`,
+	)
 	fmt.sbprintln(b, `  functions[_wayu_prev_TRAPUSR1]=${functions[TRAPUSR1]}`)
 	fmt.sbprintln(b, "fi")
 	fmt.sbprintln(b, "function TRAPUSR1 {")
@@ -1176,17 +1315,26 @@ generate_async_feature :: proc(b: ^strings.Builder, rprompt_format: string) {
 	fmt.sbprintln(b, `      local _d _i`)
 	fmt.sbprintln(b, `      for _i in 1 2 3; do`)
 	fmt.sbprintln(b, `        _d="${TMPDIR:-/tmp}"; _d="${_d%/}/wayu-async.$$.$RANDOM$RANDOM"`)
-	fmt.sbprintln(b, `        if zf_mkdir -m 700 -- "$_d" 2>/dev/null; then _WAYU_ASYNC_DIR=$_d; break; fi`)
+	fmt.sbprintln(
+		b,
+		`        if zf_mkdir -m 700 -- "$_d" 2>/dev/null; then _WAYU_ASYNC_DIR=$_d; break; fi`,
+	)
 	fmt.sbprintln(b, `      done`)
 	fmt.sbprintln(b, `    else`)
-	fmt.sbprintln(b, `      _WAYU_ASYNC_DIR="$(command mktemp -d "${TMPDIR:-/tmp}/wayu-async.XXXXXX" 2>/dev/null)" || _WAYU_ASYNC_DIR=""`)
+	fmt.sbprintln(
+		b,
+		`      _WAYU_ASYNC_DIR="$(command mktemp -d "${TMPDIR:-/tmp}/wayu-async.XXXXXX" 2>/dev/null)" || _WAYU_ASYNC_DIR=""`,
+	)
 	fmt.sbprintln(b, `    fi`)
 	fmt.sbprintln(b, "  fi")
 	fmt.sbprintln(b, `  [[ -n "$_WAYU_ASYNC_DIR" ]] && _wayu_async_worker &!`)
 	fmt.sbprintln(b, "  return $ret")
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b, "_wayu_async_cleanup() {")
-	fmt.sbprintln(b, `  [[ -n "$_WAYU_ASYNC_DIR" && -d "$_WAYU_ASYNC_DIR" ]] && command rm -rf -- "$_WAYU_ASYNC_DIR"`)
+	fmt.sbprintln(
+		b,
+		`  [[ -n "$_WAYU_ASYNC_DIR" && -d "$_WAYU_ASYNC_DIR" ]] && command rm -rf -- "$_WAYU_ASYNC_DIR"`,
+	)
 	fmt.sbprintln(b, "  return 0")
 	fmt.sbprintln(b, "}")
 	fmt.sbprintln(b)
@@ -1227,19 +1375,19 @@ generate_separator_feature :: proc(b: ^strings.Builder) {
 
 // Parse config interactiva desde TOML (simplificado)
 parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
-	cfg := InteractiveConfig{
-		toggle_key = "^P",
-		toggle_enabled = false, // opt-in: ^P is history navigation
-		vi_mode = false,        // opt-in via [prompt] vi_mode = true (OKAMI-285)
+	cfg := InteractiveConfig {
+		toggle_key        = "^P",
+		toggle_enabled    = false, // opt-in: ^P is history navigation
+		vi_mode           = false, // opt-in via [prompt] vi_mode = true (OKAMI-285)
 		vi_mode_indicator = true,
-		vi_insert_symbol = "[I]",
-		vi_normal_symbol = "[N]",
-		vi_visual_symbol = "[V]",
-		context_aware = true,
-		async_rprompt = true,
-		rprompt_format = "[ {git_pending}](242)",
+		vi_insert_symbol  = "[I]",
+		vi_normal_symbol  = "[N]",
+		vi_visual_symbol  = "[V]",
+		context_aware     = true,
+		async_rprompt     = true,
+		rprompt_format    = "[ {git_pending}](242)",
 		transient_enabled = true,
-		transient_format = "{dir} {character}",
+		transient_format  = "{dir} {character}",
 	}
 
 	cfg.vi_mode, _ = prompt_table_bool(toml, "vi_mode")
@@ -1259,18 +1407,24 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 			continue
 		}
 
-		if !in_interactive { continue }
+		if !in_interactive {
+			continue
+		}
 
 		if strings.contains(trimmed, "toggle_key") {
 			start := strings.index(trimmed, `"`)
 			end := strings.last_index(trimmed, `"`)
 			if start >= 0 && end > start {
-				cfg.toggle_key = trimmed[start+1:end]
+				cfg.toggle_key = trimmed[start + 1:end]
 			}
 		}
 		if strings.contains(trimmed, "toggle_enabled") {
-			if strings.contains(trimmed, "true") { cfg.toggle_enabled = true }
-			if strings.contains(trimmed, "false") { cfg.toggle_enabled = false }
+			if strings.contains(trimmed, "true") {
+				cfg.toggle_enabled = true
+			}
+			if strings.contains(trimmed, "false") {
+				cfg.toggle_enabled = false
+			}
 		}
 		if strings.contains(trimmed, "vi_mode_indicator") && strings.contains(trimmed, "false") {
 			cfg.vi_mode_indicator = false
@@ -1287,8 +1441,10 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 		if strings.contains(trimmed, "rprompt_format") && strings.contains(trimmed, "=") {
 			eq_idx := strings.index(trimmed, "=")
 			if eq_idx > 0 {
-				value := prompt_strip_matching_quotes(strings.trim_space(trimmed[eq_idx+1:]))
-				if len(value) > 0 { cfg.rprompt_format = value }
+				value := prompt_strip_matching_quotes(strings.trim_space(trimmed[eq_idx + 1:]))
+				if len(value) > 0 {
+					cfg.rprompt_format = value
+				}
 			}
 		}
 	}
@@ -1301,8 +1457,8 @@ parse_interactive_config :: proc(toml: string) -> InteractiveConfig {
 // a trailing ' off values such as "[%n]'".
 prompt_strip_matching_quotes :: proc(v: string) -> string {
 	n := len(v)
-	if n >= 2 && ((v[0] == '"' && v[n-1] == '"') || (v[0] == '\'' && v[n-1] == '\'')) {
-		return v[1:n-1]
+	if n >= 2 && ((v[0] == '"' && v[n - 1] == '"') || (v[0] == '\'' && v[n - 1] == '\'')) {
+		return v[1:n - 1]
 	}
 	return v
 }

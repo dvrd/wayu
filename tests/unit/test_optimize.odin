@@ -5,44 +5,59 @@
 
 package test_wayu
 
+import wayu "../../src"
 import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import wayu "../../src"
 
 @(private = "file")
 OptCase :: struct {
-	line:    string,
-	shell:   wayu.ShellType,
-	kind:    wayu.RcKind,
-	detail:  string, // GENERATOR: "cmd|args"; PATH/FPATH: "pre|post" (comma-joined); ALIAS/ENV: "name=value"
+	line:   string,
+	shell:  wayu.ShellType,
+	kind:   wayu.RcKind,
+	detail: string, // GENERATOR: "cmd|args"; PATH/FPATH: "pre|post" (comma-joined); ALIAS/ENV: "name=value"
 }
 
 @(private = "file")
-opt_ctx :: proc(shell: wayu.ShellType, known: []string = nil, interactive := true) -> wayu.RcContext {
+opt_ctx :: proc(
+	shell: wayu.ShellType,
+	known: []string = nil,
+	interactive := true,
+) -> wayu.RcContext {
 	return wayu.RcContext{shell = shell, interactive = interactive, known_vars = known}
 }
 
 @(private = "file")
 opt_detail :: proc(c: wayu.RcClass) -> string {
 	#partial switch c.kind {
-	case .GENERATOR: return fmt.tprintf("%s|%s", c.cmd, c.args)
+	case .GENERATOR:
+		return fmt.tprintf("%s|%s", c.cmd, c.args)
 	case .PATH, .FPATH:
-		return fmt.tprintf("%s|%s", strings.join(c.prepend, ",", context.temp_allocator), strings.join(c.appends, ",", context.temp_allocator))
-	case .ALIAS, .ENV: return fmt.tprintf("%s=%s", c.name, c.value)
+		return fmt.tprintf(
+			"%s|%s",
+			strings.join(c.prepend, ",", context.temp_allocator),
+			strings.join(c.appends, ",", context.temp_allocator),
+		)
+	case .ALIAS, .ENV:
+		return fmt.tprintf("%s=%s", c.name, c.value)
 	}
 	return ""
 }
 
 @(test)
 test_optimize_classifier_table :: proc(t: ^testing.T) {
-	cases := []OptCase{
+	cases := []OptCase {
 		// Generators (zsh/bash): installer completion / init lines.
 		{"source <(ng completion script)", .ZSH, .GENERATOR, "ng|completion script"},
 		{"source <(grok completion zsh)", .ZSH, .GENERATOR, "grok|completion zsh"},
 		{". <(opencode completion)", .ZSH, .GENERATOR, "opencode|completion"},
-		{"  source <(kubectl completion zsh)   # kubectl", .ZSH, .GENERATOR, "kubectl|completion zsh"},
+		{
+			"  source <(kubectl completion zsh)   # kubectl",
+			.ZSH,
+			.GENERATOR,
+			"kubectl|completion zsh",
+		},
 		{`eval "$(starship init zsh)"`, .ZSH, .GENERATOR, "starship|init zsh"},
 		{`eval "$(zoxide init zsh --cmd cd)"`, .ZSH, .GENERATOR, "zoxide|init zsh --cmd cd"},
 		{`eval "$(brew shellenv)"`, .ZSH, .GENERATOR, "brew|shellenv"},
@@ -65,7 +80,12 @@ test_optimize_classifier_table :: proc(t: ^testing.T) {
 		{`source "${WAYU_DATA_DIR:-$HOME/.local/share/wayu}/init.zsh"`, .ZSH, .KEEP, ""},
 		// fpath (zsh only)
 		{"fpath=(~/.grok/completions/zsh $fpath)", .ZSH, .FPATH, "$HOME/.grok/completions/zsh|"},
-		{`fpath=($HOME/.docker/completions "${fpath[@]}")`, .ZSH, .FPATH, "$HOME/.docker/completions|"},
+		{
+			`fpath=($HOME/.docker/completions "${fpath[@]}")`,
+			.ZSH,
+			.FPATH,
+			"$HOME/.docker/completions|",
+		},
 		{"fpath=($fpath /opt/x/share/zsh)", .ZSH, .FPATH, "|/opt/x/share/zsh"},
 		{"fpath+=(/opt/x/completions)", .ZSH, .FPATH, "|/opt/x/completions"},
 		{"fpath+=/opt/y/completions", .ZSH, .FPATH, "|/opt/y/completions"},
@@ -124,11 +144,27 @@ test_optimize_classifier_table :: proc(t: ^testing.T) {
 	}
 	for c in cases {
 		got := wayu.rc_classify_line(c.line, opt_ctx(c.shell))
-		if !testing.expectf(t, got.kind == c.kind, "%q (%v): kind %v, want %v (reason: %s)", c.line, c.shell, got.kind, c.kind, got.reason) {
+		if !testing.expectf(
+			t,
+			got.kind == c.kind,
+			"%q (%v): kind %v, want %v (reason: %s)",
+			c.line,
+			c.shell,
+			got.kind,
+			c.kind,
+			got.reason,
+		) {
 			continue
 		}
 		if c.kind != .KEEP && len(c.detail) > 0 {
-			testing.expectf(t, opt_detail(got) == c.detail, "%q: %q, want %q", c.line, opt_detail(got), c.detail)
+			testing.expectf(
+				t,
+				opt_detail(got) == c.detail,
+				"%q: %q, want %q",
+				c.line,
+				opt_detail(got),
+				c.detail,
+			)
 		}
 	}
 	free_all(context.temp_allocator)
@@ -137,7 +173,10 @@ test_optimize_classifier_table :: proc(t: ^testing.T) {
 @(test)
 test_optimize_classifier_context :: proc(t: ^testing.T) {
 	// Generators only move from the interactive rc file.
-	c := wayu.rc_classify_line("source <(ng completion script)", opt_ctx(.ZSH, interactive = false))
+	c := wayu.rc_classify_line(
+		"source <(ng completion script)",
+		opt_ctx(.ZSH, interactive = false),
+	)
 	testing.expect_value(t, c.kind, wayu.RcKind.KEEP)
 	// A variable wayu defines may be referenced.
 	known := []string{"BUN_INSTALL"}
@@ -145,7 +184,10 @@ test_optimize_classifier_context :: proc(t: ^testing.T) {
 	testing.expect_value(t, c.kind, wayu.RcKind.PATH)
 	testing.expect_value(t, opt_detail(c), "$BUN_INSTALL/bin|")
 	// Secret-looking constants are marked secret; with variables they stay.
-	c = wayu.rc_classify_line("export OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz0123456789", opt_ctx(.ZSH))
+	c = wayu.rc_classify_line(
+		"export OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz0123456789",
+		opt_ctx(.ZSH),
+	)
 	testing.expect_value(t, c.kind, wayu.RcKind.ENV)
 	testing.expect(t, c.secret, "API key is secret")
 	c = wayu.rc_classify_line(`export GITHUB_TOKEN="$HOME/x"`, opt_ctx(.ZSH))
@@ -191,9 +233,18 @@ alias after=yes
 	testing.expect(t, loaded, "loader found")
 	names := make([dynamic]string, context.temp_allocator)
 	for f in findings {
-		append(&names, fmt.tprintf("%d-%d:%v:%s", f.first_line, f.last_line, f.class.kind, opt_detail(f.class)))
+		append(
+			&names,
+			fmt.tprintf(
+				"%d-%d:%v:%s",
+				f.first_line,
+				f.last_line,
+				f.class.kind,
+				opt_detail(f.class),
+			),
+		)
 	}
-	want := []string{
+	want := []string {
 		"3-3:ENV:BUN_INSTALL=$HOME/.bun",
 		"4-4:PATH:$BUN_INSTALL/bin|",
 		"28-29:PATH:$HOME/a|",
@@ -201,7 +252,9 @@ alias after=yes
 	}
 	testing.expectf(t, len(names) == len(want), "findings %v, want %v", names[:], want)
 	for w, i in want {
-		if i < len(names) { testing.expect_value(t, names[i], w) }
+		if i < len(names) {
+			testing.expect_value(t, names[i], w)
+		}
 	}
 
 	// Nothing before the loader moves; without a loader nothing moves.
@@ -248,9 +301,9 @@ test_optimize_merge_dirs_order :: proc(t: ^testing.T) {
 		copy(out, d)
 		return out
 	}
-	pre :: proc(d: ..string) -> wayu.RcClass { return wayu.RcClass{kind = .PATH, prepend = keep(d)} }
-	app :: proc(d: ..string) -> wayu.RcClass { return wayu.RcClass{kind = .PATH, appends = keep(d)} }
-	join :: proc(l: []string) -> string { return strings.join(l, ",", context.temp_allocator) }
+	pre :: proc(d: ..string) -> wayu.RcClass {return wayu.RcClass{kind = .PATH, prepend = keep(d)}}
+	app :: proc(d: ..string) -> wayu.RcClass {return wayu.RcClass{kind = .PATH, appends = keep(d)}}
+	join :: proc(l: []string) -> string {return strings.join(l, ",", context.temp_allocator)}
 
 	// Later prepends end up further in front, ahead of wayu's own dirs.
 	out, ch := wayu.optimize_merge_dirs({"/w1", "/w2"}, {pre("/a"), pre("/b")})
@@ -275,10 +328,19 @@ test_optimize_merge_dirs_order :: proc(t: ^testing.T) {
 
 @(test)
 test_entries_fpath_generators_round_trip :: proc(t: ^testing.T) {
-	store := wayu.EntryStore{version = wayu.ENTRIES_FORMAT_VERSION}
+	store := wayu.EntryStore {
+		version = wayu.ENTRIES_FORMAT_VERSION,
+	}
 	defer wayu.entries_store_destroy(&store)
 	append(&store.fpath, strings.clone("$HOME/.grok/completions/zsh"))
-	append(&store.generators, wayu.StoreGenerator{strings.clone("zsh"), strings.clone("ng"), strings.clone("completion script")})
+	append(
+		&store.generators,
+		wayu.StoreGenerator {
+			strings.clone("zsh"),
+			strings.clone("ng"),
+			strings.clone("completion script"),
+		},
+	)
 	text := wayu.entries_serialize(&store)
 	defer delete(text)
 	back, err, ok := wayu.entries_parse(text)
@@ -286,20 +348,32 @@ test_entries_fpath_generators_round_trip :: proc(t: ^testing.T) {
 	testing.expectf(t, ok, "parse: %s\n%s", err, text)
 	testing.expect_value(t, len(back.fpath), 1)
 	testing.expect_value(t, len(back.generators), 1)
-	if len(back.generators) == 1 { testing.expect_value(t, back.generators[0].args, "completion script") }
+	if len(back.generators) == 1 {
+		testing.expect_value(t, back.generators[0].args, "completion script")
+	}
 
 	// Empty sections are not written (unchanged files for existing stores).
-	empty := wayu.EntryStore{version = wayu.ENTRIES_FORMAT_VERSION}
+	empty := wayu.EntryStore {
+		version = wayu.ENTRIES_FORMAT_VERSION,
+	}
 	et := wayu.entries_serialize(&empty)
 	defer delete(et)
-	testing.expect(t, !strings.contains(et, "fpath") && !strings.contains(et, "generators"), "no empty sections")
+	testing.expect(
+		t,
+		!strings.contains(et, "fpath") && !strings.contains(et, "generators"),
+		"no empty sections",
+	)
 
 	// Strict: a bad shell or duplicate is a config error.
-	_, e1, ok1 := wayu.entries_parse(`{"version": 1, "generators": [{"shell": "tcsh", "cmd": "x", "args": "init"}]}`)
+	_, e1, ok1 := wayu.entries_parse(
+		`{"version": 1, "generators": [{"shell": "tcsh", "cmd": "x", "args": "init"}]}`,
+	)
 	testing.expectf(t, !ok1, "bad shell rejected (%s)", e1)
 	_, _, ok2 := wayu.entries_parse(`{"version": 1, "fpath": ["/a", "/a"]}`)
 	testing.expect(t, !ok2, "duplicate fpath rejected")
-	_, _, ok3 := wayu.entries_parse(`{"version": 1, "generators": [{"shell": "zsh", "cmd": "a b", "args": ""}]}`)
+	_, _, ok3 := wayu.entries_parse(
+		`{"version": 1, "generators": [{"shell": "zsh", "cmd": "a b", "args": ""}]}`,
+	)
 	testing.expect(t, !ok3, "bad cmd rejected")
 	free_all(context.temp_allocator)
 }
@@ -307,14 +381,21 @@ test_entries_fpath_generators_round_trip :: proc(t: ^testing.T) {
 @(test)
 test_optimize_new_content_and_diff :: proc(t: ^testing.T) {
 	content := "a\nb\nalias x=y\nc\n"
-	f := wayu.OptimizeFile{
-		path = "/tmp/rc",
-		content = content,
+	f := wayu.OptimizeFile {
+		path     = "/tmp/rc",
+		content  = content,
 		findings = []wayu.RcFinding{{3, 3, wayu.RcClass{kind = .ALIAS, name = "x", value = "y"}}},
 	}
 	testing.expect_value(t, wayu.optimize_new_content(f), "a\nb\nc\n")
 	d := wayu.optimize_file_diff(f)
-	testing.expectf(t, strings.contains(d, "@@ -1,4 +1,3 @@") && strings.contains(d, "-alias x=y") && strings.contains(d, " c"), "diff:\n%s", d)
+	testing.expectf(
+		t,
+		strings.contains(d, "@@ -1,4 +1,3 @@") &&
+		strings.contains(d, "-alias x=y") &&
+		strings.contains(d, " c"),
+		"diff:\n%s",
+		d,
+	)
 	free_all(context.temp_allocator)
 }
 
@@ -331,7 +412,7 @@ alias ll='ls -la'
 `
 	blocks := wayu.detect_rc_script_blocks_in(content)
 	defer {
-		for b in blocks { delete(b) }
+		for b in blocks {delete(b)}
 		delete(blocks)
 	}
 	testing.expect_value(t, len(blocks), 2)
@@ -345,10 +426,14 @@ alias ll='ls -la'
 test_backup_name_resolves_startup_files :: proc(t: ^testing.T) {
 	home := os.get_env("HOME", context.temp_allocator)
 	p := wayu.startup_file_for_backup_name(".bashrc")
-	defer if len(p) > 0 { delete(p) }
+	defer if len(p) > 0 {
+		delete(p)
+	}
 	testing.expect_value(t, p, fmt.tprintf("%s/.bashrc", home))
 	r := wayu.startup_file_for_backup_name(fmt.tprintf("%s/.profile", home))
-	defer if len(r) > 0 { delete(r) }
+	defer if len(r) > 0 {
+		delete(r)
+	}
 	testing.expect_value(t, r, fmt.tprintf("%s/.profile", home))
 	q := wayu.startup_file_for_backup_name("wayu.toml")
 	testing.expect_value(t, q, "")

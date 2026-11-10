@@ -1,8 +1,8 @@
 package test_wayu
 
-import "core:testing"
-import "core:strings"
 import wayu "../../src"
+import "core:strings"
+import "core:testing"
 
 @(test)
 test_run_command_success :: proc(t: ^testing.T) {
@@ -53,7 +53,11 @@ test_capture_command_failure_returns_empty :: proc(t: ^testing.T) {
 	// Non-existent binary returns empty string
 	output := wayu.capture_command([]string{"/nonexistent/binary"})
 	defer delete(output)
-	testing.expect(t, output == "", "capture_command with missing binary should return empty string")
+	testing.expect(
+		t,
+		output == "",
+		"capture_command with missing binary should return empty string",
+	)
 }
 
 @(test)

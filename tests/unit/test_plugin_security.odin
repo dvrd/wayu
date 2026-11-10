@@ -5,52 +5,58 @@
 
 package test_wayu
 
-import "core:testing"
-import "core:os"
-import "core:fmt"
-import "core:strings"
-import "core:c/libc"
 import wayu "../../src"
+import "core:c/libc"
+import "core:fmt"
+import "core:os"
+import "core:strings"
+import "core:testing"
 
 // git_clone, keeping only the success flag.
-@(private="file")
+@(private = "file")
 clone_ok :: proc(url: string, dest: string) -> bool {
 	ok, err := wayu.git_clone(url, dest)
 	delete(err)
 	return ok
 }
 
-@(private="file")
+@(private = "file")
 sec_dir :: proc() -> string {
 	return test_tmp("wayu_unit_plgsec")
 }
 
 // Run a shell command with a deterministic git identity and no signing.
-@(private="file")
+@(private = "file")
 sh :: proc(format: string, args: ..any) -> bool {
 	cmd := fmt.tprintf(format, ..args)
 	full := fmt.ctprintf(
 		"GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 sh -c '%s' >/dev/null 2>&1",
-		cmd)
+		cmd,
+	)
 	return libc.system(full) == 0
 }
 
-@(private="file")
+@(private = "file")
 git_head :: proc(dir: string) -> string {
 	return wayu.capture_command([]string{"git", "-C", dir, "rev-parse", "HEAD"})
 }
 
 // Fresh sandbox with a local origin repo (branch master, one commit) and
 // wayu's config/data dirs pointed inside it.
-@(private="file")
+@(private = "file")
 setup_sandbox :: proc() -> (root: string, origin: string, old_config: string, old_data: string) {
 	wayu.init_shell_globals()
 	root = sec_dir()
 	os.remove_all(root)
 	os.make_directory_all(fmt.tprintf("%s/wayu/plugins", root))
 	origin = fmt.tprintf("%s/origin", root)
-	sh("git init -q -b master %s && echo one > %s/p.plugin.zsh && git -C %s add . && git -C %s commit -q -m one",
-		origin, origin, origin, origin)
+	sh(
+		"git init -q -b master %s && echo one > %s/p.plugin.zsh && git -C %s add . && git -C %s commit -q -m one",
+		origin,
+		origin,
+		origin,
+		origin,
+	)
 	old_config = wayu.wayu.config
 	old_data = wayu.wayu.data
 	wayu.wayu.config = fmt.tprintf("%s/wayu", root)
@@ -58,14 +64,14 @@ setup_sandbox :: proc() -> (root: string, origin: string, old_config: string, ol
 	return
 }
 
-@(private="file")
+@(private = "file")
 teardown_sandbox :: proc(root: string, old_config: string, old_data: string) {
 	wayu.wayu.config = old_config
 	wayu.wayu.data = old_data
 	os.remove_all(root)
 }
 
-@(private="file")
+@(private = "file")
 write_plugins_json :: proc(content: string) {
 	path := fmt.tprintf("%s/plugins.json", wayu.wayu.data)
 	_ = os.write_entire_file(path, transmute([]byte)content)
@@ -125,10 +131,22 @@ test_remove_real_plugin_dir :: proc(t: ^testing.T) {
 	plugins_dir := fmt.tprintf("%s/wayu/plugins", root)
 	dir := fmt.tprintf("%s/real", plugins_dir)
 	os.make_directory_all(fmt.tprintf("%s/nested", dir))
-	testing.expect_value(t, wayu.remove_plugin_dir_safely(dir, plugins_dir), wayu.PluginDirRemoval.Removed)
+	testing.expect_value(
+		t,
+		wayu.remove_plugin_dir_safely(dir, plugins_dir),
+		wayu.PluginDirRemoval.Removed,
+	)
 	testing.expect(t, !os.exists(dir), "real plugin dir removed")
-	testing.expect_value(t, wayu.remove_plugin_dir_safely(dir, plugins_dir), wayu.PluginDirRemoval.Missing)
-	testing.expect_value(t, wayu.remove_plugin_dir_safely(plugins_dir, plugins_dir), wayu.PluginDirRemoval.Outside)
+	testing.expect_value(
+		t,
+		wayu.remove_plugin_dir_safely(dir, plugins_dir),
+		wayu.PluginDirRemoval.Missing,
+	)
+	testing.expect_value(
+		t,
+		wayu.remove_plugin_dir_safely(plugins_dir, plugins_dir),
+		wayu.PluginDirRemoval.Outside,
+	)
 }
 
 // --- OKAMI-227: plugins.json validated on load; `--` before URLs --------
@@ -138,7 +156,9 @@ test_plugins_json_rejects_option_url :: proc(t: ^testing.T) {
 	root, _, oc, od := setup_sandbox()
 	defer teardown_sandbox(root, oc, od)
 
-	write_plugins_json(`{"version":"1.0","plugins":[{"name":"p","url":"--upload-pack=touch /tmp/x;","enabled":true}]}`)
+	write_plugins_json(
+		`{"version":"1.0","plugins":[{"name":"p","url":"--upload-pack=touch /tmp/x;","enabled":true}]}`,
+	)
 	config, ok := wayu.read_plugin_config_json()
 	defer wayu.cleanup_plugin_config_json(&config)
 	testing.expect(t, !ok, "a '-'-prefixed url must be rejected on load")
@@ -149,7 +169,7 @@ test_plugins_json_rejects_bad_fields :: proc(t: ^testing.T) {
 	root, _, oc, od := setup_sandbox()
 	defer teardown_sandbox(root, oc, od)
 
-	bad := [?]string{
+	bad := [?]string {
 		`{"plugins":[{"name":"p","url":"http://h/p.git"}]}`,
 		`{"plugins":[{"name":"../x","url":"https://h/p.git"}]}`,
 		`{"plugins":[{"name":"p","url":"https://h/p.git","git":{"branch":"--evil"}}]}`,
@@ -176,15 +196,19 @@ test_plugins_json_enum_values_resolved :: proc(t: ^testing.T) {
 	defer teardown_sandbox(root, oc, od)
 
 	// Lowercase (CLI vocabulary) and Odin names resolve, any case.
-	write_plugins_json(`{"plugins":[
+	write_plugins_json(
+		`{"plugins":[
 		{"name":"a","url":"https://h/a.git","shell":"bash","template":"fpath","git":{"ref_type":"commit"}},
 		{"name":"b","url":"https://h/b.git","shell":"Fish","template":"PATH"},
 		{"name":"c","url":"https://h/c.git","shell":"ANY","source_type":"Local"},
-	]}`)
+	]}`,
+	)
 	config, ok := wayu.read_plugin_config_json()
 	defer wayu.cleanup_plugin_config_json(&config)
 	testing.expect(t, ok, "valid enum spellings must load")
-	if !ok || len(config.plugins) != 3 { return }
+	if !ok || len(config.plugins) != 3 {
+		return
+	}
 	testing.expect_value(t, config.plugins[0].shell, wayu.ShellCompat.BASH)
 	testing.expect_value(t, config.plugins[0].template, wayu.PluginLoadTemplate.FPath)
 	testing.expect_value(t, config.plugins[0].git.ref_type, wayu.GitRefType.Commit)
@@ -236,8 +260,17 @@ test_remote_commit_matches_exact_branch :: proc(t: ^testing.T) {
 	defer delete(master)
 	// refs/heads/aaa/master sorts before refs/heads/master and also ends in
 	// "master": the old tail match picked it and reported a bogus update.
-	testing.expect(t, sh("git -C %s checkout -q -b aaa/master && git -C %s commit -q --allow-empty -m other && git -C %s tag master && git -C %s checkout -q master",
-		origin, origin, origin, origin), "create decoy refs")
+	testing.expect(
+		t,
+		sh(
+			"git -C %s checkout -q -b aaa/master && git -C %s commit -q --allow-empty -m other && git -C %s tag master && git -C %s checkout -q master",
+			origin,
+			origin,
+			origin,
+			origin,
+		),
+		"create decoy refs",
+	)
 
 	url := fmt.tprintf("file://%s", origin)
 	remote := wayu.get_remote_commit(url, "master")
@@ -259,7 +292,11 @@ test_update_after_force_push :: proc(t: ^testing.T) {
 	testing.expect(t, clone_ok(url, dest), "clone")
 
 	// Normal fast-forward.
-	testing.expect(t, sh("echo two >> %s/p.plugin.zsh && git -C %s commit -q -am two", origin, origin), "commit two")
+	testing.expect(
+		t,
+		sh("echo two >> %s/p.plugin.zsh && git -C %s commit -q -am two", origin, origin),
+		"commit two",
+	)
 	result, err := wayu.git_update(dest, "master")
 	delete(err)
 	testing.expect_value(t, result, wayu.GitUpdateResult.Updated)
@@ -272,7 +309,7 @@ test_update_after_force_push :: proc(t: ^testing.T) {
 
 	want := git_head(origin)
 	got := git_head(dest)
-	defer { delete(want); delete(got) }
+	defer {delete(want); delete(got)}
 	testing.expect_value(t, got, want)
 }
 
@@ -292,7 +329,11 @@ test_update_never_resets_dirty_checkout :: proc(t: ^testing.T) {
 	testing.expect(t, len(err) > 0, "failure must explain why")
 
 	data, rerr := os.read_entire_file(fmt.tprintf("%s/p.plugin.zsh", dest), context.temp_allocator)
-	testing.expect(t, rerr == nil && strings.contains(string(data), "local"), "local edit must survive")
+	testing.expect(
+		t,
+		rerr == nil && strings.contains(string(data), "local"),
+		"local edit must survive",
+	)
 }
 
 // A clean checkout with a local commit cannot be fast-forwarded either, but
@@ -304,8 +345,16 @@ test_update_never_resets_local_commits :: proc(t: ^testing.T) {
 
 	dest := fmt.tprintf("%s/wayu/plugins/p", root)
 	testing.expect(t, clone_ok(fmt.tprintf("file://%s", origin), dest), "clone")
-	testing.expect(t, sh("echo local >> %s/p.plugin.zsh && git -C %s commit -q -am local", dest, dest), "local commit")
-	testing.expect(t, sh("echo two >> %s/p.plugin.zsh && git -C %s commit -q -am two", origin, origin), "upstream commit")
+	testing.expect(
+		t,
+		sh("echo local >> %s/p.plugin.zsh && git -C %s commit -q -am local", dest, dest),
+		"local commit",
+	)
+	testing.expect(
+		t,
+		sh("echo two >> %s/p.plugin.zsh && git -C %s commit -q -am two", origin, origin),
+		"upstream commit",
+	)
 
 	before := git_head(dest)
 	defer delete(before)
@@ -377,7 +426,11 @@ test_clone_at_pinned_commit :: proc(t: ^testing.T) {
 
 	first := git_head(origin)
 	defer delete(first)
-	testing.expect(t, sh("echo two >> %s/p.plugin.zsh && git -C %s commit -q -am two", origin, origin), "commit two")
+	testing.expect(
+		t,
+		sh("echo two >> %s/p.plugin.zsh && git -C %s commit -q -am two", origin, origin),
+		"commit two",
+	)
 
 	dest := fmt.tprintf("%s/wayu/plugins/p", root)
 	ok, err := wayu.git_clone_at_commit(fmt.tprintf("file://%s", origin), dest, first[:10])
@@ -390,7 +443,11 @@ test_clone_at_pinned_commit :: proc(t: ^testing.T) {
 
 	// Unknown commit fails (and is never silently replaced by the tip).
 	dest2 := fmt.tprintf("%s/wayu/plugins/p2", root)
-	ok2, err2 := wayu.git_clone_at_commit(fmt.tprintf("file://%s", origin), dest2, "0123456789abcdef")
+	ok2, err2 := wayu.git_clone_at_commit(
+		fmt.tprintf("file://%s", origin),
+		dest2,
+		"0123456789abcdef",
+	)
 	defer delete(err2)
 	testing.expect(t, !ok2, "clone at a missing commit must fail")
 }
@@ -405,11 +462,17 @@ test_pinned_commit_drift_detected :: proc(t: ^testing.T) {
 	dest := fmt.tprintf("%s/wayu/plugins/p", root)
 	testing.expect(t, clone_ok(fmt.tprintf("file://%s", origin), dest), "clone")
 
-	plugin := wayu.PluginMetadata{installed_path = dest}
+	plugin := wayu.PluginMetadata {
+		installed_path = dest,
+	}
 	plugin.git.ref_type = .Commit
 	plugin.git.pinned_ref = first
 	testing.expect_value(t, wayu.plugin_pinned_commit_problem(&plugin), "")
 
 	testing.expect(t, sh("git -C %s commit -q --allow-empty -m drift", dest), "drift")
-	testing.expect(t, wayu.plugin_pinned_commit_problem(&plugin) != "", "drift from pin must be reported")
+	testing.expect(
+		t,
+		wayu.plugin_pinned_commit_problem(&plugin) != "",
+		"drift from pin must be reported",
+	)
 }

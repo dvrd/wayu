@@ -3,18 +3,33 @@
 
 package test_wayu
 
-import "core:testing"
-import "core:os"
-import "core:fmt"
-import "core:strings"
 import wayu "../../src"
+import "core:fmt"
+import "core:os"
+import "core:strings"
+import "core:testing"
 
-GROUP_OTHER_BITS :: os.Permissions{.Read_Group, .Write_Group, .Execute_Group, .Read_Other, .Write_Other, .Execute_Other}
+GROUP_OTHER_BITS :: os.Permissions {
+	.Read_Group,
+	.Write_Group,
+	.Execute_Group,
+	.Read_Other,
+	.Write_Other,
+	.Execute_Other,
+}
 
 @(test)
 test_looks_secret_name :: proc(t: ^testing.T) {
-	secret := []string{"FIREWORKS_AI_API_KEY", "GITHUB_TOKEN", "aws_secret_access_key",
-		"DB_PASSWORD", "MY_PASS", "OAUTH_CLIENT", "PRIVATE_PEM", "Credentials_File"}
+	secret := []string {
+		"FIREWORKS_AI_API_KEY",
+		"GITHUB_TOKEN",
+		"aws_secret_access_key",
+		"DB_PASSWORD",
+		"MY_PASS",
+		"OAUTH_CLIENT",
+		"PRIVATE_PEM",
+		"Credentials_File",
+	}
 	for name in secret {
 		testing.expectf(t, wayu.looks_secret_name(name), "%s should look secret", name)
 	}
@@ -30,7 +45,11 @@ test_looks_secret_value :: proc(t: ^testing.T) {
 	testing.expect(t, wayu.looks_secret_value("ghp_notarealtoken"))
 	testing.expect(t, wayu.looks_secret_value("postgres://user:pw@db.local:5432/app"))
 	testing.expect(t, !wayu.looks_secret_value("postgres://db.local:5432/app"))
-	testing.expect(t, !wayu.looks_secret_value("https://example.com/a@b"), "@ after the path is not userinfo")
+	testing.expect(
+		t,
+		!wayu.looks_secret_value("https://example.com/a@b"),
+		"@ after the path is not userinfo",
+	)
 	testing.expect(t, !wayu.looks_secret_value("nvim"))
 	testing.expect(t, !wayu.looks_secret_value("en_US.UTF-8"))
 }
@@ -38,7 +57,11 @@ test_looks_secret_value :: proc(t: ^testing.T) {
 @(test)
 test_mask_secret_value :: proc(t: ^testing.T) {
 	testing.expect_value(t, wayu.mask_secret_value("API_TOKEN", "fake-value"), wayu.SECRET_MASK)
-	testing.expect_value(t, wayu.mask_secret_value("DATABASE_URL", "mysql://a:b@h/d"), wayu.SECRET_MASK)
+	testing.expect_value(
+		t,
+		wayu.mask_secret_value("DATABASE_URL", "mysql://a:b@h/d"),
+		wayu.SECRET_MASK,
+	)
 	testing.expect_value(t, wayu.mask_secret_value("EDITOR", "nvim"), "nvim")
 	testing.expect_value(t, wayu.mask_secret_value("API_TOKEN", ""), "")
 }
@@ -70,7 +93,7 @@ test_backup_is_owner_only :: proc(t: ^testing.T) {
 	wayu.wayu.data = data_dir
 	os.remove_all(data_dir)
 	os.make_directory(data_dir)
-	defer { wayu.wayu.data = original_data; os.remove_all(data_dir) }
+	defer {wayu.wayu.data = original_data; os.remove_all(data_dir)}
 
 	source := fmt.tprintf("%s/wayu.toml", data_dir)
 	_ = os.write_entire_file(source, transmute([]byte)string("[env]\nAPI_TOKEN = \"fake\"\n"))
@@ -78,15 +101,27 @@ test_backup_is_owner_only :: proc(t: ^testing.T) {
 	backup_path, ok := wayu.create_backup(source)
 	defer if ok do delete(backup_path)
 	testing.expect(t, ok, "backup should succeed")
-	if !ok { return }
+	if !ok {
+		return
+	}
 
 	info, err := os.stat(backup_path, context.temp_allocator)
 	testing.expect(t, err == nil)
-	testing.expectf(t, info.mode & GROUP_OTHER_BITS == {}, "backup must be 0600, got %v", info.mode)
+	testing.expectf(
+		t,
+		info.mode & GROUP_OTHER_BITS == {},
+		"backup must be 0600, got %v",
+		info.mode,
+	)
 
 	dir_info, dir_err := os.stat(fmt.tprintf("%s/backup", data_dir), context.temp_allocator)
 	testing.expect(t, dir_err == nil)
-	testing.expectf(t, dir_info.mode & GROUP_OTHER_BITS == {}, "backup dir must be 0700, got %v", dir_info.mode)
+	testing.expectf(
+		t,
+		dir_info.mode & GROUP_OTHER_BITS == {},
+		"backup dir must be 0700, got %v",
+		dir_info.mode,
+	)
 }
 
 // ---------------------------------------------------------------------------
@@ -96,9 +131,21 @@ test_backup_is_owner_only :: proc(t: ^testing.T) {
 
 @(test)
 test_list_display_value_masks_unless_revealed :: proc(t: ^testing.T) {
-	testing.expect_value(t, wayu.list_display_value("FAKE_API_KEY", "fake-key-0001", false), wayu.SECRET_MASK)
-	testing.expect_value(t, wayu.list_display_value("FAKE_API_KEY", "fake-key-0001", true), "fake-key-0001")
-	testing.expect_value(t, wayu.list_display_value("SOME_URL", "postgres://u:fakepw@h/db", false), wayu.SECRET_MASK)
+	testing.expect_value(
+		t,
+		wayu.list_display_value("FAKE_API_KEY", "fake-key-0001", false),
+		wayu.SECRET_MASK,
+	)
+	testing.expect_value(
+		t,
+		wayu.list_display_value("FAKE_API_KEY", "fake-key-0001", true),
+		"fake-key-0001",
+	)
+	testing.expect_value(
+		t,
+		wayu.list_display_value("SOME_URL", "postgres://u:fakepw@h/db", false),
+		wayu.SECRET_MASK,
+	)
 	testing.expect_value(t, wayu.list_display_value("EDITOR", "vim", false), "vim")
 	// Empty values stay empty: nothing to hide, and `********` would lie.
 	testing.expect_value(t, wayu.list_display_value("FAKE_TOKEN", "", false), "")
@@ -109,8 +156,13 @@ test_parse_args_reveal_flag :: proc(t: ^testing.T) {
 	saved := wayu.wayu.reveal_secrets
 	defer wayu.wayu.reveal_secrets = saved
 
-	Case :: struct { args: []string, unknown: string, reveal: bool, action: wayu.Action }
-	cases := []Case{
+	Case :: struct {
+		args:    []string,
+		unknown: string,
+		reveal:  bool,
+		action:  wayu.Action,
+	}
+	cases := []Case {
 		{{"const", "list", "--reveal"}, "", true, .LIST},
 		{{"--reveal", "const", "list", "--full"}, "", true, .LIST},
 		{{"const", "--reveal", "list"}, "", true, .LIST},
@@ -121,9 +173,30 @@ test_parse_args_reveal_flag :: proc(t: ^testing.T) {
 	}
 	for c in cases {
 		parsed := wayu.parse_args(c.args)
-		testing.expectf(t, parsed.unknown_flag == c.unknown, "%v: unknown %q want %q", c.args, parsed.unknown_flag, c.unknown)
-		testing.expectf(t, wayu.wayu.reveal_secrets == c.reveal, "%v: reveal %v want %v", c.args, wayu.wayu.reveal_secrets, c.reveal)
-		testing.expectf(t, parsed.action == c.action, "%v: action %v want %v", c.args, parsed.action, c.action)
+		testing.expectf(
+			t,
+			parsed.unknown_flag == c.unknown,
+			"%v: unknown %q want %q",
+			c.args,
+			parsed.unknown_flag,
+			c.unknown,
+		)
+		testing.expectf(
+			t,
+			wayu.wayu.reveal_secrets == c.reveal,
+			"%v: reveal %v want %v",
+			c.args,
+			wayu.wayu.reveal_secrets,
+			c.reveal,
+		)
+		testing.expectf(
+			t,
+			parsed.action == c.action,
+			"%v: action %v want %v",
+			c.args,
+			parsed.action,
+			c.action,
+		)
 		for a in parsed.args {
 			testing.expectf(t, a != "--reveal", "%v: --reveal leaked into args", c.args)
 		}
@@ -150,13 +223,24 @@ test_tui_constants_view_masks_until_reveal_key :: proc(t: ^testing.T) {
 	items := make([dynamic]string)
 	meta := make([dynamic]wayu.RowMeta)
 	wayu.cache_push(&items, &meta, strings.clone("EDITOR=vim"), "EDITOR", "vim", .WAYU_ACTIVE)
-	wayu.cache_push(&items, &meta, strings.clone("FAKE_API_KEY=********"), "FAKE_API_KEY", "fake-key-0001", .WAYU_ACTIVE)
+	wayu.cache_push(
+		&items,
+		&meta,
+		strings.clone("FAKE_API_KEY=********"),
+		"FAKE_API_KEY",
+		"fake-key-0001",
+		.WAYU_ACTIVE,
+	)
 	wayu.tui_store_cache(&state, .CONSTANTS_VIEW, items, meta)
 	state.current_view = .CONSTANTS_VIEW
 
 	masked := render_view_text(&state)
 	defer delete(masked)
-	testing.expect(t, !strings.contains(masked, "fake-key-0001"), "secret must be masked by default")
+	testing.expect(
+		t,
+		!strings.contains(masked, "fake-key-0001"),
+		"secret must be masked by default",
+	)
 	testing.expect(t, strings.contains(masked, wayu.SECRET_MASK), "mask must be shown")
 	testing.expect(t, strings.contains(masked, "vim"), "non-secret values stay visible")
 	testing.expect(t, strings.contains(masked, "v Reveal"), "footer must advertise the reveal key")

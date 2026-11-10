@@ -1,8 +1,8 @@
 package test_wayu
 
-import "core:testing"
-import "core:fmt"
 import wayu "../../src"
+import "core:fmt"
+import "core:testing"
 
 @(test)
 test_parse_args_path_add :: proc(t: ^testing.T) {
@@ -147,7 +147,7 @@ test_print_help :: proc(t: ^testing.T) {
 @(test)
 test_parse_args_alias_add_keeps_value_flags :: proc(t: ^testing.T) {
 	saved_yes, saved_dry := wayu.wayu.yes_flag, wayu.wayu.dry_run
-	defer { wayu.wayu.yes_flag = saved_yes; wayu.wayu.dry_run = saved_dry }
+	defer {wayu.wayu.yes_flag = saved_yes; wayu.wayu.dry_run = saved_dry}
 	wayu.wayu.yes_flag, wayu.wayu.dry_run = false, false
 
 	args := []string{"alias", "add", "gpf", "git", "push", "-f", "-n", "-y"}
@@ -166,7 +166,7 @@ test_parse_args_alias_add_keeps_value_flags :: proc(t: ^testing.T) {
 @(test)
 test_parse_args_flags_before_value_still_global :: proc(t: ^testing.T) {
 	saved_yes, saved_dry := wayu.wayu.yes_flag, wayu.wayu.dry_run
-	defer { wayu.wayu.yes_flag = saved_yes; wayu.wayu.dry_run = saved_dry }
+	defer {wayu.wayu.yes_flag = saved_yes; wayu.wayu.dry_run = saved_dry}
 	wayu.wayu.dry_run = false
 
 	args := []string{"-n", "const", "add", "-y", "FOO", "bar", "-n"}
@@ -193,9 +193,15 @@ test_parse_args_double_dash_terminator :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(parsed.args), 2)
 	testing.expect_value(t, parsed.args[1], "-n")
 
-	testing.expect(t, !wayu.global_flag_present([]string{"alias", "add", "x", "echo", "--tui"}, "--tui"))
+	testing.expect(
+		t,
+		!wayu.global_flag_present([]string{"alias", "add", "x", "echo", "--tui"}, "--tui"),
+	)
 	testing.expect(t, !wayu.global_flag_present([]string{"--", "--tui"}, "--tui"))
-	testing.expect(t, wayu.global_flag_present([]string{"path", "list", "--no-color"}, "--no-color"))
+	testing.expect(
+		t,
+		wayu.global_flag_present([]string{"path", "list", "--no-color"}, "--no-color"),
+	)
 }
 
 // Elsewhere flags still work in any position (path list --full).
@@ -215,8 +221,11 @@ test_parse_args_unknown_flag_rejected :: proc(t: ^testing.T) {
 	defer wayu.wayu.dry_run = saved_dry
 	wayu.wayu.dry_run = false
 
-	Case :: struct { args: []string, unknown: string }
-	cases := []Case{
+	Case :: struct {
+		args:    []string,
+		unknown: string,
+	}
+	cases := []Case {
 		{{"path", "add", "/tmp", "--dryrun"}, "--dryrun"},
 		{{"path", "list", "--bogus"}, "--bogus"},
 		{{"init", "--templat", "x"}, "--templat"},
@@ -236,7 +245,14 @@ test_parse_args_unknown_flag_rejected :: proc(t: ^testing.T) {
 	}
 	for c in cases {
 		parsed := wayu.parse_args(c.args)
-		testing.expectf(t, parsed.unknown_flag == c.unknown, "%v: got %q want %q", c.args, parsed.unknown_flag, c.unknown)
+		testing.expectf(
+			t,
+			parsed.unknown_flag == c.unknown,
+			"%v: got %q want %q",
+			c.args,
+			parsed.unknown_flag,
+			c.unknown,
+		)
 		if len(parsed.args) > 0 do delete(parsed.args)
 	}
 	testing.expect(t, !wayu.wayu.dry_run, "--dryrun typo must not enable anything")
@@ -245,8 +261,11 @@ test_parse_args_unknown_flag_rejected :: proc(t: ^testing.T) {
 // OKAMI-233: export's documented flag forms select the mode.
 @(test)
 test_parse_args_export_modes :: proc(t: ^testing.T) {
-	Case :: struct { args: []string, action: wayu.Action }
-	cases := []Case{
+	Case :: struct {
+		args:   []string,
+		action: wayu.Action,
+	}
+	cases := []Case {
 		{{"export"}, .TURBO},
 		{{"export", "--turbo"}, .TURBO},
 		{{"export", "--eval"}, .EVAL},
@@ -258,7 +277,14 @@ test_parse_args_export_modes :: proc(t: ^testing.T) {
 	}
 	for c in cases {
 		parsed := wayu.parse_args(c.args)
-		testing.expectf(t, parsed.action == c.action, "%v: got %v want %v", c.args, parsed.action, c.action)
+		testing.expectf(
+			t,
+			parsed.action == c.action,
+			"%v: got %v want %v",
+			c.args,
+			parsed.action,
+			c.action,
+		)
 		if len(parsed.args) > 0 do delete(parsed.args)
 	}
 }
@@ -276,15 +302,24 @@ test_parse_args_trailing_long_flag_in_value :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(parsed.args), 2)
 	testing.expect_value(t, parsed.args[1], "y")
 	testing.expect_value(t, parsed.ambiguous_tail_flag, "")
-	testing.expect(t, wayu.global_flag_present([]string{"alias", "add", "x", "y", "--no-color"}, "--no-color"))
+	testing.expect(
+		t,
+		wayu.global_flag_present([]string{"alias", "add", "x", "y", "--no-color"}, "--no-color"),
+	)
 
 	// After `--` it stays literal.
 	wayu.wayu.dry_run = false
 	p2 := wayu.parse_args([]string{"alias", "add", "x", "--", "y", "--dry-run"})
 	defer if len(p2.args) > 0 do delete(p2.args)
 	testing.expect(t, !wayu.wayu.dry_run, "--dry-run after -- is literal")
-	testing.expect_value(t, p2.args[len(p2.args)-1], "--dry-run")
-	testing.expect(t, !wayu.global_flag_present([]string{"alias", "add", "x", "--", "y", "--no-color"}, "--no-color"))
+	testing.expect_value(t, p2.args[len(p2.args) - 1], "--dry-run")
+	testing.expect(
+		t,
+		!wayu.global_flag_present(
+			[]string{"alias", "add", "x", "--", "y", "--no-color"},
+			"--no-color",
+		),
+	)
 
 	// Short form stays in the value but is flagged for a warning.
 	p3 := wayu.parse_args([]string{"alias", "add", "g", "grep", "-n"})

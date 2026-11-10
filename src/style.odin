@@ -14,41 +14,41 @@ import "core:unicode/utf8"
 
 // Style system types.
 Style :: struct {
-	foreground: string,
-	background: string,
-	bold: bool,
-	italic: bool,
-	underline: bool,
-	strikethrough: bool,
-	dim: bool,
-	blink: bool,
-	reverse: bool,
-	faint: bool,
+	foreground:       string,
+	background:       string,
+	bold:             bool,
+	italic:           bool,
+	underline:        bool,
+	strikethrough:    bool,
+	dim:              bool,
+	blink:            bool,
+	reverse:          bool,
+	faint:            bool,
 	// border_* bools grouped here with the other style bools so all 12 share
 	// 8-byte slots instead of stranding 4 bytes of padding before border_fg.
-	border_top: bool,
-	border_right: bool,
-	border_bottom: bool,
-	border_left: bool,
-	padding_top: int,
-	padding_right: int,
-	padding_bottom: int,
-	padding_left: int,
-	margin_top: int,
-	margin_right: int,
-	margin_bottom: int,
-	margin_left: int,
-	width: int,
-	height: int,
-	max_width: int,
-	max_height: int,
+	border_top:       bool,
+	border_right:     bool,
+	border_bottom:    bool,
+	border_left:      bool,
+	padding_top:      int,
+	padding_right:    int,
+	padding_bottom:   int,
+	padding_left:     int,
+	margin_top:       int,
+	margin_right:     int,
+	margin_bottom:    int,
+	margin_left:      int,
+	width:            int,
+	height:           int,
+	max_width:        int,
+	max_height:       int,
 	align_horizontal: Alignment,
-	align_vertical: Alignment,
-	border_style: BorderStyle,
-	border_fg: string,
-	border_bg: string,
-	foreground_dark: string,
-	background_dark: string,
+	align_vertical:   Alignment,
+	border_style:     BorderStyle,
+	border_fg:        string,
+	border_bg:        string,
+	foreground_dark:  string,
+	background_dark:  string,
 }
 
 Alignment :: enum {
@@ -71,25 +71,25 @@ BorderStyle :: enum {
 
 // Color constants bundle.
 Color :: struct {
-	Red: string,
-	Green: string,
-	Yellow: string,
-	Blue: string,
+	Red:     string,
+	Green:   string,
+	Yellow:  string,
+	Blue:    string,
 	Magenta: string,
-	Cyan: string,
-	White: string,
-	Black: string,
+	Cyan:    string,
+	White:   string,
+	Black:   string,
 }
 
-COLOR_CONSTANTS :: Color{
-	Red = "31",
-	Green = "32",
-	Yellow = "33",
-	Blue = "34",
+COLOR_CONSTANTS :: Color {
+	Red     = "31",
+	Green   = "32",
+	Yellow  = "33",
+	Blue    = "34",
 	Magenta = "35",
-	Cyan = "36",
-	White = "37",
-	Black = "30",
+	Cyan    = "36",
+	White   = "37",
+	Black   = "30",
 }
 
 
@@ -108,7 +108,7 @@ render :: proc(s: Style, text: string) -> string {
 	defer delete(lines)
 
 	// Apply top margin
-	for _ in 0..<s.margin_top {
+	for _ in 0 ..< s.margin_top {
 		strings.write_string(&builder, "\n")
 	}
 
@@ -121,7 +121,7 @@ render :: proc(s: Style, text: string) -> string {
 	}
 
 	// Apply top padding
-	for _ in 0..<s.padding_top {
+	for _ in 0 ..< s.padding_top {
 		render_empty_line(&builder, s, content_width)
 	}
 
@@ -131,7 +131,7 @@ render :: proc(s: Style, text: string) -> string {
 	}
 
 	// Apply bottom padding
-	for _ in 0..<s.padding_bottom {
+	for _ in 0 ..< s.padding_bottom {
 		render_empty_line(&builder, s, content_width)
 	}
 
@@ -141,7 +141,7 @@ render :: proc(s: Style, text: string) -> string {
 	}
 
 	// Apply bottom margin
-	for _ in 0..<s.margin_bottom {
+	for _ in 0 ..< s.margin_bottom {
 		strings.write_string(&builder, "\n")
 	}
 
@@ -195,7 +195,12 @@ visible_width :: proc(text: string) -> int {
 }
 
 // Render a border line (top or bottom) for styled content
-render_style_border_line :: proc(builder: ^strings.Builder, s: Style, pos: BorderPosition, width: int) {
+render_style_border_line :: proc(
+	builder: ^strings.Builder,
+	s: Style,
+	pos: BorderPosition,
+	width: int,
+) {
 	// Left margin
 	write_spaces(builder, s.margin_left)
 
@@ -216,7 +221,7 @@ render_style_border_line :: proc(builder: ^strings.Builder, s: Style, pos: Borde
 	// Horizontal line (accounting for left and right padding)
 	total_width := width + s.padding_left + s.padding_right
 	horizontal_char := get_border_char(s.border_style, pos)
-	for _ in 0..<total_width {
+	for _ in 0 ..< total_width {
 		strings.write_string(builder, horizontal_char)
 	}
 
@@ -398,7 +403,9 @@ apply_text_only_style :: proc(s: Style, text: string) -> string {
 // Apply color (foreground or background)
 apply_color :: proc(builder: ^strings.Builder, color: string, is_foreground: bool) {
 	// NO_COLOR / --no-color / non-TTY: styles keep their text, drop colors.
-	if CURRENT_COLOR_PROFILE == .ASCII { return }
+	if CURRENT_COLOR_PROFILE == .ASCII {
+		return
+	}
 	// Check if it's already a full ANSI code
 	if strings.has_prefix(color, "\x1b[") {
 		strings.write_string(builder, color)
@@ -415,14 +422,22 @@ apply_color :: proc(builder: ^strings.Builder, color: string, is_foreground: boo
 	// Check if it's a named ANSI color
 	code := ""
 	switch color {
-	case "black":   code = is_foreground ? "30" : "40"
-	case "red":     code = is_foreground ? "31" : "41"
-	case "green":   code = is_foreground ? "32" : "42"
-	case "yellow":  code = is_foreground ? "33" : "43"
-	case "blue":    code = is_foreground ? "34" : "44"
-	case "magenta": code = is_foreground ? "35" : "45"
-	case "cyan":    code = is_foreground ? "36" : "46"
-	case "white":   code = is_foreground ? "37" : "47"
+	case "black":
+		code = is_foreground ? "30" : "40"
+	case "red":
+		code = is_foreground ? "31" : "41"
+	case "green":
+		code = is_foreground ? "32" : "42"
+	case "yellow":
+		code = is_foreground ? "33" : "43"
+	case "blue":
+		code = is_foreground ? "34" : "44"
+	case "magenta":
+		code = is_foreground ? "35" : "45"
+	case "cyan":
+		code = is_foreground ? "36" : "46"
+	case "white":
+		code = is_foreground ? "37" : "47"
 	}
 
 	if code != "" {
@@ -438,42 +453,66 @@ get_border_char :: proc(style: BorderStyle, pos: BorderPosition) -> string {
 
 	case .Normal:
 		switch pos {
-		case .Top, .Bottom:      return "─"
-		case .Left, .Right:      return "│"
-		case .TopLeft:           return "┌"
-		case .TopRight:          return "┐"
-		case .BottomLeft:        return "└"
-		case .BottomRight:       return "┘"
+		case .Top, .Bottom:
+			return "─"
+		case .Left, .Right:
+			return "│"
+		case .TopLeft:
+			return "┌"
+		case .TopRight:
+			return "┐"
+		case .BottomLeft:
+			return "└"
+		case .BottomRight:
+			return "┘"
 		}
 
 	case .Rounded:
 		switch pos {
-		case .Top, .Bottom:      return "─"
-		case .Left, .Right:      return "│"
-		case .TopLeft:           return "╭"
-		case .TopRight:          return "╮"
-		case .BottomLeft:        return "╰"
-		case .BottomRight:       return "╯"
+		case .Top, .Bottom:
+			return "─"
+		case .Left, .Right:
+			return "│"
+		case .TopLeft:
+			return "╭"
+		case .TopRight:
+			return "╮"
+		case .BottomLeft:
+			return "╰"
+		case .BottomRight:
+			return "╯"
 		}
 
 	case .Thick:
 		switch pos {
-		case .Top, .Bottom:      return "━"
-		case .Left, .Right:      return "┃"
-		case .TopLeft:           return "┏"
-		case .TopRight:          return "┓"
-		case .BottomLeft:        return "┗"
-		case .BottomRight:       return "┛"
+		case .Top, .Bottom:
+			return "━"
+		case .Left, .Right:
+			return "┃"
+		case .TopLeft:
+			return "┏"
+		case .TopRight:
+			return "┓"
+		case .BottomLeft:
+			return "┗"
+		case .BottomRight:
+			return "┛"
 		}
 
 	case .Double:
 		switch pos {
-		case .Top, .Bottom:      return "═"
-		case .Left, .Right:      return "║"
-		case .TopLeft:           return "╔"
-		case .TopRight:          return "╗"
-		case .BottomLeft:        return "╚"
-		case .BottomRight:       return "╝"
+		case .Top, .Bottom:
+			return "═"
+		case .Left, .Right:
+			return "║"
+		case .TopLeft:
+			return "╔"
+		case .TopRight:
+			return "╗"
+		case .BottomLeft:
+			return "╚"
+		case .BottomRight:
+			return "╝"
 		}
 	}
 
@@ -573,10 +612,7 @@ align_text :: proc(text: string, width: int, alignment: Alignment) -> string {
 		defer delete(left_pad_str)
 		right_pad_str := strings.repeat(" ", right_pad)
 		defer delete(right_pad_str)
-		return fmt.aprintf("%s%s%s",
-			left_pad_str,
-			text,
-			right_pad_str)
+		return fmt.aprintf("%s%s%s", left_pad_str, text, right_pad_str)
 
 	case .Right:
 		// Add padding on the left
@@ -594,7 +630,7 @@ align_text :: proc(text: string, width: int, alignment: Alignment) -> string {
 
 // Write N spaces to builder
 write_spaces :: proc(builder: ^strings.Builder, count: int) {
-	for _ in 0..<count {
+	for _ in 0 ..< count {
 		strings.write_string(builder, " ")
 	}
 }
@@ -643,7 +679,11 @@ visual_width :: proc(str: string) -> int {
 			if next == '[' {
 				// CSI sequence (ESC[...m/K/J/H)
 				i += 2
-				for i < len(raw) && raw[i] != 'm' && raw[i] != 'K' && raw[i] != 'J' && raw[i] != 'H' {
+				for i < len(raw) &&
+				    raw[i] != 'm' &&
+				    raw[i] != 'K' &&
+				    raw[i] != 'J' &&
+				    raw[i] != 'H' {
 					i += 1
 				}
 				if i < len(raw) {
@@ -669,7 +709,9 @@ visual_width :: proc(str: string) -> int {
 		} else {
 			// Decode one UTF-8 rune in-place (no allocation)
 			r, size := utf8.decode_rune(raw[i:])
-			if size == 0 { size = 1 } // skip invalid byte
+			if size == 0 {
+				size = 1
+			} // skip invalid byte
 			visible_chars += get_rune_width(r)
 			i += size
 		}
@@ -691,7 +733,7 @@ visual_width :: proc(str: string) -> int {
 // TUI renders it) as its individual emoji, so every terminal agrees.
 get_rune_width :: proc(r: rune) -> int {
 	if r < 0x20 || (r >= 0x7F && r < 0xA0) do return 0
-	if r < 0x300 do return 1  // fast path: ASCII, Latin-1, Latin Extended
+	if r < 0x300 do return 1 // fast path: ASCII, Latin-1, Latin Extended
 	if rune_in_ranges(r, RUNE_WIDTH_ZERO[:]) do return 0
 	if rune_in_ranges(r, RUNE_WIDTH_WIDE[:]) do return 2
 	return 1
@@ -709,8 +751,19 @@ is_wide_character :: proc(r: rune) -> bool {
 // and not in others, so emitting one would desync the cell grid.
 is_presentation_selector :: proc(r: rune) -> bool {
 	switch r {
-	case 0x200B..=0x200F, 0x2028..=0x202E, 0x2060..=0x206F, 0xFE00..=0xFE0F,
-	     0xFEFF, 0xE0000..=0xE007F, 0xE0100..=0xE01EF:
+	case 0x200B ..=
+	     0x200F,
+	     0x2028 ..=
+	     0x202E,
+	     0x2060 ..=
+	     0x206F,
+	     0xFE00 ..=
+	     0xFE0F,
+	     0xFEFF,
+	     0xE0000 ..=
+	     0xE007F,
+	     0xE0100 ..=
+	     0xE01EF:
 		return true
 	}
 	return false
@@ -724,9 +777,12 @@ rune_in_ranges :: proc(r: rune, ranges: [][2]rune) -> bool {
 	for lo <= hi {
 		mid := (lo + hi) / 2
 		switch {
-		case r < ranges[mid][0]: hi = mid - 1
-		case r > ranges[mid][1]: lo = mid + 1
-		case:                    return true
+		case r < ranges[mid][0]:
+			hi = mid - 1
+		case r > ranges[mid][1]:
+			lo = mid + 1
+		case:
+			return true
 		}
 	}
 	return false

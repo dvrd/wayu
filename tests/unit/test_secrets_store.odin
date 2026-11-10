@@ -6,14 +6,14 @@
 
 package test_wayu
 
+import wayu "../../src"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import wayu "../../src"
 
 @(private = "file")
 test_key :: proc(fill: byte) -> (k: [wayu.SECRETS_KEY_SIZE]byte) {
-	for &b in k { b = fill }
+	for &b in k {b = fill}
 	return
 }
 
@@ -31,7 +31,7 @@ test_secrets_seal_open_round_trip :: proc(t: ^testing.T) {
 	// A fresh nonce per seal: same input, different ciphertext.
 	a := wayu.secrets_seal(key, "FAKE_NAME", "same")
 	b := wayu.secrets_seal(key, "FAKE_NAME", "same")
-	defer { delete(a); delete(b) }
+	defer {delete(a); delete(b)}
 	testing.expect(t, a != b, "nonce must be random per value")
 }
 
@@ -63,12 +63,22 @@ test_secrets_open_rejects :: proc(t: ^testing.T) {
 @(test)
 test_secrets_store_format_parse :: proc(t: ^testing.T) {
 	s: wayu.Secrets_Store
-	append(&s.entries, wayu.Secret_Entry{name = strings.clone("ZED"), blob = strings.clone("YmxvYg==")})
-	append(&s.entries, wayu.Secret_Entry{name = strings.clone("ALPHA"), blob = strings.clone("eHl6")})
+	append(
+		&s.entries,
+		wayu.Secret_Entry{name = strings.clone("ZED"), blob = strings.clone("YmxvYg==")},
+	)
+	append(
+		&s.entries,
+		wayu.Secret_Entry{name = strings.clone("ALPHA"), blob = strings.clone("eHl6")},
+	)
 	defer wayu.secrets_store_destroy(&s)
 	text := wayu.secrets_store_format(&s)
 	defer delete(text)
-	testing.expect_value(t, text, "{\n  \"version\": 1,\n  \"cipher\": \"chacha20poly1305\",\n  \"values\": {\n    \"ALPHA\": \"eHl6\",\n    \"ZED\": \"YmxvYg==\"\n  }\n}\n")
+	testing.expect_value(
+		t,
+		text,
+		"{\n  \"version\": 1,\n  \"cipher\": \"chacha20poly1305\",\n  \"values\": {\n    \"ALPHA\": \"eHl6\",\n    \"ZED\": \"YmxvYg==\"\n  }\n}\n",
+	)
 
 	back, err := wayu.secrets_store_parse(text)
 	defer wayu.secrets_store_destroy(&back)
@@ -87,7 +97,7 @@ test_secrets_store_format_parse :: proc(t: ^testing.T) {
 
 @(test)
 test_secrets_store_parse_rejects :: proc(t: ^testing.T) {
-	bad := []string{
+	bad := []string {
 		"",
 		"{not json",
 		`{"version": 2, "cipher": "chacha20poly1305", "values": {}}`,
@@ -148,7 +158,9 @@ test_keystore_hex :: proc(t: ^testing.T) {
 	key := test_key(0x0f)
 	hex := wayu.keystore_encode_hex(key)
 	testing.expect_value(t, len(hex), 64)
-	back, ok := wayu.keystore_decode_hex(strings.concatenate({"  ", string(hex), "\n"}, context.temp_allocator))
+	back, ok := wayu.keystore_decode_hex(
+		strings.concatenate({"  ", string(hex), "\n"}, context.temp_allocator),
+	)
 	testing.expect(t, ok && back == key)
 	_, ok = wayu.keystore_decode_hex("abcd")
 	testing.expect(t, !ok)
@@ -158,18 +170,50 @@ test_keystore_hex :: proc(t: ^testing.T) {
 test_keystore_argv :: proc(t: ^testing.T) {
 	expect_argv :: proc(t: ^testing.T, got, want: []string) {
 		testing.expectf(t, len(got) == len(want), "argv %v != %v", got, want)
-		if len(got) != len(want) { return }
-		for w, i in want { testing.expectf(t, got[i] == w, "argv[%d] %q != %q", i, got[i], w) }
+		if len(got) != len(want) {
+			return
+		}
+		for w, i in want {testing.expectf(t, got[i] == w, "argv[%d] %q != %q", i, got[i], w)}
 	}
-	expect_argv(t, wayu.keychain_store_argv("00ff"),
-		{"security", "add-generic-password", "-U", "-a", "wayu", "-s", "wayu-master-key", "-w", "00ff"})
-	expect_argv(t, wayu.keychain_load_argv(),
-		{"security", "find-generic-password", "-a", "wayu", "-s", "wayu-master-key", "-w"})
+	expect_argv(
+		t,
+		wayu.keychain_store_argv("00ff"),
+		{
+			"security",
+			"add-generic-password",
+			"-U",
+			"-a",
+			"wayu",
+			"-s",
+			"wayu-master-key",
+			"-w",
+			"00ff",
+		},
+	)
+	expect_argv(
+		t,
+		wayu.keychain_load_argv(),
+		{"security", "find-generic-password", "-a", "wayu", "-s", "wayu-master-key", "-w"},
+	)
 	// secret-tool reads the key from stdin: it is never on argv.
-	expect_argv(t, wayu.secret_service_store_argv(),
-		{"secret-tool", "store", "--label=wayu master key", "service", "wayu", "account", "master"})
-	expect_argv(t, wayu.secret_service_load_argv(),
-		{"secret-tool", "lookup", "service", "wayu", "account", "master"})
+	expect_argv(
+		t,
+		wayu.secret_service_store_argv(),
+		{
+			"secret-tool",
+			"store",
+			"--label=wayu master key",
+			"service",
+			"wayu",
+			"account",
+			"master",
+		},
+	)
+	expect_argv(
+		t,
+		wayu.secret_service_load_argv(),
+		{"secret-tool", "lookup", "service", "wayu", "account", "master"},
+	)
 }
 
 @(test)
@@ -183,7 +227,9 @@ test_secrets_backend_parse :: proc(t: ^testing.T) {
 	testing.expect_value(t, wayu.secrets_backend_resolve(.FILE), wayu.Secrets_Backend.FILE)
 	testing.expect(t, wayu.secrets_backend_resolve(.AUTO) != .AUTO)
 
-	v, found := wayu.toml_secrets_backend_value("[shell]\ntype = \"zsh\"\n\n[secrets]\nbackend = \"file\"\n")
+	v, found := wayu.toml_secrets_backend_value(
+		"[shell]\ntype = \"zsh\"\n\n[secrets]\nbackend = \"file\"\n",
+	)
 	testing.expect(t, found && v == "file")
 	_, found = wayu.toml_secrets_backend_value("[shell]\ntype = \"zsh\"\n")
 	testing.expect(t, !found)
@@ -217,15 +263,29 @@ test_secrets_cache_dir_check :: proc(t: ^testing.T) {
 
 	os.chmod(dir, {.Read_User, .Write_User, .Execute_User, .Read_Group, .Execute_Group})
 	ok, msg = wayu.secrets_cache_dir_check(dir)
-	testing.expect(t, !ok && strings.contains(msg, "0700"), "a group-accessible dir must be refused")
+	testing.expect(
+		t,
+		!ok && strings.contains(msg, "0700"),
+		"a group-accessible dir must be refused",
+	)
 }
 
 @(test)
 test_secrets_run_only_storage :: proc(t: ^testing.T) {
 	// secrets.json: "run_only" lists the run-only names; parse restores the flag.
 	s: wayu.Secrets_Store
-	append(&s.entries, wayu.Secret_Entry{name = strings.clone("FAKE_B"), blob = strings.clone("eHl6"), run_only = true})
-	append(&s.entries, wayu.Secret_Entry{name = strings.clone("FAKE_A"), blob = strings.clone("YWJj")})
+	append(
+		&s.entries,
+		wayu.Secret_Entry {
+			name = strings.clone("FAKE_B"),
+			blob = strings.clone("eHl6"),
+			run_only = true,
+		},
+	)
+	append(
+		&s.entries,
+		wayu.Secret_Entry{name = strings.clone("FAKE_A"), blob = strings.clone("YWJj")},
+	)
 	defer wayu.secrets_store_destroy(&s)
 	text := wayu.secrets_store_format(&s)
 	defer delete(text)
@@ -234,7 +294,11 @@ test_secrets_run_only_storage :: proc(t: ^testing.T) {
 	defer wayu.secrets_store_destroy(&back)
 	testing.expect_value(t, err, "")
 	if len(back.entries) == 2 {
-		testing.expect(t, !back.entries[0].run_only && back.entries[1].run_only, "run_only flag lost")
+		testing.expect(
+			t,
+			!back.entries[0].run_only && back.entries[1].run_only,
+			"run_only flag lost",
+		)
 	}
 	testing.expect_value(t, wayu.secrets_session_count(&back), 1)
 
@@ -255,12 +319,18 @@ test_entries_run_only_marker :: proc(t: ^testing.T) {
 	store, err, ok := wayu.entries_parse(text)
 	defer wayu.entries_store_destroy(&store)
 	testing.expectf(t, ok, "parse failed: %s", err)
-	if len(store.env) != 3 { return }
+	if len(store.env) != 3 {
+		return
+	}
 	testing.expect(t, store.env[0].run_only && !store.env[1].run_only, "run_only read")
 	testing.expect(t, !store.env[2].run_only, "run_only without secret is ignored")
 	out := wayu.entries_serialize(&store)
 	defer delete(out)
-	testing.expect(t, strings.contains(out, `{"name": "FAKE_A", "secret": true, "run_only": true}`), out)
+	testing.expect(
+		t,
+		strings.contains(out, `{"name": "FAKE_A", "secret": true, "run_only": true}`),
+		out,
+	)
 	testing.expect(t, strings.contains(out, `{"name": "FAKE_B", "secret": true}`), out)
 	testing.expect(t, !strings.contains(out, `"FAKE_C", "value": "x", "run_only"`), out)
 }

@@ -1,9 +1,10 @@
+#+feature dynamic-literals
 // path.odin - PATH entry management (refactored to use config_entry abstraction)
 //
 // This module manages PATH entries using the generic config_entry system.
 // It provides PATH-specific functionality like clean and dedup operations.
 
-#+feature dynamic-literals
+
 package wayu
 
 import "core:fmt"
@@ -14,11 +15,11 @@ import "core:strings"
 // Outcome of a PATH entry mutation. Lets the CLI handler tell a real change
 // apart from a no-op (duplicate add) and pick the right exit code.
 PathOpResult :: enum {
-	OK,        // changed (or, under --dry-run, would change)
-	NOOP,      // nothing to do (e.g. path already present)
+	OK, // changed (or, under --dry-run, would change)
+	NOOP, // nothing to do (e.g. path already present)
 	NOT_FOUND, // remove target not an entry             → EXIT_DATAERR
-	INVALID,   // bad input (name hint, ...)             → EXIT_DATAERR
-	IO_ERROR,  // backup/write failure                   → EXIT_IOERR
+	INVALID, // bad input (name hint, ...)             → EXIT_DATAERR
+	IO_ERROR, // backup/write failure                   → EXIT_IOERR
 	BAD_STORE, // entries.json unreadable / malformed    → EXIT_CONFIG
 }
 
@@ -27,8 +28,12 @@ handle_path_command :: proc(action: Action, args: []string) {
 	// Mutations hold the config lock across read → write → regenerate so
 	// concurrent wayu runs neither lose entries nor publish stale init files.
 	mutating := action == .ADD || action == .REMOVE || action == .CLEAN || action == .DEDUP
-	if mutating { config_lock_acquire_or_exit() }
-	defer if mutating { config_lock_release() }
+	if mutating {
+		config_lock_acquire_or_exit()
+	}
+	defer if mutating {
+		config_lock_release()
+	}
 
 	if !ensure_wayu_toml_exists() {
 		print_error_simple("Failed to create wayu.toml")
@@ -70,12 +75,16 @@ handle_path_command :: proc(action: Action, args: []string) {
 		}
 		// pre-hook only for an add that will really change the entries
 		// (duplicates / bad names are reported by the write below).
-		if path_add_would_change(raw_path, name_hint) { hook_pre_path_add(expanded) }
+		if path_add_would_change(raw_path, name_hint) {
+			hook_pre_path_add(expanded)
+		}
 		res := path_add_result(raw_path, name_hint)
 		exit_on_path_failure(res)
 		// NOOP: already present (warning printed). Dry-run: preview printed.
 		// Neither changed anything, so no regen, no success line, no hook.
-		if res == .NOOP || wayu.dry_run { return }
+		if res == .NOOP || wayu.dry_run {
+			return
+		}
 		regenerate_init_core_silently()
 		print_success("Added to PATH: %s", expanded)
 		print_path_applied_hint()
@@ -88,10 +97,14 @@ handle_path_command :: proc(action: Action, args: []string) {
 		// Hooks get the stored directory ({path}), also when the target is a key.
 		hook_path, found := path_entry_lookup(args[0])
 		defer delete(hook_path)
-		if found { hook_pre_path_remove(hook_path) }
+		if found {
+			hook_pre_path_remove(hook_path)
+		}
 		res := path_remove_result(args[0])
 		exit_on_path_failure(res)
-		if wayu.dry_run { return }
+		if wayu.dry_run {
+			return
+		}
 		regenerate_init_core_silently()
 		print_success("Removed from PATH: %s", args[0])
 		print_path_applied_hint()
@@ -118,7 +131,9 @@ path_add_check :: proc(raw_path: string) -> (expanded: string, err: string, code
 	expanded = expand_env_vars(raw_path, require_resolved = true)
 	if len(expanded) == 0 {
 		delete(expanded)
-		return "", fmt.aprintf("Could not resolve path to an absolute path: %s", raw_path), EXIT_DATAERR
+		return "",
+			fmt.aprintf("Could not resolve path to an absolute path: %s", raw_path),
+			EXIT_DATAERR
 	}
 	if !os.exists(expanded) {
 		delete(expanded)
@@ -132,19 +147,28 @@ path_add_check :: proc(raw_path: string) -> (expanded: string, err: string, code
 @(private = "file")
 print_path_applied_hint :: proc() {
 	if wayu.shell == .FISH {
-		fmt.printfln("   Reload your shell (or 'source %s/init.%s') to apply.", wayu.data, wayu.shell_ext)
+		fmt.printfln(
+			"   Reload your shell (or 'source %s/init.%s') to apply.",
+			wayu.data,
+			wayu.shell_ext,
+		)
 		return
 	}
-	fmt.println("   Open shells apply it at their next prompt; new shells pick it up automatically.")
+	fmt.println(
+		"   Open shells apply it at their next prompt; new shells pick it up automatically.",
+	)
 }
 
 // Exit with the code matching a failed PathOpResult; returns for OK/NOOP.
 @(private = "file")
 exit_on_path_failure :: proc(res: PathOpResult) {
 	#partial switch res {
-	case .NOT_FOUND, .INVALID: os.exit(EXIT_DATAERR)
-	case .IO_ERROR:            os.exit(EXIT_IOERR)
-	case .BAD_STORE:           os.exit(EXIT_CONFIG)
+	case .NOT_FOUND, .INVALID:
+		os.exit(EXIT_DATAERR)
+	case .IO_ERROR:
+		os.exit(EXIT_IOERR)
+	case .BAD_STORE:
+		os.exit(EXIT_CONFIG)
 	}
 }
 
@@ -170,7 +194,11 @@ PathMutationSpec :: struct {
 mutate_path_entries :: proc(spec: PathMutationSpec, entries: []StorePath, drop: []bool) {
 	assert(len(entries) == len(drop))
 	count := 0
-	for d in drop { if d { count += 1 } }
+	for d in drop {
+		if d {
+			count += 1
+		}
+	}
 
 	if count == 0 {
 		print_success("%s", spec.empty_success_msg)
@@ -179,7 +207,9 @@ mutate_path_entries :: proc(spec: PathMutationSpec, entries: []StorePath, drop: 
 
 	print_targets :: proc(entries: []StorePath, drop: []bool) {
 		for e, i in entries {
-			if drop[i] { fmt.printfln("  - %s = %s", e.key, e.dir) }
+			if drop[i] {
+				fmt.printfln("  - %s = %s", e.key, e.dir)
+			}
 		}
 	}
 
@@ -242,7 +272,7 @@ path_dedup_drop_mask :: proc(entries: []StorePath, consts: []ConfigEntry) -> []b
 	drop := make([]bool, len(entries))
 	seen := make(map[string]bool)
 	defer {
-		for k in seen { delete(k) }
+		for k in seen {delete(k)}
 		delete(seen)
 	}
 	for e, i in entries {
@@ -264,7 +294,10 @@ path_dedup_drop_mask :: proc(entries: []StorePath, consts: []ConfigEntry) -> []b
 
 // clean / dedup: compute `mask` over the current entries and apply `spec`.
 @(private = "file")
-path_prune :: proc(spec: PathMutationSpec, mask: proc(entries: []StorePath, consts: []ConfigEntry) -> []bool) {
+path_prune :: proc(
+	spec: PathMutationSpec,
+	mask: proc(entries: []StorePath, consts: []ConfigEntry) -> []bool,
+) {
 	if !check_wayu_initialized() {
 		os.exit(EXIT_CONFIG)
 	}
@@ -284,28 +317,34 @@ path_prune :: proc(spec: PathMutationSpec, mask: proc(entries: []StorePath, cons
 // Clean missing paths - remove PATH entries whose directory no longer
 // exists (see path_clean_drop_mask; unset variables are never "missing").
 clean_missing_paths :: proc() {
-	path_prune(PathMutationSpec{
-		label             = "missing directories",
-		empty_success_msg = "✅ No missing directories found in PATH",
-		header_title      = "Clean Missing PATH Entries",
-		header_icon       = "🧹",
-		yes_hint_cmd      = "wayu path clean --yes",
-		success_fmt       = "✅ Removed %d missing directories from PATH",
-	}, path_clean_drop_mask)
+	path_prune(
+		PathMutationSpec {
+			label = "missing directories",
+			empty_success_msg = "✅ No missing directories found in PATH",
+			header_title = "Clean Missing PATH Entries",
+			header_icon = "🧹",
+			yes_hint_cmd = "wayu path clean --yes",
+			success_fmt = "✅ Removed %d missing directories from PATH",
+		},
+		path_clean_drop_mask,
+	)
 }
 
 // Remove duplicate paths - entries that resolve to the same directory after
 // expansion (`$HOME/bin` == `~/bin` == `/Users/me/bin`). The first entry in
 // order survives; later duplicates are dropped.
 remove_duplicate_paths :: proc() {
-	path_prune(PathMutationSpec{
-		label             = "duplicate entries",
-		empty_success_msg = "✅ No duplicate entries found in PATH",
-		header_title      = "Remove Duplicate PATH Entries",
-		header_icon       = "🔗",
-		yes_hint_cmd      = "wayu path dedup --yes",
-		success_fmt       = "✅ Removed %d duplicate entries from PATH",
-	}, path_dedup_drop_mask)
+	path_prune(
+		PathMutationSpec {
+			label = "duplicate entries",
+			empty_success_msg = "✅ No duplicate entries found in PATH",
+			header_title = "Remove Duplicate PATH Entries",
+			header_icon = "🔗",
+			yes_hint_cmd = "wayu path dedup --yes",
+			success_fmt = "✅ Removed %d duplicate entries from PATH",
+		},
+		path_dedup_drop_mask,
+	)
 }
 
 // os.exists on the resolved value (`$HOME/bin` checks /Users/me/bin).
@@ -321,10 +360,14 @@ path_exists_expanded :: proc(p: string) -> bool {
 // resolved (unset $VAR, ~user) only match byte-for-byte.
 // Shared by add (duplicate check), rm (target match) and get.
 path_values_equal :: proc(a, b: string) -> bool {
-	if a == b { return true }
+	if a == b {
+		return true
+	}
 	ea := expand_env_vars(a, require_resolved = true)
 	defer delete(ea)
-	if len(ea) == 0 { return false }
+	if len(ea) == 0 {
+		return false
+	}
 	eb := expand_env_vars(b, require_resolved = true)
 	defer delete(eb)
 	return ea == eb
@@ -336,12 +379,9 @@ path_values_equal :: proc(a, b: string) -> bool {
 
 // is_env_var_char returns true for characters valid in a shell identifier:
 // A-Z, a-z, 0-9, underscore.
-@(private="file")
+@(private = "file")
 is_env_var_char :: proc(c: byte) -> bool {
-	return (c >= 'A' && c <= 'Z') ||
-	       (c >= 'a' && c <= 'z') ||
-	       (c >= '0' && c <= '9') ||
-	       c == '_'
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'
 }
 
 // Expand environment variables in path strings.
@@ -359,7 +399,9 @@ expand_env_vars :: proc(path: string, require_resolved: bool = false) -> string 
 		home := os.get_env("HOME", context.allocator)
 		defer delete(home)
 		if len(home) == 0 {
-			if require_resolved { return "" }
+			if require_resolved {
+				return ""
+			}
 		} else {
 			strings.write_string(&builder, home)
 			i = 1
@@ -416,9 +458,11 @@ expand_env_vars :: proc(path: string, require_resolved: bool = false) -> string 
 		if len(value) > 0 {
 			strings.write_string(&builder, value)
 		} else {
-			if require_resolved { return "" }
+			if require_resolved {
+				return ""
+			}
 			// Variable not set or empty — preserve original token
-			strings.write_string(&builder, path[token_start : token_start + token_len])
+			strings.write_string(&builder, path[token_start:token_start + token_len])
 		}
 	}
 
@@ -429,16 +473,22 @@ expand_env_vars :: proc(path: string, require_resolved: bool = false) -> string 
 	defer delete(result)
 	if filepath.is_abs(result) {
 		cleaned, err := filepath.clean(result)
-		if err == nil { return cleaned }
+		if err == nil {
+			return cleaned
+		}
 	} else {
 		cwd, cwd_err := os.getwd(context.allocator)
 		defer delete(cwd)
 		if cwd_err == nil {
 			joined, err := filepath.join({cwd, result})
-			if err == nil { return joined }
+			if err == nil {
+				return joined
+			}
 		}
 	}
-	if require_resolved { return "" }
+	if require_resolved {
+		return ""
+	}
 	return strings.clone(result)
 }
 
@@ -450,7 +500,7 @@ WAYU_TOML :: "wayu.toml"
 
 // Free the strings of `paths` and the array.
 free_store_paths :: proc(paths: ^[dynamic]StorePath) {
-	for p in paths { delete(p.key); delete(p.dir) }
+	for p in paths {delete(p.key); delete(p.dir)}
 	delete(paths^)
 }
 
@@ -469,11 +519,11 @@ path_entries_read :: proc() -> [dynamic]StorePath {
 path_dirs_read :: proc() -> [dynamic]string {
 	entries := path_entries_read()
 	defer {
-		for e in entries { delete(e.key) }
+		for e in entries {delete(e.key)}
 		delete(entries)
 	}
 	out := make([dynamic]string, 0, len(entries))
-	for e in entries { append(&out, e.dir) }
+	for e in entries {append(&out, e.dir)}
 	return out
 }
 
@@ -482,7 +532,12 @@ read_path_config_entries :: proc() -> []ConfigEntry {
 	dirs := path_dirs_read()
 	defer delete(dirs)
 	entries := make([]ConfigEntry, len(dirs))
-	for d, i in dirs { entries[i] = ConfigEntry{type = .PATH, name = d} } // ownership moves
+	for d, i in dirs {
+		entries[i] = ConfigEntry {
+			type = .PATH,
+			name = d,
+		}
+	} // ownership moves
 	return entries
 }
 
@@ -500,16 +555,20 @@ path_get_value :: proc(search_path: string) {
 
 	exact_idx := -1
 	for path_entry, i in paths {
-		if path_entry == search_path { exact_idx = i; break }
+		if path_entry == search_path {
+			exact_idx = i; break
+		}
 	}
 	if exact_idx < 0 {
 		for path_entry, i in paths {
-			if path_values_equal(path_entry, search_path) { exact_idx = i; break }
+			if path_values_equal(path_entry, search_path) {
+				exact_idx = i; break
+			}
 		}
 	}
 	if exact_idx >= 0 {
 		fmt.println(paths[exact_idx])
-		for p in paths { delete(p) }
+		for p in paths {delete(p)}
 		delete(paths)
 		return
 	}
@@ -522,7 +581,7 @@ path_get_value :: proc(search_path: string) {
 path_list :: proc() {
 	paths := path_dirs_read()
 	defer {
-		for p in paths { delete(p) }
+		for p in paths {delete(p)}
 		delete(paths)
 	}
 
@@ -581,7 +640,12 @@ path_list :: proc() {
 		}
 	}
 
-	fmt.printfln("  %d active · %d inactive · %d external", active_count, inactive_count, external_count)
+	fmt.printfln(
+		"  %d active · %d inactive · %d external",
+		active_count,
+		inactive_count,
+		external_count,
+	)
 	fmt.println()
 
 	// Filter based on SOURCE_FILTER.
@@ -590,7 +654,10 @@ path_list :: proc() {
 	// entries makes stale paths invisible and only discoverable via --full.
 	show_wayu := wayu.source_filter == "all" || wayu.source_filter == "wayu"
 	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
-	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive" || wayu.source_filter == "wayu"
+	show_inactive :=
+		wayu.source_filter == "all" ||
+		wayu.source_filter == "inactive" ||
+		wayu.source_filter == "wayu"
 
 	has_multiple_sources := show_external || (show_wayu && show_inactive)
 	headers: []string
@@ -609,15 +676,23 @@ path_list :: proc() {
 	if show_wayu || show_inactive {
 		for p in paths {
 			found := p in env_path_set
-			if found && !show_wayu { continue }
-			if !found && !show_inactive { continue }
+			if found && !show_wayu {
+				continue
+			}
+			if !found && !show_inactive {
+				continue
+			}
 
 			status := " "
-			if !path_exists_expanded(p) { status = "✗" }
+			if !path_exists_expanded(p) {
+				status = "✗"
+			}
 
 			if has_multiple_sources {
 				source := "wayu"
-				if !found { source = "wayu (inactive)" }
+				if !found {
+					source = "wayu (inactive)"
+				}
 				table_add_row(&path_table, []string{p, status, source})
 			} else {
 				table_add_row(&path_table, []string{p, status})
@@ -629,7 +704,9 @@ path_list :: proc() {
 		for env_path in path_entries {
 			if _, is_wayu := wayu_set[env_path]; !is_wayu {
 				status := " "
-				if !os.exists(env_path) { status = "✗" }
+				if !os.exists(env_path) {
+					status = "✗"
+				}
 				table_add_row(&path_table, []string{env_path, status, "external"})
 			}
 		}
@@ -640,7 +717,12 @@ path_list :: proc() {
 	fmt.print(output)
 
 	if !show_external && external_count > 0 {
-		fmt.printfln("%sPass --full to show %d external entries%s", get_muted(), external_count, RESET)
+		fmt.printfln(
+			"%sPass --full to show %d external entries%s",
+			get_muted(),
+			external_count,
+			RESET,
+		)
 	}
 }
 
@@ -650,7 +732,10 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 
 	show_wayu := wayu.source_filter == "all" || wayu.source_filter == "wayu"
 	show_external := wayu.source_filter == "all" || wayu.source_filter == "external"
-	show_inactive := wayu.source_filter == "all" || wayu.source_filter == "inactive" || wayu.source_filter == "wayu"
+	show_inactive :=
+		wayu.source_filter == "all" ||
+		wayu.source_filter == "inactive" ||
+		wayu.source_filter == "wayu"
 
 	first_entry := true
 
@@ -663,8 +748,12 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 					break
 				}
 			}
-			if found && !show_wayu { continue }
-			if !found && !show_inactive { continue }
+			if found && !show_wayu {
+				continue
+			}
+			if !found && !show_inactive {
+				continue
+			}
 
 			source := found ? "wayu" : "wayu (inactive)"
 			exists := path_exists_expanded(p)
@@ -675,9 +764,16 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 			exists_str := exists ? "true" : "false"
 			// Values are JSON-escaped so quotes/backslashes/control chars in a
 			// path can't break the document. `{` is a fmt verb opener → %c.
-			path_j := json_escape(p);      defer delete(path_j)
-			src_j  := json_escape(source); defer delete(src_j)
-			fmt.printf("    %c\"path\": \"%s\", \"source\": \"%s\", \"exists\": %s%c", '{', path_j, src_j, exists_str, '}')
+			path_j := json_escape(p); defer delete(path_j)
+			src_j := json_escape(source); defer delete(src_j)
+			fmt.printf(
+				"    %c\"path\": \"%s\", \"source\": \"%s\", \"exists\": %s%c",
+				'{',
+				path_j,
+				src_j,
+				exists_str,
+				'}',
+			)
 			first_entry = false
 		}
 	}
@@ -686,18 +782,28 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 	// so --source external / --full agree with it (OKAMI-239).
 	if show_external {
 		for env_path in path_entries {
-			if _, is_wayu := wayu_set[env_path]; is_wayu { continue }
+			if _, is_wayu := wayu_set[env_path]; is_wayu {
+				continue
+			}
 			if !first_entry {
 				fmt.println(",")
 			}
 			exists_str := os.exists(env_path) ? "true" : "false"
 			path_j := json_escape(env_path); defer delete(path_j)
-			fmt.printf("    %c\"path\": \"%s\", \"source\": \"external\", \"exists\": %s%c", '{', path_j, exists_str, '}')
+			fmt.printf(
+				"    %c\"path\": \"%s\", \"source\": \"external\", \"exists\": %s%c",
+				'{',
+				path_j,
+				exists_str,
+				'}',
+			)
 			first_entry = false
 		}
 	}
 
-	if !first_entry { fmt.println() }
+	if !first_entry {
+		fmt.println()
+	}
 	fmt.println("  ]")
 	fmt.println("}")
 }
@@ -708,7 +814,9 @@ print_paths_json :: proc(paths: []string, path_entries: []string, wayu_set: map[
 path_store_read :: proc(quiet := false) -> (store: EntryStore, res: PathOpResult) {
 	s, err, ok := entries_read()
 	if !ok {
-		if !quiet { print_error_simple("%s", err) }
+		if !quiet {
+			print_error_simple("%s", err)
+		}
 		return {}, .BAD_STORE
 	}
 	return s, .OK
@@ -717,9 +825,21 @@ path_store_read :: proc(quiet := false) -> (store: EntryStore, res: PathOpResult
 // Index of the entry `target` names: key, then exact dir, then resolved dir
 // (`wayu path rm ./bin` matches what `wayu path add ./bin` stored). -1 if none.
 path_store_match :: proc(paths: []StorePath, target: string) -> int {
-	for e, i in paths { if e.key == target { return i } }
-	for e, i in paths { if e.dir == target { return i } }
-	for e, i in paths { if path_values_equal(e.dir, target) { return i } }
+	for e, i in paths {
+		if e.key == target {
+			return i
+		}
+	}
+	for e, i in paths {
+		if e.dir == target {
+			return i
+		}
+	}
+	for e, i in paths {
+		if path_values_equal(e.dir, target) {
+			return i
+		}
+	}
 	return -1
 }
 
@@ -729,20 +849,32 @@ path_store_match :: proc(paths: []StorePath, target: string) -> int {
 path_add_would_change :: proc(raw_path: string, name_hint: string = "") -> bool {
 	path := expand_env_vars(raw_path, require_resolved = true)
 	defer delete(path)
-	if len(path) == 0 { return false }
+	if len(path) == 0 {
+		return false
+	}
 
 	store, res := path_store_read(quiet = true)
-	if res != .OK { return false } // the write reports why
+	if res != .OK {
+		return false
+	} // the write reports why
 	defer entries_store_destroy(&store)
 	for e in store.paths {
-		if path_values_equal(e.dir, path) { return false }
+		if path_values_equal(e.dir, path) {
+			return false
+		}
 	}
 	if len(name_hint) > 0 {
 		sanitised := sanitize_path_key(name_hint)
-		defer if len(sanitised) > 0 { delete(sanitised) }
-		if len(sanitised) == 0 { return false }
+		defer if len(sanitised) > 0 {
+			delete(sanitised)
+		}
+		if len(sanitised) == 0 {
+			return false
+		}
 		for e in store.paths {
-			if e.key == sanitised { return false }
+			if e.key == sanitised {
+				return false
+			}
 		}
 	}
 	return true
@@ -753,7 +885,9 @@ path_add_would_change :: proc(raw_path: string, name_hint: string = "") -> bool 
 // not found).
 path_entry_lookup :: proc(target: string) -> (path: string, found: bool) {
 	store, res := path_store_read(quiet = true)
-	if res != .OK { return "", false } // the remove reports why
+	if res != .OK {
+		return "", false
+	} // the remove reports why
 	defer entries_store_destroy(&store)
 	if i := path_store_match(store.paths[:], target); i >= 0 {
 		return strings.clone(store.paths[i].dir), true
@@ -776,11 +910,15 @@ path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOpResul
 		return .INVALID
 	}
 
-	if !config_lock_acquire() { return .IO_ERROR }
+	if !config_lock_acquire() {
+		return .IO_ERROR
+	}
 	defer config_lock_release()
 
 	store, read_res := path_store_read()
-	if read_res != .OK { return read_res }
+	if read_res != .OK {
+		return read_res
+	}
 	defer entries_store_destroy(&store)
 
 	// Compare resolved values so `$HOME/bin` already stored blocks `~/bin`.
@@ -793,12 +931,14 @@ path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOpResul
 
 	taken := make(map[string]bool)
 	defer delete(taken)
-	for e in store.paths { taken[e.key] = true }
+	for e in store.paths {taken[e.key] = true}
 
 	new_key: string
 	if len(name_hint) > 0 {
 		sanitised := sanitize_path_key(name_hint)
-		defer if len(sanitised) > 0 { delete(sanitised) }
+		defer if len(sanitised) > 0 {
+			delete(sanitised)
+		}
 		if len(sanitised) == 0 {
 			print_error("Invalid name %q (must contain alphanumerics)", name_hint)
 			return .INVALID
@@ -824,7 +964,9 @@ path_add_result :: proc(raw_path: string, name_hint: string = "") -> PathOpResul
 	}
 
 	append(&store.paths, StorePath{key = new_key, dir = strings.clone(path)}) // the store owns both
-	if !entries_save(&store) { return .IO_ERROR }
+	if !entries_save(&store) {
+		return .IO_ERROR
+	}
 	return .OK
 }
 
@@ -841,11 +983,15 @@ path_replace_result :: proc(target, raw_path: string) -> PathOpResult {
 		return .INVALID
 	}
 
-	if !config_lock_acquire() { return .IO_ERROR }
+	if !config_lock_acquire() {
+		return .IO_ERROR
+	}
 	defer config_lock_release()
 
 	store, read_res := path_store_read()
-	if read_res != .OK { return read_res }
+	if read_res != .OK {
+		return read_res
+	}
 	defer entries_store_destroy(&store)
 
 	idx := path_store_match(store.paths[:], target)
@@ -853,7 +999,9 @@ path_replace_result :: proc(target, raw_path: string) -> PathOpResult {
 		print_error("PATH entry not found: %s", target)
 		return .NOT_FOUND
 	}
-	if store.paths[idx].dir == path { return .NOOP }
+	if store.paths[idx].dir == path {
+		return .NOOP
+	}
 	for e, i in store.paths {
 		if i != idx && path_values_equal(e.dir, path) {
 			print_error("Path already added: %s (key %q)", e.dir, e.key)
@@ -863,23 +1011,35 @@ path_replace_result :: proc(target, raw_path: string) -> PathOpResult {
 	if wayu.dry_run {
 		if !print_quiet {
 			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-			fmt.printfln("%sWould set PATH entry: %s = %q%s", BRIGHT_CYAN, store.paths[idx].key, path, RESET)
+			fmt.printfln(
+				"%sWould set PATH entry: %s = %q%s",
+				BRIGHT_CYAN,
+				store.paths[idx].key,
+				path,
+				RESET,
+			)
 		}
 		return .OK
 	}
 	delete(store.paths[idx].dir)
 	store.paths[idx].dir = strings.clone(path)
-	if !entries_save(&store) { return .IO_ERROR }
+	if !entries_save(&store) {
+		return .IO_ERROR
+	}
 	return .OK
 }
 
 // Remove the entry `target` names (key, exact dir, resolved dir).
 path_remove_result :: proc(target: string) -> PathOpResult {
-	if !config_lock_acquire() { return .IO_ERROR }
+	if !config_lock_acquire() {
+		return .IO_ERROR
+	}
 	defer config_lock_release()
 
 	store, read_res := path_store_read()
-	if read_res != .OK { return read_res }
+	if read_res != .OK {
+		return read_res
+	}
 	defer entries_store_destroy(&store)
 
 	idx := path_store_match(store.paths[:], target)
@@ -892,7 +1052,13 @@ path_remove_result :: proc(target: string) -> PathOpResult {
 		if !print_quiet {
 			removed := store.paths[idx]
 			print_header("DRY RUN - No changes will be made", EMOJI_INFO)
-			fmt.printfln("%sWould remove PATH entry: %s = %q%s", BRIGHT_CYAN, removed.key, removed.dir, RESET)
+			fmt.printfln(
+				"%sWould remove PATH entry: %s = %q%s",
+				BRIGHT_CYAN,
+				removed.key,
+				removed.dir,
+				RESET,
+			)
 		}
 		return .OK
 	}
@@ -900,7 +1066,9 @@ path_remove_result :: proc(target: string) -> PathOpResult {
 	delete(store.paths[idx].key)
 	delete(store.paths[idx].dir)
 	ordered_remove(&store.paths, idx)
-	if !entries_save(&store) { return .IO_ERROR }
+	if !entries_save(&store) {
+		return .IO_ERROR
+	}
 	return .OK
 }
 
@@ -910,14 +1078,18 @@ path_remove_result :: proc(target: string) -> PathOpResult {
 // and handled --dry-run.
 path_store_drop :: proc(entries: []StorePath, drop: []bool) -> PathOpResult {
 	store, read_res := path_store_read()
-	if read_res != .OK { return read_res }
+	if read_res != .OK {
+		return read_res
+	}
 	defer entries_store_destroy(&store)
 
 	kept := make([dynamic]StorePath, 0, len(store.paths))
 	for e in store.paths {
 		gone := false
 		for d, i in entries {
-			if drop[i] && d.key == e.key { gone = true; break }
+			if drop[i] && d.key == e.key {
+				gone = true; break
+			}
 		}
 		if gone {
 			delete(e.key); delete(e.dir)
@@ -927,6 +1099,8 @@ path_store_drop :: proc(entries: []StorePath, drop: []bool) -> PathOpResult {
 	}
 	delete(store.paths)
 	store.paths = kept
-	if !entries_save(&store) { return .IO_ERROR }
+	if !entries_save(&store) {
+		return .IO_ERROR
+	}
 	return .OK
 }

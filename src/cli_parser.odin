@@ -16,57 +16,57 @@ import "core:os"
 import "core:strings"
 
 ParsedArgs :: struct {
-	command: Command,
-	action:  Action,
-	args:    []string,
-	shell:   ShellType,
-	tui:     bool,  // TUI mode flag
+	command:             Command,
+	action:              Action,
+	args:                []string,
+	shell:               ShellType,
+	tui:                 bool, // TUI mode flag
 
 	// Component testing (PRP-13)
-	component_test: bool,
-	component_name: string,
-	component_snapshot: bool,
-	component_verify: bool,
+	component_test:      bool,
+	component_name:      string,
+	component_snapshot:  bool,
+	component_verify:    bool,
 
 	// Doctor options
-	doctor_fix:      bool,
-	doctor_json:     bool,
-	doctor_profile:  bool,
-	doctor_optimize: bool,
+	doctor_fix:          bool,
+	doctor_json:         bool,
+	doctor_profile:      bool,
+	doctor_optimize:     bool,
 
 	// List command options
-	json_output:     bool,  // --json flag for list commands
-	source_filter:   string,  // --source filter (wayu|external|inactive|all)
+	json_output:         bool, // --json flag for list commands
+	source_filter:       string, // --source filter (wayu|external|inactive|all)
 
 	// Flag validation (see check_unknown_flags). main() exits EXIT_USAGE
 	// when `unknown_flag` is set and warns about `ambiguous_tail_flag`.
 	unknown_flag:        string, // first `-x`/`--xyz` token no command accepts
-	json_unsupported:    bool,   // --json given to a command/action without JSON output
+	json_unsupported:    bool, // --json given to a command/action without JSON output
 	ambiguous_tail_flag: string, // trailing short global flag kept in an add value
 	bad_flag_value:      string, // "--shell bogus" style error (temp allocator); main exits EXIT_USAGE
 }
 
 // Flag parsing state returned by parse_global_flags.
 GlobalFlags :: struct {
-	tui:              bool,
-	component_test:   bool,
-	component_name:   string,
+	tui:                bool,
+	component_test:     bool,
+	component_name:     string,
 	component_snapshot: bool,
-	component_verify: bool,
-	json:             bool,
+	component_verify:   bool,
+	json:               bool,
 	// --reveal: position-independent like --full, but only commands whose
 	// command_accepts_flag lists it (list views that mask secrets) take it.
-	reveal:           bool,
+	reveal:             bool,
 	// --secret: `const add` only; like the trailing global long flags it
 	// stays a flag at the end of an add value (`const add K v --secret`).
-	secret:           bool,
-	run_only:         bool, // --run-only (implies --secret)
-	source_filter:    string,
+	secret:             bool,
+	run_only:           bool, // --run-only (implies --secret)
+	source_filter:      string,
 	// Indexes into filtered_args of dash tokens that were not consumed as
 	// global flags and are not literal (after `--`, add value). Validated
 	// against the command's own flags once the command is known.
-	flag_like:        [dynamic]int,
-	ambiguous_tail:   string,
+	flag_like:          [dynamic]int,
+	ambiguous_tail:     string,
 }
 
 // Where global flags are recognised (documented in `wayu help` → FLAGS):
@@ -92,9 +92,12 @@ GlobalFlags :: struct {
 // tail of an add command, i.e. rule 2 applies to every following token.
 @(private = "file")
 in_add_value_tail :: proc(positional: []string) -> bool {
-	if len(positional) < 4 || positional[1] != "add" { return false }
+	if len(positional) < 4 || positional[1] != "add" {
+		return false
+	}
 	switch positional[0] {
-	case "alias", "constants", "const", "env": return true
+	case "alias", "constants", "const", "env":
+		return true
 	}
 	return false
 }
@@ -104,9 +107,12 @@ in_add_value_tail :: proc(positional: []string) -> bool {
 // (`wayu const add OFFSET -5`), not an unknown flag.
 @(private = "file")
 at_add_value_head :: proc(positional: []string) -> bool {
-	if len(positional) != 3 || positional[1] != "add" { return false }
+	if len(positional) != 3 || positional[1] != "add" {
+		return false
+	}
 	switch positional[0] {
-	case "alias", "constants", "const", "env": return true
+	case "alias", "constants", "const", "env":
+		return true
 	}
 	return false
 }
@@ -116,8 +122,10 @@ at_add_value_head :: proc(positional: []string) -> bool {
 @(private = "file")
 is_trailing_global_flag :: proc(arg: string, const_cmd := false) -> bool {
 	switch arg {
-	case "--dry-run", "--yes", "--json", "--no-color", "--no-colour": return true
-	case "--secret", "--run-only": return const_cmd
+	case "--dry-run", "--yes", "--json", "--no-color", "--no-colour":
+		return true
+	case "--secret", "--run-only":
+		return const_cmd
 	}
 	return false
 }
@@ -128,7 +136,7 @@ is_trailing_global_flag :: proc(arg: string, const_cmd := false) -> bool {
 trailing_flags_start :: proc(args: []string) -> int {
 	const_cmd := is_const_command(args)
 	j := len(args)
-	for j > 0 && is_trailing_global_flag(args[j-1], const_cmd) { j -= 1 }
+	for j > 0 && is_trailing_global_flag(args[j - 1], const_cmd) {j -= 1}
 	return j
 }
 
@@ -136,7 +144,8 @@ trailing_flags_start :: proc(args: []string) -> int {
 @(private = "file")
 is_const_command :: proc(args: []string) -> bool {
 	switch first_command_word(args) {
-	case "constants", "const", "env": return true
+	case "constants", "const", "env":
+		return true
 	}
 	return false
 }
@@ -146,9 +155,15 @@ is_const_command :: proc(args: []string) -> bool {
 first_command_word :: proc(args: []string) -> string {
 	for i := 0; i < len(args); i += 1 {
 		a := args[i]
-		if a == "--" { return "" }
-		if (a == "--shell" || a == "--source") && i + 1 < len(args) { i += 1; continue }
-		if is_simple_global_flag(a) { continue }
+		if a == "--" {
+			return ""
+		}
+		if (a == "--shell" || a == "--source") && i + 1 < len(args) {
+			i += 1; continue
+		}
+		if is_simple_global_flag(a) {
+			continue
+		}
 		return a
 	}
 	return ""
@@ -158,8 +173,19 @@ first_command_word :: proc(args: []string) -> string {
 @(private = "file")
 is_simple_global_flag :: proc(arg: string) -> bool {
 	switch arg {
-	case "--full", "-f", "--dry-run", "-n", "--yes", "-y", "--tui",
-	     "--snapshot", "--test", "--json", "--no-color", "--no-colour", "--reveal":
+	case "--full",
+	     "-f",
+	     "--dry-run",
+	     "-n",
+	     "--yes",
+	     "-y",
+	     "--tui",
+	     "--snapshot",
+	     "--test",
+	     "--json",
+	     "--no-color",
+	     "--no-colour",
+	     "--reveal":
 		return true
 	}
 	return strings.has_prefix(arg, "-c=") || strings.has_prefix(arg, "--source=")
@@ -174,14 +200,24 @@ global_flag_present :: proc(args: []string, flag: string) -> bool {
 	tail_start := trailing_flags_start(args)
 	for i := 0; i < len(args); i += 1 {
 		a := args[i]
-		if a == "--" { return false }
+		if a == "--" {
+			return false
+		}
 		if in_add_value_tail(positional[:]) {
-			if i < tail_start { continue }
+			if i < tail_start {
+				continue
+			}
 			return slice_contains(args[i:], flag)
 		}
-		if a == flag { return true }
-		if (a == "--shell" || a == "--source") && i + 1 < len(args) { i += 1; continue }
-		if is_simple_global_flag(a) { continue }
+		if a == flag {
+			return true
+		}
+		if (a == "--shell" || a == "--source") && i + 1 < len(args) {
+			i += 1; continue
+		}
+		if is_simple_global_flag(a) {
+			continue
+		}
 		append(&positional, a)
 	}
 	return false
@@ -195,7 +231,10 @@ check_source_value :: proc(parsed: ^ParsedArgs, value: string) {
 	case "wayu", "external", "inactive", "all":
 	case:
 		if len(parsed.bad_flag_value) == 0 {
-			parsed.bad_flag_value = fmt.tprintf("Invalid --source value '%s' (expected wayu, external, inactive or all)", value)
+			parsed.bad_flag_value = fmt.tprintf(
+				"Invalid --source value '%s' (expected wayu, external, inactive or all)",
+				value,
+			)
 		}
 	}
 }
@@ -204,9 +243,13 @@ check_source_value :: proc(parsed: ^ParsedArgs, value: string) {
 // --source, etc.) from raw CLI args. Returns the remaining (non-flag)
 // arguments in `filtered_args`. Mutates `wayu` for side-effect flags.
 @(private = "file")
-parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^[dynamic]string) -> GlobalFlags {
+parse_global_flags :: proc(
+	args: []string,
+	parsed: ^ParsedArgs,
+	filtered_args: ^[dynamic]string,
+) -> GlobalFlags {
 	flags: GlobalFlags
-	flags.source_filter = "wayu"  // hide external by default; --full shows everything
+	flags.source_filter = "wayu" // hide external by default; --full shows everything
 
 	literal := false
 	tail_start := trailing_flags_start(args)
@@ -229,7 +272,9 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 		if arg == "--" {
 			literal = true
 			// `secrets run NAME... -- CMD`: the handler needs the split.
-			if secrets_cmd { append(filtered_args, arg) }
+			if secrets_cmd {
+				append(filtered_args, arg)
+			}
 			i += 1
 			continue
 		}
@@ -274,13 +319,19 @@ parse_global_flags :: proc(args: []string, parsed: ^ParsedArgs, filtered_args: ^
 				set_active_shell(sh)
 				shell_flag_given = true
 			} else if len(parsed.bad_flag_value) == 0 {
-				parsed.bad_flag_value = fmt.tprintf("Invalid --shell value '%s' (expected zsh, bash or fish)", args[i + 1])
+				parsed.bad_flag_value = fmt.tprintf(
+					"Invalid --shell value '%s' (expected zsh, bash or fish)",
+					args[i + 1],
+				)
 			}
 			i += 1
 		case:
 			// `-5` is a number (plugin priority), not a flag.
 			is_number := len(arg) > 1 && arg[1] >= '0' && arg[1] <= '9'
-			if len(arg) > 1 && arg[0] == '-' && !is_number && !at_add_value_head(filtered_args[:]) {
+			if len(arg) > 1 &&
+			   arg[0] == '-' &&
+			   !is_number &&
+			   !at_add_value_head(filtered_args[:]) {
 				append(&flags.flag_like, len(filtered_args))
 			}
 			append(filtered_args, arg)
@@ -303,9 +354,12 @@ parse_command_and_action :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 	spec := find_command_spec_by_name(filtered_args[0])
 	if spec == nil {
 		switch filtered_args[0] {
-		case "-v", "--version": parsed.command = .VERSION
-		case "-h", "--help":    parsed.command = .HELP
-		case:                   parsed.command = .UNKNOWN
+		case "-v", "--version":
+			parsed.command = .VERSION
+		case "-h", "--help":
+			parsed.command = .HELP
+		case:
+			parsed.command = .UNKNOWN
 		}
 		return
 	}
@@ -326,7 +380,9 @@ parse_command_and_action :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 		has_actions := len(spec.actions) > 0
 		if is_help_word(rest[0]) {
 			parsed.action = .HELP
-			if has_actions { rest = rest[1:] }
+			if has_actions {
+				rest = rest[1:]
+			}
 		} else if has_actions {
 			parsed.action = find_spec_action(spec, rest[0])
 			rest = rest[1:]
@@ -347,10 +403,14 @@ is_help_word :: proc(word: string) -> bool {
 parse_doctor_flags :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 	for i := 1; i < len(filtered_args); i += 1 {
 		switch filtered_args[i] {
-		case "--fix":      parsed.doctor_fix = true
-		case "--json":     parsed.doctor_json = true
-		case "--profile":  parsed.doctor_profile = true
-		case "--optimize": parsed.doctor_optimize = true
+		case "--fix":
+			parsed.doctor_fix = true
+		case "--json":
+			parsed.doctor_json = true
+		case "--profile":
+			parsed.doctor_profile = true
+		case "--optimize":
+			parsed.doctor_optimize = true
 		case "--help", "-h", "help":
 			print_doctor_usage()
 			os.exit(0)
@@ -367,7 +427,7 @@ parse_doctor_flags :: proc(filtered_args: []string, parsed: ^ParsedArgs) {
 }
 
 parse_args :: proc(args: []string) -> ParsedArgs {
-	parsed := ParsedArgs{
+	parsed := ParsedArgs {
 		shell = wayu.shell,
 	}
 
@@ -377,14 +437,14 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	flags := parse_global_flags(args, &parsed, &filtered_args)
 	defer delete(flags.flag_like)
 
-	parsed.tui              = flags.tui
-	parsed.component_test   = flags.component_test
-	parsed.component_name   = flags.component_name
+	parsed.tui = flags.tui
+	parsed.component_test = flags.component_test
+	parsed.component_name = flags.component_name
 	parsed.component_snapshot = flags.component_snapshot
 	parsed.component_verify = flags.component_verify
-	parsed.json_output      = flags.json
-	parsed.source_filter    = flags.source_filter
-	wayu.source_filter     = flags.source_filter
+	parsed.json_output = flags.json
+	parsed.source_filter = flags.source_filter
+	wayu.source_filter = flags.source_filter
 
 	if flags.component_test {
 		if len(filtered_args) > 0 {
@@ -399,7 +459,9 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 	for idx in flags.flag_like {
 		// Position 0 is the command word itself (`--help`, `-v`, or an
 		// unknown command reported as such).
-		if idx == 0 { continue }
+		if idx == 0 {
+			continue
+		}
 		if !command_accepts_flag(parsed.command, filtered_args[idx]) {
 			parsed.unknown_flag = filtered_args[idx]
 			break
@@ -430,6 +492,10 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 
 @(private = "file")
 slice_contains :: proc(list: []string, s: string) -> bool {
-	for x in list { if x == s { return true } }
+	for x in list {
+		if x == s {
+			return true
+		}
+	}
 	return false
 }

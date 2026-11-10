@@ -94,7 +94,9 @@ add_function :: proc(name: string) {
 		print_success("Created function: %s", func_file)
 	}
 
-	if !launch_editor(func_file) { os.exit(EXIT_FAILURE) }
+	if !launch_editor(func_file) {
+		os.exit(EXIT_FAILURE)
+	}
 	print_info("Reload your shell to load '%s'", name)
 }
 
@@ -104,17 +106,28 @@ function_skeleton :: proc(name: string) -> string {
 	if wayu.shell == .FISH {
 		return strings.concatenate(
 			[]string {
-				"# ", name, " - custom shell function (managed by wayu)\n",
-				"# Edit with: wayu function edit ", name, "\n\n",
-				"function ", name, "\n    # TODO: implement\nend\n",
+				"# ",
+				name,
+				" - custom shell function (managed by wayu)\n",
+				"# Edit with: wayu function edit ",
+				name,
+				"\n\n",
+				"function ",
+				name,
+				"\n    # TODO: implement\nend\n",
 			},
 		)
 	}
 	return strings.concatenate(
 		[]string {
-			"# ", name, " - custom shell function (managed by wayu)\n",
-			"# Edit with: wayu function edit ", name, "\n\n",
-			name, "() {\n    # TODO: implement\n}\n",
+			"# ",
+			name,
+			" - custom shell function (managed by wayu)\n",
+			"# Edit with: wayu function edit ",
+			name,
+			"\n\n",
+			name,
+			"() {\n    # TODO: implement\n}\n",
 		},
 	)
 }
@@ -203,8 +216,12 @@ list_functions :: proc() {
 
 // The editor wayu opens files in: $EDITOR, else $VISUAL, else vi.
 editor_command :: proc() -> string {
-	if e := os.get_env("EDITOR", context.temp_allocator); len(strings.trim_space(e)) > 0 { return e }
-	if v := os.get_env("VISUAL", context.temp_allocator); len(strings.trim_space(v)) > 0 { return v }
+	if e := os.get_env("EDITOR", context.temp_allocator); len(strings.trim_space(e)) > 0 {
+		return e
+	}
+	if v := os.get_env("VISUAL", context.temp_allocator); len(strings.trim_space(v)) > 0 {
+		return v
+	}
 	return "vi"
 }
 
@@ -239,11 +256,18 @@ launch_editor :: proc(file: string) -> bool {
 		}
 	}
 	if !posix.WIFEXITED(status) {
-		print_error_simple("Editor '%s' was killed by a signal - set EDITOR to a working editor", editor)
+		print_error_simple(
+			"Editor '%s' was killed by a signal - set EDITOR to a working editor",
+			editor,
+		)
 		return false
 	}
 	if code := posix.WEXITSTATUS(status); code != 0 {
-		print_error_simple("Editor '%s' exited with status %d - set EDITOR to a working editor", editor, code)
+		print_error_simple(
+			"Editor '%s' exited with status %d - set EDITOR to a working editor",
+			editor,
+			code,
+		)
 		return false
 	}
 	return true

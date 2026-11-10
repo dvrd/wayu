@@ -20,30 +20,45 @@ plugin_accept_keys_from_toml :: proc() -> []string {
 	if !cached {
 		config_path := toml_get_config_path()
 		defer delete(config_path)
-		if !os.exists(config_path) { return make_default_autosuggest_accept_keys() }
+		if !os.exists(config_path) {
+			return make_default_autosuggest_accept_keys()
+		}
 		ok: bool
 		uncached_raw, ok = safe_read_file(config_path)
-		if !ok { return make_default_autosuggest_accept_keys() }
+		if !ok {
+			return make_default_autosuggest_accept_keys()
+		}
 		content_str = string(uncached_raw)
 	}
-	defer if len(uncached_raw) > 0 { delete(uncached_raw) }
+	defer if len(uncached_raw) > 0 {
+		delete(uncached_raw)
+	}
 
 	// Shared TOML parser: the array may span lines and hold comments.
 	arena: virtual.Arena
-	if virtual.arena_init_growing(&arena) != nil { return make_default_autosuggest_accept_keys() }
+	if virtual.arena_init_growing(&arena) != nil {
+		return make_default_autosuggest_accept_keys()
+	}
 	defer virtual.arena_destroy(&arena)
 	doc, _ := toml_doc_parse_alloc(content_str, virtual.arena_allocator(&arena))
 
 	keys := make([dynamic]string)
 	defer if len(keys) == 0 do delete(keys)
-	if val := get_toml_value(&doc, "settings.autosuggestions_accept_keys"); val != nil && val.type == .ARRAY {
+	if val := get_toml_value(&doc, "settings.autosuggestions_accept_keys");
+	   val != nil && val.type == .ARRAY {
 		for el in val.arr_val {
-			if el.type != .STRING || len(el.str_val) == 0 { continue }
+			if el.type != .STRING || len(el.str_val) == 0 {
+				continue
+			}
 			duplicate := false
 			for existing in keys {
-				if existing == el.str_val { duplicate = true; break }
+				if existing == el.str_val {
+					duplicate = true; break
+				}
 			}
-			if !duplicate { append(&keys, strings.clone(el.str_val)) }
+			if !duplicate {
+				append(&keys, strings.clone(el.str_val))
+			}
 		}
 	}
 
@@ -71,7 +86,9 @@ generate_plugins_runtime_config :: proc(shell: ShellType) -> bool {
 		if fd, err := os.open(plugins_dir); err == nil {
 			if entries, rerr := os.read_dir(fd, -1, context.temp_allocator); rerr == nil {
 				for e in entries {
-					if e.type == .Directory { zcompile_plugin_sources(fmt.tprintf("%s/%s", plugins_dir, e.name)) }
+					if e.type == .Directory {
+						zcompile_plugin_sources(fmt.tprintf("%s/%s", plugins_dir, e.name))
+					}
 				}
 			}
 			os.close(fd)
@@ -147,8 +164,15 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 	now := time.now()
 	year, month, day := time.date(now)
 	hour, minute, second := time.clock(now)
-	timestamp := fmt.aprintf("# Last updated: %d-%02d-%02d %02d:%02d:%02d\n\n",
-		year, month, day, hour, minute, second)
+	timestamp := fmt.aprintf(
+		"# Last updated: %d-%02d-%02d %02d:%02d:%02d\n\n",
+		year,
+		month,
+		day,
+		hour,
+		minute,
+		second,
+	)
 	defer delete(timestamp)
 	strings.write_string(&sb, timestamp)
 
@@ -195,7 +219,10 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 			}
 		}
 
-		strings.write_string(&sb, "# This may cause unexpected behavior. Review your plugin configuration.\n\n")
+		strings.write_string(
+			&sb,
+			"# This may cause unexpected behavior. Review your plugin configuration.\n\n",
+		)
 	}
 
 	// Generate source statements for enabled plugins in priority/dependency order
@@ -234,7 +261,10 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 
 			// Add warning comments for missing dependencies
 			if len(missing) > 0 {
-				warning_line := fmt.aprintf("# ⚠️  WARNING: Plugin '%s' has missing dependencies:\n", plugin.name)
+				warning_line := fmt.aprintf(
+					"# ⚠️  WARNING: Plugin '%s' has missing dependencies:\n",
+					plugin.name,
+				)
 				strings.write_string(&sb, warning_line)
 				delete(warning_line)
 
@@ -253,7 +283,10 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 
 			// Add warning comments for disabled dependencies
 			if len(disabled) > 0 {
-				warning_line := fmt.aprintf("# ⚠️  WARNING: Plugin '%s' has disabled dependencies:\n", plugin.name)
+				warning_line := fmt.aprintf(
+					"# ⚠️  WARNING: Plugin '%s' has disabled dependencies:\n",
+					plugin.name,
+				)
 				strings.write_string(&sb, warning_line)
 				delete(warning_line)
 
@@ -264,7 +297,10 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 				}
 
 				disabled_str := strings.join(disabled[:], " ")
-				enable_line := fmt.aprintf("# Enable with: wayu plugin enable %s\n\n", disabled_str)
+				enable_line := fmt.aprintf(
+					"# Enable with: wayu plugin enable %s\n\n",
+					disabled_str,
+				)
 				strings.write_string(&sb, enable_line)
 				delete(enable_line)
 				delete(disabled_str)
@@ -279,11 +315,15 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 		}
 
 		// Generate plugin loading code using new template system
-		comment := fmt.aprintf("# %s (priority: %d, template: %s)\n", 
-			plugin.name, plugin.priority, plugin_load_template_to_string(plugin.template))
+		comment := fmt.aprintf(
+			"# %s (priority: %d, template: %s)\n",
+			plugin.name,
+			plugin.priority,
+			plugin_load_template_to_string(plugin.template),
+		)
 		strings.write_string(&sb, comment)
 		delete(comment)
-		
+
 		// Get files to source based on 'use' globs or auto-detect
 		files_to_source := get_plugin_files_to_source(plugin, shell)
 		defer {
@@ -292,7 +332,7 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 			}
 			delete(files_to_source)
 		}
-		
+
 		// zsh/bash: a plugin already loaded in this shell is skipped when
 		// plugins.<ext> is sourced again (re-sourcing init / .zshrc): no
 		// second source, no PATH/FPATH prepend reordering (OKAMI-372). The
@@ -308,7 +348,13 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 		// Apply template to generate loading code.
 		// Fish uses `test -f X; and <cmd>; end`; zsh/bash use POSIX `if [ -f X ]; then <cmd>; fi`.
 		for file in files_to_source {
-			templated := apply_load_template(plugin.template, file, plugin.name, plugin.installed_path, shell)
+			templated := apply_load_template(
+				plugin.template,
+				file,
+				plugin.name,
+				plugin.installed_path,
+				shell,
+			)
 			defer delete(templated)
 
 			source_line: string
@@ -321,9 +367,11 @@ generate_plugins_file :: proc(shell: ShellType) -> bool {
 			strings.write_string(&sb, source_line)
 			delete(source_line)
 		}
-		if guarded { strings.write_string(&sb, "fi\n") }
+		if guarded {
+			strings.write_string(&sb, "fi\n")
+		}
 		strings.write_string(&sb, "\n")
-		
+
 		if found {
 			delete(entry_file)
 		}
@@ -393,7 +441,8 @@ get_plugin_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> 
 	// `<name>.plugin.zsh` usually sources its `<name>.zsh` itself, so
 	// sourcing every candidate would load the plugin twice.
 	candidates := make([dynamic]string, context.temp_allocator)
-	append(&candidates,
+	append(
+		&candidates,
 		fmt.tprintf("%s.plugin.%s", plugin.name, ext),
 		fmt.tprintf("%s.%s", plugin.name, ext),
 		fmt.tprintf("%s-init.%s", plugin.name, ext),
@@ -406,7 +455,11 @@ get_plugin_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> 
 	}
 	if shell != .FISH {
 		// POSIX-sh plugins usable from zsh and bash (rupa/z: z.sh).
-		append(&candidates, fmt.tprintf("%s.plugin.sh", plugin.name), fmt.tprintf("%s.sh", plugin.name))
+		append(
+			&candidates,
+			fmt.tprintf("%s.plugin.sh", plugin.name),
+			fmt.tprintf("%s.sh", plugin.name),
+		)
 	}
 
 	for candidate in candidates {
@@ -455,25 +508,43 @@ plugin_has_files_to_source :: proc(plugin: PluginMetadata, shell: ShellType) -> 
 // zsh ignores the old digests until the next regeneration recompiles them.
 // Skips .git and test/doc dirs (never sourced at startup).
 zcompile_plugin_sources :: proc(dir: string, depth := 0) {
-	if depth > 4 { return }
+	if depth > 4 {
+		return
+	}
 	fd, err := os.open(dir)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	defer os.close(fd)
 	entries, read_err := os.read_dir(fd, -1, context.temp_allocator)
-	if read_err != nil { return }
+	if read_err != nil {
+		return
+	}
 	for e in entries {
 		path := fmt.tprintf("%s/%s", dir, e.name)
 		#partial switch e.type {
 		case .Directory:
 			switch e.name {
-			case ".git", "test", "tests", "test-data", "spec", "docs", "doc", "images", "node_modules":
+			case ".git",
+			     "test",
+			     "tests",
+			     "test-data",
+			     "spec",
+			     "docs",
+			     "doc",
+			     "images",
+			     "node_modules":
 				continue
 			}
 			zcompile_plugin_sources(path, depth + 1)
 		case .Regular:
-			if !strings.has_suffix(e.name, ".zsh") && !strings.has_suffix(e.name, ".zsh-theme") { continue }
+			if !strings.has_suffix(e.name, ".zsh") && !strings.has_suffix(e.name, ".zsh-theme") {
+				continue
+			}
 			zwc, zerr := os.stat(fmt.tprintf("%s.zwc", path), context.temp_allocator)
-			if zerr == nil && time.diff(e.modification_time, zwc.modification_time) >= 0 { continue }
+			if zerr == nil && time.diff(e.modification_time, zwc.modification_time) >= 0 {
+				continue
+			}
 			zcompile_file(path)
 		}
 	}
@@ -482,19 +553,19 @@ zcompile_plugin_sources :: proc(dir: string, depth := 0) {
 // Match files using glob patterns
 match_files_with_globs :: proc(dir: string, globs: []string) -> []string {
 	matches := make([dynamic]string)
-	
+
 	fd, err := os.open(dir)
 	if err != nil {
 		return matches[:]
 	}
 	defer os.close(fd)
-	
+
 	entries, read_err := os.read_dir(fd, -1, context.allocator)
 	if read_err != nil {
 		return matches[:]
 	}
 	defer os.file_info_slice_delete(entries, context.allocator)
-	
+
 	for entry in entries {
 		if entry.type == os.File_Type.Regular || entry.type == os.File_Type.Symlink {
 			for glob in globs {
@@ -506,7 +577,7 @@ match_files_with_globs :: proc(dir: string, globs: []string) -> []string {
 			}
 		}
 	}
-	
+
 	return matches[:]
 }
 
@@ -517,7 +588,7 @@ match_simple_glob :: proc(name, pattern: string) -> bool {
 		return true
 	}
 	if pattern == "*.zsh" || pattern == "*.bash" || pattern == "*.sh" {
-		return strings.has_suffix(name, pattern[1:])  // Skip the *
+		return strings.has_suffix(name, pattern[1:]) // Skip the *
 	}
 	if strings.contains(pattern, "*") {
 		// Handle patterns like "*.plugin.zsh"
@@ -537,7 +608,7 @@ match_simple_glob :: proc(name, pattern: string) -> bool {
 shell_quote :: proc(s: string, shell: ShellType) -> string {
 	sb := strings.builder_make(context.temp_allocator)
 	strings.write_byte(&sb, '\'')
-	for i in 0..<len(s) {
+	for i in 0 ..< len(s) {
 		c := s[i]
 		if shell == .FISH {
 			if c == '\\' || c == '\'' {
@@ -562,9 +633,13 @@ shell_quote :: proc(s: string, shell: ShellType) -> string {
 //   FPath    → prepend to fish_function_path
 //   Autoload → N/A (fish autoloads functions from $fish_function_path)
 //   Eval     → eval (cmd)  — fish uses parens, not $()
-apply_load_template :: proc(template: PluginLoadTemplate, file, plugin_name, plugin_dir: string, shell: ShellType = .UNKNOWN) -> string {
+apply_load_template :: proc(
+	template: PluginLoadTemplate,
+	file, plugin_name, plugin_dir: string,
+	shell: ShellType = .UNKNOWN,
+) -> string {
 	qfile := shell_quote(file, shell)
-	qdir  := shell_quote(plugin_dir, shell)
+	qdir := shell_quote(plugin_dir, shell)
 	if shell == .FISH {
 		switch template {
 		case .Source:
@@ -574,7 +649,10 @@ apply_load_template :: proc(template: PluginLoadTemplate, file, plugin_name, plu
 		case .FPath:
 			return fmt.aprintf("set -gx fish_function_path %s $fish_function_path", qdir)
 		case .Autoload:
-			return fmt.aprintf("# autoload is a no-op in fish (auto-loaded from $fish_function_path): %s", plugin_name)
+			return fmt.aprintf(
+				"# autoload is a no-op in fish (auto-loaded from $fish_function_path): %s",
+				plugin_name,
+			)
 		case .Eval:
 			return fmt.aprintf("eval (%s)", qfile)
 		}
@@ -592,7 +670,7 @@ apply_load_template :: proc(template: PluginLoadTemplate, file, plugin_name, plu
 	case .Eval:
 		return fmt.aprintf("eval \"$(%s)\"", qfile)
 	}
-	return fmt.aprintf("source %s", qfile)  // Default
+	return fmt.aprintf("source %s", qfile) // Default
 }
 
 // Convert template enum to string
@@ -611,4 +689,3 @@ plugin_load_template_to_string :: proc(template: PluginLoadTemplate) -> string {
 	}
 	return "source"
 }
-

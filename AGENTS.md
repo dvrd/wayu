@@ -186,6 +186,10 @@ Always use the `EXIT_*` constants from `src/interfaces.odin`. **Never use bare `
 | EXIT_EXEC_NOT_RUNNABLE | 126 | `secrets run`: command not executable |
 | EXIT_EXEC_NOT_FOUND | 127 | `secrets run`: command not found |
 
+## Formatting
+
+Format every Odin file you touch with odinfmt (from ols) using the repo's `odinfmt.json` (found automatically from the file's directory): `odinfmt -w src/foo.odin`. Skip `src/rune_width_table.odin` (generated). odinfmt moves a trailing `// comment` inside a multi-line `+` string concatenation one line down on every run: put such comments on their own line above the statement. Running odinfmt twice must change nothing.
+
 ## Code Patterns
 
 ```odin

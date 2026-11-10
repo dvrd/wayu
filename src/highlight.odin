@@ -27,7 +27,7 @@ HighlightStyle :: struct {
 	default: string,
 }
 
-HIGHLIGHT_STYLES :: [?]HighlightStyle{
+HIGHLIGHT_STYLES :: [?]HighlightStyle {
 	{"unknown-token", "fg=red,bold"},
 	{"reserved-word", "fg=yellow"},
 	{"alias", "fg=green"},
@@ -80,7 +80,9 @@ HIGHLIGHT_PLUGINS :: [?]string{"zsh-syntax-highlighting", "fast-syntax-highlight
 highlight_style_index :: proc(name: string) -> int {
 	styles := HIGHLIGHT_STYLES
 	for s, i in styles {
-		if s.name == name { return i }
+		if s.name == name {
+			return i
+		}
 	}
 	return -1
 }
@@ -88,8 +90,13 @@ highlight_style_index :: proc(name: string) -> int {
 // A `[settings] highlight_styles` value's problem ("" = fine): a
 // region_highlight spec string like autosuggest_style, or "none".
 highlight_style_issue :: proc(name: string, v: ^TomlValue) -> string {
-	if v != nil && v.type == .STRING && autosuggest_style_valid(v.str_val) { return "" }
-	return fmt.tprintf("settings.highlight_styles.%s must be a highlight spec string like \"fg=green,bold\" or \"none\" (one line, at most 64 bytes)", name)
+	if v != nil && v.type == .STRING && autosuggest_style_valid(v.str_val) {
+		return ""
+	}
+	return fmt.tprintf(
+		"settings.highlight_styles.%s must be a highlight spec string like \"fg=green,bold\" or \"none\" (one line, at most 64 bytes)",
+		name,
+	)
 }
 
 // The style table for core.zsh: the defaults, overridden by
@@ -98,13 +105,18 @@ highlight_style_issue :: proc(name: string, v: ^TomlValue) -> string {
 // them). "none" = no highlighting. Strings are temp-allocated or constants.
 read_highlight_styles :: proc(doc: ^TomlDoc) -> (out: [HIGHLIGHT_STYLE_COUNT]string) {
 	styles := HIGHLIGHT_STYLES
-	for s, i in styles { out[i] = s.default }
+	for s, i in styles {out[i] = s.default}
 	v := get_toml_value(doc, "settings.highlight_styles")
-	if v == nil || v.type != .TABLE { return }
+	if v == nil || v.type != .TABLE {
+		return
+	}
 	for name, val in v.table_val {
 		i := highlight_style_index(name)
-		if i < 0 || val == nil || val.type != .STRING || !autosuggest_style_valid(val.str_val) { continue }
-		out[i] = "" if val.str_val == "none" else strings.clone(val.str_val, context.temp_allocator)
+		if i < 0 || val == nil || val.type != .STRING || !autosuggest_style_valid(val.str_val) {
+			continue
+		}
+		out[i] =
+			"" if val.str_val == "none" else strings.clone(val.str_val, context.temp_allocator)
 	}
 	return
 }
@@ -118,6 +130,11 @@ emit_zsh_highlight :: proc(b: ^strings.Builder, styles: [HIGHLIGHT_STYLE_COUNT]s
 		fmt.sbprintf(&table, "\n      %s %s", s.name, shell_quote(styles[i], .ZSH))
 	}
 	strings.write_string(&table, "\n    ")
-	code, _ := strings.replace_all(ZSH_HIGHLIGHT, "@STYLES@", strings.to_string(table), context.temp_allocator)
+	code, _ := strings.replace_all(
+		ZSH_HIGHLIGHT,
+		"@STYLES@",
+		strings.to_string(table),
+		context.temp_allocator,
+	)
 	fmt.sbprint(b, code)
 }

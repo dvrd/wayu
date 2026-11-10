@@ -5,12 +5,12 @@ import "core:strings"
 
 // Table component for displaying structured data
 Table :: struct {
-	headers: []string,
-	rows: [dynamic][]string,
-	style: Style,
-	header_style: Style,
-	border_style: BorderStyle,
-	width: int,
+	headers:       []string,
+	rows:          [dynamic][]string,
+	style:         Style,
+	header_style:  Style,
+	border_style:  BorderStyle,
+	width:         int,
 	column_widths: []int,
 }
 
@@ -23,7 +23,7 @@ new_table :: proc(headers: []string) -> Table {
 		column_widths[i] = visual_width(header)
 	}
 
-	return Table{
+	return Table {
 		headers = headers,
 		rows = make([dynamic][]string),
 		style = new_style(),
@@ -91,7 +91,7 @@ clamp_table_widths :: proc(table: ^Table, max_width: int) {
 	available := max_width - overhead
 	if available < ncols * 4 {
 		// Even minimum widths don't fit — set all to minimum
-		for i in 0..<ncols {
+		for i in 0 ..< ncols {
 			table.column_widths[i] = 4
 		}
 		return
@@ -103,13 +103,13 @@ clamp_table_widths :: proc(table: ^Table, max_width: int) {
 		total += w
 	}
 	if total <= available {
-		return  // Already fits
+		return // Already fits
 	}
 
 	// Shrink proportionally, respecting minimum of 4 chars
 	min_per_col := 4
 	widths_copy := make([]int, ncols)
-	for i in 0..<ncols {
+	for i in 0 ..< ncols {
 		widths_copy[i] = table.column_widths[i]
 	}
 
@@ -117,19 +117,19 @@ clamp_table_widths :: proc(table: ^Table, max_width: int) {
 	for total > available {
 		// Find widest column
 		max_idx := 0
-		for i in 1..<ncols {
+		for i in 1 ..< ncols {
 			if widths_copy[i] > widths_copy[max_idx] {
 				max_idx = i
 			}
 		}
 		if widths_copy[max_idx] <= min_per_col {
-			break  // Can't shrink more
+			break // Can't shrink more
 		}
 		widths_copy[max_idx] -= 1
 		total -= 1
 	}
 
-	for i in 0..<ncols {
+	for i in 0 ..< ncols {
 		table.column_widths[i] = widths_copy[i]
 	}
 	delete(widths_copy)
@@ -154,7 +154,7 @@ table_render :: proc(table: Table, max_width: int = 0) -> string {
 
 	// Border color: adaptive primary color from colors.odin (truecolor/256/ANSI).
 	// Both are "" under NO_COLOR/--no-color (ASCII profile).
-	border_on  := get_primary()
+	border_on := get_primary()
 	border_off := RESET
 
 	// Calculate total width
@@ -264,7 +264,7 @@ truncate_visual :: proc(str: string, max_width: int) -> string {
 	builder := strings.builder_make()
 	defer strings.builder_destroy(&builder)
 
-	budget := max_width - 1  // reserve one column for "…"
+	budget := max_width - 1 // reserve one column for "…"
 	visual := 0
 	in_escape := false
 	for ch in str {
@@ -287,7 +287,7 @@ truncate_visual :: proc(str: string, max_width: int) -> string {
 		strings.write_rune(&builder, ch)
 		visual += w
 	}
-	strings.write_rune(&builder, '\u2026')  // …
+	strings.write_rune(&builder, '\u2026') // …
 	if strings.contains(str, "\x1b[") {
 		strings.write_string(&builder, RESET)
 	}
@@ -319,15 +319,21 @@ pad_string :: proc(str: string, width: int) -> string {
 }
 
 // Helper function to render border lines with proper column separators
-render_border_line :: proc(table: Table, fill: rune, left: rune, right: rune, sep: rune) -> string {
+render_border_line :: proc(
+	table: Table,
+	fill: rune,
+	left: rune,
+	right: rune,
+	sep: rune,
+) -> string {
 	result := strings.Builder{}
 	defer strings.builder_destroy(&result)
 
 	strings.write_rune(&result, left)
 
-	for i in 0..<len(table.column_widths) {
+	for i in 0 ..< len(table.column_widths) {
 		// Add padding characters for each column
-		for _ in 0..<table.column_widths[i] + 2 { // +2 for padding spaces
+		for _ in 0 ..< table.column_widths[i] + 2 { 	// +2 for padding spaces
 			strings.write_rune(&result, fill)
 		}
 

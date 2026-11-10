@@ -14,23 +14,23 @@ import "core:os"
 import "core:strings"
 
 EntrySource :: enum {
-	WAYU_ACTIVE,    // in wayu.toml AND in current env
-	WAYU_INACTIVE,  // in wayu.toml but NOT in current env
-	EXTERNAL,       // in current env but NOT in wayu.toml
-	SHADOWED,       // in both but values differ
+	WAYU_ACTIVE, // in wayu.toml AND in current env
+	WAYU_INACTIVE, // in wayu.toml but NOT in current env
+	EXTERNAL, // in current env but NOT in wayu.toml
+	SHADOWED, // in both but values differ
 }
 
 // Cached snapshot (per-invocation). Each cache has its own init flag: a
 // single shared flag made snapshot_env_var skip populating env_vars whenever
 // PATH or aliases had been snapshotted first (constants then showed inactive).
-@private
+@(private)
 ENV_SNAPSHOT_CACHE: struct {
 	path_initialized:    bool,
 	env_initialized:     bool,
 	aliases_initialized: bool,
-	path_entries: [dynamic]string,
-	env_vars: map[string]string,
-	aliases: map[string]string,
+	path_entries:        [dynamic]string,
+	env_vars:            map[string]string,
+	aliases:             map[string]string,
 } = {}
 
 // snapshot_path_entries splits $PATH on `:`. The result is cached on the
@@ -63,15 +63,19 @@ snapshot_env_var :: proc(name: string) -> Maybe(string) {
 		env_list, err := os.environ(context.allocator)
 		if err == nil {
 			defer {
-				for pair in env_list { delete(pair) }
+				for pair in env_list {delete(pair)}
 				delete(env_list)
 			}
 			for pair in env_list {
 				eq := strings.index_byte(pair, '=')
-				if eq <= 0 { continue }
+				if eq <= 0 {
+					continue
+				}
 				key := pair[:eq]
-				if key in ENV_SNAPSHOT_CACHE.env_vars { continue }
-				ENV_SNAPSHOT_CACHE.env_vars[strings.clone(key)] = strings.clone(pair[eq+1:])
+				if key in ENV_SNAPSHOT_CACHE.env_vars {
+					continue
+				}
+				ENV_SNAPSHOT_CACHE.env_vars[strings.clone(key)] = strings.clone(pair[eq + 1:])
 			}
 		}
 		ENV_SNAPSHOT_CACHE.env_initialized = true
@@ -116,7 +120,9 @@ snapshot_aliases :: proc() -> map[string]string {
 	} else {
 		output = capture_command(args)
 	}
-	defer if len(output) > 0 { delete(output) }
+	defer if len(output) > 0 {
+		delete(output)
+	}
 
 	parse_alias_listing(output, &ENV_SNAPSHOT_CACHE.aliases)
 	return ENV_SNAPSHOT_CACHE.aliases
@@ -141,7 +147,7 @@ parse_alias_listing :: proc(text: string, out: ^map[string]string) {
 		// fish: `alias name 'value'` (space-separated, fish quoting).
 		if has_alias_kw && sp > 0 && (eq < 0 || sp < eq) {
 			name := l[:sp]
-			value := fish_unquote_word(strings.trim_left_space(l[sp+1:]))
+			value := fish_unquote_word(strings.trim_left_space(l[sp + 1:]))
 			if old, exists := out[name]; exists {
 				delete(old)
 				out[name] = value
@@ -150,14 +156,18 @@ parse_alias_listing :: proc(text: string, out: ^map[string]string) {
 			}
 			continue
 		}
-		if eq <= 0 { continue }
+		if eq <= 0 {
+			continue
+		}
 		name := l[:eq]
 		// zsh quotes names containing special chars: 'a-b'=...
-		if len(name) >= 2 && name[0] == '\'' && name[len(name)-1] == '\'' {
-			name = name[1:len(name)-1]
+		if len(name) >= 2 && name[0] == '\'' && name[len(name) - 1] == '\'' {
+			name = name[1:len(name) - 1]
 		}
-		if len(name) == 0 { continue }
-		value := shell_unquote_word(l[eq+1:])
+		if len(name) == 0 {
+			continue
+		}
+		value := shell_unquote_word(l[eq + 1:])
 		if old, exists := out[name]; exists {
 			delete(old)
 			out[name] = value
@@ -176,12 +186,12 @@ shell_unquote_word :: proc(s: string) -> string {
 		c := s[i]
 		switch c {
 		case '\'':
-			end := strings.index_byte(s[i+1:], '\'')
+			end := strings.index_byte(s[i + 1:], '\'')
 			if end < 0 {
-				strings.write_string(&sb, s[i+1:])
+				strings.write_string(&sb, s[i + 1:])
 				i = len(s)
 			} else {
-				strings.write_string(&sb, s[i+1:i+1+end])
+				strings.write_string(&sb, s[i + 1:i + 1 + end])
 				i += end + 2
 			}
 		case '"':
@@ -196,12 +206,12 @@ shell_unquote_word :: proc(s: string) -> string {
 			i += 1
 		case '\\':
 			if i + 1 < len(s) {
-				strings.write_byte(&sb, s[i+1])
+				strings.write_byte(&sb, s[i + 1])
 			}
 			i += 2
 		case '$':
 			// bash may print $'...' ANSI-C strings; keep the inner text.
-			if i + 1 < len(s) && s[i+1] == '\'' {
+			if i + 1 < len(s) && s[i + 1] == '\'' {
 				i += 1
 				continue
 			}
@@ -232,7 +242,7 @@ fish_unquote_word :: proc(s: string) -> string {
 			continue
 		}
 		if c == '\\' && i + 1 < len(s) {
-			n := s[i+1]
+			n := s[i + 1]
 			escapes := quote == 0 || n == '\\' || n == quote || (quote == '"' && n == '$')
 			if escapes {
 				strings.write_byte(&sb, n)
