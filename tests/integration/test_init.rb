@@ -292,7 +292,7 @@ class InitIntegrationTest
 
     output, status = run_wayu("init --help")
 
-    if output.include?("init") || output.include?("Initialize")
+    if status.success? && output.include?("wayu init - Initialize")
       puts "✓"
       @passed += 1
     else

@@ -177,7 +177,7 @@ class CompletionsIntegrationTest
     print "Test 7: Add completion with invalid source file... "
     output, status = run_wayu("completions add invalid /tmp/nonexistent-file-#{Time.now.to_i}")
 
-    if output.include?("File not found") || output.include?("does not exist")
+    if status.exitstatus == 66 && output.include?("File not found")
       puts "✓"
       @passed += 1
     else
