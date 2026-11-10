@@ -793,8 +793,10 @@ pre_constant_remove = sh -c 'echo removing {name} >> ~/hook.log'
 post_constant_remove = echo "gone: $WAYU_HOOK_NAME" >> ~/hook.log
 ```
 
-Format: one `event = command` per line; `#` starts a comment line; one
-matching pair of quotes around the whole command is removed; unknown keys
+Format: one `event = command` per line; `#` starts a comment line; a pair
+of quotes is removed only when it wraps the whole command as one quoted
+string (`pre_export = "echo 'Generating...'"`), so `"/bin/echo" {path} "done"`
+is kept as written; unknown keys
 are ignored; for a repeated key the last line wins.
 
 | Event | `{path}` | `{name}` | `{value}` |
@@ -802,7 +804,7 @@ are ignored; for a repeated key the last line wins.
 | `pre_path_add`, `post_path_add` | directory | | |
 | `pre_path_remove`, `post_path_remove` | directory (also when removed by key) | | |
 | `pre_alias_add`, `post_alias_add`, `pre_alias_remove`, `post_alias_remove` | | alias name | command |
-| `pre_constant_add`, `post_constant_add`, `pre_constant_remove`, `post_constant_remove` | | variable name | value |
+| `pre_constant_add`, `post_constant_add`, `pre_constant_remove`, `post_constant_remove` | | variable name | value (empty for an encrypted secret) |
 | `pre_plugin_install`, `post_plugin_install` | | plugin name | |
 | `pre_export`, `post_export` (around `wayu export` / `build turbo`) | | | |
 
@@ -817,9 +819,15 @@ Placeholder quoting:
 | Inside `'...'`: `sh -c 'echo {path}'` | Left as `"${WAYU_HOOK_PATH}"` for the inner shell, which expands it quoted. |
 | Inside `"..."`: `sh -c "echo {value}"` | Refused. Any wayu operation that would run hooks exits `78` before writing anything and names the line; `wayu hooks` marks it `INVALID`. Use `"$WAYU_HOOK_VALUE"` when you need double quotes. |
 
-Hooks run with `sh -c`; their exit status is ignored. Pre-hooks run only when
-the operation will change something, post-hooks only after a successful
-write, and none under `--dry-run`. In the TUI a hook is stopped after 30 s.
+Hooks run with `sh -c`, stdin on `/dev/null`; their exit status is ignored.
+In the CLI a hook's stdout and stderr are shown (in the TUI they are
+captured). Pre-hooks run only when the operation will change something,
+post-hooks only after a successful write, and none under `--dry-run`. Hooks
+run outside wayu's config lock (pre-hooks before it is taken, post-hooks
+after it is released), so a hook may run `wayu` itself. A hook still running
+after 30 s is killed with its child processes (the CLI prints a warning
+naming it); a `timeout = <seconds>` line in hooks.conf changes that limit
+(whole seconds above 0; other values keep 30).
 
 ### plugins.json
 

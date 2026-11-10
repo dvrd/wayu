@@ -434,20 +434,6 @@ script_require_existing :: proc(name: string) -> ScriptInfo {
 	return s
 }
 
-// Open the editor unless there is none to open: no $EDITOR/$VISUAL and no
-// terminal (scripts, CI). Returns false when the editor failed.
-@(private = "file")
-script_maybe_edit :: proc(file: string) -> (opened: bool, ok: bool) {
-	has_editor :=
-		len(strings.trim_space(os.get_env("EDITOR", context.temp_allocator))) > 0 ||
-		len(strings.trim_space(os.get_env("VISUAL", context.temp_allocator))) > 0
-	if !has_editor && !(is_tty(0) && is_tty(1)) {
-		fmt.println(file)
-		return false, true
-	}
-	return true, launch_editor(file)
-}
-
 // ---------------------------------------------------------------------------
 // Command handlers
 // ---------------------------------------------------------------------------
@@ -614,7 +600,7 @@ script_new :: proc(name: string, lang_flag: string) {
 	_ = os.chmod(source, os.perm_number(0o755))
 	print_success("Created script: %s", source)
 
-	_, edit_ok := script_maybe_edit(source)
+	_, edit_ok := editor_maybe_open(source)
 	if !edit_ok {
 		os.exit(EXIT_FAILURE)
 	}
@@ -633,7 +619,7 @@ script_edit :: proc(name: string) {
 		fmt.printfln("Would open %s in $EDITOR and rebuild %s", s.source, s.bin)
 		return
 	}
-	_, edit_ok := script_maybe_edit(s.source)
+	_, edit_ok := editor_maybe_open(s.source)
 	if !edit_ok {
 		os.exit(EXIT_FAILURE)
 	}

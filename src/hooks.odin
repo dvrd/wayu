@@ -20,6 +20,7 @@ package wayu
 
 import "core:fmt"
 import "core:os"
+import "core:strconv"
 import "core:strings"
 
 // Hook types
@@ -60,6 +61,8 @@ HookConfig :: struct {
 	post_plugin_install:  string,
 	pre_export:           string,
 	post_export:          string,
+	// `timeout = <seconds>`: deadline of one hook run (0: the default).
+	timeout_s:            int,
 	// Hooks refused at load (placeholder inside "..."); see hook_config_error.
 	invalid:              [dynamic]HookInvalid,
 }
@@ -134,21 +137,46 @@ execute_hook_ctx :: proc(hook_type: HookType, ctx: HookContext) {
 		_ = os.unset_env(HOOK_ENV_VALUE)
 	}
 
-	// Execute via shell (fire and forget - don't block on output)
 	debug("Executing hook: %s", cmd)
 	hook_args := []string{"sh", "-c", cmd}
-	// Hooks are best-effort: the exit status is ignored. In the TUI a hook
-	// gets a deadline and can be cancelled (Esc / Ctrl+C) instead of
-	// freezing the screen.
+	// Hooks are best-effort: the exit status is ignored, and every hook runs
+	// with a deadline (hook_timeout_ms()) after which its process group is
+	// killed. Callers run hooks outside the config lock, so a hook may run
+	// wayu itself (OKAMI-299). In the CLI the hook shares wayu's stdout and
+	// stderr (stdin is /dev/null); in the TUI its output is captured (it
+	// would draw over the screen) and it can be cancelled (Esc / Ctrl+C).
 	if wayu.tui_mode {
-		r := run_command_timeout(hook_args, HOOK_TUI_TIMEOUT_MS)
+		r := run_command_timeout(hook_args, hook_timeout_ms())
 		command_result_destroy(&r)
-	} else {
-		run_command(hook_args)
+		return
+	}
+	timeout_ms := hook_timeout_ms()
+	if _, timed_out := run_command_passthrough_timeout(hook_args, timeout_ms); timed_out {
+		print_warning(
+			"%s hook timed out after %d s and was killed",
+			hook_key_name(hook_type),
+			timeout_ms / 1000,
+		)
 	}
 }
 
-HOOK_TUI_TIMEOUT_MS :: 30_000
+// Default deadline of one hook run (CLI and TUI); the hook's process group
+// is killed when it passes. hooks.conf `timeout = <seconds>` overrides it.
+HOOK_TIMEOUT_DEFAULT_S :: 30
+
+// The hook deadline in milliseconds: hooks.conf `timeout` (whole seconds,
+// > 0), else HOOK_TIMEOUT_DEFAULT_S.
+hook_timeout_ms :: proc() -> int {
+	config := load_hook_config()
+	defer free_hook_config(config)
+	s := config.timeout_s if config.timeout_s > 0 else HOOK_TIMEOUT_DEFAULT_S
+	return s * 1000
+}
+
+// The hooks.conf key of a hook type ("pre_path_add"). Temp-allocated.
+hook_key_name :: proc(hook_type: HookType) -> string {
+	return strings.to_lower(fmt.tprintf("%v", hook_type), context.temp_allocator)
+}
 
 HOOK_ENV_PATH :: "WAYU_HOOK_PATH"
 HOOK_ENV_NAME :: "WAYU_HOOK_NAME"
@@ -402,13 +430,7 @@ load_hook_config :: proc() -> HookConfig {
 
 		key := strings.trim_space(parts[0])
 		value := strings.trim_space(parts[1])
-		// Remove ONE matching pair of surrounding quotes (not every quote
-		// char at either end, which would eat a trailing `'` of the command).
-		if len(value) >= 2 &&
-		   value[0] == value[len(value) - 1] &&
-		   (value[0] == '"' || value[0] == '\'') {
-			value = value[1:len(value) - 1]
-		}
+		value = hook_strip_wrapping_quotes(value)
 
 		switch key {
 		case "pre_path_add",
@@ -436,6 +458,11 @@ load_hook_config :: proc() -> HookConfig {
 		}
 
 		switch key {
+		case "timeout":
+			// Whole seconds > 0; anything else keeps the default.
+			if n, ok := strconv.parse_int(value, 10); ok && n > 0 && n <= 86_400 {
+				config.timeout_s = n
+			}
 		case "pre_path_add":
 			config.pre_path_add = strings.clone(value)
 		case "post_path_add":
@@ -472,6 +499,28 @@ load_hook_config :: proc() -> HookConfig {
 	}
 
 	return config
+}
+
+// Remove one pair of quotes that wraps the whole hooks.conf value as a
+// single quoted string (`"echo 'Generating...'"`). Quotes that only open or
+// close the command (`"/bin/echo" {path} "done"`) are part of it and stay
+// (OKAMI-335). Returns a slice of `value`.
+hook_strip_wrapping_quotes :: proc(value: string) -> string {
+	if len(value) < 2 do return value
+	q := value[0]
+	if q != '"' && q != '\'' do return value
+	i := 1
+	for i < len(value) {
+		c := value[i]
+		if q == '"' && c == '\\' {
+			i += 2
+			continue
+		}
+		if c == q do break
+		i += 1
+	}
+	if i != len(value) - 1 do return value
+	return value[1:len(value) - 1]
 }
 
 // Free hook config
@@ -589,6 +638,10 @@ show_hooks_status :: proc() {
 	fmt.println("  run the value as code); the hook is invalid and wayu exits 78.")
 	fmt.println("  Use \"$WAYU_HOOK_*\" directly when you need double quotes.")
 	fmt.println("  Hooks are skipped under --dry-run.")
+	fmt.printfln(
+		"  Output is shown; a hook running over %d s is killed (hooks.conf: timeout = <seconds>).",
+		hook_timeout_ms() / 1000,
+	)
 }
 
 // Edit hooks configuration
@@ -621,6 +674,9 @@ edit_hooks_config :: proc() {
 # Export hooks
 # pre_export = "echo 'Generating turbo export...'"
 # post_export = "echo 'Export complete'"
+
+# Seconds a hook may run before it is killed (default 30)
+# timeout = 30
 `
 		write_ok := safe_write_file(hook_path, transmute([]byte)(example))
 		if !write_ok {

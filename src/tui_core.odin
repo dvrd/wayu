@@ -2724,6 +2724,29 @@ tui_install_plugin :: proc(key: string) -> (ok: bool, err: string) {
 	dest := fmt.aprintf("%s/%s", plugins_dir, info.name)
 	defer delete(dest)
 
+	// Invalid hooks.conf: refuse before cloning/writing (CLI exits 78).
+	if msg, bad := hook_config_error(); bad {
+		return false, strings.clone(msg)
+	}
+	// The hooks run outside the config lock, so a hook can run wayu
+	// (OKAMI-299).
+	hook_pre_plugin_install(info.name)
+	ok, err = tui_install_plugin_locked(info, dest, plugins_dir)
+	if ok {
+		hook_post_plugin_install(info.name)
+	}
+	return
+}
+
+// The locked part of tui_install_plugin: clone, record, regenerate.
+@(private = "file")
+tui_install_plugin_locked :: proc(
+	info: PluginInfo,
+	dest, plugins_dir: string,
+) -> (
+	ok: bool,
+	err: string,
+) {
 	if !config_lock_acquire() {
 		return false, strings.clone("Could not lock the wayu config")
 	}
@@ -2737,12 +2760,6 @@ tui_install_plugin :: proc(key: string) -> (ok: bool, err: string) {
 	if !cfg_ok {
 		return false, strings.clone("plugins.json could not be read")
 	}
-	// Invalid hooks.conf: refuse before cloning/writing (CLI exits 78).
-	if msg, bad := hook_config_error(); bad {
-		return false, strings.clone(msg)
-	}
-
-	hook_pre_plugin_install(info.name)
 
 	existed_before := os.exists(dest)
 	cloned, clone_err := git_clone(info.url, dest)
@@ -2792,8 +2809,6 @@ tui_install_plugin :: proc(key: string) -> (ok: bool, err: string) {
 	if !generate_plugins_file(wayu.shell) {
 		return false, strings.clone("Could not regenerate the plugin loader")
 	}
-
-	hook_post_plugin_install(info.name)
 	return true, ""
 }
 
@@ -3640,18 +3655,13 @@ hooks_cache_clear :: proc(cache: ^HooksCache) {
 }
 
 // Split a hooks.conf `key = value` line the way load_hook_config does
-// (one surrounding quote pair removed). ok=false when it isn't one.
+// (hook_strip_wrapping_quotes). ok=false when it isn't one.
 @(private = "file")
 hook_line_split :: proc(line: string) -> (key, value: string, ok: bool) {
 	eq := strings.index_byte(line, '=')
 	if eq <= 0 do return "", "", false
 	key = strings.trim_space(line[:eq])
-	value = strings.trim_space(line[eq + 1:])
-	if len(value) >= 2 &&
-	   value[0] == value[len(value) - 1] &&
-	   (value[0] == '"' || value[0] == '\'') {
-		value = value[1:len(value) - 1]
-	}
+	value = hook_strip_wrapping_quotes(strings.trim_space(line[eq + 1:]))
 	return key, value, true
 }
 
@@ -3849,13 +3859,13 @@ tui_test_hook :: proc(state: ^TUIState) {
 		_ = os.unset_env(HOOK_ENV_VALUE)
 	}
 	tui_busy_begin(state, fmt.tprintf("Running %s…", row.key))
-	r := run_command_timeout({"sh", "-c", cmd}, HOOK_TUI_TIMEOUT_MS)
+	r := run_command_timeout({"sh", "-c", cmd}, hook_timeout_ms())
 	tui_busy_end(state)
 	defer command_result_destroy(&r)
 
 	status := "exit 0"
 	if r.cancelled do status = "cancelled"
-	else if r.timed_out do status = fmt.tprintf("timed out after %ds", HOOK_TUI_TIMEOUT_MS / 1000)
+	else if r.timed_out do status = fmt.tprintf("timed out after %ds", hook_timeout_ms() / 1000)
 	else if !r.ok do status = "failed (non-zero exit)"
 	lines := make([dynamic]string, context.temp_allocator)
 	append(&lines, fmt.tprintf("Result:  %s", status))

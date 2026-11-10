@@ -313,6 +313,9 @@ Default action: `list`. Hooks are configured in `hooks.conf`
 | `edit` | Open `hooks.conf` in the editor |
 | `help` | |
 
+Hooks run outside wayu's config lock (so they may run `wayu`), with their
+output shown, and are killed after 30 s (`timeout` in `hooks.conf`).
+
 ### `wayu function` (`functions`, `func`, `fn`)
 
 Shell functions as files in the data dir's `functions/` (sourced by
@@ -320,7 +323,7 @@ Shell functions as files in the data dir's `functions/` (sourced by
 
 | Action | Arguments | |
 |---|---|---|
-| `add`, `new`, `edit` | `<name>` | Create (from a skeleton for the shell) or open the function file in the editor |
+| `add`, `new`, `edit` | `<name>` | Create (from a skeleton for the shell) or open the function file in the editor; without `$EDITOR` / `$VISUAL` and a terminal, print its path instead |
 | `list`, `ls` | | |
 | `remove`, `rm`, `delete` | `<name>` | Delete the file (`--yes`) |
 | `help` | | |

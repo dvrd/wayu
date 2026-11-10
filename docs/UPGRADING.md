@@ -113,6 +113,24 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   as one block, and no longer takes a backup of `extra.<ext>` when it has
   nothing to add.
 
+**Hooks: run outside the lock, with a timeout, output shown**
+
+- Hooks no longer run under wayu's config lock (pre-hooks before it is taken,
+  post-hooks after it is released), so a hook may run `wayu` (a `path add`
+  or `plugin add` hook calling `wayu build` hung forever).
+- Every hook is killed after 30 s (with its child processes; the CLI prints a
+  warning naming it). `timeout = <seconds>` in `hooks.conf` changes it.
+- CLI hooks now share wayu's stdout and stderr (their output was discarded);
+  stdin is `/dev/null`. Redirect inside the hook to keep it quiet.
+- `pre/post_alias_remove` and `pre/post_constant_remove` now get the removed
+  alias command / constant value as `{value}` (was empty; still empty for an
+  encrypted secret).
+- A hook command's quotes are removed only when one quoted string wraps the
+  whole command: `post_path_add = "/bin/echo" {path} "done"` is kept as
+  written (it lost its first and last quote, and every write exited 78).
+- `wayu function add` with no `$EDITOR`/`$VISUAL` and no terminal prints the
+  new file's path and exits 0, like `script new` (it ran `vi` and exited 1).
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is

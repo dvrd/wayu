@@ -723,10 +723,33 @@ handle_plugin_add :: proc(args: []string) {
 	}
 	defer plugin_info_destroy(&info)
 
+	// Already installed (exact match — fuzzy would treat e.g. "git" as
+	// installed whenever "forgit" is): nothing to do, no hook.
+	plugin_add_exit_if_installed :: proc(config: ^PluginConfigJSON, name: string) {
+		if _, found := find_plugin_json(config, name); found {
+			print_warning("Plugin '%s' is already installed", name)
+			os.exit(EXIT_SUCCESS)
+		}
+	}
+
+	// The pre-hook runs before the config lock is taken and the post-hook
+	// after it is released, so a hook can run wayu (OKAMI-299).
+	{
+		preview, preview_ok := read_plugin_config_json()
+		if preview_ok {
+			plugin_add_exit_if_installed(&preview, info.name)
+		}
+		cleanup_plugin_config_json(&preview)
+	}
+	hook_pre_plugin_install(info.name)
+
 	// Hold the config lock across read-modify-write of plugins.json so
 	// concurrent wayu runs cannot drop each other's changes.
 	config_lock_acquire_or_exit()
-	defer config_lock_release()
+	locked := true
+	defer if locked {
+		config_lock_release()
+	}
 
 	// Read current config
 	config, ok := read_plugin_config_json()
@@ -735,15 +758,7 @@ handle_plugin_add :: proc(args: []string) {
 		os.exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
-
-	// Check if already installed (exact match — fuzzy would treat e.g. "git"
-	// as installed whenever "forgit" is)
-	if _, found := find_plugin_json(&config, info.name); found {
-		print_warning("Plugin '%s' is already installed", info.name)
-		os.exit(EXIT_SUCCESS)
-	}
-
-	hook_pre_plugin_install(info.name)
+	plugin_add_exit_if_installed(&config, info.name)
 
 	print_header("Installing Plugin", EMOJI_COMMAND)
 	print_info("Name: %s", info.name)
@@ -920,6 +935,8 @@ handle_plugin_add :: proc(args: []string) {
 	print_info("Restart your shell or run 'source ~/.%src' to load the plugin", wayu.shell_ext)
 	warn_plugin_conflicts(info.name)
 
+	config_lock_release()
+	locked = false
 	hook_post_plugin_install(info.name)
 }
 

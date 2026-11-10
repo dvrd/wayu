@@ -99,12 +99,13 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 				print_cli_usage_error(spec, "remove")
 				wayu_exit(EXIT_USAGE)
 			}
-			if spec.hook_pre_remove != nil && entry_exists_in_store(spec, args[0]) do spec.hook_pre_remove(args[0], "")
+			value, found := entry_store_value(spec, args[0])
+			if spec.hook_pre_remove != nil && found do spec.hook_pre_remove(args[0], value)
 			ok, err := spec.toml_remove(args[0])
 			if !ok {
 				exit_with_entry_error(err)
 			}
-			if spec.hook_post_remove != nil do spec.hook_post_remove(args[0], "")
+			if spec.hook_post_remove != nil do spec.hook_post_remove(args[0], value)
 			return
 		case .LIST:
 			spec.toml_list()
@@ -145,10 +146,19 @@ entry_add_is_valid :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> bool {
 	return v.valid
 }
 
-// True when `name` is an alias / constant of the store, so pre_*_remove
-// hooks skip names that are not there. An unreadable store counts as
-// present: the writer reports that error itself.
+// True when `name` is an alias / constant of the store. An unreadable store
+// counts as present: the writer reports that error itself.
 entry_exists_in_store :: proc(spec: ^ConfigEntrySpec, name: string) -> bool {
+	_, found := entry_store_value(spec, name)
+	return found
+}
+
+// The stored value of alias / constant `name`, for the remove hooks' {value}
+// (OKAMI-334): the alias command or the constant value, "" for an encrypted
+// secret (hooks never see one). found=false when `name` is not in the store,
+// so pre_*_remove hooks skip names that are not there; an unreadable store
+// counts as found (the writer reports it). value is temp-allocated.
+entry_store_value :: proc(spec: ^ConfigEntrySpec, name: string) -> (value: string, found: bool) {
 	kind: EntryKind
 	#partial switch spec.type {
 	case .ALIAS:
@@ -156,14 +166,24 @@ entry_exists_in_store :: proc(spec: ^ConfigEntrySpec, name: string) -> bool {
 	case .CONSTANT:
 		kind = .ENV
 	case:
-		return true
+		return "", true
 	}
 	store, _, ok := entries_read()
 	if !ok {
-		return true
+		return "", true
 	}
 	defer entries_store_destroy(&store)
-	return entries_find(&store, kind, name) >= 0
+	i := entries_find(&store, kind, name)
+	if i < 0 {
+		return "", false
+	}
+	switch kind {
+	case .ALIAS:
+		value = store.aliases[i].value
+	case .ENV:
+		value = "" if store.env[i].secret else store.env[i].value
+	}
+	return strings.clone(value, context.temp_allocator), true
 }
 
 // Print an add/remove failure and exit with the code matching its kind:
@@ -689,7 +709,8 @@ entry_replace_path :: proc(target, raw_path: string) -> (EntryOutcome, string) {
 
 @(private = "file")
 entry_remove_with_hooks :: proc(spec: ^ConfigEntrySpec, name: string) -> (EntryOutcome, string) {
-	if spec.hook_pre_remove != nil && entry_exists_in_store(spec, name) do spec.hook_pre_remove(name, "")
+	value, found := entry_store_value(spec, name)
+	if spec.hook_pre_remove != nil && found do spec.hook_pre_remove(name, value)
 	ok, err := spec.toml_remove(name)
 	if !ok {
 		return .FAILED, err
@@ -697,7 +718,7 @@ entry_remove_with_hooks :: proc(spec: ^ConfigEntrySpec, name: string) -> (EntryO
 	if wayu.dry_run {
 		return .DRY_RUN, err
 	}
-	if spec.hook_post_remove != nil do spec.hook_post_remove(name, "")
+	if spec.hook_post_remove != nil do spec.hook_post_remove(name, value)
 	return .REMOVED, err
 }
 // Basenames that almost never carry meaning on their own. When we see one,
