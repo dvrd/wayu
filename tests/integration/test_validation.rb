@@ -44,7 +44,7 @@ class ValidationIntegrationTest
     print "Test 1: Reject shell reserved word in alias... "
     output, status = run_wayu('alias add if "echo test"')
 
-    if output.include?("reserved shell keyword") || output.include?("reserved word")
+    if status.exitstatus == 65 && output.include?("reserved word 'if'") && !store_map('aliases').key?('if')
       puts "✓"
       @passed += 1
     else
@@ -59,7 +59,7 @@ class ValidationIntegrationTest
     print "Test 2: Reject dangerous characters in alias... "
     output, status = run_wayu('alias add "my;alias" "echo test"')
 
-    if output.include?("contains invalid character") || output.include?("Invalid")
+    if status.exitstatus == 65 && output.include?("invalid character ';'") && !store_map('aliases').key?('my;alias')
       puts "✓"
       @passed += 1
     else
@@ -74,7 +74,7 @@ class ValidationIntegrationTest
     print "Test 3: Reject shell reserved word in constant... "
     output, status = run_wayu('constants add while "value"')
 
-    if output.include?("reserved shell keyword") || output.include?("reserved word")
+    if status.exitstatus == 65 && output.include?("reserved word 'while'") && !store_map('env').key?('while')
       puts "✓"
       @passed += 1
     else
@@ -89,7 +89,7 @@ class ValidationIntegrationTest
     print "Test 4: Warn about lowercase in constants... "
     output, status = run_wayu('constants add my_var "value"')
 
-    if output.include?("lowercase") || output.include?("UPPER_CASE") || output.include?("Warning")
+    if status.success? && output.include?("contains lowercase letters") && store_map('env')['my_var'] == 'value'
       puts "✓"
       @passed += 1
     else

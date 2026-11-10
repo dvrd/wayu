@@ -68,6 +68,14 @@ handle_doctor_command :: proc(
 	}
 
 	// Profile mode: write the startup profiler script; no checks needed.
+	// It neither reports nor fixes, so --json/--fix with it mean nothing.
+	if profile_mode && (json_output || fix_mode) {
+		print_error(
+			"--profile only writes the startup profiler script; it cannot be combined with %s",
+			"--json" if json_output else "--fix",
+		)
+		os.exit(EXIT_USAGE)
+	}
 	if profile_mode {
 		run_shell_profile()
 		return
@@ -506,10 +514,14 @@ print_doctor_usage :: proc() {
 	fmt.println()
 	fmt.printfln("%sUSAGE:%s", get_primary(), RESET)
 	fmt.printfln("  wayu doctor              Run all health checks")
-	fmt.printfln("  wayu doctor --fix --yes  Remove missing/duplicate PATH entries")
+	fmt.printfln(
+		"  wayu doctor --fix --yes  Remove missing/duplicate PATH entries, run wayu optimize",
+	)
 	fmt.printfln("  wayu doctor --fix -n     Preview what --fix would change (dry run)")
 	fmt.printfln("  wayu doctor --json       Output results as JSON")
-	fmt.printfln("  wayu doctor --profile    Profile shell startup performance")
+	fmt.printfln(
+		"  wayu doctor --profile    Write a zsh startup profiler script (see wayu build profile)",
+	)
 	fmt.println()
 	fmt.printfln("%sEXIT STATUS:%s", get_primary(), RESET)
 	fmt.println("  0 when no check reports an error, 78 (EXIT_CONFIG) otherwise")
@@ -519,17 +531,9 @@ print_doctor_usage :: proc() {
 	fmt.println("  plugins, backups, and other common issues.")
 	fmt.println()
 	fmt.printfln("%sCHECKS PERFORMED:%s", get_primary(), RESET)
-	fmt.println("  • wayu installation and version")
-	fmt.println("  • Shell RC file configuration")
-	fmt.println("  • bash: PROMPT_COMMAND not replaced after wayu is loaded")
-	fmt.println("  • PATH entries (missing directories, duplicates)")
-	fmt.println("  • Plugin status")
-	fmt.println("  • Backup system")
-	fmt.println("  • TOML configuration validity")
-	fmt.println("  • Turbo export status")
-	fmt.println("  • Required dependencies (git, zsh)")
-	fmt.println()
-	fmt.printfln("  %s--profile%s     Measure shell startup performance", get_primary(), RESET)
+	for check in CHECKS {
+		fmt.printfln("  • %s", check.desc)
+	}
 }
 
 // Run shell startup profiling
@@ -651,26 +655,35 @@ CheckFn :: proc(results: ^[dynamic]CheckResult)
 CheckEntry :: struct {
 	name: string,
 	fn:   CheckFn,
+	desc: string, // `wayu doctor --help` "CHECKS PERFORMED" line
 }
 
 // All registered checks. `run_all_checks` iterates this in order.
 // Order mirrors the original hard-coded sequence from pre-refactor doctor.odin
 // so output stays byte-stable for users.
 CHECKS := []CheckEntry {
-	{"installation", check_wayu_installation},
-	{"shell", check_shell_config},
-	{"promptcmd", check_bash_prompt_command},
-	{"path", check_path_entries},
-	{"plugins", check_plugins},
-	{"backups", check_backups},
-	{"toml", check_toml_config},
-	{"entries", check_entries_store},
-	{"scripts", check_scripts},
-	{"turbo", check_turbo_export},
-	{"deps", check_dependencies},
-	{"sync", check_sync_status},
-	{"secrets", check_secrets},
-	{"rcfiles", check_rc_optimize},
+	{"installation", check_wayu_installation, "wayu is on PATH (version)"},
+	{"shell", check_shell_config, "A startup file loads wayu (init.<ext>)"},
+	{"promptcmd", check_bash_prompt_command, "bash: PROMPT_COMMAND not replaced after wayu loads"},
+	{"path", check_path_entries, "PATH entries: missing directories, duplicates"},
+	{
+		"plugins",
+		check_plugins,
+		"plugins.json parses; plugin conflicts; autosuggest / highlight settings",
+	},
+	{"backups", check_backups, "Backups"},
+	{"toml", check_toml_config, "wayu.toml parses; no moved [paths]/[aliases]/[env]"},
+	{"entries", check_entries_store, "entries.json parses"},
+	{"scripts", check_scripts, "Scripts: stale or broken builds, dangling bin/ entries"},
+	{"turbo", check_turbo_export, "turbo.<ext>: generated when a startup file sources it"},
+	{"deps", check_dependencies, "git and the current shell installed"},
+	{"sync", check_sync_status, "PATH entries active in this shell"},
+	{
+		"secrets",
+		check_secrets,
+		"Secrets: store 0600, key present, values decrypt, entries.json markers paired",
+	},
+	{"rcfiles", check_rc_optimize, "Startup-file lines 'wayu optimize' would move"},
 }
 
 // Check 1: wayu installation. Report-only: doctor never installs a binary
@@ -752,10 +765,14 @@ rc_loads_wayu :: proc(content: string, turbo_only := false) -> bool {
 
 // True when `code` runs `source`, `.` or `eval` as a command word: first on
 // the line or after `;`, `&&`, `||`, `then`, `do`, `else`, `{` (so
-// `[ -f x ] && source x` counts; `alias s='source x'` does not).
+// `[ -f x ] && source x` counts; `alias s='source x'` does not). The
+// command prefixes `builtin`, `command` and `zsh-defer` (with their option
+// words, except `command -v/-V`, which only looks the name up) are
+// transparent: `builtin source x` / `zsh-defer source x` count (OKAMI-341).
 @(private = "file")
 rc_runs_loader :: proc(code: string) -> bool {
 	at_command := true
+	after_prefix := false
 	for w in strings.fields(code, context.temp_allocator) {
 		if at_command &&
 		   (w == "source" ||
@@ -765,6 +782,14 @@ rc_runs_loader :: proc(code: string) -> bool {
 				   strings.has_prefix(w, "eval'")) {
 			return true
 		}
+		if at_command && (w == "builtin" || w == "command" || w == "zsh-defer") {
+			after_prefix = true
+			continue
+		}
+		if after_prefix && strings.has_prefix(w, "-") && w != "-v" && w != "-V" {
+			continue
+		}
+		after_prefix = false
 		switch w {
 		case ";", "&&", "||", "then", "do", "else", "{":
 			at_command = true
@@ -929,12 +954,15 @@ check_shell_config :: proc(results: ^[dynamic]CheckResult) {
 		append(
 			results,
 			CheckResult {
-				name = clone_arena("shell configuration"),
-				status = .WARNING,
+				name    = clone_arena("shell configuration"),
+				status  = .WARNING,
+				// `wayu init` never creates a startup file: say what to
+				// put in one (OKAMI-357).
 				message = fmt.aprintf(
-					"No %s startup file found (expected %s) - run 'wayu init'",
+					"No %s startup file found - create %s with: %s",
 					get_shell_name(wayu.shell),
 					rc,
+					bootstrap_source_line(get_shell_extension(wayu.shell)),
 					allocator = alloc,
 				),
 				fixable = false,
@@ -1310,24 +1338,30 @@ check_plugins :: proc(results: ^[dynamic]CheckResult) {
 		return
 	}
 
-	data, ok := safe_read_file(config_file)
+	// Parse with the same strict reader `wayu plugin list` uses (JSON,
+	// enums, entry fields, dependency cycles): counting "name" strings
+	// reported a malformed file as healthy (OKAMI-298). The reader prints
+	// the details to stderr, so `doctor --json` stdout stays valid JSON.
+	config, ok := read_plugin_config_json()
+	defer cleanup_plugin_config_json(&config)
 	if !ok {
 		append(
 			results,
 			CheckResult {
 				name = clone_arena("plugins"),
-				status = .WARNING,
-				message = clone_arena("Could not read plugins configuration"),
+				status = .ERROR,
+				message = fmt.aprintf(
+					"%s is invalid - run 'wayu plugin list' for details",
+					doctor_tilde(config_file),
+					allocator = get_doctor_allocator(),
+				),
 				fixable = false,
 			},
 		)
 		return
 	}
-	defer delete(data)
 
-	content := string(data)
-	plugin_count := strings.count(content, "\"name\"")
-
+	plugin_count := len(config.plugins)
 	if plugin_count == 0 {
 		append(
 			results,
@@ -1703,11 +1737,14 @@ check_entries_store :: proc(results: ^[dynamic]CheckResult) {
 	)
 }
 
-// Check 7: turbo export. turbo.zsh is optional; it only matters when a
+// Check 7: turbo export. turbo.<ext> is optional; it only matters when a
 // startup file sources it. Report-only: doctor never generates it.
 check_turbo_export :: proc(results: ^[dynamic]CheckResult) {
 	ensure_arena_initialized()
-	turbo_path := fmt.aprintf("%s/turbo.zsh", wayu.data, allocator = get_doctor_allocator())
+	alloc := get_doctor_allocator()
+	// `wayu export` writes turbo.<ext> for the current shell (OKAMI-297).
+	turbo_name := fmt.aprintf("turbo.%s", get_shell_extension(wayu.shell), allocator = alloc)
+	turbo_path := fmt.aprintf("%s/%s", wayu.data, turbo_name, allocator = alloc)
 	exists := os.exists(turbo_path)
 	referenced_in, _ := doctor_find_wayu_source(turbo_only = true)
 	referenced := len(referenced_in) > 0
@@ -1718,15 +1755,20 @@ check_turbo_export :: proc(results: ^[dynamic]CheckResult) {
 	case !exists && referenced:
 		status = .ERROR
 		msg = fmt.aprintf(
-			"%s sources turbo.zsh but it is not generated - run 'wayu export'",
+			"%s sources %s but it is not generated - run 'wayu export'",
 			doctor_tilde(referenced_in),
-			allocator = get_doctor_allocator(),
+			turbo_name,
+			allocator = alloc,
 		)
 	case !exists:
 		msg = "Not in use (optional: 'wayu export' writes a single-file turbo init)"
 	case !referenced:
 		status = .INFO
-		msg = "turbo.zsh exists but no startup file sources it (unused; safe to delete)"
+		msg = fmt.aprintf(
+			"%s exists but no startup file sources it (unused; safe to delete)",
+			turbo_name,
+			allocator = alloc,
+		)
 	}
 	append(
 		results,

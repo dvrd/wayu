@@ -167,7 +167,24 @@ class SecretsStoreIntegrationTest
     print 'Test 5: const list --json: "secret": true, no value... '
     out, = w('const list --json')
     row = JSON.parse(out)['constants'].find { |c| c['constant'] == 'FAKE_TOKEN' }
-    check('json row wrong', row && row['secret'] == true && !row.key?('value'), out)
+    # OKAMI-356: the same source string as the text view and docs/cli.md.
+    full, = w('const list --full --no-color')
+    text_row = full.lines.find { |l| l.include?('FAKE_TOKEN') }.to_s
+    check('json row wrong', row && row['secret'] == true && !row.key?('value') &&
+          row['source'] == 'wayu (secret, inactive)' && text_row.include?('wayu (secret, inactive)'),
+          "#{out}\n#{text_row}")
+    test_search_secret_flag
+  end
+
+  # OKAMI-337: search --json flags an encrypted constant, never a value.
+  def test_search_secret_flag
+    print 'Test 5b: search --json: secret constant has "secret": true, empty value... '
+    out, = w('search FAKE_TOKEN --json')
+    row = (JSON.parse(out)['results'].find { |r| r['name'] == 'FAKE_TOKEN' } rescue nil)
+    text, = w('search FAKE_TOKEN --no-color')
+    check('search row wrong', row && row['secret'] == true && row['value'] == '' &&
+          !out.include?('fake-tok') && text.include?('********') && !text.include?('fake-tok'),
+          out + text)
   end
 
   def test_get_decrypts

@@ -11,28 +11,21 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 
-// MatchedField indicates which field of an entry matched the query
-MatchedField :: enum {
-	NAME, // Query matched the entry name
-	VALUE, // Query matched the entry value
-}
-
 // SearchResult represents a single match from any config type
 SearchResult :: struct {
-	spec_type:     ConfigEntryType,
-	name:          string,
-	value:         string,
-	score:         int,
-	match_type:    MatchType,
-	matched_field: MatchedField,
+	spec_type:  ConfigEntryType,
+	name:       string,
+	value:      string,
+	score:      int,
+	match_type: MatchType,
+	secret:     bool, // encrypted constant: no value is ever shown
 }
 
 // Internal wrapper for sorting entries with scores
 SearchEntry :: struct {
-	entry:         ConfigEntry,
-	score:         int,
-	match_type:    MatchType,
-	matched_field: MatchedField,
+	entry:      ConfigEntry,
+	score:      int,
+	match_type: MatchType,
 }
 
 // handle_search_command - Main entry point for search/find/f commands
@@ -94,7 +87,6 @@ handle_search_command :: proc(args: []string) {
 				value = "",
 				score = se.score,
 				match_type = se.match_type,
-				matched_field = se.matched_field,
 			},
 		)
 	}
@@ -109,6 +101,9 @@ handle_search_command :: proc(args: []string) {
 		}
 		delete(alias_entries_toml)
 	}
+	// Names only, like constants: an alias command can hold a token
+	// (`curl -H "Authorization: Bearer ..."`), and matching inside it made
+	// search an oracle for it (OKAMI-337).
 	alias_search_results := search_toml_entries_by_name(alias_entries_toml[:], query)
 	defer {
 		for se in alias_search_results {
@@ -126,7 +121,6 @@ handle_search_command :: proc(args: []string) {
 				value = value,
 				score = se.score,
 				match_type = se.match_type,
-				matched_field = se.matched_field,
 			},
 		)
 	}
@@ -143,17 +137,17 @@ handle_search_command :: proc(args: []string) {
 	}
 	// Names only: matching inside constant values turns search into a
 	// secret oracle (`wayu f sk-` finding API keys). (OKAMI-208)
-	const_search_results := search_toml_entries_by_name(
-		const_entries_toml[:],
-		query,
-		match_values = false,
-	)
+	const_search_results := search_toml_entries_by_name(const_entries_toml[:], query)
 	defer {
 		for se in const_search_results {
 			cleanup_clone(se.entry)
 		}
 		delete(const_search_results)
 	}
+	// Encrypted constants carry no value in entries.json; flag them so the
+	// views show the mask / `"secret": true` instead of an empty value.
+	secret_set := make(map[string]bool, context.temp_allocator)
+	for n in secrets_names() {secret_set[n] = true}
 	for se in const_search_results {
 		value := strings.clone(se.entry.value) if se.entry.value != "" else ""
 		append(
@@ -164,7 +158,7 @@ handle_search_command :: proc(args: []string) {
 				value = value,
 				score = se.score,
 				match_type = se.match_type,
-				matched_field = se.matched_field,
+				secret = se.entry.name in secret_set,
 			},
 		)
 	}
@@ -186,8 +180,9 @@ handle_search_command :: proc(args: []string) {
 // print_search_results_json - `wayu search QUERY --json` (OKAMI-239).
 // Shape: {"query": "...", "results": [{"type": "path|alias|constant",
 // "name": ..., "value": ..., "match": "exact|prefix|...", "field":
-// "name|value", "score": N}, ...], "count": N}. Results are in score
-// order; constant values are masked like the text view.
+// "name", "score": N}, ...], "count": N}; an encrypted constant adds
+// `"secret": true` with value "". Results are in score order; values are
+// masked like the text view. Only names match, so "field" is always "name".
 print_search_results_json :: proc(query: string, results: []SearchResult) {
 	query_j := json_escape(query); defer delete(query_j)
 	fmt.println("{")
@@ -208,16 +203,15 @@ print_search_results_json :: proc(query: string, results: []SearchResult) {
 		}
 		name_j := json_escape(r.name); defer delete(name_j)
 		value_j := json_escape(mask_secret_value(r.name, r.value)); defer delete(value_j)
-		field := "value" if r.matched_field == .VALUE else "name"
 		// `{` is a struct-verb opener in Odin's fmt — emit via %c.
 		fmt.printf(
-			"    %c\"type\": \"%s\", \"name\": \"%s\", \"value\": \"%s\", \"match\": \"%s\", \"field\": \"%s\", \"score\": %d%c",
+			"    %c\"type\": \"%s\", \"name\": \"%s\", \"value\": \"%s\", %s\"match\": \"%s\", \"field\": \"name\", \"score\": %d%c",
 			'{',
 			type_str,
 			name_j,
 			value_j,
+			"\"secret\": true, " if r.secret else "",
 			match_type_to_string_short(r.match_type),
-			field,
 			r.score,
 			'}',
 		)
@@ -231,12 +225,11 @@ print_search_results_json :: proc(query: string, results: []SearchResult) {
 }
 
 // search_toml_entries_by_name - Fuzzy search through TOML config entries
-// Matches on the name and, when `match_values`, the value field. Returns
+// Matches on the name only (never values, OKAMI-208/337). Returns
 // scored entries for sorting and display.
 search_toml_entries_by_name :: proc(
 	entries: []ConfigEntry,
 	query: string,
-	match_values := true,
 ) -> [dynamic]SearchEntry {
 	results := make([dynamic]SearchEntry)
 
@@ -250,16 +243,10 @@ search_toml_entries_by_name :: proc(
 	for entry in entries {
 		name_score := 0
 		name_match_type := MatchType.Fuzzy
-		value_score := 0
-		value_match_type := MatchType.Fuzzy
-		matched_field := MatchedField.NAME
 
-		// Lower-case once per field (strings.to_lower allocates; the old
-		// inline calls leaked one string per comparison).
+		// Lower-case once (strings.to_lower allocates).
 		name_lower := strings.to_lower(entry.name)
 		defer delete(name_lower)
-		value_lower := strings.to_lower(entry.value)
-		defer delete(value_lower)
 
 		// Score name field
 		if strings.equal_fold(entry.name, query) {
@@ -283,52 +270,13 @@ search_toml_entries_by_name :: proc(
 			name_match_type = .Fuzzy
 		}
 
-		// Score value field (only if value is not empty)
-		if match_values && entry.value != "" {
-			if strings.equal_fold(entry.value, query) {
-				value_score = 10000
-				value_match_type = .Exact
-			} else if strings.has_prefix(value_lower, query_lower) {
-				// Prefix match
-				value_score = 5000 + fuzzy_score(entry.value, query)
-				value_match_type = .Prefix
-			} else if strings.contains(value_lower, query_lower) {
-				// Substring match
-				value_score = 3000 + fuzzy_score(entry.value, query)
-				value_match_type = .Substring
-			} else if is_acronym_match(entry.value, query) {
-				// Acronym match
-				value_score = 2000 + fuzzy_score(entry.value, query)
-				value_match_type = .Acronym
-			} else {
-				// General fuzzy match
-				value_score = fuzzy_score(entry.value, query)
-				value_match_type = .Fuzzy
-			}
-		}
-
-		// Pick the higher score, prefer name on ties
-		score := 0
-		match_type := MatchType.Fuzzy
-		if name_score >= value_score {
-			score = name_score
-			match_type = name_match_type
-			matched_field = .NAME
-		} else {
-			score = value_score
-			match_type = value_match_type
-			matched_field = .VALUE
-		}
+		score := name_score
+		match_type := name_match_type
 
 		if score > 0 {
 			append(
 				&results,
-				SearchEntry {
-					entry = clone_entry(entry),
-					score = score,
-					match_type = match_type,
-					matched_field = matched_field,
-				},
+				SearchEntry{entry = clone_entry(entry), score = score, match_type = match_type},
 			)
 		}
 	}
@@ -449,29 +397,24 @@ print_search_result_line :: proc(result: SearchResult, cmd_type: string) {
 		score_indicator = fmt.tprintf(" %s◆%s", get_warning(), RESET)
 	}
 
-	// Build field indicator (show [in value] for value matches)
-	field_indicator := ""
-	if result.matched_field == .VALUE {
-		field_indicator = fmt.tprintf(" %s[in value]%s", get_muted(), RESET)
-	}
-
 	// Print name with type indicator
 	fmt.printfln(
-		"  %s%s%s %s[%s]%s%s%s",
+		"  %s%s%s %s[%s]%s%s",
 		get_primary(),
 		result.name,
 		RESET,
 		get_muted(),
 		type_indicator,
 		RESET,
-		field_indicator,
 		score_indicator,
 	)
 
 	// Print value (truncated on a rune boundary so multi-byte UTF-8 is never
 	// split; long values used to be hidden entirely). Secret-looking values
 	// are masked (OKAMI-208); `wayu const get NAME` prints the real one.
-	if result.value != "" {
+	if result.secret {
+		fmt.printfln("      %s%s%s", get_muted(), SECRET_MASK, RESET)
+	} else if result.value != "" {
 		shown := mask_secret_value(result.name, result.value)
 		fmt.printfln("      %s%s%s", get_muted(), truncate_display(shown, 50), RESET)
 	}
@@ -506,8 +449,9 @@ print_search_usage :: proc() {
 	fmt.println()
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
 	fmt.println("  Searches across PATH entries, aliases, and environment constants")
-	fmt.println("  simultaneously using fuzzy matching. Constants match by name only;")
-	fmt.println("  secret-looking values are shown as ********.")
+	fmt.println("  simultaneously using fuzzy matching. Only names match (PATH")
+	fmt.println("  entries by directory), never values; encrypted and secret-looking")
+	fmt.println("  values are shown as ********.")
 	fmt.println()
 	fmt.printfln("%sMATCH TYPES:%s", get_primary(), RESET)
 	fmt.println("  exact     - Exact name match")

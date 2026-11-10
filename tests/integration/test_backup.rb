@@ -331,15 +331,11 @@ class BackupIntegrationTest
   def test_backup_cleanup
     print "Test 6: Backup cleanup functionality... "
 
-    # Create multiple backups by making multiple changes
-    5.times do |i|
-      test_dir = "#{@scratch}/cleanup_test_#{i}"
-      Dir.mkdir(test_dir) unless Dir.exist?(test_dir)
-      run_wayu("path add #{test_dir}")
-      sleep(0.1) # Ensure different timestamps
-    end
-
-    # Count backups before cleanup
+    # Every write already prunes to 5, so seed 8 backups by hand (distinct
+    # stamps, oldest first) to give `backup rm` something to remove.
+    FileUtils.mkdir_p("#{@data_dir}/backup")
+    stamps = (1..8).map { |i| format('2020-01-%02d_00-00-00.000000', i) }
+    stamps.each { |s| File.write("#{@data_dir}/backup/entries.json.backup.#{s}", "{}\n") }
     backup_files_before = Dir.glob("#{@data_dir}/backup/entries.json.backup.*")
 
     # Run cleanup (destructive: requires --yes)
@@ -348,8 +344,9 @@ class BackupIntegrationTest
     if status.success?
       backup_files_after = Dir.glob("#{@data_dir}/backup/entries.json.backup.*")
 
-      # Should have cleaned up some backups (keeping last 5)
-      if backup_files_after.length <= 5
+      # Keeps the newest 5: the 3 oldest seeded ones go, newer ones stay.
+      gone = stamps.first(3).none? { |s| File.exist?("#{@data_dir}/backup/entries.json.backup.#{s}") }
+      if backup_files_before.length > 5 && backup_files_after.length == 5 && gone
         puts "✓"
         @passed += 1
       else
@@ -387,7 +384,7 @@ class BackupIntegrationTest
     # Test invalid config type
     output, status = run_wayu("backup restore invalid_type")
 
-    if output.include?("Unknown config type") || output.include?("Valid types")
+    if status.exitstatus == 65 && output.include?("Unknown config type: invalid_type")
       puts "✓"
       @passed += 1
     else

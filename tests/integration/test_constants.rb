@@ -320,8 +320,9 @@ class ConstantsIntegrationTest
 
     output, status = run_wayu('constants add my_lowercase_var "value"')
 
-    # Should show warning but may succeed
-    if output.include?("lowercase") || output.include?("Warning") || output.include?("UPPER")
+    # A warning, not an error: it is stored, and the message names the rule.
+    if status.success? && output.include?("contains lowercase letters") &&
+       output.include?("UPPER_CASE") && store_map('env')['my_lowercase_var'] == 'value'
       puts "✓"
       @passed += 1
     else

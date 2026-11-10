@@ -187,7 +187,6 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec {
 			{"fpath", .FPATH, "Managed zsh completion dirs (list, add, rm)"},
 			{"help", .HELP, "Show help"},
 		},
-		flags = {{"--generate", ""}, {"-g", ""}},
 	},
 	{
 		command = .BACKUP,
@@ -262,7 +261,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec {
 	{
 		command = .BUILD,
 		names = {"build"},
-		desc = "Compile wayu.toml into shell init files",
+		desc = "Compile wayu.toml + entries.json into shell init files",
 		default_action = .LIST,
 		actions = {
 			{"turbo", .TURBO, "Generate turbo file"},
@@ -302,15 +301,15 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec {
 		},
 	},
 	{
-		command = .DOCTOR,
-		names = {"doctor"},
-		desc = "Health check and diagnostics",
+		command        = .DOCTOR,
+		names          = {"doctor"},
+		desc           = "Health check and diagnostics",
 		default_action = .LIST,
-		json = {.LIST},
-		flags = {
+		json           = {.LIST},
+		flags          = {
 			{"--fix", "Repair what can be repaired"},
 			{"--profile", "Profile shell startup"},
-			{"--optimize", "Suggest optimizations"},
+			{"--optimize", ""}, // removed: exits 64 with a pointer
 		},
 	},
 	{
@@ -986,12 +985,6 @@ handle_completions_command_extended :: proc(action: Action, args: []string) {
 	case .ADD, .REMOVE, .RESTORE, .CLEAN, .DEDUP, .UNKNOWN:
 		handle_completions_command(action, args)
 	case .LIST:
-		for arg in args {
-			if arg == "--generate" || arg == "-g" || arg == "generate" {
-				handle_completions_generate()
-				return
-			}
-		}
 		handle_completions_command(.LIST, args)
 	case .HELP:
 		print_completions_help()

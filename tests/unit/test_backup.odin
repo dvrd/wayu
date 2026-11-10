@@ -203,8 +203,8 @@ test_backup_workflow :: proc(t: ^testing.T) {
 	modified_content := "modified content\n"
 	_ = os.write_entire_file(test_file, transmute([]byte)modified_content)
 
-	// Add a small delay to ensure different timestamps
-	time.sleep(1_000_000_000) // 1 second
+	// No sleep: stamps carry microseconds plus a collision sequence, so
+	// back-to-back backups are distinct and ordered (OKAMI-358).
 
 	// Create second backup
 	backup2_path, ok2 := wayu.create_backup(test_file)
@@ -280,8 +280,6 @@ test_cleanup_old_backups :: proc(t: ^testing.T) {
 		if ok {
 			append(&backup_paths, backup_path)
 		}
-		// Sleep briefly to ensure different timestamps
-		time.sleep(1_000_000_000) // 1 second
 	}
 
 	testing.expect(t, len(backup_paths) == 7, "Should create 7 backups")

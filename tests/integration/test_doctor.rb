@@ -47,6 +47,10 @@ class DoctorIntegrationTest
       test_variable_source_recognized
       test_no_auto_install
       test_turbo_not_fixable_or_generated
+      test_turbo_bash_uses_shell_ext
+      test_no_startup_file_says_what_to_add
+      test_plugins_malformed_is_error
+      test_plugins_cycle_keeps_json_valid
       test_optimize_removed
     ensure
       FileUtils.rm_rf(@real_dir) if @real_dir
@@ -344,6 +348,61 @@ class DoctorIntegrationTest
     ok = turbo && turbo['status'] == 'ok' && turbo['fixable'] == false &&
          !File.exist?("#{@data_dir}/turbo.zsh")
     check(ok, turbo.inspect)
+  end
+
+  def test_turbo_bash_uses_shell_ext
+    print "Test 18b: bash sourcing an existing turbo.bash is ok (not 'turbo.zsh not generated')... "
+    reset_rc_files
+    File.write("#{@tmp_home}/.bashrc", "source \"$HOME/.local/share/wayu/turbo.bash\"\n")
+    File.write("#{@data_dir}/turbo.bash", "# turbo\n")
+    FileUtils.rm_f("#{@data_dir}/turbo.zsh")
+    jout, _, _ = run_wayu_env({}, '--shell bash doctor --json')
+    turbo = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'turbo export' } rescue nil)
+    FileUtils.rm_f("#{@data_dir}/turbo.bash")
+    jout2, _, _ = run_wayu_env({}, '--shell bash doctor --json')
+    missing = (JSON.parse(jout2)['checks'].find { |c| c['name'] == 'turbo export' } rescue nil)
+    reset_rc_files
+    ok = turbo && turbo['status'] == 'ok' &&
+         missing && missing['status'] == 'error' && missing['message'].include?('turbo.bash')
+    check(ok, "#{turbo.inspect}\n#{missing.inspect}")
+  end
+
+  def test_no_startup_file_says_what_to_add
+    print "Test 18e: no startup file: doctor names the source line (not 'run wayu init')... "
+    reset_rc_files
+    jout, _, _ = run_wayu_env({}, '--shell zsh doctor --json')
+    shell = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'shell configuration' } rescue nil)
+    msg = shell ? shell['message'] : ''
+    check(msg.include?('/init.zsh') && msg.include?('source') && !msg.include?('wayu init'), msg)
+  end
+
+  def plugin_entry(name, deps)
+    { 'name' => name, 'url' => "https://github.com/test/#{name}.git", 'enabled' => true,
+      'shell' => 'zsh', 'installedPath' => "#{@data_dir}/plugins/#{name}",
+      'entryFile' => "#{name}.plugin.zsh", 'dependencies' => deps, 'priority' => 100 }
+  end
+
+  def test_plugins_malformed_is_error
+    print "Test 18c: malformed plugins.json is a plugins error (exit 78), like 'plugin list'... "
+    write_clean_toml
+    File.write("#{@data_dir}/plugins.json", '{"version": "1.0", "plugins": [{"name": "x", "enabled": "maybe"')
+    jout, _, status = run_wayu_env({}, '--shell zsh doctor --json')
+    plug = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'plugins' } rescue nil)
+    FileUtils.rm_f("#{@data_dir}/plugins.json")
+    check(plug && plug['status'] == 'error' && status.exitstatus == 78,
+          "exit=#{status.exitstatus} #{plug.inspect}\n#{jout}")
+  end
+
+  def test_plugins_cycle_keeps_json_valid
+    print "Test 18d: plugin dependency cycle: --json stays valid JSON, plugins check errors... "
+    write_clean_toml
+    File.write("#{@data_dir}/plugins.json",
+               JSON.generate('version' => '1.0', 'plugins' => [plugin_entry('pa', ['pb']), plugin_entry('pb', ['pa'])]))
+    jout, jerr, status = run_wayu_env({}, '--shell zsh doctor --json')
+    FileUtils.rm_f("#{@data_dir}/plugins.json")
+    plug = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'plugins' } rescue nil)
+    check(plug && plug['status'] == 'error' && status.exitstatus == 78 && jerr.include?('Circular'),
+          "exit=#{status.exitstatus} #{plug.inspect}\nstdout=#{jout[0, 300]}\nstderr=#{jerr}")
   end
 
   def test_optimize_removed

@@ -242,43 +242,47 @@ class InitIntegrationTest
   end
 
   def test_reinit_preserves_data
-    print "Test 8: Re-init preserves existing data... "
-
-    # Add some data
+    print "Test 8: Re-init keeps entries.json, wayu.toml and extra files byte for byte... "
     run_wayu('path add /tmp')
-    sleep(0.5)  # Give time for file write
-
-    # Re-initialize (should not destroy existing data)
-    output, status = run_wayu("init")
-
-    # Init should succeed without destroying config
-    if status.success?
-      puts "✓"
-      @passed += 1
-    else
-      puts "✗"
-      puts "  Re-init failed"
-      puts "  Output: #{output}"
-      @failed += 1
-    end
+    run_wayu("alias add reinit_ll 'ls -la'")
+    run_wayu('const add REINIT_X 1')
+    files = ["#{@data_dir}/entries.json", "#{@config_dir}/wayu.toml", "#{@config_dir}/extra.zsh",
+             "#{@config_dir}/tools.zsh"].select { |f| File.exist?(f) }
+    before = files.to_h { |f| [f, File.read(f)] }
+    output, status = run_wayu('init --no-color')
+    after = files.to_h { |f| [f, File.read(f)] }
+    entries = read_entries
+    ok = status.success? && before.size >= 3 && before == after &&
+         entries['paths'].any? { |e| e['dir'] == '/tmp' } &&
+         entries['aliases'].any? { |e| e['name'] == 'reinit_ll' } &&
+         entries['env'].any? { |e| e['name'] == 'REINIT_X' } &&
+         output.include?('All config files already exist') && !output.include?('Created config file')
+    check_result(ok, "changed: #{before.keys.reject { |f| before[f] == after[f] }}\n#{output}")
   end
 
   def test_dry_run_init
-    print "Test 9: Dry-run init mode... "
+    print "Test 9: Dry-run init writes nothing; a real init counts every file it created... "
+    FileUtils.rm_rf(@config_dir)
+    FileUtils.rm_rf(@data_dir)
+    output, status = run_wayu('--dry-run init --no-color')
+    dry_ok = status.success? && output.include?('DRY RUN') &&
+             !Dir.exist?(@config_dir) && !File.exist?("#{@data_dir}/init.zsh")
+    real, = run_wayu('init --no-color')
+    created = real.scan('Created config file:').size
+    summary = real[/Created (\d+) config file\(s\)/, 1].to_i
+    # OKAMI-357: the summary came before the last two files and said 3.
+    count_ok = created >= 5 && summary == created &&
+               real.rindex('Created config file:') < real.index(/Created \d+ config file/)
+    check_result(dry_ok && count_ok, "dry_ok=#{dry_ok} created=#{created} summary=#{summary}\n#{output}")
+  end
 
-    # Clean up
-    FileUtils.rm_rf(@config_dir) if Dir.exist?(@config_dir)
-    FileUtils.rm_rf(@data_dir) if Dir.exist?(@data_dir)
-
-    output, status = run_wayu("--dry-run init")
-
-    # In dry-run mode, should not create files or show preview
-    if !File.exist?("#{@data_dir}/init.zsh") || output.include?("DRY RUN") || output.include?("Would")
+  def check_result(ok, detail)
+    if ok
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Dry-run init created files"
+      puts "  #{detail}"
       @failed += 1
     end
   end
@@ -288,7 +292,7 @@ class InitIntegrationTest
 
     output, status = run_wayu("init --help")
 
-    if output.include?("init") || output.include?("Initialize")
+    if status.success? && output.include?("wayu init - Initialize")
       puts "✓"
       @passed += 1
     else

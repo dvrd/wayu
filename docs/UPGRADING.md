@@ -281,6 +281,50 @@ releases, so they are listed here too.
   left by a dead watcher no longer gets an unrelated process (one that
   reused the PID) killed. `watch start` refuses while the lock is held.
 
+**`wayu doctor` checks**
+
+- The turbo export check looks for `turbo.<ext>` of the current shell
+  (`turbo.bash` for bash): a bash setup sourcing `turbo.bash` was reported as
+  "sources turbo.zsh but it is not generated" (error, exit 78).
+- The plugins check parses `plugins.json` with the same strict reader as
+  `wayu plugin list`: a malformed file, an invalid value or a dependency
+  cycle is an error (exit 78; it was "✓ N plugin(s) installed", exit 0). The
+  cycle explanation goes to stderr, so `doctor --json` stays valid JSON.
+- The shell configuration check sees startup lines that load wayu through
+  `builtin source`, `command source` / `command .` or `zsh-defer source`
+  (they were "wayu not sourced", exit 78).
+- With no startup file at all, the shell configuration warning names the
+  file to create and the `source` line to put in it (it said
+  "run 'wayu init'", which never creates one).
+- `wayu init` prints its "Created N config file(s)" summary after the last
+  file and counts all of them (it said 3 after five "Created" lines). The TUI
+  settings view has a "Data dir" row.
+
+**`search` and secret display**
+
+- `wayu search` matches names only: alias commands are no longer
+  searched (a token inside one was findable, like constant values before
+  6.0.0). `--json` `field` is always `name`, and an encrypted constant has
+  `"secret": true` (text: `********`).
+- `const list --json`: an encrypted constant's `source` is `wayu (secret)`
+  / `wayu (secret, inactive)`, as in the text view (was `wayu` /
+  `wayu (inactive)`).
+
+**CLI flags and arguments**
+
+- The hidden `wayu completions list --generate` / `-g` spelling is gone
+  (exit 64; `wayu completions --generate` never worked): use
+  `wayu completions generate`.
+- Flags and words that meant nothing exit 64 instead of being ignored:
+  `--full` / `-f` / `--source` outside `path|alias|const list` (and
+  `--tui`), `--test` / `--snapshot` without `-c=`, `doctor --profile` with
+  `--json` or `--fix`, two `export` modes (`export --eval --check`), and an
+  extra word after an action that takes none (`path list x`,
+  `secrets lock x`, `toml validate x`, `plugin list x`, ...).
+- `-c=<component>` is the developer component flag only before a command
+  word: `wayu plugin search -c=dev` no longer runs the component tester
+  (it exits 64 as an unknown option; use `--category dev` / `-c dev`).
+
 ## 6.0.0
 
 **PATH entries, aliases and constants move to `entries.json`; data dir is

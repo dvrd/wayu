@@ -32,8 +32,8 @@ behavior changes between releases in [UPGRADING.md](UPGRADING.md).
 | `--json` | Machine-readable output; only where listed in [JSON output](#json-output), elsewhere exit `64` |
 | `--no-color`, `--no-colour` | No ANSI escape codes (same as `NO_COLOR=1`) |
 | `--shell <zsh\|bash\|fish>` | Act on this shell's files instead of the one detected from `$SHELL` |
-| `--full`, `-f` | List views: include external entries (same as `--source all`) |
-| `--source <filter>`, `--source=<filter>` | List views: `wayu` (default), `inactive`, `external` or `all` |
+| `--full`, `-f` | `path`/`alias`/`const list`: include external entries (same as `--source all`); elsewhere exit `64` |
+| `--source <filter>`, `--source=<filter>` | `path`/`alias`/`const list`: `wayu` (default), `inactive`, `external` or `all`; elsewhere exit `64` |
 | `--tui` | Open the TUI (same as running `wayu` with no arguments) |
 | `--help`, `-h`, `help` | Global help, or a command's help after the command (`wayu path --help`) |
 | `--version`, `-v`, `version` | Print `wayu vX.Y.Z` |
@@ -45,8 +45,12 @@ behavior changes between releases in [UPGRADING.md](UPGRADING.md).
 whenever they would change something, and always by `doctor --fix` (unless
 `--dry-run`); without it they print what would happen and exit `64`.
 
-Developer flags (golden-file tests, see AGENTS.md): `-c=<component>`,
-`--test`, `--snapshot`.
+Developer flags (golden-file tests, see AGENTS.md): `-c=<component>` (only
+before any command word), `--test`, `--snapshot` (only with `-c=`; else exit
+`64`).
+
+An action that takes no arguments (`list`, `secrets lock`, `toml validate`,
+every `export` mode, ...) exits `64` on an extra word after it.
 
 ## Where flags are recognised
 
@@ -153,13 +157,17 @@ value. An existing plain constant is converted (its `entries.json` entry
 keeps its place, without the value). A plain `add` of a name that is a secret exits `65`; `--secret`
 on any other action exits `64` (`--run-only` likewise). Hooks receive an
 empty `{value}` for secrets. `list` shows secrets as `********` with source
-`wayu (secret)`, run-only ones with `wayu (run-only)`. Re-adding a secret
+`wayu (secret)` (`wayu (secret, inactive)` when not in this shell's
+environment; the same strings in `--json`), run-only ones with
+`wayu (run-only)`. Re-adding a secret
 with `--secret` or `--run-only` switches its mode.
 
 ### `wayu search` (`find`, `f`)
 
-`wayu search <query>`: fuzzy search over PATH entries, alias names and
-constant names (never values). Match types: exact, prefix, substring,
+`wayu search <query>`: fuzzy search over PATH entry directories, alias names
+and constant names (never values: not alias commands, not constant values).
+Results show the value, masked like `const list`; an encrypted constant
+shows `********`. Match types: exact, prefix, substring,
 acronym (first letters of the words: `faak` → `FIREWORKS_AI_API_KEY`), fuzzy. Supports `--json`.
 Without a query it prints its help and exits `64`.
 
@@ -307,7 +315,7 @@ check reports an error (warnings don't), so it can gate CI. Supports `--json`.
 | Flag | |
 |---|---|
 | `--fix` | Remove missing / duplicate PATH entries and run `wayu optimize` (`--yes`, or `--dry-run` to preview) |
-| `--profile` | Same as `wayu build profile` |
+| `--profile` | Write a zsh startup profiler script to `<data>/startup_profile.zsh` (see also `wayu build profile`); exits `64` with `--json` or `--fix` |
 | `--optimize` | Removed; prints a pointer to `wayu build` / `wayu export` and exits `64` |
 
 ### `wayu template`
@@ -524,11 +532,11 @@ keys may be added, existing ones keep their meaning.
 |---------|----------|
 | `path list` | `{"paths": [{"path", "source", "exists": bool}]}` |
 | `alias list` | `{"aliases": [{"alias", "command", "source"}]}` |
-| `const list` | `{"constants": [{"constant", "value", "source"}]}`; an encrypted constant is `{"constant", "secret": true, "source"}` (no `value`), plus `"run_only": true` and source `wayu (run-only)` for a run-only one |
+| `const list` | `{"constants": [{"constant", "value", "source"}]}`; an encrypted constant is `{"constant", "secret": true, "source"}` (no `value`; source `wayu (secret)` or `wayu (secret, inactive)`), plus `"run_only": true` and source `wayu (run-only)` for a run-only one |
 | `plugin list` | `{"plugins": [{"name", "enabled": bool, "priority": int, "shell", "url", "commit", "installed_path", "conflicts": [{"kind", "name", "with"}]}], "count": int, "enabled": int}` |
 | `backup list` | `{"backups": [{"file", "count": int, "entries": [{"index": int, "timestamp", "size_bytes": int, "path", "pre_restore": bool}]}]}` |
 | `script list` | `{"scripts": [{"name", "lang", "source", "bin", "compiled": bool, "stale": bool}], "count": int}` |
-| `search QUERY` | `{"query", "results": [{"type", "name", "value", "match", "field", "score": int}], "count": int}` |
+| `search QUERY` | `{"query", "results": [{"type", "name", "value", "match", "field", "score": int}], "count": int}`; `field` is always `name`; an encrypted constant adds `"secret": true` (its `value` is `""`) |
 | `doctor` | `{"checks": [{"name", "status", "message", "fixable": bool}], "summary": {"ok", "warnings", "errors", "info", "fixable"}}` |
 
 Unmarked fields are strings. `source` is `wayu`, `wayu (inactive)` (in
@@ -607,6 +615,17 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu optimize --check` | 0 |
 | `wayu optimize bogus` | 64 |
 | `wayu completions fpath bogus` | 64 |
+| `wayu completions --generate` | 64 |
+| `wayu completions list -g` | 64 |
+| `wayu doctor --profile --json` | 64 |
+| `wayu doctor --fix --profile --yes` | 64 |
+| `wayu export --eval --check` | 64 |
+| `wayu path list x` | 64 |
+| `wayu secrets lock x` | 64 |
+| `wayu build --test` | 64 |
+| `wayu build --snapshot` | 64 |
+| `wayu build --full` | 64 |
+| `wayu plugin search -c=dev` | 64 |
 | `wayu export check` | 78 |
 
 Also tested: `path`, `alias` and `const` exit `78` before `wayu init`;

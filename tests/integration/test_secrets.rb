@@ -194,9 +194,15 @@ class SecretsIntegrationTest
     print 'Test 12: search masks secret values and never matches inside constant values... '
     out_name, err_name, = run_split('search FIREWORKS')
     out_val, err_val, = run_split("search #{DB_PW}")
+    # OKAMI-337: alias commands are values too: a token inside one never matches.
+    run_split("alias add fakeapi 'curl -H \"Authorization: Bearer fakebearer0004\"'")
+    out_alias, = run_split('search fakebearer0004 --json')
+    alias_hits = (JSON.parse(out_alias)['results'].map { |r| r['name'] } rescue ['unparsable'])
+    run_split('alias rm fakeapi')
     ok = (out_name + err_name).include?('FIREWORKS_AI_API_KEY') && !(out_name + err_name).include?(SECRET) &&
-         !(out_val + err_val).include?('DATABASE_URL') && !(out_val + err_val).include?(DB_PW + '@')
-    check("name=#{out_name} value=#{out_val}", ok)
+         !(out_val + err_val).include?('DATABASE_URL') && !(out_val + err_val).include?(DB_PW + '@') &&
+         alias_hits.empty?
+    check("name=#{out_name} value=#{out_val} alias=#{out_alias}", ok)
   end
 
   def test_export_dry_run_masks

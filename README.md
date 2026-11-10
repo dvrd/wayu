@@ -103,7 +103,7 @@ is the recommended setup. The alternatives:
 | rc line | When |
 |---|---|
 | `source ".../wayu/init.zsh"` (the line above) | Default. Fast; picks up every wayu change. |
-| `source "$HOME/.local/share/wayu/turbo.zsh"` | Only for rc files that already use it: `turbo.<ext>` (zsh/bash, written by `wayu export`) is a copy of `core.<ext>`, kept current by wayu. |
+| `source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/turbo.zsh"` | Only for rc files that already use it: `turbo.<ext>` (zsh/bash, written by `wayu export`) is a copy of `core.<ext>`, kept current by wayu. |
 | `eval "$(wayu export --eval)"` | Only constants, PATH entries and aliases, as shell code, without plugins, `[tools]`, prompt or completions. For scripts, containers or CI that want the variables but none of the interactive setup. Writes nothing. |
 
 After editing `wayu.toml` by hand, run `wayu build` (or `wayu toml validate`

@@ -44,6 +44,7 @@ ParsedArgs :: struct {
 	json_unsupported:    bool, // --json given to a command/action without JSON output
 	ambiguous_tail_flag: string, // trailing short global flag kept in an add value
 	bad_flag_value:      string, // "--shell bogus" style error (temp allocator); main exits EXIT_USAGE
+	extra_arg:           string, // positional given to an action that takes none; main exits EXIT_USAGE
 }
 
 // Flag parsing state returned by parse_global_flags.
@@ -62,6 +63,9 @@ GlobalFlags :: struct {
 	secret:             bool,
 	run_only:           bool, // --run-only (implies --secret)
 	source_filter:      string,
+	// The --full / -f / --source token given ("" if none), checked once the
+	// command is known: only list views filter by source (OKAMI-353).
+	source_flag:        string,
 	// Indexes into filtered_args of dash tokens that were not consumed as
 	// global flags and are not literal (after `--`, add value). Validated
 	// against the command's own flags once the command is known.
@@ -281,13 +285,16 @@ parse_global_flags :: proc(
 		switch {
 		case arg == "--full" || arg == "-f":
 			flags.source_filter = "all"
+			flags.source_flag = arg
 		case arg == "--dry-run" || arg == "-n":
 			wayu.dry_run = true
 		case arg == "--yes" || arg == "-y":
 			wayu.yes_flag = true
 		case arg == "--tui":
 			flags.tui = true
-		case strings.has_prefix(arg, "-c="):
+		case strings.has_prefix(arg, "-c=") && len(filtered_args) == 0:
+			// The dev component flag only before a command word:
+			// `plugin search -c=dev` is the command's (OKAMI-351).
 			flags.component_test = true
 			flags.component_name = strings.trim_prefix(arg, "-c=")
 		case arg == "--snapshot":
@@ -306,9 +313,11 @@ parse_global_flags :: proc(
 			flags.run_only = true
 		case strings.has_prefix(arg, "--source="):
 			flags.source_filter = strings.trim_prefix(arg, "--source=")
+			flags.source_flag = "--source"
 			check_source_value(parsed, flags.source_filter)
 		case arg == "--source" && i + 1 < len(args):
 			flags.source_filter = args[i + 1]
+			flags.source_flag = "--source"
 			check_source_value(parsed, flags.source_filter)
 			i += 1
 		case arg == "--no-color" || arg == "--no-colour":
@@ -456,10 +465,22 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 
 	parse_command_and_action(filtered_args[:], &parsed)
 	parsed.ambiguous_tail_flag = flags.ambiguous_tail
+	// Flags that mean nothing for this command are usage errors, not
+	// silently ignored (OKAMI-353): --snapshot/--test only go with -c=,
+	// --full/--source only with the PATH/alias/const list views (and TUI).
+	if flags.component_snapshot {
+		parsed.unknown_flag = "--snapshot"
+	} else if flags.component_verify {
+		parsed.unknown_flag = "--test"
+	} else if len(flags.source_flag) > 0 &&
+	   !flags.tui &&
+	   !source_filter_applies(parsed.command, parsed.action) {
+		parsed.unknown_flag = flags.source_flag
+	}
 	for idx in flags.flag_like {
 		// Position 0 is the command word itself (`--help`, `-v`, or an
 		// unknown command reported as such).
-		if idx == 0 {
+		if idx == 0 || len(parsed.unknown_flag) > 0 {
 			continue
 		}
 		if !command_accepts_flag(parsed.command, filtered_args[idx]) {
@@ -479,6 +500,15 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 			parsed.unknown_flag = "--run-only" if flags.run_only else "--secret"
 		}
 	}
+	if len(parsed.args) > 0 && action_takes_no_args(parsed.command, parsed.action) {
+		parsed.extra_arg = parsed.args[0]
+		for a in parsed.args {
+			if is_help_word(a) {
+				parsed.extra_arg = "" // `path list --help` shows help
+				break
+			}
+		}
+	}
 	wayu.reveal_secrets = false
 	if flags.reveal {
 		if command_accepts_flag(parsed.command, "--reveal") {
@@ -488,6 +518,33 @@ parse_args :: proc(args: []string) -> ParsedArgs {
 		}
 	}
 	return parsed
+}
+
+// The list views that filter rows by --full / --source.
+@(private = "file")
+source_filter_applies :: proc(command: Command, action: Action) -> bool {
+	#partial switch command {
+	case .PATH, .ALIAS, .CONSTANTS:
+		return action == .LIST || action == .HELP
+	}
+	return false
+}
+
+// Actions that take no positional argument: a stray word (`path list x`,
+// `secrets lock x`, `export eval check`) is a usage error (OKAMI-353).
+@(private = "file")
+action_takes_no_args :: proc(command: Command, action: Action) -> bool {
+	#partial switch command {
+	case .PATH, .ALIAS, .CONSTANTS, .PLUGIN, .SCRIPT, .FUNCTION, .HOOKS, .TEMPLATE, .COMPLETIONS:
+		return action == .LIST
+	case .SECRETS:
+		return action == .LIST || action == .CLEAN
+	case .EXPORT:
+		return action != .HELP && action != .UNKNOWN
+	case .TOML:
+		return action == .CHECK || action == .GET || action == .LIST
+	}
+	return false
 }
 
 @(private = "file")

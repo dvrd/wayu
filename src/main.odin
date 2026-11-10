@@ -44,7 +44,7 @@ Command :: enum {
 	PLUGIN,
 	INIT,
 	CONFIG,
-	BUILD, // Compile wayu.toml to optimized shell config
+	BUILD, // Compile wayu.toml + entries.json into shell init files
 	EXPORT, // High-performance turbo export
 	TOML, // TOML configuration management
 	DOCTOR, // Health check and diagnostics
@@ -263,6 +263,11 @@ main :: proc() {
 	}
 	if len(parsed.bad_flag_value) > 0 {
 		print_error_simple("%s", parsed.bad_flag_value)
+		os.exit(EXIT_USAGE)
+	}
+	if len(parsed.extra_arg) > 0 {
+		print_error_simple("Unexpected argument: %s", parsed.extra_arg)
+		fmt.eprintln("Run 'wayu <command> --help' for the accepted arguments.")
 		os.exit(EXIT_USAGE)
 	}
 	if parsed.json_unsupported {
@@ -560,12 +565,6 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		}
 	}
 
-	if created_files > 0 {
-		print_success("Created %d config file(s)", created_files)
-	} else {
-		print_info("All config files already exist")
-	}
-
 	// alias-sources.conf is shell-agnostic — create once regardless of shell
 	alias_sources_file := fmt.aprintf("%s/%s", wayu.config, ALIAS_SOURCES_FILE)
 	defer delete(alias_sources_file)
@@ -574,6 +573,7 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		success := init_config_file(alias_sources_file, ALIAS_SOURCES_TEMPLATE)
 		if success {
 			print_success("Created config file: %s", alias_sources_file)
+			created_files += 1
 		} else {
 			print_error_simple("Failed to create config file: %s", alias_sources_file)
 		}
@@ -592,11 +592,20 @@ init_shell_configs :: proc(shell: ShellType, ext: string) {
 		success := init_config_file(toml_file, toml_scaffold)
 		if success {
 			print_success("Created config file: %s", toml_file)
+			created_files += 1
 		} else {
 			print_error_simple("Failed to create config file: %s", toml_file)
 		}
 	} else {
 		print_info("Config file already exists: %s", toml_file)
+	}
+
+	// One summary after every file, counting them all (it said "Created 3"
+	// after five "Created" lines, OKAMI-357).
+	if created_files > 0 {
+		print_success("Created %d config file(s)", created_files)
+	} else {
+		print_info("All config files already exist")
 	}
 }
 
@@ -867,10 +876,13 @@ print_help :: proc() {
 	fmt.printf("  65  Data format error (invalid input)\n")
 	fmt.printf("  66  Input file not found\n")
 	fmt.printf("  69  Required tool not installed (script interpreter/compiler)\n")
+	fmt.printf("  71  TUI could not set up the terminal\n")
 	fmt.printf("  73  Cannot create output file\n")
 	fmt.printf("  74  I/O error (read/write failure)\n")
 	fmt.printf("  77  Permission denied\n")
 	fmt.printf("  78  Configuration error\n")
+	fmt.printf("  126 secrets run: command not executable\n")
+	fmt.printf("  127 secrets run: command not found\n")
 	fmt.println()
 	fmt.printf(
 		"  %sNote:%s Running %swayu%s with no arguments opens the interactive TUI\n",
@@ -887,7 +899,7 @@ print_help :: proc() {
 	fmt.println()
 }
 
-// handle_build_command - Compile wayu.toml to optimized shell config
+// handle_build_command - Compile wayu.toml + entries.json into shell init files
 handle_build_command :: proc(action: Action) {
 	// Explicit help (unknown targets are rejected by main with exit 64)
 	if action == .HELP || action == .UNKNOWN {

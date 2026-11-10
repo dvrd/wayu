@@ -499,7 +499,7 @@ class PathIntegrationTest
     fake_path = "/nonexistent/path/for/removal"
     output, status = run_wayu("path rm #{fake_path}")
 
-    if output.include?("not found") || output.include?("does not exist") || output.include?("Not found")
+    if status.exitstatus == 65 && output.include?("PATH entry not found: #{fake_path}")
       puts "✓"
       @passed += 1
     else
