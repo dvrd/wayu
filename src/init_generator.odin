@@ -973,18 +973,35 @@ read_path_values :: proc() -> [dynamic]string {
 	return values
 }
 
-// Absolute path of the running binary when it was invoked by path
-// (os.args[0] contains '/'), else "" so the hook falls back to PATH lookup.
-// Not symlink-resolved: /opt/homebrew/bin/wayu must survive `brew upgrade`.
+// Absolute path of the running binary, embedded in core (the prompt hook's
+// `wayu build`, the secrets loader): they run before or without the PATH
+// that found wayu, so a bare `wayu` can fail (OKAMI-292). argv[0] with a
+// '/' is made absolute; a bare name is looked up on $PATH like the shell
+// did; else the OS executable path. Made absolute lexically, never
+// symlink-resolved (filepath.abs is realpath): /opt/homebrew/bin/wayu must
+// survive `brew upgrade` (the Cellar path it links to is removed).
+// Temp-allocated; "" only when nothing works.
 wayu_self_path :: proc() -> string {
-	if len(os.args) == 0 || !strings.contains(os.args[0], "/") {
-		return ""
+	if len(os.args) > 0 && len(os.args[0]) > 0 {
+		arg0 := os.args[0]
+		if !strings.contains(arg0, "/") {
+			arg0 = script_find_on_path(arg0)
+		}
+		if strings.has_prefix(arg0, "/") {
+			clean, _ := filepath.clean(arg0, context.temp_allocator)
+			return clean
+		}
+		if len(arg0) > 0 {
+			if cwd, err := os.get_working_directory(context.temp_allocator); err == nil {
+				joined, _ := filepath.join({cwd, arg0}, context.temp_allocator)
+				return joined
+			}
+		}
 	}
-	abs, err := filepath.abs(os.args[0], context.temp_allocator)
-	if err != nil {
-		return ""
+	if exe, err := os.get_executable_path(context.temp_allocator); err == nil {
+		return exe
 	}
-	return abs
+	return ""
 }
 
 // [paths] values for path sync (see read_wayu_toml_path_values) and their
@@ -1150,8 +1167,6 @@ build_core_content :: proc(mask := false) -> string {
 	fmt.sbprintln(&b, "# === Environment ===")
 	emit_env_exports(&b, mask = mask)
 	fmt.sbprintln(&b)
-	// Encrypted constants: source the per-session cache (secrets_store.odin).
-	emit_secrets_loader(&b, wayu.shell)
 
 	// PATH from [paths] (file order = priority). The startup apply is the same
 	// call path_sync.<ext> makes, inlined (no extra file read); the prompt
@@ -1194,6 +1209,10 @@ build_core_content :: proc(mask := false) -> string {
 		fmt.sbprintln(&b, "typeset -U path PATH")
 	}
 	fmt.sbprintln(&b)
+	// Encrypted constants: source the per-session cache (secrets_store.odin).
+	// After the PATH apply (OKAMI-292): a cache miss runs wayu (absolute
+	// path, see wayu_self_path), which may need the PATH entries' tools.
+	emit_secrets_loader(&b, wayu.shell)
 	emit_rc_watch(&b, wayu.shell) // optimize.odin
 
 	startup := read_startup_settings()
@@ -2844,7 +2863,6 @@ generate_core_init_fish :: proc() {
 		)
 	}
 	fmt.sbprintln(b)
-	emit_secrets_loader(b, .FISH)
 
 	// PATH: the same call path_sync.fish makes, inlined; the fish_prompt
 	// hook re-sources path_sync.fish when its signature changes.
@@ -2878,6 +2896,8 @@ generate_core_init_fish :: proc() {
 		fmt.sbprintln(b, "set -e _wayu_w")
 	}
 	fmt.sbprintln(b)
+	// Secrets after the PATH apply (OKAMI-292), like core.zsh/core.bash.
+	emit_secrets_loader(b, .FISH)
 	emit_rc_watch(b, .FISH) // optimize.odin
 
 	// Completions directory; `contains` keeps a re-source from adding it again.

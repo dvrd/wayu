@@ -6,6 +6,14 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
 
 ## Unreleased
 
+**Generated shell code and startup**
+
+- core.<ext>: the Secrets section runs after the PATH apply, and its
+  cache-miss `wayu secrets cache` call (like the prompt hook's `wayu build`)
+  uses wayu's absolute path, also when wayu was run by bare name from
+  `PATH` (was a bare `wayu`, not found in shells with a minimal PATH: cron,
+  GUI apps, ssh commands). Run `wayu build` once to regenerate.
+
 **One status icon per line**
 
 - `path add` / `path remove` print `✓ Added to PATH: <dir>` / `✓ Removed

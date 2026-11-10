@@ -195,8 +195,9 @@ build_eval_content :: proc() -> string {
 	defer strings.builder_destroy(&builder)
 
 	emit_env_exports(&builder, ";")
-	emit_secrets_loader(&builder, wayu.shell, ";")
 	emit_path_eval(&builder, ";")
+	// After PATH, like core (OKAMI-292).
+	emit_secrets_loader(&builder, wayu.shell, ";")
 	emit_alias_definitions(&builder, ";")
 
 	return strings.clone(strings.to_string(builder))
