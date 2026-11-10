@@ -18,6 +18,12 @@ releases, so they are listed here too.
   `entries.json`) no longer discards its stderr: its warnings and errors
   show in the terminal once, at that prompt. A clean rebuild prints nothing.
 
+**`completions generate`: no setup instructions**
+
+- `wayu completions generate` no longer prints fpath / `source` / symlink
+  steps for `.zshrc` and friends: wayu's init already loads its completions
+  dir in zsh, bash and fish. It prints one line (open a new shell).
+
 **`doctor`: unregistered plugin folders**
 
 - `wayu doctor` warns about folders under `<data>/plugins` that no

@@ -1447,27 +1447,9 @@ handle_completions_generate :: proc() {
 	print_success("Generated: %s", fish_completion_path)
 	fmt.println()
 
-	// Instructions
-	print_section("Setup Instructions", EMOJI_INFO)
-	fmt.println("The completion scripts have been generated. To enable them:")
-	fmt.println()
-	fmt.println("Zsh - Option 1 - Add to fpath (recommended):")
-	fmt.printfln("  fpath=(%s $fpath)", completions_dir)
-	fmt.println("  compinit")
-	fmt.println()
-	fmt.println("Zsh - Option 2 - Source directly in .zshrc:")
-	fmt.printfln("  source %s", completion_path)
-	fmt.println()
-	fmt.println("Bash - Source in .bashrc:")
-	fmt.printfln("  source %s", bash_completion_path)
-	fmt.println()
-	fmt.println("Fish - Symlink into completions dir:")
-	fmt.printfln("  ln -sf %s ~/.config/fish/completions/wayu.fish", fish_completion_path)
-	fmt.println()
-	fmt.println("Then restart your shell or run:")
-	fmt.println("  exec $SHELL")
-	fmt.println()
-	print_success("Tab completion now available: wayu <TAB>")
+	// Nothing to install: core.<ext> puts this dir on fpath (zsh), sources
+	// wayu.bash (bash) and adds it to fish_complete_path (fish).
+	print_info("Loaded by wayu's init in new shells (or now: exec $SHELL)")
 }
 
 // Generate bash completions for wayu
