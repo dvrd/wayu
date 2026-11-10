@@ -290,6 +290,9 @@ releases, so they are listed here too.
   `wayu plugin list`: a malformed file, an invalid value or a dependency
   cycle is an error (exit 78; it was "✓ N plugin(s) installed", exit 0). The
   cycle explanation goes to stderr, so `doctor --json` stays valid JSON.
+- The shell configuration check sees startup lines that load wayu through
+  `builtin source`, `command source` / `command .` or `zsh-defer source`
+  (they were "wayu not sourced", exit 78).
 
 ## 6.0.0
 

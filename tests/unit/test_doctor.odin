@@ -26,6 +26,14 @@ test_doctor_rc_loads_wayu :: proc(t: ^testing.T) {
 		t,
 		wayu.rc_loads_wayu(`if [ -r "$W/wayu/init.bash" ]; then . "$W/wayu/init.bash"; fi`),
 	)
+	// OKAMI-341: command prefixes are transparent.
+	testing.expect(t, wayu.rc_loads_wayu(`builtin source ~/.local/share/wayu/init.zsh`))
+	testing.expect(t, wayu.rc_loads_wayu(`command . ~/.local/share/wayu/init.bash`))
+	testing.expect(t, wayu.rc_loads_wayu(`zsh-defer source ~/.local/share/wayu/init.zsh`))
+	testing.expect(t, wayu.rc_loads_wayu(`zsh-defer -12 source ~/.local/share/wayu/init.zsh`))
+	testing.expect(t, wayu.rc_loads_wayu(`[ -r "$W" ] && builtin source "$W/wayu/init.zsh"`))
+	testing.expect(t, !wayu.rc_loads_wayu(`command -v source ~/.local/share/wayu/init.zsh`))
+	testing.expect(t, !wayu.rc_loads_wayu(`echo builtin source ~/.local/share/wayu/init.zsh`))
 	// turbo_only ignores plain init lines.
 	testing.expect(t, !wayu.rc_loads_wayu(`source ~/.config/wayu/init.zsh`, turbo_only = true))
 	testing.expect(t, wayu.rc_loads_wayu(`source ~/.config/wayu/turbo.zsh`, turbo_only = true))

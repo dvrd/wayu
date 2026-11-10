@@ -752,10 +752,14 @@ rc_loads_wayu :: proc(content: string, turbo_only := false) -> bool {
 
 // True when `code` runs `source`, `.` or `eval` as a command word: first on
 // the line or after `;`, `&&`, `||`, `then`, `do`, `else`, `{` (so
-// `[ -f x ] && source x` counts; `alias s='source x'` does not).
+// `[ -f x ] && source x` counts; `alias s='source x'` does not). The
+// command prefixes `builtin`, `command` and `zsh-defer` (with their option
+// words, except `command -v/-V`, which only looks the name up) are
+// transparent: `builtin source x` / `zsh-defer source x` count (OKAMI-341).
 @(private = "file")
 rc_runs_loader :: proc(code: string) -> bool {
 	at_command := true
+	after_prefix := false
 	for w in strings.fields(code, context.temp_allocator) {
 		if at_command &&
 		   (w == "source" ||
@@ -765,6 +769,14 @@ rc_runs_loader :: proc(code: string) -> bool {
 				   strings.has_prefix(w, "eval'")) {
 			return true
 		}
+		if at_command && (w == "builtin" || w == "command" || w == "zsh-defer") {
+			after_prefix = true
+			continue
+		}
+		if after_prefix && strings.has_prefix(w, "-") && w != "-v" && w != "-V" {
+			continue
+		}
+		after_prefix = false
 		switch w {
 		case ";", "&&", "||", "then", "do", "else", "{":
 			at_command = true
