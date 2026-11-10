@@ -407,10 +407,15 @@ SUBPROCESS_CANCEL_POLL_MS :: 100
 // process group (git and the ssh/https helpers it spawned) is killed with
 // SIGKILL and the result has timed_out = true. timeout_ms <= 0 waits forever.
 // env_defaults are set in the child only when not already set.
+//
+// stdin_data, when non-empty, is the child's stdin instead of /dev/null
+// (written whole, then closed; meant for small inputs such as a key that must
+// stay off argv: at most one pipe buffer, so the write never blocks).
 run_command_timeout :: proc(
 	args: []string,
 	timeout_ms: int,
 	env_defaults: []Env_Default = nil,
+	stdin_data := "",
 ) -> (
 	result: Command_Result,
 ) {
@@ -447,6 +452,7 @@ run_command_timeout :: proc(
 	}
 
 	out_pipe, err_pipe: [2]posix.FD
+	in_pipe := [2]posix.FD{-1, -1}
 	if posix.pipe(&out_pipe) != .OK {
 		result.stdout = strings.clone("")
 		result.stderr = strings.clone("")
@@ -459,6 +465,15 @@ run_command_timeout :: proc(
 		result.stderr = strings.clone("")
 		return
 	}
+	if len(stdin_data) > 0 && posix.pipe(&in_pipe) != .OK {
+		posix.close(out_pipe[0])
+		posix.close(out_pipe[1])
+		posix.close(err_pipe[0])
+		posix.close(err_pipe[1])
+		result.stdout = strings.clone("")
+		result.stderr = strings.clone("")
+		return
+	}
 
 	pid := posix.fork()
 	if pid < 0 {
@@ -466,6 +481,10 @@ run_command_timeout :: proc(
 		posix.close(out_pipe[1])
 		posix.close(err_pipe[0])
 		posix.close(err_pipe[1])
+		if in_pipe[0] >= 0 {
+			posix.close(in_pipe[0])
+			posix.close(in_pipe[1])
+		}
 		result.stdout = strings.clone("")
 		result.stderr = strings.clone("")
 		return
@@ -478,10 +497,16 @@ run_command_timeout :: proc(
 		posix.dup2(err_pipe[1], posix.FD(2))
 		posix.close(out_pipe[1])
 		posix.close(err_pipe[1])
-		stdin_null := posix.open("/dev/null", {})
-		if stdin_null >= 0 {
-			posix.dup2(stdin_null, posix.FD(0))
-			posix.close(stdin_null)
+		if in_pipe[0] >= 0 {
+			posix.close(in_pipe[1])
+			posix.dup2(in_pipe[0], posix.FD(0))
+			posix.close(in_pipe[0])
+		} else {
+			stdin_null := posix.open("/dev/null", {})
+			if stdin_null >= 0 {
+				posix.dup2(stdin_null, posix.FD(0))
+				posix.close(stdin_null)
+			}
 		}
 		posix.setenv("GIT_TERMINAL_PROMPT", "0", true)
 		for i := 0; i < len(env_c); i += 2 {
@@ -496,6 +521,24 @@ run_command_timeout :: proc(
 
 	posix.close(out_pipe[1])
 	posix.close(err_pipe[1])
+	if in_pipe[0] >= 0 {
+		posix.close(in_pipe[0])
+		// A child that exits without reading must not kill us with SIGPIPE.
+		prev := posix.signal(.SIGPIPE, auto_cast posix.SIG_IGN)
+		data := transmute([]byte)stdin_data
+		for len(data) > 0 {
+			n := posix.write(in_pipe[1], raw_data(data), c.size_t(len(data)))
+			if n < 0 && posix.errno() == .EINTR {
+				continue
+			}
+			if n <= 0 {
+				break
+			}
+			data = data[n:]
+		}
+		posix.close(in_pipe[1])
+		posix.signal(.SIGPIPE, prev)
+	}
 
 	MAX_CAPTURE :: 64 * 1024
 	out_sb := strings.builder_make()

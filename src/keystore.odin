@@ -296,8 +296,20 @@ keystore_save :: proc(
 		if !check_command_exists("secret-tool") {
 			return false, "`secret-tool` not found on PATH"
 		}
-		if !run_command_with_stdin(secret_service_store_argv(), string(key_hex)) {
-			return false, "could not store the key with secret-tool"
+		res := run_command_timeout(
+			secret_service_store_argv(),
+			KEYSTORE_TIMEOUT_MS,
+			stdin_data = string(key_hex),
+		)
+		defer command_result_destroy(&res)
+		if res.timed_out {
+			return false, "could not store the key with secret-tool: it did not answer in time"
+		}
+		if !res.ok {
+			return false, fmt.tprintf(
+				"could not store the key with secret-tool (exited %d)",
+				res.exit_code,
+			)
 		}
 		return true, ""
 	}
