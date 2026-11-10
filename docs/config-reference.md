@@ -211,14 +211,14 @@ top-level `shell = "..."` string is not read (`toml validate` rejects it).
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `autosuggest` | boolean | `false` | zsh only (5.3+, interactive). Built-in fish-like suggestions from history, in place of the zsh-autosuggestions plugin: see [Autosuggestions](#autosuggestions). A non-boolean value is an error (`toml validate`, `doctor`). |
+| `autosuggest` | boolean | `false` | zsh only (interactive). Built-in fish-like suggestions from history, in place of the zsh-autosuggestions plugin: see [Autosuggestions](#autosuggestions). A non-boolean value is an error (`toml validate`, `doctor`). |
 | `autosuggest_style` | string | `"fg=8"` | zsh only. How the suggestion is drawn: a `region_highlight` spec (`fg=244`, `fg=8,underline`; one line, at most 64 bytes, else an error). |
 | `autosuggestions_accept_keys` | array of strings | `["^Y", "^[[121;5u"]` | zsh only. Key sequences that accept the whole suggestion: bound to `autosuggest-accept` (zsh-autosuggestions) in the `main`, `emacs` and `viins` keymaps, or, with `autosuggest = true`, to `wayu-suggest-accept` in `emacs` and `viins`. Entries must start with `^` or contain `[`; others, non-strings, empties and duplicates are ignored. An empty or missing array uses the default. The array may span lines. |
 | `auto_optimize` | boolean | `false` | When an open shell notices that a startup file changed (prompt hook) and it has lines `wayu optimize` can move, move them right away (backups first) and print what moved, instead of printing the `wayu: ~/.zshrc changed: N lines can be optimized` notice. |
 
 | `compinit_guard` | boolean | `true` | zsh only. After wayu's `compinit`, `compinit` is a function that only registers the completions (`#compdef` / `#autoload` files) of `fpath` dirs added since; its flags (`-C`, `-i`, `-u`, `-d <dump>`, ...) are accepted and ignored. An installer's `autoload -Uz compinit && compinit` in `.zshrc` then costs a glob of the new dirs instead of a second full completion setup (audit, dump check/rewrite), and its dirs' completions work even with `-C`. The same registration runs once at the first prompt, for dirs added to `fpath` without a `compinit` call. `false`: later `compinit` calls are zsh's own. |
 | `defer_plugins` | boolean | `false` | zsh only. Load the plugins (`plugins.zsh`, the zsh-autosuggestions / zsh-syntax-highlighting fallbacks, `plugins/config.zsh`) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after `tools.zsh` / `extra.zsh`: code there that needs a plugin widget should run through `zsh-defer`. |
-| `highlight` | boolean | `false` | zsh only (5.3+, interactive). Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see [Syntax highlighting](#syntax-highlighting). A non-boolean value is an error. |
+| `highlight` | boolean | `false` | zsh only (interactive). Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see [Syntax highlighting](#syntax-highlighting). A non-boolean value is an error. |
 | `highlight_styles` | table of strings | see [styles](#syntax-highlighting) | zsh only. Per-style `region_highlight` specs, as an inline table (`highlight_styles = { command = "fg=blue", comment = "fg=244" }`) or a `[settings.highlight_styles]` table. `"none"`: not highlighted. A value that isn't a one-line string of at most 64 bytes is an error; an unknown style name is a warning (ignored). |
 | `lazy_compinit` | boolean | `false` | zsh only. No `compinit` at startup: the completion widgets (Tab, `^D` list, ...) set up completion on first use and then complete. `compdef` calls made before that are queued and replayed. `$_comps` and completion functions don't exist until then. |
 
@@ -228,8 +228,8 @@ The plugin bindings are written to `<data>/plugins/config.zsh`, which
 
 #### Autosuggestions
 
-`autosuggest = true` puts suggestions in `core.zsh` itself (interactive zsh
-5.3+; nothing forks, no extra files). As you type, the newest history entry
+`autosuggest = true` puts suggestions in `core.zsh` itself (interactive zsh;
+nothing forks, no extra files). As you type, the newest history entry
 that starts with the line (typed glob characters are literal) is shown after
 the cursor in `autosuggest_style`. It is computed in a `zle-line-pre-redraw`
 hook (`add-zle-hook-widget`, which zsh-syntax-highlighting 0.8+ also uses)
@@ -262,7 +262,7 @@ as the zsh-autosuggestions plugin does.
 #### Syntax highlighting
 
 `highlight = true` puts a syntax highlighter in `core.zsh` itself
-(interactive zsh 5.3+; nothing forks, no extra files, no widget is wrapped).
+(interactive zsh; nothing forks, no extra files, no widget is wrapped).
 It runs in a `zle-line-pre-redraw` hook, like the autosuggestions: zsh's own
 lexer (`${(z)BUFFER}`) splits the line into words, which are colored by
 `region_highlight` entries (tagged `memo=wayu-highlight` on zsh 5.9+; other

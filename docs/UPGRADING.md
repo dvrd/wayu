@@ -8,6 +8,11 @@ releases, so they are listed here too.
 
 ## Unreleased
 
+**macOS 15 or later**
+
+- Release binaries require macOS 15 (Sequoia) or later; the Homebrew
+  formula says so. README lists the tested platforms and shell versions.
+
 **One status icon per line**
 
 - `path add` / `path remove` print `✓ Added to PATH: <dir>` / `✓ Removed
