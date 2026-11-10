@@ -107,6 +107,13 @@ releases, so they are listed here too.
   and exited `0`). `wayu doctor` reports that as an error (`secrets
   pairing`, exit `78`) and a secrets.json value without a secret entry in
   entries.json as a warning.
+- TUI constants view: encrypted constants are listed as `******** (secret)`
+  / `******** (secret, run-only)` (were rows with an empty value), also
+  after `v`; the TUI never decrypts them. `e` on one shows a hint to change
+  it with `wayu const add NAME --secret` instead of opening the form; `d`
+  removes it like `wayu const rm` (the entries.json entry and the
+  secrets.json value together). A malformed `secrets.json` during a TUI
+  add/delete is shown as an error instead of ending the TUI.
 
 **One status icon per line**
 

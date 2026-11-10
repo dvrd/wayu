@@ -1388,23 +1388,26 @@ const_get_secret :: proc(name: string) -> bool {
 	return true
 }
 
-// Remove a secret constant. Returns false when NAME is not a secret.
-// Caller holds the config lock and handled --dry-run.
-const_remove_secret :: proc(name: string) -> bool {
+// Remove secret constant NAME as a pair: its ciphertext (secrets.json) and
+// its entries.json marker; when the marker can't be dropped, secrets.json is
+// put back. removed = false when NAME is not a secret. Never exits (the TUI
+// deletes through it too); err is temp-allocated. Caller holds the config
+// lock and handled --dry-run.
+const_remove_secret :: proc(name: string) -> (removed: bool, ok: bool, err: string) {
 	snap := secrets_store_snapshot()
 	defer secrets_store_snapshot_destroy(&snap)
-	removed, ok, err := secrets_remove(name)
-	if !ok {
-		exit_with_secret_error(err)
+	rm, rok, rerr := secrets_remove(name)
+	if !rok {
+		return false, false, rerr
 	}
-	if !removed {
-		return false
+	if !rm {
+		return false, true, ""
 	}
 	if uok, uerr := env_store_unmark_secret(name); !uok {
 		secrets_store_snapshot_restore(&snap) // keep the pair consistent
-		exit_with_entry_error(strings.clone(uerr))
+		return false, false, uerr
 	}
-	return true
+	return true, true, ""
 }
 
 // secrets.json as it was before a two-file change (const add --secret,
@@ -1529,6 +1532,19 @@ secrets_store_has_name_or_exit :: proc(name: string) -> bool {
 	s, _ := secrets_store_load_or_exit()
 	defer secrets_store_destroy(&s)
 	return secrets_store_find(&s, name) >= 0
+}
+
+// Is NAME a secret? Never exits: a malformed or unreadable secrets.json is
+// printed and returned as a heap-owned entry error (ENTRY_ERROR_CONFIG_PREFIX
+// + why), so the CLI exits EXIT_CONFIG and the TUI shows the reason.
+secrets_store_has_name :: proc(name: string) -> (is_secret: bool, err: string) {
+	s, _, lerr := secrets_store_load()
+	if len(lerr) > 0 {
+		print_error_simple("%s", lerr)
+		return false, strings.concatenate({ENTRY_ERROR_CONFIG_PREFIX, lerr})
+	}
+	defer secrets_store_destroy(&s)
+	return secrets_store_find(&s, name) >= 0, ""
 }
 
 // ---------------------------------------------------------------------------

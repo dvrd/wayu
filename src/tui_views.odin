@@ -571,6 +571,9 @@ render_list_view :: proc(state: ^TUIState, screen: ^Screen, cfg: ListViewConfig)
 				if cfg.mask_secrets && !is_sep {
 					value = mask_secret_value(key, value)
 				}
+				if m.kind == .Secret || m.kind == .SecretRunOnly {
+					value = secret_row_value(m.kind)
+				}
 				render_table_row(
 					screen,
 					header_x,
@@ -1246,6 +1249,11 @@ handle_data_view_event :: proc(state: ^TUIState, key: KeyEvent) {
 					.ERROR,
 					fmt.tprintf("%s is not managed by wayu (external)", row.key),
 				)
+				return
+			}
+			// Encrypted constants are edited in the CLI only.
+			if row.kind == .Secret || row.kind == .SecretRunOnly {
+				set_notification(state, .INFO, secret_edit_hint(row.key))
 				return
 			}
 			// Never put a masked secret on screen through the form.
