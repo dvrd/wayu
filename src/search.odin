@@ -60,29 +60,54 @@ handle_search_command :: proc(args: []string) {
 		delete(all_results)
 	}
 
-	// Search PATH entries
-	path_entries_toml := read_path_config_entries()
+	// Search PATH entries: by dir and by key (`wayu path add DIR --key K`).
+	// One result per entry, dir shown, with the better of the two scores.
+	path_store := path_entries_read()
 	defer {
-		for entry in path_entries_toml {
-			delete(entry.name)
-			delete(entry.value)
-			delete(entry.line)
-		}
-		delete(path_entries_toml)
+		for e in path_store {delete(e.key); delete(e.dir)}
+		delete(path_store)
 	}
-	path_search_results := search_toml_entries_by_name(path_entries_toml[:], query)
-	defer {
-		for se in path_search_results {
-			cleanup_clone(se.entry)
+	path_by_dir := make([]ConfigEntry, len(path_store), context.temp_allocator)
+	path_by_key := make([]ConfigEntry, len(path_store), context.temp_allocator)
+	for e, i in path_store {
+		path_by_dir[i] = ConfigEntry {
+			type = .PATH,
+			name = e.dir,
 		}
-		delete(path_search_results)
+		path_by_key[i] = ConfigEntry {
+			type  = .PATH,
+			name  = e.key,
+			value = e.dir,
+		}
 	}
-	for se in path_search_results {
+	best := make(map[string]SearchEntry, context.temp_allocator)
+	for list in ([2][]ConfigEntry{path_by_dir, path_by_key}) {
+		found := search_toml_entries_by_name(list, query)
+		defer {
+			for se in found {cleanup_clone(se.entry)}
+			delete(found)
+		}
+		for se in found {
+			dir := se.entry.value if len(se.entry.value) > 0 else se.entry.name
+			if prev, seen := best[dir]; seen && prev.score >= se.score {
+				continue
+			}
+			best[strings.clone(dir, context.temp_allocator)] = SearchEntry {
+				score      = se.score,
+				match_type = se.match_type,
+			}
+		}
+	}
+	for e in path_store {
+		se, ok := best[e.dir]
+		if !ok {
+			continue
+		}
 		append(
 			&all_results,
 			SearchResult {
 				spec_type = .PATH,
-				name = strings.clone(se.entry.name),
+				name = strings.clone(e.dir),
 				value = "",
 				score = se.score,
 				match_type = se.match_type,

@@ -166,7 +166,8 @@ with `--secret` or `--run-only` switches its mode.
 
 ### `wayu search` (`find`, `f`)
 
-`wayu search <query>`: fuzzy search over PATH entry directories, alias names
+`wayu search <query>`: fuzzy search over PATH entries (directory or key;
+the result shows the directory), alias names
 and constant names (never values: not alias commands, not constant values).
 Results show the value, masked like `const list`; an encrypted constant
 shows `********`. Match types: exact, prefix, substring,

@@ -381,6 +381,8 @@ releases, so they are listed here too.
   searched (a token inside one was findable, like constant values before
   6.0.0). `--json` `field` is always `name`, and an encrypted constant has
   `"secret": true` (text: `********`).
+- `wayu search` matches a PATH entry by its key as well as its directory
+  (one result per entry, showing the directory).
 - `const list --json`: an encrypted constant's `source` is `wayu (secret)`
   / `wayu (secret, inactive)`, as in the text view (was `wayu` /
   `wayu (inactive)`).

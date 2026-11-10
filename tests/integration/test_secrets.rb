@@ -199,10 +199,17 @@ class SecretsIntegrationTest
     out_alias, = run_split('search fakebearer0004 --json')
     alias_hits = (JSON.parse(out_alias)['results'].map { |r| r['name'] } rescue ['unparsable'])
     run_split('alias rm fakeapi')
+    # A PATH entry matches by its key too (`wayu path add key=dir`).
+    kdir = "#{@tmp_home}/srch-dir-0005"
+    FileUtils.mkdir_p(kdir)
+    run_split("path add zorbtool=#{kdir}")
+    out_key, = run_split('search zorbtool --json')
+    key_hits = (JSON.parse(out_key)['results'].map { |r| [r['type'], r['name']] } rescue [])
+    run_split("path rm zorbtool --yes")
     ok = (out_name + err_name).include?('FIREWORKS_AI_API_KEY') && !(out_name + err_name).include?(SECRET) &&
          !(out_val + err_val).include?('DATABASE_URL') && !(out_val + err_val).include?(DB_PW + '@') &&
-         alias_hits.empty?
-    check("name=#{out_name} value=#{out_val} alias=#{out_alias}", ok)
+         alias_hits.empty? && key_hits.size == 1 && key_hits[0][1] == kdir
+    check("name=#{out_name} value=#{out_val} alias=#{out_alias} key=#{out_key}", ok)
   end
 
   def test_export_dry_run_masks
