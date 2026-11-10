@@ -1927,7 +1927,10 @@ _wayu_evalcache() {
 `
 
 // bash has no stat builtin. Lookup goes through the hash table (BASH_CMDS,
-// bash 4+; `type -P` subshell on bash 3.2). The cache file gets the binary's
+// bash 4+) or, on bash 3.2, a PATH walk in the shell (no `$(type -P)` fork
+// per tool, OKAMI-349). Every statement is `set -e` safe: a missing tool or a
+// failed cache write never aborts a shell sourcing core with errexit on
+// (OKAMI-315). The cache file gets the binary's
 // mtime (`touch -r`) and must still match it exactly (`-nt` / `-ot` both
 // false), and `<cache>.bin` pins the binary: a hard link to its resolved
 // path (same inode), or a symlink to it when a hard link isn't possible
@@ -1940,11 +1943,19 @@ HELPER_EVALCACHE_BASH :: `# ====================================================
 _wayu_evalcache() {
   local cmd="$1"
   shift
-  local bin_path=""
+  local bin_path="" d p
   if [ "${BASH_VERSINFO[0]:-0}" -ge 4 ] && [[ $- == *h* ]]; then
     hash "$cmd" 2>/dev/null && bin_path="${BASH_CMDS[$cmd]-}"
   else
-    bin_path="$(type -P "$cmd" 2>/dev/null)"
+    p="${PATH-}:"
+    while [ -n "$p" ]; do
+      d=${p%%:*}
+      p=${p#*:}
+      if [ -n "$d" ] && [ -f "$d/$cmd" ] && [ -x "$d/$cmd" ]; then
+        bin_path=$d/$cmd
+        break
+      fi
+    done
   fi
 
   # Skip silently if the tool isn't installed
@@ -1959,23 +1970,24 @@ _wayu_evalcache() {
   key="${key:0:200}"
   local cache_file="$cache_dir/$key"
   local sig="# wayu-evalcache: ${bin_path//$'\n'/?}" line=""
-  [ -s "$cache_file" ] && IFS= builtin read -r line < "$cache_file"
+  [ -s "$cache_file" ] && IFS= builtin read -r line < "$cache_file" || :
 
   if [ "$line" != "$sig" ] || [ "$bin_path" -nt "$cache_file" ] || [ "$bin_path" -ot "$cache_file" ] ||
      ! [ "$bin_path" -ef "$cache_file.bin" ]; then
-    [ -d "$cache_dir" ] || command mkdir -p -- "$cache_dir"
+    [ -d "$cache_dir" ] || command mkdir -p -- "$cache_dir" || :
     local out real tmp_file="${cache_file}.tmp.$$"
     if out="$(command "$cmd" "$@" 2>/dev/null)" && [ -n "$out" ] &&
        builtin printf '%s\n%s\n' "$sig" "$out" > "$tmp_file" &&
        command touch -r "$bin_path" -- "$tmp_file"; then
-      real="$(command realpath -- "$bin_path" 2>/dev/null || command readlink -f -- "$bin_path" 2>/dev/null)"
+      real="$(command realpath -- "$bin_path" 2>/dev/null || command readlink -f -- "$bin_path" 2>/dev/null)" || real=
       real="${real:-$bin_path}"
-      command ln -f -- "$real" "$cache_file.bin" 2>/dev/null || command ln -sfn -- "$real" "$cache_file.bin"
-      command mv -f -- "$tmp_file" "$cache_file"
+      command ln -f -- "$real" "$cache_file.bin" 2>/dev/null || command ln -sfn -- "$real" "$cache_file.bin" || :
+      command mv -f -- "$tmp_file" "$cache_file" || :
     else
-      # Failed or empty output - drop the tmpfile, leave any prior good cache alone
+      # Failed or empty output - drop the tmpfile, leave any prior good cache
+      # alone (status 0: a failing tool must not abort a set -e shell)
       command rm -f -- "$tmp_file"
-      [ -s "$cache_file" ] || return 1
+      [ -s "$cache_file" ] || return 0
     fi
   fi
 

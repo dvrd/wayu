@@ -46,6 +46,7 @@ class GeneratedShellTest
       test_script_path_sync_after_path_add
       test_dir_overrides_produce_working_init
       test_evalcache_binary_identity
+      test_bash_errexit_with_tools
       test_tools_args_never_run_code
       test_prompt_survives_hostile_commands
       test_init_and_turbo_define_the_same
@@ -441,6 +442,40 @@ class GeneratedShellTest
       want = %w[1 2 A B B]
       check("evalcache #{sh}", seen.map(&:first) == want && seen.all? { |s| s[1].empty? } && clean_st.success? && gone,
             "seen=#{seen.inspect} clean=#{clean_st.exitstatus} gone=#{gone}")
+    end
+  end
+
+  # OKAMI-315/349: core.bash sourced under `set -e` (bash 3.2 and a newer
+  # bash when installed) survives a [tools] binary that is missing or fails,
+  # and finds tools without a `$(type -P)` fork.
+  def test_bash_errexit_with_tools
+    bashes = ['/bin/bash', '/opt/homebrew/bin/bash', '/usr/local/bin/bash'].select { |b| File.executable?(b) }.uniq
+    bashes.each do |bash|
+      ver = `#{bash} -c 'echo $BASH_VERSION'`.strip
+      print "Test: core.bash under set -e with missing/failing tools (bash #{ver})... "
+      home = "#{@tmp_home}/errexit_#{File.basename(File.dirname(File.dirname(bash)))}"
+      FileUtils.rm_rf(home)
+      FileUtils.mkdir_p(["#{home}/.config", "#{home}/bin"])
+      env = clean_env(home, 'SHELL' => '/bin/bash')
+      Open3.capture3(env, @wayu_bin, 'init', '--shell', 'bash')
+      cfg = "#{home}/.config/wayu"
+      data = "#{home}/.local/share/wayu"
+      File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") +
+        "\n[tools]\nnosuchtool = { args = \"init bash\" }\nbadtool = { args = \"init bash\" }\n" \
+        "goodtool = { args = \"init zsh\" }\n")
+      Open3.capture3(env, @wayu_bin, 'build')
+      File.write("#{home}/bin/goodtool", "#!/bin/sh\necho \"export TOOLV=$2\"\n")
+      File.write("#{home}/bin/badtool", "#!/bin/sh\nexit 1\n")
+      FileUtils.chmod(0o755, ["#{home}/bin/goodtool", "#{home}/bin/badtool"])
+      run_env = clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin")
+      outs = 2.times.map do
+        out, err, st = Open3.capture3(run_env, bash, '--norc', '--noprofile', '-e', '-c',
+                                      "source '#{data}/init.bash'; echo \"ok=$TOOLV\"")
+        [out.strip, err.strip, st.exitstatus]
+      end
+      core = File.read("#{data}/core.bash")
+      check("errexit #{ver}", outs.all? { |o| o == ['ok=bash', '', 0] } && !core.include?('type -P'),
+            "runs=#{outs.inspect} type-P=#{core.include?('type -P')}")
     end
   end
 

@@ -33,6 +33,10 @@ automatically from breaking commits ("⚠ Upgrade notes" in `CHANGELOG.md`);
   core.zsh, `bash` / `--bash` likewise become `zsh` / `--zsh`.
 - `[tools]` entries are emitted in `wayu.toml` file order (were sorted by
   name), so a tool can rely on one listed above it.
+- bash: the `[tools]` evalcache helper no longer aborts a shell running
+  with `set -e` when a tool is missing, fails or its cache can't be written
+  (a failing tool now returns 0), and on bash 3.2 finds tools by walking
+  `PATH` in the shell instead of one `$(type -P …)` fork per tool.
 
 **One status icon per line**
 
