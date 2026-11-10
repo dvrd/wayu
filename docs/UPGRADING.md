@@ -299,6 +299,15 @@ releases, so they are listed here too.
 - The hidden `wayu completions list --generate` / `-g` spelling is gone
   (exit 64; `wayu completions --generate` never worked): use
   `wayu completions generate`.
+- Flags and words that meant nothing exit 64 instead of being ignored:
+  `--full` / `-f` / `--source` outside `path|alias|const list` (and
+  `--tui`), `--test` / `--snapshot` without `-c=`, `doctor --profile` with
+  `--json` or `--fix`, two `export` modes (`export --eval --check`), and an
+  extra word after an action that takes none (`path list x`,
+  `secrets lock x`, `toml validate x`, `plugin list x`, ...).
+- `-c=<component>` is the developer component flag only before a command
+  word: `wayu plugin search -c=dev` no longer runs the component tester
+  (it exits 64 as an unknown option; use `--category dev` / `-c dev`).
 
 ## 6.0.0
 

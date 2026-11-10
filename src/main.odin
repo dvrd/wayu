@@ -265,6 +265,11 @@ main :: proc() {
 		print_error_simple("%s", parsed.bad_flag_value)
 		os.exit(EXIT_USAGE)
 	}
+	if len(parsed.extra_arg) > 0 {
+		print_error_simple("Unexpected argument: %s", parsed.extra_arg)
+		fmt.eprintln("Run 'wayu <command> --help' for the accepted arguments.")
+		os.exit(EXIT_USAGE)
+	}
 	if parsed.json_unsupported {
 		print_error_simple(
 			"--json is not supported here; it works with: %s",

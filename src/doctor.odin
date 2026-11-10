@@ -68,6 +68,14 @@ handle_doctor_command :: proc(
 	}
 
 	// Profile mode: write the startup profiler script; no checks needed.
+	// It neither reports nor fixes, so --json/--fix with it mean nothing.
+	if profile_mode && (json_output || fix_mode) {
+		print_error(
+			"--profile only writes the startup profiler script; it cannot be combined with %s",
+			"--json" if json_output else "--fix",
+		)
+		os.exit(EXIT_USAGE)
+	}
 	if profile_mode {
 		run_shell_profile()
 		return

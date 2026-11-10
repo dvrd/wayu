@@ -32,8 +32,8 @@ behavior changes between releases in [UPGRADING.md](UPGRADING.md).
 | `--json` | Machine-readable output; only where listed in [JSON output](#json-output), elsewhere exit `64` |
 | `--no-color`, `--no-colour` | No ANSI escape codes (same as `NO_COLOR=1`) |
 | `--shell <zsh\|bash\|fish>` | Act on this shell's files instead of the one detected from `$SHELL` |
-| `--full`, `-f` | List views: include external entries (same as `--source all`) |
-| `--source <filter>`, `--source=<filter>` | List views: `wayu` (default), `inactive`, `external` or `all` |
+| `--full`, `-f` | `path`/`alias`/`const list`: include external entries (same as `--source all`); elsewhere exit `64` |
+| `--source <filter>`, `--source=<filter>` | `path`/`alias`/`const list`: `wayu` (default), `inactive`, `external` or `all`; elsewhere exit `64` |
 | `--tui` | Open the TUI (same as running `wayu` with no arguments) |
 | `--help`, `-h`, `help` | Global help, or a command's help after the command (`wayu path --help`) |
 | `--version`, `-v`, `version` | Print `wayu vX.Y.Z` |
@@ -45,8 +45,12 @@ behavior changes between releases in [UPGRADING.md](UPGRADING.md).
 whenever they would change something, and always by `doctor --fix` (unless
 `--dry-run`); without it they print what would happen and exit `64`.
 
-Developer flags (golden-file tests, see AGENTS.md): `-c=<component>`,
-`--test`, `--snapshot`.
+Developer flags (golden-file tests, see AGENTS.md): `-c=<component>` (only
+before any command word), `--test`, `--snapshot` (only with `-c=`; else exit
+`64`).
+
+An action that takes no arguments (`list`, `secrets lock`, `toml validate`,
+every `export` mode, ...) exits `64` on an extra word after it.
 
 ## Where flags are recognised
 
@@ -307,7 +311,7 @@ check reports an error (warnings don't), so it can gate CI. Supports `--json`.
 | Flag | |
 |---|---|
 | `--fix` | Remove missing / duplicate PATH entries and run `wayu optimize` (`--yes`, or `--dry-run` to preview) |
-| `--profile` | Same as `wayu build profile` |
+| `--profile` | Write a zsh startup profiler script to `<data>/startup_profile.zsh` (see also `wayu build profile`); exits `64` with `--json` or `--fix` |
 | `--optimize` | Removed; prints a pointer to `wayu build` / `wayu export` and exits `64` |
 
 ### `wayu template`
@@ -609,6 +613,15 @@ Run against a freshly initialized config (`wayu init`) by
 | `wayu completions fpath bogus` | 64 |
 | `wayu completions --generate` | 64 |
 | `wayu completions list -g` | 64 |
+| `wayu doctor --profile --json` | 64 |
+| `wayu doctor --fix --profile --yes` | 64 |
+| `wayu export --eval --check` | 64 |
+| `wayu path list x` | 64 |
+| `wayu secrets lock x` | 64 |
+| `wayu build --test` | 64 |
+| `wayu build --snapshot` | 64 |
+| `wayu build --full` | 64 |
+| `wayu plugin search -c=dev` | 64 |
 | `wayu export check` | 78 |
 
 Also tested: `path`, `alias` and `const` exit `78` before `wayu init`;
