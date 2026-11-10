@@ -33,6 +33,10 @@ handle_template_command :: proc(action: Action, args: []string) {
 	}
 }
 
+// Template names `template apply` / `init --template` take (completions
+// offer them; "ds" is a parser-only synonym of data-science).
+TEMPLATE_NAMES := [?]string{"developer", "minimal", "data-science", "full"}
+
 // List available templates
 list_templates :: proc() {
 	print_header("Configuration Templates", "📋")

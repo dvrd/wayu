@@ -73,6 +73,19 @@ releases, so they are listed here too.
   while it waits for the key) show `vimcmd_replace_symbol` in the replace
   color; they showed the insert / normal symbol.
 
+**wayu's own completions: position-independent, value completion**
+
+- The zsh, bash and fish completions for wayu parse the command line: a
+  global flag before the command (`wayu --dry-run alias rm <TAB>`) or
+  between command and action no longer breaks them, command flags complete
+  after the action too, and `--` ends the flags. They complete the values of
+  `--shell`, `--source`, `--lang`, `--category`/`-c` and `--template`,
+  `backup` types and backup numbers, `template apply` and `plugin add`
+  names, `secrets run` secret names and the command after `--`. bash: the
+  action position offers actions only (flags on `-<TAB>`); fish: the
+  script is one `__wayu_complete` function (was one `complete` line per
+  word). Run `wayu completions generate` to rewrite the scripts.
+
 **Encrypted secrets hardening**
 
 - `secrets.json` is read strictly: unknown fields, text after the object,

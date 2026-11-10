@@ -5,6 +5,7 @@ package test_wayu
 import wayu "../../src"
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:testing"
 
@@ -295,16 +296,24 @@ test_wayu_completions_list_every_command :: proc(t: ^testing.T) {
 	defer delete(fish)
 
 	bash_lines := strings.split_lines(bash, context.temp_allocator)
-	bash_top: []string
-	for l in bash_lines {
-		if strings.has_prefix(strings.trim_space(l), `words="path `) {
-			bash_top = strings.fields(
-				strings.trim(strings.trim_space(l)[len(`words=`):], `"`),
-				context.temp_allocator,
-			)
-			break
+	// The line of the `_wayu_words` case branch starting with `label`.
+	bash_line :: proc(lines: []string, label: string) -> string {
+		for l in lines {
+			if strings.has_prefix(strings.trim_space(l), label) {
+				return l
+			}
 		}
+		return ""
 	}
+	// Words of a branch, quotes and `acts=` / `cflags=` dropped.
+	bash_words :: proc(line: string) -> []string {
+		l, _ := strings.replace_all(line, `"`, " ", context.temp_allocator)
+		l, _ = strings.replace_all(l, "acts=", " ", context.temp_allocator)
+		l, _ = strings.replace_all(l, "cflags=", " ", context.temp_allocator)
+		return strings.fields(l, context.temp_allocator)
+	}
+	bash_top := bash_words(bash_line(bash_lines, `'') acts="`))
+	fq :: proc(s: string) -> string {return wayu.escape_fish_string(s, context.temp_allocator)}
 
 	for spec in wayu.WAYU_COMMAND_SPECS {
 		for name in spec.names {
@@ -314,43 +323,32 @@ test_wayu_completions_list_every_command :: proc(t: ^testing.T) {
 				"zsh completion misses %q",
 				name,
 			)
-			in_bash := false
-			for w in bash_top {
-				if w == name {
-					in_bash = true
-				}
-			}
-			testing.expectf(t, in_bash, "bash completion misses %q", name)
+			testing.expectf(t, slice.contains(bash_top, name), "bash completion misses %q", name)
 			testing.expectf(
 				t,
-				strings.contains(fish, fmt.tprintf("-a %s -d", name)),
+				strings.contains(fish, fmt.tprintf("%s %s", fq(name), fq(spec.desc))),
 				"fish completion misses %q",
 				name,
 			)
 		}
-		case_label := fmt.tprintf("%s) ", strings.join(spec.names, "|", context.temp_allocator))
-		bash_case := ""
-		for l in bash_lines {
-			if strings.has_prefix(strings.trim_space(l), case_label) {
-				bash_case = l; break
-			}
-		}
+		bash_case := bash_words(bash_line(bash_lines, fmt.tprintf(`%s) acts="`, spec.names[0])))
 		// Offered words: visible actions and flags (hidden synonyms have no desc).
 		offered := make([dynamic]string, context.temp_allocator)
+		descs := make([dynamic]string, context.temp_allocator)
 		for a in spec.actions {
 			if len(a.desc) > 0 {
-				append(&offered, a.word)
+				append(&offered, a.word); append(&descs, a.desc)
 			}
 		}
 		for f in spec.flags {
 			if len(f.desc) > 0 {
-				append(&offered, f.flag)
+				append(&offered, f.flag); append(&descs, f.desc)
 			}
 		}
 		if spec.json != {} {
-			append(&offered, "--json")
+			append(&offered, "--json"); append(&descs, "Machine-readable output")
 		}
-		for word in offered {
+		for word, i in offered {
 			testing.expectf(
 				t,
 				strings.contains(zsh, fmt.tprintf("'%s:", word)),
@@ -360,15 +358,14 @@ test_wayu_completions_list_every_command :: proc(t: ^testing.T) {
 			)
 			testing.expectf(
 				t,
-				strings.contains(bash_case, word),
+				slice.contains(bash_case, word),
 				"bash: %s misses %q",
 				spec.names[0],
 				word,
 			)
 			testing.expectf(
 				t,
-				strings.contains(fish, fmt.tprintf("-a '%s' -d", word)) ||
-				strings.contains(fish, fmt.tprintf("-a %s -d", word)),
+				strings.contains(fish, fmt.tprintf("%s %s", fq(word), fq(descs[i]))),
 				"fish: %s misses %q",
 				spec.names[0],
 				word,
@@ -509,9 +506,9 @@ test_wayu_command_table_drives_json :: proc(t: ^testing.T) {
 	}
 }
 
-// OKAMI-181/182: every row that completes existing entries hands every
-// CMD ACTION pair to `completions names <kind>` in all three scripts, and
-// the hidden `names` word parses but is never offered.
+// OKAMI-181/182: every row that completes existing entries maps every
+// "CMD ACTION 1" key to `completions names <kind>` in all three scripts,
+// and the hidden `names` word parses but is never offered.
 @(test)
 test_wayu_completions_offer_existing_entries :: proc(t: ^testing.T) {
 	zsh := wayu.generate_wayu_completion_zsh()
@@ -528,33 +525,44 @@ test_wayu_completions_offer_existing_entries :: proc(t: ^testing.T) {
 		}
 		rows += 1
 		kind := wayu.COMPLETION_NAMES_KIND[spec.arg_names]
+		for script, i in ([]string{zsh, bash}) {
+			testing.expectf(
+				t,
+				strings.contains(script, fmt.tprintf("spec='n:%s' ;;", kind)),
+				"%s misses names %s",
+				i == 0 ? "zsh" : "bash",
+				kind,
+			)
+		}
 		testing.expectf(
 			t,
-			strings.contains(zsh, fmt.tprintf("_wayu_names %s ;;", kind)),
-			"zsh misses names %s",
-			kind,
-		)
-		testing.expectf(
-			t,
-			strings.contains(bash, fmt.tprintf("_wayu_names %s;", kind)),
-			"bash misses names %s",
-			kind,
-		)
-		testing.expectf(
-			t,
-			strings.contains(fish, fmt.tprintf("completions names %s 2>/dev/null", kind)),
+			strings.contains(fish, fmt.tprintf("echo 'n:%s'", kind)),
 			"fish misses names %s",
 			kind,
 		)
-		for name in spec.names {
-			for a in spec.actions {
-				if a.action not_in spec.arg_name_actions {
-					continue
-				}
-				pair := fmt.tprintf("\"%s %s\"", name, a.word)
-				testing.expectf(t, strings.contains(zsh, pair), "zsh misses %s", pair)
-				testing.expectf(t, strings.contains(bash, pair), "bash misses %s", pair)
+		for a in spec.actions {
+			if a.action not_in spec.arg_name_actions {
+				continue
 			}
+			key := fmt.tprintf("%s %s 1", spec.names[0], a.word)
+			testing.expectf(
+				t,
+				strings.contains(zsh, fmt.tprintf("\"%s\"", key)),
+				"zsh misses %s",
+				key,
+			)
+			testing.expectf(
+				t,
+				strings.contains(bash, fmt.tprintf("\"%s\"", key)),
+				"bash misses %s",
+				key,
+			)
+			testing.expectf(
+				t,
+				strings.contains(fish, fmt.tprintf("'%s'", key)),
+				"fish misses %s",
+				key,
+			)
 		}
 	}
 	testing.expect(t, rows >= 6, "path/alias/const/plugin/function/completions complete entries")
@@ -567,6 +575,86 @@ test_wayu_completions_offer_existing_entries :: proc(t: ^testing.T) {
 		"completions names parses",
 	)
 	testing.expect(t, !strings.contains(zsh, "'names:"), "hidden names word not offered")
+}
+
+// OKAMI-355: value completers name real flags/actions, and the scripts
+// carry their words: every WAYU_FLAG_VALUES flag is a flag of its command,
+// every WAYU_ARG_COMPLETERS action an action of its command, every template
+// name applies, and `--lang` offers every SCRIPT_LANGS name.
+@(test)
+test_wayu_completions_value_completers :: proc(t: ^testing.T) {
+	zsh := wayu.generate_wayu_completion_zsh()
+	defer delete(zsh)
+	bash := wayu.generate_wayu_completion_bash()
+	defer delete(bash)
+	fish := wayu.generate_wayu_completion_fish()
+	defer delete(fish)
+
+	for fv in wayu.WAYU_FLAG_VALUES {
+		spec := wayu.find_command_spec(fv.command)
+		testing.expectf(t, spec != nil, "%v has no row", fv.command)
+		if spec == nil {
+			continue
+		}
+		testing.expectf(
+			t,
+			wayu.command_accepts_flag(fv.command, fv.flag),
+			"%s does not take %s",
+			spec.names[0],
+			fv.flag,
+		)
+		key := fmt.tprintf("%s %s", spec.names[0], fv.flag)
+		testing.expectf(
+			t,
+			strings.contains(bash, fmt.tprintf("\"%s\")", key)),
+			"bash misses %s",
+			key,
+		)
+		testing.expectf(
+			t,
+			strings.contains(zsh, fmt.tprintf("\"%s\")", key)),
+			"zsh misses %s",
+			key,
+		)
+		testing.expectf(t, strings.contains(fish, fmt.tprintf("'%s'", key)), "fish misses %s", key)
+		for w in wayu.wayu_value_words(fv.value) {
+			testing.expectf(t, strings.contains(bash, w), "bash misses %s value %s", key, w)
+			testing.expectf(
+				t,
+				!strings.contains_any(w, " '\"\\$*?[]"),
+				"%s value %q needs quoting",
+				key,
+				w,
+			)
+		}
+	}
+	for c in wayu.WAYU_ARG_COMPLETERS {
+		spec := wayu.find_command_spec(c.command)
+		testing.expectf(t, spec != nil, "%v has no row", c.command)
+		if spec == nil {
+			continue
+		}
+		for act in c.actions {
+			found := false
+			for a in spec.actions {
+				found ||= a.action == act
+			}
+			testing.expectf(t, found, "%s has no %v action", spec.names[0], act)
+		}
+		testing.expectf(
+			t,
+			(c.value == .NAMES) == (c.names != .NONE),
+			"%s: names kind only with .NAMES",
+			spec.names[0],
+		)
+	}
+	for name in wayu.TEMPLATE_NAMES {
+		testing.expectf(t, wayu.template_exists(name), "template %s does not exist", name)
+	}
+	langs := wayu.wayu_value_words(.LANGS)
+	testing.expect_value(t, len(langs), len(wayu.SCRIPT_LANGS))
+	testing.expect(t, strings.contains(bash, "\"secrets run --\") spec='c'"), "secrets run -- CMD")
+	testing.expect(t, strings.contains(bash, "spec='N:backup-index'"), "backup restore N")
 }
 
 @(test)
@@ -586,7 +674,7 @@ test_collect_completion_names :: proc(t: ^testing.T) {
 	write_entries_json(
 		t,
 		tmp,
-		`{"version": 1, "paths": [{"key": "bin", "dir": "$HOME/bin"}], "aliases": [{"name": "zz", "value": "ls"}, {"name": "ll", "value": "ls -la"}], "env": [{"name": "FOO", "value": "1"}]}`,
+		`{"version": 1, "paths": [{"key": "bin", "dir": "$HOME/bin"}], "aliases": [{"name": "zz", "value": "ls"}, {"name": "ll", "value": "ls -la"}], "env": [{"name": "FOO", "value": "1"}, {"name": "SEC", "secret": true}]}`,
 	)
 	for f in ([]string{"_jj", "gh.bash-completion", "notes.txt"}) {
 		testing.expect(
@@ -614,7 +702,10 @@ test_collect_completion_names :: proc(t: ^testing.T) {
 	}
 	expect_names(t, .PATH, {"$HOME/bin"})
 	expect_names(t, .ALIAS, {"ll", "zz"})
-	expect_names(t, .CONSTANT, {"FOO"})
+	expect_names(t, .CONSTANT, {"FOO", "SEC"})
+	expect_names(t, .SECRET, {"SEC"})
+	expect_names(t, .BACKUP, {"alias", "constants", "entries", "path", "toml"})
+	expect_names(t, .BACKUP_INDEX, {})
 	expect_names(t, .COMPLETION, {"gh", "jj"})
 	expect_names(t, .PLUGIN, {})
 	expect_names(t, .NONE, {})

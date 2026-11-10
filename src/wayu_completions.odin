@@ -52,18 +52,24 @@ CompletionNames :: enum {
 	FUNCTION,
 	COMPLETION,
 	SCRIPT,
+	SECRET,
+	BACKUP,
+	BACKUP_INDEX,
 }
 
 // The <kind> word of `wayu completions names <kind>`.
 COMPLETION_NAMES_KIND := [CompletionNames]string {
-	.NONE       = "",
-	.PATH       = "path",
-	.ALIAS      = "alias",
-	.CONSTANT   = "const",
-	.PLUGIN     = "plugin",
-	.FUNCTION   = "function",
-	.COMPLETION = "completion",
-	.SCRIPT     = "script",
+	.NONE         = "",
+	.PATH         = "path",
+	.ALIAS        = "alias",
+	.CONSTANT     = "const",
+	.PLUGIN       = "plugin",
+	.FUNCTION     = "function",
+	.COMPLETION   = "completion",
+	.SCRIPT       = "script",
+	.SECRET       = "secret",
+	.BACKUP       = "backup",
+	.BACKUP_INDEX = "backup-index",
 }
 
 // An action word. `desc == ""` marks a parser-only synonym (`config e`)
@@ -76,6 +82,7 @@ WayuActionSpec :: struct {
 
 // A command-specific flag. A `flag` ending in '=' matches as a prefix
 // (`--category=dev`). `desc == ""` hides it from help and completions.
+// Flags that take a value: WAYU_FLAG_VALUES.
 WayuFlagSpec :: struct {
 	flag: string,
 	desc: string,
@@ -505,24 +512,174 @@ json_commands_summary :: proc(allocator := context.temp_allocator) -> string {
 	return strings.to_string(b)
 }
 
-// A word completions offer after a command: an action, a command flag, or
-// --json.
+// What a flag's value or a positional argument completes to (OKAMI-355).
+WayuValue :: enum u8 {
+	NONE, // no value (a flag) / nothing
+	ANY, // takes a value; nothing to offer
+	DIRS,
+	FILES,
+	COMMAND, // a command line (the words after `secrets run ... --`)
+	NAMES, // existing entries: `wayu completions names <kind>`
+	SHELLS,
+	SOURCES,
+	LANGS,
+	CATEGORIES,
+	TEMPLATES,
+	PLUGIN_KEYS,
+	FPATH_ACTIONS,
+}
+
+// `position` of a WayuArgCompleter: every argument / the words after `--`.
+ARG_EVERY :: 0
+ARG_AFTER_DASHDASH :: -1
+
+// Positional arguments completions offer values for, beyond the existing
+// entries of a row's `arg_names` (first argument of `arg_name_actions`).
+// `actions == {}`: a command without action words.
+WayuArgCompleter :: struct {
+	command:  Command,
+	actions:  bit_set[Action],
+	position: int, // 1-based argument after the action, ARG_EVERY or ARG_AFTER_DASHDASH
+	value:    WayuValue,
+	names:    CompletionNames, // value == .NAMES
+}
+
+WAYU_ARG_COMPLETERS := [?]WayuArgCompleter {
+	{.PATH, {.ADD}, ARG_EVERY, .DIRS, .NONE},
+	{.COMPLETIONS, {.ADD}, ARG_EVERY, .FILES, .NONE},
+	{.COMPLETIONS, {.FPATH}, 1, .FPATH_ACTIONS, .NONE},
+	{.COMPLETIONS, {.FPATH}, 2, .DIRS, .NONE},
+	{.SECRETS, {.RUN}, ARG_AFTER_DASHDASH, .COMMAND, .NONE},
+	{.SECRETS, {.RUN}, ARG_EVERY, .NAMES, .SECRET},
+	{.BACKUP, {.LIST, .RESTORE, .REMOVE}, 1, .NAMES, .BACKUP},
+	{.BACKUP, {.RESTORE}, 2, .NAMES, .BACKUP_INDEX},
+	{.TEMPLATE, {.ADD}, 1, .TEMPLATES, .NONE},
+	{.PLUGIN, {.ADD}, 1, .PLUGIN_KEYS, .NONE},
+	{.SCRIPT, {.IMPORT}, ARG_EVERY, .FILES, .NONE},
+}
+
+// Command flags (WayuFlagSpec, without a trailing '=') that take the next
+// word, or `--flag=word`, as their value, and what completions offer for it.
+WayuFlagValue :: struct {
+	command: Command,
+	flag:    string,
+	value:   WayuValue,
+}
+
+WAYU_FLAG_VALUES := [?]WayuFlagValue {
+	{.PLUGIN, "--category", .CATEGORIES},
+	{.PLUGIN, "-c", .CATEGORIES},
+	{.PLUGIN, "--use", .ANY},
+	{.INIT, "--template", .TEMPLATES},
+	{.SCRIPT, "--lang", .LANGS},
+}
+
+// Global flags (cli_parser) as completions offer them, anywhere on the line.
+@(private = "file")
+WayuGlobalFlag :: struct {
+	flags:    []string,
+	desc:     string,
+	value:    WayuValue,
+	top_only: bool, // only before the command word
+}
+
+@(private = "file")
+WAYU_GLOBAL_FLAGS := [?]WayuGlobalFlag {
+	{{"--help", "-h"}, "Show help", .NONE, false},
+	{{"--version", "-v"}, "Show version", .NONE, true},
+	{{"--dry-run", "-n"}, "Preview changes without writing", .NONE, false},
+	{{"--yes", "-y"}, "Skip confirmation prompts", .NONE, false},
+	{{"--no-color"}, "Disable colored output", .NONE, false},
+	{{"--tui"}, "Launch interactive TUI mode", .NONE, true},
+	{{"--shell"}, "Shell to act for", .SHELLS, false},
+	{{"--source"}, "List views: which entries to show", .SOURCES, false},
+	{{"--full", "-f"}, "List views: include external entries", .NONE, false},
+}
+
+// The fixed words a value completes to (nil for the dynamic kinds).
+// Temp-allocated.
+wayu_value_words :: proc(v: WayuValue) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	#partial switch v {
+	case .SHELLS:
+		append(&out, "zsh", "bash", "fish")
+	case .SOURCES:
+		append(&out, "wayu", "external", "inactive", "all")
+	case .LANGS:
+		for l in SCRIPT_LANGS {append(&out, l.name)}
+	case .CATEGORIES:
+		for p in POPULAR_PLUGINS {
+			if !slice.contains(out[:], p.category) {
+				append(&out, p.category)
+			}
+		}
+	case .TEMPLATES:
+		append(&out, ..TEMPLATE_NAMES[:])
+	case .PLUGIN_KEYS:
+		for p in POPULAR_PLUGINS {append(&out, p.key)}
+	case .FPATH_ACTIONS:
+		append(&out, "list", "add", "rm")
+	}
+	return out[:]
+}
+
+// The completer a script runs, as one word its `_wayu_spec` reads:
+// "w:<words>", "n:<kind>" (entries), "N:<kind>" (entries of the previous
+// argument), "d" dirs, "f" files, "c" a command line, "-" nothing.
+@(private = "file")
+value_spec :: proc(v: WayuValue, names := CompletionNames.NONE) -> string {
+	#partial switch v {
+	case .NONE:
+		return ""
+	case .ANY:
+		return "-"
+	case .DIRS:
+		return "d"
+	case .FILES:
+		return "f"
+	case .COMMAND:
+		return "c"
+	case .NAMES:
+		return fmt.tprintf(
+			"%s:%s",
+			"N" if names == .BACKUP_INDEX else "n",
+			COMPLETION_NAMES_KIND[names],
+		)
+	}
+	return fmt.tprintf("w:%s", strings.join(wayu_value_words(v), " ", context.temp_allocator))
+}
+
+// A word completions offer (action, flag, command) with its description.
 @(private = "file")
 CompletionWord :: struct {
 	word: string,
 	desc: string,
 }
 
-// Words offered after `spec`'s command (hidden synonyms left out).
-// Temp-allocated.
+// One case branch of a generated lookup: keys (a '*' at either end is a
+// glob) → completer spec.
 @(private = "file")
-completion_words :: proc(spec: WayuCommandSpec) -> []CompletionWord {
+CompletionRule :: struct {
+	patterns: []string,
+	spec:     string,
+}
+
+// Action words offered after `spec`'s command (hidden synonyms left out).
+@(private = "file")
+action_words :: proc(spec: WayuCommandSpec) -> []CompletionWord {
 	words := make([dynamic]CompletionWord, context.temp_allocator)
 	for a in spec.actions {
 		if len(a.desc) > 0 {
 			append(&words, CompletionWord{a.word, a.desc})
 		}
 	}
+	return words[:]
+}
+
+// Flags offered after `spec`'s command: its own visible flags and --json.
+@(private = "file")
+flag_words :: proc(spec: WayuCommandSpec) -> []CompletionWord {
+	words := make([dynamic]CompletionWord, context.temp_allocator)
 	for f in spec.flags {
 		if len(f.desc) > 0 {
 			append(&words, CompletionWord{f.flag, f.desc})
@@ -534,29 +691,157 @@ completion_words :: proc(spec: WayuCommandSpec) -> []CompletionWord {
 	return words[:]
 }
 
-// "CMD ACTION" pairs (every command name × every action word, synonyms
-// included) whose first argument completes `spec.arg_names` entries.
-// Temp-allocated.
+// Global flags offered after the command (`top` adds the ones only valid
+// before it).
 @(private = "file")
-arg_name_pairs :: proc(spec: WayuCommandSpec) -> []string {
-	pairs := make([dynamic]string, context.temp_allocator)
-	if spec.arg_names == .NONE {
-		return pairs[:]
+global_flag_words :: proc(top: bool) -> []CompletionWord {
+	words := make([dynamic]CompletionWord, context.temp_allocator)
+	for g in WAYU_GLOBAL_FLAGS {
+		if g.top_only != top {
+			continue
+		}
+		for f in g.flags {append(&words, CompletionWord{f, g.desc})}
 	}
-	for name in spec.names {
+	return words[:]
+}
+
+// "CMD FLAG" keys (canonical command name) of the flags that take a value;
+// global ones as "* FLAG".
+@(private = "file")
+flag_rules :: proc() -> []CompletionRule {
+	rules := make([dynamic]CompletionRule, context.temp_allocator)
+	for fv in WAYU_FLAG_VALUES {
+		spec := find_command_spec(fv.command)
+		if spec == nil {
+			continue
+		}
+		keys := make([]string, 1, context.temp_allocator)
+		keys[0] = fmt.tprintf("%s %s", spec.names[0], fv.flag)
+		append(&rules, CompletionRule{keys, value_spec(fv.value)})
+	}
+	for g in WAYU_GLOBAL_FLAGS {
+		if g.value == .NONE {
+			continue
+		}
+		keys := make([dynamic]string, context.temp_allocator)
+		for f in g.flags {append(&keys, fmt.tprintf("* %s", f))}
+		append(&rules, CompletionRule{keys[:], value_spec(g.value)})
+	}
+	return rules[:]
+}
+
+// "CMD ACTION N" keys (canonical command name, every action word, "-" for
+// a command without actions; N the 1-based argument, "*" every one, "--"
+// after `--`): the `arg_names` entries first, then WAYU_ARG_COMPLETERS;
+// exact positions before "*" so they win.
+@(private = "file")
+arg_rules :: proc() -> []CompletionRule {
+	exact := make([dynamic]CompletionRule, context.temp_allocator)
+	every := make([dynamic]CompletionRule, context.temp_allocator)
+	add :: proc(
+		exact, every: ^[dynamic]CompletionRule,
+		spec: WayuCommandSpec,
+		actions: bit_set[Action],
+		position: int,
+		completer: string,
+	) {
+		pos :=
+			"*" if \
+				position == ARG_EVERY else \
+				"--" if position == ARG_AFTER_DASHDASH else fmt.tprint(position)
+		keys := make([dynamic]string, context.temp_allocator)
+		if actions == {} {
+			append(&keys, fmt.tprintf("%s - %s", spec.names[0], pos))
+		}
 		for a in spec.actions {
-			if a.action in spec.arg_name_actions {
-				append(&pairs, fmt.tprintf("%s %s", name, a.word))
+			if actions != {} && a.action in actions {
+				append(&keys, fmt.tprintf("%s %s %s", spec.names[0], a.word, pos))
 			}
 		}
+		append(every if position == ARG_EVERY else exact, CompletionRule{keys[:], completer})
 	}
-	return pairs[:]
+	for spec in WAYU_COMMAND_SPECS {
+		if spec.arg_names != .NONE {
+			add(&exact, &every, spec, spec.arg_name_actions, 1, value_spec(.NAMES, spec.arg_names))
+		}
+	}
+	for c in WAYU_ARG_COMPLETERS {
+		spec := find_command_spec(c.command)
+		if spec != nil {
+			add(&exact, &every, spec^, c.actions, c.position, value_spec(c.value, c.names))
+		}
+	}
+	append(&exact, ..every[:])
+	return exact[:]
+}
+
+// A case pattern for bash/zsh: the key double-quoted, a '*' at either end
+// left outside as a glob. Keys are command/action/flag words (no quotes).
+@(private = "file")
+sh_pattern :: proc(key: string) -> string {
+	if strings.has_prefix(key, "*") {
+		return fmt.tprintf("*\"%s\"", key[1:])
+	}
+	if strings.has_suffix(key, "*") {
+		return fmt.tprintf("\"%s\"*", key[:len(key) - 1])
+	}
+	return fmt.tprintf("\"%s\"", key)
+}
+
+// bash/zsh `case` branches setting `spec`, from `rules`.
+@(private = "file")
+write_sh_rules :: proc(b: ^strings.Builder, rules: []CompletionRule) {
+	for r in rules {
+		strings.write_string(b, "        ")
+		for k, i in r.patterns {
+			if i > 0 {
+				strings.write_byte(b, '|')
+			}
+			strings.write_string(b, sh_pattern(k))
+		}
+		fmt.sbprintf(b, ") spec=%s ;;\n", shell_single_quote(r.spec, context.temp_allocator))
+	}
+	strings.write_string(b, "        *) spec= ;;\n")
+}
+
+// bash/zsh: `_wayu_cmd WORD` sets cmd to the canonical command name ('?'
+// when unknown) and act to '-' for a command without action words.
+@(private = "file")
+write_sh_cmd :: proc(b: ^strings.Builder) {
+	strings.write_string(b, "_wayu_cmd() {\n    case \"$1\" in\n")
+	for spec in WAYU_COMMAND_SPECS {
+		fmt.sbprintf(
+			b,
+			"        %s) cmd=%s%s ;;\n",
+			strings.join(spec.names, "|", context.temp_allocator),
+			spec.names[0],
+			"" if len(spec.actions) > 0 else " act=-",
+		)
+	}
+	strings.write_string(b, "        *) cmd='?' act=- ;;\n    esac\n}\n\n")
+}
+
+// zsh `_describe` entries ('word:desc'), one per line.
+@(private = "file")
+write_zsh_describe :: proc(b: ^strings.Builder, words: []CompletionWord, indent: string) {
+	for w in words {
+		fmt.sbprintf(
+			b,
+			"%s%s\n",
+			indent,
+			shell_single_quote(fmt.tprintf("%s:%s", w.word, w.desc), context.temp_allocator),
+		)
+	}
 }
 
 // zsh completion for wayu (an fpath `_wayu` file). Allocated; caller deletes.
+//
+// The line is parsed, not indexed by position (OKAMI-355): global flags and
+// their values may come anywhere, the first other word is the command, the
+// next the action, then the arguments; flags complete at any position and
+// `--` ends them. Bash and fish run the same parse.
 generate_wayu_completion_zsh :: proc(allocator := context.allocator) -> string {
 	b := strings.builder_make(allocator)
-	q :: proc(s: string) -> string {return shell_single_quote(s, context.temp_allocator)}
 
 	strings.write_string(&b, "#compdef wayu\n\n")
 	strings.write_string(&b, "# wayu completion script - Auto-generated\n")
@@ -565,96 +850,124 @@ generate_wayu_completion_zsh :: proc(allocator := context.allocator) -> string {
 	strings.write_string(&b, "_wayu_commands() {\n    local -a commands\n    commands=(\n")
 	for spec in WAYU_COMMAND_SPECS {
 		for name in spec.names {
-			fmt.sbprintf(&b, "        %s\n", q(fmt.tprintf("%s:%s", name, spec.desc)))
+			fmt.sbprintf(
+				&b,
+				"        %s\n",
+				shell_single_quote(fmt.tprintf("%s:%s", name, spec.desc), context.temp_allocator),
+			)
 		}
 	}
 	strings.write_string(&b, "    )\n    _describe -t commands 'wayu command' commands\n}\n\n")
 
-	strings.write_string(&b, "_wayu_actions() {\n    local -a actions\n    case \"$1\" in\n")
+	write_sh_cmd(&b)
+
+	strings.write_string(&b, "_wayu_actions() {\n    local -a acts\n    case \"$1\" in\n")
 	for spec in WAYU_COMMAND_SPECS {
-		words := completion_words(spec)
+		words := action_words(spec)
 		if len(words) == 0 {
 			continue
 		}
-		strings.write_string(&b, "        ")
-		strings.write_string(&b, strings.join(spec.names, "|", context.temp_allocator))
-		strings.write_string(&b, ") actions=(")
-		for w in words {
-			strings.write_byte(&b, ' ')
-			strings.write_string(&b, q(fmt.tprintf("%s:%s", w.word, w.desc)))
-		}
-		strings.write_string(&b, " ) ;;\n")
+		fmt.sbprintf(&b, "        %s) acts=(\n", spec.names[0])
+		write_zsh_describe(&b, words, "            ")
+		strings.write_string(&b, "        ) ;;\n")
 	}
 	strings.write_string(
 		&b,
-		"    esac\n    (( ${#actions} )) && _describe -t actions \"$1 action\" actions\n}\n\n",
+		"    esac\n    (( ${#acts} )) && _describe -t actions \"$1 action\" acts\n}\n\n",
 	)
 
-	// Arguments: directories/files for `add`, existing entries (listed by
-	// the binary core.zsh records in _WAYU_BIN) for the first argument of
-	// rm/get/enable/... With `*::`, $line/$words hold the normal arguments
-	// only, so the first argument after the action is CURRENT == 3.
-	strings.write_string(
-		&b,
-		`_wayu_names() {
-    local -a names
-    names=( ${(f)"$(command "${_WAYU_BIN:-wayu}" completions names "$1" 2>/dev/null)"} )
-    (( ${#names} )) && compadd -a names
-}
-
-_wayu_args() {
-    case "$line[1] $line[2]" in
-        "path add") _path_files -/ ;;
-        "completions add") _files ;;
-`,
-	)
+	strings.write_string(&b, "_wayu_flags() {\n    local -a flags\n    flags=(\n")
+	write_zsh_describe(&b, global_flag_words(false), "        ")
+	strings.write_string(&b, "    )\n    case \"$1\" in\n        '') flags+=(\n")
+	write_zsh_describe(&b, global_flag_words(true), "            ")
+	strings.write_string(&b, "        ) ;;\n")
 	for spec in WAYU_COMMAND_SPECS {
-		pairs := arg_name_pairs(spec)
-		if len(pairs) == 0 {
+		words := flag_words(spec)
+		if len(words) == 0 {
 			continue
 		}
-		strings.write_string(&b, "        ")
-		for p, i in pairs {
-			if i > 0 {
-				strings.write_byte(&b, '|')
-			}
-			fmt.sbprintf(&b, "\"%s\"", p)
-		}
-		fmt.sbprintf(
-			&b,
-			") (( CURRENT == 3 )) && _wayu_names %s ;;\n",
-			COMPLETION_NAMES_KIND[spec.arg_names],
-		)
+		fmt.sbprintf(&b, "        %s) flags+=(\n", spec.names[0])
+		write_zsh_describe(&b, words, "            ")
+		strings.write_string(&b, "        ) ;;\n")
 	}
+	strings.write_string(&b, "    esac\n    _describe -t flags 'flag' flags\n}\n\n")
+
+	strings.write_string(&b, "# Sets spec: what the value of flag $2 (command $1) completes to.\n")
+	strings.write_string(&b, "_wayu_flag() {\n    case \"$1 $2\" in\n")
+	write_sh_rules(&b, flag_rules())
+	strings.write_string(&b, "    esac\n}\n\n")
+
+	strings.write_string(&b, "# Sets spec: what argument \"CMD ACTION N\" completes to.\n")
+	strings.write_string(&b, "_wayu_arg() {\n    case \"$1\" in\n")
+	write_sh_rules(&b, arg_rules())
 	strings.write_string(&b, "    esac\n}\n\n")
 
 	strings.write_string(
 		&b,
-		`# Main completion function
-_wayu() {
-    local curcontext="$curcontext" state line
-    typeset -A opt_args
+		`# Existing entries, listed by the binary core.zsh records in _WAYU_BIN.
+_wayu_names() {
+    local -a names
+    names=( ${(f)"$(command "${_WAYU_BIN:-wayu}" completions names "$@" 2>/dev/null)"} )
+    (( ${#names} )) && compadd -a names
+}
 
-    _arguments -C \
-        '(-h --help)'{-h,--help}'[Show help]' \
-        '(-v --version)'{-v,--version}'[Show version]' \
-        '(-n --dry-run)'{-n,--dry-run}'[Preview changes]' \
-        '(-y --yes)'{-y,--yes}'[Skip confirmation]' \
-        '--no-color[Disable colored output]' \
-        '--tui[Launch TUI mode]' \
-        '--shell[Specify shell]:shell:(zsh bash fish)' \
-        '1: :_wayu_commands' \
-        '2: :->action' \
-        '*:: :->args'
-
-    case "$state" in
-        action)
-            _wayu_actions "$line[1]"
-            ;;
-        args)
-            _wayu_args
-            ;;
+# Complete spec $1 ($2: the previous argument).
+_wayu_spec() {
+    local -a vals
+    case "$1" in
+        w:*) vals=( ${=1#w:} ); compadd -a vals ;;
+        n:*) _wayu_names "${1#n:}" ;;
+        N:*) _wayu_names "${1#N:}" "$2" ;;
+        d) _path_files -/ ;;
+        f) _files ;;
     esac
+}
+
+_wayu() {
+    local cur="${words[CURRENT]}" w cmd= act= vf= spec= prev=
+    integer i=2 n=0 dd=0 ddi=0
+    while (( i < CURRENT )); do
+        w="${words[i]}"
+        (( i++ ))
+        if (( dd )); then (( dd++ )); continue; fi
+        if [[ -n $vf ]]; then vf=; continue; fi
+        case "$w" in
+            --) dd=1; ddi=$i ;;
+            -*=*) ;;
+            -*) _wayu_flag "$cmd" "$w"; [[ -n $spec ]] && vf=$w ;;
+            *)
+                if [[ -z $cmd ]]; then _wayu_cmd "$w"
+                elif [[ -z $act ]]; then act=$w
+                else (( n++ )); prev=${(Q)w}
+                fi ;;
+        esac
+    done
+    if [[ -n $vf ]]; then
+        _wayu_flag "$cmd" "$vf"; _wayu_spec "$spec" "$prev"; return
+    fi
+    if [[ $cur == -*=* ]]; then
+        _wayu_flag "$cmd" "${cur%%=*}"
+        [[ -n $spec ]] && { compset -P '*='; _wayu_spec "$spec" "$prev"; }
+        return
+    fi
+    if (( dd )); then
+        _wayu_arg "$cmd $act --"
+        if [[ $spec == c ]]; then
+            words=( "${(@)words[ddi,-1]}" )
+            (( CURRENT -= ddi - 1 ))
+            _normal
+        else
+            _wayu_spec "$spec" "$prev"
+        fi
+        return
+    fi
+    if [[ $cur == -* ]]; then _wayu_flags "$cmd"; return; fi
+    if [[ -z $cmd ]]; then _wayu_commands; return; fi
+    [[ $cmd == '?' ]] && return
+    if [[ -z $act ]]; then _wayu_actions "$cmd"; return; fi
+    _wayu_arg "$cmd $act $(( n + 1 ))"
+    if [[ -z $spec && $act == - ]]; then _wayu_flags "$cmd"; return; fi
+    _wayu_spec "$spec" "$prev"
 }
 
 # Standard #compdef dispatch: when compinit autoloads this file as the
@@ -671,91 +984,170 @@ fi
 	return strings.to_string(b)
 }
 
+// Words of `words`, space-separated.
+@(private = "file")
+join_words :: proc(words: []CompletionWord) -> string {
+	b := strings.builder_make(context.temp_allocator)
+	for w, i in words {
+		if i > 0 {
+			strings.write_byte(&b, ' ')
+		}
+		strings.write_string(&b, w.word)
+	}
+	return strings.to_string(b)
+}
+
 // bash completion for wayu (sourced by core.bash from completions/wayu.bash).
+// bash 3.2 compatible. Same parse as the zsh script.
 generate_wayu_completion_bash :: proc(allocator := context.allocator) -> string {
 	b := strings.builder_make(allocator)
 	strings.write_string(&b, "#!/usr/bin/env bash\n\n")
 	strings.write_string(&b, "# wayu bash completion script - Auto-generated\n")
 	strings.write_string(&b, "# Regenerate with: wayu completions generate\n\n")
-	strings.write_string(&b, "_wayu_completion() {\n")
-	strings.write_string(&b, "    local cur=\"${COMP_WORDS[COMP_CWORD]}\" words=\"\"\n")
-	strings.write_string(&b, "    COMPREPLY=()\n")
-	strings.write_string(&b, "    if [ \"$COMP_CWORD\" -eq 1 ]; then\n        words=\"")
-	first := true
+
+	write_sh_cmd(&b)
+
+	strings.write_string(&b, "# Sets acts (words after the command) and cflags (its flags).\n")
+	strings.write_string(&b, "_wayu_words() {\n    acts= cflags=\n    case \"$1\" in\n")
+	names := make([dynamic]CompletionWord, context.temp_allocator)
 	for spec in WAYU_COMMAND_SPECS {
-		for name in spec.names {
-			if !first {
-				strings.write_byte(&b, ' ')
-			}
-			strings.write_string(&b, name)
-			first = false
-		}
+		for n in spec.names {append(&names, CompletionWord{n, spec.desc})}
 	}
-	strings.write_string(&b, " --help --version --dry-run --yes --no-color --tui --shell\"\n")
-	strings.write_string(
+	fmt.sbprintf(
 		&b,
-		"    elif [ \"$COMP_CWORD\" -eq 2 ]; then\n        case \"${COMP_WORDS[1]}\" in\n",
+		"        '') acts=\"%s\" cflags=\"%s\" ;;\n",
+		join_words(names[:]),
+		join_words(global_flag_words(true)),
 	)
 	for spec in WAYU_COMMAND_SPECS {
-		words := completion_words(spec)
-		if len(words) == 0 {
+		acts := action_words(spec)
+		flags := flag_words(spec)
+		if len(acts) == 0 && len(flags) == 0 {
 			continue
-		}
-		strings.write_string(&b, "            ")
-		strings.write_string(&b, strings.join(spec.names, "|", context.temp_allocator))
-		strings.write_string(&b, ") words=\"")
-		for w, i in words {
-			if i > 0 {
-				strings.write_byte(&b, ' ')
-			}
-			strings.write_string(&b, w.word)
-		}
-		strings.write_string(&b, "\" ;;\n")
-	}
-	strings.write_string(
-		&b,
-		`        esac
-    else
-        case "${COMP_WORDS[1]} ${COMP_WORDS[2]}" in
-            "path add") COMPREPLY=($(compgen -d -- "$cur")); return 0 ;;
-            "completions add") COMPREPLY=($(compgen -f -- "$cur")); return 0 ;;
-`,
-	)
-	// Existing entries for the first argument of rm/get/enable/...
-	// (OKAMI-181), listed by the binary core.bash records in _WAYU_BIN.
-	for spec in WAYU_COMMAND_SPECS {
-		pairs := arg_name_pairs(spec)
-		if len(pairs) == 0 {
-			continue
-		}
-		strings.write_string(&b, "            ")
-		for p, i in pairs {
-			if i > 0 {
-				strings.write_byte(&b, '|')
-			}
-			fmt.sbprintf(&b, "\"%s\"", p)
 		}
 		fmt.sbprintf(
 			&b,
-			") [ \"$COMP_CWORD\" -eq 3 ] && _wayu_names %s; return 0 ;;\n",
-			COMPLETION_NAMES_KIND[spec.arg_names],
+			"        %s) acts=\"%s\" cflags=\"%s\" ;;\n",
+			spec.names[0],
+			join_words(acts),
+			join_words(flags),
 		)
 	}
+	fmt.sbprintf(&b, "    esac\n    gflags=\"%s\"\n}\n\n", join_words(global_flag_words(false)))
+
+	strings.write_string(&b, "# Sets spec: what the value of flag $2 (command $1) completes to.\n")
+	strings.write_string(&b, "_wayu_flag() {\n    case \"$1 $2\" in\n")
+	write_sh_rules(&b, flag_rules())
+	strings.write_string(&b, "    esac\n}\n\n")
+
+	strings.write_string(&b, "# Sets spec: what argument \"CMD ACTION N\" completes to.\n")
+	strings.write_string(&b, "_wayu_arg() {\n    case \"$1\" in\n")
+	write_sh_rules(&b, arg_rules())
+	strings.write_string(&b, "    esac\n}\n\n")
+
 	strings.write_string(
 		&b,
-		`        esac
-    fi
-    COMPREPLY=($(compgen -W "$words" -- "$cur"))
-}
-
-# Entries are matched by prefix and quoted with %q (compgen -W would expand
-# a stored "$HOME/bin" instead of offering it).
+		`# Existing entries of kind $1 matching $2 ($3: extra argument), listed by
+# the binary core.bash records in _WAYU_BIN, matched by prefix and quoted
+# with %q (compgen -W would expand a stored "$HOME/bin").
 _wayu_names() {
-    local cur="${COMP_WORDS[COMP_CWORD]}" n
+    local n
     while IFS= read -r n; do
         [ -n "$n" ] || continue
-        case "$n" in "$cur"*) COMPREPLY+=("$(printf '%q' "$n")") ;; esac
-    done < <(command "${_WAYU_BIN:-wayu}" completions names "$1" 2>/dev/null)
+        case "$n" in "$2"*) COMPREPLY+=("$(printf '%q' "$n")") ;; esac
+    done < <(command "${_WAYU_BIN:-wayu}" completions names "$1" ${3:+"$3"} 2>/dev/null)
+}
+
+# Complete spec $1 for word $2 ($3: the previous argument; $4: words after
+# --, the current one included).
+_wayu_spec() {
+    case "$1" in
+        w:*) COMPREPLY=($(compgen -W "${1#w:}" -- "$2")) ;;
+        n:*) _wayu_names "${1#n:}" "$2" ;;
+        N:*) _wayu_names "${1#N:}" "$2" "$3" ;;
+        d) COMPREPLY=($(compgen -d -- "$2")) ;;
+        f) COMPREPLY=($(compgen -f -- "$2")) ;;
+        c)
+            if [ "${4:-1}" -le 1 ]; then
+                COMPREPLY=($(compgen -c -- "$2"))
+            else
+                COMPREPLY=($(compgen -f -- "$2"))
+            fi ;;
+    esac
+}
+
+_wayu_completion() {
+    local cur="${COMP_WORDS[COMP_CWORD]}" w cmd="" act="" vf="" spec="" prev=""
+    local acts="" cflags="" gflags="" i=1 n=0 dd=0
+    COMPREPLY=()
+    while [ "$i" -lt "$COMP_CWORD" ]; do
+        w="${COMP_WORDS[i]}"
+        i=$((i + 1))
+        if [ "$dd" -gt 0 ]; then dd=$((dd + 1)); continue; fi
+        if [ -n "$vf" ]; then vf=""; continue; fi
+        case "$w" in
+            --) dd=1 ;;
+            -*=*) ;;
+            -*)
+                _wayu_flag "$cmd" "$w"
+                [ -n "$spec" ] || continue
+                # COMP_WORDBREAKS splits --flag=value into --flag = value.
+                if [ "${COMP_WORDS[i]}" = "=" ]; then
+                    if [ $((i + 1)) -ge "$COMP_CWORD" ]; then
+                        [ "$cur" = "=" ] && cur=""
+                        _wayu_spec "$spec" "$cur" "$prev"
+                        return 0
+                    fi
+                    i=$((i + 2))
+                else
+                    vf="$w"
+                fi ;;
+            *)
+                if [ -z "$cmd" ]; then
+                    _wayu_cmd "$w"
+                elif [ -z "$act" ]; then
+                    act="$w"
+                else
+                    n=$((n + 1))
+                    prev="$w"
+                fi ;;
+        esac
+    done
+    if [ -n "$vf" ]; then
+        _wayu_flag "$cmd" "$vf"
+        _wayu_spec "$spec" "$cur" "$prev"
+        return 0
+    fi
+    case "$cur" in
+        -*=*)
+            # '=' is not in COMP_WORDBREAKS: the word keeps its --flag= prefix.
+            _wayu_flag "$cmd" "${cur%%=*}"
+            if [ -n "$spec" ]; then
+                _wayu_spec "$spec" "${cur#*=}" "$prev"
+                [ ${#COMPREPLY[@]} -gt 0 ] && COMPREPLY=("${COMPREPLY[@]/#/${cur%%=*}=}")
+            fi
+            return 0 ;;
+    esac
+    if [ "$dd" -gt 0 ]; then
+        _wayu_arg "$cmd $act --"
+        _wayu_spec "$spec" "$cur" "$prev" "$dd"
+        return 0
+    fi
+    _wayu_words "$cmd"
+    case "$cur" in
+        -*) COMPREPLY=($(compgen -W "$cflags $gflags" -- "$cur")); return 0 ;;
+    esac
+    [ "$cmd" = "?" ] && return 0
+    if [ -z "$cmd" ] || [ -z "$act" ]; then
+        COMPREPLY=($(compgen -W "$acts" -- "$cur"))
+        return 0
+    fi
+    _wayu_arg "$cmd $act $((n + 1))"
+    if [ -z "$spec" ] && [ "$act" = "-" ]; then
+        COMPREPLY=($(compgen -W "$cflags" -- "$cur"))
+        return 0
+    fi
+    _wayu_spec "$spec" "$cur" "$prev"
 }
 
 complete -F _wayu_completion wayu
@@ -764,111 +1156,232 @@ complete -F _wayu_completion wayu
 	return strings.to_string(b)
 }
 
-// fish completion for wayu (completions/wayu.fish).
+// fish `printf '%s\t%s\n' word desc ...` lines for `words`.
+@(private = "file")
+write_fish_words :: proc(b: ^strings.Builder, words: []CompletionWord, indent: string) {
+	if len(words) == 0 {
+		return
+	}
+	fmt.sbprintf(b, "%sprintf '%%s\\t%%s\\n'", indent)
+	for w in words {
+		fmt.sbprintf(
+			b,
+			" \\\n%s    %s %s",
+			indent,
+			escape_fish_string(w.word, context.temp_allocator),
+			escape_fish_string(w.desc, context.temp_allocator),
+		)
+	}
+	strings.write_byte(b, '\n')
+}
+
+// fish `switch` branches printing each rule's spec.
+@(private = "file")
+write_fish_rules :: proc(b: ^strings.Builder, rules: []CompletionRule) {
+	for r in rules {
+		strings.write_string(b, "        case")
+		for k in r.patterns {
+			fmt.sbprintf(b, " %s", escape_fish_string(k, context.temp_allocator))
+		}
+		fmt.sbprintf(
+			b,
+			"\n            echo %s\n",
+			escape_fish_string(r.spec, context.temp_allocator),
+		)
+	}
+}
+
+// fish completion for wayu (completions/wayu.fish): one `__wayu_complete`
+// function prints the candidates ("word<TAB>desc"); same parse as the zsh
+// script.
 generate_wayu_completion_fish :: proc(allocator := context.allocator) -> string {
 	b := strings.builder_make(allocator)
 	strings.write_string(&b, "#!/usr/bin/env fish\n\n")
 	strings.write_string(&b, "# wayu fish completion script - Auto-generated\n")
 	strings.write_string(&b, "# Regenerate with: wayu completions generate\n\n")
 
-	strings.write_string(&b, "set -l commands")
+	strings.write_string(&b, "function __wayu_commands\n")
+	names := make([dynamic]CompletionWord, context.temp_allocator)
 	for spec in WAYU_COMMAND_SPECS {
-		for name in spec.names {fmt.sbprintf(&b, " %s", name)}
+		for n in spec.names {append(&names, CompletionWord{n, spec.desc})}
 	}
-	strings.write_string(
-		&b,
-		"\n\n# Top-level completion (only when no subcommand has been entered yet)\n",
-	)
-	strings.write_string(&b, "complete -c wayu -f\n")
+	write_fish_words(&b, names[:], "    ")
+	strings.write_string(&b, "end\n\n")
+
+	strings.write_string(&b, "# Canonical command name ('?' when unknown).\n")
+	strings.write_string(&b, "function __wayu_cmd\n    switch $argv[1]\n")
 	for spec in WAYU_COMMAND_SPECS {
-		for name in spec.names {
-			fmt.sbprintf(
-				&b,
-				"complete -c wayu -n \"not __fish_seen_subcommand_from $commands\" -a %s -d %s\n",
-				name,
-				escape_fish_string(spec.desc, context.temp_allocator),
-			)
+		fmt.sbprintf(
+			&b,
+			"        case %s\n            echo %s\n",
+			strings.join(spec.names, " ", context.temp_allocator),
+			spec.names[0],
+		)
+	}
+	strings.write_string(&b, "        case '*'\n            echo '?'\n    end\nend\n\n")
+
+	strings.write_string(&b, "function __wayu_has_actions\n    switch $argv[1]\n        case")
+	for spec in WAYU_COMMAND_SPECS {
+		if len(spec.actions) > 0 {
+			fmt.sbprintf(&b, " %s", spec.names[0])
 		}
 	}
+	strings.write_string(&b, "\n            return 0\n    end\n    return 1\nend\n\n")
+
+	strings.write_string(&b, "function __wayu_actions\n    switch $argv[1]\n")
 	for spec in WAYU_COMMAND_SPECS {
-		words := completion_words(spec)
+		words := action_words(spec)
 		if len(words) == 0 {
 			continue
 		}
-		cond := fmt.tprintf(
-			"__fish_seen_subcommand_from %s",
-			strings.join(spec.names, " ", context.temp_allocator),
-		)
-		// Action words only right after the command (flags anywhere), so
-		// `wayu alias rm <TAB>` offers aliases, not actions again.
-		action_cond := fmt.tprintf("%s; and test (count (commandline -opc)) -eq 2", cond)
-		fmt.sbprintf(&b, "\n# %s\n", spec.names[0])
-		for w in words {
-			fmt.sbprintf(
-				&b,
-				"complete -c wayu -n %s -a %s -d %s\n",
-				escape_fish_string(
-					strings.has_prefix(w.word, "-") ? cond : action_cond,
-					context.temp_allocator,
-				),
-				escape_fish_string(w.word, context.temp_allocator),
-				escape_fish_string(w.desc, context.temp_allocator),
-			)
-		}
+		fmt.sbprintf(&b, "        case %s\n", spec.names[0])
+		write_fish_words(&b, words, "            ")
 	}
-	// Existing entries for the first argument of rm/get/enable/...
-	// (OKAMI-182): `__wayu_arg1 CMD... -- ACTION...` is true when the
-	// command line is exactly `wayu CMD ACTION` plus the word being typed.
-	strings.write_string(
-		&b,
-		`
-# Existing entries (first argument of rm/get/enable/...)
-function __wayu_arg1
-    set -l t (commandline -opc)
-    test (count $t) -eq 3; or return 1
-    set -l i (contains -i -- -- $argv); or return 1
-    contains -- $t[2] $argv[1..(math $i - 1)]; or return 1
-    contains -- $t[3] $argv[(math $i + 1)..-1]
-end
-`,
-	)
+	strings.write_string(&b, "    end\nend\n\n")
+
+	strings.write_string(&b, "function __wayu_flags\n")
+	write_fish_words(&b, global_flag_words(false), "    ")
+	strings.write_string(&b, "    switch \"$argv[1]\"\n        case ''\n")
+	write_fish_words(&b, global_flag_words(true), "            ")
 	for spec in WAYU_COMMAND_SPECS {
-		if spec.arg_names == .NONE {
+		words := flag_words(spec)
+		if len(words) == 0 {
 			continue
 		}
-		cond := strings.builder_make(context.temp_allocator)
-		strings.write_string(&cond, "__wayu_arg1")
-		for name in spec.names {fmt.sbprintf(&cond, " %s", name)}
-		strings.write_string(&cond, " --")
-		for a in spec.actions {
-			if a.action in spec.arg_name_actions {
-				fmt.sbprintf(&cond, " %s", a.word)
-			}
-		}
-		fmt.sbprintf(
-			&b,
-			"complete -c wayu -n %s -a %s\n",
-			escape_fish_string(strings.to_string(cond), context.temp_allocator),
-			escape_fish_string(
-				fmt.tprintf(
-					"(command wayu completions names %s 2>/dev/null)",
-					COMPLETION_NAMES_KIND[spec.arg_names],
-				),
-				context.temp_allocator,
-			),
-		)
+		fmt.sbprintf(&b, "        case %s\n", spec.names[0])
+		write_fish_words(&b, words, "            ")
 	}
+	strings.write_string(&b, "    end\nend\n\n")
+
 	strings.write_string(
 		&b,
-		`
-# Global flags
-complete -c wayu -s h -l help -d "Show help"
-complete -c wayu -s v -l version -d "Show version"
-complete -c wayu -s n -l dry-run -d "Preview changes without writing"
-complete -c wayu -s y -l yes -d "Skip confirmation prompts"
-complete -c wayu -l tui -d "Launch interactive TUI mode"
-complete -c wayu -l shell -x -a "zsh bash fish" -d "Specify shell type"
-complete -c wayu -l no-color -d "Disable colored output"
+		"# What the value of flag $argv[2] (command $argv[1]) completes to.\n",
+	)
+	strings.write_string(&b, "function __wayu_flag\n    switch \"$argv[1] $argv[2]\"\n")
+	write_fish_rules(&b, flag_rules())
+	strings.write_string(&b, "    end\nend\n\n")
+
+	strings.write_string(&b, "# What argument \"CMD ACTION N\" completes to.\n")
+	strings.write_string(&b, "function __wayu_arg\n    switch \"$argv[1]\"\n")
+	write_fish_rules(&b, arg_rules())
+	strings.write_string(&b, "    end\nend\n\n")
+
+	strings.write_string(
+		&b,
+		`# Existing entries, listed by the binary core.fish records in _WAYU_BIN.
+function __wayu_names
+    set -l bin wayu
+    test -n "$_WAYU_BIN"; and set bin $_WAYU_BIN
+    command $bin completions names $argv 2>/dev/null
+end
+
+# Complete spec $argv[1] for token $argv[2] ($argv[3]: the previous argument).
+function __wayu_spec
+    switch "$argv[1]"
+        case 'w:*'
+            string split ' ' -- (string sub -s 3 -- $argv[1])
+        case 'n:*'
+            __wayu_names (string sub -s 3 -- $argv[1])
+        case 'N:*'
+            __wayu_names (string sub -s 3 -- $argv[1]) $argv[3]
+        case d
+            __fish_complete_directories $argv[2]
+        case f
+            __fish_complete_path $argv[2]
+    end
+end
+
+function __wayu_complete
+    set -l t (commandline -opc)
+    set -e t[1]
+    set -l cur (commandline -ct)
+    set -l cmd
+    set -l act
+    set -l vf
+    set -l prev
+    set -l s
+    set -l n 0
+    set -l dd 0
+    set -l ddi 0
+    set -l i 0
+    for w in $t
+        set i (math $i + 1)
+        if test $dd -gt 0
+            set dd (math $dd + 1)
+            continue
+        end
+        if test -n "$vf"
+            set vf
+            continue
+        end
+        switch $w
+            case --
+                set dd 1
+                set ddi $i
+            case '-*=*'
+            case '-*'
+                set s (__wayu_flag "$cmd" $w)
+                test -n "$s"; and set vf $w
+            case '*'
+                if test -z "$cmd"
+                    set cmd (__wayu_cmd $w)
+                    __wayu_has_actions $cmd; or set act -
+                else if test -z "$act"
+                    set act $w
+                else
+                    set n (math $n + 1)
+                    set prev $w
+                end
+        end
+    end
+    if test -n "$vf"
+        set s (__wayu_flag "$cmd" $vf)
+        __wayu_spec "$s" "$cur" "$prev"
+        return
+    end
+    if string match -q -- '-*=*' "$cur"
+        set -l f (string split -m 1 = -- "$cur")
+        set s (__wayu_flag "$cmd" $f[1])
+        test -n "$s"; or return
+        for c in (__wayu_spec "$s" "$f[2]" "$prev")
+            echo "$f[1]=$c"
+        end
+        return
+    end
+    if test $dd -gt 0
+        set s (__wayu_arg "$cmd $act --")
+        if test "$s" = c
+            set -l sub $t
+            set -e sub[1..$ddi]
+            set -l line (string escape -- $sub)
+            complete -C "$line $cur"
+        else
+            __wayu_spec "$s" "$cur" "$prev"
+        end
+        return
+    end
+    if string match -q -- '-*' "$cur"
+        __wayu_flags "$cmd"
+        return
+    end
+    if test -z "$cmd"
+        __wayu_commands
+        return
+    end
+    test "$cmd" = '?'; and return
+    if test -z "$act"
+        __wayu_actions $cmd
+        return
+    end
+    set s (__wayu_arg "$cmd $act "(math $n + 1))
+    if test -z "$s" -a "$act" = -
+        __wayu_flags "$cmd"
+        return
+    end
+    __wayu_spec "$s" "$cur" "$prev"
+end
+
+complete -c wayu -f -a '(__wayu_complete)'
 `,
 	)
 	return strings.to_string(b)
@@ -1008,7 +1521,7 @@ handle_completions_command_extended :: proc(action: Action, args: []string) {
 		handle_completions_zsh()
 	case .SEARCH:
 		// names <kind> (hidden; used by the completion scripts)
-		print_completion_names(len(args) > 0 ? args[0] : "")
+		print_completion_names(len(args) > 0 ? args[0] : "", len(args) > 1 ? args[1] : "")
 	case:
 		handle_completions_command(action, args)
 	}
@@ -1018,14 +1531,14 @@ handle_completions_command_extended :: proc(action: Action, args: []string) {
 // the completion scripts (OKAMI-181/182). Read-only and quiet: an unknown
 // kind or unreadable config prints nothing; the exit status is always 0
 // (the scripts discard stderr).
-print_completion_names :: proc(kind_word: string) {
+print_completion_names :: proc(kind_word: string, arg := "") {
 	kind := CompletionNames.NONE
 	for word, k in COMPLETION_NAMES_KIND {
 		if k != .NONE && word == kind_word {
 			kind = k
 		}
 	}
-	names := collect_completion_names(kind)
+	names := collect_completion_names(kind, arg)
 	defer {
 		for n in names {delete(n)}
 		delete(names)
@@ -1045,9 +1558,11 @@ print_completion_names :: proc(kind_word: string) {
 // Existing entries of one kind, as the matching command accepts them:
 // PATH entry dirs as stored, alias/constant names, plugin names, function
 // names (functions/<name>.<ext>) and completion names (file name without
-// the shell prefix/suffix). Sorted. Allocated; caller deletes each and the
-// array.
-collect_completion_names :: proc(kind: CompletionNames) -> [dynamic]string {
+// the shell prefix/suffix), secret constant names, backup types (what
+// `backup restore` takes: toml, entries and its synonyms, the backed-up
+// shell startup files) and the backup numbers of type `arg`. Sorted (backup
+// numbers in order). Allocated; caller deletes each and the array.
+collect_completion_names :: proc(kind: CompletionNames, arg := "") -> [dynamic]string {
 	out := make([dynamic]string)
 	add_unique :: proc(out: ^[dynamic]string, s: string) {
 		for e in out {
@@ -1059,7 +1574,7 @@ collect_completion_names :: proc(kind: CompletionNames) -> [dynamic]string {
 	}
 	switch kind {
 	case .NONE:
-	case .PATH, .ALIAS, .CONSTANT:
+	case .PATH, .ALIAS, .CONSTANT, .SECRET:
 		// Tab completion stays silent: a broken entries.json completes nothing.
 		store, _, ok := entries_read()
 		if !ok {
@@ -1073,6 +1588,12 @@ collect_completion_names :: proc(kind: CompletionNames) -> [dynamic]string {
 			for a in store.aliases {add_unique(&out, a.name)}
 		case .CONSTANT:
 			for e in store.env {add_unique(&out, e.name)}
+		case .SECRET:
+			for e in store.env {
+				if e.secret {
+					add_unique(&out, e.name)
+				}
+			}
 		}
 	case .PLUGIN:
 		json_file := get_plugins_json_config_file()
@@ -1129,6 +1650,29 @@ collect_completion_names :: proc(kind: CompletionNames) -> [dynamic]string {
 		}
 	case .SCRIPT:
 		for s in script_list_all() {add_unique(&out, s.name)}
+	case .BACKUP:
+		for t in ([]string{"toml", "entries", "path", "alias", "constants"}) {
+			add_unique(&out, t)
+		}
+		keys := list_backup_keys()
+		defer delete_backup_keys(keys)
+		for k in keys {
+			display := backup_key_display(k, context.temp_allocator)
+			if f := startup_file_for_backup_name(display); len(f) > 0 {
+				delete(f)
+				add_unique(&out, display)
+			}
+		}
+	case .BACKUP_INDEX:
+		file := get_config_file_path(arg)
+		defer delete(file)
+		if len(file) == 0 {
+			break
+		}
+		backups := list_backups_for_file(file)
+		defer free_backup_infos(backups)
+		for _, i in backups {add_unique(&out, fmt.tprint(i + 1))}
+		return out
 	}
 	slice.sort(out[:])
 	return out
