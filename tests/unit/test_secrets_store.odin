@@ -237,6 +237,27 @@ test_keystore_argv :: proc(t: ^testing.T) {
 		wayu.secret_service_load_argv(),
 		{"secret-tool", "lookup", "service", "wayu", "account", account},
 	)
+	// The wayu 6.0 shared items (read once to move the key).
+	expect_argv(
+		t,
+		wayu.keychain_legacy_load_argv(),
+		{"security", "find-generic-password", "-a", "wayu", "-s", "wayu-master-key", "-w"},
+	)
+	expect_argv(
+		t,
+		wayu.secret_service_legacy_load_argv(),
+		{"secret-tool", "lookup", "service", "wayu", "account", "master"},
+	)
+	testing.expect_value(
+		t,
+		wayu.keystore_legacy_delete_hint(.KEYCHAIN),
+		"security delete-generic-password -a wayu -s wayu-master-key",
+	)
+	testing.expect_value(
+		t,
+		wayu.keystore_legacy_delete_hint(.SECRET_SERVICE),
+		"secret-tool clear service wayu account master",
+	)
 	// Another data dir: another account.
 	wayu.wayu.data = "/fake/other/wayu"
 	testing.expect(t, wayu.keystore_account() != account, "data dirs must not share a key")

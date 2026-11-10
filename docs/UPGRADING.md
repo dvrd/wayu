@@ -137,14 +137,13 @@ releases, so they are listed here too.
 - The master key in the macOS keychain / Secret Service is stored per data
   dir: account `wayu-<id>` (keychain service `wayu-master-key`; Secret
   Service `service wayu`), where `<id>` is the 16-hex id `wayu doctor`
-  prints. The old item (account `wayu` / `account master`) is no longer
-  read: with secrets stored, `const get` and new shells report the key as
-  missing until it is moved. Move it once (macOS; take the account from
-  `wayu doctor`):
-  `security add-generic-password -a wayu-<id> -s wayu-master-key -l 'wayu master key' -w "$(security find-generic-password -a wayu -s wayu-master-key -w)"`,
-  check with `wayu doctor`, then `security delete-generic-password -a wayu -s wayu-master-key`.
-  Secret Service: `secret-tool lookup service wayu account master | secret-tool store --label='wayu master key' service wayu account wayu-<id>`,
-  then `secret-tool clear service wayu account master`.
+  prints. The old shared item (account `wayu` / `account master`) is moved
+  automatically: the first wayu command that needs the key (a new shell,
+  `const get`, `doctor`) copies it to `wayu-<id>` when it decrypts this data
+  dir's `secrets.json`, and prints a one-line notice once. The old item is
+  kept (another data dir may still use it); the notice names the command
+  that deletes it (`security delete-generic-password -a wayu -s wayu-master-key`
+  / `secret-tool clear service wayu account master`).
 - Secrets session cache: with neither `XDG_RUNTIME_DIR` nor `TMPDIR` set it
   lives in `<data>/run/wayu-<uid>/` (was `/tmp/wayu-<uid>/`). `core.<ext>`
   sources it only from a dir you own that is not a symlink (otherwise from

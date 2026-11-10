@@ -486,10 +486,57 @@ secrets_has :: proc(name: string) -> bool {
 // Master key for a store operation
 // ---------------------------------------------------------------------------
 
+// keystore_load, plus the one-time move of a wayu 6.0 key: when the
+// per-data-dir item is missing but the shared 6.0 item (keystore_load_legacy)
+// decrypts this data dir's secrets.json, the key is stored under the new
+// item and used. The 6.0 item is kept (another data dir may still need it);
+// the notice names the command that deletes it. Reads secrets.json directly
+// (not secrets_store_load, which calls back here through rekey recovery).
+secrets_key_load :: proc(
+	backend: Secrets_Backend,
+) -> (
+	key: [SECRETS_KEY_SIZE]byte,
+	status: Key_Status,
+	msg: string,
+) {
+	key, status, msg = keystore_load(backend)
+	if status != .MISSING {
+		return
+	}
+	old, old_status, _ := keystore_load_legacy(backend)
+	defer crypto.zero_explicit(&old, size_of(old))
+	if old_status != .OK {
+		return
+	}
+	data, rerr := os.read_entire_file_from_path(secrets_store_path(), context.allocator)
+	if rerr != nil {
+		return
+	}
+	s, perr := secrets_store_parse(string(data))
+	delete(data)
+	defer secrets_store_destroy(&s)
+	if len(perr) > 0 || !secrets_store_opens_with(&s, old) {
+		return
+	}
+	if saved, serr := keystore_save(backend, old, false); !saved {
+		return key, .UNAVAILABLE, fmt.tprintf(
+			"could not move the wayu 6.0 master key to account %s: %s",
+			keystore_account(),
+			serr,
+		)
+	}
+	fmt.eprintfln(
+		"wayu: moved the master key to account %s (one key per data dir). The old shared item is no longer needed by this data dir; delete it once no other wayu data dir uses it: %s",
+		keystore_account(),
+		keystore_legacy_delete_hint(backend),
+	)
+	return old, .OK, ""
+}
+
 // Key to decrypt existing values. Every failure is an error.
 secrets_key_for_read :: proc() -> (key: [SECRETS_KEY_SIZE]byte, ok: bool, err: string) {
 	backend := secrets_backend_active()
-	k, status, msg := keystore_load(backend)
+	k, status, msg := secrets_key_load(backend)
 	switch status {
 	case .OK:
 		return k, true, ""
@@ -517,7 +564,7 @@ secrets_key_for_write :: proc(
 	err: string,
 ) {
 	backend := secrets_backend_active()
-	k, status, msg := keystore_load(backend)
+	k, status, msg := secrets_key_load(backend)
 	switch status {
 	case .OK:
 		return k, true, ""
@@ -1802,7 +1849,7 @@ check_secrets :: proc(results: ^[dynamic]CheckResult) {
 		)
 		return
 	}
-	key, status, msg := keystore_load(backend)
+	key, status, msg := secrets_key_load(backend)
 	defer crypto.zero_explicit(&key, size_of(key))
 	if status != .OK {
 		// A MISSING message already names the account.

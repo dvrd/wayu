@@ -609,7 +609,7 @@ error). `backend` says where the master key lives:
 `<id>` is 16 hex digits identifying the data dir (FNV-1a 64 of its path, the
 same id as in the session cache name): each data dir (another
 `WAYU_DATA_DIR`, a test `HOME`) has its own key and never reads another's.
-`wayu doctor` prints the account (`keychain (account wayu-…)`).
+`wayu doctor` prints the account (`keychain (account wayu-…)`). A key left by wayu 6.0 (one shared item: keychain account `wayu`, Secret Service `account master`) is copied to the per-data-dir account the first time it is needed, when it decrypts the data dir's `secrets.json`; the old item is kept.
 
 Any other value is an error (`toml validate` exits `65`; secret commands exit
 `78`). The key is created with the first secret; wayu never creates a new

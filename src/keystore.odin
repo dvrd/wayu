@@ -239,6 +239,79 @@ secret_service_load_argv :: proc() -> []string {
 	)
 }
 
+// Where wayu 6.0 kept the key: one item shared by every data dir (keychain
+// account "wayu", Secret Service "service wayu account master"). Read only
+// to move the key to the per-data-dir item (secrets_key_load).
+KEYCHAIN_LEGACY_ACCOUNT :: "wayu"
+SECRET_SERVICE_LEGACY_ACCOUNT :: "master"
+
+// `security find-generic-password -a wayu -s wayu-master-key -w`.
+keychain_legacy_load_argv :: proc() -> []string {
+	return slice_temp(
+		{
+			"security",
+			"find-generic-password",
+			"-a",
+			KEYCHAIN_LEGACY_ACCOUNT,
+			"-s",
+			KEYCHAIN_SERVICE,
+			"-w",
+		},
+	)
+}
+
+// `secret-tool lookup service wayu account master`.
+secret_service_legacy_load_argv :: proc() -> []string {
+	return slice_temp(
+		{
+			"secret-tool",
+			"lookup",
+			"service",
+			SECRET_SERVICE_SERVICE,
+			"account",
+			SECRET_SERVICE_LEGACY_ACCOUNT,
+		},
+	)
+}
+
+// The command that deletes the 6.0 item (shown to the user, never run:
+// other data dirs may still need it). Temp-allocated.
+keystore_legacy_delete_hint :: proc(b: Secrets_Backend) -> string {
+	if b == .SECRET_SERVICE {
+		return fmt.tprintf(
+			"secret-tool clear service %s account %s",
+			SECRET_SERVICE_SERVICE,
+			SECRET_SERVICE_LEGACY_ACCOUNT,
+		)
+	}
+	return fmt.tprintf(
+		"security delete-generic-password -a %s -s %s",
+		KEYCHAIN_LEGACY_ACCOUNT,
+		KEYCHAIN_SERVICE,
+	)
+}
+
+// Load the 6.0 key (keychain / Secret Service only; .MISSING otherwise).
+keystore_load_legacy :: proc(
+	b: Secrets_Backend,
+) -> (
+	key: [SECRETS_KEY_SIZE]byte,
+	status: Key_Status,
+	msg: string,
+) {
+	#partial switch secrets_backend_resolve(b) {
+	case .KEYCHAIN:
+		return keystore_load_command(
+			keychain_legacy_load_argv(),
+			"macOS keychain",
+			KEYCHAIN_NOT_FOUND_EXIT,
+		)
+	case .SECRET_SERVICE:
+		return keystore_load_command(secret_service_legacy_load_argv(), "Secret Service", 1)
+	}
+	return key, .MISSING, ""
+}
+
 @(private = "file")
 slice_temp :: proc(items: []string) -> []string {
 	out := make([]string, len(items), context.temp_allocator)
