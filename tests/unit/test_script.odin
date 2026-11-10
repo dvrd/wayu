@@ -46,8 +46,7 @@ test_script_lang_table :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, wayu.script_lang_by_name(wayu.SCRIPT_DEFAULT_LANG) != nil)
 	swift := wayu.script_lang_by_name("swift")
-	_, compiled := swift.compile.?
-	testing.expect(t, compiled)
+	testing.expect_value(t, swift.build, "swiftc -O -o {out} {src}")
 	testing.expect(t, wayu.script_lang_by_name("cobol") == nil)
 	testing.expect_value(t, wayu.script_lang_by_ext("ts").name, "bun")
 }
@@ -71,6 +70,15 @@ test_script_shebang_detection :: proc(t: ^testing.T) {
 		{"#!/bin/dash", "/bin/dash", "sh"},
 		{"#!/usr/bin/awk -f", "/usr/bin/awk", ""},
 		{"echo hi", "", ""},
+		// OKAMI-340: env options that take an argument.
+		{"#!/usr/bin/env -u PYTHONPATH python3", "python3", "python"},
+		{"#!/usr/bin/env -P /opt/bin ruby", "ruby", "ruby"},
+		{"#!/usr/bin/env -C /tmp node", "node", "node"},
+		{"#!/usr/bin/env --unset=FOO perl", "perl", "perl"},
+		{"#!/usr/bin/env --unset FOO --chdir /tmp lua", "lua", "lua"},
+		{"#!/usr/bin/env -i -- bash", "bash", "bash"},
+		// OKAMI-369: uv runs PEP 723 scripts.
+		{"#!/usr/bin/env -S uv run --script", "uv", "python"},
 	}
 	for c in cases {
 		interp := wayu.script_shebang_interpreter(c.line)
@@ -86,6 +94,60 @@ test_script_shebang_detection :: proc(t: ^testing.T) {
 		got := lang.name if lang != nil else ""
 		testing.expectf(t, got == c.lang, "%q: language %q, want %q", c.line, got, c.lang)
 	}
+}
+
+// OKAMI-369: `wayu: build =` header comments and the build argv.
+@(test)
+test_script_build_header :: proc(t: ^testing.T) {
+	Case :: struct {
+		content, want: string,
+	}
+	cases := []Case {
+		{"// wayu: build = cc -O2 -o {out} {src}\nint main(){}\n", "cc -O2 -o {out} {src}"},
+		{"#!/bin/sh\n# wayu: build = go build -o {out} {src}\n", "go build -o {out} {src}"},
+		{"-- wayu:build=luac -o {out} {src}\n", "luac -o {out} {src}"},
+		{"/* wayu: build = rustc -o {out} {src} */\nfn main(){}\n", "rustc -o {out} {src}"},
+		{"int x; // not a header line\nwayu: build = cc\n", ""},
+		{"print(1)\n", ""},
+	}
+	for c in cases {
+		got := wayu.script_build_header(c.content)
+		testing.expectf(t, got == c.want, "%q: %q, want %q", c.content, got, c.want)
+	}
+	// Past the first SCRIPT_BUILD_HEADER_LINES lines: ignored.
+	far := strings.concatenate(
+		{
+			strings.repeat("x\n", wayu.SCRIPT_BUILD_HEADER_LINES, context.temp_allocator),
+			"// wayu: build = cc -o {out} {src}\n",
+		},
+		context.temp_allocator,
+	)
+	testing.expect_value(t, wayu.script_build_header(far), "")
+
+	argv, problem := wayu.script_build_argv(
+		`cc -DMSG="a b" -o '{out}' {src}`,
+		"/s/x.c",
+		"/b/.x.build",
+	)
+	testing.expect_value(t, problem, "")
+	testing.expect_value(t, len(argv), 5)
+	if len(argv) == 5 {
+		testing.expect_value(t, argv[1], "-DMSG=a b")
+		testing.expect_value(t, argv[3], "/b/.x.build")
+		testing.expect_value(t, argv[4], "/s/x.c")
+	}
+	_, problem = wayu.script_build_argv("cc {src}", "a", "b")
+	testing.expect(t, strings.contains(problem, "{out}"))
+	_, problem = wayu.script_build_argv("cc 'oops", "a", "b")
+	testing.expect_value(t, problem, "unterminated quote")
+}
+
+// OKAMI-338: a CRLF shebang is detected.
+@(test)
+test_script_shebang_crlf :: proc(t: ^testing.T) {
+	testing.expect(t, wayu.script_shebang_has_cr("#!/bin/sh\r\necho hi\r\n"))
+	testing.expect(t, !wayu.script_shebang_has_cr("#!/bin/sh\necho hi\r\n"))
+	testing.expect(t, !wayu.script_shebang_has_cr("echo\r\n"))
 }
 
 @(test)

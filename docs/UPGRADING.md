@@ -300,6 +300,26 @@ releases, so they are listed here too.
   plugins were counted as updated).
 - TUI plugins view (Installed tab): `u` updates the selected plugin (Esc
   cancels), `d` removes it after a confirmation (was a hint to use the CLI).
+- `wayu script`: a source in any language can declare its build command in
+  a header comment (`// wayu: build = cc -O2 -o {out} {src}`); swift's
+  `swiftc -O` is now a preset of the same mechanism. The build hash covers
+  the build command too, so every swift script is rebuilt once.
+- Two script sources with the same name (`foo.sh`, `foo.rb`) are an error:
+  neither is built (`script build` exits 1, they used to replace each
+  other's `bin/foo` on every build), `script edit|build|rm foo` exit 65 and
+  doctor reports an error. Delete or rename one.
+- A script whose shebang line ends in CR (CRLF line endings) is not linked
+  (`script build` exits 1 explaining it) and doctor reports an error;
+  `script import` converts such a file to LF (it was imported and failed
+  with `bad interpreter`).
+- `script rm NAME --yes` removes a `bin/NAME` entry that has no script (was
+  exit 65); doctor reports those entries as a separate, fixable check
+  ("script bin entries", was part of "scripts") and `doctor --fix --yes`
+  removes them.
+- Shebangs `#!/usr/bin/env -u VAR python` / `-P dir` / `-C dir` /
+  `--unset=VAR` are read correctly (the option's argument was taken as the
+  interpreter); `#!/usr/bin/env -S uv run --script` (PEP 723) is a python
+  script.
 
 ## 6.0.0
 

@@ -949,7 +949,8 @@ startup:
 `NAME.<ext>` per script; the directory is the list) and
 `$WAYU_DATA_DIR/bin/` what runs: a relative symlink to the source for
 interpreted languages, the compiled binary plus `.NAME.hash` (hash of the
-source it was built from) for swift. Use `wayu script` rather than editing
+source and build command it was built from) for swift and any source with a
+`wayu: build = ...` header (see `wayu script` in docs/cli.md). Use `wayu script` rather than editing
 `bin/`. Once `bin/` holds a script, `core.<ext>` and `path_sync.<ext>` put it
 first among wayu's PATH entries (zsh, bash, fish), so a script may shadow a
 tool of the same name.
