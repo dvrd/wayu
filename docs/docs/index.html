@@ -4,7 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>wayu docs</title>
-  <meta name="description" content="wayu documentation: the CLI reference, the configuration reference and the upgrade guide, rendered from the Markdown files in the repository." />
+  <meta name="description" content="wayu documentation: quickstart, CLI reference, configuration reference, stability guarantees and upgrade guide, rendered from the Markdown files in the repository." />
+  <link rel="canonical" href="https://wayu.dvrd.io/docs/" />
+  <meta property="og:site_name" content="wayu" />
+  <meta property="og:title" content="wayu docs" />
+  <meta property="og:description" content="Quickstart, CLI reference, configuration reference, stability guarantees and upgrade guide for wayu." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://wayu.dvrd.io/docs/" />
+  <meta property="og:image" content="https://wayu.dvrd.io/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="wayu docs" />
+  <meta name="twitter:description" content="Quickstart, CLI reference, configuration reference, stability guarantees and upgrade guide for wayu." />
+  <meta name="twitter:image" content="https://wayu.dvrd.io/og.png" />
 
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png" />
@@ -15,9 +26,8 @@
   <meta name="theme-color" content="#141016" media="(prefers-color-scheme: dark)" />
   <meta name="color-scheme" content="light dark" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400..600&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet" />
+  <link rel="preload" href="../fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist.woff2" as="font" type="font/woff2" crossorigin />
 
   <!-- Markdown is the source of truth (docs/*.md, checked by tests); it is rendered here, in the browser. -->
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous" defer></script>
@@ -33,6 +43,14 @@
   </script>
 
   <style>
+    /* ── Fonts (same as index.html: self-hosted, metric-matched fallbacks) ── */
+    @font-face { font-family: 'Bricolage Grotesque'; src: url(../fonts/bricolage-grotesque.woff2) format('woff2'); font-weight: 700 800; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Geist'; src: url(../fonts/geist.woff2) format('woff2'); font-weight: 400 600; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Geist Mono'; src: url(../fonts/geist-mono.woff2) format('woff2'); font-weight: 400 600; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Bricolage Fallback'; src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('Arial'); font-weight: 700 800; size-adjust: 92.6%; ascent-override: 100.43%; descent-override: 29.16%; line-gap-override: 0%; }
+    @font-face { font-family: 'Geist Fallback'; src: local('Arial'), local('ArialMT'), local('Liberation Sans'); size-adjust: 103.87%; ascent-override: 96.76%; descent-override: 28.4%; line-gap-override: 0%; }
+    @font-face { font-family: 'Geist Mono Fallback'; src: local('Menlo'), local('Menlo-Regular'), local('DejaVu Sans Mono'); size-adjust: 99.66%; ascent-override: 100.84%; descent-override: 29.6%; line-gap-override: 0%; }
+
     /* ── Tokens (same as index.html) ─────────────────────────────────────── */
     :root {
       --bg:        #f5f1ec;
@@ -64,9 +82,9 @@
       --term-key:  #f9e2af;
       --term-pink: #f38ba8;
 
-      --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
-      --font-body: 'Geist', ui-sans-serif, system-ui, sans-serif;
-      --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+      --font-display: 'Bricolage Grotesque', 'Bricolage Fallback', ui-sans-serif, system-ui, sans-serif;
+      --font-body: 'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif;
+      --font-mono: 'Geist Mono', 'Geist Mono Fallback', ui-monospace, 'SF Mono', Menlo, monospace;
 
       --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
       --ease-swap: cubic-bezier(0.2, 0, 0, 1);
@@ -301,6 +319,7 @@
 </head>
 <body>
   <a class="skip" href="#doc">Skip to content</a>
+  <p class="sr-only" id="copy-status" role="status" aria-live="polite"></p>
 
   <header class="nav">
     <div class="nav-inner">
@@ -345,7 +364,7 @@
       <p class="results-empty" id="results-empty" hidden>No matches. Try a command name, a flag or a file.</p>
 
       <nav id="pages-nav" aria-label="Pages">
-        <p class="side-label">Reference</p>
+        <p class="side-label">Docs</p>
         <ul class="pages" id="pages"></ul>
       </nav>
     </aside>
@@ -354,10 +373,15 @@
       <article class="doc" id="article" aria-live="off">
         <div class="loading" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
         <noscript>
-          <p>These pages are rendered from Markdown with JavaScript. Read them on GitHub instead:
-          <a href="https://github.com/dvrd/wayu/blob/main/docs/cli.md">CLI reference</a>,
-          <a href="https://github.com/dvrd/wayu/blob/main/docs/config-reference.md">configuration reference</a>,
-          <a href="https://github.com/dvrd/wayu/blob/main/docs/UPGRADING.md">upgrade guide</a>.</p>
+          <h1>wayu documentation</h1>
+          <p>These pages are rendered from Markdown with JavaScript. Read them on GitHub instead:</p>
+          <ul>
+            <li><a href="https://github.com/dvrd/wayu/blob/main/docs/quickstart.md">Quickstart</a>: install, the rc line, first commands</li>
+            <li><a href="https://github.com/dvrd/wayu/blob/main/docs/cli.md">CLI reference</a>: every command, flag, JSON shape and exit code</li>
+            <li><a href="https://github.com/dvrd/wayu/blob/main/docs/config-reference.md">Configuration reference</a>: wayu.toml, entries.json, generated files</li>
+            <li><a href="https://github.com/dvrd/wayu/blob/main/docs/STABILITY.md">Stability guarantees</a></li>
+            <li><a href="https://github.com/dvrd/wayu/blob/main/docs/UPGRADING.md">Upgrade guide</a></li>
+          </ul>
         </noscript>
       </article>
     </main>
@@ -373,8 +397,10 @@
     'use strict';
     var REPO = 'https://github.com/dvrd/wayu/blob/main/';
     var PAGES = [
+      { id: 'quickstart', file: 'quickstart.md', title: 'Quickstart', desc: 'Install, the one rc line, your first entries and secrets, and bringing over an existing rc file.' },
       { id: 'cli', file: 'cli.md', title: 'CLI reference', desc: 'Every command, action and flag, the --json shapes and the exit codes.' },
       { id: 'config', file: 'config-reference.md', title: 'Configuration', desc: 'wayu.toml, entries.json, hooks, plugins and the files wayu generates.' },
+      { id: 'stability', file: 'STABILITY.md', title: 'Stability', desc: 'What a release promises from 7.0 on: stable surfaces, migrations, deprecation, platforms.' },
       { id: 'upgrading', file: 'UPGRADING.md', title: 'Upgrading', desc: 'User-visible behavior changes per release, with the steps to follow.' }
     ];
     var byId = {}, byFile = {};
@@ -577,7 +603,7 @@
         '<div class="state">' +
         '<p class="doc-meta"><span class="crumb">Docs</span></p>' +
         '<h1>wayu documentation</h1>' +
-        '<p>The reference for every command and config file, rendered from the Markdown in the repository, so it always matches the release on <code>main</code>. New here? Start with <a href="../#install">install</a>, then keep the CLI reference open.</p>' +
+        '<p>The reference for every command and config file, rendered from the Markdown in the repository, so it always matches the release on <code>main</code>. New here? Start with the <a href="' + href('quickstart') + '" data-route="1">Quickstart</a>, then keep the CLI reference open.</p>' +
         '<div class="cards">' + PAGES.map(function (p) {
           return '<a href="' + href(p.id) + '" data-route="1"><strong>' + esc(p.title) + '</strong>' + esc(p.desc) + '</a>';
         }).join('') + '</div>' +
@@ -679,18 +705,26 @@
     window.addEventListener('popstate', function () { show(parseLoc()); });
 
     /* ── Copy buttons ────────────────────────────────────────────────── */
+    var copyStatus = document.getElementById('copy-status');
+    function announce(msg) { copyStatus.textContent = ''; setTimeout(function () { copyStatus.textContent = msg; }, 60); }
     article.addEventListener('click', function (e) {
       var b = e.target.closest && e.target.closest('.copy-btn');
       if (!b) return;
       var pre = b.parentNode.querySelector('pre');
       var text = pre ? pre.textContent.replace(/\n$/, '') : '';
-      if (!navigator.clipboard) return;
-      var label = b.getAttribute('aria-label') === 'Copied' ? 'Copy code' : b.getAttribute('aria-label');
+      // Clipboard refused (permissions, http, old browser): select the code so ⌘C / Ctrl+C works.
+      function fallback() {
+        if (!pre) return;
+        var r = document.createRange(); r.selectNodeContents(pre);
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        announce('Could not copy: the code is selected, press Ctrl+C or ⌘C');
+      }
+      if (!navigator.clipboard || !navigator.clipboard.writeText) { fallback(); return; }
       navigator.clipboard.writeText(text).then(function () {
-        b.classList.add('copied'); b.setAttribute('aria-label', 'Copied');
+        b.classList.add('copied'); announce('Copied');
         clearTimeout(b._t);
-        b._t = setTimeout(function () { b.classList.remove('copied'); b.setAttribute('aria-label', label); }, 1600);
-      }, function () {});
+        b._t = setTimeout(function () { b.classList.remove('copied'); }, 1600);
+      }, fallback);
     });
 
     /* ── Scroll-spy ──────────────────────────────────────────────────── */

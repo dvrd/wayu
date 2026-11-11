@@ -6,13 +6,39 @@
   <title>wayu — shell configuration, managed by commands</title>
   <meta name="description" content="wayu manages PATH entries, aliases, environment variables, encrypted secrets, scripts and plugins for zsh, bash and fish, and compiles them into one file your shell sources at startup." />
 
+  <link rel="canonical" href="https://wayu.dvrd.io/" />
+
+  <meta property="og:site_name" content="wayu" />
   <meta property="og:title" content="wayu — shell configuration, managed by commands" />
   <meta property="og:description" content="PATH entries, aliases, constants, encrypted secrets, scripts and plugins for zsh, bash and fish, compiled into one init file." />
-  <meta property="og:image" content="https://wayu.dvrd.io/demo/poster.jpg" />
-  <meta property="og:url" content="https://wayu.dvrd.io" />
+  <meta property="og:image" content="https://wayu.dvrd.io/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="wayu: your shell setup, managed by commands" />
+  <meta property="og:url" content="https://wayu.dvrd.io/" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:image" content="https://wayu.dvrd.io/demo/poster.jpg" />
+  <meta name="twitter:title" content="wayu — shell configuration, managed by commands" />
+  <meta name="twitter:description" content="PATH entries, aliases, constants, encrypted secrets, scripts and plugins for zsh, bash and fish, compiled into one init file." />
+  <meta name="twitter:image" content="https://wayu.dvrd.io/og.png" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "wayu",
+    "softwareVersion": "6.0.0",
+    "description": "A shell configuration CLI: PATH entries, aliases, environment variables, encrypted secrets, scripts and plugins for zsh, bash and fish, compiled into one init file.",
+    "url": "https://wayu.dvrd.io/",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS 15 or later (arm64), Linux (x86_64)",
+    "downloadUrl": "https://github.com/dvrd/wayu/releases",
+    "installUrl": "https://wayu.dvrd.io/docs/?p=quickstart",
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "sameAs": ["https://github.com/dvrd/wayu"]
+  }
+  </script>
 
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
@@ -23,9 +49,8 @@
   <meta name="theme-color" content="#0f0b10" media="(prefers-color-scheme: dark)" />
   <meta name="color-scheme" content="dark light" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400..600&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet" />
+  <link rel="preload" href="fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/geist.woff2" as="font" type="font/woff2" crossorigin />
 
   <script>
     // Before first paint: enable JS-only styles and apply a saved theme.
@@ -37,6 +62,15 @@
   </script>
 
   <style>
+    /* ── Fonts: self-hosted latin subsets (docs/fonts, OFL), with fallbacks
+       metric-matched to them so the swap doesn't move the layout ─────────── */
+    @font-face { font-family: 'Bricolage Grotesque'; src: url(fonts/bricolage-grotesque.woff2) format('woff2'); font-weight: 700 800; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Geist'; src: url(fonts/geist.woff2) format('woff2'); font-weight: 400 600; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Geist Mono'; src: url(fonts/geist-mono.woff2) format('woff2'); font-weight: 400 600; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Bricolage Fallback'; src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('Arial'); font-weight: 700 800; size-adjust: 92.6%; ascent-override: 100.43%; descent-override: 29.16%; line-gap-override: 0%; }
+    @font-face { font-family: 'Geist Fallback'; src: local('Arial'), local('ArialMT'), local('Liberation Sans'); size-adjust: 103.87%; ascent-override: 96.76%; descent-override: 28.4%; line-gap-override: 0%; }
+    @font-face { font-family: 'Geist Mono Fallback'; src: local('Menlo'), local('Menlo-Regular'), local('DejaVu Sans Mono'); size-adjust: 99.66%; ascent-override: 100.84%; descent-override: 29.6%; line-gap-override: 0%; }
+
     /* ── Tokens: dark first, light when the system (or the toggle) asks ── */
     :root {
       --bg:        #0f0b10;
@@ -73,9 +107,9 @@
       --term-pink: #f38ba8;
       --term-red:  #f38ba8;
 
-      --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
-      --font-body: 'Geist', ui-sans-serif, system-ui, sans-serif;
-      --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+      --font-display: 'Bricolage Grotesque', 'Bricolage Fallback', ui-sans-serif, system-ui, sans-serif;
+      --font-body: 'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif;
+      --font-mono: 'Geist Mono', 'Geist Mono Fallback', ui-monospace, 'SF Mono', Menlo, monospace;
 
       --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
       --r-sm: 6px; --r: 10px; --r-lg: 16px;
@@ -154,7 +188,8 @@
     .nav-links svg { width: 18px; height: 18px; }
     .nav-links .btn { margin-left: 8px; min-height: 36px; padding: 0 14px; font-size: 0.88rem; }
     @media (max-width: 860px) { .nav-links .hide-md { display: none; } }
-    @media (max-width: 520px) { .nav-links .hide-sm { display: none; } .nav-inner { gap: 6px; } .nav-links .btn { margin-left: 4px; } }
+    @media (max-width: 520px) { .nav-links .hide-sm { display: none; } .nav-inner { gap: 6px; } .nav-links .btn { margin-left: 4px; } .nav-links a:not(.btn) { padding: 0 8px; } }
+    @media (max-width: 359px) { .brand { font-size: 1.2rem; gap: 8px; } .nav-links .btn { padding: 0 10px; } .nav-links a:not(.btn) { padding: 0 6px; } .icon-btn { width: 36px; } }
     .icon-btn { position: relative; display: inline-grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); cursor: pointer; transition: color 0.15s ease, background-color 0.15s ease, transform 0.15s var(--ease-out); }
     .icon-btn:hover { color: var(--ink); background: var(--bg-2); }
     .icon-btn:active { transform: scale(0.96); }
@@ -186,9 +221,15 @@
     .hero-sub { margin: 24px auto 0; max-width: 36em; font-size: clamp(1.04rem, 1.6vw, 1.2rem); line-height: 1.55; color: var(--ink-2); }
     .hero .install { margin: 36px auto 0; }
     .hero-links { margin-top: 16px; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 22px; font-size: 0.9rem; color: var(--ink-3); }
-    .hero-links a { color: var(--ink-2); text-decoration: none; }
+    .hero-links a { display: inline-block; padding: 5px 0; color: var(--ink-2); text-decoration: none; }
     .hero-links a:hover { color: var(--ink); text-decoration: underline; }
 
+    .trust { margin: 28px auto 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 22px; max-width: 54rem; font: 500 0.8rem/1.4 var(--font-mono); color: var(--ink-3); }
+    .trust li { display: inline-flex; align-items: center; gap: 0.45em; min-height: 28px; }
+    .trust li::before { content: ""; flex: none; width: 4px; height: 4px; margin-right: 0.25em; border-radius: 50%; background: var(--accent-fill); opacity: 0.8; }
+    .trust a { display: inline-flex; align-items: center; min-height: 28px; color: var(--ink-2); text-decoration: none; }
+    .trust a:hover { color: var(--ink); text-decoration: underline; }
+    @media (max-width: 520px) { .trust { font-size: 0.74rem; gap: 0 16px; } }
     /* ── Install box (tabs + command + copy) ────────────────────────────── */
     .install { width: 100%; max-width: 620px; text-align: left; border-radius: var(--r-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2), var(--shadow); overflow: hidden; }
     .tabs { display: flex; gap: 2px; padding: 6px; overflow-x: auto; scrollbar-width: none; }
@@ -202,12 +243,36 @@
     .install-panel pre .p { color: var(--ink-3); user-select: none; -webkit-user-select: none; }
     .install-panel pre .cm { color: var(--ink-3); }
     .install-panel .copy-btn { position: absolute; top: 8px; right: 8px; }
+    .install-note code { overflow-wrap: anywhere; }
     .install-note { padding: 10px 18px 12px; border-top: 1px solid var(--line); font-size: 0.82rem; color: var(--ink-3); }
     .copy-btn .ok, .copy-btn .cp { grid-area: 1 / 1; transition: opacity 0.2s ease, transform 0.2s var(--ease-out); }
     .copy-btn .ok { opacity: 0; transform: scale(0.3); color: var(--accent); }
     .copy-btn.copied .cp { opacity: 0; transform: scale(0.3); }
     .copy-btn.copied .ok { opacity: 1; transform: none; }
     [role="tabpanel"][hidden] { display: none; }
+
+    /* ── Command → generated core.zsh (hero) ────────────────────────────── */
+    .gen { margin: clamp(40px, 5vw, 56px) auto 0; max-width: 980px; text-align: left; border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 30px 60px -30px rgba(0, 0, 0, 0.6); overflow: hidden; }
+    .gen-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 0 12px 0 0; background: var(--term-bar); }
+    .gen .tabs { min-width: 0; max-width: 100%; }
+    .gen .tab { color: var(--term-dim); }
+    .gen .tab:hover { color: var(--term-fg); }
+    .gen .tab[aria-selected="true"] { color: var(--term-fg); background: rgba(255,255,255,0.08); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12); }
+    .gen-more { display: inline-flex; align-items: center; min-height: 32px; padding: 0 0 0 12px; font: 500 0.78rem/1 var(--font-mono); color: var(--term-dim); text-decoration: none; }
+    .gen-more:hover { color: var(--term-fg); text-decoration: underline; }
+    .gen-panel { display: grid; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 900px) { .gen-panel { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); } .gen-out { box-shadow: inset 1px 0 0 rgba(255,255,255,0.07); } }
+    .gen-panel[hidden] { display: none; }
+    .gen figure { margin: 0; min-width: 0; }
+    .gen figcaption { padding: 14px 18px 0; font: 500 0.7rem/1 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--term-dim); }
+    .gen pre { margin: 0; padding: 10px 18px 18px; font: 400 0.78rem/1.65 var(--font-mono); white-space: pre; overflow-x: auto; scrollbar-width: thin; scrollbar-color: #45475a transparent; }
+    .gen pre:focus-visible { outline-offset: -2px; }
+    .gen .gap { color: var(--term-dim); font-style: italic; }
+    .gen-out { background: rgba(0, 0, 0, 0.14); }
+    @media (max-width: 899px) { .gen-out { box-shadow: inset 0 1px 0 rgba(255,255,255,0.07); } }
+    .gen-note { grid-column: 1 / -1; padding: 12px 18px 14px; border-top: 1px solid rgba(255,255,255,0.07); font-size: 0.84rem; color: var(--term-dim); }
+    .gen-note code { background: rgba(255,255,255,0.08); color: var(--term-fg); }
+    @media (max-width: 520px) { .gen pre { font-size: 0.72rem; padding: 10px 14px 16px; } .gen figcaption { padding: 12px 14px 0; } .gen-note { padding: 12px 14px; } }
 
     /* ── Benchmark ──────────────────────────────────────────────────────── */
     .bench { margin: clamp(48px, 6vw, 72px) auto 0; max-width: 880px; text-align: left; }
@@ -240,6 +305,7 @@
     .data-table th, .data-table td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
     .data-table td.n { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
     .data-table th { color: var(--ink-3); font-weight: 500; }
+    .bench .vers { margin: 8px 0 4px; font: 450 0.76rem/1.5 var(--font-mono); color: var(--ink-3); overflow-wrap: anywhere; }
 
     details { border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line-2); }
     summary { cursor: pointer; padding: 10px 14px; min-height: 44px; font-size: 0.9rem; font-weight: 500; color: var(--ink-2); list-style: none; display: flex; align-items: center; gap: 12px; border-radius: var(--r); }
@@ -316,24 +382,34 @@
     .demo-play span { display: inline-flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 999px; background: rgba(17, 17, 27, 0.82); color: #f6f2ee; font: 500 0.9rem/1 var(--font-body); }
     .demo-play svg { width: 14px; height: 14px; }
 
-    /* ── Release callout ────────────────────────────────────────────────── */
-    .release { position: relative; display: grid; gap: 36px; grid-template-columns: minmax(0, 1fr); padding: clamp(28px, 4vw, 52px); border-radius: 22px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); overflow: hidden; isolation: isolate; }
-    .release::after { content: ""; position: absolute; z-index: -1; right: -180px; top: -180px; width: 520px; height: 520px; border-radius: 50%; background: radial-gradient(closest-side, var(--glow), transparent); }
-    @media (min-width: 960px) { .release { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
-    .release .big { font: 800 clamp(3.4rem, 8vw, 6.2rem)/0.85 var(--font-display); letter-spacing: -0.05em; display: flex; align-items: center; gap: 18px; }
-    .release .big .dot { width: 18px; height: 18px; box-shadow: 0 0 0 4px var(--halo-1), 0 0 0 9px var(--halo-2); }
-    .release h2 { margin-top: 18px; font-size: clamp(1.5rem, 2.6vw, 2rem); letter-spacing: -0.025em; }
-    .release ul.pts { margin: 20px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; color: var(--ink-2); font-size: 0.95rem; }
-    .release ul.pts li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 10px; }
-    .release ul.pts li::before { content: ""; width: 6px; height: 6px; margin-top: 0.62em; border-radius: 50%; background: var(--accent-fill); }
-    .release .cta-row { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 10px; }
-    .tiles { display: grid; gap: 1px; grid-template-columns: repeat(2, minmax(0, 1fr)); border-radius: var(--r-lg); overflow: hidden; background: var(--line-2); box-shadow: 0 0 0 1px var(--line-2); }
-    .tile { padding: 20px 18px; background: var(--surface); min-width: 0; }
-    .tile .v { font: 700 clamp(1.6rem, 3.2vw, 2.3rem)/1 var(--font-display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-    .tile .v small { font-size: 0.5em; font-weight: 600; color: var(--ink-3); letter-spacing: 0; }
-    .tile .v .was { display: block; margin-bottom: 6px; font: 500 0.78rem/1 var(--font-mono); color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--accent-fill); }
-    .tile p { margin-top: 10px; font-size: 0.82rem; line-height: 1.45; color: var(--ink-2); }
-    .tiles-src { margin-top: 10px; font-size: 0.78rem; color: var(--ink-3); }
+    /* ── Secrets ────────────────────────────────────────────────────────── */
+    .sx-steps { margin: 44px 0 0; padding: 0; list-style: none; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 960px) { .sx-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    .sx-step { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 22px; border-radius: var(--r-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+    .sx-n { font: 500 0.76rem/1.2 var(--font-mono); color: var(--accent); letter-spacing: 0.02em; }
+    .sx-step h3 { font-size: 1.22rem; letter-spacing: -0.015em; }
+    .sx-step h3 code { font-size: 0.82em; background: none; padding: 0; }
+    .sx-step > p:not(.sx-n) { color: var(--ink-2); font-size: 0.93rem; line-height: 1.55; }
+    .sx-code { position: relative; margin-top: auto; border-radius: var(--r); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset; min-width: 0; }
+    .sx-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 34px; padding: 0 4px 0 14px; border-radius: var(--r) var(--r) 0 0; background: var(--term-bar); font: 500 0.72rem/1 var(--font-mono); color: var(--term-dim); }
+    .sx-code pre { margin: 0; padding: 12px 16px 14px; font: 400 0.76rem/1.65 var(--font-mono); white-space: pre; overflow-x: auto; scrollbar-width: thin; scrollbar-color: #45475a transparent; }
+    .sx-code .copy-btn { width: 32px; height: 32px; color: var(--term-dim); }
+    .sx-code .copy-btn:hover { color: var(--term-fg); background: rgba(255,255,255,0.08); }
+    .sx-code .copy-btn svg { width: 16px; height: 16px; }
+    .keys { margin-top: 28px; padding: clamp(22px, 3vw, 32px); border-radius: 22px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); }
+    .keys-head { display: grid; gap: 8px 32px; }
+    @media (min-width: 960px) { .keys-head { grid-template-columns: minmax(0, 0.6fr) minmax(0, 1.4fr); align-items: baseline; } }
+    .keys-head h3 { font-size: 1.4rem; letter-spacing: -0.02em; }
+    .keys-head p { color: var(--ink-2); font-size: 0.95rem; }
+    .backends { margin: 22px 0 0; padding: 0; list-style: none; display: grid; gap: 1px; grid-template-columns: minmax(0, 1fr); border-radius: var(--r-lg); overflow: hidden; background: var(--line-2); box-shadow: 0 0 0 1px var(--line-2); }
+    @media (min-width: 760px) { .backends { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+    .backends li { padding: 18px; background: var(--surface); min-width: 0; }
+    .be-os { font: 500 0.72rem/1.3 var(--font-mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.06em; }
+    .be-os code { text-transform: none; }
+    .backends h4 { margin: 8px 0 0; font: 700 1.1rem/1.2 var(--font-display); letter-spacing: -0.015em; }
+    .backends li > p:last-child { margin-top: 8px; color: var(--ink-2); font-size: 0.88rem; line-height: 1.5; }
+    .keys-foot { margin-top: 18px; color: var(--ink-3); font-size: 0.86rem; }
+    .keys-foot a { display: inline-block; padding: 3px 0; }
 
     /* ── Batteries ──────────────────────────────────────────────────────── */
     .chips { margin-top: 36px; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -346,10 +422,10 @@
     .bat-panel h3 { font-size: 1.35rem; letter-spacing: -0.02em; }
     .bat-panel .txt p { margin-top: 10px; color: var(--ink-2); font-size: 0.95rem; }
     .bat-panel .txt a { font-size: 0.9rem; }
-    .bat-panel .txt .more { display: inline-block; margin-top: 14px; }
-    .code { border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset, var(--shadow); overflow: hidden; min-width: 0; margin-top: 18px; }
+    .bat-panel .txt .more { display: inline-flex; align-items: center; min-height: 32px; margin-top: 10px; }
+    .code { margin: 0; border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset, var(--shadow); overflow: hidden; min-width: 0; margin-top: 18px; }
     @media (min-width: 960px) { .code { margin-top: 0; } }
-    .code header { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; background: var(--term-bar); font: 500 0.74rem/1 var(--font-mono); color: var(--term-dim); }
+    .code figcaption { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; background: var(--term-bar); font: 500 0.74rem/1 var(--font-mono); color: var(--term-dim); }
     .code pre { margin: 0; padding: 16px 18px 18px; font: 400 0.8rem/1.65 var(--font-mono); overflow-x: auto; white-space: pre; }
     @media (max-width: 520px) { .code pre { font-size: 0.72rem; padding: 14px; } }
     .c-com { color: var(--term-dim); } .c-key { color: var(--term-ok); } .c-str { color: var(--term-arrow); } .c-tab { color: var(--term-pink); } .c-num { color: var(--term-key); }
@@ -374,7 +450,32 @@
     .mk.n { color: var(--ink-3); }
     .mk.n::before { content: "\2014"; content: "\2014" / ""; font-weight: 400; }
     .cmp td .part { display: block; font-size: 0.78rem; color: var(--ink-3); }
+    @media (max-width: 640px) {
+      .cmp-wrap { overflow: visible; background: none; box-shadow: none; border-radius: 0; }
+      .cmp { min-width: 0; display: block; }
+      .cmp thead { display: none; }
+      .cmp tbody { display: grid; gap: 12px; }
+      .cmp tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-radius: var(--r-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); overflow: hidden; }
+      .cmp tbody th { grid-column: 1 / -1; position: static; min-width: 0; box-shadow: none; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+      .cmp tbody td { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 16px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+      .cmp tbody td::before { content: attr(data-label); content: attr(data-label) / ""; font: 500 0.74rem/1.3 var(--font-mono); color: var(--ink-3); }
+      .cmp tbody td.us::before { color: var(--ink); font-weight: 600; }
+      .cmp tbody tr td:nth-last-child(-n+2), .cmp tbody tr:last-child th, .cmp tbody tr:last-child td { border-bottom: 0; }
+      .cmp tbody tr:last-child th { border-bottom: 1px solid var(--line); }
+    }
     .cmp-note { margin-top: 14px; font-size: 0.84rem; color: var(--ink-3); max-width: 52rem; }
+
+    /* ── FAQ ────────────────────────────────────────────────────────────── */
+    .faq-grid { display: grid; gap: 32px 56px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 960px) { .faq-grid { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: start; } .faq-grid .sec-head { position: sticky; top: 96px; } }
+    .faq { display: grid; gap: 10px; min-width: 0; }
+    .faq details, .faq summary span { min-width: 0; overflow-wrap: anywhere; }
+    .faq details { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+    .faq details[open] { box-shadow: inset 0 0 0 1px var(--line-2); }
+    .faq summary { padding: 14px 18px; min-height: 52px; font-size: 1rem; font-weight: 500; color: var(--ink); }
+    .faq summary code { font-size: 0.84em; }
+    .faq details > div { padding: 0 18px 16px 39px; display: grid; gap: 10px; }
+    .faq details p { color: var(--ink-2); font-size: 0.94rem; line-height: 1.6; }
 
     /* ── Closing CTA + footer ───────────────────────────────────────────── */
     .cta { text-align: center; }
@@ -391,13 +492,16 @@
     .foot ul a { display: inline-flex; align-items: center; min-height: 34px; color: var(--ink-2); text-decoration: none; }
     .foot ul a:hover { color: var(--ink); text-decoration: underline; }
     .foot-bottom { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; font-size: 0.82rem; }
-    .foot-bottom a { color: inherit; }
+    .foot-bottom a { display: inline-flex; align-items: center; min-height: 32px; color: inherit; }
+    /* Links inside running text: a 24px+ hit area without changing the line. */
+    .demo p a, .bench-cap a, .cmp-note a, .install-note a, .foot-brand a, .faq a, .sec-head a { display: inline-block; padding: 3px 0; }
 
     /* ── Motion ─────────────────────────────────────────────────────────── */
     @media (prefers-reduced-motion: no-preference) {
       .js .reveal { opacity: 0; transform: translateY(14px); transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out); transition-delay: calc(var(--i, 0) * 70ms); }
       .js .reveal.in { opacity: 1; transform: none; }
-      .js .hero .rise { opacity: 0; transform: translateY(12px); animation: rise 0.8s var(--ease-out) forwards; animation-delay: calc(var(--i, 0) * 80ms + 40ms); }
+      /* Only the badge and the benchmark fade in: the h1, the lede and the install box (the LCP) paint at once. */
+      .js .hero .rise { opacity: 0; transform: translateY(12px); animation: rise 0.6s var(--ease-out) forwards; animation-delay: calc(var(--i, 0) * 80ms); }
       .card:hover { transform: translateY(-2px); }
     }
     @keyframes rise { to { opacity: 1; transform: none; } }
@@ -405,9 +509,10 @@
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
+  <p class="sr-only" id="copy-status" role="status" aria-live="polite"></p>
 
   <div class="announce">
-    <a href="docs/?p=upgrading"><span class="dot" aria-hidden="true"></span><span><strong>wayu 6.0</strong><span class="long"> — encrypted secrets, scripts in any language, one generated init file</span></span><span class="go">Upgrade notes →</span></a>
+    <a href="docs/?p=upgrading"><span class="dot" aria-hidden="true"></span><span><strong>wayu <span class="ver">v6.0.0</span></strong><span class="long"> — what changed in this release, and what to adapt</span></span><span class="go">Upgrade notes →</span></a>
   </div>
 
   <header class="nav" id="nav">
@@ -415,7 +520,7 @@
       <a class="brand" href="#top" aria-label="wayu home"><span class="dot" aria-hidden="true"></span>wayu</a>
       <nav aria-label="Main" style="margin-left:auto">
         <ul class="nav-links">
-          <li class="hide-sm"><a href="docs/">Docs</a></li>
+          <li><a href="docs/">Docs</a></li>
           <li class="hide-md"><a href="docs/?p=cli">CLI reference</a></li>
           <li class="hide-md"><a href="docs/?p=upgrading">Upgrading</a></li>
           <li>
@@ -440,11 +545,11 @@
     <!-- ── Hero ──────────────────────────────────────────────────────── -->
     <section class="hero" id="top" aria-labelledby="hero-title">
       <div class="wrap">
-        <a class="badge rise" style="--i:0" href="https://github.com/dvrd/wayu/releases" aria-label="Version 6.0.0 for zsh, bash and fish: release notes"><span class="dot" aria-hidden="true"></span><b class="ver">v6.0.0</b> zsh · bash · fish</a>
-        <h1 id="hero-title" class="rise" style="--i:1">Your shell setup, <em>managed by commands.</em></h1>
-        <p class="hero-sub rise" style="--i:2">PATH entries, aliases, env vars, encrypted secrets, scripts and plugins — added with one command each, compiled into one file your shell sources at startup.</p>
+        <a class="badge rise" style="--i:0" href="https://github.com/dvrd/wayu/releases"><span class="dot" aria-hidden="true"></span><b class="ver">v6.0.0</b> zsh · bash · fish<span class="sr-only">: release notes</span></a>
+        <h1 id="hero-title">Your shell setup, <em>managed by commands.</em></h1>
+        <p class="hero-sub">PATH entries, aliases, env vars, encrypted secrets, scripts and plugins — added with one command each, compiled into one file your shell sources at startup.</p>
 
-        <div class="install rise" style="--i:3" data-install>
+        <div class="install" data-install>
           <div class="tabs" role="tablist" aria-label="Install method">
             <button class="tab" role="tab" type="button" id="hi-brew-tab" aria-controls="hi-brew" aria-selected="true">Homebrew</button>
             <button class="tab" role="tab" type="button" id="hi-src-tab" aria-controls="hi-src" aria-selected="false" tabindex="-1">From source</button>
@@ -462,13 +567,129 @@
             <button class="icon-btn copy-btn" type="button" data-copy="git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu&#10;odin build build -out:build_it &amp;&amp; ./build_it install" aria-label="Copy source build commands"></button>
           </div>
         </div>
-        <p class="hero-links rise" style="--i:4">
-          <a href="https://github.com/dvrd/wayu#shell-setup"><code>wayu init</code> adds one line to your rc file</a>
-          <a href="https://github.com/dvrd/wayu#quick-start">Read the quickstart →</a>
+        <p class="hero-links">
+          <a href="docs/?p=quickstart#set-up-your-shell"><code>wayu init</code> offers to add one line to your rc file</a>
+          <a href="docs/?p=quickstart">Read the quickstart →</a>
         </p>
 
+        <!-- Trust strip. Test count: "Finished N tests" from ./build_it test. -->
+        <ul class="trust" aria-label="Project facts">
+          <li><a href="https://github.com/dvrd/wayu/blob/main/LICENSE">MIT licensed</a></li>
+          <li>zsh · bash · fish</li>
+          <li>One binary, no runtime dependencies</li>
+          <li><a href="https://github.com/dvrd/wayu/tree/main/tests">677 unit tests</a> + end-to-end suites</li>
+          <li><a href="docs/?p=stability">Stable from 7.0 on</a></li>
+        </ul>
+
+        <!-- ── Command → generated code (real output: wayu build in a throwaway HOME, home dir shown as /Users/ana) ── -->
+        <div class="gen" role="region" aria-labelledby="gen-title">
+          <h2 class="sr-only" id="gen-title">What each command writes into core.zsh</h2>
+          <div class="gen-top">
+            <div class="tabs" role="tablist" aria-label="Command and the shell code it generates" id="gen-tabs">
+              <button class="tab" role="tab" type="button" id="gt-path" aria-controls="gp-path" aria-selected="true">PATH</button>
+              <button class="tab" role="tab" type="button" id="gt-alias" aria-controls="gp-alias" aria-selected="false" tabindex="-1">Aliases</button>
+              <button class="tab" role="tab" type="button" id="gt-secret" aria-controls="gp-secret" aria-selected="false" tabindex="-1">Secrets</button>
+              <button class="tab" role="tab" type="button" id="gt-plugin" aria-controls="gp-plugin" aria-selected="false" tabindex="-1">Plugins</button>
+              <button class="tab" role="tab" type="button" id="gt-prompt" aria-controls="gp-prompt" aria-selected="false" tabindex="-1">Prompt</button>
+            </div>
+            <a class="gen-more" href="docs/?p=config#generated-files">How core.zsh is built →</a>
+          </div>
+          <div class="gen-panel" role="tabpanel" id="gp-path" aria-labelledby="gt-path">
+            <figure class="gen-cmd"><figcaption>you run</figcaption>
+<pre tabindex="0"><span class="t-arr">❯</span> wayu path add ~/.cargo/bin
+<span class="t-ok">✓ Added to PATH: /Users/ana/.cargo/bin</span>
+   Open shells apply it at their next prompt; new shells pick it up automatically.</pre></figure>
+            <figure class="gen-out"><figcaption>core.zsh gets</figcaption>
+<pre tabindex="0"><span class="c-com"># === PATH (live-synced at each prompt) ===</span>
+<span class="gap">⋯ 85 lines</span>
+\_wayu_paths_apply 39325358edc66ae0 '/Users/ana/.cargo/bin'
+typeset -U path PATH</pre></figure>
+            <p class="gen-note">The dir is stored with a key in <code>entries.json</code>; open shells re-apply the list at their next prompt from <code>path_sync.zsh</code>.</p>
+          </div>
+          <div class="gen-panel" role="tabpanel" id="gp-alias" aria-labelledby="gt-alias" hidden>
+            <figure class="gen-cmd"><figcaption>you run</figcaption>
+<pre tabindex="0"><span class="t-arr">❯</span> wayu alias add gs 'git status -sb'
+<span class="t-ok">✓ Alias added: gs</span>
+
+<span class="t-arr">❯</span> wayu const add EDITOR nvim
+<span class="t-ok">✓ Constant added: EDITOR</span></pre></figure>
+            <figure class="gen-out"><figcaption>core.zsh gets</figcaption>
+<pre tabindex="0"><span class="c-com"># === Environment ===</span>
+export EDITOR="nvim"
+<span class="gap">⋯ 643 lines</span>
+<span class="c-com"># === Aliases ===</span>
+alias gs='git status -sb'</pre></figure>
+            <p class="gen-note">Constants are exported first, in order; aliases come last, after plugins, so yours win.</p>
+          </div>
+          <div class="gen-panel" role="tabpanel" id="gp-secret" aria-labelledby="gt-secret" hidden>
+            <figure class="gen-cmd"><figcaption>you run</figcaption>
+<pre tabindex="0"><span class="t-arr">❯</span> wayu const add OPENAI_API_KEY --secret
+Value for OPENAI_API_KEY (input hidden):
+<span class="t-ok">✓ Secret added (encrypted): OPENAI_API_KEY</span></pre></figure>
+            <figure class="gen-out"><figcaption>core.zsh gets</figcaption>
+<pre tabindex="0"><span class="c-com"># === Secrets (encrypted store, per-session cache) ===</span>
+_wayu_sc=${XDG_RUNTIME_DIR:-${TMPDIR:-'/Users/ana/.local/share/wayu/run'}}
+[ "$_wayu_sc" = / ] || _wayu_sc=${_wayu_sc%/}
+_wayu_sc="$_wayu_sc"'/wayu-501'
+if [ -h "$_wayu_sc" ] || { [ -e "$_wayu_sc" ] &amp;&amp; { [ ! -d "$_wayu_sc" ] || [ ! -O "$_wayu_sc" ] || ! () { emulate -L zsh; local -a m; m=( $1(N/f:go-rwx:) ); (( $#m )); } "$_wayu_sc"; }; }; then _wayu_sc='/Users/ana/.local/share/wayu/run/wayu-501'; fi
+_wayu_sc="$_wayu_sc"'/secrets-4c8dfdfa98cbaab0.zsh'
+{ [ -O "$_wayu_sc" ] &amp;&amp; [ ! -h "$_wayu_sc" ] &amp;&amp; [ "$_wayu_sc" -nt '/Users/ana/.local/share/wayu/secrets.json' ]; } || command '/opt/homebrew/bin/wayu' secrets cache --shell zsh &lt;/dev/null &gt;/dev/null
+if [ -O "$_wayu_sc" ] &amp;&amp; [ ! -h "$_wayu_sc" ] &amp;&amp; [ "$_wayu_sc" -nt '/Users/ana/.local/share/wayu/secrets.json' ]; then source "$_wayu_sc"; fi
+unset _wayu_sc</pre></figure>
+            <p class="gen-note">No value in <code>core.zsh</code>: it sources a per-session cache and calls <code>wayu secrets cache</code> only when <code>secrets.json</code> changed.</p>
+          </div>
+          <div class="gen-panel" role="tabpanel" id="gp-plugin" aria-labelledby="gt-plugin" hidden>
+            <figure class="gen-cmd"><figcaption>you run</figcaption>
+<pre tabindex="0"><span class="t-arr">❯</span> wayu plugin add autosuggestions
+<span class="t-ok">✓ Cloned plugin repository</span>
+<span class="t-ok">✓ Plugin 'zsh-autosuggestions' installed successfully</span></pre></figure>
+            <figure class="gen-out"><figcaption>core.zsh gets</figcaption>
+<pre tabindex="0"><span class="c-com"># === Plugins ===</span>
+if [[ -o interactive ]]; then
+if [ -f "/Users/ana/.local/share/wayu/plugins.zsh" ]; then source "/Users/ana/.local/share/wayu/plugins.zsh"; fi
+if [ -f "/Users/ana/.local/share/wayu/plugins/config.zsh" ]; then source "/Users/ana/.local/share/wayu/plugins/config.zsh"; fi
+fi
+
+<span class="c-com"># plugins.zsh, regenerated from plugins.json</span>
+# zsh-autosuggestions (priority: 100, template: source)
+if [[ ":${_WAYU_PLUGINS_LOADED-}:" != *:'zsh-autosuggestions':* ]]; then
+_WAYU_PLUGINS_LOADED="${_WAYU_PLUGINS_LOADED-}:"'zsh-autosuggestions'
+if [ -f '/Users/ana/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.plugin.zsh' ]; then
+    source '/Users/ana/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.plugin.zsh'
+fi
+fi</pre></figure>
+            <p class="gen-note">Loaders are regenerated from <code>plugins.json</code>; with <code>defer_plugins = true</code> they load after the first prompt.</p>
+          </div>
+          <div class="gen-panel" role="tabpanel" id="gp-prompt" aria-labelledby="gt-prompt" hidden>
+            <figure class="gen-cmd"><figcaption>you run</figcaption>
+<pre tabindex="0"><span class="c-com"># ~/.config/wayu/wayu.toml</span>
+<span class="c-tab">[prompt]</span>
+<span class="c-key">enabled</span> = <span class="c-num">true</span>
+
+<span class="t-arr">❯</span> wayu build</pre></figure>
+            <figure class="gen-out"><figcaption>core.zsh gets</figcaption>
+<pre tabindex="0"><span class="c-com"># === Prompt (wayu native, interactive shells) ===</span>
+if [[ -o interactive ]]; then
+<span class="gap">⋯ 8 lines</span>
+_wayu_update_git_info() {
+<span class="gap">⋯ 24 lines</span>
+  { read -r l &lt; $g/HEAD } 2&gt;/dev/null || return 0
+<span class="gap">⋯ 13 lines</span>
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _wayu_update_git_info
+<span class="gap">⋯ 1 line</span>
+_wayu_prompt_full() {
+<span class="gap">⋯ 6 lines</span>
+  result+="%F{6}%B%~%f "
+  if [[ -n "$_WAYU_GIT_BRANCH" ]]; then
+    result+="on %F{5}%B${_WAYU_GIT_BRANCH//\%/%%}%f "
+  fi</pre></figure>
+            <p class="gen-note">The branch comes from <code>.git/HEAD</code> without running git. fish gets the same prompt in <code>core.fish</code>.</p>
+          </div>
+        </div>
+
         <!-- ── Benchmark (rendered from #bench-data) ─────────────────── -->
-        <div class="bench rise" style="--i:5" id="bench" role="region" aria-labelledby="bench-title">
+        <div class="bench rise" style="--i:1" id="bench" role="region" aria-labelledby="bench-title">
           <h2 class="sr-only" id="bench-title">Shell startup benchmark</h2>
           <div class="bench-top">
             <div class="tabs" role="tablist" aria-label="Benchmark scenario" id="bench-tabs"></div>
@@ -480,7 +701,7 @@
           <div id="bench-panels"></div>
           <p class="bench-cap" id="bench-cap"></p>
           <details>
-            <summary>Show the numbers as a table</summary>
+            <summary>Show the numbers as a table, with the versions measured</summary>
             <div id="bench-table"></div>
           </details>
           <noscript><p class="bench-cap">Time until the first command runs (zsh-bench, median of 32, Apple M1 Max): zsh, no config 19.9 ms; wayu 58.9 ms; hand-written (compinit -C) 65.2 ms; hand-written .zshrc 77.3 ms; antidote 86.8 ms; oh-my-zsh 105.0 ms; zinit 111.1 ms.</p></noscript>
@@ -534,7 +755,7 @@
         }
       ],
       "versions": {
-        "wayu": "develop 6bf570c (next release)",
+        "wayu": "6bf570c (7.0 pre-release)",
         "oh-my-zsh": "cca3bdf",
         "zinit": "cb49681 (v3.17.1+10)",
         "antidote": "e661279 (v2.3.0+3)",
@@ -565,7 +786,7 @@
         }
       ],
       "versions": {
-        "wayu": "develop 6bf570c (next release)",
+        "wayu": "6bf570c (7.0 pre-release)",
         "zinit": "cb49681 (v3.17.1+10)",
         "antidote": "e661279 (v2.3.0+3)",
         "zsh-defer": "53a26e2",
@@ -592,7 +813,7 @@
         }
       ],
       "versions": {
-        "wayu": "develop 6bf570c (next release)",
+        "wayu": "6bf570c (7.0 pre-release)",
         "zsh-autosuggestions": "85919cd (v0.7.1+6)",
         "zsh-syntax-highlighting": "e6683f2 (0.8.0+8)",
         "zsh-bench": "28b1b1b"
@@ -607,7 +828,7 @@
       <div class="wrap">
         <div class="sec-head reveal">
           <p class="kicker">What it replaces</p>
-          <h2 id="features-title">Ten jobs, one binary.</h2>
+          <h2 id="features-title">Eleven jobs, one binary.</h2>
           <p class="lede">Each card is something you used to do by hand in an rc file, or with another tool. In wayu it is a command, and the result lands in the same generated init.</p>
         </div>
         <div class="cards">
@@ -638,13 +859,13 @@
           <article class="card reveal" style="--i:1">
             <p class="rep">replaces <s>a separate plugin manager</s></p>
             <h3>Plugins</h3>
-            <p>From a built-in registry or a git URL. Enable, disable, load priority, dependencies, conflict checks.</p>
+            <p>From a built-in registry or a git URL. Enable, disable, load priority, dependencies, conflict checks. Two of the usual ones are built in (below).</p>
             <p class="cmd">wayu plugin add autosuggestions</p>
           </article>
           <article class="card reveal" style="--i:2">
-            <p class="rep">replaces <s>a prompt framework (zsh)</s></p>
+            <p class="rep">replaces <s>a prompt framework (zsh, fish)</s></p>
             <h3>Native prompt</h3>
-            <p>Opt-in. Git branch read from <code>.git/HEAD</code> without running git, project contexts, async right prompt, vi-mode.</p>
+            <p>Opt-in, for zsh and fish. Git branch read from <code>.git/HEAD</code> without running git, project contexts, async right prompt, vi-mode.</p>
             <p class="cmd toml">[prompt] enabled = true</p>
           </article>
           <article class="card reveal" style="--i:3">
@@ -655,17 +876,23 @@
           </article>
           <article class="card wide reveal" style="--i:0">
             <p class="rep">replaces <s>installer lines piling up at the end of .zshrc</s></p>
-            <h3>wayu optimize <span class="tag">new</span></h3>
+            <h3>wayu optimize</h3>
             <p>Moves <code>source &lt;(tool completion zsh)</code>, <code>eval "$(… init zsh)"</code>, <code>fpath</code> edits, a second <code>compinit</code>, PATH exports and aliases from your rc file into wayu's cached init. Shows the diff first, backs the file up, and an open shell tells you when new lines appear.</p>
             <p class="cmd">wayu optimize --dry-run</p>
           </article>
-          <article class="card reveal" style="--i:1">
+          <article class="card wide reveal" style="--i:1">
+            <p class="rep">replaces <s>zsh-autosuggestions and zsh-syntax-highlighting</s></p>
+            <h3>Suggestions &amp; highlighting <span class="tag">zsh</span></h3>
+            <p>Opt-in and built into <code>core.zsh</code>: fish-like suggestions from history, and command-line highlighting with zsh-syntax-highlighting's style names, using zsh's own lexer. One <code>zle-line-pre-redraw</code> hook, no widgets re-wrapped before every prompt, no forks; a keystroke re-highlights only the last words. With them on, the two plugins are not loaded.</p>
+            <p class="cmd toml">[settings] autosuggest = true · highlight = true</p>
+          </article>
+          <article class="card wide reveal" style="--i:0">
             <p class="rep">replaces <s>functions pasted into .zshrc</s></p>
             <h3>Functions</h3>
             <p>One file per function, a skeleton opened in <code>$EDITOR</code>, sourced at startup.</p>
             <p class="cmd">wayu function add mkcd</p>
           </article>
-          <article class="card reveal" style="--i:2">
+          <article class="card wide reveal" style="--i:1">
             <p class="rep">replaces <s>bisecting .zshrc to find what broke</s></p>
             <h3>Doctor</h3>
             <p>Checks PATH, config, scripts, plugins, backups, secrets and slow startup lines. Exits 78 on errors, so CI can gate on it.</p>
@@ -704,41 +931,89 @@
               <source src="demo/demo.mp4" type="video/mp4" />
               <a href="demo/demo.gif">Watch the recording (GIF)</a>
             </video>
-            <button class="demo-play" id="demo-play" type="button" aria-label="Play the recording">
-              <span><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.3-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z"/></svg>Play · 0:41</span>
+            <button class="demo-play" id="demo-play" type="button">
+              <span><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.3-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z"/></svg>Play<span class="sr-only"> the recording</span> · 0:41</span>
             </button>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- ── Release callout ───────────────────────────────────────────── -->
-    <section class="sec-alt" id="release" aria-labelledby="release-title">
+    <!-- ── Secrets ─────────────────────────────────────────────────── -->
+    <section class="sec-alt" id="secrets" aria-labelledby="secrets-title">
       <div class="wrap">
-        <div class="release reveal">
-          <div>
-            <p class="big" aria-hidden="true"><span class="dot"></span>6.0</p>
-            <h2 id="release-title">wayu 6.0: one init file, encrypted secrets, scripts.</h2>
-            <ul class="pts">
-              <li><span>PATH entries, aliases and constants live in <code>entries.json</code> in <code>~/.local/share/wayu</code>; <code>wayu.toml</code> keeps the settings you write by hand.</span></li>
-              <li><span>Everything compiles into one straight-line <code>core.zsh</code> (zcompiled), <code>core.bash</code> or <code>core.fish</code>.</span></li>
-              <li><span><code>const add --secret</code>, <code>--run-only</code> and <code>wayu secrets</code>: encrypted constants, decrypted once per session.</span></li>
-              <li><span><code>wayu script</code>: executables in eleven languages, managed like aliases.</span></li>
-            </ul>
-            <div class="cta-row">
-              <a class="btn btn-ghost" href="docs/?p=upgrading">Upgrading from 5.x</a>
-              <a class="btn btn-ghost" href="https://github.com/dvrd/wayu/blob/main/CHANGELOG.md">Changelog</a>
+        <div class="sec-head reveal">
+          <p class="kicker">Encrypted secrets</p>
+          <h2 id="secrets-title">API keys out of your dotfiles.</h2>
+          <p class="lede">A secret is a constant whose value is encrypted at rest. Your config, the generated shell code and the backups hold only its name; the key sits in your OS keystore.</p>
+        </div>
+        <ol class="sx-steps">
+          <li class="sx-step reveal" style="--i:0">
+            <p class="sx-n">01 · Add</p>
+            <h3>Typed once, never echoed</h3>
+            <p>The value is read with hidden input, so it stays out of <code>ps</code> and your shell history.</p>
+            <div class="sx-code">
+              <div class="sx-bar"><span>zsh</span><button class="icon-btn copy-btn" type="button" data-copy="wayu const add OPENAI_API_KEY --secret" aria-label="Copy the command"></button></div>
+<pre tabindex="0"><span class="t-arr">❯</span> wayu const add OPENAI_API_KEY --secret
+Value for OPENAI_API_KEY (input hidden):
+<span class="t-ok">✓ Secret added (encrypted): OPENAI_API_KEY</span></pre>
             </div>
-          </div>
-          <div>
-            <div class="tiles">
-              <div class="tile"><p class="v num"><span class="was">22.8 ms</span>9.3<small> ms</small></p><p><code>zsh -f -c 'source init.zsh'</code>, 5.0 → 6.0</p></div>
-              <div class="tile"><p class="v num"><span class="was">22.3 ms</span>16.0<small> ms</small></p><p>interactive zsh, with <code>compinit</code></p></div>
-              <div class="tile"><p class="v num">+0.6<small> ms</small></p><p>for five session secrets (8.1 → 8.7 ms)</p></div>
-              <div class="tile"><p class="v num">11</p><p>script languages; Swift compiled with <code>swiftc -O</code></p></div>
+          </li>
+          <li class="sx-step reveal" style="--i:1">
+            <p class="sx-n">02 · Store</p>
+            <h3>Encrypted in <code>secrets.json</code></h3>
+            <p>ChaCha20-Poly1305 under a 256-bit master key, a random nonce per value and the name as associated data. The file is <code>0600</code>; <code>entries.json</code> keeps only the name.</p>
+            <div class="sx-code">
+              <div class="sx-bar"><span>~/.local/share/wayu</span></div>
+<pre tabindex="0"><span class="c-com"># entries.json</span>
+{"name": "OPENAI_API_KEY", "secret": true}
+
+<span class="c-com"># secrets.json</span>
+"cipher": "chacha20poly1305",
+"values": {
+  "OPENAI_API_KEY": "y12EtDqRw8ZHkB17hRRR…"
+}</pre>
             </div>
-            <p class="tiles-src">Startup numbers: <code>tests/benchmark/startup.sh</code> with hyperfine on macOS. The secrets figure is a 50-run hyperfine in the <code>docs/demo/setup.sh</code> home.</p>
+          </li>
+          <li class="sx-step reveal" style="--i:2">
+            <p class="sx-n">03 · Use</p>
+            <h3>Loaded at shell start, or for one command</h3>
+            <p>New shells export it from a per-session cache, decrypted once. A <code>--run-only</code> secret is never exported: <code>wayu secrets run</code> hands it to one command, without a shell.</p>
+            <div class="sx-code">
+              <div class="sx-bar"><span>zsh · a new shell</span><button class="icon-btn copy-btn" type="button" data-copy="wayu secrets run GH_TOKEN -- gh auth status" aria-label="Copy a secrets run example"></button></div>
+<pre tabindex="0"><span class="t-arr">❯</span> echo ${#OPENAI_API_KEY} chars
+27 chars
+<span class="t-arr">❯</span> echo ${GH_TOKEN:-not set in this shell}
+not set in this shell
+<span class="t-arr">❯</span> wayu secrets run GH_TOKEN -- sh -c 'echo ${#GH_TOKEN} chars'
+18 chars</pre>
+            </div>
+          </li>
+        </ol>
+
+        <div class="keys reveal">
+          <div class="keys-head">
+            <h3>Where the key lives</h3>
+            <p><code>[secrets] backend = "auto"</code> picks the first that fits. Each data dir has its own key; <code>wayu secrets rekey</code> replaces it and re-encrypts everything.</p>
           </div>
+          <ul class="backends">
+            <li>
+              <p class="be-os">macOS · default</p>
+              <h4>Keychain</h4>
+              <p>Login keychain, service <code>wayu-master-key</code>. Stored with <code>/usr/bin/security -i</code> over stdin: the key is never on a command line.</p>
+            </li>
+            <li>
+              <p class="be-os">Linux · with <code>secret-tool</code></p>
+              <h4>Secret Service</h4>
+              <p>The freedesktop Secret Service (GNOME Keyring and friends), through <code>secret-tool</code> from a system dir, never looked up in <code>PATH</code>.</p>
+            </li>
+            <li>
+              <p class="be-os">Anywhere · fallback</p>
+              <h4>Key file</h4>
+              <p><code>~/.config/wayu/secret.key</code>, <code>0600</code>, refused if others can read it. Keep it out of your dotfiles repo.</p>
+            </li>
+          </ul>
+          <p class="keys-foot">The session cache is plaintext in a <code>0700</code> dir you own (<code>$XDG_RUNTIME_DIR</code> or <code>$TMPDIR</code>); any change to <code>secrets.json</code> and <code>wayu secrets lock</code> delete it. Five session secrets add about 0.6 ms to startup. <a href="docs/?p=config#secrets">How secrets work →</a></p>
         </div>
       </div>
     </section>
@@ -766,7 +1041,7 @@
               <p><code>evalcache</code> runs <code>zoxide init zsh</code> once and sources the cached output until the binary changes. <code>nvm</code>, <code>conda</code> and <code>lazy</code> load on first call. <code>eager</code> loads before the prompt; <code>login_only</code> only in login shells.</p>
               <a class="more" href="docs/?p=config#tools">[tools] reference →</a>
             </div>
-            <div class="code"><header>~/.config/wayu/wayu.toml</header>
+            <figure class="code"><figcaption>~/.config/wayu/wayu.toml</figcaption>
 <pre><span class="c-tab">[tools]</span>
 <span class="c-key">zoxide</span>   = { kind = <span class="c-str">"evalcache"</span>, args = <span class="c-str">"init zsh"</span> }
 <span class="c-key">atuin</span>    = { args = <span class="c-str">"init zsh --disable-up-arrow"</span>, eager = <span class="c-num">true</span> }
@@ -777,15 +1052,15 @@
 <span class="c-key">kind</span>          = <span class="c-str">"lazy"</span>
 <span class="c-key">init_script</span>   = <span class="c-str">"~/.sdkman/bin/sdkman-init.sh"</span>
 <span class="c-key">hook_commands</span> = [<span class="c-str">"sdk"</span>]</pre>
-            </div>
+            </figure>
           </div>
           <div class="bat-panel" role="tabpanel" id="bp-prompt" aria-labelledby="bt-prompt" hidden>
             <div class="txt">
-              <h3>A native zsh prompt</h3>
-              <p>Off by default. Generated into the same init: the git branch comes from <code>.git/HEAD</code>, the changed-file count from an async right prompt, and vi-mode shows its mode in the prompt character.</p>
+              <h3>A native prompt for zsh and fish</h3>
+              <p>Off by default. Generated into the same <code>core.zsh</code> or <code>core.fish</code>: the git branch comes from <code>.git/HEAD</code>, the changed-file count from an async right prompt, and vi-mode shows its mode in the prompt character.</p>
               <a class="more" href="docs/?p=config#prompt">[prompt] reference →</a>
             </div>
-            <div class="code"><header>~/.config/wayu/wayu.toml</header>
+            <figure class="code"><figcaption>~/.config/wayu/wayu.toml</figcaption>
 <pre><span class="c-tab">[prompt]</span>
 <span class="c-key">enabled</span> = <span class="c-num">true</span>
 <span class="c-key">vi_mode</span> = <span class="c-num">true</span>
@@ -804,7 +1079,7 @@
 <span class="c-tab">[prompt.interactive]</span>
 <span class="c-key">async_rprompt</span>  = <span class="c-num">true</span>
 <span class="c-key">rprompt_format</span> = <span class="c-str">"[ {git_pending}](242)"</span></pre>
-            </div>
+            </figure>
           </div>
           <div class="bat-panel" role="tabpanel" id="bp-hooks" aria-labelledby="bt-hooks" hidden>
             <div class="txt">
@@ -812,12 +1087,12 @@
               <p>Run a command before or after a PATH, alias, constant, plugin or export operation. Placeholders become quoted variables, never code; pre-hooks run only when something will change, none under <code>--dry-run</code>.</p>
               <a class="more" href="docs/?p=config#hooksconf">hooks.conf reference →</a>
             </div>
-            <div class="code"><header>~/.config/wayu/hooks.conf</header>
+            <figure class="code"><figcaption>~/.config/wayu/hooks.conf</figcaption>
 <pre><span class="c-com"># event = command</span>
 <span class="c-key">post_path_add</span> = echo added {path} &gt;&gt; ~/hook.log
 <span class="c-key">pre_constant_remove</span> = sh -c <span class="c-str">'echo removing {name} &gt;&gt; ~/hook.log'</span>
 <span class="c-key">post_constant_remove</span> = echo <span class="c-str">"gone: $WAYU_HOOK_NAME"</span> &gt;&gt; ~/hook.log</pre>
-            </div>
+            </figure>
           </div>
           <div class="bat-panel" role="tabpanel" id="bp-run" aria-labelledby="bt-run" hidden>
             <div class="txt">
@@ -825,7 +1100,7 @@
               <p>A run-only secret is never exported. <code>wayu secrets run</code> decrypts it into the environment of that one command and execs it, without a shell. Put it behind an alias and <code>gh</code> gets its token every time.</p>
               <a class="more" href="docs/?p=config#secrets">[secrets] reference →</a>
             </div>
-            <div class="code"><header>zsh</header>
+            <figure class="code"><figcaption>zsh</figcaption>
 <pre><span class="t-arr">❯</span> wayu const add GH_TOKEN --run-only
 Value for GH_TOKEN (input hidden):
 <span class="t-ok">✓ Secret added (encrypted) (run-only: wayu secrets run): GH_TOKEN</span>
@@ -835,7 +1110,7 @@ Value for GH_TOKEN (input hidden):
 
 <span class="t-arr">❯</span> wayu secrets list
 GH_TOKEN  run-only</pre>
-            </div>
+            </figure>
           </div>
           <div class="bat-panel" role="tabpanel" id="bp-script" aria-labelledby="bt-script" hidden>
             <div class="txt">
@@ -843,7 +1118,7 @@ GH_TOKEN  run-only</pre>
               <p><code>script new</code> writes a skeleton with the interpreter's absolute path as the shebang, opens <code>$EDITOR</code>, and links it into <code>bin/</code>, first among wayu's PATH entries. <code>script import</code> adopts what you already have in <code>~/bin</code>.</p>
               <a class="more" href="docs/?p=cli#wayu-script-scripts">wayu script reference →</a>
             </div>
-            <div class="code"><header>zsh</header>
+            <figure class="code"><figcaption>zsh</figcaption>
 <pre><span class="t-arr">❯</span> wayu script new today --lang python
 <span class="t-ok">✓ Created script: /Users/ana/.local/share/wayu/scripts/today.py</span>
 <span class="t-ok">✓ Linked /Users/ana/.local/share/wayu/bin/today -&gt; ../scripts/today.py</span>
@@ -851,7 +1126,7 @@ GH_TOKEN  run-only</pre>
 <span class="t-arr">❯</span> wayu script list
 📜 Scripts
   today  python  ok     /Users/ana/.local/share/wayu/scripts/today.py</pre>
-            </div>
+            </figure>
           </div>
           <div class="bat-panel" role="tabpanel" id="bp-json" aria-labelledby="bt-json" hidden>
             <div class="txt">
@@ -859,7 +1134,7 @@ GH_TOKEN  run-only</pre>
               <p>The CLI never prompts. Lists, <code>search</code> and <code>doctor</code> print JSON with <code>--json</code>; exit codes follow <code>sysexits.h</code>; destructive actions need <code>--yes</code>; <code>--dry-run</code> previews any write.</p>
               <a class="more" href="docs/?p=cli#json-output">JSON shapes →</a>
             </div>
-            <div class="code"><header>zsh</header>
+            <figure class="code"><figcaption>zsh</figcaption>
 <pre><span class="t-arr">❯</span> wayu path list --json
 {
   <span class="c-key">"paths"</span>: [
@@ -869,7 +1144,7 @@ GH_TOKEN  run-only</pre>
 
 <span class="t-arr">❯</span> wayu alias list --json | jq -r '.aliases[].command'
 git status -sb</pre>
-            </div>
+            </figure>
           </div>
           <div class="bat-panel" role="tabpanel" id="bp-doctor" aria-labelledby="bt-doctor" hidden>
             <div class="txt">
@@ -877,7 +1152,7 @@ git status -sb</pre>
               <p>PATH entries, config, scripts, plugins, backups, the secrets store and key, and startup-file lines that cost time. <code>--fix</code> repairs what it can; any error exits 78.</p>
               <a class="more" href="docs/?p=cli#wayu-doctor">wayu doctor reference →</a>
             </div>
-            <div class="code"><header>zsh · excerpt</header>
+            <figure class="code"><figcaption>zsh · excerpt</figcaption>
 <pre><span class="t-arr">❯</span> wayu doctor
 🔬 wayu Doctor - System Health Check
 
@@ -892,7 +1167,7 @@ git status -sb</pre>
   <span class="t-ok">✓</span> startup files
     No startup-file line after wayu loads needs to move into wayu
   <span class="t-dim">…</span></pre>
-            </div>
+            </figure>
           </div>
         </div>
       </div>
@@ -906,24 +1181,24 @@ git status -sb</pre>
           <h2 id="cmp-title">What you get that an rc file can't give you.</h2>
         </div>
         <div class="cmp-wrap reveal" role="region" aria-labelledby="cmp-title" tabindex="0">
-          <table class="cmp">
-            <thead>
-              <tr>
-                <th scope="col"><span class="sr-only">Capability</span></th>
-                <th scope="col" class="us"><span><span class="dot" aria-hidden="true"></span>wayu</span></th>
-                <th scope="col">Hand-written dotfiles</th>
-                <th scope="col">oh-my-zsh</th>
-                <th scope="col">zinit / antidote</th>
+          <table class="cmp" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader" scope="col"><span class="sr-only">Capability</span></th>
+                <th role="columnheader" scope="col" class="us"><span><span class="dot" aria-hidden="true"></span>wayu</span></th>
+                <th role="columnheader" scope="col">Hand-written dotfiles</th>
+                <th role="columnheader" scope="col">oh-my-zsh</th>
+                <th role="columnheader" scope="col">zinit / antidote</th>
               </tr>
             </thead>
-            <tbody>
-              <tr><th scope="row">PATH, aliases and env vars added by command<small>add, remove, list; no editing files</small></th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
-              <tr><th scope="row">Encrypted secrets<small>run-only secrets for a single command</small></th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
-              <tr><th scope="row">zsh, bash and fish from one set of entries</th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span><span class="part">one file per shell</span></td><td><span class="mk n"><span class="sr-only">No</span></span><span class="part">zsh only</span></td><td><span class="mk n"><span class="sr-only">No</span></span><span class="part">zsh only</span></td></tr>
-              <tr><th scope="row">Install plugins from a git URL</th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span><span class="part">clone into $ZSH_CUSTOM by hand</span></td><td><span class="mk y"><span class="sr-only">Yes</span></span></td></tr>
-              <tr><th scope="row">Preview every write, automatic backups<small>--dry-run; backup before the first write</small></th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
-              <tr><th scope="row">JSON output and sysexits exit codes</th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
-              <tr><th scope="row">Full-screen TUI for entries</th><td class="us"><span class="mk y"><span class="sr-only">Yes</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td><td><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+            <tbody role="rowgroup">
+              <tr role="row"><th scope="row" role="rowheader">PATH, aliases and env vars added by command<small>add, remove, list; no editing files</small></th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Encrypted secrets<small>run-only secrets for a single command</small></th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+              <tr role="row"><th scope="row" role="rowheader">zsh, bash and fish from one set of entries</th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span><span class="part">one file per shell</span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span><span class="part">zsh only</span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span><span class="part">zsh only</span></td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Install plugins from a git URL</th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span><span class="part">clone into $ZSH_CUSTOM by hand</span></td><td role="cell" data-label="zinit / antidote"><span class="mk y"><span class="sr-only">Yes</span></span></td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Preview every write, automatic backups<small>--dry-run; backup before the first write</small></th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+              <tr role="row"><th scope="row" role="rowheader">JSON output and sysexits exit codes</th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
+              <tr role="row"><th scope="row" role="rowheader">Full-screen TUI for entries</th><td role="cell" class="us" data-label="wayu"><span class="mk y"><span class="sr-only">Yes</span></span></td><td role="cell" data-label="Hand-written dotfiles"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="oh-my-zsh"><span class="mk n"><span class="sr-only">No</span></span></td><td role="cell" data-label="zinit / antidote"><span class="mk n"><span class="sr-only">No</span></span></td></tr>
             </tbody>
           </table>
         </div>
@@ -931,11 +1206,73 @@ git status -sb</pre>
       </div>
     </section>
 
+    <!-- ── FAQ ───────────────────────────────────────────────────────── -->
+    <section id="faq" aria-labelledby="faq-title">
+      <div class="wrap faq-grid">
+        <div class="sec-head reveal">
+          <p class="kicker">Questions</p>
+          <h2 id="faq-title">Before you hand it your shell.</h2>
+          <p class="lede">Anything else: the <a href="docs/">docs</a>, or <a href="https://github.com/dvrd/wayu/issues">an issue on GitHub</a>.</p>
+        </div>
+        <div class="faq reveal">
+          <details>
+            <summary><span>What does it change in my rc file, and how do I undo it?</span></summary>
+            <div>
+              <p><code>wayu init</code> asks before it adds one <code>source</code> line to your rc file (it only prints the line when it isn't run in a terminal). Everything else lives in <code>~/.config/wayu</code> and <code>~/.local/share/wayu</code>.</p>
+              <p>Every write is backed up first, keeping the newest five per file: <code>wayu backup list</code>, then <code>wayu backup restore entries --yes</code> (or <code>.zshrc</code>, <code>toml</code>). To uninstall, restore your rc file if <code>optimize</code> changed it, remove the line, <code>brew uninstall wayu</code>, and delete those two directories; if you stored secrets, also delete the <code>wayu-master-key</code> item from your keychain.</p>
+            </div>
+          </details>
+          <details>
+            <summary><span>Can I keep oh-my-zsh, or my existing .zshrc?</span></summary>
+            <div>
+              <p>Yes. <code>wayu init</code> offers to add one line to your rc file and wayu leaves the rest alone, so oh-my-zsh, a plugin manager or your own lines keep running; move things over at your own pace. <code>wayu optimize --dry-run</code> lists the lines after wayu's that it could take over, without changing anything.</p>
+            </div>
+          </details>
+          <details>
+            <summary><span>What exactly does <code>wayu optimize</code> touch?</span></summary>
+            <div>
+              <p>Only top-level lines that come <em>after</em> the line that loads wayu, in your shell's startup files: <code>eval "$(tool init zsh)"</code> and <code>source &lt;(tool completion zsh)</code> (cached instead), <code>fpath</code> edits, an extra <code>compinit</code>, PATH exports, aliases and exports. Anything inside <code>if</code>, loops, functions or here-documents stays. It prints a diff and exits without <code>--yes</code>; with it, the file is backed up and rewritten atomically. <a href="docs/?p=cli#wayu-optimize">Full rules →</a></p>
+            </div>
+          </details>
+          <details>
+            <summary><span>Where are my secrets and the key?</span></summary>
+            <div>
+              <p>Values are encrypted in <code>~/.local/share/wayu/secrets.json</code> (<code>0600</code>). The master key is in the macOS Keychain, the freedesktop Secret Service on Linux with <code>secret-tool</code>, or <code>~/.config/wayu/secret.key</code>. Decrypted values go only to a per-session cache in a <code>0700</code> dir you own, never to <code>core.zsh</code>, backups or logs. <a href="#secrets">How it works ↑</a></p>
+            </div>
+          </details>
+          <details>
+            <summary><span>Which platforms and shells?</span></summary>
+            <div>
+              <p>Prebuilt binaries for macOS 15 or later on Apple silicon (arm64) and Linux on x86_64 (amd64), through Homebrew. There is no prebuilt binary for Intel Macs or Linux on arm64: build those from source with Odin. Tested with zsh 5.9, bash 3.2 and 5.x, fish 4.x, on macOS 15, 26 and 27 and Ubuntu 24.04. Windows is not supported.</p>
+            </div>
+          </details>
+          <details>
+            <summary><span>Does it slow down shell startup?</span></summary>
+            <div>
+              <p>It is usually faster than what it replaces: everything is precomputed into one <code>core.zsh</code> (zcompiled), tool <code>init</code> output is cached until the binary changes, and plugins can load after the first prompt. See <a href="#bench">the benchmark</a>, or run <code>wayu build profile</code> on your own setup.</p>
+            </div>
+          </details>
+          <details>
+            <summary><span>Will an upgrade break my setup?</span></summary>
+            <div>
+              <p>From 7.0 on, the commands, flags, exit codes, <code>--json</code> shapes, <code>wayu.toml</code> keys and data files are stable within a major version. A release that changes a data format or moves a file migrates yours automatically (backup first), and anything being removed is deprecated for at least one minor release first. <a href="docs/?p=stability">Stability guarantees →</a></p>
+            </div>
+          </details>
+          <details>
+            <summary><span>How do I report a security problem?</span></summary>
+            <div>
+              <p>Privately, through GitHub's <a href="https://github.com/dvrd/wayu/security/advisories/new">Report a vulnerability</a>, not in a public issue. Fixes ship in a patch release of the latest major. <a href="https://github.com/dvrd/wayu/blob/main/SECURITY.md">Security policy →</a></p>
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+
     <!-- ── Closing CTA ───────────────────────────────────────────────── -->
     <section class="cta" id="install" aria-labelledby="cta-title">
       <div class="wrap">
         <h2 id="cta-title" class="reveal">Hand your shell setup to wayu.</h2>
-        <p class="sub reveal">Prebuilt for macOS arm64 and Linux x86_64. Other platforms build from source with Odin.</p>
+        <p class="sub reveal">Prebuilt for macOS 15 or later (Apple silicon, arm64) and Linux (x86_64). Intel Macs and Linux on arm64 have no binary: build from source with Odin.</p>
         <div class="install reveal" data-install>
           <div class="tabs" role="tablist" aria-label="Install method">
             <button class="tab" role="tab" type="button" id="ci-brew-tab" aria-controls="ci-brew" aria-selected="true">Homebrew</button>
@@ -958,7 +1295,7 @@ git status -sb</pre>
         <p class="hero-links reveal">
           <a href="docs/">Docs</a>
           <a href="docs/?p=cli">CLI reference</a>
-          <a href="docs/?p=upgrading">Upgrading from 5.x</a>
+          <a href="docs/?p=upgrading">Upgrade notes</a>
         </p>
       </div>
     </section>
@@ -973,10 +1310,11 @@ git status -sb</pre>
         </div>
         <nav aria-labelledby="f-docs"><h2 id="f-docs">Docs</h2>
           <ul>
+            <li><a href="docs/?p=quickstart">Quickstart</a></li>
             <li><a href="docs/?p=cli">CLI reference</a></li>
             <li><a href="docs/?p=config">Config reference</a></li>
+            <li><a href="docs/?p=stability">Stability</a></li>
             <li><a href="docs/?p=upgrading">Upgrading</a></li>
-            <li><a href="https://github.com/dvrd/wayu#quick-start">Quickstart</a></li>
           </ul>
         </nav>
         <nav aria-labelledby="f-proj"><h2 id="f-proj">Project</h2>
@@ -1063,18 +1401,28 @@ git status -sb</pre>
 
     /* Copy buttons */
     var COPY_SVG = '<svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+    var live = $('copy-status');
+    function announce(msg) { live.textContent = ''; setTimeout(function () { live.textContent = msg; }, 60); }
+    // Clipboard refused (permissions, http, old browser): select the command so ⌘C / Ctrl+C works.
+    function selectFallback(btn) {
+      var box = btn.closest('.install-panel, .sx-code'), pre = box && box.querySelector('pre');
+      if (!pre) return;
+      var r = document.createRange(); r.selectNodeContents(pre);
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      announce('Could not copy: the text is selected, press Ctrl+C or ⌘C');
+    }
     document.querySelectorAll('.copy-btn').forEach(function (btn) {
-      var timer, label = btn.getAttribute('aria-label');
+      var timer;
       btn.innerHTML = COPY_SVG;
       btn.addEventListener('click', function () {
         var text = btn.getAttribute('data-copy') || '';
-        if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+        if (!navigator.clipboard || !navigator.clipboard.writeText) { selectFallback(btn); return; }
         navigator.clipboard.writeText(text).then(function () {
           btn.classList.add('copied');
-          btn.setAttribute('aria-label', 'Copied');
+          announce('Copied');
           clearTimeout(timer);
-          timer = setTimeout(function () { btn.classList.remove('copied'); btn.setAttribute('aria-label', label); }, 1600);
-        }, function () {});
+          timer = setTimeout(function () { btn.classList.remove('copied'); }, 1600);
+        }, function () { selectFallback(btn); });
       });
     });
 
@@ -1123,8 +1471,7 @@ git status -sb</pre>
         tabList.appendChild(b);
         var p = document.createElement('div');
         p.className = 'bench-panel'; p.id = 'bench-p-' + s.id; p.setAttribute('role', 'tabpanel'); p.setAttribute('aria-labelledby', b.id); p.hidden = i !== 0;
-        var vers = s.versions ? Object.keys(s.versions).map(function (k) { return k + ' ' + s.versions[k]; }).join(' · ') : '';
-        p.innerHTML = '<h3>' + esc(s.title) + '</h3><p class="bench-metric">' + esc(s.metric || '') + (vers ? ' · ' + esc(vers) : '') + '</p>' +
+        p.innerHTML = '<h3>' + esc(s.title) + '</h3><p class="bench-metric">' + esc(s.metric || '') + '</p>' +
           '<ol class="bars">' + s.results.map(function (r) {
             return '<li class="bar' + (r.highlight ? ' hl' : '') + '" data-v="' + r.value + '" data-max="' + max + '">' +
               '<span class="name">' + esc(r.name) + '</span><span class="track" aria-hidden="true"><span class="fill" style="--s:' + (r.value / max).toFixed(4) + '"></span></span>' +
@@ -1138,8 +1485,9 @@ git status -sb</pre>
         '<a href="https://github.com/dvrd/wayu/tree/main/tests/benchmark">Reproduce it</a>, or run <code>wayu build profile</code> on your own setup.';
 
       $('bench-table').innerHTML = scen.map(function (s) {
-        return '<table class="data-table"><caption>' + esc(s.title) + '</caption><thead><tr><th scope="col">Run</th><th scope="col" style="text-align:right">Mean</th></tr></thead><tbody>' +
-          s.results.map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td class="n">' + fmt(r.value) + '</td></tr>'; }).join('') + '</tbody></table>';
+        return '<table class="data-table"><caption>' + esc(s.title) + '</caption><thead><tr><th scope="col">Run</th><th scope="col" style="text-align:right">Median</th></tr></thead><tbody>' +
+          s.results.map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td class="n">' + fmt(r.value) + '</td></tr>'; }).join('') + '</tbody></table>' +
+          (s.versions ? '<p class="vers">Versions: ' + Object.keys(s.versions).map(function (k) { return esc(k + ' ' + s.versions[k]); }).join(' · ') + '</p>' : '');
       }).join('');
 
       var raf = 0;
@@ -1299,6 +1647,7 @@ git status -sb</pre>
 
     /* Static tabs (batteries) */
     tabs($('bat-chips'));
+    tabs($('gen-tabs'));
 
   })();
   </script>

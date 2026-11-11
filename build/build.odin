@@ -777,9 +777,10 @@ Version_Anchor :: struct {
 
 VERSION_ANCHORS :: [?]Version_Anchor {
 	{"README.md", "**v", true}, // **vX.Y.Z** under the title
-	{"docs/index.html", `aria-label="Version `, true}, // nav badge label
-	{"docs/index.html", `">v`, false}, // nav badge + footer text
+	{"docs/index.html", `class="ver">v`, true}, // hero badge, announcement bar, footer
+	{"docs/index.html", `">v`, false}, // any other ">vX.Y.Z" text
 	{"docs/index.html", "wayu ", false}, // terminal demo "wayu X.Y.Z installed"
+	{"docs/index.html", `"softwareVersion": "`, true}, // JSON-LD
 }
 
 VERSION_FILES :: [?]string{"README.md", "docs/index.html"}
