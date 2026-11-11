@@ -323,12 +323,16 @@ stale or broken builds), script bin entries (`bin/` entries without a script;
 `--fix` removes them),
 turbo file, dependencies, startup files (lines `wayu optimize` would move,
 with an estimated cost per shell start: each generator command is timed once,
-a second `compinit` counts ~250 ms). Exits `78` when any
+a second `compinit` counts ~250 ms), directory permissions (a config/data
+dir, or a subdir of them two levels deep, symlinks not followed, that is
+group- or other-writable is an error: another user could change startup code
+or put commands in `bin/`; wayu creates its dirs `0700` whatever the umask).
+Exits `78` when any
 check reports an error (warnings don't), so it can gate CI. Supports `--json`.
 
 | Flag | |
 |---|---|
-| `--fix` | Remove missing / duplicate PATH entries and run `wayu optimize` (`--yes`, or `--dry-run` to preview) |
+| `--fix` | Remove missing / duplicate PATH entries, run `wayu optimize`, remove group/other write from wayu dirs (`--yes`, or `--dry-run` to preview) |
 | `--profile` | Write a zsh startup profiler script to `<data>/startup_profile.zsh` (see also `wayu build profile`); exits `64` with `--json` or `--fix` |
 | `--optimize` | Removed; prints a pointer to `wayu build` / `wayu export` and exits `64` |
 

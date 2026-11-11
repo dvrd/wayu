@@ -149,6 +149,63 @@ atomic_resolve_target :: proc(path: string, allocator: runtime.Allocator) -> (st
 }
 
 // ---------------------------------------------------------------------------
+// Private directories
+// ---------------------------------------------------------------------------
+//
+// wayu's dirs hold code the shell runs at startup (core.<ext>, functions/,
+// plugins/, completions/) and bin/ sits on PATH, so a group/other-writable
+// dir lets another local user run code as the owner. os.make_directory's
+// mode is filtered by the umask (umask 000 → 0777), so every wayu dir is
+// created through make_wayu_dir and chmod'ed explicitly.
+
+// Mode for the directories wayu creates.
+WAYU_DIR_MODE :: os.Permissions{.Read_User, .Write_User, .Execute_User}
+
+// Group/other write bits: never wanted on a wayu dir.
+WAYU_DIR_UNSAFE_BITS :: os.Permissions{.Write_Group, .Write_Other}
+
+// Create `path` and any missing parents (mkdir -p) as private dirs: each dir
+// created here gets WAYU_DIR_MODE (0700) by an explicit chmod. An existing
+// `path` is kept but tightened (wayu_dir_tighten). Returns nil when `path`
+// ends up an existing directory.
+make_wayu_dir :: proc(path: string) -> os.Error {
+	if len(path) == 0 {
+		return os.General_Error.Invalid_Path
+	}
+	if os.is_dir(path) {
+		_, _ = wayu_dir_tighten(path)
+		return nil
+	}
+	last_slash := strings.last_index(path, "/")
+	if last_slash > 0 {
+		parent := path[:last_slash]
+		if !os.exists(parent) {
+			make_wayu_dir(parent) or_return
+		}
+	}
+	if err := os.make_directory(path, WAYU_DIR_MODE); err != nil {
+		// A concurrent wayu may have created it first.
+		if os.is_dir(path) {
+			_, _ = wayu_dir_tighten(path)
+			return nil
+		}
+		return err
+	}
+	return os.chmod(path, WAYU_DIR_MODE)
+}
+
+// Clear group/other write on an existing dir (keeps every other bit, so a
+// user's deliberate 0755 stays readable). Returns whether the mode changed.
+wayu_dir_tighten :: proc(path: string) -> (changed: bool, err: os.Error) {
+	fi := os.stat(path, context.temp_allocator) or_return
+	if fi.mode & WAYU_DIR_UNSAFE_BITS == {} {
+		return false, nil
+	}
+	os.chmod(path, fi.mode - WAYU_DIR_UNSAFE_BITS) or_return
+	return true, nil
+}
+
+// ---------------------------------------------------------------------------
 // Inter-process config lock
 // ---------------------------------------------------------------------------
 //
@@ -185,7 +242,7 @@ config_lock_acquire :: proc() -> bool {
 	// to the config dir, or to no lock, let them drop each other's changes).
 	dir := wayu.data
 	if !os.is_dir(dir) {
-		_ = make_directory_all(dir) // a concurrent wayu may create it first
+		_ = make_wayu_dir(dir) // a concurrent wayu may create it first
 		if !os.is_dir(dir) {
 			print_error("Cannot create the data dir %s for the lock file", dir)
 			return false

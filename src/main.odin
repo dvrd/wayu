@@ -161,22 +161,11 @@ init_shell_globals :: proc() {
 	init_app_context(&wayu)
 }
 
-// Create a directory and all parent directories (like mkdir -p).
+// Create a wayu directory and all parent directories (like mkdir -p), 0700
+// whatever the umask; an existing dir loses group/other write. Every caller
+// creates a wayu config/data dir: see make_wayu_dir (atomic_io.odin).
 make_directory_all :: proc(path: string) -> (err: os.Error) {
-	// Try creating directly first (fast path for when parents exist)
-	if make_err := os.make_directory(path); make_err == nil do return nil
-
-	// Build parent path and create parents recursively
-	last_slash := strings.last_index(path, "/")
-	if last_slash > 1 {
-		parent := path[:last_slash]
-		if !os.exists(parent) {
-			if err = make_directory_all(parent); err != nil {
-				return
-			}
-		}
-	}
-	return os.make_directory(path)
+	return make_wayu_dir(path)
 }
 
 // Shared TUI launch helper — used by both no-args and --tui paths
@@ -437,6 +426,7 @@ handle_init_command :: proc() {
 		}
 		print_success("Created directory: %s", config_dir)
 	} else {
+		_, _ = wayu_dir_tighten(config_dir)
 		print_info("Directory already exists: %s", config_dir)
 	}
 
@@ -451,6 +441,7 @@ handle_init_command :: proc() {
 		}
 		print_success("Created directory: %s", data_dir)
 	} else {
+		_, _ = wayu_dir_tighten(data_dir)
 		print_info("Directory already exists: %s", data_dir)
 	}
 
@@ -472,6 +463,8 @@ handle_init_command :: proc() {
 			}
 			print_success("Created directory: %s", subdir_path)
 			created_subdirs += 1
+		} else {
+			_, _ = wayu_dir_tighten(subdir_path)
 		}
 	}
 
