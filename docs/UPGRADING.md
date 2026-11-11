@@ -288,7 +288,8 @@ releases, so they are listed here too.
   stderr (once per change; the first prompt after upgrading checks once).
   `[settings] auto_optimize = true` moves the lines instead.
 - `wayu doctor` has a new "startup files" check (warning, with an estimated
-  cost per shell start; generator commands are run once to time them), and
+  cost per shell start; generator commands are not run, they are listed
+  as "runs a command every start"), and
   `doctor --fix --yes` runs `wayu optimize`.
 - `wayu backup restore` accepts a shell startup file (`.zshrc`, `.bashrc`,
   `~/.config/zsh/.zshrc`, or its path).
@@ -450,6 +451,100 @@ releases, so they are listed here too.
   `--unset=VAR` are read correctly (the option's argument was taken as the
   interpreter); `#!/usr/bin/env -S uv run --script` (PEP 723) is a python
   script.
+
+**Security hardening (audit)**
+
+Files and directories:
+- wayu's config and data dirs (and `functions/`, `scripts/`, `bin/`,
+  `backup/`, `run/`) are created `0700` whatever the umask; `wayu init`
+  tightens existing ones (they hold startup code, and `bin/` is on `PATH`).
+  `wayu doctor` reports a group/other-writable wayu dir as an error (exit 78,
+  new "directory permissions" check); `doctor --fix --yes` tightens it.
+- `config extend` creates `extra.<ext>` `0600`; new function files are
+  `0600`.
+- `<data>/backup` must be a real directory you own: a symlink there is
+  refused (commands that back up first fail with an I/O error); symlinks
+  inside it are not listed or restored, and a `secrets.json` copy is
+  restored only when it is a regular file.
+- `script new` exits 65 when the path is a symlink; `script import` skips
+  one; `function add` exits 73 on a dangling symlink.
+
+Secrets:
+- The keystore tools are never looked up in `PATH`: macOS uses
+  `/usr/bin/security`; `secret-tool` is taken from `/usr/bin`,
+  `/usr/local/bin`, `/bin` or `/run/current-system/sw/bin` (not found:
+  `backend = "auto"` falls back to `file`, `"secret-service"` errors). The
+  master key is no longer passed on a command line.
+- `secrets.json` with a duplicate key or nesting deeper than 64 is invalid
+  (exit 78).
+- A session cache dir with group/other permission bits is not used (the
+  cache goes to `<data>/run/wayu-<uid>/`). The loader in `core.<ext>`
+  changed: run `wayu build` once. bash/fish startup with secrets runs one
+  `ls -ldn` to check the dir.
+- `secrets lock` and every secret change delete the session cache in every
+  dir wayu wrote one to (listed in `<data>/run/cache-dirs`).
+- `const add NAME VALUE --secret` / `--run-only` warns on stderr that the
+  value is visible in `ps` and shell history: omit VALUE (prompted) or pipe
+  it on stdin.
+- `wayu optimize` masks secret-looking lines in its diff, and after moving
+  a secret warns that the rc backup (used by undo) still holds it in
+  plain text.
+
+Generated shell code (run `wayu build` once):
+- Native prompt: the pending-changes count runs git with `core.fsmonitor`
+  off and skips submodule contents, and is not shown in a repo whose own
+  config defines `filter.<x>.clean` / `.process` (a cloned repo could run
+  code from the prompt). Global/system filters (git-lfs) still count.
+- fish: aliases are functions that run their body through `eval` (`alias`
+  still lists them); an invalid body fails when used, not at startup.
+- Constants: `${X=v}` / `${X:=v}` in a value stay literal (they assigned
+  in the shell at startup); use `${X:-v}`.
+- `wayu export --eval` output is only supported quoted:
+  `eval "$(wayu export --eval)"`.
+- `[tools]` keys that are not valid command names are skipped with a
+  warning for every kind.
+
+Names and values:
+- More protected constant names (exit 65): `PS0`-`PS4`, `PROMPT`, `prompt`,
+  `PROMPT2`-`PROMPT4`, `RPROMPT`, `RPROMPT2`, `RPS1`, `RPS2`, `SPROMPT`,
+  `PROMPT_EOL_MARK`, `PROMPT_COMMAND`, `BASH_ENV`, `ENV`,
+  `fish_function_path`, `fish_complete_path`. Stored ones are no longer
+  exported; `wayu doctor` reports them; `wayu const rm NAME` removes them.
+- Alias names starting with `_wayu` are refused (exit 65); a stored one is
+  a config error (exit 78).
+- `fpath` entries with glob characters (`* ? [ ] ( ) < > | # ^ ~`, except a
+  leading `~`) are a config error (exit 78); `completions fpath add`
+  refuses them (exit 65) and `optimize` leaves such an rc line in place.
+- `wayu.toml` strings with raw control characters (below 0x20 except tab,
+  and DEL; multi-line strings may span lines) are invalid for `validate`,
+  `doctor` and `backup restore`: use escapes. Nesting deeper than 128 is a
+  parse error. `toml validate`/`keys`/`doctor` print control characters in
+  key and table names as `\xHH`.
+- `plugins.json`: `installed_path` must be directly inside `<data>/plugins`
+  (else exit 78 naming the file); refs must be valid git ref names; control
+  characters in names and nesting deeper than 64 are refused.
+- `hooks.conf`: a placeholder inside `"…"` within `'…'` is invalid (exit
+  78): write it unquoted inside `'…'` or use `"$WAYU_HOOK_NAME"`.
+
+Commands:
+- Plugin git commands never run a checkout's `core.fsmonitor` or hooks.
+- `script import` of a file whose `wayu: build =` header is not a preset
+  needs `--allow-build` (else exit 64, nothing imported); `--dry-run` and
+  the summary show the command. Script build commands run in
+  `<data>/scripts`.
+- Ctrl-C / SIGTERM / SIGHUP while wayu runs git, a compiler or a shell
+  kills that process group, removes a partial plugin clone and exits
+  130 / 143 / 129.
+- `wayu optimize` / `auto_optimize` read quotes inside `$(...)` and
+  `${...}`; a comment, `case` or heredoc inside `$(...)`, or a `'` inside
+  `"${...}"`, keeps that line and everything after it in the rc file.
+- `wayu doctor` no longer runs rc generator commands to time them (see
+  above); the startup estimate covers compinit only.
+- `watch stop` exits 1 without signalling when `watcher.pid` does not name
+  the process holding the watcher lock.
+- Release builds: the Odin toolchain download is checked against
+  `.github/odin-release.sha256`; release archives are reproducible and
+  attested.
 
 ## 6.0.0
 
