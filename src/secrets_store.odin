@@ -186,8 +186,13 @@ secrets_wipe :: proc(s: string, allocator := context.allocator) {
 // Strict: one JSON object with exactly the keys secrets_store_format writes
 // ("version", "cipher", "values", optional "run_only"), nothing after it;
 // every name a shell variable name; every value a string; "run_only" a list
-// of distinct names that are in "values".
+// of distinct names that are in "values". The depth-limited strict syntax
+// check runs first: core:encoding/json recurses without a limit, so a
+// deeply nested file would overflow the stack.
 secrets_store_parse :: proc(text: string) -> (store: Secrets_Store, err: string) {
+	if serr := json_strict_check(text); len(serr) > 0 {
+		return {}, fmt.tprintf("not valid JSON (%s)", serr)
+	}
 	arena: virtual.Arena
 	if virtual.arena_init_growing(&arena) != nil {
 		return {}, "out of memory"

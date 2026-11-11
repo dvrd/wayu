@@ -124,6 +124,20 @@ test_secrets_store_parse_rejects :: proc(t: ^testing.T) {
 		wayu.secrets_store_destroy(&s)
 		testing.expectf(t, len(err) > 0, "should reject %q", text)
 	}
+	// Deep nesting is rejected by the depth-limited pre-check, before
+	// core:encoding/json recurses into it (stack overflow).
+	deep := strings.concatenate(
+		{
+			`{"version": 1, "cipher": "chacha20poly1305", "values": {}, "run_only": `,
+			strings.repeat("[", 200_000, context.temp_allocator),
+			strings.repeat("]", 200_000, context.temp_allocator),
+			"}",
+		},
+		context.temp_allocator,
+	)
+	s, err := wayu.secrets_store_parse(deep)
+	wayu.secrets_store_destroy(&s)
+	testing.expectf(t, strings.contains(err, "nest"), "deep nesting: got %q", err)
 }
 
 @(test)
