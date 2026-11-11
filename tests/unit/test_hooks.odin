@@ -1,10 +1,10 @@
 package test_wayu
 
-import "core:testing"
+import wayu "../../src"
+import "core:fmt"
 import "core:os"
 import "core:strings"
-import "core:fmt"
-import wayu "../../src"
+import "core:testing"
 
 // Verifies the plugin-install hook wrappers actually fire the configured
 // shell command and substitute the {name} placeholder. Regression guard for
@@ -97,20 +97,35 @@ test_hook_render_command_quotes_per_context :: proc(t: ^testing.T) {
 // unquoted, '...' and "$WAYU_HOOK_*" in double quotes stay valid.
 @(test)
 test_hook_double_quoted_placeholder_detection :: proc(t: ^testing.T) {
-	Case :: struct { cmd, want: string }
-	cases := []Case{
+	Case :: struct {
+		cmd, want: string,
+	}
+	cases := []Case {
 		{`sh -c "echo {value}"`, "{value}"},
 		{`echo "Adding {path}" >> log`, "{path}"},
 		{`eval "x={name}"`, "{name}"},
 		{`echo a "b" {name}`, ""},
 		{`echo {path}`, ""},
 		{`sh -c 'echo {path}'`, ""},
-		{`sh -c 'echo "a {name}"'`, ""}, // "..." inside '...' is literal text
+		// "..." inside '...' is the inner shell's "...": its value would be
+		// re-parsed by a shell nested in it.
+		{`sh -c 'echo "a {name}"'`, "{name}"},
+		{`sh -c 'sh -c "echo {value}"'`, "{value}"},
+		{`sh -c 'echo "a" {name}'`, ""},
+		{`sh -c 'echo \"{name}'`, ""}, // escaped for the inner shell
+		{`sh -c 'echo "a'"b"' {name}"'`, "{name}"}, // inner "..." spans segments
+		{`sh -c 'echo "a"' x '{name}'`, ""},
 		{`echo "$WAYU_HOOK_NAME"`, ""},
 		{`echo \"{name}\"`, ""}, // escaped quotes are not a quoted string
 	}
 	for c in cases {
-		testing.expectf(t, wayu.hook_double_quoted_placeholder(c.cmd) == c.want, "%q: want %q", c.cmd, c.want)
+		testing.expectf(
+			t,
+			wayu.hook_double_quoted_placeholder(c.cmd) == c.want,
+			"%q: want %q",
+			c.cmd,
+			c.want,
+		)
 	}
 }
 
@@ -159,7 +174,10 @@ test_hook_nested_shell_cannot_inject :: proc(t: ^testing.T) {
 	log_path := fmt.tprintf("%s/hook.log", tmp)
 	pwned := fmt.tprintf("%s/PWNED", tmp)
 	conf := fmt.tprintf("post_path_remove = sh -c 'echo rm {{path}} >> %s'\n", log_path)
-	testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/hooks.conf", tmp), transmute([]byte)conf))
+	testing.expect(
+		t,
+		wayu.safe_write_file(fmt.tprintf("%s/hooks.conf", tmp), transmute([]byte)conf),
+	)
 
 	evil := fmt.tprintf("x$(touch %s)`touch %s`;touch %s", pwned, pwned, pwned)
 	wayu.hook_post_path_remove(evil)
@@ -186,8 +204,15 @@ test_hook_values_cannot_inject :: proc(t: ^testing.T) {
 
 	log_path := fmt.tprintf("%s/hook.log", tmp)
 	pwned := fmt.tprintf("%s/PWNED", tmp)
-	conf := fmt.tprintf("post_alias_add = \"echo {{name}}={{value}} >> %s; echo 'q:{{name}}' >> %s\"\n", log_path, log_path)
-	testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/hooks.conf", tmp), transmute([]byte)conf))
+	conf := fmt.tprintf(
+		"post_alias_add = \"echo {{name}}={{value}} >> %s; echo 'q:{{name}}' >> %s\"\n",
+		log_path,
+		log_path,
+	)
+	testing.expect(
+		t,
+		wayu.safe_write_file(fmt.tprintf("%s/hooks.conf", tmp), transmute([]byte)conf),
+	)
 
 	evil := fmt.tprintf("x; touch %s", pwned)
 	wayu.hook_post_alias_add(evil, "$(touch PWNED2) v")
@@ -197,9 +222,17 @@ test_hook_values_cannot_inject :: proc(t: ^testing.T) {
 	defer delete(content)
 	testing.expect(t, !os.exists(pwned), "name must not be executed as shell code")
 	testing.expect(t, strings.contains(string(content), evil), "name passed through literally")
-	testing.expect(t, strings.contains(string(content), "$(touch PWNED2) v"), "{value} filled literally")
+	testing.expect(
+		t,
+		strings.contains(string(content), "$(touch PWNED2) v"),
+		"{value} filled literally",
+	)
 	// Top-level '...' is not substituted (left for an inner shell).
-	testing.expect(t, strings.contains(string(content), `q:"${WAYU_HOOK_NAME}"`), "single-quoted placeholder left as reference")
+	testing.expect(
+		t,
+		strings.contains(string(content), `q:"${WAYU_HOOK_NAME}"`),
+		"single-quoted placeholder left as reference",
+	)
 }
 
 @(test)
@@ -218,7 +251,10 @@ test_hooks_skipped_in_dry_run :: proc(t: ^testing.T) {
 
 	log_path := fmt.tprintf("%s/hook.log", tmp)
 	conf := fmt.tprintf("pre_path_add = \"echo X >> %s\"\n", log_path)
-	testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/hooks.conf", tmp), transmute([]byte)conf))
+	testing.expect(
+		t,
+		wayu.safe_write_file(fmt.tprintf("%s/hooks.conf", tmp), transmute([]byte)conf),
+	)
 
 	wayu.hook_pre_path_add("/x")
 	testing.expect(t, !os.exists(log_path), "hooks must not run under --dry-run")
@@ -239,20 +275,38 @@ test_spec_hooks_are_wired_and_fire :: proc(t: ^testing.T) {
 	defer wayu.wayu.config = saved_config
 
 	log_path := fmt.tprintf("%s/hook.log", tmp)
-	keys := [?]string{
-		"pre_alias_add", "post_alias_add", "pre_alias_remove", "post_alias_remove",
-		"pre_constant_add", "post_constant_add", "pre_constant_remove", "post_constant_remove",
+	keys := [?]string {
+		"pre_alias_add",
+		"post_alias_add",
+		"pre_alias_remove",
+		"post_alias_remove",
+		"pre_constant_add",
+		"post_constant_add",
+		"pre_constant_remove",
+		"post_constant_remove",
 	}
 	b := strings.builder_make(context.temp_allocator)
 	for k in keys {
 		fmt.sbprintf(&b, "%s = echo %s:{{name}}={{value}} >> %s\n", k, k, log_path)
 	}
-	testing.expect(t, wayu.safe_write_file(fmt.tprintf("%s/hooks.conf", tmp), transmute([]byte)strings.to_string(b)))
+	testing.expect(
+		t,
+		wayu.safe_write_file(
+			fmt.tprintf("%s/hooks.conf", tmp),
+			transmute([]byte)strings.to_string(b),
+		),
+	)
 
 	specs := [?]^wayu.ConfigEntrySpec{&wayu.ALIAS_SPEC, &wayu.CONSTANTS_SPEC}
 	for s in specs {
-		testing.expect(t, s.hook_pre_add != nil && s.hook_post_add != nil &&
-			s.hook_pre_remove != nil && s.hook_post_remove != nil, "spec hooks must be wired")
+		testing.expect(
+			t,
+			s.hook_pre_add != nil &&
+			s.hook_post_add != nil &&
+			s.hook_pre_remove != nil &&
+			s.hook_post_remove != nil,
+			"spec hooks must be wired",
+		)
 		s.hook_pre_add("n", "v")
 		s.hook_post_add("n", "v")
 		s.hook_pre_remove("n", "")
@@ -261,9 +315,39 @@ test_spec_hooks_are_wired_and_fire :: proc(t: ^testing.T) {
 
 	content, ok := wayu.safe_read_file(log_path)
 	testing.expect(t, ok, "hooks should have written the log")
-	defer if ok { delete(content) }
-	for k in keys {
-		testing.expectf(t, strings.contains(string(content), fmt.tprintf("%s:n=", k)), "%s should fire", k)
+	defer if ok {
+		delete(content)
 	}
-	testing.expect(t, strings.contains(string(content), "pre_alias_add:n=v"), "{value} filled on add")
+	for k in keys {
+		testing.expectf(
+			t,
+			strings.contains(string(content), fmt.tprintf("%s:n=", k)),
+			"%s should fire",
+			k,
+		)
+	}
+	testing.expect(
+		t,
+		strings.contains(string(content), "pre_alias_add:n=v"),
+		"{value} filled on add",
+	)
+}
+
+// OKAMI-335: only quotes wrapping the whole hooks.conf value are stripped.
+@(test)
+test_hook_strip_wrapping_quotes :: proc(t: ^testing.T) {
+	cases := [][2]string {
+		{`"echo 'hi'"`, `echo 'hi'`},
+		{`'echo "hi"'`, `echo "hi"`},
+		{`"/bin/echo" {path} "done"`, `"/bin/echo" {path} "done"`},
+		{`'a' b 'c'`, `'a' b 'c'`},
+		{`"a \" b"`, `a \" b`},
+		{`echo hi`, `echo hi`},
+		{`"`, `"`},
+		{`""`, ``},
+	}
+	for c in cases {
+		got := wayu.hook_strip_wrapping_quotes(c[0])
+		testing.expectf(t, got == c[1], "%s: got %s, want %s", c[0], got, c[1])
+	}
 }

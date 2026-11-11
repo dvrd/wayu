@@ -1,7 +1,7 @@
 package test_wayu
 
-import "core:testing"
 import wayu "../../src"
+import "core:testing"
 
 // ============================================================================
 // Exit Code Constants Tests

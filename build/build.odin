@@ -14,21 +14,22 @@
 //   dev       — debug build + run with remaining args
 //   release   — test + commit + tag + atomic push of main and the tag
 //               (the push to main runs bump.yml: CI, then publish + Homebrew)
-//   docs      — sync docs/index.html + README.md version from src/main.odin
+//   docs      — sync docs/index.html + README.md version from src/main.odin and
+//               regenerate the docs pages, sitemap and test count (site.odin)
 //               (--check: verify only, exit 1 on drift)
 //   help      — show available targets
 
 package main
 
+import bld "../bld"
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import bld "../bld"
 
-SRC_DIR     :: "src"
-BIN_DIR     :: "bin"
+SRC_DIR :: "src"
+BIN_DIR :: "bin"
 BINARY_NAME :: "wayu"
-TEST_DIR    :: "tests/unit"
+TEST_DIR :: "tests/unit"
 
 // Computed paths — avoids repeating fmt.tprintf("%s/%s", ...) everywhere.
 bin_path :: proc() -> string {
@@ -40,7 +41,7 @@ debug_path :: proc() -> string {
 }
 
 main :: proc() {
-	bld.go_rebuild_urself("build", "bld")
+	bld.go_rebuild_urself("build", "bld", "build/markdown")
 
 	target := "build"
 	if len(os.args) > 1 {
@@ -88,29 +89,100 @@ ODIN_PIN_FILE :: ".github/odin-release"
 // dev-2026-11:<hash>, so the comparison is on the dev-YYYY-MM series.
 warn_if_odin_unpinned :: proc() {
 	data, err := os.read_entire_file_from_path(ODIN_PIN_FILE, context.temp_allocator)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	pin := strings.trim_space(string(data))
 	series := strings.trim_right(pin, "abcdefghijklmnopqrstuvwxyz")
-	if series == "" { return }
+	if series == "" {
+		return
+	}
 
 	cmd := bld.cmd_create(context.temp_allocator)
 	bld.cmd_append(&cmd, "odin", "version")
 	out, ok := bld.cmd_run_capture(&cmd, context.temp_allocator)
-	if !ok { return }
+	if !ok {
+		return
+	}
 	have := strings.trim_space(string(out))
-	if strings.contains(have, series) { return }
+	if strings.contains(have, series) {
+		return
+	}
 	bld.log_warn("Odin is '%s' but wayu pins %s (see %s).", have, pin, ODIN_PIN_FILE)
 	bld.log_warn("Install it from https://github.com/odin-lang/Odin/releases/tag/%s", pin)
+}
+
+// bump.yml's "Install git-cliff" step pins CLIFF_VERSION; a local release
+// must use the same git-cliff, or the version bump and CHANGELOG can differ
+// from what CI would produce.
+CLIFF_PIN_FILE :: ".github/workflows/bump.yml"
+
+// Exit unless `git-cliff --version` is the version bump.yml pins.
+require_pinned_git_cliff :: proc() {
+	data, err := os.read_entire_file_from_path(CLIFF_PIN_FILE, context.temp_allocator)
+	if err != nil {
+		bld.log_error("Cannot read %s for the pinned git-cliff version", CLIFF_PIN_FILE)
+		os.exit(1)
+	}
+	pin := ""
+	text := string(data)
+	for line in strings.split_lines_iterator(&text) {
+		l := strings.trim_space(line)
+		if strings.has_prefix(l, "CLIFF_VERSION:") {
+			pin = strings.trim_space(l[len("CLIFF_VERSION:"):])
+			break
+		}
+	}
+	if pin == "" {
+		bld.log_error("No CLIFF_VERSION in %s", CLIFF_PIN_FILE)
+		os.exit(1)
+	}
+
+	cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&cmd, "git-cliff", "--version")
+	out, ok := bld.cmd_run_capture(&cmd, context.temp_allocator)
+	have := strings.trim_space(string(out))
+	if !ok || have != fmt.tprintf("git-cliff %s", pin) {
+		bld.log_error(
+			"git-cliff is '%s' but releases use git-cliff %s (CLIFF_VERSION in %s)",
+			have,
+			pin,
+			CLIFF_PIN_FILE,
+		)
+		bld.log_error("Install it from https://github.com/orhun/git-cliff/releases/tag/v%s", pin)
+		os.exit(1)
+	}
+}
+
+// The oldest macOS the binaries run on (LC_BUILD_VERSION minos). Without
+// -minimum-os-version Odin stamps the build host's version, so a release
+// built on a new runner refused to start on older macOS. CI checks the
+// released binary against this file (.github/scripts/check-macos-minos.sh).
+MACOS_MIN_VERSION_FILE :: ".github/macos-minimum-version"
+
+// Extra compiler flags for this host: -minimum-os-version on macOS.
+platform_flags :: proc() -> []string {
+	when ODIN_OS == .Darwin {
+		data, err := os.read_entire_file_from_path(MACOS_MIN_VERSION_FILE, context.temp_allocator)
+		version := strings.trim_space(string(data))
+		if err != nil || version == "" {
+			bld.log_error("Cannot read the macOS minimum version from %s", MACOS_MIN_VERSION_FILE)
+			os.exit(1)
+		}
+		flags := make([]string, 1, context.temp_allocator)
+		flags[0] = fmt.tprintf("-minimum-os-version:%s", version)
+		return flags
+	} else {
+		return nil
+	}
 }
 
 do_build :: proc() {
 	bld.log_info("Building %s (optimized)...", BINARY_NAME)
 	bld.mkdir_if_not_exists(BIN_DIR)
-	ok := bld.build({
-		package_path = SRC_DIR,
-		out          = bin_path(),
-		opt          = .Speed,
-	})
+	ok := bld.build(
+		{package_path = SRC_DIR, out = bin_path(), opt = .Speed, extra_flags = platform_flags()},
+	)
 	if !ok {
 		bld.log_error("Build failed")
 		os.exit(1)
@@ -121,11 +193,9 @@ do_build :: proc() {
 do_debug :: proc() {
 	bld.log_info("Building %s (debug)...", BINARY_NAME)
 	bld.mkdir_if_not_exists(BIN_DIR)
-	ok := bld.build({
-		package_path = SRC_DIR,
-		out          = debug_path(),
-		debug        = true,
-	})
+	ok := bld.build(
+		{package_path = SRC_DIR, out = debug_path(), debug = true, extra_flags = platform_flags()},
+	)
 	if !ok {
 		bld.log_error("Debug build failed")
 		os.exit(1)
@@ -154,9 +224,10 @@ run_unit_tests :: proc(names := "") -> bool {
 	// Sandbox HOME so no test can ever write into the real ~/.config/wayu
 	// (several tests swap the global config dir; a missed restore used to
 	// leak fixture plugins into the user's plugins.json).
-	test_home := fmt.tprintf("/tmp/wayu_unit_home_%d", os.get_pid())
-	os.remove_all(test_home)
-	os.make_directory_all(test_home)
+	test_home, home_ok := make_private_tmp_dir("wayu_unit_home_*")
+	if !home_ok {
+		return false
+	}
 	real_home, had_home := os.lookup_env("HOME", context.temp_allocator)
 	os.set_env("HOME", test_home)
 	// Tests put scratch files under this per-run root (tests/unit/test_tmp.odin),
@@ -169,7 +240,7 @@ run_unit_tests :: proc(names := "") -> bool {
 			os.unset_env("HOME")
 		}
 		os.unset_env("WAYU_TEST_TMPDIR")
-		os.remove_all(test_home)
+		remove_private_tmp_dir(test_home)
 	}
 	// The test runner reports progress, per-test logs, leaks and the names of
 	// failed tests on stderr, which is passed through. The tested code's own
@@ -184,20 +255,56 @@ run_unit_tests :: proc(names := "") -> bool {
 	if len(names) > 0 {
 		append(&defines, bld.Define{name = "ODIN_TEST_NAMES", value = names})
 	}
-	ok := bld.test({
-		package_path = TEST_DIR,
+	ok := bld.test(
+	{
+		package_path              = TEST_DIR,
 		// Per-run binary: odin test otherwise writes ./unit in the cwd, which
 		// concurrent runs in one checkout would overwrite mid-run.
-		out          = fmt.tprintf("%s/wayu_unit_tests", test_home),
-		file_mode    = true,
-		opt          = .Speed,
-		defines      = defines[:],
+		out                       = fmt.tprintf("%s/wayu_unit_tests", test_home),
+		file_mode                 = true,
+		opt                       = .Speed,
+		defines                   = defines[:],
 		ignore_unused_defineables = true,
-	}, {stdout_path = stdout_log})
+	},
+	{stdout_path = stdout_log},
+	)
 	if !ok {
 		show_test_stdout(stdout_log)
 	}
 	return ok
+}
+
+// A fresh private scratch dir: mkdtemp under $TMPDIR (else /tmp), then 0700.
+// Never a fixed, guessable /tmp name: another local user could create it
+// first (or a symlink in its place) and have our writes, or the cleanup's
+// remove_all, land on files they choose. Logs and returns false on failure.
+make_private_tmp_dir :: proc(pattern: string) -> (string, bool) {
+	dir, err := os.make_directory_temp("", pattern, context.temp_allocator)
+	if err != nil {
+		bld.log_error("Cannot create a private temp dir (%s): %v", pattern, err)
+		return "", false
+	}
+	if os.chmod(dir, os.Permissions{.Read_User, .Write_User, .Execute_User}) != nil {
+		bld.log_error("Cannot make %s private", dir)
+		remove_private_tmp_dir(dir)
+		return "", false
+	}
+	return dir, true
+}
+
+// Remove a dir made by make_private_tmp_dir, only while it is still a plain
+// directory: remove_all follows a symlink at the top, so a path swapped for a
+// link is left alone.
+remove_private_tmp_dir :: proc(dir: string) {
+	fi, err := os.lstat(dir, context.temp_allocator)
+	if err != nil {
+		return
+	}
+	if fi.type != .Directory {
+		bld.log_error("Not removing %s: no longer a plain directory", dir)
+		return
+	}
+	os.remove_all(dir)
 }
 
 // On failure: keep the tested code's stdout as bin/unit-tests.stdout.log
@@ -206,7 +313,9 @@ show_test_stdout :: proc(stdout_log: string) {
 	TAIL_LINES :: 40
 	kept := fmt.tprintf("%s/unit-tests.stdout.log", BIN_DIR)
 	data, err := os.read_entire_file_from_path(stdout_log, context.temp_allocator)
-	if err != nil || len(data) == 0 { return }
+	if err != nil || len(data) == 0 {
+		return
+	}
 	_ = os.write_entire_file(kept, data)
 	lines := strings.split_lines(strings.trim_right(string(data), "\n"), context.temp_allocator)
 	from := max(0, len(lines) - TAIL_LINES)
@@ -238,8 +347,12 @@ git_must :: proc(what: string, args: ..string) {
 
 // Run `git <args>` and return its trimmed stdout.
 git_output :: proc(args: ..string) -> (out: string, ok: bool) {
-	tmp := fmt.tprintf("/tmp/wayu_build_git_%d", os.get_pid())
-	defer os.remove(tmp)
+	tmp_dir, dir_ok := make_private_tmp_dir("wayu_build_git_*")
+	if !dir_ok {
+		return "", false
+	}
+	defer remove_private_tmp_dir(tmp_dir)
+	tmp := fmt.tprintf("%s/out", tmp_dir)
 	cmd := bld.cmd_create(context.temp_allocator)
 	bld.cmd_append(&cmd, "git")
 	bld.cmd_append(&cmd, ..args)
@@ -307,9 +420,12 @@ homebrew_wayu :: proc() -> string {
 wayu_on_path :: proc() -> string {
 	path_env, _ := os.lookup_env("PATH", context.temp_allocator)
 	for dir in strings.split(path_env, ":", context.temp_allocator) {
-		if len(dir) == 0 { continue }
+		if len(dir) == 0 {
+			continue
+		}
 		candidate := fmt.tprintf("%s/%s", strings.trim_right(dir, "/"), BINARY_NAME)
-		if fi, err := os.stat(candidate, context.temp_allocator); err == nil && fi.type != .Directory {
+		if fi, err := os.stat(candidate, context.temp_allocator);
+		   err == nil && fi.type != .Directory {
 			return candidate
 		}
 	}
@@ -326,7 +442,10 @@ do_install :: proc() {
 		case "--force":
 			force = true
 		case:
-			bld.log_error("Unknown install option '%s' (usage: ./build_it install [--force])", os.args[i])
+			bld.log_error(
+				"Unknown install option '%s' (usage: ./build_it install [--force])",
+				os.args[i],
+			)
 			os.exit(1)
 		}
 	}
@@ -361,7 +480,10 @@ do_install :: proc() {
 	tmp_path := fmt.tprintf("%s/.%s.install-%d", dir, BINARY_NAME, os.get_pid())
 	if !bld.copy_file(bin_path(), tmp_path) {
 		os.remove(tmp_path)
-		bld.log_error("Failed to copy the binary into %s (permissions? set PREFIX to another directory)", dir)
+		bld.log_error(
+			"Failed to copy the binary into %s (permissions? set PREFIX to another directory)",
+			dir,
+		)
 		os.exit(1)
 	}
 	// copy_file doesn't preserve permissions; 0755 before it becomes visible.
@@ -391,7 +513,12 @@ do_install :: proc() {
 	if found := wayu_on_path(); found == "" {
 		bld.log_warn("%s is not on your PATH; add it to use the installed wayu", dir)
 	} else if found != install_path {
-		bld.log_warn("`wayu` on your PATH is %s, which shadows %s; put %s earlier in PATH", found, install_path, dir)
+		bld.log_warn(
+			"`wayu` on your PATH is %s, which shadows %s; put %s earlier in PATH",
+			found,
+			install_path,
+			dir,
+		)
 	}
 }
 
@@ -419,6 +546,9 @@ do_release :: proc() {
 	cliff_check := bld.cmd_create(context.temp_allocator)
 	bld.cmd_append(&cliff_check, "which", "git-cliff")
 	cliff_available := bld.cmd_run(&cliff_check)
+	if cliff_available {
+		require_pinned_git_cliff()
+	}
 
 	if len(os.args) >= 3 {
 		// Version provided explicitly
@@ -431,14 +561,21 @@ do_release :: proc() {
 	} else {
 		// Auto-detect next version via git-cliff --bumped-version
 		if !cliff_available {
-			bld.log_error("git-cliff not found — either install it (cargo install git-cliff) or provide an explicit version: ./build_it release <version>")
+			bld.log_error(
+				"git-cliff not found — either install it (cargo install git-cliff) or provide an explicit version: ./build_it release <version>",
+			)
 			os.exit(1)
 		}
 		bld.log_info("Auto-detecting next version with git-cliff...")
-		tmp_file := "/tmp/wayu_next_version"
+		tmp_dir, dir_ok := make_private_tmp_dir("wayu_next_version_*")
+		if !dir_ok {
+			os.exit(1)
+		}
+		defer remove_private_tmp_dir(tmp_dir)
+		tmp_file := fmt.tprintf("%s/version", tmp_dir)
 		bump_cmd := bld.cmd_create(context.temp_allocator)
-		bld.cmd_append(&bump_cmd, "sh", "-c", fmt.tprintf("git-cliff --bumped-version > %s", tmp_file))
-		if !bld.cmd_run(&bump_cmd) {
+		bld.cmd_append(&bump_cmd, "git-cliff", "--bumped-version")
+		if !bld.cmd_run(&bump_cmd, {stdout_path = tmp_file}) {
 			bld.log_error("git-cliff --bumped-version failed")
 			os.exit(1)
 		}
@@ -491,13 +628,19 @@ do_release :: proc() {
 	// The git commands below must see the real HOME (identity, signing, credentials).
 	home_after, _ := os.lookup_env("HOME", context.temp_allocator)
 	if home_after != home_before {
-		bld.log_error("HOME not restored after tests (%s, expected %s) — aborting release", home_after, home_before)
+		bld.log_error(
+			"HOME not restored after tests (%s, expected %s) — aborting release",
+			home_after,
+			home_before,
+		)
 		os.exit(1)
 	}
 
 	// 3. Generate CHANGELOG and update VERSION in src/main.odin
 	if !cliff_available {
-		bld.log_error("git-cliff not found — cannot generate CHANGELOG (install: cargo install git-cliff)")
+		bld.log_error(
+			"git-cliff not found — cannot generate CHANGELOG (install: cargo install git-cliff)",
+		)
 		os.exit(1)
 	}
 
@@ -507,6 +650,15 @@ do_release :: proc() {
 	bld.cmd_append(&cliff_cmd, "git-cliff", "--tag", version, "-o", "CHANGELOG.md")
 	if !bld.cmd_run(&cliff_cmd) {
 		bld.log_error("git-cliff failed")
+		os.exit(1)
+	}
+
+	// 3a'. Name docs/UPGRADING.md's "## Unreleased" section after the version
+	//      (the release notes take their upgrade notes from it), like bump.yml.
+	upgrading_cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&upgrading_cmd, ".github/scripts/upgrading-version.sh", version)
+	if !bld.cmd_run(&upgrading_cmd) {
+		bld.log_error("upgrading-version.sh failed")
 		os.exit(1)
 	}
 
@@ -532,12 +684,12 @@ do_release :: proc() {
 		os.exit(1)
 	}
 	quote_start := start_idx + len(old_prefix)
-	quote_end   := strings.index(main_odin_src[quote_start:], `"`)
+	quote_end := strings.index(main_odin_src[quote_start:], `"`)
 	if quote_end == -1 {
 		bld.log_error("Malformed VERSION line in %s", main_odin_path)
 		os.exit(1)
 	}
-	old_version := main_odin_src[quote_start : quote_start + quote_end]
+	old_version := main_odin_src[quote_start:quote_start + quote_end]
 	old_version_line := fmt.tprintf(`VERSION :: "%s"`, old_version)
 	new_version_line := fmt.tprintf(`VERSION :: "%s"`, version_bare)
 
@@ -549,11 +701,23 @@ do_release :: proc() {
 	}
 	bld.log_info("Updated VERSION from %s to %s", old_version, version_bare)
 
-	// 3c. Sync version into docs/index.html and README.md
+	// 3c. Sync version into docs/index.html and README.md, and regenerate the
+	//     docs pages (UPGRADING.md's section was just renamed).
 	sync_docs_version_str(version_bare)
+	sync_site(false)
 
 	// 3d. Commit CHANGELOG.md, src/main.odin, docs, and README together
-	git_must("git add", "add", "CHANGELOG.md", "src/main.odin", "docs/index.html", "README.md")
+	git_must(
+		"git add",
+		"add",
+		"CHANGELOG.md",
+		"src/main.odin",
+		"docs/index.html",
+		"docs/UPGRADING.md",
+		"docs/docs",
+		"docs/sitemap.xml",
+		"README.md",
+	)
 	git_must("git commit", "commit", "-m", fmt.tprintf("chore: release %s", version))
 
 	// 4. Tag the release commit.
@@ -571,7 +735,10 @@ do_release :: proc() {
 		os.exit(1)
 	}
 
-	bld.log_info("Release %s pushed — bump.yml will run CI, then build, publish, and update the Homebrew tap", version)
+	bld.log_info(
+		"Release %s pushed — bump.yml will run CI, then build, publish, and update the Homebrew tap",
+		version,
+	)
 	bld.log_info("Track progress at: https://github.com/dvrd/wayu/actions")
 }
 
@@ -613,11 +780,12 @@ Version_Anchor :: struct {
 	required: bool,
 }
 
-VERSION_ANCHORS :: [?]Version_Anchor{
-	{"README.md",       "**v",                  true},  // **vX.Y.Z** under the title
-	{"docs/index.html", `aria-label="Version `, true},  // nav badge label
-	{"docs/index.html", `">v`,                  false}, // nav badge + footer text
-	{"docs/index.html", "wayu ",                false}, // terminal demo "wayu X.Y.Z installed"
+VERSION_ANCHORS :: [?]Version_Anchor {
+	{"README.md", "**v", true}, // **vX.Y.Z** under the title
+	{"docs/index.html", `class="ver">v`, true}, // hero badge, announcement bar, footer
+	{"docs/index.html", `">v`, false}, // any other ">vX.Y.Z" text
+	{"docs/index.html", "wayu ", false}, // terminal demo "wayu X.Y.Z installed"
+	{"docs/index.html", `"softwareVersion": "`, true}, // JSON-LD
 }
 
 VERSION_FILES :: [?]string{"README.md", "docs/index.html"}
@@ -630,9 +798,13 @@ semver_len :: proc(s: string) -> int {
 		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
 			i += 1
 		}
-		if i == start { return 0 }
+		if i == start {
+			return 0
+		}
 		if part < 2 {
-			if i >= len(s) || s[i] != '.' { return 0 }
+			if i >= len(s) || s[i] != '.' {
+				return 0
+			}
 			i += 1
 		}
 	}
@@ -642,19 +814,31 @@ semver_len :: proc(s: string) -> int {
 // Replace the X.Y.Z after every occurrence of prefix with new_ver. Returns the
 // rewritten content and how many anchored versions were found; versions that
 // differed from new_ver are appended to stale.
-rewrite_anchored_versions :: proc(content, prefix, new_ver: string, stale: ^[dynamic]string) -> (out: string, found: int) {
+rewrite_anchored_versions :: proc(
+	content, prefix, new_ver: string,
+	stale: ^[dynamic]string,
+) -> (
+	out: string,
+	found: int,
+) {
 	b := strings.builder_make(context.temp_allocator)
 	rest := content
 	for {
 		idx := strings.index(rest, prefix)
-		if idx == -1 { break }
+		if idx == -1 {
+			break
+		}
 		after := idx + len(prefix)
 		strings.write_string(&b, rest[:after])
 		rest = rest[after:]
 		n := semver_len(rest)
-		if n == 0 { continue }
+		if n == 0 {
+			continue
+		}
 		found += 1
-		if rest[:n] != new_ver { append(stale, rest[:n]) }
+		if rest[:n] != new_ver {
+			append(stale, rest[:n])
+		}
 		strings.write_string(&b, new_ver)
 		rest = rest[n:]
 	}
@@ -675,11 +859,17 @@ sync_docs_version_str :: proc(new_ver: string, check := false) -> bool {
 		content := string(data)
 		stale := make([dynamic]string, context.temp_allocator)
 		for anchor in VERSION_ANCHORS {
-			if anchor.path != path { continue }
+			if anchor.path != path {
+				continue
+			}
 			found: int
 			content, found = rewrite_anchored_versions(content, anchor.prefix, new_ver, &stale)
 			if anchor.required && found == 0 {
-				bld.log_error("%s: version marker '%sX.Y.Z' not found (update VERSION_ANCHORS in build/build.odin)", path, anchor.prefix)
+				bld.log_error(
+					"%s: version marker '%sX.Y.Z' not found (update VERSION_ANCHORS in build/build.odin)",
+					path,
+					anchor.prefix,
+				)
 				os.exit(1)
 			}
 		}
@@ -688,7 +878,12 @@ sync_docs_version_str :: proc(new_ver: string, check := false) -> bool {
 		case len(stale) == 0:
 			bld.log_info("%s at v%s", path, new_ver)
 		case check:
-			bld.log_error("%s says v%s but src/main.odin VERSION is %s — run ./build_it docs", path, stale[0], new_ver)
+			bld.log_error(
+				"%s says v%s but src/main.odin VERSION is %s — run ./build_it docs",
+				path,
+				stale[0],
+				new_ver,
+			)
 			ok = false
 		case:
 			if os.write_entire_file(path, transmute([]byte)content) != nil {
@@ -701,9 +896,10 @@ sync_docs_version_str :: proc(new_ver: string, check := false) -> bool {
 	return ok
 }
 
-// `./build_it docs [--check]`: sync README + docs to VERSION in src/main.odin.
-// --check writes nothing and exits 1 on drift (CI "Release Readiness");
-// bump.yml runs the plain form before committing a release.
+// `./build_it docs [--check]`: sync README + docs to VERSION in src/main.odin
+// and regenerate the site's generated files (site.odin). --check writes
+// nothing and exits 1 on drift (CI "Release Readiness"); bump.yml runs the
+// plain form before committing a release.
 sync_docs_version :: proc() {
 	check := false
 	for i := 2; i < len(os.args); i += 1 {
@@ -711,11 +907,16 @@ sync_docs_version :: proc() {
 		case "--check":
 			check = true
 		case:
-			bld.log_error("Unknown docs option '%s' (usage: ./build_it docs [--check])", os.args[i])
+			bld.log_error(
+				"Unknown docs option '%s' (usage: ./build_it docs [--check])",
+				os.args[i],
+			)
 			os.exit(1)
 		}
 	}
-	if !sync_docs_version_str(read_source_version(), check) {
+	versions_ok := sync_docs_version_str(read_source_version(), check)
+	site_ok := sync_site(check)
+	if !versions_ok || !site_ok {
 		os.exit(1)
 	}
 }
@@ -731,10 +932,14 @@ do_help :: proc() {
 	fmt.println("  test      Run unit tests (optional: NAME[,NAME] to run only those)")
 	fmt.println("  check     Type-check only")
 	fmt.println("  clean     Remove build artifacts")
-	fmt.println("  install   Build + install to $PREFIX/bin (default ~/.local/bin) + wayu init [--force]")
+	fmt.println(
+		"  install   Build + install to $PREFIX/bin (default ~/.local/bin) + wayu init [--force]",
+	)
 	fmt.println("  dev       Debug build + run (extra args passed through)")
 	fmt.println("  release   Run tests, commit + tag, push to main (bump.yml publishes after CI)")
-	fmt.println("  docs      Sync docs/index.html + README.md version from src/main.odin [--check]")
+	fmt.println(
+		"  docs      Sync site version + regenerate docs pages, sitemap, test count [--check]",
+	)
 	fmt.println("  help      Show this help")
 	fmt.println("")
 	fmt.println("Bootstrap:")

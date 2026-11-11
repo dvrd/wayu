@@ -2,26 +2,27 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:unicode/utf8"
 // ANSI color codes similar to gum
-RESET_CODE     :: "\x1b[0m"
-BOLD_CODE      :: "\x1b[1m"
-DIM_CODE       :: "\x1b[2m"
-ITALIC_CODE    :: "\x1b[3m"
+RESET_CODE :: "\x1b[0m"
+BOLD_CODE :: "\x1b[1m"
+DIM_CODE :: "\x1b[2m"
+ITALIC_CODE :: "\x1b[3m"
 UNDERLINE_CODE :: "\x1b[4m"
 
 // Runtime variables (modified by init_colors())
-RESET:     string = RESET_CODE
-BOLD:      string = BOLD_CODE
-DIM:       string = DIM_CODE
-ITALIC:    string = ITALIC_CODE
+RESET: string = RESET_CODE
+BOLD: string = BOLD_CODE
+DIM: string = DIM_CODE
+ITALIC: string = ITALIC_CODE
 UNDERLINE: string = UNDERLINE_CODE
 
 // Color Profile for terminal capability detection
 ColorProfile :: enum {
-	ASCII,      // No colors (NO_COLOR env)
-	ANSI,       // 16 colors (basic terminals)
-	ANSI256,    // 256 colors (most terminals)
-	TRUECOLOR,  // 24-bit RGB (modern terminals)
+	ASCII, // No colors (NO_COLOR env)
+	ANSI, // 16 colors (basic terminals)
+	ANSI256, // 256 colors (most terminals)
+	TRUECOLOR, // 24-bit RGB (modern terminals)
 }
 
 // Palette tokens are runtime vars, not constants: set_plain_output blanks
@@ -29,43 +30,43 @@ ColorProfile :: enum {
 // not a terminal), so no call site can leak an escape code (OKAMI-238).
 
 // Foreground colors
-BLACK:   string = "\x1b[30m"
-RED:     string = "\x1b[31m"
-GREEN:   string = "\x1b[32m"
-YELLOW:  string = "\x1b[33m"
-BLUE:    string = "\x1b[34m"
+BLACK: string = "\x1b[30m"
+RED: string = "\x1b[31m"
+GREEN: string = "\x1b[32m"
+YELLOW: string = "\x1b[33m"
+BLUE: string = "\x1b[34m"
 MAGENTA: string = "\x1b[35m"
-CYAN:    string = "\x1b[36m"
-WHITE:   string = "\x1b[37m"
+CYAN: string = "\x1b[36m"
+WHITE: string = "\x1b[37m"
 
 // Bright colors
-BRIGHT_BLACK:   string = "\x1b[90m"
-BRIGHT_RED:     string = "\x1b[91m"
-BRIGHT_GREEN:   string = "\x1b[92m"
-BRIGHT_YELLOW:  string = "\x1b[93m"
-BRIGHT_BLUE:    string = "\x1b[94m"
+BRIGHT_BLACK: string = "\x1b[90m"
+BRIGHT_RED: string = "\x1b[91m"
+BRIGHT_GREEN: string = "\x1b[92m"
+BRIGHT_YELLOW: string = "\x1b[93m"
+BRIGHT_BLUE: string = "\x1b[94m"
 BRIGHT_MAGENTA: string = "\x1b[95m"
-BRIGHT_CYAN:    string = "\x1b[96m"
-BRIGHT_WHITE:   string = "\x1b[97m"
+BRIGHT_CYAN: string = "\x1b[96m"
+BRIGHT_WHITE: string = "\x1b[97m"
 
 // Background colors
-BG_BLACK:   string = "\x1b[40m"
-BG_RED:     string = "\x1b[41m"
-BG_GREEN:   string = "\x1b[42m"
-BG_YELLOW:  string = "\x1b[43m"
-BG_BLUE:    string = "\x1b[44m"
+BG_BLACK: string = "\x1b[40m"
+BG_RED: string = "\x1b[41m"
+BG_GREEN: string = "\x1b[42m"
+BG_YELLOW: string = "\x1b[43m"
+BG_BLUE: string = "\x1b[44m"
 BG_MAGENTA: string = "\x1b[45m"
-BG_CYAN:    string = "\x1b[46m"
-BG_WHITE:   string = "\x1b[47m"
+BG_CYAN: string = "\x1b[46m"
+BG_WHITE: string = "\x1b[47m"
 
 // Common gum-style colors (LEGACY - for backward compatibility)
-PRIMARY:    string = "\x1b[96m"  // BRIGHT_CYAN
-SECONDARY:  string = "\x1b[95m"  // BRIGHT_MAGENTA
-SUCCESS:    string = "\x1b[92m"  // BRIGHT_GREEN
-WARNING:    string = "\x1b[93m"  // BRIGHT_YELLOW
-ERROR:      string = "\x1b[91m"  // BRIGHT_RED
-MUTED:      string = "\x1b[90m"  // BRIGHT_BLACK
-ACCENT:     string = "\x1b[35m"  // MAGENTA
+PRIMARY: string = "\x1b[96m" // BRIGHT_CYAN
+SECONDARY: string = "\x1b[95m" // BRIGHT_MAGENTA
+SUCCESS: string = "\x1b[92m" // BRIGHT_GREEN
+WARNING: string = "\x1b[93m" // BRIGHT_YELLOW
+ERROR: string = "\x1b[91m" // BRIGHT_RED
+MUTED: string = "\x1b[90m" // BRIGHT_BLACK
+ACCENT: string = "\x1b[35m" // MAGENTA
 
 // ============================================================================
 // VIBRANT COLOR PALETTE (Phase 1 - PRP-09)
@@ -73,38 +74,38 @@ ACCENT:     string = "\x1b[35m"  // MAGENTA
 // ============================================================================
 
 // Primary Colors (From Zellij dvrd theme)
-VIBRANT_PRIMARY:   string = "\x1b[38;2;228;0;80m"     // Hot pink #E40050 (emphasis_2)
-VIBRANT_SECONDARY: string = "\x1b[38;2;14;116;144m"   // Teal-cyan #0E7490 (emphasis_1)
-VIBRANT_ACCENT:    string = "\x1b[38;2;194;65;12m"    // Orange-red #C2410C (emphasis_0)
+VIBRANT_PRIMARY: string = "\x1b[38;2;228;0;80m" // Hot pink #E40050 (emphasis_2)
+VIBRANT_SECONDARY: string = "\x1b[38;2;14;116;144m" // Teal-cyan #0E7490 (emphasis_1)
+VIBRANT_ACCENT: string = "\x1b[38;2;194;65;12m" // Orange-red #C2410C (emphasis_0)
 
 // Semantic Colors (Zellij-inspired)
-VIBRANT_SUCCESS:   string = "\x1b[38;2;14;116;144m"   // Teal (reusing emphasis_1)
-VIBRANT_ERROR:     string = "\x1b[38;2;153;27;27m"    // Dark red #991B1B
-VIBRANT_WARNING:   string = "\x1b[38;2;217;119;6m"    // Orange #D97706
-VIBRANT_INFO:      string = "\x1b[38;2;14;116;144m"   // Teal-cyan #0E7490
+VIBRANT_SUCCESS: string = "\x1b[38;2;14;116;144m" // Teal (reusing emphasis_1)
+VIBRANT_ERROR: string = "\x1b[38;2;153;27;27m" // Dark red #991B1B
+VIBRANT_WARNING: string = "\x1b[38;2;217;119;6m" // Orange #D97706
+VIBRANT_INFO: string = "\x1b[38;2;14;116;144m" // Teal-cyan #0E7490
 
 // UI Elements
-VIBRANT_HIGHLIGHT:   string = "\x1b[38;2;228;0;80m"     // Hot pink (primary)
-VIBRANT_SELECTED_BG: string = "\x1b[48;2;9;9;11m"       // Almost black background
-VIBRANT_MUTED:       string = "\x1b[38;2;208;208;208m"  // Light gray (base text)
-VIBRANT_DIM:         string = "\x1b[38;2;100;100;100m"  // Dimmer gray
+VIBRANT_HIGHLIGHT: string = "\x1b[38;2;228;0;80m" // Hot pink (primary)
+VIBRANT_SELECTED_BG: string = "\x1b[48;2;9;9;11m" // Almost black background
+VIBRANT_MUTED: string = "\x1b[38;2;208;208;208m" // Light gray (base text)
+VIBRANT_DIM: string = "\x1b[38;2;100;100;100m" // Dimmer gray
 
 // Background colors (Zellij backgrounds)
-BG_DARK:   string = "\x1b[48;2;24;24;37m"   // Dark purple-blue
-BG_DARKER: string = "\x1b[48;2;9;9;11m"     // Almost black
+BG_DARK: string = "\x1b[48;2;24;24;37m" // Dark purple-blue
+BG_DARKER: string = "\x1b[48;2;9;9;11m" // Almost black
 
 // Gradient colors (using Zellij theme colors)
-GRADIENT_START: string = "\x1b[38;2;194;65;12m"   // Orange-red
-GRADIENT_END:   string = "\x1b[38;2;228;0;80m"    // Hot pink
+GRADIENT_START: string = "\x1b[38;2;194;65;12m" // Orange-red
+GRADIENT_END: string = "\x1b[38;2;228;0;80m" // Hot pink
 
 // ANSI 256 fallback colors (closest matches to Zellij theme)
-ANSI256_PRIMARY   :: "\x1b[38;5;197m"  // Hot pink
-ANSI256_SECONDARY :: "\x1b[38;5;31m"   // Teal
-ANSI256_ACCENT    :: "\x1b[38;5;166m"  // Orange
-ANSI256_SUCCESS   :: "\x1b[38;5;31m"   // Teal
-ANSI256_ERROR     :: "\x1b[38;5;124m"  // Dark red
-ANSI256_WARNING   :: "\x1b[38;5;172m"  // Orange
-ANSI256_INFO      :: "\x1b[38;5;31m"   // Teal
+ANSI256_PRIMARY :: "\x1b[38;5;197m" // Hot pink
+ANSI256_SECONDARY :: "\x1b[38;5;31m" // Teal
+ANSI256_ACCENT :: "\x1b[38;5;166m" // Orange
+ANSI256_SUCCESS :: "\x1b[38;5;31m" // Teal
+ANSI256_ERROR :: "\x1b[38;5;124m" // Dark red
+ANSI256_WARNING :: "\x1b[38;5;172m" // Orange
+ANSI256_INFO :: "\x1b[38;5;31m" // Teal
 
 // ============================================================================
 // TERMINAL CAPABILITY DETECTION
@@ -193,23 +194,64 @@ init_colors :: proc() {
 set_plain_output :: proc() {
 	CURRENT_COLOR_PROFILE = .ASCII
 	stderr_color = false
-	tokens := [?]^string{
-		&RESET, &BOLD, &DIM, &ITALIC, &UNDERLINE,
-		&BLACK, &RED, &GREEN, &YELLOW, &BLUE, &MAGENTA, &CYAN, &WHITE,
-		&BRIGHT_BLACK, &BRIGHT_RED, &BRIGHT_GREEN, &BRIGHT_YELLOW,
-		&BRIGHT_BLUE, &BRIGHT_MAGENTA, &BRIGHT_CYAN, &BRIGHT_WHITE,
-		&BG_BLACK, &BG_RED, &BG_GREEN, &BG_YELLOW, &BG_BLUE, &BG_MAGENTA, &BG_CYAN, &BG_WHITE,
-		&PRIMARY, &SECONDARY, &SUCCESS, &WARNING, &ERROR, &MUTED, &ACCENT,
-		&VIBRANT_PRIMARY, &VIBRANT_SECONDARY, &VIBRANT_ACCENT, &VIBRANT_SUCCESS,
-		&VIBRANT_ERROR, &VIBRANT_WARNING, &VIBRANT_INFO, &VIBRANT_HIGHLIGHT,
-		&VIBRANT_SELECTED_BG, &VIBRANT_MUTED, &VIBRANT_DIM,
-		&BG_DARK, &BG_DARKER, &GRADIENT_START, &GRADIENT_END,
+	tokens := [?]^string {
+		&RESET,
+		&BOLD,
+		&DIM,
+		&ITALIC,
+		&UNDERLINE,
+		&BLACK,
+		&RED,
+		&GREEN,
+		&YELLOW,
+		&BLUE,
+		&MAGENTA,
+		&CYAN,
+		&WHITE,
+		&BRIGHT_BLACK,
+		&BRIGHT_RED,
+		&BRIGHT_GREEN,
+		&BRIGHT_YELLOW,
+		&BRIGHT_BLUE,
+		&BRIGHT_MAGENTA,
+		&BRIGHT_CYAN,
+		&BRIGHT_WHITE,
+		&BG_BLACK,
+		&BG_RED,
+		&BG_GREEN,
+		&BG_YELLOW,
+		&BG_BLUE,
+		&BG_MAGENTA,
+		&BG_CYAN,
+		&BG_WHITE,
+		&PRIMARY,
+		&SECONDARY,
+		&SUCCESS,
+		&WARNING,
+		&ERROR,
+		&MUTED,
+		&ACCENT,
+		&VIBRANT_PRIMARY,
+		&VIBRANT_SECONDARY,
+		&VIBRANT_ACCENT,
+		&VIBRANT_SUCCESS,
+		&VIBRANT_ERROR,
+		&VIBRANT_WARNING,
+		&VIBRANT_INFO,
+		&VIBRANT_HIGHLIGHT,
+		&VIBRANT_SELECTED_BG,
+		&VIBRANT_MUTED,
+		&VIBRANT_DIM,
+		&BG_DARK,
+		&BG_DARKER,
+		&GRADIENT_START,
+		&GRADIENT_END,
 	}
-	for t in tokens { t^ = "" }
+	for t in tokens {t^ = ""}
 	SYMBOL_CHECK_SUCCESS = "✓"
-	SYMBOL_CHECK_ERROR   = "✗"
+	SYMBOL_CHECK_ERROR = "✗"
 	SYMBOL_CHECK_MISSING = "○"
-	SYMBOL_CHECK_WARN    = "⚠"
+	SYMBOL_CHECK_WARN = "⚠"
 }
 
 // fmt.eprintf that strips escape codes unless stderr_color is set.
@@ -232,12 +274,16 @@ eprintfln_color :: proc(format: string, args: ..any) {
 // Get adaptive color based on terminal capabilities
 adaptive_color :: proc(truecolor, ansi256, ansi: string) -> string {
 	switch CURRENT_COLOR_PROFILE {
-	case .TRUECOLOR: return truecolor
-	case .ANSI256:   return ansi256
-	case .ANSI:      return ansi
-	case .ASCII:     return ""
+	case .TRUECOLOR:
+		return truecolor
+	case .ANSI256:
+		return ansi256
+	case .ANSI:
+		return ansi
+	case .ASCII:
+		return ""
 	}
-	return ansi  // fallback
+	return ansi // fallback
 }
 
 // Smart color getters that adapt to terminal
@@ -290,7 +336,11 @@ get_color_profile :: proc() -> ColorProfile {
 // where the final byte is in the standard CSI range 0x40..0x7E. When
 // newlines_to_space is set, '\n' and '\r' are collapsed to a single space so
 // table rows stay intact. A lone ESC not starting a CSI sequence is preserved.
-strip_ansi_codes :: proc(text: string, newlines_to_space := false, allocator := context.allocator) -> string {
+strip_ansi_codes :: proc(
+	text: string,
+	newlines_to_space := false,
+	allocator := context.allocator,
+) -> string {
 	// Fast path: nothing to strip or rewrite.
 	needs := false
 	for i := 0; i < len(text); i += 1 {
@@ -309,7 +359,7 @@ strip_ansi_codes :: proc(text: string, newlines_to_space := false, allocator := 
 	i := 0
 	for i < len(text) {
 		c := text[i]
-		if c == '\x1b' && i + 1 < len(text) && text[i+1] == '[' {
+		if c == '\x1b' && i + 1 < len(text) && text[i + 1] == '[' {
 			// Skip CSI: ESC '[' params/intermediates until final byte 0x40..0x7E.
 			i += 2
 			for i < len(text) && !(text[i] >= 0x40 && text[i] <= 0x7e) {
@@ -330,30 +380,30 @@ strip_ansi_codes :: proc(text: string, newlines_to_space := false, allocator := 
 }
 
 // Emojis
-EMOJI_SUCCESS   :: "✅"
-EMOJI_ERROR     :: "❌"
-EMOJI_WARNING   :: "󰀦 "
-EMOJI_INFO      :: "󰋽 "
-EMOJI_QUESTION  :: "❓"
-EMOJI_ROCKET    :: "🚀"
-EMOJI_MOUNTAIN  :: "⛰️"
-EMOJI_USER      :: "󰼭 "
-EMOJI_COMMAND   :: " "
-EMOJI_ACTION    :: " "
-EMOJI_CYCLIST   :: " "
-EMOJI_FILE      :: " "
-EMOJI_PATH      :: " "
-EMOJI_ALIAS     :: " "
-EMOJI_CONSTANT  :: " "
-EMOJI_REMOVE    :: " "
-EMOJI_ADD       :: "➕"
-EMOJI_LIST      :: " "
+EMOJI_SUCCESS :: "✅"
+EMOJI_ERROR :: "❌"
+EMOJI_WARNING :: "󰀦 "
+EMOJI_INFO :: "󰋽 "
+EMOJI_QUESTION :: "❓"
+EMOJI_ROCKET :: "🚀"
+EMOJI_MOUNTAIN :: "⛰️"
+EMOJI_USER :: "󰼭 "
+EMOJI_COMMAND :: " "
+EMOJI_ACTION :: " "
+EMOJI_CYCLIST :: " "
+EMOJI_FILE :: " "
+EMOJI_PATH :: " "
+EMOJI_ALIAS :: " "
+EMOJI_CONSTANT :: " "
+EMOJI_REMOVE :: " "
+EMOJI_ADD :: "➕"
+EMOJI_LIST :: " "
 
 // Colored Status Symbols (using Zellij theme colors)
-SYMBOL_CHECK_SUCCESS: string = "\x1b[38;2;14;116;144m✓\x1b[0m"   // Teal checkmark
-SYMBOL_CHECK_ERROR:   string = "\x1b[38;2;153;27;27m✗\x1b[0m"    // Red X
-SYMBOL_CHECK_MISSING: string = "\x1b[38;2;217;119;6m○\x1b[0m"    // Orange circle
-SYMBOL_CHECK_WARN:    string = "\x1b[38;2;217;119;6m⚠\x1b[0m"    // Orange warning
+SYMBOL_CHECK_SUCCESS: string = "\x1b[38;2;14;116;144m✓\x1b[0m" // Teal checkmark
+SYMBOL_CHECK_ERROR: string = "\x1b[38;2;153;27;27m✗\x1b[0m" // Red X
+SYMBOL_CHECK_MISSING: string = "\x1b[38;2;217;119;6m○\x1b[0m" // Orange circle
+SYMBOL_CHECK_WARN: string = "\x1b[38;2;217;119;6m⚠\x1b[0m" // Orange warning
 
 // ============================================================================
 // ENHANCED PRINT FUNCTIONS (PRP-09 Phase 1)
@@ -367,7 +417,7 @@ SYMBOL_CHECK_WARN:    string = "\x1b[38;2;217;119;6m⚠\x1b[0m"    // Orange war
 print_quiet: bool
 
 // Last print_error message emitted while print_quiet was set (heap-owned).
-@(private="file")
+@(private = "file")
 print_captured_error: string
 
 // Return the last captured print_error message ("" if none) and reset the
@@ -416,6 +466,25 @@ print_warning :: proc(msg: string, args: ..any) {
 	eprintf_color("%s\n", RESET)
 }
 
+// Status lines nested under a parent line: the indent goes before the icon.
+print_success_at :: proc(indent: string, msg: string, args: ..any) {
+	if print_quiet do return
+	fmt.print(indent)
+	print_success(msg, ..args)
+}
+
+print_warning_at :: proc(indent: string, msg: string, args: ..any) {
+	if print_quiet do return
+	eprintf_color("%s", indent)
+	print_warning(msg, ..args)
+}
+
+print_info_at :: proc(indent: string, msg: string, args: ..any) {
+	if print_quiet do return
+	fmt.print(indent)
+	print_info(msg, ..args)
+}
+
 print_info :: proc(msg: string, args: ..any) {
 	if print_quiet do return
 	fmt.printf("%sℹ ", get_info())
@@ -428,7 +497,15 @@ print_header :: proc(msg: string, emoji: string = EMOJI_ROCKET) {
 }
 
 print_section :: proc(msg: string, emoji: string) {
-	fmt.printf("%s%s%s %s%s%s\n", get_bold(), get_secondary(), emoji, msg, get_reset(), get_reset())
+	fmt.printf(
+		"%s%s%s %s%s%s\n",
+		get_bold(),
+		get_secondary(),
+		emoji,
+		msg,
+		get_reset(),
+		get_reset(),
+	)
 }
 
 print_item :: proc(prefix: string, name: string, value: string = "", emoji: string = "") {
@@ -449,8 +526,75 @@ stylize :: proc(text: string, color: string, style: string = "") -> string {
 	}
 	return fmt.aprintf("%s%s%s", color, text, RESET)
 }
+// term_safe returns `s` made safe to print on a terminal: user data (alias
+// commands, constant values, PATH dirs, plugin fields, names quoted from
+// files) must not be able to emit escape sequences that rewrite the screen,
+// set the title or write the clipboard (OSC 52). One rule everywhere:
+// tab -> \t, newline -> \n, other C0 controls and DEL -> \xHH, C1 controls
+// (U+0080-U+009F) -> \u00HH, a byte that is not valid UTF-8 -> \xHH. A
+// backslash stays as is. Returns `s` itself when nothing needs escaping,
+// otherwise a temp-allocated copy. Not for --json (json_escape) or values
+// printed raw for scripts (`const get`).
+term_safe :: proc(s: string) -> string {
+	if !term_needs_escape(s) {
+		return s
+	}
+	b := strings.builder_make(context.temp_allocator)
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c < 0x80 {
+			switch {
+			case c == '\t':
+				strings.write_string(&b, "\\t")
+			case c == '\n':
+				strings.write_string(&b, "\\n")
+			case c < 0x20 || c == 0x7f:
+				fmt.sbprintf(&b, "\\x%02X", c)
+			case:
+				strings.write_byte(&b, c)
+			}
+			i += 1
+			continue
+		}
+		r, size := utf8.decode_rune_in_string(s[i:])
+		switch {
+		case r == utf8.RUNE_ERROR && size <= 1:
+			fmt.sbprintf(&b, "\\x%02X", c)
+			i += 1
+			continue
+		case r >= 0x80 && r <= 0x9f:
+			fmt.sbprintf(&b, "\\u%04X", r)
+		case:
+			strings.write_string(&b, s[i:i + size])
+		}
+		i += size
+	}
+	return strings.to_string(b)
+}
+
+// Whether term_safe would change `s`.
+@(private = "file")
+term_needs_escape :: proc(s: string) -> bool {
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c < 0x80 {
+			if c < 0x20 || c == 0x7f {
+				return true
+			}
+			i += 1
+			continue
+		}
+		r, size := utf8.decode_rune_in_string(s[i:])
+		if (r == utf8.RUNE_ERROR && size <= 1) || (r >= 0x80 && r <= 0x9f) {
+			return true
+		}
+		i += size
+	}
+	return false
+}
+
 // json_escape_string_builder escapes JSON-special characters into a strings.Builder.
-@(private="file")
+@(private = "file")
 json_escape_string_builder :: proc(builder: ^strings.Builder, str: string) {
 	for r in str {
 		switch r {

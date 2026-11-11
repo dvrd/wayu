@@ -25,6 +25,7 @@ import shutil
 import tempfile
 import codecs
 import signal
+import subprocess
 
 import pyte
 
@@ -316,8 +317,13 @@ def test_main_menu(size_name, cols, rows):
     s = TUISession(cols, rows)
 
     try:
-        # Wait for WAYU to appear
+        # Wait for WAYU to appear, then for the rest of the frame: the first
+        # read can stop mid-frame (title drawn, box/footer not yet).
         ok = s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+        if ok:
+            s.wait_for(lambda snap: any(h in snap for h in ("Navigate", "Nav", "Quit")),
+                       timeout=TIMEOUT_STARTUP)
+            s.read(timeout=0.1)
         snap = s.snapshot()
 
         test(f"{size_name}/main_menu/renders",
@@ -706,12 +712,17 @@ def test_add_and_delete_mutations():
             test("mutations/delete_const",
                  AssertResult(ok and "EDITOR" not in content and "TUI_CONST" in content, content))
 
-            s.send(b"\x1b"); s.read(timeout=0.2)  # leave filter
+            # Leave the filter and wait for it to close: an `h` right after
+            # ESC can be read as one Alt-h chord on a busy runner.
+            s.send(b"\x1b")
+            s.wait_for(lambda snap: "(1/" not in snap, timeout=TIMEOUT_KEY)
+            s.read(timeout=0.3)
             s.send(b"h"); s.read(timeout=0.2)
             s.send(b"k"); s.read(timeout=0.15)
             s.send(b"k"); s.read(timeout=0.15)
             s.send(b"l")
-            s.wait_for(lambda snap: "PATH" in snap and "CONFIGURATION" in snap, timeout=TIMEOUT_KEY)
+            # The sidebar always shows "PATH": wait for the view's own title.
+            s.wait_for(lambda snap: "PATH CONFIGURATION" in snap, timeout=TIMEOUT_KEY)
             fill_add_form(s, [newdir])
             ok = s.wait_for(lambda snap: "Added PATH entry" in snap, timeout=TIMEOUT_KEY)
             test("mutations/add_path", AssertResult(ok and newdir in read_entries(), read_entries()))
@@ -871,6 +882,69 @@ def test_dry_run_badge_and_plugin_install_confirm():
         reset_config()
 
 
+def _git(*args):
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.test",
+                    "-c", "commit.gpgsign=false", *args],
+                   check=True, capture_output=True)
+
+
+def test_plugin_update_and_remove():
+    """OKAMI-362: in the Installed tab, u updates the selected plugin and
+    d removes it after a confirmation (checkout + plugins.json entry)."""
+    print(f"\n── Plugin update + remove ──")
+    reset_config()
+    origin = os.path.join(os.environ["HOME"], "tuiplug-origin")
+    shutil.rmtree(origin, ignore_errors=True)
+    _git("init", "-q", "-b", "main", origin)
+    with open(os.path.join(origin, "tuiplug.plugin.zsh"), "w") as f:
+        f.write("# v1\n")
+    _git("-C", origin, "add", "-A")
+    _git("-C", origin, "commit", "-q", "-m", "v1")
+    dest = os.path.join(data_dir(), "plugins", "tuiplug")
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    _git("clone", "-q", origin, dest)
+    head = subprocess.run(["git", "-C", dest, "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+    with open(os.path.join(data_dir(), "plugins.json"), "w") as f:
+        json.dump({"version": "1.0", "last_updated": "2026-01-01T00:00:00Z", "plugins": [{
+            "name": "tuiplug", "display_name": "tuiplug",
+            "url": "https://github.com/test/tuiplug.git", "enabled": True,
+            "shell": "ZSH", "installed_path": dest, "priority": 100,
+            "git": {"branch": "main", "commit": head}}]}, f)
+    with open(os.path.join(origin, "tuiplug.plugin.zsh"), "w") as f:
+        f.write("# v2\n")
+    _git("-C", origin, "commit", "-q", "-am", "v2")
+
+    s = TUISession(100, 30)
+    try:
+        s.wait_for(lambda snap: "WAYU" in snap, timeout=TIMEOUT_STARTUP)
+        for _ in range(5):
+            s.send(b"j"); s.read(timeout=0.1)
+        s.send(b"l")
+        ok = s.wait_for(lambda snap: "PLUGINS" in snap and "tuiplug" in snap, timeout=TIMEOUT_KEY)
+        test("plugins/installed_listed", AssertResult(ok, s.snapshot()))
+        s.send(b"u")
+        ok = s.wait_for(lambda snap: "Updated tuiplug" in snap, timeout=TIMEOUT_KEY * 4)
+        with open(os.path.join(dest, "tuiplug.plugin.zsh")) as f:
+            updated = "v2" in f.read()
+        test("plugins/update", AssertResult(ok and updated, s.snapshot()))
+        s.send(b"d")
+        ok = s.wait_for(lambda snap: "REMOVE PLUGIN" in snap, timeout=TIMEOUT_KEY)
+        test("plugins/remove_confirms", AssertResult(ok and os.path.isdir(dest), s.snapshot()))
+        s.send(b"y")
+        ok = s.wait_for(lambda snap: "Removed tuiplug" in snap, timeout=TIMEOUT_KEY)
+        with open(os.path.join(data_dir(), "plugins.json")) as f:
+            names = [p["name"] for p in json.load(f)["plugins"]]
+        test("plugins/remove", AssertResult(ok and not os.path.exists(dest) and names == [],
+                                            f"names={names}\n{s.snapshot()}"))
+        s.send(b"\x03")
+        check_clean_exit(s, "plugins_rm", want_code=0)
+    finally:
+        s.kill()
+        shutil.rmtree(origin, ignore_errors=True)
+        reset_config()
+
+
 def test_tiny_terminal_notice():
     """OKAMI-267: below 40x12 a 'too small' notice replaces the layout."""
     print(f"\n── Tiny terminal ──")
@@ -947,7 +1021,8 @@ def test_hooks_and_settings_views():
         s.send(b"j"); s.read(timeout=0.1)
         s.send(b"l")
         s.wait_for(lambda snap: "SETTINGS" in snap and "Dry run" in snap, timeout=TIMEOUT_KEY)
-        for _ in range(9):
+        # Dry run is the last settings row (SETTING_ROWS: 11 rows).
+        for _ in range(10):
             s.send(b"j"); s.read(timeout=0.05)
         s.send(b"\r")
         ok = s.wait_for(lambda snap: "DRY RUN" in snap, timeout=TIMEOUT_KEY)
@@ -1353,6 +1428,88 @@ def test_constants_view_masks_secrets():
         s.kill()
 
 
+# ── Test: encrypted constants in the constants view (OKAMI-360) ───────────
+
+SEALED_VALUE = "fake-sealed-value-0007"
+RUNONLY_VALUE = "fake-runonly-value-0008"
+
+
+def add_secret(name, value, run_only=False):
+    """`wayu const add NAME --secret [--run-only]` with the file key backend
+    (never the real keychain); the value goes in on stdin."""
+    args = [WAYU_BIN, "const", "add", name, "--secret"] + (["--run-only"] if run_only else [])
+    r = subprocess.run(args, input=value + "\n", env=constants_env(),
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        raise RuntimeError(f"{' '.join(args[1:])} exited {r.returncode}: {r.stderr}")
+
+
+def secret_names():
+    with open(os.path.join(data_dir(), "secrets.json")) as f:
+        doc = json.load(f)
+    return sorted(doc["values"])
+
+
+def env_names():
+    with open(entries_path()) as f:
+        return sorted(e["name"] for e in json.load(f)["env"])
+
+
+def test_constants_view_lists_secrets():
+    """Secret and run-only constants are listed masked with a marker (also
+    after `v`), never decrypted; `e` shows the CLI hint; `d` removes the
+    entries.json marker and the secrets.json value together."""
+    print(f"\n── Constants view: encrypted secrets ──")
+    reset_config()
+    with open(os.path.join(config_dir(), "wayu.toml"), "a") as f:
+        f.write('\n[secrets]\nbackend = "file"\n')
+    add_secret("TUI_SEALED", SEALED_VALUE)
+    add_secret("TUI_RUNONLY", RUNONLY_VALUE, run_only=True)
+    s = TUISession(100, 30, env=constants_env())
+    try:
+        ok = open_view(s, "constants", lambda snap: "TUI_SEALED" in snap and "TUI_RUNONLY" in snap)
+        snap = s.snapshot()
+        test("secrets/listed", AssertResult(ok, snap))
+        test("secrets/masked_with_marker",
+             AssertResult("******** (secret)" in snap and "******** (secret, run-only)" in snap,
+                          snap))
+        s.send(b"v")
+        s.wait_for(lambda snap: "v Hide" in snap, timeout=TIMEOUT_KEY)
+        snap = s.snapshot()
+        test("secrets/never_revealed",
+             AssertResult("v Hide" in snap and SEALED_VALUE not in snap and RUNONLY_VALUE not in snap
+                          and "******** (secret)" in snap, snap))
+
+        s.send(b"/"); s.read(timeout=0.2)
+        s.send(b"TUI_SEALED")
+        s.wait_for(lambda snap: "(1/" in snap, timeout=TIMEOUT_KEY)
+        s.send(b"\r"); s.read(timeout=0.2)
+        s.send(b"e")
+        ok = s.wait_for(lambda snap: "wayu const add TUI_SEALED --secret" in snap, timeout=TIMEOUT_KEY)
+        snap = s.snapshot()
+        test("secrets/edit_blocked_with_hint",
+             AssertResult(ok and "EDIT" not in snap and SEALED_VALUE not in snap, snap))
+
+        s.send(b"d")
+        s.wait_for(lambda snap: "DELETE CONFIRMATION" in snap, timeout=TIMEOUT_KEY)
+        s.send(b"y")
+        ok = s.wait_for(lambda snap: "Removed constant: TUI_SEALED" in snap, timeout=TIMEOUT_KEY)
+        test("secrets/delete_notified", AssertResult(ok, s.snapshot()))
+        test("secrets/delete_keeps_pair",
+             AssertResult(env_names() == ["DEMO_API_KEY", "EDITOR", "TUI_RUNONLY"]
+                          and secret_names() == ["TUI_RUNONLY"],
+                          f"entries.json env {env_names()}, secrets.json {secret_names()}"))
+        s.send(b"\x1b")
+        s.wait_for(lambda snap: "(1/" not in snap, timeout=TIMEOUT_KEY)
+        s.read(timeout=0.3)
+        test("secrets/never_decrypted",
+             AssertResult(SEALED_VALUE.encode() not in s.raw and RUNONLY_VALUE.encode() not in s.raw,
+                          "a secret value reached the terminal"))
+    finally:
+        s.kill()
+        reset_config()
+
+
 def sandbox_home():
     """Temp HOME with a small fixed config: never reads the real
     config or data dirs, and every run renders the same data (CI + local)."""
@@ -1403,6 +1560,7 @@ def run_all():
 
     # Secret masking + reveal key
     test_constants_view_masks_secrets()
+    test_constants_view_lists_secrets()
 
     # Mutations, dry-run, paste, size detection
     test_add_and_delete_mutations()
@@ -1415,6 +1573,7 @@ def run_all():
     test_slow_rc_shows_progress_and_cancels()
     test_external_edit_reloads()
     test_dry_run_badge_and_plugin_install_confirm()
+    test_plugin_update_and_remove()
     test_tiny_terminal_notice()
     test_add_form_editing_and_semantics()
     test_hooks_and_settings_views()

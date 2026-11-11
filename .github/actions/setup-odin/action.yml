@@ -1,29 +1,70 @@
 name: Setup pinned Odin
 description: >
-  Install the Odin release pinned in .github/odin-release. Pinned on purpose:
-  `release: latest` drifts every month, and without a token laytan/setup-odin
-  silently falls back to cloning and compiling Odin master.
+  Install the Odin release pinned in .github/odin-release from the official
+  odin-lang/Odin release assets, verified against the SHA-256 values in
+  .github/odin-release.sha256. No third-party action, no token, no fallback:
+  a missing asset or a checksum mismatch fails the job.
+
+  Bumping Odin: change .github/odin-release and replace both lines of
+  .github/odin-release.sha256 (`gh release download <tag> -R odin-lang/Odin
+  -p 'odin-linux-amd64-*' -p 'odin-macos-arm64-*'`, then `shasum -a 256`).
 
 runs:
   using: composite
   steps:
-    - name: Read pinned Odin release
-      id: pin
+    - name: Install pinned Odin
       shell: bash
       run: |
-        release=$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/.github/odin-release")
+        set -euo pipefail
+        pin_dir="$GITHUB_WORKSPACE/.github"
+        release=$(tr -d '[:space:]' < "$pin_dir/odin-release")
         if [ -z "$release" ]; then
           echo "::error::.github/odin-release is empty"
           exit 1
         fi
-        echo "release=$release" >> "$GITHUB_OUTPUT"
 
-    - name: Setup Odin ${{ steps.pin.outputs.release }}
-      uses: laytan/setup-odin@8536d8fa450ec6f1bd9ddc84bbaaf16296c0051d # v2.12.2
-      with:
-        release: ${{ steps.pin.outputs.release }}
-        # Required for the release download; without it setup-odin builds master.
-        token: ${{ github.token }}
+        # Only the runners the workflows use (ubuntu-24.04, macos-15).
+        case "$RUNNER_OS/$RUNNER_ARCH" in
+          Linux/X64)   platform=linux-amd64 ;;
+          macOS/ARM64) platform=macos-arm64 ;;
+          *) echo "::error::no pinned Odin asset for $RUNNER_OS/$RUNNER_ARCH"; exit 1 ;;
+        esac
+        asset="odin-${platform}-${release}.tar.gz"
+
+        expected=$(awk -v a="$asset" '$2 == a { print $1 }' "$pin_dir/odin-release.sha256")
+        if ! [[ "$expected" =~ ^[0-9a-f]{64}$ ]]; then
+          echo "::error::.github/odin-release.sha256 has no sha256 for $asset (bump it with .github/odin-release)"
+          exit 1
+        fi
+
+        work="$RUNNER_TEMP/odin-download"
+        dest="$RUNNER_TEMP/odin"
+        rm -rf "$work" "$dest"
+        mkdir -p "$work" "$dest"
+        curl -sSfL --proto '=https' --retry 3 -o "$work/$asset" \
+          "https://github.com/odin-lang/Odin/releases/download/${release}/${asset}"
+
+        if command -v sha256sum >/dev/null 2>&1; then
+          actual=$(sha256sum "$work/$asset" | awk '{print $1}')
+        else
+          actual=$(shasum -a 256 "$work/$asset" | awk '{print $1}')
+        fi
+        if [ "$actual" != "$expected" ]; then
+          echo "::error::$asset sha256 is $actual, expected $expected"
+          exit 1
+        fi
+
+        # The archive holds one top-level dir (odin-<platform>-nightly+<date>/).
+        tar -xzf "$work/$asset" -C "$dest" --strip-components=1
+        rm -rf "$work"
+        [ -x "$dest/odin" ] || { echo "::error::$asset has no odin executable"; exit 1; }
+        echo "$dest" >> "$GITHUB_PATH"
+
+        # Odin links through the system clang. Ubuntu 24.04 images ship
+        # LLVM 18 there (what laytan/setup-odin used to add to PATH).
+        if [ "$RUNNER_OS" = "Linux" ] && [ -d /usr/lib/llvm-18/bin ]; then
+          echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
+        fi
 
     - name: Show Odin version
       shell: bash

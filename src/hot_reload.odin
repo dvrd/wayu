@@ -9,10 +9,10 @@ import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
-import "core:time"
 import "core:sync"
-import "core:thread"
 import "core:sys/posix"
+import "core:thread"
+import "core:time"
 
 // ============================================================================
 // Types and State
@@ -28,6 +28,10 @@ WatcherState :: struct {
 	mutex:         sync.Mutex,
 	stop_signal:   bool,
 	pid_file:      string,
+	// The first poll only records mtimes; after it, a watched file that
+	// appears or disappears is a change too (secrets.json is created by the
+	// first secret and may arrive by sync).
+	primed:        bool,
 }
 
 // Global watcher state
@@ -35,6 +39,17 @@ g_watcher: WatcherState
 
 // PID file for coordinating multiple watch instances
 WATCHER_PID_FILE :: "watcher.pid"
+
+// The running watcher holds a lockf lock on <data>/watcher.lock for its whole
+// life (OKAMI-316). The kernel drops it when the watcher dies, so the lock,
+// not the PID file, says whether a watcher runs: a PID file left by a dead
+// watcher may name a reused PID that `stop` must never signal.
+WATCHER_LOCK_FILE :: "watcher.lock"
+
+// The lock file, open for the life of the watcher process (closing any
+// descriptor of it would drop the lock).
+@(private = "file")
+_watcher_lock: ^os.File
 
 // ============================================================================
 // Core Watcher Functions
@@ -45,7 +60,9 @@ hot_reload_init :: proc(watch_paths: []string, callback: FileWatcherCallback) {
 	sync.mutex_lock(&g_watcher.mutex)
 	defer sync.mutex_unlock(&g_watcher.mutex)
 
-	// Clean up any existing paths
+	// Clean up any existing paths (the map's keys are those strings)
+	clear(&g_watcher.last_modified)
+	g_watcher.primed = false
 	if g_watcher.watched_paths != nil {
 		for path in g_watcher.watched_paths {
 			delete(path)
@@ -72,6 +89,20 @@ hot_reload_init :: proc(watch_paths: []string, callback: FileWatcherCallback) {
 	if g_watcher.pid_file == "" {
 		g_watcher.pid_file = fmt.aprintf("%s/%s", wayu.data, WATCHER_PID_FILE)
 	}
+}
+
+// Free the watched paths and mtimes (tests; the watcher process exits).
+hot_reload_reset :: proc() {
+	sync.mutex_lock(&g_watcher.mutex)
+	defer sync.mutex_unlock(&g_watcher.mutex)
+	delete(g_watcher.last_modified)
+	g_watcher.last_modified = nil
+	for path in g_watcher.watched_paths {delete(path)}
+	delete(g_watcher.watched_paths)
+	g_watcher.watched_paths = nil
+	g_watcher.primed = false
+	delete(g_watcher.pid_file)
+	g_watcher.pid_file = ""
 }
 
 // Start the file watcher
@@ -159,13 +190,13 @@ handle_watch_command :: proc(action: string, args: []string) {
 
 	// Check if wayu is initialized
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	switch action {
 	case "", "start":
-		// Check if already running
-		if is_watcher_running() {
+		// Take the watcher lock first: it is the one "already running" check.
+		if !watcher_lock_take() {
 			print_warning("Watcher is already running")
 			pid := read_watcher_pid()
 			if pid > 0 {
@@ -206,11 +237,33 @@ handle_watch_command :: proc(action: string, args: []string) {
 			return
 		}
 
-		// Try to stop existing watcher
+		// Signal only the process that holds the watcher lock, and only
+		// when the PID file agrees (a stale PID file may name any process).
 		pid := read_watcher_pid()
-		if pid > 0 {
-			stop_existing_watcher(pid)
+		holder := watcher_lock_holder()
+		for _ in 0 ..< 20 {
+			if holder == 0 || holder == pid {
+				break
+			}
+			time.sleep(50 * time.Millisecond)
+			pid = read_watcher_pid()
+			holder = watcher_lock_holder()
 		}
+		if holder == 0 {
+			print_warning("Watcher is not running")
+			return
+		}
+		if pid <= 0 || pid != holder {
+			print_warning(
+				"%s/%s is held by pid %d but the PID file says %d; not signalling either",
+				wayu.data,
+				WATCHER_LOCK_FILE,
+				holder,
+				pid,
+			)
+			wayu_exit(EXIT_FAILURE)
+		}
+		stop_existing_watcher(pid)
 
 		print_success("Watcher stopped")
 
@@ -234,7 +287,7 @@ handle_watch_command :: proc(action: string, args: []string) {
 	case:
 		print_error("Unknown watch action: %s", action)
 		print_watch_help()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
@@ -259,6 +312,7 @@ print_watch_help :: proc() {
 	fmt.println("The watcher monitors:")
 	fmt.println("  • wayu.toml")
 	fmt.println("  • entries.json (PATH entries, aliases, constants)")
+	fmt.println("  • secrets.json (encrypted constants)")
 	fmt.println()
 	fmt.println("Changes are debounced (500ms) before triggering regeneration.")
 }
@@ -271,6 +325,7 @@ print_watch_help :: proc() {
 watcher_thread_proc :: proc() {
 	debounce_timer: time.Time
 	pending_regen := false
+	pending_secrets := false
 
 	for {
 		// Check stop signal
@@ -298,6 +353,7 @@ watcher_thread_proc :: proc() {
 
 			for file in changed_files {
 				print_info("Change detected: %s", file)
+				if watch_path_is_secrets(file) do pending_secrets = true
 			}
 		}
 
@@ -305,8 +361,11 @@ watcher_thread_proc :: proc() {
 		if pending_regen {
 			elapsed := time.diff(debounce_timer, time.now())
 			if elapsed >= time.Duration(g_watcher.debounce_ms) * time.Millisecond {
+				// New values: drop the session cache so shells re-decrypt.
+				if pending_secrets do secrets_cache_invalidate()
 				regenerate_static()
 				pending_regen = false
+				pending_secrets = false
 			}
 		}
 
@@ -325,13 +384,13 @@ watcher_thread_proc :: proc() {
 
 // PID file path as a C string, set before the handlers are installed so the
 // handler only does async-signal-safe work (unlink + re-raise).
-@(private="file")
+@(private = "file")
 g_watcher_pid_cpath: cstring
 
-@(private="file")
+@(private = "file")
 WATCHER_SIGNALS :: [?]posix.Signal{.SIGINT, .SIGTERM, .SIGHUP}
 
-@(private="file")
+@(private = "file")
 watcher_signal_handler :: proc "c" (sig: posix.Signal) {
 	if g_watcher_pid_cpath != nil {
 		posix.unlink(g_watcher_pid_cpath)
@@ -342,8 +401,12 @@ watcher_signal_handler :: proc "c" (sig: posix.Signal) {
 }
 
 watcher_install_signal_handlers :: proc() {
-	if g_watcher.pid_file == "" { return }
-	if g_watcher_pid_cpath != nil { delete(g_watcher_pid_cpath) }
+	if g_watcher.pid_file == "" {
+		return
+	}
+	if g_watcher_pid_cpath != nil {
+		delete(g_watcher_pid_cpath)
+	}
 	g_watcher_pid_cpath = strings.clone_to_cstring(g_watcher.pid_file)
 	for sig in WATCHER_SIGNALS {
 		posix.signal(sig, watcher_signal_handler)
@@ -368,27 +431,27 @@ check_file_changes :: proc() -> []string {
 	defer sync.mutex_unlock(&g_watcher.mutex)
 
 	for path in g_watcher.watched_paths {
-		if !os.exists(path) {
-			continue
-		}
-
-		// Get file info
+		last_mod, seen := g_watcher.last_modified[path]
 		file_info, err := os.stat(path, context.temp_allocator)
 		if err != nil {
+			// Gone (or unreadable): a change when it was there before.
+			if seen {
+				delete_key(&g_watcher.last_modified, path)
+				append(&changed, strings.clone(path))
+			}
 			continue
 		}
-
-		// Check modification time
-		last_mod, exists := g_watcher.last_modified[path]
-		if !exists || time.diff(last_mod, file_info.modification_time) > 0 {
+		if !seen || time.diff(last_mod, file_info.modification_time) > 0 {
 			g_watcher.last_modified[path] = file_info.modification_time
-			if exists {
-				// File was modified (not first check)
+			// New since the first poll, or modified.
+			if seen || g_watcher.primed {
 				append(&changed, strings.clone(path))
 			}
 		}
 	}
+	g_watcher.primed = true
 
+	defer delete(changed)
 	result := make([]string, len(changed))
 	for i := 0; i < len(changed); i += 1 {
 		result[i] = changed[i]
@@ -416,11 +479,18 @@ regenerate_static :: proc() {
 		return
 	}
 
+	// Under the config lock like `wayu script build`: both build into the
+	// same bin/.NAME.build temp file and write the same hash files.
+	if !config_lock_acquire() {
+		print_warning("Could not take the config lock; nothing regenerated")
+		return
+	}
 	// Scripts first: a first built script puts <data>/bin on PATH.
 	if built, failed := scripts_build_stale(quiet = true); built > 0 || failed > 0 {
 		print_info("Scripts rebuilt: %d, failed: %d", built, failed)
 	}
 	regenerate_init_core_silently()
+	config_lock_release()
 
 	core_path := fmt.aprintf("%s/core.%s", wayu.data, get_shell_extension(wayu.shell))
 	defer delete(core_path)
@@ -446,18 +516,27 @@ default_file_change_callback :: proc(event: FileWatcherEvent, path: string) {
 // PID File Management
 // ============================================================================
 
-// Write watcher PID file
+// Write the watcher PID file: a private temp file (0600, O_EXCL|O_NOFOLLOW)
+// renamed over it, so a symlink planted at the path is replaced, never
+// followed.
 write_watcher_pid :: proc() {
 	pid := os.get_pid()
-	pid_str := fmt.aprintf("%d", pid)
-	defer delete(pid_str)
+	pid_str := fmt.tprintf("%d", pid)
 
 	if g_watcher.pid_file == "" {
 		g_watcher.pid_file = fmt.aprintf("%s/%s", wayu.data, WATCHER_PID_FILE)
 	}
 
-	err := os.write_entire_file(g_watcher.pid_file, transmute([]byte)pid_str)
-	if err != nil {
+	tmp := fmt.tprintf("%s.tmp.%d", g_watcher.pid_file, pid)
+	if _, lerr := os.lstat(tmp, context.temp_allocator); lerr == nil {
+		_ = os.remove(tmp)
+	}
+	ok := create_file_exclusive(tmp, pid_str, 0o600) == .NONE
+	if ok && os.rename(tmp, g_watcher.pid_file) != nil {
+		_ = os.remove(tmp)
+		ok = false
+	}
+	if !ok {
 		print_warning("Could not write PID file: %s", g_watcher.pid_file)
 	}
 }
@@ -500,65 +579,117 @@ read_watcher_pid :: proc() -> int {
 	return pid
 }
 
-// Check if watcher is running (by PID file and process check).
-//
-// Uses the portable `kill(pid, 0)` probe: sends signal 0 (no-op, just permission
-// check) and relies on the kernel to answer "no such process" via ESRCH when
-// the PID is gone. /proc/<pid> only works on Linux, so we used to always
-// return false on macOS/BSD.
-is_watcher_running :: proc() -> bool {
-	pid := read_watcher_pid()
-	if pid <= 0 {
+// Take the watcher lock for the life of this process. False when another
+// process holds it (a watcher runs); exits EXIT_IOERR when the lock file
+// cannot be opened.
+watcher_lock_take :: proc() -> bool {
+	if _watcher_lock != nil {
+		return true
+	}
+	if !os.is_dir(wayu.data) {
+		_ = make_directory_all(wayu.data)
+	}
+	path := fmt.tprintf("%s/%s", wayu.data, WATCHER_LOCK_FILE)
+	f, err := os.open(path, {.Read, .Write, .Create}, os.perm_number(0o600))
+	if err != nil {
+		print_error("Cannot open %s: %v", path, err)
+		wayu_exit(EXIT_IOERR)
+	}
+	if posix.lockf(posix.FD(os.fd(f)), .TLOCK, 0) != .OK {
+		os.close(f)
 		return false
 	}
-
-	when ODIN_OS == .Linux || ODIN_OS == .Darwin {
-		if posix.kill(posix.pid_t(pid), posix.Signal(0)) == .OK {
-			return true
-		}
-		// errno == ESRCH: no such process → stale PID file, clean it up so
-		// future status calls don't keep probing a ghost.
-		if posix.errno() == .ESRCH {
-			remove_watcher_pid()
-			return false
-		}
-		// EPERM means the process exists but we can't signal it — still "running".
-		return posix.errno() == .EPERM
-	} else {
-		return false
-	}
+	_watcher_lock = f
+	return true
 }
 
-// Stop existing watcher by sending signal
+// PID of the process holding <data>/watcher.lock, 0 when nobody does.
+// Asked with fcntl(F_GETLK), which never takes the lock itself: probing with
+// lockf(TLOCK) made `watch status` hold it for a moment, and a concurrent
+// `watch stop` then saw "running" and signalled the stale PID file's pid.
+watcher_lock_holder :: proc() -> int {
+	path := fmt.tprintf("%s/%s", wayu.data, WATCHER_LOCK_FILE)
+	f, err := os.open(path, {.Read, .Write})
+	if err != nil {
+		return 0
+	}
+	defer os.close(f)
+	lk := posix.flock {
+		l_type   = .WRLCK,
+		l_whence = 0, // SEEK_SET
+		l_start  = 0,
+		l_len    = 0, // to EOF and beyond: the whole range lockf locks
+	}
+	if posix.fcntl(posix.FD(os.fd(f)), .GETLK, &lk) == -1 {
+		return 0
+	}
+	if lk.l_type == .UNLCK {
+		return 0
+	}
+	return int(lk.l_pid)
+}
+
+// Is a watcher running: does another process hold <data>/watcher.lock?
+// The PID file alone is no proof (OKAMI-316). When no watcher holds the
+// lock, a leftover PID file is removed.
+is_watcher_running :: proc() -> bool {
+	if _watcher_lock != nil {
+		return true // this process is the watcher
+	}
+	held := watcher_lock_holder() > 0
+	if !held {
+		remove_watcher_pid()
+	}
+	return held
+}
+
+// Stop the watcher `pid` (the PID file's pid, verified to be the process
+// holding the watcher lock): SIGTERM, then SIGKILL if it still holds the
+// lock after 2 s. Never signals a pid that does not hold the lock.
 stop_existing_watcher :: proc(pid: int) {
 	when ODIN_OS == .Linux || ODIN_OS == .Darwin {
-		// Try graceful termination first (SIGTERM)
 		posix.kill(posix.pid_t(pid), posix.Signal.SIGTERM)
-
-		// Wait briefly for termination
-		time.sleep(500 * time.Millisecond)
-
-		// Check if still running
-		if is_watcher_running() {
-			// Force kill (SIGKILL)
+		for _ in 0 ..< 40 {
+			time.sleep(50 * time.Millisecond)
+			if watcher_lock_holder() != pid {
+				remove_watcher_pid_if_free()
+				return
+			}
+		}
+		if watcher_lock_holder() == pid {
 			posix.kill(posix.pid_t(pid), posix.Signal.SIGKILL)
+			time.sleep(100 * time.Millisecond)
 		}
 	}
+	remove_watcher_pid_if_free()
+}
 
-	// Clean up PID file
-	remove_watcher_pid()
+// Remove the PID file unless a watcher (re)took the lock meanwhile.
+@(private = "file")
+remove_watcher_pid_if_free :: proc() {
+	if watcher_lock_holder() == 0 {
+		remove_watcher_pid()
+	}
 }
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
+// Is `path` the encrypted store (<data>/secrets.json)?
+watch_path_is_secrets :: proc(path: string) -> bool {
+	return path == secrets_store_path()
+}
+
 // Get default paths to watch
 get_default_watch_paths :: proc() -> []string {
 	paths := make([dynamic]string)
 
 	// Main TOML config + the entry store
-	for p in ([]string{fmt.aprintf("%s/wayu.toml", wayu.config), entries_file_path(context.allocator)}) {
+	for p in ([]string {
+			fmt.aprintf("%s/wayu.toml", wayu.config),
+			entries_file_path(context.allocator),
+		}) {
 		if os.exists(p) {
 			append(&paths, p)
 		} else {
@@ -566,9 +697,15 @@ get_default_watch_paths :: proc() -> []string {
 		}
 	}
 
+	// secrets.json, also before the first secret creates it: new values
+	// invalidate the session cache, and an empty/non-empty store changes
+	// core's Secrets section (OKAMI-361).
+	append(&paths, strings.clone(secrets_store_path()))
+
 	// Script sources: an edit rebuilds the script (regenerate_static).
 	script_watch_paths(&paths)
 
+	defer delete(paths)
 	result := make([]string, len(paths))
 	for i := 0; i < len(paths); i += 1 {
 		result[i] = paths[i]

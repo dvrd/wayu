@@ -1,10 +1,10 @@
 package test_wayu
 
-import "core:testing"
+import wayu "../../src"
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import wayu "../../src"
+import "core:testing"
 
 @(test)
 test_constant_extraction_parsing :: proc(t: ^testing.T) {
@@ -87,7 +87,7 @@ test_constant_value_with_quotes :: proc(t: ^testing.T) {
 
 @(test)
 test_constant_name_extraction :: proc(t: ^testing.T) {
-	test_lines := []string{
+	test_lines := []string {
 		`export VAR1="value1"`,
 		`export VAR_WITH_UNDERSCORE="value2"`,
 		`export VAR123="value3"`,

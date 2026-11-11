@@ -10,34 +10,34 @@ import "core:fmt"
 import "core:strings"
 // ConfigEntryType defines the type of configuration entry
 ConfigEntryType :: enum {
-	PATH,      // PATH entries (add_to_path "...")
-	ALIAS,     // Aliases (alias name="...")
-	CONSTANT,  // Environment variables (export NAME="...")
+	PATH, // PATH entries (add_to_path "...")
+	ALIAS, // Aliases (alias name="...")
+	CONSTANT, // Environment variables (export NAME="...")
 }
 
 // ConfigEntry represents a single configuration entry
 ConfigEntry :: struct {
-	type:    ConfigEntryType,
-	name:    string,           // PATH entry, alias name, or constant name
-	value:   string,           // Empty for PATH, command for alias, value for constant
-	line:    string,           // Original line from config file
+	type:  ConfigEntryType,
+	name:  string, // PATH entry, alias name, or constant name
+	value: string, // Empty for PATH, command for alias, value for constant
+	line:  string, // Original line from config file
 }
 
 // ConfigEntrySpec defines how to work with a specific entry type (Strategy Pattern)
 ConfigEntrySpec :: struct {
-	type:             ConfigEntryType,
-	cli_name:         string,                // command word in help/usage text: "path", "alias", "const"
-	display_name:     string,                // e.g., "PATH", "Alias", "Constant"
-	icon:             string,                // e.g., "📂", "🔑", "💾"
+	type:               ConfigEntryType,
+	cli_name:           string, // command word in help/usage text: "path", "alias", "const"
+	display_name:       string, // e.g., "PATH", "Alias", "Constant"
+	icon:               string, // e.g., "📂", "🔑", "💾"
 
 	// Optional special actions
-	has_clean:        bool,                  // PATH has clean action
-	has_dedup:        bool,                  // PATH has dedup action
-	fields_count:     int,                   // 1 for path, 2 for alias/constants
+	has_clean:          bool, // PATH has clean action
+	has_dedup:          bool, // PATH has dedup action
+	fields_count:       int, // 1 for path, 2 for alias/constants
 
 	// Form configuration
-	field_labels:     []string,              // Argument names for usage errors
-	field_placeholders: []string,            // Field placeholders
+	field_labels:       []string, // Argument names for usage errors
+	field_placeholders: []string, // Field placeholders
 
 	// --------------------------------------------------------------------
 	// TOML-first operations (code review D3, 2026-04-24).
@@ -47,21 +47,21 @@ ConfigEntrySpec :: struct {
 	// handler because it needs CLEAN/DEDUP, filesystem-aware validation,
 	// and post-mutation reload messaging.
 	// --------------------------------------------------------------------
-	toml_add:         proc(entry: ConfigEntry) -> (ok: bool, err: string),
-	toml_remove:      proc(name: string) -> (ok: bool, err: string),
-	toml_list:        proc(),
-	toml_get:         proc(name: string),
+	toml_add:           proc(entry: ConfigEntry) -> (ok: bool, err: string),
+	toml_remove:        proc(name: string) -> (ok: bool, err: string),
+	toml_list:          proc(),
+	toml_get:           proc(name: string),
 
 	// Optional hooks executed around each mutation. Nil-safe.
 	// `value` is the alias command / constant value ("" on remove).
-	hook_pre_add:     proc(name: string, value: string),
-	hook_post_add:    proc(name: string, value: string),
-	hook_pre_remove:  proc(name: string, value: string),
-	hook_post_remove: proc(name: string, value: string),
+	hook_pre_add:       proc(name: string, value: string),
+	hook_post_add:      proc(name: string, value: string),
+	hook_pre_remove:    proc(name: string, value: string),
+	hook_post_remove:   proc(name: string, value: string),
 
 	// Optional callback run after toml_list (used by ALIAS to print external
 	// alias sources below the native list).
-	list_epilogue:    proc(),
+	list_epilogue:      proc(),
 }
 
 // Generic dispatcher for the entry-store commands. Used by
@@ -99,12 +99,13 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 				print_cli_usage_error(spec, "remove")
 				wayu_exit(EXIT_USAGE)
 			}
-			if spec.hook_pre_remove != nil && entry_exists_in_store(spec, args[0]) do spec.hook_pre_remove(args[0], "")
+			value, found := entry_store_value(spec, args[0])
+			if spec.hook_pre_remove != nil && found do spec.hook_pre_remove(args[0], value)
 			ok, err := spec.toml_remove(args[0])
 			if !ok {
 				exit_with_entry_error(err)
 			}
-			if spec.hook_post_remove != nil do spec.hook_post_remove(args[0], "")
+			if spec.hook_post_remove != nil do spec.hook_post_remove(args[0], value)
 			return
 		case .LIST:
 			spec.toml_list()
@@ -133,29 +134,56 @@ handle_toml_entry_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: 
 entry_add_is_valid :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> bool {
 	v: ValidationResult
 	#partial switch spec.type {
-	case .ALIAS:    v = validate_alias(entry.name, entry.value)
-	case .CONSTANT: v = validate_constant(entry.name, entry.value)
-	case:           return true
+	case .ALIAS:
+		v = validate_alias(entry.name, entry.value)
+	case .CONSTANT:
+		v = validate_constant(entry.name, entry.value)
+	case:
+		return true
 	}
 	if len(v.error_message) > 0 do delete(v.error_message)
 	if len(v.warning) > 0 do delete(v.warning)
 	return v.valid
 }
 
-// True when `name` is an alias / constant of the store, so pre_*_remove
-// hooks skip names that are not there. An unreadable store counts as
-// present: the writer reports that error itself.
+// True when `name` is an alias / constant of the store. An unreadable store
+// counts as present: the writer reports that error itself.
 entry_exists_in_store :: proc(spec: ^ConfigEntrySpec, name: string) -> bool {
+	_, found := entry_store_value(spec, name)
+	return found
+}
+
+// The stored value of alias / constant `name`, for the remove hooks' {value}
+// (OKAMI-334): the alias command or the constant value, "" for an encrypted
+// secret (hooks never see one). found=false when `name` is not in the store,
+// so pre_*_remove hooks skip names that are not there; an unreadable store
+// counts as found (the writer reports it). value is temp-allocated.
+entry_store_value :: proc(spec: ^ConfigEntrySpec, name: string) -> (value: string, found: bool) {
 	kind: EntryKind
 	#partial switch spec.type {
-	case .ALIAS:    kind = .ALIAS
-	case .CONSTANT: kind = .ENV
-	case:           return true
+	case .ALIAS:
+		kind = .ALIAS
+	case .CONSTANT:
+		kind = .ENV
+	case:
+		return "", true
 	}
 	store, _, ok := entries_read()
-	if !ok { return true }
+	if !ok {
+		return "", true
+	}
 	defer entries_store_destroy(&store)
-	return entries_find(&store, kind, name) >= 0
+	i := entries_find(&store, kind, name)
+	if i < 0 {
+		return "", false
+	}
+	switch kind {
+	case .ALIAS:
+		value = store.aliases[i].value
+	case .ENV:
+		value = "" if store.env[i].secret else store.env[i].value
+	}
+	return strings.clone(value, context.temp_allocator), true
 }
 
 // Print an add/remove failure and exit with the code matching its kind:
@@ -193,12 +221,20 @@ print_cli_usage_error :: proc(spec: ^ConfigEntrySpec, action: string) {
 			fmt.printfln("Example:")
 			fmt.printfln("  wayu %s add %s", spec.cli_name, spec.field_placeholders[0])
 		} else {
-			fmt.printfln("Usage: wayu %s add <%s> <%s>",
-				spec.cli_name, spec.field_labels[0], spec.field_labels[1])
+			fmt.printfln(
+				"Usage: wayu %s add <%s> <%s>",
+				spec.cli_name,
+				spec.field_labels[0],
+				spec.field_labels[1],
+			)
 			fmt.println()
 			fmt.printfln("Example:")
-			fmt.printfln("  wayu %s add %s %s",
-				spec.cli_name, spec.field_placeholders[0], spec.field_placeholders[1])
+			fmt.printfln(
+				"  wayu %s add %s %s",
+				spec.cli_name,
+				spec.field_placeholders[0],
+				spec.field_placeholders[1],
+			)
 		}
 	case "remove":
 		fmt.printfln("Usage: wayu %s rm <%s>", spec.cli_name, spec.field_labels[0])
@@ -213,8 +249,13 @@ print_cli_usage_error :: proc(spec: ^ConfigEntrySpec, action: string) {
 	}
 
 	fmt.println()
-	fmt.printfln("%sHint:%s For interactive mode, use: %swayu --tui%s",
-		get_muted(), RESET, get_primary(), RESET)
+	fmt.printfln(
+		"%sHint:%s For interactive mode, use: %swayu --tui%s",
+		get_muted(),
+		RESET,
+		get_primary(),
+		RESET,
+	)
 }
 
 // Actions the path/alias/const handlers leave to the shared code: HELP,
@@ -226,15 +267,15 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 			print_error("%s command does not support clean action", spec.display_name)
 			wayu_exit(EXIT_GENERAL)
 		}
-		// Command-specific clean implementation
-		// This will be called from command files (e.g., clean_missing_paths)
+	// Command-specific clean implementation
+	// This will be called from command files (e.g., clean_missing_paths)
 	case .DEDUP:
 		if !spec.has_dedup {
 			print_error("%s command does not support dedup action", spec.display_name)
 			wayu_exit(EXIT_GENERAL)
 		}
-		// Command-specific dedup implementation
-		// This will be called from command files (e.g., remove_duplicate_paths)
+	// Command-specific dedup implementation
+	// This will be called from command files (e.g., remove_duplicate_paths)
 	case .HELP:
 		print_config_help(spec)
 	case .UNKNOWN:
@@ -248,16 +289,21 @@ handle_config_command :: proc(spec: ^ConfigEntrySpec, action: Action, args: []st
 // EXIT_CONFIG when entries.json is malformed). Free with cleanup_entries.
 read_config_entries :: proc(spec: ^ConfigEntrySpec) -> []ConfigEntry {
 	switch spec.type {
-	case .PATH:     return read_path_config_entries()
-	case .ALIAS:    return read_alias_entries()
-	case .CONSTANT: return read_env_entries()
+	case .PATH:
+		return read_path_config_entries()
+	case .ALIAS:
+		return read_alias_entries()
+	case .CONSTANT:
+		return read_env_entries()
 	}
 	return {}
 }
 
 // Helper: Parse command line args to entry
 parse_args_to_entry :: proc(spec: ^ConfigEntrySpec, args: []string) -> ConfigEntry {
-	entry := ConfigEntry{type = spec.type}
+	entry := ConfigEntry {
+		type = spec.type,
+	}
 
 	switch spec.fields_count {
 	case 1:
@@ -278,7 +324,9 @@ parse_args_to_entry :: proc(spec: ^ConfigEntrySpec, args: []string) -> ConfigEnt
 
 // Helper: Check if entry is complete
 is_entry_complete :: proc(entry: ConfigEntry) -> bool {
-	if len(entry.name) == 0 { return false }
+	if len(entry.name) == 0 {
+		return false
+	}
 	// PATH only needs name, others need value too
 	if entry.type != .PATH && len(entry.value) == 0 {
 		return false
@@ -303,9 +351,15 @@ is_entry_complete :: proc(entry: ConfigEntry) -> bool {
 // all strings.clone their outputs). 30+ leaks reported by the tracking
 // allocator traced back to this single function.
 cleanup_entry :: proc(entry: ^ConfigEntry) {
-	if len(entry.name)  > 0 { delete(entry.name)  }
-	if len(entry.value) > 0 { delete(entry.value) }
-	if len(entry.line)  > 0 { delete(entry.line)  }
+	if len(entry.name) > 0 {
+		delete(entry.name)
+	}
+	if len(entry.value) > 0 {
+		delete(entry.value)
+	}
+	if len(entry.line) > 0 {
+		delete(entry.line)
+	}
 	entry.name = ""
 	entry.value = ""
 	entry.line = ""
@@ -329,8 +383,14 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 		plural = fmt.aprintf("%ss", plural)
 	}
 	defer delete(plural)
-	title := fmt.aprintf("\n%s%swayu %s - Manage %s%s\n\n",
-		BOLD, get_primary(), spec.cli_name, plural, RESET)
+	title := fmt.aprintf(
+		"\n%s%swayu %s - Manage %s%s\n\n",
+		BOLD,
+		get_primary(),
+		spec.cli_name,
+		plural,
+		RESET,
+	)
 	defer delete(title)
 	fmt.print(title)
 
@@ -350,7 +410,12 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 	fmt.printfln("  wayu %s get <%s>", spec.cli_name, label)
 	fmt.printfln("  wayu %s list", spec.cli_name)
 	if spec.type == .CONSTANT {
-		fmt.printfln("  wayu %s list --reveal    %s# show secret-looking values unmasked%s", spec.cli_name, get_muted(), RESET)
+		fmt.printfln(
+			"  wayu %s list --reveal    %s# show secret-looking values unmasked%s",
+			spec.cli_name,
+			get_muted(),
+			RESET,
+		)
 	}
 
 	if spec.has_clean {
@@ -413,7 +478,11 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 		fmt.printfln("  %s# Add a variable with spaces (use quotes)%s", get_muted(), RESET)
 		fmt.printfln("  wayu const add GREETING 'Hello World'")
 		fmt.println()
-		fmt.printfln("  %s# List all constants (secret-looking values shown as ********)%s", get_muted(), RESET)
+		fmt.printfln(
+			"  %s# List all constants (secret-looking values shown as ********)%s",
+			get_muted(),
+			RESET,
+		)
 		fmt.printfln("  wayu const list")
 		fmt.printfln("  wayu const list --full --reveal")
 		fmt.println()
@@ -428,8 +497,16 @@ print_config_help :: proc(spec: ^ConfigEntrySpec) {
 	// Tips section
 	fmt.println()
 	fmt.printf("%s%sTIPS:%s\n", BOLD, get_secondary(), RESET)
-	fmt.printfln("  %s• get is exact; 'wayu search' matches partial names and acronyms%s", get_muted(), RESET)
-	fmt.printfln("  %s• Add --yes to skip confirmation on destructive operations%s", get_muted(), RESET)
+	fmt.printfln(
+		"  %s• get is exact; 'wayu search' matches partial names and acronyms%s",
+		get_muted(),
+		RESET,
+	)
+	fmt.printfln(
+		"  %s• Add --yes to skip confirmation on destructive operations%s",
+		get_muted(),
+		RESET,
+	)
 	fmt.printfln("  %s• Use --tui for interactive mode%s", get_muted(), RESET)
 
 	fmt.println()
@@ -458,12 +535,12 @@ Entry :: union {
 // What entry_add / entry_remove did, so callers can tell a real change from
 // an update, a no-op or a --dry-run preview.
 EntryOutcome :: enum {
-	FAILED,    // nothing written; the error string says why
-	ADDED,     // new entry written
-	UPDATED,   // existing alias/constant replaced
+	FAILED, // nothing written; the error string says why
+	ADDED, // new entry written
+	UPDATED, // existing alias/constant replaced
 	UNCHANGED, // PATH already present: nothing to do
-	REMOVED,   // entry removed
-	DRY_RUN,   // --dry-run: would change, nothing written
+	REMOVED, // entry removed
+	DRY_RUN, // --dry-run: would change, nothing written
 }
 
 // Add an entry to the store. Both CLI and TUI use this for mutations from
@@ -475,17 +552,27 @@ EntryOutcome :: enum {
 // skipped). Error strings are heap-owned (caller deletes when non-empty).
 entry_add :: proc(entry: Entry) -> (EntryOutcome, string) {
 	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
-	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
-	if msg, bad := entries_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := hook_config_error(); bad {
+		return .FAILED, strings.clone(msg)
+	}
+	if msg, bad := entries_unreadable_error(); bad {
+		return .FAILED, strings.clone(msg)
+	}
 	switch e in entry {
 	case EntryPath:
 		expanded, check_err, code := path_add_check(e.path)
 		defer delete(expanded)
-		if code != EXIT_SUCCESS { return .FAILED, check_err }
-		if path_add_would_change(e.path, e.name) { hook_pre_path_add(expanded) }
+		if code != EXIT_SUCCESS {
+			return .FAILED, check_err
+		}
+		if path_add_would_change(e.path, e.name) {
+			hook_pre_path_add(expanded)
+		}
 		#partial switch path_add_result(e.path, e.name) {
 		case .OK:
-			if wayu.dry_run { return .DRY_RUN, "" }
+			if wayu.dry_run {
+				return .DRY_RUN, ""
+			}
 			regenerate_init_core_silently()
 			hook_post_path_add(expanded)
 			return .ADDED, ""
@@ -495,24 +582,42 @@ entry_add :: proc(entry: Entry) -> (EntryOutcome, string) {
 			return .FAILED, strings.clone("I/O error: failed to write the PATH entry")
 		case:
 			// The writer reported the reason (bad/taken name) via print_error.
-			if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
+			if msg := take_print_capture(); len(msg) > 0 {
+				return .FAILED, msg
+			}
 			return .FAILED, strings.clone("failed to write the PATH entry")
 		}
 	case EntryAlias:
-		return entry_add_with_hooks(&ALIAS_SPEC, ConfigEntry{type = .ALIAS, name = e.name, value = e.command})
+		return entry_add_with_hooks(
+			&ALIAS_SPEC,
+			ConfigEntry{type = .ALIAS, name = e.name, value = e.command},
+		)
 	case EntryConst:
-		return entry_add_with_hooks(&CONSTANTS_SPEC, ConfigEntry{type = .CONSTANT, name = e.name, value = e.value})
+		return entry_add_with_hooks(
+			&CONSTANTS_SPEC,
+			ConfigEntry{type = .CONSTANT, name = e.name, value = e.value},
+		)
 	}
 	return .FAILED, strings.clone("unknown entry type")
 }
 
 @(private = "file")
-entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (EntryOutcome, string) {
+entry_add_with_hooks :: proc(
+	spec: ^ConfigEntrySpec,
+	entry: ConfigEntry,
+) -> (
+	EntryOutcome,
+	string,
+) {
 	existed := entry_exists_in_store(spec, entry.name)
 	if spec.hook_pre_add != nil && entry_add_is_valid(spec, entry) do spec.hook_pre_add(entry.name, entry.value)
 	ok, err := spec.toml_add(entry)
-	if !ok { return .FAILED, err }
-	if wayu.dry_run { return .DRY_RUN, err }
+	if !ok {
+		return .FAILED, err
+	}
+	if wayu.dry_run {
+		return .DRY_RUN, err
+	}
 	if spec.hook_post_add != nil do spec.hook_post_add(entry.name, entry.value)
 	return .UPDATED if existed else .ADDED, err
 }
@@ -522,24 +627,34 @@ entry_add_with_hooks :: proc(spec: ^ConfigEntrySpec, entry: ConfigEntry) -> (Ent
 // / dry-run semantics as entry_add.
 entry_remove :: proc(entry: Entry) -> (EntryOutcome, string) {
 	// Invalid hooks.conf: refuse before writing (the CLI exits 78 instead).
-	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
-	if msg, bad := entries_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := hook_config_error(); bad {
+		return .FAILED, strings.clone(msg)
+	}
+	if msg, bad := entries_unreadable_error(); bad {
+		return .FAILED, strings.clone(msg)
+	}
 	switch e in entry {
 	case EntryPath:
 		// Hooks get the stored directory, also when the target is a key (as the CLI).
 		hook_path, found := path_entry_lookup(e.path)
 		defer delete(hook_path)
-		if found { hook_pre_path_remove(hook_path) }
+		if found {
+			hook_pre_path_remove(hook_path)
+		}
 		#partial switch path_remove_result(e.path) {
 		case .OK:
-			if wayu.dry_run { return .DRY_RUN, "" }
+			if wayu.dry_run {
+				return .DRY_RUN, ""
+			}
 			regenerate_init_core_silently()
 			hook_post_path_remove(hook_path)
 			return .REMOVED, ""
 		case .IO_ERROR:
 			return .FAILED, strings.clone("I/O error: failed to remove the PATH entry")
 		case:
-			if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
+			if msg := take_print_capture(); len(msg) > 0 {
+				return .FAILED, msg
+			}
 			return .FAILED, strings.clone("failed to remove the PATH entry")
 		}
 	case EntryAlias:
@@ -554,11 +669,17 @@ entry_remove :: proc(entry: Entry) -> (EntryOutcome, string) {
 // `raw_path` in place (TUI edit): same checks as entry_add (path_add_check),
 // runs the remove hooks for the old directory and the add hooks for the new.
 entry_replace_path :: proc(target, raw_path: string) -> (EntryOutcome, string) {
-	if msg, bad := hook_config_error(); bad { return .FAILED, strings.clone(msg) }
-	if msg, bad := entries_unreadable_error(); bad { return .FAILED, strings.clone(msg) }
+	if msg, bad := hook_config_error(); bad {
+		return .FAILED, strings.clone(msg)
+	}
+	if msg, bad := entries_unreadable_error(); bad {
+		return .FAILED, strings.clone(msg)
+	}
 	expanded, check_err, code := path_add_check(raw_path)
 	defer delete(expanded)
-	if code != EXIT_SUCCESS { return .FAILED, check_err }
+	if code != EXIT_SUCCESS {
+		return .FAILED, check_err
+	}
 	old_path, found := path_entry_lookup(target)
 	defer delete(old_path)
 	if found && old_path != expanded {
@@ -567,7 +688,9 @@ entry_replace_path :: proc(target, raw_path: string) -> (EntryOutcome, string) {
 	}
 	#partial switch path_replace_result(target, raw_path) {
 	case .OK:
-		if wayu.dry_run { return .DRY_RUN, "" }
+		if wayu.dry_run {
+			return .DRY_RUN, ""
+		}
 		regenerate_init_core_silently()
 		hook_post_path_remove(old_path)
 		hook_post_path_add(expanded)
@@ -577,29 +700,47 @@ entry_replace_path :: proc(target, raw_path: string) -> (EntryOutcome, string) {
 	case .IO_ERROR:
 		return .FAILED, strings.clone("I/O error: failed to write the PATH entry")
 	case:
-		if msg := take_print_capture(); len(msg) > 0 { return .FAILED, msg }
+		if msg := take_print_capture(); len(msg) > 0 {
+			return .FAILED, msg
+		}
 		return .FAILED, strings.clone("failed to update the PATH entry")
 	}
 }
 
 @(private = "file")
 entry_remove_with_hooks :: proc(spec: ^ConfigEntrySpec, name: string) -> (EntryOutcome, string) {
-	if spec.hook_pre_remove != nil && entry_exists_in_store(spec, name) do spec.hook_pre_remove(name, "")
+	value, found := entry_store_value(spec, name)
+	if spec.hook_pre_remove != nil && found do spec.hook_pre_remove(name, value)
 	ok, err := spec.toml_remove(name)
-	if !ok { return .FAILED, err }
-	if wayu.dry_run { return .DRY_RUN, err }
-	if spec.hook_post_remove != nil do spec.hook_post_remove(name, "")
+	if !ok {
+		return .FAILED, err
+	}
+	if wayu.dry_run {
+		return .DRY_RUN, err
+	}
+	if spec.hook_post_remove != nil do spec.hook_post_remove(name, value)
 	return .REMOVED, err
 }
 // Basenames that almost never carry meaning on their own. When we see one,
 // we prefix with the parent directory to keep keys self-describing.
-COMMON_PATH_BASENAMES :: []string{
-	"bin", "sbin",
-	"lib", "lib64",
-	"share", "etc", "var",
-	"src", "dist", "build", "target", "out",
-	"node_modules", "vendor",
-	"current", "default", "latest",
+COMMON_PATH_BASENAMES :: []string {
+	"bin",
+	"sbin",
+	"lib",
+	"lib64",
+	"share",
+	"etc",
+	"var",
+	"src",
+	"dist",
+	"build",
+	"target",
+	"out",
+	"node_modules",
+	"vendor",
+	"current",
+	"default",
+	"latest",
 }
 
 // Lowercase + replace anything outside [a-z0-9_] with `_`. Returns "" when
@@ -611,7 +752,9 @@ COMMON_PATH_BASENAMES :: []string{
 //   `.cargo`  → `hidden_cargo`
 //   `.config` → `hidden_config`
 sanitize_path_key :: proc(s: string) -> string {
-	if len(s) == 0 { return "" }
+	if len(s) == 0 {
+		return ""
+	}
 
 	hidden := s[0] == '.'
 
@@ -638,23 +781,27 @@ sanitize_path_key :: proc(s: string) -> string {
 		case:
 			// Skip the leading dot (already encoded as `hidden_`) and any
 			// leading garbage. Collapse internal runs to a single `_`.
-			if n > prefix_len && buf[n-1] != '_' {
+			if n > prefix_len && buf[n - 1] != '_' {
 				buf[n] = '_'
 				n += 1
 			}
 		}
 	}
 	// Trim trailing `_`.
-	for n > 0 && buf[n-1] == '_' { n -= 1 }
+	for n > 0 && buf[n - 1] == '_' {n -= 1}
 	// `""` if nothing remains — including bare-prefix cases like "." → "hidden"
 	// would be misleading, so we treat them as empty and let the caller fall back.
-	if n == 0 || n == prefix_len - 1 /* trimmed prefix tail `_` */ { return "" }
+	if n == 0 || n == prefix_len - 1  /* trimmed prefix tail `_` */{
+		return ""
+	}
 	return strings.clone(string(buf[:n]))
 }
 
 is_common_path_basename :: proc(s: string) -> bool {
 	for c in COMMON_PATH_BASENAMES {
-		if s == c { return true }
+		if s == c {
+			return true
+		}
 	}
 	return false
 }
@@ -664,16 +811,20 @@ is_common_path_basename :: proc(s: string) -> bool {
 // returned strings — they're slices into `path`.
 split_path_tail :: proc(path: string) -> (parent: string, base: string) {
 	cleaned := strings.trim_right(path, "/")
-	if len(cleaned) == 0 { return "", path }
+	if len(cleaned) == 0 {
+		return "", path
+	}
 	last := strings.last_index_byte(cleaned, '/')
-	if last < 0 { return "", cleaned }
-	base = cleaned[last+1:]
+	if last < 0 {
+		return "", cleaned
+	}
+	base = cleaned[last + 1:]
 	rest := cleaned[:last]
 	prev := strings.last_index_byte(rest, '/')
 	if prev < 0 {
 		parent = rest
 	} else {
-		parent = rest[prev+1:]
+		parent = rest[prev + 1:]
 	}
 	return
 }
@@ -693,7 +844,9 @@ derive_path_key :: proc(path: string, taken: map[string]bool) -> string {
 	// basename is unparseable (e.g. "." or pure punctuation) so we can free
 	// it uniformly below.
 	base_key := sanitize_path_key(base)
-	if len(base_key) == 0 { base_key = strings.clone("path") }
+	if len(base_key) == 0 {
+		base_key = strings.clone("path")
+	}
 	defer delete(base_key)
 
 	key: string
@@ -709,14 +862,18 @@ derive_path_key :: proc(path: string, taken: map[string]bool) -> string {
 		key = strings.clone(base_key)
 	}
 
-	if !(key in taken) { return key }
+	if !(key in taken) {
+		return key
+	}
 
 	// Collision — append "_2", "_3", ...
 	stem := key
 	defer delete(stem)
-	for i := 2; ; i += 1 {
+	for i := 2;; i += 1 {
 		candidate := fmt.aprintf("%s_%d", stem, i)
-		if !(candidate in taken) { return candidate }
+		if !(candidate in taken) {
+			return candidate
+		}
 		delete(candidate)
 	}
 }
@@ -732,19 +889,27 @@ derive_path_key :: proc(path: string, taken: map[string]bool) -> string {
 // Returned strings are slices of `arg` — caller does not own them.
 parse_path_arg :: proc(arg: string) -> (name, path: string, explicit: bool) {
 	eq := strings.index_byte(arg, '=')
-	if eq <= 0 { return "", arg, false }
+	if eq <= 0 {
+		return "", arg, false
+	}
 
 	lhs := arg[:eq]
-	rhs := arg[eq+1:]
-	if len(rhs) == 0 { return "", arg, false }
+	rhs := arg[eq + 1:]
+	if len(rhs) == 0 {
+		return "", arg, false
+	}
 
 	for i := 0; i < len(lhs); i += 1 {
 		c := lhs[i]
-		ok := (c >= 'a' && c <= 'z') ||
-		      (c >= 'A' && c <= 'Z') ||
-		      (c >= '0' && c <= '9') ||
-		      c == '_' || c == '-'
-		if !ok { return "", arg, false }
+		ok :=
+			(c >= 'a' && c <= 'z') ||
+			(c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') ||
+			c == '_' ||
+			c == '-'
+		if !ok {
+			return "", arg, false
+		}
 	}
 	return lhs, rhs, true
 }
@@ -754,7 +919,9 @@ parse_path_arg :: proc(arg: string) -> (name, path: string, explicit: bool) {
 // would otherwise fail deep inside.
 entries_unreadable_error :: proc() -> (msg: string, bad: bool) {
 	store, err, ok := entries_read()
-	if !ok { return err, true }
+	if !ok {
+		return err, true
+	}
 	entries_store_destroy(&store)
 	return "", false
 }

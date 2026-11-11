@@ -36,6 +36,7 @@ class InitIntegrationTest
       test_large_toml_regenerates
       test_live_path_sync
       test_path_sync_status_and_nounset
+      test_moved_tables_warned_on_build
       test_path_sync_managed_dirs
       test_regen_covers_all_initialized_shells
       test_paths_expanded_in_shell
@@ -242,43 +243,48 @@ class InitIntegrationTest
   end
 
   def test_reinit_preserves_data
-    print "Test 8: Re-init preserves existing data... "
-
-    # Add some data
+    print "Test 8: Re-init keeps entries.json, wayu.toml and extra files byte for byte... "
     run_wayu('path add /tmp')
-    sleep(0.5)  # Give time for file write
-
-    # Re-initialize (should not destroy existing data)
-    output, status = run_wayu("init")
-
-    # Init should succeed without destroying config
-    if status.success?
-      puts "✓"
-      @passed += 1
-    else
-      puts "✗"
-      puts "  Re-init failed"
-      puts "  Output: #{output}"
-      @failed += 1
-    end
+    run_wayu("alias add reinit_ll 'ls -la'")
+    run_wayu('const add REINIT_X 1')
+    files = ["#{@data_dir}/entries.json", "#{@config_dir}/wayu.toml", "#{@config_dir}/extra.zsh",
+             "#{@config_dir}/tools.zsh"].select { |f| File.exist?(f) }
+    before = files.to_h { |f| [f, File.read(f)] }
+    output, status = run_wayu('init --no-color')
+    after = files.to_h { |f| [f, File.read(f)] }
+    entries = read_entries
+    ok = status.success? && before.size >= 3 && before == after &&
+         entries['paths'].any? { |e| e['dir'] == '/tmp' } &&
+         entries['aliases'].any? { |e| e['name'] == 'reinit_ll' } &&
+         entries['env'].any? { |e| e['name'] == 'REINIT_X' } &&
+         output.include?('All config files already exist') && !output.include?('Created config file')
+    check_result(ok, "changed: #{before.keys.reject { |f| before[f] == after[f] }}\n#{output}")
   end
 
   def test_dry_run_init
-    print "Test 9: Dry-run init mode... "
+    print "Test 9: Dry-run init writes nothing; a real init counts every file it created... "
+    FileUtils.rm_rf(@config_dir)
+    FileUtils.rm_rf(@data_dir)
+    output, status = run_wayu('--dry-run init --no-color')
+    dry_ok = status.success? && output.include?('DRY RUN') &&
+             !Dir.exist?(@config_dir) && !File.exist?("#{@data_dir}/init.zsh")
+    real, = run_wayu('init --no-color')
+    # '✓ ' prefix: a -debug build (CI ASan) also logs "Created config file:".
+    created = real.scan('✓ Created config file:').size
+    summary = real[/Created (\d+) config file\(s\)/, 1].to_i
+    # OKAMI-357: the summary came before the last two files and said 3.
+    count_ok = created >= 5 && summary == created &&
+               real.rindex('✓ Created config file:') < real.index(/✓ Created \d+ config file/)
+    check_result(dry_ok && count_ok, "dry_ok=#{dry_ok} created=#{created} summary=#{summary}\n#{output}")
+  end
 
-    # Clean up
-    FileUtils.rm_rf(@config_dir) if Dir.exist?(@config_dir)
-    FileUtils.rm_rf(@data_dir) if Dir.exist?(@data_dir)
-
-    output, status = run_wayu("--dry-run init")
-
-    # In dry-run mode, should not create files or show preview
-    if !File.exist?("#{@data_dir}/init.zsh") || output.include?("DRY RUN") || output.include?("Would")
+  def check_result(ok, detail)
+    if ok
       puts "✓"
       @passed += 1
     else
       puts "✗"
-      puts "  Dry-run init created files"
+      puts "  #{detail}"
       @failed += 1
     end
   end
@@ -288,7 +294,7 @@ class InitIntegrationTest
 
     output, status = run_wayu("init --help")
 
-    if output.include?("init") || output.include?("Initialize")
+    if status.success? && output.include?("wayu init - Initialize")
       puts "✓"
       @passed += 1
     else
@@ -465,6 +471,32 @@ class InitIntegrationTest
         puts "✓"; @passed += 1
       else
         puts "✗"; puts "  out=#{out.strip.inspect} err=#{err.strip[0, 300]}"; @failed += 1
+      end
+    end
+  end
+
+  # OKAMI-333: [paths]/[aliases]/[env] left in wayu.toml are not read;
+  # `wayu build` warns, and so does the prompt hook's rebuild after a hand
+  # edit (its stderr reaches the terminal; a clean rebuild prints nothing).
+  def test_moved_tables_warned_on_build
+    %w[zsh bash].each do |sh|
+      print "Test: build + prompt hook warn about [paths]/[aliases] in wayu.toml (#{sh})... "
+      home, env = sync_home("moved_#{sh}", [sh])
+      script = <<~SH
+        . "$HOME/.local/share/wayu/core.#{sh}"
+        sleep 1
+        printf '\n[paths]\nx = "/opt/x"\n[aliases]\ny = "ls"\n' >> "$HOME/.config/wayu/wayu.toml"
+        _wayu_paths_sync
+      SH
+      _, herr, hst = Open3.capture3(env, sh, '-c', script)
+      _, berr, bst = Open3.capture3(env, @wayu_bin, '--shell', sh, 'build')
+      want = ["[paths] is not read from wayu.toml", "'wayu path add'", "[aliases] is not read", "'wayu alias add'"]
+      ok = hst.success? && bst.success? && want.all? { |w| herr.include?(w) && berr.include?(w) } &&
+           herr.scan('[paths] is not read').size == 1
+      if ok
+        puts "✓"; @passed += 1
+      else
+        puts "✗"; puts "  hook=#{herr[0, 400]} build=#{berr[0, 400]}"; @failed += 1
       end
     end
   end
@@ -663,14 +695,14 @@ class InitIntegrationTest
     print "Test: rewriting core.zsh drops a stale .zwc... "
     home, env = sync_home('stalezwc', ['zsh'])
     cfg = "#{home}/.local/share/wayu"
-    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_ZWC_PROBE', 'old')
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'ZWC_PROBE_C', 'old')
     Open3.capture3(env, '/bin/zsh', '-fc', "zcompile '#{cfg}/core.zsh' && touch -t 203001010000 '#{cfg}/core.zsh.zwc'")
-    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_ZWC_PROBE', 'new')
-    out, = Open3.capture3(env, '/bin/zsh', '-fc', ". '#{cfg}/core.zsh' >/dev/null 2>&1; echo \"$WAYU_ZWC_PROBE\"")
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'ZWC_PROBE_C', 'new')
+    out, = Open3.capture3(env, '/bin/zsh', '-fc', ". '#{cfg}/core.zsh' >/dev/null 2>&1; echo \"$ZWC_PROBE_C\"")
     if out.strip == 'new'
       puts "✓"; @passed += 1
     else
-      puts "✗"; puts "  WAYU_ZWC_PROBE=#{out.strip} zwc_exists=#{File.exist?("#{cfg}/core.zsh.zwc")}"; @failed += 1
+      puts "✗"; puts "  ZWC_PROBE_C=#{out.strip} zwc_exists=#{File.exist?("#{cfg}/core.zsh.zwc")}"; @failed += 1
     end
   end
 
@@ -685,7 +717,7 @@ class InitIntegrationTest
     pwn = "#{home}/PWNED"
     base = File.exist?("#{cfg}/wayu.toml") ? File.read("#{cfg}/wayu.toml") : ''
     File.write("#{cfg}/wayu.toml", base + "\n[prompt]\nformat = \"{dir} {character}\"\n")
-    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_PROMPT_PROBE', '1')
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'PROMPT_PROBE_C', '1')
     off_ok = File.exist?("#{data}/core.zsh") && !File.read("#{data}/core.zsh").include?('_wayu_prompt_master')
 
     File.write("#{cfg}/wayu.toml", base + <<~TOML)
@@ -700,14 +732,14 @@ class InitIntegrationTest
       [settings]
       autosuggestions_accept_keys = ["^Y'; touch #{pwn}; '"]
     TOML
-    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'WAYU_PROMPT_PROBE', '2')
+    Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'const', 'add', 'PROMPT_PROBE_C', '2')
     core = File.read("#{data}/core.zsh")
     on_ok = core.include?('_wayu_prompt_master') && !core.include?('.wayu_async_$$')
     files = ["#{data}/core.zsh", "#{data}/plugins/config.zsh"].select { |f| File.exist?(f) }
     syntax_ok = files.size == 2 && files.all? { |f| system('zsh', '-n', f, out: File::NULL, err: File::NULL) }
     keys_ok = files.size == 2 && File.read(files[1]).include?(%q{bindkey '^Y'\''; touch})
     out, = Open3.capture3(env, '/bin/zsh', '-fic',
-      "source '#{data}/core.zsh' >/dev/null 2>&1; source '#{data}/plugins/config.zsh' >/dev/null 2>&1; _wayu_prompt_full")
+      "source '#{data}/core.zsh' >/dev/null 2>&1; source '#{data}/plugins/config.zsh' >/dev/null 2>&1; _wayu_prompt_full; print -r -- \"$REPLY\"")
     literal_ok = out.include?("it\"s $(touch #{pwn}) `touch #{pwn}`")
     if off_ok && on_ok && syntax_ok && keys_ok && literal_ok && !File.exist?(pwn)
       puts "✓"; @passed += 1

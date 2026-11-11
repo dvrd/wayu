@@ -3,8 +3,8 @@
 # constant and PATH entries (entries.json) → `wayu build` → every generated file passes
 # `<shell> -n` and sourcing init.<ext> in real zsh / bash / fish yields
 # exactly the original values (env via the shell's own variable, aliases via
-# the shell's alias table — fish via the arguments core.fish passes to
-# `alias` — and PATH containing every directory).
+# the shell's alias table — fish via the body word of the function core.fish
+# defines — and PATH containing every directory).
 #
 # Env values follow the documented expansion rules (docs/UPGRADING.md):
 # named references (`$NAME`, `${NAME}`; zsh/bash also `${NAME:-x}`) expand,
@@ -117,7 +117,7 @@ class ShellFuzzTest
         src << '${FZ_REF:-dflt}'; sh << REF_VALUE; fish << '${FZ_REF:-dflt}'
       when 4
         op = pick(['${FZ_CMD@P}', '${FZ_CMD[FZ_SUB]}', '${FZ_CMD:FZ_SUB}', '${FZ_REF^}', '$(echo PWNED-x >&2)',
-                   '`echo PWNED-bt >&2`', '${(e)FZ_CMD}'])
+                   '`echo PWNED-bt >&2`', '${(e)FZ_CMD}', '${FZ_NEW:=x}', '${FZ_NEW=x}'])
         [src, sh, fish].each { |s| s << op }
       else
         l = literal(LITERAL, 1, 8)
@@ -190,11 +190,13 @@ class ShellFuzzTest
     anames = aliases.map(&:first)
     case sh[:name]
     when 'fish'
-      # Capture what core.fish hands to `alias` (fish's own alias re-parses
-      # the body as fish code, which random text is not).
-      "function alias; set -g _fz_alias_$argv[1] $argv[2]; end; source '#{cfg}/init.fish'; " \
+      # Each alias is a function running `eval <body word> ...`: decode the
+      # quoted body word core.fish wrote (calling it would run random text).
+      "source '#{cfg}/init.fish'; " \
         "for v in #{names.join(' ')}; printf '%s\\0' \"$$v\"; end; " \
-        "for a in #{anames.join(' ')}; set -l n _fz_alias_$a; printf '%s\\0' \"$$n\"; end; " \
+        "for a in #{anames.join(' ')}; " +
+        %q{set -l m (string match -rg -- '(?s)\n\s*eval (?:\$p )?(.*) \(string escape -- \$argv\)\n' (functions $a | string collect) | string collect); } +
+        "eval \"set -g _fz_alias_$a $m\"; set -l n _fz_alias_$a; printf '%s\\0' \"$$n\"; end; " \
         "printf '%s\\0' (string join : $PATH)"
     when 'zsh'
       "source '#{cfg}/init.zsh'; for v in #{names.join(' ')}; do printf '%s\\0' \"${(P)v}\"; done; " \

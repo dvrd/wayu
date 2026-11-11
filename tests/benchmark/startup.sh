@@ -11,7 +11,7 @@
 #   SHELLS="zsh bash fish" TOOLS=1 tests/benchmark/startup.sh
 #
 # TOOLS=1 adds [tools] entries (a lazy loader and an evalcache tool) and
-# PROMPT=1 enables the native zsh prompt, to measure the full feature set.
+# PROMPT=1 enables the native prompt (zsh, fish), to measure the full feature set.
 set -eu
 
 WAYU_BIN=${WAYU_BIN:-$PWD/bin/wayu}
@@ -87,7 +87,7 @@ fi
 for sh in $SHELLS; do
 	SHELL=/bin/$sh "$WAYU_BIN" --shell "$sh" completions generate >/dev/null 2>&1 || true
 	SHELL=/bin/$sh "$WAYU_BIN" --shell "$sh" build >/dev/null
-	if [ "$sh" != fish ]; then SHELL=/bin/$sh "$WAYU_BIN" --shell "$sh" export --turbo >/dev/null; fi
+	SHELL=/bin/$sh "$WAYU_BIN" --shell "$sh" export --turbo >/dev/null
 done
 # Let the background zcompile finish so every run sees the same state.
 sleep 1
@@ -99,10 +99,9 @@ for sh in $SHELLS; do
 	[ -n "$exe" ] || [ "$sh" != fish ] || exe=$( (ls /opt/homebrew/bin/fish /usr/local/bin/fish 2>/dev/null || true) | head -1)
 	[ -n "$exe" ] || { echo "$sh: not installed, skipped"; continue; }
 	f=$(flag_of "$sh")
-	names="empty init"
-	[ "$sh" = fish ] || names="empty init turbo eval"
+	names="empty init turbo eval"
 	# Interactive: completion (compinit) and the prompt are set up only there.
-	[ "$sh" != zsh ] || names="$names empty-i init-i turbo-i"
+	[ "$sh" = bash ] || names="$names empty-i init-i turbo-i"
 	# Warm the compinit dump (+ its .zwc) / evalcache.
 	"$exe" $f -i -c "source '$data/init.$sh'" >/dev/null 2>&1 </dev/null || true
 	sleep 1
@@ -111,7 +110,7 @@ for sh in $SHELLS; do
 			empty|empty-i) echo ":" ;;
 			init|init-i) echo "source '$data/init.$sh'" ;;
 			turbo|turbo-i) echo "source '$data/turbo.$sh'" ;;
-			eval) echo "eval \"\$('$WAYU_BIN' --shell $sh export --eval)\"" ;;
+			eval) if [ "$sh" = fish ]; then echo "'$WAYU_BIN' --shell fish export --eval | source"; else echo "eval \"\$('$WAYU_BIN' --shell $sh export --eval)\""; fi ;;
 		esac
 	}
 	if [ -n "$HYPERFINE" ]; then

@@ -7,38 +7,38 @@ package test_wayu
 //   - apply_load_template fish branches for all 5 templates
 //   - registry sanity: fish plugins present and well-formed
 
-import "core:testing"
-import "core:strings"
 import wayu "../../src"
+import "core:strings"
+import "core:testing"
 
 @(test)
 test_shell_compat_parse_fish_and_any :: proc(t: ^testing.T) {
 	testing.expect(t, wayu.parse_shell_compat("fish") == .FISH, "parse fish → FISH")
 	testing.expect(t, wayu.parse_shell_compat("FISH") == .FISH, "case-insensitive fish")
-	testing.expect(t, wayu.parse_shell_compat("any")  == .ANY,  "parse any → ANY")
-	testing.expect(t, wayu.parse_shell_compat("all")  == .ANY,  "parse all → ANY (alias)")
+	testing.expect(t, wayu.parse_shell_compat("any") == .ANY, "parse any → ANY")
+	testing.expect(t, wayu.parse_shell_compat("all") == .ANY, "parse all → ANY (alias)")
 }
 
 @(test)
 test_shell_compat_to_string_fish_and_any :: proc(t: ^testing.T) {
 	testing.expect(t, wayu.shell_compat_to_string(.FISH) == "fish", "FISH → fish")
-	testing.expect(t, wayu.shell_compat_to_string(.ANY)  == "any",  "ANY → any")
+	testing.expect(t, wayu.shell_compat_to_string(.ANY) == "any", "ANY → any")
 }
 
 @(test)
 test_plugin_compat_matches_matrix :: proc(t: ^testing.T) {
 	// Fish plugins in fish only.
-	testing.expect(t,  wayu.plugin_compat_matches(.FISH, .FISH), "fish/fish match")
-	testing.expect(t, !wayu.plugin_compat_matches(.FISH, .ZSH),  "fish plugin not in zsh")
+	testing.expect(t, wayu.plugin_compat_matches(.FISH, .FISH), "fish/fish match")
+	testing.expect(t, !wayu.plugin_compat_matches(.FISH, .ZSH), "fish plugin not in zsh")
 	testing.expect(t, !wayu.plugin_compat_matches(.FISH, .BASH), "fish plugin not in bash")
 
 	// BOTH (zsh+bash legacy) excludes fish.
-	testing.expect(t,  wayu.plugin_compat_matches(.BOTH, .ZSH),  "both/zsh match")
-	testing.expect(t,  wayu.plugin_compat_matches(.BOTH, .BASH), "both/bash match")
+	testing.expect(t, wayu.plugin_compat_matches(.BOTH, .ZSH), "both/zsh match")
+	testing.expect(t, wayu.plugin_compat_matches(.BOTH, .BASH), "both/bash match")
 	testing.expect(t, !wayu.plugin_compat_matches(.BOTH, .FISH), "both excludes fish")
 
 	// ANY matches every supported shell.
-	testing.expect(t, wayu.plugin_compat_matches(.ANY, .ZSH),  "any/zsh")
+	testing.expect(t, wayu.plugin_compat_matches(.ANY, .ZSH), "any/zsh")
 	testing.expect(t, wayu.plugin_compat_matches(.ANY, .BASH), "any/bash")
 	testing.expect(t, wayu.plugin_compat_matches(.ANY, .FISH), "any/fish")
 }
@@ -96,7 +96,11 @@ test_apply_load_template_zsh_unchanged :: proc(t: ^testing.T) {
 
 	out2 := wayu.apply_load_template(.Path, "", "x", "/opt/x/bin", .ZSH)
 	defer delete(out2)
-	testing.expect(t, out2 == "export PATH='/opt/x/bin':\"$PATH\"", "zsh Path must keep legacy format")
+	testing.expect(
+		t,
+		out2 == "export PATH='/opt/x/bin':\"$PATH\"",
+		"zsh Path must keep legacy format",
+	)
 
 	out3 := wayu.apply_load_template(.Autoload, "", "fn", "/opt", .ZSH)
 	defer delete(out3)
@@ -115,7 +119,7 @@ test_registry_contains_fish_plugins :: proc(t: ^testing.T) {
 		if entry.info.shell == .FISH {
 			fish_count += 1
 			// Sanity: fish plugins must have a non-empty URL and name.
-			testing.expect(t, len(entry.info.url)  > 0, "fish plugin URL must be non-empty")
+			testing.expect(t, len(entry.info.url) > 0, "fish plugin URL must be non-empty")
 			testing.expect(t, len(entry.info.name) > 0, "fish plugin name must be non-empty")
 		}
 	}

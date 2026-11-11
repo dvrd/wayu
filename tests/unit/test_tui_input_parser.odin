@@ -4,12 +4,12 @@ package test_wayu
 // multi-event reads (paste), split escape sequences, UTF-8 runes, and the
 // lone-ESC timeout path.
 
-import "core:testing"
 import wayu "../../src"
+import "core:testing"
 
 // Decode every event in `input` the way poll_event does (non-final first,
 // final flush when incomplete).
-@(private="file")
+@(private = "file")
 decode_all :: proc(input: string) -> [dynamic]wayu.KeyEvent {
 	events := make([dynamic]wayu.KeyEvent)
 	buf := transmute([]u8)input

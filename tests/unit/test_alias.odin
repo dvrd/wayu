@@ -1,10 +1,10 @@
 package test_wayu
 
+import wayu "../../src"
 import "core:fmt"
 import "core:os"
-import "core:testing"
 import "core:strings"
-import wayu "../../src"
+import "core:testing"
 
 @(test)
 test_alias_parsing :: proc(t: ^testing.T) {
@@ -53,7 +53,7 @@ test_alias_extraction :: proc(t: ^testing.T) {
 
 @(test)
 test_alias_with_spaces :: proc(t: ^testing.T) {
-	test_cases := []string{
+	test_cases := []string {
 		`alias ll="ls -la"`,
 		`alias gc="git commit -m"`,
 		`    alias    gs="git status"   `,
@@ -76,32 +76,25 @@ test_alias_with_spaces :: proc(t: ^testing.T) {
 
 @(test)
 test_alias_format_validation :: proc(t: ^testing.T) {
-	valid_lines := []string{
-		`alias ll="ls -la"`,
-		`alias gc='git commit'`,
-		`alias test="echo test"`,
-	}
+	valid_lines := []string{`alias ll="ls -la"`, `alias gc='git commit'`, `alias test="echo test"`}
 
-	invalid_lines := []string{
-		`# alias comment="test"`,
-		`export VAR="value"`,
-		`echo "alias"`,
-		``,
-	}
+	invalid_lines := []string{`# alias comment="test"`, `export VAR="value"`, `echo "alias"`, ``}
 
 	for line in valid_lines {
 		trimmed := strings.trim_space(line)
-		is_valid := strings.has_prefix(trimmed, "alias ") &&
-		            strings.contains(trimmed, "=") &&
-		            !strings.has_prefix(trimmed, "#")
+		is_valid :=
+			strings.has_prefix(trimmed, "alias ") &&
+			strings.contains(trimmed, "=") &&
+			!strings.has_prefix(trimmed, "#")
 		testing.expect(t, is_valid, "Valid alias line should be recognized")
 	}
 
 	for line in invalid_lines {
 		trimmed := strings.trim_space(line)
-		is_valid := strings.has_prefix(trimmed, "alias ") &&
-		            strings.contains(trimmed, "=") &&
-		            !strings.has_prefix(trimmed, "#")
+		is_valid :=
+			strings.has_prefix(trimmed, "alias ") &&
+			strings.contains(trimmed, "=") &&
+			!strings.has_prefix(trimmed, "#")
 		testing.expect(t, !is_valid, "Invalid alias line should be rejected")
 	}
 }
@@ -185,7 +178,7 @@ test_read_alias_sources_empty_file :: proc(t: ^testing.T) {
 	wayu.wayu.config = tmp_dir
 
 	wayu.wayu.data = tmp_dir
-	defer { wayu.wayu.config = original; wayu.wayu.data = original }
+	defer {wayu.wayu.config = original; wayu.wayu.data = original}
 
 	// Write empty conf (only comments)
 	conf_path := fmt.aprintf("%s/alias-sources.conf", tmp_dir)
@@ -208,7 +201,7 @@ test_read_alias_sources_missing_file :: proc(t: ^testing.T) {
 	wayu.wayu.config = tmp_dir
 
 	wayu.wayu.data = tmp_dir
-	defer { wayu.wayu.config = original; wayu.wayu.data = original }
+	defer {wayu.wayu.config = original; wayu.wayu.data = original}
 
 	// No conf file written — should return nil gracefully
 	sources := wayu.read_alias_sources()
@@ -225,7 +218,7 @@ test_read_alias_sources_parses_dir_entry :: proc(t: ^testing.T) {
 	wayu.wayu.config = tmp_dir
 
 	wayu.wayu.data = tmp_dir
-	defer { wayu.wayu.config = original; wayu.wayu.data = original }
+	defer {wayu.wayu.config = original; wayu.wayu.data = original}
 
 	conf_path := fmt.aprintf("%s/alias-sources.conf", tmp_dir)
 	defer delete(conf_path)
@@ -251,7 +244,7 @@ test_read_alias_sources_skips_unknown_type :: proc(t: ^testing.T) {
 	wayu.wayu.config = tmp_dir
 
 	wayu.wayu.data = tmp_dir
-	defer { wayu.wayu.config = original; wayu.wayu.data = original }
+	defer {wayu.wayu.config = original; wayu.wayu.data = original}
 
 	conf_path := fmt.aprintf("%s/alias-sources.conf", tmp_dir)
 	defer delete(conf_path)

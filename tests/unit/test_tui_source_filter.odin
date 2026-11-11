@@ -4,12 +4,12 @@ package test_wayu
 // RowMeta-based selection model. Source matching uses RowMeta.source, never
 // the rendered glyph text (which differs under NO_COLOR).
 
+import wayu "../../src"
 import "core:strings"
 import "core:testing"
-import wayu "../../src"
 
 // Build a cache (display rows + parallel RowMeta) inside `state` for `view`.
-@(private="file")
+@(private = "file")
 Row :: struct {
 	display: string,
 	key:     string,
@@ -18,10 +18,10 @@ Row :: struct {
 	kind:    wayu.RowKind,
 }
 
-@(private="file")
+@(private = "file")
 install_rows :: proc(state: ^wayu.TUIState, view: wayu.TUIView, rows: []Row) {
 	items := make([dynamic]string)
-	meta  := make([dynamic]wayu.RowMeta)
+	meta := make([dynamic]wayu.RowMeta)
 	for r in rows {
 		key := r.key if len(r.key) > 0 else r.display
 		wayu.cache_push(&items, &meta, strings.clone(r.display), key, r.value, r.source, r.kind)
@@ -30,13 +30,13 @@ install_rows :: proc(state: ^wayu.TUIState, view: wayu.TUIView, rows: []Row) {
 	state.current_view = view
 }
 
-@(private="file")
-PATH_ROWS := []Row{
-	{display = "/wayu/a",              source = .WAYU_ACTIVE},
-	{display = "/wayu/missing",        source = .WAYU_INACTIVE},
-	{display = "/external/b",          source = .EXTERNAL},
+@(private = "file")
+PATH_ROWS := []Row {
+	{display = "/wayu/a", source = .WAYU_ACTIVE},
+	{display = "/wayu/missing", source = .WAYU_INACTIVE},
+	{display = "/external/b", source = .EXTERNAL},
 	{display = "─── External (2) ───", kind = .Separator},
-	{display = "/external/c",          source = .EXTERNAL},
+	{display = "/external/c", source = .EXTERNAL},
 }
 
 @(test)
@@ -48,12 +48,32 @@ test_matches_source_all_passes_everything :: proc(t: ^testing.T) {
 
 @(test)
 test_matches_source_exact :: proc(t: ^testing.T) {
-	testing.expect(t, wayu.matches_source(.WAYU_ACTIVE, .WAYU_ACTIVE), "active matches WAYU_ACTIVE")
-	testing.expect(t, !wayu.matches_source(.WAYU_INACTIVE, .WAYU_ACTIVE), "inactive must NOT match WAYU_ACTIVE")
-	testing.expect(t, !wayu.matches_source(.EXTERNAL, .WAYU_ACTIVE), "external must NOT match WAYU_ACTIVE")
-	testing.expect(t, !wayu.matches_source(.NONE, .WAYU_ACTIVE), "source-less rows must NOT match WAYU_ACTIVE")
+	testing.expect(
+		t,
+		wayu.matches_source(.WAYU_ACTIVE, .WAYU_ACTIVE),
+		"active matches WAYU_ACTIVE",
+	)
+	testing.expect(
+		t,
+		!wayu.matches_source(.WAYU_INACTIVE, .WAYU_ACTIVE),
+		"inactive must NOT match WAYU_ACTIVE",
+	)
+	testing.expect(
+		t,
+		!wayu.matches_source(.EXTERNAL, .WAYU_ACTIVE),
+		"external must NOT match WAYU_ACTIVE",
+	)
+	testing.expect(
+		t,
+		!wayu.matches_source(.NONE, .WAYU_ACTIVE),
+		"source-less rows must NOT match WAYU_ACTIVE",
+	)
 	testing.expect(t, wayu.matches_source(.EXTERNAL, .EXTERNAL), "external matches EXTERNAL")
-	testing.expect(t, wayu.matches_source(.WAYU_INACTIVE, .WAYU_INACTIVE), "inactive matches WAYU_INACTIVE")
+	testing.expect(
+		t,
+		wayu.matches_source(.WAYU_INACTIVE, .WAYU_INACTIVE),
+		"inactive matches WAYU_INACTIVE",
+	)
 }
 
 @(test)
@@ -63,19 +83,27 @@ test_cycle_source_filter_rotates_and_reapplies :: proc(t: ^testing.T) {
 	install_rows(&state, .PATH_VIEW, PATH_ROWS)
 
 	items := wayu.get_current_cache(&state)
-	meta  := wayu.get_current_meta(&state)
+	meta := wayu.get_current_meta(&state)
 
 	wayu.cycle_source_filter(&state, items, meta)
-	testing.expect(t, state.source_filter == .WAYU_ACTIVE, "First cycle should land on WAYU_ACTIVE")
+	testing.expect(
+		t,
+		state.source_filter == .WAYU_ACTIVE,
+		"First cycle should land on WAYU_ACTIVE",
+	)
 	testing.expect_value(t, len(state.filter.indices), 1)
 
 	wayu.cycle_source_filter(&state, items, meta)
-	testing.expect(t, state.source_filter == .WAYU_INACTIVE, "Second cycle should land on WAYU_INACTIVE")
+	testing.expect(
+		t,
+		state.source_filter == .WAYU_INACTIVE,
+		"Second cycle should land on WAYU_INACTIVE",
+	)
 	testing.expect_value(t, len(state.filter.indices), 1)
 
 	wayu.cycle_source_filter(&state, items, meta)
 	testing.expect(t, state.source_filter == .EXTERNAL, "Third cycle should land on EXTERNAL")
-	testing.expect_value(t, len(state.filter.indices), 2)  // separator excluded
+	testing.expect_value(t, len(state.filter.indices), 2) // separator excluded
 
 	wayu.cycle_source_filter(&state, items, meta)
 	testing.expect(t, state.source_filter == .ALL, "Fourth cycle should wrap to ALL")
@@ -101,7 +129,7 @@ test_source_filter_ignores_plain_glyph_text :: proc(t: ^testing.T) {
 	state.source_filter = .ALL
 	for b in "wayu" do append(&state.filter.text, u8(b))
 	wayu.apply_filter(&state, wayu.get_current_cache(&state), wayu.get_current_meta(&state))
-	testing.expect_value(t, len(state.filter.indices), 2)  // /wayu/a, /wayu/missing
+	testing.expect_value(t, len(state.filter.indices), 2) // /wayu/a, /wayu/missing
 }
 
 @(test)
@@ -112,7 +140,11 @@ test_has_any_filter_reflects_source_alone :: proc(t: ^testing.T) {
 	testing.expect(t, !wayu.has_any_filter(&state), "Fresh state must report no filter")
 
 	state.source_filter = .EXTERNAL
-	testing.expect(t, wayu.has_any_filter(&state), "Source filter alone must count as active filter")
+	testing.expect(
+		t,
+		wayu.has_any_filter(&state),
+		"Source filter alone must count as active filter",
+	)
 }
 
 @(test)
@@ -122,7 +154,11 @@ test_deactivate_filter_resets_source_filter :: proc(t: ^testing.T) {
 
 	state.source_filter = .EXTERNAL
 	wayu.deactivate_filter(&state)
-	testing.expect(t, state.source_filter == .ALL, "deactivate_filter must reset source_filter to ALL")
+	testing.expect(
+		t,
+		state.source_filter == .ALL,
+		"deactivate_filter must reset source_filter to ALL",
+	)
 	testing.expect(t, !wayu.has_any_filter(&state), "no filter may survive deactivation")
 }
 
@@ -169,10 +205,14 @@ test_selected_row_zero_matches_is_noop :: proc(t: ^testing.T) {
 test_delete_key_is_raw_key_not_display :: proc(t: ^testing.T) {
 	state := wayu.tui_state_init()
 	defer wayu.tui_state_destroy(&state)
-	install_rows(&state, .ALIAS_VIEW, []Row{
-		{display = "ll=ls -la", key = "ll", value = "ls -la", source = .WAYU_ACTIVE},
-		{display = "gs=git status", key = "gs", value = "git status", source = .WAYU_INACTIVE},
-	})
+	install_rows(
+		&state,
+		.ALIAS_VIEW,
+		[]Row {
+			{display = "ll=ls -la", key = "ll", value = "ls -la", source = .WAYU_ACTIVE},
+			{display = "gs=git status", key = "gs", value = "git status", source = .WAYU_INACTIVE},
+		},
+	)
 
 	state.selected_index = 1
 	wayu.handle_data_view_event(&state, wayu.KeyEvent{key = .Char, char = 'd'})
@@ -187,11 +227,11 @@ test_delete_refuses_separator_and_external :: proc(t: ^testing.T) {
 	defer wayu.tui_state_destroy(&state)
 	install_rows(&state, .PATH_VIEW, PATH_ROWS)
 
-	state.selected_index = 3  // separator
+	state.selected_index = 3 // separator
 	wayu.handle_data_view_event(&state, wayu.KeyEvent{key = .Char, char = 'd'})
 	testing.expect(t, !state.delete_confirm.pending, "separator rows are not deletable")
 
-	state.selected_index = 2  // external
+	state.selected_index = 2 // external
 	wayu.handle_data_view_event(&state, wayu.KeyEvent{key = .Char, char = 'd'})
 	testing.expect(t, !state.delete_confirm.pending, "external rows are not managed by wayu")
 
@@ -214,10 +254,14 @@ test_refresh_filter_after_reload_drops_stale_indices :: proc(t: ^testing.T) {
 	testing.expect_value(t, state.filter.indices[1], 4)
 
 	// Reload with a shorter cache: index 4 no longer exists.
-	install_rows(&state, .PATH_VIEW, []Row{
-		{display = "/wayu/a",     source = .WAYU_ACTIVE},
-		{display = "/external/b", source = .EXTERNAL},
-	})
+	install_rows(
+		&state,
+		.PATH_VIEW,
+		[]Row {
+			{display = "/wayu/a", source = .WAYU_ACTIVE},
+			{display = "/external/b", source = .EXTERNAL},
+		},
+	)
 	wayu.tui_refresh_filter(&state)
 
 	testing.expect_value(t, len(state.filter.indices), 1)
@@ -258,14 +302,18 @@ test_parse_source_token_extracts_value_and_strips :: proc(t: ^testing.T) {
 test_apply_filter_respects_inline_source_token :: proc(t: ^testing.T) {
 	state := wayu.tui_state_init()
 	defer wayu.tui_state_destroy(&state)
-	install_rows(&state, .PATH_VIEW, []Row{
-		{display = "/wayu/bin",      source = .WAYU_ACTIVE},
-		{display = "/wayu/missing",  source = .WAYU_INACTIVE},
-		{display = "/external/bin",  source = .EXTERNAL},
-		{display = "/usr/local/bin", source = .EXTERNAL},
-	})
+	install_rows(
+		&state,
+		.PATH_VIEW,
+		[]Row {
+			{display = "/wayu/bin", source = .WAYU_ACTIVE},
+			{display = "/wayu/missing", source = .WAYU_INACTIVE},
+			{display = "/external/bin", source = .EXTERNAL},
+			{display = "/usr/local/bin", source = .EXTERNAL},
+		},
+	)
 	items := wayu.get_current_cache(&state)
-	meta  := wayu.get_current_meta(&state)
+	meta := wayu.get_current_meta(&state)
 
 	set_text :: proc(state: ^wayu.TUIState, text: string) {
 		clear(&state.filter.text)

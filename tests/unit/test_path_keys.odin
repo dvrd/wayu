@@ -2,43 +2,63 @@
 
 package test_wayu
 
-import "core:testing"
 import wayu "../../src"
+import "core:testing"
 
 @(test)
 test_sanitize_path_key_basic :: proc(t: ^testing.T) {
-	cases := []struct{ input, want: string }{
-		{"odin",       "odin"},
-		{"Odin",       "odin"},
-		{"my-tool",    "my_tool"},
-		{"foo.bar",    "foo_bar"},
-		{"_local",     "_local"},
-		{"",           ""},
+	cases := []struct {
+		input, want: string,
+	} {
+		{"odin", "odin"},
+		{"Odin", "odin"},
+		{"my-tool", "my_tool"},
+		{"foo.bar", "foo_bar"},
+		{"_local", "_local"},
+		{"", ""},
 	}
 	for c in cases {
 		got := wayu.sanitize_path_key(c.input)
-		defer if len(got) > 0 { delete(got) }
-		testing.expectf(t, got == c.want,
-			"sanitize_path_key(%q) = %q, want %q", c.input, got, c.want)
+		defer if len(got) > 0 {
+			delete(got)
+		}
+		testing.expectf(
+			t,
+			got == c.want,
+			"sanitize_path_key(%q) = %q, want %q",
+			c.input,
+			got,
+			c.want,
+		)
 	}
 }
 
 @(test)
 test_sanitize_path_key_hidden_prefix :: proc(t: ^testing.T) {
-	cases := []struct{ input, want: string }{
-		{".local",   "hidden_local"},
-		{".cargo",   "hidden_cargo"},
-		{".config",  "hidden_config"},
-		{"..foo",    "hidden_foo"},     // double dots collapse
+	cases := []struct {
+		input, want: string,
+	} {
+		{".local", "hidden_local"},
+		{".cargo", "hidden_cargo"},
+		{".config", "hidden_config"},
+		{"..foo", "hidden_foo"}, // double dots collapse
 		{".foo.bar", "hidden_foo_bar"}, // internal dot becomes _
-		{".",        ""},               // bare dot has no useful name
-		{"..",       ""},
+		{".", ""}, // bare dot has no useful name
+		{"..", ""},
 	}
 	for c in cases {
 		got := wayu.sanitize_path_key(c.input)
-		defer if len(got) > 0 { delete(got) }
-		testing.expectf(t, got == c.want,
-			"sanitize_path_key(%q) = %q, want %q", c.input, got, c.want)
+		defer if len(got) > 0 {
+			delete(got)
+		}
+		testing.expectf(
+			t,
+			got == c.want,
+			"sanitize_path_key(%q) = %q, want %q",
+			c.input,
+			got,
+			c.want,
+		)
 	}
 }
 
@@ -47,19 +67,20 @@ test_derive_path_key_common_basenames :: proc(t: ^testing.T) {
 	taken := make(map[string]bool); defer delete(taken)
 
 	// `bin` is common — must be disambiguated by the parent dir name.
-	cases := []struct{ path, want: string }{
-		{"/usr/local/bin",        "local_bin"},
-		{"/opt/homebrew/bin",     "homebrew_bin"},
-		{"/Users/me/.cargo/bin",  "hidden_cargo_bin"},
-		{"/Users/me/dev/Odin",    "odin"},
-		{"/Users/me/.local",      "hidden_local"},
-		{"/Users/me/.config",     "hidden_config"},
+	cases := []struct {
+		path, want: string,
+	} {
+		{"/usr/local/bin", "local_bin"},
+		{"/opt/homebrew/bin", "homebrew_bin"},
+		{"/Users/me/.cargo/bin", "hidden_cargo_bin"},
+		{"/Users/me/dev/Odin", "odin"},
+		{"/Users/me/.local", "hidden_local"},
+		{"/Users/me/.config", "hidden_config"},
 	}
 	for c in cases {
 		got := wayu.derive_path_key(c.path, taken)
 		defer delete(got)
-		testing.expectf(t, got == c.want,
-			"derive_path_key(%q) = %q, want %q", c.path, got, c.want)
+		testing.expectf(t, got == c.want, "derive_path_key(%q) = %q, want %q", c.path, got, c.want)
 	}
 }
 
@@ -74,8 +95,7 @@ test_derive_path_key_collision :: proc(t: ^testing.T) {
 
 	second := wayu.derive_path_key("/Users/me/work/Odin", taken)
 	defer delete(second)
-	testing.expectf(t, second == "odin_2",
-		"colliding odin key should be `odin_2`, got %q", second)
+	testing.expectf(t, second == "odin_2", "colliding odin key should be `odin_2`, got %q", second)
 }
 
 @(test)

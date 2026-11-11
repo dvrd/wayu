@@ -44,7 +44,7 @@ class ValidationIntegrationTest
     print "Test 1: Reject shell reserved word in alias... "
     output, status = run_wayu('alias add if "echo test"')
 
-    if output.include?("reserved shell keyword") || output.include?("reserved word")
+    if status.exitstatus == 65 && output.include?("reserved word 'if'") && !store_map('aliases').key?('if')
       puts "✓"
       @passed += 1
     else
@@ -59,7 +59,7 @@ class ValidationIntegrationTest
     print "Test 2: Reject dangerous characters in alias... "
     output, status = run_wayu('alias add "my;alias" "echo test"')
 
-    if output.include?("contains invalid character") || output.include?("Invalid")
+    if status.exitstatus == 65 && output.include?("invalid character ';'") && !store_map('aliases').key?('my;alias')
       puts "✓"
       @passed += 1
     else
@@ -74,7 +74,7 @@ class ValidationIntegrationTest
     print "Test 3: Reject shell reserved word in constant... "
     output, status = run_wayu('constants add while "value"')
 
-    if output.include?("reserved shell keyword") || output.include?("reserved word")
+    if status.exitstatus == 65 && output.include?("reserved word 'while'") && !store_map('env').key?('while')
       puts "✓"
       @passed += 1
     else
@@ -89,7 +89,7 @@ class ValidationIntegrationTest
     print "Test 4: Warn about lowercase in constants... "
     output, status = run_wayu('constants add my_var "value"')
 
-    if output.include?("lowercase") || output.include?("UPPER_CASE") || output.include?("Warning")
+    if status.success? && output.include?("contains lowercase letters") && store_map('env')['my_var'] == 'value'
       puts "✓"
       @passed += 1
     else
@@ -112,11 +112,15 @@ class ValidationIntegrationTest
     env = ENV.to_h.merge('HOME' => @tmp_home)
     codes = [colon, dot, nl].map { |d| Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'path', 'add', d)[2].exitstatus }
     stored = store_map('paths').values.any? { |d| d.include?('co:lon') || d.include?('a:.') }
+    before = File.read(@entries_file)
     write_entries(paths: { 'hand' => dot }.merge(store_map('paths')), aliases: store_map('aliases'), env: store_map('env'))
     Open3.capture3(env, @wayu_bin, '--shell', 'zsh', 'build')
     sync = File.exist?("#{@data_dir}/path_sync.zsh") ? File.read("#{@data_dir}/path_sync.zsh") : ''
     out, = Open3.capture3(env, 'zsh', '-fc', ". '#{@data_dir}/core.zsh' >/dev/null 2>&1; print -rl -- $path")
     bad_entry = out.lines.map(&:chomp).any? { |l| ['.', "#{@tmp_home}/a", "#{@tmp_home}/co"].include?(l) }
+    # The strict read refuses that store (OKAMI-321): put the good one back
+    # for the tests after this one.
+    File.write(@entries_file, before)
     if codes.all? { |c| c == 65 } && !stored && !sync.include?('a:.') && !bad_entry
       puts "✓"
       @passed += 1

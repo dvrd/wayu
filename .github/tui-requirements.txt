@@ -1,0 +1,13 @@
+# TUI layout tests (tests/tui/test_responsive.py), installed by ci.yml with
+# `pip install --require-hashes`. Every package, dependencies included, is
+# pinned with the sha256 of its PyPI files (https://pypi.org/pypi/<name>/<version>/json).
+# wcwidth: sdist, pure wheel and the abi3 wheels for the CI runners
+# (ubuntu-24.04 x86_64, macos-15 arm64).
+pyte==0.8.2 \
+    --hash=sha256:85db42a35798a5aafa96ac4d8da78b090b2c933248819157fc0e6f78876a0135 \
+    --hash=sha256:5af970e843fa96a97149d64e170c984721f20e52227a2f57f0a54207f08f083f
+wcwidth==0.9.4 \
+    --hash=sha256:901eace6d2dd25ebb917d0ce5db18e5c537e1504c905cf32f0d006c12098b05d \
+    --hash=sha256:b185c8b927b23af2721be1783499d1cfa5c028b098b0858951b4ae224477f1c2 \
+    --hash=sha256:f279f32c8e206a9092fa350e53ca0c2bd8072e45b1c9fd31bb6d476b59b591c4 \
+    --hash=sha256:fd8d57d3cdfe570e3265c8fab1885c24e34ef40889c0759c0c304a19e9835954

@@ -36,7 +36,6 @@ import "core:strings"
 // file (the types are in interfaces.odin).
 
 
-
 // ============================================================================
 // WAYU.TOML BOOTSTRAP
 // ============================================================================
@@ -90,25 +89,22 @@ TomlValueType :: enum {
 	BOOLEAN,
 	ARRAY,
 	TABLE,
-	FLOAT,    // str_val holds the text as written
+	FLOAT, // str_val holds the text as written
 	DATETIME, // str_val holds the text as written
 }
 
 // INTEGER also sets str_val (decimal) so every scalar has a text form.
 TomlValue :: struct {
-	type: TomlValueType,
-	str_val: string,
-	int_val: int,
-	bool_val: bool,
-	arr_val: [dynamic]^TomlValue,
+	type:      TomlValueType,
+	str_val:   string,
+	int_val:   int,
+	bool_val:  bool,
+	arr_val:   [dynamic]^TomlValue,
 	table_val: map[string]^TomlValue,
 }
 
 make_toml_table :: proc() -> TomlValue {
-	return TomlValue{
-		type = .TABLE,
-		table_val = make(map[string]^TomlValue),
-	}
+	return TomlValue{type = .TABLE, table_val = make(map[string]^TomlValue)}
 }
 
 
@@ -180,7 +176,7 @@ toml_parse :: proc(content: string) -> (TomlConfig, bool) {
 toml_validate :: proc(config: TomlConfig) -> ValidationResult {
 	// Check version
 	if config.version != "1.0" && config.version != "" {
-		return ValidationResult{
+		return ValidationResult {
 			valid = false,
 			error_message = fmt.aprintf("Unsupported config version: %s", config.version),
 		}
@@ -197,9 +193,12 @@ toml_validate :: proc(config: TomlConfig) -> ValidationResult {
 			}
 		}
 		if !found {
-			return ValidationResult{
+			return ValidationResult {
 				valid = false,
-				error_message = fmt.aprintf("Invalid shell: %s (must be zsh, bash, or fish)", config.shell),
+				error_message = fmt.aprintf(
+					"Invalid shell: %s (must be zsh, bash, or fish)",
+					config.shell,
+				),
 			}
 		}
 	}
@@ -226,22 +225,28 @@ toml_get_config_path :: proc() -> string {
 // `value` is always heap-allocated (caller deletes); `key` aliases `line`.
 toml_parse_kv_line :: proc(line: string) -> (key: string, value: string, ok: bool) {
 	trimmed := strings.trim_space(line)
-	if len(trimmed) == 0 || trimmed[0] == '#' || trimmed[0] == '[' { return }
+	if len(trimmed) == 0 || trimmed[0] == '#' || trimmed[0] == '[' {
+		return
+	}
 	eq := strings.index_byte(trimmed, '=')
-	if eq < 1 { return }
+	if eq < 1 {
+		return
+	}
 	key = strings.trim_space(trimmed[:eq])
-	if len(key) == 0 { return }
+	if len(key) == 0 {
+		return
+	}
 
-	raw := strings.trim_space(trimmed[eq+1:])
+	raw := strings.trim_space(trimmed[eq + 1:])
 	if stripped, balanced := toml_strip_inline_comment_strict(raw); balanced {
 		raw = strings.trim_space(stripped)
 	}
 	n := len(raw)
 	switch {
-	case n >= 2 && raw[0] == '"' && raw[n-1] == '"':
-		value = unescape_toml_string(raw[1:n-1])
-	case n >= 2 && raw[0] == '\'' && raw[n-1] == '\'':
-		value = strings.clone(raw[1:n-1])
+	case n >= 2 && raw[0] == '"' && raw[n - 1] == '"':
+		value = unescape_toml_string(raw[1:n - 1])
+	case n >= 2 && raw[0] == '\'' && raw[n - 1] == '\'':
+		value = strings.clone(raw[1:n - 1])
 	case n == 0:
 		return "", "", false
 	case:
@@ -273,13 +278,18 @@ handle_validate :: proc() -> bool {
 	defer delete(content)
 	if valid, perr := toml_check(string(content)); !valid {
 		defer delete(perr.msg)
-		fmt.eprintfln("Error: Failed to parse %s: line %d: %s", config_path, perr.line, perr.msg)
+		fmt.eprintfln(
+			"Error: Failed to parse %s: line %d: %s",
+			config_path,
+			perr.line,
+			term_safe(perr.msg),
+		)
 		return false
 	}
 	issues := toml_content_schema_issues(string(content))
 	for is in issues {
 		if is.is_error {
-			fmt.eprintfln("Validation failed: line %d: %s", is.line, is.msg)
+			fmt.eprintfln("Validation failed: line %d: %s", is.line, term_safe(is.msg))
 			return false
 		}
 	}
@@ -290,13 +300,13 @@ handle_validate :: proc() -> bool {
 	result := toml_validate(config)
 
 	if !result.valid {
-		fmt.eprintfln("Validation failed: %s", result.error_message)
+		fmt.eprintfln("Validation failed: %s", term_safe(result.error_message))
 		delete(result.error_message)
 		return false
 	}
 
 	for is in issues {
-		print_warning("line %d: %s", is.line, is.msg)
+		print_warning("line %d: %s", is.line, term_safe(is.msg))
 	}
 	fmt.println("✓ TOML config is valid")
 	return true
@@ -316,19 +326,36 @@ TOML_MOVED_TABLES :: [][2]string{{"paths", "path"}, {"aliases", "alias"}, {"env"
 // The `wayu <cli>` command managing moved table `name`, or "".
 @(private = "file")
 toml_moved_table_cli :: proc(name: string) -> string {
-	for m in TOML_MOVED_TABLES { if m[0] == name { return m[1] } }
+	for m in TOML_MOVED_TABLES {
+		if m[0] == name {
+			return m[1]
+		}
+	}
 	return ""
 }
 
 @(private = "file")
 toml_moved_table_msg :: proc(name: string) -> string {
-	return fmt.tprintf("[%s] is not read from wayu.toml: its entries are managed with 'wayu %s add' (stored in %s); move them there and delete the table",
-		name, toml_moved_table_cli(name), entries_file_path())
+	return fmt.tprintf(
+		"[%s] is not read from wayu.toml: its entries are managed with 'wayu %s add' (stored in %s); move them there and delete the table",
+		name,
+		toml_moved_table_cli(name),
+		entries_file_path(),
+	)
 }
 @(private = "file")
 TOML_TOOL_KEYS :: []string{"kind", "args", "eager", "login_only", "init_script", "hook_commands"}
 @(private = "file")
-TOML_PROMPT_TABLES :: []string{"username", "hostname", "localip", "dir", "git_branch", "character", "contexts", "interactive"}
+TOML_PROMPT_TABLES :: []string {
+	"username",
+	"hostname",
+	"localip",
+	"dir",
+	"git_branch",
+	"character",
+	"contexts",
+	"interactive",
+}
 
 // One finding of toml_schema_issues. `msg` is temp-allocated.
 TomlSchemaIssue :: struct {
@@ -340,15 +367,36 @@ TomlSchemaIssue :: struct {
 // Is the full key path `p` (table path + key) one wayu reads?
 @(private = "file")
 toml_key_known :: proc(p: []string) -> bool {
-	if len(p) == 0 { return false }
-	in_set :: proc(s: string, set: []string) -> bool { return slice.contains(set, s) }
+	if len(p) == 0 {
+		return false
+	}
+	in_set :: proc(s: string, set: []string) -> bool {return slice.contains(set, s)}
 	switch p[0] {
 	case "version":
 		return len(p) == 1
 	case "shell":
 		return len(p) == 2 && p[1] == "type"
 	case "settings":
-		return len(p) == 2 && p[1] == "autosuggestions_accept_keys"
+		if len(p) == 3 && p[1] == "highlight_styles" {
+			return highlight_style_index(p[2]) >= 0
+		}
+		return(
+			len(p) == 2 &&
+			in_set(
+				p[1],
+				{
+					"autosuggest",
+					"autosuggest_style",
+					"autosuggestions_accept_keys",
+					"auto_optimize",
+					"compinit_guard",
+					"defer_plugins",
+					"highlight",
+					"highlight_styles",
+					"lazy_compinit",
+				},
+			) \
+		)
 	case "scripts":
 		return len(p) == 2 && p[1] == "default_lang"
 	case "secrets":
@@ -361,11 +409,36 @@ toml_key_known :: proc(p: []string) -> bool {
 			return in_set(p[1], {"enabled", "vi_mode", "format"})
 		case 3:
 			switch p[1] {
-			case "username":   return in_set(p[2], {"format", "show_always"})
-			case "hostname", "localip", "dir", "git_branch": return p[2] == "format"
-			case "character":  return in_set(p[2], {"success_symbol", "error_symbol", "vimcmd_symbol", "vimcmd_visual_symbol", "vimcmd_replace_symbol"})
-			case "interactive": return in_set(p[2], {"toggle_enabled", "toggle_key", "transient_enabled", "vi_mode_indicator", "context_aware", "async_rprompt", "rprompt_format"})
-			case "contexts":   return true
+			case "username":
+				return in_set(p[2], {"format", "show_always"})
+			case "hostname", "localip", "dir", "git_branch":
+				return p[2] == "format"
+			case "character":
+				return in_set(
+					p[2],
+					{
+						"success_symbol",
+						"error_symbol",
+						"vimcmd_symbol",
+						"vimcmd_visual_symbol",
+						"vimcmd_replace_symbol",
+					},
+				)
+			case "interactive":
+				return in_set(
+					p[2],
+					{
+						"toggle_enabled",
+						"toggle_key",
+						"transient_enabled",
+						"vi_mode_indicator",
+						"context_aware",
+						"async_rprompt",
+						"rprompt_format",
+					},
+				)
+			case "contexts":
+				return true
 			}
 		case 4:
 			return p[1] == "contexts" && in_set(p[3], {"format", "detect"})
@@ -378,8 +451,14 @@ toml_key_known :: proc(p: []string) -> bool {
 @(private = "file")
 toml_table_known :: proc(p: []string) -> bool {
 	switch len(p) {
-	case 1: return slice.contains(TOML_TABLES, p[0]) || p[0] == "scripts"
-	case 2: return p[0] == "tools" || (p[0] == "prompt" && slice.contains(TOML_PROMPT_TABLES, p[1]))
+	case 1:
+		return slice.contains(TOML_TABLES, p[0]) || p[0] == "scripts"
+	case 2:
+		return(
+			p[0] == "tools" ||
+			(p[0] == "prompt" && slice.contains(TOML_PROMPT_TABLES, p[1])) ||
+			(p[0] == "settings" && p[1] == "highlight_styles") \
+		)
 	}
 	return false
 }
@@ -390,31 +469,63 @@ toml_table_known :: proc(p: []string) -> bool {
 // reported once, not per key. Everything is temp-allocated.
 toml_schema_issues :: proc(doc: ^TomlDoc) -> [dynamic]TomlSchemaIssue {
 	issues := make([dynamic]TomlSchemaIssue, context.temp_allocator)
-	dotted :: proc(p: []string) -> string { return strings.join(p, ".", context.temp_allocator) }
+	dotted :: proc(p: []string) -> string {return strings.join(p, ".", context.temp_allocator)}
 
 	header_ok := make([]bool, len(doc.headers), context.temp_allocator)
 	for h, i in doc.headers {
-		if h.invalid || len(h.path) == 0 { continue }
+		if h.invalid || len(h.path) == 0 {
+			continue
+		}
 		name := dotted(h.path)
 		switch {
 		case len(toml_moved_table_cli(h.path[0])) > 0:
 			append(&issues, TomlSchemaIssue{h.line + 1, toml_moved_table_msg(h.path[0]), true})
 		case h.array && slice.contains(TOML_TABLES, h.path[0]):
-			append(&issues, TomlSchemaIssue{h.line + 1, fmt.tprintf("[[%s]]: %s must be a table ([%s]), not an array of tables", name, h.path[0], h.path[0]), true})
+			append(
+				&issues,
+				TomlSchemaIssue {
+					h.line + 1,
+					fmt.tprintf(
+						"[[%s]]: %s must be a table ([%s]), not an array of tables",
+						name,
+						h.path[0],
+						h.path[0],
+					),
+					true,
+				},
+			)
 		case h.array:
-			append(&issues, TomlSchemaIssue{h.line + 1, fmt.tprintf("unknown table [[%s]] (ignored)", name), false})
+			append(
+				&issues,
+				TomlSchemaIssue {
+					h.line + 1,
+					fmt.tprintf("unknown table [[%s]] (ignored)", name),
+					false,
+				},
+			)
 		case !toml_table_known(h.path):
-			append(&issues, TomlSchemaIssue{h.line + 1, fmt.tprintf("unknown table [%s] (ignored)", name), false})
+			append(
+				&issues,
+				TomlSchemaIssue {
+					h.line + 1,
+					fmt.tprintf("unknown table [%s] (ignored)", name),
+					false,
+				},
+			)
 		case:
 			header_ok[i] = true
 		}
 	}
 
 	for e in doc.entries {
-		if len(e.key) == 0 { continue }
+		if len(e.key) == 0 {
+			continue
+		}
 		path := make([dynamic]string, context.temp_allocator)
 		if e.header >= 0 {
-			if !header_ok[e.header] { continue } // reported with its table
+			if !header_ok[e.header] {
+				continue
+			} // reported with its table
 			append(&path, ..doc.headers[e.header].path)
 		}
 		append(&path, ..e.key)
@@ -425,11 +536,17 @@ toml_schema_issues :: proc(doc: ^TomlDoc) -> [dynamic]TomlSchemaIssue {
 			continue
 		}
 		if len(p) == 1 && slice.contains(TOML_TABLES, p[0]) {
-			append(&issues, TomlSchemaIssue{line, fmt.tprintf("%s must be a table ([%s])", p[0], p[0]), true})
+			append(
+				&issues,
+				TomlSchemaIssue{line, fmt.tprintf("%s must be a table ([%s])", p[0], p[0]), true},
+			)
 			continue
 		}
 		if !toml_key_known(p) {
-			append(&issues, TomlSchemaIssue{line, fmt.tprintf("unknown key %s (ignored)", dotted(p)), false})
+			append(
+				&issues,
+				TomlSchemaIssue{line, fmt.tprintf("unknown key %s (ignored)", dotted(p)), false},
+			)
 			continue
 		}
 		if msg := script_default_lang_issue(p, e.value); len(msg) > 0 {
@@ -439,37 +556,155 @@ toml_schema_issues :: proc(doc: ^TomlDoc) -> [dynamic]TomlSchemaIssue {
 		if len(p) == 2 && p[0] == "secrets" && p[1] == "backend" {
 			word := e.value.str_val if e.value != nil && e.value.type == .STRING else ""
 			if _, known := secrets_backend_parse(word); !known {
-				append(&issues, TomlSchemaIssue{line, "secrets.backend must be one of \"auto\", \"keychain\", \"secret-service\", \"file\"", true})
+				append(
+					&issues,
+					TomlSchemaIssue {
+						line,
+						"secrets.backend must be one of \"auto\", \"keychain\", \"secret-service\", \"file\"",
+						true,
+					},
+				)
 			}
 			continue
 		}
+		if len(p) == 2 &&
+		   p[0] == "settings" &&
+		   (p[1] == "autosuggest" || p[1] == "highlight") &&
+		   (e.value == nil || e.value.type != .BOOLEAN) {
+			append(
+				&issues,
+				TomlSchemaIssue {
+					line,
+					fmt.tprintf("settings.%s must be true or false", p[1]),
+					true,
+				},
+			)
+			continue
+		}
+		if len(p) == 2 && p[0] == "settings" && p[1] == "highlight_styles" {
+			if e.value == nil || e.value.type != .TABLE {
+				append(
+					&issues,
+					TomlSchemaIssue {
+						line,
+						"settings.highlight_styles must be a table of style = \"spec\" (e.g. { command = \"fg=green\" })",
+						true,
+					},
+				)
+				continue
+			}
+			names := make([dynamic]string, context.temp_allocator)
+			for k in e.value.table_val {append(&names, k)}
+			slice.sort(names[:])
+			for k in names {
+				if highlight_style_index(k) < 0 {
+					append(
+						&issues,
+						TomlSchemaIssue {
+							line,
+							fmt.tprintf("unknown key settings.highlight_styles.%s (ignored)", k),
+							false,
+						},
+					)
+				} else if msg := highlight_style_issue(k, e.value.table_val[k]); len(msg) > 0 {
+					append(&issues, TomlSchemaIssue{line, msg, true})
+				}
+			}
+			continue
+		}
+		if len(p) == 3 && p[0] == "settings" && p[1] == "highlight_styles" {
+			if msg := highlight_style_issue(p[2], e.value); len(msg) > 0 {
+				append(&issues, TomlSchemaIssue{line, msg, true})
+			}
+			continue
+		}
+		if len(p) == 2 &&
+		   p[0] == "settings" &&
+		   p[1] == "autosuggest_style" &&
+		   (e.value == nil ||
+				   e.value.type != .STRING ||
+				   !autosuggest_style_valid(e.value.str_val)) {
+			append(
+				&issues,
+				TomlSchemaIssue {
+					line,
+					"settings.autosuggest_style must be a highlight spec string like \"fg=8\" (one line, at most 64 bytes)",
+					true,
+				},
+			)
+			continue
+		}
 		// Inline tables of [tools] / [prompt.contexts]: check their keys.
-		inline := (len(p) == 2 && p[0] == "tools") || (len(p) == 3 && p[0] == "prompt" && p[1] == "contexts")
+		inline :=
+			(len(p) == 2 && p[0] == "tools") ||
+			(len(p) == 3 && p[0] == "prompt" && p[1] == "contexts")
 		if inline && e.value != nil && e.value.type == .TABLE {
 			keys := make([dynamic]string, context.temp_allocator)
-			for k in e.value.table_val { append(&keys, k) }
+			for k in e.value.table_val {append(&keys, k)}
 			slice.sort(keys[:])
 			for k in keys {
 				sub := make([dynamic]string, context.temp_allocator)
 				append(&sub, ..p)
 				append(&sub, k)
 				if !toml_key_known(sub[:]) {
-					append(&issues, TomlSchemaIssue{line, fmt.tprintf("unknown key %s (ignored)", dotted(sub[:])), false})
+					append(
+						&issues,
+						TomlSchemaIssue {
+							line,
+							fmt.tprintf("unknown key %s (ignored)", dotted(sub[:])),
+							false,
+						},
+					)
 				}
 			}
 		}
 	}
-	slice.stable_sort_by(issues[:], proc(a, b: TomlSchemaIssue) -> bool { return a.line < b.line })
+	slice.stable_sort_by(issues[:], proc(a, b: TomlSchemaIssue) -> bool {return a.line < b.line})
 	return issues
 }
 
 // toml_schema_issues of `content` (parse errors are toml_check's job).
 toml_content_schema_issues :: proc(content: string) -> [dynamic]TomlSchemaIssue {
 	arena: virtual.Arena
-	if virtual.arena_init_growing(&arena) != nil { return make([dynamic]TomlSchemaIssue, context.temp_allocator) }
+	if virtual.arena_init_growing(&arena) != nil {
+		return make([dynamic]TomlSchemaIssue, context.temp_allocator)
+	}
 	defer virtual.arena_destroy(&arena)
 	doc, _ := toml_doc_parse_alloc(content, virtual.arena_allocator(&arena))
 	return toml_schema_issues(&doc)
+}
+
+// Messages for the moved tables ([paths]/[aliases]/[env]) `content` still
+// holds, one per table, in file order. `wayu build` (also run by the prompt
+// hook) warns with them so a hand edit there is not silently ignored
+// (OKAMI-333). Temp-allocated.
+toml_moved_table_warnings :: proc(content: string) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	arena: virtual.Arena
+	if virtual.arena_init_growing(&arena) != nil {
+		return out[:]
+	}
+	defer virtual.arena_destroy(&arena)
+	doc, _ := toml_doc_parse_alloc(content, virtual.arena_allocator(&arena))
+	seen := make([dynamic]string, context.temp_allocator)
+	note :: proc(name: string, seen: ^[dynamic]string, out: ^[dynamic]string) {
+		if len(toml_moved_table_cli(name)) == 0 || slice.contains(seen[:], name) {
+			return
+		}
+		append(seen, strings.clone(name, context.temp_allocator))
+		append(out, toml_moved_table_msg(name))
+	}
+	for h in doc.headers {
+		if !h.invalid && len(h.path) > 0 {
+			note(h.path[0], &seen, &out)
+		}
+	}
+	for e in doc.entries {
+		if e.header < 0 && len(e.key) > 0 {
+			note(e.key[0], &seen, &out)
+		}
+	}
+	return out[:]
 }
 
 // Handle 'wayu toml show' - display TOML content
@@ -480,7 +715,7 @@ handle_toml_show :: proc() {
 	content, err := os.read_entire_file_from_path(toml_file, context.allocator)
 	if err != nil {
 		fmt.eprintfln("Failed to read TOML file: %s", toml_file)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	defer delete(content)
 
@@ -497,18 +732,25 @@ handle_toml_keys :: proc() {
 	content, err := os.read_entire_file_from_path(toml_file, context.allocator)
 	if err != nil {
 		print_error_simple("Failed to read TOML file: %s", toml_file)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	defer delete(content)
 
 	arena: virtual.Arena
-	if virtual.arena_init_growing(&arena) != nil { os.exit(EXIT_IOERR) }
+	if virtual.arena_init_growing(&arena) != nil {
+		wayu_exit(EXIT_IOERR)
+	}
 	defer virtual.arena_destroy(&arena)
 	doc, ok := toml_doc_parse_alloc(string(content), virtual.arena_allocator(&arena))
 	if !ok {
 		e := doc.errors[0]
-		print_error_simple("Failed to parse TOML file: %s (line %d: %s)", toml_file, e.line, e.msg)
-		os.exit(EXIT_DATAERR)
+		print_error_simple(
+			"Failed to parse TOML file: %s (line %d: %s)",
+			toml_file,
+			e.line,
+			term_safe(e.msg),
+		)
+		wayu_exit(EXIT_DATAERR)
 	}
 
 	// Root `key = value` statements and table headers interleave in file
@@ -517,20 +759,27 @@ handle_toml_keys :: proc() {
 	h, i := 0, 0
 	for h < len(doc.headers) || i < len(doc.entries) {
 		key: string
-		if i < len(doc.entries) && (h >= len(doc.headers) || doc.entries[i].first < doc.headers[h].line) {
+		if i < len(doc.entries) &&
+		   (h >= len(doc.headers) || doc.entries[i].first < doc.headers[h].line) {
 			e := doc.entries[i]
 			i += 1
-			if e.header != -1 || len(e.key) == 0 { continue }
+			if e.header != -1 || len(e.key) == 0 {
+				continue
+			}
 			key = e.key[0]
 		} else {
 			hd := doc.headers[h]
 			h += 1
-			if len(hd.path) == 0 { continue }
+			if len(hd.path) == 0 {
+				continue
+			}
 			key = hd.path[0]
 		}
-		if key in seen { continue }
+		if key in seen {
+			continue
+		}
 		seen[key] = true
-		fmt.println(key)
+		fmt.println(term_safe(key))
 	}
 }
 
@@ -540,21 +789,21 @@ handle_toml_command :: proc(action: Action) {
 	case .CHECK:
 		// Validate TOML config
 		if !check_wayu_initialized() {
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 		if !handle_validate() {
-			os.exit(EXIT_DATAERR)
+			wayu_exit(EXIT_DATAERR)
 		}
 	case .LIST:
 		// Show all TOML keys
 		if !check_wayu_initialized() {
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 		handle_toml_keys()
 	case .GET:
 		// Show TOML content
 		if !check_wayu_initialized() {
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 		handle_toml_show()
 	case .HELP:
@@ -562,7 +811,7 @@ handle_toml_command :: proc(action: Action) {
 	case:
 		fmt.eprintln("Unknown toml action")
 		print_toml_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
@@ -640,7 +889,7 @@ toml_strip_inline_comment_strict :: proc(line: string) -> (string, bool) {
 
 toml_is_escaped_quote :: proc(s: string, i: int) -> bool {
 	bs := 0
-	for j := i - 1; j >= 0 && s[j] == '\\'; j -= 1 { bs += 1 }
+	for j := i - 1; j >= 0 && s[j] == '\\'; j -= 1 {bs += 1}
 	return bs % 2 == 1
 }
 
@@ -655,7 +904,6 @@ toml_is_escaped_quote :: proc(s: string, i: int) -> bool {
 // defined in config_toml.odin) into the strongly-typed `TomlConfig` struct
 // that the rest of wayu consumes. Pure data-shape translation; no I/O,
 // no serialization, no command-handler logic.
-
 
 
 // ============================================================================
@@ -732,11 +980,16 @@ doc_parse_base_fields :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
 @(private = "file")
 doc_parse_settings_section :: proc(doc: ^TomlDoc, config: ^TomlConfig) {
 	val := get_toml_value(doc, "settings")
-	if val == nil || val.type != .TABLE { return }
-	if v, ok := val.table_val["autosuggestions_accept_keys"]; ok && v.type == .ARRAY {
-		if keys, ok2 := get_string_array(v); ok2 { config.settings.autosuggestions_accept_keys = keys }
+	if val == nil || val.type != .TABLE {
+		return
 	}
-	if config.settings.autosuggestions_accept_keys == nil || len(config.settings.autosuggestions_accept_keys) == 0 {
+	if v, ok := val.table_val["autosuggestions_accept_keys"]; ok && v.type == .ARRAY {
+		if keys, ok2 := get_string_array(v); ok2 {
+			config.settings.autosuggestions_accept_keys = keys
+		}
+	}
+	if config.settings.autosuggestions_accept_keys == nil ||
+	   len(config.settings.autosuggestions_accept_keys) == 0 {
 		config.settings.autosuggestions_accept_keys = default_autosuggest_keys()
 	}
 }

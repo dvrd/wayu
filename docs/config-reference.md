@@ -50,7 +50,15 @@ they live, and which files are generated.
 | `WAYU_DATA_DIR` | `${XDG_DATA_HOME:-~/.local/share}/wayu` | Data wayu manages: `entries.json`, `plugins.json`, `functions/` (`wayu function`), `scripts/` and `bin/` (`wayu script`), and generated / runtime files: `init.<ext>`, `core.<ext>`, `path_sync.<ext>`, `turbo.<ext>`, `plugins.<ext>`, `plugins/`, `completions/`, `backup/`, `.wayu.lock` |
 
 - Each variable is read independently: setting one never moves the other.
-  `wayu init` creates both dirs.
+  `wayu init` creates both dirs; the first command that writes creates the
+  data dir if it is missing.
+- wayu creates its dirs (and missing parents) `0700` whatever the umask, and
+  `wayu init` removes group/other write from existing ones: they hold code
+  your shell runs at startup, and `bin/` is on PATH. `wayu doctor` reports a
+  group/other-writable one as an error; `wayu doctor --fix --yes` tightens it.
+- `WAYU_CONFIG_DIR` and `WAYU_DATA_DIR` must be absolute paths: a relative one
+  makes every command exit `78`. A relative `XDG_DATA_HOME` is ignored (XDG
+  spec), so the data dir is then `~/.local/share/wayu`.
 - The rc line `wayu init` adds finds the data dir by itself:
 
   ```sh
@@ -178,7 +186,10 @@ Keys:
 | Everything else: the generator (`wayu build`, every write), the TUI (lenient) | Use what was recovered; a line that is not valid TOML is skipped |
 
 Strict-only failures: a key defined twice in one table, a table defined twice,
-an integer with leading zeros (`007`), an unquoted string.
+an integer with leading zeros (`007`), an unquoted string, a raw control
+character inside a string (anything below 0x20 but tab, and DEL; multi-line
+strings may also hold line breaks: write the others as escapes such as
+`\u001b`), arrays or inline tables nested more than 128 deep.
 
 After parsing, `wayu toml validate` also checks:
 
@@ -211,11 +222,140 @@ top-level `shell = "..."` string is not read (`toml validate` rejects it).
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `autosuggestions_accept_keys` | array of strings | `["^Y", "^[[121;5u"]` | zsh only. Key sequences bound to `autosuggest-accept` (zsh-autosuggestions) in the `main`, `emacs` and `viins` keymaps. Entries must start with `^` or contain `[`; others, non-strings, empties and duplicates are ignored. An empty or missing array uses the default. The array may span lines. |
+| `autosuggest` | boolean | `false` | zsh only (interactive). Built-in fish-like suggestions from history, in place of the zsh-autosuggestions plugin: see [Autosuggestions](#autosuggestions). A non-boolean value is an error (`toml validate`, `doctor`). |
+| `autosuggest_style` | string | `"fg=8"` | zsh only. How the suggestion is drawn: a `region_highlight` spec (`fg=244`, `fg=8,underline`; one line, at most 64 bytes, else an error). |
+| `autosuggestions_accept_keys` | array of strings | `["^Y", "^[[121;5u"]` | zsh only. Key sequences that accept the whole suggestion: bound to `autosuggest-accept` (zsh-autosuggestions) in the `main`, `emacs` and `viins` keymaps, or, with `autosuggest = true`, to `wayu-suggest-accept` in `emacs` and `viins`. Entries must start with `^` or contain `[`; others, non-strings, empties and duplicates are ignored. An empty or missing array uses the default. The array may span lines. |
+| `auto_optimize` | boolean | `false` | When an open shell notices that a startup file changed (prompt hook) and it has lines `wayu optimize` can move, move them right away (backups first) and print what moved, instead of printing the `wayu: ~/.zshrc changed: N lines can be optimized` notice. |
 
-The bindings are written to `<data>/plugins/config.zsh`, which `core.zsh`
-sources after the plugins; they apply only when the `autosuggest-accept`
-widget exists. No other `[settings]` key is read.
+| `compinit_guard` | boolean | `true` | zsh only. After wayu's `compinit`, `compinit` is a function that only registers the completions (`#compdef` / `#autoload` files) of `fpath` dirs added since; its flags (`-C`, `-i`, `-u`, `-d <dump>`, ...) are accepted and ignored. An installer's `autoload -Uz compinit && compinit` in `.zshrc` then costs a glob of the new dirs instead of a second full completion setup (audit, dump check/rewrite), and its dirs' completions work even with `-C`. The same registration runs once at the first prompt, for dirs added to `fpath` without a `compinit` call. `false`: later `compinit` calls are zsh's own. |
+| `defer_plugins` | boolean | `false` | zsh only. Load the plugins (`plugins.zsh`, `plugins/config.zsh`) after the first prompt is drawn (through zsh-defer) instead of during startup. They then load after `tools.zsh` / `extra.zsh`: code there that needs a plugin widget should run through `zsh-defer`. |
+| `highlight` | boolean | `false` | zsh only (interactive). Built-in syntax highlighting of the command line, in place of the zsh-syntax-highlighting / fast-syntax-highlighting plugins: see [Syntax highlighting](#syntax-highlighting). A non-boolean value is an error. |
+| `highlight_styles` | table of strings | see [styles](#syntax-highlighting) | zsh only. Per-style `region_highlight` specs, as an inline table (`highlight_styles = { command = "fg=blue", comment = "fg=244" }`) or a `[settings.highlight_styles]` table. `"none"`: not highlighted. A value that isn't a one-line string of at most 64 bytes is an error; an unknown style name is a warning (ignored). |
+| `lazy_compinit` | boolean | `false` | zsh only. No `compinit` at startup: the completion widgets (Tab, `^D` list, ...) set up completion on first use and then complete. `compdef` calls made before that are queued and replayed. `$_comps` and completion functions don't exist until then. |
+
+The plugin bindings are written to `<data>/plugins/config.zsh`, which
+`core.zsh` sources after the plugins; they apply only when the
+`autosuggest-accept` widget exists. No other `[settings]` key is read.
+
+#### Autosuggestions
+
+`autosuggest = true` puts suggestions in `core.zsh` itself (interactive zsh;
+nothing forks, no extra files). As you type, the newest history entry
+that starts with the line (typed glob characters are literal) is shown after
+the cursor in `autosuggest_style`. It is computed in a `zle-line-pre-redraw`
+hook (`add-zle-hook-widget`, which zsh-syntax-highlighting 0.8+ also uses)
+instead of wrapping every widget at the first prompt and before every prompt
+as the zsh-autosuggestions plugin does.
+
+- Accept all: `forward-char`, `end-of-line`, `vi-forward-char`,
+  `vi-end-of-line`, `vi-add-eol` (→, `^F`, `^E`/End where bound, vi `l`
+  `$` `A`) with the cursor at the end of the line, and the
+  `autosuggestions_accept_keys` (default `^Y`).
+- Accept part: `forward-word`, `emacs-forward-word`, `vi-forward-word`,
+  `vi-forward-word-end`, `vi-forward-blank-word`, `vi-forward-blank-word-end`,
+  `vi-find-next-char`, `vi-find-next-char-skip` (`M-f`, vi `w` `e` `W` `E`
+  `f` `t`) move through the suggestion and take what ends up before the
+  cursor.
+- Only these 13 widgets are wrapped (chaining to what was bound before);
+  the suggestion is gone when the cursor isn't at the end, after history
+  and search widgets (the line already came from history) and once the line
+  is accepted: Enter runs only what you typed.
+- With `autosuggest = true` the zsh-autosuggestions plugin is not loaded,
+  even if installed and enabled (`wayu doctor` warns until it is removed or
+  disabled). `defer_plugins` / `lazy_compinit` don't affect it (it is set up
+  at startup; it is cheap). bash and fish ignore it (`doctor` notes it).
+- Suggestions come from history (most recent match); a multi-line history
+  entry is suggested whole. When nothing in history matches and the line is
+  a single word, the shortest command name on `PATH` starting with it is
+  suggested (ties: alphabetical), e.g. `no` → `node` if no `no…` command is
+  shorter. No completion strategy beyond that.
+
+#### Syntax highlighting
+
+`highlight = true` puts a syntax highlighter in `core.zsh` itself
+(interactive zsh; nothing forks, no extra files, no widget is wrapped).
+It runs in a `zle-line-pre-redraw` hook, like the autosuggestions: zsh's own
+lexer (`${(z)BUFFER}`) splits the line into words, which are colored by
+`region_highlight` entries (tagged `memo=wayu-highlight` on zsh 5.9+; other
+entries, such as the suggestion's or your own, are kept). The line is only
+looked at again when it changed, and an edit anywhere in it re-highlights
+from the word before the change until the words after it are back in the
+state they had (usually a word or two), not the whole line. Lines already
+entered at a continuation prompt (PS2) are highlighted with the current one,
+so its words keep their meaning. Command lookups and path checks are cached
+until a command runs or the directory / `PATH` changes.
+
+The style names are zsh-syntax-highlighting's (its `ZSH_HIGHLIGHT_STYLES`
+values carry over) and so are the defaults:
+
+| Style | Default | What |
+|---|---|---|
+| `unknown-token` | `fg=red,bold` | a command that doesn't exist (yet) |
+| `reserved-word` | `fg=yellow` | `if` `then` `for` `do` `case` `in` `always` `[[` `]]` `{` `}` `((` `))` `(` `)` `!`, case pattern parentheses ... |
+| `alias` | `fg=green` | an alias |
+| `suffix-alias` | `fg=green,underline` | a file run through a suffix alias (`alias -s`) |
+| `global-alias` | `fg=cyan` | a global alias (`alias -g`), anywhere on the line |
+| `builtin` | `fg=green` | a builtin (`typeset` & co. too) |
+| `function` | `fg=green` | a function |
+| `command` | `fg=green` | a command on `PATH`, or an executable path |
+| `precommand` | `fg=green,underline` | `sudo` `doas` `env` `command` `builtin` `exec` `noglob` `nocorrect` `time` `nohup` `nice` `-`: the next word is a command again (after their options; `sudo -u user`, `env -u NAME`, `env NAME=value` are understood) |
+| `commandseparator` | none | `;` `&&` `\|\|` `\|` `\|&` `&` `;;`, newline |
+| `autodirectory` | `fg=green,underline` | a directory in command position, with `setopt autocd` |
+| `path` | `underline` | an existing file or directory (`~` and `~name` expanded) |
+| `path_prefix` | `underline` | the last word, while it is the start of an existing name |
+| `globbing` | `fg=blue` | a word with unquoted `*` `?` `[...]` |
+| `expansion` | `fg=cyan` | `$var` `${...}` `$((...))` outside double quotes (wayu's; zsh-syntax-highlighting leaves them plain) |
+| `command-substitution-delimiter` | `fg=magenta` | `$(` and `)`; the inside is highlighted as a command line |
+| `process-substitution-delimiter` | `fg=magenta` | `<(` `>(` `=(` and `)` |
+| `back-quoted-argument-delimiter` | `fg=magenta` | the backticks of `` `...` `` |
+| `single-hyphen-option` | none | `-x` |
+| `double-hyphen-option` | none | `--long` |
+| `single-quoted-argument` | `fg=yellow` | `'...'` (to the end while unterminated) |
+| `double-quoted-argument` | `fg=yellow` | `"..."` (to the end while unterminated) |
+| `dollar-quoted-argument` | `fg=yellow` | `$'...'` |
+| `dollar-double-quoted-argument` | `fg=cyan` | `$var` `${...}` `$((...))` inside `"..."` |
+| `back-double-quoted-argument` | `fg=cyan` | `\"` `\$` `` \` `` `\\` inside `"..."` |
+| `back-dollar-quoted-argument` | `fg=cyan` | `\n` & co. inside `$'...'` |
+| `assign` | none | `NAME=value` before a command or after `typeset` & co. (the value is highlighted too), `name=(` ... `)` |
+| `redirection` | `fg=yellow` | `>` `>>` `<` `2>` `&>` `<<<` `>&` `{fd}>` ... |
+| `comment` | `fg=black,bold` | `# ...`, with `setopt interactive_comments` |
+| `history-expansion` | `fg=blue` | `!!` `!$` `!-2` `!str` ... (with `banghist`; also inside `"..."`, where zsh expands them too) |
+| `named-fd` | none | `{fd}` in `{fd}>file` |
+| `numeric-fd` | none | the descriptor after `>&` / `<&` (`2>&1`, `>&-`) |
+| `bracket-level-1` | `fg=blue,bold` | `(` `)` `[` `]` `{` `}` outside quotes, by nesting depth (levels 1–3, then 1 again) |
+| `bracket-level-2` | `fg=green,bold` | |
+| `bracket-level-3` | `fg=magenta,bold` | |
+| `bracket-error` | `fg=red,bold` | a bracket without its pair (or closed by the wrong one) |
+| `cursor-matchingbracket` | `standout` | the pair of the bracket under the cursor |
+
+- Heredoc bodies are skipped; what follows the delimiter line is a command
+  line again.
+- The selected region, the incremental search match and pasted text keep
+  their `zle_highlight` look (default: standout / underline / standout).
+- With `highlight = true` the zsh-syntax-highlighting and
+  fast-syntax-highlighting plugins are not loaded, even if installed and
+  enabled (`wayu doctor` warns until they are removed or disabled).
+  `defer_plugins` / `lazy_compinit` don't affect it (it is set up at
+  startup; it is cheap). bash and fish ignore it (`doctor` notes it).
+- Brackets: `((` `))` of arithmetic, `[[` `]]`, `[` `]` as words, the
+  parentheses of case patterns and of `name=(...)` are syntax, not brackets;
+  brackets inside `"..."` are not counted.
+- After `noglob`, `*` `?` `[...]` are not highlighted as globs; after
+  `command -v`, the name is highlighted as a command.
+- Not covered (zsh-syntax-highlighting's other highlighters and some main
+  ones): `rc-quote`, `hashed-command`, path separators; a line longer than
+  20000 characters is not highlighted. `tests/highlight_diff` compares the
+  highlighter with fast-syntax-highlighting and lists the intended
+  differences.
+
+Interactive-only parts of `core.zsh` (completion, the native prompt,
+plugins, zsh-defer) are skipped in non-interactive zsh (`zsh -c`,
+scripts): there it sets constants, secrets, PATH entries, `functions/`,
+`config.zsh`, `[tools]`, `tools.zsh`, `extra.zsh` and aliases (zsh expands
+aliases in `zsh -c` too), and `zsh-defer` is a no-op. Sourcing `init.zsh`
+again in a shell (e.g. from both `.zshenv` and `.zshrc`) doesn't reorder
+PATH, add wayu's completions dir to `fpath` twice, source an already
+loaded plugin again or redo `compinit`.
 
 ### `[tools]`
 
@@ -235,7 +375,8 @@ args = "hook zsh"
 ```
 
 Each entry is an inline table or a `[tools.<name>]` sub-table; other values
-are ignored. Entries are emitted sorted by name (not file order).
+are ignored. Entries are emitted in file order (an entry may rely on one
+above it).
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
@@ -273,9 +414,11 @@ call, so it can never run code at startup:
 For example `args = 'init "$HOME/x y" ~/z {a,b}'` generates
 `_wayu_evalcache foo init "${HOME}/x y" "${HOME}/z" '{a,b}'`.
 
-**fish.** `[tools]` load in fish too. In `args`, a word `zsh` or `bash`
-becomes `fish` and `--zsh` / `--bash` becomes `--fish`, so
-`args = "init zsh"` runs `zoxide init fish`.
+**Shell name in `args`.** One entry serves every shell: a word `zsh` or
+`bash` in `args` becomes the shell whose file is generated, and `--zsh` /
+`--bash` becomes `--<shell>`. `args = "init zsh"` runs `zoxide init zsh` in
+core.zsh, `zoxide init bash` in core.bash and `zoxide init fish` in fish
+(`[tools]` load in fish too).
 
 **Where they load** (see [Load order](#load-order)): eager evalcache tools
 before the prompt and plugins; all other non-login tools ("deferred") after
@@ -284,19 +427,13 @@ the plugins; `login_only` tools after `tools.<ext>` and `extra.<ext>`.
 
 ### `[prompt]`
 
-A native zsh prompt, off by default. It is generated only for zsh, only when
-`[prompt] enabled = true`, and set up only in interactive shells. bash and
-fish ignore the whole table.
+A native prompt for zsh and fish, off by default. It is generated only when
+`[prompt] enabled = true`, and set up only in interactive shells. bash
+ignores the whole table. fish differences: see [fish](#prompt-in-fish).
 
-The `[prompt]` tables are read line by line, not with the TOML parser:
-
-- Each header must be exactly `[prompt]`, `[prompt.username]`, ... on its own
-  line: `[prompt] # mine` or `[ prompt ]` is not recognised (and the prompt
-  stays off).
-- Each key and value must be on one line; `[prompt.contexts]` entries are
-  one-line inline tables.
-- `enabled` and `vi_mode` must be the bare word `true` (a trailing `# comment`
-  is fine).
+The `[prompt]` tables are read with the same TOML parser as the rest of
+`wayu.toml`: comments, dotted keys, `[prompt.contexts.<name>]` tables and
+multi-line strings work, and a value of the wrong type keeps the default.
 
 #### `[prompt]`
 
@@ -369,7 +506,7 @@ variables. Config text is always literal: `$(...)` in it never runs.
 | `error_symbol` | string | `✗` | Symbol after a failed command. |
 | `vimcmd_symbol` | string | `❮` | vi normal mode. |
 | `vimcmd_visual_symbol` | string | `❮` | vi visual mode. |
-| `vimcmd_replace_symbol` | string | `❮` | vi replace mode. |
+| `vimcmd_replace_symbol` | string | `❮` | vi replace mode: `R`, and `r` while it waits for the character. |
 
 Only the text between `[` and `]` is used (`"[>](green)"` gives `>`); the
 style part is ignored. Colors are fixed: green on success, red on error;
@@ -405,8 +542,30 @@ name. A built-in match without a user `format` shows the shell name.
 | `transient_enabled` | boolean | `true` | Minimal prompt = current dir + success/error symbol. `false`: minimal prompt = `%~ ➜ `. Only reachable through the toggle. |
 | `vi_mode_indicator` | boolean | `true` | With `vi_mode`, track the keymap in `{character}`. `zle-line-init` / `zle-keymap-select` already defined are kept and run first. |
 | `context_aware` | boolean | `true` | Detect the project type on `cd` (for `{language_context}`). |
-| `async_rprompt` | boolean | `true` | Background job after each command: git changed-file count (right prompt) and context version. |
+| `async_rprompt` | boolean | `true` | Background job after each command: git changed-file count (right prompt) and context version. Started only in a git work tree or a context with a version command; elsewhere the right prompt is cleared without forking. |
 | `rprompt_format` | string | `"[ {git_pending}](242)"` | Right prompt, shown when the work tree has changes. `{git_pending}` = number of changed files, `{git_branch}` = branch. |
+
+#### Prompt in fish
+
+core.fish defines `fish_prompt` (and `fish_right_prompt` with
+`async_rprompt`) from the same tables, in interactive shells, before the
+plugins: a plugin or `config.fish` code that defines `fish_prompt` later
+wins. Same tokens, module variables, styles (as ANSI colors; a styled part
+ends with a full reset), symbols and colors. A render runs only fish
+builtins, except `{localip}`. Differences:
+
+- `vi_mode = true` sets `fish_key_bindings` to `fish_vi_key_bindings`;
+  `{character}` follows `$fish_bind_mode` (insert, default = normal, visual,
+  replace / replace_one) and `fish_mode_prompt` is emptied. Without
+  `vi_mode` the key bindings and `fish_mode_prompt` are left alone.
+- `toggle_key` must be `^X` (a letter, bound as `\cx`); it is bound from
+  `fish_user_key_bindings`, which calls one defined before wayu first. Other
+  keys are not bound (a comment in core.fish says so).
+- `[prompt.contexts]` detection runs on `$PWD` changes; a glob matches with
+  `*` only.
+- `async_rprompt` starts `fish --no-config` in the background per prompt
+  (only in a git work tree or a versioned context) and repaints on
+  `SIGUSR1`.
 
 ### `[scripts]`
 
@@ -441,29 +600,54 @@ in the constants' order. A run-only secret (`--run-only`) is also listed in
 `entries.json`; it is never written to the session cache, so shells never
 export it, and only `wayu secrets run` decrypts it. The mark is part of the
 associated data (`NAME` + `\0run-only`), so removing it from `secrets.json`
-makes the value fail to decrypt rather than get exported. `backend` says where the master key lives:
+makes the value fail to decrypt rather than get exported. The file is read
+strictly: any other field, text after the object, a name that is not a shell
+variable name, a non-string value, or a `run_only` name missing from
+`values` makes it malformed (secret commands exit `78`, `doctor` reports an
+error). `backend` says where the master key lives:
 
 | `backend` | Key storage |
 |---|---|
-| `"auto"` (default) | `keychain` on macOS; `secret-service` on Linux when `secret-tool` is on PATH; else `file` |
-| `"keychain"` | macOS login keychain: generic password, account `wayu`, service `wayu-master-key`, via `security`. Storing (first secret, `rekey`) passes the key on `security`'s command line for a moment, where other processes of the same user could see it. |
-| `"secret-service"` | freedesktop Secret Service via `secret-tool` (`service wayu account master`); the key goes over stdin |
-| `"file"` | `<config>/secret.key`: 64 hex characters, `0600`, created exclusively; refused when group/other can read it. Protects against reading the data dir alone, not against reading your whole home. |
+| `"auto"` (default) | `keychain` on macOS; `secret-service` on Linux when `secret-tool` is installed in `/usr/bin`, `/usr/local/bin`, `/bin` or `/run/current-system/sw/bin`; else `file` |
+| `"keychain"` | macOS login keychain: generic password, service `wayu-master-key`, account `wayu-<id>`, via `/usr/bin/security`. Storing (first secret, `rekey`) runs `security -i` and writes the command on its stdin: the key is never on a command line. |
+| `"secret-service"` | freedesktop Secret Service via `secret-tool` (`service wayu account wayu-<id>`) from one of those dirs; the key goes over stdin |
+| `"file"` | `<config>/secret.key`: 64 hex characters, `0600`, created exclusively; refused when group/other can read it. Protects against reading the data dir alone, not against reading your whole home. It lives in the config dir: never commit it to a dotfiles repo (add `secret.key` to its `.gitignore`); anyone with the file and `secrets.json` can decrypt every secret. |
+
+`security` and `secret-tool` are never looked up in `PATH`: a program of
+that name planted earlier in `PATH` would receive the key.
+
+`<id>` is 16 hex digits identifying the data dir (FNV-1a 64 of its path, the
+same id as in the session cache name): each data dir (another
+`WAYU_DATA_DIR`, a test `HOME`) has its own key and never reads another's.
+`wayu doctor` prints the account (`keychain (account wayu-…)`). A key left by wayu 6.0 (one shared item: keychain account `wayu`, Secret Service `account master`) is copied to the per-data-dir account the first time it is needed, when it decrypts the data dir's `secrets.json`; the old item is kept.
 
 Any other value is an error (`toml validate` exits `65`; secret commands exit
 `78`). The key is created with the first secret; wayu never creates a new
 key while `secrets.json` holds values (it would make them undecryptable).
-`wayu secrets rekey` replaces it and re-encrypts everything.
+`wayu secrets rekey` replaces it and re-encrypts everything: the new store
+is written to `secrets.json.rekey` first, then the key is saved, then the
+file is renamed over `secrets.json`; if wayu is interrupted in between, the
+next command that reads the store finishes or undoes the rekey, whichever
+matches the stored key.
 
 At shell start `core.<ext>` sources the session cache
-`${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/wayu-<uid>/secrets-<id>.<ext>` (single-
-quoted `export` / `set -gx` lines, `0600` in a `0700` dir you own) when it is
-newer than `secrets.json`, without forking. Otherwise it runs
+`${XDG_RUNTIME_DIR:-${TMPDIR:-<data>/run}}/wayu-<uid>/secrets-<id>.<ext>`
+(single-quoted `export` / `set -gx` lines, `0600` in a `0700` dir you own)
+when it is newer than `secrets.json`, without forking in zsh (bash and fish
+run one `ls -ldn` to read the dir's mode). The dir must be yours, not a
+symlink and without group/other permission bits (else
+`<data>/run/wayu-<uid>` is used), and the file must
+be yours and not a symlink; with neither `XDG_RUNTIME_DIR` nor `TMPDIR` set
+the cache lives under `<data>/run` (`0700`), never in a shared `/tmp`. Otherwise it runs
 `wayu secrets cache` once to (re)write it. If the key is unavailable or a
 value does not decrypt, one `wayu: secrets not loaded: …` line goes to stderr
-and startup continues without the secrets. Every change to `secrets.json`
-deletes the cache; `wayu secrets lock` deletes it by hand. Secret values are
-literal: no `$VAR` or `~` expansion.
+and startup continues without the secrets. The cache holds the values in
+plaintext on disk until it is deleted: every change to `secrets.json`
+deletes it, and `wayu secrets lock` deletes it by hand. Both remove the
+caches of this data dir from every cache dir wayu wrote one to (each is
+recorded in `<data>/run/cache-dirs`), whatever `TMPDIR` / `XDG_RUNTIME_DIR`
+the deleting command runs with. Secret values are literal: no `$VAR` or `~`
+expansion.
 
 Decrypted values are never written to `core.<ext>`, `path_sync.<ext>`,
 `turbo.<ext>`, backups or logs; only to the session cache and to the output
@@ -521,21 +705,24 @@ into `core.<ext>`. They are not read from `wayu.toml`; a `[paths]`,
 
 | Field | Meaning |
 |---|---|
-| `version` | `1`. Any other value is an error. |
-| `paths[]` | `{"key", "dir"}`: PATH entries, highest priority first. |
-| `aliases[]` | `{"name", "value"}`: aliases. |
-| `env[]` | `{"name", "value"}`: constants (exported variables), in export order. |
+| `version` | The number `1` (required). Any other value, `"1"` or `1.0` is an error. |
+| `paths[]` | `{"key", "dir"}`: PATH entries, highest priority first. `key`: letters, digits, `_`; `dir`: non-empty, no `:` or newline. |
+| `aliases[]` | `{"name", "value"}`: aliases. `name` follows the [alias name rule](#aliases); `value` must not be blank. |
+| `env[]` | `{"name", "value"}`: constants (exported variables), in export order. `name`: letters, digits, `_`, not starting with a digit. An encrypted one is `{"name", "secret": true}` (no `value`), optionally `"run_only": true`. |
+| `fpath[]` | Strings, zsh only: completion dirs put on `fpath` (first = front) before wayu's `compinit`; the dump is rebuilt when their file list changes. Same expansion as PATH entries. No `:`, newline or glob character (`* ? [ ] ( ) < > | # ^ ~`, except a leading `~`/`~/`): `compinit` glob-expands fpath dirs. Written only when non-empty (`wayu completions fpath`, `wayu optimize`). |
+| `generators[]` | `{"shell", "cmd", "args"}`: `source <(cmd args)` / `eval "$(cmd args)"` lines moved by `wayu optimize`. `core.<shell>` (only that shell's) runs `_wayu_evalcache cmd args` after everything else, before the aliases; zsh/bash in interactive shells only. `args` follows the `[tools]` args rules. Written only when non-empty. |
 
 - **Writes** are atomic (temp file + rename, symlinks kept), under the lock
   shared by concurrent wayu commands, owner-only (`0600`), pretty-printed with
   one entry per line, in stable order: a write changes only the entries it
   touches. Each write is backed up first (`wayu backup restore entries`).
-- **Reading is strict.** A missing file is an empty store. A file that is not
-  valid JSON, has another `version`, a field of the wrong type, an entry
-  without its key / name (or a path without `dir`), or the same key / name
-  twice in a section makes every command that reads it exit `78`, naming the
-  file and the problem; nothing is written. `wayu doctor` reports it too.
-- Unknown fields are ignored and dropped on the next write.
+- **Reading is strict.** A missing file is an empty store. Anything else
+  must be exactly one JSON document (nothing after it, no trailing commas, no
+  key twice in an object, valid UTF-8, no NUL character) that fits the table
+  above: every field with its type, no unknown field, required fields present,
+  names valid, the same key / name at most once per section. Otherwise every
+  command that reads it exits `78`, naming the file and the problem; nothing
+  is written. `wayu doctor` reports it too.
 - It is safe to edit by hand while no wayu command runs; run `wayu build`
   afterwards (open shells also notice a newer file, see
   [PATH entries](#path-entries)).
@@ -566,7 +753,7 @@ entry is a `key` (a label) and a `dir`.
   lookup. `wayu doctor` counts them with the entries it leaves alone, never
   as missing.
   `wayu path add` itself never stores a relative path: it resolves `~`,
-  `$VAR` and relative arguments to an absolute directory, which must exist.
+  `$VAR` and relative arguments to an absolute directory, which must exist (and be a directory).
 - **Integration with PATH:** wayu removes only directories it put on `PATH`
   itself (tracked in `_WAYU_PATHS_MANAGED`); a system directory that is also
   a PATH entry is moved to wayu's position but never removed. In zsh the
@@ -575,24 +762,31 @@ entry is a `key` (a label) and a `dir`.
 
 - **Open shells** pick up PATH changes at their next prompt: the prompt hook
   re-applies `path_sync.<ext>` when its signature changes, and runs `wayu
-  build` first when `wayu.toml` or `entries.json` is newer than it.
+  build` first when `wayu.toml` or `entries.json` is newer than it. That
+  build never compiles: stale scripts are built by a background `wayu
+  script build`. When that build fails (e.g. a malformed `entries.json`
+  save), the hook writes `path_sync.<ext>.regen-failed` and tries again
+  after the next save of either file.
 
 ### Aliases
 
 `wayu alias add ll 'ls -lah'`: each entry is a `name` and a command
 (`value`).
 
-| Rule | `alias add`, TUI | Generator |
-|---|---|---|
-| Name characters | First an ASCII letter or `_`, then letters, digits, `_` or `-` (not first) | Any name without whitespace, quotes, `` ` `` `$ = ; & \| < > ( ) { } \ * ? [ ] # ~ !` or control characters; other names are skipped with a `# wayu: skipping invalid alias name` comment |
-| Reserved names | `if then else elif fi case esac for while until do done in function time select coproc declare typeset local export readonly unset return exit cd pwd echo test true false` are refused | Not checked |
-| Length | At most 255 characters | Not checked |
-| Command | Must not be empty or blank | Emitted as given |
+One rule for `alias add`, the TUI, templates and `entries.json`:
 
-So a hand-written `..` or `g.st` alias in `entries.json` is defined by the
-generated init and shown by `alias list`, but `alias add` refuses the name.
+| Rule | |
+|---|---|
+| Name characters | Printable ASCII except whitespace, quotes, `` ` `` `$ \ = / ^ ; & \| < > ( ) { } [ ] * ? # ~ !`; not starting with `-`. `..`, `g.st`, `1x`, `k8s-ctx` are fine |
+| Reserved names | Names starting with `_wayu` (wayu's helpers), `.` and `if then else elif fi case esac for while until do done in function time select coproc declare typeset local export readonly unset return exit cd pwd echo test true false` are refused |
+| Length | At most 255 characters |
+| Command | Must not be blank; no NUL byte, valid UTF-8 |
 
-Generated code: zsh/bash `alias name='command'`, fish `alias name 'command'`.
+Generated code: zsh/bash `alias name='command'`; fish a function
+`function name --wraps 'command' --description 'alias name command'` whose body
+is `eval 'command' (string escape -- $argv)` (what fish's `alias` defines, but
+the command is never parsed as code when the function is defined; arguments
+pass through literally).
 The command is single-quoted and stored verbatim, so `$VAR` in it expands when
 the alias runs. Aliases are emitted sorted by name, last in `core.<ext>`
 (after plugins and tools), so an alias never breaks a function wayu or a
@@ -617,9 +811,9 @@ named variables expand; every other character, `$` included, is literal:
 |---|---|---|
 | `$NAME` | expands (emitted as `${NAME}`, so `$HOME:h` or `$HOME[1]` are not zsh modifiers / subscripts) | expands |
 | `${NAME}` | expands | expands |
-| `${NAME<op>...}`, op = `-` `=` `+` `?` (each also with a leading `:`), `#`, `%`, `/` | expands, e.g. `${X:-d}`, `${X#pre}`, `${X/a/b}` | literal |
+| `${NAME<op>...}`, op = `-` `+` `?` (each also with a leading `:`), `#`, `%`, `/` | expands, e.g. `${X:-d}`, `${X#pre}`, `${X/a/b}` | literal |
 | `${#NAME}` | expands | literal |
-| Any other `${...}`: `${X@P}`, `${X[1]}`, `${X:1}`, `${X: -2}`, `${X^}`, `${HOME:h}`, `${(e)X}` | literal | literal |
+| Any other `${...}`: `${X=v}` / `${X:=v}` (would assign X), `${X@P}`, `${X[1]}`, `${X:1}`, `${X: -2}`, `${X^}`, `${HOME:h}`, `${(e)X}` | literal | literal |
 | `$1`, `$$`, `$?`, `$%`, a trailing `$`, an unclosed `${` | literal | literal |
 | `$(cmd)`, `` `cmd` `` | literal (never run) | literal |
 | `"`, `\` | literal | literal |
@@ -662,8 +856,10 @@ pre_constant_remove = sh -c 'echo removing {name} >> ~/hook.log'
 post_constant_remove = echo "gone: $WAYU_HOOK_NAME" >> ~/hook.log
 ```
 
-Format: one `event = command` per line; `#` starts a comment line; one
-matching pair of quotes around the whole command is removed; unknown keys
+Format: one `event = command` per line; `#` starts a comment line; a pair
+of quotes is removed only when it wraps the whole command as one quoted
+string (`pre_export = "echo 'Generating...'"`), so `"/bin/echo" {path} "done"`
+is kept as written; unknown keys
 are ignored; for a repeated key the last line wins.
 
 | Event | `{path}` | `{name}` | `{value}` |
@@ -671,7 +867,7 @@ are ignored; for a repeated key the last line wins.
 | `pre_path_add`, `post_path_add` | directory | | |
 | `pre_path_remove`, `post_path_remove` | directory (also when removed by key) | | |
 | `pre_alias_add`, `post_alias_add`, `pre_alias_remove`, `post_alias_remove` | | alias name | command |
-| `pre_constant_add`, `post_constant_add`, `pre_constant_remove`, `post_constant_remove` | | variable name | value |
+| `pre_constant_add`, `post_constant_add`, `pre_constant_remove`, `post_constant_remove` | | variable name | value (empty for an encrypted secret) |
 | `pre_plugin_install`, `post_plugin_install` | | plugin name | |
 | `pre_export`, `post_export` (around `wayu export` / `build turbo`) | | | |
 
@@ -684,11 +880,17 @@ Placeholder quoting:
 |---|---|
 | Unquoted: `echo Adding {path}` | Replaced by `"${WAYU_HOOK_PATH}"`: the value is one word, never parsed as code. |
 | Inside `'...'`: `sh -c 'echo {path}'` | Left as `"${WAYU_HOOK_PATH}"` for the inner shell, which expands it quoted. |
-| Inside `"..."`: `sh -c "echo {value}"` | Refused. Any wayu operation that would run hooks exits `78` before writing anything and names the line; `wayu hooks` marks it `INVALID`. Use `"$WAYU_HOOK_VALUE"` when you need double quotes. |
+| Inside `"..."`, also within `'...'`: `sh -c "echo {value}"`, `sh -c 'sh -c "echo {value}"'` | Refused. Any wayu operation that would run hooks exits `78` before writing anything and names the line; `wayu hooks` marks it `INVALID`. Use `"$WAYU_HOOK_VALUE"` when you need double quotes. |
 
-Hooks run with `sh -c`; their exit status is ignored. Pre-hooks run only when
-the operation will change something, post-hooks only after a successful
-write, and none under `--dry-run`. In the TUI a hook is stopped after 30 s.
+Hooks run with `sh -c`, stdin on `/dev/null`; their exit status is ignored.
+In the CLI a hook's stdout and stderr are shown (in the TUI they are
+captured). Pre-hooks run only when the operation will change something,
+post-hooks only after a successful write, and none under `--dry-run`. Hooks
+run outside wayu's config lock (pre-hooks before it is taken, post-hooks
+after it is released), so a hook may run `wayu` itself. A hook still running
+after 30 s is killed with its child processes (the CLI prints a warning
+naming it); a `timeout = <seconds>` line in hooks.conf changes that limit
+(whole seconds above 0; other values keep 30).
 
 ### plugins.json
 
@@ -720,14 +922,14 @@ cloned to `$WAYU_DATA_DIR/plugins/<name>`.
 |---|---|---|
 | `version` | string | `"1.0"`. |
 | `last_updated` | string | Set by wayu on every write. |
-| `plugins[].name` | string | Plugin name: one path component, not starting with `-`. |
+| `plugins[].name` | string | Required, unique: one path component, not starting with `-`. |
 | `plugins[].display_name` | string | Alternative name accepted by `plugin get/enable/...`. |
 | `plugins[].url` | string | Clone URL (validated). |
 | `plugins[].source_type` | enum | `GitHub`, `GitLab`, `Gist`, `Git`, `Remote`, `Local`. |
 | `plugins[].enabled` | boolean | Only enabled plugins load. |
 | `plugins[].shell` | enum | `ZSH`, `BASH`, `BOTH` (zsh + bash), `FISH`, `ANY` (all three). |
 | `plugins[].installed_path` | string | Clone dir; no leading `-`, no control characters. |
-| `plugins[].use` | array of strings | Files to source, matched at the repository root: exact names or one-`*` globs (`"*.plugin.zsh"`). Set with `wayu plugin add <url> --use <file-or-glob>` (repeatable). Empty: auto-detect (below). |
+| `plugins[].use` | array of strings | Files to source, matched at the repository root: exact names or one-`*` globs (`"*.plugin.zsh"`); no `/` (a `../` path is refused). Set with `wayu plugin add <url> --use <file-or-glob>` (repeatable). Empty: auto-detect (below). |
 | `plugins[].template` | enum | How each file is loaded: `Source` (`source file`), `Path` (prepend the plugin dir to `PATH`), `FPath` (prepend to `FPATH`), `Autoload` (`autoload -Uz name`), `Eval` (`eval "$(file)"`). |
 | `plugins[].git` | object | `ref_type` (`Branch`, `Tag`, `Commit`), `branch`, `tag`, `commit`, `pinned_ref`, `last_checked`, `remote_commit`. Refs are validated. |
 | `plugins[].dependencies` | array of strings | Plugin names loaded before this one. Must be valid plugin names; a cycle is an error. A missing or disabled dependency is noted as a comment in `plugins.<ext>`. |
@@ -783,7 +985,8 @@ startup:
 `NAME.<ext>` per script; the directory is the list) and
 `$WAYU_DATA_DIR/bin/` what runs: a relative symlink to the source for
 interpreted languages, the compiled binary plus `.NAME.hash` (hash of the
-source it was built from) for swift. Use `wayu script` rather than editing
+source and build command it was built from) for swift and any source with a
+`wayu: build = ...` header (see `wayu script` in docs/cli.md). Use `wayu script` rather than editing
 `bin/`. Once `bin/` holds a script, `core.<ext>` and `path_sync.<ext>` put it
 first among wayu's PATH entries (zsh, bash, fish), so a script may shadow a
 tool of the same name.
@@ -795,7 +998,7 @@ here):
 
 | Shell | Used as |
 |---|---|
-| zsh | Prepended to `fpath` (files named `_<command>`); `compinit` runs in interactive shells and rebuilds `.zcompdump` when the dir's file list changes |
+| zsh | Prepended to `fpath` (files named `_<command>`); `compinit` runs in interactive shells and rebuilds `.zcompdump` when the dir's file list, or any `fpath` dir or its mtime, changed |
 | bash | Sources `*.bash-completion` and `*.bash` |
 | fish | Prepended to `fish_complete_path` |
 
@@ -828,7 +1031,7 @@ every shell initialized in the data dir.
 | `plugins.<ext>` | Plugin loader, regenerated on any `plugin` change and by `wayu init`. |
 | `plugins/config.zsh` | `[settings] autosuggestions_accept_keys` bindings. |
 | `secrets.json` | Encrypted constants (see [`[secrets]`](#secrets)); written by `wayu const add --secret`, `const rm`, `secrets rekey`. Not generated from wayu.toml. |
-| `backup/` | Timestamped backups `<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]` (UTC), 5 newest per file (see `wayu backup`). Files named otherwise are ignored. |
+| `backup/` | Timestamped backups `<file>.backup.YYYY-MM-DD_HH-MM-SS.UUUUUU[-N]` (UTC), 5 newest per file (see `wayu backup`). `<file>` is the name of a file directly in the config/data dir, `@` + its relative path with `/` as `%` for a nested one (`@functions%init.zsh`), or the path of a file outside them (`.zshrc`, `.config%zsh%.zshrc`). Files named otherwise are ignored. |
 
 Also `$WAYU_DATA_DIR/.wayu.lock` (lock shared by concurrent wayu commands)
 and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
@@ -839,28 +1042,19 @@ and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 
 1. `WAYU_CONFIG_DIR` / `WAYU_DATA_DIR` exports (only when not default)
 2. Constants
-3. `bin/` (scripts) and PATH entries (and the live PATH sync hook)
-4. Completions (zsh: `fpath`, `compinit` in interactive shells)
-5. `functions/`
-6. `config.<ext>` content
-7. Helpers (evalcache; zsh: zsh-defer, `wayu_compile`)
-8. Eager `[tools]`
-9. Native prompt (zsh, interactive, `[prompt] enabled = true`)
-10. Plugins (`plugins.<ext>`; zsh: `plugins/config.zsh`)
-11. Deferred `[tools]`
-12. `tools.<ext>`
-13. `extra.<ext>`
-14. Login-only `[tools]`
-15. Aliases
 3. Secrets (session cache; only when `secrets.json` holds values)
-4. PATH entries (and the live PATH sync hook)
-5. Completions (zsh: `fpath`, `compinit` in interactive shells)
+4. `bin/` (scripts) and PATH entries (and the live PATH sync hook)
+5. Completions (zsh: `fpath`; `compinit` and the compinit guard in
+   interactive shells, see [`[settings]`](#settings))
 6. `functions/`
 7. `config.<ext>` content
-8. Helpers (evalcache; zsh: zsh-defer, `wayu_compile`)
+8. Helpers (evalcache; zsh: zsh-defer in interactive shells, `wayu_compile`)
 9. Eager `[tools]`
 10. Native prompt (zsh, interactive, `[prompt] enabled = true`)
-11. Plugins (`plugins.<ext>`; zsh: `plugins/config.zsh`)
+11. Plugins (`plugins.<ext>`; zsh: `plugins/config.zsh`, interactive
+    shells only, after the first prompt with `defer_plugins`; zsh with
+    `[settings] autosuggest` / `highlight`: the built-in suggestions and
+    syntax highlighting first)
 12. Deferred `[tools]`
 13. `tools.<ext>`
 14. `extra.<ext>`
@@ -869,5 +1063,7 @@ and the evalcache under `${XDG_CACHE_HOME:-~/.cache}/wayu/evalcache`.
 
 `core.fish`: directory exports, constants, secrets, PATH entries, completions,
 `functions/*.fish`, `config.fish` content, evalcache helper, eager `[tools]`,
-`plugins.fish`, deferred `[tools]`, login-only `[tools]`, aliases. No
-native prompt. `init.fish` then sources `tools.fish` and `extra.fish`.
+the native prompt (`[prompt] enabled = true`), `plugins.fish`, deferred
+`[tools]`, login-only `[tools]`, aliases. `init.fish` then sources
+`tools.fish` and `extra.fish`; `turbo.fish` (`wayu export`) is core.fish
+followed by those two.

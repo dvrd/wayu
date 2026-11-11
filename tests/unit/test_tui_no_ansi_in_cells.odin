@@ -8,8 +8,9 @@ package test_wayu
 // the PTY cursor. Invariant: no cell in Screen.buffer may hold 0x1b as .char;
 // color must live exclusively in .fg / .bg.
 
-import "core:testing"
 import wayu "../../src"
+import "core:strings"
+import "core:testing"
 
 @(test)
 test_render_text_styled_stores_no_ansi_bytes :: proc(t: ^testing.T) {
@@ -22,8 +23,8 @@ test_render_text_styled_stores_no_ansi_bytes :: proc(t: ^testing.T) {
 	// produces only printable cells.
 	wayu.render_text_styled(&screen, 0, 0, "○ /some/path", wayu.TUI_MUTED)
 
-	for y in 0..<screen.height {
-		for x in 0..<screen.width {
+	for y in 0 ..< screen.height {
+		for x in 0 ..< screen.width {
 			ch := screen.buffer[y][x].char
 			testing.expect(
 				t,
@@ -46,7 +47,7 @@ test_cell_char_is_single_rune_per_column :: proc(t: ^testing.T) {
 	wayu.render_text_styled(&screen, 0, 0, input, wayu.TUI_PRIMARY)
 
 	expected := []rune{'a', 'b', 'c', '1', '2', '3'}
-	for i in 0..<len(expected) {
+	for i in 0 ..< len(expected) {
 		testing.expect(
 			t,
 			screen.buffer[0][i].char == expected[i],
@@ -54,7 +55,7 @@ test_cell_char_is_single_rune_per_column :: proc(t: ^testing.T) {
 		)
 	}
 	// Columns beyond the string must remain untouched (space).
-	for i in len(expected)..<screen.width {
+	for i in len(expected) ..< screen.width {
 		testing.expect(
 			t,
 			screen.buffer[0][i].char == ' ',
@@ -77,7 +78,7 @@ test_render_text_styled_strips_ansi_escape_bytes :: proc(t: ^testing.T) {
 	poisoned := "\x1b[32m●\x1b[0m /path"
 	wayu.render_text_styled(&screen, 0, 0, poisoned, wayu.TUI_MUTED)
 
-	for x in 0..<screen.width {
+	for x in 0 ..< screen.width {
 		testing.expect(
 			t,
 			screen.buffer[0][x].char != 0x1b,
@@ -90,7 +91,7 @@ test_render_text_styled_strips_ansi_escape_bytes :: proc(t: ^testing.T) {
 	// ugly to signal the caller bug) — only that printable content landed
 	// and the glyph `●` is present somewhere in the row.
 	found_glyph := false
-	for x in 0..<screen.width {
+	for x in 0 ..< screen.width {
 		if screen.buffer[0][x].char == '●' {
 			found_glyph = true
 			break
@@ -113,7 +114,7 @@ test_render_list_item_maps_glyph_to_fg_not_char :: proc(t: ^testing.T) {
 	wayu.render_list_item(&screen, 2, 0, "/some/path", 50, false, .WAYU_ACTIVE)
 
 	// No ESC byte may appear anywhere after rendering.
-	for x in 0..<screen.width {
+	for x in 0 ..< screen.width {
 		testing.expect(
 			t,
 			screen.buffer[0][x].char != 0x1b,
@@ -124,7 +125,7 @@ test_render_list_item_maps_glyph_to_fg_not_char :: proc(t: ^testing.T) {
 	// The glyph must be rendered with the WAYU_ACTIVE source color via Cell.fg —
 	// not via inline ANSI in Cell.char. Scan the row for the `●` cell.
 	glyph_x := -1
-	for x in 0..<screen.width {
+	for x in 0 ..< screen.width {
 		if screen.buffer[0][x].char == '●' {
 			glyph_x = x
 			break
@@ -138,4 +139,61 @@ test_render_list_item_maps_glyph_to_fg_not_char :: proc(t: ^testing.T) {
 			"Glyph cell must carry source color in Cell.fg, not inline ANSI",
 		)
 	}
+}
+
+// Security audit: no control rune (C0, DEL, C1) may reach the screen buffer,
+// as a cell's char or as an attached combining mark, whatever the writer.
+@(private = "file")
+expect_no_control_cells :: proc(t: ^testing.T, screen: ^wayu.Screen, what: string) {
+	for row in screen.buffer {
+		for cell in row {
+			if cell.char != wayu.CELL_CONTINUATION {
+				testing.expectf(
+					t,
+					!wayu.is_control_rune(cell.char),
+					"%s: control char %x in cell",
+					what,
+					cell.char,
+				)
+			}
+			testing.expectf(
+				t,
+				cell.comb == 0 || !wayu.is_control_rune(cell.comb),
+				"%s: control comb %x",
+				what,
+				cell.comb,
+			)
+		}
+	}
+}
+
+@(test)
+test_tui_cells_never_hold_control_runes :: proc(t: ^testing.T) {
+	screen := wayu.screen_create(60, 1)
+	defer wayu.screen_destroy(&screen)
+
+	// BEL, DEL and an 8-bit CSI used to be zero-width and got attached to the
+	// previous glyph as a "combining mark", then emitted raw.
+	wayu.render_text_styled(&screen, 0, 0, "a\x07b\x7fc\u009b31md")
+	expect_no_control_cells(t, &screen, "render_text_styled")
+	testing.expect_value(t, screen.buffer[0][0].comb, 0)
+	testing.expect_value(t, screen.buffer[0][1].char, wayu.TUI_CONTROL_PLACEHOLDER)
+
+	wayu.screen_clear(&screen)
+	wayu.screen_attach_combining(&screen, 0, 0, 0x07)
+	wayu.screen_put_rune(&screen, 1, 0, 0x9d, wayu.Cell{})
+	wayu.screen_set_cell(&screen, 2, 0, wayu.Cell{char = 0x1b, comb = 0x07})
+	expect_no_control_cells(t, &screen, "cell writers")
+	testing.expect_value(t, screen.buffer[0][1].char, wayu.TUI_CONTROL_PLACEHOLDER)
+}
+
+@(test)
+test_render_list_item_shows_controls_escaped :: proc(t: ^testing.T) {
+	screen := wayu.screen_create(60, 1)
+	defer wayu.screen_destroy(&screen)
+	wayu.render_list_item(&screen, 2, 0, "x = echo \x1b]0;pwned\x07", 50, false, .WAYU_ACTIVE)
+	expect_no_control_cells(t, &screen, "render_list_item")
+	row := wayu.screen_to_string(&screen)
+	defer delete(row)
+	testing.expectf(t, strings.contains(row, "\\x1B]0;pwned\\x07"), "row not escaped: %q", row)
 }

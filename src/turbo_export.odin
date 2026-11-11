@@ -11,7 +11,9 @@
 //
 // Scope of --eval: [env], [paths], [aliases] only (it is for eval contexts);
 // no functions, completions, plugins, [tools], prompt or live PATH sync.
-// zsh/bash only: fish is refused.
+// fish (OKAMI-368): turbo.fish is core.fish plus the tools.fish/extra.fish
+// sourcing init.fish adds; --eval prints fish code for
+// `wayu export --eval | source`.
 
 package wayu
 
@@ -22,10 +24,17 @@ import "core:strings"
 // Turbo export configuration
 TURBO_EXPORT_FILE :: "turbo.zsh"
 TURBO_EXPORT_FILE_BASH :: "turbo.bash"
+TURBO_EXPORT_FILE_FISH :: "turbo.fish"
 
 // Turbo file name for the active shell.
 turbo_export_file_name :: proc() -> string {
-	return TURBO_EXPORT_FILE_BASH if wayu.shell == .BASH else TURBO_EXPORT_FILE
+	#partial switch wayu.shell {
+	case .BASH:
+		return TURBO_EXPORT_FILE_BASH
+	case .FISH:
+		return TURBO_EXPORT_FILE_FISH
+	}
+	return TURBO_EXPORT_FILE
 }
 
 // Entry point for turbo export command
@@ -41,18 +50,11 @@ handle_export_command :: proc(action: Action, args: []string) {
 	case .UNKNOWN:
 		print_error_simple("Unknown export mode")
 		print_export_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
-	}
-
-	// Turbo/eval emit sh syntax (`if [ ... ]; then`, `export`): never hand
-	// that to fish (OKAMI-233).
-	if wayu.shell == .FISH && (action == .TURBO || action == .EVAL) {
-		print_error_simple("wayu export does not support fish; source init.fish instead (wayu build)")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	#partial switch action {
@@ -66,14 +68,14 @@ handle_export_command :: proc(action: Action, args: []string) {
 	case:
 		print_error("Unknown export action")
 		print_export_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
 // Handle --eval flag for direct shell integration (stdout only, no writes)
 handle_export_eval :: proc() {
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	generate_eval_output()
 }
@@ -135,18 +137,27 @@ generate_turbo_export :: proc(dry_run: bool) {
 	delete(sync_file)
 	if !write_turbo_file(output_path, content) {
 		print_error("Failed to write turbo export file")
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	flush_zcompile_batch()
 
 	print_success("Turbo export generated: %s", output_path)
 	fmt.println()
-	fmt.printfln("turbo.%s has the same content as core.%s (what init.%s loads): every feature,", get_shell_extension(wayu.shell), get_shell_extension(wayu.shell), get_shell_extension(wayu.shell))
+	fmt.printfln(
+		"turbo.%s has the same content as core.%s (what init.%s loads): every feature,",
+		get_shell_extension(wayu.shell),
+		get_shell_extension(wayu.shell),
+		get_shell_extension(wayu.shell),
+	)
 	fmt.println("same speed. wayu keeps it up to date; sourcing init is equivalent:")
 	fmt.printfln("  source \"%s/init.%s\"", wayu.data, get_shell_extension(wayu.shell))
 	fmt.println()
 	fmt.printfln("%sEval mode (env, PATH and aliases only):%s", get_secondary(), RESET)
-	fmt.printfln("  eval \"$(wayu export --eval)\"")
+	if wayu.shell == .FISH {
+		fmt.println("  wayu export --eval | source")
+	} else {
+		fmt.printfln("  eval \"$(wayu export --eval)\"")
+	}
 }
 
 // Turbo content: since OKAMI-284 the same generated output as core.<ext>
@@ -156,18 +167,21 @@ generate_turbo_export :: proc(dry_run: bool) {
 build_turbo_content :: proc(mask_secrets := false) -> string {
 	clear_toml_content_cache()
 	defer clear_toml_content_cache()
+	if wayu.shell == .FISH {
+		core := build_core_content_fish(mask = mask_secrets)
+		defer delete(core)
+		return fish_turbo_content(core)
+	}
 	return build_core_content(mask = mask_secrets)
 }
 
 // Write turbo.<ext> (always rewritten, so `export --check` sees a fresh
 // mtime), owner-only (embeds [env] values, OKAMI-206), zcompiled for zsh.
 write_turbo_file :: proc(path, content: string) -> bool {
-	if write_file_atomic(path, transmute([]byte)content) != nil {
+	if !replace_zsh_source(path, content) {
 		return false
 	}
 	restrict_file_mode(path)
-	zwc := fmt.tprintf("%s.zwc", path)
-	if os.exists(zwc) { os.remove(zwc) }
 	zcompile_file(path)
 	return true
 }
@@ -179,8 +193,9 @@ generate_eval_output :: proc() {
 	fmt.println(content)
 }
 
-// Build eval content (compact; statements separated by `;` so it also
-// survives the unquoted `eval $(...)` form).
+// Build eval content (compact; statements separated by `;`). For
+// `eval "$(wayu export --eval)"` only: unquoted, the shell glob-expands the
+// output before eval (see emit_path_eval).
 build_eval_content :: proc() -> string {
 	clear_toml_content_cache()
 	defer clear_toml_content_cache()
@@ -189,9 +204,18 @@ build_eval_content :: proc() -> string {
 	strings.builder_init(&builder)
 	defer strings.builder_destroy(&builder)
 
+	if wayu.shell == .FISH {
+		// Read with `| source`: one statement per line.
+		emit_env_exports_fish(&builder)
+		emit_path_eval_fish(&builder)
+		emit_secrets_loader(&builder, .FISH)
+		emit_alias_definitions_fish(&builder)
+		return strings.clone(strings.to_string(builder))
+	}
 	emit_env_exports(&builder, ";")
-	emit_secrets_loader(&builder, wayu.shell, ";")
 	emit_path_eval(&builder, ";")
+	// After PATH, like core (OKAMI-292).
+	emit_secrets_loader(&builder, wayu.shell, ";")
 	emit_alias_definitions(&builder, ";")
 
 	return strings.clone(strings.to_string(builder))
@@ -213,7 +237,9 @@ print_export_usage :: proc() {
 	fmt.printfln("%sDESCRIPTION:%s", get_primary(), RESET)
 	fmt.println("  Writes turbo.<ext>: the same single precomputed file init.<ext> loads")
 	fmt.println("  (core.<ext>), kept up to date by wayu. Sourcing init.<ext> is just")
-	fmt.println("  as fast; turbo stays for rc files that already use it. zsh/bash only.")
+	fmt.println(
+		"  as fast; turbo stays for rc files that already use it. fish: wayu export --eval | source.",
+	)
 	fmt.println("  --eval prints only constants, PATH entries and aliases (for eval contexts).")
 	fmt.println()
 	fmt.printfln("%sEXAMPLES:%s", get_primary(), RESET)
@@ -221,7 +247,9 @@ print_export_usage :: proc() {
 	fmt.println("  wayu export --turbo")
 	fmt.println()
 	fmt.println("  # Use in .zshrc (equivalent to sourcing init.zsh)")
-	fmt.println("  source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/turbo.zsh\"")
+	fmt.println(
+		"  source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/turbo.zsh\"",
+	)
 	fmt.println()
 	fmt.println("  # Or eval mode (env, PATH and aliases only)")
 	fmt.println("  eval \"$(wayu export --eval)\"")
@@ -229,24 +257,21 @@ print_export_usage :: proc() {
 	fmt.printfln("%sTURBO FILE:%s %s/%s", get_muted(), RESET, wayu.data, turbo_export_file_name())
 }
 
-// Check if the turbo file for the active shell exists and is current
-// (not older than wayu.toml or entries.json).
+// Check if the turbo file for the active shell exists and is current: its
+// content is exactly what `wayu export --turbo` would write now (OKAMI-364).
+// Comparing content rather than mtimes catches every input — wayu.toml,
+// entries.json, functions/, plugins.json, secrets.json, config.<ext>,
+// tools/extra — and a wayu upgrade that changes the generated code.
 check_turbo_status :: proc() -> (exists: bool, current: bool) {
-	turbo_path := fmt.aprintf("%s/%s", wayu.data, turbo_export_file_name())
-	defer delete(turbo_path)
-
-	turbo_info, err := os.stat(turbo_path, context.temp_allocator)
+	turbo_path := fmt.tprintf("%s/%s", wayu.data, turbo_export_file_name())
+	data, err := os.read_entire_file(turbo_path, context.allocator)
 	if err != nil {
 		return false, false
 	}
-
-	current = true
-	for src in ([]string{fmt.tprintf("%s/wayu.toml", wayu.config), entries_file_path()}) {
-		info, serr := os.stat(src, context.temp_allocator)
-		if serr != nil { continue }
-		if turbo_info.modification_time._nsec < info.modification_time._nsec { current = false }
-	}
-	return true, current
+	defer delete(data)
+	want := build_turbo_content()
+	defer delete(want)
+	return true, string(data) == want
 }
 
 // Handle export --check action
@@ -256,15 +281,15 @@ handle_export_check :: proc() {
 	if !exists {
 		fmt.printfln("%s✗ Turbo file not found%s", get_warning(), RESET)
 		fmt.printfln("%sRun: wayu export --turbo%s", get_primary(), RESET)
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	if !current {
 		fmt.printfln("%s⚠ Turbo file is outdated%s", get_warning(), RESET)
 		fmt.printfln("%sRegenerate: wayu export --turbo%s", get_primary(), RESET)
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	fmt.printfln("%s✓ Turbo file is up to date%s", get_success(), RESET)
-	os.exit(EXIT_SUCCESS)
+	wayu_exit(EXIT_SUCCESS)
 }

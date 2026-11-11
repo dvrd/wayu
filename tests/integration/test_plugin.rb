@@ -94,6 +94,7 @@ class PluginIntegrationTest
       test_exact_name_still_works
       # Offline real-git flows (https://example.test/ → local fixtures)
       test_offline_add_clones_and_loads
+      test_offline_plugin_sources_zcompiled
       test_offline_check_and_update
       test_offline_check_exact_branch_ref
       test_offline_check_unreachable_exits_74
@@ -105,8 +106,14 @@ class PluginIntegrationTest
       test_offline_add_fish_url_records_fish
       test_offline_concurrent_adds
       test_offline_registry_pure_fish_name
+      test_offline_update_all_counts_real_updates
+      test_plugins_json_backups_pruned
+      test_plugins_json_rejects_bad_entries
       test_offline_conflicts_reported
       test_ssh_batch_mode_and_timeout
+      test_build_regenerates_plugin_loaders
+      test_offline_update_ignores_repo_hooks
+      test_interrupted_add_kills_git_and_cleans_up
     ensure
       teardown_test_env
     end
@@ -1454,13 +1461,16 @@ class PluginIntegrationTest
   end
 
   def test_rm_empty_name_never_wipes_root
-    print "Test 34: rm of legacy empty-name entry never deletes plugins root... "
+    print "Test 34: rm with an empty-name entry never deletes plugins root... "
     keep = "#{@plugins_dir}/keep-me"
     FileUtils.mkdir_p(keep)
     seed_plugins([plugin_entry("", @plugins_dir), plugin_entry("keep-me", keep)])
 
+    # A nameless entry makes plugins.json invalid (OKAMI-342): exit 78,
+    # nothing touched.
     output, status = run_wayu("plugin rm '' --yes")
-    ok = status.exitstatus == 0 && Dir.exist?(keep) && plugin_names_in_config == ["keep-me"]
+    ok = status.exitstatus == 78 && Dir.exist?(keep) && plugin_names_in_config == ["", "keep-me"]
+    seed_plugins([])
     check("plugins root wiped", ok, output, status)
   end
 
@@ -1495,6 +1505,32 @@ class PluginIntegrationTest
     git = JSON.parse(File.read("#{@data_dir}/plugins.json"))["plugins"][0]["git"]
     ok = status.exitstatus == 0 && git["tag"] == "v1.0.0" && git["pinned_ref"] == "v1.0.0"
     check("pinned plugin was updated or lost its pin", ok, output, status)
+  end
+
+  # OKAMI-309: `wayu build` regenerates plugins.<ext> for every set-up shell
+  # from a hand-edited plugins.json; an invalid one exits 78 and keeps them.
+  def test_build_regenerates_plugin_loaders
+    print "Test: build regenerates plugins.<ext>; invalid plugins.json exits 78... "
+    run_wayu("--shell bash init")
+    dir = "#{@plugins_dir}/regen-p"
+    FileUtils.mkdir_p(dir)
+    File.write("#{dir}/regen-p.plugin.zsh", "# regen\n")
+    seed_plugins([plugin_entry("regen-p", dir)])
+    _, _, st1 = run_wayu_split("build")
+    on = File.read("#{@data_dir}/plugins.zsh")
+    bash_ok = File.exist?("#{@data_dir}/plugins.bash")
+    seed_plugins([plugin_entry("regen-p", dir, enabled: false)])
+    _, _, st2 = run_wayu_split("build")
+    off = File.read("#{@data_dir}/plugins.zsh")
+    File.write("#{@data_dir}/plugins.json", "{ not json")
+    _, err3, st3 = run_wayu_split("build")
+    kept = File.read("#{@data_dir}/plugins.zsh")
+    seed_plugins([])
+    ok = st1.success? && on.include?("regen-p.plugin.zsh") && bash_ok && st2.success? &&
+         !off.include?("regen-p.plugin.zsh") && st3.exitstatus == 78 && err3.include?("plugins.json") && kept == off
+    check("build/plugin loaders", ok,
+          "st=#{[st1, st2, st3].map(&:exitstatus)} on=#{on.include?('regen-p')} bash=#{bash_ok} off=#{off.include?('regen-p')} err3=#{err3[0, 300]}",
+          st3)
   end
 
   # stdout and stderr kept apart (run_wayu merges them).
@@ -1634,6 +1670,23 @@ class PluginIntegrationTest
          loader.include?("#{@plugins_dir}/alpha/alpha.plugin.zsh") &&
          !loader.include?("#{@plugins_dir}/alpha/alpha.zsh'")
     check("offline add failed", ok, output + "\nloader:\n" + loader, status)
+  end
+
+  # Plugin *.zsh sources are compiled to .zwc in the background (zsh would
+  # parse them at every startup otherwise); test/test-data dirs are skipped.
+  def test_offline_plugin_sources_zcompiled
+    print "Test 39a: plugin sources get .zwc digests, tests dirs skipped... "
+    reset_plugins
+    fixture_repo("zc", { "zc.plugin.zsh" => "source ${0:h}/lib/zc.zsh\n", "lib/zc.zsh" => "zc() { :; }\n",
+                         "test/t.zsh" => "# test\n", "x/test-data/d.zsh" => "# data\n" })
+    output, status = run_wayu("plugin add #{fixture_url('zc')}")
+    dir = "#{@plugins_dir}/zc"
+    want = ["#{dir}/zc.plugin.zsh.zwc", "#{dir}/lib/zc.zsh.zwc"]
+    deadline = Time.now + 10
+    sleep 0.1 until want.all? { |f| File.exist?(f) } || Time.now > deadline
+    ok = status.exitstatus == 0 && want.all? { |f| File.exist?(f) } &&
+         !File.exist?("#{dir}/test/t.zsh.zwc") && !File.exist?("#{dir}/x/test-data/d.zsh.zwc")
+    check("plugin zcompile", ok, output + "\nfiles: " + Dir.glob("#{dir}/**/*.zwc").join(" "), status)
   end
 
   # OKAMI-276: conflicts are shown on add/enable, in `plugin list` (text and
@@ -1878,6 +1931,123 @@ class PluginIntegrationTest
     check("ssh batch/timeout", ok, "#{output}\nssh args: #{ssh_args.inspect}\nelapsed=#{elapsed.round(1)}s", status)
   end
 
+  # OKAMI-342: `update --all` counts only checkouts that moved; the rest are
+  # reported as already up to date.
+  def test_offline_update_all_counts_real_updates
+    print "Test 60: update --all counts only real updates... "
+    reset_plugins
+    repo = fixture_repo("upa")
+    fixture_repo("upb")
+    run_wayu("plugin add #{fixture_url('upa')}")
+    run_wayu("plugin add #{fixture_url('upb')}")
+    fixture_commit(repo, "upa.plugin.zsh", "# upa v2\n")
+    out, st = run_wayu("plugin update --all")
+    ok = st.exitstatus == 0 && out.include?("1 plugin updated") && out.include?("1 already up to date")
+    check("update --all count", ok, out, st)
+  end
+
+  # OKAMI-330: plugins.json backups are pruned like every other file's.
+  def test_plugins_json_backups_pruned
+    print "Test 61: plugins.json backups pruned to 5... "
+    dir = "#{@plugins_dir}/prune-me"
+    FileUtils.mkdir_p(dir)
+    seed_plugins([plugin_entry("prune-me", dir)])
+    FileUtils.rm_f(backup_files)
+    out = +""
+    4.times do
+      o1, = run_wayu("plugin disable prune-me")
+      o2, = run_wayu("plugin enable prune-me")
+      out << o1 << o2
+    end
+    run_wayu("plugin priority prune-me 50")
+    n = backup_files.size
+    check("backups: #{n}", n == 5, out, nil)
+  end
+
+  # OKAMI-342: a nameless entry, a duplicate name and a `use` glob that
+  # leaves the checkout are refused (exit 78), not loaded.
+  def test_plugins_json_rejects_bad_entries
+    print "Test 62: plugins.json with missing/duplicate name or ../ use glob exits 78... "
+    dir = "#{@plugins_dir}/v1"
+    FileUtils.mkdir_p(dir)
+    bad = {
+      "missing name" => [plugin_entry("", dir)],
+      "duplicate name" => [plugin_entry("v1", dir), plugin_entry("v1", dir)],
+      "use escape" => [plugin_entry("v1", dir).merge("use" => ["../../../etc/*"])],
+    }
+    failures = []
+    bad.each do |label, entries|
+      seed_plugins(entries)
+      out, st = run_wayu("plugin list")
+      failures << "#{label}: exit #{st.exitstatus} #{out}" unless st.exitstatus == 78 && out.include?("Invalid plugins.json")
+    end
+    seed_plugins([])
+    check("validation", failures.empty?, failures.join("\n  "), nil)
+  end
+
+  # A checkout's own config must never make wayu's git run a program:
+  # core.fsmonitor (status/merge/reset) and hooks (post-merge, ...).
+  def test_offline_update_ignores_repo_hooks
+    print "Test 63: plugin update/check ignore core.fsmonitor and repo hooks... "
+    reset_plugins
+    repo = fixture_repo("hooked")
+    _, st = run_wayu("plugin add #{fixture_url('hooked')}")
+    dir = "#{@plugins_dir}/hooked"
+    markers = %w[fsmonitor post-merge post-checkout].map { |m| "#{@tmp_home}/marker-#{m}" }
+    FileUtils.rm_f(markers)
+    hook = "#{@tmp_home}/fsmonitor-hook"
+    File.write(hook, "#!/bin/sh\ntouch '#{markers[0]}'\n")
+    File.chmod(0o755, hook)
+    git!("-C", dir, "config", "core.fsmonitor", hook)
+    { "post-merge" => markers[1], "post-checkout" => markers[2] }.each do |h, m|
+      File.write("#{dir}/.git/hooks/#{h}", "#!/bin/sh\ntouch '#{m}'\n")
+      File.chmod(0o755, "#{dir}/.git/hooks/#{h}")
+    end
+    fixture_commit(repo, "hooked.plugin.zsh", "# hooked v2\n")
+    out, st2 = run_wayu("plugin update hooked")
+    out2, = run_wayu("plugin check")
+    ran = markers.select { |m| File.exist?(m) }
+    content = File.read("#{dir}/hooked.plugin.zsh") rescue ""
+    ok = st.exitstatus == 0 && st2.exitstatus == 0 && content.include?("v2") && ran.empty?
+    check("repo hooks ran: #{ran}", ok, out + out2, st2)
+  end
+
+  # SIGTERM / SIGINT to wayu mid-clone: git (own session) and its ssh are
+  # killed, the partial clone dir is removed, wayu exits 128+signal, and the
+  # next add of that name is not blocked.
+  def test_interrupted_add_kills_git_and_cleans_up
+    print "Test 64: interrupted plugin add kills git/ssh and removes the partial clone... "
+    reset_plugins
+    fake_bin = "#{@tmp_home}/fake-bin-int"
+    pid_file = "#{@tmp_home}/ssh-pid"
+    FileUtils.mkdir_p(fake_bin)
+    File.write("#{fake_bin}/ssh", "#!/bin/sh\necho $$ > '#{pid_file}'\nexec sleep 60\n")
+    File.chmod(0o755, "#{fake_bin}/ssh")
+    env = ENV.to_h.merge('HOME' => @tmp_home, 'PATH' => "#{fake_bin}:#{ENV['PATH']}")
+    failures = []
+    { 'TERM' => 143, 'INT' => 130 }.each do |sig, want|
+      FileUtils.rm_f(pid_file)
+      wayu = Process.spawn(env, @wayu_bin, 'plugin', 'add', 'ssh://git.example.test/user/intr.git',
+                           out: File::NULL, err: File::NULL, in: File::NULL)
+      deadline = Time.now + 10
+      sleep 0.05 until File.exist?(pid_file) && File.size?(pid_file) || Time.now > deadline
+      ssh_pid = File.read(pid_file).to_i rescue 0
+      Process.kill(sig, wayu)
+      st = begin
+        Timeout.timeout(10) { Process.wait2(wayu)[1] }
+      rescue Timeout::Error
+        Process.kill('KILL', wayu) rescue nil
+        nil
+      end
+      sleep 0.2
+      ssh_alive = ssh_pid > 0 && (Process.kill(0, ssh_pid) rescue false)
+      Process.kill('KILL', ssh_pid) rescue nil if ssh_alive
+      unless st && st.exitstatus == want && ssh_pid > 0 && !ssh_alive && !File.exist?("#{@plugins_dir}/intr")
+        failures << "#{sig}: exit=#{st&.exitstatus} ssh_pid=#{ssh_pid} ssh_alive=#{ssh_alive} dir=#{File.exist?("#{@plugins_dir}/intr")}"
+      end
+    end
+    check("interrupted add", failures.empty?, failures.join("\n  "), nil)
+  end
 end
 
 

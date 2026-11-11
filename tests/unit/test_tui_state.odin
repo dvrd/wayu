@@ -1,7 +1,7 @@
 package test_wayu
 
-import "core:testing"
 import wayu "../../src"
+import "core:testing"
 
 @(test)
 test_state_init :: proc(t: ^testing.T) {
@@ -124,7 +124,7 @@ test_move_selection_wrap_down :: proc(t: ^testing.T) {
 	defer wayu.tui_state_destroy(&state)
 
 	item_count := 7
-	state.selected_index = 6  // Last item
+	state.selected_index = 6 // Last item
 
 	// Move down should wrap to start
 	wayu.tui_state_move_selection(&state, 1, item_count)
@@ -192,7 +192,7 @@ test_scroll_update_up :: proc(t: ^testing.T) {
 
 	// Move up to index 5 (above scroll offset)
 	state.selected_index = 5
-	wayu.tui_state_move_selection(&state, 0, item_count)  // Trigger scroll update
+	wayu.tui_state_move_selection(&state, 0, item_count) // Trigger scroll update
 
 	testing.expect(t, state.scroll_offset == 5, "Scroll offset should follow selection up")
 }
@@ -252,7 +252,7 @@ test_all_view_transitions :: proc(t: ^testing.T) {
 	state := wayu.tui_state_init()
 	defer wayu.tui_state_destroy(&state)
 
-	views := []wayu.TUIView{
+	views := []wayu.TUIView {
 		.MAIN_MENU,
 		.PATH_VIEW,
 		.ALIAS_VIEW,

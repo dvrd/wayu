@@ -13,7 +13,7 @@ permissions:
 jobs:
   source-branch:
     name: PR source is develop or hotfix/*
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - name: Check source branch
       env:

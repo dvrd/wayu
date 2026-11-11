@@ -1,11 +1,11 @@
 // validation.odin - Input validation and sanitization for shell configurations
 
 package wayu
+import "core:fmt"
+import "core:os"
 import "core:strings"
 import "core:unicode"
 import "core:unicode/utf8"
-import "core:fmt"
-import "core:os"
 // Validation result with detailed error message and optional warning
 ValidationResult :: struct {
 	valid:         bool,
@@ -42,7 +42,7 @@ SHELL_RESERVED_WORDS :: []string {
 	"unset",
 	"return",
 	"exit",
-	// Common commands that shouldn't be aliased
+	// Common commands that shouldn't be constant/function names
 	"cd",
 	"pwd",
 	"echo",
@@ -51,11 +51,46 @@ SHELL_RESERVED_WORDS :: []string {
 	"false",
 }
 
+// Names an alias may not take: the shell grammar words and the declaration /
+// flow builtins, whose aliases break every function or plugin parsed after
+// them. Commands such as cd, ls or cat may be aliased (`alias cd=z`).
+ALIAS_REFUSED_NAMES :: []string {
+	"if",
+	"then",
+	"else",
+	"elif",
+	"fi",
+	"case",
+	"esac",
+	"for",
+	"while",
+	"until",
+	"do",
+	"done",
+	"in",
+	"function",
+	"time",
+	"select",
+	"coproc",
+	"declare",
+	"typeset",
+	"local",
+	"export",
+	"readonly",
+	"unset",
+	"return",
+	"exit",
+}
+
 // Validate shell identifier (alias/constant name)
 // allow_hyphen: aliases may contain `-` after the first character (zsh, bash
 // and fish accept it, and TOML bare keys allow it); env var and function
 // names may not.
-validate_identifier :: proc(name: string, identifier_type: string, allow_hyphen := false) -> ValidationResult {
+validate_identifier :: proc(
+	name: string,
+	identifier_type: string,
+	allow_hyphen := false,
+) -> ValidationResult {
 	// Check for empty
 	if len(name) == 0 {
 		return ValidationResult {
@@ -67,8 +102,10 @@ validate_identifier :: proc(name: string, identifier_type: string, allow_hyphen 
 	// ASCII only: names become TOML bare keys and shell identifiers, and both
 	// are restricted to [A-Za-z_][A-Za-z0-9_] (unicode.is_alpha would let
 	// `café` through, producing an invalid wayu.toml and shell syntax errors).
-	is_ascii_alpha :: proc(r: rune) -> bool { return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') }
-	is_ascii_digit :: proc(r: rune) -> bool { return r >= '0' && r <= '9' }
+	is_ascii_alpha :: proc(r: rune) -> bool {
+		return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+	}
+	is_ascii_digit :: proc(r: rune) -> bool {return r >= '0' && r <= '9'}
 
 	// Check first character (must be letter or underscore)
 	first_rune, _ := utf8.decode_rune_in_string(name)
@@ -130,17 +167,156 @@ validate_identifier :: proc(name: string, identifier_type: string, allow_hyphen 
 	return ValidationResult{valid = true, error_message = ""}
 }
 
+// Why `name` cannot be an alias name, "" when it can. The one alias name
+// rule (OKAMI-366), used by `alias add`, the TUI, templates and the
+// entries.json reader; the generator's is_safe_alias_name accepts every name
+// this accepts. Allowed: printable ASCII except whitespace, quotes, shell
+// metacharacters, glob characters, `=`, `/` (bash refuses it) and `^`
+// (zsh extendedglob), not starting with `-`; so `..`, `g.st`, `1x`, `k8s-ctx`
+// are fine, and so are command names (`cd`, `ls`). Shell grammar words and
+// declaration builtins (ALIAS_REFUSED_NAMES) and `.` are refused.
+// Temp-allocated.
+alias_name_error :: proc(name: string) -> string {
+	if len(name) == 0 {
+		return "Alias name cannot be empty"
+	}
+	if len(name) > 255 {
+		return fmt.tprintf(
+			"Alias name too long (%d characters). Maximum 255 characters allowed.",
+			len(name),
+		)
+	}
+	if name[0] == '-' {
+		return fmt.tprintf("Alias name cannot start with '-': %s", name)
+	}
+	for i in 0 ..< len(name) {
+		c := name[i]
+		if c <= 0x20 || c >= 0x7f || c == '/' || c == '^' || !is_safe_alias_name(name[i:i + 1]) {
+			shown :=
+				fmt.tprintf("'%c'", rune(c)) if \
+					c > 0x20 && c < 0x7f else \
+					fmt.tprintf("byte 0x%02x", c)
+			return fmt.tprintf(
+				"Alias name contains invalid character %s at position %d (not allowed: whitespace, quotes, $ ` \\ = / ^ ; & | < > ( ) {{ }} [ ] * ? # ~ !, non-ASCII)",
+				shown,
+				i,
+			)
+		}
+	}
+	if name == "." {
+		return "Cannot use '.' (the source builtin) as Alias name"
+	}
+	// wayu's own helpers: an alias would hijack code parsed after the
+	// aliases are defined (path_sync.<ext> from the prompt hook, eval).
+	if strings.has_prefix(name, "_wayu") {
+		return fmt.tprintf(
+			"Alias name '%s' is reserved: names starting with _wayu belong to wayu",
+			name,
+		)
+	}
+	for reserved_word in ALIAS_REFUSED_NAMES {
+		if name == reserved_word {
+			return fmt.tprintf("Cannot use shell reserved word '%s' as Alias name", name)
+		}
+	}
+	return ""
+}
+
+// Why `value` cannot be stored (alias command, constant value, PATH dir),
+// "" when it can: a NUL byte (the shell cannot hold one; it was written raw
+// into core.<ext>) or invalid UTF-8 (entries.json is JSON text). `what`
+// names the value in the message. Temp-allocated.
+stored_value_error :: proc(what: string, value: string) -> string {
+	if strings.index_byte(value, 0) >= 0 {
+		return fmt.tprintf("%s contains a NUL byte", what)
+	}
+	if !utf8.valid_string(value) {
+		return fmt.tprintf("%s is not valid UTF-8", what)
+	}
+	return ""
+}
+
+// Environment names `wayu const add` refuses (OKAMI-304): setting them from
+// wayu breaks the shell or wayu itself (`const add PATH /x` left every new
+// shell without ls). zsh ties `path`/`fpath` to PATH/FPATH. Every WAYU_*
+// name is refused too (wayu's own settings and runtime variables). So are
+// names whose value a shell runs as code or loads code from: the prompts
+// (prompt-expanded, `$(...)` runs with PROMPT_SUBST / bash promptvars; PS4 on
+// every traced command, PS0 before every command), PROMPT_COMMAND, BASH_ENV
+// and ENV (sourced by every non-interactive bash / sh), and fish's function
+// and completion search paths (autoloaded code; replacing them also loses
+// fish's own functions).
+PROTECTED_ENV_NAMES :: []string {
+	"PATH",
+	"path",
+	"FPATH",
+	"fpath",
+	"HOME",
+	"IFS",
+	"SHELL",
+	"USER",
+	"LOGNAME",
+	"PWD",
+	"OLDPWD",
+	"ZDOTDIR",
+	"SHLVL",
+	"_",
+	"PS0",
+	"PS1",
+	"PS2",
+	"PS3",
+	"PS4",
+	"PROMPT",
+	"prompt",
+	"PROMPT2",
+	"PROMPT3",
+	"PROMPT4",
+	"RPROMPT",
+	"RPROMPT2",
+	"RPS1",
+	"RPS2",
+	"SPROMPT",
+	"PROMPT_EOL_MARK",
+	"PROMPT_COMMAND",
+	"BASH_ENV",
+	"ENV",
+	"fish_function_path",
+	"fish_complete_path",
+}
+
+// Why `name` is a protected environment name, "" when it is not.
+// Temp-allocated.
+protected_env_name_error :: proc(name: string) -> string {
+	if strings.has_prefix(name, "WAYU_") {
+		return fmt.tprintf("%s is reserved: wayu does not manage WAYU_* variables", name)
+	}
+	for p in PROTECTED_ENV_NAMES {
+		if name == p {
+			return fmt.tprintf(
+				"%s is protected: setting it from wayu would break your shell (protected: %s, WAYU_*)",
+				name,
+				strings.join(PROTECTED_ENV_NAMES, ", ", context.temp_allocator),
+			)
+		}
+	}
+	return ""
+}
+
 // Validate alias-specific rules
 validate_alias :: proc(name: string, command: string) -> ValidationResult {
-	// First validate the identifier
-	result := validate_identifier(name, "Alias", allow_hyphen = true)
-	if !result.valid {
-		return result
+	if err := alias_name_error(name); len(err) > 0 {
+		return ValidationResult{valid = false, error_message = strings.clone(err)}
 	}
 
 	// Check command is not empty
 	if len(strings.trim_space(command)) == 0 {
-		return ValidationResult{valid = false, error_message = fmt.aprintf("Alias command cannot be empty")}
+		return ValidationResult {
+			valid = false,
+			error_message = fmt.aprintf("Alias command cannot be empty"),
+		}
+	}
+	if err := stored_value_error("Alias command", command); len(err) > 0 {
+		return ValidationResult{valid = false, error_message = strings.clone(err)}
 	}
 
 	return ValidationResult{valid = true, error_message = ""}
@@ -152,6 +328,12 @@ validate_constant :: proc(name: string, value: string) -> ValidationResult {
 	result := validate_identifier(name, "Constant")
 	if !result.valid {
 		return result
+	}
+	if err := protected_env_name_error(name); len(err) > 0 {
+		return ValidationResult{valid = false, error_message = strings.clone(err)}
+	}
+	if err := stored_value_error("Constant value", value); len(err) > 0 {
+		return ValidationResult{valid = false, error_message = strings.clone(err)}
 	}
 
 	// Convention: constants should be uppercase (warning, not error).
@@ -165,10 +347,10 @@ validate_constant :: proc(name: string, value: string) -> ValidationResult {
 	}
 
 	if has_lowercase {
-		return ValidationResult{
-			valid         = true,
+		return ValidationResult {
+			valid = true,
 			error_message = "",
-			warning       = fmt.aprintf(
+			warning = fmt.aprintf(
 				"Constant name '%s' contains lowercase letters. Convention is UPPER_CASE.",
 				name,
 			),
@@ -202,15 +384,18 @@ validate_path :: proc(path: string) -> ValidationResult {
 		return ValidationResult{valid = false, error_message = fmt.aprintf("Path cannot be empty")}
 	}
 
-	// Check for null bytes (security)
-	if strings.contains(path, "\x00") {
-		return ValidationResult{valid = false, error_message = fmt.aprintf("Path contains null bytes")}
+	// NUL bytes (security) / invalid UTF-8 (entries.json is JSON text).
+	if err := stored_value_error("Path", path); len(err) > 0 {
+		return ValidationResult{valid = false, error_message = strings.clone(err)}
 	}
 
 	// ':' is the PATH separator: "/x/a:." would put "/x/a" AND "." (the CWD)
 	// on PATH. Newlines break the line-oriented generated files.
 	if !is_path_entry_safe(path) {
-		return ValidationResult{valid = false, error_message = fmt.aprintf("Path cannot contain ':' or newlines (PATH separator)")}
+		return ValidationResult {
+			valid = false,
+			error_message = fmt.aprintf("Path cannot contain ':' or newlines (PATH separator)"),
+		}
 	}
 
 	return ValidationResult{valid = true, error_message = ""}
@@ -239,12 +424,22 @@ print_error_with_context :: proc(
 		eprintfln_color("File not found: %s%s%s", BRIGHT_YELLOW, resource, RESET)
 
 		if strings.contains(resource, "/wayu/") {
-			fmt.eprintfln("\n%sSuggestion:%s Run %swayu init%s to create configuration files",
-				BRIGHT_CYAN, RESET, BOLD, RESET)
-			fmt.eprintfln("            This sets up ~/.config/wayu/ (config) and ~/.local/share/wayu/ (data)")
+			fmt.eprintfln(
+				"\n%sSuggestion:%s Run %swayu init%s to create configuration files",
+				BRIGHT_CYAN,
+				RESET,
+				BOLD,
+				RESET,
+			)
+			fmt.eprintfln(
+				"            This sets up ~/.config/wayu/ (config) and ~/.local/share/wayu/ (data)",
+			)
 		} else {
-			fmt.eprintfln("\n%sSuggestion:%s Check the file path and try again",
-				BRIGHT_CYAN, RESET)
+			fmt.eprintfln(
+				"\n%sSuggestion:%s Check the file path and try again",
+				BRIGHT_CYAN,
+				RESET,
+			)
 		}
 
 	case .PERMISSION_DENIED:
@@ -259,8 +454,11 @@ print_error_with_context :: proc(
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Details: %s", context_msg)
 		}
-		fmt.eprintfln("\n%sSuggestion:%s Ensure the file is not corrupted or locked by another process",
-			BRIGHT_CYAN, RESET)
+		fmt.eprintfln(
+			"\n%sSuggestion:%s Ensure the file is not corrupted or locked by another process",
+			BRIGHT_CYAN,
+			RESET,
+		)
 		fmt.eprintfln("            Try closing other applications that may be using this file")
 
 	case .FILE_WRITE_ERROR:
@@ -268,7 +466,11 @@ print_error_with_context :: proc(
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Details: %s", context_msg)
 		}
-		eprintfln_color("\n%sSuggestion:%s Check disk space and file permissions:", BRIGHT_CYAN, RESET)
+		eprintfln_color(
+			"\n%sSuggestion:%s Check disk space and file permissions:",
+			BRIGHT_CYAN,
+			RESET,
+		)
 		eprintfln_color("            %sdf -h%s  # Check disk space", MUTED, RESET)
 		eprintfln_color("            %sls -la %s%s  # Check permissions", MUTED, resource, RESET)
 
@@ -279,24 +481,46 @@ print_error_with_context :: proc(
 		}
 		// Determine command type from resource
 		if strings.contains(resource, "alias") {
-			fmt.eprintfln("\n%sSuggestion:%s Use %swayu alias help%s for usage information",
-				BRIGHT_CYAN, RESET, MUTED, RESET)
+			fmt.eprintfln(
+				"\n%sSuggestion:%s Use %swayu alias help%s for usage information",
+				BRIGHT_CYAN,
+				RESET,
+				MUTED,
+				RESET,
+			)
 		} else if strings.contains(resource, "constant") {
-			fmt.eprintfln("\n%sSuggestion:%s Use %swayu constants help%s for usage information",
-				BRIGHT_CYAN, RESET, MUTED, RESET)
+			fmt.eprintfln(
+				"\n%sSuggestion:%s Use %swayu constants help%s for usage information",
+				BRIGHT_CYAN,
+				RESET,
+				MUTED,
+				RESET,
+			)
 		} else if strings.contains(resource, "path") {
-			fmt.eprintfln("\n%sSuggestion:%s Use %swayu path help%s for usage information",
-				BRIGHT_CYAN, RESET, MUTED, RESET)
+			fmt.eprintfln(
+				"\n%sSuggestion:%s Use %swayu path help%s for usage information",
+				BRIGHT_CYAN,
+				RESET,
+				MUTED,
+				RESET,
+			)
 		} else {
-			fmt.eprintfln("\n%sSuggestion:%s Use %swayu help%s for usage information",
-				BRIGHT_CYAN, RESET, MUTED, RESET)
+			fmt.eprintfln(
+				"\n%sSuggestion:%s Use %swayu help%s for usage information",
+				BRIGHT_CYAN,
+				RESET,
+				MUTED,
+				RESET,
+			)
 		}
 
 	case .CONFIG_NOT_INITIALIZED:
-		fmt.eprintfln("Wayu configuration not found in: %s%s%s",
-			BRIGHT_YELLOW, resource, RESET)
-		fmt.eprintfln("\n%sFirst time using wayu?%s Run the following command:",
-			BRIGHT_CYAN, RESET)
+		fmt.eprintfln("Wayu configuration not found in: %s%s%s", BRIGHT_YELLOW, resource, RESET)
+		fmt.eprintfln(
+			"\n%sFirst time using wayu?%s Run the following command:",
+			BRIGHT_CYAN,
+			RESET,
+		)
 		eprintfln_color("  %swayu init%s", BOLD, RESET)
 		fmt.eprintfln("\nThis will:")
 		fmt.eprintfln("  • Create ~/.config/wayu/ and ~/.local/share/wayu/")
@@ -308,7 +532,11 @@ print_error_with_context :: proc(
 		if len(context_msg) > 0 {
 			fmt.eprintfln("Details: %s", context_msg)
 		}
-		eprintfln_color("\n%sSuggestion:%s Verify the directory exists or create it:", BRIGHT_CYAN, RESET)
+		eprintfln_color(
+			"\n%sSuggestion:%s Verify the directory exists or create it:",
+			BRIGHT_CYAN,
+			RESET,
+		)
 		eprintfln_color("            %smkdir -p %s%s", MUTED, resource, RESET)
 	}
 
@@ -360,8 +588,11 @@ safe_write_file :: proc(file_path: string, content: []byte) -> bool {
 		defer delete(dir_path)
 
 		if !os.exists(dir_path) {
-			print_error_with_context(.DIRECTORY_NOT_FOUND, dir_path,
-				"Parent directory does not exist")
+			print_error_with_context(
+				.DIRECTORY_NOT_FOUND,
+				dir_path,
+				"Parent directory does not exist",
+			)
 		} else {
 			// Check disk space
 			print_error_with_context(.FILE_WRITE_ERROR, file_path)
@@ -403,14 +634,22 @@ print_error_simple :: proc(format: string, args: ..any) {
 // Cached result for check_wayu_initialized — avoids repeated os.exists
 // calls and path allocation on every sub-command.
 @(private = "file")
-WAYU_INIT_CHECK: struct { done: bool, result: bool } = {}
+WAYU_INIT_CHECK: struct {
+	done:   bool,
+	result: bool,
+} = {}
 
 check_wayu_initialized :: proc() -> bool {
-	if WAYU_INIT_CHECK.done { return WAYU_INIT_CHECK.result }
+	if WAYU_INIT_CHECK.done {
+		return WAYU_INIT_CHECK.result
+	}
 
 	if !os.exists(wayu.config) {
 		print_error_with_context(.CONFIG_NOT_INITIALIZED, wayu.config)
-		WAYU_INIT_CHECK = { done = true, result = false }
+		WAYU_INIT_CHECK = {
+			done   = true,
+			result = false,
+		}
 		return false
 	}
 
@@ -419,10 +658,16 @@ check_wayu_initialized :: proc() -> bool {
 	defer delete(toml_path)
 	if !os.exists(toml_path) {
 		print_error_with_context(.FILE_NOT_FOUND, toml_path)
-		WAYU_INIT_CHECK = { done = true, result = false }
+		WAYU_INIT_CHECK = {
+			done   = true,
+			result = false,
+		}
 		return false
 	}
 
-	WAYU_INIT_CHECK = { done = true, result = true }
+	WAYU_INIT_CHECK = {
+		done   = true,
+		result = true,
+	}
 	return true
 }

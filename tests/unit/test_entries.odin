@@ -3,16 +3,21 @@
 
 package test_wayu
 
+import wayu "../../src"
 import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import wayu "../../src"
 
 // Write `content` as <dir>/entries.json (fixture helper for every suite).
 write_entries_json :: proc(t: ^testing.T, dir, content: string, loc := #caller_location) {
 	path := fmt.tprintf("%s/%s", dir, wayu.ENTRIES_FILE)
-	testing.expect(t, wayu.safe_write_file(path, transmute([]byte)content), "write entries.json", loc = loc)
+	testing.expect(
+		t,
+		wayu.safe_write_file(path, transmute([]byte)content),
+		"write entries.json",
+		loc = loc,
+	)
 }
 
 // Point wayu.data (and config) at a fresh per-process dir for one test.
@@ -30,19 +35,28 @@ test_entries_round_trip_keeps_order :: proc(t: ^testing.T) {
 	defer os.remove_all(dir)
 	saved_config, saved_data := wayu.wayu.config, wayu.wayu.data
 	wayu.wayu.config, wayu.wayu.data = dir, dir
-	defer { wayu.wayu.config, wayu.wayu.data = saved_config, saved_data }
+	defer {wayu.wayu.config, wayu.wayu.data = saved_config, saved_data}
 
-	store := wayu.EntryStore{version = wayu.ENTRIES_FORMAT_VERSION}
+	store := wayu.EntryStore {
+		version = wayu.ENTRIES_FORMAT_VERSION,
+	}
 	defer wayu.entries_store_destroy(&store)
 	// Reverse-alphabetical: declaration order is PATH priority.
 	for kv in ([][2]string{{"zz", "/zz"}, {"mm", "/m m"}, {"aa", `/a"a`}}) {
 		append(&store.paths, wayu.StorePath{strings.clone(kv[0]), strings.clone(kv[1])})
 	}
-	for kv in ([][2]string{{"zz", "ls"}, {`q"k`, "echo \"hi\"\n\\x"}, {"g.st", "git log --format='%h'"}}) {
+	for kv in ([][2]string {
+			{"zz", "ls"},
+			{"q-k", "echo \"hi\"\n\\x"},
+			{"g.st", "git log --format='%h'"},
+		}) {
 		append(&store.aliases, wayu.StoreAlias{strings.clone(kv[0]), strings.clone(kv[1])})
 	}
 	append(&store.env, wayu.StoreEnv{strings.clone("EDITOR"), strings.clone("nvim"), false, false})
-	append(&store.env, wayu.StoreEnv{strings.clone("UNI"), strings.clone("café ☕ \x1b[1m"), false, false})
+	append(
+		&store.env,
+		wayu.StoreEnv{strings.clone("UNI"), strings.clone("café ☕ \x1b[1m"), false, false},
+	)
 	append(&store.env, wayu.StoreEnv{strings.clone("EMPTY"), strings.clone(""), false, false})
 
 	testing.expect(t, wayu.entries_save(&store))
@@ -54,7 +68,14 @@ test_entries_round_trip_keeps_order :: proc(t: ^testing.T) {
 
 	data, _ := os.read_entire_file(path, context.temp_allocator)
 	text := string(data)
-	testing.expect(t, strings.has_prefix(text, "{\n  \"version\": 1,\n  \"paths\": [\n    {\"key\": \"zz\", \"dir\": \"/zz\"},\n"), text)
+	testing.expect(
+		t,
+		strings.has_prefix(
+			text,
+			"{\n  \"version\": 1,\n  \"paths\": [\n    {\"key\": \"zz\", \"dir\": \"/zz\"},\n",
+		),
+		text,
+	)
 	testing.expect(t, strings.has_suffix(text, "]\n}\n"), "pretty-printed with a trailing newline")
 
 	got, err, ok := wayu.entries_read()
@@ -63,7 +84,9 @@ test_entries_round_trip_keeps_order :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(got.paths), 3)
 	testing.expect_value(t, len(got.aliases), 3)
 	testing.expect_value(t, len(got.env), 3)
-	if len(got.paths) != 3 || len(got.aliases) != 3 || len(got.env) != 3 { return }
+	if len(got.paths) != 3 || len(got.aliases) != 3 || len(got.env) != 3 {
+		return
+	}
 	for p, i in store.paths {
 		testing.expect_value(t, got.paths[i].key, p.key)
 		testing.expect_value(t, got.paths[i].dir, p.dir)
@@ -100,7 +123,11 @@ test_entries_missing_file_is_empty_store :: proc(t: ^testing.T) {
 
 	empty := wayu.entries_serialize(&store)
 	defer delete(empty)
-	testing.expect_value(t, empty, "{\n  \"version\": 1,\n  \"paths\": [],\n  \"aliases\": [],\n  \"env\": []\n}\n")
+	testing.expect_value(
+		t,
+		empty,
+		"{\n  \"version\": 1,\n  \"paths\": [],\n  \"aliases\": [],\n  \"env\": []\n}\n",
+	)
 }
 
 @(test)
@@ -111,7 +138,7 @@ test_entries_malformed_is_an_error_naming_the_file :: proc(t: ^testing.T) {
 	wayu.wayu.data = dir
 	defer wayu.wayu.data = saved_data
 
-	cases := []string{
+	cases := []string {
 		`{"version": 1, "paths": [`,
 		`not json`,
 		`{"version": 2, "paths": []}`,
@@ -130,21 +157,36 @@ test_entries_malformed_is_an_error_naming_the_file :: proc(t: ^testing.T) {
 		store, err, ok := wayu.entries_read()
 		wayu.entries_store_destroy(&store)
 		testing.expectf(t, !ok, "malformed store accepted: %s", c)
-		testing.expectf(t, strings.contains(err, wayu.ENTRIES_FILE), "%s: error %q must name the file", c, err)
+		testing.expectf(
+			t,
+			strings.contains(err, wayu.ENTRIES_FILE),
+			"%s: error %q must name the file",
+			c,
+			err,
+		)
 	}
 }
 
 @(test)
 test_entries_secret_flag_serialized_only_when_true :: proc(t: ^testing.T) {
-	store := wayu.EntryStore{version = wayu.ENTRIES_FORMAT_VERSION}
+	store := wayu.EntryStore {
+		version = wayu.ENTRIES_FORMAT_VERSION,
+	}
 	defer wayu.entries_store_destroy(&store)
 	append(&store.env, wayu.StoreEnv{strings.clone("PLAIN"), strings.clone("v"), false, false})
-	append(&store.env, wayu.StoreEnv{strings.clone("TOKEN"), strings.clone("fake-not-written"), true, false})
+	append(
+		&store.env,
+		wayu.StoreEnv{strings.clone("TOKEN"), strings.clone("fake-not-written"), true, false},
+	)
 	text := wayu.entries_serialize(&store)
 	defer delete(text)
 	testing.expect(t, strings.contains(text, `{"name": "PLAIN", "value": "v"}`), text)
 	testing.expect(t, strings.contains(text, `{"name": "TOKEN", "secret": true}`), text)
-	testing.expect(t, !strings.contains(text, "fake-not-written"), "a secret's value never lands in entries.json")
+	testing.expect(
+		t,
+		!strings.contains(text, "fake-not-written"),
+		"a secret's value never lands in entries.json",
+	)
 	testing.expect(t, !strings.contains(text, `"secret": false`), text)
 
 	parsed, err, ok := wayu.entries_parse(text)
@@ -162,13 +204,59 @@ test_entries_secret_flag_serialized_only_when_true :: proc(t: ^testing.T) {
 @(test)
 test_entries_parse_is_leak_free :: proc(t: ^testing.T) {
 	good := `{"version": 1, "paths": [{"key": "a", "dir": "/a"}], "aliases": [{"name": "ll", "value": "ls"}], "env": [{"name": "A", "value": "1"}]}`
-	for _ in 0..<50 {
+	for _ in 0 ..< 50 {
 		s, _, ok := wayu.entries_parse(good)
 		testing.expect(t, ok)
 		wayu.entries_store_destroy(&s)
-		bad, _, bok := wayu.entries_parse(`{"version": 1, "paths": [{"key": "a", "dir": "/a"}, {"key": "a", "dir": "/b"}]}`)
+		bad, _, bok := wayu.entries_parse(
+			`{"version": 1, "paths": [{"key": "a", "dir": "/a"}, {"key": "a", "dir": "/b"}]}`,
+		)
 		testing.expect(t, !bok)
 		wayu.entries_store_destroy(&bad)
+	}
+	free_all(context.temp_allocator)
+}
+
+// OKAMI-321: the reader is strict. Each of these was accepted before.
+@(test)
+test_entries_parse_strict :: proc(t: ^testing.T) {
+	GOOD :: `{"version": 1, "paths": [{"key": "a", "dir": "/a"}], "aliases": [{"name": "..", "value": "cd .."}], "env": [{"name": "A", "value": ""}, {"name": "S", "secret": true, "run_only": true}]}`
+	s, gerr, gok := wayu.entries_parse(GOOD)
+	testing.expectf(t, gok, "good store: %s", gerr)
+	wayu.entries_store_destroy(&s)
+
+	bad := []string {
+		GOOD + ` x`, // trailing garbage
+		GOOD + GOOD, // two documents
+		`{"version": 1, "paths": [],}`, // trailing comma (object)
+		`{"version": 1, "paths": [{"key": "a", "dir": "/a"},]}`, // trailing comma (array)
+		`{"version": "1"}`, // version as a string
+		`{"version": 1.0}`, // version as a float
+		`{"paths": []}`, // no version
+		`{"version": 1, "extra": 1}`, // unknown top-level field
+		`{"version": 1, "aliases": [{"name": "ll", "value": "ls", "x": 1}]}`, // unknown entry field
+		`{"version": 1, "aliases": [{"name": "ll"}]}`, // alias without value
+		`{"version": 1, "aliases": [{"name": "ll", "value": " "}]}`, // empty alias value
+		`{"version": 1, "aliases": [{"name": "a b", "value": "ls"}]}`, // invalid alias name
+		`{"version": 1, "aliases": [{"name": "if", "value": "ls"}]}`, // reserved word
+		`{"version": 1, "env": [{"name": "1A", "value": "x"}]}`, // invalid env name
+		`{"version": 1, "env": [{"name": "A"}]}`, // constant without value
+		`{"version": 1, "env": [{"name": "A", "value": "x", "secret": true}]}`, // secret with a value
+		`{"version": 1, "env": [{"name": "A", "value": "x", "run_only": true}]}`, // run_only, not secret
+		`{"version": 1, "env": [{"name": "A", "value": 1}]}`, // value not a string
+		`{"version": 1, "env": [{"name": "A", "value": "a\u0000b"}]}`, // NUL
+		`{"version": 1, "env": [{"name": "A", "value": "a` + "\x01" + `b"}]}`, // raw control char
+		`{"version": 1, "env": [{"name": "A", "value": "a` + "\xff" + `b"}]}`, // invalid UTF-8
+		`{"version": 1, "version": 1}`, // duplicate key
+		`{"version": 1, "paths": [{"key": "a.b", "dir": "/a"}]}`, // invalid path key
+		`{"version": 1, "paths": [{"key": "a", "dir": "/a:/b"}]}`, // ':' in dir
+		`[1]`, // not an object
+	}
+	for b in bad {
+		st, err, ok := wayu.entries_parse(b)
+		testing.expectf(t, !ok, "accepted: %s", b)
+		testing.expectf(t, ok || len(err) > 0, "no reason for: %s", b)
+		wayu.entries_store_destroy(&st)
 	}
 	free_all(context.temp_allocator)
 }
@@ -177,12 +265,49 @@ test_entries_parse_is_leak_free :: proc(t: ^testing.T) {
 // zsh/bash, the same lookup in fish syntax (no ${X:-y} there).
 @(test)
 test_bootstrap_line_per_shell :: proc(t: ^testing.T) {
-	want_zsh := strings.concatenate({`source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}`, `/init.zsh"`}, context.temp_allocator)
+	want_zsh := strings.concatenate(
+		{`source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}`, `/init.zsh"`},
+		context.temp_allocator,
+	)
 	testing.expect_value(t, wayu.bootstrap_source_line("zsh"), want_zsh)
 	testing.expect(t, strings.has_suffix(wayu.bootstrap_source_line("bash"), `/init.bash"`))
 	fish := wayu.bootstrap_source_line("fish")
 	testing.expect(t, !strings.contains(fish, ":-"), "fish line uses no POSIX expansion")
-	testing.expect(t, strings.contains(fish, "$WAYU_DATA_DIR/init.fish") && strings.contains(fish, "$XDG_DATA_HOME/wayu/init.fish") &&
-		strings.contains(fish, "~/.local/share/wayu/init.fish"))
+	testing.expect(
+		t,
+		strings.contains(fish, "$WAYU_DATA_DIR/init.fish") &&
+		strings.contains(fish, "$XDG_DATA_HOME/wayu/init.fish") &&
+		strings.contains(fish, "~/.local/share/wayu/init.fish"),
+	)
 	free_all(context.temp_allocator)
+}
+
+// fpath entries: compinit/compaudit glob-expand them (${~fpath}), so glob
+// characters are refused on read (strict parse) and by fpath_entry_error.
+@(test)
+test_entries_fpath_glob_refused :: proc(t: ^testing.T) {
+	for d in ([]string{"/opt/zsh", "~/c", "~", "$HOME/.x/completions", "/a b/c-d.e_f+g"}) {
+		testing.expectf(t, wayu.fpath_entry_error(d) == "", "%s should be allowed", d)
+	}
+	for d in ([]string {
+			"/x/*",
+			"/x?",
+			"/x[ab]",
+			"/x(#qe,cmd,)",
+			"/a<1-2>",
+			"/a|b",
+			"/a#",
+			"/a^b",
+			"/a/~b",
+			"~~",
+			"/a:b",
+			"/a\nb",
+		}) {
+		testing.expectf(t, wayu.fpath_entry_error(d) != "", "%q should be refused", d)
+	}
+	store, err, ok := wayu.entries_parse(
+		`{"version":1,"paths":[],"aliases":[],"env":[],"fpath":["/x/*"]}`,
+	)
+	defer wayu.entries_store_destroy(&store)
+	testing.expect(t, !ok && strings.contains(err, "glob character"), err)
 }

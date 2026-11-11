@@ -41,6 +41,7 @@ class PathIntegrationTest
       test_clean_keeps_unresolved_and_env_paths
       test_dedup_refuses_duplicate_key
       test_remove_by_key_hook_gets_path
+      test_add_regular_file_refused
       test_help_command
     ensure
       teardown_test_env
@@ -229,6 +230,17 @@ class PathIntegrationTest
            "status=#{status.exitstatus}\nout=#{output}\nstore=#{after}")
   end
 
+  # Regression (OKAMI-332): `path add` accepted a regular file.
+  def test_add_regular_file_refused
+    print "Test 19: path add of a regular file exits 65; nothing stored... "
+
+    file = "#{@scratch}/not_a_dir"
+    File.write(file, "x\n")
+    output, status = run_wayu("path add #{file}")
+    report(status.exitstatus == 65 && output.include?('Not a directory') && !store_text.include?(file),
+           "status=#{status.exitstatus}\nout=#{output}")
+  end
+
   # Regression (OKAMI-168): `path rm <key>` passed the key, not the
   # directory, as {path} to pre/post_path_remove.
   def test_remove_by_key_hook_gets_path
@@ -309,7 +321,7 @@ class PathIntegrationTest
     cases = {
       '.' => project_root,
       './bin' => "#{project_root}/bin",
-      'bin/wayu' => "#{project_root}/bin/wayu",
+      'tests/unit' => "#{project_root}/tests/unit",
       "../#{File.basename(project_root)}/tests" => "#{project_root}/tests",
       'relative_named=tests/integration' => "#{project_root}/tests/integration"
     }
@@ -342,7 +354,7 @@ class PathIntegrationTest
     project_root = File.expand_path('../..', __dir__)
     cases = {
       './bin' => "#{project_root}/bin",
-      'bin/wayu' => "#{project_root}/bin/wayu",
+      'tests/unit' => "#{project_root}/tests/unit",
       "../#{File.basename(project_root)}/tests" => "#{project_root}/tests"
     }
 
@@ -487,7 +499,7 @@ class PathIntegrationTest
     fake_path = "/nonexistent/path/for/removal"
     output, status = run_wayu("path rm #{fake_path}")
 
-    if output.include?("not found") || output.include?("does not exist") || output.include?("Not found")
+    if status.exitstatus == 65 && output.include?("PATH entry not found: #{fake_path}")
       puts "✓"
       @passed += 1
     else

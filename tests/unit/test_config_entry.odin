@@ -1,8 +1,8 @@
 package test_wayu
 
-import "core:testing"
-import "core:strings"
 import wayu "../../src"
+import "core:strings"
+import "core:testing"
 
 // ============================================================================
 // parse_args_to_entry tests
@@ -66,32 +66,76 @@ test_parse_args_to_entry_empty :: proc(t: ^testing.T) {
 
 @(test)
 test_is_entry_complete_path :: proc(t: ^testing.T) {
-	complete := wayu.ConfigEntry{type = .PATH, name = "/usr/bin", value = ""}
+	complete := wayu.ConfigEntry {
+		type  = .PATH,
+		name  = "/usr/bin",
+		value = "",
+	}
 	testing.expect(t, wayu.is_entry_complete(complete), "PATH with name should be complete")
 
-	incomplete := wayu.ConfigEntry{type = .PATH, name = "", value = ""}
-	testing.expect(t, !wayu.is_entry_complete(incomplete), "PATH without name should be incomplete")
+	incomplete := wayu.ConfigEntry {
+		type  = .PATH,
+		name  = "",
+		value = "",
+	}
+	testing.expect(
+		t,
+		!wayu.is_entry_complete(incomplete),
+		"PATH without name should be incomplete",
+	)
 }
 
 @(test)
 test_is_entry_complete_alias :: proc(t: ^testing.T) {
-	complete := wayu.ConfigEntry{type = .ALIAS, name = "ll", value = "ls -la"}
+	complete := wayu.ConfigEntry {
+		type  = .ALIAS,
+		name  = "ll",
+		value = "ls -la",
+	}
 	testing.expect(t, wayu.is_entry_complete(complete), "Alias with name+value should be complete")
 
-	no_value := wayu.ConfigEntry{type = .ALIAS, name = "ll", value = ""}
-	testing.expect(t, !wayu.is_entry_complete(no_value), "Alias without value should be incomplete")
+	no_value := wayu.ConfigEntry {
+		type  = .ALIAS,
+		name  = "ll",
+		value = "",
+	}
+	testing.expect(
+		t,
+		!wayu.is_entry_complete(no_value),
+		"Alias without value should be incomplete",
+	)
 
-	no_name := wayu.ConfigEntry{type = .ALIAS, name = "", value = "ls -la"}
+	no_name := wayu.ConfigEntry {
+		type  = .ALIAS,
+		name  = "",
+		value = "ls -la",
+	}
 	testing.expect(t, !wayu.is_entry_complete(no_name), "Alias without name should be incomplete")
 }
 
 @(test)
 test_is_entry_complete_constant :: proc(t: ^testing.T) {
-	complete := wayu.ConfigEntry{type = .CONSTANT, name = "MY_VAR", value = "hello"}
-	testing.expect(t, wayu.is_entry_complete(complete), "Constant with name+value should be complete")
+	complete := wayu.ConfigEntry {
+		type  = .CONSTANT,
+		name  = "MY_VAR",
+		value = "hello",
+	}
+	testing.expect(
+		t,
+		wayu.is_entry_complete(complete),
+		"Constant with name+value should be complete",
+	)
 
-	no_value := wayu.ConfigEntry{type = .CONSTANT, name = "MY_VAR", value = ""}
-	testing.expect(t, !wayu.is_entry_complete(no_value), "Constant without value should be incomplete")
+	no_value := wayu.ConfigEntry {
+		type  = .CONSTANT,
+		name  = "MY_VAR",
+		value = "",
+	}
+	testing.expect(
+		t,
+		!wayu.is_entry_complete(no_value),
+		"Constant without value should be incomplete",
+	)
 }
 
 // ============================================================================
@@ -134,22 +178,22 @@ test_constants_spec_fields :: proc(t: ^testing.T) {
 
 @(test)
 test_cleanup_entry_with_empty_fields :: proc(t: ^testing.T) {
-	entry := wayu.ConfigEntry{
-		type = .PATH,
-		name = "",
+	entry := wayu.ConfigEntry {
+		type  = .PATH,
+		name  = "",
 		value = "",
-		line = "",
+		line  = "",
 	}
 	wayu.cleanup_entry(&entry)
 }
 
 @(test)
 test_cleanup_entry_with_allocated_fields :: proc(t: ^testing.T) {
-	entry := wayu.ConfigEntry{
-		type = .ALIAS,
-		name = strings.clone("test_name"),
+	entry := wayu.ConfigEntry {
+		type  = .ALIAS,
+		name  = strings.clone("test_name"),
 		value = strings.clone("test_value"),
-		line = strings.clone(`alias test_name="test_value"`),
+		line  = strings.clone(`alias test_name="test_value"`),
 	}
 	wayu.cleanup_entry(&entry)
 }

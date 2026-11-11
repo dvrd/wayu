@@ -4,17 +4,17 @@ Agent instructions for AI coding assistants working in this repository.
 
 ## Project Overview
 
-wayu is a shell configuration management CLI written in Odin. It manages PATH entries, aliases, environment constants, `[tools]` loaders, a native zsh prompt, plugins, functions and completions. User-edited files live in the config dir `~/.config/wayu/` (`WAYU_CONFIG_DIR`): wayu.toml, hooks.conf, extra.<ext>, tools.<ext>, functions/. Data wayu manages lives in the data dir `${XDG_DATA_HOME:-~/.local/share}/wayu/` (`WAYU_DATA_DIR`): entries.json (PATH entries, aliases, constants), plugins.json, and the generated runtime files (init.<ext>, core.<ext>, path_sync.<ext>, plugins, completions, backups, the lock).
+wayu is a shell configuration management CLI written in Odin. It manages PATH entries, aliases, environment constants, `[tools]` loaders, a native prompt (zsh, fish), plugins, functions and completions. User-edited files live in the config dir `~/.config/wayu/` (`WAYU_CONFIG_DIR`): wayu.toml, hooks.conf, extra.<ext>, tools.<ext>, functions/. Data wayu manages lives in the data dir `${XDG_DATA_HOME:-~/.local/share}/wayu/` (`WAYU_DATA_DIR`): entries.json (PATH entries, aliases, constants), plugins.json, and the generated runtime files (init.<ext>, core.<ext>, path_sync.<ext>, plugins, completions, backups, the lock).
 
-User docs: [README.md](README.md) (install, shell setup, upgrade), [docs/cli.md](docs/cli.md) (every command/flag, `--json` shapes, exit codes), [docs/config-reference.md](docs/config-reference.md) (wayu.toml, entries.json and the other config files), [docs/UPGRADING.md](docs/UPGRADING.md) (behavior changes per release).
+User docs: [README.md](README.md) (install, shell setup, upgrade), [docs/cli.md](docs/cli.md) (every command/flag, `--json` shapes, exit codes), [docs/config-reference.md](docs/config-reference.md) (wayu.toml, entries.json and the other config files), [docs/UPGRADING.md](docs/UPGRADING.md) (behavior changes per release), [docs/STABILITY.md](docs/STABILITY.md) (what is stable, migration and deprecation policy).
 
 **Current version**: see `VERSION` constant in `src/main.odin` (single source of truth) — run `./bin/wayu --version` to print.
-**Supported shells**: Zsh (primary), Bash, Fish (core.fish: [tools], functions/, live PATH sync; no native prompt)
+**Supported shells**: Zsh (primary), Bash, Fish (core.fish: [tools], functions/, live PATH sync, native prompt, turbo export)
 
 ## Build & Development Commands
 
 > Build system is `./build_it` (an Odin binary at repo root, source in `build/build.odin`). There is no Taskfile.
-> Odin version is pinned in `.github/odin-release` (used by CI/releases); `./build_it` warns on a mismatch. Bump it there when upgrading.
+> Odin version is pinned in `.github/odin-release` (used by CI/releases); `./build_it` warns on a mismatch. Bump it there when upgrading, together with `.github/odin-release.sha256` (the release assets' `sha256sum` lines; CI refuses a download that doesn't match).
 
 ```bash
 # Build
@@ -53,6 +53,8 @@ ruby tests/integration/test_golden.rb             # compare every golden (also r
 
 Each `tests/golden/<component>_<W>x<H>.txt` needs a matching line (component + args) in `tests/golden/cases.txt`; the test fails if a golden has no case.
 
+**Website** (`docs/`, GitHub Pages at wayu.dvrd.io): `./build_it docs` renders each docs page from `docs/*.md` (`build/markdown`) into `build/docs_shell.html` as static `docs/docs/<id>/index.html`, plus the overview, `docs/sitemap.xml` and the landing page's test count (`build/site.odin`, page list in `DOC_PAGES`); `docs/docs/docs.css` / `docs.js` are hand-written. Run it after editing any of those: `./build_it docs --check` (CI) fails on a stale generated file.
+
 ## Branching & releases
 
 - **`develop` is the integration branch.** All work (features, fixes, review
@@ -68,8 +70,9 @@ Each `tests/golden/<component>_<W>x<H>.txt` needs a matching line (component + a
   source. A `hotfix/*` merged to `main` is merged back into `develop` right
   after.
 - A phase/ticket is "done" when it is merged and CI-green on `develop`.
-- Keep `docs/UPGRADING.md` "## Unreleased" up to date on `develop`; rename it to
-  the version when shipping.
+- Keep `docs/UPGRADING.md` "## Unreleased" up to date on `develop`: the
+  release renames it to the version (`.github/scripts/upgrading-version.sh`)
+  and publishes it as the release's upgrade notes (`release-notes.sh`).
 
 ## Commit convention (drives versioning)
 
@@ -82,6 +85,16 @@ Conventional Commits; `git-cliff` derives the next version from them (`cliff.tom
 | anything else (`fix:`, `refactor:`, …) | patch |
 
 Any **user-visible behavior change** (output, exit codes, flags, generated shell code, config semantics) is breaking even when it is a fix: mark it `fix(scope)!:` and write the footer — it becomes the release's "⚠ Upgrade notes". Batching on `develop` (above) keeps majors infrequent; don't drop the `!` to avoid one. No AI attribution in commits/PRs (no `Co-Authored-By`, no "Generated with").
+
+## Backward compatibility (from 7.0)
+
+[docs/STABILITY.md](docs/STABILITY.md) is the contract. A change to a data
+file format (`entries.json`, `plugins.json`, `secrets.json`) or to where wayu
+keeps a file, directory or keychain item ships with an automatic one-time
+migration in the same release: read the old form, write the new one (backup
+first), verify it, print a one-time notice, and test it (old-form fixture).
+Never require a manual step. Removing a command, flag or `wayu.toml` key
+needs a deprecation warning for at least one minor release first.
 
 ## Architecture
 
@@ -128,9 +141,10 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/script.odin` | `wayu script` (new/edit/list/remove/import/build): <data>/scripts sources, <data>/bin links/binaries, staleness, import classification, doctor check |
 | `src/script_langs.odin` | `SCRIPT_LANGS`: the one language table (ext, interpreters, shebang names, skeleton, compile step) |
 | `src/config_command.odin` | `wayu config edit/extend/scan [--fix]` |
+| `src/optimize.odin` | `wayu optimize`: pure rc-line classifier + block-aware scan, store merge (entries.json `fpath`/`generators`), rc rewrite with backups, `--notify` / `auto_optimize`, prompt-hook rc watch, doctor check, `completions fpath` |
 | `src/search.odin` | `wayu search` / `find` / `f` |
 | `src/templates.odin` | `wayu template` presets + `init --template` |
-| `src/turbo_export.odin` | `wayu export` (turbo copy of core, `--eval`, `--check`) |
+| `src/turbo_export.odin` | `wayu export` (turbo copy of core, `--eval`, `--check` compares content; zsh, bash, fish) |
 | `src/secrets.odin` | Secret heuristic + masking; file modes for files holding [env] values |
 | `src/secrets_store.odin` | Encrypted constants: ChaCha20-Poly1305 store (`secrets.json`), session cache + core loader, `const add --secret`/`--run-only`/get/rm, `wayu secrets` (incl. `run`: setenv + execvp), doctor check; `env_store_mark_secret` seam to the env store |
 | `src/keystore.odin` | Master key backends (`[secrets] backend`): keychain, secret-service, file |
@@ -145,7 +159,8 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 | `src/tui_core.odin` | TUI main loop, state machine, data loading, render orchestrator |
 | `src/tui_views.odin` | TUI view renderers (list, overlays, cache, handlers, hooks, plugins, settings) |
 | `src/tui_io.odin` | TUI terminal I/O: raw mode, input, screen buffer, events, colors, layout, components |
-| `src/prompt.odin` | Native zsh prompt (opt-in: `[prompt] enabled = true`) + vi-mode; values escaped |
+| `src/prompt.odin` | Native zsh + fish prompt (opt-in: `[prompt] enabled = true`) + vi-mode; values escaped |
+| `src/highlight.odin` | Built-in zsh syntax highlighting (opt-in: `[settings] highlight`): style table (`HIGHLIGHT_STYLES`), `highlight_styles` reading/validation, emits `src/highlight.zsh` (embedded with `#load`) into core.zsh |
 | `src/fuzzy.odin` | Fuzzy matching, interactive terminal selection, completions extraction |
 | `src/interfaces.odin` | Shared types (TomlConfig, etc.), exit codes, debug |
 | `src/colors.odin` | ANSI color profiles + output helpers |
@@ -155,7 +170,7 @@ Any **user-visible behavior change** (output, exit codes, flags, generated shell
 
 Reference: `docs/config-reference.md`.
 - `wayu.toml` (config dir, user-edited): `[shell]`, `[settings]`, `[tools]`, `[prompt]` / `[prompt.*]`, `[scripts]`, `[secrets]` (key backend). Read through `src/toml_parse.odin` (strict for validate/doctor/backup, lenient elsewhere); wayu only writes it when creating it. `[paths]`/`[aliases]`/`[env]` there are errors (validate, doctor) naming the `wayu path|alias|const add` command.
-- `entries.json` (data dir, managed): `{"version":1,"paths":[{"key","dir"}],"aliases":[{"name","value"}],"env":[{"name","value"}]}` (env entries may carry `"secret": true` and `"run_only": true`, serialized only when true; the encrypted value is in `secrets.json`, see `src/secrets_store.odin`). `src/entries.odin`: strict read (malformed → EXIT_CONFIG naming the file; missing → empty store), writes atomic under the lock, 0600, pretty-printed, stable order (array order = PATH priority / export order).
+- `entries.json` (data dir, managed): `{"version":1,"paths":[{"key","dir"}],"aliases":[{"name","value"}],"env":[{"name","value"}]}` (env entries may carry `"secret": true` and `"run_only": true`, serialized only when true; the encrypted value is in `secrets.json`, see `src/secrets_store.odin`); optional `"fpath":[dir]` and `"generators":[{"shell","cmd","args"}]` (written only when non-empty; `src/optimize.odin`). `src/entries.odin`: strict read (malformed → EXIT_CONFIG naming the file; missing → empty store), writes atomic under the lock, 0600, pretty-printed, stable order (array order = PATH priority / export order).
 - `functions/`, `scripts/`, `bin/` (data dir, managed by `wayu function` / `wayu script`): the directories are the source of truth.
 - Generated shell code: `src/init_generator.odin` compiles wayu.toml + entries.json into `core.<ext>` (the one file `init.<ext>` sources) and `path_sync.<ext>`; never edit those by hand.
 
@@ -166,7 +181,7 @@ All TUI code lives in 3 consolidated files (down from 18). No separate `tui/` pa
 
 ### Exit Codes
 
-Always use the `EXIT_*` constants from `src/interfaces.odin`. **Never use bare `os.exit(1)`**.
+Always use the `EXIT_*` constants from `src/interfaces.odin`, and exit with `wayu_exit(code)`: **never call `os.exit` directly** (`tests/unit/test_exit_paths.odin` enforces it).
 
 | Constant | Value | When to use |
 |---|---|---|
@@ -184,6 +199,10 @@ Always use the `EXIT_*` constants from `src/interfaces.odin`. **Never use bare `
 | EXIT_EXEC_NOT_RUNNABLE | 126 | `secrets run`: command not executable |
 | EXIT_EXEC_NOT_FOUND | 127 | `secrets run`: command not found |
 
+## Formatting
+
+Format every Odin file you touch with odinfmt (from ols) using the repo's `odinfmt.json` (found automatically from the file's directory): `odinfmt -w src/foo.odin`. Skip `src/rune_width_table.odin` (generated). odinfmt moves a trailing `// comment` inside a multi-line `+` string concatenation one line down on every run: put such comments on their own line above the statement. Running odinfmt twice must change nothing.
+
 ## Code Patterns
 
 ```odin
@@ -195,7 +214,7 @@ defer delete(config_file)
 result := validate_path(path)
 if !result.valid {
     print_error(result.error_message)
-    os.exit(EXIT_DATAERR)
+    wayu_exit(EXIT_DATAERR)
 }
 
 // Backup before any write
@@ -205,11 +224,11 @@ defer if ok do delete(backup_path)
 // Guard destructive operations with --yes
 if !wayu.yes_flag {
     print_error("This operation requires confirmation.")
-    os.exit(EXIT_USAGE)
+    wayu_exit(EXIT_USAGE)
 }
 ```
 
-Code the TUI can reach (config readers, locks) exits with `wayu_exit(code)`, which restores the terminal first, instead of `os.exit`.
+Every exit goes through `wayu_exit(code)` (`src/tui_io.odin`), which restores the terminal first when the TUI owns it: on Linux the Odin runtime's `os.exit` is a raw `exit_group` that skips atexit handlers, so a bare `os.exit` reachable from the TUI would leave the shell in raw mode on the alternate screen. Forked children use `posix._exit`.
 
 ## Testing Structure
 
@@ -219,6 +238,7 @@ tests/
 ├── golden/        # Component goldens + cases.txt (checked by integration/test_golden.rb)
 ├── integration/   # Ruby, end-to-end CLI behavior (run_all.rb; fixtures/init-prev.zsh = previous release's init.zsh; test_exit_codes.rb runs docs/cli.md's exit code table)
 ├── tui/           # TUI tests (Python/pyte: test_responsive.py) + gen_rune_width.py
+├── release/       # Pre-ship checks, run by hand (macOS): upgrade_from_release.sh (previous tag → this build), fresh_shells.sh (clean install, zsh/bash/fish), bash_trial.sh
 └── benchmark/     # startup.sh: shell startup timing (hyperfine)
 ```
 
@@ -236,7 +256,7 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 - `--help` / `-h`: works globally and per-command
 - `--version` / `-v`: prints `wayu vX.Y.Z`
 - `--no-color`: disables ANSI colors (equivalent to `NO_COLOR=1`)
-- `--yes` / `-y`: confirm destructive operations (required by: `path clean`, `path dedup`, `backup restore`, `backup rm`, `plugin remove`, `function remove`, `script remove`, `config scan --fix`, `doctor --fix`); without it they exit 64
+- `--yes` / `-y`: confirm destructive operations (required by: `path clean`, `path dedup`, `backup restore`, `backup rm`, `plugin remove`, `function remove`, `script remove`, `config scan --fix`, `doctor --fix`, `optimize`); without it they exit 64
 - `--`: ends flag parsing; in `alias add` / `const add` the rest of the line after the first value word is the value (see `docs/cli.md`). Unknown options exit 64
 - `--json`: machine-readable output for `path|alias|const|plugin|backup|script list`, `search`, `doctor` (the `json` bit_set in `WAYU_COMMAND_SPECS`; elsewhere exit 64). Schemas are documented in `docs/cli.md` "JSON output" and pinned by `test_json_schema` in `tests/integration/test_cli_output.rb` — update both when a shape changes
 - `docs/cli.md` is the CLI contract: when you add/rename a command, action or flag in `WAYU_COMMAND_SPECS`, or change an exit code, update it (`tests/unit/test_cli_doc.odin` and `tests/integration/test_exit_codes.rb` fail otherwise)
@@ -245,7 +265,5 @@ Unit tests: `tests/unit/test_<module>.odin`. Scratch files/dirs go under `test_t
 
 ## Known Stubs / In-Progress Areas
 
-These are acknowledged incomplete features — do not add workarounds, implement them properly:
+None currently. List acknowledged incomplete features here (do not add workarounds; implement them properly).
 
-- Fish: no native prompt (`[prompt]` is zsh-only); `wayu export` turbo is zsh/bash only
-- TUI plugins view: remove/update not available (CLI handlers exit the process; needs a non-exiting core)

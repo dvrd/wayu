@@ -5,8 +5,8 @@
 package wayu
 import "core:fmt"
 import "core:os"
-import "core:strings"
 import "core:sort"
+import "core:strings"
 // Main handler for ALIAS commands.
 //
 // Thin delegation to the generic entry dispatcher. The spec wires up
@@ -40,7 +40,7 @@ toml_alias_remove :: proc(name: string) -> (bool, string) {
 
 list_toml_aliases :: proc() {
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	entries := read_alias_entries()
@@ -107,7 +107,12 @@ list_toml_aliases :: proc() {
 
 	// Print summary
 	if needs_env {
-		fmt.printfln("  %d active · %d inactive · %d external", active_count, inactive_count, len(external_aliases))
+		fmt.printfln(
+			"  %d active · %d inactive · %d external",
+			active_count,
+			inactive_count,
+			len(external_aliases),
+		)
 	} else {
 		fmt.printfln("  %d entries", active_count)
 	}
@@ -155,7 +160,9 @@ list_toml_aliases :: proc() {
 
 			if has_multiple_sources {
 				source := "wayu"
-				if !is_active { source = "wayu (inactive)" }
+				if !is_active {
+					source = "wayu (inactive)"
+				}
 				row := []string{entry.name, entry.value, source}
 				table_add_row(&table, row)
 			} else {
@@ -180,9 +187,18 @@ list_toml_aliases :: proc() {
 	fmt.print(output)
 
 	if !needs_env {
-		fmt.printfln("%sPass --full to cross-reference with shell environment%s", get_muted(), RESET)
+		fmt.printfln(
+			"%sPass --full to cross-reference with shell environment%s",
+			get_muted(),
+			RESET,
+		)
 	} else if !show_external && len(external_aliases) > 0 {
-		fmt.printfln("%sPass --full to show %d external entries%s", get_muted(), len(external_aliases), RESET)
+		fmt.printfln(
+			"%sPass --full to show %d external entries%s",
+			get_muted(),
+			len(external_aliases),
+			RESET,
+		)
 	}
 }
 
@@ -241,10 +257,17 @@ print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
 			// Odin's fmt treats a literal `{` as a struct-verb opener, so
 			// emit braces via %c. Values are JSON-escaped so backslashes,
 			// quotes and control chars survive transport.
-			name_j := json_escape(entry.name);  defer delete(name_j)
-			val_j  := json_escape(entry.value); defer delete(val_j)
-			src_j  := json_escape(source);      defer delete(src_j)
-			fmt.printf("    %c\"alias\": \"%s\", \"command\": \"%s\", \"source\": \"%s\"%c", '{', name_j, val_j, src_j, '}')
+			name_j := json_escape(entry.name); defer delete(name_j)
+			val_j := json_escape(entry.value); defer delete(val_j)
+			src_j := json_escape(source); defer delete(src_j)
+			fmt.printf(
+				"    %c\"alias\": \"%s\", \"command\": \"%s\", \"source\": \"%s\"%c",
+				'{',
+				name_j,
+				val_j,
+				src_j,
+				'}',
+			)
 			first_entry = false
 		}
 	}
@@ -257,8 +280,14 @@ print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
 					fmt.println(",")
 				}
 				name_j := json_escape(alias_name); defer delete(name_j)
-				val_j  := json_escape(value);      defer delete(val_j)
-				fmt.printf("    %c\"alias\": \"%s\", \"command\": \"%s\", \"source\": \"external\"%c", '{', name_j, val_j, '}')
+				val_j := json_escape(value); defer delete(val_j)
+				fmt.printf(
+					"    %c\"alias\": \"%s\", \"command\": \"%s\", \"source\": \"external\"%c",
+					'{',
+					name_j,
+					val_j,
+					'}',
+				)
 				first_entry = false
 			}
 		}
@@ -272,10 +301,10 @@ print_aliases_json :: proc(entries: []ConfigEntry, external_aliases: []string) {
 get_toml_alias_value :: proc(name: string) {
 	if len(strings.trim_space(name)) == 0 {
 		print_cli_usage_error(&ALIAS_SPEC, "get")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 	if !check_wayu_initialized() {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	entries := read_alias_entries()
@@ -291,7 +320,7 @@ get_toml_alias_value :: proc(name: string) {
 
 	// Exact match only (OKAMI-207): never hand back a different entry.
 	names := make([]string, len(entries), context.temp_allocator)
-	for entry, i in entries { names[i] = entry.name }
+	for entry, i in entries {names[i] = entry.name}
 	exit_get_not_found(&ALIAS_SPEC, name, names)
 }
 ALIAS_SOURCES_FILE :: "alias-sources.conf"
@@ -363,11 +392,14 @@ read_alias_sources :: proc() -> []AliasSource {
 		// Derive label from the last path component
 		label := path_basename(expanded_path)
 
-		append(&result, AliasSource{
-			label            = strings.clone(label),
-			path             = expanded_path,
-			command_template = strings.clone(cmd_template),
-		})
+		append(
+			&result,
+			AliasSource {
+				label = strings.clone(label),
+				path = expanded_path,
+				command_template = strings.clone(cmd_template),
+			},
+		)
 	}
 
 	return result[:]
@@ -458,8 +490,8 @@ print_alias_source :: proc(source: AliasSource) {
 		return
 	}
 
-	sort.sort(sort.Interface{
-		len  = proc(it: sort.Interface) -> int { return len((cast(^[dynamic]string)it.collection)^) },
+	sort.sort(sort.Interface {
+		len = proc(it: sort.Interface) -> int {return len((cast(^[dynamic]string)it.collection)^)},
 		less = proc(it: sort.Interface, i, j: int) -> bool {
 			arr := (cast(^[dynamic]string)it.collection)^
 			return arr[i] < arr[j]
@@ -472,12 +504,17 @@ print_alias_source :: proc(source: AliasSource) {
 	})
 
 	// Print section header: "External: <label> (<path>)  [read-only]"
-	fmt.printf("\n%s%sExternal: %s%s %s(%s)%s  %s[read-only]%s\n",
-		BOLD, get_secondary(),
-		source.label,
+	fmt.printf(
+		"\n%s%sExternal: %s%s %s(%s)%s  %s[read-only]%s\n",
+		BOLD,
+		get_secondary(),
+		term_safe(source.label),
 		RESET,
-		MUTED, source.path, RESET,
-		DIM, RESET,
+		MUTED,
+		term_safe(source.path),
+		RESET,
+		DIM,
+		RESET,
 	)
 	fmt.println()
 

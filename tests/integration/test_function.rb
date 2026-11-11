@@ -32,6 +32,7 @@ class FunctionIntegrationTest
       test_add_rejects_invalid_name
       test_fn_alias
       test_function_loads_in_real_shell
+      test_skeleton_parses_in_every_shell
     ensure
       teardown_test_env
     end
@@ -172,6 +173,28 @@ class FunctionIntegrationTest
              %(if typeset -f wayu_e2e_marker >/dev/null; then wayu_e2e_marker; else echo NOT_LOADED; fi)
     out, _ = Open3.capture2e({ 'HOME' => @tmp_home }, 'zsh', '-c', script)
     check(label, out.include?("E2E_MARKER_OK"), "Output: #{out}")
+  end
+
+  # Regression (OKAMI-312): the bash skeleton's body was only a comment, a
+  # syntax error that broke every bash start until the function was edited.
+  def test_skeleton_parses_in_every_shell
+    %w[zsh bash fish].each do |sh|
+      label = "Test 10: #{sh} function skeleton passes #{sh} -n"
+      unless system("command -v #{sh} > /dev/null 2>&1")
+        print "#{label}... "
+        puts "⊘ (#{sh} unavailable, skipped)"
+        next
+      end
+      name = "skel_#{sh}"
+      output, status = run_wayu_func("--shell #{sh} function add #{name}")
+      file = "#{functions_dir}/#{name}.#{sh}"
+      unless status.success? && File.exist?(file)
+        check(label, false, "Exit: #{status.exitstatus}; Output: #{output}")
+        next
+      end
+      out, st = Open3.capture2e(sh, '-n', file)
+      check(label, st.success?, "Output: #{out}\n#{File.read(file)}")
+    end
   end
 end
 

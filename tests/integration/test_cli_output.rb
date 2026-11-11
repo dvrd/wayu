@@ -6,6 +6,7 @@
 require 'open3'
 require 'json'
 require 'fileutils'
+require 'tmpdir'
 require_relative 'test_helper'
 
 class CliOutputIntegrationTest
@@ -52,6 +53,8 @@ class CliOutputIntegrationTest
       test_json_external_paths
       test_json_rejected_where_unsupported
       test_help_lists_every_command
+      test_help_lists_every_exit_code
+      test_control_chars_shown_escaped
     ensure
       teardown_test_env
     end
@@ -88,8 +91,7 @@ class CliOutputIntegrationTest
   end
 
   def test_help_without_config
-    fresh = "/tmp/wayu_cli_fresh_#{$$}"
-    FileUtils.mkdir_p(fresh)
+    fresh = Dir.mktmpdir("wayu_cli_fresh_")
     bad = []
     HELP_COMMANDS.each do |cmd|
       ['--help', 'help', '-h'].each do |h|
@@ -103,8 +105,7 @@ class CliOutputIntegrationTest
   end
 
   def test_one_error_before_init
-    fresh = "/tmp/wayu_cli_fresh2_#{$$}"
-    FileUtils.mkdir_p(fresh)
+    fresh = Dir.mktmpdir("wayu_cli_fresh2_")
     bad = []
     ['path list', 'path list --json', 'alias list', 'const list', 'search x'].each do |cmd|
       out, err, st = run_split(cmd, home: fresh)
@@ -199,9 +200,43 @@ class CliOutputIntegrationTest
     check('--json output matches the documented schema', bad.empty?, bad.join('; '))
   end
 
+  # Security audit: a stored value holding terminal escapes (OSC title / OSC 52,
+  # clear screen, 8-bit CSI) must not reach the terminal raw from the human
+  # views; they show it escaped (\x1B, \u009B). --json still carries the
+  # exact value. Runs last: it replaces the seeded entries.
+  EVIL = "echo \e]0;pwned\a\e[2J\u009b31m".freeze
+  EVIL_DIR = "/nonexistent/pwn\e[2Jdir".freeze
+
+  def test_control_chars_shown_escaped
+    write_entries(paths: { 'PWN' => EVIL_DIR }, aliases: { 'pwnalias' => EVIL }, env: { 'PWN_TITLE' => EVIL })
+    raw = ["\e", "\a", "\u009b"]
+    bad = []
+    ['alias list', 'alias list --full', 'const list', 'const list --full', 'path list',
+     'path list --full', 'search pwn', 'doctor'].each do |cmd|
+      out, err, = run_split(cmd)
+      hit = raw.find { |c| out.include?(c) || err.include?(c) }
+      bad << "#{cmd}: raw #{hit.inspect}" if hit
+    end
+    %w[alias const].each do |kind|
+      out, = run_split("#{kind} list")
+      bad << "#{kind} list: escaped value missing" unless out.include?('\x1B]0;pwned\x07\x1B[2J\u009B31m')
+    end
+    path_out, = run_split('path list')
+    bad << 'path list: escaped dir missing' unless path_out.include?('pwn\x1B[2Jdir')
+
+    aliases = JSON.parse(run_split('alias list --json').first)['aliases']
+    bad << 'alias --json value changed' unless aliases.any? { |a| a['alias'] == 'pwnalias' && a['command'] == EVIL }
+    consts = JSON.parse(run_split('const list --json').first)['constants']
+    bad << 'const --json value changed' unless consts.any? { |c| c['constant'] == 'PWN_TITLE' && c['value'] == EVIL }
+    paths = JSON.parse(run_split('path list --json').first)['paths']
+    bad << 'path --json dir changed' unless paths.any? { |p| p['path'] == EVIL_DIR }
+    got, = run_split('const get PWN_TITLE')
+    bad << 'const get no longer raw' unless got == "#{EVIL}\n"
+    check('Control characters in values are shown escaped; --json and get stay exact', bad.empty?, bad.join('; '))
+  end
+
   def test_json_empty_lists
-    home = "/tmp/wayu_cli_empty_#{$$}"
-    FileUtils.mkdir_p(home)
+    home = Dir.mktmpdir("wayu_cli_empty_")
     run_split('init --yes', home: home)
     bad = []
     { 'alias list --json' => 'aliases', 'const list --json' => nil, 'plugin list --json' => 'plugins' }.each do |cmd, key|
@@ -238,9 +273,22 @@ class CliOutputIntegrationTest
   def test_help_lists_every_command
     out, = run_split('help')
     zsh, = run_split('completions zsh')
-    names = zsh.scan(/^\s+'([a-z-]+):/).flatten.uniq
+    commands = zsh[/^_wayu_commands\(\) \{.*?^\}/m].to_s
+    names = commands.scan(/^\s+'([a-z-]+):/).flatten.uniq
     missing = names.reject { |n| out.match?(/^\s+(\S+, )*#{Regexp.escape(n)}(,|\s)/) }
     check('help lists every command completions offer', !names.empty? && missing.empty?, "missing: #{missing.join(', ')}")
+  end
+
+  # OKAMI-354: `wayu help` EXIT CODES lists every code docs/cli.md documents.
+  def test_help_lists_every_exit_code
+    doc = File.read(File.expand_path('../../docs/cli.md', __dir__))
+    table = doc[/^## Exit codes\n(.*?)(?=^#)/m, 1].to_s
+    codes = table.scan(/^\| (\d+) \| `EXIT_/).flatten
+    out, = run_split('help --no-color')
+    listed = out[/EXIT CODES:(.*)/m, 1].to_s.scan(/^\s+(\d+)\s/).flatten
+    missing = codes - listed
+    check('help EXIT CODES lists every documented code', codes.size >= 10 && missing.empty?,
+          "missing: #{missing.join(', ')}")
   end
 end
 

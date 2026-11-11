@@ -1,8 +1,8 @@
 package test_wayu
 
-import "core:testing"
-import "core:fmt"
 import wayu "../../src"
+import "core:fmt"
+import "core:testing"
 
 // Test: tui_state_init initializes state correctly
 @(test)
@@ -59,7 +59,7 @@ test_tui_state_move_selection :: proc(t: ^testing.T) {
 	state := wayu.tui_state_init()
 	defer wayu.tui_state_destroy(&state)
 
-	item_count := 8  // Main menu has 8 items
+	item_count := 8 // Main menu has 8 items
 
 	// Move down
 	wayu.tui_state_move_selection(&state, 1, item_count)
@@ -125,7 +125,7 @@ test_parse_key_event_arrows :: proc(t: ^testing.T) {
 // Test: parse_key_event handles Enter
 @(test)
 test_parse_key_event_enter :: proc(t: ^testing.T) {
-	buf := []byte{13}  // Enter key
+	buf := []byte{13} // Enter key
 	key, ok := wayu.parse_key_event(buf[:], 1)
 	testing.expect(t, ok, "Should parse Enter")
 	testing.expect(t, key.key == .Enter, "Should be Enter key")
@@ -134,7 +134,7 @@ test_parse_key_event_enter :: proc(t: ^testing.T) {
 // Test: parse_key_event handles Escape
 @(test)
 test_parse_key_event_escape :: proc(t: ^testing.T) {
-	buf := []byte{27}  // Escape key
+	buf := []byte{27} // Escape key
 	key, ok := wayu.parse_key_event(buf[:], 1)
 	testing.expect(t, ok, "Should parse Escape")
 	testing.expect(t, key.key == .Escape, "Should be Escape key")
@@ -143,7 +143,7 @@ test_parse_key_event_escape :: proc(t: ^testing.T) {
 // Test: parse_key_event handles Ctrl+C
 @(test)
 test_parse_key_event_ctrl_c :: proc(t: ^testing.T) {
-	buf := []byte{3}  // Ctrl+C
+	buf := []byte{3} // Ctrl+C
 	key, ok := wayu.parse_key_event(buf[:], 1)
 	testing.expect(t, ok, "Should parse Ctrl+C")
 	testing.expect(t, key.key == .Char, "Should be Char key")

@@ -1,9 +1,9 @@
 package test_wayu
 
-import "core:testing"
+import wayu "../../src"
 import "core:os"
 import "core:strings"
-import wayu "../../src"
+import "core:testing"
 
 @(test)
 test_init_config_file_creates_file :: proc(t: ^testing.T) {
@@ -52,7 +52,11 @@ test_init_config_file_skips_existing :: proc(t: ^testing.T) {
 test_preload_init_template_exists :: proc(t: ^testing.T) {
 	// Test that INIT_TEMPLATE_ZSH constant exists and is not empty
 	testing.expect(t, len(wayu.INIT_TEMPLATE_ZSH) > 0, "INIT_TEMPLATE_ZSH should not be empty")
-	testing.expect(t, strings.contains(wayu.INIT_TEMPLATE_ZSH, "source"), "Init should contain source commands")
+	testing.expect(
+		t,
+		strings.contains(wayu.INIT_TEMPLATE_ZSH, "source"),
+		"Init should contain source commands",
+	)
 	testing.expect(t, len(wayu.INIT_TEMPLATE_BASH) > 0, "INIT_TEMPLATE_BASH should not be empty")
 }
 

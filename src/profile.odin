@@ -17,6 +17,7 @@
 package wayu
 
 import "core:fmt"
+import "core:math/rand"
 import "core:os"
 import "core:slice"
 import "core:strconv"
@@ -27,11 +28,13 @@ import "core:time"
 // enough samples to compute a meaningful min/mean/max without keeping the
 // user waiting. Bumped up only if there's <1 percent variance.
 PROFILE_ITERATIONS :: 5
+// Deadline for one profiled shell run (the shell and its children are killed).
+PROFILE_RUN_TIMEOUT_MS :: 30 * 1000
 
 // Sample describes a single timed invocation.
 ProfileSample :: struct {
-	label:   string,
-	command: []string,   // argv passed to the subprocess (no shell quoting)
+	label:    string,
+	command:  []string, // argv passed to the subprocess (no shell quoting)
 	times_ms: [PROFILE_ITERATIONS]f64,
 }
 
@@ -42,8 +45,8 @@ ProfileSample :: struct {
 // wall time with Odin's `time.tick_now()`, running each scenario N times
 // and reporting min/mean/max. Two scenarios:
 //
-//   1. `core` alone: `shell -c 'source $WAYU_CONFIG/core.{ext}'`
-//      — what wayu itself adds to startup.
+//   1. `core` alone: an interactive shell whose only rc file sources
+//      core.{ext} (profile_interactive_command) — what wayu itself adds.
 //   2. interactive shell: `shell -i -c exit` — total cost the user sees on
 //      every new terminal. The difference is shell-builtin work
 //      (rcfile parsing, compinit, etc.) plus anything the user hand-added
@@ -57,9 +60,14 @@ profile_startup_performance :: proc() {
 
 	shell_bin, ok := resolve_profile_shell(wayu.shell)
 	if !ok {
-		print_error_simple("Could not find a %s binary on $PATH to profile", get_shell_name(wayu.shell))
-		fmt.println("Install the shell or run 'wayu build profile' from an interactive session of that shell.")
-		os.exit(EXIT_CONFIG)
+		print_error_simple(
+			"Could not find a %s binary on $PATH to profile",
+			get_shell_name(wayu.shell),
+		)
+		fmt.println(
+			"Install the shell or run 'wayu build profile' from an interactive session of that shell.",
+		)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer delete(shell_bin)
 
@@ -67,21 +75,35 @@ profile_startup_performance :: proc() {
 	defer delete(core_file)
 
 	if !os.exists(core_file) {
-		print_warning("core.%s not found — run 'wayu init' or any 'wayu path/alias/constants add' first.", wayu.shell_ext)
+		print_warning(
+			"core.%s not found — run 'wayu init' or any 'wayu path/alias/constants add' first.",
+			wayu.shell_ext,
+		)
 		fmt.println()
 	}
 
 	// Build the two scenarios. Keep command slices alive until after rendering.
+	// core runs in an interactive shell whose only rc file sources it
+	// (OKAMI-348): `-c` skipped compinit, the prompt and the plugins.
 	source_cmd := fmt.aprintf("source %s", shell_single_quote(core_file, context.temp_allocator))
 	defer delete(source_cmd)
+	rc_dir, rc_ok := profile_rc_dir()
+	defer if rc_ok {
+		_ = os.remove_all(rc_dir)
+		delete(rc_dir)
+	}
+	core_cmd := profile_interactive_command(shell_bin, rc_dir, source_cmd, wayu.shell)
+	if !rc_ok {
+		core_cmd = []string{shell_bin, "-c", source_cmd}
+	}
 
-	scenarios := []ProfileSample{
+	scenarios := []ProfileSample {
 		{
-			label   = fmt.tprintf("core.%s (sourced in -c)", wayu.shell_ext),
-			command = []string{shell_bin, "-c", source_cmd},
+			label = fmt.tprintf("core.%s (interactive, no user rc)", wayu.shell_ext),
+			command = core_cmd,
 		},
 		{
-			label   = "interactive shell (-i -c exit)",
+			label = "interactive shell (-i -c exit)",
 			command = []string{shell_bin, "-i", "-c", "exit"},
 		},
 	}
@@ -91,11 +113,23 @@ profile_startup_performance :: proc() {
 	if os.exists(core_file) do print_info("core file: %s", core_file)
 	fmt.println()
 
-	for &scenario in scenarios {
-		for i in 0..<PROFILE_ITERATIONS {
+	scenario_loop: for &scenario in scenarios {
+		for i in 0 ..< PROFILE_ITERATIONS {
 			start := time.tick_now()
-			_ = run_command(scenario.command)
+			// Deadline + new session (no controlling terminal): an rc file
+			// that prompts, sleeps or attaches tmux cannot hang the profile.
+			r := run_command_timeout(scenario.command, PROFILE_RUN_TIMEOUT_MS)
 			elapsed := time.tick_since(start)
+			timed_out := r.timed_out
+			command_result_destroy(&r)
+			if timed_out {
+				print_warning(
+					"%s: stopped after %ds (the shell did not exit); skipped",
+					scenario.label,
+					PROFILE_RUN_TIMEOUT_MS / 1000,
+				)
+				continue scenario_loop
+			}
 			scenario.times_ms[i] = f64(time.duration_milliseconds(elapsed))
 		}
 		render_profile_sample(scenario)
@@ -124,6 +158,62 @@ profile_startup_performance :: proc() {
 	fmt.println()
 }
 
+// Private 0700 dir (under $TMPDIR, else /tmp) for the rc file of the
+// profiled interactive shells. Caller removes and frees it.
+profile_rc_dir :: proc() -> (string, bool) {
+	base := os.get_env("TMPDIR", context.temp_allocator)
+	if len(base) == 0 {
+		base = "/tmp"
+	}
+	base = strings.trim_right(base, "/")
+	for attempt in 0 ..< 5 {
+		dir := fmt.aprintf(
+			"%s/wayu-profile.%d.%x",
+			base,
+			os.get_pid(),
+			rand.uint64() ~ u64(time.now()._nsec) ~ u64(attempt),
+		)
+		if os.make_directory(dir, SECRET_DIR_PERMS) == nil {
+			return dir, true
+		}
+		delete(dir)
+	}
+	return "", false
+}
+
+// argv (temp-allocated) of an interactive `shell` whose only startup code
+// is `code` (OKAMI-348: `-c` is non-interactive, so compinit, the prompt
+// and the plugins never ran): zsh reads <dir>/.zshrc (ZDOTDIR=<dir>, so the
+// user's own startup files are skipped), bash `--rcfile <dir>/rc`, fish
+// `-i --no-config -c code`. nil when the rc file can't be written.
+profile_interactive_command :: proc(shell_bin, dir, code: string, shell: ShellType) -> []string {
+	switch shell {
+	case .ZSH:
+		rc := fmt.tprintf("%s/.zshrc", dir)
+		if os.write_entire_file(rc, transmute([]byte)code, SECRET_FILE_PERMS) != nil {
+			return nil
+		}
+		return slice.clone(
+			[]string{"env", fmt.tprintf("ZDOTDIR=%s", dir), shell_bin, "-i", "-c", "exit 0"},
+			context.temp_allocator,
+		)
+	case .BASH:
+		rc := fmt.tprintf("%s/rc", dir)
+		if os.write_entire_file(rc, transmute([]byte)code, SECRET_FILE_PERMS) != nil {
+			return nil
+		}
+		return slice.clone(
+			[]string{shell_bin, "--rcfile", rc, "-i", "-c", "exit 0"},
+			context.temp_allocator,
+		)
+	case .FISH, .UNKNOWN:
+	}
+	return slice.clone(
+		[]string{shell_bin, "-i", "--no-config", "-c", code},
+		context.temp_allocator,
+	)
+}
+
 // Render a per-unit timing breakdown of core.<ext> (OKAMI-180).
 //
 // Strategy: split core into units (profile_core_units: `# === <name> ===`
@@ -149,8 +239,8 @@ render_phase_breakdown :: proc(shell_bin, core_file: string, shell: ShellType) {
 	}
 	if len(phases) == 0 do return
 
-	// Build the instrumented script in memory, then hand it to the shell
-	// via -c so we don't have to touch the filesystem.
+	// Build the instrumented script in memory; it becomes the rc file of an
+	// interactive shell below.
 	sb := strings.builder_make()
 	defer strings.builder_destroy(&sb)
 
@@ -165,22 +255,45 @@ render_phase_breakdown :: proc(shell_bin, core_file: string, shell: ShellType) {
 		fmt.sbprintfln(&sb, "__wayu_t_%d_b=$EPOCHREALTIME", i)
 		// printf with %s keeps the floats as the shell printed them (locale
 		// independent, no precision loss from another printf spec).
-		fmt.sbprintfln(&sb, "printf 'PHASE=%%s|%%s|%%s\\n' %s \"$__wayu_t_%d_a\" \"$__wayu_t_%d_b\"",
-			shell_single_quote(p.name, context.temp_allocator), i, i)
+		fmt.sbprintfln(
+			&sb,
+			"printf 'PHASE=%%s|%%s|%%s\\n' %s \"$__wayu_t_%d_a\" \"$__wayu_t_%d_b\"",
+			shell_single_quote(p.name, context.temp_allocator),
+			i,
+			i,
+		)
 	}
 
-	out := capture_command([]string{shell_bin, "-c", strings.to_string(sb)})
-	defer if len(out) > 0 do delete(out)
+	// Run it as the rc file of an interactive shell (OKAMI-348), so the
+	// interactive-only parts — compinit, the prompt, plugins — are timed.
+	rc_dir, rc_ok := profile_rc_dir()
+	if !rc_ok do return
+	defer {
+		_ = os.remove_all(rc_dir)
+		delete(rc_dir)
+	}
+	cmd := profile_interactive_command(shell_bin, rc_dir, strings.to_string(sb), shell)
+	if cmd == nil do return
+	r := run_command_timeout(cmd, PROFILE_RUN_TIMEOUT_MS)
+	defer command_result_destroy(&r)
+	if !r.ok do return
+	out := r.stdout
 	if len(out) == 0 do return
 	if strings.contains(out, "WAYU_NO_EPOCHREALTIME") {
 		fmt.println()
-		print_info("Phase breakdown needs $EPOCHREALTIME (zsh, or bash 5+); %s has none.", shell_bin)
+		print_info(
+			"Phase breakdown needs $EPOCHREALTIME (zsh, or bash 5+); %s has none.",
+			shell_bin,
+		)
 		return
 	}
 
 	// Parse `PHASE=name|start|end` lines. Anything else is output from the
 	// phase body itself (e.g. a plugin's banner) and is ignored here.
-	PhaseTiming :: struct { name: string, ms: f64 }
+	PhaseTiming :: struct {
+		name: string,
+		ms:   f64,
+	}
 	timings := make([dynamic]PhaseTiming, context.temp_allocator)
 	for line in strings.split_lines(out, context.temp_allocator) {
 		if !strings.has_prefix(line, "PHASE=") do continue
@@ -189,16 +302,13 @@ render_phase_breakdown :: proc(shell_bin, core_file: string, shell: ShellType) {
 		if len(parts) != 3 do continue
 		// Some locales print the decimal separator as ','.
 		start_s, ok_a := strconv.parse_f64(epoch_decimal(parts[1]))
-		end_s,   ok_b := strconv.parse_f64(epoch_decimal(parts[2]))
+		end_s, ok_b := strconv.parse_f64(epoch_decimal(parts[2]))
 		if !ok_a || !ok_b do continue
-		append(&timings, PhaseTiming{
-			name = parts[0],
-			ms   = (end_s - start_s) * 1000.0,
-		})
+		append(&timings, PhaseTiming{name = parts[0], ms = (end_s - start_s) * 1000.0})
 	}
 	if len(timings) == 0 do return
 
-	slice.sort_by(timings[:], proc(a, b: PhaseTiming) -> bool { return a.ms > b.ms })
+	slice.sort_by(timings[:], proc(a, b: PhaseTiming) -> bool {return a.ms > b.ms})
 
 	total_ms := 0.0
 	for t in timings do total_ms += t.ms
@@ -210,8 +320,8 @@ render_phase_breakdown :: proc(shell_bin, core_file: string, shell: ShellType) {
 		if total_ms > 0 do share = (t.ms / total_ms) * 100.0
 		// Odin's %N.1f zero-pads when N > natural width; sidestep with
 		// manual space padding so the column stays neat.
-		ms_str    := fmt.aprintf("%.1f", t.ms);    defer delete(ms_str)
-		share_str := fmt.aprintf("%.1f", share);   defer delete(share_str)
+		ms_str := fmt.aprintf("%.1f", t.ms); defer delete(ms_str)
+		share_str := fmt.aprintf("%.1f", share); defer delete(share_str)
 		fmt.printfln("  %s ms  %s%%   %s", pad_left(ms_str, 6), pad_left(share_str, 4), t.name)
 	}
 	total_str := fmt.aprintf("%.1f", total_ms); defer delete(total_str)
@@ -236,8 +346,11 @@ epoch_decimal :: proc(s: string) -> string {
 // Returned names/bodies are heap-allocated — caller owns them.
 profile_core_units :: proc(content: string, shell: ShellType) -> [dynamic]InitCorePhase {
 	ext := get_shell_extension(shell)
-	plugins_q := shell_double_quote_literal(fmt.tprintf("%s/plugins.%s", wayu.data, ext), context.temp_allocator)
-	ctx := ProfileSplit{
+	plugins_q := shell_double_quote_literal(
+		fmt.tprintf("%s/plugins.%s", wayu.data, ext),
+		context.temp_allocator,
+	)
+	ctx := ProfileSplit {
 		units        = make([dynamic]InitCorePhase),
 		plugins_line = fmt.tprintf("if [ -f %s ]; then source %s; fi", plugins_q, plugins_q),
 		plugins_file = fmt.tprintf("%s/plugins.%s", wayu.data, ext),
@@ -253,7 +366,7 @@ ProfileSplit :: struct {
 	plugins_line: string,
 	plugins_file: string,
 	sb:           strings.Builder, // body of the current unit
-	name:         string,          // name of the current unit (temp)
+	name:         string, // name of the current unit (temp)
 }
 
 // Close the current unit; keep it when its body has code.
@@ -263,10 +376,15 @@ profile_flush :: proc(ctx: ^ProfileSplit) {
 	has_code := false
 	for l in strings.split_lines(body, context.temp_allocator) {
 		t := strings.trim_space(l)
-		if len(t) > 0 && !strings.has_prefix(t, "#") { has_code = true; break }
+		if len(t) > 0 && !strings.has_prefix(t, "#") {
+			has_code = true; break
+		}
 	}
 	if has_code {
-		append(&ctx.units, InitCorePhase{name = strings.clone(ctx.name), body = strings.clone(body)})
+		append(
+			&ctx.units,
+			InitCorePhase{name = strings.clone(ctx.name), body = strings.clone(body)},
+		)
 	}
 	strings.builder_reset(&ctx.sb)
 }
@@ -280,7 +398,11 @@ profile_split :: proc(ctx: ^ProfileSplit, content, prefix, first_name: string, d
 		switch {
 		case strings.has_prefix(trimmed, "# === ") && strings.has_suffix(trimmed, " ==="):
 			profile_flush(ctx)
-			section = fmt.tprintf("%s%s", prefix, trimmed[len("# === "):len(trimmed) - len(" ===")])
+			section = fmt.tprintf(
+				"%s%s",
+				prefix,
+				trimmed[len("# === "):len(trimmed) - len(" ===")],
+			)
 			ctx.name = section
 			continue
 		case strings.has_prefix(trimmed, "# --- ") && strings.has_suffix(trimmed, " ---"):
@@ -307,7 +429,9 @@ profile_split :: proc(ctx: ^ProfileSplit, content, prefix, first_name: string, d
 			profile_flush(ctx)
 			ctx.name = section
 			continue
-		case depth > 0 && strings.has_prefix(trimmed, "# ") && strings.contains(trimmed, " (priority: "):
+		case depth > 0 &&
+		     strings.has_prefix(trimmed, "# ") &&
+		     strings.contains(trimmed, " (priority: "):
 			profile_flush(ctx)
 			ctx.name = fmt.tprintf("plugin %s", trimmed[2:strings.index(trimmed, " (priority: ")])
 			continue
@@ -331,7 +455,9 @@ pad_left :: proc(s: string, width: int) -> string {
 	return fmt.tprintf("%s%s", strings.repeat(" ", width - len(s), context.temp_allocator), s)
 }
 
-InitCorePhase :: struct { name, body: string }
+InitCorePhase :: struct {
+	name, body: string,
+}
 
 // Compute min/mean/max from the populated times_ms and print a one-line
 // summary per scenario plus the raw samples.
@@ -368,12 +494,15 @@ render_profile_sample :: proc(s: ProfileSample) {
 resolve_profile_shell :: proc(shell: ShellType) -> (string, bool) {
 	name := ""
 	switch shell {
-	case .ZSH:  name = "zsh"
-	case .BASH: name = "bash"
-	case .FISH: name = "fish"
+	case .ZSH:
+		name = "zsh"
+	case .BASH:
+		name = "bash"
+	case .FISH:
+		name = "fish"
 	case .UNKNOWN:
-		// No explicit shell — skip the `which` probe and go straight to
-		// the environment fallback below.
+	// No explicit shell — skip the `which` probe and go straight to
+	// the environment fallback below.
 	}
 
 	if len(name) > 0 {
@@ -392,4 +521,3 @@ resolve_profile_shell :: proc(shell: ShellType) -> (string, bool) {
 	}
 	return "", false
 }
-

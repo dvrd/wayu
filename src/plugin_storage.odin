@@ -1,8 +1,8 @@
 package wayu
 import "core:fmt"
 import "core:os"
-import "core:strings"
 import "core:strconv"
+import "core:strings"
 handle_plugin_check :: proc(args: []string) {
 	// Hold the config lock across read-modify-write of plugins.json so
 	// concurrent wayu runs cannot drop each other's changes.
@@ -12,7 +12,7 @@ handle_plugin_check :: proc(args: []string) {
 	// Read plugin configuration
 	config, ok := read_plugin_config_json()
 	if !ok {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 
@@ -46,11 +46,11 @@ handle_plugin_check :: proc(args: []string) {
 			// A commit pin is an integrity claim: verify the checkout still
 			// sits on it (someone may have pulled/checked out by hand).
 			if problem := plugin_pinned_commit_problem(&plugin); problem != "" {
-				print_warning("  ⚠ %s", problem)
+				print_warning_at("  ", "%s", problem)
 				failed_count += 1
 				continue
 			}
-			print_info("  ⚓ Pinned to %s (skipped)", ref)
+			print_info_at("  ", "Pinned to %s (skipped)", ref)
 			continue
 		}
 
@@ -60,17 +60,20 @@ handle_plugin_check :: proc(args: []string) {
 		// a plain delete at the bottom of the loop body instead.
 		remote_commit := get_remote_commit(plugin.url, plugin.git.branch)
 		if remote_commit == "" {
-			print_warning("  ⚠ Failed to check remote (network error, invalid URL or missing branch)")
+			print_warning_at(
+				"  ",
+				"Failed to check remote (network error, invalid URL or missing branch)",
+			)
 			failed_count += 1
 			continue
 		}
 
 		// Update metadata with remote commit and timestamp
-		delete(plugin.git.remote_commit)  // Clean up old value
+		delete(plugin.git.remote_commit) // Clean up old value
 		plugin.git.remote_commit = strings.clone(remote_commit)
 
-		delete(plugin.git.last_checked)  // Clean up old timestamp
-		plugin.git.last_checked = get_iso8601_timestamp()  // ALLOCATED
+		delete(plugin.git.last_checked) // Clean up old timestamp
+		plugin.git.last_checked = get_iso8601_timestamp() // ALLOCATED
 
 		// Compare local vs remote commits
 		if !git_commits_match(plugin.git.commit, remote_commit) {
@@ -78,13 +81,13 @@ handle_plugin_check :: proc(args: []string) {
 			local_short := plugin.git.commit[0:min(7, len(plugin.git.commit))]
 			remote_short := remote_commit[0:min(7, len(remote_commit))]
 
-			print_success("  ↑ Update available: %s → %s", local_short, remote_short)
+			print_info_at("  ", "Update available: %s → %s", local_short, remote_short)
 			updates_available = true
 		} else {
-			print_info("  ✓ Up to date")
+			print_success_at("  ", "Up to date")
 		}
 
-		delete(remote_commit)  // Free per-iteration — not deferred (see note above)
+		delete(remote_commit) // Free per-iteration — not deferred (see note above)
 	}
 
 	fmt.println()
@@ -101,7 +104,7 @@ handle_plugin_check :: proc(args: []string) {
 	if !wayu.dry_run {
 		if !write_plugin_config_json(&config) {
 			print_error_simple("Failed to save plugin metadata")
-			os.exit(EXIT_CONFIG)
+			wayu_exit(EXIT_CONFIG)
 		}
 	} else {
 		print_info("[DRY RUN] Would save updated metadata")
@@ -120,7 +123,7 @@ handle_plugin_check :: proc(args: []string) {
 	if failed_count > 0 {
 		fmt.println()
 		print_error_simple("%d plugin(s) could not be checked", failed_count)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	if !updates_available {
@@ -138,49 +141,106 @@ plugin_pinned_commit_problem :: proc(plugin: ^PluginMetadata) -> string {
 	if len(want) == 0 || len(plugin.installed_path) == 0 {
 		return ""
 	}
-	head := capture_command([]string{"git", "-C", plugin.installed_path, "rev-parse", "HEAD"})
+	head := capture_command(git_argv("-C", plugin.installed_path, "rev-parse", "HEAD"))
 	defer delete(head)
 	if len(head) == 0 {
-		return fmt.tprintf("Cannot read the checkout of pinned plugin at %s", plugin.installed_path)
+		return fmt.tprintf(
+			"Cannot read the checkout of pinned plugin at %s",
+			plugin.installed_path,
+		)
 	}
 	if !git_commits_match(head, want) {
-		return fmt.tprintf("Checkout is at %s but the plugin is pinned to %s", head[:min(12, len(head))], want)
+		return fmt.tprintf(
+			"Checkout is at %s but the plugin is pinned to %s",
+			head[:min(12, len(head))],
+			want,
+		)
+	}
+	return ""
+}
+
+// What updating one plugin checkout did.
+PluginUpdateStatus :: enum {
+	Failed,
+	Up_To_Date, // fetched; the checkout was already at the remote's commit
+	Updated, // the checkout moved to a new commit
+}
+
+// Update one plugin checkout and refresh its metadata, without printing or
+// exiting (shared by `plugin update` and the TUI). old_commit (the commit
+// before) and err (git's stderr on failure) are owned by the caller.
+// reset: upstream rewrote history and the checkout was reset to the remote.
+// Not called in dry-run.
+plugin_update_core :: proc(
+	plugin: ^PluginMetadata,
+) -> (
+	status: PluginUpdateStatus,
+	reset: bool,
+	old_commit: string,
+	err: string,
+) {
+	old_commit = strings.clone(plugin.git.commit)
+	result, err_text := git_update(plugin.installed_path, plugin.git.branch)
+	if result == .Failed {
+		return .Failed, false, old_commit, err_text
+	}
+	delete(err_text)
+	plugin_refresh_git_metadata(plugin)
+	if git_commits_match(old_commit, plugin.git.commit) {
+		return .Up_To_Date, false, old_commit, ""
+	}
+	return .Updated, result == .Reset, old_commit, ""
+}
+
+// Back up plugins.json (pruned to BACKUP_KEEP_COUNT like every other
+// file, OKAMI-330), then write `config`. No backup, no write. Never prints
+// its own error or exits: returns "" on success, else the reason (static).
+// Shared by the CLI handlers and the TUI.
+plugin_config_save :: proc(config: ^PluginConfigJSON) -> string {
+	config_file := get_plugins_json_config_file()
+	defer delete(config_file)
+	if !create_backup_cli(config_file) {
+		return "Could not back up plugins.json; nothing was written"
+	}
+	if !write_plugin_config_json(config) {
+		return "Failed to write plugins.json"
 	}
 	return ""
 }
 
 // Update one plugin checkout and refresh its metadata. Prints progress with
-// `indent`; returns false on failure (git's stderr is shown). In dry-run
-// nothing is executed and the caller must not count it as updated.
-plugin_update_one :: proc(plugin: ^PluginMetadata, indent: string) -> bool {
-	old_commit := strings.clone(plugin.git.commit)
+// `indent` (git's stderr on failure). In dry-run nothing is executed and the
+// caller must not count it as updated.
+plugin_update_one :: proc(plugin: ^PluginMetadata, indent: string) -> PluginUpdateStatus {
+	status, reset, old_commit, err_text := plugin_update_core(plugin)
 	defer delete(old_commit)
-
-	result, err_text := git_update(plugin.installed_path, plugin.git.branch)
 	defer delete(err_text)
 
-	if result == .Failed {
-		print_warning("%s⚠ Failed to update %s", indent, plugin.name)
+	if status == .Failed {
+		print_warning_at(indent, "Failed to update %s", plugin.name)
 		for line in strings.split_lines(err_text, context.temp_allocator) {
 			if len(strings.trim_space(line)) > 0 {
 				fmt.eprintfln("%s  %s", indent, line)
 			}
 		}
-		return false
+		return .Failed
 	}
-
-	plugin_refresh_git_metadata(plugin)
 
 	old_short := old_commit[:min(7, len(old_commit))]
 	new_short := plugin.git.commit[:min(7, len(plugin.git.commit))]
-	if git_commits_match(old_commit, plugin.git.commit) {
-		print_success("%s✓ Already up to date (%s)", indent, new_short)
-	} else if result == .Reset {
-		print_success("%s✓ Updated %s → %s (upstream history was rewritten; reset to remote)", indent, old_short, new_short)
+	if status == .Up_To_Date {
+		print_success_at(indent, "Already up to date (%s)", new_short)
+	} else if reset {
+		print_success_at(
+			indent,
+			"Updated %s → %s (upstream history was rewritten; reset to remote)",
+			old_short,
+			new_short,
+		)
 	} else {
-		print_success("%s✓ Updated %s → %s", indent, old_short, new_short)
+		print_success_at(indent, "Updated %s → %s", old_short, new_short)
 	}
-	return true
+	return status
 }
 
 // Handle plugin update command - update plugins
@@ -197,7 +257,7 @@ handle_plugin_update :: proc(args: []string) {
 		fmt.println()
 		fmt.printfln("%sExample:%s", get_muted(), RESET)
 		fmt.printfln("  %swayu plugin update zsh-autosuggestions%s", get_muted(), RESET)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	update_all := args[0] == "--all" || args[0] == "-a"
@@ -210,7 +270,7 @@ handle_plugin_update :: proc(args: []string) {
 	// Read plugin configuration
 	config, ok := read_plugin_config_json()
 	if !ok {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 
@@ -236,7 +296,9 @@ handle_plugin_update :: proc(args: []string) {
 	}
 	fmt.println()
 
+	// Only checkouts that moved count as updated (OKAMI-342).
 	updated_count := 0
+	current_count := 0
 	failed_count := 0
 
 	// Update specific plugin
@@ -248,16 +310,24 @@ handle_plugin_update :: proc(args: []string) {
 		}
 
 		if wayu.dry_run {
-			print_info("[DRY RUN] Would update %s (%s)", plugin_ptr.name, plugin_ptr.installed_path)
+			print_info(
+				"[DRY RUN] Would update %s (%s)",
+				plugin_ptr.name,
+				plugin_ptr.installed_path,
+			)
 			return
 		}
 
 		print_info("Updating %s...", plugin_ptr.name)
-		if !plugin_update_one(plugin_ptr, "  ") {
+		switch plugin_update_one(plugin_ptr, "  ") {
+		case .Failed:
 			print_error_simple("Failed to update plugin '%s'", plugin_ptr.name)
-			os.exit(EXIT_IOERR)
+			wayu_exit(EXIT_IOERR)
+		case .Up_To_Date:
+			current_count = 1
+		case .Updated:
+			updated_count = 1
 		}
-		updated_count = 1
 	} else {
 		would_update := 0
 
@@ -280,11 +350,14 @@ handle_plugin_update :: proc(args: []string) {
 			}
 
 			print_info("Updating %s...", plugin.name)
-			if !plugin_update_one(&plugin, "  ") {
+			switch plugin_update_one(&plugin, "  ") {
+			case .Failed:
 				failed_count += 1
-				continue
+			case .Up_To_Date:
+				current_count += 1
+			case .Updated:
+				updated_count += 1
 			}
-			updated_count += 1
 		}
 
 		if wayu.dry_run {
@@ -298,23 +371,10 @@ handle_plugin_update :: proc(args: []string) {
 
 	// Save updated metadata
 	if !wayu.dry_run {
-		// Create backup before writing
-		config_file := get_plugins_json_config_file()
-		defer delete(config_file)
-
-		if os.exists(config_file) {
-			backup_path, backup_ok := create_backup(config_file)
-			if backup_ok {
-				defer delete(backup_path)
-			} else {
-				print_warning("Warning: Failed to create backup")
-			}
-		}
-
-		// Write updated config
-		if !write_plugin_config_json(&config) {
-			print_error_simple("Failed to save plugin metadata")
-			os.exit(EXIT_CONFIG)
+		// Back up (pruned), then write updated config
+		if err := plugin_config_save(&config); err != "" {
+			print_error_simple("%s", err)
+			wayu_exit(EXIT_CONFIG)
 		}
 	} else {
 		print_info("[DRY RUN] Would save updated metadata")
@@ -327,6 +387,9 @@ handle_plugin_update :: proc(args: []string) {
 		print_success("1 plugin updated")
 	} else {
 		print_success("%d plugins updated", updated_count)
+	}
+	if current_count > 0 {
+		print_info("%d already up to date", current_count)
 	}
 
 	// Regenerate plugins loader file for current shell
@@ -341,7 +404,7 @@ handle_plugin_update :: proc(args: []string) {
 
 	if failed_count > 0 {
 		print_error_simple("%d plugin(s) failed to update", failed_count)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 }
 
@@ -374,9 +437,9 @@ plugin_refresh_git_metadata :: proc(plugin: ^PluginMetadata) {
 	delete(plugin.git.last_checked)
 	delete(plugin.git.remote_commit)
 
-	plugin.git.branch        = fresh.branch
-	plugin.git.commit        = fresh.commit
-	plugin.git.last_checked  = fresh.last_checked
+	plugin.git.branch = fresh.branch
+	plugin.git.commit = fresh.commit
+	plugin.git.last_checked = fresh.last_checked
 	plugin.git.remote_commit = fresh.remote_commit
 	// fresh.tag / fresh.pinned_ref are never set by get_git_info.
 }
@@ -396,16 +459,16 @@ PluginVerbForms :: struct {
 	header: string, // "Enabling Plugin" (used as section header)
 }
 
-PLUGIN_VERBS := [2]PluginVerbForms{
+PLUGIN_VERBS := [2]PluginVerbForms {
 	{"disable", "Disable", "Disabling", "disabled", "Disabling Plugin"},
-	{"enable",  "Enable",  "Enabling",  "enabled",  "Enabling Plugin"},
+	{"enable", "Enable", "Enabling", "enabled", "Enabling Plugin"},
 }
 
 handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	v := PLUGIN_VERBS[enable ? 1 : 0]
-	action_word     := v.word
-	action_past     := v.past
-	header_text     := v.header
+	action_word := v.word
+	action_past := v.past
+	header_text := v.header
 
 	// 1. Validate arguments
 	if len(args) == 0 {
@@ -416,9 +479,14 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		fmt.println("Example:")
 		fmt.printfln("  wayu plugin %s zsh-autosuggestions", action_word)
 		fmt.println()
-		fmt.printfln("%sHint:%s For interactive selection, use: %swayu --tui%s",
-			get_muted(), RESET, get_primary(), RESET)
-		os.exit(EXIT_USAGE)
+		fmt.printfln(
+			"%sHint:%s For interactive selection, use: %swayu --tui%s",
+			get_muted(),
+			RESET,
+			get_primary(),
+			RESET,
+		)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	plugin_name := args[0]
@@ -431,7 +499,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	// 2. Read plugin configuration
 	config, ok := read_plugin_config_json()
 	if !ok {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 
 	// 3. Find plugin by exact name (miss: suggestions on stderr, exit 65)
@@ -445,54 +513,39 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	if plugin_ptr.enabled == enable {
 		cleanup_plugin_config_json(&config)
 		print_info("Plugin '%s' is already %s", plugin_name, action_past)
-		os.exit(EXIT_SUCCESS)  // NOT an error - idempotent
+		wayu_exit(EXIT_SUCCESS) // NOT an error - idempotent
 	}
 
 	// Display header
 	print_header(header_text, EMOJI_COMMAND)
 	fmt.println()
 
-	// 5. Create backup before modifying (never in dry-run: no side effects)
-	config_file := get_plugins_json_config_file()
-
-	if !wayu.dry_run && os.exists(config_file) {
-		backup_path, backup_ok := create_backup(config_file)
-		if backup_ok {
-			delete(backup_path)
-		} else {
-			print_warning("Warning: Failed to create backup")
-		}
-	}
-
-	// 6. Set plugin enabled state
+	// 5. Set plugin enabled state
 	plugin_ptr.enabled = enable
 
-	// 7. Write updated configuration
+	// 6. Back up (pruned; never in dry-run), then write the configuration
 	if !wayu.dry_run {
-		if !write_plugin_config_json(&config) {
-			delete(config_file)
+		if err := plugin_config_save(&config); err != "" {
 			cleanup_plugin_config_json(&config)
-			print_error_simple("Failed to save plugin configuration")
-			os.exit(EXIT_CONFIG)
+			print_error_simple("%s", err)
+			wayu_exit(EXIT_CONFIG)
 		}
 	} else {
 		print_info("[DRY RUN] Would save updated configuration")
 	}
 
-	// 8. Regenerate shell loader
+	// 7. Regenerate shell loader
 	if !wayu.dry_run {
 		if !generate_plugins_file(wayu.shell) {
-			delete(config_file)
 			cleanup_plugin_config_json(&config)
 			print_error_simple("Failed to regenerate plugins loader")
-			os.exit(EXIT_IOERR)
+			wayu_exit(EXIT_IOERR)
 		}
 	} else {
 		print_info("[DRY RUN] Would regenerate shell loader")
 	}
 
-	// 9. Success
-	delete(config_file)
+	// 8. Success
 	cleanup_plugin_config_json(&config)
 	print_success("Plugin '%s' %s successfully", plugin_name, action_past)
 	fmt.println()
@@ -500,7 +553,11 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 	if enable {
 		fmt.printfln("%sThe plugin will be loaded in new shell sessions.%s", BRIGHT_CYAN, RESET)
 	} else {
-		fmt.printfln("%sThe plugin will not be loaded in new shell sessions.%s", BRIGHT_CYAN, RESET)
+		fmt.printfln(
+			"%sThe plugin will not be loaded in new shell sessions.%s",
+			BRIGHT_CYAN,
+			RESET,
+		)
 	}
 	fmt.printfln("Restart your shell or run 'source ~/.%src' to apply changes.", wayu.shell_ext)
 
@@ -511,7 +568,7 @@ handle_plugin_set_enabled :: proc(args: []string, enable: bool) {
 		warn_plugin_conflicts(plugin_name)
 	}
 
-	os.exit(EXIT_SUCCESS)
+	wayu_exit(EXIT_SUCCESS)
 }
 
 // Handle plugin enable command - enable a disabled plugin
@@ -545,7 +602,7 @@ handle_plugin_priority :: proc(args: []string) {
 		fmt.println()
 		fmt.println("Example:")
 		fmt.println("  wayu plugin priority zsh-autosuggestions 50")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	plugin_name := args[0]
@@ -557,7 +614,7 @@ handle_plugin_priority :: proc(args: []string) {
 		print_error_simple("Invalid priority number '%s'", priority_str)
 		fmt.println()
 		fmt.println("Priority must be a valid integer")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	// Hold the config lock across read-modify-write of plugins.json so
@@ -568,7 +625,7 @@ handle_plugin_priority :: proc(args: []string) {
 	// 3. Read config
 	config, read_ok := read_plugin_config_json()
 	if !read_ok {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 
@@ -578,8 +635,12 @@ handle_plugin_priority :: proc(args: []string) {
 	plugin_name = plugin.name
 
 	if wayu.dry_run {
-		print_info("[DRY RUN] Would set priority of '%s' to %d (current: %d)",
-			plugin_name, priority, plugin.priority)
+		print_info(
+			"[DRY RUN] Would set priority of '%s' to %d (current: %d)",
+			plugin_name,
+			priority,
+			plugin.priority,
+		)
 		return
 	}
 
@@ -590,23 +651,10 @@ handle_plugin_priority :: proc(args: []string) {
 	old_priority := plugin.priority
 	plugin.priority = priority
 
-	// 5. Create backup before modifying
-	config_file := get_plugins_json_config_file()
-	defer delete(config_file)
-
-	if os.exists(config_file) {
-		backup_path, backup_ok := create_backup(config_file)
-		if backup_ok {
-			defer delete(backup_path)
-		} else {
-			print_warning("Warning: Failed to create backup")
-		}
-	}
-
-	// 6. Save config
-	if !write_plugin_config_json(&config) {
-		print_error_simple("Failed to save configuration")
-		os.exit(EXIT_CANTCREAT)
+	// 5. Back up (pruned), then save config
+	if err := plugin_config_save(&config); err != "" {
+		print_error_simple("%s", err)
+		wayu_exit(EXIT_CANTCREAT)
 	}
 
 	// 7. Regenerate loader (load order changed)
@@ -628,7 +676,7 @@ handle_plugin_add :: proc(args: []string) {
 	if len(args) == 0 {
 		print_error_simple("Plugin name or URL required")
 		print_plugin_add_help()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 	if args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
 		print_plugin_add_help()
@@ -649,18 +697,21 @@ handle_plugin_add :: proc(args: []string) {
 		} else if arg == "--use" {
 			if i + 1 >= len(args) {
 				print_error_simple("--use requires a file name or glob (e.g. --use '*.zsh')")
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 			i += 1
 			glob = args[i]
 		} else {
 			print_error_simple("Unexpected argument '%s'", arg)
 			print_plugin_add_help()
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		if !is_valid_use_glob(glob) {
-			print_error_simple("Invalid --use value '%s': give a file name or glob at the repository root (no '/')", glob)
-			os.exit(EXIT_USAGE)
+			print_error_simple(
+				"Invalid --use value '%s': give a file name or glob at the repository root (no '/')",
+				glob,
+			)
+			wayu_exit(EXIT_USAGE)
 		}
 		append(&use_globs, glob)
 	}
@@ -669,8 +720,10 @@ handle_plugin_add :: proc(args: []string) {
 	// Plugin code is sourced into every shell: never fetch it in plaintext.
 	if is_insecure_git_url(name_or_url) {
 		print_error_simple("Refusing insecure plugin URL '%s'", name_or_url)
-		fmt.println("Plaintext http:// and git:// can be tampered with in transit; use https:// or ssh instead.")
-		os.exit(EXIT_DATAERR)
+		fmt.println(
+			"Plaintext http:// and git:// can be tampered with in transit; use https:// or ssh instead.",
+		)
+		wayu_exit(EXIT_DATAERR)
 	}
 
 	// Resolve plugin (all fields of `info` are owned)
@@ -682,31 +735,46 @@ handle_plugin_add :: proc(args: []string) {
 			print_error_simple("Unknown plugin '%s'", name_or_url)
 			fmt.println("\nRun 'wayu plugin search' to see available plugins")
 		}
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 	defer plugin_info_destroy(&info)
+
+	// Already installed (exact match — fuzzy would treat e.g. "git" as
+	// installed whenever "forgit" is): nothing to do, no hook.
+	plugin_add_exit_if_installed :: proc(config: ^PluginConfigJSON, name: string) {
+		if _, found := find_plugin_json(config, name); found {
+			print_warning("Plugin '%s' is already installed", name)
+			wayu_exit(EXIT_SUCCESS)
+		}
+	}
+
+	// The pre-hook runs before the config lock is taken and the post-hook
+	// after it is released, so a hook can run wayu (OKAMI-299).
+	{
+		preview, preview_ok := read_plugin_config_json()
+		if preview_ok {
+			plugin_add_exit_if_installed(&preview, info.name)
+		}
+		cleanup_plugin_config_json(&preview)
+	}
+	hook_pre_plugin_install(info.name)
 
 	// Hold the config lock across read-modify-write of plugins.json so
 	// concurrent wayu runs cannot drop each other's changes.
 	config_lock_acquire_or_exit()
-	defer config_lock_release()
+	locked := true
+	defer if locked {
+		config_lock_release()
+	}
 
 	// Read current config
 	config, ok := read_plugin_config_json()
 	if !ok {
 		print_error_simple("Failed to read plugin configuration")
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
-
-	// Check if already installed (exact match — fuzzy would treat e.g. "git"
-	// as installed whenever "forgit" is)
-	if _, found := find_plugin_json(&config, info.name); found {
-		print_warning("Plugin '%s' is already installed", info.name)
-		os.exit(EXIT_SUCCESS)
-	}
-
-	hook_pre_plugin_install(info.name)
+	plugin_add_exit_if_installed(&config, info.name)
 
 	print_header("Installing Plugin", EMOJI_COMMAND)
 	print_info("Name: %s", info.name)
@@ -730,7 +798,7 @@ handle_plugin_add :: proc(args: []string) {
 		err := os.make_directory(plugins_dir)
 		if err != nil {
 			print_error_simple("Failed to create plugins directory: %v", err)
-			os.exit(EXIT_CANTCREAT)
+			wayu_exit(EXIT_CANTCREAT)
 		}
 	}
 
@@ -758,7 +826,7 @@ handle_plugin_add :: proc(args: []string) {
 		if len(clone_err) > 0 {
 			fmt.eprintln(clone_err)
 		}
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	if !wayu.dry_run {
@@ -785,7 +853,7 @@ handle_plugin_add :: proc(args: []string) {
 				remove_cloned_plugin_dir(plugin_path, plugins_dir)
 			}
 			print_plugin_nothing_to_load(info, use_globs[:])
-			os.exit(EXIT_DATAERR)
+			wayu_exit(EXIT_DATAERR)
 		}
 	} else if from_url {
 		print_info("Shell: detected after cloning")
@@ -797,7 +865,7 @@ handle_plugin_add :: proc(args: []string) {
 		// Record the pin: check/update skip the plugin and `plugin check`
 		// verifies the checkout is still on this exact commit.
 		git_info.ref_type = .Commit
-		full_sha := capture_command([]string{"git", "-C", plugin_path, "rev-parse", "HEAD"})
+		full_sha := capture_command(git_argv("-C", plugin_path, "rev-parse", "HEAD"))
 		if len(full_sha) > 0 {
 			git_info.pinned_ref = full_sha
 		} else {
@@ -806,20 +874,20 @@ handle_plugin_add :: proc(args: []string) {
 		}
 	}
 
-	new_plugin := PluginMetadata{
-		name = strings.clone(info.name),
-		display_name = strings.clone(info.name),
-		url = strings.clone(info.url),
-		source_type = .GitHub,  // Default source
-		enabled = true,
-		shell = info.shell,
+	new_plugin := PluginMetadata {
+		name           = strings.clone(info.name),
+		display_name   = strings.clone(info.name),
+		url            = strings.clone(info.url),
+		source_type    = .GitHub, // Default source
+		enabled        = true,
+		shell          = info.shell,
 		installed_path = strings.clone(plugin_path),
-		use = make([dynamic]string),  // Empty = auto-detect (filled below)
-		template = .Source,  // Default loading template
-		git = git_info,
-		dependencies = make([dynamic]string),  // Phase 4: Initialize empty
-		priority = 100,  // Phase 5: Default priority
-		conflicts = ConflictInfo{},  // Phase 6: No conflicts yet
+		use            = make([dynamic]string), // Empty = auto-detect (filled below)
+		template       = .Source, // Default loading template
+		git            = git_info,
+		dependencies   = make([dynamic]string), // Phase 4: Initialize empty
+		priority       = 100, // Phase 5: Default priority
+		conflicts      = ConflictInfo{}, // Phase 6: No conflicts yet
 	}
 
 	for glob in use_globs {
@@ -833,32 +901,24 @@ handle_plugin_add :: proc(args: []string) {
 		if !existed_before {
 			remove_cloned_plugin_dir(plugin_path, plugins_dir)
 		}
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 
 	if wayu.dry_run {
-		print_info("[DRY RUN] Would add '%s' to plugins.json and regenerate the plugin loader", info.name)
+		print_info(
+			"[DRY RUN] Would add '%s' to plugins.json and regenerate the plugin loader",
+			info.name,
+		)
 		return
 	}
 
-	// Create backup before writing
-	config_file := get_plugins_json_config_file()
-	defer delete(config_file)
-
-	if os.exists(config_file) {
-		backup_path, backup_ok := create_backup(config_file)
-		if backup_ok {
-			defer delete(backup_path)
-		}
-	}
-
-	// Write config
-	if !write_plugin_config_json(&config) {
+	// Back up (pruned), then write config
+	if err := plugin_config_save(&config); err != "" {
 		if !existed_before {
 			remove_cloned_plugin_dir(plugin_path, plugins_dir)
 		}
-		print_error_simple("Failed to write plugin configuration")
-		os.exit(EXIT_IOERR)
+		print_error_simple("%s", err)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	// Generate plugins file for current shell
@@ -872,7 +932,7 @@ handle_plugin_add :: proc(args: []string) {
 		}
 		generate_plugins_file(wayu.shell)
 		print_error_simple("Failed to generate plugins loader")
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	print_success("Plugin '%s' installed successfully", info.name)
@@ -880,6 +940,8 @@ handle_plugin_add :: proc(args: []string) {
 	print_info("Restart your shell or run 'source ~/.%src' to load the plugin", wayu.shell_ext)
 	warn_plugin_conflicts(info.name)
 
+	config_lock_release()
+	locked = false
 	hook_post_plugin_install(info.name)
 }
 
@@ -909,16 +971,26 @@ remove_cloned_plugin_dir :: proc(plugin_path: string, plugins_dir: string) -> bo
 print_plugins_json :: proc(config: ^PluginConfigJSON) {
 	enabled_count := 0
 	for plugin in config.plugins {
-		if plugin.enabled { enabled_count += 1 }
+		if plugin.enabled {
+			enabled_count += 1
+		}
 	}
 	conflicts := collect_plugin_conflicts(config)
 
 	fmt.println("{")
 	fmt.println(`  "plugins": [`)
 	for plugin, i in config.plugins {
-		print_plugin_json_row(i, plugin.name, plugin.enabled, plugin.priority,
-			shell_compat_to_string(plugin.shell), plugin.url, plugin.git.commit, plugin.installed_path,
-			conflicts[:])
+		print_plugin_json_row(
+			i,
+			plugin.name,
+			plugin.enabled,
+			plugin.priority,
+			shell_compat_to_string(plugin.shell),
+			plugin.url,
+			plugin.git.commit,
+			plugin.installed_path,
+			conflicts[:],
+		)
 	}
 	print_plugins_json_tail(len(config.plugins), enabled_count)
 }
@@ -927,27 +999,55 @@ print_plugins_json :: proc(config: ^PluginConfigJSON) {
 // quote/backslash/control char in a URL or path can't break the document
 // (OKAMI-239).
 @(private = "file")
-print_plugin_json_row :: proc(index: int, name: string, enabled: bool, priority: int,
-	shell, url, commit, installed_path: string, conflicts: []PluginConflict = {}) {
-	if index > 0 { fmt.println(",") }
-	name_j   := json_escape(name);           defer delete(name_j)
-	shell_j  := json_escape(shell);          defer delete(shell_j)
-	url_j    := json_escape(url);            defer delete(url_j)
-	commit_j := json_escape(commit);         defer delete(commit_j)
-	path_j   := json_escape(installed_path); defer delete(path_j)
+print_plugin_json_row :: proc(
+	index: int,
+	name: string,
+	enabled: bool,
+	priority: int,
+	shell, url, commit, installed_path: string,
+	conflicts: []PluginConflict = {},
+) {
+	if index > 0 {
+		fmt.println(",")
+	}
+	name_j := json_escape(name); defer delete(name_j)
+	shell_j := json_escape(shell); defer delete(shell_j)
+	url_j := json_escape(url); defer delete(url_j)
+	commit_j := json_escape(commit); defer delete(commit_j)
+	path_j := json_escape(installed_path); defer delete(path_j)
 	// `{` is a struct-verb opener in Odin's fmt — emit via %c.
 	fmt.printf(
 		"    %c\"name\": \"%s\", \"enabled\": %s, \"priority\": %d, \"shell\": \"%s\", \"url\": \"%s\", \"commit\": \"%s\", \"installed_path\": \"%s\", \"conflicts\": [",
-		'{', name_j, enabled ? "true" : "false", priority, shell_j, url_j, commit_j, path_j,
+		'{',
+		name_j,
+		enabled ? "true" : "false",
+		priority,
+		shell_j,
+		url_j,
+		commit_j,
+		path_j,
 	)
 	n := 0
 	for c in conflicts {
 		other := ""
-		if c.plugin == name { other = c.other } else if c.other == name { other = c.plugin } else { continue }
+		if c.plugin == name {
+			other = c.other
+		} else if c.other == name {
+			other = c.plugin
+		} else {
+			continue
+		}
 		cname_j := json_escape(c.name); defer delete(cname_j)
-		with_j  := json_escape(other);  defer delete(with_j)
-		fmt.printf("%s%c\"kind\": \"%s\", \"name\": \"%s\", \"with\": \"%s\"%c",
-			n > 0 ? ", " : "", '{', c.kind, cname_j, with_j, '}')
+		with_j := json_escape(other); defer delete(with_j)
+		fmt.printf(
+			"%s%c\"kind\": \"%s\", \"name\": \"%s\", \"with\": \"%s\"%c",
+			n > 0 ? ", " : "",
+			'{',
+			c.kind,
+			cname_j,
+			with_j,
+			'}',
+		)
 		n += 1
 	}
 	fmt.printf("]%c", '}')
@@ -955,7 +1055,9 @@ print_plugin_json_row :: proc(index: int, name: string, enabled: bool, priority:
 
 @(private = "file")
 print_plugins_json_tail :: proc(count, enabled_count: int) {
-	if count > 0 { fmt.println() }
+	if count > 0 {
+		fmt.println()
+	}
 	fmt.println("  ],")
 	fmt.printfln("  \"count\": %d,", count)
 	fmt.printfln("  \"enabled\": %d", enabled_count)
@@ -967,7 +1069,7 @@ handle_plugin_list :: proc(args: []string) {
 	// Read from JSON5 config
 	config, ok := read_plugin_config_json()
 	if !ok {
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 
@@ -1029,7 +1131,13 @@ handle_plugin_list :: proc(args: []string) {
 		fmt.println()
 		print_warning("%d conflict(s); the definition loaded last wins:", len(conflicts))
 		for c in conflicts {
-			fmt.eprintfln("    %s: %s %s (also defined by %s)", c.plugin, c.kind, c.name, c.other)
+			fmt.eprintfln(
+				"    %s: %s %s (also defined by %s)",
+				term_safe(c.plugin),
+				c.kind,
+				term_safe(c.name),
+				term_safe(c.other),
+			)
 		}
 	}
 }
@@ -1045,7 +1153,7 @@ handle_plugin_remove :: proc(args: []string) {
 	config, ok := read_plugin_config_json()
 	if !ok {
 		print_error_simple("Failed to read plugin configuration")
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 
@@ -1064,9 +1172,14 @@ handle_plugin_remove :: proc(args: []string) {
 		fmt.println("Example:")
 		fmt.println("  wayu plugin rm syntax-highlighting")
 		fmt.println()
-		fmt.printfln("%sHint:%s For interactive selection, use: %swayu --tui%s",
-			get_muted(), RESET, get_primary(), RESET)
-		os.exit(EXIT_USAGE)
+		fmt.printfln(
+			"%sHint:%s For interactive selection, use: %swayu --tui%s",
+			get_muted(),
+			RESET,
+			get_primary(),
+			RESET,
+		)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	arg_name := args[0]
@@ -1107,7 +1220,7 @@ handle_plugin_remove :: proc(args: []string) {
 		delete(dependents)
 		fmt.printfln("Add --yes flag to proceed:")
 		fmt.printfln("  wayu plugin rm %s --yes", plugin_name)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	// Phase 3: Check for dependents (warning only since --yes was provided)
@@ -1133,80 +1246,113 @@ handle_plugin_remove :: proc(args: []string) {
 	print_info("Name: %s", plugin_name)
 	fmt.println()
 
-	// Remove plugin directory — only when it is strictly inside the plugins
-	// root (never the root itself, never outside it).
+	// The plugin directory is removed only when it is strictly inside the
+	// plugins root (never the root itself, never outside it).
 	plugins_dir := get_plugins_dir()
 	defer delete(plugins_dir)
 
-	installed_path := plugin_ptr.installed_path
-	if len(installed_path) == 0 {
-		// Nothing on disk to remove.
+	installed_path := strings.clone(plugin_ptr.installed_path, context.temp_allocator)
+	if len(installed_path) == 0 || !wayu.dry_run {
+		// Nothing on disk to remove / done by plugin_remove_core below.
 	} else if !is_path_inside_dir(installed_path, plugins_dir) {
 		print_warning("Not deleting '%s': outside the plugins directory", installed_path)
-	} else if wayu.dry_run {
+	} else {
 		if is_symlink(installed_path) {
 			print_info("[DRY RUN] Would remove symlink (target kept): %s", installed_path)
 		} else {
 			print_info("[DRY RUN] Would remove directory: %s", installed_path)
 		}
-	} else {
-		was_symlink := is_symlink(installed_path)
-		switch remove_plugin_dir_safely(installed_path, plugins_dir) {
-		case .Removed:
-			if was_symlink {
-				print_success("Removed plugin symlink (its target was left untouched)")
-			} else {
-				print_success("Removed plugin directory")
-			}
-		case .Missing:
-			// Nothing on disk; just drop the config entry.
-		case .Outside:
-			print_warning("Not deleting '%s': it resolves outside the plugins directory", installed_path)
-		case .Failed:
-			print_error_simple("Failed to remove plugin directory")
-			os.exit(EXIT_IOERR)
-		}
 	}
 
 	if wayu.dry_run {
-		print_info("[DRY RUN] Would remove '%s' from plugins.json and regenerate the plugin loader", plugin_name)
+		print_info(
+			"[DRY RUN] Would remove '%s' from plugins.json and regenerate the plugin loader",
+			plugin_name,
+		)
 		return
 	}
 
-	// Remove from config in place. config.plugins keeps ownership of the
-	// remaining entries; the removed entry is freed here exactly once.
-	for i := 0; i < len(config.plugins); i += 1 {
-		if config.plugins[i].name == plugin_name {
-			cleanup_plugin_metadata(&config.plugins[i])
-			ordered_remove(&config.plugins, i)
+	res := plugin_remove_core(&config, plugin_name)
+	switch res.dir {
+	case .Removed:
+		if res.was_symlink {
+			print_success("Removed plugin symlink (its target was left untouched)")
+		} else {
+			print_success("Removed plugin directory")
+		}
+	case .Missing:
+	// Nothing on disk (or no path); just drop the config entry.
+	case .Outside:
+		print_warning("Not deleting '%s': outside the plugins directory", installed_path)
+	case .Failed:
+	}
+	if len(res.err) > 0 {
+		print_error_simple("%s", res.err)
+		wayu_exit(EXIT_IOERR)
+	}
+	print_success("Plugin '%s' removed successfully", plugin_name)
+}
+
+// What plugin_remove_core did. `err` (static/temp, "" on success) says why
+// it stopped; `dir` what happened to the checkout.
+PluginRemoveResult :: struct {
+	dir:         PluginDirRemoval,
+	was_symlink: bool,
+	err:         string,
+}
+
+// Remove plugin `name` (exact) without printing or exiting (shared by
+// `plugin rm` and the TUI): back up plugins.json first (no backup, nothing
+// removed), delete its checkout when it lies inside the plugins dir (a
+// symlink is only unlinked), drop the entry from `config`, write it and
+// regenerate the loader. The caller holds the config lock and handles
+// --dry-run and confirmation.
+plugin_remove_core :: proc(config: ^PluginConfigJSON, name: string) -> (res: PluginRemoveResult) {
+	idx := -1
+	for p, i in config.plugins {
+		if p.name == name {
+			idx = i
 			break
 		}
 	}
+	if idx < 0 {
+		res.err = fmt.tprintf("Plugin not found: %s", name)
+		return
+	}
 
-	// Create backup before writing
 	config_file := get_plugins_json_config_file()
 	defer delete(config_file)
+	if !create_backup_cli(config_file) {
+		res.err = "Could not back up plugins.json; nothing was removed"
+		return
+	}
 
-	if os.exists(config_file) {
-		backup_path, backup_ok := create_backup(config_file)
-		if backup_ok {
-			defer delete(backup_path)
+	plugins_dir := get_plugins_dir()
+	defer delete(plugins_dir)
+	installed_path := config.plugins[idx].installed_path
+	res.dir = .Missing
+	if len(installed_path) > 0 {
+		res.was_symlink = is_symlink(installed_path)
+		res.dir = remove_plugin_dir_safely(installed_path, plugins_dir)
+		if res.dir == .Failed {
+			res.err = fmt.tprintf("Failed to remove plugin directory %s", installed_path)
+			return
 		}
 	}
 
-	// Write config
-	if !write_plugin_config_json(&config) {
-		print_error_simple("Failed to write plugin configuration")
-		os.exit(EXIT_IOERR)
-	}
+	// config.plugins keeps ownership of the remaining entries; the removed
+	// entry is freed here exactly once.
+	cleanup_plugin_metadata(&config.plugins[idx])
+	ordered_remove(&config.plugins, idx)
 
-	// Generate plugins file
+	if !write_plugin_config_json(config) {
+		res.err = "Failed to write plugins.json"
+		return
+	}
 	if !generate_plugins_file(wayu.shell) {
-		print_error_simple("Failed to generate plugins loader")
-		os.exit(EXIT_IOERR)
+		res.err = "Failed to generate plugins loader"
 	}
-
-	print_success("Plugin '%s' removed successfully", plugin_name)
+	return
 }
 
 // Handle plugin get command - display plugin info and copy URL to clipboard
@@ -1214,7 +1360,7 @@ handle_plugin_get :: proc(args: []string) {
 	if len(args) == 0 {
 		print_error_simple("Plugin name required")
 		fmt.println("\nUsage: wayu plugin get <name>")
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	plugin_name := args[0]
@@ -1223,7 +1369,7 @@ handle_plugin_get :: proc(args: []string) {
 	config, ok := read_plugin_config_json()
 	if !ok {
 		print_error_simple("Failed to read plugin configuration")
-		os.exit(EXIT_CONFIG)
+		wayu_exit(EXIT_CONFIG)
 	}
 	defer cleanup_plugin_config_json(&config)
 
@@ -1259,10 +1405,14 @@ handle_plugin_get :: proc(args: []string) {
 		} else when ODIN_OS == .Linux {
 			// Linux: try xclip first, fall back to xsel
 			clipboard_ok = run_command_with_stdin(
-				[]string{"xclip", "-selection", "clipboard"}, plugin_ptr.url)
+				[]string{"xclip", "-selection", "clipboard"},
+				plugin_ptr.url,
+			)
 			if !clipboard_ok {
 				clipboard_ok = run_command_with_stdin(
-					[]string{"xsel", "--clipboard", "--input"}, plugin_ptr.url)
+					[]string{"xsel", "--clipboard", "--input"},
+					plugin_ptr.url,
+				)
 			}
 		} else when ODIN_OS == .Windows {
 			// Windows: clip reads from stdin
@@ -1270,13 +1420,13 @@ handle_plugin_get :: proc(args: []string) {
 		}
 
 		if clipboard_ok {
-			print_success("URL copied to clipboard: %s", plugin_ptr.url)
+			print_success("URL copied to clipboard: %s", term_safe(plugin_ptr.url))
 		} else {
 			print_warning("Failed to copy URL to clipboard")
-			print_info("URL: %s", plugin_ptr.url)
+			print_info("URL: %s", term_safe(plugin_ptr.url))
 		}
 	} else {
-		print_info("[DRY RUN] Would copy URL to clipboard: %s", plugin_ptr.url)
+		print_info("[DRY RUN] Would copy URL to clipboard: %s", term_safe(plugin_ptr.url))
 	}
 }
 
@@ -1295,7 +1445,7 @@ handle_plugin_search :: proc(args: []string) {
 	//   search git
 	//   search --category git
 	//   search --category=git
-	query:    string
+	query: string
 	category: string
 
 	i := 0
@@ -1310,15 +1460,19 @@ handle_plugin_search :: proc(args: []string) {
 				i += 2
 			} else {
 				print_error_simple("--category requires a value")
-				os.exit(EXIT_USAGE)
+				wayu_exit(EXIT_USAGE)
 			}
 		} else {
 			query = strings.to_lower(arg)
 			i += 1
 		}
 	}
-	defer if len(query)    > 0 { delete(query) }
-	defer if len(category) > 0 { delete(category) }
+	defer if len(query) > 0 {
+		delete(query)
+	}
+	defer if len(category) > 0 {
+		delete(category)
+	}
 
 	print_header("Popular Plugins", EMOJI_COMMAND)
 	fmt.println()
@@ -1337,19 +1491,19 @@ handle_plugin_search :: proc(args: []string) {
 
 		// Free-text filter: key, name, description, or category substring.
 		if len(query) > 0 {
-			key_lower  := strings.to_lower(entry.key)
+			key_lower := strings.to_lower(entry.key)
 			name_lower := strings.to_lower(info.name)
 			desc_lower := strings.to_lower(info.description)
-			cat_lower  := strings.to_lower(entry.category)
+			cat_lower := strings.to_lower(entry.category)
 			defer delete(key_lower)
 			defer delete(name_lower)
 			defer delete(desc_lower)
 			defer delete(cat_lower)
 
-			if !strings.contains(key_lower,  query) &&
+			if !strings.contains(key_lower, query) &&
 			   !strings.contains(name_lower, query) &&
 			   !strings.contains(desc_lower, query) &&
-			   !strings.contains(cat_lower,  query) {
+			   !strings.contains(cat_lower, query) {
 				continue
 			}
 		}
@@ -1363,7 +1517,9 @@ handle_plugin_search :: proc(args: []string) {
 		if len(category) > 0 {
 			fmt.printfln("No plugins found in category %q", category)
 			fmt.println()
-			fmt.println("Categories: syntax, completion, navigation, git, history, prompt, productivity, tools, utility")
+			fmt.println(
+				"Categories: syntax, completion, navigation, git, history, prompt, productivity, tools, utility",
+			)
 		} else {
 			fmt.printfln("No plugins found matching %q", query)
 			fmt.println()
@@ -1380,4 +1536,3 @@ handle_plugin_search :: proc(args: []string) {
 	fmt.printfln("%sTo install:%s wayu plugin add <key>", get_muted(), RESET)
 	fmt.printfln("%sFilter by category:%s wayu plugin search --category <cat>", get_muted(), RESET)
 }
-

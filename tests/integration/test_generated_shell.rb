@@ -38,20 +38,31 @@ class GeneratedShellTest
       build_project
       test_zsh_hostile_environments
       test_bash_hostile_aliases
+      test_bash_glob_options
       test_nvm_default_resolution
       test_nvmrc_resolution
       test_compinit_picks_up_new_completions
       test_env_values_and_functions_all_shells
       test_fresh_init_has_no_error_output
       test_script_path_sync_after_path_add
+      test_path_sync_retries_after_bad_save
+      test_path_sync_ignores_aliases
       test_dir_overrides_produce_working_init
       test_evalcache_binary_identity
+      test_build_clean_symlink
+      test_bash_errexit_with_tools
       test_tools_args_never_run_code
+      test_tools_name_never_runs_code
       test_prompt_survives_hostile_commands
+      test_prompt_async_forks
+      test_prompt_hostile_repo_runs_nothing
+      test_prompt_branch_control_chars
       test_init_and_turbo_define_the_same
       test_prompt_vi_mode_and_widgets
       test_prompt_git_branch_without_git
+      test_prompt_values_are_not_prompt_escapes
       test_login_reorder_restored_at_first_prompt
+      test_login_c_reorder_restored
       test_prompt_survives_later_ps1_reset
     ensure
       teardown_test_env
@@ -151,6 +162,24 @@ class GeneratedShellTest
     end
   end
 
+  # OKAMI-345: failglob / nullglob / noglob / nounset in the user's bash
+  # don't make core.bash print "no match" or skip functions/ and
+  # completions/, and the options are restored afterwards.
+  def test_bash_glob_options
+    _, data, env = setup_home('bash_glob', 'bash')
+    { 'failglob' => 'shopt -s failglob', 'nullglob + nounset' => 'shopt -s nullglob; set -u',
+      'noglob' => 'set -f' }.each do |name, pre|
+      print "Test: bash init with #{name}: functions and completions load, options kept... "
+      script = "#{pre}\nsource '#{data}/init.bash'\n" \
+               'echo "myfn=$(myfn) comp=$(complete -p wayu 2>&1) fg=$(shopt -q failglob && echo 1) ng=$(shopt -q nullglob && echo 1) f=${-//[^f]/} leak=${_wayu_files+x}${f+x}"'
+      out, err, st = Open3.capture3(env, '/bin/bash', '--norc', '--noprofile', '-c', script)
+      want = "myfn=myfn-ok comp=complete -F _wayu_completion wayu fg=#{pre.include?('failglob') ? 1 : ''} " \
+             "ng=#{pre.include?('nullglob') ? 1 : ''} f=#{pre.include?('set -f') ? 'f' : ''} leak="
+      check(name, st.success? && err.strip.empty? && out.strip == want,
+            "out=#{out.strip.inspect} want=#{want.inspect} err=#{err.strip[0, 300]}")
+    end
+  end
+
   # alias/default as nvm itself resolves it: highest matching install,
   # optional leading v, alias chains (lts/iron, lts/*), node = newest,
   # partial versions match whole components only.
@@ -208,7 +237,7 @@ class GeneratedShellTest
     out, err, = Open3.capture3(env, 'zsh', '-i', '-c', probe)
     lines = out.lines.map(&:chomp)
     hooks = lines.last.to_s
-    check('prompt_reset', out.include?('$(_wayu_prompt_master)') && !hooks.include?('_wayu_prompt_reassert'),
+    check('prompt_reset', out.include?('${_WAYU_PS1}') && !hooks.include?('_wayu_prompt_reassert'),
           "out=#{out.inspect[0, 300]} err=#{err.strip[0, 200]}")
   end
 
@@ -227,7 +256,10 @@ class GeneratedShellTest
     Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh', stdin_data: '')
     write_entries(paths: { 'a' => "#{home}/a/bin", 'b' => "#{home}/b/bin" }, data: "#{home}/.local/share/wayu")
     Open3.capture3(env, @wayu_bin, 'build')
-    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
+    # A TRAPDEBUG of the user's: wayu then leaves the -c restore to the first
+    # prompt (simulated by running the precmd hooks), the path tested here.
+    File.write("#{home}/.zshenv", "TRAPDEBUG() { : }\n" \
+                                  "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
     File.write("#{home}/.zprofile", "path=( /usr/sbin /bin ${path:#(/usr/sbin|/bin)} )\n")
     File.write("#{home}/.zshrc", "path=( $HOME/pre/bin $path )\n")
     probe = 'print -r -- "${(j.:.)path[1,4]}"; for f in $precmd_functions; do $f; done; print -r -- "${(j.:.)path[1,5]}"'
@@ -236,6 +268,32 @@ class GeneratedShellTest
     want = ["#{home}/pre/bin", "#{home}/a/bin", "#{home}/b/bin", '/usr/sbin', '/bin'].join(':')
     check('login_reorder', before.to_s.start_with?("#{home}/pre/bin:/usr/sbin:/bin") && after == want,
           "before=#{before} after=#{after} err=#{err.strip[0, 200]}")
+  end
+
+  # OKAMI-318: `zsh -l -c` / `zsh -l -i -c` (no prompt ever) get the wayu
+  # order back before the command runs; the trap is gone afterwards.
+  def test_login_c_reorder_restored
+    print "Test: wayu PATH order restored in zsh -l -c and -l -i -c... "
+    home = "#{@tmp_home}/login_c_reorder"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(%w[a/bin b/bin pre/bin .config].map { |d| "#{home}/#{d}" })
+    env = { 'HOME' => home, 'SHELL' => '/bin/zsh', 'PATH' => '/usr/bin:/bin:/usr/sbin:/sbin', 'ZDOTDIR' => home,
+            'WAYU_CONFIG' => nil, 'WAYU_DATA_DIR' => nil, 'WAYU_CONFIG_DIR' => nil, 'XDG_CONFIG_HOME' => nil }
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh', stdin_data: '')
+    write_entries(paths: { 'a' => "#{home}/a/bin", 'b' => "#{home}/b/bin" }, data: "#{home}/.local/share/wayu")
+    Open3.capture3(env, @wayu_bin, 'build')
+    File.write("#{home}/.zshenv", "source \"${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh\"\n")
+    File.write("#{home}/.zprofile", "path=( /usr/sbin /bin ${path:#(/usr/sbin|/bin)} )\n")
+    File.write("#{home}/.zshrc", "path=( $HOME/pre/bin $path )\n")
+    probe = 'false; print -r -- "$? ${(j.:.)path[1,5]} trap=${+functions[TRAPDEBUG]}"'
+    nonint, err1, = Open3.capture3(env, 'zsh', '-l', '-c', probe)
+    inter, err2, = Open3.capture3(env, 'zsh', '-l', '-i', '-c', probe)
+    plain, = Open3.capture3(env, 'zsh', '-c', 'print -r -- "trap=${+functions[TRAPDEBUG]}"')
+    want_n = "1 #{home}/a/bin:#{home}/b/bin:/usr/sbin:/bin:" # 5th: whatever the system zprofile adds
+    want_i = "1 #{["#{home}/pre/bin", "#{home}/a/bin", "#{home}/b/bin", '/usr/sbin', '/bin'].join(':')} trap=0"
+    check('login_c', nonint.start_with?(want_n) && nonint.strip.end_with?(" trap=0") && inter.lines.last.to_s.strip == want_i && plain.strip == 'trap=0' &&
+                     (err1 + err2).strip.empty?,
+          "nonint=#{nonint.strip} want=#{want_n} inter=#{inter.strip} want=#{want_i} err=#{(err1 + err2).strip[0, 200]}")
   end
 
   # with `wayu completions add` must be active in the next (interactive) shell.
@@ -309,6 +367,41 @@ class GeneratedShellTest
       ok = syntax.empty? && st.success? && err.strip.empty? &&
            lines == [want_env, "fn-#{sh}", 'path-ok']
       check("env #{sh}", ok, "syntax=#{syntax.map { |f| File.basename(f) }} out=#{out.inspect} err=#{err.strip[0, 400]}")
+    end
+  end
+
+  # OKAMI-344: a malformed hand save of entries.json (build fails) no longer
+  # stops the live PATH sync for good: the next save is picked up.
+  def test_path_sync_retries_after_bad_save
+    fish = `command -v fish 2>/dev/null`.strip
+    shells = { 'zsh' => 'zsh', 'bash' => '/bin/bash' }
+    shells['fish'] = fish unless fish.empty?
+    shells.each do |sh, exe|
+      print "Test: live PATH sync retries after a malformed entries.json save (#{sh})... "
+      home = "#{@tmp_home}/regen_retry_#{sh}"
+      FileUtils.rm_rf(home)
+      FileUtils.mkdir_p(["#{home}/.config", "#{home}/newbin"])
+      env = clean_env(home, 'SHELL' => "/bin/#{sh}", 'PATH' => "#{File.dirname(@wayu_bin)}:/usr/bin:/bin")
+      Open3.capture3(env, @wayu_bin, 'init', '--shell', sh)
+      data = "#{home}/.local/share/wayu"
+      entries = "#{data}/entries.json"
+      good = JSON.generate('version' => 1, 'paths' => [{ 'key' => 'nb', 'dir' => "#{home}/newbin" }])
+      File.write("#{home}/good.json", good)
+      probe = if sh == 'fish'
+                "source '#{data}/init.fish'; sleep 1.1; echo '{ bad' > '#{entries}'; _wayu_paths_sync; " \
+                "test -e \"$_WAYU_PATHS_FILE.regen-failed\"; and echo marker; sleep 1.1; cp '#{home}/good.json' '#{entries}'; " \
+                "_wayu_paths_sync; contains -- '#{home}/newbin' $PATH; and echo synced"
+              else
+                "source '#{data}/init.#{sh}'; sleep 1.1; echo '{ bad' > '#{entries}'; _wayu_paths_sync; " \
+                "[ -e \"$_WAYU_PATHS_FILE.regen-failed\" ] && echo marker; sleep 1.1; cp '#{home}/good.json' '#{entries}'; " \
+                "_wayu_paths_sync; case \":$PATH:\" in *':#{home}/newbin:'*) echo synced ;; esac"
+              end
+      out, err, = Open3.capture3(env, exe, *SHELL_ARGS[sh], probe)
+      # The failed rebuild's error reaches the terminal once (OKAMI-333).
+      errs = err.lines.map(&:strip).reject(&:empty?)
+      check("retry #{sh}", out.lines.map(&:strip) == %w[marker synced] &&
+            errs.size == 1 && errs[0].include?('entries.json: not valid JSON'),
+            "out=#{out.inspect} err=#{err.strip[0, 300]}")
     end
   end
 
@@ -444,6 +537,40 @@ class GeneratedShellTest
     end
   end
 
+  # OKAMI-315/349: core.bash sourced under `set -e` (bash 3.2 and a newer
+  # bash when installed) survives a [tools] binary that is missing or fails,
+  # and finds tools without a `$(type -P)` fork.
+  def test_bash_errexit_with_tools
+    bashes = ['/bin/bash', '/opt/homebrew/bin/bash', '/usr/local/bin/bash'].select { |b| File.executable?(b) }.uniq
+    bashes.each do |bash|
+      ver = `#{bash} -c 'echo $BASH_VERSION'`.strip
+      print "Test: core.bash under set -e with missing/failing tools (bash #{ver})... "
+      home = "#{@tmp_home}/errexit_#{File.basename(File.dirname(File.dirname(bash)))}"
+      FileUtils.rm_rf(home)
+      FileUtils.mkdir_p(["#{home}/.config", "#{home}/bin"])
+      env = clean_env(home, 'SHELL' => '/bin/bash')
+      Open3.capture3(env, @wayu_bin, 'init', '--shell', 'bash')
+      cfg = "#{home}/.config/wayu"
+      data = "#{home}/.local/share/wayu"
+      File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") +
+        "\n[tools]\nnosuchtool = { args = \"init bash\" }\nbadtool = { args = \"init bash\" }\n" \
+        "goodtool = { args = \"init zsh\" }\n")
+      Open3.capture3(env, @wayu_bin, 'build')
+      File.write("#{home}/bin/goodtool", "#!/bin/sh\necho \"export TOOLV=$2\"\n")
+      File.write("#{home}/bin/badtool", "#!/bin/sh\nexit 1\n")
+      FileUtils.chmod(0o755, ["#{home}/bin/goodtool", "#{home}/bin/badtool"])
+      run_env = clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin")
+      outs = 2.times.map do
+        out, err, st = Open3.capture3(run_env, bash, '--norc', '--noprofile', '-e', '-c',
+                                      "source '#{data}/init.bash'; echo \"ok=$TOOLV\"")
+        [out.strip, err.strip, st.exitstatus]
+      end
+      core = File.read("#{data}/core.bash")
+      check("errexit #{ver}", outs.all? { |o| o == ['ok=bash', '', 0] } && !core.include?('type -P'),
+            "runs=#{outs.inspect} type-P=#{core.include?('type -P')}")
+    end
+  end
+
   # OKAMI-275: [tools] args are split into argv words and re-quoted; values
   # that would run code at startup are refused (`wayu build` exits 78 naming
   # the tool; other regenerations skip the tool).
@@ -483,6 +610,220 @@ class GeneratedShellTest
     end
   end
 
+  # A [tools] key is a TOML quoted key and can hold a newline: it must never
+  # end a generated `# ...` comment and run the rest (every kind; zsh, bash
+  # 3.2, fish). The entry is skipped with a warning on stderr.
+  def test_tools_name_never_runs_code
+    print "Test: [tools] names with a newline are skipped, never run (zsh, bash, fish)... "
+    home = "#{@tmp_home}/tools_name"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p("#{home}/.config")
+    env = clean_env(home)
+    fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
+    shells = %w[zsh bash] + (fish ? %w[fish] : [])
+    shells.each { |sh| Open3.capture3(env.merge('SHELL' => "/bin/#{sh}"), @wayu_bin, 'init', '--shell', sh) }
+    marker = "#{home}/PWNED"
+    cfg = "#{home}/.config/wayu"
+    toml = %w[lazy nvm conda evalcache].map.with_index do |k, i|
+      extra = k == 'lazy' ? ', init_script = "~/i.sh", hook_commands = ["foo"]' : ''
+      %(\n"t#{i}\\ntouch #{marker}\\n" = { kind = "#{k}"#{extra}#{i.odd? ? ', login_only = true' : ''} }\n)
+    end.join
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[tools]" + toml)
+    _, berr, = Open3.capture3(env, @wayu_bin, 'build')
+    data = "#{home}/.local/share/wayu"
+    errs = []
+    shells.each do |sh|
+      exe = sh == 'bash' ? '/bin/bash' : (sh == 'fish' ? fish : 'zsh')
+      args = sh == 'fish' ? ['--no-config', '-l', '-c'] : ['-l', '-c']
+      _, e, = Open3.capture3(env, exe, *args, "source '#{data}/init.#{sh}'")
+      errs << "#{sh}: #{e.strip[0, 120]}" unless e.strip.empty?
+    end
+    ok = !File.exist?(marker) && berr.include?('invalid tool name') && errs.empty?
+    check('tools name', ok, "pwned=#{File.exist?(marker)} build_err=#{berr.strip[0, 200]} errs=#{errs}")
+  end
+
+  # path_sync.<ext> is sourced from the prompt hook, after aliases exist: an
+  # alias named like wayu's helper must not hijack the call (zsh, bash 3.2),
+  # and `alias add` refuses names starting with _wayu (65).
+  def test_path_sync_ignores_aliases
+    print "Test: path_sync calls wayu's helper alias-proof; _wayu* alias names refused... "
+    home = "#{@tmp_home}/sync_alias"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/bin"])
+    env = clean_env(home)
+    marker = "#{home}/PWNED"
+    errs = []
+    %w[zsh bash].each do |sh|
+      e = env.merge('SHELL' => "/bin/#{sh}")
+      Open3.capture3(e, @wayu_bin, 'init', '--shell', sh)
+      Open3.capture3(e, @wayu_bin, 'path', 'add', "#{home}/bin")
+      data = "#{home}/.local/share/wayu"
+      opt = sh == 'bash' ? 'shopt -s expand_aliases; ' : ''
+      out, err, = Open3.capture3(e, "/bin/#{sh}", '-c',
+                                 "#{opt}source '#{data}/init.#{sh}'; alias _wayu_paths_apply='touch #{marker}; :'\n" \
+                                 "source '#{data}/path_sync.#{sh}'\necho \"$PATH\"")
+      errs << "#{sh}: out=#{out.strip[0, 80]} err=#{err.strip[0, 120]}" unless out.include?("#{home}/bin") && !File.exist?(marker)
+      FileUtils.rm_f(marker)
+    end
+    _, _, st = Open3.capture3(env, @wayu_bin, 'alias', 'add', '_wayu_paths_apply', 'echo hi')
+    _, _, st2 = Open3.capture3(env, @wayu_bin, 'alias', 'add', '_wayu', 'echo hi')
+    check('path_sync aliases', errs.empty? && st.exitstatus == 65 && st2.exitstatus == 65,
+          "errs=#{errs} alias_add=#{st.exitstatus},#{st2.exitstatus}")
+  end
+
+  # `wayu build clean` with a symlink in place of the evalcache dir unlinks
+  # the symlink and never deletes what it points to.
+  def test_build_clean_symlink
+    print "Test: build clean unlinks a symlinked evalcache dir, target untouched... "
+    home = "#{@tmp_home}/clean_link"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/.cache/wayu", "#{home}/victim"])
+    File.write("#{home}/victim/keep", "x\n")
+    File.symlink("#{home}/victim", "#{home}/.cache/wayu/evalcache")
+    env = clean_env(home)
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    _, err, st = Open3.capture3(env, @wayu_bin, 'build', 'clean')
+    ok = st.success? && File.exist?("#{home}/victim/keep") && !File.symlink?("#{home}/.cache/wayu/evalcache")
+    check('build clean symlink', ok, "exit=#{st.exitstatus} keep=#{File.exist?("#{home}/victim/keep")} err=#{err.strip[0, 200]}")
+  end
+
+  # OKAMI-349: outside a git work tree (and a versioned context) a prompt
+  # render starts no async worker; in a repo the worker reports the pending
+  # count and the USR1 handler reads and removes the result without forking
+  # (`rm`/`mv`/`mktemp` are aliased to `false` to prove builtins are used).
+  def test_prompt_async_forks
+    print "Test: native prompt: no worker outside git, fork-free USR1 handler... "
+    home = "#{@tmp_home}/prompt_async"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/repo", "#{home}/plain"])
+    env = clean_env(home)
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[prompt]\nenabled = true\n")
+    Open3.capture3(env, @wayu_bin, 'build')
+    git_env = clean_env(home, 'GIT_CONFIG_NOSYSTEM' => '1')
+    Open3.capture3(git_env, 'git', 'init', '-q', "#{home}/repo")
+    File.write("#{home}/repo/untracked", "x\n")
+    script = <<~SH
+      zmodload zsh/zselect
+      source '#{data}/init.zsh'
+      alias rm=false mv=false mktemp=false
+      run() { local f; for f in $precmd_functions; do $f; done; }
+      cd '#{home}/plain'; _wayu_detect_context
+      b=$!; run; print -r -- "plain bang=$(( $! == b )) dir=${_WAYU_ASYNC_DIR:-none}"
+      cd '#{home}/repo'; _wayu_detect_context
+      run; n=0
+      while [[ -z $_WAYU_ASYNC_DATA ]] && (( n++ < 300 )); do zselect -t 1; done
+      print -r -- "repo data=$_WAYU_ASYNC_DATA left=$(ls -A $_WAYU_ASYNC_DIR | wc -l | tr -d ' ')"
+      cd '#{home}/plain'; run; print -r -- "back data=[${_WAYU_ASYNC_DATA}]"
+    SH
+    out, err, st = Open3.capture3(env, 'zsh', '-f', '-i', '-c', script)
+    ok = st.success? && out.include?('plain bang=1 dir=none') && out =~ /repo data=\S*1\S* left=0/ &&
+         out.include?('back data=[]')
+    check('prompt async forks', ok, "out=#{out.inspect} err=#{err.strip[0, 400]}")
+  end
+
+  # The async worker's pending count runs git in any repo the shell enters: a
+  # repo whose own config names core.fsmonitor, or a filter.<x>.clean driver
+  # (directly or via include.path) for a stat-dirty file, must run nothing
+  # (zsh and fish); a plain repo still gets its count. Hostile repos keep the
+  # branch.
+  def test_prompt_hostile_repo_runs_nothing
+    print "Test: native prompt async worker runs no repo-configured commands (zsh, fish)... "
+    home = "#{@tmp_home}/prompt_repo"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p("#{home}/.config")
+    env = clean_env(home)
+    fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
+    shells = fish ? %w[zsh fish] : %w[zsh]
+    shells.each { |sh| Open3.capture3(env.merge('SHELL' => "/bin/#{sh}"), @wayu_bin, 'init', '--shell', sh) }
+    cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[prompt]\nenabled = true\n")
+    shells.each { |sh| Open3.capture3(env, @wayu_bin, 'build', '--shell', sh) }
+    git_env = clean_env(home, 'GIT_CONFIG_NOSYSTEM' => '1')
+    g = ->(*a) { Open3.capture3(git_env, 'git', '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', *a) }
+    marker = "#{home}/PWNED"
+    mk = lambda do |name, attr|
+      repo = "#{home}/#{name}"
+      g.call('init', '-q', '-b', "#{name}-br", repo)
+      File.write("#{repo}/f", "a\n")
+      File.write("#{repo}/.gitattributes", "f filter=#{attr}\n") if attr
+      g.call('-C', repo, 'add', '.')
+      g.call('-C', repo, 'commit', '-q', '-m', 'i')
+      File.write("#{repo}/untracked", "u\n")
+      repo
+    end
+    fsm = mk.call('fsm', nil)
+    g.call('-C', fsm, 'config', 'core.fsmonitor', "touch '#{marker}'; false")
+    flt = mk.call('flt', 'x')
+    g.call('-C', flt, 'config', 'filter.x.clean', "sh -c 'touch \"#{marker}\"; cat'")
+    inc = mk.call('inc', 'y')
+    File.write("#{inc}/.git/extra.cfg", "[filter \"y\"]\n\tprocess = touch '#{marker}'\n")
+    g.call('-C', inc, 'config', 'include.path', 'extra.cfg')
+    plain = mk.call('plain', nil)
+    results = []
+    stamp = 0
+    { 'fsm' => fsm, 'flt' => flt, 'inc' => inc, 'plain' => plain }.each do |name, repo|
+      shells.each do |sh|
+        stamp += 1
+        File.utime(Time.at(1_600_000_000 + stamp), Time.at(1_600_000_000 + stamp), "#{repo}/f")
+        adir = "#{home}/async_#{sh}"
+        FileUtils.rm_rf(adir)
+        FileUtils.mkdir_p(adir)
+        out, err, =
+          if sh == 'zsh'
+            Open3.capture3(env, 'zsh', '-f', '-i', '-c',
+                           "source '#{data}/init.zsh'; cd '#{repo}'; _wayu_update_git_info; " \
+                           "_WAYU_ASYNC_DIR='#{adir}'; trap '' USR1; _wayu_async_worker; " \
+                           "print -r -- \"$_WAYU_GIT_BRANCH $(head -1 '#{adir}/data')\"")
+          else
+            Open3.capture3(env.merge('TERM' => 'dumb', 'PATH' => "#{File.dirname(fish)}:/usr/bin:/bin"), fish, '-i', '--no-config', '-c',
+                           "source '#{data}/init.fish'; cd '#{repo}'; _wayu_update_git_info; set -l fb (status fish-path); " \
+                           "command $fb --no-config -c $_wayu_async_script -- '#{adir}' $_wayu_git_branch default 99999999 2>/dev/null; " \
+                           "echo $_wayu_git_branch (head -1 '#{adir}/data')")
+          end
+        got = out.lines.last.to_s.strip.gsub(/%[FK]\{\d+\}|%f|%k/, '')
+        want = name == 'plain' || name == 'fsm' ? "#{name}-br 1" : "#{name}-br"
+        results << "#{sh}/#{name}: #{got.inspect} want #{want.inspect} pwned=#{File.exist?(marker)} err=#{err.lines.grep_v(/warning/).join.strip[0, 120]}" unless got == want && !File.exist?(marker)
+        FileUtils.rm_f(marker)
+      end
+    end
+    check('hostile repo', results.empty?, results.join("\n  "))
+  end
+
+  # A crafted .git/HEAD can name a branch with ESC/BEL/CR/DEL (an OSC title
+  # sequence here): the prompt shows them as `?`, never raw (zsh, fish).
+  def test_prompt_branch_control_chars
+    print "Test: native prompt shows control characters in a branch as ? (zsh, fish)... "
+    home = "#{@tmp_home}/prompt_cntrl"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/repo/.git"])
+    env = clean_env(home)
+    fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
+    shells = fish ? %w[zsh fish] : %w[zsh]
+    shells.each { |sh| Open3.capture3(env.merge('SHELL' => "/bin/#{sh}"), @wayu_bin, 'init', '--shell', sh) }
+    cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[prompt]\nenabled = true\n")
+    shells.each { |sh| Open3.capture3(env, @wayu_bin, 'build', '--shell', sh) }
+    File.write("#{home}/repo/.git/HEAD", "ref: refs/heads/a\e]0;x\ab\r\x7fc\n")
+    bad = []
+    shells.each do |sh|
+      out, =
+        if sh == 'zsh'
+          Open3.capture3(env, 'zsh', '-f', '-i', '-c',
+                         "source '#{data}/init.zsh'; cd '#{home}/repo'; _wayu_update_git_info; print -r -- \"[$_WAYU_GIT_BRANCH]\"")
+        else
+          Open3.capture3(env.merge('TERM' => 'dumb'), fish, '-i', '--no-config', '-c',
+                         "source '#{data}/init.fish'; cd '#{home}/repo'; _wayu_update_git_info; echo \"[$_wayu_git_branch]\"")
+        end
+      bad << "#{sh}: #{out.inspect}" unless out.strip == '[a?]0;x?b??c]'
+    end
+    check('branch control chars', bad.empty?, bad.join(' '))
+  end
+
   # OKAMI-279: with `[prompt] enabled = true`, aliases and functions named
   # git/awk/sed/... (defined before or after wayu is sourced) must not change
   # or break the native prompt.
@@ -507,7 +848,7 @@ class GeneratedShellTest
     hostile = 'alias git=false awk=false sed=false head=false wc=false tr=false mktemp=false rm=false mv=false'
     funcs = 'git() { echo HIJACK; }; awk() { echo HIJACK; }; sed() { echo HIJACK; }'
     script = "#{hostile}\nsource '#{data}/init.zsh'\n#{funcs}\ncd '#{home}/repo'\n_wayu_update_git_info\n" \
-             "print -r -- \"$(_wayu_prompt_full)\"\nprint -r -- \"ver=$(_wayu_version_cmd golang)\""
+             "_wayu_prompt_full; print -r -- \"$REPLY\"\nprint -r -- \"ver=$(_wayu_version_cmd golang)\""
     out, err, st = Open3.capture3(clean_env(home, 'PATH' => "#{home}/bin:/usr/bin:/bin"), 'zsh', '-f', '-i', '-c', script)
     lines = out.lines.map(&:strip)
     ok = st.success? && err.strip.empty? && lines[0].to_s.include?('hostile-br') && !out.include?('HIJACK') &&
@@ -584,6 +925,33 @@ class GeneratedShellTest
     want = "[main-br|repo][wt-br|wt][|][#{sha.strip[0, 7]}]"
     check('git branch', out.strip == want && !err.include?('GIT-RAN'),
           "out=#{out.strip.inspect} want=#{want.inspect} err=#{err.strip[0, 300]}")
+  end
+
+  # OKAMI-343: a git branch (or tool version, shell name) containing `%` is
+  # shown as is, never expanded as a prompt escape.
+  def test_prompt_values_are_not_prompt_escapes
+    print "Test: % in a git branch / context version is shown literally in the prompt... "
+    home = "#{@tmp_home}/prompt_pct"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p("#{home}/.config")
+    env = clean_env(home)
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") +
+      "\n[prompt]\nenabled = true\nformat = \"<{git_branch}|{language_context}>\"\n" \
+      "[prompt.git_branch]\nformat = \"$branch\"\n[prompt.contexts]\nrust = { format = \"v$version\", detect = [\"Cargo.toml\"] }\n")
+    Open3.capture3(env, @wayu_bin, 'build')
+    script = <<~'SH'
+      source "$HOME/.local/share/wayu/init.zsh"
+      _WAYU_GIT_BRANCH='feat%n-%D{%Y}' _WAYU_CONTEXT=rust _WAYU_CONTEXT_VER='1%m'
+      _wayu_prompt_full; print -rP -- "$REPLY"
+      _WAYU_CONTEXT=default SHELL=/bin/z%n; _wayu_prompt_full; print -rP -- "$REPLY"
+    SH
+    out, err, = Open3.capture3(env, 'zsh', '-f', '-i', '-c', script)
+    want = ['<feat%n-%D{%Y}|v1%m>', '<feat%n-%D{%Y}|z%n>']
+    check('prompt %', out.lines.map(&:strip) == want && err.strip.empty?,
+          "out=#{out.inspect} want=#{want.inspect} err=#{err.strip[0, 300]}")
   end
 
   # OKAMI-284: turbo.<ext> is the same generated output as core.<ext>, so a

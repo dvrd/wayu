@@ -8,9 +8,9 @@
 // dropping each other's entries.
 package wayu
 
+import "base:runtime"
 import "core:fmt"
 import "core:io"
-import "base:runtime"
 import "core:math/rand"
 import "core:mem/virtual"
 import "core:os"
@@ -40,12 +40,16 @@ write_file_atomic :: proc(path: string, data: []byte) -> os.Error {
 	// the CLI's fixed 256KB temp arena, which would turn every tprintf here
 	// into "" and silently fail the write.
 	scratch_arena: virtual.Arena
-	if err := virtual.arena_init_growing(&scratch_arena); err != nil { return err }
+	if err := virtual.arena_init_growing(&scratch_arena); err != nil {
+		return err
+	}
 	defer virtual.arena_destroy(&scratch_arena)
 	scratch := virtual.arena_allocator(&scratch_arena)
 
 	target, resolve_err := atomic_resolve_target(path, scratch)
-	if resolve_err != nil { return resolve_err }
+	if resolve_err != nil {
+		return resolve_err
+	}
 
 	mode := ATOMIC_DEFAULT_MODE
 	if fi, err := os.stat(target, scratch); err == nil {
@@ -53,37 +57,62 @@ write_file_atomic :: proc(path: string, data: []byte) -> os.Error {
 	}
 
 	dir, base := os.split_path(target)
-	if len(dir) == 0 { dir = "." }
+	if len(dir) == 0 {
+		dir = "."
+	}
 
 	tmp_file: ^os.File
 	tmp_path: string
 	open_err: os.Error
-	for attempt in 0..<ATOMIC_MAX_TMP_ATTEMPTS {
+	for attempt in 0 ..< ATOMIC_MAX_TMP_ATTEMPTS {
 		suffix := rand.uint64() ~ u64(time.now()._nsec) ~ u64(attempt)
-		tmp_path = fmt.aprintf("%s/.%s.tmp.%d.%x", dir, base, os.get_pid(), suffix, allocator = scratch)
+		tmp_path = fmt.aprintf(
+			"%s/.%s.tmp.%d.%x",
+			dir,
+			base,
+			os.get_pid(),
+			suffix,
+			allocator = scratch,
+		)
 		tmp_file, open_err = os.open(tmp_path, {.Write, .Create, .Excl}, mode)
-		if open_err != os.General_Error.Exist { break }
+		if open_err != os.General_Error.Exist {
+			break
+		}
 	}
-	if open_err != nil { return open_err }
+	if open_err != nil {
+		return open_err
+	}
 
 	ok := false
-	defer if !ok { os.remove(tmp_path) }
+	defer if !ok {
+		os.remove(tmp_path)
+	}
 
 	{
 		defer os.close(tmp_file)
 		written := 0
 		for written < len(data) {
 			n, werr := os.write(tmp_file, data[written:])
-			if werr != nil { return werr }
-			if n <= 0 { return io.Error.Short_Write }
+			if werr != nil {
+				return werr
+			}
+			if n <= 0 {
+				return io.Error.Short_Write
+			}
 			written += n
 		}
 		// The umask may have stripped bits from `mode` at create time.
-		if err := os.fchmod(tmp_file, mode); err != nil { return err }
-		if err := os.sync(tmp_file); err != nil { return err }
+		if err := os.fchmod(tmp_file, mode); err != nil {
+			return err
+		}
+		if err := os.sync(tmp_file); err != nil {
+			return err
+		}
 	}
 
-	if err := os.rename(tmp_path, target); err != nil { return err }
+	if err := os.rename(tmp_path, target); err != nil {
+		return err
+	}
 	ok = true
 
 	// Best effort: persist the rename itself. Not all filesystems allow
@@ -100,11 +129,15 @@ write_file_atomic :: proc(path: string, data: []byte) -> os.Error {
 @(private = "file")
 atomic_resolve_target :: proc(path: string, allocator: runtime.Allocator) -> (string, os.Error) {
 	current := path
-	for _ in 0..<ATOMIC_MAX_SYMLINK_HOPS {
+	for _ in 0 ..< ATOMIC_MAX_SYMLINK_HOPS {
 		fi, err := os.lstat(current, allocator)
-		if err != nil || fi.type != .Symlink { return current, nil }
+		if err != nil || fi.type != .Symlink {
+			return current, nil
+		}
 		link, lerr := os.read_link(current, allocator)
-		if lerr != nil { return "", lerr }
+		if lerr != nil {
+			return "", lerr
+		}
 		if strings.has_prefix(link, "/") {
 			current = link
 		} else {
@@ -113,6 +146,63 @@ atomic_resolve_target :: proc(path: string, allocator: runtime.Allocator) -> (st
 		}
 	}
 	return "", os.General_Error.Invalid_Path
+}
+
+// ---------------------------------------------------------------------------
+// Private directories
+// ---------------------------------------------------------------------------
+//
+// wayu's dirs hold code the shell runs at startup (core.<ext>, functions/,
+// plugins/, completions/) and bin/ sits on PATH, so a group/other-writable
+// dir lets another local user run code as the owner. os.make_directory's
+// mode is filtered by the umask (umask 000 → 0777), so every wayu dir is
+// created through make_wayu_dir and chmod'ed explicitly.
+
+// Mode for the directories wayu creates.
+WAYU_DIR_MODE :: os.Permissions{.Read_User, .Write_User, .Execute_User}
+
+// Group/other write bits: never wanted on a wayu dir.
+WAYU_DIR_UNSAFE_BITS :: os.Permissions{.Write_Group, .Write_Other}
+
+// Create `path` and any missing parents (mkdir -p) as private dirs: each dir
+// created here gets WAYU_DIR_MODE (0700) by an explicit chmod. An existing
+// `path` is kept but tightened (wayu_dir_tighten). Returns nil when `path`
+// ends up an existing directory.
+make_wayu_dir :: proc(path: string) -> os.Error {
+	if len(path) == 0 {
+		return os.General_Error.Invalid_Path
+	}
+	if os.is_dir(path) {
+		_, _ = wayu_dir_tighten(path)
+		return nil
+	}
+	last_slash := strings.last_index(path, "/")
+	if last_slash > 0 {
+		parent := path[:last_slash]
+		if !os.exists(parent) {
+			make_wayu_dir(parent) or_return
+		}
+	}
+	if err := os.make_directory(path, WAYU_DIR_MODE); err != nil {
+		// A concurrent wayu may have created it first.
+		if os.is_dir(path) {
+			_, _ = wayu_dir_tighten(path)
+			return nil
+		}
+		return err
+	}
+	return os.chmod(path, WAYU_DIR_MODE)
+}
+
+// Clear group/other write on an existing dir (keeps every other bit, so a
+// user's deliberate 0755 stays readable). Returns whether the mode changed.
+wayu_dir_tighten :: proc(path: string) -> (changed: bool, err: os.Error) {
+	fi := os.stat(path, context.temp_allocator) or_return
+	if fi.mode & WAYU_DIR_UNSAFE_BITS == {} {
+		return false, nil
+	}
+	os.chmod(path, fi.mode - WAYU_DIR_UNSAFE_BITS) or_return
+	return true, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -147,12 +237,16 @@ config_lock_acquire :: proc() -> bool {
 		return true
 	}
 
+	// Always <data>/.wayu.lock: on a first run the data dir is created here,
+	// so concurrent first writes take the same lock (OKAMI-327; falling back
+	// to the config dir, or to no lock, let them drop each other's changes).
 	dir := wayu.data
-	if !os.is_dir(dir) { dir = wayu.config }
 	if !os.is_dir(dir) {
-		// Nothing on disk to protect yet (first run before init).
-		_config_lock.depth += 1
-		return true
+		_ = make_wayu_dir(dir) // a concurrent wayu may create it first
+		if !os.is_dir(dir) {
+			print_error("Cannot create the data dir %s for the lock file", dir)
+			return false
+		}
 	}
 
 	lock_path := fmt.tprintf("%s/%s", dir, CONFIG_LOCK_FILE)
@@ -164,8 +258,12 @@ config_lock_acquire :: proc() -> bool {
 
 	fd := posix.FD(os.fd(f))
 	for {
-		if posix.lockf(fd, .LOCK, 0) == .OK { break }
-		if posix.errno() == .EINTR { continue }
+		if posix.lockf(fd, .LOCK, 0) == .OK {
+			break
+		}
+		if posix.errno() == .EINTR {
+			continue
+		}
 		print_error("Cannot lock %s: %s", lock_path, posix.strerror(posix.errno()))
 		os.close(f)
 		return false
@@ -181,7 +279,9 @@ config_lock_acquire :: proc() -> bool {
 config_lock_release :: proc() {
 	assert(_config_lock.depth > 0, "config_lock_release without acquire")
 	_config_lock.depth -= 1
-	if _config_lock.depth > 0 || _config_lock.file == nil { return }
+	if _config_lock.depth > 0 || _config_lock.file == nil {
+		return
+	}
 
 	_ = posix.lockf(posix.FD(os.fd(_config_lock.file)), .ULOCK, 0)
 	os.close(_config_lock.file)
@@ -191,5 +291,7 @@ config_lock_release :: proc() {
 // CLI convenience: take the lock or exit with EXIT_IOERR. Callers still
 // `defer config_lock_release()`.
 config_lock_acquire_or_exit :: proc() {
-	if !config_lock_acquire() { os.exit(EXIT_IOERR) }
+	if !config_lock_acquire() {
+		wayu_exit(EXIT_IOERR)
+	}
 }

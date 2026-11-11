@@ -204,22 +204,27 @@ class DryRunIntegrationTest
   end
 
   # OKAMI-230: a placeholder inside a nested `sh -c '...'` must not execute
-  # the value.
+  # the value; one inside the inner shell's "..." (re-parsed by a shell
+  # nested in it) is refused like a top-level "...".
   def test_hook_nested_shell_no_injection
     log = "#{@tmp_home}/nested.log"
     hooks = "#{@config_dir}/hooks.conf"
-    File.write(hooks, %(post_alias_add = sh -c 'echo "a {name}={value}" >> #{log}'\n) +
+    File.write(hooks, %(post_alias_add = sh -c 'echo a {name}={value} >> #{log}'\n) +
                       %(post_alias_remove = bash -c 'echo r {name} >> #{log}'\n))
     pwn = "#{@tmp_home}/PWNED"
     pwn2 = "#{@tmp_home}/PWNED2"
     _o, st = run_wayu(%(alias add nest 'echo $(touch #{pwn}) `touch #{pwn2}`; touch #{pwn}'))
     run_wayu("alias rm nest")
     content = File.exist?(log) ? File.read(log) : ""
+    File.write(hooks, %(post_alias_add = sh -c 'sh -c "echo {value}"'\n))
+    out3, st3 = run_wayu(%(alias add nest3 'x; touch #{pwn}'))
     File.delete(hooks)
+    run_wayu("alias rm nest3")
     check("Test 11: nested-shell hook placeholders never execute values",
           st.success? && !File.exist?(pwn) && !File.exist?(pwn2) &&
-            content.include?("$(touch #{pwn})") && content.include?("r nest"),
-          "pwned=#{File.exist?(pwn)}/#{File.exist?(pwn2)} log=#{content.inspect}")
+            content.include?("$(touch #{pwn})") && content.include?("r nest") &&
+            st3.exitstatus == 78 && out3.include?("post_alias_add"),
+          "pwned=#{File.exist?(pwn)}/#{File.exist?(pwn2)} log=#{content.inspect} st3=#{st3.exitstatus} #{out3}")
   end
 
   # Maintainer decision: a placeholder inside "..." is refused. The outer

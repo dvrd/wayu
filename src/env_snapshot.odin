@@ -10,27 +10,30 @@
 package wayu
 
 import "base:runtime"
+import "core:crypto"
 import "core:os"
 import "core:strings"
+import "core:sys/posix"
 
 EntrySource :: enum {
-	WAYU_ACTIVE,    // in wayu.toml AND in current env
-	WAYU_INACTIVE,  // in wayu.toml but NOT in current env
-	EXTERNAL,       // in current env but NOT in wayu.toml
-	SHADOWED,       // in both but values differ
+	WAYU_ACTIVE, // in wayu.toml AND in current env
+	WAYU_INACTIVE, // in wayu.toml but NOT in current env
+	EXTERNAL, // in current env but NOT in wayu.toml
+	SHADOWED, // in both but values differ
 }
 
 // Cached snapshot (per-invocation). Each cache has its own init flag: a
 // single shared flag made snapshot_env_var skip populating env_vars whenever
 // PATH or aliases had been snapshotted first (constants then showed inactive).
-@private
+@(private)
 ENV_SNAPSHOT_CACHE: struct {
 	path_initialized:    bool,
-	env_initialized:     bool,
 	aliases_initialized: bool,
-	path_entries: [dynamic]string,
-	env_vars: map[string]string,
-	aliases: map[string]string,
+	path_entries:        [dynamic]string,
+	// Only the variables looked up (never a copy of the whole environment,
+	// which holds exported secrets); a missing one is cached as absent.
+	env_vars:            map[string]Maybe(string),
+	aliases:             map[string]string,
 } = {}
 
 // snapshot_path_entries splits $PATH on `:`. The result is cached on the
@@ -55,32 +58,28 @@ snapshot_path_entries :: proc() -> [dynamic]string {
 	return ENV_SNAPSHOT_CACHE.path_entries
 }
 
-// snapshot_env_var returns the value of an environment variable, or nil if not set
-// Caches all env vars on first call.
+// snapshot_env_var returns the value of an environment variable, or nil if
+// not set. Each name is read once and cached (owned by the cache); only the
+// names asked for are copied, so the values of unrelated variables (e.g.
+// exported secrets) are never duplicated on the heap.
 snapshot_env_var :: proc(name: string) -> Maybe(string) {
-	if !ENV_SNAPSHOT_CACHE.env_initialized {
-		context.allocator = snapshot_allocator()
-		env_list, err := os.environ(context.allocator)
-		if err == nil {
-			defer {
-				for pair in env_list { delete(pair) }
-				delete(env_list)
-			}
-			for pair in env_list {
-				eq := strings.index_byte(pair, '=')
-				if eq <= 0 { continue }
-				key := pair[:eq]
-				if key in ENV_SNAPSHOT_CACHE.env_vars { continue }
-				ENV_SNAPSHOT_CACHE.env_vars[strings.clone(key)] = strings.clone(pair[eq+1:])
-			}
-		}
-		ENV_SNAPSHOT_CACHE.env_initialized = true
-	}
-
 	if val, ok := ENV_SNAPSHOT_CACHE.env_vars[name]; ok {
 		return val
 	}
-	return nil
+	context.allocator = snapshot_allocator()
+	val: Maybe(string)
+	if v, found := os.lookup_env(name, context.allocator); found {
+		val = v
+	}
+	ENV_SNAPSHOT_CACHE.env_vars[strings.clone(name)] = val
+	return val
+}
+
+// Is `name` set in the environment? Copies nothing: for secrets, whose
+// presence is all a list view shows.
+snapshot_env_has :: proc(name: string) -> bool {
+	cname := strings.clone_to_cstring(name, context.temp_allocator)
+	return posix.getenv(cname) != nil
 }
 
 // snapshot_aliases spawns `$SHELL -i -c alias` and parses its output.
@@ -102,27 +101,24 @@ snapshot_aliases :: proc() -> map[string]string {
 	shell_bin := shell if len(shell) > 0 else "zsh"
 
 	args := []string{shell_bin, "-i", "-c", "alias"}
+	// An rc file that sleeps, prompts or attaches tmux must not freeze wayu
+	// (TUI or CLI): give up after a deadline, listing no external aliases.
 	output: string
-	if wayu.tui_mode {
-		// An rc file that sleeps, prompts or attaches tmux must not freeze
-		// the TUI: give up after a deadline (or on Esc), listing no
-		// external aliases.
-		r := run_command_timeout(args, ALIAS_SNAPSHOT_TUI_TIMEOUT_MS)
-		if r.ok {
-			output = r.stdout
-			r.stdout = ""
-		}
-		command_result_destroy(&r)
-	} else {
-		output = capture_command(args)
+	r := run_command_timeout(args, ALIAS_SNAPSHOT_TIMEOUT_MS)
+	if r.ok {
+		output = r.stdout
+		r.stdout = ""
 	}
-	defer if len(output) > 0 { delete(output) }
+	command_result_destroy(&r)
+	defer if len(output) > 0 {
+		delete(output)
+	}
 
 	parse_alias_listing(output, &ENV_SNAPSHOT_CACHE.aliases)
 	return ENV_SNAPSHOT_CACHE.aliases
 }
 
-ALIAS_SNAPSHOT_TUI_TIMEOUT_MS :: 3_000
+ALIAS_SNAPSHOT_TIMEOUT_MS :: 3_000
 
 // Parse the output of the `alias` builtin into name -> command.
 // Handles both formats:
@@ -141,7 +137,7 @@ parse_alias_listing :: proc(text: string, out: ^map[string]string) {
 		// fish: `alias name 'value'` (space-separated, fish quoting).
 		if has_alias_kw && sp > 0 && (eq < 0 || sp < eq) {
 			name := l[:sp]
-			value := fish_unquote_word(strings.trim_left_space(l[sp+1:]))
+			value := fish_unquote_word(strings.trim_left_space(l[sp + 1:]))
 			if old, exists := out[name]; exists {
 				delete(old)
 				out[name] = value
@@ -150,14 +146,18 @@ parse_alias_listing :: proc(text: string, out: ^map[string]string) {
 			}
 			continue
 		}
-		if eq <= 0 { continue }
+		if eq <= 0 {
+			continue
+		}
 		name := l[:eq]
 		// zsh quotes names containing special chars: 'a-b'=...
-		if len(name) >= 2 && name[0] == '\'' && name[len(name)-1] == '\'' {
-			name = name[1:len(name)-1]
+		if len(name) >= 2 && name[0] == '\'' && name[len(name) - 1] == '\'' {
+			name = name[1:len(name) - 1]
 		}
-		if len(name) == 0 { continue }
-		value := shell_unquote_word(l[eq+1:])
+		if len(name) == 0 {
+			continue
+		}
+		value := shell_unquote_word(l[eq + 1:])
 		if old, exists := out[name]; exists {
 			delete(old)
 			out[name] = value
@@ -176,12 +176,12 @@ shell_unquote_word :: proc(s: string) -> string {
 		c := s[i]
 		switch c {
 		case '\'':
-			end := strings.index_byte(s[i+1:], '\'')
+			end := strings.index_byte(s[i + 1:], '\'')
 			if end < 0 {
-				strings.write_string(&sb, s[i+1:])
+				strings.write_string(&sb, s[i + 1:])
 				i = len(s)
 			} else {
-				strings.write_string(&sb, s[i+1:i+1+end])
+				strings.write_string(&sb, s[i + 1:i + 1 + end])
 				i += end + 2
 			}
 		case '"':
@@ -196,12 +196,12 @@ shell_unquote_word :: proc(s: string) -> string {
 			i += 1
 		case '\\':
 			if i + 1 < len(s) {
-				strings.write_byte(&sb, s[i+1])
+				strings.write_byte(&sb, s[i + 1])
 			}
 			i += 2
 		case '$':
 			// bash may print $'...' ANSI-C strings; keep the inner text.
-			if i + 1 < len(s) && s[i+1] == '\'' {
+			if i + 1 < len(s) && s[i + 1] == '\'' {
 				i += 1
 				continue
 			}
@@ -232,7 +232,7 @@ fish_unquote_word :: proc(s: string) -> string {
 			continue
 		}
 		if c == '\\' && i + 1 < len(s) {
-			n := s[i+1]
+			n := s[i + 1]
 			escapes := quote == 0 || n == '\\' || n == quote || (quote == '"' && n == '$')
 			if escapes {
 				strings.write_byte(&sb, n)
@@ -279,7 +279,10 @@ cleanup_env_snapshot :: proc() {
 	delete(ENV_SNAPSHOT_CACHE.path_entries)
 	for k, v in ENV_SNAPSHOT_CACHE.env_vars {
 		delete(k)
-		delete(v)
+		if s, ok := v.?; ok {
+			crypto.zero_explicit(raw_data(s), len(s)) // may be a secret's value
+			delete(s)
+		}
 	}
 	delete(ENV_SNAPSHOT_CACHE.env_vars)
 	for k, v in ENV_SNAPSHOT_CACHE.aliases {
@@ -296,4 +299,10 @@ cleanup_env_snapshot :: proc() {
 @(private = "file")
 snapshot_allocator :: proc() -> runtime.Allocator {
 	return runtime.heap_allocator()
+}
+
+// Does the snapshot hold a copy of `name`? (Tests: unrelated variables are
+// never copied.)
+env_snapshot_holds :: proc(name: string) -> bool {
+	return name in ENV_SNAPSHOT_CACHE.env_vars
 }

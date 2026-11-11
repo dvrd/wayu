@@ -1,7 +1,7 @@
 package test_wayu
 
-import "core:testing"
 import wayu "../../src"
+import "core:testing"
 
 @(test)
 test_debug_function :: proc(t: ^testing.T) {

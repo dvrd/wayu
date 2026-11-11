@@ -1,7 +1,7 @@
 package test_wayu
 
-import "core:testing"
 import wayu "../../src"
+import "core:testing"
 
 // ============================================================================
 // calculate_fuzzy_score tests
@@ -118,7 +118,11 @@ test_extract_completion_items :: proc(t: ^testing.T) {
 test_fuzzy_scores_are_utf8_aware :: proc(t: ^testing.T) {
 	testing.expect(t, wayu.calculate_fuzzy_score("café_menu", "éu") > 0, "é must match é")
 	testing.expect(t, wayu.fuzzy_score("Ñandú", "ñú") > 0, "case-folded non-ASCII subsequence")
-	testing.expect(t, wayu.is_acronym_match("ÉCOLE_NORMALE", "én"), "acronym with non-ASCII initial")
+	testing.expect(
+		t,
+		wayu.is_acronym_match("ÉCOLE_NORMALE", "én"),
+		"acronym with non-ASCII initial",
+	)
 }
 
 @(test)
@@ -145,7 +149,10 @@ test_picker_decode_paste_and_keys :: proc(t: ^testing.T) {
 	testing.expect_value(t, ev.action, wayu.PickerAction.NONE)
 
 	// Multi-byte characters, backspace and arrows in one batch.
-	ev = wayu.picker_decode_input(transmute([]byte)string("é\x7f\x7fz\x1b[B\x1b[B\x1b[A"), &filter)
+	ev = wayu.picker_decode_input(
+		transmute([]byte)string("é\x7f\x7fz\x1b[B\x1b[B\x1b[A"),
+		&filter,
+	)
 	testing.expect_value(t, string(filter[:]), "abz")
 	testing.expect_value(t, ev.move, 1)
 

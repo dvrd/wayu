@@ -1,0 +1,203 @@
+%% Corpus for run.rb: one command line per line. "␤" stands for a newline
+%% inside an entry; lines starting with "%%" and blank lines are skipped.
+%% The sandbox (run.rb): cwd has exists.txt, dir/, script.sh (executable),
+%% "my file.txt", ünï.txt; alias ll, global alias GG, suffix alias txt,
+%% function myfn; interactive_comments on; PATH=/usr/bin:/bin:/usr/sbin:/sbin.
+
+%% commands, builtins, aliases, functions, unknown
+ls
+ls -la /tmp
+nosuchcmd arg
+ll dir
+myfn x y
+cd dir
+echo hello world
+print -r -- text
+./script.sh --flag
+./nothere
+exists.txt
+/bin/ls -l
+\ls
+'ls' -l
+"ls"
+=ls
+
+%% separators and pipelines
+ls | grep x | wc -l
+ls && echo ok || echo no
+ls; echo a; echo b
+sleep 1 &
+ls |& cat
+ls &! echo x
+ls &| echo x
+ls GG x
+
+%% redirections and fd numbers
+ls > out.txt
+ls >> out.txt 2>&1
+ls 2>/dev/null
+cat < exists.txt
+ls &> all.log
+ls >| out.txt
+ls 2>&- 1>&2
+exec 3>&1 4<exists.txt
+ls {fd}>out.txt
+exec {fd}>&-
+cat <<< "here $HOME string"
+cat <<<word
+cat <<EOF␤line $HOME␤EOF␤ls
+cat <<-'END'␤	body␤	END␤echo after
+cat <<EOF | grep x␤a␤EOF
+ls 1> out 2> err
+echo x >&2
+
+%% substitutions
+echo $(ls)
+echo $(echo $(echo nested))
+echo `ls`
+echo `echo \`ls\``
+echo "$(date) and `date`"
+diff <(ls) <(ls dir)
+tee >(cat) < exists.txt
+cat =(echo x)
+echo ${HOME} $HOME ${#HOME} ${HOME:-x} ${(j:,:)path}
+echo $((1 + 2 * 3))
+(( i = 1 + 2 ))
+echo $[1+2]
+echo "$(echo "inner $(echo deep)")"
+x=$(ls | wc -l)
+echo $(nosuchcmd)
+echo $(
+
+%% quotes and escapes
+echo 'single quoted'
+echo "double $HOME quoted"
+echo "esc \" \$ \` \\ done"
+echo $'tab\there\n'
+echo 'unterminated
+echo "unterminated $HOME
+echo $'unterminated
+echo a\ b
+echo \$HOME
+echo "a"'b'$'c'd
+echo ""
+echo ''
+echo "it's"
+echo 'say "hi"'
+
+%% globs, braces, history
+ls *.txt
+ls **/*.txt
+ls dir/?
+ls [a-z]*
+ls *(.)
+ls ^*.txt
+echo {a,b,c}
+echo {1..10}
+echo file{1,2}.txt
+echo {a,{b,c}}
+echo !!
+echo !$
+sudo !!
+echo !-2
+echo ^old^new
+echo \!!
+echo '!!'
+echo "!!"
+
+%% assignments
+FOO=bar
+FOO=bar ls
+FOO=bar BAZ=qux env
+arr=(a b c)
+arr=(a $HOME "q")
+arr[2]=x
+typeset -a list=(one two)
+local x=1
+export PATH=$PATH:/opt
+readonly CONST=1
+FOO+=more
+
+%% precommands
+sudo ls -la
+sudo -u root ls
+env FOO=1 ls
+env -u FOO ls
+command ls
+command -v ls
+noglob echo *
+nocorrect ls
+builtin echo x
+exec ls
+nohup sleep 1
+nice -n 5 ls
+time ls
+- ls
+sudo nosuchcmd
+
+%% control flow
+if true; then ls; fi
+if [[ -e exists.txt ]]; then echo y; elif false; then :; else echo n; fi
+for i in 1 2 3; do echo $i; done
+for f (*.txt) echo $f
+for ((i=0; i<3; i++)); do echo $i; done
+while true; do break; done
+until false; do break; done
+case $x in a) echo a;; b|c) echo bc;; *) echo other;; esac
+case foo in (f*) ls ;& (*) ls ;| esac
+select x in a b; do echo $x; done
+repeat 3 echo hi
+{ ls; echo x }
+( cd dir && ls )
+[[ -n $HOME && $x == y* ]]
+[ -f exists.txt ] && echo y
+test -d dir
+! ls
+coproc cat
+{ ls } always { echo done }
+
+%% functions
+f() { echo x; }
+function g { ls }
+function h() { ls; }
+myfn
+
+%% comments
+ls # a comment
+# only a comment
+echo a#b
+echo #notacomment
+ls; # trailing
+
+%% multiline
+ls \␤  -la
+echo a &&␤echo b
+if true␤then␤  ls␤fi
+echo "multi␤line"
+for i in 1 2␤do␤  echo $i␤done
+echo $(␤ls␤)
+
+%% unicode and emoji
+echo héllo wörld
+echo 🎉 party 🎉
+cat ünï.txt
+ls 日本語 && echo 完了
+echo "emoji 😀 in quotes" 'и кириллица'
+echo 🎉 | grep 🎉 > out.txt
+cat "my file.txt"
+cat my\ file.txt
+
+%% odd and incomplete
+ls |
+ls &&
+echo )
+echo (
+echo ]] [[
+)
+}
+&& ls
+ls ||| x
+echo ${
+echo ${HOME
+echo $((1+
+`

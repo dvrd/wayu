@@ -1,9 +1,9 @@
 package test_wayu
 
-import "core:fmt"
-import "core:testing"
-import "core:strings"
 import wayu "../../src"
+import "core:fmt"
+import "core:strings"
+import "core:testing"
 
 @(test)
 test_screen_create :: proc(t: ^testing.T) {
@@ -19,8 +19,8 @@ test_screen_create :: proc(t: ^testing.T) {
 	testing.expect(t, len(screen.prev_buffer[0]) == 80, "Prev buffer row should have 80 columns")
 
 	// Verify all cells are initialized with spaces
-	for y in 0..<screen.height {
-		for x in 0..<screen.width {
+	for y in 0 ..< screen.height {
+		for x in 0 ..< screen.width {
 			testing.expect(
 				t,
 				screen.buffer[y][x].char == ' ',
@@ -61,11 +61,7 @@ test_screen_set_cell :: proc(t: ^testing.T) {
 	testing.expect(t, cell.dim == false, "Cell should not be dim")
 
 	// Verify other cells are unchanged
-	testing.expect(
-		t,
-		screen.buffer[0][0].char == ' ',
-		"Other cells should remain as spaces",
-	)
+	testing.expect(t, screen.buffer[0][0].char == ' ', "Other cells should remain as spaces")
 }
 
 @(test)
@@ -74,7 +70,9 @@ test_screen_set_cell_bounds :: proc(t: ^testing.T) {
 	screen := wayu.screen_create(80, 24)
 	defer wayu.screen_destroy(&screen)
 
-	test_cell := wayu.Cell{char = 'X'}
+	test_cell := wayu.Cell {
+		char = 'X',
+	}
 
 	// Test negative coordinates
 	wayu.screen_set_cell(&screen, -1, 5, test_cell)
@@ -85,8 +83,8 @@ test_screen_set_cell_bounds :: proc(t: ^testing.T) {
 	wayu.screen_set_cell(&screen, 10, 50, test_cell)
 
 	// Verify no cells were modified (all should still be spaces)
-	for y in 0..<screen.height {
-		for x in 0..<screen.width {
+	for y in 0 ..< screen.height {
+		for x in 0 ..< screen.width {
 			testing.expect(
 				t,
 				screen.buffer[y][x].char == ' ',
@@ -113,8 +111,8 @@ test_screen_clear :: proc(t: ^testing.T) {
 	wayu.screen_clear(&screen)
 
 	// Verify all cells are spaces with no attributes
-	for y in 0..<screen.height {
-		for x in 0..<screen.width {
+	for y in 0 ..< screen.height {
+		for x in 0 ..< screen.width {
 			cell := screen.buffer[y][x]
 			testing.expect(t, cell.char == ' ', "All cells should be spaces after clear")
 		}
@@ -139,11 +137,7 @@ test_screen_resize_larger :: proc(t: ^testing.T) {
 	testing.expect(t, screen.height == 24, "Height should be 24 after resize")
 
 	// Verify content preserved
-	testing.expect(
-		t,
-		screen.buffer[5][5].char == 'A',
-		"Content should be preserved after resize",
-	)
+	testing.expect(t, screen.buffer[5][5].char == 'A', "Content should be preserved after resize")
 	testing.expect(
 		t,
 		screen.buffer[10][10].char == 'B',
@@ -172,11 +166,7 @@ test_screen_resize_smaller :: proc(t: ^testing.T) {
 	testing.expect(t, screen.height == 12, "Height should be 12 after resize")
 
 	// Verify content within bounds is preserved
-	testing.expect(
-		t,
-		screen.buffer[5][5].char == 'A',
-		"Content within bounds should be preserved",
-	)
+	testing.expect(t, screen.buffer[5][5].char == 'A', "Content within bounds should be preserved")
 
 	// Verify we can't access old content (it's been freed)
 	// This is implicit - attempting to access would crash
@@ -197,8 +187,8 @@ test_screen_flush_differential :: proc(t: ^testing.T) {
 	wayu.screen_flush(&screen)
 
 	// Verify prev_buffer now matches buffer (synced after flush)
-	for y in 0..<screen.height {
-		for x in 0..<screen.width {
+	for y in 0 ..< screen.height {
+		for x in 0 ..< screen.width {
 			testing.expect(
 				t,
 				screen.buffer[y][x] == screen.prev_buffer[y][x],
@@ -212,8 +202,8 @@ test_screen_flush_differential :: proc(t: ^testing.T) {
 
 	// Verify only one cell is different (would only output one cell)
 	different_count := 0
-	for y in 0..<screen.height {
-		for x in 0..<screen.width {
+	for y in 0 ..< screen.height {
+		for x in 0 ..< screen.width {
 			if screen.buffer[y][x] != screen.prev_buffer[y][x] {
 				different_count += 1
 			}
@@ -326,8 +316,8 @@ test_render_box_too_small :: proc(t: ^testing.T) {
 	wayu.tui_render_box(&screen, 5, 5, 0, 0) // Zero dimensions
 
 	// Verify screen is still all spaces (nothing was rendered)
-	for y in 0..<screen.height {
-		for x in 0..<screen.width {
+	for y in 0 ..< screen.height {
+		for x in 0 ..< screen.width {
 			testing.expect(
 				t,
 				screen.buffer[y][x].char == ' ',
@@ -340,9 +330,27 @@ test_render_box_too_small :: proc(t: ^testing.T) {
 @(test)
 test_cell_equality :: proc(t: ^testing.T) {
 	// Test that Cell struct equality works correctly for differential rendering
-	cell1 := wayu.Cell{char = 'A', fg = "\x1b[31m", bg = "\x1b[42m", bold = true, dim = false}
-	cell2 := wayu.Cell{char = 'A', fg = "\x1b[31m", bg = "\x1b[42m", bold = true, dim = false}
-	cell3 := wayu.Cell{char = 'B', fg = "\x1b[31m", bg = "\x1b[42m", bold = true, dim = false}
+	cell1 := wayu.Cell {
+		char = 'A',
+		fg   = "\x1b[31m",
+		bg   = "\x1b[42m",
+		bold = true,
+		dim  = false,
+	}
+	cell2 := wayu.Cell {
+		char = 'A',
+		fg   = "\x1b[31m",
+		bg   = "\x1b[42m",
+		bold = true,
+		dim  = false,
+	}
+	cell3 := wayu.Cell {
+		char = 'B',
+		fg   = "\x1b[31m",
+		bg   = "\x1b[42m",
+		bold = true,
+		dim  = false,
+	}
 
 	testing.expect(t, cell1 == cell2, "Identical cells should be equal")
 	testing.expect(t, cell1 != cell3, "Different cells should not be equal")

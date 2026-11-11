@@ -19,13 +19,13 @@ handle_function_command :: proc(action: Action, args: []string) {
 	case .ADD:
 		if len(args) < 1 {
 			print_error_simple("Function name required. Usage: wayu function add <name>")
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		add_function(args[0])
 	case .REMOVE:
 		if len(args) < 1 {
 			print_error_simple("Function name required. Usage: wayu function remove <name>")
-			os.exit(EXIT_USAGE)
+			wayu_exit(EXIT_USAGE)
 		}
 		remove_function(args[0])
 	case .LIST:
@@ -35,7 +35,7 @@ handle_function_command :: proc(action: Action, args: []string) {
 	case:
 		fmt.eprintln("Unknown function action")
 		print_function_usage()
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 }
 
@@ -51,7 +51,7 @@ ensure_functions_dir :: proc() -> string {
 	if !os.exists(dir) {
 		if err := make_directory_all(dir); err != nil {
 			print_error_simple("Failed to create functions directory: %s", dir)
-			os.exit(EXIT_CANTCREAT)
+			wayu_exit(EXIT_CANTCREAT)
 		}
 	}
 	return dir
@@ -62,7 +62,7 @@ add_function :: proc(name: string) {
 	if !result.valid {
 		print_error("%s", result.error_message)
 		delete(result.error_message)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 
 	if wayu.dry_run {
@@ -83,19 +83,102 @@ add_function :: proc(name: string) {
 	func_file := function_file_path(name)
 	defer delete(func_file)
 
-	// Seed a skeleton if the file does not already exist.
-	if !os.exists(func_file) {
+	// Seed a skeleton if nothing is there yet (lstat: a dangling symlink
+	// counts, and is never written through).
+	if _, lerr := os.lstat(func_file, context.temp_allocator); lerr == nil {
+		// Something is there: a dangling symlink would make the editor
+		// create a file wherever it points.
+		if _, serr := os.stat(func_file, context.temp_allocator); serr != nil {
+			print_error_simple(
+				"Cannot create %s: it is a dangling symlink (remove it first)",
+				func_file,
+			)
+			wayu_exit(EXIT_CANTCREAT)
+		}
+	} else {
 		skeleton := function_skeleton(name)
 		defer delete(skeleton)
-		if write_ok := os.write_entire_file_from_string(func_file, skeleton); write_ok != nil {
-			print_error_simple("Failed to create function file: %s", func_file)
-			os.exit(EXIT_CANTCREAT)
+		if errno := create_file_exclusive(func_file, skeleton, 0o600); errno != .NONE {
+			print_error_simple(
+				"Failed to create function file: %s (%s)",
+				func_file,
+				create_file_error_text(errno),
+			)
+			wayu_exit(EXIT_CANTCREAT)
 		}
 		print_success("Created function: %s", func_file)
 	}
 
-	if !launch_editor(func_file) { os.exit(EXIT_FAILURE) }
-	print_info("Reload your shell to load '%s'", name)
+	// No $EDITOR/$VISUAL and no terminal: print the file instead of running
+	// vi (like `script new`).
+	opened, edit_ok := editor_maybe_open(func_file)
+	if !edit_ok {
+		wayu_exit(EXIT_FAILURE)
+	}
+	if opened {
+		print_info("Reload your shell to load '%s'", name)
+	}
+}
+
+// Create `path` holding `data` with permissions `mode`, only if nothing
+// exists there: O_CREAT|O_EXCL|O_NOFOLLOW, so an existing file, directory or
+// symlink (even a dangling one, which would otherwise be followed and
+// create or overwrite a file elsewhere) makes it fail with .EEXIST. A
+// partial write removes the file. .NONE on success.
+create_file_exclusive :: proc(path: string, data: string, mode: u32) -> posix.Errno {
+	cpath := strings.clone_to_cstring(path, context.temp_allocator)
+	fd := posix.open(
+		cpath,
+		{.WRONLY, .CREAT, .EXCL, .NOFOLLOW, .CLOEXEC},
+		transmute(posix.mode_t)posix._mode_t(mode),
+	)
+	if fd < 0 {
+		return posix.errno()
+	}
+	rest := transmute([]byte)data
+	for len(rest) > 0 {
+		n := posix.write(fd, raw_data(rest), c.size_t(len(rest)))
+		if n < 0 && posix.errno() == .EINTR {
+			continue
+		}
+		if n <= 0 {
+			errno := posix.errno() if n < 0 else posix.Errno.EIO
+			posix.close(fd)
+			posix.unlink(cpath)
+			return errno
+		}
+		rest = rest[n:]
+	}
+	// The umask may have narrowed `mode` (never widened it).
+	posix.fchmod(fd, transmute(posix.mode_t)posix._mode_t(mode))
+	if posix.close(fd) != .OK {
+		errno := posix.errno()
+		posix.unlink(cpath)
+		return errno
+	}
+	return .NONE
+}
+
+// Message for a create_file_exclusive failure (temp).
+create_file_error_text :: proc(errno: posix.Errno) -> string {
+	if errno == .EEXIST {
+		return "something already exists at that path (a symlink is never written through)"
+	}
+	return fmt.tprintf("%s", posix.strerror(errno))
+}
+
+// Open the editor unless there is none to open: no $EDITOR/$VISUAL and no
+// terminal (scripts, CI), where the file's path is printed instead.
+// ok=false when the editor failed.
+editor_maybe_open :: proc(file: string) -> (opened: bool, ok: bool) {
+	has_editor :=
+		len(strings.trim_space(os.get_env("EDITOR", context.temp_allocator))) > 0 ||
+		len(strings.trim_space(os.get_env("VISUAL", context.temp_allocator))) > 0
+	if !has_editor && !(is_tty(0) && is_tty(1)) {
+		fmt.println(file)
+		return false, true
+	}
+	return true, launch_editor(file)
 }
 
 // Build a shell-appropriate skeleton for a new function.
@@ -104,17 +187,29 @@ function_skeleton :: proc(name: string) -> string {
 	if wayu.shell == .FISH {
 		return strings.concatenate(
 			[]string {
-				"# ", name, " - custom shell function (managed by wayu)\n",
-				"# Edit with: wayu function edit ", name, "\n\n",
-				"function ", name, "\n    # TODO: implement\nend\n",
+				"# ",
+				name,
+				" - custom shell function (managed by wayu)\n",
+				"# Edit with: wayu function edit ",
+				name,
+				"\n\n",
+				"function ",
+				name,
+				"\n    # TODO: implement\nend\n",
 			},
 		)
 	}
 	return strings.concatenate(
 		[]string {
-			"# ", name, " - custom shell function (managed by wayu)\n",
-			"# Edit with: wayu function edit ", name, "\n\n",
-			name, "() {\n    # TODO: implement\n}\n",
+			"# ",
+			name,
+			" - custom shell function (managed by wayu)\n",
+			"# Edit with: wayu function edit ",
+			name,
+			"\n\n",
+			name,
+			// `:` keeps the body non-empty: bash rejects `f() { }` (OKAMI-312).
+			"() {\n    # TODO: implement\n    :\n}\n",
 		},
 	)
 }
@@ -126,7 +221,7 @@ remove_function :: proc(name: string) {
 	if !result.valid {
 		print_error("%s", result.error_message)
 		delete(result.error_message)
-		os.exit(EXIT_DATAERR)
+		wayu_exit(EXIT_DATAERR)
 	}
 
 	func_file := function_file_path(name)
@@ -134,7 +229,7 @@ remove_function :: proc(name: string) {
 
 	if !os.exists(func_file) {
 		print_error_simple("Function not found: %s", name)
-		os.exit(EXIT_NOINPUT)
+		wayu_exit(EXIT_NOINPUT)
 	}
 
 	if wayu.dry_run {
@@ -145,18 +240,18 @@ remove_function :: proc(name: string) {
 
 	if !wayu.yes_flag {
 		fmt.printfln("This will delete %s. Pass --yes to confirm.", func_file)
-		os.exit(EXIT_USAGE)
+		wayu_exit(EXIT_USAGE)
 	}
 
 	// Backup before deleting so the user can recover the function body.
 	// No backup → no delete (the file is the only copy of the user's code).
 	if !create_backup_cli(func_file) {
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 
 	if err := os.remove(func_file); err != nil {
 		print_error_simple("Failed to remove function file: %s", func_file)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	print_success("Removed function: %s", name)
 }
@@ -173,14 +268,14 @@ list_functions :: proc() {
 	handle, open_err := os.open(dir)
 	if open_err != nil {
 		print_error_simple("Failed to open functions directory: %s", dir)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	defer os.close(handle)
 
 	entries, read_err := os.read_dir(handle, -1, context.allocator)
 	if read_err != nil {
 		print_error_simple("Failed to read functions directory: %s", dir)
-		os.exit(EXIT_IOERR)
+		wayu_exit(EXIT_IOERR)
 	}
 	defer os.file_info_slice_delete(entries, context.allocator)
 
@@ -203,8 +298,12 @@ list_functions :: proc() {
 
 // The editor wayu opens files in: $EDITOR, else $VISUAL, else vi.
 editor_command :: proc() -> string {
-	if e := os.get_env("EDITOR", context.temp_allocator); len(strings.trim_space(e)) > 0 { return e }
-	if v := os.get_env("VISUAL", context.temp_allocator); len(strings.trim_space(v)) > 0 { return v }
+	if e := os.get_env("EDITOR", context.temp_allocator); len(strings.trim_space(e)) > 0 {
+		return e
+	}
+	if v := os.get_env("VISUAL", context.temp_allocator); len(strings.trim_space(v)) > 0 {
+		return v
+	}
 	return "vi"
 }
 
@@ -239,11 +338,18 @@ launch_editor :: proc(file: string) -> bool {
 		}
 	}
 	if !posix.WIFEXITED(status) {
-		print_error_simple("Editor '%s' was killed by a signal - set EDITOR to a working editor", editor)
+		print_error_simple(
+			"Editor '%s' was killed by a signal - set EDITOR to a working editor",
+			editor,
+		)
 		return false
 	}
 	if code := posix.WEXITSTATUS(status); code != 0 {
-		print_error_simple("Editor '%s' exited with status %d - set EDITOR to a working editor", editor, code)
+		print_error_simple(
+			"Editor '%s' exited with status %d - set EDITOR to a working editor",
+			editor,
+			code,
+		)
 		return false
 	}
 	return true

@@ -2,8 +2,8 @@
 
 package test_wayu
 
-import "core:testing"
 import wayu "../../src"
+import "core:testing"
 
 @(test)
 test_validate_identifier_valid :: proc(t: ^testing.T) {
@@ -166,4 +166,83 @@ test_validate_alias_allows_inner_hyphen :: proc(t: ^testing.T) {
 	f := wayu.validate_identifier("my-fn", "Function")
 	defer delete(f.error_message)
 	testing.expect(t, !f.valid, "function names still reject hyphens")
+}
+
+// OKAMI-366: one alias name rule; every name it accepts is one the
+// generator emits (is_safe_alias_name).
+@(test)
+test_alias_name_error_shared_rule :: proc(t: ^testing.T) {
+	for n in ([]string {
+			"..",
+			"g.st",
+			"1x",
+			"k8s-ctx",
+			"ll",
+			"_x",
+			"a+b",
+			"@x",
+			"cd",
+			"ls",
+			"cat",
+			"echo",
+			"test",
+		}) {
+		testing.expectf(t, wayu.alias_name_error(n) == "", "%s should be valid", n)
+		testing.expectf(t, wayu.is_safe_alias_name(n), "%s must be emittable", n)
+	}
+	for n in ([]string {
+			"",
+			"-x",
+			"a b",
+			"a/b",
+			"a^b",
+			"a=b",
+			"a$b",
+			".",
+			"if",
+			"done",
+			"local",
+			"export",
+			"café",
+			"a\x00b",
+			"_wayu",
+			"_wayu_paths_apply",
+		}) {
+		testing.expectf(t, wayu.alias_name_error(n) != "", "%q should be invalid", n)
+	}
+}
+
+// OKAMI-304: protected environment names.
+@(test)
+test_protected_env_names :: proc(t: ^testing.T) {
+	for n in ([]string {
+			"PATH",
+			"path",
+			"HOME",
+			"IFS",
+			"ZDOTDIR",
+			"WAYU_DATA_DIR",
+			"WAYU_X",
+			"PS1",
+			"PS4",
+			"PROMPT",
+			"RPROMPT",
+			"PROMPT_COMMAND",
+			"BASH_ENV",
+			"ENV",
+			"fish_function_path",
+		}) {
+		testing.expectf(t, wayu.protected_env_name_error(n) != "", "%s should be protected", n)
+	}
+	for n in ([]string{"EDITOR", "GOPATH", "PATHX", "WAYU", "PS5", "ENVIRONMENT", "PERIOD"}) {
+		testing.expectf(t, wayu.protected_env_name_error(n) == "", "%s should be allowed", n)
+	}
+}
+
+// OKAMI-331: NUL and invalid UTF-8 values are data errors.
+@(test)
+test_stored_value_error :: proc(t: ^testing.T) {
+	testing.expect(t, wayu.stored_value_error("v", "café") == "")
+	testing.expect(t, wayu.stored_value_error("v", "a\x00b") != "")
+	testing.expect(t, wayu.stored_value_error("v", "a\xffb") != "")
 }

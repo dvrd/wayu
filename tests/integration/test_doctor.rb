@@ -47,7 +47,14 @@ class DoctorIntegrationTest
       test_variable_source_recognized
       test_no_auto_install
       test_turbo_not_fixable_or_generated
+      test_turbo_bash_uses_shell_ext
+      test_unregistered_plugin_folders
+      test_no_startup_file_says_what_to_add
+      test_plugins_malformed_is_error
+      test_plugins_cycle_keeps_json_valid
       test_optimize_removed
+      test_dir_modes
+      test_created_file_modes
     ensure
       FileUtils.rm_rf(@real_dir) if @real_dir
       teardown_test_env
@@ -333,6 +340,28 @@ class DoctorIntegrationTest
     check(ok, "#{inst.inspect}\n#{out.lines.grep(/install/i).join}")
   end
 
+  # Only plugins registered in plugins.json load: a folder nothing points at
+  # is reported (warning), registered ones and hidden dirs are not.
+  def test_unregistered_plugin_folders
+    print "Test 18c: plugin folders missing from plugins.json are a warning... "
+    pdir = "#{@data_dir}/plugins"
+    FileUtils.mkdir_p(["#{pdir}/orphan-plugin", "#{pdir}/registered", "#{pdir}/.cache"])
+    saved = File.exist?("#{@data_dir}/plugins.json") ? File.read("#{@data_dir}/plugins.json") : nil
+    File.write("#{@data_dir}/plugins.json", JSON.generate(
+      'version' => '1.0', 'last_updated' => '2026-01-01T00:00:00Z',
+      'plugins' => [{ 'name' => 'registered', 'url' => 'https://example.com/registered.git',
+                      'enabled' => false, 'shell' => 'ZSH', 'installed_path' => "#{pdir}/registered" }]))
+    jout, _, _ = run_wayu_env({}, '--shell zsh doctor --json')
+    row = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'plugin folders' } rescue nil)
+    FileUtils.rm_rf(["#{pdir}/orphan-plugin", "#{pdir}/registered", "#{pdir}/.cache"])
+    saved ? File.write("#{@data_dir}/plugins.json", saved) : FileUtils.rm_f("#{@data_dir}/plugins.json")
+    jout2, _, _ = run_wayu_env({}, '--shell zsh doctor --json')
+    after = (JSON.parse(jout2)['checks'].find { |c| c['name'] == 'plugin folders' } rescue :bad)
+    ok = row && row['status'] == 'warning' && row['message'].include?('orphan-plugin') &&
+         !row['message'].include?('registered') && !row['message'].include?('.cache') && after.nil?
+    check(ok, "row=#{row.inspect} after=#{after.inspect}")
+  end
+
   def test_turbo_not_fixable_or_generated
     print "Test 18: missing turbo.zsh is not fixable and --fix never generates it... "
     reset_rc_files
@@ -346,12 +375,107 @@ class DoctorIntegrationTest
     check(ok, turbo.inspect)
   end
 
+  def test_turbo_bash_uses_shell_ext
+    print "Test 18b: bash sourcing an existing turbo.bash is ok (not 'turbo.zsh not generated')... "
+    reset_rc_files
+    File.write("#{@tmp_home}/.bashrc", "source \"$HOME/.local/share/wayu/turbo.bash\"\n")
+    File.write("#{@data_dir}/turbo.bash", "# turbo\n")
+    FileUtils.rm_f("#{@data_dir}/turbo.zsh")
+    jout, _, _ = run_wayu_env({}, '--shell bash doctor --json')
+    turbo = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'turbo export' } rescue nil)
+    FileUtils.rm_f("#{@data_dir}/turbo.bash")
+    jout2, _, _ = run_wayu_env({}, '--shell bash doctor --json')
+    missing = (JSON.parse(jout2)['checks'].find { |c| c['name'] == 'turbo export' } rescue nil)
+    reset_rc_files
+    ok = turbo && turbo['status'] == 'ok' &&
+         missing && missing['status'] == 'error' && missing['message'].include?('turbo.bash')
+    check(ok, "#{turbo.inspect}\n#{missing.inspect}")
+  end
+
+  def test_no_startup_file_says_what_to_add
+    print "Test 18e: no startup file: doctor names the source line (not 'run wayu init')... "
+    reset_rc_files
+    jout, _, _ = run_wayu_env({}, '--shell zsh doctor --json')
+    shell = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'shell configuration' } rescue nil)
+    msg = shell ? shell['message'] : ''
+    check(msg.include?('/init.zsh') && msg.include?('source') && !msg.include?('wayu init'), msg)
+  end
+
+  def plugin_entry(name, deps)
+    { 'name' => name, 'url' => "https://github.com/test/#{name}.git", 'enabled' => true,
+      'shell' => 'zsh', 'installedPath' => "#{@data_dir}/plugins/#{name}",
+      'entryFile' => "#{name}.plugin.zsh", 'dependencies' => deps, 'priority' => 100 }
+  end
+
+  def test_plugins_malformed_is_error
+    print "Test 18c: malformed plugins.json is a plugins error (exit 78), like 'plugin list'... "
+    write_clean_toml
+    File.write("#{@data_dir}/plugins.json", '{"version": "1.0", "plugins": [{"name": "x", "enabled": "maybe"')
+    jout, _, status = run_wayu_env({}, '--shell zsh doctor --json')
+    plug = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'plugins' } rescue nil)
+    FileUtils.rm_f("#{@data_dir}/plugins.json")
+    check(plug && plug['status'] == 'error' && status.exitstatus == 78,
+          "exit=#{status.exitstatus} #{plug.inspect}\n#{jout}")
+  end
+
+  def test_plugins_cycle_keeps_json_valid
+    print "Test 18d: plugin dependency cycle: --json stays valid JSON, plugins check errors... "
+    write_clean_toml
+    File.write("#{@data_dir}/plugins.json",
+               JSON.generate('version' => '1.0', 'plugins' => [plugin_entry('pa', ['pb']), plugin_entry('pb', ['pa'])]))
+    jout, jerr, status = run_wayu_env({}, '--shell zsh doctor --json')
+    FileUtils.rm_f("#{@data_dir}/plugins.json")
+    plug = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'plugins' } rescue nil)
+    check(plug && plug['status'] == 'error' && status.exitstatus == 78 && jerr.include?('Circular'),
+          "exit=#{status.exitstatus} #{plug.inspect}\nstdout=#{jout[0, 300]}\nstderr=#{jerr}")
+  end
+
   def test_optimize_removed
     print "Test 19: --optimize is rejected (exit 64) and leaves init.zsh alone... "
     File.write("#{@data_dir}/init.zsh", "# original init\n")
     out, status = run_wayu('--shell zsh doctor --optimize --no-color')
     check(status.exitstatus == 64 && File.read("#{@data_dir}/init.zsh") == "# original init\n" &&
           out.include?('removed'), "exit=#{status.exitstatus}\n#{out}")
+  end
+
+  # Group/other-writable wayu dirs (bin/ is on PATH, functions/ and plugins/
+  # are sourced at startup) are an error; --fix removes the write bits; init
+  # under umask 000 still creates 0700 dirs.
+  def test_dir_modes
+    print "Test 20: group/other-writable wayu dirs: error, --fix tightens, init makes 0700... "
+    bin = "#{@data_dir}/bin"
+    FileUtils.mkdir_p(bin)
+    File.chmod(0o777, bin)
+    jout, _, status = run_wayu_env({}, '--shell zsh doctor --json')
+    entry = (JSON.parse(jout)['checks'].find { |c| c['name'] == 'directory permissions' } rescue nil)
+    flagged = entry && entry['status'] == 'error' && entry['fixable'] && status.exitstatus == 78
+    run_wayu('--shell zsh doctor --fix --yes --no-color')
+    fixed_mode = File.stat(bin).mode & 0o777
+    fresh = Dir.mktmpdir('wayu_umask_')
+    begin
+      env = ENV.to_h.merge('HOME' => fresh)
+      Open3.capture3(env, 'sh', '-c', "umask 000; exec \"$0\" --shell zsh init --yes", @wayu_bin)
+      dirs = ["#{fresh}/.config", "#{fresh}/.config/wayu", "#{fresh}/.local/share/wayu",
+              "#{fresh}/.local/share/wayu/bin", "#{fresh}/.local/share/wayu/functions"]
+      modes = dirs.map { |d| File.directory?(d) ? (File.stat(d).mode & 0o777) : nil }
+    ensure
+      FileUtils.rm_rf(fresh)
+    end
+    check(flagged && fixed_mode & 0o022 == 0 && modes.all? { |m| m == 0o700 },
+          "entry=#{entry.inspect} exit=#{status.exitstatus} fixed=#{fixed_mode.to_s(8)} init=#{modes.map { |m| m&.to_s(8) }}")
+  end
+
+  # Files wayu creates for the user are 0600 (extra.<ext> may hold secrets,
+  # like the one `wayu init` makes), written atomically.
+  def test_created_file_modes
+    print "Test 21: doctor --profile script and config extend's extra file are 0600... "
+    profile = "#{@data_dir}/startup_profile.zsh"
+    extra = "#{@config_dir}/extra.zsh"
+    FileUtils.rm_f([profile, extra])
+    run_wayu('--shell zsh doctor --profile --no-color')
+    run_wayu_env({ 'EDITOR' => 'true', 'VISUAL' => 'true' }, '--shell zsh config extend')
+    modes = [profile, extra].map { |f| File.exist?(f) ? (File.stat(f).mode & 0o777) : nil }
+    check(modes == [0o600, 0o600], "modes=#{modes.map { |m| m&.to_s(8) }}")
   end
 end
 

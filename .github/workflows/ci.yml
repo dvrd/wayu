@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-24.04, macos-15]
 
     steps:
     - name: Checkout code
@@ -39,8 +39,23 @@ jobs:
     - name: Install shells (Linux)
       if: runner.os == 'Linux'
       run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq zsh fish
+        # The runner's Azure mirror sometimes fails to resolve: retry, then
+        # fall back to archive.ubuntu.com.
+        for try in 1 2 3; do
+          if sudo apt-get -o Acquire::Retries=3 update -qq &&
+             sudo apt-get -o Acquire::Retries=3 install -y -qq zsh fish; then
+            exit 0
+          fi
+          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' \
+            /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+          sleep $((try * 10))
+        done
+        # Last resort: Homebrew's bottles come from ghcr.io, not the Ubuntu mirrors.
+        brew=/home/linuxbrew/.linuxbrew/bin/brew
+        [ -x "$brew" ] || exit 1
+        HOMEBREW_NO_AUTO_UPDATE=1 "$brew" install zsh fish || exit 1
+        sudo ln -sf "$($brew --prefix)/bin/zsh" /usr/bin/zsh
+        sudo ln -sf "$($brew --prefix)/bin/fish" /usr/bin/fish
 
     - name: Install shells (macOS)
       if: runner.os == 'macOS'
@@ -61,6 +76,11 @@ jobs:
     - name: Verify build
       run: ./bin/wayu --version
 
+    # Release binaries must start on macOS >= .github/macos-minimum-version.
+    - name: Check macOS minimum version
+      if: runner.os == 'macOS'
+      run: .github/scripts/check-macos-minos.sh bin/wayu
+
     # ./build_it test sandboxes HOME and the tests' scratch dirs (per run),
     # same as local runs. Leaks / bad frees (tracking allocator) fail it.
     - name: Run unit tests
@@ -80,19 +100,9 @@ jobs:
     - name: Run TUI layout tests (pyte)
       run: |
         python3 -m venv "$RUNNER_TEMP/tui-venv"
-        "$RUNNER_TEMP/tui-venv/bin/pip" install --quiet pyte
+        "$RUNNER_TEMP/tui-venv/bin/pip" install --quiet --require-hashes \
+          --no-deps -r .github/tui-requirements.txt
         "$RUNNER_TEMP/tui-venv/bin/python" tests/tui/test_responsive.py
-
-    - name: Test CLI exit codes
-      run: |
-        EXIT_CODE=0
-        ./bin/wayu path add > /dev/null 2>&1 || EXIT_CODE=$?
-        if [ "$EXIT_CODE" -eq 64 ]; then
-          echo "CLI returns correct exit code 64 for missing args"
-        else
-          echo "Expected exit code 64, got $EXIT_CODE"
-          exit 1
-        fi
 
   # Integration suites against an AddressSanitizer build: catches
   # use-after-free / out-of-bounds in the real CLI paths. Leak detection is
@@ -100,7 +110,7 @@ jobs:
   # leaks with the tracking allocator.
   sanitize:
     name: AddressSanitizer (integration)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout code
@@ -116,8 +126,23 @@ jobs:
 
     - name: Install shells
       run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq zsh fish
+        # The runner's Azure mirror sometimes fails to resolve: retry, then
+        # fall back to archive.ubuntu.com.
+        for try in 1 2 3; do
+          if sudo apt-get -o Acquire::Retries=3 update -qq &&
+             sudo apt-get -o Acquire::Retries=3 install -y -qq zsh fish; then
+            exit 0
+          fi
+          sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' \
+            /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+          sleep $((try * 10))
+        done
+        # Last resort: Homebrew's bottles come from ghcr.io, not the Ubuntu mirrors.
+        brew=/home/linuxbrew/.linuxbrew/bin/brew
+        [ -x "$brew" ] || exit 1
+        HOMEBREW_NO_AUTO_UPDATE=1 "$brew" install zsh fish || exit 1
+        sudo ln -sf "$($brew --prefix)/bin/zsh" /usr/bin/zsh
+        sudo ln -sf "$($brew --prefix)/bin/fish" /usr/bin/fish
 
     - name: Bootstrap build script
       run: odin build build -out:build_it
@@ -131,12 +156,12 @@ jobs:
     - name: Run integration tests (ASan)
       env:
         WAYU_BIN: bin/asan/wayu
-        ASAN_OPTIONS: detect_leaks=0:halt_on_error=1:abort_on_error=0
+        ASAN_OPTIONS: detect_leaks=0:halt_on_error=1:abort_on_error=0:disable_coredump=0
       run: ruby tests/integration/run_all.rb
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout code
@@ -152,7 +177,7 @@ jobs:
 
   release-check:
     name: Release Readiness
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - name: Checkout code
@@ -161,7 +186,8 @@ jobs:
     - name: Setup Odin
       uses: ./.github/actions/setup-odin
 
-    # README.md + docs/index.html must advertise VERSION from src/main.odin.
+    # README.md + docs/index.html must advertise VERSION from src/main.odin, and
+    # the generated docs pages must match docs/*.md (build/site.odin).
     # bump.yml and ./build_it release run `./build_it docs` to keep them in sync.
     - name: Check version consistency
       run: |
@@ -170,7 +196,10 @@ jobs:
 
     - name: Check required files exist
       run: |
-        for f in README.md docs/index.html .github/workflows/bump.yml .github/scripts/homebrew-formula.sh; do
+        for f in README.md docs/index.html docs/UPGRADING.md .github/workflows/bump.yml \
+          .github/scripts/homebrew-formula.sh .github/scripts/release-notes.sh \
+          .github/scripts/upgrading-version.sh .github/scripts/check-macos-minos.sh \
+          .github/macos-minimum-version; do
           [ -f "$f" ] || { echo "Missing: $f"; exit 1; }
         done
         echo "All required files present"
@@ -180,3 +209,14 @@ jobs:
         A=$(printf 'a%.0s' {1..64}); B=$(printf 'b%.0s' {1..64})
         .github/scripts/homebrew-formula.sh v0.0.0 "$A" "$B" > /tmp/wayu.rb
         ruby -c /tmp/wayu.rb
+        # init.<ext> lives in the data dir since 6.0.0; caveats must not
+        # point new users at the old ~/.config/wayu/init.<ext>.
+        if grep -n '\.config/wayu/init' /tmp/wayu.rb; then
+          echo "::error::Formula caveats name ~/.config/wayu/init.*; use the data dir"
+          exit 1
+        fi
+        # shellcheck disable=SC2016 # a literal $HOME in the formula text
+        grep -q 'XDG_DATA_HOME:-\$HOME/.local/share}/wayu}/init.zsh' /tmp/wayu.rb || {
+          echo "::error::Formula caveats lack the data-dir init.zsh line"
+          exit 1
+        }
