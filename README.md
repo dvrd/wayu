@@ -329,9 +329,10 @@ always prints the real value.
 ### Encrypted secrets
 
 `wayu const add NAME --secret` reads the value from stdin (hidden on a
-terminal) — or takes it as an argument — and stores it encrypted in
-`secrets.json`; nothing in the config or generated files holds it in
-plaintext. The master key lives in the macOS keychain (Secret Service on
+terminal) and stores it encrypted in `secrets.json`. Prefer the prompt or a
+pipe: a value given as an argument also works, but is visible to other
+local users in `ps` and saved in your shell history (wayu warns). Nothing
+in the config or generated files holds the value in plaintext. The master key lives in the macOS keychain (Secret Service on
 Linux, or a `0600` key file: `[secrets] backend = "file"`). Shells load
 secrets from a per-session cache in `$XDG_RUNTIME_DIR` / `$TMPDIR`
 (decrypted once, then sourced without forking); that cache is plaintext on

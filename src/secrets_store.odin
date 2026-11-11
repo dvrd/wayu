@@ -1469,6 +1469,12 @@ const_add_secret :: proc(args: []string) {
 	if len(args) >= 2 {
 		value = strings.join(args[1:], " ")
 		owned = true
+		// argv is visible to other local users (ps) and lands in shell
+		// history; stdin keeps the value out of both.
+		print_warning(
+			"The value of %s was passed as an argument: it is visible in ps and your shell history. Omit VALUE to be prompted (input hidden), or pipe it on stdin.",
+			name,
+		)
 	} else if !wayu.dry_run {
 		v, ok := read_secret_value(name)
 		if !ok {

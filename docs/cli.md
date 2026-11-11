@@ -153,7 +153,9 @@ that as an error, and a value in `secrets.json` with no secret entry in
 
 `add --secret`: without a value, it is read from stdin (hidden when stdin is
 a terminal; one trailing newline is dropped), so it stays out of argv and
-shell history: `wayu const get OLD | wayu const add NEW --secret`. Like
+shell history: `wayu const get OLD | wayu const add NEW --secret`. A value
+given as an argument is accepted with a warning on stderr (other local users
+can read argv with `ps`, and it lands in shell history). Like
 `--dry-run`, a `--secret` at the end of the line is a flag, not part of the
 value. An existing plain constant is converted (its `entries.json` entry
 keeps its place, without the value). A plain `add` of a name that is a secret exits `65`; `--secret`

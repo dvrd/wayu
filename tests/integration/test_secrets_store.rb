@@ -142,7 +142,9 @@ class SecretsStoreIntegrationTest
     print 'Test 1: const add --secret (value with quotes, $, backslash)... '
     _, err, st = w(['const', 'add', 'FAKE_TOKEN', TOKEN, '--secret'])
     _, err2, st2 = w('const add FAKE_MULTI --secret', stdin: MULTI + "\n")
-    check('add failed', st.success? && st2.success?, err + err2)
+    # A value on argv warns (ps, history); one from stdin does not.
+    warned = err.include?('visible in ps') && !err.include?('fake-tok') && !err2.include?('visible in ps')
+    check('add failed', st.success? && st2.success? && warned, err + err2)
   end
 
   def test_store_and_key_files
