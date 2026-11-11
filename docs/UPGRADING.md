@@ -6,6 +6,17 @@ section after its version and publishes it as the GitHub release's
 `BREAKING CHANGE:` footers. 4.4.3 and 4.4.4 shipped behavior changes as patch
 releases, so they are listed here too.
 
+## Unreleased
+
+**`secrets.json` from a newer wayu: "upgrade wayu", not "malformed"**
+
+- A `secrets.json` whose `"version"` is higher than this wayu reads (a store
+  a newer wayu wrote, e.g. on another machine syncing the data dir) now
+  fails with `secrets.json version N was written by a newer wayu …: upgrade
+  wayu on this machine` instead of a generic "unsupported version" or
+  "unknown field" error. The exit code is unchanged (`78`) and the file is
+  never touched.
+
 ## 7.0.0
 
 **Leftover `[paths]` / `[aliases]` / `[env]` in `wayu.toml` are reported by `build`**

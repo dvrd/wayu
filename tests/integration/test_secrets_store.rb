@@ -81,6 +81,7 @@ class SecretsStoreIntegrationTest
       test_run_only_convert
       test_restore_keeps_entries_and_secrets_paired
       test_marker_without_ciphertext_is_an_error
+      test_newer_store_version_names_upgrade
     ensure
       teardown_test_env
     end
@@ -877,6 +878,24 @@ class SecretsStoreIntegrationTest
     ok = st.exitstatus == 65 && out.empty? && err.include?('FAKE_BK') && missing && missing['message'].include?('FAKE_BK') &&
          dst.exitstatus == 78 && orphan && orphan['message'].include?('FAKE_BK')
     check('inconsistency not reported', ok, "get=#{st.exitstatus} #{err} doctor=#{dst.exitstatus} #{missing.inspect} #{orphan.inspect}")
+  end
+
+  # A store version this wayu does not know (written by a newer wayu on
+  # another machine sharing the data dir): exit 78 naming the upgrade, never
+  # "malformed", and the file is left alone.
+  def test_newer_store_version_names_upgrade
+    print 'Test 37: newer secrets.json version: 78, upgrade wayu... '
+    saved = File.read(store)
+    newer = %({"version": 99, "cipher": "chacha20poly1305", "key_id": "0011223344556677", "values": {}}\n)
+    File.write(store, newer)
+    _, err, st = w('secrets list')
+    _, gerr, gst = w('const get FAKE_TOKEN')
+    untouched = File.read(store) == newer
+    File.write(store, saved)
+    ok = st.exitstatus == 78 && gst.exitstatus == 78 && untouched &&
+         err.include?('version 99 was written by a newer wayu') && err.include?('upgrade wayu') &&
+         gerr.include?('newer wayu')
+    check('newer version not reported', ok, "#{st.exitstatus} #{err} | #{gst.exitstatus} #{gerr}")
   end
 end
 

@@ -212,6 +212,16 @@ secrets_store_parse :: proc(text: string) -> (store: Secrets_Store, err: string)
 	if !is_obj {
 		return {}, "not a JSON object"
 	}
+	version, v_ok := doc["version"].(json.Integer)
+	if v_ok && version > SECRETS_VERSION {
+		// A newer format (e.g. a store another machine upgraded): name the
+		// fix instead of calling the file malformed.
+		return {}, fmt.tprintf(
+			"version %d was written by a newer wayu (this one reads version %d): upgrade wayu on this machine (brew upgrade wayu, or see the README's Upgrade section)",
+			version,
+			SECRETS_VERSION,
+		)
+	}
 	for k in doc {
 		switch k {
 		case "version", "cipher", "values", "run_only":
@@ -219,7 +229,6 @@ secrets_store_parse :: proc(text: string) -> (store: Secrets_Store, err: string)
 			return {}, fmt.tprintf("unknown field %q", k)
 		}
 	}
-	version, v_ok := doc["version"].(json.Integer)
 	if !v_ok || version != SECRETS_VERSION {
 		return {}, fmt.tprintf(
 			"unsupported version %v (expected %d)",

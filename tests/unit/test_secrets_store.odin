@@ -742,3 +742,30 @@ test_env_snapshot_per_name :: proc(t: ^testing.T) {
 		"a variable never looked up must not be copied into the snapshot",
 	)
 }
+
+// A store written by a newer wayu (a higher "version", with fields this
+// version does not know) is reported as such, naming the fix, not as a
+// malformed file.
+@(test)
+test_secrets_store_parse_newer_version :: proc(t: ^testing.T) {
+	text := `{"version": 9, "cipher": "chacha20poly1305", "key_id": "00", "values": {}}`
+	s, err := wayu.secrets_store_parse(text)
+	wayu.secrets_store_destroy(&s)
+	testing.expectf(
+		t,
+		strings.contains(err, "version 9 was written by a newer wayu") &&
+		strings.contains(err, "upgrade wayu"),
+		"got %q",
+		err,
+	)
+	// Not a number, zero or negative: still the generic error.
+	for bad in ([]string {
+			`{"version": 0, "cipher": "chacha20poly1305", "values": {}}`,
+			`{"version": -3, "cipher": "chacha20poly1305", "values": {}}`,
+			`{"version": "9", "cipher": "chacha20poly1305", "values": {}}`,
+		}) {
+		s2, err2 := wayu.secrets_store_parse(bad)
+		wayu.secrets_store_destroy(&s2)
+		testing.expectf(t, len(err2) > 0 && !strings.contains(err2, "newer"), "%q: %q", bad, err2)
+	}
+}
