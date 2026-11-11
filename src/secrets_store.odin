@@ -1114,8 +1114,8 @@ secrets_store_nonempty :: proc() -> bool {
 // sep = ";"): no fork when the cache is current (`-O` and `-nt` are
 // builtins); otherwise one `wayu secrets cache`, which prints a single
 // warning and exits non-zero when it can't decrypt — startup continues
-// without the secrets. Nothing when no secret exists. zsh/bash statements
-// are one per line so they also survive `eval $(...)` joined by `;`.
+// without the secrets. Nothing when no secret exists. With sep = ";" the
+// statements fit on one line for `eval "$(wayu export --eval)"` (quoted).
 emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") {
 	if !secrets_store_nonempty() {
 		return

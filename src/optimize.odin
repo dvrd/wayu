@@ -156,7 +156,24 @@ rc_classify_line :: proc(line: string, ctx: RcContext) -> RcClass {
 }
 
 // Classify the tokens of one top-level statement. `raw` is its source text.
+// An fpath dir the entry store would refuse (glob characters) keeps the line
+// in the rc file instead of failing the save later.
 rc_classify_statement :: proc(toks: []ShellToken, raw: string, ctx: RcContext) -> RcClass {
+	c := rc_classify_statement_any(toks, raw, ctx)
+	if c.kind == .FPATH {
+		for list in ([2][]string{c.prepend, c.appends}) {
+			for d in list {
+				if reason := fpath_entry_error(d); len(reason) > 0 {
+					return rc_keep(reason)
+				}
+			}
+		}
+	}
+	return c
+}
+
+@(private = "file")
+rc_classify_statement_any :: proc(toks: []ShellToken, raw: string, ctx: RcContext) -> RcClass {
 	context.allocator = context.temp_allocator
 	if len(toks) == 0 || toks[0].kind != .Word {
 		return rc_keep("not a simple command")
@@ -2144,9 +2161,15 @@ handle_completions_fpath :: proc(args: []string) {
 			wayu_exit(EXIT_USAGE)
 		}
 		dir := rest[0]
-		if len(strings.trim_space(dir)) == 0 || !is_path_entry_safe(dir) {
-			print_error_simple("Invalid directory: %q (empty, or contains ':' or a newline)", dir)
+		if len(strings.trim_space(dir)) == 0 {
+			print_error_simple("Invalid directory: %q (empty)", dir)
 			wayu_exit(EXIT_DATAERR)
+		}
+		if sub == "add" {
+			if reason := fpath_entry_error(dir); len(reason) > 0 {
+				print_error_simple("Invalid directory: %q (%s)", dir, reason)
+				wayu_exit(EXIT_DATAERR)
+			}
 		}
 		config_lock_acquire_or_exit()
 		defer config_lock_release()

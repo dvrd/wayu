@@ -263,7 +263,7 @@ list_toml_constants :: proc() {
 		}
 	}
 	for name in secret_names {
-		if snapshot_env_var(name) != nil {
+		if snapshot_env_has(name) {
 			active_count += 1
 		} else {
 			inactive_count += 1
@@ -351,7 +351,7 @@ list_toml_constants :: proc() {
 		}
 		// Secrets: always masked (`wayu const get NAME` decrypts one).
 		for name in secret_names {
-			is_active := snapshot_env_var(name) != nil
+			is_active := snapshot_env_has(name)
 			if is_active && !show_wayu {
 				continue
 			}
@@ -481,7 +481,7 @@ print_constants_json :: proc(
 		}
 		// Secrets: `"secret": true`, no value.
 		for name in secret_names {
-			is_active := snapshot_env_var(name) != nil
+			is_active := snapshot_env_has(name)
 			if is_active && !show_wayu {
 				continue
 			}

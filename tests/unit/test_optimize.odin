@@ -87,6 +87,8 @@ test_optimize_classifier_table :: proc(t: ^testing.T) {
 			"$HOME/.docker/completions|",
 		},
 		{"fpath=($fpath /opt/x/share/zsh)", .ZSH, .FPATH, "|/opt/x/share/zsh"},
+		// A dir with glob characters stays in the rc (the store refuses it).
+		{"fpath=(/opt/*/zsh $fpath)", .ZSH, .KEEP, ""},
 		{"fpath+=(/opt/x/completions)", .ZSH, .FPATH, "|/opt/x/completions"},
 		{"fpath+=/opt/y/completions", .ZSH, .FPATH, "|/opt/y/completions"},
 		{"fpath=(/only/this)", .ZSH, .KEEP, ""},
