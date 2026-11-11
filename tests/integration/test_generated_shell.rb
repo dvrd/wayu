@@ -53,6 +53,7 @@ class GeneratedShellTest
       test_prompt_survives_hostile_commands
       test_prompt_async_forks
       test_prompt_hostile_repo_runs_nothing
+      test_prompt_branch_control_chars
       test_init_and_turbo_define_the_same
       test_prompt_vi_mode_and_widgets
       test_prompt_git_branch_without_git
@@ -710,6 +711,37 @@ class GeneratedShellTest
       end
     end
     check('hostile repo', results.empty?, results.join("\n  "))
+  end
+
+  # A crafted .git/HEAD can name a branch with ESC/BEL/CR/DEL (an OSC title
+  # sequence here): the prompt shows them as `?`, never raw (zsh, fish).
+  def test_prompt_branch_control_chars
+    print "Test: native prompt shows control characters in a branch as ? (zsh, fish)... "
+    home = "#{@tmp_home}/prompt_cntrl"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/repo/.git"])
+    env = clean_env(home)
+    fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
+    shells = fish ? %w[zsh fish] : %w[zsh]
+    shells.each { |sh| Open3.capture3(env.merge('SHELL' => "/bin/#{sh}"), @wayu_bin, 'init', '--shell', sh) }
+    cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[prompt]\nenabled = true\n")
+    shells.each { |sh| Open3.capture3(env, @wayu_bin, 'build', '--shell', sh) }
+    File.write("#{home}/repo/.git/HEAD", "ref: refs/heads/a\e]0;x\ab\r\x7fc\n")
+    bad = []
+    shells.each do |sh|
+      out, =
+        if sh == 'zsh'
+          Open3.capture3(env, 'zsh', '-f', '-i', '-c',
+                         "source '#{data}/init.zsh'; cd '#{home}/repo'; _wayu_update_git_info; print -r -- \"[$_WAYU_GIT_BRANCH]\"")
+        else
+          Open3.capture3(env.merge('TERM' => 'dumb'), fish, '-i', '--no-config', '-c',
+                         "source '#{data}/init.fish'; cd '#{home}/repo'; _wayu_update_git_info; echo \"[$_wayu_git_branch]\"")
+        end
+      bad << "#{sh}: #{out.inspect}" unless out.strip == '[a?]0;x?b??c]'
+    end
+    check('branch control chars', bad.empty?, bad.join(' '))
   end
 
   # OKAMI-279: with `[prompt] enabled = true`, aliases and functions named

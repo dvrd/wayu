@@ -529,6 +529,8 @@ generate_prompt_token :: proc(builder: ^strings.Builder, cfg: PromptConfigFull, 
 // with the `read` builtin: "ref: refs/heads/<branch>", or a commit id when
 // detached (first 7 characters). Only the reftable placeholder HEAD
 // (refs/heads/.invalid) asks git itself. A checkout shows at the next prompt.
+// Control characters (ESC, BEL, CR, ...) in the branch, which a crafted HEAD
+// can hold, show as `?`: they would reach the terminal as escape sequences.
 PROMPT_GIT_INFO_ZSH :: `_wayu_update_git_info() {
   emulate -L zsh
   local d=$PWD g="" top="" l=""
@@ -564,6 +566,7 @@ PROMPT_GIT_INFO_ZSH :: `_wayu_update_git_info() {
   else
     _WAYU_GIT_BRANCH=${l[1,7]}
   fi
+  _WAYU_GIT_BRANCH=${_WAYU_GIT_BRANCH//[[:cntrl:]]/?}
   return 0
 }
 `
@@ -1698,6 +1701,7 @@ function _wayu_update_git_info
         case '*'
             set -g _wayu_git_branch (string sub -l 7 -- "$l")
     end
+    set -g _wayu_git_branch (string replace -ra -- '[\x01-\x1f\x7f]' '?' "$_wayu_git_branch")
     return 0
 end
 `
