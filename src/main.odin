@@ -969,10 +969,18 @@ handle_build_command :: proc(action: Action) {
 	// plugins.json is checked once: an invalid file (error printed) keeps
 	// every plugins.<ext> as it is, the rest is still regenerated (PATH
 	// sync keeps working), and build exits 78 (OKAMI-309).
+	// Read → generate → write under the config lock (reentrant, blocking like
+	// every other writer): without it a concurrent `alias add` could save
+	// entries.json and regenerate between our read and our write, and our
+	// stale core.<ext> would overwrite its fresh one. The background script
+	// build and zcompile take the lock in their own processes after we
+	// release it.
+	config_lock_acquire_or_exit()
 	plugins_cfg, plugins_ok := read_plugin_config_json()
 	cleanup_plugin_config_json(&plugins_cfg)
 
 	generate_optimized_init_all(plugins = plugins_ok)
+	config_lock_release()
 	fmt.println()
 	if !plugins_ok {
 		print_error_simple(
