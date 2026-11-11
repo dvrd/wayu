@@ -32,7 +32,7 @@
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS 15 or later (arm64), Linux (x86_64)",
     "downloadUrl": "https://github.com/dvrd/wayu/releases",
-    "installUrl": "https://wayu.dvrd.io/docs/?p=quickstart",
+    "installUrl": "https://wayu.dvrd.io/docs/quickstart/",
     "license": "https://opensource.org/licenses/MIT",
     "isAccessibleForFree": true,
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -512,7 +512,7 @@
   <p class="sr-only" id="copy-status" role="status" aria-live="polite"></p>
 
   <div class="announce">
-    <a href="docs/?p=upgrading"><span class="dot" aria-hidden="true"></span><span><strong>wayu <span class="ver">v6.0.0</span></strong><span class="long"> — what changed in this release, and what to adapt</span></span><span class="go">Upgrade notes →</span></a>
+    <a href="docs/upgrading/"><span class="dot" aria-hidden="true"></span><span><strong>wayu <span class="ver">v6.0.0</span></strong><span class="long"> — what changed in this release, and what to adapt</span></span><span class="go">Upgrade notes →</span></a>
   </div>
 
   <header class="nav" id="nav">
@@ -521,8 +521,8 @@
       <nav aria-label="Main" style="margin-left:auto">
         <ul class="nav-links">
           <li><a href="docs/">Docs</a></li>
-          <li class="hide-md"><a href="docs/?p=cli">CLI reference</a></li>
-          <li class="hide-md"><a href="docs/?p=upgrading">Upgrading</a></li>
+          <li class="hide-md"><a href="docs/cli/">CLI reference</a></li>
+          <li class="hide-md"><a href="docs/upgrading/">Upgrading</a></li>
           <li>
             <a href="https://github.com/dvrd/wayu" aria-label="wayu on GitHub">
               <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
@@ -568,17 +568,17 @@
           </div>
         </div>
         <p class="hero-links">
-          <a href="docs/?p=quickstart#set-up-your-shell"><code>wayu init</code> offers to add one line to your rc file</a>
-          <a href="docs/?p=quickstart">Read the quickstart →</a>
+          <a href="docs/quickstart/#set-up-your-shell"><code>wayu init</code> offers to add one line to your rc file</a>
+          <a href="docs/quickstart/">Read the quickstart →</a>
         </p>
 
-        <!-- Trust strip. Test count: "Finished N tests" from ./build_it test. -->
+        <!-- Trust strip. The test count is written by ./build_it docs (build/site.odin). -->
         <ul class="trust" aria-label="Project facts">
           <li><a href="https://github.com/dvrd/wayu/blob/main/LICENSE">MIT licensed</a></li>
           <li>zsh · bash · fish</li>
           <li>One binary, no runtime dependencies</li>
-          <li><a href="https://github.com/dvrd/wayu/tree/main/tests">677 unit tests</a> + end-to-end suites</li>
-          <li><a href="docs/?p=stability">Stable from 7.0 on</a></li>
+          <li><a href="https://github.com/dvrd/wayu/tree/main/tests" data-gen="unit-tests">680+ unit tests</a> + end-to-end suites</li>
+          <li><a href="docs/stability/">Stable from 7.0 on</a></li>
         </ul>
 
         <!-- ── Command → generated code (real output: wayu build in a throwaway HOME, home dir shown as /Users/ana) ── -->
@@ -592,7 +592,7 @@
               <button class="tab" role="tab" type="button" id="gt-plugin" aria-controls="gp-plugin" aria-selected="false" tabindex="-1">Plugins</button>
               <button class="tab" role="tab" type="button" id="gt-prompt" aria-controls="gp-prompt" aria-selected="false" tabindex="-1">Prompt</button>
             </div>
-            <a class="gen-more" href="docs/?p=config#generated-files">How core.zsh is built →</a>
+            <a class="gen-more" href="docs/config/#generated-files">How core.zsh is built →</a>
           </div>
           <div class="gen-panel" role="tabpanel" id="gp-path" aria-labelledby="gt-path">
             <figure class="gen-cmd"><figcaption>you run</figcaption>
@@ -926,7 +926,7 @@ _wayu_prompt_full() {
             <p>Path, alias and a run-only secret, the masked constants list, a Python script run with the secret, <code>doctor</code>, then an alias added in the TUI. Recorded with <a href="https://github.com/charmbracelet/vhs">VHS</a> in a throwaway home; the tape is in <a href="https://github.com/dvrd/wayu/tree/main/docs/demo"><code>docs/demo/</code></a>.</p>
           </div>
           <div class="demo-frame">
-            <video id="demo-video" muted playsinline loop preload="none" poster="demo/poster.jpg" width="1200" height="720"
+            <video id="demo-video" muted playsinline loop preload="none" poster="demo/poster.webp" width="1200" height="720"
                    aria-label="Terminal recording: wayu adds a PATH entry, an alias and a run-only secret, lists constants with the secret masked, creates a Python script and runs it with the secret, runs doctor, then adds an alias in the TUI.">
               <source src="demo/demo.mp4" type="video/mp4" />
               <a href="demo/demo.gif">Watch the recording (GIF)</a>
@@ -1013,7 +1013,7 @@ not set in this shell
               <p><code>~/.config/wayu/secret.key</code>, <code>0600</code>, refused if others can read it. Keep it out of your dotfiles repo.</p>
             </li>
           </ul>
-          <p class="keys-foot">The session cache is plaintext in a <code>0700</code> dir you own (<code>$XDG_RUNTIME_DIR</code> or <code>$TMPDIR</code>); any change to <code>secrets.json</code> and <code>wayu secrets lock</code> delete it. Five session secrets add about 0.6 ms to startup. <a href="docs/?p=config#secrets">How secrets work →</a></p>
+          <p class="keys-foot">The session cache is plaintext in a <code>0700</code> dir you own (<code>$XDG_RUNTIME_DIR</code> or <code>$TMPDIR</code>); any change to <code>secrets.json</code> and <code>wayu secrets lock</code> delete it. Five session secrets add about 0.6 ms to startup. <a href="docs/config/#secrets">How secrets work →</a></p>
         </div>
       </div>
     </section>
@@ -1039,7 +1039,7 @@ not set in this shell
             <div class="txt">
               <h3>Tool loaders without the startup cost</h3>
               <p><code>evalcache</code> runs <code>zoxide init zsh</code> once and sources the cached output until the binary changes. <code>nvm</code>, <code>conda</code> and <code>lazy</code> load on first call. <code>eager</code> loads before the prompt; <code>login_only</code> only in login shells.</p>
-              <a class="more" href="docs/?p=config#tools">[tools] reference →</a>
+              <a class="more" href="docs/config/#tools">[tools] reference →</a>
             </div>
             <figure class="code"><figcaption>~/.config/wayu/wayu.toml</figcaption>
 <pre><span class="c-tab">[tools]</span>
@@ -1058,7 +1058,7 @@ not set in this shell
             <div class="txt">
               <h3>A native prompt for zsh and fish</h3>
               <p>Off by default. Generated into the same <code>core.zsh</code> or <code>core.fish</code>: the git branch comes from <code>.git/HEAD</code>, the changed-file count from an async right prompt, and vi-mode shows its mode in the prompt character.</p>
-              <a class="more" href="docs/?p=config#prompt">[prompt] reference →</a>
+              <a class="more" href="docs/config/#prompt">[prompt] reference →</a>
             </div>
             <figure class="code"><figcaption>~/.config/wayu/wayu.toml</figcaption>
 <pre><span class="c-tab">[prompt]</span>
@@ -1085,7 +1085,7 @@ not set in this shell
             <div class="txt">
               <h3>Hooks around every write</h3>
               <p>Run a command before or after a PATH, alias, constant, plugin or export operation. Placeholders become quoted variables, never code; pre-hooks run only when something will change, none under <code>--dry-run</code>.</p>
-              <a class="more" href="docs/?p=config#hooksconf">hooks.conf reference →</a>
+              <a class="more" href="docs/config/#hooksconf">hooks.conf reference →</a>
             </div>
             <figure class="code"><figcaption>~/.config/wayu/hooks.conf</figcaption>
 <pre><span class="c-com"># event = command</span>
@@ -1098,7 +1098,7 @@ not set in this shell
             <div class="txt">
               <h3>A token for one command, not your whole shell</h3>
               <p>A run-only secret is never exported. <code>wayu secrets run</code> decrypts it into the environment of that one command and execs it, without a shell. Put it behind an alias and <code>gh</code> gets its token every time.</p>
-              <a class="more" href="docs/?p=config#secrets">[secrets] reference →</a>
+              <a class="more" href="docs/config/#secrets">[secrets] reference →</a>
             </div>
             <figure class="code"><figcaption>zsh</figcaption>
 <pre><span class="t-arr">❯</span> wayu const add GH_TOKEN --run-only
@@ -1116,7 +1116,7 @@ GH_TOKEN  run-only</pre>
             <div class="txt">
               <h3>Small tools, already on PATH</h3>
               <p><code>script new</code> writes a skeleton with the interpreter's absolute path as the shebang, opens <code>$EDITOR</code>, and links it into <code>bin/</code>, first among wayu's PATH entries. <code>script import</code> adopts what you already have in <code>~/bin</code>.</p>
-              <a class="more" href="docs/?p=cli#wayu-script-scripts">wayu script reference →</a>
+              <a class="more" href="docs/cli/#wayu-script-scripts">wayu script reference →</a>
             </div>
             <figure class="code"><figcaption>zsh</figcaption>
 <pre><span class="t-arr">❯</span> wayu script new today --lang python
@@ -1132,7 +1132,7 @@ GH_TOKEN  run-only</pre>
             <div class="txt">
               <h3>Scriptable by default</h3>
               <p>The CLI never prompts. Lists, <code>search</code> and <code>doctor</code> print JSON with <code>--json</code>; exit codes follow <code>sysexits.h</code>; destructive actions need <code>--yes</code>; <code>--dry-run</code> previews any write.</p>
-              <a class="more" href="docs/?p=cli#json-output">JSON shapes →</a>
+              <a class="more" href="docs/cli/#json-output">JSON shapes →</a>
             </div>
             <figure class="code"><figcaption>zsh</figcaption>
 <pre><span class="t-arr">❯</span> wayu path list --json
@@ -1150,7 +1150,7 @@ git status -sb</pre>
             <div class="txt">
               <h3>One health check for the whole setup</h3>
               <p>PATH entries, config, scripts, plugins, backups, the secrets store and key, and startup-file lines that cost time. <code>--fix</code> repairs what it can; any error exits 78.</p>
-              <a class="more" href="docs/?p=cli#wayu-doctor">wayu doctor reference →</a>
+              <a class="more" href="docs/cli/#wayu-doctor">wayu doctor reference →</a>
             </div>
             <figure class="code"><figcaption>zsh · excerpt</figcaption>
 <pre><span class="t-arr">❯</span> wayu doctor
@@ -1231,7 +1231,7 @@ git status -sb</pre>
           <details>
             <summary><span>What exactly does <code>wayu optimize</code> touch?</span></summary>
             <div>
-              <p>Only top-level lines that come <em>after</em> the line that loads wayu, in your shell's startup files: <code>eval "$(tool init zsh)"</code> and <code>source &lt;(tool completion zsh)</code> (cached instead), <code>fpath</code> edits, an extra <code>compinit</code>, PATH exports, aliases and exports. Anything inside <code>if</code>, loops, functions or here-documents stays. It prints a diff and exits without <code>--yes</code>; with it, the file is backed up and rewritten atomically. <a href="docs/?p=cli#wayu-optimize">Full rules →</a></p>
+              <p>Only top-level lines that come <em>after</em> the line that loads wayu, in your shell's startup files: <code>eval "$(tool init zsh)"</code> and <code>source &lt;(tool completion zsh)</code> (cached instead), <code>fpath</code> edits, an extra <code>compinit</code>, PATH exports, aliases and exports. Anything inside <code>if</code>, loops, functions or here-documents stays. It prints a diff and exits without <code>--yes</code>; with it, the file is backed up and rewritten atomically. <a href="docs/cli/#wayu-optimize">Full rules →</a></p>
             </div>
           </details>
           <details>
@@ -1255,7 +1255,7 @@ git status -sb</pre>
           <details>
             <summary><span>Will an upgrade break my setup?</span></summary>
             <div>
-              <p>From 7.0 on, the commands, flags, exit codes, <code>--json</code> shapes, <code>wayu.toml</code> keys and data files are stable within a major version. A release that changes a data format or moves a file migrates yours automatically (backup first), and anything being removed is deprecated for at least one minor release first. <a href="docs/?p=stability">Stability guarantees →</a></p>
+              <p>From 7.0 on, the commands, flags, exit codes, <code>--json</code> shapes, <code>wayu.toml</code> keys and data files are stable within a major version. A release that changes a data format or moves a file migrates yours automatically (backup first), and anything being removed is deprecated for at least one minor release first. <a href="docs/stability/">Stability guarantees →</a></p>
             </div>
           </details>
           <details>
@@ -1294,8 +1294,8 @@ git status -sb</pre>
         </div>
         <p class="hero-links reveal">
           <a href="docs/">Docs</a>
-          <a href="docs/?p=cli">CLI reference</a>
-          <a href="docs/?p=upgrading">Upgrade notes</a>
+          <a href="docs/cli/">CLI reference</a>
+          <a href="docs/upgrading/">Upgrade notes</a>
         </p>
       </div>
     </section>
@@ -1310,11 +1310,11 @@ git status -sb</pre>
         </div>
         <nav aria-labelledby="f-docs"><h2 id="f-docs">Docs</h2>
           <ul>
-            <li><a href="docs/?p=quickstart">Quickstart</a></li>
-            <li><a href="docs/?p=cli">CLI reference</a></li>
-            <li><a href="docs/?p=config">Config reference</a></li>
-            <li><a href="docs/?p=stability">Stability</a></li>
-            <li><a href="docs/?p=upgrading">Upgrading</a></li>
+            <li><a href="docs/quickstart/">Quickstart</a></li>
+            <li><a href="docs/cli/">CLI reference</a></li>
+            <li><a href="docs/config/">Config reference</a></li>
+            <li><a href="docs/stability/">Stability</a></li>
+            <li><a href="docs/upgrading/">Upgrading</a></li>
           </ul>
         </nav>
         <nav aria-labelledby="f-proj"><h2 id="f-proj">Project</h2>

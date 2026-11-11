@@ -45,7 +45,7 @@ releases, so they are listed here too.
 
 **Generated shell code and startup**
 
-- core.<ext>: the Secrets section runs after the PATH apply, and its
+- `core.<ext>`: the Secrets section runs after the PATH apply, and its
   cache-miss `wayu secrets cache` call (like the prompt hook's `wayu build`)
   uses wayu's absolute path, also when wayu was run by bare name from
   `PATH` (was a bare `wayu`, not found in shells with a minimal PATH: cron,
@@ -996,7 +996,7 @@ before these features were removed; they no longer apply.
   the undo `backup restore <type> 1`. Copy such a backup over `wayu.toml`
   by hand and run `wayu migrate --schema`.
 
-**init.<ext> from wayu ≤ 3.9**
+**`init.<ext>` from wayu ≤ 3.9**
 - An unmodified `init.zsh` written by wayu 3.9 or older is now recognised
   and updated to the current template (old file backed up), like newer
   ones. It used to be kept with a "has local edits" warning, so after
@@ -1195,7 +1195,7 @@ before these features were removed; they no longer apply.
   dropped), an entry whose variable is unset is skipped, and entries are
   checked with `[ -d ]` when eval'd (not when wayu runs). Duplicates are
   dropped. The PATH part is now a short loop instead of one `export PATH=`.
-- `wayu build` no longer prints the turbo export report when turbo.<ext>
+- `wayu build` no longer prints the turbo export report when `turbo.<ext>`
   exists (it is refreshed silently with core).
 
 **fish (core.fish)**
@@ -1353,9 +1353,9 @@ before these features were removed; they no longer apply.
   before anything is written; any other argument to `init` exits `64`.
 
 **config scan --fix**
-- Aborts (exit `74`) when extra.<ext> exists but can't be backed up or
+- Aborts (exit `74`) when `extra.<ext>` exists but can't be backed up or
   read; it used to write anyway.
-- Blocks already in extra.<ext> are not appended again, so re-running it no
+- Blocks already in `extra.<ext>` are not appended again, so re-running it no
   longer duplicates PATH prepends and evals; with nothing new it prints
   "All N blocks are already in …" and writes nothing.
 
@@ -1471,7 +1471,7 @@ before these features were removed; they no longer apply.
   `template`, `hooks`, `reload`, `build`, `function`, aliases like `const`,
   `fn`, `watch`) and are generated from one table.
 
-**init.<ext>**
+**`init.<ext>`**
 - `init.<ext>` is only updated when it is an unmodified copy of a template an
   earlier wayu wrote; the old file is backed up first. A file you edited is
   left alone and wayu prints a warning on stderr (once per edit when stderr
