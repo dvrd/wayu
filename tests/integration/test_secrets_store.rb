@@ -62,6 +62,7 @@ class SecretsStoreIntegrationTest
       test_lock_every_cache_dir
       test_cache_symlinks_refused
       test_cache_private_fallback
+      test_cache_group_dir_refused
       test_doctor_ok
       test_tamper_warns_and_continues
       test_missing_key_never_replaced
@@ -552,6 +553,36 @@ class SecretsStoreIntegrationTest
     ok = out.force_encoding('UTF-8') == "#{TOKEN}\n" && files.size == 1 && mode(files[0]) == 0o600 &&
          mode("#{@data_dir}/run") == 0o700 && !in_tmp
     check('cache not in the private dir', ok, "out=#{out.inspect} err=#{err} files=#{files}")
+  end
+
+  # A cache dir with group/other permission bits is never trusted: planted
+  # newer caches in it are not sourced by zsh, bash or fish; the private
+  # fallback <data>/run/wayu-<uid> is used instead.
+  def test_cache_group_dir_refused
+    print 'Test 19d: a cache dir open to group/other is not trusted (zsh, bash, fish)... '
+    fish = `command -v fish 2>/dev/null`.strip
+    shells = { 'zsh' => ['zsh', '-fc'], 'bash' => ['bash', '--norc', '--noprofile', '-c'] }
+    shells['fish'] = [fish, '--no-config', '-c'] unless fish.empty?
+    shells.each_key { |sh| w("--shell #{sh} init") }
+    sh(['zsh', '-fc', "source #{@data_dir}/init.zsh"])
+    id = File.basename(caches.first.to_s)[/secrets-(\h+)\./, 1]
+    w('secrets lock')
+    FileUtils.mkdir_p(cache_dir, mode: 0o700)
+    File.chmod(0o770, cache_dir)
+    future = Time.now + 3600
+    bad = []
+    shells.each do |sh, argv|
+      planted = "#{cache_dir}/secrets-#{id}.#{sh}"
+      File.write(planted, sh == 'fish' ? "set -gx FAKE_TOKEN planted; set -gx FAKE_PLANTED 1\n" : PLANTED, perm: 0o600)
+      File.utime(future, future, planted)
+      out, err, = Open3.capture3(env, *argv, "source #{@data_dir}/init.#{sh}; printf '%s\\n' \"[$FAKE_PLANTED] $FAKE_TOKEN\"",
+                                 unsetenv_others: true)
+      bad << "#{sh}: #{out.inspect} #{err}" unless out.force_encoding('UTF-8') == "[] #{TOKEN}\n"
+    end
+    File.chmod(0o700, cache_dir)
+    FileUtils.rm_rf(cache_dir)
+    w('--shell zsh init')
+    check('planted cache sourced from a group-accessible dir', id && bad.empty?, "id=#{id} #{bad.join(' | ')}")
   end
 
   def test_doctor_ok

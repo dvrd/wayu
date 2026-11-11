@@ -626,8 +626,10 @@ matches the stored key.
 At shell start `core.<ext>` sources the session cache
 `${XDG_RUNTIME_DIR:-${TMPDIR:-<data>/run}}/wayu-<uid>/secrets-<id>.<ext>`
 (single-quoted `export` / `set -gx` lines, `0600` in a `0700` dir you own)
-when it is newer than `secrets.json`, without forking. The dir must be yours
-and not a symlink (else `<data>/run/wayu-<uid>` is used), and the file must
+when it is newer than `secrets.json`, without forking in zsh (bash and fish
+run one `ls -ldn` to read the dir's mode). The dir must be yours, not a
+symlink and without group/other permission bits (else
+`<data>/run/wayu-<uid>` is used), and the file must
 be yours and not a symlink; with neither `XDG_RUNTIME_DIR` nor `TMPDIR` set
 the cache lives under `<data>/run` (`0700`), never in a shared `/tmp`. Otherwise it runs
 `wayu secrets cache` once to (re)write it. If the key is unavailable or a

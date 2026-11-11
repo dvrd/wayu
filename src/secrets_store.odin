@@ -739,13 +739,16 @@ secrets_cache_id :: proc() -> string {
 }
 
 // <runtime>/wayu-<uid>, or <data>/run/wayu-<uid> when that path exists but
-// is a symlink, not a directory, or owned by someone else. core.<ext> makes
-// the same choice (emit_secrets_loader). Temp-allocated.
+// is a symlink, not a directory, owned by someone else, or open to group /
+// other. core.<ext> makes the same choice (emit_secrets_loader).
+// Temp-allocated.
 secrets_cache_dir :: proc() -> string {
 	dir := fmt.tprintf("%s/wayu-%d", secrets_runtime_base(), posix.getuid())
 	st: posix.stat_t
 	if posix.lstat(strings.clone_to_cstring(dir, context.temp_allocator), &st) == .OK {
-		if !posix.S_ISDIR(st.st_mode) || st.st_uid != posix.getuid() {
+		if !posix.S_ISDIR(st.st_mode) ||
+		   st.st_uid != posix.getuid() ||
+		   st.st_mode & (posix.S_IRWXG | posix.S_IRWXO) != {} {
 			return fmt.tprintf("%s/wayu-%d", secrets_private_run_dir(), posix.getuid())
 		}
 	}
@@ -1128,7 +1131,8 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 		bin = "wayu"
 	}
 	// The cache is only trusted in a directory we own that is not a symlink
-	// (else <data>/run/wayu-<uid>, the same choice secrets_cache_dir makes),
+	// and has no group/other permission bits (else <data>/run/wayu-<uid>,
+	// the same choice secrets_cache_dir makes),
 	// and only when the file itself is ours, not a symlink, and newer than
 	// the store. There is no shared /tmp default: <data>/run instead.
 
@@ -1146,9 +1150,11 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 			"set _wayu_sc (string replace -r '(.)/$' '$1' -- $_wayu_sc)%s",
 			fq(uid_dir),
 		)
+		// fish has no fork-free way to read a mode: one `ls` when the dir
+		// exists.
 		fmt.sbprintln(
 			b,
-			"if test -L $_wayu_sc; or begin; test -e $_wayu_sc; and begin; not test -d $_wayu_sc; or not test -O $_wayu_sc; end; end",
+			"if test -L $_wayu_sc; or begin; test -e $_wayu_sc; and begin; not test -d $_wayu_sc; or not test -O $_wayu_sc; or not string match -qr -- '^d...------' (command ls -ldn -- $_wayu_sc 2>/dev/null); end; end",
 		)
 		fmt.sbprintfln(b, "    set _wayu_sc %s", fq(fallback))
 		fmt.sbprintln(b, "end")
@@ -1175,6 +1181,13 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 	}
 
 	sq :: proc(s: string) -> string {return shell_single_quote(s, context.temp_allocator)}
+	// "$_wayu_sc" is a dir with no group/other permission bits. zsh: a glob
+	// qualifier (no fork; `/` does not follow a symlink). bash cannot read a
+	// mode without a fork: one `ls` when the dir exists.
+	private_dir :=
+		`() { emulate -L zsh; local -a m; m=( $1(N/f:go-rwx:) ); (( $#m )); } "$_wayu_sc"` if \
+			shell == .ZSH else \
+			`case $(command ls -ldn -- "$_wayu_sc" 2>/dev/null) in d???------*) true ;; *) false ;; esac`
 	fresh := strings.concatenate(
 		{`[ -O "$_wayu_sc" ] && [ ! -h "$_wayu_sc" ] && [ "$_wayu_sc" -nt `, sq(store), " ]"},
 		context.temp_allocator,
@@ -1188,7 +1201,9 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 		strings.concatenate({`_wayu_sc="$_wayu_sc"`, sq(uid_dir)}, context.temp_allocator),
 		strings.concatenate(
 			{
-				`if [ -h "$_wayu_sc" ] || { [ -e "$_wayu_sc" ] && { [ ! -d "$_wayu_sc" ] || [ ! -O "$_wayu_sc" ]; }; }; then _wayu_sc=`,
+				`if [ -h "$_wayu_sc" ] || { [ -e "$_wayu_sc" ] && { [ ! -d "$_wayu_sc" ] || [ ! -O "$_wayu_sc" ] || ! `,
+				private_dir,
+				`; }; }; then _wayu_sc=`,
 				sq(fallback),
 				"; fi",
 			},

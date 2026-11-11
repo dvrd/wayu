@@ -505,7 +505,8 @@ wayu alias add gh 'wayu secrets run GH_TOKEN -- gh'
 Shells never read plaintext from the data dir: `core.<ext>` sources a
 per-login-session cache, `${XDG_RUNTIME_DIR:-${TMPDIR:-<data>/run}}/wayu-<uid>/secrets-<id>.<ext>`
 (`0600` in a `0700` dir owned by you; `<data>/run/wayu-<uid>` when that dir
-is a symlink or not yours; a symlinked cache file is never sourced), when it is newer than
+is a symlink, not yours, or open to group/other; a symlinked cache file is
+never sourced), when it is newer than
 `secrets.json`; otherwise it runs `wayu secrets cache` once (a hidden helper
 that decrypts into that file). When the key is unavailable or a value does
 not decrypt, the shell prints one `wayu: secrets not loaded: …` line on
