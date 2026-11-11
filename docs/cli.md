@@ -412,7 +412,8 @@ comment line (`//`, `#`, `--`, `;`, `/*`, `*`) among its first 20 lines:
 `{src}` is the source, `{out}` the file the command must write (it becomes
 `bin/NAME`; a command without `{out}` is refused). The words are split like a
 shell would (quotes, backslashes; no expansions or pipes) and run without a
-shell; the first word is looked up on PATH. Such a source may have any
+shell, in the data dir's `scripts/` (never the directory wayu was started
+in); the first word is looked up on PATH. Such a source may have any
 extension (`tool.c` → `tool`). Swift's `swiftc -O -o {out} {src}` is the same
 mechanism as a preset, used when a swift source declares none.
 

@@ -411,11 +411,16 @@ SUBPROCESS_CANCEL_POLL_MS :: 100
 // stdin_data, when non-empty, is the child's stdin instead of /dev/null
 // (written whole, then closed; meant for small inputs such as a key that must
 // stay off argv: at most one pipe buffer, so the write never blocks).
+//
+// cwd, when non-empty, is the child's working directory (it exits 127 when
+// it cannot change to it): compilers such as bun, deno or go read config
+// files from their cwd, which must not be wherever wayu was started.
 run_command_timeout :: proc(
 	args: []string,
 	timeout_ms: int,
 	env_defaults: []Env_Default = nil,
 	stdin_data := "",
+	cwd := "",
 ) -> (
 	result: Command_Result,
 ) {
@@ -449,6 +454,11 @@ run_command_timeout :: proc(
 	for e, i in env_defaults {
 		env_c[2 * i] = strings.clone_to_cstring(e.name)
 		env_c[2 * i + 1] = strings.clone_to_cstring(e.value)
+	}
+
+	cwd_c: cstring
+	if len(cwd) > 0 {
+		cwd_c = strings.clone_to_cstring(cwd, context.temp_allocator)
 	}
 
 	out_pipe, err_pipe: [2]posix.FD
@@ -511,6 +521,9 @@ run_command_timeout :: proc(
 		posix.setenv("GIT_TERMINAL_PROMPT", "0", true)
 		for i := 0; i < len(env_c); i += 2 {
 			posix.setenv(env_c[i], env_c[i + 1], false)
+		}
+		if cwd_c != nil && posix.chdir(cwd_c) != .OK {
+			posix._exit(127)
 		}
 		// New session: no controlling terminal, and the child leads its own
 		// process group so the deadline can kill git's helpers too.

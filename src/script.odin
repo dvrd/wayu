@@ -374,7 +374,9 @@ script_build :: proc(s: ScriptInfo, quiet := false) -> bool {
 		if !quiet {
 			print_info("Compiling %s (%s)...", s.name, tool)
 		}
-		res := run_command_timeout(args, SCRIPT_COMPILE_TIMEOUT_MS)
+		// In <data>/scripts, not the caller's cwd: bun, deno, go, cargo ...
+		// read config (bunfig.toml, go.mod, ...) from their working directory.
+		res := run_command_timeout(args, SCRIPT_COMPILE_TIMEOUT_MS, cwd = scripts_dir())
 		defer command_result_destroy(&res)
 		if !res.ok || !os.is_file(tmp) {
 			if os.exists(tmp) {

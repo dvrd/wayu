@@ -48,6 +48,7 @@ class ScriptIntegrationTest
       test_live_path_sync
       test_functions_in_data_dir
       test_no_write_through_symlinks
+      test_build_runs_in_scripts_dir
     ensure
       teardown_test_env
     end
@@ -498,6 +499,23 @@ class ScriptIntegrationTest
           st.success? && File.exist?("#{data}/functions/splitfn.zsh") &&
           !File.exist?("#{@config_dir}/functions/splitfn.zsh"),
           "exit=#{st.exitstatus}")
+  end
+
+  # Compilers run in <data>/scripts, not in the caller's cwd (bun/deno/go
+  # read config files from there).
+  def test_build_runs_in_scripts_dir
+    File.write("#{@fakebin}/fakepwd", <<~SH)
+      #!/bin/sh
+      # fakepwd -o OUT SRC: the binary prints the compiler's cwd
+      printf '#!/bin/sh\necho "%s"\n' "$(pwd -P)" > "$2"; chmod +x "$2"
+    SH
+    FileUtils.chmod(0o755, "#{@fakebin}/fakepwd")
+    File.write("#{scripts_dir}/cwdt.c", "// wayu: build = fakepwd -o {out} {src}\n")
+    _, st = run_s('script build cwdt')
+    run_out, = Open3.capture2e("#{bin_dir}/cwdt")
+    run_s('script rm cwdt --yes')
+    check('build commands run with cwd = <data>/scripts',
+          st.success? && run_out.strip == File.realpath(scripts_dir), "build=#{st.exitstatus} run=#{run_out}")
   end
 
   # new / import / function add never write through a symlink (dangling or
