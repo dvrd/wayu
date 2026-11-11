@@ -255,44 +255,6 @@ toml_parse_kv_line :: proc(line: string) -> (key: string, value: string, ok: boo
 	return key, value, true
 }
 
-// `s` with control characters made visible, for messages that carry names
-// decoded from wayu.toml (a quoted key may hold "\e[2J"): C0 controls, DEL
-// and C1 controls (U+0080-U+009F) become \xHH / \u00HH, a backslash stays
-// as is. Temp-allocated (or `s` itself when nothing needs escaping).
-toml_escape_controls :: proc(s: string) -> string {
-	needs := false
-	for i in 0 ..< len(s) {
-		c := s[i]
-		if c < 0x20 ||
-		   c == 0x7f ||
-		   (c == 0xc2 && i + 1 < len(s) && s[i + 1] >= 0x80 && s[i + 1] <= 0x9f) {
-			needs = true
-			break
-		}
-	}
-	if !needs {
-		return s
-	}
-	b := strings.builder_make(context.temp_allocator)
-	for i := 0; i < len(s); i += 1 {
-		c := s[i]
-		switch {
-		case c == '\t':
-			strings.write_string(&b, "\\t")
-		case c == '\n':
-			strings.write_string(&b, "\\n")
-		case c < 0x20 || c == 0x7f:
-			fmt.sbprintf(&b, "\\x%02X", c)
-		case c == 0xc2 && i + 1 < len(s) && s[i + 1] >= 0x80 && s[i + 1] <= 0x9f:
-			fmt.sbprintf(&b, "\\u00%02X", s[i + 1])
-			i += 1
-		case:
-			strings.write_byte(&b, c)
-		}
-	}
-	return strings.to_string(b)
-}
-
 // ============================================================================
 // COMMAND HANDLERS
 // ============================================================================
@@ -320,14 +282,14 @@ handle_validate :: proc() -> bool {
 			"Error: Failed to parse %s: line %d: %s",
 			config_path,
 			perr.line,
-			toml_escape_controls(perr.msg),
+			term_safe(perr.msg),
 		)
 		return false
 	}
 	issues := toml_content_schema_issues(string(content))
 	for is in issues {
 		if is.is_error {
-			fmt.eprintfln("Validation failed: line %d: %s", is.line, toml_escape_controls(is.msg))
+			fmt.eprintfln("Validation failed: line %d: %s", is.line, term_safe(is.msg))
 			return false
 		}
 	}
@@ -338,13 +300,13 @@ handle_validate :: proc() -> bool {
 	result := toml_validate(config)
 
 	if !result.valid {
-		fmt.eprintfln("Validation failed: %s", toml_escape_controls(result.error_message))
+		fmt.eprintfln("Validation failed: %s", term_safe(result.error_message))
 		delete(result.error_message)
 		return false
 	}
 
 	for is in issues {
-		print_warning("line %d: %s", is.line, toml_escape_controls(is.msg))
+		print_warning("line %d: %s", is.line, term_safe(is.msg))
 	}
 	fmt.println("✓ TOML config is valid")
 	return true
@@ -786,7 +748,7 @@ handle_toml_keys :: proc() {
 			"Failed to parse TOML file: %s (line %d: %s)",
 			toml_file,
 			e.line,
-			toml_escape_controls(e.msg),
+			term_safe(e.msg),
 		)
 		wayu_exit(EXIT_DATAERR)
 	}
@@ -817,7 +779,7 @@ handle_toml_keys :: proc() {
 			continue
 		}
 		seen[key] = true
-		fmt.println(toml_escape_controls(key))
+		fmt.println(term_safe(key))
 	}
 }
 

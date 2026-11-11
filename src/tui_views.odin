@@ -205,7 +205,10 @@ render_list_item :: proc(
 	text_offset := glyph_w + 1 if glyph_w > 0 else 0
 
 	available_width := min(max_width, right_edge - text_x) - text_offset
-	display := truncate_text(text, max(0, available_width))
+	// Row text holds user data (alias commands, constant values, PATH dirs):
+	// control characters are shown escaped, as in the CLI lists (term_safe),
+	// so they neither reach the terminal nor skew the width math.
+	display := truncate_text(term_safe(text), max(0, available_width))
 
 	if is_separator {
 		render_text_styled(screen, text_x, y, display, TUI_DIM)

@@ -527,6 +527,15 @@ Names and values:
   78): write it unquoted inside `'…'` or use `"$WAYU_HOOK_NAME"`.
 
 Output:
+- Human-readable output shows control characters from your data escaped
+  instead of sending them to the terminal (a stored value could set the
+  title, clear the screen or write the clipboard): `path`/`alias`/`const
+  list`, `plugin list`/`get`/`search`, `script list`, `search` and `doctor`
+  print tab as `\t`, newline as `\n`, other C0 controls, DEL and invalid
+  UTF-8 bytes as `\xHH`, C1 controls as `\u00HH`. `const list` used to drop
+  `ESC[...` sequences and turn newlines into spaces; it now shows them
+  escaped like the other lists. `--json` and `get` output are unchanged
+  (exact values). The TUI shows them escaped in lists and as `�` elsewhere.
 - Developer component flags: `-c=<component>` `width=` / `height=` outside
   1-1000 exit 64.
 

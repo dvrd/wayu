@@ -335,11 +335,11 @@ search_toml_entries_by_name :: proc(
 // print_search_results - Display formatted search results
 print_search_results :: proc(query: string, results: []SearchResult) {
 	if len(results) == 0 {
-		fmt.printfln("%sNo matches found for '%s'%s", get_warning(), query, RESET)
+		fmt.printfln("%sNo matches found for '%s'%s", get_warning(), term_safe(query), RESET)
 		return
 	}
 
-	print_header(fmt.tprintf("Search Results for '%s'", query), "🔍")
+	print_header(fmt.tprintf("Search Results for '%s'", term_safe(query)), "🔍")
 	fmt.println()
 
 	// Group results by type
@@ -425,7 +425,7 @@ print_search_result_line :: proc(result: SearchResult, cmd_type: string) {
 	fmt.printfln(
 		"  %s%s%s %s[%s]%s%s",
 		get_primary(),
-		result.name,
+		term_safe(result.name),
 		RESET,
 		get_muted(),
 		type_indicator,
@@ -433,14 +433,15 @@ print_search_result_line :: proc(result: SearchResult, cmd_type: string) {
 		score_indicator,
 	)
 
-	// Print value (truncated on a rune boundary so multi-byte UTF-8 is never
-	// split; long values used to be hidden entirely). Secret-looking values
+	// Print value (control characters made visible, then truncated on a rune
+	// boundary so multi-byte UTF-8 is never split; long values used to be
+	// hidden entirely). Secret-looking values
 	// are masked (OKAMI-208); `wayu const get NAME` prints the real one.
 	if result.secret {
 		fmt.printfln("      %s%s%s", get_muted(), SECRET_MASK, RESET)
 	} else if result.value != "" {
 		shown := mask_secret_value(result.name, result.value)
-		fmt.printfln("      %s%s%s", get_muted(), truncate_display(shown, 50), RESET)
+		fmt.printfln("      %s%s%s", get_muted(), truncate_display(term_safe(shown), 50), RESET)
 	}
 }
 

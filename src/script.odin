@@ -823,17 +823,20 @@ script_list :: proc() {
 		return
 	}
 	print_header("Scripts", "📜")
+	// Names and paths come from the scripts dir listing: a file name may hold
+	// control characters, so print them term_safe.
 	width := 0
-	for s in scripts {width = max(width, len(s.name))}
+	for s in scripts {width = max(width, len(term_safe(s.name)))}
 	for s in scripts {
 		state := "stale" if script_is_stale(s) else "ok"
+		name := term_safe(s.name)
 		fmt.printfln(
 			"  %s%s  %-6s  %-5s  %s",
-			s.name,
-			strings.repeat(" ", width - len(s.name), context.temp_allocator),
+			name,
+			strings.repeat(" ", width - len(name), context.temp_allocator),
 			s.lang.name if s.lang != nil else "?",
 			state,
-			s.source,
+			term_safe(s.source),
 		)
 	}
 }

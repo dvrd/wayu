@@ -1131,7 +1131,13 @@ handle_plugin_list :: proc(args: []string) {
 		fmt.println()
 		print_warning("%d conflict(s); the definition loaded last wins:", len(conflicts))
 		for c in conflicts {
-			fmt.eprintfln("    %s: %s %s (also defined by %s)", c.plugin, c.kind, c.name, c.other)
+			fmt.eprintfln(
+				"    %s: %s %s (also defined by %s)",
+				term_safe(c.plugin),
+				c.kind,
+				term_safe(c.name),
+				term_safe(c.other),
+			)
 		}
 	}
 }
@@ -1414,13 +1420,13 @@ handle_plugin_get :: proc(args: []string) {
 		}
 
 		if clipboard_ok {
-			print_success("URL copied to clipboard: %s", plugin_ptr.url)
+			print_success("URL copied to clipboard: %s", term_safe(plugin_ptr.url))
 		} else {
 			print_warning("Failed to copy URL to clipboard")
-			print_info("URL: %s", plugin_ptr.url)
+			print_info("URL: %s", term_safe(plugin_ptr.url))
 		}
 	} else {
-		print_info("[DRY RUN] Would copy URL to clipboard: %s", plugin_ptr.url)
+		print_info("[DRY RUN] Would copy URL to clipboard: %s", term_safe(plugin_ptr.url))
 	}
 }
 

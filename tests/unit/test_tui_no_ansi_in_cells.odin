@@ -9,6 +9,7 @@ package test_wayu
 // color must live exclusively in .fg / .bg.
 
 import wayu "../../src"
+import "core:strings"
 import "core:testing"
 
 @(test)
@@ -138,4 +139,61 @@ test_render_list_item_maps_glyph_to_fg_not_char :: proc(t: ^testing.T) {
 			"Glyph cell must carry source color in Cell.fg, not inline ANSI",
 		)
 	}
+}
+
+// Security audit: no control rune (C0, DEL, C1) may reach the screen buffer,
+// as a cell's char or as an attached combining mark, whatever the writer.
+@(private = "file")
+expect_no_control_cells :: proc(t: ^testing.T, screen: ^wayu.Screen, what: string) {
+	for row in screen.buffer {
+		for cell in row {
+			if cell.char != wayu.CELL_CONTINUATION {
+				testing.expectf(
+					t,
+					!wayu.is_control_rune(cell.char),
+					"%s: control char %x in cell",
+					what,
+					cell.char,
+				)
+			}
+			testing.expectf(
+				t,
+				cell.comb == 0 || !wayu.is_control_rune(cell.comb),
+				"%s: control comb %x",
+				what,
+				cell.comb,
+			)
+		}
+	}
+}
+
+@(test)
+test_tui_cells_never_hold_control_runes :: proc(t: ^testing.T) {
+	screen := wayu.screen_create(60, 1)
+	defer wayu.screen_destroy(&screen)
+
+	// BEL, DEL and an 8-bit CSI used to be zero-width and got attached to the
+	// previous glyph as a "combining mark", then emitted raw.
+	wayu.render_text_styled(&screen, 0, 0, "a\x07b\x7fc\u009b31md")
+	expect_no_control_cells(t, &screen, "render_text_styled")
+	testing.expect_value(t, screen.buffer[0][0].comb, 0)
+	testing.expect_value(t, screen.buffer[0][1].char, wayu.TUI_CONTROL_PLACEHOLDER)
+
+	wayu.screen_clear(&screen)
+	wayu.screen_attach_combining(&screen, 0, 0, 0x07)
+	wayu.screen_put_rune(&screen, 1, 0, 0x9d, wayu.Cell{})
+	wayu.screen_set_cell(&screen, 2, 0, wayu.Cell{char = 0x1b, comb = 0x07})
+	expect_no_control_cells(t, &screen, "cell writers")
+	testing.expect_value(t, screen.buffer[0][1].char, wayu.TUI_CONTROL_PLACEHOLDER)
+}
+
+@(test)
+test_render_list_item_shows_controls_escaped :: proc(t: ^testing.T) {
+	screen := wayu.screen_create(60, 1)
+	defer wayu.screen_destroy(&screen)
+	wayu.render_list_item(&screen, 2, 0, "x = echo \x1b]0;pwned\x07", 50, false, .WAYU_ACTIVE)
+	expect_no_control_cells(t, &screen, "render_list_item")
+	row := wayu.screen_to_string(&screen)
+	defer delete(row)
+	testing.expectf(t, strings.contains(row, "\\x1B]0;pwned\\x07"), "row not escaped: %q", row)
 }

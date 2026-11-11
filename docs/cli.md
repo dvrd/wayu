@@ -49,6 +49,13 @@ Developer flags (golden-file tests, see AGENTS.md): `-c=<component>` (only
 before any command word), `--test`, `--snapshot` (only with `-c=`; else exit
 `64`). Their `width=N` / `height=N` must be 1-1000 (else exit `64`).
 
+Human-readable output never prints a control character from your data raw:
+in `path`/`alias`/`const list`, `plugin list`/`get`/`search`, `script list`,
+`search` and `doctor`, a tab is shown as `\t`, a newline as `\n`, other
+control characters (C0, DEL) and bytes that are not valid UTF-8 as `\xHH`, and
+C1 controls (U+0080-U+009F) as `\u00HH`. `--json` output and `const get`,
+`alias get`, `path get` print values exactly as stored.
+
 An action that takes no arguments (`list`, `secrets lock`, `toml validate`,
 every `export` mode, ...) exits `64` on an extra word after it.
 

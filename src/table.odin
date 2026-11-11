@@ -40,17 +40,20 @@ table_add_row :: proc(table: ^Table, row: []string) {
 		return // Skip rows that don't match header count
 	}
 
-	// Clone the row data to avoid memory issues
+	// Clone the row data to avoid memory issues. Cells carry user data
+	// (alias commands, constant values, PATH dirs, plugin fields): control
+	// characters are made visible (term_safe) so a value can't drive the
+	// terminal. Cells are plain text; styling is applied by table_render.
 	cloned_row := make([]string, len(row))
 	for cell, i in row {
-		cloned_row[i] = strings.clone(cell)
+		cloned_row[i] = strings.clone(term_safe(cell))
 	}
 
 	append(&table.rows, cloned_row)
 
 	// Track max column widths incrementally (avoid recomputing headers
 	// every row — headers are already measured in new_table).
-	for cell, i in row {
+	for cell, i in cloned_row {
 		cell_width := visual_width(cell)
 		if cell_width > table.column_widths[i] {
 			table.column_widths[i] = cell_width

@@ -608,11 +608,23 @@ screen_resize :: proc(screen: ^Screen, new_width, new_height: int) {
 // terminal already advanced two columns when printing the lead.
 CELL_CONTINUATION :: rune(-1)
 
+// Shown in place of a control character (C0, DEL, C1): the screen buffer
+// never holds one, so screen_flush can't send a terminal escape or BEL that
+// came from user data.
+TUI_CONTROL_PLACEHOLDER :: '\uFFFD'
+
 // Set cell at position.
 // Overwriting either half of a double-width glyph blanks the other half so
 // the buffer never holds an orphaned lead or continuation cell.
 screen_set_cell :: proc(screen: ^Screen, x, y: int, cell: Cell) {
 	if x < 0 || x >= screen.width || y < 0 || y >= screen.height do return
+	cell := cell
+	if cell.char != CELL_CONTINUATION && is_control_rune(cell.char) {
+		cell.char = TUI_CONTROL_PLACEHOLDER
+	}
+	if is_control_rune(cell.comb) && cell.comb != 0 {
+		cell.comb = 0
+	}
 	row := screen.buffer[y]
 	if row[x].char == CELL_CONTINUATION && cell.char != CELL_CONTINUATION && x > 0 {
 		row[x - 1] = Cell {
@@ -632,6 +644,8 @@ screen_set_cell :: proc(screen: ^Screen, x, y: int, cell: Cell) {
 // before `limit` (exclusive right edge; defaults to the screen width).
 screen_put_rune :: proc(screen: ^Screen, x, y: int, r: rune, cell: Cell, limit := -1) -> int {
 	right := screen.width if limit < 0 else min(limit, screen.width)
+	r := r
+	if r != CELL_CONTINUATION && is_control_rune(r) do r = TUI_CONTROL_PLACEHOLDER
 	w := get_rune_width(r)
 	if w <= 0 do return 0
 	if x + w > right do return 0
@@ -651,7 +665,7 @@ screen_put_rune :: proc(screen: ^Screen, x, y: int, r: rune, cell: Cell, limit :
 // ZWJ, …) and marks with no glyph to attach to are dropped, so what reaches
 // the terminal always has exactly the width the cell grid assumes.
 screen_attach_combining :: proc(screen: ^Screen, x, y: int, r: rune) {
-	if is_presentation_selector(r) do return
+	if is_presentation_selector(r) || is_control_rune(r) do return
 	if x < 0 || x >= screen.width || y < 0 || y >= screen.height do return
 	cell := &screen.buffer[y][x]
 	if cell.char == CELL_CONTINUATION || cell.char == ' ' || cell.comb != 0 do return

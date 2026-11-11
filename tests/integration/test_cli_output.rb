@@ -54,6 +54,7 @@ class CliOutputIntegrationTest
       test_json_rejected_where_unsupported
       test_help_lists_every_command
       test_help_lists_every_exit_code
+      test_control_chars_shown_escaped
     ensure
       teardown_test_env
     end
@@ -197,6 +198,41 @@ class CliOutputIntegrationTest
     summary = JSON.parse(run_split('doctor --json').first)['summary']
     bad << "doctor summary #{summary.keys}" unless summary.keys.sort == %w[ok warnings errors info fixable].sort
     check('--json output matches the documented schema', bad.empty?, bad.join('; '))
+  end
+
+  # Security audit: a stored value holding terminal escapes (OSC title / OSC 52,
+  # clear screen, 8-bit CSI) must not reach the terminal raw from the human
+  # views; they show it escaped (\x1B, \u009B). --json still carries the
+  # exact value. Runs last: it replaces the seeded entries.
+  EVIL = "echo \e]0;pwned\a\e[2J\u009b31m".freeze
+  EVIL_DIR = "/nonexistent/pwn\e[2Jdir".freeze
+
+  def test_control_chars_shown_escaped
+    write_entries(paths: { 'PWN' => EVIL_DIR }, aliases: { 'pwnalias' => EVIL }, env: { 'PWN_TITLE' => EVIL })
+    raw = ["\e", "\a", "\u009b"]
+    bad = []
+    ['alias list', 'alias list --full', 'const list', 'const list --full', 'path list',
+     'path list --full', 'search pwn', 'doctor'].each do |cmd|
+      out, err, = run_split(cmd)
+      hit = raw.find { |c| out.include?(c) || err.include?(c) }
+      bad << "#{cmd}: raw #{hit.inspect}" if hit
+    end
+    %w[alias const].each do |kind|
+      out, = run_split("#{kind} list")
+      bad << "#{kind} list: escaped value missing" unless out.include?('\x1B]0;pwned\x07\x1B[2J\u009B31m')
+    end
+    path_out, = run_split('path list')
+    bad << 'path list: escaped dir missing' unless path_out.include?('pwn\x1B[2Jdir')
+
+    aliases = JSON.parse(run_split('alias list --json').first)['aliases']
+    bad << 'alias --json value changed' unless aliases.any? { |a| a['alias'] == 'pwnalias' && a['command'] == EVIL }
+    consts = JSON.parse(run_split('const list --json').first)['constants']
+    bad << 'const --json value changed' unless consts.any? { |c| c['constant'] == 'PWN_TITLE' && c['value'] == EVIL }
+    paths = JSON.parse(run_split('path list --json').first)['paths']
+    bad << 'path --json dir changed' unless paths.any? { |p| p['path'] == EVIL_DIR }
+    got, = run_split('const get PWN_TITLE')
+    bad << 'const get no longer raw' unless got == "#{EVIL}\n"
+    check('Control characters in values are shown escaped; --json and get stay exact', bad.empty?, bad.join('; '))
   end
 
   def test_json_empty_lists

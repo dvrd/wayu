@@ -192,8 +192,17 @@ print_doctor_results :: proc(results: []CheckResult) {
 			fixable_icon = " 🔧"
 		}
 
-		fmt.printfln("  %s%s%s %s%s", status_color, status_icon, RESET, result.name, fixable_icon)
-		fmt.printfln("    %s%s%s", get_muted(), result.message, RESET)
+		// Messages quote user data (PATH dirs, rc lines, plugin and file
+		// names): control characters are made visible (term_safe).
+		fmt.printfln(
+			"  %s%s%s %s%s",
+			status_color,
+			status_icon,
+			RESET,
+			term_safe(result.name),
+			fixable_icon,
+		)
+		fmt.printfln("    %s%s%s", get_muted(), term_safe(result.message), RESET)
 	}
 	fmt.println()
 }
@@ -335,7 +344,11 @@ print_doctor_summary :: proc(
 			fmt.println("  Manual fixes needed:")
 			for attempt in fix_attempts {
 				if !attempt.success {
-					fmt.printfln("    • %s: %s", attempt.name, attempt.message)
+					fmt.printfln(
+						"    • %s: %s",
+						term_safe(attempt.name),
+						term_safe(attempt.message),
+					)
 				}
 			}
 		}
@@ -398,9 +411,9 @@ attempt_auto_fixes :: proc(results: []CheckResult, arena_alloc: mem.Allocator) -
 
 			_, fix_ok, fix_msg := doctor_fix_paths(arena_alloc)
 			if fix_ok {
-				fmt.printfln("    %s✓ %s%s", get_success(), fix_msg, RESET)
+				fmt.printfln("    %s✓ %s%s", get_success(), term_safe(fix_msg), RESET)
 			} else {
-				fmt.printfln("    %s✗ %s%s", get_error(), fix_msg, RESET)
+				fmt.printfln("    %s✗ %s%s", get_error(), term_safe(fix_msg), RESET)
 			}
 			append(&attempts, FixAttempt{name = result.name, success = fix_ok, message = fix_msg})
 
@@ -413,9 +426,9 @@ attempt_auto_fixes :: proc(results: []CheckResult, arena_alloc: mem.Allocator) -
 			fix_ok, fix_msg := doctor_fix_rc_optimize()
 			fix_msg = strings.clone(fix_msg, arena_alloc)
 			if fix_ok {
-				fmt.printfln("    %s✓ %s%s", get_success(), fix_msg, RESET)
+				fmt.printfln("    %s✓ %s%s", get_success(), term_safe(fix_msg), RESET)
 			} else {
-				fmt.printfln("    %s✗ %s%s", get_error(), fix_msg, RESET)
+				fmt.printfln("    %s✗ %s%s", get_error(), term_safe(fix_msg), RESET)
 			}
 			append(&attempts, FixAttempt{name = result.name, success = fix_ok, message = fix_msg})
 
@@ -1680,7 +1693,7 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 					fmt.tprintf(
 						"wayu.toml is malformed (line %d: %s) — run `wayu toml validate` or restore with `wayu backup restore toml --yes`",
 						perr.line,
-						toml_escape_controls(perr.msg),
+						term_safe(perr.msg),
 					),
 				),
 				fixable = false,
@@ -1701,11 +1714,7 @@ check_toml_config :: proc(results: ^[dynamic]CheckResult) {
 					name = clone_arena("TOML config"),
 					status = .ERROR,
 					message = clone_arena(
-						fmt.tprintf(
-							"wayu.toml line %d: %s",
-							is.line,
-							toml_escape_controls(is.msg),
-						),
+						fmt.tprintf("wayu.toml line %d: %s", is.line, term_safe(is.msg)),
 					),
 					fixable = false,
 				},

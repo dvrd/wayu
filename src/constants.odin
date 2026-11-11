@@ -305,12 +305,8 @@ list_toml_constants :: proc() {
 	// Secret-looking values shown as SECRET_MASK (hint printed below).
 	masked_count := 0
 
-	// Collect stripped values to defer freeing until after table_render
-	stripped_values := make([dynamic]string)
-	defer {
-		for v in stripped_values {delete(v)}
-		delete(stripped_values)
-	}
+	// Values go in as stored: table_add_row makes control characters (escape
+	// sequences, newlines) visible instead of hiding or interpreting them.
 
 	// Add wayu entries
 	if show_wayu || show_inactive {
@@ -329,11 +325,7 @@ list_toml_constants :: proc() {
 				continue
 			}
 
-			value := strip_ansi_codes(
-				list_display_value(entry.name, entry.value, wayu.reveal_secrets),
-				true,
-			)
-			append(&stripped_values, value)
+			value := list_display_value(entry.name, entry.value, wayu.reveal_secrets)
 			if value == SECRET_MASK && entry.value != SECRET_MASK {
 				masked_count += 1
 			}
@@ -375,11 +367,7 @@ list_toml_constants :: proc() {
 		for ext_const_name in external_constants {
 			if env_val := snapshot_env_var(ext_const_name); env_val != nil {
 				real := env_val.(string)
-				value := strip_ansi_codes(
-					list_display_value(ext_const_name, real, wayu.reveal_secrets),
-					true,
-				)
-				append(&stripped_values, value)
+				value := list_display_value(ext_const_name, real, wayu.reveal_secrets)
 				if value == SECRET_MASK && real != SECRET_MASK {
 					masked_count += 1
 				}

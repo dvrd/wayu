@@ -3712,11 +3712,15 @@ render_text_styled :: proc(
 		bg   = bg,
 		bold = bold,
 	}
-	for ch in text {
+	for c in text {
+		ch := c
 		if current_x >= screen.width do break
 		// ESC bytes must never reach Cell.char — they inflate logical cursor_x
 		// and drift the diff renderer. See thoughts/scroll_bug_spec.md.
 		if ch == 0x1b do continue
+		// Other control characters (C0, DEL, C1) show as a placeholder
+		// glyph: never emitted to the terminal, never taken for a mark.
+		if is_control_rune(ch) do ch = TUI_CONTROL_PLACEHOLDER
 		if get_rune_width(ch) == 0 {
 			screen_attach_combining(screen, last_x, y, ch)
 			continue

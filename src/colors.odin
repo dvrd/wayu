@@ -2,6 +2,7 @@ package wayu
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:unicode/utf8"
 // ANSI color codes similar to gum
 RESET_CODE :: "\x1b[0m"
 BOLD_CODE :: "\x1b[1m"
@@ -525,6 +526,73 @@ stylize :: proc(text: string, color: string, style: string = "") -> string {
 	}
 	return fmt.aprintf("%s%s%s", color, text, RESET)
 }
+// term_safe returns `s` made safe to print on a terminal: user data (alias
+// commands, constant values, PATH dirs, plugin fields, names quoted from
+// files) must not be able to emit escape sequences that rewrite the screen,
+// set the title or write the clipboard (OSC 52). One rule everywhere:
+// tab -> \t, newline -> \n, other C0 controls and DEL -> \xHH, C1 controls
+// (U+0080-U+009F) -> \u00HH, a byte that is not valid UTF-8 -> \xHH. A
+// backslash stays as is. Returns `s` itself when nothing needs escaping,
+// otherwise a temp-allocated copy. Not for --json (json_escape) or values
+// printed raw for scripts (`const get`).
+term_safe :: proc(s: string) -> string {
+	if !term_needs_escape(s) {
+		return s
+	}
+	b := strings.builder_make(context.temp_allocator)
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c < 0x80 {
+			switch {
+			case c == '\t':
+				strings.write_string(&b, "\\t")
+			case c == '\n':
+				strings.write_string(&b, "\\n")
+			case c < 0x20 || c == 0x7f:
+				fmt.sbprintf(&b, "\\x%02X", c)
+			case:
+				strings.write_byte(&b, c)
+			}
+			i += 1
+			continue
+		}
+		r, size := utf8.decode_rune_in_string(s[i:])
+		switch {
+		case r == utf8.RUNE_ERROR && size <= 1:
+			fmt.sbprintf(&b, "\\x%02X", c)
+			i += 1
+			continue
+		case r >= 0x80 && r <= 0x9f:
+			fmt.sbprintf(&b, "\\u%04X", r)
+		case:
+			strings.write_string(&b, s[i:i + size])
+		}
+		i += size
+	}
+	return strings.to_string(b)
+}
+
+// Whether term_safe would change `s`.
+@(private = "file")
+term_needs_escape :: proc(s: string) -> bool {
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c < 0x80 {
+			if c < 0x20 || c == 0x7f {
+				return true
+			}
+			i += 1
+			continue
+		}
+		r, size := utf8.decode_rune_in_string(s[i:])
+		if (r == utf8.RUNE_ERROR && size <= 1) || (r >= 0x80 && r <= 0x9f) {
+			return true
+		}
+		i += size
+	}
+	return false
+}
+
 // json_escape_string_builder escapes JSON-special characters into a strings.Builder.
 @(private = "file")
 json_escape_string_builder :: proc(builder: ^strings.Builder, str: string) {

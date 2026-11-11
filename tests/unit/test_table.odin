@@ -151,3 +151,16 @@ test_table_expand_env_vars :: proc(t: ^testing.T) {
 	defer delete(expanded_normal)
 	testing.expect_value(t, expanded_normal, "/usr/bin")
 }
+
+// Cells carry user data: control characters must not reach the terminal.
+@(test)
+test_table_cells_term_safe :: proc(t: ^testing.T) {
+	table := wayu.new_table([]string{"Alias", "Command"})
+	defer wayu.table_destroy(&table)
+	wayu.table_add_row(&table, []string{"x", "echo \x1b]0;pwned\x07\x1b[2J"})
+	testing.expect_value(t, table.rows[0][1], "echo \\x1B]0;pwned\\x07\\x1B[2J")
+	out := wayu.table_render(table, 200)
+	defer delete(out)
+	testing.expect(t, !strings.contains(out, "pwned\x07"), "raw BEL in table output")
+	testing.expect(t, strings.contains(out, "\\x1B]0;pwned"), "escaped value missing")
+}

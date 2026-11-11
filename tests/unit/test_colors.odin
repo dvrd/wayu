@@ -4,6 +4,7 @@ import wayu "../../src"
 import "core:fmt"
 import "core:strings"
 import "core:testing"
+import "core:unicode/utf8"
 
 @(test)
 test_stylize_function :: proc(t: ^testing.T) {
@@ -224,4 +225,45 @@ test_get_muted :: proc(t: ^testing.T) {
 		len(color) > 0 || wayu.CURRENT_COLOR_PROFILE == .ASCII,
 		"Should return muted color or empty for ASCII",
 	)
+}
+
+@(test)
+test_term_safe_clean_passthrough :: proc(t: ^testing.T) {
+	// Clean text (incl. multi-byte UTF-8 and a backslash) comes back as is,
+	// without a copy.
+	s := "plain [x] \\ é ✓ 日本"
+	out := wayu.term_safe(s)
+	testing.expect_value(t, out, s)
+	testing.expect(t, raw_data(out) == raw_data(s), "clean input must not be copied")
+	testing.expect_value(t, wayu.term_safe(""), "")
+}
+
+@(test)
+test_term_safe_escapes_controls :: proc(t: ^testing.T) {
+	// OSC title + clear screen: the ESC/BEL bytes become visible text.
+	testing.expect_value(t, wayu.term_safe("a\x1b]0;pwned\x07b"), "a\\x1B]0;pwned\\x07b")
+	testing.expect_value(t, wayu.term_safe("\x1b[2J"), "\\x1B[2J")
+	// Tab and newline get their short escapes; other C0 and DEL are \xHH.
+	testing.expect_value(t, wayu.term_safe("\x00\t\n\r\x7f"), "\\x00\\t\\n\\x0D\\x7F")
+	// C1 controls (8-bit CSI / OSC as runes) are \u00HH.
+	testing.expect_value(t, wayu.term_safe("c1\u009b31m\u009d"), "c1\\u009B31m\\u009D")
+	// U+00A0 (just past C1) is printable and stays.
+	testing.expect_value(t, wayu.term_safe("a b"), "a b")
+}
+
+@(test)
+test_term_safe_invalid_utf8 :: proc(t: ^testing.T) {
+	// Lone continuation / truncated sequences / a raw 8-bit CSI byte are
+	// shown as \xHH; valid runes around them survive.
+	testing.expect_value(t, wayu.term_safe("a\x9b[2Jb"), "a\\x9B[2Jb")
+	testing.expect_value(t, wayu.term_safe("é\xc3"), "é\\xC3")
+	testing.expect_value(t, wayu.term_safe("\xff\xfe✓"), "\\xFF\\xFE✓")
+	// An encoded U+FFFD is valid text, not an error byte.
+	testing.expect_value(t, wayu.term_safe("�"), "�")
+	// The output never holds a byte < 0x20, DEL, or invalid UTF-8.
+	out := wayu.term_safe("\x1b\x9b\xc2\x9b\x07\x7f\xe2\x82")
+	testing.expect(t, utf8.valid_string(out), "output must be valid UTF-8")
+	for i in 0 ..< len(out) {
+		testing.expect(t, out[i] >= 0x20 && out[i] != 0x7f, "raw control byte in output")
+	}
 }
