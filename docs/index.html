@@ -467,7 +467,8 @@
     /* ── FAQ ────────────────────────────────────────────────────────────── */
     .faq-grid { display: grid; gap: 32px 56px; grid-template-columns: minmax(0, 1fr); }
     @media (min-width: 960px) { .faq-grid { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: start; } .faq-grid .sec-head { position: sticky; top: 96px; } }
-    .faq { display: grid; gap: 10px; }
+    .faq { display: grid; gap: 10px; min-width: 0; }
+    .faq details, .faq summary span { min-width: 0; overflow-wrap: anywhere; }
     .faq details { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
     .faq details[open] { box-shadow: inset 0 0 0 1px var(--line-2); }
     .faq summary { padding: 14px 18px; min-height: 52px; font-size: 1rem; font-weight: 500; color: var(--ink); }
