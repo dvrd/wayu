@@ -17,7 +17,7 @@ Include:
 
 - the wayu version (`wayu --version`) and shell (zsh, bash or fish)
 - what an attacker controls (a `wayu.toml` value, a plugin repository, a
-  `hooks.conf` entry, a file in `~/.config/wayu/`, …) and what they gain
+  `hooks.conf` entry, a file in `~/.config/wayu/` or `~/.local/share/wayu/`, …) and what they gain
 - steps or a minimal config that reproduces it
 
 You will get an acknowledgement on the advisory, and the fix is released as a
@@ -29,8 +29,10 @@ wayu writes shell code that every new shell sources, so these are in scope:
 
 - values from `wayu.toml` or CLI arguments that escape their quoting in the
   generated `init`/`core` files and run as code
-- path traversal or writes outside `~/.config/wayu/` (backups, restore,
-  plugins, completions, export)
+- path traversal or writes outside wayu's two directories, the config dir
+  (`~/.config/wayu/`, `WAYU_CONFIG_DIR`) and the data dir
+  (`${XDG_DATA_HOME:-~/.local/share}/wayu/`, `WAYU_DATA_DIR`) (backups,
+  restore, plugins, completions, export, scripts)
 - secret-looking constant values leaking into output, previews or files
   readable by other users
 - release artifacts or the Homebrew formula not matching the source
