@@ -188,7 +188,7 @@ Completion scripts in the data dir's `completions/`. Default action: `list`.
 | `list`, `ls` | | |
 | `generate` | | Write wayu's own zsh, bash and fish completions |
 | `zsh`, `bash`, `fish` | | Print wayu's completion script for that shell |
-| `fpath` | `[list]`, `add <dir>`, `rm <dir>` | zsh: completion dirs wayu puts on `fpath` before `compinit` (entries.json `fpath`; `wayu optimize` fills it). `add` puts the dir first |
+| `fpath` | `[list]`, `add <dir>`, `rm <dir>` | zsh: completion dirs wayu puts on `fpath` before `compinit` (entries.json `fpath`; `wayu optimize` fills it). `add` puts the dir first; a dir with `:`, a newline or a glob character (`* ? [ ] ( ) < > \| # ^ ~`, except a leading `~`) is refused |
 | `help` | | |
 
 wayu's own completions parse the line rather than count positions: global

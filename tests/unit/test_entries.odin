@@ -281,3 +281,33 @@ test_bootstrap_line_per_shell :: proc(t: ^testing.T) {
 	)
 	free_all(context.temp_allocator)
 }
+
+// fpath entries: compinit/compaudit glob-expand them (${~fpath}), so glob
+// characters are refused on read (strict parse) and by fpath_entry_error.
+@(test)
+test_entries_fpath_glob_refused :: proc(t: ^testing.T) {
+	for d in ([]string{"/opt/zsh", "~/c", "~", "$HOME/.x/completions", "/a b/c-d.e_f+g"}) {
+		testing.expectf(t, wayu.fpath_entry_error(d) == "", "%s should be allowed", d)
+	}
+	for d in ([]string {
+			"/x/*",
+			"/x?",
+			"/x[ab]",
+			"/x(#qe,cmd,)",
+			"/a<1-2>",
+			"/a|b",
+			"/a#",
+			"/a^b",
+			"/a/~b",
+			"~~",
+			"/a:b",
+			"/a\nb",
+		}) {
+		testing.expectf(t, wayu.fpath_entry_error(d) != "", "%q should be refused", d)
+	}
+	store, err, ok := wayu.entries_parse(
+		`{"version":1,"paths":[],"aliases":[],"env":[],"fpath":["/x/*"]}`,
+	)
+	defer wayu.entries_store_destroy(&store)
+	testing.expect(t, !ok && strings.contains(err, "glob character"), err)
+}

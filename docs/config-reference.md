@@ -693,7 +693,7 @@ into `core.<ext>`. They are not read from `wayu.toml`; a `[paths]`,
 | `paths[]` | `{"key", "dir"}`: PATH entries, highest priority first. `key`: letters, digits, `_`; `dir`: non-empty, no `:` or newline. |
 | `aliases[]` | `{"name", "value"}`: aliases. `name` follows the [alias name rule](#aliases); `value` must not be blank. |
 | `env[]` | `{"name", "value"}`: constants (exported variables), in export order. `name`: letters, digits, `_`, not starting with a digit. An encrypted one is `{"name", "secret": true}` (no `value`), optionally `"run_only": true`. |
-| `fpath[]` | Strings, zsh only: completion dirs put on `fpath` (first = front) before wayu's `compinit`; the dump is rebuilt when their file list changes. Same expansion as PATH entries. Written only when non-empty (`wayu completions fpath`, `wayu optimize`). |
+| `fpath[]` | Strings, zsh only: completion dirs put on `fpath` (first = front) before wayu's `compinit`; the dump is rebuilt when their file list changes. Same expansion as PATH entries. No `:`, newline or glob character (`* ? [ ] ( ) < > | # ^ ~`, except a leading `~`/`~/`): `compinit` glob-expands fpath dirs. Written only when non-empty (`wayu completions fpath`, `wayu optimize`). |
 | `generators[]` | `{"shell", "cmd", "args"}`: `source <(cmd args)` / `eval "$(cmd args)"` lines moved by `wayu optimize`. `core.<shell>` (only that shell's) runs `_wayu_evalcache cmd args` after everything else, before the aliases; zsh/bash in interactive shells only. `args` follows the `[tools]` args rules. Written only when non-empty. |
 
 - **Writes** are atomic (temp file + rename, symlinks kept), under the lock

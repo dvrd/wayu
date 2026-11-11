@@ -212,8 +212,8 @@ entries_parse :: proc(content: string) -> (store: EntryStore, err: string, ok: b
 		if len(strings.trim_space(f)) == 0 {
 			return {}, fmt.tprintf("fpath[%d] is empty", i), false
 		}
-		if !is_path_entry_safe(f) {
-			return {}, fmt.tprintf("fpath[%d] contains ':' or a newline", i), false
+		if reason := fpath_entry_error(f); len(reason) > 0 {
+			return {}, fmt.tprintf("fpath[%d] %q %s", i, f, reason), false
 		}
 		for g in raw.fpath[:i] {
 			if g == f {
@@ -801,6 +801,28 @@ entries_invalid_utf8 :: proc(s: ^EntryStore) -> string {
 	return ""
 }
 
+// Why `dir` cannot be a managed fpath entry, "" when it can. Besides ':' and
+// newlines, glob characters are refused: compinit expands every fpath dir
+// with ${~fpath} (GLOB_SUBST), so `*` matches other dirs and a `(e:...:)`
+// glob qualifier in a dir name runs code. A leading `~` (`~`, `~/...`) is
+// allowed; it becomes $HOME. Temp-allocated.
+fpath_entry_error :: proc(dir: string) -> string {
+	if !is_path_entry_safe(dir) {
+		return "contains ':' or a newline"
+	}
+	rest := dir
+	if rest == "~" || strings.has_prefix(rest, "~/") {
+		rest = rest[1:]
+	}
+	if i := strings.index_any(rest, "*?[]()<>|#^~"); i >= 0 {
+		return fmt.tprintf(
+			"contains the glob character '%c' (not allowed: * ? [ ] ( ) < > | # ^ ~)",
+			rune(rest[i]),
+		)
+	}
+	return ""
+}
+
 // Persist `s` to entries.json: backup of the current file (once per CLI
 // run), atomic replace, mode 0600. Caller holds the config lock and has
 // handled --dry-run. Prints the reason and returns false on failure.
@@ -808,6 +830,12 @@ entries_save :: proc(s: ^EntryStore) -> bool {
 	if bad := entries_invalid_utf8(s); len(bad) > 0 {
 		print_error("%q: value is not valid UTF-8; nothing was written", bad)
 		return false
+	}
+	for f in s.fpath {
+		if reason := fpath_entry_error(f); len(reason) > 0 {
+			print_error("fpath entry %q %s; nothing was written", f, reason)
+			return false
+		}
 	}
 	if !os.is_dir(wayu.data) {
 		if err := make_directory_all(wayu.data); err != nil {
