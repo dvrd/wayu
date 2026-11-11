@@ -10,8 +10,10 @@
 package wayu
 
 import "base:runtime"
+import "core:crypto"
 import "core:os"
 import "core:strings"
+import "core:sys/posix"
 
 EntrySource :: enum {
 	WAYU_ACTIVE, // in wayu.toml AND in current env
@@ -26,10 +28,11 @@ EntrySource :: enum {
 @(private)
 ENV_SNAPSHOT_CACHE: struct {
 	path_initialized:    bool,
-	env_initialized:     bool,
 	aliases_initialized: bool,
 	path_entries:        [dynamic]string,
-	env_vars:            map[string]string,
+	// Only the variables looked up (never a copy of the whole environment,
+	// which holds exported secrets); a missing one is cached as absent.
+	env_vars:            map[string]Maybe(string),
 	aliases:             map[string]string,
 } = {}
 
@@ -55,36 +58,28 @@ snapshot_path_entries :: proc() -> [dynamic]string {
 	return ENV_SNAPSHOT_CACHE.path_entries
 }
 
-// snapshot_env_var returns the value of an environment variable, or nil if not set
-// Caches all env vars on first call.
+// snapshot_env_var returns the value of an environment variable, or nil if
+// not set. Each name is read once and cached (owned by the cache); only the
+// names asked for are copied, so the values of unrelated variables (e.g.
+// exported secrets) are never duplicated on the heap.
 snapshot_env_var :: proc(name: string) -> Maybe(string) {
-	if !ENV_SNAPSHOT_CACHE.env_initialized {
-		context.allocator = snapshot_allocator()
-		env_list, err := os.environ(context.allocator)
-		if err == nil {
-			defer {
-				for pair in env_list {delete(pair)}
-				delete(env_list)
-			}
-			for pair in env_list {
-				eq := strings.index_byte(pair, '=')
-				if eq <= 0 {
-					continue
-				}
-				key := pair[:eq]
-				if key in ENV_SNAPSHOT_CACHE.env_vars {
-					continue
-				}
-				ENV_SNAPSHOT_CACHE.env_vars[strings.clone(key)] = strings.clone(pair[eq + 1:])
-			}
-		}
-		ENV_SNAPSHOT_CACHE.env_initialized = true
-	}
-
 	if val, ok := ENV_SNAPSHOT_CACHE.env_vars[name]; ok {
 		return val
 	}
-	return nil
+	context.allocator = snapshot_allocator()
+	val: Maybe(string)
+	if v, found := os.lookup_env(name, context.allocator); found {
+		val = v
+	}
+	ENV_SNAPSHOT_CACHE.env_vars[strings.clone(name)] = val
+	return val
+}
+
+// Is `name` set in the environment? Copies nothing: for secrets, whose
+// presence is all a list view shows.
+snapshot_env_has :: proc(name: string) -> bool {
+	cname := strings.clone_to_cstring(name, context.temp_allocator)
+	return posix.getenv(cname) != nil
 }
 
 // snapshot_aliases spawns `$SHELL -i -c alias` and parses its output.
@@ -289,7 +284,10 @@ cleanup_env_snapshot :: proc() {
 	delete(ENV_SNAPSHOT_CACHE.path_entries)
 	for k, v in ENV_SNAPSHOT_CACHE.env_vars {
 		delete(k)
-		delete(v)
+		if s, ok := v.?; ok {
+			crypto.zero_explicit(raw_data(s), len(s)) // may be a secret's value
+			delete(s)
+		}
 	}
 	delete(ENV_SNAPSHOT_CACHE.env_vars)
 	for k, v in ENV_SNAPSHOT_CACHE.aliases {
@@ -306,4 +304,10 @@ cleanup_env_snapshot :: proc() {
 @(private = "file")
 snapshot_allocator :: proc() -> runtime.Allocator {
 	return runtime.heap_allocator()
+}
+
+// Does the snapshot hold a copy of `name`? (Tests: unrelated variables are
+// never copied.)
+env_snapshot_holds :: proc(name: string) -> bool {
+	return name in ENV_SNAPSHOT_CACHE.env_vars
 }

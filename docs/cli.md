@@ -153,7 +153,9 @@ that as an error, and a value in `secrets.json` with no secret entry in
 
 `add --secret`: without a value, it is read from stdin (hidden when stdin is
 a terminal; one trailing newline is dropped), so it stays out of argv and
-shell history: `wayu const get OLD | wayu const add NEW --secret`. Like
+shell history: `wayu const get OLD | wayu const add NEW --secret`. A value
+given as an argument is accepted with a warning on stderr (other local users
+can read argv with `ps`, and it lands in shell history). Like
 `--dry-run`, a `--secret` at the end of the line is a flag, not part of the
 value. An existing plain constant is converted (its `entries.json` entry
 keeps its place, without the value). A plain `add` of a name that is a secret exits `65`; `--secret`
@@ -484,7 +486,7 @@ Service, or `secret.key` in the config dir). `const get` decrypts,
 |---|---|---|
 | `list`, `ls` | | Secret names and mode (`session` or `run-only`), one per line (never values) |
 | `rekey` | | New master key, re-encrypt every secret, drop the session cache |
-| `lock` | | Delete the decrypted session cache (next shell decrypts again) |
+| `lock` | | Delete the decrypted session cache from every dir it was written to (next shell decrypts again) |
 | `run` | `<NAME>... -- <cmd> [args...]` | Run `cmd` with these secrets in its environment |
 | `help` | | |
 
@@ -509,7 +511,8 @@ wayu alias add gh 'wayu secrets run GH_TOKEN -- gh'
 Shells never read plaintext from the data dir: `core.<ext>` sources a
 per-login-session cache, `${XDG_RUNTIME_DIR:-${TMPDIR:-<data>/run}}/wayu-<uid>/secrets-<id>.<ext>`
 (`0600` in a `0700` dir owned by you; `<data>/run/wayu-<uid>` when that dir
-is a symlink or not yours; a symlinked cache file is never sourced), when it is newer than
+is a symlink, not yours, or open to group/other; a symlinked cache file is
+never sourced), when it is newer than
 `secrets.json`; otherwise it runs `wayu secrets cache` once (a hidden helper
 that decrypts into that file). When the key is unavailable or a value does
 not decrypt, the shell prints one `wayu: secrets not loaded: …` line on

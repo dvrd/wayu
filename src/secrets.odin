@@ -11,8 +11,10 @@
 
 package wayu
 
+import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sys/posix"
 
 // 0600 / 0700: owner-only. Anything holding constant values is created with
 // these.
@@ -133,4 +135,114 @@ restrict_file_mode :: proc(path: string) {
 	if err := os.chmod(path, SECRET_FILE_PERMS); err != nil {
 		debug("chmod 0600 failed for %s: %v", path, err)
 	}
+}
+
+// Create `dir` owner-only: missing parents with the default mode, the leaf
+// with mkdir 0700 plus an explicit chmod (the umask never widens it, but a
+// pre-set umask such as 0 must not matter either). An existing dir is left
+// as it is (see private_dir_tighten). err is temp-allocated.
+private_dir_make :: proc(dir: string) -> (ok: bool, err: string) {
+	if os.exists(dir) {
+		return true, ""
+	}
+	parent, _ := os.split_path(dir)
+	if len(parent) > 0 && !os.exists(parent) {
+		if e := os.make_directory_all(parent); e != nil {
+			return false, fmt.tprintf("cannot create %s: %v", parent, e)
+		}
+	}
+	cdir := strings.clone_to_cstring(dir, context.temp_allocator)
+	if posix.mkdir(cdir, posix.S_IRWXU) != .OK {
+		if posix.errno() != .EEXIST {
+			return false, fmt.tprintf("cannot create %s: %s", dir, posix.strerror(posix.errno()))
+		}
+		return true, "" // created concurrently: not ours to chmod
+	}
+	if posix.chmod(cdir, posix.S_IRWXU) != .OK {
+		return false, fmt.tprintf("cannot chmod %s: %s", dir, posix.strerror(posix.errno()))
+	}
+	return true, ""
+}
+
+// Create `dir` (private_dir_make) or make an existing one private: it must
+// be a real directory (not a symlink) owned by us, and loses any group/other
+// permission bits. Opened with O_NOFOLLOW and changed with fchmod, so a
+// swapped-in symlink is never followed. err is temp-allocated.
+private_dir_ensure :: proc(dir: string) -> (ok: bool, err: string) {
+	if mok, merr := private_dir_make(dir); !mok {
+		return false, merr
+	}
+	cdir := strings.clone_to_cstring(dir, context.temp_allocator)
+	fd := posix.open(cdir, {.DIRECTORY, .NOFOLLOW, .CLOEXEC})
+	if fd < 0 {
+		return false, fmt.tprintf(
+			"%s is not a directory we can open (symlink?): %s",
+			dir,
+			posix.strerror(posix.errno()),
+		)
+	}
+	defer posix.close(fd)
+	st: posix.stat_t
+	if posix.fstat(fd, &st) != .OK {
+		return false, fmt.tprintf("cannot stat %s: %s", dir, posix.strerror(posix.errno()))
+	}
+	if st.st_uid != posix.getuid() {
+		return false, fmt.tprintf("%s is owned by another user", dir)
+	}
+	if st.st_mode & (posix.S_IRWXG | posix.S_IRWXO) != {} {
+		if posix.fchmod(fd, posix.S_IRWXU) != .OK {
+			return false, fmt.tprintf("cannot chmod %s: %s", dir, posix.strerror(posix.errno()))
+		}
+	}
+	return true, ""
+}
+
+// Is `path` a regular file (lstat: a symlink is not)?
+is_regular_file_nofollow :: proc(path: string) -> bool {
+	st: posix.stat_t
+	if posix.lstat(strings.clone_to_cstring(path, context.temp_allocator), &st) != .OK {
+		return false
+	}
+	return posix.S_ISREG(st.st_mode)
+}
+
+// Is `path` itself a symlink (lstat)?
+is_symlink_nofollow :: proc(path: string) -> bool {
+	st: posix.stat_t
+	if posix.lstat(strings.clone_to_cstring(path, context.temp_allocator), &st) != .OK {
+		return false
+	}
+	return posix.S_ISLNK(st.st_mode)
+}
+
+// Core dumps: a crash while the master key or a decrypted value is in
+// memory must not write it to disk. The soft RLIMIT_CORE goes to 0 for the
+// rest of the process (the hard limit is kept, so `secrets run` can give
+// its command the original limit back before exec).
+@(private = "file")
+_core_limit_saved: posix.rlimit
+@(private = "file")
+_core_limit_lowered: bool
+
+secrets_disable_core_dumps :: proc() {
+	if _core_limit_lowered {
+		return
+	}
+	lim: posix.rlimit
+	if posix.getrlimit(.CORE, &lim) != .OK {
+		return
+	}
+	_core_limit_saved = lim
+	_core_limit_lowered = true
+	lim.rlim_cur = 0
+	_ = posix.setrlimit(.CORE, &lim)
+}
+
+// Put back the limit secrets_disable_core_dumps lowered (before an exec).
+secrets_restore_core_limit :: proc() {
+	if !_core_limit_lowered {
+		return
+	}
+	_ = posix.setrlimit(.CORE, &_core_limit_saved)
+	_core_limit_lowered = false
 }

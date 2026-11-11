@@ -731,3 +731,79 @@ test_backup_key_relative_to_wayu_dirs :: proc(t: ^testing.T) {
 		wayu.free_backup_infos(b)
 	}
 }
+
+// Security audit: the backup dir is tightened to 0700, symlinks planted in
+// backup/ are never listed (so never restored or pruned through), and
+// dropping the secrets.json copies never empties a symlinked dir's target.
+@(test)
+test_backup_dir_symlinks_and_mode :: proc(t: ^testing.T) {
+	root := test_tmp("wayu-test-backup-sec")
+	os.remove_all(root)
+	original_data := wayu.wayu.data
+	wayu.wayu.data = root
+	defer {wayu.wayu.data = original_data; os.remove_all(root)}
+	os.make_directory(root)
+	bdir := strings.concatenate({root, "/backup"}, context.temp_allocator)
+	os.make_directory(
+		bdir,
+		{
+			.Read_User,
+			.Write_User,
+			.Execute_User,
+			.Read_Group,
+			.Execute_Group,
+			.Read_Other,
+			.Execute_Other,
+		},
+	)
+	os.chmod(
+		bdir,
+		{
+			.Read_User,
+			.Write_User,
+			.Execute_User,
+			.Read_Group,
+			.Execute_Group,
+			.Read_Other,
+			.Execute_Other,
+		},
+	)
+
+	src := strings.concatenate({root, "/source.txt"}, context.temp_allocator)
+	_ = os.write_entire_file(src, transmute([]byte)string("data\n"))
+	path, ok := wayu.create_backup(src)
+	defer if ok do delete(path)
+	testing.expect(t, ok, "backup should be created")
+	fi, serr := os.stat(bdir, context.temp_allocator)
+	testing.expect(
+		t,
+		serr == nil && fi.mode & ~os.Permissions{.Read_User, .Write_User, .Execute_User} == {},
+		"backup dir must be tightened to 0700",
+	)
+
+	// A symlink named like a backup of the same key, pointing outside.
+	target := strings.concatenate({root, "/outside.txt"}, context.temp_allocator)
+	_ = os.write_entire_file(target, transmute([]byte)string("not a backup\n"))
+	key := wayu.backup_key(src)
+	defer delete(key)
+	link := fmt.tprintf("%s/%s.backup.2099-01-01_00-00-00.000000", bdir, key)
+	os.symlink(target, link)
+	infos := wayu.list_backups_for_file(src)
+	for info in infos {
+		testing.expectf(t, info.backup_file != link, "symlink listed as a backup: %s", link)
+		delete(info.original_file)
+		delete(info.backup_file)
+	}
+	testing.expect_value(t, len(infos), 1)
+	delete(infos)
+
+	// backup/secrets as a symlink to a dir: only the link goes.
+	victim := strings.concatenate({root, "/victim"}, context.temp_allocator)
+	os.make_directory(victim)
+	vfile := strings.concatenate({victim, "/keep.txt"}, context.temp_allocator)
+	_ = os.write_entire_file(vfile, transmute([]byte)string("keep\n"))
+	os.symlink(victim, wayu.backup_secrets_dir())
+	wayu.backup_drop_secrets_companions()
+	testing.expect(t, os.exists(vfile), "the symlink target's files must survive")
+	testing.expect(t, !os.exists(wayu.backup_secrets_dir()), "the symlink itself is removed")
+}

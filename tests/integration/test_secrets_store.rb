@@ -57,9 +57,12 @@ class SecretsStoreIntegrationTest
       test_export_eval_has_no_plaintext
       test_rekey
       test_rekey_crash_recovery
+      test_rekey_recovery_waits_for_lock
       test_lock
+      test_lock_every_cache_dir
       test_cache_symlinks_refused
       test_cache_private_fallback
+      test_cache_group_dir_refused
       test_doctor_ok
       test_tamper_warns_and_continues
       test_missing_key_never_replaced
@@ -139,7 +142,9 @@ class SecretsStoreIntegrationTest
     print 'Test 1: const add --secret (value with quotes, $, backslash)... '
     _, err, st = w(['const', 'add', 'FAKE_TOKEN', TOKEN, '--secret'])
     _, err2, st2 = w('const add FAKE_MULTI --secret', stdin: MULTI + "\n")
-    check('add failed', st.success? && st2.success?, err + err2)
+    # A value on argv warns (ps, history); one from stdin does not.
+    warned = err.include?('visible in ps') && !err.include?('fake-tok') && !err2.include?('visible in ps')
+    check('add failed', st.success? && st2.success? && warned, err + err2)
   end
 
   def test_store_and_key_files
@@ -446,12 +451,60 @@ class SecretsStoreIntegrationTest
     check('rekey not recovered', st.success? && a_ok && b_ok, "#{err} a=#{a_ok} #{err_a} b=#{b_ok} #{err_b}")
   end
 
+  # Recovery only runs under the config lock (a running rekey holds it), so a
+  # pending file is never judged halfway through a rekey. Without a pending
+  # file a read takes no lock.
+  def test_rekey_recovery_waits_for_lock
+    print 'Test 18c: rekey recovery waits for the config lock; plain reads do not... '
+    pending = "#{store}.rekey"
+    res = run_wayu_with_config_lock_held('const get FAKE_TOKEN', hold: 2)
+    if res.nil?
+      puts 'skipped (python3 not installed)'
+      return
+    end
+    out_a, st_a, waited_a = res
+    File.write(pending, File.read(store), perm: 0o600)
+    out_b, st_b, waited_b = run_wayu_with_config_lock_held('const get FAKE_TOKEN', hold: 2)
+    ok = st_a.success? && out_a.include?(TOKEN) && waited_a < 1.5 &&
+         st_b.success? && out_b.include?(TOKEN) && waited_b >= 1.5 && !File.exist?(pending)
+    check('recovery not serialized with the lock', ok,
+          "a=#{st_a.exitstatus} #{waited_a.round(2)}s b=#{st_b.exitstatus} #{waited_b.round(2)}s pending=#{File.exist?(pending)}")
+  end
+
   def test_lock
     print 'Test 19: lock deletes the session cache... '
     sh(['zsh', '-fc', "source #{@data_dir}/init.zsh"])
     had = caches.any?
     _, err, st = w('secrets lock')
     check('cache kept', had && st.success? && caches.empty?, err)
+  end
+
+  # Caches written under other TMPDIRs (and with neither TMPDIR nor
+  # XDG_RUNTIME_DIR, under <data>/run) are deleted too: `secrets lock` run
+  # with yet another TMPDIR removes them all.
+  def test_lock_every_cache_dir
+    print 'Test 19a: lock deletes caches under every TMPDIR used... '
+    bases = %w[t1 t2 t3].map { |n| "#{@tmp_home}/#{n}" }
+    bases.each { |b| FileUtils.mkdir_p(b) }
+    bases.each do |b|
+      Open3.capture3(env.merge('TMPDIR' => b), 'zsh', '-fc', "source #{@data_dir}/init.zsh", unsetenv_others: true)
+    end
+    Open3.capture3(env.reject { |k, _| k == 'TMPDIR' }, 'zsh', '-fc', "source #{@data_dir}/init.zsh",
+                   unsetenv_others: true)
+    found = lambda do
+      bases.flat_map { |b| Dir.glob("#{b}/wayu-#{Process.uid}/secrets-*") } +
+        Dir.glob("#{@data_dir}/run/wayu-#{Process.uid}/secrets-*")
+    end
+    had = found.call.size
+    other = "#{@tmp_home}/t4"
+    FileUtils.mkdir_p(other)
+    _, err, st = Open3.capture3(env.merge('TMPDIR' => other), @wayu_bin, 'secrets', 'lock', unsetenv_others: true)
+    left = found.call
+    rec = "#{@data_dir}/run/cache-dirs"
+    check('caches left behind', had == 4 && st.success? && left.empty? && mode(rec) == 0o600,
+          "had=#{had} left=#{left} #{err}")
+    bases.each { |b| FileUtils.rm_rf(b) }
+    FileUtils.rm_rf(other)
   end
 
   PLANTED = "export FAKE_TOKEN=planted; export FAKE_PLANTED=1\n".freeze
@@ -504,6 +557,36 @@ class SecretsStoreIntegrationTest
     check('cache not in the private dir', ok, "out=#{out.inspect} err=#{err} files=#{files}")
   end
 
+  # A cache dir with group/other permission bits is never trusted: planted
+  # newer caches in it are not sourced by zsh, bash or fish; the private
+  # fallback <data>/run/wayu-<uid> is used instead.
+  def test_cache_group_dir_refused
+    print 'Test 19d: a cache dir open to group/other is not trusted (zsh, bash, fish)... '
+    fish = `command -v fish 2>/dev/null`.strip
+    shells = { 'zsh' => ['zsh', '-fc'], 'bash' => ['bash', '--norc', '--noprofile', '-c'] }
+    shells['fish'] = [fish, '--no-config', '-c'] unless fish.empty?
+    shells.each_key { |sh| w("--shell #{sh} init") }
+    sh(['zsh', '-fc', "source #{@data_dir}/init.zsh"])
+    id = File.basename(caches.first.to_s)[/secrets-(\h+)\./, 1]
+    w('secrets lock')
+    FileUtils.mkdir_p(cache_dir, mode: 0o700)
+    File.chmod(0o770, cache_dir)
+    future = Time.now + 3600
+    bad = []
+    shells.each do |sh, argv|
+      planted = "#{cache_dir}/secrets-#{id}.#{sh}"
+      File.write(planted, sh == 'fish' ? "set -gx FAKE_TOKEN planted; set -gx FAKE_PLANTED 1\n" : PLANTED, perm: 0o600)
+      File.utime(future, future, planted)
+      out, err, = Open3.capture3(env, *argv, "source #{@data_dir}/init.#{sh}; printf '%s\\n' \"[$FAKE_PLANTED] $FAKE_TOKEN\"",
+                                 unsetenv_others: true)
+      bad << "#{sh}: #{out.inspect} #{err}" unless out.force_encoding('UTF-8') == "[] #{TOKEN}\n"
+    end
+    File.chmod(0o700, cache_dir)
+    FileUtils.rm_rf(cache_dir)
+    w('--shell zsh init')
+    check('planted cache sourced from a group-accessible dir', id && bad.empty?, "id=#{id} #{bad.join(' | ')}")
+  end
+
   def test_doctor_ok
     print 'Test 20: doctor checks store, key and decryption... '
     out, = w('doctor --json')
@@ -541,12 +624,16 @@ class SecretsStoreIntegrationTest
     check('key regenerated', st.exitstatus == 78 && gst.exitstatus == 78 && !created && err.include?('refusing'), err + gerr)
   end
 
-  # A fake `security` on PATH: items are files <dir>/<account> (never the
-  # real keychain). find-generic-password exits 44 when there is no item.
+  # A fake `security`: items are files <dir>/<account> (never the real
+  # keychain). find-generic-password exits 44 when there is no item. `-i`
+  # reads the command from stdin (how wayu stores the key, off argv). Every
+  # argv is appended to <dir>/argv.log.
   def fake_security(dir)
     FileUtils.mkdir_p("#{dir}/bin")
     File.write("#{dir}/bin/security", <<~SH)
       #!/bin/sh
+      printf '%s\\n' "$*" >> "#{dir}/argv.log"
+      if [ "$1" = -i ]; then IFS= read -r line; eval "set -- $line"; fi
       cmd=$1; shift; acct=; pw=
       while [ $# -gt 0 ]; do
         case $1 in -a) acct=$2; shift ;; -w) [ $# -gt 1 ] && { pw=$2; shift; } ;; -s|-l) shift ;; esac
@@ -563,19 +650,38 @@ class SecretsStoreIntegrationTest
 
   # OKAMI-306 follow-up: a 6.0 key (keychain account "wayu") is moved to the
   # per-data-dir account when it decrypts secrets.json, never otherwise.
+  # A wayu built with -define:WAYU_TEST_KEYSTORE=true: it takes the keychain
+  # program from WAYU_TEST_SECURITY_BIN (release builds only run
+  # /usr/bin/security and never read that variable). nil without odin.
+  def keystore_test_bin
+    return @keystore_test_bin if defined?(@keystore_test_bin)
+    @keystore_test_bin = nil
+    return nil if `command -v odin 2>/dev/null`.strip.empty?
+    out = "#{@tmp_home}/wayu-keystore-test"
+    root = File.expand_path('../..', __dir__)
+    _, err, st = Open3.capture3('odin', 'build', 'src', '-define:WAYU_TEST_KEYSTORE=true', "-out:#{out}", chdir: root)
+    raise "keystore test build failed: #{err}" unless st.success?
+    @keystore_test_bin = out
+  end
+
   def test_legacy_keychain_key_moved
     print 'Test 22b: wayu 6.0 keychain key moved to the per-data-dir account... '
+    bin = keystore_test_bin
+    if bin.nil?
+      puts 'skipped (odin not installed)'
+      return
+    end
     kc = "#{@tmp_home}/fake-keychain"
     fake_security(kc)
     path = "#{@config_dir}/wayu.toml"
     saved = File.read(path)
     File.write(path, saved.sub('backend = "file"', 'backend = "keychain"'))
-    kenv = env.merge('PATH' => "#{kc}/bin:#{ENV['PATH']}")
+    kenv = env.merge('WAYU_TEST_SECURITY_BIN' => "#{kc}/bin/security")
     get = lambda do
-      out, err, st = Open3.capture3(kenv, @wayu_bin, 'const', 'get', 'FAKE_TOKEN', unsetenv_others: true)
+      out, err, st = Open3.capture3(kenv, bin, 'const', 'get', 'FAKE_TOKEN', unsetenv_others: true)
       [out.force_encoding('UTF-8'), err.force_encoding('UTF-8'), st]
     end
-    new_items = -> { Dir.children(kc).reject { |n| %w[bin wayu].include?(n) } }
+    new_items = -> { Dir.children(kc).reject { |n| %w[bin wayu argv.log].include?(n) } }
     # A 6.0 key that does not decrypt the store: left alone, key still missing.
     File.write("#{kc}/wayu", 'ab' * 32)
     _, werr, wst = get.call
@@ -591,7 +697,12 @@ class SecretsStoreIntegrationTest
          moved.size == 1 && moved[0].match?(/\Awayu-\h{16}\z/) &&
          File.read("#{kc}/#{moved[0]}") == File.read(keyfile).strip && File.exist?("#{kc}/wayu") &&
          st2.success? && out2.chomp == TOKEN && !err2.include?('moved')
-    check('6.0 key not moved correctly', ok, "wrong=#{wrong_ok} #{werr} | #{st.exitstatus} #{err} | #{moved.inspect} | #{err2}")
+    # The key was stored through `security -i` (stdin), never on argv.
+    log = File.read("#{kc}/argv.log")
+    key_hex = File.read(keyfile).strip
+    argv_ok = log.lines.include?("-i\n") && !log.include?(key_hex)
+    check('6.0 key not moved correctly', ok && argv_ok,
+          "wrong=#{wrong_ok} #{werr} | #{st.exitstatus} #{err} | #{moved.inspect} | #{err2} | argv_ok=#{argv_ok}")
   end
 
   def test_unsafe_key_file_refused
@@ -673,7 +784,11 @@ class SecretsStoreIntegrationTest
     _, err, st = w(['secrets', 'run', 'FAKE_RUN', 'FAKE_MULTI', '--', 'sh', '-c',
                     "test \"$FAKE_RUN\" = '#{RUN_ONLY}' && test \"$FAKE_MULTI\" = \"$(printf 'fake-line-1\\nfake-line-2')\""])
     _, _, st2 = w(['secrets', 'run', 'FAKE_RUN', '--', 'sh', '-c', 'test "$FAKE_RUN" = wrong'])
-    check('child did not get the values', st.success? && st2.exitstatus == 1, err)
+    # wayu runs with core dumps off (key in memory); the command gets the
+    # caller's limit back.
+    out3, err3, st3 = sh(['sh', '-c', "if ulimit -c 1024 2>/dev/null; then exec #{@wayu_bin} secrets run FAKE_RUN -- sh -c 'ulimit -c'; else echo 1024; fi"])
+    check('child did not get the values / core limit', st.success? && st2.exitstatus == 1 &&
+          st3.success? && out3.strip == '1024', "#{err} #{out3.inspect} #{err3}")
   end
 
   def test_secrets_run_exit_status

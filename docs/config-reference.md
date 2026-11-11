@@ -608,10 +608,13 @@ error). `backend` says where the master key lives:
 
 | `backend` | Key storage |
 |---|---|
-| `"auto"` (default) | `keychain` on macOS; `secret-service` on Linux when `secret-tool` is on PATH; else `file` |
-| `"keychain"` | macOS login keychain: generic password, service `wayu-master-key`, account `wayu-<id>`, via `security`. Storing (first secret, `rekey`) passes the key on `security`'s command line for a moment, where other processes of the same user could see it. |
-| `"secret-service"` | freedesktop Secret Service via `secret-tool` (`service wayu account wayu-<id>`); the key goes over stdin |
-| `"file"` | `<config>/secret.key`: 64 hex characters, `0600`, created exclusively; refused when group/other can read it. Protects against reading the data dir alone, not against reading your whole home. |
+| `"auto"` (default) | `keychain` on macOS; `secret-service` on Linux when `secret-tool` is installed in `/usr/bin`, `/usr/local/bin`, `/bin` or `/run/current-system/sw/bin`; else `file` |
+| `"keychain"` | macOS login keychain: generic password, service `wayu-master-key`, account `wayu-<id>`, via `/usr/bin/security`. Storing (first secret, `rekey`) runs `security -i` and writes the command on its stdin: the key is never on a command line. |
+| `"secret-service"` | freedesktop Secret Service via `secret-tool` (`service wayu account wayu-<id>`) from one of those dirs; the key goes over stdin |
+| `"file"` | `<config>/secret.key`: 64 hex characters, `0600`, created exclusively; refused when group/other can read it. Protects against reading the data dir alone, not against reading your whole home. It lives in the config dir: never commit it to a dotfiles repo (add `secret.key` to its `.gitignore`); anyone with the file and `secrets.json` can decrypt every secret. |
+
+`security` and `secret-tool` are never looked up in `PATH`: a program of
+that name planted earlier in `PATH` would receive the key.
 
 `<id>` is 16 hex digits identifying the data dir (FNV-1a 64 of its path, the
 same id as in the session cache name): each data dir (another
@@ -630,15 +633,21 @@ matches the stored key.
 At shell start `core.<ext>` sources the session cache
 `${XDG_RUNTIME_DIR:-${TMPDIR:-<data>/run}}/wayu-<uid>/secrets-<id>.<ext>`
 (single-quoted `export` / `set -gx` lines, `0600` in a `0700` dir you own)
-when it is newer than `secrets.json`, without forking. The dir must be yours
-and not a symlink (else `<data>/run/wayu-<uid>` is used), and the file must
+when it is newer than `secrets.json`, without forking in zsh (bash and fish
+run one `ls -ldn` to read the dir's mode). The dir must be yours, not a
+symlink and without group/other permission bits (else
+`<data>/run/wayu-<uid>` is used), and the file must
 be yours and not a symlink; with neither `XDG_RUNTIME_DIR` nor `TMPDIR` set
 the cache lives under `<data>/run` (`0700`), never in a shared `/tmp`. Otherwise it runs
 `wayu secrets cache` once to (re)write it. If the key is unavailable or a
 value does not decrypt, one `wayu: secrets not loaded: …` line goes to stderr
-and startup continues without the secrets. Every change to `secrets.json`
-deletes the cache; `wayu secrets lock` deletes it by hand. Secret values are
-literal: no `$VAR` or `~` expansion.
+and startup continues without the secrets. The cache holds the values in
+plaintext on disk until it is deleted: every change to `secrets.json`
+deletes it, and `wayu secrets lock` deletes it by hand. Both remove the
+caches of this data dir from every cache dir wayu wrote one to (each is
+recorded in `<data>/run/cache-dirs`), whatever `TMPDIR` / `XDG_RUNTIME_DIR`
+the deleting command runs with. Secret values are literal: no `$VAR` or `~`
+expansion.
 
 Decrypted values are never written to `core.<ext>`, `path_sync.<ext>`,
 `turbo.<ext>`, backups or logs; only to the session cache and to the output

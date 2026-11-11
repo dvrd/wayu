@@ -67,14 +67,11 @@ create_backup :: proc(file_path: string, tag := "") -> (backup_path: string, ok:
 	defer delete(backup_dir)
 
 	// Backups hold full wayu.toml copies, [env] secrets included: the
-	// directory is 0700 and every backup 0600 (OKAMI-206).
-	if !os.exists(backup_dir) {
-		err := os.make_directory(backup_dir, SECRET_DIR_PERMS)
-		if err != nil {
-			debug("Failed to create backup directory: %s", backup_dir)
-			return "", false
-		}
-		debug("Created backup directory: %s", backup_dir)
+	// directory is 0700 and every backup 0600 (OKAMI-206). An existing dir
+	// is tightened to 0700; a symlink or another user's dir is refused.
+	if dok, derr := private_dir_ensure(backup_dir); !dok {
+		debug("Backup directory refused: %s", derr)
+		return "", false
 	}
 
 	base_name := backup_key(file_path)
@@ -174,7 +171,7 @@ backup_secrets_companion :: proc(backup_path: string) -> string {
 @(private = "file")
 backup_write_secrets_companion :: proc(backup_path: string) -> bool {
 	dir := backup_secrets_dir()
-	if !os.exists(dir) && os.make_directory(dir, SECRET_DIR_PERMS) != nil {
+	if dok, _ := private_dir_ensure(dir); !dok {
 		return false
 	}
 	content: []byte
@@ -203,8 +200,8 @@ backup_write_secrets_companion :: proc(backup_path: string) -> bool {
 // Delete a backup file and, for an entries.json backup, its secrets.json copy.
 backup_remove :: proc(backup_path: string) -> os.Error {
 	companion := backup_secrets_companion(backup_path)
-	if os.exists(companion) {
-		os.remove(companion)
+	if os.exists(companion) || is_symlink_nofollow(companion) {
+		os.remove(companion) // unlinks a symlink itself, never its target
 	}
 	return os.remove(backup_path)
 }
@@ -212,7 +209,14 @@ backup_remove :: proc(backup_path: string) -> os.Error {
 // Drop every secrets.json copy (`secrets rekey`: their ciphertext is under
 // the old key). The entries.json backups stay.
 backup_drop_secrets_companions :: proc() {
-	os.remove_all(backup_secrets_dir())
+	dir := backup_secrets_dir()
+	// remove_all opens a symlinked top-level dir and empties its target:
+	// a symlink is only unlinked.
+	if is_symlink_nofollow(dir) {
+		os.remove(dir)
+		return
+	}
+	os.remove_all(dir)
 }
 
 // Name a file's backups are stored under: "<key>.backup.<stamp>". Files wayu
@@ -297,7 +301,7 @@ list_backup_keys :: proc(allocator := context.allocator) -> []string {
 
 	keys := make([dynamic]string, allocator)
 	for info in infos {
-		if info.type == .Directory {
+		if info.type != .Regular {
 			continue
 		}
 		i := strings.index(info.name, ".backup.")
@@ -528,7 +532,7 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 		fmt.printfln("  File:   %s", file_path)
 		fmt.printfln("  Backup: %s", chosen.backup_file)
 		if file_path == entries_file_path() &&
-		   os.exists(backup_secrets_companion(chosen.backup_file)) {
+		   is_regular_file_nofollow(backup_secrets_companion(chosen.backup_file)) {
 			fmt.printfln("  Also:   secrets.json (the copy taken with this backup)")
 		}
 		fmt.println()
@@ -572,7 +576,9 @@ restore_from_backup :: proc(file_path: string, selector := "") -> bool {
 	has_secrets_copy := false
 	if live_entries {
 		companion := backup_secrets_companion(chosen.backup_file)
-		if os.exists(companion) {
+		// Only a regular file: a planted symlink would restore whatever it
+		// points to as secrets.json.
+		if is_regular_file_nofollow(companion) {
 			data, err := os.read_entire_file_from_path(companion, context.allocator)
 			if err != nil {
 				print_error_simple("Cannot read %s: %v — aborting restore", companion, err)
@@ -682,7 +688,9 @@ list_backups_for_key :: proc(key: string, original: string) -> []BackupInfo {
 	defer delete(backups)
 
 	for info in file_infos {
-		if strings.has_prefix(info.name, pattern) && info.type != os.File_Type.Directory {
+		// Regular files only (read_dir does not follow symlinks): a symlink
+		// planted in backup/ is never listed, restored or pruned through.
+		if strings.has_prefix(info.name, pattern) && info.type == .Regular {
 			full_path := fmt.aprintf("%s/%s", dir, info.name)
 
 			// Extract timestamp (+ collision sequence) from filename

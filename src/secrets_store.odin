@@ -186,8 +186,13 @@ secrets_wipe :: proc(s: string, allocator := context.allocator) {
 // Strict: one JSON object with exactly the keys secrets_store_format writes
 // ("version", "cipher", "values", optional "run_only"), nothing after it;
 // every name a shell variable name; every value a string; "run_only" a list
-// of distinct names that are in "values".
+// of distinct names that are in "values". The depth-limited strict syntax
+// check runs first: core:encoding/json recurses without a limit, so a
+// deeply nested file would overflow the stack.
 secrets_store_parse :: proc(text: string) -> (store: Secrets_Store, err: string) {
+	if serr := json_strict_check(text); len(serr) > 0 {
+		return {}, fmt.tprintf("not valid JSON (%s)", serr)
+	}
 	arena: virtual.Arena
 	if virtual.arena_init_growing(&arena) != nil {
 		return {}, "out of memory"
@@ -374,10 +379,9 @@ secrets_store_save :: proc(s: ^Secrets_Store) -> (ok: bool, err: string) {
 secrets_store_write_to :: proc(path: string, s: ^Secrets_Store) -> (ok: bool, err: string) {
 	text := secrets_store_format(s)
 	defer delete(text)
-	if !os.exists(wayu.data) {
-		if e := os.make_directory_all(wayu.data); e != nil {
-			return false, fmt.tprintf("I/O error: cannot create %s: %v", wayu.data, e)
-		}
+	// A data dir created here is 0700 (it holds secrets.json).
+	if dok, derr := private_dir_make(wayu.data); !dok {
+		return false, fmt.tprintf("I/O error: %s", derr)
 	}
 	if e := write_file_atomic(path, transmute([]byte)text); e != nil {
 		return false, fmt.tprintf("I/O error: cannot write %s: %v", path, e)
@@ -415,12 +419,33 @@ secrets_store_opens_with :: proc(s: ^Secrets_Store, key: [SECRETS_KEY_SIZE]byte)
 	return ok
 }
 
+// Does the store in the file at `path` decrypt with `key`? False when the
+// file is missing, malformed or empty.
+secrets_store_file_opens_with :: proc(path: string, key: [SECRETS_KEY_SIZE]byte) -> bool {
+	data, err := os.read_entire_file_from_path(path, context.allocator)
+	if err != nil {
+		return false
+	}
+	s, perr := secrets_store_parse(string(data))
+	delete(data)
+	defer secrets_store_destroy(&s)
+	return len(perr) == 0 && secrets_store_opens_with(&s, key)
+}
+
 // An interrupted rekey left secrets.json.rekey: if its values decrypt with
 // the stored key, the key was already replaced, so the pending store is
 // moved into place; if secrets.json still decrypts with it, the key was not
 // replaced and the pending store is dropped. When the key can't be read
 // (backend unavailable) nothing changes and the next load tries again.
+//
+// Only under the config lock: a `secrets rekey` in progress holds it, and
+// its pending file must not be judged (and dropped) halfway. Nothing is
+// done under --dry-run (the lock is not taken then).
 secrets_rekey_recover :: proc() {
+	if wayu.dry_run || !config_lock_acquire() {
+		return
+	}
+	defer config_lock_release()
 	pending := strings.clone(secrets_rekey_pending_path(), context.temp_allocator)
 	data, rerr := os.read_entire_file_from_path(pending, context.allocator)
 	if rerr != nil {
@@ -447,14 +472,7 @@ secrets_rekey_recover :: proc() {
 		}
 		return
 	}
-	cur_data, cerr := os.read_entire_file_from_path(secrets_store_path(), context.allocator)
-	if cerr != nil {
-		return
-	}
-	cur, cperr := secrets_store_parse(string(cur_data))
-	delete(cur_data)
-	defer secrets_store_destroy(&cur)
-	if len(cperr) == 0 && secrets_store_opens_with(&cur, key) {
+	if secrets_store_file_opens_with(secrets_store_path(), key) {
 		os.remove(pending)
 	}
 }
@@ -721,13 +739,16 @@ secrets_cache_id :: proc() -> string {
 }
 
 // <runtime>/wayu-<uid>, or <data>/run/wayu-<uid> when that path exists but
-// is a symlink, not a directory, or owned by someone else. core.<ext> makes
-// the same choice (emit_secrets_loader). Temp-allocated.
+// is a symlink, not a directory, owned by someone else, or open to group /
+// other. core.<ext> makes the same choice (emit_secrets_loader).
+// Temp-allocated.
 secrets_cache_dir :: proc() -> string {
 	dir := fmt.tprintf("%s/wayu-%d", secrets_runtime_base(), posix.getuid())
 	st: posix.stat_t
 	if posix.lstat(strings.clone_to_cstring(dir, context.temp_allocator), &st) == .OK {
-		if !posix.S_ISDIR(st.st_mode) || st.st_uid != posix.getuid() {
+		if !posix.S_ISDIR(st.st_mode) ||
+		   st.st_uid != posix.getuid() ||
+		   st.st_mode & (posix.S_IRWXG | posix.S_IRWXO) != {} {
 			return fmt.tprintf("%s/wayu-%d", secrets_private_run_dir(), posix.getuid())
 		}
 	}
@@ -824,12 +845,99 @@ secrets_cache_content :: proc(
 	return strings.to_string(b)
 }
 
-// Remove every shell's cache for this data dir (store changed, rekey, lock).
+// <data>/run/cache-dirs: every cache dir a cache of this data dir was
+// written to, one per line, so invalidation also finds caches written under
+// another TMPDIR / XDG_RUNTIME_DIR (temp-allocated).
+secrets_cache_dirs_file :: proc() -> string {
+	return fmt.tprintf("%s/cache-dirs", secrets_private_run_dir())
+}
+
+// Every dir a cache of this data dir may be in (deduplicated,
+// temp-allocated): the current one, the ones the usual bases give
+// (`$XDG_RUNTIME_DIR`, `$TMPDIR`, <data>/run, /tmp), and the ones recorded
+// in secrets_cache_dirs_file.
+secrets_cache_dirs_known :: proc() -> []string {
+	dirs := make([dynamic]string, context.temp_allocator)
+	add :: proc(dirs: ^[dynamic]string, dir: string) {
+		if len(dir) > 0 && !slice.contains(dirs[:], dir) {
+			append(dirs, dir)
+		}
+	}
+	uid_dir :: proc(base: string) -> string {
+		b := base
+		if len(b) > 1 && strings.has_suffix(b, "/") {
+			b = b[:len(b) - 1]
+		}
+		return fmt.tprintf("%s/wayu-%d", b, posix.getuid())
+	}
+	add(&dirs, secrets_cache_dir())
+	for var in ([]string{"XDG_RUNTIME_DIR", "TMPDIR"}) {
+		if base := os.get_env(var, context.temp_allocator); len(base) > 0 {
+			add(&dirs, uid_dir(base))
+		}
+	}
+	add(&dirs, uid_dir(secrets_private_run_dir()))
+	add(&dirs, uid_dir("/tmp"))
+	if data, err := os.read_entire_file_from_path(
+		secrets_cache_dirs_file(),
+		context.temp_allocator,
+	); err == nil {
+		text := string(data)
+		for line in strings.split_lines_iterator(&text) {
+			if strings.has_prefix(line, "/") {
+				add(&dirs, line)
+			}
+		}
+	}
+	return dirs[:]
+}
+
+// Record `dir` in secrets_cache_dirs_file (0600, atomic) unless it is
+// there. Best effort: a lost record only means invalidation misses that
+// dir (the cache still goes stale against the store).
+@(private = "file")
+secrets_cache_dir_record :: proc(dir: string) {
+	if strings.contains_any(dir, "\n\r") {
+		return
+	}
+	path := secrets_cache_dirs_file()
+	old: string
+	if data, err := os.read_entire_file_from_path(path, context.temp_allocator); err == nil {
+		old = string(data)
+		text := old
+		for line in strings.split_lines_iterator(&text) {
+			if line == dir {
+				return
+			}
+		}
+	}
+	if ok, _ := private_dir_ensure(secrets_private_run_dir()); !ok {
+		return
+	}
+	sep := "\n" if len(old) > 0 && !strings.has_suffix(old, "\n") else ""
+	text := strings.concatenate({old, sep, dir, "\n"}, context.temp_allocator)
+	if write_file_atomic(path, transmute([]byte)text) == nil {
+		restrict_file_mode(path)
+	}
+}
+
+// Remove every shell's cache for this data dir (store changed, rekey, lock)
+// from every dir one may be in (secrets_cache_dirs_known). A dir is only
+// entered when lstat shows a real directory owned by us; unlink never
+// follows a symlinked cache file.
 secrets_cache_invalidate :: proc() -> (removed: int) {
-	for sh in ([]ShellType{.ZSH, .BASH, .FISH}) {
-		p := secrets_cache_path(sh)
-		if os.exists(p) && os.remove(p) == nil {
-			removed += 1
+	for dir in secrets_cache_dirs_known() {
+		st: posix.stat_t
+		if posix.lstat(strings.clone_to_cstring(dir, context.temp_allocator), &st) != .OK ||
+		   !posix.S_ISDIR(st.st_mode) ||
+		   st.st_uid != posix.getuid() {
+			continue
+		}
+		for sh in ([]ShellType{.ZSH, .BASH, .FISH}) {
+			p := fmt.tprintf("%s/secrets-%s.%s", dir, secrets_cache_id(), get_shell_extension(sh))
+			if posix.unlink(strings.clone_to_cstring(p, context.temp_allocator)) == .OK {
+				removed += 1
+			}
 		}
 	}
 	return
@@ -944,6 +1052,7 @@ secrets_cache_write_once :: proc(
 	if dok, derr := secrets_cache_dir_ensure(dir); !dok {
 		return path, false, derr, false
 	}
+	secrets_cache_dir_record(dir)
 	// write_file_atomic follows symlinks: never write decrypted values
 	// through one (or keep a planted link the loader would refuse).
 	if st: posix.stat_t;
@@ -1022,7 +1131,8 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 		bin = "wayu"
 	}
 	// The cache is only trusted in a directory we own that is not a symlink
-	// (else <data>/run/wayu-<uid>, the same choice secrets_cache_dir makes),
+	// and has no group/other permission bits (else <data>/run/wayu-<uid>,
+	// the same choice secrets_cache_dir makes),
 	// and only when the file itself is ours, not a symlink, and newer than
 	// the store. There is no shared /tmp default: <data>/run instead.
 
@@ -1040,9 +1150,11 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 			"set _wayu_sc (string replace -r '(.)/$' '$1' -- $_wayu_sc)%s",
 			fq(uid_dir),
 		)
+		// fish has no fork-free way to read a mode: one `ls` when the dir
+		// exists.
 		fmt.sbprintln(
 			b,
-			"if test -L $_wayu_sc; or begin; test -e $_wayu_sc; and begin; not test -d $_wayu_sc; or not test -O $_wayu_sc; end; end",
+			"if test -L $_wayu_sc; or begin; test -e $_wayu_sc; and begin; not test -d $_wayu_sc; or not test -O $_wayu_sc; or not string match -qr -- '^d...------' (command ls -ldn -- $_wayu_sc 2>/dev/null); end; end",
 		)
 		fmt.sbprintfln(b, "    set _wayu_sc %s", fq(fallback))
 		fmt.sbprintln(b, "end")
@@ -1069,6 +1181,13 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 	}
 
 	sq :: proc(s: string) -> string {return shell_single_quote(s, context.temp_allocator)}
+	// "$_wayu_sc" is a dir with no group/other permission bits. zsh: a glob
+	// qualifier (no fork; `/` does not follow a symlink). bash cannot read a
+	// mode without a fork: one `ls` when the dir exists.
+	private_dir :=
+		`() { emulate -L zsh; local -a m; m=( $1(N/f:go-rwx:) ); (( $#m )); } "$_wayu_sc"` if \
+			shell == .ZSH else \
+			`case $(command ls -ldn -- "$_wayu_sc" 2>/dev/null) in d???------*) true ;; *) false ;; esac`
 	fresh := strings.concatenate(
 		{`[ -O "$_wayu_sc" ] && [ ! -h "$_wayu_sc" ] && [ "$_wayu_sc" -nt `, sq(store), " ]"},
 		context.temp_allocator,
@@ -1082,7 +1201,9 @@ emit_secrets_loader :: proc(b: ^strings.Builder, shell: ShellType, sep := "\n") 
 		strings.concatenate({`_wayu_sc="$_wayu_sc"`, sq(uid_dir)}, context.temp_allocator),
 		strings.concatenate(
 			{
-				`if [ -h "$_wayu_sc" ] || { [ -e "$_wayu_sc" ] && { [ ! -d "$_wayu_sc" ] || [ ! -O "$_wayu_sc" ]; }; }; then _wayu_sc=`,
+				`if [ -h "$_wayu_sc" ] || { [ -e "$_wayu_sc" ] && { [ ! -d "$_wayu_sc" ] || [ ! -O "$_wayu_sc" ] || ! `,
+				private_dir,
+				`; }; }; then _wayu_sc=`,
 				sq(fallback),
 				"; fi",
 			},
@@ -1273,6 +1394,7 @@ env_store_unmark_secret :: proc(name: string) -> (ok: bool, err: string) {
 // (one trailing newline removed). Caller wipes the result.
 @(private = "file")
 read_secret_value :: proc(name: string) -> (value: string, ok: bool) {
+	secrets_disable_core_dumps()
 	tty := bool(posix.isatty(posix.STDIN_FILENO))
 	if tty {
 		fmt.eprintf("Value for %s (input hidden): ", name)
@@ -1346,8 +1468,15 @@ const_add_secret :: proc(args: []string) {
 	value: string
 	owned := false
 	if len(args) >= 2 {
+		secrets_disable_core_dumps()
 		value = strings.join(args[1:], " ")
 		owned = true
+		// argv is visible to other local users (ps) and lands in shell
+		// history; stdin keeps the value out of both.
+		print_warning(
+			"The value of %s was passed as an argument: it is visible in ps and your shell history. Omit VALUE to be prompted (input hidden), or pipe it on stdin.",
+			name,
+		)
 	} else if !wayu.dry_run {
 		v, ok := read_secret_value(name)
 		if !ok {
@@ -1723,12 +1852,20 @@ secrets_rekey :: proc() {
 		exit_with_secret_error(serr)
 	}
 	if rerr := os.rename(pending, secrets_store_path()); rerr != nil {
-		// Put the old key back so the unchanged store stays readable.
-		_, _ = keystore_save(backend, old_key, true)
-		os.remove(pending)
-		exit_with_secret_error(
-			fmt.tprintf("I/O error: cannot replace %s: %v", secrets_store_path(), rerr),
-		)
+		if secrets_store_file_opens_with(secrets_store_path(), new_key) {
+			// The rename took effect after all: the rekey is complete.
+			os.remove(pending)
+		} else {
+			// Put the old key back so the unchanged store stays readable.
+			// If that fails too, the pending store stays: it matches the
+			// saved new key, and the next load moves it into place.
+			if restored, _ := keystore_save(backend, old_key, true); restored {
+				os.remove(pending)
+			}
+			exit_with_secret_error(
+				fmt.tprintf("I/O error: cannot replace %s: %v", secrets_store_path(), rerr),
+			)
+		}
 	}
 	secrets_cache_invalidate()
 	backup_drop_secrets_companions() // their ciphertext is under the old key
@@ -1840,12 +1977,13 @@ check_secrets :: proc(results: ^[dynamic]CheckResult) {
 	if backend == .KEYCHAIN || backend == .SECRET_SERVICE {
 		bname = fmt.tprintf("%s (account %s)", bname, keystore_account())
 	}
-	if prog := keystore_backend_program(backend); len(prog) > 0 && !check_command_exists(prog) {
+	if (backend == .KEYCHAIN || backend == .SECRET_SERVICE) &&
+	   len(keystore_backend_binary(backend)) == 0 {
 		add(
 			results,
 			"secrets backend",
 			.ERROR,
-			fmt.tprintf("%s: `%s` not found on PATH", bname, prog),
+			fmt.tprintf("%s: %s not found", bname, keystore_backend_binary_hint(backend)),
 		)
 		return
 	}
@@ -1964,6 +2102,7 @@ secrets_run_command :: proc(args: []string) {
 	argv := make([]cstring, len(cmd) + 1, context.temp_allocator)
 	for a, i in cmd {argv[i] = strings.clone_to_cstring(a, context.temp_allocator)}
 	argv[len(cmd)] = nil
+	secrets_restore_core_limit() // CMD gets the caller's limit back
 	posix.execvp(argv[0], raw_data(argv))
 
 	// execvp returned: it failed.

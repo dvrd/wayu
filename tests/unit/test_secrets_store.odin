@@ -11,6 +11,7 @@ import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import "core:sys/posix"
 import "core:testing"
 
 @(private = "file")
@@ -124,6 +125,20 @@ test_secrets_store_parse_rejects :: proc(t: ^testing.T) {
 		wayu.secrets_store_destroy(&s)
 		testing.expectf(t, len(err) > 0, "should reject %q", text)
 	}
+	// Deep nesting is rejected by the depth-limited pre-check, before
+	// core:encoding/json recurses into it (stack overflow).
+	deep := strings.concatenate(
+		{
+			`{"version": 1, "cipher": "chacha20poly1305", "values": {}, "run_only": `,
+			strings.repeat("[", 200_000, context.temp_allocator),
+			strings.repeat("]", 200_000, context.temp_allocator),
+			"}",
+		},
+		context.temp_allocator,
+	)
+	s, err := wayu.secrets_store_parse(deep)
+	wayu.secrets_store_destroy(&s)
+	testing.expectf(t, strings.contains(err, "nest"), "deep nesting: got %q", err)
 }
 
 @(test)
@@ -143,6 +158,12 @@ test_keystore_file_backend :: proc(t: ^testing.T) {
 
 	fi, err := os.stat(path, context.temp_allocator)
 	testing.expect(t, err == nil && fi.mode & GROUP_OTHER_BITS == {}, "key file must be 0600")
+	dfi, derr := os.stat(dir, context.temp_allocator)
+	testing.expect(
+		t,
+		derr == nil && dfi.mode & GROUP_OTHER_BITS == {},
+		"a dir created for the key must be 0700",
+	)
 
 	got, st2, _ := wayu.keystore_load_file(path)
 	testing.expect_value(t, st2, wayu.Key_Status.OK)
@@ -204,23 +225,20 @@ test_keystore_argv :: proc(t: ^testing.T) {
 		account,
 	)
 	label :: "wayu master key (/fake/home/.local/share/wayu)"
-	expect_argv(
+	// The key goes on `security -i`'s stdin, never on argv (ps shows argv).
+	expect_argv(t, wayu.keychain_store_argv(), {"security", "-i"})
+	testing.expect_value(
 		t,
-		wayu.keychain_store_argv("00ff"),
-		{
-			"security",
-			"add-generic-password",
-			"-U",
-			"-a",
+		wayu.keychain_store_line("00ff"),
+		fmt.tprintf(
+			"add-generic-password -U -a \"%s\" -s \"wayu-master-key\" -l \"%s\" -w \"00ff\"\n",
 			account,
-			"-s",
-			"wayu-master-key",
-			"-l",
 			label,
-			"-w",
-			"00ff",
-		},
+		),
 	)
+	// security's line parser: `"` and `\` escaped inside double quotes; a
+	// control character (newline) cannot end the command early.
+	testing.expect_value(t, wayu.keychain_quote("a b\"c\\d'e\nf"), "\"a b\\\"c\\\\d'e?f\"")
 	expect_argv(
 		t,
 		wayu.keychain_load_argv(),
@@ -261,6 +279,49 @@ test_keystore_argv :: proc(t: ^testing.T) {
 	// Another data dir: another account.
 	wayu.wayu.data = "/fake/other/wayu"
 	testing.expect(t, wayu.keystore_account() != account, "data dirs must not share a key")
+}
+
+// The keychain / Secret Service programs come from fixed system paths: a
+// `security` / `secret-tool` planted first in PATH (it would receive the
+// key) is never used, and the test-only env override is compiled out.
+@(test)
+test_keystore_binary_ignores_path :: proc(t: ^testing.T) {
+	dir := test_tmp("keystore-path")
+	os.remove_all(dir)
+	os.make_directory_all(dir)
+	defer os.remove_all(dir)
+	for name in ([]string{"security", "secret-tool"}) {
+		p := fmt.tprintf("%s/%s", dir, name)
+		_ = os.write_entire_file(p, "#!/bin/sh\nexit 0\n")
+		_ = os.chmod(p, {.Read_User, .Write_User, .Execute_User})
+	}
+	saved_path, _ := os.lookup_env("PATH", context.allocator)
+	defer {
+		os.set_env("PATH", saved_path)
+		delete(saved_path)
+	}
+	os.set_env("PATH", fmt.tprintf("%s:%s", dir, saved_path))
+	os.set_env("WAYU_TEST_SECURITY_BIN", fmt.tprintf("%s/security", dir))
+	os.set_env("WAYU_TEST_SECRET_TOOL_BIN", fmt.tprintf("%s/secret-tool", dir))
+	defer {
+		os.unset_env("WAYU_TEST_SECURITY_BIN")
+		os.unset_env("WAYU_TEST_SECRET_TOOL_BIN")
+	}
+
+	kc := wayu.keystore_backend_binary(.KEYCHAIN)
+	testing.expect(t, kc == "" || kc == wayu.KEYSTORE_SECURITY_BIN, kc)
+	when ODIN_OS == .Darwin {
+		testing.expect_value(t, kc, wayu.KEYSTORE_SECURITY_BIN)
+	}
+	ss := wayu.keystore_backend_binary(.SECRET_SERVICE)
+	in_system_dir := ss == ""
+	for d in wayu.KEYSTORE_SECRET_TOOL_DIRS {
+		if ss == fmt.tprintf("%s/secret-tool", d) {
+			in_system_dir = true
+		}
+	}
+	testing.expect(t, in_system_dir, ss)
+	testing.expect_value(t, wayu.keystore_backend_binary(.FILE), "")
 }
 
 @(test)
@@ -618,4 +679,66 @@ test_secrets_cache_write_detects_store_change :: proc(t: ^testing.T) {
 	path, ok, err = wayu.secrets_cache_write(.ZSH)
 	testing.expect(t, !ok && strings.contains(err, "kept changing"), err)
 	testing.expect(t, !os.exists(path), "stale cache left behind")
+}
+
+// Rekey: after a failed rename, secrets.json is checked against the new key
+// (the rename may have taken effect) before the old key is put back.
+@(test)
+test_secrets_store_file_opens_with :: proc(t: ^testing.T) {
+	dir := test_tmp("store_opens_with")
+	os.remove_all(dir)
+	os.make_directory_all(dir)
+	defer os.remove_all(dir)
+	path := strings.concatenate({dir, "/secrets.json"}, context.temp_allocator)
+	testing.expect(t, !wayu.secrets_store_file_opens_with(path, test_key(1)), "missing file")
+
+	s: wayu.Secrets_Store
+	defer wayu.secrets_store_destroy(&s)
+	append(
+		&s.entries,
+		wayu.Secret_Entry {
+			name = strings.clone("FAKE_A"),
+			blob = wayu.secrets_seal(test_key(1), "FAKE_A", "fake-value"),
+		},
+	)
+	text := wayu.secrets_store_format(&s)
+	defer delete(text)
+	_ = os.write_entire_file(path, transmute([]byte)text)
+	testing.expect(t, wayu.secrets_store_file_opens_with(path, test_key(1)), "right key")
+	testing.expect(t, !wayu.secrets_store_file_opens_with(path, test_key(2)), "wrong key")
+}
+
+// Commands holding the key or plaintext run without core dumps; the soft
+// limit comes back for `secrets run`'s exec.
+@(test)
+test_secrets_core_dumps_disabled :: proc(t: ^testing.T) {
+	orig: posix.rlimit
+	testing.expect(t, posix.getrlimit(.CORE, &orig) == .OK)
+	wayu.secrets_disable_core_dumps()
+	now: posix.rlimit
+	posix.getrlimit(.CORE, &now)
+	testing.expect_value(t, now.rlim_cur, 0)
+	testing.expect_value(t, now.rlim_max, orig.rlim_max)
+	wayu.secrets_restore_core_limit()
+	posix.getrlimit(.CORE, &now)
+	testing.expect_value(t, now.rlim_cur, orig.rlim_cur)
+}
+
+// The env snapshot copies only the variables asked for (never the whole
+// environment, exported secrets included); presence checks copy nothing.
+@(test)
+test_env_snapshot_per_name :: proc(t: ^testing.T) {
+	os.set_env("WAYU_FAKE_SNAP_A", "fake-a")
+	os.set_env("WAYU_FAKE_SNAP_SECRET", "fake-secret")
+	defer {os.unset_env("WAYU_FAKE_SNAP_A"); os.unset_env("WAYU_FAKE_SNAP_SECRET")}
+	v, ok := wayu.snapshot_env_var("WAYU_FAKE_SNAP_A").?
+	testing.expect(t, ok && v == "fake-a", "value of a set variable")
+	testing.expect(t, wayu.snapshot_env_var("WAYU_FAKE_SNAP_UNSET") == nil, "unset variable")
+	testing.expect(t, wayu.snapshot_env_has("WAYU_FAKE_SNAP_SECRET"), "presence")
+	testing.expect(t, !wayu.snapshot_env_has("WAYU_FAKE_SNAP_UNSET"), "absence")
+	testing.expect(
+		t,
+		!wayu.env_snapshot_holds("WAYU_FAKE_SNAP_SECRET"),
+		"a variable never looked up must not be copied into the snapshot",
+	)
 }
