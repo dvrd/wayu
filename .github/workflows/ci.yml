@@ -85,7 +85,8 @@ jobs:
     - name: Run TUI layout tests (pyte)
       run: |
         python3 -m venv "$RUNNER_TEMP/tui-venv"
-        "$RUNNER_TEMP/tui-venv/bin/pip" install --quiet pyte==0.8.2
+        "$RUNNER_TEMP/tui-venv/bin/pip" install --quiet --require-hashes \
+          --no-deps -r .github/tui-requirements.txt
         "$RUNNER_TEMP/tui-venv/bin/python" tests/tui/test_responsive.py
 
   # Integration suites against an AddressSanitizer build: catches
