@@ -5,9 +5,10 @@
 #   vhs docs/demo/demo.tape
 #
 # Writes docs/demo/demo.gif (README) and docs/demo/demo.mp4 (website), then
-# docs/demo/poster.jpg is cut from the mp4:
+# docs/demo/poster.webp is cut from the mp4 (cwebp: brew install webp):
 #
-#   ffmpeg -y -loglevel error -ss 13 -i docs/demo/demo.mp4 -frames:v 1 -q:v 3 docs/demo/poster.jpg
+#   ffmpeg -y -loglevel error -ss 13 -i docs/demo/demo.mp4 -frames:v 1 /tmp/poster.png
+#   cwebp -q 85 /tmp/poster.png -o docs/demo/poster.webp
 #
 # docs/demo/setup.sh builds a throwaway HOME in /tmp/wayu-demo (HOME,
 # WAYU_CONFIG_DIR, WAYU_DATA_DIR and XDG dirs all inside it; key-file
