@@ -6,7 +6,7 @@ section after its version and publishes it as the GitHub release's
 `BREAKING CHANGE:` footers. 4.4.3 and 4.4.4 shipped behavior changes as patch
 releases, so they are listed here too.
 
-## Unreleased
+## 7.0.0
 
 **Leftover `[paths]` / `[aliases]` / `[env]` in `wayu.toml` are reported by `build`**
 

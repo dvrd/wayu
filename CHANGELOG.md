@@ -6,6 +6,292 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Behavior changes per release: [docs/UPGRADING.md](docs/UPGRADING.md).
 
+## [7.0.0] - 2026-11-11
+
+### ⚠ Upgrade notes
+
+- **zsh**: Zsh: plugins and zsh-defer no longer load in
+non-interactive shells; a later `compinit` call only registers new fpath
+dirs (`[settings] compinit_guard = false` restores it); zsh-defer runs
+queued commands after the prompt is drawn, with stderr shown; wayu no
+longer defines TRAPUSR1 except for the async prompt; the native prompt's
+PROMPT is '${_WAYU_PS1}' and _wayu_prompt_full/_wayu_prompt_transient set
+REPLY instead of printing; .zcompdump is rebuilt when any fpath dir
+changes. See docs/UPGRADING.md "Unreleased".
+- **config**: `wayu config scan` reads $ZDOTDIR/.zshrc when ZDOTDIR is
+set, and .bashrc/.bash_profile or config.fish for bash/fish, instead of
+always ~/.zshrc; `# >>> ... # <<<` blocks are reported as one block; a
+scan with nothing new no longer creates a backup.
+- **optimize**: `wayu optimize` removes the lines it moves from your
+startup files (backup first; undo with `wayu backup restore .zshrc
+--yes`). Interactive shells print `wayu: ~/.zshrc changed: N lines can be
+optimized (wayu optimize)` once after a startup file changes;
+`[settings] auto_optimize = true` moves them automatically. entries.json
+gains optional `fpath` and `generators` sections. `wayu doctor` has a new
+"startup files" warning that `doctor --fix` resolves by running optimize.
+- **cli**: Path add/remove and plugin check/update status lines
+changed text: the extra ✅/✓/⚠/↑/⚓ glyphs are gone and the indent now
+precedes the icon.
+- **highlight**: With `[settings] highlight = true`, brackets, history
+expansions and the cursor's matching bracket get new default styles;
+`{fd}` in `{fd}>file` is `named-fd` (default none, was `redirection`);
+several words change category (see docs/UPGRADING.md). Set the new
+styles to "none" in `highlight_styles` to turn them off.
+- **release**: Release binaries require macOS 15 (Sequoia) or later.
+- **hooks**: Hooks run outside wayu's config lock, are killed after 30 s (hooks.conf `timeout = <seconds>`), and in the CLI their stdout/stderr are shown. Remove hooks now receive the removed value as {value}. A hooks.conf command is unquoted only when one quoted string wraps all of it. `function add` with no editor and no terminal prints the file path and exits 0.
+- **entries**: Alias names may now contain `.` and start with a digit but not contain `/` or `^`; `const add` exits 65 for protected names (PATH, HOME, IFS, SHELL, USER, LOGNAME, PWD, OLDPWD, ZDOTDIR, SHLVL, FPATH, path, fpath, _, WAYU_*) and doctor errors (78) on stored ones; a non-UTF-8 or NUL-containing value exits 65 instead of 74.
+- **entries**: Entries.json that has trailing content, a trailing comma, a duplicate key, "version": "1", an unknown field, a missing value, run_only without secret, an invalid name or path key, or a NUL character now makes every command exit 78 naming the file (it was read silently). Fix it by hand or with `wayu backup restore entries --yes`.
+- **config**: A relative WAYU_CONFIG_DIR or WAYU_DATA_DIR makes every command exit 78; set an absolute path. The config lock is always <data>/.wayu.lock and the first writing command creates the data dir.
+- **path**: `wayu path add` of an existing file that is not a directory exits 65 instead of storing it; `template apply` / `init --template` skip PATH dirs that do not exist on this machine.
+- **watch**: `wayu watch stop` / `status` report "not running" and remove watcher.pid when no watcher holds `<data>/watcher.lock`, instead of signalling the PID in watcher.pid.
+- **secrets**: Core.<ext> sources secrets after PATH and embeds wayu's absolute path for the cache refresh and the prompt hook build; run `wayu build` to regenerate.
+- **build**: The prompt hook's `wayu build` no longer compiles stale scripts itself; they are rebuilt by a background `wayu script build`.
+- **build**: `wayu build` regenerates plugins.<ext> from plugins.json and exits 78 when plugins.json is invalid; plugins.<ext> has no `# Last updated` line.
+- **plugins**: Core.zsh no longer loads zsh-autosuggestions / zsh-syntax-highlighting checkouts that are not enabled in plugins.json.
+- **tools**: A [tools] args word zsh/bash (or --zsh/--bash) is rewritten to the generated file's shell in core.bash and core.zsh.
+- **tools**: [tools] entries are loaded in wayu.toml file order instead of sorted by name.
+- **tools**: The bash [tools] evalcache helper returns 0 (was 1) when a tool fails and nothing is cached.
+- **bash**: Core.bash no longer leaves a global variable f behind; functions/ and completions/ load under failglob and set -f.
+- **path**: After a failed prompt-hook build open shells retry on the next save; the hook writes <data>/path_sync.<ext>.regen-failed.
+- **path**: Zsh -l -c / -l -i -c runs get wayu's PATH order (wayu dirs before path_helper's) through a self-removing TRAPDEBUG set by core.zsh.
+- **prompt**: [prompt] settings follow TOML semantics: commented-out keys, keys in the wrong table and values of the wrong type no longer change the prompt.
+- **prompt**: % in a branch name, local IP, tool version or shell name is shown literally in the native prompt.
+- **prompt**: With [prompt] vi_mode, R and r show vimcmd_replace_symbol
+(replace color) instead of the insert/normal symbol.
+- **secrets**: A hand-edited secrets.json with unknown fields, trailing text, invalid names or dangling run_only names is now malformed (secret commands exit 78, doctor reports an error).
+- **secrets**: The keychain / Secret Service master key is looked up under account wayu-<id> (shown by wayu doctor) instead of wayu / master. Move the existing item once (see docs/UPGRADING.md) or secrets report the key as missing.
+- **secrets**: With neither XDG_RUNTIME_DIR nor TMPDIR set the secrets session cache lives in <data>/run/wayu-<uid>/ instead of /tmp/wayu-<uid>/; a symlinked or foreign cache dir/file is no longer sourced. Run wayu build to regenerate core.
+- **secrets**: Backup restore entries also restores secrets.json from the copy kept with that backup; const get NAME exits 65 when entries.json marks NAME secret but secrets.json has no value; doctor reports secrets pairing problems (error: exit 78).
+- **doctor**: `wayu doctor` reports an invalid plugins.json (parse error, bad value, dependency cycle) as an error and exits 78; the turbo check uses turbo.<ext> for the current shell. Plugin cycle details print to stderr.
+- **doctor**: `wayu doctor` counts `builtin source`, `command source` and `zsh-defer source` startup lines as loading wayu (they were "wayu not sourced", exit 78).
+- **completions**: The hidden `wayu completions list --generate`/`-g` spelling exits 64; use `wayu completions generate`.
+- **cli**: These combinations exit 64 instead of being ignored: --full/-f/--source outside path|alias|const list, --test/--snapshot without -c=, `doctor --profile` with --json or --fix, two export modes, and an extra word after an argument-less action (`path list x`, `secrets lock x`). `-c=` after a command word is that command's option.
+- **search**: `wayu search` no longer matches alias commands (names only); `--json` `field` is always "name" and encrypted constants carry `"secret": true`. `const list --json` reports a secret's source as `wayu (secret)` / `wayu (secret, inactive)` (was `wayu` / `wayu (inactive)`).
+- **init,doctor**: `wayu doctor` with no startup file says which file to create and the `source` line to add (was "run 'wayu init'"); `wayu init` prints its "Created N config file(s)" summary last, counting every file.
+- **completions**: The generated completion scripts changed (bash offers
+flags on -<TAB> rather than at the action position; the fish script is one
+__wayu_complete function). Run `wayu completions generate` to rewrite them.
+- **backup**: Backups of files in a subdirectory of the config/data dir (functions, scripts) are named `@<dir>%<file>.backup.<stamp>` and listed as `<dir>/<file>` by `wayu backup list`; existing backups of such files keep their old group.
+- **plugin**: Plugins.json with a nameless entry, a duplicate name or a `use` glob containing `/` is invalid (exit 78); a `plugin` command whose plugins.json backup fails now aborts; `plugin update --all` reports "N already up to date" separately; plugins.json backups are pruned to 5.
+- **script**: A `// wayu: build = ...` header comment now makes `wayu script` build a source with that command; duplicate script names and CRLF shebangs are errors (script build exits 1, doctor 78); dangling bin/ entries are reported as the separate fixable doctor check "script bin entries"; swift scripts rebuild once (the hash covers the build command).
+- **tui**: The TUI constants view lists encrypted constants as `******** (secret)` / `******** (secret, run-only)` and refuses to edit them (use `wayu const add NAME --secret`); deleting one removes the entries.json entry and the secrets.json value together.
+- **watch**: `wayu reload` / `wayu watch` also watches secrets.json (a change drops the secrets session cache and regenerates), and a watched file that is created or removed while it runs now triggers a regeneration.
+- **prompt**: The native prompt's async worker no longer runs outside
+a git work tree / versioned context; the right prompt is cleared there
+without a background job. Run `wayu build` to regenerate core.zsh.
+- **export**: `wayu export --check` exits 78 whenever turbo.<ext>
+differs from what `wayu export --turbo` would write now (any input or a
+newer wayu), and 0 after a no-op save of wayu.toml.
+- **profile**: `wayu build profile` numbers include compinit, the
+prompt and plugins (higher, matching real startup); the first scenario
+is labeled `core.<ext> (interactive, no user rc)`.
+- **fish**: Fish setups with `[prompt] enabled = true` now get
+wayu's fish_prompt (it was ignored), and vi_mode switches fish to vi key
+bindings. `wayu export` no longer exits 64 for fish: it writes turbo.fish
+and `--eval` prints fish code.
+- **alias**: Alias names cd, pwd, echo, test, true and false are
+accepted (were refused with exit 65).
+- **secrets**: Upgrading from 6.0 with keychain / Secret Service
+secrets no longer needs a manual key copy: the first wayu command that
+needs the key moves it and prints a one-time notice on stderr.
+- **build**: The prompt hook's `wayu build` (after a hand edit of
+wayu.toml / entries.json) no longer discards stderr: warnings and errors
+print once at that prompt. A clean rebuild prints nothing.
+- **completions**: `wayu completions generate` prints one line (open a new
+shell) instead of fpath / source / symlink setup steps.
+- **dirs**: Wayu now creates its dirs 0700 and `wayu init` removes
+group/other write from existing ones. `wayu doctor` reports a
+group/other-writable config/data dir (or subdir) as an error (exit 78);
+run `wayu doctor --fix --yes` to tighten them.
+- **optimize**: `wayu optimize` (and auto_optimize) no longer moves rc lines that follow a $(...) containing a comment, `case` or a here-document, or a double-quoted ${...} containing a single quote; they stay in the rc file.
+- **optimize**: `wayu doctor`'s "startup files" check no longer runs generator commands to time them; it reports "(runs a command every start)" instead of a measured "(N ms per start)", and the total covers only the compinit estimate. The `wayu optimize` diff shows secret constants' lines as a placeholder.
+- **toml**: A wayu.toml string holding a raw control character (anything below 0x20 except tab, or DEL; multi-line strings may still span lines) now fails `wayu toml validate`, `wayu doctor` and `wayu backup restore`; write it as an escape (`\e`, `\u001b`, ...).
+- **toml**: `wayu toml validate`, `wayu toml keys` and `wayu doctor` print control characters in wayu.toml key/table names as \xHH (\t, \n, \u00HH for C1) instead of the raw bytes.
+- **secrets**: The keychain / secret-service backends no longer use a
+`security` / `secret-tool` found through PATH. On Linux, `backend = "auto"`
+picks secret-service only when secret-tool is installed in /usr/bin,
+/usr/local/bin, /bin or /run/current-system/sw/bin; with secret-tool
+elsewhere (e.g. ~/.nix-profile, Homebrew on Linux) it resolves to the file
+backend, and `backend = "secret-service"` reports secret-tool not found.
+- **backup**: <data>/backup must be a real directory owned by you: a
+symlinked backup dir is refused (commands that back up first fail with an
+I/O error), and an existing one is chmod'ed to 0700. Symlinks inside it are
+no longer listed by `backup list` or restored.
+- **secrets**: The generated secrets loader in core.<ext> (and in
+`wayu export --eval` / turbo) changed: a session cache dir with any
+group/other permission bits is no longer used; the cache goes to
+<data>/run/wayu-<uid> instead. In bash and fish, shell startup with secrets
+now runs one `ls` process. Run `wayu build` (or any change) to
+regenerate core.
+- **secrets**: `wayu const add NAME VALUE --secret` (and `--run-only`)
+with the value as an argument now prints a warning on stderr; the exit
+status is unchanged. Omit VALUE to be prompted, or pipe it on stdin.
+- **plugin**: Plugins.json entries whose installed_path is outside the
+data dir's plugins/ (or not directly inside it), or whose git refs are not
+valid git ref names, are now refused (exit 78) instead of loaded.
+- **hooks**: Hooks.conf commands with a {path}/{name}/{value}
+placeholder inside "..." within '...' (e.g. sh -c 'echo "a {name}"') are
+now invalid (exit 78); use "$WAYU_HOOK_NAME" there instead.
+- **script,function**: Script new exits 65 and function add exits 73 when a
+symlink (function add: a dangling one) is at the target path; import skips
+such a file. New function files are 0600 instead of 0644.
+- **script**: Script build commands now run with the data dir's
+scripts/ as working directory; a build header relying on the directory
+wayu was started in must use absolute paths.
+- **subprocess**: An interrupted wayu now exits 128+signal (130 for Ctrl-C,
+143 for SIGTERM) after killing the git/compiler/shell it was running and
+removing a partial plugin clone.
+- **script**: `wayu script import` of a file with a non-preset
+`wayu: build =` header exits 64 unless --allow-build is given.
+- **prompt**: The native prompt shows no pending count in a repo whose
+own .git/config defines a filter.<x>.clean or .process (filters from the
+global/system config, e.g. git-lfs, are unaffected), and the count no longer
+includes uncommitted changes inside submodules.
+- **fish**: Fish aliases are emitted as `function NAME --wraps ... ;
+eval 'BODY' (string escape -- $argv); end` instead of `alias NAME 'BODY'`.
+They behave the same when called and `alias` still lists them; a body that
+is not valid fish code now fails when the alias runs instead of at startup.
+- **const**: `${X=v}` and `${X:=v}` in a constant value stay literal
+(use `${X:-v}`). `wayu const add` exits 65 for PS0-PS4, PROMPT, prompt,
+PROMPT2-PROMPT4, RPROMPT, RPROMPT2, RPS1, RPS2, SPROMPT, PROMPT_EOL_MARK,
+PROMPT_COMMAND, BASH_ENV, ENV, fish_function_path, fish_complete_path; a
+protected name already in entries.json is no longer exported (wayu doctor
+reports it; `wayu const rm NAME`).
+- **alias**: `wayu alias add` exits 65 for names starting with `_wayu`,
+and an entries.json holding such an alias is a config error (78) naming the
+file; remove it with `wayu alias rm NAME` before upgrading.
+- **entries**: An entries.json `fpath` entry containing a glob character
+is a config error (78) naming the file; `wayu completions fpath add` refuses
+such a dir.
+- **dev**: `wayu -c=<component> --test/--snapshot` with width= or
+height= outside 1-1000 exits 64 instead of rendering.
+- **output**: Human-readable output shows control characters in values
+as \t, \n, \xHH or \u00HH instead of emitting them; `const list` shows
+escape sequences and newlines escaped instead of stripping them / turning
+them into spaces. --json and `get` output are unchanged.
+
+### Added
+
+- **zsh**: Guard later compinit calls, skip interactive parts in zsh -c, fork-free prompt
+- **optimize**: Move installer lines from startup files into wayu
+- **zsh**: Built-in autosuggestions ([settings] autosuggest)
+- **zsh**: Built-in syntax highlighting ([settings] highlight)
+- **highlight**: Brackets, history expansion, continuation lines, incremental edits
+- **zsh**: Suggest a PATH command when history has no match
+- **plugin**: Prune plugins.json backups, stricter plugins.json, TUI remove/update (OKAMI-330, OKAMI-342, OKAMI-362)
+- **script**: Build headers, duplicate/CRLF/dangling checks, env shebangs (OKAMI-338, OKAMI-339, OKAMI-340, OKAMI-369)
+- **fish**: Native prompt and turbo export for fish (OKAMI-368)
+- **alias**: Allow aliases named like commands
+- **doctor**: Warn about plugin folders missing from plugins.json
+- **search**: Match PATH entries by key (OKAMI-337)
+
+### Changed
+
+- **plugins**: Compile plugin sources to .zwc so zsh doesn't parse them each start
+- **prompt**: No external mktemp before the first prompt, one fork per async start
+- **prompt**: No forks per render outside a repo, fork-free USR1 handler (OKAMI-349)
+
+### Fixed
+
+- **config**: Config scan reads the current shell's rc file
+- **zsh**: Drop a zcompdump .zwc compiled from a dump rebuilt meanwhile
+- **zsh**: Never leave a .zwc digest of older content next to its source
+- **zsh**: Stop rebuilding the completion dump on every shell after init
+- **zsh**: Compile zcompile digests in the private temp dir
+- **cli**: One status icon per line in path and plugin output
+- **release**: Build macOS binaries for macOS 13+ (OKAMI-294)
+- **release**: Homebrew caveats name the data-dir init file (OKAMI-295)
+- **release**: Full upgrade notes in changelog and releases (OKAMI-319)
+- **release**: Require macOS 15; list tested platforms
+- **hooks**: Run hooks outside the lock with a timeout, show output (OKAMI-299, OKAMI-334, OKAMI-335, OKAMI-336)
+- **entries**: One alias name rule, protected env names, value checks (OKAMI-304, OKAMI-331, OKAMI-366)
+- **entries**: Read entries.json strictly (OKAMI-321)
+- **config**: Lock in the data dir on a first run; refuse relative dir overrides (OKAMI-327, OKAMI-328)
+- **path**: PATH entries must be directories; templates use the add checks (OKAMI-332)
+- **script**: No lock during the editor; hash the source before compiling (OKAMI-307, OKAMI-311)
+- **watch**: Stop/status trust the watcher's lock, not its PID file (OKAMI-316)
+- **secrets**: Load secrets after PATH with an absolute wayu path (OKAMI-292)
+- **build**: Prompt hook build compiles stale scripts in the background (OKAMI-308)
+- **build**: Regenerate plugins.<ext> in build; exit 78 on bad plugins.json (OKAMI-309)
+- **plugins**: Load only enabled plugins; drop core fallbacks (OKAMI-310)
+- **tools**: Retarget [tools] shell words for bash too (OKAMI-313)
+- **tools**: Emit [tools] in wayu.toml file order (OKAMI-365)
+- **tools**: Bash evalcache is set -e safe and fork-free on bash 3.2 (OKAMI-315, OKAMI-349)
+- **bash**: Guard core.bash globs against failglob/noglob (OKAMI-345)
+- **path**: Live PATH sync retries after a failed hook build (OKAMI-344)
+- **path**: Restore wayu PATH order in zsh -l -c runs (OKAMI-318)
+- **prompt**: Read [prompt] tables with the TOML parser (OKAMI-363)
+- **prompt**: Escape % in values spliced into the prompt (OKAMI-343)
+- **prompt**: Show vimcmd_replace_symbol in vi replace mode (OKAMI-347)
+- **secrets**: Parse secrets.json strictly (OKAMI-322)
+- **secrets**: Scrub entries.json backups by decoded value (OKAMI-296)
+- **secrets**: Give secret-tool store a deadline (OKAMI-325)
+- **secrets**: Namespace the keychain master key per data dir (OKAMI-306)
+- **secrets**: Restore echo on Ctrl-C / Ctrl-Z at the hidden value prompt (OKAMI-324)
+- **secrets**: Leave no unwiped plaintext in freed buffers (OKAMI-326)
+- **secrets**: Trust the session cache only in a private, non-symlinked dir (OKAMI-300)
+- **secrets**: Drop a session cache written from a store that changed (OKAMI-301)
+- **secrets**: Make rekey crash-safe (OKAMI-302)
+- **secrets**: Roll back secrets.json when the entries.json half fails (OKAMI-323)
+- **secrets**: Keep entries.json and secrets.json paired across backup restore (OKAMI-303)
+- **zsh**: Zcompile installs under the data-dir lock (OKAMI-327)
+- **doctor**: Check turbo.<ext>, parse plugins.json strictly (OKAMI-297, OKAMI-298)
+- **doctor**: See builtin/command/zsh-defer source lines (OKAMI-341)
+- **completions**: Drop the unreachable --generate/-g flag (OKAMI-352)
+- **cli**: Reject meaningless flags and extra words (OKAMI-351, OKAMI-353)
+- **search**: Match names only, flag secrets; one secret source string (OKAMI-337, OKAMI-356)
+- **init,doctor**: Messages that match what happens (OKAMI-357)
+- **completions**: Parse the line, complete flag values and args (OKAMI-355)
+- **function**: Bash skeleton body is valid syntax (OKAMI-312)
+- **backup**: Key backups by path relative to the wayu dir (OKAMI-305)
+- **plugin**: No shadowed err in the TUI install (OKAMI-362)
+- **tui**: List encrypted constants masked, delete as a pair (OKAMI-360)
+- **watch**: Watch secrets.json, invalidate the session cache (OKAMI-361)
+- **tui**: Every exit restores the terminal on Linux (OKAMI-367)
+- **export**: --check compares turbo content with a fresh build (OKAMI-364)
+- **profile**: Time core and its phases in an interactive shell (OKAMI-348)
+- **secrets**: Move the wayu 6.0 master key automatically
+- **build**: Warn about [paths]/[aliases]/[env] left in wayu.toml (OKAMI-333)
+- **completions**: Drop the stale setup instructions from generate
+- **build**: Private mkdtemp dirs for test sandboxes and release scratch
+- **dirs**: Create wayu dirs 0700 whatever the umask; doctor flags writable ones
+- **files**: 0600 + atomic writes for extra.<ext>, profile script, rc stamp
+- **build**: Hold the config lock from reading entries to writing core
+- **optimize**: Honor quoting inside $(...) and ${...} when reading rc files
+- **optimize**: Doctor never runs rc commands; mask secrets in the diff
+- **toml**: Cap array/inline-table nesting; linear error recovery
+- **toml**: Reject raw control characters in strings
+- **toml**: Escape control characters in toml validate/keys and doctor messages
+- **secrets**: Keep the master key off security's argv; never run keystore tools from PATH
+- **secrets**: Depth-limit secrets.json parsing
+- **backup**: Never follow symlinks in the backup dir; keep it 0700
+- **secrets**: Create the data and key dirs owner-only
+- **secrets**: Lock and store changes delete the session cache in every dir
+- **secrets**: Recover an interrupted rekey only under the config lock
+- **secrets**: Never trust a session cache dir open to group/other
+- **secrets**: Warn when a secret value is passed on the command line
+- **secrets**: No core dumps while the key or plaintext is in memory; no env copy
+- **plugin**: Git never runs a checkout's fsmonitor or hooks; sshCommand lookup ignores cwd
+- **plugin**: Confine installed_path, validate refs like check-ref-format, cap plugins.json nesting
+- **hooks**: Refuse placeholders inside "..." nested in '...'
+- **script,function**: Never write through a symlink when creating sources
+- **script**: Run build commands in <data>/scripts, not the caller's cwd
+- **profile**: Run profiled shells with a deadline and without a terminal
+- **watch**: Lock the watcher's rebuilds; stop signals only the lock holder; private PID file
+- **subprocess**: Kill the child group and clean up when wayu is interrupted
+- **script**: Script import needs --allow-build for a declared build command
+- **env**: Alias snapshot has a deadline in the CLI too; secret dir parents created 0700
+- **prompt**: Pending count runs no repo-configured git commands
+- **prompt**: Show control characters in a git branch as ?
+- **fish**: Define aliases without re-parsing the body
+- **const**: No assignment expansions; protect names a shell runs as code
+- **tools**: Skip [tools] entries whose name is not a valid command name
+- **alias**: Reserve _wayu* alias names; alias-proof helper calls
+- **entries**: Refuse glob characters in managed fpath entries
+- **build**: Build clean unlinks a symlinked evalcache dir instead of emptying its target
+- **security**: Reuse fpath_entry_error in optimize and completions fpath; snapshot_env_has for secret names
+- **dev**: Bound -c=<component> width/height to 1..1000
+- **output**: Show control characters from user data escaped
 ## [6.0.0] - 2026-11-09
 
 ### ⚠ Upgrade notes
@@ -20,12 +306,17 @@ key. pre/post_path_remove get the directory as {path} when removing by key.
 dry-run preview is no longer printed over the TUI.
 - **shell**: [env] values: `$1`, `$$`, `$?`, a trailing `$`, an
 unclosed `${` and zsh flags like `${(e)...}` are now literal text; in zsh
+`$NAME:x` / `$NAME[i]` no longer apply zsh modifiers/subscripts; fish keeps
+`${NAME:-x}` literal. fish now sources functions/*.fish; zsh no longer
+sources functions/*.bash|*.fish and bash no longer functions/*.zsh|*.fish.
 - **doctor**: `wayu doctor` no longer reports relative [paths]
 entries as missing and `doctor --fix` keeps them; the PATH check note
 now reads "N use(s) unset variables or relative paths (left alone)".
 - **migrate,backup**: `wayu migrate --schema` exits 65 and writes nothing
 when a rewritten section holds a value it can't convert exactly
 (multi-line strings, arrays, inline tables); it lists them as
+wayu.toml:N. `backup restore` and `migrate --schema` wait for other
+running wayu commands.
 - **doctor**: `wayu doctor --fix` exits 78 without writing when
 wayu.toml [paths] repeats a key it would drop; remove or rename the
 repeated key by hand.
@@ -233,6 +524,10 @@ after wayu loads (e.g. in .zshrc) is replaced at the first prompt; set
 - [paths], [aliases] and [env] are no longer read from
 wayu.toml; they live in <data>/entries.json and are not converted (re-add
 them with wayu path|alias|const add). The default data dir is now
+${XDG_DATA_HOME:-~/.local/share}/wayu: update the rc line to
+source "${WAYU_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wayu}/init.zsh"
+and move plugins.json/plugins/ there. toml show --reveal is removed; backup
+types are toml and entries; plugin conflicts name "entries.json".
 - **script**: Functions/ is read from and written to the data dir
 ($WAYU_DATA_DIR/functions, default ~/.local/share/wayu/functions) instead
 of the config dir; move existing files by hand. <data>/bin is prepended to
@@ -242,6 +537,7 @@ interpreter/compiler is missing.
 (encrypt the value), not part of the value; put `--` before the value to
 store it literally. `--secret` elsewhere exits 64. A plain `const add` of
 a secret's name exits 65. `const list --json` rows for secrets have
+"secret": true and no "value". `wayu doctor` reports a `secrets` check.
 - **secrets**: `wayu secrets list` prints a mode column (`session` /
 `run-only`) after each name; the doctor secrets message changed; a
 trailing `--run-only` on `const add` is now a flag, not part of the
@@ -364,8 +660,18 @@ values (format, symbols, contexts, rprompt_format) are printed as typed
 instead of being executed/expanded. Prompt `%` escapes and wayu's module
 variables still work. Keybinding values containing `'` are now quoted
 literally.
+
+Refs: OKAMI-223, OKAMI-225
 - **prompt**: The native wayu prompt, its vi keymap/KEYTIMEOUT,
 zle widgets and precmd hooks are off by default. To keep them, add to
+~/.config/wayu/wayu.toml:
+
+    [prompt]
+    enabled = true
+
+then run `wayu build` (or any wayu edit) to regenerate.
+
+Refs: OKAMI-221
 - **plugin**: Plugin rm on a symlinked plugin removes only the link.
 Invalid plugins.json entries make plugin commands exit 78; enums are
 stored as names ("shell": "ZSH"). http:// and git:// plugin URLs are
@@ -586,6 +892,44 @@ unknown export modes / build targets and fish exports exit 64.
 
 - **toml**: [[paths]]/[[aliases]]/[[constants]] removed.
 Run `wayu migrate --schema` to upgrade.
+
+Schema:
+  [paths]   key = "/path"     (auto-derived basename, hidden_/parent_ disambig)
+  [aliases] name = "command"
+  [env]     NAME = "value"
+
+CLI:
+  wayu path add /usr/local/bin       → local_bin = "/usr/local/bin"
+  wayu path add /Users/me/.cargo/bin → hidden_cargo_bin = "..."
+  wayu path add custom=/tmp          → custom = "/tmp"
+  wayu path remove <key|/path>       → match by either
+
+Hard-break detection:
+  Pre-dispatch guard in main aborts every command (except migrate/doctor/
+  version/help) with a structured migration hint when wayu.toml still uses
+  [[...]] syntax. wayu doctor surfaces the issue alongside other findings.
+
+Migration command:
+  wayu migrate --schema [--dry-run]
+  Idempotent. Handles mixed [[paths]] + [paths] files. Backup before write.
+
+Round-trip safety:
+  - All emitters use escape_toml_string (paths, aliases, env values)
+  - All readers use unescape_toml_string symmetrically
+  - All writers sort alphabetically (deterministic output)
+
+Cleanup:
+  - Drop dead [[tools]] migration code from previous commit
+  - Drop legacy [constants] alias and [[aliases]] reader paths
+  - Drop legacy fallback in read_wayu_toml_tools
+  - Fix 3 pre-existing unescape leaks (aliases, constants, tui bridge)
+
+New files:
+  src/path_keys.odin             derive_path_key, sanitize, parse_path_arg
+  src/schema_check.odin          legacy detector + global guard
+  src/migrate_schema.odin        wayu migrate --schema implementation
+  src/toml_section_writer.odin   in-place section replacement helper
+  tests/unit/test_path_keys.odin
 
 ### Added
 
@@ -1063,6 +1407,7 @@ Major version bump to 2.0.0 due to multi-shell architecture changes.
 ### Changed
 
 - Clean up code and improve error handling
+[7.0.0]: https://github.com/dvrd/wayu/releases/tag/v7.0.0
 [6.0.0]: https://github.com/dvrd/wayu/releases/tag/v6.0.0
 [5.0.0]: https://github.com/dvrd/wayu/releases/tag/v5.0.0
 [4.4.5]: https://github.com/dvrd/wayu/releases/tag/v4.4.5
