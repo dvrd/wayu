@@ -379,10 +379,9 @@ secrets_store_save :: proc(s: ^Secrets_Store) -> (ok: bool, err: string) {
 secrets_store_write_to :: proc(path: string, s: ^Secrets_Store) -> (ok: bool, err: string) {
 	text := secrets_store_format(s)
 	defer delete(text)
-	if !os.exists(wayu.data) {
-		if e := os.make_directory_all(wayu.data); e != nil {
-			return false, fmt.tprintf("I/O error: cannot create %s: %v", wayu.data, e)
-		}
+	// A data dir created here is 0700 (it holds secrets.json).
+	if dok, derr := private_dir_make(wayu.data); !dok {
+		return false, fmt.tprintf("I/O error: %s", derr)
 	}
 	if e := write_file_atomic(path, transmute([]byte)text); e != nil {
 		return false, fmt.tprintf("I/O error: cannot write %s: %v", path, e)

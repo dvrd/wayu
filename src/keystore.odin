@@ -646,10 +646,11 @@ keystore_save_file :: proc(
 		return true, ""
 	}
 
+	// A config dir created here is 0700 (it holds secret.key).
 	dir, _ := os.split_path(path)
-	if len(dir) > 0 && !os.exists(dir) {
-		if err := os.make_directory_all(dir); err != nil {
-			return false, fmt.tprintf("cannot create %s: %v", dir, err)
+	if len(dir) > 0 {
+		if dok, derr := private_dir_make(dir); !dok {
+			return false, derr
 		}
 	}
 	f, err := os.open(path, {.Write, .Create, .Excl}, SECRET_FILE_PERMS)

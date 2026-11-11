@@ -157,6 +157,12 @@ test_keystore_file_backend :: proc(t: ^testing.T) {
 
 	fi, err := os.stat(path, context.temp_allocator)
 	testing.expect(t, err == nil && fi.mode & GROUP_OTHER_BITS == {}, "key file must be 0600")
+	dfi, derr := os.stat(dir, context.temp_allocator)
+	testing.expect(
+		t,
+		derr == nil && dfi.mode & GROUP_OTHER_BITS == {},
+		"a dir created for the key must be 0700",
+	)
 
 	got, st2, _ := wayu.keystore_load_file(path)
 	testing.expect_value(t, st2, wayu.Key_Status.OK)
