@@ -1017,6 +1017,10 @@ run_component_testing :: proc(
 	// Parse component arguments
 	component_args := parse_component_args(args)
 	defer component_args_destroy(&component_args)
+	if msg := component_dims_error(component_args); msg != "" {
+		eprintfln_color("ERROR: %s", msg)
+		wayu_exit(EXIT_USAGE)
+	}
 
 	// Render component
 	output := render_component(component_type, component_args)

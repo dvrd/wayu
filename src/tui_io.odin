@@ -2049,6 +2049,31 @@ parse_component_args :: proc(args: []string) -> ComponentArgs {
 	return result
 }
 
+// Bounds for the dev component flags' width=/height= (`-c=<component>`):
+// the screen buffer is width*height cells, so an unbounded value would
+// allocate without limit.
+COMPONENT_MAX_DIM :: 1000
+
+// "" when width and height are within 1..COMPONENT_MAX_DIM, else the error
+// message (a value that isn't a number parses as 0, out of range too).
+component_dims_error :: proc(args: ComponentArgs) -> string {
+	if args.width < 1 || args.width > COMPONENT_MAX_DIM {
+		return fmt.tprintf(
+			"width must be between 1 and %d (got %d)",
+			COMPONENT_MAX_DIM,
+			args.width,
+		)
+	}
+	if args.height < 1 || args.height > COMPONENT_MAX_DIM {
+		return fmt.tprintf(
+			"height must be between 1 and %d (got %d)",
+			COMPONENT_MAX_DIM,
+			args.height,
+		)
+	}
+	return ""
+}
+
 // Free component args memory
 component_args_destroy :: proc(args: ^ComponentArgs) {
 	if args.text != "" do delete(args.text)

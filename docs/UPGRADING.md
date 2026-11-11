@@ -526,6 +526,10 @@ Names and values:
 - `hooks.conf`: a placeholder inside `"…"` within `'…'` is invalid (exit
   78): write it unquoted inside `'…'` or use `"$WAYU_HOOK_NAME"`.
 
+Output:
+- Developer component flags: `-c=<component>` `width=` / `height=` outside
+  1-1000 exit 64.
+
 Commands:
 - Plugin git commands never run a checkout's `core.fsmonitor` or hooks.
 - `script import` of a file whose `wayu: build =` header is not a preset

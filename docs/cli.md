@@ -47,7 +47,7 @@ whenever they would change something, and always by `doctor --fix` (unless
 
 Developer flags (golden-file tests, see AGENTS.md): `-c=<component>` (only
 before any command word), `--test`, `--snapshot` (only with `-c=`; else exit
-`64`).
+`64`). Their `width=N` / `height=N` must be 1-1000 (else exit `64`).
 
 An action that takes no arguments (`list`, `secrets lock`, `toml validate`,
 every `export` mode, ...) exits `64` on an extra word after it.

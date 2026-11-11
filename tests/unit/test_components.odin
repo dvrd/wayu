@@ -297,3 +297,23 @@ test_parse_component_type_invalid :: proc(t: ^testing.T) {
 	_, ok2 := wayu.parse_component_type("")
 	testing.expect_value(t, ok2, false)
 }
+
+// -c=<component> width=/height= are bounded so a huge value can't allocate
+// an unbounded screen buffer (exit 64 in run_component_testing).
+@(test)
+test_component_dims_bounds :: proc(t: ^testing.T) {
+	ok := wayu.parse_component_args([]string{"width=1000", "height=1"})
+	defer wayu.component_args_destroy(&ok)
+	testing.expect_value(t, wayu.component_dims_error(ok), "")
+	for bad in ([][]string {
+			{"width=1001"},
+			{"height=99999999999"},
+			{"width=0"},
+			{"height=-5"},
+			{"width=abc"},
+		}) {
+		parsed := wayu.parse_component_args(bad)
+		defer wayu.component_args_destroy(&parsed)
+		testing.expectf(t, wayu.component_dims_error(parsed) != "", "%v must be rejected", bad)
+	}
+}
