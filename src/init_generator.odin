@@ -3419,7 +3419,10 @@ clear_evalcache :: proc() {
 		base = fmt.tprintf("%s/.cache", wayu.home)
 	}
 	dir := fmt.tprintf("%s/wayu/evalcache", base)
-	if !os.exists(dir) {
+	// lstat, not exists: a symlink in place of the dir is only unlinked
+	// (remove_all followed it and emptied the target).
+	fi, lerr := os.lstat(dir, context.temp_allocator)
+	if lerr != nil {
 		print_info("No evalcache at %s", dir)
 		return
 	}
@@ -3427,7 +3430,8 @@ clear_evalcache :: proc() {
 		fmt.printfln("[DRY RUN] Would remove %s", dir)
 		return
 	}
-	if err := os.remove_all(dir); err != nil {
+	rm_err := os.remove(dir) if fi.type != .Directory else os.remove_all(dir)
+	if err := rm_err; err != nil {
 		print_error("Failed to remove %s: %v", dir, err)
 		wayu_exit(EXIT_IOERR)
 	}

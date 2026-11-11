@@ -49,6 +49,7 @@ class GeneratedShellTest
       test_path_sync_ignores_aliases
       test_dir_overrides_produce_working_init
       test_evalcache_binary_identity
+      test_build_clean_symlink
       test_bash_errexit_with_tools
       test_tools_args_never_run_code
       test_tools_name_never_runs_code
@@ -668,6 +669,22 @@ class GeneratedShellTest
     _, _, st2 = Open3.capture3(env, @wayu_bin, 'alias', 'add', '_wayu', 'echo hi')
     check('path_sync aliases', errs.empty? && st.exitstatus == 65 && st2.exitstatus == 65,
           "errs=#{errs} alias_add=#{st.exitstatus},#{st2.exitstatus}")
+  end
+
+  # `wayu build clean` with a symlink in place of the evalcache dir unlinks
+  # the symlink and never deletes what it points to.
+  def test_build_clean_symlink
+    print "Test: build clean unlinks a symlinked evalcache dir, target untouched... "
+    home = "#{@tmp_home}/clean_link"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p(["#{home}/.config", "#{home}/.cache/wayu", "#{home}/victim"])
+    File.write("#{home}/victim/keep", "x\n")
+    File.symlink("#{home}/victim", "#{home}/.cache/wayu/evalcache")
+    env = clean_env(home)
+    Open3.capture3(env, @wayu_bin, 'init', '--shell', 'zsh')
+    _, err, st = Open3.capture3(env, @wayu_bin, 'build', 'clean')
+    ok = st.success? && File.exist?("#{home}/victim/keep") && !File.symlink?("#{home}/.cache/wayu/evalcache")
+    check('build clean symlink', ok, "exit=#{st.exitstatus} keep=#{File.exist?("#{home}/victim/keep")} err=#{err.strip[0, 200]}")
   end
 
   # OKAMI-349: outside a git work tree (and a versioned context) a prompt
