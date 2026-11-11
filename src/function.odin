@@ -83,12 +83,27 @@ add_function :: proc(name: string) {
 	func_file := function_file_path(name)
 	defer delete(func_file)
 
-	// Seed a skeleton if the file does not already exist.
-	if !os.exists(func_file) {
+	// Seed a skeleton if nothing is there yet (lstat: a dangling symlink
+	// counts, and is never written through).
+	if _, lerr := os.lstat(func_file, context.temp_allocator); lerr == nil {
+		// Something is there: a dangling symlink would make the editor
+		// create a file wherever it points.
+		if _, serr := os.stat(func_file, context.temp_allocator); serr != nil {
+			print_error_simple(
+				"Cannot create %s: it is a dangling symlink (remove it first)",
+				func_file,
+			)
+			wayu_exit(EXIT_CANTCREAT)
+		}
+	} else {
 		skeleton := function_skeleton(name)
 		defer delete(skeleton)
-		if write_ok := os.write_entire_file_from_string(func_file, skeleton); write_ok != nil {
-			print_error_simple("Failed to create function file: %s", func_file)
+		if errno := create_file_exclusive(func_file, skeleton, 0o600); errno != .NONE {
+			print_error_simple(
+				"Failed to create function file: %s (%s)",
+				func_file,
+				create_file_error_text(errno),
+			)
 			wayu_exit(EXIT_CANTCREAT)
 		}
 		print_success("Created function: %s", func_file)
@@ -103,6 +118,53 @@ add_function :: proc(name: string) {
 	if opened {
 		print_info("Reload your shell to load '%s'", name)
 	}
+}
+
+// Create `path` holding `data` with permissions `mode`, only if nothing
+// exists there: O_CREAT|O_EXCL|O_NOFOLLOW, so an existing file, directory or
+// symlink (even a dangling one, which would otherwise be followed and
+// create or overwrite a file elsewhere) makes it fail with .EEXIST. A
+// partial write removes the file. .NONE on success.
+create_file_exclusive :: proc(path: string, data: string, mode: u32) -> posix.Errno {
+	cpath := strings.clone_to_cstring(path, context.temp_allocator)
+	fd := posix.open(
+		cpath,
+		{.WRONLY, .CREAT, .EXCL, .NOFOLLOW, .CLOEXEC},
+		transmute(posix.mode_t)posix._mode_t(mode),
+	)
+	if fd < 0 {
+		return posix.errno()
+	}
+	rest := transmute([]byte)data
+	for len(rest) > 0 {
+		n := posix.write(fd, raw_data(rest), c.size_t(len(rest)))
+		if n < 0 && posix.errno() == .EINTR {
+			continue
+		}
+		if n <= 0 {
+			errno := posix.errno() if n < 0 else posix.Errno.EIO
+			posix.close(fd)
+			posix.unlink(cpath)
+			return errno
+		}
+		rest = rest[n:]
+	}
+	// The umask may have narrowed `mode` (never widened it).
+	posix.fchmod(fd, transmute(posix.mode_t)posix._mode_t(mode))
+	if posix.close(fd) != .OK {
+		errno := posix.errno()
+		posix.unlink(cpath)
+		return errno
+	}
+	return .NONE
+}
+
+// Message for a create_file_exclusive failure (temp).
+create_file_error_text :: proc(errno: posix.Errno) -> string {
+	if errno == .EEXIST {
+		return "something already exists at that path (a symlink is never written through)"
+	}
+	return fmt.tprintf("%s", posix.strerror(errno))
 }
 
 // Open the editor unless there is none to open: no $EDITOR/$VISUAL and no

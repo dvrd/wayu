@@ -47,6 +47,7 @@ class ScriptIntegrationTest
       test_path_in_shells
       test_live_path_sync
       test_functions_in_data_dir
+      test_no_write_through_symlinks
     ensure
       teardown_test_env
     end
@@ -497,6 +498,39 @@ class ScriptIntegrationTest
           st.success? && File.exist?("#{data}/functions/splitfn.zsh") &&
           !File.exist?("#{@config_dir}/functions/splitfn.zsh"),
           "exit=#{st.exitstatus}")
+  end
+
+  # new / import / function add never write through a symlink (dangling or
+  # not) already at the path; functions are created 0600.
+  def test_no_write_through_symlinks
+    FileUtils.mkdir_p(scripts_dir)
+    outside = "#{@scratch}/outside.txt"
+    File.write(outside, "keep\n")
+    File.chmod(0o600, outside)
+    File.symlink(outside, "#{scripts_dir}/evil.sh")
+    _, st_new = run_s('script new evil --lang sh')
+    File.symlink("#{@scratch}/nowhere1", "#{scripts_dir}/dang.sh")
+    _, st_dang = run_s('script new dang --lang sh')
+    imp = "#{@scratch}/imp-sym"
+    FileUtils.mkdir_p(imp)
+    File.write("#{imp}/dimp.sh", "#!/bin/sh\necho dimp\n")
+    File.symlink("#{@scratch}/nowhere2", "#{scripts_dir}/dimp.sh")
+    out_imp, st_imp = run_s("script import --copy #{imp}/dimp.sh")
+    fdir = "#{@data_dir}/functions"
+    FileUtils.mkdir_p(fdir)
+    File.symlink("#{@scratch}/nowhere3", "#{fdir}/fsym.zsh")
+    _, st_fn = run_s('function add fsym')
+    _, st_ok = run_s('function add fmode')
+    fmode = File.exist?("#{fdir}/fmode.zsh") ? File.stat("#{fdir}/fmode.zsh").mode & 0o777 : 0
+    untouched = File.read(outside) == "keep\n" && (File.stat(outside).mode & 0o777) == 0o600 &&
+                %w[nowhere1 nowhere2 nowhere3].none? { |n| File.exist?("#{@scratch}/#{n}") }
+    FileUtils.rm_f(%W[#{scripts_dir}/evil.sh #{scripts_dir}/dang.sh #{scripts_dir}/dimp.sh #{fdir}/fsym.zsh #{fdir}/fmode.zsh])
+    check('new/import/function add refuse a (dangling) symlink at the path; functions 0600',
+          st_new.exitstatus == 65 && st_dang.exitstatus == 65 && st_imp.exitstatus == 65 &&
+          out_imp.include?('already exists') && st_fn.exitstatus == 73 && st_ok.success? &&
+          fmode == 0o600 && untouched,
+          "new=#{st_new.exitstatus} dang=#{st_dang.exitstatus} imp=#{st_imp.exitstatus} fn=#{st_fn.exitstatus} " \
+          "ok=#{st_ok.exitstatus} fmode=#{fmode.to_s(8)} untouched=#{untouched} out=#{out_imp}")
   end
 end
 

@@ -718,14 +718,20 @@ script_new :: proc(name: string, lang_flag: string) {
 		config_lock_release()
 		wayu_exit(EXIT_CANTCREAT)
 	}
+	// script_find only sees regular files: anything else already at the
+	// path (a symlink, maybe dangling) is refused, never written through.
+	if _, lerr := os.lstat(source, context.temp_allocator); lerr == nil {
+		config_lock_release()
+		print_error_simple("Cannot create %s: something already exists at that path", source)
+		wayu_exit(EXIT_DATAERR)
+	}
 	skeleton := script_skeleton(lang, name, context.temp_allocator)
 	content := fmt.tprintf("#!%s\n%s", interp, skeleton)
-	if write_file_atomic(source, transmute([]byte)content) != nil {
+	if errno := create_file_exclusive(source, content, 0o755); errno != .NONE {
 		config_lock_release()
-		print_error_simple("Failed to create %s", source)
+		print_error_simple("Failed to create %s (%s)", source, create_file_error_text(errno))
 		wayu_exit(EXIT_CANTCREAT)
 	}
-	_ = os.chmod(source, os.perm_number(0o755))
 	config_lock_release()
 	print_success("Created script: %s", source)
 
@@ -1341,15 +1347,16 @@ script_import_one :: proc(plan: ^ScriptImportPlan, keep_original: bool) {
 		content = fmt.tprintf("#!%s\n%s", plan.add_shebang, content)
 	}
 	dest := script_import_dest(plan^)
-	if os.exists(dest) {
+	// lstat + O_EXCL|O_NOFOLLOW: a (dangling) symlink there is never
+	// written through.
+	if _, lerr := os.lstat(dest, context.temp_allocator); lerr == nil {
 		plan.reason = fmt.tprintf("%s already exists", dest)
 		return
 	}
-	if write_file_atomic(dest, transmute([]byte)content) != nil {
-		plan.reason = fmt.tprintf("cannot write %s", dest)
+	if errno := create_file_exclusive(dest, content, 0o755); errno != .NONE {
+		plan.reason = fmt.tprintf("cannot write %s (%s)", dest, create_file_error_text(errno))
 		return
 	}
-	_ = os.chmod(dest, os.perm_number(0o755))
 	s := ScriptInfo {
 		name   = plan.name,
 		source = dest,

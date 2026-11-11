@@ -364,7 +364,7 @@ Shell functions as files in the data dir's `functions/` (sourced by
 
 | Action | Arguments | |
 |---|---|---|
-| `add`, `new`, `edit` | `<name>` | Create (from a skeleton for the shell) or open the function file in the editor; without `$EDITOR` / `$VISUAL` and a terminal, print its path instead |
+| `add`, `new`, `edit` | `<name>` | Create (from a skeleton for the shell, mode `0600`) or open the function file in the editor; without `$EDITOR` / `$VISUAL` and a terminal, print its path instead. A dangling symlink at the path exits `73` |
 | `list`, `ls` | | |
 | `remove`, `rm`, `delete` | `<name>` | Delete the file (`--yes`) |
 | `help` | | |
@@ -381,7 +381,7 @@ command a source declares, below). Default action: `list`.
 
 | Action | Arguments | |
 |---|---|---|
-| `new` | `<name> [--lang <lang>]` | Create `scripts/<name>.<ext>` from a skeleton, open it in the editor, build it. Exit `65` if the name exists |
+| `new` | `<name> [--lang <lang>]` | Create `scripts/<name>.<ext>` from a skeleton, open it in the editor, build it. Exit `65` if the name exists or anything (a symlink too) is at that path |
 | `edit` | `<name>` | Open the source in the editor, then rebuild it if it changed |
 | `list`, `ls` | | Name, language, state, source; `--json` |
 | `remove`, `rm` | `<name>` | Delete the source (backed up first) and its `bin/` entry (`--yes`); a `bin/` entry without a script is removed alone |
