@@ -632,9 +632,13 @@ be yours and not a symlink; with neither `XDG_RUNTIME_DIR` nor `TMPDIR` set
 the cache lives under `<data>/run` (`0700`), never in a shared `/tmp`. Otherwise it runs
 `wayu secrets cache` once to (re)write it. If the key is unavailable or a
 value does not decrypt, one `wayu: secrets not loaded: …` line goes to stderr
-and startup continues without the secrets. Every change to `secrets.json`
-deletes the cache; `wayu secrets lock` deletes it by hand. Secret values are
-literal: no `$VAR` or `~` expansion.
+and startup continues without the secrets. The cache holds the values in
+plaintext on disk until it is deleted: every change to `secrets.json`
+deletes it, and `wayu secrets lock` deletes it by hand. Both remove the
+caches of this data dir from every cache dir wayu wrote one to (each is
+recorded in `<data>/run/cache-dirs`), whatever `TMPDIR` / `XDG_RUNTIME_DIR`
+the deleting command runs with. Secret values are literal: no `$VAR` or `~`
+expansion.
 
 Decrypted values are never written to `core.<ext>`, `path_sync.<ext>`,
 `turbo.<ext>`, backups or logs; only to the session cache and to the output

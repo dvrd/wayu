@@ -334,7 +334,8 @@ terminal) — or takes it as an argument — and stores it encrypted in
 plaintext. The master key lives in the macOS keychain (Secret Service on
 Linux, or a `0600` key file: `[secrets] backend = "file"`). Shells load
 secrets from a per-session cache in `$XDG_RUNTIME_DIR` / `$TMPDIR`
-(decrypted once, then sourced without forking).
+(decrypted once, then sourced without forking); that cache is plaintext on
+disk (`0600`) until `wayu secrets lock` or the next store change deletes it.
 
 ```bash
 wayu const add OPENAI_API_KEY --secret      # prompts, input hidden

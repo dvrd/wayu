@@ -58,6 +58,7 @@ class SecretsStoreIntegrationTest
       test_rekey
       test_rekey_crash_recovery
       test_lock
+      test_lock_every_cache_dir
       test_cache_symlinks_refused
       test_cache_private_fallback
       test_doctor_ok
@@ -452,6 +453,34 @@ class SecretsStoreIntegrationTest
     had = caches.any?
     _, err, st = w('secrets lock')
     check('cache kept', had && st.success? && caches.empty?, err)
+  end
+
+  # Caches written under other TMPDIRs (and with neither TMPDIR nor
+  # XDG_RUNTIME_DIR, under <data>/run) are deleted too: `secrets lock` run
+  # with yet another TMPDIR removes them all.
+  def test_lock_every_cache_dir
+    print 'Test 19a: lock deletes caches under every TMPDIR used... '
+    bases = %w[t1 t2 t3].map { |n| "#{@tmp_home}/#{n}" }
+    bases.each { |b| FileUtils.mkdir_p(b) }
+    bases.each do |b|
+      Open3.capture3(env.merge('TMPDIR' => b), 'zsh', '-fc', "source #{@data_dir}/init.zsh", unsetenv_others: true)
+    end
+    Open3.capture3(env.reject { |k, _| k == 'TMPDIR' }, 'zsh', '-fc', "source #{@data_dir}/init.zsh",
+                   unsetenv_others: true)
+    found = lambda do
+      bases.flat_map { |b| Dir.glob("#{b}/wayu-#{Process.uid}/secrets-*") } +
+        Dir.glob("#{@data_dir}/run/wayu-#{Process.uid}/secrets-*")
+    end
+    had = found.call.size
+    other = "#{@tmp_home}/t4"
+    FileUtils.mkdir_p(other)
+    _, err, st = Open3.capture3(env.merge('TMPDIR' => other), @wayu_bin, 'secrets', 'lock', unsetenv_others: true)
+    left = found.call
+    rec = "#{@data_dir}/run/cache-dirs"
+    check('caches left behind', had == 4 && st.success? && left.empty? && mode(rec) == 0o600,
+          "had=#{had} left=#{left} #{err}")
+    bases.each { |b| FileUtils.rm_rf(b) }
+    FileUtils.rm_rf(other)
   end
 
   PLANTED = "export FAKE_TOKEN=planted; export FAKE_PLANTED=1\n".freeze

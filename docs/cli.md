@@ -480,7 +480,7 @@ Service, or `secret.key` in the config dir). `const get` decrypts,
 |---|---|---|
 | `list`, `ls` | | Secret names and mode (`session` or `run-only`), one per line (never values) |
 | `rekey` | | New master key, re-encrypt every secret, drop the session cache |
-| `lock` | | Delete the decrypted session cache (next shell decrypts again) |
+| `lock` | | Delete the decrypted session cache from every dir it was written to (next shell decrypts again) |
 | `run` | `<NAME>... -- <cmd> [args...]` | Run `cmd` with these secrets in its environment |
 | `help` | | |
 

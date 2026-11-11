@@ -828,12 +828,99 @@ secrets_cache_content :: proc(
 	return strings.to_string(b)
 }
 
-// Remove every shell's cache for this data dir (store changed, rekey, lock).
+// <data>/run/cache-dirs: every cache dir a cache of this data dir was
+// written to, one per line, so invalidation also finds caches written under
+// another TMPDIR / XDG_RUNTIME_DIR (temp-allocated).
+secrets_cache_dirs_file :: proc() -> string {
+	return fmt.tprintf("%s/cache-dirs", secrets_private_run_dir())
+}
+
+// Every dir a cache of this data dir may be in (deduplicated,
+// temp-allocated): the current one, the ones the usual bases give
+// (`$XDG_RUNTIME_DIR`, `$TMPDIR`, <data>/run, /tmp), and the ones recorded
+// in secrets_cache_dirs_file.
+secrets_cache_dirs_known :: proc() -> []string {
+	dirs := make([dynamic]string, context.temp_allocator)
+	add :: proc(dirs: ^[dynamic]string, dir: string) {
+		if len(dir) > 0 && !slice.contains(dirs[:], dir) {
+			append(dirs, dir)
+		}
+	}
+	uid_dir :: proc(base: string) -> string {
+		b := base
+		if len(b) > 1 && strings.has_suffix(b, "/") {
+			b = b[:len(b) - 1]
+		}
+		return fmt.tprintf("%s/wayu-%d", b, posix.getuid())
+	}
+	add(&dirs, secrets_cache_dir())
+	for var in ([]string{"XDG_RUNTIME_DIR", "TMPDIR"}) {
+		if base := os.get_env(var, context.temp_allocator); len(base) > 0 {
+			add(&dirs, uid_dir(base))
+		}
+	}
+	add(&dirs, uid_dir(secrets_private_run_dir()))
+	add(&dirs, uid_dir("/tmp"))
+	if data, err := os.read_entire_file_from_path(
+		secrets_cache_dirs_file(),
+		context.temp_allocator,
+	); err == nil {
+		text := string(data)
+		for line in strings.split_lines_iterator(&text) {
+			if strings.has_prefix(line, "/") {
+				add(&dirs, line)
+			}
+		}
+	}
+	return dirs[:]
+}
+
+// Record `dir` in secrets_cache_dirs_file (0600, atomic) unless it is
+// there. Best effort: a lost record only means invalidation misses that
+// dir (the cache still goes stale against the store).
+@(private = "file")
+secrets_cache_dir_record :: proc(dir: string) {
+	if strings.contains_any(dir, "\n\r") {
+		return
+	}
+	path := secrets_cache_dirs_file()
+	old: string
+	if data, err := os.read_entire_file_from_path(path, context.temp_allocator); err == nil {
+		old = string(data)
+		text := old
+		for line in strings.split_lines_iterator(&text) {
+			if line == dir {
+				return
+			}
+		}
+	}
+	if ok, _ := private_dir_ensure(secrets_private_run_dir()); !ok {
+		return
+	}
+	sep := "\n" if len(old) > 0 && !strings.has_suffix(old, "\n") else ""
+	text := strings.concatenate({old, sep, dir, "\n"}, context.temp_allocator)
+	if write_file_atomic(path, transmute([]byte)text) == nil {
+		restrict_file_mode(path)
+	}
+}
+
+// Remove every shell's cache for this data dir (store changed, rekey, lock)
+// from every dir one may be in (secrets_cache_dirs_known). A dir is only
+// entered when lstat shows a real directory owned by us; unlink never
+// follows a symlinked cache file.
 secrets_cache_invalidate :: proc() -> (removed: int) {
-	for sh in ([]ShellType{.ZSH, .BASH, .FISH}) {
-		p := secrets_cache_path(sh)
-		if os.exists(p) && os.remove(p) == nil {
-			removed += 1
+	for dir in secrets_cache_dirs_known() {
+		st: posix.stat_t
+		if posix.lstat(strings.clone_to_cstring(dir, context.temp_allocator), &st) != .OK ||
+		   !posix.S_ISDIR(st.st_mode) ||
+		   st.st_uid != posix.getuid() {
+			continue
+		}
+		for sh in ([]ShellType{.ZSH, .BASH, .FISH}) {
+			p := fmt.tprintf("%s/secrets-%s.%s", dir, secrets_cache_id(), get_shell_extension(sh))
+			if posix.unlink(strings.clone_to_cstring(p, context.temp_allocator)) == .OK {
+				removed += 1
+			}
 		}
 	}
 	return
@@ -948,6 +1035,7 @@ secrets_cache_write_once :: proc(
 	if dok, derr := secrets_cache_dir_ensure(dir); !dok {
 		return path, false, derr, false
 	}
+	secrets_cache_dir_record(dir)
 	// write_file_atomic follows symlinks: never write decrypted values
 	// through one (or keep a planted link the loader would refuse).
 	if st: posix.stat_t;
