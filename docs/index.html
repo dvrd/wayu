@@ -762,7 +762,7 @@ _wayu_prompt_full() {
       <div class="wrap">
         <div class="sec-head reveal">
           <p class="kicker">What it replaces</p>
-          <h2 id="features-title">Ten jobs, one binary.</h2>
+          <h2 id="features-title">Eleven jobs, one binary.</h2>
           <p class="lede">Each card is something you used to do by hand in an rc file, or with another tool. In wayu it is a command, and the result lands in the same generated init.</p>
         </div>
         <div class="cards">
@@ -793,7 +793,7 @@ _wayu_prompt_full() {
           <article class="card reveal" style="--i:1">
             <p class="rep">replaces <s>a separate plugin manager</s></p>
             <h3>Plugins</h3>
-            <p>From a built-in registry or a git URL. Enable, disable, load priority, dependencies, conflict checks.</p>
+            <p>From a built-in registry or a git URL. Enable, disable, load priority, dependencies, conflict checks. Two of the usual ones are built in (below).</p>
             <p class="cmd">wayu plugin add autosuggestions</p>
           </article>
           <article class="card reveal" style="--i:2">
@@ -810,17 +810,23 @@ _wayu_prompt_full() {
           </article>
           <article class="card wide reveal" style="--i:0">
             <p class="rep">replaces <s>installer lines piling up at the end of .zshrc</s></p>
-            <h3>wayu optimize <span class="tag">new</span></h3>
+            <h3>wayu optimize</h3>
             <p>Moves <code>source &lt;(tool completion zsh)</code>, <code>eval "$(… init zsh)"</code>, <code>fpath</code> edits, a second <code>compinit</code>, PATH exports and aliases from your rc file into wayu's cached init. Shows the diff first, backs the file up, and an open shell tells you when new lines appear.</p>
             <p class="cmd">wayu optimize --dry-run</p>
           </article>
-          <article class="card reveal" style="--i:1">
+          <article class="card wide reveal" style="--i:1">
+            <p class="rep">replaces <s>zsh-autosuggestions and zsh-syntax-highlighting</s></p>
+            <h3>Suggestions &amp; highlighting <span class="tag">zsh</span></h3>
+            <p>Opt-in and built into <code>core.zsh</code>: fish-like suggestions from history, and command-line highlighting with zsh-syntax-highlighting's style names, using zsh's own lexer. One <code>zle-line-pre-redraw</code> hook, no widgets re-wrapped before every prompt, no forks; a keystroke re-highlights only the last words. With them on, the two plugins are not loaded.</p>
+            <p class="cmd toml">[settings] autosuggest = true · highlight = true</p>
+          </article>
+          <article class="card wide reveal" style="--i:0">
             <p class="rep">replaces <s>functions pasted into .zshrc</s></p>
             <h3>Functions</h3>
             <p>One file per function, a skeleton opened in <code>$EDITOR</code>, sourced at startup.</p>
             <p class="cmd">wayu function add mkcd</p>
           </article>
-          <article class="card reveal" style="--i:2">
+          <article class="card wide reveal" style="--i:1">
             <p class="rep">replaces <s>bisecting .zshrc to find what broke</s></p>
             <h3>Doctor</h3>
             <p>Checks PATH, config, scripts, plugins, backups, secrets and slow startup lines. Exits 78 on errors, so CI can gate on it.</p>
