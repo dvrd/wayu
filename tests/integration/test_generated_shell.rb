@@ -50,6 +50,7 @@ class GeneratedShellTest
       test_evalcache_binary_identity
       test_bash_errexit_with_tools
       test_tools_args_never_run_code
+      test_tools_name_never_runs_code
       test_prompt_survives_hostile_commands
       test_prompt_async_forks
       test_prompt_hostile_repo_runs_nothing
@@ -605,6 +606,38 @@ class GeneratedShellTest
             "exit=#{bst.exitstatus} out=#{bout.strip[0, 200]} lazy_call=#{lazy.include?('_wayu_evalcache argtool')} pwned=#{File.exist?(pwn)}")
       Open3.capture3(env, @wayu_bin, 'const', 'rm', 'ARGS_PROBE')
     end
+  end
+
+  # A [tools] key is a TOML quoted key and can hold a newline: it must never
+  # end a generated `# ...` comment and run the rest (every kind; zsh, bash
+  # 3.2, fish). The entry is skipped with a warning on stderr.
+  def test_tools_name_never_runs_code
+    print "Test: [tools] names with a newline are skipped, never run (zsh, bash, fish)... "
+    home = "#{@tmp_home}/tools_name"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p("#{home}/.config")
+    env = clean_env(home)
+    fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
+    shells = %w[zsh bash] + (fish ? %w[fish] : [])
+    shells.each { |sh| Open3.capture3(env.merge('SHELL' => "/bin/#{sh}"), @wayu_bin, 'init', '--shell', sh) }
+    marker = "#{home}/PWNED"
+    cfg = "#{home}/.config/wayu"
+    toml = %w[lazy nvm conda evalcache].map.with_index do |k, i|
+      extra = k == 'lazy' ? ', init_script = "~/i.sh", hook_commands = ["foo"]' : ''
+      %(\n"t#{i}\\ntouch #{marker}\\n" = { kind = "#{k}"#{extra}#{i.odd? ? ', login_only = true' : ''} }\n)
+    end.join
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[tools]" + toml)
+    _, berr, = Open3.capture3(env, @wayu_bin, 'build')
+    data = "#{home}/.local/share/wayu"
+    errs = []
+    shells.each do |sh|
+      exe = sh == 'bash' ? '/bin/bash' : (sh == 'fish' ? fish : 'zsh')
+      args = sh == 'fish' ? ['--no-config', '-l', '-c'] : ['-l', '-c']
+      _, e, = Open3.capture3(env, exe, *args, "source '#{data}/init.#{sh}'")
+      errs << "#{sh}: #{e.strip[0, 120]}" unless e.strip.empty?
+    end
+    ok = !File.exist?(marker) && berr.include?('invalid tool name') && errs.empty?
+    check('tools name', ok, "pwned=#{File.exist?(marker)} build_err=#{berr.strip[0, 200]} errs=#{errs}")
   end
 
   # OKAMI-349: outside a git work tree (and a versioned context) a prompt

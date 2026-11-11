@@ -1470,6 +1470,8 @@ build_core_content :: proc(mask := false) -> string {
 	if login_count > 0 {
 		fmt.sbprintln(&b, "# === Login shell only ===")
 		fmt.sbprintln(&b, "if [[ -o login ]]; then" if is_zsh else "if shopt -q login_shell; then")
+		// `:` keeps the block valid when every entry was skipped (comments only).
+		fmt.sbprintln(&b, "  :")
 		for t in tools {
 			if t.login_only {
 				emit_tool_recipe(&b, t)
@@ -2341,8 +2343,7 @@ tool_kind_is_evalcache :: proc(kind: string) -> bool {
 // the tool (comment in the file, warning on stderr — stdout of `wayu build
 // eval` is eval'd); `wayu build` refuses them up front (validate_tools_args).
 emit_evalcache_call :: proc(b: ^strings.Builder, t: ToolEntry) {
-	if !is_safe_alias_name(t.name) {
-		fmt.sbprintfln(b, "# wayu: invalid tool name %q - skipping", t.name)
+	if !tool_name_ok(b, t.name) {
 		return
 	}
 	if len(t.args) == 0 {
@@ -2528,6 +2529,9 @@ validate_tools_args :: proc() -> bool {
 // Eager evalcache tools are handled in core; this dispatcher runs from
 // lazy/login and covers everything else (deferred evalcache + heavy recipes).
 emit_tool_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
+	if !tool_name_ok(b, t.name) {
+		return
+	}
 	is_zsh := wayu.shell == .ZSH
 	switch {
 	case tool_kind_is_evalcache(t.kind):
@@ -2543,6 +2547,19 @@ emit_tool_recipe :: proc(b: ^strings.Builder, t: ToolEntry) {
 	case:
 		fmt.sbprintfln(b, "# wayu: unknown kind %q for tool %q - skipping", t.kind, t.name)
 	}
+}
+
+// A [tools] key must be a valid alias name for every kind: it is printed in
+// generated comments and code, and a TOML quoted key can hold a newline that
+// would end a `# ...` comment and start a command. Otherwise the entry is
+// skipped with a comment (%q-escaped) and a warning on stderr.
+tool_name_ok :: proc(b: ^strings.Builder, name: string) -> bool {
+	if is_safe_alias_name(name) {
+		return true
+	}
+	fmt.sbprintfln(b, "# wayu: invalid tool name %q - skipping", name)
+	fmt.eprintfln("[wayu] [tools] invalid tool name %q - skipping", name)
+	return false
 }
 
 // Generic lazy recipe: wrap each `hook_commands` entry so the first call
@@ -3277,8 +3294,7 @@ build_core_content_fish :: proc(mask := false) -> string {
 // init_script (`*.fish`); the nvm / conda recipes are POSIX-only and are
 // skipped with a comment (use nvm.fish / `conda init fish`).
 emit_tool_recipe_fish :: proc(b: ^strings.Builder, t: ToolEntry) {
-	if !is_safe_alias_name(t.name) {
-		fmt.sbprintfln(b, "# wayu: invalid tool name %q - skipping", t.name)
+	if !tool_name_ok(b, t.name) {
 		return
 	}
 	switch {
