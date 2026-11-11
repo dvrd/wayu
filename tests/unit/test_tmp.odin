@@ -8,8 +8,9 @@ import "core:os"
 //
 // The root is per process, so concurrent unit-test runs (other worktrees,
 // CI matrix jobs on one host) never share a path: ./build_it test sets
-// WAYU_TEST_TMPDIR inside its HOME sandbox and removes it afterwards;
-// otherwise it is /tmp/wayu-unit-<pid>. Never use a fixed /tmp path.
+// WAYU_TEST_TMPDIR inside its private HOME sandbox and removes it afterwards;
+// otherwise it is a fresh mkdtemp dir under $TMPDIR (0700). Never use a
+// fixed /tmp path: another local user could create it (or a symlink) first.
 //
 // The string lives until the process exits (heap, outside the per-test
 // tracking allocator), so it is safe to store in wayu.wayu.config/data even
@@ -19,7 +20,10 @@ test_tmp :: proc(name: string) -> string {
 	if len(test_tmp_root) == 0 {
 		root, ok := os.lookup_env("WAYU_TEST_TMPDIR", heap)
 		if !ok || len(root) == 0 {
-			root = fmt.aprintf("/tmp/wayu-unit-%d", os.get_pid(), allocator = heap)
+			dir, err := os.make_directory_temp("", "wayu-unit-*", heap)
+			fmt.assertf(err == nil, "test_tmp: cannot create a temp dir: %v", err)
+			_ = os.chmod(dir, os.Permissions{.Read_User, .Write_User, .Execute_User})
+			root = dir
 		}
 		test_tmp_root = root
 	}

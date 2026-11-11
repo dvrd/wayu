@@ -13,7 +13,8 @@ import "core:time"
 
 @(private = "file")
 loadable_dir :: proc(name: string) -> string {
-	dir := fmt.tprintf("/tmp/wayu_unit_loadable_%d_%s", os.get_pid(), name)
+	// Under the per-run private root, never a fixed /tmp name.
+	dir := test_tmp(fmt.tprintf("loadable_%s", name))
 	os.remove_all(dir)
 	os.make_directory_all(dir)
 	return dir
