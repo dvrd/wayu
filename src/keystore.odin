@@ -3,22 +3,24 @@
 // One interface (keystore_load / keystore_save) over three backends, chosen
 // by `[secrets] backend` in wayu.toml:
 //
-//   keychain        macOS login keychain via `security` (generic password,
-//                   account "wayu-<id>", service "wayu-master-key"). Storing
-//                   puts the hex key briefly on `security`'s argv: `security`
-//                   has no stdin mode for -w.
-//   secret-service  freedesktop Secret Service via `secret-tool` (service
-//                   "wayu", account "wayu-<id>"; the key is written to its
-//                   stdin, never on argv).
+//   keychain        macOS login keychain via /usr/bin/security (generic
+//                   password, account "wayu-<id>", service
+//                   "wayu-master-key"). Storing runs `security -i` and writes
+//                   the command line on its stdin: the key is never on argv.
+//   secret-service  freedesktop Secret Service via `secret-tool` from a
+//                   system dir (KEYSTORE_SECRET_TOOL_DIRS; service "wayu",
+//                   account "wayu-<id>"; the key is written to its stdin,
+//                   never on argv).
 //
 //   <id> is the data dir's id (keystore_account): one key per data dir.
 //   file            <config>/secret.key: 64 hex chars, mode 0600, created
 //                   with O_EXCL; refused when group/other can read it.
 //   auto (default)  keychain on macOS; secret-service on Linux when
-//                   `secret-tool` is on PATH; else file.
+//                   `secret-tool` is installed in a system dir; else file.
 //
-// Every external command runs through run_command_* (no shell). The key is
-// never printed, logged or written anywhere else.
+// Every external command runs through run_command_* (no shell), by absolute
+// path: never looked up in PATH, where a planted `security` would receive
+// the key. The key is never printed, logged or written anywhere else.
 
 package wayu
 
@@ -67,6 +69,24 @@ KEYCHAIN_NOT_FOUND_EXIT :: 44
 // Keychain / Secret Service may show an unlock dialog: generous deadline.
 @(private = "file")
 KEYSTORE_TIMEOUT_MS :: 120_000
+
+// The keychain backend's program: never looked up in PATH.
+KEYSTORE_SECURITY_BIN :: "/usr/bin/security"
+
+// Where the secret-service backend looks for `secret-tool` (in order):
+// root-owned system dirs only (NixOS: /run/current-system/sw/bin), never
+// PATH.
+KEYSTORE_SECRET_TOOL_DIRS := [?]string {
+	"/usr/bin",
+	"/usr/local/bin",
+	"/bin",
+	"/run/current-system/sw/bin",
+}
+
+// Test-only (-define:WAYU_TEST_KEYSTORE=true; never set in a release
+// build): WAYU_TEST_SECURITY_BIN / WAYU_TEST_SECRET_TOOL_BIN replace the
+// programs so tests can fake the keychain. Release builds never read them.
+WAYU_TEST_KEYSTORE :: #config(WAYU_TEST_KEYSTORE, false)
 
 // Backend word → enum; ok = false for an unknown word.
 secrets_backend_parse :: proc(word: string) -> (Secrets_Backend, bool) {
@@ -122,7 +142,7 @@ secrets_backend_resolve :: proc(b: Secrets_Backend) -> Secrets_Backend {
 	when ODIN_OS == .Darwin {
 		return .KEYCHAIN
 	} else {
-		if check_command_exists("secret-tool") {
+		if len(keystore_backend_binary(.SECRET_SERVICE)) > 0 {
 			return .SECRET_SERVICE
 		}
 		return .FILE
@@ -143,15 +163,50 @@ secrets_backend_active :: proc() -> Secrets_Backend {
 	return secrets_backend_resolve(b)
 }
 
-// The program a backend runs ("" for file). Doctor checks it is on PATH.
-keystore_backend_program :: proc(b: Secrets_Backend) -> string {
+// Absolute path of the program a backend runs: KEYSTORE_SECURITY_BIN, or
+// the first executable `secret-tool` in KEYSTORE_SECRET_TOOL_DIRS. "" when
+// it is not installed there (and for file). Never searches PATH.
+// Temp-allocated.
+keystore_backend_binary :: proc(b: Secrets_Backend) -> string {
+	when WAYU_TEST_KEYSTORE {
+		env_name := "WAYU_TEST_SECURITY_BIN" if b == .KEYCHAIN else "WAYU_TEST_SECRET_TOOL_BIN"
+		if fake := os.get_env(env_name, context.temp_allocator); len(fake) > 0 {
+			return fake
+		}
+	}
 	#partial switch b {
 	case .KEYCHAIN:
-		return "security"
+		return KEYSTORE_SECURITY_BIN if keystore_is_executable(KEYSTORE_SECURITY_BIN) else ""
 	case .SECRET_SERVICE:
-		return "secret-tool"
+		for dir in KEYSTORE_SECRET_TOOL_DIRS {
+			path := fmt.tprintf("%s/secret-tool", dir)
+			if keystore_is_executable(path) {
+				return path
+			}
+		}
 	}
 	return ""
+}
+
+// Where keystore_backend_binary looks, for messages (temp-allocated).
+keystore_backend_binary_hint :: proc(b: Secrets_Backend) -> string {
+	if b == .KEYCHAIN {
+		return KEYSTORE_SECURITY_BIN
+	}
+	return fmt.tprintf(
+		"secret-tool in %s",
+		strings.join(KEYSTORE_SECRET_TOOL_DIRS[:], ", ", context.temp_allocator),
+	)
+}
+
+@(private = "file")
+keystore_is_executable :: proc(path: string) -> bool {
+	cpath := strings.clone_to_cstring(path, context.temp_allocator)
+	st: posix.stat_t
+	if posix.stat(cpath, &st) != .OK || !posix.S_ISREG(st.st_mode) {
+		return false
+	}
+	return posix.access(cpath, {.X_OK}) == .OK
 }
 
 // ---------------------------------------------------------------------------
@@ -172,25 +227,48 @@ keystore_label :: proc() -> string {
 	return fmt.tprintf("wayu master key (%s)", wayu.data)
 }
 
-// `security add-generic-password -U -a wayu-<id> -s wayu-master-key
-// -l 'wayu master key (<data>)' -w <hex>`. -U updates an existing item
-// (rekey). Slice is temp-allocated.
-keychain_store_argv :: proc(key_hex: string) -> []string {
-	return slice_temp(
-		{
-			"security",
-			"add-generic-password",
-			"-U",
-			"-a",
-			keystore_account(),
-			"-s",
-			KEYCHAIN_SERVICE,
-			"-l",
-			keystore_label(),
-			"-w",
-			key_hex,
-		},
+// `security -i`: the store command comes on stdin (keychain_store_line),
+// so the key never appears on argv, where `ps` shows it to every user.
+keychain_store_argv :: proc() -> []string {
+	return slice_temp({"security", "-i"})
+}
+
+// The `security -i` line that stores the key:
+// `add-generic-password -U -a "wayu-<id>" -s "wayu-master-key"
+// -l "wayu master key (<data>)" -w "<hex>"` and a newline. -U updates an
+// existing item (rekey). Each word goes through keychain_quote.
+// Temp-allocated; the caller wipes it.
+keychain_store_line :: proc(key_hex: string) -> string {
+	return fmt.tprintf(
+		"add-generic-password -U -a %s -s %s -l %s -w %s\n",
+		keychain_quote(keystore_account()),
+		keychain_quote(KEYCHAIN_SERVICE),
+		keychain_quote(keystore_label()),
+		keychain_quote(key_hex),
 	)
+}
+
+// One word for `security -i`'s line parser: double-quoted, with `\` and
+// `"` backslash-escaped. A control character (a newline would end the
+// command) becomes `?`: only the informational label can hold one.
+// Temp-allocated.
+keychain_quote :: proc(word: string) -> string {
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_byte(&b, '"')
+	for i in 0 ..< len(word) {
+		c := word[i]
+		switch {
+		case c == '"' || c == '\\':
+			strings.write_byte(&b, '\\')
+			strings.write_byte(&b, c)
+		case c < 0x20 || c == 0x7f:
+			strings.write_byte(&b, '?')
+		case:
+			strings.write_byte(&b, c)
+		}
+	}
+	strings.write_byte(&b, '"')
+	return strings.to_string(b)
 }
 
 // `security find-generic-password -a wayu-<id> -s wayu-master-key -w`
@@ -319,6 +397,15 @@ slice_temp :: proc(items: []string) -> []string {
 	return out
 }
 
+// argv with argv[0] (a program name) replaced by `bin`, the backend's
+// absolute path (temp-allocated).
+@(private = "file")
+keystore_argv_resolved :: proc(argv: []string, bin: string) -> []string {
+	out := slice_temp(argv)
+	out[0] = bin
+	return out
+}
+
 // <config>/secret.key (temp-allocated).
 secret_key_file_path :: proc() -> string {
 	return fmt.tprintf("%s/%s", wayu.config, SECRET_KEY_FILE)
@@ -384,11 +471,22 @@ keystore_save :: proc(
 
 	#partial switch secrets_backend_resolve(b) {
 	case .KEYCHAIN:
-		if !check_command_exists("security") {
-			return false, "`security` not found on PATH"
+		bin := keystore_backend_binary(.KEYCHAIN)
+		if len(bin) == 0 {
+			return false, fmt.tprintf("%s not found", KEYSTORE_SECURITY_BIN)
 		}
-		res := run_command_timeout(keychain_store_argv(string(key_hex)), KEYSTORE_TIMEOUT_MS)
+		line := keychain_store_line(string(key_hex))
+		defer crypto.zero_explicit(raw_data(line), len(line))
+		res := run_command_timeout(
+			keystore_argv_resolved(keychain_store_argv(), bin),
+			KEYSTORE_TIMEOUT_MS,
+			stdin_data = line,
+		)
 		defer command_result_destroy(&res)
+		if res.timed_out {
+			return false,
+				"could not store the key in the macOS keychain: security did not answer in time"
+		}
 		if !res.ok {
 			return false, fmt.tprintf(
 				"could not store the key in the macOS keychain (security exited %d)",
@@ -397,11 +495,15 @@ keystore_save :: proc(
 		}
 		return true, ""
 	case .SECRET_SERVICE:
-		if !check_command_exists("secret-tool") {
-			return false, "`secret-tool` not found on PATH"
+		bin := keystore_backend_binary(.SECRET_SERVICE)
+		if len(bin) == 0 {
+			return false, fmt.tprintf(
+				"%s: not found",
+				keystore_backend_binary_hint(.SECRET_SERVICE),
+			)
 		}
 		res := run_command_timeout(
-			secret_service_store_argv(),
+			keystore_argv_resolved(secret_service_store_argv(), bin),
 			KEYSTORE_TIMEOUT_MS,
 			stdin_data = string(key_hex),
 		)
@@ -433,10 +535,16 @@ keystore_load_command :: proc(
 	status: Key_Status,
 	msg: string,
 ) {
-	if !check_command_exists(argv[0]) {
-		return key, .UNAVAILABLE, fmt.tprintf("%s: `%s` not found on PATH", label, argv[0])
+	backend: Secrets_Backend = .KEYCHAIN if argv[0] == "security" else .SECRET_SERVICE
+	bin := keystore_backend_binary(backend)
+	if len(bin) == 0 {
+		return key, .UNAVAILABLE, fmt.tprintf(
+			"%s: %s not found",
+			label,
+			keystore_backend_binary_hint(backend),
+		)
 	}
-	res := run_command_timeout(argv, KEYSTORE_TIMEOUT_MS)
+	res := run_command_timeout(keystore_argv_resolved(argv, bin), KEYSTORE_TIMEOUT_MS)
 	defer {
 		crypto.zero_explicit(raw_data(res.stdout), len(res.stdout))
 		command_result_destroy(&res)

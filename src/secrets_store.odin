@@ -1840,12 +1840,13 @@ check_secrets :: proc(results: ^[dynamic]CheckResult) {
 	if backend == .KEYCHAIN || backend == .SECRET_SERVICE {
 		bname = fmt.tprintf("%s (account %s)", bname, keystore_account())
 	}
-	if prog := keystore_backend_program(backend); len(prog) > 0 && !check_command_exists(prog) {
+	if (backend == .KEYCHAIN || backend == .SECRET_SERVICE) &&
+	   len(keystore_backend_binary(backend)) == 0 {
 		add(
 			results,
 			"secrets backend",
 			.ERROR,
-			fmt.tprintf("%s: `%s` not found on PATH", bname, prog),
+			fmt.tprintf("%s: %s not found", bname, keystore_backend_binary_hint(backend)),
 		)
 		return
 	}

@@ -541,12 +541,16 @@ class SecretsStoreIntegrationTest
     check('key regenerated', st.exitstatus == 78 && gst.exitstatus == 78 && !created && err.include?('refusing'), err + gerr)
   end
 
-  # A fake `security` on PATH: items are files <dir>/<account> (never the
-  # real keychain). find-generic-password exits 44 when there is no item.
+  # A fake `security`: items are files <dir>/<account> (never the real
+  # keychain). find-generic-password exits 44 when there is no item. `-i`
+  # reads the command from stdin (how wayu stores the key, off argv). Every
+  # argv is appended to <dir>/argv.log.
   def fake_security(dir)
     FileUtils.mkdir_p("#{dir}/bin")
     File.write("#{dir}/bin/security", <<~SH)
       #!/bin/sh
+      printf '%s\\n' "$*" >> "#{dir}/argv.log"
+      if [ "$1" = -i ]; then IFS= read -r line; eval "set -- $line"; fi
       cmd=$1; shift; acct=; pw=
       while [ $# -gt 0 ]; do
         case $1 in -a) acct=$2; shift ;; -w) [ $# -gt 1 ] && { pw=$2; shift; } ;; -s|-l) shift ;; esac
@@ -563,19 +567,38 @@ class SecretsStoreIntegrationTest
 
   # OKAMI-306 follow-up: a 6.0 key (keychain account "wayu") is moved to the
   # per-data-dir account when it decrypts secrets.json, never otherwise.
+  # A wayu built with -define:WAYU_TEST_KEYSTORE=true: it takes the keychain
+  # program from WAYU_TEST_SECURITY_BIN (release builds only run
+  # /usr/bin/security and never read that variable). nil without odin.
+  def keystore_test_bin
+    return @keystore_test_bin if defined?(@keystore_test_bin)
+    @keystore_test_bin = nil
+    return nil if `command -v odin 2>/dev/null`.strip.empty?
+    out = "#{@tmp_home}/wayu-keystore-test"
+    root = File.expand_path('../..', __dir__)
+    _, err, st = Open3.capture3('odin', 'build', 'src', '-define:WAYU_TEST_KEYSTORE=true', "-out:#{out}", chdir: root)
+    raise "keystore test build failed: #{err}" unless st.success?
+    @keystore_test_bin = out
+  end
+
   def test_legacy_keychain_key_moved
     print 'Test 22b: wayu 6.0 keychain key moved to the per-data-dir account... '
+    bin = keystore_test_bin
+    if bin.nil?
+      puts 'skipped (odin not installed)'
+      return
+    end
     kc = "#{@tmp_home}/fake-keychain"
     fake_security(kc)
     path = "#{@config_dir}/wayu.toml"
     saved = File.read(path)
     File.write(path, saved.sub('backend = "file"', 'backend = "keychain"'))
-    kenv = env.merge('PATH' => "#{kc}/bin:#{ENV['PATH']}")
+    kenv = env.merge('WAYU_TEST_SECURITY_BIN' => "#{kc}/bin/security")
     get = lambda do
-      out, err, st = Open3.capture3(kenv, @wayu_bin, 'const', 'get', 'FAKE_TOKEN', unsetenv_others: true)
+      out, err, st = Open3.capture3(kenv, bin, 'const', 'get', 'FAKE_TOKEN', unsetenv_others: true)
       [out.force_encoding('UTF-8'), err.force_encoding('UTF-8'), st]
     end
-    new_items = -> { Dir.children(kc).reject { |n| %w[bin wayu].include?(n) } }
+    new_items = -> { Dir.children(kc).reject { |n| %w[bin wayu argv.log].include?(n) } }
     # A 6.0 key that does not decrypt the store: left alone, key still missing.
     File.write("#{kc}/wayu", 'ab' * 32)
     _, werr, wst = get.call
@@ -591,7 +614,12 @@ class SecretsStoreIntegrationTest
          moved.size == 1 && moved[0].match?(/\Awayu-\h{16}\z/) &&
          File.read("#{kc}/#{moved[0]}") == File.read(keyfile).strip && File.exist?("#{kc}/wayu") &&
          st2.success? && out2.chomp == TOKEN && !err2.include?('moved')
-    check('6.0 key not moved correctly', ok, "wrong=#{wrong_ok} #{werr} | #{st.exitstatus} #{err} | #{moved.inspect} | #{err2}")
+    # The key was stored through `security -i` (stdin), never on argv.
+    log = File.read("#{kc}/argv.log")
+    key_hex = File.read(keyfile).strip
+    argv_ok = log.lines.include?("-i\n") && !log.include?(key_hex)
+    check('6.0 key not moved correctly', ok && argv_ok,
+          "wrong=#{wrong_ok} #{werr} | #{st.exitstatus} #{err} | #{moved.inspect} | #{err2} | argv_ok=#{argv_ok}")
   end
 
   def test_unsafe_key_file_refused

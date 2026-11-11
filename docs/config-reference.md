@@ -601,10 +601,13 @@ error). `backend` says where the master key lives:
 
 | `backend` | Key storage |
 |---|---|
-| `"auto"` (default) | `keychain` on macOS; `secret-service` on Linux when `secret-tool` is on PATH; else `file` |
-| `"keychain"` | macOS login keychain: generic password, service `wayu-master-key`, account `wayu-<id>`, via `security`. Storing (first secret, `rekey`) passes the key on `security`'s command line for a moment, where other processes of the same user could see it. |
-| `"secret-service"` | freedesktop Secret Service via `secret-tool` (`service wayu account wayu-<id>`); the key goes over stdin |
-| `"file"` | `<config>/secret.key`: 64 hex characters, `0600`, created exclusively; refused when group/other can read it. Protects against reading the data dir alone, not against reading your whole home. |
+| `"auto"` (default) | `keychain` on macOS; `secret-service` on Linux when `secret-tool` is installed in `/usr/bin`, `/usr/local/bin`, `/bin` or `/run/current-system/sw/bin`; else `file` |
+| `"keychain"` | macOS login keychain: generic password, service `wayu-master-key`, account `wayu-<id>`, via `/usr/bin/security`. Storing (first secret, `rekey`) runs `security -i` and writes the command on its stdin: the key is never on a command line. |
+| `"secret-service"` | freedesktop Secret Service via `secret-tool` (`service wayu account wayu-<id>`) from one of those dirs; the key goes over stdin |
+| `"file"` | `<config>/secret.key`: 64 hex characters, `0600`, created exclusively; refused when group/other can read it. Protects against reading the data dir alone, not against reading your whole home. It lives in the config dir: never commit it to a dotfiles repo (add `secret.key` to its `.gitignore`); anyone with the file and `secrets.json` can decrypt every secret. |
+
+`security` and `secret-tool` are never looked up in `PATH`: a program of
+that name planted earlier in `PATH` would receive the key.
 
 `<id>` is 16 hex digits identifying the data dir (FNV-1a 64 of its path, the
 same id as in the session cache name): each data dir (another

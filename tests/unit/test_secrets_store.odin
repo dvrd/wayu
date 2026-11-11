@@ -204,23 +204,20 @@ test_keystore_argv :: proc(t: ^testing.T) {
 		account,
 	)
 	label :: "wayu master key (/fake/home/.local/share/wayu)"
-	expect_argv(
+	// The key goes on `security -i`'s stdin, never on argv (ps shows argv).
+	expect_argv(t, wayu.keychain_store_argv(), {"security", "-i"})
+	testing.expect_value(
 		t,
-		wayu.keychain_store_argv("00ff"),
-		{
-			"security",
-			"add-generic-password",
-			"-U",
-			"-a",
+		wayu.keychain_store_line("00ff"),
+		fmt.tprintf(
+			"add-generic-password -U -a \"%s\" -s \"wayu-master-key\" -l \"%s\" -w \"00ff\"\n",
 			account,
-			"-s",
-			"wayu-master-key",
-			"-l",
 			label,
-			"-w",
-			"00ff",
-		},
+		),
 	)
+	// security's line parser: `"` and `\` escaped inside double quotes; a
+	// control character (newline) cannot end the command early.
+	testing.expect_value(t, wayu.keychain_quote("a b\"c\\d'e\nf"), "\"a b\\\"c\\\\d'e?f\"")
 	expect_argv(
 		t,
 		wayu.keychain_load_argv(),
@@ -261,6 +258,49 @@ test_keystore_argv :: proc(t: ^testing.T) {
 	// Another data dir: another account.
 	wayu.wayu.data = "/fake/other/wayu"
 	testing.expect(t, wayu.keystore_account() != account, "data dirs must not share a key")
+}
+
+// The keychain / Secret Service programs come from fixed system paths: a
+// `security` / `secret-tool` planted first in PATH (it would receive the
+// key) is never used, and the test-only env override is compiled out.
+@(test)
+test_keystore_binary_ignores_path :: proc(t: ^testing.T) {
+	dir := test_tmp("keystore-path")
+	os.remove_all(dir)
+	os.make_directory_all(dir)
+	defer os.remove_all(dir)
+	for name in ([]string{"security", "secret-tool"}) {
+		p := fmt.tprintf("%s/%s", dir, name)
+		_ = os.write_entire_file(p, "#!/bin/sh\nexit 0\n")
+		_ = os.chmod(p, {.Read_User, .Write_User, .Execute_User})
+	}
+	saved_path, _ := os.lookup_env("PATH", context.allocator)
+	defer {
+		os.set_env("PATH", saved_path)
+		delete(saved_path)
+	}
+	os.set_env("PATH", fmt.tprintf("%s:%s", dir, saved_path))
+	os.set_env("WAYU_TEST_SECURITY_BIN", fmt.tprintf("%s/security", dir))
+	os.set_env("WAYU_TEST_SECRET_TOOL_BIN", fmt.tprintf("%s/secret-tool", dir))
+	defer {
+		os.unset_env("WAYU_TEST_SECURITY_BIN")
+		os.unset_env("WAYU_TEST_SECRET_TOOL_BIN")
+	}
+
+	kc := wayu.keystore_backend_binary(.KEYCHAIN)
+	testing.expect(t, kc == "" || kc == wayu.KEYSTORE_SECURITY_BIN, kc)
+	when ODIN_OS == .Darwin {
+		testing.expect_value(t, kc, wayu.KEYSTORE_SECURITY_BIN)
+	}
+	ss := wayu.keystore_backend_binary(.SECRET_SERVICE)
+	in_system_dir := ss == ""
+	for d in wayu.KEYSTORE_SECRET_TOOL_DIRS {
+		if ss == fmt.tprintf("%s/secret-tool", d) {
+			in_system_dir = true
+		}
+	}
+	testing.expect(t, in_system_dir, ss)
+	testing.expect_value(t, wayu.keystore_backend_binary(.FILE), "")
 }
 
 @(test)
