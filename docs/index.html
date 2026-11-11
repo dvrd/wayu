@@ -218,6 +218,29 @@
     .copy-btn.copied .ok { opacity: 1; transform: none; }
     [role="tabpanel"][hidden] { display: none; }
 
+    /* ── Command → generated core.zsh (hero) ────────────────────────────── */
+    .gen { margin: clamp(40px, 5vw, 56px) auto 0; max-width: 980px; text-align: left; border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 30px 60px -30px rgba(0, 0, 0, 0.6); overflow: hidden; }
+    .gen-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 0 12px 0 0; background: var(--term-bar); }
+    .gen .tabs { min-width: 0; max-width: 100%; }
+    .gen .tab { color: var(--term-dim); }
+    .gen .tab:hover { color: var(--term-fg); }
+    .gen .tab[aria-selected="true"] { color: var(--term-fg); background: rgba(255,255,255,0.08); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12); }
+    .gen-more { display: inline-flex; align-items: center; min-height: 32px; padding: 0 0 0 12px; font: 500 0.78rem/1 var(--font-mono); color: var(--term-dim); text-decoration: none; }
+    .gen-more:hover { color: var(--term-fg); text-decoration: underline; }
+    .gen-panel { display: grid; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 900px) { .gen-panel { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); } .gen-out { box-shadow: inset 1px 0 0 rgba(255,255,255,0.07); } }
+    .gen-panel[hidden] { display: none; }
+    .gen figure { margin: 0; min-width: 0; }
+    .gen figcaption { padding: 14px 18px 0; font: 500 0.7rem/1 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--term-dim); }
+    .gen pre { margin: 0; padding: 10px 18px 18px; font: 400 0.78rem/1.65 var(--font-mono); white-space: pre; overflow-x: auto; scrollbar-width: thin; scrollbar-color: #45475a transparent; }
+    .gen pre:focus-visible { outline-offset: -2px; }
+    .gen .gap { color: var(--term-dim); font-style: italic; }
+    .gen-out { background: rgba(0, 0, 0, 0.14); }
+    @media (max-width: 899px) { .gen-out { box-shadow: inset 0 1px 0 rgba(255,255,255,0.07); } }
+    .gen-note { grid-column: 1 / -1; padding: 12px 18px 14px; border-top: 1px solid rgba(255,255,255,0.07); font-size: 0.84rem; color: var(--term-dim); }
+    .gen-note code { background: rgba(255,255,255,0.08); color: var(--term-fg); }
+    @media (max-width: 520px) { .gen pre { font-size: 0.72rem; padding: 10px 14px 16px; } .gen figcaption { padding: 12px 14px 0; } .gen-note { padding: 12px 14px; } }
+
     /* ── Benchmark ──────────────────────────────────────────────────────── */
     .bench { margin: clamp(48px, 6vw, 72px) auto 0; max-width: 880px; text-align: left; }
     .bench-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
@@ -491,6 +514,113 @@
           <a href="https://github.com/dvrd/wayu#shell-setup"><code>wayu init</code> adds one line to your rc file</a>
           <a href="https://github.com/dvrd/wayu#quick-start">Read the quickstart →</a>
         </p>
+
+        <!-- ── Command → generated code (real output: wayu build in a throwaway HOME, home dir shown as /Users/ana) ── -->
+        <div class="gen" role="region" aria-labelledby="gen-title">
+          <h2 class="sr-only" id="gen-title">What each command writes into core.zsh</h2>
+          <div class="gen-top">
+            <div class="tabs" role="tablist" aria-label="Command and the shell code it generates" id="gen-tabs">
+              <button class="tab" role="tab" type="button" id="gt-path" aria-controls="gp-path" aria-selected="true">PATH</button>
+              <button class="tab" role="tab" type="button" id="gt-alias" aria-controls="gp-alias" aria-selected="false" tabindex="-1">Aliases</button>
+              <button class="tab" role="tab" type="button" id="gt-secret" aria-controls="gp-secret" aria-selected="false" tabindex="-1">Secrets</button>
+              <button class="tab" role="tab" type="button" id="gt-plugin" aria-controls="gp-plugin" aria-selected="false" tabindex="-1">Plugins</button>
+              <button class="tab" role="tab" type="button" id="gt-prompt" aria-controls="gp-prompt" aria-selected="false" tabindex="-1">Prompt</button>
+            </div>
+            <a class="gen-more" href="docs/?p=config#generated-files">How core.zsh is built →</a>
+          </div>
+          <div class="gen-panel" role="tabpanel" id="gp-path" aria-labelledby="gt-path">
+            <figure class="gen-cmd"><figcaption>you run</figcaption>
+<pre tabindex="0"><span class="t-arr">❯</span> wayu path add ~/.cargo/bin
+<span class="t-ok">✓ Added to PATH: /Users/ana/.cargo/bin</span>
+   Open shells apply it at their next prompt; new shells pick it up automatically.</pre></figure>
+            <figure class="gen-out"><figcaption>core.zsh gets</figcaption>
+<pre tabindex="0"><span class="c-com"># === PATH (live-synced at each prompt) ===</span>
+<span class="gap">⋯ 85 lines</span>
+\_wayu_paths_apply 39325358edc66ae0 '/Users/ana/.cargo/bin'
+typeset -U path PATH</pre></figure>
+            <p class="gen-note">The dir is stored with a key in <code>entries.json</code>; open shells re-apply the list at their next prompt from <code>path_sync.zsh</code>.</p>
+          </div>
+          <div class="gen-panel" role="tabpanel" id="gp-alias" aria-labelledby="gt-alias" hidden>
+            <figure class="gen-cmd"><figcaption>you run</figcaption>
+<pre tabindex="0"><span class="t-arr">❯</span> wayu alias add gs 'git status -sb'
+<span class="t-ok">✓ Alias added: gs</span>
+
+<span class="t-arr">❯</span> wayu const add EDITOR nvim
+<span class="t-ok">✓ Constant added: EDITOR</span></pre></figure>
+            <figure class="gen-out"><figcaption>core.zsh gets</figcaption>
+<pre tabindex="0"><span class="c-com"># === Environment ===</span>
+export EDITOR="nvim"
+<span class="gap">⋯ 643 lines</span>
+<span class="c-com"># === Aliases ===</span>
+alias gs='git status -sb'</pre></figure>
+            <p class="gen-note">Constants are exported first, in order; aliases come last, after plugins, so yours win.</p>
+          </div>
+          <div class="gen-panel" role="tabpanel" id="gp-secret" aria-labelledby="gt-secret" hidden>
+            <figure class="gen-cmd"><figcaption>you run</figcaption>
+<pre tabindex="0"><span class="t-arr">❯</span> wayu const add OPENAI_API_KEY --secret
+Value for OPENAI_API_KEY (input hidden):
+<span class="t-ok">✓ Secret added (encrypted): OPENAI_API_KEY</span></pre></figure>
+            <figure class="gen-out"><figcaption>core.zsh gets</figcaption>
+<pre tabindex="0"><span class="c-com"># === Secrets (encrypted store, per-session cache) ===</span>
+_wayu_sc=${XDG_RUNTIME_DIR:-${TMPDIR:-'/Users/ana/.local/share/wayu/run'}}
+[ "$_wayu_sc" = / ] || _wayu_sc=${_wayu_sc%/}
+_wayu_sc="$_wayu_sc"'/wayu-501'
+if [ -h "$_wayu_sc" ] || { [ -e "$_wayu_sc" ] &amp;&amp; { [ ! -d "$_wayu_sc" ] || [ ! -O "$_wayu_sc" ] || ! () { emulate -L zsh; local -a m; m=( $1(N/f:go-rwx:) ); (( $#m )); } "$_wayu_sc"; }; }; then _wayu_sc='/Users/ana/.local/share/wayu/run/wayu-501'; fi
+_wayu_sc="$_wayu_sc"'/secrets-4c8dfdfa98cbaab0.zsh'
+{ [ -O "$_wayu_sc" ] &amp;&amp; [ ! -h "$_wayu_sc" ] &amp;&amp; [ "$_wayu_sc" -nt '/Users/ana/.local/share/wayu/secrets.json' ]; } || command '/opt/homebrew/bin/wayu' secrets cache --shell zsh &lt;/dev/null &gt;/dev/null
+if [ -O "$_wayu_sc" ] &amp;&amp; [ ! -h "$_wayu_sc" ] &amp;&amp; [ "$_wayu_sc" -nt '/Users/ana/.local/share/wayu/secrets.json' ]; then source "$_wayu_sc"; fi
+unset _wayu_sc</pre></figure>
+            <p class="gen-note">No value in <code>core.zsh</code>: it sources a per-session cache and calls <code>wayu secrets cache</code> only when <code>secrets.json</code> changed.</p>
+          </div>
+          <div class="gen-panel" role="tabpanel" id="gp-plugin" aria-labelledby="gt-plugin" hidden>
+            <figure class="gen-cmd"><figcaption>you run</figcaption>
+<pre tabindex="0"><span class="t-arr">❯</span> wayu plugin add autosuggestions
+<span class="t-ok">✓ Cloned plugin repository</span>
+<span class="t-ok">✓ Plugin 'zsh-autosuggestions' installed successfully</span></pre></figure>
+            <figure class="gen-out"><figcaption>core.zsh gets</figcaption>
+<pre tabindex="0"><span class="c-com"># === Plugins ===</span>
+if [[ -o interactive ]]; then
+if [ -f "/Users/ana/.local/share/wayu/plugins.zsh" ]; then source "/Users/ana/.local/share/wayu/plugins.zsh"; fi
+if [ -f "/Users/ana/.local/share/wayu/plugins/config.zsh" ]; then source "/Users/ana/.local/share/wayu/plugins/config.zsh"; fi
+fi
+
+<span class="c-com"># plugins.zsh, regenerated from plugins.json</span>
+# zsh-autosuggestions (priority: 100, template: source)
+if [[ ":${_WAYU_PLUGINS_LOADED-}:" != *:'zsh-autosuggestions':* ]]; then
+_WAYU_PLUGINS_LOADED="${_WAYU_PLUGINS_LOADED-}:"'zsh-autosuggestions'
+if [ -f '/Users/ana/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.plugin.zsh' ]; then
+    source '/Users/ana/.local/share/wayu/plugins/zsh-autosuggestions/zsh-autosuggestions.plugin.zsh'
+fi
+fi</pre></figure>
+            <p class="gen-note">Loaders are regenerated from <code>plugins.json</code>; with <code>defer_plugins = true</code> they load after the first prompt.</p>
+          </div>
+          <div class="gen-panel" role="tabpanel" id="gp-prompt" aria-labelledby="gt-prompt" hidden>
+            <figure class="gen-cmd"><figcaption>you run</figcaption>
+<pre tabindex="0"><span class="c-com"># ~/.config/wayu/wayu.toml</span>
+<span class="c-tab">[prompt]</span>
+<span class="c-key">enabled</span> = <span class="c-num">true</span>
+
+<span class="t-arr">❯</span> wayu build</pre></figure>
+            <figure class="gen-out"><figcaption>core.zsh gets</figcaption>
+<pre tabindex="0"><span class="c-com"># === Prompt (wayu native, interactive shells) ===</span>
+if [[ -o interactive ]]; then
+<span class="gap">⋯ 8 lines</span>
+_wayu_update_git_info() {
+<span class="gap">⋯ 24 lines</span>
+  { read -r l &lt; $g/HEAD } 2&gt;/dev/null || return 0
+<span class="gap">⋯ 13 lines</span>
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _wayu_update_git_info
+<span class="gap">⋯ 1 line</span>
+_wayu_prompt_full() {
+<span class="gap">⋯ 6 lines</span>
+  result+="%F{6}%B%~%f "
+  if [[ -n "$_WAYU_GIT_BRANCH" ]]; then
+    result+="on %F{5}%B${_WAYU_GIT_BRANCH//\%/%%}%f "
+  fi</pre></figure>
+            <p class="gen-note">The branch comes from <code>.git/HEAD</code> without running git. fish gets the same prompt in <code>core.fish</code>.</p>
+          </div>
+        </div>
 
         <!-- ── Benchmark (rendered from #bench-data) ─────────────────── -->
         <div class="bench rise" style="--i:1" id="bench" role="region" aria-labelledby="bench-title">
@@ -1324,6 +1454,7 @@ git status -sb</pre>
 
     /* Static tabs (batteries) */
     tabs($('bat-chips'));
+    tabs($('gen-tabs'));
 
   })();
   </script>
