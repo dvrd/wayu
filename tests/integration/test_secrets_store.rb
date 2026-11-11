@@ -229,7 +229,7 @@ class SecretsStoreIntegrationTest
     _, err, st = Open3.capture3(env.merge('PATH' => "#{lbin}:/usr/bin:/bin"), 'wayu', 'build', unsetenv_others: true)
     core = File.read("#{@data_dir}/core.zsh")
     sec = core.index('# === Secrets')
-    apply = core.index("\n_wayu_paths_apply ")
+    apply = core.index("\n\\_wayu_paths_apply ")
     caches.each { |f| File.delete(f) }
     out, err2, = Open3.capture3(env.merge('PATH' => '/usr/bin:/bin'), 'zsh', '-fc',
                                 "source #{@data_dir}/init.zsh; print -r -- \"$FAKE_TOKEN\"", unsetenv_others: true)
