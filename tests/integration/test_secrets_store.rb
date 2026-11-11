@@ -57,6 +57,7 @@ class SecretsStoreIntegrationTest
       test_export_eval_has_no_plaintext
       test_rekey
       test_rekey_crash_recovery
+      test_rekey_recovery_waits_for_lock
       test_lock
       test_lock_every_cache_dir
       test_cache_symlinks_refused
@@ -445,6 +446,26 @@ class SecretsStoreIntegrationTest
     out_b, err_b, st_b = w('const get FAKE_TOKEN')
     b_ok = st_b.success? && out_b.chomp == TOKEN && !File.exist?(pending) && File.read(store) == s1
     check('rekey not recovered', st.success? && a_ok && b_ok, "#{err} a=#{a_ok} #{err_a} b=#{b_ok} #{err_b}")
+  end
+
+  # Recovery only runs under the config lock (a running rekey holds it), so a
+  # pending file is never judged halfway through a rekey. Without a pending
+  # file a read takes no lock.
+  def test_rekey_recovery_waits_for_lock
+    print 'Test 18c: rekey recovery waits for the config lock; plain reads do not... '
+    pending = "#{store}.rekey"
+    res = run_wayu_with_config_lock_held('const get FAKE_TOKEN', hold: 2)
+    if res.nil?
+      puts 'skipped (python3 not installed)'
+      return
+    end
+    out_a, st_a, waited_a = res
+    File.write(pending, File.read(store), perm: 0o600)
+    out_b, st_b, waited_b = run_wayu_with_config_lock_held('const get FAKE_TOKEN', hold: 2)
+    ok = st_a.success? && out_a.include?(TOKEN) && waited_a < 1.5 &&
+         st_b.success? && out_b.include?(TOKEN) && waited_b >= 1.5 && !File.exist?(pending)
+    check('recovery not serialized with the lock', ok,
+          "a=#{st_a.exitstatus} #{waited_a.round(2)}s b=#{st_b.exitstatus} #{waited_b.round(2)}s pending=#{File.exist?(pending)}")
   end
 
   def test_lock

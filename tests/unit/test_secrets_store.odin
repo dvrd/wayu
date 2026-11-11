@@ -679,3 +679,30 @@ test_secrets_cache_write_detects_store_change :: proc(t: ^testing.T) {
 	testing.expect(t, !ok && strings.contains(err, "kept changing"), err)
 	testing.expect(t, !os.exists(path), "stale cache left behind")
 }
+
+// Rekey: after a failed rename, secrets.json is checked against the new key
+// (the rename may have taken effect) before the old key is put back.
+@(test)
+test_secrets_store_file_opens_with :: proc(t: ^testing.T) {
+	dir := test_tmp("store_opens_with")
+	os.remove_all(dir)
+	os.make_directory_all(dir)
+	defer os.remove_all(dir)
+	path := strings.concatenate({dir, "/secrets.json"}, context.temp_allocator)
+	testing.expect(t, !wayu.secrets_store_file_opens_with(path, test_key(1)), "missing file")
+
+	s: wayu.Secrets_Store
+	defer wayu.secrets_store_destroy(&s)
+	append(
+		&s.entries,
+		wayu.Secret_Entry {
+			name = strings.clone("FAKE_A"),
+			blob = wayu.secrets_seal(test_key(1), "FAKE_A", "fake-value"),
+		},
+	)
+	text := wayu.secrets_store_format(&s)
+	defer delete(text)
+	_ = os.write_entire_file(path, transmute([]byte)text)
+	testing.expect(t, wayu.secrets_store_file_opens_with(path, test_key(1)), "right key")
+	testing.expect(t, !wayu.secrets_store_file_opens_with(path, test_key(2)), "wrong key")
+}

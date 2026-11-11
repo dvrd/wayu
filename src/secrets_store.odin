@@ -419,12 +419,33 @@ secrets_store_opens_with :: proc(s: ^Secrets_Store, key: [SECRETS_KEY_SIZE]byte)
 	return ok
 }
 
+// Does the store in the file at `path` decrypt with `key`? False when the
+// file is missing, malformed or empty.
+secrets_store_file_opens_with :: proc(path: string, key: [SECRETS_KEY_SIZE]byte) -> bool {
+	data, err := os.read_entire_file_from_path(path, context.allocator)
+	if err != nil {
+		return false
+	}
+	s, perr := secrets_store_parse(string(data))
+	delete(data)
+	defer secrets_store_destroy(&s)
+	return len(perr) == 0 && secrets_store_opens_with(&s, key)
+}
+
 // An interrupted rekey left secrets.json.rekey: if its values decrypt with
 // the stored key, the key was already replaced, so the pending store is
 // moved into place; if secrets.json still decrypts with it, the key was not
 // replaced and the pending store is dropped. When the key can't be read
 // (backend unavailable) nothing changes and the next load tries again.
+//
+// Only under the config lock: a `secrets rekey` in progress holds it, and
+// its pending file must not be judged (and dropped) halfway. Nothing is
+// done under --dry-run (the lock is not taken then).
 secrets_rekey_recover :: proc() {
+	if wayu.dry_run || !config_lock_acquire() {
+		return
+	}
+	defer config_lock_release()
 	pending := strings.clone(secrets_rekey_pending_path(), context.temp_allocator)
 	data, rerr := os.read_entire_file_from_path(pending, context.allocator)
 	if rerr != nil {
@@ -451,14 +472,7 @@ secrets_rekey_recover :: proc() {
 		}
 		return
 	}
-	cur_data, cerr := os.read_entire_file_from_path(secrets_store_path(), context.allocator)
-	if cerr != nil {
-		return
-	}
-	cur, cperr := secrets_store_parse(string(cur_data))
-	delete(cur_data)
-	defer secrets_store_destroy(&cur)
-	if len(cperr) == 0 && secrets_store_opens_with(&cur, key) {
+	if secrets_store_file_opens_with(secrets_store_path(), key) {
 		os.remove(pending)
 	}
 }
@@ -1815,12 +1829,20 @@ secrets_rekey :: proc() {
 		exit_with_secret_error(serr)
 	}
 	if rerr := os.rename(pending, secrets_store_path()); rerr != nil {
-		// Put the old key back so the unchanged store stays readable.
-		_, _ = keystore_save(backend, old_key, true)
-		os.remove(pending)
-		exit_with_secret_error(
-			fmt.tprintf("I/O error: cannot replace %s: %v", secrets_store_path(), rerr),
-		)
+		if secrets_store_file_opens_with(secrets_store_path(), new_key) {
+			// The rename took effect after all: the rekey is complete.
+			os.remove(pending)
+		} else {
+			// Put the old key back so the unchanged store stays readable.
+			// If that fails too, the pending store stays: it matches the
+			// saved new key, and the next load moves it into place.
+			if restored, _ := keystore_save(backend, old_key, true); restored {
+				os.remove(pending)
+			}
+			exit_with_secret_error(
+				fmt.tprintf("I/O error: cannot replace %s: %v", secrets_store_path(), rerr),
+			)
+		}
 	}
 	secrets_cache_invalidate()
 	backup_drop_secrets_companions() // their ciphertext is under the old key
