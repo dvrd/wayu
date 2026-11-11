@@ -111,6 +111,48 @@ warn_if_odin_unpinned :: proc() {
 	bld.log_warn("Install it from https://github.com/odin-lang/Odin/releases/tag/%s", pin)
 }
 
+// bump.yml's "Install git-cliff" step pins CLIFF_VERSION; a local release
+// must use the same git-cliff, or the version bump and CHANGELOG can differ
+// from what CI would produce.
+CLIFF_PIN_FILE :: ".github/workflows/bump.yml"
+
+// Exit unless `git-cliff --version` is the version bump.yml pins.
+require_pinned_git_cliff :: proc() {
+	data, err := os.read_entire_file_from_path(CLIFF_PIN_FILE, context.temp_allocator)
+	if err != nil {
+		bld.log_error("Cannot read %s for the pinned git-cliff version", CLIFF_PIN_FILE)
+		os.exit(1)
+	}
+	pin := ""
+	text := string(data)
+	for line in strings.split_lines_iterator(&text) {
+		l := strings.trim_space(line)
+		if strings.has_prefix(l, "CLIFF_VERSION:") {
+			pin = strings.trim_space(l[len("CLIFF_VERSION:"):])
+			break
+		}
+	}
+	if pin == "" {
+		bld.log_error("No CLIFF_VERSION in %s", CLIFF_PIN_FILE)
+		os.exit(1)
+	}
+
+	cmd := bld.cmd_create(context.temp_allocator)
+	bld.cmd_append(&cmd, "git-cliff", "--version")
+	out, ok := bld.cmd_run_capture(&cmd, context.temp_allocator)
+	have := strings.trim_space(string(out))
+	if !ok || have != fmt.tprintf("git-cliff %s", pin) {
+		bld.log_error(
+			"git-cliff is '%s' but releases use git-cliff %s (CLIFF_VERSION in %s)",
+			have,
+			pin,
+			CLIFF_PIN_FILE,
+		)
+		bld.log_error("Install it from https://github.com/orhun/git-cliff/releases/tag/v%s", pin)
+		os.exit(1)
+	}
+}
+
 // The oldest macOS the binaries run on (LC_BUILD_VERSION minos). Without
 // -minimum-os-version Odin stamps the build host's version, so a release
 // built on a new runner refused to start on older macOS. CI checks the
@@ -465,6 +507,9 @@ do_release :: proc() {
 	cliff_check := bld.cmd_create(context.temp_allocator)
 	bld.cmd_append(&cliff_check, "which", "git-cliff")
 	cliff_available := bld.cmd_run(&cliff_check)
+	if cliff_available {
+		require_pinned_git_cliff()
+	}
 
 	if len(os.args) >= 3 {
 		// Version provided explicitly

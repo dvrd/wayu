@@ -65,6 +65,7 @@ jobs:
     # release notes are generated in this job too, so it is the only install.
     - name: Install git-cliff
       env:
+        # ./build_it release reads this line and refuses any other git-cliff.
         CLIFF_VERSION: 2.9.1
         CLIFF_SHA256: 532a89577230128d7df74d912843d561aea2660e280ebd0ed92f24c972438f1c
       run: |
