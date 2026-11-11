@@ -563,7 +563,10 @@ sources too: an edit rebuilds the script); `stop` stops
 a running watcher; `status` says whether one runs; `regenerate` (`regen`)
 regenerates once. The running watcher holds a lock on `<data>/watcher.lock`;
 `stop` / `status` treat a `watcher.pid` without that lock held as stale
-(removed, nothing signalled), and `start` refuses while it is held.
+(removed, nothing signalled), and `start` refuses while it is held. `stop`
+signals only the process holding the lock, and only when `watcher.pid`
+names it (otherwise it exits `1` without signalling). The watcher rebuilds
+scripts and regenerates under the config lock, like the CLI.
 
 ### `wayu version`
 
