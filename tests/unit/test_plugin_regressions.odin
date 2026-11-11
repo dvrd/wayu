@@ -131,17 +131,13 @@ test_plugin_remove_ownership_and_exact_target :: proc(t: ^testing.T) {
 	testing.expect(t, os.exists(fmt.tprintf("%s/beta", plugins_dir)), "other dir kept")
 }
 
-// #8: an entry whose installed_path is the plugins root (a nameless entry is
-// refused when plugins.json is read, OKAMI-342)
-// must never wipe the root or anything outside it.
+// #8: an entry whose installed_path is the plugins root or outside it is
+// refused when plugins.json is read (a nameless entry too, OKAMI-342), so
+// `plugin rm` never gets to delete the root or anything outside it.
 @(test)
 test_plugin_remove_never_wipes_plugins_root :: proc(t: ^testing.T) {
 	old_c, old_d := use_regression_dir()
 	defer restore_dirs(old_c, old_d)
-	old_yes, old_dry := wayu.wayu.yes_flag, wayu.wayu.dry_run
-	wayu.wayu.yes_flag = true
-	wayu.wayu.dry_run = false
-	defer {wayu.wayu.yes_flag = old_yes; wayu.wayu.dry_run = old_dry}
 
 	plugins_dir := fmt.tprintf("%s/plugins", regression_test_dir())
 	os.make_directory(plugins_dir)
@@ -149,32 +145,35 @@ test_plugin_remove_never_wipes_plugins_root :: proc(t: ^testing.T) {
 	outside := fmt.tprintf("%s/outside", regression_test_dir())
 	os.make_directory(outside)
 
-	testing.expect(
+	for bad in ([]string{plugins_dir, outside}) {
+		testing.expect(
+			t,
+			write_config_with(
+				{
+					make_owned_plugin("bad", bad),
+					make_owned_plugin("keepme", fmt.tprintf("%s/keepme", plugins_dir)),
+				},
+			),
+			"seed config",
+		)
+		config, ok := wayu.read_plugin_config_json()
+		wayu.cleanup_plugin_config_json(&config)
+		testing.expectf(t, !ok, "installed_path %s must be refused on load", bad)
+	}
+
+	// The removal primitive refuses them too.
+	testing.expect_value(
 		t,
-		write_config_with(
-			{
-				make_owned_plugin("rooted", plugins_dir),
-				make_owned_plugin("evil", outside),
-				make_owned_plugin("keepme", fmt.tprintf("%s/keepme", plugins_dir)),
-			},
-		),
-		"seed config",
+		wayu.remove_plugin_dir_safely(plugins_dir, plugins_dir),
+		wayu.PluginDirRemoval.Outside,
 	)
-
-	wayu.handle_plugin_remove({"rooted"})
-	wayu.handle_plugin_remove({"evil"})
-
-	testing.expect(
+	testing.expect_value(
 		t,
-		os.exists(fmt.tprintf("%s/keepme", plugins_dir)),
-		"plugins root must survive rm of an entry pointing at it",
+		wayu.remove_plugin_dir_safely(outside, plugins_dir),
+		wayu.PluginDirRemoval.Outside,
 	)
-	testing.expect(t, os.exists(outside), "dir outside plugins root must survive")
-
-	config, ok := wayu.read_plugin_config_json()
-	defer wayu.cleanup_plugin_config_json(&config)
-	testing.expect(t, ok, "config readable")
-	testing.expect_value(t, len(config.plugins), 1)
+	testing.expect(t, os.exists(fmt.tprintf("%s/keepme", plugins_dir)), "plugins root kept")
+	testing.expect(t, os.exists(outside), "dir outside plugins root kept")
 }
 
 // ---------------------------------------------------------------------------

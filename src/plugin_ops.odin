@@ -506,8 +506,36 @@ plugin_ref_problem :: proc(ref: string) -> string {
 		return "must not start with '-'"
 	}
 	for c in ref {
-		if c < 0x20 || c == 0x7f || c == ' ' {
+		if is_control_rune(c) || c == ' ' {
 			return "contains whitespace or control characters"
+		}
+		switch c {
+		case '~', '^', ':', '?', '*', '[', '\\':
+			return fmt.tprintf("must not contain '%c'", c)
+		}
+	}
+	// The other rules of `git check-ref-format` (a ref is never a refspec
+	// such as `a:refs/heads/b`, a revision expression or a reflog lookup).
+	switch {
+	case ref == "@":
+		return "must not be '@'"
+	case strings.contains(ref, ".."):
+		return "must not contain '..'"
+	case strings.contains(ref, "@{"):
+		return "must not contain '@{'"
+	case strings.contains(ref, "//"):
+		return "must not contain '//'"
+	case strings.has_prefix(ref, "/"), strings.has_suffix(ref, "/"):
+		return "must not start or end with '/'"
+	case strings.has_suffix(ref, "."):
+		return "must not end with '.'"
+	}
+	for comp in strings.split(ref, "/", context.temp_allocator) {
+		if strings.has_prefix(comp, ".") {
+			return "has a component starting with '.'"
+		}
+		if strings.has_suffix(comp, ".lock") {
+			return "has a component ending in '.lock'"
 		}
 	}
 	return ""
@@ -544,11 +572,17 @@ is_valid_plugin_name :: proc(name: string) -> bool {
 		return false
 	}
 	for c in name {
-		if c == '/' || c == '\\' || c == 0 || c == '\n' || c == '\r' {
+		if c == '/' || c == '\\' || is_control_rune(c) {
 			return false
 		}
 	}
 	return true
+}
+
+// C0 controls, DEL and C1 controls (U+0080-U+009F): never valid in a plugin
+// name, ref or path that reaches a terminal, git argv or generated shell code.
+is_control_rune :: proc(c: rune) -> bool {
+	return c < 0x20 || (c >= 0x7f && c <= 0x9f)
 }
 
 // True when `path` is strictly inside `root` (never root itself). Both are

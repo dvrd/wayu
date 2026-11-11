@@ -476,3 +476,131 @@ test_pinned_commit_drift_detected :: proc(t: ^testing.T) {
 		"drift from pin must be reported",
 	)
 }
+
+// --- Security audit 2026-11: refs, names, installed_path, nesting -------
+
+@(test)
+test_plugin_ref_problem_check_ref_format :: proc(t: ^testing.T) {
+	good := [?]string{"", "main", "HEAD", "release/1.2", "v1.0.0", "feature-x_y", "a.b/c"}
+	for r in good {
+		testing.expectf(t, wayu.plugin_ref_problem(r) == "", "%q must be accepted", r)
+	}
+	bad := [?]string {
+		"a:refs/heads/b", // refspec
+		"main..evil",
+		"HEAD~1",
+		"HEAD^",
+		"ma?n",
+		"m*",
+		"m[a]",
+		`a\b`,
+		"main@{1}",
+		"@",
+		"main.lock",
+		"a/b.lock/c",
+		"main/",
+		"/main",
+		"main.",
+		".hidden",
+		"a/.b",
+		"a//b",
+		"-x",
+		"a b",
+		"a\tb",
+		"a\x7fb",
+		"a\u0085b",
+	}
+	for r in bad {
+		testing.expectf(t, wayu.plugin_ref_problem(r) != "", "%q must be rejected", r)
+	}
+}
+
+@(test)
+test_plugin_name_rejects_all_control_chars :: proc(t: ^testing.T) {
+	bad := [?]string{"a\x1bb", "a\tb", "a\x7fb", "a\u0080b", "a\u009bb", "a\x00b"}
+	for n in bad {
+		testing.expectf(t, !wayu.is_valid_plugin_name(n), "%q must be rejected", n)
+	}
+	testing.expect(t, wayu.is_valid_plugin_name("café"), "non-control unicode is fine")
+}
+
+@(test)
+test_plugin_installed_path_confined :: proc(t: ^testing.T) {
+	root := "/d/wayu/plugins"
+	good := [?]string{"", "/d/wayu/plugins/p", "/d/wayu/plugins/p/", "/d/wayu/plugins/./p"}
+	for p in good {
+		testing.expectf(
+			t,
+			wayu.plugin_installed_path_problem(p, root) == "",
+			"%q must be accepted",
+			p,
+		)
+	}
+	bad := [?]string {
+		"/etc",
+		"/d/wayu/plugins",
+		"/d/wayu/plugins/../x",
+		"/d/wayu/pluginsx/p",
+		"/d/wayu/plugins/p/sub",
+		"relative/p",
+		"-rf",
+		"/d/wayu/plugins/p\x1b",
+	}
+	for p in bad {
+		testing.expectf(
+			t,
+			wayu.plugin_installed_path_problem(p, root) != "",
+			"%q must be rejected",
+			p,
+		)
+	}
+}
+
+@(test)
+test_plugins_json_rejects_outside_installed_path :: proc(t: ^testing.T) {
+	root, _, oc, od := setup_sandbox()
+	defer teardown_sandbox(root, oc, od)
+
+	write_plugins_json(
+		`{"plugins":[{"name":"p","url":"https://h/p.git","installed_path":"/tmp"}]}`,
+	)
+	config, ok := wayu.read_plugin_config_json()
+	wayu.cleanup_plugin_config_json(&config)
+	testing.expect(t, !ok, "installed_path outside the plugins dir must be rejected")
+
+	write_plugins_json(
+		strings.concatenate(
+			{
+				`{"plugins":[{"name":"p","url":"https://h/p.git","installed_path":"`,
+				wayu.wayu.data,
+				`/plugins/p"}]}`,
+			},
+			context.temp_allocator,
+		),
+	)
+	config2, ok2 := wayu.read_plugin_config_json()
+	wayu.cleanup_plugin_config_json(&config2)
+	testing.expect(t, ok2, "installed_path inside the plugins dir loads")
+}
+
+@(test)
+test_plugins_json_depth_limit :: proc(t: ^testing.T) {
+	testing.expect_value(t, wayu.json5_max_depth(transmute([]byte)string(`{"a":[{"b":1}]}`)), 3)
+	// Brackets in strings and comments do not count.
+	testing.expect_value(
+		t,
+		wayu.json5_max_depth(
+			transmute([]byte)string("{\"a\":\"[[[[\", 'b':'{{\\'{', // [[[\n /* {{{ */ \"c\":[]}"),
+		),
+		2,
+	)
+
+	root, _, oc, od := setup_sandbox()
+	defer teardown_sandbox(root, oc, od)
+	deep := strings.repeat("[", 100_000)
+	defer delete(deep)
+	write_plugins_json(deep)
+	config, ok := wayu.read_plugin_config_json()
+	wayu.cleanup_plugin_config_json(&config)
+	testing.expect(t, !ok, "100k nested '[' must be refused, not crash")
+}

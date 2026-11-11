@@ -3,6 +3,7 @@ import "base:intrinsics"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:reflect"
 import "core:strings"
 import "core:sync"
@@ -43,6 +44,17 @@ read_plugin_config_json :: proc() -> (config: PluginConfigJSON, ok: bool) {
 	}
 	defer delete(data)
 
+	// core:encoding/json recurses once per nesting level: a hostile
+	// plugins.json of 100k '[' would overflow the stack.
+	if depth := json5_max_depth(data); depth > PLUGINS_JSON_MAX_DEPTH {
+		fmt.eprintfln(
+			"Error: Invalid plugins.json (%s): nested more than %d levels deep",
+			config_file,
+			PLUGINS_JSON_MAX_DEPTH,
+		)
+		return config, false
+	}
+
 	// Parse as JSON5 (allows comments and trailing commas)
 	json_err := json.unmarshal(data, &config, spec = .JSON5)
 	if json_err != nil {
@@ -54,11 +66,11 @@ read_plugin_config_json :: proc() -> (config: PluginConfigJSON, ok: bool) {
 	// its values reach git argv, rm and the generated shell loader: reject
 	// anything malformed instead of silently coercing or trusting it.
 	if problem := plugin_json_resolve_enums(data, &config); problem != "" {
-		fmt.eprintfln("Error: Invalid plugins.json: %s", problem)
+		fmt.eprintfln("Error: Invalid plugins.json (%s): %s", config_file, problem)
 		return config, false
 	}
 	if problem := validate_plugin_config_entries(&config); problem != "" {
-		fmt.eprintfln("Error: Invalid plugins.json: %s", problem)
+		fmt.eprintfln("Error: Invalid plugins.json (%s): %s", config_file, problem)
 		return config, false
 	}
 
@@ -68,6 +80,53 @@ read_plugin_config_json :: proc() -> (config: PluginConfigJSON, ok: bool) {
 	}
 
 	return config, true
+}
+
+// Deepest nesting a plugins.json may have (it needs 4: root, plugins array,
+// entry, git object / use array).
+PLUGINS_JSON_MAX_DEPTH :: 64
+
+// Deepest '['/'{' nesting in a JSON5 document, ignoring brackets inside
+// strings ('...' or "...", backslash escapes) and comments (// and /* */).
+// Stops counting once the depth passes PLUGINS_JSON_MAX_DEPTH.
+json5_max_depth :: proc(data: []byte) -> int {
+	depth, deepest := 0, 0
+	i := 0
+	for i < len(data) {
+		c := data[i]
+		switch {
+		case c == '"' || c == '\'':
+			i += 1
+			for i < len(data) && data[i] != c {
+				if data[i] == '\\' {
+					i += 1
+				}
+				i += 1
+			}
+		case c == '/' && i + 1 < len(data) && data[i + 1] == '/':
+			for i < len(data) && data[i] != '\n' {
+				i += 1
+			}
+		case c == '/' && i + 1 < len(data) && data[i + 1] == '*':
+			i += 2
+			for i + 1 < len(data) && !(data[i] == '*' && data[i + 1] == '/') {
+				i += 1
+			}
+			i += 1
+		case c == '[' || c == '{':
+			depth += 1
+			if depth > deepest {
+				deepest = depth
+				if deepest > PLUGINS_JSON_MAX_DEPTH {
+					return deepest
+				}
+			}
+		case c == ']' || c == '}':
+			depth = max(depth - 1, 0)
+		}
+		i += 1
+	}
+	return deepest
 }
 
 // Write JSON5 configuration file
@@ -240,6 +299,8 @@ plugin_json_resolve_enums :: proc(data: []byte, config: ^PluginConfigJSON) -> st
 // filesystem (rm, directory names) or the generated loader. Returns "" when
 // all entries are valid, otherwise a description of the first problem (temp).
 validate_plugin_config_entries :: proc(config: ^PluginConfigJSON) -> string {
+	plugins_dir := get_plugins_dir()
+	defer delete(plugins_dir)
 	for &p, i in config.plugins {
 		label := fmt.tprintf("plugin #%d ('%s')", i + 1, p.name)
 
@@ -276,13 +337,8 @@ validate_plugin_config_entries :: proc(config: ^PluginConfigJSON) -> string {
 				return fmt.tprintf("%s: invalid url: %s", label, problem)
 			}
 		}
-		if strings.has_prefix(p.installed_path, "-") {
-			return fmt.tprintf("%s: installed_path must not start with '-'", label)
-		}
-		for c in p.installed_path {
-			if c < 0x20 || c == 0x7f {
-				return fmt.tprintf("%s: installed_path contains control characters", label)
-			}
+		if problem := plugin_installed_path_problem(p.installed_path, plugins_dir); problem != "" {
+			return fmt.tprintf("%s: installed_path %s", label, problem)
 		}
 		// Dependency names are written into comments of the generated loader;
 		// a newline in one would turn the rest of it into shell code.
@@ -305,6 +361,31 @@ validate_plugin_config_entries :: proc(config: ^PluginConfigJSON) -> string {
 				return fmt.tprintf("%s: %s %s", label, r.field, problem)
 			}
 		}
+	}
+	return ""
+}
+
+// Why `path` (a plugins.json installed_path) is unacceptable, "" when it is
+// fine (temp). The loader sources files from it and `plugin update` runs git
+// in it, so it must be a directory directly inside the plugins dir (as
+// `plugin add` records it); "" (not installed) is accepted.
+plugin_installed_path_problem :: proc(path: string, plugins_dir: string) -> string {
+	if len(path) == 0 {
+		return ""
+	}
+	if strings.has_prefix(path, "-") {
+		return "must not start with '-'"
+	}
+	for c in path {
+		if is_control_rune(c) {
+			return "contains control characters"
+		}
+	}
+	clean_root, _ := filepath.clean(plugins_dir, context.temp_allocator)
+	clean_path, _ := filepath.clean(path, context.temp_allocator)
+	if !is_path_inside_dir(clean_path, clean_root) ||
+	   clean_path[:strings.last_index_byte(clean_path, '/')] != clean_root {
+		return fmt.tprintf("'%s' is outside the plugins directory %s", path, clean_root)
 	}
 	return ""
 }
