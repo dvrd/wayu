@@ -473,8 +473,11 @@ emit_alias_definitions :: proc(b: ^strings.Builder, sep: string = "\n") {
 }
 
 // `wayu export --eval`: put the [paths] dirs (file order = priority) in
-// front of PATH, as one `;`-separated statement list (it must survive the
-// unquoted `eval $(...)` form). Values are expanded by the SHELL
+// front of PATH, as one `;`-separated statement list for
+// `eval "$(wayu export --eval)"`. Only the quoted form is supported: an
+// unquoted `eval $(...)` glob-expands the output in the current directory
+// (the case patterns, alias bodies), so a crafted file name there becomes
+// code. Values are expanded by the SHELL
 // (path_value_shell_word: `$FZG/bin` uses the shell's FZG, an unset variable
 // drops the entry); entries that are not directories or contain ':' are
 // skipped and duplicates dropped, like core.<ext>. Returns false when
