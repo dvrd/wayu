@@ -52,6 +52,7 @@ class GeneratedShellTest
       test_tools_args_never_run_code
       test_prompt_survives_hostile_commands
       test_prompt_async_forks
+      test_prompt_hostile_repo_runs_nothing
       test_init_and_turbo_define_the_same
       test_prompt_vi_mode_and_widgets
       test_prompt_git_branch_without_git
@@ -640,6 +641,75 @@ class GeneratedShellTest
     ok = st.success? && out.include?('plain bang=1 dir=none') && out =~ /repo data=\S*1\S* left=0/ &&
          out.include?('back data=[]')
     check('prompt async forks', ok, "out=#{out.inspect} err=#{err.strip[0, 400]}")
+  end
+
+  # The async worker's pending count runs git in any repo the shell enters: a
+  # repo whose own config names core.fsmonitor, or a filter.<x>.clean driver
+  # (directly or via include.path) for a stat-dirty file, must run nothing
+  # (zsh and fish); a plain repo still gets its count. Hostile repos keep the
+  # branch.
+  def test_prompt_hostile_repo_runs_nothing
+    print "Test: native prompt async worker runs no repo-configured commands (zsh, fish)... "
+    home = "#{@tmp_home}/prompt_repo"
+    FileUtils.rm_rf(home)
+    FileUtils.mkdir_p("#{home}/.config")
+    env = clean_env(home)
+    fish = ENV['PATH'].split(':').map { |d| "#{d}/fish" }.find { |f| File.executable?(f) }
+    shells = fish ? %w[zsh fish] : %w[zsh]
+    shells.each { |sh| Open3.capture3(env.merge('SHELL' => "/bin/#{sh}"), @wayu_bin, 'init', '--shell', sh) }
+    cfg = "#{home}/.config/wayu"
+    data = "#{home}/.local/share/wayu"
+    File.write("#{cfg}/wayu.toml", File.read("#{cfg}/wayu.toml") + "\n[prompt]\nenabled = true\n")
+    shells.each { |sh| Open3.capture3(env, @wayu_bin, 'build', '--shell', sh) }
+    git_env = clean_env(home, 'GIT_CONFIG_NOSYSTEM' => '1')
+    g = ->(*a) { Open3.capture3(git_env, 'git', '-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', *a) }
+    marker = "#{home}/PWNED"
+    mk = lambda do |name, attr|
+      repo = "#{home}/#{name}"
+      g.call('init', '-q', '-b', "#{name}-br", repo)
+      File.write("#{repo}/f", "a\n")
+      File.write("#{repo}/.gitattributes", "f filter=#{attr}\n") if attr
+      g.call('-C', repo, 'add', '.')
+      g.call('-C', repo, 'commit', '-q', '-m', 'i')
+      File.write("#{repo}/untracked", "u\n")
+      repo
+    end
+    fsm = mk.call('fsm', nil)
+    g.call('-C', fsm, 'config', 'core.fsmonitor', "touch '#{marker}'; false")
+    flt = mk.call('flt', 'x')
+    g.call('-C', flt, 'config', 'filter.x.clean', "sh -c 'touch \"#{marker}\"; cat'")
+    inc = mk.call('inc', 'y')
+    File.write("#{inc}/.git/extra.cfg", "[filter \"y\"]\n\tprocess = touch '#{marker}'\n")
+    g.call('-C', inc, 'config', 'include.path', 'extra.cfg')
+    plain = mk.call('plain', nil)
+    results = []
+    stamp = 0
+    { 'fsm' => fsm, 'flt' => flt, 'inc' => inc, 'plain' => plain }.each do |name, repo|
+      shells.each do |sh|
+        stamp += 1
+        File.utime(Time.at(1_600_000_000 + stamp), Time.at(1_600_000_000 + stamp), "#{repo}/f")
+        adir = "#{home}/async_#{sh}"
+        FileUtils.rm_rf(adir)
+        FileUtils.mkdir_p(adir)
+        out, err, =
+          if sh == 'zsh'
+            Open3.capture3(env, 'zsh', '-f', '-i', '-c',
+                           "source '#{data}/init.zsh'; cd '#{repo}'; _wayu_update_git_info; " \
+                           "_WAYU_ASYNC_DIR='#{adir}'; trap '' USR1; _wayu_async_worker; " \
+                           "print -r -- \"$_WAYU_GIT_BRANCH $(head -1 '#{adir}/data')\"")
+          else
+            Open3.capture3(env.merge('TERM' => 'dumb', 'PATH' => "#{File.dirname(fish)}:/usr/bin:/bin"), fish, '-i', '--no-config', '-c',
+                           "source '#{data}/init.fish'; cd '#{repo}'; _wayu_update_git_info; set -l fb (status fish-path); " \
+                           "command $fb --no-config -c $_wayu_async_script -- '#{adir}' $_wayu_git_branch default 99999999 2>/dev/null; " \
+                           "echo $_wayu_git_branch (head -1 '#{adir}/data')")
+          end
+        got = out.lines.last.to_s.strip.gsub(/%[FK]\{\d+\}|%f|%k/, '')
+        want = name == 'plain' || name == 'fsm' ? "#{name}-br 1" : "#{name}-br"
+        results << "#{sh}/#{name}: #{got.inspect} want #{want.inspect} pwned=#{File.exist?(marker)} err=#{err.lines.grep_v(/warning/).join.strip[0, 120]}" unless got == want && !File.exist?(marker)
+        FileUtils.rm_f(marker)
+      end
+    end
+    check('hostile repo', results.empty?, results.join("\n  "))
   end
 
   # OKAMI-279: with `[prompt] enabled = true`, aliases and functions named
