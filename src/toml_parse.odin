@@ -895,6 +895,9 @@ tp_basic_string :: proc(p: ^TomlParser) -> (string, bool) {
 				return "", false
 			}
 		case:
+			if tp_is_control(c) {
+				return "", tp_control_fail(p, c)
+			}
 			strings.write_byte(&b, c)
 			p.pos += 1
 		}
@@ -906,7 +909,12 @@ tp_basic_string :: proc(p: ^TomlParser) -> (string, bool) {
 tp_literal_string :: proc(p: ^TomlParser) -> (string, bool) {
 	p.pos += 1
 	start := p.pos
-	for p.pos < len(p.src) && p.src[p.pos] != '\'' && p.src[p.pos] != '\n' {p.pos += 1}
+	for p.pos < len(p.src) && p.src[p.pos] != '\'' && p.src[p.pos] != '\n' {
+		if tp_is_control(p.src[p.pos]) {
+			return "", tp_control_fail(p, p.src[p.pos])
+		}
+		p.pos += 1
+	}
 	if p.pos >= len(p.src) || p.src[p.pos] != '\'' {
 		return "", tp_fail(p, "unterminated string (missing closing \"'\")")
 	}
@@ -980,6 +988,9 @@ tp_ml_basic_string :: proc(p: ^TomlParser) -> (string, bool) {
 			}
 			continue
 		}
+		if tp_ml_control(p) {
+			return "", tp_control_fail(p, c)
+		}
 		strings.write_byte(&b, c)
 		tp_adv(p)
 	}
@@ -1002,9 +1013,39 @@ tp_ml_literal_string :: proc(p: ^TomlParser) -> (string, bool) {
 				return strings.to_string(b), true
 			}
 		}
+		if tp_ml_control(p) {
+			return "", tp_control_fail(p, c)
+		}
 		strings.write_byte(&b, c)
 		tp_adv(p)
 	}
+}
+
+// TOML forbids raw control characters in strings: below 0x20 except tab,
+// and DEL (an escape such as \u0007 is the way to write one).
+@(private = "file")
+tp_is_control :: proc(c: byte) -> bool {
+	return (c < 0x20 && c != '\t') || c == 0x7f
+}
+
+// Multi-line strings may also span lines (LF or CRLF).
+@(private = "file")
+tp_ml_control :: proc(p: ^TomlParser) -> bool {
+	c := p.src[p.pos]
+	if c == '\n' || tp_at(p, "\r\n") {
+		return false
+	}
+	return tp_is_control(c)
+}
+
+@(private = "file")
+tp_control_fail :: proc(p: ^TomlParser, c: byte) -> bool {
+	return tp_fail(
+		p,
+		"control character 0x%02X in a string (write it as an escape, e.g. \\u%04X)",
+		c,
+		c,
+	)
 }
 
 // Decode the escape at p.pos (a backslash) into `b`.

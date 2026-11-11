@@ -186,7 +186,10 @@ Keys:
 | Everything else: the generator (`wayu build`, every write), the TUI (lenient) | Use what was recovered; a line that is not valid TOML is skipped |
 
 Strict-only failures: a key defined twice in one table, a table defined twice,
-an integer with leading zeros (`007`), an unquoted string.
+an integer with leading zeros (`007`), an unquoted string, a raw control
+character inside a string (anything below 0x20 but tab, and DEL; multi-line
+strings may also hold line breaks: write the others as escapes such as
+`\u001b`), arrays or inline tables nested more than 128 deep.
 
 After parsing, `wayu toml validate` also checks:
 

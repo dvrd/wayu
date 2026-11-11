@@ -157,6 +157,15 @@ test_toml_parser_rejects_invalid :: proc(t: ^testing.T) {
 		{"[t]\nll = ls -la", 2},
 		{"x = 'a' 'b'", 1},
 		{"k = \"v\" junk", 1},
+		// Raw control characters (TOML: escapes only).
+		{"x = \"a\x00b\"", 1},
+		{"x = \"a\x1b[31mb\"", 1},
+		{"x = 'a\x07b'", 1},
+		{"x = \"a\x7f\"", 1},
+		{"x = \"a\rb\"", 1},
+		{"x = \"\"\"\nline\x1bb\"\"\"", 2},
+		{"x = '''\nline\x00b'''", 2},
+		{"[\"t\x1b\"]", 1},
 	}
 	for c in cases {
 		line, _, valid := first_error(c.src)
@@ -486,6 +495,24 @@ test_toml_parser_large_file_fast :: proc(t: ^testing.T) {
 	doc, ok := wayu.toml_doc_parse_alloc(strings.to_string(b), virtual.arena_allocator(&arena))
 	testing.expect(t, ok)
 	testing.expect_value(t, len(doc.entries), 6000)
+}
+
+// Tab, LF and CRLF stay legal in strings; escapes still produce controls.
+@(test)
+test_toml_parser_control_chars_allowed_forms :: proc(t: ^testing.T) {
+	for src in ([]string {
+			"x = \"a\tb\"",
+			"x = 'a\tb'",
+			"x = \"\"\"\r\na\r\nb\"\"\"",
+			"x = '''\na\nb'''",
+			"x = \"\\u001b\"",
+		}) {
+		_, msg, valid := first_error(src)
+		testing.expectf(t, valid, "%q rejected: %s", src, msg)
+	}
+	// Lenient readers recover the bad line and keep the rest.
+	content := "[a]\nbad = \"x\x1by\"\nok = \"fine\"\n"
+	kvs_equal(t, section(content, "a"), {{"bad", "x\x1by"}, {"ok", "fine"}}, "recovered [a]")
 }
 
 // Deep nesting is a parse error, not a stack overflow.
