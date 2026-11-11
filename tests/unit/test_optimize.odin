@@ -439,3 +439,69 @@ test_backup_name_resolves_startup_files :: proc(t: ^testing.T) {
 	testing.expect_value(t, q, "")
 	free_all(context.temp_allocator)
 }
+
+// A quoted `)` / `}` inside $(...) / ${...} does not end the expansion, so
+// string content spanning lines is never read as rc statements; constructs
+// whose end needs a full shell parser stop the scan instead of guessing.
+@(test)
+test_optimize_scan_quoted_expansions :: proc(t: ^testing.T) {
+	Case :: struct {
+		content: string,
+		lines:   []int, // first_line of each finding
+	}
+	deep := strings.concatenate(
+		{
+			"X=",
+			strings.repeat("$(", 200, context.temp_allocator),
+			strings.repeat(")", 200, context.temp_allocator),
+			"\nalias a=b\n",
+		},
+		context.temp_allocator,
+	)
+	cases := []Case {
+		{
+			"X=$(echo \")\" ; echo \"\nexport INJECTED=yes\nalias rmx='rm -rf /tmp/nothing'\n\")\nalias after=yes\n",
+			{5},
+		},
+		{"Y=${X:-\"}\nexport INJECTED=yes\n\"}\nalias after=yes\n", {4}},
+		{"X=\"$(echo \")\")\"\nalias after=yes\n", {2}},
+		{"X=$(echo ')' \"$(printf '%s' \"(\")\")\nalias after=yes\n", {2}},
+		{"X=$(echo `echo \")\"`)\nalias after=yes\n", {2}},
+		{"X=\"${Y:-\"}\"}\"\nalias after=yes\n", {2}},
+		{"X=$(( 1 + (2) ))\nalias after=yes\n", {2}},
+		{"X=$(echo $# ${#Y})\nalias after=yes\n", {2}},
+		// Unsure: the rest of the file stays in the rc.
+		{"X=$(echo a # )\nexport INJECTED=yes\n)\nalias after=yes\n", {}},
+		{"X=$(case a in a) echo;; esac)\nalias after=yes\n", {}},
+		{"X=$(cat <<E\n)\nE\n)\nalias after=yes\n", {}},
+		{"X=\"${Y:-'}'}\"\nalias after=yes\n", {}},
+		{deep, {}},
+	}
+	for c in cases {
+		ctx := opt_ctx(.ZSH)
+		findings, _ := wayu.rc_scan_content(c.content, &ctx, true)
+		got := make([dynamic]int, context.temp_allocator)
+		for f in findings {append(&got, f.first_line)}
+		testing.expectf(
+			t,
+			len(got) == len(c.lines),
+			"%q: findings at %v, want %v",
+			c.content,
+			got[:],
+			c.lines,
+		)
+		for l, i in c.lines {
+			if i < len(got) {
+				testing.expectf(
+					t,
+					got[i] == l,
+					"%q: findings at %v, want %v",
+					c.content,
+					got[:],
+					c.lines,
+				)
+			}
+		}
+	}
+	free_all(context.temp_allocator)
+}
