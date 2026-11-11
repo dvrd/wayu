@@ -15,9 +15,8 @@
   <meta name="theme-color" content="#141016" media="(prefers-color-scheme: dark)" />
   <meta name="color-scheme" content="light dark" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400..600&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet" />
+  <link rel="preload" href="../fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="../fonts/geist.woff2" as="font" type="font/woff2" crossorigin />
 
   <!-- Markdown is the source of truth (docs/*.md, checked by tests); it is rendered here, in the browser. -->
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous" defer></script>
@@ -33,6 +32,14 @@
   </script>
 
   <style>
+    /* ── Fonts (same as index.html: self-hosted, metric-matched fallbacks) ── */
+    @font-face { font-family: 'Bricolage Grotesque'; src: url(../fonts/bricolage-grotesque.woff2) format('woff2'); font-weight: 700 800; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Geist'; src: url(../fonts/geist.woff2) format('woff2'); font-weight: 400 600; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Geist Mono'; src: url(../fonts/geist-mono.woff2) format('woff2'); font-weight: 400 600; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Bricolage Fallback'; src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('Arial'); font-weight: 700 800; size-adjust: 92.6%; ascent-override: 100.43%; descent-override: 29.16%; line-gap-override: 0%; }
+    @font-face { font-family: 'Geist Fallback'; src: local('Arial'), local('ArialMT'), local('Liberation Sans'); size-adjust: 103.87%; ascent-override: 96.76%; descent-override: 28.4%; line-gap-override: 0%; }
+    @font-face { font-family: 'Geist Mono Fallback'; src: local('Menlo'), local('Menlo-Regular'), local('DejaVu Sans Mono'); size-adjust: 99.66%; ascent-override: 100.84%; descent-override: 29.6%; line-gap-override: 0%; }
+
     /* ── Tokens (same as index.html) ─────────────────────────────────────── */
     :root {
       --bg:        #f5f1ec;
@@ -64,9 +71,9 @@
       --term-key:  #f9e2af;
       --term-pink: #f38ba8;
 
-      --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
-      --font-body: 'Geist', ui-sans-serif, system-ui, sans-serif;
-      --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+      --font-display: 'Bricolage Grotesque', 'Bricolage Fallback', ui-sans-serif, system-ui, sans-serif;
+      --font-body: 'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif;
+      --font-mono: 'Geist Mono', 'Geist Mono Fallback', ui-monospace, 'SF Mono', Menlo, monospace;
 
       --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
       --ease-swap: cubic-bezier(0.2, 0, 0, 1);

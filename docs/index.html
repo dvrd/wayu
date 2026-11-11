@@ -23,9 +23,8 @@
   <meta name="theme-color" content="#0f0b10" media="(prefers-color-scheme: dark)" />
   <meta name="color-scheme" content="dark light" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Geist:wght@400..600&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet" />
+  <link rel="preload" href="fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="fonts/geist.woff2" as="font" type="font/woff2" crossorigin />
 
   <script>
     // Before first paint: enable JS-only styles and apply a saved theme.
@@ -37,6 +36,15 @@
   </script>
 
   <style>
+    /* ── Fonts: self-hosted latin subsets (docs/fonts, OFL), with fallbacks
+       metric-matched to them so the swap doesn't move the layout ─────────── */
+    @font-face { font-family: 'Bricolage Grotesque'; src: url(fonts/bricolage-grotesque.woff2) format('woff2'); font-weight: 700 800; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Geist'; src: url(fonts/geist.woff2) format('woff2'); font-weight: 400 600; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Geist Mono'; src: url(fonts/geist-mono.woff2) format('woff2'); font-weight: 400 600; font-style: normal; font-display: swap; }
+    @font-face { font-family: 'Bricolage Fallback'; src: local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'), local('Arial'); font-weight: 700 800; size-adjust: 92.6%; ascent-override: 100.43%; descent-override: 29.16%; line-gap-override: 0%; }
+    @font-face { font-family: 'Geist Fallback'; src: local('Arial'), local('ArialMT'), local('Liberation Sans'); size-adjust: 103.87%; ascent-override: 96.76%; descent-override: 28.4%; line-gap-override: 0%; }
+    @font-face { font-family: 'Geist Mono Fallback'; src: local('Menlo'), local('Menlo-Regular'), local('DejaVu Sans Mono'); size-adjust: 99.66%; ascent-override: 100.84%; descent-override: 29.6%; line-gap-override: 0%; }
+
     /* ── Tokens: dark first, light when the system (or the toggle) asks ── */
     :root {
       --bg:        #0f0b10;
@@ -73,9 +81,9 @@
       --term-pink: #f38ba8;
       --term-red:  #f38ba8;
 
-      --font-display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
-      --font-body: 'Geist', ui-sans-serif, system-ui, sans-serif;
-      --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+      --font-display: 'Bricolage Grotesque', 'Bricolage Fallback', ui-sans-serif, system-ui, sans-serif;
+      --font-body: 'Geist', 'Geist Fallback', ui-sans-serif, system-ui, sans-serif;
+      --font-mono: 'Geist Mono', 'Geist Mono Fallback', ui-monospace, 'SF Mono', Menlo, monospace;
 
       --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
       --r-sm: 6px; --r: 10px; --r-lg: 16px;
@@ -397,7 +405,8 @@
     @media (prefers-reduced-motion: no-preference) {
       .js .reveal { opacity: 0; transform: translateY(14px); transition: opacity 0.7s var(--ease-out), transform 0.7s var(--ease-out); transition-delay: calc(var(--i, 0) * 70ms); }
       .js .reveal.in { opacity: 1; transform: none; }
-      .js .hero .rise { opacity: 0; transform: translateY(12px); animation: rise 0.8s var(--ease-out) forwards; animation-delay: calc(var(--i, 0) * 80ms + 40ms); }
+      /* Only the badge and the benchmark fade in: the h1, the lede and the install box (the LCP) paint at once. */
+      .js .hero .rise { opacity: 0; transform: translateY(12px); animation: rise 0.6s var(--ease-out) forwards; animation-delay: calc(var(--i, 0) * 80ms); }
       .card:hover { transform: translateY(-2px); }
     }
     @keyframes rise { to { opacity: 1; transform: none; } }
@@ -441,10 +450,10 @@
     <section class="hero" id="top" aria-labelledby="hero-title">
       <div class="wrap">
         <a class="badge rise" style="--i:0" href="https://github.com/dvrd/wayu/releases" aria-label="Version 6.0.0 for zsh, bash and fish: release notes"><span class="dot" aria-hidden="true"></span><b class="ver">v6.0.0</b> zsh · bash · fish</a>
-        <h1 id="hero-title" class="rise" style="--i:1">Your shell setup, <em>managed by commands.</em></h1>
-        <p class="hero-sub rise" style="--i:2">PATH entries, aliases, env vars, encrypted secrets, scripts and plugins — added with one command each, compiled into one file your shell sources at startup.</p>
+        <h1 id="hero-title">Your shell setup, <em>managed by commands.</em></h1>
+        <p class="hero-sub">PATH entries, aliases, env vars, encrypted secrets, scripts and plugins — added with one command each, compiled into one file your shell sources at startup.</p>
 
-        <div class="install rise" style="--i:3" data-install>
+        <div class="install" data-install>
           <div class="tabs" role="tablist" aria-label="Install method">
             <button class="tab" role="tab" type="button" id="hi-brew-tab" aria-controls="hi-brew" aria-selected="true">Homebrew</button>
             <button class="tab" role="tab" type="button" id="hi-src-tab" aria-controls="hi-src" aria-selected="false" tabindex="-1">From source</button>
@@ -462,13 +471,13 @@
             <button class="icon-btn copy-btn" type="button" data-copy="git clone https://github.com/dvrd/wayu &amp;&amp; cd wayu&#10;odin build build -out:build_it &amp;&amp; ./build_it install" aria-label="Copy source build commands"></button>
           </div>
         </div>
-        <p class="hero-links rise" style="--i:4">
+        <p class="hero-links">
           <a href="https://github.com/dvrd/wayu#shell-setup"><code>wayu init</code> adds one line to your rc file</a>
           <a href="https://github.com/dvrd/wayu#quick-start">Read the quickstart →</a>
         </p>
 
         <!-- ── Benchmark (rendered from #bench-data) ─────────────────── -->
-        <div class="bench rise" style="--i:5" id="bench" role="region" aria-labelledby="bench-title">
+        <div class="bench rise" style="--i:1" id="bench" role="region" aria-labelledby="bench-title">
           <h2 class="sr-only" id="bench-title">Shell startup benchmark</h2>
           <div class="bench-top">
             <div class="tabs" role="tablist" aria-label="Benchmark scenario" id="bench-tabs"></div>
