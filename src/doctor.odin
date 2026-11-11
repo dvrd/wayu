@@ -661,7 +661,8 @@ fi
 	script_path := fmt.aprintf("%s/startup_profile.zsh", wayu.data)
 	defer delete(script_path)
 
-	write_ok := os.write_entire_file_from_string(script_path, profile_script)
+	// Atomic, new file 0600 (was a truncating 0644 write).
+	write_ok := write_file_atomic(script_path, transmute([]byte)string(profile_script))
 	if write_ok != nil {
 		print_error("Failed to write profile script")
 		return

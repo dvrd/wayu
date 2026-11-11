@@ -1497,7 +1497,8 @@ optimize_touch_stamp :: proc() {
 	if !os.is_dir(wayu.data) {
 		return
 	}
-	_ = os.write_entire_file_from_string(optimize_stamp_path(), "")
+	// Atomic, new file 0600 (was a truncating write).
+	_ = write_file_atomic(optimize_stamp_path(), nil)
 }
 
 // Move the plan's lines into wayu: secrets first (a secret that can't be

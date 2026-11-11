@@ -54,6 +54,7 @@ class DoctorIntegrationTest
       test_plugins_cycle_keeps_json_valid
       test_optimize_removed
       test_dir_modes
+      test_created_file_modes
     ensure
       FileUtils.rm_rf(@real_dir) if @real_dir
       teardown_test_env
@@ -462,6 +463,19 @@ class DoctorIntegrationTest
     end
     check(flagged && fixed_mode & 0o022 == 0 && modes.all? { |m| m == 0o700 },
           "entry=#{entry.inspect} exit=#{status.exitstatus} fixed=#{fixed_mode.to_s(8)} init=#{modes.map { |m| m&.to_s(8) }}")
+  end
+
+  # Files wayu creates for the user are 0600 (extra.<ext> may hold secrets,
+  # like the one `wayu init` makes), written atomically.
+  def test_created_file_modes
+    print "Test 21: doctor --profile script and config extend's extra file are 0600... "
+    profile = "#{@data_dir}/startup_profile.zsh"
+    extra = "#{@config_dir}/extra.zsh"
+    FileUtils.rm_f([profile, extra])
+    run_wayu('--shell zsh doctor --profile --no-color')
+    run_wayu_env({ 'EDITOR' => 'true', 'VISUAL' => 'true' }, '--shell zsh config extend')
+    modes = [profile, extra].map { |f| File.exist?(f) ? (File.stat(f).mode & 0o777) : nil }
+    check(modes == [0o600, 0o600], "modes=#{modes.map { |m| m&.to_s(8) }}")
   end
 end
 
