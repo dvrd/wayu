@@ -278,6 +278,7 @@
     .data-table th, .data-table td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
     .data-table td.n { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
     .data-table th { color: var(--ink-3); font-weight: 500; }
+    .bench .vers { margin: 8px 0 4px; font: 450 0.76rem/1.5 var(--font-mono); color: var(--ink-3); overflow-wrap: anywhere; }
 
     details { border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line-2); }
     summary { cursor: pointer; padding: 10px 14px; min-height: 44px; font-size: 0.9rem; font-weight: 500; color: var(--ink-2); list-style: none; display: flex; align-items: center; gap: 12px; border-radius: var(--r); }
@@ -395,9 +396,9 @@
     .bat-panel .txt p { margin-top: 10px; color: var(--ink-2); font-size: 0.95rem; }
     .bat-panel .txt a { font-size: 0.9rem; }
     .bat-panel .txt .more { display: inline-flex; align-items: center; min-height: 32px; margin-top: 10px; }
-    .code { border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset, var(--shadow); overflow: hidden; min-width: 0; margin-top: 18px; }
+    .code { margin: 0; border-radius: var(--r-lg); background: var(--term-bg); color: var(--term-fg); box-shadow: 0 0 0 1px rgba(255,255,255,0.05) inset, var(--shadow); overflow: hidden; min-width: 0; margin-top: 18px; }
     @media (min-width: 960px) { .code { margin-top: 0; } }
-    .code header { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; background: var(--term-bar); font: 500 0.74rem/1 var(--font-mono); color: var(--term-dim); }
+    .code figcaption { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 14px; background: var(--term-bar); font: 500 0.74rem/1 var(--font-mono); color: var(--term-dim); }
     .code pre { margin: 0; padding: 16px 18px 18px; font: 400 0.8rem/1.65 var(--font-mono); overflow-x: auto; white-space: pre; }
     @media (max-width: 520px) { .code pre { font-size: 0.72rem; padding: 14px; } }
     .c-com { color: var(--term-dim); } .c-key { color: var(--term-ok); } .c-str { color: var(--term-arrow); } .c-tab { color: var(--term-pink); } .c-num { color: var(--term-key); }
@@ -480,6 +481,7 @@
 </head>
 <body>
   <a class="skip" href="#main">Skip to content</a>
+  <p class="sr-only" id="copy-status" role="status" aria-live="polite"></p>
 
   <div class="announce">
     <a href="docs/?p=upgrading"><span class="dot" aria-hidden="true"></span><span><strong>wayu <span class="ver">v6.0.0</span></strong><span class="long"> — what changed in this release, and what to adapt</span></span><span class="go">Upgrade notes →</span></a>
@@ -515,7 +517,7 @@
     <!-- ── Hero ──────────────────────────────────────────────────────── -->
     <section class="hero" id="top" aria-labelledby="hero-title">
       <div class="wrap">
-        <a class="badge rise" style="--i:0" href="https://github.com/dvrd/wayu/releases" aria-label="Version 6.0.0 for zsh, bash and fish: release notes"><span class="dot" aria-hidden="true"></span><b class="ver">v6.0.0</b> zsh · bash · fish</a>
+        <a class="badge rise" style="--i:0" href="https://github.com/dvrd/wayu/releases"><span class="dot" aria-hidden="true"></span><b class="ver">v6.0.0</b> zsh · bash · fish<span class="sr-only">: release notes</span></a>
         <h1 id="hero-title">Your shell setup, <em>managed by commands.</em></h1>
         <p class="hero-sub">PATH entries, aliases, env vars, encrypted secrets, scripts and plugins — added with one command each, compiled into one file your shell sources at startup.</p>
 
@@ -538,7 +540,7 @@
           </div>
         </div>
         <p class="hero-links">
-          <a href="https://github.com/dvrd/wayu#shell-setup"><code>wayu init</code> adds one line to your rc file</a>
+          <a href="https://github.com/dvrd/wayu#shell-setup"><code>wayu init</code> offers to add one line to your rc file</a>
           <a href="https://github.com/dvrd/wayu#quick-start">Read the quickstart →</a>
         </p>
 
@@ -671,7 +673,7 @@ _wayu_prompt_full() {
           <div id="bench-panels"></div>
           <p class="bench-cap" id="bench-cap"></p>
           <details>
-            <summary>Show the numbers as a table</summary>
+            <summary>Show the numbers as a table, with the versions measured</summary>
             <div id="bench-table"></div>
           </details>
           <noscript><p class="bench-cap">Time until the first command runs (zsh-bench, median of 32, Apple M1 Max): zsh, no config 19.9 ms; wayu 58.9 ms; hand-written (compinit -C) 65.2 ms; hand-written .zshrc 77.3 ms; antidote 86.8 ms; oh-my-zsh 105.0 ms; zinit 111.1 ms.</p></noscript>
@@ -725,7 +727,7 @@ _wayu_prompt_full() {
         }
       ],
       "versions": {
-        "wayu": "develop 6bf570c (next release)",
+        "wayu": "6bf570c (7.0 pre-release)",
         "oh-my-zsh": "cca3bdf",
         "zinit": "cb49681 (v3.17.1+10)",
         "antidote": "e661279 (v2.3.0+3)",
@@ -756,7 +758,7 @@ _wayu_prompt_full() {
         }
       ],
       "versions": {
-        "wayu": "develop 6bf570c (next release)",
+        "wayu": "6bf570c (7.0 pre-release)",
         "zinit": "cb49681 (v3.17.1+10)",
         "antidote": "e661279 (v2.3.0+3)",
         "zsh-defer": "53a26e2",
@@ -783,7 +785,7 @@ _wayu_prompt_full() {
         }
       ],
       "versions": {
-        "wayu": "develop 6bf570c (next release)",
+        "wayu": "6bf570c (7.0 pre-release)",
         "zsh-autosuggestions": "85919cd (v0.7.1+6)",
         "zsh-syntax-highlighting": "e6683f2 (0.8.0+8)",
         "zsh-bench": "28b1b1b"
@@ -833,9 +835,9 @@ _wayu_prompt_full() {
             <p class="cmd">wayu plugin add autosuggestions</p>
           </article>
           <article class="card reveal" style="--i:2">
-            <p class="rep">replaces <s>a prompt framework (zsh)</s></p>
+            <p class="rep">replaces <s>a prompt framework (zsh, fish)</s></p>
             <h3>Native prompt</h3>
-            <p>Opt-in. Git branch read from <code>.git/HEAD</code> without running git, project contexts, async right prompt, vi-mode.</p>
+            <p>Opt-in, for zsh and fish. Git branch read from <code>.git/HEAD</code> without running git, project contexts, async right prompt, vi-mode.</p>
             <p class="cmd toml">[prompt] enabled = true</p>
           </article>
           <article class="card reveal" style="--i:3">
@@ -901,8 +903,8 @@ _wayu_prompt_full() {
               <source src="demo/demo.mp4" type="video/mp4" />
               <a href="demo/demo.gif">Watch the recording (GIF)</a>
             </video>
-            <button class="demo-play" id="demo-play" type="button" aria-label="Play the recording">
-              <span><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.3-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z"/></svg>Play · 0:41</span>
+            <button class="demo-play" id="demo-play" type="button">
+              <span><svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.5 2.8v10.4a.8.8 0 0 0 1.2.7l8.3-5.2a.8.8 0 0 0 0-1.4L5.7 2.1a.8.8 0 0 0-1.2.7Z"/></svg>Play<span class="sr-only"> the recording</span> · 0:41</span>
             </button>
           </div>
         </div>
@@ -1011,7 +1013,7 @@ not set in this shell
               <p><code>evalcache</code> runs <code>zoxide init zsh</code> once and sources the cached output until the binary changes. <code>nvm</code>, <code>conda</code> and <code>lazy</code> load on first call. <code>eager</code> loads before the prompt; <code>login_only</code> only in login shells.</p>
               <a class="more" href="docs/?p=config#tools">[tools] reference →</a>
             </div>
-            <div class="code"><header>~/.config/wayu/wayu.toml</header>
+            <figure class="code"><figcaption>~/.config/wayu/wayu.toml</figcaption>
 <pre><span class="c-tab">[tools]</span>
 <span class="c-key">zoxide</span>   = { kind = <span class="c-str">"evalcache"</span>, args = <span class="c-str">"init zsh"</span> }
 <span class="c-key">atuin</span>    = { args = <span class="c-str">"init zsh --disable-up-arrow"</span>, eager = <span class="c-num">true</span> }
@@ -1022,15 +1024,15 @@ not set in this shell
 <span class="c-key">kind</span>          = <span class="c-str">"lazy"</span>
 <span class="c-key">init_script</span>   = <span class="c-str">"~/.sdkman/bin/sdkman-init.sh"</span>
 <span class="c-key">hook_commands</span> = [<span class="c-str">"sdk"</span>]</pre>
-            </div>
+            </figure>
           </div>
           <div class="bat-panel" role="tabpanel" id="bp-prompt" aria-labelledby="bt-prompt" hidden>
             <div class="txt">
-              <h3>A native zsh prompt</h3>
-              <p>Off by default. Generated into the same init: the git branch comes from <code>.git/HEAD</code>, the changed-file count from an async right prompt, and vi-mode shows its mode in the prompt character.</p>
+              <h3>A native prompt for zsh and fish</h3>
+              <p>Off by default. Generated into the same <code>core.zsh</code> or <code>core.fish</code>: the git branch comes from <code>.git/HEAD</code>, the changed-file count from an async right prompt, and vi-mode shows its mode in the prompt character.</p>
               <a class="more" href="docs/?p=config#prompt">[prompt] reference →</a>
             </div>
-            <div class="code"><header>~/.config/wayu/wayu.toml</header>
+            <figure class="code"><figcaption>~/.config/wayu/wayu.toml</figcaption>
 <pre><span class="c-tab">[prompt]</span>
 <span class="c-key">enabled</span> = <span class="c-num">true</span>
 <span class="c-key">vi_mode</span> = <span class="c-num">true</span>
@@ -1049,7 +1051,7 @@ not set in this shell
 <span class="c-tab">[prompt.interactive]</span>
 <span class="c-key">async_rprompt</span>  = <span class="c-num">true</span>
 <span class="c-key">rprompt_format</span> = <span class="c-str">"[ {git_pending}](242)"</span></pre>
-            </div>
+            </figure>
           </div>
           <div class="bat-panel" role="tabpanel" id="bp-hooks" aria-labelledby="bt-hooks" hidden>
             <div class="txt">
@@ -1057,12 +1059,12 @@ not set in this shell
               <p>Run a command before or after a PATH, alias, constant, plugin or export operation. Placeholders become quoted variables, never code; pre-hooks run only when something will change, none under <code>--dry-run</code>.</p>
               <a class="more" href="docs/?p=config#hooksconf">hooks.conf reference →</a>
             </div>
-            <div class="code"><header>~/.config/wayu/hooks.conf</header>
+            <figure class="code"><figcaption>~/.config/wayu/hooks.conf</figcaption>
 <pre><span class="c-com"># event = command</span>
 <span class="c-key">post_path_add</span> = echo added {path} &gt;&gt; ~/hook.log
 <span class="c-key">pre_constant_remove</span> = sh -c <span class="c-str">'echo removing {name} &gt;&gt; ~/hook.log'</span>
 <span class="c-key">post_constant_remove</span> = echo <span class="c-str">"gone: $WAYU_HOOK_NAME"</span> &gt;&gt; ~/hook.log</pre>
-            </div>
+            </figure>
           </div>
           <div class="bat-panel" role="tabpanel" id="bp-run" aria-labelledby="bt-run" hidden>
             <div class="txt">
@@ -1070,7 +1072,7 @@ not set in this shell
               <p>A run-only secret is never exported. <code>wayu secrets run</code> decrypts it into the environment of that one command and execs it, without a shell. Put it behind an alias and <code>gh</code> gets its token every time.</p>
               <a class="more" href="docs/?p=config#secrets">[secrets] reference →</a>
             </div>
-            <div class="code"><header>zsh</header>
+            <figure class="code"><figcaption>zsh</figcaption>
 <pre><span class="t-arr">❯</span> wayu const add GH_TOKEN --run-only
 Value for GH_TOKEN (input hidden):
 <span class="t-ok">✓ Secret added (encrypted) (run-only: wayu secrets run): GH_TOKEN</span>
@@ -1080,7 +1082,7 @@ Value for GH_TOKEN (input hidden):
 
 <span class="t-arr">❯</span> wayu secrets list
 GH_TOKEN  run-only</pre>
-            </div>
+            </figure>
           </div>
           <div class="bat-panel" role="tabpanel" id="bp-script" aria-labelledby="bt-script" hidden>
             <div class="txt">
@@ -1088,7 +1090,7 @@ GH_TOKEN  run-only</pre>
               <p><code>script new</code> writes a skeleton with the interpreter's absolute path as the shebang, opens <code>$EDITOR</code>, and links it into <code>bin/</code>, first among wayu's PATH entries. <code>script import</code> adopts what you already have in <code>~/bin</code>.</p>
               <a class="more" href="docs/?p=cli#wayu-script-scripts">wayu script reference →</a>
             </div>
-            <div class="code"><header>zsh</header>
+            <figure class="code"><figcaption>zsh</figcaption>
 <pre><span class="t-arr">❯</span> wayu script new today --lang python
 <span class="t-ok">✓ Created script: /Users/ana/.local/share/wayu/scripts/today.py</span>
 <span class="t-ok">✓ Linked /Users/ana/.local/share/wayu/bin/today -&gt; ../scripts/today.py</span>
@@ -1096,7 +1098,7 @@ GH_TOKEN  run-only</pre>
 <span class="t-arr">❯</span> wayu script list
 📜 Scripts
   today  python  ok     /Users/ana/.local/share/wayu/scripts/today.py</pre>
-            </div>
+            </figure>
           </div>
           <div class="bat-panel" role="tabpanel" id="bp-json" aria-labelledby="bt-json" hidden>
             <div class="txt">
@@ -1104,7 +1106,7 @@ GH_TOKEN  run-only</pre>
               <p>The CLI never prompts. Lists, <code>search</code> and <code>doctor</code> print JSON with <code>--json</code>; exit codes follow <code>sysexits.h</code>; destructive actions need <code>--yes</code>; <code>--dry-run</code> previews any write.</p>
               <a class="more" href="docs/?p=cli#json-output">JSON shapes →</a>
             </div>
-            <div class="code"><header>zsh</header>
+            <figure class="code"><figcaption>zsh</figcaption>
 <pre><span class="t-arr">❯</span> wayu path list --json
 {
   <span class="c-key">"paths"</span>: [
@@ -1114,7 +1116,7 @@ GH_TOKEN  run-only</pre>
 
 <span class="t-arr">❯</span> wayu alias list --json | jq -r '.aliases[].command'
 git status -sb</pre>
-            </div>
+            </figure>
           </div>
           <div class="bat-panel" role="tabpanel" id="bp-doctor" aria-labelledby="bt-doctor" hidden>
             <div class="txt">
@@ -1122,7 +1124,7 @@ git status -sb</pre>
               <p>PATH entries, config, scripts, plugins, backups, the secrets store and key, and startup-file lines that cost time. <code>--fix</code> repairs what it can; any error exits 78.</p>
               <a class="more" href="docs/?p=cli#wayu-doctor">wayu doctor reference →</a>
             </div>
-            <div class="code"><header>zsh · excerpt</header>
+            <figure class="code"><figcaption>zsh · excerpt</figcaption>
 <pre><span class="t-arr">❯</span> wayu doctor
 🔬 wayu Doctor - System Health Check
 
@@ -1137,7 +1139,7 @@ git status -sb</pre>
   <span class="t-ok">✓</span> startup files
     No startup-file line after wayu loads needs to move into wayu
   <span class="t-dim">…</span></pre>
-            </div>
+            </figure>
           </div>
         </div>
       </div>
@@ -1195,7 +1197,7 @@ git status -sb</pre>
           <details>
             <summary><span>Can I keep oh-my-zsh, or my existing .zshrc?</span></summary>
             <div>
-              <p>Yes. wayu adds one line to your rc file and leaves the rest alone, so oh-my-zsh, a plugin manager or your own lines keep running; move things over at your own pace. <code>wayu optimize --dry-run</code> lists the lines after wayu's that it could take over, without changing anything.</p>
+              <p>Yes. <code>wayu init</code> offers to add one line to your rc file and wayu leaves the rest alone, so oh-my-zsh, a plugin manager or your own lines keep running; move things over at your own pace. <code>wayu optimize --dry-run</code> lists the lines after wayu's that it could take over, without changing anything.</p>
             </div>
           </details>
           <details>
@@ -1242,7 +1244,7 @@ git status -sb</pre>
     <section class="cta" id="install" aria-labelledby="cta-title">
       <div class="wrap">
         <h2 id="cta-title" class="reveal">Hand your shell setup to wayu.</h2>
-        <p class="sub reveal">Prebuilt for macOS arm64 and Linux x86_64. Other platforms build from source with Odin.</p>
+        <p class="sub reveal">Prebuilt for macOS 15 or later (Apple silicon, arm64) and Linux (x86_64). Intel Macs and Linux on arm64 have no binary: build from source with Odin.</p>
         <div class="install reveal" data-install>
           <div class="tabs" role="tablist" aria-label="Install method">
             <button class="tab" role="tab" type="button" id="ci-brew-tab" aria-controls="ci-brew" aria-selected="true">Homebrew</button>
@@ -1265,7 +1267,7 @@ git status -sb</pre>
         <p class="hero-links reveal">
           <a href="docs/">Docs</a>
           <a href="docs/?p=cli">CLI reference</a>
-          <a href="docs/?p=upgrading">Upgrading from 5.x</a>
+          <a href="docs/?p=upgrading">Upgrade notes</a>
         </p>
       </div>
     </section>
@@ -1370,18 +1372,28 @@ git status -sb</pre>
 
     /* Copy buttons */
     var COPY_SVG = '<svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+    var live = $('copy-status');
+    function announce(msg) { live.textContent = ''; setTimeout(function () { live.textContent = msg; }, 60); }
+    // Clipboard refused (permissions, http, old browser): select the command so ⌘C / Ctrl+C works.
+    function selectFallback(btn) {
+      var box = btn.closest('.install-panel, .sx-code'), pre = box && box.querySelector('pre');
+      if (!pre) return;
+      var r = document.createRange(); r.selectNodeContents(pre);
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      announce('Could not copy: the text is selected, press Ctrl+C or ⌘C');
+    }
     document.querySelectorAll('.copy-btn').forEach(function (btn) {
-      var timer, label = btn.getAttribute('aria-label');
+      var timer;
       btn.innerHTML = COPY_SVG;
       btn.addEventListener('click', function () {
         var text = btn.getAttribute('data-copy') || '';
-        if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+        if (!navigator.clipboard || !navigator.clipboard.writeText) { selectFallback(btn); return; }
         navigator.clipboard.writeText(text).then(function () {
           btn.classList.add('copied');
-          btn.setAttribute('aria-label', 'Copied');
+          announce('Copied');
           clearTimeout(timer);
-          timer = setTimeout(function () { btn.classList.remove('copied'); btn.setAttribute('aria-label', label); }, 1600);
-        }, function () {});
+          timer = setTimeout(function () { btn.classList.remove('copied'); }, 1600);
+        }, function () { selectFallback(btn); });
       });
     });
 
@@ -1430,8 +1442,7 @@ git status -sb</pre>
         tabList.appendChild(b);
         var p = document.createElement('div');
         p.className = 'bench-panel'; p.id = 'bench-p-' + s.id; p.setAttribute('role', 'tabpanel'); p.setAttribute('aria-labelledby', b.id); p.hidden = i !== 0;
-        var vers = s.versions ? Object.keys(s.versions).map(function (k) { return k + ' ' + s.versions[k]; }).join(' · ') : '';
-        p.innerHTML = '<h3>' + esc(s.title) + '</h3><p class="bench-metric">' + esc(s.metric || '') + (vers ? ' · ' + esc(vers) : '') + '</p>' +
+        p.innerHTML = '<h3>' + esc(s.title) + '</h3><p class="bench-metric">' + esc(s.metric || '') + '</p>' +
           '<ol class="bars">' + s.results.map(function (r) {
             return '<li class="bar' + (r.highlight ? ' hl' : '') + '" data-v="' + r.value + '" data-max="' + max + '">' +
               '<span class="name">' + esc(r.name) + '</span><span class="track" aria-hidden="true"><span class="fill" style="--s:' + (r.value / max).toFixed(4) + '"></span></span>' +
@@ -1445,8 +1456,9 @@ git status -sb</pre>
         '<a href="https://github.com/dvrd/wayu/tree/main/tests/benchmark">Reproduce it</a>, or run <code>wayu build profile</code> on your own setup.';
 
       $('bench-table').innerHTML = scen.map(function (s) {
-        return '<table class="data-table"><caption>' + esc(s.title) + '</caption><thead><tr><th scope="col">Run</th><th scope="col" style="text-align:right">Mean</th></tr></thead><tbody>' +
-          s.results.map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td class="n">' + fmt(r.value) + '</td></tr>'; }).join('') + '</tbody></table>';
+        return '<table class="data-table"><caption>' + esc(s.title) + '</caption><thead><tr><th scope="col">Run</th><th scope="col" style="text-align:right">Median</th></tr></thead><tbody>' +
+          s.results.map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td class="n">' + fmt(r.value) + '</td></tr>'; }).join('') + '</tbody></table>' +
+          (s.versions ? '<p class="vers">Versions: ' + Object.keys(s.versions).map(function (k) { return esc(k + ' ' + s.versions[k]); }).join(' · ') + '</p>' : '');
       }).join('');
 
       var raf = 0;
