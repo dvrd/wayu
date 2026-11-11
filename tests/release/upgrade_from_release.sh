@@ -2,8 +2,11 @@
 # Release check: upgrade from the previous release's binary to this build
 # in a throwaway HOME with a fake `security` (never the real keychain):
 # entries, secrets (keychain key move), a new shell, build, doctor. macOS.
-# usage: tests/release/upgrade_from_release.sh [tag (default v6.0.0)] [new wayu (default bin/wayu)]
-TAG=${1:-v6.0.0} NEW=${2:-$PWD/bin/wayu}
+# The new side is this checkout built with -define:WAYU_TEST_KEYSTORE=true,
+# the only kind of build that takes its keychain program from
+# WAYU_TEST_SECURITY_BIN (a release build always runs /usr/bin/security).
+# usage: tests/release/upgrade_from_release.sh [tag (default v6.0.0)]   (repo root)
+TAG=${1:-v6.0.0}
 DL=$(mktemp -d "${TMPDIR:-/tmp}/wayu-rel.XXXXXX")
 gh release download $TAG -R dvrd/wayu -p 'wayu-macos-arm64.tar.gz' -D $DL || exit 1
 tar xzf $DL/wayu-macos-arm64.tar.gz -C $DL && V6=$DL/wayu
@@ -11,6 +14,7 @@ H=$(mktemp -d "${TMPDIR:-/tmp}/wayu-up.XXXXXX"); H=${H:A}
 KC=$H/fake-keychain; mkdir -p $KC/bin $H/bin6 $H/binN $H/tools
 cat > $KC/bin/security <<EOF
 #!/bin/sh
+if [ "\$1" = -i ]; then IFS= read -r line; eval "set -- \$line"; fi
 cmd=\$1; shift; acct=; pw=
 while [ \$# -gt 0 ]; do
   case \$1 in -a) acct=\$2; shift ;; -w) [ \$# -gt 1 ] && { pw=\$2; shift; } ;; -s|-l) shift ;; esac
@@ -24,13 +28,15 @@ case \$cmd in
 esac
 EOF
 chmod +x $KC/bin/security
+NEW=$H/wayu-test-keystore
+odin build src -define:WAYU_TEST_KEYSTORE=true -out:$NEW || exit 1
 ln -s $V6 $H/bin6/wayu; ln -s $NEW $H/binN/wayu
 fails=0
 ok() { if [[ $1 == 0 ]]; then print "  ok    $2"; else print "  FAIL  $2"; fails=$((fails+1)); fi }
 E=(env -i HOME=$H SHELL=/bin/zsh TERM=xterm-256color NO_COLOR=1 TMPDIR=$H/tmp/)
 mkdir -p $H/tmp
 v6() { $E PATH=$H/bin6:$KC/bin:/usr/bin:/bin "$@"; }
-vn() { $E PATH=$H/binN:$KC/bin:/usr/bin:/bin "$@"; }
+vn() { $E PATH=$H/binN:$KC/bin:/usr/bin:/bin WAYU_TEST_SECURITY_BIN=$KC/bin/security "$@"; }
 
 print "$TAG setup"
 v6 wayu init --shell zsh >/dev/null 2>&1;                 ok $? "v6 init"
