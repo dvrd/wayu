@@ -392,3 +392,22 @@ test_toml_parse_large_config :: proc(t: ^testing.T) {
 	defer wayu.cleanup_toml_config(&config)
 	testing.expect(t, ok, "large config must parse")
 }
+
+// Names decoded from wayu.toml reach `toml validate` / `toml keys` messages
+// with their control characters made visible (no terminal escapes).
+@(test)
+test_toml_escape_controls :: proc(t: ^testing.T) {
+	testing.expect_value(t, wayu.toml_escape_controls("plain [x] \\ é"), "plain [x] \\ é")
+	testing.expect_value(t, wayu.toml_escape_controls("a\x1b[2Jb"), "a\\x1B[2Jb")
+	testing.expect_value(t, wayu.toml_escape_controls("\x00\t\n\x7f"), "\\x00\\t\\n\\x7F")
+	testing.expect_value(t, wayu.toml_escape_controls("c1\u009b31m"), "c1\\u009B31m")
+
+	issues := wayu.toml_content_schema_issues("\"k\\u001b[2J\" = 1\n")
+	testing.expect_value(t, len(issues), 1)
+	if len(issues) == 1 {
+		msg := wayu.toml_escape_controls(issues[0].msg)
+		testing.expectf(t, !strings.contains_rune(msg, 0x1b), "escaped: %q", msg)
+		testing.expectf(t, strings.contains(msg, "k\\x1B[2J"), "escaped: %q", msg)
+	}
+	free_all(context.temp_allocator)
+}
