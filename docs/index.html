@@ -431,6 +431,17 @@
     }
     .cmp-note { margin-top: 14px; font-size: 0.84rem; color: var(--ink-3); max-width: 52rem; }
 
+    /* ── FAQ ────────────────────────────────────────────────────────────── */
+    .faq-grid { display: grid; gap: 32px 56px; grid-template-columns: minmax(0, 1fr); }
+    @media (min-width: 960px) { .faq-grid { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-items: start; } .faq-grid .sec-head { position: sticky; top: 96px; } }
+    .faq { display: grid; gap: 10px; }
+    .faq details { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+    .faq details[open] { box-shadow: inset 0 0 0 1px var(--line-2); }
+    .faq summary { padding: 14px 18px; min-height: 52px; font-size: 1rem; font-weight: 500; color: var(--ink); }
+    .faq summary code { font-size: 0.84em; }
+    .faq details > div { padding: 0 18px 16px 39px; display: grid; gap: 10px; }
+    .faq details p { color: var(--ink-2); font-size: 0.94rem; line-height: 1.6; }
+
     /* ── Closing CTA + footer ───────────────────────────────────────────── */
     .cta { text-align: center; }
     .cta h2 { font-size: clamp(2.2rem, 5.4vw, 4rem); letter-spacing: -0.04em; line-height: 1; }
@@ -1147,6 +1158,68 @@ git status -sb</pre>
           </table>
         </div>
         <p class="cmp-note">oh-my-zsh and zinit/antidote are good at what they do: themes, a large plugin collection, fast plugin loading. wayu can run alongside them; the table lists only what each one does out of the box.</p>
+      </div>
+    </section>
+
+    <!-- ── FAQ ───────────────────────────────────────────────────────── -->
+    <section id="faq" aria-labelledby="faq-title">
+      <div class="wrap faq-grid">
+        <div class="sec-head reveal">
+          <p class="kicker">Questions</p>
+          <h2 id="faq-title">Before you hand it your shell.</h2>
+          <p class="lede">Anything else: the <a href="docs/">docs</a>, or <a href="https://github.com/dvrd/wayu/issues">an issue on GitHub</a>.</p>
+        </div>
+        <div class="faq reveal">
+          <details>
+            <summary><span>What does it change in my rc file, and how do I undo it?</span></summary>
+            <div>
+              <p><code>wayu init</code> asks before it adds one <code>source</code> line to your rc file (it only prints the line when it isn't run in a terminal). Everything else lives in <code>~/.config/wayu</code> and <code>~/.local/share/wayu</code>.</p>
+              <p>Every write is backed up first, keeping the newest five per file: <code>wayu backup list</code>, then <code>wayu backup restore entries --yes</code> (or <code>.zshrc</code>, <code>toml</code>). To uninstall, restore your rc file if <code>optimize</code> changed it, remove the line, <code>brew uninstall wayu</code>, and delete those two directories; if you stored secrets, also delete the <code>wayu-master-key</code> item from your keychain.</p>
+            </div>
+          </details>
+          <details>
+            <summary><span>Can I keep oh-my-zsh, or my existing .zshrc?</span></summary>
+            <div>
+              <p>Yes. wayu adds one line to your rc file and leaves the rest alone, so oh-my-zsh, a plugin manager or your own lines keep running; move things over at your own pace. <code>wayu optimize --dry-run</code> lists the lines after wayu's that it could take over, without changing anything.</p>
+            </div>
+          </details>
+          <details>
+            <summary><span>What exactly does <code>wayu optimize</code> touch?</span></summary>
+            <div>
+              <p>Only top-level lines that come <em>after</em> the line that loads wayu, in your shell's startup files: <code>eval "$(tool init zsh)"</code> and <code>source &lt;(tool completion zsh)</code> (cached instead), <code>fpath</code> edits, an extra <code>compinit</code>, PATH exports, aliases and exports. Anything inside <code>if</code>, loops, functions or here-documents stays. It prints a diff and exits without <code>--yes</code>; with it, the file is backed up and rewritten atomically. <a href="docs/?p=cli#wayu-optimize">Full rules →</a></p>
+            </div>
+          </details>
+          <details>
+            <summary><span>Where are my secrets and the key?</span></summary>
+            <div>
+              <p>Values are encrypted in <code>~/.local/share/wayu/secrets.json</code> (<code>0600</code>). The master key is in the macOS Keychain, the freedesktop Secret Service on Linux with <code>secret-tool</code>, or <code>~/.config/wayu/secret.key</code>. Decrypted values go only to a per-session cache in a <code>0700</code> dir you own, never to <code>core.zsh</code>, backups or logs. <a href="#secrets">How it works ↑</a></p>
+            </div>
+          </details>
+          <details>
+            <summary><span>Which platforms and shells?</span></summary>
+            <div>
+              <p>Prebuilt binaries for macOS 15 or later on Apple silicon (arm64) and Linux on x86_64 (amd64), through Homebrew. There is no prebuilt binary for Intel Macs or Linux on arm64: build those from source with Odin. Tested with zsh 5.9, bash 3.2 and 5.x, fish 4.x, on macOS 15, 26 and 27 and Ubuntu 24.04. Windows is not supported.</p>
+            </div>
+          </details>
+          <details>
+            <summary><span>Does it slow down shell startup?</span></summary>
+            <div>
+              <p>It is usually faster than what it replaces: everything is precomputed into one <code>core.zsh</code> (zcompiled), tool <code>init</code> output is cached until the binary changes, and plugins can load after the first prompt. See <a href="#bench">the benchmark</a>, or run <code>wayu build profile</code> on your own setup.</p>
+            </div>
+          </details>
+          <details>
+            <summary><span>Will an upgrade break my setup?</span></summary>
+            <div>
+              <p>From 7.0 on, the commands, flags, exit codes, <code>--json</code> shapes, <code>wayu.toml</code> keys and data files are stable within a major version. A release that changes a data format or moves a file migrates yours automatically (backup first), and anything being removed is deprecated for at least one minor release first. <a href="docs/?p=stability">Stability guarantees →</a></p>
+            </div>
+          </details>
+          <details>
+            <summary><span>How do I report a security problem?</span></summary>
+            <div>
+              <p>Privately, through GitHub's <a href="https://github.com/dvrd/wayu/security/advisories/new">Report a vulnerability</a>, not in a public issue. Fixes ship in a patch release of the latest major. <a href="https://github.com/dvrd/wayu/blob/main/SECURITY.md">Security policy →</a></p>
+            </div>
+          </details>
+        </div>
       </div>
     </section>
 
