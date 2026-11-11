@@ -860,7 +860,7 @@ Placeholder quoting:
 |---|---|
 | Unquoted: `echo Adding {path}` | Replaced by `"${WAYU_HOOK_PATH}"`: the value is one word, never parsed as code. |
 | Inside `'...'`: `sh -c 'echo {path}'` | Left as `"${WAYU_HOOK_PATH}"` for the inner shell, which expands it quoted. |
-| Inside `"..."`: `sh -c "echo {value}"` | Refused. Any wayu operation that would run hooks exits `78` before writing anything and names the line; `wayu hooks` marks it `INVALID`. Use `"$WAYU_HOOK_VALUE"` when you need double quotes. |
+| Inside `"..."`, also within `'...'`: `sh -c "echo {value}"`, `sh -c 'sh -c "echo {value}"'` | Refused. Any wayu operation that would run hooks exits `78` before writing anything and names the line; `wayu hooks` marks it `INVALID`. Use `"$WAYU_HOOK_VALUE"` when you need double quotes. |
 
 Hooks run with `sh -c`, stdin on `/dev/null`; their exit status is ignored.
 In the CLI a hook's stdout and stderr are shown (in the TUI they are
