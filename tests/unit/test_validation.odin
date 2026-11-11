@@ -213,10 +213,26 @@ test_alias_name_error_shared_rule :: proc(t: ^testing.T) {
 // OKAMI-304: protected environment names.
 @(test)
 test_protected_env_names :: proc(t: ^testing.T) {
-	for n in ([]string{"PATH", "path", "HOME", "IFS", "ZDOTDIR", "WAYU_DATA_DIR", "WAYU_X"}) {
+	for n in ([]string {
+			"PATH",
+			"path",
+			"HOME",
+			"IFS",
+			"ZDOTDIR",
+			"WAYU_DATA_DIR",
+			"WAYU_X",
+			"PS1",
+			"PS4",
+			"PROMPT",
+			"RPROMPT",
+			"PROMPT_COMMAND",
+			"BASH_ENV",
+			"ENV",
+			"fish_function_path",
+		}) {
 		testing.expectf(t, wayu.protected_env_name_error(n) != "", "%s should be protected", n)
 	}
-	for n in ([]string{"EDITOR", "GOPATH", "PATHX", "WAYU"}) {
+	for n in ([]string{"EDITOR", "GOPATH", "PATHX", "WAYU", "PS5", "ENVIRONMENT", "PERIOD"}) {
 		testing.expectf(t, wayu.protected_env_name_error(n) == "", "%s should be allowed", n)
 	}
 }

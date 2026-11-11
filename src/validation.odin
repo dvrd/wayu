@@ -231,7 +231,13 @@ stored_value_error :: proc(what: string, value: string) -> string {
 // Environment names `wayu const add` refuses (OKAMI-304): setting them from
 // wayu breaks the shell or wayu itself (`const add PATH /x` left every new
 // shell without ls). zsh ties `path`/`fpath` to PATH/FPATH. Every WAYU_*
-// name is refused too (wayu's own settings and runtime variables).
+// name is refused too (wayu's own settings and runtime variables). So are
+// names whose value a shell runs as code or loads code from: the prompts
+// (prompt-expanded, `$(...)` runs with PROMPT_SUBST / bash promptvars; PS4 on
+// every traced command, PS0 before every command), PROMPT_COMMAND, BASH_ENV
+// and ENV (sourced by every non-interactive bash / sh), and fish's function
+// and completion search paths (autoloaded code; replacing them also loses
+// fish's own functions).
 PROTECTED_ENV_NAMES :: []string {
 	"PATH",
 	"path",
@@ -247,6 +253,27 @@ PROTECTED_ENV_NAMES :: []string {
 	"ZDOTDIR",
 	"SHLVL",
 	"_",
+	"PS0",
+	"PS1",
+	"PS2",
+	"PS3",
+	"PS4",
+	"PROMPT",
+	"prompt",
+	"PROMPT2",
+	"PROMPT3",
+	"PROMPT4",
+	"RPROMPT",
+	"RPROMPT2",
+	"RPS1",
+	"RPS2",
+	"SPROMPT",
+	"PROMPT_EOL_MARK",
+	"PROMPT_COMMAND",
+	"BASH_ENV",
+	"ENV",
+	"fish_function_path",
+	"fish_complete_path",
 }
 
 // Why `name` is a protected environment name, "" when it is not.

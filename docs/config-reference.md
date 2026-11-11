@@ -795,9 +795,9 @@ named variables expand; every other character, `$` included, is literal:
 |---|---|---|
 | `$NAME` | expands (emitted as `${NAME}`, so `$HOME:h` or `$HOME[1]` are not zsh modifiers / subscripts) | expands |
 | `${NAME}` | expands | expands |
-| `${NAME<op>...}`, op = `-` `=` `+` `?` (each also with a leading `:`), `#`, `%`, `/` | expands, e.g. `${X:-d}`, `${X#pre}`, `${X/a/b}` | literal |
+| `${NAME<op>...}`, op = `-` `+` `?` (each also with a leading `:`), `#`, `%`, `/` | expands, e.g. `${X:-d}`, `${X#pre}`, `${X/a/b}` | literal |
 | `${#NAME}` | expands | literal |
-| Any other `${...}`: `${X@P}`, `${X[1]}`, `${X:1}`, `${X: -2}`, `${X^}`, `${HOME:h}`, `${(e)X}` | literal | literal |
+| Any other `${...}`: `${X=v}` / `${X:=v}` (would assign X), `${X@P}`, `${X[1]}`, `${X:1}`, `${X: -2}`, `${X^}`, `${HOME:h}`, `${(e)X}` | literal | literal |
 | `$1`, `$$`, `$?`, `$%`, a trailing `$`, an unclosed `${` | literal | literal |
 | `$(cmd)`, `` `cmd` `` | literal (never run) | literal |
 | `"`, `\` | literal | literal |

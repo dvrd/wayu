@@ -125,9 +125,12 @@ Manage constants: exported environment variables (stored in
 `entries.json`). Default action: `list`. Names: ASCII letters, digits and
 `_`, not starting with a digit. Protected names exit `65`: `PATH`, `path`,
 `FPATH`, `fpath`, `HOME`, `IFS`, `SHELL`, `USER`, `LOGNAME`, `PWD`,
-`OLDPWD`, `ZDOTDIR`, `SHLVL`, `_` and every `WAYU_*` name (setting them from
-wayu breaks the shell or wayu; `wayu doctor` reports stored ones as an
-error). A value (alias command, constant value, PATH dir) with a NUL byte or
+`OLDPWD`, `ZDOTDIR`, `SHLVL`, `_`, every `WAYU_*` name (setting them from
+wayu breaks the shell or wayu), and names whose value a shell runs as code
+or loads code from: `PS0`-`PS4`, `PROMPT`, `prompt`, `PROMPT2`-`PROMPT4`,
+`RPROMPT`, `RPROMPT2`, `RPS1`, `RPS2`, `SPROMPT`, `PROMPT_EOL_MARK`,
+`PROMPT_COMMAND`, `BASH_ENV`, `ENV`, `fish_function_path`,
+`fish_complete_path`. `wayu doctor` reports stored ones as an error. A value (alias command, constant value, PATH dir) with a NUL byte or
 invalid UTF-8 exits `65`.
 
 | Action | Arguments | |

@@ -117,7 +117,7 @@ class ShellFuzzTest
         src << '${FZ_REF:-dflt}'; sh << REF_VALUE; fish << '${FZ_REF:-dflt}'
       when 4
         op = pick(['${FZ_CMD@P}', '${FZ_CMD[FZ_SUB]}', '${FZ_CMD:FZ_SUB}', '${FZ_REF^}', '$(echo PWNED-x >&2)',
-                   '`echo PWNED-bt >&2`', '${(e)FZ_CMD}'])
+                   '`echo PWNED-bt >&2`', '${(e)FZ_CMD}', '${FZ_NEW:=x}', '${FZ_NEW=x}'])
         [src, sh, fish].each { |s| s << op }
       else
         l = literal(LITERAL, 1, 8)

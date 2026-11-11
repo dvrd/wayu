@@ -430,6 +430,11 @@ emit_env_exports :: proc(b: ^strings.Builder, sep: string = "\n", mask := false)
 			fmt.sbprintf(b, "# wayu: skipping invalid env name %q%s", e.name, sep)
 			continue
 		}
+		// A protected name stored by hand (doctor reports it) is not set.
+		if len(protected_env_name_error(e.name)) > 0 {
+			fmt.sbprintf(b, "# wayu: skipping protected env name %s%s", e.name, sep)
+			continue
+		}
 		v := expand_leading_tilde_to_home_var(e.value, context.temp_allocator)
 		if mask {
 			v = mask_secret_value(e.name, e.value)
@@ -2978,6 +2983,11 @@ emit_env_exports_fish :: proc(b: ^strings.Builder, mask := false) {
 	for e in toml_env {
 		if !is_shell_var_name(e.name) {
 			fmt.sbprintfln(b, "# wayu: skipping invalid env name %q", e.name)
+			continue
+		}
+		// A protected name stored by hand (doctor reports it) is not set.
+		if len(protected_env_name_error(e.name)) > 0 {
+			fmt.sbprintfln(b, "# wayu: skipping protected env name %s", e.name)
 			continue
 		}
 		v := expand_leading_tilde_to_home_var(e.value, context.temp_allocator)
