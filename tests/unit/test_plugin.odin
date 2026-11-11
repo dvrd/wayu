@@ -432,7 +432,7 @@ test_plugin_update_write_and_cleanup :: proc(t: ^testing.T) {
 		url = strings.clone("https://github.com/test/plugin.git"),
 		enabled = true,
 		shell = wayu.ShellCompat.ZSH,
-		installed_path = strings.clone("/tmp/test"),
+		installed_path = fmt.aprintf("%s/plugins/test-plugin", plugin_test_dir()),
 		git = wayu.GitMetadata {
 			branch = strings.clone("master"),
 			commit = strings.clone("abc1234"),
@@ -529,7 +529,7 @@ test_plugin_enable_idempotent :: proc(t: ^testing.T) {
 		url = strings.clone("https://github.com/test/plugin.git"),
 		enabled = true, // Already enabled
 		shell = wayu.ShellCompat.ZSH,
-		installed_path = strings.clone("/tmp/test"),
+		installed_path = fmt.aprintf("%s/plugins/test-plugin", plugin_test_dir()),
 		git = wayu.GitMetadata {
 			branch = strings.clone("main"),
 			commit = strings.clone("abc123"),
@@ -586,7 +586,7 @@ test_plugin_disable_idempotent :: proc(t: ^testing.T) {
 		url = strings.clone("https://github.com/test/plugin.git"),
 		enabled = false, // Already disabled
 		shell = wayu.ShellCompat.ZSH,
-		installed_path = strings.clone("/tmp/test"),
+		installed_path = fmt.aprintf("%s/plugins/test-plugin", plugin_test_dir()),
 		git = wayu.GitMetadata {
 			branch = strings.clone("main"),
 			commit = strings.clone("abc123"),
@@ -636,7 +636,7 @@ test_plugin_enable_toggles_state :: proc(t: ^testing.T) {
 		url = strings.clone("https://github.com/test/plugin.git"),
 		enabled = false, // Start disabled
 		shell = wayu.ShellCompat.ZSH,
-		installed_path = strings.clone("/tmp/test"),
+		installed_path = fmt.aprintf("%s/plugins/test-plugin", plugin_test_dir()),
 		git = wayu.GitMetadata {
 			branch = strings.clone("main"),
 			commit = strings.clone("abc123"),
@@ -704,7 +704,7 @@ test_plugin_disable_toggles_state :: proc(t: ^testing.T) {
 		url = strings.clone("https://github.com/test/plugin.git"),
 		enabled = true, // Start enabled
 		shell = wayu.ShellCompat.ZSH,
-		installed_path = strings.clone("/tmp/test"),
+		installed_path = fmt.aprintf("%s/plugins/test-plugin", plugin_test_dir()),
 		git = wayu.GitMetadata {
 			branch = strings.clone("main"),
 			commit = strings.clone("abc123"),

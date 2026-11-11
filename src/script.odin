@@ -374,7 +374,9 @@ script_build :: proc(s: ScriptInfo, quiet := false) -> bool {
 		if !quiet {
 			print_info("Compiling %s (%s)...", s.name, tool)
 		}
-		res := run_command_timeout(args, SCRIPT_COMPILE_TIMEOUT_MS)
+		// In <data>/scripts, not the caller's cwd: bun, deno, go, cargo ...
+		// read config (bunfig.toml, go.mod, ...) from their working directory.
+		res := run_command_timeout(args, SCRIPT_COMPILE_TIMEOUT_MS, cwd = scripts_dir())
 		defer command_result_destroy(&res)
 		if !res.ok || !os.is_file(tmp) {
 			if os.exists(tmp) {
@@ -560,9 +562,10 @@ script_require_existing :: proc(name: string) -> ScriptInfo {
 // Command-line options of `wayu script` (parsed from the handler's args).
 @(private = "file")
 ScriptOpts :: struct {
-	lang:  string,
-	copy:  bool,
-	words: [dynamic]string, // positional arguments
+	lang:        string,
+	copy:        bool,
+	allow_build: bool,
+	words:       [dynamic]string, // positional arguments
 }
 
 @(private = "file")
@@ -575,6 +578,8 @@ script_parse_opts :: proc(args: []string) -> ScriptOpts {
 		switch {
 		case a == "--copy":
 			o.copy = true
+		case a == "--allow-build":
+			o.allow_build = true
 		case a == "--lang":
 			if i + 1 >= len(args) {
 				print_error_simple("--lang needs a value (one of: %s)", script_lang_names())
@@ -620,10 +625,12 @@ handle_script_command :: proc(action: Action, args: []string) {
 		script_remove(need_name(words, "remove <name> --yes"))
 	case .IMPORT:
 		if len(words) == 0 {
-			print_error_simple("Nothing to import. Usage: wayu script import <file>... [--copy]")
+			print_error_simple(
+				"Nothing to import. Usage: wayu script import <file>... [--copy] [--allow-build]",
+			)
 			wayu_exit(EXIT_USAGE)
 		}
-		script_import(words, opts.copy)
+		script_import(words, opts.copy, opts.allow_build)
 	case .BUILD:
 		script_build_command(words)
 	case .HELP:
@@ -718,14 +725,20 @@ script_new :: proc(name: string, lang_flag: string) {
 		config_lock_release()
 		wayu_exit(EXIT_CANTCREAT)
 	}
+	// script_find only sees regular files: anything else already at the
+	// path (a symlink, maybe dangling) is refused, never written through.
+	if _, lerr := os.lstat(source, context.temp_allocator); lerr == nil {
+		config_lock_release()
+		print_error_simple("Cannot create %s: something already exists at that path", source)
+		wayu_exit(EXIT_DATAERR)
+	}
 	skeleton := script_skeleton(lang, name, context.temp_allocator)
 	content := fmt.tprintf("#!%s\n%s", interp, skeleton)
-	if write_file_atomic(source, transmute([]byte)content) != nil {
+	if errno := create_file_exclusive(source, content, 0o755); errno != .NONE {
 		config_lock_release()
-		print_error_simple("Failed to create %s", source)
+		print_error_simple("Failed to create %s (%s)", source, create_file_error_text(errno))
 		wayu_exit(EXIT_CANTCREAT)
 	}
-	_ = os.chmod(source, os.perm_number(0o755))
 	config_lock_release()
 	print_success("Created script: %s", source)
 
@@ -1001,16 +1014,21 @@ script_build_command :: proc(names: []string) {
 // What `script import` does with one file: import it as NAME.<ext> in
 // `lang`, or skip it for `reason`.
 ScriptImportPlan :: struct {
-	path:        string,
-	name:        string,
-	ext:         string,
-	lang:        ^ScriptLang,
-	reason:      string, // non-empty: skipped
+	path:         string,
+	name:         string,
+	ext:          string,
+	lang:         ^ScriptLang,
+	reason:       string, // non-empty: skipped
 	// Prepend this shebang when importing (file had none). "" = keep as is.
-	add_shebang: string,
+	add_shebang:  string,
 	// The shebang line ends in CR (CRLF file): the imported copy is
 	// converted to LF line endings (OKAMI-338).
-	crlf:        bool,
+	crlf:         bool,
+	// The file's own `wayu: build =` command ("" = none) and whether it
+	// needs --allow-build (it is not a language preset: importing it means
+	// running an arbitrary command now and on every later build).
+	build_header: string,
+	needs_allow:  bool,
 }
 
 // Shebang paths that point inside a package manager's environment: the
@@ -1225,6 +1243,8 @@ script_plan_import :: proc(path: string, taken: []string) -> ScriptImportPlan {
 	// No shebang (known extension only): an interpreted script needs one to
 	// run from bin/; use the interpreter on PATH.
 	head := read_head(path)
+	plan.build_header = script_build_header(head)
+	plan.needs_allow = len(plan.build_header) > 0 && !script_build_is_preset(plan.build_header)
 	plan.crlf = script_shebang_has_cr(head)
 	if !strings.has_prefix(head, "#!") {
 		if len(script_build_cmd(plan.lang, head)) == 0 {
@@ -1244,7 +1264,18 @@ script_plan_import :: proc(path: string, taken: []string) -> ScriptImportPlan {
 	return plan
 }
 
-script_import :: proc(paths: []string, keep_original: bool) {
+// A build command that is some language's preset (swift's `swiftc -O -o
+// {out} {src}`): importing a file that declares it runs nothing unexpected.
+script_build_is_preset :: proc(cmd: string) -> bool {
+	for l in SCRIPT_LANGS {
+		if len(l.build) > 0 && l.build == cmd {
+			return true
+		}
+	}
+	return false
+}
+
+script_import :: proc(paths: []string, keep_original: bool, allow_build := false) {
 	taken := make([dynamic]string, context.temp_allocator)
 	for s in script_list_all() {append(&taken, s.name)}
 
@@ -1257,6 +1288,13 @@ script_import :: proc(paths: []string, keep_original: bool) {
 		append(&plans, plan)
 	}
 
+	refused := 0
+	for plan in plans {
+		if len(plan.reason) == 0 && plan.needs_allow && !allow_build {
+			refused += 1
+		}
+	}
+
 	if wayu.dry_run {
 		print_header("DRY RUN - No changes will be made", EMOJI_INFO)
 		for plan in plans {
@@ -1264,16 +1302,34 @@ script_import :: proc(paths: []string, keep_original: bool) {
 				fmt.printfln("  skip    %s: %s", plan.path, plan.reason)
 			} else {
 				fmt.printfln(
-					"  import  %s -> %s (%s%s%s)",
+					"  import  %s -> %s (%s%s%s)%s",
 					plan.path,
 					script_import_dest(plan),
 					plan.lang.name if plan.lang != nil else "build header",
 					", copy" if keep_original else ", move",
 					", CRLF -> LF" if plan.crlf else "",
+					script_import_build_note(plan, allow_build),
 				)
 			}
 		}
 		return
+	}
+
+	// A declared build command runs now and on every later build (also the
+	// prompt hook's background build): never on the strength of a file's
+	// content alone.
+	if refused > 0 {
+		print_error_simple(
+			"Not importing: %d file(s) declare a build command that wayu would run (now and on every rebuild):",
+			refused,
+		)
+		for plan in plans {
+			if len(plan.reason) == 0 && plan.needs_allow {
+				fmt.eprintfln("  %s: %s", plan.path, plan.build_header)
+			}
+		}
+		fmt.eprintln("Review the commands, then re-run with --allow-build to import and run them.")
+		wayu_exit(EXIT_USAGE)
 	}
 
 	config_lock_acquire_or_exit()
@@ -1303,16 +1359,30 @@ script_import :: proc(paths: []string, keep_original: bool) {
 			fmt.printfln("  skipped  %s: %s", plan.path, plan.reason)
 		} else {
 			fmt.printfln(
-				"  imported %s -> %s%s",
+				"  imported %s -> %s%s%s",
 				plan.path,
 				plan.name,
 				" (CRLF line endings converted to LF)" if plan.crlf else "",
+				script_import_build_note(plan, true),
 			)
 		}
 	}
 	if imported == 0 && skipped > 0 {
 		wayu_exit(EXIT_DATAERR)
 	}
+}
+
+// " [build: CMD]" for a file with a build header ("" otherwise); one that
+// needs --allow-build says so when it is missing. Temp.
+@(private = "file")
+script_import_build_note :: proc(plan: ScriptImportPlan, allow_build: bool) -> string {
+	if len(plan.build_header) == 0 {
+		return ""
+	}
+	if plan.needs_allow && !allow_build {
+		return fmt.tprintf(" [build: %s] (refused without --allow-build)", plan.build_header)
+	}
+	return fmt.tprintf(" [build: %s]", plan.build_header)
 }
 
 // <data>/scripts/NAME.<ext> (NAME alone without an extension). Temp.
@@ -1341,15 +1411,16 @@ script_import_one :: proc(plan: ^ScriptImportPlan, keep_original: bool) {
 		content = fmt.tprintf("#!%s\n%s", plan.add_shebang, content)
 	}
 	dest := script_import_dest(plan^)
-	if os.exists(dest) {
+	// lstat + O_EXCL|O_NOFOLLOW: a (dangling) symlink there is never
+	// written through.
+	if _, lerr := os.lstat(dest, context.temp_allocator); lerr == nil {
 		plan.reason = fmt.tprintf("%s already exists", dest)
 		return
 	}
-	if write_file_atomic(dest, transmute([]byte)content) != nil {
-		plan.reason = fmt.tprintf("cannot write %s", dest)
+	if errno := create_file_exclusive(dest, content, 0o755); errno != .NONE {
+		plan.reason = fmt.tprintf("cannot write %s (%s)", dest, create_file_error_text(errno))
 		return
 	}
-	_ = os.chmod(dest, os.perm_number(0o755))
 	s := ScriptInfo {
 		name   = plan.name,
 		source = dest,

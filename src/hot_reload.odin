@@ -237,13 +237,29 @@ handle_watch_command :: proc(action: string, args: []string) {
 			return
 		}
 
-		// Try to stop existing watcher
+		// Signal only the process that holds the watcher lock, and only
+		// when the PID file agrees (a stale PID file may name any process).
 		pid := read_watcher_pid()
-		if pid <= 0 {
+		holder := watcher_lock_holder()
+		for _ in 0 ..< 20 {
+			if holder == 0 || holder == pid {
+				break
+			}
+			time.sleep(50 * time.Millisecond)
+			pid = read_watcher_pid()
+			holder = watcher_lock_holder()
+		}
+		if holder == 0 {
+			print_warning("Watcher is not running")
+			return
+		}
+		if pid <= 0 || pid != holder {
 			print_warning(
-				"A watcher holds %s/%s but its PID file is missing",
+				"%s/%s is held by pid %d but the PID file says %d; not signalling either",
 				wayu.data,
 				WATCHER_LOCK_FILE,
+				holder,
+				pid,
 			)
 			wayu_exit(EXIT_FAILURE)
 		}
@@ -463,11 +479,18 @@ regenerate_static :: proc() {
 		return
 	}
 
+	// Under the config lock like `wayu script build`: both build into the
+	// same bin/.NAME.build temp file and write the same hash files.
+	if !config_lock_acquire() {
+		print_warning("Could not take the config lock; nothing regenerated")
+		return
+	}
 	// Scripts first: a first built script puts <data>/bin on PATH.
 	if built, failed := scripts_build_stale(quiet = true); built > 0 || failed > 0 {
 		print_info("Scripts rebuilt: %d, failed: %d", built, failed)
 	}
 	regenerate_init_core_silently()
+	config_lock_release()
 
 	core_path := fmt.aprintf("%s/core.%s", wayu.data, get_shell_extension(wayu.shell))
 	defer delete(core_path)
@@ -493,18 +516,27 @@ default_file_change_callback :: proc(event: FileWatcherEvent, path: string) {
 // PID File Management
 // ============================================================================
 
-// Write watcher PID file
+// Write the watcher PID file: a private temp file (0600, O_EXCL|O_NOFOLLOW)
+// renamed over it, so a symlink planted at the path is replaced, never
+// followed.
 write_watcher_pid :: proc() {
 	pid := os.get_pid()
-	pid_str := fmt.aprintf("%d", pid)
-	defer delete(pid_str)
+	pid_str := fmt.tprintf("%d", pid)
 
 	if g_watcher.pid_file == "" {
 		g_watcher.pid_file = fmt.aprintf("%s/%s", wayu.data, WATCHER_PID_FILE)
 	}
 
-	err := os.write_entire_file(g_watcher.pid_file, transmute([]byte)pid_str)
-	if err != nil {
+	tmp := fmt.tprintf("%s.tmp.%d", g_watcher.pid_file, pid)
+	if _, lerr := os.lstat(tmp, context.temp_allocator); lerr == nil {
+		_ = os.remove(tmp)
+	}
+	ok := create_file_exclusive(tmp, pid_str, 0o600) == .NONE
+	if ok && os.rename(tmp, g_watcher.pid_file) != nil {
+		_ = os.remove(tmp)
+		ok = false
+	}
+	if !ok {
 		print_warning("Could not write PID file: %s", g_watcher.pid_file)
 	}
 }
@@ -571,6 +603,32 @@ watcher_lock_take :: proc() -> bool {
 	return true
 }
 
+// PID of the process holding <data>/watcher.lock, 0 when nobody does.
+// Asked with fcntl(F_GETLK), which never takes the lock itself: probing with
+// lockf(TLOCK) made `watch status` hold it for a moment, and a concurrent
+// `watch stop` then saw "running" and signalled the stale PID file's pid.
+watcher_lock_holder :: proc() -> int {
+	path := fmt.tprintf("%s/%s", wayu.data, WATCHER_LOCK_FILE)
+	f, err := os.open(path, {.Read, .Write})
+	if err != nil {
+		return 0
+	}
+	defer os.close(f)
+	lk := posix.flock {
+		l_type   = .WRLCK,
+		l_whence = 0, // SEEK_SET
+		l_start  = 0,
+		l_len    = 0, // to EOF and beyond: the whole range lockf locks
+	}
+	if posix.fcntl(posix.FD(os.fd(f)), .GETLK, &lk) == -1 {
+		return 0
+	}
+	if lk.l_type == .UNLCK {
+		return 0
+	}
+	return int(lk.l_pid)
+}
+
 // Is a watcher running: does another process hold <data>/watcher.lock?
 // The PID file alone is no proof (OKAMI-316). When no watcher holds the
 // lock, a leftover PID file is removed.
@@ -578,38 +636,40 @@ is_watcher_running :: proc() -> bool {
 	if _watcher_lock != nil {
 		return true // this process is the watcher
 	}
-	path := fmt.tprintf("%s/%s", wayu.data, WATCHER_LOCK_FILE)
-	held := false
-	if f, err := os.open(path, {.Read, .Write}); err == nil {
-		fd := posix.FD(os.fd(f))
-		if posix.lockf(fd, .TLOCK, 0) == .OK {
-			_ = posix.lockf(fd, .ULOCK, 0)
-		} else {
-			held = true
-		}
-		os.close(f)
-	}
+	held := watcher_lock_holder() > 0
 	if !held {
 		remove_watcher_pid()
 	}
 	return held
 }
 
-// Stop the watcher `pid` (read from the PID file while the watcher lock was
-// held): SIGTERM, then SIGKILL if it still holds the lock after 2 s.
+// Stop the watcher `pid` (the PID file's pid, verified to be the process
+// holding the watcher lock): SIGTERM, then SIGKILL if it still holds the
+// lock after 2 s. Never signals a pid that does not hold the lock.
 stop_existing_watcher :: proc(pid: int) {
 	when ODIN_OS == .Linux || ODIN_OS == .Darwin {
 		posix.kill(posix.pid_t(pid), posix.Signal.SIGTERM)
 		for _ in 0 ..< 40 {
 			time.sleep(50 * time.Millisecond)
-			if !is_watcher_running() {
+			if watcher_lock_holder() != pid {
+				remove_watcher_pid_if_free()
 				return
 			}
 		}
-		posix.kill(posix.pid_t(pid), posix.Signal.SIGKILL)
-		time.sleep(100 * time.Millisecond)
+		if watcher_lock_holder() == pid {
+			posix.kill(posix.pid_t(pid), posix.Signal.SIGKILL)
+			time.sleep(100 * time.Millisecond)
+		}
 	}
-	remove_watcher_pid()
+	remove_watcher_pid_if_free()
+}
+
+// Remove the PID file unless a watcher (re)took the lock meanwhile.
+@(private = "file")
+remove_watcher_pid_if_free :: proc() {
+	if watcher_lock_holder() == 0 {
+		remove_watcher_pid()
+	}
 }
 
 // ============================================================================

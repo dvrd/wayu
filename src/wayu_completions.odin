@@ -385,6 +385,7 @@ WAYU_COMMAND_SPECS := [?]WayuCommandSpec {
 			{"--lang", "Language of 'script new'"},
 			{"--lang=", ""},
 			{"--copy", "'script import': keep the original files"},
+			{"--allow-build", "'script import': run the build commands files declare"},
 		},
 	},
 	{

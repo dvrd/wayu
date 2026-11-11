@@ -626,14 +626,10 @@ get_git_info :: proc(plugin_dir: string) -> GitMetadata {
 	}
 
 	// Get current branch — no shell, args passed directly to git
-	info.branch = capture_command(
-		[]string{"git", "-C", plugin_dir, "rev-parse", "--abbrev-ref", "HEAD"},
-	)
+	info.branch = capture_command(git_argv("-C", plugin_dir, "rev-parse", "--abbrev-ref", "HEAD"))
 
 	// Get local commit (short SHA)
-	info.commit = capture_command(
-		[]string{"git", "-C", plugin_dir, "rev-parse", "--short", "HEAD"},
-	)
+	info.commit = capture_command(git_argv("-C", plugin_dir, "rev-parse", "--short", "HEAD"))
 
 	// Remote commit will be fetched during check/update
 	// IMPORTANT: Must be a separate allocation (cleanup_plugin_metadata deletes both independently)

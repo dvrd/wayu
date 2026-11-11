@@ -28,6 +28,8 @@ import "core:time"
 // enough samples to compute a meaningful min/mean/max without keeping the
 // user waiting. Bumped up only if there's <1 percent variance.
 PROFILE_ITERATIONS :: 5
+// Deadline for one profiled shell run (the shell and its children are killed).
+PROFILE_RUN_TIMEOUT_MS :: 30 * 1000
 
 // Sample describes a single timed invocation.
 ProfileSample :: struct {
@@ -111,11 +113,23 @@ profile_startup_performance :: proc() {
 	if os.exists(core_file) do print_info("core file: %s", core_file)
 	fmt.println()
 
-	for &scenario in scenarios {
+	scenario_loop: for &scenario in scenarios {
 		for i in 0 ..< PROFILE_ITERATIONS {
 			start := time.tick_now()
-			_ = run_command(scenario.command)
+			// Deadline + new session (no controlling terminal): an rc file
+			// that prompts, sleeps or attaches tmux cannot hang the profile.
+			r := run_command_timeout(scenario.command, PROFILE_RUN_TIMEOUT_MS)
 			elapsed := time.tick_since(start)
+			timed_out := r.timed_out
+			command_result_destroy(&r)
+			if timed_out {
+				print_warning(
+					"%s: stopped after %ds (the shell did not exit); skipped",
+					scenario.label,
+					PROFILE_RUN_TIMEOUT_MS / 1000,
+				)
+				continue scenario_loop
+			}
 			scenario.times_ms[i] = f64(time.duration_milliseconds(elapsed))
 		}
 		render_profile_sample(scenario)
@@ -260,8 +274,10 @@ render_phase_breakdown :: proc(shell_bin, core_file: string, shell: ShellType) {
 	}
 	cmd := profile_interactive_command(shell_bin, rc_dir, strings.to_string(sb), shell)
 	if cmd == nil do return
-	out := capture_command(cmd)
-	defer if len(out) > 0 do delete(out)
+	r := run_command_timeout(cmd, PROFILE_RUN_TIMEOUT_MS)
+	defer command_result_destroy(&r)
+	if !r.ok do return
+	out := r.stdout
 	if len(out) == 0 do return
 	if strings.contains(out, "WAYU_NO_EPOCHREALTIME") {
 		fmt.println()

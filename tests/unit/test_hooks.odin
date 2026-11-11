@@ -107,7 +107,14 @@ test_hook_double_quoted_placeholder_detection :: proc(t: ^testing.T) {
 		{`echo a "b" {name}`, ""},
 		{`echo {path}`, ""},
 		{`sh -c 'echo {path}'`, ""},
-		{`sh -c 'echo "a {name}"'`, ""}, // "..." inside '...' is literal text
+		// "..." inside '...' is the inner shell's "...": its value would be
+		// re-parsed by a shell nested in it.
+		{`sh -c 'echo "a {name}"'`, "{name}"},
+		{`sh -c 'sh -c "echo {value}"'`, "{value}"},
+		{`sh -c 'echo "a" {name}'`, ""},
+		{`sh -c 'echo \"{name}'`, ""}, // escaped for the inner shell
+		{`sh -c 'echo "a'"b"' {name}"'`, "{name}"}, // inner "..." spans segments
+		{`sh -c 'echo "a"' x '{name}'`, ""},
 		{`echo "$WAYU_HOOK_NAME"`, ""},
 		{`echo \"{name}\"`, ""}, // escaped quotes are not a quoted string
 	}

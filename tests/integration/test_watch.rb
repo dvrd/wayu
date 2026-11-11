@@ -25,6 +25,8 @@ class WatchIntegrationTest
 
       test_stale_pid_file_not_signalled
       test_start_status_stop
+      test_stop_never_signals_non_holder
+      test_pid_file_symlink_not_followed
     ensure
       teardown_test_env
     end
@@ -97,6 +99,51 @@ class WatchIntegrationTest
           second_out.include?('already running') && stop_st.success? &&
           stop_out.include?('stopped') && exited && !File.exist?(pid_file),
           "status=#{status_out} second=#{second_out} stop=#{stop_out} exited=#{exited}")
+  end
+
+  # The lock is held (here by a stand-in holding an fcntl lock, like a
+  # momentary `watch status` of an older wayu) but the PID file names
+  # another process: stop must signal nobody.
+  def test_stop_never_signals_non_holder
+    victim = Process.spawn('sleep', '30', pgroup: true)
+    File.write(pid_file, victim.to_s)
+    lock = "#{@data_dir}/watcher.lock"
+    holder_code = "import fcntl,sys,time\nf=open(sys.argv[1],'a+')\nfcntl.lockf(f,fcntl.LOCK_EX)\nprint('locked',flush=True)\ntime.sleep(30)\n"
+    rd, wr = IO.pipe
+    holder = Process.spawn('python3', '-c', holder_code, lock, out: wr, pgroup: true)
+    wr.close
+    Timeout.timeout(5) { rd.gets }
+    stop_out, stop_st = run_wayu('watch stop')
+    sleep 0.2
+    survived = alive?(victim) && alive?(holder)
+    [victim, holder].each { |p| Process.kill('KILL', p) rescue nil; Process.wait(p) rescue nil }
+    FileUtils.rm_f(pid_file)
+    check('watch stop: lock holder differs from the PID file -> nothing signalled, exit 1',
+          survived && stop_st.exitstatus == 1 && stop_out.include?('not signalling'),
+          "survived=#{survived} stop=#{stop_st.exitstatus} out=#{stop_out}")
+  rescue Timeout::Error
+    check('watch stop: lock holder differs from the PID file', false, 'lock holder did not start')
+  end
+
+  # The PID file is replaced atomically (0600), never written through a
+  # symlink planted at its path.
+  def test_pid_file_symlink_not_followed
+    outside = "#{@tmp_home}/outside-pid-target"
+    File.write(outside, "keep\n")
+    FileUtils.rm_f(pid_file)
+    File.symlink(outside, pid_file)
+    env = ENV.to_h.merge('HOME' => @tmp_home)
+    watcher = Process.spawn(env, "#{@wayu_bin} watch", out: File::NULL, err: File::NULL,
+                            in: File::NULL, pgroup: true)
+    deadline = Time.now + 10
+    sleep 0.05 until (File.file?(pid_file) && !File.symlink?(pid_file)) || Time.now > deadline
+    replaced = File.file?(pid_file) && !File.symlink?(pid_file)
+    mode = replaced ? File.stat(pid_file).mode & 0o777 : 0
+    run_wayu('watch stop')
+    Timeout.timeout(5) { Process.wait(watcher) } rescue (Process.kill('KILL', -watcher) rescue nil)
+    check('watch: PID file written 0600 by rename, symlink target untouched',
+          replaced && mode == 0o600 && File.read(outside) == "keep\n",
+          "replaced=#{replaced} mode=#{mode.to_s(8)} outside=#{File.read(outside).inspect}")
   end
 end
 

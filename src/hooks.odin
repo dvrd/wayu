@@ -188,6 +188,7 @@ HOOK_ENV_VALUE :: "WAYU_HOOK_VALUE"
 //   unquoted       {name}  →  "${WAYU_HOOK_NAME}"
 //   inside '...'   {name}  →  "${WAYU_HOOK_NAME}"      (left for an inner shell)
 //   inside "..."   REFUSED (reported via double_token; the hook is invalid)
+//   "..." in '...' REFUSED too (the inner shell's "...", same reason)
 // Expansion results are never re-parsed by the shell, so values cannot inject
 // syntax. Single-quoted text is usually a script for a nested shell
 // (`sh -c '... {path}'`, ssh, eval): splicing the value there (the old
@@ -223,6 +224,9 @@ hook_render_command_ex :: proc(
 
 	b := strings.builder_make()
 	in_single, in_double := false, false
+	// Inside '...': is the inner shell's text within "..."? Kept across
+	// adjacent quoted segments of the same word ('sh -c "a'"$x"' {v}"').
+	inner_double := false
 	i := 0
 	outer: for i < len(cmd) {
 		c := cmd[i]
@@ -233,6 +237,15 @@ hook_render_command_ex :: proc(
 				}
 				ref := strings.concatenate({"${", p.env, "}"}, context.temp_allocator)
 				switch {
+				case in_single && inner_double:
+					// "..." inside '...': the inner shell expands the value
+					// there and a shell nested in it (`sh -c 'sh -c "echo
+					// {value}"'`) re-parses it as code — refused like
+					// a top-level "...".
+					if len(double_token) == 0 {
+						double_token = p.token
+					}
+					strings.write_string(&b, ref)
 				case in_single:
 					single_quoted = true
 					strings.write_string(
@@ -256,8 +269,19 @@ hook_render_command_ex :: proc(
 		}
 		switch {
 		case in_single:
-			if c == '\'' {
+			// The text is a script for an inner shell: track its "..."
+			// (and its backslash escapes, which never apply to the `'`
+			// that ends the outer quote).
+			switch {
+			case c == '\'':
 				in_single = false
+			case c == '\\' && i + 1 < len(cmd) && cmd[i + 1] != '\'':
+				strings.write_byte(&b, c)
+				strings.write_byte(&b, cmd[i + 1])
+				i += 2
+				continue outer
+			case c == '"':
+				inner_double = !inner_double
 			}
 		case c == '\\' && i + 1 < len(cmd):
 			// Escaped char (outside single quotes): copy the pair untouched.
@@ -273,6 +297,9 @@ hook_render_command_ex :: proc(
 			in_single = true
 		case c == '"':
 			in_double = true
+		case c == ' ' || c == '\t' || c == ';' || c == '|' || c == '&' || c == '\n':
+			// A new word: the inner shell's script (if any) ended.
+			inner_double = false
 		}
 		strings.write_byte(&b, c)
 		i += 1
@@ -303,7 +330,13 @@ hook_config_error :: proc() -> (msg: string, bad: bool) {
 		HOOK_CONFIG_FILE,
 	)
 	for inv in config.invalid {
-		fmt.sbprintf(&b, "\n  line %d: %s puts %s inside \"...\"", inv.line, inv.key, inv.token)
+		fmt.sbprintf(
+			&b,
+			"\n  line %d: %s puts %s inside \"...\" (also refused within '...')",
+			inv.line,
+			inv.key,
+			inv.token,
+		)
 	}
 	strings.write_string(
 		&b,

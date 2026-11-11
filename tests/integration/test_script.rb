@@ -47,6 +47,9 @@ class ScriptIntegrationTest
       test_path_in_shells
       test_live_path_sync
       test_functions_in_data_dir
+      test_no_write_through_symlinks
+      test_build_runs_in_scripts_dir
+      test_import_build_header_needs_allow
     ensure
       teardown_test_env
     end
@@ -497,6 +500,87 @@ class ScriptIntegrationTest
           st.success? && File.exist?("#{data}/functions/splitfn.zsh") &&
           !File.exist?("#{@config_dir}/functions/splitfn.zsh"),
           "exit=#{st.exitstatus}")
+  end
+
+  # Compilers run in <data>/scripts, not in the caller's cwd (bun/deno/go
+  # read config files from there).
+  def test_build_runs_in_scripts_dir
+    File.write("#{@fakebin}/fakepwd", <<~SH)
+      #!/bin/sh
+      # fakepwd -o OUT SRC: the binary prints the compiler's cwd
+      printf '#!/bin/sh\necho "%s"\n' "$(pwd -P)" > "$2"; chmod +x "$2"
+    SH
+    FileUtils.chmod(0o755, "#{@fakebin}/fakepwd")
+    File.write("#{scripts_dir}/cwdt.c", "// wayu: build = fakepwd -o {out} {src}\n")
+    _, st = run_s('script build cwdt')
+    run_out, = Open3.capture2e("#{bin_dir}/cwdt")
+    run_s('script rm cwdt --yes')
+    check('build commands run with cwd = <data>/scripts',
+          st.success? && run_out.strip == File.realpath(scripts_dir), "build=#{st.exitstatus} run=#{run_out}")
+  end
+
+  # Importing a file whose `wayu: build =` command is not a language preset
+  # needs --allow-build (64 without it, nothing run or imported); --dry-run
+  # and the summary show the command; a swift preset header needs nothing.
+  def test_import_build_header_needs_allow
+    marker = "#{@scratch}/hdr-ran"
+    FileUtils.rm_f(marker)
+    File.write("#{@fakebin}/markcc", "#!/bin/sh\ntouch '#{marker}'\nprintf '#!/bin/sh\\necho m\\n' > \"$2\"; chmod +x \"$2\"\n")
+    FileUtils.chmod(0o755, "#{@fakebin}/markcc")
+    dir = "#{@scratch}/imp-hdr"
+    FileUtils.mkdir_p(dir)
+    File.write("#{dir}/evil.c", "// wayu: build = markcc -o {out} {src}\nint main(void) { return 0; }\n")
+    File.write("#{dir}/pre.swift", "// wayu: build = swiftc -O -o {out} {src}\nprint(1)\n")
+    dry, dst = run_s("--dry-run script import --copy #{dir}/evil.c")
+    out, st = run_s("script import --copy #{dir}/evil.c #{dir}/pre.swift")
+    ran_without = File.exist?(marker)
+    imported_without = File.exist?("#{scripts_dir}/evil.c") || File.exist?("#{scripts_dir}/pre.swift")
+    pre_out, pre_st = run_s("script import --copy #{dir}/pre.swift")
+    ok_out, ok_st = run_s("script import --copy --allow-build #{dir}/evil.c")
+    run_out, = Open3.capture2e("#{bin_dir}/evil")
+    run_s('script rm evil --yes')
+    run_s('script rm pre --yes')
+    check('import: build header needs --allow-build (64, nothing run); dry-run and summary show the command',
+          dst.success? && dry.include?('[build: markcc -o {out} {src}] (refused without --allow-build)') &&
+          st.exitstatus == 64 && out.include?('--allow-build') && out.include?('markcc -o {out} {src}') &&
+          !ran_without && !imported_without && pre_st.success? &&
+          ok_st.success? && ok_out.include?('[build: markcc -o {out} {src}]') && File.exist?(marker) &&
+          run_out.strip == 'm',
+          "dry=#{dry} st=#{st.exitstatus} out=#{out} ran=#{ran_without} imp=#{imported_without} " \
+          "pre=#{pre_st.exitstatus} #{pre_out} ok=#{ok_st.exitstatus} #{ok_out} run=#{run_out}")
+  end
+
+  # new / import / function add never write through a symlink (dangling or
+  # not) already at the path; functions are created 0600.
+  def test_no_write_through_symlinks
+    FileUtils.mkdir_p(scripts_dir)
+    outside = "#{@scratch}/outside.txt"
+    File.write(outside, "keep\n")
+    File.chmod(0o600, outside)
+    File.symlink(outside, "#{scripts_dir}/evil.sh")
+    _, st_new = run_s('script new evil --lang sh')
+    File.symlink("#{@scratch}/nowhere1", "#{scripts_dir}/dang.sh")
+    _, st_dang = run_s('script new dang --lang sh')
+    imp = "#{@scratch}/imp-sym"
+    FileUtils.mkdir_p(imp)
+    File.write("#{imp}/dimp.sh", "#!/bin/sh\necho dimp\n")
+    File.symlink("#{@scratch}/nowhere2", "#{scripts_dir}/dimp.sh")
+    out_imp, st_imp = run_s("script import --copy #{imp}/dimp.sh")
+    fdir = "#{@data_dir}/functions"
+    FileUtils.mkdir_p(fdir)
+    File.symlink("#{@scratch}/nowhere3", "#{fdir}/fsym.zsh")
+    _, st_fn = run_s('function add fsym')
+    _, st_ok = run_s('function add fmode')
+    fmode = File.exist?("#{fdir}/fmode.zsh") ? File.stat("#{fdir}/fmode.zsh").mode & 0o777 : 0
+    untouched = File.read(outside) == "keep\n" && (File.stat(outside).mode & 0o777) == 0o600 &&
+                %w[nowhere1 nowhere2 nowhere3].none? { |n| File.exist?("#{@scratch}/#{n}") }
+    FileUtils.rm_f(%W[#{scripts_dir}/evil.sh #{scripts_dir}/dang.sh #{scripts_dir}/dimp.sh #{fdir}/fsym.zsh #{fdir}/fmode.zsh])
+    check('new/import/function add refuse a (dangling) symlink at the path; functions 0600',
+          st_new.exitstatus == 65 && st_dang.exitstatus == 65 && st_imp.exitstatus == 65 &&
+          out_imp.include?('already exists') && st_fn.exitstatus == 73 && st_ok.success? &&
+          fmode == 0o600 && untouched,
+          "new=#{st_new.exitstatus} dang=#{st_dang.exitstatus} imp=#{st_imp.exitstatus} fn=#{st_fn.exitstatus} " \
+          "ok=#{st_ok.exitstatus} fmode=#{fmode.to_s(8)} untouched=#{untouched} out=#{out_imp}")
   end
 end
 

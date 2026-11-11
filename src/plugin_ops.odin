@@ -21,6 +21,24 @@ GIT_SSH_BATCH_COMMAND :: "ssh -o BatchMode=yes -o ConnectTimeout=10"
 GIT_HTTP_LOW_SPEED_LIMIT :: "1000"
 GIT_HTTP_LOW_SPEED_TIME :: "30"
 
+// Options put before every git subcommand wayu runs (in plugin checkouts
+// above all): a repo's own config could otherwise make git run programs —
+// core.fsmonitor is executed by status/checkout/merge/reset, and hooks
+// (post-checkout, post-merge, ...) by checkout, merge and clone.
+GIT_SAFE_OPTS :: [?]string{"-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"}
+
+// argv of `git <GIT_SAFE_OPTS> args...` (temp-allocated slice; the strings
+// are not copied).
+git_argv :: proc(args: ..string) -> []string {
+	out := make([]string, 1 + len(GIT_SAFE_OPTS) + len(args), context.temp_allocator)
+	out[0] = "git"
+	for o, i in GIT_SAFE_OPTS {
+		out[1 + i] = o
+	}
+	copy(out[1 + len(GIT_SAFE_OPTS):], args)
+	return out
+}
+
 // Overall deadline for a network git command: WAYU_GIT_TIMEOUT (whole
 // seconds, > 0) when set and valid, else `default_ms`.
 git_network_timeout_ms :: proc(default_ms: int) -> int {
@@ -48,10 +66,12 @@ git_network_env :: proc(repo_dir: string) -> []Env_Default {
 	if os.get_env("GIT_SSH", context.temp_allocator) == "" {
 		configured: string
 		if repo_dir == "" {
-			configured = capture_command([]string{"git", "config", "--get", "core.sshCommand"})
+			// From / (not the caller's cwd): run inside a hostile repository,
+			// `git config` would read that repo's .git/config.
+			configured = capture_command(git_argv("-C", "/", "config", "--get", "core.sshCommand"))
 		} else {
 			configured = capture_command(
-				[]string{"git", "-C", repo_dir, "config", "--get", "core.sshCommand"},
+				git_argv("-C", repo_dir, "config", "--get", "core.sshCommand"),
 			)
 		}
 		defer delete(configured)
@@ -85,6 +105,36 @@ run_git_network :: proc(
 	return result
 }
 
+// The clone in progress: interrupted (Ctrl-C, SIGTERM, SIGHUP), wayu kills
+// git and removes the partial checkout (see subprocess.odin) — it would
+// otherwise block the next `plugin add` of that name.
+@(private = "file")
+_clone_partial_dest: string
+
+@(private = "file")
+clone_remove_partial :: proc() {
+	if len(_clone_partial_dest) == 0 do return
+	parent := _clone_partial_dest[:max(strings.last_index_byte(_clone_partial_dest, '/'), 0)]
+	remove_cloned_plugin_dir(_clone_partial_dest, parent)
+}
+
+// Register `dest` for removal on interrupt, only when it does not exist yet
+// (never clean up a directory wayu did not create).
+@(private = "file")
+clone_guard_partial :: proc(dest: string) {
+	if _, err := os.lstat(dest, context.temp_allocator); err == nil {
+		return
+	}
+	_clone_partial_dest = dest
+	subprocess_interrupt_cleanup = clone_remove_partial
+}
+
+@(private = "file")
+clone_guard_done :: proc() {
+	_clone_partial_dest = ""
+	subprocess_interrupt_cleanup = nil
+}
+
 // Clone a plugin repository (shallow). `--` ends option parsing so a URL or
 // destination starting with '-' can never be read as a git option.
 // err_text is ALLOCATED (git's stderr, possibly empty) — caller must delete.
@@ -94,8 +144,10 @@ git_clone :: proc(url: string, dest: string) -> (ok: bool, err_text: string) {
 		return true, strings.clone("")
 	}
 
+	clone_guard_partial(dest)
+	defer clone_guard_done()
 	r := run_git_network(
-		[]string{"git", "clone", "--depth=1", "--quiet", "--", url, dest},
+		git_argv("clone", "--depth=1", "--quiet", "--", url, dest),
 		GIT_CLONE_TIMEOUT_MS,
 	)
 	delete(r.stdout)
@@ -123,9 +175,11 @@ git_clone_at_commit :: proc(
 	if !is_valid_commit_sha(commit) {
 		return false, fmt.aprintf("invalid commit '%s'", commit)
 	}
+	clone_guard_partial(dest)
+	defer clone_guard_done()
 
 	cloned := run_git_network(
-		[]string{"git", "clone", "--no-checkout", "--quiet", "--", url, dest},
+		git_argv("clone", "--no-checkout", "--quiet", "--", url, dest),
 		GIT_CLONE_TIMEOUT_MS,
 	)
 	delete(cloned.stdout)
@@ -135,14 +189,14 @@ git_clone_at_commit :: proc(
 	delete(cloned.stderr)
 
 	checked_out, co_err := run_command_capture_stderr(
-		[]string{"git", "-C", dest, "checkout", "--quiet", "--detach", commit},
+		git_argv("-C", dest, "checkout", "--quiet", "--detach", commit),
 	)
 	if !checked_out {
 		return false, co_err
 	}
 	delete(co_err)
 
-	head := capture_command([]string{"git", "-C", dest, "rev-parse", "HEAD"})
+	head := capture_command(git_argv("-C", dest, "rev-parse", "HEAD"))
 	defer delete(head)
 	if !strings.has_prefix(head, strings.to_lower(commit, context.temp_allocator)) {
 		return false, fmt.aprintf("checked out %s, expected %s", head, commit)
@@ -220,11 +274,11 @@ git_update :: proc(
 	tracking :=
 		ref == "HEAD" ? "refs/remotes/origin/HEAD" : fmt.tprintf("refs/remotes/origin/%s", ref)
 	head_on_remote := run_command(
-		[]string{"git", "-C", plugin_dir, "merge-base", "--is-ancestor", "HEAD", tracking},
+		git_argv("-C", plugin_dir, "merge-base", "--is-ancestor", "HEAD", tracking),
 	)
 
 	fetched := run_git_network(
-		[]string{"git", "-C", plugin_dir, "fetch", "--quiet", "origin", ref},
+		git_argv("-C", plugin_dir, "fetch", "--quiet", "origin", ref),
 		GIT_CLONE_TIMEOUT_MS,
 		plugin_dir,
 	)
@@ -235,7 +289,7 @@ git_update :: proc(
 	delete(fetched.stderr)
 
 	merged, merge_err := run_command_capture_stderr(
-		[]string{"git", "-C", plugin_dir, "merge", "--ff-only", "--quiet", "FETCH_HEAD"},
+		git_argv("-C", plugin_dir, "merge", "--ff-only", "--quiet", "FETCH_HEAD"),
 	)
 	if merged {
 		delete(merge_err)
@@ -249,7 +303,7 @@ git_update :: proc(
 		)
 	}
 	dirty := capture_command(
-		[]string{"git", "-C", plugin_dir, "status", "--porcelain", "--untracked-files=no"},
+		git_argv("-C", plugin_dir, "status", "--porcelain", "--untracked-files=no"),
 	)
 	defer delete(dirty)
 	if len(dirty) > 0 {
@@ -264,7 +318,7 @@ git_update :: proc(
 	}
 
 	reset, reset_err := run_command_capture_stderr(
-		[]string{"git", "-C", plugin_dir, "reset", "--hard", "--quiet", "FETCH_HEAD"},
+		git_argv("-C", plugin_dir, "reset", "--hard", "--quiet", "FETCH_HEAD"),
 	)
 	if !reset {
 		return .Failed, reset_err
@@ -486,8 +540,36 @@ plugin_ref_problem :: proc(ref: string) -> string {
 		return "must not start with '-'"
 	}
 	for c in ref {
-		if c < 0x20 || c == 0x7f || c == ' ' {
+		if is_control_rune(c) || c == ' ' {
 			return "contains whitespace or control characters"
+		}
+		switch c {
+		case '~', '^', ':', '?', '*', '[', '\\':
+			return fmt.tprintf("must not contain '%c'", c)
+		}
+	}
+	// The other rules of `git check-ref-format` (a ref is never a refspec
+	// such as `a:refs/heads/b`, a revision expression or a reflog lookup).
+	switch {
+	case ref == "@":
+		return "must not be '@'"
+	case strings.contains(ref, ".."):
+		return "must not contain '..'"
+	case strings.contains(ref, "@{"):
+		return "must not contain '@{'"
+	case strings.contains(ref, "//"):
+		return "must not contain '//'"
+	case strings.has_prefix(ref, "/"), strings.has_suffix(ref, "/"):
+		return "must not start or end with '/'"
+	case strings.has_suffix(ref, "."):
+		return "must not end with '.'"
+	}
+	for comp in strings.split(ref, "/", context.temp_allocator) {
+		if strings.has_prefix(comp, ".") {
+			return "has a component starting with '.'"
+		}
+		if strings.has_suffix(comp, ".lock") {
+			return "has a component ending in '.lock'"
 		}
 	}
 	return ""
@@ -524,11 +606,17 @@ is_valid_plugin_name :: proc(name: string) -> bool {
 		return false
 	}
 	for c in name {
-		if c == '/' || c == '\\' || c == 0 || c == '\n' || c == '\r' {
+		if c == '/' || c == '\\' || is_control_rune(c) {
 			return false
 		}
 	}
 	return true
+}
+
+// C0 controls, DEL and C1 controls (U+0080-U+009F): never valid in a plugin
+// name, ref or path that reaches a terminal, git argv or generated shell code.
+is_control_rune :: proc(c: rune) -> bool {
+	return c < 0x20 || (c >= 0x7f && c <= 0x9f)
 }
 
 // True when `path` is strictly inside `root` (never root itself). Both are
@@ -1630,10 +1718,7 @@ get_remote_commit :: proc(url: string, branch: string) -> string {
 
 	// Output format: "<40-char-SHA>\t<ref-name>\n" per matching ref.
 	// `--` ends option parsing so the URL can never be read as an option.
-	result := run_git_network(
-		[]string{"git", "ls-remote", "--", url, ref},
-		GIT_LS_REMOTE_TIMEOUT_MS,
-	)
+	result := run_git_network(git_argv("ls-remote", "--", url, ref), GIT_LS_REMOTE_TIMEOUT_MS)
 	defer command_result_destroy(&result)
 	if !result.ok {
 		return ""

@@ -72,7 +72,14 @@ sandbox_open :: proc(t: ^testing.T, name: string) -> Sandbox {
 	write(
 		t,
 		fmt.tprintf("%s/plugins.json", sb.dir),
-		`{"version": "1.0", "plugins": [{"name": "demo", "url": "https://example.test/demo.git", "enabled": true, "shell": "ZSH", "installed_path": "/nonexistent/demo", "priority": 100}]}`,
+		strings.concatenate(
+			{
+				`{"version": "1.0", "plugins": [{"name": "demo", "url": "https://example.test/demo.git", "enabled": true, "shell": "ZSH", "installed_path": "`,
+				sb.dir,
+				`/plugins/demo", "priority": 100}]}`,
+			},
+			context.temp_allocator,
+		),
 	)
 	wayu.wayu.config = sb.dir
 	wayu.wayu.data = sb.dir
