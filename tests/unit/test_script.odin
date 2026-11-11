@@ -345,3 +345,10 @@ test_script_default_lang_validation :: proc(t: ^testing.T) {
 		testing.expect(t, !unknown[0].is_error)
 	}
 }
+
+@(test)
+test_script_build_is_preset :: proc(t: ^testing.T) {
+	testing.expect(t, wayu.script_build_is_preset("swiftc -O -o {out} {src}"), "swift preset")
+	testing.expect(t, !wayu.script_build_is_preset("cc -o {out} {src}"), "custom command")
+	testing.expect(t, !wayu.script_build_is_preset(""), "empty")
+}

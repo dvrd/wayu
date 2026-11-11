@@ -49,6 +49,7 @@ class ScriptIntegrationTest
       test_functions_in_data_dir
       test_no_write_through_symlinks
       test_build_runs_in_scripts_dir
+      test_import_build_header_needs_allow
     ensure
       teardown_test_env
     end
@@ -516,6 +517,37 @@ class ScriptIntegrationTest
     run_s('script rm cwdt --yes')
     check('build commands run with cwd = <data>/scripts',
           st.success? && run_out.strip == File.realpath(scripts_dir), "build=#{st.exitstatus} run=#{run_out}")
+  end
+
+  # Importing a file whose `wayu: build =` command is not a language preset
+  # needs --allow-build (64 without it, nothing run or imported); --dry-run
+  # and the summary show the command; a swift preset header needs nothing.
+  def test_import_build_header_needs_allow
+    marker = "#{@scratch}/hdr-ran"
+    FileUtils.rm_f(marker)
+    File.write("#{@fakebin}/markcc", "#!/bin/sh\ntouch '#{marker}'\nprintf '#!/bin/sh\\necho m\\n' > \"$2\"; chmod +x \"$2\"\n")
+    FileUtils.chmod(0o755, "#{@fakebin}/markcc")
+    dir = "#{@scratch}/imp-hdr"
+    FileUtils.mkdir_p(dir)
+    File.write("#{dir}/evil.c", "// wayu: build = markcc -o {out} {src}\nint main(void) { return 0; }\n")
+    File.write("#{dir}/pre.swift", "// wayu: build = swiftc -O -o {out} {src}\nprint(1)\n")
+    dry, dst = run_s("--dry-run script import --copy #{dir}/evil.c")
+    out, st = run_s("script import --copy #{dir}/evil.c #{dir}/pre.swift")
+    ran_without = File.exist?(marker)
+    imported_without = File.exist?("#{scripts_dir}/evil.c") || File.exist?("#{scripts_dir}/pre.swift")
+    pre_out, pre_st = run_s("script import --copy #{dir}/pre.swift")
+    ok_out, ok_st = run_s("script import --copy --allow-build #{dir}/evil.c")
+    run_out, = Open3.capture2e("#{bin_dir}/evil")
+    run_s('script rm evil --yes')
+    run_s('script rm pre --yes')
+    check('import: build header needs --allow-build (64, nothing run); dry-run and summary show the command',
+          dst.success? && dry.include?('[build: markcc -o {out} {src}] (refused without --allow-build)') &&
+          st.exitstatus == 64 && out.include?('--allow-build') && out.include?('markcc -o {out} {src}') &&
+          !ran_without && !imported_without && pre_st.success? &&
+          ok_st.success? && ok_out.include?('[build: markcc -o {out} {src}]') && File.exist?(marker) &&
+          run_out.strip == 'm',
+          "dry=#{dry} st=#{st.exitstatus} out=#{out} ran=#{ran_without} imp=#{imported_without} " \
+          "pre=#{pre_st.exitstatus} #{pre_out} ok=#{ok_st.exitstatus} #{ok_out} run=#{run_out}")
   end
 
   # new / import / function add never write through a symlink (dangling or

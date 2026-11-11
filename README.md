@@ -463,7 +463,8 @@ the source of truth.
   bash and fish. `script new` writes the interpreter's absolute path as the
   shebang, `wayu build` rebuilds scripts whose source changed, and
   `script import` adopts existing scripts while skipping binaries,
-  symlinks and package-manager launchers. Default language:
+  symlinks and package-manager launchers (a file that declares its own
+  build command needs `--allow-build`). Default language:
   `[scripts] default_lang` (else swift).
 
 ```bash
