@@ -1,17 +1,14 @@
+# Keeps the SHA-pinned actions current (the repo requires SHA pinning).
+# PRs target develop, like every other change.
 version: 2
 updates:
-  # Workflow actions are pinned by commit SHA; Dependabot bumps the SHA and
-  # its version comment together. Covers .github/workflows/ and the composite
-  # action in .github/actions/.
   - package-ecosystem: github-actions
-    directories:
-      - /
-      - /.github/actions/*
+    directory: /
     target-branch: develop
     schedule:
-      interval: monthly
+      interval: weekly
     groups:
-      github-actions:
+      actions:
         patterns: ["*"]
     commit-message:
       prefix: ci
